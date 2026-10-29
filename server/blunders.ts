@@ -97,10 +97,10 @@ export function beginBlunderCheck(input: {
   playedUci: string;
   ply: number;
   destination: string;
-  accept: (mark: MoveMark | null) => boolean;
+  accept: (mark: MoveMark | null, ranked: boolean) => boolean;
 }): void {
   if (input.ucis.length < 5) {
-    input.accept(null);
+    input.accept(null, false);
     return;
   }
   const { code, fen, ucis, playedUci, ply, destination, accept } = input;
@@ -109,10 +109,10 @@ export function beginBlunderCheck(input: {
     .then((scores) => {
       const grade = gradeMove(scores ?? [], playedUci, ucis.length);
       const mark = grade ? { square: destination, ply, at: Date.now(), grade } : null;
-      if (accept(mark) && mark) onReady?.(code);
+      if (accept(mark, true) && mark) onReady?.(code);
     })
     .catch(() => {
-      accept(null);
+      accept(null, false);
     });
 }
 

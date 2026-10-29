@@ -222,6 +222,10 @@ input {
     animation: boom-text 1.5s ease forwards;
   }
 
+  .streak-flash {
+    animation: blunder-fade 2s ease forwards;
+  }
+
   .poof-puff {
     animation: poof-puff 1.2s ease forwards;
   }

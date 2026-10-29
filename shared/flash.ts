@@ -6,6 +6,9 @@ export const FORK_FLASH_MS = 1500;
 export const FORK_SOUND_DELAY_MS = 240;
 export const FORK_SOUND_WAIT_MS = 520;
 export const POOF_FLASH_MS = 1200;
+export const STREAK_FLASH_MS = 2000;
+/** Start the streak clip after the brilliant-move "nice" so the two don't pile up. */
+export const STREAK_SOUND_DELAY_MS = 520;
 /** How long a bailout teleport can still sparkle after the server applied it. */
 export const POOF_HOLD_MS = 6000;
 

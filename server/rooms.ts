@@ -5,6 +5,7 @@ import { beginBlunderCheck } from './blunders.js';
 import { peekHint, requestHint } from './hints.js';
 import { getLeaderboard, normalizeName } from './leaderboard.js';
 import { moveUci, openingName } from './openings.js';
+import { recordStreak } from '../shared/streak.js';
 import {
   clockPreset,
   describeResult,
@@ -21,6 +22,7 @@ import {
   type MoveMark,
   type OpeningCall,
   type PublicState,
+  type StreakCall,
   type Seat,
   type SeatView,
   type Side,
@@ -63,6 +65,8 @@ export class Room {
   private openingFlash: OpeningCall | null = null;
   private openingNameSeen: string | null = null;
   private moveMark: MoveMark | null = null;
+  private streak: StreakCall | null = null;
+  private readonly streaks = new Map<Seat, number>();
   private blunderSeq = 0;
 
   constructor(code: string, preset: ClockPreset, setup: TableSetup = { mode: '2v2', pairSide: null }) {
@@ -243,6 +247,7 @@ export class Room {
       mark: this.moveMark,
       bailout: this.game.bailout ? { ...this.game.bailout } : null,
       escape: this.game.escape ? { ...this.game.escape } : null,
+      streak: this.streak ? { ...this.streak } : null,
     };
   }
 
@@ -307,9 +312,12 @@ export class Room {
       playedUci: moveUci(played),
       ply,
       destination: played.to,
-      accept: (mark) => {
+      accept: (mark, ranked) => {
         if (token !== this.blunderSeq || this.game.ply() !== ply) return false;
         this.moveMark = mark;
+        if (ranked && recordStreak(this.streaks, played.seat, mark?.grade ?? null, legal.length)) {
+          this.streak = { name: this.nameFor(played.seat) ?? played.seat, seat: played.seat, ply, at: Date.now() };
+        }
         return mark !== null;
       },
     });
@@ -317,10 +325,14 @@ export class Room {
 
   private clearAnnouncementsIfReset(): void {
     if (this.game.ply() !== 0) return;
-    if (this.openingFlash || this.moveMark || this.openingNameSeen) this.blunderSeq += 1;
+    if (this.openingFlash || this.moveMark || this.openingNameSeen || this.streak || this.streaks.size > 0) {
+      this.blunderSeq += 1;
+    }
     this.openingFlash = null;
     this.openingNameSeen = null;
     this.moveMark = null;
+    this.streak = null;
+    this.streaks.clear();
   }
 
   private hintsFor(seat: Seat | null): HintArrow[] {

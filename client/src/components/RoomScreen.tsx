@@ -8,9 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { request } from '@/lib/net';
 import { previewFen } from '@/lib/preview';
-import { playBoom, playFork, playHuh, playNice, unlockSounds } from '@/lib/sounds';
+import { playBoom, playFork, playHuh, playNice, playStreak, unlockSounds } from '@/lib/sounds';
 import { queenCaptureSquare } from '../../../shared/capture';
-import { BLUNDER_FLASH_MS, FORK_SOUND_DELAY_MS, FORK_SOUND_WAIT_MS, OPENING_FLASH_MS, POOF_HOLD_MS, flashIsFresh } from '../../../shared/flash';
+import { BLUNDER_FLASH_MS, FORK_SOUND_DELAY_MS, FORK_SOUND_WAIT_MS, OPENING_FLASH_MS, POOF_HOLD_MS, STREAK_FLASH_MS, STREAK_SOUND_DELAY_MS, flashIsFresh } from '../../../shared/flash';
 import { isFork } from '../../../shared/fork';
 import { loadSession, prettyCode } from '@/lib/session';
 import { formatClock } from '@/lib/time';
@@ -62,6 +62,8 @@ export function RoomScreen({
   const escapeToast = useRef<string | null>(null);
   const forkSoundTimer = useRef<number | null>(null);
   const forkSoundPlayed = useRef<string | null>(null);
+  const streakSoundTimer = useRef<number | null>(null);
+  const streakSoundPlayed = useRef<string | null>(null);
   const session = loadSession();
   const you = state.yourSeat;
   const bailoutOpen = state.bailout !== null;
@@ -173,13 +175,33 @@ export function RoomScreen({
         }
       : null;
 
+  const streakFlash =
+    state.streak && flashIsFresh(state.streak, state.ply, state.serverNow, STREAK_FLASH_MS)
+      ? {
+          token: `${state.streak.at}:${state.streak.ply}:${state.streak.seat}`,
+          name: state.streak.name,
+        }
+      : null;
+
   useEffect(() => {
     if (markFlash?.grade === 'blunder') playHuh();
     if (markFlash?.grade === 'brilliant') playNice();
     if ((markFlash?.grade === 'blunder' || markFlash?.grade === 'brilliant') && fork?.token.startsWith(`${state.ply}:`)) {
       armForkSound(fork.token, FORK_SOUND_DELAY_MS);
     }
-  }, [markFlash?.token, markFlash?.grade]);
+    if (streakFlash) armStreakSound(streakFlash.token);
+  }, [markFlash?.token, markFlash?.grade, streakFlash?.token]);
+
+  function armStreakSound(token: string) {
+    if (streakSoundPlayed.current === token) return;
+    if (streakSoundTimer.current !== null) window.clearTimeout(streakSoundTimer.current);
+    streakSoundTimer.current = window.setTimeout(() => {
+      streakSoundTimer.current = null;
+      if (streakSoundPlayed.current === token) return;
+      streakSoundPlayed.current = token;
+      playStreak();
+    }, STREAK_SOUND_DELAY_MS);
+  }
 
   useEffect(() => {
     if (boom) playBoom();
@@ -316,6 +338,7 @@ export function RoomScreen({
               interactive={interactive}
               hints={pending ? [] : state.hints}
               opening={openingFlash}
+              streak={streakFlash}
               mark={markFlash}
               fork={fork}
               boom={boom}

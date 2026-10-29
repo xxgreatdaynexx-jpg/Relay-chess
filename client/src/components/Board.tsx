@@ -4,7 +4,7 @@ import { Piece } from '@/components/Pieces';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { BLUNDER_FLASH_MS, BOOM_FLASH_MS, FORK_FLASH_MS, OPENING_FLASH_MS, POOF_FLASH_MS } from '../../../shared/flash';
+import { BLUNDER_FLASH_MS, BOOM_FLASH_MS, FORK_FLASH_MS, OPENING_FLASH_MS, POOF_FLASH_MS, STREAK_FLASH_MS } from '../../../shared/flash';
 import type { HintArrow, LegalMove, MoveGrade, Promotion } from '../../../shared/types';
 
 interface Drag {
@@ -35,6 +35,7 @@ export function Board({
   interactive,
   hints = [],
   opening = null,
+  streak = null,
   mark = null,
   fork = null,
   boom = null,
@@ -49,6 +50,7 @@ export function Board({
   interactive: boolean;
   hints?: HintArrow[];
   opening?: { token: string; label: string } | null;
+  streak?: { token: string; name: string } | null;
   mark?: { token: string; square: string; grade: MoveGrade } | null;
   fork?: { token: string; square: string } | null;
   boom?: { token: string; square: string } | null;
@@ -274,6 +276,22 @@ export function Board({
           >
             {opening?.label}
           </p>
+        </TimedOverlay>
+        <TimedOverlay
+          token={streak?.token ?? null}
+          ms={STREAK_FLASH_MS}
+          className="streak-flash pointer-events-none absolute inset-x-3 top-3 z-30 text-center"
+          testId="streak-banner"
+        >
+          {streak && (
+            <p
+              role="status"
+              className="inline-block max-w-full rounded-xl bg-[#8a2a12] px-3 py-1.5 text-sm font-semibold leading-snug text-[#fff6d8] shadow-[0_8px_24px_rgba(0,0,0,0.4)]"
+            >
+              <span className="block text-[11px] tracking-[0.14em] uppercase">{streak.name}</span>
+              ON FIRE 🔥 3 in a row!
+            </p>
+          )}
         </TimedOverlay>
         <TimedOverlay
           token={mark?.token ?? null}

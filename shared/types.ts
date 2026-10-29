@@ -93,6 +93,13 @@ export interface KingEscape {
   ply: number;
 }
 
+export interface StreakCall {
+  name: string;
+  seat: Seat;
+  ply: number;
+  at: number;
+}
+
 export interface LeaderboardRow {
   name: string;
   wins: number;
@@ -126,6 +133,7 @@ export interface PublicState {
   mark: MoveMark | null;
   bailout: BailoutOffer | null;
   escape: KingEscape | null;
+  streak: StreakCall | null;
 }
 
 export interface Ack {
