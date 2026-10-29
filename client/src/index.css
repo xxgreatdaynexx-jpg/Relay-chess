@@ -141,10 +141,6 @@ input {
     animation: blunder-fade 2s ease forwards;
   }
 
-  .chad-flash {
-    animation: blunder-fade 2s ease forwards;
-  }
-
   .board-shake {
     animation: board-shake 1.8s linear;
   }

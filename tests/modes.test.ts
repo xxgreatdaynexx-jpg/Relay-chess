@@ -180,14 +180,14 @@ describe('starting and playing each mode', () => {
     );
     room.move(tokens.black1, { from: 'e7', to: 'e5' }, 6);
     expect(room.game.seatToMove()).toBe('white1');
-    expect(room.view('white1', 6).blunder).toBeNull();
+    expect(room.view('white1', 6).mark).toBeNull();
     await new Promise((resolve) => setImmediate(resolve));
     const finish = gate.finish;
     if (!finish) throw new Error('search did not start');
     finish([]);
     await new Promise((resolve) => setImmediate(resolve));
-    expect(room.view('white1', 6).blunder).toMatchObject({ square: 'e5', ply: 2 });
-    expect(room.view('black1', 6).blunder).toMatchObject({ square: 'e5', ply: 2 });
+    expect(room.view('white1', 6).mark).toMatchObject({ square: 'e5', ply: 2, grade: 'blunder' });
+    expect(room.view('black1', 6).mark).toMatchObject({ square: 'e5', ply: 2, grade: 'blunder' });
     expect(announced).toEqual(['HINT11']);
 
     room.resign(tokens.white1);

@@ -4,8 +4,8 @@ import { Piece } from '@/components/Pieces';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { BLUNDER_FLASH_MS, BOOM_FLASH_MS, CHAD_FLASH_MS, OPENING_FLASH_MS } from '../../../shared/flash';
-import type { HintArrow, LegalMove, Promotion } from '../../../shared/types';
+import { BLUNDER_FLASH_MS, BOOM_FLASH_MS, OPENING_FLASH_MS } from '../../../shared/flash';
+import type { HintArrow, LegalMove, MoveGrade, Promotion } from '../../../shared/types';
 
 interface Drag {
   from: string;
@@ -35,8 +35,7 @@ export function Board({
   interactive,
   hints = [],
   opening = null,
-  blunder = null,
-  chad = null,
+  mark = null,
   boom = null,
   onMove,
 }: {
@@ -48,8 +47,7 @@ export function Board({
   interactive: boolean;
   hints?: HintArrow[];
   opening?: { token: string; label: string } | null;
-  blunder?: { token: string; square: string } | null;
-  chad?: { token: string; square: string } | null;
+  mark?: { token: string; square: string; grade: MoveGrade } | null;
   boom?: { token: string; square: string } | null;
   onMove: (move: { from: string; to: string; promotion?: Promotion }) => void;
 }) {
@@ -274,29 +272,12 @@ export function Board({
           </p>
         </TimedOverlay>
         <TimedOverlay
-          token={blunder?.token ?? null}
+          token={mark?.token ?? null}
           ms={BLUNDER_FLASH_MS}
           className="blunder-flash pointer-events-none absolute inset-0 z-20"
-          testId="blunder-mark"
+          testId="move-mark"
         >
-          {blunder && <BlunderMark square={blunder.square} orientation={orientation} />}
-        </TimedOverlay>
-        <TimedOverlay
-          token={chad?.token ?? null}
-          ms={CHAD_FLASH_MS}
-          className="chad-flash pointer-events-none absolute inset-0 z-20"
-          testId="chad-face"
-        >
-          {chad && (
-            <div className="absolute" style={squareBox(chad.square, orientation)}>
-              <div
-                className="absolute top-1/2 left-1/2 w-[200%] -translate-x-1/2 -translate-y-1/2"
-                style={{ aspectRatio: '220 / 240' }}
-              >
-                <SmugFace />
-              </div>
-            </div>
-          )}
+          {mark && <QualityMark square={mark.square} orientation={orientation} grade={mark.grade} />}
         </TimedOverlay>
         {shaking && boom && <BoomBurst square={boom.square} orientation={orientation} />}
       </div>
@@ -373,35 +354,6 @@ function BoomBurst({ square, orientation }: { square: string; orientation: 'whit
   );
 }
 
-function SmugFace() {
-  return (
-    <svg viewBox="0 0 220 240" className="h-full w-full" aria-hidden="true">
-      <rect width="220" height="240" fill="#fff" />
-      <g transform="rotate(-9 112 120)" fill="none" stroke="#111" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M48 112 C42 62 70 30 114 26 C166 20 192 56 186 112 C180 174 154 208 112 214 C68 220 50 170 48 112 Z" fill="#fff" strokeWidth="9" />
-        <path d="M52 78 C74 44 104 50 116 74" strokeWidth="8" />
-        <path d="M122 112 C140 104 158 108 176 118" strokeWidth="8" />
-        <path d="M58 112 C76 104 98 106 110 118 C94 124 72 124 58 112 Z" fill="#fff" strokeWidth="6" />
-        <ellipse cx="84" cy="114" rx="8" ry="6" fill="#1c1c1c" stroke="none" />
-        <path d="M56 108 C78 98 102 102 112 114" fill="#fff" stroke="#111" strokeWidth="7" />
-        <path d="M124 122 C142 114 164 116 176 128 C160 134 138 136 124 122 Z" fill="#fff" strokeWidth="6" />
-        <ellipse cx="150" cy="124" rx="8" ry="6" fill="#1c1c1c" stroke="none" />
-        <path d="M122 118 C144 108 168 112 178 124" fill="#fff" stroke="#111" strokeWidth="7" />
-        <path d="M46 146 C66 136 84 140 94 154" strokeWidth="6" />
-        <path d="M132 158 C152 148 168 152 180 166" strokeWidth="6" />
-        <path d="M104 118 C100 138 94 152 80 162" strokeWidth="7" />
-        <path d="M80 162 C96 172 122 170 134 158" strokeWidth="7" />
-        <path d="M134 158 C126 146 118 132 110 120" strokeWidth="7" />
-        <path d="M72 192 Q104 186 132 176 Q150 170 166 158" strokeWidth="7" />
-        <path d="M76 200 Q108 194 136 186 Q152 180 164 170" strokeWidth="5" />
-        <path d="M84 208 C78 222 74 234 68 246" strokeWidth="8" />
-        <path d="M144 210 C152 224 160 236 170 248" strokeWidth="8" />
-        <path d="M30 242 C68 230 104 236 140 234 C168 232 188 238 208 248" strokeWidth="8" />
-      </g>
-    </svg>
-  );
-}
-
 function TimedOverlay({
   token,
   ms,
@@ -433,22 +385,38 @@ function TimedOverlay({
   );
 }
 
-function BlunderMark({ square, orientation }: { square: string; orientation: 'white' | 'black' }) {
+const MARK_STYLE: Record<MoveGrade, { fill: string; glyph: string; size: string }> = {
+  brilliant: { fill: '#0f9d8a', glyph: '‼', size: '0.5' },
+  good: { fill: '#3d9a45', glyph: '!', size: '0.62' },
+  blunder: { fill: 'rgba(122, 28, 22, 0.92)', glyph: '?', size: '0.72' },
+};
+
+function QualityMark({
+  square,
+  orientation,
+  grade,
+}: {
+  square: string;
+  orientation: 'white' | 'black';
+  grade: MoveGrade;
+}) {
   const point = squarePoint(square, orientation);
+  const style = MARK_STYLE[grade];
   return (
     <svg className="h-full w-full" viewBox="0 0 8 8" aria-hidden="true">
-      <circle cx={point.x} cy={point.y} r="0.46" fill="rgba(122, 28, 22, 0.92)" />
+      <circle cx={point.x} cy={point.y} r="0.5" fill={style.fill} />
       <text
         x={point.x}
         y={point.y}
         textAnchor="middle"
         dominantBaseline="central"
-        fontSize="0.72"
+        fontSize={style.size}
         fontWeight="700"
         fill="#fff8ee"
         fontFamily="Fraunces Variable, Palatino, serif"
+        data-grade={grade}
       >
-        ?
+        {style.glyph}
       </text>
     </svg>
   );

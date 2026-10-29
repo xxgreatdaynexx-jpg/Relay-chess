@@ -70,16 +70,13 @@ export interface OpeningCall {
   at: number;
 }
 
-export interface BlunderCall {
-  square: string;
-  ply: number;
-  at: number;
-}
+export type MoveGrade = 'brilliant' | 'good' | 'blunder';
 
-export interface ChadCall {
+export interface MoveMark {
   square: string;
   ply: number;
   at: number;
+  grade: MoveGrade;
 }
 
 export interface LeaderboardRow {
@@ -112,8 +109,7 @@ export interface PublicState {
   hints: HintArrow[];
   serverNow: number;
   opening: OpeningCall | null;
-  blunder: BlunderCall | null;
-  chad: ChadCall | null;
+  mark: MoveMark | null;
 }
 
 export interface Ack {

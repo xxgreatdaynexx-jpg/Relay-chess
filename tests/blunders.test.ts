@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   beginBlunderCheck,
+  gradeMove,
   isBottomTwentieth,
-  isTopRanked,
   onBlunderReady,
   parseSearchScores,
   setMoveRanker,
@@ -72,19 +72,18 @@ describe('ranking a move against the alternatives', () => {
     expect(isBottomTwentieth(ten, 'missing', 10)).toBe(false);
   });
 
-  it('calls a move top-ranked only when the eval scored it best', () => {
-    const scores = [
-      { uci: 'e2e4', score: 40 },
-      { uci: 'd2d4', score: 12 },
-      { uci: 'g1f3', score: 40 },
-      { uci: 'b1c3', score: 8 },
-    ];
-    expect(isTopRanked(scores, 'e2e4')).toBe(true);
-    expect(isTopRanked(scores, 'g1f3')).toBe(true);
-    expect(isTopRanked(scores, 'd2d4')).toBe(false);
-    expect(isTopRanked(scores, 'missing')).toBe(false);
-    expect(isTopRanked([], 'e2e4')).toBe(false);
-    expect(isTopRanked(scores.map((row) => ({ ...row, score: 40 })), 'e2e4')).toBe(false);
+  it('gives one marker: brilliant, good, or blunder, and skips thin positions', () => {
+    const ten = Array.from({ length: 10 }, (_, index) => ({ uci: `m${index}`, score: index }));
+    expect(gradeMove(ten, 'm9', 10)).toBe('brilliant');
+    expect(gradeMove(ten, 'm8', 10)).toBe('good');
+    expect(gradeMove(ten, 'm7', 10)).toBeNull();
+    expect(gradeMove(ten, 'm1', 10)).toBe('blunder');
+    expect(gradeMove(ten, 'm0', 4)).toBeNull();
+    expect(gradeMove(ten, 'm9', 1)).toBeNull();
+    expect(gradeMove([], 'm9', 10)).toBeNull();
+    const tiedBest = ten.map((row) => (row.score >= 8 ? { ...row, score: 9 } : row));
+    expect(gradeMove(tiedBest, 'm9', 10)).toBe('good');
+    expect(gradeMove(ten.map((row) => ({ ...row, score: 3 })), 'm4', 10)).toBeNull();
   });
 
   it('does not ask the engine when there are fewer than five legal moves', () => {
@@ -93,7 +92,7 @@ describe('ranking a move against the alternatives', () => {
       calls.push(ucis.length);
       return [];
     });
-    const marks: { blunder: unknown; praise: unknown }[] = [];
+    const marks: unknown[] = [];
     beginBlunderCheck({
       code: 'X',
       fen: 'fen',
@@ -101,13 +100,13 @@ describe('ranking a move against the alternatives', () => {
       playedUci: 'a2a4',
       ply: 3,
       destination: 'a4',
-      accept: (review) => {
-        marks.push(review);
+      accept: (mark) => {
+        marks.push(mark);
         return false;
       },
     });
     expect(calls).toEqual([]);
-    expect(marks).toEqual([{ blunder: null, praise: null }]);
+    expect(marks).toEqual([null]);
   });
 });
 
@@ -117,7 +116,7 @@ describe('blunder marker at the table', () => {
     const { room, tokens } = seated();
     room.move(tokens.white1, { from: 'e2', to: 'e4' }, 10);
     expect(room.game.seatToMove()).toBe('black1');
-    expect(room.view('black1', 10).blunder).toBeNull();
+    expect(room.view('black1', 10).mark).toBeNull();
     expect(room.view('white2', 10).opening?.name).toBe("King's Pawn Game");
     room.move(tokens.black1, { from: 'e7', to: 'e5' }, 20);
     expect(room.game.seatToMove()).toBe('white2');
@@ -136,20 +135,19 @@ describe('blunder marker at the table', () => {
     );
     const { room, tokens } = seated();
     room.move(tokens.white1, { from: 'e2', to: 'e4' }, 10);
-    expect(room.view('white1', 10).blunder).toBeNull();
+    expect(room.view('white1', 10).mark).toBeNull();
     await flush();
     const finish = gate.finish;
     if (!finish) throw new Error('search did not start');
     finish([]);
     await flush();
     for (const seat of [...SEATS, 'guest']) {
-      expect(room.view(seat, 10).blunder).toMatchObject({ square: 'e4', ply: 1 });
+      expect(room.view(seat, 10).mark).toMatchObject({ square: 'e4', ply: 1, grade: 'blunder' });
     }
     expect(announced).toEqual(['BLND01']);
-    expect(room.view('black1', 10).chad).toBeNull();
   });
 
-  it('shows the chad mark when the same search ranks the move best, and skips a book move with no eval', async () => {
+  it('marks the unique best move brilliant and a lesser top-fifth move good', async () => {
     const gate: { finish: ((scores: MoveScore[]) => void) | null } = { finish: null };
     const announced: string[] = [];
     onBlunderReady((code) => announced.push(code));
@@ -167,10 +165,36 @@ describe('blunder marker at the table', () => {
     finish([]);
     await flush();
     for (const seat of SEATS) {
-      expect(room.view(seat, 10).chad).toMatchObject({ square: 'e4', ply: 1 });
-      expect(room.view(seat, 10).blunder).toBeNull();
+      expect(room.view(seat, 10).mark).toMatchObject({ square: 'e4', ply: 1, grade: 'brilliant' });
     }
     expect(announced).toEqual(['BLND01']);
+
+    const goodGate: { finish: ((scores: MoveScore[]) => void) | null } = { finish: null };
+    setMoveRanker(
+      (_fen, ucis) =>
+        new Promise((resolve) => {
+          goodGate.finish = () => {
+            let crowned = false;
+            resolve(
+              ucis.map((uci) => {
+                if (uci === 'e7e5') return { uci, score: 50 };
+                if (!crowned) {
+                  crowned = true;
+                  return { uci, score: 90 };
+                }
+                return { uci, score: 10 };
+              }),
+            );
+          };
+        }),
+    );
+    room.move(tokens.black1, { from: 'e7', to: 'e5' }, 20);
+    await flush();
+    const finishGood = goodGate.finish;
+    if (!finishGood) throw new Error('search did not start');
+    finishGood([]);
+    await flush();
+    expect(room.view('white1', 20).mark).toMatchObject({ square: 'e5', ply: 2, grade: 'good' });
 
     setMoveRanker(async () => []);
     const quiet = seated();
@@ -180,8 +204,8 @@ describe('blunder marker at the table', () => {
     await flush();
     await flush();
     expect(quiet.room.view('white1', 30).opening?.name).toBe("King's Pawn Game");
-    expect(quiet.room.view('black2', 30).chad).toBeNull();
-    expect(quiet.room.view('white2', 30).blunder).toBeNull();
+    expect(quiet.room.view('black2', 30).mark).toBeNull();
+    expect(quiet.room.view('white2', 30).mark).toBeNull();
     expect(heard).toEqual([]);
   });
 
@@ -201,11 +225,11 @@ describe('blunder marker at the table', () => {
     expect(pending).toHaveLength(2);
     pending[0].resolve(pending[0].ucis.map((uci) => ({ uci, score: uci === 'e2e4' ? -1000 : 10 })));
     await flush();
-    expect(room.view('white1', 20).blunder).toBeNull();
+    expect(room.view('white1', 20).mark).toBeNull();
 
     pending[1].resolve(pending[1].ucis.map((uci) => ({ uci, score: 0 })));
     await flush();
-    expect(room.view('black2', 20).blunder).toBeNull();
+    expect(room.view('black2', 20).mark).toBeNull();
     expect(room.view('white2', 20).seatToMove).toBe('white2');
   });
 });

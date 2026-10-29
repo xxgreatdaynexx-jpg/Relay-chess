@@ -10,7 +10,7 @@ import { request } from '@/lib/net';
 import { previewFen } from '@/lib/preview';
 import { playBoom, playHuh, playNice, unlockSounds } from '@/lib/sounds';
 import { queenCaptureSquare } from '../../../shared/capture';
-import { BLUNDER_FLASH_MS, CHAD_FLASH_MS, OPENING_FLASH_MS, flashIsFresh } from '../../../shared/flash';
+import { BLUNDER_FLASH_MS, OPENING_FLASH_MS, flashIsFresh } from '../../../shared/flash';
 import { loadSession, prettyCode } from '@/lib/session';
 import { formatClock } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -136,28 +136,19 @@ export function RoomScreen({
           label: state.opening.name,
         }
       : null;
-  const blunderFlash =
-    state.blunder && flashIsFresh(state.blunder, state.ply, state.serverNow, BLUNDER_FLASH_MS)
+  const markFlash =
+    state.mark && flashIsFresh(state.mark, state.ply, state.serverNow, BLUNDER_FLASH_MS)
       ? {
-          token: `${state.blunder.at}:${state.blunder.ply}:${state.blunder.square}`,
-          square: state.blunder.square,
-        }
-      : null;
-  const chadFlash =
-    state.chad && flashIsFresh(state.chad, state.ply, state.serverNow, CHAD_FLASH_MS)
-      ? {
-          token: `${state.chad.at}:${state.chad.ply}:${state.chad.square}`,
-          square: state.chad.square,
+          token: `${state.mark.at}:${state.mark.ply}:${state.mark.grade}:${state.mark.square}`,
+          square: state.mark.square,
+          grade: state.mark.grade,
         }
       : null;
 
   useEffect(() => {
-    if (blunderFlash) playHuh();
-  }, [blunderFlash?.token]);
-
-  useEffect(() => {
-    if (chadFlash) playNice();
-  }, [chadFlash?.token]);
+    if (markFlash?.grade === 'blunder') playHuh();
+    if (markFlash?.grade === 'brilliant') playNice();
+  }, [markFlash?.token, markFlash?.grade]);
 
   useEffect(() => {
     if (boom) playBoom();
@@ -258,8 +249,7 @@ export function RoomScreen({
               interactive={interactive}
               hints={pending ? [] : state.hints}
               opening={openingFlash}
-              blunder={blunderFlash}
-              chad={chadFlash}
+              mark={markFlash}
               boom={boom}
               onMove={sendMove}
             />
