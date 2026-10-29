@@ -1,11 +1,13 @@
 import { randomBytes } from 'node:crypto';
 import { RelayGame, type Timing } from './engine.js';
 import { GameError } from './errors.js';
+import { getLeaderboard } from './leaderboard.js';
 import {
   clockPreset,
   describeResult,
   isSeat,
   type ClockPreset,
+  type GameResult,
   type MoveInput,
   type PublicState,
   type Seat,
@@ -43,6 +45,7 @@ export class Room {
 
   private members = new Map<string, Member>();
   private sockets = new Map<string, string>();
+  private scoredResult: GameResult | null = null;
 
   constructor(code: string, preset: ClockPreset) {
     this.code = code;
@@ -168,6 +171,7 @@ export class Room {
 
   view(socketId: string, now: number): PublicState {
     this.game.tick(now);
+    this.scoreIfNeeded();
     const you = this.memberBySocket(socketId);
     const raw = this.game.result;
     const described = raw ? describeResult(raw, (seat) => this.nameFor(seat)) : null;
@@ -234,6 +238,18 @@ export class Room {
 
   private touch(): void {
     this.lastActivity = Date.now();
+  }
+
+  private scoreIfNeeded(): void {
+    const result = this.game.result;
+    if (this.game.status !== 'ended' || !result || this.scoredResult === result) return;
+    this.scoredResult = result;
+    const name = (seat: Seat) => this.nameFor(seat);
+    getLeaderboard().record({
+      winner: result.winner,
+      white: [name('white1'), name('white2')].filter((value): value is string => Boolean(value)),
+      black: [name('black1'), name('black2')].filter((value): value is string => Boolean(value)),
+    });
   }
 }
 

@@ -11,10 +11,12 @@ export function HomeScreen({
   initialCode,
   error,
   onEnter,
+  onLeaderboard,
 }: {
   initialCode: string;
   error: string;
   onEnter: () => void;
+  onLeaderboard: () => void;
 }) {
   const saved = loadSession();
   const [name, setName] = useState(saved?.name ?? '');
@@ -81,7 +83,12 @@ export function HomeScreen({
           <span className="font-serif text-3xl italic">Relay</span>
           <span className="text-xs tracking-[0.22em] text-cream/60 uppercase">Chess</span>
         </div>
-        <RulesDialog />
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={onLeaderboard} data-testid="open-leaderboard">
+            Leaderboard
+          </Button>
+          <RulesDialog />
+        </div>
       </header>
       <main className="flex flex-1 flex-col justify-center py-8">
         <p className="text-xs tracking-[0.2em] text-brass uppercase">Two teams · four seats</p>

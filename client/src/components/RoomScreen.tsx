@@ -2,6 +2,7 @@ import { Check, Copy } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chess } from 'chess.js';
 import { Board } from '@/components/Board';
+import { LeaderboardTable } from '@/components/Leaderboard';
 import { RulesDialog } from '@/components/RulesDialog';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
@@ -33,11 +34,13 @@ export function RoomScreen({
   online,
   onToast,
   onLeave,
+  onLeaderboard,
 }: {
   state: PublicState;
   online: boolean;
   onToast: (message: string) => void;
   onLeave: () => void;
+  onLeaderboard: () => void;
 }) {
   const [pending, setPending] = useState<Pending | null>(null);
   const [flipped, setFlipped] = useState(false);
@@ -137,6 +140,9 @@ export function RoomScreen({
             Flip
           </Button>
         )}
+        <Button variant="ghost" size="sm" onClick={onLeaderboard} data-testid="open-leaderboard">
+          Leaderboard
+        </Button>
         <RulesDialog />
       </div>
     </div>
@@ -239,6 +245,14 @@ export function RoomScreen({
               </Button>
             )}
           </div>
+          {state.status === 'ended' && (
+            <div className="mt-4">
+              <h3 className="mb-2 text-xs tracking-[0.16em] text-cream/55 uppercase">Standings</h3>
+              <LeaderboardTable
+                highlight={SEATS.map((seat) => state.seats[seat]?.name ?? '').filter(Boolean)}
+              />
+            </div>
+          )}
           {state.status === 'ended' && (
             <p className="mt-2 text-xs text-cream/55">
               {SEATS.filter((seat) => !state.rematchVotes.includes(seat))

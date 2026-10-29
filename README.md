@@ -38,7 +38,7 @@ npm start
 4. Offer a draw on your turn. Either player on the other team can accept. If they move instead, the offer is declined.
 5. After the game, all four players can vote for a rematch. Seats stay the same.
 
-Rooms live in memory on one server process. A restart clears them, and a deploy must stay on **a single instance** so everyone shares the same room. The seat token is stored in the browser’s `localStorage`.
+Rooms live in memory on one server process. A restart clears them, and a deploy must stay on **a single instance** so everyone shares the same room. The seat token is stored in the browser’s `localStorage`. Finished games update a leaderboard in `data/leaderboard.json` (names match case-insensitively), and that file survives a restart.
 
 ## Deploy on the internet
 

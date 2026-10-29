@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { HomeScreen } from '@/components/HomeScreen';
+import { LeaderboardScreen } from '@/components/Leaderboard';
 import { RoomScreen } from '@/components/RoomScreen';
 import { socket } from '@/lib/net';
 import { clearSession, codeFromLocation, loadSession } from '@/lib/session';
@@ -15,7 +16,13 @@ export function App() {
   const [toast, setToast] = useState('');
   const [online, setOnline] = useState(true);
   const [homeKey, setHomeKey] = useState(0);
+  const [path, setPath] = useState(() => window.location.pathname);
   const inflight = useRef(false);
+
+  function openLeaderboard() {
+    window.history.pushState({}, '', '/leaderboard');
+    setPath('/leaderboard');
+  }
 
   useEffect(() => {
     if (!toast) return;
@@ -77,8 +84,10 @@ export function App() {
 
   useEffect(() => {
     function onPop() {
+      setPath(window.location.pathname);
+      if (window.location.pathname === '/leaderboard') return;
       const session = loadSession();
-      if (session && state && codeFromLocation() !== session.code) {
+      if (session && state && codeFromLocation() !== session.code && window.location.pathname === '/') {
         window.history.pushState({}, '', `/r/${session.code}`);
       }
     }
@@ -86,9 +95,17 @@ export function App() {
     return () => window.removeEventListener('popstate', onPop);
   }, [state]);
 
+  const leaderboard = path === '/leaderboard';
+
   return (
     <>
-      {booting && !state ? (
+      {leaderboard ? (
+        <LeaderboardScreen
+          onBack={() => {
+            window.history.back();
+          }}
+        />
+      ) : booting && !state ? (
         <div className="grid min-h-dvh place-items-center px-6 text-center">
           <div>
             <p className="font-serif text-3xl italic">Returning to your seat…</p>
@@ -109,7 +126,9 @@ export function App() {
             setState(null);
             setHomeKey((value) => value + 1);
             window.history.pushState({}, '', '/');
+            setPath('/');
           }}
+          onLeaderboard={openLeaderboard}
         />
       ) : (
         <HomeScreen
@@ -119,6 +138,7 @@ export function App() {
           onEnter={() => {
             socket.connect();
           }}
+          onLeaderboard={openLeaderboard}
         />
       )}
       {toast && (

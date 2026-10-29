@@ -59,6 +59,15 @@ export interface PublicResult extends GameResult {
   detail: string;
 }
 
+export interface LeaderboardRow {
+  name: string;
+  wins: number;
+  losses: number;
+  draws: number;
+  played: number;
+  winRate: number;
+}
+
 export interface PublicState {
   code: string;
   status: 'lobby' | 'playing' | 'ended';

@@ -3,6 +3,7 @@ import { createServer, type Server as HttpServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
+import { getLeaderboard } from './leaderboard.js';
 import { registerSockets, stopMaintenance } from './sockets.js';
 import { resetRooms } from './rooms.js';
 
@@ -20,6 +21,9 @@ export async function createApp(): Promise<AppContext> {
   });
   app.get('/health', (_req, res) => {
     res.json({ ok: true });
+  });
+  app.get('/api/leaderboard', (_req, res) => {
+    res.json({ rows: getLeaderboard().standings() });
   });
 
   const httpServer = createServer(app);

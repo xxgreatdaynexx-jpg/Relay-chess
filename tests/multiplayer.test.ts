@@ -1,14 +1,19 @@
 import type { AddressInfo } from 'node:net';
 import { io as ioClient, type Socket } from 'socket.io-client';
 import { afterAll, beforeAll, expect, it } from 'vitest';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { closeApp, createApp, type AppContext } from '../server/app.js';
-import type { Ack, PublicState, Seat } from '../shared/types.js';
+import { resetLeaderboard } from '../server/leaderboard.js';
+import type { Ack, LeaderboardRow, PublicState, Seat } from '../shared/types.js';
 
 let ctx: AppContext;
 let port = 0;
 const opened: Socket[] = [];
 
 beforeAll(async () => {
+  resetLeaderboard(path.join(mkdtempSync(path.join(tmpdir(), 'relay-lb-')), 'leaderboard.json'));
   ctx = await createApp();
   await new Promise<void>((resolve) => {
     ctx.httpServer.listen(0, '127.0.0.1', () => resolve());
@@ -118,6 +123,12 @@ it('runs a four-player game, enforces turns, reconnects a seat, and rematches', 
   expect(ended.result).toMatchObject({ type: 'checkmate', winner: 'black' });
   expect(ended.moves.map((move) => move.seat)).toEqual(['white1', 'black1', 'white2', 'black2']);
   expect(ended.moves.map((move) => move.san)).toEqual(['f3', 'e5', 'g4', 'Qh4#']);
+  const board = await fetch(`http://127.0.0.1:${port}/api/leaderboard`);
+  const body = (await board.json()) as { rows: LeaderboardRow[] };
+  expect(body.rows.find((row) => row.name === 'Jules')).toMatchObject({ wins: 1, losses: 0 });
+  expect(body.rows.find((row) => row.name === 'Ren')).toMatchObject({ wins: 1, losses: 0 });
+  expect(body.rows.find((row) => row.name === 'Ada')).toMatchObject({ wins: 0, losses: 1 });
+  expect(body.rows.find((row) => row.name === 'Nia')).toBeUndefined();
 
   for (const player of players) {
     expect((await ask(player.socket, 'vote_rematch')).ok).toBe(true);
