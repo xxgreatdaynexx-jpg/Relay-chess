@@ -1,5 +1,6 @@
 const HUH_URL = '/sounds/huh.mp3';
 const FORK_URL = '/sounds/fork.mp3';
+const QUEEN_DEATH_URL = '/sounds/queen-death.mp3';
 
 let context: AudioContext | null = null;
 
@@ -10,6 +11,7 @@ interface Clip {
 
 const huhClip: Clip = { buffer: null, pending: null };
 const forkClip: Clip = { buffer: null, pending: null };
+const queenDeathClip: Clip = { buffer: null, pending: null };
 
 export function unlockSounds(): void {
   const ctx = audio();
@@ -17,9 +19,19 @@ export function unlockSounds(): void {
   if (!ctx) return;
   void loadClip(ctx, HUH_URL, huhClip);
   void loadClip(ctx, FORK_URL, forkClip);
+  void loadClip(ctx, QUEEN_DEATH_URL, queenDeathClip);
 }
 
+/** Dayne's queen-capture recording. The synthesized boom plays only if that file cannot be loaded. */
 export function playBoom(): void {
+  const ctx = audio();
+  if (!ctx) return;
+  void loadClip(ctx, QUEEN_DEATH_URL, queenDeathClip).then((buffer) => {
+    if (!buffer || !playBuffer(buffer)) playBoomSynth();
+  });
+}
+
+function playBoomSynth(): void {
   const ctx = audio();
   if (!ctx) return;
   const now = ctx.currentTime;
