@@ -4,8 +4,8 @@ import { Piece } from '@/components/Pieces';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { BLUNDER_FLASH_MS, BOOM_FLASH_MS, FORK_FLASH_MS, OPENING_FLASH_MS, POOF_FLASH_MS, STREAK_FLASH_MS } from '../../../shared/flash';
-import type { HintArrow, LegalMove, MoveGrade, Promotion } from '../../../shared/types';
+import { BLUNDER_FLASH_MS, BOOM_FLASH_MS, DOUBLE_FLASH_MS, FORK_FLASH_MS, OPENING_FLASH_MS, POOF_FLASH_MS, STREAK_FLASH_MS } from '../../../shared/flash';
+import type { HintArrow, LegalMove, MoveGrade, Promotion, StreakKind } from '../../../shared/types';
 
 interface Drag {
   from: string;
@@ -50,7 +50,7 @@ export function Board({
   interactive: boolean;
   hints?: HintArrow[];
   opening?: { token: string; label: string } | null;
-  streak?: { token: string; name: string } | null;
+  streak?: { token: string; name: string; kind: StreakKind } | null;
   mark?: { token: string; square: string; grade: MoveGrade } | null;
   fork?: { token: string; square: string } | null;
   boom?: { token: string; square: string } | null;
@@ -279,17 +279,17 @@ export function Board({
         </TimedOverlay>
         <TimedOverlay
           token={streak?.token ?? null}
-          ms={STREAK_FLASH_MS}
-          className="streak-flash pointer-events-none absolute inset-x-3 top-3 z-30 text-center"
+          ms={streak?.kind === 'double' ? DOUBLE_FLASH_MS : STREAK_FLASH_MS}
+          className={`${streak?.kind === 'double' ? 'double-flash' : 'streak-flash'} pointer-events-none absolute inset-x-3 top-3 z-30 text-center`}
           testId="streak-banner"
         >
           {streak && (
             <p
               role="status"
-              className="inline-block max-w-full rounded-xl bg-[#8a2a12] px-3 py-1.5 text-sm font-semibold leading-snug text-[#fff6d8] shadow-[0_8px_24px_rgba(0,0,0,0.4)]"
+              className={`inline-block max-w-full rounded-xl px-3 py-1.5 text-sm font-semibold leading-snug text-[#fff6d8] shadow-[0_8px_24px_rgba(0,0,0,0.4)] ${streak.kind === 'double' ? 'bg-[#1a3a6b]' : 'bg-[#8a2a12]'}`}
             >
               <span className="block text-[11px] tracking-[0.14em] uppercase">{streak.name}</span>
-              ON FIRE 🔥 3 in a row!
+              {streak.kind === 'double' ? 'DOUBLE ‼‼' : 'ON FIRE 🔥 3 in a row!'}
             </p>
           )}
         </TimedOverlay>

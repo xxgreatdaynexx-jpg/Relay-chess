@@ -8,9 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { request } from '@/lib/net';
 import { previewFen } from '@/lib/preview';
-import { playBoom, playFork, playHuh, playNice, playStreak, unlockSounds } from '@/lib/sounds';
+import { playBoom, playDouble, playFork, playHuh, playNice, playStreak, unlockSounds } from '@/lib/sounds';
 import { queenCaptureSquare } from '../../../shared/capture';
-import { BLUNDER_FLASH_MS, FORK_SOUND_DELAY_MS, FORK_SOUND_WAIT_MS, OPENING_FLASH_MS, POOF_HOLD_MS, STREAK_FLASH_MS, STREAK_SOUND_DELAY_MS, flashIsFresh } from '../../../shared/flash';
+import { BLUNDER_FLASH_MS, DOUBLE_FLASH_MS, FORK_SOUND_DELAY_MS, FORK_SOUND_WAIT_MS, OPENING_FLASH_MS, POOF_HOLD_MS, STREAK_FLASH_MS, STREAK_SOUND_DELAY_MS, flashIsFresh } from '../../../shared/flash';
 import { isFork } from '../../../shared/fork';
 import { loadSession, prettyCode } from '@/lib/session';
 import { formatClock } from '@/lib/time';
@@ -176,10 +176,12 @@ export function RoomScreen({
       : null;
 
   const streakFlash =
-    state.streak && flashIsFresh(state.streak, state.ply, state.serverNow, STREAK_FLASH_MS)
+    state.streak &&
+    flashIsFresh(state.streak, state.ply, state.serverNow, state.streak.kind === 'double' ? DOUBLE_FLASH_MS : STREAK_FLASH_MS)
       ? {
-          token: `${state.streak.at}:${state.streak.ply}:${state.streak.seat}`,
+          token: `${state.streak.at}:${state.streak.ply}:${state.streak.seat}:${state.streak.kind}`,
           name: state.streak.name,
+          kind: state.streak.kind,
         }
       : null;
 
@@ -189,17 +191,18 @@ export function RoomScreen({
     if ((markFlash?.grade === 'blunder' || markFlash?.grade === 'brilliant') && fork?.token.startsWith(`${state.ply}:`)) {
       armForkSound(fork.token, FORK_SOUND_DELAY_MS);
     }
-    if (streakFlash) armStreakSound(streakFlash.token);
-  }, [markFlash?.token, markFlash?.grade, streakFlash?.token]);
+    if (streakFlash) armStreakSound(streakFlash.token, streakFlash.kind);
+  }, [markFlash?.token, markFlash?.grade, streakFlash?.token, streakFlash?.kind]);
 
-  function armStreakSound(token: string) {
+  function armStreakSound(token: string, kind: 'double' | 'streak') {
     if (streakSoundPlayed.current === token) return;
     if (streakSoundTimer.current !== null) window.clearTimeout(streakSoundTimer.current);
     streakSoundTimer.current = window.setTimeout(() => {
       streakSoundTimer.current = null;
       if (streakSoundPlayed.current === token) return;
       streakSoundPlayed.current = token;
-      playStreak();
+      if (kind === 'double') playDouble();
+      else playStreak();
     }, STREAK_SOUND_DELAY_MS);
   }
 

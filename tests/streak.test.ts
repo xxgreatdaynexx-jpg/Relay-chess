@@ -16,37 +16,40 @@ afterEach(() => {
 });
 
 describe('best-move streak', () => {
-  it('counts three brilliants per player, ignores forced moves, and starts over after it fires', () => {
+  it('calls double on the second best move and streak on the third, per player', () => {
     const streaks = new Map<string, number>();
 
-    expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBe(false);
+    expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBeNull();
     expect(streaks.get('white1')).toBe(1);
-    expect(recordStreak(streaks, 'white2', 'brilliant', 20)).toBe(false);
-    expect(recordStreak(streaks, 'white2', 'blunder', 18)).toBe(false);
+    expect(recordStreak(streaks, 'white2', 'brilliant', 20)).toBeNull();
+    expect(recordStreak(streaks, 'white2', 'blunder', 18)).toBeNull();
     expect(streaks.get('white1')).toBe(1);
     expect(streaks.get('white2')).toBe(0);
 
-    expect(recordStreak(streaks, 'white1', 'brilliant', 4)).toBe(false);
-    expect(recordStreak(streaks, 'white1', 'blunder', 2)).toBe(false);
+    expect(recordStreak(streaks, 'white1', 'brilliant', 4)).toBeNull();
+    expect(recordStreak(streaks, 'white1', 'blunder', 2)).toBeNull();
     expect(streaks.get('white1')).toBe(1);
 
-    expect(recordStreak(streaks, 'white1', 'good', 20)).toBe(false);
+    expect(recordStreak(streaks, 'white1', 'good', 20)).toBeNull();
     expect(streaks.get('white1')).toBe(0);
-    expect(recordStreak(streaks, 'white1', null, 12)).toBe(false);
+    expect(recordStreak(streaks, 'white1', null, 12)).toBeNull();
     expect(streaks.get('white1')).toBe(0);
 
-    expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBe(false);
-    expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBe(false);
-    expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBe(true);
+    expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBeNull();
+    expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBe('double');
+    expect(streaks.get('white1')).toBe(2);
+    expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBe('streak');
     expect(streaks.get('white1')).toBe(0);
     expect(streaks.get('white2')).toBe(0);
 
-    expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBe(false);
-    expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBe(false);
-    expect(recordStreak(streaks, 'black1', 'brilliant', 20)).toBe(false);
-    expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBe(true);
+    expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBeNull();
+    expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBe('double');
+    expect(recordStreak(streaks, 'black1', 'brilliant', 20)).toBeNull();
+    expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBe('streak');
     expect(streaks.get('white1')).toBe(0);
     expect(streaks.get('black1')).toBe(1);
+    expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBeNull();
+    expect(streaks.get('white1')).toBe(1);
   });
 
   it('announces only that player after three of their own best moves', async () => {
@@ -83,12 +86,18 @@ describe('best-move streak', () => {
       room.move(tokens[seat], { from, to });
       await flush();
       await flush();
-      if (seat === 'white1' && from !== 'a2') expect(room.view('white1', Date.now()).streak).toBeNull();
+      const now = Date.now();
+      if (from === 'e2') expect(room.view('white1', now).streak).toBeNull();
+      if (from === 'g1') {
+        for (const viewer of [...SEATS, 'guest' as const]) {
+          expect(room.view(viewer, now).streak).toMatchObject({ name: 'Ada', seat: 'white1', ply: 5, kind: 'double' });
+        }
+      }
     }
 
     const seenAt = Date.now();
     for (const seat of [...SEATS, 'guest' as const]) {
-      expect(room.view(seat, seenAt).streak).toMatchObject({ name: 'Ada', seat: 'white1', ply: 9 });
+      expect(room.view(seat, seenAt).streak).toMatchObject({ name: 'Ada', seat: 'white1', ply: 9, kind: 'streak' });
     }
     expect(room.view('white2', seenAt).mark).toMatchObject({ grade: 'brilliant', square: 'a3' });
 

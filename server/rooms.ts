@@ -315,8 +315,15 @@ export class Room {
       accept: (mark, ranked) => {
         if (token !== this.blunderSeq || this.game.ply() !== ply) return false;
         this.moveMark = mark;
-        if (ranked && recordStreak(this.streaks, played.seat, mark?.grade ?? null, legal.length)) {
-          this.streak = { name: this.nameFor(played.seat) ?? played.seat, seat: played.seat, ply, at: Date.now() };
+        const hit = ranked ? recordStreak(this.streaks, played.seat, mark?.grade ?? null, legal.length) : null;
+        if (hit) {
+          this.streak = {
+            name: this.nameFor(played.seat) ?? played.seat,
+            seat: played.seat,
+            ply,
+            at: Date.now(),
+            kind: hit,
+          };
         }
         return mark !== null;
       },

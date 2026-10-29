@@ -93,11 +93,14 @@ export interface KingEscape {
   ply: number;
 }
 
+export type StreakKind = 'double' | 'streak';
+
 export interface StreakCall {
   name: string;
   seat: Seat;
   ply: number;
   at: number;
+  kind: StreakKind;
 }
 
 export interface LeaderboardRow {

@@ -1,6 +1,7 @@
 const HUH_URL = '/sounds/huh.mp3';
 const FORK_URL = '/sounds/fork.mp3';
 const QUEEN_DEATH_URL = '/sounds/queen-death.mp3';
+const DOUBLE_URL = '/sounds/double.mp3';
 const STREAK_URL = '/sounds/streak.mp3';
 
 let context: AudioContext | null = null;
@@ -13,6 +14,7 @@ interface Clip {
 const huhClip: Clip = { buffer: null, pending: null };
 const forkClip: Clip = { buffer: null, pending: null };
 const queenDeathClip: Clip = { buffer: null, pending: null };
+const doubleClip: Clip = { buffer: null, pending: null };
 const streakClip: Clip = { buffer: null, pending: null };
 
 export function unlockSounds(): void {
@@ -22,6 +24,7 @@ export function unlockSounds(): void {
   void loadClip(ctx, HUH_URL, huhClip);
   void loadClip(ctx, FORK_URL, forkClip);
   void loadClip(ctx, QUEEN_DEATH_URL, queenDeathClip);
+  void loadClip(ctx, DOUBLE_URL, doubleClip);
   void loadClip(ctx, STREAK_URL, streakClip);
 }
 
@@ -81,6 +84,15 @@ export function playFork(): void {
   const ctx = audio();
   if (!ctx) return;
   void loadClip(ctx, FORK_URL, forkClip).then((buffer) => {
+    if (buffer) playBuffer(buffer);
+  });
+}
+
+/** Dayne's double recording. Same output path as the other clips, with no synth stand-in. */
+export function playDouble(): void {
+  const ctx = audio();
+  if (!ctx) return;
+  void loadClip(ctx, DOUBLE_URL, doubleClip).then((buffer) => {
     if (buffer) playBuffer(buffer);
   });
 }
