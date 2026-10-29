@@ -101,59 +101,18 @@ input {
   container-type: size;
 }
 
-.boom-anchor {
+.boom-sprite {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 78%;
-  height: 78%;
+  width: 175%;
+  height: 175%;
   transform: translate(-50%, -50%);
-}
-
-.boom-anchor-core {
-  width: 46%;
-  height: 46%;
-}
-
-.boom-anchor-smoke-a {
-  left: 34%;
-  top: 28%;
-  width: 70%;
-  height: 70%;
-}
-
-.boom-anchor-smoke-b {
-  left: 68%;
-  top: 18%;
-  width: 58%;
-  height: 58%;
-}
-
-.boom-flash,
-.boom-fire,
-.boom-core,
-.boom-smoke {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border-radius: 999px;
-  transform-origin: center;
-}
-
-.boom-flash {
-  background: radial-gradient(circle, #fff 0%, #ffe38a 42%, transparent 72%);
-}
-
-.boom-fire {
-  background: radial-gradient(circle, #ffe14a 0%, #ff6a1a 46%, #c43212 78%, transparent 80%);
-}
-
-.boom-core {
-  background: radial-gradient(circle, #fff 0%, #ffd36a 70%, transparent 72%);
-}
-
-.boom-smoke {
-  background: radial-gradient(circle, rgba(92, 84, 74, 0.9) 0%, rgba(92, 84, 74, 0.35) 68%, transparent 72%);
+  background: url('/sprites/explosion.png') no-repeat;
+  background-size: 400% 400%;
+  background-position: 33.333% 33.333%;
+  image-rendering: pixelated;
+  pointer-events: none;
 }
 
 .boom-label {
@@ -190,24 +149,8 @@ input {
     animation: board-shake 1.8s linear;
   }
 
-  .boom-flash {
-    animation: boom-flash 1.8s ease-out forwards;
-  }
-
-  .boom-fire {
-    animation: boom-fire 1.8s ease-out forwards;
-  }
-
-  .boom-core {
-    animation: boom-core 1.8s ease-out forwards;
-  }
-
-  .boom-smoke {
-    animation: boom-smoke 1.8s ease-out forwards;
-  }
-
-  .boom-smoke-late {
-    animation-delay: 0.12s;
+  .boom-sprite {
+    animation: boom-sprite 1s step-end forwards;
   }
 
   .boom-label {
@@ -273,74 +216,24 @@ input {
   }
 }
 
-@keyframes boom-flash {
-  0% {
-    opacity: 0;
-    transform: scale(0.2);
-  }
-  8% {
-    opacity: 1;
-    transform: scale(1.35);
-  }
-  22% {
-    opacity: 0;
-    transform: scale(1.8);
-  }
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes boom-fire {
-  0% {
-    opacity: 0;
-    transform: scale(0.15);
-  }
-  14% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  48% {
-    opacity: 0.9;
-    transform: scale(2.5);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(3.1);
-  }
-}
-
-@keyframes boom-core {
-  0% {
-    opacity: 0;
-    transform: scale(0.2);
-  }
-  12% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  30% {
-    opacity: 0;
-    transform: scale(1.6);
-  }
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes boom-smoke {
-  0% {
-    opacity: 0;
-    transform: scale(0.3) translateY(8px);
-  }
-  28% {
-    opacity: 0.85;
-    transform: scale(1.1) translateY(0);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(2.1) translateY(-16px);
-  }
+@keyframes boom-sprite {
+  0% { background-position: 0% 0%; }
+  6.25% { background-position: 33.333% 0%; }
+  12.5% { background-position: 66.667% 0%; }
+  18.75% { background-position: 100% 0%; }
+  25% { background-position: 0% 33.333%; }
+  31.25% { background-position: 33.333% 33.333%; }
+  37.5% { background-position: 66.667% 33.333%; }
+  43.75% { background-position: 100% 33.333%; }
+  50% { background-position: 0% 66.667%; }
+  56.25% { background-position: 33.333% 66.667%; }
+  62.5% { background-position: 66.667% 66.667%; }
+  68.75% { background-position: 100% 66.667%; }
+  75% { background-position: 0% 100%; }
+  81.25% { background-position: 33.333% 100%; }
+  87.5% { background-position: 66.667% 100%; }
+  93.75%,
+  100% { background-position: 100% 100%; }
 }
 
 @keyframes boom-text {

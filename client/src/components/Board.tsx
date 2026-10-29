@@ -366,21 +366,7 @@ function BoomBurst({ square, orientation }: { square: string; orientation: 'whit
   return (
     <div className="pointer-events-none absolute inset-0 z-30" data-testid="queen-boom" aria-hidden="true">
       <div className="boom-spot absolute" style={squareBox(square, orientation)}>
-        <span className="boom-anchor">
-          <span className="boom-flash" />
-        </span>
-        <span className="boom-anchor">
-          <span className="boom-fire" />
-        </span>
-        <span className="boom-anchor boom-anchor-core">
-          <span className="boom-core" />
-        </span>
-        <span className="boom-anchor boom-anchor-smoke-a">
-          <span className="boom-smoke" />
-        </span>
-        <span className="boom-anchor boom-anchor-smoke-b">
-          <span className="boom-smoke boom-smoke-late" />
-        </span>
+        <span className="boom-sprite" />
         <span className="boom-label">BOOM!</span>
       </div>
     </div>
