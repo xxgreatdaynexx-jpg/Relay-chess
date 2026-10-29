@@ -6,18 +6,17 @@ export function RulesDialog() {
     <Dialog>
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm">
-          How relay works
+          How it works
         </Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogTitle>Four players, one board</DialogTitle>
+        <DialogTitle>One board, your choice of seats</DialogTitle>
         <DialogDescription>
-          White 1 moves first, then Black 1, then White 2, then Black 2, and back to White 1.
+          2v2 is White 1, Black 1, White 2, Black 2. 1v1 is one player per side. 2v1 gives one color two alternating players and the other color every move.
         </DialogDescription>
         <div className="mt-4 space-y-3 text-sm leading-relaxed text-cream-dim">
           <p>
-            You and a partner share a side. Only the player whose turn it is can move, and the server checks every
-            move.
+            The creator picks the mode when the table opens. The game starts when that mode's seats are filled. Only the player whose turn it is can move, and the server checks every move.
           </p>
           <p>
             Ordinary chess rules apply: castling, en passant, and promotion to a queen, rook, bishop, or knight.
@@ -25,11 +24,9 @@ export function RulesDialog() {
             applied automatically.
           </p>
           <p>
-            Offer a draw on your turn. Either player on the other team can accept, or they can decline by answering or
-            by moving. Resigning loses for your team. A clock, if you set one, is shared by the team and pauses if the
-            player to move disconnects.
+            Offer a draw on your turn. Anyone on the other side can accept, or they can decline by answering or by moving. Resigning loses for your side. A clock, if you set one, is shared by the side and pauses if the player to move disconnects.
           </p>
-          <p>Refresh the page and you keep your seat. Send the invite link to fill the other three.</p>
+          <p>Refresh the page and you keep your seat. Send the invite link to fill the open seats.</p>
         </div>
       </DialogContent>
     </Dialog>

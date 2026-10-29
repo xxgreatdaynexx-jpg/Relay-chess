@@ -5,7 +5,16 @@ import { Input } from '@/components/ui/input';
 import { request, socket } from '@/lib/net';
 import { loadSession, prettyCode, saveSession } from '@/lib/session';
 import { cn } from '@/lib/utils';
-import { CLOCK_PRESETS, type ClockId } from '../../../shared/types';
+import {
+  CLOCK_PRESETS,
+  seatForSetup,
+  seatLabel,
+  seatsFor,
+  type ClockId,
+  type GameMode,
+  type Side,
+  type TableSetup,
+} from '../../../shared/types';
 
 export function HomeScreen({
   initialCode,
@@ -22,6 +31,8 @@ export function HomeScreen({
   const [name, setName] = useState(saved?.name ?? '');
   const [code, setCode] = useState(initialCode);
   const [clockId, setClockId] = useState<ClockId>('10+0');
+  const [mode, setMode] = useState<GameMode>('2v2');
+  const [pairSide, setPairSide] = useState<Side>('white');
   const [busy, setBusy] = useState<'create' | 'join' | 'return' | null>(null);
   const [localError, setLocalError] = useState('');
 
@@ -30,7 +41,8 @@ export function HomeScreen({
     setLocalError('');
     setBusy('create');
     socket.connect();
-    const res = await request('create_room', { name, clockId }, (ack) => {
+    const setup: TableSetup = { mode, pairSide: mode === '2v1' ? pairSide : null };
+    const res = await request('create_room', { name, clockId, mode: setup.mode, pairSide: setup.pairSide }, (ack) => {
       if (!ack.token || !ack.code) return;
       saveSession({ token: ack.token, code: ack.code, name: name.trim() });
       window.history.pushState({}, '', `/r/${ack.code}`);
@@ -91,21 +103,13 @@ export function HomeScreen({
         </div>
       </header>
       <main className="flex flex-1 flex-col justify-center py-8">
-        <p className="text-xs tracking-[0.2em] text-brass uppercase">Two teams · four seats</p>
+        <p className="text-xs tracking-[0.2em] text-brass uppercase">2v2 · 1v1 · 2v1</p>
         <h1 className="mt-2 max-w-xl font-serif text-5xl leading-[0.95] text-cream sm:text-6xl">
-          Take turns on the same side.
+          Share a side, or play it straight.
         </h1>
         <p className="mt-4 max-w-xl text-base leading-relaxed text-cream-dim">
-          White 1, Black 1, White 2, Black 2. Partners share a color, and every ordinary chess rule still applies.
+          Partners can relay one color, one player can take each side, or two can alternate while the other color moves every time.
         </p>
-        <ol className="mt-5 flex flex-wrap items-center gap-2 text-sm text-cream">
-          {['White 1', 'Black 1', 'White 2', 'Black 2'].map((label, index) => (
-            <li key={label} className="flex items-center gap-2">
-              <span className="rounded-full border border-white/15 px-3 py-1">{label}</span>
-              {index < 3 && <span className="text-cream/40">→</span>}
-            </li>
-          ))}
-        </ol>
         {saved && (
           <div className="mt-6">
             <Button variant="outline" onClick={returnToTable} disabled={busy !== null}>
@@ -117,6 +121,62 @@ export function HomeScreen({
           <form onSubmit={create} className="rounded-2xl border border-white/10 bg-panel/80 p-5">
             <h2 className="font-serif text-2xl">Create a table</h2>
             <p className="mt-1 text-sm text-cream-dim">You'll get a short code and a link to send.</p>
+            <p className="mt-4 text-xs tracking-wide text-cream/70 uppercase">Game</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {(
+                [
+                  ['2v2', '2v2'],
+                  ['1v1', '1v1'],
+                  ['2v1', '2v1'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  data-testid={`mode-${id}`}
+                  aria-pressed={mode === id}
+                  onClick={() => setMode(id)}
+                  className={cn(
+                    'rounded-full border px-3 py-1.5 text-sm',
+                    mode === id ? 'border-brass bg-brass text-ink' : 'border-white/15 text-cream hover:bg-white/5',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {mode === '2v1' && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(
+                  [
+                    ['white', 'Two on White'],
+                    ['black', 'Two on Black'],
+                  ] as const
+                ).map(([side, label]) => (
+                  <button
+                    key={side}
+                    type="button"
+                    data-testid={`pair-${side}`}
+                    aria-pressed={pairSide === side}
+                    onClick={() => setPairSide(side)}
+                    className={cn(
+                      'rounded-full border px-3 py-1.5 text-sm',
+                      pairSide === side ? 'border-brass bg-brass text-ink' : 'border-white/15 text-cream hover:bg-white/5',
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <ol className="mt-3 flex flex-wrap items-center gap-2 text-sm text-cream">
+              {turnOrder(mode, pairSide).map((label, index, labels) => (
+                <li key={`${label}-${index}`} className="flex items-center gap-2">
+                  <span className="rounded-full border border-white/15 px-3 py-1">{label}</span>
+                  {index < labels.length - 1 && <span className="text-cream/40">→</span>}
+                </li>
+              ))}
+            </ol>
             <label className="mt-4 block text-xs tracking-wide text-cream/70 uppercase" htmlFor="create-name">
               Your name
             </label>
@@ -154,7 +214,7 @@ export function HomeScreen({
           </form>
           <form onSubmit={join} className="rounded-2xl border border-white/10 bg-black/20 p-5">
             <h2 className="font-serif text-2xl">Join with a code</h2>
-            <p className="mt-1 text-sm text-cream-dim">Sit in an open seat. The game starts when all four are filled.</p>
+            <p className="mt-1 text-sm text-cream-dim">Sit in an open seat. The game starts when the mode's seats are filled.</p>
             <label className="mt-4 block text-xs tracking-wide text-cream/70 uppercase" htmlFor="join-code">
               Table code
             </label>
@@ -197,4 +257,11 @@ export function HomeScreen({
       </main>
     </div>
   );
+}
+
+function turnOrder(mode: GameMode, pairSide: Side): string[] {
+  const setup: TableSetup = { mode, pairSide: mode === '2v1' ? pairSide : null };
+  const active = seatsFor(setup);
+  const cycle = mode === '1v1' ? 2 : 4;
+  return Array.from({ length: cycle }, (_, ply) => seatLabel(seatForSetup(ply, setup), active));
 }

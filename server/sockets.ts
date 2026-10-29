@@ -8,6 +8,7 @@ import {
   listRooms,
   presetOrThrow,
   pruneRooms,
+  setupOrThrow,
   type Room,
 } from './rooms.js';
 import type { Ack, Promotion } from '../shared/types.js';
@@ -58,8 +59,9 @@ export function registerSockets(io: Server): void {
         const body = asRecord(payload);
         const name = cleanName(body.name);
         const preset = presetOrThrow(body.clockId);
+        const setup = setupOrThrow(body.mode, body.pairSide);
         release(io, socket);
-        const room = createRoom(preset);
+        const room = createRoom(preset, setup);
         const token = room.addMember(name);
         adopt(socket, room, token);
         ack?.({ ok: true, token, code: room.code });

@@ -89,6 +89,8 @@ export interface PublicState {
   code: string;
   status: 'lobby' | 'playing' | 'ended';
   clockPreset: string;
+  mode: GameMode;
+  pairSide: Side | null;
   seats: Record<Seat, SeatView | null>;
   fen: string;
   ply: number;
@@ -137,30 +139,76 @@ export function clockPreset(id: unknown): ClockPreset | null {
   return CLOCK_PRESETS.find((preset) => preset.id === id) ?? null;
 }
 
+export const GAME_MODES = ['2v2', '1v1', '2v1'] as const;
+export type GameMode = (typeof GAME_MODES)[number];
+
+export interface TableSetup {
+  mode: GameMode;
+  /** In 2v1, the color whose two players alternate. Null in every other mode. */
+  pairSide: Side | null;
+}
+
 export function isSeat(value: unknown): value is Seat {
   return typeof value === 'string' && (SEATS as readonly string[]).includes(value);
 }
 
+export function isSide(value: unknown): value is Side {
+  return value === 'white' || value === 'black';
+}
+
+export function tableSetup(mode: unknown, pairSide: unknown): TableSetup | null {
+  if (mode == null || mode === '') return { mode: '2v2', pairSide: null };
+  if (mode !== '2v2' && mode !== '1v1' && mode !== '2v1') return null;
+  if (mode === '2v1') {
+    if (!isSide(pairSide)) return null;
+    return { mode: '2v1', pairSide };
+  }
+  return { mode, pairSide: null };
+}
+
+export function seatsFor(setup: TableSetup): Seat[] {
+  if (setup.mode === '1v1') return ['white1', 'black1'];
+  if (setup.mode === '2v2') return ['white1', 'black1', 'white2', 'black2'];
+  return setup.pairSide === 'black' ? ['white1', 'black1', 'black2'] : ['white1', 'white2', 'black1'];
+}
+
+function mod(value: number, base: number): number {
+  return ((value % base) + base) % base;
+}
+
+/** Whose seat moves at this ply. White always moves on even plies. */
+export function seatForSetup(ply: number, setup: TableSetup): Seat {
+  if (setup.mode === '2v2') return SEATS[mod(ply, 4)];
+  const whiteTurn = mod(ply, 2) === 0;
+  if (setup.mode === '1v1') return whiteTurn ? 'white1' : 'black1';
+  const moveOnSide = Math.floor(ply / 2);
+  if (setup.pairSide === 'black') {
+    if (whiteTurn) return 'white1';
+    return mod(moveOnSide, 2) === 0 ? 'black1' : 'black2';
+  }
+  if (!whiteTurn) return 'black1';
+  return mod(moveOnSide, 2) === 0 ? 'white1' : 'white2';
+}
+
 export function seatForPly(ply: number): Seat {
-  const index = ((ply % 4) + 4) % 4;
-  return SEATS[index];
+  return seatForSetup(ply, { mode: '2v2', pairSide: null });
+}
+
+export function modeLabel(setup: TableSetup): string {
+  if (setup.mode === '1v1') return '1v1';
+  if (setup.mode === '2v2') return '2v2';
+  return setup.pairSide === 'black' ? '2v1 · two on Black' : '2v1 · two on White';
 }
 
 export function seatSide(seat: Seat): Side {
   return seat.startsWith('white') ? 'white' : 'black';
 }
 
-export function seatLabel(seat: Seat): string {
-  switch (seat) {
-    case 'white1':
-      return 'White 1';
-    case 'white2':
-      return 'White 2';
-    case 'black1':
-      return 'Black 1';
-    case 'black2':
-      return 'Black 2';
-  }
+export function seatLabel(seat: Seat, active?: readonly Seat[]): string {
+  const side = seatSide(seat) === 'white' ? 'White' : 'Black';
+  const mates = (active ?? SEATS).filter((item) => seatSide(item) === seatSide(seat));
+  if (mates.length < 2) return side;
+  return seat.endsWith('1') ? `${side} 1` : `${side} 2`;
 }
 
 export function opposite(side: Side): Side {

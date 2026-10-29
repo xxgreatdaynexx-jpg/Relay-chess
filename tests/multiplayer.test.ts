@@ -99,6 +99,8 @@ it('runs a four-player game, enforces turns, reconnects a seat, and rematches', 
   expect((await ask(players[3].socket, 'sit', { seat: 'black2' })).ok).toBe(true);
   const started = await players[0].until((state) => state.status === 'playing' && state.yourSeat === 'white1');
   expect(started.seatToMove).toBe('white1');
+  expect(started.mode).toBe('2v2');
+  expect(started.pairSide).toBeNull();
   const watched = await spectator.until((state) => state.status === 'playing');
   expect(watched.yourSeat).toBeNull();
   expect((await ask(spectator.socket, 'move', { from: 'f2', to: 'f3' })).ok).toBe(false);

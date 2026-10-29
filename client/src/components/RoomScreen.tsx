@@ -14,13 +14,15 @@ import { formatClock } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import {
   CLOCK_PRESETS,
+  modeLabel,
   seatLabel,
+  seatsFor,
   seatSide,
-  SEATS,
   type ClockView,
   type PublicState,
   type Seat,
   type Side,
+  type TableSetup,
 } from '../../../shared/types';
 
 interface Pending {
@@ -121,6 +123,8 @@ export function RoomScreen({
           square: state.blunder.square,
         }
       : null;
+  const setup: TableSetup = { mode: state.mode, pairSide: state.pairSide };
+  const active = seatsFor(setup);
   const displayFen = pending?.fen ?? state.fen;
   const lastMove = pending
     ? { from: pending.from, to: pending.to }
@@ -173,6 +177,7 @@ export function RoomScreen({
         {offline}
         <Lobby
           state={state}
+          active={active}
           presetLabel={preset?.label ?? 'No clock'}
           busy={busy}
           onSit={(seat) => act('sit', { seat })}
@@ -194,6 +199,7 @@ export function RoomScreen({
               key={side}
               side={side}
               state={state}
+              active={active}
               clock={clock}
               paused={paused && state.seatToMove !== null && seatSide(state.seatToMove) === side}
             />
@@ -202,7 +208,7 @@ export function RoomScreen({
       </section>
 
       <section className="area-board">
-          <TurnBanner state={state} yourTurn={yourTurn} moverName={mover?.name ?? 'Waiting'} paused={paused} />
+          <TurnBanner state={state} yourTurn={yourTurn} moverName={mover?.name ?? 'Waiting'} paused={paused} active={active} />
           <div className="mx-auto mt-3 w-full max-w-[min(100%,calc(100dvh-150px))] lg:max-w-[720px]">
             <Board
               fen={displayFen}
@@ -259,7 +265,9 @@ export function RoomScreen({
             )}
             {state.status === 'ended' && you && (
               <Button disabled={busy} onClick={() => act('vote_rematch')} data-testid="rematch">
-                {state.rematchVotes.includes(you) ? `Waiting · ${state.rematchVotes.length}/4` : `Rematch · ${state.rematchVotes.length}/4`}
+                {state.rematchVotes.includes(you)
+                  ? `Waiting · ${state.rematchVotes.length}/${active.length}`
+                  : `Rematch · ${state.rematchVotes.length}/${active.length}`}
               </Button>
             )}
           </div>
@@ -267,19 +275,24 @@ export function RoomScreen({
             <div className="mt-4">
               <h3 className="mb-2 text-xs tracking-[0.16em] text-cream/55 uppercase">Standings</h3>
               <LeaderboardTable
-                highlight={SEATS.map((seat) => state.seats[seat]?.name ?? '').filter(Boolean)}
+                highlight={active.map((seat) => state.seats[seat]?.name ?? '').filter(Boolean)}
               />
             </div>
           )}
           {state.status === 'ended' && (
             <p className="mt-2 text-xs text-cream/55">
-              {SEATS.filter((seat) => !state.rematchVotes.includes(seat))
-                .map((seat) => state.seats[seat]?.name ?? seatLabel(seat))
+              {active
+                .filter((seat) => !state.rematchVotes.includes(seat))
+                .map((seat) => state.seats[seat]?.name ?? seatLabel(seat, active))
                 .join(', ') || 'Everyone agreed.'}{' '}
-              {state.rematchVotes.length < 4 ? 'still to agree.' : ''}
+              {state.rematchVotes.length < active.length ? 'still to agree.' : ''}
             </p>
           )}
-          {!you && <p className="mt-2 text-sm text-cream-dim">You’re watching{session ? ` as ${session.name}` : ''}. All four seats are taken.</p>}
+          {!you && (
+            <p className="mt-2 text-sm text-cream-dim">
+              You’re watching{session ? ` as ${session.name}` : ''}. Every seat is taken.
+            </p>
+          )}
         </section>
 
         <section className="area-moves rounded-2xl border border-white/10 bg-black/20 p-3">
@@ -316,11 +329,13 @@ function TurnBanner({
   yourTurn,
   moverName,
   paused,
+  active,
 }: {
   state: PublicState;
   yourTurn: boolean;
   moverName: string;
   paused: boolean;
+  active: Seat[];
 }) {
   return (
     <div
@@ -338,7 +353,8 @@ function TurnBanner({
         <p className="font-serif text-2xl leading-none">{yourTurn ? 'Make a move' : moverName}</p>
       </div>
       <div className="text-right text-sm">
-        <div>{state.seatToMove ? seatLabel(state.seatToMove) : ''}</div>
+        <div>{state.seatToMove ? seatLabel(state.seatToMove, active) : ''}</div>
+        <div className="text-[11px] tracking-wide uppercase opacity-70">{modeLabel({ mode: state.mode, pairSide: state.pairSide })}</div>
         {state.inCheck && state.status === 'playing' && <div className="font-medium">Check</div>}
         {paused && <div>Clock paused</div>}
       </div>
@@ -348,6 +364,7 @@ function TurnBanner({
 
 function Lobby({
   state,
+  active,
   presetLabel,
   busy,
   onSit,
@@ -355,20 +372,22 @@ function Lobby({
   onLeave,
 }: {
   state: PublicState;
+  active: Seat[];
   presetLabel: string;
   busy: boolean;
   onSit: (seat: Seat) => void;
   onStand: () => void;
   onLeave: () => void;
 }) {
-  const filled = SEATS.filter((seat) => state.seats[seat]).length;
+  const filled = active.filter((seat) => state.seats[seat]).length;
   return (
     <div className="rounded-2xl border border-white/10 bg-panel/80 p-4">
       <div className="flex items-end justify-between gap-3">
         <div>
           <h2 className="font-serif text-3xl">Choose a seat</h2>
           <p className="mt-1 text-sm text-cream-dim">
-            {filled}/4 seated · {presetLabel === 'No clock' ? 'No clock' : `${presetLabel} shared clock`}. The game starts when every seat is filled.
+            {filled}/{active.length} seated · {modeLabel({ mode: state.mode, pairSide: state.pairSide })} ·{' '}
+            {presetLabel === 'No clock' ? 'No clock' : `${presetLabel} shared clock`}. The game starts when every seat is filled.
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={onLeave} disabled={busy}>
@@ -376,7 +395,7 @@ function Lobby({
         </Button>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-2">
-        {SEATS.map((seat) => {
+        {active.map((seat) => {
           const player = state.seats[seat];
           const mine = state.yourSeat === seat;
           return (
@@ -388,7 +407,7 @@ function Lobby({
                 mine ? 'border-brass bg-brass/10' : 'border-white/10 bg-black/20',
               )}
             >
-              <div className="text-[11px] tracking-[0.14em] text-cream/55 uppercase">{seatLabel(seat)}</div>
+              <div className="text-[11px] tracking-[0.14em] text-cream/55 uppercase">{seatLabel(seat, active)}</div>
               {player ? (
                 <>
                   <div className="mt-1 truncate font-serif text-xl">{player.name}</div>
@@ -418,20 +437,22 @@ function Lobby({
 function TeamCard({
   side,
   state,
+  active,
   clock,
   paused,
 }: {
   side: Side;
   state: PublicState;
+  active: Seat[];
   clock: { white: number; black: number; running: boolean; active: Side | null; incrementMs: number } | null;
   paused: boolean;
 }) {
-  const seats = SEATS.filter((seat) => seatSide(seat) === side);
-  const active = state.seatToMove ? seatSide(state.seatToMove) === side && state.status === 'playing' : false;
+  const seats = active.filter((seat) => seatSide(seat) === side);
+  const sideToPlay = state.seatToMove ? seatSide(state.seatToMove) === side && state.status === 'playing' : false;
   const ms = clock ? (side === 'white' ? clock.white : clock.black) : null;
   const low = ms !== null && ms < 30_000 && clock?.running && clock.active === side;
   return (
-    <div className={cn('rounded-xl border px-3 py-2', active ? 'border-brass/80 bg-brass/10' : 'border-white/10 bg-white/5')}>
+    <div className={cn('rounded-xl border px-3 py-2', sideToPlay ? 'border-brass/80 bg-brass/10' : 'border-white/10 bg-white/5')}>
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-[11px] tracking-[0.16em] text-cream/60 uppercase">{side}</span>
         {ms !== null && (
@@ -452,7 +473,7 @@ function TeamCard({
               <div className="min-w-0">
                 <div className="truncate text-sm">{player?.name ?? 'Empty'}</div>
                 <div className="text-[10px] tracking-wide text-cream/50 uppercase">
-                  {seatLabel(seat)}
+                  {seatLabel(seat, active)}
                   {state.yourSeat === seat ? ' · you' : ''}
                   {player && !player.connected ? ' · reconnecting' : ''}
                 </div>
@@ -505,7 +526,7 @@ function MoveCell({
     <span>
       <span className="font-medium">{move.san}</span>
       <span className="mt-0.5 block text-[10px] tracking-wide text-cream/45 uppercase">
-        {state.seats[move.seat]?.name ?? seatLabel(move.seat)}
+        {state.seats[move.seat]?.name ?? seatLabel(move.seat, seatsFor({ mode: state.mode, pairSide: state.pairSide }))}
       </span>
     </span>
   );

@@ -9,7 +9,9 @@ import {
   clockPreset,
   describeResult,
   isSeat,
+  seatsFor,
   seatSide,
+  tableSetup,
   type ClockPreset,
   type GameResult,
   type HintArrow,
@@ -21,6 +23,7 @@ import {
   type Seat,
   type SeatView,
   type Side,
+  type TableSetup,
 } from '../shared/types.js';
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -47,6 +50,7 @@ export function makeCode(): string {
 export class Room {
   readonly code: string;
   readonly presetId: string;
+  readonly setup: TableSetup;
   readonly createdAt = Date.now();
   lastActivity = Date.now();
   lastClockPush = 0;
@@ -60,12 +64,13 @@ export class Room {
   private blunderFlash: BlunderCall | null = null;
   private blunderSeq = 0;
 
-  constructor(code: string, preset: ClockPreset) {
+  constructor(code: string, preset: ClockPreset, setup: TableSetup = { mode: '2v2', pairSide: null }) {
     this.code = code;
     this.presetId = preset.id;
+    this.setup = setup;
     const timing: Timing | null =
       preset.initialMs > 0 ? { initialMs: preset.initialMs, incrementMs: preset.incrementMs } : null;
-    this.game = new RelayGame(timing);
+    this.game = new RelayGame(timing, setup);
   }
 
   addMember(name: string): string {
@@ -113,13 +118,14 @@ export class Room {
 
   sit(token: string, seat: unknown, now = Date.now()): void {
     if (!isSeat(seat)) throw new GameError('That is not a seat.');
+    if (!seatsFor(this.setup).includes(seat)) throw new GameError('That seat is not in this game.');
     if (this.game.status !== 'lobby') throw new GameError('Seats lock when the game starts.');
     const member = this.must(token);
     const occupant = this.memberOn(seat);
     if (occupant && occupant.token !== member.token) throw new GameError('That seat is taken.');
     member.seat = seat;
     this.touch();
-    if (this.countSeated() === 4) {
+    if (this.seatsFilled()) {
       this.game.start(now);
       this.syncPresence(now);
     }
@@ -199,6 +205,8 @@ export class Room {
       code: this.code,
       status: this.game.status,
       clockPreset: this.presetId,
+      mode: this.setup.mode,
+      pairSide: this.setup.pairSide,
       seats: this.seatMap(),
       fen: this.game.fen(),
       ply: this.game.ply(),
@@ -248,10 +256,8 @@ export class Room {
     return this.memberOn(seat)?.name;
   }
 
-  private countSeated(): number {
-    let count = 0;
-    for (const member of this.members.values()) if (member.seat) count += 1;
-    return count;
+  private seatsFilled(): boolean {
+    return seatsFor(this.setup).every((seat) => this.memberOn(seat));
   }
 
   private must(token: string): Member {
@@ -326,18 +332,23 @@ export class Room {
     if (this.game.status !== 'ended' || !result || this.scoredResult === result) return;
     this.scoredResult = result;
     const name = (seat: Seat) => this.nameFor(seat);
+    const named = (side: Side) =>
+      seatsFor(this.setup)
+        .filter((seat) => seatSide(seat) === side)
+        .map((seat) => name(seat))
+        .filter((value): value is string => Boolean(value));
     getLeaderboard().record({
       winner: result.winner,
-      white: [name('white1'), name('white2')].filter((value): value is string => Boolean(value)),
-      black: [name('black1'), name('black2')].filter((value): value is string => Boolean(value)),
+      white: named('white'),
+      black: named('black'),
     });
   }
 }
 
-export function createRoom(preset: ClockPreset): Room {
+export function createRoom(preset: ClockPreset, setup?: TableSetup): Room {
   let code = makeCode();
   while (rooms.has(code)) code = makeCode();
-  const room = new Room(code, preset);
+  const room = new Room(code, preset, setup);
   rooms.set(code, room);
   return room;
 }
@@ -370,4 +381,10 @@ export function presetOrThrow(id: unknown): ClockPreset {
   const preset = clockPreset(id);
   if (!preset) throw new GameError('Choose a clock.');
   return preset;
+}
+
+export function setupOrThrow(mode: unknown, pairSide: unknown): TableSetup {
+  const setup = tableSetup(mode, pairSide);
+  if (!setup) throw new GameError('Choose a game mode.');
+  return setup;
 }

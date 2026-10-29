@@ -1,8 +1,8 @@
 import { Chess, type Color, type Square } from 'chess.js';
 import {
-  SEATS,
   opposite,
-  seatForPly,
+  seatForSetup,
+  seatsFor,
   seatSide,
   type DrawOffer,
   type GameResult,
@@ -12,6 +12,7 @@ import {
   type Promotion,
   type Seat,
   type Side,
+  type TableSetup,
 } from '../shared/types.js';
 import { GameError } from './errors.js';
 
@@ -32,6 +33,7 @@ export interface Timing {
 }
 
 const PROMOTIONS = new Set<Promotion>(['q', 'r', 'b', 'n']);
+const RELAY_2V2: TableSetup = { mode: '2v2', pairSide: null };
 
 function isSquare(value: string): value is Square {
   return /^[a-h][1-8]$/.test(value);
@@ -92,8 +94,10 @@ export class RelayGame {
   private moves: MoveRecord[] = [];
   private basePly = 0;
   private clock: Clock | null;
+  private readonly setup: TableSetup;
 
-  constructor(timing: Timing | null) {
+  constructor(timing: Timing | null, setup: TableSetup = RELAY_2V2) {
+    this.setup = setup;
     this.clock =
       timing && timing.initialMs > 0
         ? {
@@ -106,10 +110,16 @@ export class RelayGame {
         : null;
   }
 
-  static fromPosition(fen: string, ply: number, timing: Timing | null = null, now = 0): RelayGame {
-    const game = new RelayGame(timing);
+  static fromPosition(
+    fen: string,
+    ply: number,
+    timing: Timing | null = null,
+    now = 0,
+    setup: TableSetup = RELAY_2V2,
+  ): RelayGame {
+    const game = new RelayGame(timing, setup);
     game.chess = new Chess(fen);
-    const seat = seatForPly(ply);
+    const seat = seatForSetup(ply, setup);
     const turn: Color = seatSide(seat) === 'white' ? 'w' : 'b';
     if (game.chess.turn() !== turn) {
       throw new Error(`FEN side to move does not match ply ${ply}`);
@@ -135,7 +145,7 @@ export class RelayGame {
 
   seatToMove(): Seat | null {
     if (this.status !== 'playing') return null;
-    return seatForPly(this.ply());
+    return seatForSetup(this.ply(), this.setup);
   }
 
   inCheck(): boolean {
@@ -337,8 +347,9 @@ export class RelayGame {
 
   voteRematch(seat: Seat, now: number): void {
     if (this.status !== 'ended') return;
+    if (!seatsFor(this.setup).includes(seat)) return;
     this.rematchVotes.add(seat);
-    if (SEATS.every((candidate) => this.rematchVotes.has(candidate))) {
+    if (seatsFor(this.setup).every((candidate) => this.rematchVotes.has(candidate))) {
       this.reset(now);
     }
   }
