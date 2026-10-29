@@ -10,7 +10,7 @@ import { request } from '@/lib/net';
 import { previewFen } from '@/lib/preview';
 import { playBoom, playFork, playHuh, playNice, unlockSounds } from '@/lib/sounds';
 import { queenCaptureSquare } from '../../../shared/capture';
-import { BLUNDER_FLASH_MS, FORK_SOUND_DELAY_MS, FORK_SOUND_WAIT_MS, OPENING_FLASH_MS, flashIsFresh } from '../../../shared/flash';
+import { BLUNDER_FLASH_MS, FORK_SOUND_DELAY_MS, FORK_SOUND_WAIT_MS, OPENING_FLASH_MS, POOF_HOLD_MS, flashIsFresh } from '../../../shared/flash';
 import { isFork } from '../../../shared/fork';
 import { loadSession, prettyCode } from '@/lib/session';
 import { formatClock } from '@/lib/time';
@@ -55,12 +55,18 @@ export function RoomScreen({
   const [copied, setCopied] = useState(false);
   const [boom, setBoom] = useState<{ token: string; square: string } | null>(null);
   const [fork, setFork] = useState<{ token: string; square: string } | null>(null);
+  const [payPhase, setPayPhase] = useState<'idle' | 'processing' | 'received' | 'declined'>('idle');
+  const [frozenFen, setFrozenFen] = useState<string | null>(null);
   const previousFen = useRef<string | null>(null);
+  const previousMoves = useRef(0);
+  const escapeToast = useRef<string | null>(null);
   const forkSoundTimer = useRef<number | null>(null);
   const forkSoundPlayed = useRef<string | null>(null);
   const session = loadSession();
   const you = state.yourSeat;
-  const yourTurn = state.status === 'playing' && you !== null && you === state.seatToMove;
+  const bailoutOpen = state.bailout !== null;
+  const onMatedTeam = Boolean(bailoutOpen && you && seatSide(you) === state.bailout?.side);
+  const yourTurn = state.status === 'playing' && you !== null && you === state.seatToMove && !bailoutOpen;
   const mover = state.seatToMove ? state.seats[state.seatToMove] : null;
   const auto = you?.startsWith('black') ? 'black' : 'white';
   const orientation = flipped ? (auto === 'white' ? 'black' : 'white') : auto;
@@ -79,8 +85,10 @@ export function RoomScreen({
 
   useEffect(() => {
     const before = previousFen.current;
+    const movesBefore = previousMoves.current;
     previousFen.current = state.fen;
-    if (!before || before === state.fen || state.moves.length === 0) return;
+    previousMoves.current = state.moves.length;
+    if (!before || before === state.fen || state.moves.length === 0 || state.moves.length === movesBefore) return;
     const move = state.moves[state.moves.length - 1];
     const square = queenCaptureSquare(before, move.to);
     if (square) setBoom({ token: `${state.ply}:${square}`, square });
@@ -111,13 +119,14 @@ export function RoomScreen({
   }, [yourTurn, state.seatToMove, state.status, state.code]);
 
   const inCheck = useMemo(() => {
-    if (!pending) return state.inCheck;
+    const fen = frozenFen ?? pending?.fen;
+    if (!fen) return state.inCheck;
     try {
-      return new Chess(pending.fen).isCheck();
+      return new Chess(fen).isCheck();
     } catch {
       return false;
     }
-  }, [pending, state.inCheck]);
+  }, [frozenFen, pending, state.inCheck]);
 
   async function act(event: string, data?: unknown) {
     setBusy(true);
@@ -175,9 +184,45 @@ export function RoomScreen({
   useEffect(() => {
     if (boom) playBoom();
   }, [boom?.token]);
+
+  useEffect(() => {
+    const escape = state.escape;
+    if (frozenFen) return;
+    if (!escape || !flashIsFresh(escape, state.ply, state.serverNow, POOF_HOLD_MS)) return;
+    const key = `${escape.at}:${escape.ply}:${escape.square}`;
+    if (escapeToast.current === key) return;
+    escapeToast.current = key;
+    onToast(`${escape.name} paid Dayne $1 and teleported out!`);
+  }, [state.escape, state.ply, state.serverNow, onToast, frozenFen]);
+
+  async function payDayne() {
+    if (payPhase !== 'idle' || !state.bailout) return;
+    setFrozenFen(state.fen);
+    setPayPhase('processing');
+    const res = await request('pay_bailout');
+    await wait(700);
+    if (res.declined) {
+      setPayPhase('declined');
+      await wait(1200);
+    } else if (res.ok) {
+      setPayPhase('received');
+      await wait(800);
+    } else if (res.error) {
+      onToast(res.error);
+    }
+    setPayPhase('idle');
+    setFrozenFen(null);
+  }
   const setup: TableSetup = { mode: state.mode, pairSide: state.pairSide };
   const active = seatsFor(setup);
-  const displayFen = pending?.fen ?? state.fen;
+  const displayFen = frozenFen ?? pending?.fen ?? state.fen;
+  const poof =
+    !frozenFen && state.escape && flashIsFresh(state.escape, state.ply, state.serverNow, POOF_HOLD_MS)
+      ? {
+          token: `${state.escape.at}:${state.escape.ply}:${state.escape.square}`,
+          squares: [state.escape.from, state.escape.square],
+        }
+      : null;
   const lastMove = pending
     ? { from: pending.from, to: pending.to }
     : state.moves.length
@@ -274,6 +319,7 @@ export function RoomScreen({
               mark={markFlash}
               fork={fork}
               boom={boom}
+              poof={poof}
               onMove={sendMove}
             />
           </div>
@@ -353,6 +399,25 @@ export function RoomScreen({
           <h2 className="text-xs tracking-[0.16em] text-cream/55 uppercase">Moves</h2>
           <MoveList state={state} />
         </section>
+
+      {((onMatedTeam && payPhase === 'idle') || payPhase !== 'idle') && (
+        <BailoutCheckout
+          phase={payPhase}
+          deadline={state.bailout?.deadline ?? null}
+          serverNow={state.serverNow}
+          busy={payPhase !== 'idle'}
+          onPay={() => void payDayne()}
+          onAccept={() => void act('accept_mate')}
+        />
+      )}
+      {bailoutOpen && !onMatedTeam && payPhase === 'idle' && (
+        <div className="bailout-backdrop" data-testid="bailout-wait">
+          <div className="w-[min(92vw,420px)] rounded-2xl bg-white px-6 py-8 text-center text-[#001c64] shadow-2xl">
+            <p className="font-serif text-2xl leading-snug">Waiting... opponent is considering paying Dayne $1 💸</p>
+            {state.bailout && <BailoutCountdown deadline={state.bailout.deadline} serverNow={state.serverNow} />}
+          </div>
+        </div>
+      )}
 
       <Dialog open={resignOpen} onOpenChange={setResignOpen}>
         <DialogContent>
@@ -584,6 +649,92 @@ function MoveCell({
       </span>
     </span>
   );
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function BailoutCheckout({
+  phase,
+  deadline,
+  serverNow,
+  busy,
+  onPay,
+  onAccept,
+}: {
+  phase: 'idle' | 'processing' | 'received' | 'declined';
+  deadline: number | null;
+  serverNow: number;
+  busy: boolean;
+  onPay: () => void;
+  onAccept: () => void;
+}) {
+  return (
+    <div className="bailout-backdrop" data-testid="bailout-popup" role="dialog" aria-modal="true" aria-labelledby="bailout-title">
+      <div className="w-[min(92vw,420px)] overflow-hidden rounded-2xl bg-white text-center text-[#001c64] shadow-2xl">
+        <div className="bg-[#003087] px-4 py-3 text-3xl font-extrabold italic tracking-tight text-white">PayPal</div>
+        <div className="px-6 py-6">
+          <h2 id="bailout-title" className="font-serif text-2xl leading-snug">
+            💸 Checkmated? PayPal Dayne $1 to escape!
+          </h2>
+          {phase === 'processing' && (
+            <p className="mt-5 text-lg font-semibold" data-testid="bailout-processing">
+              Processing payment...
+            </p>
+          )}
+          {phase === 'received' && (
+            <p className="mt-5 text-lg font-semibold" data-testid="bailout-received">
+              ✅ Payment received (not really)
+            </p>
+          )}
+          {phase === 'declined' && (
+            <p className="mt-5 text-lg font-semibold" data-testid="bailout-declined">
+              Payment declined 😭
+            </p>
+          )}
+          {phase === 'idle' && (
+            <div className="mt-5 flex flex-col items-center gap-3">
+              <button
+                type="button"
+                className="w-full rounded-full bg-[#ffc439] px-4 py-3 text-lg font-extrabold text-[#003087]"
+                data-testid="bailout-pay"
+                disabled={busy}
+                onClick={onPay}
+              >
+                Pay $1.00 with PayPal
+              </button>
+              <button
+                type="button"
+                className="text-sm font-semibold text-[#003087] underline"
+                data-testid="bailout-accept"
+                disabled={busy}
+                onClick={onAccept}
+              >
+                Accept defeat
+              </button>
+              {deadline !== null && <BailoutCountdown deadline={deadline} serverNow={serverNow} />}
+            </div>
+          )}
+          <p className="mt-4 text-xs text-[#5b6b8a]">just kidding, no real money</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BailoutCountdown({ deadline, serverNow }: { deadline: number; serverNow: number }) {
+  const offset = useRef(serverNow - Date.now());
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    offset.current = serverNow - Date.now();
+  }, [serverNow]);
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 200);
+    return () => window.clearInterval(id);
+  }, []);
+  const seconds = Math.max(0, Math.ceil((deadline - (now + offset.current)) / 1000));
+  return <p className="text-xs text-[#5b6b8a]">{seconds}s left</p>;
 }
 
 function useLiveClock(clock: ClockView | null) {

@@ -92,6 +92,9 @@ describe('finished relay games', () => {
       ['black2', 'd8', 'h4'],
     ] as const;
     for (const [seat, from, to] of moves) room.move(tokens[seat], { from, to });
+    expect(room.view('white1', 1).result).toBeNull();
+    expect(room.view('white1', 1).bailout?.side).toBe('white');
+    room.acceptMate(tokens.white1);
     room.view('white1', 1);
     room.view('white1', 1);
 

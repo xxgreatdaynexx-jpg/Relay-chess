@@ -5,6 +5,9 @@ export const BOOM_FLASH_MS = 1800;
 export const FORK_FLASH_MS = 1500;
 export const FORK_SOUND_DELAY_MS = 240;
 export const FORK_SOUND_WAIT_MS = 520;
+export const POOF_FLASH_MS = 1200;
+/** How long a bailout teleport can still sparkle after the server applied it. */
+export const POOF_HOLD_MS = 6000;
 
 export interface TimedMark {
   ply: number;

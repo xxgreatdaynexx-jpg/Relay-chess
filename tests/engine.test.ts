@@ -52,8 +52,14 @@ describe('relay turn order', () => {
     ]);
     expect(seats).toEqual(['white1', 'black1', 'white2', 'black2']);
     expect(game.history().map((move) => move.san)).toEqual(['f3', 'e5', 'g4', 'Qh4#']);
+    expect(game.result).toBeNull();
+    expect(game.status).toBe('playing');
+    expect(game.bailout).toMatchObject({ side: 'white', deadline: 20_000 });
+    expect(() => game.move('white1', { from: 'a2', to: 'a3' }, 0)).toThrow(/checkmate/i);
+    game.acceptMate('white2');
     expect(game.result).toMatchObject({ type: 'checkmate', winner: 'black' });
     expect(game.status).toBe('ended');
+    expect(game.bailout).toBeNull();
     expect(game.seatToMove()).toBeNull();
   });
 

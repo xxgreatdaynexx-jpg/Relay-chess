@@ -121,6 +121,13 @@ it('runs a four-player game, enforces turns, reconnects a seat, and rematches', 
     await players[0].until((state) => state.moves.length === index + 1);
   }
 
+  const offered = await players[0].until((state) => state.bailout?.side === 'white' && state.moves.length === 4);
+  expect(offered.result).toBeNull();
+  expect(offered.status).toBe('playing');
+  const denied = await ask(players[1].socket, 'pay_bailout');
+  expect(denied.ok).toBe(false);
+  expect((await ask(players[0].socket, 'accept_mate')).ok).toBe(true);
+
   const ended = await players[2].until((state) => state.result?.type === 'checkmate');
   expect(ended.result).toMatchObject({ type: 'checkmate', winner: 'black' });
   expect(ended.moves.map((move) => move.seat)).toEqual(['white1', 'black1', 'white2', 'black2']);

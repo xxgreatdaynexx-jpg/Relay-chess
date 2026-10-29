@@ -4,7 +4,7 @@ import { Piece } from '@/components/Pieces';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { BLUNDER_FLASH_MS, BOOM_FLASH_MS, FORK_FLASH_MS, OPENING_FLASH_MS } from '../../../shared/flash';
+import { BLUNDER_FLASH_MS, BOOM_FLASH_MS, FORK_FLASH_MS, OPENING_FLASH_MS, POOF_FLASH_MS } from '../../../shared/flash';
 import type { HintArrow, LegalMove, MoveGrade, Promotion } from '../../../shared/types';
 
 interface Drag {
@@ -38,6 +38,7 @@ export function Board({
   mark = null,
   fork = null,
   boom = null,
+  poof = null,
   onMove,
 }: {
   fen: string;
@@ -51,6 +52,7 @@ export function Board({
   mark?: { token: string; square: string; grade: MoveGrade } | null;
   fork?: { token: string; square: string } | null;
   boom?: { token: string; square: string } | null;
+  poof?: { token: string; squares: string[] } | null;
   onMove: (move: { from: string; to: string; promotion?: Promotion }) => void;
 }) {
   const pieces = useMemo(() => piecesFromFen(fen), [fen]);
@@ -294,6 +296,14 @@ export function Board({
           )}
         </TimedOverlay>
         {shaking && boom && <BoomBurst square={boom.square} orientation={orientation} />}
+        <TimedOverlay
+          token={poof?.token ?? null}
+          ms={POOF_FLASH_MS}
+          className="pointer-events-none absolute inset-0 z-30"
+          testId="king-poof"
+        >
+          {poof && <KingPoof squares={poof.squares} orientation={orientation} />}
+        </TimedOverlay>
       </div>
       {dragPiece && drag && (
         <div
@@ -355,6 +365,21 @@ function squareBox(square: string, orientation: 'white' | 'black'): CSSPropertie
   const col = orientation === 'white' ? file : 7 - file;
   const row = orientation === 'white' ? 7 - rank : rank;
   return { left: `${col * 12.5}%`, top: `${row * 12.5}%`, width: '12.5%', height: '12.5%' };
+}
+
+function KingPoof({ squares, orientation }: { squares: string[]; orientation: 'white' | 'black' }) {
+  return (
+    <>
+      {squares.map((square) => (
+        <div key={square} className="poof-spot absolute" style={squareBox(square, orientation)} aria-hidden="true">
+          <span className="poof-puff" />
+          <span className="poof-spark poof-spark-a" />
+          <span className="poof-spark poof-spark-b" />
+          <span className="poof-spark poof-spark-c" />
+        </div>
+      ))}
+    </>
+  );
 }
 
 function BoomBurst({ square, orientation }: { square: string; orientation: 'white' | 'black' }) {

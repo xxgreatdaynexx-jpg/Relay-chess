@@ -21,12 +21,13 @@ export function startMaintenance(io: Server): void {
   timer = setInterval(() => {
     const now = Date.now();
     for (const room of listRooms()) {
-      if (!room.game.isClockRunning()) continue;
       const hadResult = room.game.hasResult();
-      room.game.tick(now);
+      const clocking = room.game.isClockRunning();
+      if (clocking) room.game.tick(now);
+      const expired = room.game.expireBailout(now);
       const flagged = !hadResult && room.game.hasResult();
-      const due = now - room.lastClockPush > CLOCK_PUSH_MS;
-      if (flagged || due) {
+      const due = clocking && now - room.lastClockPush > CLOCK_PUSH_MS;
+      if (flagged || expired || due) {
         room.lastClockPush = now;
         broadcast(io, room.code, now);
       }
@@ -173,6 +174,28 @@ export function registerSockets(io: Server): void {
     socket.on('vote_rematch', (_payload: unknown, ack?: (res: Ack) => void) => {
       withRoom(io, socket, ack, (room, token) => {
         room.voteRematch(token);
+      });
+    });
+
+    socket.on('pay_bailout', (_payload: unknown, ack?: (res: Ack) => void) => {
+      const code = socket.data.code as string | undefined;
+      const room = code ? getRoom(code) : undefined;
+      try {
+        if (!room) throw new GameError('You are not at a table.', true);
+        const token = socket.data.token as string | undefined;
+        if (!token) throw new GameError('You are not at a table.', true);
+        const declined = room.payBailout(token);
+        ack?.({ ok: true, declined });
+        broadcast(io, room.code);
+      } catch (error) {
+        if (room?.game.hasResult()) broadcast(io, room.code);
+        fail(ack, error);
+      }
+    });
+
+    socket.on('accept_mate', (_payload: unknown, ack?: (res: Ack) => void) => {
+      withRoom(io, socket, ack, (room, token) => {
+        room.acceptMate(token);
       });
     });
 

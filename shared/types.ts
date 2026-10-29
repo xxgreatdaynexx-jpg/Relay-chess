@@ -79,6 +79,20 @@ export interface MoveMark {
   grade: MoveGrade;
 }
 
+export interface BailoutOffer {
+  side: Side;
+  deadline: number;
+}
+
+export interface KingEscape {
+  square: string;
+  from: string;
+  at: number;
+  name: string;
+  side: Side;
+  ply: number;
+}
+
 export interface LeaderboardRow {
   name: string;
   wins: number;
@@ -110,6 +124,8 @@ export interface PublicState {
   serverNow: number;
   opening: OpeningCall | null;
   mark: MoveMark | null;
+  bailout: BailoutOffer | null;
+  escape: KingEscape | null;
 }
 
 export interface Ack {
@@ -118,6 +134,8 @@ export interface Ack {
   fatal?: boolean;
   token?: string;
   code?: string;
+  /** Fake checkmate bailout could not find a safe square. */
+  declined?: boolean;
 }
 
 export interface MoveInput {

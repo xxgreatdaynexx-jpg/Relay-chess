@@ -108,6 +108,8 @@ describe('starting and playing each mode', () => {
       game.move(seat, move, 0);
     }
     expect(played).toEqual(['white1', 'black1', 'white1', 'black1']);
+    expect(game.bailout?.side).toBe('white');
+    game.acceptMate('white1');
     expect(game.result).toMatchObject({ type: 'checkmate', winner: 'black' });
     game.voteRematch('white1', 1);
     expect(game.status).toBe('ended');

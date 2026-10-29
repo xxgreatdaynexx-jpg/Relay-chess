@@ -181,6 +181,22 @@ export class Room {
     this.touch();
   }
 
+  payBailout(token: string, now = Date.now()): boolean {
+    const member = this.must(token);
+    if (!member.seat) throw new GameError('Take a seat before paying Dayne.');
+    const paid = this.game.payBailout(member.seat, member.name, now);
+    this.syncPresence(now);
+    this.touch();
+    return paid.declined;
+  }
+
+  acceptMate(token: string): void {
+    const member = this.must(token);
+    if (!member.seat) throw new GameError('Take a seat before answering checkmate.');
+    this.game.acceptMate(member.seat);
+    this.touch();
+  }
+
   anyoneConnected(): boolean {
     for (const member of this.members.values()) {
       if (member.sockets.size > 0) return true;
@@ -197,6 +213,7 @@ export class Room {
 
   view(socketId: string, now: number): PublicState {
     this.game.tick(now);
+    this.game.expireBailout(now);
     this.clearAnnouncementsIfReset();
     this.scoreIfNeeded();
     const you = this.memberBySocket(socketId);
@@ -224,6 +241,8 @@ export class Room {
       serverNow: now,
       opening: this.openingFlash,
       mark: this.moveMark,
+      bailout: this.game.bailout ? { ...this.game.bailout } : null,
+      escape: this.game.escape ? { ...this.game.escape } : null,
     };
   }
 
@@ -305,7 +324,7 @@ export class Room {
   }
 
   private hintsFor(seat: Seat | null): HintArrow[] {
-    if (!seat || this.game.status !== 'playing') return [];
+    if (!seat || this.game.status !== 'playing' || this.game.bailout) return [];
     const mover = this.game.seatToMove();
     if (!mover) return [];
     const side = seatSide(mover);

@@ -1,11 +1,14 @@
 import { Chess, type Color, type Square } from 'chess.js';
+import { BAILOUT_MS, escapeSquares, teleportKing } from '../shared/bailout.js';
 import {
   opposite,
   seatForSetup,
   seatsFor,
   seatSide,
+  type BailoutOffer,
   type DrawOffer,
   type GameResult,
+  type KingEscape,
   type LegalMove,
   type MoveInput,
   type MoveRecord,
@@ -37,6 +40,15 @@ const RELAY_2V2: TableSetup = { mode: '2v2', pairSide: null };
 
 function isSquare(value: string): value is Square {
   return /^[a-h][1-8]$/.test(value);
+}
+
+function kingOn(chess: Chess, color: Color): Square | null {
+  for (const row of chess.board()) {
+    for (const piece of row) {
+      if (piece && piece.type === 'k' && piece.color === color) return piece.square;
+    }
+  }
+  return null;
 }
 
 function isPromotion(value: string | undefined): value is Promotion {
@@ -88,11 +100,16 @@ export class RelayGame {
   status: 'lobby' | 'playing' | 'ended' = 'lobby';
   result: GameResult | null = null;
   drawOffer: DrawOffer | null = null;
+  bailout: BailoutOffer | null = null;
+  escape: KingEscape | null = null;
   readonly rematchVotes = new Set<Seat>();
 
   private chess = new Chess();
   private moves: MoveRecord[] = [];
   private basePly = 0;
+  /** Plies that are not real moves, such as a checkmate bailout teleport. */
+  private extraPlies = 0;
+  private readonly bailoutsUsed = new Set<Side>();
   private clock: Clock | null;
   private readonly setup: TableSetup;
 
@@ -131,7 +148,8 @@ export class RelayGame {
       game.clock.asOf = now;
     }
     const terminal = detectTerminal(game.chess);
-    if (terminal) game.finish(terminal);
+    if (terminal?.type === 'checkmate') game.offerBailout(now);
+    if (!game.bailout && terminal) game.finish(terminal);
     return game;
   }
 
@@ -140,7 +158,7 @@ export class RelayGame {
   }
 
   ply(): number {
-    return this.basePly + this.moves.length;
+    return this.basePly + this.moves.length + this.extraPlies;
   }
 
   seatToMove(): Seat | null {
@@ -227,7 +245,7 @@ export class RelayGame {
   }
 
   setMoverConnected(connected: boolean, now: number): void {
-    if (!this.clock || this.status !== 'playing' || this.result) return;
+    if (!this.clock || this.status !== 'playing' || this.result || this.bailout) return;
     if (!connected) {
       if (this.clock.running) {
         this.tick(now);
@@ -242,6 +260,9 @@ export class RelayGame {
   }
 
   move(seat: Seat, input: MoveInput, now: number): void {
+    if (this.bailout) {
+      throw new GameError('Checkmate is on the table. Pay Dayne or accept defeat.');
+    }
     if (this.status !== 'playing' || this.result) {
       throw new GameError('The game is not in progress.');
     }
@@ -299,10 +320,91 @@ export class RelayGame {
     });
 
     const terminal = detectTerminal(this.chess);
-    if (terminal) this.finish(terminal);
+    if (terminal?.type === 'checkmate') this.offerBailout(now);
+    if (!this.bailout && terminal) this.finish(terminal);
+  }
+
+  /**
+   * Fake a $1 escape. The mated king teleports to a safe empty square and
+   * the opponent is to move. One bailout per team. Returns declined when
+   * no safe square exists; the mate then stands.
+   */
+  payBailout(
+    seat: Seat,
+    name: string,
+    now: number,
+    choose?: (squares: Square[]) => Square,
+  ): { declined: boolean } {
+    if (this.status !== 'playing' || !this.bailout) {
+      throw new GameError('Nobody is checkmated.');
+    }
+    if (seatSide(seat) !== this.bailout.side) {
+      throw new GameError('Only the mated team can pay.');
+    }
+    const side = this.bailout.side;
+    const squares = escapeSquares(this.fen());
+    if (squares.length === 0) {
+      this.declineBailout(side);
+      return { declined: true };
+    }
+    const picked = choose ? choose(squares.slice()) : squares[Math.floor(Math.random() * squares.length)]!;
+    if (!squares.includes(picked)) throw new GameError('That square is not a way out.');
+    const next = teleportKing(this.fen(), picked);
+    if (!next) {
+      this.declineBailout(side);
+      return { declined: true };
+    }
+    const color: Color = side === 'white' ? 'w' : 'b';
+    const from = kingOn(this.chess, color);
+    this.chess = new Chess(next);
+    this.extraPlies += 1;
+    this.bailoutsUsed.add(side);
+    this.bailout = null;
+    this.escape = {
+      square: picked,
+      from: from ?? picked,
+      at: now,
+      name,
+      side,
+      ply: this.ply(),
+    };
+    const terminal = detectTerminal(this.chess);
+    if (terminal) {
+      this.finish(terminal);
+      return { declined: false };
+    }
+    if (this.clock) {
+      this.clock.running = true;
+      this.clock.asOf = now;
+    }
+    return { declined: false };
+  }
+
+  acceptMate(seat: Seat): void {
+    if (this.status !== 'playing' || !this.bailout) {
+      throw new GameError('Nobody is checkmated.');
+    }
+    if (seatSide(seat) !== this.bailout.side) {
+      throw new GameError('Only the mated team can answer.');
+    }
+    const side = this.bailout.side;
+    this.bailoutsUsed.add(side);
+    this.finish({ type: 'checkmate', winner: opposite(side) });
+  }
+
+  /** Ends a lapsed bailout offer as checkmate. Safe to call every tick. */
+  expireBailout(now: number): boolean {
+    if (!this.bailout || this.result || now < this.bailout.deadline) return false;
+    const side = this.bailout.side;
+    this.bailoutsUsed.add(side);
+    this.finish({ type: 'checkmate', winner: opposite(side) });
+    return true;
   }
 
   resign(seat: Seat): void {
+    if (this.bailout) {
+      throw new GameError('Checkmate is on the table. Pay Dayne or accept defeat.');
+    }
     if (this.status !== 'playing' || this.result) {
       throw new GameError('The game is not in progress.');
     }
@@ -314,6 +416,9 @@ export class RelayGame {
   }
 
   offerDraw(seat: Seat, now: number): void {
+    if (this.bailout) {
+      throw new GameError('Checkmate is on the table. Pay Dayne or accept defeat.');
+    }
     if (this.status !== 'playing' || this.result) {
       throw new GameError('The game is not in progress.');
     }
@@ -330,6 +435,9 @@ export class RelayGame {
   }
 
   answerDraw(seat: Seat, accept: boolean, now: number): void {
+    if (this.bailout) {
+      throw new GameError('Checkmate is on the table. Pay Dayne or accept defeat.');
+    }
     if (this.status !== 'playing' || this.result || !this.drawOffer) {
       throw new GameError('There is no draw offer.');
     }
@@ -361,11 +469,30 @@ export class RelayGame {
     this.finish({ type: 'timeout', winner });
   }
 
+  private offerBailout(now: number): boolean {
+    if (this.result || this.bailout || !this.chess.isCheckmate()) return false;
+    const side: Side = this.chess.turn() === 'w' ? 'white' : 'black';
+    if (this.bailoutsUsed.has(side)) return false;
+    if (this.clock?.running) {
+      this.tick(now);
+      if (this.result) return false;
+      this.clock.running = false;
+    }
+    this.bailout = { side, deadline: now + BAILOUT_MS };
+    return true;
+  }
+
+  private declineBailout(side: Side): void {
+    this.bailoutsUsed.add(side);
+    this.finish({ type: 'checkmate', winner: opposite(side) });
+  }
+
   private finish(result: GameResult): void {
     if (this.result) return;
     this.result = result;
     this.status = 'ended';
     this.drawOffer = null;
+    this.bailout = null;
     if (this.clock) this.clock.running = false;
   }
 
@@ -373,6 +500,10 @@ export class RelayGame {
     this.chess = new Chess();
     this.moves = [];
     this.basePly = 0;
+    this.extraPlies = 0;
+    this.bailoutsUsed.clear();
+    this.bailout = null;
+    this.escape = null;
     this.result = null;
     this.drawOffer = null;
     this.rematchVotes.clear();
