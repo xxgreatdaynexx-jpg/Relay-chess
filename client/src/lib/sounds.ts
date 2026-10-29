@@ -1,8 +1,13 @@
+const HUH_URL = '/sounds/huh.mp3';
+
 let context: AudioContext | null = null;
+let huhBuffer: AudioBuffer | null = null;
+let huhLoad: Promise<AudioBuffer | null> | null = null;
 
 export function unlockSounds(): void {
   const ctx = audio();
   if (ctx?.state === 'suspended') void ctx.resume();
+  if (ctx) void loadHuh(ctx);
 }
 
 export function playBoom(): void {
@@ -39,8 +44,28 @@ export function playBoom(): void {
   thud.stop(now + 0.36);
 }
 
-/** Rising comic "huh?" — a voiced sweep, not a recording. */
+/** Owner's recorded huh. The synthesized sweep plays only if that file cannot be loaded. */
 export function playHuh(): void {
+  const ctx = audio();
+  if (!ctx) return;
+  void loadHuh(ctx).then((buffer) => {
+    if (!buffer) {
+      playHuhSynth();
+      return;
+    }
+    if (ctx.state === 'suspended') void ctx.resume();
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    try {
+      source.start();
+    } catch {
+      playHuhSynth();
+    }
+  });
+}
+
+function playHuhSynth(): void {
   const ctx = audio();
   if (!ctx) return;
   const now = ctx.currentTime;
@@ -64,6 +89,24 @@ export function playHuh(): void {
   gain.connect(ctx.destination);
   osc.start(now);
   osc.stop(now + 0.64);
+}
+
+function loadHuh(ctx: AudioContext): Promise<AudioBuffer | null> {
+  if (huhBuffer) return Promise.resolve(huhBuffer);
+  if (!huhLoad) {
+    huhLoad = fetch(HUH_URL)
+      .then((response) => {
+        if (!response.ok) throw new Error('huh missing');
+        return response.arrayBuffer();
+      })
+      .then((bytes) => ctx.decodeAudioData(bytes.slice(0)))
+      .then((buffer) => {
+        huhBuffer = buffer;
+        return buffer;
+      })
+      .catch(() => null);
+  }
+  return huhLoad;
 }
 
 export function playNice(): void {
