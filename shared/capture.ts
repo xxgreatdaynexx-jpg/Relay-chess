@@ -23,3 +23,22 @@ export function queenCaptureSquare(beforeFen: string, to: string): string | null
   if (piece === 'q' || piece === 'Q') return to;
   return null;
 }
+
+export type QueenMoveSound = 'death' | 'capture';
+
+/**
+ * Which queen clip this move should play.
+ * A queen being captured is 'death'. A queen capturing anything else is
+ * 'capture'. A queen taking a queen is death only.
+ */
+export function queenMoveSound(beforeFen: string, from: string, to: string): QueenMoveSound | null {
+  if (queenCaptureSquare(beforeFen, to)) return 'death';
+  const mover = pieceAt(beforeFen, from);
+  if (mover !== 'q' && mover !== 'Q') return null;
+  const target = pieceAt(beforeFen, to);
+  if (!target) return null;
+  const moverWhite = mover === 'Q';
+  const targetWhite = target === target.toUpperCase();
+  if (moverWhite === targetWhite) return null;
+  return 'capture';
+}

@@ -8,9 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { request } from '@/lib/net';
 import { previewFen } from '@/lib/preview';
-import { playBoom, playDouble, playFork, playHuh, playNice, playStreak, unlockSounds } from '@/lib/sounds';
-import { queenCaptureSquare } from '../../../shared/capture';
-import { BLUNDER_FLASH_MS, DOUBLE_FLASH_MS, FORK_SOUND_DELAY_MS, FORK_SOUND_WAIT_MS, OPENING_FLASH_MS, POOF_HOLD_MS, STREAK_FLASH_MS, STREAK_SOUND_DELAY_MS, flashIsFresh } from '../../../shared/flash';
+import { playBoom, playDouble, playFork, playHuh, playNice, playQueenCapture, playStreak, unlockSounds } from '@/lib/sounds';
+import { queenMoveSound } from '../../../shared/capture';
+import { BLUNDER_FLASH_MS, DOUBLE_FLASH_MS, FORK_SOUND_DELAY_MS, FORK_SOUND_WAIT_MS, OPENING_FLASH_MS, POOF_HOLD_MS, QUEEN_CAPTURE_SOUND_DELAY_MS, STREAK_FLASH_MS, STREAK_SOUND_DELAY_MS, flashIsFresh } from '../../../shared/flash';
 import { isFork } from '../../../shared/fork';
 import { loadSession, prettyCode } from '@/lib/session';
 import { formatClock } from '@/lib/time';
@@ -64,6 +64,9 @@ export function RoomScreen({
   const forkSoundPlayed = useRef<string | null>(null);
   const streakSoundTimer = useRef<number | null>(null);
   const streakSoundPlayed = useRef<string | null>(null);
+  const queenCaptureTimer = useRef<number | null>(null);
+  const queenCapturePlayed = useRef<string | null>(null);
+  const queenCaptureToken = useRef<string | null>(null);
   const session = loadSession();
   const you = state.yourSeat;
   const bailoutOpen = state.bailout !== null;
@@ -92,14 +95,31 @@ export function RoomScreen({
     previousMoves.current = state.moves.length;
     if (!before || before === state.fen || state.moves.length === 0 || state.moves.length === movesBefore) return;
     const move = state.moves[state.moves.length - 1];
-    const square = queenCaptureSquare(before, move.to);
-    if (square) setBoom({ token: `${state.ply}:${square}`, square });
-    if (isFork(state.fen, move.to)) {
+    const queenSound = queenMoveSound(before, move.from, move.to);
+    if (queenSound === 'death') setBoom({ token: `${state.ply}:${move.to}`, square: move.to });
+    const forkNow = isFork(state.fen, move.to);
+    if (forkNow) {
       const token = `${state.ply}:${move.to}`;
       setFork({ token, square: move.to });
       armForkSound(token, FORK_SOUND_WAIT_MS);
     }
+    if (queenSound === 'capture') {
+      const token = `${state.ply}:${move.from}${move.to}`;
+      queenCaptureToken.current = token;
+      armQueenCapture(token, forkNow ? FORK_SOUND_WAIT_MS + QUEEN_CAPTURE_SOUND_DELAY_MS : FORK_SOUND_WAIT_MS);
+    }
   }, [state.fen, state.moves, state.ply]);
+
+  function armQueenCapture(token: string, delay: number) {
+    if (queenCapturePlayed.current === token) return;
+    if (queenCaptureTimer.current !== null) window.clearTimeout(queenCaptureTimer.current);
+    queenCaptureTimer.current = window.setTimeout(() => {
+      queenCaptureTimer.current = null;
+      if (queenCapturePlayed.current === token) return;
+      queenCapturePlayed.current = token;
+      playQueenCapture();
+    }, delay);
+  }
 
   function armForkSound(token: string, delay: number) {
     if (forkSoundPlayed.current === token) return;
@@ -192,7 +212,18 @@ export function RoomScreen({
       armForkSound(fork.token, FORK_SOUND_DELAY_MS);
     }
     if (streakFlash) armStreakSound(streakFlash.token, streakFlash.kind);
-  }, [markFlash?.token, markFlash?.grade, streakFlash?.token, streakFlash?.kind]);
+    const captureToken = queenCaptureToken.current;
+    const gradedSound = markFlash?.grade === 'blunder' || markFlash?.grade === 'brilliant';
+    if (captureToken?.startsWith(`${state.ply}:`) && (gradedSound || streakFlash)) {
+      const forkToo = Boolean(fork?.token.startsWith(`${state.ply}:`) && gradedSound);
+      const delay = streakFlash
+        ? STREAK_SOUND_DELAY_MS + QUEEN_CAPTURE_SOUND_DELAY_MS
+        : forkToo
+          ? FORK_SOUND_DELAY_MS + QUEEN_CAPTURE_SOUND_DELAY_MS
+          : QUEEN_CAPTURE_SOUND_DELAY_MS;
+      armQueenCapture(captureToken, delay);
+    }
+  }, [markFlash?.token, markFlash?.grade, streakFlash?.token, streakFlash?.kind, fork?.token, state.ply]);
 
   function armStreakSound(token: string, kind: 'double' | 'streak') {
     if (streakSoundPlayed.current === token) return;

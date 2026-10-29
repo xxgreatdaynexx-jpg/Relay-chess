@@ -1,6 +1,7 @@
 const HUH_URL = '/sounds/huh.mp3';
 const FORK_URL = '/sounds/fork.mp3';
 const QUEEN_DEATH_URL = '/sounds/queen-death.mp3';
+const QUEEN_CAPTURE_URL = '/sounds/queen-capture.mp3';
 const DOUBLE_URL = '/sounds/double.mp3';
 const STREAK_URL = '/sounds/streak.mp3';
 
@@ -14,6 +15,7 @@ interface Clip {
 const huhClip: Clip = { buffer: null, pending: null };
 const forkClip: Clip = { buffer: null, pending: null };
 const queenDeathClip: Clip = { buffer: null, pending: null };
+const queenCaptureClip: Clip = { buffer: null, pending: null };
 const doubleClip: Clip = { buffer: null, pending: null };
 const streakClip: Clip = { buffer: null, pending: null };
 
@@ -24,11 +26,12 @@ export function unlockSounds(): void {
   void loadClip(ctx, HUH_URL, huhClip);
   void loadClip(ctx, FORK_URL, forkClip);
   void loadClip(ctx, QUEEN_DEATH_URL, queenDeathClip);
+  void loadClip(ctx, QUEEN_CAPTURE_URL, queenCaptureClip);
   void loadClip(ctx, DOUBLE_URL, doubleClip);
   void loadClip(ctx, STREAK_URL, streakClip);
 }
 
-/** Dayne's queen-capture recording. The synthesized boom plays only if that file cannot be loaded. */
+/** Dayne's recording for when a queen is captured. The synth boom plays only if that file cannot be loaded. */
 export function playBoom(): void {
   const ctx = audio();
   if (!ctx) return;
@@ -84,6 +87,15 @@ export function playFork(): void {
   const ctx = audio();
   if (!ctx) return;
   void loadClip(ctx, FORK_URL, forkClip).then((buffer) => {
+    if (buffer) playBuffer(buffer);
+  });
+}
+
+/** Dayne's recording for when a queen captures another piece. Same output path as the other clips. */
+export function playQueenCapture(): void {
+  const ctx = audio();
+  if (!ctx) return;
+  void loadClip(ctx, QUEEN_CAPTURE_URL, queenCaptureClip).then((buffer) => {
     if (buffer) playBuffer(buffer);
   });
 }
