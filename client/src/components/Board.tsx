@@ -290,10 +290,10 @@ export function Board({
           {chad && (
             <div className="absolute" style={squareBox(chad.square, orientation)}>
               <div
-                className="absolute top-1/2 left-1/2 w-[210%] -translate-x-1/2 -translate-y-1/2"
-                style={{ aspectRatio: '240 / 300' }}
+                className="absolute top-1/2 left-1/2 w-[200%] -translate-x-1/2 -translate-y-1/2"
+                style={{ aspectRatio: '220 / 240' }}
               >
-                <ChadFace />
+                <SmugFace />
               </div>
             </div>
           )}
@@ -373,49 +373,30 @@ function BoomBurst({ square, orientation }: { square: string; orientation: 'whit
   );
 }
 
-function ChadFace() {
+function SmugFace() {
   return (
-    <svg viewBox="0 0 240 300" className="h-full w-full overflow-visible" aria-hidden="true">
-      <filter id="chad-sticker" x="-25%" y="-25%" width="150%" height="150%" filterUnits="objectBoundingBox" primitiveUnits="userSpaceOnUse">
-        <feMorphology in="SourceAlpha" operator="dilate" radius="6" result="dilated" />
-        <feFlood floodColor="#ffffff" result="flood" />
-        <feComposite in="flood" in2="dilated" operator="in" result="halo" />
-        <feMerge>
-          <feMergeNode in="halo" />
-          <feMergeNode in="SourceGraphic" />
-        </feMerge>
-      </filter>
-      <g filter="url(#chad-sticker)" stroke="#111" strokeLinejoin="round" strokeLinecap="round">
-        <path d="M46 228 C30 236 16 252 12 286 H228 C220 248 196 228 168 220 C140 232 90 236 46 228 Z" fill="#121212" strokeWidth="5" />
-        <path d="M92 196 C84 214 78 230 70 244 C108 258 156 250 170 228 C164 210 150 196 136 190 Z" fill="#f6d2c4" strokeWidth="4" />
-        <path d="M70 168 C48 176 34 196 30 220 C26 248 38 274 64 286 C98 302 150 292 168 264 C180 244 176 214 162 196 C146 184 118 176 96 178 C86 170 78 166 70 168 Z" fill="#f2d25c" strokeWidth="5" />
-        <path d="M52 196 C70 208 74 230 58 252" fill="none" stroke="#c9962e" strokeWidth="3" />
-        <path d="M74 188 C94 210 98 240 82 268" fill="none" stroke="#c9962e" strokeWidth="3" />
-        <path d="M100 186 C120 212 122 244 106 274" fill="none" stroke="#c9962e" strokeWidth="3" />
-        <path d="M126 190 C142 214 140 246 126 272" fill="none" stroke="#c9962e" strokeWidth="2.8" />
-        <path d="M148 198 C158 220 154 246 142 266" fill="none" stroke="#c9962e" strokeWidth="2.6" />
-        <path d="M44 230 C64 240 68 258 54 274" fill="none" stroke="#c9962e" strokeWidth="2.6" />
-        <path d="M118 62 C96 68 82 88 78 112 C76 128 62 136 50 146 C38 156 36 170 48 176 C58 180 68 172 74 164 C76 176 90 188 108 192 C140 200 178 190 190 164 C200 144 194 114 176 98 C160 84 140 66 118 62 Z" fill="#f6d2c4" strokeWidth="5" />
-        <path d="M158 92 C178 102 194 122 192 148 C190 166 178 178 164 174 C160 156 154 132 150 116 C148 104 150 94 158 92 Z" fill="#e7c89a" strokeWidth="4" />
-        <path d="M166 114 L174 124 M168 132 L178 140 M160 146 L170 156 M178 122 L186 132 M174 150 L182 158" fill="none" stroke="#b88958" strokeWidth="2.4" />
-        <path d="M176 128 C196 118 216 132 212 156 C208 182 186 196 170 182 C158 172 160 142 176 128 Z" fill="#f6d2c4" strokeWidth="4.5" />
-        <path d="M186 142 C198 148 198 166 182 172 C176 162 178 148 186 142 Z" fill="#f0b7ac" strokeWidth="3" />
-        <path d="M188 146 C194 154 192 164 182 168" fill="none" stroke="#111" strokeWidth="2" />
-        <path d="M100 78 C118 36 160 22 196 40 C220 52 226 78 210 96 C196 82 168 74 146 84 C128 70 112 74 100 78 Z" fill="#f3d35e" strokeWidth="5" />
-        <path d="M116 74 C142 46 176 40 206 58" fill="none" stroke="#c9962e" strokeWidth="3.2" />
-        <path d="M108 82 C138 56 174 52 200 70" fill="none" stroke="#c9962e" strokeWidth="3" />
-        <path d="M128 68 C154 44 186 42 214 56" fill="none" stroke="#c9962e" strokeWidth="2.8" />
-        <path d="M146 64 C170 48 196 50 220 66" fill="none" stroke="#c9962e" strokeWidth="2.6" />
-        <path d="M62 118 Q88 96 122 112" fill="none" stroke="#111" strokeWidth="9" />
-        <path d="M64 118 Q88 98 120 112" fill="none" stroke="#e6c454" strokeWidth="4" />
-        <path d="M68 132 Q90 124 114 134 Q90 140 68 132 Z" fill="#d5e2ea" strokeWidth="3.5" />
-        <ellipse cx="92" cy="133" rx="8" ry="3.2" fill="#7d93a6" stroke="none" />
-        <circle cx="94" cy="133" r="1.8" fill="#16191e" stroke="none" />
-        <path d="M66 130 Q90 120 116 132" fill="none" stroke="#111" strokeWidth="3.6" />
-        <path d="M58 166 Q66 162 74 168 Q66 172 58 166 Z" fill="#eea3aa" strokeWidth="2" />
-        <path d="M70 168 C48 156 22 148 14 160 C6 174 22 188 38 178 C50 170 64 168 78 170 C102 164 124 168 138 158 C150 148 144 172 126 178 C106 186 86 184 70 174 Z" fill="#f2d25c" strokeWidth="4.5" />
-        <path d="M28 164 C18 174 28 186 40 178" fill="none" stroke="#c9962e" strokeWidth="2.6" />
-        <path d="M78 172 C100 166 122 168 136 160" fill="none" stroke="#c9962e" strokeWidth="2.6" />
+    <svg viewBox="0 0 220 240" className="h-full w-full" aria-hidden="true">
+      <rect width="220" height="240" fill="#fff" />
+      <g transform="rotate(-9 112 120)" fill="none" stroke="#111" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M48 112 C42 62 70 30 114 26 C166 20 192 56 186 112 C180 174 154 208 112 214 C68 220 50 170 48 112 Z" fill="#fff" strokeWidth="9" />
+        <path d="M52 78 C74 44 104 50 116 74" strokeWidth="8" />
+        <path d="M122 112 C140 104 158 108 176 118" strokeWidth="8" />
+        <path d="M58 112 C76 104 98 106 110 118 C94 124 72 124 58 112 Z" fill="#fff" strokeWidth="6" />
+        <ellipse cx="84" cy="114" rx="8" ry="6" fill="#1c1c1c" stroke="none" />
+        <path d="M56 108 C78 98 102 102 112 114" fill="#fff" stroke="#111" strokeWidth="7" />
+        <path d="M124 122 C142 114 164 116 176 128 C160 134 138 136 124 122 Z" fill="#fff" strokeWidth="6" />
+        <ellipse cx="150" cy="124" rx="8" ry="6" fill="#1c1c1c" stroke="none" />
+        <path d="M122 118 C144 108 168 112 178 124" fill="#fff" stroke="#111" strokeWidth="7" />
+        <path d="M46 146 C66 136 84 140 94 154" strokeWidth="6" />
+        <path d="M132 158 C152 148 168 152 180 166" strokeWidth="6" />
+        <path d="M104 118 C100 138 94 152 80 162" strokeWidth="7" />
+        <path d="M80 162 C96 172 122 170 134 158" strokeWidth="7" />
+        <path d="M134 158 C126 146 118 132 110 120" strokeWidth="7" />
+        <path d="M72 192 Q104 186 132 176 Q150 170 166 158" strokeWidth="7" />
+        <path d="M76 200 Q108 194 136 186 Q152 180 164 170" strokeWidth="5" />
+        <path d="M84 208 C78 222 74 234 68 246" strokeWidth="8" />
+        <path d="M144 210 C152 224 160 236 170 248" strokeWidth="8" />
+        <path d="M30 242 C68 230 104 236 140 234 C168 232 188 238 208 248" strokeWidth="8" />
       </g>
     </svg>
   );
