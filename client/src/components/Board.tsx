@@ -1,0 +1,342 @@
+import type { PieceSymbol } from 'chess.js';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Piece } from '@/components/Pieces';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
+import type { LegalMove, Promotion } from '../../../shared/types';
+
+interface Drag {
+  from: string;
+  x: number;
+  y: number;
+  ox: number;
+  oy: number;
+  id: number;
+  piece: boolean;
+  lifted: boolean;
+}
+
+const PROMO_ORDER: Promotion[] = ['q', 'r', 'b', 'n'];
+const PROMO_NAME: Record<Promotion, string> = {
+  q: 'Queen',
+  r: 'Rook',
+  b: 'Bishop',
+  n: 'Knight',
+};
+
+export function Board({
+  fen,
+  orientation,
+  legalMoves,
+  lastMove,
+  inCheck,
+  interactive,
+  onMove,
+}: {
+  fen: string;
+  orientation: 'white' | 'black';
+  legalMoves: LegalMove[];
+  lastMove?: { from: string; to: string };
+  inCheck: boolean;
+  interactive: boolean;
+  onMove: (move: { from: string; to: string; promotion?: Promotion }) => void;
+}) {
+  const pieces = useMemo(() => piecesFromFen(fen), [fen]);
+  const king = inCheck ? kingSquare(fen) : null;
+  const boardRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<Drag | null>(null);
+  const selectedRef = useRef<string | null>(null);
+  const [squarePx, setSquarePx] = useState(48);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const [promo, setPromo] = useState<{ from: string; to: string; options: Promotion[] } | null>(null);
+
+  function updateDrag(next: Drag | null | ((current: Drag | null) => Drag | null)) {
+    const value = typeof next === 'function' ? next(dragRef.current) : next;
+    dragRef.current = value;
+    setDrag(value);
+  }
+
+  useEffect(() => {
+    choose(null);
+    updateDrag(null);
+    setPromo(null);
+  }, [fen]);
+
+  useEffect(() => {
+    const el = boardRef.current;
+    if (!el) return;
+    const measure = () => setSquarePx(el.clientWidth / 8);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const origins = useMemo(() => {
+    const set = new Set<string>();
+    for (const move of legalMoves) set.add(move.from);
+    return set;
+  }, [legalMoves]);
+
+  const targets = useMemo(() => {
+    const map = new Map<string, LegalMove[]>();
+    if (!selected) return map;
+    for (const move of legalMoves) {
+      if (move.from !== selected) continue;
+      const list = map.get(move.to) ?? [];
+      list.push(move);
+      map.set(move.to, list);
+    }
+    return map;
+  }, [legalMoves, selected]);
+
+  function commit(from: string, to: string) {
+    const options = legalMoves.filter((move) => move.from === from && move.to === to);
+    if (options.length === 0) return;
+    const promotions = PROMO_ORDER.filter((piece) => options.some((move) => move.promotion === piece));
+    if (promotions.length > 0) {
+      choose(null);
+      setPromo({ from, to, options: promotions });
+      return;
+    }
+    choose(null);
+    onMove({ from, to });
+  }
+
+  function choose(square: string | null) {
+    selectedRef.current = square;
+    setSelected(square);
+  }
+
+  function onTap(square: string) {
+    if (!interactive) return;
+    const current = selectedRef.current;
+    if (current && legalMoves.some((move) => move.from === current && move.to === square)) {
+      choose(null);
+      commit(current, square);
+      return;
+    }
+    choose(origins.has(square) && current !== square ? square : null);
+  }
+
+  function squareFromPoint(x: number, y: number) {
+    const board = boardRef.current;
+    if (!board) return null;
+    const rect = board.getBoundingClientRect();
+    const col = Math.floor(((x - rect.left) / rect.width) * 8);
+    const row = Math.floor(((y - rect.top) / rect.height) * 8);
+    if (col < 0 || col > 7 || row < 0 || row > 7) return null;
+    return visualSquare(row, col, orientation);
+  }
+
+  const sideToMove = fen.split(' ')[1] === 'b' ? 'b' : 'w';
+  const dragPiece = drag?.piece && drag.lifted ? pieces.get(drag.from) : undefined;
+
+  return (
+    <div className="board-frame">
+      <div
+        ref={boardRef}
+        data-testid="board"
+        className="relative grid aspect-square w-full grid-cols-8 grid-rows-8 overflow-hidden rounded-md select-none"
+        style={{ touchAction: 'none' }}
+        role="group"
+        aria-label="Chessboard"
+      >
+        {Array.from({ length: 64 }, (_, index) => {
+          const row = Math.floor(index / 8);
+          const col = index % 8;
+          const square = visualSquare(row, col, orientation);
+          const file = square.charCodeAt(0) - 97;
+          const rank = Number(square[1]) - 1;
+          const dark = (file + rank) % 2 === 0;
+          const piece = pieces.get(square);
+          const hide = dragPiece && drag?.from === square;
+          const isLast = lastMove?.from === square || lastMove?.to === square;
+          const isTarget = targets.has(square);
+          const capture = isTarget && Boolean(piece);
+          return (
+            <button
+              key={square}
+              type="button"
+              data-square={square}
+              aria-label={labelFor(square, piece)}
+              className={cn(
+                'relative block h-full w-full p-0',
+                dark ? 'bg-square-dark' : 'bg-square-light',
+                interactive && (origins.has(square) || selected) ? 'cursor-pointer' : 'cursor-default',
+              )}
+              onPointerDown={(event) => {
+                if (!interactive || event.button !== 0) return;
+                event.currentTarget.setPointerCapture(event.pointerId);
+                updateDrag({
+                  from: square,
+                  x: event.clientX,
+                  y: event.clientY,
+                  ox: event.clientX,
+                  oy: event.clientY,
+                  id: event.pointerId,
+                  piece: origins.has(square),
+                  lifted: false,
+                });
+              }}
+              onPointerMove={(event) => {
+                updateDrag((current) => {
+                  if (!current || current.id !== event.pointerId) return current;
+                  const lifted = current.lifted || Math.hypot(event.clientX - current.ox, event.clientY - current.oy) > 8;
+                  return { ...current, x: event.clientX, y: event.clientY, lifted };
+                });
+              }}
+              onPointerUp={(event) => {
+                const current = dragRef.current;
+                if (!current || current.id !== event.pointerId) return;
+                const moved = Math.hypot(event.clientX - current.ox, event.clientY - current.oy);
+                const from = current.from;
+                const pieceDrag = current.piece && moved >= 8;
+                updateDrag(null);
+                if (pieceDrag) {
+                  const target = squareFromPoint(event.clientX, event.clientY);
+                  if (target) commit(from, target);
+                  return;
+                }
+                onTap(from);
+              }}
+              onPointerCancel={() => updateDrag(null)}
+            >
+              {isLast && <span className="pointer-events-none absolute inset-0 bg-[#e0b56a]/45" />}
+              {selected === square && <span className="pointer-events-none absolute inset-0 ring-2 ring-inset ring-cream" />}
+              {king === square && (
+                <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,rgba(196,70,58,0.85)_0%,rgba(196,70,58,0.25)_62%,transparent_70%)]" />
+              )}
+              {isTarget && !capture && (
+                <span
+                  className={cn(
+                    'pointer-events-none absolute top-1/2 left-1/2 h-[22%] w-[22%] -translate-x-1/2 -translate-y-1/2 rounded-full',
+                    dark ? 'bg-[#f0d9b5]/90' : 'bg-[#4a301c]/40',
+                  )}
+                />
+              )}
+              {capture && (
+                <span
+                  className={cn(
+                    'pointer-events-none absolute inset-[8%] rounded-full border-[3px]',
+                    dark ? 'border-[#f0d9b5]/85' : 'border-[#4a301c]/45',
+                  )}
+                />
+              )}
+              {piece && !hide && (
+                <Piece
+                  type={piece.type}
+                  color={piece.color}
+                  className="pointer-events-none absolute inset-[7%] h-[86%] w-[86%] drop-shadow-[0_1px_0_rgba(0,0,0,0.35)]"
+                />
+              )}
+              {col === 0 && (
+                <span className={cn('pointer-events-none absolute top-0.5 left-1 text-[10px] leading-none font-semibold', dark ? 'text-[#f0d9b5]/80' : 'text-[#6b452c]/80')}>
+                  {square[1]}
+                </span>
+              )}
+              {row === 7 && (
+                <span className={cn('pointer-events-none absolute right-1 bottom-0.5 text-[10px] leading-none font-semibold', dark ? 'text-[#f0d9b5]/80' : 'text-[#6b452c]/80')}>
+                  {square[0]}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {dragPiece && drag && (
+        <div
+          className="pointer-events-none fixed z-40"
+          style={{
+            width: squarePx,
+            height: squarePx,
+            left: drag.x - squarePx / 2,
+            top: drag.y - squarePx * 0.72,
+          }}
+        >
+          <Piece type={dragPiece.type} color={dragPiece.color} className="h-full w-full drop-shadow-lg" />
+        </div>
+      )}
+      <Dialog open={Boolean(promo)} onOpenChange={(open) => !open && setPromo(null)}>
+        <DialogContent>
+          <DialogTitle>Promote pawn</DialogTitle>
+          <DialogDescription>Choose the piece. Only legal promotions are shown.</DialogDescription>
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {promo?.options.map((piece) => (
+              <Button
+                key={piece}
+                variant="secondary"
+                className="h-24 flex-col bg-square-light text-ink hover:bg-[#f7e7cb]"
+                onClick={() => {
+                  const choice = promo;
+                  setPromo(null);
+                  if (choice) onMove({ from: choice.from, to: choice.to, promotion: piece });
+                }}
+              >
+                <Piece type={piece} color={sideToMove} className="h-12 w-12" />
+                {PROMO_NAME[piece]}
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function visualSquare(row: number, col: number, orientation: 'white' | 'black') {
+  const file = orientation === 'white' ? col : 7 - col;
+  const rank = orientation === 'white' ? 7 - row : row;
+  return `${'abcdefgh'[file]}${rank + 1}`;
+}
+
+function piecesFromFen(fen: string) {
+  const map = new Map<string, { type: PieceSymbol; color: 'w' | 'b' }>();
+  const rows = fen.split(' ')[0]?.split('/') ?? [];
+  for (let row = 0; row < 8; row += 1) {
+    let file = 0;
+    for (const char of rows[row] ?? '') {
+      if (char >= '1' && char <= '8') {
+        file += Number(char);
+        continue;
+      }
+      const color = char === char.toUpperCase() ? 'w' : 'b';
+      map.set(`${'abcdefgh'[file]}${8 - row}`, { type: char.toLowerCase() as PieceSymbol, color });
+      file += 1;
+    }
+  }
+  return map;
+}
+
+function kingSquare(fen: string) {
+  const color = fen.split(' ')[1] === 'b' ? 'b' : 'w';
+  const target = color === 'w' ? 'K' : 'k';
+  const rows = fen.split(' ')[0]?.split('/') ?? [];
+  for (let row = 0; row < rows.length; row += 1) {
+    let file = 0;
+    for (const char of rows[row]) {
+      if (char >= '1' && char <= '8') {
+        file += Number(char);
+        continue;
+      }
+      if (char === target) return `${'abcdefgh'[file]}${8 - row}`;
+      file += 1;
+    }
+  }
+  return null;
+}
+
+function labelFor(square: string, piece?: { type: PieceSymbol; color: 'w' | 'b' }) {
+  if (!piece) return square;
+  const names: Record<PieceSymbol, string> = {
+    p: 'pawn',
+    n: 'knight',
+    b: 'bishop',
+    r: 'rook',
+    q: 'queen',
+    k: 'king',
+  };
+  return `${square}, ${piece.color === 'w' ? 'white' : 'black'} ${names[piece.type]}`;
+}

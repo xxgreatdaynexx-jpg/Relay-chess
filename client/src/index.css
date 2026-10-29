@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Outfit Variable", "Avenir Next", "Segoe UI", sans-serif;
+  --font-serif: "Fraunces Variable", "Iowan Old Style", Palatino, Georgia, serif;
+  --color-felt: #10211a;
+  --color-felt-2: #173328;
+  --color-panel: #1b3128;
+  --color-cream: #f4efe4;
+  --color-cream-dim: #cfc6b6;
+  --color-ink: #1a1612;
+  --color-brass: #e0b56a;
+  --color-brass-deep: #a68456;
+  --color-danger: #e07a6a;
+  --color-square-light: #f0d9b5;
+  --color-square-dark: #b58863;
+}
+
+html {
+  touch-action: manipulation;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(1100px 520px at 50% -12%, rgba(224, 181, 106, 0.14), transparent 55%),
+    radial-gradient(700px 420px at 100% 100%, rgba(255, 255, 255, 0.04), transparent 42%),
+    #10211a;
+  color: var(--color-cream);
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background: #e0b56a;
+  color: #1a1612;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.board-frame {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.22), transparent 34%),
+    linear-gradient(180deg, #9a6b49, #5c3d28 58%, #3c2618);
+  border-radius: 16px;
+  padding: 10px;
+  box-shadow:
+    0 22px 50px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.play {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "hdr"
+    "teams"
+    "board"
+    "actions"
+    "moves";
+  gap: 12px;
+  width: min(1120px, 100%);
+  margin: 0 auto;
+  padding: 12px 12px max(16px, env(safe-area-inset-bottom));
+}
+
+@media (min-width: 1024px) {
+  .play {
+    grid-template-columns: minmax(0, 1fr) 332px;
+    grid-template-areas:
+      "hdr hdr"
+      "board teams"
+      "board actions"
+      "board moves";
+    align-items: start;
+    gap: 18px 22px;
+    padding: 22px 24px 32px;
+  }
+}
+
+.area-hdr { grid-area: hdr; }
+.area-teams { grid-area: teams; }
+.area-board { grid-area: board; }
+.area-actions { grid-area: actions; }
+.area-moves { grid-area: moves; }
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
