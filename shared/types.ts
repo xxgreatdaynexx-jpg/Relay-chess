@@ -103,6 +103,10 @@ export interface StreakCall {
   kind: StreakKind;
 }
 
+export interface MateInOneCall {
+  ply: number;
+}
+
 export interface LeaderboardRow {
   name: string;
   wins: number;
@@ -137,6 +141,7 @@ export interface PublicState {
   bailout: BailoutOffer | null;
   escape: KingEscape | null;
   streak: StreakCall | null;
+  mateInOne: MateInOneCall | null;
 }
 
 export interface Ack {

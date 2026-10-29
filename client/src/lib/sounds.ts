@@ -4,6 +4,7 @@ const QUEEN_DEATH_URL = '/sounds/queen-death.mp3';
 const QUEEN_CAPTURE_URL = '/sounds/queen-capture.mp3';
 const DOUBLE_URL = '/sounds/double.mp3';
 const STREAK_URL = '/sounds/streak.mp3';
+const MATE_IN_ONE_URL = '/sounds/mate-in-one.mp3';
 
 let context: AudioContext | null = null;
 
@@ -18,6 +19,7 @@ const queenDeathClip: Clip = { buffer: null, pending: null };
 const queenCaptureClip: Clip = { buffer: null, pending: null };
 const doubleClip: Clip = { buffer: null, pending: null };
 const streakClip: Clip = { buffer: null, pending: null };
+const mateInOneClip: Clip = { buffer: null, pending: null };
 
 export function unlockSounds(): void {
   const ctx = audio();
@@ -29,6 +31,7 @@ export function unlockSounds(): void {
   void loadClip(ctx, QUEEN_CAPTURE_URL, queenCaptureClip);
   void loadClip(ctx, DOUBLE_URL, doubleClip);
   void loadClip(ctx, STREAK_URL, streakClip);
+  void loadClip(ctx, MATE_IN_ONE_URL, mateInOneClip);
 }
 
 /** Dayne's recording for when a queen is captured. The synth boom plays only if that file cannot be loaded. */
@@ -105,6 +108,15 @@ export function playDouble(): void {
   const ctx = audio();
   if (!ctx) return;
   void loadClip(ctx, DOUBLE_URL, doubleClip).then((buffer) => {
+    if (buffer) playBuffer(buffer);
+  });
+}
+
+/** Dayne's mate-in-one recording. Same output path as the other clips, with no synth stand-in. */
+export function playMateInOne(): void {
+  const ctx = audio();
+  if (!ctx) return;
+  void loadClip(ctx, MATE_IN_ONE_URL, mateInOneClip).then((buffer) => {
     if (buffer) playBuffer(buffer);
   });
 }

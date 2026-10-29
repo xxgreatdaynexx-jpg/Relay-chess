@@ -8,9 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { request } from '@/lib/net';
 import { previewFen } from '@/lib/preview';
-import { playBoom, playDouble, playFork, playHuh, playNice, playQueenCapture, playStreak, unlockSounds } from '@/lib/sounds';
+import { playBoom, playDouble, playFork, playHuh, playMateInOne, playNice, playQueenCapture, playStreak, unlockSounds } from '@/lib/sounds';
 import { queenMoveSound } from '../../../shared/capture';
-import { BLUNDER_FLASH_MS, DOUBLE_FLASH_MS, FORK_SOUND_DELAY_MS, FORK_SOUND_WAIT_MS, OPENING_FLASH_MS, POOF_HOLD_MS, QUEEN_CAPTURE_SOUND_DELAY_MS, STREAK_FLASH_MS, STREAK_SOUND_DELAY_MS, flashIsFresh } from '../../../shared/flash';
+import { BLUNDER_FLASH_MS, DOUBLE_FLASH_MS, FORK_SOUND_DELAY_MS, FORK_SOUND_WAIT_MS, MATE_IN_ONE_SOUND_DELAY_MS, OPENING_FLASH_MS, POOF_HOLD_MS, QUEEN_CAPTURE_SOUND_DELAY_MS, STREAK_FLASH_MS, STREAK_SOUND_DELAY_MS, flashIsFresh } from '../../../shared/flash';
 import { isFork } from '../../../shared/fork';
 import { loadSession, prettyCode } from '@/lib/session';
 import { formatClock } from '@/lib/time';
@@ -67,6 +67,8 @@ export function RoomScreen({
   const queenCaptureTimer = useRef<number | null>(null);
   const queenCapturePlayed = useRef<string | null>(null);
   const queenCaptureToken = useRef<string | null>(null);
+  const mateSoundTimer = useRef<number | null>(null);
+  const mateSoundPlayed = useRef<string | null>(null);
   const session = loadSession();
   const you = state.yourSeat;
   const bailoutOpen = state.bailout !== null;
@@ -236,6 +238,64 @@ export function RoomScreen({
       else playStreak();
     }, STREAK_SOUND_DELAY_MS);
   }
+
+  function armMateInOne(token: string, delay: number) {
+    if (mateSoundPlayed.current === token) return;
+    if (mateSoundTimer.current !== null) window.clearTimeout(mateSoundTimer.current);
+    mateSoundTimer.current = window.setTimeout(() => {
+      mateSoundTimer.current = null;
+      if (mateSoundPlayed.current === token) return;
+      mateSoundPlayed.current = token;
+      playMateInOne();
+    }, delay);
+  }
+
+  function mateInOneDelay(): number {
+    const gap = MATE_IN_ONE_SOUND_DELAY_MS;
+    const graded = markFlash?.grade === 'blunder' || markFlash?.grade === 'brilliant';
+    const forkNow = Boolean(fork?.token.startsWith(`${state.ply}:`));
+    const captureNow = Boolean(queenCaptureToken.current?.startsWith(`${state.ply}:`));
+    const boomNow = Boolean(boom?.token.startsWith(`${state.ply}:`));
+    let last = 0;
+    if (boomNow) last = Math.max(last, gap);
+    if (graded) last = Math.max(last, gap);
+    if (forkNow) last = Math.max(last, (graded ? FORK_SOUND_DELAY_MS : FORK_SOUND_WAIT_MS) + gap);
+    if (streakFlash) last = Math.max(last, STREAK_SOUND_DELAY_MS + gap);
+    if (captureNow) {
+      let captureAt = FORK_SOUND_WAIT_MS;
+      if (streakFlash) captureAt = STREAK_SOUND_DELAY_MS + QUEEN_CAPTURE_SOUND_DELAY_MS;
+      else if (graded && forkNow) captureAt = FORK_SOUND_DELAY_MS + QUEEN_CAPTURE_SOUND_DELAY_MS;
+      else if (graded) captureAt = QUEEN_CAPTURE_SOUND_DELAY_MS;
+      else if (forkNow) captureAt = FORK_SOUND_WAIT_MS + QUEEN_CAPTURE_SOUND_DELAY_MS;
+      last = Math.max(last, captureAt + gap);
+    }
+    if (!markFlash && !streakFlash) last = Math.max(last, FORK_SOUND_WAIT_MS);
+    return last;
+  }
+
+  useEffect(() => {
+    const live =
+      state.status === 'playing' && !state.result && !state.bailout && state.mateInOne?.ply === state.ply;
+    if (!live) {
+      if (mateSoundTimer.current !== null) {
+        window.clearTimeout(mateSoundTimer.current);
+        mateSoundTimer.current = null;
+      }
+      return;
+    }
+    armMateInOne(String(state.ply), mateInOneDelay());
+  }, [
+    state.status,
+    state.result,
+    state.bailout,
+    state.mateInOne?.ply,
+    state.ply,
+    boom?.token,
+    fork?.token,
+    markFlash?.token,
+    markFlash?.grade,
+    streakFlash?.token,
+  ]);
 
   useEffect(() => {
     if (boom) playBoom();

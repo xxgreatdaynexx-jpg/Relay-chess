@@ -7,6 +7,8 @@ export const FORK_SOUND_DELAY_MS = 240;
 export const FORK_SOUND_WAIT_MS = 520;
 /** Gap so a queen's own capture clip starts after another effect on the same move. */
 export const QUEEN_CAPTURE_SOUND_DELAY_MS = 240;
+/** Gap so the mate-in-one clip starts after the other effects on that move. */
+export const MATE_IN_ONE_SOUND_DELAY_MS = 240;
 export const POOF_FLASH_MS = 1200;
 export const DOUBLE_FLASH_MS = 1500;
 export const STREAK_FLASH_MS = 2000;

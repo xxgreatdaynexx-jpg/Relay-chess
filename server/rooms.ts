@@ -5,6 +5,7 @@ import { beginBlunderCheck } from './blunders.js';
 import { peekHint, requestHint } from './hints.js';
 import { getLeaderboard, normalizeName } from './leaderboard.js';
 import { moveUci, openingName } from './openings.js';
+import { hasMateInOne } from '../shared/mate.js';
 import { recordStreak } from '../shared/streak.js';
 import {
   clockPreset,
@@ -22,6 +23,7 @@ import {
   type MoveMark,
   type OpeningCall,
   type PublicState,
+  type MateInOneCall,
   type StreakCall,
   type Seat,
   type SeatView,
@@ -66,6 +68,7 @@ export class Room {
   private openingNameSeen: string | null = null;
   private moveMark: MoveMark | null = null;
   private streak: StreakCall | null = null;
+  private mateInOne: MateInOneCall | null = null;
   private readonly streaks = new Map<Seat, number>();
   private blunderSeq = 0;
 
@@ -152,6 +155,7 @@ export class Room {
     const played = this.game.history().at(-1);
     this.noteOpening(now);
     if (played) this.noteBlunder(beforeFen, legal, played);
+    this.noteMateInOne();
     this.syncPresence(now);
     this.touch();
   }
@@ -189,6 +193,7 @@ export class Room {
     const member = this.must(token);
     if (!member.seat) throw new GameError('Take a seat before paying Dayne.');
     const paid = this.game.payBailout(member.seat, member.name, now);
+    this.noteMateInOne();
     this.syncPresence(now);
     this.touch();
     return paid.declined;
@@ -248,6 +253,10 @@ export class Room {
       bailout: this.game.bailout ? { ...this.game.bailout } : null,
       escape: this.game.escape ? { ...this.game.escape } : null,
       streak: this.streak ? { ...this.streak } : null,
+      mateInOne:
+        this.game.status === 'playing' && !this.game.result && this.mateInOne?.ply === this.game.ply()
+          ? { ply: this.mateInOne.ply }
+          : null,
     };
   }
 
@@ -330,6 +339,15 @@ export class Room {
     });
   }
 
+  private noteMateInOne(): void {
+    if (this.game.status !== 'playing' || this.game.result) {
+      this.mateInOne = null;
+      return;
+    }
+    const ply = this.game.ply();
+    this.mateInOne = hasMateInOne(this.game.fen()) ? { ply } : null;
+  }
+
   private clearAnnouncementsIfReset(): void {
     if (this.game.ply() !== 0) return;
     if (this.openingFlash || this.moveMark || this.openingNameSeen || this.streak || this.streaks.size > 0) {
@@ -340,6 +358,7 @@ export class Room {
     this.moveMark = null;
     this.streak = null;
     this.streaks.clear();
+    this.mateInOne = null;
   }
 
   private hintsFor(seat: Seat | null): HintArrow[] {
