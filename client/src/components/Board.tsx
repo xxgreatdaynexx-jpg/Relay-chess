@@ -1,9 +1,10 @@
 import type { PieceSymbol } from 'chess.js';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Piece } from '@/components/Pieces';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { BLUNDER_FLASH_MS, OPENING_FLASH_MS } from '../../../shared/flash';
 import type { HintArrow, LegalMove, Promotion } from '../../../shared/types';
 
 interface Drag {
@@ -33,6 +34,8 @@ export function Board({
   inCheck,
   interactive,
   hints = [],
+  opening = null,
+  blunder = null,
   onMove,
 }: {
   fen: string;
@@ -42,6 +45,8 @@ export function Board({
   inCheck: boolean;
   interactive: boolean;
   hints?: HintArrow[];
+  opening?: { token: string; label: string } | null;
+  blunder?: { token: string; square: string } | null;
   onMove: (move: { from: string; to: string; promotion?: Promotion }) => void;
 }) {
   const pieces = useMemo(() => piecesFromFen(fen), [fen]);
@@ -250,6 +255,27 @@ export function Board({
         {hints.map((hint) => (
           <HintArrowMark key={`${hint.from}${hint.to}`} hint={hint} orientation={orientation} />
         ))}
+        <TimedOverlay
+          token={opening?.token ?? null}
+          ms={OPENING_FLASH_MS}
+          className="opening-flash pointer-events-none absolute inset-x-3 top-[34%] z-30 text-center"
+          testId="opening-banner"
+        >
+          <p
+            role="status"
+            className="inline-block max-w-full rounded-2xl bg-[#1a1612]/90 px-4 py-2 font-serif text-xl leading-snug text-cream shadow-[0_12px_40px_rgba(0,0,0,0.45)] sm:text-3xl"
+          >
+            {opening?.label}
+          </p>
+        </TimedOverlay>
+        <TimedOverlay
+          token={blunder?.token ?? null}
+          ms={BLUNDER_FLASH_MS}
+          className="blunder-flash pointer-events-none absolute inset-0 z-20"
+          testId="blunder-mark"
+        >
+          {blunder && <BlunderMark square={blunder.square} orientation={orientation} />}
+        </TimedOverlay>
       </div>
       {dragPiece && drag && (
         <div
@@ -288,6 +314,58 @@ export function Board({
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function TimedOverlay({
+  token,
+  ms,
+  className,
+  testId,
+  children,
+}: {
+  token: string | null;
+  ms: number;
+  className: string;
+  testId: string;
+  children: ReactNode;
+}) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (!token) {
+      setVisible(false);
+      return;
+    }
+    setVisible(true);
+    const timer = window.setTimeout(() => setVisible(false), ms);
+    return () => window.clearTimeout(timer);
+  }, [token, ms]);
+  if (!visible || !token) return null;
+  return (
+    <div className={className} data-testid={testId}>
+      {children}
+    </div>
+  );
+}
+
+function BlunderMark({ square, orientation }: { square: string; orientation: 'white' | 'black' }) {
+  const point = squarePoint(square, orientation);
+  return (
+    <svg className="h-full w-full" viewBox="0 0 8 8" aria-hidden="true">
+      <circle cx={point.x} cy={point.y} r="0.46" fill="rgba(122, 28, 22, 0.92)" />
+      <text
+        x={point.x}
+        y={point.y}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize="0.72"
+        fontWeight="700"
+        fill="#fff8ee"
+        fontFamily="Fraunces Variable, Palatino, serif"
+      >
+        ?
+      </text>
+    </svg>
   );
 }
 

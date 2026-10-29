@@ -1,4 +1,5 @@
 import type { Server, Socket } from 'socket.io';
+import { onBlunderReady } from './blunders.js';
 import { GameError } from './errors.js';
 import { onHintReady } from './hints.js';
 import {
@@ -45,6 +46,9 @@ export function registerSockets(io: Server): void {
     for (const room of listRooms()) {
       if (room.game.status === 'playing' && room.game.fen() === fen) broadcast(io, room.code);
     }
+  });
+  onBlunderReady((code) => {
+    if (getRoom(code)) broadcast(io, code);
   });
   startMaintenance(io);
 

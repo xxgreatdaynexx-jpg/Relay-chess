@@ -64,6 +64,18 @@ export interface HintArrow {
   to: string;
 }
 
+export interface OpeningCall {
+  name: string;
+  ply: number;
+  at: number;
+}
+
+export interface BlunderCall {
+  square: string;
+  ply: number;
+  at: number;
+}
+
 export interface LeaderboardRow {
   name: string;
   wins: number;
@@ -90,6 +102,9 @@ export interface PublicState {
   clock: ClockView | null;
   yourSeat: Seat | null;
   hints: HintArrow[];
+  serverNow: number;
+  opening: OpeningCall | null;
+  blunder: BlunderCall | null;
 }
 
 export interface Ack {

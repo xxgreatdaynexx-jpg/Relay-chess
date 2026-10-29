@@ -97,6 +97,48 @@ input {
   font-variant-numeric: tabular-nums;
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .opening-flash {
+    animation: opening-fade 2.6s ease forwards;
+  }
+
+  .blunder-flash {
+    animation: blunder-fade 2s ease forwards;
+  }
+}
+
+@keyframes opening-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  14% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  72% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes blunder-fade {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

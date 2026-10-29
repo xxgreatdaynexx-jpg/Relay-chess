@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { request } from '@/lib/net';
 import { previewFen } from '@/lib/preview';
+import { BLUNDER_FLASH_MS, OPENING_FLASH_MS, flashIsFresh } from '../../../shared/flash';
 import { loadSession, prettyCode } from '@/lib/session';
 import { formatClock } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -106,6 +107,20 @@ export function RoomScreen({
     }
   }
 
+  const openingFlash =
+    state.opening && flashIsFresh(state.opening, state.ply, state.serverNow, OPENING_FLASH_MS)
+      ? {
+          token: `${state.opening.at}:${state.opening.ply}:${state.opening.name}`,
+          label: state.opening.name,
+        }
+      : null;
+  const blunderFlash =
+    state.blunder && flashIsFresh(state.blunder, state.ply, state.serverNow, BLUNDER_FLASH_MS)
+      ? {
+          token: `${state.blunder.at}:${state.blunder.ply}:${state.blunder.square}`,
+          square: state.blunder.square,
+        }
+      : null;
   const displayFen = pending?.fen ?? state.fen;
   const lastMove = pending
     ? { from: pending.from, to: pending.to }
@@ -197,6 +212,8 @@ export function RoomScreen({
               inCheck={inCheck}
               interactive={interactive}
               hints={pending ? [] : state.hints}
+              opening={openingFlash}
+              blunder={blunderFlash}
               onMove={sendMove}
             />
           </div>

@@ -1,8 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import { RelayGame, type Timing } from './engine.js';
 import { GameError } from './errors.js';
+import { beginBlunderCheck, type BlunderCall } from './blunders.js';
 import { peekHint, requestHint } from './hints.js';
 import { getLeaderboard, normalizeName } from './leaderboard.js';
+import { moveUci, openingName } from './openings.js';
 import {
   clockPreset,
   describeResult,
@@ -11,7 +13,10 @@ import {
   type ClockPreset,
   type GameResult,
   type HintArrow,
+  type LegalMove,
   type MoveInput,
+  type MoveRecord,
+  type OpeningCall,
   type PublicState,
   type Seat,
   type SeatView,
@@ -50,6 +55,10 @@ export class Room {
   private members = new Map<string, Member>();
   private sockets = new Map<string, string>();
   private scoredResult: GameResult | null = null;
+  private openingFlash: OpeningCall | null = null;
+  private openingNameSeen: string | null = null;
+  private blunderFlash: BlunderCall | null = null;
+  private blunderSeq = 0;
 
   constructor(code: string, preset: ClockPreset) {
     this.code = code;
@@ -126,7 +135,12 @@ export class Room {
   move(token: string, input: MoveInput, now = Date.now()): void {
     const member = this.must(token);
     if (!member.seat) throw new GameError('Take a seat before moving.');
+    const beforeFen = this.game.fen();
+    const legal = this.game.legalMoves();
     this.game.move(member.seat, input, now);
+    const played = this.game.history().at(-1);
+    this.noteOpening(now);
+    if (played) this.noteBlunder(beforeFen, legal, played);
     this.syncPresence(now);
     this.touch();
   }
@@ -176,6 +190,7 @@ export class Room {
 
   view(socketId: string, now: number): PublicState {
     this.game.tick(now);
+    this.clearAnnouncementsIfReset();
     this.scoreIfNeeded();
     const you = this.memberBySocket(socketId);
     const raw = this.game.result;
@@ -197,6 +212,9 @@ export class Room {
       clock: this.game.clockView(now),
       yourSeat: you?.seat ?? null,
       hints: this.hintsFor(you?.seat ?? null),
+      serverNow: now,
+      opening: this.openingFlash,
+      blunder: this.blunderFlash,
     };
   }
 
@@ -244,6 +262,39 @@ export class Room {
 
   private touch(): void {
     this.lastActivity = Date.now();
+  }
+
+  private noteOpening(now: number): void {
+    const name = openingName(this.game.history().map((move) => moveUci(move)));
+    if (!name || name === this.openingNameSeen) return;
+    this.openingNameSeen = name;
+    this.openingFlash = { name, ply: this.game.ply(), at: now };
+  }
+
+  private noteBlunder(fen: string, legal: LegalMove[], played: MoveRecord): void {
+    const token = ++this.blunderSeq;
+    const ply = this.game.ply();
+    beginBlunderCheck({
+      code: this.code,
+      fen,
+      ucis: legal.map((move) => moveUci(move)),
+      playedUci: moveUci(played),
+      ply,
+      destination: played.to,
+      accept: (mark) => {
+        if (token !== this.blunderSeq || this.game.ply() !== ply) return false;
+        this.blunderFlash = mark;
+        return mark !== null;
+      },
+    });
+  }
+
+  private clearAnnouncementsIfReset(): void {
+    if (this.game.ply() !== 0) return;
+    if (this.openingFlash || this.blunderFlash || this.openingNameSeen) this.blunderSeq += 1;
+    this.openingFlash = null;
+    this.openingNameSeen = null;
+    this.blunderFlash = null;
   }
 
   private hintsFor(seat: Seat | null): HintArrow[] {

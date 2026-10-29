@@ -176,3 +176,44 @@ async function stockfishMove(fen: string): Promise<HintArrow | null> {
   );
   return run;
 }
+
+/**
+ * Score every root move with one short search. MultiPV is restored so the
+ * chessgawd best-move search stays a single line.
+ */
+export async function stockfishSearchLines(
+  fen: string,
+  multiPv: number,
+  bounds: { depth: number; movetime: number },
+): Promise<string[]> {
+  const width = Math.max(1, Math.min(256, Math.floor(multiPv)));
+  const run = engineChain.then(async () => {
+    const engine = await getEngine();
+    const lines: string[] = [];
+    const collect = (line: string) => {
+      lines.push(line);
+    };
+    listeners.add(collect);
+    try {
+      send(engine, `setoption name MultiPV value ${width}`);
+      send(engine, `position fen ${fen}`);
+      const pending = waitForLine((line) => line.startsWith('bestmove '), bounds.movetime + 700);
+      send(engine, `go depth ${bounds.depth} movetime ${bounds.movetime}`);
+      try {
+        await pending;
+      } catch {
+        send(engine, 'stop');
+        await waitForLine((line) => line.startsWith('bestmove '), 400).catch(() => undefined);
+      }
+      return lines;
+    } finally {
+      listeners.delete(collect);
+      send(engine, 'setoption name MultiPV value 1');
+    }
+  });
+  engineChain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
