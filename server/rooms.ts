@@ -18,6 +18,7 @@ import {
   type LegalMove,
   type MoveInput,
   type MoveRecord,
+  type ChadCall,
   type OpeningCall,
   type PublicState,
   type Seat,
@@ -62,6 +63,7 @@ export class Room {
   private openingFlash: OpeningCall | null = null;
   private openingNameSeen: string | null = null;
   private blunderFlash: BlunderCall | null = null;
+  private chadFlash: ChadCall | null = null;
   private blunderSeq = 0;
 
   constructor(code: string, preset: ClockPreset, setup: TableSetup = { mode: '2v2', pairSide: null }) {
@@ -223,6 +225,7 @@ export class Room {
       serverNow: now,
       opening: this.openingFlash,
       blunder: this.blunderFlash,
+      chad: this.chadFlash,
     };
   }
 
@@ -287,20 +290,22 @@ export class Room {
       playedUci: moveUci(played),
       ply,
       destination: played.to,
-      accept: (mark) => {
+      accept: (review) => {
         if (token !== this.blunderSeq || this.game.ply() !== ply) return false;
-        this.blunderFlash = mark;
-        return mark !== null;
+        this.blunderFlash = review.blunder;
+        this.chadFlash = review.praise;
+        return review.blunder !== null || review.praise !== null;
       },
     });
   }
 
   private clearAnnouncementsIfReset(): void {
     if (this.game.ply() !== 0) return;
-    if (this.openingFlash || this.blunderFlash || this.openingNameSeen) this.blunderSeq += 1;
+    if (this.openingFlash || this.blunderFlash || this.chadFlash || this.openingNameSeen) this.blunderSeq += 1;
     this.openingFlash = null;
     this.openingNameSeen = null;
     this.blunderFlash = null;
+    this.chadFlash = null;
   }
 
   private hintsFor(seat: Seat | null): HintArrow[] {

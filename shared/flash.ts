@@ -1,5 +1,7 @@
 export const OPENING_FLASH_MS = 2600;
 export const BLUNDER_FLASH_MS = 2000;
+export const CHAD_FLASH_MS = 2000;
+export const BOOM_FLASH_MS = 1800;
 
 export interface TimedMark {
   ply: number;

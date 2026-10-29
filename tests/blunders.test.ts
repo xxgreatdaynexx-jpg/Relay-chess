@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   beginBlunderCheck,
   isBottomTwentieth,
+  isTopRanked,
   onBlunderReady,
   parseSearchScores,
   setMoveRanker,
@@ -71,13 +72,28 @@ describe('ranking a move against the alternatives', () => {
     expect(isBottomTwentieth(ten, 'missing', 10)).toBe(false);
   });
 
+  it('calls a move top-ranked only when the eval scored it best', () => {
+    const scores = [
+      { uci: 'e2e4', score: 40 },
+      { uci: 'd2d4', score: 12 },
+      { uci: 'g1f3', score: 40 },
+      { uci: 'b1c3', score: 8 },
+    ];
+    expect(isTopRanked(scores, 'e2e4')).toBe(true);
+    expect(isTopRanked(scores, 'g1f3')).toBe(true);
+    expect(isTopRanked(scores, 'd2d4')).toBe(false);
+    expect(isTopRanked(scores, 'missing')).toBe(false);
+    expect(isTopRanked([], 'e2e4')).toBe(false);
+    expect(isTopRanked(scores.map((row) => ({ ...row, score: 40 })), 'e2e4')).toBe(false);
+  });
+
   it('does not ask the engine when there are fewer than five legal moves', () => {
     const calls: number[] = [];
     setMoveRanker(async (_fen, ucis) => {
       calls.push(ucis.length);
       return [];
     });
-    const marks: (null | { square: string })[] = [];
+    const marks: { blunder: unknown; praise: unknown }[] = [];
     beginBlunderCheck({
       code: 'X',
       fen: 'fen',
@@ -85,13 +101,13 @@ describe('ranking a move against the alternatives', () => {
       playedUci: 'a2a4',
       ply: 3,
       destination: 'a4',
-      accept: (mark) => {
-        marks.push(mark);
+      accept: (review) => {
+        marks.push(review);
         return false;
       },
     });
     expect(calls).toEqual([]);
-    expect(marks).toEqual([null]);
+    expect(marks).toEqual([{ blunder: null, praise: null }]);
   });
 });
 
@@ -130,6 +146,43 @@ describe('blunder marker at the table', () => {
       expect(room.view(seat, 10).blunder).toMatchObject({ square: 'e4', ply: 1 });
     }
     expect(announced).toEqual(['BLND01']);
+    expect(room.view('black1', 10).chad).toBeNull();
+  });
+
+  it('shows the chad mark when the same search ranks the move best, and skips a book move with no eval', async () => {
+    const gate: { finish: ((scores: MoveScore[]) => void) | null } = { finish: null };
+    const announced: string[] = [];
+    onBlunderReady((code) => announced.push(code));
+    setMoveRanker(
+      (_fen, ucis) =>
+        new Promise((resolve) => {
+          gate.finish = () => resolve(ucis.map((uci) => ({ uci, score: uci === 'e2e4' ? 80 : 15 })));
+        }),
+    );
+    const { room, tokens } = seated();
+    room.move(tokens.white1, { from: 'e2', to: 'e4' }, 10);
+    await flush();
+    const finish = gate.finish;
+    if (!finish) throw new Error('search did not start');
+    finish([]);
+    await flush();
+    for (const seat of SEATS) {
+      expect(room.view(seat, 10).chad).toMatchObject({ square: 'e4', ply: 1 });
+      expect(room.view(seat, 10).blunder).toBeNull();
+    }
+    expect(announced).toEqual(['BLND01']);
+
+    setMoveRanker(async () => []);
+    const quiet = seated();
+    const heard: string[] = [];
+    onBlunderReady((code) => heard.push(code));
+    quiet.room.move(quiet.tokens.white1, { from: 'e2', to: 'e4' }, 30);
+    await flush();
+    await flush();
+    expect(quiet.room.view('white1', 30).opening?.name).toBe("King's Pawn Game");
+    expect(quiet.room.view('black2', 30).chad).toBeNull();
+    expect(quiet.room.view('white2', 30).blunder).toBeNull();
+    expect(heard).toEqual([]);
   });
 
   it('drops a late result after another move, and ignores a move that ties the field', async () => {

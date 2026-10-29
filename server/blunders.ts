@@ -15,6 +15,11 @@ export interface BlunderCall {
   at: number;
 }
 
+export interface MoveReview {
+  blunder: BlunderCall | null;
+  praise: BlunderCall | null;
+}
+
 export type MoveRanker = (fen: string, ucis: string[]) => Promise<MoveScore[]>;
 
 let ranker: MoveRanker = defaultRanker;
@@ -63,6 +68,23 @@ export function isBottomTwentieth(scores: readonly MoveScore[], playedUci: strin
 }
 
 /**
+ * True when the played move is tied for the highest engine score and the
+ * search actually separated it from something worse. Missing scores are not
+ * filled in from the opening book.
+ */
+export function isTopRanked(scores: readonly MoveScore[], playedUci: string): boolean {
+  const unique = new Map<string, number>();
+  for (const row of scores) unique.set(row.uci, row.score);
+  const played = unique.get(playedUci);
+  if (played === undefined) return false;
+  let best = Number.NEGATIVE_INFINITY;
+  for (const score of unique.values()) if (score > best) best = score;
+  if (played !== best) return false;
+  for (const score of unique.values()) if (score < best) return true;
+  return false;
+}
+
+/**
  * Rank the move without delaying the caller. The result is applied later,
  * and only a positive mark asks the table to broadcast again.
  */
@@ -73,22 +95,28 @@ export function beginBlunderCheck(input: {
   playedUci: string;
   ply: number;
   destination: string;
-  accept: (mark: BlunderCall | null) => boolean;
+  accept: (review: MoveReview) => boolean;
 }): void {
   if (input.ucis.length < 5) {
-    input.accept(null);
+    input.accept({ blunder: null, praise: null });
     return;
   }
   const { code, fen, ucis, playedUci, ply, destination, accept } = input;
   void Promise.resolve()
     .then(() => ranker(fen, ucis))
     .then((scores) => {
-      const bad = isBottomTwentieth(scores ?? [], playedUci, ucis.length);
-      const applied = accept(bad ? { square: destination, ply, at: Date.now() } : null);
+      const ranked = scores ?? [];
+      const at = Date.now();
+      const mark = { square: destination, ply, at };
+      const review: MoveReview = {
+        blunder: isBottomTwentieth(ranked, playedUci, ucis.length) ? mark : null,
+        praise: isTopRanked(ranked, playedUci) ? mark : null,
+      };
+      const applied = accept(review);
       if (applied) onReady?.(code);
     })
     .catch(() => {
-      accept(null);
+      accept({ blunder: null, praise: null });
     });
 }
 

@@ -1,10 +1,10 @@
 import type { PieceSymbol } from 'chess.js';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Piece } from '@/components/Pieces';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { BLUNDER_FLASH_MS, OPENING_FLASH_MS } from '../../../shared/flash';
+import { BLUNDER_FLASH_MS, BOOM_FLASH_MS, CHAD_FLASH_MS, OPENING_FLASH_MS } from '../../../shared/flash';
 import type { HintArrow, LegalMove, Promotion } from '../../../shared/types';
 
 interface Drag {
@@ -36,6 +36,8 @@ export function Board({
   hints = [],
   opening = null,
   blunder = null,
+  chad = null,
+  boom = null,
   onMove,
 }: {
   fen: string;
@@ -47,6 +49,8 @@ export function Board({
   hints?: HintArrow[];
   opening?: { token: string; label: string } | null;
   blunder?: { token: string; square: string } | null;
+  chad?: { token: string; square: string } | null;
+  boom?: { token: string; square: string } | null;
   onMove: (move: { from: string; to: string; promotion?: Promotion }) => void;
 }) {
   const pieces = useMemo(() => piecesFromFen(fen), [fen]);
@@ -140,9 +144,10 @@ export function Board({
 
   const sideToMove = fen.split(' ')[1] === 'b' ? 'b' : 'w';
   const dragPiece = drag?.piece && drag.lifted ? pieces.get(drag.from) : undefined;
+  const shaking = useShown(boom?.token ?? null, BOOM_FLASH_MS);
 
   return (
-    <div className="board-frame">
+    <div className={cn('board-frame', shaking && 'board-shake')}>
       <div
         ref={boardRef}
         data-testid="board"
@@ -276,6 +281,19 @@ export function Board({
         >
           {blunder && <BlunderMark square={blunder.square} orientation={orientation} />}
         </TimedOverlay>
+        <TimedOverlay
+          token={chad?.token ?? null}
+          ms={CHAD_FLASH_MS}
+          className="chad-flash pointer-events-none absolute inset-0 z-20"
+          testId="chad-face"
+        >
+          {chad && (
+            <div className="absolute" style={squareBox(chad.square, orientation)}>
+              <ChadFace />
+            </div>
+          )}
+        </TimedOverlay>
+        {shaking && boom && <BoomBurst square={boom.square} orientation={orientation} />}
       </div>
       {dragPiece && drag && (
         <div
@@ -314,6 +332,90 @@ export function Board({
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function useShown(token: string | null, ms: number) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (!token) {
+      setVisible(false);
+      return;
+    }
+    setVisible(true);
+    const timer = window.setTimeout(() => setVisible(false), ms);
+    return () => window.clearTimeout(timer);
+  }, [token, ms]);
+  return Boolean(token) && visible;
+}
+
+function squareBox(square: string, orientation: 'white' | 'black'): CSSProperties {
+  const file = square.charCodeAt(0) - 97;
+  const rank = Number(square[1]) - 1;
+  const col = orientation === 'white' ? file : 7 - file;
+  const row = orientation === 'white' ? 7 - rank : rank;
+  return { left: `${col * 12.5}%`, top: `${row * 12.5}%`, width: '12.5%', height: '12.5%' };
+}
+
+function BoomBurst({ square, orientation }: { square: string; orientation: 'white' | 'black' }) {
+  return (
+    <div className="pointer-events-none absolute inset-0 z-30" data-testid="queen-boom" aria-hidden="true">
+      <div className="boom-spot absolute" style={squareBox(square, orientation)}>
+        <span className="boom-anchor">
+          <span className="boom-flash" />
+        </span>
+        <span className="boom-anchor">
+          <span className="boom-fire" />
+        </span>
+        <span className="boom-anchor boom-anchor-core">
+          <span className="boom-core" />
+        </span>
+        <span className="boom-anchor boom-anchor-smoke-a">
+          <span className="boom-smoke" />
+        </span>
+        <span className="boom-anchor boom-anchor-smoke-b">
+          <span className="boom-smoke boom-smoke-late" />
+        </span>
+        <span className="boom-label">BOOM!</span>
+      </div>
+    </div>
+  );
+}
+
+function ChadFace() {
+  const stubble = [
+    [18, 48],
+    [24, 50],
+    [30, 51],
+    [36, 51],
+    [42, 50],
+    [48, 47],
+    [22, 54],
+    [40, 54],
+    [28, 46],
+    [46, 44],
+  ];
+  return (
+    <svg viewBox="0 0 64 64" className="h-full w-full" aria-hidden="true">
+      <path
+        d="M12 18 H52 V38 Q54 56 32 58 Q10 56 12 38 Z"
+        fill="#f0c09a"
+        stroke="#2c1c14"
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+      <path d="M14 20 Q32 6 50 19 Q44 12 32 11 Q18 12 14 20 Z" fill="#3b2a22" />
+      <path d="M18 28 Q24 23 31 28" fill="none" stroke="#2c1c14" strokeWidth="2.4" strokeLinecap="round" />
+      <path d="M36 25 Q44 20 52 27" fill="none" stroke="#2c1c14" strokeWidth="2.6" strokeLinecap="round" />
+      <ellipse cx="24" cy="34" rx="6" ry="4.4" fill="#fffaf3" />
+      <ellipse cx="45" cy="34" rx="6" ry="4.4" fill="#fffaf3" />
+      <circle cx="26.4" cy="34.2" r="2" fill="#1a120e" />
+      <circle cx="47.4" cy="34.2" r="2" fill="#1a120e" />
+      <path d="M22 46 Q34 44 48 51" fill="none" stroke="#8a3a32" strokeWidth="3" strokeLinecap="round" />
+      {stubble.map(([cx, cy]) => (
+        <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="0.9" fill="#6a4636" opacity="0.85" />
+      ))}
+    </svg>
   );
 }
 

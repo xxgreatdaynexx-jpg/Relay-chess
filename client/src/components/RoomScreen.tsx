@@ -8,7 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { request } from '@/lib/net';
 import { previewFen } from '@/lib/preview';
-import { BLUNDER_FLASH_MS, OPENING_FLASH_MS, flashIsFresh } from '../../../shared/flash';
+import { playBoom, playHuh, playNice, unlockSounds } from '@/lib/sounds';
+import { queenCaptureSquare } from '../../../shared/capture';
+import { BLUNDER_FLASH_MS, CHAD_FLASH_MS, OPENING_FLASH_MS, flashIsFresh } from '../../../shared/flash';
 import { loadSession, prettyCode } from '@/lib/session';
 import { formatClock } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -50,6 +52,8 @@ export function RoomScreen({
   const [resignOpen, setResignOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [boom, setBoom] = useState<{ token: string; square: string } | null>(null);
+  const previousFen = useRef<string | null>(null);
   const session = loadSession();
   const you = state.yourSeat;
   const yourTurn = state.status === 'playing' && you !== null && you === state.seatToMove;
@@ -62,6 +66,22 @@ export function RoomScreen({
   useEffect(() => {
     if (pending && state.ply >= pending.ply) setPending(null);
   }, [state.ply, pending]);
+
+  useEffect(() => {
+    const unlock = () => unlockSounds();
+    window.addEventListener('pointerdown', unlock);
+    return () => window.removeEventListener('pointerdown', unlock);
+  }, []);
+
+  useEffect(() => {
+    const before = previousFen.current;
+    previousFen.current = state.fen;
+    if (!before || before === state.fen || state.moves.length === 0) return;
+    const move = state.moves[state.moves.length - 1];
+    const square = queenCaptureSquare(before, move.to);
+    if (!square) return;
+    setBoom({ token: `${state.ply}:${square}`, square });
+  }, [state.fen, state.moves, state.ply]);
 
   const prevTurn = useRef<string | null>(null);
   useEffect(() => {
@@ -123,6 +143,25 @@ export function RoomScreen({
           square: state.blunder.square,
         }
       : null;
+  const chadFlash =
+    state.chad && flashIsFresh(state.chad, state.ply, state.serverNow, CHAD_FLASH_MS)
+      ? {
+          token: `${state.chad.at}:${state.chad.ply}:${state.chad.square}`,
+          square: state.chad.square,
+        }
+      : null;
+
+  useEffect(() => {
+    if (blunderFlash) playHuh();
+  }, [blunderFlash?.token]);
+
+  useEffect(() => {
+    if (chadFlash) playNice();
+  }, [chadFlash?.token]);
+
+  useEffect(() => {
+    if (boom) playBoom();
+  }, [boom?.token]);
   const setup: TableSetup = { mode: state.mode, pairSide: state.pairSide };
   const active = seatsFor(setup);
   const displayFen = pending?.fen ?? state.fen;
@@ -220,6 +259,8 @@ export function RoomScreen({
               hints={pending ? [] : state.hints}
               opening={openingFlash}
               blunder={blunderFlash}
+              chad={chadFlash}
+              boom={boom}
               onMove={sendMove}
             />
           </div>

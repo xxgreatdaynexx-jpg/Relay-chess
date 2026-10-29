@@ -76,6 +76,12 @@ export interface BlunderCall {
   at: number;
 }
 
+export interface ChadCall {
+  square: string;
+  ply: number;
+  at: number;
+}
+
 export interface LeaderboardRow {
   name: string;
   wins: number;
@@ -107,6 +113,7 @@ export interface PublicState {
   serverNow: number;
   opening: OpeningCall | null;
   blunder: BlunderCall | null;
+  chad: ChadCall | null;
 }
 
 export interface Ack {
