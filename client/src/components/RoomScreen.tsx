@@ -196,6 +196,7 @@ export function RoomScreen({
               lastMove={lastMove}
               inCheck={inCheck}
               interactive={interactive}
+              hints={pending ? [] : state.hints}
               onMove={sendMove}
             />
           </div>

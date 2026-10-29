@@ -24,6 +24,10 @@ describe('leaderboard store', () => {
     board.record({ winner: 'black', white: ['ada'], black: ['JULES'] });
     const rows = board.standings();
     expect(rows.map((row) => row.name).sort()).toEqual(['JULES', 'ada']);
+    board.rememberName('Ada Lovelace');
+    expect(board.standings().some((row) => row.name === 'Ada Lovelace')).toBe(false);
+    board.rememberName('ADa');
+    expect(board.standings().find((row) => row.wins === 1 && row.losses === 1)?.name).toBe('ADa');
     expect(rows.find((row) => row.name === 'ada')).toMatchObject({
       wins: 1,
       losses: 1,

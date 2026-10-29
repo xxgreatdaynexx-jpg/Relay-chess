@@ -38,7 +38,9 @@ npm start
 4. Offer a draw on your turn. Either player on the other team can accept. If they move instead, the offer is declined.
 5. After the game, all four players can vote for a rematch. Seats stay the same.
 
-Rooms live in memory on one server process. A restart clears them, and a deploy must stay on **a single instance** so everyone shares the same room. The seat token is stored in the browser’s `localStorage`. Finished games update a leaderboard in `data/leaderboard.json` (names match case-insensitively), and that file survives a restart.
+Rooms live in memory on one server process. A restart clears them, and a deploy must stay on **a single instance** so everyone shares the same room. The seat token is stored in the browser’s `localStorage`. Finished games update a leaderboard in `data/leaderboard.json`. Names match without capitals, and the spelling shown is the most recent lobby name. That file survives a restart.
+
+If a seated player's name is `chessgawd`, that team sees a best-move arrow on their own turn. The server asks the Lichess cloud eval and, if that has no answer, Stockfish on the server. Opponents are not sent the arrow. Stockfish is GPLv3.
 
 ## Deploy on the internet
 

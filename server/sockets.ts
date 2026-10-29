@@ -1,5 +1,6 @@
 import type { Server, Socket } from 'socket.io';
 import { GameError } from './errors.js';
+import { onHintReady } from './hints.js';
 import {
   createRoom,
   getRoom,
@@ -40,6 +41,11 @@ export function stopMaintenance(): void {
 }
 
 export function registerSockets(io: Server): void {
+  onHintReady((fen) => {
+    for (const room of listRooms()) {
+      if (room.game.status === 'playing' && room.game.fen() === fen) broadcast(io, room.code);
+    }
+  });
   startMaintenance(io);
 
   io.on('connection', (socket) => {

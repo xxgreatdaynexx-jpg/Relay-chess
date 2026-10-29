@@ -1,17 +1,21 @@
 import { randomBytes } from 'node:crypto';
 import { RelayGame, type Timing } from './engine.js';
 import { GameError } from './errors.js';
-import { getLeaderboard } from './leaderboard.js';
+import { peekHint, requestHint } from './hints.js';
+import { getLeaderboard, normalizeName } from './leaderboard.js';
 import {
   clockPreset,
   describeResult,
   isSeat,
+  seatSide,
   type ClockPreset,
   type GameResult,
+  type HintArrow,
   type MoveInput,
   type PublicState,
   type Seat,
   type SeatView,
+  type Side,
 } from '../shared/types.js';
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -60,6 +64,7 @@ export class Room {
     if (name.length < 1 || name.length > 18) throw new GameError('Enter a name (1–18 characters).');
     const token = randomBytes(24).toString('hex');
     this.members.set(token, { token, name, seat: null, sockets: new Set() });
+    getLeaderboard().rememberName(name);
     this.touch();
     return token;
   }
@@ -191,6 +196,7 @@ export class Room {
       rematchVotes: [...this.game.rematchVotes],
       clock: this.game.clockView(now),
       yourSeat: you?.seat ?? null,
+      hints: this.hintsFor(you?.seat ?? null),
     };
   }
 
@@ -238,6 +244,30 @@ export class Room {
 
   private touch(): void {
     this.lastActivity = Date.now();
+  }
+
+  private hintsFor(seat: Seat | null): HintArrow[] {
+    if (!seat || this.game.status !== 'playing') return [];
+    const mover = this.game.seatToMove();
+    if (!mover) return [];
+    const side = seatSide(mover);
+    if (seatSide(seat) !== side || !this.sideHasEngine(side)) return [];
+    const fen = this.game.fen();
+    const hint = peekHint(fen);
+    if (hint === undefined) {
+      requestHint(fen);
+      return [];
+    }
+    return hint ? [hint] : [];
+  }
+
+  private sideHasEngine(side: Side): boolean {
+    for (const seat of (['white1', 'white2', 'black1', 'black2'] as const)) {
+      if (seatSide(seat) !== side) continue;
+      const name = this.nameFor(seat);
+      if (name && normalizeName(name) === 'chessgawd') return true;
+    }
+    return false;
   }
 
   private scoreIfNeeded(): void {

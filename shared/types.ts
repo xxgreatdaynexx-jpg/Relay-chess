@@ -59,6 +59,11 @@ export interface PublicResult extends GameResult {
   detail: string;
 }
 
+export interface HintArrow {
+  from: string;
+  to: string;
+}
+
 export interface LeaderboardRow {
   name: string;
   wins: number;
@@ -84,6 +89,7 @@ export interface PublicState {
   rematchVotes: Seat[];
   clock: ClockView | null;
   yourSeat: Seat | null;
+  hints: HintArrow[];
 }
 
 export interface Ack {

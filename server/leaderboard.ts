@@ -61,6 +61,16 @@ export class Leaderboard {
     this.save();
   }
 
+  /** Keep stats merged by case, but show the latest lobby spelling. */
+  rememberName(name: string): void {
+    const trimmed = name.trim();
+    const key = normalizeName(trimmed);
+    const entry = key ? this.players.get(key) : undefined;
+    if (!entry || entry.name === trimmed) return;
+    entry.name = trimmed;
+    this.save();
+  }
+
   standings(): LeaderboardRow[] {
     const rows: LeaderboardRow[] = [...this.players.values()].map((entry) => {
       const played = entry.wins + entry.losses + entry.draws;

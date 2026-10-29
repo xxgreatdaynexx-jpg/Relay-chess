@@ -4,7 +4,7 @@ import { Piece } from '@/components/Pieces';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import type { LegalMove, Promotion } from '../../../shared/types';
+import type { HintArrow, LegalMove, Promotion } from '../../../shared/types';
 
 interface Drag {
   from: string;
@@ -32,6 +32,7 @@ export function Board({
   lastMove,
   inCheck,
   interactive,
+  hints = [],
   onMove,
 }: {
   fen: string;
@@ -40,6 +41,7 @@ export function Board({
   lastMove?: { from: string; to: string };
   inCheck: boolean;
   interactive: boolean;
+  hints?: HintArrow[];
   onMove: (move: { from: string; to: string; promotion?: Promotion }) => void;
 }) {
   const pieces = useMemo(() => piecesFromFen(fen), [fen]);
@@ -245,6 +247,9 @@ export function Board({
             </button>
           );
         })}
+        {hints.map((hint) => (
+          <HintArrowMark key={`${hint.from}${hint.to}`} hint={hint} orientation={orientation} />
+        ))}
       </div>
       {dragPiece && drag && (
         <div
@@ -284,6 +289,58 @@ export function Board({
       </Dialog>
     </div>
   );
+}
+
+function HintArrowMark({
+  hint,
+  orientation,
+}: {
+  hint: HintArrow;
+  orientation: 'white' | 'black';
+}) {
+  const from = squarePoint(hint.from, orientation);
+  const to = squarePoint(hint.to, orientation);
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const ux = dx / length;
+  const uy = dy / length;
+  const px = -uy;
+  const py = ux;
+  const start = { x: from.x + ux * 0.2, y: from.y + uy * 0.2 };
+  const tip = { x: to.x - ux * 0.12, y: to.y - uy * 0.12 };
+  const base = { x: tip.x - ux * 0.42, y: tip.y - uy * 0.42 };
+  const head = 0.22;
+  return (
+    <svg
+      className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+      viewBox="0 0 8 8"
+      data-testid="hint-arrow"
+      aria-hidden="true"
+    >
+      <line
+        x1={start.x}
+        y1={start.y}
+        x2={base.x}
+        y2={base.y}
+        stroke="#146b3a"
+        strokeWidth="0.2"
+        strokeLinecap="round"
+      />
+      <polygon
+        fill="#1f8f4e"
+        points={`${tip.x},${tip.y} ${base.x + px * head},${base.y + py * head} ${base.x - px * head},${base.y - py * head}`}
+      />
+    </svg>
+  );
+}
+
+function squarePoint(square: string, orientation: 'white' | 'black') {
+  const file = square.charCodeAt(0) - 97;
+  const rank = Number(square[1]) - 1;
+  const col = orientation === 'white' ? file : 7 - file;
+  const row = orientation === 'white' ? 7 - rank : rank;
+  return { x: col + 0.5, y: row + 0.5 };
 }
 
 function visualSquare(row: number, col: number, orientation: 'white' | 'black') {
