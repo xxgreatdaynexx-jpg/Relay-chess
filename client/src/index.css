@@ -115,6 +115,29 @@ input {
   pointer-events: none;
 }
 
+.fork-spot {
+  container-type: size;
+}
+
+.fork-label {
+  position: absolute;
+  left: 50%;
+  top: -12%;
+  z-index: 2;
+  transform: translate(-50%, -100%);
+  font-family: "Fraunces Variable", Palatino, serif;
+  font-weight: 800;
+  font-size: 42cqmin;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  color: #fff8ee;
+  background: #8a3b12;
+  border-radius: 0.35em;
+  padding: 0.14em 0.34em;
+  white-space: nowrap;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+}
+
 .boom-label {
   position: absolute;
   left: 50%;
@@ -151,6 +174,10 @@ input {
 
   .boom-label {
     animation: boom-text 1.8s ease forwards;
+  }
+
+  .fork-label {
+    animation: boom-text 1.5s ease forwards;
   }
 }
 

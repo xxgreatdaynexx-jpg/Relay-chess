@@ -8,9 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { request } from '@/lib/net';
 import { previewFen } from '@/lib/preview';
-import { playBoom, playHuh, playNice, unlockSounds } from '@/lib/sounds';
+import { playBoom, playFork, playHuh, playNice, unlockSounds } from '@/lib/sounds';
 import { queenCaptureSquare } from '../../../shared/capture';
-import { BLUNDER_FLASH_MS, OPENING_FLASH_MS, flashIsFresh } from '../../../shared/flash';
+import { BLUNDER_FLASH_MS, FORK_SOUND_DELAY_MS, FORK_SOUND_WAIT_MS, OPENING_FLASH_MS, flashIsFresh } from '../../../shared/flash';
+import { isFork } from '../../../shared/fork';
 import { loadSession, prettyCode } from '@/lib/session';
 import { formatClock } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -53,7 +54,10 @@ export function RoomScreen({
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [boom, setBoom] = useState<{ token: string; square: string } | null>(null);
+  const [fork, setFork] = useState<{ token: string; square: string } | null>(null);
   const previousFen = useRef<string | null>(null);
+  const forkSoundTimer = useRef<number | null>(null);
+  const forkSoundPlayed = useRef<string | null>(null);
   const session = loadSession();
   const you = state.yourSeat;
   const yourTurn = state.status === 'playing' && you !== null && you === state.seatToMove;
@@ -79,9 +83,24 @@ export function RoomScreen({
     if (!before || before === state.fen || state.moves.length === 0) return;
     const move = state.moves[state.moves.length - 1];
     const square = queenCaptureSquare(before, move.to);
-    if (!square) return;
-    setBoom({ token: `${state.ply}:${square}`, square });
+    if (square) setBoom({ token: `${state.ply}:${square}`, square });
+    if (isFork(state.fen, move.to)) {
+      const token = `${state.ply}:${move.to}`;
+      setFork({ token, square: move.to });
+      armForkSound(token, FORK_SOUND_WAIT_MS);
+    }
   }, [state.fen, state.moves, state.ply]);
+
+  function armForkSound(token: string, delay: number) {
+    if (forkSoundPlayed.current === token) return;
+    if (forkSoundTimer.current !== null) window.clearTimeout(forkSoundTimer.current);
+    forkSoundTimer.current = window.setTimeout(() => {
+      forkSoundTimer.current = null;
+      if (forkSoundPlayed.current === token) return;
+      forkSoundPlayed.current = token;
+      playFork();
+    }, delay);
+  }
 
   const prevTurn = useRef<string | null>(null);
   useEffect(() => {
@@ -148,6 +167,9 @@ export function RoomScreen({
   useEffect(() => {
     if (markFlash?.grade === 'blunder') playHuh();
     if (markFlash?.grade === 'brilliant') playNice();
+    if ((markFlash?.grade === 'blunder' || markFlash?.grade === 'brilliant') && fork?.token.startsWith(`${state.ply}:`)) {
+      armForkSound(fork.token, FORK_SOUND_DELAY_MS);
+    }
   }, [markFlash?.token, markFlash?.grade]);
 
   useEffect(() => {
@@ -250,6 +272,7 @@ export function RoomScreen({
               hints={pending ? [] : state.hints}
               opening={openingFlash}
               mark={markFlash}
+              fork={fork}
               boom={boom}
               onMove={sendMove}
             />

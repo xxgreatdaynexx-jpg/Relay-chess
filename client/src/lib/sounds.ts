@@ -1,13 +1,22 @@
 const HUH_URL = '/sounds/huh.mp3';
+const FORK_URL = '/sounds/fork.mp3';
 
 let context: AudioContext | null = null;
-let huhBuffer: AudioBuffer | null = null;
-let huhLoad: Promise<AudioBuffer | null> | null = null;
+
+interface Clip {
+  buffer: AudioBuffer | null;
+  pending: Promise<AudioBuffer | null> | null;
+}
+
+const huhClip: Clip = { buffer: null, pending: null };
+const forkClip: Clip = { buffer: null, pending: null };
 
 export function unlockSounds(): void {
   const ctx = audio();
   if (ctx?.state === 'suspended') void ctx.resume();
-  if (ctx) void loadHuh(ctx);
+  if (!ctx) return;
+  void loadClip(ctx, HUH_URL, huhClip);
+  void loadClip(ctx, FORK_URL, forkClip);
 }
 
 export function playBoom(): void {
@@ -48,20 +57,16 @@ export function playBoom(): void {
 export function playHuh(): void {
   const ctx = audio();
   if (!ctx) return;
-  void loadHuh(ctx).then((buffer) => {
-    if (!buffer) {
-      playHuhSynth();
-      return;
-    }
-    if (ctx.state === 'suspended') void ctx.resume();
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ctx.destination);
-    try {
-      source.start();
-    } catch {
-      playHuhSynth();
-    }
+  void loadClip(ctx, HUH_URL, huhClip).then((buffer) => {
+    if (!buffer || !playBuffer(buffer)) playHuhSynth();
+  });
+}
+
+export function playFork(): void {
+  const ctx = audio();
+  if (!ctx) return;
+  void loadClip(ctx, FORK_URL, forkClip).then((buffer) => {
+    if (buffer) playBuffer(buffer);
   });
 }
 
@@ -91,22 +96,37 @@ function playHuhSynth(): void {
   osc.stop(now + 0.64);
 }
 
-function loadHuh(ctx: AudioContext): Promise<AudioBuffer | null> {
-  if (huhBuffer) return Promise.resolve(huhBuffer);
-  if (!huhLoad) {
-    huhLoad = fetch(HUH_URL)
+function loadClip(ctx: AudioContext, url: string, clip: Clip): Promise<AudioBuffer | null> {
+  if (clip.buffer) return Promise.resolve(clip.buffer);
+  if (!clip.pending) {
+    clip.pending = fetch(url)
       .then((response) => {
-        if (!response.ok) throw new Error('huh missing');
+        if (!response.ok) throw new Error(`${url} missing`);
         return response.arrayBuffer();
       })
       .then((bytes) => ctx.decodeAudioData(bytes.slice(0)))
       .then((buffer) => {
-        huhBuffer = buffer;
+        clip.buffer = buffer;
         return buffer;
       })
       .catch(() => null);
   }
-  return huhLoad;
+  return clip.pending;
+}
+
+function playBuffer(buffer: AudioBuffer): boolean {
+  const ctx = audio();
+  if (!ctx) return false;
+  if (ctx.state === 'suspended') void ctx.resume();
+  try {
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function playNice(): void {

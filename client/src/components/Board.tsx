@@ -4,7 +4,7 @@ import { Piece } from '@/components/Pieces';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { BLUNDER_FLASH_MS, BOOM_FLASH_MS, OPENING_FLASH_MS } from '../../../shared/flash';
+import { BLUNDER_FLASH_MS, BOOM_FLASH_MS, FORK_FLASH_MS, OPENING_FLASH_MS } from '../../../shared/flash';
 import type { HintArrow, LegalMove, MoveGrade, Promotion } from '../../../shared/types';
 
 interface Drag {
@@ -36,6 +36,7 @@ export function Board({
   hints = [],
   opening = null,
   mark = null,
+  fork = null,
   boom = null,
   onMove,
 }: {
@@ -48,6 +49,7 @@ export function Board({
   hints?: HintArrow[];
   opening?: { token: string; label: string } | null;
   mark?: { token: string; square: string; grade: MoveGrade } | null;
+  fork?: { token: string; square: string } | null;
   boom?: { token: string; square: string } | null;
   onMove: (move: { from: string; to: string; promotion?: Promotion }) => void;
 }) {
@@ -278,6 +280,18 @@ export function Board({
           testId="move-mark"
         >
           {mark && <QualityMark square={mark.square} orientation={orientation} grade={mark.grade} />}
+        </TimedOverlay>
+        <TimedOverlay
+          token={fork?.token ?? null}
+          ms={FORK_FLASH_MS}
+          className="pointer-events-none absolute inset-0 z-30"
+          testId="fork-call"
+        >
+          {fork && (
+            <div className="fork-spot absolute" style={squareBox(fork.square, orientation)}>
+              <span className="fork-label">FORK!</span>
+            </div>
+          )}
         </TimedOverlay>
         {shaking && boom && <BoomBurst square={boom.square} orientation={orientation} />}
       </div>
