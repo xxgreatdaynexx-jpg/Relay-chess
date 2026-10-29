@@ -78,7 +78,7 @@ The Docker image listens on port `8080`. `fly.toml` keeps one machine running so
 
 ## Piece graphics
 
-The board uses the Cburnett chess pieces by Colin M.L. Burnett, licensed under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/). Source: [Wikimedia Commons](https://commons.wikimedia.org/wiki/Category:SVG_chess_pieces). The files live in `client/src/pieces/cburnett/` and are unmodified.
+The board uses the Cburnett chess pieces by Colin M.L. Burnett, licensed under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/). Source: [Wikimedia Commons](https://commons.wikimedia.org/wiki/Category:SVG_chess_pieces). The queens are original drawings in that same style; the other pieces are unmodified.
 
 ## Layout
 

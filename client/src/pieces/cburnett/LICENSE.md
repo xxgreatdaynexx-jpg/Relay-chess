@@ -5,4 +5,4 @@ https://creativecommons.org/licenses/by-sa/3.0/
 
 Source: https://commons.wikimedia.org/wiki/Category:SVG_chess_pieces
 
-These files are the standard Cburnett set (the same drawings shipped with Lichess). They are included unmodified. Attribution is also noted in the project README.
+The king, rook, bishop, knight, and pawn are the standard Cburnett drawings, included unmodified. The queens are original drawings made for Relay Chess in the same line weight and palette. Attribution is also noted in the project README.
