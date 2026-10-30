@@ -15,3 +15,24 @@ export function spinSlots(bank: CasinoBank, name: string, bet: number, rand: () 
   bank.settle(name, returned, net, 'spin');
   return { reels, multiplier, returned, net, chips: bank.account(name).chips };
 }
+
+// ---- Modern 5x3 video slots (Dragon Queen / Warzone / Gold Rush) ----
+import { isMachineId, playRound, VS_BETS, type RoundResult } from '../shared/video-slots.js';
+
+export interface VideoSpinResult { round: RoundResult; returned: number; net: number; chips: number }
+
+/**
+ * One complete round decided here with the secure RNG: base spin plus any free spins, pick-a-chest,
+ * airstrike or hold-and-spin. The stake is debited and the full win credited in the same synchronous
+ * step, so there is no client-held bonus state to replay or forge.
+ */
+export function spinVideoSlot(bank: CasinoBank, name: string, machine: unknown, bet: number, rand: () => number = secureRand): VideoSpinResult {
+  if (!isMachineId(machine)) throw new Error('Unknown machine.');
+  if (!(VS_BETS as readonly number[]).includes(bet)) throw new Error(`Bet one of ${VS_BETS.join(', ')} chips.`);
+  bank.debit(name, bet);
+  const round = playRound(machine, bet, rand);
+  const returned = round.totalWin;
+  const net = returned - bet;
+  bank.settle(name, returned, net, 'spin');
+  return { round, returned, net, chips: bank.account(name).chips };
+}

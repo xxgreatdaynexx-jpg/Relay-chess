@@ -86,3 +86,12 @@ The board uses the Cburnett chess pieces by Colin M.L. Burnett, licensed under [
 - `shared/` — seats, clocks, and the state sent to browsers
 - `client/` — React board and lobby
 - `tests/` — turn order, rule edge cases, rooms, and a four-client game
+
+## Video slots (Dragon Queen · Warzone · Gold Rush)
+
+Three 5×3, 20-line machines in the Slots window share one engine (`shared/video-slots.ts`). The server
+(`server/slots.ts`, socket `vslots_spin`) decides the full round with `crypto.randomInt` — base spin, free
+spins, pick-a-chest, airstrike, hold-and-spin — then debits the bet and credits the total in one step on the
+shared `casino_players` chips. The client only animates the returned script, so there is no bonus state to forge.
+Bets: 20/40/60/100/200 (line bet = bet ÷ 20). Long-run RTP (10M rounds each, seeded): Dragon Queen 95.2%,
+Warzone 94.8%, Gold Rush 95.0%; `tests/video-slots.test.ts` asserts each in [94%, 96%].
