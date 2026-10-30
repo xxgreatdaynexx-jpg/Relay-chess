@@ -328,3 +328,35 @@ function tone(ctx: AudioContext, frequency: number, when: number, duration: numb
   osc.start(when);
   osc.stop(when + duration + 0.02);
 }
+
+/** Short square-wave beep-beep for 10 seconds left on your side's clock. Routed through the master volume. */
+export function playTimeAlarm(): void {
+  const ctx = audio();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') void ctx.resume();
+  const now = ctx.currentTime;
+  for (const offset of [0, 0.18]) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(1320, now + offset);
+    gain.gain.setValueAtTime(0.0001, now + offset);
+    gain.gain.exponentialRampToValueAtTime(0.18, now + offset + 0.01);
+    gain.gain.setValueAtTime(0.18, now + offset + 0.1);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.13);
+    osc.connect(gain);
+    gain.connect(output(ctx));
+    osc.start(now + offset);
+    osc.stop(now + offset + 0.15);
+  }
+}
+
+/** Soft two-note chime when it becomes your move. Routed through the master volume. */
+export function playYourTurn(): void {
+  const ctx = audio();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') void ctx.resume();
+  const now = ctx.currentTime;
+  tone(ctx, 880, now, 0.18, 0.14);
+  tone(ctx, 1318.5, now + 0.11, 0.32, 0.12);
+}

@@ -139,6 +139,13 @@ export class Room {
     }
   }
 
+  /** Seats in this game nobody has taken yet. Empty once the game starts. */
+  openSeats(): Seat[] {
+    if (this.game.status !== 'lobby') return [];
+    if (this.members.size >= MAX_MEMBERS) return [];
+    return seatsFor(this.setup).filter((seat) => !this.memberOn(seat));
+  }
+
   stand(token: string): void {
     if (this.game.status !== 'lobby') throw new GameError('You can only stand up before the game starts.');
     const member = this.must(token);
@@ -417,6 +424,13 @@ export function getRoom(code: string): Room | undefined {
 
 export function listRooms(): Room[] {
   return [...rooms.values()];
+}
+
+/** Tables waiting for players with a free seat, closest to full first, then oldest. */
+export function openRooms(): Room[] {
+  return listRooms()
+    .filter((room) => room.anyoneConnected() && room.openSeats().length > 0)
+    .sort((a, b) => a.openSeats().length - b.openSeats().length || a.createdAt - b.createdAt);
 }
 
 export function resetRooms(): void {

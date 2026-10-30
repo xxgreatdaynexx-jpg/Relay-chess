@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { RulesDialog } from '@/components/RulesDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,7 +33,7 @@ export function HomeScreen({
   const [clockId, setClockId] = useState<ClockId>('10+0');
   const [mode, setMode] = useState<GameMode>('2v2');
   const [pairSide, setPairSide] = useState<Side>('white');
-  const [busy, setBusy] = useState<'create' | 'join' | 'return' | null>(null);
+  const [busy, setBusy] = useState<'create' | 'join' | 'return' | 'quick' | null>(null);
   const [localError, setLocalError] = useState('');
 
   async function create(event: FormEvent) {
@@ -68,6 +68,45 @@ export function HomeScreen({
     setBusy(null);
     if (!res.ok) {
       setLocalError(res.error ?? 'Could not join that table.');
+      return;
+    }
+    onEnter();
+  }
+
+  const [openTables, setOpenTables] = useState(0);
+  useEffect(() => {
+    let live = true;
+    socket.connect();
+    const poll = async () => {
+      const res = await request('open_tables');
+      if (live && res.ok) setOpenTables(res.openTables ?? 0);
+    };
+    void poll();
+    const id = window.setInterval(poll, 4000);
+    return () => {
+      live = false;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  async function quickJoin() {
+    setLocalError('');
+    if (!name.trim()) {
+      setLocalError('Enter your name first, then hit Quick Join.');
+      return;
+    }
+    setBusy('quick');
+    socket.connect();
+    const res = await request('quick_join', { name }, (ack) => {
+      if (!ack.token || !ack.code) return;
+      saveSession({ token: ack.token, code: ack.code, name: name.trim() });
+      window.history.pushState({}, '', `/r/${ack.code}`);
+    });
+    setBusy(null);
+    if (!res.ok) {
+      setLocalError(res.error ?? 'Could not find an open table.');
+      const again = await request('open_tables');
+      if (again.ok) setOpenTables(again.openTables ?? 0);
       return;
     }
     onEnter();
@@ -115,6 +154,16 @@ export function HomeScreen({
             <Button variant="outline" onClick={returnToTable} disabled={busy !== null}>
               {busy === 'return' ? 'Reconnecting…' : `Return to ${prettyCode(saved.code)}`}
             </Button>
+          </div>
+        )}
+        {openTables > 0 && (
+          <div className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl border border-brass/60 bg-brass/10 p-4">
+            <Button size="lg" onClick={quickJoin} disabled={busy !== null} data-testid="quick-join">
+              {busy === 'quick' ? 'Grabbing a seat…' : '⚡ Quick Join'}
+            </Button>
+            <span className="text-sm text-cream-dim">
+              {openTables === 1 ? '1 table is' : `${openTables} tables are`} waiting for players. Enter your name below, then jump in.
+            </span>
           </div>
         )}
         <div className="mt-8 grid gap-4 md:grid-cols-2">

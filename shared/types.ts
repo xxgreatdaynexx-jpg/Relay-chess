@@ -152,6 +152,8 @@ export interface Ack {
   code?: string;
   /** Fake checkmate bailout could not find a safe square. */
   declined?: boolean;
+  /** Lobby: how many tables have a free seat right now. */
+  openTables?: number;
 }
 
 export interface MoveInput {

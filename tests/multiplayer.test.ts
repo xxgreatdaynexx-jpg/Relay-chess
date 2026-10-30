@@ -159,3 +159,30 @@ it('runs a four-player game, enforces turns, reconnects a seat, and rematches', 
   const missing = await ask(connect().socket, 'join_room', { code: 'ZZZZZZ', name: 'Ada' });
   expect(missing.ok).toBe(false);
 });
+
+it('quick-joins the open table closest to full', async () => {
+  const lobby = connect();
+  const none = await ask(lobby.socket, 'quick_join', { name: 'Nobody' });
+  expect(none.ok).toBe(false);
+
+  const hostA = connect();
+  const a = await ask(hostA.socket, 'create_room', { name: 'HostA', clockId: '5+0', mode: '2v2' });
+  const hostB = connect();
+  const b = await ask(hostB.socket, 'create_room', { name: 'HostB', clockId: '5+0', mode: '1v1' });
+  expect(a.ok && b.ok).toBe(true);
+  await ask(hostB.socket, 'sit', { seat: 'white1' });
+
+  const count = await ask(lobby.socket, 'open_tables');
+  expect(count.openTables).toBeGreaterThanOrEqual(2);
+
+  const joiner = connect();
+  const res = await ask(joiner.socket, 'quick_join', { name: 'Quickie' });
+  expect(res.ok).toBe(true);
+  expect(res.code).toBe(b.code);
+  const started = await joiner.until((s) => s.status === 'playing');
+  expect(started.yourSeat).toBe('black1');
+  expect(started.seats.black1?.name).toBe('Quickie');
+
+  const next = await ask(lobby.socket, 'quick_join', { name: 'Second' });
+  expect(next.code).toBe(a.code);
+});

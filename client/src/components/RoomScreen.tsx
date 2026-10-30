@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { request } from '@/lib/net';
 import { previewFen } from '@/lib/preview';
-import { playBoom, playDouble, playFork, playHuh, playMateInOne, playNice, playQueenCapture, playStreak, unlockSounds } from '@/lib/sounds';
+import { playBoom, playDouble, playFork, playHuh, playMateInOne, playNice, playQueenCapture, playStreak, playTimeAlarm, playYourTurn, unlockSounds } from '@/lib/sounds';
+import { becameYourTurn, shouldTimeAlarm } from '../../../shared/alerts';
 import { queenMoveSound } from '../../../shared/capture';
 import { BLUNDER_FLASH_MS, DOUBLE_FLASH_MS, FORK_SOUND_DELAY_MS, FORK_SOUND_WAIT_MS, MATE_IN_ONE_SOUND_DELAY_MS, OPENING_FLASH_MS, POOF_HOLD_MS, QUEEN_CAPTURE_SOUND_DELAY_MS, STREAK_FLASH_MS, STREAK_SOUND_DELAY_MS, flashIsFresh } from '../../../shared/flash';
 import { isFork } from '../../../shared/fork';
@@ -143,6 +144,52 @@ export function RoomScreen({
     prevTurn.current = key;
     document.title = yourTurn ? 'Your move · Relay Chess' : `Table ${prettyCode(state.code)} · Relay Chess`;
   }, [yourTurn, state.seatToMove, state.status, state.code]);
+
+  const wasYourTurn = useRef<boolean | null>(null);
+  useEffect(() => {
+    const previous = wasYourTurn.current;
+    wasYourTurn.current = yourTurn;
+    if (!becameYourTurn(previous, yourTurn)) return;
+    playYourTurn();
+    if (!document.hidden) return;
+    const normal = document.title;
+    let flip = false;
+    const id = window.setInterval(() => {
+      flip = !flip;
+      document.title = flip ? '♟ Your move!' : normal;
+    }, 1000);
+    document.title = '♟ Your move!';
+    const stop = () => {
+      window.clearInterval(id);
+      document.title = normal;
+      window.removeEventListener('focus', stop);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+    const onVisible = () => {
+      if (!document.hidden) stop();
+    };
+    window.addEventListener('focus', stop);
+    document.addEventListener('visibilitychange', onVisible);
+    return stop;
+  }, [yourTurn]);
+
+  const alarmedPly = useRef<number | null>(null);
+  const mySide = you ? seatSide(you) : null;
+  const myClockMs = clock && mySide ? (mySide === 'white' ? clock.white : clock.black) : null;
+  useEffect(() => {
+    if (!clock || myClockMs === null || state.status !== 'playing') return;
+    const ring = shouldTimeAlarm({
+      mySide,
+      active: clock.active,
+      running: clock.running,
+      remainingMs: myClockMs,
+      ply: state.ply,
+      alarmedPly: alarmedPly.current,
+    });
+    if (!ring) return;
+    alarmedPly.current = state.ply;
+    playTimeAlarm();
+  }, [clock, myClockMs, mySide, state.ply, state.status]);
 
   const inCheck = useMemo(() => {
     const fen = frozenFen ?? pending?.fen;

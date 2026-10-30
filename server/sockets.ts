@@ -6,6 +6,7 @@ import {
   createRoom,
   getRoom,
   listRooms,
+  openRooms,
   presetOrThrow,
   pruneRooms,
   setupOrThrow,
@@ -81,6 +82,28 @@ export function registerSockets(io: Server): void {
         if (!room) throw new GameError('No table with that code. It may have expired.', true);
         release(io, socket);
         const token = room.addMember(name);
+        adopt(socket, room, token);
+        ack?.({ ok: true, token, code: room.code });
+        broadcast(io, room.code);
+      } catch (error) {
+        fail(ack, error);
+      }
+    });
+
+    socket.on('open_tables', (_payload: unknown, ack?: (res: Ack) => void) => {
+      ack?.({ ok: true, openTables: openRooms().length });
+    });
+
+    socket.on('quick_join', (payload: unknown, ack?: (res: Ack) => void) => {
+      try {
+        const body = asRecord(payload);
+        const name = cleanName(body.name);
+        const room = openRooms()[0];
+        if (!room) throw new GameError('No open tables right now. Create one instead.');
+        const seat = room.openSeats()[0];
+        release(io, socket);
+        const token = room.addMember(name);
+        room.sit(token, seat);
         adopt(socket, room, token);
         ack?.({ ok: true, token, code: room.code });
         broadcast(io, room.code);
