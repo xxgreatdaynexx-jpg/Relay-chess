@@ -5,6 +5,7 @@ import { RoomScreen } from '@/components/RoomScreen';
 import { VolumeControl } from '@/components/VolumeControl';
 import { SolitairePanel } from '@/components/SolitairePanel';
 import { BlackjackPanel } from '@/components/BlackjackPanel';
+import { ArenaPanel } from '@/components/ArenaPanel';
 import { socket } from '@/lib/net';
 import { clearSession, codeFromLocation, loadSession } from '@/lib/session';
 import type { PublicState } from '../../shared/types';
@@ -105,6 +106,7 @@ export function App() {
       <VolumeControl />
       <SolitairePanel />
       <BlackjackPanel />
+      <ArenaPanel />
       {leaderboard ? (
         <LeaderboardScreen
           onBack={() => {

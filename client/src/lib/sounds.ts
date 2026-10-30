@@ -377,3 +377,56 @@ export function playSolitaireWin(): void {
   const now = ctx.currentTime;
   [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(ctx, f, now + i * 0.12, 0.35, 0.12));
 }
+
+function arenaNoise(ctx: AudioContext, dur: number): AudioBufferSourceNode {
+  const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  return src;
+}
+
+/** Arena: short cartoon "pew" plus a puff of noise. Routed through the shared master volume. */
+export function playGunshot(volume = 1): void {
+  const ctx = audio();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(880, now);
+  osc.frequency.exponentialRampToValueAtTime(110, now + 0.12);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, now);
+  g.gain.exponentialRampToValueAtTime(0.18 * volume, now + 0.005);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
+  osc.connect(g);
+  g.connect(output(ctx));
+  osc.start(now);
+  osc.stop(now + 0.15);
+  const n = arenaNoise(ctx, 0.08);
+  const ng = ctx.createGain();
+  ng.gain.value = 0.25 * volume;
+  n.connect(ng);
+  ng.connect(output(ctx));
+  n.start(now);
+}
+
+/** Arena: a bonk when a shot lands (or you get tagged). */
+export function playHit(): void {
+  const ctx = audio();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(520, now);
+  osc.frequency.exponentialRampToValueAtTime(260, now + 0.09);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, now);
+  g.gain.exponentialRampToValueAtTime(0.3, now + 0.005);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+  osc.connect(g);
+  g.connect(output(ctx));
+  osc.start(now);
+  osc.stop(now + 0.13);
+}

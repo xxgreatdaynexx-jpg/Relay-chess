@@ -406,3 +406,23 @@ input {
 .bj-controls button { background: rgba(255,255,255,.14); border-radius: 6px; padding: 4px 10px; font-weight: 600; font-size: 13px; color: #fff6d8; }
 .bj-controls button:disabled { opacity: .35; }
 .bj-controls .bj-chip-on, .bj-controls .bj-deal { background: #e8c26a; color: #1a2e26; }
+
+/* ---------- Arena shooter drop-down (top-right) ---------- */
+.fps-wrap { position: fixed; right: 12px; top: 0; z-index: 46; display: flex; flex-direction: column-reverse; align-items: flex-end; pointer-events: none; }
+.fps-wrap > * { pointer-events: auto; }
+.fps-tab { border-radius: 0 0 10px 10px; padding: 2px 12px; font-size: 12px; }
+.fps-panel { width: 480px; height: auto; max-height: calc(100dvh - 40px); border-radius: 0 0 14px 14px; animation: bj-down .22s ease-out; background: #1b1d2e; outline: none; touch-action: none; }
+.fps-panel.fps-focused { box-shadow: 0 0 0 2px #e8c26a, 0 14px 40px rgba(0,0,0,.5); }
+.fps-stage { position: relative; }
+.fps-canvas { display: block; width: 100%; aspect-ratio: 8 / 5; image-rendering: pixelated; cursor: crosshair; background: #000; }
+.fps-feed { position: absolute; left: 6px; top: 4px; font-size: 11px; line-height: 1.35; text-shadow: 0 1px 2px #000; pointer-events: none; }
+.fps-board { position: absolute; right: 6px; top: 4px; font-size: 11px; line-height: 1.35; background: rgba(0,0,0,.45); border-radius: 6px; padding: 3px 6px; pointer-events: none; max-width: 45%; }
+.fps-board div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fps-board .fps-me { color: #e8c26a; }
+.fps-status { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.5); font-weight: 700; }
+.fps-help { font-size: 11px; opacity: .75; padding: 5px 8px; text-align: center; }
+.fps-touch { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; gap: 8px; }
+.fps-dpad { display: grid; grid-template-columns: repeat(4, 46px); gap: 6px; }
+.fps-touch button { height: 44px; border-radius: 10px; background: rgba(255,255,255,.14); font-weight: 700; color: #fff6d8; touch-action: none; user-select: none; -webkit-user-select: none; }
+.fps-touch .fps-fire { width: 88px; background: #e85a5a; }
+@media (max-width: 520px) { .fps-wrap { right: 6px; left: 6px; } .fps-open { top: 22px; } .fps-panel { width: 100%; } .fps-dpad { grid-template-columns: repeat(4, 40px); } }

@@ -1,6 +1,7 @@
 import type { Server, Socket } from 'socket.io';
 import { onBlunderReady } from './blunders.js';
 import { GameError } from './errors.js';
+import { registerFps } from './fps.js';
 import { onHintReady } from './hints.js';
 import {
   createRoom,
@@ -56,6 +57,7 @@ export function registerSockets(io: Server): void {
   startMaintenance(io);
 
   io.on('connection', (socket) => {
+    registerFps(io, socket);
     socket.on('create_room', (payload: unknown, ack?: (res: Ack) => void) => {
       try {
         const body = asRecord(payload);
