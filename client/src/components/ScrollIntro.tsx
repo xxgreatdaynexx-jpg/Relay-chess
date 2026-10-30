@@ -62,6 +62,7 @@ export function ScrollIntro({ onPick }: { onPick: (game: GameType) => void }) {
   const slotRefs = useRef<Array<HTMLDivElement | null>>([]);
   const slots = useCallback(() => slotRefs.current, []);
   const reduced = useReducedMotion();
+  const [past, setPast] = useState(false);
 
   useEffect(() => {
     let raf = 0;
@@ -79,6 +80,8 @@ export function ScrollIntro({ onPick }: { onPick: (game: GameType) => void }) {
         if (el.getBoundingClientRect().top <= h * 0.5) current = i;
       });
       setActive(current);
+      const wrap = refs.current[0]?.parentElement;
+      setPast(Boolean(wrap && wrap.getBoundingClientRect().bottom < h * 0.5));
     };
     const onScroll = () => { if (!raf) raf = requestAnimationFrame(tick); };
     tick();
@@ -108,7 +111,7 @@ export function ScrollIntro({ onPick }: { onPick: (game: GameType) => void }) {
   return (
     <div className={`si-wrap${reduced ? ' si-static' : ''}`} data-testid="scroll-intro">
       {!reduced && <ParticleMorph slots={slots} />}
-      <nav className="si-dots" aria-label="Games">
+      <nav className={`si-dots${past ? ' si-dots-off' : ''}`} aria-label="Games">
         {PANELS.map((p, i) => (
           <button key={p.id} type="button" className={active === i ? 'on' : ''} aria-current={active === i} aria-label={`Relay ${p.accent}`}
             onClick={() => go(i)} data-testid={`dot-${p.id}`}>

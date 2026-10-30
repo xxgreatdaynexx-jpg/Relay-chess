@@ -1056,3 +1056,9 @@ html, body { overflow-x: clip; }
 .fps-maps-pick button:focus-visible { outline: 2px solid #fff6d8; }
 /* Reduced motion: no particle canvas; each panel shows its static board, crossfading as the next panel covers it. */
 .si-static .si-visual .si-board { inset: 0; width: 100%; opacity: calc(1 - var(--fade, 0)); transform: none; filter: none; }
+
+/* Play area fills a full screen once scrolled to, so it can reach the top (no leftover intro band) and the page ends on a footer. */
+.home-play { min-height: 100dvh; display: flex; flex-direction: column; }
+.home-footer { margin-top: auto; padding: 48px 0 72px; border-top: 1px solid #e0b56a2e; }
+.home-footer { position: relative; } .home-play > .home-footer { margin-top: auto; } .home-play > :nth-last-child(2) { margin-bottom: 48px; }
+.si-dots.si-dots-off { opacity: 0; pointer-events: none; visibility: hidden; }
