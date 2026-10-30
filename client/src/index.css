@@ -423,10 +423,10 @@ input {
 .fps-status { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.5); font-weight: 700; }
 .fps-help { font-size: 11px; opacity: .75; padding: 5px 8px; text-align: center; }
 .fps-touch { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; gap: 8px; }
-.fps-dpad { display: grid; grid-template-columns: repeat(4, 46px); gap: 6px; }
+.fps-dpad { display: grid; grid-template-columns: repeat(6, 46px); gap: 6px; }
 .fps-touch button { height: 44px; border-radius: 10px; background: rgba(255,255,255,.14); font-weight: 700; color: #fff6d8; touch-action: none; user-select: none; -webkit-user-select: none; }
 .fps-touch .fps-fire { width: 88px; background: #e85a5a; }
-@media (max-width: 520px) { .fps-wrap { right: 6px; left: 6px; } .fps-open { top: 22px; } .fps-panel { width: 100%; } .fps-dpad { grid-template-columns: repeat(4, 40px); } }
+@media (max-width: 520px) { .fps-wrap { right: 6px; left: 6px; } .fps-open { top: 22px; } .fps-panel { width: 100%; } .fps-dpad { grid-template-columns: repeat(6, 38px); } }
 
 /* Your-turn screen flash: two quick gold/white pulses, never blocks clicks. */
 .turn-flash {
@@ -1030,3 +1030,10 @@ html[data-theme="contrast"] .top-tabs .sol-tab[aria-expanded="true"] { backgroun
 .felt-he .felt-hand .felt-card + .felt-card { margin-left: max(-8px, -1.6cqw); }
 .felt-seat { gap: max(5px, 1cqw); }
 .felt-seat.he .felt-hand { margin-bottom: max(2px, .4cqw); }
+/* Arena map picker strip */
+.fps-maps { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 4px 10px; font-size: 11px; color: #f1e4bf; background: rgba(20,16,10,.55); flex: none; }
+.fps-maps-now { font-weight: 800; letter-spacing: .03em; text-transform: uppercase; }
+.fps-maps-pick { display: flex; gap: 4px; margin-left: auto; }
+.fps-maps-pick button { padding: 1px 8px; border-radius: 6px; background: rgba(255,255,255,.12); font-weight: 700; }
+.fps-maps-pick button.is-on { background: #c8a24a; color: #1d1609; }
+.fps-maps-pick button.is-next { outline: 1px solid #c8a24a; }

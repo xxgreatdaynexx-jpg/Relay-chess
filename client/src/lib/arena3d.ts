@@ -19,6 +19,14 @@ function canvasTex(draw: (g: CanvasRenderingContext2D, n: number) => void, n = 1
   return t;
 }
 
+function corrugated(g: CanvasRenderingContext2D, n: number, base: string, seed: number) {
+  g.fillStyle = base; g.fillRect(0, 0, n, n);
+  for (let x = 0; x < n; x += 8) { g.fillStyle = 'rgba(0,0,0,.22)'; g.fillRect(x, 0, 3, n); g.fillStyle = 'rgba(255,255,255,.07)'; g.fillRect(x + 4, 0, 2, n); }
+  g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(0, 0, n, 4); g.fillRect(0, n - 4, n, 4);
+  grain(g, n, 0.2, seed);
+  g.fillStyle = 'rgba(120,70,30,.25)'; for (let i = 0; i < 7; i++) g.fillRect((i * 47) % n, (i * 71) % n, 10, 18);
+}
+
 function grain(g: CanvasRenderingContext2D, n: number, amt: number, seed: number) {
   let s = seed;
   const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
@@ -30,7 +38,7 @@ function grain(g: CanvasRenderingContext2D, n: number, amt: number, seed: number
 }
 
 /** Procedural dust-era texture set. Each texture spans TEX_UNITS world units. */
-const TEX_UNITS: Record<Material, number> = { sand: 4, plaster: 3, concrete: 3, crate: 1, metal: 2, sandbag: 1.2, wood: 2 };
+const TEX_UNITS: Record<Material, number> = { sand: 4, plaster: 3, concrete: 3, crate: 1, metal: 2, sandbag: 1.2, wood: 2, container: 2.6, container2: 2.6, tile: 2, carpet: 3, drywall: 3 };
 function makeTextures(): Record<Material, THREE.CanvasTexture> {
   return {
     sand: canvasTex((g, n) => { g.fillStyle = '#c9a66b'; g.fillRect(0, 0, n, n); grain(g, n, 0.18, 7); g.fillStyle = 'rgba(120,90,50,.12)'; for (let i = 0; i < 9; i++) g.fillRect((i * 37) % n, (i * 53) % n, 22, 9); }),
@@ -62,6 +70,20 @@ function makeTextures(): Record<Material, THREE.CanvasTexture> {
         g.fillStyle = r % 2 ? '#a08d63' : '#95825a'; g.beginPath(); g.ellipse(x + n / 4, y + n / 8, n / 4 - 2, n / 8 - 2, 0, 0, 7); g.fill();
       }
       grain(g, n, 0.15, 17);
+    }),
+    // corrugated shipping-container steel, rusty red and faded blue
+    container: canvasTex((g, n) => corrugated(g, n, '#8a3b26', 21)),
+    container2: canvasTex((g, n) => corrugated(g, n, '#3f5f73', 23)),
+    tile: canvasTex((g, n) => {
+      g.fillStyle = '#b9ad94'; g.fillRect(0, 0, n, n);
+      g.strokeStyle = 'rgba(70,60,45,.4)'; g.lineWidth = 2; for (let i = 0; i <= 4; i++) { g.beginPath(); g.moveTo(0, (i * n) / 4); g.lineTo(n, (i * n) / 4); g.moveTo((i * n) / 4, 0); g.lineTo((i * n) / 4, n); g.stroke(); }
+      grain(g, n, 0.12, 29);
+    }),
+    carpet: canvasTex((g, n) => { g.fillStyle = '#5d6168'; g.fillRect(0, 0, n, n); grain(g, n, 0.3, 31); g.fillStyle = 'rgba(30,30,35,.15)'; for (let i = 0; i < 6; i++) g.fillRect((i * 41) % n, (i * 29) % n, 30, 14); }),
+    drywall: canvasTex((g, n) => {
+      g.fillStyle = '#c8c0ae'; g.fillRect(0, 0, n, n); grain(g, n, 0.1, 37);
+      g.fillStyle = 'rgba(90,80,60,.3)'; g.fillRect(0, n - 10, n, 10);
+      g.fillStyle = 'rgba(110,100,80,.18)'; g.fillRect(n / 2, 0, 2, n);
     }),
     wood: canvasTex((g, n) => { g.fillStyle = '#7a5530'; g.fillRect(0, 0, n, n); for (let y = 0; y < n; y += 12) { g.fillStyle = 'rgba(40,25,10,.4)'; g.fillRect(0, y, n, 2); } grain(g, n, 0.15, 19); }),
   };

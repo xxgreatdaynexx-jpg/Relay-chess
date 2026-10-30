@@ -6,18 +6,21 @@ import { ArenaRenderer, minimapSize } from '@/lib/arenaRender';
 import type { Arena3D, Fx3D, Soldier3D } from '@/lib/arena3d';
 import { playExplosion, playHit, playStreakCall, playWeaponShot, unlockSounds } from '@/lib/sounds';
 import {
-  AIRSTRIKE_RADIUS, clampPitch, EYE_HEIGHT, mapById, MAP, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, stepVertical, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
+  AIRSTRIKE_RADIUS, clampPitch, EYE_HEIGHT, mapById, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, stepVertical, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
 } from '../../../shared/fps';
 
 const OPEN_KEY = 'relay-fps-open';
 const QUALITY_KEY = 'relay-fps-quality';
+const MAP_KEY = 'relay-fps-map';
+const MAP_LIST = Object.values(MAPS);
+const clock = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
 const INTERP_MS = (1000 / TICK_HZ) * 1.5;
 const COLORS = ['#5f6a48', '#7d7158', '#596066', '#6b6248', '#4f5a4c', '#73705f', '#565246', '#666e5a'];
 const SCOPE_ZOOM = 3.5;
 const FOV = 68; // vertical, degrees
 
 interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number }
-interface NetState { t: number; map?: string; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null }
+interface NetState { t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null }
 interface Snap extends NetState { recv: number }
 type Quality = 'hd' | 'lo';
 
@@ -66,7 +69,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const snaps = useRef<Snap[]>([]);
   const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, killmark: 0, nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number }>, hitAt: new Map<string, number>(), shake: 0, jetAt: 0 });
   const banner = useRef<{ text: string; sub: string; at: number } | null>(null);
-  const touch = useRef({ up: false, down: false, left: false, right: false });
+  const touch = useRef({ up: false, down: false, left: false, right: false, lookUp: false, lookDown: false });
+  const [mapInfo, setMapInfo] = useState<{ map: string; next: string; picked: boolean; secs: number }>({ map: MAP.id, next: '', picked: false, secs: 0 });
 
   function setWeapon(w: WeaponId) {
     const m = me.current;
@@ -123,7 +127,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     const join = () => {
       const qaBots = Number(new URLSearchParams(window.location.search).get('arenaBots')) || 0;
-      socket.timeout(8000).emit('fps_join', qaBots ? { qaBots } : {}, (err: Error | null, ack?: { ok: boolean; id?: string; x?: number; y?: number; z?: number; a?: number; map?: string; error?: string }) => {
+      const want = localStorage.getItem(MAP_KEY);
+      socket.timeout(8000).emit('fps_join', { ...(qaBots ? { qaBots } : {}), ...(want && MAPS[want] ? { map: want } : {}) }, (err: Error | null, ack?: { ok: boolean; id?: string; x?: number; y?: number; z?: number; a?: number; map?: string; error?: string }) => {
         if (err || !ack?.ok) return setStatus(ack?.error || 'Could not reach the arena.');
         if (ack.map) mapRef.current = mapById(ack.map);
         Object.assign(me.current, { id: ack.id, x: ack.x, y: ack.y, z: ack.z ?? 0, vz: 0, grounded: true, p: 0, a: ack.a, joined: true, alive: true });
@@ -143,7 +148,16 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       if (snaps.current.length > 6) snaps.current.shift();
       const m = me.current;
       const mine = s.players.find((p) => p.id === m.id);
-      if (s.map && s.map !== mapRef.current.id) mapRef.current = mapById(s.map);
+      const mapChanged = !!s.map && s.map !== mapRef.current.id;
+      if (mapChanged) {
+        mapRef.current = mapById(s.map);
+        banner.current = { text: mapRef.current.name.toUpperCase(), sub: 'New map · scores reset', at: performance.now() };
+      }
+      if (s.map) {
+        const info = { map: s.map, next: s.next ?? '', picked: !!s.picked, secs: Math.ceil((s.left ?? 0) / 1000) };
+        setMapInfo((o) => (o.map === info.map && o.next === info.next && o.picked === info.picked && o.secs === info.secs ? o : info));
+      }
+      if (mine && mapChanged) Object.assign(m, { x: mine.x, y: mine.y, z: mine.z, vz: 0, grounded: true, p: 0 });
       if (mine) {
         if (!mine.alive && m.alive) m.alive = false;
         if (mine.alive && !m.alive) Object.assign(m, { alive: true, x: mine.x, y: mine.y, z: mine.z, vz: 0, grounded: true, p: 0, ammo: WEAPONS[m.weapon].mag, reloadUntil: 0 });
@@ -281,6 +295,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         if (k.has('arrowright') || k.has('e') || t.right) turn += 1;
         if (k.has('pageup')) look += 1;
         if (k.has('pagedown')) look -= 1;
+        if (t.lookUp) look += 1;
+        if (t.lookDown) look -= 1;
         m.a += turn * (m.scoped ? 0.8 : 2.6) * dt;
         m.p = clampPitch(m.p + look * 1.6 * dt) ?? m.p;
         const len = Math.hypot(fwd, side) || 1;
@@ -550,7 +566,11 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     else if (key === 'f' || key === 'control') shoot();
   }
 
-  const hold = (dir: 'up' | 'down' | 'left' | 'right') => ({
+  const pickMap = (id: string) => {
+    localStorage.setItem(MAP_KEY, id);
+    socket.emit('fps_map', { map: id });
+  };
+  const hold = (dir: 'up' | 'down' | 'left' | 'right' | 'lookUp' | 'lookDown') => ({
     onPointerDown: (e: React.PointerEvent) => { e.preventDefault(); touch.current[dir] = true; },
     onPointerUp: () => { touch.current[dir] = false; },
     onPointerLeave: () => { touch.current[dir] = false; },
@@ -586,6 +606,25 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         <button type="button" className="fps-quality" data-testid="arena-quality" title="Graphics quality" onClick={() => setQuality((q) => (q === 'hd' ? 'lo' : 'hd'))}>{quality === 'hd' ? 'HD' : 'LO'}</button>
         {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" title="Reset position" onClick={win.reset}>⟲</button>}
         <button type="button" className="ml-auto" aria-label="Close arena" onClick={onClose}>✕</button>
+      </div>
+      <div className="fps-maps" data-testid="arena-maps">
+        <span className="fps-maps-now">{mapById(mapInfo.map).name}{mapInfo.secs > 0 && <span className="opacity-70"> · {clock(mapInfo.secs * 1000)}</span>}</span>
+        {mapInfo.next && <span className="opacity-70">next: {mapById(mapInfo.next).name}{mapInfo.picked ? ' (picked)' : ''}</span>}
+        <span className="fps-maps-pick" role="group" aria-label="Pick a map">
+          {MAP_LIST.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              data-testid={`arena-map-${m.id}`}
+              aria-pressed={m.id === mapInfo.map}
+              className={m.id === mapInfo.map ? 'is-on' : m.id === mapInfo.next && mapInfo.picked ? 'is-next' : ''}
+              title={m.id === mapInfo.map ? 'Playing now' : 'Vote for this map (loads now if you are alone)'}
+              onClick={() => pickMap(m.id)}
+            >
+              {m.name}
+            </button>
+          ))}
+        </span>
       </div>
       <div className="fps-stage">
         <canvas ref={glRef} className="fps-gl" aria-hidden="true" />
@@ -634,6 +673,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
             <button type="button" aria-label="Forward" {...hold('up')}>▲</button>
             <button type="button" aria-label="Back" {...hold('down')}>▼</button>
             <button type="button" aria-label="Turn right" {...hold('right')}>▶</button>
+            <button type="button" aria-label="Look up" data-testid="arena-look-up" {...hold('lookUp')}>⤒</button>
+            <button type="button" aria-label="Look down" data-testid="arena-look-down" {...hold('lookDown')}>⤓</button>
           </div>
           <button type="button" className="fps-jump" data-testid="arena-jump" onPointerDown={(e) => { e.preventDefault(); jump(); }}>JUMP</button>
           <button type="button" className="fps-swap" data-testid="arena-swap" onPointerDown={(e) => { e.preventDefault(); cycleWeapon(1); }}>SWAP</button>

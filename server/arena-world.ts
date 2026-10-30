@@ -6,11 +6,18 @@ import {
   AIRSTRIKE_DAMAGE, AIRSTRIKE_DELAY_MS, AIRSTRIKE_LOCK_MS, AIRSTRIKE_RADIUS, AIRSTRIKE_RANGE, AIRSTRIKE_SPACING, AIRSTRIKE_WAIT_MS, applyDamage,
   chestOf, clampPitch, dirFrom, DRONE_COOLDOWN_MS, DRONE_DAMAGE, DRONE_MS, DRONE_RANGE, eyeOf, fireWeapon, isWeapon, KILL_Z, lineOfSight, MAP, MAX_HP, maybeRespawn,
   normAngle, NUKE_DELAY_MS, NUKE_RESPAWN_MS, pickSpawn, rayWorld, roofAt, SCOPE_SETTLE_MS, splashTargets, stepVertical, STREAKS, streakReward,
-  SWITCH_MS, tryJump, UAV_MS, validateMove, WEAPON_ORDER, WEAPONS, type ArenaMap, type Fighter, type StreakKind, type WeaponId,
+  SWITCH_MS, tryJump, UAV_MS, validateMove, WEAPON_ORDER, WEAPONS, type ArenaMap, type Fighter, MAPS, type StreakKind, type WeaponId,
 } from '../shared/fps.js';
+import { isMapId, MAP_ROTATION } from '../shared/arenaMaps.js';
 
-/** Drones hover this high (above every roof). */
+/** Drones hover at least this high, and always above the map's tallest structure. */
 export const DRONE_Z = 8;
+export const droneZ = (map: ArenaMap): number =>
+  Math.max(DRONE_Z, ...map.solids.filter((s) => s.x1 - s.x0 < map.w - 1 && s.y1 - s.y0 < map.d - 1).map((s) => s.z1 + 1.5)); // ignores the perimeter walls
+/** A match lasts this long; then the next map (picked or in rotation) loads and scores reset. */
+export const MATCH_MS = 8 * 60_000;
+/** Map that follows `id` in the rotation. */
+export const nextInRotation = (id: string): string => MAP_ROTATION[(MAP_ROTATION.indexOf(id) + 1) % MAP_ROTATION.length];
 
 /** Allowance for network jitter when checking fire rate. */
 export const FIRE_JITTER_MS = 25;
@@ -44,11 +51,57 @@ export class ArenaWorld {
   drones = new Map<string, Drone>();
   nuke: { ownerId: string; by: string; at: number } | null = null;
 
-  constructor(readonly map: ArenaMap = MAP, private rand: () => number = Math.random) {}
+  /** Map picked by a player for the next match (validated), or null to follow the rotation. */
+  nextMapId: string | null = null;
+  /** When the current match ends (0 until someone joins). */
+  matchEndsAt = 0;
+  private droneHeight: number;
+
+  constructor(public map: ArenaMap = MAP, private rand: () => number = Math.random) {
+    this.droneHeight = droneZ(map);
+  }
+
+  /** The map the next match will be played on. */
+  get upcomingMapId(): string {
+    return this.nextMapId ?? nextInRotation(this.map.id);
+  }
+
+  /**
+   * A player asks for a map. Unknown ids are rejected. The pick becomes the next map; if the picker is the only
+   * human here (QA bots don't count) it loads straight away. Returns the events to broadcast, or null if rejected.
+   */
+  pickMap(id: unknown, pickerId: string, now: number, isHuman: (id: string) => boolean = () => true): ArenaEvent[] | null {
+    if (!isMapId(id) || !this.fighters.has(pickerId)) return null;
+    const humans = [...this.fighters.keys()].filter(isHuman);
+    if (humans.length === 1 && humans[0] === pickerId) {
+      return id === this.map.id ? [] : this.changeMap(MAPS[id], now, this.fighters.get(pickerId)!.name);
+    }
+    this.nextMapId = id;
+    return [{ ev: 'fps_map', data: { phase: 'next', map: id, by: this.fighters.get(pickerId)!.name } }];
+  }
+
+  /** Loads a new map: fresh match, scores reset, streak rewards cleared, everyone redeploys at the new spawns. */
+  changeMap(map: ArenaMap, now: number, by: string | null = null): ArenaEvent[] {
+    this.map = map;
+    this.droneHeight = droneZ(map);
+    this.nextMapId = null;
+    this.matchEndsAt = now + MATCH_MS;
+    this.strikes = [];
+    this.drones.clear();
+    this.nuke = null;
+    const placed: ArenaFighter[] = [];
+    for (const f of this.fighters.values()) {
+      const [x, y, z] = pickSpawn(placed, this.rand, map);
+      Object.assign(f, { x, y, z, vz: 0, grounded: true, p: 0, physAt: now, lastMove: now, hp: MAX_HP, alive: true, respawnAt: 0, kills: 0, deaths: 0, streak: 0, uavUntil: 0, headshots: 0, ammo: fullAmmo(), reloadUntil: 0, lastShotAt: zeroShots() });
+      placed.push(f);
+    }
+    return [{ ev: 'fps_map', data: { phase: 'load', map: map.id, by } }];
+  }
 
   join(id: string, name: string, now: number): ArenaFighter {
     const existing = this.fighters.get(id);
     if (existing) return existing;
+    if (!this.matchEndsAt) this.matchEndsAt = now + MATCH_MS;
     const [x, y, z] = pickSpawn([...this.fighters.values()], this.rand, this.map);
     const f: ArenaFighter = {
       id, name, x, y, z, vz: 0, grounded: true, p: 0, physAt: now, headshots: 0, a: this.rand() * Math.PI * 2, hp: MAX_HP, kills: 0, deaths: 0, alive: true, respawnAt: 0,
@@ -234,7 +287,7 @@ export class ArenaWorld {
     // Circles above its owner, high over the rooftops.
     const ox = Math.min(this.map.w - 0.5, Math.max(0.5, o.x + Math.cos(t) * 1.5));
     const oy = Math.min(this.map.d - 0.5, Math.max(0.5, o.y + Math.sin(t) * 1.5));
-    return { x: ox, y: oy, z: DRONE_Z };
+    return { x: ox, y: oy, z: this.droneHeight };
   }
 
   tick(now: number): ArenaEvent[] {
@@ -322,6 +375,8 @@ export class ArenaWorld {
       this.drones.clear();
       out.push({ ev: 'fps_nuke', data: { phase: 'boom', by } });
     }
+    // Match over: load the picked map, or the next one in rotation.
+    if (this.matchEndsAt && now >= this.matchEndsAt && !this.nuke) out.push(...this.changeMap(MAPS[this.upcomingMapId], now));
     return out;
   }
 
@@ -339,6 +394,9 @@ export class ArenaWorld {
         return p ? [{ ownerId: d.ownerId, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: p.z, left: d.until - now }] : [];
       }),
       map: this.map.id,
+      next: this.upcomingMapId,
+      picked: this.nextMapId !== null,
+      left: this.matchEndsAt ? Math.max(0, this.matchEndsAt - now) : MATCH_MS,
       strikes: this.strikes.map((s) => ({ x: +s.x.toFixed(2), y: +s.y.toFixed(2), z: +roofAt(s.x, s.y, this.map).toFixed(2), inMs: Number.isFinite(s.at) ? Math.max(0, s.at - now) : -1, r: AIRSTRIKE_RADIUS, locked: now >= s.lockAt })),
       nuke: this.nuke ? { by: this.nuke.by, inMs: this.nuke.at - now } : null,
     };

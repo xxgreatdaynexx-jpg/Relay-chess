@@ -129,6 +129,9 @@ export function registerFps(io: Server, socket: Socket): void {
       }
       const account = (socket.data.account as { name?: string } | undefined)?.name;
       world.join(socket.id, account ?? guestName(), Date.now());
+      // The first human in can choose the map straight away.
+      const want = body(payload).map;
+      if (want !== undefined) { const ev = world.pickMap(want, socket.id, Date.now(), (id) => !isBot(id)); if (ev) emit(io, ev); }
       claimArenaName(socket.id, account ?? null);
       if (account) getArenaLedger().match(account);
       socket.join(ROOM);
@@ -148,6 +151,11 @@ export function registerFps(io: Server, socket: Socket): void {
   socket.on('fps_weapon', (p: unknown) => world.switchWeapon(socket.id, body(p).w, Date.now()));
   socket.on('fps_reload', () => world.reload(socket.id, Date.now()));
   socket.on('fps_scope', (p: unknown) => world.setScope(socket.id, body(p).on, Date.now()));
+  socket.on('fps_map', (p: unknown, ack?: (res: unknown) => void) => {
+    const ev = world.pickMap(body(p).map, socket.id, Date.now(), (id) => !isBot(id));
+    if (ev) { emit(io, ev); io.to(ROOM).emit('fps_state', world.snapshot(Date.now())); }
+    if (typeof ack === 'function') ack({ ok: !!ev, map: world.map.id, next: world.upcomingMapId });
+  });
   socket.on('fps_leave', () => leave(io, socket));
   socket.on('disconnect', () => leave(io, socket));
 }
