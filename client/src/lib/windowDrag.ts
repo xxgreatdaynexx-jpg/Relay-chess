@@ -1,5 +1,5 @@
 import { createElement, useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent, type RefObject } from 'react';
-import { clampOffset, clampSize, contentScale, loadOffset, loadSize, saveOffset, saveSize, type Offset, type Size } from '../../../shared/windowPos';
+import { clampOffset, clampSize, contentScale, TOP_BAR, loadOffset, loadSize, saveOffset, saveSize, type Offset, type Size } from '../../../shared/windowPos';
 
 const store = () => { try { return localStorage; } catch { return null; } };
 const PHONE = '(max-width: 520px)';
@@ -14,7 +14,12 @@ type Dir = (typeof DIRS)[number];
  */
 export function useWindowDrag(id: string, ref: RefObject<HTMLElement | null>) {
   const [off, setOff] = useState<Offset>(() => loadOffset(id, store()) ?? { dx: 0, dy: 0 });
-  const [size, setSize] = useState<Size | null>(() => loadSize(id, store()));
+  const [size, setSize] = useState<Size | null>(() => {
+    const s = loadSize(id, store());
+    if (!s) return s;
+    const c = clampSize(s.w, s.h, window.innerWidth, window.innerHeight - TOP_BAR + M, M);
+    return { ...s, ...c };
+  });
   const [maxed, setMaxed] = useState<null | { off: Offset; size: Size | null }>(null);
   const offRef = useRef(off);
   offRef.current = off;
@@ -32,7 +37,7 @@ export function useWindowDrag(id: string, ref: RefObject<HTMLElement | null>) {
     if (!el || phone()) return o;
     const r = el.getBoundingClientRect();
     const cur = offRef.current;
-    return clampOffset(o, { left: r.left - cur.dx, top: r.top - cur.dy, width: r.width, height: r.height }, window.innerWidth, window.innerHeight, M);
+    return clampOffset(o, { left: r.left - cur.dx, top: r.top - cur.dy, width: r.width, height: r.height }, window.innerWidth, window.innerHeight, M, TOP_BAR);
   }, [ref]);
 
   const front = useCallback(() => {
@@ -60,7 +65,7 @@ export function useWindowDrag(id: string, ref: RefObject<HTMLElement | null>) {
       setPhone(phone());
       setSize((s) => {
         if (!s || phone()) return s;
-        const c = clampSize(s.w, s.h, window.innerWidth, window.innerHeight, M);
+        const c = clampSize(s.w, s.h, window.innerWidth, window.innerHeight - TOP_BAR + M, M);
         return c.w === s.w && c.h === s.h ? s : { ...s, ...c };
       });
       setOff((o) => clamp(o));
@@ -97,11 +102,11 @@ export function useWindowDrag(id: string, ref: RefObject<HTMLElement | null>) {
     }
     const { w0, h0 } = natural();
     setMaxed({ off: offRef.current, size: sizeRef.current });
-    const c = clampSize(window.innerWidth, window.innerHeight, window.innerWidth, window.innerHeight, M);
+    const c = clampSize(window.innerWidth, window.innerHeight - TOP_BAR + M, window.innerWidth, window.innerHeight - TOP_BAR + M, M);
     const next = { ...c, w0, h0 };
     setSize(next);
     saveSize(id, next, store());
-    pin.current = { left: M, top: M };
+    pin.current = { left: M, top: TOP_BAR };
   };
 
   const persistOff = () => setTimeout(() => saveOffset(id, offRef.current, store()), 0);
@@ -164,8 +169,8 @@ export function useWindowDrag(id: string, ref: RefObject<HTMLElement | null>) {
       if (s.dir.includes('e')) right = Math.min(vw - M, right + ddx);
       if (s.dir.includes('w')) left = Math.max(M, left + ddx);
       if (s.dir.includes('s')) bottom = Math.min(vh - M, bottom + ddy);
-      if (s.dir.includes('n')) top = Math.max(M, top + ddy);
-      const c = clampSize(right - left, bottom - top, vw, vh, M);
+      if (s.dir.includes('n')) top = Math.max(TOP_BAR, top + ddy);
+      const c = clampSize(right - left, bottom - top, vw, vh - TOP_BAR + M, M);
       if (s.dir.includes('w')) left = right - c.w;
       if (s.dir.includes('n')) top = bottom - c.h;
       pin.current = { left, top };

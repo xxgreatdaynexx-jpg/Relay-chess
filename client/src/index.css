@@ -667,3 +667,8 @@ body { padding-top: 44px; }
   .top-tabs-slots .sol-tab { width: 100%; text-align: left; }
   .app-panels .sol-panel, .app-panels .fps-panel { left: 4px; right: 4px; width: auto; top: 46px; max-height: calc(100dvh - 56px); }
 }
+/* Hotfix: the bar never clips its first tabs; it scrolls sideways when tabs don't fit. */
+.top-tabs { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; justify-content: flex-start; }
+.top-tabs-slots, .top-tab-slot, .top-menu-btn { flex: none; }
+.top-tab-account { flex: none; }
+@media (max-width: 520px) { .top-tabs { overflow: visible; } }

@@ -3,14 +3,16 @@ export interface Offset { dx: number; dy: number }
 export interface Box { left: number; top: number; width: number; height: number }
 
 /** Keep the whole panel (at least `margin` px of it when larger than the screen) on screen. `base` is the un-offset rect. */
-export function clampOffset(o: Offset, base: Box, vw: number, vh: number, margin = 4): Offset {
-  const fit = (pos: number, size: number, view: number) => {
-    const min = margin;
+/** Height reserved for the fixed top tab bar; windows never go above it. */
+export const TOP_BAR = 44;
+
+export function clampOffset(o: Offset, base: Box, vw: number, vh: number, margin = 4, topMin = margin): Offset {
+  const fit = (pos: number, size: number, view: number, min = margin) => {
     const max = Math.max(min, view - size - margin);
     return Math.min(max, Math.max(min, pos));
   };
   const left = fit(base.left + o.dx, base.width, vw);
-  const top = fit(base.top + o.dy, base.height, vh);
+  const top = fit(base.top + o.dy, base.height, vh, topMin);
   return { dx: Math.round(left - base.left), dy: Math.round(top - base.top) };
 }
 
