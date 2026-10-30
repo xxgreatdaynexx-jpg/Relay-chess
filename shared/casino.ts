@@ -43,6 +43,8 @@ export interface BJTableView {
 }
 
 export interface CasinoStanding {
+  /** QA test account (only ever sent to signed-in QA viewers). */
+  qa?: boolean;
   name: string;
   chips: number;
   netWon: number;

@@ -929,3 +929,6 @@ html[data-theme="contrast"] .top-tabs .sol-tab[aria-expanded="true"] { backgroun
 /* Windows sit at the shared top edge (matches TOP_BAR in shared/windowPos.ts). */
 .app-panels .sol-panel { top: 48px; }
 @media (max-width: 520px) { .app-panels .sol-panel, .app-panels .fps-panel { top: 48px; } }
+
+/* QA test-account tag (only QA viewers ever get QA rows). */
+.qa-tag { display: inline-block; margin-left: 6px; padding: 0 4px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: .04em; vertical-align: middle; background: #6b4fd8; color: #fff; }

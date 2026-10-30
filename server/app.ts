@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import { getCheckersLeaderboard, getLeaderboard } from './leaderboard.js';
+import { boardFor, isQaName } from '../shared/qa.js';
 import { registerSockets, stopMaintenance } from './sockets.js';
 import { resetRooms } from './rooms.js';
 
@@ -26,22 +27,30 @@ export async function createApp(): Promise<AppContext> {
   app.get('/health', (_req, res) => {
     res.json({ ok: true });
   });
-  app.get('/api/leaderboard', async (_req, res) => {
+  /** True only for a valid signed-in session whose account name starts with QA-. */
+  const viewerIsQa = async (req: express.Request): Promise<boolean> => {
+    const token = req.get('x-relay-session');
+    if (!token) return false;
+    try { return isQaName((await getAccounts().resume(token))?.name); } catch { return false; }
+  };
+
+  app.get('/api/leaderboard', async (req, res) => {
     const board = getLeaderboard();
     await board.refresh();
     const stats = getChessStats();
-    res.json({ rows: board.standings().map((row) => ({ ...row, ...stats.statsFor(row.name) })), source: board.usingDatabase ? 'postgres' : 'memory' });
+    const qa = await viewerIsQa(req);
+    res.json({ rows: boardFor(board.standings(), qa).map((row) => ({ ...row, ...stats.statsFor(row.name) })), source: board.usingDatabase ? 'postgres' : 'memory' });
   });
 
-  app.get('/api/checkers-leaderboard', async (_req, res) => {
+  app.get('/api/checkers-leaderboard', async (req, res) => {
     const board = getCheckersLeaderboard();
     await board.refresh();
-    res.json({ rows: board.standings(), source: board.usingDatabase ? 'postgres' : 'memory' });
+    res.json({ rows: boardFor(board.standings(), await viewerIsQa(req)), source: board.usingDatabase ? 'postgres' : 'memory' });
   });
 
-  app.get('/api/arena-leaderboard', (_req, res) => {
+  app.get('/api/arena-leaderboard', async (req, res) => {
     const ledger = getArenaLedger();
-    res.json({ rows: ledger.standings(), source: ledger.usingDatabase ? 'postgres' : 'memory' });
+    res.json({ rows: boardFor(ledger.standings(1e6), await viewerIsQa(req), 100), source: ledger.usingDatabase ? 'postgres' : 'memory' });
   });
 
   // Settings flush on page unload (sendBeacon / keepalive fetch), so a change right before a reload is never lost.

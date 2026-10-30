@@ -6,6 +6,11 @@ import { CasinoLeaderboard } from '@/components/CasinoCommon';
 import { loadName } from '@/lib/playerName';
 import { sortChess, type ChessCol } from '../../../shared/chessStats';
 import { ARENA_COLS, sortArena, type ArenaRow, type ArenaSort } from '../../../shared/arenaBoard';
+import { loadAuth } from '../lib/auth';
+
+/** Signed-in session header, so a QA account sees (tagged) QA rows; everyone else gets them filtered server-side. */
+const qaHeaders = (): RequestInit => { const t = loadAuth()?.token; return t ? { headers: { 'X-Relay-Session': t } } : {}; };
+export const QaTag = ({ on }: { on?: boolean }) => (on ? <span className="qa-tag" title="QA test account">QA</span> : null);
 
 const CHESS_HEAD: Array<[ChessCol, string, string]> = [
   ['name', 'Player', 'Player name'], ['wins', 'W', 'Wins'], ['losses', 'L', 'Losses'], ['draws', 'D', 'Draws'], ['played', 'Games', 'Games played'],
@@ -76,7 +81,7 @@ export function LeaderboardTable({ highlight = [] }: { highlight?: string[] }) {
 
   useEffect(() => {
     let cancel = false;
-    fetch('/api/leaderboard')
+    fetch('/api/leaderboard', qaHeaders())
       .then(async (response) => {
         if (!response.ok) throw new Error('bad status');
         return (await response.json()) as { rows: LeaderboardRow[] };
@@ -123,7 +128,7 @@ export function LeaderboardTable({ highlight = [] }: { highlight?: string[] }) {
             return (
               <tr key={row.name.toLowerCase()} className={cn('border-t border-white/10', mine && 'bg-brass/15')} data-testid="leaderboard-row">
                 <td className="px-3 py-2 text-cream/50">{index + 1}</td>
-                <td className="px-2 py-2 font-medium">{row.name}</td>
+                <td className="px-2 py-2 font-medium">{row.name}<QaTag on={(row as { qa?: boolean }).qa} /></td>
                 <td className="tabular px-2 py-2">{row.wins}</td>
                 <td className="tabular px-2 py-2">{row.losses}</td>
                 <td className="tabular px-2 py-2">{row.draws}</td>
@@ -148,7 +153,7 @@ export function ArenaLeaderboard({ you = '' }: { you?: string }) {
   const [sort, setSort] = useState<ArenaSort>('kills');
   useEffect(() => {
     let live = true;
-    fetch('/api/arena-leaderboard').then((r) => r.json()).then((d: { rows: ArenaRow[] }) => { if (live) setRows(d.rows ?? []); }).catch(() => live && setRows([]));
+    fetch('/api/arena-leaderboard', qaHeaders()).then((r) => r.json()).then((d: { rows: ArenaRow[] }) => { if (live) setRows(d.rows ?? []); }).catch(() => live && setRows([]));
     return () => { live = false; };
   }, []);
   if (!rows) return <div className="bj-label">Loading…</div>;
@@ -170,7 +175,7 @@ export function ArenaLeaderboard({ you = '' }: { you?: string }) {
         <tbody>
           {sorted.map((r, i) => (
             <tr key={r.name} className={cn('border-t border-white/10', r.name.toLowerCase() === you.toLowerCase() && 'casino-me')}>
-              <td className="tabular px-2 py-2">{i + 1}</td><td className="px-2 py-2">{r.name}</td>
+              <td className="tabular px-2 py-2">{i + 1}</td><td className="px-2 py-2">{r.name}<QaTag on={(r as { qa?: boolean }).qa} /></td>
               {ARENA_COLS.map(([k]) => <td key={k} className="tabular px-2 py-2">{k === 'kd' ? r.kd.toFixed(2) : r[k]}</td>)}
             </tr>
           ))}

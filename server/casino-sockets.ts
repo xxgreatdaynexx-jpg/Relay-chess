@@ -1,4 +1,5 @@
 /** Socket wiring for the shared blackjack tables and roulette wheel. Identity is the player's saved name. */
+import { boardFor, isQaName } from '../shared/qa.js';
 import type { Server, Socket } from 'socket.io';
 import type { CasinoStanding } from '../shared/casino.js';
 import { BlackjackCasino, type BJAction, type BlackjackTable } from './blackjack.js';
@@ -61,8 +62,8 @@ let timer: ReturnType<typeof setInterval> | null = null;
 const bjWatchers = new Set<Socket>();
 const rouletteWatchers = new Set<Socket>();
 
-function standings(): CasinoStanding[] {
-  return getBank().standings(25).map(({ name, chips, netWon, hands, spins, biggestWin }) => ({ name, chips, netWon, hands, spins, biggestWin }));
+function standings(viewerIsQa = false): CasinoStanding[] {
+  return boardFor(getBank().standings(1e6), viewerIsQa, 25).map(({ name, chips, netWon, hands, spins, biggestWin }) => ({ name, chips, netWon, hands, spins, biggestWin, ...(isQaName(name) ? { qa: true } : {}) }));
 }
 
 function nameOf(s: Socket): string | null {
@@ -81,7 +82,11 @@ function pushWheel(now = Date.now()): void {
 }
 
 function pushBoard(io: Server): void {
-  io.to('casino-board').emit('casino_board', standings());
+  const pub = standings(), qa = standings(true);
+  for (const id of io.sockets.adapter.rooms.get('casino-board') ?? []) {
+    const s = io.sockets.sockets.get(id);
+    if (s) s.emit('casino_board', isQaName(nameOf(s)) ? qa : pub);
+  }
 }
 
 export function startCasino(io: Server): void {
@@ -201,7 +206,7 @@ export function registerCasino(io: Server, socket: Socket): void {
   }));
   socket.on('casino_board', wrap(() => {
     void socket.join('casino-board');
-    return { rows: standings() };
+    return { rows: standings(isQaName(nameOf(socket))) };
   }));
 
   socket.on('casino_me', wrap((body) => {

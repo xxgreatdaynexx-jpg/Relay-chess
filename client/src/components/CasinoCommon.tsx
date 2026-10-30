@@ -26,7 +26,7 @@ export function CasinoLeaderboard({ you }: { you: string }) {
           {rows.map((r: CasinoStanding, i) => (
             <tr key={r.name} className={r.name.toLowerCase() === you.toLowerCase() ? 'casino-me' : ''}>
               <td>{i + 1}</td>
-              <td>{r.name}</td>
+              <td>{r.name}{r.qa && <span className="qa-tag" title="QA test account">QA</span>}</td>
               <td>{r.chips.toLocaleString()}</td>
               <td className={r.netWon >= 0 ? 'casino-up' : 'casino-down'}>{r.netWon >= 0 ? '+' : ''}{r.netWon.toLocaleString()}</td>
               <td>{r.biggestWin ? `+${r.biggestWin.toLocaleString()}` : '—'}</td>
