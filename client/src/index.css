@@ -518,3 +518,15 @@ input {
 .rl-chip-me { background: #e8c26a; color: #1a2e26; }
 .rl-chip-other { background: #3f7ad8; color: #fff; top: auto; bottom: 1px; }
 .rl-players { padding: 4px 10px 8px; font-size: 12px; display: flex; flex-direction: column; gap: 2px; opacity: .9; }
+
+/* Name accounts */
+.account-box { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: #f3ead7; }
+.account-in { flex-direction: row; align-items: center; gap: 6px; flex-wrap: wrap; }
+.account-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.account-row input { flex: 1 1 110px; min-width: 0; padding: 7px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,.25); background: rgba(0,0,0,.25); color: inherit; }
+.account-row button { padding: 7px 14px; border-radius: 10px; background: #d9a441; color: #1b1408; font-weight: 700; border: 0; cursor: pointer; }
+.account-row button:disabled { opacity: .6; }
+.account-hint { font-size: 12px; opacity: .8; }
+.account-error { color: #ff9b8a; opacity: 1; }
+.account-link { background: none; border: 0; color: #e8c27a; text-decoration: underline; cursor: pointer; padding: 0; font: inherit; }
+.account-compact .account-row input { flex-basis: 90px; }

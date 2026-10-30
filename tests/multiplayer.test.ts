@@ -1,3 +1,4 @@
+import { ensureSignedIn } from './auth-helper';
 import type { AddressInfo } from 'node:net';
 import { io as ioClient, type Socket } from 'socket.io-client';
 import { afterAll, beforeAll, expect, it } from 'vitest';
@@ -56,7 +57,8 @@ function connect() {
   };
 }
 
-function ask(socket: Socket, event: string, data?: unknown): Promise<Ack> {
+async function ask(socket: Socket, event: string, data?: unknown): Promise<Ack> {
+  await ensureSignedIn(socket, data);
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`no ack for ${event}`)), 5000);
     socket.emit(event, data ?? {}, (res: Ack) => {

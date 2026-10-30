@@ -205,6 +205,8 @@ export interface Ack {
   ok: boolean;
   error?: string;
   fatal?: boolean;
+  /** The action needs a signed-in name. */
+  auth?: boolean;
   token?: string;
   code?: string;
   /** Fake checkmate bailout could not find a safe square. */

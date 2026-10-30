@@ -1,6 +1,7 @@
 import { notifyNameChanged } from '@/lib/casino';
 import { useEffect, useState, type FormEvent } from 'react';
-import { loadName, saveName } from '@/lib/playerName';
+import { useAccount } from '@/lib/auth';
+import { AccountBox } from '@/components/AccountBox';
 import { saveTournament } from '@/lib/tournament';
 import { RulesDialog } from '@/components/RulesDialog';
 import { Button } from '@/components/ui/button';
@@ -37,12 +38,7 @@ export function HomeScreen({
   onTournament: (code: string) => void;
 }) {
   const saved = loadSession();
-  const [name, setNameRaw] = useState(() => loadName() || saved?.name || '');
-  const setName = (value: string) => {
-    setNameRaw(value);
-    saveName(value);
-    notifyNameChanged();
-  };
+  const name = useAccount();
   const [code, setCode] = useState(initialCode);
   const [clockId, setClockId] = useState<ClockId>('10+0');
   const [mode, setMode] = useState<GameMode>('2v2');
@@ -77,7 +73,7 @@ export function HomeScreen({
   async function joinCode(target: string) {
     setLocalError('');
     if (!name.trim()) {
-      setLocalError('Enter your name first, then join.');
+      setLocalError('Sign in or claim your name first, then join.');
       return;
     }
     setBusy('join');
@@ -103,7 +99,7 @@ export function HomeScreen({
   async function createTournament() {
     setLocalError('');
     if (!name.trim()) {
-      setLocalError('Enter your name first, then create a tournament.');
+      setLocalError('Sign in or claim your name first, then create a tournament.');
       return;
     }
     socket.connect();
@@ -120,7 +116,7 @@ export function HomeScreen({
     setLocalError('');
     const clean = target.toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (!clean) return setLocalError('Enter a tournament code.');
-    if (enter && !name.trim()) return setLocalError('Enter your name first, then join the tournament.');
+    if (enter && !name.trim()) return setLocalError('Sign in or claim your name first, then join the tournament.');
     socket.connect();
     const res = await request('tournament_join', { code: clean, name: name || undefined, enter });
     if (!res.ok) return setLocalError(res.error ?? 'Could not open that tournament.');
@@ -187,7 +183,7 @@ export function HomeScreen({
   async function quickJoin() {
     setLocalError('');
     if (!name.trim()) {
-      setLocalError('Enter your name first, then hit Quick Join.');
+      setLocalError('Sign in or claim your name first, then hit Quick Join.');
       return;
     }
     setBusy('quick');
@@ -266,7 +262,7 @@ export function HomeScreen({
               {busy === 'quick' ? 'Grabbing a seat…' : '⚡ Quick Join'}
             </Button>
             <span className="text-sm text-cream-dim">
-              {openTables === 1 ? '1 table is' : `${openTables} tables are`} waiting for players. Enter your name below, then jump in.
+              {openTables === 1 ? '1 table is' : `${openTables} tables are`} waiting for players. Sign in below, then jump in.
             </span>
           </div>
         )}
@@ -332,20 +328,7 @@ export function HomeScreen({
                 </li>
               ))}
             </ol>
-            <label className="mt-4 block text-xs tracking-wide text-cream/70 uppercase" htmlFor="create-name">
-              Your name
-            </label>
-            <Input
-              id="create-name"
-              data-testid="create-name"
-              className="mt-1.5"
-              value={name}
-              maxLength={18}
-              autoComplete="nickname"
-              placeholder="Ada"
-              onChange={(event) => setName(event.target.value)}
-              required
-            />
+            <div className="mt-4"><AccountBox /></div>
             <p className="mt-4 text-xs tracking-wide text-cream/70 uppercase">Shared team clock</p>
             <div className="mt-2 flex flex-wrap gap-2">
               {CLOCK_PRESETS.map((preset) => (
@@ -385,20 +368,7 @@ export function HomeScreen({
               onChange={(event) => setCode(event.target.value.toUpperCase())}
               required
             />
-            <label className="mt-4 block text-xs tracking-wide text-cream/70 uppercase" htmlFor="join-name">
-              Your name
-            </label>
-            <Input
-              id="join-name"
-              data-testid="join-name"
-              className="mt-1.5"
-              value={name}
-              maxLength={18}
-              autoComplete="nickname"
-              placeholder="Jules"
-              onChange={(event) => setName(event.target.value)}
-              required
-            />
+            <div className="mt-4"><AccountBox /></div>
             <Button className="mt-5 w-full" type="submit" variant="secondary" data-testid="join-submit" disabled={busy !== null}>
               {busy === 'join' ? 'Joining…' : 'Join table'}
             </Button>

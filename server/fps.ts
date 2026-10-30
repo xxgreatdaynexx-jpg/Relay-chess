@@ -15,13 +15,6 @@ export function resetArena(): void {
   ticker = null;
 }
 
-function cleanFpsName(input: unknown): string {
-  if (typeof input !== 'string') return guestName();
-  const name = input.replace(/\s+/g, ' ').trim().slice(0, 18);
-  if (!name || !/^[\p{L}\p{N}][\p{L}\p{N} .'-]*$/u.test(name)) return guestName();
-  return name;
-}
-
 function snapshot() {
   return {
     t: Date.now(),
@@ -65,7 +58,7 @@ export function registerFps(io: Server, socket: Socket): void {
       }
       const [x, y] = pickSpawn([...fighters.values()]);
       const now = Date.now();
-      f = { id: socket.id, name: cleanFpsName(body.name), x, y, a: Math.random() * Math.PI * 2, hp: MAX_HP, kills: 0, deaths: 0, alive: true, respawnAt: 0, lastShot: 0, lastMove: now };
+      f = { id: socket.id, name: (socket.data.account as { name?: string } | undefined)?.name ?? guestName(), x, y, a: Math.random() * Math.PI * 2, hp: MAX_HP, kills: 0, deaths: 0, alive: true, respawnAt: 0, lastShot: 0, lastMove: now };
       fighters.set(socket.id, f);
       socket.join(ROOM);
     }

@@ -3,6 +3,7 @@ import type { Server, Socket } from 'socket.io';
 import type { CasinoStanding } from '../shared/casino.js';
 import { BlackjackCasino, type BJAction, type BlackjackTable } from './blackjack.js';
 import { getBank } from './casino-store.js';
+import { signedIn } from './auth-sockets.js';
 import { RouletteWheel } from './roulette.js';
 
 type Ack = (res: { ok: boolean; error?: string; [k: string]: unknown }) => void;
@@ -13,19 +14,12 @@ let timer: ReturnType<typeof setInterval> | null = null;
 const bjWatchers = new Set<Socket>();
 const rouletteWatchers = new Set<Socket>();
 
-export function casinoName(input: unknown): string {
-  if (typeof input !== 'string') throw new Error('Save a name first.');
-  const name = input.replace(/\s+/g, ' ').trim();
-  if (name.length < 1 || name.length > 18 || !/^[\p{L}\p{N}][\p{L}\p{N} .'-]*$/u.test(name)) throw new Error('Save a valid name first.');
-  return name;
-}
-
 function standings(): CasinoStanding[] {
   return getBank().standings(25).map(({ name, chips, netWon, hands, spins, biggestWin }) => ({ name, chips, netWon, hands, spins, biggestWin }));
 }
 
 function nameOf(s: Socket): string | null {
-  return (s.data as { casinoName?: string }).casinoName ?? null;
+  return (s.data as { account?: { name: string } }).account?.name ?? null;
 }
 
 function pushTable(t: BlackjackTable, now = Date.now()): void {
@@ -79,9 +73,8 @@ export function registerCasino(io: Server, socket: Socket): void {
       ack?.({ ok: false, error: (err as Error).message });
     }
   };
-  const setName = (body: Record<string, unknown>) => {
-    const name = casinoName(body.name);
-    (socket.data as { casinoName?: string }).casinoName = name;
+  const setName = (_body: Record<string, unknown>) => {
+    const name = signedIn(socket);
     return name;
   };
 
@@ -141,7 +134,7 @@ export function registerCasino(io: Server, socket: Socket): void {
   }));
 
   socket.on('roulette_watch', wrap((body, now) => {
-    if (body.name) setName(body);
+    if (socket.data.account) setName(body);
     rouletteWatchers.add(socket);
     return { state: wheel!.view(nameOf(socket), now) };
   }));
@@ -151,7 +144,7 @@ export function registerCasino(io: Server, socket: Socket): void {
   }));
 
   const rouletteAct = (fn: (name: string) => void) => wrap((body, now) => {
-    const name = body.name ? setName(body) : nameOf(socket);
+    const name = setName(body);
     if (!name) throw new Error('Save a name first.');
     fn(name);
     rouletteWatchers.add(socket);

@@ -1,3 +1,4 @@
+import { AccountBox } from '@/components/AccountBox';
 import { useState } from 'react';
 import type { CasinoStanding } from '../../../shared/casino';
 import { emitCasino, notifyNameChanged, useCasinoBoard } from '@/lib/casino';
@@ -5,19 +6,11 @@ import { saveName } from '@/lib/playerName';
 
 /** Asks for a name when none is saved (chips are keyed by it). */
 export function NamePrompt() {
-  const [v, setV] = useState('');
   return (
-    <form
-      className="casino-name"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (saveName(v)) notifyNameChanged();
-      }}
-    >
-      <div className="bj-label">Pick a name to get 1,000 play chips. Your chips follow your name.</div>
-      <input value={v} maxLength={18} onChange={(e) => setV(e.target.value)} placeholder="Your name" aria-label="Your name" />
-      <button type="submit" className="bj-deal">Sit</button>
-    </form>
+    <div className="casino-name">
+      <div className="bj-label">Sign in or claim a name to get 1,000 play chips. Your chips follow your name.</div>
+      <AccountBox compact />
+    </div>
   );
 }
 

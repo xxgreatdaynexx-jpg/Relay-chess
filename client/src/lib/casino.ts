@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CasinoStanding } from '../../../shared/casino';
 import { socket } from '@/lib/net';
-import { loadName } from '@/lib/playerName';
+import { useAccount } from '@/lib/auth';
 
 export type CasinoAck<T = Record<string, unknown>> = { ok: boolean; error?: string } & Partial<T>;
 
@@ -11,19 +11,9 @@ export function emitCasino<T = Record<string, unknown>>(event: string, payload: 
   });
 }
 
-/** Saved name, re-read when it changes in this or another tab. */
+/** Signed-in name ('' when signed out). Chips follow the account. */
 export function useSavedName(): [string, () => void] {
-  const [name, setName] = useState(loadName);
-  useEffect(() => {
-    const on = () => setName(loadName());
-    window.addEventListener('storage', on);
-    window.addEventListener('relay-name-changed', on);
-    return () => {
-      window.removeEventListener('storage', on);
-      window.removeEventListener('relay-name-changed', on);
-    };
-  }, []);
-  return [name, () => setName(loadName())];
+  return [useAccount(), () => {}];
 }
 
 export function notifyNameChanged(): void {

@@ -2,6 +2,8 @@ import type { Server, Socket } from 'socket.io';
 import { onBlunderReady } from './blunders.js';
 import { GameError } from './errors.js';
 import { registerFps } from './fps.js';
+import { AuthError, getAccounts } from './accounts.js';
+import { registerAuth, signedIn } from './auth-sockets.js';
 import { registerCasino, startCasino, stopCasino } from './casino-sockets.js';
 import { analyzePosition, onHintReady } from './hints.js';
 import {
@@ -150,13 +152,26 @@ export function registerSockets(io: Server): void {
   startMaintenance(io);
   startCasino(io);
 
+  io.use((socket, next) => {
+    const token = (socket.handshake.auth as { session?: unknown } | undefined)?.session;
+    if (!token) return next();
+    getAccounts()
+      .resume(token)
+      .then((identity) => {
+        socket.data.account = identity ?? undefined;
+        next();
+      })
+      .catch(() => next());
+  });
+
   io.on('connection', (socket) => {
+    registerAuth(socket);
     registerFps(io, socket);
     registerCasino(io, socket);
     socket.on('create_room', (payload: unknown, ack?: (res: Ack) => void) => {
       try {
         const body = asRecord(payload);
-        const name = cleanName(body.name);
+        const name = signedIn(socket);
         const preset = presetOrThrow(body.clockId);
         const setup = setupOrThrow(body.mode, body.pairSide);
         release(io, socket);
@@ -173,7 +188,7 @@ export function registerSockets(io: Server): void {
     socket.on('join_room', (payload: unknown, ack?: (res: Ack) => void) => {
       try {
         const body = asRecord(payload);
-        const name = cleanName(body.name);
+        const name = signedIn(socket);
         const code = cleanCode(body.code);
         const room = getRoom(code);
         if (!room) throw new GameError('No table with that code. It may have expired.', true);
@@ -190,7 +205,7 @@ export function registerSockets(io: Server): void {
     socket.on('tournament_create', (payload: unknown, ack?: (res: Ack) => void) => {
       try {
         const body = asRecord(payload);
-        const name = cleanName(body.name);
+        const name = signedIn(socket);
         const preset = presetOrThrow(body.clockId);
         const t = createTournament(name, preset.id, Number(body.size));
         socket.data.tname = name;
@@ -206,8 +221,8 @@ export function registerSockets(io: Server): void {
       try {
         const body = asRecord(payload);
         const t = tournamentOrThrow(body.code);
-        const name = body.name ? cleanName(body.name) : undefined;
-        if (name && body.enter) t.join(name);
+        const name = socket.data.account ? signedIn(socket) : undefined;
+        if (body.enter) t.join(signedIn(socket));
         socket.data.tname = name;
         socket.join(`t:${t.code}`);
         ack?.({ ok: true, tournament: t.view(name) });
@@ -262,7 +277,7 @@ export function registerSockets(io: Server): void {
       try {
         const body = asRecord(payload);
         const t = tournamentOrThrow(body.code);
-        const name = cleanName(body.name);
+        const name = signedIn(socket);
         const match = t.matchFor(name);
         if (!match?.room) throw new GameError('You have no match ready right now.');
         const room = getRoom(match.room);
@@ -314,7 +329,7 @@ export function registerSockets(io: Server): void {
     socket.on('quick_join', (payload: unknown, ack?: (res: Ack) => void) => {
       try {
         const body = asRecord(payload);
-        const name = cleanName(body.name);
+        const name = signedIn(socket);
         const room = openRooms()[0];
         if (!room) throw new GameError('No open tables right now. Create one instead.');
         const seat = room.openSeats()[0];
@@ -559,6 +574,10 @@ function expire(io: Server, code: string): void {
 function fail(ack: ((res: Ack) => void) | undefined, error: unknown): void {
   if (error instanceof GameError) {
     ack?.({ ok: false, error: error.message, fatal: error.fatal });
+    return;
+  }
+  if (error instanceof AuthError) {
+    ack?.({ ok: false, error: error.message, auth: true });
     return;
   }
   console.error(error);

@@ -11,7 +11,8 @@
     "build": "vite build && tsc -p tsconfig.server.json",
     "start": "NODE_ENV=production node dist/server/index.js",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "reset-password": "tsx scripts/reset-password.ts"
   },
   "dependencies": {
     "chess.js": "^1.4.0",
