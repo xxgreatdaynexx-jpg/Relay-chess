@@ -4,9 +4,10 @@ import { cn } from '@/lib/utils';
 import type { LeaderboardRow } from '../../../shared/types';
 import { CasinoLeaderboard } from '@/components/CasinoCommon';
 import { loadName } from '@/lib/playerName';
+import { ARENA_COLS, sortArena, type ArenaRow, type ArenaSort } from '../../../shared/arenaBoard';
 
-export type BoardKind = 'chess' | 'casino';
-const BOARDS: Array<[BoardKind, string]> = [['chess', 'Chess'], ['casino', 'Casino chips']];
+export type BoardKind = 'chess' | 'casino' | 'arena';
+const BOARDS: Array<[BoardKind, string]> = [['chess', 'Chess'], ['casino', 'Casino chips'], ['arena', 'Arena']];
 const BOARD_KEY = 'relay-leaderboard-tab';
 function loadBoard(): BoardKind {
   try { const v = localStorage.getItem(BOARD_KEY); return BOARDS.some(([k]) => k === v) ? (v as BoardKind) : 'chess'; } catch { return 'chess'; }
@@ -30,7 +31,7 @@ export function LeaderboardScreen({ onBack, onMainMenu }: { onBack: () => void; 
   const [board, setBoard] = useState<BoardKind>(loadBoard);
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col px-4 py-5 sm:px-8">
-      <header className="flex items-center justify-between gap-3">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="font-serif text-3xl italic">Chud Hub</div>
           <h1 className="mt-2 font-serif text-4xl">Leaderboard</h1>
@@ -50,7 +51,7 @@ export function LeaderboardScreen({ onBack, onMainMenu }: { onBack: () => void; 
         <BoardSwitch value={board} onChange={setBoard} />
       </div>
       <div className="mt-4" data-testid={`lb-view-${board}`}>
-        {board === 'chess' ? <LeaderboardTable /> : <div className="lb-casino"><CasinoLeaderboard you={loadName()} /></div>}
+        {board === 'chess' ? <LeaderboardTable /> : board === 'arena' ? <ArenaLeaderboard you={loadName()} /> : <div className="lb-casino"><CasinoLeaderboard you={loadName()} /></div>}
       </div>
     </div>
   );
@@ -120,6 +121,44 @@ export function LeaderboardTable({ highlight = [] }: { highlight?: string[] }) {
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+export function ArenaLeaderboard({ you = '' }: { you?: string }) {
+  const [rows, setRows] = useState<ArenaRow[] | null>(null);
+  const [sort, setSort] = useState<ArenaSort>('kills');
+  useEffect(() => {
+    let live = true;
+    fetch('/api/arena-leaderboard').then((r) => r.json()).then((d: { rows: ArenaRow[] }) => { if (live) setRows(d.rows ?? []); }).catch(() => live && setRows([]));
+    return () => { live = false; };
+  }, []);
+  if (!rows) return <div className="bj-label">Loading…</div>;
+  if (!rows.length) return <div className="bj-label" data-testid="arena-board-empty">No arena matches yet. Sign in and play to get on the board.</div>;
+  const sorted = sortArena(rows, sort);
+  return (
+    <div className="lb-arena overflow-x-auto" data-testid="arena-board">
+      <table className="w-full text-left text-sm">
+        <thead><tr>
+          <th className="px-2 py-2">#</th><th className="px-2 py-2">Player</th>
+          {ARENA_COLS.map(([k, label, short]) => (
+            <th key={k} className="px-2 py-2" aria-sort={sort === k ? 'descending' : 'none'}>
+              <button type="button" className={cn('lb-sort', sort === k && 'on')} onClick={() => setSort(k)} data-testid={`arena-sort-${k}`} title={label}>
+                <span className="hidden sm:inline">{label}</span><span className="sm:hidden">{short}</span>{sort === k ? ' ▾' : ''}
+              </button>
+            </th>
+          ))}
+        </tr></thead>
+        <tbody>
+          {sorted.map((r, i) => (
+            <tr key={r.name} className={cn('border-t border-white/10', r.name.toLowerCase() === you.toLowerCase() && 'casino-me')}>
+              <td className="tabular px-2 py-2">{i + 1}</td><td className="px-2 py-2">{r.name}</td>
+              {ARENA_COLS.map(([k]) => <td key={k} className="tabular px-2 py-2">{k === 'kd' ? r.kd.toFixed(2) : r[k]}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="bj-label mt-2">Lifetime stats for signed-in names · guests aren't recorded · nuke deaths count, nuke kills don't</div>
     </div>
   );
 }

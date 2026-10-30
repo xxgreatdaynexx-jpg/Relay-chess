@@ -1,3 +1,4 @@
+import { getArenaLedger } from './arena-store.js';
 import express from 'express';
 import { createServer, type Server as HttpServer } from 'node:http';
 import path from 'node:path';
@@ -26,6 +27,11 @@ export async function createApp(): Promise<AppContext> {
     const board = getLeaderboard();
     await board.refresh();
     res.json({ rows: board.standings(), source: board.usingDatabase ? 'postgres' : 'memory' });
+  });
+
+  app.get('/api/arena-leaderboard', (_req, res) => {
+    const ledger = getArenaLedger();
+    res.json({ rows: ledger.standings(), source: ledger.usingDatabase ? 'postgres' : 'memory' });
   });
 
   const httpServer = createServer(app);

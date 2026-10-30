@@ -672,3 +672,6 @@ body { padding-top: 44px; }
 .top-tabs-slots, .top-tab-slot, .top-menu-btn { flex: none; }
 .top-tab-account { flex: none; }
 @media (max-width: 520px) { .top-tabs { overflow: visible; } }
+.lb-sort { font-weight: 700; color: inherit; opacity: .8; white-space: nowrap; }
+.lb-sort.on { opacity: 1; color: #e8c26a; }
+@media (max-width: 520px) { .lb-arena table { font-size: 12px; } .lb-arena td, .lb-arena th { padding-left: 4px; padding-right: 4px; } }
