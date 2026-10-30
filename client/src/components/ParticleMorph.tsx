@@ -1,3 +1,4 @@
+import { prefersReducedMotion } from '@/lib/motion';
 import { useEffect, useRef } from 'react';
 
 type Pt = [number, number];
@@ -60,7 +61,6 @@ export function ParticleMorph({ slots }: { slots: () => Array<HTMLElement | null
   useEffect(() => {
     const canvas = ref.current!;
     const g = canvas.getContext('2d')!;
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const n = window.innerWidth < 760 ? 800 : 1800;
     const a = sample(drawKing, n, 7);
     const b = sample(drawCheckers, n, 11);
@@ -90,7 +90,7 @@ export function ParticleMorph({ slots }: { slots: () => Array<HTMLElement | null
       const size = lerp(Math.min(r0.width, r0.height), Math.min(r1.width, r1.height), t);
       const ox = left + (lerp(r0.width, r1.width, t) - size) / 2, oy = top + (lerp(r0.height, r1.height, t) - size) / 2;
       const ps = window.innerWidth < 760 ? 1.6 : 1.4;
-      if (reduce) {
+      if (prefersReducedMotion()) {
         for (const [pts, alpha, col] of [[a, 1 - raw, '#e0b56a'], [b, raw, '#e9e2d4']] as const) {
           g.globalAlpha = alpha; g.fillStyle = col;
           for (const [x, y] of pts) g.fillRect(ox + x * size, oy + y * size, ps, ps);

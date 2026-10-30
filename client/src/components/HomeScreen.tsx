@@ -1,3 +1,4 @@
+import { prefersReducedMotion } from '@/lib/motion';
 import { ScrollIntro } from '@/components/ScrollIntro';
 import { notifyNameChanged } from '@/lib/casino';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
@@ -254,7 +255,7 @@ export function HomeScreen({
         </div>
       </header>
       <main className="flex flex-1 flex-col py-4">
-        <ScrollIntro onPick={(g) => { setGameType(g); history.replaceState(null, '', `#${g}`); document.getElementById('play')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); }} />
+        <ScrollIntro onPick={(g) => { setGameType(g); history.replaceState(null, '', `#${g}`); document.getElementById('play')?.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' }); }} />
         <h1 id="play" className="mt-10 max-w-xl scroll-mt-16 font-serif text-5xl leading-[0.95] text-cream sm:text-6xl">
           Play {gameType === 'checkers' ? 'Relay Checkers' : 'Relay Chess'}
         </h1>

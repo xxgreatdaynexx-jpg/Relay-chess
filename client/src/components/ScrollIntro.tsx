@@ -1,3 +1,4 @@
+import { docTop, prefersReducedMotion } from '@/lib/motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RulesDialog } from '@/components/RulesDialog';
 import { ParticleMorph } from '@/components/ParticleMorph';
@@ -62,7 +63,6 @@ export function ScrollIntro({ onPick }: { onPick: (game: GameType) => void }) {
   const slots = useCallback(() => slotRefs.current, []);
 
   useEffect(() => {
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let raf = 0;
     const tick = () => {
       raf = 0;
@@ -73,7 +73,7 @@ export function ScrollIntro({ onPick }: { onPick: (game: GameType) => void }) {
         const next = refs.current[i + 1];
         // progress of the following panel covering this one (0..1)
         const p = next ? Math.min(1, Math.max(0, 1 - next.getBoundingClientRect().top / h)) : 0;
-        el.style.setProperty('--cover', reduce ? '0' : p.toFixed(3));
+        el.style.setProperty('--cover', prefersReducedMotion() ? '0' : p.toFixed(3));
         if (el.getBoundingClientRect().top <= h * 0.5) current = i;
       });
       setActive(current);
@@ -84,13 +84,22 @@ export function ScrollIntro({ onPick }: { onPick: (game: GameType) => void }) {
     window.addEventListener('resize', onScroll);
     const hash = window.location.hash.slice(1);
     const target = PANELS.findIndex((p) => p.id === hash);
-    if (target >= 0) setTimeout(() => refs.current[target]?.scrollIntoView({ behavior: 'auto' }), 60);
+    if (target >= 0) setTimeout(() => { window.scrollTo({ top: panelTop(target), behavior: 'auto' }); }, 60);
     return () => { window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onScroll); if (raf) cancelAnimationFrame(raf); };
   }, []);
 
+  /** Where panel i sits in the page flow; sticky panels report their stuck position, so add up the panels above it. */
+  const panelTop = (i: number) => {
+    const first = refs.current[0];
+    const wrap = first?.parentElement;
+    if (!wrap) return 0;
+    let y = docTop(wrap);
+    for (let k = 0; k < i; k++) y += refs.current[k]?.offsetHeight ?? 0;
+    return y;
+  };
   const go = (i: number) => {
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    refs.current[i]?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' });
+    const el = refs.current[i];
+    if (el) window.scrollTo({ top: panelTop(i), behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
     history.replaceState(null, '', `#${PANELS[i]!.id}`);
   };
 
