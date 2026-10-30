@@ -1,4 +1,7 @@
 import { createApp } from './app.js';
+import { initLeaderboardStorage } from './leaderboard.js';
+
+await initLeaderboardStorage();
 
 const port = Number(process.env.PORT) || 4317;
 

@@ -1,5 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import type { LeaderboardStore } from './leaderboard-store.js';
+import { createPgStore, databaseUrl } from './leaderboard-store.js';
 import type { LeaderboardRow, Side } from '../shared/types.js';
 
 interface Entry {
@@ -29,9 +31,56 @@ export function normalizeName(name: string): string {
 
 export class Leaderboard {
   private players = new Map<string, Entry>();
+  private store: LeaderboardStore | null = null;
+  private pending: Map<string, Entry> | null = null;
 
-  constructor(private readonly file: string) {
-    this.load();
+  constructor(private readonly file: string | null) {
+    if (file) this.load();
+  }
+
+  /** Switch to a database store: migrate, then load rows into the cache. Never throws. */
+  async attachStore(store: LeaderboardStore): Promise<boolean> {
+    this.store = store;
+    try {
+      await store.init();
+      await this.refresh();
+      return true;
+    } catch (err) {
+      console.error('[leaderboard] postgres init failed, using in-memory cache:', (err as Error).message);
+      return false;
+    }
+  }
+
+  /** Re-read standings from the database (no-op without a store). Never throws. */
+  async refresh(): Promise<void> {
+    if (!this.store) return;
+    try {
+      const rows = await this.store.loadAll();
+      const next = new Map<string, Entry>();
+      for (const row of rows) next.set(row.key, { name: row.name, wins: row.wins, losses: row.losses, draws: row.draws });
+      this.players = next;
+    } catch (err) {
+      console.error('[leaderboard] postgres read failed, serving cache:', (err as Error).message);
+    }
+  }
+
+  get usingDatabase(): boolean {
+    return this.store !== null;
+  }
+
+  private writes: Promise<void> = Promise.resolve();
+
+  /** Resolves when queued DB writes have finished (for tests and shutdown). */
+  flush(): Promise<void> {
+    return this.writes;
+  }
+
+  private persist(task: (store: LeaderboardStore) => Promise<void>): void {
+    const store = this.store;
+    if (!store) return;
+    this.writes = this.writes.then(() => task(store)).catch((err) => {
+      console.error('[leaderboard] postgres write failed:', (err as Error).message);
+    });
   }
 
   record(game: GameNames): void {
@@ -43,8 +92,14 @@ export class Leaderboard {
     const whiteOnly = white.filter((player) => !sharedKeys.has(player.key));
     const blackOnly = black.filter((player) => !sharedKeys.has(player.key));
 
+    const deltas = new Map<string, Entry>();
     const mark = (players: { key: string; name: string }[], outcome: 'win' | 'loss' | 'draw') => {
-      for (const player of players) this.add(player.key, player.name, outcome);
+      for (const player of players) {
+        this.add(player.key, player.name, outcome);
+        const d = deltas.get(player.key) ?? { name: player.name, wins: 0, losses: 0, draws: 0 };
+        d[outcome === 'win' ? 'wins' : outcome === 'loss' ? 'losses' : 'draws'] += 1;
+        deltas.set(player.key, d);
+      }
     };
 
     if (game.winner === null) {
@@ -58,6 +113,7 @@ export class Leaderboard {
       mark(whiteOnly, 'loss');
       mark(shared, 'draw');
     }
+    for (const [key, d] of deltas) this.persist((store) => store.increment({ key, ...d }));
     this.save();
   }
 
@@ -68,6 +124,7 @@ export class Leaderboard {
     const entry = key ? this.players.get(key) : undefined;
     if (!entry || entry.name === trimmed) return;
     entry.name = trimmed;
+    this.persist((store) => store.rename(key, trimmed));
     this.save();
   }
 
@@ -100,6 +157,7 @@ export class Leaderboard {
   }
 
   private load(): void {
+    if (!this.file) return;
     try {
       const parsed = JSON.parse(readFileSync(this.file, 'utf8')) as StoredFile;
       if (!Array.isArray(parsed.players)) return;
@@ -119,6 +177,7 @@ export class Leaderboard {
   }
 
   private save(): void {
+    if (!this.file) return;
     const payload: StoredFile = {
       players: [...this.players.values()],
     };
@@ -146,13 +205,26 @@ function number(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
 }
 
-let current = new Leaderboard(leaderboardPath());
+let current = new Leaderboard(databaseUrl() ? null : leaderboardPath());
 
 export function getLeaderboard(): Leaderboard {
   return current;
 }
 
-export function resetLeaderboard(file = leaderboardPath()): Leaderboard {
+/** Connect to Postgres when DATABASE_URL / RELAY_CHESS_DATABASE_URL is set; otherwise warn and stay local. */
+export async function initLeaderboardStorage(): Promise<void> {
+  const url = databaseUrl();
+  if (!url) {
+    console.warn('[leaderboard] no DATABASE_URL set; leaderboard is local only and will not survive redeploys');
+    return;
+  }
+  const board = new Leaderboard(null);
+  const ok = await board.attachStore(createPgStore(url));
+  current = board;
+  if (ok) console.log(`[leaderboard] connected to postgres (${board.standings().length} players loaded)`);
+}
+
+export function resetLeaderboard(file: string | null = leaderboardPath()): Leaderboard {
   current = new Leaderboard(file);
   return current;
 }

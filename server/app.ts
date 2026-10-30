@@ -22,8 +22,10 @@ export async function createApp(): Promise<AppContext> {
   app.get('/health', (_req, res) => {
     res.json({ ok: true });
   });
-  app.get('/api/leaderboard', (_req, res) => {
-    res.json({ rows: getLeaderboard().standings() });
+  app.get('/api/leaderboard', async (_req, res) => {
+    const board = getLeaderboard();
+    await board.refresh();
+    res.json({ rows: board.standings(), source: board.usingDatabase ? 'postgres' : 'memory' });
   });
 
   const httpServer = createServer(app);
