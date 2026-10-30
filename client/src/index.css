@@ -555,3 +555,7 @@ input {
 .vp-pays td:last-child { text-align: right; }
 .vp-pays tr.on { color: #e8c26a; font-weight: 700; }
 @media (max-width: 520px) { .cx-panel { width: calc(100vw - 30px); } .vp-card, .vp-card .sol-card { width: 50px; } .vp-card .sol-card { height: 72px; } }
+.sl-reels { display: flex; gap: 8px; justify-content: center; margin: 10px 0; padding: 10px; border-radius: 10px; background: #0b1510; box-shadow: inset 0 0 12px #000; }
+.sl-reel { width: 72px; height: 80px; display: grid; place-items: center; font-size: 44px; background: linear-gradient(#fff, #e8e2d0 50%, #fff); border-radius: 8px; color: #222; }
+.sl-reel.spin { filter: blur(1.5px); transform: translateY(2px); }
+.sl-reels.win .sl-reel { box-shadow: 0 0 12px 2px #e3b25c; }

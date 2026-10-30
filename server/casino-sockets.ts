@@ -5,6 +5,7 @@ import { BlackjackCasino, type BJAction, type BlackjackTable } from './blackjack
 import { getBank } from './casino-store.js';
 import { signedIn } from './auth-sockets.js';
 import { VideoPoker } from './video-poker.js';
+import { spinSlots } from './slots.js';
 
 let vp: VideoPoker | null = null;
 const poker = () => (vp ??= new VideoPoker(getBank()));
@@ -92,6 +93,11 @@ export function registerCasino(io: Server, socket: Socket): void {
     const state = poker().draw(signedIn(socket), body.hold);
     pushBoard(io);
     return { state };
+  }));
+  socket.on('slots_spin', wrap((body) => {
+    const result = spinSlots(getBank(), signedIn(socket), Number(body.bet));
+    if (result.net > 0) pushBoard(io);
+    return { result };
   }));
   socket.on('casino_board', wrap(() => {
     void socket.join('casino-board');
