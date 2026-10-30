@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AIRSTRIKE_DELAY_MS, DRONE_MS, fireWeapon, JUMP_COOLDOWN_MS, jumpHeight, MAX_HP, NUKE_DELAY_MS, SCOPE_SETTLE_MS,
+  AIRSTRIKE_DELAY_MS, AIRSTRIKE_LOCK_MS, AIRSTRIKE_WAIT_MS, DRONE_MS, fireWeapon, JUMP_COOLDOWN_MS, jumpHeight, MAX_HP, NUKE_DELAY_MS, SCOPE_SETTLE_MS,
   splashFalloff, splashTargets, SWITCH_MS, UAV_MS, WEAPONS,
 } from '../shared/fps.js';
 import { ArenaWorld, FIRE_JITTER_MS } from '../server/arena-world.js';
@@ -162,20 +162,57 @@ describe('killstreaks', () => {
     expect(a.uavUntil).toBe(lastKill + UAV_MS);
     expect(w.snapshot(lastKill).players.find((p) => p.id === 'a')!.uav).toBe(UAV_MS);
   });
-  it('5 kills marks an airstrike that lands after a delay', () => {
-    const { w } = duel();
+  it('5 kills calls an airstrike that waits for a live enemy, tracks them and kills them', () => {
+    const { w, a } = duel();
     const { events, t } = farm(w, 5);
     expect(events.some((e) => e.ev === 'fps_strike')).toBe(true);
-    const b = w.fighters.get('b')!;
-    Object.assign(b, { alive: true, hp: MAX_HP, x: 4, y: 2 });
     const marked = t - 2000;
-    const s = w.strikes[0]!;
-    Object.assign(b, { x: s.x, y: s.y });
-    expect(w.tick(marked + AIRSTRIKE_DELAY_MS - 1).some((e) => e.ev === 'fps_boom')).toBe(false);
-    const ev = w.tick(marked + AIRSTRIKE_DELAY_MS);
-    expect(ev.some((e) => e.ev === 'fps_boom')).toBe(true);
+    const b = w.fighters.get('b')!;
     expect(b.alive).toBe(false);
-    expect(w.fighters.get('a')!.kills).toBe(6);
+    // The only enemy is dead, so the strike is pending, not wasted on an empty aim point.
+    w.tick(marked + 500);
+    expect(w.strikes).toHaveLength(1);
+    expect(w.snapshot(marked + 500).strikes[0].inMs).toBe(-1);
+    // Bob respawns; the strike locks on to him.
+    Object.assign(b, { alive: true, hp: MAX_HP, x: 12, y: 2 });
+    const aimed = marked + 1000;
+    w.tick(aimed);
+    expect(w.strikes[0].trackId).toBe('b');
+    // He walks a bit before lock-on; the zone follows.
+    b.x = 15;
+    w.tick(aimed + AIRSTRIKE_DELAY_MS - AIRSTRIKE_LOCK_MS - 10);
+    expect(w.strikes[0].x).toBe(15);
+    let ev: ReturnType<ArenaWorld['tick']> = [];
+    for (let dt = 0; dt <= 600; dt += 50) ev = ev.concat(w.tick(aimed + AIRSTRIKE_DELAY_MS + dt));
+    expect(ev.filter((e) => e.ev === 'fps_boom')).toHaveLength(3);
+    const kill = ev.find((e) => e.ev === 'fps_kill');
+    expect(kill?.data).toMatchObject({ killerId: 'a', victimId: 'b', cause: 'airstrike' });
+    expect(b.alive).toBe(false);
+    expect(a.kills).toBe(6);
+    expect(a.alive).toBe(true);
+    expect(w.strikes).toHaveLength(0);
+  });
+  it('an airstrike can be outrun after lock-on, and spares the caller', () => {
+    const { w, a } = duel();
+    const { t } = farm(w, 5);
+    const b = w.fighters.get('b')!;
+    Object.assign(b, { alive: true, hp: MAX_HP, x: 16, y: 2 });
+    const aimed = t - 2000 + 100;
+    w.tick(aimed);
+    w.tick(aimed + AIRSTRIKE_DELAY_MS - AIRSTRIKE_LOCK_MS + 10); // locked at x=16
+    b.x = 2.5; // sprints next to the caller
+    a.x = 2;
+    for (let dt = 0; dt <= 600; dt += 50) w.tick(aimed + AIRSTRIKE_DELAY_MS + dt);
+    expect(b.hp).toBe(MAX_HP);
+    expect(a.hp).toBe(MAX_HP);
+  });
+  it('an airstrike with no enemies eventually drops on the aim point', () => {
+    const { w } = duel();
+    const { t } = farm(w, 5);
+    w.leave('b');
+    const ev = w.tick(t - 2000 + AIRSTRIKE_WAIT_MS + 1);
+    expect(ev.some((e) => e.ev === 'fps_boom')).toBe(true);
+    expect(w.strikes).toHaveLength(0);
   });
   it('7 kills launches a drone that shoots enemies, then leaves', () => {
     const { w } = duel();

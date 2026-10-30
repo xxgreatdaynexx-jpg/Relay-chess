@@ -3,7 +3,7 @@
  * Pure (time and randomness are passed in) so tests can drive it directly; server/fps.ts wires it to sockets.
  */
 import {
-  AIRSTRIKE_DAMAGE, AIRSTRIKE_DELAY_MS, AIRSTRIKE_RADIUS, AIRSTRIKE_RANGE, applyDamage, canJump, castRay,
+  AIRSTRIKE_DAMAGE, AIRSTRIKE_DELAY_MS, AIRSTRIKE_LOCK_MS, AIRSTRIKE_RADIUS, AIRSTRIKE_RANGE, AIRSTRIKE_SPACING, AIRSTRIKE_WAIT_MS, applyDamage, canJump, castRay,
   DRONE_COOLDOWN_MS, DRONE_DAMAGE, DRONE_MS, DRONE_RANGE, fireWeapon, isWeapon, MAP, MAX_HP, maybeRespawn,
   normAngle, NUKE_DELAY_MS, NUKE_RESPAWN_MS, pickSpawn, SCOPE_SETTLE_MS, splashTargets, STREAKS, streakReward,
   SWITCH_MS, UAV_MS, validateMove, WEAPON_ORDER, WEAPONS, type Fighter, type StreakKind, type WeaponId,
@@ -25,7 +25,8 @@ export interface ArenaFighter extends Fighter {
 }
 
 export interface ArenaEvent { ev: string; data: Record<string, unknown> }
-interface Strike { ownerId: string; x: number; y: number; at: number }
+/** An airstrike run. It tracks its target (trackId) until lockAt, then the zone is fixed and the bombs fall at `at`. */
+interface Strike { ownerId: string; x: number; y: number; at: number; trackId: string | null; lockAt: number; giveUpAt: number; bombs: Array<{ dx: number; dy: number; dt: number }> }
 interface Drone { ownerId: string; until: number; lastShot: number }
 
 const fullAmmo = () => Object.fromEntries(WEAPON_ORDER.map((w) => [w, WEAPONS[w].mag])) as Record<WeaponId, number>;
@@ -163,9 +164,10 @@ export class ArenaWorld {
     if (kind === 'uav') f.uavUntil = now + UAV_MS;
     if (kind === 'airstrike') {
       const d = Math.max(0, castRay(f.x, f.y, f.a, this.map, AIRSTRIKE_RANGE).dist - 0.3);
-      const s = { ownerId: f.id, x: f.x + Math.cos(f.a) * d, y: f.y + Math.sin(f.a) * d, at: now + AIRSTRIKE_DELAY_MS };
+      const s: Strike = { ownerId: f.id, x: f.x + Math.cos(f.a) * d, y: f.y + Math.sin(f.a) * d, at: Infinity, trackId: null, lockAt: 0, giveUpAt: now + AIRSTRIKE_WAIT_MS, bombs: [] };
       this.strikes.push(s);
-      out.push({ ev: 'fps_strike', data: { x: +s.x.toFixed(2), y: +s.y.toFixed(2), inMs: AIRSTRIKE_DELAY_MS, ownerId: f.id } });
+      this.aimStrike(s, now);
+      out.push({ ev: 'fps_strike', data: { x: +s.x.toFixed(2), y: +s.y.toFixed(2), inMs: Number.isFinite(s.at) ? s.at - now : -1, ownerId: f.id, phase: 'called' } });
     }
     if (kind === 'drone') this.drones.set(f.id, { ownerId: f.id, until: now + DRONE_MS, lastShot: 0 });
     if (kind === 'nuke' && !this.nuke) {
@@ -173,6 +175,26 @@ export class ArenaWorld {
       out.push({ ev: 'fps_nuke', data: { phase: 'armed', by: f.name, inMs: NUKE_DELAY_MS } });
     }
     return out;
+  }
+
+  /** Picks the live enemy with the most other enemies around it; schedules the run once there is one. */
+  private aimStrike(s: Strike, now: number): boolean {
+    const enemies = [...this.fighters.values()].filter((t) => t.alive && t.id !== s.ownerId);
+    if (!enemies.length) return false;
+    let best = enemies[0], bestN = -1;
+    for (const e of enemies) {
+      const n = enemies.filter((o) => Math.hypot(o.x - e.x, o.y - e.y) < AIRSTRIKE_RADIUS * 1.5).length;
+      if (n > bestN) { best = e; bestN = n; }
+    }
+    s.trackId = best.id;
+    s.x = best.x;
+    s.y = best.y;
+    s.at = now + AIRSTRIKE_DELAY_MS;
+    s.lockAt = s.at - AIRSTRIKE_LOCK_MS;
+    // A short carpet: three bombs along a random heading through the target.
+    const h = this.rand() * Math.PI;
+    s.bombs = [-1, 0, 1].map((k, i) => ({ dx: Math.cos(h) * k * AIRSTRIKE_SPACING, dy: Math.sin(h) * k * AIRSTRIKE_SPACING, dt: i * 180 }));
+    return true;
   }
 
   dronePos(d: Drone, now: number): { x: number; y: number } | null {
@@ -195,14 +217,36 @@ export class ArenaWorld {
         f.streak = 0;
       }
     }
-    // Airstrikes land after their delay.
-    const due = this.strikes.filter((s) => now >= s.at);
-    this.strikes = this.strikes.filter((s) => now < s.at);
-    for (const s of due) {
-      out.push({ ev: 'fps_boom', data: { x: s.x, y: s.y, r: AIRSTRIKE_RADIUS } });
-      const victims = splashTargets(s.x, s.y, AIRSTRIKE_RADIUS, AIRSTRIKE_DAMAGE, all.filter((f) => f.id !== s.ownerId), this.map);
-      for (const v of victims) out.push(...this.damage(s.ownerId, v.id, v.damage, now, 'airstrike'));
+    // Airstrikes: wait for a live target, track it until lock-on, then the bombs fall in a short line.
+    for (const st of this.strikes) {
+      if (!Number.isFinite(st.at)) {
+        if (!this.aimStrike(st, now) && now >= st.giveUpAt) {
+          st.at = now; // nobody to hit: drop on the original aim point so the call isn't wasted silently
+          st.bombs = [{ dx: 0, dy: 0, dt: 0 }];
+        }
+        continue;
+      }
+      if (st.trackId && now < st.lockAt) {
+        const t = this.fighters.get(st.trackId);
+        if (t?.alive) { st.x = t.x; st.y = t.y; }
+      }
     }
+    const done: Strike[] = [];
+    for (const st of this.strikes) {
+      if (!Number.isFinite(st.at) || now < st.at) continue;
+      const left: Strike['bombs'] = [];
+      for (const b of st.bombs) {
+        if (now < st.at + b.dt) { left.push(b); continue; }
+        const bx = Math.min(this.map[0].length - 1.2, Math.max(1.2, st.x + b.dx));
+        const by = Math.min(this.map.length - 1.2, Math.max(1.2, st.y + b.dy));
+        out.push({ ev: 'fps_boom', data: { x: +bx.toFixed(2), y: +by.toFixed(2), r: AIRSTRIKE_RADIUS, cause: 'airstrike' } });
+        const live = [...this.fighters.values()].filter((f) => f.id !== st.ownerId);
+        for (const v of splashTargets(bx, by, AIRSTRIKE_RADIUS, AIRSTRIKE_DAMAGE, live, this.map)) out.push(...this.damage(st.ownerId, v.id, v.damage, now, 'airstrike'));
+      }
+      st.bombs = left;
+      if (!left.length) done.push(st);
+    }
+    if (done.length) this.strikes = this.strikes.filter((x) => !done.includes(x));
     // Drones shoot the nearest visible enemy.
     for (const [id, d] of this.drones) {
       if (now >= d.until || !this.fighters.has(id)) {
@@ -259,7 +303,7 @@ export class ArenaWorld {
         const p = this.dronePos(d, now);
         return p ? [{ ownerId: d.ownerId, x: +p.x.toFixed(2), y: +p.y.toFixed(2), left: d.until - now }] : [];
       }),
-      strikes: this.strikes.map((s) => ({ x: +s.x.toFixed(2), y: +s.y.toFixed(2), inMs: s.at - now })),
+      strikes: this.strikes.map((s) => ({ x: +s.x.toFixed(2), y: +s.y.toFixed(2), inMs: Number.isFinite(s.at) ? Math.max(0, s.at - now) : -1, r: AIRSTRIKE_RADIUS, locked: now >= s.lockAt })),
       nuke: this.nuke ? { by: this.nuke.by, inMs: this.nuke.at - now } : null,
     };
   }

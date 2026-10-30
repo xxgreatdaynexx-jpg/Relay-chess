@@ -14,7 +14,7 @@ const COLORS = ['#5f6a48', '#7d7158', '#596066', '#6b6248', '#4f5a4c', '#73705f'
 const SCOPE_ZOOM = 3.5;
 
 interface NetPlayer { id: string; name: string; x: number; y: number; a: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; j: number; st: number; uav: number }
-interface NetState { t: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number }>; strikes: Array<{ x: number; y: number; inMs: number }>; nuke: { by: string; inMs: number } | null }
+interface NetState { t: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number }>; strikes: Array<{ x: number; y: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null }
 interface Snap extends NetState { recv: number }
 type Quality = 'hd' | 'lo';
 
@@ -58,7 +58,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     jumpAt: -1e9, scoped: false, firing: false, streak: 0, uavUntil: 0, walk: 0,
   });
   const snaps = useRef<Snap[]>([]);
-  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, killmark: 0, nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; a: number; name: string }>(), booms: [] as Array<{ x: number; y: number; at: number; big: boolean }>, hitAt: new Map<string, number>() });
+  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, killmark: 0, nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; a: number; name: string }>(), booms: [] as Array<{ x: number; y: number; at: number; big: boolean }>, hitAt: new Map<string, number>(), shake: 0, jetAt: 0 });
   const banner = useRef<{ text: string; sub: string; at: number } | null>(null);
   const touch = useRef({ up: false, down: false, left: false, right: false });
 
@@ -175,7 +175,14 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       banner.current = { text: mine ? s.title : `${s.name.toUpperCase()} · ${s.title}`, sub: `"${radio[s.kind] ?? ''}" · ${s.streak} kill streak${mine && info ? ` · ${info.blurb}` : ''}`, at: performance.now() };
       playStreakCall(s.kind === 'nuke' ? 'alarm' : 'reward');
     };
-    const onBoom = (b: { x: number; y: number }) => { fx.current.booms.push({ x: b.x, y: b.y, at: performance.now(), big: true }); playExplosion(0.8); };
+    const onBoom = (b: { x: number; y: number; cause?: string }) => {
+      const t = performance.now();
+      fx.current.booms.push({ x: b.x, y: b.y, at: t, big: true });
+      const d = Math.hypot(b.x - me.current.x, b.y - me.current.y);
+      if (d < 8) fx.current.shake = t;
+      if (b.cause === 'airstrike' && t - fx.current.jetAt > 1500) fx.current.jetAt = t;
+      playExplosion(Math.max(0.35, 0.9 - d / 25));
+    };
     const onNuke = (n: { phase: string; by: string }) => {
       if (n.phase === 'boom') {
         fx.current.nukeFlash = performance.now();
@@ -189,13 +196,15 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     socket.on('fps_kill', onKill);
     socket.on('fps_streak', onStreak);
     socket.on('fps_boom', onBoom);
+    const onDrone = () => playWeaponShot('smg', 0.3);
+    socket.on('fps_drone_shot', onDrone);
     socket.on('fps_nuke', onNuke);
     socket.on('connect', join);
     if (socket.connected) join();
     else socket.connect();
     return () => {
       socket.emit('fps_leave');
-      for (const [e, h] of [['fps_state', onState], ['fps_hit', onHit], ['fps_shot', onShot], ['fps_kill', onKill], ['fps_streak', onStreak], ['fps_boom', onBoom], ['fps_nuke', onNuke], ['connect', join]] as const) socket.off(e, h as never);
+      for (const [e, h] of [['fps_state', onState], ['fps_hit', onHit], ['fps_shot', onShot], ['fps_kill', onKill], ['fps_streak', onStreak], ['fps_boom', onBoom], ['fps_drone_shot', onDrone], ['fps_nuke', onNuke], ['connect', join]] as const) socket.off(e, h as never);
     };
   }, []);
 
@@ -272,7 +281,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         things.push({ d: Math.hypot(dd.x - m.x, dd.y - m.y), draw: () => r.soldier(ctx, cam, { id, name: dd.name, x: dd.x, y: dd.y, a: dd.a, hp: 0, z: 0, color: colorFor(id), flash: false, dead: age }) });
       }
       for (const d of snap?.drones ?? []) things.push({ d: Math.hypot(d.x - m.x, d.y - m.y), draw: () => r.thing(ctx, cam, d.x, d.y, 0.75 + Math.sin(now / 200) * 0.03, 0.3, drawDrone(colorFor(d.ownerId))) });
-      for (const s of snap?.strikes ?? []) things.push({ d: Math.hypot(s.x - m.x, s.y - m.y), draw: () => r.thing(ctx, cam, s.x, s.y, 0, 0.9, drawMarker(now)) });
+      for (const s of (snap?.strikes ?? []).filter((q) => q.inMs >= 0)) things.push({ d: Math.hypot(s.x - m.x, s.y - m.y), draw: () => r.thing(ctx, cam, s.x, s.y, 0, 0.9, drawMarker(now)) });
       fx.current.booms = fx.current.booms.filter((b) => now - b.at < 600);
       for (const b of fx.current.booms) things.push({ d: Math.hypot(b.x - m.x, b.y - m.y), draw: () => r.thing(ctx, cam, b.x, b.y, -0.1, b.big ? 2.4 : 1.4, drawBoom((now - b.at) / 600)) });
       things.sort((a, b) => b.d - a.d);
@@ -364,7 +373,29 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         ctx.fillText(`${i + 1}`, x, 11.5 * u);
       });
       // Radar (UAV)
-      if (m.uavUntil > now) r.minimap(ctx, m, others, snap?.strikes ?? []);
+      const live = (snap?.strikes ?? []).filter((s) => s.inMs >= 0);
+      if (m.uavUntil > now || live.length) r.minimap(ctx, m, m.uavUntil > now ? others : [], live);
+      // Airstrike warning: countdown, danger-close when you're in the zone, jets overhead just before impact.
+      for (const s of live) {
+        const left = Math.max(0, s.inMs - (now - (snap?.recv ?? now)));
+        const inside = Math.hypot(s.x - m.x, s.y - m.y) < (s.r ?? 3) + 2.2;
+        ctx.textAlign = 'center';
+        ctx.font = `800 ${(10 * u) | 0}px ${mono}`;
+        ctx.fillStyle = inside ? (Math.floor(now / 200) % 2 ? 'rgba(240,60,40,.95)' : 'rgba(255,230,120,.95)') : 'rgba(255,200,80,.9)';
+        ctx.fillText(inside ? `⚠ DANGER CLOSE — AIRSTRIKE ${(left / 1000).toFixed(1)}s — MOVE!` : `AIRSTRIKE ${s.locked ? 'LOCKED' : 'TRACKING'} ${(left / 1000).toFixed(1)}s`, W2 / 2, H2 * 0.26);
+        if (left < 900 && now - fx.current.jetAt > 1500) fx.current.jetAt = now;
+      }
+      const jt = (now - fx.current.jetAt) / 1400;
+      if (jt < 1) {
+        for (let k = 0; k < 2; k++) {
+          const jx = -40 * u + (W2 + 80 * u) * (jt - k * 0.08), jy = H2 * (0.08 + k * 0.05);
+          ctx.fillStyle = 'rgba(20,24,20,.9)';
+          ctx.beginPath(); ctx.moveTo(jx + 22 * u, jy); ctx.lineTo(jx - 10 * u, jy - 3 * u); ctx.lineTo(jx - 14 * u, jy - 12 * u); ctx.lineTo(jx - 18 * u, jy - 2 * u); ctx.lineTo(jx - 24 * u, jy - 1 * u); ctx.lineTo(jx - 24 * u, jy + 3 * u); ctx.lineTo(jx - 10 * u, jy + 3 * u); ctx.lineTo(jx - 14 * u, jy + 12 * u); ctx.lineTo(jx - 6 * u, jy + 3 * u); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = 'rgba(255,170,60,.8)'; ctx.fillRect(jx - 30 * u, jy - 0.5 * u, 6 * u, 2 * u);
+        }
+      }
+      const sk = (now - fx.current.shake) / 450;
+      if (sk < 1) { ctx.fillStyle = `rgba(255,140,40,${(0.25 * (1 - sk)).toFixed(2)})`; ctx.fillRect(0, 0, W2, H2); }
       // Nuke countdown and flash
       if (snap?.nuke) {
         const left = Math.max(0, snap.nuke.inMs - (now - snap.recv));

@@ -338,6 +338,11 @@ export const AIRSTRIKE_DELAY_MS = 2500;
 export const AIRSTRIKE_RADIUS = 3;
 export const AIRSTRIKE_DAMAGE = 130;
 export const AIRSTRIKE_RANGE = 12;
+/** Zone stops following its target this long before impact (time to run). */
+export const AIRSTRIKE_LOCK_MS = 1000;
+export const AIRSTRIKE_SPACING = 2.2;
+/** How long a call waits for a live enemy before dropping on the aim point. */
+export const AIRSTRIKE_WAIT_MS = 8000;
 export const DRONE_MS = 20_000;
 export const DRONE_COOLDOWN_MS = 500;
 export const DRONE_DAMAGE = 12;
