@@ -1,3 +1,4 @@
+import type { GameType } from '../shared/types.js';
 import { randomBytes } from 'node:crypto';
 import { GameError } from './errors.js';
 import type { Side, TournamentMatchView, TournamentView } from '../shared/types.js';
@@ -8,7 +9,7 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 /** What a tournament needs to know about a match room. Rooms are real tables; tests fake this. */
 export interface MatchRooms {
-  create(clockId: string, white: string, black: string): string;
+  create(clockId: string, white: string, black: string, gameType?: GameType): string;
   status(code: string): MatchRoomStatus | null;
 }
 export interface MatchRoomStatus {
@@ -39,6 +40,7 @@ export class Tournament {
   readonly hostKey = randomBytes(16).toString('hex');
   readonly clockId: string;
   readonly size: 4 | 8;
+  readonly gameType: GameType;
   readonly createdAt: number;
   status: 'signup' | 'running' | 'done' = 'signup';
   entrants: string[] = [];
@@ -46,7 +48,8 @@ export class Tournament {
   champion: string | null = null;
   lastActivity: number;
 
-  constructor(code: string, host: string, clockId: string, size: number, now = Date.now()) {
+  constructor(code: string, host: string, clockId: string, size: number, now = Date.now(), gameType: GameType = 'chess') {
+    this.gameType = gameType;
     if (size !== 4 && size !== 8) throw new GameError('Pick 4 or 8 players.');
     this.code = code;
     this.host = host;
@@ -157,6 +160,7 @@ export class Tournament {
       code: this.code,
       host: this.host,
       clockId: this.clockId,
+      gameType: this.gameType,
       size: this.size,
       status: this.status,
       entrants: [...this.entrants],
@@ -198,7 +202,7 @@ export class Tournament {
     if (this.status !== 'running') return;
     for (const m of this.rounds.flat()) {
       if (!m.room && !m.how && m.white && m.black) {
-        m.room = rooms.create(this.clockId, m.white, m.black);
+        m.room = rooms.create(this.clockId, m.white, m.black, this.gameType);
         m.readyAt = now;
       }
     }
@@ -211,13 +215,13 @@ function same(a: string | null | undefined, b: string | null | undefined): boole
 
 const tournaments = new Map<string, Tournament>();
 
-export function createTournament(host: string, clockId: string, size: number, now = Date.now()): Tournament {
+export function createTournament(host: string, clockId: string, size: number, now = Date.now(), gameType: GameType = 'chess'): Tournament {
   let code = '';
   do {
     const bytes = randomBytes(5);
     code = 'T' + [...bytes].map((b) => ALPHABET[b % ALPHABET.length]).join('');
   } while (tournaments.has(code));
-  const t = new Tournament(code, host, clockId, size, now);
+  const t = new Tournament(code, host, clockId, size, now, gameType);
   tournaments.set(code, t);
   return t;
 }

@@ -114,7 +114,7 @@ export function HomeScreen({
       return;
     }
     socket.connect();
-    const res = await request('tournament_create', { name, clockId, size: tSize });
+    const res = await request('tournament_create', { name, clockId, size: tSize, gameType });
     if (!res.ok || !res.tournament) {
       setLocalError(res.error ?? 'Could not create a tournament.');
       return;

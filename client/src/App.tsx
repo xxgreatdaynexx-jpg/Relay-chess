@@ -3,6 +3,7 @@ import { HomeScreen } from '@/components/HomeScreen';
 import { LeaderboardScreen } from '@/components/Leaderboard';
 import { RoomScreen } from '@/components/RoomScreen';
 import { AnalysisScreen } from '@/components/AnalysisScreen';
+import { CheckersAnalysisScreen } from '@/components/CheckersAnalysisScreen';
 import { loadLastGame, saveLastGame, snapshotGame, type FinishedGame } from '@/lib/lastGame';
 import { VolumeControl } from '@/components/VolumeControl';
 import { SolitairePanel } from '@/components/SolitairePanel';
@@ -204,6 +205,8 @@ export function App() {
             <p className="mt-2 text-sm text-cream-dim">The table is still here if the server is.</p>
           </div>
         </div>
+      ) : analysis && analysis.gameType === 'checkers' ? (
+        <CheckersAnalysisScreen game={analysis} onBack={() => setAnalysis(null)} onMainMenu={() => { setAnalysis(null); if (state) leaveRoom(); }} />
       ) : analysis ? (
         <AnalysisScreen
           game={analysis}

@@ -471,6 +471,7 @@ export interface TournamentMatchView {
 
 export interface TournamentView {
   code: string;
+  gameType?: GameType;
   host: string;
   clockId: string;
   size: number;

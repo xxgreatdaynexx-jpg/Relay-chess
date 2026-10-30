@@ -29,8 +29,8 @@ import {
 
 /** Tournament matches are ordinary 1v1 rooms with seats reserved by name. */
 export const matchRooms: MatchRooms = {
-  create(clockId, white, black) {
-    const room = createRoom(presetOrThrow(clockId), { mode: '1v1', pairSide: null });
+  create(clockId, white, black, gameType = 'chess') {
+    const room = createRoom(presetOrThrow(clockId), { mode: '1v1', pairSide: null }, gameType);
     room.tournament = { code: '', seats: { white1: white, black1: black } };
     return room.code;
   },
@@ -211,7 +211,7 @@ export function registerSockets(io: Server): void {
         const body = asRecord(payload);
         const name = signedIn(socket);
         const preset = presetOrThrow(body.clockId);
-        const t = createTournament(name, preset.id, Number(body.size));
+        const t = createTournament(name, preset.id, Number(body.size), Date.now(), body.gameType === 'checkers' ? 'checkers' : 'chess');
         socket.data.tname = name;
         socket.join(`t:${t.code}`);
         ack?.({ ok: true, tournament: t.view(name), hostKey: t.hostKey });

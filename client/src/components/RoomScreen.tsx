@@ -639,7 +639,7 @@ export function RoomScreen({
                   : `Rematch${state.scrambleRematch ? ' (scramble)' : ''} · ${state.rematchVotes.length}/${active.length}`}
               </Button>
             )}
-            {state.status === 'ended' && state.moves.length > 0 && !checkers && (
+            {state.status === 'ended' && state.moves.length > 0 && (
               <Button variant="outline" onClick={onAnalyze} data-testid="analyze">
                 Analyze game
               </Button>

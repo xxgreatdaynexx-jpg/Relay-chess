@@ -91,7 +91,7 @@ export function TournamentScreen({ code, onHome, onEnterRoom }: { code: string; 
       <header className="flex flex-wrap items-center justify-between gap-2 px-20 sm:px-28">
         <div>
           <p className="text-xs tracking-[0.16em] text-cream/55 uppercase">
-            🏆 Tournament · 1v1 · {view ? clockPreset(view.clockId as ClockId)?.label ?? view.clockId : ''} · {view?.size ?? ''} players
+            🏆 {view?.gameType === 'checkers' ? 'Checkers tournament' : 'Tournament'} · 1v1 · {view ? clockPreset(view.clockId as ClockId)?.label ?? view.clockId : ''} · {view?.size ?? ''} players
           </p>
           <h1 className="font-serif text-3xl">Code {code}</h1>
           <p className="text-xs text-cream/50">Host: {view?.host ?? '…'} · share <span className="select-all text-cream/80">{link}</span></p>
