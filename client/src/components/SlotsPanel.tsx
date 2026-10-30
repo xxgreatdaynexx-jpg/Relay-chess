@@ -67,7 +67,7 @@ export function SlotsPanel() {
   useEffect(() => { if (machine) localStorage.setItem(MACHINE_KEY, machine); }, [machine]);
   useEffect(() => {
     if (!open || !name) return;
-    void emitCasino<{ state: { chips: number } }>('vp_state').then((r) => r.ok && r.state && setChips(r.state.chips));
+    void emitCasino<{ state: { chips: number } }>('vp_state', {}, { retry: true }).then((r) => r.ok && r.state && setChips(r.state.chips));
   }, [open, name]);
 
   // Spinning reels cycle through random symbols (the strip itself scrolls in CSS).
@@ -156,7 +156,7 @@ export function SlotsPanel() {
     setSpinning(Array(VS_REELS).fill(true)); setLit(new Set()); setExpanded([]);
     playRouletteSpin(1.2);
     // Buy Bonus: the server prices it from the bet and decides the whole round; we send only machine + bet.
-    const r = await emitCasino<{ result: Spin }>(buy ? 'vslots_buy' : 'vslots_spin', { machine: m, bet });
+    const r = await emitCasino<{ result: Spin }>(buy ? 'vslots_buy' : 'vslots_spin', { machine: m, bet }, { retry: true });
     if (!r.ok || !r.result) {
       setSpinning(Array(VS_REELS).fill(false)); setBusy(false); setMsg('');
       return setErr(r.error ?? 'Try again.');

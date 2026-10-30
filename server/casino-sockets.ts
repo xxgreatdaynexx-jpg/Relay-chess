@@ -66,6 +66,13 @@ function standings(viewerIsQa = false): CasinoStanding[] {
   return boardFor(getBank().standings(1e6), viewerIsQa, 25).map(({ name, chips, netWon, hands, spins, biggestWin }) => ({ name, chips, netWon, hands, spins, biggestWin, ...(isQaName(name) ? { qa: true } : {}) }));
 }
 
+/** Last few hundred acks by (account|rid), so a retried request is answered from cache. */
+const recentAcks = new Map<string, { ok: boolean; [k: string]: unknown }>();
+export function rememberAck(key: string, ack: { ok: boolean; [k: string]: unknown }): void {
+  recentAcks.set(key, ack);
+  if (recentAcks.size > 500) recentAcks.delete(recentAcks.keys().next().value as string);
+}
+
 function nameOf(s: Socket): string | null {
   return (s.data as { account?: { name: string } }).account?.name ?? null;
 }
@@ -127,8 +134,14 @@ export function registerCasino(io: Server, socket: Socket): void {
   const wrap = (fn: (body: Record<string, unknown>, now: number) => Record<string, unknown> | void) => (payload: unknown, ack?: Ack) => {
     try {
       const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
-      const extra = fn(body, Date.now()) ?? {};
-      ack?.({ ok: true, ...extra });
+      // Client retries (same rid) after a lost ack get the original answer instead of acting twice.
+      const rid = typeof body.rid === 'string' && body.rid.length <= 40 ? `${nameOf(socket) ?? socket.id}|${body.rid}` : null;
+      const seen = rid ? recentAcks.get(rid) : undefined;
+      if (seen) return void ack?.(seen);
+      let out: { ok: boolean; [k: string]: unknown };
+      try { out = { ok: true, ...(fn(body, Date.now()) ?? {}) }; } catch (err) { out = { ok: false, error: (err as Error).message }; }
+      if (rid) rememberAck(rid, out);
+      ack?.(out);
     } catch (err) {
       ack?.({ ok: false, error: (err as Error).message });
     }
