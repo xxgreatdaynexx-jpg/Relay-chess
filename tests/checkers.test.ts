@@ -100,3 +100,45 @@ describe('CheckersGame', () => {
     expect(q.result?.type).toBe('forty_move');
   });
 });
+
+import { getCheckersLeaderboard, getLeaderboard, resetCheckersLeaderboard, resetLeaderboard } from '../server/leaderboard.js';
+
+describe('Relay Checkers tables', () => {
+  const clock = { id: 'none', label: 'No clock', initialMs: 0, incrementMs: 0 } as never;
+  it.each([
+    ['2v1', 'white', 3],
+    ['2v2', null, 4],
+    ['3v2', 'black', 5],
+    ['3v3', null, 6],
+  ] as const)('%s relays seats in order, spectators watch, result goes to the checkers board', (mode, pairSide, n) => {
+    resetLeaderboard(null);
+    resetCheckersLeaderboard(null);
+    const room = new Room('CHK' + n, clock, { mode, pairSide }, 'checkers');
+    const seats = room.openSeats();
+    expect(seats).toHaveLength(n);
+    const tokens = seats.map((seat, i) => {
+      const t = room.addMember(`P${i}`);
+      room.connect(t, `s${i}`);
+      room.sit(t, seat);
+      return t;
+    });
+    expect(room.game.status).toBe('playing');
+    room.addSpectator('watcher');
+    expect(room.view('watcher', 0).spectating).toBe(true);
+    expect(room.summary().watching).toBe(1);
+    const order: string[] = [];
+    for (let i = 0; i < n * 2 && room.game.status === 'playing'; i++) {
+      const seat = room.game.seatToMove()!;
+      order.push(seat);
+      const token = tokens[seats.indexOf(seat)]!;
+      const m = room.view(`s${seats.indexOf(seat)}`, 0).legalMoves[0]!;
+      room.move(token, { from: m.from, to: m.to, ...(m.path && m.path.length > 1 ? { via: m.path.slice(0, -1) } : {}) });
+    }
+    expect(new Set(order).size).toBe(n);
+    room.resign(tokens[0]!);
+    expect(room.game.status).toBe('ended');
+    room.view('s0', 0);
+    expect(getCheckersLeaderboard().standings().length).toBeGreaterThan(0);
+    expect(getLeaderboard().standings()).toHaveLength(0);
+  });
+});

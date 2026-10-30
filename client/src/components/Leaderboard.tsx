@@ -19,8 +19,8 @@ const CHESS_HEAD: Array<[ChessCol, string, string]> = [
   ['mistake', '?', 'Mistake: bottom 40% (not a blunder)'], ['blunder', '??', 'Blunder: bottom-fifth move'],
 ];
 
-export type BoardKind = 'chess' | 'casino' | 'arena';
-const BOARDS: Array<[BoardKind, string]> = [['chess', 'Chess'], ['casino', 'Casino'], ['arena', 'Arena']];
+export type BoardKind = 'chess' | 'checkers' | 'casino' | 'arena';
+const BOARDS: Array<[BoardKind, string]> = [['chess', 'Chess'], ['checkers', 'Checkers'], ['casino', 'Casino'], ['arena', 'Arena']];
 const BOARD_KEY = 'relay-leaderboard-tab';
 function loadBoard(): BoardKind {
   try { const v = localStorage.getItem(BOARD_KEY); return BOARDS.some(([k]) => k === v) ? (v as BoardKind) : 'chess'; } catch { return 'chess'; }
@@ -64,13 +64,14 @@ export function LeaderboardScreen({ onBack, onMainMenu }: { onBack: () => void; 
         <BoardSwitch value={board} onChange={setBoard} />
       </div>
       <div className="mt-4" data-testid={`lb-view-${board}`}>
-        {board === 'chess' ? <LeaderboardTable /> : board === 'arena' ? <ArenaLeaderboard you={loadName()} /> : <div className="lb-casino"><CasinoLeaderboard you={loadName()} /></div>}
+        {board === 'chess' ? <LeaderboardTable /> : board === 'checkers' ? <LeaderboardTable game="checkers" /> : board === 'arena' ? <ArenaLeaderboard you={loadName()} /> : <div className="lb-casino"><CasinoLeaderboard you={loadName()} /></div>}
       </div>
     </div>
   );
 }
 
-export function LeaderboardTable({ highlight = [] }: { highlight?: string[] }) {
+export function LeaderboardTable({ highlight = [], game = 'chess' }: { highlight?: string[]; game?: 'chess' | 'checkers' }) {
+  const head = game === 'checkers' ? CHESS_HEAD.slice(0, 6) : CHESS_HEAD;
   const [rows, setRows] = useState<LeaderboardRow[] | null>(null);
   const [error, setError] = useState('');
   const [sort, setSort] = useState<ChessCol>('wins');
@@ -81,7 +82,7 @@ export function LeaderboardTable({ highlight = [] }: { highlight?: string[] }) {
 
   useEffect(() => {
     let cancel = false;
-    fetch('/api/leaderboard', qaHeaders())
+    fetch(game === 'checkers' ? '/api/checkers-leaderboard' : '/api/leaderboard', qaHeaders())
       .then(async (response) => {
         if (!response.ok) throw new Error('bad status');
         return (await response.json()) as { rows: LeaderboardRow[] };
@@ -95,25 +96,25 @@ export function LeaderboardTable({ highlight = [] }: { highlight?: string[] }) {
     return () => {
       cancel = true;
     };
-  }, []);
+  }, [game]);
 
   if (error) return <p className="text-sm text-danger">{error}</p>;
   if (!rows) return <p className="text-sm text-cream-dim">Loading standings…</p>;
   if (rows.length === 0) {
     return (
       <p className="text-sm text-cream-dim">
-        No finished games yet. Checkmate, resignation, a flag fall, and agreed draws all land here.
+        {game === 'checkers' ? 'No finished checkers games yet. Wins, resignations, flag falls and draws all land here.' : 'No finished games yet. Checkmate, resignation, a flag fall, and agreed draws all land here.'}
       </p>
     );
   }
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-white/10">
-      <table className="w-full min-w-[44rem] text-left text-sm">
+      <table className={cn('w-full text-left text-sm', game === 'checkers' ? 'min-w-[28rem]' : 'min-w-[44rem]')} data-testid={`lb-table-${game}`}>
         <thead className="bg-white/5 text-[11px] tracking-[0.14em] text-cream/55 uppercase">
           <tr>
             <th className="px-3 py-2 font-medium">#</th>
-            {CHESS_HEAD.map(([k, label, title]) => (
+            {head.map(([k, label, title]) => (
               <th key={k} className="px-2 py-2 font-medium" aria-sort={sort === k ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
                 <button type="button" className={cn('lb-sort', sort === k && 'on')} onClick={() => pick(k)} data-testid={`chess-sort-${k}`} title={title}>
                   {label}{sort === k ? (dir === 'asc' ? ' ▲' : ' ▼') : ''}
@@ -134,11 +135,11 @@ export function LeaderboardTable({ highlight = [] }: { highlight?: string[] }) {
                 <td className="tabular px-2 py-2">{row.draws}</td>
                 <td className="tabular px-2 py-2">{row.played}</td>
                 <td className="tabular px-2 py-2">{Math.round(row.winRate * 100)}%</td>
-                <td className="tabular px-2 py-2" title={row.moves ? `${row.moves} rated moves` : 'No rated moves yet'}>{row.accuracy == null ? '–' : `${row.accuracy}%`}</td>
+                {game === 'chess' && <><td className="tabular px-2 py-2" title={row.moves ? `${row.moves} rated moves` : 'No rated moves yet'}>{row.accuracy == null ? '–' : `${row.accuracy}%`}</td>
                 <td className="tabular px-2 py-2">{row.brilliant ?? 0}</td>
                 <td className="tabular px-2 py-2">{row.great ?? 0}</td>
                 <td className="tabular px-2 py-2">{row.mistake ?? 0}</td>
-                <td className="tabular px-2 py-2">{row.blunder ?? 0}</td>
+                <td className="tabular px-2 py-2">{row.blunder ?? 0}</td></>}
               </tr>
             );
           })}
