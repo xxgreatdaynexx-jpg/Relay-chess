@@ -237,13 +237,15 @@ export function HomeScreen({
           <Button variant="ghost" size="sm" onClick={onLeaderboard} data-testid="open-leaderboard">
             Leaderboard
           </Button>
-          <RulesDialog />
         </div>
       </header>
       <main className="flex flex-1 flex-col justify-center py-8">
         <h1 className="max-w-xl font-serif text-5xl leading-[0.95] text-cream sm:text-6xl">
           Relay Chess
         </h1>
+        <div className="mt-3 -ml-3" data-testid="how-it-works-home">
+          <RulesDialog />
+        </div>
         {saved && (
           <div className="mt-6">
             <Button variant="outline" onClick={returnToTable} disabled={busy !== null}>
