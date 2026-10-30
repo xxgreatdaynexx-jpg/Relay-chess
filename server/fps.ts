@@ -1,105 +1,68 @@
 import type { Server, Socket } from 'socket.io';
-import {
-  applyDamage, DAMAGE, guestName, hitscan, MAX_HP, maybeRespawn, normAngle, pickSpawn,
-  SHOT_COOLDOWN_MS, TICK_HZ, validateMove, type Fighter,
-} from '../shared/fps.js';
+import { guestName, TICK_HZ } from '../shared/fps.js';
+import { ArenaWorld, type ArenaEvent } from './arena-world.js';
 
 const ROOM = '__fps_arena';
 const MAX_PLAYERS = 24;
-const fighters = new Map<string, Fighter>();
+let world = new ArenaWorld();
 let ticker: ReturnType<typeof setInterval> | null = null;
 
 export function resetArena(): void {
-  fighters.clear();
+  world = new ArenaWorld();
   if (ticker) clearInterval(ticker);
   ticker = null;
 }
 
-function snapshot() {
-  return {
-    t: Date.now(),
-    players: [...fighters.values()].map((f) => ({
-      id: f.id, name: f.name, x: +f.x.toFixed(3), y: +f.y.toFixed(3), a: +f.a.toFixed(3),
-      hp: f.hp, k: f.kills, d: f.deaths, alive: f.alive,
-    })),
-  };
+function emit(io: Server, events: ArenaEvent[]): void {
+  for (const e of events) io.to(ROOM).emit(e.ev, e.data);
 }
 
 function ensureTicker(io: Server): void {
   if (ticker) return;
   ticker = setInterval(() => {
-    if (!fighters.size) {
+    if (!world.fighters.size) {
       if (ticker) clearInterval(ticker);
       ticker = null;
       return;
     }
     const now = Date.now();
-    const all = [...fighters.values()];
-    for (const f of all) maybeRespawn(f, now, all);
-    io.to(ROOM).emit('fps_state', snapshot());
+    emit(io, world.tick(now));
+    io.to(ROOM).emit('fps_state', world.snapshot(now));
   }, Math.round(1000 / TICK_HZ));
   (ticker as unknown as { unref?: () => void }).unref?.();
 }
 
 function leave(io: Server, socket: Socket): void {
-  if (!fighters.delete(socket.id)) return;
+  if (!world.leave(socket.id)) return;
   socket.leave(ROOM);
-  io.to(ROOM).emit('fps_state', snapshot());
+  io.to(ROOM).emit('fps_state', world.snapshot(Date.now()));
 }
 
+const body = (p: unknown) => (p && typeof p === 'object' ? (p as Record<string, unknown>) : {});
+
 export function registerFps(io: Server, socket: Socket): void {
-  socket.on('fps_join', (payload: unknown, ack?: (res: unknown) => void) => {
-    const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
-    let f = fighters.get(socket.id);
-    if (!f) {
-      if (fighters.size >= MAX_PLAYERS) {
+  socket.on('fps_join', (_payload: unknown, ack?: (res: unknown) => void) => {
+    if (!world.fighters.has(socket.id)) {
+      if (world.fighters.size >= MAX_PLAYERS) {
         ack?.({ ok: false, error: 'Arena is full, try again in a bit.' });
         return;
       }
-      const [x, y] = pickSpawn([...fighters.values()]);
-      const now = Date.now();
-      f = { id: socket.id, name: (socket.data.account as { name?: string } | undefined)?.name ?? guestName(), x, y, a: Math.random() * Math.PI * 2, hp: MAX_HP, kills: 0, deaths: 0, alive: true, respawnAt: 0, lastShot: 0, lastMove: now };
-      fighters.set(socket.id, f);
+      world.join(socket.id, (socket.data.account as { name?: string } | undefined)?.name ?? guestName(), Date.now());
       socket.join(ROOM);
     }
+    const f = world.fighters.get(socket.id)!;
     ack?.({ ok: true, id: socket.id, x: f.x, y: f.y, a: f.a });
     ensureTicker(io);
   });
-
-  socket.on('fps_move', (payload: unknown) => {
-    const f = fighters.get(socket.id);
-    if (!f || !f.alive || !payload || typeof payload !== 'object') return;
-    const body = payload as Record<string, unknown>;
-    const now = Date.now();
-    if (now - f.lastMove < 25) return; // ~40 Hz max
-    const pos = validateMove(f, body.x, body.y, now - f.lastMove);
-    f.lastMove = now;
-    f.x = pos.x;
-    f.y = pos.y;
-    const a = normAngle(body.a);
-    if (a !== null) f.a = a;
+  socket.on('fps_move', (p: unknown) => {
+    const b = body(p);
+    world.move(socket.id, b.x, b.y, b.a, Date.now());
   });
-
-  socket.on('fps_shoot', (payload: unknown) => {
-    const f = fighters.get(socket.id);
-    if (!f || !f.alive) return;
-    const now = Date.now();
-    if (now - f.lastShot < SHOT_COOLDOWN_MS) return;
-    f.lastShot = now;
-    const a = normAngle(payload && typeof payload === 'object' ? (payload as Record<string, unknown>).a : null);
-    if (a !== null) f.a = a;
-    io.to(ROOM).emit('fps_shot', { id: f.id });
-    const hit = hitscan(f, [...fighters.values()]);
-    if (!hit) return;
-    const target = fighters.get(hit.id)!;
-    const killed = applyDamage(target, now, DAMAGE);
-    io.to(ROOM).emit('fps_hit', { by: f.id, target: target.id, hp: target.hp });
-    if (killed) {
-      f.kills += 1;
-      io.to(ROOM).emit('fps_kill', { killer: f.name, victim: target.name, killerId: f.id, victimId: target.id });
-    }
-  });
-
+  socket.on('fps_shoot', (p: unknown) => emit(io, world.shoot(socket.id, body(p).a, Date.now())));
+  socket.on('fps_jump', () => emit(io, world.jump(socket.id, Date.now())));
+  socket.on('fps_weapon', (p: unknown) => world.switchWeapon(socket.id, body(p).w, Date.now()));
+  socket.on('fps_reload', () => world.reload(socket.id, Date.now()));
+  socket.on('fps_scope', (p: unknown) => world.setScope(socket.id, body(p).on, Date.now()));
   socket.on('fps_leave', () => leave(io, socket));
   socket.on('disconnect', () => leave(io, socket));
 }

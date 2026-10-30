@@ -456,3 +456,89 @@ export function playBallLand(): void {
   tone(ctx, 1500, now + 0.08, 0.04, 0.05);
   tone(ctx, 1300, now + 0.15, 0.05, 0.03);
 }
+
+/** Arena: per-weapon shot. Pitch and noise vary so each gun sounds different; all through the master volume. */
+export function playWeaponShot(weapon: string, volume = 1): void {
+  const ctx = audio();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const cfg: Record<string, { f0: number; f1: number; len: number; noise: number; type: OscillatorType }> = {
+    pistol: { f0: 880, f1: 110, len: 0.14, noise: 0.25, type: 'square' },
+    smg: { f0: 1200, f1: 300, len: 0.07, noise: 0.18, type: 'square' },
+    shotgun: { f0: 300, f1: 60, len: 0.22, noise: 0.5, type: 'sawtooth' },
+    sniper: { f0: 1800, f1: 90, len: 0.3, noise: 0.35, type: 'sawtooth' },
+    rocket: { f0: 160, f1: 520, len: 0.35, noise: 0.3, type: 'triangle' },
+  };
+  const c = cfg[weapon] ?? cfg.pistol;
+  const osc = ctx.createOscillator();
+  osc.type = c.type;
+  osc.frequency.setValueAtTime(c.f0, now);
+  osc.frequency.exponentialRampToValueAtTime(c.f1, now + c.len * 0.9);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, now);
+  g.gain.exponentialRampToValueAtTime(0.16 * volume, now + 0.005);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + c.len);
+  osc.connect(g);
+  g.connect(output(ctx));
+  osc.start(now);
+  osc.stop(now + c.len + 0.01);
+  const n = arenaNoise(ctx, Math.min(0.3, c.len));
+  const ng = ctx.createGain();
+  ng.gain.value = c.noise * volume;
+  n.connect(ng);
+  ng.connect(output(ctx));
+  n.start(now);
+}
+
+/** Arena: cartoon explosion (rockets, pie strikes, the nuke). */
+export function playExplosion(volume = 1, long = false): void {
+  const ctx = audio();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const len = long ? 2.2 : 0.7;
+  const n = arenaNoise(ctx, len);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(1600, now);
+  lp.frequency.exponentialRampToValueAtTime(120, now + len);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, now);
+  g.gain.exponentialRampToValueAtTime(0.7 * volume, now + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + len);
+  n.connect(lp);
+  lp.connect(g);
+  g.connect(output(ctx));
+  n.start(now);
+  const osc = ctx.createOscillator();
+  osc.frequency.setValueAtTime(90, now);
+  osc.frequency.exponentialRampToValueAtTime(30, now + len);
+  const og = ctx.createGain();
+  og.gain.setValueAtTime(0.5 * volume, now);
+  og.gain.exponentialRampToValueAtTime(0.0001, now + len);
+  osc.connect(og);
+  og.connect(output(ctx));
+  osc.start(now);
+  osc.stop(now + len);
+}
+
+/** Arena: announcer sting for a killstreak (rising arpeggio). Alarm variant for the nuke. */
+export function playStreakCall(kind: 'reward' | 'alarm' = 'reward'): void {
+  const ctx = audio();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const notes = kind === 'alarm' ? [880, 660, 880, 660, 880, 660] : [523, 659, 784, 1047];
+  notes.forEach((f, i) => {
+    const t = now + i * (kind === 'alarm' ? 0.22 : 0.09);
+    const osc = ctx.createOscillator();
+    osc.type = kind === 'alarm' ? 'sawtooth' : 'square';
+    osc.frequency.setValueAtTime(f, t);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.12, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    osc.connect(g);
+    g.connect(output(ctx));
+    osc.start(t);
+    osc.stop(t + 0.2);
+  });
+}

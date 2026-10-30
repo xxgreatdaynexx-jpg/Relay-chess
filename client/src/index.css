@@ -411,10 +411,10 @@ input {
 .fps-wrap { position: fixed; right: 12px; top: 0; z-index: 46; display: flex; flex-direction: column-reverse; align-items: flex-end; pointer-events: none; }
 .fps-wrap > * { pointer-events: auto; }
 .fps-tab { border-radius: 0 0 10px 10px; padding: 2px 12px; font-size: 12px; }
-.fps-panel { width: 480px; height: auto; max-height: calc(100dvh - 40px); border-radius: 0 0 14px 14px; animation: bj-down .22s ease-out; background: #1b1d2e; outline: none; touch-action: none; }
+.fps-panel { width: 560px; height: auto; max-height: calc(100dvh - 40px); border-radius: 0 0 14px 14px; animation: bj-down .22s ease-out; background: #1b1d2e; outline: none; touch-action: none; }
 .fps-panel.fps-focused { box-shadow: 0 0 0 2px #e8c26a, 0 14px 40px rgba(0,0,0,.5); }
 .fps-stage { position: relative; }
-.fps-canvas { display: block; width: 100%; aspect-ratio: 8 / 5; image-rendering: pixelated; cursor: crosshair; background: #000; }
+.fps-canvas { display: block; width: 100%; aspect-ratio: 8 / 5; cursor: crosshair; background: #000; }
 .fps-feed { position: absolute; left: 6px; top: 4px; font-size: 11px; line-height: 1.35; text-shadow: 0 1px 2px #000; pointer-events: none; }
 .fps-board { position: absolute; right: 6px; top: 4px; font-size: 11px; line-height: 1.35; background: rgba(0,0,0,.45); border-radius: 6px; padding: 3px 6px; pointer-events: none; max-width: 45%; }
 .fps-board div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -559,3 +559,23 @@ input {
 .sl-reel { width: 72px; height: 80px; display: grid; place-items: center; font-size: 44px; background: linear-gradient(#fff, #e8e2d0 50%, #fff); border-radius: 8px; color: #222; }
 .sl-reel.spin { filter: blur(1.5px); transform: translateY(2px); }
 .sl-reels.win .sl-reel { box-shadow: 0 0 12px 2px #e3b25c; }
+
+/* ---- Left-wall casino dock: every gambling tab stacked, vertically centred, clear of the volume slider. */
+.casino-dock { position: fixed; left: 0; top: 50%; transform: translateY(-50%); z-index: 46; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; max-height: calc(100dvh - 140px); }
+.casino-dock .bj-wrap, .casino-dock .rl-wrap, .casino-dock .cx-wrap { display: contents; }
+.casino-dock .bj-tab, .casino-dock .rl-tab, .casino-dock .cx-tab {
+  writing-mode: vertical-rl; transform: rotate(180deg); order: 0; border-radius: 10px 0 0 10px; padding: 12px 4px; font-size: 12px; white-space: nowrap;
+}
+.casino-dock [aria-expanded="true"].sol-tab:not(.dock-toggle) { background: #e8c26a; color: #1b1d2e; }
+.casino-dock .sol-panel { position: fixed; left: 34px; right: auto; top: max(8px, calc(50dvh - 280px)); bottom: auto; border-radius: 14px; animation: none; max-height: calc(100dvh - 90px); overflow: auto; }
+.dock-toggle { display: none; }
+@media (max-width: 520px) {
+  .casino-dock { top: auto; bottom: 64px; transform: none; gap: 4px; }
+  .dock-toggle { display: block; writing-mode: vertical-rl; transform: rotate(180deg); border-radius: 10px 0 0 10px; padding: 10px 4px; font-size: 12px; }
+  .casino-dock:not(.dock-expanded) > div > .sol-tab { display: none; }
+  .casino-dock .sol-panel { left: 4px; right: 4px; width: auto; top: 30px; }
+}
+.fps-quality { font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 6px; background: rgba(255,255,255,.14); }
+.fps-touch .fps-jump { width: 60px; background: #4b7ad1; }
+.fps-touch .fps-swap { width: 60px; background: #7a5aa8; }
+@media (max-width: 520px) { .fps-touch { flex-wrap: wrap; } .fps-touch .fps-jump, .fps-touch .fps-swap { width: 54px; } }

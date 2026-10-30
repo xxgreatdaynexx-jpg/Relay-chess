@@ -90,7 +90,7 @@ export function BlackjackPanel() {
   return (
     <div className={`bj-wrap ${open ? 'bj-open' : ''}`} data-testid="blackjack">
       <button type="button" className="sol-tab bj-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="blackjack-tab">
-        🂡 Blackjack <span aria-hidden>{open ? '▴' : '▾'}</span>
+        🂡 Blackjack
       </button>
       {open && (
         <div className="sol-panel bj-panel" role="dialog" aria-label="Blackjack" ref={winRef} style={win.style} onPointerDownCapture={win.front}>
