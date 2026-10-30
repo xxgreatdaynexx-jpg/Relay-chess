@@ -36,7 +36,7 @@ function MiniBoard({ kind }: { kind: GameType }) {
   const cells = [];
   for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
     const dark = (r + c) % 2 === 1;
-    cells.push(<rect key={`${r}${c}`} x={c * 10} y={r * 10} width={10} height={10} fill={dark ? '#9a6b46' : '#ecd9b6'} />);
+    cells.push(<rect key={`${r}${c}`} x={c * 10} y={r * 10} width={10} height={10} fill={dark ? '#6f4f36' : '#c9b48f'} />);
     if (kind === 'checkers' && dark && (r < 3 || r > 4)) {
       cells.push(<circle key={`p${r}${c}`} cx={c * 10 + 5} cy={r * 10 + 5} r={3.6} fill={r < 3 ? '#7a1f1f' : '#f4ead8'} stroke="#0004" strokeWidth={0.6} />);
     }
