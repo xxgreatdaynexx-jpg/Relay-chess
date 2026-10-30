@@ -350,6 +350,7 @@ export class Room {
       mark: this.moveMark,
       bailout: this.game.bailout ? { ...this.game.bailout } : null,
       escape: this.game.escape ? { ...this.game.escape } : null,
+      missedMate: this.game.missedMate ? { ...this.game.missedMate } : null,
       streak: this.streak ? { ...this.streak } : null,
       mateInOne:
         this.game.status === 'playing' && !this.game.result && this.mateInOne?.ply === this.game.ply()

@@ -15,7 +15,8 @@ export type ResultType =
   | 'threefold'
   | 'fifty_move'
   | 'insufficient'
-  | 'timeout';
+  | 'timeout'
+  | 'missed_mate';
 
 export interface GameResult {
   type: ResultType;
@@ -40,6 +41,23 @@ export interface MoveRecord {
   /** Positions around the move, for post-game analysis. */
   fenBefore?: string;
   fenAfter?: string;
+  /** Missed-mate rule fired: pieces taken off after this move. */
+  missedMate?: MissedMateNote;
+}
+
+export interface MissedMateNote {
+  /** Mating moves that were on the board, SAN. */
+  missed: string[];
+  removed: { square: string; piece: string }[];
+}
+
+export interface MissedMateCall {
+  at: number;
+  ply: number;
+  name: string;
+  side: Side;
+  missed: string[];
+  removed: { square: string; piece: string }[];
 }
 
 export interface TeamsBanner {
@@ -163,6 +181,7 @@ export interface PublicState {
   mark: MoveMark | null;
   bailout: BailoutOffer | null;
   escape: KingEscape | null;
+  missedMate: MissedMateCall | null;
   streak: StreakCall | null;
   mateInOne: MateInOneCall | null;
 }
@@ -380,5 +399,10 @@ export function describeResult(
         };
       }
       return { headline: 'Out of time', detail: `${loser} ran out of time. ${winner} wins.` };
+    case 'missed_mate':
+      return {
+        headline: 'Missed mate',
+        detail: `${loser} skipped a mate in one and losing the piece left their king hanging. ${winner} wins.`,
+      };
   }
 }

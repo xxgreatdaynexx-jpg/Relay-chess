@@ -80,8 +80,12 @@ export function gameToPgn(game: FinishedGame): string {
     else if (index === 0) parts.push(`${number}...`);
     parts.push(move.san);
     if (move.name) parts.push(`{${move.name.replace(/[{}]/g, '')}}`);
+    if (move.missedMate) {
+      const lost = move.missedMate.removed.map((r) => `${r.piece.toUpperCase()}${r.square}`).join(', ');
+      parts.push(`{missed mate ${move.missedMate.missed.join('/')}: lost ${lost}; position ${move.fenAfter ?? ''}}`);
+    }
     const next = game.moves[index + 1];
-    if (next?.fenBefore && move.fenAfter && next.fenBefore !== move.fenAfter) parts.push('{king escape}');
+    if (!move.missedMate && next?.fenBefore && move.fenAfter && next.fenBefore !== move.fenAfter) parts.push('{king escape}');
   });
   parts.push(result);
   return `${headers.map(([k, v]) => `[${k} "${v.replace(/"/g, "'")}"]`).join('\n')}\n\n${parts.join(' ')}\n`;

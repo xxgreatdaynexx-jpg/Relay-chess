@@ -36,6 +36,8 @@ interface Pending {
   to: string;
 }
 
+const PIECE_WORD: Record<string, string> = { p: 'Pawn', n: 'Knight', b: 'Bishop', r: 'Rook', q: 'Queen' };
+
 export function RoomScreen({
   state,
   online,
@@ -63,6 +65,7 @@ export function RoomScreen({
   const previousFen = useRef<string | null>(null);
   const previousMoves = useRef(0);
   const escapeToast = useRef<string | null>(null);
+  const missedToast = useRef<string | null>(null);
   const forkSoundTimer = useRef<number | null>(null);
   const forkSoundPlayed = useRef<string | null>(null);
   const lastForkPly = useRef<number | null>(null);
@@ -372,6 +375,17 @@ export function RoomScreen({
     onToast(`${escape.name} paid Dayne $1 and teleported out!`);
   }, [state.escape, state.ply, state.serverNow, onToast, frozenFen]);
 
+  useEffect(() => {
+    const missed = state.missedMate;
+    if (!missed || !flashIsFresh(missed, state.ply, state.serverNow, POOF_HOLD_MS)) return;
+    const key = `${missed.at}:${missed.ply}`;
+    if (missedToast.current === key) return;
+    missedToast.current = key;
+    const pieces = missed.removed.map((r) => `${PIECE_WORD[r.piece] ?? r.piece} (${r.square})`).join(' and ');
+    onToast(`💀 Missed mate! ${missed.name} skipped ${missed.missed[0]} — ${pieces} lost`);
+    playBoom();
+  }, [state.missedMate, state.ply, state.serverNow, onToast]);
+
   async function payDayne() {
     if (payPhase !== 'idle' || !state.bailout) return;
     setFrozenFen(state.fen);
@@ -399,7 +413,12 @@ export function RoomScreen({
           token: `${state.escape.at}:${state.escape.ply}:${state.escape.square}`,
           squares: [state.escape.from, state.escape.square],
         }
-      : null;
+      : state.missedMate && flashIsFresh(state.missedMate, state.ply, state.serverNow, POOF_HOLD_MS)
+        ? {
+            token: `missed:${state.missedMate.at}:${state.missedMate.ply}`,
+            squares: state.missedMate.removed.map((r) => r.square),
+          }
+        : null;
   const lastMove = pending
     ? { from: pending.from, to: pending.to }
     : state.moves.length

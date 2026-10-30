@@ -146,9 +146,10 @@ describe('FIDE rules', () => {
   });
 
   it('ends on stalemate, threefold repetition, the fifty-move rule, and insufficient material', () => {
-    const stalemate = RelayGame.fromPosition('k7/8/2K5/8/8/8/1Q6/8 w - - 0 1', 0);
-    stalemate.move('white1', { from: 'b2', to: 'b6' }, 0);
-    expect(stalemate.history()[0].san).toBe('Qb6');
+    // No mate in one here, so the missed-mate rule stays out of it.
+    const stalemate = RelayGame.fromPosition('k7/8/PK6/8/8/8/8/8 w - - 0 1', 0);
+    stalemate.move('white1', { from: 'a6', to: 'a7' }, 0);
+    expect(stalemate.history()[0].san).toBe('a7');
     expect(stalemate.result?.type).toBe('stalemate');
     expect(stalemate.result?.winner).toBeNull();
 

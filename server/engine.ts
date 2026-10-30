@@ -1,4 +1,5 @@
 import { Chess, type Color, type Square } from 'chess.js';
+import { applyMissedMate, matingMoves } from '../shared/missedMate.js';
 import { BAILOUT_MS, escapeSquares, teleportKing } from '../shared/bailout.js';
 import {
   opposite,
@@ -9,6 +10,7 @@ import {
   type DrawOffer,
   type GameResult,
   type KingEscape,
+  type MissedMateCall,
   type LegalMove,
   type MoveInput,
   type MoveRecord,
@@ -102,6 +104,7 @@ export class RelayGame {
   drawOffer: DrawOffer | null = null;
   bailout: BailoutOffer | null = null;
   escape: KingEscape | null = null;
+  missedMate: MissedMateCall | null = null;
   readonly rematchVotes = new Set<Seat>();
 
   private chess = new Chess();
@@ -288,6 +291,7 @@ export class RelayGame {
     if (this.clock && this.clock.remaining[side] < 0) this.clock.remaining[side] = 0;
 
     const fenBefore = this.chess.fen();
+    const mates = matingMoves(fenBefore);
     let played: { san: string; from: string; to: string } | null = null;
     try {
       played = this.chess.move({
@@ -313,6 +317,14 @@ export class RelayGame {
       this.drawOffer = null;
     }
 
+    const lost = applyMissedMate(fenBefore, played, this.chess.fen(), mates);
+    if (lost) {
+      this.chess = new Chess(lost.fen, { skipValidation: true });
+    }
+    const note = lost
+      ? { missed: lost.missed, removed: lost.removed.map((r) => ({ square: r.square, piece: r.piece })) }
+      : undefined;
+
     this.moves.push({
       san: played.san,
       from: played.from,
@@ -321,7 +333,16 @@ export class RelayGame {
       ...(name ? { name } : {}),
       fenBefore,
       fenAfter: this.chess.fen(),
+      ...(note ? { missedMate: note } : {}),
     });
+
+    if (lost && note) {
+      this.missedMate = { at: now, ply: this.ply(), name: name ?? seat, side, ...note };
+      if (lost.exposesKing) {
+        this.finish({ type: 'missed_mate', winner: opposite(side), bySeat: seat });
+        return;
+      }
+    }
 
     const terminal = detectTerminal(this.chess);
     if (terminal?.type === 'checkmate') this.offerBailout(now);
@@ -511,6 +532,7 @@ export class RelayGame {
     this.bailoutsUsed.clear();
     this.bailout = null;
     this.escape = null;
+    this.missedMate = null;
     this.result = null;
     this.drawOffer = null;
     this.rematchVotes.clear();
