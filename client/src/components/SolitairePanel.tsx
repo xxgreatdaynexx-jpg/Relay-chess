@@ -138,7 +138,7 @@ export function SolitairePanel() {
         🃏 Solitaire <span aria-hidden>{open ? '▾' : '▴'}</span>
       </button></TopTab>
       {open && (
-        <div className={"sol-panel" + win.className} role="dialog" aria-label="Solitaire" ref={winRef} style={win.style} onPointerDownCapture={win.front}>
+        <div className={"sol-panel" + win.className} role="dialog" aria-label="Solitaire" ref={winRef} style={win.style} onPointerDownCapture={win.front} onPointerMove={win.onPanelMove}>
           {win.grips}
           <div {...win.bar}>
             <button type="button" onClick={newGame}>New</button>

@@ -233,6 +233,10 @@ describe('killstreaks', () => {
     expect(events.some((e) => e.ev === 'fps_nuke' && e.data.phase === 'armed')).toBe(true);
     const armed = t - 2000;
     Object.assign(w.fighters.get('b')!, { alive: true, hp: MAX_HP });
+    // c now spawns on open floor (spawns are wall-checked), so the drone may have tagged it while farming.
+    Object.assign(c, { alive: true, hp: MAX_HP, respawnAt: 0 });
+    w.drones.clear();
+    w.strikes = [];
     w.tick(armed + NUKE_DELAY_MS - 1);
     expect(c.alive).toBe(true);
     const ev = w.tick(armed + NUKE_DELAY_MS);

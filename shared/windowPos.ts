@@ -2,9 +2,10 @@
 export interface Offset { dx: number; dy: number }
 export interface Box { left: number; top: number; width: number; height: number }
 
+/** Top edge for every window: the 40px fixed top tab bar plus an 8px gap. Drag, resize, maximize and CSS all use this. */
+export const TOP_BAR = 48;
+
 /** Keep the whole panel (at least `margin` px of it when larger than the screen) on screen. `base` is the un-offset rect. */
-/** Height reserved for the fixed top tab bar; windows never go above it. */
-export const TOP_BAR = 44;
 
 export function clampOffset(o: Offset, base: Box, vw: number, vh: number, margin = 4, topMin = margin): Offset {
   const fit = (pos: number, size: number, view: number, min = margin) => {
@@ -73,3 +74,17 @@ export function saveSize(id: string, s: Size | null, store: Store | null): void 
     // storage blocked
   }
 }
+
+/** Which resize edge (if any) a point sits on, `band` px inside a panel rect. Works even where a scrollbar overlays the edge. */
+export function edgeAt(x: number, y: number, r: { left: number; top: number; right: number; bottom: number }, band = 7): '' | 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw' {
+  if (x < r.left || x > r.right || y < r.top || y > r.bottom) return '';
+  const corner = band * 2;
+  const n = y - r.top <= band, s = r.bottom - y <= band, w = x - r.left <= band, e = r.right - x <= band;
+  const nc = y - r.top <= corner, sc = r.bottom - y <= corner, wc = x - r.left <= corner, ec = r.right - x <= corner;
+  if ((n || s) && (wc || ec)) return `${n ? 'n' : 's'}${wc ? 'w' : 'e'}` as 'nw';
+  if ((w || e) && (nc || sc)) return `${nc ? 'n' : 's'}${w ? 'w' : 'e'}` as 'nw';
+  return n ? 'n' : s ? 's' : e ? 'e' : w ? 'w' : '';
+}
+
+/** The size to restore after un-maximizing, kept separately so a reload while maximized still restores correctly. */
+export const restoreKey = (id: string) => `relay-win-restore-${id}`;

@@ -49,7 +49,7 @@ export function PokerPanel() {
     <div className={`cx-wrap pk-wrap ${open ? 'cx-open' : ''}`} data-testid="poker">
       <TopTab id="poker"><button type="button" className="sol-tab cx-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="poker-tab">🃏 Poker</button></TopTab>
       {open && (
-        <div className={"sol-panel bj-panel cx-panel" + win.className} role="dialog" aria-label="Poker" ref={winRef} style={win.style} onPointerDownCapture={win.front}>
+        <div className={"sol-panel bj-panel cx-panel" + win.className} role="dialog" aria-label="Poker" ref={winRef} style={win.style} onPointerDownCapture={win.front} onPointerMove={win.onPanelMove}>
           {win.grips}
           <div {...win.bar}>
             <button type="button" className={`casino-tabbtn ${tab === 'holdem' ? 'on' : ''}`} onClick={() => setTab('holdem')} data-testid="poker-mode-holdem">Hold'em</button>

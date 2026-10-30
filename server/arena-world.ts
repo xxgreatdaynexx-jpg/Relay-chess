@@ -43,7 +43,7 @@ export class ArenaWorld {
   join(id: string, name: string, now: number): ArenaFighter {
     const existing = this.fighters.get(id);
     if (existing) return existing;
-    const [x, y] = pickSpawn([...this.fighters.values()], this.rand);
+    const [x, y] = pickSpawn([...this.fighters.values()], this.rand, this.map);
     const f: ArenaFighter = {
       id, name, x, y, a: this.rand() * Math.PI * 2, hp: MAX_HP, kills: 0, deaths: 0, alive: true, respawnAt: 0,
       lastShot: 0, lastMove: now, weapon: 'pistol', ammo: fullAmmo(), lastShotAt: zeroShots(), reloadUntil: 0,
@@ -211,7 +211,7 @@ export class ArenaWorld {
     const all = [...this.fighters.values()];
     for (const f of all) {
       this.settleReload(f, now);
-      if (maybeRespawn(f, now, all, this.rand)) {
+      if (maybeRespawn(f, now, all, this.rand, this.map)) {
         f.ammo = fullAmmo();
         f.reloadUntil = 0;
         f.streak = 0;

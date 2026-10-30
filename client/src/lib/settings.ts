@@ -32,11 +32,40 @@ export function applySettings(s: Settings = current): void {
   if (isMuted() !== s.muted) setMuted(s.muted);
 }
 
+/** Set while a local change hasn't reached the account yet; survives reloads so the next load pushes instead of pulling. */
+const DIRTY_KEY = 'relay-settings-dirty';
+const isDirty = () => { try { return localStorage.getItem(DIRTY_KEY) === '1'; } catch { return false; } };
+const setDirty = (on: boolean) => { try { if (on) localStorage.setItem(DIRTY_KEY, '1'); else localStorage.removeItem(DIRTY_KEY); } catch { /* blocked */ } };
+
 let pushTimer = 0;
-function pushToServer(s: Settings) {
-  if (!loadAuth() || !socket.connected) return;
+let pending: Settings | null = null;
+function sendNow(s: Settings) {
+  pending = null;
   window.clearTimeout(pushTimer);
-  pushTimer = window.setTimeout(() => socket.emit('settings_save', { settings: s }, () => {}), 400);
+  socket.emit('settings_save', { settings: s }, (res?: { ok?: boolean }) => { if (res?.ok && !pending) setDirty(false); });
+}
+function pushToServer(s: Settings) {
+  if (!loadAuth()) return;
+  setDirty(true);
+  pending = s;
+  if (!socket.connected) return; // flushed on reconnect/sync or on unload
+  window.clearTimeout(pushTimer);
+  pushTimer = window.setTimeout(() => pending && sendNow(pending), 400);
+}
+
+/** Page is going away: send any debounced change right now over HTTP (sockets don't survive unload). */
+export function flushSettings(): void {
+  const auth = loadAuth();
+  if (!pending || !auth) return;
+  const s = pending;
+  pending = null;
+  window.clearTimeout(pushTimer);
+  const body = JSON.stringify({ session: auth.token, settings: s });
+  let sent = false;
+  try { sent = navigator.sendBeacon?.('/api/settings', new Blob([body], { type: 'text/plain' })) ?? false; } catch { sent = false; }
+  if (!sent) {
+    try { void fetch('/api/settings', { method: 'POST', body, keepalive: true, headers: { 'Content-Type': 'text/plain' } }).catch(() => {}); } catch { /* ignore */ }
+  }
 }
 
 function commit(next: Settings, push = true) {
@@ -64,6 +93,8 @@ export function syncFromAccount(): void {
   if (!loadAuth()) return;
   const go = () => socket.emit('settings_get', {}, (res?: { ok: boolean; settings?: unknown }) => {
     if (!res?.ok) return;
+    // A local change that never reached the server (e.g. reload right after toggling) wins over the stored copy.
+    if (isDirty()) return sendNow(current);
     if (res.settings) commit(cleanSettings(res.settings), false);
     else pushToServer(current);
   });
@@ -79,6 +110,8 @@ export function initSettings(): void {
     if (Math.abs(v - current.volume) > 0.005 || m !== current.muted) commit({ ...current, volume: Math.round(v * 100) / 100, muted: m });
   });
   window.addEventListener('relay-name-changed', syncFromAccount);
+  window.addEventListener('pagehide', flushSettings);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushSettings(); });
   syncFromAccount();
 }
 

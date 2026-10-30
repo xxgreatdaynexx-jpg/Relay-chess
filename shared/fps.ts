@@ -140,10 +140,27 @@ export function applyDamage(target: Fighter, now: number, amount = DAMAGE): bool
   return true;
 }
 
-export function pickSpawn(others: Array<{ x: number; y: number; alive: boolean }>, rand: () => number = Math.random): [number, number] {
-  let best = SPAWNS[Math.floor(rand() * SPAWNS.length)];
+/** True if a spawn point is open floor with room for a player, and not on top of a living player. */
+export function spawnClear(x: number, y: number, others: Array<{ x: number; y: number; alive: boolean }>, map: string[] = MAP): boolean {
+  if (!canStand(x, y, map)) return false;
+  return others.every((o) => !o.alive || Math.hypot(o.x - x, o.y - y) >= PLAYER_RADIUS * 3);
+}
+
+/** Every open tile centre on the map (fallback spawns if all fixed spawns are blocked). */
+export function openTiles(map: string[] = MAP): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (let y = 0; y < map.length; y++) for (let x = 0; x < map[y].length; x++) if (canStand(x + 0.5, y + 0.5, map)) out.push([x + 0.5, y + 0.5]);
+  return out;
+}
+
+/** Picks the clear spawn farthest from living players. Spawns are validated against map collision; never returns a point inside a wall. */
+export function pickSpawn(others: Array<{ x: number; y: number; alive: boolean }>, rand: () => number = Math.random, map: string[] = MAP): [number, number] {
+  let pool = SPAWNS.filter(([x, y]) => spawnClear(x, y, others, map));
+  if (!pool.length) pool = openTiles(map).filter(([x, y]) => spawnClear(x, y, others, map));
+  if (!pool.length) pool = openTiles(map);
+  let best = pool[Math.floor(rand() * pool.length)] ?? [1.5, 1.5];
   let bestScore = -1;
-  for (const s of SPAWNS) {
+  for (const s of pool) {
     let nearest = Infinity;
     for (const o of others) if (o.alive) nearest = Math.min(nearest, Math.hypot(o.x - s[0], o.y - s[1]));
     const score = nearest + rand() * 0.5;
@@ -152,13 +169,13 @@ export function pickSpawn(others: Array<{ x: number; y: number; alive: boolean }
       best = s;
     }
   }
-  return best;
+  return [best[0], best[1]];
 }
 
 /** Respawns a dead fighter if its timer is up. Returns true if respawned. */
-export function maybeRespawn(f: Fighter, now: number, others: Fighter[], rand: () => number = Math.random): boolean {
+export function maybeRespawn(f: Fighter, now: number, others: Fighter[], rand: () => number = Math.random, map: string[] = MAP): boolean {
   if (f.alive || now < f.respawnAt) return false;
-  const [x, y] = pickSpawn(others.filter((o) => o.id !== f.id), rand);
+  const [x, y] = pickSpawn(others.filter((o) => o.id !== f.id), rand, map);
   f.x = x;
   f.y = y;
   f.hp = MAX_HP;

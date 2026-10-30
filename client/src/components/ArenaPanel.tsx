@@ -117,7 +117,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   // Networking
   useEffect(() => {
     const join = () => {
-      socket.timeout(8000).emit('fps_join', {}, (err: Error | null, ack?: { ok: boolean; id?: string; x?: number; y?: number; a?: number; error?: string }) => {
+      const qaBots = Number(new URLSearchParams(window.location.search).get('arenaBots')) || 0;
+      socket.timeout(8000).emit('fps_join', qaBots ? { qaBots } : {}, (err: Error | null, ack?: { ok: boolean; id?: string; x?: number; y?: number; a?: number; error?: string }) => {
         if (err || !ack?.ok) return setStatus(ack?.error || 'Could not reach the arena.');
         Object.assign(me.current, { id: ack.id, x: ack.x, y: ack.y, a: ack.a, joined: true, alive: true });
         setStatus('');
@@ -137,6 +138,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       if (mine) {
         if (!mine.alive && m.alive) m.alive = false;
         if (mine.alive && !m.alive) Object.assign(m, { alive: true, x: mine.x, y: mine.y, ammo: WEAPONS[m.weapon].mag, reloadUntil: 0 });
+        // Never stay stuck in geometry or far out of sync with the server: snap to its authoritative spot.
+        else if (mine.alive && (!canStand(m.x, m.y) || Math.hypot(m.x - mine.x, m.y - mine.y) > 3)) Object.assign(m, { x: mine.x, y: mine.y });
         m.hp = mine.hp;
         m.streak = mine.st;
         m.uavUntil = mine.uav ? performance.now() + mine.uav : 0;
@@ -487,6 +490,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       className={`sol-panel fps-panel ${focused ? 'fps-focused' : ''}${win.className}`}
       style={win.style}
       onPointerDownCapture={win.front}
+      onPointerMove={win.onPanelMove}
       role="dialog"
       aria-label="Arena shooter"
       tabIndex={0}

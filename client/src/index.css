@@ -906,3 +906,26 @@ html.reduce-motion .turn-flash { display: none; }
   .deal-in, .chip-slide, .felt-seat.turn .felt-plate { animation: none !important; }
 }
 html.reduce-motion .deal-in, html.reduce-motion .chip-slide, html.reduce-motion .felt-seat.turn .felt-plate { animation: none !important; }
+
+/* ---- QA fixes: readable contrast in every theme. Page-level text follows the theme's cream token; the top bar is always dark. */
+.lb-switch { background: color-mix(in srgb, var(--color-cream) 6%, transparent); border-color: color-mix(in srgb, var(--color-cream) 18%, transparent); }
+.lb-switch-btn { color: color-mix(in srgb, var(--color-cream) 82%, transparent); }
+.lb-switch-btn:hover { color: var(--color-cream); background: color-mix(in srgb, var(--color-cream) 8%, transparent); }
+.lb-switch-btn.on { color: #1a1408; }
+.lb-casino .casino-board { border-color: color-mix(in srgb, var(--color-cream) 15%, transparent); color: var(--color-cream); }
+.lb-casino .casino-board td, .lb-casino .casino-board th { border-bottom-color: color-mix(in srgb, var(--color-cream) 12%, transparent); }
+.lb-casino .casino-board th { opacity: .85; }
+html[data-theme="light"] .lb-sort.on { color: #7a5200; }
+html[data-theme="contrast"] .lb-switch-btn, html[data-theme="contrast"] .lb-sort { color: #fff; opacity: 1; }
+html[data-theme="contrast"] .lb-switch-btn.on { color: #000; }
+/* The top bar keeps a dark background in all themes, so its account chip uses fixed light text. */
+.top-tabs .acct-btn { color: #fff6d8; border-color: rgba(255,246,216,.3); background: rgba(255,255,255,.08); }
+html[data-theme="contrast"] .top-tabs { background: #000; border-bottom: 1px solid #fff; }
+html[data-theme="contrast"] .top-tabs .sol-tab { background: #000; color: #fff; border: 1px solid #fff; }
+html[data-theme="contrast"] .top-tabs .sol-tab[aria-expanded="true"] { background: #ffd400; color: #000; }
+/* Bar scrolls sideways when tabs don't fit, without a visible scrollbar under it. */
+.top-tabs { scrollbar-width: none; -ms-overflow-style: none; }
+.top-tabs::-webkit-scrollbar { display: none; height: 0; }
+/* Windows sit at the shared top edge (matches TOP_BAR in shared/windowPos.ts). */
+.app-panels .sol-panel { top: 48px; }
+@media (max-width: 520px) { .app-panels .sol-panel, .app-panels .fps-panel { top: 48px; } }

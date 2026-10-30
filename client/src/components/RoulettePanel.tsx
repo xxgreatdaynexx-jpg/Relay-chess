@@ -185,7 +185,7 @@ export function RoulettePanel() {
         <span>🎡 Roulette</span>
       </button></TopTab>
       {open && (
-        <div className={"sol-panel rl-panel" + win.className} role="dialog" aria-label="Roulette" ref={winRef} style={win.style} onPointerDownCapture={win.front}>
+        <div className={"sol-panel rl-panel" + win.className} role="dialog" aria-label="Roulette" ref={winRef} style={win.style} onPointerDownCapture={win.front} onPointerMove={win.onPanelMove}>
           {win.grips}
           <div {...win.bar}>
             <button type="button" className={`casino-tabbtn ${tab === 'wheel' ? 'on' : ''}`} onClick={() => setTab('wheel')}>Wheel</button>

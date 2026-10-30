@@ -1,3 +1,5 @@
+import { getAccounts } from './accounts.js';
+import { validateSettings } from '../shared/settings.js';
 import { getChessStats } from './chess-stats.js';
 import { getArenaLedger } from './arena-store.js';
 import express from 'express';
@@ -40,6 +42,22 @@ export async function createApp(): Promise<AppContext> {
   app.get('/api/arena-leaderboard', (_req, res) => {
     const ledger = getArenaLedger();
     res.json({ rows: ledger.standings(), source: ledger.usingDatabase ? 'postgres' : 'memory' });
+  });
+
+  // Settings flush on page unload (sendBeacon / keepalive fetch), so a change right before a reload is never lost.
+  app.post('/api/settings', express.text({ type: '*/*', limit: '4kb' }), async (req, res) => {
+    try {
+      const body = JSON.parse(typeof req.body === 'string' ? req.body : '{}') as { session?: unknown; settings?: unknown };
+      if (typeof body.session !== 'string' || !body.session) return res.status(401).json({ ok: false });
+      const me = await getAccounts().resume(body.session);
+      if (!me) return res.status(401).json({ ok: false });
+      const clean = validateSettings(body.settings);
+      if (!clean) return res.status(400).json({ ok: false });
+      await getAccounts().store.setSettings(me.key, clean);
+      res.json({ ok: true });
+    } catch {
+      res.status(400).json({ ok: false });
+    }
   });
 
   const httpServer = createServer(app);
