@@ -259,7 +259,7 @@ export class RelayGame {
     }
   }
 
-  move(seat: Seat, input: MoveInput, now: number): void {
+  move(seat: Seat, input: MoveInput, now: number, name?: string): void {
     if (this.bailout) {
       throw new GameError('Checkmate is on the table. Pay Dayne or accept defeat.');
     }
@@ -287,6 +287,7 @@ export class RelayGame {
     const side = seatSide(seat);
     if (this.clock && this.clock.remaining[side] < 0) this.clock.remaining[side] = 0;
 
+    const fenBefore = this.chess.fen();
     let played: { san: string; from: string; to: string } | null = null;
     try {
       played = this.chess.move({
@@ -317,6 +318,9 @@ export class RelayGame {
       from: played.from,
       to: played.to,
       seat,
+      ...(name ? { name } : {}),
+      fenBefore,
+      fenAfter: this.chess.fen(),
     });
 
     const terminal = detectTerminal(this.chess);
@@ -453,13 +457,16 @@ export class RelayGame {
     this.finish({ type: 'draw_agreed', winner: null });
   }
 
-  voteRematch(seat: Seat, now: number): void {
-    if (this.status !== 'ended') return;
-    if (!seatsFor(this.setup).includes(seat)) return;
+  /** Returns true when this vote started the rematch. */
+  voteRematch(seat: Seat, now: number): boolean {
+    if (this.status !== 'ended') return false;
+    if (!seatsFor(this.setup).includes(seat)) return false;
     this.rematchVotes.add(seat);
     if (seatsFor(this.setup).every((candidate) => this.rematchVotes.has(candidate))) {
       this.reset(now);
+      return true;
     }
+    return false;
   }
 
   private finishTimeout(flagged: Side): void {

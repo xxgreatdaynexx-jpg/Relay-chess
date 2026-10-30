@@ -35,6 +35,18 @@ export interface MoveRecord {
   from: string;
   to: string;
   seat: Seat;
+  /** Who played it, kept so analysis still knows after seats change. */
+  name?: string;
+  /** Positions around the move, for post-game analysis. */
+  fenBefore?: string;
+  fenAfter?: string;
+}
+
+export interface TeamsBanner {
+  at: number;
+  scrambled: boolean;
+  white: string[];
+  black: string[];
 }
 
 export interface SeatView {
@@ -135,6 +147,10 @@ export interface PublicState {
   result: PublicResult | null;
   drawOffer: DrawOffer | null;
   rematchVotes: Seat[];
+  /** Rematch reshuffles everyone across both colors and seats. */
+  scrambleRematch: boolean;
+  /** New teams announced after a rematch starts. */
+  teams: TeamsBanner | null;
   clock: ClockView | null;
   yourSeat: Seat | null;
   /** True when this socket is watching read-only. */
@@ -163,6 +179,8 @@ export interface Ack {
   openTables?: number;
   /** Lobby: every live table. */
   tables?: TableSummary[];
+  /** Analysis: engine evaluation of one position. */
+  evaluation?: import('./analysis.js').Evaluation | null;
 }
 
 export interface TableSummary {

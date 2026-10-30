@@ -2,7 +2,7 @@ import type { Server, Socket } from 'socket.io';
 import { onBlunderReady } from './blunders.js';
 import { GameError } from './errors.js';
 import { registerFps } from './fps.js';
-import { onHintReady } from './hints.js';
+import { analyzePosition, onHintReady } from './hints.js';
 import {
   createRoom,
   getRoom,
@@ -265,6 +265,24 @@ export function registerSockets(io: Server): void {
       withRoom(io, socket, ack, (room, token) => {
         room.voteRematch(token);
       });
+    });
+
+    socket.on('set_scramble', (payload: unknown, ack?: (res: Ack) => void) => {
+      withRoom(io, socket, ack, (room, token) => {
+        room.setScramble(token, Boolean(asRecord(payload).on));
+      });
+    });
+
+    socket.on('analyze', (payload: unknown, ack?: (res: Ack) => void) => {
+      const fen = asRecord(payload).fen;
+      if (typeof fen !== 'string' || fen.length > 120) {
+        ack?.({ ok: false, error: 'Bad position.' });
+        return;
+      }
+      void analyzePosition(fen).then(
+        (evaluation) => ack?.({ ok: true, evaluation }),
+        () => ack?.({ ok: false, error: 'The engine is busy. Try again.' }),
+      );
     });
 
     socket.on('pay_bailout', (_payload: unknown, ack?: (res: Ack) => void) => {

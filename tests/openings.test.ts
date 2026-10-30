@@ -22,6 +22,7 @@ afterEach(() => {
 function seated(names?: Partial<Record<Seat, string>>) {
   resetLeaderboard(path.join(mkdtempSync(path.join(tmpdir(), 'relay-open-')), 'leaderboard.json'));
   const room = new Room('OPEN01', clockPreset('off')!);
+  room.scrambleRematch = false; // these checks assume rematch keeps seats
   const tokens = {} as Record<Seat, string>;
   const chosen = {
     white1: 'Ada',

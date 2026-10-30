@@ -1,4 +1,6 @@
 import { createRequire } from 'node:module';
+import { Chess } from 'chess.js';
+import { parseEngineEval, type Evaluation } from '../shared/analysis.js';
 import type { HintArrow } from '../shared/types.js';
 
 const require = createRequire(import.meta.url);
@@ -216,4 +218,39 @@ export async function stockfishSearchLines(
     () => undefined,
   );
   return run;
+}
+
+const analysisCache = new Map<string, Evaluation | null>();
+const ANALYSIS_CACHE_MAX = 5000;
+export const ANALYSIS_DEPTH = 12;
+export const ANALYSIS_MOVETIME_MS = 300;
+
+/** One post-game position: eval from White's side plus the best move. Cached by FEN. */
+export async function analyzePosition(fen: string): Promise<Evaluation | null> {
+  let chess: Chess;
+  try {
+    chess = new Chess(fen);
+  } catch {
+    return null;
+  }
+  const key = chess.fen();
+  if (analysisCache.has(key)) return analysisCache.get(key) ?? null;
+  let result: Evaluation | null;
+  if (chess.isCheckmate()) {
+    // The side to move is mated.
+    result = { cp: null, mate: chess.turn() === 'w' ? -1 : 1, best: null, depth: 0 };
+  } else if (chess.isDraw() || chess.isStalemate()) {
+    result = { cp: 0, mate: null, best: null, depth: 0 };
+  } else if (process.env.VITEST) {
+    result = null;
+  } else {
+    const lines = await stockfishSearchLines(key, 1, { depth: ANALYSIS_DEPTH, movetime: ANALYSIS_MOVETIME_MS });
+    result = parseEngineEval(lines, chess.turn() === 'w');
+  }
+  if (analysisCache.size >= ANALYSIS_CACHE_MAX) {
+    const first = analysisCache.keys().next().value;
+    if (first !== undefined) analysisCache.delete(first);
+  }
+  if (result) analysisCache.set(key, result);
+  return result;
 }

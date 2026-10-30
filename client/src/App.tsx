@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { HomeScreen } from '@/components/HomeScreen';
 import { LeaderboardScreen } from '@/components/Leaderboard';
 import { RoomScreen } from '@/components/RoomScreen';
+import { AnalysisScreen } from '@/components/AnalysisScreen';
+import { loadLastGame, saveLastGame, snapshotGame, type FinishedGame } from '@/lib/lastGame';
 import { VolumeControl } from '@/components/VolumeControl';
 import { SolitairePanel } from '@/components/SolitairePanel';
 import { BlackjackPanel } from '@/components/BlackjackPanel';
@@ -25,6 +27,34 @@ export function App() {
   const [homeKey, setHomeKey] = useState(0);
   const [path, setPath] = useState(() => window.location.pathname);
   const inflight = useRef(false);
+  const [lastGame, setLastGame] = useState<FinishedGame | null>(() => loadLastGame());
+  const [analysis, setAnalysis] = useState<FinishedGame | null>(null);
+
+  // Keep the finished game client-side so analysis works after the room closes.
+  useEffect(() => {
+    if (!state || state.status !== 'ended') return;
+    const snap = snapshotGame(state);
+    if (!snap) return;
+    setLastGame((prev) => {
+      if (prev && prev.code === snap.code && prev.moves.length === snap.moves.length && prev.headline === snap.headline) return prev;
+      saveLastGame(snap);
+      return snap;
+    });
+  }, [state]);
+
+  function leaveRoom() {
+    if (!state) return;
+    inflight.current = true;
+    socket.emit('leave_table', {}, () => {
+      inflight.current = false;
+    });
+    if (state.spectating) clearSpectate();
+    else clearSession();
+    setState(null);
+    setHomeKey((value) => value + 1);
+    window.history.pushState({}, '', '/');
+    setPath('/');
+  }
 
   function openLeaderboard() {
     window.history.pushState({}, '', '/leaderboard');
@@ -146,24 +176,27 @@ export function App() {
             <p className="mt-2 text-sm text-cream-dim">The table is still here if the server is.</p>
           </div>
         </div>
+      ) : analysis ? (
+        <AnalysisScreen
+          game={analysis}
+          inRoom={Boolean(state)}
+          onBack={() => setAnalysis(null)}
+          onMainMenu={() => {
+            setAnalysis(null);
+            if (state) leaveRoom();
+          }}
+        />
       ) : state ? (
         <RoomScreen
           state={state}
           online={online}
           onToast={setToast}
-          onLeave={() => {
-            inflight.current = true;
-            socket.emit('leave_table', {}, () => {
-              inflight.current = false;
-            });
-            if (state.spectating) clearSpectate();
-            else clearSession();
-            setState(null);
-            setHomeKey((value) => value + 1);
-            window.history.pushState({}, '', '/');
-            setPath('/');
-          }}
+          onLeave={leaveRoom}
           onLeaderboard={openLeaderboard}
+          onAnalyze={() => {
+            const snap = snapshotGame(state);
+            if (snap) setAnalysis(snap);
+          }}
         />
       ) : (
         <HomeScreen
@@ -175,6 +208,15 @@ export function App() {
           }}
           onLeaderboard={openLeaderboard}
         />
+      )}
+      {!state && !analysis && !leaderboard && !booting && lastGame && (
+        <button
+          className="fixed bottom-16 left-1/2 z-40 -translate-x-1/2 rounded-full border border-white/15 bg-panel/90 px-4 py-2 text-sm text-cream shadow-lg hover:bg-panel"
+          onClick={() => setAnalysis(lastGame)}
+          data-testid="analyze-last"
+        >
+          Analyze last game ({lastGame.mode} · {lastGame.headline})
+        </button>
       )}
       {toast && (
         <div

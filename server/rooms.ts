@@ -7,6 +7,7 @@ import { getLeaderboard, normalizeName } from './leaderboard.js';
 import { moveUci, openingName } from './openings.js';
 import { hasMateInOne } from '../shared/mate.js';
 import { recordStreak } from '../shared/streak.js';
+import { scrambleSeats, type Arrangement } from '../shared/scramble.js';
 import {
   clockPreset,
   describeResult,
@@ -31,6 +32,7 @@ import {
   type Side,
   type TableSetup,
   type TableSummary,
+  type TeamsBanner,
 } from '../shared/types.js';
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -74,11 +76,17 @@ export class Room {
   private mateInOne: MateInOneCall | null = null;
   private readonly streaks = new Map<Seat, number>();
   private blunderSeq = 0;
+  /** Scramble teams on rematch. On by default except 1v1. */
+  scrambleRematch: boolean;
+  private teams: TeamsBanner | null = null;
+  /** Randomness source for scrambles; swappable in tests. */
+  random: () => number = () => randomBytes(4).readUInt32BE(0) / 0x1_0000_0000;
 
   constructor(code: string, preset: ClockPreset, setup: TableSetup = { mode: '2v2', pairSide: null }) {
     this.code = code;
     this.presetId = preset.id;
     this.setup = setup;
+    this.scrambleRematch = setup.mode !== '1v1';
     const timing: Timing | null =
       preset.initialMs > 0 ? { initialMs: preset.initialMs, incrementMs: preset.incrementMs } : null;
     this.game = new RelayGame(timing, setup);
@@ -207,7 +215,7 @@ export class Room {
     if (!member.seat) throw new GameError('Take a seat before moving.');
     const beforeFen = this.game.fen();
     const legal = this.game.legalMoves();
-    this.game.move(member.seat, input, now);
+    this.game.move(member.seat, input, now, member.name);
     const played = this.game.history().at(-1);
     this.noteOpening(now);
     if (played) this.noteBlunder(beforeFen, legal, played);
@@ -240,9 +248,38 @@ export class Room {
   voteRematch(token: string, now = Date.now()): void {
     const member = this.must(token);
     if (!member.seat) throw new GameError("Spectators don't vote on a rematch.");
-    this.game.voteRematch(member.seat, now);
+    const started = this.game.voteRematch(member.seat, now);
+    if (started) {
+      if (this.scrambleRematch) this.scramble();
+      this.teams = { at: now, scrambled: this.scrambleRematch, white: this.teamNames('white'), black: this.teamNames('black') };
+    }
     this.syncPresence(now);
     this.touch();
+  }
+
+  setScramble(token: string, on: boolean): void {
+    const member = this.must(token);
+    if (!member.seat) throw new GameError('Only players choose how the rematch is seated.');
+    if (this.game.status !== 'ended') throw new GameError('Pick scramble once the game is over.');
+    this.scrambleRematch = on;
+    this.touch();
+  }
+
+  /** Reseat every player at random across both colors. Mode and team sizes stay. */
+  scramble(): void {
+    const current: Arrangement<Member> = {};
+    for (const member of this.members.values()) {
+      if (member.seat && seatsFor(this.setup).includes(member.seat)) current[member.seat] = member;
+    }
+    const next = scrambleSeats(current, this.setup, this.random, (member) => member.token);
+    for (const member of Object.values(current)) if (member) member.seat = null;
+    for (const [seat, member] of Object.entries(next)) if (member) member.seat = seat as Seat;
+  }
+
+  private teamNames(side: Side): string[] {
+    return seatsFor(this.setup)
+      .filter((seat) => seatSide(seat) === side)
+      .map((seat) => this.nameFor(seat) ?? seat);
   }
 
   payBailout(token: string, now = Date.now()): boolean {
@@ -301,6 +338,8 @@ export class Room {
       result: raw && described ? { ...raw, ...described } : null,
       drawOffer: this.game.drawOffer ? { ...this.game.drawOffer } : null,
       rematchVotes: [...this.game.rematchVotes],
+      scrambleRematch: this.scrambleRematch,
+      teams: this.teams && now - this.teams.at < 15_000 ? { ...this.teams } : null,
       clock: this.game.clockView(now),
       yourSeat: you?.seat ?? null,
       spectating,

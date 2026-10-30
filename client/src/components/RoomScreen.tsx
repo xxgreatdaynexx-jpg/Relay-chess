@@ -42,12 +42,14 @@ export function RoomScreen({
   onToast,
   onLeave,
   onLeaderboard,
+  onAnalyze,
 }: {
   state: PublicState;
   online: boolean;
   onToast: (message: string) => void;
   onLeave: () => void;
   onLeaderboard: () => void;
+  onAnalyze: () => void;
 }) {
   const [pending, setPending] = useState<Pending | null>(null);
   const [flipped, setFlipped] = useState(false);
@@ -81,6 +83,14 @@ export function RoomScreen({
   const orientation = flipped ? (auto === 'white' ? 'black' : 'white') : auto;
   const clock = useLiveClock(state.clock);
   const preset = CLOCK_PRESETS.find((item) => item.id === state.clockPreset);
+  const teamsToast = useRef<number | null>(null);
+
+  useEffect(() => {
+    const teams = state.teams;
+    if (!teams || !teams.scrambled || teamsToast.current === teams.at) return;
+    teamsToast.current = teams.at;
+    onToast(`Teams scrambled! White: ${teams.white.join(' & ')} · Black: ${teams.black.join(' & ')}`);
+  }, [state.teams, onToast]);
 
   useEffect(() => {
     if (pending && state.ply >= pending.ply) setPending(null);
@@ -531,6 +541,13 @@ export function RoomScreen({
               <p className="mt-1 text-sm text-cream-dim">{state.result.detail}</p>
             </div>
           )}
+          {state.teams?.scrambled && state.status === 'playing' && (
+            <div className="mb-3 rounded-xl border border-amber-300/40 bg-amber-300/10 px-3 py-2 text-sm" data-testid="teams-banner">
+              <p className="font-semibold text-amber-100">🔀 New teams</p>
+              <p className="text-cream">♔ White: {state.teams.white.join(' & ')}</p>
+              <p className="text-cream">♚ Black: {state.teams.black.join(' & ')}</p>
+            </div>
+          )}
           {state.drawOffer && !state.result && (
             <p className="mb-3 text-sm text-cream">
               {state.seats[state.drawOffer.seat]?.name ?? seatLabel(state.drawOffer.seat)} offered a draw.
@@ -566,9 +583,34 @@ export function RoomScreen({
               <Button disabled={busy} onClick={() => act('vote_rematch')} data-testid="rematch">
                 {state.rematchVotes.includes(you)
                   ? `Waiting · ${state.rematchVotes.length}/${active.length}`
-                  : `Rematch · ${state.rematchVotes.length}/${active.length}`}
+                  : `Rematch${state.scrambleRematch ? ' (scramble)' : ''} · ${state.rematchVotes.length}/${active.length}`}
               </Button>
             )}
+            {state.status === 'ended' && state.moves.length > 0 && (
+              <Button variant="outline" onClick={onAnalyze} data-testid="analyze">
+                Analyze game
+              </Button>
+            )}
+          </div>
+          {state.status === 'ended' && (
+            <label className="mt-3 flex items-center gap-2 text-sm text-cream" data-testid="scramble-toggle">
+              <input
+                type="checkbox"
+                className="size-4 accent-amber-300"
+                checked={state.scrambleRematch}
+                disabled={!you || busy}
+                onChange={(event) => void act('set_scramble', { on: event.target.checked })}
+              />
+              <span>
+                Scramble teams on rematch
+                <span className="block text-xs text-cream/55">
+                  {active.length === 2 ? 'Randomly swaps colors.' : 'Reshuffles everyone across both colors and seats.'}
+                  {!you ? ' Players decide.' : ''}
+                </span>
+              </span>
+            </label>
+          )}
+          <div className="hidden">
           </div>
           {state.status === 'ended' && (
             <div className="mt-4">

@@ -139,6 +139,7 @@ it('runs a four-player game, enforces turns, reconnects a seat, and rematches', 
   expect(body.rows.find((row) => row.name === 'Ada')).toMatchObject({ wins: 0, losses: 1 });
   expect(body.rows.find((row) => row.name === 'Nia')).toBeUndefined();
 
+  expect((await ask(players[0].socket, 'set_scramble', { on: false })).ok).toBe(true);
   for (const player of players) {
     expect((await ask(player.socket, 'vote_rematch')).ok).toBe(true);
   }
