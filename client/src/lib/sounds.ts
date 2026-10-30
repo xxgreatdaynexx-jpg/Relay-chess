@@ -430,3 +430,29 @@ export function playHit(): void {
   osc.start(now);
   osc.stop(now + 0.13);
 }
+
+/** Roulette: ball rattling around the wheel, slowing down. Routed through the master volume. */
+export function playRouletteSpin(seconds = 5): void {
+  const ctx = audio();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') void ctx.resume();
+  const now = ctx.currentTime;
+  let t = 0;
+  let gap = 0.05;
+  while (t < seconds - 0.3) {
+    tone(ctx, 3000 + Math.random() * 600, now + t, 0.02, 0.03);
+    t += gap;
+    gap *= 1.045;
+  }
+}
+
+/** Roulette: the ball drops into a pocket. */
+export function playBallLand(): void {
+  const ctx = audio();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') void ctx.resume();
+  const now = ctx.currentTime;
+  tone(ctx, 1800, now, 0.04, 0.08);
+  tone(ctx, 1500, now + 0.08, 0.04, 0.05);
+  tone(ctx, 1300, now + 0.15, 0.05, 0.03);
+}

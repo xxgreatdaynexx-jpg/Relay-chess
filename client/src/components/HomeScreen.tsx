@@ -1,3 +1,4 @@
+import { notifyNameChanged } from '@/lib/casino';
 import { useEffect, useState, type FormEvent } from 'react';
 import { loadName, saveName } from '@/lib/playerName';
 import { saveTournament } from '@/lib/tournament';
@@ -40,6 +41,7 @@ export function HomeScreen({
   const setName = (value: string) => {
     setNameRaw(value);
     saveName(value);
+    notifyNameChanged();
   };
   const [code, setCode] = useState(initialCode);
   const [clockId, setClockId] = useState<ClockId>('10+0');

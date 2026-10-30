@@ -2,6 +2,7 @@ import type { Server, Socket } from 'socket.io';
 import { onBlunderReady } from './blunders.js';
 import { GameError } from './errors.js';
 import { registerFps } from './fps.js';
+import { registerCasino, startCasino, stopCasino } from './casino-sockets.js';
 import { analyzePosition, onHintReady } from './hints.js';
 import {
   createRoom,
@@ -131,6 +132,7 @@ export function startMaintenance(io: Server): void {
 }
 
 export function stopMaintenance(): void {
+  stopCasino();
   if (!timer) return;
   clearInterval(timer);
   timer = null;
@@ -146,9 +148,11 @@ export function registerSockets(io: Server): void {
     if (getRoom(code)) broadcast(io, code);
   });
   startMaintenance(io);
+  startCasino(io);
 
   io.on('connection', (socket) => {
     registerFps(io, socket);
+    registerCasino(io, socket);
     socket.on('create_room', (payload: unknown, ack?: (res: Ack) => void) => {
       try {
         const body = asRecord(payload);

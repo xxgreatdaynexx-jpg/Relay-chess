@@ -7,6 +7,7 @@ import { loadLastGame, saveLastGame, snapshotGame, type FinishedGame } from '@/l
 import { VolumeControl } from '@/components/VolumeControl';
 import { SolitairePanel } from '@/components/SolitairePanel';
 import { BlackjackPanel } from '@/components/BlackjackPanel';
+import { RoulettePanel } from '@/components/RoulettePanel';
 import { ArenaPanel } from '@/components/ArenaPanel';
 import { socket } from '@/lib/net';
 import { TournamentScreen } from '@/components/TournamentScreen';
@@ -171,6 +172,7 @@ export function App() {
       <VolumeControl />
       <SolitairePanel />
       <BlackjackPanel />
+      <RoulettePanel />
       <ArenaPanel />
       {leaderboard ? (
         <LeaderboardScreen

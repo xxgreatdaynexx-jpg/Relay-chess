@@ -1,7 +1,9 @@
 import { createApp } from './app.js';
 import { initLeaderboardStorage } from './leaderboard.js';
+import { initCasinoStorage } from './casino-store.js';
 
 await initLeaderboardStorage();
+await initCasinoStorage();
 
 const port = Number(process.env.PORT) || 4317;
 
