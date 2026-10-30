@@ -11,6 +11,7 @@ import {
   type GameResult,
   type KingEscape,
   type MissedMateCall,
+  type ThinkTime,
   type LegalMove,
   type MoveInput,
   type MoveRecord,
@@ -105,6 +106,9 @@ export class RelayGame {
   bailout: BailoutOffer | null = null;
   escape: KingEscape | null = null;
   missedMate: MissedMateCall | null = null;
+  /** Per-seat thinking time. Separate from the team clock; runs without a clock too. */
+  private think = new Map<Seat, { totalMs: number; moves: number; longestMs: number; name?: string }>();
+  private turnStartedAt: number | null = null;
   readonly rematchVotes = new Set<Seat>();
 
   private chess = new Chess();
@@ -146,6 +150,7 @@ export class RelayGame {
     }
     game.basePly = ply;
     game.status = 'playing';
+    game.turnStartedAt = now;
     if (game.clock) {
       game.clock.running = true;
       game.clock.asOf = now;
@@ -220,6 +225,7 @@ export class RelayGame {
   start(now: number): void {
     if (this.status !== 'lobby') return;
     this.status = 'playing';
+    this.turnStartedAt = now;
     if (this.clock) {
       this.clock.running = true;
       this.clock.asOf = now;
@@ -243,6 +249,7 @@ export class RelayGame {
     if (clock.remaining[side] <= -LAG_GRACE_MS) {
       clock.remaining[side] = 0;
       clock.running = false;
+      this.closeThink(now);
       this.finishTimeout(side);
     }
   }
@@ -336,6 +343,7 @@ export class RelayGame {
       ...(note ? { missedMate: note } : {}),
     });
 
+    this.addThink(seat, now, true, name);
     if (lost && note) {
       this.missedMate = { at: now, ply: this.ply(), name: name ?? seat, side, ...note };
       if (lost.exposesKing) {
@@ -385,6 +393,7 @@ export class RelayGame {
     this.extraPlies += 1;
     this.bailoutsUsed.add(side);
     this.bailout = null;
+    this.turnStartedAt = now;
     this.escape = {
       square: picked,
       from: from ?? picked,
@@ -426,13 +435,14 @@ export class RelayGame {
     return true;
   }
 
-  resign(seat: Seat): void {
+  resign(seat: Seat, now?: number): void {
     if (this.bailout) {
       throw new GameError('Checkmate is on the table. Pay Dayne or accept defeat.');
     }
     if (this.status !== 'playing' || this.result) {
       throw new GameError('The game is not in progress.');
     }
+    this.closeThink(now);
     this.finish({
       type: 'resignation',
       winner: opposite(seatSide(seat)),
@@ -475,6 +485,7 @@ export class RelayGame {
     }
     this.tick(now);
     if (this.result) return;
+    this.closeThink(now);
     this.finish({ type: 'draw_agreed', winner: null });
   }
 
@@ -536,6 +547,8 @@ export class RelayGame {
     this.result = null;
     this.drawOffer = null;
     this.rematchVotes.clear();
+    this.think.clear();
+    this.turnStartedAt = now;
     this.status = 'playing';
     if (this.clock) {
       this.clock.remaining.white = this.clock.initialMs;
@@ -543,6 +556,46 @@ export class RelayGame {
       this.clock.running = true;
       this.clock.asOf = now;
     }
+  }
+
+  /** Thinking time per seat, live for the seat to move. */
+  thinkTimes(now: number, names: Partial<Record<Seat, string>> = {}): ThinkTime[] {
+    const toMove = this.status === 'playing' && !this.result && !this.bailout ? this.seatToMove() : null;
+    const seats = new Set<Seat>([...this.think.keys()]);
+    if (toMove) seats.add(toMove);
+    return [...seats].map((seat) => {
+      const stat = this.think.get(seat) ?? { totalMs: 0, moves: 0, longestMs: 0 };
+      const currentMs = seat === toMove && this.turnStartedAt !== null ? Math.max(0, now - this.turnStartedAt) : 0;
+      return {
+        seat,
+        name: names[seat] ?? stat.name ?? seat,
+        totalMs: stat.totalMs,
+        moves: stat.moves,
+        longestMs: stat.longestMs,
+        currentMs,
+      };
+    });
+  }
+
+  /** Credit the seat to move with the time since its turn began. */
+  private addThink(seat: Seat, now: number, completedMove: boolean, name?: string): void {
+    const started = this.turnStartedAt;
+    this.turnStartedAt = now;
+    const stat = this.think.get(seat) ?? { totalMs: 0, moves: 0, longestMs: 0 };
+    const used = started === null ? 0 : Math.max(0, now - started);
+    stat.totalMs += used;
+    stat.longestMs = Math.max(stat.longestMs, used);
+    if (completedMove) stat.moves += 1;
+    if (name) stat.name = name;
+    this.think.set(seat, stat);
+  }
+
+  /** On resign, agreed draw or flag fall, the unfinished think still counts (not as a move). */
+  private closeThink(now?: number): void {
+    if (now === undefined || this.bailout) return;
+    const seat = this.seatToMove();
+    if (seat && this.turnStartedAt !== null) this.addThink(seat, now, false);
+    this.turnStartedAt = null;
   }
 
   private cloneClock(): Clock | null {

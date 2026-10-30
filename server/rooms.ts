@@ -224,10 +224,10 @@ export class Room {
     this.touch();
   }
 
-  resign(token: string): void {
+  resign(token: string, now = Date.now()): void {
     const member = this.must(token);
     if (!member.seat) throw new GameError('Take a seat before resigning.');
-    this.game.resign(member.seat);
+    this.game.resign(member.seat, now);
     this.touch();
   }
 
@@ -356,7 +356,14 @@ export class Room {
         this.game.status === 'playing' && !this.game.result && this.mateInOne?.ply === this.game.ply()
           ? { ply: this.mateInOne.ply }
           : null,
+      thinkTimes: this.game.thinkTimes(now, this.seatNames()),
     };
+  }
+
+  private seatNames(): Partial<Record<Seat, string>> {
+    const names: Partial<Record<Seat, string>> = {};
+    for (const member of this.members.values()) if (member.seat) names[member.seat] = member.name;
+    return names;
   }
 
   private seatMap(): Record<Seat, SeatView | null> {

@@ -149,6 +149,17 @@ export interface LeaderboardRow {
   winRate: number;
 }
 
+/** Thinking time one seated player has used this game (not the team clock). */
+export interface ThinkTime {
+  seat: Seat;
+  name: string;
+  totalMs: number;
+  moves: number;
+  longestMs: number;
+  /** Ms into the current think when this seat is to move, as of serverNow. */
+  currentMs: number;
+}
+
 export interface PublicState {
   code: string;
   status: 'lobby' | 'playing' | 'ended';
@@ -184,6 +195,8 @@ export interface PublicState {
   missedMate: MissedMateCall | null;
   streak: StreakCall | null;
   mateInOne: MateInOneCall | null;
+  /** Per-player thinking time, every seat that has played or is to move. */
+  thinkTimes: ThinkTime[];
 }
 
 export interface Ack {

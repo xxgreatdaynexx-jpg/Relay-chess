@@ -1,4 +1,6 @@
 import { Check, Copy } from 'lucide-react';
+import { ThinkSummary, useSinceSnapshot } from './ThinkTimes';
+import { formatThink, rankThinkTimes, slowestSeat } from '../../../shared/thinkTime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chess } from 'chess.js';
 import { Board } from '@/components/Board';
@@ -563,6 +565,7 @@ export function RoomScreen({
               <p className="mt-1 text-sm text-cream-dim">{state.result.detail}</p>
             </div>
           )}
+          {state.status === 'ended' && <div className="mb-3"><ThinkSummary times={state.thinkTimes ?? []} /></div>}
           {state.teams?.scrambled && state.status === 'playing' && (
             <div className="mb-3 rounded-xl border border-amber-300/40 bg-amber-300/10 px-3 py-2 text-sm" data-testid="teams-banner">
               <p className="font-semibold text-amber-100">🔀 New teams</p>
@@ -850,6 +853,10 @@ function TeamCard({
   paused: boolean;
 }) {
   const seats = active.filter((seat) => seatSide(seat) === side);
+  const times = state.thinkTimes ?? [];
+  const since = useSinceSnapshot(state.serverNow, state.status === 'playing' && times.some((t) => t.currentMs > 0));
+  const thinkRows = rankThinkTimes(times, since);
+  const slowest = slowestSeat(times, since);
   const sideToPlay = state.seatToMove ? seatSide(state.seatToMove) === side && state.status === 'playing' : false;
   const ms = clock ? (side === 'white' ? clock.white : clock.black) : null;
   const low = ms !== null && ms < 30_000 && clock?.running && clock.active === side;
@@ -872,8 +879,14 @@ function TeamCard({
           return (
             <div key={seat} className={cn('flex items-center gap-2 rounded-lg px-1.5 py-1', moving && 'bg-white/10')}>
               <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', player?.connected ? 'bg-emerald-400' : 'bg-amber-300')} />
-              <div className="min-w-0">
-                <div className="truncate text-sm">{player?.name ?? 'Empty'}</div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline gap-1.5 text-sm">
+                  <span className="truncate">{player?.name ?? 'Empty'}</span>
+                  {slowest === seat && <span title="Used the most time" data-testid="slowest">🐢</span>}
+                  <span className={cn('tabular ml-auto text-xs', moving ? 'text-brass' : 'text-cream/55')} data-testid={`think-${seat}`} title="Thinking time used this game">
+                    ⏱ {formatThink(thinkRows.find((r) => r.seat === seat)?.usedMs ?? 0)}
+                  </span>
+                </div>
                 <div className="text-[10px] tracking-wide text-cream/50 uppercase">
                   {seatLabel(seat, active)}
                   {state.yourSeat === seat ? ' · you' : ''}

@@ -1,3 +1,4 @@
+import { ThinkSummary } from './ThinkTimes';
 import { Chess } from 'chess.js';
 import { ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Copy, FlipVertical2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -272,6 +273,8 @@ export function AnalysisScreen({
           </Button>
         </div>
       </div>
+
+      {game.thinkTimes && game.thinkTimes.length > 0 && <ThinkSummary times={game.thinkTimes} />}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex gap-2">

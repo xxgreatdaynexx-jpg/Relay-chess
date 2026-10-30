@@ -1,4 +1,4 @@
-import type { GameMode, MoveRecord, PublicState, Side } from '../../../shared/types';
+import type { GameMode, MoveRecord, PublicState, Side, ThinkTime } from '../../../shared/types';
 import { seatsFor, seatSide } from '../../../shared/types';
 
 export interface FinishedGame {
@@ -12,6 +12,7 @@ export interface FinishedGame {
   white: string[];
   black: string[];
   endedAt: number;
+  thinkTimes?: ThinkTime[];
 }
 
 const KEY = 'relay:last-game';
@@ -35,6 +36,7 @@ export function snapshotGame(state: PublicState): FinishedGame | null {
     white: names('white'),
     black: names('black'),
     endedAt: Date.now(),
+    thinkTimes: state.thinkTimes ?? [],
   };
 }
 
