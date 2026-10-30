@@ -1,4 +1,5 @@
 import type { Server, Socket } from 'socket.io';
+import { registerChat, startPresence, stopPresence } from './chat.js';
 import { onBlunderReady } from './blunders.js';
 import { GameError } from './errors.js';
 import { getRoomPersistence } from './room-store.js';
@@ -138,6 +139,7 @@ export function startMaintenance(io: Server): void {
 }
 
 export function stopMaintenance(): void {
+  stopPresence();
   stopCasino();
   for (const code of [...botTimers.keys()]) clearBot(code);
   if (!timer) return;
@@ -156,6 +158,7 @@ export function registerSockets(io: Server): void {
   });
   startMaintenance(io);
   startCasino(io);
+  startPresence(io);
 
   io.use((socket, next) => {
     const token = (socket.handshake.auth as { session?: unknown } | undefined)?.session;
@@ -181,6 +184,7 @@ export function registerSockets(io: Server): void {
     registerAuth(socket);
     registerFps(io, socket);
     registerCasino(io, socket);
+    registerChat(io, socket);
     socket.on('create_room', (payload: unknown, ack?: (res: Ack) => void) => {
       try {
         const body = asRecord(payload);

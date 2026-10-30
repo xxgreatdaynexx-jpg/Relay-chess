@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 
 /** Slot order in the top bar. */
 export const TOP_TAB_ORDER = ['blackjack', 'roulette', 'poker', 'slots', 'solitaire', 'arena'] as const;
-export type TopTabId = (typeof TOP_TAB_ORDER)[number] | 'account';
+export type TopTabId = (typeof TOP_TAB_ORDER)[number] | 'account' | 'chat';
 
 /** The single top tab bar. Panels portal their tab buttons into its slots, so order is fixed here. On phones it collapses to a menu button. */
 export function TopTabs() {
@@ -20,6 +20,7 @@ export function TopTabs() {
       <div className="top-tabs-slots">
         {TOP_TAB_ORDER.map((id) => <div key={id} id={`top-tab-${id}`} className="top-tab-slot" />)}
       </div>
+      <div id="top-tab-chat" className="top-tab-slot top-tab-chat" />
       <div id="top-tab-account" className="top-tab-slot top-tab-account" />
     </nav>
   );

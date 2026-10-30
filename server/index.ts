@@ -1,3 +1,4 @@
+import { getChatLog, initChatStorage } from './chat.js';
 import { initArenaStorage } from './arena-store.js';
 import { initChessStatsStorage } from './chess-stats.js';
 import { createApp } from './app.js';
@@ -13,6 +14,7 @@ await initArenaStorage();
 await initChessStatsStorage();
 await initAccountStorage();
 await initRoomStorage();
+await initChatStorage();
 
 const port = Number(process.env.PORT) || 4317;
 
@@ -35,6 +37,7 @@ async function shutdown(signal: string): Promise<void> {
   try {
     const p = getRoomPersistence();
     if (p) { p.stop(); await p.flush(); }
+    await getChatLog().flush();
   } catch (error) {
     console.error('[shutdown] save failed:', (error as Error).message);
   }

@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import { getCheckersLeaderboard, getLeaderboard } from './leaderboard.js';
 import { boardFor, isQaName } from '../shared/qa.js';
+import { getChatLog } from './chat.js';
 import { registerSockets, stopMaintenance } from './sockets.js';
 import { resetRooms } from './rooms.js';
 
@@ -51,6 +52,12 @@ export async function createApp(): Promise<AppContext> {
   app.get('/api/arena-leaderboard', async (req, res) => {
     const ledger = getArenaLedger();
     res.json({ rows: boardFor(ledger.standings(1e6), await viewerIsQa(req), 100), source: ledger.usingDatabase ? 'postgres' : 'memory' });
+  });
+
+  /** Recent global chat (read-only). QA accounts' messages are only included for a signed-in QA viewer. */
+  app.get('/api/chat', async (req, res) => {
+    const log = getChatLog();
+    res.json({ messages: log.history(await viewerIsQa(req)), source: log.usingDatabase ? 'postgres' : 'memory' });
   });
 
   // Settings flush on page unload (sendBeacon / keepalive fetch), so a change right before a reload is never lost.

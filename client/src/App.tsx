@@ -13,6 +13,7 @@ import { TopTab, TopTabs } from '@/components/TopTabs';
 import { PokerPanel } from '@/components/PokerPanel';
 import { SlotsPanel } from '@/components/SlotsPanel';
 import { ArenaPanel } from '@/components/ArenaPanel';
+import { ChatDrawer } from '@/components/ChatDrawer';
 import { AccountButton, AccountPanel } from '@/components/AccountPanel';
 import { socket } from '@/lib/net';
 import { TournamentScreen } from '@/components/TournamentScreen';
@@ -185,6 +186,7 @@ export function App() {
         <ArenaPanel />
       </div>
       <AccountPanel />
+      <ChatDrawer />
       <TopTab id="account"><AccountButton /></TopTab>
       {leaderboard ? (
         <LeaderboardScreen
