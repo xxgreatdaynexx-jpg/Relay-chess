@@ -14,7 +14,60 @@ import {
   setupOrThrow,
   type Room,
 } from './rooms.js';
-import type { Ack, Promotion, TableSummary } from '../shared/types.js';
+import { type Ack, type Promotion, type TableSummary, type TournamentSummary } from '../shared/types.js';
+import {
+  createTournament,
+  getTournament,
+  listTournaments,
+  pruneTournaments,
+  type MatchRooms,
+  type Tournament,
+} from './tournament.js';
+
+/** Tournament matches are ordinary 1v1 rooms with seats reserved by name. */
+export const matchRooms: MatchRooms = {
+  create(clockId, white, black) {
+    const room = createRoom(presetOrThrow(clockId), { mode: '1v1', pairSide: null });
+    room.tournament = { code: '', seats: { white1: white, black1: black } };
+    return room.code;
+  },
+  status(code) {
+    const room = getRoom(code);
+    if (!room) return null;
+    const used = { white: 0, black: 0 };
+    for (const t of room.game.thinkTimes(Date.now())) used[t.seat.startsWith('white') ? 'white' : 'black'] += t.totalMs + t.currentMs;
+    return {
+      started: room.game.status !== 'lobby',
+      ended: room.game.status === 'ended' && room.game.hasResult(),
+      winner: room.game.result?.winner ?? null,
+      present: { white: room.seatedAndConnected('white1'), black: room.seatedAndConnected('black1') },
+      usedMs: used,
+    };
+  },
+};
+
+export function tournamentList(): TournamentSummary[] {
+  return listTournaments()
+    .filter((t) => t.status !== 'done' || Date.now() - t.lastActivity < 10 * 60 * 1000)
+    .map((t) => ({ code: t.code, host: t.host, clockId: t.clockId, size: t.size, players: t.entrants.length, status: t.status }));
+}
+
+function pushTournament(io: Server, t: Tournament): void {
+  const members = io.sockets.adapter.rooms.get(`t:${t.code}`);
+  if (members) {
+    for (const id of members) {
+      const sock = io.sockets.sockets.get(id);
+      sock?.emit('tournament', t.view(sock.data.tname as string | undefined));
+    }
+  }
+  io.to(LOBBY).emit('tournaments', tournamentList());
+}
+
+function tournamentOrThrow(code: unknown): Tournament {
+  const t = typeof code === 'string' ? getTournament(code.toUpperCase().replace(/[^A-Z0-9]/g, '')) : undefined;
+  if (!t) throw new GameError('No tournament with that code. Tournaments are lost when the server restarts.');
+  return t;
+}
 
 const CLOCK_PUSH_MS = 5000;
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -60,6 +113,13 @@ export function startMaintenance(io: Server): void {
         broadcast(io, room.code, now);
       }
     }
+    for (const t of listTournaments()) {
+      if (t.sync(matchRooms, now)) {
+        tagMatchRooms(t);
+        pushTournament(io, t);
+      }
+    }
+    pruneTournaments(now);
     let pruned = false;
     for (const code of pruneRooms(now)) {
       expire(io, code);
@@ -123,13 +183,105 @@ export function registerSockets(io: Server): void {
       }
     });
 
+    socket.on('tournament_create', (payload: unknown, ack?: (res: Ack) => void) => {
+      try {
+        const body = asRecord(payload);
+        const name = cleanName(body.name);
+        const preset = presetOrThrow(body.clockId);
+        const t = createTournament(name, preset.id, Number(body.size));
+        socket.data.tname = name;
+        socket.join(`t:${t.code}`);
+        ack?.({ ok: true, tournament: t.view(name), hostKey: t.hostKey });
+        pushTournament(io, t);
+      } catch (error) {
+        fail(ack, error);
+      }
+    });
+
+    socket.on('tournament_join', (payload: unknown, ack?: (res: Ack) => void) => {
+      try {
+        const body = asRecord(payload);
+        const t = tournamentOrThrow(body.code);
+        const name = body.name ? cleanName(body.name) : undefined;
+        if (name && body.enter) t.join(name);
+        socket.data.tname = name;
+        socket.join(`t:${t.code}`);
+        ack?.({ ok: true, tournament: t.view(name) });
+        pushTournament(io, t);
+      } catch (error) {
+        fail(ack, error);
+      }
+    });
+
+    socket.on('tournament_leave', (payload: unknown, ack?: (res: Ack) => void) => {
+      try {
+        const body = asRecord(payload);
+        const t = tournamentOrThrow(body.code);
+        if (body.withdraw && socket.data.tname) t.leave(socket.data.tname as string);
+        socket.leave(`t:${t.code}`);
+        ack?.({ ok: true });
+        pushTournament(io, t);
+      } catch (error) {
+        fail(ack, error);
+      }
+    });
+
+    socket.on('tournament_start', (payload: unknown, ack?: (res: Ack) => void) => {
+      try {
+        const body = asRecord(payload);
+        const t = tournamentOrThrow(body.code);
+        if (body.hostKey !== t.hostKey) throw new GameError('Only the host can start.');
+        t.start(matchRooms);
+        tagMatchRooms(t);
+        ack?.({ ok: true });
+        pushTournament(io, t);
+      } catch (error) {
+        fail(ack, error);
+      }
+    });
+
+    socket.on('tournament_forfeit', (payload: unknown, ack?: (res: Ack) => void) => {
+      try {
+        const body = asRecord(payload);
+        const t = tournamentOrThrow(body.code);
+        t.forfeit(String(body.hostKey ?? ''), cleanName(body.loser), matchRooms);
+        tagMatchRooms(t);
+        ack?.({ ok: true });
+        pushTournament(io, t);
+      } catch (error) {
+        fail(ack, error);
+      }
+    });
+
+    /** Sit the caller at their reserved seat in their current match. */
+    socket.on('tournament_play', (payload: unknown, ack?: (res: Ack) => void) => {
+      try {
+        const body = asRecord(payload);
+        const t = tournamentOrThrow(body.code);
+        const name = cleanName(body.name);
+        const match = t.matchFor(name);
+        if (!match?.room) throw new GameError('You have no match ready right now.');
+        const room = getRoom(match.room);
+        if (!room) throw new GameError('That match table expired.');
+        const seat = match.white && match.white.toLowerCase() === name.toLowerCase() ? 'white1' : 'black1';
+        release(io, socket);
+        const token = room.addMember(name);
+        room.sit(token, seat);
+        adopt(socket, room, token);
+        ack?.({ ok: true, token, code: room.code });
+        broadcast(io, room.code);
+      } catch (error) {
+        fail(ack, error);
+      }
+    });
+
     socket.on('open_tables', (_payload: unknown, ack?: (res: Ack) => void) => {
       ack?.({ ok: true, openTables: openRooms().length, tables: tableList() });
     });
 
     socket.on('watch_tables', (_payload: unknown, ack?: (res: Ack) => void) => {
       socket.join(LOBBY);
-      ack?.({ ok: true, openTables: openRooms().length, tables: tableList() });
+      ack?.({ ok: true, openTables: openRooms().length, tables: tableList(), tournaments: tournamentList() });
     });
 
     socket.on('unwatch_tables', (_payload: unknown, ack?: (res: Ack) => void) => {
@@ -316,6 +468,13 @@ export function registerSockets(io: Server): void {
       if (room && getRoom(code)) broadcast(io, code);
     });
   });
+}
+
+function tagMatchRooms(t: Tournament): void {
+  for (const m of t.liveMatches()) {
+    const room = m.room ? getRoom(m.room) : undefined;
+    if (room?.tournament) room.tournament.code = t.code;
+  }
 }
 
 function withRoom(

@@ -79,6 +79,8 @@ export class Room {
   /** Scramble teams on rematch. On by default except 1v1. */
   scrambleRematch: boolean;
   private teams: TeamsBanner | null = null;
+  /** Tournament match: seats reserved by name, no rematch, hidden from Quick Join. */
+  tournament: { code: string; seats: Partial<Record<Seat, string>> } | null = null;
   /** Randomness source for scrambles; swappable in tests. */
   random: () => number = () => randomBytes(4).readUInt32BE(0) / 0x1_0000_0000;
 
@@ -188,6 +190,10 @@ export class Room {
     const member = this.must(token);
     const occupant = this.memberOn(seat);
     if (occupant && occupant.token !== member.token) throw new GameError('That seat is taken.');
+    const reserved = this.tournament?.seats[seat];
+    if (reserved && normalizeName(reserved) !== normalizeName(member.name)) {
+      throw new GameError(`That seat is reserved for ${reserved} (tournament match).`);
+    }
     member.seat = seat;
     this.touch();
     if (this.seatsFilled()) {
@@ -248,6 +254,7 @@ export class Room {
   voteRematch(token: string, now = Date.now()): void {
     const member = this.must(token);
     if (!member.seat) throw new GameError("Spectators don't vote on a rematch.");
+    if (this.tournament) throw new GameError('Tournament matches have no rematch. Head back to the bracket.');
     const started = this.game.voteRematch(member.seat, now);
     if (started) {
       if (this.scrambleRematch) this.scramble();
@@ -357,6 +364,7 @@ export class Room {
           ? { ply: this.mateInOne.ply }
           : null,
       thinkTimes: this.game.thinkTimes(now, this.seatNames()),
+      tournament: this.tournament?.code || null,
     };
   }
 
@@ -392,6 +400,12 @@ export class Room {
   private memberBySocket(socketId: string): Member | undefined {
     const token = this.sockets.get(socketId);
     return token ? this.members.get(token) : undefined;
+  }
+
+  /** Is a member with this name sitting on `seat` and connected? */
+  seatedAndConnected(seat: Seat): boolean {
+    const m = this.memberOn(seat);
+    return Boolean(m && m.sockets.size > 0);
   }
 
   private nameFor(seat: Seat): string | undefined {
@@ -530,7 +544,7 @@ export function listRooms(): Room[] {
 /** Tables waiting for players with a free seat, closest to full first, then oldest. */
 export function openRooms(): Room[] {
   return listRooms()
-    .filter((room) => room.anyoneConnected() && room.openSeats().length > 0)
+    .filter((room) => !room.tournament && room.anyoneConnected() && room.openSeats().length > 0)
     .sort((a, b) => a.openSeats().length - b.openSeats().length || a.createdAt - b.createdAt);
 }
 

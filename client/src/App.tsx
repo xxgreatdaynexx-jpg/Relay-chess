@@ -9,6 +9,9 @@ import { SolitairePanel } from '@/components/SolitairePanel';
 import { BlackjackPanel } from '@/components/BlackjackPanel';
 import { ArenaPanel } from '@/components/ArenaPanel';
 import { socket } from '@/lib/net';
+import { TournamentScreen } from '@/components/TournamentScreen';
+import { TournamentPing } from '@/components/TournamentPing';
+import { tournamentFromLocation } from '@/lib/tournament';
 import { clearSession, clearSpectate, codeFromLocation, loadSession, loadSpectate } from '@/lib/session';
 import type { PublicState } from '../../shared/types';
 
@@ -152,6 +155,16 @@ export function App() {
   }, [state]);
 
   const leaderboard = path === '/leaderboard';
+  const tournamentCode = path.startsWith('/t/') ? tournamentFromLocation() : '';
+  const goHome = () => {
+    window.history.pushState({}, '', '/');
+    setPath('/');
+    setHomeKey((value) => value + 1);
+  };
+  const enteredRoom = () => {
+    setPath(window.location.pathname);
+    socket.connect();
+  };
 
   return (
     <>
@@ -169,6 +182,8 @@ export function App() {
             setPath('/');
           }}
         />
+      ) : tournamentCode && !state ? (
+        <TournamentScreen key={tournamentCode} code={tournamentCode} onHome={goHome} onEnterRoom={enteredRoom} />
       ) : booting && !state ? (
         <div className="grid min-h-dvh place-items-center px-6 text-center">
           <div>
@@ -207,8 +222,24 @@ export function App() {
             socket.connect();
           }}
           onLeaderboard={openLeaderboard}
+          onTournament={(code) => {
+            window.history.pushState({}, '', `/t/${code}`);
+            setPath(`/t/${code}`);
+          }}
         />
       )}
+      <TournamentPing
+        currentRoom={state?.code ?? null}
+        onBracket={(code) => {
+          if (state) leaveRoom();
+          window.history.pushState({}, '', `/t/${code}`);
+          setPath(`/t/${code}`);
+        }}
+        onEnterRoom={() => {
+          setState(null);
+          enteredRoom();
+        }}
+      />
       {!state && !analysis && !leaderboard && !booting && lastGame && (
         <button
           className="fixed bottom-16 left-1/2 z-40 -translate-x-1/2 rounded-full border border-white/15 bg-panel/90 px-4 py-2 text-sm text-cream shadow-lg hover:bg-panel"

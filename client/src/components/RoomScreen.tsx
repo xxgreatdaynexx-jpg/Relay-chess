@@ -565,6 +565,22 @@ export function RoomScreen({
               <p className="mt-1 text-sm text-cream-dim">{state.result.detail}</p>
             </div>
           )}
+          {state.tournament && (
+            <div className="mb-3 rounded-xl border border-brass/50 bg-brass/10 px-3 py-2 text-sm" data-testid="tournament-match">
+              🏆 Tournament match.{' '}
+              {state.status === 'ended' && (
+                <button
+                  className="underline"
+                  onClick={() => {
+                    onLeave();
+                    window.location.assign(`/t/${state.tournament}`);
+                  }}
+                >
+                  Back to bracket
+                </button>
+              )}
+            </div>
+          )}
           {state.status === 'ended' && <div className="mb-3"><ThinkSummary times={state.thinkTimes ?? []} /></div>}
           {state.teams?.scrambled && state.status === 'playing' && (
             <div className="mb-3 rounded-xl border border-amber-300/40 bg-amber-300/10 px-3 py-2 text-sm" data-testid="teams-banner">
@@ -604,7 +620,7 @@ export function RoomScreen({
                 Resign
               </Button>
             )}
-            {state.status === 'ended' && you && (
+            {state.status === 'ended' && you && !state.tournament && (
               <Button disabled={busy} onClick={() => act('vote_rematch')} data-testid="rematch">
                 {state.rematchVotes.includes(you)
                   ? `Waiting · ${state.rematchVotes.length}/${active.length}`

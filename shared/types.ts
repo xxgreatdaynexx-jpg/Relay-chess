@@ -197,6 +197,8 @@ export interface PublicState {
   mateInOne: MateInOneCall | null;
   /** Per-player thinking time, every seat that has played or is to move. */
   thinkTimes: ThinkTime[];
+  /** Tournament code when this table is a tournament match. */
+  tournament: string | null;
 }
 
 export interface Ack {
@@ -211,6 +213,9 @@ export interface Ack {
   openTables?: number;
   /** Lobby: every live table. */
   tables?: TableSummary[];
+  tournament?: TournamentView;
+  hostKey?: string;
+  tournaments?: TournamentSummary[];
   /** Analysis: engine evaluation of one position. */
   evaluation?: import('./analysis.js').Evaluation | null;
 }
@@ -418,4 +423,38 @@ export function describeResult(
         detail: `${loser} skipped a mate in one and losing the piece left their king hanging. ${winner} wins.`,
       };
   }
+}
+
+export interface TournamentMatchView {
+  id: string;
+  round: number;
+  white: string | null;
+  black: string | null;
+  room: string | null;
+  winner: string | null;
+  /** win = played out; draw-time = drawn, less thinking time advanced; forfeit = no-show/host; bye. */
+  how: 'win' | 'draw-time' | 'forfeit' | 'bye' | null;
+  live: boolean;
+  readyAt: number | null;
+}
+
+export interface TournamentView {
+  code: string;
+  host: string;
+  clockId: string;
+  size: number;
+  status: 'signup' | 'running' | 'done';
+  entrants: string[];
+  champion: string | null;
+  rounds: TournamentMatchView[][];
+  yourMatch: { room: string; side: Side; readyAt: number | null } | null;
+}
+
+export interface TournamentSummary {
+  code: string;
+  host: string;
+  clockId: string;
+  size: number;
+  players: number;
+  status: 'signup' | 'running' | 'done';
 }

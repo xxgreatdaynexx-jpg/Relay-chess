@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { loadName, saveName } from '@/lib/playerName';
+import { saveTournament } from '@/lib/tournament';
 import { RulesDialog } from '@/components/RulesDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +19,7 @@ import {
   type Side,
   type TableSetup,
   type TableSummary,
+  type TournamentSummary,
 } from '../../../shared/types';
 
 export function HomeScreen({
@@ -25,11 +27,13 @@ export function HomeScreen({
   error,
   onEnter,
   onLeaderboard,
+  onTournament,
 }: {
   initialCode: string;
   error: string;
   onEnter: () => void;
   onLeaderboard: () => void;
+  onTournament: (code: string) => void;
 }) {
   const saved = loadSession();
   const [name, setNameRaw] = useState(() => loadName() || saved?.name || '');
@@ -90,6 +94,37 @@ export function HomeScreen({
   }
 
   const [tables, setTables] = useState<TableSummary[]>([]);
+  const [tournaments, setTournaments] = useState<TournamentSummary[]>([]);
+  const [tSize, setTSize] = useState<4 | 8>(4);
+  const [tCode, setTCode] = useState('');
+
+  async function createTournament() {
+    setLocalError('');
+    if (!name.trim()) {
+      setLocalError('Enter your name first, then create a tournament.');
+      return;
+    }
+    socket.connect();
+    const res = await request('tournament_create', { name, clockId, size: tSize });
+    if (!res.ok || !res.tournament) {
+      setLocalError(res.error ?? 'Could not create a tournament.');
+      return;
+    }
+    saveTournament({ code: res.tournament.code, hostKey: res.hostKey });
+    onTournament(res.tournament.code);
+  }
+
+  async function openTournament(target: string, enter: boolean) {
+    setLocalError('');
+    const clean = target.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!clean) return setLocalError('Enter a tournament code.');
+    if (enter && !name.trim()) return setLocalError('Enter your name first, then join the tournament.');
+    socket.connect();
+    const res = await request('tournament_join', { code: clean, name: name || undefined, enter });
+    if (!res.ok) return setLocalError(res.error ?? 'Could not open that tournament.');
+    if (enter) saveTournament({ code: clean });
+    onTournament(clean);
+  }
   const [listedAt, setListedAt] = useState(() => Date.now());
   const openTables = tables.filter((row) => row.status === 'lobby' && row.openSeats > 0).length;
   useEffect(() => {
@@ -99,6 +134,7 @@ export function HomeScreen({
       const res = await request('watch_tables');
       if (live && res.ok) {
         setTables(res.tables ?? []);
+        setTournaments(res.tournaments ?? []);
         setListedAt(Date.now());
       }
     };
@@ -108,11 +144,14 @@ export function HomeScreen({
       setListedAt(Date.now());
     };
     socket.on('tables', onTables);
+    const onTournaments = (rows: TournamentSummary[]) => live && setTournaments(rows);
+    socket.on('tournaments', onTournaments);
     socket.on('connect', watch);
     void watch();
     return () => {
       live = false;
       socket.off('tables', onTables);
+      socket.off('tournaments', onTournaments);
       socket.off('connect', watch);
       socket.emit('unwatch_tables', {});
     };
@@ -378,6 +417,46 @@ export function HomeScreen({
             {message}
           </p>
         )}
+        <section className="mt-6 rounded-2xl border border-white/10 bg-panel/70 p-5" data-testid="tournaments">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="font-serif text-2xl">🏆 Tournaments</h2>
+            <span className="text-xs text-cream/50">1v1 single elimination · uses the clock picked above</span>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {([4, 8] as const).map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setTSize(n)}
+                className={cn('rounded-full border px-3 py-1 text-sm', tSize === n ? 'border-brass bg-brass/20' : 'border-white/15')}
+              >
+                {n} players
+              </button>
+            ))}
+            <Button type="button" onClick={() => void createTournament()} data-testid="create-tournament">
+              Create tournament
+            </Button>
+            <Input value={tCode} onChange={(e) => setTCode(e.target.value)} placeholder="Tournament code" className="w-40" />
+            <Button type="button" variant="outline" onClick={() => void openTournament(tCode, true)}>Join</Button>
+          </div>
+          {tournaments.length > 0 && (
+            <ul className="mt-3 space-y-1 text-sm">
+              {tournaments.map((t) => (
+                <li key={t.code} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white/5 px-3 py-2">
+                  <span>
+                    {t.host}'s tournament · {t.players}/{t.size} · {t.clockId} · <span className="text-cream/60">{t.status}</span>
+                  </span>
+                  <span className="flex gap-2">
+                    {t.status === 'signup' && t.players < t.size && (
+                      <Button size="sm" onClick={() => void openTournament(t.code, true)}>Join</Button>
+                    )}
+                    <Button size="sm" variant="outline" onClick={() => void openTournament(t.code, false)}>View</Button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
         <TableList
           tables={tables}
           listedAt={listedAt}
