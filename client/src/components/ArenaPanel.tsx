@@ -74,7 +74,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     jumpAt: -1e9, scoped: false, firing: false, streak: 0, uavUntil: 0, walk: 0,
   });
   const snaps = useRef<Snap[]>([]);
-  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, killmark: 0, nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number }>, hitAt: new Map<string, number>(), shake: 0, jetAt: 0 });
+  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, killmark: 0, nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number }>, hitAt: new Map<string, number>(), shotAt: new Map<string, number>(), shake: 0, jetAt: 0 });
   const banner = useRef<{ text: string; sub: string; at: number } | null>(null);
   const touch = useRef({ up: false, down: false, left: false, right: false, lookUp: false, lookDown: false });
   const [mapInfo, setMapInfo] = useState<{ map: string; next: string; picked: boolean; secs: number }>({ map: MAP.id, next: '', picked: false, secs: 0 });
@@ -195,7 +195,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     };
     const onShot = (s: { id: string; w: WeaponId; o?: [number, number, number]; rays?: Array<[number, number, number]>; impact?: { x: number; y: number; z: number } }) => {
       const now = performance.now();
-      if (s.id !== me.current.id) playWeaponShot(s.w, 0.35);
+      if (s.id !== me.current.id) { playWeaponShot(s.w, 0.35); fx.current.shotAt.set(s.id, now); }
       if (s.o && s.rays) {
         // Tracers start a little below and ahead of the eye so your own don't sit on the crosshair.
         const [ox, oy, oz] = s.o;
@@ -333,7 +333,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         const pp = prevPos.get(p.id);
         const mv = !!pp && Math.hypot(pp.x - p.x, pp.y - p.y) > 0.002;
         prevPos.set(p.id, { x: p.x, y: p.y });
-        return { id: p.id, x: p.x, y: p.y, z: p.z, a: p.a, p: p.p, color: colorFor(p.id), flash: now - (fx.current.hitAt.get(p.id) ?? -1e9) < 160, moving: mv, t: now };
+        return { id: p.id, x: p.x, y: p.y, z: p.z, a: p.a, p: p.p, color: colorFor(p.id), flash: now - (fx.current.hitAt.get(p.id) ?? -1e9) < 160, moving: mv, t: now, w: p.w, fire: now - (fx.current.shotAt.get(p.id) ?? -1e9) < 60 };
       });
       for (const [id, dd] of fx.current.deaths) {
         const age = (now - dd.at) / 1000;
@@ -350,7 +350,11 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         tracers: fx.current.tracers.map((tr) => ({ o: tr.o, e: tr.e, t: (now - tr.at) / 90 })),
       };
       const shake = now - fx.current.shake < 450 ? (1 - (now - fx.current.shake) / 450) * 0.04 : 0;
-      g3.render({ x: m.x, y: m.y, z: m.z + EYE_HEIGHT + bob + (Math.random() - 0.5) * shake, a: m.a, p: m.p, zoom }, soldiers, fx3);
+      const vmSwitch = Math.max(0, 1 - (now - m.switchedAt) / SWITCH_MS);
+      const vmReload = m.reloadUntil && now < m.reloadUntil ? 1 - (m.reloadUntil - now) / WEAPONS[m.weapon].reloadMs : -1;
+      const vm = zoom === 1 && m.alive && m.joined ? { w: m.weapon, kick: Math.max(0, 1 - (now - fx.current.muzzle) / 140), lower: vmSwitch, reload: vmReload, bob: m.walk, muzzle: now - fx.current.muzzle < 50 } : null;
+      const qa = (window as unknown as { __arenaQA?: { vm?: unknown } }).__arenaQA; if (qa) qa.vm = vm;
+      g3.render({ x: m.x, y: m.y, z: m.z + EYE_HEIGHT + bob + (Math.random() - 0.5) * shake, a: m.a, p: m.p, zoom, vm }, soldiers, fx3);
       // Health bars over nearby enemies you can see.
       for (const p of others) {
         const s = g3.project(p.x, p.y, p.z + 2, W, H);
@@ -365,8 +369,6 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.45)');
       ctx.fillStyle = vg; ctx.fillRect(0, 0, W2, H2);
       // Viewmodel + scope
-      const muzzle = now - fx.current.muzzle < 60;
-      const switching = Math.max(0, 1 - (now - m.switchedAt) / SWITCH_MS);
       const reloading = m.reloadUntil && now < m.reloadUntil ? 0.6 : 0;
       if (zoom > 1) {
         const g = ctx.createRadialGradient(W2 / 2, H2 / 2, H2 * 0.36, W2 / 2, H2 / 2, H2 * 0.4);
@@ -375,7 +377,6 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(1, H2 / 300);
         ctx.beginPath(); ctx.moveTo(0, H2 / 2); ctx.lineTo(W2, H2 / 2); ctx.moveTo(W2 / 2, 0); ctx.lineTo(W2 / 2, H2); ctx.stroke();
       } else if (m.alive) {
-        r.viewmodel(ctx, m.weapon, m.walk, muzzle ? 1 : 0, Math.max(switching, reloading), muzzle);
         const cs = H2 / 40;
         const spread = (WEAPONS[m.weapon].spread * (H2 / 2)) / Math.tan(((FOV / zoom) * Math.PI) / 360) * 0.6;
         ctx.strokeStyle = 'rgba(235,240,230,.9)';

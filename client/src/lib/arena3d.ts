@@ -4,6 +4,8 @@
  */
 import * as THREE from 'three';
 import type { ArenaMap, Material, Ramp } from '../../../shared/arenaMaps';
+import type { WeaponId } from '../../../shared/fps';
+import { buildGun, type GunModel } from './arenaGuns';
 
 const W = (x: number, y: number, z: number) => new THREE.Vector3(x, z, y);
 
@@ -130,13 +132,31 @@ function rampGeo(r: Ramp, unit: number): THREE.BufferGeometry {
   return g;
 }
 
-export interface View3D { x: number; y: number; z: number; a: number; p: number; zoom: number }
-export interface Soldier3D { id: string; x: number; y: number; z: number; a: number; p: number; color: string; flash: boolean; moving: boolean; dead?: number; t: number }
+/** First-person weapon state: kick 0..1 (just fired), lower 0..1 (switching), reload 0..1 progress or -1, bob walk phase. */
+export interface Viewmodel3D { w: WeaponId; kick: number; lower: number; reload: number; bob: number; muzzle: boolean }
+export interface View3D { x: number; y: number; z: number; a: number; p: number; zoom: number; vm?: Viewmodel3D | null }
+export interface Soldier3D { id: string; x: number; y: number; z: number; a: number; p: number; color: string; flash: boolean; moving: boolean; dead?: number; t: number; w?: WeaponId; fire?: boolean }
 export interface Fx3D {
   drones: Array<{ x: number; y: number; z: number }>;
   strikes: Array<{ x: number; y: number; z: number; r: number }>;
   booms: Array<{ x: number; y: number; z: number; t: number; big: boolean }>;
   tracers: Array<{ o: [number, number, number]; e: [number, number, number]; t: number }>;
+}
+
+interface Soldier { g: THREE.Group; body: THREE.MeshLambertMaterial; legs: THREE.Object3D[]; seen: boolean; aim: THREE.Group; guns: Map<WeaponId, GunModel & { flash: THREE.Sprite }>; w: WeaponId | null }
+
+/** Soft star-shaped muzzle flash, procedural. */
+function flashTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d')!;
+  const rg = g.createRadialGradient(32, 32, 0, 32, 32, 30);
+  rg.addColorStop(0, 'rgba(255,255,230,1)'); rg.addColorStop(0.25, 'rgba(255,210,110,.9)'); rg.addColorStop(0.6, 'rgba(255,130,30,.35)'); rg.addColorStop(1, 'rgba(255,90,0,0)');
+  g.fillStyle = rg;
+  g.beginPath();
+  for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2, r = i % 2 ? 11 : 31; g.lineTo(32 + Math.cos(a) * r, 32 + Math.sin(a) * r); }
+  g.fill();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 export class Arena3D {
@@ -146,7 +166,15 @@ export class Arena3D {
   private tex = makeTextures();
   private mats = new Map<Material, THREE.MeshLambertMaterial>();
   private mapGroup = new THREE.Group();
-  private soldiers = new Map<string, { g: THREE.Group; body: THREE.MeshLambertMaterial; legs: THREE.Object3D[]; seen: boolean }>();
+  private soldiers = new Map<string, Soldier>();
+  private vmScene = new THREE.Scene();
+  private vmCam = new THREE.PerspectiveCamera(62, 16 / 10, 0.01, 5);
+  private vmGuns = new Map<WeaponId, GunModel & { flash: THREE.Sprite }>();
+  private vmLight = new THREE.PointLight(0xffc070, 0, 3, 1.5);
+  private worldFlash = new THREE.PointLight(0xffb060, 0, 7, 1.5);
+  private flashMat: THREE.SpriteMaterial;
+  private sleeveMat = new THREE.MeshLambertMaterial({ color: 0x4d5338 });
+  private gloveMat = new THREE.MeshLambertMaterial({ color: 0x1e1f1c });
   private pool: Record<'drone' | 'strike' | 'boom' | 'tracer', THREE.Object3D[]> = { drone: [], strike: [], boom: [], tracer: [] };
   mapId = '';
 
@@ -158,6 +186,78 @@ export class Arena3D {
     sun.position.set(-30, 50, -10);
     this.scene.add(sun);
     this.scene.add(this.mapGroup);
+    this.scene.add(this.worldFlash);
+    // Viewmodel: its own scene + camera, drawn over the world after a depth clear so guns never clip walls.
+    this.vmScene.add(new THREE.HemisphereLight(0xfff1d6, 0x6a5a3c, 2.2));
+    const key = new THREE.DirectionalLight(0xffe2b0, 2.6); key.position.set(-1, 2, 1); this.vmScene.add(key);
+    this.vmScene.add(this.vmLight);
+    this.flashMat = new THREE.SpriteMaterial({ map: flashTexture(), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  }
+
+  private flashSprite(size: number, at: [number, number, number]): THREE.Sprite {
+    const sp = new THREE.Sprite(this.flashMat);
+    sp.scale.setScalar(size); sp.position.set(...at); sp.visible = false; sp.renderOrder = 10;
+    return sp;
+  }
+
+  /** Forearm box running from a hand point toward an elbow point (both in the parent's space). */
+  private arm(parent: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector3, thick: number, mat: THREE.Material) {
+    const len = from.distanceTo(to);
+    const geo = new THREE.BoxGeometry(thick, thick, len); geo.translate(0, 0, len / 2);
+    const m = new THREE.Mesh(geo, mat);
+    m.position.copy(from);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), to.clone().sub(from).normalize());
+    parent.add(m);
+    return m;
+  }
+
+  private vmGun(w: WeaponId) {
+    let g = this.vmGuns.get(w);
+    if (g) return g;
+    const m = buildGun(w);
+    const s = m.spec;
+    // gloved hands + sleeves, in gun space
+    const grip = new THREE.Vector3(0, -0.045, 0.012);
+    const sup = new THREE.Vector3(...s.support);
+    const glove = (at: THREE.Vector3, sx: number) => { const h = new THREE.Mesh(new THREE.BoxGeometry(sx, 0.07, 0.075), this.gloveMat); h.position.copy(at); m.root.add(h); };
+    glove(grip, 0.05);
+    glove(sup.clone().add(new THREE.Vector3(-0.005, -0.01, 0)), 0.055);
+    this.arm(m.root, grip.clone().add(new THREE.Vector3(0.01, -0.02, 0.04)), new THREE.Vector3(0.12, -0.26, 0.38), 0.07, this.sleeveMat);
+    this.arm(m.root, sup.clone().add(new THREE.Vector3(-0.01, -0.03, 0.03)), new THREE.Vector3(-0.22, -0.3, sup.z + 0.4), 0.07, this.sleeveMat);
+    const flash = this.flashSprite(s.flash * 1.6, s.muzzle);
+    m.root.add(flash);
+    m.root.visible = false;
+    this.vmScene.add(m.root);
+    g = { ...m, flash };
+    this.vmGuns.set(w, g);
+    return g;
+  }
+
+  private renderViewmodel(vm: Viewmodel3D | null | undefined) {
+    for (const g of this.vmGuns.values()) g.root.visible = false;
+    this.vmLight.intensity = 0;
+    if (!vm) return;
+    const g = this.vmGun(vm.w);
+    const [vx, vy, vz] = g.spec.view;
+    const heavy = vm.w === 'shotgun' || vm.w === 'sniper' || vm.w === 'rocket' ? 1.6 : 1;
+    const k = vm.kick * vm.kick;
+    const r = vm.reload >= 0 && vm.reload <= 1 ? Math.sin(Math.PI * vm.reload) : 0;
+    const sway = Math.sin(vm.bob) * 0.006, dip = Math.abs(Math.cos(vm.bob)) * 0.006;
+    g.root.visible = true;
+    g.root.position.set(vx + sway, vy - dip - vm.lower * 0.28 - r * 0.05, vz + k * 0.045 * heavy);
+    g.root.rotation.set(k * 0.12 * heavy - vm.lower * 0.7 + r * 0.3, 0.06, -r * 0.55);
+    // magazine / warhead: out during the first half of a reload, back in the second
+    const rel = vm.reload;
+    const out = rel < 0 ? 0 : rel < 0.15 ? rel / 0.15 : rel < 0.55 ? 1 : rel < 0.8 ? 1 - (rel - 0.55) / 0.25 : 0;
+    if (vm.w === 'rocket') g.mag.position.set(0, -out * 0.1, -out * 0.2); else g.mag.position.set(0, -out * 0.22, 0);
+    g.mag.visible = out < 0.98;
+    g.flash.visible = vm.muzzle;
+    if (vm.muzzle) {
+      g.flash.material.rotation = Math.random() * Math.PI;
+      g.flash.scale.setScalar(g.spec.flash * (1.3 + Math.random() * 0.7));
+      this.vmLight.position.set(vx + g.spec.muzzle[0], vy + g.spec.muzzle[1], vz + g.spec.muzzle[2]);
+      this.vmLight.intensity = 4;
+    }
   }
 
   private mat(m: Material): THREE.MeshLambertMaterial {
@@ -218,10 +318,10 @@ export class Arena3D {
     add(new THREE.BoxGeometry(0.26, 0.26, 0.24), skin, 0, 1.53, 0); // head
     add(new THREE.BoxGeometry(0.29, 0.1, 0.27), body, 0, 1.68, 0); // helmet/cap
     add(new THREE.BoxGeometry(0.06, 0.06, 0.2), dark, 0.13, 1.56, 0); // goggles
-    add(new THREE.BoxGeometry(0.5, 0.08, 0.08), dark, 0.32, 1.22, 0.12); // gun
-    add(new THREE.BoxGeometry(0.4, 0.12, 0.12), body, 0.18, 1.2, 0.2); // arm
+    // Arms + gun hang off a shoulder pivot that follows the player's pitch.
+    const aim = new THREE.Group(); aim.position.set(0.04, 1.3, 0.05); g.add(aim);
     this.scene.add(g);
-    s = { g, body, legs, seen: true };
+    s = { g, body, legs, seen: true, aim, guns: new Map(), w: null };
     this.soldiers.set(id, s);
     return s;
   }
@@ -241,6 +341,7 @@ export class Arena3D {
     const cp = Math.cos(view.p);
     cam.lookAt(W(view.x + Math.cos(view.a) * cp, view.y + Math.sin(view.a) * cp, view.z + Math.sin(view.p)));
     for (const s of this.soldiers.values()) s.seen = false;
+    let flashAt: THREE.Vector3 | null = null;
     for (const p of soldiers) {
       const s = this.soldier(p.id, p.color);
       s.seen = true;
@@ -250,6 +351,10 @@ export class Arena3D {
       const swing = p.moving && p.dead === undefined ? Math.sin(p.t / 110) * 0.5 : 0;
       s.legs[0].rotation.z = swing; s.legs[1].rotation.z = -swing;
       s.body.emissive.setHex(p.flash ? 0x992211 : 0x000000);
+      this.holdGun(s, p.w ?? 'pistol', p.dead === undefined ? p.p : 0);
+      const held = s.guns.get(p.w ?? 'pistol');
+      if (held) held.flash.visible = !!p.fire && p.dead === undefined;
+      if (p.fire && p.dead === undefined) { flashAt = s.g.position; }
     }
     for (const [id, s] of this.soldiers) {
       s.g.visible = s.seen;
@@ -298,7 +403,45 @@ export class Arena3D {
       o.geometry.computeBoundingSphere();
       (o.material as THREE.LineBasicMaterial).opacity = Math.max(0, 1 - t.t);
     });
+    // One shared world light for muzzle flashes (always in the scene so shaders never recompile).
+    if (view.vm?.muzzle) { this.worldFlash.position.copy(cam.position); this.worldFlash.intensity = 3; }
+    else if (flashAt) { this.worldFlash.position.set(flashAt.x, flashAt.y + 1.3, flashAt.z); this.worldFlash.intensity = 2; }
+    else this.worldFlash.intensity = 0;
     this.renderer.render(this.scene, cam);
+    this.renderViewmodel(view.vm);
+    if (view.vm) {
+      if (Math.abs(this.vmCam.aspect - cam.aspect) > 1e-3) { this.vmCam.aspect = cam.aspect; this.vmCam.updateProjectionMatrix(); }
+      const ac = this.renderer.autoClear;
+      this.renderer.autoClear = false;
+      this.renderer.clearDepth();
+      this.renderer.render(this.vmScene, this.vmCam);
+      this.renderer.autoClear = ac;
+    }
+  }
+
+  private holdGun(s: Soldier, w: WeaponId, pitch: number) {
+    s.aim.rotation.z = pitch;
+    if (s.w === w) return;
+    s.w = w;
+    for (const x of s.guns.values()) x.root.visible = false;
+    let held = s.guns.get(w);
+    if (!held) {
+      const m = buildGun(w);
+      const grip = new THREE.Vector3(0.24, -0.08, 0.04);
+      m.root.position.copy(grip);
+      m.root.rotation.y = -Math.PI / 2; // barrel (-Z) → facing (+X)
+      const sup = new THREE.Vector3(...m.spec.support).applyEuler(m.root.rotation).add(grip);
+      const flash = this.flashSprite(m.spec.flash * 2.2, m.spec.muzzle);
+      m.root.add(flash);
+      const arms = new THREE.Group();
+      this.arm(arms, new THREE.Vector3(0, 0, 0.1), grip.clone().add(new THREE.Vector3(0, -0.03, 0)), 0.1, s.body);
+      this.arm(arms, new THREE.Vector3(0, 0, -0.2), sup.clone().add(new THREE.Vector3(0, -0.03, 0)), 0.1, s.body);
+      m.root.add(arms); arms.applyMatrix4(m.root.matrix.clone().compose(m.root.position, m.root.quaternion, m.root.scale).invert());
+      s.aim.add(m.root);
+      held = { ...m, flash };
+      s.guns.set(w, held);
+    }
+    held.root.visible = true;
   }
 
   /** Projects a world point to overlay pixels (w × h), or null when behind the camera. */
