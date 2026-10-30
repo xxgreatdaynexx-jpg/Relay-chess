@@ -6,7 +6,7 @@ import { BlackjackCasino, type BJAction, type BlackjackTable } from './blackjack
 import { getBank } from './casino-store.js';
 import { signedIn } from './auth-sockets.js';
 import { VideoPoker } from './video-poker.js';
-import { spinSlots, spinVideoSlot } from './slots.js';
+import { buyVideoBonus, spinVideoSlot } from './slots.js';
 import { HoldemRoom, type HoldemTable } from './holdem.js';
 import { HE_SPECTATE_DELAY_MS, type HEAction } from '../shared/holdem.js';
 import { HoldemSpectators, type Viewer } from './holdem-spectate.js';
@@ -199,8 +199,8 @@ export function registerCasino(io: Server, socket: Socket): void {
     if (result.net > 0) pushBoard(io);
     return { result };
   }));
-  socket.on('slots_spin', wrap((body) => {
-    const result = spinSlots(getBank(), signedIn(socket), Number(body.bet));
+  socket.on('vslots_buy', wrap((body) => {
+    const result = buyVideoBonus(getBank(), signedIn(socket), body.machine, Number(body.bet));
     if (result.net > 0) pushBoard(io);
     return { result };
   }));

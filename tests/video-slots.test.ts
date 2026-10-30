@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  evaluateLines, MACHINE_IDS, MACHINES, mulberry32, PAYLINES, playRound, simulate, VS_BETS, type Grid,
+  BUY_BONUS_MULT, buyBonusPrice, evaluateLines, MACHINE_IDS, MACHINES, mulberry32, PAYLINES, playBuyBonus, playRound, simulate,
+  simulateBuy, VS_BETS, type Grid,
 } from '../shared/video-slots.js';
 import { CasinoBank } from '../server/casino-store.js';
-import { spinVideoSlot } from '../server/slots.js';
+import { buyVideoBonus, spinVideoSlot } from '../server/slots.js';
 
 const fill = (s: string): Grid => Array.from({ length: 5 }, () => [s, s, s]);
 
@@ -110,3 +111,53 @@ describe('video slots RTP (seeded simulation)', () => {
   }
 });
 const SEEDS: Record<string, number> = { dragon: 7, warzone: 7, goldrush: 7 };
+
+describe('buy bonus', () => {
+  it('always triggers the machine bonus', () => {
+    for (let seed = 1; seed <= 200; seed++) {
+      const d = playBuyBonus('dragon', 20, mulberry32(seed));
+      expect(d.freeSpins?.played).toBeGreaterThanOrEqual(8);
+      expect(d.bought).toBe(true);
+      expect(playBuyBonus('warzone', 20, mulberry32(seed)).steps[0]!.airstrike?.length).toBeGreaterThanOrEqual(3);
+      expect(playBuyBonus('goldrush', 20, mulberry32(seed)).hold).toBeTruthy();
+    }
+  });
+  it('prices from the bet as an integer chip amount', () => {
+    for (const m of MACHINE_IDS) for (const b of VS_BETS) {
+      expect(Number.isInteger(buyBonusPrice(m, b))).toBe(true);
+      expect(buyBonusPrice(m, b)).toBe(Math.round(BUY_BONUS_MULT[m] * b));
+    }
+  });
+  it('debits the server price and credits the win in one step; rejects bad input and short stacks untouched', () => {
+    const bank = new CasinoBank();
+    const a = bank.account('Cy');
+    const start = a.chips;
+    expect(() => buyVideoBonus(bank, 'Cy', 'nope', 20)).toThrow();
+    for (const bet of [0, 19, 1000, NaN]) expect(() => buyVideoBonus(bank, 'Cy', 'dragon', bet)).toThrow();
+    expect(a.chips).toBe(start);
+    for (const m of MACHINE_IDS) {
+      a.chips = 100_000;
+      const res = buyVideoBonus(bank, 'Cy', m, 40, mulberry32(3));
+      expect(res.cost).toBe(buyBonusPrice(m, 40));
+      expect(res.net).toBe(res.round.totalWin - res.cost);
+      expect(res.chips).toBe(100_000 + res.net);
+      a.chips = buyBonusPrice(m, 40) - 1;
+      expect(() => buyVideoBonus(bank, 'Cy', m, 40)).toThrow(/Not enough/);
+      expect(a.chips).toBe(buyBonusPrice(m, 40) - 1);
+    }
+  });
+});
+
+// Seeded buy-bonus RTP: average bought-round value / price.
+describe('buy bonus RTP (seeded simulation)', () => {
+  const N: Record<string, number> = { dragon: 250_000, warzone: 1_000_000, goldrush: 400_000 };
+  for (const m of MACHINE_IDS) {
+    it(`${m} buy-bonus RTP is within 94%–96%`, () => {
+      const s = simulateBuy(m, N[m]!, mulberry32(BUY_SEEDS[m]!));
+      console.log(`[buy-rtp] ${m} x${BUY_BONUS_MULT[m]}`, JSON.stringify(s));
+      expect(s.rtp).toBeGreaterThanOrEqual(0.94);
+      expect(s.rtp).toBeLessThanOrEqual(0.96);
+    }, 180_000);
+  }
+});
+const BUY_SEEDS: Record<string, number> = { dragon: 7, warzone: 7, goldrush: 7 };

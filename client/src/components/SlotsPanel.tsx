@@ -1,18 +1,18 @@
 import { TopTab } from '@/components/TopTabs';
 import { useEffect, useRef, useState } from 'react';
-import { CasinoLeaderboard, NamePrompt, ResetChips } from '@/components/CasinoCommon';
+import { NamePrompt, ResetChips } from '@/components/CasinoCommon';
 import { CoinArt, SlotSymbol } from '@/components/SlotArt';
 import { emitCasino, useSavedName } from '@/lib/casino';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { playBallLand, playCardFlick, playRouletteSpin, playSolitaireWin } from '@/lib/sounds';
 import {
-  MACHINE_IDS, MACHINES, PAYLINES, VS_BETS, VS_REELS, VS_ROWS,
+  BUY_BONUS_LABEL, buyBonusPrice, MACHINE_IDS, MACHINES, PAYLINES, VS_BETS, VS_REELS, VS_ROWS,
   type CoinValue, type Grid, type MachineId, type RoundResult, type SpinStep,
 } from '../../../shared/video-slots';
 
 const OPEN_KEY = 'relay-slots-open';
 const MACHINE_KEY = 'relay-slots-machine';
-interface Spin { round: RoundResult; returned: number; net: number; chips: number }
+interface Spin { round: RoundResult; returned: number; net: number; chips: number; cost: number }
 type Tier = 'BIG' | 'MEGA' | 'EPIC';
 
 const reduced = () =>
@@ -38,7 +38,6 @@ export function SlotsPanel() {
   const winRef = useRef<HTMLDivElement>(null);
   const win = useWindowDrag('slots', winRef);
   const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) === '1');
-  const [tab, setTab] = useState<'play' | 'board'>('play');
   const [name] = useSavedName();
   const [machine, setMachine] = useState<MachineId | null>(() => {
     const m = localStorage.getItem(MACHINE_KEY);
@@ -61,6 +60,7 @@ export function SlotsPanel() {
   const [bet, setBet] = useState<number>(VS_BETS[0]);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [confirmBuy, setConfirmBuy] = useState(false);
   const chestDone = useRef<(() => void) | null>(null);
   const skip = useRef(false);
   useEffect(() => { localStorage.setItem(OPEN_KEY, open ? '1' : '0'); }, [open]);
@@ -147,21 +147,23 @@ export function SlotsPanel() {
     setBig(null);
   };
 
-  const spin = async () => {
+  const spin = async (buy = false) => {
     if (!machine) return;
     const m = machine;
     skip.current = false;
-    setBusy(true); setErr(''); setMsg('Spinning…'); setFs(null); setHold(null); setChest(null);
+    setConfirmBuy(false);
+    setBusy(true); setErr(''); setMsg(buy ? `Buying ${BUY_BONUS_LABEL[m]}…` : 'Spinning…'); setFs(null); setHold(null); setChest(null);
     setSpinning(Array(VS_REELS).fill(true)); setLit(new Set()); setExpanded([]);
     playRouletteSpin(1.2);
-    const r = await emitCasino<{ result: Spin }>('vslots_spin', { machine: m, bet });
+    // Buy Bonus: the server prices it from the bet and decides the whole round; we send only machine + bet.
+    const r = await emitCasino<{ result: Spin }>(buy ? 'vslots_buy' : 'vslots_spin', { machine: m, bet });
     if (!r.ok || !r.result) {
       setSpinning(Array(VS_REELS).fill(false)); setBusy(false); setMsg('');
       return setErr(r.error ?? 'Try again.');
     }
     const res = r.result;
     const round = res.round;
-    setChips(res.chips + 0 - res.returned); // stake gone; wins count up as they land
+    setChips(res.chips - res.returned); // stake gone; wins count up as they land
     const [base, ...free] = round.steps;
     await landStep(m, base!, false);
     let running = base!.win;
@@ -211,7 +213,8 @@ export function SlotsPanel() {
     setFs(null);
     await celebrate(running, bet);
     setChips(res.chips);
-    setMsg(res.returned > 0 ? `Won ${res.returned.toLocaleString()} (${(res.returned / bet).toFixed(1)}× bet)` : 'No win');
+    const paid = res.cost ?? bet;
+    setMsg(res.returned > 0 ? `Won ${res.returned.toLocaleString()} (${(res.returned / bet).toFixed(1)}× bet${buy ? ` · bonus cost ${paid.toLocaleString()}` : ''})` : 'No win');
     if (res.returned > 0 && res.returned < bet * 15) playBallLand();
     setBusy(false);
   };
@@ -241,6 +244,9 @@ export function SlotsPanel() {
 
   const cfg = machine ? MACHINES[machine] : null;
   const pays = cfg ? cfg.symbols.filter((s) => s.pays).reverse() : [];
+  const buyPrice = machine ? buyBonusPrice(machine, bet) : 0;
+  const buyMult = machine ? +(buyPrice / bet).toFixed(2) : 0;
+  const canBuy = !busy && chips !== null && chips >= buyPrice;
   return (
     <div className={`cx-wrap sl-wrap ${open ? 'cx-open' : ''}`} data-testid="slots">
       <TopTab id="slots"><button type="button" className="sol-tab cx-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="slots-tab">🎰 Slots</button></TopTab>
@@ -248,12 +254,12 @@ export function SlotsPanel() {
         <div className={"sol-panel bj-panel cx-panel vs-panel" + win.className} role="dialog" aria-label="Slots" ref={winRef} style={win.style} onPointerDownCapture={win.front} onPointerMove={win.onPanelMove}>
           {win.grips}
           <div {...win.bar}>
-            <button type="button" className={`casino-tabbtn ${tab === 'play' && !machine ? 'on' : ''}`} disabled={busy} onClick={() => { setTab('play'); setMachine(null); }} data-testid="vs-lobby">Machines</button>
-            {cfg && <button type="button" className={`casino-tabbtn ${tab === 'play' ? 'on' : ''}`} onClick={() => setTab('play')}>{cfg.name}</button>}
+            <button type="button" className={`casino-tabbtn ${!machine ? 'on' : ''}`} disabled={busy} onClick={() => { setConfirmBuy(false); setMachine(null); }} data-testid="vs-lobby">Machines</button>
+            {cfg && <button type="button" className="casino-tabbtn on">{cfg.name}</button>}
             {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" onClick={win.reset}>⟲</button>}
             <button type="button" className="ml-auto" aria-label="Close slots" onClick={() => setOpen(false)}>✕</button>
           </div>
-          {tab === 'board' ? <CasinoLeaderboard you={name} /> : !name ? <NamePrompt /> : !machine || !cfg ? (
+          {!name ? <NamePrompt /> : !machine || !cfg ? (
             <div className="vs-lobby" data-testid="vs-selector">
               <div className="vs-lobby-title">Choose a machine</div>
               {MACHINE_IDS.map((id) => {
@@ -309,6 +315,19 @@ export function SlotsPanel() {
                     {!chest.done && <button type="button" className="vs-reveal" onClick={revealAll}>Open the rest</button>}
                   </div>
                 )}
+                {confirmBuy && !busy && (
+                  <div className="vs-buy-confirm" role="alertdialog" aria-modal="true" aria-labelledby="vs-buy-title" data-testid="vs-buy-confirm">
+                    <div className="vs-buy-box">
+                      <div id="vs-buy-title" className="vs-buy-title">Buy {BUY_BONUS_LABEL[machine]}?</div>
+                      <div className="vs-buy-cost">{buyPrice.toLocaleString()} <small>chips</small></div>
+                      <div className="vs-buy-sub">{cfg.buyNote} · {buyMult}× your {bet} bet. Wins pay at the {bet} bet.</div>
+                      <div className="vs-buy-actions">
+                        <button type="button" className="vs-buy-cancel" onClick={() => setConfirmBuy(false)} data-testid="vs-buy-cancel">Cancel</button>
+                        <button type="button" className="bj-deal vs-buy-go" disabled={!canBuy} onClick={() => void spin(true)} data-testid="vs-buy-ok" autoFocus>Buy for {buyPrice.toLocaleString()}</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {big && (
                   <div className={`vs-big vs-big-${big.tier}`} data-testid="vs-bigwin" onClick={() => { skip.current = true; }}>
                     <div className="vs-embers" aria-hidden>{Array.from({ length: 18 }, (_, i) => <i key={i} style={{ left: `${(i * 37) % 100}%`, animationDelay: `${(i % 6) * 0.25}s` }} />)}</div>
@@ -323,6 +342,12 @@ export function SlotsPanel() {
                 {busy
                   ? <button type="button" className="bj-deal" onClick={() => { skip.current = true; }}>Skip</button>
                   : <button type="button" className="bj-deal" onClick={() => void spin()} data-testid="sl-spin">Spin {bet}</button>}
+                {!busy && (
+                  <button type="button" className="vs-buy" disabled={!canBuy} onClick={() => setConfirmBuy(true)} data-testid="vs-buy"
+                    title={canBuy ? `Buy ${BUY_BONUS_LABEL[machine]} for ${buyPrice} chips` : `Need ${buyPrice} chips`}>
+                    BUY {BUY_BONUS_LABEL[machine].toUpperCase()} <b>{buyPrice.toLocaleString()}</b>
+                  </button>
+                )}
               </div>
               <div className="bj-label">Chips: {chips?.toLocaleString() ?? '…'} {err && <span className="account-error">· {err}</span>}</div>
               {chips !== null && chips < VS_BETS[0] && !busy && <ResetChips name={name} onDone={setChips} />}

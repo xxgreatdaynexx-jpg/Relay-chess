@@ -1,25 +1,14 @@
-// 3-reel slot machine on casino chips. Server picks reels; client only animates.
-import { pickSymbol, slotMultiplier, SLOTS_MAX_BET, SLOTS_MIN_BET, type SlotSymbol } from '../shared/casino-games.js';
+// Modern 5x3 video slots (Dragon Queen / Warzone / Gold Rush) on casino chips. Server decides; client only animates.
 import type { CasinoBank } from './casino-store.js';
 import { secureRand } from './video-poker.js';
+import { buyBonusPrice, isMachineId, playBuyBonus, playRound, VS_BETS, type MachineId, type RoundResult } from '../shared/video-slots.js';
 
-export interface SpinResult { reels: SlotSymbol[]; multiplier: number; returned: number; net: number; chips: number }
+export interface VideoSpinResult { round: RoundResult; returned: number; net: number; chips: number; cost: number }
 
-export function spinSlots(bank: CasinoBank, name: string, bet: number, rand: () => number = secureRand): SpinResult {
-  if (!Number.isInteger(bet) || bet < SLOTS_MIN_BET || bet > SLOTS_MAX_BET) throw new Error(`Bet ${SLOTS_MIN_BET}–${SLOTS_MAX_BET} chips.`);
-  bank.debit(name, bet);
-  const reels = [pickSymbol(rand()), pickSymbol(rand()), pickSymbol(rand())];
-  const multiplier = slotMultiplier(reels);
-  const returned = bet * multiplier;
-  const net = returned - bet;
-  bank.settle(name, returned, net, 'spin');
-  return { reels, multiplier, returned, net, chips: bank.account(name).chips };
+function checkBet(machine: unknown, bet: number): asserts machine is MachineId {
+  if (!isMachineId(machine)) throw new Error('Unknown machine.');
+  if (!(VS_BETS as readonly number[]).includes(bet)) throw new Error(`Bet one of ${VS_BETS.join(', ')} chips.`);
 }
-
-// ---- Modern 5x3 video slots (Dragon Queen / Warzone / Gold Rush) ----
-import { isMachineId, playRound, VS_BETS, type RoundResult } from '../shared/video-slots.js';
-
-export interface VideoSpinResult { round: RoundResult; returned: number; net: number; chips: number }
 
 /**
  * One complete round decided here with the secure RNG: base spin plus any free spins, pick-a-chest,
@@ -27,12 +16,27 @@ export interface VideoSpinResult { round: RoundResult; returned: number; net: nu
  * step, so there is no client-held bonus state to replay or forge.
  */
 export function spinVideoSlot(bank: CasinoBank, name: string, machine: unknown, bet: number, rand: () => number = secureRand): VideoSpinResult {
-  if (!isMachineId(machine)) throw new Error('Unknown machine.');
-  if (!(VS_BETS as readonly number[]).includes(bet)) throw new Error(`Bet one of ${VS_BETS.join(', ')} chips.`);
+  checkBet(machine, bet);
   bank.debit(name, bet);
   const round = playRound(machine, bet, rand);
   const returned = round.totalWin;
   const net = returned - bet;
   bank.settle(name, returned, net, 'spin');
-  return { round, returned, net, chips: bank.account(name).chips };
+  return { round, returned, net, chips: bank.account(name).chips, cost: bet };
+}
+
+/**
+ * Buy Bonus: the price is computed here from the bet (never taken from the client), debited, the
+ * guaranteed-bonus round is played with the secure RNG and its win credited, all in one synchronous step.
+ */
+export function buyVideoBonus(bank: CasinoBank, name: string, machine: unknown, bet: number, rand: () => number = secureRand): VideoSpinResult {
+  checkBet(machine, bet);
+  const cost = buyBonusPrice(machine, bet);
+  if (bank.account(name).chips < cost) throw new Error('Not enough chips.');
+  const round = playBuyBonus(machine, bet, rand);
+  bank.debit(name, cost);
+  const returned = round.totalWin;
+  const net = returned - cost;
+  bank.settle(name, returned, net, 'spin');
+  return { round, returned, net, chips: bank.account(name).chips, cost };
 }

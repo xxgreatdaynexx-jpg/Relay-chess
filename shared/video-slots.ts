@@ -36,6 +36,8 @@ export interface MachineConfig {
   name: string;
   tagline: string;
   symbols: SymDef[];
+  /** One-line description of what Buy Bonus gets you. */
+  buyNote: string;
   /** weights[reel][symbolIndex]. */
   weights: number[][];
 }
@@ -76,6 +78,8 @@ export interface RoundResult {
   chest?: ChestBonus;
   hold?: HoldSpin;
   totalWin: number;
+  /** Set when this round was a Buy Bonus purchase. */
+  bought?: boolean;
 }
 
 // ---------------------------------------------------------------- machines
@@ -86,6 +90,7 @@ export const MACHINES: Record<MachineId, MachineConfig> = {
     id: 'dragon',
     name: 'Dragon Queen',
     tagline: 'Gold queen is wild · 3+ crowns = free spins ×2 · 3 chests = pick-a-chest',
+    buyNote: 'A spin that lands 3+ crowns: 8–15 free spins at ×2',
     symbols: [
       S('pawn', 'Pawn', 'normal', [5, 15, 50]),
       S('knight', 'Knight', 'normal', [5, 20, 60]),
@@ -108,6 +113,7 @@ export const MACHINES: Record<MachineId, MachineConfig> = {
     id: 'warzone',
     name: 'Warzone',
     tagline: 'Expanding wilds fill the reel · random AIRSTRIKE blasts symbols into wilds',
+    buyNote: 'A spin with a guaranteed airstrike: 3–6 symbols blasted into wilds',
     symbols: [
       S('ammo', 'Ammo Box', 'normal', [5, 15, 50]),
       S('tags', 'Dog Tags', 'normal', [5, 20, 60]),
@@ -129,6 +135,7 @@ export const MACHINES: Record<MachineId, MachineConfig> = {
     id: 'goldrush',
     name: 'Gold Rush',
     tagline: 'Classic 7s · 6+ gold coins = HOLD & SPIN · MINI / MINOR / MAJOR / GRAND',
+    buyNote: 'A spin that lands 6+ gold coins: Hold & Spin with 3 respins',
     symbols: [
       S('cherry', 'Cherry', 'normal', [7, 20, 70]),
       S('bar', 'BAR', 'normal', [10, 30, 100]),
@@ -183,12 +190,30 @@ export function symOf(cfg: MachineConfig, id: string): SymDef {
   return cfg.symbols.find((s) => s.id === id)!;
 }
 
+const cumCache = new WeakMap<MachineConfig, number[][]>();
+function cumWeights(cfg: MachineConfig): number[][] {
+  let c = cumCache.get(cfg);
+  if (!c) {
+    c = cfg.weights.map((w) => { let t = 0; return w.map((x) => (t += x)); });
+    cumCache.set(cfg, c);
+  }
+  return c;
+}
+
 export function spinGrid(cfg: MachineConfig, rand: () => number): Grid {
+  const cum = cumWeights(cfg);
   const grid: Grid = [];
   for (let r = 0; r < VS_REELS; r++) {
-    const w = cfg.weights[r]!;
-    const idx = cfg.symbols.map((_, i) => i);
-    grid.push(Array.from({ length: VS_ROWS }, () => cfg.symbols[pickWeighted(idx, (i) => w[i]!, rand())]!.id));
+    const c = cum[r]!;
+    const total = c[c.length - 1]!;
+    const reel: string[] = [];
+    for (let w = 0; w < VS_ROWS; w++) {
+      const x = rand() * total;
+      let i = 0;
+      while (i < c.length - 1 && x >= c[i]!) i++;
+      reel.push(cfg.symbols[i]!.id);
+    }
+    grid.push(reel);
   }
   return grid;
 }
@@ -236,11 +261,17 @@ function countKind(cfg: MachineConfig, grid: Grid, kind: SymKind): number {
 const cloneGrid = (g: Grid): Grid => g.map((r) => [...r]);
 const sumWins = (w: LineWin[]) => w.reduce((s, x) => s + x.amount, 0);
 
-function playDragon(cfg: MachineConfig, bet: number, rand: () => number): RoundResult {
+/** Resample until `ok` holds (conditional distribution of a natural trigger). Bounded so it can never hang. */
+function spinUntil(cfg: MachineConfig, rand: () => number, ok: (g: Grid) => boolean): Grid {
+  for (let i = 0; i < 1_000_000; i++) { const g = spinGrid(cfg, rand); if (ok(g)) return g; }
+  throw new Error('Bonus trigger not found.');
+}
+
+function playDragon(cfg: MachineConfig, bet: number, rand: () => number, buy = false): RoundResult {
   const steps: SpinStep[] = [];
   const res: RoundResult = { machine: 'dragon', bet, steps, totalWin: 0 };
-  const stepFor = (kind: 'base' | 'free', mult: number): { step: SpinStep; scatters: number; chests: number } => {
-    const grid = spinGrid(cfg, rand);
+  const stepFor = (kind: 'base' | 'free', mult: number, forced?: Grid): { step: SpinStep; scatters: number; chests: number } => {
+    const grid = forced ?? spinGrid(cfg, rand);
     const wins = evaluateLines(cfg, grid, bet);
     const scatters = countKind(cfg, grid, 'scatter');
     const chests = countKind(cfg, grid, 'bonus');
@@ -248,7 +279,8 @@ function playDragon(cfg: MachineConfig, bet: number, rand: () => number): RoundR
     if (scatters >= 3) raw += DQ_SCATTER_PAY[Math.min(scatters, 5)]! * bet;
     return { step: { kind, grid, final: grid, wins, multiplier: mult, win: Math.floor(raw * mult) }, scatters, chests };
   };
-  const base = stepFor('base', 1);
+  // Buy bonus: the base spin is drawn from the spins that naturally land 3+ crowns.
+  const base = stepFor('base', 1, buy ? spinUntil(cfg, rand, (g) => countKind(cfg, g, 'scatter') >= 3) : undefined);
   steps.push(base.step);
   let total = base.step.win;
   if (base.chests >= 3) {
@@ -284,11 +316,12 @@ function playDragon(cfg: MachineConfig, bet: number, rand: () => number): RoundR
   return res;
 }
 
-function playWarzone(cfg: MachineConfig, bet: number, rand: () => number): RoundResult {
+function playWarzone(cfg: MachineConfig, bet: number, rand: () => number, buy = false): RoundResult {
   const grid = spinGrid(cfg, rand);
   const final = cloneGrid(grid);
   const step: SpinStep = { kind: 'base', grid, final, wins: [], multiplier: 1, win: 0 };
-  if (rand() < WZ_AIRSTRIKE_CHANCE) {
+  // Buy bonus: the airstrike is guaranteed (same strike size distribution as a natural one).
+  if (buy || rand() < WZ_AIRSTRIKE_CHANCE) {
     const n = WZ_AIRSTRIKE_MIN + Math.floor(rand() * (WZ_AIRSTRIKE_MAX - WZ_AIRSTRIKE_MIN + 1));
     const cells: [number, number][] = [];
     const open: [number, number][] = [];
@@ -314,8 +347,9 @@ function coinValue(rand: () => number): CoinValue {
   return { ...pickWeighted(GR_COIN_VALUES, (x) => x.w, rand()).v };
 }
 
-function playGoldRush(cfg: MachineConfig, bet: number, rand: () => number): RoundResult {
-  const grid = spinGrid(cfg, rand);
+function playGoldRush(cfg: MachineConfig, bet: number, rand: () => number, buy = false): RoundResult {
+  // Buy bonus: the base spin is drawn from the spins that naturally land 6+ coins.
+  const grid = buy ? spinUntil(cfg, rand, (g) => countKind(cfg, g, 'coin') >= GR_TRIGGER) : spinGrid(cfg, rand);
   const wins = evaluateLines(cfg, grid, bet);
   const step: SpinStep = { kind: 'base', grid, final: grid, wins, multiplier: 1, win: Math.floor(sumWins(wins)) };
   const res: RoundResult = { machine: 'goldrush', bet, steps: [step], totalWin: step.win };
@@ -349,6 +383,32 @@ export function playRound(machine: MachineId, bet: number, rand: () => number): 
   if (machine === 'dragon') return playDragon(cfg, bet, rand);
   if (machine === 'warzone') return playWarzone(cfg, bet, rand);
   return playGoldRush(cfg, bet, rand);
+}
+
+/**
+ * Buy Bonus price as a multiple of the bet. Derived from the seeded simulated average value of a bought
+ * round (see tests/video-slots.test.ts `buy-bonus RTP`): multiple ≈ average bonus value / 0.95.
+ * Seeded long runs (bet multiples): dragon 16.70 (3M rounds), warzone 9.47 (20M), goldrush 37.57 (6M).
+ */
+export const BUY_BONUS_MULT: Record<MachineId, number> = { dragon: 17.6, warzone: 10, goldrush: 39.5 };
+export const BUY_BONUS_LABEL: Record<MachineId, string> = { dragon: 'Free Spins', warzone: 'Airstrike', goldrush: 'Hold & Spin' };
+export const buyBonusPrice = (machine: MachineId, bet: number): number => Math.round(BUY_BONUS_MULT[machine] * bet);
+
+/** A bought round: the machine's bonus is guaranteed to trigger on the (paid-for) spin. */
+export function playBuyBonus(machine: MachineId, bet: number, rand: () => number): RoundResult {
+  const cfg = MACHINES[machine];
+  const r = machine === 'dragon' ? playDragon(cfg, bet, rand, true)
+    : machine === 'warzone' ? playWarzone(cfg, bet, rand, true) : playGoldRush(cfg, bet, rand, true);
+  r.bought = true;
+  return r;
+}
+
+/** Average bought-round value in bet multiples. */
+export function simulateBuy(machine: MachineId, rounds: number, rand: () => number, bet = 20): { rounds: number; avgMult: number; rtp: number } {
+  let paid = 0;
+  for (let i = 0; i < rounds; i++) paid += playBuyBonus(machine, bet, rand).totalWin;
+  const avgMult = paid / (rounds * bet);
+  return { rounds, avgMult, rtp: paid / (rounds * buyBonusPrice(machine, bet)) };
 }
 
 export function isMachineId(x: unknown): x is MachineId {

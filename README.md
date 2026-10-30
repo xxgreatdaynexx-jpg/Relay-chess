@@ -95,3 +95,8 @@ spins, pick-a-chest, airstrike, hold-and-spin — then debits the bet and credit
 shared `casino_players` chips. The client only animates the returned script, so there is no bonus state to forge.
 Bets: 20/40/60/100/200 (line bet = bet ÷ 20). Long-run RTP (10M rounds each, seeded): Dragon Queen 95.2%,
 Warzone 94.8%, Gold Rush 95.0%; `tests/video-slots.test.ts` asserts each in [94%, 96%].
+
+**Buy Bonus** (socket `vslots_buy`): pay a server-computed multiple of the bet for a round whose bonus is
+guaranteed — Dragon Queen 17.6× (a spin drawn from those landing 3+ crowns → free spins), Warzone 10× (guaranteed
+airstrike), Gold Rush 39.5× (a spin drawn from those landing 6+ coins → hold-and-spin). Multiples = seeded average
+bought-round value ÷ 0.95 (16.70×, 9.47×, 37.57×); the tests assert buy-bonus RTP in [94%, 96%] per machine.
