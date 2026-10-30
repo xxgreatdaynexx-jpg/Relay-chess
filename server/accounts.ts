@@ -200,7 +200,7 @@ export class Accounts {
   async claim(name: string, password: string, ip: string, now = Date.now()): Promise<{ identity: Identity; token: string }> {
     const key = nameKey(name);
     if (isGuestName(name)) throw new AuthError('Names starting with "Guest" are reserved. Pick another.');
-    if (isBotName(name)) throw new AuthError('Names starting with "Bot" are reserved for house bots. Pick another.');
+    if (isBotName(name)) throw new AuthError("Names starting with 'Bot' are reserved for computer players. Pick another.");
     if (typeof password !== 'string' || password.length < MIN_PASSWORD) throw new AuthError(`Password must be at least ${MIN_PASSWORD} characters.`);
     if (password.length > MAX_PASSWORD) throw new AuthError('That password is too long.');
     this.check(ip, key, now);

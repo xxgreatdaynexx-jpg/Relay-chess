@@ -258,7 +258,7 @@ export function App() {
       />
       {!state && !analysis && !leaderboard && !booting && lastGame && (
         <button
-          className="fixed bottom-16 left-1/2 z-40 -translate-x-1/2 rounded-full border border-white/15 bg-panel/90 px-4 py-2 text-sm text-cream shadow-lg hover:bg-panel"
+          className="fixed bottom-16 left-1/2 z-40 hidden -translate-x-1/2 rounded-full md:block border border-white/15 bg-panel/90 px-4 py-2 text-sm text-cream shadow-lg hover:bg-panel"
           onClick={() => setAnalysis(lastGame)}
           data-testid="analyze-last"
         >

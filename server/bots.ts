@@ -34,7 +34,7 @@ export function botProfile(elo = botElo()): BotProfile {
     blunderRate: clamp(0.55 - elo / 2000, 0.02, 0.5),
     noiseCp: Math.round(clamp(400 - elo / 4, 15, 300)),
     minDelayMs: 1000,
-    maxDelayMs: 4000,
+    maxDelayMs: 3000, // plus search time, keeps a bot move under ~4 s
   };
 }
 

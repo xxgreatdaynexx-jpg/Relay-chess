@@ -84,11 +84,15 @@ export async function createApp(): Promise<AppContext> {
         index: false,
         setHeaders(res, filePath) {
           if (filePath.endsWith('index.html')) res.setHeader('Cache-Control', 'no-cache');
+          // Vite fingerprints everything under /assets, so those can be cached forever.
+          else if (/[\\/]assets[\\/]/.test(filePath)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         },
       }),
     );
     app.use((req, res, next) => {
       if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+      // Always revalidate the shell so a deploy is picked up on the next load (no stale bundle).
+      res.setHeader('Cache-Control', 'no-cache');
       res.sendFile(path.join(clientDist, 'index.html'), (error) => {
         if (error) next(error);
       });

@@ -38,7 +38,7 @@ describe('bot profile', () => {
     expect(botElo({ BOT_ELO: '1200' })).toBe(1200);
     expect(botElo({ BOT_ELO: 'nope' })).toBe(650);
     const weak = botProfile(650);
-    expect(weak).toMatchObject({ depth: 1, minDelayMs: 1000, maxDelayMs: 4000 });
+    expect(weak).toMatchObject({ depth: 1, minDelayMs: 1000, maxDelayMs: 3000 });
     expect(weak.blunderRate).toBeCloseTo(0.225);
     const strong = botProfile(1600);
     expect(strong.depth).toBe(3);
