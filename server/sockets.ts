@@ -105,6 +105,8 @@ export function startMaintenance(io: Server): void {
   timer = setInterval(() => {
     const now = Date.now();
     for (const room of listRooms()) {
+      if (room.game.status === 'playing') scheduleBot(io, room);
+      else clearBot(room.code);
       const hadResult = room.game.hasResult();
       const clocking = room.game.isClockRunning();
       if (clocking) room.game.tick(now);
@@ -135,6 +137,7 @@ export function startMaintenance(io: Server): void {
 
 export function stopMaintenance(): void {
   stopCasino();
+  for (const code of [...botTimers.keys()]) clearBot(code);
   if (!timer) return;
   clearInterval(timer);
   timer = null;
@@ -369,6 +372,18 @@ export function registerSockets(io: Server): void {
       });
     });
 
+    socket.on('add_bot', (payload: unknown, ack?: (res: Ack) => void) => {
+      withRoom(io, socket, ack, (room, token) => {
+        room.addBot(token, asRecord(payload).seat);
+      });
+    });
+
+    socket.on('remove_bot', (payload: unknown, ack?: (res: Ack) => void) => {
+      withRoom(io, socket, ack, (room, token) => {
+        room.removeBot(token, asRecord(payload).seat);
+      });
+    });
+
     socket.on('stand', (_payload: unknown, ack?: (res: Ack) => void) => {
       withRoom(io, socket, ack, (room, token) => {
         room.stand(token);
@@ -545,10 +560,39 @@ function release(io: Server, socket: Socket): void {
   if (room && getRoom(code)) broadcast(io, code);
 }
 
+const botTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Make sure a pending bot turn will run. One timer per room; cleared when the room ends or expires. */
+export function scheduleBot(io: Server, room: Room): void {
+  if (botTimers.has(room.code)) return;
+  const delay = room.botDelay();
+  if (delay < 0) return;
+  const handle = setTimeout(() => {
+    botTimers.delete(room.code);
+    if (getRoom(room.code) !== room) return;
+    try {
+      if (room.playBot()) broadcast(io, room.code);
+    } catch (error) {
+      console.error('bot turn failed', error);
+    }
+    scheduleBot(io, room);
+  }, delay);
+  (handle as unknown as { unref?: () => void }).unref?.();
+  botTimers.set(room.code, handle);
+}
+
+export function clearBot(code: string): void {
+  const handle = botTimers.get(code);
+  if (handle) clearTimeout(handle);
+  botTimers.delete(code);
+}
+
 export function broadcast(io: Server, code: string, now = Date.now()): void {
   const room = getRoom(code);
   if (!room) return;
   queueTables(io);
+  if (room.game.status !== 'playing') clearBot(code);
+  else scheduleBot(io, room);
   const members = io.sockets.adapter.rooms.get(code);
   if (!members) return;
   for (const id of members) {
@@ -559,6 +603,7 @@ export function broadcast(io: Server, code: string, now = Date.now()): void {
 }
 
 function expire(io: Server, code: string): void {
+  clearBot(code);
   const members = io.sockets.adapter.rooms.get(code);
   if (!members) return;
   for (const id of [...members]) {

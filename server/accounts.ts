@@ -17,6 +17,8 @@ export function nameKey(name: string): string {
 
 /** Guest-style names are reserved for anonymous Arena players and can never be claimed. */
 export const isGuestName = (name: string) => /^guest/i.test(name.trim());
+/** House bot names ("Bot 650 · Rook") can never be claimed. */
+export const isBotName = (name: string) => /^bot(?![a-z])/i.test(name.trim());
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
@@ -180,7 +182,7 @@ export class Accounts {
   constructor(readonly store: AccountStore) {}
 
   async status(name: string): Promise<{ claimed: boolean; reserved: boolean }> {
-    if (isGuestName(name)) return { claimed: false, reserved: true };
+    if (isGuestName(name) || isBotName(name)) return { claimed: false, reserved: true };
     return { claimed: !!(await this.store.get(nameKey(name))), reserved: false };
   }
 
@@ -198,6 +200,7 @@ export class Accounts {
   async claim(name: string, password: string, ip: string, now = Date.now()): Promise<{ identity: Identity; token: string }> {
     const key = nameKey(name);
     if (isGuestName(name)) throw new AuthError('Names starting with "Guest" are reserved. Pick another.');
+    if (isBotName(name)) throw new AuthError('Names starting with "Bot" are reserved for house bots. Pick another.');
     if (typeof password !== 'string' || password.length < MIN_PASSWORD) throw new AuthError(`Password must be at least ${MIN_PASSWORD} characters.`);
     if (password.length > MAX_PASSWORD) throw new AuthError('That password is too long.');
     this.check(ip, key, now);

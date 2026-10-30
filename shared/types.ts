@@ -79,6 +79,8 @@ export interface TeamsBanner {
 export interface SeatView {
   name: string;
   connected: boolean;
+  /** House bot seat. */
+  bot?: boolean;
 }
 
 export interface ClockView {

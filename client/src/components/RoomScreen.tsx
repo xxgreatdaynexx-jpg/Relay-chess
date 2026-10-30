@@ -518,6 +518,8 @@ export function RoomScreen({
           presetLabel={preset?.label ?? 'No clock'}
           busy={busy}
           onSit={(seat) => act('sit', { seat })}
+          onAddBot={(seat) => void act('add_bot', { seat })}
+          onRemoveBot={(seat) => void act('remove_bot', { seat })}
           onStand={() => void act('stand')}
           onLeave={onLeave}
         />
@@ -782,6 +784,8 @@ function Lobby({
   presetLabel,
   busy,
   onSit,
+  onAddBot,
+  onRemoveBot,
   onStand,
   onLeave,
 }: {
@@ -790,6 +794,8 @@ function Lobby({
   presetLabel: string;
   busy: boolean;
   onSit: (seat: Seat) => void;
+  onAddBot: (seat: Seat) => void;
+  onRemoveBot: (seat: Seat) => void;
   onStand: () => void;
   onLeave: () => void;
 }) {
@@ -830,10 +836,18 @@ function Lobby({
               <div className="text-[11px] tracking-[0.14em] text-cream/55 uppercase">{seatLabel(seat, active)}</div>
               {player ? (
                 <>
-                  <div className="mt-1 truncate font-serif text-xl">{player.name}</div>
-                  <div className="text-xs text-cream/60">
-                    {mine ? 'You' : player.connected ? 'Seated' : 'Reconnecting'}
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <span className="truncate font-serif text-xl">{player.name}</span>
+                    {player.bot && <BotBadge />}
                   </div>
+                  <div className="text-xs text-cream/60">
+                    {mine ? 'You' : player.bot ? 'House bot' : player.connected ? 'Seated' : 'Reconnecting'}
+                  </div>
+                  {player.bot && !state.spectating && (
+                    <button type="button" data-testid={`remove-bot-${seat}`} className="mt-2 text-xs text-brass underline-offset-2 hover:underline" onClick={() => onRemoveBot(seat)} disabled={busy}>
+                      Remove bot
+                    </button>
+                  )}
                   {mine && (
                     <button type="button" className="mt-2 text-xs text-brass underline-offset-2 hover:underline" onClick={onStand} disabled={busy}>
                       Stand up
@@ -843,10 +857,23 @@ function Lobby({
               ) : state.spectating ? (
                 <div className="mt-2 font-serif text-xl text-cream/60">Empty</div>
               ) : (
-                <button type="button" className="mt-2 text-left" onClick={() => onSit(seat)} disabled={busy || state.yourSeat === seat}>
-                  <div className="font-serif text-xl text-cream/80">Empty</div>
-                  <div className="text-xs text-brass">Sit here</div>
-                </button>
+                <div className="mt-2 flex items-end justify-between gap-2">
+                  <button type="button" className="text-left" onClick={() => onSit(seat)} disabled={busy || state.yourSeat === seat}>
+                    <div className="font-serif text-xl text-cream/80">Empty</div>
+                    <div className="text-xs text-brass">Sit here</div>
+                  </button>
+                  {!state.tournament && (
+                    <button
+                      type="button"
+                      data-testid={`add-bot-${seat}`}
+                      className="rounded-md border border-white/15 bg-black/30 px-2 py-1 text-[11px] tracking-wide text-cream/75 uppercase hover:border-brass/60 hover:text-brass"
+                      onClick={() => onAddBot(seat)}
+                      disabled={busy}
+                    >
+                      + Add bot
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           );
@@ -908,6 +935,7 @@ function TeamCard({
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-1.5 text-sm">
                   <span className="truncate">{player?.name ?? 'Empty'}</span>
+                  {player?.bot && <BotBadge />}
                   {slowest === seat && <span title="Used the most time" data-testid="slowest">🐢</span>}
                   <span className={cn('tabular ml-auto text-xs', moving ? 'text-brass' : 'text-cream/55')} data-testid={`think-${seat}`} title="Thinking time used this game">
                     ⏱ {formatThink(thinkRows.find((r) => r.seat === seat)?.usedMs ?? 0)}
@@ -1085,4 +1113,12 @@ function previewCheckers(fen: string, move: { from: string; to: string; via?: st
   const pos = parseCheckers(fen);
   const m = pos && findCheckers(pos, move.from, move.to, move.via);
   return pos && m ? checkersFen(applyCheckers(pos, m)) : null;
+}
+
+function BotBadge() {
+  return (
+    <span data-testid="bot-badge" title="House bot. Games with bots don't count toward the leaderboard." className="shrink-0 rounded border border-sky-300/40 bg-sky-300/10 px-1 text-[9px] font-semibold tracking-[0.12em] text-sky-200 uppercase">
+      Bot
+    </span>
+  );
 }

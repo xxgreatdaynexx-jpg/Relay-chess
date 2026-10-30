@@ -6,6 +6,7 @@ import { getChessStats } from './chess-stats.js';
 import { peekHint, requestHint } from './hints.js';
 import { getCheckersLeaderboard, getLeaderboard, normalizeName } from './leaderboard.js';
 import { CheckersGame } from './checkers-game.js';
+import { BOT_PIECES, botName, botProfile, chooseMove, thinkDelay, type BotProfile } from './bots.js';
 import { moveUci, openingName } from './openings.js';
 import { hasMateInOne } from '../shared/mate.js';
 import { recordStreak } from '../shared/streak.js';
@@ -48,6 +49,8 @@ interface Member {
   name: string;
   seat: Seat | null;
   sockets: Set<string>;
+  /** House bot: always present, never scored, no sockets. */
+  bot?: boolean;
 }
 
 const rooms = new Map<string, Room>();
@@ -97,6 +100,116 @@ export class Room {
     const timing: Timing | null =
       preset.initialMs > 0 ? { initialMs: preset.initialMs, incrementMs: preset.incrementMs } : null;
     this.game = gameType === 'checkers' ? new CheckersGame(timing, setup) : new RelayGame(timing, setup);
+  }
+
+  /** Bot strength for this room (from BOT_ELO). */
+  botProfile: BotProfile = botProfile();
+
+  /** Fill an empty seat with a house bot. Any seated player or the creator can do it. */
+  addBot(token: string, seat: unknown, now = Date.now()): string {
+    const member = this.must(token);
+    if (member.bot) throw new GameError('Bots cannot add bots.');
+    if (this.tournament) throw new GameError('Tournament matches are people only.');
+    if (!isSeat(seat)) throw new GameError('That is not a seat.');
+    if (!seatsFor(this.setup).includes(seat)) throw new GameError('That seat is not in this game.');
+    if (this.game.status !== 'lobby') throw new GameError('Seats lock when the game starts.');
+    if (this.memberOn(seat)) throw new GameError('That seat is taken.');
+    if (this.members.size >= MAX_MEMBERS) throw new GameError('This table is full.');
+    const used = new Set([...this.members.values()].map((m) => m.name));
+    const piece = BOT_PIECES.find((p) => !used.has(botName(this.botProfile.elo, p))) ?? 'Pawn';
+    const name = botName(this.botProfile.elo, piece);
+    const botToken = `bot-${randomBytes(12).toString('hex')}`;
+    this.members.set(botToken, { token: botToken, name, seat, sockets: new Set(), bot: true });
+    this.touch();
+    if (this.seatsFilled()) {
+      this.game.start(now);
+      this.syncPresence(now);
+    }
+    return name;
+  }
+
+  /** Take a bot off its seat before the game starts. */
+  removeBot(token: string, seat: unknown): void {
+    this.must(token);
+    if (this.game.status !== 'lobby') throw new GameError('Bots stay until the game ends.');
+    const bot = isSeat(seat) ? this.memberOn(seat) : undefined;
+    if (!bot?.bot) throw new GameError('There is no bot on that seat.');
+    this.members.delete(bot.token);
+    this.touch();
+  }
+
+  hasBots(): boolean {
+    for (const m of this.members.values()) if (m.bot && m.seat) return true;
+    return false;
+  }
+
+  private isBotSeat(seat: Seat | null): boolean {
+    return Boolean(seat && this.memberOn(seat)?.bot);
+  }
+
+  /**
+   * What a bot must do next, if anything: move, answer a draw, accept a mate
+   * offer, or vote for a rematch. Null when it's a human's turn or nothing to do.
+   */
+  botDuty(): { kind: 'move' | 'draw' | 'mate' | 'rematch'; seat: Seat } | null {
+    const game = this.game;
+    if (game.status === 'ended') return null; // rematch votes are cast alongside the human vote
+    if (game.status !== 'playing' || game.result) return null;
+    if (game.bailout) {
+      const seat = seatsFor(this.setup).find((s) => seatSide(s) === game.bailout!.side && this.isBotSeat(s));
+      // Bot side accepts mate only when no human on that side could pay.
+      const humans = seatsFor(this.setup).some((s) => seatSide(s) === game.bailout!.side && !this.isBotSeat(s));
+      return seat && !humans ? { kind: 'mate', seat } : null;
+    }
+    if (game.drawOffer) {
+      const seats = seatsFor(this.setup).filter((s) => seatSide(s) !== game.drawOffer!.side);
+      if (seats.every((s) => this.isBotSeat(s))) return { kind: 'draw', seat: seats[0]! };
+    }
+    const mover = game.seatToMove();
+    return mover && this.isBotSeat(mover) ? { kind: 'move', seat: mover } : null;
+  }
+
+  /** Delay before the pending bot duty runs. */
+  botDelay(random: () => number = Math.random): number {
+    const duty = this.botDuty();
+    if (!duty) return -1;
+    return duty.kind === 'move' ? thinkDelay(this.botProfile, random) : 800;
+  }
+
+  /** Perform the pending bot duty. Never throws; returns true if anything changed. */
+  playBot(now = Date.now(), random: () => number = Math.random): boolean {
+    const duty = this.botDuty();
+    if (!duty) return false;
+    const bot = this.memberOn(duty.seat)!;
+    try {
+      this.game.tick(now);
+      if (this.game.result) return true;
+      if (duty.kind === 'mate') {
+        this.game.acceptMate(duty.seat);
+      } else if (duty.kind === 'draw') {
+        this.game.answerDraw(duty.seat, false, now);
+      } else {
+        const input = chooseMove(this.gameType, this.game.fen(), this.botProfile, random);
+        if (!input) return false;
+        this.move(bot.token, input, now);
+      }
+      this.touch();
+      return true;
+    } catch (error) {
+      // A bot must never hang the game: fall back to the first legal move, else resign.
+      try {
+        const legal = this.game.legalMoves()[0];
+        if (duty.kind === 'move' && legal) {
+          this.move(bot.token, { from: legal.from, to: legal.to, ...(legal.promotion ? { promotion: legal.promotion } : {}), ...(legal.path && legal.path.length > 1 ? { via: legal.path.slice(0, -1) } : {}) }, now);
+        } else if (!this.game.result) {
+          this.game.resign(duty.seat, now);
+        }
+      } catch {
+        if (!this.game.result && this.game.status === 'playing') this.game.resign(duty.seat, now);
+      }
+      void error;
+      return true;
+    }
   }
 
   addMember(name: string): string {
@@ -263,7 +376,8 @@ export class Room {
     const member = this.must(token);
     if (!member.seat) throw new GameError("Spectators don't vote on a rematch.");
     if (this.tournament) throw new GameError('Tournament matches have no rematch. Head back to the bracket.');
-    const started = this.game.voteRematch(member.seat, now);
+    let started = this.game.voteRematch(member.seat, now);
+    for (const m of this.members.values()) if (!started && m.bot && m.seat) started = this.game.voteRematch(m.seat, now);
     if (started) {
       if (this.scrambleRematch) this.scramble();
       this.teams = { at: now, scrambled: this.scrambleRematch, white: this.teamNames('white'), black: this.teamNames('black') };
@@ -325,7 +439,7 @@ export class Room {
     const seat = this.game.seatToMove();
     if (!seat) return;
     const member = this.memberOn(seat);
-    this.game.setMoverConnected(Boolean(member && member.sockets.size > 0), now);
+    this.game.setMoverConnected(Boolean(member && (member.bot || member.sockets.size > 0)), now);
   }
 
   view(socketId: string, now: number): PublicState {
@@ -394,7 +508,7 @@ export class Room {
     };
     for (const member of this.members.values()) {
       if (!member.seat) continue;
-      seats[member.seat] = { name: member.name, connected: member.sockets.size > 0 };
+      seats[member.seat] = { name: member.name, connected: member.bot || member.sockets.size > 0, ...(member.bot ? { bot: true } : {}) };
     }
     return seats;
   }
@@ -414,7 +528,7 @@ export class Room {
   /** Is a member with this name sitting on `seat` and connected? */
   seatedAndConnected(seat: Seat): boolean {
     const m = this.memberOn(seat);
-    return Boolean(m && m.sockets.size > 0);
+    return Boolean(m && (m.bot || m.sockets.size > 0));
   }
 
   private nameFor(seat: Seat): string | undefined {
@@ -454,7 +568,7 @@ export class Room {
       destination: played.to,
       accept: (mark, ranked, quality) => {
         const mover = this.nameFor(played.seat);
-        if (quality && mover) getChessStats().record(mover, quality);
+        if (quality && mover && !this.hasBots()) getChessStats().record(mover, quality);
         if (token !== this.blunderSeq || this.game.ply() !== ply) return false;
         this.moveMark = mark;
         const hit = ranked ? recordStreak(this.streaks, played.seat, mark?.grade ?? null, legal.length) : null;
@@ -523,6 +637,7 @@ export class Room {
     const result = this.game.result;
     if (this.game.status !== 'ended' || !result || this.scoredResult === result) return;
     this.scoredResult = result;
+    if (this.hasBots()) return; // games with any bot never count
     const name = (seat: Seat) => this.nameFor(seat);
     const named = (side: Side) =>
       seatsFor(this.setup)
