@@ -12,6 +12,7 @@ import { boardFor, isQaName } from '../shared/qa.js';
 import { getChatLog } from './chat.js';
 import { registerSockets, stopMaintenance } from './sockets.js';
 import { resetRooms } from './rooms.js';
+import { getConquest } from './conquest.js';
 
 export interface AppContext {
   httpServer: HttpServer;
@@ -45,6 +46,12 @@ export async function createApp(): Promise<AppContext> {
 
   app.get('/api/checkers-leaderboard', async (req, res) => {
     const board = getCheckersLeaderboard();
+    await board.refresh();
+    res.json({ rows: boardFor(board.standings(), await viewerIsQa(req)), source: board.usingDatabase ? 'postgres' : 'memory' });
+  });
+
+  app.get('/api/conquest-leaderboard', async (req, res) => {
+    const board = getConquest().board;
     await board.refresh();
     res.json({ rows: boardFor(board.standings(), await viewerIsQa(req)), source: board.usingDatabase ? 'postgres' : 'memory' });
   });

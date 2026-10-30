@@ -19,8 +19,8 @@ const CHESS_HEAD: Array<[ChessCol, string, string]> = [
   ['mistake', '?', 'Mistake: bottom 40% (not a blunder)'], ['blunder', '??', 'Blunder: bottom-fifth move'],
 ];
 
-export type BoardKind = 'chess' | 'checkers' | 'casino' | 'arena';
-const BOARDS: Array<[BoardKind, string]> = [['chess', 'Chess'], ['checkers', 'Checkers'], ['casino', 'Casino'], ['arena', 'Arena']];
+export type BoardKind = 'chess' | 'checkers' | 'casino' | 'arena' | 'conquest';
+const BOARDS: Array<[BoardKind, string]> = [['chess', 'Chess'], ['checkers', 'Checkers'], ['casino', 'Casino'], ['arena', 'Arena'], ['conquest', 'Conquest']];
 const BOARD_KEY = 'relay-leaderboard-tab';
 function loadBoard(): BoardKind {
   try { const v = localStorage.getItem(BOARD_KEY); return BOARDS.some(([k]) => k === v) ? (v as BoardKind) : 'chess'; } catch { return 'chess'; }
@@ -64,14 +64,14 @@ export function LeaderboardScreen({ onBack, onMainMenu }: { onBack: () => void; 
         <BoardSwitch value={board} onChange={setBoard} />
       </div>
       <div className="mt-4" data-testid={`lb-view-${board}`}>
-        {board === 'chess' ? <LeaderboardTable /> : board === 'checkers' ? <LeaderboardTable game="checkers" /> : board === 'arena' ? <ArenaLeaderboard you={loadName()} /> : <div className="lb-casino"><CasinoLeaderboard you={loadName()} /></div>}
+        {board === 'chess' ? <LeaderboardTable /> : board === 'checkers' ? <LeaderboardTable game="checkers" /> : board === 'conquest' ? <LeaderboardTable game="conquest" /> : board === 'arena' ? <ArenaLeaderboard you={loadName()} /> : <div className="lb-casino"><CasinoLeaderboard you={loadName()} /></div>}
       </div>
     </div>
   );
 }
 
-export function LeaderboardTable({ highlight = [], game = 'chess' }: { highlight?: string[]; game?: 'chess' | 'checkers' }) {
-  const head = game === 'checkers' ? CHESS_HEAD.slice(0, 6) : CHESS_HEAD;
+export function LeaderboardTable({ highlight = [], game = 'chess' }: { highlight?: string[]; game?: 'chess' | 'checkers' | 'conquest' }) {
+  const head = game !== 'chess' ? CHESS_HEAD.slice(0, 6) : CHESS_HEAD;
   const [rows, setRows] = useState<LeaderboardRow[] | null>(null);
   const [error, setError] = useState('');
   const [sort, setSort] = useState<ChessCol>('wins');
@@ -82,7 +82,7 @@ export function LeaderboardTable({ highlight = [], game = 'chess' }: { highlight
 
   useEffect(() => {
     let cancel = false;
-    fetch(game === 'checkers' ? '/api/checkers-leaderboard' : '/api/leaderboard', qaHeaders())
+    fetch(game === 'checkers' ? '/api/checkers-leaderboard' : game === 'conquest' ? '/api/conquest-leaderboard' : '/api/leaderboard', qaHeaders())
       .then(async (response) => {
         if (!response.ok) throw new Error('bad status');
         return (await response.json()) as { rows: LeaderboardRow[] };
@@ -103,14 +103,14 @@ export function LeaderboardTable({ highlight = [], game = 'chess' }: { highlight
   if (rows.length === 0) {
     return (
       <p className="text-sm text-cream-dim">
-        {game === 'checkers' ? 'No finished checkers games yet. Wins, resignations, flag falls and draws all land here.' : 'No finished games yet. Checkmate, resignation, a flag fall, and agreed draws all land here.'}
+        {game === 'conquest' ? 'No finished wars yet. Conquer every territory in a game without bots to land here.' : game === 'checkers' ? 'No finished checkers games yet. Wins, resignations, flag falls and draws all land here.' : 'No finished games yet. Checkmate, resignation, a flag fall, and agreed draws all land here.'}
       </p>
     );
   }
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-white/10">
-      <table className={cn('w-full text-left text-sm', game === 'checkers' ? 'min-w-[28rem]' : 'min-w-[44rem]')} data-testid={`lb-table-${game}`}>
+      <table className={cn('w-full text-left text-sm', game !== 'chess' ? 'min-w-[28rem]' : 'min-w-[44rem]')} data-testid={`lb-table-${game}`}>
         <thead className="bg-white/5 text-[11px] tracking-[0.14em] text-cream/55 uppercase">
           <tr>
             <th className="px-3 py-2 font-medium">#</th>

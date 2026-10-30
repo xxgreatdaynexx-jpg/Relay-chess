@@ -5,6 +5,7 @@ import { createApp } from './app.js';
 import { initCheckersLeaderboardStorage, initLeaderboardStorage } from './leaderboard.js';
 import { initCasinoStorage } from './casino-store.js';
 import { initAccountStorage } from './accounts.js';
+import { initConquestStorage } from './conquest.js';
 import { getRoomPersistence, initRoomStorage } from './room-store.js';
 
 await initLeaderboardStorage();
@@ -15,6 +16,7 @@ await initChessStatsStorage();
 await initAccountStorage();
 await initRoomStorage();
 await initChatStorage();
+await initConquestStorage();
 
 const port = Number(process.env.PORT) || 4317;
 

@@ -7,6 +7,7 @@ import { registerFps } from './fps.js';
 import { AuthError, getAccounts } from './accounts.js';
 import { registerAuth, signedIn } from './auth-sockets.js';
 import { registerCasino, startCasino, stopCasino } from './casino-sockets.js';
+import { registerConquest } from './conquest.js';
 import { analyzePosition, onHintReady } from './hints.js';
 import {
   createRoom,
@@ -185,6 +186,7 @@ export function registerSockets(io: Server): void {
     registerFps(io, socket);
     registerCasino(io, socket);
     registerChat(io, socket);
+    registerConquest(io, socket);
     socket.on('create_room', (payload: unknown, ack?: (res: Ack) => void) => {
       try {
         const body = asRecord(payload);

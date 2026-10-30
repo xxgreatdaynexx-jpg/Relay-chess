@@ -1,5 +1,6 @@
 import { prefersReducedMotion } from '@/lib/motion';
 import { useEffect, useRef } from 'react';
+import { CONTINENTS } from '../../../shared/conquest';
 
 type Pt = [number, number];
 
@@ -49,6 +50,15 @@ const drawCheckers = (g: CanvasRenderingContext2D, s: number) => {
   g.lineTo(s * 0.5 + w / 2, y - s * 0.05); g.lineTo(s * 0.5 + w, y - s * 0.12); g.lineTo(s * 0.5 + w, y); g.closePath(); g.fill();
 };
 
+const drawMap = (g: CanvasRenderingContext2D, s: number) => {
+  const k = s / 1000, oy = (s - 630 * k) / 2;
+  for (const c of CONTINENTS) {
+    g.beginPath();
+    c.poly.forEach(([x, y], i) => (i ? g.lineTo(x * k, y * k + oy) : g.moveTo(x * k, y * k + oy)));
+    g.closePath(); g.fill();
+  }
+};
+
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 
 /**
@@ -62,8 +72,8 @@ export function ParticleMorph({ slots }: { slots: () => Array<HTMLElement | null
     const canvas = ref.current!;
     const g = canvas.getContext('2d')!;
     const n = window.innerWidth < 760 ? 800 : 1800;
-    const a = sample(drawKing, n, 7);
-    const b = sample(drawCheckers, n, 11);
+    const shapes = [sample(drawKing, n, 7), sample(drawCheckers, n, 11), sample(drawMap, n, 13)];
+    const tones = [[224, 181, 106], [233, 226, 212], [217, 174, 102]];
     const seeds = Array.from({ length: n }, (_, i) => [Math.sin(i * 12.9898) * 43758.5453 % 1, Math.sin(i * 78.233) * 12543.123 % 1]);
     let raf = 0;
     let dpr = 1;
@@ -74,10 +84,20 @@ export function ParticleMorph({ slots }: { slots: () => Array<HTMLElement | null
     resize();
     const frame = (time: number) => {
       raf = requestAnimationFrame(frame);
-      const [s0, s1] = slots();
+      const all = slots();
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       g.clearRect(0, 0, window.innerWidth, window.innerHeight);
+      const hh = window.innerHeight;
+      // Which pair is morphing: the last panel whose successor has started to cover it.
+      let stage = 0;
+      for (let i = 1; i < all.length - 1; i++) {
+        const sec = all[i + 1]?.closest('section');
+        if (sec && sec.getBoundingClientRect().top < hh) stage = i;
+      }
+      const s0 = all[stage], s1 = all[stage + 1];
       if (!s0 || !s1) return;
+      const a = shapes[stage]!, b = shapes[stage + 1]!;
+      const [ta, tb] = [tones[stage]!, tones[stage + 1]!];
       const r0 = s0.getBoundingClientRect();
       const r1 = s1.getBoundingClientRect();
       if (r1.bottom < 0) return;
@@ -91,7 +111,7 @@ export function ParticleMorph({ slots }: { slots: () => Array<HTMLElement | null
       const ox = left + (lerp(r0.width, r1.width, t) - size) / 2, oy = top + (lerp(r0.height, r1.height, t) - size) / 2;
       const ps = window.innerWidth < 760 ? 1.6 : 1.4;
       if (prefersReducedMotion()) {
-        for (const [pts, alpha, col] of [[a, 1 - raw, '#e0b56a'], [b, raw, '#e9e2d4']] as const) {
+        for (const [pts, alpha, col] of [[a, 1 - raw, `rgb(${ta.join(',')})`], [b, raw, `rgb(${tb.join(',')})`]] as const) {
           g.globalAlpha = alpha; g.fillStyle = col;
           for (const [x, y] of pts) g.fillRect(ox + x * size, oy + y * size, ps, ps);
         }
@@ -101,7 +121,7 @@ export function ParticleMorph({ slots }: { slots: () => Array<HTMLElement | null
       const swirl = Math.sin(Math.PI * t);
       const spin = t * Math.PI * 2.2 + time * 0.0002 * swirl;
       const cx = ox + size / 2, cy = oy + size / 2;
-      const cr = Math.round(224 + (233 - 224) * t), cg = Math.round(181 + (226 - 181) * t), cb = Math.round(106 + (212 - 106) * t);
+      const [cr, cg, cb] = ta.map((v, i) => Math.round(v + (tb[i]! - v) * t));
       g.fillStyle = `rgb(${cr},${cg},${cb})`;
       for (let i = 0; i < n; i++) {
         const [ax, ay] = a[i]!; const [bx, by] = b[i]!; const [n1, n2] = seeds[i]!;

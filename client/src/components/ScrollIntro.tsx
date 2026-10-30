@@ -3,9 +3,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { RulesDialog } from '@/components/RulesDialog';
 import { ParticleMorph } from '@/components/ParticleMorph';
 import type { GameType } from '../../../shared/types';
+import { ConquestMap } from '@/components/ConquestMap';
+import { openConquest } from '@/components/ConquestPanel';
 
 type Panel = {
-  id: GameType;
+  id: GameType | 'conquest';
   index: string;
   pre: string;
   accent: string;
@@ -32,9 +34,19 @@ const PANELS: Panel[] = [
       ['Own standings', 'Checkers results go to their own leaderboard tab.'],
     ],
   },
+  {
+    id: 'conquest', index: '03', pre: 'Chud', accent: 'Conquest',
+    blurb: 'Take the Chudlands. Six continents, 28 territories, 2–6 commanders. Roll the dice, hold continents for bonus armies, and leave no one standing.',
+    steps: [
+      ['Reinforce', 'Territories ÷ 3 (at least 3), plus continent bonuses and card sets that grow every trade.'],
+      ['Attack', 'Up to 3 dice against 2. Highest pairs compare, defender wins ties. Take land, move in.'],
+      ['Fortify', 'One move along your own connected land, then pass. Conquer everything to win.'],
+    ],
+  },
 ];
 
-function MiniBoard({ kind }: { kind: GameType }) {
+function MiniBoard({ kind }: { kind: GameType | 'conquest' }) {
+  if (kind === 'conquest') return <div className="si-board si-map"><ConquestMap compact /></div>;
   const cells = [];
   for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
     const dark = (r + c) % 2 === 1;
@@ -113,7 +125,7 @@ export function ScrollIntro({ onPick }: { onPick: (game: GameType) => void }) {
       {!reduced && <ParticleMorph slots={slots} />}
       <nav className={`si-dots${past ? ' si-dots-off' : ''}`} aria-label="Games">
         {PANELS.map((p, i) => (
-          <button key={p.id} type="button" className={active === i ? 'on' : ''} aria-current={active === i} aria-label={`Relay ${p.accent}`}
+          <button key={p.id} type="button" className={active === i ? 'on' : ''} aria-current={active === i} aria-label={`${p.pre} ${p.accent}`}
             onClick={() => go(i)} data-testid={`dot-${p.id}`}>
             <span>{p.accent}</span>
           </button>
@@ -128,8 +140,8 @@ export function ScrollIntro({ onPick }: { onPick: (game: GameType) => void }) {
               <h2 id={`si-h-${p.id}`} className="si-title">{p.pre} <em>{p.accent}</em></h2>
               <p className="si-blurb">{p.blurb}</p>
               <div className="si-actions">
-                <button type="button" className="si-cta" onClick={() => onPick(p.id)} data-testid={`play-${p.id}`}>Play {p.accent.toLowerCase()} →</button>
-                <RulesDialog />
+                <button type="button" className="si-cta" onClick={() => (p.id === 'conquest' ? openConquest({ create: true }) : onPick(p.id))} data-testid={`play-${p.id}`}>{p.id === 'conquest' ? 'Start a war →' : `Play ${p.accent.toLowerCase()} →`}</button>
+                {p.id === 'conquest' ? <button type="button" className="si-ghost" onClick={() => openConquest()} data-testid="conquest-join">Join or watch</button> : <RulesDialog />}
               </div>
             </div>
             <div className="si-visual" ref={(el) => { slotRefs.current[i] = el; }} data-testid={`visual-${p.id}`}><MiniBoard kind={p.id} /></div>
@@ -140,7 +152,7 @@ export function ScrollIntro({ onPick }: { onPick: (game: GameType) => void }) {
             </ol>
           </div>
           {i < PANELS.length - 1 && (
-            <button type="button" className="si-next" onClick={() => go(i + 1)} aria-label={`Scroll to Relay ${PANELS[i + 1]!.accent}`}>Scroll · {PANELS[i + 1]!.accent} ↓</button>
+            <button type="button" className="si-next" onClick={() => go(i + 1)} aria-label={`Scroll to ${PANELS[i + 1]!.pre} ${PANELS[i + 1]!.accent}`}>Scroll · {PANELS[i + 1]!.accent} ↓</button>
           )}
         </section>
       ))}
