@@ -8,6 +8,7 @@ import { VolumeControl } from '@/components/VolumeControl';
 import { SolitairePanel } from '@/components/SolitairePanel';
 import { BlackjackPanel } from '@/components/BlackjackPanel';
 import { RoulettePanel } from '@/components/RoulettePanel';
+import { PokerPanel } from '@/components/PokerPanel';
 import { ArenaPanel } from '@/components/ArenaPanel';
 import { socket } from '@/lib/net';
 import { TournamentScreen } from '@/components/TournamentScreen';
@@ -173,6 +174,7 @@ export function App() {
       <SolitairePanel />
       <BlackjackPanel />
       <RoulettePanel />
+      <PokerPanel />
       <ArenaPanel />
       {leaderboard ? (
         <LeaderboardScreen

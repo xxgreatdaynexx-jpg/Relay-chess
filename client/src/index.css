@@ -536,3 +536,22 @@ input {
 .win-drag:active { cursor: grabbing; }
 .win-reset { font-size: 11px; }
 @media (max-width: 520px) { .win-drag { cursor: default; } .sol-panel[style] { transform: none !important; } }
+
+/* Poker & slots dock (right edge) */
+.cx-wrap { position: fixed; right: 0; z-index: 44; display: flex; align-items: center; pointer-events: none; }
+.cx-wrap > * { pointer-events: auto; }
+.pk-wrap { top: 34%; }
+.sl-wrap { top: 52%; }
+.cx-tab { writing-mode: vertical-rl; border-radius: 10px 0 0 10px; padding: 12px 4px; font-size: 12px; }
+.cx-panel { width: 380px; max-height: calc(100dvh - 40px); border-radius: 14px 0 0 14px; overflow: auto; }
+.cx-open { top: 50%; transform: translateY(-50%); }
+.vp-hand { display: flex; gap: 6px; justify-content: center; min-height: 92px; align-items: flex-start; flex-wrap: wrap; }
+.vp-card { position: relative; width: 58px; background: none; border: 0; padding: 0; transition: transform .12s; }
+.vp-card .sol-card { position: relative; width: 58px; height: 82px; }
+.vp-card.held { transform: translateY(-8px); }
+.vp-card.held .sol-card { box-shadow: 0 0 0 3px #e8c26a; }
+.vp-hold { display: block; font-size: 10px; font-weight: 800; color: #e8c26a; height: 12px; }
+.vp-pays { width: 100%; font-size: 11px; margin-top: 6px; opacity: .85; }
+.vp-pays td:last-child { text-align: right; }
+.vp-pays tr.on { color: #e8c26a; font-weight: 700; }
+@media (max-width: 520px) { .cx-panel { width: calc(100vw - 30px); } .vp-card, .vp-card .sol-card { width: 50px; } .vp-card .sol-card { height: 72px; } }

@@ -4,6 +4,10 @@ import type { CasinoStanding } from '../shared/casino.js';
 import { BlackjackCasino, type BJAction, type BlackjackTable } from './blackjack.js';
 import { getBank } from './casino-store.js';
 import { signedIn } from './auth-sockets.js';
+import { VideoPoker } from './video-poker.js';
+
+let vp: VideoPoker | null = null;
+const poker = () => (vp ??= new VideoPoker(getBank()));
 import { RouletteWheel } from './roulette.js';
 
 type Ack = (res: { ok: boolean; error?: string; [k: string]: unknown }) => void;
@@ -39,6 +43,7 @@ function pushBoard(io: Server): void {
 
 export function startCasino(io: Server): void {
   const now = Date.now();
+  vp = new VideoPoker(getBank());
   casino = new BlackjackCasino(getBank());
   wheel = new RouletteWheel(getBank(), now);
   timer = setInterval(() => {
@@ -78,6 +83,16 @@ export function registerCasino(io: Server, socket: Socket): void {
     return name;
   };
 
+  socket.on('vp_state', wrap(() => ({ state: poker().view(signedIn(socket)) })));
+  socket.on('vp_deal', wrap((body) => {
+    const state = poker().deal(signedIn(socket), Number(body.bet));
+    return { state };
+  }));
+  socket.on('vp_draw', wrap((body) => {
+    const state = poker().draw(signedIn(socket), body.hold);
+    pushBoard(io);
+    return { state };
+  }));
   socket.on('casino_board', wrap(() => {
     void socket.join('casino-board');
     return { rows: standings() };
