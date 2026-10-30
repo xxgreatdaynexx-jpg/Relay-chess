@@ -232,13 +232,9 @@ export function HomeScreen({
         </div>
       </header>
       <main className="flex flex-1 flex-col justify-center py-8">
-        <p className="text-xs tracking-[0.2em] text-brass uppercase">2v2 · 1v1 · 2v1 · 3v3 · 3v2</p>
-        <h1 className="mt-2 max-w-xl font-serif text-5xl leading-[0.95] text-cream sm:text-6xl">
-          Share a side, or play it straight.
+        <h1 className="max-w-xl font-serif text-5xl leading-[0.95] text-cream sm:text-6xl">
+          Relay Chess
         </h1>
-        <p className="mt-4 max-w-xl text-base leading-relaxed text-cream-dim">
-          Partners relay one color (2v2 or 3v3), one player takes each side, or a bigger team alternates against a smaller one (2v1, 3v2).
-        </p>
         {saved && (
           <div className="mt-6">
             <Button variant="outline" onClick={returnToTable} disabled={busy !== null}>

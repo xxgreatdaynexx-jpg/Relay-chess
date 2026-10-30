@@ -22,9 +22,6 @@ export function LeaderboardScreen({ onBack, onMainMenu }: { onBack: () => void; 
           </Button>
         </div>
       </header>
-      <p className="mt-3 max-w-xl text-sm text-cream-dim">
-        Names match without worrying about capitals. Both teammates take the win, the loss, or the draw.
-      </p>
       <div className="mt-6">
         <LeaderboardTable />
       </div>
