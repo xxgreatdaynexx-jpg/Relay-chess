@@ -6,6 +6,20 @@ import { getBank } from './casino-store.js';
 import { signedIn } from './auth-sockets.js';
 import { VideoPoker } from './video-poker.js';
 import { spinSlots } from './slots.js';
+import { HoldemRoom, type HoldemTable } from './holdem.js';
+import type { HEAction } from '../shared/holdem.js';
+
+let holdem: HoldemRoom | null = null;
+const room = () => (holdem ??= new HoldemRoom(getBank()));
+const heWatchers = new Set<Socket>();
+function pushHoldem(t: HoldemTable | null, now = Date.now()): void {
+  for (const s of heWatchers) {
+    const n = nameOf(s);
+    const mine = n ? room().tableOf(n) : null;
+    const target = mine ?? room().tables[0] ?? null;
+    if (!t || target === t) s.emit('he_state', target ? target.view(n, now) : null);
+  }
+}
 
 let vp: VideoPoker | null = null;
 const poker = () => (vp ??= new VideoPoker(getBank()));
@@ -45,6 +59,7 @@ function pushBoard(io: Server): void {
 export function startCasino(io: Server): void {
   const now = Date.now();
   vp = new VideoPoker(getBank());
+  holdem = new HoldemRoom(getBank());
   casino = new BlackjackCasino(getBank());
   wheel = new RouletteWheel(getBank(), now);
   timer = setInterval(() => {
@@ -58,6 +73,9 @@ export function startCasino(io: Server): void {
       if (before === 'spinning') pushBoard(io);
     }
     if (settledBJ) pushBoard(io);
+    const heChanged = holdem!.tick(t);
+    for (const tb of heChanged) pushHoldem(tb, t);
+    if (heChanged.some((x) => x.phase === 'showdown')) pushBoard(io);
   }, 250);
   timer.unref?.();
 }
@@ -66,6 +84,7 @@ export function stopCasino(): void {
   if (timer) clearInterval(timer);
   timer = null;
   bjWatchers.clear();
+  heWatchers.clear();
   rouletteWatchers.clear();
 }
 
@@ -93,6 +112,37 @@ export function registerCasino(io: Server, socket: Socket): void {
     const state = poker().draw(signedIn(socket), body.hold);
     pushBoard(io);
     return { state };
+  }));
+  socket.on('he_watch', wrap((_b, now) => {
+    heWatchers.add(socket);
+    const n = nameOf(socket);
+    const t = (n ? room().tableOf(n) : null) ?? room().tables[0] ?? null;
+    return { state: t ? t.view(n, now) : null };
+  }));
+  socket.on('he_unwatch', wrap(() => { heWatchers.delete(socket); }));
+  socket.on('he_sit', wrap((body, now) => {
+    const name = signedIn(socket);
+    heWatchers.add(socket);
+    const t = room().sit(name, Number(body.buyIn), now);
+    pushHoldem(null, now);
+    return { state: t.view(name, now) };
+  }));
+  socket.on('he_leave', wrap((_b, now) => {
+    const name = signedIn(socket);
+    const t = room().leave(name, now);
+    pushHoldem(null, now);
+    pushBoard(io);
+    return { state: (t && t.seated > 0 ? t : room().tables[0])?.view(name, now) ?? null };
+  }));
+  socket.on('he_action', wrap((body, now) => {
+    const name = signedIn(socket);
+    const t = room().tableOf(name);
+    if (!t) throw new Error('Take a seat first.');
+    const action = String(body.action) as HEAction;
+    if (!['fold', 'check', 'call', 'raise', 'allin'].includes(action)) throw new Error('Unknown action.');
+    t.act(name, action, Number(body.amount), now);
+    pushHoldem(null, now);
+    if (t.phase === 'showdown') pushBoard(io);
   }));
   socket.on('slots_spin', wrap((body) => {
     const result = spinSlots(getBank(), signedIn(socket), Number(body.bet));
@@ -177,6 +227,13 @@ export function registerCasino(io: Server, socket: Socket): void {
 
   socket.on('disconnect', () => {
     rouletteWatchers.delete(socket);
+    if (heWatchers.delete(socket)) {
+      const n = nameOf(socket);
+      if (n && ![...heWatchers].some((x) => nameOf(x) === n) && room().tableOf(n)) {
+        room().leave(n, Date.now());
+        pushHoldem(null);
+      }
+    }
     if (!bjWatchers.delete(socket)) return;
     const name = nameOf(socket);
     if (!name) return;

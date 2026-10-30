@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CasinoLeaderboard, NamePrompt, ResetChips } from '@/components/CasinoCommon';
 import { CardFace } from '@/components/SolitairePanel';
 import { emitCasino, useSavedName } from '@/lib/casino';
+import { HoldemTableView } from '@/components/HoldemTable';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { playCardFlick, playSolitaireWin } from '@/lib/sounds';
 import { POKER_LABELS, POKER_PAYS, type PokerHand, type PokerView } from '../../../shared/casino-games';
@@ -15,19 +16,20 @@ export function PokerPanel() {
   const winRef = useRef<HTMLDivElement>(null);
   const win = useWindowDrag('poker', winRef);
   const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) === '1');
-  const [tab, setTab] = useState<'play' | 'board'>('play');
+  const [tab, setTab] = useState<'holdem' | 'play' | 'board'>(() => (localStorage.getItem('relay-poker-mode') === 'play' ? 'play' : 'holdem'));
   const [name] = useSavedName();
   const [v, setV] = useState<PokerView | null>(null);
   const [hold, setHold] = useState<boolean[]>([false, false, false, false, false]);
   const [bet, setBet] = useState(10);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  useEffect(() => { if (tab !== 'board') localStorage.setItem('relay-poker-mode', tab); }, [tab]);
   useEffect(() => { localStorage.setItem(OPEN_KEY, open ? '1' : '0'); }, [open]);
 
   useEffect(() => {
-    if (!open || !name) return;
+    if (!open || !name || tab !== 'play') return;
     void emitCasino<{ state: PokerView }>('vp_state').then((r) => r.ok && r.state && setV(r.state));
-  }, [open, name]);
+  }, [open, name, tab]);
 
   const act = async (event: 'vp_deal' | 'vp_draw', payload: unknown) => {
     setBusy(true);
@@ -46,14 +48,15 @@ export function PokerPanel() {
     <div className={`cx-wrap pk-wrap ${open ? 'cx-open' : ''}`} data-testid="poker">
       <button type="button" className="sol-tab cx-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="poker-tab">🃏 Poker</button>
       {open && (
-        <div className="sol-panel bj-panel cx-panel" role="dialog" aria-label="Video poker" ref={winRef} style={win.style} onPointerDownCapture={win.front}>
+        <div className="sol-panel bj-panel cx-panel" role="dialog" aria-label="Poker" ref={winRef} style={win.style} onPointerDownCapture={win.front}>
           <div {...win.bar}>
+            <button type="button" className={`casino-tabbtn ${tab === 'holdem' ? 'on' : ''}`} onClick={() => setTab('holdem')} data-testid="poker-mode-holdem">Hold'em</button>
             <button type="button" className={`casino-tabbtn ${tab === 'play' ? 'on' : ''}`} onClick={() => setTab('play')}>Jacks or Better</button>
-            <button type="button" className={`casino-tabbtn ${tab === 'board' ? 'on' : ''}`} onClick={() => setTab('board')}>Casino leaderboard</button>
+            <button type="button" className={`casino-tabbtn ${tab === 'board' ? 'on' : ''}`} onClick={() => setTab('board')}>Leaderboard</button>
             {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" onClick={win.reset}>⟲</button>}
             <button type="button" className="ml-auto" aria-label="Close poker" onClick={() => setOpen(false)}>✕</button>
           </div>
-          {tab === 'board' ? <CasinoLeaderboard you={name} /> : !name ? <NamePrompt /> : (
+          {tab === 'board' ? <CasinoLeaderboard you={name} /> : !name ? <NamePrompt /> : tab === 'holdem' ? <HoldemTableView name={name} /> : (
             <div className="bj-table">
               <div className="bj-status" data-testid="vp-status">
                 {dealt ? 'Tap cards to hold, then Draw.' : v?.result ? `${v.result.label}${v.result.net > 0 ? ` · won ${v.result.net}` : v.result.net === 0 ? ' · stake back' : ''}` : 'Pick a bet and Deal.'}

@@ -579,3 +579,23 @@ input {
 .fps-touch .fps-jump { width: 60px; background: #4b7ad1; }
 .fps-touch .fps-swap { width: 60px; background: #7a5aa8; }
 @media (max-width: 520px) { .fps-touch { flex-wrap: wrap; } .fps-touch .fps-jump, .fps-touch .fps-swap { width: 54px; } }
+
+/* Hold'em table */
+.he-table { min-width: 0; }
+.he-board { display: flex; gap: 4px; justify-content: center; min-height: 66px; align-items: center; margin: 4px 0; }
+.he-card { display: inline-block; width: 44px; }
+.he-card.sm { width: 30px; }
+.he-back { display: inline-block; width: 30px; height: 42px; border-radius: 4px; background: repeating-linear-gradient(45deg, #7a2d3a 0 4px, #94404e 4px 8px); border: 1px solid #fff6; }
+.he-seats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.he-seat { border: 1px solid #ffffff22; border-radius: 8px; padding: 4px 6px; min-height: 86px; font-size: 12px; text-align: center; background: #0003; }
+.he-seat.you { border-color: #e2b75a; }
+.he-seat.turn { box-shadow: 0 0 0 2px #7fd18b; }
+.he-seat.folded { opacity: 0.5; }
+.he-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.he-btn { display: inline-block; background: #fff; color: #222; border-radius: 50%; width: 15px; height: 15px; line-height: 15px; font-size: 10px; margin-right: 3px; }
+.he-cards { display: flex; gap: 2px; justify-content: center; min-height: 44px; margin: 2px 0; }
+.he-act { color: #e2b75a; font-size: 11px; }
+.he-empty { opacity: 0.5; padding-top: 30px; }
+.he-controls input[type=range] { flex: 1; min-width: 90px; }
+.he-buyin { width: 72px; margin-left: 4px; }
+.he-card .sol-card { position: relative; width: 100%; height: auto; aspect-ratio: 5 / 7; }
