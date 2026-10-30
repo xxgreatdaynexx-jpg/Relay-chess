@@ -19,7 +19,35 @@ export function loadSession(): Session | null {
 }
 
 export function saveSession(session: Session) {
+  clearSpectate();
   localStorage.setItem(KEY, JSON.stringify(session));
+}
+
+const SPECTATE_KEY = 'relay-chess-spectate';
+
+/** Table code this tab is watching read-only, if any. Per tab, so other tabs keep their seats. */
+export function loadSpectate(): string | null {
+  try {
+    return sessionStorage.getItem(SPECTATE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function saveSpectate(code: string) {
+  try {
+    sessionStorage.setItem(SPECTATE_KEY, code);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearSpectate() {
+  try {
+    sessionStorage.removeItem(SPECTATE_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function clearSession() {

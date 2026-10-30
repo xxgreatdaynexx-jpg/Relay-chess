@@ -28,7 +28,7 @@ function seated() {
   resetLeaderboard(path.join(mkdtempSync(path.join(tmpdir(), 'relay-blunder-')), 'leaderboard.json'));
   const room = new Room('BLND01', clockPreset('off')!);
   const tokens = {} as Record<Seat, string>;
-  const names: Record<Seat, string> = { white1: 'Ada', black1: 'Jules', white2: 'Sam', black2: 'Ren' };
+  const names = { white1: 'Ada', black1: 'Jules', white2: 'Sam', black2: 'Ren' };
   for (const seat of SEATS) {
     tokens[seat] = room.addMember(names[seat]);
     room.connect(tokens[seat], seat);

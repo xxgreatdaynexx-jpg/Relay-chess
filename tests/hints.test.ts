@@ -28,7 +28,7 @@ function tempBoard() {
   resetLeaderboard(path.join(mkdtempSync(path.join(tmpdir(), 'relay-hint-')), 'leaderboard.json'));
 }
 
-function seated(names: Record<Seat, string>) {
+function seated(names: Record<"white1" | "black1" | "white2" | "black2", string>) {
   tempBoard();
   const room = new Room('HINT01', clockPreset('off')!);
   const tokens = {} as Record<Seat, string>;

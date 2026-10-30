@@ -54,7 +54,7 @@ describe('best-move streak', () => {
   it('announces only that player after six of their own best moves', async () => {
     resetLeaderboard(path.join(mkdtempSync(path.join(tmpdir(), 'relay-streak-')), 'leaderboard.json'));
     const room = new Room('STREAK', clockPreset('off')!);
-    const names: Record<Seat, string> = { white1: 'Ada', black1: 'Jules', white2: 'Sam', black2: 'Ren' };
+    const names = { white1: 'Ada', black1: 'Jules', white2: 'Sam', black2: 'Ren' };
     const tokens = {} as Record<Seat, string>;
     for (const seat of SEATS) {
       tokens[seat] = room.addMember(names[seat]);

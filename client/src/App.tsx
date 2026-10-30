@@ -7,13 +7,16 @@ import { SolitairePanel } from '@/components/SolitairePanel';
 import { BlackjackPanel } from '@/components/BlackjackPanel';
 import { ArenaPanel } from '@/components/ArenaPanel';
 import { socket } from '@/lib/net';
-import { clearSession, codeFromLocation, loadSession } from '@/lib/session';
+import { clearSession, clearSpectate, codeFromLocation, loadSession, loadSpectate } from '@/lib/session';
 import type { PublicState } from '../../shared/types';
 
 export function App() {
   const saved = loadSession();
   const initialCode = codeFromLocation();
-  const shouldRejoin = Boolean(saved && initialCode && initialCode === saved.code);
+  const watchingCode = loadSpectate();
+  const shouldRejoin = Boolean(
+    initialCode && ((saved && initialCode === saved.code) || watchingCode === initialCode),
+  );
   const [state, setState] = useState<PublicState | null>(null);
   const [booting, setBooting] = useState(shouldRejoin);
   const [homeError, setHomeError] = useState('');
@@ -36,8 +39,12 @@ export function App() {
 
   useEffect(() => {
     function onState(next: PublicState) {
-      const session = loadSession();
-      if (!session || session.code !== next.code) return;
+      if (next.spectating) {
+        if (loadSpectate() !== next.code) return;
+      } else {
+        const session = loadSession();
+        if (!session || session.code !== next.code) return;
+      }
       if (codeFromLocation() && codeFromLocation() !== next.code) return;
       setState(next);
       setBooting(false);
@@ -45,6 +52,20 @@ export function App() {
     function onConnect() {
       setOnline(true);
       if (inflight.current) return;
+      const spectating = loadSpectate();
+      const urlNow = codeFromLocation();
+      if (spectating && (!urlNow || urlNow === spectating)) {
+        socket.timeout(8000).emit('spectate', { code: spectating }, (error: Error | null, ack?: { ok: boolean; error?: string }) => {
+          if (error || !ack?.ok) {
+            clearSpectate();
+            setState(null);
+            setBooting(false);
+            setHomeError(ack?.error || 'That table is no longer available.');
+            setHomeKey((value) => value + 1);
+          }
+        });
+        return;
+      }
       const session = loadSession();
       const urlCode = codeFromLocation();
       if (!session || (urlCode && urlCode !== session.code)) return;
@@ -63,7 +84,8 @@ export function App() {
     }
     function onGameError(payload: { message?: string; fatal?: boolean }) {
       if (payload.fatal) {
-        clearSession();
+        if (loadSpectate()) clearSpectate();
+        else clearSession();
         setState(null);
         setBooting(false);
         setHomeError(payload.message || 'This table expired.');
@@ -91,7 +113,7 @@ export function App() {
       setPath(window.location.pathname);
       if (window.location.pathname === '/leaderboard') return;
       const session = loadSession();
-      if (session && state && codeFromLocation() !== session.code && window.location.pathname === '/') {
+      if (session && state && !state.spectating && codeFromLocation() !== session.code && window.location.pathname === '/') {
         window.history.pushState({}, '', `/r/${session.code}`);
       }
     }
@@ -134,7 +156,8 @@ export function App() {
             socket.emit('leave_table', {}, () => {
               inflight.current = false;
             });
-            clearSession();
+            if (state.spectating) clearSpectate();
+            else clearSession();
             setState(null);
             setHomeKey((value) => value + 1);
             window.history.pushState({}, '', '/');

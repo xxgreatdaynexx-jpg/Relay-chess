@@ -417,7 +417,20 @@ export function RoomScreen({
           </div>
         </button>
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-1">
+        {state.spectating && (
+          <span
+            data-testid="spectating-badge"
+            className="rounded-full border border-sky-300/60 bg-sky-300/15 px-2.5 py-1 text-[11px] font-semibold tracking-[0.14em] text-sky-100 uppercase"
+          >
+            👁 Spectating
+          </span>
+        )}
+        {state.watching > 0 && (
+          <span data-testid="watching-count" className="px-1 text-xs text-cream/60">
+            {state.watching} watching
+          </span>
+        )}
         {state.status !== 'lobby' && (
           <Button variant="ghost" size="sm" onClick={() => setFlipped((value) => !value)} data-testid="flip-board">
             Flip
@@ -428,6 +441,10 @@ export function RoomScreen({
           size="sm"
           data-testid="main-menu"
           onClick={() => {
+            if (state.spectating) {
+              onLeave();
+              return;
+            }
             const msg =
               state.status === 'playing'
                 ? 'Leave the game and return to the main menu?\n\nThe game keeps going without you (your clock keeps running) and this tab drops its seat, so you can\'t rejoin from here.'
@@ -570,7 +587,10 @@ export function RoomScreen({
               {state.rematchVotes.length < active.length ? 'still to agree.' : ''}
             </p>
           )}
-          {!you && (
+          {!you && state.spectating && (
+            <p className="mt-2 text-sm text-cream-dim">You’re spectating. The board is read-only; Main Menu takes you back.</p>
+          )}
+          {!you && !state.spectating && (
             <p className="mt-2 text-sm text-cream-dim">
               You’re watching{session ? ` as ${session.name}` : ''}. Every seat is taken.
             </p>
@@ -695,8 +715,14 @@ function Lobby({
           Leave
         </Button>
       </div>
+      {state.spectating && (
+        <p className="mt-3 rounded-lg bg-sky-300/10 px-3 py-2 text-sm text-sky-100">
+          You’re spectating this table. To play, go back to the main menu and hit Join.
+        </p>
+      )}
       <div className="mt-4 grid grid-cols-2 gap-2">
-        {active.map((seat) => {
+        {lobbyOrder(active).map((seat, index) => {
+          if (!seat) return <div key={`gap-${index}`} />;
           const player = state.seats[seat];
           const mine = state.yourSeat === seat;
           return (
@@ -721,6 +747,8 @@ function Lobby({
                     </button>
                   )}
                 </>
+              ) : state.spectating ? (
+                <div className="mt-2 font-serif text-xl text-cream/60">Empty</div>
               ) : (
                 <button type="button" className="mt-2 text-left" onClick={() => onSit(seat)} disabled={busy || state.yourSeat === seat}>
                   <div className="font-serif text-xl text-cream/80">Empty</div>
@@ -733,6 +761,15 @@ function Lobby({
       </div>
     </div>
   );
+}
+
+/** White seats in the left column, Black in the right, padded so rows line up. */
+function lobbyOrder(active: Seat[]): (Seat | null)[] {
+  const white = active.filter((seat) => seatSide(seat) === 'white');
+  const black = active.filter((seat) => seatSide(seat) === 'black');
+  const out: (Seat | null)[] = [];
+  for (let i = 0; i < Math.max(white.length, black.length); i += 1) out.push(white[i] ?? null, black[i] ?? null);
+  return out;
 }
 
 function TeamCard({

@@ -7,16 +7,42 @@ import {
   createRoom,
   getRoom,
   listRooms,
+  liveRooms,
   openRooms,
   presetOrThrow,
   pruneRooms,
   setupOrThrow,
   type Room,
 } from './rooms.js';
-import type { Ack, Promotion } from '../shared/types.js';
+import type { Ack, Promotion, TableSummary } from '../shared/types.js';
 
 const CLOCK_PUSH_MS = 5000;
 let timer: ReturnType<typeof setInterval> | null = null;
+const LOBBY = 'lobby:tables';
+const TABLES_PUSH_MS = 2000;
+let lastTablesPush = 0;
+let tablesQueued: ReturnType<typeof setTimeout> | null = null;
+
+export function tableList(now = Date.now()): TableSummary[] {
+  return liveRooms().map((room) => room.summary(now));
+}
+
+/** Push the live table list to every lobby watcher. */
+export function pushTables(io: Server, now = Date.now()): void {
+  lastTablesPush = now;
+  const watchers = io.sockets.adapter.rooms.get(LOBBY);
+  if (!watchers || watchers.size === 0) return;
+  io.to(LOBBY).emit('tables', tableList(now));
+}
+
+function queueTables(io: Server): void {
+  if (tablesQueued) return;
+  tablesQueued = setTimeout(() => {
+    tablesQueued = null;
+    pushTables(io);
+  }, 250);
+  (tablesQueued as unknown as { unref?: () => void }).unref?.();
+}
 
 export function startMaintenance(io: Server): void {
   if (timer) return;
@@ -34,7 +60,12 @@ export function startMaintenance(io: Server): void {
         broadcast(io, room.code, now);
       }
     }
-    for (const code of pruneRooms(now)) expire(io, code);
+    let pruned = false;
+    for (const code of pruneRooms(now)) {
+      expire(io, code);
+      pruned = true;
+    }
+    if (pruned || now - lastTablesPush > TABLES_PUSH_MS) pushTables(io, now);
   }, 200);
   (timer as unknown as { unref?: () => void }).unref?.();
 }
@@ -93,7 +124,35 @@ export function registerSockets(io: Server): void {
     });
 
     socket.on('open_tables', (_payload: unknown, ack?: (res: Ack) => void) => {
-      ack?.({ ok: true, openTables: openRooms().length });
+      ack?.({ ok: true, openTables: openRooms().length, tables: tableList() });
+    });
+
+    socket.on('watch_tables', (_payload: unknown, ack?: (res: Ack) => void) => {
+      socket.join(LOBBY);
+      ack?.({ ok: true, openTables: openRooms().length, tables: tableList() });
+    });
+
+    socket.on('unwatch_tables', (_payload: unknown, ack?: (res: Ack) => void) => {
+      socket.leave(LOBBY);
+      ack?.({ ok: true });
+    });
+
+    socket.on('spectate', (payload: unknown, ack?: (res: Ack) => void) => {
+      try {
+        const body = asRecord(payload);
+        const code = cleanCode(body.code);
+        const room = getRoom(code);
+        if (!room) throw new GameError('No table with that code. It may have expired.', true);
+        release(io, socket);
+        room.addSpectator(socket.id);
+        socket.data.code = room.code;
+        socket.data.spectating = true;
+        socket.join(room.code);
+        ack?.({ ok: true, code: room.code });
+        broadcast(io, room.code);
+      } catch (error) {
+        fail(ack, error);
+      }
     });
 
     socket.on('quick_join', (payload: unknown, ack?: (res: Ack) => void) => {
@@ -149,6 +208,11 @@ export function registerSockets(io: Server): void {
         const code = socket.data.code as string | undefined;
         const token = socket.data.token as string | undefined;
         const room = code ? getRoom(code) : undefined;
+        if (room && socket.data.spectating) {
+          release(io, socket);
+          ack?.({ ok: true });
+          return;
+        }
         if (!room || !token) throw new GameError('You are not at a table.', true);
         room.leave(token);
         socket.leave(code!);
@@ -166,6 +230,7 @@ export function registerSockets(io: Server): void {
       const room = code ? getRoom(code) : undefined;
       try {
         if (!room) throw new GameError('You are not at a table.', true);
+        if (socket.data.spectating) throw new GameError('Spectators can only watch.');
         const token = socket.data.token as string | undefined;
         if (!token) throw new GameError('You are not at a table.', true);
         room.move(token, cleanMove(payload));
@@ -207,6 +272,7 @@ export function registerSockets(io: Server): void {
       const room = code ? getRoom(code) : undefined;
       try {
         if (!room) throw new GameError('You are not at a table.', true);
+        if (socket.data.spectating) throw new GameError('Spectators can only watch.');
         const token = socket.data.token as string | undefined;
         if (!token) throw new GameError('You are not at a table.', true);
         const declined = room.payBailout(token);
@@ -244,6 +310,7 @@ function withRoom(
   const room = code ? getRoom(code) : undefined;
   try {
     if (!room) throw new GameError('You are not at a table.', true);
+    if (socket.data.spectating) throw new GameError('Spectators can only watch.');
     const token = socket.data.token as string | undefined;
     if (!token) throw new GameError('You are not at a table.', true);
     fn(room, token);
@@ -256,6 +323,12 @@ function withRoom(
 }
 
 function adopt(socket: Socket, room: Room, token: string): void {
+  if (socket.data.spectating) {
+    const prior = getRoom(socket.data.code as string);
+    prior?.removeSpectator(socket.id);
+    if (socket.data.code) socket.leave(socket.data.code as string);
+    delete socket.data.spectating;
+  }
   socket.data.code = room.code;
   socket.data.token = token;
   socket.join(room.code);
@@ -267,15 +340,18 @@ function release(io: Server, socket: Socket): void {
   if (!code) return;
   const room = getRoom(code);
   room?.disconnect(socket.id);
+  room?.removeSpectator(socket.id);
   socket.leave(code);
   delete socket.data.code;
   delete socket.data.token;
+  delete socket.data.spectating;
   if (room && getRoom(code)) broadcast(io, code);
 }
 
 export function broadcast(io: Server, code: string, now = Date.now()): void {
   const room = getRoom(code);
   if (!room) return;
+  queueTables(io);
   const members = io.sockets.adapter.rooms.get(code);
   if (!members) return;
   for (const id of members) {
@@ -295,6 +371,7 @@ function expire(io: Server, code: string): void {
     sock.leave(code);
     delete sock.data.code;
     delete sock.data.token;
+    delete sock.data.spectating;
   }
 }
 

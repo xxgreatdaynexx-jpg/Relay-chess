@@ -23,7 +23,7 @@ function table(clock: string, code = 'TABLE1') {
 }
 
 function fill(room: Room, now = 1_000) {
-  const names: Record<Seat, string> = {
+  const names = {
     white1: 'Ada',
     black1: 'Jules',
     white2: 'Sam',

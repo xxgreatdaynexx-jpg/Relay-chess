@@ -10,6 +10,7 @@ import { recordStreak } from '../shared/streak.js';
 import {
   clockPreset,
   describeResult,
+  modeLabel,
   isSeat,
   seatsFor,
   seatSide,
@@ -29,6 +30,7 @@ import {
   type SeatView,
   type Side,
   type TableSetup,
+  type TableSummary,
 } from '../shared/types.js';
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -63,6 +65,7 @@ export class Room {
 
   private members = new Map<string, Member>();
   private sockets = new Map<string, string>();
+  private readonly spectators = new Set<string>();
   private scoredResult: GameResult | null = null;
   private openingFlash: OpeningCall | null = null;
   private openingNameSeen: string | null = null;
@@ -103,7 +106,53 @@ export class Room {
     this.touch();
   }
 
+  /** Watch read-only. Spectators hold no token and can never act. */
+  addSpectator(socketId: string): void {
+    if (this.sockets.has(socketId)) throw new GameError('You are already seated at this table.');
+    this.spectators.add(socketId);
+  }
+
+  removeSpectator(socketId: string): void {
+    this.spectators.delete(socketId);
+  }
+
+  isSpectator(socketId: string): boolean {
+    return this.spectators.has(socketId);
+  }
+
+  watching(): number {
+    return this.spectators.size;
+  }
+
+  summary(now = Date.now()): TableSummary {
+    this.game.tick(now);
+    const seats = seatsFor(this.setup);
+    const players: { seat: Seat; name: string }[] = [];
+    for (const seat of seats) {
+      const name = this.nameFor(seat);
+      if (name) players.push({ seat, name });
+    }
+    const clock = this.game.clockView(now);
+    return {
+      code: this.code,
+      mode: this.setup.mode,
+      pairSide: this.setup.pairSide,
+      label: modeLabel(this.setup),
+      status: this.game.status,
+      filled: players.length,
+      total: seats.length,
+      openSeats: this.openSeats().length,
+      players,
+      clock: clock
+        ? { whiteMs: clock.whiteMs, blackMs: clock.blackMs, active: clock.active, running: clock.running }
+        : null,
+      clockPreset: this.presetId,
+      watching: this.spectators.size,
+    };
+  }
+
   disconnect(socketId: string, now = Date.now()): void {
+    this.spectators.delete(socketId);
     const token = this.sockets.get(socketId);
     if (!token) return;
     this.sockets.delete(socketId);
@@ -232,7 +281,8 @@ export class Room {
     this.game.expireBailout(now);
     this.clearAnnouncementsIfReset();
     this.scoreIfNeeded();
-    const you = this.memberBySocket(socketId);
+    const spectating = this.spectators.has(socketId);
+    const you = spectating ? undefined : this.memberBySocket(socketId);
     const raw = this.game.result;
     const described = raw ? describeResult(raw, (seat) => this.nameFor(seat)) : null;
     return {
@@ -246,13 +296,15 @@ export class Room {
       ply: this.game.ply(),
       seatToMove: this.game.seatToMove(),
       inCheck: this.game.inCheck(),
-      legalMoves: this.game.legalMoves(),
+      legalMoves: spectating ? [] : this.game.legalMoves(),
       moves: this.game.history(),
       result: raw && described ? { ...raw, ...described } : null,
       drawOffer: this.game.drawOffer ? { ...this.game.drawOffer } : null,
       rematchVotes: [...this.game.rematchVotes],
       clock: this.game.clockView(now),
       yourSeat: you?.seat ?? null,
+      spectating,
+      watching: this.spectators.size,
       hints: this.hintsFor(you?.seat ?? null),
       serverNow: now,
       opening: this.openingFlash,
@@ -271,8 +323,10 @@ export class Room {
     const seats: Record<Seat, SeatView | null> = {
       white1: null,
       white2: null,
+      white3: null,
       black1: null,
       black2: null,
+      black3: null,
     };
     for (const member of this.members.values()) {
       if (!member.seat) continue;
@@ -384,7 +438,7 @@ export class Room {
   }
 
   private sideHasEngine(side: Side): boolean {
-    for (const seat of (['white1', 'white2', 'black1', 'black2'] as const)) {
+    for (const seat of seatsFor(this.setup)) {
       if (seatSide(seat) !== side) continue;
       const name = this.nameFor(seat);
       if (name && normalizeName(name) === 'chessgawd') return true;
@@ -431,6 +485,14 @@ export function openRooms(): Room[] {
   return listRooms()
     .filter((room) => room.anyoneConnected() && room.openSeats().length > 0)
     .sort((a, b) => a.openSeats().length - b.openSeats().length || a.createdAt - b.createdAt);
+}
+
+/** Every table worth showing in the lobby list: someone is there, waiting tables first. */
+export function liveRooms(): Room[] {
+  const rank = (room: Room) => (room.game.status === 'lobby' ? 0 : room.game.status === 'playing' ? 1 : 2);
+  return listRooms()
+    .filter((room) => room.anyoneConnected())
+    .sort((a, b) => rank(a) - rank(b) || a.createdAt - b.createdAt);
 }
 
 export function resetRooms(): void {

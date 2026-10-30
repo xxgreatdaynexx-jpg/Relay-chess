@@ -77,7 +77,7 @@ describe('finished relay games', () => {
   it('records checkmate, a draw, and a resignation once each', () => {
     resetLeaderboard(tempFile());
     const room = new Room('MATE01', clockPreset('off')!);
-    const names: Record<Seat, string> = { white1: 'Ada', black1: 'Jules', white2: 'Sam', black2: 'Ren' };
+    const names = { white1: 'Ada', black1: 'Jules', white2: 'Sam', black2: 'Ren' };
     const tokens = {} as Record<Seat, string>;
     for (const seat of SEATS) {
       tokens[seat] = room.addMember(names[seat]);
