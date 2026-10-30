@@ -11,8 +11,11 @@ describe('home page keeps scrolling', () => {
     expect(css).not.toMatch(/(^|[\s,}])(html|body)\s*\{[^}]*overflow(-y)?\s*:\s*hidden/);
     expect(intro + home).not.toMatch(/preventDefault\(\)[^\n]*wheel|addEventListener\('wheel'/);
   });
-  it('play area fills a screen and the page ends on a footer', () => {
-    expect(css).toMatch(/\.home-play\s*\{[^}]*min-height:\s*calc\(100dvh - var\(--topbar\)/);
+  it('home ends after the showcase; play view opens on Play and has a way back', () => {
+    expect(home).toMatch(/!playing \? <ScrollIntro onPick=\{openPlay\}/);
+    expect(home).toMatch(/searchParams\.set\('play', g\)/);
+    expect(home).toMatch(/data-testid="back-home"/);
+    expect(home).toMatch(/useState\(\(\) => playParam !== null \|\| !!initialCode\)/);
     expect(home).toMatch(/data-testid="home-footer"/);
   });
   it('intro dots hide once the intro is scrolled past', () => {

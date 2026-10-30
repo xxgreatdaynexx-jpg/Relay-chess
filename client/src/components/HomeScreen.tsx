@@ -1,4 +1,3 @@
-import { prefersReducedMotion } from '@/lib/motion';
 import { ScrollIntro } from '@/components/ScrollIntro';
 import { notifyNameChanged } from '@/lib/casino';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
@@ -46,7 +45,27 @@ export function HomeScreen({
   const [code, setCode] = useState(initialCode);
   const [clockId, setClockId] = useState<ClockId>('10+0');
   const [mode, setMode] = useState<GameMode>('2v2');
-  const [gameType, setGameType] = useState<GameType>('chess');
+  const playParam = new URLSearchParams(location.search).get('play');
+  const [gameType, setGameType] = useState<GameType>(playParam === 'checkers' ? 'checkers' : 'chess');
+  const [playing, setPlaying] = useState(() => playParam !== null || !!initialCode);
+  useEffect(() => {
+    const onPop = () => setPlaying(new URLSearchParams(location.search).has('play'));
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+  function openPlay(g: GameType) {
+    setGameType(g);
+    const u = new URL(location.href); u.searchParams.set('play', g); u.hash = '';
+    history.pushState(null, '', u);
+    setPlaying(true);
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }
+  function backHome() {
+    const u = new URL(location.href); u.searchParams.delete('play'); u.searchParams.delete('table');
+    history.pushState(null, '', u);
+    setPlaying(false);
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }
   const [pairSide, setPairSide] = useState<Side>('white');
   const [busy, setBusy] = useState<'create' | 'join' | 'return' | 'quick' | 'watch' | null>(null);
   const [localError, setLocalError] = useState('');
@@ -255,9 +274,10 @@ export function HomeScreen({
         </div>
       </header>
       <main className="flex flex-1 flex-col py-4">
-        <ScrollIntro onPick={(g) => { setGameType(g); history.replaceState(null, '', `#${g}`); document.getElementById('play')?.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' }); }} />
+        {!playing ? <ScrollIntro onPick={openPlay} /> : (
         <section className="home-play" data-testid="home-play">
-        <h1 id="play" className="pt-6 max-w-xl scroll-mt-10 font-serif text-5xl leading-[0.95] text-cream sm:text-6xl">
+        <div className="-ml-3"><Button variant="ghost" size="sm" onClick={backHome} data-testid="back-home">← Back to home</Button></div>
+        <h1 id="play" className="pt-4 max-w-xl scroll-mt-10 font-serif text-5xl leading-[0.95] text-cream sm:text-6xl">
           Play {gameType === 'checkers' ? 'Relay Checkers' : 'Relay Chess'}
         </h1>
         <div className="mt-3 -ml-3" data-testid="how-it-works-home">
@@ -486,10 +506,11 @@ export function HomeScreen({
         <footer className="home-footer" data-testid="home-footer">
           <button type="button" className="underline-offset-4 hover:underline" onClick={onLeaderboard}>Leaderboard</button>
           <RulesDialog />
-          <button type="button" className="underline-offset-4 hover:underline" onClick={() => window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })} data-testid="back-to-top">Back to top ↑</button>
+          <button type="button" className="underline-offset-4 hover:underline" onClick={backHome} data-testid="back-to-top">← Back to home</button>
           <span className="ml-auto text-xs text-cream/45">Chud Hub · Relay chess &amp; checkers</span>
         </footer>
         </section>
+        )}
       </main>
     </div>
   );
