@@ -157,7 +157,7 @@ export function RoomScreen({
     const key = yourTurn ? 'you' : (state.seatToMove ?? state.status);
     if (prevTurn.current && prevTurn.current !== 'you' && key === 'you') navigator.vibrate?.(40);
     prevTurn.current = key;
-    document.title = yourTurn ? 'Your move · Relay Chess' : `Table ${prettyCode(state.code)} · Relay Chess`;
+    document.title = yourTurn ? 'Your move · Chud Hub' : `Table ${prettyCode(state.code)} · Chud Hub`;
   }, [yourTurn, state.seatToMove, state.status, state.code]);
 
   const wasYourTurn = useRef<boolean | null>(null);
@@ -434,8 +434,8 @@ export function RoomScreen({
     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
       <div className="flex min-w-0 items-center gap-3">
         <div className="leading-none">
-          <div className="font-serif text-2xl italic">Relay</div>
-          <div className="text-[10px] tracking-[0.18em] text-cream/50 uppercase">Chess</div>
+          <div className="font-serif text-2xl italic">Chud</div>
+          <div className="text-[10px] tracking-[0.18em] text-cream/50 uppercase">Hub</div>
         </div>
         <button
           type="button"

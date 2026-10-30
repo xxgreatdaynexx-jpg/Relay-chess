@@ -8,7 +8,7 @@ export function LeaderboardScreen({ onBack, onMainMenu }: { onBack: () => void; 
     <div className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col px-4 py-5 sm:px-8">
       <header className="flex items-center justify-between gap-3">
         <div>
-          <div className="font-serif text-3xl italic">Relay</div>
+          <div className="font-serif text-3xl italic">Chud Hub</div>
           <h1 className="mt-2 font-serif text-4xl">Leaderboard</h1>
         </div>
         <div className="flex gap-1">

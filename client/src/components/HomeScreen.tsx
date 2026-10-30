@@ -221,8 +221,8 @@ export function HomeScreen({
     <div className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col px-4 py-5 sm:px-8">
       <header className="flex items-center justify-between gap-3">
         <div className="flex items-baseline gap-2">
-          <span className="font-serif text-3xl italic">Relay</span>
-          <span className="text-xs tracking-[0.22em] text-cream/60 uppercase">Chess</span>
+          <span className="font-serif text-3xl italic">Chud</span>
+          <span className="text-xs tracking-[0.22em] text-cream/60 uppercase">Hub</span>
         </div>
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="sm" onClick={onLeaderboard} data-testid="open-leaderboard">

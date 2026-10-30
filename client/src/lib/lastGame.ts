@@ -63,7 +63,7 @@ export function gameToPgn(game: FinishedGame): string {
   const date = new Date(game.endedAt);
   const pad = (n: number) => String(n).padStart(2, '0');
   const headers: [string, string][] = [
-    ['Event', `Relay Chess ${game.mode}`],
+    ['Event', `Chud Hub Relay Chess ${game.mode}`],
     ['Site', 'https://relay-chess-u94f.onrender.com'],
     ['Date', `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(date.getDate())}`],
     ['White', game.white.join(' & ')],
