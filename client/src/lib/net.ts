@@ -2,9 +2,18 @@ import { io, type Socket } from 'socket.io-client';
 import { clearAuth, loadAuth, saveAuth } from './auth';
 import type { Ack } from '../../../shared/types';
 
+/** A random per-browser id. Used only to stop one device spectating a Hold'em table it is seated at. */
+function deviceId(): string {
+  try {
+    let d = localStorage.getItem('relay-device');
+    if (!d) { d = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join(''); localStorage.setItem('relay-device', d); }
+    return d;
+  } catch { return ''; }
+}
+
 export const socket: Socket = io({
   autoConnect: false,
-  auth: (cb) => cb({ session: loadAuth()?.token }),
+  auth: (cb) => cb({ session: loadAuth()?.token, device: deviceId() }),
   transports: ['websocket', 'polling'],
 });
 

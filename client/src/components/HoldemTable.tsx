@@ -3,7 +3,9 @@ import { CardFace } from '@/components/SolitairePanel';
 import { emitCasino, useCountdown } from '@/lib/casino';
 import { socket } from '@/lib/net';
 import { playCardFlick, playSolitaireWin } from '@/lib/sounds';
-import { HE_BIG, HE_MAX_BUYIN, HE_MIN_BUYIN, HE_SMALL, type HEView } from '../../../shared/holdem';
+import { HE_BIG, HE_MAX_BUYIN, HE_MIN_BUYIN, HE_SMALL, type HESpectateView, type HEView } from '../../../shared/holdem';
+
+interface TableInfo { id: string; seated: number; phase: string; watchers: number }
 
 const PHASE: Record<HEView['phase'], string> = { waiting: 'Waiting for players', preflop: 'Pre-flop', flop: 'Flop', turn: 'Turn', river: 'River', showdown: 'Showdown' };
 
@@ -13,12 +15,33 @@ export function HoldemTableView({ name }: { name: string }) {
   const [buyIn, setBuyIn] = useState(500);
   const [raise, setRaise] = useState(0);
   const [err, setErr] = useState('');
+  const [spec, setSpec] = useState<{ table: string; delayMs: number; view: HESpectateView | null } | null>(null);
+  const [tables, setTables] = useState<TableInfo[]>([]);
   useEffect(() => {
     const on = (s: HEView | null) => setV(s);
+    const onSpec = (s: HESpectateView | null) => setSpec((p) => (p ? { ...p, view: s } : p));
+    const onEnd = (e: { reason: string }) => { setSpec(null); setErr(e.reason); };
+    socket.on('he_spectate', onSpec);
+    socket.on('he_spectate_end', onEnd);
     socket.on('he_state', on);
     void emitCasino<{ state: HEView | null }>('he_watch').then((r) => r.ok && setV(r.state ?? null));
-    return () => { socket.off('he_state', on); void emitCasino('he_unwatch'); };
+    return () => { socket.off('he_state', on); socket.off('he_spectate', onSpec); socket.off('he_spectate_end', onEnd); void emitCasino('he_unspectate'); void emitCasino('he_unwatch'); };
   }, [name]);
+  const seatedNow = v?.you != null;
+  useEffect(() => {
+    if (seatedNow) return;
+    const load = () => void emitCasino<{ tables: TableInfo[] }>('he_tables').then((r) => r.ok && setTables(r.tables ?? []));
+    load();
+    const id = setInterval(load, 5000);
+    return () => clearInterval(id);
+  }, [seatedNow]);
+  const spectate = async (table: string) => {
+    setErr('');
+    const r = await emitCasino<{ state: HESpectateView | null; delayMs: number }>('he_spectate', { table });
+    if (!r.ok) return setErr(r.error ?? 'Try again.');
+    setSpec({ table, delayMs: r.delayMs ?? 30000, view: r.state ?? null });
+  };
+  const stopSpec = () => { setSpec(null); void emitCasino('he_unspectate'); };
   const hand = v?.handNo ?? 0;
   useEffect(() => { if (hand) playCardFlick(); }, [hand]);
   const myTurn = v?.options != null;
@@ -33,6 +56,7 @@ export function HoldemTableView({ name }: { name: string }) {
     if (!r.ok) return setErr(r.error ?? 'Try again.');
     if ('state' in r) setV(r.state ?? null);
   };
+  if (spec) return <SpectateView spec={spec} onStop={stopSpec} />;
   const o = v?.options;
   const seated = v?.you != null;
   return (
@@ -87,7 +111,55 @@ export function HoldemTableView({ name }: { name: string }) {
             </>
           )}
       </div>
+      {v?.watchers ? <div className="bj-label he-watchers" data-testid="he-watchers">👁 {v.watchers} watching (delayed feed)</div> : null}
+      {!seated && tables.length > 0 && (
+        <div className="he-spec-list" data-testid="he-tables">
+          <span className="bj-label">Spectate (see every hand):</span>
+          {tables.map((t) => (
+            <button type="button" key={t.id} onClick={() => void spectate(t.id)} data-testid={`he-spectate-${t.id}`}>
+              Watch {t.id} · {t.seated} seated · 👁 {t.watchers}
+            </button>
+          ))}
+        </div>
+      )}
       {err && <div className="account-error">{err}</div>}
+    </div>
+  );
+}
+
+function SpectateView({ spec, onStop }: { spec: { table: string; delayMs: number; view: HESpectateView | null }; onStop: () => void }) {
+  const v = spec.view;
+  const secs = Math.round(spec.delayMs / 1000);
+  return (
+    <div className="bj-table he-table he-spectating" data-testid="he-spectate-view">
+      <div className="bj-status" data-testid="he-status">
+        <span className="he-live">SPECTATING {spec.table}</span> · {secs}s delay · 👁 <span data-testid="he-watchers">{v?.watchers ?? 1}</span> watching
+        {v && <> · {v.phase === 'showdown' ? v.winners.map((w) => `${w.name} wins ${w.amount} (${w.hand})`).join(' · ') : `${PHASE[v.phase]}${v.pot ? ` · pot ${v.pot}` : ''}`}</>}
+      </div>
+      {!v ? <div className="bj-label" data-testid="he-spec-wait">Feed starts in {secs}s (spectators are delayed so nobody can relay hands to a seat).</div> : (
+        <>
+          <div className="he-board">
+            {v.board.map((c) => <span className="he-card" key={c.id}><CardFace card={c} /></span>)}
+            {v.board.length === 0 && <span className="bj-label">{v.phase === 'waiting' ? 'Waiting for players.' : ''}</span>}
+          </div>
+          <div className="he-seats">
+            {v.seats.map((s, i) => (
+              <div key={i} className={`he-seat ${v.toAct === i ? 'turn' : ''} ${s?.folded ? 'folded' : ''}`} data-testid={`he-seat-${i}`}>
+                {s ? (
+                  <>
+                    <div className="he-name">{v.button === i && <span className="he-btn">D</span>}{s.name}</div>
+                    <div className="he-cards">{s.cards.map((c, k) => (c ? <span className="he-card sm" key={k}><CardFace card={c} /></span> : <span className="he-back" key={k} />))}</div>
+                    <div className="he-stack">{s.stack}{s.bet ? ` · bet ${s.bet}` : ''}</div>
+                    {v.odds[i] !== undefined && <div className="he-odds" data-testid={`he-odds-${i}`}>{Math.round(v.odds[i]! * 100)}% to win</div>}
+                    {s.lastAction && <div className="he-act">{s.lastAction}</div>}
+                  </>
+                ) : <div className="he-empty">Open seat</div>}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      <div className="bj-controls"><button type="button" onClick={onStop} data-testid="he-stop-spectate">Stop watching</button></div>
     </div>
   );
 }

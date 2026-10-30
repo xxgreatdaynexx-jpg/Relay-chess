@@ -631,3 +631,10 @@ input {
 .win-sized.fps-panel .fps-canvas { height: 100%; aspect-ratio: auto; }
 .win-sized.fps-panel .fps-help, .win-sized.fps-panel .fps-touch { flex: none; }
 @media (max-width: 520px) { .win-grip { display: none; } .sol-panel.win-sized { width: 100% !important; height: min(560px, calc(100dvh - 110px)) !important; } }
+
+/* ---- Hold'em spectating */
+.he-spec-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; margin-top: 6px; }
+.he-live { color: #ff5a4e; font-weight: 800; letter-spacing: .06em; }
+.he-odds { font-size: 11px; font-weight: 800; color: #ffd76a; }
+.he-spectating .he-seat.folded .he-odds { display: none; }
+.he-watchers { text-align: center; }

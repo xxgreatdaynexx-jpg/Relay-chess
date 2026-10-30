@@ -7,7 +7,33 @@ import { signedIn } from './auth-sockets.js';
 import { VideoPoker } from './video-poker.js';
 import { spinSlots } from './slots.js';
 import { HoldemRoom, type HoldemTable } from './holdem.js';
-import type { HEAction } from '../shared/holdem.js';
+import { HE_SPECTATE_DELAY_MS, type HEAction } from '../shared/holdem.js';
+import { HoldemSpectators, type Viewer } from './holdem-spectate.js';
+
+const envDelay = Number(process.env.HOLDEM_SPECTATOR_DELAY_MS);
+let spectators = new HoldemSpectators(Number.isFinite(envDelay) && envDelay >= 0 ? envDelay : HE_SPECTATE_DELAY_MS);
+const sockets = new Map<string, Socket>();
+/** Last X-Forwarded-For hop (added by our proxy, so the client can't spoof it), else the socket address. */
+function proxiedIp(s: Socket): string {
+  const fwd = s.handshake.headers['x-forwarded-for'];
+  const hops = (Array.isArray(fwd) ? fwd.join(',') : fwd ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+  return hops[hops.length - 1] || s.handshake.address || 'unknown';
+}
+function viewer(s: Socket): Viewer {
+  const d = (s.handshake.auth as { device?: unknown } | undefined)?.device;
+  return { id: s.id, name: nameOf(s), ip: proxiedIp(s), device: typeof d === 'string' && d.length >= 8 && d.length <= 64 ? d : null };
+}
+function pushSpectators(now = Date.now()): void {
+  for (const d of spectators.due(room().tables, now)) {
+    const s = sockets.get(d.id);
+    if (!s) { spectators.unwatch(d.id); continue; }
+    if (d.kicked) s.emit('he_spectate_end', { reason: d.kicked });
+    else s.emit('he_spectate', d.view ?? null);
+  }
+}
+function tableList() {
+  return room().tables.map((t) => ({ id: t.id, seated: t.seated, phase: t.phase, watchers: spectators.count(t.id) }));
+}
 
 let holdem: HoldemRoom | null = null;
 const room = () => (holdem ??= new HoldemRoom(getBank()));
@@ -17,8 +43,10 @@ function pushHoldem(t: HoldemTable | null, now = Date.now()): void {
     const n = nameOf(s);
     const mine = n ? room().tableOf(n) : null;
     const target = mine ?? room().tables[0] ?? null;
-    if (!t || target === t) s.emit('he_state', target ? target.view(n, now) : null);
+    if (spectators.tableOf(s.id)) continue; // spectators get the delayed feed only
+    if (!t || target === t) s.emit('he_state', target ? { ...target.view(n, now), watchers: spectators.count(target.id) } : null);
   }
+  for (const x of t ? [t] : room().tables) spectators.record(x, now);
 }
 
 let vp: VideoPoker | null = null;
@@ -60,6 +88,7 @@ export function startCasino(io: Server): void {
   const now = Date.now();
   vp = new VideoPoker(getBank());
   holdem = new HoldemRoom(getBank());
+  spectators = new HoldemSpectators(spectators.delayMs);
   casino = new BlackjackCasino(getBank());
   wheel = new RouletteWheel(getBank(), now);
   timer = setInterval(() => {
@@ -75,6 +104,7 @@ export function startCasino(io: Server): void {
     if (settledBJ) pushBoard(io);
     const heChanged = holdem!.tick(t);
     for (const tb of heChanged) pushHoldem(tb, t);
+    pushSpectators(t);
     if (heChanged.some((x) => x.phase === 'showdown')) pushBoard(io);
   }, 250);
   timer.unref?.();
@@ -113,7 +143,20 @@ export function registerCasino(io: Server, socket: Socket): void {
     pushBoard(io);
     return { state };
   }));
+  sockets.set(socket.id, socket);
+  socket.on('he_tables', wrap(() => ({ tables: tableList(), delayMs: spectators.delayMs })));
+  socket.on('he_spectate', wrap((body, now) => {
+    const t = room().tables.find((x) => x.id === String(body.table)) ?? null;
+    if (!t) throw new Error('No such table.');
+    const v = viewer(socket);
+    spectators.noteIdentity(v);
+    const state = spectators.watch(t, v, now);
+    heWatchers.add(socket);
+    return { state, delayMs: spectators.delayMs, table: t.id };
+  }));
+  socket.on('he_unspectate', wrap(() => { spectators.unwatch(socket.id); }));
   socket.on('he_watch', wrap((_b, now) => {
+    spectators.noteIdentity(viewer(socket));
     heWatchers.add(socket);
     const n = nameOf(socket);
     const t = (n ? room().tableOf(n) : null) ?? room().tables[0] ?? null;
@@ -122,6 +165,8 @@ export function registerCasino(io: Server, socket: Socket): void {
   socket.on('he_unwatch', wrap(() => { heWatchers.delete(socket); }));
   socket.on('he_sit', wrap((body, now) => {
     const name = signedIn(socket);
+    spectators.noteIdentity(viewer(socket));
+    spectators.unwatch(socket.id);
     heWatchers.add(socket);
     const t = room().sit(name, Number(body.buyIn), now);
     pushHoldem(null, now);
@@ -226,6 +271,8 @@ export function registerCasino(io: Server, socket: Socket): void {
   socket.on('roulette_rebet', rouletteAct((n) => wheel!.rebet(n)));
 
   socket.on('disconnect', () => {
+    sockets.delete(socket.id);
+    spectators.unwatch(socket.id);
     rouletteWatchers.delete(socket);
     if (heWatchers.delete(socket)) {
       const n = nameOf(socket);

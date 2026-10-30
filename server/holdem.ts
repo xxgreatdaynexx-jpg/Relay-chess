@@ -2,7 +2,7 @@
 import type { CasinoCard } from '../shared/casino.js';
 import {
   bestHand, HE_BIG, HE_MAX_BUYIN, HE_MIN_BUYIN, HE_NEXT_HAND_MS, HE_SEATS, HE_SMALL, HE_TURN_MS,
-  type HEAction, type HEPhase, type HESeatView, type HEView, type HEWinner,
+  equity, type HEAction, type HEPhase, type HESeatView, type HESpectateView, type HEView, type HEWinner,
 } from '../shared/holdem.js';
 import { makeShoe } from './blackjack.js';
 import type { CasinoBank } from './casino-store.js';
@@ -334,6 +334,24 @@ export class HoldemTable {
       you: me >= 0 ? me : null, options: me >= 0 ? this.options(me) : null, winners: this.winners, handNo: this.handNo, nextHandAt: this.nextHandAt, serverNow: now,
     };
   }
+}
+
+/** Broadcast view for non-seated spectators: every live hand face up, with win odds. Only send this through HoldemSpectators. */
+export function spectateView(t: HoldemTable, now: number, delayMs: number, rand: () => number = Math.random): HESpectateView {
+  const base = t.view(null, now);
+  const live: number[] = [];
+  const seats = base.seats.map((sv, i) => {
+    const s = t.seats[i];
+    if (!sv || !s) return sv;
+    if (s.inHand && !s.folded && s.hole.length) live.push(i);
+    return { ...sv, cards: s.inHand ? s.hole.map((c) => ({ ...c })) : [] };
+  });
+  const odds: Record<number, number> = {};
+  if (t.inPlay() && live.length >= 2) {
+    const eq = equity(live.map((i) => t.seats[i]!.hole), t.board, 300, rand);
+    live.forEach((i, k) => { odds[i] = Math.round(eq[k]! * 1000) / 1000; });
+  } else if (live.length === 1) odds[live[0]!] = 1;
+  return { ...base, seats, you: null, options: null, spectator: true, delayMs, watchers: 0, odds };
 }
 
 /** All the tables. New players fill the busiest table with an open seat. */

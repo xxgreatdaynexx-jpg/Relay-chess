@@ -45,6 +45,8 @@ export interface HEView {
   handNo: number;
   nextHandAt: number | null;
   serverNow: number;
+  /** Spectators watching this table. */
+  watchers?: number;
 }
 
 const CATS = ['High card', 'Pair', 'Two pair', 'Three of a kind', 'Straight', 'Flush', 'Full house', 'Four of a kind', 'Straight flush'];
@@ -91,4 +93,41 @@ export function bestHand(cards: C[]): { score: number; label: string } {
   };
   pick(0, []);
   return { score: best, label: CATS[Math.floor(best / 15 ** 5)]! };
+}
+
+/** Default delay on the spectator feed (hidden cards and actions), so watchers can't relay live info to a seat. */
+export const HE_SPECTATE_DELAY_MS = 30_000;
+
+/** Spectator view: every live hand face up, plus win odds. */
+export interface HESpectateView extends HEView {
+  spectator: true;
+  delayMs: number;
+  watchers: number;
+  /** Win chance (0–1, split pots shared) by seat for players still in the hand. */
+  odds: Record<number, number>;
+}
+
+const SUITS_ALL = ['S', 'H', 'D', 'C'] as const;
+
+/** Monte Carlo (or exact on the river) equity for each hand against the others. */
+export function equity(hands: C[][], board: C[], iters = 400, rand: () => number = Math.random): number[] {
+  const n = hands.length;
+  const win = Array(n).fill(0) as number[];
+  if (n === 0) return win;
+  if (n === 1) return [1];
+  const used = new Set([...hands.flat(), ...board].map((c) => `${c.suit}${c.rank}`));
+  const deck: C[] = [];
+  for (const suit of SUITS_ALL) for (let rank = 1; rank <= 13; rank++) if (!used.has(`${suit}${rank}`)) deck.push({ suit, rank } as C);
+  const need = 5 - board.length;
+  const runs = need === 0 ? 1 : iters;
+  for (let it = 0; it < runs; it++) {
+    const d = deck.slice();
+    const b = board.slice();
+    for (let k = 0; k < need; k++) { const j = k + Math.floor(rand() * (d.length - k)); [d[k], d[j]] = [d[j]!, d[k]!]; b.push(d[k]!); }
+    const sc = hands.map((h) => bestHand([...h, ...b]).score);
+    const top = Math.max(...sc);
+    const ws = sc.filter((s) => s === top).length;
+    sc.forEach((s, i) => { if (s === top) win[i] += 1 / ws; });
+  }
+  return win.map((w) => w / runs);
 }
