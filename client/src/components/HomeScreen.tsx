@@ -1,3 +1,4 @@
+import { ScrollIntro } from '@/components/ScrollIntro';
 import { notifyNameChanged } from '@/lib/casino';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useAccount } from '@/lib/auth';
@@ -241,9 +242,10 @@ export function HomeScreen({
           </Button>
         </div>
       </header>
-      <main className="flex flex-1 flex-col justify-center py-8">
-        <h1 className="max-w-xl font-serif text-5xl leading-[0.95] text-cream sm:text-6xl">
-          Relay Chess
+      <main className="flex flex-1 flex-col py-4">
+        <ScrollIntro onPick={(g) => { setGameType(g); history.replaceState(null, '', `#${g}`); document.getElementById('play')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); }} />
+        <h1 id="play" className="mt-10 max-w-xl scroll-mt-16 font-serif text-5xl leading-[0.95] text-cream sm:text-6xl">
+          Play {gameType === 'checkers' ? 'Relay Checkers' : 'Relay Chess'}
         </h1>
         <div className="mt-3 -ml-3" data-testid="how-it-works-home">
           <RulesDialog />
