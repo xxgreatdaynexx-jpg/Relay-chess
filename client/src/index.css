@@ -599,3 +599,18 @@ input {
 .he-controls input[type=range] { flex: 1; min-width: 90px; }
 .he-buyin { width: 72px; margin-left: 4px; }
 .he-card .sol-card { position: relative; width: 100%; height: auto; aspect-ratio: 5 / 7; }
+
+/* Arena: tactical HUD */
+.fps-panel { background: #121411; }
+.fps-feed { top: auto; bottom: 34%; font: 600 11px ui-monospace, Menlo, Consolas, monospace; text-transform: uppercase; }
+.fps-feed > div { display: flex; align-items: center; gap: 5px; background: rgba(0,0,0,.45); padding: 1px 6px; margin-bottom: 2px; border-left: 2px solid #8b9080; color: #d9dccf; }
+.fps-feed .fps-feed-me { border-left-color: #e6c46a; }
+.fps-feed .fps-k { color: #e6e9df; }
+.fps-wicon { color: #e6e9df; flex: none; }
+.fps-board { font-family: ui-monospace, Menlo, Consolas, monospace; text-transform: uppercase; font-size: 10px; }
+.fps-board .fps-me { color: #e6c46a; }
+.fps-scoreboard { position: absolute; inset: 12% 14%; background: rgba(8,10,8,.82); border: 1px solid #8b908066; padding: 8px 10px; font: 600 12px ui-monospace, Menlo, Consolas, monospace; color: #d9dccf; text-transform: uppercase; pointer-events: none; overflow: auto; }
+.fps-scoreboard table { width: 100%; border-collapse: collapse; }
+.fps-scoreboard th { text-align: left; color: #a9ae9e; border-bottom: 1px solid #8b908066; padding: 2px 4px; }
+.fps-scoreboard td { padding: 2px 4px; }
+.fps-scoreboard .fps-me td { color: #e6c46a; }

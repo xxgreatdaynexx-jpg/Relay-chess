@@ -412,23 +412,20 @@ export function playGunshot(volume = 1): void {
   n.start(now);
 }
 
-/** Arena: a bonk when a shot lands (or you get tagged). */
-export function playHit(): void {
+/** Arena: dry hit-marker tick when a shot lands, or a dull body thud when you take damage. */
+export function playHit(self = false): void {
   const ctx = audio();
   if (!ctx) return;
   const now = ctx.currentTime;
-  const osc = ctx.createOscillator();
-  osc.type = 'triangle';
-  osc.frequency.setValueAtTime(520, now);
-  osc.frequency.exponentialRampToValueAtTime(260, now + 0.09);
+  const n = arenaNoise(ctx, self ? 0.12 : 0.03);
+  const f = ctx.createBiquadFilter();
+  f.type = self ? 'lowpass' : 'highpass';
+  f.frequency.value = self ? 400 : 3500;
   const g = ctx.createGain();
-  g.gain.setValueAtTime(0.0001, now);
-  g.gain.exponentialRampToValueAtTime(0.3, now + 0.005);
-  g.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
-  osc.connect(g);
-  g.connect(output(ctx));
-  osc.start(now);
-  osc.stop(now + 0.13);
+  g.gain.setValueAtTime(self ? 0.5 : 0.35, now);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + (self ? 0.12 : 0.035));
+  n.connect(f); f.connect(g); g.connect(output(ctx));
+  n.start(now);
 }
 
 /** Roulette: ball rattling around the wheel, slowing down. Routed through the master volume. */
@@ -457,40 +454,86 @@ export function playBallLand(): void {
   tone(ctx, 1300, now + 0.15, 0.05, 0.03);
 }
 
-/** Arena: per-weapon shot. Pitch and noise vary so each gun sounds different; all through the master volume. */
+/** Short filtered noise burst helper. */
+function burst(ctx: AudioContext, at: number, len: number, type: BiquadFilterType, freq: number, gain: number, q = 0.7): void {
+  const n = arenaNoise(ctx, len);
+  const f = ctx.createBiquadFilter();
+  f.type = type; f.frequency.value = freq; f.Q.value = q;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, at);
+  g.gain.exponentialRampToValueAtTime(gain, at + 0.003);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+  n.connect(f); f.connect(g); g.connect(output(ctx));
+  n.start(at);
+}
+
+/** Low sine thump that gives gunshots their body. */
+function thump(ctx: AudioContext, at: number, f0: number, len: number, gain: number): void {
+  const o = ctx.createOscillator();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(f0, at);
+  o.frequency.exponentialRampToValueAtTime(Math.max(28, f0 * 0.3), at + len);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(gain, at);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+  o.connect(g); g.connect(output(ctx));
+  o.start(at); o.stop(at + len + 0.02);
+}
+
+/** Arena: synthesized gunshot per weapon: sharp crack, low-end thump and a tail. All through the master volume. */
 export function playWeaponShot(weapon: string, volume = 1): void {
   const ctx = audio();
   if (!ctx) return;
   const now = ctx.currentTime;
-  const cfg: Record<string, { f0: number; f1: number; len: number; noise: number; type: OscillatorType }> = {
-    pistol: { f0: 880, f1: 110, len: 0.14, noise: 0.25, type: 'square' },
-    smg: { f0: 1200, f1: 300, len: 0.07, noise: 0.18, type: 'square' },
-    shotgun: { f0: 300, f1: 60, len: 0.22, noise: 0.5, type: 'sawtooth' },
-    sniper: { f0: 1800, f1: 90, len: 0.3, noise: 0.35, type: 'sawtooth' },
-    rocket: { f0: 160, f1: 520, len: 0.35, noise: 0.3, type: 'triangle' },
+  const v = volume;
+  if (weapon === 'rocket') {
+    thump(ctx, now, 70, 0.3, 0.6 * v);
+    burst(ctx, now, 0.9, 'bandpass', 900, 0.5 * v, 0.6);
+    burst(ctx, now + 0.05, 0.6, 'lowpass', 500, 0.35 * v);
+    return;
+  }
+  const cfg: Record<string, { crack: number; body: number; len: number; tail: number }> = {
+    pistol: { crack: 0.55, body: 120, len: 0.12, tail: 0.25 },
+    smg: { crack: 0.4, body: 140, len: 0.07, tail: 0.15 },
+    shotgun: { crack: 0.8, body: 75, len: 0.25, tail: 0.5 },
+    sniper: { crack: 0.9, body: 65, len: 0.3, tail: 0.7 },
   };
-  const c = cfg[weapon] ?? cfg.pistol;
-  const osc = ctx.createOscillator();
-  osc.type = c.type;
-  osc.frequency.setValueAtTime(c.f0, now);
-  osc.frequency.exponentialRampToValueAtTime(c.f1, now + c.len * 0.9);
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(0.0001, now);
-  g.gain.exponentialRampToValueAtTime(0.16 * volume, now + 0.005);
-  g.gain.exponentialRampToValueAtTime(0.0001, now + c.len);
-  osc.connect(g);
-  g.connect(output(ctx));
-  osc.start(now);
-  osc.stop(now + c.len + 0.01);
-  const n = arenaNoise(ctx, Math.min(0.3, c.len));
-  const ng = ctx.createGain();
-  ng.gain.value = c.noise * volume;
-  n.connect(ng);
-  ng.connect(output(ctx));
-  n.start(now);
+  const c = cfg[weapon] ?? cfg.pistol!;
+  burst(ctx, now, 0.03, 'highpass', 1800, c.crack * v);
+  burst(ctx, now, c.len, 'lowpass', 1400, c.crack * 0.8 * v);
+  thump(ctx, now, c.body, c.len * 1.4, 0.7 * v);
+  burst(ctx, now + 0.02, c.tail, 'bandpass', 600, 0.12 * v, 0.5);
+  if (weapon === 'sniper') playBoltCycle(volume, 0.45);
+  if (weapon === 'shotgun') { burst(ctx, now + 0.38, 0.05, 'bandpass', 2400, 0.25 * v, 3); burst(ctx, now + 0.5, 0.05, 'bandpass', 1900, 0.25 * v, 3); }
 }
 
-/** Arena: cartoon explosion (rockets, pie strikes, the nuke). */
+/** Sniper bolt: two metallic clacks. */
+export function playBoltCycle(volume = 1, delay = 0): void {
+  const ctx = audio();
+  if (!ctx) return;
+  const t = ctx.currentTime + delay;
+  burst(ctx, t, 0.04, 'bandpass', 3200, 0.3 * volume, 4);
+  burst(ctx, t + 0.18, 0.05, 'bandpass', 2600, 0.35 * volume, 4);
+}
+
+/** Radio call: band-limited static, a squelch beep, then static again. */
+export function playRadio(volume = 1): void {
+  const ctx = audio();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  burst(ctx, now, 0.25, 'bandpass', 1800, 0.18 * volume, 1.2);
+  const o = ctx.createOscillator();
+  o.type = 'square'; o.frequency.value = 1250;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, now + 0.22);
+  g.gain.exponentialRampToValueAtTime(0.06 * volume, now + 0.23);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
+  o.connect(g); g.connect(output(ctx));
+  o.start(now + 0.22); o.stop(now + 0.34);
+  burst(ctx, now + 0.34, 0.7, 'bandpass', 2200, 0.08 * volume, 1.5);
+}
+
+/** Arena: explosion (rockets, airstrikes, the nuke). */
 export function playExplosion(volume = 1, long = false): void {
   const ctx = audio();
   if (!ctx) return;
@@ -521,24 +564,27 @@ export function playExplosion(volume = 1, long = false): void {
   osc.stop(now + len);
 }
 
-/** Arena: announcer sting for a killstreak (rising arpeggio). Alarm variant for the nuke. */
+/** Arena: killstreak call-in: radio static and squelch; the nuke adds a low warning siren. */
 export function playStreakCall(kind: 'reward' | 'alarm' = 'reward'): void {
   const ctx = audio();
   if (!ctx) return;
+  playRadio(1);
+  if (kind !== 'alarm') return;
   const now = ctx.currentTime;
-  const notes = kind === 'alarm' ? [880, 660, 880, 660, 880, 660] : [523, 659, 784, 1047];
-  notes.forEach((f, i) => {
-    const t = now + i * (kind === 'alarm' ? 0.22 : 0.09);
-    const osc = ctx.createOscillator();
-    osc.type = kind === 'alarm' ? 'sawtooth' : 'square';
-    osc.frequency.setValueAtTime(f, t);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.12, t + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
-    osc.connect(g);
-    g.connect(output(ctx));
-    osc.start(t);
-    osc.stop(t + 0.2);
-  });
+  const o = ctx.createOscillator();
+  o.type = 'sawtooth';
+  for (let i = 0; i < 6; i++) {
+    o.frequency.setValueAtTime(300, now + 0.4 + i * 0.8);
+    o.frequency.linearRampToValueAtTime(520, now + 0.8 + i * 0.8);
+    o.frequency.linearRampToValueAtTime(300, now + 1.2 + i * 0.8);
+  }
+  const f = ctx.createBiquadFilter();
+  f.type = 'lowpass'; f.frequency.value = 900;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, now + 0.4);
+  g.gain.exponentialRampToValueAtTime(0.08, now + 0.6);
+  g.gain.setValueAtTime(0.08, now + 5.0);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + 5.4);
+  o.connect(f); f.connect(g); g.connect(output(ctx));
+  o.start(now + 0.4); o.stop(now + 5.5);
 }

@@ -10,7 +10,7 @@ import {
 const OPEN_KEY = 'relay-fps-open';
 const QUALITY_KEY = 'relay-fps-quality';
 const INTERP_MS = (1000 / TICK_HZ) * 1.5;
-const COLORS = ['#e8c26a', '#6ad1e8', '#e86a9a', '#8de86a', '#b28dff', '#ff9d5c', '#5cffc8', '#ff5c5c'];
+const COLORS = ['#5f6a48', '#7d7158', '#596066', '#6b6248', '#4f5a4c', '#73705f', '#565246', '#666e5a'];
 const SCOPE_ZOOM = 3.5;
 
 interface NetPlayer { id: string; name: string; x: number; y: number; a: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; j: number; st: number; uav: number }
@@ -43,7 +43,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const win = useWindowDrag('arena', wrapRef);
   const [status, setStatus] = useState('Joining the arena…');
-  const [feed, setFeed] = useState<Array<{ key: number; text: string }>>([]);
+  const [feed, setFeed] = useState<Array<{ key: number; killer: string; victim: string; cause: string; self: boolean; mine: boolean }>>([]);
+  const [showBoard, setShowBoard] = useState(false);
   const [board, setBoard] = useState<NetPlayer[]>([]);
   const [focused, setFocused] = useState(false);
   const [isTouch] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches);
@@ -57,7 +58,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     jumpAt: -1e9, scoped: false, firing: false, streak: 0, uavUntil: 0, walk: 0,
   });
   const snaps = useRef<Snap[]>([]);
-  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, nukeFlash: 0, booms: [] as Array<{ x: number; y: number; at: number; big: boolean }>, hitAt: new Map<string, number>() });
+  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, killmark: 0, nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; a: number; name: string }>(), booms: [] as Array<{ x: number; y: number; at: number; big: boolean }>, hitAt: new Map<string, number>() });
   const banner = useRef<{ text: string; sub: string; at: number } | null>(null);
   const touch = useRef({ up: false, down: false, left: false, right: false });
 
@@ -122,9 +123,9 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       });
     };
     let feedKey = 0;
-    const pushFeed = (text: string) => {
+    const pushFeed = (e: { killer: string; victim: string; cause: string; self: boolean; mine: boolean }) => {
       const key = ++feedKey;
-      setFeed((f) => [...f.slice(-3), { key, text }]);
+      setFeed((f) => [...f.slice(-4), { key, ...e }]);
       window.setTimeout(() => setFeed((f) => f.filter((x) => x.key !== key)), 5000);
     };
     const onState = (s: NetState) => {
@@ -149,20 +150,29 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       const now = performance.now();
       fx.current.hitAt.set(h.target, now);
       if (h.by === me.current.id && h.target !== me.current.id) { fx.current.hitmark = now; playHit(); }
-      else if (h.target === me.current.id) { fx.current.hurt = now; playHit(); }
+      else if (h.target === me.current.id) {
+        fx.current.hurt = now;
+        playHit(true);
+        const src = snaps.current[snaps.current.length - 1]?.players.find((p) => p.id === h.by);
+        if (src && h.by !== me.current.id) fx.current.dmgDirs.push({ a: Math.atan2(src.y - me.current.y, src.x - me.current.x), at: now });
+      }
     };
     const onShot = (s: { id: string; w: WeaponId; impact?: { x: number; y: number } }) => {
       if (s.id !== me.current.id) playWeaponShot(s.w, 0.35);
       if (s.impact) { fx.current.booms.push({ ...s.impact, at: performance.now(), big: false }); playExplosion(0.5); }
     };
     const onKill = (k: { killer: string; victim: string; killerId: string | null; victimId: string; cause: string }) => {
-      const how: Record<string, string> = { airstrike: '🥧', drone: '🛸', nuke: '🎊', rocket: '🚀', sniper: '🎯', shotgun: '🎉' };
-      pushFeed(k.killerId === k.victimId ? `${k.victim} bonked themself` : `${k.killer} ${how[k.cause] ?? '💥'} ${k.victim}`);
+      const self = k.killerId === k.victimId || !k.killerId;
+      if (k.killerId === me.current.id && !self) fx.current.killmark = performance.now();
+      const v = snaps.current[snaps.current.length - 1]?.players.find((p) => p.id === k.victimId);
+      if (v) fx.current.deaths.set(k.victimId, { at: performance.now(), x: v.x, y: v.y, a: v.a, name: v.name });
+      pushFeed({ killer: k.killer, victim: k.victim, cause: k.cause, self, mine: k.killerId === me.current.id || k.victimId === me.current.id });
     };
     const onStreak = (s: { id: string; name: string; kind: string; title: string; streak: number }) => {
       const info = STREAKS.find((x) => x.kind === s.kind);
       const mine = s.id === me.current.id;
-      banner.current = { text: mine ? `${s.title}!` : `${s.name}: ${s.title}`, sub: mine ? `${s.streak} kill streak · ${info?.blurb ?? ''}` : `${s.streak} kill streak`, at: performance.now() };
+      const radio: Record<string, string> = { uav: mine ? 'UAV online.' : 'Enemy UAV spotted.', airstrike: mine ? 'Airstrike inbound. Danger close.' : 'Enemy airstrike inbound!', drone: mine ? 'Attack drone on station.' : 'Enemy drone overhead!', nuke: mine ? 'Tactical nuke inbound.' : 'TACTICAL NUKE INCOMING!' };
+      banner.current = { text: mine ? s.title : `${s.name.toUpperCase()} · ${s.title}`, sub: `"${radio[s.kind] ?? ''}" · ${s.streak} kill streak${mine && info ? ` · ${info.blurb}` : ''}`, at: performance.now() };
       playStreakCall(s.kind === 'nuke' ? 'alarm' : 'reward');
     };
     const onBoom = (b: { x: number; y: number }) => { fx.current.booms.push({ x: b.x, y: b.y, at: performance.now(), big: true }); playExplosion(0.8); };
@@ -170,7 +180,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       if (n.phase === 'boom') {
         fx.current.nukeFlash = performance.now();
         playExplosion(1, true);
-        banner.current = { text: 'CONFETTI NUKE', sub: `${n.by} ended the round · scores reset`, at: performance.now() };
+        banner.current = { text: 'TACTICAL NUKE', sub: `"Detonation confirmed." · ${n.by} ended the round · scores reset`, at: performance.now() };
       }
     };
     socket.on('fps_state', onState);
@@ -195,6 +205,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
     const r = new ArenaRenderer();
+    const useMoveRef = { current: new Map<string, { x: number; y: number }>() };
     let raf = 0;
     let last = performance.now();
     let lastSend = 0;
@@ -237,16 +248,29 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       const bob = moving && z === 0 ? Math.sin(m.walk * 2) * 0.012 : 0;
       const zoom = m.scoped && m.weapon === 'sniper' && m.alive ? SCOPE_ZOOM : 1;
       const cam: Cam = { x: m.x, y: m.y, a: m.a, eye: 0.5 + z + bob, zoom };
-      r.world(ctx, cam);
+      const mf = Math.max(0, 1 - (now - fx.current.muzzle) / 70);
+      r.world(ctx, cam, m.alive ? mf : 0);
       // Sprites: blobs, drones, strike markers, explosions — far to near.
       const snap = snaps.current[snaps.current.length - 1];
       const renderAt = now - INTERP_MS;
       const others = interpolate(snaps.current, renderAt).filter((p) => p.id !== m.id && p.alive);
       type Thing = { d: number; draw: () => void };
-      const things: Thing[] = others.map((p) => ({
-        d: Math.hypot(p.x - m.x, p.y - m.y),
-        draw: () => r.blob(ctx, cam, { ...p, z: jumpHeight(p.j + (now - (snap?.recv ?? now))), color: colorFor(p.id), flash: now - (fx.current.hitAt.get(p.id) ?? -1e9) < 120 }),
-      }));
+      const prevPos = useMoveRef.current;
+      const things: Thing[] = others.map((p) => {
+        const pp = prevPos.get(p.id);
+        const moving = !!pp && Math.hypot(pp.x - p.x, pp.y - p.y) > 0.002;
+        prevPos.set(p.id, { x: p.x, y: p.y });
+        return {
+          d: Math.hypot(p.x - m.x, p.y - m.y),
+          draw: () => r.soldier(ctx, cam, { ...p, z: jumpHeight(p.j + (now - (snap?.recv ?? now))), color: colorFor(p.id), flash: now - (fx.current.hitAt.get(p.id) ?? -1e9) < 160, moving, t: now }),
+        };
+      });
+      for (const [id, dd] of fx.current.deaths) {
+        const age = (now - dd.at) / 1000;
+        if (age > 1.2) { fx.current.deaths.delete(id); continue; }
+        if (id === m.id) continue;
+        things.push({ d: Math.hypot(dd.x - m.x, dd.y - m.y), draw: () => r.soldier(ctx, cam, { id, name: dd.name, x: dd.x, y: dd.y, a: dd.a, hp: 0, z: 0, color: colorFor(id), flash: false, dead: age }) });
+      }
       for (const d of snap?.drones ?? []) things.push({ d: Math.hypot(d.x - m.x, d.y - m.y), draw: () => r.thing(ctx, cam, d.x, d.y, 0.75 + Math.sin(now / 200) * 0.03, 0.3, drawDrone(colorFor(d.ownerId))) });
       for (const s of snap?.strikes ?? []) things.push({ d: Math.hypot(s.x - m.x, s.y - m.y), draw: () => r.thing(ctx, cam, s.x, s.y, 0, 0.9, drawMarker(now)) });
       fx.current.booms = fx.current.booms.filter((b) => now - b.at < 600);
@@ -254,6 +278,10 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       things.sort((a, b) => b.d - a.d);
       for (const th of things) th.draw();
       const W2 = r.W, H2 = r.H;
+      // Dust haze over the scene for a darker, grittier grade.
+      const vg = ctx.createRadialGradient(W2 / 2, H2 / 2, H2 * 0.3, W2 / 2, H2 / 2, W2 * 0.7);
+      vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.45)');
+      ctx.fillStyle = vg; ctx.fillRect(0, 0, W2, H2);
       // Viewmodel + scope
       const muzzle = now - fx.current.muzzle < 60;
       const switching = Math.max(0, 1 - (now - m.switchedAt) / SWITCH_MS);
@@ -268,62 +296,109 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         r.viewmodel(ctx, m.weapon, m.walk, muzzle ? 1 : 0, Math.max(switching, reloading), muzzle);
         const cs = H2 / 40;
         const spread = WEAPONS[m.weapon].spread * r.focal(cam) * 0.6;
-        ctx.strokeStyle = now - fx.current.hitmark < 150 ? '#ff4040' : '#fff6d8';
-        ctx.lineWidth = Math.max(1, H2 / 250);
+        ctx.strokeStyle = 'rgba(235,240,230,.9)';
+        ctx.lineWidth = Math.max(1, H2 / 300);
         ctx.beginPath();
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { ctx.moveTo(W2 / 2 + dx * (spread + cs * 0.4), H2 / 2 + dy * (spread + cs * 0.4)); ctx.lineTo(W2 / 2 + dx * (spread + cs), H2 / 2 + dy * (spread + cs)); }
         ctx.stroke();
+        const hm = now - fx.current.hitmark;
+        if (hm < 220) {
+          const kill = now - fx.current.killmark < 300;
+          ctx.strokeStyle = kill ? 'rgba(230,60,50,.95)' : `rgba(255,255,255,${(1 - hm / 220).toFixed(2)})`;
+          ctx.lineWidth = Math.max(1.5, H2 / 180);
+          const a0 = cs * 0.35, a1 = cs * 0.85;
+          ctx.beginPath();
+          for (const [dx, dy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) { ctx.moveTo(W2 / 2 + dx * a0, H2 / 2 + dy * a0); ctx.lineTo(W2 / 2 + dx * a1, H2 / 2 + dy * a1); }
+          ctx.stroke();
+        }
       }
-      if (now - fx.current.hurt < 200) { ctx.fillStyle = 'rgba(255,60,60,0.28)'; ctx.fillRect(0, 0, W2, H2); }
-      // HUD
+      // Red screen-edge vignette: brief on hit, persistent when low.
+      const hurtK = Math.max(now - fx.current.hurt < 300 ? 1 - (now - fx.current.hurt) / 300 : 0, m.alive && m.hp <= 40 ? 0.55 + 0.15 * Math.sin(now / 250) : 0);
+      if (hurtK > 0) {
+        const rg = ctx.createRadialGradient(W2 / 2, H2 / 2, H2 * 0.35, W2 / 2, H2 / 2, W2 * 0.65);
+        rg.addColorStop(0, 'rgba(150,0,0,0)'); rg.addColorStop(1, `rgba(150,0,0,${(0.65 * hurtK).toFixed(2)})`);
+        ctx.fillStyle = rg; ctx.fillRect(0, 0, W2, H2);
+      }
+      // Damage direction arcs.
+      fx.current.dmgDirs = fx.current.dmgDirs.filter((d) => now - d.at < 1200);
+      for (const d of fx.current.dmgDirs) {
+        const rel = d.a - m.a - Math.PI / 2;
+        const rad = H2 * 0.22;
+        ctx.strokeStyle = `rgba(220,40,30,${(0.85 * (1 - (now - d.at) / 1200)).toFixed(2)})`;
+        ctx.lineWidth = Math.max(3, H2 / 70);
+        ctx.beginPath(); ctx.arc(W2 / 2, H2 / 2, rad, rel - 0.35, rel + 0.35); ctx.stroke();
+      }
+      // HUD (military style)
       const u = H2 / 200;
-      ctx.font = `700 ${(9 * u) | 0}px system-ui, sans-serif`;
-      ctx.textAlign = 'left';
-      ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(4 * u, H2 - 16 * u, 64 * u, 12 * u);
-      ctx.fillStyle = m.hp > 34 ? '#5cd17a' : '#ff6060'; ctx.fillRect(6 * u, H2 - 14 * u, (60 * u * m.hp) / MAX_HP, 8 * u);
+      const mono = 'ui-monospace, Menlo, Consolas, monospace';
+      const spec = WEAPONS[m.weapon];
       ctx.textAlign = 'right';
-      ctx.fillStyle = '#fff6d8';
-      ctx.fillText(`${WEAPONS[m.weapon].name}  ${reloading ? 'RELOADING' : `${m.ammo}/${WEAPONS[m.weapon].mag}`}`, W2 - 6 * u, H2 - 7 * u);
+      ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(W2 - 92 * u, H2 - 30 * u, 88 * u, 26 * u);
+      ctx.fillStyle = '#e6e9df'; ctx.font = `700 ${(14 * u) | 0}px ${mono}`;
+      ctx.fillText(reloading ? 'RELOAD' : `${m.ammo}`, W2 - 30 * u, H2 - 12 * u);
+      ctx.font = `600 ${(7 * u) | 0}px ${mono}`; ctx.fillStyle = '#a9ae9e';
+      if (!reloading) ctx.fillText(`/${spec.mag}`, W2 - 8 * u, H2 - 12 * u);
+      ctx.fillText(spec.name.toUpperCase(), W2 - 8 * u, H2 - 22 * u);
+      for (let i = 0; i < Math.min(spec.mag, 30); i++) { ctx.fillStyle = i < m.ammo ? '#d9dccf' : 'rgba(255,255,255,.15)'; ctx.fillRect(W2 - 8 * u - (i + 1) * 2.6 * u, H2 - 8 * u, 1.6 * u, 3 * u); }
+      ctx.textAlign = 'left';
+      ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(4 * u, H2 - 16 * u, 70 * u, 12 * u);
+      ctx.fillStyle = m.hp > 40 ? '#cfd4c4' : '#d9473a'; ctx.fillRect(6 * u, H2 - 14 * u, (52 * u * m.hp) / MAX_HP, 8 * u);
+      ctx.fillStyle = '#e6e9df'; ctx.font = `700 ${(7 * u) | 0}px ${mono}`; ctx.fillText(`${Math.max(0, Math.round(m.hp))}`, 60 * u, H2 - 7.5 * u);
+      // Streak pips
       const next = STREAKS.find((s) => s.kills > m.streak);
-      ctx.font = `600 ${(7 * u) | 0}px system-ui, sans-serif`;
-      ctx.fillText(`Streak ${m.streak}${next ? ` · ${next.kills - m.streak} to ${next.name}` : ''}`, W2 - 6 * u, H2 - 18 * u);
+      for (let i = 0; i < 11; i++) {
+        const isReward = STREAKS.some((s) => s.kills === i + 1);
+        ctx.fillStyle = i < m.streak ? '#e6e9df' : isReward ? 'rgba(230,200,120,.45)' : 'rgba(255,255,255,.18)';
+        ctx.fillRect(6 * u + i * 6 * u, H2 - 22 * u, 4.5 * u, isReward ? 4 * u : 3 * u);
+      }
+      ctx.font = `600 ${(6 * u) | 0}px ${mono}`; ctx.fillStyle = '#a9ae9e';
+      ctx.fillText(next ? `${next.name} IN ${next.kills - m.streak}` : 'ALL STREAKS EARNED', 6 * u, H2 - 25 * u);
+      ctx.font = `700 ${(7 * u) | 0}px ${mono}`;
       // Weapon slots
       ctx.textAlign = 'center';
       WEAPON_ORDER.forEach((w, i) => {
         const x = W2 / 2 + (i - 2) * 22 * u;
-        ctx.fillStyle = w === m.weapon ? 'rgba(232,194,106,.9)' : 'rgba(0,0,0,.45)';
+        ctx.fillStyle = w === m.weapon ? 'rgba(220,224,210,.9)' : 'rgba(0,0,0,.45)';
         ctx.fillRect(x - 10 * u, 4 * u, 20 * u, 10 * u);
-        ctx.fillStyle = w === m.weapon ? '#1b1d2e' : '#fff6d8';
+        ctx.fillStyle = w === m.weapon ? '#15170f' : '#d9dccf';
         ctx.fillText(`${i + 1}`, x, 11.5 * u);
       });
-      // Radar (Sky Eye)
+      // Radar (UAV)
       if (m.uavUntil > now) r.minimap(ctx, m, others, snap?.strikes ?? []);
       // Nuke countdown and flash
       if (snap?.nuke) {
         const left = Math.max(0, snap.nuke.inMs - (now - snap.recv));
-        ctx.fillStyle = 'rgba(255,80,80,.85)'; ctx.font = `800 ${(14 * u) | 0}px system-ui, sans-serif`;
-        ctx.fillText(`🎊 CONFETTI NUKE INCOMING ${(left / 1000).toFixed(1)}s`, W2 / 2, H2 * 0.3);
+        ctx.fillStyle = Math.floor(now / 400) % 2 ? 'rgba(230,60,50,.95)' : 'rgba(255,255,255,.95)';
+        ctx.font = `800 ${(13 * u) | 0}px ${mono}`;
+        ctx.fillText(`TACTICAL NUKE INCOMING  ${(left / 1000).toFixed(1)}`, W2 / 2, H2 * 0.32);
       }
-      const nf = (now - fx.current.nukeFlash) / 2500;
+      const nf = (now - fx.current.nukeFlash) / 3000;
       if (nf < 1) {
-        ctx.fillStyle = `rgba(255,252,235,${(1 - nf).toFixed(2)})`; ctx.fillRect(0, 0, W2, H2);
-        for (let i = 0; i < 60 * (1 - nf); i++) { ctx.fillStyle = COLORS[i % COLORS.length]; ctx.fillRect(((i * 97 + now / 3) % W2), ((i * 53 + now / 2) % H2), 4 * u, 6 * u); }
+        // White-out, then an expanding shockwave ring and a dusty orange fade.
+        ctx.fillStyle = `rgba(255,255,250,${Math.max(0, 1 - nf * 2).toFixed(2)})`; ctx.fillRect(0, 0, W2, H2);
+        ctx.fillStyle = `rgba(170,90,40,${(0.45 * (1 - nf)).toFixed(2)})`; ctx.fillRect(0, 0, W2, H2);
+        ctx.strokeStyle = `rgba(255,240,220,${(0.8 * (1 - nf)).toFixed(2)})`;
+        ctx.lineWidth = 10 * u * (1 - nf) + 1;
+        ctx.beginPath(); ctx.arc(W2 / 2, H2 * 0.6, nf * W2 * 0.9, 0, Math.PI * 2); ctx.stroke();
       }
       const b = banner.current;
       if (b && now - b.at < 3000) {
         const fade = Math.min(1, (3000 - (now - b.at)) / 400);
         ctx.globalAlpha = fade;
-        ctx.fillStyle = 'rgba(10,12,30,.7)'; ctx.fillRect(0, H2 * 0.16, W2, 34 * u);
-        ctx.fillStyle = '#e8c26a'; ctx.font = `900 ${(16 * u) | 0}px system-ui, sans-serif`;
-        ctx.fillText(b.text, W2 / 2, H2 * 0.16 + 17 * u);
-        ctx.fillStyle = '#fff6d8'; ctx.font = `600 ${(7.5 * u) | 0}px system-ui, sans-serif`;
+        const bw = Math.min(W2 * 0.8, 230 * u);
+        ctx.fillStyle = 'rgba(8,10,8,.72)'; ctx.fillRect(W2 / 2 - bw / 2, H2 * 0.16, bw, 34 * u);
+        ctx.fillStyle = 'rgba(220,224,210,.8)'; ctx.fillRect(W2 / 2 - bw / 2, H2 * 0.16, bw, 1.5 * u); ctx.fillRect(W2 / 2 - bw / 2, H2 * 0.16 + 32.5 * u, bw, 1.5 * u);
+        for (let i = 0; i < 40; i++) { ctx.fillStyle = 'rgba(255,255,255,.05)'; ctx.fillRect(W2 / 2 - bw / 2 + ((i * 37 + now / 4) % bw), H2 * 0.16 + ((i * 13) % 34) * u, 6 * u, 0.6 * u); }
+        ctx.fillStyle = '#e6e9df'; ctx.font = `800 ${(14 * u) | 0}px ${mono}`;
+        ctx.fillText(b.text, W2 / 2, H2 * 0.16 + 16 * u);
+        ctx.fillStyle = '#b5ba9f'; ctx.font = `italic 600 ${(7 * u) | 0}px ${mono}`;
         ctx.fillText(b.sub, W2 / 2, H2 * 0.16 + 28 * u);
         ctx.globalAlpha = 1;
       }
       if (m.joined && !m.alive) {
         ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, H2 / 2 - 16 * u, W2, 32 * u);
-        ctx.fillStyle = '#fff6d8'; ctx.font = `bold ${(14 * u) | 0}px system-ui, sans-serif`;
-        ctx.fillText('Bonked! Respawning…', W2 / 2, H2 / 2 + 5 * u);
+        ctx.fillStyle = '#e6e9df'; ctx.font = `700 ${(12 * u) | 0}px ${mono}`;
+        ctx.fillText('KILLED IN ACTION · REDEPLOYING…', W2 / 2, H2 / 2 + 5 * u);
       }
       raf = requestAnimationFrame(frame);
     };
@@ -350,13 +425,14 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
-  const GAME_KEYS = new Set(['w', 'a', 's', 'd', 'q', 'e', 'f', 'r', 'control', ' ', '1', '2', '3', '4', '5', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright']);
+  const GAME_KEYS = new Set(['tab', 'w', 'a', 's', 'd', 'q', 'e', 'f', 'r', 'control', ' ', '1', '2', '3', '4', '5', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright']);
   function onKey(e: React.KeyboardEvent, down: boolean) {
     const key = e.key.toLowerCase();
     if (key === 'escape') return;
     e.stopPropagation();
     if (!GAME_KEYS.has(key)) return;
     e.preventDefault();
+    if (key === 'tab') { setShowBoard(down); return; }
     if (!down) { keys.current.delete(key); return; }
     keys.current.add(key);
     if (e.repeat) return;
@@ -395,7 +471,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       onKeyUp={(e) => onKey(e, false)}
     >
       <div {...win.bar}>
-        <span className="font-semibold">🎯 Arena</span>
+        <span className="font-semibold">Arena</span>
         <span className="opacity-70">{board.length} online · {focused ? 'controls on' : 'click to play'}</span>
         <button type="button" className="fps-quality" data-testid="arena-quality" title="Graphics quality" onClick={() => setQuality((q) => (q === 'hd' ? 'lo' : 'hd'))}>{quality === 'hd' ? 'HD' : 'LO'}</button>
         {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" title="Reset position" onClick={win.reset}>⟲</button>}
@@ -416,11 +492,25 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
           }}
           onTouchStart={() => { unlockSounds(); wrapRef.current?.focus(); }}
         />
-        <div className="fps-feed">{feed.map((f) => <div key={f.key}>{f.text}</div>)}</div>
+        <div className="fps-feed" data-testid="arena-feed">
+          {feed.map((f) => (
+            <div key={f.key} className={f.mine ? 'fps-feed-me' : ''}>
+              {f.self ? <><WeaponIcon cause={f.cause} /> <span>{f.victim}</span></> : <><span className="fps-k">{f.killer}</span> <WeaponIcon cause={f.cause} /> <span>{f.victim}</span></>}
+            </div>
+          ))}
+        </div>
+        {showBoard && (
+          <div className="fps-scoreboard" data-testid="arena-scoreboard">
+            <table>
+              <thead><tr><th>Player</th><th>K</th><th>D</th><th>Streak</th></tr></thead>
+              <tbody>{board.map((p) => <tr key={p.id} className={p.id === me.current.id ? 'fps-me' : ''}><td>{p.name}</td><td>{p.k}</td><td>{p.d}</td><td>{p.st}</td></tr>)}</tbody>
+            </table>
+          </div>
+        )}
         <div className="fps-board" data-testid="arena-board">
           {board.slice(0, 6).map((p) => (
             <div key={p.id} className={p.id === me.current.id ? 'fps-me' : ''}>
-              <span style={{ color: colorFor(p.id) }}>●</span> {p.name} <b>{p.k}</b>{p.st >= 3 ? ` 🔥${p.st}` : ''}
+              {p.name} <b>{p.k}</b>
             </div>
           ))}
         </div>
@@ -446,48 +536,59 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
           >FIRE</button>
         </div>
       ) : (
-        <div className="fps-help">WASD move · mouse or Q/E turn · click, F or Ctrl shoot · Space jump · 1–5 / wheel guns · R reload · right-click scope · Esc frees mouse</div>
+        <div className="fps-help">WASD move · mouse or Q/E turn · click, F or Ctrl shoot · Space jump · 1–5 / wheel guns · R reload · right-click scope · Tab scores · Esc frees mouse</div>
       )}
     </div>
   );
 }
 
-function drawDrone(color: string) {
+function drawDrone(_color: string) {
   return (g: CanvasRenderingContext2D) => {
-    g.fillStyle = '#556';
-    g.fillRect(20, 76, 120, 8);
-    for (const x of [24, 136]) { g.fillStyle = 'rgba(200,220,255,.5)'; g.beginPath(); g.ellipse(x, 70, 22, 5, 0, 0, 7); g.fill(); }
-    g.fillStyle = color;
-    g.beginPath(); g.ellipse(80, 92, 34, 26, 0, 0, 7); g.fill();
-    g.strokeStyle = '#0007'; g.lineWidth = 3; g.stroke();
-    g.fillStyle = '#fff'; g.beginPath(); g.arc(80, 90, 13, 0, 7); g.fill();
-    g.fillStyle = '#e8503a'; g.beginPath(); g.arc(80, 91, 6, 0, 7); g.fill();
+    g.fillStyle = '#2a2d2e';
+    g.fillRect(14, 74, 132, 6); // wings
+    g.beginPath(); g.moveTo(40, 84); g.lineTo(120, 84); g.lineTo(110, 98); g.lineTo(50, 98); g.fill(); // body
+    g.fillStyle = '#3c4043'; g.fillRect(70, 60, 20, 16); // tail
+    g.fillStyle = '#151718'; g.beginPath(); g.arc(80, 102, 7, 0, 7); g.fill(); // sensor ball
+    g.fillStyle = 'rgba(230,60,50,.9)'; g.fillRect(16, 72, 4, 3); g.fillStyle = 'rgba(90,230,90,.9)'; g.fillRect(140, 72, 4, 3);
   };
 }
 function drawMarker(now: number) {
   return (g: CanvasRenderingContext2D) => {
-    const pulse = 0.6 + 0.4 * Math.sin(now / 90);
-    g.strokeStyle = `rgba(255,120,60,${pulse})`;
-    g.lineWidth = 8;
-    g.beginPath(); g.arc(80, 80, 60, 0, 7); g.stroke();
-    g.beginPath(); g.arc(80, 80, 28, 0, 7); g.stroke();
-    g.fillStyle = `rgba(255,220,120,${pulse})`;
-    g.font = '900 40px system-ui'; g.textAlign = 'center'; g.fillText('🥧', 80, 94);
+    const pulse = 0.5 + 0.5 * Math.sin(now / 80);
+    g.strokeStyle = `rgba(230,60,50,${0.4 + 0.5 * pulse})`;
+    g.lineWidth = 5;
+    g.beginPath(); g.arc(80, 80, 62, 0, 7); g.stroke();
+    g.setLineDash([10, 8]); g.beginPath(); g.arc(80, 80, 36, 0, 7); g.stroke(); g.setLineDash([]);
+    g.beginPath(); g.moveTo(80, 10); g.lineTo(80, 150); g.moveTo(10, 80); g.lineTo(150, 80); g.stroke();
   };
 }
 function drawBoom(t: number) {
   return (g: CanvasRenderingContext2D) => {
-    const r = 20 + t * 60;
-    g.globalAlpha = 1 - t;
-    const cols = ['#ffe36a', '#ff9d5c', '#e86a9a', '#6ad1e8'];
-    for (let i = 0; i < 7; i++) {
-      const a = (i / 7) * Math.PI * 2;
-      g.fillStyle = cols[i % cols.length];
-      g.beginPath(); g.arc(80 + Math.cos(a) * r * 0.5, 80 + Math.sin(a) * r * 0.5, r * 0.45, 0, 7); g.fill();
-    }
-    g.fillStyle = '#fffbe0'; g.beginPath(); g.arc(80, 80, r * 0.4, 0, 7); g.fill();
+    const r = 18 + t * 62;
+    g.globalAlpha = Math.max(0, 1 - t);
+    const fire = g.createRadialGradient(80, 90, 2, 80, 90, r);
+    fire.addColorStop(0, '#fff4d0'); fire.addColorStop(0.3, '#ffb347'); fire.addColorStop(0.6, '#b8481e'); fire.addColorStop(1, 'rgba(60,50,40,0)');
+    g.fillStyle = fire; g.beginPath(); g.arc(80, 90, r, 0, 7); g.fill();
+    g.fillStyle = `rgba(70,64,56,${0.7 * t})`;
+    for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; g.beginPath(); g.arc(80 + Math.cos(a) * r * 0.55, 80 + Math.sin(a) * r * 0.4 - t * 20, r * 0.4, 0, 7); g.fill(); }
     g.globalAlpha = 1;
   };
+}
+
+/** Small weapon silhouettes for the kill feed. */
+function WeaponIcon({ cause }: { cause: string }) {
+  const paths: Record<string, string> = {
+    pistol: 'M2 3h14v3H8l-1 5H4l1-5H2z',
+    smg: 'M1 3h20v3h-6v2h-3l-1 4H8l1-4H5V6H1z',
+    shotgun: 'M0 3h26v2H12l-2 2H4L2 9H0z',
+    sniper: 'M0 4h30v1.5H16l-2 1.5H6l-3 3H0zM10 1h7v2h-7z',
+    rocket: 'M0 3h22l4 1.5L22 6H0zM8 6h4v4H8z',
+    airstrike: 'M2 5l10-1 4-4h3l-2 4 8 0v2l-8 0 2 4h-3l-4-4-10-1z',
+    drone: 'M0 4h28v1.5H0zM9 5.5h10l-2 3h-6z',
+    nuke: 'M14 0a7 7 0 1 1 0 14 7 7 0 1 1 0-14zm0 5a2 2 0 1 0 0 4 2 2 0 1 0 0-4z',
+  };
+  const d = paths[cause] ?? paths.pistol;
+  return <svg className="fps-wicon" viewBox="0 0 30 14" width="30" height="14" aria-label={cause} role="img"><path d={d} fill="currentColor" /></svg>;
 }
 
 function interpolate(snaps: Snap[], renderAt: number): NetPlayer[] {

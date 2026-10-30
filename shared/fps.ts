@@ -223,11 +223,11 @@ export interface WeaponSpec {
 }
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
-  pistol: { id: 'pistol', name: 'Pea Shooter', damage: 34, cooldownMs: 300, pellets: 1, spread: 0.01, range: 20, mag: 12, reloadMs: 1100 },
-  smg: { id: 'smg', name: 'Buzz SMG', damage: 14, cooldownMs: 90, pellets: 1, spread: 0.05, range: 14, mag: 30, reloadMs: 1700 },
-  shotgun: { id: 'shotgun', name: 'Confetti Blaster', damage: 13, cooldownMs: 800, pellets: 8, spread: 0.16, range: 8, mag: 6, reloadMs: 2200 },
-  sniper: { id: 'sniper', name: 'Long Boop', damage: 95, cooldownMs: 1300, pellets: 1, spread: 0.09, scopedSpread: 0, range: 40, mag: 5, reloadMs: 2500 },
-  rocket: { id: 'rocket', name: 'Bonk Rocket', damage: 100, cooldownMs: 1100, pellets: 1, spread: 0, range: 30, mag: 2, reloadMs: 2600, splash: 2.4 },
+  pistol: { id: 'pistol', name: 'M9 Sidearm', damage: 34, cooldownMs: 300, pellets: 1, spread: 0.01, range: 20, mag: 12, reloadMs: 1100 },
+  smg: { id: 'smg', name: 'SMG-9', damage: 14, cooldownMs: 90, pellets: 1, spread: 0.05, range: 14, mag: 30, reloadMs: 1700 },
+  shotgun: { id: 'shotgun', name: 'M1014 Combat Shotgun', damage: 13, cooldownMs: 800, pellets: 8, spread: 0.16, range: 8, mag: 6, reloadMs: 2200 },
+  sniper: { id: 'sniper', name: '.50 Cal Sniper', damage: 95, cooldownMs: 1300, pellets: 1, spread: 0.09, scopedSpread: 0, range: 40, mag: 5, reloadMs: 2500 },
+  rocket: { id: 'rocket', name: 'RPG Launcher', damage: 100, cooldownMs: 1100, pellets: 1, spread: 0, range: 30, mag: 2, reloadMs: 2600, splash: 2.4 },
 };
 export const WEAPON_ORDER: WeaponId[] = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket'];
 export const SWITCH_MS = 250;
@@ -328,10 +328,10 @@ export function canJump(lastJumpAt: number, now: number): boolean {
 
 export type StreakKind = 'uav' | 'airstrike' | 'drone' | 'nuke';
 export const STREAKS: Array<{ kills: number; kind: StreakKind; name: string; blurb: string }> = [
-  { kills: 3, kind: 'uav', name: 'SKY EYE', blurb: 'Radar shows every blob for 20s' },
-  { kills: 5, kind: 'airstrike', name: 'PIE STRIKE', blurb: 'Pies rain on your crosshair' },
-  { kills: 7, kind: 'drone', name: 'BUZZ DRONE', blurb: 'A helper drone fights for 20s' },
-  { kills: 11, kind: 'nuke', name: 'CONFETTI NUKE', blurb: 'Ends the round. Everyone goes bonk.' },
+  { kills: 3, kind: 'uav', name: 'UAV', blurb: 'Enemy positions on radar for 20s' },
+  { kills: 5, kind: 'airstrike', name: 'PRECISION AIRSTRIKE', blurb: 'Air support inbound on your aim point' },
+  { kills: 7, kind: 'drone', name: 'ATTACK DRONE', blurb: 'Armed drone on station for 20s' },
+  { kills: 11, kind: 'nuke', name: 'TACTICAL NUKE', blurb: 'Ends the round for everyone' },
 ];
 export const UAV_MS = 20_000;
 export const AIRSTRIKE_DELAY_MS = 2500;

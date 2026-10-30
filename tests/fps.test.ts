@@ -52,7 +52,7 @@ describe('hitscan', () => {
 });
 
 describe('damage and respawn', () => {
-  it('takes three hits to bonk someone', () => {
+  it('takes three hits to eliminate someone', () => {
     const f = fighter('b', 2, 2);
     expect(applyDamage(f, 0)).toBe(false);
     expect(applyDamage(f, 0)).toBe(false);
