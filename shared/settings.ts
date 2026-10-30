@@ -10,6 +10,8 @@ export interface Settings {
   turnFlash: boolean;
   coords: boolean;
   reducedMotion: boolean;
+  /** Ask before sending each chess move. */
+  confirmMoves: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -22,6 +24,7 @@ export const DEFAULT_SETTINGS: Settings = {
   turnFlash: true,
   coords: false,
   reducedMotion: false,
+  confirmMoves: false,
 };
 
 export const BOARD_PRESETS: { id: string; label: string; light: string; dark: string }[] = [
@@ -54,6 +57,7 @@ export function cleanSettings(raw: unknown): Settings {
     turnFlash: bool(r.turnFlash, d.turnFlash),
     coords: bool(r.coords, d.coords),
     reducedMotion: bool(r.reducedMotion, d.reducedMotion),
+    confirmMoves: bool(r.confirmMoves, d.confirmMoves),
   };
 }
 

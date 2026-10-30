@@ -170,6 +170,7 @@ function SettingsTab() {
         </div>
         <Toggle label="Mute all sounds" checked={s.muted} onChange={(v) => updateSettings({ muted: v })} id="set-muted" />
         <Toggle label="Flash the screen on your turn" checked={s.turnFlash} onChange={(v) => updateSettings({ turnFlash: v })} id="set-flash" />
+        <Toggle label="Confirm each chess move before sending" checked={s.confirmMoves} onChange={(v) => updateSettings({ confirmMoves: v })} id="set-confirm-moves" />
         <Toggle label="Reduce motion" checked={s.reducedMotion} onChange={(v) => updateSettings({ reducedMotion: v })} id="set-motion" />
       </div>
       <div className="acct-section">

@@ -22,3 +22,11 @@ describe('settings', () => {
     expect(themeVars({ ...DEFAULT_SETTINGS, theme: 'contrast' })['--color-cream']).toBe('#ffffff');
   });
 });
+
+describe('confirmMoves setting', () => {
+  it('defaults off, keeps booleans, rejects junk', () => {
+    expect(cleanSettings({}).confirmMoves).toBe(false);
+    expect(cleanSettings({ confirmMoves: true }).confirmMoves).toBe(true);
+    expect(cleanSettings({ confirmMoves: 'yes' }).confirmMoves).toBe(false);
+  });
+});

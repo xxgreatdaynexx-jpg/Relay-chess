@@ -229,6 +229,7 @@ export function RoomScreen({
   }
 
   async function sendMove(move: { from: string; to: string; promotion?: 'q' | 'r' | 'b' | 'n' }) {
+    if (getSettings().confirmMoves && !window.confirm(`Play ${move.from}→${move.to}${move.promotion ? `=${move.promotion.toUpperCase()}` : ''}?`)) return;
     const next = previewFen(state.fen, move);
     if (next) setPending({ fen: next, ply: state.ply + 1, from: move.from, to: move.to });
     const res = await request('move', move);
