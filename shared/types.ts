@@ -259,7 +259,7 @@ export function clockPreset(id: unknown): ClockPreset | null {
   return CLOCK_PRESETS.find((preset) => preset.id === id) ?? null;
 }
 
-export const GAME_MODES = ['2v2', '1v1', '2v1', '3v3', '3v2'] as const;
+export const GAME_MODES = ['1v1', '2v1', '2v2', '3v2', '3v3'] as const;
 export type GameMode = (typeof GAME_MODES)[number];
 
 export interface TableSetup {

@@ -270,11 +270,11 @@ export function HomeScreen({
             <div className="mt-2 flex flex-wrap gap-2">
               {(
                 [
-                  ['2v2', '2v2'],
                   ['1v1', '1v1'],
                   ['2v1', '2v1'],
-                  ['3v3', '3v3'],
+                  ['2v2', '2v2'],
                   ['3v2', '3v2'],
+                  ['3v3', '3v3'],
                 ] as const
               ).map(([id, label]) => (
                 <button

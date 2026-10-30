@@ -96,7 +96,7 @@ export function bestHand(cards: C[]): { score: number; label: string } {
 }
 
 /** Default delay on the spectator feed (hidden cards and actions), so watchers can't relay live info to a seat. */
-export const HE_SPECTATE_DELAY_MS = 30_000;
+export const HE_SPECTATE_DELAY_MS = 2_000;
 
 /** Spectator view: every live hand face up, plus win odds. */
 export interface HESpectateView extends HEView {

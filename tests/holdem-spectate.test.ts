@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { equity } from '../shared/holdem.js';
+import { equity, HE_SPECTATE_DELAY_MS } from '../shared/holdem.js';
 import type { CasinoCard, Suit } from '../shared/casino.js';
 import { CasinoBank } from '../server/casino-store.js';
 import { HoldemTable } from '../server/holdem.js';
@@ -13,7 +13,7 @@ const card = (s: string): CasinoCard => {
 const cards = (s: string) => s.split(' ').map(card);
 const DECK = 'AS KD AH KC 2C 7D 9H JS 3D QS QH 4C 5D 6H 8C';
 
-function setup(delay = 30_000) {
+function setup(delay = HE_SPECTATE_DELAY_MS) {
   const bank = new CasinoBank();
   const t = new HoldemTable('T1', bank, Math.random, () => cards(DECK));
   t.sit('Ann', 500, 0);
@@ -36,11 +36,12 @@ describe("hold'em card visibility", () => {
     expect(shown(t.view(null, 1000))).toBe(0);
     expect(JSON.stringify(t.view('Bob', 1000))).not.toContain('"AS"');
   });
+  it('the default delay is 2 seconds', () => expect(HE_SPECTATE_DELAY_MS).toBe(2000));
   it('spectators see every hand with odds, but only after the delay', () => {
-    const { t, sp } = setup(30_000);
+    const { t, sp } = setup();
     expect(sp.watch(t, guest(), 1000)).toBeNull(); // nothing until the delay passes
-    expect(sp.due([t], 20_000)[0]!.view).toBeNull();
-    const out = sp.due([t], 31_000);
+    expect(sp.due([t], 2500)[0]!.view).toBeNull();
+    const out = sp.due([t], 3100);
     const v = out[0]!.view!;
     expect(shown(v)).toBe(4);
     expect(v.spectator).toBe(true);
@@ -50,14 +51,14 @@ describe("hold'em card visibility", () => {
     expect(odds.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 1);
   });
   it('the delayed feed lags the action as well as the cards', () => {
-    const { t, sp } = setup(30_000);
+    const { t, sp } = setup();
     sp.watch(t, guest(), 1000);
     const toAct = t.seats[t.toAct!]!.name;
     t.act(toAct, 'call', 0, 5000);
     sp.record(t, 5000);
-    const early = sp.frameFor('T1', 32_000)!;
+    const early = sp.frameFor('T1', 6000)!;
     expect(early.seats.find((s) => s?.name === toAct)!.lastAction).not.toMatch(/Call/);
-    const late = sp.frameFor('T1', 35_000)!;
+    const late = sp.frameFor('T1', 7100)!;
     expect(late.seats.find((s) => s?.name === toAct)!.lastAction).toMatch(/Call/);
   });
   it('blocks a seated name or device, but not a shared IP alone, from spectating the same table', () => {
@@ -73,7 +74,7 @@ describe("hold'em card visibility", () => {
     sp.watch(t, guest(), 1000);
     expect(sp.count('T1')).toBe(1);
     t.sit('Cy', 500, 2000);
-    const out = sp.due([t], 40_000);
+    const out = sp.due([t], 10_000);
     expect(out[0]!.kicked).toMatch(/seated/);
     expect(sp.count('T1')).toBe(0);
   });

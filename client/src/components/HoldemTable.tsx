@@ -3,7 +3,7 @@ import { CardFace } from '@/components/SolitairePanel';
 import { emitCasino, useCountdown } from '@/lib/casino';
 import { socket } from '@/lib/net';
 import { playCardFlick, playSolitaireWin } from '@/lib/sounds';
-import { HE_BIG, HE_MAX_BUYIN, HE_MIN_BUYIN, HE_SMALL, type HESpectateView, type HEView } from '../../../shared/holdem';
+import { HE_BIG, HE_MAX_BUYIN, HE_MIN_BUYIN, HE_SMALL, HE_SPECTATE_DELAY_MS, type HESpectateView, type HEView } from '../../../shared/holdem';
 
 interface TableInfo { id: string; seated: number; phase: string; watchers: number }
 
@@ -39,7 +39,7 @@ export function HoldemTableView({ name }: { name: string }) {
     setErr('');
     const r = await emitCasino<{ state: HESpectateView | null; delayMs: number }>('he_spectate', { table });
     if (!r.ok) return setErr(r.error ?? 'Try again.');
-    setSpec({ table, delayMs: r.delayMs ?? 30000, view: r.state ?? null });
+    setSpec({ table, delayMs: r.delayMs ?? HE_SPECTATE_DELAY_MS, view: r.state ?? null });
   };
   const stopSpec = () => { setSpec(null); void emitCasino('he_unspectate'); };
   const hand = v?.handNo ?? 0;
