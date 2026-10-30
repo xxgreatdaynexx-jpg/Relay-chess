@@ -1041,3 +1041,16 @@ html[data-theme="contrast"] .top-tabs .sol-tab[aria-expanded="true"] { backgroun
 html, body { overflow-x: clip; }
 /* Narrow screens: open casino windows from the bottom so they never cover the site header / Main Menu. */
 @media (max-width: 900px) { .app-panels .sol-panel { top: auto; bottom: 12px; max-height: calc(100dvh - 140px); } }
+
+/* Arena r4: controls hint wraps/shortens and clears the fixed volume widget; fps readout; M-opened picker. */
+.fps-help { white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
+.fps-help-short { display: none; }
+@media (max-width: 900px) {
+  .fps-help { padding-left: 190px; text-align: left; }
+  .fps-help-full { display: none; }
+  .fps-help-short { display: inline; }
+}
+@media (max-width: 520px) { .fps-help { padding-left: 8px; padding-bottom: 46px; } }
+.fps-fps { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); font: 700 10px ui-monospace, Menlo, Consolas, monospace; color: #b8f0a0; background: rgba(0,0,0,.55); padding: 1px 6px; border-radius: 4px; pointer-events: none; z-index: 2; }
+.fps-maps-pick.is-open { outline: 2px solid #e6c46a; outline-offset: 2px; border-radius: 6px; }
+.fps-maps-pick button:focus-visible { outline: 2px solid #fff6d8; }

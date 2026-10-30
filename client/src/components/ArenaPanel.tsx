@@ -2,6 +2,7 @@ import { TopTab } from '@/components/TopTabs';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useRef, useState } from 'react';
 import { socket } from '@/lib/net';
+import { FPS_KEY, fpsFrom, hotkeyFor, isLockedTo, readFpsPref } from '@/lib/arenaInput';
 import { ArenaRenderer, minimapSize } from '@/lib/arenaRender';
 import type { Arena3D, Fx3D, Soldier3D } from '@/lib/arena3d';
 import { playExplosion, playHit, playStreakCall, playWeaponShot, unlockSounds } from '@/lib/sounds';
@@ -56,6 +57,12 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const [showBoard, setShowBoard] = useState(false);
   const [board, setBoard] = useState<NetPlayer[]>([]);
   const [focused, setFocused] = useState(false);
+  const [locked, setLocked] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [showFps, setShowFps] = useState(() => readFpsPref(typeof localStorage !== 'undefined' ? localStorage : undefined));
+  const fpsRef = useRef<HTMLDivElement>(null);
+  const pickRef = useRef<HTMLSpanElement>(null);
+  useEffect(() => { try { localStorage.setItem(FPS_KEY, showFps ? '1' : '0'); } catch { /* ignore */ } }, [showFps]);
   const [isTouch] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches);
   const [quality, setQuality] = useState<Quality>(() => (localStorage.getItem(QUALITY_KEY) as Quality) || (isTouch ? 'lo' : 'hd'));
   const qualityRef = useRef(quality);
@@ -265,7 +272,11 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     let raf = 0;
     let last = performance.now();
     let lastSend = 0;
+    const frameTimes: number[] = [];
+    let fpsShownAt = 0;
     const frame = (now: number) => {
+      frameTimes.push(now); if (frameTimes.length > 30) frameTimes.shift();
+      if (fpsRef.current && now - fpsShownAt > 250) { fpsShownAt = now; fpsRef.current.textContent = `${fpsFrom(frameTimes)} FPS`; }
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       const map = mapRef.current;
@@ -538,10 +549,24 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     };
     const onUp = (e: MouseEvent) => { if (e.button === 0) me.current.firing = false; if (e.button === 2) setScope(false); };
     const onWheel = (e: WheelEvent) => { e.preventDefault(); cycleWeapon(e.deltaY > 0 ? 1 : -1); };
+    // Always resync to what the browser actually holds; never trust our own idea of "locked".
+    const sync = () => {
+      const on = isLockedTo(document.pointerLockElement, canvas);
+      setLocked(on);
+      if (!on) { me.current.firing = false; setScope(false); }
+    };
+    document.addEventListener('pointerlockchange', sync);
+    document.addEventListener('pointerlockerror', sync);
+    window.addEventListener('blur', sync);
+    document.addEventListener('visibilitychange', sync);
     document.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     canvas?.addEventListener('wheel', onWheel, { passive: false });
     return () => {
+      document.removeEventListener('pointerlockchange', sync);
+      document.removeEventListener('pointerlockerror', sync);
+      window.removeEventListener('blur', sync);
+      document.removeEventListener('visibilitychange', sync);
       document.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
       canvas?.removeEventListener('wheel', onWheel);
@@ -552,7 +577,13 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const GAME_KEYS = new Set(['tab', 'w', 'a', 's', 'd', 'q', 'e', 'f', 'r', 'control', ' ', '1', '2', '3', '4', '5', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown']);
   function onKey(e: React.KeyboardEvent, down: boolean) {
     const key = e.key.toLowerCase();
-    if (key === 'escape') return;
+    if (down) {
+      const hk = hotkeyFor(e.key, e.repeat);
+      if (hk === 'release') { releaseLock(); setPickerOpen(false); return; }
+      if (hk === 'picker') { e.preventDefault(); e.stopPropagation(); openPicker(); return; }
+      if (hk === 'fps') { e.preventDefault(); e.stopPropagation(); setShowFps((v) => !v); return; }
+    }
+    if (key === 'escape' || key === 'm' || key === 'f3') return;
     e.stopPropagation();
     if (!GAME_KEYS.has(key)) return;
     e.preventDefault();
@@ -566,7 +597,21 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     else if (key === 'f' || key === 'control') shoot();
   }
 
+  function releaseLock() {
+    if (document.pointerLockElement) document.exitPointerLock?.();
+    setLocked(false);
+    keys.current.clear();
+    me.current.firing = false;
+  }
+  function openPicker() {
+    releaseLock();
+    setPickerOpen((o) => {
+      if (!o) setTimeout(() => pickRef.current?.querySelector<HTMLButtonElement>('button:not(.is-on)')?.focus(), 0);
+      return !o;
+    });
+  }
   const pickMap = (id: string) => {
+    setPickerOpen(false);
     localStorage.setItem(MAP_KEY, id);
     socket.emit('fps_map', { map: id });
   };
@@ -610,7 +655,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       <div className="fps-maps" data-testid="arena-maps">
         <span className="fps-maps-now">{mapById(mapInfo.map).name}{mapInfo.secs > 0 && <span className="opacity-70"> · {clock(mapInfo.secs * 1000)}</span>}</span>
         {mapInfo.next && <span className="opacity-70">next: {mapById(mapInfo.next).name}{mapInfo.picked ? ' (picked)' : ''}</span>}
-        <span className="fps-maps-pick" role="group" aria-label="Pick a map">
+        <span ref={pickRef} className={`fps-maps-pick${pickerOpen ? ' is-open' : ''}`} data-testid="arena-map-picker" data-open={pickerOpen ? '1' : '0'} role="group" aria-label="Pick a map">
           {MAP_LIST.map((m) => (
             <button
               key={m.id}
@@ -626,7 +671,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
           ))}
         </span>
       </div>
-      <div className="fps-stage">
+      <div className={`fps-stage${locked ? ' fps-locked' : ''}`} data-locked={locked ? '1' : '0'}>
         <canvas ref={glRef} className="fps-gl" aria-hidden="true" />
         <canvas
           ref={canvasRef}
@@ -636,7 +681,13 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
           onMouseDown={(e) => {
             unlockSounds();
             wrapRef.current?.focus();
-            if (document.pointerLockElement !== canvasRef.current) canvasRef.current?.requestPointerLock?.();
+            setPickerOpen(false);
+            if (document.pointerLockElement !== canvasRef.current) {
+              try {
+                const p = canvasRef.current?.requestPointerLock?.() as unknown as Promise<void> | undefined;
+                p?.catch?.(() => setLocked(isLockedTo(document.pointerLockElement, canvasRef.current)));
+              } catch { /* pointerlockerror resyncs */ }
+            }
             if (e.button === 0) { me.current.firing = true; shoot(); }
             if (e.button === 2) setScope(true);
           }}
@@ -664,6 +715,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
             </div>
           ))}
         </div>
+        {showFps && <div ref={fpsRef} className="fps-fps" data-testid="arena-fps" aria-live="off">… FPS</div>}
         {(status || glError) && <div className="fps-status">{glError || status}</div>}
       </div>
       {isTouch ? (
@@ -688,7 +740,10 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
           >FIRE</button>
         </div>
       ) : (
-        <div className="fps-help">WASD move · mouse look (up/down too) · Q/E turn · PgUp/PgDn look · click, F or Ctrl shoot · Space jump · 1–5 / wheel guns · R reload · right-click scope · Tab scores · Esc frees mouse</div>
+        <div className="fps-help" data-testid="arena-help">
+          <span className="fps-help-full">WASD move · mouse look · Q/E turn · PgUp/PgDn look · click, F or Ctrl shoot · Space jump · 1–5 / wheel guns · R reload · right-click scope · Tab scores · M maps · F3 fps · Esc frees mouse</span>
+          <span className="fps-help-short">WASD move · click shoot · Space jump · 1–5 guns · R reload · Tab scores · M maps · F3 fps · Esc frees mouse</span>
+        </div>
       )}
     </div>
   );
