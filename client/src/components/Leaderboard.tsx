@@ -7,7 +7,7 @@ import { loadName } from '@/lib/playerName';
 import { ARENA_COLS, sortArena, type ArenaRow, type ArenaSort } from '../../../shared/arenaBoard';
 
 export type BoardKind = 'chess' | 'casino' | 'arena';
-const BOARDS: Array<[BoardKind, string]> = [['chess', 'Chess'], ['casino', 'Casino chips'], ['arena', 'Arena']];
+const BOARDS: Array<[BoardKind, string]> = [['chess', 'Chess'], ['casino', 'Casino'], ['arena', 'Arena']];
 const BOARD_KEY = 'relay-leaderboard-tab';
 function loadBoard(): BoardKind {
   try { const v = localStorage.getItem(BOARD_KEY); return BOARDS.some(([k]) => k === v) ? (v as BoardKind) : 'chess'; } catch { return 'chess'; }
