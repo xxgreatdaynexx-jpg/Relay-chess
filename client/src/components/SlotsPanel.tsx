@@ -56,7 +56,8 @@ export function SlotsPanel() {
     <div className={`cx-wrap sl-wrap ${open ? 'cx-open' : ''}`} data-testid="slots">
       <button type="button" className="sol-tab cx-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="slots-tab">🎰 Slots</button>
       {open && (
-        <div className="sol-panel bj-panel cx-panel" role="dialog" aria-label="Slots" ref={winRef} style={win.style} onPointerDownCapture={win.front}>
+        <div className={"sol-panel bj-panel cx-panel" + win.className} role="dialog" aria-label="Slots" ref={winRef} style={win.style} onPointerDownCapture={win.front}>
+          {win.grips}
           <div {...win.bar}>
             <button type="button" className={`casino-tabbtn ${tab === 'play' ? 'on' : ''}`} onClick={() => setTab('play')}>Slots</button>
             <button type="button" className={`casino-tabbtn ${tab === 'board' ? 'on' : ''}`} onClick={() => setTab('board')}>Casino leaderboard</button>

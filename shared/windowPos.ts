@@ -34,3 +34,40 @@ export function saveOffset(id: string, o: Offset | null, store: Store | null): v
     // storage blocked
   }
 }
+
+/** Resizable panels: a user size plus the panel's natural size (w0/h0) so content can scale up with it. */
+export interface Size { w: number; h: number; w0: number; h0: number }
+export const MIN_W = 300;
+export const MIN_H = 240;
+export const sizeKey = (id: string) => `relay-win-size-${id}`;
+
+/** Clamp a size to the minimum and to the viewport (minus `margin` on each side). */
+export function clampSize(w: number, h: number, vw: number, vh: number, margin = 4): { w: number; h: number } {
+  const maxW = Math.max(MIN_W, vw - margin * 2);
+  const maxH = Math.max(MIN_H, vh - margin * 2);
+  return { w: Math.round(Math.min(maxW, Math.max(MIN_W, w))), h: Math.round(Math.min(maxH, Math.max(MIN_H, h))) };
+}
+
+/** How much to scale fixed-layout content (card tables) so it fills the new size; never shrinks below 1. */
+export function contentScale(s: Size | null): number {
+  if (!s || s.w0 <= 0 || s.h0 <= 0) return 1;
+  return Math.max(1, Math.min(s.w / s.w0, s.h / s.h0, 3));
+}
+
+export function loadSize(id: string, store: Store | null): Size | null {
+  try {
+    const v = JSON.parse(store?.getItem(sizeKey(id)) ?? 'null') as Size | null;
+    return v && [v.w, v.h, v.w0, v.h0].every((n) => Number.isFinite(n) && n > 0) ? { w: v.w, h: v.h, w0: v.w0, h0: v.h0 } : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveSize(id: string, s: Size | null, store: Store | null): void {
+  try {
+    if (!s) store?.removeItem(sizeKey(id));
+    else store?.setItem(sizeKey(id), JSON.stringify(s));
+  } catch {
+    // storage blocked
+  }
+}

@@ -614,3 +614,20 @@ input {
 .fps-scoreboard th { text-align: left; color: #a9ae9e; border-bottom: 1px solid #8b908066; padding: 2px 4px; }
 .fps-scoreboard td { padding: 2px 4px; }
 .fps-scoreboard .fps-me td { color: #e6c46a; }
+
+/* ---- Resizable windows: edge + corner grips, content scales with the window. Not on phones. */
+.sol-panel { position: relative; }
+.win-grip { position: absolute; z-index: 30; touch-action: none; }
+.win-grip-n, .win-grip-s { left: 10px; right: 10px; height: 6px; cursor: ns-resize; }
+.win-grip-n { top: 0; } .win-grip-s { bottom: 0; }
+.win-grip-e, .win-grip-w { top: 10px; bottom: 10px; width: 6px; cursor: ew-resize; }
+.win-grip-e { right: 0; } .win-grip-w { left: 0; }
+.win-grip-ne, .win-grip-nw, .win-grip-sw { width: 12px; height: 12px; }
+.win-grip-ne { top: 0; right: 0; cursor: nesw-resize; } .win-grip-nw { top: 0; left: 0; cursor: nwse-resize; } .win-grip-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+.win-grip-se { right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 0 45%, rgba(255,246,216,.55) 45% 52%, transparent 52% 64%, rgba(255,246,216,.55) 64% 71%, transparent 71% 83%, rgba(255,246,216,.55) 83% 90%, transparent 90%); }
+.win-sized:not(.fps-panel) > :not(.sol-bar):not(.win-grip) { zoom: var(--win-scale, 1); }
+.win-sized.fps-panel .fps-stage { flex: 1; min-height: 0; }
+.win-sized.fps-panel .fps-canvas { height: 100%; aspect-ratio: auto; }
+.win-sized.fps-panel .fps-help, .win-sized.fps-panel .fps-touch { flex: none; }
+@media (max-width: 520px) { .win-grip { display: none; } .sol-panel.win-sized { width: 100% !important; height: min(560px, calc(100dvh - 110px)) !important; } }

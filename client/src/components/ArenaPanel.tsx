@@ -216,7 +216,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       const cssW = canvas.clientWidth || 480;
       const scale = qualityRef.current === 'hd' ? Math.min(window.devicePixelRatio || 1, 2) : 0.6;
       const W = Math.round(Math.min(cssW * scale, 1100));
-      const H = Math.round((W * 5) / 8);
+      const H = Math.round((W * (canvas.clientHeight || (cssW * 5) / 8)) / cssW);
       if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
       r.resize(W, H);
       const m = me.current;
@@ -452,7 +452,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   return (
     <div
       ref={wrapRef}
-      className={`sol-panel fps-panel ${focused ? 'fps-focused' : ''}`}
+      className={`sol-panel fps-panel ${focused ? 'fps-focused' : ''}${win.className}`}
       style={win.style}
       onPointerDownCapture={win.front}
       role="dialog"
@@ -470,6 +470,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       onKeyDown={(e) => onKey(e, true)}
       onKeyUp={(e) => onKey(e, false)}
     >
+      {win.grips}
       <div {...win.bar}>
         <span className="font-semibold">Arena</span>
         <span className="opacity-70">{board.length} online · {focused ? 'controls on' : 'click to play'}</span>

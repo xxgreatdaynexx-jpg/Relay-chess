@@ -28,3 +28,27 @@ describe('window position helpers', () => {
     expect(loadOffset('x', s)).toBeNull();
   });
 });
+
+import { clampSize, contentScale, loadSize, saveSize, MIN_W, MIN_H } from '../shared/windowPos.js';
+describe('window size helpers', () => {
+  it('clamps to the minimum and the viewport', () => {
+    expect(clampSize(10, 10, 1000, 800)).toEqual({ w: MIN_W, h: MIN_H });
+    expect(clampSize(5000, 5000, 1000, 800)).toEqual({ w: 992, h: 792 });
+    expect(clampSize(640.4, 500.6, 1000, 800)).toEqual({ w: 640, h: 501 });
+  });
+  it('scales content by the tighter axis, never below 1', () => {
+    expect(contentScale(null)).toBe(1);
+    expect(contentScale({ w: 840, h: 520, w0: 420, h0: 520 })).toBe(1);
+    expect(contentScale({ w: 840, h: 1040, w0: 420, h0: 520 })).toBe(2);
+    expect(contentScale({ w: 200, h: 200, w0: 420, h0: 520 })).toBe(1);
+  });
+  it('stores, reloads and clears sizes and rejects junk', () => {
+    const s = (() => { const m = new Map<string, string>(); return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) }; })();
+    saveSize('bj', { w: 600, h: 700, w0: 420, h0: 520 }, s);
+    expect(loadSize('bj', s)).toEqual({ w: 600, h: 700, w0: 420, h0: 520 });
+    saveSize('bj', null, s);
+    expect(loadSize('bj', s)).toBeNull();
+    s.setItem('relay-win-size-x', '{"w":-1,"h":2,"w0":1,"h0":1}');
+    expect(loadSize('x', s)).toBeNull();
+  });
+});
