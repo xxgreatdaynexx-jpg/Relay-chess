@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ADJ, act, botAction, CONTINENTS, connectedOwned, findSet, newGame, reinforcements, resolveDice, RuleError, START_ARMIES, TERRITORIES, tradeValue, validSet, type CqState } from '../shared/conquest';
+import { ADJ, act, autoPlace, CQ_PALETTE, botAction, CONTINENTS, connectedOwned, findSet, newGame, reinforcements, resolveDice, RuleError, START_ARMIES, TERRITORIES, tradeValue, validSet, type CqState } from '../shared/conquest';
 import { ConquestHub, MemoryCqStore } from '../server/conquest';
 
 const seq = (vals: number[]) => { let i = 0; return () => vals[i++ % vals.length]!; };
@@ -150,6 +150,7 @@ describe('bots and tables', () => {
     hub.join(t.code, 'QA-Bob');
     expect(() => hub.addBot(t.code, 'QA-Bob')).toThrow(/host/);
     expect(() => hub.start(t.code, 'QA-Bob')).toThrow(/host/);
+    hub.configure(t.code, 'QA-Ann', { manualSetup: false });
     hub.start(t.code, 'QA-Ann');
     const g = t.game!;
     const who = g.turn === 0 ? 'QA-Ann' : 'QA-Bob';
@@ -183,5 +184,78 @@ describe('bots and tables', () => {
     expect(rows.find((x) => x.name === 'Ann')!.wins).toBe(1);
     expect(rows.find((x) => x.name === 'Bob')!.losses).toBe(1);
     hub.stop();
+  });
+});
+
+describe('polish: setup, settings, colours, smarter bots', () => {
+  it('manual setup: everyone places at once, bots auto-place, war begins when all are down', () => {
+    const s = newGame([{ name: 'A', bot: false }, { name: 'B', bot: false }, { name: 'Bot', bot: true }], rnd, { manualSetup: true });
+    expect(s.phase).toBe('setup');
+    expect(s.setup![2]).toBe(0);
+    const total = (p: number) => s.armies.reduce((k, a, t) => k + (s.owner[t] === p ? a : 0), 0);
+    expect(total(2)).toBe(START_ARMIES[3]);
+    const left = s.setup![1]!;
+    const mineB = s.owner.indexOf(1);
+    act(s, 1, { type: 'setupPlace', t: mineB, n: 2 });
+    expect(s.setup![1]).toBe(left - 2);
+    expect(() => act(s, 1, { type: 'setupPlace', t: s.owner.indexOf(0), n: 1 })).toThrow(/own/);
+    expect(() => act(s, 0, { type: 'endTurn' })).toThrow(/starting/);
+    act(s, 1, { type: 'autoPlace' });
+    expect(s.phase).toBe('setup');
+    expect(() => act(s, 1, { type: 'setupPlace', t: mineB, n: 1 })).toThrow(/placed/);
+    act(s, 0, { type: 'setupPlace', t: s.owner.indexOf(0), n: s.setup![0]! });
+    expect(s.phase).toBe('reinforce');
+    expect(total(0) + total(1) + total(2)).toBe(3 * START_ARMIES[3]!);
+    expect(s.reserve).toBe(reinforcements(s, s.turn));
+  });
+  it('autoPlace spreads exactly the remaining armies', () => {
+    const s = newGame([{ name: 'A', bot: false }, { name: 'B', bot: false }], rnd, { manualSetup: true });
+    const before = s.armies.reduce((a, b) => a + b, 0);
+    autoPlace(s, 0, rnd);
+    expect(s.armies.reduce((a, b) => a + b, 0)).toBe(before + START_ARMIES[2]! - 14);
+  });
+  it('hub: settings + colours are host/seat checked and locked at start; setup timer auto-places', () => {
+    const hub = new ConquestHub(rnd);
+    const t = hub.create('Ann'); hub.join(t.code, 'Bob'); hub.addBot(t.code, 'Ann');
+    expect(t.seats.map((x) => x.color)).toEqual([0, 1, 2]);
+    expect(() => hub.configure(t.code, 'Bob', { turnMs: 60_000 })).toThrow(/host/);
+    expect(() => hub.configure(t.code, 'Ann', { turnMs: 1234 })).toThrow(/list/);
+    hub.configure(t.code, 'Ann', { turnMs: 30_000, manualSetup: true });
+    expect(() => hub.setColor(t.code, 'Bob', 0)).toThrow(/already/);
+    expect(() => hub.setColor(t.code, 'Bob', 4, 2)).toThrow(/not your/);
+    hub.setColor(t.code, 'Bob', 5); hub.setColor(t.code, 'Ann', 7, 2);
+    expect(() => hub.setColor(t.code, 'Ann', CQ_PALETTE.length)).toThrow(/colours/);
+    hub.start(t.code, 'Ann', 1000);
+    expect(t.game!.players.map((p) => p.color)).toEqual([0, 5, 7]);
+    expect(t.game!.phase).toBe('setup');
+    expect(t.deadline).toBe(1000 + 60_000);
+    expect(() => hub.setColor(t.code, 'Bob', 3)).toThrow(/locked/);
+    hub.action(t.code, 'Bob', { type: 'autoPlace' }, 2000);
+    hub.expire(t.code, 3000);
+    expect(t.game!.phase).toBe('reinforce');
+    expect(t.deadline).toBe(3000 + 30_000);
+    expect(hub.view(t, 'Ann').settings.turnMs).toBe(30_000);
+    hub.stop();
+  });
+  it('a player leaving during setup still lets the war begin', () => {
+    const hub = new ConquestHub(rnd);
+    const t = hub.create('Ann'); hub.join(t.code, 'Bob'); hub.join(t.code, 'Cy');
+    hub.start(t.code, 'Ann');
+    hub.leave(t.code, 'Ann');
+    hub.action(t.code, 'Bob', { type: 'autoPlace' });
+    hub.action(t.code, 'Cy', { type: 'autoPlace' });
+    expect(t.game!.phase).toBe('reinforce');
+    expect(t.game!.players[t.game!.turn]!.alive).toBe(true);
+    hub.stop();
+  });
+  it('smarter bots beat the naive "pass" player and finish 4-bot games', () => {
+    for (let g = 0; g < 4; g++) {
+      const s = newGame(Array.from({ length: 4 }, (_, i) => ({ name: `B${i}`, bot: true })), rnd, { manualSetup: true });
+      let steps = 0;
+      while (s.phase !== 'over' && steps++ < 20000) {
+        try { act(s, s.turn, botAction(s, s.turn), rnd); } catch { act(s, s.turn, s.pending ? { type: 'move', n: s.pending.min } : { type: 'endTurn' }, rnd); }
+      }
+      expect(s.phase).toBe('over');
+    }
   });
 });

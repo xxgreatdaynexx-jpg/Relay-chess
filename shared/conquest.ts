@@ -44,10 +44,13 @@ export const ADJ: number[][] = TERRITORIES.map(() => []);
 for (const [a, b] of EDGES) { ADJ[a]!.push(b); ADJ[b]!.push(a); }
 export const adjacent = (a: number, b: number) => ADJ[a]?.includes(b) ?? false;
 
-export type Phase = 'reinforce' | 'attack' | 'fortify' | 'over';
+/** Army colours a table can pick from (index into this list). */
+export const CQ_PALETTE = ['#d9ae66', '#b23b3b', '#4f8fc0', '#8a5fb5', '#e9e2d4', '#4fa36b', '#d9773a', '#3fb3a8'];
+export const CQ_PALETTE_NAMES = ['Gold', 'Crimson', 'Sky', 'Violet', 'Bone', 'Moss', 'Rust', 'Teal'];
+export type Phase = 'setup' | 'reinforce' | 'attack' | 'fortify' | 'over';
 /** s: 0 foot, 1 horse, 2 cannon, 3 wild. t: territory or -1. */
 export interface Card { t: number; s: 0 | 1 | 2 | 3 }
-export interface CqPlayer { name: string; bot: boolean; alive: boolean; cards: Card[] }
+export interface CqPlayer { name: string; bot: boolean; alive: boolean; cards: Card[]; color?: number }
 export interface Roll { from: number; to: number; att: number[]; def: number[]; attLost: number; defLost: number; conquered: boolean }
 export interface CqState {
   players: CqPlayer[];
@@ -65,6 +68,8 @@ export interface CqState {
   fortified: boolean;
   log: string[];
   round: number;
+  /** Starting armies each player still has to place (setup phase only). */
+  setup?: number[];
 }
 export type Rng = () => number;
 
@@ -80,25 +85,47 @@ export class RuleError extends Error {}
 const need = (ok: unknown, msg: string): void => { if (!ok) throw new RuleError(msg); };
 
 /** Deal territories round-robin, one army each, then spread the remaining starting armies randomly. */
-export function newGame(players: Array<{ name: string; bot: boolean }>, rng: Rng = Math.random): CqState {
+export interface NewGameOpts { manualSetup?: boolean }
+export function newGame(players: Array<{ name: string; bot: boolean; color?: number }>, rng: Rng = Math.random, opts: NewGameOpts = {}): CqState {
   need(players.length >= 2 && players.length <= 6, 'Conquest needs 2–6 players.');
   const n = players.length;
   const order = shuffle(TERRITORIES.map((t) => t.id), rng);
   const owner = new Array<number>(TERRITORIES.length).fill(0);
   order.forEach((t, i) => { owner[t] = i % n; });
   const armies = new Array<number>(TERRITORIES.length).fill(1);
-  for (let p = 0; p < n; p++) {
-    const mine = owner.map((o, t) => (o === p ? t : -1)).filter((t) => t >= 0);
-    for (let left = START_ARMIES[n]! - mine.length; left > 0; left--) armies[mine[Math.floor(rng() * mine.length)]!]! += 1;
-  }
+  const setup = players.map((_, p) => START_ARMIES[n]! - owner.filter((o) => o === p).length);
   const deck = shuffle<Card>([...TERRITORIES.map((t) => ({ t: t.id, s: (t.id % 3) as 0 | 1 | 2 })), { t: -1, s: 3 }, { t: -1, s: 3 }], rng);
   const s: CqState = {
-    players: players.map((p) => ({ ...p, alive: true, cards: [] })), owner, armies, turn: 0, phase: 'reinforce', reserve: 0,
+    players: players.map((p, i) => ({ name: p.name, bot: p.bot, alive: true, cards: [], color: p.color ?? i })), owner, armies, turn: 0, phase: 'reinforce', reserve: 0,
     conquered: false, pending: null, trades: 0, deck, winner: null, lastRoll: null, fortified: false, log: [], round: 1,
   };
-  s.reserve = reinforcements(s, 0);
-  s.log.push(`${players[0]!.name} starts.`);
+  s.setup = setup;
+  if (opts.manualSetup) {
+    s.phase = 'setup';
+    s.log.push('Place your starting armies.');
+    s.players.forEach((pl, p) => { if (pl.bot) autoPlace(s, p, rng); });
+    if (s.setup.every((x) => x === 0)) beginWar(s);
+  } else {
+    s.players.forEach((_, p) => autoPlace(s, p, rng));
+    beginWar(s);
+  }
   return s;
+}
+
+/** Spread a player's remaining starting armies: mostly onto border territories, a few at random. */
+export function autoPlace(s: CqState, p: number, rng: Rng = Math.random): void {
+  const left = s.setup?.[p] ?? 0;
+  const mine = s.owner.map((o, t) => (o === p ? t : -1)).filter((t) => t >= 0);
+  const border = mine.filter((t) => ADJ[t]!.some((n) => s.owner[n] !== p));
+  const pool = border.length ? border : mine;
+  for (let i = 0; i < left; i++) { const from = rng() < 0.75 ? pool : mine; s.armies[from[Math.floor(rng() * from.length)]!]! += 1; }
+  if (s.setup) s.setup[p] = 0;
+}
+
+function beginWar(s: CqState): void {
+  s.phase = 'reinforce'; s.turn = Math.max(0, s.players.findIndex((x) => x.alive));
+  s.reserve = reinforcements(s, s.turn);
+  s.log.push(`${s.players[s.turn]!.name} starts.`);
 }
 
 export const owned = (s: CqState, p: number) => s.owner.reduce((k, o) => k + (o === p ? 1 : 0), 0);
@@ -149,16 +176,34 @@ export type CqAction =
   | { type: 'move'; n: number }
   | { type: 'endAttack' }
   | { type: 'fortify'; from: number; to: number; n: number }
-  | { type: 'endTurn' };
+  | { type: 'endTurn' }
+  | { type: 'setupPlace'; t: number; n: number }
+  | { type: 'autoPlace' };
 
 const die = (rng: Rng) => 1 + Math.floor(rng() * 6);
 
 /** Apply one action for player p. Mutates and returns s. Throws RuleError with a plain message. */
 export function act(s: CqState, p: number, a: CqAction, rng: Rng = Math.random): CqState {
   need(s.phase !== 'over', 'The game is over.');
+  const int = (x: unknown) => Number.isInteger(x) ? (x as number) : NaN;
+  if (s.phase === 'setup') {
+    // Everyone places their starting armies at the same time; the war begins when all are down.
+    need(s.players[p]?.alive, 'You are not in this war.');
+    const left = s.setup![p]!;
+    if (a.type === 'autoPlace') autoPlace(s, p, rng);
+    else {
+      need(a.type === 'setupPlace', 'Place your starting armies first.');
+      const { t: tt, n: nn } = a as { t: number; n: number };
+      const t = int(tt), n = int(nn);
+      need(s.owner[t] === p, 'Place armies on your own territory.');
+      need(n >= 1 && n <= left, left ? `You have ${left} left to place.` : 'All your armies are placed. Waiting for the others.');
+      s.armies[t]! += n; s.setup![p] = left - n;
+    }
+    if (s.setup!.every((x) => x === 0)) beginWar(s);
+    return s;
+  }
   need(p === s.turn, 'It is not your turn.');
   const me = s.players[p]!;
-  const int = (x: unknown) => Number.isInteger(x) ? (x as number) : NaN;
   switch (a.type) {
     case 'trade': {
       need(s.phase === 'reinforce', 'Trade cards during reinforcement.');
@@ -265,39 +310,65 @@ function endTurn(s: CqState, _rng: Rng): CqState {
 export function resign(s: CqState, p: number, rng: Rng = Math.random): CqState {
   const pl = s.players[p];
   if (!pl || !pl.alive || s.phase === 'over') return s;
+  const wasSetup = s.phase === 'setup';
+  if (wasSetup) autoPlace(s, p, rng);
   pl.alive = false; pl.bot = true;
   s.log.push(`${pl.name} left the war.`);
   const alive = s.players.map((x, i) => (x.alive ? i : -1)).filter((i) => i >= 0);
   if (alive.length === 1) { s.phase = 'over'; s.winner = alive[0]!; return s; }
+  if (wasSetup) { if (s.setup!.every((x) => x === 0)) beginWar(s); return s; }
   if (s.turn === p) { s.pending = null; endTurn(s, rng); }
   return s;
 }
 
-/** One step of a simple heuristic bot. Returns the action to play now. */
+/** Chance-ish strength of an attack: attackers that can roll vs. defenders. */
+const odds = (att: number, def: number) => (att - 1) / Math.max(1, def);
+
+/**
+ * One step of the house bot. Strategy: pick a target continent (the one it is closest to holding, weighted by bonus),
+ * stack reinforcements on the border that attacks into it, attack at good odds (bolder to finish a continent or
+ * knock out a weak player), always move the bigger stack forward, then fortify interior armies to the most threatened border.
+ */
 export function botAction(s: CqState, p: number): CqAction {
+  if (s.phase === 'setup') return { type: 'autoPlace' };
   const me = s.players[p]!;
   const mine = s.owner.map((o, t) => (o === p ? t : -1)).filter((t) => t >= 0);
-  const threat = (t: number) => ADJ[t]!.filter((n) => s.owner[n] !== p).reduce((k, n) => k + s.armies[n]!, 0);
-  if (s.pending) return { type: 'move', n: s.armies[s.pending.from]! - 1 };
+  const enemyN = (t: number) => ADJ[t]!.filter((n) => s.owner[n] !== p);
+  const threat = (t: number) => enemyN(t).reduce((k, n) => k + s.armies[n]!, 0);
+  const share = (c: Continent) => { const ts = TERRITORIES.filter((x) => x.continent === c.id); return ts.filter((x) => s.owner[x.id] === p).length / ts.length; };
+  const goal = CONTINENTS.filter((c) => share(c) < 1).sort((a, b) => (share(b) + b.bonus / 20) - (share(a) + a.bonus / 20))[0];
+  const inGoal = (t: number) => goal !== undefined && TERRITORIES[t]!.continent === goal.id;
+  const weakPlayer = (o: number) => owned(s, o) <= 2;
+
+  if (s.pending) {
+    const { from, to } = s.pending;
+    // Keep defenders behind only if the source still borders enemies.
+    const keep = threat(from) > 0 ? Math.min(Math.ceil(threat(from) / 3), s.armies[from]! - 1 - s.pending.min) : 0;
+    void to;
+    return { type: 'move', n: Math.max(s.pending.min, s.armies[from]! - 1 - Math.max(0, keep)) };
+  }
   if (s.phase === 'reinforce') {
     const set = findSet(me.cards);
-    if (set && (me.cards.length >= 5 || s.reserve === 0)) return { type: 'trade', cards: set };
-    if (s.reserve === 0 && set) return { type: 'trade', cards: set };
+    if (set && (me.cards.length >= 4 || s.reserve === 0 || tradeValue(s.trades) >= 8)) return { type: 'trade', cards: set };
+    if (s.reserve === 0) return set ? { type: 'trade', cards: set } : { type: 'endTurn' };
     const border = mine.filter((t) => threat(t) > 0);
-    // Reinforce the border spot with the best attack prospect.
+    const score = (t: number) => {
+      const targets = enemyN(t);
+      const best = Math.max(0, ...targets.map((n) => (inGoal(n) ? 6 : 0) + (weakPlayer(s.owner[n]!) ? 4 : 0) + 8 - Math.min(8, s.armies[n]!)));
+      return best + s.armies[t]! * 0.4 + (inGoal(t) ? 3 : 0);
+    };
     const best = (border.length ? border : mine).sort((a, b) => score(b) - score(a))[0]!;
-    function score(t: number) {
-      const weak = Math.max(0, ...ADJ[t]!.filter((n) => s.owner[n] !== p).map((n) => 10 - s.armies[n]!));
-      return s.armies[t]! + weak;
-    }
     return { type: 'place', t: best, n: s.reserve };
   }
   if (s.phase === 'attack') {
     let pick: [number, number, number] | null = null;
-    for (const f of mine) for (const n of ADJ[f]!) {
-      if (s.owner[n] === p || s.armies[f]! < 3) continue;
-      const ratio = s.armies[f]! / s.armies[n]!;
-      if (ratio >= 1.6 && (!pick || ratio > pick[2])) pick = [f, n, ratio];
+    for (const f of mine) for (const n of enemyN(f)) {
+      if (s.armies[f]! < 2) continue;
+      const r = odds(s.armies[f]!, s.armies[n]!);
+      const bonus = (inGoal(n) ? 0.35 : 0) + (weakPlayer(s.owner[n]!) ? 0.4 : 0);
+      const v = r + bonus;
+      const ok = s.armies[f]! >= 3 ? v >= 1.25 : v >= 1.6 && s.armies[n] === 1;
+      if (ok && (!pick || v > pick[2])) pick = [f, n, v];
     }
     if (pick) return { type: 'attack', from: pick[0], to: pick[1], dice: 3 };
     return { type: 'endAttack' };
@@ -305,7 +376,7 @@ export function botAction(s: CqState, p: number): CqAction {
   if (s.phase === 'fortify') {
     const inner = mine.filter((t) => threat(t) === 0 && s.armies[t]! > 1).sort((a, b) => s.armies[b]! - s.armies[a]!)[0];
     if (inner !== undefined) {
-      const reach = [...connectedOwned(s, inner)].filter((t) => threat(t) > 0).sort((a, b) => threat(b) - threat(a))[0];
+      const reach = [...connectedOwned(s, inner)].filter((t) => threat(t) > 0).sort((a, b) => (threat(b) - s.armies[b]!) - (threat(a) - s.armies[a]!))[0];
       if (reach !== undefined) return { type: 'fortify', from: inner, to: reach, n: s.armies[inner]! - 1 };
     }
     return { type: 'endTurn' };
@@ -317,7 +388,7 @@ export function botAction(s: CqState, p: number): CqAction {
 export function publicView(s: CqState, viewer: number) {
   return {
     ...s, deck: undefined, deckLeft: s.deck.length,
-    players: s.players.map((pl, i) => ({ name: pl.name, bot: pl.bot, alive: pl.alive, cardCount: pl.cards.length, cards: i === viewer ? pl.cards : undefined, territories: owned(s, i), armies: s.armies.reduce((k, a, t) => k + (s.owner[t] === i ? a : 0), 0) })),
+    players: s.players.map((pl, i) => ({ name: pl.name, bot: pl.bot, alive: pl.alive, color: pl.color ?? i, setupLeft: s.setup?.[i] ?? 0, cardCount: pl.cards.length, cards: i === viewer ? pl.cards : undefined, territories: owned(s, i), armies: s.armies.reduce((k, a, t) => k + (s.owner[t] === i ? a : 0), 0) })),
     nextTrade: tradeValue(s.trades), log: s.log.slice(-12),
   };
 }

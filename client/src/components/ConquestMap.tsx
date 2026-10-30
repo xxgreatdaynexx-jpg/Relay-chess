@@ -1,6 +1,6 @@
-import { ADJ, CONTINENTS, EDGES, TERRITORIES, type Pt } from '../../../shared/conquest';
+import { ADJ, CONTINENTS, CQ_PALETTE, EDGES, TERRITORIES, type Pt } from '../../../shared/conquest';
 
-export const CQ_COLORS = ['#d9ae66', '#b23b3b', '#4f8fc0', '#8a5fb5', '#e9e2d4', '#4fa36b'];
+export const CQ_COLORS = CQ_PALETTE;
 
 /** Clip polygon by the half-plane closer to a than to b (Sutherland–Hodgman). */
 function clip(poly: Pt[], a: Pt, b: Pt): Pt[] {
@@ -23,6 +23,8 @@ export const CELLS: Pt[][] = TERRITORIES.map((t) => {
 });
 const path = (p: Pt[]) => `M${p.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L')}Z`;
 
+const dark = (hex: string) => { const n = parseInt(hex.slice(1, 7), 16); return ((n >> 16) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114) / 1000 < 150; };
+
 export interface MapProps {
   owner?: number[];
   armies?: number[];
@@ -31,9 +33,11 @@ export interface MapProps {
   onPick?: (t: number) => void;
   flight?: { from: number; to: number; key: string; color: string } | null;
   compact?: boolean;
+  /** Colour per player index (defaults to the palette order). */
+  colors?: string[];
 }
 
-export function ConquestMap({ owner, armies, selected = null, targets, onPick, flight, compact }: MapProps) {
+export function ConquestMap({ owner, armies, selected = null, targets, onPick, flight, compact, colors = CQ_COLORS }: MapProps) {
   return (
     <svg viewBox="0 0 1000 630" className="cq-map" role="img" aria-label="Map of the Chudlands">
       <defs>
@@ -54,8 +58,8 @@ export function ConquestMap({ owner, armies, selected = null, targets, onPick, f
         const o = owner?.[t];
         const pickable = Boolean(onPick && (targets ? targets.has(t) || selected === t : true));
         return (
-          <path key={t} d={path(cell)} data-testid={`cq-t-${t}`} className={`cq-cell${pickable ? ' pick' : ''}${selected === t ? ' sel' : ''}${targets?.has(t) ? ' tgt' : ''}`}
-            fill={o === undefined ? '#00000000' : `${CQ_COLORS[o]}38`} stroke="#0a151199" strokeWidth={1.6}
+          <path key={t} d={path(cell)} data-testid={`cq-t-${t}`} data-owner={o} data-armies={armies?.[t]} className={`cq-cell${pickable ? ' pick' : ''}${selected === t ? ' sel' : ''}${targets?.has(t) ? ' tgt' : ''}`}
+            fill={o === undefined ? '#00000000' : `${colors[o]}38`} stroke="#0a151199" strokeWidth={1.6}
             onClick={onPick ? () => onPick(t) : undefined} />
         );
       })}
@@ -68,8 +72,8 @@ export function ConquestMap({ owner, armies, selected = null, targets, onPick, f
         return (
           <g key={t.id} className="cq-token" pointerEvents="none">
             {!compact && <text x={t.at[0]} y={t.at[1] + 30} className="cq-name" textAnchor="middle">{t.name}</text>}
-            <circle cx={t.at[0]} cy={t.at[1]} r={compact ? 9 : 15} fill={o === undefined ? '#e9e2d4' : CQ_COLORS[o]} stroke={selected === t.id ? '#fff' : '#0a1511'} strokeWidth={selected === t.id ? 3.5 : 2.5} />
-            {armies && <text x={t.at[0]} y={t.at[1] + 5} className="cq-army" textAnchor="middle" fill={o === 1 || o === 3 ? '#fff' : '#14110c'}>{armies[t.id]}</text>}
+            <circle cx={t.at[0]} cy={t.at[1]} r={compact ? 9 : 15} fill={o === undefined ? '#e9e2d4' : colors[o]} stroke={selected === t.id ? '#fff' : '#0a1511'} strokeWidth={selected === t.id ? 3.5 : 2.5} />
+            {armies && <text x={t.at[0]} y={t.at[1] + 5} className="cq-army" textAnchor="middle" fill={o !== undefined && dark(colors[o]!) ? '#fff' : '#14110c'}>{armies[t.id]}</text>}
           </g>
         );
       })}

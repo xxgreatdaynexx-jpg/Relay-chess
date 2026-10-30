@@ -2,7 +2,7 @@
 import type { Server, Socket } from 'socket.io';
 import pg from 'pg';
 import { randomInt } from 'node:crypto';
-import { act, botAction, newGame, publicView, resign, RuleError, type CqAction, type CqState } from '../shared/conquest.js';
+import { act, autoPlace, botAction, CQ_PALETTE, newGame, publicView, resign, RuleError, type CqAction, type CqState } from '../shared/conquest.js';
 import { Leaderboard } from './leaderboard.js';
 import { createPgStore, databaseUrl, type Queryable } from './leaderboard-store.js';
 import { signedIn } from './auth-sockets.js';
@@ -12,8 +12,10 @@ export const CQ_BOT_MS = Number(process.env.CONQUEST_BOT_MS ?? 700);
 const IDLE_MS = 6 * 60 * 60 * 1000;
 const BOT_NAMES = ['Bot Grub', 'Bot Mudlord', 'Bot Snorkel', 'Bot Gristle', 'Bot Wart'];
 
-export interface CqSeat { name: string; bot: boolean }
-export interface CqTable { code: string; host: string; seats: CqSeat[]; game: CqState | null; deadline: number; recorded: boolean; touched: number }
+export interface CqSeat { name: string; bot: boolean; color?: number }
+export interface CqSettings { turnMs: number; manualSetup: boolean }
+export const CQ_TURN_CHOICES = [30_000, 60_000, 90_000, 180_000, 300_000];
+export interface CqTable { code: string; host: string; seats: CqSeat[]; game: CqState | null; deadline: number; recorded: boolean; touched: number; settings?: CqSettings }
 export interface CqSnapshotStore { init(): Promise<void>; loadAll(): Promise<CqTable[]>; save(t: CqTable): Promise<void>; remove(code: string): Promise<void> }
 
 class PgCqStore implements CqSnapshotStore {
@@ -55,7 +57,7 @@ export class ConquestHub {
     return t;
   }
   create(host: string, now = Date.now()): CqTable {
-    const t: CqTable = { code: this.code(), host, seats: [{ name: host, bot: false }], game: null, deadline: 0, recorded: false, touched: now };
+    const t: CqTable = { code: this.code(), host, seats: [{ name: host, bot: false, color: 0 }], game: null, deadline: 0, recorded: false, touched: now, settings: { turnMs: CQ_TURN_MS, manualSetup: true } };
     this.tables.set(t.code, t);
     this.changed(t);
     return t;
@@ -65,7 +67,7 @@ export class ConquestHub {
     if (t.seats.some((s) => !s.bot && s.name.toLowerCase() === name.toLowerCase())) return t;
     if (t.game) throw new RuleError('That war has already started. You can watch it.');
     if (t.seats.length >= 6) throw new RuleError('The table is full (6 players).');
-    t.seats.push({ name, bot: false });
+    t.seats.push({ name, bot: false, color: this.freeColor(t) });
     this.changed(t);
     return t;
   }
@@ -75,7 +77,7 @@ export class ConquestHub {
     if (t.host.toLowerCase() !== by.toLowerCase()) throw new RuleError('Only the host can add bots.');
     if (t.seats.length >= 6) throw new RuleError('The table is full (6 players).');
     const name = BOT_NAMES.find((n) => !t.seats.some((s) => s.name === n))!;
-    t.seats.push({ name, bot: true });
+    t.seats.push({ name, bot: true, color: this.freeColor(t) });
     this.changed(t);
     return t;
   }
@@ -91,6 +93,40 @@ export class ConquestHub {
     this.changed(t);
     return t;
   }
+  private freeColor(t: CqTable): number { return CQ_PALETTE.findIndex((_, i) => !t.seats.some((s) => s.color === i)); }
+  /** Pick your army colour before the war starts (unique per table). The host may also recolour bots. */
+  setColor(code: unknown, by: string, color: unknown, index?: unknown): CqTable {
+    const t = this.get(code);
+    if (t.game) throw new RuleError('Colours are locked once the war starts.');
+    const c = Number(color);
+    if (!Number.isInteger(c) || c < 0 || c >= CQ_PALETTE.length) throw new RuleError('Pick one of the colours.');
+    const isHost = t.host.toLowerCase() === by.toLowerCase();
+    const i = index !== undefined && index !== null ? Number(index) : t.seats.findIndex((s) => !s.bot && s.name.toLowerCase() === by.toLowerCase());
+    const seat = t.seats[i];
+    if (!seat) throw new RuleError('You are not seated.');
+    if (seat.bot ? !isHost : seat.name.toLowerCase() !== by.toLowerCase()) throw new RuleError('That is not your seat.');
+    if (t.seats.some((s, j) => j !== i && s.color === c)) throw new RuleError('Someone already has that colour.');
+    seat.color = c;
+    this.changed(t);
+    return t;
+  }
+  /** Host-only table settings: turn timer length and whether players place their own starting armies. */
+  configure(code: unknown, by: string, body: { turnMs?: unknown; manualSetup?: unknown }): CqTable {
+    const t = this.get(code);
+    if (t.game) throw new RuleError('Settings are locked once the war starts.');
+    if (t.host.toLowerCase() !== by.toLowerCase()) throw new RuleError('Only the host can change settings.');
+    const cur = this.settingsOf(t);
+    if (body.turnMs !== undefined) {
+      const ms = Number(body.turnMs);
+      if (!CQ_TURN_CHOICES.includes(ms)) throw new RuleError('Pick a turn length from the list.');
+      cur.turnMs = ms;
+    }
+    if (body.manualSetup !== undefined) cur.manualSetup = Boolean(body.manualSetup);
+    t.settings = cur;
+    this.changed(t);
+    return t;
+  }
+  settingsOf(t: CqTable): CqSettings { return { turnMs: t.settings?.turnMs ?? CQ_TURN_MS, manualSetup: t.settings?.manualSetup ?? false }; }
   leave(code: unknown, name: string, now = Date.now()): void {
     const t = this.get(code);
     const i = t.seats.findIndex((s) => !s.bot && s.name.toLowerCase() === name.toLowerCase());
@@ -103,7 +139,8 @@ export class ConquestHub {
     if (t.game) throw new RuleError('Already started.');
     if (t.host.toLowerCase() !== by.toLowerCase()) throw new RuleError('Only the host can start.');
     if (t.seats.length < 2) throw new RuleError('Add a player or a bot first (2–6).');
-    t.game = newGame(t.seats, this.rng);
+    t.seats.forEach((s, i) => { if (s.color === undefined || t.seats.some((o, j) => j < i && o.color === s.color)) s.color = CQ_PALETTE.findIndex((_, c) => !t.seats.some((o, j) => j !== i && o.color === c)); });
+    t.game = newGame(t.seats, this.rng, { manualSetup: this.settingsOf(t).manualSetup });
     this.after(t, now);
     return t;
   }
@@ -112,16 +149,17 @@ export class ConquestHub {
     if (!t.game) throw new RuleError('The war has not started.');
     const i = t.seats.findIndex((s) => !s.bot && s.name.toLowerCase() === name.toLowerCase());
     if (i < 0) throw new RuleError('You are watching this war.');
-    const turnBefore = t.game.turn;
+    const turnBefore = t.game.turn, phaseBefore = t.game.phase;
     act(t.game, i, a, this.rng);
-    this.after(t, now, t.game.turn !== turnBefore);
+    this.after(t, now, t.game.turn !== turnBefore || (phaseBefore === 'setup' && t.game.phase !== 'setup'));
     return t;
   }
   /** After any change: record a finished game, schedule the bot or timer, save. */
   private after(t: CqTable, now: number, newTurn = true): void {
     t.touched = now;
     const g = t.game!;
-    if (newTurn || !t.deadline) t.deadline = now + CQ_TURN_MS;
+    const ms = this.settingsOf(t).turnMs;
+    if (newTurn || !t.deadline) t.deadline = now + (g.phase === 'setup' ? Math.max(ms, 60_000) : ms);
     if (g.phase === 'over') { t.deadline = 0; this.record(t); }
     this.schedule(t);
     this.changed(t);
@@ -139,7 +177,7 @@ export class ConquestHub {
     this.timers.delete(t.code);
     const g = t.game;
     if (!g || g.phase === 'over') return;
-    const bot = g.players[g.turn]!.bot;
+    const bot = g.phase !== 'setup' && g.players[g.turn]!.bot;
     const wait = bot ? CQ_BOT_MS + Math.floor(this.rng() * CQ_BOT_MS) : Math.max(0, t.deadline - Date.now());
     const h = setTimeout(() => { try { bot ? this.botStep(t.code) : this.expire(t.code); } catch (e) { console.error('[conquest] step failed:', (e as Error).message); } }, wait);
     h.unref?.();
@@ -158,6 +196,12 @@ export class ConquestHub {
     const t = this.tables.get(code);
     const g = t?.game;
     if (!t || !g || g.phase === 'over') return;
+    if (g.phase === 'setup') {
+      g.players.forEach((pl, i) => { if ((g.setup?.[i] ?? 0) > 0) { autoPlace(g, i, this.rng); g.log.push(`${pl.name}'s armies were placed automatically.`); } });
+      act(g, Math.max(0, g.players.findIndex((x) => x.alive)), { type: 'autoPlace' }, this.rng); // starts the war once everyone is down
+      this.after(t, now, true);
+      return;
+    }
     const p = g.turn;
     let guard = 0;
     while (g.turn === p && (g.phase as string) !== 'over' && guard++ < 20) {
@@ -197,7 +241,7 @@ export class ConquestHub {
   }
   view(t: CqTable, viewer: string | null) {
     const seat = viewer ? t.seats.findIndex((s) => !s.bot && s.name.toLowerCase() === viewer.toLowerCase()) : -1;
-    return { code: t.code, host: t.host, seats: t.seats, you: seat, deadline: t.deadline, game: t.game ? publicView(t.game, seat) : null };
+    return { code: t.code, host: t.host, seats: t.seats, settings: this.settingsOf(t), you: seat, deadline: t.deadline, game: t.game ? publicView(t.game, seat) : null };
   }
   stop(): void { for (const h of this.timers.values()) clearTimeout(h); this.timers.clear(); }
 }
@@ -267,6 +311,8 @@ export function registerConquest(io: Server, socket: Socket): void {
   on('cq_watch', (b) => enter(getConquest().get(b.code)));
   on('cq_bot', (b, name) => { getConquest().addBot(b.code, name()); });
   on('cq_unseat', (b, name) => { getConquest().removeSeat(b.code, name(), Number(b.index)); });
+  on('cq_color', (b, name) => { getConquest().setColor(b.code, name(), b.color, b.index); });
+  on('cq_settings', (b, name) => { getConquest().configure(b.code, name(), b); });
   on('cq_start', (b, name) => { getConquest().start(b.code, name()); });
   on('cq_leave', (b, name) => {
     getConquest().leave(b.code, name());

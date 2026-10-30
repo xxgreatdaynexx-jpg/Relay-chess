@@ -1168,3 +1168,39 @@ html, body { overflow-x: clip; }
   .cq-dice-row b { font-size: 1.5rem; }
 }
 @media (prefers-reduced-motion: reduce) { .cq-dice-row b { animation: none; } .cq-flight { display: none; } }
+/* ---- Conquest polish: dice slot, settings, swatches, rules, phone header */
+.cq-game { grid-template-rows: auto 1fr; }
+.cq-game > .cq-board { grid-column: 1; grid-row: 1; }
+.cq-game > .cq-side { grid-column: 2; grid-row: 1 / span 2; }
+.cq-dice-slot { grid-column: 1; grid-row: 1; align-self: end; justify-self: center; margin-bottom: 10px; z-index: 2; pointer-events: none; min-height: 0; }
+.cq-dice-slot .cq-dice { position: static; transform: none; }
+.cq-dice-row b { animation-duration: var(--cq-dice-ms, 550ms); }
+.cq-dice.still .cq-dice-row b { animation: none; }
+.cq-swatches { display: inline-flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
+.cq-swatches button { width: 20px; height: 20px; border-radius: 50%; border: 2px solid #0a1511; padding: 0; }
+.cq-swatches button.on { outline: 2px solid #fff; outline-offset: 1px; }
+.cq-swatches button:disabled { opacity: .25; cursor: not-allowed; }
+.cq-seats li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cq-settings { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; font-size: .88rem; }
+.cq-settings select { margin-left: 6px; background: #0a1511; color: inherit; border: 1px solid #ffffff2a; border-radius: 8px; padding: 3px 6px; }
+.cq-speed button.on { background: #d9ae66; color: #1b1d14; }
+.cq-rules { position: fixed; inset: 0; z-index: 70; background: #000a; display: grid; place-items: center; padding: 16px; }
+.cq-rules-card { max-width: 620px; max-height: calc(100dvh - 32px); overflow: auto; background: #0f201a; border: 1px solid #ffffff1f; border-radius: 16px; padding: 18px 22px; line-height: 1.5; font-size: .92rem; }
+.cq-rules-card header { display: flex; justify-content: space-between; align-items: center; }
+.cq-rules-card h3 { font-family: var(--font-serif, Georgia, serif); font-size: 1.5rem; color: #d9ae66; }
+.cq-rules-card h4 { margin: 12px 0 2px; color: #f0c985; font-weight: 700; }
+.cq-rules-bonus { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 12px; margin: 4px 0; }
+@media (max-width: 860px) {
+  .cq-game > .cq-side { grid-column: 1; grid-row: auto; }
+  .cq-dice-slot { grid-row: 2; align-self: start; margin: 0; min-height: 44px; }
+  .cq-dice-slot .cq-dice { font-size: .75rem; padding: 3px 10px; }
+  .cq-head { flex-wrap: wrap; padding: 8px 10px; row-gap: 6px; }
+  .cq-head h2 { font-size: 1.2rem; white-space: nowrap; }
+  .cq-head h2 .cq-code { font-size: .7rem; margin-left: 6px; }
+  .cq-head-btns { width: 100%; justify-content: flex-end; gap: 6px; }
+  .cq-head-btns button { padding: 4px 10px; font-size: .8rem; white-space: nowrap; }
+}
+/* Conquest emblem: particles form it; the static SVG shows only with reduced motion */
+.si-visual .si-soldier { display: none; }
+.si-static .si-visual .si-soldier { display: block; position: absolute; inset: 4%; width: 92%; height: 92%; opacity: calc(1 - var(--fade, 0)); }
+.si-static .si-visual .si-map { inset: auto auto -4% -6%; width: 40%; }

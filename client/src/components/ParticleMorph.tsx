@@ -1,6 +1,6 @@
 import { prefersReducedMotion } from '@/lib/motion';
 import { useEffect, useRef } from 'react';
-import { CONTINENTS } from '../../../shared/conquest';
+import { drawSoldier } from '@/lib/soldier';
 
 type Pt = [number, number];
 
@@ -50,15 +50,6 @@ const drawCheckers = (g: CanvasRenderingContext2D, s: number) => {
   g.lineTo(s * 0.5 + w / 2, y - s * 0.05); g.lineTo(s * 0.5 + w, y - s * 0.12); g.lineTo(s * 0.5 + w, y); g.closePath(); g.fill();
 };
 
-const drawMap = (g: CanvasRenderingContext2D, s: number) => {
-  const k = s / 1000, oy = (s - 630 * k) / 2;
-  for (const c of CONTINENTS) {
-    g.beginPath();
-    c.poly.forEach(([x, y], i) => (i ? g.lineTo(x * k, y * k + oy) : g.moveTo(x * k, y * k + oy)));
-    g.closePath(); g.fill();
-  }
-};
-
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 
 /**
@@ -71,8 +62,8 @@ export function ParticleMorph({ slots }: { slots: () => Array<HTMLElement | null
   useEffect(() => {
     const canvas = ref.current!;
     const g = canvas.getContext('2d')!;
-    const n = window.innerWidth < 760 ? 800 : 1800;
-    const shapes = [sample(drawKing, n, 7), sample(drawCheckers, n, 11), sample(drawMap, n, 13)];
+    const n = window.innerWidth < 760 ? 1300 : 2600;
+    const shapes = [sample(drawKing, n, 7), sample(drawCheckers, n, 11), sample(drawSoldier, n, 13)];
     const tones = [[224, 181, 106], [233, 226, 212], [217, 174, 102]];
     const seeds = Array.from({ length: n }, (_, i) => [Math.sin(i * 12.9898) * 43758.5453 % 1, Math.sin(i * 78.233) * 12543.123 % 1]);
     let raf = 0;
@@ -102,7 +93,7 @@ export function ParticleMorph({ slots }: { slots: () => Array<HTMLElement | null
       const r1 = s1.getBoundingClientRect();
       if (r1.bottom < 0) return;
       const h = window.innerHeight;
-      const raw = Math.min(1, Math.max(0, 1 - s1.closest('section')!.getBoundingClientRect().top / h));
+      const raw = Math.min(1, Math.max(0, 1 - Math.max(0, s1.closest('section')!.getBoundingClientRect().top - 130) / (h * 0.75)));
       const t = ease(raw);
       // Where to draw: blend the two slot rects (the first is pinned, the second slides up).
       const lerp = (x: number, y: number, k: number) => x + (y - x) * k;
@@ -135,6 +126,11 @@ export function ParticleMorph({ slots }: { slots: () => Array<HTMLElement | null
         y += Math.sin(ang) * rad * 0.7 - (y - cy) * swirl * 0.35;
         g.globalAlpha = 0.55 + 0.45 * (1 - swirl * Math.abs(n2));
         g.fillRect(x, y, ps, ps);
+      }
+      // The Conquest emblem settles into a crisp silhouette once the particles have landed.
+      if (stage + 1 === shapes.length - 1 && raw > 0.85) {
+        g.globalAlpha = ((raw - 0.85) / 0.15) * 0.5;
+        g.save(); g.translate(ox, oy); drawSoldier(g, size); g.restore();
       }
       g.globalAlpha = 1;
     };

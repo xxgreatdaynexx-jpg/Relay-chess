@@ -1,3 +1,4 @@
+import { SoldierMark } from '@/components/SoldierMark';
 import { docTop, prefersReducedMotion, useReducedMotion } from '@/lib/motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RulesDialog } from '@/components/RulesDialog';
@@ -46,7 +47,7 @@ const PANELS: Panel[] = [
 ];
 
 function MiniBoard({ kind }: { kind: GameType | 'conquest' }) {
-  if (kind === 'conquest') return <div className="si-board si-map"><ConquestMap compact /></div>;
+  if (kind === 'conquest') return <><SoldierMark className="si-soldier" /><div className="si-board si-map"><ConquestMap compact /></div></>;
   const cells = [];
   for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
     const dark = (r + c) % 2 === 1;
