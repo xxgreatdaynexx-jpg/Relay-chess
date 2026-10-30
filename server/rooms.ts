@@ -668,6 +668,11 @@ export function missingRoomMessage(code: string): string {
   return 'No table with that code. If you were just playing there, Chud Hub restarted for an update and tables in progress were closed. Sorry! Start a new table.';
 }
 
+/** Put a restored table back (after a restart). */
+export function adoptRoom(room: Room): void {
+  rooms.set(room.code, room);
+}
+
 export function getRoom(code: string): Room | undefined {
   return rooms.get(code);
 }

@@ -4,6 +4,7 @@ import { createApp } from './app.js';
 import { initCheckersLeaderboardStorage, initLeaderboardStorage } from './leaderboard.js';
 import { initCasinoStorage } from './casino-store.js';
 import { initAccountStorage } from './accounts.js';
+import { getRoomPersistence, initRoomStorage } from './room-store.js';
 
 await initLeaderboardStorage();
 await initCheckersLeaderboardStorage();
@@ -11,6 +12,7 @@ await initCasinoStorage();
 await initArenaStorage();
 await initChessStatsStorage();
 await initAccountStorage();
+await initRoomStorage();
 
 const port = Number(process.env.PORT) || 4317;
 
@@ -18,3 +20,27 @@ const { httpServer } = await createApp();
 httpServer.listen(port, '0.0.0.0', () => {
   console.log(`Chud Hub listening on http://0.0.0.0:${port}`);
 });
+
+/**
+ * Render sends SIGTERM on deploy/restart and waits (30 s by default) before SIGKILL.
+ * Save every table, stop taking connections, then exit. Clients auto-reconnect to the new instance.
+ */
+let shuttingDown = false;
+async function shutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[shutdown] ${signal}: saving tables`);
+  const hard = setTimeout(() => process.exit(0), 20_000);
+  hard.unref();
+  try {
+    const p = getRoomPersistence();
+    if (p) { p.stop(); await p.flush(); }
+  } catch (error) {
+    console.error('[shutdown] save failed:', (error as Error).message);
+  }
+  httpServer.close();
+  console.log('[shutdown] done');
+  process.exit(0);
+}
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));

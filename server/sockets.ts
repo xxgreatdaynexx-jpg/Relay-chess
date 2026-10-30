@@ -1,6 +1,7 @@
 import type { Server, Socket } from 'socket.io';
 import { onBlunderReady } from './blunders.js';
 import { GameError } from './errors.js';
+import { getRoomPersistence } from './room-store.js';
 import { registerFps } from './fps.js';
 import { AuthError, getAccounts } from './accounts.js';
 import { registerAuth, signedIn } from './auth-sockets.js';
@@ -169,6 +170,14 @@ export function registerSockets(io: Server): void {
   });
 
   io.on('connection', (socket) => {
+    // Tables saved before a restart/deploy are loaded on demand, before the handler runs.
+    socket.use((packet, next) => {
+      const [event, payload] = packet as [string, unknown];
+      const code = (payload as { code?: unknown } | null)?.code;
+      const store = getRoomPersistence();
+      if (!store || typeof code !== 'string' || !['rejoin', 'join_room', 'spectate'].includes(event)) return next();
+      store.loadOne(code.trim().toUpperCase()).finally(() => next());
+    });
     registerAuth(socket);
     registerFps(io, socket);
     registerCasino(io, socket);
