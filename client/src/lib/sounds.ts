@@ -7,6 +7,86 @@ const STREAK_URL = '/sounds/streak.mp3';
 const MATE_IN_ONE_URL = '/sounds/mate-in-one.mp3';
 
 let context: AudioContext | null = null;
+let masterGain: GainNode | null = null;
+
+const VOLUME_KEY = 'relay-chess-volume';
+const MUTED_KEY = 'relay-chess-muted';
+const DEFAULT_VOLUME = 0.4;
+let volume = readVolume();
+let muted = readMuted();
+const listeners = new Set<() => void>();
+
+function readVolume(): number {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(VOLUME_KEY) : null;
+    const value = raw === null ? NaN : Number(raw);
+    return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : DEFAULT_VOLUME;
+  } catch {
+    return DEFAULT_VOLUME;
+  }
+}
+
+function readMuted(): boolean {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem(MUTED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function effectiveVolume(): number {
+  return muted ? 0 : volume;
+}
+
+function applyVolume(): void {
+  if (masterGain && context) masterGain.gain.setValueAtTime(effectiveVolume(), context.currentTime);
+  listeners.forEach((fn) => fn());
+}
+
+export function getVolume(): number {
+  return volume;
+}
+
+export function isMuted(): boolean {
+  return muted;
+}
+
+export function setVolume(next: number): void {
+  volume = Math.min(1, Math.max(0, next));
+  if (volume > 0 && muted) muted = false;
+  try {
+    localStorage.setItem(VOLUME_KEY, String(volume));
+    localStorage.setItem(MUTED_KEY, muted ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
+  applyVolume();
+}
+
+export function setMuted(next: boolean): void {
+  muted = next;
+  try {
+    localStorage.setItem(MUTED_KEY, muted ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
+  applyVolume();
+}
+
+export function subscribeVolume(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+/** Every sound goes through this one master gain so the volume slider covers all of them. */
+function output(ctx: AudioContext): AudioNode {
+  if (!masterGain) {
+    masterGain = ctx.createGain();
+    masterGain.gain.value = effectiveVolume();
+    masterGain.connect(ctx.destination);
+  }
+  return masterGain;
+}
 
 interface Clip {
   buffer: AudioBuffer | null;
@@ -59,7 +139,7 @@ function playBoomSynth(): void {
   gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.46);
   noise.connect(filter);
   filter.connect(gain);
-  gain.connect(ctx.destination);
+  gain.connect(output(ctx));
   noise.start(now);
   noise.stop(now + 0.48);
 
@@ -72,7 +152,7 @@ function playBoomSynth(): void {
   thudGain.gain.exponentialRampToValueAtTime(0.45, now + 0.012);
   thudGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
   thud.connect(thudGain);
-  thudGain.connect(ctx.destination);
+  thudGain.connect(output(ctx));
   thud.start(now);
   thud.stop(now + 0.36);
 }
@@ -151,7 +231,7 @@ function playHuhSynth(): void {
   gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.62);
   osc.connect(filter);
   filter.connect(gain);
-  gain.connect(ctx.destination);
+  gain.connect(output(ctx));
   osc.start(now);
   osc.stop(now + 0.64);
 }
@@ -181,7 +261,7 @@ function playBuffer(buffer: AudioBuffer): boolean {
   try {
     const source = ctx.createBufferSource();
     source.buffer = buffer;
-    source.connect(ctx.destination);
+    source.connect(output(ctx));
     source.start();
     return true;
   } catch {
@@ -190,6 +270,7 @@ function playBuffer(buffer: AudioBuffer): boolean {
 }
 
 export function playNice(): void {
+  if (effectiveVolume() <= 0) return;
   if (speak('nice', 0.4, 0.82)) return;
   const ctx = audio();
   if (!ctx) return;
@@ -206,7 +287,7 @@ function speak(text: string, pitch: number, rate: number): boolean {
     const utter = new SpeechSynthesisUtterance(text);
     utter.pitch = pitch;
     utter.rate = rate;
-    utter.volume = 1;
+    utter.volume = effectiveVolume();
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utter);
     return true;
@@ -243,7 +324,7 @@ function tone(ctx: AudioContext, frequency: number, when: number, duration: numb
   gain.gain.exponentialRampToValueAtTime(level, when + 0.02);
   gain.gain.exponentialRampToValueAtTime(0.0001, when + duration);
   osc.connect(gain);
-  gain.connect(ctx.destination);
+  gain.connect(output(ctx));
   osc.start(when);
   osc.stop(when + duration + 0.02);
 }

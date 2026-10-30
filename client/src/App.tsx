@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { HomeScreen } from '@/components/HomeScreen';
 import { LeaderboardScreen } from '@/components/Leaderboard';
 import { RoomScreen } from '@/components/RoomScreen';
+import { VolumeControl } from '@/components/VolumeControl';
 import { socket } from '@/lib/net';
 import { clearSession, codeFromLocation, loadSession } from '@/lib/session';
 import type { PublicState } from '../../shared/types';
@@ -99,6 +100,7 @@ export function App() {
 
   return (
     <>
+      <VolumeControl />
       {leaderboard ? (
         <LeaderboardScreen
           onBack={() => {

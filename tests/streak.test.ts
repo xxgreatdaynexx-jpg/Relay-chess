@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 describe('best-move streak', () => {
-  it('calls double on the second best move and streak on the third, per player', () => {
+  it('calls double on the fifth best move and streak on the sixth, per player', () => {
     const streaks = new Map<string, number>();
 
     expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBeNull();
@@ -36,23 +36,22 @@ describe('best-move streak', () => {
     expect(streaks.get('white1')).toBe(0);
 
     expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBeNull();
+    expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBeNull();
+    expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBeNull();
+    expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBeNull();
     expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBe('double');
-    expect(streaks.get('white1')).toBe(2);
+    expect(streaks.get('white1')).toBe(5);
+    expect(recordStreak(streaks, 'white1', 'brilliant', 3)).toBeNull();
+    expect(streaks.get('white1')).toBe(5);
     expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBe('streak');
     expect(streaks.get('white1')).toBe(0);
     expect(streaks.get('white2')).toBe(0);
-
     expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBeNull();
-    expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBe('double');
-    expect(recordStreak(streaks, 'black1', 'brilliant', 20)).toBeNull();
-    expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBe('streak');
-    expect(streaks.get('white1')).toBe(0);
-    expect(streaks.get('black1')).toBe(1);
     expect(recordStreak(streaks, 'white1', 'brilliant', 20)).toBeNull();
-    expect(streaks.get('white1')).toBe(1);
+    expect(streaks.get('white1')).toBe(2);
   });
 
-  it('announces only that player after three of their own best moves', async () => {
+  it('announces only that player after six of their own best moves', async () => {
     resetLeaderboard(path.join(mkdtempSync(path.join(tmpdir(), 'relay-streak-')), 'leaderboard.json'));
     const room = new Room('STREAK', clockPreset('off')!);
     const names: Record<Seat, string> = { white1: 'Ada', black1: 'Jules', white2: 'Sam', black2: 'Ren' };
@@ -80,6 +79,18 @@ describe('best-move streak', () => {
       ['white2', 'b1', 'c3'],
       ['black2', 'g8', 'f6'],
       ['white1', 'a2', 'a3'],
+      ['black1', 'a7', 'a6'],
+      ['white2', 'c1', 'd2'],
+      ['black2', 'c8', 'd7'],
+      ['white1', 'h2', 'h3'],
+      ['black1', 'h7', 'h6'],
+      ['white2', 'd1', 'c1'],
+      ['black2', 'd8', 'c8'],
+      ['white1', 'b2', 'b3'],
+      ['black1', 'b7', 'b6'],
+      ['white2', 'e1', 'd1'],
+      ['black2', 'e8', 'd8'],
+      ['white1', 'g2', 'g3'],
     ] as const;
 
     for (const [seat, from, to] of line) {
@@ -88,18 +99,18 @@ describe('best-move streak', () => {
       await flush();
       const now = Date.now();
       if (from === 'e2') expect(room.view('white1', now).streak).toBeNull();
-      if (from === 'g1') {
+      if (from === 'b2') {
         for (const viewer of [...SEATS, 'guest' as const]) {
-          expect(room.view(viewer, now).streak).toMatchObject({ name: 'Ada', seat: 'white1', ply: 5, kind: 'double' });
+          expect(room.view(viewer, now).streak).toMatchObject({ name: 'Ada', seat: 'white1', ply: 17, kind: 'double' });
         }
       }
     }
 
     const seenAt = Date.now();
     for (const seat of [...SEATS, 'guest' as const]) {
-      expect(room.view(seat, seenAt).streak).toMatchObject({ name: 'Ada', seat: 'white1', ply: 9, kind: 'streak' });
+      expect(room.view(seat, seenAt).streak).toMatchObject({ name: 'Ada', seat: 'white1', ply: 21, kind: 'streak' });
     }
-    expect(room.view('white2', seenAt).mark).toMatchObject({ grade: 'brilliant', square: 'a3' });
+    expect(room.view('white2', seenAt).mark).toMatchObject({ grade: 'brilliant', square: 'g3' });
 
     room.resign(tokens.black1);
     for (const seat of SEATS) room.voteRematch(tokens[seat], seenAt);

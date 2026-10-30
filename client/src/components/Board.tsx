@@ -289,7 +289,7 @@ export function Board({
               className={`inline-block max-w-full rounded-xl px-3 py-1.5 text-sm font-semibold leading-snug text-[#fff6d8] shadow-[0_8px_24px_rgba(0,0,0,0.4)] ${streak.kind === 'double' ? 'bg-[#1a3a6b]' : 'bg-[#8a2a12]'}`}
             >
               <span className="block text-[11px] tracking-[0.14em] uppercase">{streak.name}</span>
-              {streak.kind === 'double' ? 'DOUBLE ‼‼' : 'ON FIRE 🔥 3 in a row!'}
+              {streak.kind === 'double' ? 'DOUBLE ‼‼' : 'ON FIRE 🔥 6 in a row!'}
             </p>
           )}
         </TimedOverlay>

@@ -62,6 +62,7 @@ export function RoomScreen({
   const escapeToast = useRef<string | null>(null);
   const forkSoundTimer = useRef<number | null>(null);
   const forkSoundPlayed = useRef<string | null>(null);
+  const lastForkPly = useRef<number | null>(null);
   const streakSoundTimer = useRef<number | null>(null);
   const streakSoundPlayed = useRef<string | null>(null);
   const queenCaptureTimer = useRef<number | null>(null);
@@ -101,6 +102,7 @@ export function RoomScreen({
     if (queenSound === 'death') setBoom({ token: `${state.ply}:${move.to}`, square: move.to });
     const forkNow = isFork(state.fen, move.to);
     if (forkNow) {
+      lastForkPly.current = state.ply;
       const token = `${state.ply}:${move.to}`;
       setFork({ token, square: move.to });
       armForkSound(token, FORK_SOUND_WAIT_MS);
@@ -234,6 +236,8 @@ export function RoomScreen({
       streakSoundTimer.current = null;
       if (streakSoundPlayed.current === token) return;
       streakSoundPlayed.current = token;
+      // Fork clip wins over streak audio on the same move; the banner still shows.
+      if (lastForkPly.current !== null && token.split(':')[1] === String(lastForkPly.current)) return;
       if (kind === 'double') playDouble();
       else playStreak();
     }, STREAK_SOUND_DELAY_MS);
