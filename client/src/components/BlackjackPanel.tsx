@@ -1,15 +1,19 @@
 import { TopTab } from '@/components/TopTabs';
 import { useWindowDrag } from '@/lib/windowDrag';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { CardFace } from '@/components/SolitairePanel';
 import { NamePrompt, ResetChips } from '@/components/CasinoCommon';
 import { handValue, type BJSeatView, type BJTableView } from '../../../shared/casino';
 import { emitCasino, useCountdown, useSavedName } from '@/lib/casino';
 import { socket } from '@/lib/net';
+import { at, Chips, dealStyle, FeltTable } from '@/components/FeltTable';
+import { bjSeatPositions, towardCentre } from '@/lib/tableLayout';
 import { playCardFlick, playSolitaireWin, playYourTurn } from '@/lib/sounds';
 
 const OPEN_KEY = 'relay-blackjack-open';
 const BETS = [5, 25, 100, 500];
+const SHOE = { x: 86, y: 9 };
+const DEALER = { x: 50, y: 13 };
 const LABEL: Record<string, string> = {
   blackjack: 'Blackjack!', win: 'Win', push: 'Push', lose: 'Lose', bust: 'Bust', 'dealer-blackjack': 'Dealer BJ',
 };
@@ -107,25 +111,51 @@ export function BlackjackPanel() {
             <>
               <div className="bj-table">
                 <div className="bj-status" data-testid="bj-status">{status}</div>
-                <div className="bj-label">Dealer {t?.dealer.length ? `· ${handValue(t.dealer).total}${t.dealer.some((c) => !c.faceUp) ? '+?' : ''}` : ''}</div>
-                <div className="bj-hand">{t?.dealer.map((c, i) => <div key={`${c.id}${i}`} className="bj-card"><CardFace card={c} /></div>)}</div>
-                <div className="bj-seats">
-                  {t?.seats.map((s) => (
-                    <div key={s.seat} className={`bj-seat ${s.seat === t.turn ? 'bj-seat-turn' : ''} ${s.seat === t.you ? 'bj-seat-me' : ''}`} data-testid="bj-seat">
-                      <div className="bj-seat-name">{s.seat === t.you ? 'You' : s.name} <span className="opacity-70">🪙{s.chips.toLocaleString()}</span></div>
-                      {s.hands.length === 0 && <div className="bj-label">{s.bet ? `Bet ${s.bet}` : t.phase === 'betting' ? 'Betting…' : 'Sitting out'}</div>}
-                      {s.hands.map((h, hi) => (
-                        <div key={hi} className={`bj-subhand ${s.seat === t.turn && s.active === hi ? 'bj-subhand-on' : ''}`}>
-                          <div className="bj-hand bj-hand-sm">{h.cards.map((c, i) => <div key={`${c.id}${i}`} className="bj-card"><CardFace card={c} /></div>)}</div>
-                          <div className="bj-label">
-                            {total(h.cards)} · {h.bet}{h.doubled ? ' ×2' : ''}
-                            {h.outcome && <b className={h.net > 0 ? 'casino-up' : h.net < 0 ? 'casino-down' : ''}> {LABEL[h.outcome]} {h.net > 0 ? `+${h.net}` : h.net || ''}</b>}
+                <FeltTable kind="bj" testId="bj-felt">{(aspect) => {
+                  const pos = bjSeatPositions(t?.maxSeats ?? 5);
+                  return (
+                    <>
+                      <svg className="felt-print" viewBox="0 0 100 60" preserveAspectRatio="none" aria-hidden="true">
+                        <path id="bj-arc1" d="M 22 13 Q 50 29 78 13" fill="none" />
+                        <path id="bj-arc2" d="M 20 17 Q 50 33 80 17" fill="none" />
+                        <text><textPath href="#bj-arc1" startOffset="50%" textAnchor="middle">BLACKJACK PAYS 3 TO 2</textPath></text>
+                        <text className="sm"><textPath href="#bj-arc2" startOffset="50%" textAnchor="middle">DEALER STANDS ON ALL 17s · NO INSURANCE</textPath></text>
+                      </svg>
+                      <div className="felt-shoe" style={at(SHOE)} aria-label="Shoe"><span /></div>
+                      <div className="felt-dealer" style={at(DEALER)}>
+                        <div className="felt-hand">{t?.dealer.map((c, i) => <div key={`${c.id}${i}`} className="felt-card deal-in" style={dealStyle(SHOE, DEALER, aspect, i)}><CardFace card={c} /></div>)}</div>
+                        <div className="felt-plate dealer">Dealer{t?.dealer.length ? ` · ${handValue(t.dealer).total}${t.dealer.some((c) => !c.faceUp) ? '+?' : ''}` : ''}</div>
+                      </div>
+                      {pos.map((p, i) => {
+                        const s = t?.seats.find((x) => x.seat === i);
+                        const bet = towardCentre(p, 0.22, { x: 50, y: 20 });
+                        const staked = s ? (s.hands.length ? s.hands.reduce((a, h) => a + h.bet * (h.doubled ? 2 : 1), 0) : s.bet) : 0;
+                        return (
+                          <Fragment key={i}>
+                          <div className="felt-betspot" style={at(bet)}>
+                            <Chips key={staked} amount={staked} from={p} to={bet} aspect={aspect} />
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
+                          <div className={`felt-seat ${s && s.seat === t?.turn ? 'turn' : ''} ${s && s.seat === t?.you ? 'me' : ''} ${s ? '' : 'empty'}`} style={at(p)} data-testid={s ? 'bj-seat' : undefined}>
+                            {s?.hands.map((h, hi) => (
+                              <div key={hi} className={`felt-subhand ${s.seat === t?.turn && s.active === hi ? 'on' : ''}`}>
+                                <div className="felt-hand sm">{h.cards.map((c, ci) => <div key={`${c.id}${ci}`} className="felt-card deal-in" style={dealStyle(SHOE, p, aspect, ci)}><CardFace card={c} /></div>)}</div>
+                                <div className="felt-tag">
+                                  {total(h.cards)}{h.doubled ? ' ×2' : ''}
+                                  {h.outcome && <b className={h.net > 0 ? 'casino-up' : h.net < 0 ? 'casino-down' : ''}> {LABEL[h.outcome]} {h.net > 0 ? `+${h.net}` : h.net || ''}</b>}
+                                </div>
+                              </div>
+                            ))}
+                            <div className="felt-plate">
+                              {s ? <><b>{s.seat === t?.you ? 'You' : s.name}</b><span>🪙{s.chips.toLocaleString()}</span></> : <span className="opacity-60">Open</span>}
+                              {s && !s.hands.length && <span className="felt-sub">{s.bet ? `Bet ${s.bet}` : t?.phase === 'betting' ? 'Betting…' : 'Sitting out'}</span>}
+                            </div>
+                          </div>
+                          </Fragment>
+                        );
+                      })}
+                    </>
+                  );
+                }}</FeltTable>
                 {err && <div className="bj-err">{err}</div>}
               </div>
               <div className="bj-controls">

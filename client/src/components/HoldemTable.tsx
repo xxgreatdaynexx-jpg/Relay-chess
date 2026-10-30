@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
+import { at, Chips, dealStyle, FeltTable } from '@/components/FeltTable';
+import { blindSeats, ovalSeatPositions, towardCentre } from '@/lib/tableLayout';
 import { CardFace } from '@/components/SolitairePanel';
 import { emitCasino, useCountdown } from '@/lib/casino';
 import { socket } from '@/lib/net';
 import { playCardFlick, playSolitaireWin } from '@/lib/sounds';
-import { HE_BIG, HE_MAX_BUYIN, HE_MIN_BUYIN, HE_SMALL, HE_SPECTATE_DELAY_MS, type HESpectateView, type HEView } from '../../../shared/holdem';
+import { HE_BIG, HE_SEATS, HE_MAX_BUYIN, HE_MIN_BUYIN, HE_SMALL, HE_SPECTATE_DELAY_MS, type HESpectateView, type HEView } from '../../../shared/holdem';
 
 interface TableInfo { id: string; seated: number; phase: string; watchers: number }
 
@@ -66,24 +68,7 @@ export function HoldemTableView({ name }: { name: string }) {
           ? v.winners.map((w) => `${w.name} wins ${w.amount} (${w.hand})`).join(' · ')
           : `${v.id} · ${PHASE[v.phase]}${v.pot ? ` · pot ${v.pot}` : ''}${secs !== null && v.toAct !== null ? ` · ${v.seats[v.toAct]?.name ?? ''} ${secs}s` : ''}`}
       </div>
-      <div className="he-board">
-        {(v?.board ?? []).map((c) => <span className="he-card" key={c.id}><CardFace card={c} /></span>)}
-        {(!v || v.board.length === 0) && <span className="bj-label">{v?.phase === 'waiting' || !v ? 'Hand starts when two players sit.' : ''}</span>}
-      </div>
-      <div className="he-seats">
-        {(v?.seats ?? (Array(6).fill(null) as HEView["seats"])).map((s, i) => (
-          <div key={i} className={`he-seat ${s?.you ? 'you' : ''} ${v?.toAct === i ? 'turn' : ''} ${s?.folded ? 'folded' : ''}`} data-testid={`he-seat-${i}`}>
-            {s ? (
-              <>
-                <div className="he-name">{v?.button === i && <span className="he-btn">D</span>}{s.name}</div>
-                <div className="he-cards">{s.cards.map((c, k) => (c ? <span className="he-card sm" key={k}><CardFace card={c} /></span> : <span className="he-back" key={k} />))}</div>
-                <div className="he-stack">{s.stack}{s.bet ? ` · bet ${s.bet}` : ''}</div>
-                {s.lastAction && <div className="he-act">{s.lastAction}</div>}
-              </>
-            ) : <div className="he-empty">Open seat</div>}
-          </div>
-        ))}
-      </div>
+      <HoldemFelt v={v} />
       {seated && o && (
         <div className="bj-controls he-controls">
           <button type="button" onClick={() => void send('he_action', { action: 'fold' })} data-testid="he-fold">Fold</button>
@@ -138,28 +123,63 @@ function SpectateView({ spec, onStop }: { spec: { table: string; delayMs: number
       </div>
       {!v ? <div className="bj-label" data-testid="he-spec-wait">Feed starts in {secs}s (spectators are delayed so nobody can relay hands to a seat).</div> : (
         <>
-          <div className="he-board">
-            {v.board.map((c) => <span className="he-card" key={c.id}><CardFace card={c} /></span>)}
-            {v.board.length === 0 && <span className="bj-label">{v.phase === 'waiting' ? 'Waiting for players.' : ''}</span>}
-          </div>
-          <div className="he-seats">
-            {v.seats.map((s, i) => (
-              <div key={i} className={`he-seat ${v.toAct === i ? 'turn' : ''} ${s?.folded ? 'folded' : ''}`} data-testid={`he-seat-${i}`}>
-                {s ? (
-                  <>
-                    <div className="he-name">{v.button === i && <span className="he-btn">D</span>}{s.name}</div>
-                    <div className="he-cards">{s.cards.map((c, k) => (c ? <span className="he-card sm" key={k}><CardFace card={c} /></span> : <span className="he-back" key={k} />))}</div>
-                    <div className="he-stack">{s.stack}{s.bet ? ` · bet ${s.bet}` : ''}</div>
-                    {v.odds[i] !== undefined && <div className="he-odds" data-testid={`he-odds-${i}`}>{Math.round(v.odds[i]! * 100)}% to win</div>}
-                    {s.lastAction && <div className="he-act">{s.lastAction}</div>}
-                  </>
-                ) : <div className="he-empty">Open seat</div>}
-              </div>
-            ))}
-          </div>
+          <HoldemFelt v={v} odds={v.odds} />
         </>
       )}
       <div className="bj-controls"><button type="button" onClick={onStop} data-testid="he-stop-spectate">Stop watching</button></div>
     </div>
+  );
+}
+
+const DECK = { x: 74, y: 36 };
+const CENTRE = { x: 50, y: 50 };
+
+/** The felt: oval table, seats round the rail, board + pot in the middle, D / SB / BB markers. */
+function HoldemFelt({ v, odds }: { v: HEView | null; odds?: Record<number, number> }) {
+  const seats = v?.seats ?? (Array(HE_SEATS).fill(null) as HEView['seats']);
+  const blinds = v && v.phase !== 'waiting' ? blindSeats(seats, v.button) : null;
+  const pos = ovalSeatPositions(seats.length);
+  const potInFront = (v?.pot ?? 0) - seats.reduce((a, s) => a + (s?.bet ?? 0), 0);
+  return (
+    <FeltTable kind="he" testId="he-felt">{(aspect) => (
+      <>
+        <div className="felt-logo" aria-hidden="true">CHUD HUB · NO-LIMIT HOLD'EM</div>
+        <div className="felt-deck" style={at(DECK)} aria-hidden="true"><span /></div>
+        <div className="felt-board" style={at({ x: 50, y: 47 })}>
+          {[0, 1, 2, 3, 4].map((k) => {
+            const c = v?.board[k];
+            return c ? <div key={c.id} className="felt-card board deal-in" style={dealStyle(DECK, { x: 50, y: 47 }, aspect, k < 3 ? k : 0)}><CardFace card={c} /></div> : <div key={`e${k}`} className="felt-card board slot" />;
+          })}
+        </div>
+        <div className="felt-pot" style={at({ x: 50, y: 62 })} data-testid="he-pot">
+          {potInFront > 0 ? <Chips key={potInFront} amount={potInFront} label={`Pot ${(v?.pot ?? 0).toLocaleString()}`} /> : v?.pot ? <span className="felt-chip-amt">Pot {v.pot}</span> : !v || v.phase === 'waiting' ? <span className="felt-sub">Hand starts when two players sit.</span> : null}
+        </div>
+        {seats.map((s, i) => {
+          const p = pos[i]!;
+          const betAt = towardCentre(p, 0.42, CENTRE);
+          const btnAt = towardCentre({ x: p.x + (p.x < 50 ? 7 : -7), y: p.y }, 0.3, CENTRE);
+          const blind = blinds?.sb === i ? 'SB' : blinds?.bb === i ? 'BB' : null;
+          return (
+            <Fragment key={i}>
+              {s && s.bet > 0 && <div className="felt-betspot he" style={at(betAt)}><Chips key={s.bet} amount={s.bet} from={p} to={betAt} aspect={aspect} /></div>}
+              {v?.button === i && s && <div className="felt-dbtn" style={at(btnAt)} data-testid="he-dealer-btn">D</div>}
+              {blind && <div className={`felt-blind ${blind.toLowerCase()}`} style={at(towardCentre(btnAt, -0.08, CENTRE), { marginTop: v?.button === i ? '4.2cqw' : 0 })} data-testid={`he-${blind.toLowerCase()}`}>{blind}</div>}
+              <div className={`felt-seat he ${s?.you ? 'me' : ''} ${v?.toAct === i ? 'turn' : ''} ${s?.folded ? 'folded' : ''} ${s ? '' : 'empty'}`} style={at(p)} data-testid={`he-seat-${i}`}>
+                {s && (
+                  <div className="felt-hand sm">
+                    {s.cards.map((c, k) => <div key={`${v?.handNo}-${k}`} className="felt-card deal-in" style={dealStyle(DECK, p, aspect, k * seats.length + i)}>{c ? <CardFace card={c} /> : <div className="sol-card sol-back" />}</div>)}
+                  </div>
+                )}
+                <div className="felt-plate">
+                  {s ? <><b>{s.name}</b><span>🪙{s.stack.toLocaleString()}</span></> : <span className="opacity-60">Open seat</span>}
+                  {s?.lastAction && <span className="felt-sub act">{s.lastAction}</span>}
+                  {odds?.[i] !== undefined && <span className="he-odds" data-testid={`he-odds-${i}`}>{Math.round(odds[i]! * 100)}% to win</span>}
+                </div>
+              </div>
+            </Fragment>
+          );
+        })}
+      </>
+    )}</FeltTable>
   );
 }

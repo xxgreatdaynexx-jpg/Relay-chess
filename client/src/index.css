@@ -821,3 +821,88 @@ html.reduce-motion .turn-flash { display: none; }
 .reduce-motion .vs-machine *, .reduce-motion .vs-machine { animation: none !important; transition: none !important; }
 @media (prefers-reduced-motion: reduce) { .vs-machine *, .vs-machine { animation: none !important; } }
 @media (max-width: 520px) { .vs-grid, .vs-reel { gap: 3px; } .vs-screen { padding: 5px; } .vs-chest-grid { grid-template-columns: repeat(4, 1fr); } }
+/* ── Felt casino tables (Blackjack + Hold'em). Sizes in cqw so the whole table scales with its window. ── */
+.bj-panel { width: 560px; }
+@media (max-width: 520px) { .bj-panel { width: 100%; } }
+.felt-fit { width: 100%; display: flex; justify-content: center; padding: 4px 0 2px; }
+.felt-table { position: relative; container-type: inline-size; flex: none; max-width: 100%; font-family: inherit; color: #efe6cf; }
+.felt-rail, .felt-cloth { position: absolute; pointer-events: none; }
+.felt-he .felt-rail { inset: 0; border-radius: 50% / 50%; }
+.felt-he .felt-cloth { inset: 3.6cqw; border-radius: 50% / 50%; }
+/* Kidney/half-moon: flat dealer edge on top, round player arc below. */
+.felt-bj .felt-rail { inset: 0; border-radius: 3cqw 3cqw 50% 50% / 3cqw 3cqw 72% 72%; }
+.felt-bj .felt-cloth { inset: 0 3.6cqw 3.6cqw; border-radius: 0 0 50% 50% / 0 0 72% 72%; }
+.felt-rail {
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(255,255,255,.14), transparent 55%),
+    repeating-linear-gradient(90deg, rgba(0,0,0,.12) 0 2px, transparent 2px 9px),
+    linear-gradient(180deg, #4a2a1a, #2a160d 70%, #1a0d07);
+  box-shadow: 0 1.4cqw 3cqw rgba(0,0,0,.7), inset 0 0.4cqw 0.6cqw rgba(255,220,170,.22), inset 0 -0.6cqw 1cqw rgba(0,0,0,.6);
+}
+.felt-cloth {
+  background:
+    radial-gradient(60% 55% at 50% 42%, rgba(255,240,190,.13), transparent 70%),
+    radial-gradient(130% 100% at 50% 50%, transparent 55%, rgba(0,0,0,.55)),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .22 0'/%3E%3C/filter%3E%3Crect width='90' height='90' filter='url(%23n)'/%3E%3C/svg%3E"),
+    linear-gradient(180deg, #1f5a3f, #154330 60%, #0f3224);
+  box-shadow: inset 0 0 0 0.25cqw rgba(232,194,106,.25), inset 0 1cqw 2.4cqw rgba(0,0,0,.6);
+}
+.felt-layer { position: absolute; inset: 0; }
+.felt-layer > * { position: absolute; transform: translate(-50%, -50%); }
+.felt-print { position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform: none !important; pointer-events: none; }
+.felt-print text { fill: rgba(232,194,106,.55); font-size: 3px; font-weight: 700; letter-spacing: .35px; }
+.felt-print text.sm { fill: rgba(239,230,207,.35); font-size: 1.7px; letter-spacing: .25px; }
+.felt-logo { left: 46%; top: 34%; font-size: 1.9cqw; letter-spacing: .3em; font-weight: 700; color: rgba(232,194,106,.28); white-space: nowrap; pointer-events: none; }
+
+.felt-card { width: max(30px, 6.6cqw); flex: none; filter: drop-shadow(0 .3cqw .4cqw rgba(0,0,0,.55)); }
+.felt-card .sol-card { position: relative; width: 100%; height: auto; aspect-ratio: 5 / 7; }
+.felt-card.board { width: max(32px, 7.4cqw); }
+.felt-card.slot { aspect-ratio: 5 / 7; border: 1px dashed rgba(232,194,106,.22); border-radius: 5px; }
+.felt-hand { display: flex; justify-content: center; }
+.felt-hand .felt-card + .felt-card { margin-left: max(-18px, -3.6cqw); }
+.felt-hand.sm .felt-card { width: max(26px, 5.4cqw); }
+.felt-board { display: flex; gap: max(3px, .8cqw); }
+.felt-dealer { display: flex; flex-direction: column; align-items: center; gap: .6cqw; }
+.felt-shoe { width: max(30px, 7cqw); aspect-ratio: 4 / 5; border-radius: .6cqw; background: linear-gradient(160deg, #2b2b2b, #0c0c0c); box-shadow: 0 .5cqw 1cqw rgba(0,0,0,.6), inset 0 0 0 .2cqw rgba(232,194,106,.25); transform: translate(-50%, -50%) rotate(-8deg) !important; }
+.felt-shoe span, .felt-deck span { position: absolute; inset: 18% 14% 30%; border-radius: .3cqw; background: repeating-linear-gradient(45deg, #5b1f28 0 3px, #74303a 3px 6px); }
+.felt-deck { width: max(22px, 4.6cqw); aspect-ratio: 5 / 7; border-radius: .5cqw; background: #2a0f14; box-shadow: .2cqw .2cqw 0 #1b090c, .4cqw .4cqw 0 #12060a; }
+.felt-deck span { inset: 6%; }
+
+.felt-seat { display: flex; flex-direction: column; align-items: center; gap: .5cqw; max-width: 20cqw; }
+.felt-seat.he { max-width: 24cqw; }
+.felt-plate { display: flex; flex-direction: column; align-items: center; padding: .4cqw 1.2cqw; min-width: max(64px, 13cqw); border-radius: .8cqw; font-size: max(10px, 1.9cqw); line-height: 1.25;
+  background: linear-gradient(180deg, #1a1a1a, #0b0b0b); border: 1px solid rgba(232,194,106,.35); box-shadow: 0 .4cqw .8cqw rgba(0,0,0,.6); white-space: nowrap; }
+.felt-plate b { max-width: 16cqw; overflow: hidden; text-overflow: ellipsis; color: #f3e6c4; }
+.felt-plate.dealer { min-width: 0; font-weight: 700; color: #e8c26a; }
+.felt-sub { font-size: max(9px, 1.6cqw); opacity: .8; }
+.felt-sub.act { color: #e2b75a; opacity: 1; }
+.felt-seat.me .felt-plate { border-color: #e8c26a; }
+.felt-seat.turn .felt-plate { box-shadow: 0 0 0 2px #e8c26a, 0 0 2.4cqw rgba(232,194,106,.55); animation: felt-pulse 1.4s ease-in-out infinite; }
+.felt-seat.folded { opacity: .45; filter: grayscale(.6); }
+.felt-seat.empty .felt-plate { background: rgba(0,0,0,.35); border-style: dashed; }
+.felt-subhand { display: flex; flex-direction: column; align-items: center; border-radius: .8cqw; padding: .2cqw; }
+.felt-subhand.on { background: rgba(232,194,106,.16); }
+.felt-tag { font-size: max(9px, 1.7cqw); background: rgba(0,0,0,.55); padding: 0 .8cqw; border-radius: .6cqw; margin-top: .3cqw; white-space: nowrap; }
+
+.felt-betspot { width: max(30px, 6.4cqw); aspect-ratio: 1; border-radius: 50%; border: .25cqw solid rgba(232,194,106,.45); display: grid; place-items: center; }
+.felt-betspot.he { border: none; width: auto; }
+.felt-chips { display: flex; flex-direction: column; align-items: center; }
+.felt-chip-pile { position: relative; width: max(18px, 3.6cqw); height: max(16px, 3.4cqw); }
+.felt-chip { position: absolute; left: 0; width: 100%; height: 62%; border-radius: 50%; border: .35cqw dashed rgba(255,255,255,.75); box-shadow: 0 .2cqw 0 rgba(0,0,0,.6); background-clip: padding-box; }
+.felt-chip.c1 { background-color: #d8d2c4; } .felt-chip.c5 { background-color: #9b2222; } .felt-chip.c25 { background-color: #1f6b3a; }
+.felt-chip.c100 { background-color: #1b1b1b; } .felt-chip.c500 { background-color: #4b2a6b; } .felt-chip.c1000 { background-color: #b8860b; }
+.felt-chip-amt { font-size: max(9px, 1.6cqw); font-weight: 700; background: rgba(0,0,0,.6); padding: 0 .7cqw; border-radius: .6cqw; white-space: nowrap; color: #f3e6c4; }
+.felt-pot .felt-chip-pile { width: max(22px, 4.4cqw); }
+.felt-dbtn, .felt-blind { width: max(16px, 3.2cqw); aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: max(8px, 1.5cqw); box-shadow: 0 .3cqw .5cqw rgba(0,0,0,.6); }
+.felt-dbtn { background: radial-gradient(circle at 35% 30%, #fff, #cfc8b8); color: #1a1a1a; }
+.felt-blind { background: #0e0e0e; color: #e8c26a; border: 1px solid rgba(232,194,106,.6); }
+.felt-blind.bb { color: #f3e6c4; border-color: rgba(243,230,196,.6); }
+
+/* Dealing + chip slides start at the shoe/seat (offset in --dx/--dy) and settle in place. */
+.deal-in, .chip-slide { animation: felt-deal .42s cubic-bezier(.2,.75,.25,1) both; }
+@keyframes felt-deal { from { transform: translate(var(--dx, 0), var(--dy, 0)) rotate(-14deg) scale(.8); opacity: .2; } to { transform: none; opacity: 1; } }
+@keyframes felt-pulse { 50% { box-shadow: 0 0 0 2px #e8c26a, 0 0 .6cqw rgba(232,194,106,.25); } }
+@media (prefers-reduced-motion: reduce) {
+  .deal-in, .chip-slide, .felt-seat.turn .felt-plate { animation: none !important; }
+}
+html.reduce-motion .deal-in, html.reduce-motion .chip-slide, html.reduce-motion .felt-seat.turn .felt-plate { animation: none !important; }
