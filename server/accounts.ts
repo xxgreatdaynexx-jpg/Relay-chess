@@ -44,6 +44,9 @@ export interface AccountStore {
   addSession(hash: string, key: string, expiresAt: number): Promise<void>;
   getSession(hash: string): Promise<{ key: string; expiresAt: number } | null>;
   removeSession(hash: string): Promise<void>;
+  setPassword(key: string, passwordHash: string): Promise<void>;
+  getSettings(key: string): Promise<unknown | null>;
+  setSettings(key: string, data: unknown): Promise<void>;
 }
 
 export const ACCOUNTS_MIGRATION = [
@@ -58,6 +61,12 @@ export const ACCOUNTS_MIGRATION = [
     player_key TEXT NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`,
+  // Additive: per-account preferences (JSON text, validated by shared/settings before it is written).
+  `CREATE TABLE IF NOT EXISTS player_settings (
+    player_key TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`,
 ];
 
@@ -79,6 +88,7 @@ export class PgAccountStore implements AccountStore {
   }
   async remove(key: string) {
     await this.db.query('DELETE FROM player_sessions WHERE player_key = $1', [key]);
+    await this.db.query('DELETE FROM player_settings WHERE player_key = $1', [key]);
     const res = await this.db.query('DELETE FROM players WHERE player_key = $1 RETURNING player_key', [key]);
     return res.rows.length > 0;
   }
@@ -92,6 +102,19 @@ export class PgAccountStore implements AccountStore {
   }
   async removeSession(hash: string) {
     await this.db.query('DELETE FROM player_sessions WHERE token_hash = $1', [hash]);
+  }
+  async setPassword(key: string, passwordHash: string) {
+    await this.db.query('UPDATE players SET password_hash = $2 WHERE player_key = $1', [key, passwordHash]);
+  }
+  async getSettings(key: string) {
+    const { rows } = await this.db.query('SELECT data FROM player_settings WHERE player_key = $1', [key]);
+    if (!rows[0]) return null;
+    try { return JSON.parse(String(rows[0].data)) as unknown; } catch { return null; }
+  }
+  async setSettings(key: string, data: unknown) {
+    const json = JSON.stringify(data);
+    const res = await this.db.query('UPDATE player_settings SET data = $2, updated_at = now() WHERE player_key = $1 RETURNING player_key', [key, json]);
+    if (!res.rows.length) await this.db.query('INSERT INTO player_settings (player_key, data) VALUES ($1, $2) ON CONFLICT (player_key) DO UPDATE SET data = EXCLUDED.data, updated_at = now()', [key, json]);
   }
 }
 
@@ -112,6 +135,13 @@ export class MemoryAccountStore implements AccountStore {
   async addSession(hash: string, key: string, expiresAt: number) { this.sessions.set(hash, { key, expiresAt }); }
   async getSession(hash: string) { return this.sessions.get(hash) ?? null; }
   async removeSession(hash: string) { this.sessions.delete(hash); }
+  settings = new Map<string, string>();
+  async setPassword(key: string, passwordHash: string) {
+    const row = this.accounts.get(key);
+    if (row) this.accounts.set(key, { ...row, passwordHash });
+  }
+  async getSettings(key: string) { const v = this.settings.get(key); return v ? (JSON.parse(v) as unknown) : null; }
+  async setSettings(key: string, data: unknown) { this.settings.set(key, JSON.stringify(data)); }
 }
 
 /** Sliding-window limiter with exponential lockout after repeated bursts. */
@@ -200,6 +230,21 @@ export class Accounts {
     }
     const row = await this.store.get(s.key);
     return row ? { key: row.key, name: row.name } : null;
+  }
+
+  /** Needs the current password; rate-limited like sign-in. */
+  async changePassword(key: string, current: unknown, next: unknown, ip: string, now = Date.now()): Promise<void> {
+    this.check(ip, key, now);
+    const row = await this.store.get(key);
+    if (!row) throw new AuthError('Sign in first.');
+    if (typeof current !== 'string' || current.length > MAX_PASSWORD || !(await verifyPassword(current, row.passwordHash))) {
+      this.ipLimiter.fail(ip, now);
+      this.nameLimiter.fail(key, now);
+      throw new AuthError('Your current password is wrong.');
+    }
+    if (typeof next !== 'string' || next.length < MIN_PASSWORD) throw new AuthError(`New password must be at least ${MIN_PASSWORD} characters.`);
+    if (next.length > MAX_PASSWORD) throw new AuthError('That password is too long.');
+    await this.store.setPassword(key, await hashPassword(next));
   }
 
   async logout(token: unknown): Promise<void> {

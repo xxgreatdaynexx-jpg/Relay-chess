@@ -1,3 +1,5 @@
+import { AccountButton } from '@/components/AccountPanel';
+import { getSettings } from '@/lib/settings';
 import { Check, Copy } from 'lucide-react';
 import { ThinkSummary, useSinceSnapshot } from './ThinkTimes';
 import { formatThink, rankThinkTimes, slowestSeat } from '../../../shared/thinkTime';
@@ -167,7 +169,7 @@ export function RoomScreen({
     wasYourTurn.current = yourTurn;
     if (!becameYourTurn(previous, yourTurn)) return;
     playYourTurn();
-    setTurnFlash((n) => n + 1);
+    if (getSettings().turnFlash) setTurnFlash((n) => n + 1);
     if (!document.hidden) return;
     const normal = document.title;
     let flip = false;
@@ -437,6 +439,7 @@ export function RoomScreen({
           <div className="font-serif text-2xl italic">Chud</div>
           <div className="text-[10px] tracking-[0.18em] text-cream/50 uppercase">Hub</div>
         </div>
+        <AccountButton />
         <button
           type="button"
           onClick={copyLink}

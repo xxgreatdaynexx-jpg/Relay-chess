@@ -1,7 +1,8 @@
 import { notifyNameChanged } from '@/lib/casino';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useAccount } from '@/lib/auth';
-import { AccountBox } from '@/components/AccountBox';
+import { PlayingAs } from '@/components/AccountPanel';
+import { openAccount } from '@/lib/settings';
 import { saveTournament } from '@/lib/tournament';
 import { RulesDialog } from '@/components/RulesDialog';
 import { Button } from '@/components/ui/button';
@@ -49,6 +50,11 @@ export function HomeScreen({
   async function create(event: FormEvent) {
     event.preventDefault();
     setLocalError('');
+    if (!name.trim()) {
+      setLocalError('Sign in or claim your name first, then create a table.');
+      openAccount();
+      return;
+    }
     setBusy('create');
     socket.connect();
     const setup: TableSetup = { mode, pairSide: uneven(mode) ? pairSide : null };
@@ -74,6 +80,7 @@ export function HomeScreen({
     setLocalError('');
     if (!name.trim()) {
       setLocalError('Sign in or claim your name first, then join.');
+      openAccount();
       return;
     }
     setBusy('join');
@@ -100,6 +107,7 @@ export function HomeScreen({
     setLocalError('');
     if (!name.trim()) {
       setLocalError('Sign in or claim your name first, then create a tournament.');
+      openAccount();
       return;
     }
     socket.connect();
@@ -116,7 +124,7 @@ export function HomeScreen({
     setLocalError('');
     const clean = target.toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (!clean) return setLocalError('Enter a tournament code.');
-    if (enter && !name.trim()) return setLocalError('Sign in or claim your name first, then join the tournament.');
+    if (enter && !name.trim()) { openAccount(); return setLocalError('Sign in or claim your name first, then join the tournament.'); }
     socket.connect();
     const res = await request('tournament_join', { code: clean, name: name || undefined, enter });
     if (!res.ok) return setLocalError(res.error ?? 'Could not open that tournament.');
@@ -184,6 +192,7 @@ export function HomeScreen({
     setLocalError('');
     if (!name.trim()) {
       setLocalError('Sign in or claim your name first, then hit Quick Join.');
+      openAccount();
       return;
     }
     setBusy('quick');
@@ -324,7 +333,7 @@ export function HomeScreen({
                 </li>
               ))}
             </ol>
-            <div className="mt-4"><AccountBox /></div>
+            <div className="mt-4"><PlayingAs /></div>
             <p className="mt-4 text-xs tracking-wide text-cream/70 uppercase">Shared team clock</p>
             <div className="mt-2 flex flex-wrap gap-2">
               {CLOCK_PRESETS.map((preset) => (
@@ -364,7 +373,7 @@ export function HomeScreen({
               onChange={(event) => setCode(event.target.value.toUpperCase())}
               required
             />
-            <div className="mt-4"><AccountBox /></div>
+            <div className="mt-4"><PlayingAs /></div>
             <Button className="mt-5 w-full" type="submit" variant="secondary" data-testid="join-submit" disabled={busy !== null}>
               {busy === 'join' ? 'Joining…' : 'Join table'}
             </Button>

@@ -8,10 +8,11 @@ import { VolumeControl } from '@/components/VolumeControl';
 import { SolitairePanel } from '@/components/SolitairePanel';
 import { BlackjackPanel } from '@/components/BlackjackPanel';
 import { RoulettePanel } from '@/components/RoulettePanel';
-import { TopTabs } from '@/components/TopTabs';
+import { TopTab, TopTabs } from '@/components/TopTabs';
 import { PokerPanel } from '@/components/PokerPanel';
 import { SlotsPanel } from '@/components/SlotsPanel';
 import { ArenaPanel } from '@/components/ArenaPanel';
+import { AccountButton, AccountPanel } from '@/components/AccountPanel';
 import { socket } from '@/lib/net';
 import { TournamentScreen } from '@/components/TournamentScreen';
 import { TournamentPing } from '@/components/TournamentPing';
@@ -182,6 +183,8 @@ export function App() {
         <SolitairePanel />
         <ArenaPanel />
       </div>
+      <AccountPanel />
+      <TopTab id="account"><AccountButton /></TopTab>
       {leaderboard ? (
         <LeaderboardScreen
           onBack={() => {

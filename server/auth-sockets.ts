@@ -1,6 +1,7 @@
 /** Socket events for claiming / signing in to a name. The signed-in identity lives on socket.data.account. */
 import type { Socket } from 'socket.io';
 import { AuthError, getAccounts, type Identity } from './accounts.js';
+import { cleanSettings, validateSettings } from '../shared/settings.js';
 
 type Ack = (res: { ok: boolean; error?: string; [k: string]: unknown }) => void;
 
@@ -60,6 +61,28 @@ export function registerAuth(socket: Socket): void {
     const identity = await getAccounts().resume(body.session);
     socket.data.account = identity ?? undefined;
     return { name: identity?.name ?? null };
+  }));
+
+  socket.on('auth_change_password', run(async (body) => {
+    const me = socket.data.account as Identity | undefined;
+    if (!me) throw new AuthError('Sign in first.');
+    await getAccounts().changePassword(me.key, body.current, body.next, clientIp(socket));
+  }));
+
+  socket.on('settings_get', run(async () => {
+    const me = socket.data.account as Identity | undefined;
+    if (!me) throw new AuthError('Sign in first.');
+    const raw = await getAccounts().store.getSettings(me.key);
+    return { settings: raw ? cleanSettings(raw) : null };
+  }));
+
+  socket.on('settings_save', run(async (body) => {
+    const me = socket.data.account as Identity | undefined;
+    if (!me) throw new AuthError('Sign in first.');
+    const clean = validateSettings(body.settings);
+    if (!clean) throw new AuthError('Those settings are not valid.');
+    await getAccounts().store.setSettings(me.key, clean);
+    return { settings: clean };
   }));
 
   socket.on('auth_logout', run(async (body) => {

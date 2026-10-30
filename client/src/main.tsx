@@ -5,6 +5,9 @@ import '@fontsource-variable/fraunces/wght-italic.css';
 import '@fontsource-variable/outfit';
 import { App } from './App';
 import './index.css';
+import { initSettings } from './lib/settings';
+
+initSettings();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

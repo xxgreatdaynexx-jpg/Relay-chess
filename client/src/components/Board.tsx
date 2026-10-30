@@ -4,6 +4,7 @@ import { Piece } from '@/components/Pieces';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { useSettings } from '@/lib/settings';
 import { BLUNDER_FLASH_MS, BOOM_FLASH_MS, DOUBLE_FLASH_MS, FORK_FLASH_MS, OPENING_FLASH_MS, POOF_FLASH_MS, STREAK_FLASH_MS } from '../../../shared/flash';
 import type { HintArrow, LegalMove, MoveGrade, Promotion, StreakKind } from '../../../shared/types';
 
@@ -63,6 +64,7 @@ export function Board({
   const dragRef = useRef<Drag | null>(null);
   const selectedRef = useRef<string | null>(null);
   const [squarePx, setSquarePx] = useState(48);
+  const { coords } = useSettings();
   const [selected, setSelected] = useState<string | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [promo, setPromo] = useState<{ from: string; to: string; options: Promotion[] } | null>(null);
@@ -221,6 +223,8 @@ export function Board({
               onPointerCancel={() => updateDrag(null)}
             >
               {isLast && <span className="pointer-events-none absolute inset-0 bg-[#e0b56a]/45" />}
+              {coords && row === 7 && <span className="board-coord board-coord-file" style={{ color: dark ? 'var(--color-square-light)' : 'var(--color-square-dark)' }}>{square[0]}</span>}
+              {coords && col === 0 && <span className="board-coord board-coord-rank" style={{ color: dark ? 'var(--color-square-light)' : 'var(--color-square-dark)' }}>{square[1]}</span>}
               {selected === square && <span className="pointer-events-none absolute inset-0 ring-2 ring-inset ring-cream" />}
               {king === square && (
                 <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,rgba(196,70,58,0.85)_0%,rgba(196,70,58,0.25)_62%,transparent_70%)]" />

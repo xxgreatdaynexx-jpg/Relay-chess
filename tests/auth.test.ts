@@ -80,6 +80,12 @@ describe('Accounts', () => {
     const fresh = new Accounts(store);
     expect((await fresh.resume(token))?.name).toBe('Neo');
     expect((await fresh.login('neo', 'matrix', 'ip')).identity.name).toBe('Neo');
+    await store.setSettings('neo', { theme: 'light' });
+    await store.setSettings('neo', { theme: 'dark' });
+    expect(await store.getSettings('neo')).toEqual({ theme: 'dark' });
+    expect(db.public.many('SELECT * FROM player_settings')).toHaveLength(1);
+    await store.setPassword('neo', await hashPassword('zion'));
+    expect((await fresh.login('Neo', 'zion', 'ip')).identity.name).toBe('Neo');
     expect(await store.remove('neo')).toBe(true);
     expect(await fresh.resume(token)).toBeNull();
   });
@@ -129,6 +135,27 @@ describe('sockets require a signed-in name', () => {
     // spectating is open
     expect((await ask(thief, 'spectate', { code: made.code })).ok).toBe(true);
     expect((await ask(thief, 'roulette_watch')).ok).toBe(true);
+  });
+
+  it('changes the password (needs the current one) and saves validated settings per account', async () => {
+    const a = connect();
+    expect((await ask(a, 'settings_save', { settings: { theme: 'light' } })).error).toMatch(/Sign in/);
+    expect((await ask(a, 'auth_change_password', { current: 'x', next: 'yyyy' })).error).toMatch(/Sign in/);
+    await ask(a, 'auth_claim', { name: 'Prefs', password: 'old-pass' });
+    expect((await ask(a, 'auth_change_password', { current: 'nope', next: 'new-pass' })).error).toMatch(/current password is wrong/);
+    expect((await ask(a, 'auth_change_password', { current: 'old-pass', next: 'ab' })).error).toMatch(/at least 4/);
+    expect((await ask(a, 'auth_change_password', { current: 'old-pass', next: 'new-pass' })).ok).toBe(true);
+    const b = connect();
+    expect((await ask(b, 'auth_login', { name: 'Prefs', password: 'old-pass' })).ok).toBe(false);
+    expect((await ask(b, 'auth_login', { name: 'Prefs', password: 'new-pass' })).ok).toBe(true);
+    expect((await ask(b, 'settings_get')).settings).toBeNull();
+    const saved = await ask(b, 'settings_save', { settings: { theme: 'contrast', accent: 'javascript:1', boardLight: '#EEEED2', volume: 9, evil: 'x' } });
+    expect(saved.ok).toBe(true);
+    expect(saved.settings).toMatchObject({ theme: 'contrast', accent: '#e0b56a', boardLight: '#eeeed2', volume: 1 });
+    expect(saved.settings.evil).toBeUndefined();
+    expect((await ask(a, 'settings_get')).settings.theme).toBe('contrast');
+    expect((await ask(b, 'settings_save', { settings: 'nope' })).ok).toBe(false);
+    expect((await ask(b, 'settings_save', { settings: { theme: 'x'.repeat(3000) } })).ok).toBe(false);
   });
 
   it('a session token signs a new socket in; logout ends it', async () => {

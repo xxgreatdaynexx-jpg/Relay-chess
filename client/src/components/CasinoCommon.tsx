@@ -1,4 +1,4 @@
-import { AccountBox } from '@/components/AccountBox';
+import { openAccount } from '@/lib/settings';
 import { useState } from 'react';
 import type { CasinoStanding } from '../../../shared/casino';
 import { emitCasino, notifyNameChanged, useCasinoBoard } from '@/lib/casino';
@@ -9,7 +9,7 @@ export function NamePrompt() {
   return (
     <div className="casino-name">
       <div className="bj-label">Sign in or claim a name to get 1,000 play chips. Your chips follow your name.</div>
-      <AccountBox compact />
+      <button type="button" className="bj-deal casino-signin" onClick={() => openAccount()} data-testid="casino-signin">Sign in / claim a name</button>
     </div>
   );
 }
