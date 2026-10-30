@@ -669,6 +669,7 @@ export function RoomScreen({
             <div className="mt-4">
               <h3 className="mb-2 text-xs tracking-[0.16em] text-cream/55 uppercase">Standings</h3>
               <LeaderboardTable
+                game={state.gameType === 'checkers' ? 'checkers' : 'chess'}
                 highlight={active.map((seat) => state.seats[seat]?.name ?? '').filter(Boolean)}
               />
             </div>

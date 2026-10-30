@@ -660,6 +660,14 @@ export function createRoom(preset: ClockPreset, setup?: TableSetup, gameType: Ga
   return room;
 }
 
+const expiredCodes = new Set<string>();
+
+/** Why a table code has no room: it idled out on this server, or it predates the last restart (rooms live in memory). */
+export function missingRoomMessage(code: string): string {
+  if (expiredCodes.has(code)) return 'That table expired after sitting idle.';
+  return 'No table with that code. If you were just playing there, Chud Hub restarted for an update and tables in progress were closed. Sorry! Start a new table.';
+}
+
 export function getRoom(code: string): Room | undefined {
   return rooms.get(code);
 }
@@ -694,6 +702,7 @@ export function pruneRooms(now = Date.now()): string[] {
     const expired = (!room.anyoneConnected() && idle > EMPTY_ROOM_MS) || idle > HARD_ROOM_MS;
     if (!expired) continue;
     rooms.delete(room.code);
+    expiredCodes.add(room.code);
     gone.push(room.code);
   }
   return gone;

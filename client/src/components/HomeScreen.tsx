@@ -1,6 +1,6 @@
 import { ScrollIntro } from '@/components/ScrollIntro';
 import { notifyNameChanged } from '@/lib/casino';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useAccount } from '@/lib/auth';
 import { PlayingAs } from '@/components/AccountPanel';
 import { openAccount } from '@/lib/settings';
@@ -187,6 +187,17 @@ export function HomeScreen({
     }
     onEnter();
   }
+
+  // Opening /r/<code> directly: join that table (or watch it when not signed in) instead of idling on the home page.
+  const autoTried = useRef(false);
+  useEffect(() => {
+    if (!initialCode || autoTried.current) return;
+    if (saved && saved.code === initialCode) return;
+    autoTried.current = true;
+    if (name.trim()) void joinCode(initialCode);
+    else void spectate(initialCode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialCode]);
 
   const invited = initialCode ? tables.find((row) => row.code === initialCode) : undefined;
   const invitedFull = Boolean(invited && invited.openSeats === 0);

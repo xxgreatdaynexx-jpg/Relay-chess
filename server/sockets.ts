@@ -11,6 +11,7 @@ import {
   getRoom,
   listRooms,
   liveRooms,
+  missingRoomMessage,
   openRooms,
   presetOrThrow,
   pruneRooms,
@@ -195,7 +196,7 @@ export function registerSockets(io: Server): void {
         const name = signedIn(socket);
         const code = cleanCode(body.code);
         const room = getRoom(code);
-        if (!room) throw new GameError('No table with that code. It may have expired.', true);
+        if (!room) throw new GameError(missingRoomMessage(code), true);
         release(io, socket);
         const token = room.addMember(name);
         adopt(socket, room, token);
@@ -317,7 +318,7 @@ export function registerSockets(io: Server): void {
         const body = asRecord(payload);
         const code = cleanCode(body.code);
         const room = getRoom(code);
-        if (!room) throw new GameError('No table with that code. It may have expired.', true);
+        if (!room) throw new GameError(missingRoomMessage(code), true);
         release(io, socket);
         room.addSpectator(socket.id);
         socket.data.code = room.code;
@@ -354,7 +355,8 @@ export function registerSockets(io: Server): void {
         const code = cleanCode(body.code);
         const token = typeof body.token === 'string' ? body.token : '';
         const room = getRoom(code);
-        if (!room || !token || !room.has(token)) {
+        if (!room) throw new GameError(missingRoomMessage(code), true);
+        if (!token || !room.has(token)) {
           throw new GameError('That table is no longer available.', true);
         }
         adopt(socket, room, token);
