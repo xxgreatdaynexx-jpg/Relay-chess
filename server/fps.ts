@@ -1,5 +1,5 @@
 import type { Server, Socket } from 'socket.io';
-import { canStand, guestName, MOVE_SPEED, TICK_HZ } from '../shared/fps.js';
+import { guestName, MOVE_SPEED, TICK_HZ } from '../shared/fps.js';
 import { ArenaWorld, type ArenaEvent } from './arena-world.js';
 import { getArenaLedger } from './arena-store.js';
 
@@ -35,19 +35,19 @@ export function addQaBots(n: unknown, now = Date.now()): number {
   return added;
 }
 
-/** Slow random walk; bots turn when they bump a wall. */
+/** Slow random walk with the odd jump (so QA can shoot at targets at different heights); bots turn when they bump a wall. */
 function driveBots(now: number): void {
   for (const f of world.fighters.values()) {
     if (!isBot(f.id) || !f.alive) continue;
     let a = botHeading.get(f.id) ?? 0;
     const step = (MOVE_SPEED * 0.4) / TICK_HZ;
-    let nx = f.x + Math.cos(a) * step, ny = f.y + Math.sin(a) * step;
-    if (!canStand(nx, ny) || Math.random() < 0.02) {
+    const bx = f.x, by = f.y;
+    world.move(f.id, f.x + Math.cos(a) * step, f.y + Math.sin(a) * step, a, now, 0);
+    if (Math.hypot(f.x - bx, f.y - by) < step * 0.3 || Math.random() < 0.02) {
       a = Math.random() * Math.PI * 2;
       botHeading.set(f.id, a);
-      nx = f.x; ny = f.y;
     }
-    world.move(f.id, nx, ny, a, now);
+    if (Math.random() < 0.015) world.jump(f.id, now);
   }
 }
 
@@ -136,14 +136,14 @@ export function registerFps(io: Server, socket: Socket): void {
     const bots = addQaBots(body(payload).qaBots);
     if (bots) io.to(ROOM).emit('fps_state', world.snapshot(Date.now()));
     const f = world.fighters.get(socket.id)!;
-    ack?.({ ok: true, id: socket.id, x: f.x, y: f.y, a: f.a });
+    ack?.({ ok: true, id: socket.id, x: f.x, y: f.y, z: f.z, a: f.a, map: world.map.id });
     ensureTicker(io);
   });
   socket.on('fps_move', (p: unknown) => {
     const b = body(p);
-    world.move(socket.id, b.x, b.y, b.a, Date.now());
+    world.move(socket.id, b.x, b.y, b.a, Date.now(), b.p);
   });
-  socket.on('fps_shoot', (p: unknown) => emit(io, world.shoot(socket.id, body(p).a, Date.now())));
+  socket.on('fps_shoot', (p: unknown) => emit(io, world.shoot(socket.id, body(p).a, Date.now(), body(p).p)));
   socket.on('fps_jump', () => emit(io, world.jump(socket.id, Date.now())));
   socket.on('fps_weapon', (p: unknown) => world.switchWeapon(socket.id, body(p).w, Date.now()));
   socket.on('fps_reload', () => world.reload(socket.id, Date.now()));

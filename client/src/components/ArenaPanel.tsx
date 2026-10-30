@@ -2,10 +2,11 @@ import { TopTab } from '@/components/TopTabs';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useRef, useState } from 'react';
 import { socket } from '@/lib/net';
-import { ArenaRenderer, type Cam } from '@/lib/arenaRender';
+import { ArenaRenderer, minimapSize } from '@/lib/arenaRender';
+import type { Arena3D, Fx3D, Soldier3D } from '@/lib/arena3d';
 import { playExplosion, playHit, playStreakCall, playWeaponShot, unlockSounds } from '@/lib/sounds';
 import {
-  canJump, canStand, jumpHeight, MAX_HP, MOVE_SPEED, STREAKS, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
+  AIRSTRIKE_RADIUS, clampPitch, EYE_HEIGHT, mapById, MAP, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, stepVertical, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
 } from '../../../shared/fps';
 
 const OPEN_KEY = 'relay-fps-open';
@@ -13,9 +14,10 @@ const QUALITY_KEY = 'relay-fps-quality';
 const INTERP_MS = (1000 / TICK_HZ) * 1.5;
 const COLORS = ['#5f6a48', '#7d7158', '#596066', '#6b6248', '#4f5a4c', '#73705f', '#565246', '#666e5a'];
 const SCOPE_ZOOM = 3.5;
+const FOV = 68; // vertical, degrees
 
-interface NetPlayer { id: string; name: string; x: number; y: number; a: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; j: number; st: number; uav: number }
-interface NetState { t: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number }>; strikes: Array<{ x: number; y: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null }
+interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number }
+interface NetState { t: number; map?: string; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null }
 interface Snap extends NetState { recv: number }
 type Quality = 'hd' | 'lo';
 
@@ -41,6 +43,9 @@ export function ArenaPanel() {
 
 function ArenaGame({ onClose }: { onClose: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const glRef = useRef<HTMLCanvasElement>(null);
+  const mapRef = useRef(MAP);
+  const [glError, setGlError] = useState('');
   const wrapRef = useRef<HTMLDivElement>(null);
   const win = useWindowDrag('arena', wrapRef);
   const [status, setStatus] = useState('Joining the arena…');
@@ -54,12 +59,12 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   useEffect(() => { qualityRef.current = quality; localStorage.setItem(QUALITY_KEY, quality); }, [quality]);
   const keys = useRef(new Set<string>());
   const me = useRef({
-    id: '', x: 1.5, y: 1.5, a: 0, alive: true, hp: MAX_HP, joined: false, weapon: 'pistol' as WeaponId,
+    id: '', x: 1.5, y: 1.5, z: 0, vz: 0, grounded: true, p: 0, a: 0, alive: true, hp: MAX_HP, joined: false, weapon: 'pistol' as WeaponId,
     ammo: WEAPONS.pistol.mag, reloadUntil: 0, switchedAt: -1e9, lastShot: {} as Partial<Record<WeaponId, number>>,
     jumpAt: -1e9, scoped: false, firing: false, streak: 0, uavUntil: 0, walk: 0,
   });
   const snaps = useRef<Snap[]>([]);
-  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, killmark: 0, nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; a: number; name: string }>(), booms: [] as Array<{ x: number; y: number; at: number; big: boolean }>, hitAt: new Map<string, number>(), shake: 0, jetAt: 0 });
+  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, killmark: 0, nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number }>, hitAt: new Map<string, number>(), shake: 0, jetAt: 0 });
   const banner = useRef<{ text: string; sub: string; at: number } | null>(null);
   const touch = useRef({ up: false, down: false, left: false, right: false });
 
@@ -86,7 +91,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   function jump() {
     const m = me.current;
     const now = performance.now();
-    if (!m.joined || !m.alive || !canJump(m.jumpAt, now)) return;
+    if (!m.joined || !m.alive || !tryJump(m)) return;
     m.jumpAt = now;
     socket.emit('fps_jump');
   }
@@ -111,17 +116,20 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     if (m.ammo === 0) m.reloadUntil = now + spec.reloadMs;
     fx.current.muzzle = now;
     playWeaponShot(m.weapon);
-    socket.emit('fps_shoot', { a: m.a });
+    socket.emit('fps_shoot', { a: m.a, p: m.p });
   }
 
   // Networking
   useEffect(() => {
     const join = () => {
       const qaBots = Number(new URLSearchParams(window.location.search).get('arenaBots')) || 0;
-      socket.timeout(8000).emit('fps_join', qaBots ? { qaBots } : {}, (err: Error | null, ack?: { ok: boolean; id?: string; x?: number; y?: number; a?: number; error?: string }) => {
+      socket.timeout(8000).emit('fps_join', qaBots ? { qaBots } : {}, (err: Error | null, ack?: { ok: boolean; id?: string; x?: number; y?: number; z?: number; a?: number; map?: string; error?: string }) => {
         if (err || !ack?.ok) return setStatus(ack?.error || 'Could not reach the arena.');
-        Object.assign(me.current, { id: ack.id, x: ack.x, y: ack.y, a: ack.a, joined: true, alive: true });
+        if (ack.map) mapRef.current = mapById(ack.map);
+        Object.assign(me.current, { id: ack.id, x: ack.x, y: ack.y, z: ack.z ?? 0, vz: 0, grounded: true, p: 0, a: ack.a, joined: true, alive: true });
         setStatus('');
+        // Local QA only (?arenaBots=N needs ARENA_QA_BOTS=1 on the server): read-only handle for play-test scripts.
+        if (qaBots) (window as unknown as { __arenaQA?: unknown }).__arenaQA = { me: me.current, snaps: snaps.current, banner };
       });
     };
     let feedKey = 0;
@@ -135,14 +143,17 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       if (snaps.current.length > 6) snaps.current.shift();
       const m = me.current;
       const mine = s.players.find((p) => p.id === m.id);
+      if (s.map && s.map !== mapRef.current.id) mapRef.current = mapById(s.map);
       if (mine) {
         if (!mine.alive && m.alive) m.alive = false;
-        if (mine.alive && !m.alive) Object.assign(m, { alive: true, x: mine.x, y: mine.y, ammo: WEAPONS[m.weapon].mag, reloadUntil: 0 });
-        // Never stay stuck in geometry or far out of sync with the server: snap to its authoritative spot.
-        else if (mine.alive && (!canStand(m.x, m.y) || Math.hypot(m.x - mine.x, m.y - mine.y) > 3)) Object.assign(m, { x: mine.x, y: mine.y });
+        if (mine.alive && !m.alive) Object.assign(m, { alive: true, x: mine.x, y: mine.y, z: mine.z, vz: 0, grounded: true, p: 0, ammo: WEAPONS[m.weapon].mag, reloadUntil: 0 });
+        // The server owns position (and height): if prediction drifts too far, snap to its authoritative spot.
+        else if (mine.alive && (Math.hypot(m.x - mine.x, m.y - mine.y) > 1.5 || Math.abs(m.z - mine.z) > 0.8)) Object.assign(m, { x: mine.x, y: mine.y, z: mine.z, vz: 0, grounded: mine.g });
         m.hp = mine.hp;
         m.streak = mine.st;
         m.uavUntil = mine.uav ? performance.now() + mine.uav : 0;
+        // The server owns the loadout: if our weapon disagrees for longer than a switch takes, adopt the server's.
+        if (mine.w !== m.weapon && performance.now() - m.switchedAt > 1000) { m.weapon = mine.w; m.scoped = false; }
         if (mine.w === m.weapon) {
           m.ammo = mine.ammo;
           m.reloadUntil = mine.rl ? performance.now() + mine.rl : 0;
@@ -161,15 +172,25 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         if (src && h.by !== me.current.id) fx.current.dmgDirs.push({ a: Math.atan2(src.y - me.current.y, src.x - me.current.x), at: now });
       }
     };
-    const onShot = (s: { id: string; w: WeaponId; impact?: { x: number; y: number } }) => {
+    const onShot = (s: { id: string; w: WeaponId; o?: [number, number, number]; rays?: Array<[number, number, number]>; impact?: { x: number; y: number; z: number } }) => {
+      const now = performance.now();
       if (s.id !== me.current.id) playWeaponShot(s.w, 0.35);
-      if (s.impact) { fx.current.booms.push({ ...s.impact, at: performance.now(), big: false }); playExplosion(0.5); }
+      if (s.o && s.rays) {
+        // Tracers start a little below and ahead of the eye so your own don't sit on the crosshair.
+        const [ox, oy, oz] = s.o;
+        for (const [a, p, d] of s.rays.slice(0, 4)) {
+          const c = Math.cos(p);
+          const start: [number, number, number] = [ox + Math.cos(a) * c * 0.6, oy + Math.sin(a) * c * 0.6, oz + 1.25];
+          fx.current.tracers.push({ o: start, e: [ox + Math.cos(a) * c * d, oy + Math.sin(a) * c * d, oz + EYE_HEIGHT + Math.sin(p) * d], at: now });
+        }
+      }
+      if (s.impact) { fx.current.booms.push({ ...s.impact, at: now, big: false }); playExplosion(0.5); }
     };
     const onKill = (k: { killer: string; victim: string; killerId: string | null; victimId: string; cause: string }) => {
       const self = k.killerId === k.victimId || !k.killerId;
       if (k.killerId === me.current.id && !self) fx.current.killmark = performance.now();
       const v = snaps.current[snaps.current.length - 1]?.players.find((p) => p.id === k.victimId);
-      if (v) fx.current.deaths.set(k.victimId, { at: performance.now(), x: v.x, y: v.y, a: v.a, name: v.name });
+      if (v) fx.current.deaths.set(k.victimId, { at: performance.now(), x: v.x, y: v.y, z: v.z, a: v.a, name: v.name });
       pushFeed({ killer: k.killer, victim: k.victim, cause: k.cause, self, mine: k.killerId === me.current.id || k.victimId === me.current.id });
     };
     const onStreak = (s: { id: string; name: string; kind: string; title: string; streak: number }) => {
@@ -179,9 +200,9 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       banner.current = { text: mine ? s.title : `${s.name.toUpperCase()} · ${s.title}`, sub: `"${radio[s.kind] ?? ''}" · ${s.streak} kill streak${mine && info ? ` · ${info.blurb}` : ''}`, at: performance.now() };
       playStreakCall(s.kind === 'nuke' ? 'alarm' : 'reward');
     };
-    const onBoom = (b: { x: number; y: number; cause?: string }) => {
+    const onBoom = (b: { x: number; y: number; z?: number; cause?: string }) => {
       const t = performance.now();
-      fx.current.booms.push({ x: b.x, y: b.y, at: t, big: true });
+      fx.current.booms.push({ x: b.x, y: b.y, z: b.z ?? 0, at: t, big: true });
       const d = Math.hypot(b.x - me.current.x, b.y - me.current.y);
       if (d < 8) fx.current.shake = t;
       if (b.cause === 'airstrike' && t - fx.current.jetAt > 1500) fx.current.jetAt = t;
@@ -212,84 +233,105 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
-  // Game loop
+  // Game loop: three.js world underneath, 2D HUD overlay on top.
   useEffect(() => {
     const canvas = canvasRef.current;
+    const gl = glRef.current;
     const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
+    if (!canvas || !gl || !ctx) return;
+    let g3: Arena3D | null = null;
+    let cancelled = false;
+    // three.js is loaded on demand so it never weighs down the rest of the site.
+    import('@/lib/arena3d').then(({ Arena3D: A }) => {
+      if (cancelled) return;
+      try { g3 = new A(gl); raf = requestAnimationFrame(frame); } catch { setGlError('This browser could not start 3D graphics (WebGL).'); }
+    }).catch(() => setGlError('Could not load the 3D engine. Refresh to try again.'));
     const r = new ArenaRenderer();
-    const useMoveRef = { current: new Map<string, { x: number; y: number }>() };
+    const prevPos = new Map<string, { x: number; y: number }>();
     let raf = 0;
     let last = performance.now();
     let lastSend = 0;
     const frame = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
-      // Size: internal resolution follows the CSS size × devicePixelRatio (capped), or half-res in LO.
+      const map = mapRef.current;
+      if (!g3) return;
+      g3.setMap(map);
+      // Size: internal resolution follows the CSS size × devicePixelRatio (capped), or reduced in LO.
       const cssW = canvas.clientWidth || 480;
+      const cssH = canvas.clientHeight || (cssW * 5) / 8;
       const scale = qualityRef.current === 'hd' ? Math.min(window.devicePixelRatio || 1, 2) : 0.6;
-      const W = Math.round(Math.min(cssW * scale, 1100));
-      const H = Math.round((W * (canvas.clientHeight || (cssW * 5) / 8)) / cssW);
+      const W = Math.round(Math.min(cssW * scale, 1600));
+      const H = Math.round((W * cssH) / cssW);
       if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
+      g3.resize(W, H);
       r.resize(W, H);
+      ctx.clearRect(0, 0, W, H);
       const m = me.current;
       const k = keys.current;
       const t = touch.current;
       let moving = false;
       if (m.joined && m.alive) {
-        let fwd = 0, side = 0, turn = 0;
+        let fwd = 0, side = 0, turn = 0, look = 0;
         if (k.has('w') || k.has('arrowup') || t.up) fwd += 1;
         if (k.has('s') || k.has('arrowdown') || t.down) fwd -= 1;
         if (k.has('a')) side -= 1;
         if (k.has('d')) side += 1;
         if (k.has('arrowleft') || k.has('q') || t.left) turn -= 1;
         if (k.has('arrowright') || k.has('e') || t.right) turn += 1;
+        if (k.has('pageup')) look += 1;
+        if (k.has('pagedown')) look -= 1;
         m.a += turn * (m.scoped ? 0.8 : 2.6) * dt;
+        m.p = clampPitch(m.p + look * 1.6 * dt) ?? m.p;
         const len = Math.hypot(fwd, side) || 1;
         const sp = (MOVE_SPEED * 0.95 * dt) / len * (m.scoped ? 0.5 : 1);
+        // a turns from +x toward +y; "right" is +90°.
         const dx = (Math.cos(m.a) * fwd - Math.sin(m.a) * side) * sp;
         const dy = (Math.sin(m.a) * fwd + Math.cos(m.a) * side) * sp;
-        if (canStand(m.x + dx, m.y)) m.x += dx;
-        if (canStand(m.x, m.y + dy)) m.y += dy;
+        // Local prediction with the exact same physics the server runs.
+        moveHorizontal(m, dx, dy, map);
+        stepVertical(m, dt, map);
         moving = fwd !== 0 || side !== 0;
-        if (now - lastSend > 50) { lastSend = now; socket.emit('fps_move', { x: m.x, y: m.y, a: m.a }); }
+        if (now - lastSend > 50) { lastSend = now; socket.emit('fps_move', { x: m.x, y: m.y, a: m.a, p: m.p }); }
         if (m.firing || k.has('f') || k.has('control')) shoot();
       }
       if (m.reloadUntil && now >= m.reloadUntil) { m.reloadUntil = 0; m.ammo = WEAPONS[m.weapon].mag; }
-      const z = jumpHeight(now - m.jumpAt);
-      if (moving && z === 0) m.walk += dt * 9;
-      const bob = moving && z === 0 ? Math.sin(m.walk * 2) * 0.012 : 0;
+      if (moving && m.grounded) m.walk += dt * 9;
+      const bob = moving && m.grounded ? Math.sin(m.walk * 2) * 0.03 : 0;
       const zoom = m.scoped && m.weapon === 'sniper' && m.alive ? SCOPE_ZOOM : 1;
-      const cam: Cam = { x: m.x, y: m.y, a: m.a, eye: 0.5 + z + bob, zoom };
-      const mf = Math.max(0, 1 - (now - fx.current.muzzle) / 70);
-      r.world(ctx, cam, m.alive ? mf : 0);
-      // Sprites: blobs, drones, strike markers, explosions — far to near.
       const snap = snaps.current[snaps.current.length - 1];
       const renderAt = now - INTERP_MS;
       const others = interpolate(snaps.current, renderAt).filter((p) => p.id !== m.id && p.alive);
-      type Thing = { d: number; draw: () => void };
-      const prevPos = useMoveRef.current;
-      const things: Thing[] = others.map((p) => {
+      const soldiers: Soldier3D[] = others.map((p) => {
         const pp = prevPos.get(p.id);
-        const moving = !!pp && Math.hypot(pp.x - p.x, pp.y - p.y) > 0.002;
+        const mv = !!pp && Math.hypot(pp.x - p.x, pp.y - p.y) > 0.002;
         prevPos.set(p.id, { x: p.x, y: p.y });
-        return {
-          d: Math.hypot(p.x - m.x, p.y - m.y),
-          draw: () => r.soldier(ctx, cam, { ...p, z: jumpHeight(p.j + (now - (snap?.recv ?? now))), color: colorFor(p.id), flash: now - (fx.current.hitAt.get(p.id) ?? -1e9) < 160, moving, t: now }),
-        };
+        return { id: p.id, x: p.x, y: p.y, z: p.z, a: p.a, p: p.p, color: colorFor(p.id), flash: now - (fx.current.hitAt.get(p.id) ?? -1e9) < 160, moving: mv, t: now };
       });
       for (const [id, dd] of fx.current.deaths) {
         const age = (now - dd.at) / 1000;
         if (age > 1.2) { fx.current.deaths.delete(id); continue; }
-        if (id === m.id) continue;
-        things.push({ d: Math.hypot(dd.x - m.x, dd.y - m.y), draw: () => r.soldier(ctx, cam, { id, name: dd.name, x: dd.x, y: dd.y, a: dd.a, hp: 0, z: 0, color: colorFor(id), flash: false, dead: age }) });
+        if (id === m.id || others.some((o) => o.id === id)) continue;
+        soldiers.push({ id, x: dd.x, y: dd.y, z: dd.z, a: dd.a, p: 0, color: colorFor(id), flash: false, moving: false, dead: age, t: now });
       }
-      for (const d of snap?.drones ?? []) things.push({ d: Math.hypot(d.x - m.x, d.y - m.y), draw: () => r.thing(ctx, cam, d.x, d.y, 0.75 + Math.sin(now / 200) * 0.03, 0.3, drawDrone(colorFor(d.ownerId))) });
-      for (const s of (snap?.strikes ?? []).filter((q) => q.inMs >= 0)) things.push({ d: Math.hypot(s.x - m.x, s.y - m.y), draw: () => r.thing(ctx, cam, s.x, s.y, 0, 0.9, drawMarker(now)) });
       fx.current.booms = fx.current.booms.filter((b) => now - b.at < 600);
-      for (const b of fx.current.booms) things.push({ d: Math.hypot(b.x - m.x, b.y - m.y), draw: () => r.thing(ctx, cam, b.x, b.y, -0.1, b.big ? 2.4 : 1.4, drawBoom((now - b.at) / 600)) });
-      things.sort((a, b) => b.d - a.d);
-      for (const th of things) th.draw();
+      fx.current.tracers = fx.current.tracers.filter((tr) => now - tr.at < 90);
+      const fx3: Fx3D = {
+        drones: (snap?.drones ?? []).map((d) => ({ x: d.x, y: d.y, z: (d.z ?? 8) + Math.sin(now / 200) * 0.1 })),
+        strikes: (snap?.strikes ?? []).filter((q) => q.inMs >= 0).map((q) => ({ x: q.x, y: q.y, z: q.z ?? 0, r: q.r ?? AIRSTRIKE_RADIUS })),
+        booms: fx.current.booms.map((b) => ({ x: b.x, y: b.y, z: b.z, t: (now - b.at) / 600, big: b.big })),
+        tracers: fx.current.tracers.map((tr) => ({ o: tr.o, e: tr.e, t: (now - tr.at) / 90 })),
+      };
+      const shake = now - fx.current.shake < 450 ? (1 - (now - fx.current.shake) / 450) * 0.04 : 0;
+      g3.render({ x: m.x, y: m.y, z: m.z + EYE_HEIGHT + bob + (Math.random() - 0.5) * shake, a: m.a, p: m.p, zoom }, soldiers, fx3);
+      // Health bars over nearby enemies you can see.
+      for (const p of others) {
+        const s = g3.project(p.x, p.y, p.z + 2, W, H);
+        if (!s || s.dist > 18) continue;
+        const bw = Math.max(16, 40 / Math.max(1, s.dist / 3)) * (H / 400);
+        ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(s.sx - bw / 2, s.sy, bw, 3);
+        ctx.fillStyle = p.hp > 40 ? '#cfd4c4' : '#d9473a'; ctx.fillRect(s.sx - bw / 2, s.sy, (bw * p.hp) / MAX_HP, 3);
+      }
       const W2 = r.W, H2 = r.H;
       // Dust haze over the scene for a darker, grittier grade.
       const vg = ctx.createRadialGradient(W2 / 2, H2 / 2, H2 * 0.3, W2 / 2, H2 / 2, W2 * 0.7);
@@ -308,7 +350,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       } else if (m.alive) {
         r.viewmodel(ctx, m.weapon, m.walk, muzzle ? 1 : 0, Math.max(switching, reloading), muzzle);
         const cs = H2 / 40;
-        const spread = WEAPONS[m.weapon].spread * r.focal(cam) * 0.6;
+        const spread = (WEAPONS[m.weapon].spread * (H2 / 2)) / Math.tan(((FOV / zoom) * Math.PI) / 360) * 0.6;
         ctx.strokeStyle = 'rgba(235,240,230,.9)';
         ctx.lineWidth = Math.max(1, H2 / 300);
         ctx.beginPath();
@@ -342,8 +384,20 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         ctx.beginPath(); ctx.arc(W2 / 2, H2 / 2, rad, rel - 0.35, rel + 0.35); ctx.stroke();
       }
       // HUD (military style)
-      const u = H2 / 200;
+      // One HUD unit: follows height, but never lets the HUD outgrow a narrow (portrait / half-screen) window.
+      const u = Math.min(H2 / 200, W2 / 300);
       const mono = 'ui-monospace, Menlo, Consolas, monospace';
+      /** Sets a font that makes `text` fit in maxW (shrinking from `size` units), so banners never clip. */
+      const fit = (text: string, weight: string, size: number, maxW: number) => {
+        let px = Math.max(8, (size * u) | 0);
+        ctx.font = `${weight} ${px}px ${mono}`;
+        const w = ctx.measureText(text).width;
+        if (w > maxW) { px = Math.max(7, Math.floor((px * maxW) / w)); ctx.font = `${weight} ${px}px ${mono}`; }
+        return px;
+      };
+      // Layout bands: minimap top-left, scoreboard top-right, banners below the minimap, weapon slots bottom-centre.
+      const mapSize = minimapSize(W2, H2);
+      const bannerTop = Math.max(H2 * 0.16, mapSize + 18);
       const spec = WEAPONS[m.weapon];
       ctx.textAlign = 'right';
       ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(W2 - 92 * u, H2 - 30 * u, 88 * u, 26 * u);
@@ -370,23 +424,27 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       // Weapon slots
       ctx.textAlign = 'center';
       WEAPON_ORDER.forEach((w, i) => {
-        const x = W2 / 2 + (i - 2) * 22 * u;
+        // Bottom centre, between the health block (left) and the ammo block (right), so nothing at the top covers them.
+        const x = W2 / 2 - 8 * u + (i - 2) * 18 * u;
+        const y = H2 - 16 * u;
         ctx.fillStyle = w === m.weapon ? 'rgba(220,224,210,.9)' : 'rgba(0,0,0,.45)';
-        ctx.fillRect(x - 10 * u, 4 * u, 20 * u, 10 * u);
+        ctx.fillRect(x - 8 * u, y, 16 * u, 10 * u);
         ctx.fillStyle = w === m.weapon ? '#15170f' : '#d9dccf';
-        ctx.fillText(`${i + 1}`, x, 11.5 * u);
+        ctx.fillText(`${i + 1}`, x, y + 7.5 * u);
       });
       // Radar (UAV)
       const live = (snap?.strikes ?? []).filter((s) => s.inMs >= 0);
-      if (m.uavUntil > now || live.length) r.minimap(ctx, m, m.uavUntil > now ? others : [], live);
+      r.minimap(ctx, map, m, m.uavUntil > now ? others : [], live);
       // Airstrike warning: countdown, danger-close when you're in the zone, jets overhead just before impact.
       for (const s of live) {
         const left = Math.max(0, s.inMs - (now - (snap?.recv ?? now)));
         const inside = Math.hypot(s.x - m.x, s.y - m.y) < (s.r ?? 3) + 2.2;
         ctx.textAlign = 'center';
-        ctx.font = `800 ${(10 * u) | 0}px ${mono}`;
+        const msg = inside ? `⚠ DANGER CLOSE — AIRSTRIKE ${(left / 1000).toFixed(1)}s — MOVE!` : `AIRSTRIKE ${s.locked ? 'LOCKED' : 'TRACKING'} ${(left / 1000).toFixed(1)}s`;
+        fit(msg, '800', 10, W2 - 16);
         ctx.fillStyle = inside ? (Math.floor(now / 200) % 2 ? 'rgba(240,60,40,.95)' : 'rgba(255,230,120,.95)') : 'rgba(255,200,80,.9)';
-        ctx.fillText(inside ? `⚠ DANGER CLOSE — AIRSTRIKE ${(left / 1000).toFixed(1)}s — MOVE!` : `AIRSTRIKE ${s.locked ? 'LOCKED' : 'TRACKING'} ${(left / 1000).toFixed(1)}s`, W2 / 2, H2 * 0.26);
+        // Sits under the streak banner's box, never on top of it.
+        ctx.fillText(msg, W2 / 2, bannerTop + 48 * u);
         if (left < 900 && now - fx.current.jetAt > 1500) fx.current.jetAt = now;
       }
       const jt = (now - fx.current.jetAt) / 1400;
@@ -404,8 +462,10 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       if (snap?.nuke) {
         const left = Math.max(0, snap.nuke.inMs - (now - snap.recv));
         ctx.fillStyle = Math.floor(now / 400) % 2 ? 'rgba(230,60,50,.95)' : 'rgba(255,255,255,.95)';
-        ctx.font = `800 ${(13 * u) | 0}px ${mono}`;
-        ctx.fillText(`TACTICAL NUKE INCOMING  ${(left / 1000).toFixed(1)}`, W2 / 2, H2 * 0.32);
+        const msg = `TACTICAL NUKE INCOMING  ${(left / 1000).toFixed(1)}`;
+        fit(msg, '800', 13, W2 - 16);
+        ctx.textAlign = 'center';
+        ctx.fillText(msg, W2 / 2, bannerTop + 64 * u);
       }
       const nf = (now - fx.current.nukeFlash) / 3000;
       if (nf < 1) {
@@ -420,32 +480,45 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       if (b && now - b.at < 3000) {
         const fade = Math.min(1, (3000 - (now - b.at)) / 400);
         ctx.globalAlpha = fade;
-        const bw = Math.min(W2 * 0.8, 230 * u);
-        ctx.fillStyle = 'rgba(8,10,8,.72)'; ctx.fillRect(W2 / 2 - bw / 2, H2 * 0.16, bw, 34 * u);
-        ctx.fillStyle = 'rgba(220,224,210,.8)'; ctx.fillRect(W2 / 2 - bw / 2, H2 * 0.16, bw, 1.5 * u); ctx.fillRect(W2 / 2 - bw / 2, H2 * 0.16 + 32.5 * u, bw, 1.5 * u);
-        for (let i = 0; i < 40; i++) { ctx.fillStyle = 'rgba(255,255,255,.05)'; ctx.fillRect(W2 / 2 - bw / 2 + ((i * 37 + now / 4) % bw), H2 * 0.16 + ((i * 13) % 34) * u, 6 * u, 0.6 * u); }
-        ctx.fillStyle = '#e6e9df'; ctx.font = `800 ${(14 * u) | 0}px ${mono}`;
-        ctx.fillText(b.text, W2 / 2, H2 * 0.16 + 16 * u);
-        ctx.fillStyle = '#b5ba9f'; ctx.font = `italic 600 ${(7 * u) | 0}px ${mono}`;
-        ctx.fillText(b.sub, W2 / 2, H2 * 0.16 + 28 * u);
+        const bw = Math.min(W2 - 12, 260 * u);
+        const by = bannerTop;
+        const inner = bw - 12;
+        // The subtitle wraps onto two lines when it is long; both lines and the title shrink to fit the box.
+        const subLines = wrapLines(ctx, b.sub, inner, `italic 600 ${Math.max(8, (7 * u) | 0)}px ${mono}`);
+        const bh = (subLines.length > 1 ? 42 : 34) * u;
+        ctx.fillStyle = 'rgba(8,10,8,.72)'; ctx.fillRect(W2 / 2 - bw / 2, by, bw, bh);
+        ctx.fillStyle = 'rgba(220,224,210,.8)'; ctx.fillRect(W2 / 2 - bw / 2, by, bw, 1.5 * u); ctx.fillRect(W2 / 2 - bw / 2, by + bh - 1.5 * u, bw, 1.5 * u);
+        for (let i = 0; i < 40; i++) { ctx.fillStyle = 'rgba(255,255,255,.05)'; ctx.fillRect(W2 / 2 - bw / 2 + ((i * 37 + now / 4) % bw), by + ((i * 13) % 34) * u, 6 * u, 0.6 * u); }
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#e6e9df'; fit(b.text, '800', 14, inner);
+        ctx.fillText(b.text, W2 / 2, by + 16 * u);
+        ctx.fillStyle = '#b5ba9f';
+        subLines.forEach((line, i) => { fit(line, 'italic 600', 7, inner); ctx.fillText(line, W2 / 2, by + (28 + i * 8) * u); });
         ctx.globalAlpha = 1;
       }
       if (m.joined && !m.alive) {
         ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, H2 / 2 - 16 * u, W2, 32 * u);
-        ctx.fillStyle = '#e6e9df'; ctx.font = `700 ${(12 * u) | 0}px ${mono}`;
-        ctx.fillText('KILLED IN ACTION · REDEPLOYING…', W2 / 2, H2 / 2 + 5 * u);
+        ctx.fillStyle = '#e6e9df';
+        const kia = 'KILLED IN ACTION · REDEPLOYING…';
+        if (fit(kia, '700', 12, W2 - 16) < 11) {
+          // Very narrow: split onto two lines rather than clip.
+          fit('KILLED IN ACTION', '700', 12, W2 - 16); ctx.fillText('KILLED IN ACTION', W2 / 2, H2 / 2 - 2 * u);
+          ctx.fillText('REDEPLOYING…', W2 / 2, H2 / 2 + 11 * u);
+        } else ctx.fillText(kia, W2 / 2, H2 / 2 + 5 * u);
       }
       raf = requestAnimationFrame(frame);
     };
-    raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
+    return () => { cancelled = true; cancelAnimationFrame(raf); g3?.dispose(); };
   }, []);
 
   // Pointer-lock mouse look, mouse buttons (left fire, right scope) and wheel weapon switch.
   useEffect(() => {
     const canvas = canvasRef.current;
     const onMove = (e: MouseEvent) => {
-      if (document.pointerLockElement === canvas) me.current.a += e.movementX * (me.current.scoped ? 0.0011 : 0.0035);
+      if (document.pointerLockElement !== canvas) return;
+      const sens = me.current.scoped ? 0.0011 : 0.0035;
+      me.current.a += e.movementX * sens;
+      me.current.p = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, me.current.p - e.movementY * sens));
     };
     const onUp = (e: MouseEvent) => { if (e.button === 0) me.current.firing = false; if (e.button === 2) setScope(false); };
     const onWheel = (e: WheelEvent) => { e.preventDefault(); cycleWeapon(e.deltaY > 0 ? 1 : -1); };
@@ -460,7 +533,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
-  const GAME_KEYS = new Set(['tab', 'w', 'a', 's', 'd', 'q', 'e', 'f', 'r', 'control', ' ', '1', '2', '3', '4', '5', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright']);
+  const GAME_KEYS = new Set(['tab', 'w', 'a', 's', 'd', 'q', 'e', 'f', 'r', 'control', ' ', '1', '2', '3', '4', '5', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown']);
   function onKey(e: React.KeyboardEvent, down: boolean) {
     const key = e.key.toLowerCase();
     if (key === 'escape') return;
@@ -515,6 +588,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         <button type="button" className="ml-auto" aria-label="Close arena" onClick={onClose}>✕</button>
       </div>
       <div className="fps-stage">
+        <canvas ref={glRef} className="fps-gl" aria-hidden="true" />
         <canvas
           ref={canvasRef}
           className="fps-canvas"
@@ -551,7 +625,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
             </div>
           ))}
         </div>
-        {status && <div className="fps-status">{status}</div>}
+        {(status || glError) && <div className="fps-status">{glError || status}</div>}
       </div>
       {isTouch ? (
         <div className="fps-touch">
@@ -573,43 +647,10 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
           >FIRE</button>
         </div>
       ) : (
-        <div className="fps-help">WASD move · mouse or Q/E turn · click, F or Ctrl shoot · Space jump · 1–5 / wheel guns · R reload · right-click scope · Tab scores · Esc frees mouse</div>
+        <div className="fps-help">WASD move · mouse look (up/down too) · Q/E turn · PgUp/PgDn look · click, F or Ctrl shoot · Space jump · 1–5 / wheel guns · R reload · right-click scope · Tab scores · Esc frees mouse</div>
       )}
     </div>
   );
-}
-
-function drawDrone(_color: string) {
-  return (g: CanvasRenderingContext2D) => {
-    g.fillStyle = '#2a2d2e';
-    g.fillRect(14, 74, 132, 6); // wings
-    g.beginPath(); g.moveTo(40, 84); g.lineTo(120, 84); g.lineTo(110, 98); g.lineTo(50, 98); g.fill(); // body
-    g.fillStyle = '#3c4043'; g.fillRect(70, 60, 20, 16); // tail
-    g.fillStyle = '#151718'; g.beginPath(); g.arc(80, 102, 7, 0, 7); g.fill(); // sensor ball
-    g.fillStyle = 'rgba(230,60,50,.9)'; g.fillRect(16, 72, 4, 3); g.fillStyle = 'rgba(90,230,90,.9)'; g.fillRect(140, 72, 4, 3);
-  };
-}
-function drawMarker(now: number) {
-  return (g: CanvasRenderingContext2D) => {
-    const pulse = 0.5 + 0.5 * Math.sin(now / 80);
-    g.strokeStyle = `rgba(230,60,50,${0.4 + 0.5 * pulse})`;
-    g.lineWidth = 5;
-    g.beginPath(); g.arc(80, 80, 62, 0, 7); g.stroke();
-    g.setLineDash([10, 8]); g.beginPath(); g.arc(80, 80, 36, 0, 7); g.stroke(); g.setLineDash([]);
-    g.beginPath(); g.moveTo(80, 10); g.lineTo(80, 150); g.moveTo(10, 80); g.lineTo(150, 80); g.stroke();
-  };
-}
-function drawBoom(t: number) {
-  return (g: CanvasRenderingContext2D) => {
-    const r = 18 + t * 62;
-    g.globalAlpha = Math.max(0, 1 - t);
-    const fire = g.createRadialGradient(80, 90, 2, 80, 90, r);
-    fire.addColorStop(0, '#fff4d0'); fire.addColorStop(0.3, '#ffb347'); fire.addColorStop(0.6, '#b8481e'); fire.addColorStop(1, 'rgba(60,50,40,0)');
-    g.fillStyle = fire; g.beginPath(); g.arc(80, 90, r, 0, 7); g.fill();
-    g.fillStyle = `rgba(70,64,56,${0.7 * t})`;
-    for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; g.beginPath(); g.arc(80 + Math.cos(a) * r * 0.55, 80 + Math.sin(a) * r * 0.4 - t * 20, r * 0.4, 0, 7); g.fill(); }
-    g.globalAlpha = 1;
-  };
 }
 
 /** Small weapon silhouettes for the kill feed. */
@@ -645,4 +686,18 @@ function interpolate(snaps: Snap[], renderAt: number): NetPlayer[] {
     while (da < -Math.PI) da += Math.PI * 2;
     return { ...p, x: q.x + (p.x - q.x) * t, y: q.y + (p.y - q.y) * t, a: q.a + da * t };
   });
+}
+
+/** Greedy word-wrap of `text` into at most two lines no wider than maxW (the second line is shrunk to fit if needed). */
+function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxW: number, font: string): string[] {
+  ctx.font = font;
+  if (ctx.measureText(text).width <= maxW) return [text];
+  const words = text.split(' ');
+  let first = '';
+  for (let i = 0; i < words.length; i++) {
+    const next = first ? `${first} ${words[i]}` : words[i];
+    if (ctx.measureText(next).width > maxW && first) return [first, words.slice(i).join(' ')];
+    first = next;
+  }
+  return [first];
 }

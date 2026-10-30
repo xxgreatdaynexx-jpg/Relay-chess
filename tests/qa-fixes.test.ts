@@ -5,18 +5,17 @@ import { addQaBots, resetArena } from '../server/fps';
 
 describe('arena spawns', () => {
   it('never picks a point inside a wall, even with a broken spawn list on a custom map', () => {
-    const map = MAP.map((r) => r.split(''));
-    for (const [x, y] of SPAWNS) map[Math.floor(y)][Math.floor(x)] = '#';
-    const m = map.map((r) => r.join(''));
+    // Bury every listed spawn inside a tall pillar.
+    const m = { ...MAP, solids: [...MAP.solids, ...SPAWNS.map(([x, y]) => ({ x0: x - 0.6, y0: y - 0.6, x1: x + 0.6, y1: y + 0.6, z0: 0, z1: 9, mat: 'concrete' as const }))] };
     for (let i = 0; i < 50; i++) {
-      const [x, y] = pickSpawn([], Math.random, m);
-      expect(canStand(x, y, m)).toBe(true);
+      const [x, y, z] = pickSpawn([], Math.random, m);
+      expect(canStand(x, y, z, m)).toBe(true);
     }
   });
   it('avoids spawning on top of a living player', () => {
-    const others = SPAWNS.slice(0, -1).map(([x, y]) => ({ x, y, alive: true }));
-    const [x, y] = pickSpawn(others, () => 0.5);
-    expect(spawnClear(x, y, others)).toBe(true);
+    const others = SPAWNS.slice(0, -1).map(([x, y, z]) => ({ x, y, z, alive: true }));
+    const [x, y, z] = pickSpawn(others, () => 0.5);
+    expect(spawnClear(x, y, others, MAP, z)).toBe(true);
   });
 });
 

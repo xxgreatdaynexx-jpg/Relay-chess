@@ -414,7 +414,8 @@ input {
 .fps-panel { width: 560px; height: auto; max-height: calc(100dvh - 40px); border-radius: 0 0 14px 14px; animation: bj-down .22s ease-out; background: #1b1d2e; outline: none; touch-action: none; }
 .fps-panel.fps-focused { box-shadow: 0 0 0 2px #e8c26a, 0 14px 40px rgba(0,0,0,.5); }
 .fps-stage { position: relative; }
-.fps-canvas { display: block; width: 100%; aspect-ratio: 8 / 5; cursor: crosshair; background: #000; }
+.fps-canvas { position: relative; display: block; width: 100%; aspect-ratio: 8 / 5; cursor: crosshair; background: transparent; }
+.fps-gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: #000; pointer-events: none; }
 .fps-feed { position: absolute; left: 6px; top: 4px; font-size: 11px; line-height: 1.35; text-shadow: 0 1px 2px #000; pointer-events: none; }
 .fps-board { position: absolute; right: 6px; top: 4px; font-size: 11px; line-height: 1.35; background: rgba(0,0,0,.45); border-radius: 6px; padding: 3px 6px; pointer-events: none; max-width: 45%; }
 .fps-board div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

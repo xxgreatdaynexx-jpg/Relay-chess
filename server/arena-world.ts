@@ -3,11 +3,14 @@
  * Pure (time and randomness are passed in) so tests can drive it directly; server/fps.ts wires it to sockets.
  */
 import {
-  AIRSTRIKE_DAMAGE, AIRSTRIKE_DELAY_MS, AIRSTRIKE_LOCK_MS, AIRSTRIKE_RADIUS, AIRSTRIKE_RANGE, AIRSTRIKE_SPACING, AIRSTRIKE_WAIT_MS, applyDamage, canJump, castRay,
-  DRONE_COOLDOWN_MS, DRONE_DAMAGE, DRONE_MS, DRONE_RANGE, fireWeapon, isWeapon, MAP, MAX_HP, maybeRespawn,
-  normAngle, NUKE_DELAY_MS, NUKE_RESPAWN_MS, pickSpawn, SCOPE_SETTLE_MS, splashTargets, STREAKS, streakReward,
-  SWITCH_MS, UAV_MS, validateMove, WEAPON_ORDER, WEAPONS, type Fighter, type StreakKind, type WeaponId,
+  AIRSTRIKE_DAMAGE, AIRSTRIKE_DELAY_MS, AIRSTRIKE_LOCK_MS, AIRSTRIKE_RADIUS, AIRSTRIKE_RANGE, AIRSTRIKE_SPACING, AIRSTRIKE_WAIT_MS, applyDamage,
+  chestOf, clampPitch, dirFrom, DRONE_COOLDOWN_MS, DRONE_DAMAGE, DRONE_MS, DRONE_RANGE, eyeOf, fireWeapon, isWeapon, KILL_Z, lineOfSight, MAP, MAX_HP, maybeRespawn,
+  normAngle, NUKE_DELAY_MS, NUKE_RESPAWN_MS, pickSpawn, rayWorld, roofAt, SCOPE_SETTLE_MS, splashTargets, stepVertical, STREAKS, streakReward,
+  SWITCH_MS, tryJump, UAV_MS, validateMove, WEAPON_ORDER, WEAPONS, type ArenaMap, type Fighter, type StreakKind, type WeaponId,
 } from '../shared/fps.js';
+
+/** Drones hover this high (above every roof). */
+export const DRONE_Z = 8;
 
 /** Allowance for network jitter when checking fire rate. */
 export const FIRE_JITTER_MS = 25;
@@ -22,6 +25,9 @@ export interface ArenaFighter extends Fighter {
   jumpAt: number;
   streak: number;
   uavUntil: number;
+  /** Server time the vertical physics was last advanced to. */
+  physAt: number;
+  headshots: number;
 }
 
 export interface ArenaEvent { ev: string; data: Record<string, unknown> }
@@ -38,14 +44,14 @@ export class ArenaWorld {
   drones = new Map<string, Drone>();
   nuke: { ownerId: string; by: string; at: number } | null = null;
 
-  constructor(private map: string[] = MAP, private rand: () => number = Math.random) {}
+  constructor(readonly map: ArenaMap = MAP, private rand: () => number = Math.random) {}
 
   join(id: string, name: string, now: number): ArenaFighter {
     const existing = this.fighters.get(id);
     if (existing) return existing;
-    const [x, y] = pickSpawn([...this.fighters.values()], this.rand, this.map);
+    const [x, y, z] = pickSpawn([...this.fighters.values()], this.rand, this.map);
     const f: ArenaFighter = {
-      id, name, x, y, a: this.rand() * Math.PI * 2, hp: MAX_HP, kills: 0, deaths: 0, alive: true, respawnAt: 0,
+      id, name, x, y, z, vz: 0, grounded: true, p: 0, physAt: now, headshots: 0, a: this.rand() * Math.PI * 2, hp: MAX_HP, kills: 0, deaths: 0, alive: true, respawnAt: 0,
       lastShot: 0, lastMove: now, weapon: 'pistol', ammo: fullAmmo(), lastShotAt: zeroShots(), reloadUntil: 0,
       switchedAt: -1e9, scopedSince: 0, jumpAt: -1e9, streak: 0, uavUntil: 0,
     };
@@ -59,22 +65,34 @@ export class ArenaWorld {
     return this.fighters.delete(id);
   }
 
-  move(id: string, x: unknown, y: unknown, a: unknown, now: number): void {
-    const f = this.fighters.get(id);
-    if (!f || !f.alive) return;
-    if (now - f.lastMove < 25) return; // ~40 Hz max
-    const pos = validateMove(f, x, y, now - f.lastMove, this.map);
-    f.lastMove = now;
-    f.x = pos.x;
-    f.y = pos.y;
-    const na = normAngle(a);
-    if (na !== null) f.a = na;
+  /** Advances a fighter's server-side gravity/jump simulation to `now`. Height is never taken from clients. */
+  advance(f: ArenaFighter, now: number): void {
+    const dt = (now - f.physAt) / 1000;
+    f.physAt = Math.max(f.physAt, now);
+    if (!f.alive || dt <= 0) return;
+    stepVertical(f, dt, this.map);
   }
 
-  /** Space bar. Rejected while airborne / landing so it can't be spammed. */
+  /** Client position report: x/y are speed-capped and collision-checked; z comes from the server's physics. */
+  move(id: string, x: unknown, y: unknown, a: unknown, now: number, p?: unknown): void {
+    const f = this.fighters.get(id);
+    if (!f || !f.alive) return;
+    const na = normAngle(a);
+    if (na !== null) f.a = na;
+    const np = clampPitch(p);
+    if (np !== null) f.p = np;
+    if (now - f.lastMove < 25) return; // ~40 Hz max
+    this.advance(f, now);
+    validateMove(f, x, y, now - f.lastMove, this.map);
+    f.lastMove = now;
+  }
+
+  /** Space bar. Only works while standing on something, so it can't be spammed mid-air. */
   jump(id: string, now: number): ArenaEvent[] {
     const f = this.fighters.get(id);
-    if (!f || !f.alive || !canJump(f.jumpAt, now)) return [];
+    if (!f || !f.alive) return [];
+    this.advance(f, now);
+    if (!tryJump(f)) return [];
     f.jumpAt = now;
     return [{ ev: 'fps_jump', data: { id } }];
   }
@@ -111,7 +129,7 @@ export class ArenaWorld {
     return true;
   }
 
-  shoot(id: string, a: unknown, now: number): ArenaEvent[] {
+  shoot(id: string, a: unknown, now: number, p?: unknown): ArenaEvent[] {
     const f = this.fighters.get(id);
     if (!f || !f.alive) return [];
     const spec = WEAPONS[f.weapon];
@@ -125,6 +143,9 @@ export class ArenaWorld {
     }
     const na = normAngle(a);
     if (na !== null) f.a = na;
+    const np = clampPitch(p);
+    if (np !== null) f.p = np;
+    this.advance(f, now);
     f.lastShotAt[f.weapon] = now;
     f.lastShot = now;
     f.ammo[f.weapon] -= 1;
@@ -133,22 +154,30 @@ export class ArenaWorld {
     const shot = fireWeapon(f, spec, [...this.fighters.values()], { scoped, rand: this.rand, map: this.map });
     const events: ArenaEvent[] = [{
       ev: 'fps_shot',
-      data: { id: f.id, w: f.weapon, rays: shot.rays.map((r) => [+r.a.toFixed(3), +r.dist.toFixed(2)]), impact: shot.impact },
+      data: {
+        id: f.id, w: f.weapon, o: [+f.x.toFixed(2), +f.y.toFixed(2), +f.z.toFixed(2)],
+        rays: shot.rays.map((r) => [+r.a.toFixed(3), +r.p.toFixed(3), +r.dist.toFixed(2)]),
+        impact: shot.impact && { x: +shot.impact.x.toFixed(2), y: +shot.impact.y.toFixed(2), z: +shot.impact.z.toFixed(2) },
+      },
     }];
-    for (const [tid, dmg] of shot.hits) events.push(...this.damage(f.id, tid, dmg, now, f.weapon));
+    for (const [tid, dmg] of shot.hits) {
+      const head = shot.heads.has(tid);
+      if (head) f.headshots += 1;
+      events.push(...this.damage(f.id, tid, dmg, now, f.weapon, head));
+    }
     return events;
   }
 
   /** Applies damage from attacker (may be absent for the nuke) and handles kills and streaks. */
-  private damage(byId: string | null, targetId: string, amount: number, now: number, cause: string): ArenaEvent[] {
+  private damage(byId: string | null, targetId: string, amount: number, now: number, cause: string, head = false): ArenaEvent[] {
     const t = this.fighters.get(targetId);
     if (!t || !t.alive) return [];
     const killed = applyDamage(t, now, amount);
-    const out: ArenaEvent[] = [{ ev: 'fps_hit', data: { by: byId, target: targetId, hp: t.hp, dmg: amount, cause } }];
+    const out: ArenaEvent[] = [{ ev: 'fps_hit', data: { by: byId, target: targetId, hp: t.hp, dmg: amount, cause, ...(head ? { head: true } : {}) } }];
     if (!killed) return out;
     t.streak = 0;
     const killer = byId ? this.fighters.get(byId) : undefined;
-    out.push({ ev: 'fps_kill', data: { killer: killer?.name ?? '☢', victim: t.name, killerId: byId, victimId: t.id, cause } });
+    out.push({ ev: 'fps_kill', data: { killer: killer?.name ?? '☢', victim: t.name, killerId: byId, victimId: t.id, cause, ...(head ? { head: true } : {}) } });
     if (killer && killer.id !== t.id && cause !== 'nuke') {
       killer.kills += 1;
       killer.streak += 1;
@@ -163,8 +192,9 @@ export class ArenaWorld {
     const out: ArenaEvent[] = [{ ev: 'fps_streak', data: { id: f.id, name: f.name, kind, streak: f.streak, title: info.name } }];
     if (kind === 'uav') f.uavUntil = now + UAV_MS;
     if (kind === 'airstrike') {
-      const d = Math.max(0, castRay(f.x, f.y, f.a, this.map, AIRSTRIKE_RANGE).dist - 0.3);
-      const s: Strike = { ownerId: f.id, x: f.x + Math.cos(f.a) * d, y: f.y + Math.sin(f.a) * d, at: Infinity, trackId: null, lockAt: 0, giveUpAt: now + AIRSTRIKE_WAIT_MS, bombs: [] };
+      const dir = dirFrom(f.a, f.p);
+      const d = Math.max(0, rayWorld(eyeOf(f), dir, this.map, AIRSTRIKE_RANGE) - 0.3);
+      const s: Strike = { ownerId: f.id, x: f.x + dir.x * d, y: f.y + dir.y * d, at: Infinity, trackId: null, lockAt: 0, giveUpAt: now + AIRSTRIKE_WAIT_MS, bombs: [] };
       this.strikes.push(s);
       this.aimStrike(s, now);
       out.push({ ev: 'fps_strike', data: { x: +s.x.toFixed(2), y: +s.y.toFixed(2), inMs: Number.isFinite(s.at) ? s.at - now : -1, ownerId: f.id, phase: 'called' } });
@@ -197,13 +227,14 @@ export class ArenaWorld {
     return true;
   }
 
-  dronePos(d: Drone, now: number): { x: number; y: number } | null {
+  dronePos(d: Drone, now: number): { x: number; y: number; z: number } | null {
     const o = this.fighters.get(d.ownerId);
     if (!o) return null;
     const t = now / 700;
-    const ox = o.x + Math.cos(t) * 0.55;
-    const oy = o.y + Math.sin(t) * 0.55;
-    return castRay(o.x, o.y, Math.atan2(oy - o.y, ox - o.x), this.map, 0.6).dist >= 0.55 ? { x: ox, y: oy } : { x: o.x, y: o.y };
+    // Circles above its owner, high over the rooftops.
+    const ox = Math.min(this.map.w - 0.5, Math.max(0.5, o.x + Math.cos(t) * 1.5));
+    const oy = Math.min(this.map.d - 0.5, Math.max(0.5, o.y + Math.sin(t) * 1.5));
+    return { x: ox, y: oy, z: DRONE_Z };
   }
 
   tick(now: number): ArenaEvent[] {
@@ -211,6 +242,8 @@ export class ArenaWorld {
     const all = [...this.fighters.values()];
     for (const f of all) {
       this.settleReload(f, now);
+      this.advance(f, now);
+      if (f.alive && f.z <= KILL_Z) { f.alive = false; f.respawnAt = now; } // fell out of the world: never happens on valid maps
       if (maybeRespawn(f, now, all, this.rand, this.map)) {
         f.ammo = fullAmmo();
         f.reloadUntil = 0;
@@ -237,11 +270,13 @@ export class ArenaWorld {
       const left: Strike['bombs'] = [];
       for (const b of st.bombs) {
         if (now < st.at + b.dt) { left.push(b); continue; }
-        const bx = Math.min(this.map[0].length - 1.2, Math.max(1.2, st.x + b.dx));
-        const by = Math.min(this.map.length - 1.2, Math.max(1.2, st.y + b.dy));
-        out.push({ ev: 'fps_boom', data: { x: +bx.toFixed(2), y: +by.toFixed(2), r: AIRSTRIKE_RADIUS, cause: 'airstrike' } });
+        const bx = Math.min(this.map.w - 0.6, Math.max(0.6, st.x + b.dx));
+        const by = Math.min(this.map.d - 0.6, Math.max(0.6, st.y + b.dy));
+        // Bombs fall from the sky, so they burst on the highest surface there (a roof or catwalk shields people under it).
+        const bz = roofAt(bx, by, this.map);
+        out.push({ ev: 'fps_boom', data: { x: +bx.toFixed(2), y: +by.toFixed(2), z: +bz.toFixed(2), r: AIRSTRIKE_RADIUS, cause: 'airstrike' } });
         const live = [...this.fighters.values()].filter((f) => f.id !== st.ownerId);
-        for (const v of splashTargets(bx, by, AIRSTRIKE_RADIUS, AIRSTRIKE_DAMAGE, live, this.map)) out.push(...this.damage(st.ownerId, v.id, v.damage, now, 'airstrike'));
+        for (const v of splashTargets({ x: bx, y: by, z: bz }, AIRSTRIKE_RADIUS, AIRSTRIKE_DAMAGE, live, this.map)) out.push(...this.damage(st.ownerId, v.id, v.damage, now, 'airstrike'));
       }
       st.bombs = left;
       if (!left.length) done.push(st);
@@ -262,7 +297,7 @@ export class ArenaWorld {
         if (t.id === id || !t.alive) continue;
         const dist = Math.hypot(t.x - pos.x, t.y - pos.y);
         if (dist >= bestD) continue;
-        if (castRay(pos.x, pos.y, Math.atan2(t.y - pos.y, t.x - pos.x), this.map, dist).dist < dist - 0.05) continue;
+        if (!lineOfSight(pos, chestOf(t), this.map)) continue;
         best = t;
         bestD = dist;
       }
@@ -294,16 +329,17 @@ export class ArenaWorld {
     return {
       t: now,
       players: [...this.fighters.values()].map((f) => ({
-        id: f.id, name: f.name, x: +f.x.toFixed(3), y: +f.y.toFixed(3), a: +f.a.toFixed(3),
+        id: f.id, name: f.name, x: +f.x.toFixed(3), y: +f.y.toFixed(3), z: +f.z.toFixed(3), a: +f.a.toFixed(3), p: +f.p.toFixed(3),
         hp: f.hp, k: f.kills, d: f.deaths, alive: f.alive, w: f.weapon, ammo: f.ammo[f.weapon],
-        rl: f.reloadUntil ? Math.max(0, f.reloadUntil - now) : 0, j: Math.min(9999, now - f.jumpAt),
+        rl: f.reloadUntil ? Math.max(0, f.reloadUntil - now) : 0, g: f.grounded,
         st: f.streak, uav: Math.max(0, f.uavUntil - now),
       })),
       drones: [...this.drones.values()].flatMap((d) => {
         const p = this.dronePos(d, now);
-        return p ? [{ ownerId: d.ownerId, x: +p.x.toFixed(2), y: +p.y.toFixed(2), left: d.until - now }] : [];
+        return p ? [{ ownerId: d.ownerId, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: p.z, left: d.until - now }] : [];
       }),
-      strikes: this.strikes.map((s) => ({ x: +s.x.toFixed(2), y: +s.y.toFixed(2), inMs: Number.isFinite(s.at) ? Math.max(0, s.at - now) : -1, r: AIRSTRIKE_RADIUS, locked: now >= s.lockAt })),
+      map: this.map.id,
+      strikes: this.strikes.map((s) => ({ x: +s.x.toFixed(2), y: +s.y.toFixed(2), z: +roofAt(s.x, s.y, this.map).toFixed(2), inMs: Number.isFinite(s.at) ? Math.max(0, s.at - now) : -1, r: AIRSTRIKE_RADIUS, locked: now >= s.lockAt })),
       nuke: this.nuke ? { by: this.nuke.by, inMs: this.nuke.at - now } : null,
     };
   }

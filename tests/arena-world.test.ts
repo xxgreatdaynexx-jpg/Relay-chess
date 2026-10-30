@@ -1,19 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AIRSTRIKE_DELAY_MS, AIRSTRIKE_LOCK_MS, AIRSTRIKE_WAIT_MS, DRONE_MS, fireWeapon, JUMP_COOLDOWN_MS, jumpHeight, MAX_HP, NUKE_DELAY_MS, SCOPE_SETTLE_MS,
+  AIRSTRIKE_DELAY_MS, AIRSTRIKE_LOCK_MS, AIRSTRIKE_WAIT_MS, DRONE_MS, fireWeapon, gridMap, JUMP_APEX, MAX_HP, NUKE_DELAY_MS, NUKE_RESPAWN_MS, WEAPON_ORDER, SCOPE_SETTLE_MS,
   splashFalloff, splashTargets, SWITCH_MS, UAV_MS, WEAPONS,
 } from '../shared/fps.js';
 import { ArenaWorld, FIRE_JITTER_MS } from '../server/arena-world.js';
 
-const HALL = ['####################', '#..................#', '#..................#', '#..................#', '####################'];
-const SPLIT = ['#########', '#...#...#', '#########'];
+const HALL = gridMap(['####################', '#..................#', '#..................#', '#..................#', '####################']);
+const SPLIT = gridMap(['#########', '#...#...#', '#########']);
+/** A slight downward aim that lands in the chest (not the head) at the duel distances below. */
+const CHEST = -0.06;
 
 /** World with two fighters on a straight line: a at (2,2) facing east, b at (x,2). */
 function duel(bx = 6, map = HALL) {
   const w = new ArenaWorld(map, () => 0.5);
   const a = w.join('a', 'Ann', 0);
   const b = w.join('b', 'Bob', 0);
-  Object.assign(a, { x: 2, y: 2, a: 0 });
+  Object.assign(a, { x: 2, y: 2, a: 0, p: CHEST });
   Object.assign(b, { x: bx, y: 2, a: Math.PI });
   return { w, a, b };
 }
@@ -29,17 +31,17 @@ describe('weapon damage', () => {
     }
   });
   it('shotgun fires several pellets and is short range', () => {
-    const close = fireWeapon({ id: 'a', x: 2, y: 2, a: 0 }, WEAPONS.shotgun, [{ id: 'b', x: 3, y: 2, alive: true }], { map: HALL, rand: () => 0.5 });
+    const close = fireWeapon({ id: 'a', x: 2, y: 2, z: 0, a: 0, p: -0.4 }, WEAPONS.shotgun, [{ id: 'b', x: 3, y: 2, z: 0, alive: true }], { map: HALL, rand: () => 0.5 });
     expect(close.rays).toHaveLength(WEAPONS.shotgun.pellets);
     expect(close.hits.get('b')).toBe(WEAPONS.shotgun.pellets * WEAPONS.shotgun.damage);
-    const far = fireWeapon({ id: 'a', x: 2, y: 2, a: 0 }, WEAPONS.shotgun, [{ id: 'b', x: 12, y: 2, alive: true }], { map: HALL, rand: () => 0.5 });
+    const far = fireWeapon({ id: 'a', x: 2, y: 2, z: 0, a: 0, p: CHEST }, WEAPONS.shotgun, [{ id: 'b', x: 12, y: 2, z: 0, alive: true }], { map: HALL, rand: () => 0.5 });
     expect(far.hits.size).toBe(0);
   });
   it('spread can make shots miss; the scoped sniper does not spread', () => {
-    const target = [{ id: 'b', x: 18, y: 2, alive: true }];
-    const wide = fireWeapon({ id: 'a', x: 1.5, y: 2, a: 0 }, WEAPONS.sniper, target, { map: HALL, rand: () => 1 });
+    const target = [{ id: 'b', x: 18, y: 2, z: 0, alive: true }];
+    const wide = fireWeapon({ id: 'a', x: 1.5, y: 2, z: 0, a: 0, p: -0.03 }, WEAPONS.sniper, target, { map: HALL, rand: () => 1 });
     expect(wide.hits.size).toBe(0);
-    const scoped = fireWeapon({ id: 'a', x: 1.5, y: 2, a: 0 }, WEAPONS.sniper, target, { map: HALL, rand: () => 1, scoped: true });
+    const scoped = fireWeapon({ id: 'a', x: 1.5, y: 2, z: 0, a: 0, p: -0.03 }, WEAPONS.sniper, target, { map: HALL, rand: () => 1, scoped: true });
     expect(scoped.hits.get('b')).toBe(WEAPONS.sniper.damage);
   });
   it('the server only treats the sniper as scoped after the settle time', () => {
@@ -93,8 +95,8 @@ describe('rocket splash', () => {
     expect(splashFalloff(100, 2, 2)).toBe(0);
   });
   it('is blocked by walls', () => {
-    const t = [{ id: 'x', x: 2.5, y: 1.5, alive: true }, { id: 'y', x: 5.5, y: 1.5, alive: true }];
-    const hit = splashTargets(3.6, 1.5, 3, 100, t, SPLIT).map((s) => s.id);
+    const t = [{ id: 'x', x: 2.5, y: 1.5, z: 0, alive: true }, { id: 'y', x: 5.5, y: 1.5, z: 0, alive: true }];
+    const hit = splashTargets({ x: 3.6, y: 1.5, z: 0.5 }, 3, 100, t, SPLIT).map((s) => s.id);
     expect(hit).toEqual(['x']);
   });
   it('direct hit does full damage, bystanders take splash, the shooter takes half', () => {
@@ -112,17 +114,40 @@ describe('rocket splash', () => {
   });
 });
 
-describe('jumping', () => {
-  it('arcs up and lands', () => {
-    expect(jumpHeight(0)).toBe(0);
-    expect(jumpHeight(280)).toBeGreaterThan(0.25);
-    expect(jumpHeight(600)).toBe(0);
+describe('jumping (server-simulated)', () => {
+  it('arcs up and lands, with height coming from the server only', () => {
+    const { w, a } = duel();
+    expect(w.jump('a', 1000)).toHaveLength(1);
+    w.tick(1000 + 200);
+    expect(a.z).toBeGreaterThan(0.5);
+    expect(a.z).toBeLessThanOrEqual(JUMP_APEX + 1e-6);
+    w.tick(1000 + 1500);
+    expect(a.z).toBe(0);
+    expect(a.grounded).toBe(true);
   });
-  it('cannot be spammed', () => {
+  it('cannot be spammed in mid-air', () => {
     const { w } = duel();
     expect(w.jump('a', 1000)).toHaveLength(1);
-    expect(w.jump('a', 1000 + JUMP_COOLDOWN_MS - 1)).toEqual([]);
-    expect(w.jump('a', 1000 + JUMP_COOLDOWN_MS)).toHaveLength(1);
+    expect(w.jump('a', 1100)).toEqual([]);
+    w.tick(3000);
+    expect(w.jump('a', 3000)).toHaveLength(1);
+  });
+  it('a jumping target can dodge a shot aimed at its chest', () => {
+    const { w, b } = duel();
+    w.jump('b', 1000);
+    w.tick(1000 + 280); // near the top of the jump
+    w.shoot('a', 0, 1000 + 280, -0.12);
+    expect(b.hp).toBe(MAX_HP);
+  });
+});
+
+describe('headshots', () => {
+  it('a shot at head height does double damage and is reported', () => {
+    const { w, a, b } = duel();
+    const ev = w.shoot('a', 0, 10_000, 0);
+    expect(MAX_HP - b.hp).toBe(Math.min(MAX_HP, WEAPONS.pistol.damage * 2));
+    expect(ev.find((e) => e.ev === 'fps_hit')?.data.head).toBe(true);
+    expect(a.headshots).toBe(1);
   });
 });
 
@@ -133,7 +158,7 @@ function farm(w: ArenaWorld, n: number, start = 10_000) {
   w.switchWeapon('a', 'sniper', 0);
   for (let i = 0; i < n; i++) {
     const b = w.fighters.get('b')!;
-    Object.assign(b, { alive: true, hp: 1, x: 6, y: 2 });
+    Object.assign(b, { alive: true, hp: 1, x: 6, y: 2, z: 0 });
     w.fighters.get('a')!.ammo.sniper = 5;
     events.push(...w.shoot('a', 0, t));
     t += 2000;
@@ -247,5 +272,26 @@ describe('killstreaks', () => {
       expect(f.streak).toBe(0);
     }
     expect(a.deaths).toBe(0);
+    // Everyone redeploys (the match keeps going) with every gun refilled, even ones emptied before the nuke.
+    Object.assign(a, { weapon: 'smg', reloadUntil: 0 });
+    a.ammo.smg = 12; a.ammo.sniper = 0; a.ammo.rocket = 0;
+    c.ammo.pistol = 3;
+    w.tick(armed + NUKE_DELAY_MS + NUKE_RESPAWN_MS + 1);
+    for (const f of w.fighters.values()) {
+      expect(f.alive).toBe(true);
+      for (const id of WEAPON_ORDER) expect(f.ammo[id]).toBe(WEAPONS[id].mag);
+      expect(f.reloadUntil).toBe(0);
+    }
+  });
+  it('every normal respawn refills all weapons too', () => {
+    const { w, a, b } = duel();
+    b.ammo.smg = 1; b.ammo.shotgun = 0; b.weapon = 'smg';
+    b.hp = 1;
+    w.shoot('a', 0, 10_000);
+    expect(b.alive).toBe(false);
+    w.tick(b.respawnAt + 1);
+    expect(b.alive).toBe(true);
+    for (const id of WEAPON_ORDER) expect(b.ammo[id]).toBe(WEAPONS[id].mag);
+    void a;
   });
 });

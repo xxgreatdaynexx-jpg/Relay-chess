@@ -1,115 +1,259 @@
-/** Pure logic for the shared arcade arena (retro raycaster). Used by client and server. */
+/**
+ * Pure logic for the shared 3D arena: map collision, movement physics (gravity, jumping, stairs),
+ * 3D hitscan with head/body hitboxes, splash and spawns. Used by the client (prediction/rendering)
+ * and the server (authoritative simulation).
+ *
+ * Coordinates: x/y horizontal (tiles ≈ metres), z up. Yaw `a` turns from +x toward +y; pitch `p` is up-positive.
+ */
+import { DUNES, type ArenaMap, type Ramp, type Solid } from './arenaMaps.js';
 
-export const MAP: string[] = [
-  '################',
-  '#......#.......#',
-  '#..##..#..##...#',
-  '#..#.......#...#',
-  '#......##......#',
-  '#.##.......###.#',
-  '#....#..#......#',
-  '#.#..#..#..##..#',
-  '#.#..........#.#',
-  '#....###.......#',
-  '#..........#...#',
-  '#..##..#...#.#.#',
-  '#......#.......#',
-  '#.###.....##...#',
-  '#..............#',
-  '################',
-];
+export { MAPS, DEFAULT_MAP_ID, mapById, gridMap, type ArenaMap } from './arenaMaps.js';
+export const MAP: ArenaMap = DUNES;
 
 export const MAX_HP = 100;
 export const DAMAGE = 34;
 export const RESPAWN_MS = 2000;
 export const SHOT_COOLDOWN_MS = 300;
-export const MOVE_SPEED = 3.2; // tiles per second
-export const PLAYER_RADIUS = 0.25;
-export const HIT_RADIUS = 0.32;
-export const MAX_RANGE = 20;
+export const MOVE_SPEED = 4.6; // units per second
+export const PLAYER_RADIUS = 0.3;
+export const PLAYER_HEIGHT = 1.7;
+export const EYE_HEIGHT = 1.52;
+/** Body hitbox: a box of this half-width from the feet up to BODY_TOP; head is a sphere above it. */
+export const BODY_HALF = 0.34;
+export const BODY_TOP = 1.36;
+export const HEAD_Z = 1.55;
+export const HEAD_R = 0.2;
+export const HEADSHOT_MULT = 2;
+/** Highest ledge you can walk up without jumping (stairs). */
+export const STEP_HEIGHT = 0.45;
+export const GRAVITY = 20;
+export const JUMP_SPEED = 7; // apex ≈ 1.22
+export const MAX_PITCH = 1.45;
+export const MAX_RANGE = 40;
 export const TICK_HZ = 15;
+/** Below this the fighter is considered out of the world and respawned (should never happen). */
+export const KILL_Z = -5;
 
-export const SPAWNS: Array<[number, number]> = [
-  [1.5, 1.5], [14.5, 1.5], [1.5, 14.5], [14.5, 14.5], [8.5, 8.5], [4.5, 10.5], [12.5, 4.5], [9.5, 12.5],
-];
+export const SPAWNS = MAP.spawns;
 
-export function isWall(x: number, y: number, map: string[] = MAP): boolean {
-  const cx = Math.floor(x);
-  const cy = Math.floor(y);
-  if (cy < 0 || cy >= map.length || cx < 0 || cx >= map[0].length) return true;
-  return map[cy][cx] === '#';
+// ---------------------------------------------------------------- map queries
+
+function rampTop(r: Ramp, x: number, y: number): number {
+  const span = r.dir === '+x' || r.dir === '-x' ? r.x1 - r.x0 : r.y1 - r.y0;
+  let t = 0;
+  if (r.dir === '+x') t = (x - r.x0) / span;
+  if (r.dir === '-x') t = (r.x1 - x) / span;
+  if (r.dir === '+y') t = (y - r.y0) / span;
+  if (r.dir === '-y') t = (r.y1 - y) / span;
+  t = Math.min(1, Math.max(0, t));
+  return r.zLow + (r.zHigh - r.zLow) * t;
 }
+const overlapsXY = (s: { x0: number; y0: number; x1: number; y1: number }, x: number, y: number, r: number) =>
+  x + r > s.x0 && x - r < s.x1 && y + r > s.y0 && y - r < s.y1;
+const inside = (s: { x0: number; y0: number; x1: number; y1: number }, x: number, y: number) => x >= s.x0 && x <= s.x1 && y >= s.y0 && y <= s.y1;
 
-/** True if a circle of PLAYER_RADIUS at (x,y) overlaps no wall. */
-export function canStand(x: number, y: number, map: string[] = MAP): boolean {
-  const r = PLAYER_RADIUS;
-  return !isWall(x - r, y - r, map) && !isWall(x + r, y - r, map) && !isWall(x - r, y + r, map) && !isWall(x + r, y + r, map);
-}
-
-export interface RayHit {
-  dist: number;
-  side: 0 | 1;
-  cellX: number;
-  cellY: number;
-}
-
-/** DDA raycast from (x,y) along angle. Returns perpendicular-free euclidean distance to first wall. */
-export function castRay(x: number, y: number, angle: number, map: string[] = MAP, maxDist = 64): RayHit {
-  const dx = Math.cos(angle);
-  const dy = Math.sin(angle);
-  let mapX = Math.floor(x);
-  let mapY = Math.floor(y);
-  const deltaX = dx === 0 ? 1e30 : Math.abs(1 / dx);
-  const deltaY = dy === 0 ? 1e30 : Math.abs(1 / dy);
-  const stepX = dx < 0 ? -1 : 1;
-  const stepY = dy < 0 ? -1 : 1;
-  let sideX = dx < 0 ? (x - mapX) * deltaX : (mapX + 1 - x) * deltaX;
-  let sideY = dy < 0 ? (y - mapY) * deltaY : (mapY + 1 - y) * deltaY;
-  let side: 0 | 1 = 0;
-  for (let i = 0; i < 256; i++) {
-    if (sideX < sideY) {
-      sideX += deltaX;
-      mapX += stepX;
-      side = 0;
-    } else {
-      sideY += deltaY;
-      mapY += stepY;
-      side = 1;
+/** Walkable surfaces under a footprint: [top, bottom] spans (boxes) plus ramp tops sampled at the centre. */
+function spansAt(map: ArenaMap, x: number, y: number, r: number): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (const s of map.solids) if (overlapsXY(s, x, y, r)) out.push([s.z1, s.z0]);
+  for (const rp of map.ramps) {
+    if (inside(rp, x, y)) out.push([rampTop(rp, x, y), 0]);
+    else if (overlapsXY(rp, x, y, r)) {
+      // Edge of a ramp: use the height at the nearest point on it.
+      const cx = Math.min(rp.x1, Math.max(rp.x0, x)), cy = Math.min(rp.y1, Math.max(rp.y0, y));
+      out.push([rampTop(rp, cx, cy), 0]);
     }
-    const dist = side === 0 ? sideX - deltaX : sideY - deltaY;
-    if (dist > maxDist) return { dist: maxDist, side, cellX: mapX, cellY: mapY };
-    if (isWall(mapX + 0.5, mapY + 0.5, map)) return { dist, side, cellX: mapX, cellY: mapY };
   }
-  return { dist: maxDist, side, cellX: mapX, cellY: mapY };
+  return out;
+}
+
+const outOfBounds = (map: ArenaMap, x: number, y: number, r = PLAYER_RADIUS) => x - r < 0 || y - r < 0 || x + r > map.w || y + r > map.d;
+
+/** Highest surface top at or below `maxZ` under a player footprint (0 = ground). */
+export function groundAt(x: number, y: number, maxZ: number, map: ArenaMap = MAP): number {
+  let g = 0;
+  for (const [top] of spansAt(map, x, y, PLAYER_RADIUS)) if (top <= maxZ + 1e-6 && top > g) g = top;
+  return g;
+}
+
+/** Highest surface top at (x,y) regardless of height (where an airstrike from above lands). */
+export function roofAt(x: number, y: number, map: ArenaMap = MAP): number {
+  let g = 0;
+  for (const [top] of spansAt(map, x, y, 0.01)) g = Math.max(g, top);
+  return g;
+}
+
+/** True if a player with feet at z (allowed to step up `step`) would intersect geometry at (x,y). */
+export function blockedAt(x: number, y: number, z: number, map: ArenaMap = MAP, step = STEP_HEIGHT): boolean {
+  if (outOfBounds(map, x, y)) return true;
+  for (const [top, bottom] of spansAt(map, x, y, PLAYER_RADIUS)) if (top > z + step + 1e-6 && bottom < z + PLAYER_HEIGHT) return true;
+  return false;
+}
+
+/** True if a player can stand with feet at (x,y,z): not inside geometry. */
+export function canStand(x: number, y: number, z = 0, map: ArenaMap = MAP): boolean {
+  return !blockedAt(x, y, z, map, 0.02);
+}
+
+// ---------------------------------------------------------------- movement physics
+
+export interface Body { x: number; y: number; z: number; vz: number; grounded: boolean }
+
+/** Horizontal move with wall sliding and stair stepping. Mutates and returns the body. */
+export function moveHorizontal(b: Body, dx: number, dy: number, map: ArenaMap = MAP): Body {
+  const step = b.grounded ? STEP_HEIGHT : 0.05;
+  // Sub-step long moves so nobody tunnels through thin geometry (railings, pillars).
+  const n = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 0.2));
+  for (let i = 0; i < n; i++) {
+    const sx = dx / n, sy = dy / n;
+    if (!blockedAt(b.x + sx, b.y, b.z, map, step)) b.x += sx;
+    if (!blockedAt(b.x, b.y + sy, b.z, map, step)) b.y += sy;
+    if (b.grounded) {
+      const g = groundAt(b.x, b.y, b.z + STEP_HEIGHT, map);
+      // Walk up a step, or stick to stairs/ramps going down (a small drop).
+      if (g > b.z || b.z - g <= STEP_HEIGHT) b.z = g;
+      else b.grounded = false; // walked off a ledge: start falling
+    }
+  }
+  return b;
+}
+
+/** Gravity, landing and head bumps for dt seconds. Mutates and returns the body. */
+export function stepVertical(b: Body, dt: number, map: ArenaMap = MAP): Body {
+  let left = Math.max(0, Math.min(dt, 1));
+  while (left > 1e-6) {
+    const h = Math.min(left, 1 / 60);
+    left -= h;
+    const support = groundAt(b.x, b.y, b.z + 0.02, map);
+    if (b.grounded && b.vz <= 0) {
+      if (b.z - support > 1e-3) b.grounded = false;
+      else { b.z = support; b.vz = 0; continue; }
+    }
+    const z0 = b.z;
+    b.vz -= GRAVITY * h;
+    let z1 = z0 + b.vz * h;
+    if (b.vz > 0) {
+      // Head bump: any solid whose underside is between the old and new head height.
+      for (const s of map.solids) {
+        if (!overlapsXY(s, b.x, b.y, PLAYER_RADIUS)) continue;
+        if (s.z0 >= z0 + PLAYER_HEIGHT - 1e-3 && s.z0 < z1 + PLAYER_HEIGHT) { z1 = s.z0 - PLAYER_HEIGHT; b.vz = 0; }
+      }
+    }
+    const land = groundAt(b.x, b.y, z0 + 0.02, map);
+    if (z1 <= land) { b.z = land; b.vz = 0; b.grounded = true; }
+    else { b.z = Math.max(z1, KILL_Z); b.grounded = false; }
+  }
+  return b;
+}
+
+/** Starts a jump if standing on something. */
+export function tryJump(b: Body): boolean {
+  if (!b.grounded) return false;
+  b.vz = JUMP_SPEED;
+  b.grounded = false;
+  return true;
+}
+
+/** Apex height of a standing jump. */
+export const JUMP_APEX = (JUMP_SPEED * JUMP_SPEED) / (2 * GRAVITY);
+
+// ---------------------------------------------------------------- rays
+
+export interface Vec3 { x: number; y: number; z: number }
+export const dirFrom = (a: number, p: number): Vec3 => ({ x: Math.cos(p) * Math.cos(a), y: Math.cos(p) * Math.sin(a), z: Math.sin(p) });
+
+/** Ray/AABB slab test; returns entry distance or Infinity. */
+function rayBox(o: Vec3, d: Vec3, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): number {
+  let tmin = 0, tmax = Infinity;
+  for (const [oo, dd, lo, hi] of [[o.x, d.x, x0, x1], [o.y, d.y, y0, y1], [o.z, d.z, z0, z1]] as const) {
+    if (Math.abs(dd) < 1e-9) { if (oo < lo || oo > hi) return Infinity; continue; }
+    let t1 = (lo - oo) / dd, t2 = (hi - oo) / dd;
+    if (t1 > t2) [t1, t2] = [t2, t1];
+    tmin = Math.max(tmin, t1);
+    tmax = Math.min(tmax, t2);
+    if (tmin > tmax) return Infinity;
+  }
+  return tmin;
+}
+
+/** Ray vs a ramp: its sloped top surface (and the high end face). */
+function rayRamp(o: Vec3, d: Vec3, r: Ramp): number {
+  // March in small steps over the ramp's bounding box; ramps are few and the box test rejects most rays.
+  const enter = rayBox(o, d, r.x0, r.y0, 0, r.x1, r.y1, r.zHigh);
+  if (!Number.isFinite(enter)) return Infinity;
+  for (let t = enter; t < enter + 30; t += 0.05) {
+    const x = o.x + d.x * t, y = o.y + d.y * t, z = o.z + d.z * t;
+    if (!inside(r, x, y)) { if (t > enter + 0.06) return Infinity; continue; }
+    if (z <= rampTop(r, x, y)) return t;
+  }
+  return Infinity;
+}
+
+/** Distance along a ray from o in unit direction d to the first piece of world geometry (or maxDist). */
+export function rayWorld(o: Vec3, d: Vec3, map: ArenaMap = MAP, maxDist = 64): number {
+  let best = maxDist;
+  if (d.z < -1e-9) best = Math.min(best, -o.z / d.z); // ground plane
+  for (const s of map.solids) {
+    const t = rayBox(o, d, s.x0, s.y0, s.z0, s.x1, s.y1, s.z1);
+    if (t < best) best = t;
+  }
+  for (const r of map.ramps) {
+    const t = rayRamp(o, d, r);
+    if (t < best) best = t;
+  }
+  return Math.max(0, best);
+}
+
+/** True if nothing solid lies between two points. */
+export function lineOfSight(a: Vec3, b: Vec3, map: ArenaMap = MAP): boolean {
+  const dist = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+  if (dist < 1e-6) return true;
+  const d = { x: (b.x - a.x) / dist, y: (b.y - a.y) / dist, z: (b.z - a.z) / dist };
+  return rayWorld(a, d, map, dist) >= dist - 0.05;
 }
 
 export interface Target {
   id: string;
   x: number;
   y: number;
+  z: number;
   alive: boolean;
 }
 
-/** Hitscan: nearest living target (not the shooter) within HIT_RADIUS of the ray and in front of the wall. */
+export const eyeOf = (s: { x: number; y: number; z: number }): Vec3 => ({ x: s.x, y: s.y, z: s.z + EYE_HEIGHT });
+export const chestOf = (s: { x: number; y: number; z: number }): Vec3 => ({ x: s.x, y: s.y, z: s.z + 1.0 });
+
+/** Ray vs one fighter's hitboxes: body box and head sphere. */
+export function rayFighter(o: Vec3, d: Vec3, t: Target): { dist: number; head: boolean } | null {
+  // head sphere
+  const cx = t.x - o.x, cy = t.y - o.y, cz = t.z + HEAD_Z - o.z;
+  const along = cx * d.x + cy * d.y + cz * d.z;
+  let head = Infinity;
+  if (along > 0) {
+    const perp2 = cx * cx + cy * cy + cz * cz - along * along;
+    if (perp2 <= HEAD_R * HEAD_R) head = along - Math.sqrt(HEAD_R * HEAD_R - perp2);
+  }
+  const body = rayBox(o, d, t.x - BODY_HALF, t.y - BODY_HALF, t.z, t.x + BODY_HALF, t.y + BODY_HALF, t.z + BODY_TOP);
+  if (!Number.isFinite(head) && !Number.isFinite(body)) return null;
+  return head < body ? { dist: head, head: true } : { dist: body, head: false };
+}
+
+/** Hitscan from the shooter's eye along yaw/pitch: nearest living target in front of the first wall. */
 export function hitscan(
-  shooter: { id: string; x: number; y: number; a: number },
+  shooter: { id: string; x: number; y: number; z: number; a: number; p: number },
   targets: Target[],
-  map: string[] = MAP,
+  map: ArenaMap = MAP,
   range = MAX_RANGE,
-): { id: string; dist: number } | null {
-  const wall = castRay(shooter.x, shooter.y, shooter.a, map, range).dist;
-  const dx = Math.cos(shooter.a);
-  const dy = Math.sin(shooter.a);
-  let best: { id: string; dist: number } | null = null;
+): { id: string; dist: number; head: boolean } | null {
+  const o = eyeOf(shooter);
+  const d = dirFrom(shooter.a, shooter.p);
+  const wall = rayWorld(o, d, map, range);
+  let best: { id: string; dist: number; head: boolean } | null = null;
   for (const t of targets) {
     if (t.id === shooter.id || !t.alive) continue;
-    const rx = t.x - shooter.x;
-    const ry = t.y - shooter.y;
-    const along = rx * dx + ry * dy;
-    if (along <= 0 || along > wall) continue;
-    const perp = Math.abs(rx * dy - ry * dx);
-    if (perp > HIT_RADIUS) continue;
-    if (!best || along < best.dist) best = { id: t.id, dist: along };
+    const h = rayFighter(o, d, t);
+    if (!h || h.dist > wall || h.dist <= 0) continue;
+    if (!best || h.dist < best.dist) best = { id: t.id, ...h };
   }
   return best;
 }
@@ -119,7 +263,11 @@ export interface Fighter {
   name: string;
   x: number;
   y: number;
+  z: number;
+  vz: number;
+  grounded: boolean;
   a: number;
+  p: number;
   hp: number;
   kills: number;
   deaths: number;
@@ -140,25 +288,30 @@ export function applyDamage(target: Fighter, now: number, amount = DAMAGE): bool
   return true;
 }
 
-/** True if a spawn point is open floor with room for a player, and not on top of a living player. */
-export function spawnClear(x: number, y: number, others: Array<{ x: number; y: number; alive: boolean }>, map: string[] = MAP): boolean {
-  if (!canStand(x, y, map)) return false;
-  return others.every((o) => !o.alive || Math.hypot(o.x - x, o.y - y) >= PLAYER_RADIUS * 3);
+type Pos = { x: number; y: number; z?: number; alive: boolean };
+/** True if a spawn point has room for a player and is not on top of a living player. */
+export function spawnClear(x: number, y: number, others: Pos[], map: ArenaMap = MAP, z = groundAt(x, y, 99, map)): boolean {
+  if (!canStand(x, y, z, map)) return false;
+  return others.every((o) => !o.alive || Math.hypot(o.x - x, o.y - y, (o.z ?? z) - z) >= PLAYER_RADIUS * 3);
 }
 
-/** Every open tile centre on the map (fallback spawns if all fixed spawns are blocked). */
-export function openTiles(map: string[] = MAP): Array<[number, number]> {
-  const out: Array<[number, number]> = [];
-  for (let y = 0; y < map.length; y++) for (let x = 0; x < map[y].length; x++) if (canStand(x + 0.5, y + 0.5, map)) out.push([x + 0.5, y + 0.5]);
+/** A coarse grid of open standing spots (fallback spawns if every fixed spawn is blocked). */
+export function openSpots(map: ArenaMap = MAP): Array<[number, number, number]> {
+  const out: Array<[number, number, number]> = [];
+  for (let y = 1.5; y < map.d - 1; y += 2) for (let x = 1.5; x < map.w - 1; x += 2) {
+    const z = groundAt(x, y, 99, map);
+    if (canStand(x, y, z, map)) out.push([x, y, z]);
+  }
   return out;
 }
 
-/** Picks the clear spawn farthest from living players. Spawns are validated against map collision; never returns a point inside a wall. */
-export function pickSpawn(others: Array<{ x: number; y: number; alive: boolean }>, rand: () => number = Math.random, map: string[] = MAP): [number, number] {
-  let pool = SPAWNS.filter(([x, y]) => spawnClear(x, y, others, map));
-  if (!pool.length) pool = openTiles(map).filter(([x, y]) => spawnClear(x, y, others, map));
-  if (!pool.length) pool = openTiles(map);
-  let best = pool[Math.floor(rand() * pool.length)] ?? [1.5, 1.5];
+/** Picks the clear spawn farthest from living players. Spawn z is the real floor height there. */
+export function pickSpawn(others: Pos[], rand: () => number = Math.random, map: ArenaMap = MAP): [number, number, number] {
+  const fix = ([x, y, z]: [number, number, number]): [number, number, number] => [x, y, groundAt(x, y, z + STEP_HEIGHT, map)];
+  let pool = map.spawns.map(fix).filter(([x, y, z]) => spawnClear(x, y, others, map, z));
+  if (!pool.length) pool = openSpots(map).filter(([x, y, z]) => spawnClear(x, y, others, map, z));
+  if (!pool.length) pool = openSpots(map);
+  let best = pool[Math.floor(rand() * pool.length)] ?? [1.5, 1.5, 0];
   let bestScore = -1;
   for (const s of pool) {
     let nearest = Infinity;
@@ -169,29 +322,24 @@ export function pickSpawn(others: Array<{ x: number; y: number; alive: boolean }
       best = s;
     }
   }
-  return [best[0], best[1]];
+  return [best[0], best[1], best[2]];
 }
 
 /** Respawns a dead fighter if its timer is up. Returns true if respawned. */
-export function maybeRespawn(f: Fighter, now: number, others: Fighter[], rand: () => number = Math.random, map: string[] = MAP): boolean {
+export function maybeRespawn(f: Fighter, now: number, others: Fighter[], rand: () => number = Math.random, map: ArenaMap = MAP): boolean {
   if (f.alive || now < f.respawnAt) return false;
-  const [x, y] = pickSpawn(others.filter((o) => o.id !== f.id), rand, map);
-  f.x = x;
-  f.y = y;
-  f.hp = MAX_HP;
-  f.alive = true;
+  const [x, y, z] = pickSpawn(others.filter((o) => o.id !== f.id), rand, map);
+  Object.assign(f, { x, y, z, vz: 0, grounded: true, p: 0, hp: MAX_HP, alive: true });
   return true;
 }
 
-/** Server-side validation of a client position report. Returns the accepted position. */
-export function validateMove(
-  f: { x: number; y: number },
-  nx: unknown,
-  ny: unknown,
-  dtMs: number,
-  map: string[] = MAP,
-): { x: number; y: number } {
-  if (typeof nx !== 'number' || typeof ny !== 'number' || !Number.isFinite(nx) || !Number.isFinite(ny)) return { x: f.x, y: f.y };
+/**
+ * Server-side validation of a client position report. Horizontal distance is capped by speed × time,
+ * then collision is re-run on the server (walls, stairs). Height is never taken from the client: it comes
+ * from the server's own gravity/jump simulation, so nobody can fly or teleport.
+ */
+export function validateMove(f: Body, nx: unknown, ny: unknown, dtMs: number, map: ArenaMap = MAP): Body {
+  if (typeof nx !== 'number' || typeof ny !== 'number' || !Number.isFinite(nx) || !Number.isFinite(ny)) return f;
   const allowed = MOVE_SPEED * (Math.min(Math.max(dtMs, 0), 500) / 1000) * 1.5 + 0.1;
   let dx = nx - f.x;
   let dy = ny - f.y;
@@ -200,18 +348,17 @@ export function validateMove(
     dx = (dx / d) * allowed;
     dy = (dy / d) * allowed;
   }
-  // Move axis-by-axis so players slide along walls instead of tunnelling.
-  let x = f.x;
-  let y = f.y;
-  if (canStand(x + dx, y, map)) x += dx;
-  if (canStand(x, y + dy, map)) y += dy;
-  return { x, y };
+  return moveHorizontal(f, dx, dy, map);
 }
 
 export function normAngle(a: unknown): number | null {
   if (typeof a !== 'number' || !Number.isFinite(a)) return null;
   const t = Math.PI * 2;
   return ((a % t) + t) % t;
+}
+export function clampPitch(p: unknown): number | null {
+  if (typeof p !== 'number' || !Number.isFinite(p)) return null;
+  return Math.max(-MAX_PITCH, Math.min(MAX_PITCH, p));
 }
 
 export function guestName(rand: () => number = Math.random): string {
@@ -240,11 +387,11 @@ export interface WeaponSpec {
 }
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
-  pistol: { id: 'pistol', name: 'M9 Sidearm', damage: 34, cooldownMs: 300, pellets: 1, spread: 0.01, range: 20, mag: 12, reloadMs: 1100 },
-  smg: { id: 'smg', name: 'SMG-9', damage: 14, cooldownMs: 90, pellets: 1, spread: 0.05, range: 14, mag: 30, reloadMs: 1700 },
+  pistol: { id: 'pistol', name: 'M9 Sidearm', damage: 34, cooldownMs: 300, pellets: 1, spread: 0.01, range: 30, mag: 12, reloadMs: 1100 },
+  smg: { id: 'smg', name: 'SMG-9', damage: 14, cooldownMs: 90, pellets: 1, spread: 0.05, range: 24, mag: 30, reloadMs: 1700 },
   shotgun: { id: 'shotgun', name: 'M1014 Combat Shotgun', damage: 13, cooldownMs: 800, pellets: 8, spread: 0.16, range: 8, mag: 6, reloadMs: 2200 },
-  sniper: { id: 'sniper', name: '.50 Cal Sniper', damage: 95, cooldownMs: 1300, pellets: 1, spread: 0.09, scopedSpread: 0, range: 40, mag: 5, reloadMs: 2500 },
-  rocket: { id: 'rocket', name: 'RPG Launcher', damage: 100, cooldownMs: 1100, pellets: 1, spread: 0, range: 30, mag: 2, reloadMs: 2600, splash: 2.4 },
+  sniper: { id: 'sniper', name: '.50 Cal Sniper', damage: 95, cooldownMs: 1300, pellets: 1, spread: 0.09, scopedSpread: 0, range: 70, mag: 5, reloadMs: 2500 },
+  rocket: { id: 'rocket', name: 'RPG Launcher', damage: 100, cooldownMs: 1100, pellets: 1, spread: 0, range: 40, mag: 2, reloadMs: 2600, splash: 2.4 },
 };
 export const WEAPON_ORDER: WeaponId[] = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket'];
 export const SWITCH_MS = 250;
@@ -262,16 +409,19 @@ export function splashFalloff(max: number, radius: number, d: number): number {
   return Math.round(max * (1 - d / radius));
 }
 
-/** Everyone (living) within radius of (x,y) with line of sight to it, with their splash damage. */
+/** Everyone (living) within radius (3D, to their chest) of point c with line of sight to it, with splash damage. */
 export function splashTargets(
-  x: number, y: number, radius: number, max: number, targets: Target[], map: string[] = MAP,
+  c: Vec3, radius: number, max: number, targets: Target[], map: ArenaMap = MAP,
 ): Array<{ id: string; damage: number; dist: number }> {
   const out: Array<{ id: string; damage: number; dist: number }> = [];
   for (const t of targets) {
     if (!t.alive) continue;
-    const d = Math.hypot(t.x - x, t.y - y);
+    // Nearest point of the body column to the blast.
+    const pz = Math.min(t.z + PLAYER_HEIGHT, Math.max(t.z, c.z));
+    const d = Math.hypot(t.x - c.x, t.y - c.y, pz - c.z);
     if (d >= radius) continue;
-    if (d > 0.05 && castRay(x, y, Math.atan2(t.y - y, t.x - x), map, d + 0.01).dist < d - 0.05) continue; // wall in the way
+    const from = { x: c.x, y: c.y, z: c.z + 0.15 };
+    if (!lineOfSight(from, { x: t.x, y: t.y, z: pz + 0.05 }, map) && !lineOfSight(from, chestOf(t), map)) continue; // wall/floor in the way
     const damage = splashFalloff(max, radius, d);
     if (damage > 0) out.push({ id: t.id, damage, dist: d });
   }
@@ -281,64 +431,55 @@ export function splashTargets(
 export interface ShotResult {
   /** Damage per target id (pellets summed). */
   hits: Map<string, number>;
+  /** Target ids that took at least one headshot. */
+  heads: Set<string>;
   /** Rocket impact point, if any. */
-  impact?: { x: number; y: number };
-  /** Ray end points for tracers. */
-  rays: Array<{ a: number; dist: number }>;
+  impact?: Vec3;
+  /** Rays for tracers: yaw, pitch, length. */
+  rays: Array<{ a: number; p: number; dist: number }>;
 }
 
 /** Resolves one trigger pull of a weapon. Pure; the server decides whether the pull was allowed. */
 export function fireWeapon(
-  shooter: { id: string; x: number; y: number; a: number },
+  shooter: { id: string; x: number; y: number; z: number; a: number; p: number },
   weapon: WeaponSpec,
   targets: Target[],
-  opts: { scoped?: boolean; rand?: () => number; map?: string[] } = {},
+  opts: { scoped?: boolean; rand?: () => number; map?: ArenaMap } = {},
 ): ShotResult {
   const rand = opts.rand ?? Math.random;
   const map = opts.map ?? MAP;
   const spread = weapon.id === 'sniper' && opts.scoped ? weapon.scopedSpread ?? 0 : weapon.spread;
   const hits = new Map<string, number>();
+  const heads = new Set<string>();
   const rays: ShotResult['rays'] = [];
+  const eye = eyeOf(shooter);
   if (weapon.splash) {
-    const a = shooter.a;
-    const wall = castRay(shooter.x, shooter.y, a, map, weapon.range).dist;
-    const direct = hitscan({ ...shooter, a }, targets, map, weapon.range);
+    const { a, p } = shooter;
+    const d = dirFrom(a, p);
+    const wall = rayWorld(eye, d, map, weapon.range);
+    const direct = hitscan(shooter, targets, map, weapon.range);
     const dist = Math.max(0, (direct ? direct.dist : wall) - 0.08);
-    const impact = { x: shooter.x + Math.cos(a) * dist, y: shooter.y + Math.sin(a) * dist };
-    rays.push({ a, dist });
+    const impact = { x: eye.x + d.x * dist, y: eye.y + d.y * dist, z: eye.z + d.z * dist };
+    rays.push({ a, p, dist });
     if (direct) hits.set(direct.id, weapon.damage);
-    for (const s of splashTargets(impact.x, impact.y, weapon.splash, weapon.damage, targets, map)) {
+    for (const s of splashTargets(impact, weapon.splash, weapon.damage, targets, map)) {
       if (s.id === direct?.id) continue;
       const dmg = s.id === shooter.id ? Math.round(s.damage * SELF_SPLASH) : s.damage;
       if (dmg > 0) hits.set(s.id, dmg);
     }
-    return { hits, impact, rays };
+    return { hits, heads, impact, rays };
   }
   for (let i = 0; i < weapon.pellets; i++) {
     const a = shooter.a + (rand() * 2 - 1) * spread;
-    const hit = hitscan({ ...shooter, a }, targets, map, weapon.range);
-    rays.push({ a, dist: hit ? hit.dist : castRay(shooter.x, shooter.y, a, map, weapon.range).dist });
-    if (hit) hits.set(hit.id, (hits.get(hit.id) ?? 0) + weapon.damage);
+    const p = shooter.p + (rand() * 2 - 1) * spread * 0.6;
+    const hit = hitscan({ ...shooter, a, p }, targets, map, weapon.range);
+    rays.push({ a, p, dist: hit ? hit.dist : rayWorld(eye, dirFrom(a, p), map, weapon.range) });
+    if (hit) {
+      hits.set(hit.id, (hits.get(hit.id) ?? 0) + weapon.damage * (hit.head ? HEADSHOT_MULT : 1));
+      if (hit.head) heads.add(hit.id);
+    }
   }
-  return { hits, rays };
-}
-
-// ---------------------------------------------------------------- jumping
-
-export const JUMP_MS = 560;
-/** Minimum time between jump starts (airtime + a short landing). */
-export const JUMP_COOLDOWN_MS = 700;
-export const JUMP_HEIGHT = 0.32;
-
-/** Height above the floor (tiles) t ms after a jump started. */
-export function jumpHeight(sinceMs: number): number {
-  if (sinceMs < 0 || sinceMs >= JUMP_MS) return 0;
-  const t = sinceMs / JUMP_MS;
-  return 4 * JUMP_HEIGHT * t * (1 - t);
-}
-
-export function canJump(lastJumpAt: number, now: number): boolean {
-  return now - lastJumpAt >= JUMP_COOLDOWN_MS;
+  return { hits, heads, rays };
 }
 
 // ---------------------------------------------------------------- killstreaks
