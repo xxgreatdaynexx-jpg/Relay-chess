@@ -76,7 +76,7 @@ export function AccountBox({ compact = false }: { compact?: boolean }) {
         {error ? <span className="account-error">{error}</span>
           : status === 'taken' ? 'This name is taken. Enter its password to sign in.'
           : status === 'free' ? 'This name is free. Set a password to make it yours.'
-          : status === 'reserved' ? 'Guest names are for the Arena only. Pick another.'
+          : status === 'reserved' ? (/^\s*bot(?![a-z])/i.test(name) ? "Names starting with 'Bot' are reserved for computer players. Pick another." : 'Guest names are for the Arena only. Pick another.')
           : 'Sign in to play. Your name keeps your stats and chips.'}
       </div>
     </div>

@@ -601,6 +601,9 @@ export function RoomScreen({
               <p className="text-cream">♚ Black: {state.teams.black.join(' & ')}</p>
             </div>
           )}
+          {state.drawNote && (
+            <p className="mb-3 text-sm text-amber-100" role="status" data-testid="draw-note">{state.drawNote}</p>
+          )}
           {state.drawOffer && !state.result && (
             <p className="mb-3 text-sm text-cream">
               {state.seats[state.drawOffer.seat]?.name ?? seatLabel(state.drawOffer.seat)} offered a draw.

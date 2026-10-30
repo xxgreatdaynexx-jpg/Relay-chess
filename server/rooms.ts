@@ -6,6 +6,7 @@ import { getChessStats } from './chess-stats.js';
 import { peekHint, requestHint } from './hints.js';
 import { getCheckersLeaderboard, getLeaderboard, normalizeName } from './leaderboard.js';
 import { CheckersGame } from './checkers-game.js';
+import { botAcceptsDraw } from './bot-draw.js';
 import { BOT_PIECES, botName, botProfile, chooseMove, thinkDelay, type BotProfile } from './bots.js';
 import { moveUci, openingName } from './openings.js';
 import { hasMateInOne } from '../shared/mate.js';
@@ -86,6 +87,7 @@ export class Room {
   /** Scramble teams on rematch. On by default except 1v1. */
   scrambleRematch: boolean;
   private teams: TeamsBanner | null = null;
+  drawNote: { at: number; text: string } | null = null;
   /** Tournament match: seats reserved by name, no rematch, hidden from Quick Join. */
   tournament: { code: string; seats: Partial<Record<Seat, string>> } | null = null;
   /** Randomness source for scrambles; swappable in tests. */
@@ -173,6 +175,7 @@ export class Room {
   botDelay(random: () => number = Math.random): number {
     const duty = this.botDuty();
     if (!duty) return -1;
+    if (duty.kind === 'draw') return 1000 + Math.floor(random() * 1500); // a beat to "think" about it
     return duty.kind === 'move' ? thinkDelay(this.botProfile, random) : 800;
   }
 
@@ -187,7 +190,9 @@ export class Room {
       if (duty.kind === 'mate') {
         this.game.acceptMate(duty.seat);
       } else if (duty.kind === 'draw') {
-        this.game.answerDraw(duty.seat, false, now);
+        const accept = botAcceptsDraw(this.gameType, this.game.fen(), seatSide(duty.seat));
+        this.game.answerDraw(duty.seat, accept, now);
+        this.drawNote = { at: now, text: `${bot.name} ${accept ? 'accepted' : 'declined'} the draw.` };
       } else {
         const input = chooseMove(this.gameType, this.game.fen(), this.botProfile, random);
         if (!input) return false;
@@ -362,6 +367,17 @@ export class Room {
     const member = this.must(token);
     if (!member.seat) throw new GameError('Take a seat before offering a draw.');
     this.game.offerDraw(member.seat, now);
+    this.drawNote = null;
+    const offer = this.game.drawOffer;
+    if (offer) {
+      // Mixed team: the bot casts its vote by the same rule; the humans still give the answer.
+      const answering = seatsFor(this.setup).filter((s) => seatSide(s) !== offer.side);
+      const bots = answering.filter((s) => this.isBotSeat(s));
+      if (bots.length && bots.length < answering.length) {
+        const accept = botAcceptsDraw(this.gameType, this.game.fen(), seatSide(bots[0]!));
+        this.drawNote = { at: now, text: bots.map((s) => this.memberOn(s)!.name).join(' & ') + ` vote${bots.length > 1 ? '' : 's'} to ${accept ? 'accept' : 'decline'} the draw.` };
+      }
+    }
     this.touch();
   }
 
@@ -467,7 +483,11 @@ export class Room {
       moves: this.game.history(),
       result: raw && described ? { ...raw, ...described } : null,
       drawOffer: this.game.drawOffer ? { ...this.game.drawOffer } : null,
-      rematchVotes: [...this.game.rematchVotes],
+      // Bots always agree to a rematch, so show them as agreed straight away.
+      rematchVotes: this.game.status === 'ended' && !this.tournament
+        ? [...new Set([...this.game.rematchVotes, ...seatsFor(this.setup).filter((s) => this.isBotSeat(s))])]
+        : [...this.game.rematchVotes],
+      drawNote: this.drawNote && now - this.drawNote.at < 8000 ? this.drawNote.text : null,
       scrambleRematch: this.scrambleRematch,
       teams: this.teams && now - this.teams.at < 15_000 ? { ...this.teams } : null,
       clock: this.game.clockView(now),

@@ -1,4 +1,4 @@
-import { docTop, prefersReducedMotion } from '@/lib/motion';
+import { docTop, prefersReducedMotion, useReducedMotion } from '@/lib/motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RulesDialog } from '@/components/RulesDialog';
 import { ParticleMorph } from '@/components/ParticleMorph';
@@ -61,6 +61,7 @@ export function ScrollIntro({ onPick }: { onPick: (game: GameType) => void }) {
   const [active, setActive] = useState(0);
   const slotRefs = useRef<Array<HTMLDivElement | null>>([]);
   const slots = useCallback(() => slotRefs.current, []);
+  const reduced = useReducedMotion();
 
   useEffect(() => {
     let raf = 0;
@@ -74,6 +75,7 @@ export function ScrollIntro({ onPick }: { onPick: (game: GameType) => void }) {
         // progress of the following panel covering this one (0..1)
         const p = next ? Math.min(1, Math.max(0, 1 - next.getBoundingClientRect().top / h)) : 0;
         el.style.setProperty('--cover', prefersReducedMotion() ? '0' : p.toFixed(3));
+        el.style.setProperty('--fade', p.toFixed(3)); // reduced motion: plain opacity crossfade
         if (el.getBoundingClientRect().top <= h * 0.5) current = i;
       });
       setActive(current);
@@ -104,8 +106,8 @@ export function ScrollIntro({ onPick }: { onPick: (game: GameType) => void }) {
   };
 
   return (
-    <div className="si-wrap" data-testid="scroll-intro">
-      <ParticleMorph slots={slots} />
+    <div className={`si-wrap${reduced ? ' si-static' : ''}`} data-testid="scroll-intro">
+      {!reduced && <ParticleMorph slots={slots} />}
       <nav className="si-dots" aria-label="Games">
         {PANELS.map((p, i) => (
           <button key={p.id} type="button" className={active === i ? 'on' : ''} aria-current={active === i} aria-label={`Relay ${p.accent}`}

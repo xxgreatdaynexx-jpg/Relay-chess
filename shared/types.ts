@@ -200,6 +200,8 @@ export interface PublicState {
   scrambleRematch: boolean;
   /** New teams announced after a rematch starts. */
   teams: TeamsBanner | null;
+  /** Short-lived note about a bot's answer to a draw offer. */
+  drawNote?: string | null;
   clock: ClockView | null;
   yourSeat: Seat | null;
   /** True when this socket is watching read-only. */

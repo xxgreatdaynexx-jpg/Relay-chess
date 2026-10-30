@@ -1054,3 +1054,5 @@ html, body { overflow-x: clip; }
 .fps-fps { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); font: 700 10px ui-monospace, Menlo, Consolas, monospace; color: #b8f0a0; background: rgba(0,0,0,.55); padding: 1px 6px; border-radius: 4px; pointer-events: none; z-index: 2; }
 .fps-maps-pick.is-open { outline: 2px solid #e6c46a; outline-offset: 2px; border-radius: 6px; }
 .fps-maps-pick button:focus-visible { outline: 2px solid #fff6d8; }
+/* Reduced motion: no particle canvas; each panel shows its static board, crossfading as the next panel covers it. */
+.si-static .si-visual .si-board { inset: 0; width: 100%; opacity: calc(1 - var(--fade, 0)); transform: none; filter: none; }
