@@ -990,3 +990,15 @@ html[data-theme="contrast"] .top-tabs .sol-tab[aria-expanded="true"] { backgroun
 @media (prefers-reduced-motion: reduce) {
   .si-panel, .si-board { transform: none !important; filter: none !important; transition: none; }
 }
+/* ---- Roulette layout: real-table colouring (green felt, gold lines, red/black numbers, bordered outside bets) ---- */
+.rl-board { background: #0f5a37; border: 2px solid #d9b25a; border-radius: 8px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.45); }
+.rl-board .rl-cell { border: 1px solid rgba(232,194,106,.85); color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,.5); }
+.rl-board .rl-cell.rl-red { background: #c0281f; }
+.rl-board .rl-cell.rl-black { background: #141414; }
+.rl-board .rl-cell.rl-green { background: #1b8a52; }
+.rl-board .rl-cell.rl-zero { border-radius: 16px 0 0 16px; }
+.rl-board .rl-cell.rl-out { background: #0f5a37; font-weight: 800; letter-spacing: .02em; }
+.rl-board .rl-cell:not(:disabled):hover { filter: brightness(1.18); }
+.rl-board .rl-cell.rl-dia { font-size: 22px; line-height: 1; text-shadow: none; }
+.rl-board .rl-cell.rl-dia-red { color: #d42a20; -webkit-text-stroke: 1px #f3d58a; }
+.rl-board .rl-cell.rl-dia-black { color: #0a0a0a; -webkit-text-stroke: 1px #f3d58a; }

@@ -218,7 +218,7 @@ export function RoulettePanel() {
                       {[3, 2, 1].map((col, r) => cell({ kind: 'column', numbers: [col] }, '2:1', 'rl-out', { gridColumn: '14', gridRow: String(r + 1) }, `Column ${col} · pays 2:1`))}
                       {[1, 2, 3].map((d) => cell({ kind: 'dozen', numbers: [d] }, `${d === 1 ? '1st' : d === 2 ? '2nd' : '3rd'} 12`, 'rl-out', { gridColumn: `${(d - 1) * 4 + 2} / span 4`, gridRow: '4' }))}
                       {([['low', '1–18'], ['even', 'Even'], ['red', '◆'], ['black', '◆'], ['odd', 'Odd'], ['high', '19–36']] as [RouletteKind, string][]).map(([k, label], i) =>
-                        cell({ kind: k, numbers: [] }, label, `rl-out ${k === 'red' ? 'rl-red' : k === 'black' ? 'rl-black' : ''}`, { gridColumn: `${i * 2 + 2} / span 2`, gridRow: '5' }, `${k} · pays 1:1`),
+                        cell({ kind: k, numbers: [] }, label, `rl-out ${k === 'red' ? 'rl-dia rl-dia-red' : k === 'black' ? 'rl-dia rl-dia-black' : ''}`, { gridColumn: `${i * 2 + 2} / span 2`, gridRow: '5' }, `${k} · pays 1:1`),
                       )}
                       <div className="rl-hot-layer">
                         {HOTSPOTS.map(({ spot, x, y }) => (
