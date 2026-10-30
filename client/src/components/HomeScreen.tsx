@@ -257,7 +257,7 @@ export function HomeScreen({
       <main className="flex flex-1 flex-col py-4">
         <ScrollIntro onPick={(g) => { setGameType(g); history.replaceState(null, '', `#${g}`); document.getElementById('play')?.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' }); }} />
         <section className="home-play" data-testid="home-play">
-        <h1 id="play" className="pt-10 max-w-xl scroll-mt-16 font-serif text-5xl leading-[0.95] text-cream sm:text-6xl">
+        <h1 id="play" className="pt-6 max-w-xl scroll-mt-10 font-serif text-5xl leading-[0.95] text-cream sm:text-6xl">
           Play {gameType === 'checkers' ? 'Relay Checkers' : 'Relay Chess'}
         </h1>
         <div className="mt-3 -ml-3" data-testid="how-it-works-home">
@@ -484,20 +484,10 @@ export function HomeScreen({
           onSpectate={(target) => void spectate(target)}
         />
         <footer className="home-footer" data-testid="home-footer">
-          <div>
-            <p className="font-serif text-2xl text-cream">How a relay works</p>
-            <ol className="mt-3 grid gap-3 text-sm text-cream-dim sm:grid-cols-3">
-              <li><b className="text-cream">1 · Sit down.</b> Pick chess or checkers, a mode from 1v1 to 3v3, and a shared team clock.</li>
-              <li><b className="text-cream">2 · Take turns.</b> Seats rotate move by move. You only see the position your teammate left you.</li>
-              <li><b className="text-cream">3 · Climb.</b> Results land on the chess and checkers leaderboards.</li>
-            </ol>
-          </div>
-          <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-            <button type="button" className="underline-offset-4 hover:underline" onClick={onLeaderboard}>Leaderboard</button>
-            <RulesDialog />
-            <button type="button" className="underline-offset-4 hover:underline" onClick={() => window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })} data-testid="back-to-top">Back to top ↑</button>
-            <span className="ml-auto text-xs text-cream/45">Chud Hub · Relay chess &amp; checkers</span>
-          </div>
+          <button type="button" className="underline-offset-4 hover:underline" onClick={onLeaderboard}>Leaderboard</button>
+          <RulesDialog />
+          <button type="button" className="underline-offset-4 hover:underline" onClick={() => window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })} data-testid="back-to-top">Back to top ↑</button>
+          <span className="ml-auto text-xs text-cream/45">Chud Hub · Relay chess &amp; checkers</span>
         </footer>
         </section>
       </main>

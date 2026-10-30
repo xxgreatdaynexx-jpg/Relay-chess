@@ -12,7 +12,7 @@ describe('home page keeps scrolling', () => {
     expect(intro + home).not.toMatch(/preventDefault\(\)[^\n]*wheel|addEventListener\('wheel'/);
   });
   it('play area fills a screen and the page ends on a footer', () => {
-    expect(css).toMatch(/\.home-play\s*\{[^}]*min-height:\s*100dvh/);
+    expect(css).toMatch(/\.home-play\s*\{[^}]*min-height:\s*calc\(100dvh - var\(--topbar\)/);
     expect(home).toMatch(/data-testid="home-footer"/);
   });
   it('intro dots hide once the intro is scrolled past', () => {

@@ -1058,7 +1058,7 @@ html, body { overflow-x: clip; }
 .si-static .si-visual .si-board { inset: 0; width: 100%; opacity: calc(1 - var(--fade, 0)); transform: none; filter: none; }
 
 /* Play area fills a full screen once scrolled to, so it can reach the top (no leftover intro band) and the page ends on a footer. */
-.home-play { min-height: 100dvh; display: flex; flex-direction: column; }
-.home-footer { margin-top: auto; padding: 48px 0 72px; border-top: 1px solid #e0b56a2e; }
-.home-footer { position: relative; } .home-play > .home-footer { margin-top: auto; } .home-play > :nth-last-child(2) { margin-bottom: 48px; }
+.home-play { --topbar: 40px; --page-bottom: 36px; min-height: calc(100dvh - var(--topbar) - var(--page-bottom)); display: flex; flex-direction: column; }
+.home-footer { margin-top: auto; padding: 14px 0 4px; border-top: 1px solid #e0b56a2e; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; font-size: 14px; }
+.home-footer { position: relative; } .home-play > .home-footer { margin-top: auto; } .home-play > :nth-last-child(2) { margin-bottom: 20px; }
 .si-dots.si-dots-off { opacity: 0; pointer-events: none; visibility: hidden; }
