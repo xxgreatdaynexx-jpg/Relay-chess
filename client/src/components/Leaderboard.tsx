@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { LeaderboardRow } from '../../../shared/types';
 
-export function LeaderboardScreen({ onBack }: { onBack: () => void }) {
+export function LeaderboardScreen({ onBack, onMainMenu }: { onBack: () => void; onMainMenu?: () => void }) {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col px-4 py-5 sm:px-8">
       <header className="flex items-center justify-between gap-3">
@@ -11,9 +11,16 @@ export function LeaderboardScreen({ onBack }: { onBack: () => void }) {
           <div className="font-serif text-3xl italic">Relay</div>
           <h1 className="mt-2 font-serif text-4xl">Leaderboard</h1>
         </div>
-        <Button variant="ghost" onClick={onBack}>
-          Back
-        </Button>
+        <div className="flex gap-1">
+          {onMainMenu && (
+            <Button variant="ghost" onClick={onMainMenu} data-testid="main-menu">
+              Main Menu
+            </Button>
+          )}
+          <Button variant="ghost" onClick={onBack}>
+            Back
+          </Button>
+        </div>
       </header>
       <p className="mt-3 max-w-xl text-sm text-cream-dim">
         Names match without worrying about capitals. Both teammates take the win, the loss, or the draw.

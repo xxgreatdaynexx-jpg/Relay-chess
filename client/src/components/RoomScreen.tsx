@@ -398,7 +398,7 @@ export function RoomScreen({
   const interactive = online && yourTurn && !pending;
   const paused = state.status === 'playing' && Boolean(mover && !mover.connected);
   const header = (
-    <div className="flex items-center justify-between gap-3">
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
       <div className="flex min-w-0 items-center gap-3">
         <div className="leading-none">
           <div className="font-serif text-2xl italic">Relay</div>
@@ -407,7 +407,7 @@ export function RoomScreen({
         <button
           type="button"
           onClick={copyLink}
-          className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-left"
+          className="shrink-0 whitespace-nowrap rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-left"
           data-testid="copy-code"
         >
           <div className="font-mono text-lg tracking-[0.22em]">{prettyCode(state.code)}</div>
@@ -423,6 +423,20 @@ export function RoomScreen({
             Flip
           </Button>
         )}
+        <Button
+          variant="ghost"
+          size="sm"
+          data-testid="main-menu"
+          onClick={() => {
+            const msg =
+              state.status === 'playing'
+                ? 'Leave the game and return to the main menu?\n\nThe game keeps going without you (your clock keeps running) and this tab drops its seat, so you can\'t rejoin from here.'
+                : 'Leave this table and return to the main menu?';
+            if (window.confirm(msg)) onLeave();
+          }}
+        >
+          Main Menu
+        </Button>
         <Button variant="ghost" size="sm" onClick={onLeaderboard} data-testid="open-leaderboard">
           Leaderboard
         </Button>

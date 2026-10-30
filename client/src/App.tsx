@@ -3,6 +3,8 @@ import { HomeScreen } from '@/components/HomeScreen';
 import { LeaderboardScreen } from '@/components/Leaderboard';
 import { RoomScreen } from '@/components/RoomScreen';
 import { VolumeControl } from '@/components/VolumeControl';
+import { SolitairePanel } from '@/components/SolitairePanel';
+import { BlackjackPanel } from '@/components/BlackjackPanel';
 import { socket } from '@/lib/net';
 import { clearSession, codeFromLocation, loadSession } from '@/lib/session';
 import type { PublicState } from '../../shared/types';
@@ -101,10 +103,16 @@ export function App() {
   return (
     <>
       <VolumeControl />
+      <SolitairePanel />
+      <BlackjackPanel />
       {leaderboard ? (
         <LeaderboardScreen
           onBack={() => {
             window.history.back();
+          }}
+          onMainMenu={() => {
+            window.history.pushState({}, '', '/');
+            setPath('/');
           }}
         />
       ) : booting && !state ? (

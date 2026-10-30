@@ -360,3 +360,20 @@ export function playYourTurn(): void {
   tone(ctx, 880, now, 0.18, 0.14);
   tone(ctx, 1318.5, now + 0.11, 0.32, 0.12);
 }
+
+/** Tiny soft click for solitaire card moves. Routed through the master volume. */
+export function playCardFlick(): void {
+  const ctx = audio();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') void ctx.resume();
+  tone(ctx, 2200, ctx.currentTime, 0.05, 0.05);
+}
+
+/** Little arpeggio for winning solitaire. Routed through the master volume. */
+export function playSolitaireWin(): void {
+  const ctx = audio();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') void ctx.resume();
+  const now = ctx.currentTime;
+  [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(ctx, f, now + i * 0.12, 0.35, 0.12));
+}

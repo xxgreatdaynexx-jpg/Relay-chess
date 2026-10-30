@@ -357,3 +357,52 @@ input {
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------- Solitaire pull-up panel (bottom-right, below modals z50/z70, above board) ---------- */
+.sol-wrap { position: fixed; right: 12px; bottom: 12px; z-index: 45; display: flex; flex-direction: column-reverse; align-items: flex-end; pointer-events: none; }
+.sol-wrap > * { pointer-events: auto; }
+.sol-tab { border-radius: 9999px; background: rgba(0,0,0,.6); color: #fff6d8; padding: 6px 14px; font-size: 14px; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,.35); backdrop-filter: blur(6px); }
+.sol-open .sol-tab { border-radius: 0 0 12px 12px; padding: 3px 14px; font-size: 12px; }
+.sol-panel { width: 420px; height: 520px; max-height: calc(100dvh - 70px); background: #135c3a; background-image: radial-gradient(circle at 50% 30%, #1d7a4e, #0f4a2f); border: 1px solid rgba(255,255,255,.15); border-radius: 14px 14px 0 14px; box-shadow: 0 14px 40px rgba(0,0,0,.5); display: flex; flex-direction: column; overflow: hidden; animation: sol-up .22s ease-out; color: #fff6d8; touch-action: none; user-select: none; -webkit-user-select: none; }
+@keyframes sol-up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (max-width: 520px) { .sol-wrap { right: 6px; left: 6px; bottom: 52px; } .sol-panel { width: 100%; height: min(560px, calc(100dvh - 110px)); } }
+.sol-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: rgba(0,0,0,.3); font-size: 12px; }
+.sol-bar button, .sol-win button { background: rgba(255,255,255,.14); border-radius: 6px; padding: 3px 9px; font-weight: 600; }
+.sol-bar button:disabled { opacity: .4; }
+.sol-table { position: relative; flex: 1; padding: 8px 6px; overflow: hidden; }
+.sol-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.sol-tableau { margin-top: 10px; height: 100%; }
+.sol-slot, .sol-pile { position: relative; aspect-ratio: 5 / 7; }
+.sol-pile { aspect-ratio: auto; min-height: 100%; }
+.sol-pile > .sol-empty { aspect-ratio: 5/7; height: auto; }
+.sol-slot > * { position: absolute; inset: 0; }
+.sol-hit { position: absolute; left: 0; right: 0; cursor: grab; }
+.sol-pile .sol-hit { aspect-ratio: 5 / 7; }
+.sol-card { width: 100%; aspect-ratio: 5 / 7; border-radius: 5px; position: relative; box-shadow: 0 1px 2px rgba(0,0,0,.45); }
+.sol-face { background: #fffdf6; border: 1px solid #cfc7b0; }
+.sol-back { border: 2px solid #fffdf6; background: repeating-linear-gradient(45deg, #8a1d2c 0 4px, #a8293b 4px 8px); }
+.sol-empty { border: 1.5px dashed rgba(255,255,255,.35); box-shadow: none; display: grid; place-items: center; color: rgba(255,255,255,.4); font-weight: 700; cursor: pointer; }
+.sol-corner { position: absolute; top: 2px; left: 3px; font-size: 11px; line-height: 1; font-weight: 700; text-align: center; }
+.sol-pip { position: absolute; right: 4px; bottom: 1px; font-size: 22px; line-height: 1; }
+@media (max-width: 520px) { .sol-corner { font-size: 10px; } .sol-pip { font-size: 18px; } }
+.sol-ghost { position: fixed; z-index: 46; pointer-events: none !important; }
+.sol-ghost .sol-card { box-shadow: 0 6px 16px rgba(0,0,0,.5); }
+.sol-win { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,.55); text-align: center; animation: sol-up .3s ease-out; }
+
+/* ---------- Blackjack drop-down (top-left) ---------- */
+.bj-wrap { position: fixed; left: 50%; top: 0; transform: translateX(-50%); z-index: 45; display: flex; flex-direction: column-reverse; align-items: center; pointer-events: none; }
+@media (min-width: 900px) { .bj-wrap { left: 12px; transform: none; align-items: flex-start; } }
+.bj-wrap > * { pointer-events: auto; }
+.bj-tab { border-radius: 0 0 10px 10px; padding: 2px 12px; font-size: 12px; }
+.bj-panel { width: 360px; height: auto; max-height: calc(50dvh - 20px); border-radius: 0 0 14px 14px; animation: bj-down .22s ease-out; touch-action: manipulation; }
+@keyframes bj-down { from { transform: translateY(-40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (max-width: 520px) { .bj-wrap { left: 6px; right: 6px; transform: none; } .bj-panel { width: 100%; } }
+.bj-table { padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; overflow: auto; }
+.bj-label { font-size: 12px; opacity: .85; }
+.bj-hand { display: flex; min-height: 76px; }
+.bj-card { width: 54px; flex: none; margin-right: -18px; }
+.bj-result { text-align: center; font-weight: 700; font-size: 15px; padding: 2px 0; color: #e8c26a; }
+.bj-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 8px 10px; background: rgba(0,0,0,.3); }
+.bj-controls button { background: rgba(255,255,255,.14); border-radius: 6px; padding: 4px 10px; font-weight: 600; font-size: 13px; color: #fff6d8; }
+.bj-controls button:disabled { opacity: .35; }
+.bj-controls .bj-chip-on, .bj-controls .bj-deal { background: #e8c26a; color: #1a2e26; }
