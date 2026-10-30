@@ -1,3 +1,4 @@
+import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useRef, useState } from 'react';
 import { CardFace } from '@/components/SolitairePanel';
 import { CasinoLeaderboard, NamePrompt, ResetChips } from '@/components/CasinoCommon';
@@ -19,6 +20,8 @@ function total(cards: BJSeatView['hands'][number]['cards']) {
 
 /** Drop-down shared blackjack table (server-run, play-money chips), fixed top-left on every screen. */
 export function BlackjackPanel() {
+  const winRef = useRef<HTMLDivElement>(null);
+  const win = useWindowDrag('blackjack', winRef);
   const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) === '1');
   const [tab, setTab] = useState<'table' | 'board'>('table');
   const [name] = useSavedName();
@@ -90,10 +93,11 @@ export function BlackjackPanel() {
         🂡 Blackjack <span aria-hidden>{open ? '▴' : '▾'}</span>
       </button>
       {open && (
-        <div className="sol-panel bj-panel" role="dialog" aria-label="Blackjack">
-          <div className="sol-bar">
+        <div className="sol-panel bj-panel" role="dialog" aria-label="Blackjack" ref={winRef} style={win.style} onPointerDownCapture={win.front}>
+          <div {...win.bar}>
             <button type="button" className={`casino-tabbtn ${tab === 'table' ? 'on' : ''}`} onClick={() => setTab('table')}>Table{t ? ` ${t.id}` : ''}</button>
             <button type="button" className={`casino-tabbtn ${tab === 'board' ? 'on' : ''}`} onClick={() => setTab('board')} data-testid="casino-board-tab">Casino leaderboard</button>
+            {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" title="Reset position" onClick={win.reset}>⟲</button>}
             <button type="button" className="ml-auto" aria-label="Close blackjack" onClick={() => setOpen(false)}>✕</button>
           </div>
           {tab === 'board' ? (

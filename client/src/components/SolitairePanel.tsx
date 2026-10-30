@@ -1,3 +1,4 @@
+import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useRef, useState } from 'react';
 import { autoTarget, deal, draw, isValidState, isWon, move, pickup, isRed, type Card, type GameState, type Loc, type Target } from '@/solitaire/logic';
 import { playCardFlick, playSolitaireWin } from '@/lib/sounds';
@@ -36,6 +37,8 @@ export function CardFace({ card, style }: { card: Card; style?: React.CSSPropert
 
 /** Pull-up Klondike (draw 1) panel, fixed bottom-right on every screen. */
 export function SolitairePanel() {
+  const winRef = useRef<HTMLDivElement>(null);
+  const win = useWindowDrag('solitaire', winRef);
   const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) === '1');
   const [{ game, history }, setSaved] = useState<Saved>(load);
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -134,11 +137,12 @@ export function SolitairePanel() {
         🃏 Solitaire <span aria-hidden>{open ? '▾' : '▴'}</span>
       </button>
       {open && (
-        <div className="sol-panel" role="dialog" aria-label="Solitaire">
-          <div className="sol-bar">
+        <div className="sol-panel" role="dialog" aria-label="Solitaire" ref={winRef} style={win.style} onPointerDownCapture={win.front}>
+          <div {...win.bar}>
             <button type="button" onClick={newGame}>New</button>
             <button type="button" onClick={undo} disabled={!history.length}>Undo</button>
             <span className="ml-auto tabular-nums">Moves {game.moves} · ⏱ {fmt(elapsed)}</span>
+            {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" title="Reset position" onClick={win.reset}>⟲</button>}
             <button type="button" aria-label="Minimize solitaire" onClick={() => setOpen(false)}>✕</button>
           </div>
           <div className="sol-table" ref={tableRef}>

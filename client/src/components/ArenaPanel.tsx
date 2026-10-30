@@ -1,3 +1,4 @@
+import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useRef, useState } from 'react';
 import { socket } from '@/lib/net';
 import { loadSession } from '@/lib/session';
@@ -51,6 +52,7 @@ export function ArenaPanel() {
 function ArenaGame({ onClose }: { onClose: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const win = useWindowDrag('arena', wrapRef);
   const [status, setStatus] = useState('Joining the arena…');
   const [feed, setFeed] = useState<Array<{ key: number; text: string }>>([]);
   const [board, setBoard] = useState<NetPlayer[]>([]);
@@ -262,6 +264,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     <div
       ref={wrapRef}
       className={`sol-panel fps-panel ${focused ? 'fps-focused' : ''}`}
+      style={win.style}
+      onPointerDownCapture={win.front}
       role="dialog"
       aria-label="Arena shooter"
       tabIndex={0}
@@ -275,10 +279,11 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       onKeyDown={(e) => onKey(e, true)}
       onKeyUp={(e) => onKey(e, false)}
     >
-      <div className="sol-bar">
+      <div {...win.bar}>
         <span className="font-semibold">🎯 Arena</span>
         <span className="opacity-70">{board.length} online · {focused ? 'controls on' : 'click to play'}</span>
-        <button type="button" className="ml-auto" aria-label="Close arena" onClick={onClose}>✕</button>
+        {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" title="Reset position" onClick={win.reset}>⟲</button>}
+            <button type="button" className="ml-auto" aria-label="Close arena" onClick={onClose}>✕</button>
       </div>
       <div className="fps-stage">
         <canvas

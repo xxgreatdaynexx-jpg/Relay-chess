@@ -1,3 +1,4 @@
+import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CasinoLeaderboard, NamePrompt, ResetChips } from '@/components/CasinoCommon';
 import { betKey, CHIP_VALUES, payoutOdds, RED, WHEEL, type RouletteBet, type RouletteKind, type RouletteView } from '../../../shared/casino';
@@ -86,6 +87,8 @@ function Wheel({ view }: { view: RouletteView | null }) {
 
 /** Slide-out shared roulette wheel on the left edge. Same play-money chips as blackjack. */
 export function RoulettePanel() {
+  const winRef = useRef<HTMLDivElement>(null);
+  const win = useWindowDrag('roulette', winRef);
   const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) === '1');
   const [tab, setTab] = useState<'wheel' | 'board'>('wheel');
   const [name] = useSavedName();
@@ -181,10 +184,11 @@ export function RoulettePanel() {
         <span>🎡 Roulette</span>
       </button>
       {open && (
-        <div className="sol-panel rl-panel" role="dialog" aria-label="Roulette">
-          <div className="sol-bar">
+        <div className="sol-panel rl-panel" role="dialog" aria-label="Roulette" ref={winRef} style={win.style} onPointerDownCapture={win.front}>
+          <div {...win.bar}>
             <button type="button" className={`casino-tabbtn ${tab === 'wheel' ? 'on' : ''}`} onClick={() => setTab('wheel')}>Wheel</button>
             <button type="button" className={`casino-tabbtn ${tab === 'board' ? 'on' : ''}`} onClick={() => setTab('board')}>Casino leaderboard</button>
+            {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" title="Reset position" onClick={win.reset}>⟲</button>}
             <button type="button" className="ml-auto" aria-label="Close roulette" onClick={() => setOpen(false)}>✕</button>
           </div>
           {tab === 'board' ? (
