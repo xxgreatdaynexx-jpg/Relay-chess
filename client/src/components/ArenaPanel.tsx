@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { socket } from '@/lib/net';
 import { loadSession } from '@/lib/session';
+import { cleanName, loadName } from '@/lib/playerName';
 import { playGunshot, playHit, unlockSounds } from '@/lib/sounds';
 import { canStand, castRay, guestName, MAX_HP, MOVE_SPEED, SHOT_COOLDOWN_MS, TICK_HZ } from '../../../shared/fps';
 
 const OPEN_KEY = 'relay-fps-open';
-const NAME_KEY = 'relay-fps-name';
+/** Guest arena name only; a real chess name always wins. */
+const NAME_KEY = 'relay-fps-guest';
 const W = 320;
 const H = 200;
 const FOV = Math.PI / 3;
@@ -16,8 +18,8 @@ interface NetPlayer { id: string; name: string; x: number; y: number; a: number;
 interface Snap { t: number; recv: number; players: NetPlayer[] }
 
 function arenaName(): string {
-  const s = loadSession();
-  if (s?.name) return s.name;
+  const saved = loadName() || cleanName(loadSession()?.name);
+  if (saved) return saved;
   let n = localStorage.getItem(NAME_KEY);
   if (!n) {
     n = guestName();

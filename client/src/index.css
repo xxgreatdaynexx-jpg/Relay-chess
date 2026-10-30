@@ -426,3 +426,29 @@ input {
 .fps-touch button { height: 44px; border-radius: 10px; background: rgba(255,255,255,.14); font-weight: 700; color: #fff6d8; touch-action: none; user-select: none; -webkit-user-select: none; }
 .fps-touch .fps-fire { width: 88px; background: #e85a5a; }
 @media (max-width: 520px) { .fps-wrap { right: 6px; left: 6px; } .fps-open { top: 22px; } .fps-panel { width: 100%; } .fps-dpad { grid-template-columns: repeat(4, 40px); } }
+
+/* Your-turn screen flash: two quick gold/white pulses, never blocks clicks. */
+.turn-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  background: radial-gradient(circle at center, rgba(255, 250, 230, 0.55), rgba(232, 194, 106, 0.4));
+  opacity: 0;
+  animation: turn-flash-pulse 380ms ease-out 2 forwards;
+}
+@keyframes turn-flash-pulse {
+  0% { opacity: 0; }
+  30% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .turn-flash {
+    animation: turn-flash-soft 600ms ease-in-out 1 forwards;
+  }
+}
+@keyframes turn-flash-soft {
+  0% { opacity: 0; }
+  50% { opacity: 0.35; }
+  100% { opacity: 0; }
+}

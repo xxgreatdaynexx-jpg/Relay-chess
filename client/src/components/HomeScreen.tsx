@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { loadName, saveName } from '@/lib/playerName';
 import { RulesDialog } from '@/components/RulesDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,7 +32,11 @@ export function HomeScreen({
   onLeaderboard: () => void;
 }) {
   const saved = loadSession();
-  const [name, setName] = useState(saved?.name ?? '');
+  const [name, setNameRaw] = useState(() => loadName() || saved?.name || '');
+  const setName = (value: string) => {
+    setNameRaw(value);
+    saveName(value);
+  };
   const [code, setCode] = useState(initialCode);
   const [clockId, setClockId] = useState<ClockId>('10+0');
   const [mode, setMode] = useState<GameMode>('2v2');

@@ -159,11 +159,13 @@ export function RoomScreen({
   }, [yourTurn, state.seatToMove, state.status, state.code]);
 
   const wasYourTurn = useRef<boolean | null>(null);
+  const [turnFlash, setTurnFlash] = useState(0);
   useEffect(() => {
     const previous = wasYourTurn.current;
     wasYourTurn.current = yourTurn;
     if (!becameYourTurn(previous, yourTurn)) return;
     playYourTurn();
+    setTurnFlash((n) => n + 1);
     if (!document.hidden) return;
     const normal = document.title;
     let flip = false;
@@ -514,6 +516,7 @@ export function RoomScreen({
 
   return (
     <div className="play">
+      {turnFlash > 0 && <div key={turnFlash} className="turn-flash" aria-hidden="true" data-testid="turn-flash" />}
       <header className="area-hdr flex flex-col gap-2">{header}{offline}</header>
 
       <section className="area-teams">
