@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { RulesDialog } from '@/components/RulesDialog';
+import { ParticleMorph } from '@/components/ParticleMorph';
 import type { GameType } from '../../../shared/types';
 
 type Panel = {
@@ -57,6 +58,8 @@ function MiniBoard({ kind }: { kind: GameType }) {
 export function ScrollIntro({ onPick }: { onPick: (game: GameType) => void }) {
   const refs = useRef<Array<HTMLElement | null>>([]);
   const [active, setActive] = useState(0);
+  const slotRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const slots = useCallback(() => slotRefs.current, []);
 
   useEffect(() => {
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -93,6 +96,7 @@ export function ScrollIntro({ onPick }: { onPick: (game: GameType) => void }) {
 
   return (
     <div className="si-wrap" data-testid="scroll-intro">
+      <ParticleMorph slots={slots} />
       <nav className="si-dots" aria-label="Games">
         {PANELS.map((p, i) => (
           <button key={p.id} type="button" className={active === i ? 'on' : ''} aria-current={active === i} aria-label={`Relay ${p.accent}`}
@@ -114,7 +118,7 @@ export function ScrollIntro({ onPick }: { onPick: (game: GameType) => void }) {
                 <RulesDialog />
               </div>
             </div>
-            <MiniBoard kind={p.id} />
+            <div className="si-visual" ref={(el) => { slotRefs.current[i] = el; }} data-testid={`visual-${p.id}`}><MiniBoard kind={p.id} /></div>
             <ol className="si-steps" aria-label={`How ${p.accent} works`} data-testid={`how-${p.id}`}>
               {p.steps.map(([t, d], k) => (
                 <li key={t}><span>0{k + 1}</span><strong>{t}</strong><p>{d}</p></li>
