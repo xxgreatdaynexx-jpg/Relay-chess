@@ -1,5 +1,6 @@
 import type { MoveGrade, MoveMark } from '../shared/types.js';
 import { stockfishSearchLines } from './hints.js';
+import { classifyMove, type MoveQuality } from '../shared/chessStats.js';
 
 /** A move is a blunder when at least 80% of the legal moves score strictly better. */
 export const BLUNDER_DEPTH = 2;
@@ -97,7 +98,7 @@ export function beginBlunderCheck(input: {
   playedUci: string;
   ply: number;
   destination: string;
-  accept: (mark: MoveMark | null, ranked: boolean) => boolean;
+  accept: (mark: MoveMark | null, ranked: boolean, quality?: MoveQuality | null) => boolean;
 }): void {
   if (input.ucis.length < 5) {
     input.accept(null, false);
@@ -109,7 +110,8 @@ export function beginBlunderCheck(input: {
     .then((scores) => {
       const grade = gradeMove(scores ?? [], playedUci, ucis.length);
       const mark = grade ? { square: destination, ply, at: Date.now(), grade } : null;
-      if (accept(mark, true) && mark) onReady?.(code);
+      const quality = classifyMove(scores ?? [], playedUci, ucis.length);
+      if (accept(mark, true, quality) && mark) onReady?.(code);
     })
     .catch(() => {
       accept(null, false);

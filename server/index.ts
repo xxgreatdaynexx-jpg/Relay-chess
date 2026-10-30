@@ -1,4 +1,5 @@
 import { initArenaStorage } from './arena-store.js';
+import { initChessStatsStorage } from './chess-stats.js';
 import { createApp } from './app.js';
 import { initLeaderboardStorage } from './leaderboard.js';
 import { initCasinoStorage } from './casino-store.js';
@@ -7,6 +8,7 @@ import { initAccountStorage } from './accounts.js';
 await initLeaderboardStorage();
 await initCasinoStorage();
 await initArenaStorage();
+await initChessStatsStorage();
 await initAccountStorage();
 
 const port = Number(process.env.PORT) || 4317;

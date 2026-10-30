@@ -2,7 +2,7 @@ import { TopTab } from '@/components/TopTabs';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useRef, useState } from 'react';
 import { CardFace } from '@/components/SolitairePanel';
-import { CasinoLeaderboard, NamePrompt, ResetChips } from '@/components/CasinoCommon';
+import { NamePrompt, ResetChips } from '@/components/CasinoCommon';
 import { handValue, type BJSeatView, type BJTableView } from '../../../shared/casino';
 import { emitCasino, useCountdown, useSavedName } from '@/lib/casino';
 import { socket } from '@/lib/net';
@@ -24,7 +24,7 @@ export function BlackjackPanel() {
   const winRef = useRef<HTMLDivElement>(null);
   const win = useWindowDrag('blackjack', winRef);
   const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) === '1');
-  const [tab, setTab] = useState<'table' | 'board'>('table');
+  const [tab, setTab] = useState<'table'>('table');
   const [name] = useSavedName();
   const [t, setT] = useState<BJTableView | null>(null);
   const [bet, setBet] = useState(25);
@@ -101,9 +101,7 @@ export function BlackjackPanel() {
             {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" title="Reset position" onClick={win.reset}>⟲</button>}
             <button type="button" className="ml-auto" aria-label="Close blackjack" onClick={() => setOpen(false)}>✕</button>
           </div>
-          {tab === 'board' ? (
-            <CasinoLeaderboard you={name} />
-          ) : !name ? (
+          {!name ? (
             <NamePrompt />
           ) : (
             <>

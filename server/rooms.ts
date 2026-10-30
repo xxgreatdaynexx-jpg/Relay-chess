@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { RelayGame, type Timing } from './engine.js';
 import { GameError } from './errors.js';
 import { beginBlunderCheck } from './blunders.js';
+import { getChessStats } from './chess-stats.js';
 import { peekHint, requestHint } from './hints.js';
 import { getLeaderboard, normalizeName } from './leaderboard.js';
 import { moveUci, openingName } from './openings.js';
@@ -443,7 +444,9 @@ export class Room {
       playedUci: moveUci(played),
       ply,
       destination: played.to,
-      accept: (mark, ranked) => {
+      accept: (mark, ranked, quality) => {
+        const mover = this.nameFor(played.seat);
+        if (quality && mover) getChessStats().record(mover, quality);
         if (token !== this.blunderSeq || this.game.ply() !== ply) return false;
         this.moveMark = mark;
         const hit = ranked ? recordStreak(this.streaks, played.seat, mark?.grade ?? null, legal.length) : null;

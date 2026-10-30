@@ -1,6 +1,6 @@
 import { TopTab } from '@/components/TopTabs';
 import { useEffect, useRef, useState } from 'react';
-import { CasinoLeaderboard, NamePrompt, ResetChips } from '@/components/CasinoCommon';
+import { NamePrompt, ResetChips } from '@/components/CasinoCommon';
 import { CardFace } from '@/components/SolitairePanel';
 import { emitCasino, useSavedName } from '@/lib/casino';
 import { HoldemTableView } from '@/components/HoldemTable';
@@ -17,14 +17,14 @@ export function PokerPanel() {
   const winRef = useRef<HTMLDivElement>(null);
   const win = useWindowDrag('poker', winRef);
   const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) === '1');
-  const [tab, setTab] = useState<'holdem' | 'play' | 'board'>(() => (localStorage.getItem('relay-poker-mode') === 'play' ? 'play' : 'holdem'));
+  const [tab, setTab] = useState<'holdem' | 'play'>(() => (localStorage.getItem('relay-poker-mode') === 'play' ? 'play' : 'holdem'));
   const [name] = useSavedName();
   const [v, setV] = useState<PokerView | null>(null);
   const [hold, setHold] = useState<boolean[]>([false, false, false, false, false]);
   const [bet, setBet] = useState(10);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (tab !== 'board') localStorage.setItem('relay-poker-mode', tab); }, [tab]);
+  useEffect(() => { localStorage.setItem('relay-poker-mode', tab); }, [tab]);
   useEffect(() => { localStorage.setItem(OPEN_KEY, open ? '1' : '0'); }, [open]);
 
   useEffect(() => {
@@ -57,7 +57,7 @@ export function PokerPanel() {
             {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" onClick={win.reset}>⟲</button>}
             <button type="button" className="ml-auto" aria-label="Close poker" onClick={() => setOpen(false)}>✕</button>
           </div>
-          {tab === 'board' ? <CasinoLeaderboard you={name} /> : !name ? <NamePrompt /> : tab === 'holdem' ? <HoldemTableView name={name} /> : (
+          {!name ? <NamePrompt /> : tab === 'holdem' ? <HoldemTableView name={name} /> : (
             <div className="bj-table">
               <div className="bj-status" data-testid="vp-status">
                 {dealt ? 'Tap cards to hold, then Draw.' : v?.result ? `${v.result.label}${v.result.net > 0 ? ` · won ${v.result.net}` : v.result.net === 0 ? ' · stake back' : ''}` : 'Pick a bet and Deal.'}

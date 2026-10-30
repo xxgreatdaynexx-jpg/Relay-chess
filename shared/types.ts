@@ -147,6 +147,13 @@ export interface LeaderboardRow {
   draws: number;
   played: number;
   winRate: number;
+  /** Rated moves and their quality (absent on older servers). */
+  moves?: number;
+  accuracy?: number | null;
+  brilliant?: number;
+  great?: number;
+  mistake?: number;
+  blunder?: number;
 }
 
 /** Thinking time one seated player has used this game (not the team clock). */

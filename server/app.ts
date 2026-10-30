@@ -1,3 +1,4 @@
+import { getChessStats } from './chess-stats.js';
 import { getArenaLedger } from './arena-store.js';
 import express from 'express';
 import { createServer, type Server as HttpServer } from 'node:http';
@@ -26,7 +27,8 @@ export async function createApp(): Promise<AppContext> {
   app.get('/api/leaderboard', async (_req, res) => {
     const board = getLeaderboard();
     await board.refresh();
-    res.json({ rows: board.standings(), source: board.usingDatabase ? 'postgres' : 'memory' });
+    const stats = getChessStats();
+    res.json({ rows: board.standings().map((row) => ({ ...row, ...stats.statsFor(row.name) })), source: board.usingDatabase ? 'postgres' : 'memory' });
   });
 
   app.get('/api/arena-leaderboard', (_req, res) => {
