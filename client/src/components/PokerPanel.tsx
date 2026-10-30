@@ -1,3 +1,4 @@
+import { TopTab } from '@/components/TopTabs';
 import { useEffect, useRef, useState } from 'react';
 import { CasinoLeaderboard, NamePrompt, ResetChips } from '@/components/CasinoCommon';
 import { CardFace } from '@/components/SolitairePanel';
@@ -46,14 +47,13 @@ export function PokerPanel() {
   const dealt = v?.phase === 'dealt';
   return (
     <div className={`cx-wrap pk-wrap ${open ? 'cx-open' : ''}`} data-testid="poker">
-      <button type="button" className="sol-tab cx-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="poker-tab">🃏 Poker</button>
+      <TopTab id="poker"><button type="button" className="sol-tab cx-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="poker-tab">🃏 Poker</button></TopTab>
       {open && (
         <div className={"sol-panel bj-panel cx-panel" + win.className} role="dialog" aria-label="Poker" ref={winRef} style={win.style} onPointerDownCapture={win.front}>
           {win.grips}
           <div {...win.bar}>
             <button type="button" className={`casino-tabbtn ${tab === 'holdem' ? 'on' : ''}`} onClick={() => setTab('holdem')} data-testid="poker-mode-holdem">Hold'em</button>
             <button type="button" className={`casino-tabbtn ${tab === 'play' ? 'on' : ''}`} onClick={() => setTab('play')}>Jacks or Better</button>
-            <button type="button" className={`casino-tabbtn ${tab === 'board' ? 'on' : ''}`} onClick={() => setTab('board')}>Leaderboard</button>
             {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" onClick={win.reset}>⟲</button>}
             <button type="button" className="ml-auto" aria-label="Close poker" onClick={() => setOpen(false)}>✕</button>
           </div>

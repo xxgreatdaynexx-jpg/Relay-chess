@@ -638,3 +638,32 @@ input {
 .he-odds { font-size: 11px; font-weight: 800; color: #ffd76a; }
 .he-spectating .he-seat.folded .he-odds { display: none; }
 .he-watchers { text-align: center; }
+
+/* ---- Unified leaderboard selector */
+.lb-switch { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 999px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); max-width: 100%; }
+.lb-switch-btn { padding: 8px 16px; min-height: 40px; border-radius: 999px; font-size: 14px; font-weight: 600; color: rgba(240,230,210,.7); }
+.lb-switch-btn.on { background: var(--color-brass, #c9a45c); color: #1a1408; }
+.lb-casino .casino-board { overflow-x: auto; border-radius: 1rem; border: 1px solid rgba(255,255,255,.1); padding: 8px; }
+.lb-casino .casino-board table { width: 100%; font-size: 14px; }
+@media (max-width: 480px) { .lb-switch { display: flex; } .lb-switch-btn { flex: 1; } }
+
+/* ---- Single top tab bar: every game tab lives here; panels open below it. */
+body { padding-top: 44px; }
+.top-tabs { position: fixed; left: 0; right: 0; top: 0; height: 40px; z-index: 48; display: flex; align-items: center; gap: 6px; padding: 0 10px; background: rgba(12,14,24,.82); backdrop-filter: blur(8px); box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+.top-tabs-slots { display: flex; gap: 6px; align-items: center; }
+.top-tab-slot:empty { display: none; }
+.top-tab-account { margin-left: auto; }
+.top-tabs .sol-tab { writing-mode: horizontal-tb !important; transform: none !important; border-radius: 9999px !important; padding: 4px 12px !important; font-size: 13px !important; white-space: nowrap; box-shadow: none; }
+.top-tabs .sol-tab[aria-expanded="true"] { background: #e8c26a; color: #1b1d2e; }
+.top-menu-btn { display: none; color: #fff6d8; font-weight: 700; font-size: 14px; padding: 4px 10px; border-radius: 8px; background: rgba(255,255,255,.1); }
+.app-panels .bj-wrap, .app-panels .rl-wrap, .app-panels .cx-wrap, .app-panels .sol-wrap, .app-panels .fps-wrap { display: contents; }
+.app-panels .sol-panel { position: fixed; top: 48px; left: 12px; right: auto; bottom: auto; z-index: 46; border-radius: 14px; animation: none; max-height: calc(100dvh - 60px); overflow: auto; }
+.app-panels .fps-panel { left: auto; right: 12px; overflow: hidden; }
+.app-panels .rl-panel, .app-panels .cx-panel { left: 24px; }
+@media (max-width: 520px) {
+  .top-menu-btn { display: block; }
+  .top-tabs-slots { display: none; position: absolute; left: 6px; top: 42px; flex-direction: column; align-items: stretch; padding: 6px; border-radius: 12px; background: rgba(12,14,24,.95); box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+  .top-tabs.menu-open .top-tabs-slots { display: flex; }
+  .top-tabs-slots .sol-tab { width: 100%; text-align: left; }
+  .app-panels .sol-panel, .app-panels .fps-panel { left: 4px; right: 4px; width: auto; top: 46px; max-height: calc(100dvh - 56px); }
+}

@@ -34,7 +34,7 @@ export function CasinoLeaderboard({ you }: { you: string }) {
           ))}
         </tbody>
       </table>
-      <div className="bj-label">Shared by blackjack and roulette · play money</div>
+      <div className="bj-label">All casino games share one chip balance · play money</div>
     </div>
   );
 }

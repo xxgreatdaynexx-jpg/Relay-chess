@@ -8,7 +8,7 @@ import { VolumeControl } from '@/components/VolumeControl';
 import { SolitairePanel } from '@/components/SolitairePanel';
 import { BlackjackPanel } from '@/components/BlackjackPanel';
 import { RoulettePanel } from '@/components/RoulettePanel';
-import { CasinoDock } from '@/components/CasinoDock';
+import { TopTabs } from '@/components/TopTabs';
 import { PokerPanel } from '@/components/PokerPanel';
 import { SlotsPanel } from '@/components/SlotsPanel';
 import { ArenaPanel } from '@/components/ArenaPanel';
@@ -172,15 +172,16 @@ export function App() {
 
   return (
     <>
+      <TopTabs />
       <VolumeControl />
-      <SolitairePanel />
-      <CasinoDock>
+      <div className="app-panels">
         <BlackjackPanel />
         <RoulettePanel />
         <PokerPanel />
         <SlotsPanel />
-      </CasinoDock>
-      <ArenaPanel />
+        <SolitairePanel />
+        <ArenaPanel />
+      </div>
       {leaderboard ? (
         <LeaderboardScreen
           onBack={() => {

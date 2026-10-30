@@ -1,3 +1,4 @@
+import { TopTab } from '@/components/TopTabs';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useRef, useState } from 'react';
 import { socket } from '@/lib/net';
@@ -30,9 +31,9 @@ export function ArenaPanel() {
   useEffect(() => localStorage.setItem(OPEN_KEY, open ? '1' : '0'), [open]);
   return (
     <div className={`fps-wrap ${open ? 'fps-open' : ''}`} data-testid="arena">
-      <button type="button" className="sol-tab fps-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="arena-tab">
+      <TopTab id="arena"><button type="button" className="sol-tab fps-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="arena-tab">
         {open ? '▴ Arena' : '🎯 Arena'}
-      </button>
+      </button></TopTab>
       {open && <ArenaGame onClose={() => setOpen(false)} />}
     </div>
   );

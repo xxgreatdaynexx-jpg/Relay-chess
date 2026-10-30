@@ -1,3 +1,4 @@
+import { TopTab } from '@/components/TopTabs';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CasinoLeaderboard, NamePrompt, ResetChips } from '@/components/CasinoCommon';
@@ -180,9 +181,9 @@ export function RoulettePanel() {
 
   return (
     <div className={`rl-wrap ${open ? 'rl-open' : ''}`} data-testid="roulette">
-      <button type="button" className="sol-tab rl-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="roulette-tab">
+      <TopTab id="roulette"><button type="button" className="sol-tab rl-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="roulette-tab">
         <span>🎡 Roulette</span>
-      </button>
+      </button></TopTab>
       {open && (
         <div className={"sol-panel rl-panel" + win.className} role="dialog" aria-label="Roulette" ref={winRef} style={win.style} onPointerDownCapture={win.front}>
           {win.grips}

@@ -2,8 +2,32 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { LeaderboardRow } from '../../../shared/types';
+import { CasinoLeaderboard } from '@/components/CasinoCommon';
+import { loadName } from '@/lib/playerName';
+
+export type BoardKind = 'chess' | 'casino';
+const BOARDS: Array<[BoardKind, string]> = [['chess', 'Chess'], ['casino', 'Casino chips']];
+const BOARD_KEY = 'relay-leaderboard-tab';
+function loadBoard(): BoardKind {
+  try { const v = localStorage.getItem(BOARD_KEY); return BOARDS.some(([k]) => k === v) ? (v as BoardKind) : 'chess'; } catch { return 'chess'; }
+}
+
+/** Chess / Casino selector; remembers the last choice. */
+export function BoardSwitch({ value, onChange }: { value: BoardKind; onChange: (k: BoardKind) => void }) {
+  return (
+    <div className="lb-switch" role="tablist" aria-label="Leaderboard">
+      {BOARDS.map(([k, label]) => (
+        <button key={k} type="button" role="tab" aria-selected={value === k} className={cn('lb-switch-btn', value === k && 'on')} data-testid={`lb-tab-${k}`}
+          onClick={() => { onChange(k); try { localStorage.setItem(BOARD_KEY, k); } catch { /* ignore */ } }}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function LeaderboardScreen({ onBack, onMainMenu }: { onBack: () => void; onMainMenu?: () => void }) {
+  const [board, setBoard] = useState<BoardKind>(loadBoard);
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col px-4 py-5 sm:px-8">
       <header className="flex items-center justify-between gap-3">
@@ -22,8 +46,11 @@ export function LeaderboardScreen({ onBack, onMainMenu }: { onBack: () => void; 
           </Button>
         </div>
       </header>
-      <div className="mt-6">
-        <LeaderboardTable />
+      <div className="mt-5">
+        <BoardSwitch value={board} onChange={setBoard} />
+      </div>
+      <div className="mt-4" data-testid={`lb-view-${board}`}>
+        {board === 'chess' ? <LeaderboardTable /> : <div className="lb-casino"><CasinoLeaderboard you={loadName()} /></div>}
       </div>
     </div>
   );

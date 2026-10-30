@@ -1,3 +1,4 @@
+import { TopTab } from '@/components/TopTabs';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useRef, useState } from 'react';
 import { autoTarget, deal, draw, isValidState, isWon, move, pickup, isRed, type Card, type GameState, type Loc, type Target } from '@/solitaire/logic';
@@ -133,9 +134,9 @@ export function SolitairePanel() {
 
   return (
     <div className={`sol-wrap ${open ? 'sol-open' : ''}`} data-testid="solitaire">
-      <button type="button" className="sol-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="solitaire-tab">
+      <TopTab id="solitaire"><button type="button" className="sol-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="solitaire-tab">
         🃏 Solitaire <span aria-hidden>{open ? '▾' : '▴'}</span>
-      </button>
+      </button></TopTab>
       {open && (
         <div className={"sol-panel" + win.className} role="dialog" aria-label="Solitaire" ref={winRef} style={win.style} onPointerDownCapture={win.front}>
           {win.grips}
