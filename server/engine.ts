@@ -25,7 +25,7 @@ import { GameError } from './errors.js';
 /** Network lag cushion before a clock is treated as a flag fall. */
 export const LAG_GRACE_MS = 300;
 
-interface Clock {
+export interface Clock {
   initialMs: number;
   incrementMs: number;
   remaining: Record<Side, number>;
@@ -107,18 +107,18 @@ export class RelayGame {
   escape: KingEscape | null = null;
   missedMate: MissedMateCall | null = null;
   /** Per-seat thinking time. Separate from the team clock; runs without a clock too. */
-  private think = new Map<Seat, { totalMs: number; moves: number; longestMs: number; name?: string }>();
-  private turnStartedAt: number | null = null;
+  protected think = new Map<Seat, { totalMs: number; moves: number; longestMs: number; name?: string }>();
+  protected turnStartedAt: number | null = null;
   readonly rematchVotes = new Set<Seat>();
 
-  private chess = new Chess();
-  private moves: MoveRecord[] = [];
-  private basePly = 0;
+  protected chess = new Chess();
+  protected moves: MoveRecord[] = [];
+  protected basePly = 0;
   /** Plies that are not real moves, such as a checkmate bailout teleport. */
-  private extraPlies = 0;
+  protected extraPlies = 0;
   private readonly bailoutsUsed = new Set<Side>();
-  private clock: Clock | null;
-  private readonly setup: TableSetup;
+  protected clock: Clock | null;
+  protected readonly setup: TableSetup;
 
   constructor(timing: Timing | null, setup: TableSetup = RELAY_2V2) {
     this.setup = setup;
@@ -297,6 +297,11 @@ export class RelayGame {
     const side = seatSide(seat);
     if (this.clock && this.clock.remaining[side] < 0) this.clock.remaining[side] = 0;
 
+    this.playOnBoard(seat, input, now, side, snapshot, name);
+  }
+
+  /** Rule-specific half of a move: validate, apply, record, detect the end. Overridden by checkers. */
+  protected playOnBoard(seat: Seat, input: MoveInput, now: number, side: Side, snapshot: Clock | null, name?: string): void {
     const fenBefore = this.chess.fen();
     const mates = matingMoves(fenBefore);
     let played: { san: string; from: string; to: string } | null = null;
@@ -501,7 +506,7 @@ export class RelayGame {
     return false;
   }
 
-  private finishTimeout(flagged: Side): void {
+  protected finishTimeout(flagged: Side): void {
     const opponent = opposite(flagged);
     const oppColor: Color = opponent === 'white' ? 'w' : 'b';
     const winner = canPossiblyMate(this.chess, oppColor) ? opponent : null;
@@ -526,7 +531,7 @@ export class RelayGame {
     this.finish({ type: 'checkmate', winner: opposite(side) });
   }
 
-  private finish(result: GameResult): void {
+  protected finish(result: GameResult): void {
     if (this.result) return;
     this.result = result;
     this.status = 'ended';
@@ -535,8 +540,13 @@ export class RelayGame {
     if (this.clock) this.clock.running = false;
   }
 
-  private reset(now: number): void {
+  /** Put the starting position back on the board (rematch). */
+  protected resetPosition(): void {
     this.chess = new Chess();
+  }
+
+  protected reset(now: number): void {
+    this.resetPosition();
     this.moves = [];
     this.basePly = 0;
     this.extraPlies = 0;
@@ -578,7 +588,7 @@ export class RelayGame {
   }
 
   /** Credit the seat to move with the time since its turn began. */
-  private addThink(seat: Seat, now: number, completedMove: boolean, name?: string): void {
+  protected addThink(seat: Seat, now: number, completedMove: boolean, name?: string): void {
     const started = this.turnStartedAt;
     this.turnStartedAt = now;
     const stat = this.think.get(seat) ?? { totalMs: 0, moves: 0, longestMs: 0 };
@@ -598,7 +608,7 @@ export class RelayGame {
     this.turnStartedAt = null;
   }
 
-  private cloneClock(): Clock | null {
+  protected cloneClock(): Clock | null {
     if (!this.clock) return null;
     return {
       ...this.clock,

@@ -224,6 +224,31 @@ export async function initLeaderboardStorage(): Promise<void> {
   if (ok) console.log(`[leaderboard] connected to postgres (${board.standings().length} players loaded)`);
 }
 
+let checkers = new Leaderboard(databaseUrl() ? null : checkersLeaderboardPath());
+
+export function checkersLeaderboardPath(): string {
+  return process.env.CHECKERS_LEADERBOARD_PATH ?? path.join(path.dirname(leaderboardPath()), 'checkers-leaderboard.json');
+}
+
+/** Relay Checkers standings: same shape as chess, own Neon table (checkers_leaderboard). */
+export function getCheckersLeaderboard(): Leaderboard {
+  return checkers;
+}
+
+export async function initCheckersLeaderboardStorage(): Promise<void> {
+  const url = databaseUrl();
+  if (!url) return;
+  const board = new Leaderboard(null);
+  const ok = await board.attachStore(createPgStore(url, 'checkers_leaderboard'));
+  checkers = board;
+  if (ok) console.log(`[leaderboard] checkers table ready (${board.standings().length} players loaded)`);
+}
+
+export function resetCheckersLeaderboard(file: string | null = null): Leaderboard {
+  checkers = new Leaderboard(file);
+  return checkers;
+}
+
 export function resetLeaderboard(file: string | null = leaderboardPath()): Leaderboard {
   current = new Leaderboard(file);
   return current;

@@ -26,6 +26,18 @@ export function RulesDialog() {
           <p>
             Offer a draw on your turn. Anyone on the other side can accept, or they can decline by answering or by moving. Resigning loses for your side. A clock, if you set one, is shared by the side and pauses if the player to move disconnects.
           </p>
+          <p data-testid="rules-checkers">
+            <span className="font-medium text-cream">Relay Checkers</span> uses American checkers on the same tables and seats. Men move one square
+            diagonally forward; captures are mandatory and a jump must continue while another capture is available. A man that reaches the far row
+            is crowned and its move ends; kings move and jump one square in any diagonal. You win when the other side has no pieces or no legal move.
+            Threefold repetition and forty moves each without a capture or crowning are draws. White (light discs) moves first so the relay seat
+            order matches chess; in tournament checkers dark moves first.
+          </p>
+          <p>
+            <span className="font-medium text-cream">Missed win (checkers):</span> if you had a move that won on the spot (left the other side with
+            no pieces or no legal move) and played something else, every piece of yours that could have made a winning move is removed, from its
+            new square if it just moved. If that leaves you with no pieces, you lose.
+          </p>
           <p>Refresh the page and you keep your seat. Send the invite link to fill the open seats.</p>
         </div>
       </DialogContent>

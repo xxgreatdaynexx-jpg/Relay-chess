@@ -4,7 +4,8 @@ import { GameError } from './errors.js';
 import { beginBlunderCheck } from './blunders.js';
 import { getChessStats } from './chess-stats.js';
 import { peekHint, requestHint } from './hints.js';
-import { getLeaderboard, normalizeName } from './leaderboard.js';
+import { getCheckersLeaderboard, getLeaderboard, normalizeName } from './leaderboard.js';
+import { CheckersGame } from './checkers-game.js';
 import { moveUci, openingName } from './openings.js';
 import { hasMateInOne } from '../shared/mate.js';
 import { recordStreak } from '../shared/streak.js';
@@ -34,6 +35,7 @@ import {
   type TableSetup,
   type TableSummary,
   type TeamsBanner,
+  type GameType,
 } from '../shared/types.js';
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -65,6 +67,7 @@ export class Room {
   lastActivity = Date.now();
   lastClockPush = 0;
   readonly game: RelayGame;
+  readonly gameType: GameType;
 
   private members = new Map<string, Member>();
   private sockets = new Map<string, string>();
@@ -85,14 +88,15 @@ export class Room {
   /** Randomness source for scrambles; swappable in tests. */
   random: () => number = () => randomBytes(4).readUInt32BE(0) / 0x1_0000_0000;
 
-  constructor(code: string, preset: ClockPreset, setup: TableSetup = { mode: '2v2', pairSide: null }) {
+  constructor(code: string, preset: ClockPreset, setup: TableSetup = { mode: '2v2', pairSide: null }, gameType: GameType = 'chess') {
+    this.gameType = gameType;
     this.code = code;
     this.presetId = preset.id;
     this.setup = setup;
     this.scrambleRematch = setup.mode !== '1v1';
     const timing: Timing | null =
       preset.initialMs > 0 ? { initialMs: preset.initialMs, incrementMs: preset.incrementMs } : null;
-    this.game = new RelayGame(timing, setup);
+    this.game = gameType === 'checkers' ? new CheckersGame(timing, setup) : new RelayGame(timing, setup);
   }
 
   addMember(name: string): string {
@@ -146,6 +150,7 @@ export class Room {
     const clock = this.game.clockView(now);
     return {
       code: this.code,
+      gameType: this.gameType,
       mode: this.setup.mode,
       pairSide: this.setup.pairSide,
       label: modeLabel(this.setup),
@@ -224,9 +229,11 @@ export class Room {
     const legal = this.game.legalMoves();
     this.game.move(member.seat, input, now, member.name);
     const played = this.game.history().at(-1);
-    this.noteOpening(now);
-    if (played) this.noteBlunder(beforeFen, legal, played);
-    this.noteMateInOne();
+    if (this.gameType === 'chess') {
+      this.noteOpening(now);
+      if (played) this.noteBlunder(beforeFen, legal, played);
+      this.noteMateInOne();
+    }
     this.syncPresence(now);
     this.touch();
   }
@@ -332,6 +339,7 @@ export class Room {
     const described = raw ? describeResult(raw, (seat) => this.nameFor(seat)) : null;
     return {
       code: this.code,
+      gameType: this.gameType,
       status: this.game.status,
       clockPreset: this.presetId,
       mode: this.setup.mode,
@@ -487,6 +495,7 @@ export class Room {
   }
 
   private hintsFor(seat: Seat | null): HintArrow[] {
+    if (this.gameType !== 'chess') return [];
     if (!seat || this.game.status !== 'playing' || this.game.bailout) return [];
     const mover = this.game.seatToMove();
     if (!mover) return [];
@@ -520,7 +529,7 @@ export class Room {
         .filter((seat) => seatSide(seat) === side)
         .map((seat) => name(seat))
         .filter((value): value is string => Boolean(value));
-    getLeaderboard().record({
+    (this.gameType === 'checkers' ? getCheckersLeaderboard() : getLeaderboard()).record({
       winner: result.winner,
       white: named('white'),
       black: named('black'),
@@ -528,10 +537,10 @@ export class Room {
   }
 }
 
-export function createRoom(preset: ClockPreset, setup?: TableSetup): Room {
+export function createRoom(preset: ClockPreset, setup?: TableSetup, gameType: GameType = 'chess'): Room {
   let code = makeCode();
   while (rooms.has(code)) code = makeCode();
-  const room = new Room(code, preset, setup);
+  const room = new Room(code, preset, setup, gameType);
   rooms.set(code, room);
   return room;
 }

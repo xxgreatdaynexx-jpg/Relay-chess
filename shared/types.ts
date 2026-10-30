@@ -7,7 +7,12 @@ export const SEATS = ['white1', 'black1', 'white2', 'black2'] as const satisfies
 export type Side = 'white' | 'black';
 export type Promotion = 'q' | 'r' | 'b' | 'n';
 
+export type GameType = 'chess' | 'checkers';
+
 export type ResultType =
+  | 'no_moves'
+  | 'forty_move'
+  | 'missed_win'
   | 'checkmate'
   | 'stalemate'
   | 'resignation'
@@ -29,6 +34,10 @@ export interface LegalMove {
   to: string;
   promotion?: Promotion;
   san: string;
+  /** Checkers: landing squares of a multi-jump, ending with `to`. */
+  path?: string[];
+  /** Checkers: squares of the pieces this move captures. */
+  captures?: string[];
 }
 
 export interface MoveRecord {
@@ -169,6 +178,8 @@ export interface ThinkTime {
 
 export interface PublicState {
   code: string;
+  /** Which board game this table plays. */
+  gameType: GameType;
   status: 'lobby' | 'playing' | 'ended';
   clockPreset: string;
   mode: GameMode;
@@ -231,6 +242,7 @@ export interface Ack {
 
 export interface TableSummary {
   code: string;
+  gameType: GameType;
   mode: GameMode;
   pairSide: Side | null;
   label: string;
@@ -248,6 +260,8 @@ export interface MoveInput {
   from: string;
   to: string;
   promotion?: Promotion;
+  /** Checkers: intermediate landing squares of a multi-jump. */
+  via?: string[];
 }
 
 export const CLOCK_PRESETS = [
@@ -426,6 +440,12 @@ export function describeResult(
         };
       }
       return { headline: 'Out of time', detail: `${loser} ran out of time. ${winner} wins.` };
+    case 'no_moves':
+      return { headline: 'No moves left', detail: `${loser} has no pieces or no legal moves. ${winner} wins.` };
+    case 'forty_move':
+      return { headline: 'Forty-move rule', detail: 'Forty moves each with no capture and no crowning. Draw.' };
+    case 'missed_win':
+      return { headline: 'Missed win', detail: `${loser} skipped a winning move and lost their last piece for it. ${winner} wins.` };
     case 'missed_mate':
       return {
         headline: 'Missed mate',

@@ -17,6 +17,7 @@ import { becameYourTurn, shouldTimeAlarm } from '../../../shared/alerts';
 import { queenMoveSound } from '../../../shared/capture';
 import { BLUNDER_FLASH_MS, DOUBLE_FLASH_MS, FORK_SOUND_DELAY_MS, FORK_SOUND_WAIT_MS, MATE_IN_ONE_SOUND_DELAY_MS, OPENING_FLASH_MS, POOF_HOLD_MS, QUEEN_CAPTURE_SOUND_DELAY_MS, STREAK_FLASH_MS, STREAK_SOUND_DELAY_MS, flashIsFresh } from '../../../shared/flash';
 import { isFork } from '../../../shared/fork';
+import { applyMove as applyCheckers, findMove as findCheckers, parseFen as parseCheckers, toFen as checkersFen } from '../../../shared/checkers';
 import { loadSession, prettyCode } from '@/lib/session';
 import { formatClock } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -116,6 +117,7 @@ export function RoomScreen({
     previousMoves.current = state.moves.length;
     if (!before || before === state.fen || state.moves.length === 0 || state.moves.length === movesBefore) return;
     const move = state.moves[state.moves.length - 1];
+    if (state.gameType === 'checkers') return;
     const queenSound = queenMoveSound(before, move.from, move.to);
     if (queenSound === 'death') setBoom({ token: `${state.ply}:${move.to}`, square: move.to });
     const forkNow = isFork(state.fen, move.to);
@@ -210,7 +212,9 @@ export function RoomScreen({
     playTimeAlarm();
   }, [clock, myClockMs, mySide, state.ply, state.status]);
 
+  const checkers = state.gameType === 'checkers';
   const inCheck = useMemo(() => {
+    if (checkers) return false;
     const fen = frozenFen ?? pending?.fen;
     if (!fen) return state.inCheck;
     try {
@@ -218,7 +222,7 @@ export function RoomScreen({
     } catch {
       return false;
     }
-  }, [frozenFen, pending, state.inCheck]);
+  }, [frozenFen, pending, state.inCheck, checkers]);
 
   async function act(event: string, data?: unknown) {
     setBusy(true);
@@ -228,9 +232,9 @@ export function RoomScreen({
     return res.ok;
   }
 
-  async function sendMove(move: { from: string; to: string; promotion?: 'q' | 'r' | 'b' | 'n' }) {
+  async function sendMove(move: { from: string; to: string; promotion?: 'q' | 'r' | 'b' | 'n'; via?: string[] }) {
     if (getSettings().confirmMoves && !window.confirm(`Play ${move.from}→${move.to}${move.promotion ? `=${move.promotion.toUpperCase()}` : ''}?`)) return;
-    const next = previewFen(state.fen, move);
+    const next = checkers ? previewCheckers(state.fen, move) : previewFen(state.fen, move);
     if (next) setPending({ fen: next, ply: state.ply + 1, from: move.from, to: move.to });
     const res = await request('move', move);
     if (!res.ok) {
@@ -388,10 +392,11 @@ export function RoomScreen({
     const key = `${missed.at}:${missed.ply}`;
     if (missedToast.current === key) return;
     missedToast.current = key;
-    const pieces = missed.removed.map((r) => `${PIECE_WORD[r.piece] ?? r.piece} (${r.square})`).join(' and ');
-    onToast(`💀 Missed mate! ${missed.name} skipped ${missed.missed[0]} — ${pieces} lost`);
+    const checkersGame = state.gameType === 'checkers';
+    const pieces = missed.removed.map((r) => `${checkersGame ? (r.piece === 'k' ? 'king' : 'man') : (PIECE_WORD[r.piece] ?? r.piece)} (${r.square})`).join(' and ');
+    onToast(`💀 ${checkersGame ? 'Missed win' : 'Missed mate'}! ${missed.name} skipped ${missed.missed[0]} — ${pieces} lost`);
     playBoom();
-  }, [state.missedMate, state.ply, state.serverNow, onToast]);
+  }, [state.missedMate, state.ply, state.serverNow, state.gameType, onToast]);
 
   async function payDayne() {
     if (payPhase !== 'idle' || !state.bailout) return;
@@ -557,6 +562,7 @@ export function RoomScreen({
               fork={fork}
               boom={boom}
               poof={poof}
+              variant={checkers ? 'checkers' : 'chess'}
               onMove={sendMove}
             />
           </div>
@@ -631,7 +637,7 @@ export function RoomScreen({
                   : `Rematch${state.scrambleRematch ? ' (scramble)' : ''} · ${state.rematchVotes.length}/${active.length}`}
               </Button>
             )}
-            {state.status === 'ended' && state.moves.length > 0 && (
+            {state.status === 'ended' && state.moves.length > 0 && !checkers && (
               <Button variant="outline" onClick={onAnalyze} data-testid="analyze">
                 Analyze game
               </Button>
@@ -1073,4 +1079,10 @@ function useLiveClock(clock: ClockView | null) {
     active: clock.active,
     incrementMs: clock.incrementMs,
   };
+}
+
+function previewCheckers(fen: string, move: { from: string; to: string; via?: string[] }): string | null {
+  const pos = parseCheckers(fen);
+  const m = pos && findCheckers(pos, move.from, move.to, move.via);
+  return pos && m ? checkersFen(applyCheckers(pos, m)) : null;
 }

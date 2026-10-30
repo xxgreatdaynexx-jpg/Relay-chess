@@ -19,6 +19,7 @@ import {
   seatsFor,
   type ClockId,
   type GameMode,
+  type GameType,
   type Side,
   type TableSetup,
   type TableSummary,
@@ -43,6 +44,7 @@ export function HomeScreen({
   const [code, setCode] = useState(initialCode);
   const [clockId, setClockId] = useState<ClockId>('10+0');
   const [mode, setMode] = useState<GameMode>('2v2');
+  const [gameType, setGameType] = useState<GameType>('chess');
   const [pairSide, setPairSide] = useState<Side>('white');
   const [busy, setBusy] = useState<'create' | 'join' | 'return' | 'quick' | 'watch' | null>(null);
   const [localError, setLocalError] = useState('');
@@ -58,7 +60,7 @@ export function HomeScreen({
     setBusy('create');
     socket.connect();
     const setup: TableSetup = { mode, pairSide: uneven(mode) ? pairSide : null };
-    const res = await request('create_room', { name, clockId, mode: setup.mode, pairSide: setup.pairSide }, (ack) => {
+    const res = await request('create_room', { name, clockId, mode: setup.mode, pairSide: setup.pairSide, gameType }, (ack) => {
       if (!ack.token || !ack.code) return;
       saveSession({ token: ack.token, code: ack.code, name: name.trim() });
       window.history.pushState({}, '', `/r/${ack.code}`);
@@ -277,6 +279,29 @@ export function HomeScreen({
           <form onSubmit={create} className="rounded-2xl border border-white/10 bg-panel/80 p-5">
             <h2 className="font-serif text-2xl">Create a table</h2>
             <p className="mt-1 text-sm text-cream-dim">You'll get a short code and a link to send.</p>
+            <p className="mt-4 text-xs tracking-wide text-cream/70 uppercase">Board</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {(
+                [
+                  ['chess', 'Chess'],
+                  ['checkers', 'Checkers'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  data-testid={`game-${id}`}
+                  aria-pressed={gameType === id}
+                  onClick={() => setGameType(id)}
+                  className={cn(
+                    'rounded-full border px-3 py-1.5 text-sm',
+                    gameType === id ? 'border-brass bg-brass text-ink' : 'border-white/15 text-cream hover:bg-white/5',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <p className="mt-4 text-xs tracking-wide text-cream/70 uppercase">Game</p>
             <div className="mt-2 flex flex-wrap gap-2">
               {(
@@ -492,7 +517,7 @@ function TableList({
               <li key={row.code} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3" data-testid={`table-${row.code}`}>
                 <div className="min-w-[7rem]">
                   <div className="font-mono text-base tracking-[0.18em]">{prettyCode(row.code)}</div>
-                  <div className="text-[11px] tracking-wide text-brass uppercase">{modeLabel({ mode: row.mode, pairSide: row.pairSide })}</div>
+                  <div className="text-[11px] tracking-wide text-brass uppercase">{row.gameType === 'checkers' ? 'Checkers · ' : ''}{modeLabel({ mode: row.mode, pairSide: row.pairSide })}</div>
                 </div>
                 <div className="min-w-[8rem] text-sm">
                   <span

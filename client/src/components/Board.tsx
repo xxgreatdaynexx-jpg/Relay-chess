@@ -41,6 +41,7 @@ export function Board({
   fork = null,
   boom = null,
   poof = null,
+  variant = 'chess',
   onMove,
 }: {
   fen: string;
@@ -56,7 +57,9 @@ export function Board({
   fork?: { token: string; square: string } | null;
   boom?: { token: string; square: string } | null;
   poof?: { token: string; squares: string[] } | null;
-  onMove: (move: { from: string; to: string; promotion?: Promotion }) => void;
+  /** Checkers draws discs (p = man, k = king) from the same FEN-shaped string. */
+  variant?: 'chess' | 'checkers';
+  onMove: (move: { from: string; to: string; promotion?: Promotion; via?: string[] }) => void;
 }) {
   const pieces = useMemo(() => piecesFromFen(fen), [fen]);
   const king = inCheck ? kingSquare(fen) : null;
@@ -119,7 +122,8 @@ export function Board({
       return;
     }
     choose(null);
-    onMove({ from, to });
+    const path = options[0]?.path;
+    onMove(path && path.length > 1 ? { from, to, via: path.slice(0, -1) } : { from, to });
   }
 
   function choose(square: string | null) {
@@ -173,13 +177,13 @@ export function Board({
           const hide = dragPiece && drag?.from === square;
           const isLast = lastMove?.from === square || lastMove?.to === square;
           const isTarget = targets.has(square);
-          const capture = isTarget && Boolean(piece);
+          const capture = isTarget && (variant === 'checkers' ? Boolean(targets.get(square)?.some((m) => m.captures?.length)) : Boolean(piece));
           return (
             <button
               key={square}
               type="button"
               data-square={square}
-              aria-label={labelFor(square, piece)}
+              aria-label={variant === 'checkers' ? (piece ? `${square}, ${piece.color === 'w' ? 'white' : 'black'} ${piece.type === 'k' ? 'king' : 'man'}` : square) : labelFor(square, piece)}
               className={cn(
                 'relative block h-full w-full p-0',
                 dark ? 'bg-square-dark' : 'bg-square-light',
@@ -246,7 +250,8 @@ export function Board({
                 />
               )}
               {piece && !hide && (
-                <Piece
+                <Token
+                  variant={variant}
                   type={piece.type}
                   color={piece.color}
                   className="pointer-events-none absolute inset-[7%] h-[86%] w-[86%] drop-shadow-[0_1px_0_rgba(0,0,0,0.35)]"
@@ -337,7 +342,7 @@ export function Board({
             top: drag.y - squarePx * 0.72,
           }}
         >
-          <Piece type={dragPiece.type} color={dragPiece.color} className="h-full w-full drop-shadow-lg" />
+          <Token variant={variant} type={dragPiece.type} color={dragPiece.color} className="h-full w-full drop-shadow-lg" />
         </div>
       )}
       <Dialog open={Boolean(promo)} onOpenChange={(open) => !open && setPromo(null)}>
@@ -588,4 +593,25 @@ function labelFor(square: string, piece?: { type: PieceSymbol; color: 'w' | 'b' 
     k: 'king',
   };
   return `${square}, ${piece.color === 'w' ? 'white' : 'black'} ${names[piece.type]}`;
+}
+
+function Token({ variant, type, color, className }: { variant: 'chess' | 'checkers'; type: PieceSymbol; color: 'w' | 'b'; className?: string }) {
+  if (variant === 'chess') return <Piece type={type} color={color} className={className} />;
+  return <CheckerDisc king={type === 'k'} color={color} className={className} />;
+}
+
+/** Original checkers disc: ridged rim, inset face, crown for kings. */
+export function CheckerDisc({ king, color, className }: { king: boolean; color: 'w' | 'b'; className?: string }) {
+  const face = color === 'w' ? '#e9dcc2' : '#7a1f1f';
+  const rim = color === 'w' ? '#b9a67f' : '#4a1010';
+  const mark = color === 'w' ? '#7a5b2e' : '#f3c969';
+  return (
+    <svg viewBox="0 0 100 100" className={className} aria-hidden data-checker={king ? `${color}k` : `${color}p`}>
+      <circle cx="50" cy="54" r="40" fill={rim} />
+      <circle cx="50" cy="48" r="40" fill={face} stroke={rim} strokeWidth="3" />
+      <circle cx="50" cy="48" r="29" fill="none" stroke={rim} strokeWidth="2.5" opacity="0.7" />
+      <circle cx="50" cy="48" r="20" fill="none" stroke={rim} strokeWidth="1.5" opacity="0.45" />
+      {king && <path d="M30 58 L33 38 L42 49 L50 33 L58 49 L67 38 L70 58 Z" fill={mark} stroke={rim} strokeWidth="2" strokeLinejoin="round" />}
+    </svg>
+  );
 }

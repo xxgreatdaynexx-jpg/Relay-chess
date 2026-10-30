@@ -174,8 +174,9 @@ export function registerSockets(io: Server): void {
         const name = signedIn(socket);
         const preset = presetOrThrow(body.clockId);
         const setup = setupOrThrow(body.mode, body.pairSide);
+        const gameType = body.gameType === 'checkers' ? 'checkers' : 'chess';
         release(io, socket);
-        const room = createRoom(preset, setup);
+        const room = createRoom(preset, setup, gameType);
         const token = room.addMember(name);
         adopt(socket, room, token);
         ack?.({ ok: true, token, code: room.code });
@@ -606,14 +607,16 @@ export function cleanCode(input: unknown): string {
   return code;
 }
 
-export function cleanMove(input: unknown): { from: string; to: string; promotion?: Promotion } {
+export function cleanMove(input: unknown): { from: string; to: string; promotion?: Promotion; via?: string[] } {
   const body = asRecord(input);
+  const via = Array.isArray(body.via) ? body.via.filter((s): s is string => typeof s === 'string' && /^[a-h][1-8]$/.test(s)).slice(0, 12) : [];
   const from = body.from;
   const to = body.to;
   const promotion = body.promotion;
   if (typeof from !== 'string' || typeof to !== 'string' || !/^[a-h][1-8]$/.test(from) || !/^[a-h][1-8]$/.test(to)) {
     throw new GameError('Illegal move.');
   }
+  if (via.length) return { from, to, via };
   if (promotion == null || promotion === '') return { from, to };
   if (promotion !== 'q' && promotion !== 'r' && promotion !== 'b' && promotion !== 'n') {
     throw new GameError('Choose a queen, rook, bishop, or knight.');

@@ -5,7 +5,7 @@ import { createServer, type Server as HttpServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
-import { getLeaderboard } from './leaderboard.js';
+import { getCheckersLeaderboard, getLeaderboard } from './leaderboard.js';
 import { registerSockets, stopMaintenance } from './sockets.js';
 import { resetRooms } from './rooms.js';
 
@@ -29,6 +29,12 @@ export async function createApp(): Promise<AppContext> {
     await board.refresh();
     const stats = getChessStats();
     res.json({ rows: board.standings().map((row) => ({ ...row, ...stats.statsFor(row.name) })), source: board.usingDatabase ? 'postgres' : 'memory' });
+  });
+
+  app.get('/api/checkers-leaderboard', async (_req, res) => {
+    const board = getCheckersLeaderboard();
+    await board.refresh();
+    res.json({ rows: board.standings(), source: board.usingDatabase ? 'postgres' : 'memory' });
   });
 
   app.get('/api/arena-leaderboard', (_req, res) => {
