@@ -128,3 +128,14 @@ describe('equipped skins persist across matches', () => {
     fps.resetArena();
   });
 });
+
+describe('AR-15 skin set', () => {
+  it('has 30/20/5 original skins and keeps earlier weapons first (frozen ids)', () => {
+    const ar = SKINS.filter((s) => s.weapon === 'ar15');
+    expect(ar.filter((s) => s.rarity === 'common')).toHaveLength(30);
+    expect(ar.filter((s) => s.rarity === 'rare')).toHaveLength(20);
+    expect(ar.filter((s) => s.rarity === 'ultra')).toHaveLength(5);
+    expect(SKINS.slice(-55).every((s) => s.weapon === 'ar15')).toBe(true);
+    expect(SKIN_BY_ID.get('c-knife-0')?.weapon).toBe('knife');
+  });
+});
