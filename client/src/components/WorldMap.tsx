@@ -70,7 +70,9 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
   useEffect(() => {
     let last = true;
     const t = window.setInterval(() => {
-      const run = !casino && !document.querySelector('[aria-expanded="true"][data-testid$="-tab"], [aria-expanded="true"][data-testid="wallet-button"]');
+      // Only full-screen 3D games pause the city. Side drawers (chat, wallet, inventory) keep it live — pausing for
+      // them froze the map whenever chat was open.
+      const run = !casino && !document.querySelector('[aria-expanded="true"]:is([data-testid="arena-tab"],[data-testid="mines-tab"],[data-testid="factory-tab"])');
       if (run !== last) { last = run; worldRef.current?.setRunning(run); }
     }, 400);
     return () => window.clearInterval(t);

@@ -18,3 +18,12 @@ describe('city is home', () => {
     expect(app).toContain('showWorld ? null : (');
   });
 });
+
+describe('city never freezes behind drawers', () => {
+  it('pauses only for full-screen game panels, not chat/wallet', () => {
+    const pause = wm.slice(wm.indexOf('const run = '), wm.indexOf('if (run !== last)'));
+    expect(pause).not.toMatch(/\$="-tab"/);
+    expect(pause).not.toContain('chat-tab');
+    expect(pause).not.toContain('wallet-button');
+  });
+});
