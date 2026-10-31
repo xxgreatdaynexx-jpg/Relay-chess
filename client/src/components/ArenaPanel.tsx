@@ -7,7 +7,7 @@ import { LOOK_KEY, SENS_MAX, SENS_MIN, mouseLook, readLook, type LookPrefs, FPS_
 import { ArenaRenderer, minimapSize } from '@/lib/arenaRender';
 import type { Arena3D, Fx3D, Soldier3D, Viewmodel3D } from '@/lib/arena3d';
 import { prefersReducedMotion } from '@/lib/motion';
-import { predictShot, ShotPredictor, adoptServerAmmo, INPUT_SEND_MS } from '../../../shared/arenaPredict';
+import { predictShot, ShotPredictor, adoptServerAmmo, INPUT_SEND_MS, PREDICTED_ROCKET_MS } from '../../../shared/arenaPredict';
 import { INTERP_DELAY_MS, LOCAL_STEP_S, SnapBuffer, samplePlayers } from '../../../shared/netInterp';
 import { TagVisibility, tagVisible } from '@/lib/arenaTags';
 import type { ArenaMap } from '../../../shared/arenaMaps';
@@ -17,7 +17,7 @@ import { DEATH_HOLD_MS, fitSpeed, killCardText, sampleKillCam, shotsBetween, typ
 import { arenaLiveHud, kiaCanvasStrip } from '@/lib/arenaHud';
 import { feedParts, popupScale, POPUP_MS, type FeedItem } from '@/lib/arenaFeed';
 import {
-  AIRSTRIKE_RADIUS, RESPAWN_PICK_MS, canHold, isKnifeOnly, knifeOnlyAvailable, cheapestSpawn, isWeapon, spawnCost, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, weaponSpread, MoveHistory, reconcileMove, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
+  AIRSTRIKE_RADIUS, launchRocket, RESPAWN_PICK_MS, canHold, isKnifeOnly, knifeOnlyAvailable, cheapestSpawn, isWeapon, spawnCost, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, weaponSpread, MoveHistory, reconcileMove, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
   GRENADE_FUSE_MS, GRENADE_THROW_MS, GRENADES_PER_LIFE, stepGrenade, throwGrenade, type Grenade,
 } from '../../../shared/fps';
 
@@ -262,7 +262,15 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     const vt = Math.round(net.buf.renderTime(now));
     // Recoil kicks the camera AFTER the shot leaves: the bullet goes where the crosshair was (f3bbb4b kicked first, so AR-15 head shots sailed high).
     const kick = () => { if (spec.recoil) m.p = Math.min(MAX_PITCH, m.p + spec.recoil); };
-    if (spec.splash) { socket.emit('fps_shoot', { a: m.a, p: m.p, vt }); kick(); return; }
+    if (spec.splash) {
+      // Predicted rocket: flies from our muzzle the instant we fire (negative id); handed to the server's entity on echo.
+      const sid = pred.newSid();
+      const r = launchRocket(-sid, { id: m.id, x: m.x, y: m.y, z: m.z, a: m.a, p: m.p, crouch: m.crouch }, now);
+      fx.current.rockets.set(-sid, { id: -sid, x: r.x, y: r.y, z: r.z, vx: r.vx, vy: r.vy, vz: r.vz, at: now });
+      socket.emit('fps_shoot', { a: m.a, p: m.p, vt, sid });
+      kick();
+      return;
+    }
     // Predicted shot: raycast against the interpolated players we're displaying right now; tracer, impact,
     // hit marker, damage number and headshot ding show instantly. The server (lag-compensated to vt) confirms
     // or denies by echoing sid; kills, feed and chips only ever come from the server.
@@ -411,7 +419,12 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         if (v === 'deny') denyPrediction(now);
       } else if (s.o && s.rays) pushRays(s.w, s.o, s.rays, now);
       if (s.impact) { fx.current.booms.push({ ...s.impact, at: now, big: false }); playArenaExplosion(Math.hypot(s.impact.x - me.current.x, s.impact.y - me.current.y) + 4); }
-      if (s.rocket) fx.current.rockets.set(s.rocket.id, { ...s.rocket, at: now });
+      if (s.rocket) {
+        const local = s.id === me.current.id && typeof s.sid === 'number' ? fx.current.rockets.get(-s.sid) : undefined;
+        if (local) fx.current.rockets.delete(-s.sid!);
+        // Own rocket: keep the predicted launch time so it continues from where the local one is (no pop back).
+        fx.current.rockets.set(s.rocket.id, { ...s.rocket, at: local ? local.at : now });
+      }
     };
     const onKill = (k: { killer: string; victim: string; killerId: string | null; victimId: string; cause: string; headshot?: boolean; noscope?: boolean }) => {
       const self = k.killerId === k.victimId || !k.killerId;
@@ -713,8 +726,9 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       // Rockets: the server snapshot is the truth; extrapolate it (and brand-new launches) to now.
       const rockets = new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number; seek?: number }>();
       for (const r of fx.current.rockets.values()) if (now - r.at < ROCKET_LIFE_MS) rockets.set(r.id, r);
-      if (snap) for (const r of snap.rockets ?? []) rockets.set(r.id, { ...r, at: snap.recv });
-      fx.current.rockets = new Map([...rockets].filter(([id, r]) => now - r.at < ROCKET_LIFE_MS && (!snap || (snap.rockets ?? []).some((q) => q.id === id) || snap.recv < r.at)));
+      // Own rockets: a snapshot is ~one-way-latency old, so date it back to keep the shooter's view in the present.
+      if (snap) for (const r of snap.rockets ?? []) rockets.set(r.id, { ...r, at: snap.recv - (r.ownerId === m.id ? net.ping / 2 : 0) });
+      fx.current.rockets = new Map([...rockets].filter(([id, r]) => id < 0 ? now - r.at < PREDICTED_ROCKET_MS : now - r.at < ROCKET_LIFE_MS && (!snap || (snap.rockets ?? []).some((q) => q.id === id) || snap.recv < r.at)));
       // Frags: simulate locally with the shared physics; the thrower's own frag is predicted instantly (negative id)
       // and handed over to the server's once it shows up in a snapshot.
       if (snap) for (const n of snap.nades ?? []) {
@@ -730,7 +744,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         booms: fx.current.booms.map((b) => ({ x: b.x, y: b.y, z: b.z, t: (now - b.at) / 600, big: b.big })),
         tracers: fx.current.tracers.map((tr) => ({ o: tr.o, e: tr.e, t: (now - tr.at) / 1000, sniper: tr.sniper })),
         rockets: [...fx.current.rockets.values()].map((r) => {
-          const t = Math.min(0.25, (now - r.at) / 1000);
+          const t = Math.min(r.id < 0 ? PREDICTED_ROCKET_MS / 1000 : 0.25, (now - r.at) / 1000);
           return { seek: !!r.seek, id: r.id, x: r.x + r.vx * t, y: r.y + r.vy * t, z: r.z + r.vz * t - 0.5 * ROCKET_GRAVITY * t * t, vx: r.vx, vy: r.vy, vz: r.vz - ROCKET_GRAVITY * t };
         }),
         drops: (snap?.drops ?? []).map((d) => ({ ...d, left: d.left - (now - snap!.recv) })).filter((d) => d.left > 0),

@@ -475,7 +475,7 @@ export class ArenaWorld {
       if (this.hasPerk(f.id, 'homingRpg')) { r.seek = true; r.lock = this.acquire(r); }
       this.rockets.push(r);
       this.killcam.shotFx(now, { id: f.id, w: f.weapon, o: [+f.x.toFixed(2), +f.y.toFixed(2), +f.z.toFixed(2)], rays: [], sc: 0, hit: 0 });
-      return [{ ev: 'fps_shot', data: { id: f.id, w: f.weapon, o: [+f.x.toFixed(2), +f.y.toFixed(2), +f.z.toFixed(2)], rocket: this.rocketView(r) } }];
+      return [{ ev: 'fps_shot', data: { id: f.id, w: f.weapon, o: [+f.x.toFixed(2), +f.y.toFixed(2), +f.z.toFixed(2)], rocket: this.rocketView(r), ...(sid ? { sid } : {}) } }];
     }
     // Rewind other fighters to what the shooter saw (capped at LAG_COMP_MAX_MS), hit-test, then restore.
     const rt = rewindTime(now, viewT);

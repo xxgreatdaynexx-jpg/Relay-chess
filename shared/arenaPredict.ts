@@ -65,3 +65,5 @@ export function adoptServerAmmo(now: number, lastLocalAt: number, pingMs: number
 
 /** Client move packets: ~30 Hz (one per server tick), carrying the ~60 Hz aim samples in between. */
 export const INPUT_SEND_MS = 32;
+/** A predicted rocket lives this long without a server echo (rejected shot / lost packet), then vanishes. */
+export const PREDICTED_ROCKET_MS = 700;

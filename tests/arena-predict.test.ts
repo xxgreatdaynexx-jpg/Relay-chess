@@ -131,3 +131,19 @@ describe('arena instant reload/fire: stale snapshots do not overwrite local ammo
     expect(adoptServerAmmo(1000, -1e9, 0)).toBe(true);
   });
 });
+
+import { launchRocket } from '../shared/fps';
+describe('arena predicted rockets', () => {
+  it('server echoes sid on a rocket shot and its rocket starts where the client predicted', () => {
+    const w = new ArenaWorld(LANE, () => 0.5);
+    const a = w.join('a', 'Ann', 0);
+    Object.assign(a, { x: 2, y: 2, z: 0, a: 0, p: 0, weapon: 'rocket', switchedAt: -1e9, reloadUntil: 0 });
+    a.ammo.rocket = WEAPONS.rocket.mag;
+    const local = launchRocket(-9, { id: 'a', x: 2, y: 2, z: 0, a: 0, p: 0 }, 10_000);
+    const ev = shotEv(w.shoot('a', 0, 10_000, 0, 9900, undefined, 9) as never);
+    expect(ev.sid).toBe(9);
+    const r = ev.rocket as { x: number; y: number; z: number; vx: number };
+    expect(Math.hypot(r.x - local.x, r.y - local.y, r.z - local.z)).toBeLessThan(0.05);
+    expect(r.vx).toBeCloseTo(local.vx, 1);
+  });
+});
