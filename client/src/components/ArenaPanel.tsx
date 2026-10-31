@@ -659,9 +659,9 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       ctx.fillStyle = '#e6e9df'; ctx.font = `700 ${(14 * u) | 0}px ${mono}`;
       ctx.fillText(WEAPONS[m.weapon].melee ? '∞' : reloading ? 'RELOAD' : `${m.ammo}`, W2 - 30 * u, H2 - 12 * u);
       ctx.font = `600 ${(7 * u) | 0}px ${mono}`; ctx.fillStyle = '#a9ae9e';
-      if (!reloading) ctx.fillText(`/${spec.mag}`, W2 - 8 * u, H2 - 12 * u);
+      if (!reloading && !spec.melee) ctx.fillText(`/${spec.mag}`, W2 - 8 * u, H2 - 12 * u);
       ctx.fillText(spec.name.toUpperCase(), W2 - 8 * u, H2 - 22 * u);
-      for (let i = 0; i < Math.min(spec.mag, 30); i++) { ctx.fillStyle = i < m.ammo ? '#d9dccf' : 'rgba(255,255,255,.15)'; ctx.fillRect(W2 - 8 * u - (i + 1) * 2.6 * u, H2 - 8 * u, 1.6 * u, 3 * u); }
+      for (let i = 0; i < (spec.melee ? 0 : Math.min(spec.mag, 30)); i++) { ctx.fillStyle = i < m.ammo ? '#d9dccf' : 'rgba(255,255,255,.15)'; ctx.fillRect(W2 - 8 * u - (i + 1) * 2.6 * u, H2 - 8 * u, 1.6 * u, 3 * u); }
       ctx.textAlign = 'left';
       ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(4 * u, H2 - 16 * u, 70 * u, 12 * u);
       ctx.fillStyle = m.hp > 40 ? '#cfd4c4' : '#d9473a'; ctx.fillRect(6 * u, H2 - 14 * u, (52 * u * m.hp) / MAX_HP, 8 * u);
@@ -806,7 +806,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
-  const GAME_KEYS = new Set(['tab', 'w', 'a', 's', 'd', 'q', 'e', 'f', 'r', 'control', 'c', 'shift', ' ', '1', '2', '3', '4', '5', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown']);
+  const GAME_KEYS = new Set(['tab', 'w', 'a', 's', 'd', 'q', 'e', 'f', 'r', 'control', 'c', 'shift', ' ', '1', '2', '3', '4', '5', '6', 'v', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown']);
   function onKey(e: React.KeyboardEvent, down: boolean) {
     // Shift turns 1–5 into !@#…; read the physical key so guns still switch mid-sprint.
     const key = /^Digit[1-6]$/.test(e.code ?? '') ? e.code.slice(5) : e.key.toLowerCase();

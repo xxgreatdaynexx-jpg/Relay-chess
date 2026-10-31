@@ -102,3 +102,13 @@ describe('knife', () => {
     expect(ev.find((e) => e.ev === 'fps_kill')!.data.headshot).toBeUndefined();
   });
 });
+
+describe('knife keys', () => {
+  it('6 and V are game keys that select the knife', async () => {
+    const src = (await import('node:fs')).readFileSync(new URL('../client/src/components/ArenaPanel.tsx', import.meta.url), 'utf8');
+    const keys = src.match(/GAME_KEYS = new Set\(\[([^\]]*)\]/)![1];
+    expect(keys).toContain("'6'");
+    expect(keys).toContain("'v'");
+    expect(WEAPON_ORDER[5]).toBe('knife');
+  });
+});
