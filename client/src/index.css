@@ -1336,3 +1336,30 @@ html, body { overflow-x: clip; }
 .wager-chip.lose { animation: chip-lose 1.1s ease-in 1; }
 @keyframes chip-win { 0% { transform: translateY(-24px) scale(.6); opacity: 0; } 60% { transform: translateY(4px) scale(1.25); opacity: 1; } 100% { transform: none; } }
 @keyframes chip-lose { 0% { transform: none; opacity: 1; } 100% { transform: translateY(18px) scale(.6); opacity: .35; } }
+/* Chud war: maps, factions, pieces */
+.cq-mapwrap { position: relative; }
+.cq-mapwrap.zoomable .cq-map { cursor: grab; }
+.cq-zoom { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 4px; z-index: 3; }
+.cq-overlay .cq-zoom button { width: 32px; height: 32px; padding: 0; border-radius: 8px; background: #0a1511cc; font-size: 1.1rem; line-height: 1; }
+.cq-bob { animation: cq-bob 1.6s ease-in-out infinite; }
+@keyframes cq-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.6px); } }
+.cq-march .cq-legs, .cq-march .cq-unit-0 { animation: cq-step .18s steps(2) infinite; }
+@keyframes cq-step { 50% { transform: translateY(-1.5px); } }
+.cq-token.sel .cq-unit { filter: drop-shadow(0 0 3px #fff); }
+.cq-map-cap { padding: 8px 12px; font-size: .82rem; color: #e9e2d4b0; background: #0a1511; }
+.cq-faction { background: #0a1511; color: inherit; border: 1px solid #ffffff2a; border-radius: 8px; padding: 3px 6px; font-size: .8rem; max-width: 100%; }
+.cq-fname { opacity: .7; }
+.cq-banner { flex: none; }
+.cq-factions { font-size: .8rem; color: #e9e2d4c0; }
+.cq-factions summary { cursor: pointer; color: #d9ae66; }
+.cq-factions li { display: flex; gap: 6px; align-items: center; padding: 4px 0; border-bottom: 1px solid #ffffff10; }
+.cq-fort { display: flex; flex-direction: column; gap: 6px; }
+.cq-overlay .cq-fort .cq-amt button { width: 30px; height: 30px; padding: 0; }
+/* QA r5 #9: nothing overlaps the map; dice sit under the board, not on it. */
+.cq-game > * { min-width: 0; }
+.cq-game > .cq-dice-slot { grid-row: 2; align-self: start; margin: 0; pointer-events: none; }
+.cq-cards .cq-row { flex-wrap: wrap; }
+.cq-overlay .cq-card { min-width: 56px; max-width: 92px; }
+.cq-card small { overflow-wrap: anywhere; text-align: center; }
+@media (max-width: 1000px) { .cq-game { grid-template-columns: 1fr; grid-template-rows: auto auto auto; flex: 0 0 auto; min-height: auto; } .cq-game > .cq-side { grid-column: 1; grid-row: 3; } .cq-game > .cq-dice-slot { grid-row: 2; } }
+@media (prefers-reduced-motion: reduce) { .cq-bob, .cq-march .cq-legs, .cq-march .cq-unit-0 { animation: none; } }

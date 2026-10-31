@@ -217,7 +217,7 @@ describe('polish: setup, settings, colours, smarter bots', () => {
   it('hub: settings + colours are host/seat checked and locked at start; setup timer auto-places', () => {
     const hub = new ConquestHub(rnd);
     const t = hub.create('Ann'); hub.join(t.code, 'Bob'); hub.addBot(t.code, 'Ann');
-    expect(t.seats.map((x) => x.color)).toEqual([0, 1, 2]);
+    expect(new Set(t.seats.map((x) => x.color)).size).toBe(3);
     expect(() => hub.configure(t.code, 'Bob', { turnMs: 60_000 })).toThrow(/host/);
     expect(() => hub.configure(t.code, 'Ann', { turnMs: 1234 })).toThrow(/list/);
     hub.configure(t.code, 'Ann', { turnMs: 30_000, manualSetup: true });

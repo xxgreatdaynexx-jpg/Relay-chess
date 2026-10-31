@@ -2,47 +2,28 @@
  * Chud Conquest: an original territory-conquest board game for 2–6 players.
  * Pure, server-authoritative rules. The map (the Chudlands) and all names are original.
  */
-export type Pt = [number, number];
-export interface Continent { id: string; name: string; bonus: number; poly: Pt[]; color: string }
-export interface Territory { id: number; name: string; continent: string; at: Pt }
+import { CQ_MAPS, mapById, type Continent, type CqMap } from './conquest-maps.js';
+export { CQ_MAPS, mapById, type Continent, type CqMap, type Pt, type Territory } from './conquest-maps.js';
+const CHUD = mapById('chud');
+/** The original Chudlands map (kept as top-level exports for older callers). */
+export const CONTINENTS = CHUD.continents;
+export const TERRITORIES = CHUD.territories;
+export const EDGES = CHUD.edges;
+export const ADJ = CHUD.adj;
+export const adjacent = (a: number, b: number, m: CqMap = CHUD) => m.adj[a]?.includes(b) ?? false;
+export const mapOf = (s: { map?: string }): CqMap => mapById(s.map);
 
-export const CONTINENTS: Continent[] = [
-  { id: 'north', name: 'Northmarch', bonus: 3, color: '#4e6b3f', poly: [[60, 60], [330, 40], [385, 140], [305, 235], [120, 245], [45, 160]] },
-  { id: 'bog', name: 'Bogwater', bonus: 2, color: '#3f5f55', poly: [[40, 290], [215, 268], [255, 380], [195, 525], [60, 505], [28, 400]] },
-  { id: 'salt', name: 'Saltreach', bonus: 5, color: '#6b6a3c', poly: [[420, 175], [625, 165], [665, 300], [605, 425], [440, 435], [378, 300]] },
-  { id: 'ember', name: 'Emberlands', bonus: 2, color: '#6e4a33', poly: [[298, 468], [472, 466], [505, 585], [320, 605], [268, 540]] },
-  { id: 'frost', name: 'Frostspire', bonus: 3, color: '#4f6670', poly: [[690, 38], [962, 48], [972, 205], [862, 265], [718, 235], [668, 130]] },
-  { id: 'isles', name: 'Isles of Chud', bonus: 2, color: '#5a4f66', poly: [[722, 355], [962, 348], [972, 585], [742, 595], [688, 470]] },
+/** Original factions. Each has its own unit art (client), default colour and an optional perk. */
+export interface Faction { id: string; name: string; short: string; color: number; motto: string; perk: string; perkText: string }
+export const FACTIONS: Faction[] = [
+  { id: 'grande', name: 'Grande Armée du Chud', short: 'Grande Armée', color: 2, motto: 'Shakos, bayonets and eagles.', perk: 'Élan', perkText: 'Attacking with 3 dice, your highest die wins ties.' },
+  { id: 'redcoat', name: 'Chudshire Redcoats', short: 'Redcoats', color: 1, motto: 'Volley fire and the thin red line.', perk: 'Thin Red Line', perkText: 'Defending a territory of 5+ armies, your highest die gets +1 (max 6).' },
+  { id: 'cossack', name: 'Steppe Cossacks', short: 'Cossacks', color: 4, motto: 'Sabres, fur hats and fast horses.', perk: 'Raiders', perkText: 'Your first conquest each turn adds 1 free army to the land you took.' },
+  { id: 'samurai', name: 'Kuro Samurai', short: 'Samurai', color: 6, motto: 'Katana, kabuto and the rising sun.', perk: 'Bushido', perkText: 'Card trades give you 2 extra armies.' },
+  { id: 'marines', name: 'Iron Tide Marines', short: 'Marines', color: 5, motto: 'Helmets, rifles and tanks off the landing craft.', perk: 'Amphibious', perkText: 'Attacking across a sea lane, your highest die gets +1 (max 6).' },
+  { id: 'robots', name: 'Robot Legion', short: 'Robots', color: 7, motto: 'Chrome, lasers and the assembly line.', perk: 'Assembly Line', perkText: '+1 reinforcement every turn.' },
 ];
-
-const T: Array<[string, string, number, number]> = [
-  ['Hollowmere', 'north', 110, 105], ['Gristle Peak', 'north', 220, 85], ['Thornwick', 'north', 320, 115], ['Ashfen', 'north', 140, 195], ['Crowgate', 'north', 250, 185],
-  ['Mirelock', 'bog', 100, 335], ['Sludgemoor', 'bog', 190, 340], ['Fenward', 'bog', 90, 445], ['Rotroot', 'bog', 180, 460],
-  ['Brinegate', 'salt', 465, 225], ['Kelpholm', 'salt', 575, 215], ['Dunmarrow', 'salt', 430, 325], ['Saltspire', 'salt', 530, 300], ['Cragmoor', 'salt', 620, 320], ['Gullhaven', 'salt', 515, 395],
-  ['Cinderpit', 'ember', 335, 510], ['Scorchfield', 'ember', 435, 510], ['Blackglass', 'ember', 335, 570], ['Pyrewell', 'ember', 445, 570],
-  ['Rimehold', 'frost', 745, 95], ['Icefang', 'frost', 860, 95], ['Glacierbay', 'frost', 930, 175], ['Snowmantle', 'frost', 765, 190], ['Whitewolf', 'frost', 860, 205],
-  ['Chudmouth', 'isles', 775, 415], ['Gobport', 'isles', 895, 415], ['Lardholm', 'isles', 770, 535], ['Mudpeak', 'isles', 895, 530],
-];
-export const TERRITORIES: Territory[] = T.map(([name, continent, x, y], id) => ({ id, name, continent, at: [x, y] }));
-const idx = (n: string) => { const i = TERRITORIES.findIndex((t) => t.name === n); if (i < 0) throw new Error(n); return i; };
-
-const LAND: Array<[string, string]> = [
-  ['Hollowmere', 'Gristle Peak'], ['Hollowmere', 'Ashfen'], ['Gristle Peak', 'Thornwick'], ['Gristle Peak', 'Crowgate'], ['Gristle Peak', 'Ashfen'], ['Thornwick', 'Crowgate'], ['Ashfen', 'Crowgate'],
-  ['Mirelock', 'Sludgemoor'], ['Mirelock', 'Fenward'], ['Sludgemoor', 'Fenward'], ['Sludgemoor', 'Rotroot'], ['Fenward', 'Rotroot'],
-  ['Brinegate', 'Kelpholm'], ['Brinegate', 'Dunmarrow'], ['Brinegate', 'Saltspire'], ['Kelpholm', 'Saltspire'], ['Kelpholm', 'Cragmoor'], ['Dunmarrow', 'Saltspire'], ['Dunmarrow', 'Gullhaven'], ['Saltspire', 'Cragmoor'], ['Saltspire', 'Gullhaven'], ['Cragmoor', 'Gullhaven'],
-  ['Cinderpit', 'Scorchfield'], ['Cinderpit', 'Blackglass'], ['Scorchfield', 'Pyrewell'], ['Blackglass', 'Pyrewell'],
-  ['Rimehold', 'Icefang'], ['Rimehold', 'Snowmantle'], ['Icefang', 'Glacierbay'], ['Icefang', 'Whitewolf'], ['Icefang', 'Snowmantle'], ['Glacierbay', 'Whitewolf'], ['Snowmantle', 'Whitewolf'],
-  ['Chudmouth', 'Gobport'], ['Chudmouth', 'Lardholm'], ['Gobport', 'Mudpeak'], ['Lardholm', 'Mudpeak'], ['Chudmouth', 'Mudpeak'],
-];
-/** Sea lanes between continents (drawn dashed). */
-export const SEA: Array<[string, string]> = [
-  ['Ashfen', 'Mirelock'], ['Crowgate', 'Brinegate'], ['Thornwick', 'Rimehold'], ['Sludgemoor', 'Dunmarrow'], ['Rotroot', 'Cinderpit'],
-  ['Gullhaven', 'Scorchfield'], ['Cragmoor', 'Chudmouth'], ['Kelpholm', 'Snowmantle'], ['Whitewolf', 'Gobport'], ['Pyrewell', 'Lardholm'],
-];
-export const EDGES: Array<[number, number, boolean]> = [...LAND.map(([a, b]) => [idx(a), idx(b), false] as [number, number, boolean]), ...SEA.map(([a, b]) => [idx(a), idx(b), true] as [number, number, boolean])];
-export const ADJ: number[][] = TERRITORIES.map(() => []);
-for (const [a, b] of EDGES) { ADJ[a]!.push(b); ADJ[b]!.push(a); }
-export const adjacent = (a: number, b: number) => ADJ[a]?.includes(b) ?? false;
+export const factionById = (id: string | undefined) => FACTIONS.find((f) => f.id === id);
 
 /** Army colours a table can pick from (index into this list). */
 export const CQ_PALETTE = ['#d9ae66', '#b23b3b', '#4f8fc0', '#8a5fb5', '#e9e2d4', '#4fa36b', '#d9773a', '#3fb3a8'];
@@ -50,7 +31,7 @@ export const CQ_PALETTE_NAMES = ['Gold', 'Crimson', 'Sky', 'Violet', 'Bone', 'Mo
 export type Phase = 'setup' | 'reinforce' | 'attack' | 'fortify' | 'over';
 /** s: 0 foot, 1 horse, 2 cannon, 3 wild. t: territory or -1. */
 export interface Card { t: number; s: 0 | 1 | 2 | 3 }
-export interface CqPlayer { name: string; bot: boolean; alive: boolean; cards: Card[]; color?: number }
+export interface CqPlayer { name: string; bot: boolean; alive: boolean; cards: Card[]; color?: number; faction?: string }
 export interface Roll { from: number; to: number; att: number[]; def: number[]; attLost: number; defLost: number; conquered: boolean }
 export interface CqState {
   players: CqPlayer[];
@@ -70,6 +51,12 @@ export interface CqState {
   round: number;
   /** Starting armies each player still has to place (setup phase only). */
   setup?: number[];
+  /** Map id (absent = the Chudlands). */
+  map?: string;
+  /** Faction perks on (absent/false = pure classic rules). */
+  perks?: boolean;
+  /** Conquests this turn (for perks). */
+  took?: number;
 }
 export type Rng = () => number;
 
@@ -85,10 +72,12 @@ export class RuleError extends Error {}
 const need = (ok: unknown, msg: string): void => { if (!ok) throw new RuleError(msg); };
 
 /** Deal territories round-robin, one army each, then spread the remaining starting armies randomly. */
-export interface NewGameOpts { manualSetup?: boolean }
-export function newGame(players: Array<{ name: string; bot: boolean; color?: number }>, rng: Rng = Math.random, opts: NewGameOpts = {}): CqState {
+export interface NewGameOpts { manualSetup?: boolean; map?: string; perks?: boolean }
+export function newGame(players: Array<{ name: string; bot: boolean; color?: number; faction?: string }>, rng: Rng = Math.random, opts: NewGameOpts = {}): CqState {
   need(players.length >= 2 && players.length <= 6, 'Conquest needs 2–6 players.');
   const n = players.length;
+  const m = mapById(opts.map);
+  const TERRITORIES = m.territories;
   const order = shuffle(TERRITORIES.map((t) => t.id), rng);
   const owner = new Array<number>(TERRITORIES.length).fill(0);
   order.forEach((t, i) => { owner[t] = i % n; });
@@ -96,10 +85,12 @@ export function newGame(players: Array<{ name: string; bot: boolean; color?: num
   const setup = players.map((_, p) => START_ARMIES[n]! - owner.filter((o) => o === p).length);
   const deck = shuffle<Card>([...TERRITORIES.map((t) => ({ t: t.id, s: (t.id % 3) as 0 | 1 | 2 })), { t: -1, s: 3 }, { t: -1, s: 3 }], rng);
   const s: CqState = {
-    players: players.map((p, i) => ({ name: p.name, bot: p.bot, alive: true, cards: [], color: p.color ?? i })), owner, armies, turn: 0, phase: 'reinforce', reserve: 0,
+    players: players.map((p, i) => ({ name: p.name, bot: p.bot, alive: true, cards: [], color: p.color ?? i, ...(p.faction ? { faction: p.faction } : {}) })), owner, armies, turn: 0, phase: 'reinforce', reserve: 0,
     conquered: false, pending: null, trades: 0, deck, winner: null, lastRoll: null, fortified: false, log: [], round: 1,
   };
   s.setup = setup;
+  if (m.id !== 'chud') s.map = m.id;
+  if (opts.perks) s.perks = true;
   if (opts.manualSetup) {
     s.phase = 'setup';
     s.log.push('Place your starting armies.');
@@ -116,7 +107,7 @@ export function newGame(players: Array<{ name: string; bot: boolean; color?: num
 export function autoPlace(s: CqState, p: number, rng: Rng = Math.random): void {
   const left = s.setup?.[p] ?? 0;
   const mine = s.owner.map((o, t) => (o === p ? t : -1)).filter((t) => t >= 0);
-  const border = mine.filter((t) => ADJ[t]!.some((n) => s.owner[n] !== p));
+  const border = mine.filter((t) => mapOf(s).adj[t]!.some((n) => s.owner[n] !== p));
   const pool = border.length ? border : mine;
   for (let i = 0; i < left; i++) { const from = rng() < 0.75 ? pool : mine; s.armies[from[Math.floor(rng() * from.length)]!]! += 1; }
   if (s.setup) s.setup[p] = 0;
@@ -130,11 +121,12 @@ function beginWar(s: CqState): void {
 
 export const owned = (s: CqState, p: number) => s.owner.reduce((k, o) => k + (o === p ? 1 : 0), 0);
 export function continentsHeld(s: CqState, p: number): Continent[] {
-  return CONTINENTS.filter((c) => TERRITORIES.every((t) => t.continent !== c.id || s.owner[t.id] === p));
+  const m = mapOf(s);
+  return m.continents.filter((c) => m.territories.every((t) => t.continent !== c.id || s.owner[t.id] === p));
 }
 /** max(3, territories ÷ 3) plus continent bonuses. */
 export function reinforcements(s: CqState, p: number): number {
-  return Math.max(3, Math.floor(owned(s, p) / 3)) + continentsHeld(s, p).reduce((k, c) => k + c.bonus, 0);
+  return Math.max(3, Math.floor(owned(s, p) / 3)) + continentsHeld(s, p).reduce((k, c) => k + c.bonus, 0) + (perk(s, p, 'robots') ? 1 : 0);
 }
 
 export function validSet(cards: Card[]): boolean {
@@ -152,11 +144,14 @@ export function findSet(cards: Card[]): number[] | null {
   return null;
 }
 
+/** Whether player p's faction perk applies (perks on and they play that faction). */
+export const perk = (s: CqState, p: number, faction: string) => Boolean(s.perks && s.players[p]?.faction === faction);
+
 /** Compare highest dice pairwise; defender wins ties. */
-export function resolveDice(att: number[], def: number[]): { attLost: number; defLost: number } {
+export function resolveDice(att: number[], def: number[], attWinsTopTie = false): { attLost: number; defLost: number } {
   const a = [...att].sort((x, y) => y - x), d = [...def].sort((x, y) => y - x);
   let attLost = 0, defLost = 0;
-  for (let i = 0; i < Math.min(a.length, d.length); i++) { if (a[i]! > d[i]!) defLost++; else attLost++; }
+  for (let i = 0; i < Math.min(a.length, d.length); i++) { if (a[i]! > d[i]! || (i === 0 && attWinsTopTie && a[i] === d[i])) defLost++; else attLost++; }
   return { attLost, defLost };
 }
 
@@ -165,7 +160,8 @@ export function connectedOwned(s: CqState, from: number): Set<number> {
   const p = s.owner[from];
   const seen = new Set([from]);
   const q = [from];
-  while (q.length) { const t = q.pop()!; for (const n of ADJ[t]!) if (!seen.has(n) && s.owner[n] === p) { seen.add(n); q.push(n); } }
+  const adj = mapOf(s).adj;
+  while (q.length) { const t = q.pop()!; for (const n of adj[t]!) if (!seen.has(n) && s.owner[n] === p) { seen.add(n); q.push(n); } }
   return seen;
 }
 
@@ -211,7 +207,7 @@ export function act(s: CqState, p: number, a: CqAction, rng: Rng = Math.random):
       need(ix.length === 3 && ix.every((i) => i >= 0 && i < me.cards.length), 'Pick three cards.');
       const set = ix.map((i) => me.cards[i]!);
       need(validSet(set), 'That is not a set: three alike, one of each, or any with a wild.');
-      const value = tradeValue(s.trades++);
+      const value = tradeValue(s.trades++) + (perk(s, p, 'samurai') ? 2 : 0);
       s.reserve += value;
       const bonusT = set.find((c) => c.t >= 0 && s.owner[c.t] === p);
       if (bonusT) s.armies[bonusT.t]! += 2;
@@ -233,12 +229,19 @@ export function act(s: CqState, p: number, a: CqAction, rng: Rng = Math.random):
     case 'attack': {
       need(s.phase === 'attack' && !s.pending, s.pending ? 'Move armies into the territory you took first.' : 'Not the attack phase.');
       const from = int(a.from), to = int(a.to);
-      need(s.owner[from] === p && s.owner[to] !== p && adjacent(from, to), 'Attack a neighbouring enemy territory from one of yours.');
+      const m = mapOf(s);
+      need(s.owner[from] === p && s.owner[to] !== p && adjacent(from, to, m), 'Attack a neighbouring enemy territory from one of yours.');
       const dice = Math.min(int(a.dice) || 3, 3, s.armies[from]! - 1);
       need(dice >= 1, 'You need at least 2 armies to attack.');
+      const defender = s.owner[to]!;
       const att = Array.from({ length: dice }, () => die(rng));
       const def = Array.from({ length: Math.min(2, s.armies[to]!) }, () => die(rng));
-      const { attLost, defLost } = resolveDice(att, def);
+      // Perks only lift a die already rolled (the shown dice are the ones that count).
+      const sea = m.edges.some(([x, y, sw]) => sw && ((x === from && y === to) || (x === to && y === from)));
+      const bump = (d: number[]) => { const i = d.indexOf(Math.max(...d)); d[i] = Math.min(6, d[i]! + 1); };
+      if (sea && perk(s, p, 'marines')) bump(att);
+      if (s.armies[to]! >= 5 && perk(s, defender, 'redcoat')) bump(def);
+      const { attLost, defLost } = resolveDice(att, def, dice === 3 && perk(s, p, 'grande'));
       s.armies[from]! -= attLost; s.armies[to]! -= defLost;
       const conquered = s.armies[to] === 0;
       s.lastRoll = { from, to, att, def, attLost, defLost, conquered };
@@ -246,7 +249,8 @@ export function act(s: CqState, p: number, a: CqAction, rng: Rng = Math.random):
         const loser = s.owner[to]!;
         s.owner[to] = p; s.conquered = true;
         s.pending = { from, to, min: dice };
-        s.log.push(`${me.name} took ${TERRITORIES[to]!.name}.`);
+        s.log.push(`${me.name} took ${m.territories[to]!.name}.`);
+        s.took = (s.took ?? 0) + 1;
         if (owned(s, loser) === 0) {
           const victim = s.players[loser]!;
           victim.alive = false;
@@ -255,7 +259,7 @@ export function act(s: CqState, p: number, a: CqAction, rng: Rng = Math.random):
           if (s.players.filter((x) => x.alive).length === 1) {
             s.armies[to] = s.armies[from]! - 1; s.armies[from] = 1; s.pending = null;
             s.phase = 'over'; s.winner = p;
-            s.log.push(`${me.name} conquered the Chudlands!`);
+            s.log.push(`${me.name} conquered ${m.id === 'chud' ? 'the Chudlands' : m.name}!`);
             return s;
           }
           // Holding 6+ after an elimination: trade down now (back to reinforce until under 5).
@@ -270,6 +274,7 @@ export function act(s: CqState, p: number, a: CqAction, rng: Rng = Math.random):
       const n = int(a.n);
       need(n >= min && n <= s.armies[from]! - 1, `Move between ${min} and ${s.armies[from]! - 1}.`);
       s.armies[from]! -= n; s.armies[to] = n; s.pending = null;
+      if (s.took === 1 && perk(s, p, 'cossack')) { s.armies[to]! += 1; s.log.push(`${me.name}'s raiders add 1 army.`); }
       if (me.cards.length >= 6) { s.phase = 'reinforce'; s.reserve = 0; }
       return s;
     }
@@ -301,7 +306,7 @@ function endTurn(s: CqState, _rng: Rng): CqState {
   if (s.conquered && s.deck.length) me.cards.push(s.deck.shift()!);
   let next = s.turn;
   do { next = (next + 1) % s.players.length; if (next === 0) s.round++; } while (!s.players[next]!.alive);
-  s.turn = next; s.phase = 'reinforce'; s.conquered = false; s.pending = null; s.fortified = false;
+  s.turn = next; s.phase = 'reinforce'; s.conquered = false; s.pending = null; s.fortified = false; s.took = 0;
   s.reserve = reinforcements(s, next);
   return s;
 }
@@ -333,10 +338,12 @@ export function botAction(s: CqState, p: number): CqAction {
   if (s.phase === 'setup') return { type: 'autoPlace' };
   const me = s.players[p]!;
   const mine = s.owner.map((o, t) => (o === p ? t : -1)).filter((t) => t >= 0);
-  const enemyN = (t: number) => ADJ[t]!.filter((n) => s.owner[n] !== p);
+  const m = mapOf(s);
+  const TERRITORIES = m.territories;
+  const enemyN = (t: number) => m.adj[t]!.filter((n) => s.owner[n] !== p);
   const threat = (t: number) => enemyN(t).reduce((k, n) => k + s.armies[n]!, 0);
   const share = (c: Continent) => { const ts = TERRITORIES.filter((x) => x.continent === c.id); return ts.filter((x) => s.owner[x.id] === p).length / ts.length; };
-  const goal = CONTINENTS.filter((c) => share(c) < 1).sort((a, b) => (share(b) + b.bonus / 20) - (share(a) + a.bonus / 20))[0];
+  const goal = m.continents.filter((c) => share(c) < 1).sort((a, b) => (share(b) + b.bonus / 20) - (share(a) + a.bonus / 20))[0];
   const inGoal = (t: number) => goal !== undefined && TERRITORIES[t]!.continent === goal.id;
   const weakPlayer = (o: number) => owned(s, o) <= 2;
 
@@ -387,8 +394,8 @@ export function botAction(s: CqState, p: number): CqAction {
 /** What a client sees: other players' cards are hidden (count only), the deck is hidden. */
 export function publicView(s: CqState, viewer: number) {
   return {
-    ...s, deck: undefined, deckLeft: s.deck.length,
-    players: s.players.map((pl, i) => ({ name: pl.name, bot: pl.bot, alive: pl.alive, color: pl.color ?? i, setupLeft: s.setup?.[i] ?? 0, cardCount: pl.cards.length, cards: i === viewer ? pl.cards : undefined, territories: owned(s, i), armies: s.armies.reduce((k, a, t) => k + (s.owner[t] === i ? a : 0), 0) })),
+    ...s, map: mapOf(s).id, perks: Boolean(s.perks), deck: undefined, deckLeft: s.deck.length,
+    players: s.players.map((pl, i) => ({ name: pl.name, bot: pl.bot, alive: pl.alive, color: pl.color ?? i, faction: pl.faction, setupLeft: s.setup?.[i] ?? 0, cardCount: pl.cards.length, cards: i === viewer ? pl.cards : undefined, territories: owned(s, i), armies: s.armies.reduce((k, a, t) => k + (s.owner[t] === i ? a : 0), 0) })),
     nextTrade: tradeValue(s.trades), log: s.log.slice(-12),
   };
 }

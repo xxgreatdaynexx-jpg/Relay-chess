@@ -5,7 +5,7 @@ import { createApp } from './app.js';
 import { initCheckersLeaderboardStorage, initLeaderboardStorage } from './leaderboard.js';
 import { initCasinoStorage } from './casino-store.js';
 import { initAccountStorage } from './accounts.js';
-import { initConquestStorage } from './conquest.js';
+import { getConquest, initConquestStorage } from './conquest.js';
 import { getSolitro, initSolitroStorage } from './solitro.js';
 import { getRoomPersistence, initRoomStorage } from './room-store.js';
 
@@ -43,6 +43,7 @@ async function shutdown(signal: string): Promise<void> {
     if (p) { p.stop(); await p.flush(); }
     await getChatLog().flush();
     await getSolitro().flush();
+    await getConquest().flush();
   } catch (error) {
     console.error('[shutdown] save failed:', (error as Error).message);
   }

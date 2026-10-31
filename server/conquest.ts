@@ -2,7 +2,7 @@
 import type { Server, Socket } from 'socket.io';
 import pg from 'pg';
 import { randomInt } from 'node:crypto';
-import { act, autoPlace, botAction, CQ_PALETTE, newGame, publicView, resign, RuleError, type CqAction, type CqState } from '../shared/conquest.js';
+import { act, autoPlace, botAction, CQ_MAPS, CQ_PALETTE, FACTIONS, newGame, publicView, resign, RuleError, type CqAction, type CqState } from '../shared/conquest.js';
 import { Leaderboard } from './leaderboard.js';
 import { createPgStore, databaseUrl, type Queryable } from './leaderboard-store.js';
 import { signedIn } from './auth-sockets.js';
@@ -12,24 +12,32 @@ export const CQ_BOT_MS = Number(process.env.CONQUEST_BOT_MS ?? 700);
 const IDLE_MS = 6 * 60 * 60 * 1000;
 const BOT_NAMES = ['Bot Grub', 'Bot Mudlord', 'Bot Snorkel', 'Bot Gristle', 'Bot Wart'];
 
-export interface CqSeat { name: string; bot: boolean; color?: number }
-export interface CqSettings { turnMs: number; manualSetup: boolean }
+export interface CqSeat { name: string; bot: boolean; color?: number; faction?: string }
+export interface CqSettings { turnMs: number; manualSetup: boolean; map: string; perks: boolean }
 export const CQ_TURN_CHOICES = [30_000, 60_000, 90_000, 180_000, 300_000];
-export interface CqTable { code: string; host: string; seats: CqSeat[]; game: CqState | null; deadline: number; recorded: boolean; touched: number; settings?: CqSettings }
-export interface CqSnapshotStore { init(): Promise<void>; loadAll(): Promise<CqTable[]>; save(t: CqTable): Promise<void>; remove(code: string): Promise<void> }
+export interface CqTable { code: string; host: string; seats: CqSeat[]; game: CqState | null; deadline: number; recorded: boolean; touched: number; settings?: Partial<CqSettings>; /** Snapshot version, bumped on every change (newest wins across instances). */ v?: number }
+/** save() returns false when the store already holds a newer version (another instance moved on). */
+export interface CqSnapshotStore { init(): Promise<void>; loadAll(): Promise<CqTable[]>; load(code: string): Promise<CqTable | null>; save(t: CqTable): Promise<boolean>; remove(code: string): Promise<void> }
 
 class PgCqStore implements CqSnapshotStore {
   constructor(private readonly db: Queryable) { db.on?.('error', (e) => console.error('[conquest] pool error:', e.message)); }
   async init() { await this.db.query('CREATE TABLE IF NOT EXISTS conquest_snapshots (code TEXT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())'); }
   async loadAll() { const { rows } = await this.db.query('SELECT data FROM conquest_snapshots'); return rows.map((r) => (typeof r.data === 'string' ? JSON.parse(r.data) : r.data) as CqTable); }
-  async save(t: CqTable) { await this.db.query('INSERT INTO conquest_snapshots (code, data, updated_at) VALUES ($1, $2::jsonb, now()) ON CONFLICT (code) DO UPDATE SET data = EXCLUDED.data, updated_at = now()', [t.code, JSON.stringify(t)]); }
+  async load(code: string) { const { rows } = await this.db.query('SELECT data FROM conquest_snapshots WHERE code = $1', [code]); const d = rows[0]?.data; return d ? ((typeof d === 'string' ? JSON.parse(d) : d) as CqTable) : null; }
+  async save(t: CqTable) {
+    const r = await this.db.query(`INSERT INTO conquest_snapshots (code, data, updated_at) VALUES ($1, $2::jsonb, now())
+      ON CONFLICT (code) DO UPDATE SET data = EXCLUDED.data, updated_at = now()
+      WHERE COALESCE((conquest_snapshots.data->>'v')::bigint, 0) < COALESCE((EXCLUDED.data->>'v')::bigint, 0)`, [t.code, JSON.stringify(t)]);
+    return (r as { rowCount?: number | null }).rowCount !== 0;
+  }
   async remove(code: string) { await this.db.query('DELETE FROM conquest_snapshots WHERE code = $1', [code]); }
 }
 export class MemoryCqStore implements CqSnapshotStore {
   rows = new Map<string, string>();
   async init() {}
   async loadAll() { return [...this.rows.values()].map((r) => JSON.parse(r) as CqTable); }
-  async save(t: CqTable) { this.rows.set(t.code, JSON.stringify(t)); }
+  async load(code: string) { const r = this.rows.get(code); return r ? (JSON.parse(r) as CqTable) : null; }
+  async save(t: CqTable) { const cur = this.rows.get(t.code); if (cur && ((JSON.parse(cur) as CqTable).v ?? 0) >= (t.v ?? 0)) return false; this.rows.set(t.code, JSON.stringify(t)); return true; }
   async remove(code: string) { this.rows.delete(code); }
 }
 
@@ -39,6 +47,8 @@ export class ConquestHub {
   store: CqSnapshotStore | null = null;
   onChange: (t: CqTable) => void = () => {};
   private timers = new Map<string, ReturnType<typeof setTimeout>>();
+  private saving = new Map<string, Promise<void>>();
+  private stopped = false;
   constructor(private rng: () => number = Math.random) {}
 
   private code(): string {
@@ -57,7 +67,7 @@ export class ConquestHub {
     return t;
   }
   create(host: string, now = Date.now()): CqTable {
-    const t: CqTable = { code: this.code(), host, seats: [{ name: host, bot: false, color: 0 }], game: null, deadline: 0, recorded: false, touched: now, settings: { turnMs: CQ_TURN_MS, manualSetup: true } };
+    const t: CqTable = { code: this.code(), host, seats: [{ name: host, bot: false, color: 0, faction: 'grande' }], game: null, deadline: 0, recorded: false, touched: now, settings: { turnMs: CQ_TURN_MS, manualSetup: true, map: 'chud', perks: true }, v: 0 };
     this.tables.set(t.code, t);
     this.changed(t);
     return t;
@@ -67,7 +77,7 @@ export class ConquestHub {
     if (t.seats.some((s) => !s.bot && s.name.toLowerCase() === name.toLowerCase())) return t;
     if (t.game) throw new RuleError('That war has already started. You can watch it.');
     if (t.seats.length >= 6) throw new RuleError('The table is full (6 players).');
-    t.seats.push({ name, bot: false, color: this.freeColor(t) });
+    this.seatWithFaction(t, { name, bot: false });
     this.changed(t);
     return t;
   }
@@ -77,7 +87,7 @@ export class ConquestHub {
     if (t.host.toLowerCase() !== by.toLowerCase()) throw new RuleError('Only the host can add bots.');
     if (t.seats.length >= 6) throw new RuleError('The table is full (6 players).');
     const name = BOT_NAMES.find((n) => !t.seats.some((s) => s.name === n))!;
-    t.seats.push({ name, bot: true, color: this.freeColor(t) });
+    this.seatWithFaction(t, { name, bot: true }, true);
     this.changed(t);
     return t;
   }
@@ -93,6 +103,36 @@ export class ConquestHub {
     this.changed(t);
     return t;
   }
+  /** Seat a newcomer with a free faction (random for bots) and that faction's colour if it is free. */
+  private seatWithFaction(t: CqTable, s: CqSeat, random = false): void {
+    const free = FACTIONS.filter((f) => !t.seats.some((o) => o.faction === f.id));
+    const f = random ? free[Math.floor(this.rng() * free.length)] : free[0];
+    s.faction = f?.id;
+    s.color = f && !t.seats.some((o) => o.color === f.color) ? f.color : this.freeColor(t);
+    t.seats.push(s);
+  }
+  /** Pick a faction before the war (unique per table). Takes the faction's colour too when it is free. */
+  setFaction(code: unknown, by: string, faction: unknown, index?: unknown): CqTable {
+    const t = this.get(code);
+    if (t.game) throw new RuleError('Factions are locked once the war starts.');
+    const f = FACTIONS.find((x) => x.id === faction);
+    if (!f) throw new RuleError('Pick one of the factions.');
+    const i = this.seatIndex(t, by, index);
+    if (t.seats.some((s, j) => j !== i && s.faction === f.id)) throw new RuleError('Someone already leads that faction.');
+    const seat = t.seats[i]!;
+    seat.faction = f.id;
+    if (!t.seats.some((s, j) => j !== i && s.color === f.color)) seat.color = f.color;
+    this.changed(t);
+    return t;
+  }
+  private seatIndex(t: CqTable, by: string, index?: unknown): number {
+    const isHost = t.host.toLowerCase() === by.toLowerCase();
+    const i = index !== undefined && index !== null ? Number(index) : t.seats.findIndex((s) => !s.bot && s.name.toLowerCase() === by.toLowerCase());
+    const seat = t.seats[i];
+    if (!seat) throw new RuleError('You are not seated.');
+    if (seat.bot ? !isHost : seat.name.toLowerCase() !== by.toLowerCase()) throw new RuleError('That is not your seat.');
+    return i;
+  }
   private freeColor(t: CqTable): number { return CQ_PALETTE.findIndex((_, i) => !t.seats.some((s) => s.color === i)); }
   /** Pick your army colour before the war starts (unique per table). The host may also recolour bots. */
   setColor(code: unknown, by: string, color: unknown, index?: unknown): CqTable {
@@ -100,18 +140,15 @@ export class ConquestHub {
     if (t.game) throw new RuleError('Colours are locked once the war starts.');
     const c = Number(color);
     if (!Number.isInteger(c) || c < 0 || c >= CQ_PALETTE.length) throw new RuleError('Pick one of the colours.');
-    const isHost = t.host.toLowerCase() === by.toLowerCase();
-    const i = index !== undefined && index !== null ? Number(index) : t.seats.findIndex((s) => !s.bot && s.name.toLowerCase() === by.toLowerCase());
-    const seat = t.seats[i];
-    if (!seat) throw new RuleError('You are not seated.');
-    if (seat.bot ? !isHost : seat.name.toLowerCase() !== by.toLowerCase()) throw new RuleError('That is not your seat.');
+    const i = this.seatIndex(t, by, index);
+    const seat = t.seats[i]!;
     if (t.seats.some((s, j) => j !== i && s.color === c)) throw new RuleError('Someone already has that colour.');
     seat.color = c;
     this.changed(t);
     return t;
   }
   /** Host-only table settings: turn timer length and whether players place their own starting armies. */
-  configure(code: unknown, by: string, body: { turnMs?: unknown; manualSetup?: unknown }): CqTable {
+  configure(code: unknown, by: string, body: { turnMs?: unknown; manualSetup?: unknown; map?: unknown; perks?: unknown }): CqTable {
     const t = this.get(code);
     if (t.game) throw new RuleError('Settings are locked once the war starts.');
     if (t.host.toLowerCase() !== by.toLowerCase()) throw new RuleError('Only the host can change settings.');
@@ -122,11 +159,16 @@ export class ConquestHub {
       cur.turnMs = ms;
     }
     if (body.manualSetup !== undefined) cur.manualSetup = Boolean(body.manualSetup);
+    if (body.map !== undefined) {
+      if (!CQ_MAPS.some((m) => m.id === body.map)) throw new RuleError('Pick a map from the list.');
+      cur.map = body.map as string;
+    }
+    if (body.perks !== undefined) cur.perks = Boolean(body.perks);
     t.settings = cur;
     this.changed(t);
     return t;
   }
-  settingsOf(t: CqTable): CqSettings { return { turnMs: t.settings?.turnMs ?? CQ_TURN_MS, manualSetup: t.settings?.manualSetup ?? false }; }
+  settingsOf(t: CqTable): CqSettings { return { turnMs: t.settings?.turnMs ?? CQ_TURN_MS, manualSetup: t.settings?.manualSetup ?? false, map: t.settings?.map ?? 'chud', perks: t.settings?.perks ?? false }; }
   leave(code: unknown, name: string, now = Date.now()): void {
     const t = this.get(code);
     const i = t.seats.findIndex((s) => !s.bot && s.name.toLowerCase() === name.toLowerCase());
@@ -140,7 +182,9 @@ export class ConquestHub {
     if (t.host.toLowerCase() !== by.toLowerCase()) throw new RuleError('Only the host can start.');
     if (t.seats.length < 2) throw new RuleError('Add a player or a bot first (2–6).');
     t.seats.forEach((s, i) => { if (s.color === undefined || t.seats.some((o, j) => j < i && o.color === s.color)) s.color = CQ_PALETTE.findIndex((_, c) => !t.seats.some((o, j) => j !== i && o.color === c)); });
-    t.game = newGame(t.seats, this.rng, { manualSetup: this.settingsOf(t).manualSetup });
+    t.seats.forEach((s, i) => { if (!s.faction || t.seats.some((o, j) => j < i && o.faction === s.faction)) s.faction = FACTIONS.find((f) => !t.seats.some((o, j) => j !== i && o.faction === f.id))?.id; });
+    const st = this.settingsOf(t);
+    t.game = newGame(t.seats, this.rng, { manualSetup: st.manualSetup, map: st.map, perks: st.perks });
     this.after(t, now);
     return t;
   }
@@ -179,7 +223,13 @@ export class ConquestHub {
     if (!g || g.phase === 'over') return;
     const bot = g.phase !== 'setup' && g.players[g.turn]!.bot;
     const wait = bot ? CQ_BOT_MS + Math.floor(this.rng() * CQ_BOT_MS) : Math.max(0, t.deadline - Date.now());
-    const h = setTimeout(() => { try { bot ? this.botStep(t.code) : this.expire(t.code); } catch (e) { console.error('[conquest] step failed:', (e as Error).message); } }, wait);
+    const code = t.code;
+    const h = setTimeout(() => {
+      void this.sync(code).then((fresh) => {
+        if (this.stopped || fresh === false) return; // reloaded: the newer snapshot rescheduled itself
+        try { bot ? this.botStep(code) : this.expire(code); } catch (e) { console.error('[conquest] step failed:', (e as Error).message); }
+      });
+    }, wait);
     h.unref?.();
     this.timers.set(t.code, h);
   }
@@ -225,9 +275,36 @@ export class ConquestHub {
     }
   }
   private changed(t: CqTable): void {
-    if (this.tables.has(t.code)) void this.store?.save(t).catch((e) => console.error('[conquest] save failed:', (e as Error).message));
+    t.v = (t.v ?? 0) + 1;
+    if (this.tables.has(t.code) && this.store) {
+      const store = this.store, snap: CqTable = JSON.parse(JSON.stringify(t));
+      // Saves for one table run in order; a rejected save means another instance is ahead, so adopt its state.
+      const prev = this.saving.get(t.code) ?? Promise.resolve();
+      const next = prev.then(async () => {
+        try { if (!(await store.save(snap))) await this.sync(snap.code, true); } catch (e) { console.error('[conquest] save failed:', (e as Error).message); }
+      });
+      this.saving.set(t.code, next);
+      void next.then(() => { if (this.saving.get(t.code) === next) this.saving.delete(t.code); });
+    }
     this.onChange(t);
   }
+  /** Reload a table if the store holds a newer version. Resolves true when local is current, false when it reloaded. */
+  async sync(code: unknown, force = false): Promise<boolean> {
+    if (!this.store || typeof code !== 'string') return true;
+    const k = code.trim().toUpperCase();
+    if (!force) await this.saving.get(k);
+    let db: CqTable | null;
+    try { db = await this.store.load(k); } catch { return true; }
+    const cur = this.tables.get(k);
+    // force: our save was rejected, so the stored copy wins even at the same version.
+    if (!db || (cur && (force ? (cur.v ?? 0) > (db.v ?? 0) : (cur.v ?? 0) >= (db.v ?? 0)))) return true;
+    this.tables.set(k, db);
+    if (db.game && db.game.phase !== 'over') this.schedule(db); else { clearTimeout(this.timers.get(k)); this.timers.delete(k); }
+    this.onChange(db);
+    return false;
+  }
+  /** Shutdown: stop bots and timers, then wait for pending saves. */
+  async flush(): Promise<void> { this.stopped = true; this.stop(); await Promise.all([...this.saving.values()]); }
   async attach(store: CqSnapshotStore, now = Date.now()): Promise<void> {
     this.store = store;
     await store.init();
@@ -283,9 +360,10 @@ export function registerConquest(io: Server, socket: Socket): void {
     const prune = setInterval(() => hub.prune(), 60_000); prune.unref?.();
   }
   const on = (ev: string, fn: (body: Record<string, unknown>, name: () => string) => unknown) => {
-    socket.on(ev, (payload: unknown, ack?: Ack) => {
+    socket.on(ev, async (payload: unknown, ack?: Ack) => {
       try {
         const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
+        if (typeof body.code === 'string') await getConquest().sync(body.code); // never act on a stale copy
         const extra = fn(body, () => signedIn(socket));
         ack?.({ ok: true, ...((extra as object) ?? {}) });
       } catch (e) {
@@ -311,6 +389,7 @@ export function registerConquest(io: Server, socket: Socket): void {
   on('cq_watch', (b) => enter(getConquest().get(b.code)));
   on('cq_bot', (b, name) => { getConquest().addBot(b.code, name()); });
   on('cq_unseat', (b, name) => { getConquest().removeSeat(b.code, name(), Number(b.index)); });
+  on('cq_faction', (b, name) => { getConquest().setFaction(b.code, name(), b.faction, b.index); });
   on('cq_color', (b, name) => { getConquest().setColor(b.code, name(), b.color, b.index); });
   on('cq_settings', (b, name) => { getConquest().configure(b.code, name(), b); });
   on('cq_start', (b, name) => { getConquest().start(b.code, name()); });
