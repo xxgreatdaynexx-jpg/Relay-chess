@@ -1204,3 +1204,93 @@ html, body { overflow-x: clip; }
 .si-visual .si-soldier { display: none; }
 .si-static .si-visual .si-soldier { display: block; position: absolute; inset: 4%; width: 92%; height: 92%; opacity: calc(1 - var(--fade, 0)); }
 .si-static .si-visual .si-map { inset: auto auto -4% -6%; width: 40%; }
+
+/* ---------- Solitro (roguelike solitaire run) ---------- */
+.sto-panel { width: 540px; height: 720px; }
+@media (max-width: 520px) { .sto-panel { height: calc(100dvh - 110px); } }
+.sto-toggle { display: inline-flex; border-radius: 7px; overflow: hidden; background: rgba(0,0,0,.25); }
+.sol-bar .sto-toggle button { border-radius: 0; background: transparent; padding: 3px 8px; }
+.sol-bar .sto-toggle button[aria-pressed="true"] { background: #f2c14e; color: #1b1406; }
+.sto-hud { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 6px 8px; background: rgba(0,0,0,.22); font-size: 12px; }
+.sto-blind { display: flex; gap: 6px; align-items: center; line-height: 1.1; }
+.sto-chip { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: #2b6cb0; font-size: 15px; box-shadow: inset 0 0 0 2px rgba(255,255,255,.3); }
+.sto-chip-boss { background: #9b2c2c; }
+.sto-scorebox { min-width: 0; }
+.sto-scoreline { display: flex; gap: 6px; align-items: baseline; }
+.sto-scoreline b { font-size: 20px; font-variant-numeric: tabular-nums; color: #fff; }
+.sto-progress { height: 5px; border-radius: 3px; background: rgba(255,255,255,.15); overflow: hidden; margin-top: 2px; }
+.sto-progress i { display: block; height: 100%; background: linear-gradient(90deg, #f2c14e, #f6874d); transition: width .2s; }
+.sto-stats { display: flex; gap: 8px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sto-money { color: #f2c14e; }
+.sto-boss { padding: 4px 8px; font-size: 12px; background: linear-gradient(90deg, rgba(155,44,44,.85), rgba(155,44,44,.35)); }
+.sto-belt { display: flex; gap: 6px; padding: 5px 6px; }
+.sto-jokers { flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.sto-omens { display: grid; grid-template-columns: repeat(2, 34px); gap: 4px; }
+.sto-joker, .sto-omen { height: 44px; border-radius: 6px; background: linear-gradient(160deg, #3d2f6b, #241a45); border: 1px solid rgba(255,255,255,.25); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 10px; line-height: 1.05; padding: 1px; transition: transform .15s; overflow: hidden; }
+.sto-omen { background: linear-gradient(160deg, #6b4a2f, #3f2a18); font-size: 18px; }
+.sto-empty { background: rgba(0,0,0,.18) !important; border: 1px dashed rgba(255,255,255,.2) !important; }
+.sto-jicon { font-size: 17px; }
+.sto-jname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.sto-sel { outline: 2px solid #f2c14e; }
+.sto-off { opacity: .35; filter: grayscale(1); }
+.sto-pop { animation: sto-pop .23s ease-out; box-shadow: 0 0 12px #f2c14e; }
+@keyframes sto-pop { 0% { transform: scale(1); } 50% { transform: scale(1.22) rotate(-4deg); } 100% { transform: scale(1.06); } }
+.sto-ed-gilt { box-shadow: inset 0 0 0 2px #e6c35c; }
+.sto-ed-neon { box-shadow: inset 0 0 0 2px #ff4fd8, 0 0 6px #ff4fd8; }
+.sto-ed-opal { background-image: linear-gradient(135deg, #7c5cff, #3fc1c9, #f8c35a, #f2627b) !important; }
+.sto-selbar { display: flex; gap: 6px; align-items: center; justify-content: space-between; padding: 4px 8px; font-size: 12px; background: rgba(0,0,0,.35); }
+.sto-selbtns { display: flex; gap: 4px; flex-shrink: 0; }
+.sto-selbar button, .sto-shop button, .sto-foot button, .sto-intro button { background: rgba(255,255,255,.14); border-radius: 6px; padding: 3px 9px; font-weight: 600; }
+.sto-selbar button:disabled, .sto-shop button:disabled { opacity: .4; }
+.sto-err, .sto-note { padding: 3px 8px; font-size: 12px; background: rgba(155,44,44,.7); }
+.sto-note { background: rgba(43,108,176,.6); }
+.sto-foot { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 4px 8px; font-size: 11px; opacity: .85; background: rgba(0,0,0,.2); }
+.sto-anim { position: absolute; left: 50%; top: 34%; transform: translate(-50%, -50%); z-index: 5; pointer-events: none; background: rgba(10,14,20,.88); border-radius: 12px; padding: 8px 14px; text-align: center; box-shadow: 0 8px 30px rgba(0,0,0,.5); min-width: 200px; animation: sol-up .15s ease-out; }
+.sto-anim-step { font-size: 12px; min-height: 16px; }
+.sto-cm { display: flex; gap: 8px; justify-content: center; align-items: center; font-size: 22px; font-weight: 800; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.sto-chips { background: #2b6cb0; color: #fff; border-radius: 6px; padding: 0 8px; }
+.sto-mult { background: #c53030; color: #fff; border-radius: 6px; padding: 0 8px; }
+.sto-total { font-size: 26px; font-weight: 900; color: #f2c14e; animation: sto-pop .3s ease-out; }
+.sto-anim-done { animation: none; }
+.sto-hitcard { box-shadow: 0 0 0 2px #f2c14e, 0 0 12px #f2c14e !important; }
+.sto-debuff { filter: grayscale(.9) brightness(.7); }
+.sto-enh::after { content: ''; position: absolute; inset: 0; border-radius: 5px; pointer-events: none; }
+.sto-enh-etched::after { box-shadow: inset 0 0 0 2px #3b82f6; }
+.sto-enh-inked::after { box-shadow: inset 0 0 0 2px #dc2626; }
+.sto-enh-crystal::after { background: linear-gradient(135deg, rgba(160,220,255,.45), transparent 60%); box-shadow: inset 0 0 0 2px #8fd3ff; }
+.sto-enh-gilded::after { box-shadow: inset 0 0 0 2px #d4a017; background: linear-gradient(135deg, rgba(240,200,80,.35), transparent 60%); }
+.sto-enh-iron::after { box-shadow: inset 0 0 0 2px #6b7280; background: rgba(110,120,130,.18); }
+.sto-enh-charmed::after { box-shadow: inset 0 0 0 2px #22c55e; }
+.sto-redeal { position: absolute !important; inset: auto 0 -14px 0 !important; font-size: 9px; text-align: center; opacity: .8; }
+.sto-shop { flex: 1; overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; touch-action: pan-y; }
+.sto-payout { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; padding: 6px 8px; border-radius: 8px; background: rgba(0,0,0,.3); font-size: 12px; }
+.sto-shop-title { display: flex; align-items: center; gap: 6px; font-family: Fraunces Variable, serif; font-size: 18px; }
+.sto-items { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.sto-item { border-radius: 10px; padding: 8px 6px; background: linear-gradient(160deg, #3d2f6b, #241a45); border: 1px solid rgba(255,255,255,.2); display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; font-size: 11px; }
+.sto-item-omen { background: linear-gradient(160deg, #6b4a2f, #3f2a18); }
+.sto-item-icon { font-size: 28px; }
+.sto-item-name { font-weight: 800; font-size: 13px; }
+.sto-item-kind { opacity: .7; font-size: 10px; }
+.sto-item-text { flex: 1; }
+.sto-sold { opacity: .45; }
+.sto-shop-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.sto-next { background: #f2c14e !important; color: #1b1406; flex: 1; }
+.sto-upcoming { font-size: 12px; padding: 4px 8px; border-radius: 6px; background: rgba(155,44,44,.35); }
+.sto-upcoming-now { background: rgba(155,44,44,.8); }
+.sto-deck { display: flex; flex-wrap: wrap; gap: 4px; font-size: 11px; align-items: center; }
+.sto-enhtag { position: relative; padding: 1px 6px; border-radius: 4px; background: rgba(0,0,0,.3); }
+.sto-tip { font-size: 11px; opacity: .7; }
+.sto-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 16px; gap: 8px; font-size: 13px; }
+.sto-intro p { max-width: 400px; }
+.sto-intro .sto-next { flex: none; padding: 8px 22px; font-size: 15px; }
+.sto-table { width: 100%; font-size: 12px; border-collapse: collapse; }
+.sto-table th, .sto-table td { padding: 3px 4px; text-align: left; border-bottom: 1px solid rgba(255,255,255,.1); }
+@media (max-width: 520px) {
+  .sto-hud { grid-template-columns: auto 1fr; }
+  .sto-stats { grid-column: 1 / -1; justify-content: space-around; }
+  .sto-scoreline b { font-size: 17px; }
+  .sto-joker { height: 40px; font-size: 9px; }
+  .sto-items { grid-template-columns: repeat(2, 1fr); }
+  .sto-foot span { display: none; }
+  .sto-foot { justify-content: flex-end; }
+}

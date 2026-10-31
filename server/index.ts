@@ -6,6 +6,7 @@ import { initCheckersLeaderboardStorage, initLeaderboardStorage } from './leader
 import { initCasinoStorage } from './casino-store.js';
 import { initAccountStorage } from './accounts.js';
 import { initConquestStorage } from './conquest.js';
+import { getSolitro, initSolitroStorage } from './solitro.js';
 import { getRoomPersistence, initRoomStorage } from './room-store.js';
 
 await initLeaderboardStorage();
@@ -17,6 +18,7 @@ await initAccountStorage();
 await initRoomStorage();
 await initChatStorage();
 await initConquestStorage();
+await initSolitroStorage();
 
 const port = Number(process.env.PORT) || 4317;
 
@@ -40,6 +42,7 @@ async function shutdown(signal: string): Promise<void> {
     const p = getRoomPersistence();
     if (p) { p.stop(); await p.flush(); }
     await getChatLog().flush();
+    await getSolitro().flush();
   } catch (error) {
     console.error('[shutdown] save failed:', (error as Error).message);
   }

@@ -13,6 +13,7 @@ import { getChatLog } from './chat.js';
 import { registerSockets, stopMaintenance } from './sockets.js';
 import { resetRooms } from './rooms.js';
 import { getConquest } from './conquest.js';
+import { getSolitro, solitroBoard } from './solitro.js';
 
 export interface AppContext {
   httpServer: HttpServer;
@@ -59,6 +60,10 @@ export async function createApp(): Promise<AppContext> {
   app.get('/api/arena-leaderboard', async (req, res) => {
     const ledger = getArenaLedger();
     res.json({ rows: boardFor(ledger.standings(1e6), await viewerIsQa(req), 100), source: ledger.usingDatabase ? 'postgres' : 'memory' });
+  });
+
+  app.get('/api/solitro-leaderboard', async (req, res) => {
+    res.json({ rows: solitroBoard(await viewerIsQa(req)), source: getSolitro().usingDatabase ? 'postgres' : 'memory' });
   });
 
   /** Recent global chat (read-only). QA accounts' messages are only included for a signed-in QA viewer. */
