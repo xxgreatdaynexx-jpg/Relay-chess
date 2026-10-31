@@ -72,7 +72,8 @@ export const DUNES: ArenaMap = {
     box(30, 0, 48, 12, 1.6, 'sand'),
     ...stairs(42, 12, 48, 16, '-y', 4, 1.6),
     // cover up on A
-    ...crates(33, 3, 1.2, 2), ...crates(34.2, 3, 1.2), ...crates(40, 6, 1.2), box(37, 9, 41, 9.8, 1.6 + 0.9, 'sandbag', 1.6),
+    // (sitting ON the plateau: they used to start at z=0, buried inside it with only a sliver poking out)
+    ...crates(33, 3, 1.2, 2, 1.6), ...crates(34.2, 3, 1.2, 1, 1.6), ...crates(40, 6, 1.2, 1, 1.6), box(37, 9, 41, 9.8, 1.6 + 0.9, 'sandbag', 1.6),
     box(44, 2, 46, 4, 1.6 + 1.0, 'crate', 1.6),
     // A house wall with a doorway: two wall pieces and a lintel you can walk under
     box(36, 12, 37, 20, 4, 'plaster'), box(24, 19, 26, 20, 4, 'plaster'), box(28, 19, 30, 20, 4, 'plaster'), box(26, 19, 28, 20, 4, 'plaster', 2.4),

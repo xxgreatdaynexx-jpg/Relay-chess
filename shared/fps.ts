@@ -99,6 +99,18 @@ export function canStand(x: number, y: number, z = 0, map: ArenaMap = MAP): bool
 
 export interface Body { x: number; y: number; z: number; vz: number; grounded: boolean }
 
+/** Corner slip: walking almost head-on into a box edge that only clips the body by a few cm slides you around it. */
+const CORNER_SLIP = 0.15;
+function nudge(b: Body, axis: 'x' | 'y', push: number, map: ArenaMap, step: number): void {
+  const amt = Math.abs(push);
+  const free = (o: number) => (axis === 'y' ? !blockedAt(b.x + push, b.y + o, b.z, map, step) : !blockedAt(b.x + o, b.y + push, b.z, map, step));
+  const plus = free(CORNER_SLIP), minus = free(-CORNER_SLIP);
+  if (plus === minus) return; // flat wall (or a gap on both sides): just stop
+  const o = (plus ? 1 : -1) * amt;
+  if (axis === 'y') { if (!blockedAt(b.x, b.y + o, b.z, map, step)) b.y += o; }
+  else if (!blockedAt(b.x + o, b.y, b.z, map, step)) b.x += o;
+}
+
 /** Horizontal move with wall sliding and stair stepping. Mutates and returns the body. */
 export function moveHorizontal(b: Body, dx: number, dy: number, map: ArenaMap = MAP): Body {
   const step = b.grounded ? STEP_HEIGHT : 0.05;
@@ -106,14 +118,25 @@ export function moveHorizontal(b: Body, dx: number, dy: number, map: ArenaMap = 
   const n = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 0.2));
   for (let i = 0; i < n; i++) {
     const sx = dx / n, sy = dy / n;
+    const px = b.x, py = b.y, pz = b.z, pg = b.grounded, pv = b.vz;
     if (!blockedAt(b.x + sx, b.y, b.z, map, step)) b.x += sx;
+    else if (Math.abs(sx) > Math.abs(sy) * 2) nudge(b, 'y', sx, map, step);
     if (!blockedAt(b.x, b.y + sy, b.z, map, step)) b.y += sy;
+    else if (Math.abs(sy) > Math.abs(sx) * 2) nudge(b, 'x', sy, map, step);
     if (b.grounded) {
       const g = groundAt(b.x, b.y, b.z + STEP_HEIGHT, map);
       // Walk up a step, or stick to stairs/ramps going down (a small drop).
       if (g > b.z || b.z - g <= STEP_HEIGHT) b.z = g;
       else b.grounded = false; // walked off a ledge: start falling
+    } else {
+      // Airborne: the 0.05 air step lets feet slide over a top that is just above them (the lip of a crate you
+      // almost cleared). Climb onto it right away, or the next vertical step would sink the player inside the box
+      // and leave them stuck there (the Dunes crate bug).
+      const g = groundAt(b.x, b.y, b.z + step, map);
+      if (g > b.z) { b.z = g; if (b.vz <= 0) { b.vz = 0; b.grounded = true; } }
     }
+    // Never end a sub-step inside geometry (e.g. stepping up under a low ceiling): undo it and stop here.
+    if (!canStand(b.x, b.y, b.z, map) && canStand(px, py, pz, map)) { Object.assign(b, { x: px, y: py, z: pz, grounded: pg, vz: pv }); break; }
   }
   return b;
 }
@@ -436,7 +459,7 @@ export interface ShotResult {
   /** Rocket impact point, if any. */
   impact?: Vec3;
   /** Rays for tracers: yaw, pitch, length. */
-  rays: Array<{ a: number; p: number; dist: number }>;
+  rays: Array<{ a: number; p: number; dist: number; hit?: string }>;
 }
 
 /** Resolves one trigger pull of a weapon. Pure; the server decides whether the pull was allowed. */
@@ -473,7 +496,7 @@ export function fireWeapon(
     const a = shooter.a + (rand() * 2 - 1) * spread;
     const p = shooter.p + (rand() * 2 - 1) * spread * 0.6;
     const hit = hitscan({ ...shooter, a, p }, targets, map, weapon.range);
-    rays.push({ a, p, dist: hit ? hit.dist : rayWorld(eye, dirFrom(a, p), map, weapon.range) });
+    rays.push({ a, p, dist: hit ? hit.dist : rayWorld(eye, dirFrom(a, p), map, weapon.range), ...(hit ? { hit: hit.id } : {}) });
     if (hit) {
       hits.set(hit.id, (hits.get(hit.id) ?? 0) + weapon.damage * (hit.head ? HEADSHOT_MULT : 1));
       if (hit.head) heads.add(hit.id);
@@ -510,4 +533,90 @@ export const NUKE_RESPAWN_MS = 5000;
 
 export function streakReward(streak: number): StreakKind | null {
   return STREAKS.find((s) => s.kills === streak)?.kind ?? null;
+}
+
+// ---------------------------------------------------------------- rockets (real projectiles)
+
+/** RPG rockets fly at this speed (tiles/s) with a slight gravity drop, and burst after ROCKET_LIFE_MS. */
+export const ROCKET_SPEED = 24;
+export const ROCKET_GRAVITY = 1.2;
+export const ROCKET_LIFE_MS = 2500;
+/** The rocket leaves the tube this far ahead of the eye, slightly low and right. */
+export const ROCKET_MUZZLE = 0.55;
+
+export interface Rocket { id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; born: number; at: number }
+
+/** A rocket leaving the shooter's tube along their aim. */
+export function launchRocket(id: number, shooter: { id: string; x: number; y: number; z: number; a: number; p: number }, now: number): Rocket {
+  const e = eyeOf(shooter);
+  const d = dirFrom(shooter.a, shooter.p);
+  return { id, ownerId: shooter.id, x: e.x + d.x * ROCKET_MUZZLE, y: e.y + d.y * ROCKET_MUZZLE, z: e.z - 0.12 + d.z * ROCKET_MUZZLE, vx: d.x * ROCKET_SPEED, vy: d.y * ROCKET_SPEED, vz: d.z * ROCKET_SPEED, born: now, at: now };
+}
+
+/**
+ * Moves a rocket forward to `now`, checking each short segment against the world and every living fighter
+ * except its owner. Returns the impact point (and who was struck directly), or null if it is still flying.
+ * Mutates the rocket. Out of time = it bursts where it is.
+ */
+export function stepRocket(r: Rocket, now: number, targets: Target[], map: ArenaMap = MAP): { x: number; y: number; z: number; direct: string | null } | null {
+  let left = Math.max(0, now - r.at) / 1000;
+  r.at = Math.max(r.at, now);
+  while (left > 1e-6) {
+    const h = Math.min(left, 1 / 60);
+    left -= h;
+    r.vz -= ROCKET_GRAVITY * h;
+    const sp = Math.hypot(r.vx, r.vy, r.vz);
+    const seg = sp * h;
+    const d = { x: r.vx / sp, y: r.vy / sp, z: r.vz / sp };
+    const o = { x: r.x, y: r.y, z: r.z };
+    let best = rayWorld(o, d, map, seg + 1e-6);
+    let direct: string | null = null;
+    for (const t of targets) {
+      if (!t.alive || t.id === r.ownerId) continue;
+      const hit = rayFighter(o, d, t);
+      if (hit && hit.dist >= 0 && hit.dist <= best) { best = hit.dist; direct = t.id; }
+    }
+    // Leaving the map's bounds counts as hitting the perimeter.
+    const nx = o.x + d.x * seg, ny = o.y + d.y * seg;
+    const outside = nx < 0 || ny < 0 || nx > map.w || ny > map.d;
+    if (best < seg || direct || outside) {
+      const back = Math.max(0, best - 0.08);
+      const dist = outside && !direct && best >= seg ? Math.max(0, seg - 0.08) : back;
+      return { x: o.x + d.x * dist, y: o.y + d.y * dist, z: Math.max(0.02, o.z + d.z * dist), direct };
+    }
+    r.x = nx; r.y = ny; r.z = o.z + d.z * seg;
+    if (now - r.born >= ROCKET_LIFE_MS && left <= 1e-6) return { x: r.x, y: r.y, z: r.z, direct: null };
+  }
+  if (now - r.born >= ROCKET_LIFE_MS) return { x: r.x, y: r.y, z: r.z, direct: null };
+  return null;
+}
+
+/** Rocket damage on impact: full to a direct hit, falloff splash to everyone near, half to its owner. */
+export function rocketDamage(
+  impact: Vec3, direct: string | null, ownerId: string, targets: Target[], map: ArenaMap = MAP, spec: WeaponSpec = WEAPONS.rocket,
+): Map<string, number> {
+  const hits = new Map<string, number>();
+  if (direct) hits.set(direct, spec.damage);
+  for (const s of splashTargets(impact, spec.splash ?? 2.4, spec.damage, targets, map)) {
+    if (s.id === direct) continue;
+    const dmg = s.id === ownerId ? Math.round(s.damage * SELF_SPLASH) : s.damage;
+    if (dmg > 0) hits.set(s.id, dmg);
+  }
+  return hits;
+}
+
+/** Outward face normal of world geometry at a hit point (for bullet holes and sparks). Ground/ramps = up. */
+export function surfaceNormal(pt: Vec3, map: ArenaMap = MAP): Vec3 {
+  let best = { d: pt.z < 0.03 ? Math.abs(pt.z) : Infinity, n: { x: 0, y: 0, z: 1 } };
+  const eps = 0.12;
+  for (const s of map.solids) {
+    if (pt.x < s.x0 - eps || pt.x > s.x1 + eps || pt.y < s.y0 - eps || pt.y > s.y1 + eps || pt.z < s.z0 - eps || pt.z > s.z1 + eps) continue;
+    const faces: Array<[number, Vec3]> = [
+      [Math.abs(pt.x - s.x0), { x: -1, y: 0, z: 0 }], [Math.abs(pt.x - s.x1), { x: 1, y: 0, z: 0 }],
+      [Math.abs(pt.y - s.y0), { x: 0, y: -1, z: 0 }], [Math.abs(pt.y - s.y1), { x: 0, y: 1, z: 0 }],
+      [Math.abs(pt.z - s.z0), { x: 0, y: 0, z: -1 }], [Math.abs(pt.z - s.z1), { x: 0, y: 0, z: 1 }],
+    ];
+    for (const [d, n] of faces) if (d < best.d) best = { d, n };
+  }
+  return best.n;
 }

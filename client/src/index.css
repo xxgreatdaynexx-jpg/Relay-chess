@@ -612,6 +612,11 @@ input {
 .fps-board .fps-me { color: #e6c46a; }
 .fps-scoreboard { position: absolute; inset: 12% 14%; background: rgba(8,10,8,.82); border: 1px solid #8b908066; padding: 8px 10px; font: 600 12px ui-monospace, Menlo, Consolas, monospace; color: #d9dccf; text-transform: uppercase; pointer-events: none; overflow: auto; }
 .fps-scoreboard table { width: 100%; border-collapse: collapse; }
+.fps-look { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; padding: 4px 8px; font: 600 11px ui-monospace, Menlo, monospace; color: #d9dccf; background: #11140f; border-bottom: 1px solid #8b908044; }
+.fps-look label { display: flex; align-items: center; gap: 6px; }
+.fps-look input[type=range] { width: 110px; }
+.fps-look input[type=number] { width: 56px; background: #0006; color: inherit; border: 1px solid #8b908066; }
+.fps-bot-badge { margin-left: 6px; padding: 0 4px; border: 1px solid #e0b04a; color: #e0b04a; font-size: 10px; border-radius: 2px; }
 .fps-scoreboard th { text-align: left; color: #a9ae9e; border-bottom: 1px solid #8b908066; padding: 2px 4px; }
 .fps-scoreboard td { padding: 2px 4px; }
 .fps-scoreboard .fps-me td { color: #e6c46a; }

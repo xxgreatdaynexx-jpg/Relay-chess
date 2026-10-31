@@ -5,7 +5,7 @@
 import {
   AIRSTRIKE_DAMAGE, AIRSTRIKE_DELAY_MS, AIRSTRIKE_LOCK_MS, AIRSTRIKE_RADIUS, AIRSTRIKE_RANGE, AIRSTRIKE_SPACING, AIRSTRIKE_WAIT_MS, applyDamage,
   chestOf, clampPitch, dirFrom, DRONE_COOLDOWN_MS, DRONE_DAMAGE, DRONE_MS, DRONE_RANGE, eyeOf, fireWeapon, isWeapon, KILL_Z, lineOfSight, MAP, MAX_HP, maybeRespawn,
-  normAngle, NUKE_DELAY_MS, NUKE_RESPAWN_MS, pickSpawn, rayWorld, roofAt, SCOPE_SETTLE_MS, splashTargets, stepVertical, STREAKS, streakReward,
+  normAngle, launchRocket, rocketDamage, stepRocket, type Rocket, NUKE_DELAY_MS, NUKE_RESPAWN_MS, pickSpawn, rayWorld, roofAt, SCOPE_SETTLE_MS, splashTargets, stepVertical, STREAKS, streakReward,
   SWITCH_MS, tryJump, UAV_MS, validateMove, WEAPON_ORDER, WEAPONS, type ArenaMap, type Fighter, MAPS, type StreakKind, type WeaponId,
 } from '../shared/fps.js';
 import { isMapId, MAP_ROTATION } from '../shared/arenaMaps.js';
@@ -49,6 +49,9 @@ export class ArenaWorld {
   readonly fighters = new Map<string, ArenaFighter>();
   strikes: Strike[] = [];
   drones = new Map<string, Drone>();
+  /** RPG rockets in flight (server-simulated projectiles). */
+  rockets: Rocket[] = [];
+  private rocketSeq = 0;
   nuke: { ownerId: string; by: string; at: number } | null = null;
 
   /** Map picked by a player for the next match (validated), or null to follow the rotation. */
@@ -87,6 +90,7 @@ export class ArenaWorld {
     this.nextMapId = null;
     this.matchEndsAt = now + MATCH_MS;
     this.strikes = [];
+    this.rockets = [];
     this.drones.clear();
     this.nuke = null;
     const placed: ArenaFighter[] = [];
@@ -115,6 +119,7 @@ export class ArenaWorld {
   leave(id: string): boolean {
     this.drones.delete(id);
     this.strikes = this.strikes.filter((s) => s.ownerId !== id);
+    this.rockets = this.rockets.filter((r) => r.ownerId !== id);
     return this.fighters.delete(id);
   }
 
@@ -204,12 +209,17 @@ export class ArenaWorld {
     f.ammo[f.weapon] -= 1;
     if (f.ammo[f.weapon] === 0) f.reloadUntil = now + spec.reloadMs;
     const scoped = f.weapon === 'sniper' && f.scopedSince > 0 && now - f.scopedSince >= SCOPE_SETTLE_MS;
+    if (f.weapon === 'rocket') {
+      const r = launchRocket(++this.rocketSeq, f, now);
+      this.rockets.push(r);
+      return [{ ev: 'fps_shot', data: { id: f.id, w: f.weapon, o: [+f.x.toFixed(2), +f.y.toFixed(2), +f.z.toFixed(2)], rocket: this.rocketView(r) } }];
+    }
     const shot = fireWeapon(f, spec, [...this.fighters.values()], { scoped, rand: this.rand, map: this.map });
     const events: ArenaEvent[] = [{
       ev: 'fps_shot',
       data: {
         id: f.id, w: f.weapon, o: [+f.x.toFixed(2), +f.y.toFixed(2), +f.z.toFixed(2)],
-        rays: shot.rays.map((r) => [+r.a.toFixed(3), +r.p.toFixed(3), +r.dist.toFixed(2)]),
+        rays: shot.rays.map((r) => [+r.a.toFixed(3), +r.p.toFixed(3), +r.dist.toFixed(2), r.hit ? 1 : 0]),
         impact: shot.impact && { x: +shot.impact.x.toFixed(2), y: +shot.impact.y.toFixed(2), z: +shot.impact.z.toFixed(2) },
       },
     }];
@@ -280,6 +290,26 @@ export class ArenaWorld {
     return true;
   }
 
+  private rocketView(r: Rocket) {
+    return { id: r.id, ownerId: r.ownerId, x: +r.x.toFixed(2), y: +r.y.toFixed(2), z: +r.z.toFixed(2), vx: +r.vx.toFixed(2), vy: +r.vy.toFixed(2), vz: +r.vz.toFixed(2) };
+  }
+
+  /** Flies every rocket to `now`; bursts on walls, floors, players or timeout with splash damage. */
+  stepRockets(now: number): ArenaEvent[] {
+    const out: ArenaEvent[] = [];
+    if (!this.rockets.length) return out;
+    const left: Rocket[] = [];
+    for (const r of this.rockets) {
+      const imp = stepRocket(r, now, [...this.fighters.values()], this.map);
+      if (!imp) { left.push(r); continue; }
+      out.push({ ev: 'fps_boom', data: { x: +imp.x.toFixed(2), y: +imp.y.toFixed(2), z: +imp.z.toFixed(2), r: WEAPONS.rocket.splash, cause: 'rocket', rocket: r.id, ownerId: r.ownerId } });
+      const hits = rocketDamage(imp, imp.direct, r.ownerId, [...this.fighters.values()], this.map);
+      for (const [tid, dmg] of hits) out.push(...this.damage(this.fighters.has(r.ownerId) ? r.ownerId : null, tid, dmg, now, 'rocket'));
+    }
+    this.rockets = left;
+    return out;
+  }
+
   dronePos(d: Drone, now: number): { x: number; y: number; z: number } | null {
     const o = this.fighters.get(d.ownerId);
     if (!o) return null;
@@ -303,6 +333,7 @@ export class ArenaWorld {
         f.streak = 0;
       }
     }
+    out.push(...this.stepRockets(now));
     // Airstrikes: wait for a live target, track it until lock-on, then the bombs fall in a short line.
     for (const st of this.strikes) {
       if (!Number.isFinite(st.at)) {
@@ -385,7 +416,7 @@ export class ArenaWorld {
       t: now,
       players: [...this.fighters.values()].map((f) => ({
         id: f.id, name: f.name, x: +f.x.toFixed(3), y: +f.y.toFixed(3), z: +f.z.toFixed(3), a: +f.a.toFixed(3), p: +f.p.toFixed(3),
-        hp: f.hp, k: f.kills, d: f.deaths, alive: f.alive, w: f.weapon, ammo: f.ammo[f.weapon],
+        hp: f.hp, k: f.kills, d: f.deaths, alive: f.alive, ...(f.id.startsWith('arena-bot-') ? { bot: true } : {}), w: f.weapon, ammo: f.ammo[f.weapon],
         rl: f.reloadUntil ? Math.max(0, f.reloadUntil - now) : 0, g: f.grounded,
         st: f.streak, uav: Math.max(0, f.uavUntil - now),
       })),
@@ -398,6 +429,7 @@ export class ArenaWorld {
       picked: this.nextMapId !== null,
       left: this.matchEndsAt ? Math.max(0, this.matchEndsAt - now) : MATCH_MS,
       strikes: this.strikes.map((s) => ({ x: +s.x.toFixed(2), y: +s.y.toFixed(2), z: +roofAt(s.x, s.y, this.map).toFixed(2), inMs: Number.isFinite(s.at) ? Math.max(0, s.at - now) : -1, r: AIRSTRIKE_RADIUS, locked: now >= s.lockAt })),
+      rockets: this.rockets.map((r) => this.rocketView(r)),
       nuke: this.nuke ? { by: this.nuke.by, inMs: this.nuke.at - now } : null,
     };
   }

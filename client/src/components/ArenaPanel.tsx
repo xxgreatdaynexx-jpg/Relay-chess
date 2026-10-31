@@ -2,12 +2,14 @@ import { TopTab } from '@/components/TopTabs';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useRef, useState } from 'react';
 import { socket } from '@/lib/net';
-import { FPS_KEY, fpsFrom, hotkeyFor, isLockedTo, readFpsPref } from '@/lib/arenaInput';
+import { LOOK_KEY, SENS_MAX, SENS_MIN, mouseLook, readLook, type LookPrefs, FPS_KEY, fpsFrom, hotkeyFor, isLockedTo, readFpsPref } from '@/lib/arenaInput';
 import { ArenaRenderer, minimapSize } from '@/lib/arenaRender';
 import type { Arena3D, Fx3D, Soldier3D } from '@/lib/arena3d';
-import { playExplosion, playHit, playStreakCall, playWeaponShot, unlockSounds } from '@/lib/sounds';
+import { prefersReducedMotion } from '@/lib/motion';
+import type { ArenaMap } from '../../../shared/arenaMaps';
+import { playBoom, playExplosion, playHit, playStreakCall, playWeaponShot, unlockSounds } from '@/lib/sounds';
 import {
-  AIRSTRIKE_RADIUS, clampPitch, EYE_HEIGHT, mapById, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, stepVertical, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
+  AIRSTRIKE_RADIUS, clampPitch, EYE_HEIGHT, mapById, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
 } from '../../../shared/fps';
 
 const OPEN_KEY = 'relay-fps-open';
@@ -20,10 +22,18 @@ const COLORS = ['#5f6a48', '#7d7158', '#596066', '#6b6248', '#4f5a4c', '#73705f'
 const SCOPE_ZOOM = 3.5;
 const FOV = 68; // vertical, degrees
 
-interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number }
-interface NetState { t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null }
+interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number; bot?: boolean }
+interface NetState { t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null; rockets?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number }> }
 interface Snap extends NetState { recv: number }
 type Quality = 'hd' | 'lo';
+
+/** Same as arena3d's TRACER_SPEED (that module is lazy-loaded, so it isn't imported here). */
+const TRACER_SPEED = 160;
+/** Material of the box (if any) at a world point, for spark/dust colours. */
+function materialAt(map: ArenaMap, x: number, y: number, z: number): string | undefined {
+  for (const s of map.solids) if (x >= s.x0 - 0.02 && x <= s.x1 + 0.02 && y >= s.y0 - 0.02 && y <= s.y1 + 0.02 && z >= s.z0 - 0.02 && z <= s.z1 + 0.02) return s.mat;
+  return z < 0.05 ? map.ground : undefined;
+}
 
 function colorFor(id: string) {
   let h = 0;
@@ -64,6 +74,14 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const pickRef = useRef<HTMLSpanElement>(null);
   useEffect(() => { try { localStorage.setItem(FPS_KEY, showFps ? '1' : '0'); } catch { /* ignore */ } }, [showFps]);
   const [isTouch] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches);
+  const [look, setLookState] = useState<LookPrefs>(() => readLook());
+  const lookRef = useRef(look);
+  const [lookOpen, setLookOpen] = useState(false);
+  const setLook = (patch: Partial<LookPrefs>) => setLookState((cur) => {
+    const next = { ...cur, ...patch }; lookRef.current = next;
+    try { localStorage.setItem(LOOK_KEY, JSON.stringify(next)); } catch { /* private mode */ }
+    return next;
+  });
   const [quality, setQuality] = useState<Quality>(() => (localStorage.getItem(QUALITY_KEY) as Quality) || (isTouch ? 'lo' : 'hd'));
   const qualityRef = useRef(quality);
   useEffect(() => { qualityRef.current = quality; localStorage.setItem(QUALITY_KEY, quality); }, [quality]);
@@ -74,7 +92,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     jumpAt: -1e9, scoped: false, firing: false, streak: 0, uavUntil: 0, walk: 0,
   });
   const snaps = useRef<Snap[]>([]);
-  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, killmark: 0, nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number }>, hitAt: new Map<string, number>(), shotAt: new Map<string, number>(), shake: 0, jetAt: 0 });
+  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, killmark: 0, nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string; fall: number }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number; sniper?: boolean }>, impacts: [] as Array<{ x: number; y: number; z: number; player: boolean; at: number }>, blasts: [] as Array<{ x: number; y: number; z: number; big: boolean }>, shells: 0, rockets: new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number }>(), weaponAt: new Map<string, { w: string; at: number }>(), hitAt: new Map<string, number>(), shotAt: new Map<string, number>(), shake: 0, jetAt: 0 });
   const banner = useRef<{ text: string; sub: string; at: number } | null>(null);
   const touch = useRef({ up: false, down: false, left: false, right: false, lookUp: false, lookDown: false });
   const [mapInfo, setMapInfo] = useState<{ map: string; next: string; picked: boolean; secs: number }>({ map: MAP.id, next: '', picked: false, secs: 0 });
@@ -126,6 +144,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     m.ammo -= 1;
     if (m.ammo === 0) m.reloadUntil = now + spec.reloadMs;
     fx.current.muzzle = now;
+    fx.current.shells++;
     playWeaponShot(m.weapon);
     socket.emit('fps_shoot', { a: m.a, p: m.p });
   }
@@ -193,25 +212,35 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         if (src && h.by !== me.current.id) fx.current.dmgDirs.push({ a: Math.atan2(src.y - me.current.y, src.x - me.current.x), at: now });
       }
     };
-    const onShot = (s: { id: string; w: WeaponId; o?: [number, number, number]; rays?: Array<[number, number, number]>; impact?: { x: number; y: number; z: number } }) => {
+    const onShot = (s: { id: string; w: WeaponId; o?: [number, number, number]; rays?: Array<[number, number, number, number?]>; impact?: { x: number; y: number; z: number }; rocket?: { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number } }) => {
       const now = performance.now();
       if (s.id !== me.current.id) { playWeaponShot(s.w, 0.35); fx.current.shotAt.set(s.id, now); }
       if (s.o && s.rays) {
         // Tracers start a little below and ahead of the eye so your own don't sit on the crosshair.
         const [ox, oy, oz] = s.o;
-        for (const [a, p, d] of s.rays.slice(0, 4)) {
+        // Every shotgun pellet gets its own streak (they're cheap pooled lines).
+        for (const [a, p, d, hit] of s.rays.slice(0, 12)) {
           const c = Math.cos(p);
           const start: [number, number, number] = [ox + Math.cos(a) * c * 0.6, oy + Math.sin(a) * c * 0.6, oz + 1.25];
-          fx.current.tracers.push({ o: start, e: [ox + Math.cos(a) * c * d, oy + Math.sin(a) * c * d, oz + EYE_HEIGHT + Math.sin(p) * d], at: now });
+          const e: [number, number, number] = [ox + Math.cos(a) * c * d, oy + Math.sin(a) * c * d, oz + EYE_HEIGHT + Math.sin(p) * d];
+          fx.current.tracers.push({ o: start, e, at: now, sniper: s.w === 'sniper' });
+          // The hole / puff appears when the streak gets there.
+          if (d < WEAPONS[s.w].range - 0.05) fx.current.impacts.push({ x: e[0], y: e[1], z: e[2], player: !!hit, at: now + (d / TRACER_SPEED) * 1000 });
         }
       }
       if (s.impact) { fx.current.booms.push({ ...s.impact, at: now, big: false }); playExplosion(0.5); }
+      if (s.rocket) fx.current.rockets.set(s.rocket.id, { ...s.rocket, at: now });
     };
     const onKill = (k: { killer: string; victim: string; killerId: string | null; victimId: string; cause: string }) => {
       const self = k.killerId === k.victimId || !k.killerId;
       if (k.killerId === me.current.id && !self) fx.current.killmark = performance.now();
       const v = snaps.current[snaps.current.length - 1]?.players.find((p) => p.id === k.victimId);
-      if (v) fx.current.deaths.set(k.victimId, { at: performance.now(), x: v.x, y: v.y, z: v.z, a: v.a, name: v.name });
+      if (v) {
+        // Fall away from the killer (or backwards when we can't tell).
+        const by = snaps.current[snaps.current.length - 1]?.players.find((p) => p.id === k.killerId);
+        const fall = by && by.id !== v.id ? Math.atan2(v.y - by.y, v.x - by.x) - v.a : Math.PI;
+        fx.current.deaths.set(k.victimId, { at: performance.now(), x: v.x, y: v.y, z: v.z, a: v.a, name: v.name, fall });
+      }
       pushFeed({ killer: k.killer, victim: k.victim, cause: k.cause, self, mine: k.killerId === me.current.id || k.victimId === me.current.id });
     };
     const onStreak = (s: { id: string; name: string; kind: string; title: string; streak: number }) => {
@@ -221,13 +250,16 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       banner.current = { text: mine ? s.title : `${s.name.toUpperCase()} · ${s.title}`, sub: `"${radio[s.kind] ?? ''}" · ${s.streak} kill streak${mine && info ? ` · ${info.blurb}` : ''}`, at: performance.now() };
       playStreakCall(s.kind === 'nuke' ? 'alarm' : 'reward');
     };
-    const onBoom = (b: { x: number; y: number; z?: number; cause?: string }) => {
+    const onBoom = (b: { x: number; y: number; z?: number; cause?: string; rocket?: number }) => {
       const t = performance.now();
       fx.current.booms.push({ x: b.x, y: b.y, z: b.z ?? 0, at: t, big: true });
+      fx.current.blasts.push({ x: b.x, y: b.y, z: b.z ?? 0, big: b.cause !== 'rocket' });
+      if (b.rocket !== undefined) fx.current.rockets.delete(b.rocket);
       const d = Math.hypot(b.x - me.current.x, b.y - me.current.y);
       if (d < 8) fx.current.shake = t;
       if (b.cause === 'airstrike' && t - fx.current.jetAt > 1500) fx.current.jetAt = t;
-      playExplosion(Math.max(0.35, 0.9 - d / 25));
+      // Rockets use Dayne's chess explosion recording; airstrikes keep the long synth rumble.
+      if (b.cause === 'rocket' && d < 30) playBoom(); else playExplosion(Math.max(0.35, 0.9 - d / 25));
     };
     const onNuke = (n: { phase: string; by: string }) => {
       if (n.phase === 'boom') {
@@ -268,7 +300,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       try { g3 = new A(gl); raf = requestAnimationFrame(frame); } catch { setGlError('This browser could not start 3D graphics (WebGL).'); }
     }).catch(() => setGlError('Could not load the 3D engine. Refresh to try again.'));
     const r = new ArenaRenderer();
-    const prevPos = new Map<string, { x: number; y: number }>();
+    const prevPos = new Map<string, { x: number; y: number; t: number }>();
     let raf = 0;
     let last = performance.now();
     let lastSend = 0;
@@ -308,8 +340,11 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         if (k.has('pagedown')) look -= 1;
         if (t.lookUp) look += 1;
         if (t.lookDown) look -= 1;
-        m.a += turn * (m.scoped ? 0.8 : 2.6) * dt;
-        m.p = clampPitch(m.p + look * 1.6 * dt) ?? m.p;
+        // Touch pads / turn keys use the touch sensitivity (and the scoped multiplier when zoomed).
+        const lp = lookRef.current, tk = lp.touch * (m.scoped ? lp.scope / 0.31 : 1);
+        if (lp.invertY && (t.lookUp || t.lookDown)) look = -look;
+        m.a += turn * (m.scoped ? 0.8 : 2.6) * tk * dt;
+        m.p = clampPitch(m.p + look * 1.6 * tk * dt) ?? m.p;
         const len = Math.hypot(fwd, side) || 1;
         const sp = (MOVE_SPEED * 0.95 * dt) / len * (m.scoped ? 0.5 : 1);
         // a turns from +x toward +y; "right" is +90°.
@@ -332,22 +367,52 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       const soldiers: Soldier3D[] = others.map((p) => {
         const pp = prevPos.get(p.id);
         const mv = !!pp && Math.hypot(pp.x - p.x, pp.y - p.y) > 0.002;
-        prevPos.set(p.id, { x: p.x, y: p.y });
-        return { id: p.id, x: p.x, y: p.y, z: p.z, a: p.a, p: p.p, color: colorFor(p.id), flash: now - (fx.current.hitAt.get(p.id) ?? -1e9) < 160, moving: mv, t: now, w: p.w, fire: now - (fx.current.shotAt.get(p.id) ?? -1e9) < 60 };
+        const sp = pp ? Math.hypot(pp.x - p.x, pp.y - p.y) / Math.max(1e-3, (now - pp.t) / 1000) : 0;
+        prevPos.set(p.id, { x: p.x, y: p.y, t: now });
+        const wa = fx.current.weaponAt.get(p.id);
+        if (!wa || wa.w !== p.w) fx.current.weaponAt.set(p.id, { w: p.w, at: wa ? now : -1e9 });
+        const sinceSw = now - (fx.current.weaponAt.get(p.id)?.at ?? -1e9);
+        const sinceShot = now - (fx.current.shotAt.get(p.id) ?? -1e9);
+        const sinceHit = now - (fx.current.hitAt.get(p.id) ?? -1e9);
+        return {
+          id: p.id, x: p.x, y: p.y, z: p.z, a: p.a, p: p.p, color: colorFor(p.id), flash: sinceHit < 120, moving: mv, t: now, w: p.w, fire: sinceShot < 60,
+          air: !p.g, speed: Math.min(8, sp), recoil: sinceShot < 160 ? 1 - sinceShot / 160 : 0, flinch: sinceHit < 260 ? 1 - sinceHit / 260 : 0,
+          sw: sinceSw < SWITCH_MS ? 1 - Math.abs(sinceSw / SWITCH_MS - 0.5) * 2 : 0,
+          reload: p.rl > 0 ? Math.max(0, Math.min(1, 1 - p.rl / WEAPONS[p.w].reloadMs)) : undefined,
+        };
       });
       for (const [id, dd] of fx.current.deaths) {
         const age = (now - dd.at) / 1000;
-        if (age > 1.2) { fx.current.deaths.delete(id); continue; }
+        if (age > 2) { fx.current.deaths.delete(id); continue; }
         if (id === m.id || others.some((o) => o.id === id)) continue;
-        soldiers.push({ id, x: dd.x, y: dd.y, z: dd.z, a: dd.a, p: 0, color: colorFor(id), flash: false, moving: false, dead: age, t: now });
+        soldiers.push({ id, x: dd.x, y: dd.y, z: dd.z, a: dd.a, p: 0, color: colorFor(id), flash: false, moving: false, dead: age, t: now, fall: dd.fall, w: snap?.players.find((q) => q.id === id)?.w });
       }
       fx.current.booms = fx.current.booms.filter((b) => now - b.at < 600);
-      fx.current.tracers = fx.current.tracers.filter((tr) => now - tr.at < 90);
+      fx.current.tracers = fx.current.tracers.filter((tr) => now - tr.at < 700);
+      // Drain queued effects into the renderer.
+      g3.calm = prefersReducedMotion();
+      fx.current.impacts = fx.current.impacts.filter((h) => {
+        if (h.at > now) return true;
+        const nv = surfaceNormal(h, map);
+        g3!.impact(h.x, h.y, h.z, [nv.x, nv.y, nv.z], h.player, materialAt(map, h.x, h.y, h.z));
+        return false;
+      });
+      for (const b of fx.current.blasts.splice(0)) g3.explode(b.x, b.y, b.z, b.big);
+      for (; fx.current.shells > 0; fx.current.shells--) g3.ejectShell(m.weapon);
+      // Rockets: the server snapshot is the truth; extrapolate it (and brand-new launches) to now.
+      const rockets = new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number }>();
+      for (const r of fx.current.rockets.values()) if (now - r.at < ROCKET_LIFE_MS) rockets.set(r.id, r);
+      if (snap) for (const r of snap.rockets ?? []) rockets.set(r.id, { ...r, at: snap.recv });
+      fx.current.rockets = new Map([...rockets].filter(([id, r]) => now - r.at < ROCKET_LIFE_MS && (!snap || (snap.rockets ?? []).some((q) => q.id === id) || snap.recv < r.at)));
       const fx3: Fx3D = {
         drones: (snap?.drones ?? []).map((d) => ({ x: d.x, y: d.y, z: (d.z ?? 8) + Math.sin(now / 200) * 0.1 })),
         strikes: (snap?.strikes ?? []).filter((q) => q.inMs >= 0).map((q) => ({ x: q.x, y: q.y, z: q.z ?? 0, r: q.r ?? AIRSTRIKE_RADIUS })),
         booms: fx.current.booms.map((b) => ({ x: b.x, y: b.y, z: b.z, t: (now - b.at) / 600, big: b.big })),
-        tracers: fx.current.tracers.map((tr) => ({ o: tr.o, e: tr.e, t: (now - tr.at) / 90 })),
+        tracers: fx.current.tracers.map((tr) => ({ o: tr.o, e: tr.e, t: (now - tr.at) / 1000, sniper: tr.sniper })),
+        rockets: [...fx.current.rockets.values()].map((r) => {
+          const t = Math.min(0.25, (now - r.at) / 1000);
+          return { id: r.id, x: r.x + r.vx * t, y: r.y + r.vy * t, z: r.z + r.vz * t - 0.5 * ROCKET_GRAVITY * t * t, vx: r.vx, vy: r.vy, vz: r.vz - ROCKET_GRAVITY * t };
+        }),
       };
       const shake = now - fx.current.shake < 450 ? (1 - (now - fx.current.shake) / 450) * 0.04 : 0;
       const vmSwitch = Math.max(0, 1 - (now - m.switchedAt) / SWITCH_MS);
@@ -544,9 +609,9 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     const canvas = canvasRef.current;
     const onMove = (e: MouseEvent) => {
       if (document.pointerLockElement !== canvas) return;
-      const sens = me.current.scoped ? 0.0011 : 0.0035;
-      me.current.a += e.movementX * sens;
-      me.current.p = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, me.current.p - e.movementY * sens));
+      const [da, dp] = mouseLook(lookRef.current, me.current.scoped, e.movementX, e.movementY);
+      me.current.a += da;
+      me.current.p = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, me.current.p + dp));
     };
     const onUp = (e: MouseEvent) => { if (e.button === 0) me.current.firing = false; if (e.button === 2) setScope(false); };
     const onWheel = (e: WheelEvent) => { e.preventDefault(); cycleWeapon(e.deltaY > 0 ? 1 : -1); };
@@ -650,6 +715,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         <span className="font-semibold">Arena</span>
         <span className="opacity-70">{board.length} online · {focused ? 'controls on' : 'click to play'}</span>
         <button type="button" className="fps-quality" data-testid="arena-quality" title="Graphics quality" onClick={() => setQuality((q) => (q === 'hd' ? 'lo' : 'hd'))}>{quality === 'hd' ? 'HD' : 'LO'}</button>
+        <button type="button" className="fps-quality" data-testid="arena-look-btn" title="Look sensitivity" aria-expanded={lookOpen} onClick={() => setLookOpen((o) => !o)}>⚙ Sens</button>
         {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" title="Reset position" onClick={win.reset}>⟲</button>}
         <button type="button" className="ml-auto" aria-label="Close arena" onClick={onClose}>✕</button>
       </div>
@@ -672,6 +738,15 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
           ))}
         </span>
       </div>
+      {lookOpen && (
+        <div className="fps-look" data-testid="arena-look">
+          <label>Mouse <input type="range" min={SENS_MIN} max={SENS_MAX} step={0.05} value={look.sens} data-testid="arena-sens" onChange={(e) => setLook({ sens: +e.target.value })} /><input type="number" min={SENS_MIN} max={SENS_MAX} step={0.05} value={look.sens} aria-label="Mouse sensitivity value" onChange={(e) => { const v = +e.target.value; if (v >= SENS_MIN && v <= SENS_MAX) setLook({ sens: v }); }} /></label>
+          <label>Scoped × <input type="range" min={0.05} max={2} step={0.01} value={look.scope} data-testid="arena-scope-sens" onChange={(e) => setLook({ scope: +e.target.value })} /><span>{look.scope.toFixed(2)}</span></label>
+          <label>Touch <input type="range" min={SENS_MIN} max={SENS_MAX} step={0.05} value={look.touch} data-testid="arena-touch-sens" onChange={(e) => setLook({ touch: +e.target.value })} /><span>{look.touch.toFixed(2)}</span></label>
+          <label><input type="checkbox" checked={look.invertY} data-testid="arena-invert-y" onChange={(e) => setLook({ invertY: e.target.checked })} /> Invert Y</label>
+          <button type="button" onClick={() => setLook({ sens: 1, scope: 0.31, touch: 1, invertY: false })}>Reset</button>
+        </div>
+      )}
       <div className={`fps-stage${locked ? ' fps-locked' : ''}`} data-locked={locked ? '1' : '0'}>
         <canvas ref={glRef} className="fps-gl" aria-hidden="true" />
         <canvas
@@ -705,7 +780,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
           <div className="fps-scoreboard" data-testid="arena-scoreboard">
             <table>
               <thead><tr><th>Player</th><th>K</th><th>D</th><th>Streak</th></tr></thead>
-              <tbody>{board.map((p) => <tr key={p.id} className={p.id === me.current.id ? 'fps-me' : ''}><td>{p.name}</td><td>{p.k}</td><td>{p.d}</td><td>{p.st}</td></tr>)}</tbody>
+              <tbody>{board.map((p) => <tr key={p.id} className={p.id === me.current.id ? 'fps-me' : ''}><td>{p.name}{p.bot && <span className="fps-bot-badge" title="Fill-in bot: its kills don't count toward lifetime stats">BOT</span>}</td><td>{p.k}</td><td>{p.d}</td><td>{p.st}</td></tr>)}</tbody>
             </table>
           </div>
         )}

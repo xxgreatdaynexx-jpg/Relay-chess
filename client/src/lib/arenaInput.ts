@@ -29,3 +29,23 @@ export function fpsFrom(times: number[]): number {
 export function readFpsPref(store: Pick<Storage, 'getItem'> | undefined): boolean {
   try { return store?.getItem(FPS_KEY) === '1'; } catch { return false; }
 }
+
+/** Arena look settings, saved per browser. sens 1.0 = the original feel. */
+export interface LookPrefs { sens: number; scope: number; invertY: boolean; touch: number }
+export const LOOK_KEY = 'relay-fps-look';
+export const SENS_MIN = 0.1;
+export const SENS_MAX = 5;
+export const DEFAULT_LOOK: LookPrefs = { sens: 1, scope: 0.31, invertY: false, touch: 1 };
+const clampSens = (v: unknown, d: number, lo = SENS_MIN, hi = SENS_MAX) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v * 100) / 100)) : d);
+export function normalizeLook(raw: unknown): LookPrefs {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Partial<LookPrefs>;
+  return { sens: clampSens(o.sens, DEFAULT_LOOK.sens), scope: clampSens(o.scope, DEFAULT_LOOK.scope, 0.05, 2), invertY: o.invertY === true, touch: clampSens(o.touch, DEFAULT_LOOK.touch) };
+}
+export function readLook(store: Pick<Storage, 'getItem'> = localStorage): LookPrefs {
+  try { return normalizeLook(JSON.parse(store.getItem(LOOK_KEY) || 'null')); } catch { return { ...DEFAULT_LOOK }; }
+}
+/** Radians per mouse pixel: [yaw, pitch] (pitch sign already includes invert-Y; add to pitch). */
+export function mouseLook(p: LookPrefs, scoped: boolean, dx: number, dy: number): [number, number] {
+  const k = 0.0035 * p.sens * (scoped ? p.scope : 1);
+  return [dx * k, (p.invertY ? dy : -dy) * k];
+}

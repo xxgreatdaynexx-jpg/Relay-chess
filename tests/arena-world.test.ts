@@ -106,6 +106,8 @@ describe('rocket splash', () => {
     w.switchWeapon('a', 'rocket', 0);
     a.x = 3; // close enough to catch own splash
     w.shoot('a', 0, 1000);
+    expect(b.alive).toBe(true); // a real rocket: nothing happens until it flies there
+    w.tick(1300);
     expect(b.alive).toBe(false);
     expect(c.hp).toBeLessThan(MAX_HP);
     expect(c.hp).toBeGreaterThan(0);

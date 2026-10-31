@@ -2,6 +2,9 @@ import type { Server, Socket } from 'socket.io';
 import { guestName, MOVE_SPEED, TICK_HZ } from '../shared/fps.js';
 import { ArenaWorld, type ArenaEvent } from './arena-world.js';
 import { getArenaLedger } from './arena-store.js';
+import { ArenaBots, isArenaBot, warmNavGraphs } from './arena-bots.js';
+import { MAPS } from '../shared/arenaMaps.js';
+if (process.env.NODE_ENV !== 'test' && !process.env.VITEST) warmNavGraphs(Object.values(MAPS));
 
 /** socket id -> claimed account name; guests are absent and never recorded. */
 const claimed = new Map<string, string>();
@@ -16,7 +19,11 @@ export const QA_BOT_PREFIX = 'qa-bot-';
 const MAX_QA_BOTS = 6;
 const botHeading = new Map<string, number>();
 export const qaBotsEnabled = () => process.env.ARENA_QA_BOTS === '1';
-const isBot = (id: string) => id.startsWith(QA_BOT_PREFIX);
+const isBot = (id: string) => id.startsWith(QA_BOT_PREFIX) || isArenaBot(id);
+const isHuman = (id: string) => !isBot(id);
+/** Fill-in bots: 3 join when exactly one human plays, they leave when a second human arrives, none run with nobody. */
+let arenaBots = new ArenaBots();
+const syncBots = (now: number) => arenaBots.sync(world, now, isHuman);
 
 /** Adds up to `n` wandering, non-shooting bots so QA can chain kills (killstreaks, UAV, airstrike, drone, nuke). */
 export function addQaBots(n: unknown, now = Date.now()): number {
@@ -38,7 +45,7 @@ export function addQaBots(n: unknown, now = Date.now()): number {
 /** Slow random walk with the odd jump (so QA can shoot at targets at different heights); bots turn when they bump a wall. */
 function driveBots(now: number): void {
   for (const f of world.fighters.values()) {
-    if (!isBot(f.id) || !f.alive) continue;
+    if (!f.id.startsWith(QA_BOT_PREFIX) || !f.alive) continue;
     let a = botHeading.get(f.id) ?? 0;
     const step = (MOVE_SPEED * 0.4) / TICK_HZ;
     const bx = f.x, by = f.y;
@@ -52,13 +59,15 @@ function driveBots(now: number): void {
 }
 
 function dropBotsIfAlone(): void {
-  if ([...world.fighters.keys()].some((id) => !isBot(id))) return;
+  if ([...world.fighters.keys()].some(isHuman)) return;
   for (const id of [...world.fighters.keys()]) { world.leave(id); botHeading.delete(id); }
+  arenaBots = new ArenaBots();
 }
 
 export function resetArena(): void {
   world = new ArenaWorld();
   botHeading.clear();
+  arenaBots = new ArenaBots();
   claimed.clear();
   if (ticker) clearInterval(ticker);
   ticker = null;
@@ -71,6 +80,8 @@ export function recordArena(events: ArenaEvent[], w: ArenaWorld = world): void {
     const d = e.data as Record<string, unknown>;
     if (e.ev === 'fps_kill') {
       const killerId = d.killerId as string | null, victimId = d.victimId as string;
+      // Arena bot kills and deaths never touch lifetime stats (match scoreboard only).
+      if ((killerId && isArenaBot(killerId)) || isArenaBot(victimId)) continue;
       const v = claimed.get(victimId);
       if (v) ledger.death(v);
       const k = killerId ? claimed.get(killerId) : undefined;
@@ -104,6 +115,8 @@ function ensureTicker(io: Server): void {
     }
     const now = Date.now();
     driveBots(now);
+    syncBots(now);
+    emit(io, arenaBots.drive(world, now));
     emit(io, world.tick(now));
     io.to(ROOM).emit('fps_state', world.snapshot(now));
   }, Math.round(1000 / TICK_HZ));
@@ -114,6 +127,7 @@ function leave(io: Server, socket: Socket): void {
   if (!world.leave(socket.id)) return;
   claimed.delete(socket.id);
   dropBotsIfAlone();
+  syncBots(Date.now());
   socket.leave(ROOM);
   io.to(ROOM).emit('fps_state', world.snapshot(Date.now()));
 }
@@ -131,11 +145,12 @@ export function registerFps(io: Server, socket: Socket): void {
       world.join(socket.id, account ?? guestName(), Date.now());
       // The first human in can choose the map straight away.
       const want = body(payload).map;
-      if (want !== undefined) { const ev = world.pickMap(want, socket.id, Date.now(), (id) => !isBot(id)); if (ev) emit(io, ev); }
+      if (want !== undefined) { const ev = world.pickMap(want, socket.id, Date.now(), isHuman); if (ev) emit(io, ev); }
       claimArenaName(socket.id, account ?? null);
       if (account) getArenaLedger().match(account);
       socket.join(ROOM);
     }
+    syncBots(Date.now());
     const bots = addQaBots(body(payload).qaBots);
     if (bots) io.to(ROOM).emit('fps_state', world.snapshot(Date.now()));
     const f = world.fighters.get(socket.id)!;
@@ -152,7 +167,7 @@ export function registerFps(io: Server, socket: Socket): void {
   socket.on('fps_reload', () => world.reload(socket.id, Date.now()));
   socket.on('fps_scope', (p: unknown) => world.setScope(socket.id, body(p).on, Date.now()));
   socket.on('fps_map', (p: unknown, ack?: (res: unknown) => void) => {
-    const ev = world.pickMap(body(p).map, socket.id, Date.now(), (id) => !isBot(id));
+    const ev = world.pickMap(body(p).map, socket.id, Date.now(), isHuman);
     if (ev) { emit(io, ev); io.to(ROOM).emit('fps_state', world.snapshot(Date.now())); }
     if (typeof ack === 'function') ack({ ok: !!ev, map: world.map.id, next: world.upcomingMapId });
   });
