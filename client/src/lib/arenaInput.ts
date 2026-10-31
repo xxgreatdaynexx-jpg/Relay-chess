@@ -65,16 +65,17 @@ export function stepFovKick(kick: number, sprinting: boolean, dt: number): numbe
  * Camera zoom plus whether the first-person gun is drawn. The gun hides only for the sniper scope,
  * never because of the sprint FOV kick (that bug left the gun gone after any sprint).
  */
-export function viewZoom(scopeZoom: number, fovKick: number): { zoom: number; showGun: boolean } {
+/** keepGun: aim-down-sights zoom (AR-15) keeps the viewmodel on screen; only a real scope hides it. */
+export function viewZoom(scopeZoom: number, fovKick: number, keepGun = false): { zoom: number; showGun: boolean } {
   const k = Number.isFinite(fovKick) ? Math.max(0, fovKick) : 0;
-  return { zoom: scopeZoom / (1 + SPRINT_FOV_KICK * k), showGun: scopeZoom === 1 };
+  return { zoom: scopeZoom / (1 + SPRINT_FOV_KICK * k), showGun: keepGun || scopeZoom === 1 };
 }
 
 // ---------------------------------------------------------------- Ctrl / browser-shortcut safety
 
 /** Keys the Arena owns (lowercased e.key; digits by physical code). */
-export const ARENA_GAME_KEYS = new Set(['tab', 'w', 'a', 's', 'd', 'q', 'e', 'f', 'r', 'control', 'c', 'shift', ' ', '1', '2', '3', '4', '5', '6', 'v', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown']);
-export const arenaKey = (e: { key: string; code?: string }): string => (/^Digit[1-6]$/.test(e.code ?? '') ? e.code!.slice(5) : e.key.toLowerCase());
+export const ARENA_GAME_KEYS = new Set(['tab', 'w', 'a', 's', 'd', 'q', 'e', 'f', 'r', 'control', 'c', 'shift', ' ', '1', '2', '3', '4', '5', '6', '7', 'v', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown']);
+export const arenaKey = (e: { key: string; code?: string }): string => (/^Digit[1-7]$/.test(e.code ?? '') ? e.code!.slice(5) : e.key.toLowerCase());
 /**
  * Window-level guard while the Arena is active: swallow Ctrl/Cmd + game-key combos (Ctrl+S save, Ctrl+D bookmark,
  * Ctrl+A select-all, Ctrl+R reload, Ctrl+Q…) so they never reach the browser. Ctrl+W/Ctrl+T/Ctrl+N are reserved by

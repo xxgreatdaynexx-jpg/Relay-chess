@@ -134,7 +134,7 @@ function rampGeo(r: Ramp, unit: number): THREE.BufferGeometry {
 }
 
 /** First-person weapon state: kick 0..1 (just fired), lower 0..1 (switching), reload 0..1 progress or -1, bob walk phase. */
-export interface Viewmodel3D { w: WeaponId; kick: number; lower: number; reload: number; bob: number; muzzle: boolean; /** equipped skin token */ sk?: string | null; /** knife swing 0..1, or -1 */ swing?: number; heavy?: boolean }
+export interface Viewmodel3D { /** aiming down sights: gun pulled to centre, still visible */ ads?: boolean; w: WeaponId; kick: number; lower: number; reload: number; bob: number; muzzle: boolean; /** equipped skin token */ sk?: string | null; /** knife swing 0..1, or -1 */ swing?: number; heavy?: boolean }
 export interface View3D { x: number; y: number; z: number; a: number; p: number; zoom: number; vm?: Viewmodel3D | null }
 export interface Soldier3D {
   id: string; x: number; y: number; z: number; a: number; p: number; color: string; flash: boolean; moving: boolean; dead?: number; t: number; w?: WeaponId; fire?: boolean;
@@ -522,9 +522,10 @@ export class Arena3D {
     const r = vm.reload >= 0 && vm.reload <= 1 ? Math.sin(Math.PI * vm.reload) : 0;
     const sway = Math.sin(vm.bob) * 0.006, dip = Math.abs(Math.cos(vm.bob)) * 0.006;
     g.root.visible = true;
-    g.root.position.set(vx + sway, vy - dip - vm.lower * 0.28 - r * 0.05, vz + k * 0.045 * heavy);
+    const ax = vm.ads ? 0 : vx, ay = vm.ads ? vy * 0.55 : vy;
+    g.root.position.set(ax + sway * (vm.ads ? 0.3 : 1), ay - dip - vm.lower * 0.28 - r * 0.05, vz + k * 0.045 * heavy);
     this.vmAt.copy(g.root.position);
-    g.root.rotation.set(k * 0.12 * heavy - vm.lower * 0.7 + r * 0.3, 0.06, -r * 0.55);
+    g.root.rotation.set(k * 0.12 * heavy - vm.lower * 0.7 + r * 0.3, vm.ads ? 0 : 0.06, -r * 0.55);
     // magazine / warhead: out during the first half of a reload, back in the second
     const rel = vm.reload;
     const out = rel < 0 ? 0 : rel < 0.15 ? rel / 0.15 : rel < 0.55 ? 1 : rel < 0.8 ? 1 - (rel - 0.55) / 0.25 : 0;

@@ -15,7 +15,7 @@ import { isTypingTarget, spaceRespawns } from '@/lib/respawnKey';
 import { DEATH_HOLD_MS, fitSpeed, killCardText, sampleKillCam, shotsBetween, type CamFrame, type CamShot, type KillCard } from '@/lib/killcam';
 import { feedParts, popupScale, POPUP_MS, type FeedItem } from '@/lib/arenaFeed';
 import {
-  AIRSTRIKE_RADIUS, RESPAWN_PICK_MS, canHold, isKnifeOnly, knifeOnlyAvailable, cheapestSpawn, isWeapon, spawnCost, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, MoveHistory, reconcileMove, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
+  AIRSTRIKE_RADIUS, RESPAWN_PICK_MS, canHold, isKnifeOnly, knifeOnlyAvailable, cheapestSpawn, isWeapon, spawnCost, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, weaponSpread, MoveHistory, reconcileMove, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
 } from '../../../shared/fps';
 
 const OPEN_KEY = 'relay-fps-open';
@@ -125,7 +125,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const me = useRef({
     id: '', x: 1.5, y: 1.5, z: 0, vz: 0, grounded: true, p: 0, a: 0, alive: true, hp: MAX_HP, joined: false, weapon: 'pistol' as WeaponId,
     ammo: WEAPONS.pistol.mag, reloadUntil: 0, switchedAt: -1e9, lastShot: {} as Partial<Record<WeaponId, number>>,
-    jumpAt: -1e9, scoped: false, firing: false, streak: 0, uavUntil: 0, walk: 0, crouch: false, eyeH: EYE_HEIGHT, sprint: false, sprintEndAt: -1e9, fovKick: 0, meleeReadyAt: 0,
+    jumpAt: -1e9, scoped: false, firing: false, semiPending: false, streak: 0, uavUntil: 0, walk: 0, crouch: false, eyeH: EYE_HEIGHT, sprint: false, sprintEndAt: -1e9, fovKick: 0, meleeReadyAt: 0,
   });
   const snaps = useRef<Snap[]>([]);
   const lifeLoRef = useRef<WeaponId | null>(null);
@@ -207,7 +207,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   }
   function setScope(on: boolean) {
     const m = me.current;
-    const next = on && m.weapon === 'sniper';
+    const next = on && (m.weapon === 'sniper' || !!WEAPONS[m.weapon].adsZoom);
     if (next === m.scoped) return;
     m.scoped = next;
     socket.emit('fps_scope', { on: next });
@@ -235,6 +235,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     if (now - m.sprintEndAt < SPRINT_FIRE_DELAY_MS) return;
     if (m.ammo <= 0) return reload();
     m.lastShot[m.weapon] = now;
+    m.semiPending = false;
+    if (spec.recoil) m.p = Math.min(MAX_PITCH, m.p + spec.recoil);
     m.ammo -= 1;
     if (m.ammo === 0) m.reloadUntil = now + spec.reloadMs;
     fx.current.muzzle = now;
@@ -520,7 +522,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         if (m.sprint && !wantSprint) m.sprintEndAt = now;
         if (m.sprint !== wantSprint) lastSend = 0;
         m.sprint = wantSprint;
-        const sp = (speedOf(m) * 0.95 * dt) / len * (m.scoped ? 0.5 : 1);
+        const sp = (speedOf(m) * 0.95 * dt) / len; // speedOf includes the ADS/scope slowdown
         // a turns from +x toward +y; "right" is +90°.
         const dx = (Math.cos(m.a) * fwd - Math.sin(m.a) * side) * sp;
         const dy = (Math.sin(m.a) * fwd + Math.cos(m.a) * side) * sp;
@@ -541,14 +543,15 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         net.acc -= steps * LOCAL_STEP_S;
         moving = fwd !== 0 || side !== 0;
         if (now - lastSend > 50) { lastSend = now; net.seq += 1; net.hist.push(net.seq, m.x, m.y); socket.emit('fps_move', { x: m.x, y: m.y, a: m.a, p: m.p, c: wantCrouch, s: m.sprint, q: net.seq }); }
-        if (m.firing || k.has('f')) shoot();
+        if ((m.firing || k.has('f')) && (!WEAPONS[m.weapon].semi || m.semiPending)) shoot(); // semi-auto: one shot per pull
       }
       if (m.reloadUntil && now >= m.reloadUntil) { m.reloadUntil = 0; m.ammo = WEAPONS[m.weapon].mag; }
       if (moving && m.grounded) m.walk += dt * 9 * (m.sprint ? 1.6 : 1);
       m.fovKick = stepFovKick(m.fovKick, m.sprint && moving && m.alive, dt);
       const bob = moving && m.grounded ? Math.sin(m.walk * 2) * (m.sprint ? 0.045 : 0.03) : 0;
       { const target = m.alive ? eyeHeightOf(m) : EYE_HEIGHT; const st = CROUCH_LERP_SPEED * dt; m.eyeH += Math.max(-st, Math.min(st, target - m.eyeH)); }
-      const { zoom, showGun } = viewZoom(m.scoped && m.weapon === 'sniper' && m.alive ? SCOPE_ZOOM : 1, m.fovKick);
+      const ads = m.scoped && m.alive && m.weapon !== 'sniper' ? WEAPONS[m.weapon].adsZoom ?? 0 : 0;
+      const { zoom, showGun } = viewZoom(m.scoped && m.weapon === 'sniper' && m.alive ? SCOPE_ZOOM : ads || 1, m.fovKick, ads > 0);
       const snap = snaps.current[snaps.current.length - 1];
       const sampled = samplePlayers(net.buf.snaps, net.buf.renderTime(now));
       const others = sampled.players.filter((p) => p.id !== m.id && p.alive);
@@ -664,7 +667,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       const vmSwitch = Math.max(0, 1 - (now - m.switchedAt) / SWITCH_MS);
       const vmReload = m.reloadUntil && now < m.reloadUntil ? 1 - (m.reloadUntil - now) / WEAPONS[m.weapon].reloadMs : -1;
       const swingT = (now - fx.current.melee.at) / (fx.current.melee.heavy ? 420 : 220);
-      const vm = showGun && m.alive && m.joined ? { swing: m.weapon === 'knife' && swingT < 1 ? swingT : -1, heavy: fx.current.melee.heavy, w: m.weapon, kick: Math.max(0, 1 - (now - fx.current.muzzle) / 140), lower: vmSwitch, reload: vmReload, bob: m.walk, muzzle: now - fx.current.muzzle < 50, sk: snap?.mysk?.[m.weapon] ?? (() => { const me = snap?.players.find((q) => q.id === m.id); return me && me.w === m.weapon ? me.sk ?? null : null; })() } : null;
+      const vm = showGun && m.alive && m.joined ? { ads: ads > 0, swing: m.weapon === 'knife' && swingT < 1 ? swingT : -1, heavy: fx.current.melee.heavy, w: m.weapon, kick: Math.max(0, 1 - (now - fx.current.muzzle) / 140), lower: vmSwitch, reload: vmReload, bob: m.walk, muzzle: now - fx.current.muzzle < 50, sk: snap?.mysk?.[m.weapon] ?? (() => { const me = snap?.players.find((q) => q.id === m.id); return me && me.w === m.weapon ? me.sk ?? null : null; })() } : null;
       const qa = (window as unknown as { __arenaQA?: { vm?: unknown } }).__arenaQA; if (qa) qa.vm = vm;
       g3.render(specCam ? { x: specCam.x, y: specCam.y, z: specCam.z + EYE_HEIGHT, a: specCam.a, p: specCam.p, zoom: kcView?.zoom ?? 1, vm: kcView?.vm ?? null } : { x: eye.x, y: eye.y, z: eye.z + m.eyeH + bob + (Math.random() - 0.5) * shake, a: m.a, p: m.p, zoom, vm }, soldiers, fx3);
       // Health bars over nearby enemies you can see.
@@ -702,15 +705,19 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       ctx.fillStyle = vg; ctx.fillRect(0, 0, W2, H2);
       // Viewmodel + scope
       const reloading = m.reloadUntil && now < m.reloadUntil ? 0.6 : 0;
-      if ((kcView ? kcView.zoom : zoom) > 1) {
+      if (kcView ? kcView.zoom > 1 : zoom > 1 && !ads) {
         const g = ctx.createRadialGradient(W2 / 2, H2 / 2, H2 * 0.36, W2 / 2, H2 / 2, H2 * 0.4);
         g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,1)');
         ctx.fillStyle = g; ctx.fillRect(0, 0, W2, H2);
         ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(1, H2 / 300);
         ctx.beginPath(); ctx.moveTo(0, H2 / 2); ctx.lineTo(W2, H2 / 2); ctx.moveTo(W2 / 2, 0); ctx.lineTo(W2 / 2, H2); ctx.stroke();
+      } else if (m.alive && ads) {
+        // AR-15 red-dot sight while aiming down sights.
+        ctx.fillStyle = 'rgba(255,40,40,.95)'; ctx.shadowColor = 'rgba(255,0,0,.9)'; ctx.shadowBlur = H2 / 120;
+        ctx.beginPath(); ctx.arc(W2 / 2, H2 / 2, Math.max(1.5, H2 / 260), 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
       } else if (m.alive) {
         const cs = H2 / 40;
-        const spread = (WEAPONS[m.weapon].spread * (m.crouch ? CROUCH_SPREAD_MULT : 1) * (H2 / 2)) / Math.tan(((FOV / zoom) * Math.PI) / 360) * 0.6;
+        const spread = (weaponSpread(WEAPONS[m.weapon], { scoped: m.scoped, crouch: m.crouch, speed: m.sprint ? 0 : Math.hypot(m.x - (net.prev?.x ?? m.x), m.y - (net.prev?.y ?? m.y)) * 120, sprinting: m.sprint }) * (H2 / 2)) / Math.tan(((FOV / zoom) * Math.PI) / 360) * 0.6;
         ctx.strokeStyle = 'rgba(235,240,230,.9)';
         ctx.lineWidth = Math.max(1, H2 / 300);
         ctx.beginPath();
@@ -1005,9 +1012,9 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     keys.current.add(key);
     if (key === ' ') jump();
     else if (key === 'r') reload();
-    else if (/^[1-6]$/.test(key)) setWeapon(WEAPON_ORDER[Number(key) - 1]);
+    else if (/^[1-7]$/.test(key)) setWeapon(WEAPON_ORDER[Number(key) - 1]);
     else if (key === 'v') setWeapon('knife');
-    else if (key === 'f') shoot();
+    else if (key === 'f') { me.current.semiPending = true; shoot(); }
   }
 
   function refocusArena() {
@@ -1205,7 +1212,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
                 p?.catch?.(() => setLocked(isLockedTo(document.pointerLockElement, canvasRef.current)));
               } catch { /* pointerlockerror resyncs */ }
             }
-            if (e.button === 0) { me.current.firing = true; shoot(); }
+            if (e.button === 0) { me.current.firing = true; me.current.semiPending = true; shoot(); }
             if (e.button === 2) { if (WEAPONS[me.current.weapon].melee) shoot(true); else setScope(true); }
           }}
           onTouchStart={() => { unlockSounds(); wrapRef.current?.focus(); }}
@@ -1255,7 +1262,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             className="fps-fire"
-            onPointerDown={(e) => { e.preventDefault(); unlockSounds(); me.current.firing = true; shoot(); }}
+            onPointerDown={(e) => { e.preventDefault(); unlockSounds(); me.current.firing = true; me.current.semiPending = true; shoot(); }}
             onPointerUp={() => { me.current.firing = false; }}
             onPointerLeave={() => { me.current.firing = false; }}
             onPointerCancel={() => { me.current.firing = false; }}
@@ -1270,8 +1277,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
           </div>
         )}
         <div className="fps-help" data-testid="arena-help">
-          <span className="fps-help-full">WASD move · mouse look · Q/E turn · PgUp/PgDn look · click or F shoot · Space jump · Shift sprint · Ctrl/C crouch (play fullscreen so Ctrl+W can't close the tab) · 1–5 / wheel guns · 6/V knife (click slash, right-click stab) · R reload · right-click scope · Tab scores · M maps · F3 fps · Esc frees mouse</span>
-          <span className="fps-help-short">WASD move · click shoot · Space jump · Shift sprint · Ctrl/C crouch · 1–5 guns · 6/V knife · R reload · Tab scores · M maps · F3 fps · Esc frees mouse</span>
+          <span className="fps-help-full">WASD move · mouse look · Q/E turn · PgUp/PgDn look · click or F shoot · Space jump · Shift sprint · Ctrl/C crouch (play fullscreen so Ctrl+W can't close the tab) · 1–6 / wheel guns · 7/V knife (click slash, right-click stab) · R reload · right-click scope/aim · Tab scores · M maps · F3 fps · Esc frees mouse</span>
+          <span className="fps-help-short">WASD move · click shoot · Space jump · Shift sprint · Ctrl/C crouch · 1–6 guns · 7/V knife · R reload · Tab scores · M maps · F3 fps · Esc frees mouse</span>
         </div>
         </>
       )}
@@ -1305,6 +1312,7 @@ function WeaponIcon({ cause }: { cause: string }) {
     shotgun: 'M0 3h26v2H12l-2 2H4L2 9H0z',
     sniper: 'M0 4h30v1.5H16l-2 1.5H6l-3 3H0zM10 1h7v2h-7z',
     rocket: 'M0 3h22l4 1.5L22 6H0zM8 6h4v4H8z',
+    ar15: 'M0 3h25v2h-9v2h-3l-1 4H9l1-4H6V5H3L1 8H0z',
     knife: 'M0 6h8V4h2v6H8V8H0zM10 5h12l6 1-6 2H10z',
     airstrike: 'M2 5l10-1 4-4h3l-2 4 8 0v2l-8 0 2 4h-3l-4-4-10-1z',
     drone: 'M0 4h28v1.5H0zM9 5.5h10l-2 3h-6z',

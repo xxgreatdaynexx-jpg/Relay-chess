@@ -166,7 +166,7 @@ export class ArenaBots {
       if (!foe) m.target = null;
       m.retreat = f.hp < 35 && !!foe;
       // Weapon by range.
-      const w: WeaponId = foe ? (fd < 3.3 ? 'knife' : fd < 5 ? 'shotgun' : fd > 18 ? 'sniper' : f.id.endsWith('2') ? 'pistol' : 'smg') : f.weapon;
+      const w: WeaponId = foe ? (fd < 3.3 ? 'knife' : fd < 5 ? 'shotgun' : fd > 18 ? 'sniper' : f.id.endsWith('2') ? 'pistol' : f.id.endsWith('3') || fd > 9 ? 'ar15' : 'smg') : f.weapon;
       if (w !== f.weapon && now - f.switchedAt > (w === 'knife' ? 600 : 2500)) world.switchWeapon(id, w, now);
       if (f.ammo[f.weapon] === 0) world.reload(id, now);
       // Movement: follow the path to a goal (a random node, or toward the foe), strafing in fights.
@@ -213,7 +213,7 @@ export class ArenaBots {
         const a = Math.atan2(c.y - e.y, c.x - e.x) + m.wobble * Math.sin(now / 300) * 0.4 + (this.rand() - 0.5) * err * 2;
         const p = Math.atan2(c.z - e.z, Math.hypot(c.x - e.x, c.y - e.y)) + (this.rand() - 0.5) * err;
         // Don't hold the trigger like a machine: short bursts.
-        if (this.rand() < (f.weapon === 'smg' ? 0.7 : 0.45)) out.push(...world.shoot(id, a, now, p));
+        if (this.rand() < (f.weapon === 'smg' ? 0.7 : f.weapon === 'ar15' ? 0.55 : 0.45)) out.push(...world.shoot(id, a, now, p));
       }
     }
     return out;

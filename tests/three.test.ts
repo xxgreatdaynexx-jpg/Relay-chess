@@ -1,7 +1,7 @@
 import { mkdtempSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RelayGame } from '../server/engine.js';
 import { resetLeaderboard } from '../server/leaderboard.js';
 import { Room, liveRooms, openRooms, resetRooms, setupOrThrow } from '../server/rooms.js';
@@ -140,6 +140,10 @@ describe('spectators', () => {
   });
 
   it('summaries cover waiting and running tables', () => {
+    // Pin the wall clock: under full-suite load >100 ms could pass between seating and summary(), dropping whiteMs below the bound.
+    const t0 = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(t0);
+    try {
     const playing = roomFor(T33, '5+0', 'PLAY01');
     seatAll(playing, T33);
     playing.addSpectator('w');
@@ -154,5 +158,6 @@ describe('spectators', () => {
     expect(waiting.summary()).toMatchObject({ status: 'lobby', filled: 0, total: 5, openSeats: 5, clock: null });
     expect(liveRooms()).toEqual([]);
     expect(openRooms()).toEqual([]);
+    } finally { clock.mockRestore(); }
   });
 });

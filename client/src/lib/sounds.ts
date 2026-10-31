@@ -593,6 +593,7 @@ export function playWeaponShot(weapon: string, volume = 1): void {
     smg: { crack: 0.4, body: 140, len: 0.07, tail: 0.15 },
     shotgun: { crack: 0.8, body: 75, len: 0.25, tail: 0.5 },
     sniper: { crack: 0.9, body: 65, len: 0.3, tail: 0.7 },
+    ar15: { crack: 0.6, body: 105, len: 0.1, tail: 0.3 },
   };
   if (weapon === 'sniper' && sniperClip.buffer) {
     const src = ctx.createBufferSource(); src.buffer = sniperClip.buffer;

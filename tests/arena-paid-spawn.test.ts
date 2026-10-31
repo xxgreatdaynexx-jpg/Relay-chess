@@ -16,7 +16,7 @@ describe('arena paid spawns', () => {
   beforeEach(() => { resetArena(); resetBank(); });
 
   it('prices: one table, pistol cheapest, extras pluggable', () => {
-    expect(SPAWN_PRICE).toEqual({ pistol: 10, smg: 15, shotgun: 20, sniper: 25, rocket: 35, knife: 0 });
+    expect(SPAWN_PRICE).toEqual({ pistol: 10, smg: 15, shotgun: 20, sniper: 25, rocket: 35, ar15: 25, knife: 0 });
     expect(cheapestSpawn()).toBe(10);
     SPAWN_EXTRAS.grenades = 5;
     expect(spawnCost('pistol')).toBe(15);

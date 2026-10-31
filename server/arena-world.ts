@@ -74,6 +74,9 @@ export interface ArenaFighter extends Fighter {
   /** last fps_move seq accepted (echoed in snapshots for client reconciliation) and unused move allowance */
   moveSeq?: number;
   moveCarry?: number;
+  /** recent planar speed (units/s) from validated moves, and when it was measured (AR-15 movement spread) */
+  moveSpeed?: number;
+  moveSpeedAt?: number;
   jumpAt: number;
   streak: number;
   /** multi-kill chain (kills ≤5 s apart) */
@@ -112,7 +115,7 @@ export interface ArenaEvent { ev: string; data: Record<string, unknown>; to?: st
 interface Strike { ownerId: string; x: number; y: number; at: number; trackId: string | null; lockAt: number; giveUpAt: number; bombs: Array<{ dx: number; dy: number; dt: number }> }
 interface Drone { ownerId: string; until: number; lastShot: number }
 
-const canScope = (w: WeaponId): boolean => w === 'sniper';
+const canScope = (w: WeaponId): boolean => w === 'sniper' || !!WEAPONS[w].adsZoom;
 const fullAmmo = () => Object.fromEntries(WEAPON_ORDER.map((w) => [w, WEAPONS[w].mag])) as Record<WeaponId, number>;
 const zeroShots = () => Object.fromEntries(WEAPON_ORDER.map((w) => [w, -1e9])) as Record<WeaponId, number>;
 
@@ -314,7 +317,9 @@ export class ArenaWorld {
       this.audit?.move(id, asked, allowed, now);
       f.moveCarry = Math.min(MOVE_CARRY_MAX, Math.max(0, allowed - asked));
     }
-    validateMove(f, x, y, dtMs, this.map, allowed);
+    { const ox = f.x, oy = f.y, dt = Math.max(dtMs, 25);
+      validateMove(f, x, y, dtMs, this.map, allowed);
+      f.moveSpeed = dt > 400 ? 0 : Math.hypot(f.x - ox, f.y - oy) / (dt / 1000); f.moveSpeedAt = now; }
     if (typeof seq === 'number' && Number.isInteger(seq)) f.moveSeq = seq;
     f.lastMove = now;
     this.history.record(f.id, now, f.x, f.y, f.z, !!f.crouch);
@@ -386,7 +391,7 @@ export class ArenaWorld {
   setScope(id: string, on: unknown, now: number): void {
     const f = this.fighters.get(id);
     if (!f) return;
-    f.scopedSince = on === true && f.weapon === 'sniper' ? f.scopedSince || now : 0;
+    f.scopedSince = on === true && canScope(f.weapon) ? f.scopedSince || now : 0;
     if (f.scopedSince) this.setSprint(f, false, now);
   }
 
@@ -446,7 +451,9 @@ export class ArenaWorld {
     f.lastShot = now;
     f.ammo[f.weapon] -= 1;
     if (f.ammo[f.weapon] === 0) f.reloadUntil = now + spec.reloadMs;
-    const scoped = f.weapon === 'sniper' && f.scopedSince > 0 && now - f.scopedSince >= SCOPE_SETTLE_MS;
+    const scoped = canScope(f.weapon) && f.scopedSince > 0 && now - f.scopedSince >= SCOPE_SETTLE_MS;
+    const speed = f.moveSpeedAt !== undefined && now - f.moveSpeedAt < 200 ? f.moveSpeed ?? 0 : 0;
+    const sprinting = f.sprintEndAt !== undefined && now - f.sprintEndAt < SPRINT_FIRE_DELAY_MS + 150;
     if (f.weapon === 'rocket') {
       const r: Rocket & { seek?: true; lock?: string | null } = launchRocket(++this.rocketSeq, f, now);
       if (this.hasPerk(f.id, 'homingRpg')) { r.seek = true; r.lock = this.acquire(r); }
@@ -467,7 +474,7 @@ export class ArenaWorld {
     try {
       if (this.hasPerk(f.id, 'aimassist')) this.assistAim(f);
       const useSpec = this.hasPerk(f.id, 'aimassist') ? { ...spec, spread: spec.spread * ASSIST_SPREAD } : spec;
-      shot = fireWeapon(f, useSpec, [...this.fighters.values()], { scoped, rand: this.rand, map: this.map });
+      shot = fireWeapon(f, useSpec, [...this.fighters.values()], { scoped, rand: this.rand, map: this.map, speed, sprinting });
       // Defence in depth: a hit only counts if the target was in sight of the shooter's eye at lag-comp time.
       const eye = eyeOf(f);
       for (const tid of [...shot.hits.keys()]) {

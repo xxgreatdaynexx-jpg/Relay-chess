@@ -38,7 +38,9 @@ export const CROUCH_SPEED_MULT = 0.5;
 export const CROUCH_SPREAD_MULT = 0.65;
 /** How fast the eye moves between standing and crouched heights (metres per second). */
 export const CROUCH_LERP_SPEED = 6;
-type Crouchy = { crouch?: boolean; sprint?: boolean; weapon?: string };
+type Crouchy = { crouch?: boolean; sprint?: boolean; weapon?: string; scoped?: boolean };
+/** Aimed down sights / scoped: half speed. */
+export const ADS_MOVE_MULT = 0.5;
 /** Knife out: you move ~1.25× faster (stacks with sprint; crouch still wins). */
 export const KNIFE_SPEED_MULT = 1.25;
 /** Sprint (hold Shift): ~1.5× run speed, forward / diagonal-forward only, never crouched or scoped. */
@@ -65,7 +67,7 @@ export const eyeHeightOf = (b: Crouchy): number => (b.crouch ? CROUCH_EYE_HEIGHT
 export const headZOf = (b: Crouchy): number => (b.crouch ? CROUCH_HEAD_Z : HEAD_Z);
 export const bodyTopOf = (b: Crouchy): number => (b.crouch ? CROUCH_BODY_TOP : BODY_TOP);
 export const speedOf = (b: Crouchy): number =>
-  (b.crouch ? MOVE_SPEED * CROUCH_SPEED_MULT : b.sprint ? MOVE_SPEED * SPRINT_MULT : MOVE_SPEED) * (b.weapon === 'knife' ? KNIFE_SPEED_MULT : 1);
+  (b.crouch ? MOVE_SPEED * CROUCH_SPEED_MULT : b.sprint ? MOVE_SPEED * SPRINT_MULT : MOVE_SPEED) * (b.weapon === 'knife' ? KNIFE_SPEED_MULT : 1) * (b.scoped ? ADS_MOVE_MULT : 1);
 /** Highest ledge you can walk up without jumping (stairs). */
 export const STEP_HEIGHT = 0.45;
 export const GRAVITY = 20;
@@ -466,7 +468,7 @@ export function guestName(rand: () => number = Math.random): string {
 
 // ---------------------------------------------------------------- weapons
 
-export type WeaponId = 'pistol' | 'smg' | 'shotgun' | 'sniper' | 'rocket' | 'knife';
+export type WeaponId = 'pistol' | 'smg' | 'shotgun' | 'sniper' | 'rocket' | 'ar15' | 'knife';
 export interface WeaponSpec {
   id: WeaponId;
   name: string;
@@ -489,6 +491,18 @@ export interface WeaponSpec {
   melee?: boolean;
   heavyDamage?: number;
   heavyCooldownMs?: number;
+  /** Semi-auto: one shot per trigger pull (holding does not keep firing). */
+  semi?: boolean;
+  /** Headshot multiplier override (default HEADSHOT_MULT). */
+  headMult?: number;
+  /** Extra spread while moving: spread × (1 + moveSpread × speed/MOVE_SPEED); sprinting (or just stopped) uses sprintSpread. */
+  moveSpread?: number;
+  sprintSpread?: number;
+  /** Aim-down-sights zoom (no scope overlay, gun stays visible) and spread multiplier while aimed. */
+  adsZoom?: number;
+  adsSpreadMult?: number;
+  /** Camera kick per shot, radians of pitch (client-side recoil). */
+  recoil?: number;
 }
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
@@ -497,9 +511,10 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   shotgun: { id: 'shotgun', name: 'M1014 Combat Shotgun', damage: 17, cooldownMs: 800, pellets: 9, spread: 0.12, range: BULLET_RANGE, falloff: { full: 8, end: 25, min: 0.35 }, mag: 6, reloadMs: 2200 },
   sniper: { id: 'sniper', name: '.50 Cal Sniper', damage: 95, cooldownMs: 1300, pellets: 1, spread: 0.09, scopedSpread: 0, range: BULLET_RANGE, mag: 5, reloadMs: 2500 },
   rocket: { id: 'rocket', name: 'RPG Launcher', damage: 100, cooldownMs: 1100, pellets: 1, spread: 0, range: 40, mag: 2, reloadMs: 2600, splash: 2.4 },
+  ar15: { id: 'ar15', name: 'AR-15', damage: 30, cooldownMs: 110, pellets: 1, spread: 0.008, range: BULLET_RANGE, mag: 30, reloadMs: 2400, semi: true, headMult: 2.2, moveSpread: 3, sprintSpread: 6, adsZoom: 1.5, adsSpreadMult: 0.5, recoil: 0.012 },
   knife: { id: 'knife', name: 'Combat Knife', damage: 50, cooldownMs: 240, pellets: 1, spread: 0, range: 3.2, mag: 1, reloadMs: 0, melee: true, heavyDamage: 100, heavyCooldownMs: 585 },
 };
-export const WEAPON_ORDER: WeaponId[] = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'knife'];
+export const WEAPON_ORDER: WeaponId[] = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'ar15', 'knife'];
 export const SWITCH_MS = 250;
 export const SCOPE_SETTLE_MS = 250;
 /** Self-damage multiplier for your own rocket splash. */
@@ -545,16 +560,27 @@ export interface ShotResult {
   rays: Array<{ a: number; p: number; dist: number; hit?: string }>;
 }
 
+/** Effective spread half-angle: scope/ADS, crouch, and (for weapons with moveSpread) movement bloom. */
+export function weaponSpread(weapon: WeaponSpec, o: { scoped?: boolean; crouch?: boolean; speed?: number; sprinting?: boolean } = {}): number {
+  let s = weapon.id === 'sniper' && o.scoped ? weapon.scopedSpread ?? 0 : weapon.spread;
+  if (weapon.moveSpread) {
+    const frac = Math.min(1.5, Math.max(0, (o.speed ?? 0) / MOVE_SPEED));
+    s *= o.sprinting ? 1 + (weapon.sprintSpread ?? weapon.moveSpread) : 1 + weapon.moveSpread * frac;
+    if (o.scoped && weapon.adsSpreadMult) s *= weapon.adsSpreadMult;
+  }
+  return s * (o.crouch ? CROUCH_SPREAD_MULT : 1);
+}
+
 /** Resolves one trigger pull of a weapon. Pure; the server decides whether the pull was allowed. */
 export function fireWeapon(
   shooter: { id: string; x: number; y: number; z: number; a: number; p: number; crouch?: boolean },
   weapon: WeaponSpec,
   targets: Target[],
-  opts: { scoped?: boolean; rand?: () => number; map?: ArenaMap } = {},
+  opts: { scoped?: boolean; rand?: () => number; map?: ArenaMap; speed?: number; sprinting?: boolean } = {},
 ): ShotResult {
   const rand = opts.rand ?? Math.random;
   const map = opts.map ?? MAP;
-  const spread = (weapon.id === 'sniper' && opts.scoped ? weapon.scopedSpread ?? 0 : weapon.spread) * (shooter.crouch ? CROUCH_SPREAD_MULT : 1);
+  const spread = weaponSpread(weapon, { scoped: opts.scoped, crouch: shooter.crouch, speed: opts.speed, sprinting: opts.sprinting });
   const hits = new Map<string, number>();
   const heads = new Set<string>();
   const rays: ShotResult['rays'] = [];
@@ -581,7 +607,7 @@ export function fireWeapon(
     const hit = hitscan({ ...shooter, a, p }, targets, map, weapon.range);
     rays.push({ a, p, dist: hit ? hit.dist : rayWorld(eye, dirFrom(a, p), map, weapon.range), ...(hit ? { hit: hit.id } : {}) });
     if (hit) {
-      hits.set(hit.id, (hits.get(hit.id) ?? 0) + weapon.damage * (hit.head ? HEADSHOT_MULT : 1) * damageFalloff(weapon, hit.dist));
+      hits.set(hit.id, (hits.get(hit.id) ?? 0) + weapon.damage * (hit.head ? weapon.headMult ?? HEADSHOT_MULT : 1) * damageFalloff(weapon, hit.dist));
       if (hit.head) heads.add(hit.id);
     }
   }
@@ -708,7 +734,7 @@ export function surfaceNormal(pt: Vec3, map: ArenaMap = MAP): Vec3 {
 // ---------------------------------------------------------------- paid spawns (shared chip wallet)
 
 /** Chips charged per spawn, by the loadout weapon you spawn with (the pistol sidearm always comes along). */
-export const SPAWN_PRICE: Record<WeaponId, number> = { pistol: 10, smg: 15, shotgun: 20, sniper: 25, rocket: 35, knife: 0 };
+export const SPAWN_PRICE: Record<WeaponId, number> = { pistol: 10, smg: 15, shotgun: 20, sniper: 25, rocket: 35, ar15: 25, knife: 0 };
 /** Flat per-spawn add-ons on top of the weapon price, e.g. `{ grenades: 5 }` once grenades ship. Empty = none. */
 export const SPAWN_EXTRAS: Record<string, number> = {};
 /** Total price of one spawn with loadout `w` (weapon + every extra). This is the stake your killer collects. */

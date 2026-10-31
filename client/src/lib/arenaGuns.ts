@@ -140,6 +140,25 @@ const BUILD: Record<WeaponId, (b: Builder) => Omit<GunSpec, 'id'>> = {
     b.box(0.03, 0.03, 0.03, 'metal', [0, 0.0, -0.13], undefined, true); // loading gate (animates)
     return { muzzle: [0, 0.06, -0.68], support: [0, 0.0, -0.31], view: [0.15, -0.17, -0.44], flash: 0.18 };
   },
+  // AR-15 carbine: flat-top upper with optic rail + red dot, free-float handguard, 30-rd mag, buffer tube + stock.
+  ar15: (b) => {
+    b.box(0.032, 0.04, 0.22, 'metal', [0, 0.05, -0.03]); // upper receiver
+    b.box(0.03, 0.036, 0.16, 'metal', [0, 0.012, -0.01]); // lower receiver
+    b.box(0.02, 0.008, 0.2, 'steel', [0, 0.074, -0.05]); // picatinny rail
+    b.box(0.03, 0.03, 0.05, 'metal', [0, 0.098, -0.02]); // red-dot body
+    b.tube(0.014, 0.004, 'glass', [0, 0.1, -0.046], 10); // red-dot lens
+    b.tube(0.022, 0.28, 'polymer', [0, 0.05, -0.28], 8); // handguard
+    b.tube(0.008, 0.16, 'steel', [0, 0.05, -0.49], 8); // barrel
+    b.tube(0.012, 0.04, 'steel', [0, 0.05, -0.58], 8); // flash hider
+    b.box(0.006, 0.03, 0.01, 'metal', [0, 0.085, -0.4]); // front post
+    b.box(0.012, 0.01, 0.03, 'steel', [0.02, 0.06, 0.07]); // charging handle
+    for (let i = 0; i < 3; i++) b.box(0.024, 0.05, 0.034, 'metal', [0, -0.03 - i * 0.045, -0.06 - i * 0.008], [0.08 + i * 0.05, 0, 0], true); // mag
+    b.profile([[0.0, 0.0], [-0.028, 0.0], [-0.01, -0.1], [0.03, -0.1], [0.026, -0.005]], 0.03, 'polymer', [0, -0.006, 0.06]); // pistol grip
+    b.profile([[-0.005, 0.0], [-0.06, 0.0], [-0.055, -0.03], [-0.01, -0.03]], 0.006, 'metal', [0, -0.006, 0.04]); // trigger guard
+    b.tube(0.015, 0.16, 'metal', [0, 0.045, 0.17], 8); // buffer tube
+    b.box(0.04, 0.09, 0.09, 'polymer', [0, 0.03, 0.24]); // stock
+    return { muzzle: [0, 0.05, -0.6], support: [0, 0.02, -0.28], view: [0.14, -0.15, -0.42], flash: 0.12 };
+  },
   // Bolt-action .50: long fluted barrel with brake, big scope, olive thumbhole stock, box mag.
   sniper: (b) => {
     b.tube(0.022, 0.26, 'metal', [0, 0.05, -0.04], 10); // receiver
