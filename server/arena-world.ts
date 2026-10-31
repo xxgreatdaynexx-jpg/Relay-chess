@@ -11,7 +11,7 @@ import {
 import { isMapId, MAP_ROTATION } from '../shared/arenaMaps.js';
 import { PoseHistory, rewindTime } from '../shared/netInterp.js';
 import { ArenaAntiCheat, ASSIST_CONE, ASSIST_PULL, ASSIST_SPREAD, coarse, VisibilityTracker, type ArenaPerk } from './arena-anticheat.js';
-import { HEAD_Z, MOVE_SPEED } from '../shared/fps.js';
+import { applyCrouch, canSprint, headZOf, speedOf, SPRINT_FIRE_DELAY_MS, SPRINT_FIRE_SLACK_MS } from '../shared/fps.js';
 
 /** Drones hover at least this high, and always above the map's tallest structure. */
 export const DRONE_Z = 8;
@@ -38,6 +38,10 @@ export interface ArenaFighter extends Fighter {
   /** Server time the vertical physics was last advanced to. */
   physAt: number;
   headshots: number;
+  /** Crouch key held (crouch itself is on Fighter via Body; it stays on under a low ceiling). */
+  wantCrouch?: boolean;
+  /** when the last sprint ended (sprint-to-fire delay) */
+  sprintEndAt?: number;
 }
 
 export interface ArenaEvent { ev: string; data: Record<string, unknown> }
@@ -106,7 +110,7 @@ export class ArenaWorld {
     const placed: ArenaFighter[] = [];
     for (const f of this.fighters.values()) {
       const [x, y, z] = pickSpawn(placed, this.rand, map);
-      Object.assign(f, { x, y, z, vz: 0, grounded: true, p: 0, physAt: now, lastMove: now, hp: MAX_HP, alive: true, respawnAt: 0, kills: 0, deaths: 0, streak: 0, uavUntil: 0, headshots: 0, ammo: fullAmmo(), reloadUntil: 0, lastShotAt: zeroShots() });
+      Object.assign(f, { x, y, z, vz: 0, grounded: true, crouch: false, wantCrouch: false, sprint: false, p: 0, physAt: now, lastMove: now, hp: MAX_HP, alive: true, respawnAt: 0, kills: 0, deaths: 0, streak: 0, uavUntil: 0, headshots: 0, ammo: fullAmmo(), reloadUntil: 0, lastShotAt: zeroShots() });
       placed.push(f);
     }
     return [{ ev: 'fps_map', data: { phase: 'load', map: map.id, by } }];
@@ -147,9 +151,10 @@ export class ArenaWorld {
   }
 
   /** Client position report: x/y are speed-capped and collision-checked; z comes from the server's physics. */
-  move(id: string, x: unknown, y: unknown, a: unknown, now: number, p?: unknown): void {
+  move(id: string, x: unknown, y: unknown, a: unknown, now: number, p?: unknown, crouch?: unknown, sprint?: unknown): void {
     const f = this.fighters.get(id);
     if (!f || !f.alive) return;
+    if (typeof crouch === 'boolean') this.crouch(id, crouch);
     const na = normAngle(a);
     if (na !== null) f.a = na;
     const np = clampPitch(p);
@@ -157,13 +162,32 @@ export class ArenaWorld {
     if (this.audit && (na !== null || np !== null)) this.audit.aim(id, f.a, f.p, now);
     if (now - f.lastMove < 25) return; // ~40 Hz max
     this.advance(f, now);
+    {
+      const scoped = f.weapon === 'sniper' && f.scopedSince > 0;
+      const ok = sprint === true && typeof x === 'number' && typeof y === 'number' && canSprint(f, x - f.x, y - f.y, scoped);
+      this.setSprint(f, ok, now);
+    }
     if (this.audit && typeof x === 'number' && typeof y === 'number' && Number.isFinite(x) && Number.isFinite(y)) {
       const dtMs = Math.min(Math.max(now - f.lastMove, 0), 500);
-      this.audit.move(id, Math.hypot(x - f.x, y - f.y), MOVE_SPEED * (dtMs / 1000) * 1.5 + 0.1, now);
+      this.audit.move(id, Math.hypot(x - f.x, y - f.y), speedOf(f) * (dtMs / 1000) * 1.5 + 0.1, now);
     }
     validateMove(f, x, y, now - f.lastMove, this.map);
     f.lastMove = now;
-    this.history.record(f.id, now, f.x, f.y, f.z);
+    this.history.record(f.id, now, f.x, f.y, f.z, !!f.crouch);
+  }
+
+  setSprint(f: ArenaFighter, on: boolean, now: number): void {
+    if (f.sprint && !on) f.sprintEndAt = now;
+    f.sprint = on;
+  }
+
+  /** Crouch key held or released. Standing up waits for headroom (checked again every tick). */
+  crouch(id: string, want: unknown): boolean {
+    const f = this.fighters.get(id);
+    if (!f || !f.alive || typeof want !== 'boolean') return false;
+    f.wantCrouch = want;
+    if (want) this.setSprint(f, false, Date.now());
+    return applyCrouch(f, want, this.map);
   }
 
   /** Space bar. Only works while standing on something, so it can't be spammed mid-air. */
@@ -190,6 +214,7 @@ export class ArenaWorld {
     const f = this.fighters.get(id);
     if (!f) return;
     f.scopedSince = on === true && f.weapon === 'sniper' ? f.scopedSince || now : 0;
+    if (f.scopedSince) this.setSprint(f, false, now);
   }
 
   private settleReload(f: ArenaFighter, now: number): void {
@@ -218,6 +243,9 @@ export class ArenaWorld {
     this.settleReload(f, now);
     if (f.reloadUntil) return [];
     if (now - f.switchedAt < SWITCH_MS) return [];
+    // Firing ends a sprint; the shot only goes once the gun is back up.
+    if (f.sprint) { this.setSprint(f, false, now); return []; }
+    if (f.sprintEndAt !== undefined && now - f.sprintEndAt < SPRINT_FIRE_DELAY_MS - SPRINT_FIRE_SLACK_MS) return [];
     if (now - f.lastShotAt[f.weapon] < spec.cooldownMs - FIRE_JITTER_MS) return [];
     if (f.ammo[f.weapon] <= 0) {
       this.reload(id, now);
@@ -241,11 +269,11 @@ export class ArenaWorld {
     }
     // Rewind other fighters to what the shooter saw (capped at LAG_COMP_MAX_MS), hit-test, then restore.
     const rt = rewindTime(now, viewT);
-    const restore: Array<[Fighter, number, number, number]> = [];
+    const restore: Array<[Fighter, number, number, number, boolean | undefined]> = [];
     if (rt < now) for (const o of this.fighters.values()) {
       if (o.id === f.id || !o.alive) continue;
       const h = this.history.at(o.id, rt);
-      if (h) { restore.push([o, o.x, o.y, o.z]); o.x = h.x; o.y = h.y; o.z = h.z; }
+      if (h) { restore.push([o, o.x, o.y, o.z, o.crouch]); o.x = h.x; o.y = h.y; o.z = h.z; o.crouch = !!h.crouch; }
     }
     let shot: ReturnType<typeof fireWeapon>;
     let blocked = 0;
@@ -258,11 +286,11 @@ export class ArenaWorld {
       for (const tid of [...shot.hits.keys()]) {
         const t = this.fighters.get(tid);
         if (!t) continue;
-        if (lineOfSight(eye, { x: t.x, y: t.y, z: t.z + HEAD_Z }, this.map) || lineOfSight(eye, chestOf(t), this.map) || lineOfSight(eye, { x: t.x, y: t.y, z: t.z + 0.35 }, this.map)) continue;
+        if (lineOfSight(eye, { x: t.x, y: t.y, z: t.z + headZOf(t) }, this.map) || lineOfSight(eye, chestOf(t), this.map) || lineOfSight(eye, { x: t.x, y: t.y, z: t.z + 0.35 }, this.map)) continue;
         shot.hits.delete(tid); shot.heads.delete(tid); blocked += 1;
       }
     }
-    finally { for (const [o, x, y, z] of restore) { o.x = x; o.y = y; o.z = z; } }
+    finally { for (const [o, x, y, z, c] of restore) { o.x = x; o.y = y; o.z = z; o.crouch = c; } }
     const events: ArenaEvent[] = [{
       ev: 'fps_shot',
       data: {
@@ -286,7 +314,7 @@ export class ArenaWorld {
     let best: { a: number; p: number; off: number } | null = null;
     for (const t of this.fighters.values()) {
       if (t.id === f.id || !t.alive) continue;
-      for (const pt of [{ x: t.x, y: t.y, z: t.z + HEAD_Z }, chestOf(t)]) {
+      for (const pt of [{ x: t.x, y: t.y, z: t.z + headZOf(t) }, chestOf(t)]) {
         const dx = pt.x - eye.x, dy = pt.y - eye.y, dz = pt.z - eye.z;
         const h = Math.hypot(dx, dy);
         const a = Math.atan2(dy, dx), p = Math.atan2(dz, h);
@@ -396,9 +424,12 @@ export class ArenaWorld {
     for (const f of all) {
       this.settleReload(f, now);
       this.advance(f, now);
-      if (f.alive) this.history.record(f.id, now, f.x, f.y, f.z); else this.history.forget(f.id);
+      if (f.alive && f.crouch && !f.wantCrouch) applyCrouch(f, false, this.map); // stand up once there is headroom
+      if (f.alive) this.history.record(f.id, now, f.x, f.y, f.z, !!f.crouch); else this.history.forget(f.id);
       if (f.alive && f.z <= KILL_Z) { f.alive = false; f.respawnAt = now; } // fell out of the world: never happens on valid maps
       if (maybeRespawn(f, now, all, this.rand, this.map)) {
+        f.crouch = false;
+        f.wantCrouch = false; f.sprint = false;
         f.ammo = fullAmmo();
         f.reloadUntil = 0;
         f.streak = 0;
@@ -522,7 +553,7 @@ export class ArenaWorld {
       players: [...this.fighters.values()].map((f) => ({
         id: f.id, name: f.name, x: +f.x.toFixed(3), y: +f.y.toFixed(3), z: +f.z.toFixed(3), a: +f.a.toFixed(3), p: +f.p.toFixed(3),
         hp: f.hp, k: f.kills, d: f.deaths, alive: f.alive, ...(f.id.startsWith('arena-bot-') ? { bot: true } : {}), w: f.weapon, ammo: f.ammo[f.weapon],
-        rl: f.reloadUntil ? Math.max(0, f.reloadUntil - now) : 0, g: f.grounded,
+        rl: f.reloadUntil ? Math.max(0, f.reloadUntil - now) : 0, g: f.grounded, ...(f.crouch ? { c: true } : {}), ...(f.sprint ? { s: true } : {}),
         st: f.streak, uav: Math.max(0, f.uavUntil - now),
       })),
       drones: [...this.drones.values()].flatMap((d) => {

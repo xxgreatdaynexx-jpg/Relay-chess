@@ -12,7 +12,7 @@ import { TagVisibility, tagVisible } from '@/lib/arenaTags';
 import type { ArenaMap } from '../../../shared/arenaMaps';
 import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, unlockSounds } from '@/lib/sounds';
 import {
-  AIRSTRIKE_RADIUS, clampPitch, EYE_HEIGHT, mapById, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
+  AIRSTRIKE_RADIUS, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
 } from '../../../shared/fps';
 
 const OPEN_KEY = 'relay-fps-open';
@@ -24,7 +24,7 @@ const COLORS = ['#5f6a48', '#7d7158', '#596066', '#6b6248', '#4f5a4c', '#73705f'
 const SCOPE_ZOOM = 3.5;
 const FOV = 68; // vertical, degrees
 
-interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number; bot?: boolean }
+interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number; bot?: boolean; c?: boolean; s?: boolean }
 interface NetState { t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null; wh?: boolean; roster?: Array<Pick<NetPlayer, 'id' | 'name' | 'k' | 'd' | 'st' | 'bot'>>; radar?: Array<{ x: number; y: number }>; rockets?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number }> }
 interface Snap extends NetState { recv: number }
 type Quality = 'hd' | 'lo';
@@ -77,7 +77,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const pickRef = useRef<HTMLSpanElement>(null);
   useEffect(() => { try { localStorage.setItem(FPS_KEY, showFps ? '1' : '0'); } catch { /* ignore */ } }, [showFps]);
   const [isTouch] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches);
-  const net = useRef({ buf: new SnapBuffer<NetState>(), corr: null as null | { x: number; y: number; left: number }, ping: 0, acc: 0, prev: null as null | { x: number; y: number; z: number } }).current;
+  const net = useRef({ buf: new SnapBuffer<NetState>(), corr: null as null | { x: number; y: number; left: number }, ping: 0, acc: 0, prev: null as null | { x: number; y: number; z: number }, sentCrouch: false }).current;
   const [look, setLookState] = useState<LookPrefs>(() => readLook());
   const lookRef = useRef(look);
   const [lookOpen, setLookOpen] = useState(false);
@@ -94,12 +94,18 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const me = useRef({
     id: '', x: 1.5, y: 1.5, z: 0, vz: 0, grounded: true, p: 0, a: 0, alive: true, hp: MAX_HP, joined: false, weapon: 'pistol' as WeaponId,
     ammo: WEAPONS.pistol.mag, reloadUntil: 0, switchedAt: -1e9, lastShot: {} as Partial<Record<WeaponId, number>>,
-    jumpAt: -1e9, scoped: false, firing: false, streak: 0, uavUntil: 0, walk: 0,
+    jumpAt: -1e9, scoped: false, firing: false, streak: 0, uavUntil: 0, walk: 0, crouch: false, eyeH: EYE_HEIGHT, sprint: false, sprintEndAt: -1e9, fovKick: 0,
   });
   const snaps = useRef<Snap[]>([]);
   const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, killmark: 0, nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string; fall: number }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number; sniper?: boolean }>, impacts: [] as Array<{ x: number; y: number; z: number; player: boolean; at: number }>, blasts: [] as Array<{ x: number; y: number; z: number; big: boolean }>, shells: 0, rockets: new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number }>(), weaponAt: new Map<string, { w: string; at: number }>(), hitAt: new Map<string, number>(), shotAt: new Map<string, number>(), shake: 0, jetAt: 0 });
   const banner = useRef<{ text: string; sub: string; at: number } | null>(null);
   const touch = useRef({ up: false, down: false, left: false, right: false, lookUp: false, lookDown: false });
+  const [touchCrouch, setTouchCrouch] = useState(false);
+  const touchCrouchRef = useRef(false);
+  useEffect(() => { touchCrouchRef.current = touchCrouch; }, [touchCrouch]);
+  const [touchSprint, setTouchSprint] = useState(false);
+  const touchSprintRef = useRef(false);
+  useEffect(() => { touchSprintRef.current = touchSprint; }, [touchSprint]);
   const [mapInfo, setMapInfo] = useState<{ map: string; next: string; picked: boolean; secs: number }>({ map: MAP.id, next: '', picked: false, secs: 0 });
 
   function setWeapon(w: WeaponId) {
@@ -144,6 +150,9 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     if (m.reloadUntil && now < m.reloadUntil) return;
     if (now - m.switchedAt < SWITCH_MS) return;
     if (now - (m.lastShot[m.weapon] ?? -1e9) < spec.cooldownMs) return;
+    // Sprint-to-fire: pulling the trigger ends the sprint, the gun comes up, then it fires (held trigger keeps trying).
+    if (m.sprint) { m.sprint = false; m.sprintEndAt = now; return; }
+    if (now - m.sprintEndAt < SPRINT_FIRE_DELAY_MS) return;
     if (m.ammo <= 0) return reload();
     m.lastShot[m.weapon] = now;
     m.ammo -= 1;
@@ -357,7 +366,21 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         m.a += turn * (m.scoped ? 0.8 : 2.6) * tk * dt;
         m.p = clampPitch(m.p + look * 1.6 * tk * dt) ?? m.p;
         const len = Math.hypot(fwd, side) || 1;
-        const sp = (MOVE_SPEED * 0.95 * dt) / len * (m.scoped ? 0.5 : 1);
+        // Crouch: hold Ctrl or C (or the touch toggle). Standing back up waits for headroom, same rule as the server.
+        const wantCrouch = k.has('control') || k.has('c') || touchCrouchRef.current;
+        const wasCrouched = m.crouch;
+        applyCrouch(m, wantCrouch, map);
+        if (wantCrouch !== net.sentCrouch) { net.sentCrouch = wantCrouch; socket.emit('fps_crouch', { on: wantCrouch }); }
+        if (wasCrouched !== m.crouch) lastSend = 0;
+        // Sprint: hold Shift (or the touch toggle), forward / diagonal-forward only, never crouched, scoped or while firing.
+        if (wantCrouch && touchSprintRef.current) { touchSprintRef.current = false; setTouchSprint(false); }
+        const firing = m.firing || k.has('f');
+        const wantSprint = (k.has('shift') || touchSprintRef.current) && fwd > 0 && !firing
+          && canSprint(m, Math.cos(m.a) * fwd - Math.sin(m.a) * side, Math.sin(m.a) * fwd + Math.cos(m.a) * side, m.scoped);
+        if (m.sprint && !wantSprint) m.sprintEndAt = now;
+        if (m.sprint !== wantSprint) lastSend = 0;
+        m.sprint = wantSprint;
+        const sp = (speedOf(m) * 0.95 * dt) / len * (m.scoped ? 0.5 : 1);
         // a turns from +x toward +y; "right" is +90°.
         const dx = (Math.cos(m.a) * fwd - Math.sin(m.a) * side) * sp;
         const dy = (Math.sin(m.a) * fwd + Math.cos(m.a) * side) * sp;
@@ -377,13 +400,15 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         }
         net.acc -= steps * LOCAL_STEP_S;
         moving = fwd !== 0 || side !== 0;
-        if (now - lastSend > 50) { lastSend = now; socket.emit('fps_move', { x: m.x, y: m.y, a: m.a, p: m.p }); }
-        if (m.firing || k.has('f') || k.has('control')) shoot();
+        if (now - lastSend > 50) { lastSend = now; socket.emit('fps_move', { x: m.x, y: m.y, a: m.a, p: m.p, c: wantCrouch, s: m.sprint }); }
+        if (m.firing || k.has('f')) shoot();
       }
       if (m.reloadUntil && now >= m.reloadUntil) { m.reloadUntil = 0; m.ammo = WEAPONS[m.weapon].mag; }
-      if (moving && m.grounded) m.walk += dt * 9;
-      const bob = moving && m.grounded ? Math.sin(m.walk * 2) * 0.03 : 0;
-      const zoom = m.scoped && m.weapon === 'sniper' && m.alive ? SCOPE_ZOOM : 1;
+      if (moving && m.grounded) m.walk += dt * 9 * (m.sprint ? 1.6 : 1);
+      m.fovKick += ((m.sprint && moving ? 1 : 0) - m.fovKick) * Math.min(1, dt * 8);
+      const bob = moving && m.grounded ? Math.sin(m.walk * 2) * (m.sprint ? 0.045 : 0.03) : 0;
+      { const target = m.alive ? eyeHeightOf(m) : EYE_HEIGHT; const st = CROUCH_LERP_SPEED * dt; m.eyeH += Math.max(-st, Math.min(st, target - m.eyeH)); }
+      const zoom = (m.scoped && m.weapon === 'sniper' && m.alive ? SCOPE_ZOOM : 1) / (1 + 0.08 * m.fovKick);
       const snap = snaps.current[snaps.current.length - 1];
       const sampled = samplePlayers(net.buf.snaps, net.buf.renderTime(now));
       const others = sampled.players.filter((p) => p.id !== m.id && p.alive);
@@ -402,7 +427,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         const sinceHit = now - (fx.current.hitAt.get(p.id) ?? -1e9);
         return {
           id: p.id, x: p.x, y: p.y, z: p.z, a: p.a, p: p.p, color: colorFor(p.id), flash: sinceHit < 120, moving: mv, t: now, w: p.w, fire: sinceShot < 60,
-          air: !p.g, speed: Math.min(8, sp), recoil: sinceShot < 160 ? 1 - sinceShot / 160 : 0, flinch: sinceHit < 260 ? 1 - sinceHit / 260 : 0,
+          air: !p.g, crouch: !!p.c, sprint: !!p.s, speed: Math.min(8, sp), recoil: sinceShot < 160 ? 1 - sinceShot / 160 : 0, flinch: sinceHit < 260 ? 1 - sinceHit / 260 : 0,
           sw: sinceSw < SWITCH_MS ? 1 - Math.abs(sinceSw / SWITCH_MS - 0.5) * 2 : 0,
           reload: p.rl > 0 ? Math.max(0, Math.min(1, 1 - p.rl / WEAPONS[p.w].reloadMs)) : undefined,
         };
@@ -445,11 +470,11 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       const vmReload = m.reloadUntil && now < m.reloadUntil ? 1 - (m.reloadUntil - now) / WEAPONS[m.weapon].reloadMs : -1;
       const vm = zoom === 1 && m.alive && m.joined ? { w: m.weapon, kick: Math.max(0, 1 - (now - fx.current.muzzle) / 140), lower: vmSwitch, reload: vmReload, bob: m.walk, muzzle: now - fx.current.muzzle < 50 } : null;
       const qa = (window as unknown as { __arenaQA?: { vm?: unknown } }).__arenaQA; if (qa) qa.vm = vm;
-      g3.render({ x: eye.x, y: eye.y, z: eye.z + EYE_HEIGHT + bob + (Math.random() - 0.5) * shake, a: m.a, p: m.p, zoom, vm }, soldiers, fx3);
+      g3.render({ x: eye.x, y: eye.y, z: eye.z + m.eyeH + bob + (Math.random() - 0.5) * shake, a: m.a, p: m.p, zoom, vm }, soldiers, fx3);
       // Health bars over nearby enemies you can see.
       // The 2D overlay always draws on top of the 3D scene, so gate each bar on line of sight (throttled, faded).
       tags.prune(new Set(others.map((o) => o.id)));
-      const camEye = { x: eye.x, y: eye.y, z: eye.z + EYE_HEIGHT };
+      const camEye = { x: eye.x, y: eye.y, z: eye.z + m.eyeH };
       for (const p of others) {
         const s = g3.project(p.x, p.y, p.z + 2, W, H);
         if (!s || s.dist > 18) continue;
@@ -485,7 +510,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         ctx.beginPath(); ctx.moveTo(0, H2 / 2); ctx.lineTo(W2, H2 / 2); ctx.moveTo(W2 / 2, 0); ctx.lineTo(W2 / 2, H2); ctx.stroke();
       } else if (m.alive) {
         const cs = H2 / 40;
-        const spread = (WEAPONS[m.weapon].spread * (H2 / 2)) / Math.tan(((FOV / zoom) * Math.PI) / 360) * 0.6;
+        const spread = (WEAPONS[m.weapon].spread * (m.crouch ? CROUCH_SPREAD_MULT : 1) * (H2 / 2)) / Math.tan(((FOV / zoom) * Math.PI) / 360) * 0.6;
         ctx.strokeStyle = 'rgba(235,240,230,.9)';
         ctx.lineWidth = Math.max(1, H2 / 300);
         ctx.beginPath();
@@ -686,9 +711,10 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
-  const GAME_KEYS = new Set(['tab', 'w', 'a', 's', 'd', 'q', 'e', 'f', 'r', 'control', ' ', '1', '2', '3', '4', '5', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown']);
+  const GAME_KEYS = new Set(['tab', 'w', 'a', 's', 'd', 'q', 'e', 'f', 'r', 'control', 'c', 'shift', ' ', '1', '2', '3', '4', '5', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown']);
   function onKey(e: React.KeyboardEvent, down: boolean) {
-    const key = e.key.toLowerCase();
+    // Shift turns 1–5 into !@#…; read the physical key so guns still switch mid-sprint.
+    const key = /^Digit[1-5]$/.test(e.code ?? '') ? e.code.slice(5) : e.key.toLowerCase();
     if (down) {
       const hk = hotkeyFor(e.key, e.repeat);
       if (hk === 'release') { releaseLock(); setPickerOpen(false); return; }
@@ -706,7 +732,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     if (key === ' ') jump();
     else if (key === 'r') reload();
     else if (/^[1-5]$/.test(key)) setWeapon(WEAPON_ORDER[Number(key) - 1]);
-    else if (key === 'f' || key === 'control') shoot();
+    else if (key === 'f') shoot();
   }
 
   function releaseLock() {
@@ -853,6 +879,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
             <button type="button" aria-label="Look down" data-testid="arena-look-down" {...hold('lookDown')}>⤓</button>
           </div>
           <button type="button" className="fps-jump" data-testid="arena-jump" onPointerDown={(e) => { e.preventDefault(); jump(); }}>JUMP</button>
+          <button type="button" className={`fps-crouch${touchCrouch ? ' is-on' : ''}`} data-testid="arena-crouch" aria-pressed={touchCrouch} onPointerDown={(e) => { e.preventDefault(); setTouchCrouch((v) => !v); }}>CROUCH</button>
+          <button type="button" className={`fps-sprint${touchSprint ? ' is-on' : ''}`} data-testid="arena-sprint" aria-pressed={touchSprint} onPointerDown={(e) => { e.preventDefault(); setTouchSprint((v) => !v); if (!touchSprint) setTouchCrouch(false); }}>SPRINT</button>
           <button type="button" className="fps-swap" data-testid="arena-swap" onPointerDown={(e) => { e.preventDefault(); cycleWeapon(1); }}>SWAP</button>
           <button
             type="button"
@@ -865,8 +893,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         </div>
       ) : (
         <div className="fps-help" data-testid="arena-help">
-          <span className="fps-help-full">WASD move · mouse look · Q/E turn · PgUp/PgDn look · click, F or Ctrl shoot · Space jump · 1–5 / wheel guns · R reload · right-click scope · Tab scores · M maps · F3 fps · Esc frees mouse</span>
-          <span className="fps-help-short">WASD move · click shoot · Space jump · 1–5 guns · R reload · Tab scores · M maps · F3 fps · Esc frees mouse</span>
+          <span className="fps-help-full">WASD move · mouse look · Q/E turn · PgUp/PgDn look · click or F shoot · Space jump · Shift sprint · Ctrl/C crouch (browsers keep Ctrl+W: use C) · 1–5 / wheel guns · R reload · right-click scope · Tab scores · M maps · F3 fps · Esc frees mouse</span>
+          <span className="fps-help-short">WASD move · click shoot · Space jump · Shift sprint · Ctrl/C crouch · 1–5 guns · R reload · Tab scores · M maps · F3 fps · Esc frees mouse</span>
         </div>
       )}
     </div>

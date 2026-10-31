@@ -579,7 +579,11 @@ input {
 .fps-quality { font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 6px; background: rgba(255,255,255,.14); }
 .fps-touch .fps-jump { width: 60px; background: #4b7ad1; }
 .fps-touch .fps-swap { width: 60px; background: #7a5aa8; }
-@media (max-width: 520px) { .fps-touch { flex-wrap: wrap; } .fps-touch .fps-jump, .fps-touch .fps-swap { width: 54px; } }
+.fps-touch .fps-crouch { width: 72px; background: #5b6b4a; font-size: 12px; }
+.fps-touch .fps-crouch.is-on { background: #c9a43a; color: #1d1a12; }
+.fps-touch .fps-sprint { width: 72px; background: #3f6f73; font-size: 12px; }
+.fps-touch .fps-sprint.is-on { background: #4fd0c0; color: #10201f; }
+@media (max-width: 520px) { .fps-touch { flex-wrap: wrap; } .fps-touch .fps-jump, .fps-touch .fps-swap, .fps-touch .fps-crouch, .fps-touch .fps-sprint { width: 54px; } }
 
 /* Hold'em table */
 .he-table { min-width: 0; }

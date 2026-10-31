@@ -24,6 +24,40 @@ export const BODY_TOP = 1.36;
 export const HEAD_Z = 1.55;
 export const HEAD_R = 0.2;
 export const HEADSHOT_MULT = 2;
+/** Crouching (hold Ctrl or C): a shorter capsule, lower eye and hitboxes, slower and a little more accurate. */
+export const CROUCH_HEIGHT = 1.15;
+export const CROUCH_EYE_HEIGHT = 0.98;
+export const CROUCH_BODY_TOP = 0.86;
+export const CROUCH_HEAD_Z = 1.02;
+export const CROUCH_SPEED_MULT = 0.5;
+export const CROUCH_SPREAD_MULT = 0.65;
+/** How fast the eye moves between standing and crouched heights (metres per second). */
+export const CROUCH_LERP_SPEED = 6;
+type Crouchy = { crouch?: boolean; sprint?: boolean };
+/** Sprint (hold Shift): ~1.5× run speed, forward / diagonal-forward only, never crouched or scoped. */
+export const SPRINT_MULT = 1.5;
+/** Widest move direction (radians off facing) that still counts as forward: 45° diagonals plus slack. */
+export const SPRINT_MAX_ANGLE = (55 * Math.PI) / 180;
+/** Sprint-to-fire: the gun comes up this long after the sprint ends before it can shoot. */
+export const SPRINT_FIRE_DELAY_MS = 150;
+/** Server allows a little network jitter on the sprint-to-fire delay. */
+export const SPRINT_FIRE_SLACK_MS = 40;
+/** Is a move with this direction (world angle) relative to facing `a` forward enough to sprint? */
+export function sprintDirOk(a: number, dx: number, dy: number): boolean {
+  if (Math.hypot(dx, dy) < 1e-6) return true; // standing still: no speed gained anyway
+  let d = Math.atan2(dy, dx) - a;
+  d = Math.atan2(Math.sin(d), Math.cos(d));
+  return Math.abs(d) <= SPRINT_MAX_ANGLE;
+}
+/** Whether a sprint request is allowed right now. */
+export function canSprint(b: Crouchy & { a: number }, dx: number, dy: number, scoped: boolean): boolean {
+  return !b.crouch && !scoped && sprintDirOk(b.a, dx, dy);
+}
+export const heightOf = (b: Crouchy): number => (b.crouch ? CROUCH_HEIGHT : PLAYER_HEIGHT);
+export const eyeHeightOf = (b: Crouchy): number => (b.crouch ? CROUCH_EYE_HEIGHT : EYE_HEIGHT);
+export const headZOf = (b: Crouchy): number => (b.crouch ? CROUCH_HEAD_Z : HEAD_Z);
+export const bodyTopOf = (b: Crouchy): number => (b.crouch ? CROUCH_BODY_TOP : BODY_TOP);
+export const speedOf = (b: Crouchy): number => (b.crouch ? MOVE_SPEED * CROUCH_SPEED_MULT : b.sprint ? MOVE_SPEED * SPRINT_MULT : MOVE_SPEED);
 /** Highest ledge you can walk up without jumping (stairs). */
 export const STEP_HEIGHT = 0.45;
 export const GRAVITY = 20;
@@ -84,44 +118,58 @@ export function roofAt(x: number, y: number, map: ArenaMap = MAP): number {
 }
 
 /** True if a player with feet at z (allowed to step up `step`) would intersect geometry at (x,y). */
-export function blockedAt(x: number, y: number, z: number, map: ArenaMap = MAP, step = STEP_HEIGHT): boolean {
+export function blockedAt(x: number, y: number, z: number, map: ArenaMap = MAP, step = STEP_HEIGHT, height = PLAYER_HEIGHT): boolean {
   if (outOfBounds(map, x, y)) return true;
-  for (const [top, bottom] of spansAt(map, x, y, PLAYER_RADIUS)) if (top > z + step + 1e-6 && bottom < z + PLAYER_HEIGHT) return true;
+  for (const [top, bottom] of spansAt(map, x, y, PLAYER_RADIUS)) if (top > z + step + 1e-6 && bottom < z + height) return true;
   return false;
 }
 
 /** True if a player can stand with feet at (x,y,z): not inside geometry. */
-export function canStand(x: number, y: number, z = 0, map: ArenaMap = MAP): boolean {
-  return !blockedAt(x, y, z, map, 0.02);
+export function canStand(x: number, y: number, z = 0, map: ArenaMap = MAP, height = PLAYER_HEIGHT): boolean {
+  return !blockedAt(x, y, z, map, 0.02, height);
 }
 
 // ---------------------------------------------------------------- movement physics
 
-export interface Body { x: number; y: number; z: number; vz: number; grounded: boolean }
+export interface Body { x: number; y: number; z: number; vz: number; grounded: boolean; crouch?: boolean }
+
+/** True if a crouched body has headroom to stand up where it is. */
+export function canUncrouch(b: Body, map: ArenaMap = MAP): boolean {
+  return canStand(b.x, b.y, b.z, map, PLAYER_HEIGHT);
+}
+
+/** Applies the crouch key: crouching is always allowed; standing up waits until there is headroom. Returns the new state. */
+export function applyCrouch(b: Body, want: boolean, map: ArenaMap = MAP): boolean {
+  if (want) b.crouch = true;
+  else if (b.crouch && canUncrouch(b, map)) b.crouch = false;
+  return !!b.crouch;
+}
 
 /** Corner slip: walking almost head-on into a box edge that only clips the body by a few cm slides you around it. */
 const CORNER_SLIP = 0.15;
 function nudge(b: Body, axis: 'x' | 'y', push: number, map: ArenaMap, step: number): void {
   const amt = Math.abs(push);
-  const free = (o: number) => (axis === 'y' ? !blockedAt(b.x + push, b.y + o, b.z, map, step) : !blockedAt(b.x + o, b.y + push, b.z, map, step));
+  const h = heightOf(b);
+  const free = (o: number) => (axis === 'y' ? !blockedAt(b.x + push, b.y + o, b.z, map, step, h) : !blockedAt(b.x + o, b.y + push, b.z, map, step, h));
   const plus = free(CORNER_SLIP), minus = free(-CORNER_SLIP);
   if (plus === minus) return; // flat wall (or a gap on both sides): just stop
   const o = (plus ? 1 : -1) * amt;
-  if (axis === 'y') { if (!blockedAt(b.x, b.y + o, b.z, map, step)) b.y += o; }
-  else if (!blockedAt(b.x + o, b.y, b.z, map, step)) b.x += o;
+  if (axis === 'y') { if (!blockedAt(b.x, b.y + o, b.z, map, step, h)) b.y += o; }
+  else if (!blockedAt(b.x + o, b.y, b.z, map, step, h)) b.x += o;
 }
 
 /** Horizontal move with wall sliding and stair stepping. Mutates and returns the body. */
 export function moveHorizontal(b: Body, dx: number, dy: number, map: ArenaMap = MAP): Body {
   const step = b.grounded ? STEP_HEIGHT : 0.05;
+  const h = heightOf(b);
   // Sub-step long moves so nobody tunnels through thin geometry (railings, pillars).
   const n = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 0.2));
   for (let i = 0; i < n; i++) {
     const sx = dx / n, sy = dy / n;
     const px = b.x, py = b.y, pz = b.z, pg = b.grounded, pv = b.vz;
-    if (!blockedAt(b.x + sx, b.y, b.z, map, step)) b.x += sx;
+    if (!blockedAt(b.x + sx, b.y, b.z, map, step, h)) b.x += sx;
     else if (Math.abs(sx) > Math.abs(sy) * 2) nudge(b, 'y', sx, map, step);
-    if (!blockedAt(b.x, b.y + sy, b.z, map, step)) b.y += sy;
+    if (!blockedAt(b.x, b.y + sy, b.z, map, step, h)) b.y += sy;
     else if (Math.abs(sy) > Math.abs(sx) * 2) nudge(b, 'x', sy, map, step);
     if (b.grounded) {
       const g = groundAt(b.x, b.y, b.z + STEP_HEIGHT, map);
@@ -136,7 +184,7 @@ export function moveHorizontal(b: Body, dx: number, dy: number, map: ArenaMap = 
       if (g > b.z) { b.z = g; if (b.vz <= 0) { b.vz = 0; b.grounded = true; } }
     }
     // Never end a sub-step inside geometry (e.g. stepping up under a low ceiling): undo it and stop here.
-    if (!canStand(b.x, b.y, b.z, map) && canStand(px, py, pz, map)) { Object.assign(b, { x: px, y: py, z: pz, grounded: pg, vz: pv }); break; }
+    if (!canStand(b.x, b.y, b.z, map, h) && canStand(px, py, pz, map, h)) { Object.assign(b, { x: px, y: py, z: pz, grounded: pg, vz: pv }); break; }
   }
   return b;
 }
@@ -155,11 +203,12 @@ export function stepVertical(b: Body, dt: number, map: ArenaMap = MAP): Body {
     const z0 = b.z;
     b.vz -= GRAVITY * h;
     let z1 = z0 + b.vz * h;
+    const ph = heightOf(b);
     if (b.vz > 0) {
       // Head bump: any solid whose underside is between the old and new head height.
       for (const s of map.solids) {
         if (!overlapsXY(s, b.x, b.y, PLAYER_RADIUS)) continue;
-        if (s.z0 >= z0 + PLAYER_HEIGHT - 1e-3 && s.z0 < z1 + PLAYER_HEIGHT) { z1 = s.z0 - PLAYER_HEIGHT; b.vz = 0; }
+        if (s.z0 >= z0 + ph - 1e-3 && s.z0 < z1 + ph) { z1 = s.z0 - ph; b.vz = 0; }
       }
     }
     const land = groundAt(b.x, b.y, z0 + 0.02, map);
@@ -241,29 +290,31 @@ export interface Target {
   y: number;
   z: number;
   alive: boolean;
+  crouch?: boolean;
+  sprint?: boolean;
 }
 
-export const eyeOf = (s: { x: number; y: number; z: number }): Vec3 => ({ x: s.x, y: s.y, z: s.z + EYE_HEIGHT });
-export const chestOf = (s: { x: number; y: number; z: number }): Vec3 => ({ x: s.x, y: s.y, z: s.z + 1.0 });
+export const eyeOf = (s: { x: number; y: number; z: number; crouch?: boolean }): Vec3 => ({ x: s.x, y: s.y, z: s.z + eyeHeightOf(s) });
+export const chestOf = (s: { x: number; y: number; z: number; crouch?: boolean }): Vec3 => ({ x: s.x, y: s.y, z: s.z + (s.crouch ? 0.62 : 1.0) });
 
 /** Ray vs one fighter's hitboxes: body box and head sphere. */
 export function rayFighter(o: Vec3, d: Vec3, t: Target): { dist: number; head: boolean } | null {
   // head sphere
-  const cx = t.x - o.x, cy = t.y - o.y, cz = t.z + HEAD_Z - o.z;
+  const cx = t.x - o.x, cy = t.y - o.y, cz = t.z + headZOf(t) - o.z;
   const along = cx * d.x + cy * d.y + cz * d.z;
   let head = Infinity;
   if (along > 0) {
     const perp2 = cx * cx + cy * cy + cz * cz - along * along;
     if (perp2 <= HEAD_R * HEAD_R) head = along - Math.sqrt(HEAD_R * HEAD_R - perp2);
   }
-  const body = rayBox(o, d, t.x - BODY_HALF, t.y - BODY_HALF, t.z, t.x + BODY_HALF, t.y + BODY_HALF, t.z + BODY_TOP);
+  const body = rayBox(o, d, t.x - BODY_HALF, t.y - BODY_HALF, t.z, t.x + BODY_HALF, t.y + BODY_HALF, t.z + bodyTopOf(t));
   if (!Number.isFinite(head) && !Number.isFinite(body)) return null;
   return head < body ? { dist: head, head: true } : { dist: body, head: false };
 }
 
 /** Hitscan from the shooter's eye along yaw/pitch: nearest living target in front of the first wall. */
 export function hitscan(
-  shooter: { id: string; x: number; y: number; z: number; a: number; p: number },
+  shooter: { id: string; x: number; y: number; z: number; a: number; p: number; crouch?: boolean },
   targets: Target[],
   map: ArenaMap = MAP,
   range = MAX_RANGE,
@@ -298,6 +349,8 @@ export interface Fighter {
   respawnAt: number;
   lastShot: number;
   lastMove: number;
+  crouch?: boolean;
+  sprint?: boolean;
 }
 
 /** Applies damage. Returns true if this hit killed the target. */
@@ -363,7 +416,7 @@ export function maybeRespawn(f: Fighter, now: number, others: Fighter[], rand: (
  */
 export function validateMove(f: Body, nx: unknown, ny: unknown, dtMs: number, map: ArenaMap = MAP): Body {
   if (typeof nx !== 'number' || typeof ny !== 'number' || !Number.isFinite(nx) || !Number.isFinite(ny)) return f;
-  const allowed = MOVE_SPEED * (Math.min(Math.max(dtMs, 0), 500) / 1000) * 1.5 + 0.1;
+  const allowed = speedOf(f) * (Math.min(Math.max(dtMs, 0), 500) / 1000) * 1.5 + 0.1;
   let dx = nx - f.x;
   let dy = ny - f.y;
   const d = Math.hypot(dx, dy);
@@ -440,7 +493,7 @@ export function splashTargets(
   for (const t of targets) {
     if (!t.alive) continue;
     // Nearest point of the body column to the blast.
-    const pz = Math.min(t.z + PLAYER_HEIGHT, Math.max(t.z, c.z));
+    const pz = Math.min(t.z + heightOf(t), Math.max(t.z, c.z));
     const d = Math.hypot(t.x - c.x, t.y - c.y, pz - c.z);
     if (d >= radius) continue;
     const from = { x: c.x, y: c.y, z: c.z + 0.15 };
@@ -464,14 +517,14 @@ export interface ShotResult {
 
 /** Resolves one trigger pull of a weapon. Pure; the server decides whether the pull was allowed. */
 export function fireWeapon(
-  shooter: { id: string; x: number; y: number; z: number; a: number; p: number },
+  shooter: { id: string; x: number; y: number; z: number; a: number; p: number; crouch?: boolean },
   weapon: WeaponSpec,
   targets: Target[],
   opts: { scoped?: boolean; rand?: () => number; map?: ArenaMap } = {},
 ): ShotResult {
   const rand = opts.rand ?? Math.random;
   const map = opts.map ?? MAP;
-  const spread = weapon.id === 'sniper' && opts.scoped ? weapon.scopedSpread ?? 0 : weapon.spread;
+  const spread = (weapon.id === 'sniper' && opts.scoped ? weapon.scopedSpread ?? 0 : weapon.spread) * (shooter.crouch ? CROUCH_SPREAD_MULT : 1);
   const hits = new Map<string, number>();
   const heads = new Set<string>();
   const rays: ShotResult['rays'] = [];
@@ -547,7 +600,7 @@ export const ROCKET_MUZZLE = 0.55;
 export interface Rocket { id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; born: number; at: number }
 
 /** A rocket leaving the shooter's tube along their aim. */
-export function launchRocket(id: number, shooter: { id: string; x: number; y: number; z: number; a: number; p: number }, now: number): Rocket {
+export function launchRocket(id: number, shooter: { id: string; x: number; y: number; z: number; a: number; p: number; crouch?: boolean }, now: number): Rocket {
   const e = eyeOf(shooter);
   const d = dirFrom(shooter.a, shooter.p);
   return { id, ownerId: shooter.id, x: e.x + d.x * ROCKET_MUZZLE, y: e.y + d.y * ROCKET_MUZZLE, z: e.z - 0.12 + d.z * ROCKET_MUZZLE, vx: d.x * ROCKET_SPEED, vy: d.y * ROCKET_SPEED, vz: d.z * ROCKET_SPEED, born: now, at: now };

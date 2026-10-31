@@ -144,6 +144,8 @@ export interface Soldier3D {
   /** 0..1 hit flinch */ flinch?: number;
   /** death fall direction (radians, relative to facing) */ fall?: number;
   /** horizontal speed, tiles/s (walk vs run cycle) */ speed?: number;
+  /** crouching: hips drop, one knee forward, one back (matches the lowered server hitboxes) */ crouch?: boolean;
+  /** sprinting: forward lean, longer stride, gun lowered */ sprint?: boolean;
 }
 export interface Fx3D {
   drones: Array<{ x: number; y: number; z: number }>;
@@ -703,6 +705,19 @@ export class Arena3D {
       rig.position.y = Math.abs(Math.sin(ph)) * 0.05 * (0.5 + run);
       rig.rotation.z = -0.08 * run; // lean into the run
     } else { s.legs[0].rotation.z = 0; s.legs[1].rotation.z = 0; }
+    if (p.sprint && p.moving && !p.air && !p.crouch) {
+      const ph = p.t / 80;
+      s.legs[0].rotation.z = Math.sin(ph) * 0.95; s.legs[1].rotation.z = -Math.sin(ph) * 0.95;
+      rig.position.y = Math.abs(Math.sin(ph)) * 0.08;
+      rig.rotation.z = -0.22;
+    }
+    if (p.crouch && !p.air) {
+      // Hips at ~0.3 so the head sits at the crouched head hitbox (~1.02). Legs fold to fit under them.
+      const shuffle = p.moving ? Math.sin(p.t / 140) * 0.18 : 0;
+      rig.position.y = -0.5;
+      rig.rotation.z = -0.12;
+      s.legs[0].rotation.z = 1.2 + shuffle; s.legs[1].rotation.z = -1.1 - shuffle;
+    }
     if (p.flinch) { rig.rotation.z += 0.22 * p.flinch; rig.rotation.x = Math.sin(p.t / 30) * 0.05 * p.flinch; }
   }
 
@@ -717,6 +732,7 @@ export class Arena3D {
     aim.position.x -= k * 0.06;
     if (p.reload !== undefined) { const r = Math.sin(Math.PI * p.reload); aim.rotation.z -= r * 0.6; aim.rotation.x = r * 0.7; }
     if (p.sw) aim.rotation.z -= p.sw * 1.1;
+    if (p.sprint && p.moving) { aim.rotation.z -= 0.55; aim.rotation.x = 0.35; } // gun swung low across the chest
   }
 
   private holdGun(s: Soldier, w: WeaponId, pitch: number) {

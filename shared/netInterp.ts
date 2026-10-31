@@ -57,18 +57,18 @@ export function samplePlayers<P extends Pose>(snaps: Timed<P>[], rt: number): { 
 
 /** Per-fighter position history for server-side lag compensation. */
 export class PoseHistory {
-  private h = new Map<string, Array<{ t: number; x: number; y: number; z: number }>>();
-  record(id: string, t: number, x: number, y: number, z: number) {
+  private h = new Map<string, Array<{ t: number; x: number; y: number; z: number; crouch?: boolean }>>();
+  record(id: string, t: number, x: number, y: number, z: number, crouch = false) {
     const a = this.h.get(id) ?? [];
     if (a.length && a[a.length - 1].t === t) a.pop();
-    a.push({ t, x, y, z });
+    a.push({ t, x, y, z, ...(crouch ? { crouch: true } : {}) });
     while (a.length && a[0].t < t - 1000) a.shift();
     this.h.set(id, a);
   }
   forget(id: string) { this.h.delete(id); }
   clear() { this.h.clear(); }
   /** Position at time t (clamped to history), or null if unknown. */
-  at(id: string, t: number): { x: number; y: number; z: number } | null {
+  at(id: string, t: number): { x: number; y: number; z: number; crouch?: boolean } | null {
     const a = this.h.get(id);
     if (!a?.length) return null;
     if (t <= a[0].t) return a[0];
@@ -78,7 +78,8 @@ export class PoseHistory {
         if (!n) return a[i];
         const k = (t - a[i].t) / (n.t - a[i].t || 1);
         if (Math.hypot(n.x - a[i].x, n.y - a[i].y) > 4) return k < 0.5 ? a[i] : n;
-        return { x: a[i].x + (n.x - a[i].x) * k, y: a[i].y + (n.y - a[i].y) * k, z: a[i].z + (n.z - a[i].z) * k };
+        const c = (k < 0.5 ? a[i] : n).crouch;
+        return { x: a[i].x + (n.x - a[i].x) * k, y: a[i].y + (n.y - a[i].y) * k, z: a[i].z + (n.z - a[i].z) * k, ...(c ? { crouch: true } : {}) };
       }
     }
     return a[0];
