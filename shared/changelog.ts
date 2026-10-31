@@ -6,7 +6,13 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-10-31T10:45:00-06:00', title: 'Softer neon in the city', bullets: [
+  { commit: '', at: '2026-10-31T11:15:00-06:00', title: 'Tidier streets', bullets: [
+    'Rebuilt the road network like a real city: a ring road with big smooth corners, two straight boulevards that cross in the middle, a neat downtown grid, and a waterfront drive that follows the shore.',
+    'Suburbs get orderly streets with gentle curves and a few cul-de-sacs, and the city is a bit bigger with new land on every side.',
+    'Landmarks and buildings sit neatly in their blocks facing the street, with nothing squeezed between roads.',
+    'New-build notes no longer show up in chat; they only live here in the Changelog.',
+  ] },
+  { commit: 'a657e5e', at: '2026-10-31T10:45:00-06:00', title: 'Softer neon in the city', bullets: [
     'Toned down the city glow: neon signs, landmark trim, lit windows and fountains are about a third dimmer, with less bloom, so it still feels like a night city without the glare.',
   ] },
   { commit: '4ea19da', at: '2026-10-31T02:40:00-06:00', title: 'A city that feels lived-in', bullets: [

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { WORLD_SPOTS } from '@/lib/worldSpots';
 import type { World } from '@/lib/world3d';
+import { useAccount } from '@/lib/auth';
 
 const CASINO_GAMES = [
   { tab: 'blackjack-tab', label: '🂡 Blackjack' }, { tab: 'roulette-tab', label: '🎡 Roulette' }, { tab: 'poker-tab', label: '🃏 Poker' },
@@ -26,6 +27,7 @@ function weakDevice() {
 
 /** Home "world": a night city where each landmark opens a part of Chud Hub. */
 export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboard: () => void }) {
+  const me = useAccount();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const worldRef = useRef<World | null>(null);
   const [mode, setMode] = useState<'3d' | '2d'>(() => (localStorage.getItem(MODE_KEY) as '3d' | '2d' | null) ?? (weakDevice() ? '2d' : '3d'));
@@ -81,6 +83,7 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
   useEffect(() => { worldRef.current?.setRunning(!casino); if (!casino) worldRef.current?.reset(); }, [casino]);
 
   const spot = tip && WORLD_SPOTS.find((s) => s.id === tip.id);
+  const trailer = tip?.id.startsWith('trailer:') ? tip.id.slice(8) : null;
   return (
     <div className="world" data-testid="world-map">
       {mode === '3d' ? <canvas ref={canvasRef} className="world-canvas" data-testid="world-canvas" /> : (
@@ -95,6 +98,7 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
       <div className="world-title"><span>CHUD</span> HUB<small>pick a spot on the map</small></div>
       {loading && mode === '3d' && <div className="world-loading">Building the city…</div>}
       {spot && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#' + spot.color.toString(16).padStart(6, '0') }} data-testid="world-tip"><b>{spot.icon} {spot.label}</b><span>{spot.blurb}</span><em>Click to enter</em></div>}
+      {trailer && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#ffb36b' }} data-testid="world-tip">{me && trailer.toLowerCase() === me.toLowerCase() ? <b>🏠 Your trailer</b> : <><b>🏠 {trailer}'s trailer</b><span>Chud Acres Trailer Park</span></>}</div>}
       <div className="world-corner">
         <button type="button" onClick={() => setMode(mode === '3d' ? '2d' : '3d')} data-testid="world-mode">{mode === '3d' ? '▦ 2D map' : '🌃 3D city'}</button>
       </div>

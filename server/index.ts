@@ -1,4 +1,3 @@
-import { initBuildAnnounce } from './build.js';
 import { initRequests } from './requests.js';
 import { initEconomy } from './economy.js';
 import { getChatLog, initChatStorage } from './chat.js';
@@ -29,7 +28,6 @@ await initChessStatsStorage();
 await initAccountStorage();
 await initRoomStorage();
 await initChatStorage();
-await initBuildAnnounce();
 await initRequests();
 await initEconomy();
 await initStocks();

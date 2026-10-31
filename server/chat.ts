@@ -10,6 +10,8 @@ import {
   type Activity, type ChatMessage, type OnlineSnapshot, type OnlineUser,
 } from '../shared/chat.js';
 
+import { isBuildPost } from './build.js';
+
 export const CHAT_MIGRATION = `CREATE TABLE IF NOT EXISTS chat_messages (
   id BIGINT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -110,7 +112,7 @@ export class ChatLog {
 
   /** History as a viewer should see it: QA accounts' messages are hidden from non-QA viewers. */
   history(viewerIsQa: boolean): ChatMessage[] {
-    return this.messages.filter((m) => viewerIsQa || !isQaName(m.name)).map((m) => (isQaName(m.name) ? { ...m, qa: true as const } : m));
+    return this.messages.filter((m) => !isBuildPost(m) && (viewerIsQa || !isQaName(m.name))).map((m) => (isQaName(m.name) ? { ...m, qa: true as const } : m));
   }
   get size(): number { return this.messages.length; }
   async flush(): Promise<void> { await this.writes; }

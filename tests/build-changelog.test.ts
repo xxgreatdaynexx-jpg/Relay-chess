@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { CHANGELOG, changelogBullets } from '../shared/changelog';
-import { announceBuild, buildNote, BUILD_MIGRATION } from '../server/build';
+import { isBuildPost, SYSTEM_NAME } from '../server/build';
+import { ChatLog } from '../server/chat';
 
 describe('changelog', () => {
   it('is newest first with bullets', () => {
@@ -8,19 +9,10 @@ describe('changelog', () => {
     for (const e of CHANGELOG) expect(e.bullets.length).toBeGreaterThan(0);
     expect(changelogBullets(3)).toHaveLength(3);
   });
-  it('build note fits chat', () => {
-    const n = buildNote('abc1234');
-    expect(n.startsWith('New build abc1234 is live:')).toBe(true);
-    expect(n.length).toBeLessThanOrEqual(300);
-  });
-  it('announces once per sha', async () => {
-    const seen = new Set<string>();
-    const db = { query: async (q: string, p?: unknown[]) => {
-      if (q === BUILD_MIGRATION) return { rows: [] };
-      const s = String(p![0]); if (seen.has(s)) return { rows: [] }; seen.add(s); return { rows: [{ sha: s }] };
-    } };
-    expect(await announceBuild(db, 'aaa1111')).toBe(true);
-    expect(await announceBuild(db, 'aaa1111')).toBe(false);
-    expect(await announceBuild(db, 'dev')).toBe(false);
+  it('old build notes are hidden from chat history (changelog lives only in the Changelog section)', () => {
+    const log = new ChatLog();
+    log.postSystem(SYSTEM_NAME, 'New build abc1234 is live:\n• x');
+    expect(log.history(false)).toHaveLength(0);
+    expect(isBuildPost({ name: 'Dayne', text: 'New build soon?' })).toBe(false);
   });
 });

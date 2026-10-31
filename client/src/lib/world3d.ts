@@ -5,7 +5,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
-import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint } from './worldLayout';
+import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN } from './worldLayout';
 
 import { WORLD_SPOTS } from './worldSpots';
 import { HOUSING_TYPES, type HousingType } from './housing';
@@ -66,7 +66,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x070a1c); scene.fog = new THREE.Fog(0x070a1c, 230, 520);
   const camera = new THREE.PerspectiveCamera(38, 1, 0.5, 900);
-  const home = new THREE.Vector3(132, 132, 156); camera.position.copy(home);
+  const home = new THREE.Vector3(132, 132, 156).multiplyScalar(PLATE / 96); camera.position.copy(home); // framing scales with the plate
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(0, 0, 0); controls.enableDamping = true; controls.dampingFactor = 0.08;
   controls.minDistance = 30; controls.maxDistance = 360; controls.maxPolarAngle = 1.2; controls.minPolarAngle = 0.35;
@@ -252,7 +252,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       plazas.forEach((b, i) => { d.position.set(b.x, 0.3, b.z); d.scale.set(1, 1, 1); d.rotation.set(0, 0, 0); d.updateMatrix(); fm.setMatrixAt(i, d.matrix); }); scene.add(fm); }
   }
   const solids = [...Object.values(lmBoxes), ...fillers];
-  const blocked = (x: number, z: number, m: number) => solids.some((o) => Math.abs(o.x - x) < 12 && Math.abs(o.z - z) < 12 && obbHit(o, x, z, m));
+  const blocked = (x: number, z: number, m: number) => obbHit(PARK_AREA, x, z, m) || solids.some((o) => Math.abs(o.x - x) < 12 && Math.abs(o.z - z) < 12 && obbHit(o, x, z, m));
   // Trees + palms (instanced).
   const treeSpots: [number, number, number][] = [];
   for (const b of patches) if (b.kind === 'park') { const c = Math.cos(b.rot), sn = Math.sin(b.rot); for (let i = 0; i < 9; i++) { const u = (r() - 0.5) * (b.w - 2), v = (r() - 0.5) * (b.d - 2); treeSpots.push([b.x + u * c + v * sn, b.z - u * sn + v * c, 0.8 + r() * 0.7]); } }
@@ -302,6 +302,39 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     fwG.attributes.color.needsUpdate = true; fwAge = 0;
   };
 
+  // Trailer Park (north-west edge): gravel lanes, an entrance sign, and one trailer per player (lots come from /api/trailer-park).
+  const gravelMat = mat({ color: 0x8a8276, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  const gravel: THREE.Mesh[] = [];
+  const laneMesh = (a: [number, number], b: [number, number]) => { const L = Math.hypot(b[0] - a[0], b[1] - a[1]); const m = new THREE.Mesh(geo(new THREE.BoxGeometry(L, 0.04, 4.2)), gravelMat);
+    m.position.set((a[0] + b[0]) / 2, 0.05, (a[1] + b[1]) / 2); m.rotation.y = -Math.atan2(b[1] - a[1], b[0] - a[0]); scene.add(m); gravel.push(m); };
+  { const sg = new THREE.Group(); const post = mat({ color: 0x5a4a3a }); const panel = signTexture('TRAILER PARK', '#ffb36b', 'Chud Acres'); disposables.push(panel);
+    const pm = mat({ color: 0xffffff, map: panel, emissiveMap: panel, emissive: 0xffffff, emissiveIntensity: 0.45 * NEON });
+    sg.add(box(0.3, 4, 0.3, post, -2.6, 0, 0), box(0.3, 4, 0.3, post, 2.6, 0, 0)); const pan = new THREE.Mesh(geo(new THREE.BoxGeometry(6, 1.8, 0.2)), pm); pan.position.set(0, 3.6, 0); sg.add(pan);
+    sg.position.set(PARK_SIGN[0], 0, PARK_SIGN[1]); sg.rotation.y = 0; scene.add(sg); }
+  const TRAILER_TYPES = [
+    { len: 1, h: 2.6, body: 0xd9d4c7, trim: 0x4fb3a9 }, // classic white single-wide
+    { len: 0.86, h: 2.4, body: 0xc9a36a, trim: 0xe0663f }, // tan with orange stripe
+    { len: 1, h: 2.8, body: 0x9fb4c8, trim: 0xf2c94c }, // blue-grey with yellow porch light
+  ];
+  let trailerMeshes: THREE.InstancedMesh[] = [];
+  const addTrailers = (lots: { lot: number; name: string }[]) => {
+    const n = lots.reduce((m, l) => Math.max(m, l.lot + 1), 0); if (!n) return;
+    const layout = parkLayout(n, solids); for (const ln of layout.lanes) laneMesh(ln[0], ln[1]);
+    const unit = geo(new THREE.BoxGeometry(1, 1, 1));
+    TRAILER_TYPES.forEach((t, ti) => {
+      const mine = lots.filter((l) => layout.lots[l.lot] && l.lot % TRAILER_TYPES.length === ti); if (!mine.length) return;
+      const body = new THREE.InstancedMesh(unit, mat({ color: t.body, roughness: 0.8, emissive: t.body, emissiveIntensity: 0.06 }), mine.length);
+      const trim = new THREE.InstancedMesh(unit, mat({ color: t.trim, emissive: t.trim, emissiveIntensity: 0.55 * NEON }), mine.length);
+      const d = new THREE.Object3D();
+      mine.forEach((l, i) => { const b = layout.lots[l.lot]; const long = b.d >= b.w; const L = (long ? b.d : b.w) * t.len, W = long ? b.w : b.d;
+        d.position.set(b.x, t.h / 2 + 0.25, b.z); d.rotation.set(0, 0, 0); d.scale.set(long ? W : L, t.h, long ? L : W); d.updateMatrix(); body.setMatrixAt(i, d.matrix);
+        d.position.set(b.x, t.h * 0.62, b.z); d.scale.set((long ? W : L) + 0.06, 0.22, (long ? L : W) + 0.06); d.updateMatrix(); trim.setMatrixAt(i, d.matrix); });
+      body.userData.trailers = mine.map((l) => l.name); trim.userData.trailers = body.userData.trailers;
+      scene.add(body, trim); pickables.push(body, trim); trailerMeshes.push(body, trim);
+    });
+  };
+  let parkDead = false;
+  void fetch('/api/trailer-park').then((r) => r.json()).then((j: { lots?: { lot: number; name: string }[] }) => { if (!parkDead && Array.isArray(j?.lots)) addTrailers(j.lots); }).catch(() => {});
   // Stars
   const stG = new THREE.BufferGeometry(); const sp: number[] = []; for (let i = 0; i < 400; i++) { const a = r() * Math.PI * 2, e = 0.15 + r() * 1.2, R = 420; sp.push(Math.cos(a) * Math.cos(e) * R, Math.sin(e) * R, Math.sin(a) * Math.cos(e) * R); }
   stG.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3)); disposables.push(stG);
@@ -310,7 +343,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // Interaction.
   const ray = new THREE.Raycaster(); const ndc = new THREE.Vector2();
   let hovered: string | null = null; let fly: { from: THREE.Vector3; to: THREE.Vector3; tf: THREE.Vector3; tt: THREE.Vector3; t: number; id: string } | null = null;
-  const pick = (cx: number, cy: number) => { const rc = canvas.getBoundingClientRect(); ndc.set(((cx - rc.left) / rc.width) * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1); ray.setFromCamera(ndc, camera); const hit = ray.intersectObjects(pickables, false)[0]; return (hit?.object.userData.spot as string | undefined) ?? null; };
+  const pick = (cx: number, cy: number) => { const rc = canvas.getBoundingClientRect(); ndc.set(((cx - rc.left) / rc.width) * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1); ray.setFromCamera(ndc, camera); const hit = ray.intersectObjects(pickables, false)[0]; const tr = hit?.object.userData.trailers as string[] | undefined; if (tr && hit?.instanceId != null) return `trailer:${tr[hit.instanceId]}`; return (hit?.object.userData.spot as string | undefined) ?? null; };
   const setHover = (id: string | null) => {
     if (id === hovered) return; hovered = id; canvas.style.cursor = id ? 'pointer' : 'grab';
     for (const l of lms) { const on = l.id === id; l.root.scale.setScalar(on ? 1.06 : 1); l.sign.userData.hover = on; for (const m of l.emissive) m.emissiveIntensity = on ? (m.map ? 1.6 : 3) * NEON : (m.map ? 0.9 : 1.6) * NEON; }
@@ -321,6 +354,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const onUp = (e: PointerEvent) => {
     if (!down || fly) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y); down = null; if (moved > 8) return;
     const id = pick(e.clientX, e.clientY); if (!id) { setHover(null); h.onHover(null, 0, 0); return; }
+    if (id.startsWith('trailer:')) { h.onHover(id, e.clientX, e.clientY); return; } // trailers: just the label, no interiors
     flyTo(id);
   };
   const flyTo = (id: string) => {
@@ -371,7 +405,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     setRunning(v: boolean) { running = v && !document.hidden; clock.getDelta(); },
     project(id: string) { const l = lms.find((x) => x.id === id); if (!l) return null; const v = l.pos.clone().setY(l.height + 2.2).project(camera); const rc = canvas.getBoundingClientRect(); return { x: rc.left + (v.x + 1) / 2 * rc.width, y: rc.top + (1 - v.y) / 2 * rc.height }; },
     hover(id: string | null) { setHover(id); },
-    dispose() { cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
+    dispose() { parkDead = true; trailerMeshes = []; cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
   };
 }
 export type World = ReturnType<typeof createWorld>;

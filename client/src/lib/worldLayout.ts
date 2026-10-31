@@ -5,7 +5,7 @@
  */
 import { HOUSING_TYPES, type District } from './housing';
 
-export const PLATE = 96; // plate spans -PLATE..PLATE on x and z
+export const PLATE = 116; // plate spans -PLATE..PLATE on x and z
 export const PAD = 12; // landmark pad footprint (square, rotated to face its street)
 
 function rng(seed: number) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
@@ -56,52 +56,55 @@ function clipRuns(pts: [number, number][], ok: (x: number, z: number) => boolean
   return runs;
 }
 
+/** Waterfront drive: follows the shore's long swell (not its small ripples) at a steady distance inland. */
+export const waterfrontZ = (x: number) => 59 + 7 * Math.sin(x / 23 + 0.4);
+/** Ring road: a rounded rectangle (large-radius corners) over the north of the city; its south side is the waterfront drive. */
+const RING_A = 78, RING_B = 72;
+function inRing(x: number, z: number, m = 0): boolean {
+  if (Math.abs(x) > RING_A - m) return false;
+  if (z > 0) return z < waterfrontZ(x) - m;
+  return (Math.abs(x) / (RING_A - m)) ** 4 + (Math.abs(z) / (RING_B - m)) ** 4 < 1;
+}
 function buildRoads(): Road[] {
   const roads: Road[] = [];
-  // Ring road: a bent loop that hugs the waterfront on its south side.
+  const push = (id: string, kind: RoadKind, pts: [number, number][], cul = false) => roads.push({ id, kind, width: ROAD_WIDTH[kind], closed: false, pts, ...(cul ? { cul } : {}) });
+  const add = (id: string, kind: RoadKind, ctrl: [number, number][], ok: (x: number, z: number) => boolean = (x, z) => onLand(x, z, 3)) => {
+    for (const [i, run] of clipRuns(spline(ctrl, false), ok).entries()) push(`${id}${i || ''}`, kind, run);
+  };
+  // Ring: north half is a superellipse (straight-ish sides, big round corners), south side runs along the shore.
   const ring: [number, number][] = [];
-  for (let i = 0; i < 18; i++) { const a = (i / 18) * Math.PI * 2; const r = 64 * (1 + 0.08 * Math.sin(3 * a + 0.5) + 0.05 * Math.cos(2 * a));
-    const x = Math.cos(a) * r * 1.08, z = Math.sin(a) * r; ring.push([x, Math.min(z, shoreZ(x) - 9)]); }
+  for (let i = 0; i <= 16; i++) { const a = Math.PI + (i / 16) * Math.PI; const c = Math.cos(a), s = Math.sin(a);
+    ring.push([RING_A * Math.sign(c) * Math.abs(c) ** 0.5, RING_B * Math.sign(s) * Math.abs(s) ** 0.5]); }
+  ring.push([RING_A, waterfrontZ(RING_A) * 0.5]);
+  for (let x = RING_A; x >= -RING_A; x -= 13) ring.push([x, waterfrontZ(x)]);
+  ring.push([-RING_A, waterfrontZ(-RING_A) * 0.5]);
   roads.push({ id: 'ring', kind: 'ring', width: ROAD_WIDTH.ring, closed: true, pts: spline(ring, true) });
-  // Curving boulevards through the middle (north-south S-curve, east-west sweep) and a diagonal avenue.
-  const add = (id: string, kind: RoadKind, ctrl: [number, number][]) => {
-    for (const [i, run] of clipRuns(spline(ctrl, false), (x, z) => onLand(x, z, 3)).entries()) roads.push({ id: `${id}${i || ''}`, kind, width: ROAD_WIDTH[kind], closed: false, pts: run });
-  };
-  add('nsblvd', 'boulevard', [[-6, -100], [6, -62], [-10, -26], [4, 8], [-4, 40], [6, 62]]);
-  add('ewblvd', 'boulevard', [[-100, -4], [-62, -16], [-26, -2], [14, -10], [50, 6], [100, -6]]);
-  add('diag', 'avenue', [[-84, 56], [-50, 30], [-18, 14], [26, -26], [58, -58], [90, -90]]);
-  // Downtown: a small grid skewed to follow the boulevards, clipped to the core.
-  const majors = roads.filter((r) => r.kind === 'boulevard' || r.kind === 'avenue').map((r) => r.pts);
-  const sk = 0.32, cs = Math.cos(sk), sn = Math.sin(sk);
-  for (const u of [-42, -21, 21, 42]) {
+  // Waterfront drive carries on past the ring to both edges of the plate.
+  const shoreRun = (x0: number, x1: number) => { const c: [number, number][] = []; for (let k = 0; k <= 6; k++) { const x = x0 + (x1 - x0) * k / 6; c.push([x, waterfrontZ(x)]); } return c; };
+  add('shore-e', 'avenue', shoreRun(RING_A, PLATE + 6)); add('shore-w', 'avenue', shoreRun(-RING_A, -PLATE - 6));
+  // Two straight boulevards crossing at right angles; north-south one runs to the north edge (Trailer Park entrance).
+  add('nsblvd', 'boulevard', [[0, -PLATE - 6], [0, waterfrontZ(0)]]);
+  add('ewblvd', 'boulevard', [[-PLATE - 6, 0], [PLATE + 6, 0]]);
+  // Downtown/midtown grid aligned with the boulevards, every street teeing into the ring.
+  for (const u of [-52, -26, 26, 52]) {
     const a: [number, number][] = [], b: [number, number][] = [];
-    for (let v = -46; v <= 46; v += 1) { a.push([u * cs - v * sn, u * sn + v * cs]); b.push([v * cs - u * sn, v * sn + u * cs]); }
-    for (const [k, pts] of [a, b].entries()) {
-      const dir = k === 0 ? [-sn, cs] : [cs, sn];
-      // Drop stretches that run alongside a boulevard (crossings are kept), so blocks stay deep enough to build on.
-      const clearOfMajors = (x: number, z: number) => { for (const m of majors) for (let j = 1; j < m.length - 1; j++) { const p = m[j]; if (Math.hypot(p[0] - x, p[1] - z) < 11) { const tx = m[j + 1][0] - m[j - 1][0], tz = m[j + 1][1] - m[j - 1][1]; if (Math.abs(tx * dir[0] + tz * dir[1]) / Math.hypot(tx, tz) > 0.7) return false; } } return true; };
-      for (const [i, run] of clipRuns(pts, (x, z) => Math.hypot(x, z) < 46 && onLand(x, z, 3) && clearOfMajors(x, z)).entries())
-      roads.push({ id: `dt${u}${k}${i}`, kind: 'street', width: ROAD_WIDTH.street, closed: false, pts: run });
-    }
+    for (let v = -90; v <= 90; v += 1) { a.push([u, v]); b.push([v, u]); }
+    for (const [k, pts] of [a, b].entries()) for (const [i, run] of clipRuns(pts, (x, z) => inRing(x, z, 2.5) && onLand(x, z, 3)).entries()) push(`grid${u}${k}${i}`, 'street', run);
   }
-  // Midtown streets that follow the ring at an inner offset (broken into arcs).
-  const arc = (id: string, r0: number, a0: number, a1: number, wob: number, kind: RoadKind) => {
-    const ctrl: [number, number][] = []; for (let i = 0; i <= 8; i++) { const a = a0 + (a1 - a0) * i / 8; const r = r0 + wob * Math.sin(i * 1.7); ctrl.push([Math.cos(a) * r * 1.08, Math.sin(a) * r]); }
-    for (const [i, run] of clipRuns(spline(ctrl, false), (x, z) => onLand(x, z, 4)).entries()) roads.push({ id: `${id}${i || ''}`, kind, width: ROAD_WIDTH[kind], closed: false, pts: run });
-  };
-  arc('mid-n', 48, -2.6, -0.6, 2, 'street'); arc('mid-e', 47, 0.1, 1.2, 2, 'street'); arc('mid-w', 48, 1.9, 3.1, 2, 'street');
-  // Suburbs: winding lanes outside the ring and cul-de-sacs off it.
-  arc('lane-nw', 84, -2.75, -1.95, 4, 'lane'); arc('lane-ne', 84, -1.2, -0.35, 4, 'lane'); arc('lane-w', 82, 2.7, 3.5, 3, 'lane'); arc('lane-e', 82, -0.15, 0.55, 3, 'lane');
-  const ringPts = roads[0].pts; const R = rng(11);
-  for (const a of [-2.95, -2.3, -1.65, -1.0, -0.45, 0.3, 2.95, 3.4, -2.0, -0.8]) {
-    // nearest ring point at angle a
-    let best = ringPts[0], bd = 1e9; for (const p of ringPts) { const d = Math.abs(Math.atan2(p[1], p[0] / 1.08) - a); if (d < bd) { bd = d; best = p; } }
-    const out = Math.hypot(best[0], best[1]); const dir: [number, number] = [best[0] / out, best[1] / out];
-    const len = 14 + R() * 8; const side = R() < 0.5 ? 1 : -1; const ctrl: [number, number][] = [];
-    for (let i = 0; i <= 4; i++) { const t = i / 4; const w = Math.sin(t * Math.PI) * 4 * side; ctrl.push([best[0] + dir[0] * (3 + len * t) - dir[1] * w, best[1] + dir[1] * (3 + len * t) + dir[0] * w]); }
-    const pts = spline(ctrl, false); if (!pts.every(([x, z]) => onLand(x, z, 6))) continue;
-    roads.push({ id: `cul${a}`, kind: 'lane', width: ROAD_WIDTH.lane, closed: false, pts, cul: true });
-  }
+  // Suburbs outside the ring: evenly spaced streets with gentle curves, a few cul-de-sacs.
+  add('sub-n', 'street', [[0, -94], [30, -96], [60, -93], [92, -88], [PLATE + 6, -86]]); // north-east crescent
+  for (const x of [34, 70]) add(`sub-n${x}`, 'lane', [[x, -60], [x + 1, -94]]);
+  add('sub-e', 'lane', [[RING_A, -36], [97, -38], [106, -39]]);
+  add('sub-e2', 'lane', [[RING_A, 30], [97, 32], [106, 33]]);
+  add('sub-w', 'lane', [[-RING_A, -40], [-97, -42], [-106, -43]]);
+  add('sub-w2', 'lane', [[-RING_A, 30], [-97, 31], [-106, 31]]);
+  add('sub-ex', 'lane', [[106, -39], [108, -3], [106, 33]]); add('sub-wx', 'lane', [[-106, -43], [-108, -6], [-106, 31]]);
+  add('sub-nw', 'street', [[0, -84], [-24, -82], [-46, -76]]);
+  const cul = (id: string, ctrl: [number, number][]) => { const pts = spline(ctrl, false); if (pts.every(([x, z]) => onLand(x, z, 6))) push(id, 'lane', pts, true); };
+  cul('cul-n1', [[52, -95], [52, -108]]); cul('cul-n2', [[88, -88], [88, -104]]);
+  cul('cul-e1', [[97, -38], [97, -18]]); cul('cul-e2', [[97, 32], [97, 14]]);
+  cul('cul-w1', [[-97, -42], [-97, -22]]); cul('cul-w2', [[-97, 31], [-97, 12]]);
+  cul('cul-nw', [[-24, -82], [-25, -68]]);
   return connectRoads(roads);
 }
 
@@ -225,19 +228,20 @@ export const district = (x: number, z: number): District => { const r = Math.hyp
  * Positions are nudged off roads automatically and the pad turns to face its nearest street.
  */
 export const LANDMARK_SLOTS: Record<string, [number, number]> = {
-  leaderboard: [12, -18], // downtown, by the boulevards' crossing
-  chat: [14, 20], // central plaza
-  chess: [-40, -36],
-  bank: [34, -2], // financial district
-  stocks: [28, -36], // reserved: Stock Exchange (next to the bank)
-  casino: [30, 50], // waterfront
-  arena: [64, 30],
-  market: [-30, 44], // waterfront market
-  factory: [-74, 10],
-  mine: [-66, -62],
-  warehouse: [72, -46],
+  // Blocks of the grid (streets at 0, ±26, ±52 on both axes): each landmark sits in the middle of its block.
+  leaderboard: [13, -13], // downtown, by the boulevards' crossing
+  chat: [-13, 13], // central plaza
+  chess: [-39, -39],
+  bank: [39, -13], // financial district
+  stocks: [39, -39], // Stock Exchange, next to the bank
+  casino: [39, 42], // waterfront
+  arena: [65, 13],
+  market: [-39, 42], // waterfront market
+  factory: [-65, 13],
+  mine: [-65, -39],
+  warehouse: [65, -39],
 };
-export const SPARE_SLOTS: [number, number][] = [[-4, 58], [52, -74], [-82, 40], [80, 10]];
+export const SPARE_SLOTS: [number, number][] = [[13, 42], [-13, -39], [-39, -13], [13, -65]];
 
 function placeLandmarks(ids: string[]): Record<string, OBB> {
   const out: Record<string, OBB> = {}; const spare = [...SPARE_SLOTS];
@@ -269,8 +273,8 @@ export interface House extends OBB { h: number; type: string; color: number }
 /** Parks, plazas and empty lots in open ground, then housing along every street's frontage, facing the street. */
 export function cityFill(seed = 7, ids?: string[]): { houses: House[]; patches: Patch[] } {
   const rand = rng(seed); const lms = landmarkBoxes(ids);
-  const taken: OBB[] = [...lms]; const houses: House[] = []; const patches: Patch[] = [];
-  const free = (b: OBB, m: number) => !taken.some((o) => Math.abs(o.x - b.x) < 30 && Math.abs(o.z - b.z) < 30 && obbOverlap(o, b, m));
+  const taken: OBB[] = [...lms, PARK_AREA]; const houses: House[] = []; const patches: Patch[] = [];
+  const free = (b: OBB, m: number) => !obbOverlap(PARK_AREA, b, m) && !taken.some((o) => Math.abs(o.x - b.x) < 30 && Math.abs(o.z - b.z) < 30 && obbOverlap(o, b, m));
   // Open-space patches first so the frontage fill leaves them alone.
   for (let i = 0; i < 400 && patches.length < 16; i++) {
     const x = (rand() * 2 - 1) * (PLATE - 8), z = (rand() * 2 - 1) * (PLATE - 8); const dist = district(x, z);
@@ -300,7 +304,7 @@ export function cityFill(seed = 7, ids?: string[]): { houses: House[]; patches: 
   // Infill: block interiors get a few more homes, still turned to their nearest street.
   for (let k = 0; k < 4000; k++) {
     const x = (rand() * 2 - 1) * (PLATE - 4), z = (rand() * 2 - 1) * (PLATE - 4); const c = roadClearance(x, z, 32);
-    if (c < 2 || c > 30) continue;
+    if (c < 2 || c > 12) continue; // only near a street, never stranded mid-block
     const dist = district(x, z); const types = HOUSING_TYPES.filter((t) => t.districts.includes(dist)); const t = types[Math.floor(rand() * types.length)];
     const w = t.w[0] + rand() * (t.w[1] - t.w[0]), d = t.d[0] + rand() * (t.d[1] - t.d[0]);
     const hb: OBB = { x, z, w, d, rot: -nearestTangent(x, z) };
@@ -310,6 +314,43 @@ export function cityFill(seed = 7, ids?: string[]): { houses: House[]; patches: 
     houses.push(hh); taken.push(hh);
   }
   return { houses, patches };
+}
+/**
+ * Trailer Park on the north-west edge: a gravel spine running west off the north boulevard with lots on both
+ * sides (lot 0 is nearest the entrance). When it fills up, a second spine runs south down the west edge and
+ * takes any spot clear of roads and buildings, so the park grows rows as players join.
+ */
+export const PARK_Z = -PLATE + 12; // gravel spine centreline
+export const PARK_X1 = -16; // east end of the lots (entrance side)
+export const LOT_STEP = 5; // lot pitch along the lane
+export const TRAILER = { w: 2.8, d: 7.4 }; // trailer footprint (w along the lane)
+const PARK_X0 = -PLATE + 4;
+export const PARK_AREA: OBB = { x: (PARK_X0 + PARK_X1 + 4) / 2, z: PARK_Z, w: PARK_X1 + 4 - PARK_X0, d: 24, rot: 0 };
+const NS = () => ROADS.find((r) => r.id === 'nsblvd')!;
+/** Where the gravel spine meets the boulevard (its kerb), and the park sign beside it. */
+export const PARK_GATE: [number, number] = (() => { const p = NS().pts.reduce((a, b) => (Math.abs(b[1] - PARK_Z) < Math.abs(a[1] - PARK_Z) ? b : a)); return [p[0] - ROAD_WIDTH.boulevard / 2 + 0.2, PARK_Z]; })();
+export const PARK_SIGN: [number, number] = [PARK_X1 + 4, PARK_Z - 6];
+export interface ParkLot extends OBB { i: number }
+export function parkLayout(n: number, solids: OBB[] = []): { lots: ParkLot[]; lanes: [number, number][][] } {
+  const lots: ParkLot[] = []; const lanes: [number, number][][] = [];
+  let lastX = PARK_X1;
+  for (let x = PARK_X1 - 3; x > PARK_X0 + 2 && lots.length < n; x -= LOT_STEP) for (const side of [1, -1]) {
+    if (lots.length >= n) break;
+    lots.push({ i: lots.length, x, z: PARK_Z + side * (2.2 + TRAILER.d / 2 + 0.6), w: TRAILER.w, d: TRAILER.d, rot: 0 }); lastX = x;
+  }
+  lanes.push([PARK_GATE, [Math.min(PARK_X1 - 4, lastX - 3), PARK_Z]]);
+  if (lots.length < n) {
+    // West-edge spine, heading south from the north spine's far end.
+    const X = PARK_X0 + 8; let lastZ = PARK_Z;
+    for (let z = PARK_Z + 14; z < shoreZ(X) - 8 && lots.length < n; z += LOT_STEP) for (const side of [1, -1]) {
+      if (lots.length >= n) break;
+      const b: ParkLot = { i: lots.length, x: X + side * (2.2 + TRAILER.d / 2 + 0.6), z, w: TRAILER.d, d: TRAILER.w, rot: 0 };
+      if (!clearOfRoads(b, 1) || solids.some((o) => Math.abs(o.x - b.x) < 30 && Math.abs(o.z - b.z) < 30 && obbOverlap(o, b, 0.8))) continue;
+      lots.push(b); lastZ = z;
+    }
+    lanes[0][1] = [X, PARK_Z]; lanes.push([[X, PARK_Z], [X, lastZ + 3]]);
+  }
+  return { lots, lanes };
 }
 /** Back-compat helpers. */
 export const fillerSpots = (seed = 7) => cityFill(seed).houses;
