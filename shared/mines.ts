@@ -174,3 +174,11 @@ export const FACTORY_LEVELS = [
 ];
 export const MAX_JOBS_PER_MACHINE = 3;
 export interface Job { id: string; machine: MachineId; recipe: string; qty: number; startAt: number; doneAt: number }
+
+// ---------------------------------------------------------------- Extraction
+/** The lift at the entrance (the spawn pocket). Ore you mine is carried; it only banks when you walk back in here. */
+export const MINE_EXIT = { x0: 2, y0: 4, x1: 6.2, y1: 10, sign: { x: 2.03, y: 7, z: 2.4 } };
+export const inExit = (x: number, y: number) => x >= MINE_EXIT.x0 && x <= MINE_EXIT.x1 && y >= MINE_EXIT.y0 && y <= MINE_EXIT.y1;
+/** Disconnect / closing the tab without exiting: the carried haul is kept this long for a reconnect, then lost. */
+export const CARRY_GRACE_MS = 60_000;
+export const weightOf = (s: Stack) => s.qty * (s.type === 'ore' && isOre(s.id) ? ORES[s.id].weight : 1);

@@ -3,7 +3,7 @@ import { socket } from '@/lib/net';
 import { FACTORY_LEVELS, RECIPES, nameOf, priceOf, stackKey, type Job, type Stack } from '../../../shared/mines';
 
 type FView = { level: number; jobs: Array<Job & { done: boolean }>; now: number } | null;
-type Ack = { ok: boolean; error?: string; factory?: FView; pack?: Stack[]; load?: number; cap?: number; quote?: unknown; result?: unknown };
+export type Ack = { ok: boolean; error?: string; factory?: FView; storage?: Stack[]; quote?: unknown; inMine?: boolean; guest?: boolean; result?: unknown };
 
 /** 2D factory: furnace (ore + coal -> bars) and workbench (bars -> goods). Jobs run on the server clock, even offline. */
 export function MinesFactory({ pack, guest, onPack, flash }: { pack: Stack[]; guest: boolean; onPack: (r: Ack) => void; flash: (t: string) => void }) {
@@ -11,7 +11,7 @@ export function MinesFactory({ pack, guest, onPack, flash }: { pack: Stack[]; gu
   const [skew, setSkew] = useState(0);
   const [qty, setQty] = useState<Record<string, number>>({});
   const [, tick] = useState(0);
-  const apply = (r?: Ack) => { if (!r) return; if (r.factory !== undefined) { setF(r.factory); if (r.factory) setSkew(r.factory.now - Date.now()); } if (r.pack) onPack(r); };
+  const apply = (r?: Ack) => { if (!r) return; if (r.factory !== undefined) { setF(r.factory); if (r.factory) setSkew(r.factory.now - Date.now()); } if (r.storage) onPack(r); };
   const call = (ev: string, body: object, ok?: (r: Ack) => void) => socket.timeout(5000).emit(ev, body, (err: Error | null, r?: Ack) => {
     if (err || !r) return flash('Factory busy, try again.');
     if (!r.ok) return flash(r.error ?? 'Failed.');

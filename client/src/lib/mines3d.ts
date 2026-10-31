@@ -1,6 +1,6 @@
 /** Mines: three.js cave scene (lazy-loaded). Map coords are (x, y) on the floor and z up; three.js is y-up, so (x, z, y). */
 import * as THREE from 'three';
-import { MINE_MAP, MINE_NODES, ORES } from '../../../shared/mines';
+import { MINE_EXIT, MINE_MAP, MINE_NODES, ORES } from '../../../shared/mines';
 
 export interface MinerView { id: string; name: string; x: number; y: number; z: number; a: number; c: boolean; sw: number }
 
@@ -53,6 +53,16 @@ export class Mines3D {
     for (const s of MINE_MAP.spawns.concat(MINE_NODES.filter((_, i) => i % 9 === 0).map((n) => [n.x, n.y, 0] as [number, number, number]))) {
       if (lights++ > 10) break;
       const l = new THREE.PointLight('#ff9a40', 1.2, 9, 1.6); l.position.set(s[0], 3.2, s[1]); this.scene.add(l);
+    }
+    { // EXIT lift: glowing sign + floor pad at the entrance pocket
+      const c = document.createElement('canvas'); c.width = 512; c.height = 160; const x = c.getContext('2d');
+      if (x) { x.fillStyle = '#062312'; x.fillRect(0, 0, 512, 160); x.strokeStyle = '#3dff8a'; x.lineWidth = 8; x.strokeRect(6, 6, 500, 148);
+        x.fillStyle = '#6dffaa'; x.font = 'bold 72px sans-serif'; x.textAlign = 'center'; x.fillText('EXIT', 256, 80); x.font = 'bold 34px sans-serif'; x.fillText('bank your haul', 256, 130); }
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.75), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c) }));
+      sign.position.set(MINE_EXIT.sign.x, MINE_EXIT.sign.z, MINE_EXIT.sign.y); sign.rotation.y = Math.PI / 2; this.scene.add(sign);
+      const pad = new THREE.Mesh(new THREE.PlaneGeometry(MINE_EXIT.x1 - MINE_EXIT.x0, MINE_EXIT.y1 - MINE_EXIT.y0), new THREE.MeshBasicMaterial({ color: '#2cff7a', transparent: true, opacity: 0.16, depthWrite: false }));
+      pad.rotation.x = -Math.PI / 2; pad.position.set((MINE_EXIT.x0 + MINE_EXIT.x1) / 2, 0.02, (MINE_EXIT.y0 + MINE_EXIT.y1) / 2); this.scene.add(pad);
+      const gl = new THREE.PointLight('#3dff8a', 1.4, 7, 1.6); gl.position.set(MINE_EXIT.sign.x + 0.6, MINE_EXIT.sign.z, MINE_EXIT.sign.y); this.scene.add(gl);
     }
     for (const n of MINE_NODES) {
       const def = ORES[n.ore];

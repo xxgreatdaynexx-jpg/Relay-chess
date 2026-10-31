@@ -5,9 +5,8 @@ import { useEffect, useRef, useState } from 'react';
 import { socket } from '@/lib/net';
 import { mouseLook, readLook, LOCK_KEYS, arenaKey, crouchHeld, shouldBlockShortcut } from '@/lib/arenaInput';
 import { playPickaxe, unlockSounds } from '@/lib/sounds';
-import { MinesFactory } from '@/components/MinesFactory';
 import type { Mines3D, MinerView } from '@/lib/mines3d';
-import { BACKPACK_CAP, MINE_MAP, MINE_NODES, NODE_R, ORES, ORE_ORDER, REACH, SELL_TIERS, SWING_MS, isOre, nameOf, priceOf, stackKey, type Stack } from '../../../shared/mines';
+import { BACKPACK_CAP, MINE_MAP, MINE_NODES, NODE_R, ORES, ORE_ORDER, REACH, SWING_MS, isOre, inExit, priceOf, type Stack } from '../../../shared/mines';
 import { canStand, clampPitch, eyeHeightOf, moveHorizontal, speedOf, stepVertical, tryJump, type Body } from '../../../shared/fps';
 
 const OPEN_KEY = 'relay-mines-open';
@@ -56,7 +55,8 @@ function MinesGame({ onClose }: { onClose: () => void }) {
   const [toast, setToast] = useState('');
   const [focused, setFocused] = useState(false);
   const [glError, setGlError] = useState('');
-  const [sideTab, setSideTab] = useState<'pack' | 'factory'>('pack');
+  const exiting = useRef(0);
+  const packRef = useRef(pack); packRef.current = pack;
   const keys = useRef(new Set<string>());
   const look = useRef(readLook());
   const hp = useRef<number[]>(MINE_NODES.map((n) => ORES[n.ore].hits));
@@ -106,6 +106,7 @@ function MinesGame({ onClose }: { onClose: () => void }) {
         stepVertical(m as Body, dt, MINE_MAP);
         sendAcc += dt;
         if (sendAcc >= 1 / 15) { sendAcc = 0; socket.volatile.emit('mines_move', { x: m.x, y: m.y, z: m.z, a: m.a, p: m.p, c: m.crouch, s: m.sprint }); }
+        if (inExit(m.x, m.y) && packRef.current.pack.length && performance.now() - exiting.current > 1500) { exiting.current = performance.now(); bankHaul(); }
         const ai = aimNode(m.x, m.y, m.z + eyeHeightOf(m), m.a, m.p, hp.current);
         setAim((o) => (o === ai ? o : ai));
       }
@@ -145,19 +146,18 @@ function MinesGame({ onClose }: { onClose: () => void }) {
     socket.timeout(3000).emit('mines_hit', { node }, (err: Error | null, r?: { ok: boolean; error?: string; hp: number; broke: boolean; full?: boolean; ore?: string } & Partial<PackMsg>) => {
       if (err || !r) return;
       if (!r.ok) { playPickaxe('swing'); if (r.error && !/fast/.test(r.error)) flash(r.error); return; }
-      if (r.full) { flash('Backpack full! Sell some ore.'); return; }
+      if (r.full) { flash('Pack full! Head back to the EXIT lift to bank your haul.'); return; }
       playPickaxe(r.broke ? 'break' : 'hit');
       three.current?.burstAt(node, r.broke);
       hp.current[node] = r.broke ? -1 : r.hp; three.current?.setNodes(hp.current);
       if (r.broke && r.pack) { setPack({ pack: r.pack, load: r.load ?? 0, cap: r.cap ?? BACKPACK_CAP, quote: r.quote ?? null }); if (r.ore && isOre(r.ore)) flash(`+1 ${ORES[r.ore].name}`); }
     });
   }
-  function sell(ore?: string) {
-    socket.timeout(5000).emit('mines_sell', ore ? { ore } : {}, (err: Error | null, r?: { ok: boolean; error?: string; paid: number } & PackMsg) => {
-      if (err || !r) return flash('Sell failed, try again.');
-      if (!r.ok) return flash(r.error ?? 'Sell failed.');
-      setPack({ pack: r.pack, load: r.load, cap: r.cap, quote: r.quote });
-      flash(`Sold for 🪙 ${r.paid}`);
+  function bankHaul() {
+    socket.timeout(5000).emit('mines_exit', {}, (err: Error | null, r?: { ok: boolean; error?: string; banked: Stack[]; worth: number } & PackMsg) => {
+      if (err || !r?.ok) return;
+      setPack({ pack: r.pack, load: r.load, cap: r.cap, quote: null });
+      if (r.banked.length) { const n = r.banked.reduce((t, s) => t + s.qty, 0); flash(`Banked ${n} ore worth ~🪙 ${Math.floor(r.worth)}. Sell or smelt it in the Factory tab.`); playPickaxe('break'); }
     });
   }
   function onKey(e: React.KeyboardEvent, down: boolean) {
@@ -166,8 +166,7 @@ function MinesGame({ onClose }: { onClose: () => void }) {
     if (['w', 'a', 's', 'd', ' ', 'shift', 'control', 'c'].includes(k)) { e.preventDefault(); if (down) keys.current.add(k); else keys.current.delete(k); }
   }
   const lock = () => { unlockSounds?.(); const c = glRef.current; if (c && document.pointerLockElement !== c) { try { (c.requestPointerLock as unknown as (o?: object) => unknown)?.call(c, { unadjustedMovement: false }); } catch { /* ignore */ } (navigator as unknown as { keyboard?: { lock?: (k: string[]) => Promise<void> } }).keyboard?.lock?.(LOCK_KEYS).catch?.(() => {}); } };
-  const q = pack.quote;
-  const tier = q ? SELL_TIERS.find((t) => q.already < t.upTo) ?? SELL_TIERS[SELL_TIERS.length - 1] : SELL_TIERS[0];
+  const carriedWorth = Math.floor(pack.pack.reduce((t, s) => t + s.qty * priceOf(s), 0));
   const aimed = aim >= 0 ? MINE_NODES[aim] : null;
   return (
     <div
@@ -196,29 +195,20 @@ function MinesGame({ onClose }: { onClose: () => void }) {
           {aimed && <div className="mines-aim" style={{ color: ORES[aimed.ore].color }}>{ORES[aimed.ore].name} · {Math.max(0, hp.current[aim])}/{ORES[aimed.ore].hits}</div>}
           {toast && <div className="mines-toast" data-testid="mines-toast">{toast}</div>}
           {glError && <div className="mines-toast">{glError}</div>}
+          <div className="mines-haul" data-testid="mines-haul">🎒 {pack.pack.reduce((t, s) => t + s.qty, 0)} carried · ~🪙{carriedWorth}{inExit(me.current.x, me.current.y) ? ' · at EXIT' : ''}</div>
           <div className="mines-hint">{status} · WASD move · Shift sprint · Ctrl/C crouch · Space jump · Esc release</div>
         </div>
         <aside className="mines-side" data-testid="mines-pack">
-          <div className="mines-tabs"><button type="button" className={sideTab === 'pack' ? 'on' : ''} onClick={() => setSideTab('pack')}>🎒 Backpack</button><button type="button" className={sideTab === 'factory' ? 'on' : ''} onClick={() => setSideTab('factory')} data-testid="mines-factory-tab">🏭 Factory</button></div>
-          {sideTab === 'factory' ? <MinesFactory pack={pack.pack} guest={guest} flash={flash} onPack={(r) => setPack({ pack: r.pack ?? [], load: r.load ?? 0, cap: r.cap ?? BACKPACK_CAP, quote: (r.quote as Quote) ?? null })} /> : <>
-          <div className="mines-load">🎒 {pack.load}/{pack.cap}<div className="mines-bar"><i style={{ width: `${Math.min(100, (pack.load / pack.cap) * 100)}%` }} /></div></div>
+          <div className="mines-load">⛏️ Carried {pack.load}/{pack.cap}<div className="mines-bar"><i style={{ width: `${Math.min(100, (pack.load / pack.cap) * 100)}%` }} /></div></div>
           <ul>
             {ORE_ORDER.map((id) => { const s = pack.pack.find((p) => p.type === 'ore' && p.id === id); if (!s) return null; return (
-              <li key={id}><span className="mines-dot" style={{ background: ORES[id].color }} />{ORES[id].name}<b>×{s.qty}</b>{!guest && <button type="button" onClick={() => sell(id)} title={`${ORES[id].price} chips each`}>Sell</button>}</li>
+              <li key={id}><span className="mines-dot" style={{ background: ORES[id].color }} />{ORES[id].name}<b>×{s.qty}</b></li>
             ); })}
-            {pack.pack.filter((p) => p.type !== 'ore').map((s) => (
-              <li key={stackKey(s)}><span className="mines-dot" style={{ background: '#d9b45a' }} />{nameOf(s)}<b>×{s.qty}</b>{!guest && <button type="button" onClick={() => sell(stackKey(s))} title={`${priceOf(s)} chips each`}>Sell</button>}</li>
-            ))}
-            {pack.pack.length === 0 && <li className="opacity-60">Empty. Go swing at some rock.</li>}
+            {pack.pack.length === 0 && <li className="opacity-60">Nothing carried. Go swing at some rock.</li>}
           </ul>
-          {guest ? <p className="mines-note">Sign in to sell for chips.</p> : (
-            <>
-              <button type="button" className="mines-sell" disabled={!q || q.paid < 1} onClick={() => sell()} data-testid="mines-sell">Sell all{q ? ` · 🪙 ${q.paid}` : ''}</button>
-              <p className="mines-note">Sold today: {Math.floor(q?.already ?? 0)} · paying {Math.round(tier.rate * 100)}% (full up to 600/day, 50% to 1,200, then 20%)</p>
-            </>
-          )}
+          <button type="button" className="mines-sell" disabled title="Leave the mine to sell" data-testid="mines-sell">Leave the mine to sell</button>
+          <p className="mines-note">Walk back to the glowing <b>EXIT</b> lift at the entrance to bank your haul. Drop out without it and you lose what you carry (60s to reconnect).{guest ? ' Guests can mine but not sell.' : ' Sell and smelt banked ore in the 🏭 Factory tab.'}</p>
           <details className="mines-prices"><summary>Prices</summary>{ORE_ORDER.map((id) => <div key={id}><span className="mines-dot" style={{ background: ORES[id].color }} />{ORES[id].name}: {ORES[id].price} · {ORES[id].hits} hits</div>)}</details>
-          </>}
         </aside>
       </div>
     </div>

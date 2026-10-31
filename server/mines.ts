@@ -5,7 +5,7 @@ import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
 import { playerKey } from './skins.js';
 import { guestName, lineOfSight, moveAllowance, MOVE_CARRY_MAX, normAngle, clampPitch, canStand, validateMove, eyeHeightOf, type Body } from '../shared/fps.js';
-import { BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, dayKey, isOre, payoutFor, stackKey, priceOf, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId } from '../shared/mines.js';
+import { BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, dayKey, isOre, payoutFor, stackKey, priceOf, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId, inExit, CARRY_GRACE_MS, weightOf } from '../shared/mines.js';
 
 export const MINES_MIGRATION = [
   // Generic per-player stacks: item_type 'ore' | 'bar' | 'good' (Factory) — also the Market hook for stackables.
@@ -54,7 +54,7 @@ export class PgMineStore implements MineStore {
 
 export class MineError extends Error {}
 
-interface Miner extends Body { id: string; name: string; account: string | null; a: number; p: number; lastMove: number; carry: number; lastHit: number; hits: number[]; sprint: boolean }
+interface Miner extends Body { id: string; name: string; account: string | null; a: number; p: number; lastMove: number; carry: number; lastHit: number; hits: number[]; sprint: boolean; carried: Map<string, Stack> }
 interface NodeState { node: MineNode; hp: number; downUntil: number }
 
 export class MinesWorld {
@@ -65,6 +65,8 @@ export class MinesWorld {
   names = new Map<string, string>();
   daily = new Map<string, { day: string; gross: number; paid: number }>();
   factories = new Map<string, FactoryState>();
+  /** carried hauls of players who dropped without exiting, kept for CARRY_GRACE_MS */
+  grace = new Map<string, { stacks: Stack[]; until: number }>();
   private jobSeq = 0;
   store: MineStore | null = null;
   private chain: Promise<void> = Promise.resolve();
@@ -84,17 +86,43 @@ export class MinesWorld {
 
   private pack(k: string) { let p = this.packs.get(k); if (!p) { p = new Map(); this.packs.set(k, p); } return p; }
   packKey(m: Miner) { return m.account ? playerKey(m.account) : `guest:${m.id}`; }
+  /** Banked storage (mine_items) of the miner on this socket. */
   backpack(id: string): Stack[] { const m = this.miners.get(id); if (!m) return []; return [...this.pack(this.packKey(m)).values()].filter((s) => s.qty > 0); }
-  load(id: string): number { return this.backpack(id).reduce((t, s) => t + s.qty * (s.type === 'ore' && isOre(s.id) ? ORES[s.id].weight : 1), 0); }
+  /** Banked storage by account name (Factory tab: no need to be in the mine). */
+  storage(account: string): Stack[] { return [...(this.packs.get(playerKey(account))?.values() ?? [])].filter((s) => s.qty > 0); }
+  /** What the miner is carrying right now (in-session, not banked). */
+  carried(id: string): Stack[] { const m = this.miners.get(id); return m ? [...m.carried.values()].filter((s) => s.qty > 0) : []; }
+  load(id: string): number { return this.carried(id).reduce((t, s) => t + weightOf(s), 0); }
+  inMine(account: string) { const k = playerKey(account); for (const m of this.miners.values()) if (m.account && playerKey(m.account) === k) return true; return false; }
 
   join(id: string, account: string | null, now: number): Miner {
     const sp = MINE_MAP.spawns[this.miners.size % MINE_MAP.spawns.length];
-    const m: Miner = { id, name: account?.trim() || guestName(), account: account?.trim() || null, x: sp[0], y: sp[1], z: 0, vz: 0, grounded: true, crouch: false, a: 0, p: 0, lastMove: now, carry: 0, lastHit: 0, hits: [], sprint: false };
+    const m: Miner = { id, name: account?.trim() || guestName(), account: account?.trim() || null, x: sp[0], y: sp[1], z: 0, vz: 0, grounded: true, crouch: false, a: 0, p: 0, lastMove: now, carry: 0, lastHit: 0, hits: [], sprint: false, carried: new Map() };
     this.miners.set(id, m);
-    if (m.account) this.names.set(playerKey(m.account), m.account);
+    if (m.account) {
+      const k = playerKey(m.account); this.names.set(k, m.account);
+      const g = this.grace.get(k);
+      if (g) { this.grace.delete(k); if (now <= g.until) for (const s of g.stacks) m.carried.set(stackKey(s), { ...s }); }
+    }
     return m;
   }
-  leave(id: string) { const m = this.miners.get(id); if (m && !m.account) this.packs.delete(this.packKey(m)); this.miners.delete(id); }
+  /** Leaving without the lift: guests lose everything; signed-in players get a short reconnect grace, then the haul is gone. */
+  leave(id: string, now = Date.now()) {
+    const m = this.miners.get(id); if (!m) return;
+    if (!m.account) this.packs.delete(this.packKey(m));
+    else { const c = this.carried(id); if (c.length) this.grace.set(playerKey(m.account), { stacks: c.map((s) => ({ ...s })), until: now + CARRY_GRACE_MS }); }
+    this.miners.delete(id);
+    for (const [k, g] of this.grace) if (now > g.until) this.grace.delete(k);
+  }
+  /** Walk into the lift: everything carried moves into banked storage. Position is the server-validated one. */
+  exit(id: string): { banked: Stack[]; worth: number } {
+    const m = this.miners.get(id); if (!m) throw new MineError('Join the mine first.');
+    if (!inExit(m.x, m.y)) throw new MineError('Walk to the EXIT lift to bank your haul.');
+    const banked = this.carried(id); if (!banked.length) return { banked: [], worth: 0 };
+    m.carried.clear();
+    this.add(m, banked);
+    return { banked, worth: banked.reduce((t, s) => t + s.qty * priceOf(s), 0) };
+  }
 
   /** Reuses Arena's movement validator (speed cap with carry, collision). Returns true if the client should be corrected. */
   move(id: string, x: unknown, y: unknown, z: unknown, a: unknown, p: unknown, crouch: unknown, sprint: unknown, now: number): boolean {
@@ -137,7 +165,7 @@ export class MinesWorld {
     n.hp -= 1;
     if (n.hp > 0) return { node: c.id, hp: n.hp, broke: false };
     n.downUntil = now + ore.respawnMs; n.hp = 0;
-    this.add(m, [{ type: 'ore', id: c.ore, qty: 1 }]);
+    { const key = `ore:${c.ore}`; const cur = m.carried.get(key); if (cur) cur.qty += 1; else m.carried.set(key, { type: 'ore', id: c.ore, qty: 1 }); }
     return { node: c.id, hp: 0, broke: true, ore: c.ore };
   }
 
@@ -147,26 +175,27 @@ export class MinesWorld {
     this.persist(m);
   }
 
-  private persist(m: Miner, sale?: Parameters<MineStore['save']>[3], withFactory = false) {
+  private persist(m: { account: string | null }, sale?: Parameters<MineStore['save']>[3], withFactory = false) {
     if (!m.account || !this.store) return;
     const k = playerKey(m.account); const snap = [...this.pack(k).values()].map((s) => ({ ...s })); const store = this.store;
     const f = withFactory ? this.factories.get(k) : undefined; const fs = f ? { level: f.level, builtAt: f.builtAt, jobs: f.jobs.map((j) => ({ ...j })) } : undefined;
     this.chain = this.chain.then(() => store.save(k, m.account!, snap, sale, fs)).catch((e) => console.error('[mines] save failed:', (e as Error).message));
   }
 
-  quote(id: string, now: number, only?: unknown): { gross: number; paid: number; already: number; items: Stack[] } {
-    const m = this.miners.get(id); if (!m) throw new MineError('Join the mine first.');
-    const items = this.backpack(id).filter((s) => priceOf(s) > 0 && (typeof only !== 'string' || s.id === only || stackKey(s) === only));
+  quote(account: string, now: number, only?: unknown): { gross: number; paid: number; already: number; items: Stack[] } {
+    const m = { account };
+    const items = this.storage(account).filter((s) => priceOf(s) > 0 && (typeof only !== 'string' || s.id === only || stackKey(s) === only));
     const gross = items.reduce((t, s) => t + s.qty * priceOf(s), 0);
-    const k = this.packKey(m); const d = this.daily.get(k); const already = d && d.day === dayKey(now) ? d.gross : 0;
+    const k = playerKey(m.account); const d = this.daily.get(k); const already = d && d.day === dayKey(now) ? d.gross : 0;
     return { gross, paid: payoutFor(gross, already), already, items };
   }
 
   /** Sell ore to the house. Signed-in only. Stone etc. pay fractional chips: the whole sale is floored once. */
-  sell(id: string, now: number, only?: unknown): { paid: number; gross: number; sold: Stack[] } {
-    const m = this.miners.get(id); if (!m) throw new MineError('Join the mine first.');
-    if (!m.account) throw new MineError('Sign in to sell ore. Guests can mine but not sell.');
-    const q = this.quote(id, now, only);
+  sell(account: string | null, now: number, only?: unknown): { paid: number; gross: number; sold: Stack[] } {
+    if (!account) throw new MineError('Sign in to sell ore. Guests can mine but not sell.');
+    if (this.inMine(account)) throw new MineError('Leave the mine to sell.');
+    const m = { account };
+    const q = this.quote(account, now, only);
     if (!q.items.length) throw new MineError('Nothing to sell.');
     if (q.paid < 1) throw new MineError('Not worth a chip yet. Mine a bit more (stone is 1 chip per 10).');
     const k = playerKey(m.account); const day = dayKey(now);
@@ -182,15 +211,15 @@ export class MinesWorld {
   }
 
   // ------------------------------------------------------------ Factory
-  private signedIn(id: string) { const m = this.miners.get(id); if (!m) throw new MineError('Join the mine first.'); if (!m.account) throw new MineError('Sign in to build a factory.'); return m as Miner & { account: string }; }
-  factoryView(id: string, now: number) {
-    const m = this.miners.get(id); if (!m?.account) return null;
+  private signedIn(account: string | null) { if (!account) throw new MineError('Sign in to build a factory.'); return { account }; }
+  factoryView(account: string | null, now: number) {
+    const m = account ? { account } : null; if (!m) return null;
     const f = this.factories.get(playerKey(m.account)); if (!f) return { level: 0, jobs: [], now };
     return { level: f.level, jobs: f.jobs.map((j) => ({ ...j, done: now >= j.doneAt })), now };
   }
   /** Build (level 1) or upgrade the factory. Chips go to the house through the bank ledger. */
-  upgradeFactory(id: string, now: number): { level: number; cost: number } {
-    const m = this.signedIn(id); const k = playerKey(m.account);
+  upgradeFactory(account: string | null, now: number): { level: number; cost: number } {
+    const m = this.signedIn(account); const k = playerKey(m.account);
     const f = this.factories.get(k); const next = FACTORY_LEVELS[f ? f.level : 0];
     if (!next) throw new MineError('Your factory is maxed out.');
     if (!getBank().canAfford(m.account, next.cost)) throw new MineError(`You need ${next.cost} chips.`);
@@ -200,8 +229,8 @@ export class MinesWorld {
     return { level: next.level, cost: next.cost };
   }
   /** Start a batch: inputs leave the backpack now, outputs are collectable at doneAt (server clock). */
-  startJob(id: string, recipeId: unknown, qtyIn: unknown, now: number): Job {
-    const m = this.signedIn(id); const k = playerKey(m.account);
+  startJob(account: string | null, recipeId: unknown, qtyIn: unknown, now: number): Job {
+    const m = this.signedIn(account); const k = playerKey(m.account);
     const f = this.factories.get(k); if (!f) throw new MineError('Build a factory first.');
     const r = recipeById(recipeId); if (!r) throw new MineError('Unknown recipe.');
     const lv = FACTORY_LEVELS[f.level - 1];
@@ -217,8 +246,8 @@ export class MinesWorld {
     return job;
   }
   /** Move every finished job's output into the backpack. */
-  collect(id: string, now: number): Stack[] {
-    const m = this.signedIn(id); const k = playerKey(m.account);
+  collect(account: string | null, now: number): Stack[] {
+    const m = this.signedIn(account); const k = playerKey(m.account);
     const f = this.factories.get(k); if (!f) throw new MineError('Build a factory first.');
     const done = f.jobs.filter((j) => now >= j.doneAt); if (!done.length) throw new MineError('Nothing finished yet.');
     const got: Stack[] = [];
@@ -285,7 +314,8 @@ function ensureTicker(io: Server) {
 export function registerMines(io: Server, socket: Socket): void {
   const account = () => (socket.data.account as { name?: string } | undefined)?.name ?? null;
   const me = () => world.miners.get(socket.id);
-  const packMsg = () => ({ pack: world.backpack(socket.id), load: world.load(socket.id), cap: BACKPACK_CAP, quote: (() => { try { const q = world.quote(socket.id, Date.now()); return { gross: q.gross, paid: q.paid, already: q.already }; } catch { return null; } })() });
+  const packMsg = () => ({ pack: world.carried(socket.id), load: world.load(socket.id), cap: BACKPACK_CAP });
+  const storeMsg = () => { const a = account(); const q = a ? world.quote(a, Date.now()) : null; return { storage: a ? world.storage(a) : [], quote: q ? { gross: q.gross, paid: q.paid, already: q.already } : null, inMine: a ? world.inMine(a) : false, guest: !a }; };
   socket.on('mines_join', (_p: unknown, ack?: Ack) => {
     let m = me();
     if (!m) {
@@ -308,19 +338,24 @@ export function registerMines(io: Server, socket: Socket): void {
     } catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
   });
   socket.on('mines_pack', (_p: unknown, ack?: Ack) => ack?.({ ok: true, ...packMsg() }));
-  socket.on('mines_sell', (p: unknown, ack?: Ack) => {
-    try { const r = world.sell(socket.id, Date.now(), body(p).ore); ack?.({ ok: true, ...r, ...packMsg() }); }
+  socket.on('mines_exit', (_p: unknown, ack?: Ack) => {
+    try { const r = world.exit(socket.id); ack?.({ ok: true, ...r, ...packMsg() }); }
     catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
   });
-  const fact = () => ({ factory: world.factoryView(socket.id, Date.now()) });
+  socket.on('mines_storage', (_p: unknown, ack?: Ack) => ack?.({ ok: true, ...storeMsg() }));
+  socket.on('mines_sell', (p: unknown, ack?: Ack) => {
+    try { const r = world.sell(account(), Date.now(), body(p).ore); ack?.({ ok: true, ...r, ...storeMsg() }); }
+    catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
+  });
+  const fact = () => ({ factory: world.factoryView(account(), Date.now()) });
   const fx = (fn: () => unknown) => (_p: unknown, ack?: Ack) => {
-    try { const r = fn(); ack?.({ ok: true, result: r, ...fact(), ...packMsg() }); }
+    try { const r = fn(); ack?.({ ok: true, result: r, ...fact(), ...storeMsg() }); }
     catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
   };
-  socket.on('mines_factory', (_p: unknown, ack?: Ack) => ack?.({ ok: true, ...fact(), ...packMsg() }));
-  socket.on('mines_factory_upgrade', fx(() => world.upgradeFactory(socket.id, Date.now())));
-  socket.on('mines_collect', fx(() => world.collect(socket.id, Date.now())));
-  socket.on('mines_craft', (p: unknown, ack?: Ack) => fx(() => world.startJob(socket.id, body(p).recipe, body(p).qty, Date.now()))(p, ack));
+  socket.on('mines_factory', (_p: unknown, ack?: Ack) => ack?.({ ok: true, ...fact(), ...storeMsg() }));
+  socket.on('mines_factory_upgrade', fx(() => world.upgradeFactory(account(), Date.now())));
+  socket.on('mines_collect', fx(() => world.collect(account(), Date.now())));
+  socket.on('mines_craft', (p: unknown, ack?: Ack) => fx(() => world.startJob(account(), body(p).recipe, body(p).qty, Date.now()))(p, ack));
   const leave = () => { if (me()) { world.leave(socket.id); void socket.leave(ROOM); io.to(ROOM).emit('mines_left', { id: socket.id }); } };
   socket.on('mines_leave', leave);
   socket.on('disconnect', leave);
