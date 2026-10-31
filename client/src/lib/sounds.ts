@@ -40,6 +40,7 @@ function effectiveVolume(): number {
 
 function applyVolume(): void {
   if (masterGain && context) masterGain.gain.setValueAtTime(effectiveVolume(), context.currentTime);
+  if (boomMaster && context) boomMaster.gain.setValueAtTime(effectiveVolume(), context.currentTime);
   listeners.forEach((fn) => fn());
 }
 
@@ -94,6 +95,34 @@ function output(ctx: AudioContext): AudioNode {
     limiter.connect(ctx.destination);
   }
   return masterGain;
+}
+
+/**
+ * Rocket launch + every explosion (rocket, airstrike, nuke, impacts) go through their own bus with a hard ceiling at
+ * EXPLOSION_CEILING (-21 dBFS) and then only the master volume. It deliberately skips the master DynamicsCompressor,
+ * whose automatic makeup gain (~+6 dB) was lifting booms. So the whole rocket chain can never peak above ~-21 dBFS,
+ * whatever the gains, slider or how many booms stack.
+ */
+export const EXPLOSION_CEILING = Math.pow(10, -21 / 20);
+let boomBus: AudioNode | null = null;
+let boomMaster: GainNode | null = null;
+/** Soft clip: ~linear for small signals, never above EXPLOSION_CEILING. */
+export function explosionCurve(n = 2049, ceiling = EXPLOSION_CEILING): Float32Array {
+  const c = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; c[i] = ceiling * Math.tanh(x / ceiling); }
+  return c;
+}
+function explosionOut(ctx: AudioContext): AudioNode {
+  if (!boomBus) {
+    const shaper = ctx.createWaveShaper();
+    shaper.curve = explosionCurve() as Float32Array<ArrayBuffer>;
+    shaper.oversample = '2x';
+    boomMaster = ctx.createGain();
+    boomMaster.gain.value = effectiveVolume();
+    shaper.connect(boomMaster); boomMaster.connect(ctx.destination);
+    boomBus = shaper;
+  }
+  return boomBus;
 }
 
 interface Clip {
@@ -488,7 +517,7 @@ export function playBallLand(): void {
 }
 
 /** Short filtered noise burst helper. */
-function burst(ctx: AudioContext, at: number, len: number, type: BiquadFilterType, freq: number, gain: number, q = 0.7): void {
+function burst(ctx: AudioContext, at: number, len: number, type: BiquadFilterType, freq: number, gain: number, q = 0.7, dest?: AudioNode): void {
   const n = arenaNoise(ctx, len);
   const f = ctx.createBiquadFilter();
   f.type = type; f.frequency.value = freq; f.Q.value = q;
@@ -496,12 +525,12 @@ function burst(ctx: AudioContext, at: number, len: number, type: BiquadFilterTyp
   g.gain.setValueAtTime(0.0001, at);
   g.gain.exponentialRampToValueAtTime(gain, at + 0.003);
   g.gain.exponentialRampToValueAtTime(0.0001, at + len);
-  n.connect(f); f.connect(g); g.connect(output(ctx));
+  n.connect(f); f.connect(g); g.connect(dest ?? output(ctx));
   n.start(at);
 }
 
 /** Low sine thump that gives gunshots their body. */
-function thump(ctx: AudioContext, at: number, f0: number, len: number, gain: number): void {
+function thump(ctx: AudioContext, at: number, f0: number, len: number, gain: number, dest?: AudioNode): void {
   const o = ctx.createOscillator();
   o.type = 'sine';
   o.frequency.setValueAtTime(f0, at);
@@ -509,7 +538,7 @@ function thump(ctx: AudioContext, at: number, f0: number, len: number, gain: num
   const g = ctx.createGain();
   g.gain.setValueAtTime(gain, at);
   g.gain.exponentialRampToValueAtTime(0.0001, at + len);
-  o.connect(g); g.connect(output(ctx));
+  o.connect(g); g.connect(dest ?? output(ctx));
   o.start(at); o.stop(at + len + 0.02);
 }
 
@@ -529,10 +558,13 @@ export function playWeaponShot(weapon: string, volume = 1): void {
   const v = volume;
   if (weapon === 'rocket') {
     // Launch measured ~1 dB hotter than the pistol and three times longer; x0.6 puts it ~3 dB under a pistol shot.
-    const r = ROCKET_LAUNCH_GAIN * v;
-    thump(ctx, now, 70, 0.3, 0.6 * r);
-    burst(ctx, now, 0.9, 'bandpass', 900, 0.5 * r, 0.6);
-    burst(ctx, now + 0.05, 0.6, 'lowpass', 500, 0.35 * r);
+    // Part of the rocket chain: explosion bus (ceiling) and the Explosions slider (default 50% = this gain).
+    const r = ROCKET_LAUNCH_GAIN * v * 2 * getExplosionVolume();
+    if (r <= 0.0005) return;
+    const out = explosionOut(ctx);
+    thump(ctx, now, 70, 0.3, 0.6 * r, out);
+    burst(ctx, now, 0.9, 'bandpass', 900, 0.5 * r, 0.6, out);
+    burst(ctx, now + 0.05, 0.6, 'lowpass', 500, 0.35 * r, 0.7, out);
     return;
   }
   const cfg: Record<string, { crack: number; body: number; len: number; tail: number }> = {
@@ -610,20 +642,20 @@ export function playExplosion(volume = 1, long = false): void {
   lp.frequency.exponentialRampToValueAtTime(120, now + len);
   const g = ctx.createGain();
   g.gain.setValueAtTime(0.0001, now);
-  g.gain.exponentialRampToValueAtTime(0.7 * volume, now + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.7 * volume * getExplosionVolume(), now + 0.01);
   g.gain.exponentialRampToValueAtTime(0.0001, now + len);
   n.connect(lp);
   lp.connect(g);
-  g.connect(output(ctx));
+  g.connect(explosionOut(ctx));
   n.start(now);
   const osc = ctx.createOscillator();
   osc.frequency.setValueAtTime(90, now);
   osc.frequency.exponentialRampToValueAtTime(30, now + len);
   const og = ctx.createGain();
-  og.gain.setValueAtTime(0.5 * volume, now);
+  og.gain.setValueAtTime(0.5 * volume * getExplosionVolume(), now);
   og.gain.exponentialRampToValueAtTime(0.0001, now + len);
   osc.connect(og);
-  og.connect(output(ctx));
+  og.connect(explosionOut(ctx));
   osc.start(now);
   osc.stop(now + len);
 }
@@ -687,7 +719,7 @@ export function playArenaExplosion(dist: number, kind: 'rocket' | 'synth' = 'syn
   const now = ctx.currentTime;
   const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = cutoff;
   const g = ctx.createGain(); g.gain.value = gain;
-  lp.connect(g); g.connect(output(ctx));
+  lp.connect(g); g.connect(explosionOut(ctx));
   boomVoices++;
   const done = () => { boomVoices = Math.max(0, boomVoices - 1); try { g.disconnect(); } catch { /* gone */ } };
   if (kind === 'rocket') {

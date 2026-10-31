@@ -40,3 +40,35 @@ describe('sniper clip timing', () => {
     expect((i / rate) * 1000).toBeLessThan(10);
   });
 });
+
+describe('rocket chain loudness', () => {
+  it('explosion bus ceiling keeps every rocket/explosion sound under -20 dBFS', async () => {
+    const { EXPLOSION_CEILING, explosionCurve } = await import('../client/src/lib/sounds');
+    expect(20 * Math.log10(EXPLOSION_CEILING)).toBeLessThan(-20);
+    const c = explosionCurve();
+    expect(Math.max(...Array.from(c, Math.abs))).toBeLessThanOrEqual(EXPLOSION_CEILING * 1.0001);
+    // small signals pass ~unchanged
+    expect(c[Math.round((c.length - 1) * (0.5 + 0.005 / 2))]).toBeCloseTo(0.005, 3);
+  });
+  it('default Explosions slider is 50% and is persisted', () => {
+    const store = new Map<string, string>();
+    (globalThis as { localStorage?: unknown }).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
+    setExplosionVolume(0.3);
+    expect(store.get('arena-explosion-volume')).toBe('0.3');
+    delete (globalThis as { localStorage?: unknown }).localStorage;
+    setExplosionVolume(0.5);
+    expect(getExplosionVolume()).toBe(0.5);
+  });
+  it('every explosion/rocket path routes through the explosion bus, none straight to the master compressor', () => {
+    const src = readFileSync(new URL('../client/src/lib/sounds.ts', import.meta.url), 'utf8');
+    for (const fn of ['playArenaExplosion', 'playExplosion']) {
+      const body = src.slice(src.indexOf(`export function ${fn}(`), src.indexOf('\n}\n', src.indexOf(`export function ${fn}(`)));
+      expect(body).toContain('explosionOut(ctx)');
+      expect(body).not.toContain('output(ctx)');
+    }
+    const shot = src.slice(src.indexOf('export function playWeaponShot('));
+    const rocket = shot.slice(shot.indexOf("weapon === 'rocket'"), shot.indexOf('return;', shot.indexOf("weapon === 'rocket'")) + 400);
+    expect(rocket).toContain('explosionOut(ctx)');
+    expect(ROCKET_LAUNCH_GAIN).toBeLessThanOrEqual(0.12);
+  });
+});
