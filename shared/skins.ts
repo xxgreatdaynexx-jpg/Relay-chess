@@ -7,7 +7,7 @@ export interface SkinDef { id: string; name: string; weapon: string; rarity: Rar
 
 export const RARITY_COLOR: Record<Rarity, string> = { common: '#7fa3c9', rare: '#b05cff', ultra: '#ffb21a' };
 export const RARITY_NAME: Record<Rarity, string> = { common: 'Common', rare: 'Rare', ultra: 'Ultra' };
-export const WEAPON_NAME: Record<string, string> = { pistol: 'Pistol', smg: 'SMG', shotgun: 'Shotgun', sniper: 'Sniper', rocket: 'RPG', knife: 'Knife', grenade: 'Grenade' };
+export const WEAPON_NAME: Record<string, string> = { pistol: 'Pistol', smg: 'SMG', shotgun: 'Shotgun', sniper: 'Sniper', rocket: 'RPG', ar15: 'AR-15', knife: 'Knife', grenade: 'Grenade' };
 
 type Row = [string, SkinPattern, string, string, string, SkinFx?];
 const C: Record<string, Row[]> = {

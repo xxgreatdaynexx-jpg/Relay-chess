@@ -84,7 +84,7 @@ function Inventory({ onClose }: { onClose: () => void }) {
         </header>
         {!signedIn && <p className="inv-note">Sign in to collect skins. Every Arena match you finish drops a {CASE_NAME} or a {KEY_NAME} (50/50).</p>}
         <div className="inv-filters">
-          <select value={weapon} onChange={(e) => setWeapon(e.target.value)} data-testid="inv-weapon"><option value="all">All weapons</option><option value="items">Cases &amp; keys</option>{['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'knife'].map((w) => <option key={w} value={w}>{WEAPON_NAME[w]}</option>)}</select>
+          <select value={weapon} onChange={(e) => setWeapon(e.target.value)} data-testid="inv-weapon"><option value="all">All weapons</option><option value="items">Cases &amp; keys</option>{['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'ar15', 'knife'].map((w) => <option key={w} value={w}>{WEAPON_NAME[w]}</option>)}</select>
           <select value={rarity} onChange={(e) => setRarity(e.target.value)} data-testid="inv-rarity"><option value="all">All rarities</option>{(['common', 'rare', 'ultra'] as const).map((r) => <option key={r} value={r}>{RARITY_NAME[r]}</option>)}</select>
           <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} data-testid="inv-sort"><option value="new">Newest</option><option value="rarity">Rarity</option><option value="name">Name</option><option value="wear">Best wear</option></select>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" data-testid="inv-search" />
