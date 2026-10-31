@@ -1,4 +1,5 @@
 import { TopTab } from '@/components/TopTabs';
+import { useWalletChips } from '@/lib/wallet';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useRef, useState } from 'react';
 import { socket } from '@/lib/net';
@@ -64,6 +65,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const win = useWindowDrag('arena', wrapRef);
   const [status, setStatus] = useState('Joining the arena…');
+  const wallet = useWalletChips();
   const [feed, setFeed] = useState<Array<{ key: number; killer: string; victim: string; cause: string; self: boolean; mine: boolean }>>([]);
   const [showBoard, setShowBoard] = useState(false);
   const [board, setBoard] = useState<NetPlayer[]>([]);
@@ -747,7 +749,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         <button type="button" className="fps-quality" data-testid="arena-quality" title="Graphics quality" onClick={() => setQuality((q) => (q === 'hd' ? 'lo' : 'hd'))}>{quality === 'hd' ? 'HD' : 'LO'}</button>
         <button type="button" className="fps-quality" data-testid="arena-look-btn" title="Look sensitivity" aria-expanded={lookOpen} onClick={() => setLookOpen((o) => !o)}>⚙ Sens</button>
         {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" title="Reset position" onClick={win.reset}>⟲</button>}
-        <button type="button" className="ml-auto" aria-label="Close arena" onClick={onClose}>✕</button>
+        {wallet !== null && <span className="ml-auto text-xs font-semibold" title="Your chip wallet (shared by every game)" data-testid="arena-wallet">🪙 {wallet.toLocaleString()}</span>}
+        <button type="button" className={wallet === null ? 'ml-auto' : ''} aria-label="Close arena" onClick={onClose}>✕</button>
       </div>
       <div className="fps-maps" data-testid="arena-maps">
         <span className="fps-maps-now">{mapById(mapInfo.map).name}{mapInfo.secs > 0 && <span className="opacity-70"> · {clock(mapInfo.secs * 1000)}</span>}</span>

@@ -3,6 +3,7 @@ import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NamePrompt, ResetChips } from '@/components/CasinoCommon';
 import { betKey, CHIP_VALUES, payoutOdds, RED, WHEEL, type RouletteBet, type RouletteKind, type RouletteView } from '../../../shared/casino';
+import { useWalletChips } from '@/lib/wallet';
 import { emitCasino, useCountdown, useSavedName } from '@/lib/casino';
 import { socket } from '@/lib/net';
 import { playBallLand, playCardFlick, playRouletteSpin, playSolitaireWin } from '@/lib/sounds';
@@ -129,7 +130,8 @@ export function RoulettePanel() {
   }, [v, mine]);
 
   const secs = useCountdown(v?.deadline ?? null, v?.serverNow);
-  const chips = v?.yourChips ?? 0;
+  const wallet = useWalletChips();
+  const chips = wallet ?? v?.yourChips ?? 0;
   const betting = v?.phase === 'betting';
 
   const totals = useMemo(() => {

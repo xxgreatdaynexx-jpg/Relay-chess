@@ -1,4 +1,6 @@
 /** Chud Conquest tables: lobby, seats (with house bots), turn timer, snapshots and the conquest leaderboard. */
+import { getBank } from './casino-store.js';
+import { MAX_WAGER } from '../shared/types.js';
 import type { Server, Socket } from 'socket.io';
 import pg from 'pg';
 import { randomInt } from 'node:crypto';
@@ -15,7 +17,9 @@ const BOT_NAMES = ['Bot Grub', 'Bot Mudlord', 'Bot Snorkel', 'Bot Gristle', 'Bot
 export interface CqSeat { name: string; bot: boolean; color?: number; faction?: string }
 export interface CqSettings { turnMs: number; manualSetup: boolean; map: string; perks: boolean }
 export const CQ_TURN_CHOICES = [30_000, 60_000, 90_000, 180_000, 300_000];
-export interface CqTable { code: string; host: string; seats: CqSeat[]; game: CqState | null; deadline: number; recorded: boolean; touched: number; settings?: Partial<CqSettings>; /** Snapshot version, bumped on every change (newest wins across instances). */ v?: number }
+export interface CqTable { code: string; host: string; seats: CqSeat[]; game: CqState | null; deadline: number; recorded: boolean; touched: number; settings?: Partial<CqSettings>; /** Snapshot version, bumped on every change (newest wins across instances). */ v?: number; wager?: number; escrow?: CqEscrow | null; wagerResult?: { pot: number; deltas: Record<string, number>; refunded: boolean } | null }
+/** Chips held for a started Conquest war (winner takes all). */
+export interface CqEscrow { stakes: { name: string; amount: number }[]; settled: boolean }
 /** save() returns false when the store already holds a newer version (another instance moved on). */
 export interface CqSnapshotStore { init(): Promise<void>; loadAll(): Promise<CqTable[]>; load(code: string): Promise<CqTable | null>; save(t: CqTable): Promise<boolean>; remove(code: string): Promise<void> }
 
@@ -77,6 +81,7 @@ export class ConquestHub {
     if (t.seats.some((s) => !s.bot && s.name.toLowerCase() === name.toLowerCase())) return t;
     if (t.game) throw new RuleError('That war has already started. You can watch it.');
     if (t.seats.length >= 6) throw new RuleError('The table is full (6 players).');
+    if ((t.wager ?? 0) > 0 && !getBank().canAfford(name, t.wager!)) throw new RuleError(`This war is for ${t.wager} chips a seat. You have ${getBank().account(name).chips}.`);
     this.seatWithFaction(t, { name, bot: false });
     this.changed(t);
     return t;
@@ -85,6 +90,7 @@ export class ConquestHub {
     const t = this.get(code);
     if (t.game) throw new RuleError('The war has started.');
     if (t.host.toLowerCase() !== by.toLowerCase()) throw new RuleError('Only the host can add bots.');
+    if ((t.wager ?? 0) > 0) throw new RuleError('No bots on wager tables. Set the wager to None to add bots.');
     if (t.seats.length >= 6) throw new RuleError('The table is full (6 players).');
     const name = BOT_NAMES.find((n) => !t.seats.some((s) => s.name === n))!;
     this.seatWithFaction(t, { name, bot: true }, true);
@@ -148,7 +154,7 @@ export class ConquestHub {
     return t;
   }
   /** Host-only table settings: turn timer length and whether players place their own starting armies. */
-  configure(code: unknown, by: string, body: { turnMs?: unknown; manualSetup?: unknown; map?: unknown; perks?: unknown }): CqTable {
+  configure(code: unknown, by: string, body: { turnMs?: unknown; manualSetup?: unknown; map?: unknown; perks?: unknown; wager?: unknown }): CqTable {
     const t = this.get(code);
     if (t.game) throw new RuleError('Settings are locked once the war starts.');
     if (t.host.toLowerCase() !== by.toLowerCase()) throw new RuleError('Only the host can change settings.');
@@ -164,6 +170,12 @@ export class ConquestHub {
       cur.map = body.map as string;
     }
     if (body.perks !== undefined) cur.perks = Boolean(body.perks);
+    if (body.wager !== undefined) {
+      const w = Math.max(0, Math.min(MAX_WAGER, Math.floor(Number(body.wager) || 0)));
+      if (w > 0 && t.seats.some((x) => x.bot)) throw new RuleError('No bots on wager tables. Remove the bots first.');
+      if (w > 0 && !getBank().canAfford(t.host, w)) throw new RuleError(`You need ${w} chips for that wager.`);
+      t.wager = w;
+    }
     t.settings = cur;
     this.changed(t);
     return t;
@@ -182,6 +194,7 @@ export class ConquestHub {
     if (t.host.toLowerCase() !== by.toLowerCase()) throw new RuleError('Only the host can start.');
     if (t.seats.length < 2) throw new RuleError('Add a player or a bot first (2–6).');
     t.seats.forEach((s, i) => { if (s.color === undefined || t.seats.some((o, j) => j < i && o.color === s.color)) s.color = CQ_PALETTE.findIndex((_, c) => !t.seats.some((o, j) => j !== i && o.color === c)); });
+    this.escrowStakes(t);
     t.seats.forEach((s, i) => { if (!s.faction || t.seats.some((o, j) => j < i && o.faction === s.faction)) s.faction = FACTIONS.find((f) => !t.seats.some((o, j) => j !== i && o.faction === f.id))?.id; });
     const st = this.settingsOf(t);
     t.game = newGame(t.seats, this.rng, { manualSetup: st.manualSetup, map: st.map, perks: st.perks });
@@ -208,8 +221,46 @@ export class ConquestHub {
     this.schedule(t);
     this.changed(t);
   }
+  private stakeKey(t: CqTable, name: string, kind: string): string { return `cq:${t.code}:${name.trim().toLowerCase()}:${kind}`; }
+  /** Take every player's stake when the war starts; all-or-nothing. */
+  private escrowStakes(t: CqTable): void {
+    const w = t.wager ?? 0;
+    if (w <= 0) return;
+    if (t.seats.some((s) => s.bot)) throw new RuleError('No bots on wager tables.');
+    const bank = getBank();
+    const short = t.seats.find((s) => !bank.canAfford(s.name, w));
+    if (short) throw new RuleError(`${short.name} needs ${w} chips to start this war.`);
+    const taken: string[] = [];
+    try {
+      for (const s of t.seats) { bank.transfer(s.name, -w, { key: this.stakeKey(t, s.name, 'stake'), game: 'conquest', memo: `Stake at ${t.code}` }); taken.push(s.name); }
+    } catch (e) {
+      for (const n of taken) bank.transfer(n, w, { key: this.stakeKey(t, n, 'refund'), game: 'conquest', memo: `Refund at ${t.code}` });
+      throw new RuleError((e as Error).message);
+    }
+    t.escrow = { stakes: t.seats.map((s) => ({ name: s.name, amount: w })), settled: false };
+  }
+  /** Winner takes the whole pot; no winner (or a table dropped mid-war) refunds. Idempotent via ledger keys. */
+  settleWager(t: CqTable, winnerName: string | null): void {
+    const e = t.escrow;
+    if (!e || e.settled) return;
+    const bank = getBank();
+    const held = e.stakes.filter((s) => bank.hasKey(this.stakeKey(t, s.name, 'stake')));
+    const pot = held.reduce((n, s) => n + s.amount, 0);
+    const deltas: Record<string, number> = {};
+    const win = winnerName ? held.find((s) => s.name.toLowerCase() === winnerName.toLowerCase()) : undefined;
+    if (!win) {
+      for (const s of held) { bank.transfer(s.name, s.amount, { key: this.stakeKey(t, s.name, 'refund'), game: 'conquest', memo: `Refund at ${t.code}` }); deltas[s.name] = 0; }
+    } else {
+      for (const s of held) deltas[s.name] = -s.amount;
+      bank.transfer(win.name, pot, { key: this.stakeKey(t, win.name, 'payout'), game: 'conquest', memo: `Won the war at ${t.code}` });
+      deltas[win.name] = pot - win.amount;
+    }
+    e.settled = true;
+    t.wagerResult = { pot, deltas, refunded: !win };
+  }
   private record(t: CqTable): void {
     const g = t.game!;
+    if (t.escrow && !t.escrow.settled) this.settleWager(t, g.winner === null ? null : t.seats[g.winner]?.name ?? null);
     if (t.recorded || g.winner === null) return;
     t.recorded = true;
     if (t.seats.some((s) => s.bot)) return; // bot games never touch the leaderboard
@@ -264,6 +315,10 @@ export class ConquestHub {
     this.after(t, now, true);
   }
   drop(code: string): void {
+    const gone = this.tables.get(code);
+    if (gone?.escrow && !gone.escrow.settled) {
+      try { this.settleWager(gone, null); } catch (e) { console.error('[conquest] wager refund failed:', (e as Error).message); }
+    }
     clearTimeout(this.timers.get(code));
     this.tables.delete(code);
     void this.store?.remove(code).catch(() => {});
@@ -310,15 +365,23 @@ export class ConquestHub {
     await store.init();
     for (const t of await store.loadAll()) {
       this.tables.set(t.code, t);
+      // Stakes taken right before a crash, for a war the snapshot never saw start, go back.
+      if (!t.game && (t.wager ?? 0) > 0) {
+        for (const s of t.seats) {
+          const k = (kind: string) => this.stakeKey(t, s.name, kind);
+          if (getBank().hasKey(k('stake')) && !getBank().hasKey(k('refund')) && !getBank().hasKey(k('payout'))) getBank().transfer(s.name, t.wager!, { key: k('refund'), game: 'conquest', memo: `Refund at ${t.code} (restart)` });
+        }
+      }
+      if (t.game?.phase === 'over' && t.escrow && !t.escrow.settled) this.settleWager(t, t.game.winner === null ? null : t.seats[t.game.winner]?.name ?? null);
       if (t.game && t.game.phase !== 'over') { t.deadline = Math.max(t.deadline, now + 15_000); this.schedule(t); }
     }
   }
   list() {
-    return [...this.tables.values()].filter((t) => !t.game || t.game.phase !== 'over').map((t) => ({ code: t.code, host: t.host, players: t.seats.length, started: Boolean(t.game) }));
+    return [...this.tables.values()].filter((t) => !t.game || t.game.phase !== 'over').map((t) => ({ code: t.code, host: t.host, players: t.seats.length, started: Boolean(t.game), wager: t.wager ?? 0 }));
   }
   view(t: CqTable, viewer: string | null) {
     const seat = viewer ? t.seats.findIndex((s) => !s.bot && s.name.toLowerCase() === viewer.toLowerCase()) : -1;
-    return { code: t.code, host: t.host, seats: t.seats, settings: this.settingsOf(t), you: seat, deadline: t.deadline, game: t.game ? publicView(t.game, seat) : null };
+    return { code: t.code, host: t.host, seats: t.seats, settings: this.settingsOf(t), wager: t.wager ?? 0, pot: t.escrow && !t.escrow.settled ? t.escrow.stakes.reduce((n, x) => n + x.amount, 0) : 0, wagerResult: t.wagerResult ?? null, you: seat, deadline: t.deadline, game: t.game ? publicView(t.game, seat) : null };
   }
   stop(): void { for (const h of this.timers.values()) clearTimeout(h); this.timers.clear(); }
 }
@@ -384,7 +447,13 @@ export function registerConquest(io: Server, socket: Socket): void {
     try { mine = getConquest().tableOf(name())?.code ?? null; } catch { /* not signed in */ }
     return { tables: getConquest().list(), mine };
   });
-  on('cq_create', (_b, name) => { const n = name(); const cur = getConquest().tableOf(n); return enter(cur ?? getConquest().create(n)); });
+  on('cq_create', (b, name) => {
+    const n = name(); const cur = getConquest().tableOf(n);
+    if (cur) return enter(cur);
+    const t = getConquest().create(n);
+    if (b.wager !== undefined && Number(b.wager) > 0) { try { getConquest().configure(t.code, n, { wager: b.wager }); } catch (e) { getConquest().drop(t.code); throw e; } }
+    return enter(t);
+  });
   on('cq_join', (b, name) => enter(getConquest().join(b.code, name())));
   on('cq_watch', (b) => enter(getConquest().get(b.code)));
   on('cq_bot', (b, name) => { getConquest().addBot(b.code, name()); });

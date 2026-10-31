@@ -127,6 +127,10 @@ export interface Payout { reward: number; leftover: number; interest: number; to
 export interface RunStats { bestPlay: number; blindsWon: number; plays: number }
 export interface Run {
   v: 1;
+  /** Optional chip buy-in (0/absent = free run). stakeId keys the wallet ledger entries. */
+  buyIn?: number;
+  stakeId?: string;
+  paidOut?: number;
   seed: number;
   rngN: number;
   ante: number;
@@ -527,3 +531,15 @@ export function isRun(x: unknown): x is Run {
 
 /** Leaderboard row for Solitro (humans only; QA rows filtered by the shared boardFor rule). */
 export interface SolitroStanding { name: string; bestAnte: number; bestPlay: number; runs: number; wins: number; qa?: true }
+
+/** Chip buy-ins for Solitro (0 = free mode). */
+export const SOLITRO_BUYINS = [0, 10, 25, 50, 100] as const;
+/** Payout multiple of the buy-in by ante reached (index = ante, 1..8); a won run pays SOLITRO_WIN_MULT. */
+export const SOLITRO_MULT = [0, 0, 0.5, 1, 1.5, 2, 3, 4, 6] as const;
+export const SOLITRO_WIN_MULT = 10;
+export function solitroPayout(r: Run): number {
+  const b = r.buyIn ?? 0;
+  if (b <= 0) return 0;
+  const m = r.phase === 'won' ? SOLITRO_WIN_MULT : SOLITRO_MULT[Math.min(MAX_ANTE, Math.max(1, r.ante))] ?? 0;
+  return Math.floor(b * m);
+}

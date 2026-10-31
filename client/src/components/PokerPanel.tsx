@@ -2,6 +2,7 @@ import { TopTab } from '@/components/TopTabs';
 import { useEffect, useRef, useState } from 'react';
 import { NamePrompt, ResetChips } from '@/components/CasinoCommon';
 import { CardFace } from '@/components/SolitairePanel';
+import { useWalletChips } from '@/lib/wallet';
 import { emitCasino, useSavedName } from '@/lib/casino';
 import { HoldemTableView } from '@/components/HoldemTable';
 import { useWindowDrag } from '@/lib/windowDrag';
@@ -20,6 +21,7 @@ export function PokerPanel() {
   const [tab, setTab] = useState<'holdem' | 'play'>(() => (localStorage.getItem('relay-poker-mode') === 'play' ? 'play' : 'holdem'));
   const [name] = useSavedName();
   const [v, setV] = useState<PokerView | null>(null);
+  const wallet = useWalletChips();
   const [hold, setHold] = useState<boolean[]>([false, false, false, false, false]);
   const [bet, setBet] = useState(10);
   const [err, setErr] = useState('');
@@ -77,7 +79,7 @@ export function PokerPanel() {
                   ? <button type="button" className="bj-deal" disabled={busy} onClick={() => void act('vp_draw', { hold })} data-testid="vp-draw">Draw</button>
                   : <button type="button" className="bj-deal" disabled={busy} onClick={() => void act('vp_deal', { bet })} data-testid="vp-deal">Deal {bet}</button>}
               </div>
-              <div className="bj-label">Chips: {v?.chips.toLocaleString() ?? '…'} {err && <span className="account-error">· {err}</span>}</div>
+              <div className="bj-label">Chips: {(wallet ?? v?.chips)?.toLocaleString() ?? '…'} {err && <span className="account-error">· {err}</span>}</div>
               {v && v.chips < 5 && !dealt && <ResetChips name={name} onDone={(chips) => setV({ ...v, chips })} />}
               <table className="vp-pays">
                 <tbody>{PAY_ROWS.map((h) => <tr key={h} className={v?.result?.hand === h ? 'on' : ''}><td>{POKER_LABELS[h]}</td><td>{POKER_PAYS[h]}×</td></tr>)}</tbody>

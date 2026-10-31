@@ -6,7 +6,7 @@ import { playCardFlick, playSolitaireWin } from '@/lib/sounds';
 import { KlondikeBoard } from '@/solitaire/Board';
 import { canMove, type Card, type Loc, type Target } from '@/solitaire/logic';
 import {
-  act, blindTarget, BLIND_NAMES, BOSS, EDITION_INFO, ENH_INFO, interestCap, isDebuffed, isRun, JOKER, JOKER_SLOTS, MAX_ANTE, newRun,
+  SOLITRO_BUYINS, SOLITRO_MULT, SOLITRO_WIN_MULT, solitroPayout, act, blindTarget, BLIND_NAMES, BOSS, EDITION_INFO, ENH_INFO, interestCap, isDebuffed, isRun, JOKER, JOKER_SLOTS, MAX_ANTE, newRun,
   OMEN, OMEN_SLOTS, sellValue, type Action, type Run, type ScoreEvent, type ScoreStep, type SolitroStanding,
 } from '../../../shared/solitro';
 
@@ -73,6 +73,7 @@ function useSolitro() {
     return true;
   }, [run, name, best]);
 
+  const [buyIn, setBuyIn] = useState(0);
   const start = useCallback(async () => {
     setError(null);
     if (!name) {
@@ -83,13 +84,13 @@ function useSolitro() {
       setBest(nb); localStorage.setItem(GUEST_BEST, JSON.stringify(nb));
       return;
     }
-    const r = await emitCasino<{ run: Run }>('solitro_new');
+    const r = await emitCasino<{ run: Run }>('solitro_new', { buyIn });
     if (!r.ok || !r.run) return setError(r.error ?? 'Could not start a run.');
     setRun(r.run);
     setBest((b) => ({ bestAnte: Math.max(b?.bestAnte ?? 0, 1), runs: (b?.runs ?? 0) + 1, wins: b?.wins ?? 0 }));
-  }, [name, best]);
+  }, [name, best, buyIn]);
 
-  return { name, run, best, error, setError, loaded, fresh, doAct, start };
+  return { name, run, best, error, setError, loaded, fresh, doAct, start, buyIn, setBuyIn };
 }
 
 interface Anim { ev: ScoreEvent; k: number; chips: number; mult: number; done: boolean }
@@ -202,6 +203,12 @@ export function SolitroGame({ bar, toggle, tail }: { bar: Record<string, unknown
       <div {...bar}>
         {toggle}
         <button type="button" onClick={() => { if (!run || run.phase === 'over' || run.phase === 'won' || confirm('Abandon this run and start a new one?')) void s.start(); }} data-testid="sto-new">New run</button>
+        {s.name ? (
+          <select value={s.buyIn} onChange={(e) => s.setBuyIn(Number(e.target.value))} title="Optional chip buy-in. Payout grows with the ante you reach." data-testid="sto-buyin">
+            {SOLITRO_BUYINS.map((b) => <option key={b} value={b}>{b === 0 ? 'Free run' : `Buy-in 🪙 ${b}`}</option>)}
+          </select>
+        ) : null}
+        {run?.buyIn ? <span className="text-xs opacity-80" data-testid="sto-stake">🪙 {run.buyIn} in · pays {solitroPayout({ ...run, phase: run.phase === 'won' ? 'won' : 'over' })} now</span> : null}
         <button type="button" onClick={() => setBoard((b) => !b)} aria-pressed={board} title="Best runs">🏆</button>
         <span className="ml-auto" />
         {tail}
@@ -367,6 +374,7 @@ function RunOver({ run, best, signedIn, onNew }: { run: Run; best: Best; signedI
       <div className="mt-1 font-serif text-2xl">{run.phase === 'won' ? 'Run complete!' : 'Run over'}</div>
       <div className="text-sm opacity-80">{run.note ?? ''} Reached ante {Math.min(run.ante, MAX_ANTE)} · {run.stats.blindsWon} blinds · best play {fmtN(run.stats.bestPlay)}</div>
       {best && <div className="text-sm opacity-80">Best ante {best.bestAnte} · {best.runs} runs · {best.wins} wins{signedIn ? '' : ' (this device — sign in to get on the board)'}</div>}
+      {run.buyIn ? <div className="text-sm" data-testid="sto-payout">Buy-in 🪙 {run.buyIn} → paid 🪙 {run.paidOut ?? solitroPayout(run)} (ante payouts: {SOLITRO_MULT.slice(2).map((m, i) => `${i + 2}:×${m}`).join(' ')} · win ×{SOLITRO_WIN_MULT})</div> : null}
       <button type="button" className="mt-3" onClick={onNew}>New run</button>
     </div>
   );

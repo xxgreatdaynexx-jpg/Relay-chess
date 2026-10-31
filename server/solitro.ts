@@ -4,12 +4,13 @@ import { randomInt } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { boardFor, isQaName } from '../shared/qa.js';
-import { act, isRun, newRun, viewRun, type Action, type Run, type SolitroStanding } from '../shared/solitro.js';
+import { getBank } from './casino-store.js';
+import { SOLITRO_BUYINS, solitroPayout, act, isRun, newRun, viewRun, type Action, type Run, type SolitroStanding } from '../shared/solitro.js';
 
 export interface SolitroRecord { key: string; name: string; run: Run | null; bestAnte: number; bestPlay: number; runs: number; wins: number }
 export interface SolitroStore { init(): Promise<void>; loadAll(): Promise<SolitroRecord[]>; save(r: SolitroRecord): Promise<void> }
 
-/** Separate, additive table; no other table is touched. Solitro never reads or writes casino chips. */
+/** Separate, additive table; no other table is touched. Chips only move through the shared wallet ledger (optional buy-in). */
 export const SOLITRO_MIGRATION = `CREATE TABLE IF NOT EXISTS solitro_players (
   player_key TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -78,6 +79,11 @@ export class SolitroHall {
     rec.bestAnte = Math.max(rec.bestAnte, Math.min(8, run.ante));
     rec.bestPlay = Math.max(rec.bestPlay, run.stats.bestPlay);
     if (run.phase === 'won' && before?.phase !== 'won') rec.wins++;
+    if (run.buyIn && run.stakeId && run.paidOut === undefined && (run.phase === 'over' || run.phase === 'won')) {
+      const pay = solitroPayout(run);
+      if (pay > 0) getBank().transfer(rec.name, pay, { key: `solitro:${run.stakeId}:payout`, game: 'solitro', memo: `Solitro payout (ante ${Math.min(8, run.ante)})` });
+      run.paidOut = pay;
+    }
     this.persist(rec);
   }
 
@@ -86,10 +92,21 @@ export class SolitroHall {
     return { run: r.run ? viewRun(r.run) : null, best: { bestAnte: r.bestAnte, runs: r.runs, wins: r.wins } };
   }
 
-  start(name: string, now = Date.now()): Run {
+  start(name: string, now = Date.now(), buyIn = 0): Run {
     const rec = this.rec(name);
+    const b = Math.floor(Number(buyIn) || 0);
+    if (!(SOLITRO_BUYINS as readonly number[]).includes(b)) throw new Error('Pick a buy-in from the list.');
+    if (b > 0 && !getBank().canAfford(rec.name, b)) throw new Error(`You need ${b} chips for that buy-in. You have ${getBank().account(rec.name).chips}.`);
+    // A live staked run that gets replaced is cashed out at the ante it reached.
+    if (rec.run && rec.run.buyIn && rec.run.phase !== 'over' && rec.run.phase !== 'won') {
+      this.settle(rec, rec.run, act(rec.run, { t: 'forfeit' }));
+    }
     const run = newRun(this.seedFn(), now);
     rec.runs++;
+    if (b > 0) {
+      run.buyIn = b; run.stakeId = `${rec.key}:${rec.runs}:${now}`;
+      getBank().transfer(rec.name, -b, { key: `solitro:${run.stakeId}:stake`, game: 'solitro', memo: 'Solitro buy-in' });
+    }
     this.settle(rec, null, run);
     return viewRun(run);
   }
@@ -155,7 +172,7 @@ export function registerSolitro(_io: Server, socket: Socket): void {
     });
   const need = (n: string | null) => { if (!n) throw new Error('Sign in to keep a Solitro run on your account.'); return n; };
   on('solitro_state', (_b, n) => (n ? hall.state(n) : { run: null, best: null }));
-  on('solitro_new', (_b, n) => ({ run: hall.start(need(n)) }));
+  on('solitro_new', (b, n) => ({ run: hall.start(need(n), Date.now(), Number(b.buyIn) || 0) }));
   on('solitro_act', (b, n) => ({ run: hall.act(need(n), b.a as Action) }));
   on('solitro_board', (_b, n) => ({ rows: solitroBoard(isQaName(n)) }));
 }

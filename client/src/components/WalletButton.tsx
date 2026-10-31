@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { request, socket } from '@/lib/net';
 import { useAccount } from '@/lib/auth';
 import { openAccount } from '@/lib/settings';
+import { setWalletChips } from '@/lib/wallet';
 
 interface Tx { key: string | null; game: string; amount: number; balance: number; memo?: string; at: number }
 interface WalletPush { chips: number; tx?: Tx; brokeBelow?: number; start?: number }
@@ -35,13 +36,14 @@ export function WalletButton() {
       if (!socket.connected) return;
       void request('wallet_sub', {}).then((res) => {
         const r = res as unknown as { ok: boolean; signedIn?: boolean; chips?: number; history?: Tx[]; brokeBelow?: number };
-        if (!r.ok || !r.signedIn) { setChips(null); setHistory([]); return; }
-        setChips(r.chips ?? 0);
+        if (!r.ok || !r.signedIn) { setChips(null); setWalletChips(null); setHistory([]); return; }
+        setChips(r.chips ?? 0); setWalletChips(r.chips ?? 0);
         setHistory(r.history ?? []);
         if (r.brokeBelow) setBroke(r.brokeBelow);
       });
     };
     const onWallet = (p: WalletPush) => {
+      setWalletChips(p.chips);
       setChips((prev) => {
         if (prev !== null && p.chips !== prev) {
           setBump(p.chips > prev ? 'bump-up' : 'bump-down');

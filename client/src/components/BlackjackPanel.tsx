@@ -4,6 +4,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { CardFace } from '@/components/SolitairePanel';
 import { NamePrompt, ResetChips } from '@/components/CasinoCommon';
 import { handValue, type BJSeatView, type BJTableView } from '../../../shared/casino';
+import { useWalletChips } from '@/lib/wallet';
 import { emitCasino, useCountdown, useSavedName } from '@/lib/casino';
 import { socket } from '@/lib/net';
 import { at, Chips, dealStyle, FeltTable } from '@/components/FeltTable';
@@ -74,7 +75,8 @@ export function BlackjackPanel() {
 
   const secs = useCountdown(t?.deadline ?? null, t?.serverNow);
   const me = t?.seats.find((s) => s.seat === t.you) ?? null;
-  const chips = me?.chips ?? 0;
+  const wallet = useWalletChips();
+  const chips = wallet ?? me?.chips ?? 0;
   const myTurn = t?.phase === 'playing' && t.turn !== null && t.turn === t.you;
   const hand = myTurn && me && me.active !== null ? me.hands[me.active] : null;
 
@@ -146,7 +148,7 @@ export function BlackjackPanel() {
                               </div>
                             ))}
                             <div className="felt-plate">
-                              {s ? <><b>{s.seat === t?.you ? 'You' : s.name}</b><span>🪙{s.chips.toLocaleString()}</span></> : <span className="opacity-60">Open</span>}
+                              {s ? <><b>{s.seat === t?.you ? 'You' : s.name}</b><span>🪙{(s.seat === t?.you && wallet !== null ? wallet : s.chips).toLocaleString()}</span></> : <span className="opacity-60">Open</span>}
                               {s && !s.hands.length && <span className="felt-sub">{s.bet ? `Bet ${s.bet}` : t?.phase === 'betting' ? 'Betting…' : 'Sitting out'}</span>}
                             </div>
                           </div>

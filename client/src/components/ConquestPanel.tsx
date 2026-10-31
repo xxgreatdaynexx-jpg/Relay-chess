@@ -5,7 +5,7 @@ import { ConquestMap, type Flight } from '@/components/ConquestMap';
 import { FactionBanner, UnitSprite } from '@/components/ConquestUnits';
 import { CQ_MAPS, CQ_PALETTE, CQ_PALETTE_NAMES, FACTIONS, factionById, mapById, START_ARMIES, tradeValue, type CqMap, type CqView } from '../../../shared/conquest';
 
-interface TableView { code: string; host: string; seats: Array<{ name: string; bot: boolean; color?: number; faction?: string }>; settings: { turnMs: number; manualSetup: boolean; map: string; perks: boolean }; you: number; deadline: number; game: CqView | null }
+interface TableView { code: string; host: string; seats: Array<{ name: string; bot: boolean; color?: number; faction?: string }>; settings: { turnMs: number; manualSetup: boolean; map: string; perks: boolean }; you: number; deadline: number; game: CqView | null; wager?: number; pot?: number; wagerResult?: { pot: number; deltas: Record<string, number>; refunded: boolean } | null }
 const TURN_CHOICES = [30_000, 60_000, 90_000, 180_000, 300_000];
 const fmtTurn = (ms: number) => (ms < 60_000 ? `${ms / 1000}s` : `${ms / 60_000} min`);
 export type DiceSpeed = 'slow' | 'normal' | 'fast' | 'off';
@@ -14,7 +14,7 @@ function useDiceSpeed(): [DiceSpeed, (d: DiceSpeed) => void] {
   const [v, setV] = useState<DiceSpeed>(() => { try { const x = localStorage.getItem('cq-dice-speed'); return x === 'slow' || x === 'fast' || x === 'off' ? x : 'normal'; } catch { return 'normal'; } });
   return [v, (d) => { setV(d); try { localStorage.setItem('cq-dice-speed', d); } catch { /* private mode */ } }];
 }
-interface Listing { code: string; host: string; players: number; started: boolean }
+interface Listing { code: string; host: string; players: number; started: boolean; wager?: number }
 const SYMBOL = ['⚔', '🐎', '💣', '★'];
 const PIPS = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
 
@@ -115,7 +115,7 @@ function ConquestWindow({ intent, onClose }: { intent: { code?: string; create?:
             <h3>Open tables</h3>
             {list.length === 0 && <p className="cq-note">No wars right now. Start one.</p>}
             <ul className="cq-list">{list.map((l) => (
-              <li key={l.code}><b>{l.code}</b> {l.host} · {l.players}/6 {l.started ? '· at war' : ''}
+              <li key={l.code}><b>{l.code}</b> {l.host} · {l.players}/6 {l.wager ? <span data-testid={`cq-stake-${l.code}`}>· 🪙 {l.wager}</span> : null} {l.started ? '· at war' : ''}
                 {!l.started && signed && <button type="button" onClick={() => call('cq_join', { code: l.code })}>Join</button>}
                 <button type="button" onClick={() => call('cq_watch', { code: l.code })}>Watch</button></li>
             ))}</ul>
@@ -168,9 +168,14 @@ function Waiting({ table, call }: { table: TableView; call: (ev: string, b?: unk
             </select>) : <b>{fmtTurn(table.settings.turnMs)}</b>}</label>
           <label>{host ? <input type="checkbox" checked={table.settings.manualSetup} onChange={(e) => call('cq_settings', { code: table.code, manualSetup: e.target.checked })} data-testid="cq-manual" /> : null}
             {host ? ' Players place their own starting armies' : table.settings.manualSetup ? 'Players place their own starting armies' : 'Starting armies are placed automatically'}</label>
+          <label>Wager {host ? (
+            <select value={table.wager ?? 0} onChange={(e) => call('cq_settings', { code: table.code, wager: Number(e.target.value) })} data-testid="cq-wager">
+              {[0, 10, 25, 50, 100, 250].map((w) => <option key={w} value={w}>{w ? `🪙 ${w} a seat` : 'None'}</option>)}
+            </select>) : <b data-testid="cq-wager-view">{table.wager ? `🪙 ${table.wager} a seat` : 'None'}</b>}</label>
+          {table.wager ? <p className="cq-note" data-testid="cq-wager-note">Winner takes the whole pot. Resigning or leaving counts as a loss. No bots on wager tables.</p> : null}
         </div>
         {host && <div className="cq-row">
-          <button type="button" disabled={table.seats.length >= 6} onClick={() => call('cq_bot', { code: table.code })} data-testid="cq-add-bot">+ Add bot</button>
+          <button type="button" disabled={table.seats.length >= 6 || !!table.wager} title={table.wager ? 'No bots on wager tables' : undefined} onClick={() => call('cq_bot', { code: table.code })} data-testid="cq-add-bot">+ Add bot</button>
           <button type="button" className="si-cta" disabled={table.seats.length < 2} onClick={() => call('cq_start', { code: table.code })} data-testid="cq-start">Start the war</button>
         </div>}
         {!host && <p className="cq-note">Waiting for {table.host} to start…</p>}
@@ -276,8 +281,9 @@ function Game({ table, call }: { table: TableView; call: (ev: string, b?: unknow
         )}
       </div>
       <aside className="cq-side">
+        {table.pot ? <div className="cq-note" data-testid="cq-pot">🪙 Pot {table.pot} · winner takes all</div> : null}
         <div className="cq-turn" data-testid="cq-turn">
-          {g.phase === 'over' ? <strong>🏆 {g.players[g.winner!]!.name} conquered {m.id === 'chud' ? 'the Chudlands' : m.name}</strong> : <>
+          {g.phase === 'over' ? <><strong>🏆 {g.players[g.winner!]!.name} conquered {m.id === 'chud' ? 'the Chudlands' : m.name}</strong>{table.wagerResult ? <span data-testid="cq-wager-outcome"> · {table.wagerResult.refunded ? 'Stakes refunded' : `won 🪙 ${table.wagerResult.pot}`}</span> : null}</> : <>
             {inSetup ? <strong>Deployment</strong> : <strong style={{ color: colors[g.turn] }}>{mine ? 'Your turn' : `${turnName}'s turn`}</strong>} · {inSetup ? 'everyone places at once' : g.phase} · <span data-testid="cq-timer">{left}s</span> · round {g.round}
           </>}
         </div>

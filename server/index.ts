@@ -3,7 +3,7 @@ import { initArenaStorage } from './arena-store.js';
 import { initChessStatsStorage } from './chess-stats.js';
 import { createApp } from './app.js';
 import { initCheckersLeaderboardStorage, initLeaderboardStorage } from './leaderboard.js';
-import { initCasinoStorage } from './casino-store.js';
+import { getBank, initCasinoStorage } from './casino-store.js';
 import { initAccountStorage } from './accounts.js';
 import { getConquest, initConquestStorage } from './conquest.js';
 import { getSolitro, initSolitroStorage } from './solitro.js';
@@ -44,6 +44,7 @@ async function shutdown(signal: string): Promise<void> {
     await getChatLog().flush();
     await getSolitro().flush();
     await getConquest().flush();
+    await getBank().flush();
   } catch (error) {
     console.error('[shutdown] save failed:', (error as Error).message);
   }
