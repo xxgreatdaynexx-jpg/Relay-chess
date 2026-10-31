@@ -14,11 +14,13 @@ export const MINES_MIGRATION = [
   `CREATE TABLE IF NOT EXISTS mine_sales (id SERIAL PRIMARY KEY, player_key TEXT NOT NULL, items TEXT NOT NULL, gross REAL NOT NULL, paid INTEGER NOT NULL, ledger_key TEXT NOT NULL, at BIGINT NOT NULL)`,
   // Factory (stage 2): one per player, levelled with chips; jobs carry server timestamps so they finish while offline.
   `CREATE TABLE IF NOT EXISTS mine_factories (player_key TEXT PRIMARY KEY, owner_name TEXT NOT NULL, level INTEGER NOT NULL, built_at BIGINT NOT NULL)`,
+  // What a signed-in miner is carrying in the mine (not yet banked), so a deploy/restart doesn't wipe it.
+  `CREATE TABLE IF NOT EXISTS mine_carried (player_key TEXT PRIMARY KEY, owner_name TEXT NOT NULL, items JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
   `CREATE TABLE IF NOT EXISTS mine_jobs (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, machine TEXT NOT NULL, recipe TEXT NOT NULL, qty INTEGER NOT NULL, start_at BIGINT NOT NULL, done_at BIGINT NOT NULL)`,
 ];
 export interface FactoryState { level: number; builtAt: number; jobs: Job[] }
 
-export interface MineStore { init(): Promise<void>; load(): Promise<{ items: Array<{ key: string; name: string; type: ItemType; id: string; qty: number }>; daily: Array<{ key: string; day: string; gross: number; paid: number }>; factories?: Array<{ key: string } & FactoryState> }>; save(key: string, name: string, stacks: Stack[], sale?: { day: string; gross: number; paid: number; items: string; ledgerKey: string; at: number; dayGross: number; dayPaid: number }, factory?: FactoryState, extra?: Array<{ sql: string; args: unknown[] }>): Promise<void> }
+export interface MineStore { init(): Promise<void>; load(): Promise<{ items: Array<{ key: string; name: string; type: ItemType; id: string; qty: number }>; daily: Array<{ key: string; day: string; gross: number; paid: number }>; factories?: Array<{ key: string } & FactoryState>; carried?: Array<{ key: string; name: string; stacks: Stack[] }> }>; saveCarried?(key: string, name: string, stacks: Stack[]): Promise<void>; save(key: string, name: string, stacks: Stack[], sale?: { day: string; gross: number; paid: number; items: string; ledgerKey: string; at: number; dayGross: number; dayPaid: number }, factory?: FactoryState, extra?: Array<{ sql: string; args: unknown[] }>): Promise<void> }
 
 export class PgMineStore implements MineStore {
   constructor(private readonly db: Queryable & { connect?: () => Promise<pg.PoolClient> }) { db.on?.('error', (e) => console.error('[mines] pool error:', e.message)); }
@@ -28,7 +30,13 @@ export class PgMineStore implements MineStore {
     const daily = (await this.db.query('SELECT * FROM mine_daily')).rows.map((r) => ({ key: String(r.player_key), day: String(r.day), gross: Number(r.gross), paid: Number(r.paid) }));
     const jobs = (await this.db.query('SELECT * FROM mine_jobs')).rows.map((r) => ({ key: String(r.player_key), job: { id: String(r.id), machine: r.machine as MachineId, recipe: String(r.recipe), qty: Number(r.qty), startAt: Number(r.start_at), doneAt: Number(r.done_at) } }));
     const factories = (await this.db.query('SELECT * FROM mine_factories')).rows.map((r) => ({ key: String(r.player_key), level: Number(r.level), builtAt: Number(r.built_at), jobs: jobs.filter((j) => j.key === String(r.player_key)).map((j) => j.job) }));
-    return { items, daily, factories };
+    const carried = (await this.db.query('SELECT * FROM mine_carried')).rows.map((r) => ({ key: String(r.player_key), name: String(r.owner_name), stacks: (typeof r.items === 'string' ? JSON.parse(r.items) : r.items) as Stack[] }));
+    return { items, daily, factories, carried };
+  }
+  /** Idempotent: absolute snapshot upsert, or delete when empty. */
+  async saveCarried(key: string, name: string, stacks: Stack[]) {
+    if (!stacks.length) { await this.db.query('DELETE FROM mine_carried WHERE player_key = $1', [key]); return; }
+    await this.db.query(`INSERT INTO mine_carried (player_key, owner_name, items, updated_at) VALUES ($1,$2,$3,now()) ON CONFLICT (player_key) DO UPDATE SET owner_name = EXCLUDED.owner_name, items = EXCLUDED.items, updated_at = now()`, [key, name, JSON.stringify(stacks)]);
   }
   async save(key: string, name: string, stacks: Stack[], sale?: Parameters<MineStore['save']>[3], factory?: FactoryState, extra?: Array<{ sql: string; args: unknown[] }>) {
     const c = this.db.connect ? await this.db.connect() : null;
@@ -53,6 +61,9 @@ export class PgMineStore implements MineStore {
 }
 
 export class MineError extends Error {}
+/** Debounce for carried-haul saves, and how long a haul restored after a restart waits for its owner. */
+export const CARRY_SAVE_MS = 1500;
+export const RESTART_GRACE_MS = 10 * 60_000;
 
 interface Miner extends Body { id: string; name: string; account: string | null; a: number; p: number; lastMove: number; carry: number; lastHit: number; hits: number[]; sprint: boolean; carried: Map<string, Stack> }
 interface NodeState { node: MineNode; hp: number; downUntil: number }
@@ -75,14 +86,34 @@ export class MinesWorld {
   async attach(store: MineStore): Promise<boolean> {
     try {
       await store.init();
-      const { items, daily, factories } = await store.load();
+      const { items, daily, factories, carried } = await store.load();
+      // Hauls carried when the last server stopped: restored on the player's next join (restart grace).
+      for (const c of carried ?? []) if (c.stacks.length) { this.grace.set(c.key, { stacks: c.stacks.map((x) => ({ ...x })), until: Date.now() + RESTART_GRACE_MS }); this.names.set(c.key, c.name); }
       for (const f of factories ?? []) this.factories.set(f.key, { level: f.level, builtAt: f.builtAt, jobs: f.jobs });
       for (const i of items) { this.pack(i.key).set(stackKey(i), { type: i.type, id: i.id, qty: i.qty }); this.names.set(i.key, i.name); }
       for (const d of daily) { const cur = this.daily.get(d.key); if (!cur || cur.day < d.day) this.daily.set(d.key, d); }
       this.store = store; return true;
     } catch (e) { console.error('[mines] postgres unavailable, mines in memory only:', (e as Error).message); return false; }
   }
-  async flush() { await this.chain; }
+  async flush() { for (const k of [...this.carryTimers.keys()]) this.saveCarried(k); await this.chain; }
+  private carryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Current carried haul for a player key: online miner's, else unexpired grace, else nothing. */
+  private carriedOf(k: string, now = Date.now()): Stack[] {
+    for (const m of this.miners.values()) if (m.account && playerKey(m.account) === k) return [...m.carried.values()].filter((s) => s.qty > 0).map((s) => ({ ...s }));
+    const g = this.grace.get(k); return g && now <= g.until ? g.stacks.map((s) => ({ ...s })) : [];
+  }
+  /** Queue an absolute snapshot of the carried haul now (ordered on the same chain as pack saves). */
+  private saveCarried(k: string) {
+    const t = this.carryTimers.get(k); if (t) { clearTimeout(t); this.carryTimers.delete(k); }
+    const store = this.store; if (!store?.saveCarried) return;
+    const snap = this.carriedOf(k); const name = this.names.get(k) ?? k;
+    this.chain = this.chain.then(() => store.saveCarried!(k, name, snap)).catch((e) => console.error('[mines] carry save failed:', (e as Error).message));
+  }
+  /** Debounced carried-haul save (signed-in only). */
+  private markCarried(k: string) {
+    if (!this.store?.saveCarried || this.carryTimers.has(k)) return;
+    const t = setTimeout(() => this.saveCarried(k), CARRY_SAVE_MS); t.unref?.(); this.carryTimers.set(k, t);
+  }
 
   private pack(k: string) { let p = this.packs.get(k); if (!p) { p = new Map(); this.packs.set(k, p); } return p; }
   packKey(m: Miner) { return m.account ? playerKey(m.account) : `guest:${m.id}`; }
@@ -112,7 +143,7 @@ export class MinesWorld {
     if (!m.account) this.packs.delete(this.packKey(m));
     else { const c = this.carried(id); if (c.length) this.grace.set(playerKey(m.account), { stacks: c.map((s) => ({ ...s })), until: now + CARRY_GRACE_MS }); }
     this.miners.delete(id);
-    for (const [k, g] of this.grace) if (now > g.until) this.grace.delete(k);
+    for (const [k, g] of this.grace) if (now > g.until) { this.grace.delete(k); this.saveCarried(k); }
   }
   /** Walk into the lift: everything carried moves into banked storage. Position is the server-validated one. */
   exit(id: string): { banked: Stack[]; worth: number } {
@@ -120,7 +151,11 @@ export class MinesWorld {
     if (!inExit(m.x, m.y)) throw new MineError('Walk to the EXIT lift to bank your haul.');
     const banked = this.carried(id); if (!banked.length) return { banked: [], worth: 0 };
     m.carried.clear();
-    this.add(m, banked);
+    const p = this.pack(this.packKey(m));
+    for (const s of banked) { const k = stackKey(s); const cur = p.get(k); if (cur) cur.qty += s.qty; else p.set(k, { ...s }); }
+    if (m.account) { const k = playerKey(m.account); const t = this.carryTimers.get(k); if (t) { clearTimeout(t); this.carryTimers.delete(k); } }
+    // Banked stacks and the cleared carry row commit in one transaction: no duplicate or lost haul across a restart.
+    this.persist(m, undefined, false, m.account ? [{ sql: 'DELETE FROM mine_carried WHERE player_key = $1', args: [playerKey(m.account)] }] : undefined);
     return { banked, worth: banked.reduce((t, s) => t + s.qty * priceOf(s), 0) };
   }
 
@@ -166,6 +201,7 @@ export class MinesWorld {
     if (n.hp > 0) return { node: c.id, hp: n.hp, broke: false };
     n.downUntil = now + ore.respawnMs; n.hp = 0;
     { const key = `ore:${c.ore}`; const cur = m.carried.get(key); if (cur) cur.qty += 1; else m.carried.set(key, { type: 'ore', id: c.ore, qty: 1 }); }
+    if (m.account) this.markCarried(playerKey(m.account));
     return { node: c.id, hp: 0, broke: true, ore: c.ore };
   }
 
@@ -175,11 +211,11 @@ export class MinesWorld {
     this.persist(m);
   }
 
-  private persist(m: { account: string | null }, sale?: Parameters<MineStore['save']>[3], withFactory = false) {
+  private persist(m: { account: string | null }, sale?: Parameters<MineStore['save']>[3], withFactory = false, extra?: Array<{ sql: string; args: unknown[] }>) {
     if (!m.account || !this.store) return;
     const k = playerKey(m.account); const snap = [...this.pack(k).values()].map((s) => ({ ...s })); const store = this.store;
     const f = withFactory ? this.factories.get(k) : undefined; const fs = f ? { level: f.level, builtAt: f.builtAt, jobs: f.jobs.map((j) => ({ ...j })) } : undefined;
-    this.chain = this.chain.then(() => store.save(k, m.account!, snap, sale, fs)).catch((e) => console.error('[mines] save failed:', (e as Error).message));
+    this.chain = this.chain.then(() => store.save(k, m.account!, snap, sale, fs, extra)).catch((e) => console.error('[mines] save failed:', (e as Error).message));
   }
 
   quote(account: string, now: number, only?: unknown): { gross: number; paid: number; already: number; items: Stack[] } {
