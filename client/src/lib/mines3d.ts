@@ -1,5 +1,6 @@
 /** Mines: three.js cave scene (lazy-loaded). Map coords are (x, y) on the floor and z up; three.js is y-up, so (x, z, y). */
 import * as THREE from 'three';
+import { applyPickSkin, skinnedPickaxe } from './pickaxeModel';
 import { MINE_EXIT, MINE_MAP, MINE_NODES, ORES } from '../../../shared/mines';
 
 export interface MinerView { id: string; name: string; x: number; y: number; z: number; a: number; c: boolean; sw: number }
@@ -17,7 +18,7 @@ const rockTex = (() => {
   };
 })();
 
-interface Particle { m: THREE.Mesh; v: THREE.Vector3; life: number }
+interface Particle { m: THREE.Mesh; v: THREE.Vector3; life: number; dust?: boolean; spark?: boolean }
 
 export class Mines3D {
   readonly renderer: THREE.WebGLRenderer;
@@ -28,6 +29,10 @@ export class Mines3D {
   private parts: Particle[] = [];
   private pick: THREE.Group;
   private swingT = 1;
+  private pickModel: THREE.Group;
+  private pickSkin: string | null = null;
+  private kick = 0;
+  private hitDue = -1;
   private lamp: THREE.PointLight;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -88,13 +93,10 @@ export class Mines3D {
     }
     // Pickaxe viewmodel, parented to the camera.
     this.pick = new THREE.Group();
-    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.62, 8), new THREE.MeshLambertMaterial({ color: '#7a4f2a' }));
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 0.06), new THREE.MeshStandardMaterial({ color: '#9aa0a6', metalness: 0.7, roughness: 0.4 }));
-    head.position.y = 0.3;
-    const tipL = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.12, 6), head.material); tipL.rotation.z = Math.PI / 2; tipL.position.set(0.3, 0.3, 0);
-    const tipR = tipL.clone(); tipR.rotation.z = -Math.PI / 2; tipR.position.x = -0.3;
-    this.pick.add(handle, head, tipL, tipR);
-    this.pick.scale.setScalar(0.62);
+    this.pickModel = skinnedPickaxe(null);
+    // Hold point ~1/3 up the handle; head up-forward, pick point away from the player.
+    this.pickModel.position.set(0, -0.22, 0); this.pickModel.rotation.y = Math.PI;
+    this.pick.add(this.pickModel);
     this.camera.add(this.pick);
     this.scene.add(this.camera);
     this.camera.add(new THREE.PointLight('#fff1d6', 0.9, 6, 1.5));
@@ -114,17 +116,37 @@ export class Mines3D {
   }
 
   swing() { this.swingT = 0; }
+  /** Equipped pickaxe skin (inv_loadout.pickaxe) for the viewmodel and third-person miners. */
+  setPickSkin(token: string | null | undefined) {
+    this.pickSkin = token ?? null; applyPickSkin(this.pickModel, this.pickSkin);
+  }
 
   burstAt(node: number, big: boolean) {
     const n = MINE_NODES[node]; if (!n) return;
     const col = new THREE.Color(ORES[n.ore].color);
-    for (let i = 0; i < (big ? 26 : 8); i++) {
+    const at = new THREE.Vector3(n.x, n.z, n.y);
+    for (let i = 0; i < (big ? 22 : 7); i++) { // chips
       const m = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.06), new THREE.MeshBasicMaterial({ color: i % 3 ? col : new THREE.Color('#6b625a') }));
-      m.position.set(n.x, n.z, n.y);
-      this.scene.add(m);
+      m.position.copy(at); this.scene.add(m);
       this.parts.push({ m, v: new THREE.Vector3((Math.random() - 0.5) * 3, Math.random() * 3 + 1, (Math.random() - 0.5) * 3), life: 0.6 + Math.random() * 0.4 });
     }
+    if (n.ore === 'stone') { // dust puffs
+      for (let i = 0; i < 10; i++) {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 5), new THREE.MeshBasicMaterial({ color: '#9a8f80', transparent: true, opacity: 0.35, depthWrite: false }));
+        m.position.copy(at).add(new THREE.Vector3((Math.random() - 0.5) * 0.4, Math.random() * 0.3, (Math.random() - 0.5) * 0.4)); this.scene.add(m);
+        this.parts.push({ m, v: new THREE.Vector3((Math.random() - 0.5) * 0.8, Math.random() * 0.6 + 0.2, (Math.random() - 0.5) * 0.8), life: 0.9 + Math.random() * 0.5, dust: true });
+      }
+    } else { // sparks
+      for (let i = 0; i < 16; i++) {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.018, 0.09), new THREE.MeshBasicMaterial({ color: i % 2 ? '#ffd27a' : '#fff3c8', blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+        m.position.copy(at); this.scene.add(m);
+        const v = new THREE.Vector3((Math.random() - 0.5) * 7, Math.random() * 4 + 1.5, (Math.random() - 0.5) * 7);
+        m.lookAt(at.clone().add(v)); this.parts.push({ m, v, life: 0.25 + Math.random() * 0.25, spark: true });
+      }
+    }
+    this.kick = big ? 0.05 : 0.03;
   }
+
 
   setOthers(list: MinerView[], meId: string) {
     const seen = new Set<string>();
@@ -138,7 +160,8 @@ export class Mines3D {
         body.position.y = 0.75;
         const hat = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: '#e8c020' }));
         hat.position.y = 1.55;
-        g.add(body, hat);
+        const tp = skinnedPickaxe(null); tp.scale.setScalar(1.1); tp.position.set(0.32, 0.55, 0.1); tp.rotation.set(0.9, 0, -0.2);
+        g.add(body, hat, tp);
         this.scene.add(g); this.others.set(p.id, g);
       }
       g.position.set(p.x, p.z - (p.c ? 0.3 : 0), p.y);
@@ -152,16 +175,28 @@ export class Mines3D {
     this.camera.rotation.order = 'YXZ';
     this.camera.rotation.set(cam.p, -cam.a - Math.PI / 2, 0);
     this.lamp.position.set(cam.x, cam.z + 0.4, cam.y);
-    this.swingT = Math.min(1, this.swingT + dt / 0.35);
-    const s = Math.sin(this.swingT * Math.PI);
-    const bob = Math.sin(walk * 9) * 0.015;
-    this.pick.position.set(0.3, -0.28 + bob - s * 0.06, -0.62 - s * 0.1);
-    this.pick.rotation.set(-0.15 - s * 1.3, 0.5, 0.35);
+    this.swingT = Math.min(1, this.swingT + dt / 0.42);
+    const t = this.swingT, bob = Math.sin(walk * 9) * 0.012, sway = Math.cos(walk * 4.5) * 0.008;
+    // wind-up (raise + cock back) → strike (fast arc down) → recoil (bounce) → settle
+    const ease = (x: number) => x * x * (3 - 2 * x);
+    let rx = 0, dy = 0, dz = 0;
+    if (t < 0.32) { const k = ease(t / 0.32); rx = 0.75 * k; dy = 0.07 * k; dz = 0.05 * k; }
+    else if (t < 0.5) { const k = (t - 0.32) / 0.18; const e = k * k; rx = 0.75 - 2.05 * e; dy = 0.07 - 0.14 * e; dz = 0.05 - 0.17 * e; }
+    else if (t < 0.62) { const k = ease((t - 0.5) / 0.12); rx = -1.3 + 0.35 * k; dy = -0.07 + 0.02 * k; dz = -0.12 + 0.03 * k; }
+    else { const k = ease((t - 0.62) / 0.38); rx = -0.95 * (1 - k); dy = -0.05 * (1 - k); dz = -0.09 * (1 - k); }
+    if (this.hitDue < 0.5 && t >= 0.5) this.kick = Math.max(this.kick, 0.025);
+    this.hitDue = t;
+    this.pick.position.set(0.32 + sway, -0.3 + bob + dy, -0.5 + dz);
+    this.pick.rotation.set(-0.35 + rx, 0.35, 0.28);
+    this.kick = Math.max(0, this.kick - dt * 0.25);
+    this.camera.rotation.x += this.kick;
     for (let i = this.parts.length - 1; i >= 0; i--) {
       const p = this.parts[i];
       p.life -= dt; p.v.y -= 9 * dt; p.m.position.addScaledVector(p.v, dt);
       if (p.m.position.y < 0.03) { p.m.position.y = 0.03; p.v.multiplyScalar(0.4); }
-      if (p.life <= 0) { this.scene.remove(p.m); p.m.geometry.dispose(); this.parts.splice(i, 1); }
+      if (p.dust) { p.v.y += 8.6 * dt; p.m.scale.multiplyScalar(1 + dt * 1.6); (p.m.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.35 * p.life); }
+      if (p.spark) { p.m.lookAt(p.m.position.clone().add(p.v)); (p.m.material as THREE.MeshBasicMaterial).opacity = Math.min(1, p.life * 4); }
+      if (p.life <= 0) { this.scene.remove(p.m); (p.m.material as THREE.Material).dispose(); p.m.geometry.dispose(); this.parts.splice(i, 1); }
     }
     this.renderer.render(this.scene, this.camera);
   }

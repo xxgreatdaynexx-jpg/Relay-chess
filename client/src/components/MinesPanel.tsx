@@ -84,7 +84,7 @@ function MinesGame({ onClose }: { onClose: () => void }) {
     // 3D scene
     import('@/lib/mines3d').then(({ Mines3D }) => {
       if (dead || !glRef.current) return;
-      try { three.current = new Mines3D(glRef.current); three.current.setNodes(hp.current); } catch (e) { setGlError('3D is unavailable here: ' + (e as Error).message); }
+      try { three.current = new Mines3D(glRef.current); three.current.setNodes(hp.current); socket.timeout(3000).emit('inv_loadout', {}, (err: Error | null, r?: { ok: boolean; loadout?: Record<string, string | null> }) => { if (!err && r?.ok) three.current?.setPickSkin(r.loadout?.pickaxe ?? null); }); } catch (e) { setGlError('3D is unavailable here: ' + (e as Error).message); }
     });
     let raf = 0, last = performance.now(), sendAcc = 0;
     const frame = (t: number) => {
