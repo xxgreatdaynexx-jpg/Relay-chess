@@ -23,8 +23,9 @@ describe('arena: no rubberbanding while sprinting (15 s simulated client)', () =
 });
 
 describe('arena: server move cap uses the shared speed function', () => {
-  it('max legit speed is sprint × knife (1.725×) and the cap covers it', () => {
+  it('max legit speed is sprint × knife (1.875×) and the cap covers it', () => {
     const top = speedOf({ sprint: true, weapon: 'knife' });
+    expect(KNIFE_SPEED_MULT).toBe(1.25);
     expect(top / speedOf({ weapon: 'pistol' })).toBeCloseTo(SPRINT_MULT * KNIFE_SPEED_MULT, 5);
     expect(moveAllowance({ sprint: true, weapon: 'knife' }, 100)).toBeGreaterThan(top * 0.1 * 1.4);
   });

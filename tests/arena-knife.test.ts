@@ -41,14 +41,14 @@ describe('knife', () => {
     expect(isBackstab({ x: 0, y: 1 }, t)).toBe(false);
     expect(isBackstab({ x: 1, y: 0 }, t)).toBe(false);
   });
-  it('range ~2.4 to the body', () => {
-    expect(hits(duel(OPEN, 2.6).w.shoot('k', 0, 1000))).toEqual([50]); // 2.6 − 0.3 radius = 2.3
-    expect(hits(duel(OPEN, 3.0).w.shoot('k', 0, 1000))).toEqual([]);
+  it('range ~3.2 to the body', () => {
+    expect(hits(duel(OPEN, 3.4).w.shoot('k', 0, 1000))).toEqual([50]); // 3.4 − 0.3 radius = 3.1
+    expect(hits(duel(OPEN, 3.8).w.shoot('k', 0, 1000))).toEqual([]);
   });
-  it('buffed numbers: 2.4 reach, 50 slash, stab ≥ max HP, front stab kills at full HP, two slashes kill', async () => {
+  it('buffed numbers: 3.2 reach, 50 slash, stab ≥ max HP, front stab kills at full HP, two slashes kill', async () => {
     const { MAX_HP, MELEE_RANGE, MELEE_SWEEP, MELEE_CONE } = await import('../shared/fps');
-    expect(MELEE_RANGE).toBe(2.4); expect(WEAPONS.knife.range).toBe(2.4);
-    expect(MELEE_SWEEP).toBe(0.5); expect(Math.round((MELEE_CONE * 180) / Math.PI)).toBe(50);
+    expect(MELEE_RANGE).toBe(3.2); expect(WEAPONS.knife.range).toBe(3.2);
+    expect(MELEE_SWEEP).toBe(0.7); expect(Math.round((MELEE_CONE * 180) / Math.PI)).toBe(65);
     expect(WEAPONS.knife.damage).toBe(50);
     expect(WEAPONS.knife.heavyDamage!).toBeGreaterThanOrEqual(MAX_HP);
     const d = duel(OPEN, 2.0);
@@ -59,12 +59,19 @@ describe('knife', () => {
   });
   it('near-miss: a body just off the swing line still connects (cone/sweep), nearest target wins', () => {
     const m = { id: 'k', x: 3, y: 2.5, z: 0, a: 0 };
-    // 60° off-axis at point blank (outside the 50° cone) but within the 0.5 sweep of the line.
-    const near = { id: 'n', x: 3 + 0.5 * Math.cos(Math.PI / 3), y: 2.5 + 0.5 * Math.sin(Math.PI / 3), z: 0, a: Math.PI, alive: true };
+    // 75° off-axis at point blank (outside the 65° cone) but within the 0.5 sweep of the line.
+    const near = { id: 'n', x: 3 + 0.5 * Math.cos((75 * Math.PI) / 180), y: 2.5 + 0.5 * Math.sin((75 * Math.PI) / 180), z: 0, a: Math.PI, alive: true };
     expect(meleeHit(m, [near], false, OPEN)?.id).toBe('n');
     const far = { id: 'f', x: 5, y: 2.5, z: 0, a: Math.PI, alive: true };
     expect(meleeHit(m, [far, { ...near, x: 3.9, y: 2.5, id: 'c' }], false, OPEN)?.id).toBe('c');
     expect(meleeHit(m, [{ id: 'b', x: 1.5, y: 2.5, z: 0, a: 0, alive: true }], false, OPEN)).toBeNull(); // behind you
+  });
+  it('65° cone: 60° off hits, 80° off at range misses, nearest wins', () => {
+    const m = { id: 'k', x: 3, y: 2.5, z: 0, a: 0 };
+    const at = (deg: number, r: number, id = 'v') => ({ id, x: 3 + r * Math.cos((deg * Math.PI) / 180), y: 2.5 + r * Math.sin((deg * Math.PI) / 180), z: 0, a: Math.PI, alive: true });
+    expect(meleeHit(m, [at(60, 2.5)], false, OPEN)?.id).toBe('v');
+    expect(meleeHit(m, [at(80, 2.5)], false, OPEN)).toBeNull();
+    expect(meleeHit(m, [at(0, 2.8, 'far'), at(40, 1.5, 'near')], false, OPEN)?.id).toBe('near');
   });
   it('needs line of sight', () => {
     const m = { id: 'k', x: 5.5, y: 2.5, z: 0, a: 0 };
@@ -79,14 +86,15 @@ describe('knife', () => {
     expect(hits(w.shoot('k', 0, 1000, 0, 900))).toEqual([50]);
     expect(hits(duel(OPEN, 1.2).w.shoot('k', 0, 1000))).toEqual([50]);
   });
-  it('cooldowns: slash 400 ms, stab 900 ms', () => {
+  it('cooldowns: slash 240 ms (was 400, −40%), stab 585 ms (was 900, −35%); damage lands on the swing message itself', () => {
+    expect(WEAPONS.knife.cooldownMs).toBe(240); expect(WEAPONS.knife.heavyCooldownMs).toBe(585);
     const { w } = duel();
-    expect(hits(w.shoot('k', 0, 1000))).toHaveLength(1);
-    expect(w.shoot('k', 0, 1100)).toEqual([]);
-    expect(hits(w.shoot('k', 0, 1400, 0, undefined, true))).toHaveLength(1);
-    expect(w.shoot('k', 0, 2000)).toEqual([]);
+    expect(hits(w.shoot('k', 0, 1000))).toHaveLength(1); // no wind-up: the hit is in the same tick as the swing
+    expect(w.shoot('k', 0, 1150)).toEqual([]);
+    expect(hits(w.shoot('k', 0, 1240, 0, undefined, true))).toHaveLength(1);
+    expect(w.shoot('k', 0, 1700)).toEqual([]);
   });
-  it('1.15× speed with the knife out, through speedOf (sprint and crouch still apply)', () => {
+  it('1.25× speed with the knife out, through speedOf (sprint and crouch still apply)', () => {
     expect(speedOf({ weapon: 'knife' })).toBeCloseTo(MOVE_SPEED * KNIFE_SPEED_MULT);
     expect(speedOf({ weapon: 'knife', sprint: true })).toBeCloseTo(MOVE_SPEED * SPRINT_MULT * KNIFE_SPEED_MULT);
     expect(speedOf({ weapon: 'knife', crouch: true })).toBeCloseTo(MOVE_SPEED * CROUCH_SPEED_MULT * KNIFE_SPEED_MULT);
@@ -101,7 +109,7 @@ describe('knife', () => {
     };
     const knifeRun = MOVE_SPEED * KNIFE_SPEED_MULT * 0.5;
     expect(run('knife', MOVE_SPEED * KNIFE_SPEED_MULT)).toBeCloseTo(knifeRun, 1);
-    // a speed hack is still clamped, and the clamp is 1.15x wider with the knife (validateMove uses speedOf)
+    // a speed hack is still clamped, and the clamp is 1.25x wider with the knife (validateMove uses speedOf)
     const kc = run('knife', MOVE_SPEED * 4), pc = run('pistol', MOVE_SPEED * 4);
     expect(kc).toBeLessThan(MOVE_SPEED * 4 * 0.5 * 0.7);
     expect(kc).toBeGreaterThan(pc);

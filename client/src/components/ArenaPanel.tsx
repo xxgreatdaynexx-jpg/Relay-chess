@@ -609,7 +609,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       const shake = now - fx.current.shake < 450 ? (1 - (now - fx.current.shake) / 450) * 0.04 : 0;
       const vmSwitch = Math.max(0, 1 - (now - m.switchedAt) / SWITCH_MS);
       const vmReload = m.reloadUntil && now < m.reloadUntil ? 1 - (m.reloadUntil - now) / WEAPONS[m.weapon].reloadMs : -1;
-      const swingT = (now - fx.current.melee.at) / (fx.current.melee.heavy ? 420 : 260);
+      const swingT = (now - fx.current.melee.at) / (fx.current.melee.heavy ? 420 : 220);
       const vm = showGun && m.alive && m.joined ? { swing: m.weapon === 'knife' && swingT < 1 ? swingT : -1, heavy: fx.current.melee.heavy, w: m.weapon, kick: Math.max(0, 1 - (now - fx.current.muzzle) / 140), lower: vmSwitch, reload: vmReload, bob: m.walk, muzzle: now - fx.current.muzzle < 50, sk: snap?.mysk?.[m.weapon] ?? (() => { const me = snap?.players.find((q) => q.id === m.id); return me && me.w === m.weapon ? me.sk ?? null : null; })() } : null;
       const qa = (window as unknown as { __arenaQA?: { vm?: unknown } }).__arenaQA; if (qa) qa.vm = vm;
       g3.render(specCam ? { x: specCam.x, y: specCam.y, z: specCam.z + EYE_HEIGHT, a: specCam.a, p: specCam.p, zoom: 1, vm: null } : { x: eye.x, y: eye.y, z: eye.z + m.eyeH + bob + (Math.random() - 0.5) * shake, a: m.a, p: m.p, zoom, vm }, soldiers, fx3);

@@ -39,8 +39,8 @@ export const CROUCH_SPREAD_MULT = 0.65;
 /** How fast the eye moves between standing and crouched heights (metres per second). */
 export const CROUCH_LERP_SPEED = 6;
 type Crouchy = { crouch?: boolean; sprint?: boolean; weapon?: string };
-/** Knife out: you move ~1.15× faster (stacks with sprint; crouch still wins). */
-export const KNIFE_SPEED_MULT = 1.15;
+/** Knife out: you move ~1.25× faster (stacks with sprint; crouch still wins). */
+export const KNIFE_SPEED_MULT = 1.25;
 /** Sprint (hold Shift): ~1.5× run speed, forward / diagonal-forward only, never crouched or scoped. */
 export const SPRINT_MULT = 1.5;
 /** Widest move direction (radians off facing) that still counts as forward: 45° diagonals plus slack. */
@@ -497,7 +497,7 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   shotgun: { id: 'shotgun', name: 'M1014 Combat Shotgun', damage: 17, cooldownMs: 800, pellets: 9, spread: 0.12, range: BULLET_RANGE, falloff: { full: 8, end: 25, min: 0.35 }, mag: 6, reloadMs: 2200 },
   sniper: { id: 'sniper', name: '.50 Cal Sniper', damage: 95, cooldownMs: 1300, pellets: 1, spread: 0.09, scopedSpread: 0, range: BULLET_RANGE, mag: 5, reloadMs: 2500 },
   rocket: { id: 'rocket', name: 'RPG Launcher', damage: 100, cooldownMs: 1100, pellets: 1, spread: 0, range: 40, mag: 2, reloadMs: 2600, splash: 2.4 },
-  knife: { id: 'knife', name: 'Combat Knife', damage: 50, cooldownMs: 400, pellets: 1, spread: 0, range: 2.4, mag: 1, reloadMs: 0, melee: true, heavyDamage: 100, heavyCooldownMs: 900 },
+  knife: { id: 'knife', name: 'Combat Knife', damage: 50, cooldownMs: 240, pellets: 1, spread: 0, range: 3.2, mag: 1, reloadMs: 0, melee: true, heavyDamage: 100, heavyCooldownMs: 585 },
 };
 export const WEAPON_ORDER: WeaponId[] = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'knife'];
 export const SWITCH_MS = 250;
@@ -737,11 +737,11 @@ export const canHold = (loadout: WeaponId, w: WeaponId): boolean => (isKnifeOnly
 
 // ---------------------------------------------------------------- melee
 
-export const MELEE_RANGE = 2.4;
+export const MELEE_RANGE = 3.2;
 /** Forgiving sweep: a target whose body comes within this of the swing line still connects, even outside the cone. */
-export const MELEE_SWEEP = 0.5;
+export const MELEE_SWEEP = 0.7;
 /** Half-angle of the swing cone in front of you (horizontal). */
-export const MELEE_CONE = (50 * Math.PI) / 180;
+export const MELEE_CONE = (65 * Math.PI) / 180;
 /** Behind the target: the attacker sits within this half-angle of the target's back. */
 export const BACKSTAB_ANGLE = (60 * Math.PI) / 180;
 
