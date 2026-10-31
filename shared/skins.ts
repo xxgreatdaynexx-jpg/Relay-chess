@@ -40,7 +40,10 @@ const U: Row[] = [
 const U_WEAPON = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket'];
 
 /** Weapons that have a skin set. Add 'knife' / 'ar15' here once those weapons exist (their 55 are generated fresh). */
-export const SKIN_WEAPONS = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket'] as const;
+export const GUN_WEAPONS = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket'] as const;
+/** Knife skins are a CS-style special tier (see CASE_ODDS). The set exists now; it only drops once the knife weapon is live. */
+export const KNIFE_IN_CASES = false;
+export const SKIN_WEAPONS = [...GUN_WEAPONS, 'knife'] as const;
 export const PER_WEAPON: Record<Rarity, number> = { common: 30, rare: 20, ultra: 5 };
 const PATTERNS: SkinPattern[] = ['camo', 'stripes', 'carbon', 'hex', 'gradient', 'marble', 'digital', 'tiger', 'splatter', 'circuit', 'solid', 'checker'];
 const FINISHES: SkinFinish[] = ['matte', 'gloss', 'metal'];
@@ -105,7 +108,20 @@ export const SKINS: SkinDef[] = build();
 export const SKIN_BY_ID = new Map(SKINS.map((s) => [s.id, s]));
 
 /** Unboxing odds (must sum to 1). Cases drop from Arena matches; opening one uses a case + a key. */
-export const CASE_ODDS: Record<Rarity, number> = { common: 0.79, rare: 0.19, ultra: 0.02 };
+/** Two-step roll: pick a group (gun tier or the knife tier), then for knives a knife rarity. Overall knife Common ≈ gun Ultra. */
+export const CASE_ODDS = {
+  gun: { common: 0.78, rare: 0.18, ultra: 0.02 } as Record<Rarity, number>,
+  knife: 0.02,
+  knifeTier: { common: 0.8, rare: 0.175, ultra: 0.025 } as Record<Rarity, number>,
+} as const;
+/** Flat table of every outcome's overall chance (for the "Odds" button and tests). */
+export const CASE_ODDS_TABLE: { group: 'gun' | 'knife'; rarity: Rarity; p: number }[] = [
+  ...(['common', 'rare', 'ultra'] as Rarity[]).map((r) => ({ group: 'gun' as const, rarity: r, p: CASE_ODDS.gun[r] })),
+  ...(['common', 'rare', 'ultra'] as Rarity[]).map((r) => ({ group: 'knife' as const, rarity: r, p: CASE_ODDS.knife * CASE_ODDS.knifeTier[r] })),
+];
+export const isKnife = (d: Pick<SkinDef, 'weapon'> | undefined) => d?.weapon === 'knife';
+/** Display name: knives get the gold ★. */
+export const skinName = (d: SkinDef) => (isKnife(d) ? `★ ${d.name}` : d.name);
 /** Every signed-in human who took part in an Arena match gets one drop: 50% case, 50% key. */
 export const DROP_CASE_CHANCE = 0.5;
 /** Minimum participation for a drop: this long in the match, or at least one kill or death. */
@@ -114,11 +130,18 @@ export type ItemKind = 'skin' | 'case' | 'key';
 export const CASE_NAME = 'Chud Case';
 export const KEY_NAME = 'Chud Key';
 
-/** Pick a rarity then a skin from two uniform [0,1) rolls. */
-export function rollSkin(r1: number, r2: number): SkinDef {
-  const rarity: Rarity = r1 < CASE_ODDS.ultra ? 'ultra' : r1 < CASE_ODDS.ultra + CASE_ODDS.rare ? 'rare' : 'common';
-  const pool = SKINS.filter((s) => s.rarity === rarity);
-  return pool[Math.min(pool.length - 1, Math.floor(r2 * pool.length))]!;
+const pickTier = (r: number, t: Record<Rarity, number>): Rarity => (r < t.ultra ? 'ultra' : r < t.ultra + t.rare ? 'rare' : 'common');
+const POOLS = new Map<string, SkinDef[]>();
+const pool = (knife: boolean, rarity: Rarity) => { const k = `${knife}:${rarity}`; let p = POOLS.get(k); if (!p) POOLS.set(k, (p = SKINS.filter((s) => isKnife(s) === knife && s.rarity === rarity))); return p; };
+/** Roll a case: group (gun tiers 78/18/2 or knife 2%), knife rarity 80/17.5/2.5, then uniform within. While knives are not live, the knife branch rerolls. */
+export function rollSkin(rng: () => number, knives = KNIFE_IN_CASES): SkinDef {
+  for (;;) {
+    const r = rng();
+    if (r < CASE_ODDS.knife) { if (!knives) continue; const p = pool(true, pickTier(rng(), CASE_ODDS.knifeTier)); return p[Math.min(p.length - 1, Math.floor(rng() * p.length))]!; }
+    const g = r - CASE_ODDS.knife; // position within the gun 98%
+    const t = CASE_ODDS.gun; const rarity: Rarity = g < t.ultra ? 'ultra' : g < t.ultra + t.rare ? 'rare' : 'common';
+    const p = pool(false, rarity); return p[Math.min(p.length - 1, Math.floor(rng() * p.length))]!;
+  }
 }
 
 export const WEARS = [

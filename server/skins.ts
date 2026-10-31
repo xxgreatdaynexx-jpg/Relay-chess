@@ -3,7 +3,7 @@ import pg from 'pg';
 import { randomInt, randomUUID } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
-import { CASE_NAME, DROP_CASE_CHANCE, DROP_MIN_MS, KEY_NAME, rollSkin, SKIN_BY_ID, SKINS, skinToken, type ItemKind, type SkinDef, type SkinItem } from '../shared/skins.js';
+import { isKnife, skinName, CASE_NAME, DROP_CASE_CHANCE, DROP_MIN_MS, KEY_NAME, rollSkin, SKIN_BY_ID, SKINS, skinToken, type ItemKind, type SkinDef, type SkinItem } from '../shared/skins.js';
 
 export interface StoredItem extends SkinItem { owner: string; ownerName: string; sourceKey: string; gone: boolean }
 export interface ItemEvent { item: string; kind: string; from: string | null; to: string | null; memo: string; at: number }
@@ -116,7 +116,7 @@ export class ItemVault {
     const k = mine.find((i) => i.kind === 'key');
     if (!c) throw new RuleError(`You need a ${CASE_NAME}. They drop from Arena matches.`);
     if (!k) throw new RuleError(`You need a ${KEY_NAME} to open it. Keys drop from Arena matches.`);
-    const skin = rollSkin(this.rng(), this.rng());
+    const skin = rollSkin(this.rng);
     const it = this.make(name, 'skin', `open:${c.id}`, 'case', skin)!;
     c.gone = true; k.gone = true;
     this.commit([c, k, it], [
@@ -125,7 +125,7 @@ export class ItemVault {
       { item: it.id, kind: 'unbox', from: null, to: it.owner, memo: `${skin.id} from case ${c.id}`, at: Date.now() },
     ]);
     const WIN = 40;
-    const reel = Array.from({ length: 48 }, (_, i) => (i === WIN ? skin.id : rollSkin(this.rng(), this.rng()).id));
+    const reel = Array.from({ length: 48 }, (_, i) => (i === WIN ? skin.id : rollSkin(this.rng).id));
     return { item: this.view(it), reel, win: WIN };
   }
 
@@ -180,6 +180,12 @@ export function registerSkins(io: Server, socket: Socket): void {
     if (n) void socket.join(room(playerKey(n)));
     return { signedIn: !!n, items: n ? vault.inventory(n) : [], catalog: SKINS.length };
   });
-  on('inv_open', (b, n) => vault.openCase(need(n), b.caseId));
+  on('inv_open', (b, n) => {
+    const r = vault.openCase(need(n), b.caseId);
+    const d = SKIN_BY_ID.get(r.item.skin);
+    // Knife unboxes are announced server-wide, after the reel finishes on the opener's screen.
+    if (d && isKnife(d)) setTimeout(() => io.emit('inv_announce', { name: n!.trim(), skin: d.id, text: `${n!.trim()} unboxed ${skinName(d)}!` }), 5500);
+    return r;
+  });
   on('inv_equip', (b, n) => { vault.equip(need(n), b.id); return { items: vault.inventory(n!) }; });
 }

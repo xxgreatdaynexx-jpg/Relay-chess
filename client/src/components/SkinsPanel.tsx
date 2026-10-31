@@ -4,7 +4,7 @@ import { TopTab } from './TopTabs';
 import { request, socket } from '@/lib/net';
 import { useAccount } from '@/lib/auth';
 import { paintSkin } from '@/lib/skinRender';
-import { CASE_NAME, CASE_ODDS, KEY_NAME, RARITY_COLOR, RARITY_NAME, SKIN_BY_ID, WEAPON_NAME, wearOf, type Rarity, type SkinItem } from '../../../shared/skins';
+import { CASE_ODDS_TABLE, KNIFE_IN_CASES, isKnife, skinName, CASE_NAME, KEY_NAME, RARITY_COLOR, RARITY_NAME, SKIN_BY_ID, WEAPON_NAME, wearOf, type Rarity, type SkinItem } from '../../../shared/skins';
 
 const RANK: Record<Rarity, number> = { common: 0, rare: 1, ultra: 2 };
 
@@ -18,7 +18,7 @@ function Swatch({ item, size }: { item: SkinItem; size: number }) {
   return <canvas ref={ref} width={size} height={size} className={`inv-swatch ${skin?.fx ? `fx-${skin.fx}` : ''}`} />;
 }
 
-const label = (i: SkinItem) => (i.kind === 'case' ? CASE_NAME : i.kind === 'key' ? KEY_NAME : SKIN_BY_ID.get(i.skin)?.name ?? i.skin);
+const label = (i: SkinItem) => (i.kind === 'case' ? CASE_NAME : i.kind === 'key' ? KEY_NAME : (SKIN_BY_ID.has(i.skin) ? skinName(SKIN_BY_ID.get(i.skin)!) : i.skin));
 const rarityOf = (i: SkinItem): Rarity | null => (i.kind === 'skin' ? SKIN_BY_ID.get(i.skin)?.rarity ?? null : null);
 
 export function SkinsPanel() {
@@ -27,12 +27,13 @@ export function SkinsPanel() {
   useEffect(() => {
     const o = () => setOpen(true);
     const drop = (it: SkinItem) => { setToast(`Match drop: ${label(it)}!`); window.setTimeout(() => setToast(null), 6000); };
-    window.addEventListener('open-inventory', o); socket.on('inv_drop', drop);
-    return () => { window.removeEventListener('open-inventory', o); socket.off('inv_drop', drop); };
+    const ann = (a: { text: string }) => { setToast(`🔪 ${a.text}`); window.setTimeout(() => setToast(null), 8000); };
+    window.addEventListener('open-inventory', o); socket.on('inv_drop', drop); socket.on('inv_announce', ann);
+    return () => { window.removeEventListener('open-inventory', o); socket.off('inv_drop', drop); socket.off('inv_announce', ann); };
   }, []);
   return (
     <>
-      <TopTab id="skins"><button type="button" className="sol-tab" aria-expanded={open} onClick={() => setOpen((v) => !v)} data-testid="skins-tab">🎒 Skins</button></TopTab>
+      <TopTab id="inventory"><button type="button" className="sol-tab inv-tab" aria-label="Inventory" aria-expanded={open} onClick={() => setOpen((v) => !v)} data-testid="skins-tab">🎒 Inventory</button></TopTab>
       {toast && createPortal(<div className="inv-toast" data-testid="inv-drop-toast" onClick={() => { setOpen(true); setToast(null); }}>🎁 {toast}</div>, document.body)}
       {open && createPortal(<Inventory onClose={() => setOpen(false)} />, document.body)}
     </>
@@ -67,6 +68,7 @@ function Inventory({ onClose }: { onClose: () => void }) {
     }).sort((a, b) => sort === 'rarity' ? (RANK[rarityOf(b) ?? 'common'] - RANK[rarityOf(a) ?? 'common']) || b.at - a.at
       : sort === 'name' ? label(a).localeCompare(label(b)) : sort === 'wear' ? a.float - b.float : b.at - a.at);
   }, [items, weapon, rarity, sort, q]);
+  const [odds, setOdds] = useState(false);
   const PAGE = 120;
   const [limit, setLimit] = useState(PAGE);
   useEffect(() => setLimit(PAGE), [weapon, rarity, sort, q]);
@@ -101,7 +103,7 @@ function Inventory({ onClose }: { onClose: () => void }) {
         <div className="inv-body">
           <div className="inv-grid" data-testid="inv-grid">
             {shown.slice(0, limit).map((i) => { const r = rarityOf(i); return (
-              <button type="button" key={i.id} className={`inv-cell ${cur?.id === i.id ? 'sel' : ''} ${r ? `r-${r}` : 'r-item'}`} style={{ '--rc': r ? RARITY_COLOR[r] : '#8a8f98' } as React.CSSProperties} onClick={() => setSel(i.id)} title={label(i)} data-testid="inv-cell">
+              <button type="button" key={i.id} className={`inv-cell ${cur?.id === i.id ? 'sel' : ''} ${r ? `r-${r}` : 'r-item'} ${isKnife(SKIN_BY_ID.get(i.skin)) ? 'knife' : ''}`} style={{ '--rc': r ? RARITY_COLOR[r] : '#8a8f98' } as React.CSSProperties} onClick={() => setSel(i.id)} title={label(i)} data-testid="inv-cell">
                 <Swatch item={i} size={72} />
                 <span className="inv-name">{label(i)}</span>
                 {i.equipped && <span className="inv-badge">E</span>}
@@ -123,7 +125,10 @@ function Inventory({ onClose }: { onClose: () => void }) {
                   <button type="button" disabled title="Trading opens in the next update">Trade</button>
                 </div>
               </> : cur.kind === 'case' ? <>
-                <p>Holds 1 of 55 skins: Common {Math.round(CASE_ODDS.common * 100)}% · Rare {Math.round(CASE_ODDS.rare * 100)}% · Ultra {Math.round(CASE_ODDS.ultra * 100)}%. Needs a {KEY_NAME}.</p>
+                <p>Needs a {KEY_NAME}. <button type="button" className="inv-odds-btn" onClick={() => setOdds((o) => !o)} data-testid="inv-odds">Odds</button></p>
+                {odds && <table className="inv-odds" data-testid="inv-odds-table"><tbody>{CASE_ODDS_TABLE.map((o) => (
+                  <tr key={o.group + o.rarity} className={o.group === 'knife' ? 'knife' : ''}><td>{o.group === 'knife' ? '★ Knife' : 'Gun'} {RARITY_NAME[o.rarity]}</td><td>{(o.p * 100).toFixed(o.p < 0.01 ? 2 : 1)}%</td></tr>))}</tbody></table>}
+                {odds && !KNIFE_IN_CASES && <p className="inv-note">★ Knives join cases when the knife ships; until then the knife roll rerolls into the gun tiers.</p>}
                 <div className="inv-actions"><button type="button" disabled={!keys || !!cur.locked} onClick={() => void open(cur.id)}>Open</button><button type="button" disabled>Sell</button></div>
               </> : <><p>Opens one {CASE_NAME}.</p><div className="inv-actions"><button type="button" disabled>Sell</button></div></>}
             </> : <p className="inv-note">Select an item.</p>}
@@ -140,25 +145,26 @@ function Unbox({ reel, win, item, onDone }: { reel: string[]; win: number; item:
   const [x, setX] = useState(0);
   const [done, setDone] = useState(false);
   const CELL = 120;
+  const s = SKIN_BY_ID.get(item.skin)!;
+  const knife = isKnife(s);
   useEffect(() => {
     const jitter = Math.random() * 80 - 40;
     const t1 = window.setTimeout(() => setX(-(win * CELL) + 300 - CELL / 2 + jitter), 50);
-    const t2 = window.setTimeout(() => setDone(true), 5200);
+    const t2 = window.setTimeout(() => setDone(true), knife ? 8200 : 5200);
     return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [win]);
-  const s = SKIN_BY_ID.get(item.skin)!;
+  }, [win, knife]);
   return (
-    <div className="unbox" data-testid="unbox">
+    <div className={`unbox ${knife ? 'knife' : ''} ${knife && done ? 'flash' : ''}`} data-testid="unbox">
       <div className="unbox-window"><div className="unbox-marker" />
-        <div className="unbox-reel" style={{ transform: `translateX(${x}px)` }}>
+        <div className="unbox-reel" style={{ transform: `translateX(${x}px)`, ...(knife ? { transitionDuration: '8s', transitionTimingFunction: 'cubic-bezier(.05,.75,.1,1)' } : {}) }}>
           {reel.map((id, i) => { const d = SKIN_BY_ID.get(id)!; return (
-            <div key={i} className="unbox-cell" style={{ '--rc': RARITY_COLOR[d.rarity] } as React.CSSProperties}>
-              <Swatch item={{ ...item, id: `r${i}`, skin: id, seed: i * 37, float: 0.1 }} size={90} /><span>{d.name}</span>
+            <div key={i} className={`unbox-cell ${isKnife(d) ? 'knife' : ''}`} style={{ '--rc': isKnife(d) ? '#ffd23f' : RARITY_COLOR[d.rarity] } as React.CSSProperties}>
+              {isKnife(d) ? <><div className="unbox-star">★</div><span>Rare Special Item</span></> : <><Swatch item={{ ...item, id: `r${i}`, skin: id, seed: i * 37, float: 0.1 }} size={90} /><span>{d.name}</span></>}
             </div>); })}
         </div>
       </div>
-      {done && <div className="unbox-result" style={{ color: RARITY_COLOR[s.rarity] }} data-testid="unbox-result">
-        <strong>{s.name}</strong> — {RARITY_NAME[s.rarity]} {WEAPON_NAME[s.weapon]} · {wearOf(item.float).name}
+      {done && <div className="unbox-result" style={{ color: knife ? '#ffd23f' : RARITY_COLOR[s.rarity] }} data-testid="unbox-result">
+        <strong>{skinName(s)}</strong> — {RARITY_NAME[s.rarity]} {WEAPON_NAME[s.weapon]} · {wearOf(item.float).name}
         <button type="button" onClick={onDone}>Nice</button>
       </div>}
       {!done && <button type="button" className="unbox-skip" onClick={() => setDone(true)}>Skip</button>}

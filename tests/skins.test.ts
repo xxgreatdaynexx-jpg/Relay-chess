@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
-import { CASE_ODDS, rollSkin, SKINS, SKIN_BY_ID, SKIN_WEAPONS, lookKey, parseToken } from '../shared/skins';
+import { CASE_ODDS, CASE_ODDS_TABLE, rollSkin, SKINS, SKIN_BY_ID, SKIN_WEAPONS, lookKey, parseToken } from '../shared/skins';
 import { ItemVault, PgItemStore } from '../server/skins';
 import { ArenaWorld } from '../server/arena-world';
 
@@ -29,15 +29,23 @@ describe('skins catalog + odds', () => {
     }
     expect(SKIN_BY_ID.get('u-pistol-0')!.name).toBe('Chudlord Ascended');
   });
-  it('rolls 79/19/2', () => {
-    const n = 100_000; const got = { common: 0, rare: 0, ultra: 0 };
-    for (let i = 0; i < n; i++) got[rollSkin((i + 0.5) / n, Math.random()).rarity]++;
-    expect(got.ultra / n).toBeCloseTo(CASE_ODDS.ultra, 3);
-    expect(got.rare / n).toBeCloseTo(CASE_ODDS.rare, 3);
+  it('rolls the two-step case odds (1e6 seeded rolls)', () => {
+    const seeded = (seed: number) => () => { seed = (seed + 0x6d2b79f5) >>> 0; let t = seed; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const n = 1_000_000; const rng = seeded(42); const got: Record<string, number> = {};
+    for (let i = 0; i < n; i++) { const s = rollSkin(rng, true); const k = `${s.weapon === 'knife' ? 'knife' : 'gun'}:${s.rarity}`; got[k] = (got[k] ?? 0) + 1; }
+    const sum = CASE_ODDS_TABLE.reduce((a, o) => a + o.p, 0);
+    expect(sum).toBeCloseTo(1, 9);
+    for (const o of CASE_ODDS_TABLE) {
+      const p = (got[`${o.group}:${o.rarity}`] ?? 0) / n, sd = Math.sqrt(o.p * (1 - o.p) / n);
+      expect(Math.abs(p - o.p)).toBeLessThan(5 * sd + 1e-6);
+    }
+    expect(CASE_ODDS.knife * CASE_ODDS.knifeTier.common).toBeCloseTo(0.016, 6);
+    expect(CASE_ODDS.knife * CASE_ODDS.knifeTier.ultra).toBeCloseTo(0.0005, 6);
+    // Knives not live: never dropped, gun tiers renormalised.
+    const r2 = seeded(7); let k = 0, u = 0;
+    for (let i = 0; i < 200_000; i++) { const s = rollSkin(r2, false); if (s.weapon === 'knife') k++; if (s.rarity === 'ultra') u++; }
+    expect(k).toBe(0); expect(Math.abs(u / 200_000 - 0.02 / 0.98)).toBeLessThan(0.002);
   });
-});
-
-describe('drops, opening, equip', () => {
   it('one drop per participant per match, idempotent; skips short idle players', () => {
     const v = new ItemVault();
     const a = v.dropForMatch('m1', [P('QA Alice'), P('QA Idle', 5000), P('QA Fragger', 5000, 1)]);

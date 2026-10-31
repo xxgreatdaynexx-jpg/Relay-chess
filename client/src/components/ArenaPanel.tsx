@@ -886,7 +886,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         <button type="button" className="fps-quality" data-testid="arena-look-btn" title="Look sensitivity" aria-expanded={lookOpen} onClick={() => setLookOpen((o) => !o)}>⚙ Sens</button>
         {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" title="Reset position" onClick={win.reset}>⟲</button>}
         {wallet !== null && <span className="ml-auto text-xs font-semibold" title="Your chip wallet (shared by every game)" data-testid="arena-wallet">🪙 {wallet.toLocaleString()}</span>}
-        <button type="button" className={`text-xs ${wallet === null ? 'ml-auto' : ''}`} title="Skins, cases and keys" onClick={() => window.dispatchEvent(new Event('open-inventory'))} data-testid="arena-inventory">🎒 Skins</button>
+        <button type="button" className={`text-xs ${wallet === null ? 'ml-auto' : ''}`} title="Skins, cases and keys" onClick={() => window.dispatchEvent(new Event('open-inventory'))} data-testid="arena-inventory">🎒 Inventory</button>
         <button type="button" aria-label="Close arena" onClick={onClose}>✕</button>
       </div>
       <div className="fps-maps" data-testid="arena-maps">
