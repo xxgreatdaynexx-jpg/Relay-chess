@@ -4,6 +4,7 @@ import { ArenaWorld, type ArenaEvent } from './arena-world.js';
 import { getArenaLedger } from './arena-store.js';
 import { ArenaBots, isArenaBot, warmNavGraphs } from './arena-bots.js';
 import { MAPS } from '../shared/arenaMaps.js';
+import { ArenaAntiCheat, recordFlag, type ArenaFlag } from './arena-anticheat.js';
 if (process.env.NODE_ENV !== 'test' && !process.env.VITEST) warmNavGraphs(Object.values(MAPS));
 
 /** socket id -> claimed account name; guests are absent and never recorded. */
@@ -12,6 +13,13 @@ const claimed = new Map<string, string>();
 const ROOM = '__fps_arena';
 const MAX_PLAYERS = 24;
 let world = new ArenaWorld();
+let flagSink: (f: ArenaFlag) => void = recordFlag;
+/** Test hook: capture anti-cheat flags instead of writing them. */
+export function setFlagSink(fn: ((f: ArenaFlag) => void) | null): void { flagSink = fn ?? recordFlag; }
+const newAudit = () => new ArenaAntiCheat((f) => flagSink(f), (id, name) => (isBot(id) ? null : claimed.get(id)?.toLowerCase() ?? `guest:${name}`));
+world.audit = newAudit();
+/** Test hook. */
+export const getArenaWorld = () => world;
 let ticker: ReturnType<typeof setInterval> | null = null;
 
 // ---- QA bots (test hook). Disabled unless ARENA_QA_BOTS=1 is set on the server; never set it in production.
@@ -66,6 +74,7 @@ function dropBotsIfAlone(): void {
 
 export function resetArena(): void {
   world = new ArenaWorld();
+  world.audit = newAudit();
   botHeading.clear();
   arenaBots = new ArenaBots();
   claimed.clear();
@@ -100,9 +109,23 @@ export function claimArenaName(id: string, name: string | null): void {
   if (name) claimed.set(id, name); else claimed.delete(id);
 }
 
+/** Humans in the arena (fighter id = socket id). Bots get nothing. */
+const viewers = () => [...world.fighters.keys()].filter(isHuman);
+
 function emit(io: Server, events: ArenaEvent[]): void {
   recordArena(events);
-  for (const e of events) io.to(ROOM).emit(e.ev, e.data);
+  const now = Date.now();
+  for (const e of events) {
+    // Shots carry the shooter's position: hidden shooters only give away a coarse origin.
+    if (e.ev === 'fps_shot') for (const id of viewers()) io.to(id).emit(e.ev, world.shotFor(id, e.data, now));
+    else io.to(ROOM).emit(e.ev, e.data);
+  }
+}
+
+/** Interest management: each client only gets positions/health of enemies it can plausibly see. */
+function broadcastState(io: Server, now = Date.now()): void {
+  const full = world.snapshot(now);
+  for (const id of viewers()) io.to(id).emit('fps_state', world.snapshotFor(id, now, full));
 }
 
 function ensureTicker(io: Server): void {
@@ -118,7 +141,7 @@ function ensureTicker(io: Server): void {
     syncBots(now);
     emit(io, arenaBots.drive(world, now));
     emit(io, world.tick(now));
-    io.to(ROOM).emit('fps_state', world.snapshot(now));
+    broadcastState(io, now);
   }, Math.round(1000 / TICK_HZ));
   (ticker as unknown as { unref?: () => void }).unref?.();
 }
@@ -129,7 +152,7 @@ function leave(io: Server, socket: Socket): void {
   dropBotsIfAlone();
   syncBots(Date.now());
   socket.leave(ROOM);
-  io.to(ROOM).emit('fps_state', world.snapshot(Date.now()));
+  broadcastState(io);
 }
 
 const body = (p: unknown) => (p && typeof p === 'object' ? (p as Record<string, unknown>) : {});
@@ -142,6 +165,7 @@ export function registerFps(io: Server, socket: Socket): void {
         return;
       }
       const account = (socket.data.account as { name?: string } | undefined)?.name;
+      claimArenaName(socket.id, account ?? null);
       world.join(socket.id, account ?? guestName(), Date.now());
       // The first human in can choose the map straight away.
       const want = body(payload).map;
@@ -152,7 +176,7 @@ export function registerFps(io: Server, socket: Socket): void {
     }
     syncBots(Date.now());
     const bots = addQaBots(body(payload).qaBots);
-    if (bots) io.to(ROOM).emit('fps_state', world.snapshot(Date.now()));
+    if (bots) broadcastState(io);
     const f = world.fighters.get(socket.id)!;
     ack?.({ ok: true, id: socket.id, x: f.x, y: f.y, z: f.z, a: f.a, map: world.map.id });
     ensureTicker(io);
@@ -168,7 +192,7 @@ export function registerFps(io: Server, socket: Socket): void {
   socket.on('fps_scope', (p: unknown) => world.setScope(socket.id, body(p).on, Date.now()));
   socket.on('fps_map', (p: unknown, ack?: (res: unknown) => void) => {
     const ev = world.pickMap(body(p).map, socket.id, Date.now(), isHuman);
-    if (ev) { emit(io, ev); io.to(ROOM).emit('fps_state', world.snapshot(Date.now())); }
+    if (ev) { emit(io, ev); broadcastState(io); }
     if (typeof ack === 'function') ack({ ok: !!ev, map: world.map.id, next: world.upcomingMapId });
   });
   socket.on('fps_ping', (ack?: unknown) => { if (typeof ack === 'function') ack(Date.now()); });

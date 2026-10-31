@@ -1,5 +1,6 @@
 import pg from 'pg';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
+import { attachFlagStore, FLAGS_MIGRATION } from './arena-anticheat.js';
 
 /** Lifetime arena record for one claimed name (guests are never recorded). */
 export interface ArenaRecord {
@@ -130,4 +131,5 @@ export async function initArenaStorage(): Promise<void> {
   if (!url) { console.warn('[arena] no DATABASE_URL set; arena stats are in-memory only'); return; }
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
   if (await ledger.attach(new PgArenaStore(pool))) console.log(`[arena] connected to postgres (${ledger.standings(1e6).length} players loaded)`);
+  try { await pool.query(FLAGS_MIGRATION); attachFlagStore(pool); } catch (e) { console.error('[arena-flag] table setup failed:', (e as Error).message); }
 }

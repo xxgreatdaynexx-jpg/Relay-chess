@@ -25,7 +25,7 @@ const SCOPE_ZOOM = 3.5;
 const FOV = 68; // vertical, degrees
 
 interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number; bot?: boolean }
-interface NetState { t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null; rockets?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number }> }
+interface NetState { t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null; roster?: Array<Pick<NetPlayer, 'id' | 'name' | 'k' | 'd' | 'st' | 'bot'>>; radar?: Array<{ x: number; y: number }>; rockets?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number }> }
 interface Snap extends NetState { recv: number }
 type Quality = 'hd' | 'lo';
 
@@ -207,7 +207,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
           m.reloadUntil = mine.rl ? performance.now() + mine.rl : 0;
         }
       }
-      setBoard([...s.players].sort((a, b) => b.k - a.k || a.d - b.d));
+      setBoard([...s.players, ...((s.roster ?? []) as NetPlayer[])].sort((a, b) => b.k - a.k || a.d - b.d));
     };
     const onHit = (h: { by: string | null; target: string; cause: string }) => {
       const now = performance.now();
@@ -559,7 +559,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       });
       // Radar (UAV)
       const live = (snap?.strikes ?? []).filter((s) => s.inMs >= 0);
-      r.minimap(ctx, map, m, m.uavUntil > now ? others : [], live);
+      r.minimap(ctx, map, m, m.uavUntil > now ? [...others, ...(snap?.radar ?? [])] : [], live);
       // Airstrike warning: countdown, danger-close when you're in the zone, jets overhead just before impact.
       for (const s of live) {
         const left = Math.max(0, s.inMs - (now - (snap?.recv ?? now)));

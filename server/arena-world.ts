@@ -10,6 +10,8 @@ import {
 } from '../shared/fps.js';
 import { isMapId, MAP_ROTATION } from '../shared/arenaMaps.js';
 import { PoseHistory, rewindTime } from '../shared/netInterp.js';
+import { ArenaAntiCheat, coarse, VisibilityTracker } from './arena-anticheat.js';
+import { HEAD_Z, MOVE_SPEED } from '../shared/fps.js';
 
 /** Drones hover at least this high, and always above the map's tallest structure. */
 export const DRONE_Z = 8;
@@ -60,6 +62,10 @@ export class ArenaWorld {
   /** When the current match ends (0 until someone joins). */
   matchEndsAt = 0;
   private droneHeight: number;
+  /** Per-viewer line-of-sight memory (interest management). */
+  vis = new VisibilityTracker();
+  /** Optional cheat-detection stats (flag only). */
+  audit: ArenaAntiCheat | null = null;
 
   constructor(public map: ArenaMap = MAP, private rand: () => number = Math.random) {
     this.droneHeight = droneZ(map);
@@ -114,6 +120,7 @@ export class ArenaWorld {
       switchedAt: -1e9, scopedSince: 0, jumpAt: -1e9, streak: 0, uavUntil: 0,
     };
     this.fighters.set(id, f);
+    this.audit?.join(id, name);
     return f;
   }
 
@@ -122,6 +129,8 @@ export class ArenaWorld {
     this.strikes = this.strikes.filter((s) => s.ownerId !== id);
     this.rockets = this.rockets.filter((r) => r.ownerId !== id);
     this.history.forget(id);
+    this.vis.forget(id);
+    this.audit?.leave(id);
     return this.fighters.delete(id);
   }
 
@@ -141,8 +150,13 @@ export class ArenaWorld {
     if (na !== null) f.a = na;
     const np = clampPitch(p);
     if (np !== null) f.p = np;
+    if (this.audit && (na !== null || np !== null)) this.audit.aim(id, f.a, f.p, now);
     if (now - f.lastMove < 25) return; // ~40 Hz max
     this.advance(f, now);
+    if (this.audit && typeof x === 'number' && typeof y === 'number' && Number.isFinite(x) && Number.isFinite(y)) {
+      const dtMs = Math.min(Math.max(now - f.lastMove, 0), 500);
+      this.audit.move(id, Math.hypot(x - f.x, y - f.y), MOVE_SPEED * (dtMs / 1000) * 1.5 + 0.1, now);
+    }
     validateMove(f, x, y, now - f.lastMove, this.map);
     f.lastMove = now;
     this.history.record(f.id, now, f.x, f.y, f.z);
@@ -209,6 +223,7 @@ export class ArenaWorld {
     if (na !== null) f.a = na;
     const np = clampPitch(p);
     if (np !== null) f.p = np;
+    const flick = this.audit ? this.audit.aim(id, f.a, f.p, now) : 0;
     this.advance(f, now);
     f.lastShotAt[f.weapon] = now;
     f.lastShot = now;
@@ -229,7 +244,18 @@ export class ArenaWorld {
       if (h) { restore.push([o, o.x, o.y, o.z]); o.x = h.x; o.y = h.y; o.z = h.z; }
     }
     let shot: ReturnType<typeof fireWeapon>;
-    try { shot = fireWeapon(f, spec, [...this.fighters.values()], { scoped, rand: this.rand, map: this.map }); }
+    let blocked = 0;
+    try {
+      shot = fireWeapon(f, spec, [...this.fighters.values()], { scoped, rand: this.rand, map: this.map });
+      // Defence in depth: a hit only counts if the target was in sight of the shooter's eye at lag-comp time.
+      const eye = eyeOf(f);
+      for (const tid of [...shot.hits.keys()]) {
+        const t = this.fighters.get(tid);
+        if (!t) continue;
+        if (lineOfSight(eye, { x: t.x, y: t.y, z: t.z + HEAD_Z }, this.map) || lineOfSight(eye, chestOf(t), this.map) || lineOfSight(eye, { x: t.x, y: t.y, z: t.z + 0.35 }, this.map)) continue;
+        shot.hits.delete(tid); shot.heads.delete(tid); blocked += 1;
+      }
+    }
     finally { for (const [o, x, y, z] of restore) { o.x = x; o.y = y; o.z = z; } }
     const events: ArenaEvent[] = [{
       ev: 'fps_shot',
@@ -239,6 +265,7 @@ export class ArenaWorld {
         impact: shot.impact && { x: +shot.impact.x.toFixed(2), y: +shot.impact.y.toFixed(2), z: +shot.impact.z.toFixed(2) },
       },
     }];
+    this.audit?.shot(f.id, now, { precise: f.weapon !== 'shotgun', hit: shot.hits.size > 0, head: shot.heads.size > 0, flick, blocked, weapon: f.weapon });
     for (const [tid, dmg] of shot.hits) {
       const head = shot.heads.has(tid);
       if (head) f.headshots += 1;
@@ -426,6 +453,38 @@ export class ArenaWorld {
     // Match over: load the picked map, or the next one in rotation.
     if (this.matchEndsAt && now >= this.matchEndsAt && !this.nuke) out.push(...this.changeMap(MAPS[this.upcomingMapId], now));
     return out;
+  }
+
+  /**
+   * What one client may know. Enemies out of sight (plus a short linger) lose position, aim, health and weapon:
+   * they only appear in `roster` (name and score, for the scoreboard). While the viewer's UAV is up, hidden
+   * enemies show on `radar` as coarse x/y only, which is what the UAV gives legitimately.
+   */
+  snapshotFor(viewerId: string, now: number, full = this.snapshot(now)) {
+    const v = this.fighters.get(viewerId);
+    if (!v) return { ...full, players: [], roster: full.players.map((p) => ({ id: p.id, name: p.name, k: p.k, d: p.d, st: p.st, ...(p.bot ? { bot: true } : {}) })) };
+    const seen = this.vis.visible(viewerId, v, [...this.fighters.values()], this.map, now);
+    const players: typeof full.players = [];
+    const roster: Array<{ id: string; name: string; k: number; d: number; st: number; bot?: boolean }> = [];
+    const radar: Array<{ x: number; y: number }> = [];
+    const uav = v.uavUntil > now;
+    for (const p of full.players) {
+      if (seen.has(p.id)) { players.push(p); continue; }
+      roster.push({ id: p.id, name: p.name, k: p.k, d: p.d, st: p.st, ...(p.bot ? { bot: true } : {}) });
+      if (uav && p.alive) radar.push({ x: Math.round(p.x), y: Math.round(p.y) });
+    }
+    return { ...full, players, roster, ...(uav ? { radar } : {}) };
+  }
+
+  /** A shot event as seen by `viewerId`: a hidden shooter only gives away a coarse origin (for sound), no tracer rays. */
+  shotFor(viewerId: string, data: Record<string, unknown>, now: number): Record<string, unknown> {
+    const sid = data.id as string;
+    if (sid === viewerId) return data;
+    const v = this.fighters.get(viewerId);
+    const s = this.fighters.get(sid);
+    if (v && s && this.vis.visible(viewerId, v, [s], this.map, now).has(sid)) return data;
+    const o = data.o as number[] | undefined;
+    return { id: sid, w: data.w, coarse: true, ...(o ? { o: [coarse(o[0]), coarse(o[1]), coarse(o[2])] } : {}), ...(data.rocket ? { rocket: data.rocket } : {}) };
   }
 
   snapshot(now: number) {
