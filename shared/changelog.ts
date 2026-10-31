@@ -6,7 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-10-31T11:15:00-06:00', title: 'Tidier streets', bullets: [
+  { commit: '', at: '2026-10-31T11:30:00-06:00', title: 'Trailer Park', bullets: [
+    'A new Trailer Park, Chud Acres, on the north-west edge of the city, with gravel lanes off the north boulevard and an entrance sign.',
+    'Every player gets their own trailer with a lot that stays theirs. New players get one automatically, and the park grows new rows as it fills up.',
+    'Hover over a trailer to see whose it is. Clicking your own just shows "Your trailer".',
+  ] },
+  { commit: 'f21ca6e', at: '2026-10-31T11:15:00-06:00', title: 'Tidier streets', bullets: [
     'Rebuilt the road network like a real city: a ring road with big smooth corners, two straight boulevards that cross in the middle, a neat downtown grid, and a waterfront drive that follows the shore.',
     'Suburbs get orderly streets with gentle curves and a few cul-de-sacs, and the city is a bit bigger with new land on every side.',
     'Landmarks and buildings sit neatly in their blocks facing the street, with nothing squeezed between roads.',

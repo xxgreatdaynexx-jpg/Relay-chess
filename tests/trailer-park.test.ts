@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parkLayout, cityFill, landmarkBoxes, obbOverlap, roadClearance, obbCorners, PARK_AREA, PLATE } from '../client/src/lib/worldLayout';
-import { trailerExclusion, isSingleDigitName } from '../shared/trailerPark';
+import { trailerExclusion, isSingleCharName } from '../shared/trailerPark';
 
 describe('trailer park', () => {
   const f = cityFill(7); const solids = [...f.houses, ...landmarkBoxes()];
@@ -15,8 +15,8 @@ describe('trailer park', () => {
     }
   });
   it('no house is built inside the park', () => { expect(f.houses.some((hh) => obbOverlap(hh, PARK_AREA))).toBe(false); });
-  it('excludes QA, single-digit and cheat accounts', () => {
-    expect(trailerExclusion('QA-bot', [])).toBeTruthy(); expect(trailerExclusion('7', [])).toBeTruthy(); expect(isSingleDigitName('12')).toBe(false);
+  it('excludes QA, single-character and cheat accounts', () => {
+    expect(trailerExclusion('QA-bot', [])).toBeTruthy(); expect(trailerExclusion('7', [])).toBeTruthy(); expect(trailerExclusion('A', [])).toBeTruthy(); expect(isSingleCharName('Yo')).toBe(false);
     expect(trailerExclusion('chessgawd', [])).toBeTruthy(); expect(trailerExclusion('dayne', [])).toBeNull();
   });
 });
