@@ -11,6 +11,7 @@ import { INTERP_DELAY_MS, LOCAL_STEP_S, SnapBuffer, samplePlayers } from '../../
 import { TagVisibility, tagVisible } from '@/lib/arenaTags';
 import type { ArenaMap } from '../../../shared/arenaMaps';
 import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playKnife, playLockBeep, playMultiKill, shotFalloff, unlockSounds } from '@/lib/sounds';
+import { isTypingTarget, spaceRespawns } from '@/lib/respawnKey';
 import { fitSpeed, killCardText, sampleKillCam, type CamFrame, type KillCard } from '@/lib/killcam';
 import { feedParts, popupScale, POPUP_MS, type FeedItem } from '@/lib/arenaFeed';
 import {
@@ -277,7 +278,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       if (mine && mapChanged) Object.assign(m, { x: mine.x, y: mine.y, z: mine.z, vz: 0, grounded: true, p: 0 });
       if (mine) {
         // Died: free the mouse so the loadout picker / Respawn button can be clicked.
-        if (!mine.alive && m.alive) { m.alive = false; releaseOnDeath(); }
+        if (!mine.alive && m.alive) { m.alive = false; if (performance.now() - deathAtRef.current > 2000) deathAtRef.current = performance.now(); releaseOnDeath(); }
         if (mine.alive && !m.alive) { Object.assign(m, { alive: true, x: mine.x, y: mine.y, z: mine.z, vz: 0, grounded: true, p: 0, ammo: WEAPONS[m.weapon].mag, reloadUntil: 0 }); syncOnRespawn(); }
         // The server owns position (and height): if prediction drifts too far, snap to its authoritative spot.
         else if (mine.alive && Math.abs(m.z - mine.z) > 0.8) { Object.assign(m, { x: mine.x, y: mine.y, z: mine.z, vz: 0, grounded: mine.g }); net.corr = null; net.hist.clear(); }
@@ -869,6 +870,14 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   }, []);
 
   const GAME_KEYS = ARENA_GAME_KEYS;
+  /** Respawn button / Space: respawn now with the selected loadout, stop any kill cam, refocus + re-lock the mouse. */
+  function respawnNow() {
+    socket.emit('fps_respawn', { w: loadoutRef.current });
+    kcRef.current = null; setKillCam(null);
+    wrapRef.current?.focus({ preventScroll: true });
+    const p = canvasRef.current?.requestPointerLock?.() as unknown as Promise<void> | undefined;
+    p?.catch?.(() => { /* lock refused */ });
+  }
   function onKey(e: React.KeyboardEvent, down: boolean) {
     // Shift turns 1–5 into !@#…; read the physical key so guns still switch mid-sprint.
     const key = arenaKey(e);
@@ -879,6 +888,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       if (hk === 'fps') { e.preventDefault(); e.stopPropagation(); setShowFps((v) => !v); return; }
     }
     if (key === 'escape' || key === 'm' || key === 'f3') return;
+    if (down && key === ' ' && spaceRespawns({ repeat: e.repeat, alive: me.current.alive, phase: phaseRef.current, broke: life.broke, sinceDeathMs: performance.now() - deathAtRef.current, typing: isTypingTarget(e.target) })) { e.preventDefault(); e.stopPropagation(); respawnNow(); return; }
     if (down && key === 'k' && !e.repeat && !me.current.alive && phaseRef.current === 'play') { e.preventDefault(); e.stopPropagation(); watchKillCam(); return; }
     e.stopPropagation();
     if (!GAME_KEYS.has(key)) return;
@@ -1059,7 +1069,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
               <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center' }}>
                 <span data-testid="arena-respawn-countdown">Auto-respawn in <b>{life.rs}s</b></span>
                 <button type="button" data-testid="arena-respawn-now" style={{ padding: '4px 12px', borderRadius: 4, border: 0, background: '#e6e9df', color: '#15170f', fontWeight: 800 }}
-                  onClick={() => { socket.emit('fps_respawn', { w: loadoutRef.current }); wrapRef.current?.focus({ preventScroll: true }); const p = canvasRef.current?.requestPointerLock?.() as unknown as Promise<void> | undefined; p?.catch?.(() => { /* lock refused */ }); }}>Respawn</button>
+                  onClick={() => respawnNow()}>Respawn <kbd>SPACE</kbd></button>
               </div>
             )}
             {life.broke && wallet !== null && (

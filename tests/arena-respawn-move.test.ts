@@ -42,7 +42,10 @@ describe('respawn: you can move right away (authoritative teleport)', () => {
     expect(block).toContain('net.hist.clear()');
     expect(block).toContain('net.corr = null');
     expect(block).toContain('focus(');
-    expect(src).toMatch(/data-testid="arena-respawn-now"[\s\S]{0,400}wrapRef\.current\?\.focus/);
+    expect(src).toMatch(/data-testid="arena-respawn-now"[\s\S]{0,400}respawnNow\(\)/);
+    const rn = src.slice(src.indexOf('function respawnNow()'), src.indexOf('function onKey('));
+    expect(rn).toContain('wrapRef.current?.focus');
+    expect(rn).toContain('requestPointerLock');
   });
 });
 
