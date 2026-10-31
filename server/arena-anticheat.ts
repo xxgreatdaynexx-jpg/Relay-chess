@@ -167,9 +167,9 @@ export function recordFlag(f: ArenaFlag): void {
 
 // ------------------------------------------------------------------ owner-granted perks
 
-export type ArenaPerk = 'wallhack' | 'aimassist';
+export type ArenaPerk = 'wallhack' | 'aimassist' | 'homingRpg';
 /** Server-side only; the client is told the result but can never grant itself anything. Keyed by account key. */
-export const ARENA_PERKS: Readonly<Record<string, readonly ArenaPerk[]>> = Object.freeze({ arenagawd: Object.freeze(['wallhack', 'aimassist'] as const) });
+export const ARENA_PERKS: Readonly<Record<string, readonly ArenaPerk[]>> = Object.freeze({ arenagawd: Object.freeze(['wallhack', 'aimassist', 'homingRpg'] as const) });
 export const perksFor = (accountKey: string | null | undefined): ReadonlySet<ArenaPerk> =>
   new Set(accountKey ? ARENA_PERKS[accountKey.trim().toLowerCase()] ?? [] : []);
 
@@ -177,3 +177,7 @@ export const perksFor = (accountKey: string | null | undefined): ReadonlySet<Are
 export const ASSIST_CONE = (12 * Math.PI) / 180;
 export const ASSIST_PULL = 0.85;
 export const ASSIST_SPREAD = 0.4;
+
+/** Heat-seeking RPG: lock cone (half-angle) and max turn rate. Same speed and splash as a normal rocket. */
+export const HOMING_CONE = (25 * Math.PI) / 180;
+export const HOMING_TURN = (120 * Math.PI) / 180; // rad/s

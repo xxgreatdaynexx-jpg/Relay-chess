@@ -679,3 +679,12 @@ export function playArenaExplosion(dist: number, kind: 'rocket' | 'synth' = 'syn
   osc.connect(og); og.connect(lp); osc.start(now); osc.stop(now + len);
   osc.onended = done;
 }
+
+/** Faint "missile lock" double beep (someone's heat-seeker is on you). */
+export function playLockBeep(): void {
+  const ctx = audio();
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  tone(ctx, 1760, t, 0.06, 0.05);
+  tone(ctx, 1760, t + 0.09, 0.06, 0.05);
+}

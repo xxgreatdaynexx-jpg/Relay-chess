@@ -10,7 +10,7 @@ import { prefersReducedMotion } from '@/lib/motion';
 import { INTERP_DELAY_MS, LOCAL_STEP_S, SnapBuffer, samplePlayers } from '../../../shared/netInterp';
 import { TagVisibility, tagVisible } from '@/lib/arenaTags';
 import type { ArenaMap } from '../../../shared/arenaMaps';
-import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playMultiKill, unlockSounds } from '@/lib/sounds';
+import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playLockBeep, playMultiKill, unlockSounds } from '@/lib/sounds';
 import { feedParts, popupScale, POPUP_MS, type FeedItem } from '@/lib/arenaFeed';
 import {
   AIRSTRIKE_RADIUS, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
@@ -26,7 +26,7 @@ const SCOPE_ZOOM = 3.5;
 const FOV = 68; // vertical, degrees
 
 interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number; bot?: boolean; c?: boolean; s?: boolean; sk?: string }
-interface NetState { t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null; wh?: boolean; roster?: Array<Pick<NetPlayer, 'id' | 'name' | 'k' | 'd' | 'st' | 'bot'>>; radar?: Array<{ x: number; y: number }>; rockets?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number }> }
+interface NetState { t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null; wh?: boolean; roster?: Array<Pick<NetPlayer, 'id' | 'name' | 'k' | 'd' | 'st' | 'bot'>>; radar?: Array<{ x: number; y: number }>; rockets?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; seek?: number; lock?: string | null }> }
 interface Snap extends NetState { recv: number }
 type Quality = 'hd' | 'lo';
 
@@ -99,7 +99,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     jumpAt: -1e9, scoped: false, firing: false, streak: 0, uavUntil: 0, walk: 0, crouch: false, eyeH: EYE_HEIGHT, sprint: false, sprintEndAt: -1e9, fovKick: 0,
   });
   const snaps = useRef<Snap[]>([]);
-  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, killmark: 0, headmark: 0, nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string; fall: number }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number; sniper?: boolean }>, impacts: [] as Array<{ x: number; y: number; z: number; player: boolean; at: number }>, blasts: [] as Array<{ x: number; y: number; z: number; big: boolean }>, shells: 0, rockets: new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number }>(), weaponAt: new Map<string, { w: string; at: number }>(), hitAt: new Map<string, number>(), shotAt: new Map<string, number>(), shake: 0, jetAt: 0 });
+  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, killmark: 0, headmark: 0, nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string; fall: number }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number; sniper?: boolean }>, impacts: [] as Array<{ x: number; y: number; z: number; player: boolean; at: number }>, blasts: [] as Array<{ x: number; y: number; z: number; big: boolean }>, shells: 0, rockets: new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number; seek?: number }>(), lockAt: 0, lockBeep: 0, weaponAt: new Map<string, { w: string; at: number }>(), hitAt: new Map<string, number>(), shotAt: new Map<string, number>(), shake: 0, jetAt: 0 });
   const banner = useRef<{ text: string; sub: string; at: number } | null>(null);
   const touch = useRef({ up: false, down: false, left: false, right: false, lookUp: false, lookDown: false });
   const [touchCrouch, setTouchCrouch] = useState(false);
@@ -192,6 +192,10 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       if (snaps.current.length > 6) snaps.current.shift();
       const m = me.current;
       const mine = s.players.find((p) => p.id === m.id);
+      if ((s.rockets ?? []).some((r) => r.seek && r.lock === m.id)) {
+        fx.current.lockAt = performance.now();
+        if (performance.now() - fx.current.lockBeep > 280) { fx.current.lockBeep = performance.now(); playLockBeep(); }
+      }
       const mapChanged = !!s.map && s.map !== mapRef.current.id;
       if (mapChanged) {
         mapRef.current = mapById(s.map);
@@ -466,7 +470,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       for (const b of fx.current.blasts.splice(0)) g3.explode(b.x, b.y, b.z, b.big);
       for (; fx.current.shells > 0; fx.current.shells--) g3.ejectShell(m.weapon);
       // Rockets: the server snapshot is the truth; extrapolate it (and brand-new launches) to now.
-      const rockets = new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number }>();
+      const rockets = new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number; seek?: number }>();
       for (const r of fx.current.rockets.values()) if (now - r.at < ROCKET_LIFE_MS) rockets.set(r.id, r);
       if (snap) for (const r of snap.rockets ?? []) rockets.set(r.id, { ...r, at: snap.recv });
       fx.current.rockets = new Map([...rockets].filter(([id, r]) => now - r.at < ROCKET_LIFE_MS && (!snap || (snap.rockets ?? []).some((q) => q.id === id) || snap.recv < r.at)));
@@ -477,7 +481,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         tracers: fx.current.tracers.map((tr) => ({ o: tr.o, e: tr.e, t: (now - tr.at) / 1000, sniper: tr.sniper })),
         rockets: [...fx.current.rockets.values()].map((r) => {
           const t = Math.min(0.25, (now - r.at) / 1000);
-          return { id: r.id, x: r.x + r.vx * t, y: r.y + r.vy * t, z: r.z + r.vz * t - 0.5 * ROCKET_GRAVITY * t * t, vx: r.vx, vy: r.vy, vz: r.vz - ROCKET_GRAVITY * t };
+          return { seek: !!r.seek, id: r.id, x: r.x + r.vx * t, y: r.y + r.vy * t, z: r.z + r.vz * t - 0.5 * ROCKET_GRAVITY * t * t, vx: r.vx, vy: r.vy, vz: r.vz - ROCKET_GRAVITY * t };
         }),
       };
       const shake = now - fx.current.shake < 450 ? (1 - (now - fx.current.shake) / 450) * 0.04 : 0;
@@ -511,6 +515,10 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         ctx.fillStyle = p.hp > 40 ? '#5fe36b' : '#d9473a'; ctx.fillRect(top.sx - wid / 2, top.sy - 5, (wid * p.hp) / MAX_HP, 3);
       }
       const W2 = r.W, H2 = r.H;
+      if (now - fx.current.lockAt < 400 && Math.floor(now / 200) % 2 === 0) {
+        ctx.fillStyle = '#ff2b2b'; ctx.font = `800 ${Math.round(H2 / 22)}px ui-monospace, Menlo, monospace`; ctx.textAlign = 'center';
+        ctx.fillText('⚠ MISSILE LOCK', W2 / 2, H2 * 0.3); ctx.textAlign = 'left';
+      }
       // Dust haze over the scene for a darker, grittier grade.
       const vg = ctx.createRadialGradient(W2 / 2, H2 / 2, H2 * 0.3, W2 / 2, H2 / 2, W2 * 0.7);
       vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.45)');

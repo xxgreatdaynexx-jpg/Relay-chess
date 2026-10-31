@@ -125,8 +125,8 @@ import { WEAPONS } from '../shared/fps.js';
 
 describe('owner-granted arenagawd perks', () => {
   it('only arenagawd has perks', () => {
-    expect([...perksFor('arenagawd')].sort()).toEqual(['aimassist', 'wallhack']);
-    expect([...perksFor('ArenaGawd')]).toHaveLength(2);
+    expect([...perksFor('arenagawd')].sort()).toEqual(['aimassist', 'homingRpg', 'wallhack']);
+    expect([...perksFor('ArenaGawd')]).toHaveLength(3);
     for (const k of ['dayne', 'carter', 'arenagawd2', '', null, undefined]) expect(perksFor(k).size).toBe(0);
   });
 

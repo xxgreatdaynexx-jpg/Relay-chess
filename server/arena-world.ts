@@ -10,7 +10,7 @@ import {
 } from '../shared/fps.js';
 import { isMapId, MAP_ROTATION } from '../shared/arenaMaps.js';
 import { PoseHistory, rewindTime } from '../shared/netInterp.js';
-import { ArenaAntiCheat, ASSIST_CONE, ASSIST_PULL, ASSIST_SPREAD, coarse, VisibilityTracker, type ArenaPerk } from './arena-anticheat.js';
+import { ArenaAntiCheat, ASSIST_CONE, ASSIST_PULL, ASSIST_SPREAD, coarse, HOMING_CONE, HOMING_TURN, VisibilityTracker, type ArenaPerk } from './arena-anticheat.js';
 import { MULTI_LEVEL, MULTI_TITLE, multiTier, nextChain, type MultiChain } from '../shared/arenaMulti.js';
 import { applyCrouch, canSprint, headZOf, speedOf, SPRINT_FIRE_DELAY_MS, SPRINT_FIRE_SLACK_MS } from '../shared/fps.js';
 
@@ -61,7 +61,7 @@ export class ArenaWorld {
   strikes: Strike[] = [];
   drones = new Map<string, Drone>();
   /** RPG rockets in flight (server-simulated projectiles). */
-  rockets: Rocket[] = [];
+  rockets: Array<Rocket & { seek?: true; lock?: string | null }> = [];
   private rocketSeq = 0;
   nuke: { ownerId: string; by: string; at: number } | null = null;
 
@@ -281,7 +281,8 @@ export class ArenaWorld {
     if (f.ammo[f.weapon] === 0) f.reloadUntil = now + spec.reloadMs;
     const scoped = f.weapon === 'sniper' && f.scopedSince > 0 && now - f.scopedSince >= SCOPE_SETTLE_MS;
     if (f.weapon === 'rocket') {
-      const r = launchRocket(++this.rocketSeq, f, now);
+      const r: Rocket & { seek?: true; lock?: string | null } = launchRocket(++this.rocketSeq, f, now);
+      if (this.hasPerk(f.id, 'homingRpg')) { r.seek = true; r.lock = this.acquire(r); }
       this.rockets.push(r);
       return [{ ev: 'fps_shot', data: { id: f.id, w: f.weapon, o: [+f.x.toFixed(2), +f.y.toFixed(2), +f.z.toFixed(2)], rocket: this.rocketView(r) } }];
     }
@@ -414,8 +415,41 @@ export class ArenaWorld {
     return true;
   }
 
-  private rocketView(r: Rocket) {
-    return { id: r.id, ownerId: r.ownerId, x: +r.x.toFixed(2), y: +r.y.toFixed(2), z: +r.z.toFixed(2), vx: +r.vx.toFixed(2), vy: +r.vy.toFixed(2), vz: +r.vz.toFixed(2) };
+  private rocketView(r: Rocket & { seek?: true; lock?: string | null }) {
+    return { id: r.id, ownerId: r.ownerId, x: +r.x.toFixed(2), y: +r.y.toFixed(2), z: +r.z.toFixed(2), vx: +r.vx.toFixed(2), vy: +r.vy.toFixed(2), vz: +r.vz.toFixed(2), ...(r.seek ? { seek: 1, lock: r.lock ?? null } : {}) };
+  }
+
+  /** Nearest live enemy in the rocket's forward cone with a clear line to its chest. */
+  acquire(r: Rocket): string | null {
+    const sp = Math.hypot(r.vx, r.vy, r.vz) || 1;
+    let best: string | null = null, bestD = Infinity;
+    for (const t of this.fighters.values()) {
+      if (t.id === r.ownerId || !t.alive) continue;
+      const c = chestOf(t), dx = c.x - r.x, dy = c.y - r.y, dz = c.z - r.z, d = Math.hypot(dx, dy, dz);
+      if (d < 1e-3 || d >= bestD) continue;
+      const cos = (dx * r.vx + dy * r.vy + dz * r.vz) / (d * sp);
+      if (Math.acos(Math.max(-1, Math.min(1, cos))) > HOMING_CONE || !lineOfSight(r, c, this.map)) continue;
+      best = t.id; bestD = d;
+    }
+    return best;
+  }
+
+  /** Turns a seeking rocket's velocity toward its target's chest by at most HOMING_TURN × dt; speed is unchanged. */
+  steerRocket(r: Rocket & { lock?: string | null }, dt: number): void {
+    let t = r.lock ? this.fighters.get(r.lock) : undefined;
+    if (!t?.alive || !lineOfSight(r, chestOf(t), this.map)) { r.lock = this.acquire(r); t = r.lock ? this.fighters.get(r.lock) : undefined; }
+    if (!t) return;
+    const sp = Math.hypot(r.vx, r.vy, r.vz);
+    const c = chestOf(t), dx = c.x - r.x, dy = c.y - r.y, dz = c.z - r.z, d = Math.hypot(dx, dy, dz);
+    if (!sp || d < 1e-3) return;
+    const ux = r.vx / sp, uy = r.vy / sp, uz = r.vz / sp, wx = dx / d, wy = dy / d, wz = dz / d;
+    const ang = Math.acos(Math.max(-1, Math.min(1, ux * wx + uy * wy + uz * wz)));
+    const turn = Math.min(ang, HOMING_TURN * dt);
+    if (ang < 1e-6) return;
+    // Slerp the heading `turn` radians toward the target.
+    const k = Math.sin(turn) / Math.sin(ang), j = Math.sin(ang - turn) / Math.sin(ang);
+    const nx = ux * j + wx * k, ny = uy * j + wy * k, nz = uz * j + wz * k, n = Math.hypot(nx, ny, nz) || 1;
+    r.vx = (nx / n) * sp; r.vy = (ny / n) * sp; r.vz = (nz / n) * sp;
   }
 
   /** Flies every rocket to `now`; bursts on walls, floors, players or timeout with splash damage. */
@@ -424,7 +458,15 @@ export class ArenaWorld {
     if (!this.rockets.length) return out;
     const left: Rocket[] = [];
     for (const r of this.rockets) {
-      const imp = stepRocket(r, now, [...this.fighters.values()], this.map);
+      let imp: ReturnType<typeof stepRocket> = null;
+      if (r.seek) {
+        // Steer in short slices (server-side only), then fly that slice with normal wall/player collision.
+        while (!imp && r.at < now) {
+          const to = Math.min(now, r.at + 1000 / 60);
+          this.steerRocket(r, (to - r.at) / 1000);
+          imp = stepRocket(r, to, [...this.fighters.values()], this.map);
+        }
+      } else imp = stepRocket(r, now, [...this.fighters.values()], this.map);
       if (!imp) { left.push(r); continue; }
       out.push({ ev: 'fps_boom', data: { x: +imp.x.toFixed(2), y: +imp.y.toFixed(2), z: +imp.z.toFixed(2), r: WEAPONS.rocket.splash, cause: 'rocket', rocket: r.id, ownerId: r.ownerId } });
       const hits = rocketDamage(imp, imp.direct, r.ownerId, [...this.fighters.values()], this.map);

@@ -156,7 +156,7 @@ export interface Fx3D {
   /** Bullet streaks: t is seconds since the shot. */
   tracers: Array<{ o: [number, number, number]; e: [number, number, number]; t: number; sniper?: boolean }>;
   /** RPG rockets in flight (extrapolated from the server's last snapshot). */
-  rockets?: Array<{ id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number }>;
+  rockets?: Array<{ id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; seek?: boolean }>;
 }
 
 /** How fast a tracer streak flies (tiles/s) and how long its glowing tail is. */
@@ -398,9 +398,13 @@ export class Arena3D {
         const tip = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.16, 8), new THREE.MeshLambertMaterial({ color: 0x2a2a26 }));
         tip.rotation.z = -Math.PI / 2; tip.position.x = 0.29; g.add(tip);
         const glow = new THREE.Sprite(this.flashMat); glow.scale.setScalar(0.45); glow.position.x = -0.26; g.add(glow);
+        const seeker = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xff2020, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }));
+        seeker.scale.setScalar(0.5); seeker.position.x = 0.3; seeker.name = 'seeker'; g.add(seeker);
         this.scene.add(g); this.rocketPool.push(g); o = g;
       }
       o.visible = true;
+      const sk = o.getObjectByName('seeker');
+      if (sk) { sk.visible = !!r.seek; sk.scale.setScalar(0.4 + 0.15 * Math.sin(performance.now() / 60)); }
       o.position.copy(W(r.x, r.y, r.z));
       o.lookAt(W(r.x + r.vy * 0 + r.vx, r.y + r.vy, r.z + r.vz));
       o.rotateY(-Math.PI / 2);
