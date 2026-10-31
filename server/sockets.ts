@@ -13,6 +13,7 @@ import { registerSolitro } from './solitro.js';
 import { registerSkins } from './skins.js';
 import { registerMarket } from './market.js';
 import { registerMines } from './mines.js';
+import { registerFactory } from './factory.js';
 import { registerConquest } from './conquest.js';
 import { analyzePosition, onHintReady } from './hints.js';
 import {
@@ -197,6 +198,7 @@ export function registerSockets(io: Server): void {
     registerSkins(io, socket);
     registerMarket(io, socket);
     registerMines(io, socket);
+    registerFactory(io, socket);
     registerChat(io, socket);
     registerConquest(io, socket);
     socket.on('create_room', (payload: unknown, ack?: (res: Ack) => void) => {

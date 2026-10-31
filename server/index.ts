@@ -7,6 +7,7 @@ import { getBank, initCasinoStorage } from './casino-store.js';
 import { getVault, initSkinStorage } from './skins.js';
 import { initMarketStorage } from './market.js';
 import { getMines, initMinesStorage } from './mines.js';
+import { getFactory, initFactory } from './factory.js';
 import { initAccountStorage } from './accounts.js';
 import { getConquest, initConquestStorage } from './conquest.js';
 import { getSolitro, initSolitroStorage } from './solitro.js';
@@ -18,6 +19,7 @@ await initCasinoStorage();
 await initSkinStorage();
 await initMarketStorage();
 await initMinesStorage();
+initFactory();
 await initArenaStorage();
 await initChessStatsStorage();
 await initAccountStorage();
@@ -52,6 +54,7 @@ async function shutdown(signal: string): Promise<void> {
     await getConquest().flush();
     await getBank().flush();
     await getVault().flush();
+    await getFactory().flush();
     await getMines().flush();
   } catch (error) {
     console.error('[shutdown] save failed:', (error as Error).message);

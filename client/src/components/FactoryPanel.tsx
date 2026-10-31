@@ -3,7 +3,8 @@ import { TopTab } from '@/components/TopTabs';
 import { useWalletChips } from '@/lib/wallet';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { socket } from '@/lib/net';
-import { MinesFactory, type Ack } from '@/components/MinesFactory';
+import { FactoryBuilder } from '@/components/FactoryBuilder';
+type Ack = { ok: boolean; error?: string; storage?: Stack[]; quote?: unknown; inMine?: boolean; guest?: boolean };
 import { openMarket } from '@/components/MarketPage';
 import { ORES, SELL_TIERS, isOre, nameOf, priceOf, stackKey, type Stack } from '../../../shared/mines';
 
@@ -47,14 +48,14 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
       {win.grips}
       <div {...win.bar}>
         <span className="font-semibold">🏭 Factory</span>
-        <span className="opacity-70">smelt, craft, sell</span>
+        <span className="opacity-70">build, automate, sell</span>
         {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" onClick={win.reset}>⟲</button>}
         {wallet !== null && <span className="ml-auto text-xs font-semibold">🪙 {wallet.toLocaleString()}</span>}
         <button type="button" className={wallet === null ? 'ml-auto' : ''} aria-label="Close factory" onClick={onClose}>✕</button>
       </div>
       {toast && <div className="factory-toast" data-testid="factory-toast">{toast}</div>}
       <div className="factory-body">
-        <section className="factory-col" data-testid="factory-storage">
+        <section className="factory-col factory-storage" data-testid="factory-storage">
           <h3>📦 Storage <button type="button" className="mkt-link" onClick={() => openMarket({ tab: 'resources' })} data-testid="factory-goto-market">Sell on Market →</button></h3>
           <ul className="factory-list">
             {st.storage.map((s) => (
@@ -70,7 +71,7 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
           <p className="mines-note">Sold today: {Math.floor(q?.already ?? 0)} · paying {Math.round(tier.rate * 100)}%. Daily cap: full price to 600, 50% to 1,200, then 20% (resets 00:00 UTC).</p>
         </section>
         <section className="factory-col factory-machines">
-          <MinesFactory pack={st.storage} guest={st.guest} flash={flash} onPack={apply} />
+          <FactoryBuilder guest={st.guest} flash={flash} onStorage={(storage) => setSt((c) => ({ ...c, storage }))} />
         </section>
       </div>
     </div>

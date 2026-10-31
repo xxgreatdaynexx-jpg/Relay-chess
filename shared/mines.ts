@@ -138,6 +138,26 @@ export const GOODS: Record<string, ItemDef> = {
   gold_ring:    { type: 'good', id: 'gold_ring',    name: 'Crystal Ring',  price: 340,  color: '#ffd860' },
   machine_part: { type: 'good', id: 'machine_part', name: 'Machine Part',  price: 360,  color: '#6f8fa8' },
   crown:        { type: 'good', id: 'crown',        name: 'Diamond Crown', price: 1100, color: '#9ff6ff' },
+  // Factory v2 (grid builder) intermediates and goods. Registered here so Market / priceOf / nameOf see them.
+  glass:        { type: 'bar',  id: 'glass',        name: 'Glass',         price: 5,    color: '#a8e0e8' },
+  iron_plate:   { type: 'good', id: 'iron_plate',   name: 'Iron Plate',    price: 34,   color: '#9fa6ae' },
+  copper_plate: { type: 'good', id: 'copper_plate', name: 'Copper Plate',  price: 17,   color: '#d08850' },
+  silver_coin:  { type: 'good', id: 'silver_coin',  name: 'Silver Coin',   price: 31,   color: '#e4e9ee' },
+  gold_coin:    { type: 'good', id: 'gold_coin',    name: 'Gold Coin',     price: 56,   color: '#f6c840' },
+  iron_rod:     { type: 'good', id: 'iron_rod',     name: 'Iron Rod',      price: 17,   color: '#8c939b' },
+  iron_sheet:   { type: 'good', id: 'iron_sheet',   name: 'Iron Sheet',    price: 40,   color: '#b4bcc4' },
+  gold_leaf:    { type: 'good', id: 'gold_leaf',    name: 'Gold Leaf',     price: 28,   color: '#ffe27a' },
+  silver_wire:  { type: 'good', id: 'silver_wire',  name: 'Silver Wire',   price: 30,   color: '#dfe6ee' },
+  screw:        { type: 'good', id: 'screw',        name: 'Screw',         price: 5,    color: '#7d858d' },
+  pipe:         { type: 'good', id: 'pipe',         name: 'Iron Pipe',     price: 48,   color: '#7f8a94' },
+  frame:        { type: 'good', id: 'frame',        name: 'Steel Frame',   price: 100,  color: '#6a737c' },
+  circuit:      { type: 'good', id: 'circuit',      name: 'Circuit Board', price: 125,  color: '#3fae5a' },
+  lens:         { type: 'good', id: 'lens',         name: 'Glass Lens',    price: 9,    color: '#bff2ff' },
+  cut_diamond:  { type: 'good', id: 'cut_diamond',  name: 'Cut Diamond',   price: 190,  color: '#c8fbff' },
+  gold_chain:   { type: 'good', id: 'gold_chain',   name: 'Gold Chain',    price: 140,  color: '#ffd24a' },
+  engine:       { type: 'good', id: 'engine',       name: 'Engine',        price: 1400, color: '#c0563a' },
+  computer:     { type: 'good', id: 'computer',     name: 'Computer',      price: 1150, color: '#4a7fd0' },
+  drill:        { type: 'good', id: 'drill',        name: 'Mining Drill',  price: 2400, color: '#e0a030' },
 };
 const o = (id: OreId, qty: number) => ({ type: 'ore' as const, id, qty });
 const b = (id: string, qty: number) => ({ type: 'bar' as const, id, qty });
