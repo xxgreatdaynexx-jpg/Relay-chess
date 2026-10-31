@@ -7,10 +7,11 @@ import { LOOK_KEY, SENS_MAX, SENS_MIN, mouseLook, readLook, type LookPrefs, FPS_
 import { ArenaRenderer, minimapSize } from '@/lib/arenaRender';
 import type { Arena3D, Fx3D, Soldier3D, Viewmodel3D } from '@/lib/arena3d';
 import { prefersReducedMotion } from '@/lib/motion';
+import { predictShot, ShotPredictor } from '../../../shared/arenaPredict';
 import { INTERP_DELAY_MS, LOCAL_STEP_S, SnapBuffer, samplePlayers } from '../../../shared/netInterp';
 import { TagVisibility, tagVisible } from '@/lib/arenaTags';
 import type { ArenaMap } from '../../../shared/arenaMaps';
-import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playKnife, playLockBeep, playPickup, play360NoScope, playMultiKill, shotFalloff, unlockSounds } from '@/lib/sounds';
+import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playKnife, playHeadshotDing, playLockBeep, playPickup, play360NoScope, playMultiKill, shotFalloff, unlockSounds } from '@/lib/sounds';
 import { isTypingTarget, spaceRespawns } from '@/lib/respawnKey';
 import { DEATH_HOLD_MS, fitSpeed, killCardText, sampleKillCam, shotsBetween, type CamFrame, type CamShot, type KillCard } from '@/lib/killcam';
 import { feedParts, popupScale, POPUP_MS, type FeedItem } from '@/lib/arenaFeed';
@@ -166,7 +167,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     w.__arenaKC = (res: { ok: boolean; card?: KillCard; track?: CamFrame[] | null; shots?: CamShot[] }) => { kcRef.current = null; deathAtRef.current = performance.now() + 60_000; startKillCam(res); };
     w.__arenaKCSeek = (ms: number) => { const kc = kcRef.current; if (kc) { kc.start = performance.now() - ms; kc.ct = -1; } return 1; };
   }
-  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, killmark: 0, headmark: 0, melee: { at: -1e9, heavy: false }, meleeAt: new Map<string, { at: number; heavy: boolean }>(), nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string; fall: number }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number; sniper?: boolean }>, impacts: [] as Array<{ x: number; y: number; z: number; player: boolean; at: number }>, blasts: [] as Array<{ x: number; y: number; z: number; big: boolean }>, shells: 0, rockets: new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number; seek?: number }>(), lockAt: 0, lockBeep: 0, weaponAt: new Map<string, { w: string; at: number }>(), hitAt: new Map<string, number>(), shotAt: new Map<string, number>(), shake: 0, jetAt: 0 });
+  const pred = useRef(new ShotPredictor()).current;
+  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, hitDeny: 0, dmgNums: [] as Array<{ v: number; head: boolean; at: number; denied?: number }>, killmark: 0, headmark: 0, melee: { at: -1e9, heavy: false }, meleeAt: new Map<string, { at: number; heavy: boolean }>(), nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string; fall: number }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number; sniper?: boolean }>, impacts: [] as Array<{ x: number; y: number; z: number; player: boolean; at: number }>, blasts: [] as Array<{ x: number; y: number; z: number; big: boolean }>, shells: 0, rockets: new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number; seek?: number }>(), lockAt: 0, lockBeep: 0, weaponAt: new Map<string, { w: string; at: number }>(), hitAt: new Map<string, number>(), shotAt: new Map<string, number>(), shake: 0, jetAt: 0 });
   const banner = useRef<{ text: string; sub: string; at: number } | null>(null);
   const touch = useRef({ up: false, down: false, left: false, right: false, lookUp: false, lookDown: false });
   const [touchCrouch, setTouchCrouch] = useState(false);
@@ -242,7 +244,44 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     fx.current.muzzle = now;
     fx.current.shells++;
     playWeaponShot(m.weapon);
-    socket.emit('fps_shoot', { a: m.a, p: m.p, vt: Math.round(net.buf.renderTime(performance.now())) });
+    const vt = Math.round(net.buf.renderTime(now));
+    if (spec.splash) { socket.emit('fps_shoot', { a: m.a, p: m.p, vt }); return; }
+    // Predicted shot: raycast against the interpolated players we're displaying right now; tracer, impact,
+    // hit marker, damage number and headshot ding show instantly. The server (lag-compensated to vt) confirms
+    // or denies by echoing sid; kills, feed and chips only ever come from the server.
+    const sid = pred.newSid();
+    const targets = samplePlayers(net.buf.snaps, net.buf.renderTime(now)).players.filter((p) => p.id !== m.id && p.alive).map((p) => ({ id: p.id, x: p.x, y: p.y, z: p.z, alive: true, crouch: !!p.c }));
+    const ps = predictShot({ id: m.id, x: m.x, y: m.y, z: m.z, a: m.a, p: m.p, crouch: m.crouch }, spec, targets, mapRef.current, m.scoped);
+    pushRays(m.weapon, [m.x, m.y, m.z], ps.rays.map((r) => [r.a, r.p, r.dist, r.hit ? 1 : 0]), now);
+    pred.add(sid, ps.hits.size > 0, ps.head, now);
+    if (ps.hits.size) {
+      fx.current.hitmark = now; fx.current.hitDeny = 0;
+      playHit();
+      if (ps.head) playHeadshotDing();
+      fx.current.dmgNums.push({ v: Math.round(ps.dmg), head: ps.head, at: now });
+      if (fx.current.dmgNums.length > 8) fx.current.dmgNums.shift();
+    }
+    socket.emit('fps_shoot', { a: m.a, p: m.p, vt, sid });
+  }
+  /** Server said our predicted hit missed: quietly fade the marker and damage number (rare). */
+  function denyPrediction(now: number) {
+    fx.current.hitDeny = now;
+    const d = fx.current.dmgNums[fx.current.dmgNums.length - 1];
+    if (d && !d.denied) d.denied = now;
+  }
+  /** Tracers + impact decals for a set of rays from origin o (shared by predicted and server-echoed shots). */
+  function pushRays(w: WeaponId, o: [number, number, number], rays: Array<[number, number, number, number?]>, now: number) {
+    // Tracers start a little below and ahead of the eye so your own don't sit on the crosshair.
+    const [ox, oy, oz] = o;
+    // Every shotgun pellet gets its own streak (they're cheap pooled lines).
+    for (const [a, p, d, hit] of rays.slice(0, 12)) {
+      const c = Math.cos(p);
+      const start: [number, number, number] = [ox + Math.cos(a) * c * 0.6, oy + Math.sin(a) * c * 0.6, oz + 1.25];
+      const e: [number, number, number] = [ox + Math.cos(a) * c * d, oy + Math.sin(a) * c * d, oz + EYE_HEIGHT + Math.sin(p) * d];
+      fx.current.tracers.push({ o: start, e, at: now, sniper: w === 'sniper' });
+      // The hole / puff appears when the streak gets there.
+      if (d < WEAPONS[w].range - 0.05) fx.current.impacts.push({ x: e[0], y: e[1], z: e[2], player: !!hit, at: now + (d / TRACER_SPEED) * 1000 });
+    }
   }
 
   // Networking
@@ -328,7 +367,10 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     const onHit = (h: { by: string | null; target: string; cause: string }) => {
       const now = performance.now();
       fx.current.hitAt.set(h.target, now);
-      if (h.by === me.current.id && h.target !== me.current.id) { fx.current.hitmark = now; playHit(); }
+      if (h.by === me.current.id && h.target !== me.current.id) {
+        // Already shown by the prediction? Don't double up; otherwise (spread luck, splash) show it now.
+        if (now - fx.current.hitmark > 600 || fx.current.hitDeny) { fx.current.hitmark = now; fx.current.hitDeny = 0; playHit(); }
+      }
       else if (h.target === me.current.id) {
         fx.current.hurt = now;
         playHit(true);
@@ -336,7 +378,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         if (src && h.by !== me.current.id) fx.current.dmgDirs.push({ a: Math.atan2(src.y - me.current.y, src.x - me.current.x), at: now });
       }
     };
-    const onShot = (s: { id: string; w: WeaponId; melee?: 'slash' | 'stab'; hit?: number; o?: [number, number, number]; rays?: Array<[number, number, number, number?]>; impact?: { x: number; y: number; z: number }; rocket?: { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number } }) => {
+    const onShot = (s: { id: string; w: WeaponId; melee?: 'slash' | 'stab'; hit?: number; o?: [number, number, number]; rays?: Array<[number, number, number, number?]>; sid?: number; impact?: { x: number; y: number; z: number }; rocket?: { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number } }) => {
       const now = performance.now();
       if (s.melee) {
         if (s.id === me.current.id) playKnife(s.hit ? 'hit' : 'miss');
@@ -344,19 +386,11 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         return;
       }
       if (s.id !== me.current.id) { playWeaponShot(s.w, 0.35 * shotFalloff(s.o ? Math.hypot(s.o[0] - me.current.x, s.o[1] - me.current.y) : 0)); fx.current.shotAt.set(s.id, now); }
-      if (s.o && s.rays) {
-        // Tracers start a little below and ahead of the eye so your own don't sit on the crosshair.
-        const [ox, oy, oz] = s.o;
-        // Every shotgun pellet gets its own streak (they're cheap pooled lines).
-        for (const [a, p, d, hit] of s.rays.slice(0, 12)) {
-          const c = Math.cos(p);
-          const start: [number, number, number] = [ox + Math.cos(a) * c * 0.6, oy + Math.sin(a) * c * 0.6, oz + 1.25];
-          const e: [number, number, number] = [ox + Math.cos(a) * c * d, oy + Math.sin(a) * c * d, oz + EYE_HEIGHT + Math.sin(p) * d];
-          fx.current.tracers.push({ o: start, e, at: now, sniper: s.w === 'sniper' });
-          // The hole / puff appears when the streak gets there.
-          if (d < WEAPONS[s.w].range - 0.05) fx.current.impacts.push({ x: e[0], y: e[1], z: e[2], player: !!hit, at: now + (d / TRACER_SPEED) * 1000 });
-        }
-      }
+      if (s.id === me.current.id && pred.has(s.sid)) {
+        // Our own predicted shot: tracers already drawn; only settle the verdict.
+        const v = pred.resolve(s.sid, !!s.rays?.some((r) => r[3]));
+        if (v === 'deny') denyPrediction(now);
+      } else if (s.o && s.rays) pushRays(s.w, s.o, s.rays, now);
       if (s.impact) { fx.current.booms.push({ ...s.impact, at: now, big: false }); playArenaExplosion(Math.hypot(s.impact.x - me.current.x, s.impact.y - me.current.y) + 4); }
       if (s.rocket) fx.current.rockets.set(s.rocket.id, { ...s.rocket, at: now });
     };
@@ -766,11 +800,23 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       // Hit marker (white, red on kill) drawn after the scope overlay so it also shows while scoped.
       if (m.alive) {
         const cs = H2 / 40;
+        for (const sid of pred.expire(now)) { void sid; denyPrediction(now); }
         const hm = now - fx.current.hitmark;
-        if (hm < 220) {
+        const denyK = fx.current.hitDeny ? Math.max(0, 1 - (now - fx.current.hitDeny) / 120) : 1;
+        // Floating damage numbers (predicted; fade fast if the server denies).
+        fx.current.dmgNums = fx.current.dmgNums.filter((d) => now - d.at < 700 && (!d.denied || now - d.denied < 120));
+        for (const d of fx.current.dmgNums) {
+          const t = (now - d.at) / 700, u = Math.max(1, H2 / 500);
+          const k = (1 - t) * (d.denied ? Math.max(0, 1 - (now - d.denied) / 120) : 1);
+          ctx.font = `700 ${Math.round((d.head ? 14 : 12) * u)}px ui-monospace, Menlo, monospace`; ctx.textAlign = 'center';
+          ctx.fillStyle = d.head ? `rgba(255,200,60,${k.toFixed(2)})` : `rgba(255,255,255,${k.toFixed(2)})`;
+          ctx.fillText(String(d.v), W2 / 2 + cs * 1.4, H2 / 2 - cs * (0.8 + t * 1.5));
+        }
+        ctx.textAlign = 'left';
+        if (hm < 220 && denyK > 0) {
           const kill = now - fx.current.killmark < 300;
           const headK = kill && now - fx.current.headmark < 300;
-          ctx.strokeStyle = headK ? 'rgba(255,200,60,.98)' : kill ? 'rgba(230,60,50,.95)' : `rgba(255,255,255,${(1 - hm / 220).toFixed(2)})`;
+          ctx.strokeStyle = headK ? 'rgba(255,200,60,.98)' : kill ? 'rgba(230,60,50,.95)' : `rgba(255,255,255,${((1 - hm / 220) * denyK).toFixed(2)})`;
           ctx.lineWidth = Math.max(1.5, H2 / 180);
           const a0 = cs * 0.35, a1 = cs * 0.85;
           ctx.beginPath();

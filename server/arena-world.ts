@@ -2,6 +2,7 @@
  * Server-authoritative arena simulation: weapons, ammo, jumping, killstreaks.
  * Pure (time and randomness are passed in) so tests can drive it directly; server/fps.ts wires it to sockets.
  */
+import { cleanSid } from '../shared/arenaPredict.js';
 import {
   AIRSTRIKE_DAMAGE, AIRSTRIKE_DELAY_MS, AIRSTRIKE_LOCK_MS, AIRSTRIKE_RADIUS, AIRSTRIKE_RANGE, AIRSTRIKE_SPACING, AIRSTRIKE_WAIT_MS, applyDamage,
   chestOf, clampPitch, dirFrom, DRONE_COOLDOWN_MS, DRONE_DAMAGE, DRONE_MS, DRONE_RANGE, eyeOf, fireWeapon, isWeapon, KILL_Z, lineOfSight, MAP, MAX_HP, maybeRespawn,
@@ -422,7 +423,8 @@ export class ArenaWorld {
     return this.killcam.get(id, now);
   }
 
-  shoot(id: string, a: unknown, now: number, p?: unknown, viewT?: unknown, heavy?: unknown): ArenaEvent[] {
+  shoot(id: string, a: unknown, now: number, p?: unknown, viewT?: unknown, heavy?: unknown, sidIn?: unknown): ArenaEvent[] {
+    const sid = cleanSid(sidIn);
     const f = this.fighters.get(id);
     if (!f || !f.alive || this.phase === 'ended') return [];
     const spec = WEAPONS[f.weapon];
@@ -488,7 +490,7 @@ export class ArenaWorld {
     const events: ArenaEvent[] = [{
       ev: 'fps_shot',
       data: {
-        id: f.id, w: f.weapon, o: [+f.x.toFixed(2), +f.y.toFixed(2), +f.z.toFixed(2)],
+        id: f.id, w: f.weapon, o: [+f.x.toFixed(2), +f.y.toFixed(2), +f.z.toFixed(2)], ...(sid ? { sid } : {}),
         rays: shot.rays.map((r) => [+r.a.toFixed(3), +r.p.toFixed(3), +r.dist.toFixed(2), r.hit ? 1 : 0]),
         impact: shot.impact && { x: +shot.impact.x.toFixed(2), y: +shot.impact.y.toFixed(2), z: +shot.impact.z.toFixed(2) },
       },

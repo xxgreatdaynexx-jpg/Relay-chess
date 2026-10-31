@@ -511,6 +511,18 @@ export function playHit(self = false): void {
   n.start(now);
 }
 
+/** Arena headshot "ding": short bright bell, played instantly on a predicted headshot. */
+export function playHeadshotDing(): void {
+  const ctx = audio();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  for (const [freq, vol] of [[1760, 0.18], [2640, 0.08]] as const) {
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = freq;
+    const g = ctx.createGain(); g.gain.setValueAtTime(vol, now); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+    o.connect(g); g.connect(output(ctx)); o.start(now); o.stop(now + 0.26);
+  }
+}
+
 /** Roulette: ball rattling around the wheel, slowing down. Routed through the master volume. */
 export function playRouletteSpin(seconds = 5): void {
   const ctx = audio();
