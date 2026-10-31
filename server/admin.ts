@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import { getAccounts, nameKey } from './accounts.js';
 import { getBank } from './casino-store.js';
+import { getVault } from './skins.js';
 
 /** Constant-time token check. Rejects everything when ADMIN_GRANT_TOKEN is unset or short. */
 export function adminAuthorized(header: string | undefined, token = process.env.ADMIN_GRANT_TOKEN): boolean {
@@ -35,6 +36,26 @@ export function adminRouter(): express.Router {
     console.log(`[admin] grant ${applied ? 'applied' : 'replay ignored'}: ${row.name} +${amount} key=${key} memo=${JSON.stringify(memo ?? '')} ${before}->${after} from ${ip}`);
     await bank.flush();
     res.json({ ok: true, applied, player: row.name, amount, before, after, key });
+  });
+  /** POST /api/admin/grant-item {player, kind: 'case'|'key', key}: QA- accounts ONLY. Mints one case or key (idempotent by key), logged. */
+  r.post('/api/admin/grant-item', express.json({ limit: '4kb' }), async (req, res) => {
+    const ip = req.ip ?? '?';
+    if (!adminAuthorized(req.get('authorization'))) {
+      console.warn(`[admin] grant-item rejected: unauthorized from ${ip}`);
+      return res.status(401).json({ ok: false, error: 'Unauthorized.' });
+    }
+    const { player, kind, key } = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof player !== 'string' || !/^QA-/i.test(player.trim())) return res.status(400).json({ ok: false, error: 'Item grants are for QA- accounts only.' });
+    if (kind !== 'case' && kind !== 'key') return res.status(400).json({ ok: false, error: "kind must be 'case' or 'key'." });
+    if (typeof key !== 'string' || !/^[\w:.\-]{8,120}$/.test(key)) return res.status(400).json({ ok: false, error: 'key (idempotency key) is required.' });
+    let row;
+    try { row = await getAccounts().store.get(nameKey(player)); } catch { return res.status(503).json({ ok: false, error: 'Accounts unavailable.' }); }
+    if (!row) return res.status(404).json({ ok: false, error: 'Unknown player.' });
+    const vault = getVault();
+    const it = vault.make(row.name, kind, `admin:${key}`, 'admin-qa');
+    if (it) vault.commit([it], [{ item: it.id, kind: 'drop', from: null, to: it.owner, memo: `admin QA grant ${kind} key=${key}`, at: Date.now() }]);
+    console.log(`[admin] grant-item ${it ? 'applied' : 'replay ignored'}: ${row.name} ${kind} key=${key} from ${ip}`);
+    res.json({ ok: true, applied: !!it, player: row.name, kind, ...(it ? { id: it.id } : {}) });
   });
   return r;
 }

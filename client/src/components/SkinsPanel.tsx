@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { TopTab } from './TopTabs';
-import { MarketView, MaterialsView, SellForm, TradesView } from './MarketPanel';
+import { openMarket } from './MarketPage';
 import { request, socket } from '@/lib/net';
 import { useAccount } from '@/lib/auth';
 import { paintSkin } from '@/lib/skinRender';
@@ -54,13 +54,12 @@ export const label = (i: SkinItem) => (i.kind === 'case' ? CASE_NAME : i.kind ==
 export const rarityOf = (i: SkinItem): Rarity | null => (i.kind === 'skin' ? SKIN_BY_ID.get(i.skin)?.rarity ?? null : null);
 
 type InvTab = 'inv' | 'market' | 'mats' | 'trades';
-let pendingInvTab: InvTab | null = null;
 
 export function SkinsPanel() {
   const [open, setOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   useEffect(() => {
-    const o = (e: Event) => { const t = (e as CustomEvent<{ tab?: InvTab }>).detail?.tab; if (t) pendingInvTab = t; setOpen(true); };
+    const o = (e: Event) => { const t = (e as CustomEvent<{ tab?: InvTab }>).detail?.tab; if (t && t !== 'inv') { openMarket(t === 'mats' ? { tab: 'resources' } : { tab: 'skins', sub: t === 'trades' ? 'trades' : 'listings' }); return; } setOpen(true); };
     const drop = (it: SkinItem) => { setToast(`Match drop: ${label(it)}!`); window.setTimeout(() => setToast(null), 6000); };
     const ann = (a: { text: string }) => { setToast(`🔪 ${a.text}`); window.setTimeout(() => setToast(null), 8000); };
     window.addEventListener('open-inventory', o); socket.on('inv_drop', drop); socket.on('inv_announce', ann);
@@ -86,10 +85,7 @@ function Inventory({ onClose }: { onClose: () => void }) {
   const [q, setQ] = useState('');
   const [err, setErr] = useState('');
   const [unbox, setUnbox] = useState<{ reel: string[]; win: number; item: SkinItem } | null>(null);
-  const [tab, setTab] = useState<InvTab>(() => { const t = pendingInvTab ?? 'inv'; pendingInvTab = null; return t; });
-  useEffect(() => { const f = (e: Event) => { const t = (e as CustomEvent<{ tab?: InvTab }>).detail?.tab; if (t) { setTab(t); pendingInvTab = null; } }; window.addEventListener('open-inventory', f); return () => window.removeEventListener('open-inventory', f); }, []);
-  const [selling, setSelling] = useState<string | null>(null);
-  const [tradeSeed, setTradeSeed] = useState<string | null>(null);
+  const [tab, setTab] = useState<'inv'>('inv');
 
   const load = useCallback(() => {
     void request('inv_get', {}).then((r) => { const a = r as unknown as { ok: boolean; signedIn?: boolean; items?: SkinItem[] }; if (a.ok) { setSignedIn(!!a.signedIn); setItems(a.items ?? []); } });
@@ -128,14 +124,11 @@ function Inventory({ onClose }: { onClose: () => void }) {
     <div className="inv-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }} data-testid="inventory">
       <div className="inv-win" role="dialog" aria-label="Inventory">
         <header className="inv-head">
-          <nav className="inv-tabs" role="tablist">{([['inv', '🎒 Inventory'], ['market', '🏪 Market'], ['mats', '⛏ Materials'], ['trades', '🤝 Trades']] as const).map(([k, t]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)} data-testid={`inv-tab-${k}`}>{t}</button>)}</nav><span className="inv-count">{items.length} items · 📦 {cases} · 🔑 {keys}</span>
+          <nav className="inv-tabs" role="tablist">{([['inv', '🎒 Inventory']] as const).map(([k, t]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)} data-testid={`inv-tab-${k}`}>{t}</button>)}</nav><button type="button" onClick={() => { onClose(); openMarket({ tab: 'skins' }); }} data-testid="inv-goto-market">🏪 Market</button><span className="inv-count">{items.length} items · 📦 {cases} · 🔑 {keys}</span>
           <button type="button" className="inv-open-btn" disabled={!cases || !keys} onClick={() => void open()} data-testid="inv-open">Open {CASE_NAME}</button>
           <button type="button" aria-label="Close inventory" onClick={onClose}>✕</button>
         </header>
         {!signedIn && <p className="inv-note">Sign in to collect skins. Every Arena match you finish drops a {CASE_NAME} or a {KEY_NAME} (50/50).</p>}
-        {tab === 'market' && <MarketView />}
-        {tab === 'mats' && <MaterialsView />}
-        {tab === 'trades' && <TradesView seed={tradeSeed} />}
         {tab === 'inv' && <>
         <div className="inv-slots" data-testid="inv-slots">{['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'ar15', 'knife', 'pickaxe'].map((w) => { const e = items.find((i) => i.equipped && i.kind === 'skin' && SKIN_BY_ID.get(i.skin)?.weapon === w); return (
           <button type="button" key={w} className={`inv-slot${e ? ' on' : ''}`} data-testid={`inv-slot-${w}`} onClick={() => setWeapon(w)} title={e ? SKIN_BY_ID.get(e.skin)?.name : 'Stock'}>{w === 'pickaxe' ? '⛏ ' : ''}{WEAPON_NAME[w]}: {e ? SKIN_BY_ID.get(e.skin)?.name : 'Stock'}</button>); })}</div>
@@ -166,17 +159,16 @@ function Inventory({ onClose }: { onClose: () => void }) {
                 <p>{wearOf(cur.float).name} · float {cur.float.toFixed(5)} · pattern #{cur.seed}</p>
                 <div className="inv-actions">
                   <button type="button" onClick={() => void act('inv_equip', { id: cur.id })} disabled={!!cur.locked} data-testid="inv-equip">{cur.equipped ? 'Unequip' : 'Equip'}</button>
-                  <button type="button" disabled={!!cur.locked || !signedIn} onClick={() => setSelling(selling === cur.id ? null : cur.id)} data-testid="inv-sell">Sell</button>
-                  <button type="button" disabled={!!cur.locked || !signedIn} onClick={() => { setTradeSeed(cur.id); setTab('trades'); }} data-testid="inv-trade">Trade</button>
+                  <button type="button" disabled={!!cur.locked || !signedIn} onClick={() => { onClose(); openMarket({ tab: 'skins', sub: 'sell', item: cur.id }); }} data-testid="inv-sell">Sell on Market</button>
+                  <button type="button" disabled={!!cur.locked || !signedIn} onClick={() => { onClose(); openMarket({ tab: 'skins', sub: 'trades', item: cur.id }); }} data-testid="inv-trade">Trade</button>
                 </div>
               </> : cur.kind === 'case' ? <>
                 <p>Needs a {KEY_NAME}. <button type="button" className="inv-odds-btn" onClick={() => setOdds((o) => !o)} data-testid="inv-odds">Odds</button></p>
                 {odds && <table className="inv-odds" data-testid="inv-odds-table"><tbody>{CASE_ODDS_TABLE.map((o) => (
                   <tr key={o.group + o.rarity} className={o.group === 'knife' ? 'knife' : ''}><td>{o.group === 'knife' ? '★ Knife' : 'Gun'} {RARITY_NAME[o.rarity]}</td><td>{(o.p * 100).toFixed(o.p < 0.01 ? 2 : 1)}%</td></tr>))}</tbody></table>}
                 {odds && !KNIFE_IN_CASES && <p className="inv-note">★ Knives join cases when the knife ships; until then the knife roll rerolls into the gun tiers.</p>}
-                <div className="inv-actions"><button type="button" disabled={!keys || !!cur.locked} onClick={() => void open(cur.id)}>Open</button><button type="button" disabled={!!cur.locked || !signedIn} onClick={() => setSelling(selling === cur.id ? null : cur.id)} data-testid="inv-sell">Sell</button><button type="button" disabled={!!cur.locked || !signedIn} onClick={() => { setTradeSeed(cur.id); setTab('trades'); }} data-testid="inv-trade">Trade</button></div>
-              </> : <><p>Opens one {CASE_NAME}.</p><div className="inv-actions"><button type="button" disabled={!!cur.locked || !signedIn} onClick={() => setSelling(selling === cur.id ? null : cur.id)} data-testid="inv-sell">Sell</button><button type="button" disabled={!!cur.locked || !signedIn} onClick={() => { setTradeSeed(cur.id); setTab('trades'); }} data-testid="inv-trade">Trade</button></div></>}
-              {selling === cur.id && <SellForm item={cur} onDone={() => { setSelling(null); load(); setTab('market'); }} />}
+                <div className="inv-actions"><button type="button" disabled={!keys || !!cur.locked} onClick={() => void open(cur.id)}>Open</button><button type="button" disabled={!!cur.locked || !signedIn} onClick={() => { onClose(); openMarket({ tab: 'skins', sub: 'sell', item: cur.id }); }} data-testid="inv-sell">Sell on Market</button><button type="button" disabled={!!cur.locked || !signedIn} onClick={() => { onClose(); openMarket({ tab: 'skins', sub: 'trades', item: cur.id }); }} data-testid="inv-trade">Trade</button></div>
+              </> : <><p>Opens one {CASE_NAME}.</p><div className="inv-actions"><button type="button" disabled={!!cur.locked || !signedIn} onClick={() => { onClose(); openMarket({ tab: 'skins', sub: 'sell', item: cur.id }); }} data-testid="inv-sell">Sell on Market</button><button type="button" disabled={!!cur.locked || !signedIn} onClick={() => { onClose(); openMarket({ tab: 'skins', sub: 'trades', item: cur.id }); }} data-testid="inv-trade">Trade</button></div></>}
               {cur.locked && <p className="inv-note">🔒 Listed on the Market or held in a trade offer.</p>}
             </> : <p className="inv-note">Select an item.</p>}
             {err && <p className="inv-err">{err}</p>}

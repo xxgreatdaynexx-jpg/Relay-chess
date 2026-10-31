@@ -1586,3 +1586,17 @@ html, body { overflow-x: clip; }
 .world-casino button { padding: 9px 12px; border-radius: 10px; background: rgba(255,255,255,.08); font-weight: 700; text-align: left; }
 .world-casino button:hover { background: #ff3cac; color: #fff; } .world-casino .world-casino-x { text-align: center; opacity: .7; }
 .world-map-btn { position: fixed; left: 12px; bottom: 12px; z-index: 47; padding: 7px 14px; border-radius: 999px; background: #e8c26a; color: #1b1d2e; font-weight: 800; box-shadow: 0 4px 16px #0008; }
+.mkt-chart { margin: 6px 0; } .mkt-chart-head { display: flex; gap: 4px; align-items: center; font-size: 11px; }
+.mkt-chart-head button { padding: 1px 6px; font-size: 11px; opacity: .6; } .mkt-chart-head button.on { opacity: 1; outline: 1px solid #7cf; }
+.mkt-legend { margin-left: auto; opacity: .8; } .mkt-legend i { display: inline-block; width: 8px; height: 3px; margin: 0 3px 2px 6px; }
+.mkt-recent .mkt-table { font-size: 11px; } .mkt-mat-detail { display: flex; gap: 16px; flex-wrap: wrap; margin: 8px 0; }
+.mkt-table tr.sel td { background: rgba(120,200,255,.12); } .mkt-buy { color: #f88; } .mkt-sell-side { color: #8f8; }
+.mkt-subtabs { margin-left: .5rem; opacity: .9; }
+.mkt-link { margin-left: .5rem; font-size: .75rem; font-weight: 600; text-decoration: underline; background: none; border: 0; color: inherit; cursor: pointer; }
+.mkt-none { opacity: .6; font-size: .7rem; font-weight: 400; }
+.mkt-count { position: absolute; top: 4px; right: 6px; font-size: .65rem; background: #0008; border-radius: 6px; padding: 0 4px; }
+.mkt-pager { grid-column: 1 / -1; display: flex; gap: .5rem; justify-content: center; align-items: center; padding: .5rem; }
+.mkt-toggle { display: inline-flex; gap: .25rem; align-items: center; font-size: .8rem; }
+.mkt-listings { list-style: none; padding: 0; margin: .25rem 0; max-height: 180px; overflow: auto; }
+.mkt-listings li { display: flex; gap: .4rem; align-items: center; padding: 2px 0; }
+.mkt-listings li button { margin-left: auto; }

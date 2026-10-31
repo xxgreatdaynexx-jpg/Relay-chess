@@ -1,6 +1,8 @@
 /** Public skin Market (escrowed listings, 5% fee burned, cheapest first, price history) and player Trades. Server-authoritative: every action is a socket request validated server-side. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { request, socket } from '@/lib/net';
+import { PriceChart, RecentSales } from './MarketCharts';
+import { PAGE, sortCatalog, type CatEntry, type SortKey } from '@/lib/marketCatalog';
 import { useAccount } from '@/lib/auth';
 import { RARITY_COLOR, RARITY_NAME, SKIN_BY_ID, WEAPON_NAME, isKnife, wearOf, type SkinItem } from '../../../shared/skins';
 import { Swatch, label, rarityOf } from './SkinsPanel';
@@ -21,58 +23,81 @@ function Cell({ item, sel, onClick, children }: { item: SkinItem; sel?: boolean;
   );
 }
 
-function Spark({ h }: { h: History }) {
-  if (h.sales.length < 2) return null;
-  const ps = h.sales.map((s) => s.price); const lo = Math.min(...ps), hi = Math.max(...ps), W = 220, H = 50;
-  const pts = ps.map((p, i) => `${(i / (ps.length - 1)) * W},${H - ((p - lo) / (hi - lo || 1)) * (H - 6) - 3}`).join(' ');
-  return <svg className="mkt-spark" width={W} height={H} viewBox={`0 0 ${W} ${H}`} data-testid="mkt-spark"><polyline points={pts} fill="none" stroke="#7cf" strokeWidth="2" /></svg>;
+const SORTS: Array<[SortKey, string]> = [['low', 'Lowest price'], ['high', 'Highest price'], ['name', 'Name'], ['rarity', 'Rarity'], ['most', 'Most listings'], ['recent', 'Recently sold']];
+function Pager({ page, pages, set }: { page: number; pages: number; set: (n: number) => void }) {
+  if (pages <= 1) return null;
+  return <div className="mkt-pager" data-testid="mkt-pager"><button type="button" disabled={page <= 0} onClick={() => set(page - 1)}>‹</button><span>{page + 1} / {pages}</span><button type="button" disabled={page >= pages - 1} onClick={() => set(page + 1)}>›</button></div>;
+}
+const fakeItem = (e: CatEntry): SkinItem => ({ id: 'cat:' + e.what, kind: (e.kind ?? 'skin') as SkinItem['kind'], skin: e.kind === 'skin' ? e.what : '', float: 0.15, seed: 1, at: 0, source: 'catalog', equipped: false });
+function useCatalog(side: 'skins' | 'resources', tick: number) {
+  const [rows, setRows] = useState<CatEntry[]>([]);
+  useEffect(() => { void request('mkt_catalog', { side }).then((r) => { const a = r as Ack; if (a.ok) setRows(a.items as CatEntry[]); }); }, [side, tick]);
+  return rows;
+}
+function Controls({ q, setQ, sort, setSort, listed, setListed, children }: { q: string; setQ: (s: string) => void; sort: SortKey; setSort: (s: SortKey) => void; listed: boolean; setListed: (b: boolean) => void; children?: React.ReactNode }) {
+  return (
+    <div className="inv-filters">
+      {children}
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" data-testid="mkt-search" />
+      <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} data-testid="mkt-sort">{SORTS.map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select>
+      <label className="mkt-toggle"><input type="checkbox" checked={listed} onChange={(e) => setListed(e.target.checked)} data-testid="mkt-listed-only" /> Listed only</label>
+    </div>
+  );
 }
 
-export function MarketView() {
+/** Skins sub-tab: the full catalog (every skin incl. pickaxe, case, key), listed or not. */
+export function MarketView({ onListYours }: { onListYours?: (itemId: string) => void } = {}) {
   const account = useAccount();
-  const [rows, setRows] = useState<ListingView[]>([]);
-  const [mine, setMine] = useState<ListingView[]>([]);
+  const [tick, setTick] = useState(0); const cat = useCatalog('skins', tick);
+  const [rows, setRows] = useState<ListingView[]>([]); const [mine, setMine] = useState<ListingView[]>([]); const [owned, setOwned] = useState<SkinItem[]>([]);
   const [kind, setKind] = useState('all'); const [weapon, setWeapon] = useState('all'); const [rarity, setRarity] = useState('all'); const [q, setQ] = useState('');
+  const [sort, setSort] = useState<SortKey>('low'); const [listed, setListed] = useState(false); const [page, setPage] = useState(0);
   const [sel, setSel] = useState<string | null>(null); const [hist, setHist] = useState<History | null>(null);
   const [err, setErr] = useState(''); const [msg, setMsg] = useState('');
-  const load = useCallback(() => { void request('mkt_browse', { kind, weapon, rarity, q }).then((r) => { const a = r as Ack; if (a.ok) { setRows(a.listings as ListingView[]); setMine(a.mine as ListingView[]); } }); }, [kind, weapon, rarity, q]);
+  const load = useCallback(() => {
+    setTick((t) => t + 1);
+    void request('mkt_browse', { limit: 10000 }).then((r) => { const a = r as Ack; if (a.ok) { setRows(a.listings as ListingView[]); setMine(a.mine as ListingView[]); } });
+    void request('inv_get', {}).then((r) => { const a = r as Ack; if (a.ok) setOwned(((a.items as SkinItem[]) ?? []).filter((i) => !i.locked)); });
+  }, []);
   useEffect(() => { load(); socket.on('inv_changed', load); return () => { socket.off('inv_changed', load); }; }, [load, account]);
-  const cur = rows.find((r) => r.id === sel) ?? mine.find((r) => r.id === sel) ?? rows[0] ?? null;
-  const what = cur ? whatOf(cur.item) : '';
+  const view = useMemo(() => sortCatalog(cat, { q, listedOnly: listed, sort, match: (e) => (kind === 'all' || e.kind === kind) && (weapon === 'all' || e.weapon === weapon) && (rarity === 'all' || e.rarity === rarity) }), [cat, q, listed, sort, kind, weapon, rarity]);
+  useEffect(() => setPage(0), [q, listed, sort, kind, weapon, rarity]);
+  const pages = Math.max(1, Math.ceil(view.length / PAGE)); const shown = view.slice(page * PAGE, page * PAGE + PAGE);
+  const cur = cat.find((e) => e.what === sel) ?? shown[0] ?? null;
+  const what = cur?.what ?? '';
   useEffect(() => { if (!what) { setHist(null); return; } void request('mkt_history', { what }).then((r) => { if ((r as Ack).ok) setHist(r as unknown as History); }); }, [what]);
-  const lowest = useMemo(() => (cur ? rows.filter((r) => whatOf(r.item) === what)[0]?.price ?? null : null), [rows, cur, what]);
+  const here = rows.filter((l) => whatOf(l.item) === what); const mineIds = new Set(mine.map((m) => m.id));
+  const yours = owned.filter((i) => whatOf(i) === what);
   const act = async (ev: string, body: object, ok: string) => { setErr(''); setMsg(''); const r = (await request(ev, body)) as Ack; if (!r.ok) setErr(r.error ?? 'Failed'); else { setMsg(ok); load(); } };
-  const isMine = cur && mine.some((m) => m.id === cur.id);
   return (
     <>
-      <div className="inv-filters">
+      <Controls q={q} setQ={setQ} sort={sort} setSort={setSort} listed={listed} setListed={setListed}>
         <select value={kind} onChange={(e) => setKind(e.target.value)} data-testid="mkt-kind"><option value="all">Everything</option><option value="skin">Skins</option><option value="case">Cases</option><option value="key">Keys</option></select>
-        <select value={weapon} onChange={(e) => setWeapon(e.target.value)}><option value="all">All weapons</option>{['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'ar15', 'knife'].map((w) => <option key={w} value={w}>{WEAPON_NAME[w]}</option>)}</select>
+        <select value={weapon} onChange={(e) => setWeapon(e.target.value)} data-testid="mkt-weapon"><option value="all">All weapons</option>{['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'ar15', 'knife', 'pickaxe'].map((w) => <option key={w} value={w}>{WEAPON_NAME[w] ?? w}</option>)}</select>
         <select value={rarity} onChange={(e) => setRarity(e.target.value)}><option value="all">All rarities</option>{(['common', 'rare', 'ultra'] as const).map((r) => <option key={r} value={r}>{RARITY_NAME[r]}</option>)}</select>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search listings" />
-      </div>
+      </Controls>
       <div className="inv-body">
         <div className="inv-grid" data-testid="mkt-grid">
-          {mine.length > 0 && <p className="mkt-sub">Your listings</p>}
-          {mine.map((l) => <Cell key={'m' + l.id} item={l.item} sel={cur?.id === l.id} onClick={() => setSel(l.id)}><span className="mkt-price">{chipsFmt(l.price)}</span></Cell>)}
-          {mine.length > 0 && <p className="mkt-sub">All listings · cheapest first</p>}
-          {rows.map((l) => <Cell key={l.id} item={l.item} sel={cur?.id === l.id} onClick={() => setSel(l.id)}><span className="mkt-price">{chipsFmt(l.price)}</span></Cell>)}
-          {!rows.length && <p className="inv-note">No listings match. List something from your inventory with Sell.</p>}
+          <p className="mkt-sub">{view.length} items · {view.filter((e) => e.listings).length} listed</p>
+          {shown.map((e) => <Cell key={e.what} item={fakeItem(e)} sel={cur?.what === e.what} onClick={() => setSel(e.what)}>
+            <span className="mkt-price">{e.lowest != null ? chipsFmt(e.lowest) : <span className="mkt-none">No listings{e.last != null ? ` · last ${e.last.toLocaleString()}` : ''}</span>}</span>{e.listings > 0 && <span className="mkt-count">{e.listings}</span>}</Cell>)}
+          {!shown.length && <p className="inv-note">Nothing matches.</p>}
+          <Pager page={page} pages={pages} set={setPage} />
         </div>
         <aside className="inv-detail" data-testid="mkt-detail">
           {cur ? <>
-            <div className="inv-preview" style={{ '--rc': rarityOf(cur.item) ? RARITY_COLOR[rarityOf(cur.item)!] : '#8a8f98' } as React.CSSProperties}><Swatch item={cur.item} size={180} /></div>
-            <h3>{label(cur.item)}</h3>
-            {cur.item.kind === 'skin' && <p>{wearOf(cur.item.float).name} · float {cur.item.float.toFixed(5)} · #{cur.item.seed}</p>}
-            <p><strong className="mkt-big">{chipsFmt(cur.price)}</strong> · seller {cur.seller}</p>
-            <p className="mkt-stats">Lowest now: {lowest != null ? chipsFmt(lowest) : '—'} · Last sale: {hist?.last != null ? chipsFmt(hist.last) : '—'} · Avg: {hist?.avg != null ? chipsFmt(hist.avg) : '—'} · {hist?.count ?? 0} sold</p>
-            {hist && <Spark h={hist} />}
-            <div className="inv-actions">
-              {isMine ? <button type="button" onClick={() => void act('mkt_cancel', { id: cur.id }, 'Listing cancelled; item back in your inventory.')} data-testid="mkt-cancel">Cancel listing</button>
-                : <button type="button" disabled={!account} onClick={() => void act('mkt_buy', { id: cur.id }, `Bought ${label(cur.item)}!`)} data-testid="mkt-buy">{account ? `Buy for ${chipsFmt(cur.price)}` : 'Sign in to buy'}</button>}
-            </div>
+            <div className="inv-preview" style={{ '--rc': cur.rarity ? RARITY_COLOR[cur.rarity] : '#8a8f98' } as React.CSSProperties}><Swatch item={fakeItem(cur)} size={180} /></div>
+            <h3>{cur.name}</h3>
+            <p className="mkt-stats">Lowest now: {cur.lowest != null ? chipsFmt(cur.lowest) : '—'} · Last sale: {cur.last != null ? chipsFmt(cur.last) : '—'} · Avg: {hist?.avg != null ? chipsFmt(hist.avg) : '—'} · {cur.listings} listed</p>
+            {!here.length && <p className="inv-note">No listings.</p>}
+            <ul className="mkt-listings">{here.slice(0, 20).map((l) => <li key={l.id}>{l.item.kind === 'skin' && <small>{wearOf(l.item.float).name} · {l.item.float.toFixed(4)} </small>}<b>{chipsFmt(l.price)}</b> <small>{l.seller}</small>
+              {mineIds.has(l.id) ? <button type="button" onClick={() => void act('mkt_cancel', { id: l.id }, 'Listing cancelled; item back in your inventory.')} data-testid="mkt-cancel">Cancel</button>
+                : <button type="button" disabled={!account} onClick={() => void act('mkt_buy', { id: l.id }, `Bought ${label(l.item)}!`)} data-testid="mkt-buy">{account ? 'Buy' : 'Sign in'}</button>}</li>)}</ul>
+            {account && yours.length > 0 && <button type="button" onClick={() => onListYours?.(yours[0]!.id)} data-testid="mkt-list-yours">List yours ({yours.length})</button>}
+            {what && <PriceChart what={what} />}
+            {what && <RecentSales what={what} />}
             <p className="inv-note">Sellers get the price minus a 5% fee (burned).</p>
-          </> : <p className="inv-note">Select a listing.</p>}
+          </> : <p className="inv-note">Select an item.</p>}
           {msg && <p className="mkt-ok">{msg}</p>}{err && <p className="inv-err">{err}</p>}
         </aside>
       </div>
@@ -82,46 +107,65 @@ export function MarketView() {
 
 interface StackRow { id: string; type: string; itemId: string; name: string; color?: string; qty: number; total: number; unit: number; seller: string; mine: boolean }
 const ORE_COLOR: Record<string, string> = { stone: '#8a8580', coal: '#2e2e33', copper: '#d9793d', iron: '#b0a090', silver: '#e8edf2', gold: '#ffcf3a', crystal: '#c070ff', diamond: '#9ff6ff' };
-const Chip = ({ r }: { r: { type: string; itemId?: string; id?: string; color?: string } }) => <span className="mkt-mat" style={{ background: r.color ?? ORE_COLOR[(r.itemId ?? r.id)!] ?? '#888' }} aria-hidden>{r.type === 'ore' ? '⛏' : r.type === 'bar' ? '▬' : '⚙'}</span>;
+const Chip = ({ r }: { r: { type?: string; itemId?: string; id?: string; color?: string } }) => <span className="mkt-mat" style={{ background: r.color ?? ORE_COLOR[(r.itemId ?? r.id)!] ?? '#888' }} aria-hidden>{r.type === 'ore' ? '⛏' : r.type === 'bar' ? '▬' : '⚙'}</span>;
 
-/** Mines materials (ore / bars / goods): unit-price listings, partial buys, same 5% fee. */
-export function MaterialsView() {
+/** Resources sub-tab: every ore / bar / good, listed or not; unit-price listings, partial buys, 5% fee. */
+export function MaterialsView({ initialSell }: { initialSell?: string | null } = {}) {
   const account = useAccount();
+  const [tick, setTick] = useState(0); const cat = useCatalog('resources', tick);
   const [rows, setRows] = useState<StackRow[]>([]); const [pack, setPack] = useState<Array<{ type: string; id: string; qty: number; name: string }>>([]);
-  const [type, setType] = useState('all'); const [qty, setQty] = useState<Record<string, string>>({});
-  const [sell, setSell] = useState(''); const [sq, setSq] = useState(''); const [su, setSu] = useState('');
+  const [type, setType] = useState('all'); const [q, setQ] = useState(''); const [sort, setSort] = useState<SortKey>('name'); const [listed, setListed] = useState(false); const [page, setPage] = useState(0);
+  const [qty, setQty] = useState<Record<string, string>>({});
+  const [pick, setPick] = useState<string | null>(initialSell ? `stack:${initialSell}` : null); const [sell, setSell] = useState(initialSell ?? ''); const [sq, setSq] = useState(''); const [su, setSu] = useState('');
   const [err, setErr] = useState(''); const [msg, setMsg] = useState('');
   const load = useCallback(() => {
-    void request('mkt_stacks', { type }).then((r) => { const a = r as Ack; if (a.ok) setRows(a.listings as StackRow[]); });
+    setTick((t) => t + 1);
+    void request('mkt_stacks', {}).then((r) => { const a = r as Ack; if (a.ok) setRows(a.listings as StackRow[]); });
     void request('mkt_my_stacks', {}).then((r) => { const a = r as Ack; if (a.ok) setPack(a.stacks as typeof pack); });
-  }, [type]);
+  }, []);
   useEffect(() => { load(); }, [load, account]);
+  const view = useMemo(() => sortCatalog(cat, { q, listedOnly: listed, sort, match: (e) => type === 'all' || e.type === type }), [cat, q, listed, sort, type]);
+  useEffect(() => setPage(0), [q, listed, sort, type]);
+  const pages = Math.max(1, Math.ceil(view.length / PAGE)); const shown = view.slice(page * PAGE, page * PAGE + PAGE);
+  const cur = cat.find((e) => e.what === pick) ?? shown[0] ?? null;
+  const here = cur ? rows.filter((r) => `stack:${r.type}:${r.itemId}` === cur.what) : [];
   const act = async (ev: string, body: object, ok: string) => { setErr(''); setMsg(''); const r = (await request(ev, body)) as Ack; if (!r.ok) setErr(r.error ?? 'Failed'); else { setMsg(ok); load(); } };
   const s = pack.find((p) => `${p.type}:${p.id}` === sell); const n = Math.floor(Number(sq)), u = Math.floor(Number(su));
   const fee = n > 0 && u > 0 ? Math.max(1, Math.ceil(n * u * 0.05)) : 0;
+  const owns = cur ? pack.find((p) => `stack:${p.type}:${p.id}` === cur.what) : undefined;
   return (
     <div className="mkt-mats" data-testid="mkt-mats">
-      <div className="inv-filters">
-        <select value={type} onChange={(e) => setType(e.target.value)}><option value="all">All materials</option><option value="ore">Ore</option><option value="bar">Bars</option><option value="good">Goods</option></select>
-        {msg && <span className="mkt-ok">{msg}</span>}{err && <span className="inv-err">{err}</span>}
-      </div>
-      <table className="mkt-table"><thead><tr><th>Item</th><th>Unit</th><th>Left</th><th>Seller</th><th /></tr></thead><tbody>
-        {rows.map((r) => { const q = Math.max(1, Math.min(r.qty, Math.floor(Number(qty[r.id] ?? 1)) || 1)); return (
-          <tr key={r.id}><td><Chip r={r} /> {r.name}</td><td>{chipsFmt(r.unit)}</td><td>{r.qty}/{r.total}</td><td>{r.seller}</td><td>
-            {r.mine ? <button type="button" onClick={() => void act('mkt_cancel_stack', { id: r.id }, 'Cancelled; items back in your backpack.')}>Cancel</button>
-              : <><input type="number" min={1} max={r.qty} value={qty[r.id] ?? '1'} onChange={(e) => setQty({ ...qty, [r.id]: e.target.value })} style={{ width: 64 }} />
-                <button type="button" disabled={!account} onClick={() => void act('mkt_buy_stack', { id: r.id, qty: q }, `Bought ${q} ${r.name}.`)}>Buy {chipsFmt(q * r.unit)}</button></>}
-          </td></tr>); })}
-        {!rows.length && <tr><td colSpan={5} className="inv-note">No material listings yet.</td></tr>}
+      <Controls q={q} setQ={setQ} sort={sort} setSort={setSort} listed={listed} setListed={setListed}>
+        <select value={type} onChange={(e) => setType(e.target.value)} data-testid="mkt-type"><option value="all">All resources</option><option value="ore">Ore</option><option value="bar">Bars</option><option value="good">Goods</option></select>
+      </Controls>
+      {msg && <p className="mkt-ok">{msg}</p>}{err && <p className="inv-err">{err}</p>}
+      <table className="mkt-table" data-testid="mkt-res-catalog"><thead><tr><th>Item</th><th>Lowest</th><th>Listings</th><th>Last sale</th></tr></thead><tbody>
+        {shown.map((e) => <tr key={e.what} className={cur?.what === e.what ? 'sel' : ''} onClick={() => setPick(e.what)} style={{ cursor: 'pointer' }}><td><Chip r={e} /> {e.name}</td><td>{e.lowest != null ? chipsFmt(e.lowest) : <span className="mkt-none">No listings</span>}</td><td>{e.listings}</td><td>{e.last != null ? chipsFmt(e.last) : '—'}</td></tr>)}
+        {!shown.length && <tr><td colSpan={4} className="inv-note">Nothing matches.</td></tr>}
       </tbody></table>
+      <Pager page={page} pages={pages} set={setPage} />
+      {cur && <div className="mkt-mat-detail" data-testid="mkt-mat-detail">
+        <h3><Chip r={cur} /> {cur.name}</h3>
+        <table className="mkt-table"><thead><tr><th>Unit</th><th>Left</th><th>Seller</th><th /></tr></thead><tbody>
+          {here.map((r) => { const k = Math.max(1, Math.min(r.qty, Math.floor(Number(qty[r.id] ?? 1)) || 1)); return (
+            <tr key={r.id}><td>{chipsFmt(r.unit)}</td><td>{r.qty}/{r.total}</td><td>{r.seller}</td><td>
+              {r.mine ? <button type="button" onClick={() => void act('mkt_cancel_stack', { id: r.id }, 'Cancelled; items back in storage.')}>Cancel</button>
+                : <><input type="number" min={1} max={r.qty} value={qty[r.id] ?? '1'} onChange={(e) => setQty({ ...qty, [r.id]: e.target.value })} style={{ width: 64 }} />
+                  <button type="button" disabled={!account} onClick={() => void act('mkt_buy_stack', { id: r.id, qty: k }, `Bought ${k} ${r.name}.`)}>Buy {chipsFmt(k * r.unit)}</button></>}
+            </td></tr>); })}
+          {!here.length && <tr><td colSpan={4} className="inv-note">No listings{cur.last != null ? ` · last sale ${chipsFmt(cur.last)}` : ''}.</td></tr>}
+        </tbody></table>
+        {account && owns && <button type="button" onClick={() => setSell(`${owns.type}:${owns.id}`)} data-testid="mkt-list-yours">List yours (×{owns.qty})</button>}
+        <PriceChart what={cur.what} /><RecentSales what={cur.what} />
+      </div>}
       {account && <div className="mkt-sell">
-        <select value={sell} onChange={(e) => setSell(e.target.value)} data-testid="mkt-mat-pick"><option value="">Sell from backpack…</option>{pack.map((p) => <option key={`${p.type}:${p.id}`} value={`${p.type}:${p.id}`}>{p.name} ×{p.qty}</option>)}</select>
+        <select value={sell} onChange={(e) => setSell(e.target.value)} data-testid="mkt-mat-pick"><option value="">Sell from storage…</option>{pack.map((p) => <option key={`${p.type}:${p.id}`} value={`${p.type}:${p.id}`}>{p.name} ×{p.qty}</option>)}</select>
         <label>Qty <input type="number" min={1} max={s?.qty} value={sq} onChange={(e) => setSq(e.target.value)} style={{ width: 70 }} /></label>
         <label>Unit price <input type="number" min={1} value={su} onChange={(e) => setSu(e.target.value)} style={{ width: 80 }} /></label>
         {fee > 0 && <span>You get up to {chipsFmt(n * u - fee)} (fee {fee})</span>}
         <button type="button" disabled={!s || !(n > 0) || !(u > 0)} onClick={() => s && void act('mkt_list_stack', { type: s.type, id: s.id, qty: n, unit: u }, `Listed ${n} ${s.name}.`)}>List</button>
       </div>}
-      <p className="inv-note">Ore, bars and goods from the Mines. Buy any amount; sellers pay a 5% fee (burned). Listed items leave your backpack until sold or cancelled.</p>
+      <p className="inv-note">Ore, bars and goods from the Mines. Buy any amount; sellers pay a 5% fee (burned). Listed items leave your storage until sold or cancelled.</p>
     </div>
   );
 }

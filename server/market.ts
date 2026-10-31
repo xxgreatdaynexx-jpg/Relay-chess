@@ -5,8 +5,8 @@ import { getBank } from './casino-store.js';
 import { getAccounts } from './accounts.js';
 import { getVault, playerKey, RuleError, type ItemVault, type Stmt, type StoredItem } from './skins.js';
 import { getMines } from './mines.js';
-import { GOODS, isOre, nameOf as stackName, type ItemType } from '../shared/mines.js';
-import { CASE_NAME, KEY_NAME, SKIN_BY_ID, type SkinItem } from '../shared/skins.js';
+import { GOODS, ORES, ORE_ORDER, isOre, nameOf as stackName, type ItemType } from '../shared/mines.js';
+import { CASE_NAME, KEY_NAME, SKINS, SKIN_BY_ID, type SkinItem } from '../shared/skins.js';
 
 export const MARKET_FEE = 0.05;
 export const MIN_PRICE = 1;
@@ -222,6 +222,71 @@ export class Market {
     return out.sort((a, b) => a.price - b.price || a.at - b.at).slice(0, limit);
   }
   myListings(name: string) { const k = playerKey(name); return this.browse({}, 10_000).filter((l) => this.listings.get(l.id)?.seller === k); }
+  /** Every sellable thing on a side, listed or not: count, lowest ask, last public sale. */
+  catalog(side: unknown) {
+    const agg = new Map<string, { listings: number; lowest: number | null; last: number | null; lastAt: number | null }>();
+    const get = (w: string) => { let a = agg.get(w); if (!a) agg.set(w, (a = { listings: 0, lowest: null, last: null, lastAt: null })); return a; };
+    for (const x of this.publicSales()) { const a = get(x.what); if (a.lastAt == null || x.at >= a.lastAt) { a.last = x.price; a.lastAt = x.at; } }
+    if (side === 'resources') {
+      for (const l of this.stacks.values()) { const a = get(stackWhat(l.type, l.itemId)); a.listings++; if (a.lowest == null || l.unit < a.lowest) a.lowest = l.unit; }
+      const defs = [...ORE_ORDER.map((id) => ({ type: 'ore' as ItemType, id, color: ORES[id].color })), ...Object.values(GOODS).map((g) => ({ type: g.type, id: g.id, color: g.color }))];
+      return { items: defs.map((d) => ({ what: stackWhat(d.type, d.id), type: d.type, id: d.id, name: stackName(d), color: d.color, ...get(stackWhat(d.type, d.id)) })) };
+    }
+    for (const l of this.listings.values()) { const i = this.vault.items.get(l.itemId); if (!i) continue; const a = get(i.kind === 'skin' ? i.skin : i.kind); a.listings++; if (a.lowest == null || l.price < a.lowest) a.lowest = l.price; }
+    return { items: [
+      { what: 'case', kind: 'case', name: CASE_NAME, ...get('case') }, { what: 'key', kind: 'key', name: KEY_NAME, ...get('key') },
+      ...SKINS.map((d) => ({ what: d.id, kind: 'skin', name: d.name, weapon: d.weapon, rarity: d.rarity, ...get(d.id) })),
+    ] };
+  }
+  // ---------- history & charts ----------
+  /** Units in a sale row (stack sales store `qty:N`; skins/cases/keys are 1). */
+  static qtyOf(x: Sale) { const m = /^qty:(\d+)$/.exec(x.itemId); return m ? Number(m[1]) : 1; }
+  /** QA- accounts never count toward public stats. Keys are lower-cased names. */
+  static isQa(key: string) { return key.startsWith('qa-'); }
+  private publicSales() { return this.sales.filter((x) => !Market.isQa(x.seller) && !Market.isQa(x.buyer)); }
+  /** Per-item buckets for a chart: avg + median unit price and unit volume. range: 24h (24×1h) | 7d (28×6h) | 30d (30×1d). */
+  chart(what: string, range: unknown = '7d', now = Date.now()) {
+    const R: Record<string, [number, number]> = { '24h': [24, 3_600_000], '7d': [28, 21_600_000], '30d': [30, 86_400_000] };
+    const key = typeof range === 'string' && R[range] ? range : '7d'; const [n, step] = R[key]!;
+    const start = now - n * step;
+    const buckets = Array.from({ length: n }, (_, i) => ({ t: start + i * step, prices: [] as number[], vol: 0 }));
+    for (const x of this.publicSales()) {
+      if (x.what !== what || x.at < start || x.at > now) continue;
+      const b = buckets[Math.min(n - 1, Math.floor((x.at - start) / step))]!; const q = Market.qtyOf(x);
+      for (let i = 0; i < Math.min(q, 1000); i++) b.prices.push(x.price); b.vol += q;
+    }
+    const med = (a: number[]) => { const s = [...a].sort((p, q) => p - q); const m = s.length >> 1; return s.length % 2 ? s[m]! : Math.round((s[m - 1]! + s[m]!) / 2); };
+    const points = buckets.map((b) => ({ t: b.t, avg: b.prices.length ? Math.round(b.prices.reduce((a, c) => a + c, 0) / b.prices.length) : null, median: b.prices.length ? med(b.prices) : null, vol: b.vol }));
+    return { what, range: key, step, points, volume: points.reduce((a, p) => a + p.vol, 0) };
+  }
+  /** Public recent sales (newest first), optionally for one item. */
+  recentSales(what?: unknown, limit = 30) {
+    const out = [];
+    for (let i = this.sales.length - 1; i >= 0 && out.length < limit; i--) {
+      const x = this.sales[i]!; if (Market.isQa(x.seller) || Market.isQa(x.buyer)) continue;
+      if (typeof what === 'string' && what && x.what !== what) continue;
+      out.push({ what: x.what, name: this.whatName(x.what), qty: Market.qtyOf(x), unit: x.price, total: x.price * Market.qtyOf(x), at: x.at });
+    }
+    return out;
+  }
+  /** A player's own buys and sells with fees (includes QA accounts: it's their own history). */
+  myHistory(name: string, limit = 200) {
+    const k = playerKey(name); const out: Array<{ side: 'buy' | 'sell'; what: string; name: string; qty: number; unit: number; total: number; fee: number; net: number; at: number }> = [];
+    for (let i = this.sales.length - 1; i >= 0 && out.length < limit; i--) {
+      const x = this.sales[i]!; if (x.seller !== k && x.buyer !== k) continue;
+      const q = Market.qtyOf(x), total = x.price * q, sold = x.seller === k;
+      out.push({ side: sold ? 'sell' : 'buy', what: x.what, name: this.whatName(x.what), qty: q, unit: x.price, total, fee: sold ? x.fee : 0, net: sold ? total - x.fee : -total, at: x.at });
+    }
+    const sum = (f: (r: typeof out[number]) => number) => out.reduce((a, r) => a + f(r), 0);
+    return { rows: out, totals: { bought: sum((r) => (r.side === 'buy' ? r.total : 0)), sold: sum((r) => (r.side === 'sell' ? r.total : 0)), fees: sum((r) => r.fee) } };
+  }
+  /** Human name for a `what` key: skin id / case / key / stack:type:id. */
+  whatName(what: string) {
+    if (what.startsWith('stack:')) { const [, t, id] = what.split(':'); return stackName({ type: t as ItemType, id: id! }); }
+    if (what === 'case') return CASE_NAME;
+    if (what === 'key') return KEY_NAME;
+    return SKIN_BY_ID.get(what)?.name ?? what;
+  }
   history(what: string, limit = 50) {
     const s = this.sales.filter((x) => x.what === what);
     const prices = s.map((x) => x.price);
@@ -325,8 +390,12 @@ export function registerMarket(io: Server, socket: Socket): void {
     try { const b = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}; ack?.({ ok: true, ...((await fn(b)) ?? {}) }); }
     catch (e) { ack?.({ ok: false, error: e instanceof RuleError || (e as Error).message === 'Not enough chips.' ? (e as Error).message : 'Something went wrong.' }); }
   });
-  on('mkt_browse', (b) => ({ listings: market.browse(b), mine: nameOf() ? market.myListings(nameOf()!) : [], fee: MARKET_FEE, min: MIN_PRICE, max: MAX_PRICE }));
+  on('mkt_browse', (b) => ({ listings: market.browse(b, Math.min(5000, Math.max(1, Number(b.limit) || 200))), mine: nameOf() ? market.myListings(nameOf()!) : [], fee: MARKET_FEE, min: MIN_PRICE, max: MAX_PRICE }));
+  on('mkt_catalog', (b) => market.catalog(b.side));
   on('mkt_history', (b) => market.history(String(b.what ?? '')));
+  on('mkt_chart', (b) => market.chart(String(b.what ?? ''), b.range));
+  on('mkt_recent', (b) => ({ sales: market.recentSales(b.what) }));
+  on('mkt_my_history', () => market.myHistory(need()));
   on('mkt_list', (b) => ({ listing: market.list(need(), b.id, b.price) }));
   on('mkt_cancel', (b) => { market.cancel(need(), b.id); });
   on('mkt_buy', (b) => market.buy(need(), b.id));

@@ -181,3 +181,64 @@ describe('stackable (Mines) listings', () => {
     expect(() => m.buyStack('QA-Buyer', l.id, 1)).toThrow(/can't hold/);
   });
 });
+
+describe('market history + charts', () => {
+  beforeEach(() => { resetMines(); });
+  it('buckets avg/median/volume per range, excludes QA- from public stats, and lists my buys/sells/fees', () => {
+    const now = Date.now(); const H = 3_600_000;
+    const sale = (what: string, price: number, seller: string, buyer: string, at: number, qty = 1) =>
+      m.sales.push({ id: `${what}${at}${seller}`, listingId: `${at}${seller}`, itemId: qty > 1 ? `qty:${qty}` : 'x', what, price, fee: feeOf(price * qty), seller, buyer, at });
+    sale('stack:bar:iron_bar', 30, 'carol', 'alice', now - 3 * 86_400_000);
+    sale('stack:bar:iron_bar', 10, 'alice', 'bob', now - 2 * H, 5);
+    sale('stack:bar:iron_bar', 20, 'alice', 'bob', now - 2 * H + 1000);
+    sale('stack:bar:iron_bar', 999, 'qa-x', 'bob', now - H);
+    const c = m.chart('stack:bar:iron_bar', '24h', now);
+    expect(c.points).toHaveLength(24); expect(c.volume).toBe(6);
+    const b = c.points.find((p) => p.vol)!; expect(b).toMatchObject({ vol: 6, median: 10, avg: 12 });
+    expect(m.chart('stack:bar:iron_bar', '7d', now).volume).toBe(7);
+    expect(m.recentSales('stack:bar:iron_bar').map((r) => r.unit)).toEqual([20, 10, 30]);
+    expect(m.recentSales()[1]).toMatchObject({ name: 'Iron Bar', qty: 5, total: 50 });
+    const h = m.myHistory('Alice');
+    expect(h.rows.map((r) => r.side)).toEqual(['sell', 'sell', 'buy']);
+    expect(h.totals).toEqual({ bought: 30, sold: 70, fees: feeOf(50) + feeOf(20) });
+    expect(m.myHistory('QA-X').rows).toHaveLength(1);
+  });
+  it('real buys appear in history with qty', () => {
+    getMines().adjustStack('Seller', 'bar', 'iron_bar', 10);
+    const l = m.listStack('Seller', 'bar', 'iron_bar', 10, 7); m.buyStack('Buyer', l.id, 4);
+    expect(m.myHistory('Buyer').rows[0]).toMatchObject({ side: 'buy', qty: 4, unit: 7, total: 28, net: -28 });
+    expect(m.chart('stack:bar:iron_bar', '24h').volume).toBe(4);
+  });
+});
+
+describe('market catalog', () => {
+  beforeEach(() => { resetMines(); });
+  it('lists every skin (incl. pickaxe), case and key, and every resource, even with zero listings', async () => {
+    const { SKINS } = await import('../shared/skins');
+    const sk = m.catalog('skins').items;
+    expect(sk).toHaveLength(SKINS.length + 2);
+    expect(sk.some((e) => 'weapon' in e && e.weapon === 'pickaxe')).toBe(true);
+    expect(sk.every((e) => e.listings >= 0)).toBe(true);
+    const res = m.catalog('resources').items;
+    expect(res.some((e) => e.what === 'stack:ore:iron')).toBe(true);
+    expect(res.some((e) => 'type' in e && e.type === 'bar')).toBe(true);
+    m.sales.push({ id: 'z1', listingId: 'z1', itemId: 'qty:2', what: 'stack:ore:iron', price: 7, fee: 1, seller: 'carol', buyer: 'dave', at: Date.now() });
+    m.sales.push({ id: 'z2', listingId: 'z2', itemId: 'qty:2', what: 'stack:ore:iron', price: 99, fee: 1, seller: 'qa-x', buyer: 'dave', at: Date.now() + 1 });
+    expect(m.catalog('resources').items.find((e) => e.what === 'stack:ore:iron')).toMatchObject({ listings: 0, lowest: null, last: 7 });
+  });
+  it('sorts and filters the catalog client-side', async () => {
+    const { sortCatalog } = await import('../client/src/lib/marketCatalog');
+    const rows = [
+      { what: 'a', name: 'Alpha', rarity: 'common' as const, listings: 0, lowest: null, last: null, lastAt: null },
+      { what: 'b', name: 'Beta', rarity: 'ultra' as const, listings: 3, lowest: 50, last: 40, lastAt: 5 },
+      { what: 'c', name: 'Gamma', rarity: 'rare' as const, listings: 1, lowest: 10, last: null, lastAt: null },
+    ];
+    expect(sortCatalog(rows, { sort: 'low' }).map((e) => e.what)).toEqual(['c', 'b', 'a']);
+    expect(sortCatalog(rows, { sort: 'high' }).map((e) => e.what)).toEqual(['b', 'c', 'a']);
+    expect(sortCatalog(rows, { sort: 'rarity' }).map((e) => e.what)).toEqual(['b', 'c', 'a']);
+    expect(sortCatalog(rows, { sort: 'most' }).map((e) => e.what)).toEqual(['b', 'c', 'a']);
+    expect(sortCatalog(rows, { sort: 'recent' })[0]!.what).toBe('b');
+    expect(sortCatalog(rows, { sort: 'name', listedOnly: true }).map((e) => e.what)).toEqual(['b', 'c']);
+    expect(sortCatalog(rows, { sort: 'name', q: 'gam' }).map((e) => e.what)).toEqual(['c']);
+  });
+});

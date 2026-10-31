@@ -4,6 +4,7 @@ import { useWalletChips } from '@/lib/wallet';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { socket } from '@/lib/net';
 import { MinesFactory, type Ack } from '@/components/MinesFactory';
+import { openMarket } from '@/components/MarketPage';
 import { ORES, SELL_TIERS, isOre, nameOf, priceOf, stackKey, type Stack } from '../../../shared/mines';
 
 const OPEN_KEY = 'relay-factory-open';
@@ -54,7 +55,7 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
       {toast && <div className="factory-toast" data-testid="factory-toast">{toast}</div>}
       <div className="factory-body">
         <section className="factory-col" data-testid="factory-storage">
-          <h3>📦 Storage</h3>
+          <h3>📦 Storage <button type="button" className="mkt-link" onClick={() => openMarket({ tab: 'resources' })} data-testid="factory-goto-market">Sell on Market →</button></h3>
           <ul className="factory-list">
             {st.storage.map((s) => (
               <li key={stackKey(s)}><span className="mines-dot" style={{ background: s.type === 'ore' && isOre(s.id) ? ORES[s.id].color : '#d9b45a' }} />{nameOf(s)}<b>×{s.qty}</b><small>🪙{priceOf(s)}</small>

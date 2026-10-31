@@ -50,4 +50,17 @@ describe('admin grant', () => {
     expect(pushes).toEqual([1050]);
     off();
   });
+  it('grant-item: QA- only, case/key only, idempotent, auth required', async () => {
+    const { getVault } = await import('../server/skins.js');
+    await getAccounts().claim('Real-Person', 'secret1', 'ip');
+    const u = url.replace(/grant$/, 'grant-item');
+    const p = (body: unknown, auth: string | null = `Bearer ${TOKEN}`) => fetch(u, { method: 'POST', headers: { 'content-type': 'application/json', ...(auth ? { authorization: auth } : {}) }, body: JSON.stringify(body) });
+    const b = { player: 'QA-Larry', kind: 'case', key: 'qa-item:larry:1' };
+    expect((await p(b, null)).status).toBe(401);
+    expect((await p({ ...b, player: 'Real-Person' })).status).toBe(400);
+    expect((await p({ ...b, kind: 'skin' })).status).toBe(400);
+    expect(await (await p(b)).json()).toMatchObject({ ok: true, applied: true, kind: 'case' });
+    expect(await (await p(b)).json()).toMatchObject({ ok: true, applied: false });
+    expect(getVault().inventory('QA-Larry').filter((i) => i.kind === 'case').length).toBe(1);
+  });
 });
