@@ -34,8 +34,15 @@ describe('weapon damage', () => {
     const close = fireWeapon({ id: 'a', x: 2, y: 2, z: 0, a: 0, p: -0.4 }, WEAPONS.shotgun, [{ id: 'b', x: 3, y: 2, z: 0, alive: true }], { map: HALL, rand: () => 0.5 });
     expect(close.rays).toHaveLength(WEAPONS.shotgun.pellets);
     expect(close.hits.get('b')).toBe(WEAPONS.shotgun.pellets * WEAPONS.shotgun.damage);
-    const far = fireWeapon({ id: 'a', x: 2, y: 2, z: 0, a: 0, p: CHEST }, WEAPONS.shotgun, [{ id: 'b', x: 12, y: 2, z: 0, alive: true }], { map: HALL, rand: () => 0.5 });
+    const far = fireWeapon({ id: 'a', x: 2, y: 2, z: 0, a: 0, p: CHEST }, WEAPONS.shotgun, [{ id: 'b', x: 14, y: 2, z: 0, alive: true }], { map: HALL, rand: () => 0.5 });
     expect(far.hits.size).toBe(0);
+  });
+  it('buffed shotgun kills at close range and still hurts at mid range', () => {
+    expect(WEAPONS.shotgun.pellets * WEAPONS.shotgun.damage).toBeGreaterThanOrEqual(150);
+    const close = fireWeapon({ id: 'a', x: 2, y: 2, z: 0, a: 0, p: CHEST }, WEAPONS.shotgun, [{ id: 'b', x: 4, y: 2, z: 0, alive: true }], { map: HALL, rand: () => Math.random() });
+    expect(close.hits.get('b') ?? 0).toBeGreaterThanOrEqual(100);
+    const mid = fireWeapon({ id: 'a', x: 2, y: 2, z: 0, a: 0, p: CHEST }, WEAPONS.shotgun, [{ id: 'b', x: 8, y: 2, z: 0, alive: true }], { map: HALL, rand: () => 0.5 });
+    expect(mid.hits.get('b') ?? 0).toBeGreaterThanOrEqual(30);
   });
   it('spread can make shots miss; the scoped sniper does not spread', () => {
     const target = [{ id: 'b', x: 18, y: 2, z: 0, alive: true }];

@@ -412,7 +412,7 @@ export interface WeaponSpec {
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   pistol: { id: 'pistol', name: 'M9 Sidearm', damage: 34, cooldownMs: 300, pellets: 1, spread: 0.01, range: 30, mag: 12, reloadMs: 1100 },
   smg: { id: 'smg', name: 'SMG-9', damage: 14, cooldownMs: 90, pellets: 1, spread: 0.05, range: 24, mag: 30, reloadMs: 1700 },
-  shotgun: { id: 'shotgun', name: 'M1014 Combat Shotgun', damage: 13, cooldownMs: 800, pellets: 8, spread: 0.16, range: 8, mag: 6, reloadMs: 2200 },
+  shotgun: { id: 'shotgun', name: 'M1014 Combat Shotgun', damage: 17, cooldownMs: 800, pellets: 9, spread: 0.12, range: 10, mag: 6, reloadMs: 2200 },
   sniper: { id: 'sniper', name: '.50 Cal Sniper', damage: 95, cooldownMs: 1300, pellets: 1, spread: 0.09, scopedSpread: 0, range: 70, mag: 5, reloadMs: 2500 },
   rocket: { id: 'rocket', name: 'RPG Launcher', damage: 100, cooldownMs: 1100, pellets: 1, spread: 0, range: 40, mag: 2, reloadMs: 2600, splash: 2.4 },
 };

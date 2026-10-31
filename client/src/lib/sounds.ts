@@ -83,7 +83,15 @@ function output(ctx: AudioContext): AudioNode {
   if (!masterGain) {
     masterGain = ctx.createGain();
     masterGain.gain.value = effectiveVolume();
-    masterGain.connect(ctx.destination);
+    // Brick-wall-ish limiter on the master bus so stacked explosions and gunfire can't clip.
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -10;
+    limiter.knee.value = 4;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.002;
+    limiter.release.value = 0.15;
+    masterGain.connect(limiter);
+    limiter.connect(ctx.destination);
   }
   return masterGain;
 }
@@ -481,15 +489,18 @@ function thump(ctx: AudioContext, at: number, f0: number, len: number, gain: num
 }
 
 /** Arena: synthesized gunshot per weapon: sharp crack, low-end thump and a tail. All through the master volume. */
+export const ROCKET_LAUNCH_GAIN = 0.6;
 export function playWeaponShot(weapon: string, volume = 1): void {
   const ctx = audio();
   if (!ctx) return;
   const now = ctx.currentTime;
   const v = volume;
   if (weapon === 'rocket') {
-    thump(ctx, now, 70, 0.3, 0.6 * v);
-    burst(ctx, now, 0.9, 'bandpass', 900, 0.5 * v, 0.6);
-    burst(ctx, now + 0.05, 0.6, 'lowpass', 500, 0.35 * v);
+    // Launch measured ~1 dB hotter than the pistol and three times longer; x0.6 puts it ~3 dB under a pistol shot.
+    const r = ROCKET_LAUNCH_GAIN * v;
+    thump(ctx, now, 70, 0.3, 0.6 * r);
+    burst(ctx, now, 0.9, 'bandpass', 900, 0.5 * r, 0.6);
+    burst(ctx, now + 0.05, 0.6, 'lowpass', 500, 0.35 * r);
     return;
   }
   const cfg: Record<string, { crack: number; body: number; len: number; tail: number }> = {
@@ -590,7 +601,8 @@ export function playStreakCall(kind: 'reward' | 'alarm' = 'reward'): void {
 }
 
 /** Arena explosions sit roughly level with gunshots: ~30% of the old level, quieter and duller with distance. */
-export const ARENA_BOOM_GAIN = 0.3;
+/** queen-death.mp3 is mastered hot (peak 0 dBFS, mean -3.2 dB). 0.13 puts a point-blank boom ~7 dB under a pistol shot (50 ms RMS). */
+export const ARENA_BOOM_GAIN = 0.13;
 export const ARENA_BOOM_VOICES = 2;
 export function explosionMix(dist: number): { gain: number; cutoff: number } {
   const d = Math.max(0, dist);
