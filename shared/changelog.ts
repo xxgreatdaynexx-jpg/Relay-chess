@@ -6,7 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-10-31T00:30:00-06:00', title: 'City polish', bullets: [
+  { commit: '', at: '2026-10-31T01:05:00-06:00', title: 'Economy stats in the Bank', bullets: [
+    'New 🌍 Economy tab in the Bank (your wallet): how many chips everyone holds, what all the skins, cases, ore, goods and factory machines are worth, and the total.',
+    'See daily inflation — today vs yesterday plus 7- and 30-day averages — with a chart and where today’s chips came from and went.',
+    'Items that have never sold get an estimated value from similar items (same rarity and type), marked “est.”.',
+  ] },
+  { commit: 'efcf66c', at: '2026-10-31T00:30:00-06:00', title: 'City polish', bullets: [
     'The Chess Club is now a landmark: a checkerboard plaza and a glowing king you can spot from anywhere.',
     'Animated water around the city, plus a soft glow on fast devices.',
     'Building names stay readable at every zoom level, and grow a little when you hover them.',
@@ -36,6 +41,11 @@ export const CHANGELOG: ChangelogEntry[] = [
     'Build your own factory on a grid: belts, inserters, splitters and machines.',
     'Machinist shop, floor expansions and a 32-recipe tech tree.',
     'Your factory keeps producing while you’re away.',
+  ] },
+  { commit: '71ac7df', at: '2026-10-30T23:14:00-06:00', title: 'Market tab', bullets: [
+    'The Market has its own tab: every skin, case, key, ore and good is listed — even ones nobody is selling yet — with the last sale price.',
+    'Price charts and recent sales for each item, plus your own buy and sell history.',
+    'Search, filter by weapon and rarity, sort, and a “Listed only” switch.',
   ] },
   { commit: '0dc4f99', at: '2026-10-30T23:12:00-06:00', title: 'The city is home', bullets: [
     'Closing any building takes you back to the city. Relay Chess now lives in the Chess Club.',

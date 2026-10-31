@@ -4,6 +4,7 @@ import { request, socket } from '@/lib/net';
 import { useAccount } from '@/lib/auth';
 import { openAccount } from '@/lib/settings';
 import { setWalletChips } from '@/lib/wallet';
+import { EconomyView } from './EconomyView';
 
 interface Tx { key: string | null; game: string; amount: number; balance: number; memo?: string; at: number }
 interface WalletPush { chips: number; tx?: Tx; start?: number }
@@ -26,6 +27,7 @@ export function WalletButton() {
   const [history, setHistory] = useState<Tx[]>([]);
   const [open, setOpen] = useState(false);
   const [unavailable, setUnavailable] = useState<string | null>(null);
+  const [view, setView] = useState<'me' | 'econ'>('me');
   const [bump, setBump] = useState<'' | 'bump-up' | 'bump-down'>('');
   const ref = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -81,7 +83,13 @@ export function WalletButton() {
       </button>
       {open && createPortal(
         <div ref={panelRef} className="wallet-panel" role="dialog" aria-label="Wallet" data-testid="wallet-panel">
-          {unavailable && account ? (
+          <div className="mb-2 flex gap-1" role="tablist">
+            {([['me', '🪙 My wallet'], ['econ', '🌍 Economy']] as const).map(([k, l]) => (
+              <button key={k} type="button" role="tab" aria-selected={view === k} data-testid={`wallet-tab-${k}`} onClick={() => setView(k)}
+                className={`rounded-full px-3 py-1 text-xs font-semibold ${view === k ? 'bg-[#e8c26a] text-[#1b1d2e]' : 'bg-white/10'}`}>{l}</button>
+            ))}
+          </div>
+          {view === 'econ' ? <EconomyView /> : unavailable && account ? (
             <p className="text-sm" role="alert" data-testid="wallet-unavailable">{unavailable} Chip actions are paused until it reconnects.</p>
           ) : !signedIn ? (
             <div>
