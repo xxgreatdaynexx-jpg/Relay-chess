@@ -6,7 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-10-31T01:05:00-06:00', title: 'Economy stats in the Bank', bullets: [
+  { commit: '', at: '2026-10-31T01:45:00-06:00', title: 'A much bigger city', bullets: [
+    'The city is now about four times bigger, with the landmarks spread out across it and more streets to explore.',
+    'New neighbourhoods fill the space in between: residential towers downtown, apartment blocks and row houses, and little detached homes with pitched roofs out in the suburbs, plus parks, plazas with fountains and empty lots.',
+    'Zoom out further to take in the whole city. Traffic grew with the road network, so the streets stay calm.',
+  ] },
+  { commit: 'fda4436', at: '2026-10-31T01:05:00-06:00', title: 'Economy stats in the Bank', bullets: [
     'New 🌍 Economy tab in the Bank (your wallet): how many chips everyone holds, what all the skins, cases, ore, goods and factory machines are worth, and the total.',
     'See daily inflation — today vs yesterday plus 7- and 30-day averages — with a chart and where today’s chips came from and went.',
     'Items that have never sold get an estimated value from similar items (same rarity and type), marked “est.”.',

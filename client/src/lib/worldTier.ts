@@ -15,5 +15,5 @@ export const TIER_PIXEL_RATIO: Record<WorldTier, number> = { low: 1, mid: 1.25, 
 /** World-space label scale so signs stay readable (never tiny on phones, never huge up close). */
 export function labelScale(dist: number, portrait: boolean): number {
   const s = dist * (portrait ? 0.1 : 0.062);
-  return Math.min(portrait ? 15 : 12, Math.max(portrait ? 7 : 5.5, s));
+  return Math.min(portrait ? 24 : 20, Math.max(portrait ? 7 : 5.5, s));
 }

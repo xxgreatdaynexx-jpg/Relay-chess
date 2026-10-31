@@ -5,9 +5,10 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
-import { PLATE, WATER_Z0, ROAD_W, ROADS_X, ROADS_Z, ROAD_X_SPAN, ROAD_Z_SPAN, SPOT_POS, fillerSpots as layoutFillers, CAR_LOOPS, CAR_COUNT, LANE, loopPoint } from './worldLayout';
+import { PLATE, WATER_Z0, ROAD_W, ROADS_X, ROADS_Z, ROAD_X_SPAN, ROAD_Z_SPAN, SPOT_POS, cityBlocks, fillerSpots as layoutFillers, BLOCK, CAR_LOOPS, CAR_COUNT, LANE, loopPoint } from './worldLayout';
 
 import { WORLD_SPOTS } from './worldSpots';
+import { HOUSING_TYPES, type HousingType } from './housing';
 
 type Handlers = { onHover: (id: string | null, x: number, y: number) => void; onPick: (id: string) => void };
 
@@ -21,6 +22,19 @@ function windowsTexture(seed: number, warm: string, cool: string) {
     const v = r(); g.fillStyle = v > 0.55 ? (v > 0.85 ? cool : warm) : '#141a2e'; g.fillRect(x, y, 5, 5);
   }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.magFilter = THREE.NearestFilter; return t;
+}
+
+/** Wall map (grey wall so the instance tint reads, dark + lit windows) and a matching emissive map (lit windows only). */
+function housingTextures(seed: number, ht: HousingType) {
+  const mk = () => { const c = document.createElement('canvas'); c.width = 64; c.height = 128; return c; };
+  const a = mk(), b = mk(); const g = a.getContext('2d')!, e = b.getContext('2d')!; const r = rng(seed);
+  g.fillStyle = '#6a6a74'; g.fillRect(0, 0, 64, 128); e.fillStyle = '#000'; e.fillRect(0, 0, 64, 128);
+  const { cols, rows, chance, lit } = ht.windows; const ww = Math.max(2, Math.round(cols * 0.55)), wh = Math.max(2, Math.round(rows * 0.5));
+  for (let y = 3; y + wh < 126; y += rows) for (let x = 3; x + ww < 62; x += cols) {
+    const on = r() < chance; const col = lit[Math.floor(r() * lit.length)];
+    g.fillStyle = on ? col : '#151a2c'; g.fillRect(x, y, ww, wh); if (on) { e.fillStyle = col; e.fillRect(x, y, ww, wh); }
+  }
+  return [a, b].map((c) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.magFilter = THREE.NearestFilter; return t; });
 }
 
 function signTexture(text: string, color: string, sub?: string) {
@@ -47,12 +61,12 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   canvas.dataset.tier = tier;
   renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x070a1c); scene.fog = new THREE.Fog(0x070a1c, 120, 250);
-  const camera = new THREE.PerspectiveCamera(38, 1, 0.5, 400);
-  const home = new THREE.Vector3(74, 70, 86); camera.position.copy(home);
+  scene.background = new THREE.Color(0x070a1c); scene.fog = new THREE.Fog(0x070a1c, 230, 520);
+  const camera = new THREE.PerspectiveCamera(38, 1, 0.5, 900);
+  const home = new THREE.Vector3(132, 132, 156); camera.position.copy(home);
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(0, 0, 0); controls.enableDamping = true; controls.dampingFactor = 0.08;
-  controls.minDistance = 30; controls.maxDistance = 170; controls.maxPolarAngle = 1.2; controls.minPolarAngle = 0.35;
+  controls.minDistance = 30; controls.maxDistance = 360; controls.maxPolarAngle = 1.2; controls.minPolarAngle = 0.35;
   controls.enablePan = false; controls.autoRotate = true; controls.autoRotateSpeed = 0.25;
 
   scene.add(new THREE.HemisphereLight(0x7a8cff, 0x2a4a30, 1.3));
@@ -93,7 +107,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   for (const z of ROADS_Z) { const m = new THREE.Mesh(roadGeo, roadMat); m.position.set(0, 0.02, z); scene.add(m); }
   const roadGeoZ = geo(new THREE.BoxGeometry(ROAD_W, 0.11, xLen));
   for (const x of ROADS_X) { const m = new THREE.Mesh(roadGeoZ, roadMat); m.position.set(x, 0.02, (ROAD_X_SPAN[0] + ROAD_X_SPAN[1]) / 2); scene.add(m); }
-  const dash = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(1.2, 0.12, 0.18)), mat({ color: 0xffe08a, emissive: 0xffd060, emissiveIntensity: 0.5 }), 400);
+  const dash = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(1.2, 0.12, 0.18)), mat({ color: 0xffe08a, emissive: 0xffd060, emissiveIntensity: 0.5 }), Math.ceil((ROADS_Z.length * (ROAD_Z_SPAN[1] - ROAD_Z_SPAN[0]) + ROADS_X.length * (ROAD_X_SPAN[1] - ROAD_X_SPAN[0])) / 3) + 8);
   { const d = new THREE.Object3D(); let n = 0;
     for (const z of ROADS_Z) for (let x = ROAD_Z_SPAN[0] + 1; x < ROAD_Z_SPAN[1]; x += 3) { d.position.set(x, 0.06, z); d.rotation.y = 0; d.updateMatrix(); dash.setMatrixAt(n++, d.matrix); }
     for (const x of ROADS_X) for (let z = ROAD_X_SPAN[0] + 1; z < ROAD_X_SPAN[1]; z += 3) { d.position.set(x, 0.07, z); d.rotation.y = Math.PI / 2; d.updateMatrix(); dash.setMatrixAt(n++, d.matrix); }
@@ -186,20 +200,43 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     lms.push({ id: spot.id, root: g, hit: [], emissive: ems, sign, pos: g.position.clone(), height });
   }
 
-  // Filler city blocks (instanced, two window palettes) — only on empty blocks, never on roads or pads.
+  // Filler: every non-landmark block is housing, a park, a plaza or an empty lot (worldLayout.cityBlocks).
+  // Housing is data-driven (housing.ts): one instanced body (+ instanced gable roof) per type, tinted per instance.
   const r = rng(7);
-  const fillers = layoutFillers(r);
-  for (let p = 0; p < 2; p++) {
-    const t = windowsTexture(100 + p, p ? '#ffe9a8' : '#ffb870', p ? '#c8a8ff' : '#7fe0ff'); disposables.push(t);
-    const im = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(1, 1, 1)), mat({ color: 0x8890b0, map: t, emissiveMap: t, emissive: 0xffffff, emissiveIntensity: 0.85 }), fillers.length);
-    const d = new THREE.Object3D(); let n = 0;
-    fillers.forEach((f, i) => { if (i % 2 !== p) return; const hgt = 3 + r() * 9; d.position.set(f.x, hgt / 2, f.z); d.scale.set(f.w, hgt, f.d); d.updateMatrix(); im.setMatrixAt(n++, d.matrix); });
-    im.count = n; scene.add(im);
+  const blocks = cityBlocks(r);
+  const fillers = layoutFillers(r, blocks);
+  const roofGeo = (() => { const sh = new THREE.Shape(); sh.moveTo(-0.5, 0); sh.lineTo(0.5, 0); sh.lineTo(0, 1); sh.closePath();
+    const g = new THREE.ExtrudeGeometry(sh, { depth: 1, bevelEnabled: false }); g.translate(0, 0, -0.5); g.rotateY(Math.PI / 2); return geo(g); })();
+  const unitBox = geo(new THREE.BoxGeometry(1, 1, 1));
+  const housingMeshes: Record<string, THREE.InstancedMesh> = {};
+  HOUSING_TYPES.forEach((ht, ti) => {
+    const list = fillers.filter((f) => f.type === ht.id); if (!list.length) return;
+    const [map, em] = housingTextures(200 + ti, ht); disposables.push(map, em);
+    const body = new THREE.InstancedMesh(unitBox, mat({ color: 0xffffff, map, emissiveMap: em, emissive: 0xffffff, emissiveIntensity: 0.9, roughness: 0.9 }), list.length);
+    const roof = ht.roof === 'gable' ? new THREE.InstancedMesh(roofGeo, mat({ color: 0xffffff, roughness: 0.8, flatShading: true }), list.length) : null;
+    const d = new THREE.Object3D(); const c = new THREE.Color();
+    list.forEach((f, i) => {
+      d.position.set(f.x, f.h / 2, f.z); d.scale.set(f.w, f.h, f.d); d.rotation.set(0, f.rot, 0); d.updateMatrix(); body.setMatrixAt(i, d.matrix); body.setColorAt(i, c.setHex(f.color));
+      if (roof) { d.position.set(f.x, f.h, f.z); d.scale.set(f.w + 0.2, Math.min(1.6, f.d * 0.45), f.d + 0.3); d.updateMatrix(); roof.setMatrixAt(i, d.matrix); roof.setColorAt(i, c.setHex([0x6a2e2a, 0x3a3f4a, 0x5a4636, 0x2f4a3a][i % 4])); }
+    });
+    body.userData.housingType = ht.id; housingMeshes[ht.id] = body; scene.add(body); if (roof) scene.add(roof);
+  });
+  // Block grounds: parks (grass), plazas (paving + fountain glow), lots (dirt) — one instanced slab, tinted.
+  const grounds = blocks.filter((b) => b.kind === 'park' || b.kind === 'plaza' || b.kind === 'lot');
+  if (grounds.length) {
+    const gm = new THREE.InstancedMesh(unitBox, mat({ color: 0xffffff, roughness: 1 }), grounds.length); const d = new THREE.Object3D(); const c = new THREE.Color();
+    const inner = BLOCK - ROAD_W - 1.5;
+    grounds.forEach((b, i) => { d.position.set(b.x, 0.04, b.z); d.scale.set(inner, 0.08, inner); d.updateMatrix(); gm.setMatrixAt(i, d.matrix); gm.setColorAt(i, c.setHex(b.kind === 'park' ? 0x2e7a36 : b.kind === 'plaza' ? 0x77727a : 0x4a3a2c)); });
+    scene.add(gm);
+    const plazas = grounds.filter((b) => b.kind === 'plaza');
+    if (plazas.length) { const fm = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(2.2, 2.4, 0.6, 16)), mat({ color: 0x4aa8ff, emissive: 0x2a78ff, emissiveIntensity: 0.8 }), plazas.length);
+      plazas.forEach((b, i) => { d.position.set(b.x, 0.3, b.z); d.scale.set(1, 1, 1); d.updateMatrix(); fm.setMatrixAt(i, d.matrix); }); scene.add(fm); }
   }
   const onAnyRoad = (x: number, z: number, m: number) => (ROADS_Z.some((rz) => Math.abs(rz - z) < m) && x > ROAD_Z_SPAN[0] && x < ROAD_Z_SPAN[1]) || (ROADS_X.some((rx) => Math.abs(rx - x) < m) && z > ROAD_X_SPAN[0] - 1 && z < ROAD_X_SPAN[1] + 1);
   // Trees + palms (instanced).
   const treeSpots: [number, number, number][] = [];
-  for (let i = 0; i < 130; i++) { const x = (r() - 0.5) * S * 2 * 0.95, z = (r() - 0.5) * S * 2 * 0.95; if (z > WATER_Z0 - 1.5) continue; if (onAnyRoad(x, z, 2.8)) continue; if (Object.values(spotPos).some(([sx, sz]) => Math.abs(sx - x) < 7 && Math.abs(sz - z) < 7)) continue; if (fillers.some((f) => Math.abs(f.x - x) < f.w / 2 + 1 && Math.abs(f.z - z) < f.d / 2 + 1)) continue; treeSpots.push([x, z, 0.7 + r() * 0.6]); }
+  for (const b of blocks) if (b.kind === 'park') for (let i = 0; i < 9; i++) treeSpots.push([b.x + (r() - 0.5) * 13, b.z + (r() - 0.5) * 13, 0.8 + r() * 0.7]);
+  for (let i = 0; i < 260; i++) { const x = (r() - 0.5) * S * 2 * 0.95, z = (r() - 0.5) * S * 2 * 0.95; if (z > WATER_Z0 - 1.5) continue; if (onAnyRoad(x, z, 2.8)) continue; if (Object.values(spotPos).some(([sx, sz]) => Math.abs(sx - x) < 7 && Math.abs(sz - z) < 7)) continue; if (fillers.some((f) => Math.abs(f.x - x) < f.w / 2 + 1 && Math.abs(f.z - z) < f.d / 2 + 1)) continue; treeSpots.push([x, z, 0.7 + r() * 0.6]); }
   // palms along the waterfront
   for (let x = -S + 3; x < S - 2; x += 4.4) if (Math.abs(x) > 4 && !ROADS_X.some((rx) => Math.abs(rx - x) < 2.8)) treeSpots.push([x, WATER_Z0 - 1.2, -1]);
   const trunk = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(0.15, 0.22, 1, 5)), mat({ color: 0x5a3a22 }), treeSpots.length);
@@ -239,13 +276,13 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   scene.add(new THREE.Points(fwG, fwM));
   let fwAge = 99; let nextFw = 2;
   const burst = () => {
-    const cx = (r() - 0.5) * 60, cy = 28 + r() * 10, cz = (r() - 0.5) * 50; const c = new THREE.Color().setHSL(r(), 1, 0.6);
+    const cx = (r() - 0.5) * 130, cy = 34 + r() * 14, cz = (r() - 0.5) * 110; const c = new THREE.Color().setHSL(r(), 1, 0.6);
     for (let i = 0; i < FP; i++) { fwPos.set([cx, cy, cz], i * 3); const u = r() * 2 - 1, a = r() * Math.PI * 2, s = Math.sqrt(1 - u * u), v = 5 + r() * 3; fwVel.set([s * Math.cos(a) * v, u * v, s * Math.sin(a) * v], i * 3); fwCol.set([c.r, c.g, c.b], i * 3); }
     fwG.attributes.color.needsUpdate = true; fwAge = 0;
   };
 
   // Stars
-  const stG = new THREE.BufferGeometry(); const sp: number[] = []; for (let i = 0; i < 400; i++) { const a = r() * Math.PI * 2, e = 0.15 + r() * 1.2, R = 180; sp.push(Math.cos(a) * Math.cos(e) * R, Math.sin(e) * R, Math.sin(a) * Math.cos(e) * R); }
+  const stG = new THREE.BufferGeometry(); const sp: number[] = []; for (let i = 0; i < 400; i++) { const a = r() * Math.PI * 2, e = 0.15 + r() * 1.2, R = 420; sp.push(Math.cos(a) * Math.cos(e) * R, Math.sin(e) * R, Math.sin(a) * Math.cos(e) * R); }
   stG.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3)); disposables.push(stG);
   const stM = new THREE.PointsMaterial({ color: 0xffffff, size: 0.8, sizeAttenuation: false, fog: false }); disposables.push(stM); scene.add(new THREE.Points(stG, stM));
 
