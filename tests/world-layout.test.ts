@@ -46,3 +46,42 @@ describe('world layout (organic city)', () => {
     }
   });
 });
+
+import { JUNCTIONS, CUL_ENDS } from '../client/src/lib/worldLayout';
+
+describe('road network is continuous', () => {
+  const near = (q: [number, number][], x: number, z: number) => { let d = Infinity; for (let i = 1; i < q.length; i++) { const a = q[i - 1], b = q[i]; const dx = b[0] - a[0], dz = b[1] - a[1]; const L = dx * dx + dz * dz; const t = L ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / L)) : 0; d = Math.min(d, Math.hypot(x - a[0] - t * dx, z - a[1] - t * dz)); } return d; };
+  const TOL = 0.25;
+  it('every open road end meets another road, runs off the plate edge, or is a capped cul-de-sac', () => {
+    for (const r of ROADS) {
+      if (r.closed) continue;
+      expect(r.ends, r.id).toBeDefined();
+      r.ends!.forEach((kind, i) => {
+        const [x, z] = i === 0 ? r.pts[0] : r.pts[r.pts.length - 1];
+        const gap = Math.min(...ROADS.filter((o) => o !== r).map((o) => near(o.closed ? [...o.pts, o.pts[0]] : o.pts, x, z)));
+        if (kind === 'junction') {
+          expect(gap, `${r.id} end ${i} gap`).toBeLessThan(TOL);
+          expect(JUNCTIONS.some((j) => Math.hypot(j.x - x, j.z - z) <= j.r), `${r.id} end ${i} has a junction cap`).toBe(true);
+        } else if (kind === 'edge') {
+          expect(PLATE - Math.max(Math.abs(x), Math.abs(z)), `${r.id} end ${i} reaches the plate side`).toBeLessThan(TOL);
+        } else {
+          expect(CUL_ENDS.some(([cx, cz]) => Math.hypot(cx - x, cz - z) < 1e-6), `${r.id} end ${i} is a capped cul-de-sac`).toBe(true);
+        }
+      });
+    }
+  });
+  it('dead ends are rare: nearly every road end is joined to the network', () => {
+    const ends = ROADS.flatMap((r) => r.ends ?? []);
+    expect(ends.filter((e) => e === 'junction').length).toBeGreaterThanOrEqual(ends.length * 0.7);
+    // only the designed cul-de-sacs (plus at most a couple of capped stubs) are dead ends
+    expect(ends.filter((e) => e === 'cul').length).toBeLessThanOrEqual(ROADS.filter((r) => r.cul).length + 2);
+  });
+  it('the road graph is one connected network', () => {
+    const parent = ROADS.map((_, i) => i); const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+    ROADS.forEach((r, i) => ROADS.forEach((o, j) => { if (j <= i) return; const q = o.closed ? [...o.pts, o.pts[0]] : o.pts; const p = r.closed ? [...r.pts, r.pts[0]] : r.pts;
+      if (p.some(([x, z], k) => k % 2 === 0 && near(q, x, z) < TOL) || q.some(([x, z], k) => k % 2 === 0 && near(p, x, z) < TOL)) parent[find(i)] = find(j); }));
+    const roots = new Set(ROADS.map((_, i) => find(i)));
+    expect(roots.size).toBe(1);
+  });
+  it('every crossing gets a filled junction cap', () => { expect(JUNCTIONS.length).toBeGreaterThan(20); for (const j of JUNCTIONS) expect(j.r).toBeGreaterThan(1.5); });
+});

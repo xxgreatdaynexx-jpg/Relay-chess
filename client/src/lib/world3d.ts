@@ -5,7 +5,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
-import { PLATE, shoreZ, ROADS, CUL_R, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint } from './worldLayout';
+import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint } from './worldLayout';
 
 import { WORLD_SPOTS } from './worldSpots';
 import { HOUSING_TYPES, type HousingType } from './housing';
@@ -105,21 +105,27 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const bank: number[] = []; const bi: number[] = []; let k = 0; for (let x = -S; x <= S; x += 2, k++) { const z = shoreZ(x); bank.push(x, 0.03, z - 1.6, x, 0.03, z + 0.4); if (k) { const o = (k - 1) * 2; bi.push(o, o + 2, o + 1, o + 1, o + 2, o + 3); } }
     const bgeo = new THREE.BufferGeometry(); bgeo.setAttribute('position', new THREE.Float32BufferAttribute(bank, 3)); bgeo.setIndex(bi); bgeo.computeVertexNormals();
     scene.add(new THREE.Mesh(geo(bgeo), mat({ color: 0xb8a27a, roughness: 1, side: THREE.DoubleSide }))); }
-  // Roads: one merged ribbon mesh following each curved centreline (+ cul-de-sac turning circles), lane dashes instanced.
-  const roadMat = mat({ color: 0x23252c, roughness: 0.9 });
-  { const pos: number[] = []; const idx: number[] = []; let base = 0;
-    ROADS.forEach((rd, ri) => { const p = rd.closed ? [...rd.pts, rd.pts[0]] : rd.pts; const hw = rd.width / 2; const y = 0.03 + (ri % 7) * 0.002 + (rd.kind === 'street' || rd.kind === 'lane' ? 0 : 0.015);
+  // Roads: ONE merged mesh at ONE height: ribbons along each curved centreline + filled junction caps + cul-de-sac circles.
+  // Overlaps are the same surface (no per-road height steps to z-fight); polygonOffset keeps it above the grass at every zoom.
+  const ROAD_Y = 0.08;
+  const roadMat = mat({ color: 0x23252c, roughness: 0.9, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
+  { const pos: number[] = []; const idx: number[] = []; let base = 0; const y = ROAD_Y;
+    const disc = (cx: number, cz: number, r: number) => { const c0 = base; pos.push(cx, y, cz); for (let j = 0; j <= 24; j++) { const a = j / 24 * Math.PI * 2; pos.push(cx + Math.cos(a) * r, y, cz + Math.sin(a) * r); if (j) idx.push(c0, c0 + j, c0 + j + 1); } base += 26; };
+    ROADS.forEach((rd) => { const p = rd.closed ? [...rd.pts, rd.pts[0], rd.pts[1]] : rd.pts; const hw = rd.width / 2;
       for (let i = 0; i < p.length; i++) { const a0 = p[Math.max(0, i - 1)], a1 = p[Math.min(p.length - 1, i + 1)]; const ang = Math.atan2(a1[1] - a0[1], a1[0] - a0[0]); const nx = -Math.sin(ang) * hw, nz = Math.cos(ang) * hw;
         pos.push(p[i][0] + nx, y, p[i][1] + nz, p[i][0] - nx, y, p[i][1] - nz); if (i) { const o = base + (i - 1) * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); } }
-      base += p.length * 2;
-      if (rd.cul) { const [cx, cz] = rd.pts[rd.pts.length - 1]; const c0 = base; pos.push(cx, y, cz); for (let j = 0; j <= 20; j++) { const a = j / 20 * Math.PI * 2; pos.push(cx + Math.cos(a) * CUL_R, y, cz + Math.sin(a) * CUL_R); if (j) idx.push(c0, c0 + j, c0 + j + 1); } base += 22; } });
+      base += p.length * 2; });
+    for (const j of JUNCTIONS) disc(j.x, j.z, j.r);
+    for (const [cx, cz] of CUL_ENDS) disc(cx, cz, CUL_R);
     const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); rg.setIndex(idx); rg.computeVertexNormals();
-    const roadMesh = new THREE.Mesh(geo(rg), roadMat); roadMat.side = THREE.DoubleSide; scene.add(roadMesh); }
+    const roadMesh = new THREE.Mesh(geo(rg), roadMat); roadMesh.renderOrder = 1; scene.add(roadMesh); }
+  // Lane dashes: flat, a layer above the asphalt (own polygonOffset), and not painted across junctions.
   const dashSpots: [number, number, number][] = [];
-  for (const rd of ROADS) { if (rd.kind === 'street' || rd.kind === 'lane') continue; const p = rd.pts; for (let i = 1; i < p.length - 1; i += 3) dashSpots.push([p[i][0], p[i][1], Math.atan2(p[i + 1][1] - p[i - 1][1], p[i + 1][0] - p[i - 1][0])]); }
-  const dash = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(1.2, 0.12, 0.18)), mat({ color: 0xffe08a, emissive: 0xffd060, emissiveIntensity: 0.5 }), dashSpots.length);
-  { const d = new THREE.Object3D(); dashSpots.forEach(([x, z, a], i) => { d.position.set(x, 0.06, z); d.rotation.set(0, -a, 0); d.updateMatrix(); dash.setMatrixAt(i, d.matrix); }); }
-  scene.add(dash);
+  const inJunction = (x: number, z: number) => JUNCTIONS.some((j) => Math.hypot(j.x - x, j.z - z) < j.r + 0.6);
+  for (const rd of ROADS) { if (rd.kind === 'street' || rd.kind === 'lane') continue; const p = rd.pts; for (let i = 1; i < p.length - 1; i += 3) if (!inJunction(p[i][0], p[i][1])) dashSpots.push([p[i][0], p[i][1], Math.atan2(p[i + 1][1] - p[i - 1][1], p[i + 1][0] - p[i - 1][0])]); }
+  const dash = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(1.2, 0.02, 0.18)), mat({ color: 0xffe08a, emissive: 0xffd060, emissiveIntensity: 0.5, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }), dashSpots.length);
+  { const d = new THREE.Object3D(); dashSpots.forEach(([x, z, a], i) => { d.position.set(x, ROAD_Y + 0.03, z); d.rotation.set(0, -a, 0); d.updateMatrix(); dash.setMatrixAt(i, d.matrix); }); }
+  dash.renderOrder = 2; scene.add(dash);
 
   // Landmarks.
   type LM = { id: string; root: THREE.Group; hit: THREE.Object3D[]; emissive: THREE.MeshStandardMaterial[]; sign: THREE.Sprite; pos: THREE.Vector3; height: number };

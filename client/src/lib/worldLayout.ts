@@ -14,7 +14,11 @@ function rng(seed: number) { return () => { seed = (seed * 16807) % 2147483647; 
 export const shoreZ = (x: number) => 70 + 7 * Math.sin(x / 23 + 0.4) + 3.5 * Math.sin(x / 9 + 1.3);
 
 export type RoadKind = 'ring' | 'boulevard' | 'avenue' | 'street' | 'lane';
-export interface Road { id: string; kind: RoadKind; width: number; closed: boolean; pts: [number, number][]; cul?: boolean }
+/** `cul`: the road's end is a capped cul-de-sac. `ends`: what each open end does after connectRoads (junction / cul-de-sac cap / runs off the plate edge). */
+export type RoadEnd = 'junction' | 'cul' | 'edge';
+export interface Road { id: string; kind: RoadKind; width: number; closed: boolean; pts: [number, number][]; cul?: boolean; ends?: [RoadEnd, RoadEnd] }
+/** A filled junction cap: where a road end meets another road, or two roads cross. */
+export interface Junction { x: number; z: number; r: number }
 export const ROAD_WIDTH: Record<RoadKind, number> = { ring: 5, boulevard: 5.5, avenue: 4.5, street: 3.8, lane: 3.6 };
 
 /** Centripetal-ish Catmull-Rom through control points, resampled at ~`step` spacing. */
@@ -98,9 +102,72 @@ function buildRoads(): Road[] {
     const pts = spline(ctrl, false); if (!pts.every(([x, z]) => onLand(x, z, 6))) continue;
     roads.push({ id: `cul${a}`, kind: 'lane', width: ROAD_WIDTH.lane, closed: false, pts, cul: true });
   }
+  return connectRoads(roads);
+}
+
+/** Closest point on a polyline to (x, z): [distance, px, pz]. */
+function nearestOn(q: [number, number][], x: number, z: number): [number, number, number] {
+  let best: [number, number, number] = [Infinity, 0, 0];
+  for (let i = 1; i < q.length; i++) { const a = q[i - 1], b = q[i]; const dx = b[0] - a[0], dz = b[1] - a[1]; const L = dx * dx + dz * dz;
+    const t = L ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / L)) : 0; const px = a[0] + t * dx, pz = a[1] + t * dz; const d = Math.hypot(x - px, z - pz);
+    if (d < best[0]) best = [d, px, pz]; }
+  return best;
+}
+const centre = (r: Road) => (r.closed ? [...r.pts, r.pts[0]] : r.pts);
+export const SNAP_R = 18; // an open end this close to another road is joined to it
+const EDGE_R = 14; // an open end this close to the plate side runs off the edge
+/**
+ * Make the network continuous: every open road end is joined to the nearest other road's centreline
+ * (a short straight connector), runs out to the plate edge, or gets a cul-de-sac cap.
+ */
+function connectRoads(roads: Road[]): Road[] {
+  for (const r of roads) {
+    if (r.closed) continue;
+    const ends: [RoadEnd, RoadEnd] = ['cul', 'cul'];
+    for (const which of [0, 1] as const) {
+      if (which === 1 && r.cul) { ends[1] = 'cul'; continue; }
+      const pts = r.pts; const p = which === 0 ? pts[0] : pts[pts.length - 1]; const prev = which === 0 ? pts[Math.min(3, pts.length - 1)] : pts[Math.max(0, pts.length - 4)];
+      let best: [number, number, number] = [Infinity, 0, 0];
+      for (const o of roads) { if (o === r) continue; const n = nearestOn(centre(o), p[0], p[1]); if (n[0] < best[0]) best = n; }
+      const line = (to: [number, number]) => { const L = Math.hypot(to[0] - p[0], to[1] - p[1]); const seg: [number, number][] = []; for (let d = 1; d < L; d += 1) seg.push([p[0] + (to[0] - p[0]) * d / L, p[1] + (to[1] - p[1]) * d / L]); seg.push(to); return seg; };
+      const okLine = (seg: [number, number][]) => seg.every(([x, z]) => onLand(x, z, 0.5));
+      let done: RoadEnd | null = null;
+      const nearSide = PLATE - Math.max(Math.abs(p[0]), Math.abs(p[1])) <= 4; // clipped by the plate itself: it runs off the edge
+      if (best[0] < 0.05) done = 'junction';
+      else if (!nearSide && best[0] <= SNAP_R) { const seg = line([best[1], best[2]]); if (okLine(seg)) { if (which === 0) r.pts = [...seg.reverse(), ...pts]; else r.pts = [...pts, ...seg]; done = 'junction'; } }
+      if (!done) {
+        // Run straight out along the road's heading to the plate side if it's close.
+        const dx = p[0] - prev[0], dz = p[1] - prev[1]; const L = Math.hypot(dx, dz) || 1; const ux = dx / L, uz = dz / L;
+        const toEdge = Math.min(ux ? ((ux > 0 ? PLATE : -PLATE) - p[0]) / ux : Infinity, uz ? ((uz > 0 ? PLATE : -PLATE) - p[1]) / uz : Infinity);
+        if (toEdge <= EDGE_R) { const seg = line([p[0] + ux * toEdge, p[1] + uz * toEdge]); if (seg.every(([x, z]) => Math.abs(x) <= PLATE + 1e-6 && z < shoreZ(x) - 0.5)) { if (which === 0) r.pts = [...seg.reverse(), ...r.pts]; else r.pts = [...r.pts, ...seg]; done = 'edge'; } }
+      }
+      ends[which] = done ?? 'cul';
+    }
+    r.ends = ends;
+  }
   return roads;
 }
 export const ROADS: Road[] = buildRoads();
+
+/** Junction caps: every joined road end, and every place two roads cross. Radius covers the widest road there. */
+export const JUNCTIONS: Junction[] = (() => {
+  const out: Junction[] = [];
+  const add = (x: number, z: number, r: number) => { const j = out.find((o) => Math.hypot(o.x - x, o.z - z) < Math.max(o.r, r)); if (j) { j.r = Math.max(j.r, r); return; } out.push({ x, z, r }); };
+  const wAt = (x: number, z: number, skip: Road) => { let w = 0; for (const o of ROADS) if (o !== skip && nearestOn(centre(o), x, z)[0] < 0.6) w = Math.max(w, o.width); return w; };
+  for (const r of ROADS) { if (r.closed || !r.ends) continue;
+    r.ends.forEach((e, i) => { if (e !== 'junction') return; const p = i === 0 ? r.pts[0] : r.pts[r.pts.length - 1]; add(p[0], p[1], Math.max(r.width, wAt(p[0], p[1], r)) / 2 + 0.4); }); }
+  // Crossings: segment intersections between different roads (grid-bucketed).
+  const segs: { r: Road; a: [number, number]; b: [number, number] }[] = []; const G = 8; const grid = new Map<string, number[]>();
+  for (const r of ROADS) { const q = centre(r); for (let i = 1; i < q.length; i++) { const k = segs.push({ r, a: q[i - 1], b: q[i] }) - 1; const gx = Math.floor(q[i][0] / G), gz = Math.floor(q[i][1] / G); const key = `${gx},${gz}`; (grid.get(key) ?? grid.set(key, []).get(key)!).push(k); } }
+  for (const [key, ids] of grid) { const [gx, gz] = key.split(',').map(Number); const near: number[] = []; for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) near.push(...(grid.get(`${gx + a},${gz + b}`) ?? []));
+    for (const i of ids) for (const j of near) { if (j <= i) continue; const s = segs[i], t = segs[j]; if (s.r === t.r) continue;
+      const d1x = s.b[0] - s.a[0], d1z = s.b[1] - s.a[1], d2x = t.b[0] - t.a[0], d2z = t.b[1] - t.a[1]; const den = d1x * d2z - d1z * d2x; if (Math.abs(den) < 1e-9) continue;
+      const u = ((t.a[0] - s.a[0]) * d2z - (t.a[1] - s.a[1]) * d2x) / den, v = ((t.a[0] - s.a[0]) * d1z - (t.a[1] - s.a[1]) * d1x) / den;
+      if (u >= 0 && u <= 1 && v >= 0 && v <= 1) add(s.a[0] + u * d1x, s.a[1] + u * d1z, Math.max(s.r.width, t.r.width) / 2 + 0.4); } }
+  return out;
+})();
+/** Open road ends that should get a cul-de-sac turning circle. */
+export const CUL_ENDS: [number, number][] = ROADS.flatMap((r) => (r.closed || !r.ends ? [] : r.ends.flatMap((e, i) => (e === 'cul' ? [i === 0 ? r.pts[0] : r.pts[r.pts.length - 1]] : []))));
 export const CUL_R = 4; // cul-de-sac turning circle radius
 
 /** Spatial hash of road centreline samples, for clearance checks. */
@@ -110,6 +177,7 @@ for (const r of ROADS) {
   const put = (x: number, z: number, hw: number) => { const k = `${Math.floor(x / CELL)},${Math.floor(z / CELL)}`; (grid.get(k) ?? grid.set(k, []).get(k)!).push({ x, z, hw }); };
   r.pts.forEach(([x, z]) => put(x, z, r.width / 2));
   if (r.cul) { const [x, z] = r.pts[r.pts.length - 1]; put(x, z, CUL_R); }
+  r.ends?.forEach((e, i) => { if (e === 'cul') { const [x, z] = i === 0 ? r.pts[0] : r.pts[r.pts.length - 1]; put(x, z, CUL_R); } });
 }
 /** Smallest (distance to centreline − half width) within `reach`; Infinity when no road is near. */
 export function roadClearance(x: number, z: number, reach = 16): number {
