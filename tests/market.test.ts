@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
 import { getVault, ItemVault, PgItemStore, resetVault, type StoredItem } from '../server/skins';
-import { feeOf, Market, resetMarket } from '../server/market';
+import { feeOf, Market, MAX_BANKED_STACK, resetMarket } from '../server/market';
 import { getBank, PgCasinoStore, resetBank } from '../server/casino-store';
 
 let v: ItemVault; let m: Market;
@@ -172,11 +172,12 @@ describe('stackable (Mines) listings', () => {
     expect((await q('SELECT * FROM market_sales')).length).toBe(1);
     store.save = orig;
   }, 20000);
-  it('buys respect BACKPACK_CAP', () => {
-    const w = getMines(); w.adjustStack('QA-Miner', 'bar', 'iron_bar', 50); w.adjustStack('QA-Buyer', 'ore', 'stone', 100);
+  it('buys land in uncapped banked storage (big stashes are not blocked by the 120 carry cap), with a per-stack sanity limit', () => {
+    const w = getMines(); w.adjustStack('QA-Miner', 'bar', 'iron_bar', 50); w.adjustStack('QA-Buyer', 'ore', 'stone', 5000);
     const l = m.listStack('QA-Miner', 'bar', 'iron_bar', 50, 1);
-    expect(() => m.buyStack('QA-Buyer', l.id, 21)).toThrow(/room for 20/);
-    m.buyStack('QA-Buyer', l.id, 20);
-    expect(() => m.buyStack('QA-Buyer', l.id, 1)).toThrow(/full/);
+    m.buyStack('QA-Buyer', l.id, 30);
+    expect(w.stackQty('QA-Buyer', 'bar', 'iron_bar')).toBe(30);
+    w.adjustStack('QA-Buyer', 'bar', 'iron_bar', MAX_BANKED_STACK - 30);
+    expect(() => m.buyStack('QA-Buyer', l.id, 1)).toThrow(/can't hold/);
   });
 });

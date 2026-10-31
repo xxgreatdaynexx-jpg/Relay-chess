@@ -5,7 +5,7 @@ import { getBank } from './casino-store.js';
 import { getAccounts } from './accounts.js';
 import { getVault, playerKey, RuleError, type ItemVault, type Stmt, type StoredItem } from './skins.js';
 import { getMines } from './mines.js';
-import { BACKPACK_CAP, GOODS, ORES, isOre, nameOf as stackName, type ItemType } from '../shared/mines.js';
+import { GOODS, isOre, nameOf as stackName, type ItemType } from '../shared/mines.js';
 import { CASE_NAME, KEY_NAME, SKIN_BY_ID, type SkinItem } from '../shared/skins.js';
 
 export const MARKET_FEE = 0.05;
@@ -20,6 +20,7 @@ export interface Listing { id: string; seller: string; sellerName: string; itemI
 export interface Sale { id: string; listingId: string; itemId: string; what: string; price: number; fee: number; seller: string; buyer: string; at: number }
 export interface Trade { id: string; from: string; fromName: string; to: string; toName: string; give: string[]; want: string[]; giveChips: number; wantChips: number; status: 'pending' | 'accepted' | 'declined' | 'cancelled' | 'countered'; at: number; closedAt?: number; counterOf?: string }
 
+export const MAX_BANKED_STACK = 1_000_000;
 export const MAX_STACK_QTY = 100_000;
 /** Stackable listing (Mines ore / bars / goods from mine_items): unit price, partial buys. Escrowed qty leaves the seller's pack. */
 export interface StackListing { id: string; seller: string; sellerName: string; type: ItemType; itemId: string; qty: number; total: number; unit: number; status: 'active' | 'sold' | 'cancelled'; at: number; closedAt?: number; sold: number }
@@ -174,9 +175,9 @@ export class Market {
     const price = n * l.unit; const fee = feeOf(price);
     const bank = this.bank(); const mines = getMines();
     if (!bank.canAfford(name, price)) throw new RuleError('Not enough chips.');
-    const w = l.type === 'ore' && isOre(l.itemId) ? ORES[l.itemId].weight : 1;
-    const room = Math.floor((BACKPACK_CAP - mines.packLoad(name)) / w);
-    if (n > room) throw new RuleError(room > 0 ? `Your backpack only has room for ${room} more. Sell or craft some first.` : 'Your backpack is full. Sell or craft some first.');
+    // Purchases land in BANKED storage (uncapped; the 120 cap is the carried in-mine pack). Only a sanity limit per stack.
+    const room = MAX_BANKED_STACK - mines.stackQty(name, l.type, l.itemId);
+    if (n > room) throw new RuleError(room > 0 ? `You can only store ${room} more of that.` : "Your storage can't hold any more of that.");
     const seq = l.sold + 1; const what = stackName({ type: l.type, id: l.itemId });
     // Chips (ledger + balances) and items (buyer pack, listing, sale) commit in ONE Postgres transaction.
     let chips;
