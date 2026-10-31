@@ -15,6 +15,8 @@ import { resetRooms } from './rooms.js';
 import { getConquest } from './conquest.js';
 import { getSolitro, solitroBoard } from './solitro.js';
 import { adminRouter } from './admin.js';
+import { getMinesBoard } from './mines-board.js';
+import { isMinePeriod } from '../shared/minesBoard.js';
 
 export interface AppContext {
   httpServer: HttpServer;
@@ -62,6 +64,14 @@ export async function createApp(): Promise<AppContext> {
   app.get('/api/arena-leaderboard', async (req, res) => {
     const ledger = getArenaLedger();
     res.json({ rows: boardFor(ledger.standings(1e6), await viewerIsQa(req), 100), source: ledger.usingDatabase ? 'postgres' : 'memory' });
+  });
+
+  /** Mining leaderboard (Today / This week / All time). QA- accounts and guests are never on it. */
+  app.get('/api/mines-leaderboard', async (req, res) => {
+    const period = isMinePeriod(req.query.period) ? req.query.period : 'all';
+    const b = getMinesBoard();
+    try { res.json({ period, ...(await b.board(period)), source: b.usingDatabase ? 'postgres' : 'memory' }); }
+    catch (e) { console.error('[mines] leaderboard failed:', (e as Error).message); res.status(500).json({ error: 'Mining leaderboard unavailable.' }); }
   });
 
   app.get('/api/solitro-leaderboard', async (req, res) => {

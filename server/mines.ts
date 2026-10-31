@@ -3,6 +3,7 @@ import pg from 'pg';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
+import { MinesLeaderboard, setMinesBoard } from './mines-board.js';
 import { getVault, playerKey } from './skins.js';
 import { guestName, lineOfSight, moveAllowance, MOVE_CARRY_MAX, normAngle, clampPitch, canStand, validateMove, eyeHeightOf, type Body } from '../shared/fps.js';
 import { BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, dayKey, isOre, payoutFor, stackKey, priceOf, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId, inExit, CARRY_GRACE_MS, weightOf } from '../shared/mines.js';
@@ -18,6 +19,9 @@ export const MINES_MIGRATION = [
   `CREATE TABLE IF NOT EXISTS mine_carried (player_key TEXT PRIMARY KEY, owner_name TEXT NOT NULL, items JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
   // Factory v2 grid builder: layout + sim state per player (JSON), saved in the same transaction as the pack it feeds.
   `CREATE TABLE IF NOT EXISTS factory_v2 (player_key TEXT PRIMARY KEY, owner_name TEXT NOT NULL, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
+  // One row per haul banked at the EXIT lift (Mining leaderboard: ore mined, best haul). Same transaction as the banked stacks.
+  `CREATE TABLE IF NOT EXISTS mine_banks (id SERIAL PRIMARY KEY, player_key TEXT NOT NULL, owner_name TEXT NOT NULL, ore_qty INTEGER NOT NULL, worth REAL NOT NULL, at BIGINT NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS mine_banks_at ON mine_banks (at)`,
   `CREATE TABLE IF NOT EXISTS mine_jobs (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, machine TEXT NOT NULL, recipe TEXT NOT NULL, qty INTEGER NOT NULL, start_at BIGINT NOT NULL, done_at BIGINT NOT NULL)`,
 ];
 export interface FactoryState { level: number; builtAt: number; jobs: Job[] }
@@ -167,8 +171,13 @@ export class MinesWorld {
     for (const s of banked) { const k = stackKey(s); const cur = p.get(k); if (cur) cur.qty += s.qty; else p.set(k, { ...s }); }
     if (m.account) { const k = playerKey(m.account); const t = this.carryTimers.get(k); if (t) { clearTimeout(t); this.carryTimers.delete(k); } }
     // Banked stacks and the cleared carry row commit in one transaction: no duplicate or lost haul across a restart.
-    this.persist(m, undefined, false, m.account ? [{ sql: 'DELETE FROM mine_carried WHERE player_key = $1', args: [playerKey(m.account)] }] : undefined);
-    return { banked, worth: banked.reduce((t, s) => t + s.qty * priceOf(s), 0) };
+    const worth = banked.reduce((t, s) => t + s.qty * priceOf(s), 0);
+    const ore = banked.filter((s) => s.type === 'ore').reduce((t, s) => t + s.qty, 0);
+    this.persist(m, undefined, false, m.account ? [
+      { sql: 'DELETE FROM mine_carried WHERE player_key = $1', args: [playerKey(m.account)] },
+      { sql: 'INSERT INTO mine_banks (player_key, owner_name, ore_qty, worth, at) VALUES ($1,$2,$3,$4,$5)', args: [playerKey(m.account), m.account, ore, worth, Date.now()] },
+    ] : undefined);
+    return { banked, worth };
   }
 
   /** Reuses Arena's movement validator (speed cap with carry, collision). Returns true if the client should be corrected. */
@@ -359,7 +368,7 @@ export function resetMines() { world = new MinesWorld(); return world; }
 export async function initMinesStorage(): Promise<void> {
   const url = databaseUrl(); if (!url) { console.warn('[mines] no DATABASE_URL; mines in memory only'); return; }
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
-  if (await world.attach(new PgMineStore(pool))) console.log('[mines] connected to postgres');
+  if (await world.attach(new PgMineStore(pool))) { console.log('[mines] connected to postgres'); setMinesBoard(new MinesLeaderboard(pool)); }
 }
 
 const ROOM = 'mines';

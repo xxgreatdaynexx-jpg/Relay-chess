@@ -7,6 +7,7 @@ import { loadName } from '@/lib/playerName';
 import { sortChess, type ChessCol } from '../../../shared/chessStats';
 import { ARENA_COLS, sortArena, type ArenaRow, type ArenaSort } from '../../../shared/arenaBoard';
 import { loadAuth } from '../lib/auth';
+import { MiningLeaderboard } from '@/components/MiningLeaderboard';
 
 /** Signed-in session header, so a QA account sees (tagged) QA rows; everyone else gets them filtered server-side. */
 const qaHeaders = (): RequestInit => { const t = loadAuth()?.token; return t ? { headers: { 'X-Relay-Session': t } } : {}; };
@@ -19,8 +20,8 @@ const CHESS_HEAD: Array<[ChessCol, string, string]> = [
   ['mistake', '?', 'Mistake: bottom 40% (not a blunder)'], ['blunder', '??', 'Blunder: bottom-fifth move'],
 ];
 
-export type BoardKind = 'chess' | 'checkers' | 'casino' | 'arena' | 'conquest';
-const BOARDS: Array<[BoardKind, string]> = [['chess', 'Chess'], ['checkers', 'Checkers'], ['casino', 'Casino'], ['arena', 'Arena'], ['conquest', 'Conquest']];
+export type BoardKind = 'chess' | 'checkers' | 'casino' | 'arena' | 'conquest' | 'mining';
+const BOARDS: Array<[BoardKind, string]> = [['chess', 'Chess'], ['checkers', 'Checkers'], ['casino', 'Casino'], ['arena', 'Arena'], ['conquest', 'Conquest'], ['mining', 'Mining']];
 const BOARD_KEY = 'relay-leaderboard-tab';
 function loadBoard(): BoardKind {
   try { const v = localStorage.getItem(BOARD_KEY); return BOARDS.some(([k]) => k === v) ? (v as BoardKind) : 'chess'; } catch { return 'chess'; }
@@ -64,7 +65,7 @@ export function LeaderboardScreen({ onBack, onMainMenu }: { onBack: () => void; 
         <BoardSwitch value={board} onChange={setBoard} />
       </div>
       <div className="mt-4" data-testid={`lb-view-${board}`}>
-        {board === 'chess' ? <LeaderboardTable /> : board === 'checkers' ? <LeaderboardTable game="checkers" /> : board === 'conquest' ? <LeaderboardTable game="conquest" /> : board === 'arena' ? <ArenaLeaderboard you={loadName()} /> : <div className="lb-casino"><CasinoLeaderboard you={loadName()} /></div>}
+        {board === 'chess' ? <LeaderboardTable /> : board === 'checkers' ? <LeaderboardTable game="checkers" /> : board === 'conquest' ? <LeaderboardTable game="conquest" /> : board === 'arena' ? <ArenaLeaderboard you={loadName()} /> : board === 'mining' ? <MiningLeaderboard you={loadName()} /> : <div className="lb-casino"><CasinoLeaderboard you={loadName()} /></div>}
       </div>
     </div>
   );

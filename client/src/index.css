@@ -1642,3 +1642,8 @@ html, body { overflow-x: clip; }
 .inv-thumb-loading { width: 55%; height: 55%; margin: auto; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--sc) 60%, transparent); border-top-color: transparent; animation: inv-spin .9s linear infinite; opacity: .7; }
 .inv-thumb { display: flex; }
 @keyframes inv-spin { to { transform: rotate(360deg); } }
+.mine-lb .mine-lb-metrics { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 8px 0 6px; font-size: 12px; }
+.mine-lb-compact { font-size: 11px; margin-top: 6px; }
+.mine-lb-compact .lb-switch-btn { padding: 2px 8px; font-size: 11px; }
+.mine-lb-compact table { font-size: 11px; }
+.mines-board summary { cursor: pointer; font-weight: 600; }
