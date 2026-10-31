@@ -57,5 +57,26 @@ export function adminRouter(): express.Router {
     console.log(`[admin] grant-item ${it ? 'applied' : 'replay ignored'}: ${row.name} ${kind} key=${key} from ${ip}`);
     res.json({ ok: true, applied: !!it, player: row.name, kind, ...(it ? { id: it.id } : {}) });
   });
+  /** POST /api/admin/reset-password {player, memo, key}: temp password (returned once, never logged), all sessions revoked. */
+  const resetKeys = new Set<string>();
+  r.post('/api/admin/reset-password', express.json({ limit: '4kb' }), async (req, res) => {
+    const ip = req.ip ?? '?';
+    res.set('Cache-Control', 'no-store');
+    if (!adminAuthorized(req.get('authorization'))) {
+      console.warn(`[admin] reset-password rejected: unauthorized from ${ip}`);
+      return res.status(401).json({ ok: false, error: 'Unauthorized.' });
+    }
+    const { player, memo, key } = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof player !== 'string' || !player.trim()) return res.status(400).json({ ok: false, error: 'player is required.' });
+    if (typeof key !== 'string' || !/^[\w:.\-]{8,120}$/.test(key)) return res.status(400).json({ ok: false, error: 'key (idempotency key) is required.' });
+    if (memo !== undefined && (typeof memo !== 'string' || memo.length > 200)) return res.status(400).json({ ok: false, error: 'memo must be a string up to 200 chars.' });
+    if (resetKeys.has(key)) return res.status(409).json({ ok: false, error: 'That key was already used.' });
+    let out;
+    try { out = await getAccounts().adminResetPassword(nameKey(player)); } catch { return res.status(503).json({ ok: false, error: 'Accounts unavailable.' }); }
+    if (!out) return res.status(404).json({ ok: false, error: 'Unknown player.' });
+    resetKeys.add(key);
+    console.log(`[admin] reset-password applied: ${out.name} sessionsRevoked=${out.sessionsRevoked} key=${key} memo=${JSON.stringify(memo ?? '')} from ${ip}`);
+    res.json({ ok: true, player: out.name, sessionsRevoked: out.sessionsRevoked, tempPassword: out.password });
+  });
   return r;
 }

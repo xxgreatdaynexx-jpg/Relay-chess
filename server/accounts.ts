@@ -49,6 +49,8 @@ export interface AccountStore {
   /** Pushes a session's expiry forward (sliding sessions). */
   extendSession?(hash: string, expiresAt: number): Promise<void>;
   setPassword(key: string, passwordHash: string): Promise<void>;
+  /** Deletes every session for one player; returns how many were removed. */
+  removeSessionsFor?(key: string): Promise<number>;
   getSettings(key: string): Promise<unknown | null>;
   setSettings(key: string, data: unknown): Promise<void>;
 }
@@ -111,6 +113,10 @@ export class PgAccountStore implements AccountStore {
   async extendSession(hash: string, expiresAt: number) {
     await this.db.query('UPDATE player_sessions SET expires_at = $2 WHERE token_hash = $1', [hash, new Date(expiresAt).toISOString()]);
   }
+  async removeSessionsFor(key: string) {
+    const res = await this.db.query('DELETE FROM player_sessions WHERE player_key = $1 RETURNING token_hash', [key]);
+    return res.rows.length;
+  }
   async setPassword(key: string, passwordHash: string) {
     await this.db.query('UPDATE players SET password_hash = $2 WHERE player_key = $1', [key, passwordHash]);
   }
@@ -145,6 +151,11 @@ export class MemoryAccountStore implements AccountStore {
   async removeSession(hash: string) { this.sessions.delete(hash); }
   async extendSession(hash: string, expiresAt: number) { const s = this.sessions.get(hash); if (s) s.expiresAt = expiresAt; }
   settings = new Map<string, string>();
+  async removeSessionsFor(key: string) {
+    let n = 0;
+    for (const [h, s] of this.sessions) if (s.key === key) { this.sessions.delete(h); n++; }
+    return n;
+  }
   async setPassword(key: string, passwordHash: string) {
     const row = this.accounts.get(key);
     if (row) this.accounts.set(key, { ...row, passwordHash });
@@ -259,6 +270,17 @@ export class Accounts {
     if (typeof next !== 'string' || next.length < MIN_PASSWORD) throw new AuthError(`New password must be at least ${MIN_PASSWORD} characters.`);
     if (next.length > MAX_PASSWORD) throw new AuthError('That password is too long.');
     await this.store.setPassword(key, await hashPassword(next));
+  }
+
+  /** Admin-only: sets a fresh random temp password (same hashing as sign-up) and signs the player out everywhere. Returns the password once; never logged. */
+  async adminResetPassword(key: string): Promise<{ name: string; password: string; sessionsRevoked: number } | null> {
+    const row = await this.store.get(key);
+    if (!row) return null;
+    const password = randomBytes(18).toString('base64url');
+    await this.store.setPassword(key, await hashPassword(password));
+    const sessionsRevoked = (await this.store.removeSessionsFor?.(key)) ?? 0;
+    this.nameLimiter.clear(key);
+    return { name: row.name, password, sessionsRevoked };
   }
 
   async logout(token: unknown): Promise<void> {
