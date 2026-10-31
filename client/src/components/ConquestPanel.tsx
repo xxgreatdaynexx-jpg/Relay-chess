@@ -3,7 +3,8 @@ import { socket, request } from '@/lib/net';
 import { loadAuth } from '@/lib/auth';
 import { ConquestMap, type Flight } from '@/components/ConquestMap';
 import { FactionBanner, UnitSprite } from '@/components/ConquestUnits';
-import { CQ_MAPS, CQ_PALETTE, CQ_PALETTE_NAMES, FACTIONS, factionById, mapById, START_ARMIES, tradeValue, type CqMap, type CqView } from '../../../shared/conquest';
+import { BattleFx, type Battle } from '@/components/ConquestFx';
+import { CQ_MAPS, CQ_PALETTE, CQ_PALETTE_NAMES, FACTIONS, factionById, mapById, MAX_PLAYERS, START_ARMIES, tradeValue, type CqMap, type CqView } from '../../../shared/conquest';
 
 interface TableView { code: string; host: string; seats: Array<{ name: string; bot: boolean; color?: number; faction?: string }>; settings: { turnMs: number; manualSetup: boolean; map: string; perks: boolean }; you: number; deadline: number; game: CqView | null; wager?: number; pot?: number; wagerResult?: { pot: number; deltas: Record<string, number>; refunded: boolean } | null }
 const TURN_CHOICES = [30_000, 60_000, 90_000, 180_000, 300_000];
@@ -115,7 +116,7 @@ function ConquestWindow({ intent, onClose }: { intent: { code?: string; create?:
             <h3>Open tables</h3>
             {list.length === 0 && <p className="cq-note">No wars right now. Start one.</p>}
             <ul className="cq-list">{list.map((l) => (
-              <li key={l.code}><b>{l.code}</b> {l.host} · {l.players}/6 {l.wager ? <span data-testid={`cq-stake-${l.code}`}>· 🪙 {l.wager}</span> : null} {l.started ? '· at war' : ''}
+              <li key={l.code}><b>{l.code}</b> {l.host} · {l.players}/{MAX_PLAYERS} {l.wager ? <span data-testid={`cq-stake-${l.code}`}>· 🪙 {l.wager}</span> : null} {l.started ? '· at war' : ''}
                 {!l.started && signed && <button type="button" onClick={() => call('cq_join', { code: l.code })}>Join</button>}
                 <button type="button" onClick={() => call('cq_watch', { code: l.code })}>Watch</button></li>
             ))}</ul>
@@ -138,11 +139,11 @@ function Waiting({ table, call }: { table: TableView; call: (ev: string, b?: unk
     <div className="cq-lobby" data-testid="cq-waiting">
       <div className="cq-lobby-map"><ConquestMap compact map={m} /><p className="cq-map-cap"><b>{m.name}</b> · {m.territories.length} territories · {m.continents.length} regions. {m.blurb}</p></div>
       <div className="cq-lobby-side">
-        <p className="cq-note">Share code <b>{table.code}</b>. 2–6 commanders. Tap a colour swatch to pick your army colour.</p>
+        <p className="cq-note">Share code <b>{table.code}</b>. 2–8 commanders. Tap a colour swatch to pick your army colour.</p>
         <ol className="cq-seats">{table.seats.map((s, i) => {
           const canColor = s.bot ? host : s.name.toLowerCase() === me;
           return (
-          <li key={s.name}>
+          <li key={s.name} data-testid={`cq-seat-${i}`} data-faction={s.faction}>
             <FactionBanner faction={s.faction ?? 'grande'} color={CQ_PALETTE[s.color ?? i]!} size={22} />{s.name}{s.bot ? ' 🤖' : ''}{s.name === table.host ? ' (host)' : ''}
             {host && s.bot && <button type="button" onClick={() => call('cq_unseat', { code: table.code, index: i })} aria-label={`Remove ${s.name}`}>✕</button>}
             {canColor ? <select className="cq-faction" value={s.faction ?? ''} aria-label={`Faction for ${s.name}`} data-testid={`cq-faction-${i}`} onChange={(e) => call('cq_faction', { code: table.code, faction: e.target.value, index: i })}>
@@ -175,7 +176,7 @@ function Waiting({ table, call }: { table: TableView; call: (ev: string, b?: unk
           {table.wager ? <p className="cq-note" data-testid="cq-wager-note">Winner takes the whole pot. Resigning or leaving counts as a loss. No bots on wager tables.</p> : null}
         </div>
         {host && <div className="cq-row">
-          <button type="button" disabled={table.seats.length >= 6 || !!table.wager} title={table.wager ? 'No bots on wager tables' : undefined} onClick={() => call('cq_bot', { code: table.code })} data-testid="cq-add-bot">+ Add bot</button>
+          <button type="button" disabled={table.seats.length >= MAX_PLAYERS || !!table.wager} title={table.wager ? 'No bots on wager tables' : undefined} onClick={() => call('cq_bot', { code: table.code })} data-testid="cq-add-bot">+ Add bot</button>
           <button type="button" className="si-cta" disabled={table.seats.length < 2} onClick={() => call('cq_start', { code: table.code })} data-testid="cq-start">Start the war</button>
         </div>}
         {!host && <p className="cq-note">Waiting for {table.host} to start…</p>}
@@ -247,11 +248,23 @@ function Game({ table, call }: { table: TableView; call: (ev: string, b?: unknow
   const lastKey = useRef('');
   const [flight, setFlight] = useState<Flight | null>(null);
   const march = (from: number, to: number, n: number, key: string) => { if (speed === 'off') return; const o = g.owner[from]!; setFlight({ from, to, key, n, color: colors[o]!, faction: factions[o] }); };
+  const [battle, setBattle] = useState<Battle | null>(null);
   useEffect(() => {
     if (!roll || rollKey === lastKey.current) return;
+    const first = lastKey.current === '';
     lastKey.current = rollKey;
+    if (first || speed === 'off') return; // no replay on load; Instant skips the effects
     march(roll.from, roll.to, roll.att.length, rollKey);
+    const ao = g.owner[roll.from]!, dOwner = roll.conquered ? -1 : g.owner[roll.to]!;
+    setBattle({ key: rollKey, from: roll.from, to: roll.to, att: roll.att, def: roll.def, attLost: roll.attLost, defLost: roll.defLost, conquered: roll.conquered,
+      attN: g.armies[roll.from]! + roll.attLost, defN: (g.armies[roll.to] ?? 0) + roll.defLost, attColor: colors[ao]!, attFaction: factions[ao],
+      defColor: dOwner >= 0 ? colors[dOwner]! : (prevOwner.current?.[roll.to] !== undefined ? colors[prevOwner.current[roll.to]!]! : '#e9e2d4'),
+      defFaction: dOwner >= 0 ? factions[dOwner] : (prevOwner.current?.[roll.to] !== undefined ? factions[prevOwner.current[roll.to]!] : undefined) });
+    const id = setTimeout(() => setBattle((b) => (b?.key === rollKey ? null : b)), DICE_MS[speed] * 3 + 900);
+    return () => clearTimeout(id);
   }, [rollKey, roll, g.owner]);
+  const prevOwner = useRef<number[] | null>(null);
+  useEffect(() => { const id = setTimeout(() => { prevOwner.current = [...g.owner]; }, 0); return () => clearTimeout(id); }, [g.owner]);
   // Move-ins and fortifies march too: watch armies grow on one territory as another shrinks.
   const prevArmies = useRef<number[] | null>(null);
   useEffect(() => {
@@ -269,7 +282,9 @@ function Game({ table, call }: { table: TableView; call: (ev: string, b?: unknow
   return (
     <div className="cq-game" data-testid="cq-game" data-you={table.you} data-phase={g.phase} data-turn={g.turn}>
       <div className="cq-board">
-        <ConquestMap map={m} zoomable colors={colors} factions={factions} owner={g.owner} armies={g.armies} selected={fort ?? sel} targets={mine ? targets : undefined} onPick={mine ? pick : undefined} flight={flight} />
+        <ConquestMap map={m} zoomable colors={colors} factions={factions} owner={g.owner} armies={g.armies} selected={fort ?? sel} targets={mine ? targets : undefined} onPick={mine ? pick : undefined} flight={flight}>
+          {battle && <BattleFx map={m} battle={battle} ms={DICE_MS[speed]} scale={Math.min(1.5, Math.max(0.95, m.w / 950))} />}
+        </ConquestMap>
       </div>
       <div className="cq-dice-slot" style={{ ['--cq-dice-ms' as string]: `${DICE_MS[speed]}ms` }}>
         {roll && !inSetup && (
@@ -360,9 +375,9 @@ function Rules({ onClose, map }: { onClose: () => void; map?: CqMap }) {
     <div className="cq-rules" role="dialog" aria-label="How to play Chud Conquest" data-testid="cq-rules">
       <div className="cq-rules-card">
         <header><h3>How to play</h3><button type="button" onClick={onClose} aria-label="Close rules" data-testid="cq-rules-close">✕</button></header>
-        <p><b>Goal:</b> hold every territory on the map (the Chudlands has 28, Classic World 42). 2–6 commanders; bots are welcome.</p>
+        <p><b>Goal:</b> hold every territory on the map (the Chudlands has 28, Classic World 42, Europe 1812 47, Mars 33, the Isles 32). 2–8 commanders; bots are welcome. Starting armies scale with the map and player count, and later seats get a few extra to offset moving last.</p>
         <h4>1 · Deployment</h4>
-        <p>Territories are dealt out. Each commander gets {Object.entries(START_ARMIES).map(([n, a]) => `${a} (${n}p)`).join(', ')} starting armies and places them on their own land, all at once. Tap “Auto-place the rest” to finish quickly. If the host turned this off, armies are spread for you.</p>
+        <p>Territories are dealt out. Each commander gets {Object.entries(START_ARMIES).map(([n, a]) => `${a} (${n}p)`).join(', ')} starting armies on a 42-territory board (scaled to the size of smaller or bigger maps) and places them on their own land, all at once. Tap “Auto-place the rest” to finish quickly. If the host turned this off, armies are spread for you.</p>
         <h4>2 · Reinforce</h4>
         <p>At the start of your turn you get territories ÷ 3 (at least 3), plus a bonus for each whole continent you hold:</p>
         <ul className="cq-rules-bonus">{CONTINENTS.map((c) => <li key={c.id}>{c.name} <b>+{c.bonus}</b></li>)}</ul>

@@ -16,12 +16,14 @@ export const mapOf = (s: { map?: string }): CqMap => mapById(s.map);
 /** Original factions. Each has its own unit art (client), default colour and an optional perk. */
 export interface Faction { id: string; name: string; short: string; color: number; motto: string; perk: string; perkText: string }
 export const FACTIONS: Faction[] = [
-  { id: 'grande', name: 'Grande Armée du Chud', short: 'Grande Armée', color: 2, motto: 'Shakos, bayonets and eagles.', perk: 'Élan', perkText: 'Attacking with 3 dice, your highest die wins ties.' },
-  { id: 'redcoat', name: 'Chudshire Redcoats', short: 'Redcoats', color: 1, motto: 'Volley fire and the thin red line.', perk: 'Thin Red Line', perkText: 'Defending a territory of 5+ armies, your highest die gets +1 (max 6).' },
+  { id: 'grande', name: 'Grande Armée du Chud', short: 'Grande Armée', color: 2, motto: 'Shakos, bayonets and eagles.', perk: 'Élan', perkText: 'Attacking with 3 dice before your first conquest each turn, your highest die wins ties.' },
+  { id: 'redcoat', name: 'Chudshire Redcoats', short: 'Redcoats', color: 1, motto: 'Volley fire and the thin red line.', perk: 'Thin Red Line', perkText: 'Defending a territory of 3+ armies, your highest die gets +1 (max 6).' },
   { id: 'cossack', name: 'Steppe Cossacks', short: 'Cossacks', color: 4, motto: 'Sabres, fur hats and fast horses.', perk: 'Raiders', perkText: 'Your first conquest each turn adds 1 free army to the land you took.' },
-  { id: 'samurai', name: 'Kuro Samurai', short: 'Samurai', color: 6, motto: 'Katana, kabuto and the rising sun.', perk: 'Bushido', perkText: 'Card trades give you 2 extra armies.' },
-  { id: 'marines', name: 'Iron Tide Marines', short: 'Marines', color: 5, motto: 'Helmets, rifles and tanks off the landing craft.', perk: 'Amphibious', perkText: 'Attacking across a sea lane, your highest die gets +1 (max 6).' },
-  { id: 'robots', name: 'Robot Legion', short: 'Robots', color: 7, motto: 'Chrome, lasers and the assembly line.', perk: 'Assembly Line', perkText: '+1 reinforcement every turn.' },
+  { id: 'samurai', name: 'Kuro Samurai', short: 'Samurai', color: 6, motto: 'Katana, kabuto and the rising sun.', perk: 'Bushido', perkText: 'Card trades give you 3 extra armies.' },
+  { id: 'marines', name: 'Iron Tide Marines', short: 'Marines', color: 5, motto: 'Helmets, rifles and tanks off the landing craft.', perk: 'Amphibious', perkText: 'Attacking or defending across a sea lane, your highest die gets +1 (max 6).' },
+  { id: 'robots', name: 'Robot Legion', short: 'Robots', color: 7, motto: 'Chrome, lasers and the assembly line.', perk: 'Assembly Line', perkText: '+1 reinforcement each turn you hold no whole continent.' },
+  { id: 'legion', name: 'Sand Legion', short: 'Legion', color: 0, motto: 'Kepis, camels and the long desert march.', perk: 'Forced March', perkText: 'Fortifying brings 2 extra armies to the destination.' },
+  { id: 'clans', name: 'Highland Clans', short: 'Clans', color: 3, motto: 'Kilts, claymores and the pipes at dawn.', perk: 'Last Stand', perkText: 'Defending a lone army, your die gets +1 (max 6).' },
 ];
 export const factionById = (id: string | undefined) => FACTIONS.find((f) => f.id === id);
 
@@ -60,7 +62,23 @@ export interface CqState {
 }
 export type Rng = () => number;
 
-export const START_ARMIES: Record<number, number> = { 2: 40, 3: 35, 4: 30, 5: 25, 6: 20 };
+/** Classic starting armies for a 42-territory board, by player count. */
+export const START_ARMIES: Record<number, number> = { 2: 40, 3: 35, 4: 30, 5: 25, 6: 20, 7: 18, 8: 16 };
+export const MAX_PLAYERS = 8;
+/** Extra starting armies for the last seat (as a fraction of the base), by player count; seats between scale linearly. Tuned by bot simulations. */
+export const SEAT_COMP: Record<string, Record<number, number>> = {
+  chud: { 2: 0.2, 3: 0.15, 4: 0.15, 5: 0.1, 6: 0.1, 7: 0.15, 8: 0.05 },
+  world: { 2: 0.25, 3: 0.1, 4: 0.05, 5: 0.15, 6: 0.15, 7: 0.15, 8: 0.1 },
+  europe1812: { 2: 0.2, 3: 0.05, 4: 0.15, 5: 0.05, 6: 0.1, 7: 0.1, 8: 0.1 },
+  mars: { 2: 0.25, 3: 0.1, 4: 0.15, 5: 0.15, 6: 0.2, 7: 0.25, 8: 0.05 },
+  isles: { 2: 0.2, 3: 0.05, 4: 0.15, 5: 0.1, 6: 0.15, 7: 0.25, 8: 0.1 },
+};
+/** Starting armies for seat k of n on a map with T territories: classic counts scaled to the map size, plus a small later-seat bonus. */
+export function startArmies(n: number, T: number, k = 0, map = 'chud'): number {
+  const base = Math.max(Math.ceil(T / n) + 3, Math.round((START_ARMIES[n] ?? 16) * T / 42));
+  const x = SEAT_COMP[map]?.[n] ?? 0;
+  return base + Math.round((n > 1 ? k / (n - 1) : 0) * x * base);
+}
 export const tradeValue = (n: number) => (n < 5 ? 4 + 2 * n : 15 + 5 * (n - 5));
 
 function shuffle<X>(a: X[], rng: Rng): X[] {
@@ -74,15 +92,17 @@ const need = (ok: unknown, msg: string): void => { if (!ok) throw new RuleError(
 /** Deal territories round-robin, one army each, then spread the remaining starting armies randomly. */
 export interface NewGameOpts { manualSetup?: boolean; map?: string; perks?: boolean }
 export function newGame(players: Array<{ name: string; bot: boolean; color?: number; faction?: string }>, rng: Rng = Math.random, opts: NewGameOpts = {}): CqState {
-  need(players.length >= 2 && players.length <= 6, 'Conquest needs 2–6 players.');
+  need(players.length >= 2 && players.length <= 8, 'Conquest needs 2–8 players.');
   const n = players.length;
   const m = mapById(opts.map);
   const TERRITORIES = m.territories;
   const order = shuffle(TERRITORIES.map((t) => t.id), rng);
   const owner = new Array<number>(TERRITORIES.length).fill(0);
-  order.forEach((t, i) => { owner[t] = i % n; });
+  // Any leftover territories go to the later seats (they move last).
+  const off = (n - (TERRITORIES.length % n)) % n;
+  order.forEach((t, i) => { owner[t] = (i + off) % n; });
   const armies = new Array<number>(TERRITORIES.length).fill(1);
-  const setup = players.map((_, p) => START_ARMIES[n]! - owner.filter((o) => o === p).length);
+  const setup = players.map((_, p) => startArmies(n, TERRITORIES.length, p, m.id) - owner.filter((o) => o === p).length);
   const deck = shuffle<Card>([...TERRITORIES.map((t) => ({ t: t.id, s: (t.id % 3) as 0 | 1 | 2 })), { t: -1, s: 3 }, { t: -1, s: 3 }], rng);
   const s: CqState = {
     players: players.map((p, i) => ({ name: p.name, bot: p.bot, alive: true, cards: [], color: p.color ?? i, ...(p.faction ? { faction: p.faction } : {}) })), owner, armies, turn: 0, phase: 'reinforce', reserve: 0,
@@ -126,7 +146,7 @@ export function continentsHeld(s: CqState, p: number): Continent[] {
 }
 /** max(3, territories ÷ 3) plus continent bonuses. */
 export function reinforcements(s: CqState, p: number): number {
-  return Math.max(3, Math.floor(owned(s, p) / 3)) + continentsHeld(s, p).reduce((k, c) => k + c.bonus, 0) + (perk(s, p, 'robots') ? 1 : 0);
+  return Math.max(3, Math.floor(owned(s, p) / 3)) + continentsHeld(s, p).reduce((k, c) => k + c.bonus, 0) + (perk(s, p, 'robots') && continentsHeld(s, p).length === 0 ? 1 : 0);
 }
 
 export function validSet(cards: Card[]): boolean {
@@ -207,7 +227,7 @@ export function act(s: CqState, p: number, a: CqAction, rng: Rng = Math.random):
       need(ix.length === 3 && ix.every((i) => i >= 0 && i < me.cards.length), 'Pick three cards.');
       const set = ix.map((i) => me.cards[i]!);
       need(validSet(set), 'That is not a set: three alike, one of each, or any with a wild.');
-      const value = tradeValue(s.trades++) + (perk(s, p, 'samurai') ? 2 : 0);
+      const value = tradeValue(s.trades++) + (perk(s, p, 'samurai') ? 3 : 0);
       s.reserve += value;
       const bonusT = set.find((c) => c.t >= 0 && s.owner[c.t] === p);
       if (bonusT) s.armies[bonusT.t]! += 2;
@@ -240,8 +260,10 @@ export function act(s: CqState, p: number, a: CqAction, rng: Rng = Math.random):
       const sea = m.edges.some(([x, y, sw]) => sw && ((x === from && y === to) || (x === to && y === from)));
       const bump = (d: number[]) => { const i = d.indexOf(Math.max(...d)); d[i] = Math.min(6, d[i]! + 1); };
       if (sea && perk(s, p, 'marines')) bump(att);
-      if (s.armies[to]! >= 5 && perk(s, defender, 'redcoat')) bump(def);
-      const { attLost, defLost } = resolveDice(att, def, dice === 3 && perk(s, p, 'grande'));
+      if (sea && perk(s, defender, 'marines')) bump(def);
+      if (s.armies[to]! >= 3 && perk(s, defender, 'redcoat')) bump(def);
+      if (s.armies[to] === 1 && perk(s, defender, 'clans')) bump(def);
+      const { attLost, defLost } = resolveDice(att, def, dice === 3 && !s.took && perk(s, p, 'grande'));
       s.armies[from]! -= attLost; s.armies[to]! -= defLost;
       const conquered = s.armies[to] === 0;
       s.lastRoll = { from, to, att, def, attLost, defLost, conquered };
@@ -290,6 +312,7 @@ export function act(s: CqState, p: number, a: CqAction, rng: Rng = Math.random):
       need(connectedOwned(s, from).has(to), 'Those territories are not connected through yours.');
       need(n >= 1 && n <= s.armies[from]! - 1, 'Leave at least one army behind.');
       s.armies[from]! -= n; s.armies[to]! += n;
+      if (perk(s, p, 'legion')) { s.armies[to]! += 2; s.log.push(`${s.players[p]!.name}'s forced march adds 2 armies.`); }
       return endTurn(s, rng);
     }
     case 'endTurn': {

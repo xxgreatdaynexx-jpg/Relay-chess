@@ -4,7 +4,7 @@ import { MAX_WAGER } from '../shared/types.js';
 import type { Server, Socket } from 'socket.io';
 import pg from 'pg';
 import { randomInt } from 'node:crypto';
-import { act, autoPlace, botAction, CQ_MAPS, CQ_PALETTE, FACTIONS, newGame, publicView, resign, RuleError, type CqAction, type CqState } from '../shared/conquest.js';
+import { act, autoPlace, botAction, CQ_MAPS, CQ_PALETTE, FACTIONS, MAX_PLAYERS, newGame, publicView, resign, RuleError, type CqAction, type CqState } from '../shared/conquest.js';
 import { Leaderboard } from './leaderboard.js';
 import { createPgStore, databaseUrl, type Queryable } from './leaderboard-store.js';
 import { signedIn } from './auth-sockets.js';
@@ -12,7 +12,7 @@ import { signedIn } from './auth-sockets.js';
 export const CQ_TURN_MS = Number(process.env.CONQUEST_TURN_MS) || 90_000;
 export const CQ_BOT_MS = Number(process.env.CONQUEST_BOT_MS ?? 700);
 const IDLE_MS = 6 * 60 * 60 * 1000;
-const BOT_NAMES = ['Bot Grub', 'Bot Mudlord', 'Bot Snorkel', 'Bot Gristle', 'Bot Wart'];
+const BOT_NAMES = ['Bot Grub', 'Bot Mudlord', 'Bot Snorkel', 'Bot Gristle', 'Bot Wart', 'Bot Bogrot', 'Bot Sludge', 'Bot Grumble'];
 
 export interface CqSeat { name: string; bot: boolean; color?: number; faction?: string }
 export interface CqSettings { turnMs: number; manualSetup: boolean; map: string; perks: boolean }
@@ -80,7 +80,7 @@ export class ConquestHub {
     const t = this.get(code);
     if (t.seats.some((s) => !s.bot && s.name.toLowerCase() === name.toLowerCase())) return t;
     if (t.game) throw new RuleError('That war has already started. You can watch it.');
-    if (t.seats.length >= 6) throw new RuleError('The table is full (6 players).');
+    if (t.seats.length >= MAX_PLAYERS) throw new RuleError('The table is full (8 players).');
     if ((t.wager ?? 0) > 0 && !getBank().canAfford(name, t.wager!)) throw new RuleError(`This war is for ${t.wager} chips a seat. You have ${getBank().account(name).chips}.`);
     this.seatWithFaction(t, { name, bot: false });
     this.changed(t);
@@ -91,7 +91,7 @@ export class ConquestHub {
     if (t.game) throw new RuleError('The war has started.');
     if (t.host.toLowerCase() !== by.toLowerCase()) throw new RuleError('Only the host can add bots.');
     if ((t.wager ?? 0) > 0) throw new RuleError('No bots on wager tables. Set the wager to None to add bots.');
-    if (t.seats.length >= 6) throw new RuleError('The table is full (6 players).');
+    if (t.seats.length >= MAX_PLAYERS) throw new RuleError('The table is full (8 players).');
     const name = BOT_NAMES.find((n) => !t.seats.some((s) => s.name === n))!;
     this.seatWithFaction(t, { name, bot: true }, true);
     this.changed(t);
@@ -192,7 +192,7 @@ export class ConquestHub {
     const t = this.get(code);
     if (t.game) throw new RuleError('Already started.');
     if (t.host.toLowerCase() !== by.toLowerCase()) throw new RuleError('Only the host can start.');
-    if (t.seats.length < 2) throw new RuleError('Add a player or a bot first (2–6).');
+    if (t.seats.length < 2) throw new RuleError('Add a player or a bot first (2–8).');
     t.seats.forEach((s, i) => { if (s.color === undefined || t.seats.some((o, j) => j < i && o.color === s.color)) s.color = CQ_PALETTE.findIndex((_, c) => !t.seats.some((o, j) => j !== i && o.color === c)); });
     this.escrowStakes(t);
     t.seats.forEach((s, i) => { if (!s.faction || t.seats.some((o, j) => j < i && o.faction === s.faction)) s.faction = FACTIONS.find((f) => !t.seats.some((o, j) => j !== i && o.faction === f.id))?.id; });

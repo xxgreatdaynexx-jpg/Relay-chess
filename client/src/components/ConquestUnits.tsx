@@ -11,6 +11,8 @@ function Head({ f, c }: { f: string; c: string }) {
     case 'cossack': return <><rect x={-4.8} y={-25.5} width={9.6} height={6} rx={2.5} fill="#5b4632" /><rect x={-2} y={-27.2} width={4} height={2.4} fill={c} /></>;
     case 'samurai': return <><path d="M-5 -20 Q0 -28 5 -20 Z" fill={INK} /><path d="M-4 -24 L-7 -30 M4 -24 L7 -30" stroke="#e9d27a" strokeWidth={1.4} /></>;
     case 'marines': return <path d="M-5 -19.6 Q-5 -26.5 0 -26.5 Q5 -26.5 5 -19.6 L6.5 -19.6 L6.5 -18.6 L-6.5 -18.6 Z" fill="#4a5a3a" stroke={INK} strokeWidth={0.8} />;
+    case 'legion': return <><rect x={-4} y={-26.5} width={8} height={6.5} rx={1} fill="#e8dcc0" stroke={INK} strokeWidth={0.7} /><path d="M-4.5 -20 L-6.5 -15.5 L-2 -19 Z M4.5 -20 L6.5 -15.5 L2 -19 Z" fill="#e8dcc0" /></>;
+    case 'clans': return <><ellipse cx={0} cy={-21.5} rx={5.2} ry={2.4} fill="#2b3a6b" /><circle cx={0} cy={-24} r={1.2} fill="#c03a3a" /><path d="M2 -23 L5 -28" stroke="#d8d0b8" strokeWidth={1} /></>;
     case 'robots': return <><rect x={-4.2} y={-25} width={8.4} height={7} rx={1} fill="#b8c4cc" stroke={INK} strokeWidth={0.8} /><rect x={-2.6} y={-23} width={5.2} height={1.8} fill={c} /><path d="M0 -25 L0 -29" stroke={INK} strokeWidth={1} /><circle cx={0} cy={-29.4} r={1.1} fill={c} /></>;
     default: return null;
   }
@@ -124,6 +126,8 @@ export function FactionBanner({ faction, color, size = 28 }: { faction: string; 
     cossack: <path d="M7 18 Q14 2 21 18 M10 14 L18 14" stroke="#f2ede2" strokeWidth={2} fill="none" />,
     samurai: <><circle cx={14} cy={12} r={5.5} fill="#f2ede2" /><circle cx={14} cy={12} r={2.5} fill={INK} /></>,
     marines: <path d="M14 4 L14 20 M8 8 L20 8 M7 15 Q14 23 21 15" stroke="#f2ede2" strokeWidth={2} fill="none" />,
+    legion: <path d="M14 5 L17 11 L22 12 L18 15 L19 21 L14 18 L9 21 L10 15 L6 12 L11 11 Z M14 9 L14 16" fill="#e8dcc0" stroke={INK} strokeWidth={0.6} />,
+    clans: <path d="M8 6 L20 18 M20 6 L8 18" stroke="#f2ede2" strokeWidth={3} />,
     robots: <><rect x={8} y={7} width={12} height={10} rx={2} fill="#f2ede2" /><rect x={10} y={10} width={3} height={2.5} fill={INK} /><rect x={15} y={10} width={3} height={2.5} fill={INK} /></>,
   };
   return (

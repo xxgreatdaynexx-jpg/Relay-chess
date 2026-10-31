@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { act, botAction, CQ_MAPS, FACTIONS, mapById, newGame, publicView, reinforcements, type CqState } from '../shared/conquest';
+import { act, botAction, CQ_MAPS, FACTIONS, MAX_PLAYERS, mapById, newGame, publicView, reinforcements, SEAT_COMP, startArmies, type CqState } from '../shared/conquest';
 import { ConquestHub, MemoryCqStore } from '../server/conquest';
 
 let r = 7;
@@ -57,7 +57,7 @@ describe('faction perks', () => {
       expect(s.lastRoll!.defLost).toBe(perks ? 2 : 1);
     }
   });
-  it('Thin Red Line: +1 on the top defence die for 5+ armies', () => {
+  it('Thin Red Line: +1 on the top defence die for 3+ armies', () => {
     const s = duel('chud', ['cossack', 'redcoat']);
     const [a, b] = edge(s, false);
     s.owner[a] = 0; s.armies[a] = 10; s.armies[b] = 5;
@@ -80,18 +80,74 @@ describe('faction perks', () => {
     act(s, 0, { type: 'attack', from: a, to: b, dice: 3 }, dieRng([6, 6, 6, 1]));
     act(s, 0, { type: 'move', n: 3 }, rnd);
     expect(s.armies[b]).toBe(4);
-    const base = reinforcements({ ...s, perks: false }, 1);
-    expect(reinforcements(s, 1)).toBe(base + 1);
+    expect(reinforcements(s, 1)).toBe(reinforcements({ ...s, perks: false }, 1)); // holds continents: no bonus
+    const split = { ...s, owner: s.owner.map((_, i) => i % 2) };
+    expect(reinforcements(split, 1)).toBe(reinforcements({ ...split, perks: false }, 1) + 1);
 
     const k = duel('chud', ['samurai', 'grande']);
     k.phase = 'reinforce'; k.players[0]!.cards = [{ t: -1, s: 3 }, { t: -1, s: 3 }, { t: -1, s: 3 }];
     const before = k.reserve;
     act(k, 0, { type: 'trade', cards: [0, 1, 2] }, rnd);
-    expect(k.reserve - before).toBe(4 + 2);
+    expect(k.reserve - before).toBe(4 + 3);
+  });
+});
+
+describe('8 factions, 2-8 players', () => {
+  it('has 8 unique factions with unique colours', () => {
+    expect(FACTIONS).toHaveLength(8);
+    expect(new Set(FACTIONS.map((f) => f.color)).size).toBe(8);
+    expect(MAX_PLAYERS).toBe(8);
+  });
+  it.each(CQ_MAPS.flatMap((m) => [2, 5, 8].map((n) => [m.id, n] as const)))('%s with %i bots: dealt fairly and runs to a winner', (id, n) => {
+    const fs = FACTIONS.slice(0, n).map((f) => f.id);
+    const s = newGame(fs.map((f, i) => ({ name: `B${i}`, bot: true, faction: f })), rnd, { map: id, perks: true });
+    const T = mapById(id).territories.length;
+    const counts = Array.from({ length: n }, (_, p) => s.owner.filter((o) => o === p).length);
+    expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1);
+    // leftover territories go to the later seats
+    for (let p = 1; p < n; p++) expect(counts[p]).toBeGreaterThanOrEqual(counts[p - 1]!);
+    for (let p = 1; p < n; p++) expect(startArmies(n, T, p, id)).toBeGreaterThanOrEqual(startArmies(n, T, p - 1, id));
+    for (let i = 0; i < 200000 && s.phase !== 'over'; i++) act(s, s.turn, botAction(s, s.turn), rnd);
+    expect(s.phase).toBe('over');
+  });
+  it('has a tuned seat table for every map and player count', () => {
+    for (const m of CQ_MAPS) for (let n = 2; n <= 8; n++) {
+      expect(SEAT_COMP[m.id]?.[n]).toBeTypeOf('number');
+      expect(startArmies(n, m.territories.length, 0, m.id)).toBeGreaterThan(Math.ceil(m.territories.length / n));
+    }
+  });
+  it('Forced March and Last Stand perks', () => {
+    const s = duel('chud', ['legion', 'clans']);
+    const [a, b] = edge(s, false);
+    s.owner[a] = 0; s.armies[a] = 10; s.armies[b] = 1;
+    act(s, 0, { type: 'attack', from: a, to: b, dice: 1 }, dieRng([5, 5]));
+    expect(s.lastRoll!.def).toEqual([6]);
+    expect(s.lastRoll!.attLost).toBe(1);
+    const g = duel('chud', ['legion', 'clans']);
+    const [x, y] = edge(g, false);
+    g.owner[x] = 0; g.owner[y] = 0; g.armies[x] = 6; g.armies[y] = 1; g.phase = 'fortify';
+    act(g, 0, { type: 'fortify', from: x, to: y, n: 3 }, rnd);
+    expect(g.armies[y]).toBe(6);
+    expect(g.armies[x]).toBe(3);
   });
 });
 
 describe('war tables', () => {
+  it('seats up to 8 commanders and refuses a 9th', () => {
+    const hub = new ConquestHub(rnd);
+    const t = hub.create('QA-Host');
+    for (let i = 0; i < 7; i++) hub.addBot(t.code, 'QA-Host');
+    expect(t.seats).toHaveLength(8);
+    expect(new Set(t.seats.map((s) => s.faction)).size).toBe(8);
+    expect(new Set(t.seats.map((s) => s.color)).size).toBe(8);
+    expect(t.seats.every((s) => s.name.length > 0)).toBe(true);
+    expect(new Set(t.seats.map((s) => s.name)).size).toBe(8);
+    expect(() => hub.addBot(t.code, 'QA-Host')).toThrow(/full/);
+    expect(() => hub.join(t.code, 'QA-Late')).toThrow(/full/);
+    hub.start(t.code, 'QA-Host');
+    expect(t.game!.players).toHaveLength(8);
+    hub.stop();
+  });
   it('factions are unique, bots pick one, map/perks settings flow into the game', () => {
     const hub = new ConquestHub(rnd);
     const t = hub.create('QA-Ann');

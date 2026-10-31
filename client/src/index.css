@@ -1367,3 +1367,15 @@ html, body { overflow-x: clip; }
 .cq-card small { overflow-wrap: anywhere; text-align: center; }
 @media (max-width: 1000px) { .cq-game { grid-template-columns: 1fr; grid-template-rows: auto auto auto; flex: 0 0 auto; min-height: auto; } .cq-game > .cq-side { grid-column: 1; grid-row: 3; } .cq-game > .cq-dice-slot { grid-row: 2; } }
 @media (prefers-reduced-motion: reduce) { .cq-bob, .cq-march .cq-legs, .cq-march .cq-unit-0 { animation: none; } }
+/* Chud war stage 2: battle effects */
+.cq-flash { opacity: 0; transform-box: fill-box; transform-origin: center; animation-name: cq-flash; animation-timing-function: ease-out; animation-fill-mode: both; }
+@keyframes cq-flash { 0% { opacity: 0; transform: scale(.3); } 15% { opacity: 1; transform: scale(1.15); } 100% { opacity: 0; transform: scale(.6); } }
+.cq-tracer { opacity: 0; stroke-dasharray: 14 400; animation-name: cq-tracer; animation-timing-function: linear; animation-fill-mode: both; }
+@keyframes cq-tracer { 0% { opacity: 1; stroke-dashoffset: 14; } 95% { opacity: 1; } 100% { opacity: 0; stroke-dashoffset: -386; } }
+.cq-boom { width: 100%; height: 100%; opacity: 0; background: url('/sprites/explosion.png') no-repeat; background-size: 400% 400%; image-rendering: pixelated;
+  animation: cq-boom-x calc(var(--cq-boom-ms, 500ms) / 4) steps(4, jump-none) 4 both, cq-boom-y var(--cq-boom-ms, 500ms) steps(4, jump-none) 1 both; }
+@keyframes cq-boom-x { from { background-position-x: 0%; opacity: 1; } to { background-position-x: 100%; opacity: 1; } }
+@keyframes cq-boom-y { from { background-position-y: 0%; } to { background-position-y: 100%; } }
+.cq-fall { opacity: 0; transform-box: fill-box; transform-origin: 50% 100%; animation-name: cq-fall; animation-timing-function: ease-in; animation-fill-mode: both; }
+@keyframes cq-fall { 0% { opacity: 1; transform: rotate(0); } 35% { opacity: 1; transform: rotate(calc(var(--cq-fall-dir, 1) * 90deg)) translateY(2px); } 80% { opacity: .8; transform: rotate(calc(var(--cq-fall-dir, 1) * 90deg)) translateY(2px); } 100% { opacity: 0; transform: rotate(calc(var(--cq-fall-dir, 1) * 90deg)) translateY(2px); } }
+@media (prefers-reduced-motion: reduce) { .cq-battle { display: none; } }

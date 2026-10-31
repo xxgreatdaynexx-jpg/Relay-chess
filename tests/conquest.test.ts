@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ADJ, act, autoPlace, CQ_PALETTE, botAction, CONTINENTS, connectedOwned, findSet, newGame, reinforcements, resolveDice, RuleError, START_ARMIES, TERRITORIES, tradeValue, validSet, type CqState } from '../shared/conquest';
+import { ADJ, act, autoPlace, CQ_PALETTE, botAction, CONTINENTS, connectedOwned, findSet, newGame, reinforcements, resolveDice, RuleError, startArmies, TERRITORIES, tradeValue, validSet, type CqState } from '../shared/conquest';
 import { ConquestHub, MemoryCqStore } from '../server/conquest';
 
 const seq = (vals: number[]) => { let i = 0; return () => vals[i++ % vals.length]!; };
@@ -27,19 +27,19 @@ describe('Chud Conquest map', () => {
 });
 
 describe('setup', () => {
-  it.each([2, 3, 4, 5, 6])('deals all territories and the starting armies for %i players', (n) => {
+  it.each([2, 3, 4, 5, 6, 7, 8])('deals all territories and the starting armies for %i players', (n) => {
     const s = newGame(Array.from({ length: n }, (_, i) => ({ name: `P${i}`, bot: false })), rnd);
     for (let p = 0; p < n; p++) {
       const mine = s.owner.map((o, t) => (o === p ? t : -1)).filter((t) => t >= 0);
       expect(mine.length).toBeGreaterThanOrEqual(Math.floor(TERRITORIES.length / n));
-      expect(mine.reduce((k, t) => k + s.armies[t]!, 0)).toBe(START_ARMIES[n]);
+      expect(mine.reduce((k, t) => k + s.armies[t]!, 0)).toBe(startArmies(n, TERRITORIES.length, p));
     }
     expect(s.armies.every((a) => a >= 1)).toBe(true);
     expect(s.phase).toBe('reinforce');
   });
-  it('rejects 1 or 7 players', () => {
+  it('rejects 1 or 9 players', () => {
     expect(() => newGame([{ name: 'A', bot: false }])).toThrow(RuleError);
-    expect(() => newGame(Array.from({ length: 7 }, (_, i) => ({ name: `P${i}`, bot: false })))).toThrow(RuleError);
+    expect(() => newGame(Array.from({ length: 9 }, (_, i) => ({ name: `P${i}`, bot: false })))).toThrow(RuleError);
   });
 });
 
@@ -193,7 +193,7 @@ describe('polish: setup, settings, colours, smarter bots', () => {
     expect(s.phase).toBe('setup');
     expect(s.setup![2]).toBe(0);
     const total = (p: number) => s.armies.reduce((k, a, t) => k + (s.owner[t] === p ? a : 0), 0);
-    expect(total(2)).toBe(START_ARMIES[3]);
+    expect(total(2)).toBe(startArmies(3, 28, 2));
     const left = s.setup![1]!;
     const mineB = s.owner.indexOf(1);
     act(s, 1, { type: 'setupPlace', t: mineB, n: 2 });
@@ -205,14 +205,14 @@ describe('polish: setup, settings, colours, smarter bots', () => {
     expect(() => act(s, 1, { type: 'setupPlace', t: mineB, n: 1 })).toThrow(/placed/);
     act(s, 0, { type: 'setupPlace', t: s.owner.indexOf(0), n: s.setup![0]! });
     expect(s.phase).toBe('reinforce');
-    expect(total(0) + total(1) + total(2)).toBe(3 * START_ARMIES[3]!);
+    expect(total(0) + total(1) + total(2)).toBe(startArmies(3, 28, 0) + startArmies(3, 28, 1) + startArmies(3, 28, 2));
     expect(s.reserve).toBe(reinforcements(s, s.turn));
   });
   it('autoPlace spreads exactly the remaining armies', () => {
     const s = newGame([{ name: 'A', bot: false }, { name: 'B', bot: false }], rnd, { manualSetup: true });
     const before = s.armies.reduce((a, b) => a + b, 0);
     autoPlace(s, 0, rnd);
-    expect(s.armies.reduce((a, b) => a + b, 0)).toBe(before + START_ARMIES[2]! - 14);
+    expect(s.armies.reduce((a, b) => a + b, 0)).toBe(before + startArmies(2, 28, 0) - 14);
   });
   it('hub: settings + colours are host/seat checked and locked at start; setup timer auto-places', () => {
     const hub = new ConquestHub(rnd);
