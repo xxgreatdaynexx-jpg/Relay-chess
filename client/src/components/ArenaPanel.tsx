@@ -3,7 +3,7 @@ import { useWalletChips } from '@/lib/wallet';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useRef, useState } from 'react';
 import { socket } from '@/lib/net';
-import { LOOK_KEY, SENS_MAX, SENS_MIN, mouseLook, readLook, type LookPrefs, FPS_KEY, fpsFrom, hotkeyFor, isLockedTo, readFpsPref } from '@/lib/arenaInput';
+import { LOOK_KEY, SENS_MAX, SENS_MIN, mouseLook, readLook, type LookPrefs, FPS_KEY, fpsFrom, hotkeyFor, isLockedTo, readFpsPref, stepFovKick, viewZoom } from '@/lib/arenaInput';
 import { ArenaRenderer, minimapSize } from '@/lib/arenaRender';
 import type { Arena3D, Fx3D, Soldier3D } from '@/lib/arena3d';
 import { prefersReducedMotion } from '@/lib/motion';
@@ -405,10 +405,10 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       }
       if (m.reloadUntil && now >= m.reloadUntil) { m.reloadUntil = 0; m.ammo = WEAPONS[m.weapon].mag; }
       if (moving && m.grounded) m.walk += dt * 9 * (m.sprint ? 1.6 : 1);
-      m.fovKick += ((m.sprint && moving ? 1 : 0) - m.fovKick) * Math.min(1, dt * 8);
+      m.fovKick = stepFovKick(m.fovKick, m.sprint && moving && m.alive, dt);
       const bob = moving && m.grounded ? Math.sin(m.walk * 2) * (m.sprint ? 0.045 : 0.03) : 0;
       { const target = m.alive ? eyeHeightOf(m) : EYE_HEIGHT; const st = CROUCH_LERP_SPEED * dt; m.eyeH += Math.max(-st, Math.min(st, target - m.eyeH)); }
-      const zoom = (m.scoped && m.weapon === 'sniper' && m.alive ? SCOPE_ZOOM : 1) / (1 + 0.08 * m.fovKick);
+      const { zoom, showGun } = viewZoom(m.scoped && m.weapon === 'sniper' && m.alive ? SCOPE_ZOOM : 1, m.fovKick);
       const snap = snaps.current[snaps.current.length - 1];
       const sampled = samplePlayers(net.buf.snaps, net.buf.renderTime(now));
       const others = sampled.players.filter((p) => p.id !== m.id && p.alive);
@@ -468,7 +468,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       const shake = now - fx.current.shake < 450 ? (1 - (now - fx.current.shake) / 450) * 0.04 : 0;
       const vmSwitch = Math.max(0, 1 - (now - m.switchedAt) / SWITCH_MS);
       const vmReload = m.reloadUntil && now < m.reloadUntil ? 1 - (m.reloadUntil - now) / WEAPONS[m.weapon].reloadMs : -1;
-      const vm = zoom === 1 && m.alive && m.joined ? { w: m.weapon, kick: Math.max(0, 1 - (now - fx.current.muzzle) / 140), lower: vmSwitch, reload: vmReload, bob: m.walk, muzzle: now - fx.current.muzzle < 50 } : null;
+      const vm = showGun && m.alive && m.joined ? { w: m.weapon, kick: Math.max(0, 1 - (now - fx.current.muzzle) / 140), lower: vmSwitch, reload: vmReload, bob: m.walk, muzzle: now - fx.current.muzzle < 50 } : null;
       const qa = (window as unknown as { __arenaQA?: { vm?: unknown } }).__arenaQA; if (qa) qa.vm = vm;
       g3.render({ x: eye.x, y: eye.y, z: eye.z + m.eyeH + bob + (Math.random() - 0.5) * shake, a: m.a, p: m.p, zoom, vm }, soldiers, fx3);
       // Health bars over nearby enemies you can see.
@@ -690,7 +690,9 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     const sync = () => {
       const on = isLockedTo(document.pointerLockElement, canvas);
       setLocked(on);
-      if (!on) { me.current.firing = false; setScope(false); }
+      // Losing the lock / focus drops held keys we'll never see the keyup for (Shift would keep sprinting).
+      if (!on) { me.current.firing = false; setScope(false); keys.current.delete('shift'); me.current.sprint = false; }
+      if (!document.hasFocus() || document.hidden) keys.current.clear();
     };
     document.addEventListener('pointerlockchange', sync);
     document.addEventListener('pointerlockerror', sync);

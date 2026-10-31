@@ -49,3 +49,23 @@ export function mouseLook(p: LookPrefs, scoped: boolean, dx: number, dy: number)
   const k = 0.0035 * p.sens * (scoped ? p.scope : 1);
   return [dx * k, (p.invertY ? dy : -dy) * k];
 }
+
+/** How much the sprint FOV kick widens the view at full sprint. */
+export const SPRINT_FOV_KICK = 0.08;
+/**
+ * Eases the sprint FOV kick toward 1 (sprinting and moving) or 0, snapping to exactly 0 once it is tiny,
+ * so the view is never left a hair off 1× after a sprint ends.
+ */
+export function stepFovKick(kick: number, sprinting: boolean, dt: number): number {
+  const k = Number.isFinite(kick) ? kick : 0;
+  const next = k + ((sprinting ? 1 : 0) - k) * Math.min(1, Math.max(0, dt) * 8);
+  return !sprinting && next < 1e-3 ? 0 : next;
+}
+/**
+ * Camera zoom plus whether the first-person gun is drawn. The gun hides only for the sniper scope,
+ * never because of the sprint FOV kick (that bug left the gun gone after any sprint).
+ */
+export function viewZoom(scopeZoom: number, fovKick: number): { zoom: number; showGun: boolean } {
+  const k = Number.isFinite(fovKick) ? Math.max(0, fovKick) : 0;
+  return { zoom: scopeZoom / (1 + SPRINT_FOV_KICK * k), showGun: scopeZoom === 1 };
+}
