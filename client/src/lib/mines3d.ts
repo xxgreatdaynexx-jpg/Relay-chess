@@ -95,8 +95,8 @@ export class Mines3D {
     this.pick = new THREE.Group();
     this.pickModel = skinnedPickaxe(null);
     // Hold point ~1/3 up the handle; head up-forward, pick point away from the player.
-    this.pickModel.position.set(0, -0.22, 0); this.pickModel.rotation.y = Math.PI;
-    this.pick.add(this.pickModel);
+    this.pickModel.position.set(0, -0.22, 0); this.pickModel.rotation.y = Math.PI / 2;
+    this.pick.add(this.pickModel); this.pick.scale.setScalar(0.72);
     this.camera.add(this.pick);
     this.scene.add(this.camera);
     this.camera.add(new THREE.PointLight('#fff1d6', 0.9, 6, 1.5));
@@ -175,19 +175,19 @@ export class Mines3D {
     this.camera.rotation.order = 'YXZ';
     this.camera.rotation.set(cam.p, -cam.a - Math.PI / 2, 0);
     this.lamp.position.set(cam.x, cam.z + 0.4, cam.y);
-    this.swingT = Math.min(1, this.swingT + dt / 0.42);
-    const t = this.swingT, bob = Math.sin(walk * 9) * 0.012, sway = Math.cos(walk * 4.5) * 0.008;
-    // wind-up (raise + cock back) → strike (fast arc down) → recoil (bounce) → settle
+    this.swingT = Math.min(1, this.swingT + dt / 0.5);
+    const t = (globalThis as { __pickPoseT?: number }).__pickPoseT ?? this.swingT, bob = Math.sin(walk * 9) * 0.01, sway = Math.cos(walk * 4.5) * 0.008;
+    // anticipation (slow raise, cock back + roll) → strike (accelerating arc) → impact hold + recoil → follow-through settle
     const ease = (x: number) => x * x * (3 - 2 * x);
-    let rx = 0, dy = 0, dz = 0;
-    if (t < 0.32) { const k = ease(t / 0.32); rx = 0.75 * k; dy = 0.07 * k; dz = 0.05 * k; }
-    else if (t < 0.5) { const k = (t - 0.32) / 0.18; const e = k * k; rx = 0.75 - 2.05 * e; dy = 0.07 - 0.14 * e; dz = 0.05 - 0.17 * e; }
-    else if (t < 0.62) { const k = ease((t - 0.5) / 0.12); rx = -1.3 + 0.35 * k; dy = -0.07 + 0.02 * k; dz = -0.12 + 0.03 * k; }
-    else { const k = ease((t - 0.62) / 0.38); rx = -0.95 * (1 - k); dy = -0.05 * (1 - k); dz = -0.09 * (1 - k); }
+    let rx = 0, rz = 0, dy = 0, dz = 0, dx = 0;
+    if (t < 0.36) { const k = ease(t / 0.36); rx = 0.25 * k; rz = 0.12 * k; dy = 0.08 * k; dz = -0.02 * k; }
+    else if (t < 0.5) { const k = (t - 0.36) / 0.14, e = k * k * k; rx = 0.25 - 1.25 * e; rz = 0.12 - 0.22 * e; dy = 0.08 - 0.13 * e; dz = -0.02 - 0.1 * e; dx = -0.1 * e; }
+    else if (t < 0.58) { const k = Math.sin(((t - 0.5) / 0.08) * Math.PI); rx = -1.0 + 0.16 * k; rz = -0.1; dy = -0.05 + 0.02 * k; dz = -0.12 + 0.02 * k; dx = -0.1; }
+    else { const k = ease((t - 0.58) / 0.42), o = Math.sin(k * Math.PI) * 0.12; rx = -1.0 * (1 - k) + o; rz = -0.1 * (1 - k); dy = -0.05 * (1 - k); dz = -0.12 * (1 - k); dx = -0.1 * (1 - k); }
+    this.pick.position.set(0.36 + dx + sway, -0.33 + bob + dy, -0.6 + dz);
+    this.pick.rotation.set(-0.12 + rx, 0.22, 0.3 + rz);
     if (this.hitDue < 0.5 && t >= 0.5) this.kick = Math.max(this.kick, 0.025);
     this.hitDue = t;
-    this.pick.position.set(0.32 + sway, -0.3 + bob + dy, -0.5 + dz);
-    this.pick.rotation.set(-0.35 + rx, 0.35, 0.28);
     this.kick = Math.max(0, this.kick - dt * 0.25);
     this.camera.rotation.x += this.kick;
     for (let i = this.parts.length - 1; i >= 0; i--) {

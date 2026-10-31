@@ -13,17 +13,17 @@ function headGeometry(): THREE.BufferGeometry {
   // Side profile (X along head, Y up): curved pick spike to +X, flared flat chisel to −X, eye block in the middle.
   const s = new THREE.Shape();
   s.moveTo(-0.05, 0.05);
-  s.quadraticCurveTo(0.16, 0.05, 0.36, -0.07);    // top edge sweeping down to the point
-  s.lineTo(0.355, -0.085);
+  s.quadraticCurveTo(0.18, 0.05, 0.4, -0.09);    // top edge sweeping down to the point
+  s.lineTo(0.395, -0.1);
   s.quadraticCurveTo(0.16, -0.01, 0.05, -0.045);  // underside back to the eye
   s.lineTo(-0.05, -0.045);
-  s.quadraticCurveTo(-0.16, -0.035, -0.25, -0.075); // chisel underside flaring down
-  s.lineTo(-0.27, -0.07);
-  s.lineTo(-0.275, 0.035);                          // flat chisel edge
-  s.lineTo(-0.255, 0.045);
-  s.quadraticCurveTo(-0.15, 0.03, -0.05, 0.05);
-  const g = new THREE.ExtrudeGeometry(s, { depth: 0.044, bevelEnabled: true, bevelThickness: 0.009, bevelSize: 0.008, bevelSegments: 2, curveSegments: 14 });
-  g.translate(0, 0, -0.022); g.computeVertexNormals();
+  s.quadraticCurveTo(-0.15, -0.035, -0.24, -0.05);  // chisel underside, gentle flare
+  s.lineTo(-0.255, -0.048);
+  s.lineTo(-0.258, 0.016);                          // flat chisel edge
+  s.lineTo(-0.24, 0.022);
+  s.quadraticCurveTo(-0.14, 0.03, -0.05, 0.05);
+  const g = new THREE.ExtrudeGeometry(s, { depth: 0.036, bevelEnabled: true, bevelThickness: 0.009, bevelSize: 0.008, bevelSegments: 2, curveSegments: 14 });
+  g.translate(0, 0, -0.018); g.computeVertexNormals();
   return g;
 }
 

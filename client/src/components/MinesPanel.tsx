@@ -74,7 +74,7 @@ function MinesGame({ onClose }: { onClose: () => void }) {
       hp.current = r.nodes; three.current?.setNodes(r.nodes);
       setGuest(r.guest); setPack({ pack: r.pack, load: r.load, cap: r.cap, quote: r.quote });
       setStatus(r.guest ? 'Guest: you can mine, sign in to sell.' : 'Click the view to play. Left click swings.');
-      (window as unknown as { __minesQA?: unknown }).__minesQA = { me: m, hp, sock: socket, aim: () => aimNode(m.x, m.y, m.z + eyeHeightOf(m), m.a, m.p, hp.current) };
+      (window as unknown as { __minesQA?: unknown }).__minesQA = { me: m, hp, sock: socket, swing: () => three.current?.swing(), aim: () => aimNode(m.x, m.y, m.z + eyeHeightOf(m), m.a, m.p, hp.current) };
     });
     const onState = (s: { players: MinerView[]; nodes: number[] }) => { hp.current = s.nodes; three.current?.setNodes(s.nodes); three.current?.setOthers(s.players, m.id); setOnline(s.players.length); };
     const onFx = (f: { node: number; broke: boolean }) => { three.current?.burstAt(f.node, f.broke); };
