@@ -1,9 +1,10 @@
 /** Chud Hub weapon skins: static catalog (original, procedural — no external art), wear tiers and case odds. */
 export type Rarity = 'common' | 'rare' | 'ultra';
 export type SkinPattern = 'camo' | 'stripes' | 'carbon' | 'hex' | 'gradient' | 'marble' | 'digital' | 'tiger' | 'splatter' | 'circuit' | 'solid' | 'checker';
-export type SkinFx = 'glow' | 'holo' | 'shift' | 'pulse' | 'galaxy';
+export type SkinFx = 'glow' | 'holo' | 'shift' | 'pulse' | 'galaxy' | 'ember' | 'scan';
+export type SkinFinish = 'matte' | 'gloss' | 'metal';
 /** Weapon ids are strings so later weapons (knife, grenade) can join the catalog without a type change. */
-export interface SkinDef { id: string; name: string; weapon: string; rarity: Rarity; pattern: SkinPattern; colors: [string, string, string]; fx?: SkinFx }
+export interface SkinDef { id: string; name: string; weapon: string; rarity: Rarity; pattern: SkinPattern; colors: [string, string, string]; fx?: SkinFx; finish?: SkinFinish }
 
 export const RARITY_COLOR: Record<Rarity, string> = { common: '#7fa3c9', rare: '#b05cff', ultra: '#ffb21a' };
 export const RARITY_NAME: Record<Rarity, string> = { common: 'Common', rare: 'Rare', ultra: 'Ultra' };
@@ -38,14 +39,68 @@ const U: Row[] = [
 ];
 const U_WEAPON = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket'];
 
+/** Weapons that have a skin set. Add 'knife' / 'ar15' here once those weapons exist (their 55 are generated fresh). */
+export const SKIN_WEAPONS = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket'] as const;
+export const PER_WEAPON: Record<Rarity, number> = { common: 30, rare: 20, ultra: 5 };
+const PATTERNS: SkinPattern[] = ['camo', 'stripes', 'carbon', 'hex', 'gradient', 'marble', 'digital', 'tiger', 'splatter', 'circuit', 'solid', 'checker'];
+const FINISHES: SkinFinish[] = ['matte', 'gloss', 'metal'];
+const ALL_FX: SkinFx[] = ['galaxy', 'holo', 'pulse', 'glow', 'shift', 'ember', 'scan'];
+// Original Chud-flavoured word lists (no real-game skin names). Names are deduped across the whole catalog.
+const ADJ = ['Basement', 'Soggy', 'Turbo', 'Unwashed', 'Discount', 'Feral', 'Crusty', 'Midnight', 'Greasy', 'Lukewarm', 'Certified', 'Budget', 'Rizzless', 'Chonky', 'Haunted', 'Off-Brand',
+  'Microwaved', 'Doomscroll', 'Sweaty', 'Unemployed', 'Gas Station', 'Bootleg', 'Mall Cop', 'Suburban', 'Reheated', 'Expired', 'Overclocked', 'Sleepless', 'Grandma\'s', 'Tax Season',
+  'Copium', 'Hopium', 'Based', 'Cringe', 'Delulu', 'Goblin', 'Bussin', 'Mid', 'Sus', 'Unhinged', 'Thrift', 'Clearance', 'Parking Lot', 'Corn Maze', 'Laundromat', 'Cul-de-Sac', 'Truck Stop', 'Group Chat'];
+const NOUN = ['Gremlin', 'Tendies', 'Hot Pocket', 'Mountain Dew', 'Recliner', 'Fanny Pack', 'Cargo Shorts', 'Crocs', 'Lawnmower', 'Minivan', 'Ramen', 'Nacho', 'Burrito', 'Waffle', 'Pickle', 'Goose',
+  'Raccoon', 'Possum', 'Wizard', 'Landlord', 'Intern', 'Main Character', 'NPC', 'Side Quest', 'Patch Notes', 'Loot Goblin', 'Keyboard', 'Mousepad', 'Energy Drink', 'Gamer Chair', 'Hoodie',
+  'Dad Joke', 'Group Project', 'Spreadsheet', 'Fax Machine', 'Dial-Up', 'Lava Lamp', 'Beanbag', 'Tamagotchi', 'Lunch Tray', 'Shopping Cart', 'Traffic Cone', 'Porta-Potty', 'Bouncy Castle', 'Kazoo', 'Corndog', 'Meatloaf', 'Casserole'];
+const ULTRA_TITLE = ['Ascended', 'Eternal', 'Transcendent', 'Omega', 'Supreme', 'Final Form', 'Unbound', 'Mythic'];
+
+function prng(seed: number) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const hashStr = (x: string) => { let h = 2166136261; for (const c of x) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; };
+const hsl = (h: number, s: number, l: number) => {
+  const f = (n: number) => { const k = (n + h / 30) % 12; const a = s * Math.min(l, 1 - l); return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))).toString(16).padStart(2, '0'); };
+  return `#${f(0)}${f(8)}${f(4)}`;
+};
+/** Visual identity of a skin on its weapon: pattern + palette bucket + finish. No two skins on one weapon share it. */
+export const lookKey = (d: SkinDef) => { const hue = (c: string) => { const n = parseInt(c.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b); if (mx - mn < 24) return `g${Math.round(mx / 64)}`; const h = mx === r ? ((g - b) / (mx - mn) + 6) % 6 : mx === g ? (b - r) / (mx - mn) + 2 : (r - g) / (mx - mn) + 4; return `h${Math.round(h * 2)}`; }; return `${d.pattern}|${d.colors.map(hue).join(',')}|${d.finish ?? 'matte'}`; };
+
 const build = (): SkinDef[] => {
   const out: SkinDef[] = [];
-  const add = (w: string, rarity: Rarity, r: Row, i: number) => out.push({ id: `${rarity[0]}-${w}-${i}`, name: r[0], weapon: w, rarity, pattern: r[1], colors: [r[2], r[3], r[4]], ...(r[5] ? { fx: r[5] } : {}) });
+  const names = new Set<string>();
+  const add = (w: string, rarity: Rarity, r: Row, i: number) => { names.add(r[0]); out.push({ id: `${rarity[0]}-${w}-${i}`, name: r[0], weapon: w, rarity, pattern: r[1], colors: [r[2], r[3], r[4]], ...(r[5] ? { fx: r[5] } : {}) }); };
+  // The original 55 hand-made skins: ids and looks are frozen (players own them).
   for (const [w, rows] of Object.entries(C)) rows.forEach((r, i) => add(w, 'common', r, i));
   for (const [w, rows] of Object.entries(R)) rows.forEach((r, i) => add(w, 'rare', r, i));
   U.forEach((r, i) => add(U_WEAPON[i]!, 'ultra', r, 0));
+  // Fill every weapon to exactly 30/20/5 with generated skins (deterministic: same ids/names/looks every build).
+  for (const w of SKIN_WEAPONS) {
+    const rnd = prng(hashStr(`chud-skins:${w}`));
+    const looks = new Set(out.filter((d) => d.weapon === w).map(lookKey));
+    const usedFx = new Set(out.filter((d) => d.weapon === w && d.fx).map((d) => d.fx!));
+    const fxPool = ALL_FX.filter((f) => !usedFx.has(f)); const rot = SKIN_WEAPONS.indexOf(w) % fxPool.length;
+    const fxLeft = [...fxPool.slice(rot), ...fxPool.slice(0, rot)];
+    for (const rarity of ['common', 'rare', 'ultra'] as Rarity[]) {
+      let i = out.filter((d) => d.weapon === w && d.rarity === rarity).length;
+      while (i < PER_WEAPON[rarity]) {
+        const pattern = PATTERNS[Math.floor(rnd() * PATTERNS.length)]!;
+        const h = rnd() * 360, sat = rarity === 'common' ? 0.15 + rnd() * 0.35 : 0.55 + rnd() * 0.45;
+        const colors: [string, string, string] = rarity === 'common'
+          ? [hsl(h, sat, 0.25 + rnd() * 0.25), hsl((h + 20 + rnd() * 40) % 360, sat, 0.35 + rnd() * 0.25), hsl(h, sat * 0.6, 0.12 + rnd() * 0.12)]
+          : [hsl(h, sat, 0.08 + rnd() * 0.12), hsl((h + 90 + rnd() * 180) % 360, sat, 0.5 + rnd() * 0.15), hsl((h + 30 + rnd() * 60) % 360, sat, 0.3 + rnd() * 0.3)];
+        const finish = FINISHES[Math.floor(rnd() * FINISHES.length)]!;
+        const fx = rarity === 'ultra' ? fxLeft.shift() : undefined;
+        if (rarity === 'ultra' && !fx) throw new Error('not enough ultra effects');
+        const noun = NOUN[Math.floor(rnd() * NOUN.length)]!;
+        const name = rarity === 'ultra' ? `${noun} ${ULTRA_TITLE[Math.floor(rnd() * ULTRA_TITLE.length)]}` : `${ADJ[Math.floor(rnd() * ADJ.length)]} ${noun}`;
+        const d: SkinDef = { id: `${rarity[0]}-${w}-${i}`, name, weapon: w, rarity, pattern, colors, finish, ...(fx ? { fx } : {}) };
+        const lk = lookKey(d);
+        if (names.has(name) || looks.has(lk)) { if (fx) fxLeft.unshift(fx); continue; }
+        names.add(name); looks.add(lk); out.push(d); i++;
+      }
+    }
+  }
   return out;
 };
+
 export const SKINS: SkinDef[] = build();
 export const SKIN_BY_ID = new Map(SKINS.map((s) => [s.id, s]));
 

@@ -1,16 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
-import { CASE_ODDS, rollSkin, SKINS, parseToken } from '../shared/skins';
+import { CASE_ODDS, rollSkin, SKINS, SKIN_BY_ID, SKIN_WEAPONS, lookKey, parseToken } from '../shared/skins';
 import { ItemVault, PgItemStore } from '../server/skins';
 import { ArenaWorld } from '../server/arena-world';
 
 const P = (name: string, ms = 120_000, kills = 0, deaths = 0) => ({ name, ms, kills, deaths });
 
 describe('skins catalog + odds', () => {
-  it('has 30 common / 20 rare / 5 ultra with unique ids', () => {
-    const c = (r: string) => SKINS.filter((s) => s.rarity === r).length;
-    expect([c('common'), c('rare'), c('ultra')]).toEqual([30, 20, 5]);
-    expect(new Set(SKINS.map((s) => s.id)).size).toBe(55);
+  it('has exactly 30 common / 20 rare / 5 ultra per weapon, unique ids, names and looks', () => {
+    for (const w of SKIN_WEAPONS) {
+      const c = (r: string) => SKINS.filter((s) => s.weapon === w && s.rarity === r).length;
+      expect([c('common'), c('rare'), c('ultra')]).toEqual([30, 20, 5]);
+      const mine = SKINS.filter((s) => s.weapon === w);
+      expect(new Set(mine.map(lookKey)).size).toBe(55);
+      expect(new Set(mine.filter((s) => s.rarity === 'ultra').map((s) => s.fx)).size).toBe(5);
+    }
+    expect(SKINS.length).toBe(SKIN_WEAPONS.length * 55);
+    expect(new Set(SKINS.map((s) => s.id)).size).toBe(SKINS.length);
+    expect(new Set(SKINS.map((s) => s.name.toLowerCase())).size).toBe(SKINS.length);
+    for (const bad of ['asiimov', 'dragon lore', 'howl', 'doppler', 'fade', 'redline', 'hyper beast', 'vulcan', 'fire serpent', 'printstream', 'neo-noir', 'case hardened', 'crimson web', 'tiger tooth'])
+      expect(SKINS.some((s) => s.name.toLowerCase().includes(bad))).toBe(false);
+  });
+  it('keeps the original 55 ids stable', () => {
+    for (const w of SKIN_WEAPONS) {
+      for (let i = 0; i < 6; i++) expect(SKIN_BY_ID.has(`c-${w}-${i}`)).toBe(true);
+      for (let i = 0; i < 4; i++) expect(SKIN_BY_ID.has(`r-${w}-${i}`)).toBe(true);
+      expect(SKIN_BY_ID.has(`u-${w}-0`)).toBe(true);
+    }
+    expect(SKIN_BY_ID.get('u-pistol-0')!.name).toBe('Chudlord Ascended');
   });
   it('rolls 79/19/2', () => {
     const n = 100_000; const got = { common: 0, rare: 0, ultra: 0 };

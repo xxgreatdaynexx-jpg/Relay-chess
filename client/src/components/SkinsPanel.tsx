@@ -67,6 +67,15 @@ function Inventory({ onClose }: { onClose: () => void }) {
     }).sort((a, b) => sort === 'rarity' ? (RANK[rarityOf(b) ?? 'common'] - RANK[rarityOf(a) ?? 'common']) || b.at - a.at
       : sort === 'name' ? label(a).localeCompare(label(b)) : sort === 'wear' ? a.float - b.float : b.at - a.at);
   }, [items, weapon, rarity, sort, q]);
+  const PAGE = 120;
+  const [limit, setLimit] = useState(PAGE);
+  useEffect(() => setLimit(PAGE), [weapon, rarity, sort, q]);
+  const more = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = more.current; if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) setLimit((l) => l + PAGE); }, { rootMargin: '300px' });
+    io.observe(el); return () => io.disconnect();
+  }, [limit, shown.length]);
   const cur = items.find((i) => i.id === sel) ?? shown[0] ?? null;
   const cases = items.filter((i) => i.kind === 'case' && !i.locked).length, keys = items.filter((i) => i.kind === 'key' && !i.locked).length;
 
@@ -91,13 +100,14 @@ function Inventory({ onClose }: { onClose: () => void }) {
         </div>
         <div className="inv-body">
           <div className="inv-grid" data-testid="inv-grid">
-            {shown.map((i) => { const r = rarityOf(i); return (
+            {shown.slice(0, limit).map((i) => { const r = rarityOf(i); return (
               <button type="button" key={i.id} className={`inv-cell ${cur?.id === i.id ? 'sel' : ''} ${r ? `r-${r}` : 'r-item'}`} style={{ '--rc': r ? RARITY_COLOR[r] : '#8a8f98' } as React.CSSProperties} onClick={() => setSel(i.id)} title={label(i)} data-testid="inv-cell">
                 <Swatch item={i} size={72} />
                 <span className="inv-name">{label(i)}</span>
                 {i.equipped && <span className="inv-badge">E</span>}
                 {i.locked && <span className="inv-badge lock">🔒</span>}
               </button>); })}
+            {shown.length > limit && <div ref={more} className="inv-more"><button type="button" onClick={() => setLimit((l) => l + PAGE)}>Show more ({shown.length - limit})</button></div>}
             {!shown.length && <p className="inv-note">{items.length ? 'Nothing matches those filters.' : 'Empty. Play an Arena match to get a drop.'}</p>}
           </div>
           <aside className="inv-detail" data-testid="inv-detail">

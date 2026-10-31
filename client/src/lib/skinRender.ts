@@ -40,7 +40,7 @@ function skinMaterial(token: string): SkinMat | null {
   paintSkin(cv.getContext('2d')!, 128, p.skin, p.seed, p.float);
   const tex = new THREE.CanvasTexture(cv); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.colorSpace = THREE.SRGBColorSpace;
   tex.magFilter = THREE.NearestFilter;
-  const mat = new THREE.MeshPhongMaterial({ map: tex, shininess: p.skin.rarity === 'common' ? 30 : 70, specular: 0x444444, flatShading: true });
+  const mat = new THREE.MeshPhongMaterial({ map: tex, shininess: p.skin.finish === 'gloss' ? 90 : p.skin.finish === 'metal' ? 60 : p.skin.finish === 'matte' ? 8 : p.skin.rarity === 'common' ? 30 : 70, specular: p.skin.finish === 'metal' ? 0x999999 : 0x444444, flatShading: true });
   if (p.skin.fx) { mat.emissive = new THREE.Color(p.skin.colors[1]); mat.emissiveMap = tex; mat.emissiveIntensity = 0.5; }
   const m = { mat, skin: p.skin }; mats.set(token, m); return m;
 }
@@ -54,6 +54,8 @@ export function tickSkins(t: number): void {
     else if (skin.fx === 'glow') mat.emissiveIntensity = 0.6 + 0.2 * Math.sin(s * 2);
     else if (skin.fx === 'shift') mat.emissive.setHSL((s * 0.15) % 1, 0.9, 0.45);
     else if (skin.fx === 'holo') { mat.emissive.setHSL((s * 0.3) % 1, 1, 0.5); mat.map!.offset.set(s * 0.05, 0); }
+    else if (skin.fx === 'ember') mat.emissiveIntensity = 0.3 + 0.5 * Math.abs(Math.sin(s * 7) * Math.sin(s * 2.3));
+    else if (skin.fx === 'scan') { mat.map!.offset.set(0, (s * 0.25) % 1); mat.emissiveIntensity = 0.45 + 0.25 * Math.sin(s * 5); }
     else if (skin.fx === 'galaxy') { mat.map!.offset.set(s * 0.03, s * 0.02); mat.emissiveIntensity = 0.5 + 0.3 * Math.sin(s * 3); }
   }
 }

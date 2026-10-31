@@ -1424,7 +1424,7 @@ html, body { overflow-x: clip; }
 .inv-badge.lock { background: #8f6a3a; }
 .inv-swatch { border-radius: 2px; image-rendering: pixelated; }
 .inv-swatch.fx-holo, .inv-swatch.fx-shift { animation: inv-hue 4s linear infinite; }
-.inv-swatch.fx-pulse, .inv-swatch.fx-glow, .inv-swatch.fx-galaxy { animation: inv-pulse 1.6s ease-in-out infinite; }
+.inv-swatch.fx-pulse, .inv-swatch.fx-glow, .inv-swatch.fx-galaxy, .inv-swatch.fx-ember, .inv-swatch.fx-scan { animation: inv-pulse 1.6s ease-in-out infinite; }
 @keyframes inv-hue { to { filter: hue-rotate(360deg) saturate(1.4); } }
 @keyframes inv-pulse { 50% { filter: brightness(1.45) drop-shadow(0 0 6px #fff8); } }
 .inv-icon { display: flex; align-items: center; justify-content: center; font-size: 2.4rem; }
@@ -1445,3 +1445,4 @@ html, body { overflow-x: clip; }
 .unbox-cell { flex: 0 0 120px; height: 130px; display: flex; flex-direction: column; align-items: center; gap: 4px; border-bottom: 4px solid var(--rc); font-size: .65rem; text-align: center; }
 .unbox-result { font-size: 1.1rem; display: flex; gap: 1rem; align-items: center; }
 .unbox-result button, .unbox-skip { background: #2a3a55; padding: .3rem .9rem; border-radius: 3px; color: #fff; }
+.inv-more { grid-column: 1 / -1; display: flex; justify-content: center; padding: 8px; }
