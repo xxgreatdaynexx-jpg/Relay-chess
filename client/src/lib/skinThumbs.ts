@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildGun } from './arenaGuns';
+import { buildPickaxe } from './pickaxeModel';
 import { applySkin, tickSkins } from './skinRender';
 import { parseToken } from '../../../shared/skins';
 import { WEAPON_ORDER, type WeaponId } from '../../../shared/fps';
@@ -18,8 +19,10 @@ function stage(): { scene: THREE.Scene; cam: THREE.PerspectiveCamera } {
 /** Wrap a skinned gun in a pivot, centred, longest axis along X, scaled to unit length. */
 export function skinnedModel(token: string): THREE.Group | null {
   const p = parseToken(token);
-  if (!p || !isWeapon(p.skin.weapon)) return null;
-  const g = buildGun(p.skin.weapon);
+  if (!p) return null;
+  const w = p.skin.weapon;
+  if (w !== 'pickaxe' && !isWeapon(w)) return null;
+  const g = w === 'pickaxe' ? { root: buildPickaxe() } : buildGun(w);
   applySkin(g.root, token);
   const box = new THREE.Box3().setFromObject(g.root); const size = box.getSize(new THREE.Vector3()); const c = box.getCenter(new THREE.Vector3());
   const inner = new THREE.Group(); inner.add(g.root); g.root.position.sub(c);

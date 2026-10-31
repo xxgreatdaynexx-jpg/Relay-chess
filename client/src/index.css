@@ -1544,3 +1544,6 @@ html, body { overflow-x: clip; }
 .mkt-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .mkt-table th, .mkt-table td { text-align: left; padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,.08); }
 .mkt-mat { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 5px; font-size: 12px; color: #111; vertical-align: middle; }
+.inv-slots { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 12px 0; }
+.inv-slot { font-size: 11px; padding: 3px 7px; border-radius: 6px; opacity: .7; }
+.inv-slot.on { opacity: 1; outline: 1px solid #ffcf3a; }

@@ -191,5 +191,6 @@ export function registerSkins(io: Server, socket: Socket): void {
     if (d && isKnife(d)) setTimeout(() => io.emit('inv_announce', { name: n!.trim(), skin: d.id, text: `${n!.trim()} unboxed ${skinName(d)}!` }), 5500);
     return r;
   });
+  on('inv_loadout', (_b, n) => ({ loadout: n ? vault.loadout(n) : {} })); // e.g. Mines reads loadout.pickaxe
   on('inv_equip', (b, n) => { vault.equip(need(n), b.id); return { items: vault.inventory(n!) }; });
 }

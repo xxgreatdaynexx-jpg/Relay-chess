@@ -8,7 +8,7 @@ export interface SkinDef { id: string; name: string; weapon: string; rarity: Rar
 
 export const RARITY_COLOR: Record<Rarity, string> = { common: '#7fa3c9', rare: '#b05cff', ultra: '#ffb21a' };
 export const RARITY_NAME: Record<Rarity, string> = { common: 'Common', rare: 'Rare', ultra: 'Ultra' };
-export const WEAPON_NAME: Record<string, string> = { pistol: 'Pistol', smg: 'SMG', shotgun: 'Shotgun', sniper: 'Sniper', rocket: 'RPG', ar15: 'AR-15', knife: 'Knife', grenade: 'Grenade' };
+export const WEAPON_NAME: Record<string, string> = { pistol: 'Pistol', smg: 'SMG', shotgun: 'Shotgun', sniper: 'Sniper', rocket: 'RPG', ar15: 'AR-15', knife: 'Knife', pickaxe: 'Pickaxe', grenade: 'Grenade' };
 
 type Row = [string, SkinPattern, string, string, string, SkinFx?];
 const C: Record<string, Row[]> = {
@@ -40,11 +40,11 @@ const U: Row[] = [
 const U_WEAPON = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket'];
 
 /** Weapons that have a skin set. Add 'knife' / 'ar15' here once those weapons exist (their 55 are generated fresh). */
-export const GUN_WEAPONS = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'ar15'] as const;
+export const GUN_WEAPONS = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'ar15', 'pickaxe'] as const;
 /** Knife skins are a CS-style special tier (see CASE_ODDS). The set exists now; it only drops once the knife weapon is live. */
 export const KNIFE_IN_CASES = true;
 /** Build order is frozen: new weapons go LAST so existing generated ids/names/looks never shift (names dedupe catalog-wide). */
-export const SKIN_WEAPONS = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'knife', 'ar15'] as const;
+export const SKIN_WEAPONS = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'knife', 'ar15', 'pickaxe'] as const;
 export const PER_WEAPON: Record<Rarity, number> = { common: 30, rare: 20, ultra: 5 };
 const PATTERNS: SkinPattern[] = ['camo', 'stripes', 'carbon', 'hex', 'gradient', 'marble', 'digital', 'tiger', 'splatter', 'circuit', 'solid', 'checker'];
 const FINISHES: SkinFinish[] = ['matte', 'gloss', 'metal'];
@@ -56,6 +56,11 @@ const ADJ = ['Basement', 'Soggy', 'Turbo', 'Unwashed', 'Discount', 'Feral', 'Cru
 const NOUN = ['Gremlin', 'Tendies', 'Hot Pocket', 'Mountain Dew', 'Recliner', 'Fanny Pack', 'Cargo Shorts', 'Crocs', 'Lawnmower', 'Minivan', 'Ramen', 'Nacho', 'Burrito', 'Waffle', 'Pickle', 'Goose',
   'Raccoon', 'Possum', 'Wizard', 'Landlord', 'Intern', 'Main Character', 'NPC', 'Side Quest', 'Patch Notes', 'Loot Goblin', 'Keyboard', 'Mousepad', 'Energy Drink', 'Gamer Chair', 'Hoodie',
   'Dad Joke', 'Group Project', 'Spreadsheet', 'Fax Machine', 'Dial-Up', 'Lava Lamp', 'Beanbag', 'Tamagotchi', 'Lunch Tray', 'Shopping Cart', 'Traffic Cone', 'Porta-Potty', 'Bouncy Castle', 'Kazoo', 'Corndog', 'Meatloaf', 'Casserole'];
+// Mines pickaxe skins get their own mining-flavoured words (still deduped catalog-wide).
+const MINE_ADJ = ['Cave-In', 'Deep Shaft', 'Bedrock', 'Coal Dust', 'Pay Dirt', 'Mother Lode', 'Canary', 'Lamp-Lit', 'Night Shift', 'Overtime', 'Gravel', 'Sinkhole', 'Fool\'s Gold', 'Slag Heap',
+  'Rusty Rail', 'Dynamite', 'Hard Hat', 'Tunnel Vision', 'Stalactite', 'Magma', 'Quarry', 'Bucket Line', 'Ore Cart', 'Union Break', 'Pit Boss', 'Lunch Pail', 'Sooty', 'Geode', 'Prospector', 'Claim Jumper'];
+const MINE_NOUN = ['Digger', 'Rockbiter', 'Mole', 'Sledge', 'Wallbreaker', 'Nugget', 'Pebble', 'Boulder', 'Drill Bit', 'Shovel', 'Lantern', 'Minecart', 'Tunneler', 'Foreman', 'Grubstake', 'Stonecutter',
+  'Hammerhead', 'Crusher', 'Picker', 'Rock Licker', 'Dirt Goblin', 'Cave Troll', 'Gem Hoarder', 'Vein Seeker'];
 const ULTRA_TITLE = ['Ascended', 'Eternal', 'Transcendent', 'Omega', 'Supreme', 'Final Form', 'Unbound', 'Mythic'];
 
 function prng(seed: number) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -93,8 +98,9 @@ const build = (): SkinDef[] => {
         const finish = FINISHES[Math.floor(rnd() * FINISHES.length)]!;
         const fx = rarity === 'ultra' ? fxLeft.shift() : undefined;
         if (rarity === 'ultra' && !fx) throw new Error('not enough ultra effects');
-        const noun = NOUN[Math.floor(rnd() * NOUN.length)]!;
-        const name = rarity === 'ultra' ? `${noun} ${ULTRA_TITLE[Math.floor(rnd() * ULTRA_TITLE.length)]}` : `${ADJ[Math.floor(rnd() * ADJ.length)]} ${noun}`;
+        const NN = w === 'pickaxe' ? MINE_NOUN : NOUN, AA = w === 'pickaxe' ? MINE_ADJ : ADJ;
+        const noun = NN[Math.floor(rnd() * NN.length)]!;
+        const name = rarity === 'ultra' ? `${noun} ${ULTRA_TITLE[Math.floor(rnd() * ULTRA_TITLE.length)]}` : `${AA[Math.floor(rnd() * AA.length)]} ${noun}`;
         const d: SkinDef = { id: `${rarity[0]}-${w}-${i}`, name, weapon: w, rarity, pattern, colors, finish, ...(fx ? { fx } : {}) };
         const lk = lookKey(d);
         if (names.has(name) || looks.has(lk)) { if (fx) fxLeft.unshift(fx); continue; }

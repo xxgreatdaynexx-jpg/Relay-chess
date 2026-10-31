@@ -133,8 +133,10 @@ function Inventory({ onClose }: { onClose: () => void }) {
         {tab === 'mats' && <MaterialsView />}
         {tab === 'trades' && <TradesView seed={tradeSeed} />}
         {tab === 'inv' && <>
+        <div className="inv-slots" data-testid="inv-slots">{['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'ar15', 'knife', 'pickaxe'].map((w) => { const e = items.find((i) => i.equipped && i.kind === 'skin' && SKIN_BY_ID.get(i.skin)?.weapon === w); return (
+          <button type="button" key={w} className={`inv-slot${e ? ' on' : ''}`} data-testid={`inv-slot-${w}`} onClick={() => setWeapon(w)} title={e ? SKIN_BY_ID.get(e.skin)?.name : 'Stock'}>{w === 'pickaxe' ? '⛏ ' : ''}{WEAPON_NAME[w]}: {e ? SKIN_BY_ID.get(e.skin)?.name : 'Stock'}</button>); })}</div>
         <div className="inv-filters">
-          <select value={weapon} onChange={(e) => setWeapon(e.target.value)} data-testid="inv-weapon"><option value="all">All weapons</option><option value="items">Cases &amp; keys</option>{['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'ar15', 'knife'].map((w) => <option key={w} value={w}>{WEAPON_NAME[w]}</option>)}</select>
+          <select value={weapon} onChange={(e) => setWeapon(e.target.value)} data-testid="inv-weapon"><option value="all">All weapons</option><option value="items">Cases &amp; keys</option>{['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'ar15', 'knife', 'pickaxe'].map((w) => <option key={w} value={w}>{WEAPON_NAME[w]}</option>)}</select>
           <select value={rarity} onChange={(e) => setRarity(e.target.value)} data-testid="inv-rarity"><option value="all">All rarities</option>{(['common', 'rare', 'ultra'] as const).map((r) => <option key={r} value={r}>{RARITY_NAME[r]}</option>)}</select>
           <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} data-testid="inv-sort"><option value="new">Newest</option><option value="rarity">Rarity</option><option value="name">Name</option><option value="wear">Best wear</option></select>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" data-testid="inv-search" />

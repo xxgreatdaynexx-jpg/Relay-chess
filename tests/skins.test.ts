@@ -135,7 +135,21 @@ describe('AR-15 skin set', () => {
     expect(ar.filter((s) => s.rarity === 'common')).toHaveLength(30);
     expect(ar.filter((s) => s.rarity === 'rare')).toHaveLength(20);
     expect(ar.filter((s) => s.rarity === 'ultra')).toHaveLength(5);
-    expect(SKINS.slice(-55).every((s) => s.weapon === 'ar15')).toBe(true);
+    expect(SKINS.slice(330, 385).every((s) => s.weapon === 'ar15')).toBe(true);
     expect(SKIN_BY_ID.get('c-knife-0')?.weapon).toBe('knife');
+  });
+});
+
+describe('pickaxe skins', () => {
+  it('adds 55 mining skins (30/20/5) last, in the gun case pool, without shifting older skins', async () => {
+    const { SKINS, SKIN_WEAPONS, rollSkin } = await import('../shared/skins');
+    expect(SKINS.length).toBe(440);
+    expect(SKIN_WEAPONS[SKIN_WEAPONS.length - 1]).toBe('pickaxe');
+    const p = SKINS.slice(-55); expect(p.every((s) => s.weapon === 'pickaxe')).toBe(true);
+    expect(['common', 'rare', 'ultra'].map((r) => p.filter((s) => s.rarity === r).length)).toEqual([30, 20, 5]);
+    expect(SKINS.slice(0, 385).some((s) => s.weapon === 'pickaxe')).toBe(false);
+    let x = 1; const rng = () => ((x = (x * 16807) % 2147483647) / 2147483647); let hit = false;
+    for (let i = 0; i < 20000 && !hit; i++) hit = rollSkin(rng).weapon === 'pickaxe';
+    expect(hit).toBe(true);
   });
 });
