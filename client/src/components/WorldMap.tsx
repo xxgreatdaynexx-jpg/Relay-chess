@@ -42,7 +42,7 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
       case 'arena': openTab('arena-tab'); break;
       case 'factory': openTab('factory-tab') || openTab('mines-tab'); break;
       case 'warehouse': window.dispatchEvent(new CustomEvent('open-inventory', { detail: { tab: 'inv' } })); break;
-      case 'market': window.dispatchEvent(new CustomEvent('open-inventory', { detail: { tab: 'market' } })); break;
+      case 'market': if (openTab('market-tab')) break; window.dispatchEvent(new CustomEvent('open-inventory', { detail: { tab: 'market' } })); break;
       case 'bank': openTab('wallet-button'); break;
       case 'chat': openTab('chat-tab'); break;
       case 'leaderboard': onLeaderboard(); break;
