@@ -1,0 +1,85 @@
+/**
+ * Curated, player-facing changelog. Newest first.
+ * RULE: every feature commit adds (or extends) an entry at the top — plain English, no jargon.
+ * `commit` is the short SHA ('' = the build this entry ships in, shown as the live build) the change shipped in; `at` is the ISO time (git log) it landed.
+ */
+export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
+
+export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-10-30T23:45:00-06:00', title: 'Changelog in chat', bullets: [
+    'New 📜 Changelog menu in the chat drawer — see what changed and which build you’re on.',
+    'Chat header shows the live build number.',
+    'Each new build posts a short “what’s new” note in chat.',
+  ] },
+  { commit: '7668bf2', at: '2026-10-30T23:37:00-06:00', title: 'Cleaner city map', bullets: [
+    'The row of shortcut buttons along the bottom of the city is gone — click a building or use the top bar.',
+  ] },
+  { commit: '6c01bbd', at: '2026-10-30T23:30:00-06:00', title: 'City map freeze fixed', bullets: [
+    'The city no longer freezes when chat or your wallet is open.',
+  ] },
+  { commit: '0d495cb', at: '2026-10-30T23:21:00-06:00', title: 'Mining leaderboard', bullets: [
+    'New Mining leaderboard: see who’s earned the most chips, mined the most ore, and banked the biggest haul, today, this week, or all time. Find it in the Mines panel or the Leaderboard’s Mining tab.',
+  ] },
+  { commit: '65bf548', at: '2026-10-30T23:20:00-06:00', title: 'Market fixes', bullets: [
+    'Skin previews always show the right item and retry if they fail to load.',
+  ] },
+  { commit: 'de5b002', at: '2026-10-30T23:17:00-06:00', title: 'Factory v2', bullets: [
+    'Build your own factory on a grid: belts, inserters, splitters and machines.',
+    'Machinist shop, floor expansions and a 32-recipe tech tree.',
+    'Your factory keeps producing while you’re away.',
+  ] },
+  { commit: '0dc4f99', at: '2026-10-30T23:12:00-06:00', title: 'The city is home', bullets: [
+    'Closing any building takes you back to the city. Relay Chess now lives in the Chess Club.',
+    'Roomier city layout, and cars stay in their lanes.',
+  ] },
+  { commit: '567c20b', at: '2026-10-30T23:11:00-06:00', title: 'Mines: see other miners', bullets: [
+    'Other players in the mine show up as miners — hard hat, headlamp, hi-vis vest — swinging their equipped pickaxe skin.',
+  ] },
+  { commit: '71ac7df', at: '2026-10-30T23:07:00-06:00', title: 'Market tab', bullets: [
+    'New Market tab with Skins and Resources: full catalog, search, filters and sorting.',
+    'Price charts for every item.',
+  ] },
+  { commit: '5c486f9', at: '2026-10-30T22:58:00-06:00', title: 'Mines: new pickaxe', bullets: [
+    'Redesigned skinnable pickaxe with a proper wind-up, strike and follow-through.',
+  ] },
+  { commit: 'ea14883', at: '2026-10-30T22:55:00-06:00', title: 'World Map home', bullets: [
+    'The home screen is now a 3D night city — click a building to go there.',
+    'Casino, Chess Club, Mine, Arena, Factory, Warehouse, Bank, Market, Leaderboard tower and Plaza Chat.',
+    '2D map for weaker devices, and a 🗺 Map button to get back.',
+  ] },
+  { commit: '0d4feca', at: '2026-10-30T22:51:00-06:00', title: 'Mines: haul survives deploys', bullets: [
+    'What you’re carrying in the mine is saved, so a server update no longer wipes your backpack.',
+  ] },
+  { commit: '2eb02d1', at: '2026-10-30T22:50:00-06:00', title: 'Arena: instant-feel netcode', bullets: [
+    'Server runs twice as fast (30 Hz) and fire/reload/switch feel instant.',
+    'Your own rockets launch the moment you fire.',
+  ] },
+  { commit: 'dfe9773', at: '2026-10-30T22:35:00-06:00', title: 'Mines extraction + Factory tab', bullets: [
+    'Haul your goods out through the EXIT lift to bank them.',
+    'Factory is now its own top tab.',
+  ] },
+  { commit: 'bb855ba', at: '2026-10-30T22:35:00-06:00', title: 'Pickaxe skins', bullets: [
+    '55 mining-themed pickaxe skins in cases, plus a ⛏ Pickaxe equip slot.',
+  ] },
+  { commit: '2ef2d97', at: '2026-10-30T22:33:00-06:00', title: 'Mines: mouse fix', bullets: ['Mouse look in the mine is no longer inverted.'] },
+  { commit: 'd3d0fdc', at: '2026-10-30T22:30:00-06:00', title: 'Arena: headshot fix', bullets: ['Headshots land and do damage again (AR-15 recoil bug).'] },
+  { commit: '621272f', at: '2026-10-30T22:29:00-06:00', title: 'Materials market', bullets: ['Buy and sell ore, bars and goods with partial buys (5% fee).'] },
+  { commit: 'ba2e3a3', at: '2026-10-30T22:20:00-06:00', title: 'Factory', bullets: ['Smelt ore in the furnace and craft goods at the workbench for more chips.'] },
+  { commit: '253c035', at: '2026-10-30T22:17:00-06:00', title: 'Arena: grenades', bullets: ['Frag grenades on G — two per life, bounce and 2.5s fuse.'] },
+  { commit: '2af3269', at: '2026-10-30T22:10:00-06:00', title: 'The Mines', bullets: ['New first-person mine: dig ore and rock and sell it. Same engine as the Arena.'] },
+  { commit: '31931a9', at: '2026-10-30T22:05:00-06:00', title: 'Arena: predicted hit markers', bullets: ['Tracers, hit markers and damage numbers show instantly; the server still confirms.'] },
+  { commit: 'f3bbb4b', at: '2026-10-30T21:59:00-06:00', title: 'Arena: AR-15', bullets: ['New semi-auto AR-15 with a red-dot sight, plus a 55-skin AR-15 set.'] },
+  { commit: '2a3b24c', at: '2026-10-30T21:54:00-06:00', title: 'Arena: kill cam v2', bullets: ['Much smoother kill cam replay from the killer’s eyes.'] },
+  { commit: 'cff38c6', at: '2026-10-30T21:52:00-06:00', title: 'Arena: 360 NO-SCOPE', bullets: ['Spin 360° and land an unscoped sniper kill for the announcement.'] },
+  { commit: '779a220', at: '2026-10-30T21:48:00-06:00', title: 'Arena: knife buffs', bullets: ['Knife reaches further, swings faster and you move quicker with it out.'] },
+  { commit: 'ce98b79', at: '2026-10-30T21:47:00-06:00', title: 'Arena: weapon drops', bullets: ['Dead players drop their gun — walk over it to pick it up if you don’t have one.'] },
+  { commit: '2df01e4', at: '2026-10-30T21:40:00-06:00', title: 'Arena: Space to respawn', bullets: ['Press Space on the death screen to respawn.'] },
+  { commit: '30cee81', at: '2026-10-30T21:14:00-06:00', title: '3D inventory', bullets: ['Skins show on the real 3D gun models; drag to rotate.'] },
+  { commit: '8334d57', at: '2026-10-30T21:01:00-06:00', title: 'Arena: skins stick', bullets: ['Equipped skins stay on across matches, respawns and reconnects.'] },
+  { commit: 'e05c9c2', at: '2026-10-30T20:59:00-06:00', title: 'Arena: loadout picker', bullets: ['Pick your loadout on an 8s respawn screen.', 'Health regenerates after a few seconds out of combat.'] },
+  { commit: '074008c', at: '2026-10-30T20:45:00-06:00', title: '55 skins per weapon', bullets: ['Every weapon has 55 skins: 30 common, 20 rare, 5 ultra.'] },
+  { commit: 'dff8413', at: '2026-10-30T20:43:00-06:00', title: 'Arena: combat knife', bullets: ['Knife on 6/V — slash, stab and backstab kills.'] },
+  { commit: '246dc0f', at: '2026-10-30T20:43:00-06:00', title: 'Arena: homing RPG', bullets: ['Heat-seeking RPG perk with a lock-on warning.'] },
+];
+
+export const changelogBullets = (n = 3): string[] => CHANGELOG.flatMap((e) => e.bullets).slice(0, n);

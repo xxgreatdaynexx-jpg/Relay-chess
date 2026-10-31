@@ -30,6 +30,10 @@ npm start
 
 `npm start` listens on `PORT` (default `4317`).
 
+## Changelog (required for every feature commit)
+
+Every feature commit adds an entry at the top of `shared/changelog.ts` (plain-English bullets, `commit: ''` for the build it ships in, `at` = commit time). The chat drawer's 📜 Changelog menu shows it, `GET /api/build` reports the running commit, and on boot each new build posts one “New build … is live” note in chat (deduped in Postgres `build_announcements`).
+
 ## How a table works
 
 1. One player creates a table and chooses a clock: off, 3+2, 5 minutes, 10 minutes, or 15+10. Each side shares one clock.

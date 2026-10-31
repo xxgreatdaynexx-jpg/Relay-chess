@@ -1647,3 +1647,14 @@ html, body { overflow-x: clip; }
 .mine-lb-compact .lb-switch-btn { padding: 2px 8px; font-size: 11px; }
 .mine-lb-compact table { font-size: 11px; }
 .mines-board summary { cursor: pointer; font-weight: 600; }
+.world-map-btn { position: fixed; left: 12px; bottom: 12px; z-index: 47; padding: 7px 14px; border-radius: 999px; background: #e8c26a; color: #1b1d2e; font-weight: 800; box-shadow: 0 4px 16px #0008; }
+.chat-text { white-space: pre-line; }
+.chat-head .chat-clog-btn { margin-left: auto; margin-right: 6px; position: relative; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18); color: inherit; border-radius: 8px; padding: 3px 8px; font-size: 12px; cursor: pointer; }
+.chat-clog-btn .chat-badge { position: absolute; top: -6px; right: -6px; }
+.chat-build { display: block; padding: 0 12px 6px; font-size: 11px; opacity: .65; font-family: ui-monospace, monospace; }
+.chat-clog { position: absolute; inset: 0; z-index: 5; background: #14161c; display: flex; flex-direction: column; }
+.chat-clog-build { padding: 0 12px 8px; font-size: 12px; }
+.chat-clog-list { list-style: none; margin: 0; padding: 0 12px 12px; overflow-y: auto; flex: 1; }
+.chat-clog-list > li { padding: 8px 0; border-top: 1px solid rgba(255,255,255,.08); }
+.chat-clog-list ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; opacity: .9; }
+.chat-clog-meta { display: flex; justify-content: space-between; font-size: 11px; opacity: .6; }

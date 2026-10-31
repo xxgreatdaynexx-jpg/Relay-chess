@@ -1,3 +1,4 @@
+import { BuildTag, ChangelogButton } from './Changelog';
 import { useEffect, useRef, useState } from 'react';
 import { socket } from '@/lib/net';
 import { loadAuth, useAccount } from '@/lib/auth';
@@ -134,8 +135,10 @@ export function ChatDrawer() {
         <aside className="chat-drawer" data-testid="chat-drawer" aria-label="Online players and chat">
           <div className="chat-head">
             <b>Online <span className="chat-dim">({online.users.length}{online.guests ? ` + ${online.guests} guest${online.guests === 1 ? '' : 's'}` : ''})</span></b>
+            <ChangelogButton />
             <button type="button" className="acct-close" aria-label="Close chat" onClick={() => setOpen(false)}>✕</button>
           </div>
+          <BuildTag />
           <ul className="chat-online" data-testid="chat-online">
             {online.users.length === 0 && <li className="chat-dim">No one signed in right now.</li>}
             {online.users.map((u) => (

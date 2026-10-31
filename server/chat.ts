@@ -97,6 +97,17 @@ export class ChatLog {
     return { ok: true, message };
   }
 
+  /** Server-authored message (build notes etc.): no validation or rate limit. */
+  postSystem(name: string, text: string, now = Date.now()): ChatMessage {
+    const id = Math.max(this.lastId + 1, now);
+    this.lastId = id;
+    const message: ChatMessage = { id, name, text, at: now };
+    this.messages.push(message);
+    if (this.messages.length > this.cap) this.messages.splice(0, this.messages.length - this.cap);
+    this.persist(message);
+    return message;
+  }
+
   /** History as a viewer should see it: QA accounts' messages are hidden from non-QA viewers. */
   history(viewerIsQa: boolean): ChatMessage[] {
     return this.messages.filter((m) => viewerIsQa || !isQaName(m.name)).map((m) => (isQaName(m.name) ? { ...m, qa: true as const } : m));

@@ -3,6 +3,7 @@ import { validateSettings } from '../shared/settings.js';
 import { getChessStats } from './chess-stats.js';
 import { getArenaLedger } from './arena-store.js';
 import express from 'express';
+import { buildInfo } from './build.js';
 import { createServer, type Server as HttpServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,6 +41,8 @@ export async function createApp(): Promise<AppContext> {
     if (!token) return false;
     try { return isQaName((await getAccounts().resume(token))?.name); } catch { return false; }
   };
+
+  app.get('/api/build', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(buildInfo()); });
 
   app.get('/api/leaderboard', async (req, res) => {
     const board = getLeaderboard();
