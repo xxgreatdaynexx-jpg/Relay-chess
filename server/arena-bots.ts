@@ -213,6 +213,8 @@ export class ArenaBots {
         const a = Math.atan2(c.y - e.y, c.x - e.x) + m.wobble * Math.sin(now / 300) * 0.4 + (this.rand() - 0.5) * err * 2;
         const p = Math.atan2(c.z - e.z, Math.hypot(c.x - e.x, c.y - e.y)) + (this.rand() - 0.5) * err;
         // Don't hold the trigger like a machine: short bursts.
+        // Now and then lob a frag at a mid-range target (arc compensates a bit for the drop).
+        if (fd > 6 && fd < 14 && this.rand() < 0.006) out.push(...world.throwNade(id, a, now, p + 0.25));
         if (this.rand() < (f.weapon === 'smg' ? 0.7 : f.weapon === 'ar15' ? 0.55 : 0.45)) out.push(...world.shoot(id, a, now, p));
       }
     }

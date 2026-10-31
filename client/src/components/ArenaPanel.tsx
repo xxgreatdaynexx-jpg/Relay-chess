@@ -18,6 +18,7 @@ import { arenaLiveHud, kiaCanvasStrip } from '@/lib/arenaHud';
 import { feedParts, popupScale, POPUP_MS, type FeedItem } from '@/lib/arenaFeed';
 import {
   AIRSTRIKE_RADIUS, RESPAWN_PICK_MS, canHold, isKnifeOnly, knifeOnlyAvailable, cheapestSpawn, isWeapon, spawnCost, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, weaponSpread, MoveHistory, reconcileMove, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
+  GRENADE_FUSE_MS, GRENADE_THROW_MS, GRENADES_PER_LIFE, stepGrenade, throwGrenade, type Grenade,
 } from '../../../shared/fps';
 
 const OPEN_KEY = 'relay-fps-open';
@@ -29,9 +30,9 @@ const COLORS = ['#5f6a48', '#7d7158', '#596066', '#6b6248', '#4f5a4c', '#73705f'
 const SCOPE_ZOOM = 3.5;
 const FOV = 68; // vertical, degrees
 
-interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number; bot?: boolean; c?: boolean; s?: boolean; lo?: WeaponId; stk?: number; bk?: boolean; rs?: number; sk?: string; q?: number; ex?: WeaponId[] }
+interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number; bot?: boolean; c?: boolean; s?: boolean; lo?: WeaponId; stk?: number; bk?: boolean; rs?: number; sk?: string; q?: number; ex?: WeaponId[]; gn?: number }
 interface MatchEnd { matchId: string; winnerId: string | null; reason: string; players: Array<{ id: string; name: string; kills: number; deaths: number; earned: number; alive: boolean; bot: boolean }>; prize?: { name: string; amount: number }; inMs: number }
-interface NetState { phase?: 'play' | 'sudden' | 'ended'; alive?: number; sd?: number; end?: MatchEnd; t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null; wh?: boolean; mysk?: Record<string, string>; roster?: Array<Pick<NetPlayer, 'id' | 'name' | 'k' | 'd' | 'st' | 'bot'>>; radar?: Array<{ x: number; y: number }>; rockets?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; seek?: number; lock?: string | null }>; drops?: Array<{ id: number; w: WeaponId; x: number; y: number; z: number; left: number; sk?: string }> }
+interface NetState { phase?: 'play' | 'sudden' | 'ended'; alive?: number; sd?: number; end?: MatchEnd; t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null; wh?: boolean; mysk?: Record<string, string>; roster?: Array<Pick<NetPlayer, 'id' | 'name' | 'k' | 'd' | 'st' | 'bot'>>; radar?: Array<{ x: number; y: number }>; rockets?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; seek?: number; lock?: string | null }>; drops?: Array<{ id: number; w: WeaponId; x: number; y: number; z: number; left: number; sk?: string }>; nades?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; left: number }> }
 interface Snap extends NetState { recv: number }
 type Quality = 'hd' | 'lo';
 
@@ -169,7 +170,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     w.__arenaKCSeek = (ms: number) => { const kc = kcRef.current; if (kc) { kc.start = performance.now() - ms; kc.ct = -1; } return 1; };
   }
   const pred = useRef(new ShotPredictor()).current;
-  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, hitDeny: 0, dmgNums: [] as Array<{ v: number; head: boolean; at: number; denied?: number }>, killmark: 0, headmark: 0, melee: { at: -1e9, heavy: false }, meleeAt: new Map<string, { at: number; heavy: boolean }>(), nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string; fall: number }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number; sniper?: boolean }>, impacts: [] as Array<{ x: number; y: number; z: number; player: boolean; at: number }>, blasts: [] as Array<{ x: number; y: number; z: number; big: boolean }>, shells: 0, rockets: new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number; seek?: number }>(), lockAt: 0, lockBeep: 0, weaponAt: new Map<string, { w: string; at: number }>(), hitAt: new Map<string, number>(), shotAt: new Map<string, number>(), shake: 0, jetAt: 0 });
+  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, hitDeny: 0, dmgNums: [] as Array<{ v: number; head: boolean; at: number; denied?: number }>, killmark: 0, headmark: 0, melee: { at: -1e9, heavy: false }, meleeAt: new Map<string, { at: number; heavy: boolean }>(), nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string; fall: number }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number; sniper?: boolean }>, impacts: [] as Array<{ x: number; y: number; z: number; player: boolean; at: number }>, blasts: [] as Array<{ x: number; y: number; z: number; big: boolean }>, shells: 0, rockets: new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number; seek?: number }>(), lockAt: 0, lockBeep: 0, weaponAt: new Map<string, { w: string; at: number }>(), hitAt: new Map<string, number>(), shotAt: new Map<string, number>(), shake: 0, jetAt: 0, nades: new Map<number, Grenade>(), nadeSeq: 0, nadeAt: -1e9, nadesLeft: GRENADES_PER_LIFE });
   const banner = useRef<{ text: string; sub: string; at: number } | null>(null);
   const touch = useRef({ up: false, down: false, left: false, right: false, lookUp: false, lookDown: false });
   const [touchCrouch, setTouchCrouch] = useState(false);
@@ -193,6 +194,17 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     const held = WEAPON_ORDER.filter((w) => lifeLoRef.current === null || canHold(lifeLoRef.current, w) || extraRef.current.includes(w));
     const i = held.indexOf(me.current.weapon);
     setWeapon(held[(i + dir + held.length) % held.length]);
+  }
+  /** G: throw a frag. Predicted locally right away; the server owns the count, fuse and damage. */
+  function throwNade() {
+    const m = me.current;
+    const t = performance.now();
+    if (!m.alive || !m.joined || fx.current.nadesLeft <= 0 || t - fx.current.nadeAt < GRENADE_THROW_MS) return;
+    fx.current.nadeAt = t;
+    fx.current.nadesLeft -= 1;
+    const g = throwGrenade(-(++fx.current.nadeSeq), { id: m.id, x: m.x, y: m.y, z: m.z, a: m.a, p: m.p, crouch: m.crouch }, t);
+    fx.current.nades.set(g.id, g);
+    socket.emit('fps_nade', { a: m.a, p: m.p });
   }
   function reload() {
     const m = me.current;
@@ -362,6 +374,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         if (mine.w !== m.weapon && performance.now() - m.switchedAt > 1000) { m.weapon = mine.w; m.scoped = false; }
         if (mine.w === m.weapon) {
           m.ammo = mine.ammo;
+          if (typeof mine.gn === 'number') fx.current.nadesLeft = mine.gn;
           m.reloadUntil = mine.rl ? performance.now() + mine.rl : 0;
         }
       }
@@ -428,16 +441,17 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       banner.current = { text: mine ? s.title : `${s.name.toUpperCase()} · ${s.title}`, sub: `"${radio[s.kind] ?? ''}" · ${s.streak} kill streak${mine && info ? ` · ${info.blurb}` : ''}`, at: performance.now() };
       playStreakCall(s.kind === 'nuke' ? 'alarm' : 'reward');
     };
-    const onBoom = (b: { x: number; y: number; z?: number; cause?: string; rocket?: number }) => {
+    const onBoom = (b: { x: number; y: number; z?: number; cause?: string; rocket?: number; nade?: number }) => {
       const t = performance.now();
       fx.current.booms.push({ x: b.x, y: b.y, z: b.z ?? 0, at: t, big: true });
       fx.current.blasts.push({ x: b.x, y: b.y, z: b.z ?? 0, big: b.cause !== 'rocket' });
       if (b.rocket !== undefined) fx.current.rockets.delete(b.rocket);
+      if (b.nade !== undefined) fx.current.nades.delete(b.nade);
       const d = Math.hypot(b.x - me.current.x, b.y - me.current.y);
       if (d < 8) fx.current.shake = t;
       if (b.cause === 'airstrike' && t - fx.current.jetAt > 1500) fx.current.jetAt = t;
       // Rockets use Dayne's chess explosion recording; airstrikes keep the long synth rumble.
-      playArenaExplosion(d, b.cause === 'rocket' ? 'rocket' : 'synth');
+      playArenaExplosion(d, b.cause === 'rocket' || b.cause === 'grenade' ? 'rocket' : 'synth'); // frags share the explosion bus (-21 dBFS ceiling, Explosions slider)
     };
     const onNuke = (n: { phase: string; by: string }) => {
       if (n.phase === 'boom') {
@@ -689,7 +703,16 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       for (const r of fx.current.rockets.values()) if (now - r.at < ROCKET_LIFE_MS) rockets.set(r.id, r);
       if (snap) for (const r of snap.rockets ?? []) rockets.set(r.id, { ...r, at: snap.recv });
       fx.current.rockets = new Map([...rockets].filter(([id, r]) => now - r.at < ROCKET_LIFE_MS && (!snap || (snap.rockets ?? []).some((q) => q.id === id) || snap.recv < r.at)));
+      // Frags: simulate locally with the shared physics; the thrower's own frag is predicted instantly (negative id)
+      // and handed over to the server's once it shows up in a snapshot.
+      if (snap) for (const n of snap.nades ?? []) {
+        if (fx.current.nades.has(n.id)) continue;
+        if (n.ownerId === m.id) for (const id of [...fx.current.nades.keys()]) if (id < 0) { fx.current.nades.delete(id); break; }
+        fx.current.nades.set(n.id, { ...n, born: snap.recv - (GRENADE_FUSE_MS - n.left), at: snap.recv });
+      }
+      for (const [id, g] of fx.current.nades) if (stepGrenade(g, now, mapRef.current) || now - g.born > GRENADE_FUSE_MS + 400) fx.current.nades.delete(id);
       const fx3: Fx3D = {
+        nades: [...fx.current.nades.values()].map((g) => ({ id: g.id, x: g.x, y: g.y, z: g.z })),
         drones: (snap?.drones ?? []).map((d) => ({ x: d.x, y: d.y, z: (d.z ?? 8) + Math.sin(now / 200) * 0.1 })),
         strikes: (snap?.strikes ?? []).filter((q) => q.inMs >= 0).map((q) => ({ x: q.x, y: q.y, z: q.z ?? 0, r: q.r ?? AIRSTRIKE_RADIUS })),
         booms: fx.current.booms.map((b) => ({ x: b.x, y: b.y, z: b.z, t: (now - b.at) / 600, big: b.big })),
@@ -875,6 +898,12 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       ctx.font = `600 ${(7 * u) | 0}px ${mono}`; ctx.fillStyle = '#a9ae9e';
       if (!reloading && !spec.melee) ctx.fillText(`/${spec.mag}`, W2 - 8 * u, H2 - 12 * u);
       ctx.fillText(spec.name.toUpperCase(), W2 - 8 * u, H2 - 22 * u);
+      // Frag count (G), just above the ammo box.
+      ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(W2 - 34 * u, H2 - 60 * u, 30 * u, 26 * u);
+      ctx.textAlign = 'center'; ctx.font = `700 ${(11 * u) | 0}px ${mono}`;
+      ctx.fillStyle = fx.current.nadesLeft > 0 ? '#e6e9df' : 'rgba(255,255,255,.3)';
+      ctx.fillText(`${fx.current.nadesLeft}`, W2 - 19 * u, H2 - 44 * u);
+      ctx.font = `600 ${(6 * u) | 0}px ${mono}`; ctx.fillStyle = '#a9ae9e'; ctx.fillText('G·FRAG', W2 - 19 * u, H2 - 36 * u); ctx.textAlign = 'right';
       for (let i = 0; i < (spec.melee ? 0 : Math.min(spec.mag, 30)); i++) { ctx.fillStyle = i < m.ammo ? '#d9dccf' : 'rgba(255,255,255,.15)'; ctx.fillRect(W2 - 8 * u - (i + 1) * 2.6 * u, H2 - 8 * u, 1.6 * u, 3 * u); }
       }
       ctx.textAlign = 'left';
@@ -1069,6 +1098,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     keys.current.add(key);
     if (key === ' ') jump();
     else if (key === 'r') reload();
+    else if (key === 'g') throwNade();
     else if (/^[1-7]$/.test(key)) setWeapon(WEAPON_ORDER[Number(key) - 1]);
     else if (key === 'v') setWeapon('knife');
     else if (key === 'f') { me.current.semiPending = true; shoot(); }
@@ -1335,8 +1365,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
           </div>
         )}
         <div className="fps-help" data-testid="arena-help">
-          <span className="fps-help-full">WASD move · mouse look · Q/E turn · PgUp/PgDn look · click or F shoot · Space jump · Shift sprint · Ctrl/C crouch (play fullscreen so Ctrl+W can't close the tab) · 1–6 / wheel guns · 7/V knife (click slash, right-click stab) · R reload · right-click scope/aim · Tab scores · M maps · F3 fps · Esc frees mouse</span>
-          <span className="fps-help-short">WASD move · click shoot · Space jump · Shift sprint · Ctrl/C crouch · 1–6 guns · 7/V knife · R reload · Tab scores · M maps · F3 fps · Esc frees mouse</span>
+          <span className="fps-help-full">WASD move · mouse look · Q/E turn · PgUp/PgDn look · click or F shoot · Space jump · Shift sprint · Ctrl/C crouch (play fullscreen so Ctrl+W can't close the tab) · 1–6 / wheel guns · 7/V knife (click slash, right-click stab) · R reload · G frag grenade · right-click scope/aim · Tab scores · M maps · F3 fps · Esc frees mouse</span>
+          <span className="fps-help-short">WASD move · click shoot · Space jump · Shift sprint · Ctrl/C crouch · 1–6 guns · 7/V knife · R reload · G frag · Tab scores · M maps · F3 fps · Esc frees mouse</span>
         </div>
         </>
       )}
@@ -1370,6 +1400,7 @@ function WeaponIcon({ cause }: { cause: string }) {
     shotgun: 'M0 3h26v2H12l-2 2H4L2 9H0z',
     sniper: 'M0 4h30v1.5H16l-2 1.5H6l-3 3H0zM10 1h7v2h-7z',
     rocket: 'M0 3h22l4 1.5L22 6H0zM8 6h4v4H8z',
+    grenade: 'M6 2h6v2h2v1h-2v1a5 5 0 1 1-6 0V4h0zM12 2l4-2v2z',
     ar15: 'M0 3h25v2h-9v2h-3l-1 4H9l1-4H6V5H3L1 8H0z',
     knife: 'M0 6h8V4h2v6H8V8H0zM10 5h12l6 1-6 2H10z',
     airstrike: 'M2 5l10-1 4-4h3l-2 4 8 0v2l-8 0 2 4h-3l-4-4-10-1z',

@@ -6,7 +6,7 @@ import { cleanSid } from '../shared/arenaPredict.js';
 import {
   AIRSTRIKE_DAMAGE, AIRSTRIKE_DELAY_MS, AIRSTRIKE_LOCK_MS, AIRSTRIKE_RADIUS, AIRSTRIKE_RANGE, AIRSTRIKE_SPACING, AIRSTRIKE_WAIT_MS, applyDamage,
   chestOf, clampPitch, dirFrom, DRONE_COOLDOWN_MS, DRONE_DAMAGE, DRONE_MS, DRONE_RANGE, eyeOf, fireWeapon, isWeapon, KILL_Z, lineOfSight, MAP, MAX_HP, maybeRespawn,
-  normAngle, launchRocket, rocketDamage, stepRocket, type Rocket, NUKE_DELAY_MS, NUKE_RESPAWN_MS, pickSpawn, rayWorld, roofAt, SCOPE_SETTLE_MS, splashTargets, stepVertical, STREAKS, streakReward,
+  normAngle, launchRocket, throwGrenade, stepGrenade, grenadeDamage, type Grenade, GRENADE_FUSE_MS, GRENADE_RADIUS, GRENADE_THROW_MS, GRENADES_PER_LIFE, rocketDamage, stepRocket, type Rocket, NUKE_DELAY_MS, NUKE_RESPAWN_MS, pickSpawn, rayWorld, roofAt, SCOPE_SETTLE_MS, splashTargets, stepVertical, STREAKS, streakReward,
   SWITCH_MS, tryJump, UAV_MS, validateMove, moveAllowance, MOVE_CARRY_MAX, WEAPON_ORDER, WEAPONS, type ArenaMap, type Fighter, MAPS, type StreakKind, type WeaponId,
 } from '../shared/fps.js';
 import { isMapId, MAP_ROTATION } from '../shared/arenaMaps.js';
@@ -79,6 +79,9 @@ export interface ArenaFighter extends Fighter {
   moveSpeed?: number;
   moveSpeedAt?: number;
   jumpAt: number;
+  /** frag grenades left this life, and when the last one was thrown */
+  nades?: number;
+  nadeAt?: number;
   streak: number;
   /** multi-kill chain (kills ≤5 s apart) */
   multi?: MultiChain;
@@ -131,6 +134,9 @@ export class ArenaWorld {
   private dropSeq = 0;
   rockets: Array<Rocket & { seek?: true; lock?: string | null }> = [];
   private rocketSeq = 0;
+  /** Live frag grenades (server-simulated, bouncing, fused). */
+  grenades: Grenade[] = [];
+  private nadeSeq = 0;
   nuke: { ownerId: string; by: string; at: number } | null = null;
 
   /** Map picked by a player for the next match (validated), or null to follow the rotation. */
@@ -188,6 +194,7 @@ export class ArenaWorld {
     this.startMatch(now);
     this.strikes = [];
     this.rockets = [];
+    this.grenades = [];
     this.drones.clear();
     this.nuke = null;
     this.drops = [];
@@ -227,7 +234,7 @@ export class ArenaWorld {
     if (winnerId) rows.sort((a, b) => Number(b.id === winnerId) - Number(a.id === winnerId));
     const result: MatchResult = { matchId: this.matchId, map: this.map.id, startedAt: this.matchStartAt, endedAt: now, winnerId, reason, players: rows };
     this.lastResult = result;
-    this.strikes = []; this.rockets = []; this.drones.clear();
+    this.strikes = []; this.rockets = []; this.grenades = []; this.drones.clear();
     try { this.onMatchEnd?.(result); } catch (e) { console.error('arena match-end hook failed', e); }
     return [{ ev: 'fps_match_end', data: { ...result, until: END_SCREEN_MS } }];
   }
@@ -710,6 +717,36 @@ export class ArenaWorld {
     return { id: d.id, w: d.w, x: +d.x.toFixed(2), y: +d.y.toFixed(2), z: +d.z.toFixed(2), left: Math.max(0, d.until - now), ...(d.sk ? { sk: d.sk } : {}) };
   }
 
+  /** G: throw a frag. 2 per life; a server-side floor between throws (too-fast attempts go to anti-cheat). */
+  throwNade(id: string, a: unknown, now: number, p?: unknown): ArenaEvent[] {
+    const f = this.fighters.get(id);
+    if (!f || !f.alive || this.phase === 'ended') return [];
+    const gap = now - (f.nadeAt ?? -1e9);
+    if (gap < GRENADE_THROW_MS) { this.audit?.nadeSpam(id, gap, now); return []; }
+    if ((f.nades ?? GRENADES_PER_LIFE) <= 0) return [];
+    if (typeof a === 'number' && Number.isFinite(a)) f.a = normAngle(a) ?? f.a;
+    if (typeof p === 'number' && Number.isFinite(p)) f.p = clampPitch(p) ?? f.p;
+    f.nades = (f.nades ?? GRENADES_PER_LIFE) - 1;
+    f.nadeAt = now;
+    const g = throwGrenade(++this.nadeSeq, f, now);
+    this.grenades.push(g);
+    return [{ ev: 'fps_nade', data: { id: f.id, nade: g.id, left: f.nades } }];
+  }
+
+  /** Bounces every frag to `now`; fused ones burst with LOS falloff damage. */
+  stepGrenades(now: number): ArenaEvent[] {
+    const out: ArenaEvent[] = [];
+    if (!this.grenades.length) return out;
+    const left: Grenade[] = [];
+    for (const g of this.grenades) {
+      if (!stepGrenade(g, now, this.map)) { left.push(g); continue; }
+      out.push({ ev: 'fps_boom', data: { x: +g.x.toFixed(2), y: +g.y.toFixed(2), z: +g.z.toFixed(2), r: GRENADE_RADIUS, cause: 'grenade', nade: g.id, ownerId: g.ownerId } });
+      for (const [tid, dmg] of grenadeDamage(g, g.ownerId, [...this.fighters.values()], this.map)) out.push(...this.damage(this.fighters.has(g.ownerId) ? g.ownerId : null, tid, dmg, now, 'grenade'));
+    }
+    this.grenades = left;
+    return out;
+  }
+
   /** Flies every rocket to `now`; bursts on walls, floors, players or timeout with splash damage. */
   stepRockets(now: number): ArenaEvent[] {
     const out: ArenaEvent[] = [];
@@ -763,6 +800,7 @@ export class ArenaWorld {
         f.broke = false;
         f.weapon = f.loadout;
         f.extra = [];
+        f.nades = GRENADES_PER_LIFE;
         f.switchedAt = -1e9;
         f.ammo = fullAmmo();
         f.reloadUntil = 0;
@@ -771,6 +809,7 @@ export class ArenaWorld {
     }
     out.push(...this.stepDrops(now));
     out.push(...this.stepRockets(now));
+    out.push(...this.stepGrenades(now));
     // Airstrikes: wait for a live target, track it until lock-on, then the bombs fall in a short line.
     for (const st of this.strikes) {
       if (!Number.isFinite(st.at)) {
@@ -891,7 +930,7 @@ export class ArenaWorld {
       players: [...this.fighters.values()].map((f) => ({
         id: f.id, name: f.name, x: +f.x.toFixed(3), y: +f.y.toFixed(3), z: +f.z.toFixed(3), a: +f.a.toFixed(3), p: +f.p.toFixed(3),
         hp: Math.round(f.hp), k: f.kills, d: f.deaths, alive: f.alive, ...(f.id.startsWith('arena-bot-') ? { bot: true } : {}), w: f.weapon, ammo: f.ammo[f.weapon],
-        rl: f.reloadUntil ? Math.max(0, f.reloadUntil - now) : 0, g: f.grounded, ...(f.crouch ? { c: true } : {}), ...(f.sprint ? { s: true } : {}), ...(f.moveSeq !== undefined ? { q: f.moveSeq } : {}), ...(f.lifeId || isKnifeOnly(f.loadout) ? { lo: f.loadout } : {}), ...(f.extra?.length ? { ex: f.extra } : {}), stk: f.stake, ...(f.broke ? { bk: true } : {}), ...(!f.alive ? { rs: Math.max(0, f.respawnAt - now) } : {}),
+        rl: f.reloadUntil ? Math.max(0, f.reloadUntil - now) : 0, g: f.grounded, ...(f.crouch ? { c: true } : {}), ...(f.sprint ? { s: true } : {}), ...(f.moveSeq !== undefined ? { q: f.moveSeq } : {}), ...(f.lifeId || isKnifeOnly(f.loadout) ? { lo: f.loadout } : {}), ...(f.extra?.length ? { ex: f.extra } : {}), gn: f.nades ?? GRENADES_PER_LIFE, stk: f.stake, ...(f.broke ? { bk: true } : {}), ...(!f.alive ? { rs: Math.max(0, f.respawnAt - now) } : {}),
         st: f.streak, uav: Math.max(0, f.uavUntil - now), ...(this.skins.get(f.id)?.[f.weapon] ? { sk: this.skins.get(f.id)![f.weapon] } : {}),
       })),
       drones: [...this.drones.values()].flatMap((d) => {
@@ -908,6 +947,7 @@ export class ArenaWorld {
       ...(this.phase === 'ended' && this.lastResult ? { end: { ...this.lastResult, inMs: Math.max(0, this.endScreenUntil - now) } } : {}),
       strikes: this.strikes.map((s) => ({ x: +s.x.toFixed(2), y: +s.y.toFixed(2), z: +roofAt(s.x, s.y, this.map).toFixed(2), inMs: Number.isFinite(s.at) ? Math.max(0, s.at - now) : -1, r: AIRSTRIKE_RADIUS, locked: now >= s.lockAt })),
       rockets: this.rockets.map((r) => this.rocketView(r)),
+      nades: this.grenades.map((g) => ({ id: g.id, ownerId: g.ownerId, x: +g.x.toFixed(2), y: +g.y.toFixed(2), z: +g.z.toFixed(2), vx: +g.vx.toFixed(2), vy: +g.vy.toFixed(2), vz: +g.vz.toFixed(2), left: Math.max(0, g.born + GRENADE_FUSE_MS - now) })),
       drops: this.drops.map((d) => this.dropView(d, now)),
       nuke: this.nuke ? { by: this.nuke.by, inMs: this.nuke.at - now } : null,
     };

@@ -77,12 +77,14 @@ export const LIMITS = {
   flick: { minFlickHits: 6, share: 0.3 },
   teleport: { count: 8, windowMs: 10_000 },
   throughWall: { count: 3 },
+  /** grenade throws attempted faster than the server floor allows, per window */
+  nadeSpam: { count: 4, windowMs: 10_000 },
 };
 
 interface Stats {
   name: string; key: string;
   shots: number; hits: number; heads: number; flicks: number; flickHits: number; blocked: number;
-  tele: number[]; aim: { a: number; p: number; t: number } | null; flagged: Map<string, number>;
+  tele: number[]; nadeFast?: number[]; aim: { a: number; p: number; t: number } | null; flagged: Map<string, number>;
 }
 
 const angDiff = (a: number, b: number) => { const d = Math.abs(a - b) % (Math.PI * 2); return d > Math.PI ? Math.PI * 2 - d : d; };
@@ -104,6 +106,15 @@ export class ArenaAntiCheat {
     if (last !== undefined && now - last < FLAG_COOLDOWN_MS) return;
     s.flagged.set(reason, now);
     this.sink({ playerKey: s.key, name: s.name, reason, details: { ...details, shots: s.shots, hits: s.hits, heads: s.heads, flickHits: s.flickHits } });
+  }
+
+  /** A grenade throw that arrived before the per-throw floor (rejected by the world). */
+  nadeSpam(id: string, gapMs: number, now: number): void {
+    const s = this.s.get(id);
+    if (!s) return;
+    s.nadeFast = (s.nadeFast ?? []).filter((t) => now - t < LIMITS.nadeSpam.windowMs);
+    s.nadeFast.push(now);
+    if (s.nadeFast.length >= LIMITS.nadeSpam.count) this.flag(s, 'grenade_spam', now, { gapMs: Math.round(gapMs), inWindow: s.nadeFast.length });
   }
 
   /** Position report: `asked` is how far the client tried to move, `allowed` the speed cap for that interval. */

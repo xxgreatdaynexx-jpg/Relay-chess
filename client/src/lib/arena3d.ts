@@ -159,6 +159,8 @@ export interface Fx3D {
   /** RPG rockets in flight (extrapolated from the server's last snapshot). */
   rockets?: Array<{ id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; seek?: boolean }>;
   /** Dropped guns on the floor: `left` ms until they vanish (blink in the last second). */
+  /** Frag grenades in flight / rolling (locally simulated). */
+  nades?: Array<{ id: number; x: number; y: number; z: number }>;
   drops?: Array<{ id: number; w: WeaponId; x: number; y: number; z: number; left: number; sk?: string }>;
 }
 
@@ -229,6 +231,9 @@ export class Arena3D {
   private worldFlash = new THREE.PointLight(0xffb060, 0, 7, 1.5);
   private flashMat: THREE.SpriteMaterial;
   private dropObjs = new Map<number, THREE.Group>();
+  private nadeObjs = new Map<number, THREE.Mesh>();
+  private nadeGeo = new THREE.SphereGeometry(0.11, 10, 8);
+  private nadeMat = new THREE.MeshStandardMaterial({ color: 0x3d4a2a, roughness: 0.7, metalness: 0.2 });
   private sleeveMat = new THREE.MeshLambertMaterial({ color: 0x4d5338 });
   private gloveMat = new THREE.MeshLambertMaterial({ color: 0x1e1f1c });
   private pool: Record<'drone' | 'strike' | 'boom' | 'tracer', THREE.Object3D[]> = { drone: [], strike: [], boom: [], tracer: [] };
@@ -462,6 +467,17 @@ export class Arena3D {
   }
 
   /** Floating, spinning pickups with the owner's skin and a soft glow; blink + fade in the last second. */
+  private renderNades(nades: NonNullable<Fx3D['nades']>) {
+    const live = new Set<number>();
+    for (const n of nades) {
+      live.add(n.id);
+      let o = this.nadeObjs.get(n.id);
+      if (!o) { o = new THREE.Mesh(this.nadeGeo, this.nadeMat); o.scale.set(1, 1.25, 1); this.scene.add(o); this.nadeObjs.set(n.id, o); }
+      o.position.copy(W(n.x, n.y, n.z + 0.1));
+    }
+    for (const [id, o] of this.nadeObjs) if (!live.has(id)) { this.scene.remove(o); this.nadeObjs.delete(id); }
+  }
+
   private renderDrops(drops: NonNullable<Fx3D['drops']>) {
     const now = performance.now();
     const live = new Set<number>();
@@ -692,6 +708,7 @@ export class Arena3D {
     this.lastT = tnow;
     this.stepFx(dt, fx.rockets ?? [], fx.tracers);
     this.renderDrops(fx.drops ?? []);
+    this.renderNades(fx.nades ?? []);
     fx.tracers.forEach((t, i) => {
       const o = this.take('tracer', i, () => {
         const g = new THREE.BufferGeometry();

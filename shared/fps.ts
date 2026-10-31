@@ -839,3 +839,70 @@ export function reconcileMove(hist: MoveHistory, srv: { x: number; y: number; q?
   if (err <= RECONCILE_IGNORE) return { kind: 'none', err, dx: 0, dy: 0 };
   return { kind: err > RECONCILE_SNAP ? 'snap' : 'blend', err, dx, dy };
 }
+
+// ---------------------------------------------------------------- frag grenades (G)
+
+export const GRENADE_FUSE_MS = 2500;
+export const GRENADES_PER_LIFE = 2;
+export const GRENADE_SPEED = 13;
+export const GRENADE_UP = 3;
+export const GRENADE_GRAVITY = 14;
+export const GRENADE_RADIUS = 4;
+export const GRENADE_DAMAGE = 110;
+export const GRENADE_BOUNCE = 0.42;
+/** Server-side floor between throws (anti-cheat: a client can't spam faster than the throw animation). */
+export const GRENADE_THROW_MS = 900;
+
+export interface Grenade { id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; born: number; at: number }
+
+/** A frag leaving the thrower's hand along their aim, lobbed slightly upward. */
+export function throwGrenade(id: number, t: { id: string; x: number; y: number; z: number; a: number; p: number; crouch?: boolean }, now: number): Grenade {
+  const e = eyeOf(t);
+  const d = dirFrom(t.a, t.p);
+  return { id, ownerId: t.id, x: e.x + d.x * 0.4, y: e.y + d.y * 0.4, z: e.z - 0.1 + d.z * 0.4, vx: d.x * GRENADE_SPEED, vy: d.y * GRENADE_SPEED, vz: d.z * GRENADE_SPEED + GRENADE_UP, born: now, at: now };
+}
+
+/** Ballistic step with bounces off walls/floors (damped). Returns true once the fuse has run out. Mutates g. */
+export function stepGrenade(g: Grenade, now: number, map: ArenaMap = MAP): boolean {
+  const end = Math.min(now, g.born + GRENADE_FUSE_MS);
+  let left = Math.max(0, end - g.at) / 1000;
+  g.at = Math.max(g.at, end);
+  while (left > 1e-6) {
+    const h = Math.min(left, 1 / 60);
+    left -= h;
+    g.vz -= GRENADE_GRAVITY * h;
+    const sp = Math.hypot(g.vx, g.vy, g.vz);
+    if (sp < 1e-4) continue;
+    const seg = sp * h;
+    const o = { x: g.x, y: g.y, z: g.z };
+    const d = { x: g.vx / sp, y: g.vy / sp, z: g.vz / sp };
+    const hit = rayWorld(o, d, map, seg + 0.05);
+    const nx = o.x + d.x * seg, ny = o.y + d.y * seg;
+    if (hit < seg || nx < 0.05 || ny < 0.05 || nx > map.w - 0.05 || ny > map.d - 0.05 || o.z + d.z * seg < 0.03) {
+      const back = Math.max(0, Math.min(hit, seg) - 0.05);
+      const p = { x: o.x + d.x * back, y: o.y + d.y * back, z: Math.max(0.05, o.z + d.z * back) };
+      let n = surfaceNormal({ x: o.x + d.x * Math.min(hit, seg), y: o.y + d.y * Math.min(hit, seg), z: o.z + d.z * Math.min(hit, seg) }, map);
+      if (nx < 0.05) n = { x: 1, y: 0, z: 0 }; else if (nx > map.w - 0.05) n = { x: -1, y: 0, z: 0 };
+      else if (ny < 0.05) n = { x: 0, y: 1, z: 0 }; else if (ny > map.d - 0.05) n = { x: 0, y: -1, z: 0 };
+      else if (o.z + d.z * seg < 0.03) n = { x: 0, y: 0, z: 1 };
+      const vn = g.vx * n.x + g.vy * n.y + g.vz * n.z;
+      if (vn < 0) { g.vx -= 2 * vn * n.x; g.vy -= 2 * vn * n.y; g.vz -= 2 * vn * n.z; }
+      g.vx *= GRENADE_BOUNCE; g.vy *= GRENADE_BOUNCE; g.vz *= GRENADE_BOUNCE;
+      if (n.z > 0.7 && Math.abs(g.vz) < 0.8) g.vz = 0;
+      g.x = p.x; g.y = p.y; g.z = p.z;
+      continue;
+    }
+    g.x = nx; g.y = ny; g.z = o.z + d.z * seg;
+  }
+  return g.at >= g.born + GRENADE_FUSE_MS;
+}
+
+/** Frag damage: falloff splash with line of sight; the thrower takes half. */
+export function grenadeDamage(c: Vec3, ownerId: string, targets: Target[], map: ArenaMap = MAP): Map<string, number> {
+  const hits = new Map<string, number>();
+  for (const s of splashTargets(c, GRENADE_RADIUS, GRENADE_DAMAGE, targets, map)) {
+    const dmg = s.id === ownerId ? Math.round(s.damage * SELF_SPLASH) : s.damage;
+    if (dmg > 0) hits.set(s.id, dmg);
+  }
+  return hits;
+}

@@ -74,7 +74,7 @@ export function viewZoom(scopeZoom: number, fovKick: number, keepGun = false): {
 // ---------------------------------------------------------------- Ctrl / browser-shortcut safety
 
 /** Keys the Arena owns (lowercased e.key; digits by physical code). */
-export const ARENA_GAME_KEYS = new Set(['tab', 'w', 'a', 's', 'd', 'q', 'e', 'f', 'r', 'control', 'c', 'shift', ' ', '1', '2', '3', '4', '5', '6', '7', 'v', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown']);
+export const ARENA_GAME_KEYS = new Set(['tab', 'w', 'a', 's', 'd', 'q', 'e', 'f', 'r', 'g', 'control', 'c', 'shift', ' ', '1', '2', '3', '4', '5', '6', '7', 'v', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown']);
 export const arenaKey = (e: { key: string; code?: string }): string => (/^Digit[1-7]$/.test(e.code ?? '') ? e.code!.slice(5) : e.key.toLowerCase());
 /**
  * Window-level guard while the Arena is active: swallow Ctrl/Cmd + game-key combos (Ctrl+S save, Ctrl+D bookmark,
