@@ -18,6 +18,10 @@ describe('home page keeps scrolling', () => {
     expect(home).toMatch(/useState\(\(\) => playParam !== null \|\| !!initialCode\)/);
     expect(home).toMatch(/data-testid="home-footer"/);
   });
+  it('a refresh starts at the top of the intro', () => {
+    expect(intro).toMatch(/history\.scrollRestoration = 'manual'/);
+    expect(intro).not.toMatch(/replaceState\(null, '', `#\$\{PANELS/);
+  });
   it('intro dots hide once the intro is scrolled past', () => {
     expect(intro).toMatch(/si-dots-off/);
     expect(css).toMatch(/\.si-dots\.si-dots-off/);

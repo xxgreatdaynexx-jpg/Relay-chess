@@ -100,9 +100,15 @@ export function ScrollIntro({ onPick }: { onPick: (game: GameType) => void }) {
     tick();
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onScroll);
+    // A refresh always starts at the intro: no browser scroll restoration, and a
+    // shared #panel link is honoured once, then dropped so a reload lands at the top.
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
     const hash = window.location.hash.slice(1);
     const target = PANELS.findIndex((p) => p.id === hash);
-    if (target >= 0) setTimeout(() => { window.scrollTo({ top: panelTop(target), behavior: 'auto' }); }, 60);
+    if (target >= 0) {
+      history.replaceState(history.state, '', window.location.pathname + window.location.search);
+      setTimeout(() => { window.scrollTo({ top: panelTop(target), behavior: 'auto' }); }, 60);
+    } else window.scrollTo({ top: 0, behavior: 'auto' });
     return () => { window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onScroll); if (raf) cancelAnimationFrame(raf); };
   }, []);
 
@@ -118,7 +124,6 @@ export function ScrollIntro({ onPick }: { onPick: (game: GameType) => void }) {
   const go = (i: number) => {
     const el = refs.current[i];
     if (el) window.scrollTo({ top: panelTop(i), behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
-    history.replaceState(null, '', `#${PANELS[i]!.id}`);
   };
 
   return (
