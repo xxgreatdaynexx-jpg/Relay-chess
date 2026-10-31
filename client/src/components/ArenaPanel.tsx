@@ -239,14 +239,15 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     if (m.ammo <= 0) return reload();
     m.lastShot[m.weapon] = now;
     m.semiPending = false;
-    if (spec.recoil) m.p = Math.min(MAX_PITCH, m.p + spec.recoil);
     m.ammo -= 1;
     if (m.ammo === 0) m.reloadUntil = now + spec.reloadMs;
     fx.current.muzzle = now;
     fx.current.shells++;
     playWeaponShot(m.weapon);
     const vt = Math.round(net.buf.renderTime(now));
-    if (spec.splash) { socket.emit('fps_shoot', { a: m.a, p: m.p, vt }); return; }
+    // Recoil kicks the camera AFTER the shot leaves: the bullet goes where the crosshair was (f3bbb4b kicked first, so AR-15 head shots sailed high).
+    const kick = () => { if (spec.recoil) m.p = Math.min(MAX_PITCH, m.p + spec.recoil); };
+    if (spec.splash) { socket.emit('fps_shoot', { a: m.a, p: m.p, vt }); kick(); return; }
     // Predicted shot: raycast against the interpolated players we're displaying right now; tracer, impact,
     // hit marker, damage number and headshot ding show instantly. The server (lag-compensated to vt) confirms
     // or denies by echoing sid; kills, feed and chips only ever come from the server.
@@ -263,6 +264,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       if (fx.current.dmgNums.length > 8) fx.current.dmgNums.shift();
     }
     socket.emit('fps_shoot', { a: m.a, p: m.p, vt, sid });
+    kick();
   }
   /** Server said our predicted hit missed: quietly fade the marker and damage number (rare). */
   function denyPrediction(now: number) {
