@@ -100,6 +100,15 @@ export function ScrollIntro({ onPick }: { onPick: (game: GameType) => void }) {
     tick();
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onScroll);
+    // Coming back from Conquest/play: snap to the nearest panel start so a heading is never cut off, then recompute morph state.
+    const onReturn = () => {
+      const n = refs.current.length; let best = 0; let bestD = Infinity;
+      for (let i = 0; i < n; i++) { const d = Math.abs(panelTop(i) - window.scrollY); if (d < bestD) { bestD = d; best = i; } }
+      const wrap = refs.current[0]?.parentElement;
+      if (wrap && window.scrollY < docTop(wrap) + wrap.offsetHeight) window.scrollTo({ top: panelTop(best), behavior: 'auto' });
+      tick();
+    };
+    window.addEventListener('chud:home-return', onReturn);
     // A refresh always starts at the intro: no browser scroll restoration, and a
     // shared #panel link is honoured once, then dropped so a reload lands at the top.
     if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
@@ -109,7 +118,7 @@ export function ScrollIntro({ onPick }: { onPick: (game: GameType) => void }) {
       history.replaceState(history.state, '', window.location.pathname + window.location.search);
       setTimeout(() => { window.scrollTo({ top: panelTop(target), behavior: 'auto' }); }, 60);
     } else window.scrollTo({ top: 0, behavior: 'auto' });
-    return () => { window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onScroll); if (raf) cancelAnimationFrame(raf); };
+    return () => { window.removeEventListener('chud:home-return', onReturn); window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onScroll); if (raf) cancelAnimationFrame(raf); };
   }, []);
 
   /** Where panel i sits in the page flow; sticky panels report their stuck position, so add up the panels above it. */

@@ -23,7 +23,7 @@ export function VolumeControl() {
   return (
     <div
       data-testid="volume-control"
-      className="fixed bottom-3 left-3 z-50 flex items-center gap-2 rounded-full bg-black/55 px-2.5 py-1.5 text-[#fff6d8] shadow-lg backdrop-blur"
+      className="group fixed bottom-3 left-3 z-50 flex items-center gap-2 rounded-full bg-black/55 px-2.5 py-1.5 text-[#fff6d8] shadow-lg backdrop-blur"
     >
       <button
         type="button"
@@ -45,9 +45,9 @@ export function VolumeControl() {
         value={muted ? 0 : percent}
         aria-label="Sound volume"
         onChange={(event) => setVolume(Number(event.target.value) / 100)}
-        className="h-1 w-20 cursor-pointer accent-[#e8c26a] sm:w-28"
+        className="hidden h-1 w-20 cursor-pointer accent-[#e8c26a] group-hover:block group-focus-within:block xl:block xl:w-28"
       />
-      <span className="w-8 text-right text-xs tabular-nums">{muted ? 0 : percent}%</span>
+      <span className="hidden w-8 text-right group-hover:inline group-focus-within:inline xl:inline text-xs tabular-nums">{muted ? 0 : percent}%</span>
     </div>
   );
 }

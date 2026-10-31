@@ -34,7 +34,7 @@ export function ConquestPanel() {
   }, []);
   return (
     <>
-      {open && <ConquestWindow intent={intent} onClose={() => { setOpen(false); setIntent({}); }} />}
+      {open && <ConquestWindow intent={intent} onClose={() => { setOpen(false); setIntent({}); requestAnimationFrame(() => window.dispatchEvent(new Event('chud:home-return'))); }} />}
     </>
   );
 }

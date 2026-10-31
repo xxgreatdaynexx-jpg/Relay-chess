@@ -39,6 +39,13 @@ export function App() {
   const [path, setPath] = useState(() => window.location.pathname);
   const inflight = useRef(false);
   const [lastGame, setLastGame] = useState<FinishedGame | null>(() => loadLastGame());
+  const [analyzeHidden, setAnalyzeHidden] = useState(false);
+  useEffect(() => {
+    setAnalyzeHidden(false);
+    if (!lastGame) return;
+    const t = window.setTimeout(() => setAnalyzeHidden(true), 8000);
+    return () => window.clearTimeout(t);
+  }, [lastGame]);
   const [analysis, setAnalysis] = useState<FinishedGame | null>(null);
 
   // Keep the finished game client-side so analysis works after the room closes.
@@ -260,14 +267,13 @@ export function App() {
           enteredRoom();
         }}
       />
-      {!state && !analysis && !leaderboard && !booting && lastGame && (
-        <button
-          className="fixed bottom-16 left-1/2 z-40 hidden -translate-x-1/2 rounded-full md:block border border-white/15 bg-panel/90 px-4 py-2 text-sm text-cream shadow-lg hover:bg-panel"
-          onClick={() => setAnalysis(lastGame)}
-          data-testid="analyze-last"
-        >
-          Analyze last game ({lastGame.mode} · {lastGame.headline})
-        </button>
+      {!state && !analysis && !leaderboard && !booting && lastGame && !analyzeHidden && (
+        <div className="fixed right-4 bottom-4 z-40 hidden max-w-[22rem] items-center gap-1 rounded-full border border-white/15 bg-panel/90 py-1 pr-1 pl-4 text-sm text-cream shadow-lg md:flex" data-testid="analyze-last-toast">
+          <button className="truncate py-1 text-left hover:underline" onClick={() => setAnalysis(lastGame)} data-testid="analyze-last">
+            Analyze last game ({lastGame.mode} · {lastGame.headline})
+          </button>
+          <button className="grid h-7 w-7 shrink-0 place-items-center rounded-full hover:bg-white/10" aria-label="Dismiss" onClick={() => setAnalyzeHidden(true)} data-testid="analyze-last-close">✕</button>
+        </div>
       )}
       {toast && (
         <div
