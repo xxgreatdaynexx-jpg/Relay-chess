@@ -33,7 +33,7 @@ describe('arena Ctrl / key-repeat safety', () => {
     expect(body.indexOf('if (e.repeat) return;')).toBeLessThan(body.indexOf('keys.current.add(key)'));
     expect(src).toMatch(/wantCrouch !== net\.sentCrouch/);
     expect(src).toMatch(/addEventListener\('beforeunload'/);
-    expect(src).toMatch(/keyboard\?\.lock\?\.\(LOCK_KEYS\)/);
+    expect(src).toMatch(/(keyboard|kb)\?\.lock\?\.\(LOCK_KEYS\)/);
     expect(src).toMatch(/Ctrl\/C crouch/);
   });
   it('digits map by physical key and all game keys are known', () => {

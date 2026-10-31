@@ -166,7 +166,7 @@ export class ArenaBots {
       if (!foe) m.target = null;
       m.retreat = f.hp < 35 && !!foe;
       // Weapon by range.
-      const w: WeaponId = foe ? (fd < 1.9 ? 'knife' : fd < 5 ? 'shotgun' : fd > 18 ? 'sniper' : f.id.endsWith('2') ? 'pistol' : 'smg') : f.weapon;
+      const w: WeaponId = foe ? (fd < 2.5 ? 'knife' : fd < 5 ? 'shotgun' : fd > 18 ? 'sniper' : f.id.endsWith('2') ? 'pistol' : 'smg') : f.weapon;
       if (w !== f.weapon && now - f.switchedAt > (w === 'knife' ? 600 : 2500)) world.switchWeapon(id, w, now);
       if (f.ammo[f.weapon] === 0) world.reload(id, now);
       // Movement: follow the path to a goal (a random node, or toward the foe), strafing in fights.

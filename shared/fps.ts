@@ -497,7 +497,7 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   shotgun: { id: 'shotgun', name: 'M1014 Combat Shotgun', damage: 17, cooldownMs: 800, pellets: 9, spread: 0.12, range: BULLET_RANGE, falloff: { full: 8, end: 25, min: 0.35 }, mag: 6, reloadMs: 2200 },
   sniper: { id: 'sniper', name: '.50 Cal Sniper', damage: 95, cooldownMs: 1300, pellets: 1, spread: 0.09, scopedSpread: 0, range: BULLET_RANGE, mag: 5, reloadMs: 2500 },
   rocket: { id: 'rocket', name: 'RPG Launcher', damage: 100, cooldownMs: 1100, pellets: 1, spread: 0, range: 40, mag: 2, reloadMs: 2600, splash: 2.4 },
-  knife: { id: 'knife', name: 'Combat Knife', damage: 35, cooldownMs: 400, pellets: 1, spread: 0, range: 1.8, mag: 1, reloadMs: 0, melee: true, heavyDamage: 65, heavyCooldownMs: 900 },
+  knife: { id: 'knife', name: 'Combat Knife', damage: 50, cooldownMs: 400, pellets: 1, spread: 0, range: 2.4, mag: 1, reloadMs: 0, melee: true, heavyDamage: 100, heavyCooldownMs: 900 },
 };
 export const WEAPON_ORDER: WeaponId[] = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'knife'];
 export const SWITCH_MS = 250;
@@ -737,7 +737,9 @@ export const canHold = (loadout: WeaponId, w: WeaponId): boolean => (isKnifeOnly
 
 // ---------------------------------------------------------------- melee
 
-export const MELEE_RANGE = 1.8;
+export const MELEE_RANGE = 2.4;
+/** Forgiving sweep: a target whose body comes within this of the swing line still connects, even outside the cone. */
+export const MELEE_SWEEP = 0.5;
 /** Half-angle of the swing cone in front of you (horizontal). */
 export const MELEE_CONE = (50 * Math.PI) / 180;
 /** Behind the target: the attacker sits within this half-angle of the target's back. */
@@ -754,7 +756,7 @@ export function isBackstab(attacker: { x: number; y: number }, target: { x: numb
 /**
  * Knife hit test: nearest living target within MELEE_RANGE (to the body column), inside the swing cone,
  * at a reachable height, with clear line of sight from the eye to its chest or head.
- * heavy = right-click stab (65, instant kill from behind); light = slash (35).
+ * heavy = right-click stab (100 = one-shot at full HP; backstab always kills); light = slash (50, 2-hit kill).
  */
 export function meleeHit(
   f: { id: string; x: number; y: number; z: number; a: number; crouch?: boolean },
@@ -770,7 +772,9 @@ export function meleeHit(
     if (d > 0.05) {
       let off = Math.atan2(t.y - f.y, t.x - f.x) - f.a;
       off = Math.atan2(Math.sin(off), Math.cos(off));
-      if (Math.abs(off) > MELEE_CONE) continue;
+      // Inside the swing cone, or close enough to the swing line (capsule sweep) that a near-miss still connects.
+      const along = Math.cos(off) * (d + PLAYER_RADIUS), side = Math.abs(Math.sin(off)) * (d + PLAYER_RADIUS);
+      if (Math.abs(off) > MELEE_CONE && !(along > 0 && side <= MELEE_SWEEP + PLAYER_RADIUS)) continue;
     }
     if (!lineOfSight(eye, chestOf(t), map) && !lineOfSight(eye, { x: t.x, y: t.y, z: t.z + headZOf(t) }, map)) continue;
     if (best && best.d <= d) continue;
