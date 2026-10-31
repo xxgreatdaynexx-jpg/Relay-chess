@@ -128,7 +128,7 @@ function MinesGame({ onClose }: { onClose: () => void }) {
     const onMove = (e: MouseEvent) => {
       if (document.pointerLockElement !== glRef.current) return;
       const [da, dp] = mouseLook(look.current, false, e.movementX, e.movementY);
-      const m = me.current; m.a -= da; m.p = clampPitch(m.p + dp) ?? m.p;
+      const m = me.current; m.a += da; m.p = clampPitch(m.p + dp) ?? m.p;
     };
     const onLock = () => { if (document.pointerLockElement !== glRef.current) keys.current.clear(); };
     document.addEventListener('mousemove', onMove); document.addEventListener('pointerlockchange', onLock);
