@@ -1526,3 +1526,17 @@ html, body { overflow-x: clip; }
 .mines-note { font-size: 11px; opacity: .75; margin: 0; }
 .mines-prices { font-size: 11px; opacity: .85; }
 @media (max-width: 720px) { .mines-body { flex-direction: column; } .mines-side { width: auto; } .mines-wrap { right: 6px; left: 6px; } }
+.mines-tabs { display: flex; gap: 4px; margin-bottom: 6px; }
+.mines-tabs button { flex: 1; padding: 3px 4px; border-radius: 6px; font-size: 12px; opacity: .65; background: rgba(255,255,255,.06); }
+.mines-tabs button.on { opacity: 1; background: rgba(255,255,255,.16); }
+.mines-factory { display: flex; flex-direction: column; gap: 6px; font-size: 12px; overflow-y: auto; }
+.mines-fhead { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-weight: 600; }
+.mines-fhead button, .mines-recipe button { padding: 1px 6px; border-radius: 5px; background: rgba(255,255,255,.12); font-size: 11px; }
+.mines-recipe button:disabled { opacity: .35; }
+.mines-jobs { display: flex; flex-direction: column; gap: 3px; }
+.mines-jobs li span { float: right; opacity: .7; }
+.mines-machine { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid rgba(255,255,255,.1); padding-top: 4px; }
+.mines-recipe { display: flex; align-items: center; gap: 4px; }
+.mines-recipe > span { flex: 1; min-width: 0; }
+.mines-recipe small { display: block; opacity: .6; font-size: 10px; }
+.mines-recipe input { width: 36px; background: rgba(0,0,0,.3); border-radius: 4px; padding: 0 2px; font-size: 11px; }

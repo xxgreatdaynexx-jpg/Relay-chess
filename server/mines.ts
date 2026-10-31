@@ -5,16 +5,20 @@ import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
 import { playerKey } from './skins.js';
 import { guestName, lineOfSight, moveAllowance, MOVE_CARRY_MAX, normAngle, clampPitch, canStand, validateMove, eyeHeightOf, type Body } from '../shared/fps.js';
-import { BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, dayKey, isOre, payoutFor, stackKey, type ItemType, type MineNode, type OreId, type Stack } from '../shared/mines.js';
+import { BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, dayKey, isOre, payoutFor, stackKey, priceOf, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId } from '../shared/mines.js';
 
 export const MINES_MIGRATION = [
   // Generic per-player stacks: item_type 'ore' | 'bar' | 'good' (Factory) — also the Market hook for stackables.
   `CREATE TABLE IF NOT EXISTS mine_items (player_key TEXT NOT NULL, owner_name TEXT NOT NULL, item_type TEXT NOT NULL, item_id TEXT NOT NULL, qty INTEGER NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (player_key, item_type, item_id))`,
   `CREATE TABLE IF NOT EXISTS mine_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross REAL NOT NULL DEFAULT 0, paid INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day))`,
   `CREATE TABLE IF NOT EXISTS mine_sales (id SERIAL PRIMARY KEY, player_key TEXT NOT NULL, items TEXT NOT NULL, gross REAL NOT NULL, paid INTEGER NOT NULL, ledger_key TEXT NOT NULL, at BIGINT NOT NULL)`,
+  // Factory (stage 2): one per player, levelled with chips; jobs carry server timestamps so they finish while offline.
+  `CREATE TABLE IF NOT EXISTS mine_factories (player_key TEXT PRIMARY KEY, owner_name TEXT NOT NULL, level INTEGER NOT NULL, built_at BIGINT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS mine_jobs (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, machine TEXT NOT NULL, recipe TEXT NOT NULL, qty INTEGER NOT NULL, start_at BIGINT NOT NULL, done_at BIGINT NOT NULL)`,
 ];
+export interface FactoryState { level: number; builtAt: number; jobs: Job[] }
 
-export interface MineStore { init(): Promise<void>; load(): Promise<{ items: Array<{ key: string; name: string; type: ItemType; id: string; qty: number }>; daily: Array<{ key: string; day: string; gross: number; paid: number }> }>; save(key: string, name: string, stacks: Stack[], sale?: { day: string; gross: number; paid: number; items: string; ledgerKey: string; at: number; dayGross: number; dayPaid: number }): Promise<void> }
+export interface MineStore { init(): Promise<void>; load(): Promise<{ items: Array<{ key: string; name: string; type: ItemType; id: string; qty: number }>; daily: Array<{ key: string; day: string; gross: number; paid: number }>; factories?: Array<{ key: string } & FactoryState> }>; save(key: string, name: string, stacks: Stack[], sale?: { day: string; gross: number; paid: number; items: string; ledgerKey: string; at: number; dayGross: number; dayPaid: number }, factory?: FactoryState): Promise<void> }
 
 export class PgMineStore implements MineStore {
   constructor(private readonly db: Queryable & { connect?: () => Promise<pg.PoolClient> }) { db.on?.('error', (e) => console.error('[mines] pool error:', e.message)); }
@@ -22,9 +26,11 @@ export class PgMineStore implements MineStore {
   async load() {
     const items = (await this.db.query('SELECT * FROM mine_items')).rows.filter((r) => Number(r.qty) > 0).map((r) => ({ key: String(r.player_key), name: String(r.owner_name), type: r.item_type as ItemType, id: String(r.item_id), qty: Number(r.qty) }));
     const daily = (await this.db.query('SELECT * FROM mine_daily')).rows.map((r) => ({ key: String(r.player_key), day: String(r.day), gross: Number(r.gross), paid: Number(r.paid) }));
-    return { items, daily };
+    const jobs = (await this.db.query('SELECT * FROM mine_jobs')).rows.map((r) => ({ key: String(r.player_key), job: { id: String(r.id), machine: r.machine as MachineId, recipe: String(r.recipe), qty: Number(r.qty), startAt: Number(r.start_at), doneAt: Number(r.done_at) } }));
+    const factories = (await this.db.query('SELECT * FROM mine_factories')).rows.map((r) => ({ key: String(r.player_key), level: Number(r.level), builtAt: Number(r.built_at), jobs: jobs.filter((j) => j.key === String(r.player_key)).map((j) => j.job) }));
+    return { items, daily, factories };
   }
-  async save(key: string, name: string, stacks: Stack[], sale?: Parameters<MineStore['save']>[3]) {
+  async save(key: string, name: string, stacks: Stack[], sale?: Parameters<MineStore['save']>[3], factory?: FactoryState) {
     const c = this.db.connect ? await this.db.connect() : null;
     const q = (sql: string, args: unknown[]) => (c ?? this.db).query(sql, args);
     try {
@@ -34,6 +40,11 @@ export class PgMineStore implements MineStore {
       if (sale) {
         await q(`INSERT INTO mine_daily (player_key, day, gross, paid) VALUES ($1,$2,$3,$4) ON CONFLICT (player_key, day) DO UPDATE SET gross = EXCLUDED.gross, paid = EXCLUDED.paid`, [key, sale.day, sale.dayGross, sale.dayPaid]);
         await q('INSERT INTO mine_sales (player_key, items, gross, paid, ledger_key, at) VALUES ($1,$2,$3,$4,$5,$6)', [key, sale.items, sale.gross, sale.paid, sale.ledgerKey, sale.at]);
+      }
+      if (factory) {
+        await q(`INSERT INTO mine_factories (player_key, owner_name, level, built_at) VALUES ($1,$2,$3,$4) ON CONFLICT (player_key) DO UPDATE SET level = EXCLUDED.level, owner_name = EXCLUDED.owner_name`, [key, name, factory.level, factory.builtAt]);
+        await q('DELETE FROM mine_jobs WHERE player_key = $1', [key]);
+        for (const j of factory.jobs) await q('INSERT INTO mine_jobs (id, player_key, machine, recipe, qty, start_at, done_at) VALUES ($1,$2,$3,$4,$5,$6,$7)', [j.id, key, j.machine, j.recipe, j.qty, j.startAt, j.doneAt]);
       }
       if (c) await c.query('COMMIT');
     } catch (e) { if (c) await c.query('ROLLBACK').catch(() => {}); throw e; } finally { c?.release(); }
@@ -52,6 +63,8 @@ export class MinesWorld {
   packs = new Map<string, Map<string, Stack>>();
   names = new Map<string, string>();
   daily = new Map<string, { day: string; gross: number; paid: number }>();
+  factories = new Map<string, FactoryState>();
+  private jobSeq = 0;
   store: MineStore | null = null;
   private chain: Promise<void> = Promise.resolve();
   private saleSeq = 0;
@@ -59,7 +72,8 @@ export class MinesWorld {
   async attach(store: MineStore): Promise<boolean> {
     try {
       await store.init();
-      const { items, daily } = await store.load();
+      const { items, daily, factories } = await store.load();
+      for (const f of factories ?? []) this.factories.set(f.key, { level: f.level, builtAt: f.builtAt, jobs: f.jobs });
       for (const i of items) { this.pack(i.key).set(stackKey(i), { type: i.type, id: i.id, qty: i.qty }); this.names.set(i.key, i.name); }
       for (const d of daily) { const cur = this.daily.get(d.key); if (!cur || cur.day < d.day) this.daily.set(d.key, d); }
       this.store = store; return true;
@@ -132,16 +146,17 @@ export class MinesWorld {
     this.persist(m);
   }
 
-  private persist(m: Miner, sale?: Parameters<MineStore['save']>[3]) {
+  private persist(m: Miner, sale?: Parameters<MineStore['save']>[3], withFactory = false) {
     if (!m.account || !this.store) return;
     const k = playerKey(m.account); const snap = [...this.pack(k).values()].map((s) => ({ ...s })); const store = this.store;
-    this.chain = this.chain.then(() => store.save(k, m.account!, snap, sale)).catch((e) => console.error('[mines] save failed:', (e as Error).message));
+    const f = withFactory ? this.factories.get(k) : undefined; const fs = f ? { level: f.level, builtAt: f.builtAt, jobs: f.jobs.map((j) => ({ ...j })) } : undefined;
+    this.chain = this.chain.then(() => store.save(k, m.account!, snap, sale, fs)).catch((e) => console.error('[mines] save failed:', (e as Error).message));
   }
 
   quote(id: string, now: number, only?: unknown): { gross: number; paid: number; already: number; items: Stack[] } {
     const m = this.miners.get(id); if (!m) throw new MineError('Join the mine first.');
-    const items = this.backpack(id).filter((s) => s.type === 'ore' && isOre(s.id) && (!isOre(only) || s.id === only));
-    const gross = items.reduce((t, s) => t + s.qty * ORES[s.id as OreId].price, 0);
+    const items = this.backpack(id).filter((s) => priceOf(s) > 0 && (typeof only !== 'string' || s.id === only || stackKey(s) === only));
+    const gross = items.reduce((t, s) => t + s.qty * priceOf(s), 0);
     const k = this.packKey(m); const d = this.daily.get(k); const already = d && d.day === dayKey(now) ? d.gross : 0;
     return { gross, paid: payoutFor(gross, already), already, items };
   }
@@ -155,7 +170,7 @@ export class MinesWorld {
     if (q.paid < 1) throw new MineError('Not worth a chip yet. Mine a bit more (stone is 1 chip per 10).');
     const k = playerKey(m.account); const day = dayKey(now);
     const ledgerKey = `mine:sell:${k}:${now}:${++this.saleSeq}`;
-    const memo = `Sold ${q.items.map((s) => `${s.qty} ${ORES[s.id as OreId].name}`).join(', ')}`;
+    const memo = `Mines: sold ${q.items.map((s) => `${s.qty} ${nameOf(s)}`).join(', ')}`.slice(0, 200);
     getBank().transfer(m.account, q.paid, { key: ledgerKey, game: 'mines', memo });
     const p = this.pack(k);
     for (const s of q.items) p.delete(stackKey(s));
@@ -163,6 +178,55 @@ export class MinesWorld {
     const nd = { day, gross: base.gross + q.gross, paid: base.paid + q.paid }; this.daily.set(k, nd);
     this.persist(m, { day, gross: q.gross, paid: q.paid, items: JSON.stringify(q.items), ledgerKey, at: now, dayGross: nd.gross, dayPaid: nd.paid });
     return { paid: q.paid, gross: q.gross, sold: q.items };
+  }
+
+  // ------------------------------------------------------------ Factory
+  private signedIn(id: string) { const m = this.miners.get(id); if (!m) throw new MineError('Join the mine first.'); if (!m.account) throw new MineError('Sign in to build a factory.'); return m as Miner & { account: string }; }
+  factoryView(id: string, now: number) {
+    const m = this.miners.get(id); if (!m?.account) return null;
+    const f = this.factories.get(playerKey(m.account)); if (!f) return { level: 0, jobs: [], now };
+    return { level: f.level, jobs: f.jobs.map((j) => ({ ...j, done: now >= j.doneAt })), now };
+  }
+  /** Build (level 1) or upgrade the factory. Chips go to the house through the bank ledger. */
+  upgradeFactory(id: string, now: number): { level: number; cost: number } {
+    const m = this.signedIn(id); const k = playerKey(m.account);
+    const f = this.factories.get(k); const next = FACTORY_LEVELS[f ? f.level : 0];
+    if (!next) throw new MineError('Your factory is maxed out.');
+    if (!getBank().canAfford(m.account, next.cost)) throw new MineError(`You need ${next.cost} chips.`);
+    getBank().transfer(m.account, -next.cost, { key: `mine:factory:${k}:L${next.level}`, game: 'mines', memo: next.level === 1 ? 'Mines: built a factory' : `Mines: factory upgraded to level ${next.level}` });
+    if (f) f.level = next.level; else this.factories.set(k, { level: 1, builtAt: now, jobs: [] });
+    this.persist(m, undefined, true);
+    return { level: next.level, cost: next.cost };
+  }
+  /** Start a batch: inputs leave the backpack now, outputs are collectable at doneAt (server clock). */
+  startJob(id: string, recipeId: unknown, qtyIn: unknown, now: number): Job {
+    const m = this.signedIn(id); const k = playerKey(m.account);
+    const f = this.factories.get(k); if (!f) throw new MineError('Build a factory first.');
+    const r = recipeById(recipeId); if (!r) throw new MineError('Unknown recipe.');
+    const lv = FACTORY_LEVELS[f.level - 1];
+    const qty = typeof qtyIn === 'number' && Number.isInteger(qtyIn) ? qtyIn : 1;
+    if (qty < 1 || qty > lv.batch) throw new MineError(`Batch size is 1 to ${lv.batch} at level ${f.level}.`);
+    if (f.jobs.filter((j) => j.machine === r.machine).length >= lv.slots) throw new MineError(`Your ${r.machine} is busy. Collect or upgrade for more slots.`);
+    const p = this.pack(k);
+    for (const i of r.in) if ((p.get(stackKey(i))?.qty ?? 0) < i.qty * qty) throw new MineError(`Need ${i.qty * qty} ${nameOf(i)}.`);
+    for (const i of r.in) { const s = p.get(stackKey(i))!; s.qty -= i.qty * qty; if (s.qty <= 0) p.delete(stackKey(i)); }
+    const job: Job = { id: `${k}:${now}:${++this.jobSeq}`, machine: r.machine, recipe: r.id, qty, startAt: now, doneAt: now + r.ms * qty };
+    f.jobs.push(job);
+    this.persist(m, undefined, true);
+    return job;
+  }
+  /** Move every finished job's output into the backpack. */
+  collect(id: string, now: number): Stack[] {
+    const m = this.signedIn(id); const k = playerKey(m.account);
+    const f = this.factories.get(k); if (!f) throw new MineError('Build a factory first.');
+    const done = f.jobs.filter((j) => now >= j.doneAt); if (!done.length) throw new MineError('Nothing finished yet.');
+    const got: Stack[] = [];
+    for (const j of done) { const r = recipeById(j.recipe); if (r) got.push({ ...r.out, qty: r.out.qty * j.qty }); }
+    f.jobs = f.jobs.filter((j) => now < j.doneAt);
+    const p = this.pack(k);
+    for (const s of got) { const key = stackKey(s); const cur = p.get(key); if (cur) cur.qty += s.qty; else p.set(key, { ...s }); }
+    this.persist(m, undefined, true);
+    return got;
   }
 
   nodesView(now: number) { return this.nodes.map((n) => (this.nodeAvailable(n, now) ? n.hp : -1)); }
@@ -224,6 +288,15 @@ export function registerMines(io: Server, socket: Socket): void {
     try { const r = world.sell(socket.id, Date.now(), body(p).ore); ack?.({ ok: true, ...r, ...packMsg() }); }
     catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
   });
+  const fact = () => ({ factory: world.factoryView(socket.id, Date.now()) });
+  const fx = (fn: () => unknown) => (_p: unknown, ack?: Ack) => {
+    try { const r = fn(); ack?.({ ok: true, result: r, ...fact(), ...packMsg() }); }
+    catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
+  };
+  socket.on('mines_factory', (_p: unknown, ack?: Ack) => ack?.({ ok: true, ...fact(), ...packMsg() }));
+  socket.on('mines_factory_upgrade', fx(() => world.upgradeFactory(socket.id, Date.now())));
+  socket.on('mines_collect', fx(() => world.collect(socket.id, Date.now())));
+  socket.on('mines_craft', (p: unknown, ack?: Ack) => fx(() => world.startJob(socket.id, body(p).recipe, body(p).qty, Date.now()))(p, ack));
   const leave = () => { if (me()) { world.leave(socket.id); void socket.leave(ROOM); io.to(ROOM).emit('mines_left', { id: socket.id }); } };
   socket.on('mines_leave', leave);
   socket.on('disconnect', leave);

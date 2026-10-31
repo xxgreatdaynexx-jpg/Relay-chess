@@ -110,3 +110,54 @@ describe('selling', () => {
     expect(w2.daily.get('qa-saver')?.gross).toBe(800);
   });
 });
+
+import { FACTORY_LEVELS, RECIPES, GOODS, inputValue, priceOf } from '../shared/mines';
+describe('factory', () => {
+  const rich = (n: string, chips: number) => getBank().transfer(n, chips - getBank().account(n).chips, { game: 'test' });
+  it('every recipe adds 1.5-3x value and furnace/bench timers are 10-60s per unit', () => {
+    for (const r of RECIPES) {
+      expect(r.ms).toBeGreaterThanOrEqual(10_000); expect(r.ms).toBeLessThanOrEqual(60_000);
+      const ratio = (priceOf(r.out) * r.out.qty) / inputValue(r);
+      expect(ratio).toBeGreaterThanOrEqual(1.5); expect(ratio).toBeLessThanOrEqual(3);
+      expect(GOODS[r.out.id]).toBeTruthy();
+    }
+  });
+  it('guests cannot build; build/upgrade charges chips once via the bank', () => {
+    w.join('g', null, 0); expect(() => w.upgradeFactory('g', 0)).toThrow(/Sign in/);
+    w.join('a', 'QA-Smith', 0); rich('QA-Smith', 0);
+    expect(() => w.upgradeFactory('a', 0)).toThrow(/chips/);
+    rich('QA-Smith', 5000);
+    expect(w.upgradeFactory('a', 0).level).toBe(1);
+    expect(getBank().account('QA-Smith').chips).toBe(5000 - FACTORY_LEVELS[0].cost);
+    w.upgradeFactory('a', 0); w.upgradeFactory('a', 0);
+    expect(() => w.upgradeFactory('a', 0)).toThrow(/maxed/);
+    expect(getBank().account('QA-Smith').chips).toBe(5000 - 250 - 750 - 2000);
+  });
+  it('smelts on the server clock, enforces slots/batch, collects bars and sells under daily caps', () => {
+    w.join('a', 'QA-Smith', 0); rich('QA-Smith', 300); w.upgradeFactory('a', 0);
+    const m = w.miners.get('a')!;
+    expect(() => w.startJob('a', 'iron_bar', 1, 0)).toThrow(/Need/);
+    w.add(m, [{ type: 'ore', id: 'iron', qty: 30 }, { type: 'ore', id: 'coal', qty: 10 }]);
+    expect(() => w.startJob('a', 'iron_bar', 6, 0)).toThrow(/Batch/);
+    const j = w.startJob('a', 'iron_bar', 2, 1000);
+    expect(j.doneAt).toBe(1000 + 40_000);
+    expect(() => w.startJob('a', 'iron_bar', 1, 1000)).toThrow(/busy/);
+    expect(w.backpack('a').find((s) => s.id === 'iron')?.qty).toBe(24);
+    expect(() => w.collect('a', 40_999)).toThrow(/Nothing/);
+    // player leaves; job keeps running
+    w.leave('a'); w.join('b', 'QA-Smith', 50_000);
+    expect(w.collect('b', 50_000)).toEqual([{ type: 'bar', id: 'iron_bar', qty: 2 }]);
+    const r = w.sell('b', 50_000, 'bar:iron_bar'); expect(r.paid).toBe(56);
+  });
+  it('persists factory level and running jobs', async () => {
+    const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
+    await w.attach(new PgMineStore(pool));
+    w.join('a', 'QA-Forge', 0); rich('QA-Forge', 300); w.upgradeFactory('a', 0);
+    w.add(w.miners.get('a')!, [{ type: 'ore', id: 'stone', qty: 10 }, { type: 'ore', id: 'coal', qty: 1 }]);
+    w.startJob('a', 'brick', 1, 0); await w.flush();
+    const w2 = new MinesWorld(); await w2.attach(new PgMineStore(pool));
+    w2.join('b', 'QA-Forge', 0);
+    expect(w2.factoryView('b', 20_000)).toMatchObject({ level: 1, jobs: [{ recipe: 'brick', done: true }] });
+    expect(w2.backpack('b')).toEqual([]);
+  });
+});
