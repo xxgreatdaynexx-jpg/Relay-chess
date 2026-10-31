@@ -4,6 +4,8 @@ import type { Server, Socket } from 'socket.io';
 import { getBank } from './casino-store.js';
 import { getAccounts } from './accounts.js';
 import { getVault, playerKey, RuleError, type ItemVault, type Stmt, type StoredItem } from './skins.js';
+import { getMines } from './mines.js';
+import { GOODS, isOre, nameOf as stackName, type ItemType } from '../shared/mines.js';
 import { CASE_NAME, KEY_NAME, SKIN_BY_ID, type SkinItem } from '../shared/skins.js';
 
 export const MARKET_FEE = 0.05;
@@ -18,11 +20,22 @@ export interface Listing { id: string; seller: string; sellerName: string; itemI
 export interface Sale { id: string; listingId: string; itemId: string; what: string; price: number; fee: number; seller: string; buyer: string; at: number }
 export interface Trade { id: string; from: string; fromName: string; to: string; toName: string; give: string[]; want: string[]; giveChips: number; wantChips: number; status: 'pending' | 'accepted' | 'declined' | 'cancelled' | 'countered'; at: number; closedAt?: number; counterOf?: string }
 
+export const MAX_STACK_QTY = 100_000;
+/** Stackable listing (Mines ore / bars / goods from mine_items): unit price, partial buys. Escrowed qty leaves the seller's pack. */
+export interface StackListing { id: string; seller: string; sellerName: string; type: ItemType; itemId: string; qty: number; total: number; unit: number; status: 'active' | 'sold' | 'cancelled'; at: number; closedAt?: number; sold: number }
+export const stackWhat = (type: string, id: string) => `stack:${type}:${id}`;
+export const isStackable = (type: unknown, id: unknown): type is ItemType => typeof id === 'string' && ((type === 'ore' && isOre(id)) || ((type === 'bar' || type === 'good') && GOODS[id]?.type === type));
 export const MARKET_MIGRATION = [
   `CREATE TABLE IF NOT EXISTS market_listings (id TEXT PRIMARY KEY, seller_key TEXT NOT NULL, seller_name TEXT NOT NULL, item_id TEXT NOT NULL, price INTEGER NOT NULL, status TEXT NOT NULL, buyer_key TEXT, created_at BIGINT NOT NULL, closed_at BIGINT)`,
   `CREATE TABLE IF NOT EXISTS market_sales (id TEXT PRIMARY KEY, listing_id TEXT NOT NULL UNIQUE, item_id TEXT NOT NULL, what TEXT NOT NULL, price INTEGER NOT NULL, fee INTEGER NOT NULL, seller_key TEXT NOT NULL, buyer_key TEXT NOT NULL, at BIGINT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS trade_offers (id TEXT PRIMARY KEY, from_key TEXT NOT NULL, from_name TEXT NOT NULL, to_key TEXT NOT NULL, to_name TEXT NOT NULL, give_items TEXT NOT NULL, want_items TEXT NOT NULL, give_chips INTEGER NOT NULL, want_chips INTEGER NOT NULL, status TEXT NOT NULL, created_at BIGINT NOT NULL, closed_at BIGINT)`,
+  `CREATE TABLE IF NOT EXISTS market_stack_listings (id TEXT PRIMARY KEY, seller_key TEXT NOT NULL, seller_name TEXT NOT NULL, item_type TEXT NOT NULL, item_id TEXT NOT NULL, qty_left INTEGER NOT NULL, qty_total INTEGER NOT NULL, unit_price INTEGER NOT NULL, sold INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, created_at BIGINT NOT NULL, closed_at BIGINT)`,
 ];
+const stackStmt = (l: StackListing): Stmt => ({
+  sql: `INSERT INTO market_stack_listings (id, seller_key, seller_name, item_type, item_id, qty_left, qty_total, unit_price, sold, status, created_at, closed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        ON CONFLICT (id) DO UPDATE SET qty_left = EXCLUDED.qty_left, sold = EXCLUDED.sold, status = EXCLUDED.status, closed_at = EXCLUDED.closed_at`,
+  args: [l.id, l.seller, l.sellerName, l.type, l.itemId, l.qty, l.total, l.unit, l.sold, l.status, l.at, l.closedAt ?? null],
+});
 
 /** What a listing/sale is, for price history: skin id, or 'case' / 'key'. */
 export const whatOf = (i: Pick<SkinItem, 'kind' | 'skin'>) => (i.kind === 'skin' ? i.skin : i.kind);
@@ -48,6 +61,7 @@ export class Market {
   listings = new Map<string, Listing>();
   sales: Sale[] = [];
   trades = new Map<string, Trade>();
+  stacks = new Map<string, StackListing>();
   onTrade?: (keys: string[]) => void;
   constructor(readonly vault: ItemVault = getVault()) {}
 
@@ -58,6 +72,9 @@ export class Market {
     for (const q of MARKET_MIGRATION) await st.query(q);
     for (const r of (await st.query("SELECT * FROM market_listings WHERE status = 'active'")).rows) {
       this.listings.set(String(r.id), { id: String(r.id), seller: String(r.seller_key), sellerName: String(r.seller_name), itemId: String(r.item_id), price: Number(r.price), status: 'active', at: Number(r.created_at) });
+    }
+    for (const r of (await st.query("SELECT * FROM market_stack_listings WHERE status = 'active'")).rows) {
+      this.stacks.set(String(r.id), { id: String(r.id), seller: String(r.seller_key), sellerName: String(r.seller_name), type: r.item_type as ItemType, itemId: String(r.item_id), qty: Number(r.qty_left), total: Number(r.qty_total), unit: Number(r.unit_price), sold: Number(r.sold), status: 'active', at: Number(r.created_at) });
     }
     for (const r of (await st.query('SELECT * FROM market_sales ORDER BY at DESC LIMIT 5000')).rows) {
       this.sales.push({ id: String(r.id), listingId: String(r.listing_id), itemId: String(r.item_id), what: String(r.what), price: Number(r.price), fee: Number(r.fee), seller: String(r.seller_key), buyer: String(r.buyer_key), at: Number(r.at) });
@@ -120,6 +137,60 @@ export class Market {
     this.vault.commit([i], [{ item: i.id, kind: 'sale', from: l.seller, to: k, memo: `listing ${l.id} for ${l.price}, fee ${fee} burned`, at: now }], [listingStmt(l), saleStmt(sale)]);
     this.vault.onChange?.(l.seller); for (const f of this.vault.listeners) f(l.seller);
     return { item: this.vault.view(i), price: l.price };
+  }
+
+  // ---------- stackable (Mines) listings ----------
+  /** Rows go in the same transaction as the pack change (via Mines' save); with no Mines store they go through the vault. */
+  private stackRows(rows: Stmt[]) { if (rows.length) this.vault.commit([], [], rows); }
+  listStack(name: string, type: unknown, itemId: unknown, qty: unknown, unit: unknown): StackListing {
+    if (!isStackable(type, itemId)) throw new RuleError('That item cannot be listed.');
+    const sid = itemId as string;
+    const n = intIn(qty, 1, MAX_STACK_QTY, 'Quantity');
+    const u = intIn(unit, MIN_PRICE, MAX_PRICE, 'Unit price');
+    if (n * u > MAX_PRICE * 100) throw new RuleError('That listing is too large.');
+    const k = playerKey(name);
+    const active = [...this.listings.values()].filter((l) => l.seller === k).length + [...this.stacks.values()].filter((l) => l.seller === k).length;
+    if (active >= MAX_LISTINGS) throw new RuleError(`You can have at most ${MAX_LISTINGS} listings.`);
+    const mines = getMines();
+    if (mines.stackQty(name, type, sid) < n) throw new RuleError(`You only have ${mines.stackQty(name, type, sid)} ${stackName({ type, id: sid })}.`);
+    const l: StackListing = { id: randomUUID(), seller: k, sellerName: name.trim(), type, itemId: sid, qty: n, total: n, unit: u, status: 'active', at: Date.now(), sold: 0 };
+    if (!mines.adjustStack(name, type, sid, -n, [stackStmt(l)], (r) => this.stackRows(r))) throw new RuleError('Not enough items.');
+    this.stacks.set(l.id, l);
+    return l;
+  }
+  cancelStack(name: string, id: unknown): void {
+    const l = typeof id === 'string' ? this.stacks.get(id) : undefined;
+    if (!l || l.status !== 'active' || l.seller !== playerKey(name)) throw new RuleError('That listing is not active.');
+    l.status = 'cancelled'; l.closedAt = Date.now(); this.stacks.delete(l.id);
+    getMines().adjustStack(l.sellerName, l.type, l.itemId, l.qty, [stackStmt(l)], (r) => this.stackRows(r));
+  }
+  /** Buy qty units (partial OK). Checks first, then one synchronous step; buyer pack + listing row + sale row in one transaction. */
+  buyStack(name: string, id: unknown, qty: unknown): { type: ItemType; id: string; qty: number; price: number; fee: number } {
+    const l = typeof id === 'string' ? this.stacks.get(id) : undefined;
+    if (!l || l.status !== 'active' || l.qty < 1) throw new RuleError('That listing is gone (sold or cancelled).');
+    const k = playerKey(name);
+    if (l.seller === k) throw new RuleError("You can't buy your own listing. Cancel it instead.");
+    const n = intIn(qty, 1, l.qty, 'Quantity');
+    const price = n * l.unit; const fee = feeOf(price);
+    const bank = this.bank();
+    if (!bank.canAfford(name, price)) throw new RuleError('Not enough chips.');
+    const seq = l.sold + 1; const what = stackName({ type: l.type, id: l.itemId });
+    bank.transfer(name, -price, { key: `mkt:buy:${l.id}:${seq}`, game: 'market', memo: `Bought ${n} ${what}` });
+    bank.transfer(l.sellerName, price - fee, { key: `mkt:sell:${l.id}:${seq}`, game: 'market', memo: `Sold ${n} ${what} (${fee} fee)` });
+    const now = Date.now();
+    l.qty -= n; l.sold = seq;
+    if (l.qty === 0) { l.status = 'sold'; l.closedAt = now; this.stacks.delete(l.id); }
+    const sale: Sale = { id: randomUUID(), listingId: `${l.id}#${seq}`, itemId: `qty:${n}`, what: stackWhat(l.type, l.itemId), price: l.unit, fee, seller: l.seller, buyer: k, at: now };
+    this.sales.push(sale); if (this.sales.length > 5000) this.sales.shift();
+    getMines().adjustStack(name, l.type, l.itemId, n, [stackStmt(l), saleStmt(sale)], (r) => this.stackRows(r));
+    return { type: l.type, id: l.itemId, qty: n, price, fee };
+  }
+  browseStacks(f: { type?: unknown; q?: unknown } = {}) {
+    const q = typeof f.q === 'string' ? f.q.trim().toLowerCase() : '';
+    return [...this.stacks.values()]
+      .filter((l) => (!f.type || f.type === 'all' || l.type === f.type) && (!q || stackName({ type: l.type, id: l.itemId }).toLowerCase().includes(q)))
+      .map((l) => ({ id: l.id, type: l.type, itemId: l.itemId, name: stackName({ type: l.type, id: l.itemId }), color: l.type === 'ore' ? undefined : GOODS[l.itemId]?.color, qty: l.qty, total: l.total, unit: l.unit, seller: l.sellerName, at: l.at, mine: false }))
+      .sort((a, b) => a.unit - b.unit || a.at - b.at);
   }
 
   label(i: Pick<SkinItem, 'kind' | 'skin'>) { return i.kind === 'case' ? CASE_NAME : i.kind === 'key' ? KEY_NAME : SKIN_BY_ID.get(i.skin)?.name ?? i.skin; }
@@ -249,6 +320,11 @@ export function registerMarket(io: Server, socket: Socket): void {
   on('mkt_list', (b) => ({ listing: market.list(need(), b.id, b.price) }));
   on('mkt_cancel', (b) => { market.cancel(need(), b.id); });
   on('mkt_buy', (b) => market.buy(need(), b.id));
+  on('mkt_stacks', (b) => { const me = nameOf() ? playerKey(nameOf()!) : null; return { listings: market.browseStacks(b).map((l) => ({ ...l, mine: !!me && market.stacks.get(l.id)?.seller === me })) }; });
+  on('mkt_my_stacks', () => { const n = nameOf(); const p = n ? getMines().packs.get(playerKey(n)) : undefined; return { stacks: p ? [...p.values()].filter((x) => x.qty > 0 && isStackable(x.type, x.id)).map((x) => ({ ...x, name: stackName(x) })) : [] }; });
+  on('mkt_list_stack', (b) => ({ listing: market.listStack(need(), b.type, b.id, b.qty, b.unit) }));
+  on('mkt_cancel_stack', (b) => { market.cancelStack(need(), b.id); });
+  on('mkt_buy_stack', (b) => market.buyStack(need(), b.id, b.qty));
   on('trade_list', () => (nameOf() ? market.tradesFor(nameOf()!) : { incoming: [], outgoing: [] }));
   on('trade_offer', async (b) => {
     const me = need();

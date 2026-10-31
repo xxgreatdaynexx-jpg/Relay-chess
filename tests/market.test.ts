@@ -103,3 +103,53 @@ describe('trades', () => {
     void getVault;
   });
 });
+
+import { getMines, MinesWorld, PgMineStore, resetMines } from '../server/mines';
+describe('stackable (Mines) listings', () => {
+  beforeEach(() => { resetMines(); });
+  it('escrows qty, partial buys at unit price, 5% fee burned, cancel returns the rest', () => {
+    const w = getMines();
+    w.adjustStack('QA-Miner', 'bar', 'iron_bar', 10);
+    expect(() => m.listStack('QA-Miner', 'bar', 'iron_bar', 11, 30)).toThrow(/only have 10/);
+    expect(() => m.listStack('QA-Miner', 'bar', 'nope', 1, 30)).toThrow(/cannot be listed/);
+    expect(() => m.listStack('QA-Miner', 'good', 'iron_bar', 1, 30)).toThrow(/cannot be listed/);
+    const l = m.listStack('QA-Miner', 'bar', 'iron_bar', 8, 30);
+    expect(w.stackQty('QA-Miner', 'bar', 'iron_bar')).toBe(2);
+    expect(() => m.buyStack('QA-Miner', l.id, 1)).toThrow(/own/);
+    expect(() => m.buyStack('QA-Buyer', l.id, 9)).toThrow(/Quantity/);
+    const total0 = chips('QA-Miner') + chips('QA-Buyer');
+    const r = m.buyStack('QA-Buyer', l.id, 3);
+    expect(r).toMatchObject({ qty: 3, price: 90, fee: feeOf(90) });
+    expect(w.stackQty('QA-Buyer', 'bar', 'iron_bar')).toBe(3);
+    expect(chips('QA-Miner') + chips('QA-Buyer')).toBe(total0 - feeOf(90));
+    expect(m.browseStacks()[0]).toMatchObject({ qty: 5, unit: 30, name: 'Iron Bar' });
+    expect(m.history('stack:bar:iron_bar')).toMatchObject({ count: 1, last: 30 });
+    m.cancelStack('QA-Miner', l.id);
+    expect(w.stackQty('QA-Miner', 'bar', 'iron_bar')).toBe(7);
+    expect(() => m.buyStack('QA-Buyer', l.id, 1)).toThrow(/gone/);
+  });
+  it('buying the last unit closes the listing; no double-spend of escrow', () => {
+    const w = getMines(); w.adjustStack('QA-Miner', 'good', 'gear', 2);
+    const l = m.listStack('QA-Miner', 'good', 'gear', 2, 85);
+    expect(() => m.listStack('QA-Miner', 'good', 'gear', 1, 85)).toThrow(/only have 0/);
+    m.buyStack('QA-Buyer', l.id, 2);
+    expect(m.stacks.has(l.id)).toBe(false);
+    expect(() => m.buyStack('QA-Other', l.id, 1)).toThrow(/gone/);
+    expect(w.stackQty('QA-Buyer', 'good', 'gear')).toBe(2);
+  });
+  it('pack + listing rows persist in one Mines transaction (pg-mem)', async () => {
+    const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
+    const vv = resetVault(); await vv.attach(new PgItemStore(pool)); const mm = resetMarket(vv); await mm.load();
+    const w = resetMines(); await w.attach(new PgMineStore(pool));
+    w.adjustStack('QA-Miner', 'bar', 'gold_bar', 5);
+    const l = mm.listStack('QA-Miner', 'bar', 'gold_bar', 4, 100);
+    mm.buyStack('QA-Buyer', l.id, 1);
+    await w.flush();
+    const w2 = new MinesWorld(); await w2.attach(new PgMineStore(pool));
+    expect(w2.stackQty('QA-Miner', 'bar', 'gold_bar')).toBe(1);
+    expect(w2.stackQty('QA-Buyer', 'bar', 'gold_bar')).toBe(1);
+    const m2 = resetMarket(vv); await m2.load();
+    expect(m2.stacks.get(l.id)).toMatchObject({ qty: 3, unit: 100, sold: 1 });
+    expect(m2.history('stack:bar:gold_bar').count).toBe(1);
+  });
+});

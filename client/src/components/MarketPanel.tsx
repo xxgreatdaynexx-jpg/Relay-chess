@@ -80,6 +80,52 @@ export function MarketView() {
   );
 }
 
+interface StackRow { id: string; type: string; itemId: string; name: string; color?: string; qty: number; total: number; unit: number; seller: string; mine: boolean }
+const ORE_COLOR: Record<string, string> = { stone: '#8a8580', coal: '#2e2e33', copper: '#d9793d', iron: '#b0a090', silver: '#e8edf2', gold: '#ffcf3a', crystal: '#c070ff', diamond: '#9ff6ff' };
+const Chip = ({ r }: { r: { type: string; itemId?: string; id?: string; color?: string } }) => <span className="mkt-mat" style={{ background: r.color ?? ORE_COLOR[(r.itemId ?? r.id)!] ?? '#888' }} aria-hidden>{r.type === 'ore' ? '⛏' : r.type === 'bar' ? '▬' : '⚙'}</span>;
+
+/** Mines materials (ore / bars / goods): unit-price listings, partial buys, same 5% fee. */
+export function MaterialsView() {
+  const account = useAccount();
+  const [rows, setRows] = useState<StackRow[]>([]); const [pack, setPack] = useState<Array<{ type: string; id: string; qty: number; name: string }>>([]);
+  const [type, setType] = useState('all'); const [qty, setQty] = useState<Record<string, string>>({});
+  const [sell, setSell] = useState(''); const [sq, setSq] = useState(''); const [su, setSu] = useState('');
+  const [err, setErr] = useState(''); const [msg, setMsg] = useState('');
+  const load = useCallback(() => {
+    void request('mkt_stacks', { type }).then((r) => { const a = r as Ack; if (a.ok) setRows(a.listings as StackRow[]); });
+    void request('mkt_my_stacks', {}).then((r) => { const a = r as Ack; if (a.ok) setPack(a.stacks as typeof pack); });
+  }, [type]);
+  useEffect(() => { load(); }, [load, account]);
+  const act = async (ev: string, body: object, ok: string) => { setErr(''); setMsg(''); const r = (await request(ev, body)) as Ack; if (!r.ok) setErr(r.error ?? 'Failed'); else { setMsg(ok); load(); } };
+  const s = pack.find((p) => `${p.type}:${p.id}` === sell); const n = Math.floor(Number(sq)), u = Math.floor(Number(su));
+  const fee = n > 0 && u > 0 ? Math.max(1, Math.ceil(n * u * 0.05)) : 0;
+  return (
+    <div className="mkt-mats" data-testid="mkt-mats">
+      <div className="inv-filters">
+        <select value={type} onChange={(e) => setType(e.target.value)}><option value="all">All materials</option><option value="ore">Ore</option><option value="bar">Bars</option><option value="good">Goods</option></select>
+        {msg && <span className="mkt-ok">{msg}</span>}{err && <span className="inv-err">{err}</span>}
+      </div>
+      <table className="mkt-table"><thead><tr><th>Item</th><th>Unit</th><th>Left</th><th>Seller</th><th /></tr></thead><tbody>
+        {rows.map((r) => { const q = Math.max(1, Math.min(r.qty, Math.floor(Number(qty[r.id] ?? 1)) || 1)); return (
+          <tr key={r.id}><td><Chip r={r} /> {r.name}</td><td>{chipsFmt(r.unit)}</td><td>{r.qty}/{r.total}</td><td>{r.seller}</td><td>
+            {r.mine ? <button type="button" onClick={() => void act('mkt_cancel_stack', { id: r.id }, 'Cancelled; items back in your backpack.')}>Cancel</button>
+              : <><input type="number" min={1} max={r.qty} value={qty[r.id] ?? '1'} onChange={(e) => setQty({ ...qty, [r.id]: e.target.value })} style={{ width: 64 }} />
+                <button type="button" disabled={!account} onClick={() => void act('mkt_buy_stack', { id: r.id, qty: q }, `Bought ${q} ${r.name}.`)}>Buy {chipsFmt(q * r.unit)}</button></>}
+          </td></tr>); })}
+        {!rows.length && <tr><td colSpan={5} className="inv-note">No material listings yet.</td></tr>}
+      </tbody></table>
+      {account && <div className="mkt-sell">
+        <select value={sell} onChange={(e) => setSell(e.target.value)} data-testid="mkt-mat-pick"><option value="">Sell from backpack…</option>{pack.map((p) => <option key={`${p.type}:${p.id}`} value={`${p.type}:${p.id}`}>{p.name} ×{p.qty}</option>)}</select>
+        <label>Qty <input type="number" min={1} max={s?.qty} value={sq} onChange={(e) => setSq(e.target.value)} style={{ width: 70 }} /></label>
+        <label>Unit price <input type="number" min={1} value={su} onChange={(e) => setSu(e.target.value)} style={{ width: 80 }} /></label>
+        {fee > 0 && <span>You get up to {chipsFmt(n * u - fee)} (fee {fee})</span>}
+        <button type="button" disabled={!s || !(n > 0) || !(u > 0)} onClick={() => s && void act('mkt_list_stack', { type: s.type, id: s.id, qty: n, unit: u }, `Listed ${n} ${s.name}.`)}>List</button>
+      </div>}
+      <p className="inv-note">Ore, bars and goods from the Mines. Buy any amount; sellers pay a 5% fee (burned). Listed items leave your backpack until sold or cancelled.</p>
+    </div>
+  );
+}
+
 /** Small inline form used by Sell in the inventory detail pane. */
 export function SellForm({ item, onDone }: { item: SkinItem; onDone: () => void }) {
   const [price, setPrice] = useState(''); const [err, setErr] = useState(''); const [hist, setHist] = useState<History | null>(null);

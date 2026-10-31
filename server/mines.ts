@@ -18,7 +18,7 @@ export const MINES_MIGRATION = [
 ];
 export interface FactoryState { level: number; builtAt: number; jobs: Job[] }
 
-export interface MineStore { init(): Promise<void>; load(): Promise<{ items: Array<{ key: string; name: string; type: ItemType; id: string; qty: number }>; daily: Array<{ key: string; day: string; gross: number; paid: number }>; factories?: Array<{ key: string } & FactoryState> }>; save(key: string, name: string, stacks: Stack[], sale?: { day: string; gross: number; paid: number; items: string; ledgerKey: string; at: number; dayGross: number; dayPaid: number }, factory?: FactoryState): Promise<void> }
+export interface MineStore { init(): Promise<void>; load(): Promise<{ items: Array<{ key: string; name: string; type: ItemType; id: string; qty: number }>; daily: Array<{ key: string; day: string; gross: number; paid: number }>; factories?: Array<{ key: string } & FactoryState> }>; save(key: string, name: string, stacks: Stack[], sale?: { day: string; gross: number; paid: number; items: string; ledgerKey: string; at: number; dayGross: number; dayPaid: number }, factory?: FactoryState, extra?: Array<{ sql: string; args: unknown[] }>): Promise<void> }
 
 export class PgMineStore implements MineStore {
   constructor(private readonly db: Queryable & { connect?: () => Promise<pg.PoolClient> }) { db.on?.('error', (e) => console.error('[mines] pool error:', e.message)); }
@@ -30,7 +30,7 @@ export class PgMineStore implements MineStore {
     const factories = (await this.db.query('SELECT * FROM mine_factories')).rows.map((r) => ({ key: String(r.player_key), level: Number(r.level), builtAt: Number(r.built_at), jobs: jobs.filter((j) => j.key === String(r.player_key)).map((j) => j.job) }));
     return { items, daily, factories };
   }
-  async save(key: string, name: string, stacks: Stack[], sale?: Parameters<MineStore['save']>[3], factory?: FactoryState) {
+  async save(key: string, name: string, stacks: Stack[], sale?: Parameters<MineStore['save']>[3], factory?: FactoryState, extra?: Array<{ sql: string; args: unknown[] }>) {
     const c = this.db.connect ? await this.db.connect() : null;
     const q = (sql: string, args: unknown[]) => (c ?? this.db).query(sql, args);
     try {
@@ -46,6 +46,7 @@ export class PgMineStore implements MineStore {
         await q('DELETE FROM mine_jobs WHERE player_key = $1', [key]);
         for (const j of factory.jobs) await q('INSERT INTO mine_jobs (id, player_key, machine, recipe, qty, start_at, done_at) VALUES ($1,$2,$3,$4,$5,$6,$7)', [j.id, key, j.machine, j.recipe, j.qty, j.startAt, j.doneAt]);
       }
+      for (const x of extra ?? []) await q(x.sql, x.args); // e.g. Market stack-listing rows, same transaction as the pack
       if (c) await c.query('COMMIT');
     } catch (e) { if (c) await c.query('ROLLBACK').catch(() => {}); throw e; } finally { c?.release(); }
   }
@@ -227,6 +228,23 @@ export class MinesWorld {
     for (const s of got) { const key = stackKey(s); const cur = p.get(key); if (cur) cur.qty += s.qty; else p.set(key, { ...s }); }
     this.persist(m, undefined, true);
     return got;
+  }
+
+  // ------------------------------------------------------------ Market hook (stackable listings)
+  /** Current qty of one stack for an account (online or offline). */
+  stackQty(account: string, type: ItemType, id: string): number { return this.pack(playerKey(account)).get(stackKey({ type, id }))?.qty ?? 0; }
+  /** Move qty into (+) or out of (-) an account's pack and persist the pack plus `extra` rows in ONE transaction (queued in order with every other pack save).
+   * Returns false (no change) if a withdrawal would go negative. Without a store, `fallback` gets the rows instead. */
+  adjustStack(account: string, type: ItemType, id: string, delta: number, extra: Array<{ sql: string; args: unknown[] }> = [], fallback?: (rows: Array<{ sql: string; args: unknown[] }>) => void): boolean {
+    const k = playerKey(account); const p = this.pack(k); const key = stackKey({ type, id });
+    const cur = p.get(key)?.qty ?? 0;
+    if (!Number.isInteger(delta) || cur + delta < 0) return false;
+    if (cur + delta === 0) p.delete(key); else p.set(key, { type, id, qty: cur + delta });
+    this.names.set(k, account.trim());
+    if (!this.store) { fallback?.(extra); return true; }
+    const snap = [...p.values()].map((s) => ({ ...s })); const store = this.store;
+    this.chain = this.chain.then(() => store.save(k, account.trim(), snap, undefined, undefined, extra)).catch((e) => console.error('[mines] save failed:', (e as Error).message));
+    return true;
   }
 
   nodesView(now: number) { return this.nodes.map((n) => (this.nodeAvailable(n, now) ? n.hp : -1)); }

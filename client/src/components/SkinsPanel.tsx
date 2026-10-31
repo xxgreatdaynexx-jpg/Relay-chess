@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { TopTab } from './TopTabs';
-import { MarketView, SellForm, TradesView } from './MarketPanel';
+import { MarketView, MaterialsView, SellForm, TradesView } from './MarketPanel';
 import { request, socket } from '@/lib/net';
 import { useAccount } from '@/lib/auth';
 import { paintSkin } from '@/lib/skinRender';
@@ -83,7 +83,7 @@ function Inventory({ onClose }: { onClose: () => void }) {
   const [q, setQ] = useState('');
   const [err, setErr] = useState('');
   const [unbox, setUnbox] = useState<{ reel: string[]; win: number; item: SkinItem } | null>(null);
-  const [tab, setTab] = useState<'inv' | 'market' | 'trades'>('inv');
+  const [tab, setTab] = useState<'inv' | 'market' | 'mats' | 'trades'>('inv');
   const [selling, setSelling] = useState<string | null>(null);
   const [tradeSeed, setTradeSeed] = useState<string | null>(null);
 
@@ -124,12 +124,13 @@ function Inventory({ onClose }: { onClose: () => void }) {
     <div className="inv-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }} data-testid="inventory">
       <div className="inv-win" role="dialog" aria-label="Inventory">
         <header className="inv-head">
-          <nav className="inv-tabs" role="tablist">{([['inv', '🎒 Inventory'], ['market', '🏪 Market'], ['trades', '🤝 Trades']] as const).map(([k, t]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)} data-testid={`inv-tab-${k}`}>{t}</button>)}</nav><span className="inv-count">{items.length} items · 📦 {cases} · 🔑 {keys}</span>
+          <nav className="inv-tabs" role="tablist">{([['inv', '🎒 Inventory'], ['market', '🏪 Market'], ['mats', '⛏ Materials'], ['trades', '🤝 Trades']] as const).map(([k, t]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)} data-testid={`inv-tab-${k}`}>{t}</button>)}</nav><span className="inv-count">{items.length} items · 📦 {cases} · 🔑 {keys}</span>
           <button type="button" className="inv-open-btn" disabled={!cases || !keys} onClick={() => void open()} data-testid="inv-open">Open {CASE_NAME}</button>
           <button type="button" aria-label="Close inventory" onClick={onClose}>✕</button>
         </header>
         {!signedIn && <p className="inv-note">Sign in to collect skins. Every Arena match you finish drops a {CASE_NAME} or a {KEY_NAME} (50/50).</p>}
         {tab === 'market' && <MarketView />}
+        {tab === 'mats' && <MaterialsView />}
         {tab === 'trades' && <TradesView seed={tradeSeed} />}
         {tab === 'inv' && <>
         <div className="inv-filters">
