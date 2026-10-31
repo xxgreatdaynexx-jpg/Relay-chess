@@ -16,14 +16,14 @@ describe('arena paid spawns', () => {
   beforeEach(() => { resetArena(); resetBank(); });
 
   it('prices: one table, pistol cheapest, extras pluggable', () => {
-    expect(SPAWN_PRICE).toEqual({ pistol: 10, smg: 15, shotgun: 20, sniper: 25, rocket: 35 });
+    expect(SPAWN_PRICE).toEqual({ pistol: 10, smg: 15, shotgun: 20, sniper: 25, rocket: 35, knife: 0 });
     expect(cheapestSpawn()).toBe(10);
     expect(BROKE_BELOW).toBe(cheapestSpawn());
     SPAWN_EXTRAS.grenades = 5;
     expect(spawnCost('pistol')).toBe(15);
     delete SPAWN_EXTRAS.grenades;
     expect(affordableLoadout('rocket', 30)).toBe('sniper');
-    expect(affordableLoadout('pistol', 9)).toBeNull();
+    expect(affordableLoadout('pistol', 9)).toBe('knife'); // broke: free knife-only spawn
     expect(canHold('sniper', 'pistol') && canHold('sniper', 'sniper') && !canHold('sniper', 'rocket')).toBe(true);
   });
 
@@ -65,19 +65,16 @@ describe('arena paid spawns', () => {
     expect(bank.account('Alice').chips).toBe(930);
   });
 
-  it('broke players stay dead (never negative) until they refill', () => {
+  it('broke players respawn knife-only for free (never negative)', () => {
     const bank = resetBank();
     claimArenaName('a', 'Alice');
     bank.transfer('Alice', -995, { game: 'test' });
     const w = getArenaWorld();
     const a = w.join('a', 'Alice', 1000, 'rocket');
-    expect(a.alive).toBe(false);
-    expect(a.broke).toBe(true);
-    expect(bank.account('Alice').chips).toBe(5);
-    expect(bank.reset('Alice')).toBeTruthy();
-    w.tick(3000);
     expect(a.alive).toBe(true);
-    expect(a.weapon).toBe('rocket');
+    expect(a.weapon).toBe('knife');
+    expect(a.stake).toBe(0);
+    expect(bank.account('Alice').chips).toBe(5);
   });
 
   it('reconnecting within the window resumes the paid life without a second charge', () => {
@@ -100,25 +97,14 @@ describe('arena paid spawns', () => {
 
 describe('knife-only free spawn', () => {
   beforeEach(() => { resetArena(); resetBank(); });
-  it('is hidden until the knife weapon exists, and never hands out a free pistol', async () => {
+  it('is live now that the knife ships, and never hands out a free pistol', async () => {
     const f = await import('../shared/fps.js');
-    expect(f.knifeOnlyAvailable()).toBe(false);
-    expect(f.affordableLoadout('pistol', 5)).toBeNull();
-    claimArenaName('a', 'Alice');
-    const w = getArenaWorld();
-    const bank = resetBank();
-    bank.transfer('Alice', -995, { game: 'test' });
-    expect(w.setLoadout('a', 'knife', 0)).toBe(false);
-    const a = w.join('a', 'Alice', 1000, 'knife');
-    expect(a.alive).toBe(false);
-    expect(bank.account('Alice').chips).toBe(5);
+    expect(f.knifeOnlyAvailable()).toBe(true);
+    expect(f.affordableLoadout('pistol', 5)).toBe('knife');
   });
   it('once the knife lands: free, knife only, 0 bounty, and the broke fallback', async () => {
     const f = await import('../shared/fps.js');
-    const W = f.WEAPONS as Record<string, unknown>;
-    W.knife = { ...f.WEAPONS.pistol, id: 'knife', name: 'Knife' };
-    f.WEAPON_ORDER.push('knife' as never);
-    try {
+    {
       expect(f.spawnCost('knife' as never)).toBe(0);
       expect(f.cheapestSpawn()).toBe(10);
       expect(f.affordableLoadout('rocket', 3)).toBe('knife');
@@ -136,9 +122,6 @@ describe('knife-only free spawn', () => {
       const bob = bank.account('Bob').chips;
       expect(kill('b', 'a').bounty).toBeUndefined();
       expect(bank.account('Bob').chips).toBe(bob);
-    } finally {
-      delete W.knife;
-      f.WEAPON_ORDER.splice(f.WEAPON_ORDER.indexOf('knife' as never), 1);
     }
   });
 });

@@ -33,7 +33,9 @@ export const CROUCH_SPEED_MULT = 0.5;
 export const CROUCH_SPREAD_MULT = 0.65;
 /** How fast the eye moves between standing and crouched heights (metres per second). */
 export const CROUCH_LERP_SPEED = 6;
-type Crouchy = { crouch?: boolean; sprint?: boolean };
+type Crouchy = { crouch?: boolean; sprint?: boolean; weapon?: string };
+/** Knife out: you move ~1.15× faster (stacks with sprint; crouch still wins). */
+export const KNIFE_SPEED_MULT = 1.15;
 /** Sprint (hold Shift): ~1.5× run speed, forward / diagonal-forward only, never crouched or scoped. */
 export const SPRINT_MULT = 1.5;
 /** Widest move direction (radians off facing) that still counts as forward: 45° diagonals plus slack. */
@@ -57,7 +59,8 @@ export const heightOf = (b: Crouchy): number => (b.crouch ? CROUCH_HEIGHT : PLAY
 export const eyeHeightOf = (b: Crouchy): number => (b.crouch ? CROUCH_EYE_HEIGHT : EYE_HEIGHT);
 export const headZOf = (b: Crouchy): number => (b.crouch ? CROUCH_HEAD_Z : HEAD_Z);
 export const bodyTopOf = (b: Crouchy): number => (b.crouch ? CROUCH_BODY_TOP : BODY_TOP);
-export const speedOf = (b: Crouchy): number => (b.crouch ? MOVE_SPEED * CROUCH_SPEED_MULT : b.sprint ? MOVE_SPEED * SPRINT_MULT : MOVE_SPEED);
+export const speedOf = (b: Crouchy): number =>
+  (b.crouch ? MOVE_SPEED * CROUCH_SPEED_MULT : b.sprint ? MOVE_SPEED * SPRINT_MULT : MOVE_SPEED) * (b.weapon === 'knife' ? KNIFE_SPEED_MULT : 1);
 /** Highest ledge you can walk up without jumping (stairs). */
 export const STEP_HEIGHT = 0.45;
 export const GRAVITY = 20;
@@ -452,7 +455,7 @@ export function guestName(rand: () => number = Math.random): string {
 
 // ---------------------------------------------------------------- weapons
 
-export type WeaponId = 'pistol' | 'smg' | 'shotgun' | 'sniper' | 'rocket';
+export type WeaponId = 'pistol' | 'smg' | 'shotgun' | 'sniper' | 'rocket' | 'knife';
 export interface WeaponSpec {
   id: WeaponId;
   name: string;
@@ -471,6 +474,10 @@ export interface WeaponSpec {
   splash?: number;
   /** Sniper only: spread while scoped. */
   scopedSpread?: number;
+  /** Melee (knife): no ammo; `damage`/`cooldownMs` are the light slash, heavy* the right-click stab. */
+  melee?: boolean;
+  heavyDamage?: number;
+  heavyCooldownMs?: number;
 }
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
@@ -479,8 +486,9 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   shotgun: { id: 'shotgun', name: 'M1014 Combat Shotgun', damage: 17, cooldownMs: 800, pellets: 9, spread: 0.12, range: BULLET_RANGE, falloff: { full: 8, end: 25, min: 0.35 }, mag: 6, reloadMs: 2200 },
   sniper: { id: 'sniper', name: '.50 Cal Sniper', damage: 95, cooldownMs: 1300, pellets: 1, spread: 0.09, scopedSpread: 0, range: BULLET_RANGE, mag: 5, reloadMs: 2500 },
   rocket: { id: 'rocket', name: 'RPG Launcher', damage: 100, cooldownMs: 1100, pellets: 1, spread: 0, range: 40, mag: 2, reloadMs: 2600, splash: 2.4 },
+  knife: { id: 'knife', name: 'Combat Knife', damage: 35, cooldownMs: 400, pellets: 1, spread: 0, range: 1.8, mag: 1, reloadMs: 0, melee: true, heavyDamage: 65, heavyCooldownMs: 900 },
 };
-export const WEAPON_ORDER: WeaponId[] = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket'];
+export const WEAPON_ORDER: WeaponId[] = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'knife'];
 export const SWITCH_MS = 250;
 export const SCOPE_SETTLE_MS = 250;
 /** Self-damage multiplier for your own rocket splash. */
@@ -689,7 +697,7 @@ export function surfaceNormal(pt: Vec3, map: ArenaMap = MAP): Vec3 {
 // ---------------------------------------------------------------- paid spawns (shared chip wallet)
 
 /** Chips charged per spawn, by the loadout weapon you spawn with (the pistol sidearm always comes along). */
-export const SPAWN_PRICE: Record<WeaponId, number> = { pistol: 10, smg: 15, shotgun: 20, sniper: 25, rocket: 35 };
+export const SPAWN_PRICE: Record<WeaponId, number> = { pistol: 10, smg: 15, shotgun: 20, sniper: 25, rocket: 35, knife: 0 };
 /** Flat per-spawn add-ons on top of the weapon price, e.g. `{ grenades: 5 }` once grenades ship. Empty = none. */
 export const SPAWN_EXTRAS: Record<string, number> = {};
 /** Total price of one spawn with loadout `w` (weapon + every extra). This is the stake your killer collects. */
@@ -713,5 +721,51 @@ export function affordableLoadout(want: WeaponId, chips: number): WeaponId | nul
   for (const w of WEAPON_ORDER) if (!isKnifeOnly(w) && spawnCost(w) <= chips && spawnCost(w) < spawnCost(want) && (!best || spawnCost(w) > spawnCost(best))) best = w;
   return best ?? (knifeOnlyAvailable() ? (KNIFE_ID as WeaponId) : null);
 }
-/** Mid-life you can only hold your paid loadout weapon or the pistol. */
-export const canHold = (loadout: WeaponId, w: WeaponId): boolean => (isKnifeOnly(loadout) ? w === loadout : w === 'pistol' || w === loadout);
+/** Mid-life you can only hold your paid loadout weapon, the pistol, or the knife. */
+export const canHold = (loadout: WeaponId, w: WeaponId): boolean => (isKnifeOnly(loadout) ? w === loadout : w === 'pistol' || w === loadout || w === KNIFE_ID); // the knife is always carried
+
+// ---------------------------------------------------------------- melee
+
+export const MELEE_RANGE = 1.8;
+/** Half-angle of the swing cone in front of you (horizontal). */
+export const MELEE_CONE = (50 * Math.PI) / 180;
+/** Behind the target: the attacker sits within this half-angle of the target's back. */
+export const BACKSTAB_ANGLE = (60 * Math.PI) / 180;
+
+/** True if `attacker` is behind `target`, judged by the target's facing. */
+export function isBackstab(attacker: { x: number; y: number }, target: { x: number; y: number; a: number }): boolean {
+  const toAttacker = Math.atan2(attacker.y - target.y, attacker.x - target.x);
+  let d = toAttacker - (target.a + Math.PI);
+  d = Math.atan2(Math.sin(d), Math.cos(d));
+  return Math.abs(d) <= BACKSTAB_ANGLE;
+}
+
+/**
+ * Knife hit test: nearest living target within MELEE_RANGE (to the body column), inside the swing cone,
+ * at a reachable height, with clear line of sight from the eye to its chest or head.
+ * heavy = right-click stab (65, instant kill from behind); light = slash (35).
+ */
+export function meleeHit(
+  f: { id: string; x: number; y: number; z: number; a: number; crouch?: boolean },
+  targets: Array<Target & { a: number }>, heavy: boolean, map: ArenaMap = MAP,
+): { id: string; damage: number; backstab: boolean } | null {
+  const eye = { x: f.x, y: f.y, z: f.z + eyeHeightOf(f) };
+  let best: { id: string; damage: number; backstab: boolean; d: number } | null = null;
+  for (const t of targets) {
+    if (!t.alive || t.id === f.id) continue;
+    const d = Math.hypot(t.x - f.x, t.y - f.y) - PLAYER_RADIUS;
+    if (d > MELEE_RANGE) continue;
+    if (Math.abs(t.z - f.z) > 1.2) continue;
+    if (d > 0.05) {
+      let off = Math.atan2(t.y - f.y, t.x - f.x) - f.a;
+      off = Math.atan2(Math.sin(off), Math.cos(off));
+      if (Math.abs(off) > MELEE_CONE) continue;
+    }
+    if (!lineOfSight(eye, chestOf(t), map) && !lineOfSight(eye, { x: t.x, y: t.y, z: t.z + headZOf(t) }, map)) continue;
+    if (best && best.d <= d) continue;
+    const back = isBackstab(f, t);
+    const damage = heavy ? (back ? 999 : WEAPONS.knife.heavyDamage!) : WEAPONS.knife.damage;
+    best = { id: t.id, damage, backstab: heavy && back, d };
+  }
+  return best && { id: best.id, damage: best.damage, backstab: best.backstab };
+}

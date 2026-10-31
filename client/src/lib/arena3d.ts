@@ -134,7 +134,7 @@ function rampGeo(r: Ramp, unit: number): THREE.BufferGeometry {
 }
 
 /** First-person weapon state: kick 0..1 (just fired), lower 0..1 (switching), reload 0..1 progress or -1, bob walk phase. */
-export interface Viewmodel3D { w: WeaponId; kick: number; lower: number; reload: number; bob: number; muzzle: boolean; /** equipped skin token */ sk?: string | null }
+export interface Viewmodel3D { w: WeaponId; kick: number; lower: number; reload: number; bob: number; muzzle: boolean; /** equipped skin token */ sk?: string | null; /** knife swing 0..1, or -1 */ swing?: number; heavy?: boolean }
 export interface View3D { x: number; y: number; z: number; a: number; p: number; zoom: number; vm?: Viewmodel3D | null }
 export interface Soldier3D {
   id: string; x: number; y: number; z: number; a: number; p: number; color: string; flash: boolean; moving: boolean; dead?: number; t: number; w?: WeaponId; fire?: boolean;
@@ -148,6 +148,7 @@ export interface Soldier3D {
   /** horizontal speed, tiles/s (walk vs run cycle) */ speed?: number;
   /** crouching: hips drop, one knee forward, one back (matches the lowered server hitboxes) */ crouch?: boolean;
   /** sprinting: forward lean, longer stride, gun lowered */ sprint?: boolean;
+  /** knife attack progress 0..1 (heavy = stab, else slash) */ melee?: number; heavy?: boolean;
 }
 export interface Fx3D {
   drones: Array<{ x: number; y: number; z: number }>;
@@ -499,6 +500,16 @@ export class Arena3D {
     const out = rel < 0 ? 0 : rel < 0.15 ? rel / 0.15 : rel < 0.55 ? 1 : rel < 0.8 ? 1 - (rel - 0.55) / 0.25 : 0;
     if (vm.w === 'rocket') g.mag.position.set(0, -out * 0.1, -out * 0.2); else g.mag.position.set(0, -out * 0.22, 0);
     g.mag.visible = out < 0.98;
+    if (vm.w === 'knife') {
+      g.flash.visible = false;
+      const t = vm.swing ?? -1;
+      if (t >= 0) {
+        const e = Math.sin(Math.PI * Math.min(1, t * 1.4)); // out and back
+        if (vm.heavy) { g.root.position.z -= e * 0.22; g.root.position.x -= e * 0.06; g.root.rotation.x -= e * 0.25; } // forward stab
+        else { g.root.position.x -= e * 0.2; g.root.rotation.y += e * 1.1; g.root.rotation.z += e * 0.5; } // right-to-left slash
+      }
+      return;
+    }
     g.flash.visible = vm.muzzle;
     if (vm.muzzle) {
       g.flash.material.rotation = Math.random() * Math.PI;
@@ -735,6 +746,7 @@ export class Arena3D {
     const aim = s.aim;
     aim.position.set(0.04, 1.3, 0.05);
     aim.rotation.x = 0;
+    aim.rotation.y = 0;
     if (p.dead !== undefined) { aim.rotation.z = -0.9 * Math.min(1, p.dead * 2); return; }
     const k = p.recoil ?? 0;
     aim.rotation.z += k * 0.3;
@@ -742,6 +754,11 @@ export class Arena3D {
     if (p.reload !== undefined) { const r = Math.sin(Math.PI * p.reload); aim.rotation.z -= r * 0.6; aim.rotation.x = r * 0.7; }
     if (p.sw) aim.rotation.z -= p.sw * 1.1;
     if (p.sprint && p.moving) { aim.rotation.z -= 0.55; aim.rotation.x = 0.35; } // gun swung low across the chest
+    if (p.melee !== undefined) {
+      const e = Math.sin(Math.PI * p.melee);
+      if (p.heavy) { aim.position.x += e * 0.35; aim.rotation.z += e * 0.2; } // stab: arm thrusts forward
+      else { aim.rotation.y += (0.5 - p.melee) * 1.6 * e; aim.rotation.x += e * 0.4; } // slash: sweeping arc
+    }
   }
 
   private holdGun(s: Soldier, w: WeaponId, pitch: number) {

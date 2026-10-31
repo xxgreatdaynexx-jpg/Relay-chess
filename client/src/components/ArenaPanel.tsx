@@ -12,7 +12,7 @@ import { prefersReducedMotion } from '@/lib/motion';
 import { INTERP_DELAY_MS, LOCAL_STEP_S, SnapBuffer, samplePlayers } from '../../../shared/netInterp';
 import { TagVisibility, tagVisible } from '@/lib/arenaTags';
 import type { ArenaMap } from '../../../shared/arenaMaps';
-import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playLockBeep, playMultiKill, shotFalloff, unlockSounds } from '@/lib/sounds';
+import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playKnife, playLockBeep, playMultiKill, shotFalloff, unlockSounds } from '@/lib/sounds';
 import { feedParts, popupScale, POPUP_MS, type FeedItem } from '@/lib/arenaFeed';
 import {
   AIRSTRIKE_RADIUS, canHold, isKnifeOnly, knifeOnlyAvailable, cheapestSpawn, isWeapon, spawnCost, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
@@ -122,13 +122,13 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const me = useRef({
     id: '', x: 1.5, y: 1.5, z: 0, vz: 0, grounded: true, p: 0, a: 0, alive: true, hp: MAX_HP, joined: false, weapon: 'pistol' as WeaponId,
     ammo: WEAPONS.pistol.mag, reloadUntil: 0, switchedAt: -1e9, lastShot: {} as Partial<Record<WeaponId, number>>,
-    jumpAt: -1e9, scoped: false, firing: false, streak: 0, uavUntil: 0, walk: 0, crouch: false, eyeH: EYE_HEIGHT, sprint: false, sprintEndAt: -1e9, fovKick: 0,
+    jumpAt: -1e9, scoped: false, firing: false, streak: 0, uavUntil: 0, walk: 0, crouch: false, eyeH: EYE_HEIGHT, sprint: false, sprintEndAt: -1e9, fovKick: 0, meleeReadyAt: 0,
   });
   const snaps = useRef<Snap[]>([]);
   const lifeLoRef = useRef<WeaponId | null>(null);
   const phaseRef = useRef<'play' | 'sudden' | 'ended'>('play');
   const specRef = useRef<string | null>(null);
-  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, killmark: 0, headmark: 0, nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string; fall: number }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number; sniper?: boolean }>, impacts: [] as Array<{ x: number; y: number; z: number; player: boolean; at: number }>, blasts: [] as Array<{ x: number; y: number; z: number; big: boolean }>, shells: 0, rockets: new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number; seek?: number }>(), lockAt: 0, lockBeep: 0, weaponAt: new Map<string, { w: string; at: number }>(), hitAt: new Map<string, number>(), shotAt: new Map<string, number>(), shake: 0, jetAt: 0 });
+  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, killmark: 0, headmark: 0, melee: { at: -1e9, heavy: false }, meleeAt: new Map<string, { at: number; heavy: boolean }>(), nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string; fall: number }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number; sniper?: boolean }>, impacts: [] as Array<{ x: number; y: number; z: number; player: boolean; at: number }>, blasts: [] as Array<{ x: number; y: number; z: number; big: boolean }>, shells: 0, rockets: new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number; seek?: number }>(), lockAt: 0, lockBeep: 0, weaponAt: new Map<string, { w: string; at: number }>(), hitAt: new Map<string, number>(), shotAt: new Map<string, number>(), shake: 0, jetAt: 0 });
   const banner = useRef<{ text: string; sub: string; at: number } | null>(null);
   const touch = useRef({ up: false, down: false, left: false, right: false, lookUp: false, lookDown: false });
   const [touchCrouch, setTouchCrouch] = useState(false);
@@ -174,11 +174,21 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     m.scoped = next;
     socket.emit('fps_scope', { on: next });
   }
-  function shoot() {
+  function shoot(heavy = false) {
     const m = me.current;
     const now = performance.now();
     const spec = WEAPONS[m.weapon];
     if (!m.joined || !m.alive) return;
+    if (spec.melee) {
+      if (now - m.switchedAt < SWITCH_MS || now < m.meleeReadyAt) return;
+      if (m.sprint) { m.sprint = false; m.sprintEndAt = now; }
+      m.meleeReadyAt = now + (heavy ? spec.heavyCooldownMs! : spec.cooldownMs);
+      m.lastShot[m.weapon] = now;
+      fx.current.melee = { at: now, heavy };
+      playKnife('swing');
+      socket.emit('fps_shoot', { a: m.a, p: m.p, vt: Math.round(net.buf.renderTime(performance.now())), ...(heavy ? { h: true } : {}) });
+      return;
+    }
     if (m.reloadUntil && now < m.reloadUntil) return;
     if (now - m.switchedAt < SWITCH_MS) return;
     if (now - (m.lastShot[m.weapon] ?? -1e9) < spec.cooldownMs) return;
@@ -276,8 +286,13 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         if (src && h.by !== me.current.id) fx.current.dmgDirs.push({ a: Math.atan2(src.y - me.current.y, src.x - me.current.x), at: now });
       }
     };
-    const onShot = (s: { id: string; w: WeaponId; o?: [number, number, number]; rays?: Array<[number, number, number, number?]>; impact?: { x: number; y: number; z: number }; rocket?: { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number } }) => {
+    const onShot = (s: { id: string; w: WeaponId; melee?: 'slash' | 'stab'; hit?: number; o?: [number, number, number]; rays?: Array<[number, number, number, number?]>; impact?: { x: number; y: number; z: number }; rocket?: { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number } }) => {
       const now = performance.now();
+      if (s.melee) {
+        if (s.id === me.current.id) playKnife(s.hit ? 'hit' : 'miss');
+        else { fx.current.meleeAt.set(s.id, { at: now, heavy: s.melee === 'stab' }); playKnife(s.hit ? 'hit' : 'swing', 0.35); }
+        return;
+      }
       if (s.id !== me.current.id) { playWeaponShot(s.w, 0.35 * shotFalloff(s.o ? Math.hypot(s.o[0] - me.current.x, s.o[1] - me.current.y) : 0)); fx.current.shotAt.set(s.id, now); }
       if (s.o && s.rays) {
         // Tracers start a little below and ahead of the eye so your own don't sit on the crosshair.
@@ -493,7 +508,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         const sinceHit = now - (fx.current.hitAt.get(p.id) ?? -1e9);
         return {
           id: p.id, x: p.x, y: p.y, z: p.z, a: p.a, p: p.p, color: colorFor(p.id), flash: sinceHit < 120, moving: mv, t: now, w: p.w, sk: p.sk ?? null, fire: sinceShot < 60,
-          air: !p.g, crouch: !!p.c, sprint: !!p.s, speed: Math.min(8, sp), recoil: sinceShot < 160 ? 1 - sinceShot / 160 : 0, flinch: sinceHit < 260 ? 1 - sinceHit / 260 : 0,
+          air: !p.g, crouch: !!p.c, sprint: !!p.s, speed: Math.min(8, sp), recoil: sinceShot < 160 ? 1 - sinceShot / 160 : 0, ...meleePose(fx.current.meleeAt.get(p.id), now), flinch: sinceHit < 260 ? 1 - sinceHit / 260 : 0,
           sw: sinceSw < SWITCH_MS ? 1 - Math.abs(sinceSw / SWITCH_MS - 0.5) * 2 : 0,
           reload: p.rl > 0 ? Math.max(0, Math.min(1, 1 - p.rl / WEAPONS[p.w].reloadMs)) : undefined,
         };
@@ -534,7 +549,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       const shake = now - fx.current.shake < 450 ? (1 - (now - fx.current.shake) / 450) * 0.04 : 0;
       const vmSwitch = Math.max(0, 1 - (now - m.switchedAt) / SWITCH_MS);
       const vmReload = m.reloadUntil && now < m.reloadUntil ? 1 - (m.reloadUntil - now) / WEAPONS[m.weapon].reloadMs : -1;
-      const vm = showGun && m.alive && m.joined ? { w: m.weapon, kick: Math.max(0, 1 - (now - fx.current.muzzle) / 140), lower: vmSwitch, reload: vmReload, bob: m.walk, muzzle: now - fx.current.muzzle < 50, sk: (() => { const me = snap?.players.find((q) => q.id === m.id); return me && me.w === m.weapon ? me.sk ?? null : null; })() } : null;
+      const swingT = (now - fx.current.melee.at) / (fx.current.melee.heavy ? 420 : 260);
+      const vm = showGun && m.alive && m.joined ? { swing: m.weapon === 'knife' && swingT < 1 ? swingT : -1, heavy: fx.current.melee.heavy, w: m.weapon, kick: Math.max(0, 1 - (now - fx.current.muzzle) / 140), lower: vmSwitch, reload: vmReload, bob: m.walk, muzzle: now - fx.current.muzzle < 50, sk: (() => { const me = snap?.players.find((q) => q.id === m.id); return me && me.w === m.weapon ? me.sk ?? null : null; })() } : null;
       const qa = (window as unknown as { __arenaQA?: { vm?: unknown } }).__arenaQA; if (qa) qa.vm = vm;
       g3.render(specCam ? { x: specCam.x, y: specCam.y, z: specCam.z + EYE_HEIGHT, a: specCam.a, p: specCam.p, zoom: 1, vm: null } : { x: eye.x, y: eye.y, z: eye.z + m.eyeH + bob + (Math.random() - 0.5) * shake, a: m.a, p: m.p, zoom, vm }, soldiers, fx3);
       // Health bars over nearby enemies you can see.
@@ -643,7 +659,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       ctx.textAlign = 'right';
       ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(W2 - 92 * u, H2 - 30 * u, 88 * u, 26 * u);
       ctx.fillStyle = '#e6e9df'; ctx.font = `700 ${(14 * u) | 0}px ${mono}`;
-      ctx.fillText(reloading ? 'RELOAD' : `${m.ammo}`, W2 - 30 * u, H2 - 12 * u);
+      ctx.fillText(WEAPONS[m.weapon].melee ? '∞' : reloading ? 'RELOAD' : `${m.ammo}`, W2 - 30 * u, H2 - 12 * u);
       ctx.font = `600 ${(7 * u) | 0}px ${mono}`; ctx.fillStyle = '#a9ae9e';
       if (!reloading) ctx.fillText(`/${spec.mag}`, W2 - 8 * u, H2 - 12 * u);
       ctx.fillText(spec.name.toUpperCase(), W2 - 8 * u, H2 - 22 * u);
@@ -795,7 +811,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const GAME_KEYS = new Set(['tab', 'w', 'a', 's', 'd', 'q', 'e', 'f', 'r', 'control', 'c', 'shift', ' ', '1', '2', '3', '4', '5', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown']);
   function onKey(e: React.KeyboardEvent, down: boolean) {
     // Shift turns 1–5 into !@#…; read the physical key so guns still switch mid-sprint.
-    const key = /^Digit[1-5]$/.test(e.code ?? '') ? e.code.slice(5) : e.key.toLowerCase();
+    const key = /^Digit[1-6]$/.test(e.code ?? '') ? e.code.slice(5) : e.key.toLowerCase();
     if (down) {
       const hk = hotkeyFor(e.key, e.repeat);
       if (hk === 'release') { releaseLock(); setPickerOpen(false); return; }
@@ -812,7 +828,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     if (e.repeat) return;
     if (key === ' ') jump();
     else if (key === 'r') reload();
-    else if (/^[1-5]$/.test(key)) setWeapon(WEAPON_ORDER[Number(key) - 1]);
+    else if (/^[1-6]$/.test(key)) setWeapon(WEAPON_ORDER[Number(key) - 1]);
+    else if (key === 'v') setWeapon('knife');
     else if (key === 'f') shoot();
   }
 
@@ -965,7 +982,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
               } catch { /* pointerlockerror resyncs */ }
             }
             if (e.button === 0) { me.current.firing = true; shoot(); }
-            if (e.button === 2) setScope(true);
+            if (e.button === 2) { if (WEAPONS[me.current.weapon].melee) shoot(true); else setScope(true); }
           }}
           onTouchStart={() => { unlockSounds(); wrapRef.current?.focus(); }}
         />
@@ -1022,12 +1039,19 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         </div>
       ) : (
         <div className="fps-help" data-testid="arena-help">
-          <span className="fps-help-full">WASD move · mouse look · Q/E turn · PgUp/PgDn look · click or F shoot · Space jump · Shift sprint · Ctrl/C crouch (browsers keep Ctrl+W: use C) · 1–5 / wheel guns · R reload · right-click scope · Tab scores · M maps · F3 fps · Esc frees mouse</span>
-          <span className="fps-help-short">WASD move · click shoot · Space jump · Shift sprint · Ctrl/C crouch · 1–5 guns · R reload · Tab scores · M maps · F3 fps · Esc frees mouse</span>
+          <span className="fps-help-full">WASD move · mouse look · Q/E turn · PgUp/PgDn look · click or F shoot · Space jump · Shift sprint · Ctrl/C crouch (browsers keep Ctrl+W: use C) · 1–5 / wheel guns · 6/V knife (click slash, right-click stab) · R reload · right-click scope · Tab scores · M maps · F3 fps · Esc frees mouse</span>
+          <span className="fps-help-short">WASD move · click shoot · Space jump · Shift sprint · Ctrl/C crouch · 1–5 guns · 6/V knife · R reload · Tab scores · M maps · F3 fps · Esc frees mouse</span>
         </div>
       )}
     </div>
   );
+}
+
+/** 3P knife animation progress for a soldier (slash 260 ms, stab 420 ms). */
+function meleePose(m: { at: number; heavy: boolean } | undefined, now: number): { melee?: number; heavy?: boolean } {
+  if (!m) return {};
+  const t = (now - m.at) / (m.heavy ? 420 : 260);
+  return t >= 0 && t < 1 ? { melee: t, heavy: m.heavy } : {};
 }
 
 /** Small weapon silhouettes for the kill feed. */
@@ -1049,6 +1073,7 @@ function WeaponIcon({ cause }: { cause: string }) {
     shotgun: 'M0 3h26v2H12l-2 2H4L2 9H0z',
     sniper: 'M0 4h30v1.5H16l-2 1.5H6l-3 3H0zM10 1h7v2h-7z',
     rocket: 'M0 3h22l4 1.5L22 6H0zM8 6h4v4H8z',
+    knife: 'M0 6h8V4h2v6H8V8H0zM10 5h12l6 1-6 2H10z',
     airstrike: 'M2 5l10-1 4-4h3l-2 4 8 0v2l-8 0 2 4h-3l-4-4-10-1z',
     drone: 'M0 4h28v1.5H0zM9 5.5h10l-2 3h-6z',
     nuke: 'M14 0a7 7 0 1 1 0 14 7 7 0 1 1 0-14zm0 5a2 2 0 1 0 0 4 2 2 0 1 0 0-4z',

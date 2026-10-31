@@ -12,6 +12,7 @@ import { isMapId, MAP_ROTATION } from '../shared/arenaMaps.js';
 import { PoseHistory, rewindTime } from '../shared/netInterp.js';
 import { ArenaAntiCheat, ASSIST_CONE, ASSIST_PULL, ASSIST_SPREAD, coarse, HOMING_CONE, HOMING_TURN, VisibilityTracker, type ArenaPerk } from './arena-anticheat.js';
 import { MULTI_LEVEL, MULTI_TITLE, multiTier, nextChain, type MultiChain } from '../shared/arenaMulti.js';
+import { meleeHit } from '../shared/fps.js';
 import { applyCrouch, canSprint, headZOf, speedOf, SPRINT_FIRE_DELAY_MS, SPRINT_FIRE_SLACK_MS } from '../shared/fps.js';
 import { canHold, isKnifeOnly } from '../shared/fps.js';
 
@@ -68,6 +69,8 @@ export interface ArenaFighter extends Fighter {
   earned?: number;
   /** When this fighter entered the current match (participation time for the match-end hook). */
   matchJoinedAt?: number;
+  /** Knife: next swing allowed at (light and heavy share one recovery). */
+  meleeReadyAt?: number;
 }
 
 /** `to` set: sent only to that socket (e.g. the killer's own multi-kill sound cue); otherwise broadcast. */
@@ -339,7 +342,7 @@ export class ArenaWorld {
   /** Lag compensation: where everyone was over the last second. */
   history = new PoseHistory();
 
-  shoot(id: string, a: unknown, now: number, p?: unknown, viewT?: unknown): ArenaEvent[] {
+  shoot(id: string, a: unknown, now: number, p?: unknown, viewT?: unknown, heavy?: unknown): ArenaEvent[] {
     const f = this.fighters.get(id);
     if (!f || !f.alive || this.phase === 'ended') return [];
     const spec = WEAPONS[f.weapon];
@@ -350,6 +353,7 @@ export class ArenaWorld {
     if (f.sprint) { this.setSprint(f, false, now); return []; }
     if (f.sprintEndAt !== undefined && now - f.sprintEndAt < SPRINT_FIRE_DELAY_MS - SPRINT_FIRE_SLACK_MS) return [];
     if (now - f.lastShotAt[f.weapon] < spec.cooldownMs - FIRE_JITTER_MS) return [];
+    if (spec.melee) return this.melee(f, a, p, viewT, heavy === true, now);
     if (f.ammo[f.weapon] <= 0) {
       this.reload(id, now);
       return [];
@@ -409,6 +413,33 @@ export class ArenaWorld {
       if (head) f.headshots += 1;
       events.push(...this.damage(f.id, tid, dmg, now, f.weapon, head));
     }
+    return events;
+  }
+
+  /** Knife swing: light slash or heavy stab, lag-compensated like a shot, line of sight required. */
+  private melee(f: ArenaFighter, a: unknown, p: unknown, viewT: unknown, heavy: boolean, now: number): ArenaEvent[] {
+    const spec = WEAPONS.knife;
+    if (now < (f.meleeReadyAt ?? -1e9) - FIRE_JITTER_MS) return [];
+    const na = normAngle(a);
+    if (na !== null) f.a = na;
+    const np = clampPitch(p);
+    if (np !== null) f.p = np;
+    this.advance(f, now);
+    f.meleeReadyAt = now + (heavy ? spec.heavyCooldownMs! : spec.cooldownMs);
+    f.lastShotAt.knife = now;
+    f.lastShot = now;
+    const rt = rewindTime(now, viewT);
+    const restore: Array<[Fighter, number, number, number, boolean | undefined]> = [];
+    if (rt < now) for (const o of this.fighters.values()) {
+      if (o.id === f.id || !o.alive) continue;
+      const h = this.history.at(o.id, rt);
+      if (h) { restore.push([o, o.x, o.y, o.z, o.crouch]); o.x = h.x; o.y = h.y; o.z = h.z; o.crouch = !!h.crouch; }
+    }
+    let hit: ReturnType<typeof meleeHit>;
+    try { hit = meleeHit(f, [...this.fighters.values()], heavy, this.map); }
+    finally { for (const [o, x, y, z, c] of restore) { o.x = x; o.y = y; o.z = z; o.crouch = c; } }
+    const events: ArenaEvent[] = [{ ev: 'fps_shot', data: { id: f.id, w: 'knife', o: [+f.x.toFixed(2), +f.y.toFixed(2), +f.z.toFixed(2)], melee: heavy ? 'stab' : 'slash', hit: hit ? 1 : 0, ...(hit?.backstab ? { backstab: true } : {}) } }];
+    if (hit) events.push(...this.damage(f.id, hit.id, hit.damage, now, 'knife'));
     return events;
   }
 

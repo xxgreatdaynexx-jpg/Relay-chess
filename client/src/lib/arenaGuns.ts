@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { WEAPON_ORDER, type WeaponId } from '../../../shared/fps';
 
-export type GunMat = 'metal' | 'steel' | 'polymer' | 'wood' | 'furniture' | 'olive' | 'glass';
+export type GunMat = 'metal' | 'steel' | 'polymer' | 'wood' | 'furniture' | 'olive' | 'glass' | 'blade' | 'handle';
 const MAT_COLORS: Record<GunMat, { color: number; shininess: number; specular: number }> = {
   metal: { color: 0x3c3f44, shininess: 60, specular: 0x5a5e66 }, // blued/parkerised steel
   steel: { color: 0x7d8086, shininess: 90, specular: 0x9aa0a8 }, // bare bolt / slide wear
@@ -16,6 +16,8 @@ const MAT_COLORS: Record<GunMat, { color: number; shininess: number; specular: n
   furniture: { color: 0x3e4a32, shininess: 15, specular: 0x262a22 }, // olive-drab sniper stock
   olive: { color: 0x55603a, shininess: 20, specular: 0x2a2e22 }, // RPG warhead paint
   glass: { color: 0x1d3a4a, shininess: 120, specular: 0xbfe4ff }, // optic lenses
+  blade: { color: 0xa9adb3, shininess: 110, specular: 0xd8dde4 }, // knife blade (own slot for skins)
+  handle: { color: 0x2b2a26, shininess: 10, specular: 0x1e1e1c }, // knife grip (own slot for skins)
 };
 
 let shared: Record<GunMat, THREE.MeshPhongMaterial> | null = null;
@@ -73,6 +75,16 @@ export interface GunSpec {
 }
 
 const BUILD: Record<WeaponId, (b: Builder) => Omit<GunSpec, 'id'>> = {
+  // Fixed-blade combat knife: clip-point blade, crossguard, ribbed grip, pommel. Slots: blade / metal (guard, pommel) / handle.
+  knife: (b) => {
+    b.profile([[-0.012, 0.012], [-0.15, 0.012], [-0.19, 0.0], [-0.165, -0.008], [-0.012, -0.014]], 0.004, 'blade', [0, 0.005, 0]); // blade
+    b.box(0.0045, 0.004, 0.13, 'metal', [0, 0.017, -0.075]); // spine
+    b.box(0.022, 0.034, 0.008, 'metal', [0, 0.0, -0.008]); // crossguard
+    b.box(0.022, 0.026, 0.1, 'handle', [0, -0.002, 0.045]); // grip
+    for (let i = 0; i < 4; i++) b.box(0.024, 0.028, 0.006, 'handle', [0, -0.002, 0.012 + i * 0.022]); // grip ribs
+    b.box(0.024, 0.03, 0.012, 'metal', [0, -0.002, 0.1]); // pommel
+    return { muzzle: [0, 0.005, -0.19], support: [0, -0.002, 0.045], view: [0.13, -0.14, -0.3], flash: 0 };
+  },
   // Full-size 9mm service pistol: two-tone slide, exposed barrel, wrap grip.
   pistol: (b) => {
     b.box(0.03, 0.034, 0.205, 'metal', [0, 0.05, -0.07]); // slide

@@ -15,7 +15,7 @@ describe('arena gun models', () => {
       const mats = g.body.map((b) => b.mat);
       expect(new Set(mats).size).toBe(mats.length);
       expect(g.body.length + g.mag.length).toBeLessThanOrEqual(8);
-      expect(g.mag.length).toBeGreaterThan(0);
+      if (w !== 'knife') expect(g.mag.length).toBeGreaterThan(0); // a knife has no magazine
     }
   });
   it('shares geometry and materials between instances', () => {

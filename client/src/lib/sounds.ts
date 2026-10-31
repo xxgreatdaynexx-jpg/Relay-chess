@@ -558,6 +558,19 @@ export function playWeaponShot(weapon: string, volume = 1): void {
   if (weapon === 'shotgun') { burst(ctx, now + 0.38, 0.05, 'bandpass', 2400, 0.25 * v, 3); burst(ctx, now + 0.5, 0.05, 'bandpass', 1900, 0.25 * v, 3); }
 }
 
+/** Knife: 'swing' whoosh, 'hit' wet thud + scrape, 'miss' a lighter air cut. Synthesised, through the master bus. */
+export function playKnife(kind: 'swing' | 'hit' | 'miss', volume = 1): void {
+  const ctx = audio();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const v = volume;
+  if (kind === 'swing') { burst(ctx, now, 0.16, 'bandpass', 1500, 0.22 * v, 1.2); burst(ctx, now + 0.04, 0.1, 'bandpass', 2600, 0.1 * v, 2); return; }
+  if (kind === 'miss') { burst(ctx, now, 0.08, 'highpass', 3200, 0.06 * v); return; }
+  thump(ctx, now, 95, 0.12, 0.5 * v);
+  burst(ctx, now, 0.06, 'lowpass', 700, 0.35 * v);
+  burst(ctx, now + 0.03, 0.09, 'bandpass', 3800, 0.12 * v, 4);
+}
+
 /** Sniper bolt: two metallic clacks. */
 export function playBoltCycle(volume = 1, delay = 0): void {
   const ctx = audio();
