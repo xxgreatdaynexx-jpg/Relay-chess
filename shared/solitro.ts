@@ -218,7 +218,7 @@ export function newRun(seed: number, now = Date.now()): Run {
   };
   r.boss = rollBoss(r);
   startBlind(r);
-  r.stuck = isStuck(r.board, r.redeals > 0);
+  r.stuck = runStuck(r);
   return r;
 }
 
@@ -406,6 +406,11 @@ function enhanceRandom(r: Run, e: Enh, n: number): string[] {
   return out;
 }
 
+/** No moves left this blind. A held Wellspring counts as a redeal, since using it can recycle the waste. */
+function runStuck(r: Run): boolean {
+  return isStuck(r.board, r.redeals > 0 || r.omens.includes('wellspring'));
+}
+
 /** Names only the enhanced cards the player can already see; hidden ones are just counted. */
 export function enhanceNote(r: Run, omen: string, ids: string[], enh: string): string {
   const seen = new Set<string>();
@@ -500,7 +505,7 @@ export function act(run: Run, a: Action): Run {
     default:
       fail('Unknown action.');
   }
-  r.stuck = r.phase === 'blind' ? isStuck(r.board, r.redeals > 0) : false;
+  r.stuck = r.phase === 'blind' ? runStuck(r) : false;
   return r;
 }
 

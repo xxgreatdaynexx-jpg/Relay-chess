@@ -236,6 +236,24 @@ describe('solitro enhancements and omens', () => {
     const ok = act(run({ redeals: 1, omens: ['windfall'] }, { waste: [c('S1'), c('D9')], tableau: [[c('C3')], [], [], [], [], [], []] }), { t: 'use', i: 0 });
     expect(ok.stuck).toBe(false);
   });
+  it('a held Wellspring is not a deadlock: it can buy the redeal that reaches a buried card', () => {
+    const r = act(run({ redeals: 0, omens: ['wellspring', 'windfall'] }, { stock: [], waste: [c('S1'), c('D9')], tableau: [[c('S7', false), c('C3')], [c('H12')], [], [], [], [], []] }), { t: 'use', i: 1 });
+    expect(r.omens).toEqual(['wellspring']);
+    expect(r.stuck).toBe(false);
+    const gone = act(run({ redeals: 0, omens: ['windfall'] }, { stock: [], waste: [c('S1'), c('D9')], tableau: [[c('S7', false), c('C3')], [c('H12')], [], [], [], [], []] }), { t: 'use', i: 0 });
+    expect(gone.stuck).toBe(true);
+  });
+  it('no enhancing omen names a face-down card', () => {
+    const lab = (id: string) => `${['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'][Number(id.slice(1))]}${{ S: '♠', H: '♥', D: '♦', C: '♣' }[id[0]]}`;
+    for (const om of ['anvil', 'kiln', 'geode', 'gild', 'horseshoe', 'forge'] as const) {
+      for (let seed = 1; seed <= 15; seed++) {
+        const base = newRun(seed);
+        const r = act({ ...base, omens: [om] }, { t: 'use', i: 0 });
+        const hidden = new Set([...r.board.stock, ...r.board.tableau.flat()].filter((x) => !x.faceUp).map((x) => x.id));
+        for (const id of Object.keys(r.enh)) if (hidden.has(id)) expect(r.note).not.toContain(lab(id));
+      }
+    }
+  });
   it('Windfall doubles money up to +$20; blind-only omens refuse in the shop', () => {
     expect(act(run({ omens: ['windfall'], money: 7 }), { t: 'use', i: 0 }).money).toBe(14);
     expect(act(run({ omens: ['windfall'], money: 40 }), { t: 'use', i: 0 }).money).toBe(60);
