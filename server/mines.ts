@@ -315,7 +315,7 @@ export class MinesWorld {
    * Returns false (no change) if a withdrawal would go negative. Without a store, `fallback` gets the rows instead. */
   /** Weight of an account's stored pack (same units as BACKPACK_CAP). */
   packLoad(account: string): number { let t = 0; for (const s of this.pack(playerKey(account)).values()) t += s.qty * (s.type === 'ore' && isOre(s.id) ? ORES[s.id].weight : 1); return t; }
-  adjustStack(account: string, type: ItemType, id: string, delta: number, extra: Array<{ sql: string; args: unknown[] }> = [], fallback?: (rows: Array<{ sql: string; args: unknown[] }>) => void, opts: { after?: Promise<unknown>; bind?: (p: Promise<unknown>) => void } = {}): boolean {
+  adjustStack(account: string, type: ItemType, id: string, delta: number, extra: Array<{ sql: string; args: unknown[] }> = [], fallback?: (rows: Array<{ sql: string; args: unknown[] }>) => void, opts: { after?: Promise<unknown>; bind?: (p: Promise<unknown>) => void; onFail?: (e: Error) => void } = {}): boolean {
     const k = playerKey(account); const p = this.pack(k); const key = stackKey({ type, id });
     const cur = p.get(key)?.qty ?? 0;
     if (!Number.isInteger(delta) || cur + delta < 0) return false;
@@ -326,7 +326,14 @@ export class MinesWorld {
     // Retried (every row is idempotent: absolute snapshots + ON CONFLICT ledger keys) so a blip can't lose a paid-for delivery.
     const run = async () => { await opts.after; for (let i = 0; ; i++) { try { return await store.save(k, account.trim(), snap, undefined, undefined, extra); } catch (e) { if (i >= 3) throw e; await new Promise((r) => setTimeout(r, 250 * 2 ** i)); } } };
     const job = this.chain.then(run);
-    this.chain = job.catch((e) => console.error('[mines] save failed:', (e as Error).message));
+    this.chain = job.catch((e) => {
+      console.error('[mines] save failed:', (e as Error).message);
+      if (!opts.onFail) return;
+      // Nothing committed: undo the in-memory delta so memory matches the DB, then let the caller undo its side.
+      const now = p.get(key)?.qty ?? 0; const back = now - delta;
+      if (back <= 0) p.delete(key); else p.set(key, { type, id, qty: back });
+      try { opts.onFail(e as Error); } catch (err) { console.error('[mines] rollback failed:', (err as Error).message); }
+    });
     opts.bind?.(this.chain);
     return true;
   }

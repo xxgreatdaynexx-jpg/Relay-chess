@@ -36,7 +36,7 @@ const pose = (m: THREE.Object3D, yaw: number, pitch: number) => { m.rotation.set
 
 let shared: { r: THREE.WebGLRenderer; scene: THREE.Scene; cam: THREE.PerspectiveCamera } | null = null;
 const cache = new Map<string, string>();
-const queue: Array<{ key: string; token: string; size: number; done: (url: string | null) => void }> = [];
+const queue: Array<{ key: string; token: string; size: number; done: (url: string | null) => void; retried?: boolean }> = [];
 let pumping = false;
 
 function pump() {
@@ -46,7 +46,9 @@ function pump() {
     while (queue.length && performance.now() - t0 < 12) {
       const job = queue.shift()!;
       const hit = cache.get(job.key); if (hit) { job.done(hit); continue; }
-      job.done(renderNow(job.token, job.size, job.key));
+      const url = renderNow(job.token, job.size, job.key);
+      if (!url && !job.retried) { shared = null; queue.push({ ...job, retried: true }); continue; } // one retry on a fresh renderer
+      job.done(url);
     }
     if (queue.length) requestAnimationFrame(step); else pumping = false;
   };
@@ -58,6 +60,8 @@ function renderNow(token: string, size: number, key: string): string | null {
       const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
       r.setClearColor(0x000000, 0); r.outputColorSpace = THREE.SRGBColorSpace;
       shared = { r, ...stage() };
+      // Lost GPU context (tab backgrounded, driver reset): drop it so the next job builds a fresh renderer.
+      r.domElement.addEventListener('webglcontextlost', () => { shared = null; });
     }
     const m = skinnedModel(token); if (!m) return null;
     shared.r.setSize(size, size, false); frame(shared.cam, 1);

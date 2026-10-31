@@ -1639,3 +1639,6 @@ html, body { overflow-x: clip; }
 .mkt-listings { list-style: none; padding: 0; margin: .25rem 0; max-height: 180px; overflow: auto; }
 .mkt-listings li { display: flex; gap: .4rem; align-items: center; padding: 2px 0; }
 .mkt-listings li button { margin-left: auto; }
+.inv-thumb-loading { width: 55%; height: 55%; margin: auto; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--sc) 60%, transparent); border-top-color: transparent; animation: inv-spin .9s linear infinite; opacity: .7; }
+.inv-thumb { display: flex; }
+@keyframes inv-spin { to { transform: rotate(360deg); } }

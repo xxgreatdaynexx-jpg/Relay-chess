@@ -64,6 +64,7 @@ export class Market {
   trades = new Map<string, Trade>();
   stacks = new Map<string, StackListing>();
   onTrade?: (keys: string[]) => void;
+  onStacksReverted?: () => void;
   constructor(readonly vault: ItemVault = getVault()) {}
 
   /** Load persisted market state (after the vault has attached). */
@@ -192,7 +193,14 @@ export class Market {
     if (l.qty === 0) { l.status = 'sold'; l.closedAt = now; this.stacks.delete(l.id); }
     const sale: Sale = { id: randomUUID(), listingId: `${l.id}#${seq}`, itemId: `qty:${n}`, what: stackWhat(l.type, l.itemId), price: l.unit, fee, seller: l.seller, buyer: k, at: now };
     this.sales.push(sale); if (this.sales.length > 5000) this.sales.shift();
-    mines.adjustStack(name, l.type, l.itemId, n, [...chips.stmts, stackStmt(l), saleStmt(sale)], (r) => this.stackRows(r), { after: chips.after, bind: chips.bind });
+    const onFail = () => {
+      // The one transaction never committed: put chips, listing and history back exactly as they were.
+      chips.revert();
+      const i = this.sales.indexOf(sale); if (i >= 0) this.sales.splice(i, 1);
+      l.qty += n; l.sold = seq - 1; if (l.status === 'sold') { l.status = 'active'; delete l.closedAt; } this.stacks.set(l.id, l);
+      this.onStacksReverted?.();
+    };
+    mines.adjustStack(name, l.type, l.itemId, n, [...chips.stmts, stackStmt(l), saleStmt(sale)], (r) => this.stackRows(r), { after: chips.after, bind: chips.bind, onFail });
     return { type: l.type, id: l.itemId, qty: n, price, fee };
   }
   browseStacks(f: { type?: unknown; q?: unknown } = {}) {

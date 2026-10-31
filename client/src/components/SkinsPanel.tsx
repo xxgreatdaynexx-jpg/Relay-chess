@@ -25,6 +25,7 @@ export function Swatch({ item, size }: { item: SkinItem; size: number }) {
   const box = useRef<HTMLDivElement>(null);
   const skin = SKIN_BY_ID.get(item.skin);
   useEffect(() => {
+    setUrl(null); setFailed(false); // never show the previous item's model while the new one renders
     if (item.kind !== 'skin' || !skin) return;
     const el = box.current; if (!el) return;
     let live = true; const token = skinToken(item);
@@ -38,7 +39,7 @@ export function Swatch({ item, size }: { item: SkinItem; size: number }) {
   if (item.kind === 'key') return <div className="inv-icon" style={{ width: size, height: size }}>🔑</div>;
   return (
     <div ref={box} className={`inv-thumb ${skin?.fx ? `fx-${skin.fx}` : ''}`} style={{ width: size, height: size }}>
-      {url ? <img src={url} width={size} height={size} alt="" draggable={false} data-testid="inv-thumb" /> : <FlatSwatch item={item} size={failed ? size : Math.round(size * 0.6)} />}
+      {url ? <img src={url} width={size} height={size} alt="" draggable={false} data-testid="inv-thumb" /> : failed ? <FlatSwatch item={item} size={size} /> : <div className="inv-thumb-loading" style={{ '--sc': skin?.colors[0] ?? '#888' } as React.CSSProperties} data-testid="inv-thumb-loading" />}
     </div>
   );
 }

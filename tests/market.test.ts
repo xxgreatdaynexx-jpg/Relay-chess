@@ -166,12 +166,21 @@ describe('stackable (Mines) listings', () => {
     // Now make the item transaction fail every time: no ledger row, no balance change, no sale may land.
     const orig = store.save.bind(store); store.save = async () => { throw new Error('db down'); };
     const before = Number((await q("SELECT chips FROM casino_players WHERE player_key = 'qa-buyer'"))[0].chips);
-    mm.buyStack('QA-Buyer', l.id, 1); await w.flush(); await bank.flush();
+    const mem = { buyer: chips('QA-Buyer'), seller: chips('QA-Miner'), qty: w.stackQty('QA-Buyer', 'bar', 'gold_bar'), left: mm.stacks.get(l.id)!.qty, sold: mm.stacks.get(l.id)!.sold, sales: mm.sales.length };
+    mm.buyStack('QA-Buyer', l.id, 3); // buys the rest: the listing would close
+    expect(mm.stacks.has(l.id)).toBe(false);
+    await w.flush(); await bank.flush(); await new Promise((r) => setTimeout(r, 0));
+    // ...and memory rolls back to match the DB exactly.
+    expect({ buyer: chips('QA-Buyer'), seller: chips('QA-Miner'), qty: w.stackQty('QA-Buyer', 'bar', 'gold_bar'), left: mm.stacks.get(l.id)?.qty, sold: mm.stacks.get(l.id)?.sold, sales: mm.sales.length }).toEqual(mem);
+    expect(mm.stacks.get(l.id)?.status).toBe('active');
     expect((await q("SELECT tx_key FROM wallet_transactions WHERE tx_key LIKE 'mkt:%:2'")).length).toBe(0);
     expect(Number((await q("SELECT chips FROM casino_players WHERE player_key = 'qa-buyer'"))[0].chips)).toBe(before);
     expect((await q('SELECT * FROM market_sales')).length).toBe(1);
     store.save = orig;
-  }, 20000);
+    // A retry after recovery succeeds with the same keys (they were released).
+    mm.buyStack('QA-Buyer', l.id, 1); await w.flush(); await bank.flush();
+    expect((await q("SELECT tx_key FROM wallet_transactions WHERE tx_key LIKE 'mkt:%:2'")).length).toBe(2);
+  }, 30000);
   it('buys land in uncapped banked storage (big stashes are not blocked by the 120 carry cap), with a per-stack sanity limit', () => {
     const w = getMines(); w.adjustStack('QA-Miner', 'bar', 'iron_bar', 50); w.adjustStack('QA-Buyer', 'ore', 'stone', 5000);
     const l = m.listStack('QA-Miner', 'bar', 'iron_bar', 50, 1);
