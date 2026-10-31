@@ -7,7 +7,7 @@ import { LOOK_KEY, SENS_MAX, SENS_MIN, mouseLook, readLook, type LookPrefs, FPS_
 import { ArenaRenderer, minimapSize } from '@/lib/arenaRender';
 import type { Arena3D, Fx3D, Soldier3D, Viewmodel3D } from '@/lib/arena3d';
 import { prefersReducedMotion } from '@/lib/motion';
-import { predictShot, ShotPredictor } from '../../../shared/arenaPredict';
+import { predictShot, ShotPredictor, adoptServerAmmo } from '../../../shared/arenaPredict';
 import { INTERP_DELAY_MS, LOCAL_STEP_S, SnapBuffer, samplePlayers } from '../../../shared/netInterp';
 import { TagVisibility, tagVisible } from '@/lib/arenaTags';
 import type { ArenaMap } from '../../../shared/arenaMaps';
@@ -128,7 +128,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const me = useRef({
     id: '', x: 1.5, y: 1.5, z: 0, vz: 0, grounded: true, p: 0, a: 0, alive: true, hp: MAX_HP, joined: false, weapon: 'pistol' as WeaponId,
     ammo: WEAPONS.pistol.mag, reloadUntil: 0, switchedAt: -1e9, lastShot: {} as Partial<Record<WeaponId, number>>,
-    jumpAt: -1e9, scoped: false, firing: false, semiPending: false, streak: 0, uavUntil: 0, walk: 0, crouch: false, eyeH: EYE_HEIGHT, sprint: false, sprintEndAt: -1e9, fovKick: 0, meleeReadyAt: 0,
+    jumpAt: -1e9, scoped: false, firing: false, semiPending: false, streak: 0, uavUntil: 0, walk: 0, crouch: false, eyeH: EYE_HEIGHT, sprint: false, sprintEndAt: -1e9, fovKick: 0, meleeReadyAt: 0, localActAt: -1e9,
   });
   const snaps = useRef<Snap[]>([]);
   const lifeLoRef = useRef<WeaponId | null>(null);
@@ -186,6 +186,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     if (m.weapon === w || (lifeLoRef.current !== null && !canHold(lifeLoRef.current, w) && !extraRef.current.includes(w))) return;
     m.weapon = w;
     m.switchedAt = performance.now();
+    m.localActAt = m.switchedAt;
     m.reloadUntil = 0;
     m.scoped = false;
     socket.emit('fps_weapon', { w });
@@ -211,6 +212,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     const spec = WEAPONS[m.weapon];
     if (m.reloadUntil || m.ammo >= spec.mag) return;
     m.reloadUntil = performance.now() + spec.reloadMs;
+    m.localActAt = performance.now();
     socket.emit('fps_reload');
   }
   function jump() {
@@ -251,6 +253,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     if (m.ammo <= 0) return reload();
     m.lastShot[m.weapon] = now;
     m.semiPending = false;
+    m.localActAt = now;
     m.ammo -= 1;
     if (m.ammo === 0) m.reloadUntil = now + spec.reloadMs;
     fx.current.muzzle = now;
@@ -372,7 +375,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         m.uavUntil = mine.uav ? performance.now() + mine.uav : 0;
         // The server owns the loadout: if our weapon disagrees for longer than a switch takes, adopt the server's.
         if (mine.w !== m.weapon && performance.now() - m.switchedAt > 1000) { m.weapon = mine.w; m.scoped = false; }
-        if (mine.w === m.weapon) {
+        if (mine.w === m.weapon && adoptServerAmmo(performance.now(), m.localActAt, net.ping)) {
           m.ammo = mine.ammo;
           if (typeof mine.gn === 'number') fx.current.nadesLeft = mine.gn;
           m.reloadUntil = mine.rl ? performance.now() + mine.rl : 0;

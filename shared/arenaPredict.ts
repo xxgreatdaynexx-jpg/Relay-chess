@@ -52,3 +52,13 @@ export class ShotPredictor {
 
 /** Server-side: accept a client shot id only if it is a sane positive integer. */
 export const cleanSid = (v: unknown): number | undefined => (typeof v === 'number' && Number.isInteger(v) && v > 0 && v <= 0x7fffffff ? v : undefined);
+
+/** How long a local fire/reload/switch owns ammo + reload state before snapshots may overwrite it. */
+export const localGraceMs = (pingMs: number): number => Math.min(600, Math.max(250, pingMs + 150));
+/**
+ * Snapshots are ~RTT/2 + one tick stale: adopting their ammo/reload right after a local shot or reload start
+ * makes the counter jump back and the reload anim flicker off. Keep local state inside the grace window.
+ */
+export function adoptServerAmmo(now: number, lastLocalAt: number, pingMs: number): boolean {
+  return now - lastLocalAt >= localGraceMs(pingMs);
+}

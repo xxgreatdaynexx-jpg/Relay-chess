@@ -119,3 +119,15 @@ describe('arena head hits: every weapon, standing and crouched, predicted and se
     });
   }
 });
+
+import { adoptServerAmmo, localGraceMs } from '../shared/arenaPredict';
+describe('arena instant reload/fire: stale snapshots do not overwrite local ammo', () => {
+  it('keeps local state inside the grace window, adopts server after', () => {
+    expect(localGraceMs(0)).toBe(250);
+    expect(localGraceMs(300)).toBe(450);
+    expect(localGraceMs(5000)).toBe(600);
+    expect(adoptServerAmmo(1100, 1000, 80)).toBe(false);
+    expect(adoptServerAmmo(1260, 1000, 80)).toBe(true);
+    expect(adoptServerAmmo(1000, -1e9, 0)).toBe(true);
+  });
+});
