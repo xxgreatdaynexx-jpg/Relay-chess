@@ -23,7 +23,7 @@ describe('kill cam ring buffer', () => {
     const k = new KillCamBuffer();
     const fs = [{ id: 'a', alive: true, x: 0, y: 0, z: 0, a: 0, p: 0, weapon: 'pistol' }, { id: 'b', alive: true, x: 1, y: 1, z: 0, a: 0, p: 0, weapon: 'smg' }, { id: 'c', alive: true, x: 9, y: 9, z: 0, a: 0, p: 0, weapon: 'smg' }];
     for (let t = 0; t <= 10_000; t += 100) { if (t % 500 === 0) k.shot('a'); k.frame(t, fs); }
-    expect(k.size).toBeLessThanOrEqual(51);
+    expect(k.size).toBeLessThanOrEqual(3 * 51); // per-fighter samples, ~5 s each
     k.kill({ killerId: 'a', killer: 'A', victimId: 'b', weapon: 'pistol', dist: 1.4, head: false, bot: false, at: 10_000 });
     const got = k.get('b', 10_000)!;
     expect(got.track!.length).toBe(KILLCAM_MS / 100 + 1);

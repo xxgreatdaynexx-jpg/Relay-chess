@@ -297,7 +297,7 @@ export class ArenaWorld {
     const np = clampPitch(p);
     if (np !== null) f.p = np;
     if (this.audit && (na !== null || np !== null)) this.audit.aim(id, f.a, f.p, now);
-    if (now - f.lastMove < 25) return; // ~40 Hz max
+    if (now - f.lastMove < 25) { this.killcam.sample(now, f); return; } // ~40 Hz max
     this.advance(f, now);
     {
       const scoped = canScope(f.weapon) && f.scopedSince > 0;
@@ -318,6 +318,7 @@ export class ArenaWorld {
     if (typeof seq === 'number' && Number.isInteger(seq)) f.moveSeq = seq;
     f.lastMove = now;
     this.history.record(f.id, now, f.x, f.y, f.z, !!f.crouch);
+    this.killcam.sample(now, f);
   }
 
   setSprint(f: ArenaFighter, on: boolean, now: number): void {
@@ -441,6 +442,7 @@ export class ArenaWorld {
     this.advance(f, now);
     f.lastShotAt[f.weapon] = now;
     this.killcam.shot(f.id);
+    this.killcam.sample(now, f, true);
     f.lastShot = now;
     f.ammo[f.weapon] -= 1;
     if (f.ammo[f.weapon] === 0) f.reloadUntil = now + spec.reloadMs;
@@ -449,6 +451,7 @@ export class ArenaWorld {
       const r: Rocket & { seek?: true; lock?: string | null } = launchRocket(++this.rocketSeq, f, now);
       if (this.hasPerk(f.id, 'homingRpg')) { r.seek = true; r.lock = this.acquire(r); }
       this.rockets.push(r);
+      this.killcam.shotFx(now, { id: f.id, w: f.weapon, o: [+f.x.toFixed(2), +f.y.toFixed(2), +f.z.toFixed(2)], rays: [], sc: 0, hit: 0 });
       return [{ ev: 'fps_shot', data: { id: f.id, w: f.weapon, o: [+f.x.toFixed(2), +f.y.toFixed(2), +f.z.toFixed(2)], rocket: this.rocketView(r) } }];
     }
     // Rewind other fighters to what the shooter saw (capped at LAG_COMP_MAX_MS), hit-test, then restore.
@@ -483,6 +486,7 @@ export class ArenaWorld {
         impact: shot.impact && { x: +shot.impact.x.toFixed(2), y: +shot.impact.y.toFixed(2), z: +shot.impact.z.toFixed(2) },
       },
     }];
+    this.killcam.shotFx(now, { id: f.id, w: f.weapon, o: [+f.x.toFixed(2), +f.y.toFixed(2), +f.z.toFixed(2)], rays: shot.rays.slice(0, 12).map((r) => [+r.a.toFixed(3), +r.p.toFixed(3), +r.dist.toFixed(2), r.hit ? 1 : 0] as [number, number, number, number]), sc: scoped ? 1 : 0, hit: shot.hits.size > 0 ? 1 : 0 });
     this.audit?.shot(f.id, now, { precise: f.weapon !== 'shotgun', hit: shot.hits.size > 0, head: shot.heads.size > 0, flick, blocked, weapon: f.weapon });
     for (const [tid, dmg] of shot.hits) {
       const head = shot.heads.has(tid);
