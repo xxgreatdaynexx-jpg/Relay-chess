@@ -14,6 +14,7 @@ import type { ArenaMap } from '../../../shared/arenaMaps';
 import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playKnife, playHeadshotDing, playLockBeep, playPickup, play360NoScope, playMultiKill, shotFalloff, unlockSounds } from '@/lib/sounds';
 import { isTypingTarget, spaceRespawns } from '@/lib/respawnKey';
 import { DEATH_HOLD_MS, fitSpeed, killCardText, sampleKillCam, shotsBetween, type CamFrame, type CamShot, type KillCard } from '@/lib/killcam';
+import { arenaLiveHud, kiaCanvasStrip } from '@/lib/arenaHud';
 import { feedParts, popupScale, POPUP_MS, type FeedItem } from '@/lib/arenaFeed';
 import {
   AIRSTRIKE_RADIUS, RESPAWN_PICK_MS, canHold, isKnifeOnly, knifeOnlyAvailable, cheapestSpawn, isWeapon, spawnCost, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, weaponSpread, MoveHistory, reconcileMove, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
@@ -862,7 +863,10 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       const mapSize = minimapSize(W2, H2);
       const bannerTop = Math.max(H2 * 0.16, mapSize + 18);
       const spec = WEAPONS[m.weapon];
+      // Dead / spectating: the live-play HUD (ammo box, streak pips, UAV countdown) is hidden.
+      const liveHud = arenaLiveHud(m.joined, m.alive);
       ctx.textAlign = 'right';
+      if (liveHud) {
       ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(W2 - 92 * u, H2 - 30 * u, 88 * u, 26 * u);
       ctx.fillStyle = '#e6e9df'; ctx.font = `700 ${(14 * u) | 0}px ${mono}`;
       ctx.fillText(WEAPONS[m.weapon].melee ? '∞' : reloading ? 'RELOAD' : `${m.ammo}`, W2 - 30 * u, H2 - 12 * u);
@@ -870,11 +874,13 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       if (!reloading && !spec.melee) ctx.fillText(`/${spec.mag}`, W2 - 8 * u, H2 - 12 * u);
       ctx.fillText(spec.name.toUpperCase(), W2 - 8 * u, H2 - 22 * u);
       for (let i = 0; i < (spec.melee ? 0 : Math.min(spec.mag, 30)); i++) { ctx.fillStyle = i < m.ammo ? '#d9dccf' : 'rgba(255,255,255,.15)'; ctx.fillRect(W2 - 8 * u - (i + 1) * 2.6 * u, H2 - 8 * u, 1.6 * u, 3 * u); }
+      }
       ctx.textAlign = 'left';
       ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(4 * u, H2 - 16 * u, 70 * u, 12 * u);
       ctx.fillStyle = m.hp > 40 ? '#cfd4c4' : '#d9473a'; ctx.fillRect(6 * u, H2 - 14 * u, (52 * u * m.hp) / MAX_HP, 8 * u);
       ctx.fillStyle = '#e6e9df'; ctx.font = `700 ${(7 * u) | 0}px ${mono}`; ctx.fillText(`${Math.max(0, Math.round(m.hp))}`, 60 * u, H2 - 7.5 * u);
       // Streak pips
+      if (liveHud) {
       const next = STREAKS.find((s) => s.kills > m.streak);
       for (let i = 0; i < 11; i++) {
         const isReward = STREAKS.some((s) => s.kills === i + 1);
@@ -883,6 +889,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       }
       ctx.font = `600 ${(6 * u) | 0}px ${mono}`; ctx.fillStyle = '#a9ae9e';
       ctx.fillText(next ? `${next.name} IN ${next.kills - m.streak}` : 'ALL STREAKS EARNED', 6 * u, H2 - 25 * u);
+      }
       ctx.font = `700 ${(7 * u) | 0}px ${mono}`;
       // Weapon slots
       ctx.textAlign = 'center';
@@ -961,15 +968,17 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         subLines.forEach((line, i) => { fit(line, 'italic 600', 7, inner); ctx.fillText(line, W2 / 2, by + (28 + i * 8) * u); });
         ctx.globalAlpha = 1;
       }
-      if (m.joined && !m.alive && phaseRef.current !== 'ended') {
-        ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, H2 / 2 - 16 * u, W2, 32 * u);
+      if (m.joined && !m.alive && kiaCanvasStrip(phaseRef.current)) {
+        // During play the KIA text lives in the loadout box header (DOM), so the canvas strip is only for spectating.
+        const cy = H2 / 2;
+        ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, cy - 16 * u, W2, 32 * u);
         ctx.fillStyle = '#e6e9df';
         const kia = phaseRef.current === 'play' ? 'KILLED IN ACTION · PICK YOUR LOADOUT' : 'ELIMINATED · SPECTATING';
         if (fit(kia, '700', 12, W2 - 16) < 11) {
           // Very narrow: split onto two lines rather than clip.
-          fit('KILLED IN ACTION', '700', 12, W2 - 16); ctx.fillText('KILLED IN ACTION', W2 / 2, H2 / 2 - 2 * u);
-          ctx.fillText('PICK YOUR LOADOUT', W2 / 2, H2 / 2 + 11 * u);
-        } else ctx.fillText(kia, W2 / 2, H2 / 2 + 5 * u);
+          fit('KILLED IN ACTION', '700', 12, W2 - 16); ctx.fillText('KILLED IN ACTION', W2 / 2, cy - 2 * u);
+          ctx.fillText('PICK YOUR LOADOUT', W2 / 2, cy + 11 * u);
+        } else ctx.fillText(kia, W2 / 2, cy + 5 * u);
       }
       raf = requestAnimationFrame(frame);
     };
@@ -1214,6 +1223,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         {!life.alive && me.current.joined && matchUi.phase === 'play' && (
           <div className="fps-respawn" data-testid="arena-respawn" data-killcam={killCam?.playing ? '1' : '0'} style={{ display: killCam?.playing ? 'none' : undefined, position: 'absolute', left: '50%', bottom: '14%', transform: 'translateX(-50%)', zIndex: 5, background: 'rgba(0,0,0,.72)', color: '#e6e9df', padding: '8px 10px', borderRadius: 6, textAlign: 'center', fontSize: 12 }}
             onMouseDown={(e) => e.stopPropagation()}>
+            <div data-testid="arena-kia-header" style={{ marginBottom: 6, fontWeight: 800, letterSpacing: '.12em', fontFamily: 'monospace', fontSize: 13 }}>KILLED IN ACTION · PICK YOUR LOADOUT</div>
             {killCam?.card && <div data-testid="arena-killcard" style={{ marginBottom: 6, fontWeight: 800, letterSpacing: '.04em', color: '#ffb4a8' }}>{killCardText(killCam.card, (w) => (isWeapon(w) ? WEAPONS[w].name : w))}</div>}
             {killCam?.note && <div style={{ marginBottom: 6, opacity: 0.75 }}>{killCam.note}</div>}
             {!killCam && <div style={{ marginBottom: 6 }}><button type="button" data-testid="arena-killcam" style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid #ffb4a8', color: '#ffb4a8' }} onClick={() => watchKillCam()}>🎥 Watch kill cam <kbd>K</kbd></button></div>}
