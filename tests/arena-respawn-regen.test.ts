@@ -85,3 +85,26 @@ describe('health regen', () => {
     expect(bot.hp).toBe(MAX_HP);
   });
 });
+
+describe('respawn -> move without being hit', () => {
+  it('a respawned human can move right away (server accepts moves, seq reset)', () => {
+    const w = new ArenaWorld();
+    w.join('a', 'A', T0); const b = w.join('b', 'B', T0);
+    w.move('b', b.x, b.y, 0, T0 + 50, 0, false, false, 41);
+    hurt(w, 'a', 'b', 9999, T0 + 100);
+    expect(w.requestRespawn('b', 'pistol', T0 + 500)).toBe(true);
+    w.tick(T0 + 500 + STEP);
+    expect(b.alive).toBe(true);
+    expect(b.moveSeq).toBeUndefined();
+    const x0 = b.x, y0 = b.y, t = T0 + 500 + STEP;
+    let moved = false;
+    for (let i = 1; i <= 6 && !moved; i++) {
+      for (const [dx, dy] of [[0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3]]) {
+        w.move('b', x0 + dx * i / 2, y0 + dy * i / 2, 0, t + i * 60, 0, false, false, i);
+        if (Math.hypot(b.x - x0, b.y - y0) > 0.05) { moved = true; break; }
+      }
+    }
+    expect(moved).toBe(true);
+    expect(b.hp).toBe(MAX_HP); // never hit
+  });
+});

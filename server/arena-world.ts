@@ -664,6 +664,7 @@ export class ArenaWorld {
       if (!f.alive && this.phase !== 'play') continue; // sudden death / end screen: no respawns (and no spawn charges)
       if (!f.alive && now >= f.respawnAt && this.spawnGate && !this.spawnGate(f, now)) { f.broke = true; f.respawnAt = now + BROKE_RETRY_MS; continue; }
       if (maybeRespawn(f, now, all, this.rand, this.map)) {
+        f.moveSeq = undefined; f.moveCarry = 0; f.lastMove = now; f.physAt = now; // fresh movement state for the new life
         f.crouch = false;
         f.wantCrouch = false; f.sprint = false;
         f.broke = false;

@@ -278,7 +278,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       if (mine) {
         // Died: free the mouse so the loadout picker / Respawn button can be clicked.
         if (!mine.alive && m.alive) { m.alive = false; releaseOnDeath(); }
-        if (mine.alive && !m.alive) Object.assign(m, { alive: true, x: mine.x, y: mine.y, z: mine.z, vz: 0, grounded: true, p: 0, ammo: WEAPONS[m.weapon].mag, reloadUntil: 0 });
+        if (mine.alive && !m.alive) { Object.assign(m, { alive: true, x: mine.x, y: mine.y, z: mine.z, vz: 0, grounded: true, p: 0, ammo: WEAPONS[m.weapon].mag, reloadUntil: 0 }); syncOnRespawn(); }
         // The server owns position (and height): if prediction drifts too far, snap to its authoritative spot.
         else if (mine.alive && Math.abs(m.z - mine.z) > 0.8) { Object.assign(m, { x: mine.x, y: mine.y, z: mine.z, vz: 0, grounded: mine.g }); net.corr = null; net.hist.clear(); }
         else if (mine.alive && mine.q !== undefined) {
@@ -892,6 +892,13 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     else if (key === 'f') shoot();
   }
 
+  /** Respawned: drop stale move history/corrections and put keyboard focus back on the game (the Respawn button that
+   *  had focus just unmounted, which left WASD going nowhere until something refocused the panel). */
+  function syncOnRespawn() {
+    keys.current.clear(); net.hist.clear(); net.corr = null;
+    const w = wrapRef.current;
+    if (w && !w.contains(document.activeElement)) w.focus({ preventScroll: true });
+  }
   function releaseOnDeath() { keys.current.clear(); if (document.pointerLockElement) document.exitPointerLock?.(); }
 
   function toggleFullscreen() {
