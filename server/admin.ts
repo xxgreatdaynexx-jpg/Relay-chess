@@ -37,6 +37,38 @@ export function adminRouter(): express.Router {
     console.log(`[admin] grant ${applied ? 'applied' : 'replay ignored'}: ${row.name} +${amount} key=${key} memo=${JSON.stringify(memo ?? '')} ${before}->${after} from ${ip}`);
     res.json({ ok: true, applied, player: row.name, amount, before, after, key });
   });
+  /**
+   * POST /api/admin/debit {player, amount, memo, key}: remove chips through the bank's atomic increment path.
+   * Never below zero: debits min(amount, balance) and reports the shortfall. Idempotent by key.
+   */
+  r.post('/api/admin/debit', express.json({ limit: '4kb' }), async (req, res) => {
+    const ip = req.ip ?? '?';
+    if (!adminAuthorized(req.get('authorization'))) {
+      console.warn(`[admin] debit rejected: unauthorized from ${ip}`);
+      return res.status(401).json({ ok: false, error: 'Unauthorized.' });
+    }
+    const { player, amount, memo, key } = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof player !== 'string' || !player.trim()) return res.status(400).json({ ok: false, error: 'player is required.' });
+    if (typeof amount !== 'number' || !Number.isInteger(amount) || amount < 1 || amount > 10_000) return res.status(400).json({ ok: false, error: 'amount must be an integer 1..10000.' });
+    if (typeof key !== 'string' || !/^[\w:.\-]{8,120}$/.test(key)) return res.status(400).json({ ok: false, error: 'key (idempotency key) is required.' });
+    if (typeof memo !== 'string' || !memo.trim() || memo.length > 200) return res.status(400).json({ ok: false, error: 'memo is required (up to 200 chars).' });
+    let row;
+    try { row = await getAccounts().store.get(nameKey(player)); } catch { return res.status(503).json({ ok: false, error: 'Accounts unavailable.' }); }
+    if (!row) return res.status(404).json({ ok: false, error: 'Unknown player.' });
+    const bank = getBank();
+    const before = await bank.refresh(row.name); // DB is the source of truth
+    if (bank.hasKey(key)) return res.json({ ok: true, applied: false, player: row.name, requested: amount, debited: 0, shortfall: 0, before, after: before, key });
+    const debited = Math.min(amount, Math.max(0, before));
+    let applied = false;
+    if (debited > 0) {
+      try { applied = bank.transfer(row.name, -debited, { key, game: 'admin', memo }); } catch (e) { return res.status(409).json({ ok: false, error: (e as Error).message }); }
+    }
+    await bank.flush();
+    const after = await bank.refresh(row.name);
+    const shortfall = amount - (applied ? debited : 0);
+    console.log(`[admin] debit ${applied ? 'applied' : 'nothing taken'}: ${row.name} -${applied ? debited : 0} (requested ${amount}, shortfall ${shortfall}) key=${key} memo=${JSON.stringify(memo)} ${before}->${after} from ${ip}`);
+    res.json({ ok: true, applied, player: row.name, requested: amount, debited: applied ? debited : 0, shortfall, before, after, key });
+  });
   /** POST /api/admin/grant-item {player, kind: 'case'|'key', key}: QA- accounts ONLY. Mints one case or key (idempotent by key), logged. */
   r.post('/api/admin/grant-item', express.json({ limit: '4kb' }), async (req, res) => {
     const ip = req.ip ?? '?';
