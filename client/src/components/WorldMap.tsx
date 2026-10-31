@@ -94,11 +94,6 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
       <div className="world-title"><span>CHUD</span> HUB<small>pick a spot on the map</small></div>
       {loading && mode === '3d' && <div className="world-loading">Building the city…</div>}
       {spot && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#' + spot.color.toString(16).padStart(6, '0') }} data-testid="world-tip"><b>{spot.icon} {spot.label}</b><span>{spot.blurb}</span><em>Click to enter</em></div>}
-      {mode === '3d' && (
-        <nav className="world-quick" aria-label="Places">
-          {WORLD_SPOTS.map((s) => <button key={s.id} type="button" onMouseEnter={() => worldRef.current?.hover(s.id)} onMouseLeave={() => worldRef.current?.hover(null)} onClick={() => worldRef.current ? worldRef.current.flyTo(s.id) : go(s.id)} data-testid={`world-go-${s.id}`}>{s.icon}<span> {s.label}</span></button>)}
-        </nav>
-      )}
       <div className="world-corner">
         <button type="button" onClick={() => setMode(mode === '3d' ? '2d' : '3d')} data-testid="world-mode">{mode === '3d' ? '▦ 2D map' : '🌃 3D city'}</button>
       </div>

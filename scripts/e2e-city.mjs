@@ -12,12 +12,14 @@ for (const [tab, close] of [['mines-tab', 'Close mines'], ['arena-tab', 'Close a
   await p.click(`[data-testid=${tab}]`); await p.waitForTimeout(1200);
   await p.getByRole('button', { name: close, exact: true }).first().click(); await cityUp(`after ${tab}`);
 }
+// No quick-button row any more: drive buildings through the 2D map tiles (same go() as a 3D building click).
+await p.click('[data-testid=world-mode]'); await p.waitForSelector('[data-testid=world-grid]');
 for (const [spot, close] of [['mine', 'Close mines'], ['warehouse', 'Close inventory'], ['factory', 'Close factory']]) {
-  await p.click(`[data-testid=world-go-${spot}]`); await p.waitForTimeout(1200);
+  await p.click(`[data-testid=world-tile-${spot}]`); await p.waitForTimeout(1200);
   await p.getByRole('button', { name: close, exact: true }).first().click({ timeout: 5000 }).catch(() => fails.push(`close ${spot}`));
   await cityUp(`after building ${spot}`);
 }
-await p.click('[data-testid=world-go-chess]'); await p.getByText('How it works').first().waitFor({ timeout: 15000 }).catch(() => {});
+await p.click('[data-testid=world-tile-chess]'); await p.getByText('How it works').first().waitFor({ timeout: 15000 }).catch(() => {});
 const hero = await p.getByText('How it works').first().isVisible(); console.log(hero ? 'ok ' : 'FAIL', 'chess club shows Relay Chess'); if (!hero) fails.push('chess');
 await p.screenshot({ path: '/workspace/relay-city-chessclub.png' });
 await p.click('[data-testid=world-map-btn]'); await cityUp('back to city from chess');
