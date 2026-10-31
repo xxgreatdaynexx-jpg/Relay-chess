@@ -46,6 +46,8 @@ export interface AccountStore {
   addSession(hash: string, key: string, expiresAt: number): Promise<void>;
   getSession(hash: string): Promise<{ key: string; expiresAt: number } | null>;
   removeSession(hash: string): Promise<void>;
+  /** Pushes a session's expiry forward (sliding sessions). */
+  extendSession?(hash: string, expiresAt: number): Promise<void>;
   setPassword(key: string, passwordHash: string): Promise<void>;
   getSettings(key: string): Promise<unknown | null>;
   setSettings(key: string, data: unknown): Promise<void>;
@@ -76,6 +78,7 @@ export class PgAccountStore implements AccountStore {
   constructor(private readonly db: Queryable) {
     db.on?.('error', (err) => console.error('[accounts] postgres pool error:', err.message));
   }
+  async close() { await this.db.end?.(); }
   async init() {
     for (const sql of ACCOUNTS_MIGRATION) await this.db.query(sql);
   }
@@ -104,6 +107,9 @@ export class PgAccountStore implements AccountStore {
   }
   async removeSession(hash: string) {
     await this.db.query('DELETE FROM player_sessions WHERE token_hash = $1', [hash]);
+  }
+  async extendSession(hash: string, expiresAt: number) {
+    await this.db.query('UPDATE player_sessions SET expires_at = $2 WHERE token_hash = $1', [hash, new Date(expiresAt).toISOString()]);
   }
   async setPassword(key: string, passwordHash: string) {
     await this.db.query('UPDATE players SET password_hash = $2 WHERE player_key = $1', [key, passwordHash]);
@@ -137,6 +143,7 @@ export class MemoryAccountStore implements AccountStore {
   async addSession(hash: string, key: string, expiresAt: number) { this.sessions.set(hash, { key, expiresAt }); }
   async getSession(hash: string) { return this.sessions.get(hash) ?? null; }
   async removeSession(hash: string) { this.sessions.delete(hash); }
+  async extendSession(hash: string, expiresAt: number) { const s = this.sessions.get(hash); if (s) s.expiresAt = expiresAt; }
   settings = new Map<string, string>();
   async setPassword(key: string, passwordHash: string) {
     const row = this.accounts.get(key);
@@ -232,7 +239,11 @@ export class Accounts {
       return null;
     }
     const row = await this.store.get(s.key);
-    return row ? { key: row.key, name: row.name } : null;
+    if (!row) return null;
+    // Sliding window: an active player's session is pushed back out to the full length (at most once a day).
+    const full = now + SESSION_DAYS * 86_400_000;
+    if (full - s.expiresAt > 86_400_000) await this.store.extendSession?.(tokenHash(token), full).catch(() => {});
+    return { key: row.key, name: row.name };
   }
 
   /** Needs the current password; rate-limited like sign-in. */
@@ -263,7 +274,29 @@ export function resetAccounts(store: AccountStore = new MemoryAccountStore()): A
 }
 
 export function createPgAccountStore(url: string): PgAccountStore {
-  return new PgAccountStore(new pg.Pool({ connectionString: url, max: 3, connectionTimeoutMillis: 10_000 }));
+  return new PgAccountStore(new pg.Pool({ connectionString: url, max: 3, connectionTimeoutMillis: 20_000 }));
+}
+
+/** Store used while a configured database is unreachable: every call fails, so nobody is told their session is invalid. */
+export class UnavailableAccountStore implements AccountStore {
+  private fail = async (): Promise<never> => { throw new Error('accounts database is not reachable yet'); };
+  init = this.fail; get = this.fail; create = this.fail; remove = this.fail; addSession = this.fail;
+  getSession = this.fail; removeSession = this.fail; setPassword = this.fail; getSettings = this.fail; setSettings = this.fail;
+}
+
+export async function connectAccountStore(make: () => AccountStore, attempts = 5, delayMs = 2000): Promise<AccountStore | null> {
+  for (let i = 1; i <= attempts; i++) {
+    const store = make();
+    try {
+      await store.init();
+      return store;
+    } catch (err) {
+      console.error(`[accounts] postgres attempt ${i}/${attempts} failed:`, (err as Error).message);
+      (store as { close?: () => Promise<void> }).close?.().catch(() => {});
+      if (i < attempts) await new Promise((r) => setTimeout(r, delayMs * i));
+    }
+  }
+  return null;
 }
 
 export async function initAccountStorage(): Promise<void> {
@@ -272,12 +305,20 @@ export async function initAccountStorage(): Promise<void> {
     console.warn('[accounts] no DATABASE_URL set; name accounts are in-memory only');
     return;
   }
-  const store = createPgAccountStore(url);
-  try {
-    await store.init();
+  const make = () => createPgAccountStore(url);
+  const store = await connectAccountStore(make);
+  if (store) {
     current = new Accounts(store);
     console.log('[accounts] connected to postgres');
-  } catch (err) {
-    console.error('[accounts] postgres unavailable, accounts are in-memory only:', (err as Error).message);
+    return;
   }
+  // Never fall back to an empty in-memory store: it would answer "no such session" and sign everyone out.
+  console.error('[accounts] postgres unavailable; sign-in paused, retrying in the background');
+  current = new Accounts(new UnavailableAccountStore());
+  const retry = async () => {
+    const s = await connectAccountStore(make, 1);
+    if (s) { current = new Accounts(s); console.log('[accounts] connected to postgres (late)'); }
+    else setTimeout(retry, 10_000).unref?.();
+  };
+  setTimeout(retry, 5_000).unref?.();
 }

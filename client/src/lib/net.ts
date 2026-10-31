@@ -27,14 +27,20 @@ export function request(event: string, data?: unknown, onOk?: (ack: Ack) => void
   });
 }
 
-// A stored session that the server no longer knows (expired, logged out elsewhere, reset) is dropped.
-socket.on('connect', () => {
+// Re-sends the stored session on every (re)connect. The token is forgotten ONLY when the server
+// explicitly says it is invalid; timeouts, restarts and database hiccups keep it and retry.
+export function resumeStoredSession(attempt = 0): void {
   const saved = loadAuth();
-  if (!saved) return;
-  socket.emit('auth_resume', { session: saved.token }, (res?: { ok: boolean; name?: string | null }) => {
-    if (res?.ok && !res.name) clearAuth();
+  if (!saved || !socket.connected) return;
+  socket.timeout(10000).emit('auth_resume', { session: saved.token }, (err: Error | null, res?: { ok: boolean; name?: string | null; invalid?: boolean }) => {
+    if (!err && res?.ok && res.invalid === true && !res.name) {
+      if (loadAuth()?.token === saved.token) clearAuth();
+      return;
+    }
+    if ((err || !res?.ok) && attempt < 8) setTimeout(() => resumeStoredSession(attempt + 1), Math.min(30000, 1000 * 2 ** attempt));
   });
-});
+}
+socket.on('connect', () => resumeStoredSession());
 
 type AuthAck = { ok: boolean; error?: string; name?: string; session?: string; claimed?: boolean; reserved?: boolean };
 

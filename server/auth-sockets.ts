@@ -60,7 +60,8 @@ export function registerAuth(socket: Socket): void {
   socket.on('auth_resume', run(async (body) => {
     const identity = await getAccounts().resume(body.session);
     socket.data.account = identity ?? undefined;
-    return { name: identity?.name ?? null };
+    // invalid: the server looked and this token is unknown/expired. Only then may the client forget it.
+    return { name: identity?.name ?? null, invalid: !identity };
   }));
 
   socket.on('auth_change_password', run(async (body) => {

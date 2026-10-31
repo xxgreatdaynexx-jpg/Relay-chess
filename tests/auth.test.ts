@@ -40,12 +40,15 @@ describe('Accounts', () => {
     await expect(acc.claim('Guest123', 'abcd', 'ip')).rejects.toThrow(/reserved/);
   });
 
-  it('expires sessions after 90 days and on logout', async () => {
+  it('expires sessions after 90 idle days and on logout', async () => {
     const acc = new Accounts(new MemoryAccountStore());
     const t0 = 1_000_000;
     const { token } = await acc.claim('Ann', 'pass1', 'ip', t0);
-    expect(await acc.resume(token, t0 + (SESSION_DAYS - 1) * 86_400_000)).not.toBeNull();
     expect(await acc.resume(token, t0 + SESSION_DAYS * 86_400_000 + 1)).toBeNull();
+    const { token: t2 } = await acc.login('Ann', 'pass1', 'ip', t0);
+    expect(await acc.resume(t2, t0 + (SESSION_DAYS - 1) * 86_400_000)).not.toBeNull();
+    // used on day 89, so it slides out to day 179
+    expect(await acc.resume(t2, t0 + (2 * SESSION_DAYS - 2) * 86_400_000)).not.toBeNull();
     const again = await acc.login('Ann', 'pass1', 'ip', t0);
     await acc.logout(again.token);
     expect(await acc.resume(again.token, t0)).toBeNull();
