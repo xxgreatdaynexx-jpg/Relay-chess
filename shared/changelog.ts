@@ -6,7 +6,13 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-10-31T01:55:00-06:00', title: 'Stock Exchange', bullets: [
+  { commit: '', at: '2026-10-31T02:40:00-06:00', title: 'A city that feels lived-in', bullets: [
+    'The streets now curve and flow: a bending ring road, sweeping boulevards, a diagonal avenue, winding suburb lanes and cul-de-sacs, with a curving waterfront along the south.',
+    'Buildings line up along their street and turn with it — packed tight downtown, more spread out in the suburbs.',
+    'Landmarks sit on prominent corners, plazas and the waterfront, each facing its street.',
+    'Cars follow the curves of the road in their own lane.',
+  ] },
+  { commit: 'bfd24f8', at: '2026-10-31T01:55:00-06:00', title: 'Stock Exchange', bullets: [
     'New Stocks tab and a Stock Exchange building in the city: trade shares in 100 made-up companies across 13 sectors.',
     'Prices move every 30 seconds, follow Bank inflation and what players are doing (mining, casino, arena, factory, market), and react to big trades.',
     'Every company gets at least one news event a day that moves its price; see the news feed on the exchange and each company page.',

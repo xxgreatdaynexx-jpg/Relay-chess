@@ -5,7 +5,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
-import { PLATE, WATER_Z0, ROAD_W, ROADS_X, ROADS_Z, ROAD_X_SPAN, ROAD_Z_SPAN, SPOT_POS, cityBlocks, fillerSpots as layoutFillers, BLOCK, CAR_LOOPS, CAR_COUNT, LANE, loopPoint } from './worldLayout';
+import { PLATE, shoreZ, ROADS, CUL_R, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint } from './worldLayout';
 
 import { WORLD_SPOTS } from './worldSpots';
 import { HOUSING_TYPES, type HousingType } from './housing';
@@ -80,7 +80,6 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const S = PLATE;
   const slab = new THREE.Mesh(geo(new THREE.BoxGeometry(S * 2, 3, S * 2)), [mat({ color: 0x4a3322 }), mat({ color: 0x4a3322 }), mat({ color: 0x3f9a45, roughness: 1, emissive: 0x0f3a14, emissiveIntensity: 0.6 }), mat({ color: 0x2a1c12 }), mat({ color: 0x4a3322 }), mat({ color: 0x4a3322 })]);
   slab.position.y = -1.5; scene.add(slab);
-  const waterW = S - WATER_Z0;
   // Animated water: scrolling ripples + moonlight glints, fogged like the rest of the scene.
   const waterMat = new THREE.ShaderMaterial({
     fog: true,
@@ -98,35 +97,42 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       }`.replace(/#include <[^>]+>/g, (m) => `\n${m}\n`),
   });
   disposables.push(waterMat);
-  const water = new THREE.Mesh(geo(new THREE.BoxGeometry(S * 2 + 0.2, 0.2, waterW)), waterMat);
-  water.position.set(0, -0.05, WATER_Z0 + waterW / 2); scene.add(water);
-  // Roads (grid) + lane dashes, instanced.
+  waterMat.side = THREE.DoubleSide;
+  // Waterfront: the shoreline curves (worldLayout.shoreZ); water fills from the shore to the plate's south edge.
+  { const sh = new THREE.Shape(); sh.moveTo(-S - 0.1, S + 0.1); for (let x = -S - 0.1; x <= S + 0.1; x += 2) sh.lineTo(x, shoreZ(x)); sh.lineTo(S + 0.1, S + 0.1); sh.closePath();
+    const wg = new THREE.ShapeGeometry(sh); wg.rotateX(Math.PI / 2); const water = new THREE.Mesh(geo(wg), waterMat); water.position.y = 0.06; scene.add(water);
+    // sandy bank along the shore
+    const bank: number[] = []; const bi: number[] = []; let k = 0; for (let x = -S; x <= S; x += 2, k++) { const z = shoreZ(x); bank.push(x, 0.03, z - 1.6, x, 0.03, z + 0.4); if (k) { const o = (k - 1) * 2; bi.push(o, o + 2, o + 1, o + 1, o + 2, o + 3); } }
+    const bgeo = new THREE.BufferGeometry(); bgeo.setAttribute('position', new THREE.Float32BufferAttribute(bank, 3)); bgeo.setIndex(bi); bgeo.computeVertexNormals();
+    scene.add(new THREE.Mesh(geo(bgeo), mat({ color: 0xb8a27a, roughness: 1, side: THREE.DoubleSide }))); }
+  // Roads: one merged ribbon mesh following each curved centreline (+ cul-de-sac turning circles), lane dashes instanced.
   const roadMat = mat({ color: 0x23252c, roughness: 0.9 });
-  const zLen = ROAD_Z_SPAN[1] - ROAD_Z_SPAN[0], xLen = ROAD_X_SPAN[1] - ROAD_X_SPAN[0];
-  const roadGeo = geo(new THREE.BoxGeometry(zLen, 0.1, ROAD_W));
-  for (const z of ROADS_Z) { const m = new THREE.Mesh(roadGeo, roadMat); m.position.set(0, 0.02, z); scene.add(m); }
-  const roadGeoZ = geo(new THREE.BoxGeometry(ROAD_W, 0.11, xLen));
-  for (const x of ROADS_X) { const m = new THREE.Mesh(roadGeoZ, roadMat); m.position.set(x, 0.02, (ROAD_X_SPAN[0] + ROAD_X_SPAN[1]) / 2); scene.add(m); }
-  const dash = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(1.2, 0.12, 0.18)), mat({ color: 0xffe08a, emissive: 0xffd060, emissiveIntensity: 0.5 }), Math.ceil((ROADS_Z.length * (ROAD_Z_SPAN[1] - ROAD_Z_SPAN[0]) + ROADS_X.length * (ROAD_X_SPAN[1] - ROAD_X_SPAN[0])) / 3) + 8);
-  { const d = new THREE.Object3D(); let n = 0;
-    for (const z of ROADS_Z) for (let x = ROAD_Z_SPAN[0] + 1; x < ROAD_Z_SPAN[1]; x += 3) { d.position.set(x, 0.06, z); d.rotation.y = 0; d.updateMatrix(); dash.setMatrixAt(n++, d.matrix); }
-    for (const x of ROADS_X) for (let z = ROAD_X_SPAN[0] + 1; z < ROAD_X_SPAN[1]; z += 3) { d.position.set(x, 0.07, z); d.rotation.y = Math.PI / 2; d.updateMatrix(); dash.setMatrixAt(n++, d.matrix); }
-    dash.count = n; }
+  { const pos: number[] = []; const idx: number[] = []; let base = 0;
+    ROADS.forEach((rd, ri) => { const p = rd.closed ? [...rd.pts, rd.pts[0]] : rd.pts; const hw = rd.width / 2; const y = 0.03 + (ri % 7) * 0.002 + (rd.kind === 'street' || rd.kind === 'lane' ? 0 : 0.015);
+      for (let i = 0; i < p.length; i++) { const a0 = p[Math.max(0, i - 1)], a1 = p[Math.min(p.length - 1, i + 1)]; const ang = Math.atan2(a1[1] - a0[1], a1[0] - a0[0]); const nx = -Math.sin(ang) * hw, nz = Math.cos(ang) * hw;
+        pos.push(p[i][0] + nx, y, p[i][1] + nz, p[i][0] - nx, y, p[i][1] - nz); if (i) { const o = base + (i - 1) * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); } }
+      base += p.length * 2;
+      if (rd.cul) { const [cx, cz] = rd.pts[rd.pts.length - 1]; const c0 = base; pos.push(cx, y, cz); for (let j = 0; j <= 20; j++) { const a = j / 20 * Math.PI * 2; pos.push(cx + Math.cos(a) * CUL_R, y, cz + Math.sin(a) * CUL_R); if (j) idx.push(c0, c0 + j, c0 + j + 1); } base += 22; } });
+    const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); rg.setIndex(idx); rg.computeVertexNormals();
+    const roadMesh = new THREE.Mesh(geo(rg), roadMat); roadMat.side = THREE.DoubleSide; scene.add(roadMesh); }
+  const dashSpots: [number, number, number][] = [];
+  for (const rd of ROADS) { if (rd.kind === 'street' || rd.kind === 'lane') continue; const p = rd.pts; for (let i = 1; i < p.length - 1; i += 3) dashSpots.push([p[i][0], p[i][1], Math.atan2(p[i + 1][1] - p[i - 1][1], p[i + 1][0] - p[i - 1][0])]); }
+  const dash = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(1.2, 0.12, 0.18)), mat({ color: 0xffe08a, emissive: 0xffd060, emissiveIntensity: 0.5 }), dashSpots.length);
+  { const d = new THREE.Object3D(); dashSpots.forEach(([x, z, a], i) => { d.position.set(x, 0.06, z); d.rotation.set(0, -a, 0); d.updateMatrix(); dash.setMatrixAt(i, d.matrix); }); }
   scene.add(dash);
-  // Footbridge over the water
-  const bridge = new THREE.Mesh(geo(new THREE.BoxGeometry(5, 0.6, waterW + 2)), mat({ color: 0x8a8f99 })); bridge.position.set(0, 0.4, WATER_Z0 + waterW / 2); scene.add(bridge);
 
   // Landmarks.
   type LM = { id: string; root: THREE.Group; hit: THREE.Object3D[]; emissive: THREE.MeshStandardMaterial[]; sign: THREE.Sprite; pos: THREE.Vector3; height: number };
   const lms: LM[] = [];
   const pickables: THREE.Object3D[] = [];
-  const spotPos = SPOT_POS;
+  const lmIds = [...LANDMARK_IDS, ...WORLD_SPOTS.map((sp) => sp.id).filter((id) => !LANDMARK_IDS.includes(id))];
+  const lmBoxes = landmarks(lmIds);
   const box = (w: number, hgt: number, d: number, m: THREE.Material, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(geo(new THREE.BoxGeometry(w, hgt, d)), m); o.position.set(x, y + hgt / 2, z); return o; };
   const cyl = (rt: number, rb: number, hgt: number, m: THREE.Material, x = 0, y = 0, z = 0, seg = 10) => { const o = new THREE.Mesh(geo(new THREE.CylinderGeometry(rt, rb, hgt, seg)), m); o.position.set(x, y + hgt / 2, z); return o; };
 
   for (const spot of WORLD_SPOTS) {
-    const [x, z] = spotPos[spot.id];
-    const g = new THREE.Group(); g.position.set(x, 0, z);
+    const lb = lmBoxes[spot.id]; if (!lb) continue;
+    const g = new THREE.Group(); g.position.set(lb.x, 0, lb.z); g.rotation.y = lb.rot; // pad turned to face its street
     const hex = '#' + spot.color.toString(16).padStart(6, '0');
     const neon = mat({ color: spot.color, emissive: spot.color, emissiveIntensity: 1.6 });
     const ems: THREE.MeshStandardMaterial[] = [neon];
@@ -207,11 +213,10 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     lms.push({ id: spot.id, root: g, hit: [], emissive: ems, sign, pos: g.position.clone(), height });
   }
 
-  // Filler: every non-landmark block is housing, a park, a plaza or an empty lot (worldLayout.cityBlocks).
+  // Filler: housing along every street's frontage (turned to face it), plus parks, plazas and lots (worldLayout.cityFill).
   // Housing is data-driven (housing.ts): one instanced body (+ instanced gable roof) per type, tinted per instance.
   const r = rng(7);
-  const blocks = cityBlocks(r);
-  const fillers = layoutFillers(r, blocks);
+  const { houses: fillers, patches } = cityFill(7, lmIds);
   const roofGeo = (() => { const sh = new THREE.Shape(); sh.moveTo(-0.5, 0); sh.lineTo(0.5, 0); sh.lineTo(0, 1); sh.closePath();
     const g = new THREE.ExtrudeGeometry(sh, { depth: 1, bevelEnabled: false }); g.translate(0, 0, -0.5); g.rotateY(Math.PI / 2); return geo(g); })();
   const unitBox = geo(new THREE.BoxGeometry(1, 1, 1));
@@ -228,24 +233,23 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     });
     body.userData.housingType = ht.id; housingMeshes[ht.id] = body; scene.add(body); if (roof) scene.add(roof);
   });
-  // Block grounds: parks (grass), plazas (paving + fountain glow), lots (dirt) — one instanced slab, tinted.
-  const grounds = blocks.filter((b) => b.kind === 'park' || b.kind === 'plaza' || b.kind === 'lot');
-  if (grounds.length) {
-    const gm = new THREE.InstancedMesh(unitBox, mat({ color: 0xffffff, roughness: 1 }), grounds.length); const d = new THREE.Object3D(); const c = new THREE.Color();
-    const inner = BLOCK - ROAD_W - 1.5;
-    grounds.forEach((b, i) => { d.position.set(b.x, 0.04, b.z); d.scale.set(inner, 0.08, inner); d.updateMatrix(); gm.setMatrixAt(i, d.matrix); gm.setColorAt(i, c.setHex(b.kind === 'park' ? 0x2e7a36 : b.kind === 'plaza' ? 0x77727a : 0x4a3a2c)); });
+  // Open-space patches: parks (grass), plazas (paving + fountain glow), lots (dirt) — one instanced slab, tinted, rotated.
+  if (patches.length) {
+    const gm = new THREE.InstancedMesh(unitBox, mat({ color: 0xffffff, roughness: 1 }), patches.length); const d = new THREE.Object3D(); const c = new THREE.Color();
+    patches.forEach((b, i) => { d.position.set(b.x, 0.04, b.z); d.scale.set(b.w, 0.08, b.d); d.rotation.set(0, b.rot, 0); d.updateMatrix(); gm.setMatrixAt(i, d.matrix); gm.setColorAt(i, c.setHex(b.kind === 'park' ? 0x2e7a36 : b.kind === 'plaza' ? 0x77727a : 0x4a3a2c)); });
     scene.add(gm);
-    const plazas = grounds.filter((b) => b.kind === 'plaza');
+    const plazas = patches.filter((b) => b.kind === 'plaza');
     if (plazas.length) { const fm = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(2.2, 2.4, 0.6, 16)), mat({ color: 0x4aa8ff, emissive: 0x2a78ff, emissiveIntensity: 0.8 }), plazas.length);
-      plazas.forEach((b, i) => { d.position.set(b.x, 0.3, b.z); d.scale.set(1, 1, 1); d.updateMatrix(); fm.setMatrixAt(i, d.matrix); }); scene.add(fm); }
+      plazas.forEach((b, i) => { d.position.set(b.x, 0.3, b.z); d.scale.set(1, 1, 1); d.rotation.set(0, 0, 0); d.updateMatrix(); fm.setMatrixAt(i, d.matrix); }); scene.add(fm); }
   }
-  const onAnyRoad = (x: number, z: number, m: number) => (ROADS_Z.some((rz) => Math.abs(rz - z) < m) && x > ROAD_Z_SPAN[0] && x < ROAD_Z_SPAN[1]) || (ROADS_X.some((rx) => Math.abs(rx - x) < m) && z > ROAD_X_SPAN[0] - 1 && z < ROAD_X_SPAN[1] + 1);
+  const solids = [...Object.values(lmBoxes), ...fillers];
+  const blocked = (x: number, z: number, m: number) => solids.some((o) => Math.abs(o.x - x) < 12 && Math.abs(o.z - z) < 12 && obbHit(o, x, z, m));
   // Trees + palms (instanced).
   const treeSpots: [number, number, number][] = [];
-  for (const b of blocks) if (b.kind === 'park') for (let i = 0; i < 9; i++) treeSpots.push([b.x + (r() - 0.5) * 13, b.z + (r() - 0.5) * 13, 0.8 + r() * 0.7]);
-  for (let i = 0; i < 260; i++) { const x = (r() - 0.5) * S * 2 * 0.95, z = (r() - 0.5) * S * 2 * 0.95; if (z > WATER_Z0 - 1.5) continue; if (onAnyRoad(x, z, 2.8)) continue; if (Object.values(spotPos).some(([sx, sz]) => Math.abs(sx - x) < 7 && Math.abs(sz - z) < 7)) continue; if (fillers.some((f) => Math.abs(f.x - x) < f.w / 2 + 1 && Math.abs(f.z - z) < f.d / 2 + 1)) continue; treeSpots.push([x, z, 0.7 + r() * 0.6]); }
-  // palms along the waterfront
-  for (let x = -S + 3; x < S - 2; x += 4.4) if (Math.abs(x) > 4 && !ROADS_X.some((rx) => Math.abs(rx - x) < 2.8)) treeSpots.push([x, WATER_Z0 - 1.2, -1]);
+  for (const b of patches) if (b.kind === 'park') { const c = Math.cos(b.rot), sn = Math.sin(b.rot); for (let i = 0; i < 9; i++) { const u = (r() - 0.5) * (b.w - 2), v = (r() - 0.5) * (b.d - 2); treeSpots.push([b.x + u * c + v * sn, b.z - u * sn + v * c, 0.8 + r() * 0.7]); } }
+  for (let i = 0; i < 700; i++) { const x = (r() - 0.5) * S * 2 * 0.96, z = (r() - 0.5) * S * 2 * 0.96; if (z > shoreZ(x) - 2) continue; if (roadClearance(x, z) < 1.4) continue; if (blocked(x, z, 1)) continue; treeSpots.push([x, z, 0.7 + r() * 0.6]); }
+  // palms along the curving waterfront
+  for (let x = -S + 3; x < S - 2; x += 4.4) { const z = shoreZ(x) - 1.4; if (roadClearance(x, z) > 1.4 && !blocked(x, z, 0.8)) treeSpots.push([x, z, -1]); }
   const trunk = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(0.15, 0.22, 1, 5)), mat({ color: 0x5a3a22 }), treeSpots.length);
   const crown = new THREE.InstancedMesh(geo(new THREE.IcosahedronGeometry(1, 0)), mat({ color: 0x2f8a3a, flatShading: true, emissive: 0x0a2a10, emissiveIntensity: 0.4 }), treeSpots.length);
   { const d = new THREE.Object3D(); treeSpots.forEach(([x, z, s], i) => {
@@ -255,8 +259,9 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   scene.add(trunk, crown);
   // Streetlights along roads (instanced pole + glow sprites as one Points).
   const lightPos: number[] = [];
-  for (const z of ROADS_Z) for (let x = ROAD_Z_SPAN[0] + 5, k = 0; x < ROAD_Z_SPAN[1]; x += 10.5, k++) lightPos.push(x, 0, z + 2.4);
-  for (const x of ROADS_X) for (let z = ROAD_X_SPAN[0] + 5; z < ROAD_X_SPAN[1]; z += 10.5) lightPos.push(x + 2.4, 0, z);
+  for (const rd of ROADS) { if (rd.kind === 'lane') continue; const p = rd.pts; const off = rd.width / 2 + 0.8;
+    for (let i = 4, k = 0; i < p.length - 1; i += 11, k++) { const a = Math.atan2(p[i + 1][1] - p[i - 1][1], p[i + 1][0] - p[i - 1][0]); const sd = k % 2 ? 1 : -1; const x = p[i][0] - Math.sin(a) * off * sd, z = p[i][1] + Math.cos(a) * off * sd;
+      if (roadClearance(x, z) > 0.3 && !blocked(x, z, 0.3)) lightPos.push(x, 0, z); } }
   const nL = lightPos.length / 3;
   const pole = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(0.07, 0.09, 2.4, 4)), mat({ color: 0x40444f }), nL);
   { const d = new THREE.Object3D(); for (let i = 0; i < nL; i++) { d.position.set(lightPos[i * 3], 1.2, lightPos[i * 3 + 2]); d.updateMatrix(); pole.setMatrixAt(i, d.matrix); } }
@@ -265,7 +270,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const lpm = new THREE.PointsMaterial({ map: glowTex, color: 0xffd27a, size: 2.2, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }); disposables.push(lpm);
   scene.add(new THREE.Points(lg, lpm));
 
-  // Cars: each follows a road-centreline loop in its own lane (see worldLayout.ts + tests/world-layout.test.ts).
+  // Cars: each follows a curved road's centreline in its own lane (see worldLayout.ts + tests/world-layout.test.ts).
   const NC = CAR_COUNT;
   const carBody = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(1.6, 0.6, 0.9)), mat({ color: 0xffffff, roughness: 0.4, metalness: 0.4 }), NC);
   const carCols = [0xe63946, 0xf1faee, 0x1d9bf0, 0xffb703, 0x8338ec, 0x2a9d8f];
@@ -274,7 +279,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const headM = new THREE.PointsMaterial({ map: glowTex, color: 0xfff2c0, size: 1.3, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }); disposables.push(headM);
   const heads = new THREE.Points(headG, headM);
   scene.add(carBody, heads);
-  const cars = Array.from({ length: NC }, (_, i) => ({ loop: CAR_LOOPS[i % CAR_LOOPS.length], t: r(), sp: 0.012 + r() * 0.008, lane: i % 2 ? LANE : -LANE }));
+  const cars = Array.from({ length: NC }, (_, i) => { const route = CAR_ROUTES[i % CAR_ROUTES.length]; return { route, t: r(), sp: (6 + r() * 3) / (route.len * (route.road.closed ? 1 : 2)), lane: LANE }; });
 
   // Fireworks: one pooled Points burst system.
   const FP = 160; const fwPos = new Float32Array(FP * 3); const fwVel = new Float32Array(FP * 3); const fwCol = new Float32Array(FP * 3);
@@ -336,7 +341,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const frame = () => {
     raf = requestAnimationFrame(frame); if (!running) return;
     const dt = Math.min(clock.getDelta(), 0.05); time += dt;
-    cars.forEach((c, i) => { c.t += c.sp * dt; const [x, z, a] = loopPoint(c.loop, c.t, c.lane); d.position.set(x, 0.45, z); d.rotation.set(0, -a, 0); d.updateMatrix(); carBody.setMatrixAt(i, d.matrix); hp.setXYZ(i * 2, x + Math.cos(a) * 0.9 - Math.sin(a) * 0.3, 0.5, z + Math.sin(a) * 0.9 + Math.cos(a) * 0.3); hp.setXYZ(i * 2 + 1, x + Math.cos(a) * 0.9 + Math.sin(a) * 0.3, 0.5, z + Math.sin(a) * 0.9 - Math.cos(a) * 0.3); });
+    cars.forEach((c, i) => { c.t += c.sp * dt; const [x, z, a] = routePoint(c.route, c.t, c.lane); d.position.set(x, 0.45, z); d.rotation.set(0, -a, 0); d.updateMatrix(); carBody.setMatrixAt(i, d.matrix); hp.setXYZ(i * 2, x + Math.cos(a) * 0.9 - Math.sin(a) * 0.3, 0.5, z + Math.sin(a) * 0.9 + Math.cos(a) * 0.3); hp.setXYZ(i * 2 + 1, x + Math.cos(a) * 0.9 + Math.sin(a) * 0.3, 0.5, z + Math.sin(a) * 0.9 - Math.cos(a) * 0.3); });
     carBody.instanceMatrix.needsUpdate = true; hp.needsUpdate = true;
     if (blink) blink.visible = Math.sin(time * 4) > 0;
     nextFw -= dt; if (nextFw <= 0) { burst(); nextFw = 3 + r() * 4; }
