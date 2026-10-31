@@ -5,9 +5,10 @@ import type { Server, Socket } from 'socket.io';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { isKnife, skinName, CASE_NAME, DROP_CASE_CHANCE, DROP_MIN_MS, KEY_NAME, rollSkin, SKIN_BY_ID, SKINS, skinToken, type ItemKind, type SkinDef, type SkinItem } from '../shared/skins.js';
 
-export interface StoredItem extends SkinItem { owner: string; ownerName: string; sourceKey: string; gone: boolean }
+export interface StoredItem extends Omit<SkinItem, 'locked'> { locked?: string; owner: string; ownerName: string; sourceKey: string; gone: boolean }
 export interface ItemEvent { item: string; kind: string; from: string | null; to: string | null; memo: string; at: number }
-export interface ItemStore { init(): Promise<void>; loadAll(): Promise<StoredItem[]>; write(items: StoredItem[], events: ItemEvent[]): Promise<void> }
+export interface Stmt { sql: string; args: unknown[] }
+export interface ItemStore { init(): Promise<void>; loadAll(): Promise<StoredItem[]>; write(items: StoredItem[], events: ItemEvent[], extra?: Stmt[]): Promise<void>; query?(sql: string, args?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> }
 
 export const ITEMS_MIGRATION = [
   `CREATE TABLE IF NOT EXISTS inventory_items (
@@ -25,11 +26,12 @@ export class PgItemStore implements ItemStore {
     const { rows } = await this.db.query('SELECT * FROM inventory_items');
     return rows.map((r) => ({
       id: String(r.id), owner: String(r.player_key), ownerName: String(r.owner_name), kind: r.kind as ItemKind, skin: String(r.skin_id), float: Number(r.wear), seed: Number(r.seed),
-      source: String(r.source), sourceKey: String(r.source_key), equipped: Boolean(r.equipped), locked: r.locked ? String(r.locked) as never : undefined, gone: Boolean(r.gone), at: Number(r.created_at),
+      source: String(r.source), sourceKey: String(r.source_key), equipped: Boolean(r.equipped), locked: r.locked ? String(r.locked) : undefined, gone: Boolean(r.gone), at: Number(r.created_at),
     }));
   }
   /** Every change (item rows + audit events) lands in one transaction. */
-  async write(items: StoredItem[], events: ItemEvent[]) {
+  async query(sql: string, args: unknown[] = []) { return this.db.query(sql, args) as Promise<{ rows: Record<string, unknown>[] }>; }
+  async write(items: StoredItem[], events: ItemEvent[], extra: Stmt[] = []) {
     const c = this.db.connect ? await this.db.connect() : null;
     const q = (sql: string, args: unknown[]) => (c ?? this.db).query(sql, args);
     try {
@@ -40,6 +42,7 @@ export class PgItemStore implements ItemStore {
           ON CONFLICT (id) DO UPDATE SET player_key = EXCLUDED.player_key, owner_name = EXCLUDED.owner_name, equipped = EXCLUDED.equipped, locked = EXCLUDED.locked, gone = EXCLUDED.gone, updated_at = now()`,
         [i.id, i.owner, i.ownerName, i.kind, i.skin, i.float, i.seed, i.source, i.sourceKey, i.equipped, i.locked ?? null, i.gone, i.at]);
       }
+      for (const x of extra) await q(x.sql, x.args);
       for (const e of events) await q('INSERT INTO item_events (item_id, kind, from_key, to_key, memo, at) VALUES ($1,$2,$3,$4,$5,$6)', [e.item, e.kind, e.from, e.to, e.memo, e.at]);
       if (c) await c.query('COMMIT');
     } catch (e) { if (c) await c.query('ROLLBACK').catch(() => {}); throw e; } finally { c?.release(); }
@@ -69,11 +72,12 @@ export class ItemVault {
   }
   async flush() { await this.chain; }
   /** Queue one atomic write of these items + events. */
-  commit(items: StoredItem[], events: ItemEvent[]) {
+  get storage(): ItemStore | null { return this.store; }
+  commit(items: StoredItem[], events: ItemEvent[], extra: Stmt[] = []) {
     for (const k of new Set(items.map((i) => i.owner))) { this.onChange?.(k); for (const l of this.listeners) l(k); }
     if (!this.store) return;
     const snap = items.map((i) => ({ ...i }));
-    this.chain = this.chain.then(() => this.store!.write(snap, events)).catch((e) => console.error('[skins] save failed:', (e as Error).message));
+    this.chain = this.chain.then(() => this.store!.write(snap, events, extra)).catch((e) => console.error('[skins] save failed:', (e as Error).message));
   }
   hasSource(k: string) { return this.sources.has(k); }
 

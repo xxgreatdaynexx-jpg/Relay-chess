@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { TopTab } from './TopTabs';
+import { MarketView, SellForm, TradesView } from './MarketPanel';
 import { request, socket } from '@/lib/net';
 import { useAccount } from '@/lib/auth';
 import { paintSkin } from '@/lib/skinRender';
@@ -18,7 +19,7 @@ function FlatSwatch({ item, size }: { item: SkinItem; size: number }) {
   return <canvas ref={ref} width={size} height={size} className={`inv-swatch ${skin?.fx ? `fx-${skin.fx}` : ''}`} />;
 }
 /** The skin on the real Arena weapon model: rendered lazily when scrolled into view, cached per item. */
-function Swatch({ item, size }: { item: SkinItem; size: number }) {
+export function Swatch({ item, size }: { item: SkinItem; size: number }) {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -49,8 +50,8 @@ function Inspect({ item }: { item: SkinItem }) {
   return <canvas ref={ref} className="inv-inspect" title="Drag to rotate" data-testid="inv-inspect" />;
 }
 
-const label = (i: SkinItem) => (i.kind === 'case' ? CASE_NAME : i.kind === 'key' ? KEY_NAME : (SKIN_BY_ID.has(i.skin) ? skinName(SKIN_BY_ID.get(i.skin)!) : i.skin));
-const rarityOf = (i: SkinItem): Rarity | null => (i.kind === 'skin' ? SKIN_BY_ID.get(i.skin)?.rarity ?? null : null);
+export const label = (i: SkinItem) => (i.kind === 'case' ? CASE_NAME : i.kind === 'key' ? KEY_NAME : (SKIN_BY_ID.has(i.skin) ? skinName(SKIN_BY_ID.get(i.skin)!) : i.skin));
+export const rarityOf = (i: SkinItem): Rarity | null => (i.kind === 'skin' ? SKIN_BY_ID.get(i.skin)?.rarity ?? null : null);
 
 export function SkinsPanel() {
   const [open, setOpen] = useState(false);
@@ -82,6 +83,9 @@ function Inventory({ onClose }: { onClose: () => void }) {
   const [q, setQ] = useState('');
   const [err, setErr] = useState('');
   const [unbox, setUnbox] = useState<{ reel: string[]; win: number; item: SkinItem } | null>(null);
+  const [tab, setTab] = useState<'inv' | 'market' | 'trades'>('inv');
+  const [selling, setSelling] = useState<string | null>(null);
+  const [tradeSeed, setTradeSeed] = useState<string | null>(null);
 
   const load = useCallback(() => {
     void request('inv_get', {}).then((r) => { const a = r as unknown as { ok: boolean; signedIn?: boolean; items?: SkinItem[] }; if (a.ok) { setSignedIn(!!a.signedIn); setItems(a.items ?? []); } });
@@ -120,11 +124,14 @@ function Inventory({ onClose }: { onClose: () => void }) {
     <div className="inv-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }} data-testid="inventory">
       <div className="inv-win" role="dialog" aria-label="Inventory">
         <header className="inv-head">
-          <strong>🎒 Inventory</strong><span className="inv-count">{items.length} items · 📦 {cases} · 🔑 {keys}</span>
+          <nav className="inv-tabs" role="tablist">{([['inv', '🎒 Inventory'], ['market', '🏪 Market'], ['trades', '🤝 Trades']] as const).map(([k, t]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)} data-testid={`inv-tab-${k}`}>{t}</button>)}</nav><span className="inv-count">{items.length} items · 📦 {cases} · 🔑 {keys}</span>
           <button type="button" className="inv-open-btn" disabled={!cases || !keys} onClick={() => void open()} data-testid="inv-open">Open {CASE_NAME}</button>
           <button type="button" aria-label="Close inventory" onClick={onClose}>✕</button>
         </header>
         {!signedIn && <p className="inv-note">Sign in to collect skins. Every Arena match you finish drops a {CASE_NAME} or a {KEY_NAME} (50/50).</p>}
+        {tab === 'market' && <MarketView />}
+        {tab === 'trades' && <TradesView seed={tradeSeed} />}
+        {tab === 'inv' && <>
         <div className="inv-filters">
           <select value={weapon} onChange={(e) => setWeapon(e.target.value)} data-testid="inv-weapon"><option value="all">All weapons</option><option value="items">Cases &amp; keys</option>{['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'ar15', 'knife'].map((w) => <option key={w} value={w}>{WEAPON_NAME[w]}</option>)}</select>
           <select value={rarity} onChange={(e) => setRarity(e.target.value)} data-testid="inv-rarity"><option value="all">All rarities</option>{(['common', 'rare', 'ultra'] as const).map((r) => <option key={r} value={r}>{RARITY_NAME[r]}</option>)}</select>
@@ -152,20 +159,23 @@ function Inventory({ onClose }: { onClose: () => void }) {
                 <p>{wearOf(cur.float).name} · float {cur.float.toFixed(5)} · pattern #{cur.seed}</p>
                 <div className="inv-actions">
                   <button type="button" onClick={() => void act('inv_equip', { id: cur.id })} disabled={!!cur.locked} data-testid="inv-equip">{cur.equipped ? 'Unequip' : 'Equip'}</button>
-                  <button type="button" disabled title="Market opens in the next update">Sell</button>
-                  <button type="button" disabled title="Trading opens in the next update">Trade</button>
+                  <button type="button" disabled={!!cur.locked || !signedIn} onClick={() => setSelling(selling === cur.id ? null : cur.id)} data-testid="inv-sell">Sell</button>
+                  <button type="button" disabled={!!cur.locked || !signedIn} onClick={() => { setTradeSeed(cur.id); setTab('trades'); }} data-testid="inv-trade">Trade</button>
                 </div>
               </> : cur.kind === 'case' ? <>
                 <p>Needs a {KEY_NAME}. <button type="button" className="inv-odds-btn" onClick={() => setOdds((o) => !o)} data-testid="inv-odds">Odds</button></p>
                 {odds && <table className="inv-odds" data-testid="inv-odds-table"><tbody>{CASE_ODDS_TABLE.map((o) => (
                   <tr key={o.group + o.rarity} className={o.group === 'knife' ? 'knife' : ''}><td>{o.group === 'knife' ? '★ Knife' : 'Gun'} {RARITY_NAME[o.rarity]}</td><td>{(o.p * 100).toFixed(o.p < 0.01 ? 2 : 1)}%</td></tr>))}</tbody></table>}
                 {odds && !KNIFE_IN_CASES && <p className="inv-note">★ Knives join cases when the knife ships; until then the knife roll rerolls into the gun tiers.</p>}
-                <div className="inv-actions"><button type="button" disabled={!keys || !!cur.locked} onClick={() => void open(cur.id)}>Open</button><button type="button" disabled>Sell</button></div>
-              </> : <><p>Opens one {CASE_NAME}.</p><div className="inv-actions"><button type="button" disabled>Sell</button></div></>}
+                <div className="inv-actions"><button type="button" disabled={!keys || !!cur.locked} onClick={() => void open(cur.id)}>Open</button><button type="button" disabled={!!cur.locked || !signedIn} onClick={() => setSelling(selling === cur.id ? null : cur.id)} data-testid="inv-sell">Sell</button><button type="button" disabled={!!cur.locked || !signedIn} onClick={() => { setTradeSeed(cur.id); setTab('trades'); }} data-testid="inv-trade">Trade</button></div>
+              </> : <><p>Opens one {CASE_NAME}.</p><div className="inv-actions"><button type="button" disabled={!!cur.locked || !signedIn} onClick={() => setSelling(selling === cur.id ? null : cur.id)} data-testid="inv-sell">Sell</button><button type="button" disabled={!!cur.locked || !signedIn} onClick={() => { setTradeSeed(cur.id); setTab('trades'); }} data-testid="inv-trade">Trade</button></div></>}
+              {selling === cur.id && <SellForm item={cur} onDone={() => { setSelling(null); load(); setTab('market'); }} />}
+              {cur.locked && <p className="inv-note">🔒 Listed on the Market or held in a trade offer.</p>}
             </> : <p className="inv-note">Select an item.</p>}
             {err && <p className="inv-err">{err}</p>}
           </aside>
         </div>
+        </>}
       </div>
       {unbox && <Unbox {...unbox} onDone={() => { setSel(unbox.item.id); setUnbox(null); load(); }} />}
     </div>

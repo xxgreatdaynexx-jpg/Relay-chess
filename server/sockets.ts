@@ -11,6 +11,7 @@ import { getBank } from './casino-store.js';
 import { registerWallet, startWallet } from './wallet-sockets.js';
 import { registerSolitro } from './solitro.js';
 import { registerSkins } from './skins.js';
+import { registerMarket } from './market.js';
 import { registerConquest } from './conquest.js';
 import { analyzePosition, onHintReady } from './hints.js';
 import {
@@ -193,6 +194,7 @@ export function registerSockets(io: Server): void {
     registerWallet(io, socket);
     registerSolitro(io, socket);
     registerSkins(io, socket);
+    registerMarket(io, socket);
     registerChat(io, socket);
     registerConquest(io, socket);
     socket.on('create_room', (payload: unknown, ack?: (res: Ack) => void) => {

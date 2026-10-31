@@ -1482,3 +1482,21 @@ html, body { overflow-x: clip; }
 .fps-panel:fullscreen .fps-stage { flex: 1 1 auto; min-height: 0; overflow: hidden; }
 .fps-panel:fullscreen .fps-canvas { width: 100%; height: 100%; aspect-ratio: auto; }
 .fps-panel:fullscreen .fps-touch, .fps-panel:fullscreen .win-grip { display: none; }
+.inv-tabs { display: flex; gap: 4px; }
+.inv-tabs button { background: transparent; border: 1px solid rgba(255,255,255,.15); color: inherit; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.inv-tabs button.on { background: rgba(124,204,255,.18); border-color: #7cf; }
+.mkt-price { font-size: 11px; color: #ffd23f; font-weight: 700; }
+.mkt-sub { grid-column: 1 / -1; margin: 4px 0 0; opacity: .7; font-size: 12px; }
+.mkt-big { font-size: 18px; color: #ffd23f; }
+.mkt-stats { font-size: 12px; opacity: .8; }
+.mkt-ok { color: #7f7; }
+.mkt-spark { display: block; margin: 4px 0; background: rgba(255,255,255,.04); border-radius: 4px; }
+.mkt-sell { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; font-size: 13px; }
+.mkt-sell input { width: 90px; }
+.trades { padding: 10px; overflow: auto; max-height: 70vh; }
+.trade-compose { border: 1px solid rgba(255,255,255,.15); border-radius: 8px; padding: 8px; margin: 8px 0; }
+.trade-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 640px) { .trade-cols { grid-template-columns: 1fr; } }
+.trade-pick, .trade-side { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; max-height: 260px; overflow: auto; }
+.trade-side .inv-cell { width: 84px; }
+.trade-row { border-top: 1px solid rgba(255,255,255,.1); padding: 8px 0; display: grid; gap: 4px; }
