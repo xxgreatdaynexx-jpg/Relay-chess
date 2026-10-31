@@ -26,6 +26,6 @@ export function registerWallet(_io: Server, socket: Socket): void {
     try { name = signedIn(socket); } catch { return reply(ack, { ok: true, signedIn: false }); }
     socket.join(roomOf(name));
     const bank = getBank();
-    reply(ack, { ok: true, signedIn: true, chips: bank.account(name).chips, history: await bank.recent(name, 25), start: START_CHIPS });
+    reply(ack, { ok: true, signedIn: true, chips: await bank.refresh(name), history: await bank.recent(name, 25), start: START_CHIPS });
   });
 }

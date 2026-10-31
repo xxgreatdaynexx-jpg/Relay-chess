@@ -123,7 +123,7 @@ describe('casino postgres store', () => {
 
   it('falls back to memory when the store fails', async () => {
     const bank = new CasinoBank();
-    const ok = await bank.attach({ init: async () => { throw new Error('down'); }, loadAll: async () => [], save: async () => {} });
+    const ok = await bank.attach({ init: async () => { throw new Error('down'); }, loadAll: async () => [], apply: async () => ({ ok: true, chips: 0 }), chipsOf: async () => null });
     expect(ok).toBe(false);
     bank.debit('Ada', 5);
     expect(bank.account('Ada').chips).toBe(995);

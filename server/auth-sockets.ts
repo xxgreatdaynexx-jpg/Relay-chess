@@ -1,6 +1,7 @@
 /** Socket events for claiming / signing in to a name. The signed-in identity lives on socket.data.account. */
 import type { Socket } from 'socket.io';
 import { AuthError, getAccounts, type Identity } from './accounts.js';
+import { getBank } from './casino-store.js';
 import { cleanSettings, validateSettings } from '../shared/settings.js';
 
 type Ack = (res: { ok: boolean; error?: string; [k: string]: unknown }) => void;
@@ -54,12 +55,14 @@ export function registerAuth(socket: Socket): void {
   socket.on('auth_login', run(async (body) => {
     const { identity, token } = await getAccounts().login(validName(body.name), body.password as string, clientIp(socket));
     socket.data.account = identity;
+    void getBank().refresh(identity.name); // re-sync the chip cache from Postgres (source of truth)
     return { name: identity.name, session: token };
   }));
 
   socket.on('auth_resume', run(async (body) => {
     const identity = await getAccounts().resume(body.session);
     socket.data.account = identity ?? undefined;
+    if (identity) void getBank().refresh(identity.name);
     // invalid: the server looked and this token is unknown/expired. Only then may the client forget it.
     return { name: identity?.name ?? null, invalid: !identity };
   }));

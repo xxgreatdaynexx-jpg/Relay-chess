@@ -30,11 +30,11 @@ export function adminRouter(): express.Router {
     try { row = await getAccounts().store.get(nameKey(player)); } catch { return res.status(503).json({ ok: false, error: 'Accounts unavailable.' }); }
     if (!row) return res.status(404).json({ ok: false, error: 'Unknown player.' });
     const bank = getBank();
-    const before = bank.account(row.name).chips;
+    const before = await bank.refresh(row.name); // DB is the source of truth
     const applied = bank.transfer(row.name, amount, { key, game: 'admin', memo: typeof memo === 'string' && memo ? memo : 'admin_grant' });
-    const after = bank.account(row.name).chips;
-    console.log(`[admin] grant ${applied ? 'applied' : 'replay ignored'}: ${row.name} +${amount} key=${key} memo=${JSON.stringify(memo ?? '')} ${before}->${after} from ${ip}`);
     await bank.flush();
+    const after = await bank.refresh(row.name);
+    console.log(`[admin] grant ${applied ? 'applied' : 'replay ignored'}: ${row.name} +${amount} key=${key} memo=${JSON.stringify(memo ?? '')} ${before}->${after} from ${ip}`);
     res.json({ ok: true, applied, player: row.name, amount, before, after, key });
   });
   /** POST /api/admin/grant-item {player, kind: 'case'|'key', key}: QA- accounts ONLY. Mints one case or key (idempotent by key), logged. */

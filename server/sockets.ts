@@ -226,6 +226,7 @@ export function registerSockets(io: Server): void {
       try {
         const body = asRecord(payload);
         const name = signedIn(socket);
+        void getBank().refresh(name); // re-sync the chip cache from Postgres before any wager
         const code = cleanCode(body.code);
         const room = getRoom(code);
         if (!room) throw new GameError(missingRoomMessage(code), true);
