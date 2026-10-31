@@ -1459,3 +1459,8 @@ html, body { overflow-x: clip; }
 .inv-odds td { padding: 2px 10px 2px 0; }
 .inv-odds tr.knife td { color: #ffd23f; }
 .inv-odds-btn { margin-left: 6px; }
+/* Top bar: games on the left; Wallet, Chat, Inventory, Account pinned flush right as one group. */
+.top-tabs .top-tab-wallet { margin-left: auto !important; }
+.top-tabs .top-tab-chat, .top-tabs .top-tab-inventory, .top-tabs .top-tab-account { margin-left: 6px !important; }
+.top-tabs .top-tab-wallet:empty + .top-tab-chat { margin-left: auto !important; }
+.top-tabs .top-tab-wallet:empty + .top-tab-chat:empty + .top-tab-inventory { margin-left: auto !important; }
