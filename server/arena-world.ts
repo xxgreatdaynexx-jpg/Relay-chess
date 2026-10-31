@@ -38,6 +38,22 @@ export const nextInRotation = (id: string): string => MAP_ROTATION[(MAP_ROTATION
 export const FIRE_JITTER_MS = 25;
 /** A broke fighter re-checks the wallet this often (a refill lets them back in). */
 export const BROKE_RETRY_MS = 1000;
+/** 360 no-scope: an unscoped sniper kill after >= NOSCOPE_DEG of one-way spin within NOSCOPE_WINDOW_MS (humans only). */
+export const NOSCOPE_DEG = 330;
+export const NOSCOPE_WINDOW_MS = 1500;
+const isBotId = (id: string) => id.startsWith('arena-bot-') || id.startsWith('qa-bot-');
+/** Net signed yaw travelled (degrees) in the window ending at `now`, from [t, yaw] samples; handles ±π wrap. */
+export function spinDegrees(hist: ReadonlyArray<readonly [number, number]>, now: number, windowMs = NOSCOPE_WINDOW_MS): number {
+  let sum = 0;
+  for (let i = 1; i < hist.length; i++) {
+    if (hist[i][0] < now - windowMs) continue;
+    let d = hist[i][1] - hist[i - 1][1];
+    while (d > Math.PI) d -= 2 * Math.PI;
+    while (d < -Math.PI) d += 2 * Math.PI;
+    sum += d;
+  }
+  return Math.abs((sum * 180) / Math.PI);
+}
 /** Dropped guns: lifetime, per-match cap (oldest removed), walk-over pickup radius. */
 export const DROP_MS = 3000;
 export const DROP_BLINK_MS = 1000;
@@ -74,6 +90,8 @@ export interface ArenaFighter extends Fighter {
   loadout: WeaponId;
   /** Weapons picked up from drops this life (switchable like the loadout). */
   extra?: WeaponId[];
+  /** Recent [time, yaw] samples (~2 s) for 360 no-scope detection. */
+  yawHist?: Array<[number, number]>;
   /** Unique id of this paid life (ledger idempotency key), '' for free lives (guests, bots). */
   lifeId: string;
   /** Chips staked on this life; paid to whoever kills you. */
@@ -275,7 +293,7 @@ export class ArenaWorld {
     if (!f || !f.alive) return;
     if (typeof crouch === 'boolean') this.crouch(id, crouch);
     const na = normAngle(a);
-    if (na !== null) f.a = na;
+    if (na !== null) { f.a = na; this.trackYaw(f, now); }
     const np = clampPitch(p);
     if (np !== null) f.p = np;
     if (this.audit && (na !== null || np !== null)) this.audit.aim(id, f.a, f.p, now);
@@ -415,9 +433,10 @@ export class ArenaWorld {
       return [];
     }
     const na = normAngle(a);
-    if (na !== null) f.a = na;
+    if (na !== null) { f.a = na; this.trackYaw(f, now); }
     const np = clampPitch(p);
     if (np !== null) f.p = np;
+    const noscope = f.weapon === 'sniper' && f.scopedSince === 0 && !isBotId(f.id) && spinDegrees(f.yawHist ?? [], now) >= NOSCOPE_DEG;
     const flick = this.audit ? this.audit.aim(id, f.a, f.p, now) : 0;
     this.advance(f, now);
     f.lastShotAt[f.weapon] = now;
@@ -468,7 +487,7 @@ export class ArenaWorld {
     for (const [tid, dmg] of shot.hits) {
       const head = shot.heads.has(tid);
       if (head) f.headshots += 1;
-      events.push(...this.damage(f.id, tid, dmg, now, f.weapon, head));
+      events.push(...this.damage(f.id, tid, dmg, now, f.weapon, head, noscope));
     }
     return events;
   }
@@ -522,7 +541,7 @@ export class ArenaWorld {
   }
 
   /** Applies damage from attacker (may be absent for the nuke) and handles kills and streaks. */
-  private damage(byId: string | null, targetId: string, amount: number, now: number, cause: string, head = false): ArenaEvent[] {
+  private damage(byId: string | null, targetId: string, amount: number, now: number, cause: string, head = false, noscope = false): ArenaEvent[] {
     const t = this.fighters.get(targetId);
     if (!t || !t.alive) return [];
     const killed = applyDamage(t, now, amount);
@@ -534,7 +553,8 @@ export class ArenaWorld {
     // Humans get the loadout picker for RESPAWN_PICK_MS (or until they press Respawn); bots come straight back.
     if (!t.id.startsWith('arena-bot-') && !t.id.startsWith('qa-bot-')) t.respawnAt = Math.max(t.respawnAt, now + RESPAWN_PICK_MS);
     const killer = byId ? this.fighters.get(byId) : undefined;
-    out.push({ ev: 'fps_kill', data: { killer: killer?.name ?? '☢', victim: t.name, killerId: byId, victimId: t.id, cause, ...(head ? { head: true, headshot: true } : {}) } });
+    out.push({ ev: 'fps_kill', data: { killer: killer?.name ?? '☢', victim: t.name, killerId: byId, victimId: t.id, cause, ...(head ? { head: true, headshot: true } : {}), ...(noscope && byId && byId !== t.id ? { noscope: true } : {}) } });
+    if (noscope && killer && killer.id !== t.id) out.push({ ev: 'fps_noscope', data: { id: killer.id, name: killer.name, victim: t.name } });
     this.killcam.kill({ killerId: byId, killer: killer?.name ?? '☢', victimId: t.id, weapon: cause, dist: killer ? Math.round(Math.hypot(killer.x - t.x, killer.y - t.y, killer.z - t.z) * 10) / 10 : 0, head, bot: !!byId && (byId.startsWith('arena-bot-') || byId.startsWith('qa-bot-')), at: now });
     if (killer && killer.id !== t.id && cause !== 'nuke') {
       killer.kills += 1;
@@ -628,6 +648,14 @@ export class ArenaWorld {
     const k = Math.sin(turn) / Math.sin(ang), j = Math.sin(ang - turn) / Math.sin(ang);
     const nx = ux * j + wx * k, ny = uy * j + wy * k, nz = uz * j + wz * k, n = Math.hypot(nx, ny, nz) || 1;
     r.vx = (nx / n) * sp; r.vy = (ny / n) * sp; r.vz = (nz / n) * sp;
+  }
+
+  /** Records a yaw sample, keeping ~2 s of history. */
+  trackYaw(f: ArenaFighter, now: number): void {
+    const h = (f.yawHist ??= []);
+    h.push([now, f.a]);
+    while (h.length > 2 && h[1][0] < now - NOSCOPE_WINDOW_MS - 500) h.shift();
+    if (h.length > 400) h.splice(0, h.length - 400);
   }
 
   /** Does this fighter already carry weapon `w` this life? (loadout, pistol/knife per rules, or picked up) */

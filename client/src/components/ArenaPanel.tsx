@@ -10,7 +10,7 @@ import { prefersReducedMotion } from '@/lib/motion';
 import { INTERP_DELAY_MS, LOCAL_STEP_S, SnapBuffer, samplePlayers } from '../../../shared/netInterp';
 import { TagVisibility, tagVisible } from '@/lib/arenaTags';
 import type { ArenaMap } from '../../../shared/arenaMaps';
-import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playKnife, playLockBeep, playPickup, playMultiKill, shotFalloff, unlockSounds } from '@/lib/sounds';
+import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playKnife, playLockBeep, playPickup, play360NoScope, playMultiKill, shotFalloff, unlockSounds } from '@/lib/sounds';
 import { isTypingTarget, spaceRespawns } from '@/lib/respawnKey';
 import { fitSpeed, killCardText, sampleKillCam, type CamFrame, type KillCard } from '@/lib/killcam';
 import { feedParts, popupScale, POPUP_MS, type FeedItem } from '@/lib/arenaFeed';
@@ -345,7 +345,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       if (s.impact) { fx.current.booms.push({ ...s.impact, at: now, big: false }); playArenaExplosion(Math.hypot(s.impact.x - me.current.x, s.impact.y - me.current.y) + 4); }
       if (s.rocket) fx.current.rockets.set(s.rocket.id, { ...s.rocket, at: now });
     };
-    const onKill = (k: { killer: string; victim: string; killerId: string | null; victimId: string; cause: string; headshot?: boolean }) => {
+    const onKill = (k: { killer: string; victim: string; killerId: string | null; victimId: string; cause: string; headshot?: boolean; noscope?: boolean }) => {
       const self = k.killerId === k.victimId || !k.killerId;
       if (k.victimId === me.current.id) { releaseOnDeath(); deathAtRef.current = performance.now(); kcRef.current = null; setKillCam(null); }
       if (k.killerId === me.current.id && !self) { fx.current.killmark = performance.now(); if (k.headshot) fx.current.headmark = performance.now(); }
@@ -356,7 +356,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         const fall = by && by.id !== v.id ? Math.atan2(v.y - by.y, v.x - by.x) - v.a : Math.PI;
         fx.current.deaths.set(k.victimId, { at: performance.now(), x: v.x, y: v.y, z: v.z, a: v.a, name: v.name, fall });
       }
-      pushFeed({ killer: k.killer, victim: k.victim, cause: k.cause, self, mine: k.killerId === me.current.id || k.victimId === me.current.id, head: !!k.headshot && !self });
+      pushFeed({ killer: k.killer, victim: k.victim, cause: k.cause, self, mine: k.killerId === me.current.id || k.victimId === me.current.id, head: !!k.headshot && !self, noscope: !!k.noscope && !self });
     };
     let popKey = 0;
     // Everyone gets the feed line; only the killer gets the pop-up (fps_multi_me is sent to the killer's socket alone).
@@ -409,6 +409,15 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       setTimeout(() => setPickToast((o) => (o && o.key === key ? null : o)), 1800);
     };
     socket.on('fps_pickup', onPickup);
+    const onNoScope = (x: { id: string }) => {
+      play360NoScope();
+      if (x.id === me.current.id) {
+        const key = ++popKey;
+        setMultiPop({ key, title: '360 NO-SCOPE!', level: 5 });
+        window.setTimeout(() => setMultiPop((p) => (p?.key === key ? null : p)), 2500);
+      }
+    };
+    socket.on('fps_noscope', onNoScope);
     socket.on('fps_boom', onBoom);
     const onDrone = () => playWeaponShot('smg', 0.3);
     socket.on('fps_drone_shot', onDrone);
@@ -419,7 +428,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     return () => {
       window.clearInterval(pingT);
       socket.emit('fps_leave');
-      for (const [e, h] of [['fps_state', onState], ['fps_hit', onHit], ['fps_shot', onShot], ['fps_kill', onKill], ['fps_streak', onStreak], ['fps_multi', onMulti], ['fps_multi_me', onMultiMe], ['fps_pickup', onPickup], ['fps_boom', onBoom], ['fps_drone_shot', onDrone], ['fps_nuke', onNuke], ['connect', join]] as const) socket.off(e, h as never);
+      for (const [e, h] of [['fps_state', onState], ['fps_hit', onHit], ['fps_shot', onShot], ['fps_kill', onKill], ['fps_streak', onStreak], ['fps_multi', onMulti], ['fps_multi_me', onMultiMe], ['fps_pickup', onPickup], ['fps_noscope', onNoScope], ['fps_boom', onBoom], ['fps_drone_shot', onDrone], ['fps_nuke', onNuke], ['connect', join]] as const) socket.off(e, h as never);
     };
   }, []);
 
@@ -1120,7 +1129,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         <div className="fps-feed" data-testid="arena-feed">
           {feed.map((f) => (
             <div key={f.key} className={`${f.mine ? 'fps-feed-me' : ''}${f.head ? ' fps-feed-head' : ''}${f.multi ? ' fps-feed-multi' : ''}`}>
-              {feedParts(f).map((p, i) => p.t === 'weapon' ? <WeaponIcon key={i} cause={p.cause} /> : p.t === 'head' ? <HeadshotIcon key={i} /> : <span key={i} className={p.t === 'killer' ? 'fps-k' : p.t === 'multi' ? 'fps-multi-t' : ''}>{p.text}</span>)}
+              {feedParts(f).map((p, i) => p.t === 'weapon' ? <WeaponIcon key={i} cause={p.cause} /> : p.t === 'head' ? <HeadshotIcon key={i} /> : p.t === 'noscope' ? <span key={i} className="fps-360" aria-label="360 no-scope">360</span> : <span key={i} className={p.t === 'killer' ? 'fps-k' : p.t === 'multi' ? 'fps-multi-t' : ''}>{p.text}</span>)}
             </div>
           ))}
         </div>

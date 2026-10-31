@@ -156,6 +156,26 @@ export function playMultiKill(tier: string): void {
     multiVoice = voice; src.start();
   });
 }
+export const NOSCOPE_URL = '/sounds/arena-360noscope.mp3';
+/** The clip peaks at 0 dBFS: play it well under unity, through the master bus. */
+export const NOSCOPE_GAIN = 0.3;
+const noscopeClip: Clip = { buffer: null, pending: null };
+let noscopeVoice: { src: AudioBufferSourceNode; g: GainNode } | null = null;
+/** 360 no-scope call (everyone in the match hears it); one instance at a time — a new one restarts it. */
+export function play360NoScope(): void {
+  const ctx = audio();
+  if (!ctx) return;
+  void loadClip(ctx, NOSCOPE_URL, noscopeClip).then((buffer) => {
+    if (!buffer) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+    if (noscopeVoice) { try { noscopeVoice.src.stop(); noscopeVoice.g.disconnect(); } catch { /* ended */ } noscopeVoice = null; }
+    const g = ctx.createGain(); g.gain.value = NOSCOPE_GAIN; g.connect(output(ctx));
+    const src = ctx.createBufferSource(); src.buffer = buffer; src.connect(g);
+    const voice = { src, g };
+    src.onended = () => { if (noscopeVoice === voice) noscopeVoice = null; try { g.disconnect(); } catch { /* gone */ } };
+    noscopeVoice = voice; src.start();
+  });
+}
 const queenCaptureClip: Clip = { buffer: null, pending: null };
 const doubleClip: Clip = { buffer: null, pending: null };
 const streakClip: Clip = { buffer: null, pending: null };
@@ -174,6 +194,7 @@ export function unlockSounds(): void {
   void loadClip(ctx, DOUBLE_URL, doubleClip);
   void loadClip(ctx, STREAK_URL, streakClip);
   void loadClip(ctx, MATE_IN_ONE_URL, mateInOneClip);
+  void loadClip(ctx, NOSCOPE_URL, noscopeClip);
 }
 
 /** Dayne's recording for when a queen is captured. The synth boom plays only if that file cannot be loaded. */
