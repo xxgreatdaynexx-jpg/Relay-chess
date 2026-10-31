@@ -792,3 +792,15 @@ export function playPickup(): void {
   tone(ctx, 660, t, 0.07, 0.12);
   tone(ctx, 990, t + 0.07, 0.09, 0.12);
 }
+
+/** Mines: pickaxe on rock. 'hit' is a dull clink, 'break' adds a crumble. Kept quiet (gain well under the guns). */
+export function playPickaxe(kind: 'swing' | 'hit' | 'break', volume = 0.6): void {
+  const ctx = audio();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const v = Math.max(0, Math.min(1, volume));
+  if (kind === 'swing') { burst(ctx, now, 0.12, 'bandpass', 1200, 0.08 * v, 1.2); return; }
+  thump(ctx, now, 120, 0.08, 0.22 * v);
+  burst(ctx, now, 0.05, 'bandpass', 3400, 0.12 * v, 6);
+  if (kind === 'break') { burst(ctx, now + 0.04, 0.35, 'lowpass', 600, 0.25 * v); thump(ctx, now + 0.05, 70, 0.2, 0.25 * v); }
+}

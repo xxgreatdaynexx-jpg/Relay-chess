@@ -14,6 +14,7 @@ import { TopTab, TopTabs } from '@/components/TopTabs';
 import { PokerPanel } from '@/components/PokerPanel';
 import { SlotsPanel } from '@/components/SlotsPanel';
 import { ArenaPanel } from '@/components/ArenaPanel';
+import { MinesPanel } from '@/components/MinesPanel';
 import { ChatDrawer } from '@/components/ChatDrawer';
 import { ConquestPanel } from '@/components/ConquestPanel';
 import { AccountButton, AccountPanel } from '@/components/AccountPanel';
@@ -194,6 +195,7 @@ export function App() {
         <SlotsPanel />
         <SolitairePanel />
         <ArenaPanel />
+        <MinesPanel />
         <SkinsPanel />
         <ConquestPanel />
       </div>
