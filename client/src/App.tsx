@@ -20,6 +20,7 @@ import { ChatDrawer } from '@/components/ChatDrawer';
 import { ConquestPanel } from '@/components/ConquestPanel';
 import { AccountButton, AccountPanel } from '@/components/AccountPanel';
 import { socket } from '@/lib/net';
+import { WorldMap } from '@/components/WorldMap';
 import { WalletButton } from '@/components/WalletButton';
 import { TournamentScreen } from '@/components/TournamentScreen';
 import { TournamentPing } from '@/components/TournamentPing';
@@ -175,6 +176,10 @@ export function App() {
 
   const leaderboard = path === '/leaderboard';
   const tournamentCode = path.startsWith('/t/') ? tournamentFromLocation() : '';
+  // The 3D city is the landing screen on a plain visit to '/'. Deep links (?play, ?conquest, /r/<code>, /t/...) skip it.
+  const [world, setWorld] = useState(() => window.location.pathname === '/' && !window.location.search && !initialCode);
+  const onHome = path === '/' && !state && !analysis && !booting;
+  const showWorld = world && onHome;
   const goHome = () => {
     window.history.pushState({}, '', '/');
     setPath('/');
@@ -205,6 +210,11 @@ export function App() {
       <ChatDrawer />
       <TopTab id="wallet"><WalletButton /></TopTab>
       <TopTab id="account"><AccountButton /></TopTab>
+      {showWorld ? (
+        <WorldMap onClose={() => setWorld(false)} onLeaderboard={() => { setWorld(false); openLeaderboard(); }} />
+      ) : onHome && (
+        <button type="button" className="world-map-btn" onClick={() => setWorld(true)} data-testid="world-map-btn">🗺 Map</button>
+      )}
       {leaderboard ? (
         <LeaderboardScreen
           onBack={() => {

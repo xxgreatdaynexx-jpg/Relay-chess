@@ -53,11 +53,14 @@ function Inspect({ item }: { item: SkinItem }) {
 export const label = (i: SkinItem) => (i.kind === 'case' ? CASE_NAME : i.kind === 'key' ? KEY_NAME : (SKIN_BY_ID.has(i.skin) ? skinName(SKIN_BY_ID.get(i.skin)!) : i.skin));
 export const rarityOf = (i: SkinItem): Rarity | null => (i.kind === 'skin' ? SKIN_BY_ID.get(i.skin)?.rarity ?? null : null);
 
+type InvTab = 'inv' | 'market' | 'mats' | 'trades';
+let pendingInvTab: InvTab | null = null;
+
 export function SkinsPanel() {
   const [open, setOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   useEffect(() => {
-    const o = () => setOpen(true);
+    const o = (e: Event) => { const t = (e as CustomEvent<{ tab?: InvTab }>).detail?.tab; if (t) pendingInvTab = t; setOpen(true); };
     const drop = (it: SkinItem) => { setToast(`Match drop: ${label(it)}!`); window.setTimeout(() => setToast(null), 6000); };
     const ann = (a: { text: string }) => { setToast(`🔪 ${a.text}`); window.setTimeout(() => setToast(null), 8000); };
     window.addEventListener('open-inventory', o); socket.on('inv_drop', drop); socket.on('inv_announce', ann);
@@ -83,7 +86,8 @@ function Inventory({ onClose }: { onClose: () => void }) {
   const [q, setQ] = useState('');
   const [err, setErr] = useState('');
   const [unbox, setUnbox] = useState<{ reel: string[]; win: number; item: SkinItem } | null>(null);
-  const [tab, setTab] = useState<'inv' | 'market' | 'mats' | 'trades'>('inv');
+  const [tab, setTab] = useState<InvTab>(() => { const t = pendingInvTab ?? 'inv'; pendingInvTab = null; return t; });
+  useEffect(() => { const f = (e: Event) => { const t = (e as CustomEvent<{ tab?: InvTab }>).detail?.tab; if (t) { setTab(t); pendingInvTab = null; } }; window.addEventListener('open-inventory', f); return () => window.removeEventListener('open-inventory', f); }, []);
   const [selling, setSelling] = useState<string | null>(null);
   const [tradeSeed, setTradeSeed] = useState<string | null>(null);
 
