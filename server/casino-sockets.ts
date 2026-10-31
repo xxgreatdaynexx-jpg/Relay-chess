@@ -227,15 +227,6 @@ export function registerCasino(io: Server, socket: Socket): void {
     return { chips: getBank().account(name).chips };
   }));
 
-  socket.on('casino_reset', wrap((body) => {
-    const name = setName(body);
-    const a = getBank().reset(name);
-    const t = casino!.tableOf(name);
-    if (t) pushTable(t);
-    pushWheel();
-    return { chips: a.chips };
-  }));
-
   socket.on('bj_join', wrap((body, now) => {
     const name = setName(body);
     bjWatchers.add(socket);

@@ -128,9 +128,6 @@ export class PgCasinoStore implements CasinoStore {
 }
 
 export const START_CHIPS = 1000;
-/** Below this you may reset to START_CHIPS. */
-/** Below this you may take the free refill. Matches the cheapest Arena spawn (10) so nobody is stuck unable to play or refill. */
-export const BROKE_BELOW = 10;
 
 function keyOf(name: string): string {
   return name.replace(/\s+/g, ' ').trim().toLowerCase();
@@ -225,15 +222,6 @@ export class CasinoBank {
     const a = this.account(name);
     a.chips += amount;
     this.log(a, amount, game, null, 'refund');
-  }
-
-  reset(name: string): CasinoAccount {
-    const a = this.account(name);
-    if (a.chips >= BROKE_BELOW) throw new Error('You can reset only when you are broke.');
-    const before = a.chips;
-    a.chips = START_CHIPS;
-    this.log(a, START_CHIPS - before, 'refill', null, 'Broke refill');
-    return a;
   }
 
   /** Newest first. Memory for this run, else the Postgres ledger. */

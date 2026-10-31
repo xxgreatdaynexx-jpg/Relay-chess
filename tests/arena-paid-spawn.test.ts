@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { affordableLoadout, canHold, cheapestSpawn, RESPAWN_MS, SPAWN_EXTRAS, SPAWN_PRICE, spawnCost } from '../shared/fps.js';
 import { claimArenaName, holdPaidLife, getArenaWorld, recordArena, resetArena } from '../server/fps.js';
-import { BROKE_BELOW, resetBank } from '../server/casino-store.js';
+import { resetBank } from '../server/casino-store.js';
 
 const kill = (killerId: string | null, victimId: string) => {
   const w = getArenaWorld();
@@ -18,7 +18,6 @@ describe('arena paid spawns', () => {
   it('prices: one table, pistol cheapest, extras pluggable', () => {
     expect(SPAWN_PRICE).toEqual({ pistol: 10, smg: 15, shotgun: 20, sniper: 25, rocket: 35, knife: 0 });
     expect(cheapestSpawn()).toBe(10);
-    expect(BROKE_BELOW).toBe(cheapestSpawn());
     SPAWN_EXTRAS.grenades = 5;
     expect(spawnCost('pistol')).toBe(15);
     delete SPAWN_EXTRAS.grenades;

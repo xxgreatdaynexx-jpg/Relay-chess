@@ -1,7 +1,7 @@
 import { TopTab } from '@/components/TopTabs';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { NamePrompt, ResetChips } from '@/components/CasinoCommon';
+import { NamePrompt, OutOfChips } from '@/components/CasinoCommon';
 import { betKey, CHIP_VALUES, payoutOdds, RED, WHEEL, type RouletteBet, type RouletteKind, type RouletteView } from '../../../shared/casino';
 import { useWalletChips } from '@/lib/wallet';
 import { emitCasino, useCountdown, useSavedName } from '@/lib/casino';
@@ -243,7 +243,7 @@ export function RoulettePanel() {
                   {err && <div className="bj-err">{err}</div>}
                   <div className="bj-controls">
                     {chips < 5 && !mine && betting ? (
-                      <ResetChips name={name} onDone={() => undefined} />
+                      <OutOfChips />
                     ) : (
                       <>
                         <div className="flex flex-wrap gap-1">

@@ -2,7 +2,7 @@ import { TopTab } from '@/components/TopTabs';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { CardFace } from '@/components/SolitairePanel';
-import { NamePrompt, ResetChips } from '@/components/CasinoCommon';
+import { NamePrompt, OutOfChips } from '@/components/CasinoCommon';
 import { handValue, type BJSeatView, type BJTableView } from '../../../shared/casino';
 import { useWalletChips } from '@/lib/wallet';
 import { emitCasino, useCountdown, useSavedName } from '@/lib/casino';
@@ -171,7 +171,7 @@ export function BlackjackPanel() {
                   </>
                 ) : t?.phase === 'betting' && me && !me.bet ? (
                   chips < BETS[0]! ? (
-                    <ResetChips name={name} onDone={() => undefined} />
+                    <OutOfChips />
                   ) : (
                     <>
                       <div className="flex flex-wrap gap-1">

@@ -1,6 +1,6 @@
 import { TopTab } from '@/components/TopTabs';
 import { useEffect, useRef, useState } from 'react';
-import { NamePrompt, ResetChips } from '@/components/CasinoCommon';
+import { NamePrompt, OutOfChips } from '@/components/CasinoCommon';
 import { CoinArt, SlotSymbol } from '@/components/SlotArt';
 import { useWalletChips } from '@/lib/wallet';
 import { emitCasino, useSavedName } from '@/lib/casino';
@@ -353,7 +353,7 @@ export function SlotsPanel() {
                 )}
               </div>
               <div className="bj-label">Chips: {chips?.toLocaleString() ?? '…'} {err && <span className="account-error">· {err}</span>}</div>
-              {chips !== null && chips < VS_BETS[0] && !busy && <ResetChips name={name} onDone={setChips} />}
+              {chips !== null && chips < VS_BETS[0] && !busy && <OutOfChips />}
               <details className="vs-pays">
                 <summary>Paytable (× line bet = bet ÷ 20)</summary>
                 <table className="vp-pays"><tbody>

@@ -6,7 +6,7 @@ import { openAccount } from '@/lib/settings';
 import { setWalletChips } from '@/lib/wallet';
 
 interface Tx { key: string | null; game: string; amount: number; balance: number; memo?: string; at: number }
-interface WalletPush { chips: number; tx?: Tx; brokeBelow?: number; start?: number }
+interface WalletPush { chips: number; tx?: Tx; start?: number }
 
 const GAME_LABEL: Record<string, string> = {
   chess: '♞ Chess', checkers: '⛀ Checkers', conquest: '⚔ Conquest', blackjack: '🂡 Blackjack', roulette: '🎡 Roulette',
@@ -19,15 +19,13 @@ function when(at: number): string {
   return today ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
-/** Unified chip wallet in the top bar: live balance for every game, history and the broke refill. */
+/** Unified chip wallet in the top bar: live balance for every game, and history. */
 export function WalletButton() {
   const account = useAccount();
   const [chips, setChips] = useState<number | null>(null);
   const [history, setHistory] = useState<Tx[]>([]);
-  const [broke, setBroke] = useState(5);
   const [open, setOpen] = useState(false);
   const [bump, setBump] = useState<'' | 'bump-up' | 'bump-down'>('');
-  const [error, setError] = useState('');
   const ref = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -35,11 +33,10 @@ export function WalletButton() {
     const sub = () => {
       if (!socket.connected) return;
       void request('wallet_sub', {}).then((res) => {
-        const r = res as unknown as { ok: boolean; signedIn?: boolean; chips?: number; history?: Tx[]; brokeBelow?: number };
+        const r = res as unknown as { ok: boolean; signedIn?: boolean; chips?: number; history?: Tx[] };
         if (!r.ok || !r.signedIn) { setChips(null); setWalletChips(null); setHistory([]); return; }
         setChips(r.chips ?? 0); setWalletChips(r.chips ?? 0);
         setHistory(r.history ?? []);
-        if (r.brokeBelow) setBroke(r.brokeBelow);
       });
     };
     const onWallet = (p: WalletPush) => {
@@ -53,7 +50,6 @@ export function WalletButton() {
       });
       const tx = p.tx;
       if (tx && (tx.amount !== 0 || tx.key)) setHistory((h) => [tx, ...h].slice(0, 25));
-      if (p.brokeBelow) setBroke(p.brokeBelow);
     };
     if (account) socket.connect();
     // Auth resumes on connect; give it a beat before subscribing.
@@ -93,13 +89,6 @@ export function WalletButton() {
                 <div className="text-2xl font-bold tabular-nums" data-testid="wallet-balance">🪙 {chips!.toLocaleString()}</div>
               </div>
               <p className="mt-1 text-[11px] opacity-60">Same chips in every game: wager on chess, checkers and Conquest tables, or play the casino.</p>
-              {chips! < broke && (
-                <button type="button" data-testid="wallet-reset" className="mt-2 w-full rounded-full bg-emerald-500/80 px-3 py-1.5 text-sm font-bold"
-                  onClick={() => void request('wallet_reset', {}).then((r) => setError(r.ok ? '' : r.error ?? 'Could not refill.'))}>
-                  Broke? Refill to 1,000 chips
-                </button>
-              )}
-              {error && <p className="mt-1 text-xs text-rose-300">{error}</p>}
               <div className="mt-3 text-xs uppercase tracking-wide opacity-70">Recent</div>
               {history.length === 0 ? <p className="mt-1 text-sm opacity-60">No chip moves yet.</p> : (
                 <ul className="mt-1" data-testid="wallet-history">

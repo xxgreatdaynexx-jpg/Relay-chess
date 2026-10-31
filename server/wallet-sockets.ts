@@ -1,5 +1,5 @@
 import type { Server, Socket } from 'socket.io';
-import { BROKE_BELOW, getBank, START_CHIPS } from './casino-store.js';
+import { getBank, START_CHIPS } from './casino-store.js';
 import { signedIn } from './auth-sockets.js';
 import type { Ack } from '../shared/types.js';
 
@@ -13,7 +13,7 @@ export function startWallet(io: Server): void {
   unsubscribe?.();
   attachedTo = io;
   unsubscribe = getBank().onChange((a, tx) => {
-    io.to(roomOf(a.name)).emit('wallet', { chips: a.chips, tx, brokeBelow: BROKE_BELOW, start: START_CHIPS });
+    io.to(roomOf(a.name)).emit('wallet', { chips: a.chips, tx, start: START_CHIPS });
   });
 }
 
@@ -26,14 +26,6 @@ export function registerWallet(_io: Server, socket: Socket): void {
     try { name = signedIn(socket); } catch { return reply(ack, { ok: true, signedIn: false }); }
     socket.join(roomOf(name));
     const bank = getBank();
-    reply(ack, { ok: true, signedIn: true, chips: bank.account(name).chips, history: await bank.recent(name, 25), brokeBelow: BROKE_BELOW, start: START_CHIPS });
-  });
-  socket.on('wallet_reset', (_payload: unknown, ack?: unknown) => {
-    try {
-      const a = getBank().reset(signedIn(socket));
-      reply(ack, { ok: true, chips: a.chips });
-    } catch (error) {
-      reply(ack, { ok: false, error: (error as Error).message });
-    }
+    reply(ack, { ok: true, signedIn: true, chips: bank.account(name).chips, history: await bank.recent(name, 25), start: START_CHIPS });
   });
 }

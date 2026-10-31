@@ -39,10 +39,7 @@ export function CasinoLeaderboard({ you }: { you: string }) {
   );
 }
 
-export function ResetChips({ name, onDone }: { name: string; onDone: (chips: number) => void }) {
-  return (
-    <button type="button" className="bj-deal" onClick={() => void emitCasino<{ chips: number }>('casino_reset', { name }).then((r) => r.ok && r.chips && onDone(r.chips))}>
-      Reset chips (1,000)
-    </button>
-  );
+/** Shown instead of the bet controls when the balance can't cover the minimum bet. There is no refill. */
+export function OutOfChips() {
+  return <div className="bj-label" data-testid="out-of-chips">Out of chips</div>;
 }

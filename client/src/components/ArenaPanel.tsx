@@ -3,8 +3,6 @@ import { useWalletChips } from '@/lib/wallet';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useRef, useState } from 'react';
 import { request, socket } from '@/lib/net';
-/** Matches server BROKE_BELOW: the free refill unlocks under the cheapest Arena spawn. */
-const BROKE_REFILL_BELOW = 10;
 import { LOOK_KEY, SENS_MAX, SENS_MIN, mouseLook, readLook, type LookPrefs, FPS_KEY, fpsFrom, hotkeyFor, isLockedTo, readFpsPref, stepFovKick, viewZoom } from '@/lib/arenaInput';
 import { ArenaRenderer, minimapSize } from '@/lib/arenaRender';
 import type { Arena3D, Fx3D, Soldier3D } from '@/lib/arena3d';
@@ -960,7 +958,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
             {life.broke && wallet !== null && (
               <div style={{ marginTop: 6 }} data-testid="arena-broke">
                 {knifeOnlyAvailable() ? <>Not enough for a gun (cheapest {cheapestSpawn()} 🪙): you respawn with Knife only, free.{' '}</> : <>Out of chips (cheapest spawn {cheapestSpawn()} 🪙).{' '}</>}
-                {wallet < BROKE_REFILL_BELOW ? <button type="button" data-testid="arena-refill" style={{ textDecoration: 'underline' }} onClick={() => void request('wallet_reset', {})}>Refill wallet</button> : null}{knifeOnlyAvailable() ? '' : ' or keep spectating.'}
+                {knifeOnlyAvailable() ? '' : 'Keep spectating.'}
               </div>
             )}
           </div>

@@ -86,14 +86,14 @@ describe('blackjack rules', () => {
     expect(new Set(tables.map((x) => x.id)).size).toBe(2);
   });
 
-  it('rejects bets beyond the balance and resets only when broke', () => {
+  it('rejects bets beyond the balance; there is no broke refill', () => {
     const bank = new CasinoBank();
     const t = new BlackjackTable('X', bank);
     t.sit('Ada', 0);
     expect(() => t.bet('Ada', 2000, 1)).toThrow();
-    expect(() => bank.reset('Ada')).toThrow();
+    expect('reset' in bank).toBe(false);
     bank.debit('Ada', 998);
-    expect(bank.reset('Ada').chips).toBe(1000);
+    expect(bank.account('Ada').chips).toBe(2);
   });
 });
 
