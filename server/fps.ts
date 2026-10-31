@@ -321,6 +321,12 @@ export function registerFps(io: Server, socket: Socket): void {
   socket.on('fps_loadout', (p: unknown) => world.setLoadout(socket.id, body(p).w, Date.now()));
   socket.on('fps_weapon', (p: unknown) => world.switchWeapon(socket.id, body(p).w, Date.now()));
   socket.on('fps_reload', () => world.reload(socket.id, Date.now()));
+  // Kill cam: requested from the respawn screen; never blocks or delays the respawn.
+  socket.on('fps_killcam', (_p: unknown, ack?: (res: unknown) => void) => {
+    if (typeof ack !== 'function') return;
+    const k = world.killCamFor(socket.id, Date.now());
+    ack(k ? { ok: true, ...k } : { ok: false });
+  });
   socket.on('fps_scope', (p: unknown) => world.setScope(socket.id, body(p).on, Date.now()));
   socket.on('fps_map', (p: unknown, ack?: (res: unknown) => void) => {
     const ev = world.pickMap(body(p).map, socket.id, Date.now(), isHuman);

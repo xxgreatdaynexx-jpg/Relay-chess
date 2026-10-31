@@ -15,6 +15,7 @@ import { MULTI_LEVEL, MULTI_TITLE, multiTier, nextChain, type MultiChain } from 
 import { meleeHit } from '../shared/fps.js';
 import { applyCrouch, canSprint, headZOf, speedOf, SPRINT_FIRE_DELAY_MS, SPRINT_FIRE_SLACK_MS } from '../shared/fps.js';
 import { canHold, isKnifeOnly, REGEN_DELAY_MS, REGEN_HPS, RESPAWN_PICK_MS } from '../shared/fps.js';
+import { KillCamBuffer } from './killcam.js';
 
 /** Drones hover at least this high, and always above the map's tallest structure. */
 export const DRONE_Z = 8;
@@ -124,6 +125,7 @@ export class ArenaWorld {
 
   constructor(public map: ArenaMap = MAP, private rand: () => number = Math.random) {
     this.droneHeight = droneZ(map);
+    this.killcam.clear();
   }
 
   /** The map the next match will be played on. */
@@ -240,6 +242,7 @@ export class ArenaWorld {
     this.strikes = this.strikes.filter((s) => s.ownerId !== id);
     this.rockets = this.rockets.filter((r) => r.ownerId !== id);
     this.history.forget(id);
+    this.killcam.forget(id);
     this.vis.forget(id);
     this.perks.delete(id);
     this.audit?.leave(id);
@@ -374,6 +377,14 @@ export class ArenaWorld {
 
   /** Lag compensation: where everyone was over the last second. */
   history = new PoseHistory();
+  /** Kill cam: last few seconds of poses, sliced per death; sent only on request. */
+  killcam = new KillCamBuffer();
+  /** A dead player's kill cam (card + track), only while the match is in normal play (respawns exist). */
+  killCamFor(id: string, now: number) {
+    const f = this.fighters.get(id);
+    if (!f || f.alive || this.phase !== 'play') return null;
+    return this.killcam.get(id, now);
+  }
 
   shoot(id: string, a: unknown, now: number, p?: unknown, viewT?: unknown, heavy?: unknown): ArenaEvent[] {
     const f = this.fighters.get(id);
@@ -398,6 +409,7 @@ export class ArenaWorld {
     const flick = this.audit ? this.audit.aim(id, f.a, f.p, now) : 0;
     this.advance(f, now);
     f.lastShotAt[f.weapon] = now;
+    this.killcam.shot(f.id);
     f.lastShot = now;
     f.ammo[f.weapon] -= 1;
     if (f.ammo[f.weapon] === 0) f.reloadUntil = now + spec.reloadMs;
@@ -510,6 +522,7 @@ export class ArenaWorld {
     if (!t.id.startsWith('arena-bot-') && !t.id.startsWith('qa-bot-')) t.respawnAt = Math.max(t.respawnAt, now + RESPAWN_PICK_MS);
     const killer = byId ? this.fighters.get(byId) : undefined;
     out.push({ ev: 'fps_kill', data: { killer: killer?.name ?? '☢', victim: t.name, killerId: byId, victimId: t.id, cause, ...(head ? { head: true, headshot: true } : {}) } });
+    this.killcam.kill({ killerId: byId, killer: killer?.name ?? '☢', victimId: t.id, weapon: cause, dist: killer ? Math.round(Math.hypot(killer.x - t.x, killer.y - t.y, killer.z - t.z) * 10) / 10 : 0, head, bot: !!byId && (byId.startsWith('arena-bot-') || byId.startsWith('qa-bot-')), at: now });
     if (killer && killer.id !== t.id && cause !== 'nuke') {
       killer.kills += 1;
       killer.streak += 1;
@@ -734,6 +747,7 @@ export class ArenaWorld {
       this.drones.clear();
       out.push({ ev: 'fps_nuke', data: { phase: 'boom', by } });
     }
+    this.killcam.frame(now, all);
     // Match over: load the picked map, or the next one in rotation.
     out.push(...this.stepMatch(now));
     return out;

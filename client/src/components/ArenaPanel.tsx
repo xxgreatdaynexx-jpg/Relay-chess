@@ -11,9 +11,10 @@ import { INTERP_DELAY_MS, LOCAL_STEP_S, SnapBuffer, samplePlayers } from '../../
 import { TagVisibility, tagVisible } from '@/lib/arenaTags';
 import type { ArenaMap } from '../../../shared/arenaMaps';
 import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playKnife, playLockBeep, playMultiKill, shotFalloff, unlockSounds } from '@/lib/sounds';
+import { fitSpeed, killCardText, sampleKillCam, type CamFrame, type KillCard } from '@/lib/killcam';
 import { feedParts, popupScale, POPUP_MS, type FeedItem } from '@/lib/arenaFeed';
 import {
-  AIRSTRIKE_RADIUS, canHold, isKnifeOnly, knifeOnlyAvailable, cheapestSpawn, isWeapon, spawnCost, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, MoveHistory, reconcileMove, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
+  AIRSTRIKE_RADIUS, RESPAWN_PICK_MS, canHold, isKnifeOnly, knifeOnlyAvailable, cheapestSpawn, isWeapon, spawnCost, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, MoveHistory, reconcileMove, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
 } from '../../../shared/fps';
 
 const OPEN_KEY = 'relay-fps-open';
@@ -129,6 +130,26 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const lifeLoRef = useRef<WeaponId | null>(null);
   const phaseRef = useRef<'play' | 'sudden' | 'ended'>('play');
   const specRef = useRef<string | null>(null);
+  // Kill cam: fetched on request from the respawn screen, played until done or until we respawn (never delays it).
+  const deathAtRef = useRef(0);
+  const kcRef = useRef<{ track: CamFrame[]; card: KillCard; start: number; speed: number } | null>(null);
+  const [killCam, setKillCam] = useState<{ card: KillCard | null; playing: boolean; note?: string } | null>(null);
+  function watchKillCam() {
+    if (me.current.alive || phaseRef.current !== 'play' || kcRef.current) return;
+    socket.timeout(4000).emit('fps_killcam', {}, (err: Error | null, r?: unknown) => {
+      if (err || !r) return;
+      const res = r as unknown as { ok: boolean; card?: KillCard; track?: CamFrame[] | null };
+      if (me.current.alive) return;
+      if (!res.ok || !res.card) { setKillCam({ card: null, playing: false, note: 'No kill cam for this death.' }); return; }
+      const tr = res.track;
+      if (!tr || tr.length < 2 || !res.card.killerId) { setKillCam({ card: res.card, playing: false, note: res.card.bot ? undefined : 'No replay data.' }); return; }
+      const now = performance.now();
+      const speed = fitSpeed(tr[tr.length - 1].t - tr[0].t, deathAtRef.current + RESPAWN_PICK_MS - now - 150);
+      if (!Number.isFinite(speed) || speed > 6) { setKillCam({ card: res.card, playing: false, note: 'Respawning, no time for the replay.' }); return; }
+      kcRef.current = { track: tr, card: res.card, start: now, speed };
+      setKillCam({ card: res.card, playing: true });
+    });
+  }
   const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, killmark: 0, headmark: 0, melee: { at: -1e9, heavy: false }, meleeAt: new Map<string, { at: number; heavy: boolean }>(), nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string; fall: number }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number; sniper?: boolean }>, impacts: [] as Array<{ x: number; y: number; z: number; player: boolean; at: number }>, blasts: [] as Array<{ x: number; y: number; z: number; big: boolean }>, shells: 0, rockets: new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number; seek?: number }>(), lockAt: 0, lockBeep: 0, weaponAt: new Map<string, { w: string; at: number }>(), hitAt: new Map<string, number>(), shotAt: new Map<string, number>(), shake: 0, jetAt: 0 });
   const banner = useRef<{ text: string; sub: string; at: number } | null>(null);
   const touch = useRef({ up: false, down: false, left: false, right: false, lookUp: false, lookDown: false });
@@ -321,7 +342,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     };
     const onKill = (k: { killer: string; victim: string; killerId: string | null; victimId: string; cause: string; headshot?: boolean }) => {
       const self = k.killerId === k.victimId || !k.killerId;
-      if (k.victimId === me.current.id) releaseOnDeath();
+      if (k.victimId === me.current.id) { releaseOnDeath(); deathAtRef.current = performance.now(); kcRef.current = null; setKillCam(null); }
       if (k.killerId === me.current.id && !self) { fx.current.killmark = performance.now(); if (k.headshot) fx.current.headmark = performance.now(); }
       const v = snaps.current[snaps.current.length - 1]?.players.find((p) => p.id === k.victimId);
       if (v) {
@@ -501,12 +522,27 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       const eye = net.prev && Math.hypot(net.prev.x - m.x, net.prev.y - m.y) < 1 ? { x: net.prev.x + (m.x - net.prev.x) * al, y: net.prev.y + (m.y - net.prev.y) * al, z: net.prev.z + (m.z - net.prev.z) * al } : { x: m.x, y: m.y, z: m.z };
       // Spectator cam: eliminated in sudden death (or on the end screen) -> ride along with someone still alive.
       let specCam: { x: number; y: number; z: number; a: number; p: number } | null = null;
-      if (!m.alive && phaseRef.current !== 'play') {
+      if (!kcRef.current && !m.alive && phaseRef.current !== 'play') {
         const alive = sampled.players.filter((p) => p.alive && p.id !== m.id);
         const t = alive.find((p) => p.id === specRef.current) ?? alive[0];
         if (t) { specRef.current = t.id; specCam = { x: t.x, y: t.y, z: t.z, a: t.a, p: t.p }; }
       }
-      const soldiers: Soldier3D[] = others.filter((p) => !specCam || p.id !== specRef.current).map((p) => {
+      // Kill cam playback: the killer's eyes, the victim from the track; stops on respawn.
+      let kcVictim: Soldier3D | null = null;
+      if (kcRef.current && (m.alive || phaseRef.current !== 'play')) { kcRef.current = null; setKillCam(null); }
+      if (kcRef.current) {
+        const kc = kcRef.current;
+        const smp = sampleKillCam(kc.track, kc.card.killerId!, kc.card.victimId, now - kc.start, kc.speed);
+        if (smp.done || !smp.killer) { kcRef.current = null; setKillCam((o) => (o ? { ...o, playing: false } : o)); }
+        else {
+          const k = smp.killer;
+          specCam = { x: k[0], y: k[1], z: k[2] - (k[5] ? EYE_HEIGHT - eyeHeightOf({ crouch: true } as never) : 0), a: k[3], p: k[4] };
+          if (k[6]) fx.current.muzzle = now;
+          const v = smp.victim;
+          if (v) kcVictim = { id: kc.card.victimId, x: v[0], y: v[1], z: v[2], a: v[3], p: v[4], color: colorFor(kc.card.victimId), flash: false, moving: true, t: now, w: (isWeapon(v[7]) ? v[7] : 'pistol') as WeaponId, crouch: !!v[5], fire: !!v[6] };
+        }
+      }
+      const soldiers: Soldier3D[] = kcRef.current ? (kcVictim ? [kcVictim] : []) : others.filter((p) => !specCam || p.id !== specRef.current).map((p) => {
         const pp = prevPos.get(p.id);
         const mv = !!pp && Math.hypot(pp.x - p.x, pp.y - p.y) > 0.002;
         const sp = pp ? Math.hypot(pp.x - p.x, pp.y - p.y) / Math.max(1e-3, (now - pp.t) / 1000) : 0;
@@ -841,6 +877,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       if (hk === 'fps') { e.preventDefault(); e.stopPropagation(); setShowFps((v) => !v); return; }
     }
     if (key === 'escape' || key === 'm' || key === 'f3') return;
+    if (down && key === 'k' && !e.repeat && !me.current.alive && phaseRef.current === 'play') { e.preventDefault(); e.stopPropagation(); watchKillCam(); return; }
     e.stopPropagation();
     if (!GAME_KEYS.has(key)) return;
     e.preventDefault();
@@ -975,9 +1012,15 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
             </table>
           </div>
         )}
+        {killCam?.playing && (
+          <div data-testid="arena-killcam-on" style={{ position: 'absolute', top: '12%', left: '50%', transform: 'translateX(-50%)', zIndex: 5, color: '#ffb4a8', fontWeight: 900, letterSpacing: '.2em', textShadow: '0 0 6px #000', pointerEvents: 'none' }}>● KILL CAM</div>
+        )}
         {!life.alive && me.current.joined && matchUi.phase === 'play' && (
           <div className="fps-respawn" data-testid="arena-respawn" style={{ position: 'absolute', left: '50%', bottom: '14%', transform: 'translateX(-50%)', zIndex: 5, background: 'rgba(0,0,0,.72)', color: '#e6e9df', padding: '8px 10px', borderRadius: 6, textAlign: 'center', fontSize: 12 }}
             onMouseDown={(e) => e.stopPropagation()}>
+            {killCam?.card && <div data-testid="arena-killcard" style={{ marginBottom: 6, fontWeight: 800, letterSpacing: '.04em', color: '#ffb4a8' }}>{killCardText(killCam.card, (w) => (isWeapon(w) ? WEAPONS[w].name : w))}</div>}
+            {killCam?.note && <div style={{ marginBottom: 6, opacity: 0.75 }}>{killCam.note}</div>}
+            {!killCam && <div style={{ marginBottom: 6 }}><button type="button" data-testid="arena-killcam" style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid #ffb4a8', color: '#ffb4a8' }} onClick={() => watchKillCam()}>🎥 Watch kill cam <kbd>K</kbd></button></div>}
             <div style={{ marginBottom: 6 }}>
               {wallet !== null ? <>Wallet <b data-testid="arena-respawn-wallet">🪙 {wallet.toLocaleString()}</b> · next spawn <b data-testid="arena-respawn-price">{spawnCost(loadout)} 🪙</b> (your killer gets it)</> : <>Guest: spawns are free, kills pay no bounty. Sign in to play for chips.</>}
             </div>
