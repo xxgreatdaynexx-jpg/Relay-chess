@@ -2,17 +2,18 @@
  * Factory v2: a Factorio-ish grid builder. Pure, deterministic tick sim shared by server (authoritative) and client (prediction).
  * Items are stack keys `type:id` (same as mine_items / stackKey), so input/output chests read and write banked storage directly.
  */
-import { GOODS, ORES, isOre, priceOf, nameOf, type ItemType } from './mines.js';
+import { GOODS, ORES, MAX_BANKED_STACK, isOre, priceOf, nameOf, type ItemType } from './mines.js';
 
 export const TICK_MS = 500;
 export const MAX_CATCHUP_MS = 8 * 3600_000;
 export type Dir = 0 | 1 | 2 | 3; // E S W N
 export const DX = [1, 0, -1, 0] as const;
 export const DY = [0, 1, 0, -1] as const;
-export type Kind = 'belt' | 'splitter' | 'inserter' | 'chest_in' | 'chest_out' | 'smelter' | 'press' | 'roller' | 'drawer' | 'assembler' | 'jeweler' | 'fabricator';
+export type Kind = 'belt' | 'underground' | 'splitter' | 'inserter' | 'chest_in' | 'chest_out' | 'smelter' | 'press' | 'roller' | 'drawer' | 'assembler' | 'jeweler' | 'fabricator';
 export interface KindDef { id: Kind; name: string; size: 1 | 2; cost: number; minFloor: number; color: string; desc: string; machine?: boolean }
 export const KINDS: Record<Kind, KindDef> = {
   belt:       { id: 'belt',       name: 'Conveyor Belt', size: 1, cost: 3,    minFloor: 1, color: '#c9a227', desc: 'Moves items 2 tiles/s. Drag to lay a line.' },
+  underground: { id: 'underground', name: 'Underground Belt', size: 1, cost: 25, minFloor: 1, color: '#b08a20', desc: 'Place two facing the same way, up to 5 tiles apart: items tunnel under whatever is between.' },
   splitter:   { id: 'splitter',   name: 'Splitter',      size: 1, cost: 30,   minFloor: 1, color: '#d9b84a', desc: 'Round-robins items left / ahead / right.' },
   inserter:   { id: 'inserter',   name: 'Inserter',      size: 1, cost: 15,   minFloor: 1, color: '#e0c040', desc: 'Grabs from behind, drops in front (1 item/s).' },
   chest_in:   { id: 'chest_in',   name: 'Input Chest',   size: 1, cost: 50,   minFloor: 1, color: '#3f7fbf', desc: 'Pulls one item type from your banked storage onto the line.' },
@@ -25,7 +26,10 @@ export const KINDS: Record<Kind, KindDef> = {
   jeweler:    { id: 'jeweler',    name: "Jeweler's Bench", size: 2, cost: 1200, minFloor: 2, color: '#8a4090', desc: 'Gems + precious metal -> rings, chains, crowns.', machine: true },
   fabricator: { id: 'fabricator', name: 'Fabricator',    size: 2, cost: 4000, minFloor: 3, color: '#9a3a3a', desc: 'High tier: engines, computers, drills.', machine: true },
 };
-export const KIND_ORDER: Kind[] = ['belt', 'splitter', 'inserter', 'chest_in', 'chest_out', 'smelter', 'press', 'roller', 'drawer', 'assembler', 'jeweler', 'fabricator'];
+export const KIND_ORDER: Kind[] = ['belt', 'underground', 'splitter', 'inserter', 'chest_in', 'chest_out', 'smelter', 'press', 'roller', 'drawer', 'assembler', 'jeweler', 'fabricator'];
+export const UG_MAX = 5;
+/** Belt-like: holds one item and moves it on. */
+export const isBeltish = (k: Kind) => k === 'belt' || k === 'splitter' || k === 'underground';
 export const isKind = (v: unknown): v is Kind => typeof v === 'string' && v in KINDS;
 
 /** Building floor: level 1..3 match the old factory levels (same chips), 4..5 are new expansions. */
@@ -105,14 +109,14 @@ export interface Ent {
   rr?: number;           // round-robin cursor
   t?: number;            // inserter swing timer
 }
-export interface FState { v: 1; floor: number; tick: number; at: number; ents: Ent[]; kit: Partial<Record<Kind, number>>; seq: number; made: Record<string, number>; stored: Record<string, number> }
+export interface FState { v: 1; floor: number; tick: number; at: number; seen?: number; ents: Ent[]; kit: Partial<Record<Kind, number>>; seq: number; made: Record<string, number>; stored: Record<string, number> }
 export interface Storage { get(key: string): number; add(key: string, delta: number): void }
 
 export const OUT_CAP_CRAFTS = 4;
 export const INSERTER_TICKS = 2;
 
 export function newState(floor: number, now: number): FState {
-  return { v: 1, floor, tick: 0, at: now, ents: [], kit: { belt: 24, chest_in: 2, chest_out: 1, smelter: 1, inserter: 2 }, seq: 0, made: {}, stored: {} };
+  return { v: 1, floor, tick: 0, at: now, seen: now, ents: [], kit: { belt: 24, chest_in: 2, chest_out: 1, smelter: 1, inserter: 2 }, seq: 0, made: {}, stored: {} };
 }
 
 export function cells(e: { k: Kind; x: number; y: number }): Array<[number, number]> {
@@ -147,13 +151,14 @@ export function frontCells(e: Ent): Array<[number, number]> {
   }
 }
 
-function accepts(e: Ent, key: string): boolean {
+function accepts(e: Ent, key: string, st?: Storage): boolean {
   if (KINDS[e.k].machine) {
     const r = frecipe(e.r); if (!r) return false;
     const need = r.in.find(([k]) => k === key); if (!need) return false;
     return (e.ib?.[key] ?? 0) < need[1] * 2;
   }
-  return e.k === 'chest_out';
+  // output chests back up (instead of overflowing) once that banked stack hits the storage limit
+  return e.k === 'chest_out' && (!st || st.get(key) < MAX_BANKED_STACK);
 }
 function give(s: FState, st: Storage, e: Ent, key: string) {
   if (e.k === 'chest_out') { st.add(key, 1); s.stored[key] = (s.stored[key] ?? 0) + 1; return; }
@@ -181,8 +186,8 @@ export function step(s: FState, g: Grid, st: Storage): boolean {
       for (let i = 0; i < fc.length && e.ob; i++) {
         const idx = ((e.rr ?? 0) + i) % fc.length; const t = at(fc[idx][0], fc[idx][1]);
         if (!t || t === e) continue;
-        if ((t.k === 'belt' || t.k === 'splitter') && !t.it) { t.it = r.out[0]; t.m = 0; e.ob--; e.rr = idx + 1; ch = true; break; }
-        if (t.k !== 'inserter' && accepts(t, r.out[0])) { give(s, st, t, r.out[0]); e.ob--; e.rr = idx + 1; ch = true; break; }
+        if (isBeltish(t.k) && !t.it) { t.it = r.out[0]; t.m = 0; e.ob--; e.rr = idx + 1; ch = true; break; }
+        if (t.k !== 'inserter' && accepts(t, r.out[0], st)) { give(s, st, t, r.out[0]); e.ob--; e.rr = idx + 1; ch = true; break; }
       }
     }
   }
@@ -190,8 +195,8 @@ export function step(s: FState, g: Grid, st: Storage): boolean {
   for (const e of s.ents) {
     if (e.k !== 'chest_in' || !e.f || st.get(e.f) < 1) continue;
     const t = at(e.x + DX[e.d], e.y + DY[e.d]); if (!t) continue;
-    if ((t.k === 'belt' || t.k === 'splitter') && !t.it) { st.add(e.f, -1); t.it = e.f; t.m = 0; ch = true; }
-    else if (KINDS[t.k].machine && accepts(t, e.f)) { st.add(e.f, -1); give(s, st, t, e.f); ch = true; }
+    if (isBeltish(t.k) && !t.it) { st.add(e.f, -1); t.it = e.f; t.m = 0; ch = true; }
+    else if (KINDS[t.k].machine && accepts(t, e.f, st)) { st.add(e.f, -1); give(s, st, t, e.f); ch = true; }
   }
   // 3) inserters
   for (const e of s.ents) {
@@ -200,36 +205,55 @@ export function step(s: FState, g: Grid, st: Storage): boolean {
     if (e.t) { e.t--; ch = true; continue; }
     if (e.it) {
       if (!dst) continue;
-      if ((dst.k === 'belt' || dst.k === 'splitter') && !dst.it) { dst.it = e.it; dst.m = 0; e.it = null; ch = true; }
-      else if (dst.k !== 'inserter' && dst.k !== 'belt' && dst.k !== 'splitter' && accepts(dst, e.it)) { give(s, st, dst, e.it); e.it = null; ch = true; }
+      if (isBeltish(dst.k) && !dst.it) { dst.it = e.it; dst.m = 0; e.it = null; ch = true; }
+      else if (dst.k !== 'inserter' && !isBeltish(dst.k) && accepts(dst, e.it, st)) { give(s, st, dst, e.it); e.it = null; ch = true; }
       continue;
     }
     if (!src || !dst) continue;
-    const want = (k: string) => (dst.k === 'belt' || dst.k === 'splitter') ? !dst.it : dst.k !== 'inserter' && accepts(dst, k);
+    const want = (k: string) => (!e.f || e.f === k) && ( isBeltish(dst.k) ? !dst.it : dst.k !== 'inserter' && accepts(dst, k, st));
     let got: string | null = null;
-    if ((src.k === 'belt' || src.k === 'splitter') && src.it && want(src.it)) { got = src.it; src.it = null; }
+    if (isBeltish(src.k) && src.it && want(src.it)) { got = src.it; src.it = null; }
     else if (src.k === 'chest_in' && src.f && st.get(src.f) > 0 && want(src.f)) { got = src.f; st.add(src.f, -1); }
     else if (KINDS[src.k].machine && src.ob) { const r = frecipe(src.r); if (r && want(r.out[0])) { got = r.out[0]; src.ob--; } }
     if (got) { e.it = got; e.t = INSERTER_TICKS - 1; ch = true; }
   }
   // 4) belts (downstream first so a full line flows as a block)
+  const ug = undergroundPairs(s, g); const ugOut = new Set([...ug.values()].map((x) => x.id));
   const done = new Set<number>();
   const move = (e: Ent, depth: number) => {
     if (done.has(e.id)) return; done.add(e.id);
     if (!e.it) return;
+    if (e.k === 'underground') {
+      const out = ug.get(e.id);
+      if (out) { if (out.it && !done.has(out.id) && depth < 2000) move(out, depth + 1); if (!out.it) { out.it = e.it; out.m = 0; e.it = null; done.add(out.id); ch = true; } return; }
+    }
     let dirs: number[] = [e.d];
     if (e.k === 'splitter') { const c = e.rr ?? 0; dirs = [0, 1, 2].map((i) => (e.d + [3, 0, 1][(c + i) % 3]) % 4); }
     for (const d of dirs) {
       const t = at(e.x + DX[d], e.y + DY[d]); if (!t) continue;
-      if (t.k === 'belt' || t.k === 'splitter') {
+      if (isBeltish(t.k)) {
         if (t.it && !done.has(t.id) && depth < 2000) move(t, depth + 1);
-        if (!t.it && !(t.k === 'belt' && t.d === (d + 2) % 4)) { t.it = e.it; t.m = 1 + d; e.it = null; done.add(t.id); ch = true; if (e.k === 'splitter') e.rr = ((e.rr ?? 0) + 1) % 3; return; }
-      } else if (t.k !== 'inserter' && t.k !== 'chest_in' && accepts(t, e.it)) { give(s, st, t, e.it); e.it = null; ch = true; if (e.k === 'splitter') e.rr = ((e.rr ?? 0) + 1) % 3; return; }
+        if (!t.it && !(t.k !== 'splitter' && t.d === (d + 2) % 4) && !(t.k === 'underground' && ugOut.has(t.id) && d === t.d)) { t.it = e.it; t.m = 1 + d; e.it = null; done.add(t.id); ch = true; if (e.k === 'splitter') e.rr = ((e.rr ?? 0) + 1) % 3; return; }
+      } else if (t.k !== 'inserter' && t.k !== 'chest_in' && accepts(t, e.it, st)) { give(s, st, t, e.it); e.it = null; ch = true; if (e.k === 'splitter') e.rr = ((e.rr ?? 0) + 1) % 3; return; }
     }
   };
-  for (const e of s.ents) if (e.k === 'belt' || e.k === 'splitter') move(e, 0);
+  for (const e of s.ents) if (isBeltish(e.k)) move(e, 0);
   s.tick++;
   return ch;
+}
+
+/** Underground pairs: entrance id -> exit. An underground pairs with the nearest same-facing underground 1..UG_MAX tiles ahead that is not already an entrance's exit. */
+export function undergroundPairs(s: FState, g: Grid): Map<number, Ent> {
+  const pairs = new Map<number, Ent>(); const taken = new Set<number>();
+  const ugs = s.ents.filter((e) => e.k === 'underground').sort((a, b) => a.id - b.id);
+  for (const e of ugs) {
+    if (taken.has(e.id)) continue;
+    for (let i = 1; i <= UG_MAX + 1; i++) {
+      const t = g.get(cellId(e.x + DX[e.d] * i, e.y + DY[e.d] * i));
+      if (t && t.k === 'underground' && t.d === e.d) { if (!taken.has(t.id) && !pairs.has(t.id) && i > 1) { pairs.set(e.id, t); taken.add(t.id); } break; }
+    }
+  }
+  return pairs;
 }
 
 /** Catch the sim up to `now` (capped). Stops early when quiescent. Returns ticks actually simulated. */

@@ -27,6 +27,8 @@ export const NODE_R = 0.55;        // node "radius" (reach is measured to its ce
 export const SWING_MS = 450;       // client swing period
 export const SWING_MIN_MS = 380;   // server minimum between accepted hits (latency slack)
 export const MAX_HITS_PER_10S = 26; // hard rate limit
+/** Sanity limit per banked stack (market purchases and factory output chests both respect it). */
+export const MAX_BANKED_STACK = 1_000_000;
 export const BACKPACK_CAP = 120;   // total weight units
 
 // ---- house selling: daily diminishing returns (per signed-in player, per UTC day)

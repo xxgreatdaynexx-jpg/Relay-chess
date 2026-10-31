@@ -4,7 +4,7 @@ import { getMines, MineError } from './mines.js';
 import { getBank } from './casino-store.js';
 import { playerKey } from './skins.js';
 import { stackKey, recipeById, type Stack, type ItemType } from '../shared/mines.js';
-import { advance, canPlace, contents, FLOOR_LEVELS, frecipe, gridOf, isItemKey, isKind, KINDS, MAX_ENTS, newState, type Dir, type Ent, type FState, type Kind, type Storage } from '../shared/factory.js';
+import { MAX_CATCHUP_MS, TICK_MS, advance, canPlace, contents, FLOOR_LEVELS, frecipe, gridOf, isItemKey, isKind, KINDS, MAX_ENTS, newState, type Dir, type Ent, type FState, type Kind, type Storage } from '../shared/factory.js';
 
 const SAVE_MS = 4000;
 const upsert = (k: string, name: string, s: FState) => ({ sql: `INSERT INTO factory_v2 (player_key, owner_name, data, updated_at) VALUES ($1,$2,$3,now()) ON CONFLICT (player_key) DO UPDATE SET owner_name = EXCLUDED.owner_name, data = EXCLUDED.data, updated_at = now()`, args: [k, name, JSON.stringify(s)] });
@@ -24,8 +24,12 @@ export class FactoryWorld {
   }
   private level(account: string) { return getMines().factories.get(playerKey(account))?.level ?? 0; }
 
-  /** Load (or create, migrating old furnace/workbench jobs) and catch up. Null when no factory is built yet. */
-  get(account: string | null, now: number): FState | null {
+  /**
+   * Load (or create, migrating old furnace/workbench jobs) and catch up. Null when no factory is built yet.
+   * A factory runs for up to 8h after its owner last touched it (factory, storage or market): `owner` refreshes that clock;
+   * the background sweep catches up without refreshing it, so storage stays current even if they never come back.
+   */
+  get(account: string | null, now: number, owner = true): FState | null {
     if (!account) return null;
     const k = playerKey(account); const lv = this.level(account);
     let s = this.states.get(k);
@@ -34,12 +38,18 @@ export class FactoryWorld {
       if (row && row.v === 1) s = row;
       else {
         if (!lv) return null;
-        s = newState(lv, now); this.migrateJobs(account, s); this.markNow(account, s);
+        // migration clears old jobs: persist the factory row in the same transaction so they can never be paid twice
+        s = newState(lv, now); this.migrateJobs(account, s); this.states.set(k, s); this.markNow(account, s, true);
       }
       this.states.set(k, s);
     }
     s.floor = Math.max(1, lv);
-    if (advance(s, this.storage(account), now) > 0) this.mark(account);
+    const seen = s.seen ?? s.at; const until = Math.min(now, seen + MAX_CATCHUP_MS);
+    const before = s.at;
+    if (until > s.at) advance(s, this.storage(account), until, MAX_CATCHUP_MS);
+    if (now - s.at >= TICK_MS) s.at = now - ((now - s.at) % TICK_MS); // idle past the 8h window: skip, no production
+    if (owner) s.seen = now;
+    if (s.at !== before || owner) this.mark(account);
     return s;
   }
   /** Old timed jobs: every job (finished or not) is paid out as finished output, so nobody loses a batch. */
@@ -61,6 +71,18 @@ export class FactoryWorld {
     for (const [k, name] of [...this.dirty]) { const s = this.states.get(k); this.dirty.delete(k); if (s) jobs.push(getMines().savePack(name, [upsert(k, name, s)])); }
     await Promise.all(jobs);
   }
+  /** Background catch-up for every built factory (loaded or not). Low frequency; cheap when quiescent. */
+  sweep(now: number) {
+    const mines = getMines(); let n = 0;
+    for (const k of new Set([...mines.fv2Names.keys(), ...this.states.keys()])) {
+      const name = mines.fv2Names.get(k) ?? mines.names.get(k); if (!name) continue;
+      if (this.get(name, now, false)) n++;
+    }
+    return n;
+  }
+  private sweeper: ReturnType<typeof setInterval> | null = null;
+  startSweep(ms = 120_000) { if (this.sweeper) return; this.sweeper = setInterval(() => { try { this.sweep(Date.now()); } catch (e) { console.error('[factory] sweep failed:', (e as Error).message); } }, ms); this.sweeper.unref?.(); }
+  stopSweep() { if (this.sweeper) { clearInterval(this.sweeper); this.sweeper = null; } }
   async flush() { if (this.timer) { clearTimeout(this.timer); this.timer = null; } await this.saveDirty(); }
 
   private need(account: string | null, now: number) { if (!account) throw new MineError('Sign in to build a factory.'); const s = this.get(account, now); if (!s) throw new MineError('Build your factory first.'); return { account, s }; }
@@ -104,7 +126,7 @@ export class FactoryWorld {
       const bad = canPlace(s, g, k, x, y, d); if (bad) { err = bad; continue; }
       const e: Ent = { id: ++s.seq, k, x, y, d: d as Dir };
       if (KINDS[k].machine) { const r = typeof b.r === 'string' && frecipe(b.r)?.machine === k ? b.r : undefined; if (r) e.r = r; }
-      if (k === 'chest_in' && isItemKey(b.f)) e.f = b.f;
+      if ((k === 'chest_in' || k === 'inserter') && isItemKey(b.f)) e.f = b.f;
       s.ents.push(e); for (const [cx, cy] of [[x, y], ...(KINDS[k].size === 2 ? [[x + 1, y], [x, y + 1], [x + 1, y + 1]] : [])]) g.set(cy * 1000 + cx, e);
       s.kit[k] = (s.kit[k] ?? 0) - 1; placed++;
     }
@@ -138,7 +160,7 @@ export class FactoryWorld {
       if (e.r !== r.id) { for (const [k, q] of contents({ ...e, it: null })) st.add(k, q); e.ib = {}; e.ob = 0; e.p = 0; e.r = r.id; }
     }
     if ('f' in b) {
-      if (e.k !== 'chest_in') throw new MineError('Only input chests take a filter.');
+      if (e.k !== 'chest_in' && e.k !== 'inserter') throw new MineError('Only input chests and inserters take a filter.');
       if (b.f !== null && !isItemKey(b.f)) throw new MineError('Unknown item.');
       e.f = (b.f as string | null) ?? undefined;
     }
@@ -149,8 +171,10 @@ export class FactoryWorld {
 
 let world = new FactoryWorld();
 export const getFactory = () => world;
-export function resetFactory() { world = new FactoryWorld(); getMines().beforeStorage = (a) => { world.get(a, Date.now()); }; return world; }
-export function initFactory() { getMines().beforeStorage = (a) => { world.get(a, Date.now()); }; }
+let busy = false;
+const hook = (a: string) => { if (busy) return; busy = true; try { world.get(a, Date.now()); } finally { busy = false; } };
+export function resetFactory() { world.stopSweep(); world = new FactoryWorld(); getMines().beforeStorage = hook; return world; }
+export function initFactory(sweep = true) { getMines().beforeStorage = hook; if (sweep) world.startSweep(); }
 
 type Ack = (r: Record<string, unknown>) => void;
 const body = (p: unknown) => (p && typeof p === 'object' ? (p as Record<string, unknown>) : {});

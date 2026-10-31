@@ -5,7 +5,7 @@ import { getBank } from './casino-store.js';
 import { getAccounts } from './accounts.js';
 import { getVault, playerKey, RuleError, type ItemVault, type Stmt, type StoredItem } from './skins.js';
 import { getMines } from './mines.js';
-import { GOODS, ORES, ORE_ORDER, isOre, nameOf as stackName, type ItemType } from '../shared/mines.js';
+import { GOODS, MAX_BANKED_STACK, ORES, ORE_ORDER, isOre, nameOf as stackName, type ItemType } from '../shared/mines.js';
 import { CASE_NAME, KEY_NAME, SKINS, SKIN_BY_ID, type SkinItem } from '../shared/skins.js';
 
 export const MARKET_FEE = 0.05;
@@ -20,7 +20,7 @@ export interface Listing { id: string; seller: string; sellerName: string; itemI
 export interface Sale { id: string; listingId: string; itemId: string; what: string; price: number; fee: number; seller: string; buyer: string; at: number }
 export interface Trade { id: string; from: string; fromName: string; to: string; toName: string; give: string[]; want: string[]; giveChips: number; wantChips: number; status: 'pending' | 'accepted' | 'declined' | 'cancelled' | 'countered'; at: number; closedAt?: number; counterOf?: string }
 
-export const MAX_BANKED_STACK = 1_000_000;
+export { MAX_BANKED_STACK } from '../shared/mines.js';
 export const MAX_STACK_QTY = 100_000;
 /** Stackable listing (Mines ore / bars / goods from mine_items): unit price, partial buys. Escrowed qty leaves the seller's pack. */
 export interface StackListing { id: string; seller: string; sellerName: string; type: ItemType; itemId: string; qty: number; total: number; unit: number; status: 'active' | 'sold' | 'cancelled'; at: number; closedAt?: number; sold: number }

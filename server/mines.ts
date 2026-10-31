@@ -26,7 +26,7 @@ export const MINES_MIGRATION = [
 ];
 export interface FactoryState { level: number; builtAt: number; jobs: Job[] }
 
-export interface MineStore { init(): Promise<void>; load(): Promise<{ items: Array<{ key: string; name: string; type: ItemType; id: string; qty: number }>; daily: Array<{ key: string; day: string; gross: number; paid: number }>; factories?: Array<{ key: string } & FactoryState>; carried?: Array<{ key: string; name: string; stacks: Stack[] }>; fv2?: Array<{ key: string; data: unknown }> }>; saveCarried?(key: string, name: string, stacks: Stack[]): Promise<void>; save(key: string, name: string, stacks: Stack[], sale?: { day: string; gross: number; paid: number; items: string; ledgerKey: string; at: number; dayGross: number; dayPaid: number }, factory?: FactoryState, extra?: Array<{ sql: string; args: unknown[] }>): Promise<void> }
+export interface MineStore { init(): Promise<void>; load(): Promise<{ items: Array<{ key: string; name: string; type: ItemType; id: string; qty: number }>; daily: Array<{ key: string; day: string; gross: number; paid: number }>; factories?: Array<{ key: string } & FactoryState>; carried?: Array<{ key: string; name: string; stacks: Stack[] }>; fv2?: Array<{ key: string; name?: string; data: unknown }> }>; saveCarried?(key: string, name: string, stacks: Stack[]): Promise<void>; save(key: string, name: string, stacks: Stack[], sale?: { day: string; gross: number; paid: number; items: string; ledgerKey: string; at: number; dayGross: number; dayPaid: number }, factory?: FactoryState, extra?: Array<{ sql: string; args: unknown[] }>): Promise<void> }
 
 export class PgMineStore implements MineStore {
   constructor(private readonly db: Queryable & { connect?: () => Promise<pg.PoolClient> }) { db.on?.('error', (e) => console.error('[mines] pool error:', e.message)); }
@@ -37,7 +37,7 @@ export class PgMineStore implements MineStore {
     const jobs = (await this.db.query('SELECT * FROM mine_jobs')).rows.map((r) => ({ key: String(r.player_key), job: { id: String(r.id), machine: r.machine as MachineId, recipe: String(r.recipe), qty: Number(r.qty), startAt: Number(r.start_at), doneAt: Number(r.done_at) } }));
     const factories = (await this.db.query('SELECT * FROM mine_factories')).rows.map((r) => ({ key: String(r.player_key), level: Number(r.level), builtAt: Number(r.built_at), jobs: jobs.filter((j) => j.key === String(r.player_key)).map((j) => j.job) }));
     const carried = (await this.db.query('SELECT * FROM mine_carried')).rows.map((r) => ({ key: String(r.player_key), name: String(r.owner_name), stacks: (typeof r.items === 'string' ? JSON.parse(r.items) : r.items) as Stack[] }));
-    const fv2 = (await this.db.query('SELECT player_key, data FROM factory_v2')).rows.map((r) => ({ key: String(r.player_key), data: typeof r.data === 'string' ? JSON.parse(r.data) : r.data }));
+    const fv2 = (await this.db.query('SELECT player_key, owner_name, data FROM factory_v2')).rows.map((r) => ({ key: String(r.player_key), name: String(r.owner_name), data: typeof r.data === 'string' ? JSON.parse(r.data) : r.data }));
     return { items, daily, factories, carried, fv2 };
   }
   /** Idempotent: absolute snapshot upsert, or delete when empty. */
@@ -88,6 +88,8 @@ export class MinesWorld {
   private jobSeq = 0;
   /** Factory v2 rows loaded at boot (server/factory.ts owns them). */
   fv2 = new Map<string, unknown>();
+  /** player_key -> display name for persisted v2 factories (background sweep). */
+  fv2Names = new Map<string, string>();
   /** Called before storage is read for selling/quotes so a running factory has caught up. */
   beforeStorage: ((account: string) => void) | null = null;
   store: MineStore | null = null;
@@ -98,7 +100,7 @@ export class MinesWorld {
     try {
       await store.init();
       const { items, daily, factories, carried, fv2 } = await store.load();
-      for (const r of fv2 ?? []) this.fv2.set(r.key, r.data);
+      for (const r of fv2 ?? []) { this.fv2.set(r.key, r.data); if (r.name) this.fv2Names.set(r.key, r.name); }
       // Hauls carried when the last server stopped: restored on the player's next join (restart grace).
       for (const c of carried ?? []) if (c.stacks.length) { this.grace.set(c.key, { stacks: c.stacks.map((x) => ({ ...x })), until: Date.now() + RESTART_GRACE_MS }); this.names.set(c.key, c.name); }
       for (const f of factories ?? []) this.factories.set(f.key, { level: f.level, builtAt: f.builtAt, jobs: f.jobs });
@@ -319,12 +321,13 @@ export class MinesWorld {
 
   // ------------------------------------------------------------ Market hook (stackable listings)
   /** Current qty of one stack for an account (online or offline). */
-  stackQty(account: string, type: ItemType, id: string): number { return this.pack(playerKey(account)).get(stackKey({ type, id }))?.qty ?? 0; }
+  stackQty(account: string, type: ItemType, id: string): number { this.beforeStorage?.(account); return this.pack(playerKey(account)).get(stackKey({ type, id }))?.qty ?? 0; }
   /** Move qty into (+) or out of (-) an account's pack and persist the pack plus `extra` rows in ONE transaction (queued in order with every other pack save).
    * Returns false (no change) if a withdrawal would go negative. Without a store, `fallback` gets the rows instead. */
   /** Weight of an account's stored pack (same units as BACKPACK_CAP). */
   packLoad(account: string): number { let t = 0; for (const s of this.pack(playerKey(account)).values()) t += s.qty * (s.type === 'ore' && isOre(s.id) ? ORES[s.id].weight : 1); return t; }
   adjustStack(account: string, type: ItemType, id: string, delta: number, extra: Array<{ sql: string; args: unknown[] }> = [], fallback?: (rows: Array<{ sql: string; args: unknown[] }>) => void, opts: { after?: Promise<unknown>; bind?: (p: Promise<unknown>) => void; onFail?: (e: Error) => void } = {}): boolean {
+    this.beforeStorage?.(account);
     const k = playerKey(account); const p = this.pack(k); const key = stackKey({ type, id });
     const cur = p.get(key)?.qty ?? 0;
     if (!Number.isInteger(delta) || cur + delta < 0) return false;
@@ -428,9 +431,11 @@ export function registerMines(io: Server, socket: Socket): void {
     catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
   };
   socket.on('mines_factory', (_p: unknown, ack?: Ack) => ack?.({ ok: true, ...fact(), ...storeMsg() }));
-  socket.on('mines_factory_upgrade', fx(() => world.upgradeFactory(account(), Date.now())));
-  socket.on('mines_collect', fx(() => world.collect(account(), Date.now())));
-  socket.on('mines_craft', (p: unknown, ack?: Ack) => fx(() => world.startJob(account(), body(p).recipe, body(p).qty, Date.now()))(p, ack));
+  // Retired (Factory v2): stale clients must not start, collect or upgrade old timed jobs. Opening v2 migrates any old jobs first.
+  const gone = (_p: unknown, ack?: Ack) => { const a = account(); if (a) world.beforeStorage?.(a); ack?.({ ok: false, gone: true, status: 410, error: 'The old factory was replaced. Open the Factory tab to build with machines and belts.', ...storeMsg() }); };
+  socket.on('mines_factory_upgrade', gone);
+  socket.on('mines_collect', gone);
+  socket.on('mines_craft', gone);
   const leave = () => { if (me()) { world.leave(socket.id); void socket.leave(ROOM); io.to(ROOM).emit('mines_left', { id: socket.id }); } };
   socket.on('mines_leave', leave);
   socket.on('disconnect', leave);

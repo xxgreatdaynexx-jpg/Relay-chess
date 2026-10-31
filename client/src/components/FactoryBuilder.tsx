@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { socket } from '@/lib/net';
 import type { Stack } from '../../../shared/mines';
-import { CHEST_ITEMS, DX, DY, FLOOR_LEVELS, FRECIPES, KINDS, KIND_ORDER, TICK_MS, colorOfKey, floorSize, frecipe, gridOf, cellId, nameOfKey, priceOfKey, recipeTicks, recipesFor, step, canPlace, type Dir, type Ent, type FState, type Grid, type Kind } from '../../../shared/factory';
+import { CHEST_ITEMS, DX, DY, FLOOR_LEVELS, FRECIPES, KINDS, KIND_ORDER, TICK_MS, colorOfKey, floorSize, frecipe, gridOf, cellId, nameOfKey, priceOfKey, recipeTicks, recipesFor, step, canPlace, type Dir, type Ent, type FState, type Grid, type Kind, undergroundPairs } from '../../../shared/factory';
 
 export type FAck = { ok: boolean; error?: string; state?: FState | null; level?: number; storage?: Stack[]; guest?: boolean; now?: number; result?: unknown };
 type Tool = 'select' | 'remove' | Kind;
-const ICON: Record<Kind, string> = { belt: '➡', splitter: '⑂', inserter: '🦾', chest_in: '📥', chest_out: '📤', smelter: '🔥', press: '🔨', roller: '⚙', drawer: '🧵', assembler: '🏗', jeweler: '💎', fabricator: '🏭' };
+const ICON: Record<Kind, string> = { belt: '➡', underground: '⤵', splitter: '⑂', inserter: '🦾', chest_in: '📥', chest_out: '📤', smelter: '🔥', press: '🔨', roller: '⚙', drawer: '🧵', assembler: '🏗', jeweler: '💎', fabricator: '🏭' };
 const hash = (x: number, y: number) => { let h = Math.imul(x * 374761393 + y * 668265263, 1274126177) >>> 0; h ^= h >>> 13; return (h % 1000) / 1000; };
 
 /** Factorio-ish grid factory: server-authoritative sim, predicted locally between syncs. */
@@ -21,7 +21,8 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
   const [moving, setMoving] = useState<number | null>(null);
   const [side, setSide] = useState<'build' | 'shop' | 'recipes'>('build');
   const [buyN, setBuyN] = useState(1);
-  const ui = useRef({ tool, dir, sel, moving, hover: null as null | [number, number], drag: [] as Array<{ x: number; y: number; d: Dir }>, dragging: false, removing: new Set<number>() });
+  const ui = useRef({ tool, dir, sel, moving, hover: null as null | [number, number], drag: [] as Array<{ x: number; y: number; d: Dir }>, dragging: false, removing: new Set<number>(), z: 1, px: 0, py: 0, pan: null as null | { x: number; y: number; px: number; py: number; moved: boolean; btn: number }, pts: new Map<number, { x: number; y: number }>(), pinch: null as null | { d: number; z: number; cx: number; cy: number; px: number; py: number }, space: false, mini: null as null | { x: number; y: number; w: number; s: number } });
+  const [zoomed, setZoomed] = useState(false);
   ui.current.tool = tool; ui.current.dir = dir; ui.current.sel = sel; ui.current.moving = moving;
 
   const apply = (r?: FAck) => {
@@ -68,31 +69,91 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
     const onKey = (e: KeyboardEvent) => {
       const tg = e.target as HTMLElement | null; if (tg && (tg.tagName === 'INPUT' || tg.tagName === 'SELECT' || tg.tagName === 'TEXTAREA')) return;
       if (!sim.current.s) return;
+      if (e.key === ' ') { e.preventDefault(); ui.current.space = true; return; }
       const k = e.key.toLowerCase();
+      if (k === '0') { resetView(); return; }
+      if (k === '=' || k === '+' || k === '-') { zoomAt(null, k === '-' ? 1 / 1.25 : 1.25); return; }
       if (k === 'r') { e.preventDefault(); const u = ui.current; if (u.tool === 'select' && u.hover) { const ent = sim.current.g.get(cellId(u.hover[0], u.hover[1])); if (ent) { call('fac_edit', { id: ent.id, d: (ent.d + (e.shiftKey ? 3 : 1)) % 4 }); return; } } setDir((d) => ((d + (e.shiftKey ? 3 : 1)) % 4) as Dir); }
       else if (k === 'escape' || k === 'q') { setTool('select'); setMoving(null); }
       else if (k === 'x') setTool('remove');
       else if (k === 'b') setTool('belt');
       else if (k === 'i') setTool('inserter');
     };
-    window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
+    const onKeyUp = (e: KeyboardEvent) => { if (e.key === ' ') ui.current.space = false; };
+    window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKeyUp); return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const canvasXY = (ev: { clientX: number; clientY: number }) => { const cv = cvRef.current!; const r = cv.getBoundingClientRect(); const dpr = cv.width / r.width; return [(ev.clientX - r.left) * dpr, (ev.clientY - r.top) * dpr] as const; };
   const cellAt = (ev: { clientX: number; clientY: number }): [number, number] | null => {
     const cv = cvRef.current; const s = sim.current.s; if (!cv || !s) return null;
-    const r = cv.getBoundingClientRect(); const L = layout(cv.width, cv.height, floorSize(s.floor)); const dpr = cv.width / r.width;
-    const x = Math.floor(((ev.clientX - r.left) * dpr - L.ox) / L.ts), y = Math.floor(((ev.clientY - r.top) * dpr - L.oy) / L.ts);
-    return [x, y];
+    const L = view(cv.width, cv.height, floorSize(s.floor), ui.current); const [mx, my] = canvasXY(ev);
+    return [Math.floor((mx - L.ox) / L.ts), Math.floor((my - L.oy) / L.ts)];
+  };
+  /** Zoom by `f` around a canvas point (or the centre), keeping that point fixed. */
+  const zoomAt = (pt: readonly [number, number] | null, f: number) => {
+    const cv = cvRef.current; const s = sim.current.s; if (!cv || !s) return; const u = ui.current;
+    const size = floorSize(s.floor); const before = view(cv.width, cv.height, size, u);
+    const [mx, my] = pt ?? [cv.width / 2, cv.height / 2];
+    const wx = (mx - before.ox) / before.ts, wy = (my - before.oy) / before.ts;
+    u.z = Math.max(1, Math.min(ZMAX, u.z * f));
+    const after = view(cv.width, cv.height, size, { ...u, px: 0, py: 0 });
+    u.px = mx - wx * after.ts - after.ox; u.py = my - wy * after.ts - after.oy; clampPan(); setZoomed(u.z > 1.01);
+  };
+  const clampPan = () => {
+    const cv = cvRef.current; const s = sim.current.s; if (!cv || !s) return; const u = ui.current;
+    const L = view(cv.width, cv.height, floorSize(s.floor), { ...u, px: 0, py: 0 }); const span = L.ts * floorSize(s.floor);
+    const lim = (W: number) => Math.max(0, (span - W) / 2 + W * 0.25);
+    u.px = Math.max(-lim(cv.width), Math.min(lim(cv.width), u.px)); u.py = Math.max(-lim(cv.height), Math.min(lim(cv.height), u.py));
+  };
+  const resetView = () => { const u = ui.current; u.z = 1; u.px = 0; u.py = 0; setZoomed(false); };
+  // wheel needs a non-passive listener to stop page scroll
+  useEffect(() => {
+    const cv = cvRef.current; if (!cv) return;
+    const onWheel = (ev: WheelEvent) => { ev.preventDefault(); zoomAt(canvasXY(ev), Math.exp(-Math.max(-60, Math.min(60, ev.deltaY)) * 0.0045)); };
+    cv.addEventListener('wheel', onWheel, { passive: false }); return () => cv.removeEventListener('wheel', onWheel);
+  }, [fs !== null]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** Minimap click: centre the view there. */
+  const miniHit = (mx: number, my: number) => {
+    const m = ui.current.mini; const cv = cvRef.current; const s = sim.current.s; if (!m || !cv || !s) return false;
+    if (mx < m.x || my < m.y || mx > m.x + m.w || my > m.y + m.w) return false;
+    const size = floorSize(s.floor); const cx = (mx - m.x) / m.s, cy = (my - m.y) / m.s; const u = ui.current;
+    const L = view(cv.width, cv.height, size, { ...u, px: 0, py: 0 });
+    u.px = cv.width / 2 - cx * L.ts - L.ox; u.py = cv.height / 2 - cy * L.ts - L.oy; clampPan(); return true;
   };
   const onDown = (ev: React.PointerEvent) => {
     const c = cellAt(ev); if (!c) return; const u = ui.current; u.hover = c;
     (ev.target as HTMLElement).setPointerCapture?.(ev.pointerId);
-    if (ev.button === 2 || u.tool === 'remove') { u.dragging = true; u.removing = new Set(); const e = sim.current.g.get(cellId(c[0], c[1])); if (e) u.removing.add(e.id); return; }
+    const [mx, my] = canvasXY(ev);
+    u.pts.set(ev.pointerId, { x: mx, y: my });
+    if (u.pts.size === 2) { // two fingers: pinch-zoom + pan; cancel any one-finger action
+      const [a, b] = [...u.pts.values()]; u.dragging = false; u.drag = []; u.removing = new Set(); u.pan = null;
+      u.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, z: u.z, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, px: u.px, py: u.py }; return;
+    }
+    if (ev.button === 0 && miniHit(mx, my)) { u.pan = { x: mx, y: my, px: u.px, py: u.py, moved: true, btn: -1 }; return; }
+    if (ev.button === 1 || ev.button === 2 || (ev.button === 0 && u.space)) { ev.preventDefault(); u.pan = { x: mx, y: my, px: u.px, py: u.py, moved: false, btn: ev.button }; return; }
+    if (u.tool === 'remove') { u.dragging = true; u.removing = new Set(); const e = sim.current.g.get(cellId(c[0], c[1])); if (e) u.removing.add(e.id); return; }
     if (u.tool === 'belt') { u.dragging = true; u.drag = [{ x: c[0], y: c[1], d: u.dir }]; return; }
   };
   const onMove = (ev: React.PointerEvent) => {
-    const c = cellAt(ev); const u = ui.current; u.hover = c; if (!c || !u.dragging) return;
-    if (u.removing.size || u.tool === 'remove' || (ev.buttons & 2)) { const e = sim.current.g.get(cellId(c[0], c[1])); if (e) u.removing.add(e.id); return; }
+    const u = ui.current;
+    if (u.pts.has(ev.pointerId)) { const [mx, my] = canvasXY(ev); u.pts.set(ev.pointerId, { x: mx, y: my }); }
+    if (u.pinch && u.pts.size >= 2) {
+      const [a, b] = [...u.pts.values()]; const p = u.pinch; const cv = cvRef.current; const s = sim.current.s; if (!cv || !s) return;
+      const size = floorSize(s.floor); const before = view(cv.width, cv.height, size, { ...u, z: p.z, px: p.px, py: p.py });
+      const wx = (p.cx - before.ox) / before.ts, wy = (p.cy - before.oy) / before.ts;
+      u.z = Math.max(1, Math.min(ZMAX, p.z * (Math.hypot(a.x - b.x, a.y - b.y) / p.d)));
+      const after = view(cv.width, cv.height, size, { ...u, px: 0, py: 0 }); const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+      u.px = cx - wx * after.ts - after.ox; u.py = cy - wy * after.ts - after.oy; clampPan(); setZoomed(u.z > 1.01); return;
+    }
+    if (u.pan) {
+      const [mx, my] = canvasXY(ev);
+      if (u.pan.btn === -1) { miniHit(mx, my); return; }
+      if (!u.pan.moved && Math.hypot(mx - u.pan.x, my - u.pan.y) > 6) u.pan.moved = true;
+      if (u.pan.moved) { u.px = u.pan.px + (mx - u.pan.x); u.py = u.pan.py + (my - u.pan.y); clampPan(); }
+      return;
+    }
+    const c = cellAt(ev); u.hover = c; if (!c || !u.dragging) return;
+    if (u.removing.size || u.tool === 'remove') { const e = sim.current.g.get(cellId(c[0], c[1])); if (e) u.removing.add(e.id); return; }
     if (u.tool === 'belt') {
       const lastC = u.drag[u.drag.length - 1]; if (lastC.x === c[0] && lastC.y === c[1]) return;
       // walk an L path to the pointer so fast drags don't skip tiles
@@ -109,6 +170,14 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
   };
   const onUp = (ev: React.PointerEvent) => {
     const u = ui.current; const c = cellAt(ev); const s = sim.current.s;
+    u.pts.delete(ev.pointerId);
+    if (u.pinch) { if (u.pts.size < 2) u.pinch = null; return; }
+    if (u.pan) {
+      const p = u.pan; u.pan = null; if (p.moved || p.btn !== 2) return;
+      // right-click without dragging: pick up what's under the cursor
+      if (c) { const e = sim.current.g.get(cellId(c[0], c[1])); if (e) { call('fac_remove', { ids: [e.id] }); if (e.id === sel) setSel(null); } }
+      return;
+    }
     if (u.dragging) {
       u.dragging = false;
       if (u.removing.size) { const ids = [...u.removing]; u.removing = new Set(); call('fac_remove', { ids }); if (ids.includes(sel ?? -1)) setSel(null); return; }
@@ -150,7 +219,12 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
       </div>
       <div className="fac-main">
         <div className="fac-canvas" ref={wrapRef}>
-          <canvas ref={cvRef} data-testid="fac-canvas" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={() => { ui.current.hover = null; }} onContextMenu={(e) => e.preventDefault()} />
+          <canvas ref={cvRef} data-testid="fac-canvas" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={(ev) => { const u = ui.current; u.pts.delete(ev.pointerId); if (u.pts.size < 2) u.pinch = null; u.pan = null; }} onPointerLeave={() => { ui.current.hover = null; }} onContextMenu={(e) => e.preventDefault()} />
+          <div className="fac-zoom">
+            <button type="button" onClick={() => zoomAt(null, 1.25)} title="Zoom in (wheel / pinch / +)" data-testid="fac-zoom-in">＋</button>
+            <button type="button" onClick={() => zoomAt(null, 0.8)} title="Zoom out (−)" data-testid="fac-zoom-out">－</button>
+            {zoomed && <button type="button" onClick={resetView} title="Fit whole floor (0)" data-testid="fac-zoom-fit">⤢</button>}
+          </div>
           {moving !== null && <div className="fac-hint">Click where to move it (R rotates) · Esc cancels</div>}
         </div>
         <aside className="fac-side">
@@ -164,7 +238,7 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
                 <span className="fac-ic">{ICON[k]}</span><span>{KINDS[k].name}</span><b>×{kitN(k)}</b>
               </button>
             ))}
-            <p className="mines-note">Click to place, R rotates, drag belts. Inserters grab from behind and drop in front. Machines push output out the side their arrow faces.</p>
+            <p className="mines-note">Click to place, R rotates, drag belts. Inserters grab from behind and drop in front (set a filter to grab one item only). Undergrounds pair with the next one ahead facing the same way, up to 5 tiles, so belts can cross. Machines push output out the side their arrow faces. Wheel or pinch to zoom; right/middle-drag, Space-drag or two fingers to pan.</p>
           </div>}
           {side === 'shop' && <div className="fac-shop" data-testid="fac-shop">
             <div className="fac-buyn">Buy {[1, 5, 10, 25].map((n) => <button type="button" key={n} className={buyN === n ? 'on' : ''} onClick={() => setBuyN(n)}>×{n}</button>)}</div>
@@ -202,6 +276,11 @@ function Inspect({ e, storage, store, onEdit, onRemove, onMove, onClose }: { e: 
         <span>→ <Dot k={r.out[0]} />{e.ob ?? 0} ready</span>
         <div className="mines-bar"><i style={{ width: `${((e.p ?? 0) / recipeTicks(r)) * 100}%` }} /></div>
       </div>}
+      {e.k === 'inserter' && <label>Only grab <select value={e.f ?? ''} onChange={(ev) => onEdit({ f: ev.target.value || null })} data-testid="fac-ins-filter">
+        <option value="">— anything —</option>
+        {storage.map((k) => <option key={k} value={k}>{nameOfKey(k)}</option>)}
+      </select></label>}
+      {e.k === 'underground' && <p className="mines-note">Pairs with the next underground ahead facing the same way (2–6 tiles). Items skip everything in between.</p>}
       {e.k === 'chest_in' && <label>Pulls <select value={e.f ?? ''} onChange={(ev) => onEdit({ f: ev.target.value || null })} data-testid="fac-filter">
         <option value="">— nothing —</option>
         {storage.map((k) => <option key={k} value={k}>{nameOfKey(k)} ({store.get(k) ?? 0} banked)</option>)}
@@ -216,14 +295,16 @@ function Inspect({ e, storage, store, onEdit, onRemove, onMove, onClose }: { e: 
 }
 
 // ------------------------------------------------------------------ rendering
+const ZMAX = 5;
+function view(w: number, h: number, size: number, u: { z: number; px: number; py: number }) { const L = layout(w, h, size); const ts = Math.max(6, Math.round(L.ts * u.z)); return { ts, ox: Math.floor((w - ts * size) / 2 + u.px), oy: Math.floor((h - ts * size) / 2 + u.py) }; }
 function layout(w: number, h: number, size: number) { const pad = Math.min(w, h) * 0.05 + 14; const ts = Math.max(6, Math.floor(Math.min((w - pad * 2) / size, (h - pad * 2) / size))); return { ts, ox: Math.floor((w - ts * size) / 2), oy: Math.floor((h - ts * size) / 2) }; }
 type SimRef = { s: FState | null; g: Grid; store: Map<string, number>; shown: number; shownFrom: number; shownAt: number };
-type UiRef = { tool: Tool; dir: Dir; sel: number | null; moving: number | null; hover: null | [number, number]; drag: Array<{ x: number; y: number; d: Dir }>; removing: Set<number> };
+type UiRef = { tool: Tool; dir: Dir; sel: number | null; moving: number | null; hover: null | [number, number]; drag: Array<{ x: number; y: number; d: Dir }>; removing: Set<number>; z: number; px: number; py: number; mini: null | { x: number; y: number; w: number; s: number } };
 
 function render(cv: HTMLCanvasElement, c: SimRef, frac: number, t: number, u: UiRef) {
   const ctx = cv.getContext('2d'); const s = c.s; if (!ctx || !s) return;
   const W = cv.width, H = cv.height; const size = floorSize(s.floor);
-  const L = layout(W, H, size); const ts = L.ts;
+  const L = view(W, H, size, u); const ts = L.ts;
   // wall animation: shown size eases from old to new
   const k = Math.min(1, (performance.now() - c.shownAt) / 1400); const ease = 1 - (1 - k) ** 3;
   const vis = c.shownFrom + (size - c.shownFrom) * ease;
@@ -232,7 +313,8 @@ function render(cv: HTMLCanvasElement, c: SimRef, frac: number, t: number, u: Ui
   for (let i = 0; i < 160; i++) { const x = hash(i, 7) * W, y = hash(i, 13) * H; ctx.fillStyle = 'rgba(255,255,255,0.025)'; ctx.fillRect(x, y, 3, 3); }
   const X = (x: number) => L.ox + x * ts, Y = (y: number) => L.oy + y * ts;
   // floor
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+  const x0 = Math.max(0, Math.floor(-L.ox / ts)), y0 = Math.max(0, Math.floor(-L.oy / ts)), x1 = Math.min(size, Math.ceil((W - L.ox) / ts)), y1 = Math.min(size, Math.ceil((H - L.oy) / ts));
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
     if (x >= vis || y >= vis) continue;
     const v = hash(x, y); ctx.fillStyle = `rgb(${38 + v * 10},${40 + v * 10},${42 + v * 9})`; ctx.fillRect(X(x), Y(y), ts, ts);
     ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(X(x), Y(y), ts, 1); ctx.fillRect(X(x), Y(y), 1, ts);
@@ -249,11 +331,21 @@ function render(cv: HTMLCanvasElement, c: SimRef, frac: number, t: number, u: Ui
   if (k < 1) { ctx.fillStyle = `rgba(255,210,80,${0.5 * (1 - k)})`; ctx.font = `bold ${Math.max(14, ts)}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('EXPANDING', L.ox + (vis * ts) / 2, L.oy + (vis * ts) / 2); }
   const anim = t / TICK_MS; // belt chevron phase
   // belts first, then items, then buildings
-  for (const e of s.ents) if (e.k === 'belt' || e.k === 'splitter') drawBelt(ctx, e, X(e.x), Y(e.y), ts, anim);
+  const off = (e: Ent) => { const n = KINDS[e.k].size; return X(e.x + n) < 0 || Y(e.y + n) < 0 || X(e.x) > W || Y(e.y) > H; };
+  const pairs = undergroundPairs(s, c.g);
+  for (const e of s.ents) if ((e.k === 'belt' || e.k === 'splitter') && !off(e)) drawBelt(ctx, e, X(e.x), Y(e.y), ts, anim);
+  // underground tunnels: dashed line between paired hoods
+  ctx.save(); ctx.setLineDash([ts * 0.18, ts * 0.14]); ctx.strokeStyle = 'rgba(176,138,32,.55)'; ctx.lineWidth = Math.max(1, ts * 0.1);
+  for (const [id, out] of pairs) { const a = s.ents.find((x) => x.id === id); if (!a) continue; ctx.beginPath(); ctx.moveTo(X(a.x) + ts / 2, Y(a.y) + ts / 2); ctx.lineTo(X(out.x) + ts / 2, Y(out.y) + ts / 2); ctx.stroke(); }
+  ctx.restore();
+  const exits = new Set([...pairs.values()].map((x) => x.id));
+  for (const e of s.ents) if (e.k === 'underground' && !off(e)) drawUnderground(ctx, e, X(e.x), Y(e.y), ts, anim, pairs.has(e.id) ? 'in' : exits.has(e.id) ? 'out' : 'none');
   for (const e of s.ents) {
-    if (e.k === 'belt' || e.k === 'splitter') { if (e.it) { const back = e.m ? 1 - frac : 0; const md = e.m ? e.m - 1 : e.d; drawItem(ctx, e.it, X(e.x) + ts / 2 - DX[md] * ts * back, Y(e.y) + ts / 2 - DY[md] * ts * back, ts * 0.34); } }
+    if (off(e)) continue;
+    if (e.k === 'belt' || e.k === 'splitter' || e.k === 'underground') { if (e.it) { const back = e.m ? 1 - frac : 0; const md = e.m ? e.m - 1 : e.d; drawItem(ctx, e.it, X(e.x) + ts / 2 - DX[md] * ts * back, Y(e.y) + ts / 2 - DY[md] * ts * back, ts * 0.34); } }
   }
   for (const e of s.ents) {
+    if (off(e)) continue;
     const px = X(e.x), py = Y(e.y);
     if (e.k === 'inserter') drawInserter(ctx, e, px, py, ts, frac);
     else if (e.k === 'chest_in' || e.k === 'chest_out') drawChest(ctx, e, px, py, ts);
@@ -268,9 +360,33 @@ function render(cv: HTMLCanvasElement, c: SimRef, frac: number, t: number, u: Ui
     const bad = canPlace(s, g, kind, h[0], h[1], u.dir, me?.id);
     const sz = KINDS[kind].size * ts; ctx.globalAlpha = 0.55;
     const ghost: Ent = { id: -1, k: kind, x: h[0], y: h[1], d: u.dir };
-    if (kind === 'belt' || kind === 'splitter') drawBelt(ctx, ghost, X(h[0]), Y(h[1]), ts, anim); else if (kind === 'inserter') drawInserter(ctx, ghost, X(h[0]), Y(h[1]), ts, 0); else if (KINDS[kind].machine) drawMachine(ctx, ghost, X(h[0]), Y(h[1]), ts, t); else drawChest(ctx, ghost, X(h[0]), Y(h[1]), ts);
+    if (kind === 'underground') drawUnderground(ctx, ghost, X(h[0]), Y(h[1]), ts, anim, 'none'); else if (kind === 'belt' || kind === 'splitter') drawBelt(ctx, ghost, X(h[0]), Y(h[1]), ts, anim); else if (kind === 'inserter') drawInserter(ctx, ghost, X(h[0]), Y(h[1]), ts, 0); else if (KINDS[kind].machine) drawMachine(ctx, ghost, X(h[0]), Y(h[1]), ts, t); else drawChest(ctx, ghost, X(h[0]), Y(h[1]), ts);
     ctx.globalAlpha = 1; ctx.fillStyle = bad ? 'rgba(255,60,60,.3)' : 'rgba(80,255,120,.18)'; ctx.fillRect(X(h[0]), Y(h[1]), sz, sz);
   } else if (h && h[0] >= 0 && h[1] >= 0 && h[0] < size && h[1] < size) { ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1; ctx.strokeRect(X(h[0]) + 0.5, Y(h[1]) + 0.5, ts - 1, ts - 1); }
+  // minimap (big floors, zoomed in)
+  u.mini = null;
+  if (size >= 20 && u.z > 1.01) {
+    const mw = Math.round(Math.min(W, H) * 0.24); const ms = mw / size; const mx = W - mw - 10, my = H - mw - 10;
+    ctx.fillStyle = 'rgba(10,11,13,.85)'; ctx.fillRect(mx - 3, my - 3, mw + 6, mw + 6);
+    ctx.fillStyle = '#2b2d31'; ctx.fillRect(mx, my, mw, mw);
+    for (const e of s.ents) { const n = KINDS[e.k].size; ctx.fillStyle = e.k === 'belt' || e.k === 'splitter' || e.k === 'underground' ? '#c9a227' : e.k === 'inserter' ? '#e0c040' : e.k === 'chest_in' ? '#3f7fbf' : e.k === 'chest_out' ? '#3fa060' : KINDS[e.k].color; ctx.fillRect(mx + e.x * ms, my + e.y * ms, Math.max(1, n * ms), Math.max(1, n * ms)); }
+    const vx = (-L.ox / ts) * ms, vy = (-L.oy / ts) * ms, vw = (W / ts) * ms, vh = (H / ts) * ms;
+    ctx.save(); ctx.beginPath(); ctx.rect(mx, my, mw, mw); ctx.clip(); ctx.strokeStyle = '#ffe066'; ctx.lineWidth = 2; ctx.strokeRect(mx + vx, my + vy, vw, vh); ctx.restore();
+    ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1; ctx.strokeRect(mx - 0.5, my - 0.5, mw + 1, mw + 1);
+    u.mini = { x: mx, y: my, w: mw, s: ms };
+  }
+}
+
+function drawUnderground(ctx: CanvasRenderingContext2D, e: Ent, x: number, y: number, ts: number, anim: number, role: 'in' | 'out' | 'none') {
+  drawBelt(ctx, { ...e, k: 'belt' }, x, y, ts, anim);
+  // hood: entrances are closed in front (items dive in), exits closed behind (items surface)
+  ctx.save(); ctx.translate(x + ts / 2, y + ts / 2); ctx.rotate((e.d * Math.PI) / 2);
+  const front = role === 'out' ? -1 : 1;
+  ctx.fillStyle = role === 'none' ? '#6b5a2a' : '#8a6d1a'; ctx.strokeStyle = '#2a1f08'; ctx.lineWidth = Math.max(1, ts * 0.06);
+  ctx.beginPath(); ctx.rect(front > 0 ? 0 : -ts / 2, -ts * 0.44, ts / 2, ts * 0.88); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#111'; ctx.beginPath(); ctx.ellipse(0, 0, ts * 0.12, ts * 0.32, 0, 0, 7); ctx.fill();
+  ctx.restore();
+  if (role === 'none') { ctx.fillStyle = 'rgba(255,90,90,.85)'; ctx.font = `bold ${Math.floor(ts * 0.36)}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('?', x + ts / 2, y + ts * 0.62); }
 }
 
 function arrow(ctx: CanvasRenderingContext2D, cx: number, cy: number, d: number, r: number) {
@@ -318,6 +434,7 @@ function drawInserter(ctx: CanvasRenderingContext2D, e: Ent, x: number, y: numbe
   const ex = cx + Math.cos(a) * ts * 0.44, ey = cy + Math.sin(a) * ts * 0.44;
   ctx.strokeStyle = '#e0c040'; ctx.lineWidth = Math.max(2, ts * 0.12); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke(); ctx.lineCap = 'butt';
   if (e.it) drawItem(ctx, e.it, ex, ey, ts * 0.2);
+  if (e.f) { ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(x + ts * 0.58, y + ts * 0.02, ts * 0.4, ts * 0.4); drawItem(ctx, e.f, x + ts * 0.78, y + ts * 0.22, ts * 0.14); }
   ctx.fillStyle = 'rgba(255,255,255,.5)'; arrow(ctx, cx + DX[e.d] * ts * 0.38, cy + DY[e.d] * ts * 0.38, e.d, ts * 0.08);
 }
 function drawMachine(ctx: CanvasRenderingContext2D, e: Ent, x: number, y: number, ts: number, t: number) {
