@@ -51,4 +51,26 @@ describe('admin reset-password', () => {
     expect(getBank().account('QA-Carter').chips).toBe(before);
     expect((await post({ player: 'qa-carter', key: 'reset:qa-carter:1' })).status).toBe(409);
   });
+  it('friendly:true gives a typeable password that signs in with any name casing', async () => {
+    expect((await post({ player: 'qa-carter', key: 'reset:qa-carter:bad', friendly: 'yes' })).status).toBe(400);
+    const j = await (await post({ player: 'QA-CARTER', key: 'reset:qa-carter:2', friendly: true })).json();
+    expect(j.tempPassword).toMatch(/^([A-Z][a-z]+-){4}[2-9]{4}$/);
+    expect((await getAccounts().login('qa-carter', j.tempPassword, 'ip3')).identity.name).toBe('QA-Carter');
+  });
+});
+
+describe('friendly temp passwords', () => {
+  it('are Word-Word-Word-Word-NNNN with no ambiguous chars and vary', async () => {
+    const { friendlyPassword, FRIENDLY_WORDS } = await import('../server/friendly-password.js');
+    expect(FRIENDLY_WORDS.length).toBe(256);
+    expect(new Set(FRIENDLY_WORDS).size).toBe(256);
+    const seen = new Set<string>();
+    for (let i = 0; i < 200; i++) {
+      const p = friendlyPassword();
+      expect(p).toMatch(/^([A-Z][a-z]+-){4}[2-9]{4}$/);
+      expect(p).not.toMatch(/[IO01_]/);
+      seen.add(p);
+    }
+    expect(seen.size).toBe(200);
+  });
 });

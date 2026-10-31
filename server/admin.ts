@@ -66,16 +66,17 @@ export function adminRouter(): express.Router {
       console.warn(`[admin] reset-password rejected: unauthorized from ${ip}`);
       return res.status(401).json({ ok: false, error: 'Unauthorized.' });
     }
-    const { player, memo, key } = (req.body ?? {}) as Record<string, unknown>;
+    const { player, memo, key, friendly } = (req.body ?? {}) as Record<string, unknown>;
     if (typeof player !== 'string' || !player.trim()) return res.status(400).json({ ok: false, error: 'player is required.' });
     if (typeof key !== 'string' || !/^[\w:.\-]{8,120}$/.test(key)) return res.status(400).json({ ok: false, error: 'key (idempotency key) is required.' });
     if (memo !== undefined && (typeof memo !== 'string' || memo.length > 200)) return res.status(400).json({ ok: false, error: 'memo must be a string up to 200 chars.' });
+    if (friendly !== undefined && typeof friendly !== 'boolean') return res.status(400).json({ ok: false, error: 'friendly must be a boolean.' });
     if (resetKeys.has(key)) return res.status(409).json({ ok: false, error: 'That key was already used.' });
     let out;
-    try { out = await getAccounts().adminResetPassword(nameKey(player)); } catch { return res.status(503).json({ ok: false, error: 'Accounts unavailable.' }); }
+    try { out = await getAccounts().adminResetPassword(nameKey(player), friendly === true); } catch { return res.status(503).json({ ok: false, error: 'Accounts unavailable.' }); }
     if (!out) return res.status(404).json({ ok: false, error: 'Unknown player.' });
     resetKeys.add(key);
-    console.log(`[admin] reset-password applied: ${out.name} sessionsRevoked=${out.sessionsRevoked} key=${key} memo=${JSON.stringify(memo ?? '')} from ${ip}`);
+    console.log(`[admin] reset-password applied: ${out.name} sessionsRevoked=${out.sessionsRevoked} friendly=${friendly === true} key=${key} memo=${JSON.stringify(memo ?? '')} from ${ip}`);
     res.json({ ok: true, player: out.name, sessionsRevoked: out.sessionsRevoked, tempPassword: out.password });
   });
   return r;

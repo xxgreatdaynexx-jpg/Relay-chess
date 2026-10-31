@@ -1,4 +1,5 @@
 /** Name accounts: a name can be claimed with a password; using a claimed name needs that password or a session. */
+import { friendlyPassword } from './friendly-password.js';
 import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import pg from 'pg';
@@ -273,10 +274,10 @@ export class Accounts {
   }
 
   /** Admin-only: sets a fresh random temp password (same hashing as sign-up) and signs the player out everywhere. Returns the password once; never logged. */
-  async adminResetPassword(key: string): Promise<{ name: string; password: string; sessionsRevoked: number } | null> {
+  async adminResetPassword(key: string, friendly = false): Promise<{ name: string; password: string; sessionsRevoked: number } | null> {
     const row = await this.store.get(key);
     if (!row) return null;
-    const password = randomBytes(18).toString('base64url');
+    const password = friendly ? friendlyPassword() : randomBytes(18).toString('base64url');
     await this.store.setPassword(key, await hashPassword(password));
     const sessionsRevoked = (await this.store.removeSessionsFor?.(key)) ?? 0;
     this.nameLimiter.clear(key);
