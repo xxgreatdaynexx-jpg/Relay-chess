@@ -6,8 +6,10 @@ import { LOOK_KEY, SENS_MAX, SENS_MIN, mouseLook, readLook, type LookPrefs, FPS_
 import { ArenaRenderer, minimapSize } from '@/lib/arenaRender';
 import type { Arena3D, Fx3D, Soldier3D } from '@/lib/arena3d';
 import { prefersReducedMotion } from '@/lib/motion';
+import { INTERP_DELAY_MS, LOCAL_STEP_S, SnapBuffer, samplePlayers } from '../../../shared/netInterp';
+import { TagVisibility, tagVisible } from '@/lib/arenaTags';
 import type { ArenaMap } from '../../../shared/arenaMaps';
-import { playBoom, playExplosion, playHit, playStreakCall, playWeaponShot, unlockSounds } from '@/lib/sounds';
+import { playArenaExplosion, playHit, playStreakCall, playWeaponShot, unlockSounds } from '@/lib/sounds';
 import {
   AIRSTRIKE_RADIUS, clampPitch, EYE_HEIGHT, mapById, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
 } from '../../../shared/fps';
@@ -17,7 +19,6 @@ const QUALITY_KEY = 'relay-fps-quality';
 const MAP_KEY = 'relay-fps-map';
 const MAP_LIST = Object.values(MAPS);
 const clock = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
-const INTERP_MS = (1000 / TICK_HZ) * 1.5;
 const COLORS = ['#5f6a48', '#7d7158', '#596066', '#6b6248', '#4f5a4c', '#73705f', '#565246', '#666e5a'];
 const SCOPE_ZOOM = 3.5;
 const FOV = 68; // vertical, degrees
@@ -74,6 +75,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const pickRef = useRef<HTMLSpanElement>(null);
   useEffect(() => { try { localStorage.setItem(FPS_KEY, showFps ? '1' : '0'); } catch { /* ignore */ } }, [showFps]);
   const [isTouch] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches);
+  const net = useRef({ buf: new SnapBuffer<NetState>(), corr: null as null | { x: number; y: number; left: number }, ping: 0, acc: 0, prev: null as null | { x: number; y: number; z: number } }).current;
   const [look, setLookState] = useState<LookPrefs>(() => readLook());
   const lookRef = useRef(look);
   const [lookOpen, setLookOpen] = useState(false);
@@ -146,7 +148,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     fx.current.muzzle = now;
     fx.current.shells++;
     playWeaponShot(m.weapon);
-    socket.emit('fps_shoot', { a: m.a, p: m.p });
+    socket.emit('fps_shoot', { a: m.a, p: m.p, vt: Math.round(net.buf.renderTime(performance.now())) });
   }
 
   // Networking
@@ -163,6 +165,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         if (qaBots) (window as unknown as { __arenaQA?: unknown }).__arenaQA = { me: me.current, snaps: snaps.current, banner };
       });
     };
+    const pingT = window.setInterval(() => { const t0 = performance.now(); socket.timeout(2000).emit('fps_ping', (err: Error | null) => { if (!err) net.ping = Math.round(performance.now() - t0); }); }, 2000);
     let feedKey = 0;
     const pushFeed = (e: { killer: string; victim: string; cause: string; self: boolean; mine: boolean }) => {
       const key = ++feedKey;
@@ -171,6 +174,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     };
     const onState = (s: NetState) => {
       snaps.current.push({ ...s, recv: performance.now() });
+      net.buf.push(s, performance.now());
       if (snaps.current.length > 6) snaps.current.shift();
       const m = me.current;
       const mine = s.players.find((p) => p.id === m.id);
@@ -188,7 +192,9 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         if (!mine.alive && m.alive) m.alive = false;
         if (mine.alive && !m.alive) Object.assign(m, { alive: true, x: mine.x, y: mine.y, z: mine.z, vz: 0, grounded: true, p: 0, ammo: WEAPONS[m.weapon].mag, reloadUntil: 0 });
         // The server owns position (and height): if prediction drifts too far, snap to its authoritative spot.
-        else if (mine.alive && (Math.hypot(m.x - mine.x, m.y - mine.y) > 1.5 || Math.abs(m.z - mine.z) > 0.8)) Object.assign(m, { x: mine.x, y: mine.y, z: mine.z, vz: 0, grounded: mine.g });
+        else if (mine.alive && (Math.hypot(m.x - mine.x, m.y - mine.y) > 1.5 || Math.abs(m.z - mine.z) > 0.8)) { Object.assign(m, { x: mine.x, y: mine.y, z: mine.z, vz: 0, grounded: mine.g }); net.corr = null; }
+        // Small disagreement beyond normal latency: ease toward the server over ~150 ms instead of snapping.
+        else if (mine.alive && Math.hypot(m.x - mine.x, m.y - mine.y) > 0.6) net.corr = { x: mine.x - m.x, y: mine.y - m.y, left: 0.15 };
         m.hp = mine.hp;
         m.streak = mine.st;
         m.uavUntil = mine.uav ? performance.now() + mine.uav : 0;
@@ -228,7 +234,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
           if (d < WEAPONS[s.w].range - 0.05) fx.current.impacts.push({ x: e[0], y: e[1], z: e[2], player: !!hit, at: now + (d / TRACER_SPEED) * 1000 });
         }
       }
-      if (s.impact) { fx.current.booms.push({ ...s.impact, at: now, big: false }); playExplosion(0.5); }
+      if (s.impact) { fx.current.booms.push({ ...s.impact, at: now, big: false }); playArenaExplosion(Math.hypot(s.impact.x - me.current.x, s.impact.y - me.current.y) + 4); }
       if (s.rocket) fx.current.rockets.set(s.rocket.id, { ...s.rocket, at: now });
     };
     const onKill = (k: { killer: string; victim: string; killerId: string | null; victimId: string; cause: string }) => {
@@ -259,12 +265,12 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       if (d < 8) fx.current.shake = t;
       if (b.cause === 'airstrike' && t - fx.current.jetAt > 1500) fx.current.jetAt = t;
       // Rockets use Dayne's chess explosion recording; airstrikes keep the long synth rumble.
-      if (b.cause === 'rocket' && d < 30) playBoom(); else playExplosion(Math.max(0.35, 0.9 - d / 25));
+      playArenaExplosion(d, b.cause === 'rocket' ? 'rocket' : 'synth');
     };
     const onNuke = (n: { phase: string; by: string }) => {
       if (n.phase === 'boom') {
         fx.current.nukeFlash = performance.now();
-        playExplosion(1, true);
+        playArenaExplosion(0, 'synth', true);
         banner.current = { text: 'TACTICAL NUKE', sub: `"Detonation confirmed." · ${n.by} ended the round · scores reset`, at: performance.now() };
       }
     };
@@ -281,6 +287,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     if (socket.connected) join();
     else socket.connect();
     return () => {
+      window.clearInterval(pingT);
       socket.emit('fps_leave');
       for (const [e, h] of [['fps_state', onState], ['fps_hit', onHit], ['fps_shot', onShot], ['fps_kill', onKill], ['fps_streak', onStreak], ['fps_boom', onBoom], ['fps_drone_shot', onDrone], ['fps_nuke', onNuke], ['connect', join]] as const) socket.off(e, h as never);
     };
@@ -301,6 +308,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     }).catch(() => setGlError('Could not load the 3D engine. Refresh to try again.'));
     const r = new ArenaRenderer();
     const prevPos = new Map<string, { x: number; y: number; t: number }>();
+    const tags = new TagVisibility();
     let raf = 0;
     let last = performance.now();
     let lastSend = 0;
@@ -308,7 +316,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     let fpsShownAt = 0;
     const frame = (now: number) => {
       frameTimes.push(now); if (frameTimes.length > 30) frameTimes.shift();
-      if (fpsRef.current && now - fpsShownAt > 250) { fpsShownAt = now; fpsRef.current.textContent = `${fpsFrom(frameTimes)} FPS`; }
+      if (fpsRef.current && now - fpsShownAt > 250) { fpsShownAt = now; fpsRef.current.textContent = `${fpsFrom(frameTimes)} FPS · ping ${net.ping} ms · interp ${INTERP_DELAY_MS} ms · buf ${Math.round(net.buf.bufferedMs(now))} ms`; }
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       const map = mapRef.current;
@@ -351,8 +359,20 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         const dx = (Math.cos(m.a) * fwd - Math.sin(m.a) * side) * sp;
         const dy = (Math.sin(m.a) * fwd + Math.cos(m.a) * side) * sp;
         // Local prediction with the exact same physics the server runs.
-        moveHorizontal(m, dx, dy, map);
-        stepVertical(m, dt, map);
+        // Fixed-timestep simulation (120 Hz) decoupled from the render rate; rendered position is interpolated below.
+        net.acc = Math.min(0.1, net.acc + dt);
+        const steps = Math.floor(net.acc / LOCAL_STEP_S);
+        for (let i = 0; i < steps; i++) {
+          net.prev = { x: m.x, y: m.y, z: m.z };
+          moveHorizontal(m, dt > 0 ? (dx / dt) * LOCAL_STEP_S : 0, dt > 0 ? (dy / dt) * LOCAL_STEP_S : 0, map);
+          stepVertical(m, LOCAL_STEP_S, map);
+          if (net.corr && net.corr.left > 0) {
+            const f = Math.min(1, LOCAL_STEP_S / net.corr.left);
+            moveHorizontal(m, net.corr.x * f, net.corr.y * f, map);
+            net.corr = { x: net.corr.x * (1 - f), y: net.corr.y * (1 - f), left: net.corr.left - LOCAL_STEP_S };
+          }
+        }
+        net.acc -= steps * LOCAL_STEP_S;
         moving = fwd !== 0 || side !== 0;
         if (now - lastSend > 50) { lastSend = now; socket.emit('fps_move', { x: m.x, y: m.y, a: m.a, p: m.p }); }
         if (m.firing || k.has('f') || k.has('control')) shoot();
@@ -362,8 +382,11 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       const bob = moving && m.grounded ? Math.sin(m.walk * 2) * 0.03 : 0;
       const zoom = m.scoped && m.weapon === 'sniper' && m.alive ? SCOPE_ZOOM : 1;
       const snap = snaps.current[snaps.current.length - 1];
-      const renderAt = now - INTERP_MS;
-      const others = interpolate(snaps.current, renderAt).filter((p) => p.id !== m.id && p.alive);
+      const sampled = samplePlayers(net.buf.snaps, net.buf.renderTime(now));
+      const others = sampled.players.filter((p) => p.id !== m.id && p.alive);
+      // Render-time interpolation of our own fixed-step position.
+      const al = net.prev && m.alive ? net.acc / LOCAL_STEP_S : 1;
+      const eye = net.prev && Math.hypot(net.prev.x - m.x, net.prev.y - m.y) < 1 ? { x: net.prev.x + (m.x - net.prev.x) * al, y: net.prev.y + (m.y - net.prev.y) * al, z: net.prev.z + (m.z - net.prev.z) * al } : { x: m.x, y: m.y, z: m.z };
       const soldiers: Soldier3D[] = others.map((p) => {
         const pp = prevPos.get(p.id);
         const mv = !!pp && Math.hypot(pp.x - p.x, pp.y - p.y) > 0.002;
@@ -419,14 +442,21 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       const vmReload = m.reloadUntil && now < m.reloadUntil ? 1 - (m.reloadUntil - now) / WEAPONS[m.weapon].reloadMs : -1;
       const vm = zoom === 1 && m.alive && m.joined ? { w: m.weapon, kick: Math.max(0, 1 - (now - fx.current.muzzle) / 140), lower: vmSwitch, reload: vmReload, bob: m.walk, muzzle: now - fx.current.muzzle < 50 } : null;
       const qa = (window as unknown as { __arenaQA?: { vm?: unknown } }).__arenaQA; if (qa) qa.vm = vm;
-      g3.render({ x: m.x, y: m.y, z: m.z + EYE_HEIGHT + bob + (Math.random() - 0.5) * shake, a: m.a, p: m.p, zoom, vm }, soldiers, fx3);
+      g3.render({ x: eye.x, y: eye.y, z: eye.z + EYE_HEIGHT + bob + (Math.random() - 0.5) * shake, a: m.a, p: m.p, zoom, vm }, soldiers, fx3);
       // Health bars over nearby enemies you can see.
+      // The 2D overlay always draws on top of the 3D scene, so gate each bar on line of sight (throttled, faded).
+      tags.prune(new Set(others.map((o) => o.id)));
+      const camEye = { x: eye.x, y: eye.y, z: eye.z + EYE_HEIGHT };
       for (const p of others) {
         const s = g3.project(p.x, p.y, p.z + 2, W, H);
         if (!s || s.dist > 18) continue;
+        const alpha = tags.alpha(p.id, now, () => tagVisible(camEye, p, map));
+        if (alpha <= 0) continue;
+        ctx.globalAlpha = alpha;
         const bw = Math.max(16, 40 / Math.max(1, s.dist / 3)) * (H / 400);
         ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(s.sx - bw / 2, s.sy, bw, 3);
         ctx.fillStyle = p.hp > 40 ? '#cfd4c4' : '#d9473a'; ctx.fillRect(s.sx - bw / 2, s.sy, (bw * p.hp) / MAX_HP, 3);
+        ctx.globalAlpha = 1;
       }
       const W2 = r.W, H2 = r.H;
       // Dust haze over the scene for a darker, grittier grade.
@@ -841,24 +871,6 @@ function WeaponIcon({ cause }: { cause: string }) {
   return <svg className="fps-wicon" viewBox="0 0 30 14" width="30" height="14" aria-label={cause} role="img"><path d={d} fill="currentColor" /></svg>;
 }
 
-function interpolate(snaps: Snap[], renderAt: number): NetPlayer[] {
-  if (!snaps.length) return [];
-  let i = snaps.length - 1;
-  while (i > 0 && snaps[i - 1].recv > renderAt) i--;
-  const b = snaps[i];
-  const a = snaps[i - 1];
-  if (!a || renderAt >= b.recv) return b.players;
-  const span = b.recv - a.recv || 1;
-  const t = Math.min(1, Math.max(0, (renderAt - a.recv) / span));
-  return b.players.map((p) => {
-    const q = a.players.find((o) => o.id === p.id);
-    if (!q || !q.alive || !p.alive) return p;
-    let da = p.a - q.a;
-    while (da > Math.PI) da -= Math.PI * 2;
-    while (da < -Math.PI) da += Math.PI * 2;
-    return { ...p, x: q.x + (p.x - q.x) * t, y: q.y + (p.y - q.y) * t, a: q.a + da * t };
-  });
-}
 
 /** Greedy word-wrap of `text` into at most two lines no wider than maxW (the second line is shrunk to fit if needed). */
 function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxW: number, font: string): string[] {

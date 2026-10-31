@@ -9,6 +9,7 @@ import {
   SWITCH_MS, tryJump, UAV_MS, validateMove, WEAPON_ORDER, WEAPONS, type ArenaMap, type Fighter, MAPS, type StreakKind, type WeaponId,
 } from '../shared/fps.js';
 import { isMapId, MAP_ROTATION } from '../shared/arenaMaps.js';
+import { PoseHistory, rewindTime } from '../shared/netInterp.js';
 
 /** Drones hover at least this high, and always above the map's tallest structure. */
 export const DRONE_Z = 8;
@@ -120,6 +121,7 @@ export class ArenaWorld {
     this.drones.delete(id);
     this.strikes = this.strikes.filter((s) => s.ownerId !== id);
     this.rockets = this.rockets.filter((r) => r.ownerId !== id);
+    this.history.forget(id);
     return this.fighters.delete(id);
   }
 
@@ -143,6 +145,7 @@ export class ArenaWorld {
     this.advance(f, now);
     validateMove(f, x, y, now - f.lastMove, this.map);
     f.lastMove = now;
+    this.history.record(f.id, now, f.x, f.y, f.z);
   }
 
   /** Space bar. Only works while standing on something, so it can't be spammed mid-air. */
@@ -187,7 +190,10 @@ export class ArenaWorld {
     return true;
   }
 
-  shoot(id: string, a: unknown, now: number, p?: unknown): ArenaEvent[] {
+  /** Lag compensation: where everyone was over the last second. */
+  history = new PoseHistory();
+
+  shoot(id: string, a: unknown, now: number, p?: unknown, viewT?: unknown): ArenaEvent[] {
     const f = this.fighters.get(id);
     if (!f || !f.alive) return [];
     const spec = WEAPONS[f.weapon];
@@ -214,7 +220,17 @@ export class ArenaWorld {
       this.rockets.push(r);
       return [{ ev: 'fps_shot', data: { id: f.id, w: f.weapon, o: [+f.x.toFixed(2), +f.y.toFixed(2), +f.z.toFixed(2)], rocket: this.rocketView(r) } }];
     }
-    const shot = fireWeapon(f, spec, [...this.fighters.values()], { scoped, rand: this.rand, map: this.map });
+    // Rewind other fighters to what the shooter saw (capped at LAG_COMP_MAX_MS), hit-test, then restore.
+    const rt = rewindTime(now, viewT);
+    const restore: Array<[Fighter, number, number, number]> = [];
+    if (rt < now) for (const o of this.fighters.values()) {
+      if (o.id === f.id || !o.alive) continue;
+      const h = this.history.at(o.id, rt);
+      if (h) { restore.push([o, o.x, o.y, o.z]); o.x = h.x; o.y = h.y; o.z = h.z; }
+    }
+    let shot: ReturnType<typeof fireWeapon>;
+    try { shot = fireWeapon(f, spec, [...this.fighters.values()], { scoped, rand: this.rand, map: this.map }); }
+    finally { for (const [o, x, y, z] of restore) { o.x = x; o.y = y; o.z = z; } }
     const events: ArenaEvent[] = [{
       ev: 'fps_shot',
       data: {
@@ -326,6 +342,7 @@ export class ArenaWorld {
     for (const f of all) {
       this.settleReload(f, now);
       this.advance(f, now);
+      if (f.alive) this.history.record(f.id, now, f.x, f.y, f.z); else this.history.forget(f.id);
       if (f.alive && f.z <= KILL_Z) { f.alive = false; f.respawnAt = now; } // fell out of the world: never happens on valid maps
       if (maybeRespawn(f, now, all, this.rand, this.map)) {
         f.ammo = fullAmmo();

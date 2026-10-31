@@ -161,7 +161,7 @@ export function registerFps(io: Server, socket: Socket): void {
     const b = body(p);
     world.move(socket.id, b.x, b.y, b.a, Date.now(), b.p);
   });
-  socket.on('fps_shoot', (p: unknown) => emit(io, world.shoot(socket.id, body(p).a, Date.now(), body(p).p)));
+  socket.on('fps_shoot', (p: unknown) => emit(io, world.shoot(socket.id, body(p).a, Date.now(), body(p).p, body(p).vt)));
   socket.on('fps_jump', () => emit(io, world.jump(socket.id, Date.now())));
   socket.on('fps_weapon', (p: unknown) => world.switchWeapon(socket.id, body(p).w, Date.now()));
   socket.on('fps_reload', () => world.reload(socket.id, Date.now()));
@@ -171,6 +171,7 @@ export function registerFps(io: Server, socket: Socket): void {
     if (ev) { emit(io, ev); io.to(ROOM).emit('fps_state', world.snapshot(Date.now())); }
     if (typeof ack === 'function') ack({ ok: !!ev, map: world.map.id, next: world.upcomingMapId });
   });
+  socket.on('fps_ping', (ack?: unknown) => { if (typeof ack === 'function') ack(Date.now()); });
   socket.on('fps_leave', () => leave(io, socket));
   socket.on('disconnect', () => leave(io, socket));
 }

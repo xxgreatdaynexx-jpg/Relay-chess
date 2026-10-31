@@ -588,3 +588,41 @@ export function playStreakCall(kind: 'reward' | 'alarm' = 'reward'): void {
   o.connect(f); f.connect(g); g.connect(output(ctx));
   o.start(now + 0.4); o.stop(now + 5.5);
 }
+
+/** Arena explosions sit roughly level with gunshots: ~30% of the old level, quieter and duller with distance. */
+export const ARENA_BOOM_GAIN = 0.3;
+export const ARENA_BOOM_VOICES = 2;
+export function explosionMix(dist: number): { gain: number; cutoff: number } {
+  const d = Math.max(0, dist);
+  return { gain: ARENA_BOOM_GAIN * Math.max(0.08, 1 / (1 + d / 8)), cutoff: Math.max(300, 9000 / (1 + d / 4)) };
+}
+let boomVoices = 0;
+/** Arena explosion (rocket uses Dayne's recording; airstrike/other the synth), capped to 2 voices, through the master volume. */
+export function playArenaExplosion(dist: number, kind: 'rocket' | 'synth' = 'synth', long = false): void {
+  const ctx = audio();
+  if (!ctx || boomVoices >= ARENA_BOOM_VOICES) return;
+  const { gain, cutoff } = explosionMix(dist);
+  const now = ctx.currentTime;
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = cutoff;
+  const g = ctx.createGain(); g.gain.value = gain;
+  lp.connect(g); g.connect(output(ctx));
+  boomVoices++;
+  const done = () => { boomVoices = Math.max(0, boomVoices - 1); try { g.disconnect(); } catch { /* gone */ } };
+  if (kind === 'rocket') {
+    void loadClip(ctx, QUEEN_DEATH_URL, queenDeathClip).then((buffer) => {
+      if (!buffer) return done();
+      const src = ctx.createBufferSource(); src.buffer = buffer; src.connect(lp); src.onended = done; src.start();
+    });
+    return;
+  }
+  const len = long ? 2.2 : 0.7;
+  const n = arenaNoise(ctx, len);
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0.0001, now); env.gain.exponentialRampToValueAtTime(0.7, now + 0.01); env.gain.exponentialRampToValueAtTime(0.0001, now + len);
+  n.connect(env); env.connect(lp); n.start(now);
+  const osc = ctx.createOscillator();
+  osc.frequency.setValueAtTime(90, now); osc.frequency.exponentialRampToValueAtTime(30, now + len);
+  const og = ctx.createGain(); og.gain.setValueAtTime(0.5, now); og.gain.exponentialRampToValueAtTime(0.0001, now + len);
+  osc.connect(og); og.connect(lp); osc.start(now); osc.stop(now + len);
+  osc.onended = done;
+}
