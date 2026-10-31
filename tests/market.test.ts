@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
 import { getVault, ItemVault, PgItemStore, resetVault, type StoredItem } from '../server/skins';
 import { feeOf, Market, resetMarket } from '../server/market';
-import { getBank, resetBank } from '../server/casino-store';
+import { getBank, PgCasinoStore, resetBank } from '../server/casino-store';
 
 let v: ItemVault; let m: Market;
 const skin = (name: string, id = 'c-pistol-0') => { const i = v.make(name, 'skin', `t:${Math.random()}`, 'test', { id } as never)! ; v.commit([i], []); return i; };
@@ -151,5 +151,32 @@ describe('stackable (Mines) listings', () => {
     const m2 = resetMarket(vv); await m2.load();
     expect(m2.stacks.get(l.id)).toMatchObject({ qty: 3, unit: 100, sold: 1 });
     expect(m2.history('stack:bar:gold_bar').count).toBe(1);
+  });
+  it('chip ledger + balances + items commit in ONE transaction; a failed commit writes none of them', async () => {
+    const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
+    const bank = resetBank(); await bank.attach(new PgCasinoStore(pool));
+    const vv = resetVault(); await vv.attach(new PgItemStore(pool)); const mm = resetMarket(vv); await mm.load();
+    const w = resetMines(); const store = new PgMineStore(pool); await w.attach(store);
+    w.adjustStack('QA-Miner', 'bar', 'gold_bar', 5);
+    const l = mm.listStack('QA-Miner', 'bar', 'gold_bar', 4, 100);
+    mm.buyStack('QA-Buyer', l.id, 1); await w.flush(); await bank.flush();
+    const q = async (sql: string) => (await pool.query(sql)).rows;
+    expect((await q("SELECT tx_key FROM wallet_transactions WHERE tx_key LIKE 'mkt:%' ORDER BY tx_key")).map((r: { tx_key: string }) => r.tx_key)).toEqual([`mkt:buy:${l.id}:1`, `mkt:sell:${l.id}:1`]);
+    expect(Number((await q("SELECT chips FROM casino_players WHERE player_key = 'qa-buyer'"))[0].chips)).toBe(chips('QA-Buyer'));
+    // Now make the item transaction fail every time: no ledger row, no balance change, no sale may land.
+    const orig = store.save.bind(store); store.save = async () => { throw new Error('db down'); };
+    const before = Number((await q("SELECT chips FROM casino_players WHERE player_key = 'qa-buyer'"))[0].chips);
+    mm.buyStack('QA-Buyer', l.id, 1); await w.flush(); await bank.flush();
+    expect((await q("SELECT tx_key FROM wallet_transactions WHERE tx_key LIKE 'mkt:%:2'")).length).toBe(0);
+    expect(Number((await q("SELECT chips FROM casino_players WHERE player_key = 'qa-buyer'"))[0].chips)).toBe(before);
+    expect((await q('SELECT * FROM market_sales')).length).toBe(1);
+    store.save = orig;
+  }, 20000);
+  it('buys respect BACKPACK_CAP', () => {
+    const w = getMines(); w.adjustStack('QA-Miner', 'bar', 'iron_bar', 50); w.adjustStack('QA-Buyer', 'ore', 'stone', 100);
+    const l = m.listStack('QA-Miner', 'bar', 'iron_bar', 50, 1);
+    expect(() => m.buyStack('QA-Buyer', l.id, 21)).toThrow(/room for 20/);
+    m.buyStack('QA-Buyer', l.id, 20);
+    expect(() => m.buyStack('QA-Buyer', l.id, 1)).toThrow(/full/);
   });
 });

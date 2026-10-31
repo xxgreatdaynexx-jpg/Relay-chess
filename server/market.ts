@@ -5,7 +5,7 @@ import { getBank } from './casino-store.js';
 import { getAccounts } from './accounts.js';
 import { getVault, playerKey, RuleError, type ItemVault, type Stmt, type StoredItem } from './skins.js';
 import { getMines } from './mines.js';
-import { GOODS, isOre, nameOf as stackName, type ItemType } from '../shared/mines.js';
+import { BACKPACK_CAP, GOODS, ORES, isOre, nameOf as stackName, type ItemType } from '../shared/mines.js';
 import { CASE_NAME, KEY_NAME, SKIN_BY_ID, type SkinItem } from '../shared/skins.js';
 
 export const MARKET_FEE = 0.05;
@@ -172,17 +172,26 @@ export class Market {
     if (l.seller === k) throw new RuleError("You can't buy your own listing. Cancel it instead.");
     const n = intIn(qty, 1, l.qty, 'Quantity');
     const price = n * l.unit; const fee = feeOf(price);
-    const bank = this.bank();
+    const bank = this.bank(); const mines = getMines();
     if (!bank.canAfford(name, price)) throw new RuleError('Not enough chips.');
+    const w = l.type === 'ore' && isOre(l.itemId) ? ORES[l.itemId].weight : 1;
+    const room = Math.floor((BACKPACK_CAP - mines.packLoad(name)) / w);
+    if (n > room) throw new RuleError(room > 0 ? `Your backpack only has room for ${room} more. Sell or craft some first.` : 'Your backpack is full. Sell or craft some first.');
     const seq = l.sold + 1; const what = stackName({ type: l.type, id: l.itemId });
-    bank.transfer(name, -price, { key: `mkt:buy:${l.id}:${seq}`, game: 'market', memo: `Bought ${n} ${what}` });
-    bank.transfer(l.sellerName, price - fee, { key: `mkt:sell:${l.id}:${seq}`, game: 'market', memo: `Sold ${n} ${what} (${fee} fee)` });
+    // Chips (ledger + balances) and items (buyer pack, listing, sale) commit in ONE Postgres transaction.
+    let chips;
+    try {
+      chips = bank.transferAtomic([
+        { name, amount: -price, key: `mkt:buy:${l.id}:${seq}`, game: 'market', memo: `Bought ${n} ${what}` },
+        { name: l.sellerName, amount: price - fee, key: `mkt:sell:${l.id}:${seq}`, game: 'market', memo: `Sold ${n} ${what} (${fee} fee)` },
+      ]);
+    } catch (e) { throw new RuleError((e as Error).message); }
     const now = Date.now();
     l.qty -= n; l.sold = seq;
     if (l.qty === 0) { l.status = 'sold'; l.closedAt = now; this.stacks.delete(l.id); }
     const sale: Sale = { id: randomUUID(), listingId: `${l.id}#${seq}`, itemId: `qty:${n}`, what: stackWhat(l.type, l.itemId), price: l.unit, fee, seller: l.seller, buyer: k, at: now };
     this.sales.push(sale); if (this.sales.length > 5000) this.sales.shift();
-    getMines().adjustStack(name, l.type, l.itemId, n, [stackStmt(l), saleStmt(sale)], (r) => this.stackRows(r));
+    mines.adjustStack(name, l.type, l.itemId, n, [...chips.stmts, stackStmt(l), saleStmt(sale)], (r) => this.stackRows(r), { after: chips.after, bind: chips.bind });
     return { type: l.type, id: l.itemId, qty: n, price, fee };
   }
   browseStacks(f: { type?: unknown; q?: unknown } = {}) {

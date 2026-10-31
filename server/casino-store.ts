@@ -197,6 +197,34 @@ export class CasinoBank {
     return true;
   }
 
+  /**
+   * Several keyed transfers that must land in Postgres inside the CALLER's transaction (e.g. a market buy with item rows).
+   * All-or-nothing in memory (validates every move first). Returns the ledger + balance SQL rows, a promise for the
+   * accounts' earlier queued writes (run your transaction after it), and `bind(p)` so later writes for these accounts
+   * queue behind your transaction. Balance rows are absolute snapshots, so ordering via `after`/`bind` keeps them correct.
+   */
+  transferAtomic(moves: Array<{ name: string; amount: number; key: string; game: string; memo?: string }>): { stmts: Array<{ sql: string; args: unknown[] }>; after: Promise<unknown>; bind: (p: Promise<unknown>) => void } {
+    const need = new Map<string, number>();
+    for (const m of moves) {
+      if (!Number.isInteger(m.amount) || !m.key) throw new Error('Bad amount.');
+      if (this.keys.has(m.key)) throw new Error('Already applied.');
+      const a = this.account(m.name); need.set(a.key, (need.get(a.key) ?? a.chips) + m.amount);
+      if (need.get(a.key)! < 0) throw new Error('Not enough chips.');
+    }
+    const stmts: Array<{ sql: string; args: unknown[] }> = []; const touched = new Map<string, CasinoAccount>();
+    for (const m of moves) {
+      const a = this.account(m.name); a.chips += m.amount; this.keys.add(m.key); touched.set(a.key, a);
+      const tx = this.log(a, m.amount, m.game, m.key, m.memo, true);
+      stmts.push({ sql: 'INSERT INTO wallet_transactions (tx_key, player_key, name, game, amount, balance, memo) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (tx_key) DO NOTHING', args: [m.key, a.key, a.name, m.game, m.amount, tx.balance, m.memo ?? null] });
+    }
+    for (const a of touched.values()) stmts.push({ sql: `INSERT INTO casino_players (player_key, name, chips, hands, spins, net_won, biggest_win) VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (player_key) DO UPDATE SET name = EXCLUDED.name, chips = EXCLUDED.chips, updated_at = now()`, args: [a.key, a.name, a.chips, a.hands, a.spins, a.netWon, a.biggestWin] });
+    const keys = [...touched.keys()];
+    const after = Promise.all(keys.map((k) => this.pending.get(k) ?? Promise.resolve()));
+    const bind = (p: Promise<unknown>) => { for (const k of keys) { const q = p.then(() => {}, () => {}); this.pending.set(k, q); void q.then(() => { if (this.pending.get(k) === q) this.pending.delete(k); }); } };
+    return { stmts: this.store ? stmts : [], after, bind };
+  }
+
   /** Take a stake. Throws when short. */
   debit(name: string, amount: number, game = 'casino'): void {
     const a = this.account(name);
@@ -247,7 +275,7 @@ export class CasinoBank {
     await Promise.all([...this.pending.values()]);
   }
 
-  private log(a: CasinoAccount, amount: number, game: string, key: string | null = null, memo?: string): void {
+  private log(a: CasinoAccount, amount: number, game: string, key: string | null = null, memo?: string, deferPersist = false): WalletTx {
     const tx: WalletTx = { key, name: a.name, game, amount, balance: a.chips, ...(memo ? { memo } : {}), at: Date.now() };
     if (amount !== 0 || key) {
       const list = this.recentTx.get(a.key) ?? [];
@@ -255,10 +283,11 @@ export class CasinoBank {
       if (list.length > 50) list.length = 50;
       this.recentTx.set(a.key, list);
     }
-    this.persist(a, amount !== 0 || key ? tx : null);
+    if (!deferPersist) this.persist(a, amount !== 0 || key ? tx : null);
     for (const fn of this.listeners) {
       try { fn({ ...a }, tx); } catch (err) { console.error('[wallet] listener failed:', (err as Error).message); }
     }
+    return tx;
   }
 
   private persist(a: CasinoAccount, tx: WalletTx | null): void {

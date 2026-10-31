@@ -235,7 +235,9 @@ export class MinesWorld {
   stackQty(account: string, type: ItemType, id: string): number { return this.pack(playerKey(account)).get(stackKey({ type, id }))?.qty ?? 0; }
   /** Move qty into (+) or out of (-) an account's pack and persist the pack plus `extra` rows in ONE transaction (queued in order with every other pack save).
    * Returns false (no change) if a withdrawal would go negative. Without a store, `fallback` gets the rows instead. */
-  adjustStack(account: string, type: ItemType, id: string, delta: number, extra: Array<{ sql: string; args: unknown[] }> = [], fallback?: (rows: Array<{ sql: string; args: unknown[] }>) => void): boolean {
+  /** Weight of an account's stored pack (same units as BACKPACK_CAP). */
+  packLoad(account: string): number { let t = 0; for (const s of this.pack(playerKey(account)).values()) t += s.qty * (s.type === 'ore' && isOre(s.id) ? ORES[s.id].weight : 1); return t; }
+  adjustStack(account: string, type: ItemType, id: string, delta: number, extra: Array<{ sql: string; args: unknown[] }> = [], fallback?: (rows: Array<{ sql: string; args: unknown[] }>) => void, opts: { after?: Promise<unknown>; bind?: (p: Promise<unknown>) => void } = {}): boolean {
     const k = playerKey(account); const p = this.pack(k); const key = stackKey({ type, id });
     const cur = p.get(key)?.qty ?? 0;
     if (!Number.isInteger(delta) || cur + delta < 0) return false;
@@ -243,7 +245,11 @@ export class MinesWorld {
     this.names.set(k, account.trim());
     if (!this.store) { fallback?.(extra); return true; }
     const snap = [...p.values()].map((s) => ({ ...s })); const store = this.store;
-    this.chain = this.chain.then(() => store.save(k, account.trim(), snap, undefined, undefined, extra)).catch((e) => console.error('[mines] save failed:', (e as Error).message));
+    // Retried (every row is idempotent: absolute snapshots + ON CONFLICT ledger keys) so a blip can't lose a paid-for delivery.
+    const run = async () => { await opts.after; for (let i = 0; ; i++) { try { return await store.save(k, account.trim(), snap, undefined, undefined, extra); } catch (e) { if (i >= 3) throw e; await new Promise((r) => setTimeout(r, 250 * 2 ** i)); } } };
+    const job = this.chain.then(run);
+    this.chain = job.catch((e) => console.error('[mines] save failed:', (e as Error).message));
+    opts.bind?.(this.chain);
     return true;
   }
 
