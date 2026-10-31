@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AIRSTRIKE_DELAY_MS, AIRSTRIKE_LOCK_MS, AIRSTRIKE_WAIT_MS, DRONE_MS, fireWeapon, gridMap, JUMP_APEX, MAX_HP, NUKE_DELAY_MS, NUKE_RESPAWN_MS, WEAPON_ORDER, SCOPE_SETTLE_MS,
+  BULLET_RANGE, damageFalloff, AIRSTRIKE_DELAY_MS, AIRSTRIKE_LOCK_MS, AIRSTRIKE_WAIT_MS, DRONE_MS, fireWeapon, gridMap, JUMP_APEX, MAX_HP, NUKE_DELAY_MS, NUKE_RESPAWN_MS, WEAPON_ORDER, SCOPE_SETTLE_MS,
   splashFalloff, splashTargets, SWITCH_MS, UAV_MS, WEAPONS,
 } from '../shared/fps.js';
 import { ArenaWorld, FIRE_JITTER_MS } from '../server/arena-world.js';
 
 const HALL = gridMap(['####################', '#..................#', '#..................#', '#..................#', '####################']);
+const LONG = gridMap(['#'.repeat(60), '#' + '.'.repeat(58) + '#', '#' + '.'.repeat(58) + '#', '#' + '.'.repeat(58) + '#', '#'.repeat(60)]);
 const SPLIT = gridMap(['#########', '#...#...#', '#########']);
 /** A slight downward aim that lands in the chest (not the head) at the duel distances below. */
 const CHEST = -0.06;
@@ -30,12 +31,23 @@ describe('weapon damage', () => {
       expect(MAX_HP - b.hp).toBe(Math.min(MAX_HP, WEAPONS[id].damage));
     }
   });
-  it('shotgun fires several pellets and is short range', () => {
+  it('bullets have no max range; shotgun pellets fall off with distance but never to zero', () => {
+    for (const id of ['pistol', 'smg', 'shotgun', 'sniper'] as const) expect(WEAPONS[id].range).toBe(BULLET_RANGE);
+    expect(damageFalloff(WEAPONS.shotgun, 4)).toBe(1);
+    expect(damageFalloff(WEAPONS.shotgun, 8)).toBe(1);
+    expect(damageFalloff(WEAPONS.shotgun, 16.5)).toBeCloseTo(0.675);
+    expect(damageFalloff(WEAPONS.shotgun, 40)).toBe(0.35);
+    for (const id of ['pistol', 'smg', 'sniper'] as const) expect(damageFalloff(WEAPONS[id], 300)).toBe(1);
+    const pistolFar = fireWeapon({ id: 'a', x: 2, y: 2, z: 0, a: 0, p: -0.01 }, WEAPONS.pistol, [{ id: 'b', x: 45, y: 2, z: 0, alive: true }], { map: LONG, rand: () => 0.5 });
+    expect(pistolFar.hits.get('b') ?? 0).toBeGreaterThanOrEqual(WEAPONS.pistol.damage); // 43 units, no falloff
+  });
+  it('shotgun fires several pellets and is weaker far away', () => {
     const close = fireWeapon({ id: 'a', x: 2, y: 2, z: 0, a: 0, p: -0.4 }, WEAPONS.shotgun, [{ id: 'b', x: 3, y: 2, z: 0, alive: true }], { map: HALL, rand: () => 0.5 });
     expect(close.rays).toHaveLength(WEAPONS.shotgun.pellets);
     expect(close.hits.get('b')).toBe(WEAPONS.shotgun.pellets * WEAPONS.shotgun.damage);
-    const far = fireWeapon({ id: 'a', x: 2, y: 2, z: 0, a: 0, p: CHEST }, WEAPONS.shotgun, [{ id: 'b', x: 14, y: 2, z: 0, alive: true }], { map: HALL, rand: () => 0.5 });
-    expect(far.hits.size).toBe(0);
+    const far = fireWeapon({ id: 'a', x: 2, y: 2, z: 0, a: 0, p: -0.01 }, WEAPONS.shotgun, [{ id: 'b', x: 30, y: 2, z: 0, alive: true }], { map: LONG, rand: () => 0.5 });
+    expect(far.hits.get('b') ?? 0).toBeGreaterThan(0); // no cutoff: still hits at 28 units
+    expect(far.hits.get('b') ?? 0).toBeLessThanOrEqual(Math.round(WEAPONS.shotgun.pellets * WEAPONS.shotgun.damage * 0.35));
   });
   it('buffed shotgun kills at close range and still hurts at mid range', () => {
     expect(WEAPONS.shotgun.pellets * WEAPONS.shotgun.damage).toBeGreaterThanOrEqual(150);

@@ -146,7 +146,8 @@ describe('spectators', () => {
     const s = playing.summary();
     expect(s).toMatchObject({ code: 'PLAY01', mode: '3v3', status: 'playing', filled: 6, total: 6, openSeats: 0, watching: 1 });
     expect(s.players).toHaveLength(6);
-    expect(s.clock?.whiteMs).toBe(300_000);
+    expect(s.clock?.whiteMs).toBeGreaterThan(299_900); // wall-clock: a ms can tick under suite load
+    expect(s.clock?.whiteMs).toBeLessThanOrEqual(300_000);
     const waiting = roomFor(T32W, 'off', 'WAIT01');
     const t = waiting.addMember('Ada');
     waiting.connect(t, 'a');

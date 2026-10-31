@@ -129,7 +129,8 @@ export class PgCasinoStore implements CasinoStore {
 
 export const START_CHIPS = 1000;
 /** Below this you may reset to START_CHIPS. */
-export const BROKE_BELOW = 5;
+/** Below this you may take the free refill. Matches the cheapest Arena spawn (10) so nobody is stuck unable to play or refill. */
+export const BROKE_BELOW = 10;
 
 function keyOf(name: string): string {
   return name.replace(/\s+/g, ' ').trim().toLowerCase();

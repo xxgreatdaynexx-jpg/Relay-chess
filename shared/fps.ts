@@ -64,6 +64,15 @@ export const GRAVITY = 20;
 export const JUMP_SPEED = 7; // apex ≈ 1.22
 export const MAX_PITCH = 1.45;
 export const MAX_RANGE = 40;
+/** Bullets have no max range: they fly until they hit geometry (every map is walled in). Just a numeric cap for the ray maths. */
+export const BULLET_RANGE = 500;
+/** Damage multiplier for a hit at `dist` under a weapon's falloff (1 when it has none). */
+export function damageFalloff(weapon: { falloff?: { full: number; end: number; min: number } }, dist: number): number {
+  const f = weapon.falloff;
+  if (!f || dist <= f.full) return 1;
+  if (dist >= f.end) return f.min;
+  return 1 - (1 - f.min) * ((dist - f.full) / (f.end - f.full));
+}
 export const TICK_HZ = 15;
 /** Below this the fighter is considered out of the world and respawned (should never happen). */
 export const KILL_Z = -5;
@@ -454,6 +463,8 @@ export interface WeaponSpec {
   /** Half-angle of random spread, radians. */
   spread: number;
   range: number;
+  /** Optional per-hit damage falloff: full damage to `full`, linear down to `min`× at `end` and beyond (never zero). */
+  falloff?: { full: number; end: number; min: number };
   mag: number;
   reloadMs: number;
   /** Rockets only: splash radius in tiles. */
@@ -463,10 +474,10 @@ export interface WeaponSpec {
 }
 
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
-  pistol: { id: 'pistol', name: 'M9 Sidearm', damage: 34, cooldownMs: 300, pellets: 1, spread: 0.01, range: 30, mag: 12, reloadMs: 1100 },
-  smg: { id: 'smg', name: 'SMG-9', damage: 14, cooldownMs: 90, pellets: 1, spread: 0.05, range: 24, mag: 30, reloadMs: 1700 },
-  shotgun: { id: 'shotgun', name: 'M1014 Combat Shotgun', damage: 17, cooldownMs: 800, pellets: 9, spread: 0.12, range: 10, mag: 6, reloadMs: 2200 },
-  sniper: { id: 'sniper', name: '.50 Cal Sniper', damage: 95, cooldownMs: 1300, pellets: 1, spread: 0.09, scopedSpread: 0, range: 70, mag: 5, reloadMs: 2500 },
+  pistol: { id: 'pistol', name: 'M9 Sidearm', damage: 34, cooldownMs: 300, pellets: 1, spread: 0.01, range: BULLET_RANGE, mag: 12, reloadMs: 1100 },
+  smg: { id: 'smg', name: 'SMG-9', damage: 14, cooldownMs: 90, pellets: 1, spread: 0.05, range: BULLET_RANGE, mag: 30, reloadMs: 1700 },
+  shotgun: { id: 'shotgun', name: 'M1014 Combat Shotgun', damage: 17, cooldownMs: 800, pellets: 9, spread: 0.12, range: BULLET_RANGE, falloff: { full: 8, end: 25, min: 0.35 }, mag: 6, reloadMs: 2200 },
+  sniper: { id: 'sniper', name: '.50 Cal Sniper', damage: 95, cooldownMs: 1300, pellets: 1, spread: 0.09, scopedSpread: 0, range: BULLET_RANGE, mag: 5, reloadMs: 2500 },
   rocket: { id: 'rocket', name: 'RPG Launcher', damage: 100, cooldownMs: 1100, pellets: 1, spread: 0, range: 40, mag: 2, reloadMs: 2600, splash: 2.4 },
 };
 export const WEAPON_ORDER: WeaponId[] = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket'];
@@ -551,10 +562,11 @@ export function fireWeapon(
     const hit = hitscan({ ...shooter, a, p }, targets, map, weapon.range);
     rays.push({ a, p, dist: hit ? hit.dist : rayWorld(eye, dirFrom(a, p), map, weapon.range), ...(hit ? { hit: hit.id } : {}) });
     if (hit) {
-      hits.set(hit.id, (hits.get(hit.id) ?? 0) + weapon.damage * (hit.head ? HEADSHOT_MULT : 1));
+      hits.set(hit.id, (hits.get(hit.id) ?? 0) + weapon.damage * (hit.head ? HEADSHOT_MULT : 1) * damageFalloff(weapon, hit.dist));
       if (hit.head) heads.add(hit.id);
     }
   }
+  for (const [id, dmg] of hits) hits.set(id, Math.round(dmg));
   return { hits, heads, rays };
 }
 
@@ -673,3 +685,33 @@ export function surfaceNormal(pt: Vec3, map: ArenaMap = MAP): Vec3 {
   }
   return best.n;
 }
+
+// ---------------------------------------------------------------- paid spawns (shared chip wallet)
+
+/** Chips charged per spawn, by the loadout weapon you spawn with (the pistol sidearm always comes along). */
+export const SPAWN_PRICE: Record<WeaponId, number> = { pistol: 10, smg: 15, shotgun: 20, sniper: 25, rocket: 35 };
+/** Flat per-spawn add-ons on top of the weapon price, e.g. `{ grenades: 5 }` once grenades ship. Empty = none. */
+export const SPAWN_EXTRAS: Record<string, number> = {};
+/** Total price of one spawn with loadout `w` (weapon + every extra). This is the stake your killer collects. */
+export function spawnCost(w: WeaponId): number {
+  if (isKnifeOnly(w)) return 0;
+  return SPAWN_PRICE[w] + Object.values(SPAWN_EXTRAS).reduce((a, b) => a + b, 0);
+}
+/**
+ * Knife-only loadout: free spawn, knife only (no pistol), 0 bounty. Hook for Cole: it switches on by itself once
+ * WEAPONS gains an entry with id KNIFE_ID ('knife'); add `knife: 0` to SPAWN_PRICE then (it is ignored: always free).
+ */
+export const KNIFE_ID = 'knife';
+export const knifeOnlyAvailable = (): boolean => isWeapon(KNIFE_ID);
+export const isKnifeOnly = (w: string): boolean => w === KNIFE_ID && knifeOnlyAvailable();
+/** Cheapest *gun* spawn (the knife is free and never counts). */
+export const cheapestSpawn = (): number => Math.min(...WEAPON_ORDER.filter((w) => !isKnifeOnly(w)).map(spawnCost));
+/** The loadout you actually get: the one you picked if you can pay for it, else the priciest cheaper one you can, else null (broke). */
+export function affordableLoadout(want: WeaponId, chips: number): WeaponId | null {
+  if (spawnCost(want) <= chips) return want;
+  let best: WeaponId | null = null;
+  for (const w of WEAPON_ORDER) if (!isKnifeOnly(w) && spawnCost(w) <= chips && spawnCost(w) < spawnCost(want) && (!best || spawnCost(w) > spawnCost(best))) best = w;
+  return best ?? (knifeOnlyAvailable() ? (KNIFE_ID as WeaponId) : null);
+}
+/** Mid-life you can only hold your paid loadout weapon or the pistol. */
+export const canHold = (loadout: WeaponId, w: WeaponId): boolean => (isKnifeOnly(loadout) ? w === loadout : w === 'pistol' || w === loadout);

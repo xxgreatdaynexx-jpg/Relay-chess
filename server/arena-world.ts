@@ -13,18 +13,29 @@ import { PoseHistory, rewindTime } from '../shared/netInterp.js';
 import { ArenaAntiCheat, ASSIST_CONE, ASSIST_PULL, ASSIST_SPREAD, coarse, HOMING_CONE, HOMING_TURN, VisibilityTracker, type ArenaPerk } from './arena-anticheat.js';
 import { MULTI_LEVEL, MULTI_TITLE, multiTier, nextChain, type MultiChain } from '../shared/arenaMulti.js';
 import { applyCrouch, canSprint, headZOf, speedOf, SPRINT_FIRE_DELAY_MS, SPRINT_FIRE_SLACK_MS } from '../shared/fps.js';
+import { canHold, isKnifeOnly } from '../shared/fps.js';
 
 /** Drones hover at least this high, and always above the map's tallest structure. */
 export const DRONE_Z = 8;
 export const droneZ = (map: ArenaMap): number =>
   Math.max(DRONE_Z, ...map.solids.filter((s) => s.x1 - s.x0 < map.w - 1 && s.y1 - s.y0 < map.d - 1).map((s) => s.z1 + 1.5)); // ignores the perimeter walls
 /** A match lasts this long; then the next map (picked or in rotation) loads and scores reset. */
-export const MATCH_MS = 8 * 60_000;
+/** Normal play (respawns on) per match; then SUDDEN DEATH: no respawns, every death is final. */
+export const MATCH_MS = 3 * 60_000;
+/** Safety cap on sudden death; at the cap the most kills (then fewest deaths) wins. */
+export const SUDDEN_MS = 90_000;
+/** End screen (scoreboard) before the next match loads. */
+export const END_SCREEN_MS = 10_000;
+export type MatchPhase = 'play' | 'sudden' | 'ended';
+export interface MatchResultRow { id: string; name: string; kills: number; deaths: number; earned: number; alive: boolean; bot: boolean; participationMs: number; account?: string }
+export interface MatchResult { matchId: string; map: string; startedAt: number; endedAt: number; winnerId: string | null; reason: 'last-alive' | 'cap' | 'empty'; players: MatchResultRow[]; prize?: { name: string; amount: number } }
 /** Map that follows `id` in the rotation. */
 export const nextInRotation = (id: string): string => MAP_ROTATION[(MAP_ROTATION.indexOf(id) + 1) % MAP_ROTATION.length];
 
 /** Allowance for network jitter when checking fire rate. */
 export const FIRE_JITTER_MS = 25;
+/** A broke fighter re-checks the wallet this often (a refill lets them back in). */
+export const BROKE_RETRY_MS = 1000;
 
 export interface ArenaFighter extends Fighter {
   weapon: WeaponId;
@@ -45,6 +56,18 @@ export interface ArenaFighter extends Fighter {
   wantCrouch?: boolean;
   /** when the last sprint ended (sprint-to-fire delay) */
   sprintEndAt?: number;
+  /** Paid spawn loadout weapon (switching is limited to it plus the pistol). */
+  loadout: WeaponId;
+  /** Unique id of this paid life (ledger idempotency key), '' for free lives (guests, bots). */
+  lifeId: string;
+  /** Chips staked on this life; paid to whoever kills you. */
+  stake: number;
+  /** Waiting to respawn but can't afford the cheapest spawn. */
+  broke: boolean;
+  /** Chips won from bounties this match (end screen). */
+  earned?: number;
+  /** When this fighter entered the current match (participation time for the match-end hook). */
+  matchJoinedAt?: number;
 }
 
 /** `to` set: sent only to that socket (e.g. the killer's own multi-kill sound cue); otherwise broadcast. */
@@ -58,6 +81,8 @@ const zeroShots = () => Object.fromEntries(WEAPON_ORDER.map((w) => [w, -1e9])) a
 
 export class ArenaWorld {
   readonly fighters = new Map<string, ArenaFighter>();
+  /** Paid-spawn hook: charge for a spawn (first join and every respawn). Return false to keep the fighter dead (broke). */
+  spawnGate: ((f: ArenaFighter, now: number) => boolean) | null = null;
   strikes: Strike[] = [];
   drones = new Map<string, Drone>();
   /** RPG rockets in flight (server-simulated projectiles). */
@@ -69,6 +94,15 @@ export class ArenaWorld {
   nextMapId: string | null = null;
   /** When the current match ends (0 until someone joins). */
   matchEndsAt = 0;
+  phase: MatchPhase = 'play';
+  matchId = '';
+  matchStartAt = 0;
+  suddenEndsAt = 0;
+  endScreenUntil = 0;
+  lastResult: MatchResult | null = null;
+  /** Match-end hook (case/key drops, prize). Called once per match with the final scoreboard. */
+  onMatchEnd: ((r: MatchResult) => void) | null = null;
+  private matchSeq = 0;
   private droneHeight: number;
   /** Per-viewer line-of-sight memory (interest management). */
   vis = new VisibilityTracker();
@@ -101,25 +135,13 @@ export class ArenaWorld {
     return [{ ev: 'fps_map', data: { phase: 'next', map: id, by: this.fighters.get(pickerId)!.name } }];
   }
 
-  /** Loads a new map: fresh match, scores reset, streak rewards cleared, everyone redeploys at the new spawns. */
-  /** Called once per finished match (timer ran out), before the next map loads. Used for item drops. */
-  onMatchEnd?: (r: { matchId: string; players: Array<{ id: string; name: string; ms: number; kills: number; deaths: number }> }) => void;
-  /** When each fighter entered the current match (for drop participation). */
-  readonly matchJoinAt = new Map<string, number>();
   /** Equipped skin tokens per fighter id, by weapon (sent as \`sk\` for the held weapon). */
   readonly skins = new Map<string, Record<string, string>>();
-  matchResult(now: number) {
-    return {
-      matchId: `${this.map.id}:${this.matchEndsAt}`,
-      players: [...this.fighters.values()].map((f) => ({ id: f.id, name: f.name, ms: now - (this.matchJoinAt.get(f.id) ?? now), kills: f.kills, deaths: f.deaths })),
-    };
-  }
   changeMap(map: ArenaMap, now: number, by: string | null = null): ArenaEvent[] {
     this.map = map;
-    for (const id of this.fighters.keys()) this.matchJoinAt.set(id, now);
     this.droneHeight = droneZ(map);
     this.nextMapId = null;
-    this.matchEndsAt = now + MATCH_MS;
+    this.startMatch(now);
     this.strikes = [];
     this.rockets = [];
     this.drones.clear();
@@ -127,24 +149,78 @@ export class ArenaWorld {
     const placed: ArenaFighter[] = [];
     for (const f of this.fighters.values()) {
       const [x, y, z] = pickSpawn(placed, this.rand, map);
-      Object.assign(f, { x, y, z, vz: 0, grounded: true, crouch: false, wantCrouch: false, sprint: false, p: 0, physAt: now, lastMove: now, hp: MAX_HP, alive: true, respawnAt: 0, kills: 0, deaths: 0, streak: 0, uavUntil: 0, headshots: 0, ammo: fullAmmo(), reloadUntil: 0, lastShotAt: zeroShots() });
+      Object.assign(f, { x, y, z, vz: 0, grounded: true, crouch: false, wantCrouch: false, sprint: false, p: 0, physAt: now, lastMove: now, hp: MAX_HP, alive: f.alive, respawnAt: f.alive ? 0 : Math.min(f.respawnAt, now), kills: 0, deaths: 0, streak: 0, uavUntil: 0, headshots: 0, ammo: fullAmmo(), reloadUntil: 0, lastShotAt: zeroShots(), earned: 0, matchJoinedAt: now });
       placed.push(f);
     }
     return [{ ev: 'fps_map', data: { phase: 'load', map: map.id, by } }];
   }
 
-  join(id: string, name: string, now: number): ArenaFighter {
+  private startMatch(now: number): void {
+    this.matchEndsAt = now + MATCH_MS;
+    this.matchStartAt = now;
+    this.matchId = `${now.toString(36)}-${++this.matchSeq}-${Math.floor(this.rand() * 1e9).toString(36)}`;
+    this.phase = 'play';
+    this.suddenEndsAt = 0;
+    this.endScreenUntil = 0;
+  }
+
+  aliveCount(): number { let n = 0; for (const f of this.fighters.values()) if (f.alive) n++; return n; }
+
+  private endMatch(now: number, reason: MatchResult['reason']): ArenaEvent[] {
+    this.phase = 'ended';
+    this.endScreenUntil = now + END_SCREEN_MS;
+    const rows: MatchResultRow[] = [...this.fighters.values()].map((f) => ({
+      id: f.id, name: f.name, kills: f.kills, deaths: f.deaths, earned: f.earned ?? 0, alive: f.alive, bot: f.id.startsWith('arena-bot-') || f.id.startsWith('qa-bot-'),
+      participationMs: Math.max(0, now - Math.max(f.matchJoinedAt ?? this.matchStartAt, this.matchStartAt)),
+    }));
+    const byScore = (a: MatchResultRow, b: MatchResultRow) => b.kills - a.kills || a.deaths - b.deaths;
+    rows.sort((a, b) => Number(b.alive) - Number(a.alive) || byScore(a, b));
+    let winnerId: string | null = null;
+    if (reason === 'last-alive') winnerId = rows.find((r) => r.alive)?.id ?? [...rows].sort(byScore)[0]?.id ?? null;
+    else if (reason === 'cap') winnerId = [...rows].sort(byScore)[0]?.id ?? null;
+    if (winnerId) rows.sort((a, b) => Number(b.id === winnerId) - Number(a.id === winnerId));
+    const result: MatchResult = { matchId: this.matchId, map: this.map.id, startedAt: this.matchStartAt, endedAt: now, winnerId, reason, players: rows };
+    this.lastResult = result;
+    this.strikes = []; this.rockets = []; this.drones.clear();
+    try { this.onMatchEnd?.(result); } catch (e) { console.error('arena match-end hook failed', e); }
+    return [{ ev: 'fps_match_end', data: { ...result, until: END_SCREEN_MS } }];
+  }
+
+  /** Match clock: play -> sudden death (no respawns) -> end screen -> next map. */
+  private stepMatch(now: number): ArenaEvent[] {
+    if (!this.matchEndsAt || this.nuke) return [];
+    if (this.phase === 'play' && now >= this.matchEndsAt) {
+      if (this.aliveCount() <= 1) return this.endMatch(now, this.aliveCount() === 1 ? 'last-alive' : 'empty');
+      this.phase = 'sudden';
+      this.suddenEndsAt = now + SUDDEN_MS;
+      return [{ ev: 'fps_sudden', data: { alive: this.aliveCount(), ms: SUDDEN_MS } }];
+    }
+    if (this.phase === 'sudden') {
+      const n = this.aliveCount();
+      if (n <= 1) return this.endMatch(now, n === 1 ? 'last-alive' : 'empty');
+      if (now >= this.suddenEndsAt) return this.endMatch(now, 'cap');
+    }
+    if (this.phase === 'ended' && now >= this.endScreenUntil) return this.changeMap(MAPS[this.upcomingMapId], now);
+    return [];
+  }
+
+  join(id: string, name: string, now: number, loadout: unknown = 'pistol'): ArenaFighter {
     const existing = this.fighters.get(id);
     if (existing) return existing;
-    if (!this.matchEndsAt) this.matchEndsAt = now + MATCH_MS;
+    if (!this.matchEndsAt) this.startMatch(now);
     const [x, y, z] = pickSpawn([...this.fighters.values()], this.rand, this.map);
     const f: ArenaFighter = {
       id, name, x, y, z, vz: 0, grounded: true, p: 0, physAt: now, headshots: 0, a: this.rand() * Math.PI * 2, hp: MAX_HP, kills: 0, deaths: 0, alive: true, respawnAt: 0,
       lastShot: 0, lastMove: now, weapon: 'pistol', ammo: fullAmmo(), lastShotAt: zeroShots(), reloadUntil: 0,
       switchedAt: -1e9, scopedSince: 0, jumpAt: -1e9, streak: 0, uavUntil: 0,
+      loadout: isWeapon(loadout) ? loadout : 'pistol', lifeId: '', stake: 0, broke: false,
     };
+    f.weapon = f.loadout;
+    f.earned = 0; f.matchJoinedAt = now;
     this.fighters.set(id, f);
-    this.matchJoinAt.set(id, now);
+    if (this.phase !== 'play') Object.assign(f, { alive: false, respawnAt: now, weapon: 'pistol' }); // late joiner: spectate until the next match
+    else if (this.spawnGate && !this.spawnGate(f, now)) Object.assign(f, { alive: false, broke: true, respawnAt: now + BROKE_RETRY_MS, weapon: 'pistol' });
+    else f.weapon = f.loadout;
     this.audit?.join(id, name);
     return f;
   }
@@ -218,9 +294,18 @@ export class ArenaWorld {
     return [{ ev: 'fps_jump', data: { id } }];
   }
 
+  /** Pick the loadout for your next spawn (does not change the weapon you hold now). */
+  setLoadout(id: string, w: unknown, now: number): boolean {
+    const f = this.fighters.get(id);
+    if (!f || !isWeapon(w)) return false;
+    f.loadout = w;
+    if (!f.alive && f.broke) f.respawnAt = Math.min(f.respawnAt, now);
+    return true;
+  }
+
   switchWeapon(id: string, w: unknown, now: number): boolean {
     const f = this.fighters.get(id);
-    if (!f || !isWeapon(w) || f.weapon === w) return false;
+    if (!f || !isWeapon(w) || f.weapon === w || ((f.lifeId !== '' || isKnifeOnly(f.loadout)) && !canHold(f.loadout, w))) return false;
     f.weapon = w;
     f.switchedAt = now;
     f.reloadUntil = 0; // switching cancels a reload
@@ -256,7 +341,7 @@ export class ArenaWorld {
 
   shoot(id: string, a: unknown, now: number, p?: unknown, viewT?: unknown): ArenaEvent[] {
     const f = this.fighters.get(id);
-    if (!f || !f.alive) return [];
+    if (!f || !f.alive || this.phase === 'ended') return [];
     const spec = WEAPONS[f.weapon];
     this.settleReload(f, now);
     if (f.reloadUntil) return [];
@@ -495,9 +580,14 @@ export class ArenaWorld {
       if (f.alive && f.crouch && !f.wantCrouch) applyCrouch(f, false, this.map); // stand up once there is headroom
       if (f.alive) this.history.record(f.id, now, f.x, f.y, f.z, !!f.crouch); else this.history.forget(f.id);
       if (f.alive && f.z <= KILL_Z) { f.alive = false; f.respawnAt = now; } // fell out of the world: never happens on valid maps
+      if (!f.alive && this.phase !== 'play') continue; // sudden death / end screen: no respawns (and no spawn charges)
+      if (!f.alive && now >= f.respawnAt && this.spawnGate && !this.spawnGate(f, now)) { f.broke = true; f.respawnAt = now + BROKE_RETRY_MS; continue; }
       if (maybeRespawn(f, now, all, this.rand, this.map)) {
         f.crouch = false;
         f.wantCrouch = false; f.sprint = false;
+        f.broke = false;
+        f.weapon = f.loadout;
+        f.switchedAt = -1e9;
         f.ammo = fullAmmo();
         f.reloadUntil = 0;
         f.streak = 0;
@@ -577,10 +667,7 @@ export class ArenaWorld {
       out.push({ ev: 'fps_nuke', data: { phase: 'boom', by } });
     }
     // Match over: load the picked map, or the next one in rotation.
-    if (this.matchEndsAt && now >= this.matchEndsAt && !this.nuke) {
-      try { this.onMatchEnd?.(this.matchResult(now)); } catch (e) { console.error('[arena] match-end hook failed:', (e as Error).message); }
-      out.push(...this.changeMap(MAPS[this.upcomingMapId], now));
-    }
+    out.push(...this.stepMatch(now));
     return out;
   }
 
@@ -624,7 +711,7 @@ export class ArenaWorld {
       players: [...this.fighters.values()].map((f) => ({
         id: f.id, name: f.name, x: +f.x.toFixed(3), y: +f.y.toFixed(3), z: +f.z.toFixed(3), a: +f.a.toFixed(3), p: +f.p.toFixed(3),
         hp: f.hp, k: f.kills, d: f.deaths, alive: f.alive, ...(f.id.startsWith('arena-bot-') ? { bot: true } : {}), w: f.weapon, ammo: f.ammo[f.weapon],
-        rl: f.reloadUntil ? Math.max(0, f.reloadUntil - now) : 0, g: f.grounded, ...(f.crouch ? { c: true } : {}), ...(f.sprint ? { s: true } : {}),
+        rl: f.reloadUntil ? Math.max(0, f.reloadUntil - now) : 0, g: f.grounded, ...(f.crouch ? { c: true } : {}), ...(f.sprint ? { s: true } : {}), ...(f.lifeId || isKnifeOnly(f.loadout) ? { lo: f.loadout } : {}), stk: f.stake, ...(f.broke ? { bk: true } : {}),
         st: f.streak, uav: Math.max(0, f.uavUntil - now), ...(this.skins.get(f.id)?.[f.weapon] ? { sk: this.skins.get(f.id)![f.weapon] } : {}),
       })),
       drones: [...this.drones.values()].flatMap((d) => {
@@ -635,6 +722,10 @@ export class ArenaWorld {
       next: this.upcomingMapId,
       picked: this.nextMapId !== null,
       left: this.matchEndsAt ? Math.max(0, this.matchEndsAt - now) : MATCH_MS,
+      phase: this.phase,
+      alive: this.aliveCount(),
+      ...(this.phase === 'sudden' ? { sd: Math.max(0, this.suddenEndsAt - now) } : {}),
+      ...(this.phase === 'ended' && this.lastResult ? { end: { ...this.lastResult, inMs: Math.max(0, this.endScreenUntil - now) } } : {}),
       strikes: this.strikes.map((s) => ({ x: +s.x.toFixed(2), y: +s.y.toFixed(2), z: +roofAt(s.x, s.y, this.map).toFixed(2), inMs: Number.isFinite(s.at) ? Math.max(0, s.at - now) : -1, r: AIRSTRIKE_RADIUS, locked: now >= s.lockAt })),
       rockets: this.rockets.map((r) => this.rocketView(r)),
       nuke: this.nuke ? { by: this.nuke.by, inMs: this.nuke.at - now } : null,

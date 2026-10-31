@@ -139,6 +139,8 @@ export function unlockSounds(): void {
   void loadClip(ctx, HUH_URL, huhClip);
   void loadClip(ctx, FORK_URL, forkClip);
   void loadClip(ctx, QUEEN_DEATH_URL, queenDeathClip);
+  void loadClip(ctx, SNIPER_SHOT_URL, sniperClip);
+  void loadClip(ctx, ARENA_BOOM_URL, arenaBoomClip);
   void loadClip(ctx, QUEEN_CAPTURE_URL, queenCaptureClip);
   void loadClip(ctx, DOUBLE_URL, doubleClip);
   void loadClip(ctx, STREAK_URL, streakClip);
@@ -513,6 +515,12 @@ function thump(ctx: AudioContext, at: number, f0: number, len: number, gain: num
 
 /** Arena: synthesized gunshot per weapon: sharp crack, low-end thump and a tail. All through the master volume. */
 /** Launch whoosh peaks at -3.6 dBFS at gain 1; 0.12 caps it near -21 dBFS. */
+/** sniper-shot.mp3: Dayne's recording trimmed to 2.5 s with a 1.1 s fade (peak 0 dBFS). 0.58 puts its loudest 50 ms ~2 dB above a pistol shot. */
+export const SNIPER_SHOT_URL = '/sounds/sniper-shot.mp3';
+export const SNIPER_SHOT_GAIN = 0.58;
+const sniperClip: Clip = { buffer: null, pending: null };
+/** Remote gunshots fade with distance (never fully silent). */
+export const shotFalloff = (dist: number): number => Math.max(0.15, 1 / (1 + Math.max(0, dist) / 10));
 export const ROCKET_LAUNCH_GAIN = 0.12;
 export function playWeaponShot(weapon: string, volume = 1): void {
   const ctx = audio();
@@ -533,6 +541,14 @@ export function playWeaponShot(weapon: string, volume = 1): void {
     shotgun: { crack: 0.8, body: 75, len: 0.25, tail: 0.5 },
     sniper: { crack: 0.9, body: 65, len: 0.3, tail: 0.7 },
   };
+  if (weapon === 'sniper' && sniperClip.buffer) {
+    const src = ctx.createBufferSource(); src.buffer = sniperClip.buffer;
+    const g = ctx.createGain(); g.gain.value = SNIPER_SHOT_GAIN * v;
+    src.connect(g); g.connect(output(ctx)); src.onended = () => { try { g.disconnect(); } catch { /* gone */ } };
+    src.start(now);
+    return;
+  }
+  if (weapon === 'sniper') void loadClip(ctx, SNIPER_SHOT_URL, sniperClip);
   const c = cfg[weapon] ?? cfg.pistol!;
   burst(ctx, now, 0.03, 'highpass', 1800, c.crack * v);
   burst(ctx, now, c.len, 'lowpass', 1400, c.crack * 0.8 * v);

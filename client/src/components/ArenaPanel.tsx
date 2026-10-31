@@ -2,7 +2,9 @@ import { TopTab } from '@/components/TopTabs';
 import { useWalletChips } from '@/lib/wallet';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useRef, useState } from 'react';
-import { socket } from '@/lib/net';
+import { request, socket } from '@/lib/net';
+/** Matches server BROKE_BELOW: the free refill unlocks under the cheapest Arena spawn. */
+const BROKE_REFILL_BELOW = 10;
 import { LOOK_KEY, SENS_MAX, SENS_MIN, mouseLook, readLook, type LookPrefs, FPS_KEY, fpsFrom, hotkeyFor, isLockedTo, readFpsPref, stepFovKick, viewZoom } from '@/lib/arenaInput';
 import { ArenaRenderer, minimapSize } from '@/lib/arenaRender';
 import type { Arena3D, Fx3D, Soldier3D } from '@/lib/arena3d';
@@ -10,10 +12,10 @@ import { prefersReducedMotion } from '@/lib/motion';
 import { INTERP_DELAY_MS, LOCAL_STEP_S, SnapBuffer, samplePlayers } from '../../../shared/netInterp';
 import { TagVisibility, tagVisible } from '@/lib/arenaTags';
 import type { ArenaMap } from '../../../shared/arenaMaps';
-import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playLockBeep, playMultiKill, unlockSounds } from '@/lib/sounds';
+import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playLockBeep, playMultiKill, shotFalloff, unlockSounds } from '@/lib/sounds';
 import { feedParts, popupScale, POPUP_MS, type FeedItem } from '@/lib/arenaFeed';
 import {
-  AIRSTRIKE_RADIUS, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
+  AIRSTRIKE_RADIUS, canHold, isKnifeOnly, knifeOnlyAvailable, cheapestSpawn, isWeapon, spawnCost, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
 } from '../../../shared/fps';
 
 const OPEN_KEY = 'relay-fps-open';
@@ -25,8 +27,9 @@ const COLORS = ['#5f6a48', '#7d7158', '#596066', '#6b6248', '#4f5a4c', '#73705f'
 const SCOPE_ZOOM = 3.5;
 const FOV = 68; // vertical, degrees
 
-interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number; bot?: boolean; c?: boolean; s?: boolean; sk?: string }
-interface NetState { t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null; wh?: boolean; roster?: Array<Pick<NetPlayer, 'id' | 'name' | 'k' | 'd' | 'st' | 'bot'>>; radar?: Array<{ x: number; y: number }>; rockets?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; seek?: number; lock?: string | null }> }
+interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number; bot?: boolean; c?: boolean; s?: boolean; lo?: WeaponId; stk?: number; bk?: boolean; sk?: string }
+interface MatchEnd { matchId: string; winnerId: string | null; reason: string; players: Array<{ id: string; name: string; kills: number; deaths: number; earned: number; alive: boolean; bot: boolean }>; prize?: { name: string; amount: number }; inMs: number }
+interface NetState { phase?: 'play' | 'sudden' | 'ended'; alive?: number; sd?: number; end?: MatchEnd; t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null; wh?: boolean; roster?: Array<Pick<NetPlayer, 'id' | 'name' | 'k' | 'd' | 'st' | 'bot'>>; radar?: Array<{ x: number; y: number }>; rockets?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; seek?: number; lock?: string | null }> }
 interface Snap extends NetState { recv: number }
 type Quality = 'hd' | 'lo';
 
@@ -69,6 +72,29 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const wallet = useWalletChips();
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [multiPop, setMultiPop] = useState<{ key: number; title: string; level: number } | null>(null);
+  // Paid spawns: the loadout you pick on the death screen (saved), what's staked on this life, and +/- chip toasts.
+  const [loadout, setLoadoutState] = useState<WeaponId>(() => { const v = typeof localStorage !== 'undefined' ? localStorage.getItem('arena-loadout') : null; return v && isWeapon(v) ? v : 'pistol'; });
+  const loadoutRef = useRef(loadout);
+  const [life, setLife] = useState<{ alive: boolean; stake: number; broke: boolean; lo: WeaponId; paid: boolean }>({ alive: true, stake: 0, broke: false, lo: 'pistol', paid: false });
+  const [matchUi, setMatchUi] = useState<{ phase: 'play' | 'sudden' | 'ended'; alive: number; sd: number; end: MatchEnd | null }>({ phase: 'play', alive: 0, sd: 0, end: null });
+  const [chipToasts, setChipToasts] = useState<Array<{ key: number; amount: number; memo: string }>>([]);
+  useEffect(() => {
+    let n = 0;
+    const onWallet = (p: { tx?: { game?: string; amount?: number; memo?: string } }) => {
+      const t = p?.tx;
+      if (!t || t.game !== 'arena' || !t.amount) return;
+      const key = ++n + Date.now();
+      setChipToasts((o) => [...o.slice(-2), { key, amount: t.amount!, memo: t.memo ?? '' }]);
+      setTimeout(() => setChipToasts((o) => o.filter((x) => x.key !== key)), 2600);
+    };
+    socket.on('wallet', onWallet);
+    return () => { socket.off('wallet', onWallet); };
+  }, []);
+  function pickLoadout(w: WeaponId) {
+    setLoadoutState(w); loadoutRef.current = w;
+    try { localStorage.setItem('arena-loadout', w); } catch { /* private mode */ }
+    socket.emit('fps_loadout', { w });
+  }
   const [showBoard, setShowBoard] = useState(false);
   const [board, setBoard] = useState<NetPlayer[]>([]);
   const [focused, setFocused] = useState(false);
@@ -99,6 +125,9 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     jumpAt: -1e9, scoped: false, firing: false, streak: 0, uavUntil: 0, walk: 0, crouch: false, eyeH: EYE_HEIGHT, sprint: false, sprintEndAt: -1e9, fovKick: 0,
   });
   const snaps = useRef<Snap[]>([]);
+  const lifeLoRef = useRef<WeaponId | null>(null);
+  const phaseRef = useRef<'play' | 'sudden' | 'ended'>('play');
+  const specRef = useRef<string | null>(null);
   const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, killmark: 0, headmark: 0, nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string; fall: number }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number; sniper?: boolean }>, impacts: [] as Array<{ x: number; y: number; z: number; player: boolean; at: number }>, blasts: [] as Array<{ x: number; y: number; z: number; big: boolean }>, shells: 0, rockets: new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number; seek?: number }>(), lockAt: 0, lockBeep: 0, weaponAt: new Map<string, { w: string; at: number }>(), hitAt: new Map<string, number>(), shotAt: new Map<string, number>(), shake: 0, jetAt: 0 });
   const banner = useRef<{ text: string; sub: string; at: number } | null>(null);
   const touch = useRef({ up: false, down: false, left: false, right: false, lookUp: false, lookDown: false });
@@ -112,7 +141,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
 
   function setWeapon(w: WeaponId) {
     const m = me.current;
-    if (m.weapon === w) return;
+    if (m.weapon === w || (lifeLoRef.current !== null && !canHold(lifeLoRef.current, w))) return;
     m.weapon = w;
     m.switchedAt = performance.now();
     m.reloadUntil = 0;
@@ -120,8 +149,9 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     socket.emit('fps_weapon', { w });
   }
   function cycleWeapon(dir: number) {
-    const i = WEAPON_ORDER.indexOf(me.current.weapon);
-    setWeapon(WEAPON_ORDER[(i + dir + WEAPON_ORDER.length) % WEAPON_ORDER.length]);
+    const held = WEAPON_ORDER.filter((w) => lifeLoRef.current === null || canHold(lifeLoRef.current, w));
+    const i = held.indexOf(me.current.weapon);
+    setWeapon(held[(i + dir + held.length) % held.length]);
   }
   function reload() {
     const m = me.current;
@@ -170,10 +200,10 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     const join = () => {
       const qaBots = Number(new URLSearchParams(window.location.search).get('arenaBots')) || 0;
       const want = localStorage.getItem(MAP_KEY);
-      socket.timeout(8000).emit('fps_join', { ...(qaBots ? { qaBots } : {}), ...(want && MAPS[want] ? { map: want } : {}) }, (err: Error | null, ack?: { ok: boolean; id?: string; x?: number; y?: number; z?: number; a?: number; map?: string; error?: string }) => {
+      socket.timeout(8000).emit('fps_join', { ...(qaBots ? { qaBots } : {}), ...(want && MAPS[want] ? { map: want } : {}), w: loadoutRef.current }, (err: Error | null, ack?: { ok: boolean; id?: string; x?: number; y?: number; z?: number; a?: number; map?: string; error?: string; alive?: boolean; broke?: boolean }) => {
         if (err || !ack?.ok) return setStatus(ack?.error || 'Could not reach the arena.');
         if (ack.map) mapRef.current = mapById(ack.map);
-        Object.assign(me.current, { id: ack.id, x: ack.x, y: ack.y, z: ack.z ?? 0, vz: 0, grounded: true, p: 0, a: ack.a, joined: true, alive: true });
+        Object.assign(me.current, { id: ack.id, x: ack.x, y: ack.y, z: ack.z ?? 0, vz: 0, grounded: true, p: 0, a: ack.a, joined: true, alive: ack.alive !== false });
         setStatus('');
         // Local QA only (?arenaBots=N needs ARENA_QA_BOTS=1 on the server): read-only handle for play-test scripts.
         if (qaBots) (window as unknown as { __arenaQA?: unknown }).__arenaQA = { me: me.current, snaps: snaps.current, banner, sock: socket };
@@ -201,6 +231,13 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         mapRef.current = mapById(s.map);
         banner.current = { text: mapRef.current.name.toUpperCase(), sub: 'New map · scores reset', at: performance.now() };
       }
+      {
+        const ph = s.phase ?? 'play';
+        if (ph === 'sudden' && phaseRef.current === 'play') banner.current = { text: 'SUDDEN DEATH — NO RESPAWNS', sub: `${s.alive ?? 0} alive · last one standing wins`, at: performance.now() };
+        phaseRef.current = ph;
+        const mu = { phase: ph, alive: s.alive ?? 0, sd: Math.ceil((s.sd ?? 0) / 1000), end: s.end ?? null };
+        setMatchUi((o) => (o.phase === mu.phase && o.alive === mu.alive && o.sd === mu.sd && (o.end?.matchId ?? '') === (mu.end?.matchId ?? '') ? o : mu));
+      }
       if (s.map) {
         const info = { map: s.map, next: s.next ?? '', picked: !!s.picked, secs: Math.ceil((s.left ?? 0) / 1000) };
         setMapInfo((o) => (o.map === info.map && o.next === info.next && o.picked === info.picked && o.secs === info.secs ? o : info));
@@ -215,6 +252,9 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         else if (mine.alive && Math.hypot(m.x - mine.x, m.y - mine.y) > 0.6) net.corr = { x: mine.x - m.x, y: mine.y - m.y, left: 0.15 };
         m.hp = mine.hp;
         m.streak = mine.st;
+        lifeLoRef.current = mine.lo ?? null;
+        const nl = { alive: mine.alive, stake: mine.stk ?? 0, broke: !!mine.bk, lo: mine.lo ?? 'pistol', paid: false };
+        setLife((o) => (o.alive === nl.alive && o.stake === nl.stake && o.broke === nl.broke && o.lo === nl.lo && o.paid === nl.paid ? o : nl));
         m.uavUntil = mine.uav ? performance.now() + mine.uav : 0;
         // The server owns the loadout: if our weapon disagrees for longer than a switch takes, adopt the server's.
         if (mine.w !== m.weapon && performance.now() - m.switchedAt > 1000) { m.weapon = mine.w; m.scoped = false; }
@@ -238,7 +278,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     };
     const onShot = (s: { id: string; w: WeaponId; o?: [number, number, number]; rays?: Array<[number, number, number, number?]>; impact?: { x: number; y: number; z: number }; rocket?: { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number } }) => {
       const now = performance.now();
-      if (s.id !== me.current.id) { playWeaponShot(s.w, 0.35); fx.current.shotAt.set(s.id, now); }
+      if (s.id !== me.current.id) { playWeaponShot(s.w, 0.35 * shotFalloff(s.o ? Math.hypot(s.o[0] - me.current.x, s.o[1] - me.current.y) : 0)); fx.current.shotAt.set(s.id, now); }
       if (s.o && s.rays) {
         // Tracers start a little below and ahead of the eye so your own don't sit on the crosshair.
         const [ox, oy, oz] = s.o;
@@ -434,7 +474,14 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       // Render-time interpolation of our own fixed-step position.
       const al = net.prev && m.alive ? net.acc / LOCAL_STEP_S : 1;
       const eye = net.prev && Math.hypot(net.prev.x - m.x, net.prev.y - m.y) < 1 ? { x: net.prev.x + (m.x - net.prev.x) * al, y: net.prev.y + (m.y - net.prev.y) * al, z: net.prev.z + (m.z - net.prev.z) * al } : { x: m.x, y: m.y, z: m.z };
-      const soldiers: Soldier3D[] = others.map((p) => {
+      // Spectator cam: eliminated in sudden death (or on the end screen) -> ride along with someone still alive.
+      let specCam: { x: number; y: number; z: number; a: number; p: number } | null = null;
+      if (!m.alive && phaseRef.current !== 'play') {
+        const alive = sampled.players.filter((p) => p.alive && p.id !== m.id);
+        const t = alive.find((p) => p.id === specRef.current) ?? alive[0];
+        if (t) { specRef.current = t.id; specCam = { x: t.x, y: t.y, z: t.z, a: t.a, p: t.p }; }
+      }
+      const soldiers: Soldier3D[] = others.filter((p) => !specCam || p.id !== specRef.current).map((p) => {
         const pp = prevPos.get(p.id);
         const mv = !!pp && Math.hypot(pp.x - p.x, pp.y - p.y) > 0.002;
         const sp = pp ? Math.hypot(pp.x - p.x, pp.y - p.y) / Math.max(1e-3, (now - pp.t) / 1000) : 0;
@@ -489,7 +536,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       const vmReload = m.reloadUntil && now < m.reloadUntil ? 1 - (m.reloadUntil - now) / WEAPONS[m.weapon].reloadMs : -1;
       const vm = showGun && m.alive && m.joined ? { w: m.weapon, kick: Math.max(0, 1 - (now - fx.current.muzzle) / 140), lower: vmSwitch, reload: vmReload, bob: m.walk, muzzle: now - fx.current.muzzle < 50, sk: (() => { const me = snap?.players.find((q) => q.id === m.id); return me && me.w === m.weapon ? me.sk ?? null : null; })() } : null;
       const qa = (window as unknown as { __arenaQA?: { vm?: unknown } }).__arenaQA; if (qa) qa.vm = vm;
-      g3.render({ x: eye.x, y: eye.y, z: eye.z + m.eyeH + bob + (Math.random() - 0.5) * shake, a: m.a, p: m.p, zoom, vm }, soldiers, fx3);
+      g3.render(specCam ? { x: specCam.x, y: specCam.y, z: specCam.z + EYE_HEIGHT, a: specCam.a, p: specCam.p, zoom: 1, vm: null } : { x: eye.x, y: eye.y, z: eye.z + m.eyeH + bob + (Math.random() - 0.5) * shake, a: m.a, p: m.p, zoom, vm }, soldiers, fx3);
       // Health bars over nearby enemies you can see.
       // The 2D overlay always draws on top of the 3D scene, so gate each bar on line of sight (throttled, faded).
       tags.prune(new Set(others.map((o) => o.id)));
@@ -621,10 +668,12 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         // Bottom centre, between the health block (left) and the ammo block (right), so nothing at the top covers them.
         const x = W2 / 2 - 8 * u + (i - 2) * 18 * u;
         const y = H2 - 16 * u;
+        if ((lifeLoRef.current !== null && !canHold(lifeLoRef.current, w))) ctx.globalAlpha = 0.25;
         ctx.fillStyle = w === m.weapon ? 'rgba(220,224,210,.9)' : 'rgba(0,0,0,.45)';
         ctx.fillRect(x - 8 * u, y, 16 * u, 10 * u);
         ctx.fillStyle = w === m.weapon ? '#15170f' : '#d9dccf';
         ctx.fillText(`${i + 1}`, x, y + 7.5 * u);
+        ctx.globalAlpha = 1;
       });
       // Radar (UAV)
       const live = (snap?.strikes ?? []).filter((s) => s.inMs >= 0);
@@ -690,14 +739,14 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         subLines.forEach((line, i) => { fit(line, 'italic 600', 7, inner); ctx.fillText(line, W2 / 2, by + (28 + i * 8) * u); });
         ctx.globalAlpha = 1;
       }
-      if (m.joined && !m.alive) {
+      if (m.joined && !m.alive && phaseRef.current !== 'ended') {
         ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, H2 / 2 - 16 * u, W2, 32 * u);
         ctx.fillStyle = '#e6e9df';
-        const kia = 'KILLED IN ACTION · REDEPLOYING…';
+        const kia = phaseRef.current === 'play' ? 'KILLED IN ACTION · PICK YOUR LOADOUT' : 'ELIMINATED · SPECTATING';
         if (fit(kia, '700', 12, W2 - 16) < 11) {
           // Very narrow: split onto two lines rather than clip.
           fit('KILLED IN ACTION', '700', 12, W2 - 16); ctx.fillText('KILLED IN ACTION', W2 / 2, H2 / 2 - 2 * u);
-          ctx.fillText('REDEPLOYING…', W2 / 2, H2 / 2 + 11 * u);
+          ctx.fillText('PICK YOUR LOADOUT', W2 / 2, H2 / 2 + 11 * u);
         } else ctx.fillText(kia, W2 / 2, H2 / 2 + 5 * u);
       }
       raf = requestAnimationFrame(frame);
@@ -855,6 +904,50 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         </div>
       )}
       <div className={`fps-stage${locked ? ' fps-locked' : ''}`} data-locked={locked ? '1' : '0'}>
+        {chipToasts.length > 0 && (
+          <div className="fps-chip-toasts" data-testid="arena-chip-toasts" style={{ position: 'absolute', top: '18%', left: '50%', transform: 'translateX(-50%)', zIndex: 5, pointerEvents: 'none', textAlign: 'center', fontWeight: 800 }}>
+            {chipToasts.map((t) => <div key={t.key} style={{ color: t.amount > 0 ? '#9be37a' : '#ff8a7a', textShadow: '0 1px 3px #000' }}>{t.amount > 0 ? '+' : '−'}{Math.abs(t.amount)} 🪙 <span style={{ fontWeight: 500, opacity: 0.8 }}>{t.memo}</span></div>)}
+          </div>
+        )}
+        {matchUi.phase === 'sudden' && (
+          <div data-testid="arena-sudden" style={{ position: 'absolute', top: 6, left: '50%', transform: 'translateX(-50%)', zIndex: 5, pointerEvents: 'none', background: 'rgba(120,0,0,.75)', color: '#fff', padding: '3px 10px', borderRadius: 4, fontWeight: 800, fontSize: 12 }}>
+            SUDDEN DEATH · {matchUi.alive} alive · {clock(matchUi.sd * 1000)}{!life.alive ? ' · spectating' : ''}
+          </div>
+        )}
+        {matchUi.phase === 'ended' && matchUi.end && (
+          <div data-testid="arena-match-end" style={{ position: 'absolute', inset: '10% 15%', zIndex: 6, background: 'rgba(0,0,0,.82)', color: '#e6e9df', padding: 12, borderRadius: 8, overflow: 'auto', fontSize: 12 }} onMouseDown={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: 18, fontWeight: 800, textAlign: 'center' }}>MATCH OVER</div>
+            <div style={{ textAlign: 'center', marginBottom: 8 }}>
+              Winner: <b>{matchUi.end.players.find((p) => p.id === matchUi.end!.winnerId)?.name ?? 'nobody'}</b>
+              {matchUi.end.prize && <span style={{ color: '#9be37a' }}> · +{matchUi.end.prize.amount} 🪙 WINNER</span>}
+              <span className="opacity-70"> · next match in {Math.ceil(matchUi.end.inMs / 1000)}s</span>
+            </div>
+            <table style={{ width: '100%' }}><thead><tr><th style={{ textAlign: 'left' }}>Player</th><th>K</th><th>D</th><th>🪙 won</th></tr></thead>
+              <tbody>{matchUi.end.players.map((p) => <tr key={p.id} style={{ fontWeight: p.id === me.current.id ? 800 : 400 }}><td>{p.id === matchUi.end!.winnerId ? '🏆 ' : ''}{p.name}</td><td style={{ textAlign: 'center' }}>{p.kills}</td><td style={{ textAlign: 'center' }}>{p.deaths}</td><td style={{ textAlign: 'center' }}>{p.earned ? `+${p.earned}` : '—'}{p.id === matchUi.end!.winnerId && matchUi.end!.prize ? ` +${matchUi.end!.prize.amount}` : ''}</td></tr>)}</tbody>
+            </table>
+          </div>
+        )}
+        {!life.alive && me.current.joined && matchUi.phase === 'play' && (
+          <div className="fps-respawn" data-testid="arena-respawn" style={{ position: 'absolute', left: '50%', bottom: '14%', transform: 'translateX(-50%)', zIndex: 5, background: 'rgba(0,0,0,.72)', color: '#e6e9df', padding: '8px 10px', borderRadius: 6, textAlign: 'center', fontSize: 12 }}
+            onMouseDown={(e) => e.stopPropagation()}>
+            <div style={{ marginBottom: 6 }}>
+              {wallet !== null ? <>Wallet <b data-testid="arena-respawn-wallet">🪙 {wallet.toLocaleString()}</b> · next spawn <b data-testid="arena-respawn-price">{spawnCost(loadout)} 🪙</b> (your killer gets it)</> : <>Guest: spawns are free, kills pay no bounty. Sign in to play for chips.</>}
+            </div>
+            <div style={{ display: 'flex', gap: 4, justifyContent: 'center', flexWrap: 'wrap' }}>
+              {[...WEAPON_ORDER.filter((w) => isKnifeOnly(w)), ...WEAPON_ORDER.filter((w) => !isKnifeOnly(w))].map((w) => (
+                <button key={w} type="button" data-testid={`arena-loadout-${w}`} aria-pressed={w === loadout || (life.broke && isKnifeOnly(w))} disabled={wallet !== null && spawnCost(w) > wallet}
+                  style={{ padding: '3px 6px', borderRadius: 4, border: '1px solid #888', background: w === loadout ? '#e6e9df' : 'transparent', color: w === loadout ? '#15170f' : 'inherit', opacity: wallet !== null && spawnCost(w) > wallet ? 0.4 : 1 }}
+                  onClick={() => pickLoadout(w)}>{isKnifeOnly(w) ? 'Knife only · 0 🪙 (free)' : `${WEAPONS[w].name}${wallet !== null ? ` · ${spawnCost(w)}` : ''}`}</button>
+              ))}
+            </div>
+            {life.broke && wallet !== null && (
+              <div style={{ marginTop: 6 }} data-testid="arena-broke">
+                {knifeOnlyAvailable() ? <>Not enough for a gun (cheapest {cheapestSpawn()} 🪙): you respawn with Knife only, free.{' '}</> : <>Out of chips (cheapest spawn {cheapestSpawn()} 🪙).{' '}</>}
+                {wallet < BROKE_REFILL_BELOW ? <button type="button" data-testid="arena-refill" style={{ textDecoration: 'underline' }} onClick={() => void request('wallet_reset', {})}>Refill wallet</button> : null}{knifeOnlyAvailable() ? '' : ' or keep spectating.'}
+              </div>
+            )}
+          </div>
+        )}
         <canvas ref={glRef} className="fps-gl" aria-hidden="true" />
         <canvas
           ref={canvasRef}

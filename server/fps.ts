@@ -1,6 +1,8 @@
 import type { Server, Socket } from 'socket.io';
-import { guestName, MOVE_SPEED, TICK_HZ } from '../shared/fps.js';
-import { ArenaWorld, type ArenaEvent } from './arena-world.js';
+import { affordableLoadout, isKnifeOnly, guestName, MOVE_SPEED, spawnCost, TICK_HZ, WEAPONS } from '../shared/fps.js';
+import { randomUUID } from 'node:crypto';
+import { getBank } from './casino-store.js';
+import { ArenaWorld, type ArenaEvent, type ArenaFighter, type MatchResult } from './arena-world.js';
 import { getVault, playerKey } from './skins.js';
 import { getArenaLedger } from './arena-store.js';
 import { ArenaBots, isArenaBot, warmNavGraphs } from './arena-bots.js';
@@ -13,7 +15,96 @@ const claimed = new Map<string, string>();
 
 const ROOM = '__fps_arena';
 const MAX_PLAYERS = 24;
-let world = new ArenaWorld();
+let world = newWorld();
+
+// ---- Paid spawns. Every spawn of a signed-in player costs spawnCost(loadout) chips from the shared wallet; the stake
+// rides on that life and goes to whoever kills you (bounty). Suicides, falls, bots and guests' kills send it to the house.
+// Guests play free (no chips move, their kills earn nothing); bots never pay or earn.
+/** A paid life whose player dropped (reconnect) is resumed without charging again for this long. */
+export const RESUME_MS = 120_000;
+const resumable = new Map<string, { lifeId: string; stake: number; loadout: ArenaFighter['loadout']; until: number }>();
+const acct = (name: string) => name.trim().toLowerCase();
+
+/** Charge one spawn. Returns false (stay dead) when the player can't afford even the cheapest loadout. */
+export function chargeSpawn(f: ArenaFighter, now: number): boolean {
+  const name = isBot(f.id) ? undefined : claimed.get(f.id);
+  if (!name) { f.stake = 0; f.lifeId = ''; return true; }
+  const held = resumable.get(acct(name));
+  if (held) {
+    resumable.delete(acct(name));
+    if (held.until > now) { Object.assign(f, { lifeId: held.lifeId, stake: held.stake, loadout: held.loadout }); return true; }
+  }
+  const bank = getBank();
+  const w = affordableLoadout(f.loadout, bank.account(name).chips);
+  if (!w) return false;
+  f.loadout = w;
+  if (isKnifeOnly(w)) { f.lifeId = ''; f.stake = 0; return true; } // free, knife only, 0 bounty
+  const cost = spawnCost(w);
+  const lifeId = randomUUID();
+  bank.transfer(name, -cost, { key: `arena-spawn:${lifeId}`, game: 'arena', memo: `Spawn · ${WEAPONS[w].name}` });
+  f.lifeId = lifeId;
+  f.stake = cost;
+  return true;
+}
+
+/** Pay a dead fighter's stake to their killer (once per life, ledger key per kill) or burn it to the house. Returns the bounty paid. */
+export function settleBounty(killerId: string | null, victimId: string, w: ArenaWorld = world): number {
+  const v = w.fighters.get(victimId);
+  if (!v || !v.stake || !v.lifeId) return 0;
+  const stake = v.stake;
+  const victimName = claimed.get(victimId);
+  v.stake = 0;
+  const k = killerId && killerId !== victimId && !isBot(killerId) ? claimed.get(killerId) : undefined;
+  const bank = getBank();
+  if (k && acct(k) !== acct(victimName ?? '')) {
+    if (bank.transfer(k, stake, { key: `arena-bounty:${v.lifeId}`, game: 'arena', memo: `Bounty · ${v.name}` })) {
+      const kf = w.fighters.get(killerId!);
+      if (kf) kf.earned = (kf.earned ?? 0) + stake;
+    }
+    return stake;
+  }
+  if (victimName) bank.transfer(victimName, 0, { key: `arena-burn:${v.lifeId}`, game: 'arena', memo: `Stake ${stake} to the house` });
+  return 0;
+}
+
+/** A signed-in player leaving mid-life keeps that paid life (stake + loadout) for RESUME_MS so a reconnect isn't charged twice. */
+export function holdPaidLife(id: string, now = Date.now()): void {
+  const f = world.fighters.get(id), name = claimed.get(id);
+  if (f && name && f.alive && f.stake && f.lifeId) resumable.set(acct(name), { lifeId: f.lifeId, stake: f.stake, loadout: f.loadout, until: now + RESUME_MS });
+}
+
+/** Chips the match winner gets from the house. */
+export const MATCH_PRIZE = 300;
+/** The prize only pays when at least this many signed-in humans took part (no solo farming of bots). */
+export const PRIZE_MIN_HUMANS = 2;
+const matchEndHooks = new Set<(r: MatchResult) => void>();
+/** Subscribe to arena match ends (e.g. case/key drops). Rows carry id, name, kills, deaths, earned, alive, bot, participationMs; `account` is added for signed-in players. Returns an unsubscribe. */
+export function onArenaMatchEnd(fn: (r: MatchResult & { players: Array<MatchResult['players'][number] & { account?: string }> }) => void): () => void {
+  matchEndHooks.add(fn as (r: MatchResult) => void);
+  return () => { matchEndHooks.delete(fn as (r: MatchResult) => void); };
+}
+
+/** Runs once per finished match: winner prize (house -> winner, keyed per match), then the external hooks. */
+export function finishMatch(r: MatchResult): void {
+  for (const p of r.players as Array<MatchResult['players'][number] & { account?: string }>) {
+    const name = !p.bot && !isBot(p.id) ? claimed.get(p.id) : undefined;
+    if (name) p.account = name;
+  }
+  const humans = new Set(r.players.flatMap((p) => ((p as { account?: string }).account ? [acct((p as { account?: string }).account!)] : [])));
+  const winner = r.players.find((p) => p.id === r.winnerId) as { account?: string } | undefined;
+  if (winner?.account && humans.size >= PRIZE_MIN_HUMANS) {
+    getBank().transfer(winner.account, MATCH_PRIZE, { key: `arena-win:${r.matchId}`, game: 'arena', memo: 'WINNER' });
+    r.prize = { name: winner.account, amount: MATCH_PRIZE };
+  }
+  for (const fn of matchEndHooks) { try { fn(r); } catch (e) { console.error('arena match-end hook', e); } }
+}
+
+function newWorld(): ArenaWorld {
+  const w = new ArenaWorld();
+  w.spawnGate = chargeSpawn;
+  w.onMatchEnd = finishMatch;
+  return w;
+}
 let flagSink: (f: ArenaFlag) => void = recordFlag;
 /** Test hook: capture anti-cheat flags instead of writing them. */
 export function setFlagSink(fn: ((f: ArenaFlag) => void) | null): void { flagSink = fn ?? recordFlag; }
@@ -22,13 +113,12 @@ world.audit = newAudit();
   wireWorld(world);
 /** Match-end drops + equipped skins for signed-in players. */
 let dropIo: Server | null = null;
-function wireWorld(w: ArenaWorld): void {
-  w.onMatchEnd = ({ matchId, players }) => {
-    const humans = players.filter((p) => !isBot(p.id) && claimed.has(p.id)).map((p) => ({ ...p, sock: p.id, name: claimed.get(p.id)! }));
-    const got = getVault().dropForMatch(matchId, humans);
-    for (const g of got) for (const h of humans) if (h.name === g.name) dropIo?.to(h.sock).emit('inv_drop', g.item);
-  };
-}
+function wireWorld(_w: ArenaWorld): void { /* match end runs through finishMatch -> onArenaMatchEnd hooks */ }
+onArenaMatchEnd(({ matchId, players }) => {
+  const humans = players.filter((p) => p.account && !isBot(p.id)).map((p) => ({ sock: p.id, name: p.account!, ms: p.participationMs, kills: p.kills, deaths: p.deaths }));
+  const got = getVault().dropForMatch(matchId, humans);
+  for (const g of got) for (const h of humans) if (h.name === g.name) dropIo?.to(h.sock).emit('inv_drop', g.item);
+});
 getVault().listeners.add((k) => {
   for (const [id, n] of claimed) if (playerKey(n) === k && world.fighters.has(id)) world.skins.set(id, getVault().loadout(n));
 });
@@ -87,7 +177,8 @@ function dropBotsIfAlone(): void {
 }
 
 export function resetArena(): void {
-  world = new ArenaWorld();
+  world = newWorld();
+  resumable.clear();
   world.audit = newAudit();
   wireWorld(world);
   botHeading.clear();
@@ -104,6 +195,8 @@ export function recordArena(events: ArenaEvent[], w: ArenaWorld = world): void {
     const d = e.data as Record<string, unknown>;
     if (e.ev === 'fps_kill') {
       const killerId = d.killerId as string | null, victimId = d.victimId as string;
+      const bounty = settleBounty(killerId, victimId, w);
+      if (bounty) d.bounty = bounty;
       // Arena bot kills and deaths never touch lifetime stats (match scoreboard only).
       if ((killerId && isArenaBot(killerId)) || isArenaBot(victimId)) continue;
       const v = claimed.get(victimId);
@@ -163,6 +256,7 @@ function ensureTicker(io: Server): void {
 }
 
 function leave(io: Server, socket: Socket): void {
+  holdPaidLife(socket.id);
   if (!world.leave(socket.id)) return;
   claimed.delete(socket.id);
   world.skins.delete(socket.id);
@@ -185,7 +279,7 @@ export function registerFps(io: Server, socket: Socket): void {
       claimArenaName(socket.id, account ?? null);
       const perks = perksFor(account);
       if (perks.size) world.perks.set(socket.id, perks); // before join, so detection skips them
-      world.join(socket.id, account ?? guestName(), Date.now());
+      world.join(socket.id, account ?? guestName(), Date.now(), body(payload).w);
       dropIo = io;
       if (account) world.skins.set(socket.id, getVault().loadout(account)); else world.skins.delete(socket.id);
       // The first human in can choose the map straight away.
@@ -199,7 +293,7 @@ export function registerFps(io: Server, socket: Socket): void {
     const bots = addQaBots(body(payload).qaBots);
     if (bots) broadcastState(io);
     const f = world.fighters.get(socket.id)!;
-    ack?.({ ok: true, id: socket.id, x: f.x, y: f.y, z: f.z, a: f.a, map: world.map.id });
+    ack?.({ ok: true, id: socket.id, x: f.x, y: f.y, z: f.z, a: f.a, map: world.map.id, alive: f.alive, broke: f.broke, paid: !!claimed.get(socket.id) });
     ensureTicker(io);
   });
   socket.on('fps_move', (p: unknown) => {
@@ -209,6 +303,7 @@ export function registerFps(io: Server, socket: Socket): void {
   socket.on('fps_shoot', (p: unknown) => emit(io, world.shoot(socket.id, body(p).a, Date.now(), body(p).p, body(p).vt)));
   socket.on('fps_crouch', (p: unknown) => world.crouch(socket.id, body(p).on));
   socket.on('fps_jump', () => emit(io, world.jump(socket.id, Date.now())));
+  socket.on('fps_loadout', (p: unknown) => world.setLoadout(socket.id, body(p).w, Date.now()));
   socket.on('fps_weapon', (p: unknown) => world.switchWeapon(socket.id, body(p).w, Date.now()));
   socket.on('fps_reload', () => world.reload(socket.id, Date.now()));
   socket.on('fps_scope', (p: unknown) => world.setScope(socket.id, body(p).on, Date.now()));

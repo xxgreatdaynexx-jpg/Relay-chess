@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ArenaWorld, droneZ, MATCH_MS, nextInRotation } from '../server/arena-world.js';
+import { ArenaWorld, END_SCREEN_MS, droneZ, MATCH_MS, nextInRotation } from '../server/arena-world.js';
 import { canStand, MAPS, WEAPONS } from '../shared/fps.js';
 
 const seq = () => { let i = 0; return () => ((i++ * 0.6180339887) % 1); };
@@ -23,7 +23,12 @@ describe('arena map selection and rotation', () => {
     expect(w.map.id).toBe('dunes');
     expect(w.snapshot(10)).toMatchObject({ map: 'dunes', next: 'office', picked: true });
     expect(w.tick(MATCH_MS - 1).some((e) => e.ev === 'fps_map')).toBe(false);
-    const out = w.tick(MATCH_MS + 1);
+    w.tick(MATCH_MS + 1); // sudden death
+    expect(w.phase).toBe('sudden');
+    w.fighters.get('b')!.alive = false;
+    w.tick(MATCH_MS + 2); // last alive: end screen
+    expect(w.phase).toBe('ended');
+    const out = w.tick(MATCH_MS + 2 + END_SCREEN_MS);
     expect(out.some((e) => e.ev === 'fps_map' && e.data.map === 'office')).toBe(true);
     expect(w.map.id).toBe('office');
     expect(a.kills).toBe(0);
@@ -37,7 +42,7 @@ describe('arena map selection and rotation', () => {
     w.join('a', 'A', 0);
     let t = 0;
     const seen = [w.map.id];
-    for (let i = 0; i < 3; i++) { t += MATCH_MS + 1; w.tick(t); seen.push(w.map.id); }
+    for (let i = 0; i < 3; i++) { t += MATCH_MS + 1; w.tick(t); t += END_SCREEN_MS; w.tick(t); seen.push(w.map.id); }
     expect(seen).toEqual(['dunes', 'depot', 'office', 'dunes']);
     expect(nextInRotation('office')).toBe('dunes');
   });
