@@ -24,6 +24,13 @@ function bringToFront(el: HTMLElement) {
   });
 }
 
+/** True when `el` is the top window (or no window has been stacked yet). Background 3D panels throttle on this. */
+export function isFrontWindow(el: HTMLElement | null): boolean {
+  if (!el) return false;
+  for (let j = stack.length - 1; j >= 0; j--) if (stack[j].isConnected) return stack[j] === el;
+  return true;
+}
+
 function dropFromStack(el: HTMLElement) {
   const i = stack.indexOf(el);
   if (i >= 0) stack.splice(i, 1);

@@ -963,10 +963,13 @@ function TeamCard({
                 <div className="flex items-baseline gap-1.5 text-sm">
                   <span className="truncate">{player?.name ?? 'Empty'}</span>
                   {player?.bot && <BotBadge />}
-                  {slowest === seat && <span title="Used the most time" data-testid="slowest">🐢</span>}
-                  <span className={cn('tabular ml-auto text-xs', moving ? 'text-brass' : 'text-cream/55')} data-testid={`think-${seat}`} title="Thinking time used this game">
-                    ⏱ {formatThink(thinkRows.find((r) => r.seat === seat)?.usedMs ?? 0)}
-                  </span>
+                  {clock && slowest === seat && <span title="Used the most time" data-testid="slowest">🐢</span>}
+                  {/* Untimed ('No clock') tables show no ticking time at all: it read as a clock. */}
+                  {clock && (
+                    <span className={cn('tabular ml-auto text-xs', moving ? 'text-brass' : 'text-cream/55')} data-testid={`think-${seat}`} title="Thinking time used this game">
+                      ⏱ {formatThink(thinkRows.find((r) => r.seat === seat)?.usedMs ?? 0)}
+                    </span>
+                  )}
                 </div>
                 <div className="text-[10px] tracking-wide text-cream/50 uppercase">
                   {seatLabel(seat, active)}

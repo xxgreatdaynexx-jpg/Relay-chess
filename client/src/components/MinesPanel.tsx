@@ -2,7 +2,9 @@ import { TopTab } from '@/components/TopTabs';
 import { MiningLeaderboard } from '@/components/MiningLeaderboard';
 import { loadName } from '@/lib/playerName';
 import { useWalletChips } from '@/lib/wallet';
-import { useWindowDrag } from '@/lib/windowDrag';
+import { isFrontWindow, useWindowDrag } from '@/lib/windowDrag';
+/** Frame budget while the Mines window is behind another one. */
+const BG_FRAME_MS = 250;
 import { useEffect, useRef, useState } from 'react';
 import { socket } from '@/lib/net';
 import { mouseLook, readLook, LOCK_KEYS, arenaKey, crouchHeld, shouldBlockShortcut } from '@/lib/arenaInput';
@@ -88,7 +90,7 @@ function MinesGame({ onClose }: { onClose: () => void }) {
       if (dead || !glRef.current) return;
       try { three.current = new Mines3D(glRef.current); three.current.setNodes(hp.current); socket.timeout(3000).emit('inv_loadout', {}, (err: Error | null, r?: { ok: boolean; loadout?: Record<string, string | null> }) => { if (!err && r?.ok) three.current?.setPickSkin(r.loadout?.pickaxe ?? null); }); } catch (e) { setGlError('3D is unavailable here: ' + (e as Error).message); }
     });
-    let raf = 0, last = performance.now(), sendAcc = 0;
+    let raf = 0, last = performance.now(), sendAcc = 0, lastDraw = 0;
     const frame = (t: number) => {
       raf = requestAnimationFrame(frame);
       const dt = Math.min(0.05, (t - last) / 1000); last = t;
@@ -112,6 +114,10 @@ function MinesGame({ onClose }: { onClose: () => void }) {
         const ai = aimNode(m.x, m.y, m.z + eyeHeightOf(m), m.a, m.p, hp.current);
         setAim((o) => (o === ai ? o : ai));
       }
+      // Hidden tab, or covered by another window without the pointer lock: draw at ~4 fps so other windows stay responsive.
+      if (document.hidden) return;
+      if (document.pointerLockElement !== glRef.current && !isFrontWindow(wrapRef.current)) { if (t - lastDraw < BG_FRAME_MS) return; }
+      lastDraw = t;
       three.current?.render({ x: m.x, y: m.y, z: m.z + eyeHeightOf(m), a: m.a, p: m.p }, dt, m.walk);
     };
     raf = requestAnimationFrame(frame);

@@ -372,6 +372,8 @@ input {
 .sol-table { position: relative; flex: 1; padding: 8px 6px; overflow: hidden; }
 .sol-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
 .sol-tableau { margin-top: 10px; height: 100%; }
+/* Very short viewports (e.g. 300% browser zoom): the board keeps a playable height and the window scrolls instead of clipping it. */
+@media (max-height: 560px) { .sol-panel .sol-table { flex: 0 0 auto; min-height: 320px; overflow: visible; } }
 .sol-slot, .sol-pile { position: relative; aspect-ratio: 5 / 7; }
 .sol-pile { aspect-ratio: auto; min-height: 100%; }
 .sol-pile > .sol-empty { aspect-ratio: 5/7; height: auto; }
