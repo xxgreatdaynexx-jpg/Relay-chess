@@ -515,8 +515,8 @@ function thump(ctx: AudioContext, at: number, f0: number, len: number, gain: num
 
 /** Arena: synthesized gunshot per weapon: sharp crack, low-end thump and a tail. All through the master volume. */
 /** Launch whoosh peaks at -3.6 dBFS at gain 1; 0.12 caps it near -21 dBFS. */
-/** sniper-shot.mp3: Dayne's recording trimmed to 2.5 s with a 1.1 s fade (peak 0 dBFS). 0.58 puts its loudest 50 ms ~2 dB above a pistol shot. */
-export const SNIPER_SHOT_URL = '/sounds/sniper-shot.mp3';
+/** sniper-shot.wav: Dayne's recording, cut at the crack (onset <10 ms, no MP3 encoder padding), 2.5 s with a 1.1 s fade, peak ~0 dBFS. 0.58 puts its loudest 50 ms ~2 dB above a pistol shot. */
+export const SNIPER_SHOT_URL = '/sounds/sniper-shot.wav';
 export const SNIPER_SHOT_GAIN = 0.58;
 const sniperClip: Clip = { buffer: null, pending: null };
 /** Remote gunshots fade with distance (never fully silent). */

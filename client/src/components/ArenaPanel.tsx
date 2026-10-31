@@ -25,7 +25,7 @@ const COLORS = ['#5f6a48', '#7d7158', '#596066', '#6b6248', '#4f5a4c', '#73705f'
 const SCOPE_ZOOM = 3.5;
 const FOV = 68; // vertical, degrees
 
-interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number; bot?: boolean; c?: boolean; s?: boolean; lo?: WeaponId; stk?: number; bk?: boolean; sk?: string }
+interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number; bot?: boolean; c?: boolean; s?: boolean; lo?: WeaponId; stk?: number; bk?: boolean; rs?: number; sk?: string }
 interface MatchEnd { matchId: string; winnerId: string | null; reason: string; players: Array<{ id: string; name: string; kills: number; deaths: number; earned: number; alive: boolean; bot: boolean }>; prize?: { name: string; amount: number }; inMs: number }
 interface NetState { phase?: 'play' | 'sudden' | 'ended'; alive?: number; sd?: number; end?: MatchEnd; t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null; wh?: boolean; roster?: Array<Pick<NetPlayer, 'id' | 'name' | 'k' | 'd' | 'st' | 'bot'>>; radar?: Array<{ x: number; y: number }>; rockets?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; seek?: number; lock?: string | null }> }
 interface Snap extends NetState { recv: number }
@@ -73,7 +73,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   // Paid spawns: the loadout you pick on the death screen (saved), what's staked on this life, and +/- chip toasts.
   const [loadout, setLoadoutState] = useState<WeaponId>(() => { const v = typeof localStorage !== 'undefined' ? localStorage.getItem('arena-loadout') : null; return v && isWeapon(v) ? v : 'pistol'; });
   const loadoutRef = useRef(loadout);
-  const [life, setLife] = useState<{ alive: boolean; stake: number; broke: boolean; lo: WeaponId; paid: boolean }>({ alive: true, stake: 0, broke: false, lo: 'pistol', paid: false });
+  const [life, setLife] = useState<{ alive: boolean; stake: number; broke: boolean; lo: WeaponId; paid: boolean; rs: number }>({ alive: true, stake: 0, broke: false, lo: 'pistol', paid: false, rs: 0 });
   const [matchUi, setMatchUi] = useState<{ phase: 'play' | 'sudden' | 'ended'; alive: number; sd: number; end: MatchEnd | null }>({ phase: 'play', alive: 0, sd: 0, end: null });
   const [chipToasts, setChipToasts] = useState<Array<{ key: number; amount: number; memo: string }>>([]);
   useEffect(() => {
@@ -252,7 +252,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       }
       if (mine && mapChanged) Object.assign(m, { x: mine.x, y: mine.y, z: mine.z, vz: 0, grounded: true, p: 0 });
       if (mine) {
-        if (!mine.alive && m.alive) m.alive = false;
+        // Died: free the mouse so the loadout picker / Respawn button can be clicked.
+        if (!mine.alive && m.alive) { m.alive = false; releaseOnDeath(); }
         if (mine.alive && !m.alive) Object.assign(m, { alive: true, x: mine.x, y: mine.y, z: mine.z, vz: 0, grounded: true, p: 0, ammo: WEAPONS[m.weapon].mag, reloadUntil: 0 });
         // The server owns position (and height): if prediction drifts too far, snap to its authoritative spot.
         else if (mine.alive && (Math.hypot(m.x - mine.x, m.y - mine.y) > 1.5 || Math.abs(m.z - mine.z) > 0.8)) { Object.assign(m, { x: mine.x, y: mine.y, z: mine.z, vz: 0, grounded: mine.g }); net.corr = null; }
@@ -261,8 +262,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         m.hp = mine.hp;
         m.streak = mine.st;
         lifeLoRef.current = mine.lo ?? null;
-        const nl = { alive: mine.alive, stake: mine.stk ?? 0, broke: !!mine.bk, lo: mine.lo ?? 'pistol', paid: false };
-        setLife((o) => (o.alive === nl.alive && o.stake === nl.stake && o.broke === nl.broke && o.lo === nl.lo && o.paid === nl.paid ? o : nl));
+        const nl = { alive: mine.alive, stake: mine.stk ?? 0, broke: !!mine.bk, lo: mine.lo ?? 'pistol', paid: false, rs: mine.alive ? 0 : Math.ceil((mine.rs ?? 0) / 1000) };
+        setLife((o) => (o.alive === nl.alive && o.stake === nl.stake && o.broke === nl.broke && o.lo === nl.lo && o.paid === nl.paid && o.rs === nl.rs ? o : nl));
         m.uavUntil = mine.uav ? performance.now() + mine.uav : 0;
         // The server owns the loadout: if our weapon disagrees for longer than a switch takes, adopt the server's.
         if (mine.w !== m.weapon && performance.now() - m.switchedAt > 1000) { m.weapon = mine.w; m.scoped = false; }
@@ -310,6 +311,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     };
     const onKill = (k: { killer: string; victim: string; killerId: string | null; victimId: string; cause: string; headshot?: boolean }) => {
       const self = k.killerId === k.victimId || !k.killerId;
+      if (k.victimId === me.current.id) releaseOnDeath();
       if (k.killerId === me.current.id && !self) { fx.current.killmark = performance.now(); if (k.headshot) fx.current.headmark = performance.now(); }
       const v = snaps.current[snaps.current.length - 1]?.players.find((p) => p.id === k.victimId);
       if (v) {
@@ -831,6 +833,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     else if (key === 'f') shoot();
   }
 
+  function releaseOnDeath() { keys.current.clear(); if (document.pointerLockElement) document.exitPointerLock?.(); }
   function releaseLock() {
     if (document.pointerLockElement) document.exitPointerLock?.();
     setLocked(false);
@@ -955,6 +958,13 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
                   onClick={() => pickLoadout(w)}>{isKnifeOnly(w) ? 'Knife only · 0 🪙 (free)' : `${WEAPONS[w].name}${wallet !== null ? ` · ${spawnCost(w)}` : ''}`}</button>
               ))}
             </div>
+            {!life.broke && (
+              <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center' }}>
+                <span data-testid="arena-respawn-countdown">Auto-respawn in <b>{life.rs}s</b></span>
+                <button type="button" data-testid="arena-respawn-now" style={{ padding: '4px 12px', borderRadius: 4, border: 0, background: '#e6e9df', color: '#15170f', fontWeight: 800 }}
+                  onClick={() => { socket.emit('fps_respawn', { w: loadoutRef.current }); const p = canvasRef.current?.requestPointerLock?.() as unknown as Promise<void> | undefined; p?.catch?.(() => { /* lock refused */ }); }}>Respawn</button>
+              </div>
+            )}
             {life.broke && wallet !== null && (
               <div style={{ marginTop: 6 }} data-testid="arena-broke">
                 {knifeOnlyAvailable() ? <>Not enough for a gun (cheapest {cheapestSpawn()} 🪙): you respawn with Knife only, free.{' '}</> : <>Out of chips (cheapest spawn {cheapestSpawn()} 🪙).{' '}</>}

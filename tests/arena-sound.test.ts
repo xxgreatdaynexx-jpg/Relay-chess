@@ -19,11 +19,24 @@ describe('arena explosion mix', () => {
 describe('sniper clip', () => {
   it('uses the trimmed recording just above pistol level, and remote shots fall off with distance', async () => {
     const s = await import('../client/src/lib/sounds');
-    expect(s.SNIPER_SHOT_URL).toBe('/sounds/sniper-shot.mp3');
+    expect(s.SNIPER_SHOT_URL).toBe('/sounds/sniper-shot.wav');
     expect(s.SNIPER_SHOT_GAIN).toBeGreaterThan(0.4);
     expect(s.SNIPER_SHOT_GAIN).toBeLessThan(0.7);
     expect(s.shotFalloff(0)).toBe(1);
     expect(s.shotFalloff(30)).toBeLessThan(0.3);
     expect(s.shotFalloff(1e6)).toBe(0.15);
+  });
+});
+
+import { readFileSync } from 'node:fs';
+describe('sniper clip timing', () => {
+  it('the crack starts within 10 ms of t=0 (no lead-in delay)', () => {
+    const b = readFileSync(new URL('../client/public/sounds/sniper-shot.wav', import.meta.url));
+    let o = 12; let rate = 44100; let data = 0; let len = 0;
+    while (o < b.length) { const id = b.toString('ascii', o, o + 4), sz = b.readUInt32LE(o + 4); if (id === 'fmt ') rate = b.readUInt32LE(o + 12); if (id === 'data') { data = o + 8; len = sz; break; } o += 8 + sz; }
+    const n = len / 2; let peak = 0;
+    for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(b.readInt16LE(data + i * 2)));
+    let i = 0; while (i < n && Math.abs(b.readInt16LE(data + i * 2)) < peak * 0.18) i++; // -15 dB
+    expect((i / rate) * 1000).toBeLessThan(10);
   });
 });

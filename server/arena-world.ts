@@ -14,7 +14,7 @@ import { ArenaAntiCheat, ASSIST_CONE, ASSIST_PULL, ASSIST_SPREAD, coarse, HOMING
 import { MULTI_LEVEL, MULTI_TITLE, multiTier, nextChain, type MultiChain } from '../shared/arenaMulti.js';
 import { meleeHit } from '../shared/fps.js';
 import { applyCrouch, canSprint, headZOf, speedOf, SPRINT_FIRE_DELAY_MS, SPRINT_FIRE_SLACK_MS } from '../shared/fps.js';
-import { canHold, isKnifeOnly } from '../shared/fps.js';
+import { canHold, isKnifeOnly, REGEN_DELAY_MS, REGEN_HPS, RESPAWN_PICK_MS } from '../shared/fps.js';
 
 /** Drones hover at least this high, and always above the map's tallest structure. */
 export const DRONE_Z = 8;
@@ -39,6 +39,9 @@ export const FIRE_JITTER_MS = 25;
 export const BROKE_RETRY_MS = 1000;
 
 export interface ArenaFighter extends Fighter {
+  /** last time this fighter took damage / last regen step */
+  hurtAt?: number;
+  regenAt?: number;
   weapon: WeaponId;
   ammo: Record<WeaponId, number>;
   lastShotAt: Record<WeaponId, number>;
@@ -306,6 +309,25 @@ export class ArenaWorld {
     return true;
   }
 
+  /** Health regen: REGEN_DELAY_MS after the last hit, REGEN_HPS up to MAX_HP. */
+  regen(f: ArenaFighter, now: number) {
+    const last = f.regenAt ?? now;
+    f.regenAt = now;
+    if (!f.alive || f.hp >= MAX_HP) return;
+    const from = Math.max(last, (f.hurtAt ?? -1e12) + REGEN_DELAY_MS);
+    if (now <= from) return;
+    f.hp = Math.min(MAX_HP, f.hp + (REGEN_HPS * (now - from)) / 1000);
+  }
+
+  /** Respawn button: spawn now (optionally with a new loadout). Only while dead in normal play. */
+  requestRespawn(id: string, w: unknown, now: number): boolean {
+    const f = this.fighters.get(id);
+    if (!f || f.alive || this.phase !== 'play') return false;
+    if (isWeapon(w)) f.loadout = w;
+    f.respawnAt = Math.min(f.respawnAt, now);
+    return true;
+  }
+
   switchWeapon(id: string, w: unknown, now: number): boolean {
     const f = this.fighters.get(id);
     if (!f || !isWeapon(w) || f.weapon === w || ((f.lifeId !== '' || isKnifeOnly(f.loadout)) && !canHold(f.loadout, w))) return false;
@@ -469,9 +491,12 @@ export class ArenaWorld {
     const t = this.fighters.get(targetId);
     if (!t || !t.alive) return [];
     const killed = applyDamage(t, now, amount);
-    const out: ArenaEvent[] = [{ ev: 'fps_hit', data: { by: byId, target: targetId, hp: t.hp, dmg: amount, cause, ...(head ? { head: true } : {}) } }];
+    if (amount > 0) t.hurtAt = now;
+    const out: ArenaEvent[] = [{ ev: 'fps_hit', data: { by: byId, target: targetId, hp: Math.round(t.hp), dmg: amount, cause, ...(head ? { head: true } : {}) } }];
     if (!killed) return out;
     t.streak = 0;
+    // Humans get the loadout picker for RESPAWN_PICK_MS (or until they press Respawn); bots come straight back.
+    if (!t.id.startsWith('arena-bot-') && !t.id.startsWith('qa-bot-')) t.respawnAt = Math.max(t.respawnAt, now + RESPAWN_PICK_MS);
     const killer = byId ? this.fighters.get(byId) : undefined;
     out.push({ ev: 'fps_kill', data: { killer: killer?.name ?? '☢', victim: t.name, killerId: byId, victimId: t.id, cause, ...(head ? { head: true, headshot: true } : {}) } });
     if (killer && killer.id !== t.id && cause !== 'nuke') {
@@ -606,6 +631,7 @@ export class ArenaWorld {
     const out: ArenaEvent[] = [];
     const all = [...this.fighters.values()];
     for (const f of all) {
+      this.regen(f, now);
       this.settleReload(f, now);
       this.advance(f, now);
       if (f.alive && f.crouch && !f.wantCrouch) applyCrouch(f, false, this.map); // stand up once there is headroom
@@ -741,8 +767,8 @@ export class ArenaWorld {
       t: now,
       players: [...this.fighters.values()].map((f) => ({
         id: f.id, name: f.name, x: +f.x.toFixed(3), y: +f.y.toFixed(3), z: +f.z.toFixed(3), a: +f.a.toFixed(3), p: +f.p.toFixed(3),
-        hp: f.hp, k: f.kills, d: f.deaths, alive: f.alive, ...(f.id.startsWith('arena-bot-') ? { bot: true } : {}), w: f.weapon, ammo: f.ammo[f.weapon],
-        rl: f.reloadUntil ? Math.max(0, f.reloadUntil - now) : 0, g: f.grounded, ...(f.crouch ? { c: true } : {}), ...(f.sprint ? { s: true } : {}), ...(f.lifeId || isKnifeOnly(f.loadout) ? { lo: f.loadout } : {}), stk: f.stake, ...(f.broke ? { bk: true } : {}),
+        hp: Math.round(f.hp), k: f.kills, d: f.deaths, alive: f.alive, ...(f.id.startsWith('arena-bot-') ? { bot: true } : {}), w: f.weapon, ammo: f.ammo[f.weapon],
+        rl: f.reloadUntil ? Math.max(0, f.reloadUntil - now) : 0, g: f.grounded, ...(f.crouch ? { c: true } : {}), ...(f.sprint ? { s: true } : {}), ...(f.lifeId || isKnifeOnly(f.loadout) ? { lo: f.loadout } : {}), stk: f.stake, ...(f.broke ? { bk: true } : {}), ...(!f.alive ? { rs: Math.max(0, f.respawnAt - now) } : {}),
         st: f.streak, uav: Math.max(0, f.uavUntil - now), ...(this.skins.get(f.id)?.[f.weapon] ? { sk: this.skins.get(f.id)![f.weapon] } : {}),
       })),
       drones: [...this.drones.values()].flatMap((d) => {

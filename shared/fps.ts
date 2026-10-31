@@ -13,6 +13,11 @@ export const MAP: ArenaMap = DUNES;
 export const MAX_HP = 100;
 export const DAMAGE = 34;
 export const RESPAWN_MS = 2000;
+/** Humans get this long on the death screen to pick a loadout; Respawn ends it early. Bots keep RESPAWN_MS. */
+export const RESPAWN_PICK_MS = 8000;
+/** Health regen: after REGEN_DELAY_MS with no damage, heal REGEN_HPS per second up to MAX_HP (bots too, sudden death too). */
+export const REGEN_DELAY_MS = 5000;
+export const REGEN_HPS = 25;
 export const SHOT_COOLDOWN_MS = 300;
 export const MOVE_SPEED = 4.6; // units per second
 export const PLAYER_RADIUS = 0.3;
