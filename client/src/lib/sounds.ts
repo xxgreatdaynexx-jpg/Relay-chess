@@ -749,3 +749,12 @@ export function playLockBeep(): void {
   tone(ctx, 1760, t, 0.06, 0.05);
   tone(ctx, 1760, t + 0.09, 0.06, 0.05);
 }
+
+/** Quick rising two-note "click-chunk" when you pick up a dropped gun. */
+export function playPickup(): void {
+  const ctx = audio();
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  tone(ctx, 660, t, 0.07, 0.12);
+  tone(ctx, 990, t + 0.07, 0.09, 0.12);
+}

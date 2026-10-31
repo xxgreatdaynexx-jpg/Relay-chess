@@ -10,7 +10,7 @@ import { prefersReducedMotion } from '@/lib/motion';
 import { INTERP_DELAY_MS, LOCAL_STEP_S, SnapBuffer, samplePlayers } from '../../../shared/netInterp';
 import { TagVisibility, tagVisible } from '@/lib/arenaTags';
 import type { ArenaMap } from '../../../shared/arenaMaps';
-import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playKnife, playLockBeep, playMultiKill, shotFalloff, unlockSounds } from '@/lib/sounds';
+import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playKnife, playLockBeep, playPickup, playMultiKill, shotFalloff, unlockSounds } from '@/lib/sounds';
 import { isTypingTarget, spaceRespawns } from '@/lib/respawnKey';
 import { fitSpeed, killCardText, sampleKillCam, type CamFrame, type KillCard } from '@/lib/killcam';
 import { feedParts, popupScale, POPUP_MS, type FeedItem } from '@/lib/arenaFeed';
@@ -27,9 +27,9 @@ const COLORS = ['#5f6a48', '#7d7158', '#596066', '#6b6248', '#4f5a4c', '#73705f'
 const SCOPE_ZOOM = 3.5;
 const FOV = 68; // vertical, degrees
 
-interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number; bot?: boolean; c?: boolean; s?: boolean; lo?: WeaponId; stk?: number; bk?: boolean; rs?: number; sk?: string; q?: number }
+interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number; bot?: boolean; c?: boolean; s?: boolean; lo?: WeaponId; stk?: number; bk?: boolean; rs?: number; sk?: string; q?: number; ex?: WeaponId[] }
 interface MatchEnd { matchId: string; winnerId: string | null; reason: string; players: Array<{ id: string; name: string; kills: number; deaths: number; earned: number; alive: boolean; bot: boolean }>; prize?: { name: string; amount: number }; inMs: number }
-interface NetState { phase?: 'play' | 'sudden' | 'ended'; alive?: number; sd?: number; end?: MatchEnd; t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null; wh?: boolean; mysk?: Record<string, string>; roster?: Array<Pick<NetPlayer, 'id' | 'name' | 'k' | 'd' | 'st' | 'bot'>>; radar?: Array<{ x: number; y: number }>; rockets?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; seek?: number; lock?: string | null }> }
+interface NetState { phase?: 'play' | 'sudden' | 'ended'; alive?: number; sd?: number; end?: MatchEnd; t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null; wh?: boolean; mysk?: Record<string, string>; roster?: Array<Pick<NetPlayer, 'id' | 'name' | 'k' | 'd' | 'st' | 'bot'>>; radar?: Array<{ x: number; y: number }>; rockets?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; seek?: number; lock?: string | null }>; drops?: Array<{ id: number; w: WeaponId; x: number; y: number; z: number; left: number; sk?: string }> }
 interface Snap extends NetState { recv: number }
 type Quality = 'hd' | 'lo';
 
@@ -129,6 +129,9 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   });
   const snaps = useRef<Snap[]>([]);
   const lifeLoRef = useRef<WeaponId | null>(null);
+  /** Guns picked up from drops this life (server's list). */
+  const extraRef = useRef<WeaponId[]>([]);
+  const [pickToast, setPickToast] = useState<{ key: number; text: string } | null>(null);
   const phaseRef = useRef<'play' | 'sudden' | 'ended'>('play');
   const specRef = useRef<string | null>(null);
   // Kill cam: fetched on request from the respawn screen, played until done or until we respawn (never delays it).
@@ -164,7 +167,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
 
   function setWeapon(w: WeaponId) {
     const m = me.current;
-    if (m.weapon === w || (lifeLoRef.current !== null && !canHold(lifeLoRef.current, w))) return;
+    if (m.weapon === w || (lifeLoRef.current !== null && !canHold(lifeLoRef.current, w) && !extraRef.current.includes(w))) return;
     m.weapon = w;
     m.switchedAt = performance.now();
     m.reloadUntil = 0;
@@ -172,7 +175,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     socket.emit('fps_weapon', { w });
   }
   function cycleWeapon(dir: number) {
-    const held = WEAPON_ORDER.filter((w) => lifeLoRef.current === null || canHold(lifeLoRef.current, w));
+    const held = WEAPON_ORDER.filter((w) => lifeLoRef.current === null || canHold(lifeLoRef.current, w) || extraRef.current.includes(w));
     const i = held.indexOf(me.current.weapon);
     setWeapon(held[(i + dir + held.length) % held.length]);
   }
@@ -294,6 +297,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         m.hp = mine.hp;
         m.streak = mine.st;
         lifeLoRef.current = mine.lo ?? null;
+        extraRef.current = mine.ex ?? [];
         const nl = { alive: mine.alive, stake: mine.stk ?? 0, broke: !!mine.bk, lo: mine.lo ?? 'pistol', paid: false, rs: mine.alive ? 0 : Math.ceil((mine.rs ?? 0) / 1000) };
         setLife((o) => (o.alive === nl.alive && o.stake === nl.stake && o.broke === nl.broke && o.lo === nl.lo && o.paid === nl.paid && o.rs === nl.rs ? o : nl));
         m.uavUntil = mine.uav ? performance.now() + mine.uav : 0;
@@ -397,6 +401,14 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     socket.on('fps_streak', onStreak);
     socket.on('fps_multi', onMulti);
     socket.on('fps_multi_me', onMultiMe);
+    const onPickup = (p: { w: WeaponId; name?: string }) => {
+      if (!extraRef.current.includes(p.w)) extraRef.current = [...extraRef.current, p.w];
+      playPickup();
+      const key = performance.now();
+      setPickToast({ key, text: `Picked up ${p.name ?? WEAPONS[p.w]?.name ?? p.w}` });
+      setTimeout(() => setPickToast((o) => (o && o.key === key ? null : o)), 1800);
+    };
+    socket.on('fps_pickup', onPickup);
     socket.on('fps_boom', onBoom);
     const onDrone = () => playWeaponShot('smg', 0.3);
     socket.on('fps_drone_shot', onDrone);
@@ -407,7 +419,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     return () => {
       window.clearInterval(pingT);
       socket.emit('fps_leave');
-      for (const [e, h] of [['fps_state', onState], ['fps_hit', onHit], ['fps_shot', onShot], ['fps_kill', onKill], ['fps_streak', onStreak], ['fps_multi', onMulti], ['fps_multi_me', onMultiMe], ['fps_boom', onBoom], ['fps_drone_shot', onDrone], ['fps_nuke', onNuke], ['connect', join]] as const) socket.off(e, h as never);
+      for (const [e, h] of [['fps_state', onState], ['fps_hit', onHit], ['fps_shot', onShot], ['fps_kill', onKill], ['fps_streak', onStreak], ['fps_multi', onMulti], ['fps_multi_me', onMultiMe], ['fps_pickup', onPickup], ['fps_boom', onBoom], ['fps_drone_shot', onDrone], ['fps_nuke', onNuke], ['connect', join]] as const) socket.off(e, h as never);
     };
   }, []);
 
@@ -592,6 +604,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
           const t = Math.min(0.25, (now - r.at) / 1000);
           return { seek: !!r.seek, id: r.id, x: r.x + r.vx * t, y: r.y + r.vy * t, z: r.z + r.vz * t - 0.5 * ROCKET_GRAVITY * t * t, vx: r.vx, vy: r.vy, vz: r.vz - ROCKET_GRAVITY * t };
         }),
+        drops: (snap?.drops ?? []).map((d) => ({ ...d, left: d.left - (now - snap!.recv) })).filter((d) => d.left > 0),
       };
       const shake = now - fx.current.shake < 450 ? (1 - (now - fx.current.shake) / 450) * 0.04 : 0;
       const vmSwitch = Math.max(0, 1 - (now - m.switchedAt) / SWITCH_MS);
@@ -731,7 +744,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         // Bottom centre, between the health block (left) and the ammo block (right), so nothing at the top covers them.
         const x = W2 / 2 - 8 * u + (i - 2) * 18 * u;
         const y = H2 - 16 * u;
-        if ((lifeLoRef.current !== null && !canHold(lifeLoRef.current, w))) ctx.globalAlpha = 0.25;
+        if ((lifeLoRef.current !== null && !canHold(lifeLoRef.current, w) && !extraRef.current.includes(w))) ctx.globalAlpha = 0.25;
         ctx.fillStyle = w === m.weapon ? 'rgba(220,224,210,.9)' : 'rgba(0,0,0,.45)';
         ctx.fillRect(x - 8 * u, y, 16 * u, 10 * u);
         ctx.fillStyle = w === m.weapon ? '#15170f' : '#d9dccf';
@@ -1023,6 +1036,9 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         </div>
       )}
       <div className={`fps-stage${locked ? ' fps-locked' : ''}`} data-locked={locked ? '1' : '0'}>
+        {pickToast && (
+          <div data-testid="arena-pickup-toast" style={{ position: 'absolute', top: '62%', left: '50%', transform: 'translateX(-50%)', zIndex: 5, pointerEvents: 'none', color: '#ffd36a', fontWeight: 800, textShadow: '0 1px 3px #000' }}>{pickToast.text}</div>
+        )}
         {chipToasts.length > 0 && (
           <div className="fps-chip-toasts" data-testid="arena-chip-toasts" style={{ position: 'absolute', top: '18%', left: '50%', transform: 'translateX(-50%)', zIndex: 5, pointerEvents: 'none', textAlign: 'center', fontWeight: 800 }}>
             {chipToasts.map((t) => <div key={t.key} style={{ color: t.amount > 0 ? '#9be37a' : '#ff8a7a', textShadow: '0 1px 3px #000' }}>{t.amount > 0 ? '+' : '−'}{Math.abs(t.amount)} 🪙 <span style={{ fontWeight: 500, opacity: 0.8 }}>{t.memo}</span></div>)}

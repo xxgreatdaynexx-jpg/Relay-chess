@@ -10,7 +10,7 @@ import {
 } from '../shared/fps.js';
 import { isMapId, MAP_ROTATION } from '../shared/arenaMaps.js';
 import { PoseHistory, rewindTime } from '../shared/netInterp.js';
-import { ArenaAntiCheat, ASSIST_CONE, ASSIST_PULL, ASSIST_SPREAD, coarse, HOMING_CONE, HOMING_TURN, VisibilityTracker, type ArenaPerk } from './arena-anticheat.js';
+import { ArenaAntiCheat, ASSIST_CONE, ASSIST_PULL, ASSIST_SPREAD, coarse, HOMING_CONE, HOMING_TURN, canSee, VisibilityTracker, type ArenaPerk } from './arena-anticheat.js';
 import { MULTI_LEVEL, MULTI_TITLE, multiTier, nextChain, type MultiChain } from '../shared/arenaMulti.js';
 import { meleeHit } from '../shared/fps.js';
 import { applyCrouch, canSprint, headZOf, speedOf, SPRINT_FIRE_DELAY_MS, SPRINT_FIRE_SLACK_MS } from '../shared/fps.js';
@@ -38,6 +38,12 @@ export const nextInRotation = (id: string): string => MAP_ROTATION[(MAP_ROTATION
 export const FIRE_JITTER_MS = 25;
 /** A broke fighter re-checks the wallet this often (a refill lets them back in). */
 export const BROKE_RETRY_MS = 1000;
+/** Dropped guns: lifetime, per-match cap (oldest removed), walk-over pickup radius. */
+export const DROP_MS = 3000;
+export const DROP_BLINK_MS = 1000;
+export const DROP_CAP = 12;
+export const PICKUP_R = 1.2;
+export interface WeaponDrop { id: number; w: WeaponId; x: number; y: number; z: number; ammo: number; sk?: string; at: number; until: number }
 
 export interface ArenaFighter extends Fighter {
   /** last time this fighter took damage / last regen step */
@@ -66,6 +72,8 @@ export interface ArenaFighter extends Fighter {
   sprintEndAt?: number;
   /** Paid spawn loadout weapon (switching is limited to it plus the pistol). */
   loadout: WeaponId;
+  /** Weapons picked up from drops this life (switchable like the loadout). */
+  extra?: WeaponId[];
   /** Unique id of this paid life (ledger idempotency key), '' for free lives (guests, bots). */
   lifeId: string;
   /** Chips staked on this life; paid to whoever kills you. */
@@ -97,6 +105,8 @@ export class ArenaWorld {
   strikes: Strike[] = [];
   drones = new Map<string, Drone>();
   /** RPG rockets in flight (server-simulated projectiles). */
+  drops: WeaponDrop[] = [];
+  private dropSeq = 0;
   rockets: Array<Rocket & { seek?: true; lock?: string | null }> = [];
   private rocketSeq = 0;
   nuke: { ownerId: string; by: string; at: number } | null = null;
@@ -158,6 +168,7 @@ export class ArenaWorld {
     this.rockets = [];
     this.drones.clear();
     this.nuke = null;
+    this.drops = [];
     const placed: ArenaFighter[] = [];
     for (const f of this.fighters.values()) {
       const [x, y, z] = pickSpawn(placed, this.rand, map);
@@ -172,6 +183,7 @@ export class ArenaWorld {
     this.matchStartAt = now;
     this.matchId = `${now.toString(36)}-${++this.matchSeq}-${Math.floor(this.rand() * 1e9).toString(36)}`;
     this.phase = 'play';
+    this.drops = [];
     this.suddenEndsAt = 0;
     this.endScreenUntil = 0;
   }
@@ -344,7 +356,7 @@ export class ArenaWorld {
 
   switchWeapon(id: string, w: unknown, now: number): boolean {
     const f = this.fighters.get(id);
-    if (!f || !isWeapon(w) || f.weapon === w || ((f.lifeId !== '' || isKnifeOnly(f.loadout)) && !canHold(f.loadout, w))) return false;
+    if (!f || !isWeapon(w) || f.weapon === w || ((f.lifeId !== '' || isKnifeOnly(f.loadout)) && !canHold(f.loadout, w) && !f.extra?.includes(w))) return false;
     f.weapon = w;
     f.switchedAt = now;
     f.reloadUntil = 0; // switching cancels a reload
@@ -518,6 +530,7 @@ export class ArenaWorld {
     const out: ArenaEvent[] = [{ ev: 'fps_hit', data: { by: byId, target: targetId, hp: Math.round(t.hp), dmg: amount, cause, ...(head ? { head: true } : {}) } }];
     if (!killed) return out;
     t.streak = 0;
+    this.dropWeapon(t, now);
     // Humans get the loadout picker for RESPAWN_PICK_MS (or until they press Respawn); bots come straight back.
     if (!t.id.startsWith('arena-bot-') && !t.id.startsWith('qa-bot-')) t.respawnAt = Math.max(t.respawnAt, now + RESPAWN_PICK_MS);
     const killer = byId ? this.fighters.get(byId) : undefined;
@@ -617,6 +630,45 @@ export class ArenaWorld {
     r.vx = (nx / n) * sp; r.vy = (ny / n) * sp; r.vz = (nz / n) * sp;
   }
 
+  /** Does this fighter already carry weapon `w` this life? (loadout, pistol/knife per rules, or picked up) */
+  carries(f: ArenaFighter, w: WeaponId): boolean {
+    return f.weapon === w || canHold(f.loadout, w) || !!f.extra?.includes(w);
+  }
+
+  /** On death the paid spawn weapon (never the knife) falls where they died, with its remaining mag and skin. */
+  dropWeapon(f: ArenaFighter, now: number): WeaponDrop | null {
+    const w = f.loadout;
+    if (!isWeapon(w) || w === 'knife' || isKnifeOnly(w)) return null;
+    const ammo = f.ammo[w] > 0 ? f.ammo[w] : WEAPONS[w].mag;
+    const sk = this.skins.get(f.id)?.[w];
+    const d: WeaponDrop = { id: ++this.dropSeq, w, x: f.x, y: f.y, z: f.z, ammo, ...(sk ? { sk } : {}), at: now, until: now + DROP_MS };
+    this.drops.push(d);
+    while (this.drops.length > DROP_CAP) this.drops.shift();
+    return d;
+  }
+
+  /** Expires drops, then any living player standing on one they don't already carry picks it up. */
+  stepDrops(now: number): ArenaEvent[] {
+    if (!this.drops.length) return [];
+    this.drops = this.drops.filter((d) => d.until > now);
+    const out: ArenaEvent[] = [];
+    for (const f of this.fighters.values()) {
+      if (!f.alive) continue;
+      for (const d of [...this.drops]) {
+        if (Math.hypot(f.x - d.x, f.y - d.y) > PICKUP_R || Math.abs(f.z - d.z) > 1.5 || this.carries(f, d.w)) continue;
+        (f.extra ??= []).push(d.w);
+        f.ammo[d.w] = Math.min(d.ammo, WEAPONS[d.w].mag);
+        this.drops = this.drops.filter((x) => x !== d);
+        out.push({ ev: 'fps_pickup', data: { id: f.id, w: d.w, ammo: f.ammo[d.w], drop: d.id, name: WEAPONS[d.w].name }, to: f.id });
+      }
+    }
+    return out;
+  }
+
+  private dropView(d: WeaponDrop, now: number) {
+    return { id: d.id, w: d.w, x: +d.x.toFixed(2), y: +d.y.toFixed(2), z: +d.z.toFixed(2), left: Math.max(0, d.until - now), ...(d.sk ? { sk: d.sk } : {}) };
+  }
+
   /** Flies every rocket to `now`; bursts on walls, floors, players or timeout with splash damage. */
   stepRockets(now: number): ArenaEvent[] {
     const out: ArenaEvent[] = [];
@@ -669,12 +721,14 @@ export class ArenaWorld {
         f.wantCrouch = false; f.sprint = false;
         f.broke = false;
         f.weapon = f.loadout;
+        f.extra = [];
         f.switchedAt = -1e9;
         f.ammo = fullAmmo();
         f.reloadUntil = 0;
         f.streak = 0;
       }
     }
+    out.push(...this.stepDrops(now));
     out.push(...this.stepRockets(now));
     // Airstrikes: wait for a live target, track it until lock-on, then the bombs fall in a short line.
     for (const st of this.strikes) {
@@ -774,7 +828,9 @@ export class ArenaWorld {
       roster.push({ id: p.id, name: p.name, k: p.k, d: p.d, st: p.st, ...(p.bot ? { bot: true } : {}) });
       if (uav && p.alive) radar.push({ x: Math.round(p.x), y: Math.round(p.y) });
     }
-    return { ...full, players, roster, ...(uav ? { radar } : {}) };
+    const eye = { x: v.x, y: v.y, z: v.z };
+    const drops = full.drops.filter((d) => canSee(eye, d, this.map));
+    return { ...full, players, roster, drops, ...(uav ? { radar } : {}) };
   }
 
   /** A shot event as seen by `viewerId`: a hidden shooter only gives away a coarse origin (for sound), no tracer rays. */
@@ -794,7 +850,7 @@ export class ArenaWorld {
       players: [...this.fighters.values()].map((f) => ({
         id: f.id, name: f.name, x: +f.x.toFixed(3), y: +f.y.toFixed(3), z: +f.z.toFixed(3), a: +f.a.toFixed(3), p: +f.p.toFixed(3),
         hp: Math.round(f.hp), k: f.kills, d: f.deaths, alive: f.alive, ...(f.id.startsWith('arena-bot-') ? { bot: true } : {}), w: f.weapon, ammo: f.ammo[f.weapon],
-        rl: f.reloadUntil ? Math.max(0, f.reloadUntil - now) : 0, g: f.grounded, ...(f.crouch ? { c: true } : {}), ...(f.sprint ? { s: true } : {}), ...(f.moveSeq !== undefined ? { q: f.moveSeq } : {}), ...(f.lifeId || isKnifeOnly(f.loadout) ? { lo: f.loadout } : {}), stk: f.stake, ...(f.broke ? { bk: true } : {}), ...(!f.alive ? { rs: Math.max(0, f.respawnAt - now) } : {}),
+        rl: f.reloadUntil ? Math.max(0, f.reloadUntil - now) : 0, g: f.grounded, ...(f.crouch ? { c: true } : {}), ...(f.sprint ? { s: true } : {}), ...(f.moveSeq !== undefined ? { q: f.moveSeq } : {}), ...(f.lifeId || isKnifeOnly(f.loadout) ? { lo: f.loadout } : {}), ...(f.extra?.length ? { ex: f.extra } : {}), stk: f.stake, ...(f.broke ? { bk: true } : {}), ...(!f.alive ? { rs: Math.max(0, f.respawnAt - now) } : {}),
         st: f.streak, uav: Math.max(0, f.uavUntil - now), ...(this.skins.get(f.id)?.[f.weapon] ? { sk: this.skins.get(f.id)![f.weapon] } : {}),
       })),
       drones: [...this.drones.values()].flatMap((d) => {
@@ -811,6 +867,7 @@ export class ArenaWorld {
       ...(this.phase === 'ended' && this.lastResult ? { end: { ...this.lastResult, inMs: Math.max(0, this.endScreenUntil - now) } } : {}),
       strikes: this.strikes.map((s) => ({ x: +s.x.toFixed(2), y: +s.y.toFixed(2), z: +roofAt(s.x, s.y, this.map).toFixed(2), inMs: Number.isFinite(s.at) ? Math.max(0, s.at - now) : -1, r: AIRSTRIKE_RADIUS, locked: now >= s.lockAt })),
       rockets: this.rockets.map((r) => this.rocketView(r)),
+      drops: this.drops.map((d) => this.dropView(d, now)),
       nuke: this.nuke ? { by: this.nuke.by, inMs: this.nuke.at - now } : null,
     };
   }

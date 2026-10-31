@@ -158,6 +158,8 @@ export interface Fx3D {
   tracers: Array<{ o: [number, number, number]; e: [number, number, number]; t: number; sniper?: boolean }>;
   /** RPG rockets in flight (extrapolated from the server's last snapshot). */
   rockets?: Array<{ id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; seek?: boolean }>;
+  /** Dropped guns on the floor: `left` ms until they vanish (blink in the last second). */
+  drops?: Array<{ id: number; w: WeaponId; x: number; y: number; z: number; left: number; sk?: string }>;
 }
 
 /** How fast a tracer streak flies (tiles/s) and how long its glowing tail is. */
@@ -226,6 +228,7 @@ export class Arena3D {
   private vmLight = new THREE.PointLight(0xffc070, 0, 3, 1.5);
   private worldFlash = new THREE.PointLight(0xffb060, 0, 7, 1.5);
   private flashMat: THREE.SpriteMaterial;
+  private dropObjs = new Map<number, THREE.Group>();
   private sleeveMat = new THREE.MeshLambertMaterial({ color: 0x4d5338 });
   private gloveMat = new THREE.MeshLambertMaterial({ color: 0x1e1f1c });
   private pool: Record<'drone' | 'strike' | 'boom' | 'tracer', THREE.Object3D[]> = { drone: [], strike: [], boom: [], tracer: [] };
@@ -458,6 +461,33 @@ export class Arena3D {
     return m;
   }
 
+  /** Floating, spinning pickups with the owner's skin and a soft glow; blink + fade in the last second. */
+  private renderDrops(drops: NonNullable<Fx3D['drops']>) {
+    const now = performance.now();
+    const live = new Set<number>();
+    for (const d of drops) {
+      live.add(d.id);
+      let g = this.dropObjs.get(d.id);
+      if (!g) {
+        g = new THREE.Group();
+        const gun = buildGun(d.w);
+        applySkin(gun.root, d.sk ?? null);
+        gun.root.scale.setScalar(1.7);
+        g.add(gun.root);
+        const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.flashMat.map, color: 0xffd36a, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.55 }));
+        glow.scale.setScalar(1.1); glow.name = 'glow'; g.add(glow);
+        this.scene.add(g); this.dropObjs.set(d.id, g);
+      }
+      const blink = d.left < 1000;
+      g.visible = !blink || Math.floor(now / 110) % 2 === 0;
+      const fade = blink ? Math.max(0.2, d.left / 1000) : 1;
+      g.scale.setScalar(fade);
+      g.position.copy(W(d.x, d.y, d.z + 0.55 + Math.sin(now / 300 + d.id) * 0.08));
+      g.rotation.y = now / 600 + d.id;
+    }
+    for (const [id, g] of this.dropObjs) if (!live.has(id)) { this.scene.remove(g); this.dropObjs.delete(id); }
+  }
+
   private vmGun(w: WeaponId) {
     let g = this.vmGuns.get(w);
     if (g) return g;
@@ -660,6 +690,7 @@ export class Arena3D {
     const dt = this.lastT ? Math.min(0.1, tnow - this.lastT) : 0;
     this.lastT = tnow;
     this.stepFx(dt, fx.rockets ?? [], fx.tracers);
+    this.renderDrops(fx.drops ?? []);
     fx.tracers.forEach((t, i) => {
       const o = this.take('tracer', i, () => {
         const g = new THREE.BufferGeometry();
