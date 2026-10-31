@@ -4,18 +4,49 @@ import { TopTab } from './TopTabs';
 import { request, socket } from '@/lib/net';
 import { useAccount } from '@/lib/auth';
 import { paintSkin } from '@/lib/skinRender';
-import { CASE_ODDS_TABLE, KNIFE_IN_CASES, isKnife, skinName, CASE_NAME, KEY_NAME, RARITY_COLOR, RARITY_NAME, SKIN_BY_ID, WEAPON_NAME, wearOf, type Rarity, type SkinItem } from '../../../shared/skins';
+import { skinThumb, mountInspect } from '../lib/skinThumbs';
+import { skinToken, CASE_ODDS_TABLE, KNIFE_IN_CASES, isKnife, skinName, CASE_NAME, KEY_NAME, RARITY_COLOR, RARITY_NAME, SKIN_BY_ID, WEAPON_NAME, wearOf, type Rarity, type SkinItem } from '../../../shared/skins';
 
 const RANK: Record<Rarity, number> = { common: 0, rare: 1, ultra: 2 };
 
 /** Canvas swatch of a skin's pattern (same painter the 3D guns use). */
-function Swatch({ item, size }: { item: SkinItem; size: number }) {
+/** Flat pattern swatch (fallback while the 3D thumbnail renders, or without WebGL). */
+function FlatSwatch({ item, size }: { item: SkinItem; size: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const skin = SKIN_BY_ID.get(item.skin);
   useEffect(() => { const c = ref.current; if (c && skin) paintSkin(c.getContext('2d')!, size, skin, item.seed, item.float); }, [skin, item.seed, item.float, size]);
+  return <canvas ref={ref} width={size} height={size} className={`inv-swatch ${skin?.fx ? `fx-${skin.fx}` : ''}`} />;
+}
+/** The skin on the real Arena weapon model: rendered lazily when scrolled into view, cached per item. */
+function Swatch({ item, size }: { item: SkinItem; size: number }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const skin = SKIN_BY_ID.get(item.skin);
+  useEffect(() => {
+    if (item.kind !== 'skin' || !skin) return;
+    const el = box.current; if (!el) return;
+    let live = true; const token = skinToken(item);
+    const go = () => void skinThumb(token, size * 2).then((u) => { if (!live) return; if (u) setUrl(u); else setFailed(true); });
+    if (typeof IntersectionObserver === 'undefined') { go(); return () => { live = false; }; }
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); go(); } }, { rootMargin: '200px' });
+    io.observe(el);
+    return () => { live = false; io.disconnect(); };
+  }, [item.kind, item.skin, item.seed, item.float, size, skin]);
   if (item.kind === 'case') return <div className="inv-icon" style={{ width: size, height: size }}>📦</div>;
   if (item.kind === 'key') return <div className="inv-icon" style={{ width: size, height: size }}>🔑</div>;
-  return <canvas ref={ref} width={size} height={size} className={`inv-swatch ${skin?.fx ? `fx-${skin.fx}` : ''}`} />;
+  return (
+    <div ref={box} className={`inv-thumb ${skin?.fx ? `fx-${skin.fx}` : ''}`} style={{ width: size, height: size }}>
+      {url ? <img src={url} width={size} height={size} alt="" draggable={false} data-testid="inv-thumb" /> : <FlatSwatch item={item} size={failed ? size : Math.round(size * 0.6)} />}
+    </div>
+  );
+}
+/** Drag-to-rotate 3D inspect of the selected skin. */
+function Inspect({ item }: { item: SkinItem }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => { const c = ref.current; if (!c || item.kind !== 'skin') return; return mountInspect(c, skinToken(item)); }, [item.id, item.kind, item.skin, item.seed, item.float]);
+  if (item.kind !== 'skin') return <Swatch item={item} size={180} />;
+  return <canvas ref={ref} className="inv-inspect" title="Drag to rotate" data-testid="inv-inspect" />;
 }
 
 const label = (i: SkinItem) => (i.kind === 'case' ? CASE_NAME : i.kind === 'key' ? KEY_NAME : (SKIN_BY_ID.has(i.skin) ? skinName(SKIN_BY_ID.get(i.skin)!) : i.skin));
@@ -114,7 +145,7 @@ function Inventory({ onClose }: { onClose: () => void }) {
           </div>
           <aside className="inv-detail" data-testid="inv-detail">
             {cur ? <>
-              <div className="inv-preview" style={{ '--rc': rarityOf(cur) ? RARITY_COLOR[rarityOf(cur)!] : '#8a8f98' } as React.CSSProperties}><Swatch item={cur} size={180} /></div>
+              <div className="inv-preview" style={{ '--rc': rarityOf(cur) ? RARITY_COLOR[rarityOf(cur)!] : '#8a8f98' } as React.CSSProperties}><Inspect item={cur} /></div>
               <h3>{label(cur)}</h3>
               {def ? <>
                 <p style={{ color: RARITY_COLOR[def.rarity] }}>{RARITY_NAME[def.rarity]} {WEAPON_NAME[def.weapon]}{def.fx ? ` · ✨ ${def.fx}` : ''}</p>

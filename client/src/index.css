@@ -1472,3 +1472,8 @@ html, body { overflow-x: clip; }
 .fps-fs-offer small { opacity: .75; }
 @media (max-width: 560px) { .fps-fs-offer small { display: none; } }
 @media (pointer: coarse) { .fps-fs-offer { display: none; } }
+.inv-thumb { display: flex; align-items: center; justify-content: center; }
+.inv-thumb img { display: block; image-rendering: auto; filter: drop-shadow(0 3px 4px rgba(0,0,0,.5)); }
+.inv-thumb .inv-swatch { opacity: .55; border-radius: 6px; }
+.inv-inspect { width: 100%; height: 200px; display: block; cursor: grab; touch-action: none; }
+.inv-inspect:active { cursor: grabbing; }
