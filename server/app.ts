@@ -1,3 +1,4 @@
+import { getBank } from './casino-store.js';
 import { getAccounts } from './accounts.js';
 import { validateSettings } from '../shared/settings.js';
 import { getChessStats } from './chess-stats.js';
@@ -44,6 +45,13 @@ export async function createApp(): Promise<AppContext> {
     try { return isQaName((await getAccounts().resume(token))?.name); } catch { return false; }
   };
 
+  /** Render health check: 200 only when the chip DB is connected (or dev memory mode), else 503 so the instance takes no traffic. */
+  app.get('/api/health', (_req, res) => {
+    const bank = getBank();
+    res.set('Cache-Control', 'no-store');
+    const chipDb = bank.status === 'ok' ? 'ok' : bank.status === 'memory' ? 'memory' : bank.status;
+    res.status(bank.ready ? 200 : 503).json({ ok: bank.ready, chipDb, ...(bank.ready ? {} : { error: bank.lastError ?? 'connecting' }), build: buildInfo() });
+  });
   app.get('/api/build', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(buildInfo()); });
 
   app.get('/api/leaderboard', async (req, res) => {

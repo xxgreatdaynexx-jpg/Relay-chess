@@ -55,14 +55,14 @@ export function registerAuth(socket: Socket): void {
   socket.on('auth_login', run(async (body) => {
     const { identity, token } = await getAccounts().login(validName(body.name), body.password as string, clientIp(socket));
     socket.data.account = identity;
-    void getBank().refresh(identity.name); // re-sync the chip cache from Postgres (source of truth)
+    void getBank().refresh(identity.name).catch(() => {}); // re-sync the chip cache from Postgres (source of truth)
     return { name: identity.name, session: token };
   }));
 
   socket.on('auth_resume', run(async (body) => {
     const identity = await getAccounts().resume(body.session);
     socket.data.account = identity ?? undefined;
-    if (identity) void getBank().refresh(identity.name);
+    if (identity) void getBank().refresh(identity.name).catch(() => {});
     // invalid: the server looked and this token is unknown/expired. Only then may the client forget it.
     return { name: identity?.name ?? null, invalid: !identity };
   }));

@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import { getAccounts, nameKey } from './accounts.js';
-import { getBank } from './casino-store.js';
+import { getBank, WALLET_UNAVAILABLE } from './casino-store.js';
 import { getVault } from './skins.js';
 
 /** Constant-time token check. Rejects everything when ADMIN_GRANT_TOKEN is unset or short. */
@@ -30,6 +30,7 @@ export function adminRouter(): express.Router {
     try { row = await getAccounts().store.get(nameKey(player)); } catch { return res.status(503).json({ ok: false, error: 'Accounts unavailable.' }); }
     if (!row) return res.status(404).json({ ok: false, error: 'Unknown player.' });
     const bank = getBank();
+    if (!bank.ready) return res.status(503).json({ ok: false, error: WALLET_UNAVAILABLE });
     const before = await bank.refresh(row.name); // DB is the source of truth
     const applied = bank.transfer(row.name, amount, { key, game: 'admin', memo: typeof memo === 'string' && memo ? memo : 'admin_grant' });
     await bank.flush();
@@ -56,6 +57,7 @@ export function adminRouter(): express.Router {
     try { row = await getAccounts().store.get(nameKey(player)); } catch { return res.status(503).json({ ok: false, error: 'Accounts unavailable.' }); }
     if (!row) return res.status(404).json({ ok: false, error: 'Unknown player.' });
     const bank = getBank();
+    if (!bank.ready) return res.status(503).json({ ok: false, error: WALLET_UNAVAILABLE });
     const before = await bank.refresh(row.name); // DB is the source of truth
     if (bank.hasKey(key)) return res.json({ ok: true, applied: false, player: row.name, requested: amount, debited: 0, shortfall: 0, before, after: before, key });
     const debited = Math.min(amount, Math.max(0, before));

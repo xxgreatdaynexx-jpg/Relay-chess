@@ -25,15 +25,19 @@ export function WalletButton() {
   const [chips, setChips] = useState<number | null>(null);
   const [history, setHistory] = useState<Tx[]>([]);
   const [open, setOpen] = useState(false);
+  const [unavailable, setUnavailable] = useState<string | null>(null);
   const [bump, setBump] = useState<'' | 'bump-up' | 'bump-down'>('');
   const ref = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let retry = 0;
     const sub = () => {
       if (!socket.connected) return;
       void request('wallet_sub', {}).then((res) => {
-        const r = res as unknown as { ok: boolean; signedIn?: boolean; chips?: number; history?: Tx[] };
+        const r = res as unknown as { ok: boolean; signedIn?: boolean; chips?: number; history?: Tx[]; unavailable?: boolean; error?: string };
+        if (r.unavailable) { setUnavailable(r.error || 'Wallet temporarily unavailable.'); setChips(null); setWalletChips(null); retry = window.setTimeout(sub, 5000); return; }
+        setUnavailable(null);
         if (!r.ok || !r.signedIn) { setChips(null); setWalletChips(null); setHistory([]); return; }
         setChips(r.chips ?? 0); setWalletChips(r.chips ?? 0);
         setHistory(r.history ?? []);
@@ -57,7 +61,7 @@ export function WalletButton() {
     const onConnect = () => window.setTimeout(sub, 400);
     socket.on('connect', onConnect);
     socket.on('wallet', onWallet);
-    return () => { window.clearTimeout(t); socket.off('connect', onConnect); socket.off('wallet', onWallet); };
+    return () => { window.clearTimeout(t); window.clearTimeout(retry); socket.off('connect', onConnect); socket.off('wallet', onWallet); };
   }, [account]);
 
   useEffect(() => {
@@ -73,11 +77,13 @@ export function WalletButton() {
       <button type="button" className={`wallet-btn ${bump}`} aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="wallet-button"
         aria-label={signedIn ? `Wallet: ${chips} chips` : 'Wallet'}>
         <span aria-hidden>🪙</span>
-        <span data-testid="wallet-chips">{signedIn ? chips!.toLocaleString() : 'Wallet'}</span>
+        <span data-testid="wallet-chips">{unavailable && account ? 'Wallet unavailable' : signedIn ? chips!.toLocaleString() : 'Wallet'}</span>
       </button>
       {open && createPortal(
         <div ref={panelRef} className="wallet-panel" role="dialog" aria-label="Wallet" data-testid="wallet-panel">
-          {!signedIn ? (
+          {unavailable && account ? (
+            <p className="text-sm" role="alert" data-testid="wallet-unavailable">{unavailable} Chip actions are paused until it reconnects.</p>
+          ) : !signedIn ? (
             <div>
               <p className="text-sm">Sign in to get your chip wallet. One balance for chess, checkers, Conquest and the casino.</p>
               <button type="button" className="mt-3 rounded-full bg-[#e8c26a] px-3 py-1.5 text-sm font-bold text-[#1b1d2e]" onClick={() => { setOpen(false); openAccount('account'); }}>Sign in</button>

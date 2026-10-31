@@ -1,5 +1,5 @@
 import type { Server, Socket } from 'socket.io';
-import { getBank, START_CHIPS } from './casino-store.js';
+import { getBank, START_CHIPS, WALLET_UNAVAILABLE } from './casino-store.js';
 import { signedIn } from './auth-sockets.js';
 import type { Ack } from '../shared/types.js';
 
@@ -26,6 +26,9 @@ export function registerWallet(_io: Server, socket: Socket): void {
     try { name = signedIn(socket); } catch { return reply(ack, { ok: true, signedIn: false }); }
     socket.join(roomOf(name));
     const bank = getBank();
-    reply(ack, { ok: true, signedIn: true, chips: await bank.refresh(name), history: await bank.recent(name, 25), start: START_CHIPS });
+    if (!bank.ready) return reply(ack, { ok: false, signedIn: true, unavailable: true, error: WALLET_UNAVAILABLE });
+    try {
+      reply(ack, { ok: true, signedIn: true, chips: await bank.refresh(name), history: await bank.recent(name, 25), start: START_CHIPS });
+    } catch (e) { reply(ack, { ok: false, signedIn: true, unavailable: true, error: (e as Error).message }); }
   });
 }

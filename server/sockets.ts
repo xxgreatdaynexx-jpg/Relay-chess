@@ -7,7 +7,7 @@ import { registerFps } from './fps.js';
 import { AuthError, getAccounts } from './accounts.js';
 import { registerAuth, signedIn } from './auth-sockets.js';
 import { registerCasino, startCasino, stopCasino } from './casino-sockets.js';
-import { getBank } from './casino-store.js';
+import { getBank, isChipEvent, WALLET_UNAVAILABLE } from './casino-store.js';
 import { registerWallet, startWallet } from './wallet-sockets.js';
 import { registerSolitro } from './solitro.js';
 import { registerSkins } from './skins.js';
@@ -182,6 +182,13 @@ export function registerSockets(io: Server): void {
   });
 
   io.on('connection', (socket) => {
+    // Fail closed: while the chip DB isn't connected, refuse every chip-moving event before its handler runs.
+    socket.use((packet, next) => {
+      const event = String(packet[0]);
+      if (getBank().ready || !isChipEvent(event)) return next();
+      const ack = packet[packet.length - 1];
+      if (typeof ack === 'function') (ack as (r: unknown) => void)({ ok: false, unavailable: true, error: WALLET_UNAVAILABLE });
+    });
     // Tables saved before a restart/deploy are loaded on demand, before the handler runs.
     socket.use((packet, next) => {
       const [event, payload] = packet as [string, unknown];
@@ -226,7 +233,7 @@ export function registerSockets(io: Server): void {
       try {
         const body = asRecord(payload);
         const name = signedIn(socket);
-        void getBank().refresh(name); // re-sync the chip cache from Postgres before any wager
+        void getBank().refresh(name).catch(() => {}); // re-sync the chip cache from Postgres before any wager
         const code = cleanCode(body.code);
         const room = getRoom(code);
         if (!room) throw new GameError(missingRoomMessage(code), true);

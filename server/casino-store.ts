@@ -174,6 +174,9 @@ function keyOf(name: string): string {
  * can never overwrite each other. Memory is a cache: it answers synchronously for game flow, and is re-synced from
  * RETURNING after every write and from the DB on wallet reads (`refresh`).
  */
+export const WALLET_UNAVAILABLE = 'Wallet temporarily unavailable.';
+export class WalletUnavailable extends Error { constructor() { super(WALLET_UNAVAILABLE); this.name = 'WalletUnavailable'; } }
+
 export class CasinoBank {
   private accounts = new Map<string, CasinoAccount>();
   private store: CasinoStore | null = null;
@@ -186,16 +189,42 @@ export class CasinoBank {
   /** Backoff between retries of a write that failed for infrastructure reasons (tests shorten it). */
   retryMs = [250, 500, 1000, 2000];
 
+  /**
+   * Chip DB state. 'memory' only for dev/tests with no DATABASE_URL (never in production). While 'connecting' or 'down',
+   * every chip-moving call throws WALLET_UNAVAILABLE and balances are not served: chips never run in-memory-only.
+   */
+  status: 'memory' | 'connecting' | 'down' | 'ok' = 'memory';
+  lastError: string | null = null;
+  get ready(): boolean { return this.status === 'ok' || this.status === 'memory'; }
+  private guard(): void { if (!this.ready) throw new WalletUnavailable(); }
+
   async attach(store: CasinoStore): Promise<boolean> {
     try {
       await store.init();
-      for (const a of await store.loadAll()) this.accounts.set(a.key, a);
-      for (const k of (await store.loadKeys?.()) ?? []) this.keys.add(k);
+      const accounts = await store.loadAll();
+      const keys = (await store.loadKeys?.()) ?? [];
+      this.accounts.clear(); this.keys.clear(); this.recentTx.clear();
+      for (const a of accounts) this.accounts.set(a.key, a);
+      for (const k of keys) this.keys.add(k);
       this.store = store;
+      this.status = 'ok'; this.lastError = null;
       return true;
     } catch (err) {
-      console.error('[casino] postgres unavailable, chips are in-memory only:', (err as Error).message);
+      this.lastError = (err as Error).message;
+      console.error('[casino] chip DB connect failed (wallet refusing chip actions until connected):', this.lastError);
       return false;
+    }
+  }
+
+  /** Mark the bank as needing a DB (production): refuses chip actions until connectUntilReady succeeds. */
+  requireDb(): void { if (this.status !== 'ok') this.status = 'connecting'; }
+
+  /** Boot connect: retry with backoff (capped) until it attaches. Resolves true when connected; never gives up. */
+  async connectUntilReady(store: CasinoStore, backoffMs = [500, 1000, 2000, 5000, 10_000, 15_000, 30_000], sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))): Promise<boolean> {
+    this.requireDb();
+    for (let i = 0; ; i++) {
+      if (await this.attach(store)) return true;
+      await sleep(backoffMs[Math.min(i, backoffMs.length - 1)]);
     }
   }
 
@@ -213,6 +242,7 @@ export class CasinoBank {
 
   /** Re-read the balance from Postgres (login / join / wallet read). Returns the fresh cached balance. */
   async refresh(name: string): Promise<number> {
+    this.guard();
     const a = this.account(name);
     if (!this.store) return a.chips;
     await this.pending.get(a.key);
@@ -235,6 +265,7 @@ export class CasinoBank {
   }
 
   canAfford(name: string, amount: number): boolean {
+    if (!this.ready) return false;
     return this.account(name).chips >= amount;
   }
 
@@ -243,6 +274,7 @@ export class CasinoBank {
    * With a key it is idempotent: a repeat (reconnect, retry, restart) is a no-op and returns false.
    */
   transfer(name: string, amount: number, opts: { key?: string; game: string; memo?: string }): boolean {
+    this.guard();
     if (!Number.isInteger(amount)) throw new Error('Bad amount.');
     if (opts.key && this.keys.has(opts.key)) return false;
     const a = this.account(name);
@@ -261,6 +293,7 @@ export class CasinoBank {
    * re-read from the DB once it commits), and `revert()` for when it never committed.
    */
   transferAtomic(moves: Array<{ name: string; amount: number; key: string; game: string; memo?: string }>): { stmts: Array<{ sql: string; args: unknown[] }>; after: Promise<unknown>; bind: (p: Promise<unknown>) => void; revert: () => void } {
+    this.guard();
     const need = new Map<string, number>();
     for (const m of moves) {
       if (!Number.isInteger(m.amount) || !m.key) throw new Error('Bad amount.');
@@ -309,6 +342,7 @@ export class CasinoBank {
 
   /** Take a stake. Throws when short. */
   debit(name: string, amount: number, game = 'casino'): void {
+    this.guard();
     const a = this.account(name);
     if (!Number.isInteger(amount) || amount <= 0) throw new Error('Bad amount.');
     if (amount > a.chips) throw new Error('Not enough chips.');
@@ -318,6 +352,7 @@ export class CasinoBank {
 
   /** Settle one blackjack hand or roulette spin: `returned` chips come back, `net` is the result vs. stake. */
   settle(name: string, returned: number, net: number, kind: 'hand' | 'spin', game = 'casino'): void {
+    this.guard();
     const a = this.account(name);
     a.chips += returned;
     a.netWon += net;
@@ -329,6 +364,7 @@ export class CasinoBank {
 
   /** Refund a stake that never played (e.g. bet withdrawn). A compensating +amount increment. */
   refund(name: string, amount: number, game = 'casino'): void {
+    this.guard();
     const a = this.account(name);
     a.chips += amount;
     this.log(a, amount, game, null, 'refund');
@@ -336,6 +372,7 @@ export class CasinoBank {
 
   /** Newest first. Memory for this run, else the Postgres ledger. */
   async recent(name: string, limit = 25): Promise<WalletTx[]> {
+    this.guard();
     const key = keyOf(name);
     if (this.store?.recent) {
       await this.pending.get(key);
@@ -345,6 +382,7 @@ export class CasinoBank {
   }
 
   standings(limit = 50): CasinoAccount[] {
+    if (!this.ready) return [];
     return [...this.accounts.values()]
       .filter((a) => a.hands + a.spins > 0 || a.chips !== START_CHIPS)
       .sort((x, y) => y.chips - x.chips || y.netWon - x.netWon || x.name.localeCompare(y.name))
@@ -414,13 +452,24 @@ export function resetBank(): CasinoBank {
   return bank;
 }
 
+/** Production must never run chips without the DB; dev/tests with no DATABASE_URL use the memory bank. */
 export async function initCasinoStorage(): Promise<void> {
   const url = databaseUrl();
   if (!url) {
-    console.warn('[casino] no DATABASE_URL set; chips are in-memory only');
+    if (process.env.NODE_ENV === 'production') {
+      bank.status = 'down'; bank.lastError = 'no DATABASE_URL';
+      console.error('[casino] no DATABASE_URL in production; wallet refuses all chip actions');
+    } else console.warn('[casino] no DATABASE_URL set (dev); chips are in-memory');
     return;
   }
   const pool = new pg.Pool({ connectionString: url, max: 3, connectionTimeoutMillis: 10_000 });
-  const ok = await bank.attach(new PgCasinoStore(pool));
-  if (ok) console.log(`[casino] connected to postgres (${bank.standings(10_000).length} players loaded)`);
+  const b = bank;
+  b.requireDb();
+  // Wait briefly for the first attempt so a healthy boot is ready at listen; keep retrying in the background otherwise.
+  const done = b.connectUntilReady(new PgCasinoStore(pool)).then(() => console.log(`[casino] connected to postgres (${b.standings(10_000).length} players loaded)`));
+  await Promise.race([done, new Promise((r) => setTimeout(r, 15_000))]);
 }
+
+/** Socket events that can move chips (stakes, buys, payouts, seats with buy-ins). Refused while the chip DB is down. */
+const CHIP_EVENT = /^(bj_|he_sit|he_action|roulette_bet|roulette_rebet|vp_deal|vp_draw|vslots_|mines_(hit|collect|craft|sell|pack|factory|factory_upgrade|join)|fac_(buy|expand|place)|casino_me|wallet_sub)|^(sit|pay_bailout|create_room|quick_join|tournament_create|tournament_join|vote_rematch)$/;
+export const isChipEvent = (event: string): boolean => CHIP_EVENT.test(event);
