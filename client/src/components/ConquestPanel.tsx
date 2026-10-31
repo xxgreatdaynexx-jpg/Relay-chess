@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { socket, request } from '@/lib/net';
 import { loadAuth } from '@/lib/auth';
-import { TopTab } from '@/components/TopTabs';
 import { ConquestMap } from '@/components/ConquestMap';
 import { ADJ, CONTINENTS, CQ_PALETTE, CQ_PALETTE_NAMES, START_ARMIES, TERRITORIES, tradeValue, type CqView } from '../../../shared/conquest';
 
@@ -35,7 +34,6 @@ export function ConquestPanel() {
   }, []);
   return (
     <>
-      <TopTab id="conquest"><button type="button" className="sol-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="conquest-tab">🗺 Conquest</button></TopTab>
       {open && <ConquestWindow intent={intent} onClose={() => { setOpen(false); setIntent({}); }} />}
     </>
   );
