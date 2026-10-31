@@ -1,9 +1,10 @@
 /** Mines: three.js cave scene (lazy-loaded). Map coords are (x, y) on the floor and z up; three.js is y-up, so (x, z, y). */
 import * as THREE from 'three';
 import { applyPickSkin, skinnedPickaxe } from './pickaxeModel';
+import { animateMiner, buildMiner, setMinerSkin, type MinerRig } from './minerAvatar';
 import { MINE_EXIT, MINE_MAP, MINE_NODES, ORES } from '../../../shared/mines';
 
-export interface MinerView { id: string; name: string; x: number; y: number; z: number; a: number; c: boolean; sw: number }
+export interface MinerView { id: string; name: string; x: number; y: number; z: number; a: number; c: boolean; sw: number; pk?: string | null }
 
 const rockTex = (() => {
   let t: THREE.CanvasTexture | null = null;
@@ -25,7 +26,7 @@ export class Mines3D {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(75, 1, 0.05, 80);
   private nodes: Array<{ g: THREE.Group; ore: THREE.Mesh; crack: THREE.Mesh; max: number }> = [];
-  private others = new Map<string, THREE.Group>();
+  private others = new Map<string, MinerRig & { sw?: number }>();
   private parts: Particle[] = [];
   private pick: THREE.Group;
   private swingT = 1;
@@ -154,20 +155,13 @@ export class Mines3D {
       if (p.id === meId) continue;
       seen.add(p.id);
       let g = this.others.get(p.id);
-      if (!g) {
-        g = new THREE.Group();
-        const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 0.9, 4, 8), new THREE.MeshLambertMaterial({ color: '#c08a3e' }));
-        body.position.y = 0.75;
-        const hat = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: '#e8c020' }));
-        hat.position.y = 1.55;
-        const tp = skinnedPickaxe(null); tp.scale.setScalar(1.1); tp.position.set(0.32, 0.55, 0.1); tp.rotation.set(0.9, 0, -0.2);
-        g.add(body, hat, tp);
-        this.scene.add(g); this.others.set(p.id, g);
-      }
-      g.position.set(p.x, p.z - (p.c ? 0.3 : 0), p.y);
-      g.rotation.y = -p.a;
+      if (!g) { g = buildMiner(p.pk ?? null); this.scene.add(g.root); this.others.set(p.id, g); }
+      setMinerSkin(g, p.pk ?? null);
+      g.root.position.set(p.x, p.z - (p.c ? 0.3 : 0), p.y);
+      g.root.rotation.y = -p.a;
+      g.sw = p.sw;
     }
-    for (const [id, g] of this.others) if (!seen.has(id)) { this.scene.remove(g); this.others.delete(id); }
+    for (const [id, g] of this.others) if (!seen.has(id)) { this.scene.remove(g.root); this.others.delete(id); }
   }
 
   render(cam: { x: number; y: number; z: number; a: number; p: number }, dt: number, walk: number) {
@@ -190,6 +184,7 @@ export class Mines3D {
     this.hitDue = t;
     this.kick = Math.max(0, this.kick - dt * 0.25);
     this.camera.rotation.x += this.kick;
+    for (const g of this.others.values()) animateMiner(g, dt, g.sw ?? 0);
     for (let i = this.parts.length - 1; i >= 0; i--) {
       const p = this.parts[i];
       p.life -= dt; p.v.y -= 9 * dt; p.m.position.addScaledVector(p.v, dt);

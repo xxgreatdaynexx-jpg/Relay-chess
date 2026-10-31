@@ -3,7 +3,7 @@ import pg from 'pg';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
-import { playerKey } from './skins.js';
+import { getVault, playerKey } from './skins.js';
 import { guestName, lineOfSight, moveAllowance, MOVE_CARRY_MAX, normAngle, clampPitch, canStand, validateMove, eyeHeightOf, type Body } from '../shared/fps.js';
 import { BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, dayKey, isOre, payoutFor, stackKey, priceOf, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId, inExit, CARRY_GRACE_MS, weightOf } from '../shared/mines.js';
 
@@ -319,7 +319,17 @@ export class MinesWorld {
   }
 
   nodesView(now: number) { return this.nodes.map((n) => (this.nodeAvailable(n, now) ? n.hp : -1)); }
-  playersView() { return [...this.miners.values()].map((m) => ({ id: m.id, name: m.name, x: +m.x.toFixed(2), y: +m.y.toFixed(2), z: +m.z.toFixed(2), a: +m.a.toFixed(3), p: +m.p.toFixed(3), c: !!m.crouch, sw: m.lastHit })); }
+  private skinCache = new Map<string, { pk: string | null; at: number }>();
+  /** Equipped pickaxe skin for third-person rendering (cached 5s; guests = stock). */
+  private pickSkin(m: Miner): string | null {
+    if (!m.account) return null;
+    const now = Date.now(); const c = this.skinCache.get(m.id);
+    if (c && now - c.at < 5000) return c.pk;
+    let pk: string | null = null;
+    try { pk = (getVault()?.loadout(m.account) as Record<string, string | undefined> | undefined)?.pickaxe ?? null; } catch { pk = null; }
+    this.skinCache.set(m.id, { pk, at: now }); return pk;
+  }
+  playersView() { return [...this.miners.values()].map((m) => ({ id: m.id, name: m.name, x: +m.x.toFixed(2), y: +m.y.toFixed(2), z: +m.z.toFixed(2), a: +m.a.toFixed(3), p: +m.p.toFixed(3), c: !!m.crouch, sw: m.lastHit, pk: this.pickSkin(m) })); }
 }
 
 let world = new MinesWorld();
