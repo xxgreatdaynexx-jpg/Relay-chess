@@ -431,9 +431,15 @@ export function maybeRespawn(f: Fighter, now: number, others: Fighter[], rand: (
  * then collision is re-run on the server (walls, stairs). Height is never taken from the client: it comes
  * from the server's own gravity/jump simulation, so nobody can fly or teleport.
  */
-export function validateMove(f: Body, nx: unknown, ny: unknown, dtMs: number, map: ArenaMap = MAP): Body {
+/** Per-move allowance: the max legit speed (shared speedOf, incl. sprint × knife) × time × margin + slack. */
+export const MOVE_MARGIN = 1.5;
+export const MOVE_SLACK = 0.1;
+/** Unused allowance carried to the next move (absorbs network jitter / bunched packets). */
+export const MOVE_CARRY_MAX = 0.75;
+export const moveAllowance = (b: Crouchy, dtMs: number, carry = 0): number => speedOf(b) * (Math.min(Math.max(dtMs, 0), 500) / 1000) * MOVE_MARGIN + MOVE_SLACK + Math.min(Math.max(carry, 0), MOVE_CARRY_MAX);
+export function validateMove(f: Body, nx: unknown, ny: unknown, dtMs: number, map: ArenaMap = MAP, allowedOverride?: number): Body {
   if (typeof nx !== 'number' || typeof ny !== 'number' || !Number.isFinite(nx) || !Number.isFinite(ny)) return f;
-  const allowed = speedOf(f) * (Math.min(Math.max(dtMs, 0), 500) / 1000) * 1.5 + 0.1;
+  const allowed = allowedOverride ?? moveAllowance(f, dtMs);
   let dx = nx - f.x;
   let dy = ny - f.y;
   const d = Math.hypot(dx, dy);
@@ -773,4 +779,33 @@ export function meleeHit(
     best = { id: t.id, damage, backstab: heavy && back, d };
   }
   return best && { id: best.id, damage: best.damage, backstab: best.backstab };
+}
+
+// ---------------------------------------------------------------- movement reconciliation
+
+/** Below this, server/client disagreement is ignored; above SNAP it hard-snaps; in between it blends over a few frames. */
+export const RECONCILE_IGNORE = 0.08;
+export const RECONCILE_SNAP = 1.5;
+/** Client-side record of where we were when each fps_move (seq q) was sent. */
+export class MoveHistory {
+  private e: Array<{ q: number; x: number; y: number }> = [];
+  push(q: number, x: number, y: number): void { this.e.push({ q, x, y }); if (this.e.length > 120) this.e.shift(); }
+  at(q: number): { x: number; y: number } | undefined { return this.e.find((h) => h.q === q); }
+  /** Drop acked entries and move the rest by a correction so later acks compare against corrected positions. */
+  ack(q: number, dx: number, dy: number): void { this.e = this.e.filter((h) => h.q > q); for (const h of this.e) { h.x += dx; h.y += dy; } }
+  clear(): void { this.e = []; }
+}
+/**
+ * Compare the server's position for the last move it accepted (seq q) with where we were when we sent it.
+ * Latency no longer shows up as error (the old check compared "now" with a stale server position, which at sprint
+ * speed exceeded the correction threshold and yanked you backwards).
+ */
+export function reconcileMove(hist: MoveHistory, srv: { x: number; y: number; q?: number }, _me: { x: number; y: number }): { kind: 'none' | 'blend' | 'snap'; err: number; dx: number; dy: number } {
+  if (srv.q === undefined) return { kind: 'none', err: 0, dx: 0, dy: 0 };
+  const h = hist.at(srv.q);
+  if (!h) return { kind: 'none', err: 0, dx: 0, dy: 0 };
+  const dx = srv.x - h.x, dy = srv.y - h.y, err = Math.hypot(dx, dy);
+  hist.ack(srv.q, err > RECONCILE_IGNORE ? dx : 0, err > RECONCILE_IGNORE ? dy : 0);
+  if (err <= RECONCILE_IGNORE) return { kind: 'none', err, dx: 0, dy: 0 };
+  return { kind: err > RECONCILE_SNAP ? 'snap' : 'blend', err, dx, dy };
 }

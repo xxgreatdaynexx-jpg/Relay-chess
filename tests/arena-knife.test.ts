@@ -105,8 +105,8 @@ describe('knife', () => {
 
 describe('knife keys', () => {
   it('6 and V are game keys that select the knife', async () => {
-    const src = (await import('node:fs')).readFileSync(new URL('../client/src/components/ArenaPanel.tsx', import.meta.url), 'utf8');
-    const keys = src.match(/GAME_KEYS = new Set\(\[([^\]]*)\]/)![1];
+    const src = (await import('node:fs')).readFileSync(new URL('../client/src/lib/arenaInput.ts', import.meta.url), 'utf8');
+    const keys = src.match(/ARENA_GAME_KEYS = new Set\(\[([^\]]*)\]/)![1];
     expect(keys).toContain("'6'");
     expect(keys).toContain("'v'");
     expect(WEAPON_ORDER[5]).toBe('knife');

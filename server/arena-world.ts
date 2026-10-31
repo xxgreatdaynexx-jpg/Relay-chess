@@ -6,7 +6,7 @@ import {
   AIRSTRIKE_DAMAGE, AIRSTRIKE_DELAY_MS, AIRSTRIKE_LOCK_MS, AIRSTRIKE_RADIUS, AIRSTRIKE_RANGE, AIRSTRIKE_SPACING, AIRSTRIKE_WAIT_MS, applyDamage,
   chestOf, clampPitch, dirFrom, DRONE_COOLDOWN_MS, DRONE_DAMAGE, DRONE_MS, DRONE_RANGE, eyeOf, fireWeapon, isWeapon, KILL_Z, lineOfSight, MAP, MAX_HP, maybeRespawn,
   normAngle, launchRocket, rocketDamage, stepRocket, type Rocket, NUKE_DELAY_MS, NUKE_RESPAWN_MS, pickSpawn, rayWorld, roofAt, SCOPE_SETTLE_MS, splashTargets, stepVertical, STREAKS, streakReward,
-  SWITCH_MS, tryJump, UAV_MS, validateMove, WEAPON_ORDER, WEAPONS, type ArenaMap, type Fighter, MAPS, type StreakKind, type WeaponId,
+  SWITCH_MS, tryJump, UAV_MS, validateMove, moveAllowance, MOVE_CARRY_MAX, WEAPON_ORDER, WEAPONS, type ArenaMap, type Fighter, MAPS, type StreakKind, type WeaponId,
 } from '../shared/fps.js';
 import { isMapId, MAP_ROTATION } from '../shared/arenaMaps.js';
 import { PoseHistory, rewindTime } from '../shared/netInterp.js';
@@ -48,9 +48,12 @@ export interface ArenaFighter extends Fighter {
   reloadUntil: number;
   switchedAt: number;
   scopedSince: number;
+  /** last fps_move seq accepted (echoed in snapshots for client reconciliation) and unused move allowance */
+  moveSeq?: number;
+  moveCarry?: number;
   jumpAt: number;
   streak: number;
-  /** multi-kill chain (kills ≤3 s apart) */
+  /** multi-kill chain (kills ≤5 s apart) */
   multi?: MultiChain;
   uavUntil: number;
   /** Server time the vertical physics was last advanced to. */
@@ -82,6 +85,7 @@ export interface ArenaEvent { ev: string; data: Record<string, unknown>; to?: st
 interface Strike { ownerId: string; x: number; y: number; at: number; trackId: string | null; lockAt: number; giveUpAt: number; bombs: Array<{ dx: number; dy: number; dt: number }> }
 interface Drone { ownerId: string; until: number; lastShot: number }
 
+const canScope = (w: WeaponId): boolean => w === 'sniper';
 const fullAmmo = () => Object.fromEntries(WEAPON_ORDER.map((w) => [w, WEAPONS[w].mag])) as Record<WeaponId, number>;
 const zeroShots = () => Object.fromEntries(WEAPON_ORDER.map((w) => [w, -1e9])) as Record<WeaponId, number>;
 
@@ -251,7 +255,7 @@ export class ArenaWorld {
   }
 
   /** Client position report: x/y are speed-capped and collision-checked; z comes from the server's physics. */
-  move(id: string, x: unknown, y: unknown, a: unknown, now: number, p?: unknown, crouch?: unknown, sprint?: unknown): void {
+  move(id: string, x: unknown, y: unknown, a: unknown, now: number, p?: unknown, crouch?: unknown, sprint?: unknown, seq?: unknown): void {
     const f = this.fighters.get(id);
     if (!f || !f.alive) return;
     if (typeof crouch === 'boolean') this.crouch(id, crouch);
@@ -263,15 +267,22 @@ export class ArenaWorld {
     if (now - f.lastMove < 25) return; // ~40 Hz max
     this.advance(f, now);
     {
-      const scoped = f.weapon === 'sniper' && f.scopedSince > 0;
+      const scoped = canScope(f.weapon) && f.scopedSince > 0;
       const ok = sprint === true && typeof x === 'number' && typeof y === 'number' && canSprint(f, x - f.x, y - f.y, scoped);
       this.setSprint(f, ok, now);
     }
-    if (this.audit && typeof x === 'number' && typeof y === 'number' && Number.isFinite(x) && Number.isFinite(y)) {
-      const dtMs = Math.min(Math.max(now - f.lastMove, 0), 500);
-      this.audit.move(id, Math.hypot(x - f.x, y - f.y), speedOf(f) * (dtMs / 1000) * 1.5 + 0.1, now);
+    // Speed cap: the same shared speedOf the client predicts with. A sprint claim the direction check just rejected
+    // (wall slides, corners) still gets the sprint allowance for this move, so a flipped flag never clips you.
+    const dtMs = Math.min(Math.max(now - f.lastMove, 0), 500);
+    const capBody = { crouch: f.crouch, sprint: f.sprint || (sprint === true && !f.crouch && !(canScope(f.weapon) && f.scopedSince > 0)), weapon: f.weapon };
+    const allowed = moveAllowance(capBody, dtMs, f.moveCarry ?? 0);
+    if (typeof x === 'number' && typeof y === 'number' && Number.isFinite(x) && Number.isFinite(y)) {
+      const asked = Math.hypot(x - f.x, y - f.y);
+      this.audit?.move(id, asked, allowed, now);
+      f.moveCarry = Math.min(MOVE_CARRY_MAX, Math.max(0, allowed - asked));
     }
-    validateMove(f, x, y, now - f.lastMove, this.map);
+    validateMove(f, x, y, dtMs, this.map, allowed);
+    if (typeof seq === 'number' && Number.isInteger(seq)) f.moveSeq = seq;
     f.lastMove = now;
     this.history.record(f.id, now, f.x, f.y, f.z, !!f.crouch);
   }
@@ -768,7 +779,7 @@ export class ArenaWorld {
       players: [...this.fighters.values()].map((f) => ({
         id: f.id, name: f.name, x: +f.x.toFixed(3), y: +f.y.toFixed(3), z: +f.z.toFixed(3), a: +f.a.toFixed(3), p: +f.p.toFixed(3),
         hp: Math.round(f.hp), k: f.kills, d: f.deaths, alive: f.alive, ...(f.id.startsWith('arena-bot-') ? { bot: true } : {}), w: f.weapon, ammo: f.ammo[f.weapon],
-        rl: f.reloadUntil ? Math.max(0, f.reloadUntil - now) : 0, g: f.grounded, ...(f.crouch ? { c: true } : {}), ...(f.sprint ? { s: true } : {}), ...(f.lifeId || isKnifeOnly(f.loadout) ? { lo: f.loadout } : {}), stk: f.stake, ...(f.broke ? { bk: true } : {}), ...(!f.alive ? { rs: Math.max(0, f.respawnAt - now) } : {}),
+        rl: f.reloadUntil ? Math.max(0, f.reloadUntil - now) : 0, g: f.grounded, ...(f.crouch ? { c: true } : {}), ...(f.sprint ? { s: true } : {}), ...(f.moveSeq !== undefined ? { q: f.moveSeq } : {}), ...(f.lifeId || isKnifeOnly(f.loadout) ? { lo: f.loadout } : {}), stk: f.stake, ...(f.broke ? { bk: true } : {}), ...(!f.alive ? { rs: Math.max(0, f.respawnAt - now) } : {}),
         st: f.streak, uav: Math.max(0, f.uavUntil - now), ...(this.skins.get(f.id)?.[f.weapon] ? { sk: this.skins.get(f.id)![f.weapon] } : {}),
       })),
       drones: [...this.drones.values()].flatMap((d) => {

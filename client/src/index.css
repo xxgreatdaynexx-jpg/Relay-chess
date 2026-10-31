@@ -1464,3 +1464,11 @@ html, body { overflow-x: clip; }
 .top-tabs .top-tab-chat, .top-tabs .top-tab-inventory, .top-tabs .top-tab-account { margin-left: 6px !important; }
 .top-tabs .top-tab-wallet:empty + .top-tab-chat { margin-left: auto !important; }
 .top-tabs .top-tab-wallet:empty + .top-tab-chat:empty + .top-tab-inventory { margin-left: auto !important; }
+
+/* Arena: small, dismissable "play fullscreen" offer (keyboard lock keeps Ctrl+W in the game). Hidden on touch screens. */
+.fps-fs-offer { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 6; display: flex; gap: 2px; max-width: calc(100% - 16px); }
+.fps-fs-offer button { background: rgba(10, 14, 12, .72); color: #e8efe6; border: 1px solid rgba(255, 255, 255, .18); border-radius: 6px; padding: 4px 9px; font-size: 12px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fps-fs-offer button:hover { background: rgba(30, 40, 34, .9); }
+.fps-fs-offer small { opacity: .75; }
+@media (max-width: 560px) { .fps-fs-offer small { display: none; } }
+@media (pointer: coarse) { .fps-fs-offer { display: none; } }

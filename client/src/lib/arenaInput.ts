@@ -69,3 +69,28 @@ export function viewZoom(scopeZoom: number, fovKick: number): { zoom: number; sh
   const k = Number.isFinite(fovKick) ? Math.max(0, fovKick) : 0;
   return { zoom: scopeZoom / (1 + SPRINT_FOV_KICK * k), showGun: scopeZoom === 1 };
 }
+
+// ---------------------------------------------------------------- Ctrl / browser-shortcut safety
+
+/** Keys the Arena owns (lowercased e.key; digits by physical code). */
+export const ARENA_GAME_KEYS = new Set(['tab', 'w', 'a', 's', 'd', 'q', 'e', 'f', 'r', 'control', 'c', 'shift', ' ', '1', '2', '3', '4', '5', '6', 'v', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown']);
+export const arenaKey = (e: { key: string; code?: string }): string => (/^Digit[1-6]$/.test(e.code ?? '') ? e.code!.slice(5) : e.key.toLowerCase());
+/**
+ * Window-level guard while the Arena is active: swallow Ctrl/Cmd + game-key combos (Ctrl+S save, Ctrl+D bookmark,
+ * Ctrl+A select-all, Ctrl+R reload, Ctrl+Q…) so they never reach the browser. Ctrl+W/Ctrl+T/Ctrl+N are reserved by
+ * browsers and can only be stopped by keyboard lock in fullscreen.
+ */
+export function shouldBlockShortcut(e: { key: string; code?: string; ctrlKey?: boolean; metaKey?: boolean }, active: boolean): boolean {
+  if (!active || !(e.ctrlKey || e.metaKey)) return false;
+  const k = arenaKey(e);
+  return ARENA_GAME_KEYS.has(k) && k !== 'control';
+}
+/** Ctrl is the crouch key, C the alternate. */
+export const crouchHeld = (keys: Set<string>, touch: boolean): boolean => keys.has('control') || keys.has('c') || touch;
+/** Sends a boolean only when it changes (crouch/sprint state). */
+export function changeSender(send: (on: boolean) => void): (on: boolean) => void {
+  let last: boolean | undefined;
+  return (on) => { if (on !== last) { last = on; send(on); } };
+}
+/** Keys navigator.keyboard.lock() grabs in fullscreen so Ctrl+W & co. go to the game. */
+export const LOCK_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyR', 'KeyF', 'KeyC', 'KeyV', 'ControlLeft', 'ControlRight', 'ShiftLeft', 'Space', 'Tab', 'Escape'];

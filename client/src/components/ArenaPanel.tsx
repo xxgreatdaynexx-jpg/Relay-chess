@@ -3,7 +3,7 @@ import { useWalletChips } from '@/lib/wallet';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useRef, useState } from 'react';
 import { socket } from '@/lib/net';
-import { LOOK_KEY, SENS_MAX, SENS_MIN, mouseLook, readLook, type LookPrefs, FPS_KEY, fpsFrom, hotkeyFor, isLockedTo, readFpsPref, stepFovKick, viewZoom } from '@/lib/arenaInput';
+import { LOOK_KEY, SENS_MAX, SENS_MIN, mouseLook, readLook, type LookPrefs, FPS_KEY, fpsFrom, hotkeyFor, isLockedTo, readFpsPref, stepFovKick, viewZoom, ARENA_GAME_KEYS, LOCK_KEYS, arenaKey, crouchHeld, shouldBlockShortcut } from '@/lib/arenaInput';
 import { ArenaRenderer, minimapSize } from '@/lib/arenaRender';
 import type { Arena3D, Fx3D, Soldier3D } from '@/lib/arena3d';
 import { prefersReducedMotion } from '@/lib/motion';
@@ -13,7 +13,7 @@ import type { ArenaMap } from '../../../shared/arenaMaps';
 import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playKnife, playLockBeep, playMultiKill, shotFalloff, unlockSounds } from '@/lib/sounds';
 import { feedParts, popupScale, POPUP_MS, type FeedItem } from '@/lib/arenaFeed';
 import {
-  AIRSTRIKE_RADIUS, canHold, isKnifeOnly, knifeOnlyAvailable, cheapestSpawn, isWeapon, spawnCost, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
+  AIRSTRIKE_RADIUS, canHold, isKnifeOnly, knifeOnlyAvailable, cheapestSpawn, isWeapon, spawnCost, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, MoveHistory, reconcileMove, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
 } from '../../../shared/fps';
 
 const OPEN_KEY = 'relay-fps-open';
@@ -25,7 +25,7 @@ const COLORS = ['#5f6a48', '#7d7158', '#596066', '#6b6248', '#4f5a4c', '#73705f'
 const SCOPE_ZOOM = 3.5;
 const FOV = 68; // vertical, degrees
 
-interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number; bot?: boolean; c?: boolean; s?: boolean; lo?: WeaponId; stk?: number; bk?: boolean; rs?: number; sk?: string }
+interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number; bot?: boolean; c?: boolean; s?: boolean; lo?: WeaponId; stk?: number; bk?: boolean; rs?: number; sk?: string; q?: number }
 interface MatchEnd { matchId: string; winnerId: string | null; reason: string; players: Array<{ id: string; name: string; kills: number; deaths: number; earned: number; alive: boolean; bot: boolean }>; prize?: { name: string; amount: number }; inMs: number }
 interface NetState { phase?: 'play' | 'sudden' | 'ended'; alive?: number; sd?: number; end?: MatchEnd; t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null; wh?: boolean; mysk?: Record<string, string>; roster?: Array<Pick<NetPlayer, 'id' | 'name' | 'k' | 'd' | 'st' | 'bot'>>; radar?: Array<{ x: number; y: number }>; rockets?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; seek?: number; lock?: string | null }> }
 interface Snap extends NetState { recv: number }
@@ -103,9 +103,12 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const pickRef = useRef<HTMLSpanElement>(null);
   useEffect(() => { try { localStorage.setItem(FPS_KEY, showFps ? '1' : '0'); } catch { /* ignore */ } }, [showFps]);
   const [isTouch] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches);
-  const net = useRef({ buf: new SnapBuffer<NetState>(), corr: null as null | { x: number; y: number; left: number }, ping: 0, acc: 0, prev: null as null | { x: number; y: number; z: number }, sentCrouch: false }).current;
+  const net = useRef({ buf: new SnapBuffer<NetState>(), corr: null as null | { x: number; y: number; left: number }, ping: 0, acc: 0, prev: null as null | { x: number; y: number; z: number }, sentCrouch: false, hist: new MoveHistory(), seq: 0 }).current;
   const [look, setLookState] = useState<LookPrefs>(() => readLook());
   const lookRef = useRef(look);
+  const fsSupported = typeof document !== 'undefined' && !!document.fullscreenEnabled;
+  const [isFs, setIsFs] = useState(false);
+  const [fsDismissed, setFsDismissed] = useState(() => { try { return sessionStorage.getItem('relay-arena-fs-dismissed') === '1'; } catch { return false; } });
   const [lookOpen, setLookOpen] = useState(false);
   const [boomVol, setBoomVol] = useState(getExplosionVolume);
   const setLook = (patch: Partial<LookPrefs>) => setLookState((cur) => {
@@ -256,8 +259,15 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         if (!mine.alive && m.alive) { m.alive = false; releaseOnDeath(); }
         if (mine.alive && !m.alive) Object.assign(m, { alive: true, x: mine.x, y: mine.y, z: mine.z, vz: 0, grounded: true, p: 0, ammo: WEAPONS[m.weapon].mag, reloadUntil: 0 });
         // The server owns position (and height): if prediction drifts too far, snap to its authoritative spot.
-        else if (mine.alive && (Math.hypot(m.x - mine.x, m.y - mine.y) > 1.5 || Math.abs(m.z - mine.z) > 0.8)) { Object.assign(m, { x: mine.x, y: mine.y, z: mine.z, vz: 0, grounded: mine.g }); net.corr = null; }
-        // Small disagreement beyond normal latency: ease toward the server over ~150 ms instead of snapping.
+        else if (mine.alive && Math.abs(m.z - mine.z) > 0.8) { Object.assign(m, { x: mine.x, y: mine.y, z: mine.z, vz: 0, grounded: mine.g }); net.corr = null; net.hist.clear(); }
+        else if (mine.alive && mine.q !== undefined) {
+          // Compare the server's result for our last acked move with where we were when we sent it (not "now" vs a
+          // stale snapshot): tiny errors are ignored, small ones blend in over ~150 ms, only big ones snap.
+          const r = reconcileMove(net.hist, mine, m);
+          if (r.kind === 'snap') { Object.assign(m, { x: m.x + r.dx, y: m.y + r.dy }); net.corr = null; }
+          else if (r.kind === 'blend') net.corr = { x: r.dx, y: r.dy, left: 0.15 };
+        }
+        else if (mine.alive && Math.hypot(m.x - mine.x, m.y - mine.y) > 1.5) { Object.assign(m, { x: mine.x, y: mine.y, z: mine.z, vz: 0, grounded: mine.g }); net.corr = null; }
         else if (mine.alive && Math.hypot(m.x - mine.x, m.y - mine.y) > 0.6) net.corr = { x: mine.x - m.x, y: mine.y - m.y, left: 0.15 };
         m.hp = mine.hp;
         m.streak = mine.st;
@@ -441,7 +451,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         m.p = clampPitch(m.p + look * 1.6 * tk * dt) ?? m.p;
         const len = Math.hypot(fwd, side) || 1;
         // Crouch: hold Ctrl or C (or the touch toggle). Standing back up waits for headroom, same rule as the server.
-        const wantCrouch = k.has('control') || k.has('c') || touchCrouchRef.current;
+        const wantCrouch = crouchHeld(k, touchCrouchRef.current);
         const wasCrouched = m.crouch;
         applyCrouch(m, wantCrouch, map);
         if (wantCrouch !== net.sentCrouch) { net.sentCrouch = wantCrouch; socket.emit('fps_crouch', { on: wantCrouch }); }
@@ -474,7 +484,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         }
         net.acc -= steps * LOCAL_STEP_S;
         moving = fwd !== 0 || side !== 0;
-        if (now - lastSend > 50) { lastSend = now; socket.emit('fps_move', { x: m.x, y: m.y, a: m.a, p: m.p, c: wantCrouch, s: m.sprint }); }
+        if (now - lastSend > 50) { lastSend = now; net.seq += 1; net.hist.push(net.seq, m.x, m.y); socket.emit('fps_move', { x: m.x, y: m.y, a: m.a, p: m.p, c: wantCrouch, s: m.sprint, q: net.seq }); }
         if (m.firing || k.has('f')) shoot();
       }
       if (m.reloadUntil && now >= m.reloadUntil) { m.reloadUntil = 0; m.ammo = WEAPONS[m.weapon].mag; }
@@ -770,6 +780,18 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     return () => { cancelled = true; cancelAnimationFrame(raf); g3?.dispose(); };
   }, []);
 
+  // Browser-shortcut guard (Ctrl+S/D/A/R/Q… with a game key) and a leave confirm during a live match.
+  useEffect(() => {
+    const active = () => document.pointerLockElement === canvasRef.current || !!wrapRef.current?.contains(document.activeElement);
+    const onKeyGuard = (e: KeyboardEvent) => { if (shouldBlockShortcut(e, active())) e.preventDefault(); };
+    const onLeave = (e: BeforeUnloadEvent) => { if (me.current.joined && phaseRef.current !== 'ended') { e.preventDefault(); e.returnValue = ''; } };
+    const onFs = () => { setIsFs(!!document.fullscreenElement); if (!document.fullscreenElement) (navigator as Navigator & { keyboard?: { unlock?: () => void } }).keyboard?.unlock?.(); };
+    window.addEventListener('keydown', onKeyGuard, true);
+    window.addEventListener('beforeunload', onLeave);
+    document.addEventListener('fullscreenchange', onFs);
+    return () => { window.removeEventListener('keydown', onKeyGuard, true); window.removeEventListener('beforeunload', onLeave); document.removeEventListener('fullscreenchange', onFs); };
+  }, []);
+
   // Pointer-lock mouse look, mouse buttons (left fire, right scope) and wheel weapon switch.
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -808,10 +830,10 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
-  const GAME_KEYS = new Set(['tab', 'w', 'a', 's', 'd', 'q', 'e', 'f', 'r', 'control', 'c', 'shift', ' ', '1', '2', '3', '4', '5', '6', 'v', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown']);
+  const GAME_KEYS = ARENA_GAME_KEYS;
   function onKey(e: React.KeyboardEvent, down: boolean) {
     // Shift turns 1–5 into !@#…; read the physical key so guns still switch mid-sprint.
-    const key = /^Digit[1-6]$/.test(e.code ?? '') ? e.code.slice(5) : e.key.toLowerCase();
+    const key = arenaKey(e);
     if (down) {
       const hk = hotkeyFor(e.key, e.repeat);
       if (hk === 'release') { releaseLock(); setPickerOpen(false); return; }
@@ -824,8 +846,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     e.preventDefault();
     if (key === 'tab') { setShowBoard(down); return; }
     if (!down) { keys.current.delete(key); return; }
+    if (e.repeat) return; // key-repeat: already held, nothing to do
     keys.current.add(key);
-    if (e.repeat) return;
     if (key === ' ') jump();
     else if (key === 'r') reload();
     else if (/^[1-6]$/.test(key)) setWeapon(WEAPON_ORDER[Number(key) - 1]);
@@ -834,6 +856,13 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   }
 
   function releaseOnDeath() { keys.current.clear(); if (document.pointerLockElement) document.exitPointerLock?.(); }
+
+  function toggleFullscreen() {
+    const el = wrapRef.current;
+    if (document.fullscreenElement) { void document.exitFullscreen?.(); return; }
+    void el?.requestFullscreen?.().then(() => (navigator as Navigator & { keyboard?: { lock?: (k: string[]) => Promise<void> } }).keyboard?.lock?.(LOCK_KEYS)).catch(() => {});
+  }
+
   function releaseLock() {
     if (document.pointerLockElement) document.exitPointerLock?.();
     setLocked(false);
@@ -918,6 +947,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
           <label>Touch <input type="range" min={SENS_MIN} max={SENS_MAX} step={0.05} value={look.touch} data-testid="arena-touch-sens" onChange={(e) => setLook({ touch: +e.target.value })} /><span>{look.touch.toFixed(2)}</span></label>
           <label>Explosions <input type="range" min={0} max={1} step={0.05} value={boomVol} data-testid="arena-explosion-vol" onChange={(e) => { setExplosionVolume(+e.target.value); setBoomVol(+e.target.value); }} /><span>{Math.round(boomVol * 100)}%</span></label>
           <label><input type="checkbox" checked={look.invertY} data-testid="arena-invert-y" onChange={(e) => setLook({ invertY: e.target.checked })} /> Invert Y</label>
+          <button type="button" data-testid="arena-fullscreen" onClick={toggleFullscreen}>Fullscreen (protects Ctrl+W)</button>
           <button type="button" onClick={() => setLook({ sens: 1, scope: 0.31, touch: 1, invertY: false })}>Reset</button>
         </div>
       )}
@@ -1046,10 +1076,18 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
           >FIRE</button>
         </div>
       ) : (
+        <>
+        {fsSupported && !isFs && !fsDismissed && (
+          <div className="fps-fs-offer" data-testid="arena-fs-offer">
+            <button type="button" onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}>⛶ Play fullscreen <small>(recommended: protects Ctrl+W)</small></button>
+            <button type="button" aria-label="Dismiss" onClick={(e) => { e.stopPropagation(); setFsDismissed(true); try { sessionStorage.setItem('relay-arena-fs-dismissed', '1'); } catch { /* ok */ } }}>×</button>
+          </div>
+        )}
         <div className="fps-help" data-testid="arena-help">
-          <span className="fps-help-full">WASD move · mouse look · Q/E turn · PgUp/PgDn look · click or F shoot · Space jump · Shift sprint · Ctrl/C crouch (browsers keep Ctrl+W: use C) · 1–5 / wheel guns · 6/V knife (click slash, right-click stab) · R reload · right-click scope · Tab scores · M maps · F3 fps · Esc frees mouse</span>
+          <span className="fps-help-full">WASD move · mouse look · Q/E turn · PgUp/PgDn look · click or F shoot · Space jump · Shift sprint · Ctrl/C crouch (play fullscreen so Ctrl+W can't close the tab) · 1–5 / wheel guns · 6/V knife (click slash, right-click stab) · R reload · right-click scope · Tab scores · M maps · F3 fps · Esc frees mouse</span>
           <span className="fps-help-short">WASD move · click shoot · Space jump · Shift sprint · Ctrl/C crouch · 1–5 guns · 6/V knife · R reload · Tab scores · M maps · F3 fps · Esc frees mouse</span>
         </div>
+        </>
       )}
     </div>
   );

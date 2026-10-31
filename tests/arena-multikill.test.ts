@@ -16,10 +16,11 @@ function setup(victims = 8) {
 const multis = (ev: ArenaEvent[]) => ev.filter((e) => e.ev === 'fps_multi');
 
 describe('multi-kill chain', () => {
-  it('exactly 3 s still chains; 3 s + 1 ms resets', () => {
-    expect(MULTI_WINDOW_MS).toBe(3000);
-    expect(nextChain({ n: 1, at: 1000 }, 4000)).toEqual({ n: 2, at: 4000 });
-    expect(nextChain({ n: 4, at: 1000 }, 4001)).toEqual({ n: 1, at: 4001 });
+  it('exactly 5 s still chains; 5 s + 1 ms resets', () => {
+    expect(MULTI_WINDOW_MS).toBe(5000);
+    expect(nextChain({ n: 1, at: 1000 }, 6000)).toEqual({ n: 2, at: 6000 });
+    expect(nextChain({ n: 4, at: 1000 }, 6001)).toEqual({ n: 1, at: 6001 });
+    expect(nextChain({ n: 1, at: 1000 }, 4500)).toEqual({ n: 2, at: 4500 }); // 3.5 s now chains
   });
   it('the window restarts on every kill', () => {
     let c = nextChain(undefined, 0);
@@ -32,9 +33,9 @@ describe('multi-kill chain', () => {
   it('server: chained kills emit tiers, gap resets', () => {
     const { kill } = setup();
     expect(multis(kill(0, 1000))).toHaveLength(0);
-    expect(multis(kill(1, 4000))[0].data).toMatchObject({ name: 'dayne', tier: 'double', title: 'DOUBLE KILL' });
-    expect(multis(kill(2, 7001))).toHaveLength(0);
-    expect(multis(kill(3, 7500))[0].data.tier).toBe('double');
+    expect(multis(kill(1, 6000))[0].data).toMatchObject({ name: 'dayne', tier: 'double', title: 'DOUBLE KILL' });
+    expect(multis(kill(2, 11001))).toHaveLength(0);
+    expect(multis(kill(3, 11500))[0].data.tier).toBe('double');
   });
   it('server: 6th and 7th chained kills are MULTI', () => {
     const { kill } = setup();

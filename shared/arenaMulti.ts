@@ -1,5 +1,5 @@
 /** Multi-kill chains ("DOUBLE KILL" …): each kill within MULTI_WINDOW_MS of the previous one extends the chain. */
-export const MULTI_WINDOW_MS = 3000;
+export const MULTI_WINDOW_MS = 5000;
 export type MultiTier = 'double' | 'triple' | 'quadra' | 'penta' | 'multi';
 export interface MultiChain { n: number; at: number }
 
