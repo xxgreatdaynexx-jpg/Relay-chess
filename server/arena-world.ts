@@ -11,6 +11,7 @@ import {
 import { isMapId, MAP_ROTATION } from '../shared/arenaMaps.js';
 import { PoseHistory, rewindTime } from '../shared/netInterp.js';
 import { ArenaAntiCheat, ASSIST_CONE, ASSIST_PULL, ASSIST_SPREAD, coarse, VisibilityTracker, type ArenaPerk } from './arena-anticheat.js';
+import { MULTI_LEVEL, MULTI_TITLE, multiTier, nextChain, type MultiChain } from '../shared/arenaMulti.js';
 import { applyCrouch, canSprint, headZOf, speedOf, SPRINT_FIRE_DELAY_MS, SPRINT_FIRE_SLACK_MS } from '../shared/fps.js';
 
 /** Drones hover at least this high, and always above the map's tallest structure. */
@@ -34,6 +35,8 @@ export interface ArenaFighter extends Fighter {
   scopedSince: number;
   jumpAt: number;
   streak: number;
+  /** multi-kill chain (kills ≤3 s apart) */
+  multi?: MultiChain;
   uavUntil: number;
   /** Server time the vertical physics was last advanced to. */
   physAt: number;
@@ -44,7 +47,8 @@ export interface ArenaFighter extends Fighter {
   sprintEndAt?: number;
 }
 
-export interface ArenaEvent { ev: string; data: Record<string, unknown> }
+/** `to` set: sent only to that socket (e.g. the killer's own multi-kill sound cue); otherwise broadcast. */
+export interface ArenaEvent { ev: string; data: Record<string, unknown>; to?: string }
 /** An airstrike run. It tracks its target (trackId) until lockAt, then the zone is fixed and the bombs fall at `at`. */
 interface Strike { ownerId: string; x: number; y: number; at: number; trackId: string | null; lockAt: number; giveUpAt: number; bombs: Array<{ dx: number; dy: number; dt: number }> }
 interface Drone { ownerId: string; until: number; lastShot: number }
@@ -338,10 +342,18 @@ export class ArenaWorld {
     if (!killed) return out;
     t.streak = 0;
     const killer = byId ? this.fighters.get(byId) : undefined;
-    out.push({ ev: 'fps_kill', data: { killer: killer?.name ?? '☢', victim: t.name, killerId: byId, victimId: t.id, cause, ...(head ? { head: true } : {}) } });
+    out.push({ ev: 'fps_kill', data: { killer: killer?.name ?? '☢', victim: t.name, killerId: byId, victimId: t.id, cause, ...(head ? { head: true, headshot: true } : {}) } });
     if (killer && killer.id !== t.id && cause !== 'nuke') {
       killer.kills += 1;
       killer.streak += 1;
+      // Multi-kill chain: bot victims count here too (lifetime stats skip them in recordArena).
+      killer.multi = nextChain(killer.multi, now);
+      const tier = multiTier(killer.multi.n);
+      if (tier) {
+        const data = { id: killer.id, name: killer.name, n: killer.multi.n, tier, title: MULTI_TITLE[tier], level: MULTI_LEVEL[tier] };
+        out.push({ ev: 'fps_multi', data });
+        out.push({ ev: 'fps_multi_me', data: { ...data, sound: tier }, to: killer.id });
+      }
       const reward = streakReward(killer.streak);
       if (reward) out.push(...this.activate(killer, reward, now));
     }

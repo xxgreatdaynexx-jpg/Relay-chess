@@ -1379,3 +1379,28 @@ html, body { overflow-x: clip; }
 .cq-fall { opacity: 0; transform-box: fill-box; transform-origin: 50% 100%; animation-name: cq-fall; animation-timing-function: ease-in; animation-fill-mode: both; }
 @keyframes cq-fall { 0% { opacity: 1; transform: rotate(0); } 35% { opacity: 1; transform: rotate(calc(var(--cq-fall-dir, 1) * 90deg)) translateY(2px); } 80% { opacity: .8; transform: rotate(calc(var(--cq-fall-dir, 1) * 90deg)) translateY(2px); } 100% { opacity: 0; transform: rotate(calc(var(--cq-fall-dir, 1) * 90deg)) translateY(2px); } }
 @media (prefers-reduced-motion: reduce) { .cq-battle { display: none; } }
+
+/* Arena: multi-kill pop-up (killer only). Sits below the crosshair, clear of the streak banners (top),
+   the F3 readout (top centre) and the bottom HUD; never touches the viewmodel. */
+.fps-multipop {
+  position: absolute; left: 50%; top: 67%; transform: translate(-50%, -50%) scale(var(--ms, 1));
+  pointer-events: none; z-index: 4; white-space: nowrap; max-width: 92%;
+  font: 900 clamp(12px, 1.8vw, 22px)/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .08em;
+  color: #ffe08a; text-shadow: 0 0 6px rgba(255,180,40,.9), 0 0 18px rgba(255,120,20,.6), 0 2px 0 #000;
+  animation: fps-multipop 1.5s ease-out forwards;
+}
+.fps-multipop-l4, .fps-multipop-l5 { color: #fff1b8; text-shadow: 0 0 8px rgba(255,200,60,1), 0 0 26px rgba(255,90,20,.85), 0 2px 0 #000; }
+@keyframes fps-multipop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(calc(var(--ms, 1) * 1.9)); }
+  12% { opacity: 1; transform: translate(-50%, -50%) scale(calc(var(--ms, 1) * .92)); }
+  20% { transform: translate(-50%, -50%) scale(var(--ms, 1)); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(var(--ms, 1)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fps-multipop { animation: fps-multipop-soft 1.5s linear forwards; }
+}
+@keyframes fps-multipop-soft { 0%, 75% { opacity: 1; } 100% { opacity: 0; } }
+.fps-feed .fps-feed-head { border-left-color: #ffc83c; }
+.fps-hsicon { color: #ffc83c; flex: none; filter: drop-shadow(0 0 2px rgba(255,200,60,.7)); }
+.fps-feed .fps-feed-multi .fps-multi-t { color: #ffe08a; font-weight: 800; }

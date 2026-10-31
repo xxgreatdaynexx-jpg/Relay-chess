@@ -10,7 +10,8 @@ import { prefersReducedMotion } from '@/lib/motion';
 import { INTERP_DELAY_MS, LOCAL_STEP_S, SnapBuffer, samplePlayers } from '../../../shared/netInterp';
 import { TagVisibility, tagVisible } from '@/lib/arenaTags';
 import type { ArenaMap } from '../../../shared/arenaMaps';
-import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, unlockSounds } from '@/lib/sounds';
+import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playMultiKill, unlockSounds } from '@/lib/sounds';
+import { feedParts, popupScale, POPUP_MS, type FeedItem } from '@/lib/arenaFeed';
 import {
   AIRSTRIKE_RADIUS, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
 } from '../../../shared/fps';
@@ -66,7 +67,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const win = useWindowDrag('arena', wrapRef);
   const [status, setStatus] = useState('Joining the arena…');
   const wallet = useWalletChips();
-  const [feed, setFeed] = useState<Array<{ key: number; killer: string; victim: string; cause: string; self: boolean; mine: boolean }>>([]);
+  const [feed, setFeed] = useState<FeedItem[]>([]);
+  const [multiPop, setMultiPop] = useState<{ key: number; title: string; level: number } | null>(null);
   const [showBoard, setShowBoard] = useState(false);
   const [board, setBoard] = useState<NetPlayer[]>([]);
   const [focused, setFocused] = useState(false);
@@ -97,7 +99,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     jumpAt: -1e9, scoped: false, firing: false, streak: 0, uavUntil: 0, walk: 0, crouch: false, eyeH: EYE_HEIGHT, sprint: false, sprintEndAt: -1e9, fovKick: 0,
   });
   const snaps = useRef<Snap[]>([]);
-  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, killmark: 0, nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string; fall: number }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number; sniper?: boolean }>, impacts: [] as Array<{ x: number; y: number; z: number; player: boolean; at: number }>, blasts: [] as Array<{ x: number; y: number; z: number; big: boolean }>, shells: 0, rockets: new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number }>(), weaponAt: new Map<string, { w: string; at: number }>(), hitAt: new Map<string, number>(), shotAt: new Map<string, number>(), shake: 0, jetAt: 0 });
+  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, killmark: 0, headmark: 0, nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string; fall: number }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number; sniper?: boolean }>, impacts: [] as Array<{ x: number; y: number; z: number; player: boolean; at: number }>, blasts: [] as Array<{ x: number; y: number; z: number; big: boolean }>, shells: 0, rockets: new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number }>(), weaponAt: new Map<string, { w: string; at: number }>(), hitAt: new Map<string, number>(), shotAt: new Map<string, number>(), shake: 0, jetAt: 0 });
   const banner = useRef<{ text: string; sub: string; at: number } | null>(null);
   const touch = useRef({ up: false, down: false, left: false, right: false, lookUp: false, lookDown: false });
   const [touchCrouch, setTouchCrouch] = useState(false);
@@ -174,12 +176,12 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         Object.assign(me.current, { id: ack.id, x: ack.x, y: ack.y, z: ack.z ?? 0, vz: 0, grounded: true, p: 0, a: ack.a, joined: true, alive: true });
         setStatus('');
         // Local QA only (?arenaBots=N needs ARENA_QA_BOTS=1 on the server): read-only handle for play-test scripts.
-        if (qaBots) (window as unknown as { __arenaQA?: unknown }).__arenaQA = { me: me.current, snaps: snaps.current, banner };
+        if (qaBots) (window as unknown as { __arenaQA?: unknown }).__arenaQA = { me: me.current, snaps: snaps.current, banner, sock: socket };
       });
     };
     const pingT = window.setInterval(() => { const t0 = performance.now(); socket.timeout(2000).emit('fps_ping', (err: Error | null) => { if (!err) net.ping = Math.round(performance.now() - t0); }); }, 2000);
     let feedKey = 0;
-    const pushFeed = (e: { killer: string; victim: string; cause: string; self: boolean; mine: boolean }) => {
+    const pushFeed = (e: Omit<FeedItem, 'key'>) => {
       const key = ++feedKey;
       setFeed((f) => [...f.slice(-4), { key, ...e }]);
       window.setTimeout(() => setFeed((f) => f.filter((x) => x.key !== key)), 5000);
@@ -249,9 +251,9 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       if (s.impact) { fx.current.booms.push({ ...s.impact, at: now, big: false }); playArenaExplosion(Math.hypot(s.impact.x - me.current.x, s.impact.y - me.current.y) + 4); }
       if (s.rocket) fx.current.rockets.set(s.rocket.id, { ...s.rocket, at: now });
     };
-    const onKill = (k: { killer: string; victim: string; killerId: string | null; victimId: string; cause: string }) => {
+    const onKill = (k: { killer: string; victim: string; killerId: string | null; victimId: string; cause: string; headshot?: boolean }) => {
       const self = k.killerId === k.victimId || !k.killerId;
-      if (k.killerId === me.current.id && !self) fx.current.killmark = performance.now();
+      if (k.killerId === me.current.id && !self) { fx.current.killmark = performance.now(); if (k.headshot) fx.current.headmark = performance.now(); }
       const v = snaps.current[snaps.current.length - 1]?.players.find((p) => p.id === k.victimId);
       if (v) {
         // Fall away from the killer (or backwards when we can't tell).
@@ -259,7 +261,18 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         const fall = by && by.id !== v.id ? Math.atan2(v.y - by.y, v.x - by.x) - v.a : Math.PI;
         fx.current.deaths.set(k.victimId, { at: performance.now(), x: v.x, y: v.y, z: v.z, a: v.a, name: v.name, fall });
       }
-      pushFeed({ killer: k.killer, victim: k.victim, cause: k.cause, self, mine: k.killerId === me.current.id || k.victimId === me.current.id });
+      pushFeed({ killer: k.killer, victim: k.victim, cause: k.cause, self, mine: k.killerId === me.current.id || k.victimId === me.current.id, head: !!k.headshot && !self });
+    };
+    let popKey = 0;
+    // Everyone gets the feed line; only the killer gets the pop-up (fps_multi_me is sent to the killer's socket alone).
+    const onMulti = (x: { id: string; name: string; title: string }) => {
+      pushFeed({ killer: x.name, victim: '', cause: '', self: false, mine: x.id === me.current.id, multi: x.title });
+    };
+    const onMultiMe = (x: { title: string; level: number; sound: string }) => {
+      const key = ++popKey;
+      setMultiPop({ key, title: x.title, level: x.level });
+      window.setTimeout(() => setMultiPop((p) => (p?.key === key ? null : p)), POPUP_MS);
+      playMultiKill(x.sound);
     };
     const onStreak = (s: { id: string; name: string; kind: string; title: string; streak: number }) => {
       const info = STREAKS.find((x) => x.kind === s.kind);
@@ -291,6 +304,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     socket.on('fps_shot', onShot);
     socket.on('fps_kill', onKill);
     socket.on('fps_streak', onStreak);
+    socket.on('fps_multi', onMulti);
+    socket.on('fps_multi_me', onMultiMe);
     socket.on('fps_boom', onBoom);
     const onDrone = () => playWeaponShot('smg', 0.3);
     socket.on('fps_drone_shot', onDrone);
@@ -301,7 +316,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     return () => {
       window.clearInterval(pingT);
       socket.emit('fps_leave');
-      for (const [e, h] of [['fps_state', onState], ['fps_hit', onHit], ['fps_shot', onShot], ['fps_kill', onKill], ['fps_streak', onStreak], ['fps_boom', onBoom], ['fps_drone_shot', onDrone], ['fps_nuke', onNuke], ['connect', join]] as const) socket.off(e, h as never);
+      for (const [e, h] of [['fps_state', onState], ['fps_hit', onHit], ['fps_shot', onShot], ['fps_kill', onKill], ['fps_streak', onStreak], ['fps_multi', onMulti], ['fps_multi_me', onMultiMe], ['fps_boom', onBoom], ['fps_drone_shot', onDrone], ['fps_nuke', onNuke], ['connect', join]] as const) socket.off(e, h as never);
     };
   }, []);
 
@@ -523,12 +538,19 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         const hm = now - fx.current.hitmark;
         if (hm < 220) {
           const kill = now - fx.current.killmark < 300;
-          ctx.strokeStyle = kill ? 'rgba(230,60,50,.95)' : `rgba(255,255,255,${(1 - hm / 220).toFixed(2)})`;
+          const headK = kill && now - fx.current.headmark < 300;
+          ctx.strokeStyle = headK ? 'rgba(255,200,60,.98)' : kill ? 'rgba(230,60,50,.95)' : `rgba(255,255,255,${(1 - hm / 220).toFixed(2)})`;
           ctx.lineWidth = Math.max(1.5, H2 / 180);
           const a0 = cs * 0.35, a1 = cs * 0.85;
           ctx.beginPath();
           for (const [dx, dy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) { ctx.moveTo(W2 / 2 + dx * a0, H2 / 2 + dy * a0); ctx.lineTo(W2 / 2 + dx * a1, H2 / 2 + dy * a1); }
           ctx.stroke();
+          if (headK) {
+            // HEADSHOT variant: gold marker plus a small label under the crosshair.
+            const u = Math.max(1, H2 / 500);
+            ctx.font = `700 ${Math.round(11 * u)}px ui-monospace, Menlo, monospace`; ctx.textAlign = 'center';
+            ctx.fillStyle = 'rgba(255,200,60,.95)'; ctx.fillText('HEADSHOT', W2 / 2, H2 / 2 + cs * 1.6 + 6 * u);
+          }
         }
       }
       // Red screen-edge vignette: brief on hit, persistent when low.
@@ -847,11 +869,14 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         />
         <div className="fps-feed" data-testid="arena-feed">
           {feed.map((f) => (
-            <div key={f.key} className={f.mine ? 'fps-feed-me' : ''}>
-              {f.self ? <><WeaponIcon cause={f.cause} /> <span>{f.victim}</span></> : <><span className="fps-k">{f.killer}</span> <WeaponIcon cause={f.cause} /> <span>{f.victim}</span></>}
+            <div key={f.key} className={`${f.mine ? 'fps-feed-me' : ''}${f.head ? ' fps-feed-head' : ''}${f.multi ? ' fps-feed-multi' : ''}`}>
+              {feedParts(f).map((p, i) => p.t === 'weapon' ? <WeaponIcon key={i} cause={p.cause} /> : p.t === 'head' ? <HeadshotIcon key={i} /> : <span key={i} className={p.t === 'killer' ? 'fps-k' : p.t === 'multi' ? 'fps-multi-t' : ''}>{p.text}</span>)}
             </div>
           ))}
         </div>
+        {multiPop && (
+          <div key={multiPop.key} className={`fps-multipop fps-multipop-l${multiPop.level}`} data-testid="arena-multipop" style={{ ['--ms' as string]: popupScale(multiPop.level) }} aria-live="polite">{multiPop.title}</div>
+        )}
         {showBoard && (
           <div className="fps-scoreboard" data-testid="arena-scoreboard">
             <table>
@@ -904,6 +929,17 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
 }
 
 /** Small weapon silhouettes for the kill feed. */
+/** Original headshot mark: a crosshair ring around a dot, in gold. */
+function HeadshotIcon() {
+  return (
+    <svg className="fps-hsicon" width="13" height="13" viewBox="0 0 16 16" aria-label="headshot" role="img">
+      <circle cx="8" cy="8" r="5" fill="none" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M8 0.5v4M8 11.5v4M0.5 8h4M11.5 8h4" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="8" cy="8" r="1.6" fill="currentColor" />
+    </svg>
+  );
+}
+
 function WeaponIcon({ cause }: { cause: string }) {
   const paths: Record<string, string> = {
     pistol: 'M2 3h14v3H8l-1 5H4l1-5H2z',

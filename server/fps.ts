@@ -118,6 +118,7 @@ function emit(io: Server, events: ArenaEvent[]): void {
   for (const e of events) {
     // Shots carry the shooter's position: hidden shooters only give away a coarse origin.
     if (e.ev === 'fps_shot') for (const id of viewers()) io.to(id).emit(e.ev, world.shotFor(id, e.data, now));
+    else if (e.to) io.to(e.to).emit(e.ev, e.data);
     else io.to(ROOM).emit(e.ev, e.data);
   }
 }

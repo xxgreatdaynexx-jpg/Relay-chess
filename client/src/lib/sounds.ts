@@ -105,6 +105,28 @@ const huhClip: Clip = { buffer: null, pending: null };
 const forkClip: Clip = { buffer: null, pending: null };
 const queenDeathClip: Clip = { buffer: null, pending: null };
 const arenaBoomClip: Clip = { buffer: null, pending: null };
+/** Dayne's multi-kill callouts. They peak near 0 dBFS, so they play at ~0.35 through the master gain + limiter. */
+export const MULTI_KILL_GAIN = 0.35;
+export const MULTI_KILL_URL = (tier: string) => `/sounds/arena-ks-${tier}.mp3`;
+const multiClips = new Map<string, Clip>();
+let multiVoice: { src: AudioBufferSourceNode; g: GainNode } | null = null;
+/** Plays a multi-kill callout; a new one cuts off the one still playing. Silent when muted (master gain is 0). */
+export function playMultiKill(tier: string): void {
+  const ctx = audio();
+  if (!ctx) return;
+  let clip = multiClips.get(tier);
+  if (!clip) { clip = { buffer: null, pending: null }; multiClips.set(tier, clip); }
+  void loadClip(ctx, MULTI_KILL_URL(tier), clip).then((buffer) => {
+    if (!buffer) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+    if (multiVoice) { try { multiVoice.src.stop(); multiVoice.g.disconnect(); } catch { /* already ended */ } multiVoice = null; }
+    const g = ctx.createGain(); g.gain.value = MULTI_KILL_GAIN; g.connect(output(ctx));
+    const src = ctx.createBufferSource(); src.buffer = buffer; src.connect(g);
+    const voice = { src, g };
+    src.onended = () => { if (multiVoice === voice) multiVoice = null; try { g.disconnect(); } catch { /* gone */ } };
+    multiVoice = voice; src.start();
+  });
+}
 const queenCaptureClip: Clip = { buffer: null, pending: null };
 const doubleClip: Clip = { buffer: null, pending: null };
 const streakClip: Clip = { buffer: null, pending: null };
