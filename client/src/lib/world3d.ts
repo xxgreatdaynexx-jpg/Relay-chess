@@ -54,6 +54,9 @@ function glowTexture() {
   g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c);
 }
 
+/** Neon/glow dimmer for signs, landmark trim, windows and fountains (Dayne: 'a bit bright'). */
+const NEON = 0.65;
+
 export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const tier = detectWorldTier();
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier !== 'low', powerPreference: 'high-performance' });
@@ -140,9 +143,9 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const lb = lmBoxes[spot.id]; if (!lb) continue;
     const g = new THREE.Group(); g.position.set(lb.x, 0, lb.z); g.rotation.y = lb.rot; // pad turned to face its street
     const hex = '#' + spot.color.toString(16).padStart(6, '0');
-    const neon = mat({ color: spot.color, emissive: spot.color, emissiveIntensity: 1.6 });
+    const neon = mat({ color: spot.color, emissive: spot.color, emissiveIntensity: 1.6 * NEON });
     const ems: THREE.MeshStandardMaterial[] = [neon];
-    const win = (seed: number) => { const t = windowsTexture(seed, '#ffd27a', '#9fe8ff'); disposables.push(t); const m = mat({ color: 0x9aa3c0, map: t, emissiveMap: t, emissive: 0xffffff, emissiveIntensity: 0.9, roughness: 0.6 }); ems.push(m); return m; };
+    const win = (seed: number) => { const t = windowsTexture(seed, '#ffd27a', '#9fe8ff'); disposables.push(t); const m = mat({ color: 0x9aa3c0, map: t, emissiveMap: t, emissive: 0xffffff, emissiveIntensity: 0.9 * NEON, roughness: 0.6 }); ems.push(m); return m; };
     const dark = mat({ color: 0x4a5070, roughness: 0.7 });
     const pad = box(12, 0.15, 12, mat({ color: 0x55596a })); g.add(pad);
     let height = 8;
@@ -158,17 +161,17 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
           g.add(box(11.4, 0.18, 11.4, mat({ color: 0xffffff, map: t, roughness: 0.5 }))); }
         g.add(box(9, 5, 9, win(11)));
         for (let i = 0; i < 4; i++) { const t = cyl(0.9, 1.1, 8, dark, i % 2 ? 4 : -4, 0, i < 2 ? 4 : -4, 8); g.add(t); g.add(cyl(1.3, 0.2, 1.4, neon, t.position.x, 8, t.position.z, 8)); }
-        const ivory = mat({ color: 0xf1ead6, emissive: 0xf1ead6, emissiveIntensity: 0.25 }); ems.push(ivory);
+        const ivory = mat({ color: 0xf1ead6, emissive: 0xf1ead6, emissiveIntensity: 0.25 * NEON }); ems.push(ivory);
         g.add(cyl(2.4, 2.8, 0.8, ivory, 0, 5, 0, 16), cyl(1.2, 2, 4.2, ivory, 0, 5.8, 0, 16), cyl(1.7, 1.2, 0.7, ivory, 0, 10, 0, 16), box(0.6, 2.4, 0.6, neon, 0, 10.7, 0), box(1.8, 0.6, 0.6, neon, 0, 11.6, 0)); height = 14; break; }
       case 'mine': {
         const hill = new THREE.Mesh(geo(new THREE.ConeGeometry(6.5, 7, 7)), mat({ color: 0x6b5a48, flatShading: true })); hill.position.y = 3.5; g.add(hill);
         const tun = box(3, 3, 2, mat({ color: 0x0a0806 }), 0, 0, 5.4); g.add(tun, box(3.8, 0.5, 2.2, neon, 0, 3, 5.4));
         g.add(box(0.4, 6, 0.4, dark, -3, 0, 5.6), box(0.4, 6, 0.4, dark, 3, 0, 5.6), box(6.8, 0.4, 0.4, dark, 0, 6, 5.6));
-        const cart = box(1.6, 1, 1, mat({ color: 0x8a5a2b }), 4, 0.2, 3); g.add(cart, box(1.2, 0.5, 0.7, mat({ color: 0xffb347, emissive: 0xff8a00, emissiveIntensity: 0.8 }), 4, 1.2, 3)); height = 9; break; }
+        const cart = box(1.6, 1, 1, mat({ color: 0x8a5a2b }), 4, 0.2, 3); g.add(cart, box(1.2, 0.5, 0.7, mat({ color: 0xffb347, emissive: 0xff8a00, emissiveIntensity: 0.8 * NEON }), 4, 1.2, 3)); height = 9; break; }
       case 'arena': {
         g.add(cyl(6, 6.4, 4, win(21), 0, 0, 0, 20));
         const ring = new THREE.Mesh(geo(new THREE.TorusGeometry(6.1, 0.35, 6, 28)), neon); ring.rotation.x = Math.PI / 2; ring.position.y = 4.2; g.add(ring);
-        for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + Math.PI / 4; g.add(box(0.5, 9, 0.5, dark, Math.cos(a) * 6.6, 0, Math.sin(a) * 6.6), box(1.4, 0.6, 1.4, mat({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 2 }), Math.cos(a) * 6.6, 9, Math.sin(a) * 6.6)); }
+        for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + Math.PI / 4; g.add(box(0.5, 9, 0.5, dark, Math.cos(a) * 6.6, 0, Math.sin(a) * 6.6), box(1.4, 0.6, 1.4, mat({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 2 * NEON }), Math.cos(a) * 6.6, 9, Math.sin(a) * 6.6)); }
         height = 11; break; }
       case 'factory': {
         g.add(box(10, 5, 7, win(31)));
@@ -188,25 +191,25 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
         const cols = [0xff5a5a, 0x5affc8, 0xffd35a, 0x8a7aff];
         for (let i = 0; i < 4; i++) { const sx = (i % 2 ? 3 : -3), sz = (i < 2 ? 2.6 : -2.6);
           g.add(box(4, 2.4, 3.4, mat({ color: 0x705038 }), sx, 0, sz));
-          const aw = new THREE.Mesh(geo(new THREE.ConeGeometry(3.3, 1.6, 4)), mat({ color: cols[i], emissive: cols[i], emissiveIntensity: 0.4 })); aw.rotation.y = Math.PI / 4; aw.position.set(sx, 3.2, sz); g.add(aw); }
+          const aw = new THREE.Mesh(geo(new THREE.ConeGeometry(3.3, 1.6, 4)), mat({ color: cols[i], emissive: cols[i], emissiveIntensity: 0.4 * NEON })); aw.rotation.y = Math.PI / 4; aw.position.set(sx, 3.2, sz); g.add(aw); }
         g.add(cyl(0.3, 0.3, 7, dark, 0, 0, 0, 6), box(2.4, 0.5, 0.5, neon, 0, 7, 0)); height = 9; break; }
       case 'stocks': {
         // Stock Exchange: columned hall with a scrolling green ticker band and a bull on the steps.
         g.add(box(10, 1, 8, mat({ color: 0xcfd6dc })), box(9, 6, 6.6, win(51), 0, 1), box(9.6, 0.5, 7.2, mat({ color: 0xcfd6dc }), 0, 7));
         for (let i = 0; i < 6; i++) g.add(cyl(0.35, 0.4, 6, mat({ color: 0xffffff }), -3.75 + i * 1.5, 1, 3.8, 8));
-        g.add(box(9.2, 0.8, 0.2, mat({ color: 0x34d399, emissive: 0x34d399, emissiveIntensity: 1.6 }), 0, 7.6, 3.65));
+        g.add(box(9.2, 0.8, 0.2, mat({ color: 0x34d399, emissive: 0x34d399, emissiveIntensity: 1.6 * NEON }), 0, 7.6, 3.65));
         for (let i = 0; i < 5; i++) g.add(box(0.8, 1 + i * 0.8, 0.8, neon, -2 + i, 8, 0));
         g.add(box(1.6, 0.9, 0.7, mat({ color: 0x6b4a2b }), 3.6, 0, 5.2)); height = 13; break; }
       case 'leaderboard': {
         // The CHUD HUB tower: tallest thing on the map.
         g.add(box(6, 26, 6, win(41)), box(6.4, 0.5, 6.4, neon, 0, 26), box(4.4, 4, 4.4, win(43), 0, 26.5), box(0.3, 6, 0.3, dark, 0, 30.5));
-        const blink = box(0.8, 0.8, 0.8, mat({ color: 0xff2020, emissive: 0xff2020, emissiveIntensity: 3 }), 0, 36.5); g.add(blink); (g.userData as { blink?: THREE.Object3D }).blink = blink;
+        const blink = box(0.8, 0.8, 0.8, mat({ color: 0xff2020, emissive: 0xff2020, emissiveIntensity: 3 * NEON }), 0, 36.5); g.add(blink); (g.userData as { blink?: THREE.Object3D }).blink = blink;
         const face = new THREE.Mesh(geo(new THREE.PlaneGeometry(5.6, 2.2)), (() => { const t = signTexture('CHUD HUB', '#e8c26a'); disposables.push(t); const m = new THREE.MeshBasicMaterial({ map: t, transparent: true, toneMapped: false }); disposables.push(m); return m; })());
         face.position.set(0, 22, 3.05); g.add(face); const f2 = face.clone(); f2.rotation.y = Math.PI / 2; f2.position.set(3.05, 22, 0); g.add(f2);
         height = 38; break; }
       case 'chat': {
         g.add(cyl(4, 4.4, 0.4, mat({ color: 0x9aa0aa }), 0, 0, 0, 20));
-        const fw = cyl(1.4, 2, 1.2, mat({ color: 0x3fa0ff, emissive: 0x2070ff, emissiveIntensity: 1.2 }), 0, 0.4, 0, 14); g.add(fw, cyl(0.25, 0.25, 3, neon, 0, 1.6, 0, 8));
+        const fw = cyl(1.4, 2, 1.2, mat({ color: 0x3fa0ff, emissive: 0x2070ff, emissiveIntensity: 1.2 * NEON }), 0, 0.4, 0, 14); g.add(fw, cyl(0.25, 0.25, 3, neon, 0, 1.6, 0, 8));
         for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; g.add(box(1.6, 0.4, 0.5, mat({ color: 0x8a5a2b }), Math.cos(a) * 5.4, 0.3, Math.sin(a) * 5.4)); }
         height = 7; break; }
     }
@@ -214,7 +217,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const st = signTexture(`${spot.icon} ${spot.label}`, hex); disposables.push(st);
     const sm = new THREE.SpriteMaterial({ map: st, transparent: true, toneMapped: false, depthWrite: false }); disposables.push(sm);
     const sign = new THREE.Sprite(sm); sign.scale.set(8, 2, 1); sign.userData.base = 8; sign.position.set(0, height + 2.2, 0); sign.userData.spot = spot.id; g.add(sign); pickables.push(sign);
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: spot.color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false })); halo.scale.set(16, 16, 1); halo.position.y = 0.6; g.add(halo);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: spot.color, transparent: true, opacity: 0.24, blending: THREE.AdditiveBlending, depthWrite: false })); halo.scale.set(16, 16, 1); halo.position.y = 0.6; g.add(halo);
     scene.add(g);
     lms.push({ id: spot.id, root: g, hit: [], emissive: ems, sign, pos: g.position.clone(), height });
   }
@@ -230,7 +233,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   HOUSING_TYPES.forEach((ht, ti) => {
     const list = fillers.filter((f) => f.type === ht.id); if (!list.length) return;
     const [map, em] = housingTextures(200 + ti, ht); disposables.push(map, em);
-    const body = new THREE.InstancedMesh(unitBox, mat({ color: 0xffffff, map, emissiveMap: em, emissive: 0xffffff, emissiveIntensity: 0.9, roughness: 0.9 }), list.length);
+    const body = new THREE.InstancedMesh(unitBox, mat({ color: 0xffffff, map, emissiveMap: em, emissive: 0xffffff, emissiveIntensity: 0.9 * NEON, roughness: 0.9 }), list.length);
     const roof = ht.roof === 'gable' ? new THREE.InstancedMesh(roofGeo, mat({ color: 0xffffff, roughness: 0.8, flatShading: true }), list.length) : null;
     const d = new THREE.Object3D(); const c = new THREE.Color();
     list.forEach((f, i) => {
@@ -245,7 +248,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     patches.forEach((b, i) => { d.position.set(b.x, 0.04, b.z); d.scale.set(b.w, 0.08, b.d); d.rotation.set(0, b.rot, 0); d.updateMatrix(); gm.setMatrixAt(i, d.matrix); gm.setColorAt(i, c.setHex(b.kind === 'park' ? 0x2e7a36 : b.kind === 'plaza' ? 0x77727a : 0x4a3a2c)); });
     scene.add(gm);
     const plazas = patches.filter((b) => b.kind === 'plaza');
-    if (plazas.length) { const fm = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(2.2, 2.4, 0.6, 16)), mat({ color: 0x4aa8ff, emissive: 0x2a78ff, emissiveIntensity: 0.8 }), plazas.length);
+    if (plazas.length) { const fm = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(2.2, 2.4, 0.6, 16)), mat({ color: 0x4aa8ff, emissive: 0x2a78ff, emissiveIntensity: 0.8 * NEON }), plazas.length);
       plazas.forEach((b, i) => { d.position.set(b.x, 0.3, b.z); d.scale.set(1, 1, 1); d.rotation.set(0, 0, 0); d.updateMatrix(); fm.setMatrixAt(i, d.matrix); }); scene.add(fm); }
   }
   const solids = [...Object.values(lmBoxes), ...fillers];
@@ -310,7 +313,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const pick = (cx: number, cy: number) => { const rc = canvas.getBoundingClientRect(); ndc.set(((cx - rc.left) / rc.width) * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1); ray.setFromCamera(ndc, camera); const hit = ray.intersectObjects(pickables, false)[0]; return (hit?.object.userData.spot as string | undefined) ?? null; };
   const setHover = (id: string | null) => {
     if (id === hovered) return; hovered = id; canvas.style.cursor = id ? 'pointer' : 'grab';
-    for (const l of lms) { const on = l.id === id; l.root.scale.setScalar(on ? 1.06 : 1); l.sign.userData.hover = on; for (const m of l.emissive) m.emissiveIntensity = on ? (m.map ? 1.6 : 3) : (m.map ? 0.9 : 1.6); }
+    for (const l of lms) { const on = l.id === id; l.root.scale.setScalar(on ? 1.06 : 1); l.sign.userData.hover = on; for (const m of l.emissive) m.emissiveIntensity = on ? (m.map ? 1.6 : 3) * NEON : (m.map ? 0.9 : 1.6) * NEON; }
   };
   const onMove = (e: PointerEvent) => { if (fly || e.pointerType === 'touch') return; const id = pick(e.clientX, e.clientY); setHover(id); h.onHover(id, e.clientX, e.clientY); };
   let down: { x: number; y: number; t: number } | null = null;
@@ -336,7 +339,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   let composer: EffectComposer | null = null;
   if (tier === 'high') {
     composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera));
-    composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.5, 0.82)); composer.addPass(new OutputPass());
+    composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.36, 0.45, 0.88)); composer.addPass(new OutputPass());
   }
   const resizeComposer = () => { if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(canvas.clientWidth || 1, canvas.clientHeight || 1); } };
   const ro = new ResizeObserver(() => { resize(); resizeComposer(); }); ro.observe(canvas); resize(); resizeComposer();

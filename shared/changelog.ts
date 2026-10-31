@@ -6,7 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-10-31T02:40:00-06:00', title: 'A city that feels lived-in', bullets: [
+  { commit: '', at: '2026-10-31T10:45:00-06:00', title: 'Softer neon in the city', bullets: [
+    'Toned down the city glow: neon signs, landmark trim, lit windows and fountains are about a third dimmer, with less bloom, so it still feels like a night city without the glare.',
+  ] },
+  { commit: '4ea19da', at: '2026-10-31T02:40:00-06:00', title: 'A city that feels lived-in', bullets: [
     'The streets now curve and flow: a bending ring road, sweeping boulevards, a diagonal avenue, winding suburb lanes and cul-de-sacs, with a curving waterfront along the south.',
     'Buildings line up along their street and turn with it — packed tight downtown, more spread out in the suburbs.',
     'Landmarks sit on prominent corners, plazas and the waterfront, each facing its street.',
