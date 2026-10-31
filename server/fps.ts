@@ -114,7 +114,17 @@ world.audit = newAudit();
 /** Match-end drops + equipped skins for signed-in players. */
 let dropIo: Server | null = null;
 function wireWorld(_w: ArenaWorld): void { /* match end runs through finishMatch -> onArenaMatchEnd hooks */ }
+/** A signed-in fighter's equipped skins (weapon -> token). Self-heals the cache from the vault, so a new match, respawn,
+ * reconnect or restart never shows stock guns while the inventory says equipped. */
+export function mySkins(id: string, w: ArenaWorld = world): Record<string, string> | undefined {
+  const n = claimed.get(id);
+  if (!n) return undefined;
+  let sk = w.skins.get(id);
+  if (!sk) { sk = getVault().loadout(n); w.skins.set(id, sk); }
+  return Object.keys(sk).length ? sk : undefined;
+}
 onArenaMatchEnd(({ matchId, players }) => {
+  for (const [id, n] of claimed) if (world.fighters.has(id)) world.skins.set(id, getVault().loadout(n));
   const humans = players.filter((p) => p.account && !isBot(p.id)).map((p) => ({ sock: p.id, name: p.account!, ms: p.participationMs, kills: p.kills, deaths: p.deaths }));
   const got = getVault().dropForMatch(matchId, humans);
   for (const g of got) for (const h of humans) if (h.name === g.name) dropIo?.to(h.sock).emit('inv_drop', g.item);
@@ -234,7 +244,11 @@ function emit(io: Server, events: ArenaEvent[]): void {
 /** Interest management: each client only gets positions/health of enemies it can plausibly see. */
 function broadcastState(io: Server, now = Date.now()): void {
   const full = world.snapshot(now);
-  for (const id of viewers()) io.to(id).emit('fps_state', world.snapshotFor(id, now, full));
+  for (const id of viewers()) {
+    const snap = world.snapshotFor(id, now, full);
+    const mysk = mySkins(id);
+    io.to(id).emit('fps_state', mysk ? { ...snap, mysk } : snap);
+  }
 }
 
 function ensureTicker(io: Server): void {

@@ -42,7 +42,7 @@ const U_WEAPON = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket'];
 /** Weapons that have a skin set. Add 'knife' / 'ar15' here once those weapons exist (their 55 are generated fresh). */
 export const GUN_WEAPONS = ['pistol', 'smg', 'shotgun', 'sniper', 'rocket'] as const;
 /** Knife skins are a CS-style special tier (see CASE_ODDS). The set exists now; it only drops once the knife weapon is live. */
-export const KNIFE_IN_CASES = false;
+export const KNIFE_IN_CASES = true;
 export const SKIN_WEAPONS = [...GUN_WEAPONS, 'knife'] as const;
 export const PER_WEAPON: Record<Rarity, number> = { common: 30, rare: 20, ultra: 5 };
 const PATTERNS: SkinPattern[] = ['camo', 'stripes', 'carbon', 'hex', 'gradient', 'marble', 'digital', 'tiger', 'splatter', 'circuit', 'solid', 'checker'];

@@ -662,8 +662,9 @@ body { padding-top: 44px; }
 .top-tabs { position: fixed; left: 0; right: 0; top: 0; height: 40px; z-index: 48; display: flex; align-items: center; gap: 6px; padding: 0 10px; background: rgba(12,14,24,.82); backdrop-filter: blur(8px); box-shadow: 0 2px 10px rgba(0,0,0,.35); }
 .top-tabs-slots { display: flex; gap: 6px; align-items: center; }
 .top-tab-slot:empty { display: none; }
-.top-tab-inventory { margin-left: auto; flex-shrink: 0; }
-.top-tab-inventory:empty + .top-tab-account { margin-left: auto; }
+.top-tab-inventory { margin-left: 6px; flex-shrink: 0; }
+@media (max-width: 480px) { .top-tabs .inv-tab .inv-tab-label { display: none; } }
+
 .top-tabs .sol-tab { writing-mode: horizontal-tb !important; transform: none !important; border-radius: 9999px !important; padding: 4px 12px !important; font-size: 13px !important; white-space: nowrap; box-shadow: none; }
 .top-tabs .sol-tab[aria-expanded="true"] { background: #e8c26a; color: #1b1d2e; }
 .top-menu-btn { display: none; color: #fff6d8; font-weight: 700; font-size: 14px; padding: 4px 10px; border-radius: 8px; background: rgba(255,255,255,.1); }

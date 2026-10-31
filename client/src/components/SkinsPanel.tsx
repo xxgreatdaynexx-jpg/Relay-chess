@@ -33,7 +33,7 @@ export function SkinsPanel() {
   }, []);
   return (
     <>
-      <TopTab id="inventory"><button type="button" className="sol-tab inv-tab" aria-label="Inventory" aria-expanded={open} onClick={() => setOpen((v) => !v)} data-testid="skins-tab">🎒 Inventory</button></TopTab>
+      <TopTab id="inventory"><button type="button" className="sol-tab inv-tab" aria-label="Inventory" aria-expanded={open} onClick={() => setOpen((v) => !v)} data-testid="skins-tab">🎒<span className="inv-tab-label"> Inventory</span></button></TopTab>
       {toast && createPortal(<div className="inv-toast" data-testid="inv-drop-toast" onClick={() => { setOpen(true); setToast(null); }}>🎁 {toast}</div>, document.body)}
       {open && createPortal(<Inventory onClose={() => setOpen(false)} />, document.body)}
     </>

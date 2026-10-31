@@ -101,3 +101,30 @@ describe('arena match end hook', () => {
     if (end) expect(seen).toEqual([['QA Hook']]);
   });
 });
+
+describe('equipped skins persist across matches', () => {
+  it('equip -> match end -> next match: still equipped and still sent to the player', async () => {
+    const fps = await import('../server/fps');
+    const { getVault } = await import('../server/skins');
+    fps.resetArena();
+    const v = getVault();
+    v.dropForMatch('persist-a', [{ name: 'QA Equip', ms: 120_000, kills: 1, deaths: 0 }]);
+    v.dropForMatch('persist-b', [{ name: 'QA Equip', ms: 120_000, kills: 1, deaths: 0 }]);
+    // Force a case + key so we can open one regardless of the 50/50.
+    const inv = v.inventory('QA Equip');
+    const need = (k: 'case' | 'key') => inv.some((i) => i.kind === k) || (v as unknown as { make: (n: string, k: string, key: string, src: string) => unknown }).make('QA Equip', k, `test:${k}`, 'test');
+    need('case'); need('key');
+    const { item } = v.openCase('QA Equip');
+    v.equip('QA Equip', item.id);
+    const def = SKIN_BY_ID.get(item.skin)!;
+    const w = fps.getArenaWorld();
+    fps.claimArenaName('sock-eq', 'QA Equip');
+    w.join('sock-eq', 'QA Equip', Date.now());
+    w.skins.delete('sock-eq'); // simulate a cleared cache (new match / respawn / restart)
+    expect(fps.mySkins('sock-eq')?.[def.weapon]).toBeTruthy();
+    fps.finishMatch({ matchId: 'persist-c', map: w.map.id, startedAt: 0, endedAt: 1, winnerId: null, reason: 'cap', players: [] });
+    expect(w.skins.get('sock-eq')?.[def.weapon]).toBe(fps.mySkins('sock-eq')?.[def.weapon]);
+    expect(v.inventory('QA Equip').find((i) => i.id === item.id)?.equipped).toBe(true);
+    fps.resetArena();
+  });
+});
