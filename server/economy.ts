@@ -23,7 +23,10 @@ export const ECON_MIGRATION = `CREATE TABLE IF NOT EXISTS daily_economy (
 export const SKIN_BASE: Record<Rarity, number> = { common: 40, rare: 150, ultra: 600 };
 export const CASE_BASE = 50, KEY_BASE = 100, MACHINE_RESALE = 0.5;
 const DAY = 86_400_000, WINDOW = 30 * DAY, RECENT_N = 20, STALE_N = 5, CACHE_MS = 5 * 60_000, BACKFILL_DAYS = 90;
-const TRANSFER_GAMES = new Set(['market', 'trade']);
+/** Ledger games where chips only move player -> player (trades, gifts, escrow). Never created or destroyed. */
+export const P2P_GAMES = new Set(['trade', 'gift', 'tip', 'transfer', 'p2p']);
+/** Player-to-player with a burned fee: only the fee leaves the economy. */
+const FEE_GAMES = new Set(['market']);
 
 export interface SaleRow { what: string; unit: number; at: number }
 export interface Holdings {
@@ -32,7 +35,7 @@ export interface Holdings {
   machines: Array<{ kind: string; n: number }>;
 }
 export interface Flow { game: string; amount: number }
-export interface DayRow { day: string; cash: number; assets: number | null; total: number | null; estPct: number | null; flows: { faucets: Flow[]; sinks: Flow[] } | null; source: string }
+export interface DayRow { day: string; cash: number; assets: number | null; total: number | null; estPct: number | null; flows: { faucets: Flow[]; sinks: Flow[]; transfers?: Flow[] } | null; source: string }
 export interface Category { key: string; label: string; value: number; units: number; estValue: number }
 
 export interface EconSource {
@@ -95,13 +98,29 @@ export function valueHoldings(h: Holdings, prices: Map<string, number>) {
 }
 
 export function splitFlows(rows: Array<{ game: string; pos: number; neg: number }>) {
-  const faucets: Flow[] = [], sinks: Flow[] = [];
+  const faucets: Flow[] = [], sinks: Flow[] = [], transfers: Flow[] = [];
   for (const r of rows) {
-    if (TRANSFER_GAMES.has(r.game)) { const net = r.pos + r.neg; if (net < 0) sinks.push({ game: `${r.game} fees`, amount: -net }); else if (net > 0) faucets.push({ game: r.game, amount: net }); continue; }
+    if (P2P_GAMES.has(r.game)) {
+      // Volume only (chips sent or received, whichever is larger: escrow can be open across the window). Not a source or sink.
+      const vol = Math.max(r.pos, -r.neg); if (vol) transfers.push({ game: r.game, amount: vol }); continue;
+    }
+    if (FEE_GAMES.has(r.game)) {
+      if (r.pos) transfers.push({ game: r.game, amount: r.pos });
+      const fee = -(r.pos + r.neg); if (fee > 0) sinks.push({ game: `${r.game} fees`, amount: fee }); continue;
+    }
     if (r.pos) faucets.push({ game: r.game, amount: r.pos }); if (r.neg) sinks.push({ game: r.game, amount: -r.neg });
   }
   const s = (a: Flow[]) => a.sort((x, y) => y.amount - x.amount);
-  return { faucets: s(faucets), sinks: s(sinks) };
+  return { faucets: s(faucets), sinks: s(sinks), transfers: s(transfers) };
+}
+
+/** Re-sort stored snapshot flows (saved before p2p games were split out) without touching the stored rows. */
+export function normalizeFlows(f: { faucets: Flow[]; sinks: Flow[]; transfers?: Flow[] } | null): { faucets: Flow[]; sinks: Flow[]; transfers: Flow[] } | null {
+  if (!f) return null;
+  const p2p = (x: Flow) => P2P_GAMES.has(x.game) || P2P_GAMES.has(x.game.replace(/ fees$/, ''));
+  const transfers = [...(f.transfers ?? [])];
+  for (const x of [...f.faucets, ...f.sinks]) if (p2p(x) && !transfers.some((t) => t.game === x.game.replace(/ fees$/, ''))) transfers.push({ game: x.game.replace(/ fees$/, ''), amount: x.amount });
+  return { faucets: f.faucets.filter((x) => !p2p(x)), sinks: f.sinks.filter((x) => !p2p(x)), transfers };
 }
 
 const pct = (a: number | null | undefined, b: number | null | undefined) => (a == null || b == null || !b ? null : Math.round(((a - b) / b) * 10000) / 100);
@@ -209,7 +228,7 @@ export class PgEconSource implements EconSource {
   }
   async firstLedgerAt() { const r = (await this.db.query('SELECT MIN(created_at) m FROM wallet_transactions')).rows[0]?.m; return r ? new Date(r).getTime() : null; }
   async days(): Promise<DayRow[]> {
-    return (await this.db.query('SELECT * FROM daily_economy ORDER BY day')).rows.map((r) => ({ day: String(r.day), cash: Number(r.cash), assets: r.assets == null ? null : Number(r.assets), total: r.total == null ? null : Number(r.total), estPct: r.est_pct == null ? null : Number(r.est_pct), flows: (typeof r.flows === 'string' ? JSON.parse(r.flows) : r.flows) ?? null, source: String(r.source) }));
+    return (await this.db.query('SELECT * FROM daily_economy ORDER BY day')).rows.map((r) => ({ day: String(r.day), cash: Number(r.cash), assets: r.assets == null ? null : Number(r.assets), total: r.total == null ? null : Number(r.total), estPct: r.est_pct == null ? null : Number(r.est_pct), flows: normalizeFlows((typeof r.flows === 'string' ? JSON.parse(r.flows) : r.flows) ?? null), source: String(r.source) }));
   }
   async saveDay(r: DayRow) {
     await this.db.query('INSERT INTO daily_economy (day, cash, assets, total, est_pct, flows, source) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (day) DO NOTHING', [r.day, r.cash, r.assets, r.total, r.estPct, JSON.stringify(r.flows), r.source]);

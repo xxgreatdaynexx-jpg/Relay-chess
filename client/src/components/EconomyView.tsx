@@ -6,14 +6,14 @@ interface Econ {
   ok: boolean; error?: string; at: number; cash: number; assets: number; total: number; estPct: number; categories: Cat[];
   change: { cash: number | null; assets: number | null; total: number | null };
   inflation: { cash7: number | null; cash30: number | null; total7: number | null; total30: number | null };
-  flows: { faucets: Flow[]; sinks: Flow[] }; net: number;
+  flows: { faucets: Flow[]; sinks: Flow[]; transfers?: Flow[] }; net: number;
   history: Array<{ day: string; cash: number; assets: number | null; total: number | null; source: string }>; method: string;
 }
 
 const n = (v: number) => v.toLocaleString();
 const pc = (v: number | null | undefined) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`);
 const tone = (v: number | null | undefined) => (v == null ? 'opacity-60' : v > 0 ? 'text-amber-300' : v < 0 ? 'text-sky-300' : '');
-const LABEL: Record<string, string> = { mines: '⛏ Mines & factory', market: '🏪 Market', 'market fees': '🏪 Market fees', trade: '🤝 Trades', arena: '🔫 Arena', refill: '♻ Refills', admin: '🛠 Admin grants', blackjack: '🂡 Blackjack', roulette: '🎡 Roulette', slots: '🎰 Slots', holdem: "♠ Hold'em", 'video-poker': '🃏 Video poker', chess: '♞ Chess', checkers: '⛀ Checkers', conquest: '⚔ Conquest', solitro: '🃏 Solitro', casino: '🎲 Casino' };
+const LABEL: Record<string, string> = { mines: '⛏ Mines & factory', market: '🏪 Market', 'market fees': '🏪 Market fees', trade: '🤝 Trades & gifts', gift: '🎁 Gifts', tip: '🎁 Tips', transfer: '🤝 Transfers', p2p: '🤝 Transfers', arena: '🔫 Arena', refill: '♻ Refills', admin: '🛠 Admin grants', blackjack: '🂡 Blackjack', roulette: '🎡 Roulette', slots: '🎰 Slots', holdem: "♠ Hold'em", 'video-poker': '🃏 Video poker', chess: '♞ Chess', checkers: '⛀ Checkers', conquest: '⚔ Conquest', solitro: '🃏 Solitro', casino: '🎲 Casino' };
 
 function Chart({ h, live }: { h: Econ['history']; live: Econ }) {
   const pts = [...h.map((d) => ({ day: d.day, cash: d.cash, total: d.total })), { day: 'now', cash: live.cash, total: live.total as number | null }];
@@ -83,6 +83,12 @@ export function EconomyView() {
         <div><div className="opacity-60">Created</div>{e.flows.faucets.length ? e.flows.faucets.slice(0, 8).map((f) => <div key={f.game} className="flex justify-between gap-1"><span className="truncate">{LABEL[f.game] ?? f.game}</span><b className="text-emerald-300 tabular-nums">+{n(f.amount)}</b></div>) : <div className="opacity-50">None yet</div>}</div>
         <div><div className="opacity-60">Destroyed</div>{e.flows.sinks.length ? e.flows.sinks.slice(0, 8).map((f) => <div key={f.game} className="flex justify-between gap-1"><span className="truncate">{LABEL[f.game] ?? f.game}</span><b className="text-rose-300 tabular-nums">−{n(f.amount)}</b></div>) : <div className="opacity-50">None yet</div>}</div>
       </div>
+      {(() => { const t = e.flows.transfers ?? []; const vol = t.reduce((x, f) => x + f.amount, 0); return (
+        <div className="mt-2 text-[12px]" data-testid="econ-transfers" title="Chips moving between players (trades, gifts, market sales). Not created or destroyed, so not counted in net.">
+          <div className="flex justify-between gap-1"><span className="opacity-60">Transfers between players</span><b className="tabular-nums opacity-90">{n(vol)}</b></div>
+          {t.slice(0, 4).map((f) => <div key={f.game} className="flex justify-between gap-1 pl-2 opacity-70"><span className="truncate">{LABEL[f.game] ?? f.game}</span><span className="tabular-nums">{n(f.amount)}</span></div>)}
+          <div className="text-[10px] opacity-50">Volume only · not a source or sink</div>
+        </div>); })()}
       <p className="mt-2 text-[10px] opacity-50">Updated {new Date(e.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · refreshes every 5 min · QA accounts excluded.</p>
     </div>
   );

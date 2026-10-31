@@ -80,3 +80,22 @@ describe('Economy', () => {
     expect(r.source).toBe('snapshot'); expect(r.assets).toBeGreaterThan(0); expect(r.total).toBe(r.cash + r.assets!);
   });
 });
+
+describe('player-to-player transfers', () => {
+  it('a 1,000-chip trade or gift is neither created nor destroyed, only transfer volume', async () => {
+    const { splitFlows: sf, normalizeFlows } = await import('../server/economy');
+    for (const game of ['trade', 'gift']) {
+      for (const rows of [[{ game, pos: 0, neg: -1000 }], [{ game, pos: 1000, neg: -1000 }], [{ game, pos: 1000, neg: 0 }]]) {
+        const f = sf([...rows, { game: 'mines', pos: 10, neg: 0 }]);
+        expect(f.sinks).toEqual([]);
+        expect(f.faucets).toEqual([{ game: 'mines', amount: 10 }]);
+        expect(f.transfers).toEqual([{ game, amount: 1000 }]);
+      }
+    }
+    const m = sf([{ game: 'market', pos: 950, neg: -1000 }]);
+    expect(m.sinks).toEqual([{ game: 'market fees', amount: 50 }]);
+    expect(m.transfers).toEqual([{ game: 'market', amount: 950 }]);
+    // Snapshots saved by the old code are re-sorted on read (stored rows untouched).
+    expect(normalizeFlows({ faucets: [], sinks: [{ game: 'trade fees', amount: 1000 }, { game: 'roulette', amount: 5 }] })).toEqual({ faucets: [], sinks: [{ game: 'roulette', amount: 5 }], transfers: [{ game: 'trade', amount: 1000 }] });
+  });
+});
