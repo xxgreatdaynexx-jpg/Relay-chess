@@ -1477,3 +1477,8 @@ html, body { overflow-x: clip; }
 .inv-thumb .inv-swatch { opacity: .55; border-radius: 6px; }
 .inv-inspect { width: 100%; height: 200px; display: block; cursor: grab; touch-action: none; }
 .inv-inspect:active { cursor: grabbing; }
+/* Arena fullscreen: the panel fills the screen and the game canvas takes every pixel under the title bar. */
+.fps-panel:fullscreen { width: 100vw !important; height: 100vh !important; max-height: none !important; border-radius: 0; display: flex; flex-direction: column; animation: none; box-shadow: none; overflow: hidden; }
+.fps-panel:fullscreen .fps-stage { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.fps-panel:fullscreen .fps-canvas { width: 100%; height: 100%; aspect-ratio: auto; }
+.fps-panel:fullscreen .fps-touch, .fps-panel:fullscreen .win-grip { display: none; }

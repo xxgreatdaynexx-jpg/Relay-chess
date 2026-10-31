@@ -821,7 +821,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     const active = () => document.pointerLockElement === canvasRef.current || !!wrapRef.current?.contains(document.activeElement);
     const onKeyGuard = (e: KeyboardEvent) => { if (shouldBlockShortcut(e, active())) e.preventDefault(); };
     const onLeave = (e: BeforeUnloadEvent) => { if (me.current.joined && phaseRef.current !== 'ended') { e.preventDefault(); e.returnValue = ''; } };
-    const onFs = () => { setIsFs(!!document.fullscreenElement); if (!document.fullscreenElement) (navigator as Navigator & { keyboard?: { unlock?: () => void } }).keyboard?.unlock?.(); };
+    const onFs = () => { setIsFs(!!document.fullscreenElement); if (!document.fullscreenElement) { try { (navigator as Navigator & { keyboard?: { unlock?: () => void } }).keyboard?.unlock?.(); } catch { /* ok */ } wrapRef.current?.focus({ preventScroll: true }); } };
     window.addEventListener('keydown', onKeyGuard, true);
     window.addEventListener('beforeunload', onLeave);
     document.addEventListener('fullscreenchange', onFs);
@@ -843,6 +843,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     const sync = () => {
       const on = isLockedTo(document.pointerLockElement, canvas);
       setLocked(on);
+      // Locked to the canvas means the player is playing: keys must reach the panel's key handler.
+      if (on) refocusArena();
       // Losing the lock / focus drops held keys we'll never see the keyup for (Shift would keep sprinting).
       if (!on) { me.current.firing = false; setScope(false); keys.current.delete('shift'); me.current.sprint = false; }
       if (!document.hasFocus() || document.hidden) keys.current.clear();
@@ -892,6 +894,10 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     else if (key === 'f') shoot();
   }
 
+  function refocusArena() {
+    const w = wrapRef.current;
+    if (w && !w.contains(document.activeElement)) w.focus({ preventScroll: true });
+  }
   /** Respawned: drop stale move history/corrections and put keyboard focus back on the game (the Respawn button that
    *  had focus just unmounted, which left WASD going nowhere until something refocused the panel). */
   function syncOnRespawn() {
@@ -902,9 +908,20 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   function releaseOnDeath() { keys.current.clear(); if (document.pointerLockElement) document.exitPointerLock?.(); }
 
   function toggleFullscreen() {
+    // Never let fullscreen break the game: every step is feature-detected and failures just leave you windowed.
     const el = wrapRef.current;
-    if (document.fullscreenElement) { void document.exitFullscreen?.(); return; }
-    void el?.requestFullscreen?.().then(() => (navigator as Navigator & { keyboard?: { lock?: (k: string[]) => Promise<void> } }).keyboard?.lock?.(LOCK_KEYS)).catch(() => {});
+    const kb = (navigator as Navigator & { keyboard?: { lock?: (k: string[]) => Promise<void>; unlock?: () => void } }).keyboard;
+    try {
+      if (document.fullscreenElement) { try { kb?.unlock?.(); } catch { /* ok */ } void document.exitFullscreen?.()?.catch?.(() => {}); return; }
+      if (!el?.requestFullscreen) return;
+      // Called straight from the click (user gesture). Keyboard lock (Chromium only) only once we're fullscreen.
+      el.requestFullscreen({ navigationUI: 'hide' }).then(() => {
+        try { void kb?.lock?.(LOCK_KEYS)?.catch?.(() => {}); } catch { /* Firefox / Safari: no Keyboard Lock */ }
+        el.focus({ preventScroll: true });
+        // Re-take the mouse right away when the browser still counts the click; otherwise the next click on the canvas does.
+        try { const p = canvasRef.current?.requestPointerLock?.() as unknown as Promise<void> | undefined; p?.catch?.(() => {}); } catch { /* click to play */ }
+      }).catch(() => {});
+    } catch { /* unsupported */ }
   }
 
   function releaseLock() {
@@ -1042,7 +1059,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
               <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center' }}>
                 <span data-testid="arena-respawn-countdown">Auto-respawn in <b>{life.rs}s</b></span>
                 <button type="button" data-testid="arena-respawn-now" style={{ padding: '4px 12px', borderRadius: 4, border: 0, background: '#e6e9df', color: '#15170f', fontWeight: 800 }}
-                  onClick={() => { socket.emit('fps_respawn', { w: loadoutRef.current }); const p = canvasRef.current?.requestPointerLock?.() as unknown as Promise<void> | undefined; p?.catch?.(() => { /* lock refused */ }); }}>Respawn</button>
+                  onClick={() => { socket.emit('fps_respawn', { w: loadoutRef.current }); wrapRef.current?.focus({ preventScroll: true }); const p = canvasRef.current?.requestPointerLock?.() as unknown as Promise<void> | undefined; p?.catch?.(() => { /* lock refused */ }); }}>Respawn</button>
               </div>
             )}
             {life.broke && wallet !== null && (

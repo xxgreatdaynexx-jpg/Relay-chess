@@ -71,9 +71,12 @@ export function useWindowDrag(id: string, ref: RefObject<HTMLElement | null>) {
   const [isPhone, setPhone] = useState(() => window.matchMedia?.(PHONE).matches ?? false);
   const phone = () => window.matchMedia?.(PHONE).matches ?? false;
 
+  // A fullscreen panel ignores our transform (the browser pins it to the screen), so clamping it would chase a
+  // moving base forever (React "maximum update depth"): leave the offset alone until it exits fullscreen.
+  const inFs = (el: Element | null) => !!el && typeof document !== 'undefined' && document.fullscreenElement === el;
   const clamp = useCallback((o: Offset): Offset => {
     const el = ref.current;
-    if (!el || phone()) return o;
+    if (!el || phone() || inFs(el)) return o;
     const r = el.getBoundingClientRect();
     const cur = offRef.current;
     return clampOffset(o, { left: r.left - cur.dx, top: r.top - cur.dy, width: r.width, height: r.height }, window.innerWidth, window.innerHeight, M, TOP_BAR);
@@ -83,6 +86,7 @@ export function useWindowDrag(id: string, ref: RefObject<HTMLElement | null>) {
     const el = ref.current;
     if (!el) return;
     if (!stack.includes(el)) bringToFront(el);
+    if (inFs(el)) return;
     const p = pin.current;
     if (p && !phone()) {
       pin.current = null;
@@ -108,7 +112,7 @@ export function useWindowDrag(id: string, ref: RefObject<HTMLElement | null>) {
     const onResize = () => {
       setPhone(phone());
       setSize((s) => {
-        if (!s || phone()) return s;
+        if (!s || phone() || inFs(ref.current)) return s;
         // Clamp from the size the user chose (saved), not the current one, so zooming back out restores it.
         const vw = window.innerWidth, vh = window.innerHeight - TOP_BAR + M;
         const want = maxedRef.current ? { w: vw, h: vh } : (loadSize(id, store()) ?? s);
