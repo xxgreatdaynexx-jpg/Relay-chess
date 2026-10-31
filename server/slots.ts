@@ -17,11 +17,11 @@ function checkBet(machine: unknown, bet: number): asserts machine is MachineId {
  */
 export function spinVideoSlot(bank: CasinoBank, name: string, machine: unknown, bet: number, rand: () => number = secureRand): VideoSpinResult {
   checkBet(machine, bet);
-  bank.debit(name, bet);
+  bank.debit(name, bet, 'slots');
   const round = playRound(machine, bet, rand);
   const returned = round.totalWin;
   const net = returned - bet;
-  bank.settle(name, returned, net, 'spin');
+  bank.settle(name, returned, net, 'spin', 'slots');
   return { round, returned, net, chips: bank.account(name).chips, cost: bet };
 }
 
@@ -34,9 +34,9 @@ export function buyVideoBonus(bank: CasinoBank, name: string, machine: unknown, 
   const cost = buyBonusPrice(machine, bet);
   if (bank.account(name).chips < cost) throw new Error('Not enough chips.');
   const round = playBuyBonus(machine, bet, rand);
-  bank.debit(name, cost);
+  bank.debit(name, cost, 'slots');
   const returned = round.totalWin;
   const net = returned - cost;
-  bank.settle(name, returned, net, 'spin');
+  bank.settle(name, returned, net, 'spin', 'slots');
   return { round, returned, net, chips: bank.account(name).chips, cost };
 }

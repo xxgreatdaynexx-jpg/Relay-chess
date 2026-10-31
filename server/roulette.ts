@@ -45,7 +45,7 @@ export class RouletteWheel {
     const p = this.player(name);
     const total = p.bets.reduce((n, b) => n + b.amount, 0);
     if (total + bet.amount > MAX_TOTAL_STAKE) throw new Error(`Max ${MAX_TOTAL_STAKE} per spin.`);
-    this.bank.debit(name, bet.amount);
+    this.bank.debit(name, bet.amount, 'roulette');
     const same = p.bets.find((b) => betKey(b) === betKey(bet));
     if (same) same.amount += bet.amount;
     else p.bets.push(bet);
@@ -56,7 +56,7 @@ export class RouletteWheel {
     if (this.phase !== 'betting') throw new Error('No more bets.');
     const p = this.player(name);
     const total = p.bets.reduce((n, b) => n + b.amount, 0);
-    if (total) this.bank.refund(name, total);
+    if (total) this.bank.refund(name, total, 'roulette');
     p.bets = [];
   }
 
@@ -99,7 +99,7 @@ export class RouletteWheel {
       const stake = p.bets.reduce((s, b) => s + b.amount, 0);
       const back = p.bets.reduce((s, b) => s + betReturn(b, n), 0);
       p.net = back - stake;
-      this.bank.settle(p.name, back, p.net, 'spin');
+      this.bank.settle(p.name, back, p.net, 'spin', 'roulette');
     }
   }
 

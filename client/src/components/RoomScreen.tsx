@@ -1,3 +1,4 @@
+import { useAccount } from '@/lib/auth';
 import { AccountButton } from '@/components/AccountPanel';
 import { getSettings } from '@/lib/settings';
 import { Check, Copy } from 'lucide-react';
@@ -459,6 +460,11 @@ export function RoomScreen({
           <div className="text-[10px] tracking-[0.18em] text-cream/50 uppercase">Hub</div>
         </div>
         <AccountButton />
+        {(state.wager ?? 0) > 0 && (
+          <div className="shrink-0 rounded-lg border border-amber-300/30 bg-amber-400/10 px-3 py-1.5 text-sm text-amber-100" data-testid="room-stake" title="Chips each player stakes; winners split the pot, draws refund">
+            🪙 {state.wager} a seat{state.pot ? <span className="ml-1 text-amber-200/80">· pot {state.pot}</span> : null}
+          </div>
+        )}
         <button
           type="button"
           onClick={copyLink}
@@ -588,6 +594,7 @@ export function RoomScreen({
             <div className="mb-3">
               <h2 className="font-serif text-3xl">{state.result.headline}</h2>
               <p className="mt-1 text-sm text-cream-dim">{state.result.detail}</p>
+              <WagerOutcome state={state} />
             </div>
           )}
           {state.tournament && (
@@ -879,7 +886,10 @@ function Lobby({
                     <div className="font-serif text-xl text-cream/80">Empty</div>
                     <div className="text-xs text-brass">Sit here</div>
                   </button>
-                  {!state.tournament && (
+                  {!state.tournament && (state.wager ?? 0) > 0 && (
+                    <div className="text-[11px] text-cream/55" data-testid={`no-bots-${seat}`}>No bots on wager tables</div>
+                  )}
+                  {!state.tournament && !((state.wager ?? 0) > 0) && (
                     <button
                       type="button"
                       data-testid={`add-bot-${seat}`}
@@ -1137,5 +1147,22 @@ function BotBadge() {
     <span data-testid="bot-badge" title="House bot. Games with bots don't count toward the leaderboard." className="shrink-0 rounded border border-sky-300/40 bg-sky-300/10 px-1 text-[9px] font-semibold tracking-[0.12em] text-sky-200 uppercase">
       Bot
     </span>
+  );
+}
+
+/** End-of-game chip result on wager tables, with a short chip-fly animation. */
+function WagerOutcome({ state }: { state: PublicState }) {
+  const me = useAccount();
+  const r = state.wagerResult;
+  if (!r) return null;
+  const key = Object.keys(r.deltas).find((n) => n.trim().toLowerCase() === me.trim().toLowerCase());
+  const d = key ? r.deltas[key] : null;
+  const text = r.refunded ? `Stakes refunded (${r.pot} chips back).` : d === null ? `Pot of ${r.pot} chips paid to the winners.` : d >= 0 ? `You won ${d} chips!` : `You lost ${-d} chips.`;
+  const tone = r.refunded || d === null ? 'text-cream/80' : d >= 0 ? 'text-emerald-300' : 'text-rose-300';
+  return (
+    <div className={`wager-outcome mt-2 flex items-center gap-2 text-base font-semibold ${tone}`} data-testid="wager-outcome" key={r.round}>
+      <span className={`wager-chip ${d !== null && d < 0 && !r.refunded ? 'lose' : 'win'}`} aria-hidden>🪙</span>
+      {text}
+    </div>
   );
 }

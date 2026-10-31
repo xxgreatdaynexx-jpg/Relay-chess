@@ -14,6 +14,7 @@ import { formatClock } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import {
   CLOCK_PRESETS,
+  WAGER_PRESETS,
   modeLabel,
   seatForSetup,
   seatLabel,
@@ -44,6 +45,8 @@ export function HomeScreen({
   const name = useAccount();
   const [code, setCode] = useState(initialCode);
   const [clockId, setClockId] = useState<ClockId>('10+0');
+  const [wager, setWager] = useState(0);
+  const [customWager, setCustomWager] = useState('');
   const [mode, setMode] = useState<GameMode>('2v2');
   const playParam = new URLSearchParams(location.search).get('play');
   const [gameType, setGameType] = useState<GameType>(playParam === 'checkers' ? 'checkers' : 'chess');
@@ -81,7 +84,7 @@ export function HomeScreen({
     setBusy('create');
     socket.connect();
     const setup: TableSetup = { mode, pairSide: uneven(mode) ? pairSide : null };
-    const res = await request('create_room', { name, clockId, mode: setup.mode, pairSide: setup.pairSide, gameType }, (ack) => {
+    const res = await request('create_room', { name, clockId, mode: setup.mode, pairSide: setup.pairSide, gameType, wager }, (ack) => {
       if (!ack.token || !ack.code) return;
       saveSession({ token: ack.token, code: ack.code, name: name.trim() });
       window.history.pushState({}, '', `/r/${ack.code}`);
@@ -413,6 +416,21 @@ export function HomeScreen({
                 </button>
               ))}
             </div>
+            <p className="mt-4 text-xs tracking-wide text-cream/70 uppercase">Wager per seat (chips)</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2" data-testid="wager-picker">
+              {WAGER_PRESETS.map((w) => (
+                <button key={w} type="button" aria-pressed={wager === w && !customWager}
+                  onClick={() => { setWager(w); setCustomWager(''); }}
+                  data-testid={`wager-${w}`}
+                  className={cn('rounded-full border px-3 py-1.5 text-sm', wager === w && !customWager ? 'border-brass bg-brass text-ink' : 'border-white/15 text-cream hover:bg-white/5')}>
+                  {w === 0 ? 'None' : `🪙 ${w}`}
+                </button>
+              ))}
+              <input inputMode="numeric" placeholder="Custom" value={customWager} data-testid="wager-custom"
+                onChange={(e) => { const v = e.target.value.replace(/\D/g, '').slice(0, 6); setCustomWager(v); setWager(Number(v) || 0); }}
+                className="w-24 rounded-full border border-white/15 bg-transparent px-3 py-1.5 text-sm text-cream" />
+            </div>
+            {wager > 0 && <p className="mt-2 text-xs text-cream/70" data-testid="wager-note">Each player stakes {wager} chips from the casino wallet. Winners split the pot; draws refund. No bots on wager tables.</p>}
             <Button className="mt-5 w-full" type="submit" data-testid="create-submit" disabled={busy !== null}>
               {busy === 'create' ? 'Setting the table…' : 'Create table'}
             </Button>
@@ -572,6 +590,7 @@ function TableList({
                     {waiting ? `Waiting · ${row.filled}/${row.total} seats` : row.status === 'playing' ? 'In progress' : 'Finished'}
                   </span>
                   {row.watching > 0 && <span className="ml-2 text-xs text-cream/50">👁 {row.watching}</span>}
+                  {(row.wager ?? 0) > 0 && <span className="ml-2 rounded-full bg-amber-400/15 px-2 py-0.5 text-xs text-amber-200" data-testid={`stake-${row.code}`} title="Chips each player stakes">🪙 {row.wager} stake</span>}
                 </div>
                 <div className="min-w-0 flex-1 truncate text-sm text-cream-dim">
                   {row.players.length ? row.players.map((p) => p.name).join(', ') : 'No one seated yet'}
@@ -590,7 +609,7 @@ function TableList({
                 <div className="ml-auto flex gap-2">
                   {waiting && row.openSeats > 0 && (
                     <Button size="sm" disabled={busy} onClick={() => onJoin(row.code)} data-testid={`join-${row.code}`}>
-                      Join
+                      {(row.wager ?? 0) > 0 ? `Join · 🪙 ${row.wager}` : 'Join'}
                     </Button>
                   )}
                   <Button size="sm" variant="outline" disabled={busy} onClick={() => onSpectate(row.code)} data-testid={`spectate-${row.code}`}>

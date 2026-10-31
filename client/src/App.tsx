@@ -17,6 +17,7 @@ import { ChatDrawer } from '@/components/ChatDrawer';
 import { ConquestPanel } from '@/components/ConquestPanel';
 import { AccountButton, AccountPanel } from '@/components/AccountPanel';
 import { socket } from '@/lib/net';
+import { WalletButton } from '@/components/WalletButton';
 import { TournamentScreen } from '@/components/TournamentScreen';
 import { TournamentPing } from '@/components/TournamentPing';
 import { tournamentFromLocation } from '@/lib/tournament';
@@ -196,6 +197,7 @@ export function App() {
       </div>
       <AccountPanel />
       <ChatDrawer />
+      <TopTab id="wallet"><WalletButton /></TopTab>
       <TopTab id="account"><AccountButton /></TopTab>
       {leaderboard ? (
         <LeaderboardScreen

@@ -19,7 +19,7 @@ export class VideoPoker {
   deal(name: string, bet: number, deck?: CasinoCard[]): PokerView {
     if (this.hands.has(this.key(name))) throw new Error('Finish this hand first: pick cards to hold, then Draw.');
     if (!Number.isInteger(bet) || bet < POKER_MIN_BET || bet > POKER_MAX_BET) throw new Error(`Bet ${POKER_MIN_BET}–${POKER_MAX_BET} chips.`);
-    this.bank.debit(name, bet);
+    this.bank.debit(name, bet, 'video-poker');
     const d = deck ?? makeShoe(this.rand, 1);
     const cards = d.splice(0, 5);
     this.hands.set(this.key(name), { deck: d, cards, bet });
@@ -35,7 +35,7 @@ export class VideoPoker {
     const hand = evaluatePoker(h.cards);
     const returned = h.bet * POKER_PAYS[hand];
     const net = returned - h.bet;
-    this.bank.settle(name, returned, net, 'hand');
+    this.bank.settle(name, returned, net, 'hand', 'video-poker');
     this.hands.delete(this.key(name));
     this.last.set(this.key(name), { hand, label: POKER_LABELS[hand], returned, net, cards: h.cards, bet: h.bet });
     return this.view(name);

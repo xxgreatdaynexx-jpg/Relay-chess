@@ -53,7 +53,7 @@ export class HoldemTable {
     if (!Number.isInteger(buyIn) || buyIn < HE_MIN_BUYIN || buyIn > HE_MAX_BUYIN) throw new Error(`Buy in for ${HE_MIN_BUYIN}–${HE_MAX_BUYIN} chips.`);
     const i = this.seats.findIndex((s) => !s);
     if (i < 0) throw new Error('Table is full.');
-    this.bank.debit(name, buyIn);
+    this.bank.debit(name, buyIn, 'holdem');
     this.seats[i] = { name, stack: buyIn, hole: [], bet: 0, total: 0, folded: false, allIn: false, acted: false, inHand: false, leaving: false, timeouts: 0, startStack: buyIn };
     this.maybeSchedule(now);
     return i;
@@ -74,7 +74,7 @@ export class HoldemTable {
 
   private cashOut(i: number): void {
     const s = this.seats[i]!;
-    if (s.stack > 0) this.bank.refund(s.name, s.stack);
+    if (s.stack > 0) this.bank.refund(s.name, s.stack, 'holdem');
     this.seats[i] = null;
   }
 
@@ -289,7 +289,7 @@ export class HoldemTable {
     for (const [i, s] of this.seats.entries()) {
       if (!s || !s.inHand) continue;
       const net = s.stack - s.startStack;
-      this.bank.settle(s.name, 0, net, 'hand');
+      this.bank.settle(s.name, 0, net, 'hand', 'holdem');
       s.inHand = s.leaving ? false : s.inHand;
       if (s.leaving || s.stack === 0) this.cashOut(i);
     }

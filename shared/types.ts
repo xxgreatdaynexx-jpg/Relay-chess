@@ -178,8 +178,26 @@ export interface ThinkTime {
   currentMs: number;
 }
 
+/** Chip wager presets for chess/checkers/Conquest tables (per seat). 0 = no wager. */
+export const WAGER_PRESETS = [0, 10, 25, 50, 100, 250] as const;
+export const MAX_WAGER = 100_000;
+
+/** Outcome of a wager table's last game, for the win/loss chip animation. */
+export interface WagerResult {
+  round: number;
+  pot: number;
+  /** Per-name chip change: +share for winners, -stake for losers, 0 for a refund. */
+  deltas: Record<string, number>;
+  refunded: boolean;
+}
+
 export interface PublicState {
   code: string;
+  /** Per-seat chip wager (0 = none). */
+  wager?: number;
+  /** Chips currently escrowed for the game in progress. */
+  pot?: number;
+  wagerResult?: WagerResult | null;
   /** Which board game this table plays. */
   gameType: GameType;
   status: 'lobby' | 'playing' | 'ended';
@@ -246,6 +264,8 @@ export interface Ack {
 
 export interface TableSummary {
   code: string;
+  /** Per-seat chip wager (0 = none). */
+  wager?: number;
   gameType: GameType;
   mode: GameMode;
   pairSide: Side | null;

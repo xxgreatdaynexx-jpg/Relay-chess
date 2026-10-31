@@ -115,6 +115,7 @@ export function restoreRoom(snap: RoomSnapshot, now = Date.now()): Room {
   r.lastActivity = Math.min(now, (r.lastActivity as number) + downtime);
   // scoreIfNeeded compares by identity; a finished, already-scored game must not score again.
   if (r.scoredResult) r.scoredResult = room.game.result;
+  try { room.reconcileWagers(); } catch (error) { console.error(`[wager] reconcile ${room.code}:`, (error as Error).message); }
   room.syncPresence(now); // nobody is connected yet: a human mover's clock pauses
   return room;
 }

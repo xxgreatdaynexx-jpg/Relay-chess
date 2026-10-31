@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { RelayGame, type Timing } from './engine.js';
 import { GameError } from './errors.js';
+import { getBank } from './casino-store.js';
 import { beginBlunderCheck } from './blunders.js';
 import { getChessStats } from './chess-stats.js';
 import { peekHint, requestHint } from './hints.js';
@@ -36,6 +37,7 @@ import {
   type Side,
   type TableSetup,
   type TableSummary,
+  type WagerResult,
   type TeamsBanner,
   type GameType,
 } from '../shared/types.js';
@@ -90,6 +92,13 @@ export class Room {
   drawNote: { at: number; text: string } | null = null;
   /** Tournament match: seats reserved by name, no rematch, hidden from Quick Join. */
   tournament: { code: string; seats: Partial<Record<Seat, string>> } | null = null;
+  /** Per-seat chip wager (0 = none). Set at create time; bots are not allowed on wager tables. */
+  wager = 0;
+  /** Bumped every time stakes are escrowed (first game and each rematch). */
+  wagerRound = 0;
+  /** Stakes held for the game in progress. Persists in the room snapshot so it survives restarts. */
+  escrow: { round: number; stakes: { name: string; amount: number }[]; settled: boolean } | null = null;
+  wagerResult: WagerResult | null = null;
   /** Randomness source for scrambles; swappable in tests. */
   random: () => number = () => randomBytes(4).readUInt32BE(0) / 0x1_0000_0000;
 
@@ -112,6 +121,7 @@ export class Room {
     const member = this.must(token);
     if (member.bot) throw new GameError('Bots cannot add bots.');
     if (this.tournament) throw new GameError('Tournament matches are people only.');
+    if (this.wager > 0) throw new GameError('No bots on wager tables. Chips are only played between people.');
     if (!isSeat(seat)) throw new GameError('That is not a seat.');
     if (!seatsFor(this.setup).includes(seat)) throw new GameError('That seat is not in this game.');
     if (this.game.status !== 'lobby') throw new GameError('Seats lock when the game starts.');
@@ -268,6 +278,7 @@ export class Room {
     const clock = this.game.clockView(now);
     return {
       code: this.code,
+      wager: this.wager,
       gameType: this.gameType,
       mode: this.setup.mode,
       pairSide: this.setup.pairSide,
@@ -318,9 +329,14 @@ export class Room {
     if (reserved && normalizeName(reserved) !== normalizeName(member.name)) {
       throw new GameError(`That seat is reserved for ${reserved} (tournament match).`);
     }
+    if (this.wager > 0 && !getBank().canAfford(member.name, this.wager)) {
+      throw new GameError(`This table plays for ${this.wager} chips a seat. You have ${getBank().account(member.name).chips}.`);
+    }
+    const before = member.seat;
     member.seat = seat;
     this.touch();
     if (this.seatsFilled()) {
+      try { this.escrowStakes(); } catch (error) { member.seat = before; throw error; }
       this.game.start(now);
       this.syncPresence(now);
     }
@@ -392,6 +408,11 @@ export class Room {
     const member = this.must(token);
     if (!member.seat) throw new GameError("Spectators don't vote on a rematch.");
     if (this.tournament) throw new GameError('Tournament matches have no rematch. Head back to the bracket.');
+    if (this.wager > 0) {
+      const votes = new Set(this.game.rematchVotes);
+      votes.add(member.seat);
+      if (seatsFor(this.setup).every((s) => votes.has(s))) this.escrowStakes();
+    }
     let started = this.game.voteRematch(member.seat, now);
     for (const m of this.members.values()) if (!started && m.bot && m.seat) started = this.game.voteRematch(m.seat, now);
     if (started) {
@@ -463,12 +484,16 @@ export class Room {
     this.game.expireBailout(now);
     this.clearAnnouncementsIfReset();
     this.scoreIfNeeded();
+    this.settleWagers();
     const spectating = this.spectators.has(socketId);
     const you = spectating ? undefined : this.memberBySocket(socketId);
     const raw = this.game.result;
     const described = raw ? describeResult(raw, (seat) => this.nameFor(seat)) : null;
     return {
       code: this.code,
+      wager: this.wager,
+      pot: this.escrow && !this.escrow.settled ? this.escrow.stakes.reduce((n, s) => n + s.amount, 0) : 0,
+      wagerResult: this.wagerResult,
       gameType: this.gameType,
       status: this.game.status,
       clockPreset: this.presetId,
@@ -653,6 +678,95 @@ export class Room {
     return false;
   }
 
+  private stakeKey(round: number, name: string, kind: string): string {
+    return `wager:${this.code}:${round}:${normalizeName(name)}:${kind}`;
+  }
+
+  /** Take every seated player's stake into escrow. All-or-nothing: if anyone is short, nobody is charged. */
+  escrowStakes(): void {
+    if (this.wager <= 0) return;
+    this.settleWagers();
+    const bank = getBank();
+    const names = seatsFor(this.setup).map((seat) => this.nameFor(seat)).filter((n): n is string => Boolean(n));
+    if (this.hasBots()) throw new GameError('No bots on wager tables.');
+    const short = names.find((n) => !bank.canAfford(n, this.wager));
+    if (short) throw new GameError(`${short} needs ${this.wager} chips to play this wager table.`);
+    const round = this.wagerRound + 1;
+    const taken: string[] = [];
+    try {
+      for (const n of names) {
+        bank.transfer(n, -this.wager, { key: this.stakeKey(round, n, 'stake'), game: this.gameType, memo: `Stake at ${this.code}` });
+        taken.push(n);
+      }
+    } catch (error) {
+      for (const n of taken) bank.transfer(n, this.wager, { key: this.stakeKey(round, n, 'refund'), game: this.gameType, memo: `Refund at ${this.code}` });
+      throw new GameError((error as Error).message);
+    }
+    this.wagerRound = round;
+    this.escrow = { round, stakes: names.map((name) => ({ name, amount: this.wager })), settled: false };
+    this.wagerResult = null;
+  }
+
+  /** Pay the pot out once the game has a result: the winning side splits it, a draw refunds. Idempotent. */
+  settleWagers(): void {
+    const e = this.escrow;
+    if (!e || e.settled || this.game.status !== 'ended' || !this.game.result) return;
+    this.payOut(this.game.result.winner);
+  }
+
+  /**
+   * After a restart: stakes the ledger took for a round the snapshot never saw (crash between escrow and save)
+   * go back to their owners.
+   */
+  reconcileWagers(): void {
+    if (this.wager <= 0) return;
+    const bank = getBank();
+    const round = this.wagerRound + 1;
+    for (const m of this.members.values()) {
+      if (m.bot) continue;
+      if (bank.hasKey(this.stakeKey(round, m.name, 'stake')) && !bank.hasKey(this.stakeKey(round, m.name, 'refund')) && !bank.hasKey(this.stakeKey(round, m.name, 'payout'))) {
+        bank.transfer(m.name, this.wager, { key: this.stakeKey(round, m.name, 'refund'), game: this.gameType, memo: `Refund at ${this.code} (restart)` });
+      }
+    }
+  }
+
+  /** Give escrowed stakes back (table closed before a result). */
+  refundEscrow(): void {
+    if (this.escrow && !this.escrow.settled) this.payOut(null);
+  }
+
+  private payOut(winner: Side | null): void {
+    const e = this.escrow!;
+    const bank = getBank();
+    // Only stakes the ledger actually holds count (guards a restart between snapshot and ledger write).
+    const held = e.stakes.filter((s) => bank.hasKey(this.stakeKey(e.round, s.name, 'stake')));
+    const pot = held.reduce((n, s) => n + s.amount, 0);
+    const deltas: Record<string, number> = {};
+    const winners = winner
+      ? seatsFor(this.setup).filter((seat) => seatSide(seat) === winner).map((seat) => this.nameFor(seat))
+          .filter((n): n is string => Boolean(n) && held.some((s) => normalizeName(s.name) === normalizeName(n!)))
+      : [];
+    if (!winners.length) {
+      for (const s of held) {
+        bank.transfer(s.name, s.amount, { key: this.stakeKey(e.round, s.name, 'refund'), game: this.gameType, memo: `Refund at ${this.code}` });
+        deltas[s.name] = 0;
+      }
+    } else {
+      const share = Math.floor(pot / winners.length);
+      let rest = pot - share * winners.length;
+      for (const s of held) deltas[s.name] = -s.amount;
+      for (const n of winners) {
+        const amount = share + rest;
+        rest = 0;
+        bank.transfer(n, amount, { key: this.stakeKey(e.round, n, 'payout'), game: this.gameType, memo: `Won at ${this.code}` });
+        const stake = held.find((s) => normalizeName(s.name) === normalizeName(n))?.amount ?? 0;
+        deltas[n] = amount - stake;
+      }
+    }
+    e.settled = true;
+    this.wagerResult = { round: e.round, pot, deltas, refunded: !winners.length };
+  }
+
   private scoreIfNeeded(): void {
     const result = this.game.result;
     if (this.game.status !== 'ended' || !result || this.scoredResult === result) return;
@@ -726,6 +840,7 @@ export function pruneRooms(now = Date.now()): string[] {
     const idle = now - room.lastActivity;
     const expired = (!room.anyoneConnected() && idle > EMPTY_ROOM_MS) || idle > HARD_ROOM_MS;
     if (!expired) continue;
+    try { room.settleWagers(); room.refundEscrow(); } catch (error) { console.error(`[wager] could not settle ${room.code}:`, (error as Error).message); }
     rooms.delete(room.code);
     expiredCodes.add(room.code);
     gone.push(room.code);

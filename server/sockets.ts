@@ -7,6 +7,8 @@ import { registerFps } from './fps.js';
 import { AuthError, getAccounts } from './accounts.js';
 import { registerAuth, signedIn } from './auth-sockets.js';
 import { registerCasino, startCasino, stopCasino } from './casino-sockets.js';
+import { getBank } from './casino-store.js';
+import { registerWallet, startWallet } from './wallet-sockets.js';
 import { registerSolitro } from './solitro.js';
 import { registerConquest } from './conquest.js';
 import { analyzePosition, onHintReady } from './hints.js';
@@ -22,7 +24,7 @@ import {
   setupOrThrow,
   type Room,
 } from './rooms.js';
-import { type Ack, type Promotion, type TableSummary, type TournamentSummary } from '../shared/types.js';
+import { MAX_WAGER, type Ack, type Promotion, type TableSummary, type TournamentSummary } from '../shared/types.js';
 import {
   createTournament,
   getTournament,
@@ -160,6 +162,7 @@ export function registerSockets(io: Server): void {
   });
   startMaintenance(io);
   startCasino(io);
+  startWallet(io);
   startPresence(io);
 
   io.use((socket, next) => {
@@ -186,6 +189,7 @@ export function registerSockets(io: Server): void {
     registerAuth(socket);
     registerFps(io, socket);
     registerCasino(io, socket);
+    registerWallet(io, socket);
     registerSolitro(io, socket);
     registerChat(io, socket);
     registerConquest(io, socket);
@@ -197,7 +201,10 @@ export function registerSockets(io: Server): void {
         const setup = setupOrThrow(body.mode, body.pairSide);
         const gameType = body.gameType === 'checkers' ? 'checkers' : 'chess';
         release(io, socket);
+        const wager = Math.max(0, Math.min(MAX_WAGER, Math.floor(Number(body.wager) || 0)));
+        if (wager > 0 && !getBank().canAfford(name, wager)) throw new GameError(`You need ${wager} chips to open that table. You have ${getBank().account(name).chips}.`);
         const room = createRoom(preset, setup, gameType);
+        room.wager = wager;
         const token = room.addMember(name);
         adopt(socket, room, token);
         ack?.({ ok: true, token, code: room.code });

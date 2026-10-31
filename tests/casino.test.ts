@@ -118,7 +118,7 @@ describe('casino postgres store', () => {
       { key: 'bo', name: 'Bo', chips: 950, hands: 0, spins: 1, netWon: -50, biggestWin: 0 },
     ]);
     const tables = db.public.many("SELECT table_name FROM information_schema.tables WHERE table_schema='public'").map((r) => r.table_name);
-    expect(tables).toEqual(['casino_players']);
+    expect(tables.sort()).toEqual(['casino_players', 'wallet_transactions']);
   });
 
   it('falls back to memory when the store fails', async () => {

@@ -117,7 +117,7 @@ export class BlackjackTable {
       if (this.turn === i) this.advance(now);
       return;
     }
-    if (this.phase === 'betting' && s.bet > 0) this.bank.refund(s.name, s.bet);
+    if (this.phase === 'betting' && s.bet > 0) this.bank.refund(s.name, s.bet, 'blackjack');
     this.seats[i] = null;
     if (this.occupied === 0 && this.phase === 'betting') this.toWaiting();
   }
@@ -129,9 +129,9 @@ export class BlackjackTable {
     const s = this.seats[i]!;
     if (!Number.isInteger(amount) || amount < MIN_BET || amount > MAX_BET) throw new Error(`Bets are ${MIN_BET}–${MAX_BET}.`);
     // Changing the bet: refund old, take new.
-    if (s.bet > 0) this.bank.refund(s.name, s.bet);
+    if (s.bet > 0) this.bank.refund(s.name, s.bet, 'blackjack');
     s.bet = 0;
-    this.bank.debit(s.name, amount);
+    this.bank.debit(s.name, amount, 'blackjack');
     s.bet = amount;
     if (this.seats.every((x) => !x || x.leaving || x.bet > 0)) this.deal(now);
   }
@@ -153,7 +153,7 @@ export class BlackjackTable {
         break;
       case 'double': {
         if (h.cards.length !== 2) throw new Error('Double only on two cards.');
-        this.bank.debit(s.name, h.bet);
+        this.bank.debit(s.name, h.bet, 'blackjack');
         h.bet *= 2;
         h.doubled = true;
         h.cards.push(this.draw());
@@ -162,7 +162,7 @@ export class BlackjackTable {
       }
       case 'split': {
         if (!canSplit(h, s.hands.length)) throw new Error('Cannot split this hand.');
-        this.bank.debit(s.name, h.bet);
+        this.bank.debit(s.name, h.bet, 'blackjack');
         const second = h.cards.pop()!;
         const aces = second.rank === 1;
         h.fromSplit = true;
@@ -301,7 +301,7 @@ export class BlackjackTable {
       for (const h of s.hands) {
         h.outcome = settleHand(h, this.dealer);
         h.net = netFor(h.outcome, h.bet);
-        this.bank.settle(s.name, h.bet + h.net, h.net, 'hand');
+        this.bank.settle(s.name, h.bet + h.net, h.net, 'hand', 'blackjack');
       }
     }
     this.phase = 'settled';
