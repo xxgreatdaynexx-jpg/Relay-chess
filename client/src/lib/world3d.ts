@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { PLATE, WATER_Z0, ROAD_W, ROADS_X, ROADS_Z, ROAD_X_SPAN, ROAD_Z_SPAN, SPOT_POS, fillerSpots as layoutFillers, CAR_LOOPS, CAR_COUNT, LANE, loopPoint } from './worldLayout';
 
 import { WORLD_SPOTS } from './worldSpots';
 
@@ -39,12 +40,12 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x070a1c); scene.fog = new THREE.Fog(0x070a1c, 90, 190);
+  scene.background = new THREE.Color(0x070a1c); scene.fog = new THREE.Fog(0x070a1c, 120, 250);
   const camera = new THREE.PerspectiveCamera(38, 1, 0.5, 400);
-  const home = new THREE.Vector3(58, 56, 66); camera.position.copy(home);
+  const home = new THREE.Vector3(74, 70, 86); camera.position.copy(home);
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(0, 0, 0); controls.enableDamping = true; controls.dampingFactor = 0.08;
-  controls.minDistance = 30; controls.maxDistance = 130; controls.maxPolarAngle = 1.2; controls.minPolarAngle = 0.35;
+  controls.minDistance = 30; controls.maxDistance = 170; controls.maxPolarAngle = 1.2; controls.minPolarAngle = 0.35;
   controls.enablePan = false; controls.autoRotate = true; controls.autoRotateSpeed = 0.25;
 
   scene.add(new THREE.HemisphereLight(0x7a8cff, 0x2a4a30, 1.3));
@@ -54,35 +55,34 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const mat = (o: THREE.MeshStandardMaterialParameters) => { const m = new THREE.MeshStandardMaterial(o); disposables.push(m); return m; };
   const geo = <T extends THREE.BufferGeometry>(g: T) => { disposables.push(g); return g; };
 
-  // Plate: grass slab with dirt edge, water channel.
-  const S = 34;
+  // Plate: grass slab with dirt edge, water strip along the front. Layout lives in worldLayout.ts.
+  const S = PLATE;
   const slab = new THREE.Mesh(geo(new THREE.BoxGeometry(S * 2, 3, S * 2)), [mat({ color: 0x4a3322 }), mat({ color: 0x4a3322 }), mat({ color: 0x3f9a45, roughness: 1, emissive: 0x0f3a14, emissiveIntensity: 0.6 }), mat({ color: 0x2a1c12 }), mat({ color: 0x4a3322 }), mat({ color: 0x4a3322 })]);
   slab.position.y = -1.5; scene.add(slab);
-  const water = new THREE.Mesh(geo(new THREE.BoxGeometry(S * 2 + 0.2, 0.2, 9)), mat({ color: 0x1d4f8f, emissive: 0x0a2a5a, emissiveIntensity: 0.5, roughness: 0.1, metalness: 0.5 }));
-  water.position.set(0, -0.05, S - 4.5); scene.add(water);
+  const waterW = S - WATER_Z0;
+  const water = new THREE.Mesh(geo(new THREE.BoxGeometry(S * 2 + 0.2, 0.2, waterW)), mat({ color: 0x1d4f8f, emissive: 0x0a2a5a, emissiveIntensity: 0.5, roughness: 0.1, metalness: 0.5 }));
+  water.position.set(0, -0.05, WATER_Z0 + waterW / 2); scene.add(water);
   // Roads (grid) + lane dashes, instanced.
   const roadMat = mat({ color: 0x23252c, roughness: 0.9 });
-  const roads = [-12, 12];
-  const roadGeo = geo(new THREE.BoxGeometry(S * 2, 0.1, 4));
-  for (const z of [...roads, -26]) { const m = new THREE.Mesh(roadGeo, roadMat); m.position.set(0, 0.02, z); scene.add(m); }
-  const roadGeoZ = geo(new THREE.BoxGeometry(4, 0.11, S * 2 - 9));
-  for (const x of [...roads, -26, 26]) { const m = new THREE.Mesh(roadGeoZ, roadMat); m.position.set(x, 0.02, -4.5); scene.add(m); }
-  const dash = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(1.2, 0.12, 0.18)), mat({ color: 0xffe08a, emissive: 0xffd060, emissiveIntensity: 0.5 }), 200);
+  const zLen = ROAD_Z_SPAN[1] - ROAD_Z_SPAN[0], xLen = ROAD_X_SPAN[1] - ROAD_X_SPAN[0];
+  const roadGeo = geo(new THREE.BoxGeometry(zLen, 0.1, ROAD_W));
+  for (const z of ROADS_Z) { const m = new THREE.Mesh(roadGeo, roadMat); m.position.set(0, 0.02, z); scene.add(m); }
+  const roadGeoZ = geo(new THREE.BoxGeometry(ROAD_W, 0.11, xLen));
+  for (const x of ROADS_X) { const m = new THREE.Mesh(roadGeoZ, roadMat); m.position.set(x, 0.02, (ROAD_X_SPAN[0] + ROAD_X_SPAN[1]) / 2); scene.add(m); }
+  const dash = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(1.2, 0.12, 0.18)), mat({ color: 0xffe08a, emissive: 0xffd060, emissiveIntensity: 0.5 }), 400);
   { const d = new THREE.Object3D(); let n = 0;
-    for (const z of [...roads, -26]) for (let x = -S + 1; x < S; x += 3) { d.position.set(x, 0.06, z); d.rotation.y = 0; d.updateMatrix(); dash.setMatrixAt(n++, d.matrix); }
-    for (const x of [...roads, -26, 26]) for (let z = -S + 1; z < S - 9; z += 3) { d.position.set(x, 0.07, z); d.rotation.y = Math.PI / 2; d.updateMatrix(); dash.setMatrixAt(n++, d.matrix); }
+    for (const z of ROADS_Z) for (let x = ROAD_Z_SPAN[0] + 1; x < ROAD_Z_SPAN[1]; x += 3) { d.position.set(x, 0.06, z); d.rotation.y = 0; d.updateMatrix(); dash.setMatrixAt(n++, d.matrix); }
+    for (const x of ROADS_X) for (let z = ROAD_X_SPAN[0] + 1; z < ROAD_X_SPAN[1]; z += 3) { d.position.set(x, 0.07, z); d.rotation.y = Math.PI / 2; d.updateMatrix(); dash.setMatrixAt(n++, d.matrix); }
     dash.count = n; }
   scene.add(dash);
-  // Bridge over water
-  const bridge = new THREE.Mesh(geo(new THREE.BoxGeometry(5, 0.6, 11)), mat({ color: 0x8a8f99 })); bridge.position.set(12, 0.4, S - 4.5); scene.add(bridge);
+  // Footbridge over the water
+  const bridge = new THREE.Mesh(geo(new THREE.BoxGeometry(5, 0.6, waterW + 2)), mat({ color: 0x8a8f99 })); bridge.position.set(0, 0.4, WATER_Z0 + waterW / 2); scene.add(bridge);
 
   // Landmarks.
   type LM = { id: string; root: THREE.Group; hit: THREE.Object3D[]; emissive: THREE.MeshStandardMaterial[]; sign: THREE.Sprite; pos: THREE.Vector3; height: number };
   const lms: LM[] = [];
   const pickables: THREE.Object3D[] = [];
-  const spotPos: Record<string, [number, number]> = {
-    casino: [0, 0], chess: [-19, -19], mine: [-19, 19], arena: [19, 19], factory: [-30, 4], warehouse: [19, -4], bank: [-19, 0], market: [0, 19], leaderboard: [19, -19], chat: [0, -19],
-  };
+  const spotPos = SPOT_POS;
   const box = (w: number, hgt: number, d: number, m: THREE.Material, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(geo(new THREE.BoxGeometry(w, hgt, d)), m); o.position.set(x, y + hgt / 2, z); return o; };
   const cyl = (rt: number, rb: number, hgt: number, m: THREE.Material, x = 0, y = 0, z = 0, seg = 10) => { const o = new THREE.Mesh(geo(new THREE.CylinderGeometry(rt, rb, hgt, seg)), m); o.position.set(x, y + hgt / 2, z); return o; };
 
@@ -157,26 +157,22 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     lms.push({ id: spot.id, root: g, hit: [], emissive: ems, sign, pos: g.position.clone(), height });
   }
 
-  // Filler city blocks (instanced, two window palettes).
+  // Filler city blocks (instanced, two window palettes) — only on empty blocks, never on roads or pads.
   const r = rng(7);
-  const fillerSpots: [number, number][] = [];
-  for (let x = -30; x <= 30; x += 6) for (let z = -31; z <= 22; z += 6) {
-    const near = Object.values(spotPos).some(([sx, sz]) => Math.abs(sx - x) < 9 && Math.abs(sz - z) < 9);
-    const onRoad = [...roads, -26].some((rz) => Math.abs(rz - z) < 4) || [...roads, -26, 26].some((rx) => Math.abs(rx - x) < 4);
-    if (!near && !onRoad) fillerSpots.push([x + (r() - 0.5) * 1.5, z + (r() - 0.5) * 1.5]);
-  }
+  const fillers = layoutFillers(r);
   for (let p = 0; p < 2; p++) {
     const t = windowsTexture(100 + p, p ? '#ffe9a8' : '#ffb870', p ? '#c8a8ff' : '#7fe0ff'); disposables.push(t);
-    const im = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(1, 1, 1)), mat({ color: 0x8890b0, map: t, emissiveMap: t, emissive: 0xffffff, emissiveIntensity: 0.85 }), fillerSpots.length);
+    const im = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(1, 1, 1)), mat({ color: 0x8890b0, map: t, emissiveMap: t, emissive: 0xffffff, emissiveIntensity: 0.85 }), fillers.length);
     const d = new THREE.Object3D(); let n = 0;
-    fillerSpots.forEach(([x, z], i) => { if (i % 2 !== p) return; const hgt = 3 + r() * 9; const w = 2.5 + r() * 1.8; d.position.set(x, hgt / 2, z); d.scale.set(w, hgt, 2.5 + r() * 1.8); d.updateMatrix(); im.setMatrixAt(n++, d.matrix); });
+    fillers.forEach((f, i) => { if (i % 2 !== p) return; const hgt = 3 + r() * 9; d.position.set(f.x, hgt / 2, f.z); d.scale.set(f.w, hgt, f.d); d.updateMatrix(); im.setMatrixAt(n++, d.matrix); });
     im.count = n; scene.add(im);
   }
+  const onAnyRoad = (x: number, z: number, m: number) => (ROADS_Z.some((rz) => Math.abs(rz - z) < m) && x > ROAD_Z_SPAN[0] && x < ROAD_Z_SPAN[1]) || (ROADS_X.some((rx) => Math.abs(rx - x) < m) && z > ROAD_X_SPAN[0] - 1 && z < ROAD_X_SPAN[1] + 1);
   // Trees + palms (instanced).
   const treeSpots: [number, number, number][] = [];
-  for (let i = 0; i < 90; i++) { const x = (r() - 0.5) * S * 2 * 0.95, z = (r() - 0.5) * S * 2 * 0.95; if (z > S - 10) continue; if ([...roads, -26].some((rz) => Math.abs(rz - z) < 2.8) || [...roads, -26, 26].some((rx) => Math.abs(rx - x) < 2.8)) continue; if (Object.values(spotPos).some(([sx, sz]) => Math.abs(sx - x) < 7.5 && Math.abs(sz - z) < 7.5)) continue; if (fillerSpots.some(([fx, fz]) => Math.abs(fx - x) < 2.6 && Math.abs(fz - z) < 2.6)) continue; treeSpots.push([x, z, 0.7 + r() * 0.6]); }
+  for (let i = 0; i < 130; i++) { const x = (r() - 0.5) * S * 2 * 0.95, z = (r() - 0.5) * S * 2 * 0.95; if (z > WATER_Z0 - 1.5) continue; if (onAnyRoad(x, z, 2.8)) continue; if (Object.values(spotPos).some(([sx, sz]) => Math.abs(sx - x) < 7 && Math.abs(sz - z) < 7)) continue; if (fillers.some((f) => Math.abs(f.x - x) < f.w / 2 + 1 && Math.abs(f.z - z) < f.d / 2 + 1)) continue; treeSpots.push([x, z, 0.7 + r() * 0.6]); }
   // palms along the waterfront
-  for (let x = -S + 3; x < S - 2; x += 4.2) if (Math.abs(x - 12) > 4) treeSpots.push([x, S - 10.2, -1]);
+  for (let x = -S + 3; x < S - 2; x += 4.4) if (Math.abs(x) > 4 && !ROADS_X.some((rx) => Math.abs(rx - x) < 2.8)) treeSpots.push([x, WATER_Z0 - 1.2, -1]);
   const trunk = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(0.15, 0.22, 1, 5)), mat({ color: 0x5a3a22 }), treeSpots.length);
   const crown = new THREE.InstancedMesh(geo(new THREE.IcosahedronGeometry(1, 0)), mat({ color: 0x2f8a3a, flatShading: true, emissive: 0x0a2a10, emissiveIntensity: 0.4 }), treeSpots.length);
   { const d = new THREE.Object3D(); treeSpots.forEach(([x, z, s], i) => {
@@ -186,8 +182,8 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   scene.add(trunk, crown);
   // Streetlights along roads (instanced pole + glow sprites as one Points).
   const lightPos: number[] = [];
-  for (const z of [...roads, -26]) for (let x = -S + 4; x < S; x += 8) lightPos.push(x, 0, z + 2.4);
-  for (const x of [...roads, -26, 26]) for (let z = -S + 4; z < S - 10; z += 8) lightPos.push(x + 2.4, 0, z);
+  for (const z of ROADS_Z) for (let x = ROAD_Z_SPAN[0] + 5, k = 0; x < ROAD_Z_SPAN[1]; x += 10.5, k++) lightPos.push(x, 0, z + 2.4);
+  for (const x of ROADS_X) for (let z = ROAD_X_SPAN[0] + 5; z < ROAD_X_SPAN[1]; z += 10.5) lightPos.push(x + 2.4, 0, z);
   const nL = lightPos.length / 3;
   const pole = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(0.07, 0.09, 2.4, 4)), mat({ color: 0x40444f }), nL);
   { const d = new THREE.Object3D(); for (let i = 0; i < nL; i++) { d.position.set(lightPos[i * 3], 1.2, lightPos[i * 3 + 2]); d.updateMatrix(); pole.setMatrixAt(i, d.matrix); } }
@@ -196,8 +192,8 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const lpm = new THREE.PointsMaterial({ map: glowTex, color: 0xffd27a, size: 2.2, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }); disposables.push(lpm);
   scene.add(new THREE.Points(lg, lpm));
 
-  // Cars: loop around the ring roads.
-  const NC = 14;
+  // Cars: each follows a road-centreline loop in its own lane (see worldLayout.ts + tests/world-layout.test.ts).
+  const NC = CAR_COUNT;
   const carBody = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(1.6, 0.6, 0.9)), mat({ color: 0xffffff, roughness: 0.4, metalness: 0.4 }), NC);
   const carCols = [0xe63946, 0xf1faee, 0x1d9bf0, 0xffb703, 0x8338ec, 0x2a9d8f];
   for (let i = 0; i < NC; i++) carBody.setColorAt(i, new THREE.Color(carCols[i % carCols.length]));
@@ -205,16 +201,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const headM = new THREE.PointsMaterial({ map: glowTex, color: 0xfff2c0, size: 1.3, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }); disposables.push(headM);
   const heads = new THREE.Points(headG, headM);
   scene.add(carBody, heads);
-  // Each car follows one rectangle loop (road ring) at its own phase.
-  const loops = [{ x0: -12, x1: 12, z0: -12, z1: 12 }, { x0: -26, x1: 26, z0: -26, z1: 12 }];
-  const cars = Array.from({ length: NC }, (_, i) => ({ loop: loops[i % 2], t: r(), sp: 0.018 + r() * 0.012, lane: i % 4 < 2 ? 0.9 : -0.9 }));
-  const loopPoint = (l: typeof loops[0], t: number, lane: number) => {
-    const w = l.x1 - l.x0, hh = l.z1 - l.z0, P = 2 * (w + hh); let d = ((t % 1) + 1) % 1 * P;
-    if (d < w) return [l.x0 + d, l.z0 + lane, 0] as const; d -= w;
-    if (d < hh) return [l.x1 - lane, l.z0 + d, Math.PI / 2] as const; d -= hh;
-    if (d < w) return [l.x1 - d, l.z1 - lane, Math.PI] as const; d -= w;
-    return [l.x0 + lane, l.z1 - d, -Math.PI / 2] as const;
-  };
+  const cars = Array.from({ length: NC }, (_, i) => ({ loop: CAR_LOOPS[i % CAR_LOOPS.length], t: r(), sp: 0.012 + r() * 0.008, lane: i % 2 ? LANE : -LANE }));
 
   // Fireworks: one pooled Points burst system.
   const FP = 160; const fwPos = new Float32Array(FP * 3); const fwVel = new Float32Array(FP * 3); const fwCol = new Float32Array(FP * 3);
@@ -223,7 +210,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   scene.add(new THREE.Points(fwG, fwM));
   let fwAge = 99; let nextFw = 2;
   const burst = () => {
-    const cx = (r() - 0.5) * 40, cy = 26 + r() * 10, cz = (r() - 0.5) * 40; const c = new THREE.Color().setHSL(r(), 1, 0.6);
+    const cx = (r() - 0.5) * 60, cy = 28 + r() * 10, cz = (r() - 0.5) * 50; const c = new THREE.Color().setHSL(r(), 1, 0.6);
     for (let i = 0; i < FP; i++) { fwPos.set([cx, cy, cz], i * 3); const u = r() * 2 - 1, a = r() * Math.PI * 2, s = Math.sqrt(1 - u * u), v = 5 + r() * 3; fwVel.set([s * Math.cos(a) * v, u * v, s * Math.sin(a) * v], i * 3); fwCol.set([c.r, c.g, c.b], i * 3); }
     fwG.attributes.color.needsUpdate = true; fwAge = 0;
   };

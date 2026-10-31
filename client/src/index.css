@@ -1585,7 +1585,7 @@ html, body { overflow-x: clip; }
 .world-casino h3 { font: 800 22px 'Outfit Variable', sans-serif; text-align: center; color: #ff8ad0; }
 .world-casino button { padding: 9px 12px; border-radius: 10px; background: rgba(255,255,255,.08); font-weight: 700; text-align: left; }
 .world-casino button:hover { background: #ff3cac; color: #fff; } .world-casino .world-casino-x { text-align: center; opacity: .7; }
-.world-map-btn { position: fixed; left: 12px; bottom: 12px; z-index: 47; padding: 7px 14px; border-radius: 999px; background: #e8c26a; color: #1b1d2e; font-weight: 800; box-shadow: 0 4px 16px #0008; }
+.world-map-btn { position: fixed; left: 12px; bottom: 60px; z-index: 47; padding: 7px 14px; border-radius: 999px; background: #e8c26a; color: #1b1d2e; font-weight: 800; box-shadow: 0 4px 16px #0008; }
 .mkt-chart { margin: 6px 0; } .mkt-chart-head { display: flex; gap: 4px; align-items: center; font-size: 11px; }
 .mkt-chart-head button { padding: 1px 6px; font-size: 11px; opacity: .6; } .mkt-chart-head button.on { opacity: 1; outline: 1px solid #7cf; }
 .mkt-legend { margin-left: auto; opacity: .8; } .mkt-legend i { display: inline-block; width: 8px; height: 3px; margin: 0 3px 2px 6px; }

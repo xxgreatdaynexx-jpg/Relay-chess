@@ -181,6 +181,9 @@ export function App() {
   const [world, setWorld] = useState(() => window.location.pathname === '/' && !window.location.search && !initialCode);
   const onHome = path === '/' && !state && !analysis && !booting;
   const showWorld = world && onHome;
+  // The city is home: whenever we come back to '/' from a room, tournament, analysis or the leaderboard, show it.
+  const wasHome = useRef(onHome);
+  useEffect(() => { if (onHome && !wasHome.current) setWorld(true); wasHome.current = onHome; }, [onHome]);
   const goHome = () => {
     window.history.pushState({}, '', '/');
     setPath('/');
@@ -215,7 +218,7 @@ export function App() {
       {showWorld ? (
         <WorldMap onClose={() => setWorld(false)} onLeaderboard={() => { setWorld(false); openLeaderboard(); }} />
       ) : onHome && (
-        <button type="button" className="world-map-btn" onClick={() => setWorld(true)} data-testid="world-map-btn">🗺 Map</button>
+        <button type="button" className="world-map-btn" onClick={() => setWorld(true)} data-testid="world-map-btn">← Back to city</button>
       )}
       {leaderboard ? (
         <LeaderboardScreen
@@ -260,7 +263,7 @@ export function App() {
             if (snap) setAnalysis(snap);
           }}
         />
-      ) : (
+      ) : showWorld ? null : (
         <HomeScreen
           key={homeKey}
           initialCode={initialCode}

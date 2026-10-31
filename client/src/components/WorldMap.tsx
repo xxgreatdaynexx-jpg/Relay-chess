@@ -47,7 +47,7 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
       case 'chat': openTab('chat-tab'); break;
       case 'leaderboard': onLeaderboard(); break;
     }
-    onClose();
+    // Every other building opens as a panel on top of the city; closing it reveals the city again.
   };
   const goRef = useRef(go); goRef.current = go;
 
@@ -66,6 +66,15 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
     }).catch(() => setMode('2d'));
     return () => { dead = true; worldRef.current?.dispose(); worldRef.current = null; };
   }, [mode]);
+  // Pause the city while a building's panel is open over it (saves GPU for Arena/Mines).
+  useEffect(() => {
+    let last = true;
+    const t = window.setInterval(() => {
+      const run = !casino && !document.querySelector('[aria-expanded="true"][data-testid$="-tab"], [aria-expanded="true"][data-testid="wallet-button"]');
+      if (run !== last) { last = run; worldRef.current?.setRunning(run); }
+    }, 400);
+    return () => window.clearInterval(t);
+  }, [casino]);
   useEffect(() => { worldRef.current?.setRunning(!casino); if (!casino) worldRef.current?.reset(); }, [casino]);
 
   const spot = tip && WORLD_SPOTS.find((s) => s.id === tip.id);
@@ -90,12 +99,11 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
       )}
       <div className="world-corner">
         <button type="button" onClick={() => setMode(mode === '3d' ? '2d' : '3d')} data-testid="world-mode">{mode === '3d' ? '▦ 2D map' : '🌃 3D city'}</button>
-        <button type="button" onClick={onClose} data-testid="world-skip">Lobby →</button>
       </div>
       {casino && (
         <div className="world-casino" onMouseDown={(e) => { if (e.target === e.currentTarget) setCasino(false); }} data-testid="world-casino">
           <div><h3>🎰 Chud Casino</h3>
-            {CASINO_GAMES.map((g) => <button key={g.tab} type="button" onClick={() => { setCasino(false); openTab(g.tab); onClose(); }} data-testid={`world-casino-${g.tab}`}>{g.label}</button>)}
+            {CASINO_GAMES.map((g) => <button key={g.tab} type="button" onClick={() => { setCasino(false); openTab(g.tab); }} data-testid={`world-casino-${g.tab}`}>{g.label}</button>)}
             <button type="button" className="world-casino-x" onClick={() => setCasino(false)}>Back to the city</button>
           </div>
         </div>
