@@ -104,6 +104,7 @@ interface Clip {
 const huhClip: Clip = { buffer: null, pending: null };
 const forkClip: Clip = { buffer: null, pending: null };
 const queenDeathClip: Clip = { buffer: null, pending: null };
+const arenaBoomClip: Clip = { buffer: null, pending: null };
 const queenCaptureClip: Clip = { buffer: null, pending: null };
 const doubleClip: Clip = { buffer: null, pending: null };
 const streakClip: Clip = { buffer: null, pending: null };
@@ -489,7 +490,8 @@ function thump(ctx: AudioContext, at: number, f0: number, len: number, gain: num
 }
 
 /** Arena: synthesized gunshot per weapon: sharp crack, low-end thump and a tail. All through the master volume. */
-export const ROCKET_LAUNCH_GAIN = 0.6;
+/** Launch whoosh peaks at -3.6 dBFS at gain 1; 0.12 caps it near -21 dBFS. */
+export const ROCKET_LAUNCH_GAIN = 0.12;
 export function playWeaponShot(weapon: string, volume = 1): void {
   const ctx = audio();
   if (!ctx) return;
@@ -600,20 +602,37 @@ export function playStreakCall(kind: 'reward' | 'alarm' = 'reward'): void {
   o.start(now + 0.4); o.stop(now + 5.5);
 }
 
-/** Arena explosions sit roughly level with gunshots: ~30% of the old level, quieter and duller with distance. */
-/** queen-death.mp3 is mastered hot (peak 0 dBFS, mean -3.2 dB). 0.13 puts a point-blank boom ~7 dB under a pistol shot (50 ms RMS). */
-export const ARENA_BOOM_GAIN = 0.13;
+/**
+ * Arena explosions use arena-boom.mp3: queen-death trimmed to 0.9 s, 60 Hz-2.5 kHz band, faded and normalized
+ * (peak -7.4 dBFS, mean -21.5 dB). At the max Explosions slider a point-blank boom peaks near -21 dBFS; the default
+ * 50% puts it near -27 dBFS, well under a shotgun blast (~0 dBFS peak).
+ */
+export const ARENA_BOOM_URL = '/sounds/arena-boom.mp3';
+export const ARENA_BOOM_GAIN = 0.2;
+/** The synth boom (airstrike/nuke) peaks ~5 dB hotter per unit gain than the clip. */
+export const SYNTH_BOOM_SCALE = 0.5;
 export const ARENA_BOOM_VOICES = 2;
+const EXPLOSION_VOL_KEY = 'arena-explosion-volume';
+let explosionVol = 0.5;
+try { const v = parseFloat(localStorage.getItem(EXPLOSION_VOL_KEY) ?? ''); if (Number.isFinite(v)) explosionVol = Math.min(1, Math.max(0, v)); } catch { /* no storage */ }
+/** Explosions slider (0..1, default 0.5), on top of the master volume. */
+export function getExplosionVolume(): number { return explosionVol; }
+export function setExplosionVolume(v: number): void {
+  explosionVol = Math.min(1, Math.max(0, v));
+  try { localStorage.setItem(EXPLOSION_VOL_KEY, String(explosionVol)); } catch { /* ignore */ }
+}
 export function explosionMix(dist: number): { gain: number; cutoff: number } {
   const d = Math.max(0, dist);
-  return { gain: ARENA_BOOM_GAIN * Math.max(0.08, 1 / (1 + d / 8)), cutoff: Math.max(300, 9000 / (1 + d / 4)) };
+  return { gain: ARENA_BOOM_GAIN * explosionVol * Math.max(0.08, 1 / (1 + d / 8)), cutoff: Math.max(300, 9000 / (1 + d / 4)) };
 }
 let boomVoices = 0;
 /** Arena explosion (rocket uses Dayne's recording; airstrike/other the synth), capped to 2 voices, through the master volume. */
 export function playArenaExplosion(dist: number, kind: 'rocket' | 'synth' = 'synth', long = false): void {
   const ctx = audio();
   if (!ctx || boomVoices >= ARENA_BOOM_VOICES) return;
-  const { gain, cutoff } = explosionMix(dist);
+  const mix = explosionMix(dist);
+  const gain = kind === 'rocket' ? mix.gain : mix.gain * SYNTH_BOOM_SCALE, cutoff = mix.cutoff;
+  if (gain <= 0.0005) return;
   const now = ctx.currentTime;
   const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = cutoff;
   const g = ctx.createGain(); g.gain.value = gain;
@@ -621,7 +640,7 @@ export function playArenaExplosion(dist: number, kind: 'rocket' | 'synth' = 'syn
   boomVoices++;
   const done = () => { boomVoices = Math.max(0, boomVoices - 1); try { g.disconnect(); } catch { /* gone */ } };
   if (kind === 'rocket') {
-    void loadClip(ctx, QUEEN_DEATH_URL, queenDeathClip).then((buffer) => {
+    void loadClip(ctx, ARENA_BOOM_URL, arenaBoomClip).then((buffer) => {
       if (!buffer) return done();
       const src = ctx.createBufferSource(); src.buffer = buffer; src.connect(lp); src.onended = done; src.start();
     });

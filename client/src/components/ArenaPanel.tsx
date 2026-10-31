@@ -10,7 +10,7 @@ import { prefersReducedMotion } from '@/lib/motion';
 import { INTERP_DELAY_MS, LOCAL_STEP_S, SnapBuffer, samplePlayers } from '../../../shared/netInterp';
 import { TagVisibility, tagVisible } from '@/lib/arenaTags';
 import type { ArenaMap } from '../../../shared/arenaMaps';
-import { playArenaExplosion, playHit, playStreakCall, playWeaponShot, unlockSounds } from '@/lib/sounds';
+import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, unlockSounds } from '@/lib/sounds';
 import {
   AIRSTRIKE_RADIUS, clampPitch, EYE_HEIGHT, mapById, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
 } from '../../../shared/fps';
@@ -81,6 +81,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const [look, setLookState] = useState<LookPrefs>(() => readLook());
   const lookRef = useRef(look);
   const [lookOpen, setLookOpen] = useState(false);
+  const [boomVol, setBoomVol] = useState(getExplosionVolume);
   const setLook = (patch: Partial<LookPrefs>) => setLookState((cur) => {
     const next = { ...cur, ...patch }; lookRef.current = next;
     try { localStorage.setItem(LOOK_KEY, JSON.stringify(next)); } catch { /* private mode */ }
@@ -481,6 +482,10 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         ctx.beginPath();
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { ctx.moveTo(W2 / 2 + dx * (spread + cs * 0.4), H2 / 2 + dy * (spread + cs * 0.4)); ctx.lineTo(W2 / 2 + dx * (spread + cs), H2 / 2 + dy * (spread + cs)); }
         ctx.stroke();
+      }
+      // Hit marker (white, red on kill) drawn after the scope overlay so it also shows while scoped.
+      if (m.alive) {
+        const cs = H2 / 40;
         const hm = now - fx.current.hitmark;
         if (hm < 220) {
           const kill = now - fx.current.killmark < 300;
@@ -776,6 +781,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
           <label>Mouse <input type="range" min={SENS_MIN} max={SENS_MAX} step={0.05} value={look.sens} data-testid="arena-sens" onChange={(e) => setLook({ sens: +e.target.value })} /><input type="number" min={SENS_MIN} max={SENS_MAX} step={0.05} value={look.sens} aria-label="Mouse sensitivity value" onChange={(e) => { const v = +e.target.value; if (v >= SENS_MIN && v <= SENS_MAX) setLook({ sens: v }); }} /></label>
           <label>Scoped × <input type="range" min={0.05} max={2} step={0.01} value={look.scope} data-testid="arena-scope-sens" onChange={(e) => setLook({ scope: +e.target.value })} /><span>{look.scope.toFixed(2)}</span></label>
           <label>Touch <input type="range" min={SENS_MIN} max={SENS_MAX} step={0.05} value={look.touch} data-testid="arena-touch-sens" onChange={(e) => setLook({ touch: +e.target.value })} /><span>{look.touch.toFixed(2)}</span></label>
+          <label>Explosions <input type="range" min={0} max={1} step={0.05} value={boomVol} data-testid="arena-explosion-vol" onChange={(e) => { setExplosionVolume(+e.target.value); setBoomVol(+e.target.value); }} /><span>{Math.round(boomVol * 100)}%</span></label>
           <label><input type="checkbox" checked={look.invertY} data-testid="arena-invert-y" onChange={(e) => setLook({ invertY: e.target.checked })} /> Invert Y</label>
           <button type="button" onClick={() => setLook({ sens: 1, scope: 0.31, touch: 1, invertY: false })}>Reset</button>
         </div>
