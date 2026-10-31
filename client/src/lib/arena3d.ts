@@ -2,6 +2,7 @@
  * three.js first-person renderer for the Arena. World coords are (x, y) horizontal with z up;
  * three.js uses Y up, so world (x, y, z) maps to three (x, z, y). All textures are procedural (no external assets).
  */
+import { applySkin, tickSkins } from './skinRender';
 import * as THREE from 'three';
 import type { ArenaMap, Material, Ramp } from '../../../shared/arenaMaps';
 import type { WeaponId } from '../../../shared/fps';
@@ -133,10 +134,11 @@ function rampGeo(r: Ramp, unit: number): THREE.BufferGeometry {
 }
 
 /** First-person weapon state: kick 0..1 (just fired), lower 0..1 (switching), reload 0..1 progress or -1, bob walk phase. */
-export interface Viewmodel3D { w: WeaponId; kick: number; lower: number; reload: number; bob: number; muzzle: boolean }
+export interface Viewmodel3D { w: WeaponId; kick: number; lower: number; reload: number; bob: number; muzzle: boolean; /** equipped skin token */ sk?: string | null }
 export interface View3D { x: number; y: number; z: number; a: number; p: number; zoom: number; vm?: Viewmodel3D | null }
 export interface Soldier3D {
   id: string; x: number; y: number; z: number; a: number; p: number; color: string; flash: boolean; moving: boolean; dead?: number; t: number; w?: WeaponId; fire?: boolean;
+  /** skin token for the held weapon */ sk?: string | null;
   /** off the ground (jumping / falling) */ air?: boolean;
   /** 0..1 reload progress, or undefined */ reload?: number;
   /** 0..1 weapon-switch lowering */ sw?: number;
@@ -478,6 +480,7 @@ export class Arena3D {
     this.vmLight.intensity = 0;
     if (!vm) return;
     const g = this.vmGun(vm.w);
+    applySkin(g.root, vm.sk);
     const [vx, vy, vz] = g.spec.view;
     const heavy = vm.w === 'shotgun' || vm.w === 'sniper' || vm.w === 'rocket' ? 1.6 : 1;
     const k = vm.kick * vm.kick;
@@ -580,6 +583,7 @@ export class Arena3D {
   }
 
   render(view: View3D, soldiers: Soldier3D[], fx: Fx3D) {
+    tickSkins(performance.now());
     const cam = this.camera;
     const fov = 68 / view.zoom;
     if (Math.abs(cam.fov - fov) > 0.01) { cam.fov = fov; cam.updateProjectionMatrix(); }
@@ -598,6 +602,7 @@ export class Arena3D {
       this.holdGun(s, p.w ?? 'pistol', p.dead === undefined ? p.p : 0);
       this.poseAim(s, p);
       const held = s.guns.get(p.w ?? 'pistol');
+      if (held) applySkin(held.root, p.sk);
       if (held) held.flash.visible = !!p.fire && p.dead === undefined;
       if (p.fire && p.dead === undefined) { flashAt = s.g.position; }
     }

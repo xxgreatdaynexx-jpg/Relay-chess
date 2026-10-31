@@ -25,7 +25,7 @@ const COLORS = ['#5f6a48', '#7d7158', '#596066', '#6b6248', '#4f5a4c', '#73705f'
 const SCOPE_ZOOM = 3.5;
 const FOV = 68; // vertical, degrees
 
-interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number; bot?: boolean; c?: boolean; s?: boolean }
+interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number; bot?: boolean; c?: boolean; s?: boolean; sk?: string }
 interface NetState { t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null; wh?: boolean; roster?: Array<Pick<NetPlayer, 'id' | 'name' | 'k' | 'd' | 'st' | 'bot'>>; radar?: Array<{ x: number; y: number }>; rockets?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number }> }
 interface Snap extends NetState { recv: number }
 type Quality = 'hd' | 'lo';
@@ -441,7 +441,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         const sinceShot = now - (fx.current.shotAt.get(p.id) ?? -1e9);
         const sinceHit = now - (fx.current.hitAt.get(p.id) ?? -1e9);
         return {
-          id: p.id, x: p.x, y: p.y, z: p.z, a: p.a, p: p.p, color: colorFor(p.id), flash: sinceHit < 120, moving: mv, t: now, w: p.w, fire: sinceShot < 60,
+          id: p.id, x: p.x, y: p.y, z: p.z, a: p.a, p: p.p, color: colorFor(p.id), flash: sinceHit < 120, moving: mv, t: now, w: p.w, sk: p.sk ?? null, fire: sinceShot < 60,
           air: !p.g, crouch: !!p.c, sprint: !!p.s, speed: Math.min(8, sp), recoil: sinceShot < 160 ? 1 - sinceShot / 160 : 0, flinch: sinceHit < 260 ? 1 - sinceHit / 260 : 0,
           sw: sinceSw < SWITCH_MS ? 1 - Math.abs(sinceSw / SWITCH_MS - 0.5) * 2 : 0,
           reload: p.rl > 0 ? Math.max(0, Math.min(1, 1 - p.rl / WEAPONS[p.w].reloadMs)) : undefined,
@@ -483,7 +483,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       const shake = now - fx.current.shake < 450 ? (1 - (now - fx.current.shake) / 450) * 0.04 : 0;
       const vmSwitch = Math.max(0, 1 - (now - m.switchedAt) / SWITCH_MS);
       const vmReload = m.reloadUntil && now < m.reloadUntil ? 1 - (m.reloadUntil - now) / WEAPONS[m.weapon].reloadMs : -1;
-      const vm = showGun && m.alive && m.joined ? { w: m.weapon, kick: Math.max(0, 1 - (now - fx.current.muzzle) / 140), lower: vmSwitch, reload: vmReload, bob: m.walk, muzzle: now - fx.current.muzzle < 50 } : null;
+      const vm = showGun && m.alive && m.joined ? { w: m.weapon, kick: Math.max(0, 1 - (now - fx.current.muzzle) / 140), lower: vmSwitch, reload: vmReload, bob: m.walk, muzzle: now - fx.current.muzzle < 50, sk: (() => { const me = snap?.players.find((q) => q.id === m.id); return me && me.w === m.weapon ? me.sk ?? null : null; })() } : null;
       const qa = (window as unknown as { __arenaQA?: { vm?: unknown } }).__arenaQA; if (qa) qa.vm = vm;
       g3.render({ x: eye.x, y: eye.y, z: eye.z + m.eyeH + bob + (Math.random() - 0.5) * shake, a: m.a, p: m.p, zoom, vm }, soldiers, fx3);
       // Health bars over nearby enemies you can see.
@@ -814,7 +814,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         <button type="button" className="fps-quality" data-testid="arena-look-btn" title="Look sensitivity" aria-expanded={lookOpen} onClick={() => setLookOpen((o) => !o)}>⚙ Sens</button>
         {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" title="Reset position" onClick={win.reset}>⟲</button>}
         {wallet !== null && <span className="ml-auto text-xs font-semibold" title="Your chip wallet (shared by every game)" data-testid="arena-wallet">🪙 {wallet.toLocaleString()}</span>}
-        <button type="button" className={wallet === null ? 'ml-auto' : ''} aria-label="Close arena" onClick={onClose}>✕</button>
+        <button type="button" className={`text-xs ${wallet === null ? 'ml-auto' : ''}`} title="Skins, cases and keys" onClick={() => window.dispatchEvent(new Event('open-inventory'))} data-testid="arena-inventory">🎒 Skins</button>
+        <button type="button" aria-label="Close arena" onClick={onClose}>✕</button>
       </div>
       <div className="fps-maps" data-testid="arena-maps">
         <span className="fps-maps-now">{mapById(mapInfo.map).name}{mapInfo.secs > 0 && <span className="opacity-70"> · {clock(mapInfo.secs * 1000)}</span>}</span>

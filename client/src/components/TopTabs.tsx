@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { createPortal } from 'react-dom';
 
 /** Slot order in the top bar. */
-export const TOP_TAB_ORDER = ['blackjack', 'roulette', 'poker', 'slots', 'solitaire', 'arena'] as const;
+export const TOP_TAB_ORDER = ['blackjack', 'roulette', 'poker', 'slots', 'solitaire', 'arena', 'skins'] as const;
 export type TopTabId = (typeof TOP_TAB_ORDER)[number] | 'account' | 'chat' | 'wallet';
 
 /** The single top tab bar. Panels portal their tab buttons into its slots, so order is fixed here. On phones it collapses to a menu button. */

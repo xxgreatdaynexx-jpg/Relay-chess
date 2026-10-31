@@ -1,6 +1,7 @@
 import type { Server, Socket } from 'socket.io';
 import { guestName, MOVE_SPEED, TICK_HZ } from '../shared/fps.js';
 import { ArenaWorld, type ArenaEvent } from './arena-world.js';
+import { getVault, playerKey } from './skins.js';
 import { getArenaLedger } from './arena-store.js';
 import { ArenaBots, isArenaBot, warmNavGraphs } from './arena-bots.js';
 import { MAPS } from '../shared/arenaMaps.js';
@@ -18,6 +19,19 @@ let flagSink: (f: ArenaFlag) => void = recordFlag;
 export function setFlagSink(fn: ((f: ArenaFlag) => void) | null): void { flagSink = fn ?? recordFlag; }
 const newAudit = () => new ArenaAntiCheat((f) => flagSink(f), (id, name) => (isBot(id) || perksFor(claimed.get(id)).size ? null : claimed.get(id)?.toLowerCase() ?? `guest:${name}`));
 world.audit = newAudit();
+  wireWorld(world);
+/** Match-end drops + equipped skins for signed-in players. */
+let dropIo: Server | null = null;
+function wireWorld(w: ArenaWorld): void {
+  w.onMatchEnd = ({ matchId, players }) => {
+    const humans = players.filter((p) => !isBot(p.id) && claimed.has(p.id)).map((p) => ({ ...p, sock: p.id, name: claimed.get(p.id)! }));
+    const got = getVault().dropForMatch(matchId, humans);
+    for (const g of got) for (const h of humans) if (h.name === g.name) dropIo?.to(h.sock).emit('inv_drop', g.item);
+  };
+}
+getVault().listeners.add((k) => {
+  for (const [id, n] of claimed) if (playerKey(n) === k && world.fighters.has(id)) world.skins.set(id, getVault().loadout(n));
+});
 /** Test hook. */
 export const getArenaWorld = () => world;
 let ticker: ReturnType<typeof setInterval> | null = null;
@@ -75,6 +89,7 @@ function dropBotsIfAlone(): void {
 export function resetArena(): void {
   world = new ArenaWorld();
   world.audit = newAudit();
+  wireWorld(world);
   botHeading.clear();
   arenaBots = new ArenaBots();
   claimed.clear();
@@ -150,6 +165,7 @@ function ensureTicker(io: Server): void {
 function leave(io: Server, socket: Socket): void {
   if (!world.leave(socket.id)) return;
   claimed.delete(socket.id);
+  world.skins.delete(socket.id);
   dropBotsIfAlone();
   syncBots(Date.now());
   socket.leave(ROOM);
@@ -170,6 +186,8 @@ export function registerFps(io: Server, socket: Socket): void {
       const perks = perksFor(account);
       if (perks.size) world.perks.set(socket.id, perks); // before join, so detection skips them
       world.join(socket.id, account ?? guestName(), Date.now());
+      dropIo = io;
+      if (account) world.skins.set(socket.id, getVault().loadout(account)); else world.skins.delete(socket.id);
       // The first human in can choose the map straight away.
       const want = body(payload).map;
       if (want !== undefined) { const ev = world.pickMap(want, socket.id, Date.now(), isHuman); if (ev) emit(io, ev); }

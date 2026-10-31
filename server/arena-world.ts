@@ -102,8 +102,21 @@ export class ArenaWorld {
   }
 
   /** Loads a new map: fresh match, scores reset, streak rewards cleared, everyone redeploys at the new spawns. */
+  /** Called once per finished match (timer ran out), before the next map loads. Used for item drops. */
+  onMatchEnd?: (r: { matchId: string; players: Array<{ id: string; name: string; ms: number; kills: number; deaths: number }> }) => void;
+  /** When each fighter entered the current match (for drop participation). */
+  readonly matchJoinAt = new Map<string, number>();
+  /** Equipped skin tokens per fighter id, by weapon (sent as \`sk\` for the held weapon). */
+  readonly skins = new Map<string, Record<string, string>>();
+  matchResult(now: number) {
+    return {
+      matchId: `${this.map.id}:${this.matchEndsAt}`,
+      players: [...this.fighters.values()].map((f) => ({ id: f.id, name: f.name, ms: now - (this.matchJoinAt.get(f.id) ?? now), kills: f.kills, deaths: f.deaths })),
+    };
+  }
   changeMap(map: ArenaMap, now: number, by: string | null = null): ArenaEvent[] {
     this.map = map;
+    for (const id of this.fighters.keys()) this.matchJoinAt.set(id, now);
     this.droneHeight = droneZ(map);
     this.nextMapId = null;
     this.matchEndsAt = now + MATCH_MS;
@@ -131,6 +144,7 @@ export class ArenaWorld {
       switchedAt: -1e9, scopedSince: 0, jumpAt: -1e9, streak: 0, uavUntil: 0,
     };
     this.fighters.set(id, f);
+    this.matchJoinAt.set(id, now);
     this.audit?.join(id, name);
     return f;
   }
@@ -521,7 +535,10 @@ export class ArenaWorld {
       out.push({ ev: 'fps_nuke', data: { phase: 'boom', by } });
     }
     // Match over: load the picked map, or the next one in rotation.
-    if (this.matchEndsAt && now >= this.matchEndsAt && !this.nuke) out.push(...this.changeMap(MAPS[this.upcomingMapId], now));
+    if (this.matchEndsAt && now >= this.matchEndsAt && !this.nuke) {
+      try { this.onMatchEnd?.(this.matchResult(now)); } catch (e) { console.error('[arena] match-end hook failed:', (e as Error).message); }
+      out.push(...this.changeMap(MAPS[this.upcomingMapId], now));
+    }
     return out;
   }
 
@@ -566,7 +583,7 @@ export class ArenaWorld {
         id: f.id, name: f.name, x: +f.x.toFixed(3), y: +f.y.toFixed(3), z: +f.z.toFixed(3), a: +f.a.toFixed(3), p: +f.p.toFixed(3),
         hp: f.hp, k: f.kills, d: f.deaths, alive: f.alive, ...(f.id.startsWith('arena-bot-') ? { bot: true } : {}), w: f.weapon, ammo: f.ammo[f.weapon],
         rl: f.reloadUntil ? Math.max(0, f.reloadUntil - now) : 0, g: f.grounded, ...(f.crouch ? { c: true } : {}), ...(f.sprint ? { s: true } : {}),
-        st: f.streak, uav: Math.max(0, f.uavUntil - now),
+        st: f.streak, uav: Math.max(0, f.uavUntil - now), ...(this.skins.get(f.id)?.[f.weapon] ? { sk: this.skins.get(f.id)![f.weapon] } : {}),
       })),
       drones: [...this.drones.values()].flatMap((d) => {
         const p = this.dronePos(d, now);

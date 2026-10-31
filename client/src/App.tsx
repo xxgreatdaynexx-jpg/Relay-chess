@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { SkinsPanel } from '@/components/SkinsPanel';
 import { HomeScreen } from '@/components/HomeScreen';
 import { LeaderboardScreen } from '@/components/Leaderboard';
 import { RoomScreen } from '@/components/RoomScreen';
@@ -193,6 +194,7 @@ export function App() {
         <SlotsPanel />
         <SolitairePanel />
         <ArenaPanel />
+        <SkinsPanel />
         <ConquestPanel />
       </div>
       <AccountPanel />
