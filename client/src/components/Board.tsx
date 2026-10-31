@@ -55,7 +55,8 @@ export function Board({
   streak?: { token: string; name: string; kind: StreakKind } | null;
   mark?: { token: string; square: string; grade: MoveGrade } | null;
   fork?: { token: string; square: string } | null;
-  boom?: { token: string; square: string } | null;
+  /** Checkers passes every captured square; each explodes in turn, `stagger` ms apart. */
+  boom?: { token: string; square: string; squares?: string[]; stagger?: number } | null;
   poof?: { token: string; squares: string[] } | null;
   /** Checkers draws discs (p = man, k = king) from the same FEN-shaped string. */
   variant?: 'chess' | 'checkers';
@@ -154,7 +155,8 @@ export function Board({
 
   const sideToMove = fen.split(' ')[1] === 'b' ? 'b' : 'w';
   const dragPiece = drag?.piece && drag.lifted ? pieces.get(drag.from) : undefined;
-  const shaking = useShown(boom?.token ?? null, BOOM_FLASH_MS);
+  const boomSquares = boom ? (boom.squares?.length ? boom.squares : [boom.square]) : [];
+  const shaking = useShown(boom?.token ?? null, BOOM_FLASH_MS + (boomSquares.length - 1) * (boom?.stagger ?? 0));
 
   return (
     <div className={cn('board-frame', shaking && 'board-shake')}>
@@ -322,7 +324,7 @@ export function Board({
             </div>
           )}
         </TimedOverlay>
-        {shaking && boom && <BoomBurst square={boom.square} orientation={orientation} />}
+        {shaking && boom && boomSquares.map((sq, i) => <BoomBurst key={`${boom.token}:${sq}`} square={sq} orientation={orientation} delay={i * (boom.stagger ?? 0)} />)}
         <TimedOverlay
           token={poof?.token ?? null}
           ms={POOF_FLASH_MS}
@@ -409,7 +411,14 @@ function KingPoof({ squares, orientation }: { squares: string[]; orientation: 'w
   );
 }
 
-function BoomBurst({ square, orientation }: { square: string; orientation: 'white' | 'black' }) {
+function BoomBurst({ square, orientation, delay = 0 }: { square: string; orientation: 'white' | 'black'; delay?: number }) {
+  const [ready, setReady] = useState(delay <= 0);
+  useEffect(() => {
+    if (delay <= 0) return;
+    const timer = window.setTimeout(() => setReady(true), delay);
+    return () => window.clearTimeout(timer);
+  }, [delay]);
+  if (!ready) return null;
   return (
     <div className="pointer-events-none absolute inset-0 z-30" data-testid="queen-boom" aria-hidden="true">
       <div className="boom-spot absolute" style={squareBox(square, orientation)}>

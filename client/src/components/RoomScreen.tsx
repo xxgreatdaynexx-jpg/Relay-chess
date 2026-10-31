@@ -17,6 +17,7 @@ import { becameYourTurn, shouldTimeAlarm } from '../../../shared/alerts';
 import { queenMoveSound } from '../../../shared/capture';
 import { BLUNDER_FLASH_MS, DOUBLE_FLASH_MS, FORK_SOUND_DELAY_MS, FORK_SOUND_WAIT_MS, MATE_IN_ONE_SOUND_DELAY_MS, OPENING_FLASH_MS, POOF_HOLD_MS, QUEEN_CAPTURE_SOUND_DELAY_MS, STREAK_FLASH_MS, STREAK_SOUND_DELAY_MS, flashIsFresh } from '../../../shared/flash';
 import { isFork } from '../../../shared/fork';
+import { checkersMoveFx, CHECKERS_BOOM_STAGGER_MS } from '../../../shared/checkersFx';
 import { applyMove as applyCheckers, findMove as findCheckers, parseFen as parseCheckers, toFen as checkersFen } from '../../../shared/checkers';
 import { loadSession, prettyCode } from '@/lib/session';
 import { formatClock } from '@/lib/time';
@@ -63,7 +64,7 @@ export function RoomScreen({
   const [resignOpen, setResignOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [boom, setBoom] = useState<{ token: string; square: string } | null>(null);
+  const [boom, setBoom] = useState<{ token: string; square: string; squares?: string[]; stagger?: number } | null>(null);
   const [fork, setFork] = useState<{ token: string; square: string } | null>(null);
   const [payPhase, setPayPhase] = useState<'idle' | 'processing' | 'received' | 'declined'>('idle');
   const [frozenFen, setFrozenFen] = useState<string | null>(null);
@@ -117,7 +118,16 @@ export function RoomScreen({
     previousMoves.current = state.moves.length;
     if (!before || before === state.fen || state.moves.length === 0 || state.moves.length === movesBefore) return;
     const move = state.moves[state.moves.length - 1];
-    if (state.gameType === 'checkers') return;
+    if (state.gameType === 'checkers') {
+      const pos = parseCheckers(before);
+      const path = pos ? findCheckers(pos, move.from, move.to)?.path : undefined;
+      const fx = checkersMoveFx(before, state.fen, move.from, path);
+      if (fx.captures.length) {
+        setBoom({ token: `${state.ply}:${move.to}`, square: fx.captures[0]!, squares: fx.captures, stagger: CHECKERS_BOOM_STAGGER_MS });
+      }
+      if (fx.huh) playHuh();
+      return;
+    }
     const queenSound = queenMoveSound(before, move.from, move.to);
     if (queenSound === 'death') setBoom({ token: `${state.ply}:${move.to}`, square: move.to });
     const forkNow = isFork(state.fen, move.to);
@@ -373,7 +383,10 @@ export function RoomScreen({
   ]);
 
   useEffect(() => {
-    if (boom) playBoom();
+    if (!boom) return;
+    playBoom();
+    const timers = (boom.squares ?? []).slice(1).map((_, i) => window.setTimeout(playBoom, (i + 1) * (boom.stagger ?? 0)));
+    return () => timers.forEach((t) => window.clearTimeout(t));
   }, [boom?.token]);
 
   useEffect(() => {
