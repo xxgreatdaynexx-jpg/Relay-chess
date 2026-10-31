@@ -12,6 +12,7 @@ import { registerWallet, startWallet } from './wallet-sockets.js';
 import { registerSolitro } from './solitro.js';
 import { registerSkins } from './skins.js';
 import { registerMarket } from './market.js';
+import { registerStocks } from './stocks.js';
 import { registerMines } from './mines.js';
 import { registerFactory } from './factory.js';
 import { registerConquest } from './conquest.js';
@@ -204,6 +205,7 @@ export function registerSockets(io: Server): void {
     registerSolitro(io, socket);
     registerSkins(io, socket);
     registerMarket(io, socket);
+    registerStocks(io, socket);
     registerMines(io, socket);
     registerFactory(io, socket);
     registerChat(io, socket);

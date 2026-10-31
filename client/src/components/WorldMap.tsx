@@ -44,6 +44,7 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
       case 'warehouse': window.dispatchEvent(new CustomEvent('open-inventory', { detail: { tab: 'inv' } })); break;
       case 'market': if (openTab('market-tab')) break; window.dispatchEvent(new CustomEvent('open-inventory', { detail: { tab: 'market' } })); break;
       case 'bank': openTab('wallet-button'); break;
+      case 'stocks': openTab('stocks-tab'); break;
       case 'chat': openTab('chat-tab'); break;
       case 'leaderboard': onLeaderboard(); break;
     }

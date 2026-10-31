@@ -19,6 +19,7 @@ export const SPOT_POS: Record<string, [number, number]> = {
   chess: [BLOCK_X[1], BLOCK_Z[1]], leaderboard: [BLOCK_X[4], BLOCK_Z[0]], bank: [BLOCK_X[6], BLOCK_Z[1]],
   chat: [BLOCK_X[3], BLOCK_Z[2]], casino: [BLOCK_X[4], BLOCK_Z[4]], factory: [BLOCK_X[0], BLOCK_Z[4]],
   warehouse: [BLOCK_X[7], BLOCK_Z[3]], mine: [BLOCK_X[1], BLOCK_Z[6]], market: [BLOCK_X[3], BLOCK_Z[6]], arena: [BLOCK_X[6], BLOCK_Z[5]],
+  stocks: [BLOCK_X[2], BLOCK_Z[4]],
 };
 
 export type AABB = { x0: number; x1: number; z0: number; z1: number };

@@ -9,6 +9,7 @@ import { initCheckersLeaderboardStorage, initLeaderboardStorage } from './leader
 import { getBank, initCasinoStorage } from './casino-store.js';
 import { getVault, initSkinStorage } from './skins.js';
 import { initMarketStorage } from './market.js';
+import { initStocks } from './stocks.js';
 import { getMines, initMinesStorage } from './mines.js';
 import { getFactory, initFactory } from './factory.js';
 import { initAccountStorage } from './accounts.js';
@@ -31,6 +32,7 @@ await initChatStorage();
 await initBuildAnnounce();
 await initRequests();
 await initEconomy();
+await initStocks();
 await initConquestStorage();
 await initSolitroStorage();
 

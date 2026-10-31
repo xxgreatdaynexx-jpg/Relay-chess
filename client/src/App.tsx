@@ -17,6 +17,7 @@ import { ArenaPanel } from '@/components/ArenaPanel';
 import { MinesPanel } from '@/components/MinesPanel';
 import { FactoryPanel } from '@/components/FactoryPanel';
 import { MarketPage } from '@/components/MarketPage';
+import { StocksPage } from '@/components/StocksPage';
 import { ChatDrawer } from '@/components/ChatDrawer';
 import { ConquestPanel } from '@/components/ConquestPanel';
 import { AccountButton, AccountPanel } from '@/components/AccountPanel';
@@ -208,6 +209,7 @@ export function App() {
         <MinesPanel />
         <FactoryPanel />
         <MarketPage />
+        <StocksPage />
         <SkinsPanel />
         <ConquestPanel />
       </div>

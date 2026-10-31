@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 interface Cat { key: string; label: string; value: number; units: number; estValue: number }
 interface Flow { game: string; amount: number }
 interface Econ {
-  ok: boolean; error?: string; at: number; cash: number; assets: number; total: number; estPct: number; categories: Cat[];
+  ok: boolean; error?: string; at: number; cash: number; assets: number; total: number; estPct: number; categories: Cat[]; offshore?: number; totalWithOffshore?: number;
   change: { cash: number | null; assets: number | null; total: number | null };
   inflation: { cash7: number | null; cash30: number | null; total7: number | null; total30: number | null };
   flows: { faucets: Flow[]; sinks: Flow[]; transfers?: Flow[] }; net: number;
@@ -62,6 +62,13 @@ export function EconomyView() {
         <div className="text-lg font-bold tabular-nums" data-testid="econ-total">🪙 {n(e.total)}</div>
         <div className="text-[11px] opacity-60" title={e.method}>{e.estPct}% of asset worth is est. ⓘ</div>
       </div>
+      {e.offshore != null && (
+        <div className="mt-2 rounded-lg bg-white/5 p-2" data-testid="econ-offshore" title="Stock Exchange shares that no player owns (market cap minus player-held value). Not part of anyone's net worth.">
+          <div className="flex items-baseline justify-between"><span className="text-[10px] uppercase tracking-wide opacity-60">🏝 Offshore assets</span><span className="text-[11px] opacity-60">unowned stock</span></div>
+          <div className="text-base font-bold tabular-nums">🪙 {n(e.offshore)}</div>
+          <div className="text-[11px] opacity-70">Net worth without offshore: 🪙 {n(e.total)} · with offshore: 🪙 {n(e.totalWithOffshore ?? e.total + e.offshore)}</div>
+        </div>
+      )}
       <div className="mt-3 text-xs uppercase tracking-wide opacity-70">Daily inflation</div>
       <table className="mt-1 w-full text-[12px] tabular-nums" data-testid="econ-inflation">
         <thead><tr className="opacity-60"><th className="text-left font-normal" /><th className="font-normal">Today</th><th className="font-normal">7-day avg</th><th className="font-normal">30-day avg</th></tr></thead>

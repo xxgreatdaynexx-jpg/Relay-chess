@@ -6,7 +6,13 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-10-31T01:45:00-06:00', title: 'A much bigger city', bullets: [
+  { commit: '', at: '2026-10-31T01:55:00-06:00', title: 'Stock Exchange', bullets: [
+    'New Stocks tab and a Stock Exchange building in the city: trade shares in 100 made-up companies across 13 sectors.',
+    'Prices move every 30 seconds, follow Bank inflation and what players are doing (mining, casino, arena, factory, market), and react to big trades.',
+    'Every company gets at least one news event a day that moves its price; see the news feed on the exchange and each company page.',
+    'Buying and selling costs a 1% fee (burned) plus a small spread. Your shares count as assets in the Bank; shares nobody owns show as Offshore assets.',
+  ] },
+  { commit: 'f93b0f6', at: '2026-10-31T01:45:00-06:00', title: 'A much bigger city', bullets: [
     'The city is now about four times bigger, with the landmarks spread out across it and more streets to explore.',
     'New neighbourhoods fill the space in between: residential towers downtown, apartment blocks and row houses, and little detached homes with pitched roofs out in the suburbs, plus parks, plazas with fountains and empty lots.',
     'Zoom out further to take in the whole city. Traffic grew with the road network, so the streets stay calm.',

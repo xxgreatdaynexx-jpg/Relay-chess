@@ -178,6 +178,13 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
           g.add(box(4, 2.4, 3.4, mat({ color: 0x705038 }), sx, 0, sz));
           const aw = new THREE.Mesh(geo(new THREE.ConeGeometry(3.3, 1.6, 4)), mat({ color: cols[i], emissive: cols[i], emissiveIntensity: 0.4 })); aw.rotation.y = Math.PI / 4; aw.position.set(sx, 3.2, sz); g.add(aw); }
         g.add(cyl(0.3, 0.3, 7, dark, 0, 0, 0, 6), box(2.4, 0.5, 0.5, neon, 0, 7, 0)); height = 9; break; }
+      case 'stocks': {
+        // Stock Exchange: columned hall with a scrolling green ticker band and a bull on the steps.
+        g.add(box(10, 1, 8, mat({ color: 0xcfd6dc })), box(9, 6, 6.6, win(51), 0, 1), box(9.6, 0.5, 7.2, mat({ color: 0xcfd6dc }), 0, 7));
+        for (let i = 0; i < 6; i++) g.add(cyl(0.35, 0.4, 6, mat({ color: 0xffffff }), -3.75 + i * 1.5, 1, 3.8, 8));
+        g.add(box(9.2, 0.8, 0.2, mat({ color: 0x34d399, emissive: 0x34d399, emissiveIntensity: 1.6 }), 0, 7.6, 3.65));
+        for (let i = 0; i < 5; i++) g.add(box(0.8, 1 + i * 0.8, 0.8, neon, -2 + i, 8, 0));
+        g.add(box(1.6, 0.9, 0.7, mat({ color: 0x6b4a2b }), 3.6, 0, 5.2)); height = 13; break; }
       case 'leaderboard': {
         // The CHUD HUB tower: tallest thing on the map.
         g.add(box(6, 26, 6, win(41)), box(6.4, 0.5, 6.4, neon, 0, 26), box(4.4, 4, 4.4, win(43), 0, 26.5), box(0.3, 6, 0.3, dark, 0, 30.5));

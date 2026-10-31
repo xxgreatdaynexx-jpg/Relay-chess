@@ -471,5 +471,5 @@ export async function initCasinoStorage(): Promise<void> {
 }
 
 /** Socket events that can move chips (stakes, buys, payouts, seats with buy-ins). Refused while the chip DB is down. */
-const CHIP_EVENT = /^(bj_|he_sit|he_action|roulette_bet|roulette_rebet|vp_deal|vp_draw|vslots_|mines_(hit|collect|craft|sell|pack|factory|factory_upgrade|join)|fac_(buy|expand|place)|casino_me|wallet_sub)|^(sit|pay_bailout|create_room|quick_join|tournament_create|tournament_join|vote_rematch)$/;
+const CHIP_EVENT = /^(bj_|he_sit|he_action|roulette_bet|roulette_rebet|vp_deal|vp_draw|vslots_|mines_(hit|collect|craft|sell|pack|factory|factory_upgrade|join)|fac_(buy|expand|place)|stk_(buy|sell)|casino_me|wallet_sub)|^(sit|pay_bailout|create_room|quick_join|tournament_create|tournament_join|vote_rematch)$/;
 export const isChipEvent = (event: string): boolean => CHIP_EVENT.test(event);
