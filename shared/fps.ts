@@ -83,7 +83,7 @@ export function damageFalloff(weapon: { falloff?: { full: number; end: number; m
   if (dist >= f.end) return f.min;
   return 1 - (1 - f.min) * ((dist - f.full) / (f.end - f.full));
 }
-export const TICK_HZ = 15;
+export const TICK_HZ = 30;
 /** Below this the fighter is considered out of the world and respawned (should never happen). */
 export const KILL_Z = -5;
 

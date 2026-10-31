@@ -84,7 +84,7 @@ export const LIMITS = {
 interface Stats {
   name: string; key: string;
   shots: number; hits: number; heads: number; flicks: number; flickHits: number; blocked: number;
-  tele: number[]; nadeFast?: number[]; aim: { a: number; p: number; t: number } | null; flagged: Map<string, number>;
+  tele: number[]; nadeFast?: number[]; aim: { a: number; p: number; t: number } | null; aims?: Array<{ a: number; p: number; t: number }>; flagged: Map<string, number>;
 }
 
 const angDiff = (a: number, b: number) => { const d = Math.abs(a - b) % (Math.PI * 2); return d > Math.PI ? Math.PI * 2 - d : d; };
@@ -134,9 +134,16 @@ export class ArenaAntiCheat {
     if (!s) return 0;
     const prev = s.aim;
     s.aim = { a, p, t: now };
+    // Sample-rate independent: the biggest swing from any aim sample in the last FLICK_MS (60 Hz batched input
+    // splits one snap across several samples; comparing only consecutive samples would miss it).
+    const hist = (s.aims ??= []);
+    let d = 0;
+    if (prev && !hist.length) hist.push(prev);
+    for (const h of hist) if (now - h.t <= FLICK_MS && now >= h.t) d = Math.max(d, Math.hypot(angDiff(a, h.a), p - h.p));
+    hist.push({ a, p, t: now });
+    while (hist.length > 16 || (hist.length && now - hist[0].t > FLICK_MS * 2)) hist.shift();
     if (!prev) return 0;
-    const d = Math.hypot(angDiff(a, prev.a), p - prev.p);
-    return d * 180 / Math.PI >= FLICK_DEG && now - prev.t <= FLICK_MS ? d : 0;
+    return d * 180 / Math.PI >= FLICK_DEG ? d : 0;
   }
 
   /** One trigger pull. `precise` = single-bullet hitscan weapon (accuracy only counts these). */

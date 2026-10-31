@@ -299,9 +299,16 @@ export class ArenaWorld {
   }
 
   /** Client position report: x/y are speed-capped and collision-checked; z comes from the server's physics. */
-  move(id: string, x: unknown, y: unknown, a: unknown, now: number, p?: unknown, crouch?: unknown, sprint?: unknown, seq?: unknown): void {
+  move(id: string, x: unknown, y: unknown, a: unknown, now: number, p?: unknown, crouch?: unknown, sprint?: unknown, seq?: unknown, batch?: unknown): void {
     const f = this.fighters.get(id);
     if (!f || !f.alive) return;
+    // 60 Hz aim samples batched into each ~30 Hz move packet: [msAgo, a, p], oldest first. Anti-cheat only.
+    if (this.audit && Array.isArray(batch)) for (const smp of batch.slice(-6)) {
+      if (!Array.isArray(smp)) continue;
+      const ago = typeof smp[0] === 'number' && Number.isFinite(smp[0]) ? Math.min(100, Math.max(0, smp[0])) : 0;
+      const sa = normAngle(smp[1]), sp = clampPitch(smp[2]);
+      if (sa !== null && sp !== null) this.audit.aim(id, sa, sp, now - ago);
+    }
     if (typeof crouch === 'boolean') this.crouch(id, crouch);
     const na = normAngle(a);
     if (na !== null) { f.a = na; this.trackYaw(f, now); }

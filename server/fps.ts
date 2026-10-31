@@ -312,7 +312,7 @@ export function registerFps(io: Server, socket: Socket): void {
   });
   socket.on('fps_move', (p: unknown) => {
     const b = body(p);
-    world.move(socket.id, b.x, b.y, b.a, Date.now(), b.p, b.c, b.s, b.q);
+    world.move(socket.id, b.x, b.y, b.a, Date.now(), b.p, b.c, b.s, b.q, b.b);
   });
   socket.on('fps_shoot', (p: unknown) => emit(io, world.shoot(socket.id, body(p).a, Date.now(), body(p).p, body(p).vt, body(p).h, body(p).sid)));
   socket.on('fps_crouch', (p: unknown) => world.crouch(socket.id, body(p).on));

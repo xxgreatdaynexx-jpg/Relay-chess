@@ -7,7 +7,7 @@ import { LOOK_KEY, SENS_MAX, SENS_MIN, mouseLook, readLook, type LookPrefs, FPS_
 import { ArenaRenderer, minimapSize } from '@/lib/arenaRender';
 import type { Arena3D, Fx3D, Soldier3D, Viewmodel3D } from '@/lib/arena3d';
 import { prefersReducedMotion } from '@/lib/motion';
-import { predictShot, ShotPredictor, adoptServerAmmo } from '../../../shared/arenaPredict';
+import { predictShot, ShotPredictor, adoptServerAmmo, INPUT_SEND_MS } from '../../../shared/arenaPredict';
 import { INTERP_DELAY_MS, LOCAL_STEP_S, SnapBuffer, samplePlayers } from '../../../shared/netInterp';
 import { TagVisibility, tagVisible } from '@/lib/arenaTags';
 import type { ArenaMap } from '../../../shared/arenaMaps';
@@ -520,6 +520,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     let raf = 0;
     let last = performance.now();
     let lastSend = 0;
+    let aimSampleAt = 0;
+    const aimBatch: Array<[number, number, number]> = [];
     const frameTimes: number[] = [];
     let fpsShownAt = 0;
     const frame = (now: number) => {
@@ -596,7 +598,14 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         }
         net.acc -= steps * LOCAL_STEP_S;
         moving = fwd !== 0 || side !== 0;
-        if (now - lastSend > 50) { lastSend = now; net.seq += 1; net.hist.push(net.seq, m.x, m.y); socket.emit('fps_move', { x: m.x, y: m.y, a: m.a, p: m.p, c: wantCrouch, s: m.sprint, q: net.seq }); }
+        if (now - aimSampleAt >= 15) { aimSampleAt = now; aimBatch.push([now, m.a, m.p]); if (aimBatch.length > 6) aimBatch.shift(); }
+        // Inputs: aim sampled at ~60 Hz, batched into a ~30 Hz move packet (matches the server tick).
+        if (now - lastSend > INPUT_SEND_MS) {
+          lastSend = now; net.seq += 1; net.hist.push(net.seq, m.x, m.y);
+          const b = aimBatch.slice(0, -1).map(([t, a, p]) => [Math.round(now - t), +a.toFixed(3), +p.toFixed(3)]);
+          aimBatch.length = 0;
+          socket.emit('fps_move', { x: m.x, y: m.y, a: m.a, p: m.p, c: wantCrouch, s: m.sprint, q: net.seq, ...(b.length ? { b } : {}) });
+        }
         if ((m.firing || k.has('f')) && (!WEAPONS[m.weapon].semi || m.semiPending)) shoot(); // semi-auto: one shot per pull
       }
       if (m.reloadUntil && now >= m.reloadUntil) { m.reloadUntil = 0; m.ammo = WEAPONS[m.weapon].mag; }
