@@ -1,5 +1,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { PLATE, WATER_Z0, ROAD_W, ROADS_X, ROADS_Z, ROAD_X_SPAN, ROAD_Z_SPAN, SPOT_POS, fillerSpots as layoutFillers, CAR_LOOPS, CAR_COUNT, LANE, loopPoint } from './worldLayout';
 
 import { WORLD_SPOTS } from './worldSpots';
@@ -36,8 +41,10 @@ function glowTexture() {
 }
 
 export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  const tier = detectWorldTier();
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier !== 'low', powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, TIER_PIXEL_RATIO[tier]));
+  canvas.dataset.tier = tier;
   renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x070a1c); scene.fog = new THREE.Fog(0x070a1c, 120, 250);
@@ -60,7 +67,24 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const slab = new THREE.Mesh(geo(new THREE.BoxGeometry(S * 2, 3, S * 2)), [mat({ color: 0x4a3322 }), mat({ color: 0x4a3322 }), mat({ color: 0x3f9a45, roughness: 1, emissive: 0x0f3a14, emissiveIntensity: 0.6 }), mat({ color: 0x2a1c12 }), mat({ color: 0x4a3322 }), mat({ color: 0x4a3322 })]);
   slab.position.y = -1.5; scene.add(slab);
   const waterW = S - WATER_Z0;
-  const water = new THREE.Mesh(geo(new THREE.BoxGeometry(S * 2 + 0.2, 0.2, waterW)), mat({ color: 0x1d4f8f, emissive: 0x0a2a5a, emissiveIntensity: 0.5, roughness: 0.1, metalness: 0.5 }));
+  // Animated water: scrolling ripples + moonlight glints, fogged like the rest of the scene.
+  const waterMat = new THREE.ShaderMaterial({
+    fog: true,
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 } }]),
+    vertexShader: `varying vec2 vP; #include <fog_pars_vertex>
+      void main() { vP = (modelMatrix * vec4(position, 1.0)).xz; vec4 mvPosition = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mvPosition; #include <fog_vertex> }`.replace(/#include <[^>]+>/g, (m) => `\n${m}\n`),
+    fragmentShader: `uniform float uTime; varying vec2 vP; #include <fog_pars_fragment>
+      void main() {
+        float w = sin(vP.x * 0.55 + uTime * 0.9) * 0.5 + sin(vP.x * 1.3 - vP.y * 0.8 + uTime * 1.6) * 0.3 + sin(vP.y * 2.1 + uTime * 1.1) * 0.2;
+        vec3 deep = vec3(0.02, 0.06, 0.16), shallow = vec3(0.05, 0.16, 0.34);
+        vec3 c = mix(deep, shallow, w * 0.5 + 0.5);
+        float glint = pow(max(0.0, sin(vP.x * 2.7 + uTime * 2.3) * sin(vP.y * 3.1 - uTime * 1.7)), 40.0);
+        gl_FragColor = vec4(c + glint * vec3(0.35, 0.42, 0.55), 1.0);
+        #include <fog_fragment>
+      }`.replace(/#include <[^>]+>/g, (m) => `\n${m}\n`),
+  });
+  disposables.push(waterMat);
+  const water = new THREE.Mesh(geo(new THREE.BoxGeometry(S * 2 + 0.2, 0.2, waterW)), waterMat);
   water.position.set(0, -0.05, WATER_Z0 + waterW / 2); scene.add(water);
   // Roads (grid) + lane dashes, instanced.
   const roadMat = mat({ color: 0x23252c, roughness: 0.9 });
@@ -102,9 +126,14 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
         const dome = new THREE.Mesh(geo(new THREE.SphereGeometry(2.6, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2)), neon); dome.position.y = 15.6; g.add(dome);
         g.add(box(6, 0.3, 2.5, neon, 0, 2.6, 4.6)); height = 19; break; }
       case 'chess': {
+        // Checkerboard plaza so the Chess Club reads at a glance.
+        { const c = document.createElement('canvas'); c.width = c.height = 128; const x2 = c.getContext('2d')!; for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) { x2.fillStyle = (i + j) % 2 ? '#2b2f3a' : '#e9e2cc'; x2.fillRect(i * 16, j * 16, 16, 16); }
+          const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.magFilter = THREE.NearestFilter; disposables.push(t);
+          g.add(box(11.4, 0.18, 11.4, mat({ color: 0xffffff, map: t, roughness: 0.5 }))); }
         g.add(box(9, 5, 9, win(11)));
         for (let i = 0; i < 4; i++) { const t = cyl(0.9, 1.1, 8, dark, i % 2 ? 4 : -4, 0, i < 2 ? 4 : -4, 8); g.add(t); g.add(cyl(1.3, 0.2, 1.4, neon, t.position.x, 8, t.position.z, 8)); }
-        const k = cyl(1.2, 2, 4, mat({ color: 0xf1ead6 }), 0, 5, 0, 12); g.add(k, box(0.6, 2.4, 0.6, neon, 0, 9, 0), box(1.8, 0.6, 0.6, neon, 0, 10, 0)); height = 13; break; }
+        const ivory = mat({ color: 0xf1ead6, emissive: 0xf1ead6, emissiveIntensity: 0.25 }); ems.push(ivory);
+        g.add(cyl(2.4, 2.8, 0.8, ivory, 0, 5, 0, 16), cyl(1.2, 2, 4.2, ivory, 0, 5.8, 0, 16), cyl(1.7, 1.2, 0.7, ivory, 0, 10, 0, 16), box(0.6, 2.4, 0.6, neon, 0, 10.7, 0), box(1.8, 0.6, 0.6, neon, 0, 11.6, 0)); height = 14; break; }
       case 'mine': {
         const hill = new THREE.Mesh(geo(new THREE.ConeGeometry(6.5, 7, 7)), mat({ color: 0x6b5a48, flatShading: true })); hill.position.y = 3.5; g.add(hill);
         const tun = box(3, 3, 2, mat({ color: 0x0a0806 }), 0, 0, 5.4); g.add(tun, box(3.8, 0.5, 2.2, neon, 0, 3, 5.4));
@@ -151,7 +180,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     g.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.userData.spot = spot.id; pickables.push(o); } });
     const st = signTexture(`${spot.icon} ${spot.label}`, hex); disposables.push(st);
     const sm = new THREE.SpriteMaterial({ map: st, transparent: true, toneMapped: false, depthWrite: false }); disposables.push(sm);
-    const sign = new THREE.Sprite(sm); sign.scale.set(8, 2, 1); sign.position.set(0, height + 2.2, 0); sign.userData.spot = spot.id; g.add(sign); pickables.push(sign);
+    const sign = new THREE.Sprite(sm); sign.scale.set(8, 2, 1); sign.userData.base = 8; sign.position.set(0, height + 2.2, 0); sign.userData.spot = spot.id; g.add(sign); pickables.push(sign);
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: spot.color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false })); halo.scale.set(16, 16, 1); halo.position.y = 0.6; g.add(halo);
     scene.add(g);
     lms.push({ id: spot.id, root: g, hit: [], emissive: ems, sign, pos: g.position.clone(), height });
@@ -226,7 +255,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const pick = (cx: number, cy: number) => { const rc = canvas.getBoundingClientRect(); ndc.set(((cx - rc.left) / rc.width) * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1); ray.setFromCamera(ndc, camera); const hit = ray.intersectObjects(pickables, false)[0]; return (hit?.object.userData.spot as string | undefined) ?? null; };
   const setHover = (id: string | null) => {
     if (id === hovered) return; hovered = id; canvas.style.cursor = id ? 'pointer' : 'grab';
-    for (const l of lms) { const on = l.id === id; l.root.scale.setScalar(on ? 1.06 : 1); l.sign.scale.set(on ? 9.6 : 8, on ? 2.4 : 2, 1); for (const m of l.emissive) m.emissiveIntensity = on ? (m.map ? 1.6 : 3) : (m.map ? 0.9 : 1.6); }
+    for (const l of lms) { const on = l.id === id; l.root.scale.setScalar(on ? 1.06 : 1); l.sign.userData.hover = on; for (const m of l.emissive) m.emissiveIntensity = on ? (m.map ? 1.6 : 3) : (m.map ? 0.9 : 1.6); }
   };
   const onMove = (e: PointerEvent) => { if (fly || e.pointerType === 'touch') return; const id = pick(e.clientX, e.clientY); setHover(id); h.onHover(id, e.clientX, e.clientY); };
   let down: { x: number; y: number; t: number } | null = null;
@@ -248,9 +277,16 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const onLeave = () => { setHover(null); h.onHover(null, 0, 0); }; canvas.addEventListener('pointerleave', onLeave);
 
   const resize = () => { const w = canvas.clientWidth || 1, hh = canvas.clientHeight || 1; renderer.setSize(w, hh, false); camera.aspect = w / hh; camera.fov = w < hh ? 62 : 38; camera.updateProjectionMatrix(); };
-  const ro = new ResizeObserver(resize); ro.observe(canvas); resize();
+  // Bloom on high-tier devices only (neon + windows glow); everyone else renders straight to the canvas.
+  let composer: EffectComposer | null = null;
+  if (tier === 'high') {
+    composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera));
+    composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.5, 0.82)); composer.addPass(new OutputPass());
+  }
+  const resizeComposer = () => { if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(canvas.clientWidth || 1, canvas.clientHeight || 1); } };
+  const ro = new ResizeObserver(() => { resize(); resizeComposer(); }); ro.observe(canvas); resize(); resizeComposer();
 
-  const clock = new THREE.Clock(); let raf = 0; let running = true; let time = 0;
+  const tmpV = new THREE.Vector3(); const clock = new THREE.Clock(); let raf = 0; let running = true; let time = 0;
   const d = new THREE.Object3D(); const hp = headG.attributes.position as THREE.BufferAttribute;
   const blink = (lms.find((l) => l.id === 'leaderboard')!.root.userData as { blink?: THREE.Object3D }).blink;
   const frame = () => {
@@ -264,7 +300,10 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     if (fly) { fly.t = Math.min(1, fly.t + dt / 0.75); const e = 1 - Math.pow(1 - fly.t, 3); camera.position.lerpVectors(fly.from, fly.to, e); controls.target.lerpVectors(fly.tf, fly.tt, e); camera.lookAt(controls.target);
       if (fly.t >= 1) { const id = fly.id; fly = null; controls.enabled = true; h.onPick(id); } } // the city stays mounted now (0dc4f99): hand zoom/orbit back
     else controls.update();
-    renderer.render(scene, camera);
+    waterMat.uniforms.uTime.value = time;
+    const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
+    for (const l of lms) { const k = labelScale(camera.position.distanceTo(l.sign.getWorldPosition(tmpV)), portrait) * (l.sign.userData.hover ? 1.2 : 1); l.sign.scale.set(k, k / 4, 1); }
+    if (composer) composer.render(); else renderer.render(scene, camera);
   };
   const vis = () => { running = !document.hidden; clock.getDelta(); }; document.addEventListener('visibilitychange', vis);
   frame();
@@ -274,7 +313,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     setRunning(v: boolean) { running = v && !document.hidden; clock.getDelta(); },
     project(id: string) { const l = lms.find((x) => x.id === id); if (!l) return null; const v = l.pos.clone().setY(l.height + 2.2).project(camera); const rc = canvas.getBoundingClientRect(); return { x: rc.left + (v.x + 1) / 2 * rc.width, y: rc.top + (1 - v.y) / 2 * rc.height }; },
     hover(id: string | null) { setHover(id); },
-    dispose() { cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); renderer.dispose(); },
+    dispose() { cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
   };
 }
 export type World = ReturnType<typeof createWorld>;

@@ -6,7 +6,13 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-10-31T00:10:00-06:00', title: 'Change requests', bullets: [
+  { commit: '', at: '2026-10-31T00:30:00-06:00', title: 'City polish', bullets: [
+    'The Chess Club is now a landmark: a checkerboard plaza and a glowing king you can spot from anywhere.',
+    'Animated water around the city, plus a soft glow on fast devices.',
+    'Building names stay readable at every zoom level, and grow a little when you hover them.',
+    'The “Back to city” button no longer hides under the volume slider.',
+  ] },
+  { commit: 'f473469', at: '2026-10-31T00:10:00-06:00', title: 'Change requests', bullets: [
     'New 💡 Requests menu in chat: suggest a change, upvote the ideas you want, and follow them from Open to Shipped.',
   ] },
   { commit: '847b749', at: '2026-10-30T23:45:00-06:00', title: 'Changelog in chat', bullets: [
