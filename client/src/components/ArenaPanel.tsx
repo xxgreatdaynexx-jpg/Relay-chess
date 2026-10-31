@@ -2,7 +2,7 @@ import { TopTab } from '@/components/TopTabs';
 import { useWalletChips } from '@/lib/wallet';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useRef, useState } from 'react';
-import { request, socket } from '@/lib/net';
+import { socket } from '@/lib/net';
 import { LOOK_KEY, SENS_MAX, SENS_MIN, mouseLook, readLook, type LookPrefs, FPS_KEY, fpsFrom, hotkeyFor, isLockedTo, readFpsPref, stepFovKick, viewZoom } from '@/lib/arenaInput';
 import { ArenaRenderer, minimapSize } from '@/lib/arenaRender';
 import type { Arena3D, Fx3D, Soldier3D } from '@/lib/arena3d';
