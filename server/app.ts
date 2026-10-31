@@ -14,6 +14,7 @@ import { registerSockets, stopMaintenance } from './sockets.js';
 import { resetRooms } from './rooms.js';
 import { getConquest } from './conquest.js';
 import { getSolitro, solitroBoard } from './solitro.js';
+import { adminRouter } from './admin.js';
 
 export interface AppContext {
   httpServer: HttpServer;
@@ -27,6 +28,7 @@ export async function createApp(): Promise<AppContext> {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     next();
   });
+  app.use(adminRouter());
   app.get('/health', (_req, res) => {
     res.json({ ok: true });
   });
