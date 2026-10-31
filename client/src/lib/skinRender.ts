@@ -36,8 +36,11 @@ const mats = new Map<string, SkinMat>();
 function skinMaterial(token: string): SkinMat | null {
   const hit = mats.get(token); if (hit) return hit;
   const p = parseToken(token); if (!p || typeof document === 'undefined') return null;
-  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
-  paintSkin(cv.getContext('2d')!, 128, p.skin, p.seed, p.float);
+  const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+  const raw = document.createElement('canvas'); raw.width = raw.height = 256;
+  paintSkin(raw.getContext('2d')!, 256, p.skin, p.seed, p.float);
+  // Punch up contrast/saturation so the pattern reads on small 3D parts and in-hand.
+  const cx = cv.getContext('2d')!; cx.filter = 'contrast(1.35) saturate(1.25)'; cx.drawImage(raw, 0, 0); cx.filter = 'none';
   const tex = new THREE.CanvasTexture(cv); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.colorSpace = THREE.SRGBColorSpace;
   tex.magFilter = THREE.NearestFilter;
   const mat = new THREE.MeshPhongMaterial({ map: tex, shininess: p.skin.finish === 'gloss' ? 90 : p.skin.finish === 'metal' ? 60 : p.skin.finish === 'matte' ? 8 : p.skin.rarity === 'common' ? 30 : 70, specular: p.skin.finish === 'metal' ? 0x999999 : 0x444444, flatShading: true });
@@ -67,11 +70,39 @@ export function applySkin(root: THREE.Object3D, token: string | null | undefined
   root.userData.sk = tk;
   const stock = gunMaterials(); const keep = new Set<THREE.Material>([stock.steel, stock.glass]);
   const sm = tk ? skinMaterial(tk) : null;
+  if (sm && !root.userData.skinUV) { root.userData.skinUV = true; skinUVs(root); }
   root.traverse((o) => {
     const m = o as THREE.Mesh;
     if (!m.isMesh) return;
     if (!m.userData.base) { const base = m.material as THREE.Material; if (!Object.values(stock).includes(base as THREE.MeshPhongMaterial)) return; m.userData.base = base; }
     const base = m.userData.base as THREE.Material;
     m.material = sm && !keep.has(base) ? sm.mat : base;
+  });
+}
+
+/** Default box UVs stretch the whole texture over each face, so long thin parts look like a flat colour.
+ *  Re-project UVs in model space (dominant-normal planar mapping) at a fixed density relative to the
+ *  whole weapon, so the pattern tiles ~3.5x along the gun with consistent scale across parts. */
+const TILES = 3.5;
+function skinUVs(root: THREE.Object3D): void {
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const size = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3());
+  const span = Math.max(size.x, size.y, size.z) || 1; const k = TILES / span;
+  const v = new THREE.Vector3(), n = new THREE.Vector3(), nm = new THREE.Matrix3();
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || m.userData.skinUV) return;
+    const g0 = m.geometry as THREE.BufferGeometry; const pos = g0.getAttribute('position'), nor = g0.getAttribute('normal');
+    if (!pos || !nor) return;
+    const g = g0.clone(); const rel = new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld); nm.getNormalMatrix(rel);
+    const uv = new Float32Array(pos.count * 2);
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(rel); n.fromBufferAttribute(nor, i).applyMatrix3(nm);
+      const ax = Math.abs(n.x), ay = Math.abs(n.y), az = Math.abs(n.z);
+      const [a, b] = ax >= ay && ax >= az ? [v.z, v.y] : ay >= az ? [v.x, v.z] : [v.x, v.y];
+      uv[i * 2] = a * k; uv[i * 2 + 1] = b * k;
+    }
+    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); m.geometry = g; m.userData.skinUV = true;
   });
 }
