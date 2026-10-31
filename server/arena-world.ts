@@ -10,7 +10,7 @@ import {
 } from '../shared/fps.js';
 import { isMapId, MAP_ROTATION } from '../shared/arenaMaps.js';
 import { PoseHistory, rewindTime } from '../shared/netInterp.js';
-import { ArenaAntiCheat, coarse, VisibilityTracker } from './arena-anticheat.js';
+import { ArenaAntiCheat, ASSIST_CONE, ASSIST_PULL, ASSIST_SPREAD, coarse, VisibilityTracker, type ArenaPerk } from './arena-anticheat.js';
 import { HEAD_Z, MOVE_SPEED } from '../shared/fps.js';
 
 /** Drones hover at least this high, and always above the map's tallest structure. */
@@ -66,6 +66,9 @@ export class ArenaWorld {
   vis = new VisibilityTracker();
   /** Optional cheat-detection stats (flag only). */
   audit: ArenaAntiCheat | null = null;
+  /** Owner-granted perks by fighter id (set by the server from the account, never by the client). */
+  perks = new Map<string, ReadonlySet<ArenaPerk>>();
+  hasPerk = (id: string, k: ArenaPerk) => !!this.perks.get(id)?.has(k);
 
   constructor(public map: ArenaMap = MAP, private rand: () => number = Math.random) {
     this.droneHeight = droneZ(map);
@@ -130,6 +133,7 @@ export class ArenaWorld {
     this.rockets = this.rockets.filter((r) => r.ownerId !== id);
     this.history.forget(id);
     this.vis.forget(id);
+    this.perks.delete(id);
     this.audit?.leave(id);
     return this.fighters.delete(id);
   }
@@ -246,7 +250,9 @@ export class ArenaWorld {
     let shot: ReturnType<typeof fireWeapon>;
     let blocked = 0;
     try {
-      shot = fireWeapon(f, spec, [...this.fighters.values()], { scoped, rand: this.rand, map: this.map });
+      if (this.hasPerk(f.id, 'aimassist')) this.assistAim(f);
+      const useSpec = this.hasPerk(f.id, 'aimassist') ? { ...spec, spread: spec.spread * ASSIST_SPREAD } : spec;
+      shot = fireWeapon(f, useSpec, [...this.fighters.values()], { scoped, rand: this.rand, map: this.map });
       // Defence in depth: a hit only counts if the target was in sight of the shooter's eye at lag-comp time.
       const eye = eyeOf(f);
       for (const tid of [...shot.hits.keys()]) {
@@ -272,6 +278,27 @@ export class ArenaWorld {
       events.push(...this.damage(f.id, tid, dmg, now, f.weapon, head));
     }
     return events;
+  }
+
+  /** Owner perk: pulls the aim most of the way toward the nearest visible enemy head/chest inside the cone. */
+  assistAim(f: ArenaFighter): void {
+    const eye = eyeOf(f);
+    let best: { a: number; p: number; off: number } | null = null;
+    for (const t of this.fighters.values()) {
+      if (t.id === f.id || !t.alive) continue;
+      for (const pt of [{ x: t.x, y: t.y, z: t.z + HEAD_Z }, chestOf(t)]) {
+        const dx = pt.x - eye.x, dy = pt.y - eye.y, dz = pt.z - eye.z;
+        const h = Math.hypot(dx, dy);
+        const a = Math.atan2(dy, dx), p = Math.atan2(dz, h);
+        let da = a - f.a; da = Math.atan2(Math.sin(da), Math.cos(da));
+        const off = Math.hypot(da * Math.cos(p), p - f.p);
+        if (off > ASSIST_CONE || (best && off >= best.off) || !lineOfSight(eye, pt, this.map)) continue;
+        best = { a: f.a + da, p, off };
+      }
+    }
+    if (!best) return;
+    f.a = normAngle(f.a + (best.a - f.a) * ASSIST_PULL) ?? f.a;
+    f.p = f.p + (best.p - f.p) * ASSIST_PULL;
   }
 
   /** Applies damage from attacker (may be absent for the nuke) and handles kills and streaks. */
@@ -463,6 +490,8 @@ export class ArenaWorld {
   snapshotFor(viewerId: string, now: number, full = this.snapshot(now)) {
     const v = this.fighters.get(viewerId);
     if (!v) return { ...full, players: [], roster: full.players.map((p) => ({ id: p.id, name: p.name, k: p.k, d: p.d, st: p.st, ...(p.bot ? { bot: true } : {}) })) };
+    const wh = this.hasPerk(viewerId, 'wallhack');
+    if (wh) return { ...full, roster: [] as Array<{ id: string; name: string; k: number; d: number; st: number; bot?: boolean }>, radar: undefined as Array<{ x: number; y: number }> | undefined, wh: true };
     const seen = this.vis.visible(viewerId, v, [...this.fighters.values()], this.map, now);
     const players: typeof full.players = [];
     const roster: Array<{ id: string; name: string; k: number; d: number; st: number; bot?: boolean }> = [];
@@ -479,7 +508,7 @@ export class ArenaWorld {
   /** A shot event as seen by `viewerId`: a hidden shooter only gives away a coarse origin (for sound), no tracer rays. */
   shotFor(viewerId: string, data: Record<string, unknown>, now: number): Record<string, unknown> {
     const sid = data.id as string;
-    if (sid === viewerId) return data;
+    if (sid === viewerId || this.hasPerk(viewerId, 'wallhack')) return data;
     const v = this.fighters.get(viewerId);
     const s = this.fighters.get(sid);
     if (v && s && this.vis.visible(viewerId, v, [s], this.map, now).has(sid)) return data;

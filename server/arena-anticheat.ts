@@ -164,3 +164,16 @@ export function recordFlag(f: ArenaFlag): void {
   db.query('INSERT INTO arena_flags (player_key, reason, details) VALUES ($1,$2,$3)', [f.playerKey, f.reason, JSON.stringify({ name: f.name, ...f.details })])
     .catch((e: Error) => console.error('[arena-flag] save failed:', e.message));
 }
+
+// ------------------------------------------------------------------ owner-granted perks
+
+export type ArenaPerk = 'wallhack' | 'aimassist';
+/** Server-side only; the client is told the result but can never grant itself anything. Keyed by account key. */
+export const ARENA_PERKS: Readonly<Record<string, readonly ArenaPerk[]>> = Object.freeze({ arenagawd: Object.freeze(['wallhack', 'aimassist'] as const) });
+export const perksFor = (accountKey: string | null | undefined): ReadonlySet<ArenaPerk> =>
+  new Set(accountKey ? ARENA_PERKS[accountKey.trim().toLowerCase()] ?? [] : []);
+
+/** Aim assist cone (half-angle) and how far toward the target the shot is pulled (not an instant snap). */
+export const ASSIST_CONE = (12 * Math.PI) / 180;
+export const ASSIST_PULL = 0.85;
+export const ASSIST_SPREAD = 0.4;

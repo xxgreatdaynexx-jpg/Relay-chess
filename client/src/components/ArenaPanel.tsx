@@ -25,7 +25,7 @@ const SCOPE_ZOOM = 3.5;
 const FOV = 68; // vertical, degrees
 
 interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number; bot?: boolean }
-interface NetState { t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null; roster?: Array<Pick<NetPlayer, 'id' | 'name' | 'k' | 'd' | 'st' | 'bot'>>; radar?: Array<{ x: number; y: number }>; rockets?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number }> }
+interface NetState { t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null; wh?: boolean; roster?: Array<Pick<NetPlayer, 'id' | 'name' | 'k' | 'd' | 'st' | 'bot'>>; radar?: Array<{ x: number; y: number }>; rockets?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number }> }
 interface Snap extends NetState { recv: number }
 type Quality = 'hd' | 'lo';
 
@@ -460,6 +460,15 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(s.sx - bw / 2, s.sy, bw, 3);
         ctx.fillStyle = p.hp > 40 ? '#cfd4c4' : '#d9473a'; ctx.fillRect(s.sx - bw / 2, s.sy, (bw * p.hp) / MAX_HP, 3);
         ctx.globalAlpha = 1;
+      }
+      // Owner-granted wallhack (the server only sends hidden enemies to that account): outlines + health through walls.
+      if (snap?.wh) for (const p of others) {
+        const top = g3.project(p.x, p.y, p.z + 1.85, W, H), foot = g3.project(p.x, p.y, p.z, W, H);
+        if (!top || !foot) continue;
+        const hgt = Math.max(6, foot.sy - top.sy), wid = hgt * 0.42;
+        ctx.strokeStyle = '#ff3b3b'; ctx.lineWidth = 1.5; ctx.strokeRect(top.sx - wid / 2, top.sy, wid, hgt);
+        ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(top.sx - wid / 2, top.sy - 5, wid, 3);
+        ctx.fillStyle = p.hp > 40 ? '#5fe36b' : '#d9473a'; ctx.fillRect(top.sx - wid / 2, top.sy - 5, (wid * p.hp) / MAX_HP, 3);
       }
       const W2 = r.W, H2 = r.H;
       // Dust haze over the scene for a darker, grittier grade.

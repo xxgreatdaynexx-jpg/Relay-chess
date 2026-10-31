@@ -4,7 +4,7 @@ import { ArenaWorld, type ArenaEvent } from './arena-world.js';
 import { getArenaLedger } from './arena-store.js';
 import { ArenaBots, isArenaBot, warmNavGraphs } from './arena-bots.js';
 import { MAPS } from '../shared/arenaMaps.js';
-import { ArenaAntiCheat, recordFlag, type ArenaFlag } from './arena-anticheat.js';
+import { ArenaAntiCheat, perksFor, recordFlag, type ArenaFlag } from './arena-anticheat.js';
 if (process.env.NODE_ENV !== 'test' && !process.env.VITEST) warmNavGraphs(Object.values(MAPS));
 
 /** socket id -> claimed account name; guests are absent and never recorded. */
@@ -16,7 +16,7 @@ let world = new ArenaWorld();
 let flagSink: (f: ArenaFlag) => void = recordFlag;
 /** Test hook: capture anti-cheat flags instead of writing them. */
 export function setFlagSink(fn: ((f: ArenaFlag) => void) | null): void { flagSink = fn ?? recordFlag; }
-const newAudit = () => new ArenaAntiCheat((f) => flagSink(f), (id, name) => (isBot(id) ? null : claimed.get(id)?.toLowerCase() ?? `guest:${name}`));
+const newAudit = () => new ArenaAntiCheat((f) => flagSink(f), (id, name) => (isBot(id) || perksFor(claimed.get(id)).size ? null : claimed.get(id)?.toLowerCase() ?? `guest:${name}`));
 world.audit = newAudit();
 /** Test hook. */
 export const getArenaWorld = () => world;
@@ -166,6 +166,8 @@ export function registerFps(io: Server, socket: Socket): void {
       }
       const account = (socket.data.account as { name?: string } | undefined)?.name;
       claimArenaName(socket.id, account ?? null);
+      const perks = perksFor(account);
+      if (perks.size) world.perks.set(socket.id, perks); // before join, so detection skips them
       world.join(socket.id, account ?? guestName(), Date.now());
       // The first human in can choose the map straight away.
       const want = body(payload).map;
