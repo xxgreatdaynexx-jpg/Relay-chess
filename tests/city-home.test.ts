@@ -27,3 +27,14 @@ describe('city never freezes behind drawers', () => {
     expect(pause).not.toContain('wallet-button');
   });
 });
+
+describe('city camera after selecting a building', () => {
+  it('re-enables orbit/zoom when the fly-to ends and lands within zoom limits', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('../client/src/lib/world3d.ts', import.meta.url), 'utf8');
+    expect(src).toMatch(/fly = null; controls\.enabled = true; h\.onPick/);
+    const min = Number(/controls\.minDistance = (\d+)/.exec(src)![1]);
+    const m = /dir\.multiplyScalar\((\d+)\)\)\.setY\(tgt\.y \+ (\d+)\)/.exec(src)!;
+    expect(Math.hypot(Number(m[1]), Number(m[2]))).toBeGreaterThanOrEqual(min);
+  });
+});

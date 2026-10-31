@@ -240,7 +240,8 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const l = lms.find((x) => x.id === id); if (!l) return; setHover(id); h.onHover(null, 0, 0);
     const tgt = new THREE.Vector3(l.pos.x, Math.min(l.height * 0.5, 10), l.pos.z);
     const dir = camera.position.clone().sub(controls.target).setY(0).normalize();
-    const to = tgt.clone().add(dir.multiplyScalar(18)).setY(tgt.y + 12);
+    // Land at controls.minDistance (24,18 → 30) so OrbitControls takes over without a jump.
+    const to = tgt.clone().add(dir.multiplyScalar(24)).setY(tgt.y + 18);
     fly = { from: camera.position.clone(), to, tf: controls.target.clone(), tt: tgt, t: 0, id }; controls.enabled = false;
   };
   canvas.addEventListener('pointermove', onMove); canvas.addEventListener('pointerdown', onDown); canvas.addEventListener('pointerup', onUp);
@@ -261,7 +262,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     nextFw -= dt; if (nextFw <= 0) { burst(); nextFw = 3 + r() * 4; }
     if (fwAge < 2.2) { fwAge += dt; for (let i = 0; i < FP; i++) { fwVel[i * 3 + 1] -= 4 * dt; fwPos[i * 3] += fwVel[i * 3] * dt; fwPos[i * 3 + 1] += fwVel[i * 3 + 1] * dt; fwPos[i * 3 + 2] += fwVel[i * 3 + 2] * dt; } fwG.attributes.position.needsUpdate = true; fwM.opacity = Math.max(0, 1 - fwAge / 2.2); }
     if (fly) { fly.t = Math.min(1, fly.t + dt / 0.75); const e = 1 - Math.pow(1 - fly.t, 3); camera.position.lerpVectors(fly.from, fly.to, e); controls.target.lerpVectors(fly.tf, fly.tt, e); camera.lookAt(controls.target);
-      if (fly.t >= 1) { const id = fly.id; fly = null; h.onPick(id); } }
+      if (fly.t >= 1) { const id = fly.id; fly = null; controls.enabled = true; h.onPick(id); } } // the city stays mounted now (0dc4f99): hand zoom/orbit back
     else controls.update();
     renderer.render(scene, camera);
   };
