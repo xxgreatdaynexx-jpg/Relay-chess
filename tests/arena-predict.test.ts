@@ -94,3 +94,28 @@ describe('arena lag compensation + confirm/deny (server)', () => {
     expect(b.hp).toBe(100);
   });
 });
+
+import { EYE_HEIGHT, headZOf } from '../shared/fps';
+describe('arena head hits: every weapon, standing and crouched, predicted and server (rewound)', () => {
+  for (const wpn of ['pistol', 'smg', 'shotgun', 'sniper', 'ar15'] as const) for (const crouch of [false, true]) {
+    it(`${wpn} ${crouch ? 'crouched' : 'standing'} head hit: prediction says head, server confirms and does head damage`, () => {
+      const w = new ArenaWorld(LANE, () => 0.5);
+      const a = w.join('a', 'Ann', 0), b = w.join('b', 'Bob', 0);
+      const dist = 5;
+      const p = Math.atan2(headZOf({ crouch }) - EYE_HEIGHT, dist);
+      Object.assign(a, { x: 2, y: 2, z: 0, a: 0, p, weapon: wpn, switchedAt: -1e9, reloadUntil: 0 });
+      a.ammo[wpn] = WEAPONS[wpn].mag;
+      Object.assign(b, { x: 2 + dist, y: 3.5, z: 0, a: Math.PI, crouch: false }); // moved away since
+      w.history.record('b', 9900, 2 + dist, 2, 0, crouch);
+      w.history.record('b', 10_000, 2 + dist, 3.5, 0, false);
+      const pr = predictShot({ id: 'a', x: 2, y: 2, z: 0, a: 0, p }, WEAPONS[wpn], [{ id: 'b', x: 2 + dist, y: 2, z: 0, alive: true, crouch }], LANE);
+      expect(pr.head).toBe(true);
+      const evs = w.shoot('a', 0, 10_000, p, 9900, undefined, 1) as Array<{ ev: string; data: Record<string, unknown> }>;
+      const hit = evs.find((e) => e.ev === 'fps_hit' || e.ev === 'fps_kill');
+      expect(hit, 'server registered the hit').toBeTruthy();
+      expect(b.hp).toBeLessThan(100);
+      expect(100 - (b.alive ? b.hp : 0)).toBeGreaterThanOrEqual(Math.min(100, Math.round(pr.dmg * 0.9)));
+      expect(b.y).toBe(3.5);
+    });
+  }
+});
