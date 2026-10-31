@@ -4,6 +4,7 @@ import { getChessStats } from './chess-stats.js';
 import { getArenaLedger } from './arena-store.js';
 import express from 'express';
 import { buildInfo } from './build.js';
+import { requestsRouter } from './requests.js';
 import { createServer, type Server as HttpServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,6 +33,7 @@ export async function createApp(): Promise<AppContext> {
     next();
   });
   app.use(adminRouter());
+  app.use(requestsRouter());
   app.get('/health', (_req, res) => {
     res.json({ ok: true });
   });

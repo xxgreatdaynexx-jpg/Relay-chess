@@ -1658,3 +1658,20 @@ html, body { overflow-x: clip; }
 .chat-clog-list > li { padding: 8px 0; border-top: 1px solid rgba(255,255,255,.08); }
 .chat-clog-list ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; opacity: .9; }
 .chat-clog-meta { display: flex; justify-content: space-between; font-size: 11px; opacity: .6; }
+
+.chat-head .chat-req-btn { margin-right: 0; }
+.chat-head .chat-req-btn + .chat-clog-btn { margin-left: 6px; }
+.req-bar { display: flex; gap: 4px; align-items: center; padding: 0 12px 8px; flex-wrap: wrap; font-size: 12px; }
+.req-bar button, .req-bar select { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18); color: inherit; border-radius: 6px; padding: 2px 8px; font-size: 12px; }
+.req-bar button.on { background: #e8c26a; color: #1b1d2e; }
+.req-bar .req-new { margin-left: auto; }
+.req-form { display: flex; flex-direction: column; gap: 4px; padding: 0 12px 10px; }
+.req-form input, .req-form textarea, .req-form select { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.18); color: inherit; border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 13px; }
+.req-form button[type=submit] { background: #e8c26a; color: #1b1d2e; border: 0; border-radius: 6px; padding: 6px; font-weight: 700; }
+.req-similar { font-size: 12px; color: #f0c674; } .req-similar span { margin-right: 6px; }
+.req-list > li { display: flex; gap: 8px; align-items: flex-start; }
+.req-list p { margin: 3px 0 0; font-size: 13px; opacity: .85; white-space: pre-line; } .req-list .req-note { color: #9fd3ff; }
+.req-vote { display: flex; flex-direction: column; align-items: center; min-width: 38px; padding: 3px; border-radius: 6px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.18); color: inherit; font-size: 11px; }
+.req-vote.on { background: #e8c26a; color: #1b1d2e; }
+.req-st { padding: 0 6px; border-radius: 999px; background: rgba(255,255,255,.12); }
+.req-st-approved { background: #2d6a4f; } .req-st-declined { background: #6a2d2d; } .req-st-in_progress { background: #8a6d1d; } .req-st-shipped { background: #1d5a8a; }

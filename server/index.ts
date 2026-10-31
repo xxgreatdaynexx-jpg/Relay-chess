@@ -1,4 +1,5 @@
 import { initBuildAnnounce } from './build.js';
+import { initRequests } from './requests.js';
 import { getChatLog, initChatStorage } from './chat.js';
 import { initArenaStorage } from './arena-store.js';
 import { initChessStatsStorage } from './chess-stats.js';
@@ -27,6 +28,7 @@ await initAccountStorage();
 await initRoomStorage();
 await initChatStorage();
 await initBuildAnnounce();
+await initRequests();
 await initConquestStorage();
 await initSolitroStorage();
 

@@ -6,7 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-10-30T23:45:00-06:00', title: 'Changelog in chat', bullets: [
+  { commit: '', at: '2026-10-31T00:10:00-06:00', title: 'Change requests', bullets: [
+    'New 💡 Requests menu in chat: suggest a change, upvote the ideas you want, and follow them from Open to Shipped.',
+  ] },
+  { commit: '847b749', at: '2026-10-30T23:45:00-06:00', title: 'Changelog in chat', bullets: [
     'New 📜 Changelog menu in the chat drawer — see what changed and which build you’re on.',
     'Chat header shows the live build number.',
     'Each new build posts a short “what’s new” note in chat.',
