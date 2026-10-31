@@ -9,8 +9,8 @@ export const TRAILER_EXCLUDED_NAMES: Readonly<Record<string, string>> = {
   chessgawd: 'cheat account (built-in chess engine hints)',
   arenagawd: 'cheat account (built-in Arena wallhack/aim assist)',
 };
-/** Also exclude anyone the Arena anti-cheat has flagged (arena_flags table). Set false to ignore flags. */
-export const EXCLUDE_ARENA_FLAGGED = true;
+/** Cheaters are excluded by explicit name only (list above). Arena anti-cheat flags are NOT used: they have false positives
+ * (e.g. Special Characters, poonhound) and would silently drop real players. */
 /** Junk accounts whose whole name is one character, like "7" or the "A", "C" … "O" batch someone made. */
 export const isSingleCharName = (name: string) => [...name.trim()].length === 1;
 
@@ -19,7 +19,7 @@ export function trailerExclusion(name: string, arenaFlags: readonly string[] = [
   if (isQaName(name)) return 'QA test account';
   if (isSingleCharName(name)) return 'single-character junk account';
   if (TRAILER_EXCLUDED_NAMES[key]) return TRAILER_EXCLUDED_NAMES[key];
-  if (EXCLUDE_ARENA_FLAGGED && arenaFlags.length) return `Arena anti-cheat flags (${[...new Set(arenaFlags)].join(', ')})`;
+  void arenaFlags; // shown in the admin preview only; never an exclusion
   return null;
 }
 

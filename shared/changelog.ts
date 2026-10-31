@@ -6,7 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-10-31T11:30:00-06:00', title: 'Trailer Park', bullets: [
+  { commit: '', at: '2026-10-31T11:40:00-06:00', title: 'Two more trailers', bullets: [
+    'Special Characters and poonhound now have trailers in the park too.',
+  ] },
+  { commit: '7389b4b', at: '2026-10-31T11:30:00-06:00', title: 'Trailer Park', bullets: [
     'A new Trailer Park, Chud Acres, on the north-west edge of the city, with gravel lanes off the north boulevard and an entrance sign.',
     'Every player gets their own trailer with a lot that stays theirs. New players get one automatically, and the park grows new rows as it fills up.',
     'Hover over a trailer to see whose it is. Clicking your own just shows "Your trailer".',
