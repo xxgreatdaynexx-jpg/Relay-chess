@@ -5,7 +5,7 @@
  * A run is 8 antes of 3 blinds (small, big, boss). Each blind deals a fresh Klondike board; every card play is scored
  * as chips × mult. Reach the target before your plays run out. Between blinds you shop for jokers and omens.
  */
-import { canMove, deal as kDeal, draw as kDraw, move as kMove, mulberry32, pickup, type Card, type GameState as Board, type Loc, type Target } from './klondike.js';
+import { canMove, deal as kDeal, draw as kDraw, isStuck, move as kMove, mulberry32, pickup, type Card, type GameState as Board, type Loc, type Target } from './klondike.js';
 
 export const MAX_ANTE = 8;
 export const JOKER_SLOTS = 5;
@@ -151,6 +151,8 @@ export interface Run {
   last: ScoreEvent | null;
   payout: Payout | null;
   note: string | null;
+  /** Set during a blind when no reachable card or useful move is left (computed with full information, so it doesn't leak hidden cards). */
+  stuck?: boolean;
   stats: RunStats;
   startedAt: number;
 }
@@ -212,6 +214,7 @@ export function newRun(seed: number, now = Date.now()): Run {
   };
   r.boss = rollBoss(r);
   startBlind(r);
+  r.stuck = isStuck(r.board, r.redeals > 0);
   return r;
 }
 
@@ -399,13 +402,27 @@ function enhanceRandom(r: Run, e: Enh, n: number): string[] {
   return out;
 }
 
+/** Names only the enhanced cards the player can already see; hidden ones are just counted. */
+export function enhanceNote(r: Run, omen: string, ids: string[], enh: string): string {
+  const seen = new Set<string>();
+  if (r.phase === 'blind') {
+    const b = r.board;
+    for (const c of [...b.waste, ...b.foundations.flat(), ...b.tableau.flat()]) if (c.faceUp) seen.add(c.id);
+  }
+  const shown = ids.filter((x) => seen.has(x)).map((x) => cardLabel({ id: x, suit: x[0] as Card['suit'], rank: Number(x.slice(1)), faceUp: true }));
+  const hidden = ids.length - shown.length;
+  const parts = [...shown];
+  if (hidden) parts.push(shown.length ? `${hidden} hidden card${hidden > 1 ? 's' : ''}` : `${hidden} card${hidden > 1 ? 's' : ''}`);
+  return `${omen}: ${parts.join(' and ')} became ${enh}.`;
+}
+
 function useOmen(r: Run, i: number): void {
   const id = r.omens[i] ?? fail('No omen there.');
   const o = OMEN[id];
   if (o.blindOnly && r.phase !== 'blind') fail('Use that during a blind.');
   if (o.enh) {
     const ids = enhanceRandom(r, o.enh, o.count ?? 1);
-    r.note = `${o.name}: ${ids.map((x) => cardLabel({ id: x, suit: x[0] as Card['suit'], rank: Number(x.slice(1)), faceUp: true })).join(', ')} became ${ENH_INFO[o.enh].name}.`;
+    r.note = enhanceNote(r, o.name, ids, ENH_INFO[o.enh].name);
   } else if (id === 'windfall') { const add = Math.min(20, Math.max(0, r.money)); r.money += add; r.note = `Windfall: +$${add}.`; }
   else if (id === 'sundial') { r.plays += 10; r.note = '+10 plays.'; }
   else if (id === 'wellspring') { r.redeals += 1; r.note = '+1 redeal.'; }
@@ -429,7 +446,7 @@ export function act(run: Run, a: Action): Run {
       applyDraw(r);
       break;
     case 'forfeit':
-      r.phase = 'over'; r.note = 'Run abandoned.';
+      r.phase = 'over'; r.note = r.stuck ? 'No moves left.' : 'Run abandoned.';
       break;
     case 'use':
       useOmen(r, a.i);
@@ -479,6 +496,7 @@ export function act(run: Run, a: Action): Run {
     default:
       fail('Unknown action.');
   }
+  r.stuck = r.phase === 'blind' ? isStuck(r.board, r.redeals > 0) : false;
   return r;
 }
 

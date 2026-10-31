@@ -7,7 +7,7 @@ import { KlondikeBoard } from '@/solitaire/Board';
 import { canMove, type Card, type Loc, type Target } from '@/solitaire/logic';
 import {
   act, blindTarget, BLIND_NAMES, BOSS, EDITION_INFO, ENH_INFO, interestCap, isDebuffed, isRun, JOKER, JOKER_SLOTS, MAX_ANTE, newRun,
-  OMEN, OMEN_SLOTS, sellValue, type Action, type Run, type ScoreEvent, type SolitroStanding,
+  OMEN, OMEN_SLOTS, sellValue, type Action, type Run, type ScoreEvent, type ScoreStep, type SolitroStanding,
 } from '../../../shared/solitro';
 
 const GUEST_KEY = 'relay-solitro-guest-v1';
@@ -94,41 +94,76 @@ function useSolitro() {
 
 interface Anim { ev: ScoreEvent; k: number; chips: number; mult: number; done: boolean }
 
-/** Steps through a score event: chips and mult tick up one trigger at a time, then the total lands. */
-function useScoreAnim(run: Run | null, fresh: number) {
+/**
+ * Steps through a score event: chips and mult tick up one trigger at a time, then the total lands.
+ * The displayed score only ever moves forward from what's on screen to the new score (no snapping ahead and back).
+ */
+export function useScoreAnim(run: Run | null, fresh: number) {
   const [anim, setAnim] = useState<Anim | null>(null);
-  const [shown, setShown] = useState(run?.score ?? 0);
+  const target = run?.score ?? 0;
+  const [shown, setShownState] = useState(target);
+  const shownRef = useRef(target);
+  const setShown = (n: number) => { shownRef.current = n; setShownState(n); };
+  const targetRef = useRef(target);
+  targetRef.current = target;
   const timers = useRef<number[]>([]);
   const lastFresh = useRef(fresh);
-  const target = run?.score ?? 0;
+  const animating = useRef(false);
+  const clear = () => { timers.current.forEach((t) => window.clearTimeout(t)); timers.current = []; };
+  useEffect(() => clear, []);
   useEffect(() => {
-    const clear = () => { timers.current.forEach((t) => window.clearTimeout(t)); timers.current = []; };
-    if (fresh === lastFresh.current || !run?.last) { if (!anim) setShown(target); return; }
+    const ev = run?.last;
+    if (fresh !== lastFresh.current && ev) {
+      lastFresh.current = fresh;
+      clear();
+      animating.current = true;
+      // Start from what's on screen (never from above it), end on the new score.
+      const from = Math.min(shownRef.current, target);
+      const to = target;
+      const STEP = 230;
+      let chips = 0, mult = 0;
+      ev.steps.forEach((st, k) => {
+        timers.current.push(window.setTimeout(() => {
+          if (st.chips) chips += st.chips;
+          if (st.mult) mult += st.mult;
+          if (st.xmult) mult = Math.max(1, mult) * st.xmult;
+          setAnim({ ev, k: k + 1, chips, mult: Math.round(mult * 100) / 100, done: false });
+        }, k * STEP));
+      });
+      const endT = ev.steps.length * STEP;
+      timers.current.push(window.setTimeout(() => setAnim({ ev, k: ev.steps.length, chips: ev.chips, mult: ev.mult, done: true }), endT));
+      const TICKS = 12;
+      for (let i = 1; i <= TICKS; i++) {
+        timers.current.push(window.setTimeout(() => setShown(Math.max(shownRef.current, Math.round(from + ((to - from) * i) / TICKS))), endT + i * 40));
+      }
+      timers.current.push(window.setTimeout(() => { animating.current = false; setAnim(null); setShown(targetRef.current); }, endT + 1100));
+      return;
+    }
     lastFresh.current = fresh;
-    clear();
-    const ev = run.last;
-    const from = Math.max(0, target - ev.total);
-    setShown(from);
-    const STEP = 230;
-    let chips = 0, mult = 0;
-    ev.steps.forEach((s, k) => {
-      timers.current.push(window.setTimeout(() => {
-        if (s.chips) chips += s.chips;
-        if (s.mult) mult += s.mult;
-        if (s.xmult) mult = Math.max(1, mult) * s.xmult;
-        setAnim({ ev, k: k + 1, chips, mult: Math.round(mult * 100) / 100, done: false });
-      }, k * STEP));
-    });
-    const end = ev.steps.length * STEP;
-    timers.current.push(window.setTimeout(() => setAnim({ ev, k: ev.steps.length, chips: ev.chips, mult: ev.mult, done: true }), end));
-    const TICKS = 12;
-    for (let i = 1; i <= TICKS; i++) timers.current.push(window.setTimeout(() => setShown(Math.round(from + (ev.total * i) / TICKS)), end + i * 40));
-    timers.current.push(window.setTimeout(() => setAnim(null), end + 1100));
-    return clear;
+    if (!animating.current) setShown(target);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fresh]);
-  useEffect(() => { if (!anim) setShown(target); }, [target, anim]);
+  }, [fresh, target]);
   return { anim, shown };
+}
+
+const fmtStep = (st: ScoreStep) => [st.chips ? `+${st.chips} chips` : '', st.mult ? `+${st.mult} mult` : '', st.xmult ? `×${st.xmult} mult` : '', st.money ? `+$${st.money}` : ''].filter(Boolean).join(' · ');
+
+/** The last play's score, step by step: base card, bonuses, each joker, then chips × mult. */
+function Breakdown({ ev }: { ev: ScoreEvent }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="sto-last" data-testid="sto-last">
+      <button type="button" className="sto-last-btn" aria-expanded={open} onClick={() => setOpen((o) => !o)} title="How the last play scored">
+        Last play <b>+{fmtN(ev.total)}</b> = <span className="sto-chips">{fmtN(ev.chips)}</span> × <span className="sto-mult">{ev.mult}</span> <span aria-hidden>{open ? '▾' : 'ⓘ'}</span>
+      </button>
+      {open && (
+        <ol className="sto-last-list" data-testid="sto-breakdown">
+          {ev.steps.map((st, i) => <li key={i}><span>{st.icon} {st.label}</span><span>{fmtStep(st) || '—'}</span></li>)}
+          <li className="sto-last-total"><span>Total</span><span>{fmtN(ev.chips)} chips × {ev.mult} mult = {fmtN(ev.total)}</span></li>
+        </ol>
+      )}
+    </div>
+  );
 }
 
 const fmtN = (n: number) => n.toLocaleString('en-US');
@@ -219,6 +254,7 @@ export function SolitroGame({ bar, toggle, tail }: { bar: Record<string, unknown
           {sel && <SelBar run={run} sel={sel} onClose={() => setSel(null)} doAct={async (a) => { if (await s.doAct(a)) setSel(null); }} />}
           {s.error && <div className="sto-err" role="alert">{s.error}</div>}
           {run.note && !s.error && <div className="sto-note">{run.note}</div>}
+          {run.phase === 'blind' && run.last && !anim && <Breakdown key={run.last.id} ev={run.last} />}
           {inBlind || run.phase === 'over' || run.phase === 'won' ? (
             <KlondikeBoard game={run.board} onMove={(f, t) => void onMove(f, t)} onDraw={() => { if (run.phase === 'blind') void s.doAct({ t: 'draw' }); }} decorate={decorate}
               stockHint={run.board.stock.length === 0 && run.board.waste.length > 0 ? <span className="sto-redeal">{run.redeals > 0 ? `redeal (${run.redeals})` : 'no redeals'}</span> : null}>
@@ -227,6 +263,14 @@ export function SolitroGame({ bar, toggle, tail }: { bar: Record<string, unknown
                   <div className="sto-anim-step">{anim.ev.steps[anim.k - 1]?.icon} {anim.ev.steps[anim.k - 1]?.label}</div>
                   <div className="sto-cm"><span className="sto-chips">{fmtN(anim.chips)}</span><span>×</span><span className="sto-mult">{anim.mult}</span></div>
                   {anim.done && <div className="sto-total">+{fmtN(anim.ev.total)}</div>}
+                </div>
+              )}
+              {run.phase === 'blind' && run.stuck && !anim && (
+                <div className="sol-win sto-stuck" data-testid="sto-stuck" role="alert">
+                  <div className="text-3xl">🚫</div>
+                  <div className="mt-1 font-serif text-2xl">No moves left</div>
+                  <div className="text-sm opacity-80">{run.redeals > 0 ? 'Nothing can be played.' : 'No redeals left and nothing can be played.'} This blind can’t reach its target.</div>
+                  <button type="button" className="mt-3" onClick={() => void s.doAct({ t: 'forfeit' })} data-testid="sto-stuck-end">End run</button>
                 </div>
               )}
               {(run.phase === 'over' || run.phase === 'won') && <RunOver run={run} best={s.best} signedIn={!!s.name} onNew={() => void s.start()} />}

@@ -158,8 +158,53 @@ export function autoTarget(s: GameState, from: Loc): Target | null {
     const f = foundationTarget(s, from);
     if (f) return f;
   }
-  for (let i = 0; i < 7; i++) if (canMove(s, from, { kind: 'tableau', index: i })) return { kind: 'tableau', index: i };
-  return null;
+  return bestTableauTarget(s, from);
+}
+
+/** Best tableau target: a non-empty column first; an empty column only if the move frees something (never a king already at the bottom). */
+export function bestTableauTarget(s: GameState, from: Loc): Target | null {
+  let empty: Target | null = null;
+  for (let i = 0; i < 7; i++) {
+    if (!canMove(s, from, { kind: 'tableau', index: i })) continue;
+    if (s.tableau[i].length) return { kind: 'tableau', index: i };
+    if (!empty && !(from.kind === 'tableau' && from.cardIndex === 0)) empty = { kind: 'tableau', index: i };
+  }
+  return empty;
+}
+
+/**
+ * True when the game can't make progress: no card the player can still reach (waste top, the cards left to draw, and the
+ * whole waste if it can be recycled) fits anywhere, and no board move does anything useful. Useful board moves are any
+ * tableau → foundation play, or a tableau → tableau move that turns a card over, empties a column, or uncovers a card
+ * that can then go up or take a reachable card. Foundation → tableau moves and shuffling a king between empty columns
+ * don't count (they can't break a deadlock on their own).
+ */
+export function isStuck(s: GameState, canRecycle: boolean): boolean {
+  if (isWon(s)) return false;
+  const fits = (c: Card) => s.foundations.some((f) => canPlaceOnFoundation(c, f)) || s.tableau.some((p) => canPlaceOnTableau(c, p));
+  const reachable: Card[] = [...s.stock];
+  if (canRecycle) reachable.push(...s.waste);
+  else if (s.waste.length) reachable.push(s.waste[s.waste.length - 1]);
+  if (reachable.some(fits)) return false;
+  for (let i = 0; i < 7; i++) {
+    const pile = s.tableau[i];
+    for (let j = 0; j < pile.length; j++) {
+      if (!pile[j].faceUp) continue;
+      const from: Loc = { kind: 'tableau', index: i, cardIndex: j };
+      const cards = pickup(s, from);
+      if (!cards) continue;
+      if (j === pile.length - 1 && foundationTarget(s, from)) return false;
+      for (let k = 0; k < 7; k++) {
+        if (!canMove(s, from, { kind: 'tableau', index: k })) continue;
+        if (j === 0) { if (s.tableau[k].length) return false; continue; } // empties a column (a king to an empty column is pointless)
+        const below = pile[j - 1];
+        if (!below.faceUp) return false; // turns a card over
+        if (s.foundations.some((f) => canPlaceOnFoundation(below, f))) return false;
+        if (reachable.some((c) => canPlaceOnTableau(c, [below]))) return false;
+      }
+    }
+  }
+  return true;
 }
 
 export function isWon(s: GameState): boolean {

@@ -1294,3 +1294,24 @@ html, body { overflow-x: clip; }
   .sto-foot span { display: none; }
   .sto-foot { justify-content: flex-end; }
 }
+
+/* ---- r5: top nav folds into the ☰ menu at any width where the tabs don't fit (all tabs reachable site-wide) ---- */
+.top-tabs.tabs-collapsed { overflow: visible; }
+.top-tabs.tabs-collapsed .top-menu-btn { display: block; }
+.top-tabs.tabs-collapsed .top-tabs-slots { display: none; position: absolute; left: 6px; top: 42px; flex-direction: column; align-items: stretch; padding: 6px; border-radius: 12px; background: rgba(12,14,24,.95); box-shadow: 0 10px 30px rgba(0,0,0,.5); overflow: visible; max-height: calc(100dvh - 56px); overflow-y: auto; z-index: 49; }
+.top-tabs.tabs-collapsed.menu-open .top-tabs-slots { display: flex; }
+.top-tabs.tabs-collapsed .top-tabs-slots .sol-tab { width: 100%; text-align: left; }
+/* r5: windows stacked behind the front one on narrow screens are fully hidden. */
+@media (max-width: 900px) { .sol-panel[data-behind] { visibility: hidden; pointer-events: none; } }
+/* r5: keep docked windows clear of the fixed 🔊 volume widget (bottom-left) on narrow screens. */
+@media (max-width: 900px) { .app-panels .sol-panel { bottom: 54px; max-height: calc(100dvh - 110px); } }
+@media (max-width: 520px) { .sto-panel { height: calc(100dvh - 110px); max-height: calc(100dvh - 110px); } }
+/* r5: Solitro score breakdown + no-moves state */
+.sto-last { margin: 2px 8px 0; font-size: 12px; position: relative; z-index: 3; }
+.sto-last-btn { background: rgba(0,0,0,.25); border-radius: 8px; padding: 2px 8px; color: inherit; text-align: left; }
+.sto-last-list { margin: 4px 0 0; padding: 6px 8px; list-style: none; background: rgba(8,24,16,.95); border: 1px solid rgba(255,255,255,.15); border-radius: 8px; position: absolute; left: 0; right: 0; max-height: 220px; overflow: auto; box-shadow: 0 8px 20px rgba(0,0,0,.45); }
+.sto-last-list li { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,.07); }
+.sto-last-list li:last-child { border-bottom: 0; }
+.sto-last-total { font-weight: 700; }
+.sto-stuck { z-index: 4; }
+.sto-redeal { background: rgba(0,0,0,.6); border-radius: 6px; opacity: 1 !important; font-size: 10px; }

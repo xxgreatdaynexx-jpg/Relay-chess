@@ -1,7 +1,7 @@
 import { TopTab } from '@/components/TopTabs';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useRef, useState } from 'react';
-import { deal, draw, isValidState, isWon, move, type GameState, type Loc, type Target } from '@/solitaire/logic';
+import { deal, draw, isStuck, isValidState, isWon, move, type GameState, type Loc, type Target } from '@/solitaire/logic';
 import { playCardFlick, playSolitaireWin } from '@/lib/sounds';
 import { KlondikeBoard } from '@/solitaire/Board';
 import { SolitroGame } from '@/solitaire/Solitro';
@@ -11,14 +11,14 @@ const KEY = 'relay-solitaire-v1';
 const OPEN_KEY = 'relay-solitaire-open';
 const MODE_KEY = 'relay-solitaire-mode';
 export type SolMode = 'solitro' | 'classic';
-interface Saved { game: GameState; history: GameState[] }
+interface Saved { game: GameState; history: GameState[]; secs: number }
 
 function load(): Saved {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) || 'null');
-    if (raw && isValidState(raw.game)) return { game: raw.game, history: Array.isArray(raw.history) ? raw.history.filter(isValidState).slice(-60) : [] };
+    if (raw && isValidState(raw.game)) return { game: raw.game, history: Array.isArray(raw.history) ? raw.history.filter(isValidState).slice(-60) : [], secs: Number.isFinite(raw.secs) && raw.secs >= 0 ? Math.floor(raw.secs) : 0 };
   } catch { /* ignore */ }
-  return { game: deal(), history: [] };
+  return { game: deal(), history: [], secs: 0 };
 }
 
 function fmt(sec: number) {
@@ -68,29 +68,32 @@ export function SolitairePanel() {
 
 type BarProps = Record<string, unknown>;
 function ClassicGame({ bar, toggle, tail }: { bar: BarProps; toggle: React.ReactNode; tail: React.ReactNode }) {
-  const [{ game, history }, setSaved] = useState<Saved>(load);
-  const [now, setNow] = useState(Date.now());
+  const [{ game, history, secs }, setSaved] = useState<Saved>(load);
   const won = isWon(game);
-  const [wonAt, setWonAt] = useState<number | null>(null);
-  useEffect(() => { localStorage.setItem(KEY, JSON.stringify({ game, history: history.slice(-60) })); }, [game, history]);
+  const stuck = !won && isStuck(game, true);
+  // The clock counts seconds of play for this deal only: it starts at 0:00, begins with the first move and pauses while
+  // the window is closed, so an old saved deal (or a deal's wall-clock start time) can never show hours.
+  const running = !won && !stuck && game.moves > 0;
+  useEffect(() => { localStorage.setItem(KEY, JSON.stringify({ game, history: history.slice(-60), secs })); }, [game, history, secs]);
   useEffect(() => {
-    if (won) return;
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    if (!running) return;
+    const id = window.setInterval(() => setSaved((p) => ({ ...p, secs: p.secs + 1 })), 1000);
     return () => window.clearInterval(id);
-  }, [won]);
+  }, [running]);
+  const wonRef = useRef(won);
   useEffect(() => {
-    if (won && wonAt === null) { setWonAt(Date.now()); playSolitaireWin(); }
-    if (!won && wonAt !== null) setWonAt(null);
-  }, [won, wonAt]);
+    if (won && !wonRef.current) playSolitaireWin();
+    wonRef.current = won;
+  }, [won]);
   function commit(next: GameState | null) {
     if (!next) return false;
-    setSaved((prev) => ({ game: next, history: [...prev.history, prev.game].slice(-60) }));
+    setSaved((prev) => ({ game: next, history: [...prev.history, prev.game].slice(-60), secs: prev.secs }));
     playCardFlick();
     return true;
   }
-  function newGame() { setSaved({ game: deal(), history: [] }); setWonAt(null); }
-  function undo() { setSaved((p) => (p.history.length ? { game: p.history[p.history.length - 1], history: p.history.slice(0, -1) } : p)); }
-  const elapsed = Math.max(0, Math.floor(((wonAt ?? now) - game.startedAt) / 1000));
+  function newGame() { setSaved({ game: deal(), history: [], secs: 0 }); }
+  function undo() { setSaved((p) => (p.history.length ? { game: p.history[p.history.length - 1], history: p.history.slice(0, -1), secs: p.secs } : p)); }
+  const elapsed = secs;
   return (
     <>
       <div {...bar}>
@@ -107,6 +110,17 @@ function ClassicGame({ bar, toggle, tail }: { bar: BarProps; toggle: React.React
             <div className="mt-1 font-serif text-2xl">You won!</div>
             <div className="text-sm opacity-80">{game.moves} moves · {fmt(elapsed)}</div>
             <button type="button" className="mt-3" onClick={newGame}>Deal again</button>
+          </div>
+        )}
+        {stuck && (
+          <div className="sol-win sto-stuck" data-testid="sol-stuck" role="alert">
+            <div className="text-3xl">🚫</div>
+            <div className="mt-1 font-serif text-2xl">No moves left</div>
+            <div className="text-sm opacity-80">Nothing in the stock or on the table can be played.</div>
+            <div className="mt-3 flex justify-center gap-2">
+              <button type="button" onClick={undo} disabled={!history.length}>Undo</button>
+              <button type="button" onClick={newGame}>Deal again</button>
+            </div>
           </div>
         )}
       </KlondikeBoard>

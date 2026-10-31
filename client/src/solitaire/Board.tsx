@@ -18,7 +18,7 @@ export function CardFace({ card, style, extra }: { card: Card; style?: React.CSS
 
 interface Drag { from: Loc; cards: Card[]; x: number; y: number; dx: number; dy: number; w: number; started: boolean; sx: number; sy: number }
 
-/** Klondike table with drag-and-drop and tap-to-auto-move. Rules are checked by the caller's onMove. */
+/** Klondike table with drag-and-drop and click/tap-to-auto-move (a double-click counts once). Rules are checked by the caller's onMove. */
 export function KlondikeBoard({ game, onMove, onDraw, decorate, children, stockHint }: {
   game: GameState;
   onMove: (from: Loc, to: Target) => void;
@@ -51,7 +51,19 @@ export function KlondikeBoard({ game, onMove, onDraw, decorate, children, stockH
     return () => ro.disconnect();
   }, [game]);
 
-  function auto(from: Loc) { const t = autoTarget(game, from); if (t) onMove(from, t); }
+  // Latest props for the window listeners attached on pointerdown.
+  const live = useRef({ game, onMove });
+  live.current = { game, onMove };
+  const lastAuto = useRef(0);
+  /** Click (or tap) a card: send it to a foundation if it fits, else to the best tableau column. */
+  function auto(from: Loc) {
+    if (from.kind === 'foundation') return; // pulling cards back down is drag-only
+    const now = performance.now();
+    if (now - lastAuto.current < 450) return; // the second click of a double-click must not move the stack again
+    const { game: g, onMove: mv } = live.current;
+    const t = autoTarget(g, from);
+    if (t) { lastAuto.current = now; mv(from, t); }
+  }
   function onDown(e: React.PointerEvent, from: Loc) {
     const cards = pickup(game, from);
     if (!cards || e.button > 0) return;
@@ -60,25 +72,28 @@ export function KlondikeBoard({ game, onMove, onDraw, decorate, children, stockH
     const d: Drag = { from, cards, x: e.clientX, y: e.clientY, dx: e.clientX - r.left, dy: e.clientY - r.top, w: r.width, started: false, sx: e.clientX, sy: e.clientY };
     dragRef.current = d;
     setDrag(d);
-  }
-  useEffect(() => {
-    if (!drag) return;
-    function mv(e: PointerEvent) {
-      const d = dragRef.current; if (!d) return;
-      const started = d.started || Math.hypot(e.clientX - d.sx, e.clientY - d.sy) > 6;
-      dragRef.current = { ...d, x: e.clientX, y: e.clientY, started };
+    const pid = e.pointerId;
+    // Listen on window right away (not after a re-render) so even a very quick click is caught.
+    function mv(ev: PointerEvent) {
+      const cur = dragRef.current; if (!cur || ev.pointerId !== pid) return;
+      const started = cur.started || Math.hypot(ev.clientX - cur.sx, ev.clientY - cur.sy) > 6;
+      dragRef.current = { ...cur, x: ev.clientX, y: ev.clientY, started };
       setDrag(dragRef.current);
     }
-    function upH(e: PointerEvent) {
-      const d = dragRef.current; dragRef.current = null; setDrag(null);
-      if (!d) return;
-      if (!d.started) { auto(d.from); return; }
-      const cx = e.clientX - d.dx + d.w / 2, cy = e.clientY - d.dy + 10;
+    function upH(ev: PointerEvent) {
+      if (ev.pointerId !== pid) return;
+      window.removeEventListener('pointermove', mv);
+      window.removeEventListener('pointerup', upH);
+      window.removeEventListener('pointercancel', upH);
+      const cur = dragRef.current; dragRef.current = null; setDrag(null);
+      if (!cur || ev.type === 'pointercancel') return;
+      if (!cur.started) { auto(cur.from); return; }
+      const cx = ev.clientX - cur.dx + cur.w / 2, cy = ev.clientY - cur.dy + 10;
       for (const el of document.elementsFromPoint(cx, cy)) {
         const t = (el as HTMLElement).dataset?.drop;
         if (t) {
           const [kind, i] = t.split(':');
-          onMove(d.from, { kind: kind as Target['kind'], index: Number(i) } as Target);
+          live.current.onMove(cur.from, { kind: kind as Target['kind'], index: Number(i) } as Target);
           return;
         }
       }
@@ -86,8 +101,7 @@ export function KlondikeBoard({ game, onMove, onDraw, decorate, children, stockH
     window.addEventListener('pointermove', mv);
     window.addEventListener('pointerup', upH);
     window.addEventListener('pointercancel', upH);
-    return () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', upH); window.removeEventListener('pointercancel', upH); };
-  });
+  }
 
   const dragging = (id: string) => drag?.started && drag.cards.some((c) => c.id === id);
   const wasteTop = game.waste[game.waste.length - 1];
@@ -103,7 +117,7 @@ export function KlondikeBoard({ game, onMove, onDraw, decorate, children, stockH
         <div className="sol-slot">
           {game.waste.length > 1 && <CardFace card={game.waste[game.waste.length - 2]} extra={deco(game.waste[game.waste.length - 2])} />}
           {wasteTop && !dragging(wasteTop.id) && (
-            <div className="sol-hit" onPointerDown={(e) => onDown(e, { kind: 'waste' })} onDoubleClick={() => auto({ kind: 'waste' })}><CardFace card={wasteTop} extra={deco(wasteTop)} /></div>
+            <div className="sol-hit" onPointerDown={(e) => onDown(e, { kind: 'waste' })}><CardFace card={wasteTop} extra={deco(wasteTop)} /></div>
           )}
           {!game.waste.length && <div className="sol-card sol-empty" />}
         </div>
@@ -129,8 +143,7 @@ export function KlondikeBoard({ game, onMove, onDraw, decorate, children, stockH
               <div className="sol-card sol-empty" data-drop={`tableau:${i}`} />
               {pile.map((c, j) => (
                 <div key={c.id} className="sol-hit" data-drop={`tableau:${i}`} style={{ top: tops[j], visibility: dragging(c.id) ? 'hidden' : 'visible' }}
-                  onPointerDown={c.faceUp ? (e) => onDown(e, { kind: 'tableau', index: i, cardIndex: j }) : undefined}
-                  onDoubleClick={() => auto({ kind: 'tableau', index: i, cardIndex: j })}>
+                  onPointerDown={c.faceUp ? (e) => onDown(e, { kind: 'tableau', index: i, cardIndex: j }) : undefined}>
                   <CardFace card={c} extra={deco(c)} />
                 </div>
               ))}

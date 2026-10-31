@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { autoTarget, canMove, deal, draw, isValidState, isWon, move, type Card, type GameState } from '../client/src/solitaire/logic';
+import { autoTarget, bestTableauTarget, canMove, deal, draw, isStuck, isValidState, isWon, move, type Card, type GameState } from '../client/src/solitaire/logic';
 
 const c = (id: string, faceUp = true): Card => ({ id, suit: id[0] as Card['suit'], rank: Number(id.slice(1)), faceUp });
 function empty(): GameState {
@@ -77,5 +77,66 @@ describe('solitaire moves', () => {
     expect(isWon(s)).toBe(true);
     s.tableau[0] = [s.foundations[0].pop()!];
     expect(isWon(s)).toBe(false);
+  });
+});
+
+describe('no-moves-left detector (isStuck)', () => {
+  // Spades/clubs on 2s up so aces are home; a red 9 face-up with nothing to go on.
+  it('is not stuck while a card can still be drawn and played', () => {
+    const s = empty();
+    s.stock = [c('S1', false)];
+    expect(isStuck(s, false)).toBe(false);
+  });
+  it('is stuck with no redeal when the waste top and the board have nothing to do', () => {
+    const s = empty();
+    s.waste = [c('H5'), c('D9')];
+    s.tableau[0] = [c('S7', false), c('C3')];
+    s.tableau[1] = [c('H12')];
+    expect(isStuck(s, false)).toBe(true);
+  });
+  it('a recycle makes buried waste cards count', () => {
+    const s = empty();
+    s.waste = [c('S1'), c('D9')];
+    s.tableau[0] = [c('C3')];
+    expect(isStuck(s, false)).toBe(true);
+    expect(isStuck(s, true)).toBe(false); // the ace can go up after a redeal
+  });
+  it('a tableau move that turns a card over is progress', () => {
+    const s = empty();
+    s.tableau[0] = [c('S7', false), c('H5')];
+    s.tableau[1] = [c('C6')];
+    expect(isStuck(s, false)).toBe(false);
+  });
+  it('moving a king between empty columns or a pointless shuffle is not progress', () => {
+    const s = empty();
+    s.tableau[0] = [c('S13')];
+    s.tableau[1] = [c('C9', false), c('D8')];
+    s.tableau[2] = [c('S9'), c('H8')]; // D8 ⇄ onto S9 is blocked (H8 there); H8 could only shuffle
+    expect(isStuck(s, false)).toBe(true);
+  });
+  it('uncovering a card that can go to a foundation is progress', () => {
+    const s = empty();
+    s.foundations[0] = [c('H1')];
+    s.tableau[0] = [c('H2'), c('C1')];
+    expect(isStuck(s, false)).toBe(false);
+  });
+  it('a won game is never stuck', () => {
+    const s = empty();
+    s.foundations = ['S', 'H', 'D', 'C'].map((u) => Array.from({ length: 13 }, (_, k) => c(`${u}${k + 1}`)));
+    expect(isStuck(s, false)).toBe(false);
+  });
+});
+
+describe('click-to-move target', () => {
+  it('prefers a foundation, then a non-empty column, and never parks a bottom king in another empty column', () => {
+    const s = empty();
+    s.tableau[0] = [c('S13')];
+    s.tableau[1] = [];
+    expect(autoTarget(s, { kind: 'tableau', index: 0, cardIndex: 0 })).toBeNull();
+    s.tableau[2] = [c('C9', false), c('H13')];
+    expect(autoTarget(s, { kind: 'tableau', index: 2, cardIndex: 1 })).toEqual({ kind: 'tableau', index: 1 });
+    s.tableau[3] = [c('D13'), c('C12')];
+    s.tableau[4] = [c('H12')];
+    expect(bestTableauTarget(s, { kind: 'tableau', index: 4, cardIndex: 0 })).toEqual({ kind: 'tableau', index: 0 });
   });
 });

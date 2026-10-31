@@ -216,6 +216,26 @@ describe('solitro enhancements and omens', () => {
     expect(Object.values(r.enh).filter((e) => e === 'etched')).toHaveLength(3);
     expect(r.omens).toEqual([]);
   });
+  it('omen messages never name face-down cards', () => {
+    for (let seed = 1; seed <= 40; seed++) {
+      const base = newRun(seed);
+      const r0: Run = { ...base, omens: ['anvil'] };
+      const r = act(r0, { t: 'use', i: 0 });
+      const hidden = new Set([...r.board.stock, ...r.board.tableau.flat()].filter((x) => !x.faceUp).map((x) => x.id));
+      const lab = (id: string) => `${['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'][Number(id.slice(1))]}${{ S: '♠', H: '♥', D: '♦', C: '♣' }[id[0]]}`;
+      for (const id of Object.keys(r.enh)) if (hidden.has(id)) expect(r.note).not.toContain(lab(id));
+      expect(r.note).toMatch(/became Etched/);
+    }
+  });
+  it('flags a blind with no moves left, and ending it says so', () => {
+    const stuckRun = act(run({ redeals: 0, omens: ['windfall'] }, { waste: [c('H5'), c('D9')], tableau: [[c('S7', false), c('C3')], [c('H12')], [], [], [], [], []] }), { t: 'use', i: 0 });
+    expect(stuckRun.stuck).toBe(true);
+    const ended = act(stuckRun, { t: 'forfeit' });
+    expect(ended.phase).toBe('over');
+    expect(ended.note).toBe('No moves left.');
+    const ok = act(run({ redeals: 1, omens: ['windfall'] }, { waste: [c('S1'), c('D9')], tableau: [[c('C3')], [], [], [], [], [], []] }), { t: 'use', i: 0 });
+    expect(ok.stuck).toBe(false);
+  });
   it('Windfall doubles money up to +$20; blind-only omens refuse in the shop', () => {
     expect(act(run({ omens: ['windfall'], money: 7 }), { t: 'use', i: 0 }).money).toBe(14);
     expect(act(run({ omens: ['windfall'], money: 40 }), { t: 'use', i: 0 }).money).toBe(60);

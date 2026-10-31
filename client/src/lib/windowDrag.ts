@@ -17,7 +17,18 @@ function bringToFront(el: HTMLElement) {
   if (i >= 0) stack.splice(i, 1);
   for (let j = stack.length - 1; j >= 0; j--) if (!stack[j].isConnected) stack.splice(j, 1);
   stack.push(el);
-  stack.forEach((p, k) => { p.style.zIndex = String(Z_BASE + k); });
+  stack.forEach((p, k) => {
+    p.style.zIndex = String(Z_BASE + k);
+    // Narrow screens stack every window in the same spot: hide the ones behind (CSS) so no stale window peeks out.
+    if (k < stack.length - 1) p.dataset.behind = '1'; else delete p.dataset.behind;
+  });
+}
+
+function dropFromStack(el: HTMLElement) {
+  const i = stack.indexOf(el);
+  if (i >= 0) stack.splice(i, 1);
+  const top = stack[stack.length - 1];
+  if (top) delete top.dataset.behind;
 }
 
 type Restore = { off: Offset; size: Size | null };
@@ -84,19 +95,31 @@ export function useWindowDrag(id: string, ref: RefObject<HTMLElement | null>) {
     if (c.dx !== offRef.current.dx || c.dy !== offRef.current.dy) setOff(c);
   });
 
+  // When this window closes (its element goes away), let the next one down show again.
+  const lastEl = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (lastEl.current && lastEl.current !== el) dropFromStack(lastEl.current);
+    lastEl.current = el;
+  });
+  useEffect(() => () => { if (lastEl.current) dropFromStack(lastEl.current); }, []);
+
   useEffect(() => {
     const onResize = () => {
       setPhone(phone());
       setSize((s) => {
         if (!s || phone()) return s;
-        const c = clampSize(s.w, s.h, window.innerWidth, window.innerHeight - TOP_BAR + M, M);
+        // Clamp from the size the user chose (saved), not the current one, so zooming back out restores it.
+        const vw = window.innerWidth, vh = window.innerHeight - TOP_BAR + M;
+        const want = maxedRef.current ? { w: vw, h: vh } : (loadSize(id, store()) ?? s);
+        const c = clampSize(want.w, want.h, vw, vh, M);
         return c.w === s.w && c.h === s.h ? s : { ...s, ...c };
       });
       setOff((o) => clamp(o));
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, [clamp]);
+  }, [clamp, id]);
 
   const reset = () => {
     setOff({ dx: 0, dy: 0 });
