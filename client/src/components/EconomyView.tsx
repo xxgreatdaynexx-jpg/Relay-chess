@@ -4,7 +4,7 @@ import { fmtIndex } from '../../../shared/priceIndex';
 interface Cat { key: string; label: string; value: number; units: number; estValue: number }
 interface Flow { game: string; amount: number }
 interface Econ {
-  ok: boolean; error?: string; at: number; cash: number; assets: number; total: number; estPct: number; categories: Cat[]; offshore?: number; totalWithOffshore?: number;
+  ok: boolean; error?: string; at: number; cash: number; assets: number; total: number; estPct: number; categories: Cat[]; offshore?: number; totalWithOffshore?: number; realEstate?: { owned: number; taxBurned: number; taxToday: number; repossessed: number } | null;
   change: { cash: number | null; assets: number | null; total: number | null };
   inflation: { cash7: number | null; cash30: number | null; total7: number | null; total30: number | null };
   flows: { faucets: Flow[]; sinks: Flow[]; transfers?: Flow[] }; net: number;
@@ -15,7 +15,7 @@ interface Econ {
 const n = (v: number) => v.toLocaleString();
 const pc = (v: number | null | undefined) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`);
 const tone = (v: number | null | undefined) => (v == null ? 'opacity-60' : v > 0 ? 'text-amber-300' : v < 0 ? 'text-sky-300' : '');
-const LABEL: Record<string, string> = { mines: '⛏ Mines & factory', market: '🏪 Market', 'market fees': '🏪 Market fees', trade: '🤝 Trades & gifts', gift: '🎁 Gifts', tip: '🎁 Tips', transfer: '🤝 Transfers', p2p: '🤝 Transfers', arena: '🔫 Arena', refill: '♻ Refills', admin: '🛠 Admin grants', blackjack: '🂡 Blackjack', roulette: '🎡 Roulette', slots: '🎰 Slots', holdem: "♠ Hold'em", 'video-poker': '🃏 Video poker', chess: '♞ Chess', checkers: '⛀ Checkers', conquest: '⚔ Conquest', solitro: '🃏 Solitro', casino: '🎲 Casino' };
+const LABEL: Record<string, string> = { property_buy: '🏠 Property bought', property_sell: '🏠 Property sold back', property_tax: '🏠 Property tax', mines: '⛏ Mines & factory', market: '🏪 Market', 'market fees': '🏪 Market fees', trade: '🤝 Trades & gifts', gift: '🎁 Gifts', tip: '🎁 Tips', transfer: '🤝 Transfers', p2p: '🤝 Transfers', arena: '🔫 Arena', refill: '♻ Refills', admin: '🛠 Admin grants', blackjack: '🂡 Blackjack', roulette: '🎡 Roulette', slots: '🎰 Slots', holdem: "♠ Hold'em", 'video-poker': '🃏 Video poker', chess: '♞ Chess', checkers: '⛀ Checkers', conquest: '⚔ Conquest', solitro: '🃏 Solitro', casino: '🎲 Casino' };
 
 function Chart({ h, live }: { h: Econ['history']; live: Econ }) {
   const pts = [...h.map((d) => ({ day: d.day, cash: d.cash, total: d.total })), { day: 'now', cash: live.cash, total: live.total as number | null }];
@@ -75,6 +75,12 @@ export function EconomyView() {
         <div className="mt-2 rounded-lg bg-white/5 p-2" data-testid="econ-price-index" title={`House-set payouts (Arena prizes and spawns, Mines ore, Factory, daily bonus) and house-set prices move together with a ${e.priceIndex.params.emaDays}-day smoothed cash inflation x ${e.priceIndex.params.passThrough} pass-through, capped at ±${Math.round(e.priceIndex.params.maxDaily * 100)}%/day, floor x${e.priceIndex.params.floor.toFixed(2)}. Casino odds, player market prices and stocks are not indexed.`}>
           <div className="text-sm font-bold tabular-nums">📈 {fmtIndex(e.priceIndex.index, e.priceIndex.appliedPct)}</div>
           <div className="text-[11px] opacity-60">Smoothed inflation {pc(e.priceIndex.emaPct)}/day · casino odds unchanged ⓘ</div>
+        </div>
+      )}
+      {e.realEstate && (
+        <div className="mt-2 rounded-lg bg-white/5 p-2 text-[12px]" data-testid="econ-realestate" title="City real estate: 0.5% of list price per UTC day in property tax, burned (a chip sink). 3 unpaid days = repossessed.">
+          <div className="text-[10px] uppercase tracking-wide opacity-60">Real estate</div>
+          <div>{n(e.realEstate.owned)} properties owned · tax burned today 🪙 {n(e.realEstate.taxToday)} · all time 🪙 {n(e.realEstate.taxBurned)} · repossessed {n(e.realEstate.repossessed)}</div>
         </div>
       )}
       <div className="mt-3 text-xs uppercase tracking-wide opacity-70">Daily inflation</div>

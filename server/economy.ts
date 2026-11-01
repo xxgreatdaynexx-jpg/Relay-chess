@@ -20,6 +20,7 @@ import { COMPANIES } from '../shared/stocks.js';
 import { getExchange } from './stocks.js';
 import { initPriceIndex, priceIndexView, refreshPriceIndex, PRICE_INDEX_PARAMS } from './price-index.js';
 import { getDerivs } from './derivs.js';
+import { getRealEstate } from './realEstate.js';
 
 export const ECON_MIGRATION = `CREATE TABLE IF NOT EXISTS daily_economy (
   day TEXT PRIMARY KEY, cash BIGINT NOT NULL, assets BIGINT, total BIGINT, est_pct REAL, flows JSONB, source TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
@@ -41,6 +42,8 @@ export interface Holdings {
   stocks?: Array<{ ticker: string; n: number; price: number }>;
   /** Stock Exchange v2: fund units, short equity (collateral + unrealized P&L), options at mark. Already valued. */
   extra?: Array<{ key: string; label: string; value: number }>;
+  /** Player-owned real estate (World Map) at list price. */
+  property?: { n: number; value: number };
 }
 export interface Flow { game: string; amount: number }
 export interface DayRow { day: string; cash: number; assets: number | null; total: number | null; estPct: number | null; flows: { faucets: Flow[]; sinks: Flow[]; transfers?: Flow[] } | null; source: string }
@@ -103,6 +106,7 @@ export function valueHoldings(h: Holdings, prices: Map<string, number>) {
   }
   for (const st of h.stocks ?? []) if (st.n > 0) add('stocks', 'Stocks', st.price, st.n, false);
   for (const x of h.extra ?? []) if (x.value > 0) add(x.key, x.label, x.value, 1, false);
+  if (h.property && h.property.n > 0) { add('property', 'Real estate', h.property.value / h.property.n, h.property.n, false); }
   for (const m of h.machines) if (isKind(m.kind)) add('factory', 'Factory machines', Math.round(KINDS[m.kind].cost * MACHINE_RESALE), m.n, true);
   const list = Object.values(cats).map((c) => ({ ...c, value: Math.round(c.value), estValue: Math.round(c.estValue) })).sort((a, b) => b.value - a.value);
   const total = list.reduce((a, c) => a + c.value, 0), est = list.reduce((a, c) => a + c.estValue, 0);
@@ -181,8 +185,10 @@ export class Economy {
       offshore = Math.round(h.stocks.reduce((a, s, i) => a + (COMPANIES[i]!.shares - s.n) * s.price, 0));
     }
     const dv = getDerivs(); if (dv) h.extra = await dv.economyAssets().catch(() => []);
+    const re = getRealEstate(); let realEstate: unknown = null;
+    if (re) { h.property = await re.playerValue().catch(() => undefined); realEstate = await re.stats().catch(() => null); }
     const v = valueHoldings(h, marketPrices(sales, now));
-    return { cash, assets: v.total, total: cash + v.total, estPct: v.estPct, categories: v.categories, offshore, totalWithOffshore: cash + v.total + offshore };
+    return { realEstate, cash, assets: v.total, total: cash + v.total, estPct: v.estPct, categories: v.categories, offshore, totalWithOffshore: cash + v.total + offshore };
   }
 
   private async compute(now: number) {

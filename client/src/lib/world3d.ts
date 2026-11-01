@@ -9,8 +9,9 @@ import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmar
 
 import { WORLD_SPOTS } from './worldSpots';
 import { HOUSING_TYPES, type HousingType } from './housing';
+import { buildingId, patchId } from '../../../shared/realEstate';
 
-type Handlers = { onHover: (id: string | null, x: number, y: number) => void; onPick: (id: string) => void };
+type Handlers = { onHover: (id: string | null, x: number, y: number) => void; onPick: (id: string) => void; onProperty?: (id: string) => void };
 
 function rng(seed: number) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
 
@@ -230,6 +231,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const g = new THREE.ExtrudeGeometry(sh, { depth: 1, bevelEnabled: false }); g.translate(0, 0, -0.5); g.rotateY(Math.PI / 2); return geo(g); })();
   const unitBox = geo(new THREE.BoxGeometry(1, 1, 1));
   const housingMeshes: Record<string, THREE.InstancedMesh> = {};
+  const propTop = new Map<string, [number, number, number]>();
   HOUSING_TYPES.forEach((ht, ti) => {
     const list = fillers.filter((f) => f.type === ht.id); if (!list.length) return;
     const [map, em] = housingTextures(200 + ti, ht); disposables.push(map, em);
@@ -241,12 +243,16 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       if (roof) { d.position.set(f.x, f.h, f.z); d.scale.set(f.w + 0.2, Math.min(1.6, f.d * 0.45), f.d + 0.3); d.updateMatrix(); roof.setMatrixAt(i, d.matrix); roof.setColorAt(i, c.setHex([0x6a2e2a, 0x3a3f4a, 0x5a4636, 0x2f4a3a][i % 4])); }
     });
     body.userData.housingType = ht.id; housingMeshes[ht.id] = body; scene.add(body); if (roof) scene.add(roof);
+    // Real estate: every building is a property (stable id from type + position, matches shared/realEstate).
+    body.userData.props = list.map((f) => buildingId(ht.id, f)); pickables.push(body); if (roof) { roof.userData.props = body.userData.props; pickables.push(roof); }
+    list.forEach((f, i) => propTop.set(body.userData.props[i], [f.x, f.h + (roof ? Math.min(1.6, f.d * 0.45) : 0), f.z]));
   });
   // Open-space patches: parks (grass), plazas (paving + fountain glow), lots (dirt) — one instanced slab, tinted, rotated.
   if (patches.length) {
     const gm = new THREE.InstancedMesh(unitBox, mat({ color: 0xffffff, roughness: 1 }), patches.length); const d = new THREE.Object3D(); const c = new THREE.Color();
     patches.forEach((b, i) => { d.position.set(b.x, 0.04, b.z); d.scale.set(b.w, 0.08, b.d); d.rotation.set(0, b.rot, 0); d.updateMatrix(); gm.setMatrixAt(i, d.matrix); gm.setColorAt(i, c.setHex(b.kind === 'park' ? 0x2e7a36 : b.kind === 'plaza' ? 0x77727a : 0x4a3a2c)); });
-    scene.add(gm);
+    scene.add(gm); gm.userData.props = patches.map((b) => patchId(b.kind, b)); pickables.push(gm);
+    patches.forEach((b, i) => propTop.set(gm.userData.props[i], [b.x, 0.1, b.z]));
     const plazas = patches.filter((b) => b.kind === 'plaza');
     if (plazas.length) { const fm = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(2.2, 2.4, 0.6, 16)), mat({ color: 0x4aa8ff, emissive: 0x2a78ff, emissiveIntensity: 0.8 * NEON }), plazas.length);
       plazas.forEach((b, i) => { d.position.set(b.x, 0.3, b.z); d.scale.set(1, 1, 1); d.rotation.set(0, 0, 0); d.updateMatrix(); fm.setMatrixAt(i, d.matrix); }); scene.add(fm); }
@@ -343,7 +349,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // Interaction.
   const ray = new THREE.Raycaster(); const ndc = new THREE.Vector2();
   let hovered: string | null = null; let fly: { from: THREE.Vector3; to: THREE.Vector3; tf: THREE.Vector3; tt: THREE.Vector3; t: number; id: string } | null = null;
-  const pick = (cx: number, cy: number) => { const rc = canvas.getBoundingClientRect(); ndc.set(((cx - rc.left) / rc.width) * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1); ray.setFromCamera(ndc, camera); const hit = ray.intersectObjects(pickables, false)[0]; const tr = hit?.object.userData.trailers as string[] | undefined; if (tr && hit?.instanceId != null) return `trailer:${tr[hit.instanceId]}`; return (hit?.object.userData.spot as string | undefined) ?? null; };
+  const pick = (cx: number, cy: number) => { const rc = canvas.getBoundingClientRect(); ndc.set(((cx - rc.left) / rc.width) * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1); ray.setFromCamera(ndc, camera); const hit = ray.intersectObjects(pickables, false)[0]; const tr = hit?.object.userData.trailers as string[] | undefined; if (tr && hit?.instanceId != null) return `trailer:${tr[hit.instanceId]}`; const pr = hit?.object.userData.props as string[] | undefined; if (pr && hit?.instanceId != null) return pr[hit.instanceId] ?? null; return (hit?.object.userData.spot as string | undefined) ?? null; };
   const setHover = (id: string | null) => {
     if (id === hovered) return; hovered = id; canvas.style.cursor = id ? 'pointer' : 'grab';
     for (const l of lms) { const on = l.id === id; l.root.scale.setScalar(on ? 1.06 : 1); l.sign.userData.hover = on; for (const m of l.emissive) m.emissiveIntensity = on ? (m.map ? 1.6 : 3) * NEON : (m.map ? 0.9 : 1.6) * NEON; }
@@ -355,6 +361,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     if (!down || fly) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y); down = null; if (moved > 8) return;
     const id = pick(e.clientX, e.clientY); if (!id) { setHover(null); h.onHover(null, 0, 0); return; }
     if (id.startsWith('trailer:')) { h.onHover(id, e.clientX, e.clientY); return; } // trailers: just the label, no interiors
+    if (id.startsWith('b:') || id.startsWith('p:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel
     flyTo(id);
   };
   const flyTo = (id: string) => {
@@ -399,8 +406,21 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   };
   const vis = () => { running = !document.hidden; clock.getDelta(); }; document.addEventListener('visibilitychange', vis);
   frame();
+  // Owned-property markers: a small muted-gold diamond over each owned building/lot (no glow, no bloom).
+  const MAX_MARK = propTop.size + lms.length;
+  const marks = new THREE.InstancedMesh(geo(new THREE.OctahedronGeometry(0.45, 0)), mat({ color: 0xc9a24a, emissive: 0x2a1e06, roughness: 0.5, metalness: 0.4, flatShading: true }), MAX_MARK);
+  marks.count = 0; marks.frustumCulled = false; scene.add(marks);
+  const setOwned = (ids: string[]) => {
+    const d = new THREE.Object3D(); let n = 0;
+    for (const id of ids) {
+      const l = id.startsWith('lm:') ? lms.find((x) => x.id === id.slice(3)) : undefined;
+      const t: [number, number, number] | undefined = l ? [l.pos.x, l.height + 4.2, l.pos.z] : propTop.get(id);
+      if (!t || n >= MAX_MARK) continue; d.position.set(t[0], t[1] + 1.1, t[2]); d.scale.set(1, 1.5, 1); d.updateMatrix(); marks.setMatrixAt(n++, d.matrix);
+    }
+    marks.count = n; marks.instanceMatrix.needsUpdate = true;
+  };
   return {
-    flyTo,
+    flyTo, setOwned,
     reset() { fly = null; controls.enabled = true; camera.position.copy(home); controls.target.set(0, 0, 0); setHover(null); },
     setRunning(v: boolean) { running = v && !document.hidden; clock.getDelta(); },
     project(id: string) { const l = lms.find((x) => x.id === id); if (!l) return null; const v = l.pos.clone().setY(l.height + 2.2).project(camera); const rc = canvas.getBoundingClientRect(); return { x: rc.left + (v.x + 1) / 2 * rc.width, y: rc.top + (1 - v.y) / 2 * rc.height }; },

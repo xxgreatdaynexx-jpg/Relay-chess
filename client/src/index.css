@@ -1622,6 +1622,14 @@ html, body { overflow-x: clip; }
 .world-tip { position: fixed; z-index: 41; pointer-events: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border-radius: 12px; background: rgba(8,6,20,.92); border: 1px solid var(--c); box-shadow: 0 0 18px var(--c); font-size: 13px; max-width: 240px; }
 .world-tip b { color: var(--c); font-size: 15px; } .world-tip em { font-size: 11px; opacity: .7; }
 @media (max-width: 640px) { .world-title { font-size: 24px; } }
+.world-deed { position: absolute; left: 12px; top: 56px; z-index: 3; width: min(320px, calc(100% - 24px)); max-height: calc(100% - 80px); overflow: auto; display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 14px; background: rgba(14,15,26,.94); border: 1px solid rgba(201,162,74,.55); font-size: 13px; }
+.world-deed h3 { font: 800 18px 'Outfit Variable', sans-serif; color: #e2c47c; padding-right: 22px; } .world-deed h4 { margin-top: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; opacity: .7; }
+.world-deed dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; } .world-deed dt { opacity: .6; } .world-deed dd { font-weight: 700; text-align: right; }
+.world-deed > button:not(.world-deed-x) { padding: 8px 10px; border-radius: 10px; background: rgba(201,162,74,.16); border: 1px solid rgba(201,162,74,.4); font-weight: 700; display: flex; justify-content: space-between; gap: 8px; text-align: left; }
+.world-deed > button:not(.world-deed-x):hover:not(:disabled) { background: rgba(201,162,74,.3); } .world-deed > button:disabled { opacity: .5; }
+.world-deed small { font-size: 11px; opacity: .8; } .world-deed-x { position: absolute; right: 10px; top: 8px; opacity: .7; }
+.world-deeds > button:not(.world-deed-x) { padding: 5px 9px; font-weight: 600; background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.1); } .world-deeds > button span { opacity: .75; }
+.world-tip-owner { color: #e2c47c; font-size: 12px; }
 .world-corner { position: absolute; right: 12px; top: 12px; display: flex; gap: 6px; }
 .world-corner button { padding: 5px 11px; border-radius: 999px; background: rgba(12,14,24,.8); border: 1px solid rgba(255,255,255,.15); font-size: 12px; font-weight: 700; }
 .world-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; padding: 78px 16px 16px; max-width: 900px; margin: 0 auto; height: 100%; overflow: auto; align-content: start;

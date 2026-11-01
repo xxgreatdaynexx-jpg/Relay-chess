@@ -6,7 +6,15 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-01T01:30:00-06:00', title: 'Stock Exchange: dividends, funds, shorts and options', bullets: [
+  { commit: '', at: '2026-11-01T01:45:00-06:00', title: 'City real estate', bullets: [
+    'Every building, empty lot, park and plaza on the city map is now for sale. Click one to see its deed: price, owner, daily property tax, and a Buy button.',
+    'Prices are steep and follow the daily price index: empty lots from about 6,500 chips, homes 9,500 to 23,000, row houses 20,000 to 42,000, apartment blocks 42,000 to 90,000 and towers 100,000 to 180,000.',
+    'Landmarks are trophy deeds from 500,000 up to 2,000,000 chips. Owning one is bragging rights only, and the building stays open to everyone.',
+    'Owners pay property tax of 0.5% of the price every day (UTC), and those chips are burned. Miss 3 days in a row and the city takes the property back with no refund.',
+    'You can sell any property back to the city for 70% of its price. The Trailer Park stays free.',
+    'Owned properties get a small gold marker, and the Bank counts real estate in net worth and shows the property tax burned.',
+  ] },
+  { commit: '26ffec9', at: '2026-11-01T01:30:00-06:00', title: 'Stock Exchange: dividends, funds, shorts and options', bullets: [
     'Dividends: real estate, finance, energy, food and some industrial, retail, healthcare and defense companies now pay holders a small dividend every day at 10 AM CST. Each company shows its daily yield.',
     'Index funds (CH100, Tech, Mining, Finance, Energy, Entertainment) hold a basket of companies for a 0.25% fee and pass their dividends through.',
     'Mutual funds (Rocket Growth, Dividend Income, Crypto Degen) are hand-picked baskets with a 0.5% fee and a small daily expense.',
@@ -14,18 +22,18 @@ export const CHANGELOG: ChangelogEntry[] = [
     'Options: buy calls or puts with 1, 3 or 7-day expiry. You pay the premium up front, and they cash out automatically at expiry.',
     'The Portfolio tab now shows stocks, funds, shorts and options together, and all of it counts toward your assets in the Bank.',
   ] },
-  { commit: '', at: '2026-11-01T01:30:00-06:00', title: 'Prices & payouts follow inflation', bullets: [
+  { commit: '2f4c56e', at: '2026-11-01T01:30:00-06:00', title: 'Prices & payouts follow inflation', bullets: [
     'Arena prizes and spawn costs, Mines ore prices, Factory buildings and machines, and the daily bonus now move with the economy\'s inflation, so your chips keep their buying power.',
     'The index updates once a day (midnight UTC), smoothed and capped at 3% a day. See it in the Bank: "Prices & payouts: x1.00".',
     'Casino odds and payouts are unchanged. Player market prices and stocks are not indexed.',
   ] },
-  { commit: '', at: '2026-11-01T00:45:00-06:00', title: 'Daily login bonus + Daily Report', bullets: [
+  { commit: 'f85ce47', at: '2026-11-01T00:45:00-06:00', title: 'Daily login bonus + Daily Report', bullets: [
     'Sign in (or just show up signed in) once a day and you get 1,000 free chips, with a "+1,000 daily bonus" pop-up.',
     'One bonus per account per day; the day resets at midnight UTC (6 PM Saskatchewan time).',
     'Your first sign-in each day also opens a Daily Report: the economy (cash, asset worth, inflation, the prices & payouts index, top stock movers) and your own wallet, assets by category, and how your net worth changed since your last report.',
     'Reopen it any time from the Wallet with the "Daily report" button.',
   ] },
-  { commit: '', at: '2026-10-31T11:40:00-06:00', title: 'Two more trailers', bullets: [
+  { commit: '9e0eae1', at: '2026-10-31T11:40:00-06:00', title: 'Two more trailers', bullets: [
     'Special Characters and poonhound now have trailers in the park too.',
   ] },
   { commit: '7389b4b', at: '2026-10-31T11:30:00-06:00', title: 'Trailer Park', bullets: [
