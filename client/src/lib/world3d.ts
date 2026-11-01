@@ -5,7 +5,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
-import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, TILE } from '../../../shared/farm';
+import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, TILE, clampMapTarget } from '../../../shared/farm';
 import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN } from './worldLayout';
 
 import { WORLD_SPOTS } from './worldSpots';
@@ -74,7 +74,24 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(0, 0, 0); controls.enableDamping = true; controls.dampingFactor = 0.08;
   controls.minDistance = 30; controls.maxDistance = 360; controls.maxPolarAngle = 1.2; controls.minPolarAngle = 0.35;
-  controls.enablePan = false; controls.autoRotate = true; controls.autoRotateSpeed = 0.25;
+  // Panning (pt1200u): left-drag / one-finger drag pans across the ground, right-drag / two fingers orbit + zoom, wheel zooms.
+  controls.enablePan = true; controls.screenSpacePanning = false; controls.panSpeed = 1.1; controls.autoRotate = true; controls.autoRotateSpeed = 0.25;
+  controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+  controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
+  const panKeys = new Set<string>();
+  const typing = () => { const a = document.activeElement as HTMLElement | null; return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable); };
+  const PAN_KEYS: Record<string, [number, number]> = { ArrowUp: [0, 1], KeyW: [0, 1], ArrowDown: [0, -1], KeyS: [0, -1], ArrowLeft: [-1, 0], KeyA: [-1, 0], ArrowRight: [1, 0], KeyD: [1, 0] };
+  const onKey = (e: KeyboardEvent) => { if (!(e.code in PAN_KEYS)) return; if (e.type === 'keyup') { panKeys.delete(e.code); return; }
+    if (typing() || !controls.enabled || e.metaKey || e.ctrlKey || e.altKey) return; panKeys.add(e.code); controls.autoRotate = false; if (e.code.startsWith('Arrow')) e.preventDefault(); };
+  const onBlur = () => panKeys.clear();
+  window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKey); window.addEventListener('blur', onBlur);
+  const panStep = (dt: number) => {
+    if (!panKeys.size || !controls.enabled) return; let fx = 0, fz = 0; for (const k of panKeys) { fx += PAN_KEYS[k][0]; fz += PAN_KEYS[k][1]; } if (!fx && !fz) return;
+    const fwd = controls.target.clone().sub(camera.position).setY(0).normalize(); const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+    const v = fwd.multiplyScalar(fz).add(right.multiplyScalar(fx)).normalize().multiplyScalar(dt * Math.max(40, camera.position.distanceTo(controls.target) * 0.8));
+    controls.target.add(v); camera.position.add(v);
+  };
+  const clampPan = () => { const t = controls.target; const [x, z] = clampMapTarget(t.x, t.z); if (x !== t.x || z !== t.z) { const dx = x - t.x, dz = z - t.z; t.x = x; t.z = z; camera.position.x += dx; camera.position.z += dz; } };
 
   scene.add(new THREE.HemisphereLight(0x7a8cff, 0x2a4a30, 1.3));
   const moon = new THREE.DirectionalLight(0xaabbff, 1.1); moon.position.set(-30, 60, 20); scene.add(moon);
@@ -459,7 +476,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     if (fwAge < 2.2) { fwAge += dt; for (let i = 0; i < FP; i++) { fwVel[i * 3 + 1] -= 4 * dt; fwPos[i * 3] += fwVel[i * 3] * dt; fwPos[i * 3 + 1] += fwVel[i * 3 + 1] * dt; fwPos[i * 3 + 2] += fwVel[i * 3 + 2] * dt; } fwG.attributes.position.needsUpdate = true; fwM.opacity = Math.max(0, 1 - fwAge / 2.2); }
     if (fly) { fly.t = Math.min(1, fly.t + dt / 0.75); const e = 1 - Math.pow(1 - fly.t, 3); camera.position.lerpVectors(fly.from, fly.to, e); controls.target.lerpVectors(fly.tf, fly.tt, e); camera.lookAt(controls.target);
       if (fly.t >= 1) { const id = fly.id; fly = null; controls.enabled = true; h.onPick(id); } } // the city stays mounted now (0dc4f99): hand zoom/orbit back
-    else if (!tick?.(dt)) controls.update();
+    else if (!tick?.(dt)) { panStep(dt); controls.update(); clampPan(); }
     waterMat.uniforms.uTime.value = time;
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
     for (const l of lms) { const k = labelScale(camera.position.distanceTo(l.sign.getWorldPosition(tmpV)), portrait) * (l.sign.userData.hover ? 1.2 : 1); l.sign.scale.set(k, k / 4, 1); }
@@ -489,7 +506,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     setRunning(v: boolean) { running = v && !document.hidden; clock.getDelta(); },
     project(id: string) { const l = lms.find((x) => x.id === id); if (!l) return null; const v = l.pos.clone().setY(l.height + 2.2).project(camera); const rc = canvas.getBoundingClientRect(); return { x: rc.left + (v.x + 1) / 2 * rc.width, y: rc.top + (1 - v.y) / 2 * rc.height }; },
     hover(id: string | null) { setHover(id); },
-    dispose() { parkDead = true; trailerMeshes = []; cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
+    dispose() { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); parkDead = true; trailerMeshes = []; cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
   };
 }
 export type World = ReturnType<typeof createWorld>;

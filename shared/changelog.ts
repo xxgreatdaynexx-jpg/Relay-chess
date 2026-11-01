@@ -6,7 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-01T03:35:00-06:00', title: 'More bet sizes', bullets: [
+  { commit: '', at: '2026-11-01T11:30:00-06:00', title: 'Pan around the city map', bullets: [
+    'Drag the city map with the mouse, or with one finger on a phone, to slide it around. You can reach every corner, from the Trailer Park to the farm district on the east edge.',
+    'You can also pan with the arrow keys or WASD. They don\'t pan while you\'re typing in a box or driving a car, because driving uses those keys.',
+    'Right-drag, or two fingers, to rotate. Use the mouse wheel or pinch to zoom. A short click still opens buildings and plots, and a drag never does.',
+  ] },
+  { commit: '28a7674', at: '2026-11-01T03:35:00-06:00', title: 'More bet sizes', bullets: [
     'Roulette and Blackjack now have 1, 50 and 1000 chip bets alongside the usual 5, 25, 100 and 500 (thanks Larry!).',
   ] },
   { commit: '7c97354', at: '2026-11-01T03:30:00-06:00', title: 'Farm district', bullets: [
