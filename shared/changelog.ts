@@ -11,9 +11,11 @@ export const CHANGELOG: ChangelogEntry[] = [
     'The index updates once a day (midnight UTC), smoothed and capped at 3% a day. See it in the Bank: "Prices & payouts: x1.00".',
     'Casino odds and payouts are unchanged. Player market prices and stocks are not indexed.',
   ] },
-  { commit: '', at: '2026-11-01T00:45:00-06:00', title: 'Daily login bonus', bullets: [
+  { commit: '', at: '2026-11-01T00:45:00-06:00', title: 'Daily login bonus + Daily Report', bullets: [
     'Sign in (or just show up signed in) once a day and you get 1,000 free chips, with a "+1,000 daily bonus" pop-up.',
     'One bonus per account per day; the day resets at midnight UTC (6 PM Saskatchewan time).',
+    'Your first sign-in each day also opens a Daily Report: the economy (cash, asset worth, inflation, the prices & payouts index, top stock movers) and your own wallet, assets by category, and how your net worth changed since your last report.',
+    'Reopen it any time from the Wallet with the "Daily report" button.',
   ] },
   { commit: '', at: '2026-10-31T11:40:00-06:00', title: 'Two more trailers', bullets: [
     'Special Characters and poonhound now have trailers in the park too.',

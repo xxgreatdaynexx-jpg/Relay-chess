@@ -52,3 +52,42 @@ describe('daily login bonus', () => {
     expect(transfers).toHaveLength(0);
   });
 });
+
+import { Economy, setEconomyForTest, type EconSource } from '../server/economy';
+import { MemorySnapshots, PgSnapshots, buildDailyReport, setSnapshotStore } from '../server/daily-report';
+
+function econSource(): EconSource {
+  const holdings = { skins: [], stacks: [{ type: 'ore', id: 'copper', qty: 10 }], machines: [] };
+  return {
+    cash: async () => 50_000, holdings: async () => holdings, holdingsOf: async (k) => (k === 'qa-tess' ? holdings : { skins: [], stacks: [], machines: [] }),
+    sales: async () => [{ what: 'stack:ore:copper', unit: 7, at: NOV1 - 1000 }], flows: async () => [], cashAt: async () => 40_000,
+    firstLedgerAt: async () => null, days: async () => [{ day: '2026-10-31', cash: 40_000, assets: 70, total: 40_070, estPct: 0, flows: null, source: 'snapshot' }], saveDay: async () => {},
+  };
+}
+
+describe('daily report', () => {
+  beforeEach(() => { resetBank(); setSnapshotStore(new MemorySnapshots()); setEconomyForTest(new Economy(econSource(), () => NOV1)); });
+
+  it('reuses the Bank valuation for economy + player assets, and diffs against the last report', async () => {
+    getBank().transfer('QA-Tess', 1000, { game: 'daily_bonus', key: 'k1' });
+    const first = await buildDailyReport('QA-Tess', 1000, NOV1);
+    expect(first.bonus).toBe(1000);
+    expect(first.economy).toMatchObject({ cash: 50_000, assets: 70, total: 50_070, inflation: 25 });
+    expect(first.me).toMatchObject({ cash: 2000, assets: 70, total: 2070, since: null });
+    expect(first.me.categories).toEqual([{ key: 'ore', label: 'Ore', value: 70, units: 10 }]);
+    getBank().transfer('QA-Tess', -500, { game: 'slots' });
+    const next = await buildDailyReport('QA-Tess', null, NOV1 + 86_400_000);
+    expect(next.me.since).toMatchObject({ day: '2026-11-01', total: -500, cash: -500, assets: 0 });
+    expect(next.me.since!.totalPct).toBeCloseTo(-24.15, 1);
+  });
+
+  it('stores one snapshot per player per day in Postgres', async () => {
+    const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg();
+    const s = new PgSnapshots(new Pool());
+    await s.save('qa-tess', { day: '2026-11-01', cash: 1, assets: 2, total: 3 });
+    await s.save('qa-tess', { day: '2026-11-01', cash: 5, assets: 2, total: 7 });
+    expect(db.public.many('SELECT * FROM daily_reports')).toHaveLength(1);
+    expect(await s.last('qa-tess', '2026-11-02')).toEqual({ day: '2026-11-01', cash: 5, assets: 2, total: 7 });
+    expect(await s.last('qa-tess', '2026-11-01')).toBeNull();
+  });
+});

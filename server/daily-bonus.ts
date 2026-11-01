@@ -2,6 +2,7 @@
 import type { Socket } from 'socket.io';
 import { getBank } from './casino-store.js';
 import { px } from './price-index.js';
+import { buildDailyReport } from './daily-report.js';
 
 export const DAILY_BONUS = 1000;
 export const DAILY_BONUS_GAME = 'daily_bonus';
@@ -33,5 +34,9 @@ export async function claimDailyBonus(name: string, now = Date.now()): Promise<{
 
 /** Fire-and-forget after a successful sign-in / resume; tells only this socket when chips were awarded. */
 export function grantDailyBonus(socket: Socket, name: string): void {
-  void claimDailyBonus(name).then((r) => { if (r) socket.emit('daily_bonus', r); });
+  void claimDailyBonus(name).then(async (r) => {
+    if (!r) return;
+    socket.emit('daily_bonus', r);
+    try { socket.emit('daily_report', await buildDailyReport(name, r.amount)); } catch (e) { console.error('[daily-report] build failed:', (e as Error).message); }
+  });
 }

@@ -46,6 +46,8 @@ export interface Category { key: string; label: string; value: number; units: nu
 export interface EconSource {
   cash(): Promise<number>;
   holdings(): Promise<Holdings>;
+  /** One player's holdings (same queries as holdings(), filtered to that player_key; QA players included). */
+  holdingsOf?(playerKey: string): Promise<Holdings>;
   sales(): Promise<SaleRow[]>;
   /** Ledger net per game for [from, to). */
   flows(from: number, to: number): Promise<Array<{ game: string; pos: number; neg: number }>>;
@@ -150,6 +152,21 @@ export class Economy {
     return this.inflight;
   }
 
+  private salesCache: { at: number; p: Promise<SaleRow[]> } | null = null;
+  private salesCached(now: number) {
+    if (!this.salesCache || now - this.salesCache.at > CACHE_MS) this.salesCache = { at: now, p: this.src.sales().catch(() => []) };
+    return this.salesCache.p;
+  }
+
+  /** One player's non-cash assets, valued exactly like the Bank totals (valueHoldings + market prices + live stock price). */
+  async playerAssets(name: string, now = this.clock()) {
+    if (!this.src.holdingsOf) return null;
+    const [h, sales] = await Promise.all([this.src.holdingsOf(name.replace(/\s+/g, ' ').trim().toLowerCase()), this.salesCached(now)]);
+    const ex = getExchange();
+    if (ex) h.stocks = (await ex.holdings(name).catch(() => [])).map((x) => ({ ticker: x.ticker, n: x.shares, price: ex.price(x.ticker) ?? 0 }));
+    return valueHoldings(h, marketPrices(sales, now));
+  }
+
   private async live(now: number) {
     const [cash, h, sales] = await Promise.all([this.src.cash(), this.src.holdings(), this.src.sales()]);
     // Stocks: shares players own are assets; the rest of each company's market cap is offshore (not anyone's net worth).
@@ -212,8 +229,12 @@ export class PgEconSource implements EconSource {
   constructor(private readonly db: Queryable) {}
   async init() { await this.db.query(ECON_MIGRATION); }
   async cash() { return Number((await this.db.query(`SELECT COALESCE(SUM(chips),0) s FROM casino_players WHERE ${NOT_QA('player_key')}`)).rows[0]?.s ?? 0); }
-  async holdings(): Promise<Holdings> {
-    const q = async (sql: string) => { try { return (await this.db.query(sql)).rows; } catch { return []; } }; // a table may not exist yet
+  async holdings(): Promise<Holdings> { return this.holdingsWhere(null); }
+  async holdingsOf(playerKey: string): Promise<Holdings> { return this.holdingsWhere(playerKey); }
+  private async holdingsWhere(player: string | null): Promise<Holdings> {
+    const args = player ? [player] : [];
+    const NOT_QA = (col: string) => (player ? `${col} = $1` : `${col} NOT LIKE 'qa-%'`);
+    const q = async (sql: string) => { try { return (await this.db.query(sql, args)).rows; } catch { return []; } }; // a table may not exist yet
     const skins = (await q(`SELECT kind, skin_id, COUNT(*) n FROM inventory_items WHERE NOT gone AND ${NOT_QA('player_key')} GROUP BY 1,2`)).map((r) => ({ kind: String(r.kind), skin: String(r.skin_id), n: Number(r.n) }));
     const st = new Map<string, { type: string; id: string; qty: number }>();
     const put = (type: string, id: string, qty: number) => { if (!(qty > 0)) return; const k = `${type}:${id}`; const s = st.get(k); if (s) s.qty += qty; else st.set(k, { type, id, qty }); };

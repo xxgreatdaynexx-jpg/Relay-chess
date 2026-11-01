@@ -3,6 +3,7 @@ import type { Socket } from 'socket.io';
 import { AuthError, getAccounts, type Identity } from './accounts.js';
 import { getBank } from './casino-store.js';
 import { grantDailyBonus } from './daily-bonus.js';
+import { buildDailyReport } from './daily-report.js';
 import { cleanSettings, validateSettings } from '../shared/settings.js';
 
 type Ack = (res: { ok: boolean; error?: string; [k: string]: unknown }) => void;
@@ -47,6 +48,7 @@ export function registerAuth(socket: Socket): void {
     return { ...s, you: me?.name ?? null };
   }));
 
+  socket.on('daily_report_get', run(async () => ({ report: await buildDailyReport(signedIn(socket), null) })));
   socket.on('auth_claim', run(async (body) => {
     const { identity, token } = await getAccounts().claim(validName(body.name), body.password as string, clientIp(socket));
     socket.data.account = identity;

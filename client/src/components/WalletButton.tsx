@@ -5,6 +5,7 @@ import { useAccount } from '@/lib/auth';
 import { openAccount } from '@/lib/settings';
 import { setWalletChips } from '@/lib/wallet';
 import { EconomyView } from './EconomyView';
+import { DailyReport, type DailyReportData } from './DailyReport';
 
 interface Tx { key: string | null; game: string; amount: number; balance: number; memo?: string; at: number }
 interface WalletPush { chips: number; tx?: Tx; start?: number }
@@ -29,6 +30,8 @@ export function WalletButton() {
   const [unavailable, setUnavailable] = useState<string | null>(null);
   const [view, setView] = useState<'me' | 'econ'>('me');
   const [bonusToast, setBonusToast] = useState('');
+  const [report, setReport] = useState<DailyReportData | null>(null);
+  const [reportErr, setReportErr] = useState('');
   const [bump, setBump] = useState<'' | 'bump-up' | 'bump-down'>('');
   const ref = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -72,7 +75,9 @@ export function WalletButton() {
       sub();
     };
     socket.on('daily_bonus', onBonus);
-    return () => { window.clearTimeout(t); window.clearTimeout(retry); window.clearTimeout(bonusTimer); socket.off('connect', onConnect); socket.off('wallet', onWallet); socket.off('daily_bonus', onBonus); };
+    const onReport = (r: DailyReportData) => setReport(r);
+    socket.on('daily_report', onReport);
+    return () => { socket.off('daily_report', onReport); window.clearTimeout(t); window.clearTimeout(retry); window.clearTimeout(bonusTimer); socket.off('connect', onConnect); socket.off('wallet', onWallet); socket.off('daily_bonus', onBonus); };
   }, [account]);
 
   useEffect(() => {
@@ -85,6 +90,7 @@ export function WalletButton() {
   const signedIn = Boolean(account) && chips !== null;
   return (
     <div ref={ref} className="wallet-wrap">
+      {report && <DailyReport report={report} onClose={() => setReport(null)} />}
       {bonusToast && createPortal(
         <div role="status" data-testid="daily-bonus-toast" className="fixed top-16 left-1/2 z-50 -translate-x-1/2 rounded-full border border-[#e8c26a]/60 bg-[#1b1d2e]/95 px-4 py-2 text-sm font-bold text-[#e8c26a] shadow-lg">
           🎁 {bonusToast}
@@ -116,6 +122,9 @@ export function WalletButton() {
                 <div className="text-2xl font-bold tabular-nums" data-testid="wallet-balance">🪙 {chips!.toLocaleString()}</div>
               </div>
               <p className="mt-1 text-[11px] opacity-60">Same chips in every game: wager on chess, checkers and Conquest tables, or play the casino.</p>
+              <button type="button" data-testid="open-daily-report" className="mt-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold hover:bg-white/20"
+                onClick={() => { setReportErr(''); void request('daily_report_get').then((r) => { const rep = (r as unknown as { report?: DailyReportData }).report; if (r.ok && rep) { setOpen(false); setReport(rep); } else setReportErr(r.error || 'Could not load the report.'); }); }}>📊 Daily report</button>
+              {reportErr && <p className="mt-1 text-xs text-rose-300">{reportErr}</p>}
               <div className="mt-3 text-xs uppercase tracking-wide opacity-70">Recent</div>
               {history.length === 0 ? <p className="mt-1 text-sm opacity-60">No chip moves yet.</p> : (
                 <ul className="mt-1" data-testid="wallet-history">
