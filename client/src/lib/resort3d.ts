@@ -45,10 +45,10 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   const skyM = new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false, uniforms: {},
     vertexShader: 'varying vec3 vp; void main(){ vp = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
     fragmentShader: `varying vec3 vp; void main(){ float y = vp.y;
-      vec3 gold = vec3(1.6,0.75,0.25); vec3 coral = vec3(1.4,0.42,0.3); vec3 mag = vec3(0.85,0.28,0.55); vec3 indigo = vec3(0.22,0.16,0.48);
+      vec3 gold = vec3(1.2,0.5,0.15); vec3 coral = vec3(1.0,0.28,0.2); vec3 mag = vec3(0.55,0.14,0.38); vec3 indigo = vec3(0.12,0.08,0.32);
       vec3 c = mix(gold, coral, smoothstep(0.0,0.06,y)); c = mix(c, mag, smoothstep(0.06,0.22,y)); c = mix(c, indigo, smoothstep(0.22,0.7,y));
-      vec3 sd = normalize(vec3(0.25,0.06,-1.0)); // sun sets behind the town, framed by the default camera float s = max(dot(vp, sd), 0.0);
-      c += vec3(1.0,0.75,0.4)*pow(s,900.0)*6.0 + vec3(1.0,0.45,0.15)*pow(s,24.0)*0.6 + vec3(0.9,0.3,0.2)*pow(s,4.0)*0.15;
+      vec3 sd = normalize(vec3(0.25,0.06,-1.0)); /* sun sets behind the town */ float s = clamp(dot(vp, sd), 1e-4, 1.0); /* pow(0, n) is undefined in GLSL: black sky on some GPUs */
+      c += vec3(1.0,0.75,0.4)*pow(s,900.0)*6.0 + vec3(1.0,0.45,0.15)*pow(s,24.0)*0.35 + vec3(0.9,0.3,0.2)*pow(s,4.0)*0.08;
       if (y < 0.0) c = gold*0.9; gl_FragColor = vec4(c,1.0);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
