@@ -6,11 +6,15 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-01T15:20:00-06:00', title: 'Clearer order buttons', bullets: [
+  { commit: '', at: '2026-11-01T15:30:00-06:00', title: 'Resort sunset, now in view', bullets: [
+    'The resort opens at a lower golden-hour angle, so you can see the sunset sky over the town.',
+    'The Palms casino bar now sits top-right, clear of the table and slot panels.',
+  ] },
+  { commit: 'f982c73', at: '2026-11-01T15:20:00-06:00', title: 'Clearer order buttons', bullets: [
     'Stock Exchange order buttons now lock and show a spinner the moment you click, and stay locked until the order is done.',
     'A second order placed right after the first one finished always goes through. If a click repeats an order that is still in progress, you now see "Already placed" instead of a second "Sold" message.',
   ] },
-  { commit: '', at: '2026-11-01T15:10:00-06:00', title: 'Chud Resort gets its golden hour', bullets: [
+  { commit: 'c49dfd2', at: '2026-11-01T15:10:00-06:00', title: 'Chud Resort gets its golden hour', bullets: [
     'A real sunset sky over the resort: gold horizon fading through coral and magenta to night, with a glowing sun.',
     'Deep blue ocean with sun glints, sky reflections and foam rolling onto the beach.',
     'Warmer light, and the lamps and casino dome now glow.',
