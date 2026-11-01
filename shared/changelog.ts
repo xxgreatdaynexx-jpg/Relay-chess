@@ -6,15 +6,22 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-01T14:20:00-06:00', title: 'No more blank screens after an update', bullets: [
+  { commit: '', at: '2026-11-01T14:30:00-06:00', title: 'Chud Resort: fly to a beachfront resort town', bullets: [
+    'Chud Resort is a new map you can only reach by plane. Buy a ticket at the Chud Hub Airport for about 500 chips (follows the price index). The flight home is free.',
+    'The Palms Resort Casino has 3 exclusive slots, Tiki Lagoon, Yacht Club and Pearl Diver, with the same payout rates as the city machines. Its blackjack and roulette tables have ivory, gold and lagoon-blue felt.',
+    'Premium beachfront real estate: beach houses, oceanview condos, hillside villas and beachfront hotels, all priced above the city. Tax, selling back and repossession work the same as in the city.',
+    'The plantation grows tropical crops (pineapples, bananas, mangoes, coconuts and cacao). It shares the daily farm limit.',
+    'The Coral Grotto is a new mine inside the volcano, with pay similar to The Mine.',
+  ] },
+  { commit: '9720f77', at: '2026-11-01T14:20:00-06:00', title: 'No more blank screens after an update', bullets: [
     'If an update lands while you have the game open, clicking the Car Dealership, the Airport or any other screen that loads separately now reloads the page once instead of leaving a blank green screen.',
     'Arena spawn fees are now only charged to a game that is open and running on your screen. Old tabs from before an update are never charged.',
   ] },
-  { commit: '', at: '2026-11-01T14:20:00-06:00', title: 'Mines: find Keys and Chests', bullets: [
+  { commit: 'b722556', at: '2026-11-01T14:20:00-06:00', title: 'Mines: find Keys and Chests', bullets: [
     'Every ore you break in any mine has a 5% chance to drop a Key or a Chest (50/50) straight into your inventory.',
     'Sign in to get drops; guests don\'t get them.',
   ] },
-  { commit: '', at: '2026-11-01T13:50:00-06:00', title: 'Fishing is now a real 3D game', bullets: [
+  { commit: '4226810', at: '2026-11-01T13:50:00-06:00', title: 'Fishing is now a real 3D game', bullets: [
     'At the Fishing Dock, press “🎮 Play 3D fishing” to stand on the pier at night, with moonlight on the water, reeds, lily pads and the glowing boathouse.',
     'Aim with the mouse (or A/D), then hold to charge your cast and let go. Watch the line fly and the bobber splash down, then wait for it to dip and strike fast.',
     'In the fight, the fish runs left and right and the rod bends. Rare fish jump out of the water. Keep an eye on the tension and line strain.',
@@ -22,7 +29,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     'Other anglers at the dock show up with their name tags. It works on phones too: tap and hold.',
     'Catches, prices, the cooler, selling, Fishing XP and the biggest-catch board all work the same as before. The quick 2D game is still there.',
   ] },
-  { commit: '', at: '2026-11-01T13:45:00-06:00', title: 'Stocks, Daily Report and Chud Hub map fixes', bullets: [
+  { commit: '988e290', at: '2026-11-01T13:45:00-06:00', title: 'Stocks, Daily Report and Chud Hub map fixes', bullets: [
     'Share and unit boxes no longer quietly drop a minus sign or a decimal point (so "-5" no longer turns into 5). You now get a clear message: whole, positive numbers only (fund units allow 2 decimals). The server checks this too.',
     'The Daily Report now counts your funds, shorts, options, property and cars as assets, the same way the Bank does.',
     'Inflation now reads the same on the Daily Report and the Bank\'s Economy tab: same numbers, same labels, with an "as of" time. Smoothed inflation says "needs a closed day" instead of "—/day".',
@@ -37,13 +44,13 @@ export const CHANGELOG: ChangelogEntry[] = [
     'Buying or selling property shows a spinner right away and a confirmation when it\'s done, and the deed updates straight away. Buying is also a little faster on the server.',
     'Crops grow live: the farm panel updates when a crop ripens or withers (no reload needed), and crops on the map refresh every 15 seconds.',
   ] },
-  { commit: '', at: '2026-11-01T13:30:00-06:00', title: 'Countryside roads fixed', bullets: [
+  { commit: '159ac45', at: '2026-11-01T13:30:00-06:00', title: 'Countryside roads fixed', bullets: [
     'The countryside roads are now one tidy ring around the city and the farm, with no dead ends, doubled roads or random diagonals. Every road ends at a junction or somewhere you can go.',
     'The Speedway road now goes straight north from the boulevard, along the ring road, and up to the track without crossing it. The Airport road and every other crossing has a proper junction with no centre lines through it.',
     'The dirt roads to The Mine, Frostbite Caverns and Magma Depths now branch straight off a paved road, a short road leads down to the Fishing Dock, and the farm lanes run up to the ring road and on to Magma Depths.',
     'The mine yards, the farm and the venue grounds no longer flicker where they meet the grass.',
   ] },
-  { commit: '', at: '2026-11-01T12:50:00-06:00', title: 'The big lake looks natural', bullets: [
+  { commit: '4a47a7c', at: '2026-11-01T12:50:00-06:00', title: 'The big lake looks natural', bullets: [
     'The long lake between downtown and the far-shore fields is no longer a flat slab. It has a winding south shore with coves and points, rounded ends, and a small wooded island.',
     'The water is lighter in the shallows and darker in the middle, with gentle foam and ripples at the edge. It matches the lake by the Fishing Dock.',
     'Sandy banks blend into the grass, with reeds, lily pads, rocks and trees along the shore. The city waterfront and its roads are unchanged.',
