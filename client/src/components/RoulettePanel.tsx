@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { NamePrompt, OutOfChips } from '@/components/CasinoCommon';
 import { betKey, CHIP_VALUES, payoutOdds, RED, WHEEL, type RouletteBet, type RouletteKind, type RouletteView } from '../../../shared/casino';
 import { useWalletChips } from '@/lib/wallet';
+import { isDoubleBet } from '../lib/doubleClick';
 import { emitCasino, useCountdown, useSavedName } from '@/lib/casino';
 import { socket } from '@/lib/net';
 import { playBallLand, playCardFlick, playRouletteSpin, playSolitaireWin } from '@/lib/sounds';
@@ -149,10 +150,15 @@ export function RoulettePanel() {
     return m;
   }, [v, name]);
 
+  const lastBet = useRef<{ k: string; at: number; busy: boolean }>({ k: '', at: 0, busy: false });
   async function place(spot: Spot) {
     if (!betting || !name) return;
+    // QA r11: a double-click on a spot places ONE chip (wait for the ack; ignore the same spot again within DOUBLE_CLICK_MS).
+    const k = JSON.stringify(spot); const L = lastBet.current;
+    if (isDoubleBet(L, k, Date.now())) return;
+    lastBet.current = { k, at: Date.now(), busy: true };
     setErr('');
-    const r = await emitCasino('roulette_bet', { name, bet: { ...spot, amount: chip } });
+    const r = await emitCasino('roulette_bet', { name, bet: { ...spot, amount: chip } }).finally(() => { lastBet.current.busy = false; });
     if (!r.ok) setErr(r.error ?? 'Failed');
     else playCardFlick();
   }

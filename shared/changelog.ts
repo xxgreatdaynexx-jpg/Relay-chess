@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T15:00:00-06:00', title: 'No more double orders from a double-click', bullets: [
+    'A quick double-click on a fund, stock, short or option order now places it only once, and the button locks with a spinner straight away.',
+    'Double-clicking a slots spin, a blackjack action or a roulette spot no longer spins, hits or bets twice.',
+  ] },
   { commit: '', at: '2026-11-01T14:55:00-06:00', title: 'Arena waits for you to press Play', bullets: [
     'Opening the Arena from the top bar no longer drops you straight into the match or charges a spawn fee. You join as a spectator and pay only when you press Play.',
   ] },

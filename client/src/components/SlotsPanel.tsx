@@ -71,6 +71,7 @@ export function SlotsPanel() {
   const [confirmBuy, setConfirmBuy] = useState(false);
   const chestDone = useRef<(() => void) | null>(null);
   const skip = useRef(false);
+  const spinLock = useRef(false); // QA r11: sync lock, a double-click lands before React disables the button
   useEffect(() => { localStorage.setItem(OPEN_KEY, open ? '1' : '0'); }, [open]);
   useEffect(() => { if (machine) localStorage.setItem(MACHINE_KEY, machine); }, [machine]);
   useEffect(() => {
@@ -156,7 +157,8 @@ export function SlotsPanel() {
   };
 
   const spin = async (buy = false) => {
-    if (!machine) return;
+    if (!machine || spinLock.current) return;
+    spinLock.current = true;
     const m = machine;
     skip.current = false;
     setConfirmBuy(false);
@@ -166,7 +168,7 @@ export function SlotsPanel() {
     // Buy Bonus: the server prices it from the bet and decides the whole round; we send only machine + bet.
     const r = await emitCasino<{ result: Spin }>(buy ? 'vslots_buy' : 'vslots_spin', { machine: m, bet }, { retry: true });
     if (!r.ok || !r.result) {
-      setSpinning(Array(VS_REELS).fill(false)); setBusy(false); setMsg('');
+      setSpinning(Array(VS_REELS).fill(false)); setBusy(false); spinLock.current = false; setMsg('');
       return setErr(r.error ?? 'Try again.');
     }
     const res = r.result;
@@ -224,7 +226,7 @@ export function SlotsPanel() {
     const paid = res.cost ?? bet;
     setMsg(res.returned > 0 ? `Won ${res.returned.toLocaleString()} (${(res.returned / bet).toFixed(1)}× bet${buy ? ` · bonus cost ${paid.toLocaleString()}` : ''})` : 'No win');
     if (res.returned > 0 && res.returned < bet * 15) playBallLand();
-    setBusy(false);
+    setBusy(false); spinLock.current = false;
   };
 
   const pickChest = (i: number) => {

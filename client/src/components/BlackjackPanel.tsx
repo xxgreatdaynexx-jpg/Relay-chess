@@ -80,9 +80,11 @@ export function BlackjackPanel() {
   const myTurn = t?.phase === 'playing' && t.turn !== null && t.turn === t.you;
   const hand = myTurn && me && me.active !== null ? me.hands[me.active] : null;
 
+  const sending = useRef(false); // QA r11: one action at a time, so a double-click can't hit twice or re-bet
   async function send(event: string, payload: unknown) {
-    setErr('');
-    const r = await emitCasino(event, payload);
+    if (sending.current) return;
+    sending.current = true; setErr('');
+    const r = await emitCasino(event, payload).finally(() => { sending.current = false; });
     if (!r.ok) setErr(r.error ?? 'Failed');
   }
 

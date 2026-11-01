@@ -56,15 +56,27 @@ const clamp = (x: number, a: number, b: number) => Math.min(b, Math.max(a, x));
 /** Anchor drift per day for a company: inflation x sector sensitivity + activity signal, capped. Pure, for tests. */
 /** QA r9: replay cache for money-moving requests. A client retry with the same request id gets the first call's
  *  result (or waits for it if it is still running) instead of running the trade again. Kept for 2 minutes. */
+const MONEY_EV = /^stk2?_(buy|sell|fund_buy|fund_sell|short_open|short_close|opt_buy|opt_close|opt_sell)$/;
 const replay = new Map<string, { at: number; p: Promise<unknown> }>();
-export function once(name: string | null, ev: string, rid: unknown, run: () => unknown): Promise<unknown> {
-  if (typeof rid !== 'string' || !/^[\w-]{8,64}$/.test(rid) || !name) return Promise.resolve().then(run);
+export function once(name: string | null, ev: string, rid: unknown, run: () => unknown, body?: Record<string, unknown>): Promise<unknown> {
+  if (!name) return Promise.resolve().then(run);
   const now = Date.now(); for (const [k, v] of replay) if (now - v.at > 120_000) replay.delete(k);
-  const key = `${name.toLowerCase()}|${ev}|${rid}`; const hit = replay.get(key); if (hit) return hit.p;
-  const p = Promise.resolve().then(run); replay.set(key, { at: now, p });
-  p.catch(() => replay.delete(key)); // a failed (uncharged) attempt may be retried for real
+  for (const [k, v] of intent) if (v.done && now - v.done > SAME_INTENT_MS) intent.delete(k);
+  // QA r11: a double-click sends two requests with DIFFERENT request ids. An identical order (same player, event
+  // and fields) that is still running or finished < SAME_INTENT_MS ago gets the first answer instead of trading again.
+  const ik = body ? `${name.toLowerCase()}|${ev}|${intentKey(body)}` : null;
+  const ih = ik ? intent.get(ik) : undefined; if (ih) return ih.p;
+  const ridOk = typeof rid === 'string' && /^[\w-]{8,64}$/.test(rid);
+  const key = ridOk ? `${name.toLowerCase()}|${ev}|${rid}` : null; const hit = key ? replay.get(key) : undefined; if (hit) return hit.p;
+  const p = Promise.resolve().then(run);
+  if (key) { replay.set(key, { at: now, p }); p.catch(() => replay.delete(key)); } // a failed (uncharged) attempt may be retried for real
+  if (ik) { const rec: { p: Promise<unknown>; done: number } = { p, done: 0 }; intent.set(ik, rec); p.then(() => { rec.done = Date.now(); }, () => intent.delete(ik)); }
   return p;
 }
+/** QA r11: window in which an identical money order from the same player is treated as a double-click. */
+export const SAME_INTENT_MS = 1500;
+const intent = new Map<string, { p: Promise<unknown>; done: number }>();
+const intentKey = (b: Record<string, unknown>) => JSON.stringify(Object.keys(b).filter((k) => k !== 'rid').sort().map((k) => [k, b[k]]));
 
 export function dailyDrift(c: Company, inflPct: number | null, act: Partial<Record<ActivityKey, number>>): number {
   const s = SECTOR_BY_ID.get(c.sector)!;
@@ -332,7 +344,7 @@ export function registerStocks(io: Server, socket: Socket): void {
   if (wired !== io && ex) { wired = io; const e = ex; e.onTick = () => io.to('stocks').emit('stk_tick', { prices: COMPANIES.map((c) => [c.ticker, e.price(c.ticker)]) }); }
   const nameOf = () => (socket.data as { account?: { name: string } }).account?.name ?? null;
   const on = (ev: string, fn: (b: Record<string, unknown>, e: Exchange) => unknown) => socket.on(ev, async (payload: unknown, ack?: Ack) => {
-    try { if (!ex) throw new StockError('The exchange is starting up. Try again in a moment.'); const b = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}; const e0 = ex; ack?.({ ok: true, ...((await once(nameOf(), ev, b.rid, () => fn(b, e0))) as object ?? {}) }); }
+    try { if (!ex) throw new StockError('The exchange is starting up. Try again in a moment.'); const b = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}; const e0 = ex; ack?.({ ok: true, ...((await once(nameOf(), ev, b.rid, () => fn(b, e0), MONEY_EV.test(ev) ? b : undefined)) as object ?? {}) }); }
     catch (e) { ack?.({ ok: false, error: e instanceof StockError || /^(Not enough chips\.|Wallet temporarily unavailable\.)$/.test((e as Error).message) ? (e as Error).message : 'Something went wrong.' }); }
   });
   const need = () => { const n = nameOf(); if (!n) throw new StockError('Sign in to trade. Guests can browse.'); return n; };
