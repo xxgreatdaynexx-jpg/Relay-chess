@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T00:45:00-06:00', title: 'Daily login bonus', bullets: [
+    'Sign in (or just show up signed in) once a day and you get 1,000 free chips, with a "+1,000 daily bonus" pop-up.',
+    'One bonus per account per day; the day resets at midnight UTC (6 PM Saskatchewan time).',
+  ] },
   { commit: '', at: '2026-10-31T11:40:00-06:00', title: 'Two more trailers', bullets: [
     'Special Characters and poonhound now have trailers in the park too.',
   ] },

@@ -11,7 +11,7 @@ interface WalletPush { chips: number; tx?: Tx; start?: number }
 
 const GAME_LABEL: Record<string, string> = {
   chess: '♞ Chess', checkers: '⛀ Checkers', conquest: '⚔ Conquest', blackjack: '🂡 Blackjack', roulette: '🎡 Roulette',
-  slots: '🎰 Slots', holdem: "♠ Hold'em", 'video-poker': '🃏 Video poker', solitro: '🃏 Solitro', refill: '♻ Refill', casino: '🎲 Casino',
+  slots: '🎰 Slots', holdem: "♠ Hold'em", 'video-poker': '🃏 Video poker', solitro: '🃏 Solitro', refill: '♻ Refill', casino: '🎲 Casino', daily_bonus: '🎁 Daily bonus',
 };
 
 function when(at: number): string {
@@ -28,6 +28,7 @@ export function WalletButton() {
   const [open, setOpen] = useState(false);
   const [unavailable, setUnavailable] = useState<string | null>(null);
   const [view, setView] = useState<'me' | 'econ'>('me');
+  const [bonusToast, setBonusToast] = useState('');
   const [bump, setBump] = useState<'' | 'bump-up' | 'bump-down'>('');
   const ref = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -63,7 +64,15 @@ export function WalletButton() {
     const onConnect = () => window.setTimeout(sub, 400);
     socket.on('connect', onConnect);
     socket.on('wallet', onWallet);
-    return () => { window.clearTimeout(t); window.clearTimeout(retry); socket.off('connect', onConnect); socket.off('wallet', onWallet); };
+    let bonusTimer = 0;
+    const onBonus = (p: { amount: number; chips: number }) => {
+      setChips(p.chips); setWalletChips(p.chips); setBump('bump-up'); window.setTimeout(() => setBump(''), 750);
+      setBonusToast(`+${p.amount.toLocaleString()} daily bonus`);
+      window.clearTimeout(bonusTimer); bonusTimer = window.setTimeout(() => setBonusToast(''), 5000);
+      sub();
+    };
+    socket.on('daily_bonus', onBonus);
+    return () => { window.clearTimeout(t); window.clearTimeout(retry); window.clearTimeout(bonusTimer); socket.off('connect', onConnect); socket.off('wallet', onWallet); socket.off('daily_bonus', onBonus); };
   }, [account]);
 
   useEffect(() => {
@@ -76,6 +85,10 @@ export function WalletButton() {
   const signedIn = Boolean(account) && chips !== null;
   return (
     <div ref={ref} className="wallet-wrap">
+      {bonusToast && createPortal(
+        <div role="status" data-testid="daily-bonus-toast" className="fixed top-16 left-1/2 z-50 -translate-x-1/2 rounded-full border border-[#e8c26a]/60 bg-[#1b1d2e]/95 px-4 py-2 text-sm font-bold text-[#e8c26a] shadow-lg">
+          🎁 {bonusToast}
+        </div>, document.body)}
       <button type="button" className={`wallet-btn ${bump}`} aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="wallet-button"
         aria-label={signedIn ? `Wallet: ${chips} chips` : 'Wallet'}>
         <span aria-hidden>🪙</span>

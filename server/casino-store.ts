@@ -286,6 +286,20 @@ export class CasinoBank {
   }
 
   /**
+   * Keyed credit/debit that resolves only once Postgres has accepted it: true when it landed, false when the key was
+   * already used (this run, another instance, or before a restart) or the write never landed. Use it when the caller
+   * must tell the player (e.g. a once-per-day bonus toast).
+   */
+  async transferConfirmed(name: string, amount: number, opts: { key: string; game: string; memo?: string }): Promise<boolean> {
+    if (!this.transfer(name, amount, opts)) return false;
+    const a = this.account(name);
+    const tx = this.recentTx.get(a.key)?.[0];
+    await this.pending.get(a.key);
+    if (!this.store) return true;
+    return !!tx && (this.recentTx.get(a.key)?.includes(tx) ?? false);
+  }
+
+  /**
    * Several keyed transfers that must land in Postgres inside the CALLER's transaction (e.g. a market buy with item rows).
    * All-or-nothing in memory (validates every move first). Returns SQL rows that do atomic increments (the ledger insert
    * fails — aborting the caller's transaction — if a balance would go negative or a key was already used), a promise for
