@@ -601,7 +601,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     // Land at controls.minDistance (24,18 → 30) so OrbitControls takes over without a jump.
     // The airport (tall tower, wide apron, menu on the left) lands further back so the terminal isn't jammed against the camera.
     const k = id === 'airport' ? 2.6 : 1;
-    const to = tgt.clone().add(dir.multiplyScalar(24 * k)).setY(tgt.y + 18 * k);
+    const to = tgt.clone().add(dir.multiplyScalar(24)).setY(tgt.y + 18).sub(tgt).multiplyScalar(k).add(tgt);
     fly = { from: camera.position.clone(), to, tf: controls.target.clone(), tt: tgt, t: 0, id }; controls.enabled = false;
   };
   canvas.addEventListener('pointermove', onMove); canvas.addEventListener('pointerdown', onDown); canvas.addEventListener('pointerup', onUp);
