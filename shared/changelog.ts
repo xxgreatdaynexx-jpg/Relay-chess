@@ -6,29 +6,35 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-01T15:00:00-06:00', title: 'No more double orders from a double-click', bullets: [
+  { commit: '', at: '2026-11-01T15:10:00-06:00', title: 'Chud Resort gets its golden hour', bullets: [
+    'A real sunset sky over the resort: gold horizon fading through coral and magenta to night, with a glowing sun.',
+    'Deep blue ocean with sun glints, sky reflections and foam rolling onto the beach.',
+    'Warmer light, and the lamps and casino dome now glow.',
+    'Resort games now open inside the Palms casino rather than over the beach. The airport no longer zooms in too close.',
+  ] },
+  { commit: 'b2af23f', at: '2026-11-01T15:00:00-06:00', title: 'No more double orders from a double-click', bullets: [
     'A quick double-click on a fund, stock, short or option order now places it only once, and the button locks with a spinner straight away.',
     'Double-clicking a slots spin, a blackjack action or a roulette spot no longer spins, hits or bets twice.',
   ] },
-  { commit: '', at: '2026-11-01T14:55:00-06:00', title: 'Arena waits for you to press Play', bullets: [
+  { commit: 'e19ad20', at: '2026-11-01T14:55:00-06:00', title: 'Arena waits for you to press Play', bullets: [
     'Opening the Arena from the top bar no longer drops you straight into the match or charges a spawn fee. You join as a spectator and pay only when you press Play.',
   ] },
-  { commit: '', at: '2026-11-01T14:55:00-06:00', title: 'More menu closes cleanly', bullets: [
+  { commit: '22bec8e', at: '2026-11-01T14:55:00-06:00', title: 'More menu closes cleanly', bullets: [
     'Clicking outside the top bar\'s More menu now only closes it. It no longer also clicks whatever was underneath.',
   ] },
-  { commit: '', at: '2026-11-01T14:50:00-06:00', title: 'Wallet clicks, order spinners and no stuck Mines window', bullets: [
+  { commit: '02d126f', at: '2026-11-01T14:50:00-06:00', title: 'Wallet clicks, order spinners and no stuck Mines window', bullets: [
     'Clicking outside the Wallet now only closes it. It no longer also opens the Stock Exchange, Chess Club or whatever was behind it.',
     'Buying or selling stocks, funds, shorts and options shows a spinner on the button while the order goes through, and the button can\'t be clicked twice.',
     'Reloading the page no longer reopens an empty Mines or Arena window that blocked the screen.',
   ] },
-  { commit: '', at: '2026-11-01T14:35:00-06:00', title: 'Fairer shorts, safer retries, and tidier panels', bullets: [
+  { commit: '0dfea1b', at: '2026-11-01T14:35:00-06:00', title: 'Fairer shorts, safer retries, and tidier panels', bullets: [
     'Opening a short and closing it straight away now costs only the trading fees. Before, rounding on each side could take 2 extra chips on a small short.',
     'Stock, fund, short and option orders wait longer for a slow server and retry once by themselves. A retry can never charge you twice.',
     'Esc now closes Skills.',
     'Switching between the 2D map and the 3D city closes any open panel, such as the Airport.',
     'Clicking outside a panel to close it no longer also clicks whatever was behind it (like a mine on the map).',
   ] },
-  { commit: '', at: '2026-11-01T14:30:00-06:00', title: 'Chud Resort: fly to a beachfront resort town', bullets: [
+  { commit: 'a329b14', at: '2026-11-01T14:30:00-06:00', title: 'Chud Resort: fly to a beachfront resort town', bullets: [
     'Chud Resort is a new map you can only reach by plane. Buy a ticket at the Chud Hub Airport for about 500 chips (follows the price index). The flight home is free.',
     'The Palms Resort Casino has 3 exclusive slots, Tiki Lagoon, Yacht Club and Pearl Diver, with the same payout rates as the city machines. Its blackjack and roulette tables have ivory, gold and lagoon-blue felt.',
     'Premium beachfront real estate: beach houses, oceanview condos, hillside villas and beachfront hotels, all priced above the city. Tax, selling back and repossession work the same as in the city.',
