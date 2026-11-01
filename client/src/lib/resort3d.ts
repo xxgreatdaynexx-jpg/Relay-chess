@@ -45,8 +45,8 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   const skyM = new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false, uniforms: {},
     vertexShader: 'varying vec3 vp; void main(){ vp = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
     fragmentShader: `varying vec3 vp; void main(){ float y = vp.y;
-      vec3 gold = vec3(1.0,0.48,0.12); vec3 coral = vec3(0.95,0.22,0.16); vec3 mag = vec3(0.45,0.09,0.28); vec3 indigo = vec3(0.04,0.03,0.16);
-      vec3 c = mix(gold, coral, smoothstep(0.0,0.04,y)); c = mix(c, mag, smoothstep(0.04,0.16,y)); c = mix(c, indigo, smoothstep(0.16,0.5,y));
+      vec3 gold = vec3(1.6,0.75,0.25); vec3 coral = vec3(1.4,0.42,0.3); vec3 mag = vec3(0.85,0.28,0.55); vec3 indigo = vec3(0.22,0.16,0.48);
+      vec3 c = mix(gold, coral, smoothstep(0.0,0.06,y)); c = mix(c, mag, smoothstep(0.06,0.22,y)); c = mix(c, indigo, smoothstep(0.22,0.7,y));
       vec3 sd = normalize(vec3(0.25,0.06,-1.0)); // sun sets behind the town, framed by the default camera float s = max(dot(vp, sd), 0.0);
       c += vec3(1.0,0.75,0.4)*pow(s,900.0)*6.0 + vec3(1.0,0.45,0.15)*pow(s,24.0)*0.6 + vec3(0.9,0.3,0.2)*pow(s,4.0)*0.15;
       if (y < 0.0) c = gold*0.9; gl_FragColor = vec4(c,1.0);
