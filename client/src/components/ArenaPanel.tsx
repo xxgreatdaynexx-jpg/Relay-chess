@@ -1,4 +1,5 @@
 import { TopTab } from '@/components/TopTabs';
+import { ix, usePriceIndex } from '../lib/priceIndex';
 import { useWalletChips } from '@/lib/wallet';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useRef, useState } from 'react';
@@ -17,7 +18,7 @@ import { DEATH_HOLD_MS, fitSpeed, killCardText, sampleKillCam, shotsBetween, typ
 import { arenaLiveHud, kiaCanvasStrip } from '@/lib/arenaHud';
 import { feedParts, popupScale, POPUP_MS, type FeedItem } from '@/lib/arenaFeed';
 import {
-  AIRSTRIKE_RADIUS, launchRocket, RESPAWN_PICK_MS, canHold, isKnifeOnly, knifeOnlyAvailable, cheapestSpawn, isWeapon, spawnCost, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, weaponSpread, MoveHistory, reconcileMove, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
+  AIRSTRIKE_RADIUS, launchRocket, RESPAWN_PICK_MS, canHold, isKnifeOnly, knifeOnlyAvailable, cheapestSpawn, isWeapon, spawnCost as spawnCostBase, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, weaponSpread, MoveHistory, reconcileMove, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
   GRENADE_FUSE_MS, GRENADE_THROW_MS, GRENADES_PER_LIFE, stepGrenade, throwGrenade, type Grenade,
 } from '../../../shared/fps';
 
@@ -65,6 +66,8 @@ export function ArenaPanel() {
 }
 
 function ArenaGame({ onClose }: { onClose: () => void }) {
+  const pidx = usePriceIndex();
+  const spawnCost = (w: WeaponId) => ix(spawnCostBase(w), pidx);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const glRef = useRef<HTMLCanvasElement>(null);
   const mapRef = useRef(MAP);
@@ -1304,7 +1307,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
             )}
             {life.broke && wallet !== null && (
               <div style={{ marginTop: 6 }} data-testid="arena-broke">
-                {knifeOnlyAvailable() ? <>Not enough for a gun (cheapest {cheapestSpawn()} 🪙): you respawn with Knife only, free.{' '}</> : <>Out of chips (cheapest spawn {cheapestSpawn()} 🪙).{' '}</>}
+                {knifeOnlyAvailable() ? <>Not enough for a gun (cheapest {ix(cheapestSpawn(), pidx)} 🪙): you respawn with Knife only, free.{' '}</> : <>Out of chips (cheapest spawn {ix(cheapestSpawn(), pidx)} 🪙).{' '}</>}
                 {knifeOnlyAvailable() ? '' : 'Keep spectating.'}
               </div>
             )}

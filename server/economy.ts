@@ -18,6 +18,7 @@ import { priceOf, type ItemType } from '../shared/mines.js';
 import { KINDS, isKind } from '../shared/factory.js';
 import { COMPANIES } from '../shared/stocks.js';
 import { getExchange } from './stocks.js';
+import { initPriceIndex, priceIndexView, refreshPriceIndex, PRICE_INDEX_PARAMS } from './price-index.js';
 
 export const ECON_MIGRATION = `CREATE TABLE IF NOT EXISTS daily_economy (
   day TEXT PRIMARY KEY, cash BIGINT NOT NULL, assets BIGINT, total BIGINT, est_pct REAL, flows JSONB, source TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
@@ -174,6 +175,7 @@ export class Economy {
       ok: true, at: now, today, ...live,
       change: { cash: pct(live.cash, y?.cash), assets: pct(live.assets, y?.assets), total: pct(live.total, y?.total) },
       inflation: { cash7: avgDaily(cashSeries, 7), cash30: avgDaily(cashSeries, 30), total7: avgDaily(totalSeries, 7), total30: avgDaily(totalSeries, 30) },
+      priceIndex: { ...priceIndexView(), params: PRICE_INDEX_PARAMS },
       flows, net: flows.faucets.reduce((a, f) => a + f.amount, 0) - flows.sinks.reduce((a, f) => a + f.amount, 0),
       history: hist.slice(-60).map((d) => ({ day: d.day, cash: d.cash, assets: d.assets, total: d.total, source: d.source })),
       method: 'Prices: median of the last 20 sales in 30 days. No sales: same rarity + weapon, then same rarity, then a base value (est.). Ore/goods without sales use the house price (est.). Factory machines at 50% of Machinist cost (est.). Stocks: player-owned shares at the live exchange price; shares no player owns are offshore assets (shown separately, not in net worth). QA accounts excluded.',
@@ -198,7 +200,7 @@ export class Economy {
 
   /** Snapshot at each UTC midnight (plus catch-up on boot). */
   start() {
-    const arm = () => { const now = this.clock(); const next = dayStart(utcDay(now)) + DAY + 5_000; this.timer = setTimeout(() => { this.cached = null; void this.catchUp(this.clock()).catch((e) => console.error('[economy] snapshot failed:', (e as Error).message)).finally(arm); }, next - now); this.timer.unref?.(); };
+    const arm = () => { const now = this.clock(); const next = dayStart(utcDay(now)) + DAY + 5_000; this.timer = setTimeout(() => { this.cached = null; void this.catchUp(this.clock()).catch((e) => console.error('[economy] snapshot failed:', (e as Error).message)).finally(() => { refreshPriceIndex(); arm(); }); }, next - now); this.timer.unref?.(); };
     void this.catchUp(this.clock()).catch((e) => console.error('[economy] catch-up failed:', (e as Error).message));
     arm();
   }
@@ -254,7 +256,7 @@ export async function initEconomy(): Promise<void> {
   const url = databaseUrl(); if (!url) return;
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
   pool.on('error', (e) => console.error('[economy] pool error:', e.message));
-  try { const s = new PgEconSource(pool); await s.init(); econ = new Economy(s); econ.start(); console.log('[economy] ready'); } catch (e) { console.error('[economy] init failed:', (e as Error).message); }
+  try { const s = new PgEconSource(pool); await s.init(); econ = new Economy(s); econ.start(); console.log('[economy] ready'); await initPriceIndex(pool); } catch (e) { console.error('[economy] init failed:', (e as Error).message); }
 }
 
 export function economyRouter(): express.Router {

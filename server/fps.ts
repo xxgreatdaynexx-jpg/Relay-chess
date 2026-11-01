@@ -1,4 +1,5 @@
 import type { Server, Socket } from 'socket.io';
+import { px, priceIndex } from './price-index.js';
 import { affordableLoadout, isKnifeOnly, guestName, MOVE_SPEED, spawnCost, TICK_HZ, WEAPONS } from '../shared/fps.js';
 import { randomUUID } from 'node:crypto';
 import { getBank } from './casino-store.js';
@@ -35,11 +36,13 @@ export function chargeSpawn(f: ArenaFighter, now: number): boolean {
     if (held.until > now) { Object.assign(f, { lifeId: held.lifeId, stake: held.stake, loadout: held.loadout }); return true; }
   }
   const bank = getBank();
-  const w = affordableLoadout(f.loadout, bank.account(name).chips);
+  // Spawn prices are indexed: compare in base units so the pick matches what we'll charge.
+  const w = affordableLoadout(f.loadout, Math.floor(bank.account(name).chips / priceIndex()));
   if (!w) return false;
   f.loadout = w;
   if (isKnifeOnly(w)) { f.lifeId = ''; f.stake = 0; return true; } // free, knife only, 0 bounty
-  const cost = spawnCost(w);
+  const cost = px(spawnCost(w));
+  if (bank.account(name).chips < cost) return false;
   const lifeId = randomUUID();
   bank.transfer(name, -cost, { key: `arena-spawn:${lifeId}`, game: 'arena', memo: `Spawn · ${WEAPONS[w].name}` });
   f.lifeId = lifeId;
@@ -93,8 +96,9 @@ export function finishMatch(r: MatchResult): void {
   const humans = new Set(r.players.flatMap((p) => ((p as { account?: string }).account ? [acct((p as { account?: string }).account!)] : [])));
   const winner = r.players.find((p) => p.id === r.winnerId) as { account?: string } | undefined;
   if (winner?.account && humans.size >= PRIZE_MIN_HUMANS) {
-    getBank().transfer(winner.account, MATCH_PRIZE, { key: `arena-win:${r.matchId}`, game: 'arena', memo: 'WINNER' });
-    r.prize = { name: winner.account, amount: MATCH_PRIZE };
+    const prize = px(MATCH_PRIZE);
+    getBank().transfer(winner.account, prize, { key: `arena-win:${r.matchId}`, game: 'arena', memo: 'WINNER' });
+    r.prize = { name: winner.account, amount: prize };
   }
   for (const fn of matchEndHooks) { try { fn(r); } catch (e) { console.error('arena match-end hook', e); } }
 }

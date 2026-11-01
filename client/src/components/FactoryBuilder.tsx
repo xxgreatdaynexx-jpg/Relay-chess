@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ix, usePriceIndex } from '../lib/priceIndex';
 import { socket } from '@/lib/net';
 import type { Stack } from '../../../shared/mines';
 import { CHEST_ITEMS, DX, DY, FLOOR_LEVELS, FRECIPES, KINDS, KIND_ORDER, TICK_MS, colorOfKey, floorSize, frecipe, gridOf, cellId, nameOfKey, priceOfKey, recipeTicks, recipesFor, step, canPlace, type Dir, type Ent, type FState, type Grid, type Kind, undergroundPairs } from '../../../shared/factory';
@@ -13,6 +14,7 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
   const cvRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const sim = useRef<{ s: FState | null; g: Grid; store: Map<string, number>; skew: number; shown: number; shownFrom: number; shownAt: number }>({ s: null, g: new Map(), store: new Map(), skew: 0, shown: 0, shownFrom: 0, shownAt: 0 });
+  const pidx = usePriceIndex();
   const [level, setLevel] = useState(0);
   const [fs, setFs] = useState<FState | null>(null);
   const [tool, setTool] = useState<Tool>('select');
@@ -200,7 +202,7 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
     <div className="fac-empty" data-testid="fac-empty">
       <h3>🏭 Your factory building</h3>
       <p className="mines-note">Lay belts, place smelters, presses and rollers, and chain ore into ingots, plates, rods, wire, gears, circuits, jewelry and engines. It keeps running while you're offline (up to 8 hours), feeding from your banked storage.</p>
-      {level === 0 && <button type="button" className="mines-sell" onClick={() => call('fac_expand', {}, () => flash('Factory built! You got a starter kit.'))} data-testid="fac-build">Buy the building (12×12) · 🪙 {FLOOR_LEVELS[0].cost}</button>}
+      {level === 0 && <button type="button" className="mines-sell" onClick={() => call('fac_expand', {}, () => flash('Factory built! You got a starter kit.'))} data-testid="fac-build">Buy the building (12×12) · 🪙 {ix(FLOOR_LEVELS[0].cost, pidx)}</button>}
       {level > 0 && <p className="mines-note">Loading…</p>}
     </div>
   );
@@ -210,7 +212,7 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
     <div className="fac" data-testid="fac">
       <div className="fac-top">
         <span className="fac-chip">🏭 {floorSize(fs.floor)}×{floorSize(fs.floor)}</span>
-        {next && <button type="button" className="fac-btn" onClick={() => call('fac_expand', {}, () => flash(`Walls pushed out to ${next.size}×${next.size}!`))} data-testid="fac-expand">Expand to {next.size}×{next.size} · 🪙 {next.cost.toLocaleString()}</button>}
+        {next && <button type="button" className="fac-btn" onClick={() => call('fac_expand', {}, () => flash(`Walls pushed out to ${next.size}×${next.size}!`))} data-testid="fac-expand">Expand to {next.size}×{next.size} · 🪙 {ix(next.cost, pidx).toLocaleString()}</button>}
         <span className="fac-tools">
           <button type="button" className={tool === 'select' ? 'on' : ''} onClick={() => { setTool('select'); setMoving(null); }} title="Select (Esc)">👆</button>
           <button type="button" className={tool === 'remove' ? 'on' : ''} onClick={() => setTool('remove')} title="Pick up (X / right-click, drag for many)" data-testid="fac-remove">🧲</button>
@@ -244,7 +246,7 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
             <div className="fac-buyn">Buy {[1, 5, 10, 25].map((n) => <button type="button" key={n} className={buyN === n ? 'on' : ''} onClick={() => setBuyN(n)}>×{n}</button>)}</div>
             {KIND_ORDER.map((k) => { const d = KINDS[k]; const locked = fs.floor < d.minFloor; return (
               <div key={k} className="fac-shoprow"><span className="fac-ic">{ICON[k]}</span><span><b>{d.name}</b><small>{locked ? `Unlocks at building level ${d.minFloor}` : d.desc}</small></span>
-                <button type="button" disabled={locked} onClick={() => call('fac_buy', { kind: k, n: buyN }, () => flash(`Bought ${buyN}× ${d.name}`))} data-testid={`fac-buy-${k}`}>🪙 {(d.cost * buyN).toLocaleString()}</button></div>
+                <button type="button" disabled={locked} onClick={() => call('fac_buy', { kind: k, n: buyN }, () => flash(`Bought ${buyN}× ${d.name}`))} data-testid={`fac-buy-${k}`}>🪙 {(ix(d.cost, pidx) * buyN).toLocaleString()}</button></div>
             ); })}
           </div>}
           {side === 'recipes' && <div className="fac-recipes">

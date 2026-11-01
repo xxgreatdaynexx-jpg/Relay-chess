@@ -1,4 +1,5 @@
 import { TopTab } from '@/components/TopTabs';
+import { usePriceIndex } from '../lib/priceIndex';
 import { MiningLeaderboard } from '@/components/MiningLeaderboard';
 import { loadName } from '@/lib/playerName';
 import { useWalletChips } from '@/lib/wallet';
@@ -47,6 +48,7 @@ function aimNode(x: number, y: number, ez: number, a: number, p: number, hp: num
 }
 
 function MinesGame({ onClose }: { onClose: () => void }) {
+  const pidx = usePriceIndex();
   const wrapRef = useRef<HTMLDivElement>(null);
   const glRef = useRef<HTMLCanvasElement>(null);
   const win = useWindowDrag('mines', wrapRef);
@@ -174,7 +176,7 @@ function MinesGame({ onClose }: { onClose: () => void }) {
     if (['w', 'a', 's', 'd', ' ', 'shift', 'control', 'c'].includes(k)) { e.preventDefault(); if (down) keys.current.add(k); else keys.current.delete(k); }
   }
   const lock = () => { unlockSounds?.(); const c = glRef.current; if (c && document.pointerLockElement !== c) { try { (c.requestPointerLock as unknown as (o?: object) => unknown)?.call(c, { unadjustedMovement: false }); } catch { /* ignore */ } (navigator as unknown as { keyboard?: { lock?: (k: string[]) => Promise<void> } }).keyboard?.lock?.(LOCK_KEYS).catch?.(() => {}); } };
-  const carriedWorth = Math.floor(pack.pack.reduce((t, s) => t + s.qty * priceOf(s), 0));
+  const carriedWorth = Math.floor(pack.pack.reduce((t, s) => t + s.qty * priceOf(s), 0) * pidx);
   const aimed = aim >= 0 ? MINE_NODES[aim] : null;
   return (
     <div

@@ -1,5 +1,6 @@
 /** Mines: shared first-person cave. Server-authoritative nodes, backpacks (generic item stacks) and house selling. */
 import pg from 'pg';
+import { px, priceIndex } from './price-index.js';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
@@ -247,7 +248,8 @@ export class MinesWorld {
     const items = this.storage(account).filter((s) => priceOf(s) > 0 && (typeof only !== 'string' || s.id === only || stackKey(s) === only));
     const gross = items.reduce((t, s) => t + s.qty * priceOf(s), 0);
     const k = playerKey(m.account); const d = this.daily.get(k); const already = d && d.day === dayKey(now) ? d.gross : 0;
-    return { gross, paid: payoutFor(gross, already), already, items };
+    // House ore/goods prices follow the price index (tiers stay in base units so the daily caps scale too).
+    return { gross, paid: Math.floor(payoutFor(gross, already) * priceIndex()), already, items };
   }
 
   /** Sell ore to the house. Signed-in only. Stone etc. pay fractional chips: the whole sale is floored once. */
@@ -282,11 +284,12 @@ export class MinesWorld {
     const m = this.signedIn(account); const k = playerKey(m.account);
     const f = this.factories.get(k); const next = FACTORY_LEVELS[f ? f.level : 0];
     if (!next) throw new MineError('Your factory is maxed out.');
-    if (!getBank().canAfford(m.account, next.cost)) throw new MineError(`You need ${next.cost} chips.`);
-    getBank().transfer(m.account, -next.cost, { key: `mine:factory:${k}:L${next.level}`, game: 'mines', memo: next.level === 1 ? 'Mines: built a factory' : `Mines: factory upgraded to level ${next.level}` });
+    const cost = px(next.cost);
+    if (!getBank().canAfford(m.account, cost)) throw new MineError(`You need ${cost} chips.`);
+    getBank().transfer(m.account, -cost, { key: `mine:factory:${k}:L${next.level}`, game: 'mines', memo: next.level === 1 ? 'Mines: built a factory' : `Mines: factory upgraded to level ${next.level}` });
     if (f) f.level = next.level; else this.factories.set(k, { level: 1, builtAt: now, jobs: [] });
     this.persist(m, undefined, true);
-    return { level: next.level, cost: next.cost };
+    return { level: next.level, cost };
   }
   /** Start a batch: inputs leave the backpack now, outputs are collectable at doneAt (server clock). */
   startJob(account: string | null, recipeId: unknown, qtyIn: unknown, now: number): Job {

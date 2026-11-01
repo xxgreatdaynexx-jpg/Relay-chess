@@ -1,4 +1,5 @@
 /** Factory v2 (grid builder): server-authoritative sim per player, catch-up on load, persisted with the banked pack. */
+import { px } from './price-index.js';
 import type { Server, Socket } from 'socket.io';
 import { getMines, MineError } from './mines.js';
 import { getBank } from './casino-store.js';
@@ -92,20 +93,21 @@ export class FactoryWorld {
     if (!account) throw new MineError('Sign in to build a factory.');
     const k = playerKey(account); const mines = getMines(); const f = mines.factories.get(k);
     const next = FLOOR_LEVELS[f ? f.level : 0]; if (!next) throw new MineError('Your building is already as big as it gets.');
-    if (!getBank().canAfford(account, next.cost)) throw new MineError(`You need ${next.cost} chips.`);
+    const cost = px(next.cost);
+    if (!getBank().canAfford(account, cost)) throw new MineError(`You need ${cost} chips.`);
     if (f) this.get(account, now);
-    getBank().transfer(account, -next.cost, { key: `factory:floor:${k}:L${next.level}`, game: 'mines', memo: next.level === 1 ? 'Factory: built the building' : `Factory: expanded to ${next.size}x${next.size}` });
+    getBank().transfer(account, -cost, { key: `factory:floor:${k}:L${next.level}`, game: 'mines', memo: next.level === 1 ? 'Factory: built the building' : `Factory: expanded to ${next.size}x${next.size}` });
     if (f) f.level = next.level; else mines.factories.set(k, { level: 1, builtAt: now, jobs: [] });
     const s = this.get(account, now)!; s.floor = next.level;
     this.markNow(account, s, true);
-    return { level: next.level, size: next.size, cost: next.cost };
+    return { level: next.level, size: next.size, cost };
   }
   buy(account: string | null, kind: unknown, nIn: unknown, now: number) {
     const { s } = this.need(account, now);
     if (!isKind(kind)) throw new MineError('Unknown part.');
     const n = typeof nIn === 'number' && Number.isInteger(nIn) && nIn >= 1 && nIn <= 100 ? nIn : 1;
     const def = KINDS[kind]; if (s.floor < def.minFloor) throw new MineError(`${def.name} unlocks at building level ${def.minFloor}.`);
-    const cost = def.cost * n;
+    const cost = px(def.cost) * n;
     if (!getBank().canAfford(account!, cost)) throw new MineError(`You need ${cost} chips.`);
     getBank().transfer(account!, -cost, { key: `factory:buy:${playerKey(account!)}:${now}:${++this.buySeq}`, game: 'mines', memo: `Machinist: ${n}x ${def.name}` });
     s.kit[kind] = (s.kit[kind] ?? 0) + n;

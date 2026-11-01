@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T01:30:00-06:00', title: 'Prices & payouts follow inflation', bullets: [
+    'Arena prizes and spawn costs, Mines ore prices, Factory buildings and machines, and the daily bonus now move with the economy\'s inflation, so your chips keep their buying power.',
+    'The index updates once a day (midnight UTC), smoothed and capped at 3% a day. See it in the Bank: "Prices & payouts: x1.00".',
+    'Casino odds and payouts are unchanged. Player market prices and stocks are not indexed.',
+  ] },
   { commit: '', at: '2026-11-01T00:45:00-06:00', title: 'Daily login bonus', bullets: [
     'Sign in (or just show up signed in) once a day and you get 1,000 free chips, with a "+1,000 daily bonus" pop-up.',
     'One bonus per account per day; the day resets at midnight UTC (6 PM Saskatchewan time).',

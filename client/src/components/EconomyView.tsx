@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { fmtIndex } from '../../../shared/priceIndex';
 
 interface Cat { key: string; label: string; value: number; units: number; estValue: number }
 interface Flow { game: string; amount: number }
@@ -7,6 +8,7 @@ interface Econ {
   change: { cash: number | null; assets: number | null; total: number | null };
   inflation: { cash7: number | null; cash30: number | null; total7: number | null; total30: number | null };
   flows: { faucets: Flow[]; sinks: Flow[]; transfers?: Flow[] }; net: number;
+  priceIndex?: { index: number; day: string | null; appliedPct: number | null; emaPct: number | null; rawPct: number | null; params: { emaDays: number; passThrough: number; maxDaily: number; floor: number; ceil: number } };
   history: Array<{ day: string; cash: number; assets: number | null; total: number | null; source: string }>; method: string;
 }
 
@@ -67,6 +69,12 @@ export function EconomyView() {
           <div className="flex items-baseline justify-between"><span className="text-[10px] uppercase tracking-wide opacity-60">🏝 Offshore assets</span><span className="text-[11px] opacity-60">unowned stock</span></div>
           <div className="text-base font-bold tabular-nums">🪙 {n(e.offshore)}</div>
           <div className="text-[11px] opacity-70">Net worth without offshore: 🪙 {n(e.total)} · with offshore: 🪙 {n(e.totalWithOffshore ?? e.total + e.offshore)}</div>
+        </div>
+      )}
+      {e.priceIndex && (
+        <div className="mt-2 rounded-lg bg-white/5 p-2" data-testid="econ-price-index" title={`House-set payouts (Arena prizes and spawns, Mines ore, Factory, daily bonus) and house-set prices move together with a ${e.priceIndex.params.emaDays}-day smoothed cash inflation x ${e.priceIndex.params.passThrough} pass-through, capped at ±${Math.round(e.priceIndex.params.maxDaily * 100)}%/day, floor x${e.priceIndex.params.floor.toFixed(2)}. Casino odds, player market prices and stocks are not indexed.`}>
+          <div className="text-sm font-bold tabular-nums">📈 {fmtIndex(e.priceIndex.index, e.priceIndex.appliedPct)}</div>
+          <div className="text-[11px] opacity-60">Smoothed inflation {pc(e.priceIndex.emaPct)}/day · casino odds unchanged ⓘ</div>
         </div>
       )}
       <div className="mt-3 text-xs uppercase tracking-wide opacity-70">Daily inflation</div>
