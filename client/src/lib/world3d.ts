@@ -8,6 +8,7 @@ import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, TILE, clampMapTarget } from '../../../shared/farm';
 import { buildVenues } from './worldVenues';
 import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN, MINE_SITES, MINE_APRON, OUTSKIRTS } from './worldLayout';
+import { riverOutline, islandOutline, riverDecor, edgeDist, ISLAND } from '../../../shared/riverLake';
 import { outskirts, countryHomes, countryBusinesses, businessType, lakeShape, RURAL_ROADS, RURAL_ROAD_W, LAKE, DOCK } from '../../../shared/outskirts';
 
 import { WORLD_SPOTS } from './worldSpots';
@@ -106,31 +107,55 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const S = PLATE;
   const slab = new THREE.Mesh(geo(new THREE.BoxGeometry(S * 2, 3, S * 2)), [mat({ color: 0x4a3322 }), mat({ color: 0x4a3322 }), mat({ color: 0x3f9a45, roughness: 1, emissive: 0x0f3a14, emissiveIntensity: 0.6 }), mat({ color: 0x2a1c12 }), mat({ color: 0x4a3322 }), mat({ color: 0x4a3322 })]);
   slab.position.y = -1.5; scene.add(slab);
-  // Animated water: scrolling ripples + moonlight glints, fogged like the rest of the scene.
-  const waterMat = new THREE.ShaderMaterial({
-    fog: true,
-    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 } }]),
-    vertexShader: `varying vec2 vP; #include <fog_pars_vertex>
-      void main() { vP = (modelMatrix * vec4(position, 1.0)).xz; vec4 mvPosition = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mvPosition; #include <fog_vertex> }`.replace(/#include <[^>]+>/g, (m) => `\n${m}\n`),
-    fragmentShader: `uniform float uTime; varying vec2 vP; #include <fog_pars_fragment>
-      void main() {
-        float w = sin(vP.x * 0.55 + uTime * 0.9) * 0.5 + sin(vP.x * 1.3 - vP.y * 0.8 + uTime * 1.6) * 0.3 + sin(vP.y * 2.1 + uTime * 1.1) * 0.2;
-        vec3 deep = vec3(0.02, 0.06, 0.16), shallow = vec3(0.05, 0.16, 0.34);
-        vec3 c = mix(deep, shallow, w * 0.5 + 0.5);
-        float glint = pow(max(0.0, sin(vP.x * 2.7 + uTime * 2.3) * sin(vP.y * 3.1 - uTime * 1.7)), 40.0);
-        gl_FragColor = vec4(c + glint * vec3(0.35, 0.42, 0.55), 1.0);
-        #include <fog_fragment>
-      }`.replace(/#include <[^>]+>/g, (m) => `\n${m}\n`),
-  });
-  disposables.push(waterMat);
-  waterMat.side = THREE.DoubleSide;
-  // Waterfront: the shoreline curves (worldLayout.shoreZ); water fills from the shore to the plate's south edge.
-  { const sh = new THREE.Shape(); sh.moveTo(-S - 0.1, S + 0.1); for (let x = -S - 0.1; x <= S + 0.1; x += 2) sh.lineTo(x, shoreZ(x)); sh.lineTo(S + 0.1, S + 0.1); sh.closePath();
-    const wg = new THREE.ShapeGeometry(sh); wg.rotateX(Math.PI / 2); const water = new THREE.Mesh(geo(wg), waterMat); water.position.y = 0.06; scene.add(water);
-    // sandy bank along the shore
-    const bank: number[] = []; const bi: number[] = []; let k = 0; for (let x = -S; x <= S; x += 2, k++) { const z = shoreZ(x); bank.push(x, 0.03, z - 1.6, x, 0.03, z + 0.4); if (k) { const o = (k - 1) * 2; bi.push(o, o + 2, o + 1, o + 1, o + 2, o + 3); } }
-    const bgeo = new THREE.BufferGeometry(); bgeo.setAttribute('position', new THREE.Float32BufferAttribute(bank, 3)); bgeo.setIndex(bi); bgeo.computeVertexNormals();
-    scene.add(new THREE.Mesh(geo(bgeo), mat({ color: 0xb8a27a, roughness: 1, side: THREE.DoubleSide }))); }
+  // Animated water: scrolling ripples + moonlight glints, fogged like the rest of the scene. Each lake gets its own copy
+  // with a distance-to-shore texture so shallows are lighter, the middle darker, and a thin foam/ripple line rings the shore.
+  const waterMats: THREE.ShaderMaterial[] = [];
+  const makeWater = (outline: Array<[number, number]>, holes: Array<Array<[number, number]>> = []) => {
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity; for (const [x, z] of outline) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+    x0 -= 2; z0 -= 2; x1 += 2; z1 += 2; const W = Math.min(256, Math.ceil(x1 - x0)), H = Math.min(128, Math.ceil(z1 - z0)); const data = new Uint8Array(W * H * 4);
+    const rings = [outline, ...holes];
+    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) { const x = x0 + ((i + 0.5) / W) * (x1 - x0), z = z0 + ((j + 0.5) / H) * (z1 - z0); let d = Infinity; for (const r of rings) d = Math.min(d, edgeDist(x, z, r)); const v = Math.round(Math.min(1, d / 14) * 255); const o = (j * W + i) * 4; data[o] = data[o + 1] = data[o + 2] = v; data[o + 3] = 255; }
+    const tex = new THREE.DataTexture(data, W, H); tex.magFilter = tex.minFilter = THREE.LinearFilter; tex.needsUpdate = true; disposables.push(tex);
+    const m = new THREE.ShaderMaterial({
+      fog: true,
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 }, uBox: { value: new THREE.Vector4(x0, z0, x1 - x0, z1 - z0) } }]),
+      vertexShader: `varying vec2 vP; #include <fog_pars_vertex>
+        void main() { vP = (modelMatrix * vec4(position, 1.0)).xz; vec4 mvPosition = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mvPosition; #include <fog_vertex> }`.replace(/#include <[^>]+>/g, (mm) => `\n${mm}\n`),
+      fragmentShader: `uniform float uTime; uniform vec4 uBox; uniform sampler2D uD; varying vec2 vP; #include <fog_pars_fragment>
+        void main() {
+          float d = texture2D(uD, (vP - uBox.xy) / uBox.zw).r * 14.0;
+          float w = sin(vP.x * 0.55 + uTime * 0.9) * 0.5 + sin(vP.x * 1.3 - vP.y * 0.8 + uTime * 1.6) * 0.3 + sin(vP.y * 2.1 + uTime * 1.1) * 0.2;
+          float depth = smoothstep(0.0, 11.0, d);
+          vec3 deep = mix(vec3(0.07, 0.22, 0.30), vec3(0.015, 0.05, 0.14), depth), shallow = mix(vec3(0.12, 0.32, 0.38), vec3(0.04, 0.14, 0.32), depth);
+          vec3 c = mix(deep, shallow, w * 0.5 + 0.5);
+          float glint = pow(max(0.0, sin(vP.x * 2.7 + uTime * 2.3) * sin(vP.y * 3.1 - uTime * 1.7)), 40.0);
+          float foam = (1.0 - smoothstep(0.15, 0.9, d)) * (0.55 + 0.45 * sin(vP.x * 1.7 + vP.y * 1.3 + uTime * 1.4));
+          float ripple = (1.0 - smoothstep(0.8, 3.2, d)) * pow(max(0.0, sin(d * 4.2 - uTime * 1.8)), 6.0) * 0.35;
+          gl_FragColor = vec4(c + glint * vec3(0.35, 0.42, 0.55) + (foam * 0.55 + ripple) * vec3(0.75, 0.85, 0.9), 1.0);
+          #include <fog_fragment>
+        }`.replace(/#include <[^>]+>/g, (mm) => `\n${mm}\n`),
+    });
+    m.uniforms.uD = { value: tex }; m.side = THREE.DoubleSide; disposables.push(m); waterMats.push(m); return m;
+  };
+  /** Shore bank: a strip of [offset, y, colour] rings along an outline, offsets along the outward normal (sign = +1 lake, -1 island). */
+  const bankMat = mat({ vertexColors: true, roughness: 1, side: THREE.DoubleSide, emissive: 0x0f3a14, emissiveIntensity: 0.25 });
+  const shoreBank = (pts: Array<[number, number]>, sign: number, rings: Array<[number, number, number]>, scale: (x: number, z: number) => number = () => 1) => {
+    let ar = 0; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) ar += (pts[j][0] - pts[i][0]) * (pts[j][1] + pts[i][1]); const o = (ar > 0 ? 1 : -1) * sign;
+    const pos: number[] = []; const col: number[] = []; const bi: number[] = []; const n = pts.length, R = rings.length; const c = new THREE.Color();
+    pts.forEach(([x, z], i) => { const [ax, az] = pts[(i + n - 1) % n], [bx, bz] = pts[(i + 1) % n]; let nx = bz - az, nz = -(bx - ax); const L = Math.hypot(nx, nz) || 1; nx = (nx / L) * o; nz = (nz / L) * o; const k = scale(x, z);
+      for (const [off, y, hx] of rings) { const t = off > 0 ? off * k : off; pos.push(x + nx * t, y, z + nz * t); c.setHex(hx); col.push(c.r, c.g, c.b); } });
+    for (let i = 0; i < n; i++) for (let r = 0; r < R - 1; r++) { const a = i * R + r, b = ((i + 1) % n) * R + r; bi.push(a, b, a + 1, a + 1, b, b + 1); }
+    const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); bg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); bg.setIndex(bi); bg.computeVertexNormals();
+    scene.add(new THREE.Mesh(geo(bg), bankMat));
+  };
+  const BANK: Array<[number, number, number]> = [[-1.6, 0.02, 0x6f6048], [0.0, 0.035, 0x8e7a58], [1.4, 0.035, 0xc9b48a], [3.2, 0.03, 0xa89a6c], [5.2, 0.012, 0x3f9a45]];
+  // The big lake: the city's waterfront (worldLayout.shoreZ) is its north shore; the south shore, the rounded ends and
+  // the island are free-form (shared/riverLake.ts). Banks are narrow on the city side (promenade, roads) and wide elsewhere.
+  { const out = riverOutline(), isl = islandOutline(); const wm = makeWater(out, [isl]);
+    const sh = new THREE.Shape(); out.forEach(([x, z], i) => (i ? sh.lineTo(x, z) : sh.moveTo(x, z))); sh.closePath();
+    const hole = new THREE.Path(); isl.forEach(([x, z], i) => (i ? hole.lineTo(x, z) : hole.moveTo(x, z))); hole.closePath(); sh.holes.push(hole);
+    const wg = new THREE.ShapeGeometry(sh, 4); wg.rotateX(Math.PI / 2); const water = new THREE.Mesh(geo(wg), wm); water.position.y = 0.06; water.renderOrder = 1; scene.add(water);
+    shoreBank(out, 1, BANK, (x, z) => (z <= shoreZ(x) + 0.5 ? 0.3 : 1)); shoreBank(isl, -1, [[-1.6, 0.02, 0x6f6048], [0, 0.035, 0x8e7a58], [1.2, 0.035, 0xc9b48a], [2.6, 0.03, 0x4f9e4a]], (x, z) => Math.min(1, Math.hypot((x - ISLAND.x) / ISLAND.rx, (z - ISLAND.z) / ISLAND.rz) * 0.6)); }
   // Roads: ONE merged mesh at ONE height: ribbons along each curved centreline + filled junction caps + cul-de-sac circles.
   // Overlaps are the same surface (no per-road height steps to z-fight); polygonOffset keeps it above the grass at every zoom.
   const ROAD_Y = 0.08;
@@ -447,7 +472,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     // lake: the river's water shader in a smooth organic outline, ringed by a wet-sand → sand → grass bank that slopes
     // under the waterline (no coplanar faces: bank y < water y, polygonOffset on the bank), reeds, lily pads and rocks.
     { const pts = lakeShape(); const sh = new THREE.Shape(); pts.forEach(([x, z], i) => (i ? sh.lineTo(x - LAKE.x, -(z - LAKE.z)) : sh.moveTo(x - LAKE.x, -(z - LAKE.z)))); sh.closePath();
-      const wg = new THREE.ShapeGeometry(sh, 6); wg.rotateX(-Math.PI / 2); const lake = new THREE.Mesh(geo(wg), waterMat); lake.position.set(LAKE.x, 0.07, LAKE.z); lake.renderOrder = 1; scene.add(lake);
+      const wg = new THREE.ShapeGeometry(sh, 6); wg.rotateX(-Math.PI / 2); const lake = new THREE.Mesh(geo(wg), makeWater(lakeShape())); lake.position.set(LAKE.x, 0.07, LAKE.z); lake.renderOrder = 1; scene.add(lake);
       const rings: Array<[number, number, number]> = [[-1.6, 0.0, 0x8e7a58], [0.3, 0.04, 0xc9b48a], [2.2, 0.035, 0xb9a77a], [4, -0.02, 0x4f9e4a]]; // [offset, y, colour]
       const pos: number[] = []; const col: number[] = []; const bi: number[] = []; const n = pts.length; const c = new THREE.Color(); const R = rings.length;
       pts.forEach(([x, z], i) => { const [px0, pz0] = pts[(i + n - 1) % n]!, [px1, pz1] = pts[(i + 1) % n]!; let nx = pz1 - pz0, nz = -(px1 - px0); const L = Math.hypot(nx, nz) || 1; nx /= L; nz /= L;
@@ -463,6 +488,13 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       inst(geo(new THREE.DodecahedronGeometry(1, 0)), mat({ color: 0x7a7670, roughness: 1, flatShading: true }), L.rocks.length, (i) => { const [x, z, s] = L.rocks[i]; d.position.set(x, s * 0.2, z); d.scale.set(s, s * 0.55, s * 0.8); d.rotation.set(0, i * 2.3, 0); });
       // gravel path from the lake road up to the boathouse
       { const [[x0, z0], [x1, z1]] = DOCK.path; const pth = new THREE.Mesh(geo(new THREE.PlaneGeometry(2.6, Math.abs(z1 - z0) + 0.6)), mat({ color: 0xa89a80, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })); pth.rotation.x = -Math.PI / 2; pth.position.set((x0 + x1) / 2, 0.02, (z0 + z1) / 2); scene.add(pth); } }
+    // the big lake's shore: reeds and lilies in the shallows, rocks, trees on the banks, the ends and the island
+    { const R = riverDecor();
+      inst(geo(new THREE.CylinderGeometry(0.05, 0.07, 1, 4)), mat({ color: 0x6f8f3a, roughness: 1 }), R.reeds.length, (i) => { const [x, z, s] = R.reeds[i]; const h = s * (1.3 + (i % 3) * 0.35); d.position.set(x, h / 2, z); d.rotation.set(((i % 3) - 1) * 0.12, 0, ((i % 5) - 2) * 0.05); d.scale.set(1, h, 1); });
+      inst(geo(new THREE.CircleGeometry(1, 9, 0.4, Math.PI * 2 - 0.5)), mat({ color: 0x3f8f3a, roughness: 0.8, side: THREE.DoubleSide }), R.lilies.length, (i) => { const [x, z, s] = R.lilies[i]; d.position.set(x, 0.09, z); d.rotation.set(-Math.PI / 2, 0, i * 1.7); d.scale.set(s, s, 1); });
+      inst(geo(new THREE.DodecahedronGeometry(1, 0)), mat({ color: 0x7a7670, roughness: 1, flatShading: true }), R.rocks.length, (i) => { const [x, z, s] = R.rocks[i]; d.position.set(x, s * 0.2, z); d.scale.set(s, s * 0.55, s * 0.8); d.rotation.set(0, i * 2.3, 0); });
+      inst(trunk.geometry, trunk.material, R.trees.length, (i) => { const [x, z, s] = R.trees[i]; d.position.set(x, 0.7 * s, z); d.rotation.set(0, 0, 0); d.scale.set(s, 1.4 * s, s); });
+      inst(crown.geometry, crown.material, R.trees.length, (i) => { const [x, z, s] = R.trees[i]; d.position.set(x, 2.1 * s, z); d.scale.set(s * 1.1, s * 1.3, s * 1.1); d.rotation.y = i; }); }
     // low rolling hills in the grass colour, rocks near the mines
     inst(geo(new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2)), mat({ color: 0x3f9a45, roughness: 1, flatShading: true, emissive: 0x0f3a14, emissiveIntensity: 0.6 }), O.hills.length, (i) => { const [x, z, r, h] = O.hills[i]; d.position.set(x, -0.05, z); d.scale.set(r, h * 0.6, r * 0.8); d.rotation.y = i; });
     inst(geo(new THREE.DodecahedronGeometry(1, 0)), mat({ color: 0x6a6670, roughness: 1, flatShading: true }), O.rocks.length, (i) => { const [x, z, s] = O.rocks[i]; d.position.set(x, s * 0.3, z); d.scale.set(s, s * 0.6, s); d.rotation.set(0, i * 2, 0); });
@@ -586,7 +618,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     if (fly) { fly.t = Math.min(1, fly.t + dt / 0.75); const e = 1 - Math.pow(1 - fly.t, 3); camera.position.lerpVectors(fly.from, fly.to, e); controls.target.lerpVectors(fly.tf, fly.tt, e); camera.lookAt(controls.target);
       if (fly.t >= 1) { const id = fly.id; fly = null; controls.enabled = true; h.onPick(id); } } // the city stays mounted now (0dc4f99): hand zoom/orbit back
     else if (!tick?.(dt)) { panStep(dt); controls.update(); clampPan(); }
-    waterMat.uniforms.uTime.value = time; venues.step(dt, time, camera.position);
+    for (const w of waterMats) w.uniforms.uTime.value = time; venues.step(dt, time, camera.position);
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
     for (const l of lms) { const k = labelScale(camera.position.distanceTo(l.sign.getWorldPosition(tmpV)), portrait) * (l.sign.userData.hover ? 1.2 : 1); l.sign.scale.set(k, k / 4, 1); }
     if (composer) composer.render(); else renderer.render(scene, camera);

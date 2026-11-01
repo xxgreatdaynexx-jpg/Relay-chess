@@ -6,7 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-01T13:30:00-06:00', title: 'Fishing Dock, and a prettier lake', bullets: [
+  { commit: '', at: '2026-11-01T12:50:00-06:00', title: 'The big lake looks natural', bullets: [
+    'The long lake between downtown and the far-shore fields is no longer a flat slab. It has a winding south shore with coves and points, rounded ends, and a small wooded island.',
+    'The water is lighter in the shallows and darker in the middle, with gentle foam and ripples at the edge. It matches the lake by the Fishing Dock.',
+    'Sandy banks blend into the grass, with reeds, lily pads, rocks and trees along the shore. The city waterfront and its roads are unchanged.',
+  ] },
+  { commit: '83d3d4b', at: '2026-11-01T12:25:15-06:00', title: 'Fishing Dock, and a prettier lake', bullets: [
     'The big lake in the north-east has been redone. It has a smooth, natural shoreline, a sandy bank that fades into the grass, reed beds, lily pads, rocks and trees around it.',
     'The new Fishing Dock is on the north shore, with a boathouse and a pier out over the water. Click it on the map, or drive up and press E.',
     'To fish: cast, wait for the bite, then strike. Hold to reel and let go to give the fish line. Keep the hook in the green zone until the catch bar fills. Rarer and bigger fish fight harder.',
@@ -14,21 +19,21 @@ export const CHANGELOG: ChangelogEntry[] = [
     'Your catch goes in your cooler, which holds 40. Sell it to the fishmonger at the dock for chips. Prices follow the price index. You get full price on the first 500 each day, then half, then a tenth, up to about 1,350 a day.',
     'The dock has a board for the biggest catches. Every catch also trains the new 🎣 Fishing skill (more XP for rarer fish).',
   ] },
-  { commit: '', at: '2026-11-01T13:00:00-06:00', title: 'Skills: level up like RuneScape', bullets: [
+  { commit: 'c6b3f63', at: '2026-11-01T12:18:38-06:00', title: 'Skills: level up like RuneScape', bullets: [
     'New 🧭 Skills tab: ten skills from level 1 to 99 on the classic RuneScape XP curve, plus your total level and a title.',
     'Every activity trains a skill: Mining (break ore), Engineering (factory output), Farming (harvests), Racing (Speedway laps), Combat (Arena kills and wins), Trading (stocks and Market), Gambling (casino bets), Chess (finished games vs people) and Property (buying real estate, paying tax).',
     'XP drops pop up as you earn it, and you get a level-up fanfare. Hover a skill to see XP to the next level.',
     'Hiscores for every skill and overall, and skills now show on player profiles in the chat list.',
     'Skills are cosmetic (titles and badges). They never change casino odds, payouts or chips.',
   ] },
-  { commit: '', at: '2026-11-01T12:40:00-06:00', title: 'Arena: head shots fixed, and no spawn fees when the game can’t load', bullets: [
+  { commit: '29be0b6', at: '2026-11-01T12:16:23-06:00', title: 'Arena: head shots fixed, and no spawn fees when the game can’t load', bullets: [
     'Head shots land again on every gun. Players who were running, sprinting or crouching were drawn with their head leaning forward of where it really is, so a shot at the head you could see often missed. Their head is now drawn exactly where it counts.',
     'Shooting while jumping or landing now fires from the height you actually see, so head shots in the air register too.',
     'The head shot ding and the red head shot number now only show when the server confirms a head shot, with the real damage.',
     'The Arena no longer spawns you or charges a spawn fee until the 3D game has loaded and is on your screen. If it stops drawing (a tab left behind after an update), you stop respawning and paying.',
     'After an update, an old tab now reloads itself once to get the new version instead of failing to load the 3D game.',
   ] },
-  { commit: '', at: '2026-11-01T12:15:00-06:00', title: 'Name tags in the mines', bullets: [
+  { commit: 'fe29e3a', at: '2026-11-01T12:07:41-06:00', title: 'Name tags in the mines', bullets: [
     'Other miners now have their name above their head in every mine: The Mine, Frostbite Caverns and Magma Depths.',
     'Tags stay readable from a distance, fade out the farther away someone is, and hide when a rock wall is in the way. You never see your own tag. (Request #4, thanks carter2.)',
   ] },
