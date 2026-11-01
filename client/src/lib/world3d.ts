@@ -6,7 +6,8 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, TILE, clampMapTarget } from '../../../shared/farm';
-import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN, MINE_SITES, MINE_APRON } from './worldLayout';
+import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN, MINE_SITES, MINE_APRON, OUTSKIRTS } from './worldLayout';
+import { outskirts, RURAL_ROADS, RURAL_ROAD_W, LAKE } from '../../../shared/outskirts';
 
 import { WORLD_SPOTS } from './worldSpots';
 import { buildCar } from './carModels';
@@ -68,7 +69,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   canvas.dataset.tier = tier;
   renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x070a1c); scene.fog = new THREE.Fog(0x070a1c, 230, 520);
+  scene.background = new THREE.Color(0x070a1c); scene.fog = new THREE.Fog(0x070a1c, 260, 640);
   const camera = new THREE.PerspectiveCamera(38, 1, 0.5, 900);
   const home = new THREE.Vector3(132, 132, 156).multiplyScalar(PLATE / 96); camera.position.copy(home); // framing scales with the plate
   const controls = new OrbitControls(camera, canvas);
@@ -375,12 +376,50 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   for (const site of Object.values(MINE_SITES)) {
     const top = site.cave === 'frost' ? 0xdfeef7 : site.cave === 'magma' ? 0x3a2a24 : 0x5e5040;
     const side = mat({ color: 0x2a2018 });
-    const apron = new THREE.Mesh(geo(new THREE.BoxGeometry(MINE_APRON, 3, MINE_APRON)), [side, side, mat({ color: top, roughness: 1, flatShading: true }), side, side, side]);
+    const apron = new THREE.Mesh(geo(new THREE.BoxGeometry(MINE_APRON, 3, MINE_APRON)), [side, side, mat({ color: top, roughness: 1, flatShading: true, emissive: site.cave === 'magma' ? 0x5a1a08 : site.cave === 'frost' ? 0x2a3a4a : 0x3a2c1c, emissiveIntensity: 0.7 }), side, side, side]);
+    { const fl = new THREE.PointLight(site.cave === 'frost' ? 0xbfe4ff : site.cave === 'magma' ? 0xff8a40 : 0xffc880, 60, 46, 1.2); fl.position.set(site.x, 14, site.z); scene.add(fl); }
     apron.position.set(site.x, -1.51, site.z); scene.add(apron);
     const dirt = mat({ color: site.cave === 'frost' ? 0x9aa8b4 : 0x6a5038, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     const pts = [...site.track, [site.x, site.z] as [number, number]];
     for (let i = 1; i < pts.length; i++) { const [ax, az] = pts[i - 1], [bx, bz] = pts[i]; const L = Math.hypot(bx - ax, bz - az);
       const seg = new THREE.Mesh(geo(new THREE.BoxGeometry(3.6, 3.04, L + 3.6)), dirt); seg.position.set((ax + bx) / 2, -1.5, (az + bz) / 2); seg.rotation.y = Math.atan2(bx - ax, bz - az); scene.add(seg); }
+  }
+  // Countryside (shared/outskirts.ts): ground around the plate, rural roads, fields, farmhouses, hamlet, gas stations,
+  // industrial yard, lake, hills, rocks, forest and road lamps. All instanced (about 16 draw calls) and decorative.
+  {
+    const O = outskirts(); const d = new THREE.Object3D(); const c = new THREE.Color();
+    const inst = (g: THREE.BufferGeometry, m: THREE.Material, n: number, f: (i: number) => void, colors?: (i: number) => number) => { if (!n) return;
+      const im = new THREE.InstancedMesh(g, m, n); for (let i = 0; i < n; i++) { d.position.set(0, 0, 0); d.rotation.set(0, 0, 0); d.scale.set(1, 1, 1); f(i); d.updateMatrix(); im.setMatrixAt(i, d.matrix); if (colors) im.setColorAt(i, c.setHex(colors(i))); }
+      scene.add(im); };
+    const { x0, x1, z0, z1 } = OUTSKIRTS; const P = PLATE;
+    const strips: Array<[number, number, number, number]> = [[x0, x1, z0, -P], [x0, x1, P, z1], [x0, -P, -P, P], [P, x1, -P, P]];
+    inst(unitBox, mat({ color: 0x2f6a36, roughness: 1, emissive: 0x0d2a14, emissiveIntensity: 0.7 }), 4, (i) => { const [a, b, e, f] = strips[i]; d.position.set((a + b) / 2, -1.56, (e + f) / 2); d.scale.set(b - a, 3, f - e); });
+    const roadM = mat({ color: 0x3a3a42, roughness: 0.95, emissive: 0x15151c, emissiveIntensity: 0.6, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    inst(unitBox, roadM, RURAL_ROADS.length, (i) => { const [a, b] = RURAL_ROADS[i]; const L = Math.hypot(b[0] - a[0], b[1] - a[1]); d.position.set((a[0] + b[0]) / 2, 0.02, (a[1] + b[1]) / 2); d.rotation.y = Math.atan2(b[0] - a[0], b[1] - a[1]); d.scale.set(RURAL_ROAD_W, 0.06, L + RURAL_ROAD_W); });
+    const CROPS = [0x6a8a2a, 0xb89a3a, 0x4a7a3a, 0x5a3e28];
+    inst(unitBox, mat({ color: 0xffffff, roughness: 1, emissive: 0x1a2010, emissiveIntensity: 0.5 }), O.fields.length, (i) => { const f = O.fields[i]; d.position.set(f.x, 0.06, f.z); d.scale.set(f.w, 0.14, f.d); }, (i) => CROPS[O.fields[i].crop]);
+    const BODY: Record<string, number> = { farmhouse: 0xd8cbb0, barn: 0x8a2a22, warehouse: 0x6a7280, gas: 0xe8e8ee, shed: 0x8a7a60 };
+    const B = O.buildings;
+    inst(unitBox, mat({ color: 0xffffff, roughness: 0.85 }), B.length, (i) => { const b = B[i]; d.position.set(b.x, b.h / 2, b.z); d.rotation.y = b.rot; d.scale.set(b.w, b.h, b.d); }, (i) => BODY[B[i].kind]);
+    const pitched = B.filter((b) => b.kind !== 'warehouse' && b.kind !== 'gas');
+    inst(roofGeo, mat({ color: 0xffffff, roughness: 0.8, flatShading: true }), pitched.length, (i) => { const b = pitched[i]; d.position.set(b.x, b.h, b.z); d.rotation.y = b.rot; d.scale.set(b.w + 0.3, 2, b.d + 0.3); }, (i) => (pitched[i].kind === 'barn' ? 0x3a3a40 : 0x6a3a2a));
+    // warm window glow on every building's front face
+    inst(unitBox, mat({ color: 0xffd08a, emissive: 0xffb050, emissiveIntensity: 0.9 * NEON }), B.length, (i) => { const b = B[i]; d.rotation.y = b.rot; d.position.set(b.x + Math.sin(b.rot) * (b.d / 2 + 0.06), b.h * 0.55, b.z + Math.cos(b.rot) * (b.d / 2 + 0.06)); d.scale.set(Math.min(3, b.w * 0.5), Math.min(1.2, b.h * 0.3), 0.1); });
+    // gas station canopies with a neon edge, pump islands, yard tanks
+    inst(unitBox, mat({ color: 0xffffff, emissive: 0xff4d6d, emissiveIntensity: 0.8 * NEON }), O.pumps.length, (i) => { const [x, z] = O.pumps[i]; d.position.set(x, 4.2, z + 9); d.scale.set(10, 0.5, 6); });
+    inst(unitBox, mat({ color: 0xc8c8d0, emissive: 0x4aa8ff, emissiveIntensity: 0.5 * NEON }), O.pumps.length * 2, (i) => { const [x, z] = O.pumps[i >> 1]; d.position.set(x + (i % 2 ? 2.5 : -2.5), 0.8, z + 9); d.scale.set(0.8, 1.6, 0.8); });
+    inst(geo(new THREE.CylinderGeometry(3, 3, 6, 14)), mat({ color: 0xb8bcc4, roughness: 0.5, metalness: 0.4 }), O.tanks.length, (i) => d.position.set(O.tanks[i][0], 3, O.tanks[i][1]));
+    // lake, hills, rocks
+    { const lake = new THREE.Mesh(geo(new THREE.CircleGeometry(1, 40)), mat({ color: 0x1a4a7a, roughness: 0.2, metalness: 0.3, emissive: 0x0a2a5a, emissiveIntensity: 0.6 })); lake.rotation.x = -Math.PI / 2; lake.scale.set(LAKE.rx, LAKE.rz, 1); lake.position.set(LAKE.x, 0.05, LAKE.z); scene.add(lake); }
+    inst(geo(new THREE.ConeGeometry(1, 1, 7, 1)), mat({ color: 0x3a5a34, roughness: 1, flatShading: true, emissive: 0x0d2210, emissiveIntensity: 0.6 }), O.hills.length, (i) => { const [x, z, r, h] = O.hills[i]; d.position.set(x, h / 2 - 0.1, z); d.scale.set(r, h, r); d.rotation.y = i; });
+    inst(geo(new THREE.DodecahedronGeometry(1, 0)), mat({ color: 0x6a6670, roughness: 1, flatShading: true, emissive: 0x1a1a22, emissiveIntensity: 0.6 }), O.rocks.length, (i) => { const [x, z, s] = O.rocks[i]; d.position.set(x, s * 0.4, z); d.scale.set(s, s * 0.7, s); d.rotation.set(i, i * 2, 0); });
+    // forest: pine-ish cones on short trunks
+    const T = O.trees;
+    inst(geo(new THREE.CylinderGeometry(0.18, 0.25, 1, 5)), mat({ color: 0x5a3a22 }), T.length, (i) => { const [x, z, s] = T[i]; d.position.set(x, 0.6 * s, z); d.scale.set(s, 1.2 * s, s); });
+    inst(geo(new THREE.ConeGeometry(1.3, 3.2, 6)), mat({ color: 0xffffff, flatShading: true, emissive: 0x0a2a10, emissiveIntensity: 0.45 }), T.length, (i) => { const [x, z, s] = T[i]; d.position.set(x, 2.6 * s, z); d.scale.set(s, s, s); d.rotation.y = i; }, (i) => [0x2a7a38, 0x245e2e, 0x347f3c][i % 3]);
+    // road lamps (glow only, no real lights)
+    inst(geo(new THREE.CylinderGeometry(0.07, 0.09, 3, 4)), mat({ color: 0x40444f }), O.lamps.length, (i) => d.position.set(O.lamps[i][0], 1.5, O.lamps[i][1]));
+    inst(geo(new THREE.SphereGeometry(0.32, 8, 6)), mat({ color: 0xfff0c0, emissive: 0xffd080, emissiveIntensity: 1.2 }), O.lamps.length, (i) => d.position.set(O.lamps[i][0], 3.1, O.lamps[i][1]));
   }
   // Farm district (shared/farm.ts): a grass apron east of the plate, dirt lanes, fenced fields (farmland properties),
   // barns and silos. Crops on owned plots come from /api/farm (setFarm). Toned-down night palette, a little warm glow.

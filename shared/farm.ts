@@ -9,7 +9,7 @@
  * diminishing-returns tier (like the Mines): full, half, a tenth, then nothing, so farming can never flood the
  * economy (at most ~1,350 base chips of profit per player per day) and never pays less than the seeds cost.
  */
-import { PLATE, PARK_AREA, MINE_SITES, MINE_APRON, type OBB } from './worldLayout.js';
+import { PLATE, PARK_AREA, MINE_SITES, MINE_APRON, OUTSKIRTS, type OBB } from './worldLayout.js';
 
 export const TILE = 2; // world units per farm tile
 export const WITHER_FACTOR = 2;
@@ -79,7 +79,7 @@ export interface FarmView { id: string; owner: string | null; mine: boolean; col
 /** Where the camera may look: the whole plate (incl. the Trailer Park) plus the farm district on the east edge. */
 const SITES = Object.values(MINE_SITES); const HALF = MINE_APRON / 2;
 export const MAP_BOUNDS = {
-  x0: Math.min(-PLATE, PARK_AREA.x - PARK_AREA.w / 2, ...SITES.map((s) => s.x - HALF)) - 6, x1: Math.max(FARM_X1, ...SITES.map((s) => s.x + HALF)) + 4,
-  z0: Math.min(-PLATE, FARM_Z0, PARK_AREA.z - PARK_AREA.d / 2, ...SITES.map((s) => s.z - HALF)) - 6, z1: Math.max(PLATE, FARM_Z1, PARK_AREA.z + PARK_AREA.d / 2, ...SITES.map((s) => s.z + HALF)) + 6,
+  x0: Math.min(-PLATE, OUTSKIRTS.x0 + 10, PARK_AREA.x - PARK_AREA.w / 2, ...SITES.map((s) => s.x - HALF)) - 6, x1: Math.max(FARM_X1, OUTSKIRTS.x1 - 10, ...SITES.map((s) => s.x + HALF)) + 4,
+  z0: Math.min(-PLATE, FARM_Z0, OUTSKIRTS.z0 + 10, PARK_AREA.z - PARK_AREA.d / 2, ...SITES.map((s) => s.z - HALF)) - 6, z1: Math.max(PLATE, FARM_Z1, OUTSKIRTS.z1 - 10, PARK_AREA.z + PARK_AREA.d / 2, ...SITES.map((s) => s.z + HALF)) + 6,
 };
 export const clampMapTarget = (x: number, z: number): [number, number] => [Math.min(MAP_BOUNDS.x1, Math.max(MAP_BOUNDS.x0, x)), Math.min(MAP_BOUNDS.z1, Math.max(MAP_BOUNDS.z0, z))];

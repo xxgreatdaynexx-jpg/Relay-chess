@@ -1,0 +1,82 @@
+/**
+ * Countryside around the plate: rural roads linking the outskirts mines, fields, farmhouses, a hamlet with a gas
+ * station, an industrial yard by The Mine, a lake, hills, rocks and forest. Purely decorative (nothing here is
+ * buyable). Deterministic so every client draws the same map. Keeps clear of the plate, the farm district, the mines
+ * and the spaces RESERVED_VENUES holds for the Airport and Speedway.
+ */
+import { PLATE, MINE_SITES, MINE_APRON, OUTSKIRTS, RESERVED_VENUES } from './worldLayout.js';
+import { FARM_X0, FARM_X1, FARM_Z0, FARM_Z1 } from './farm.js';
+
+type P = [number, number];
+export interface Box2 { x: number; z: number; w: number; d: number }
+export interface OutBuilding extends Box2 { h: number; kind: 'farmhouse' | 'barn' | 'warehouse' | 'gas' | 'shed'; rot: number }
+export interface OutField extends Box2 { crop: number }
+export const RURAL_ROAD_W = 4.5;
+/** Rural roads: straight runs, square corners (each is [from, to]). */
+export const RURAL_ROADS: Array<[P, P]> = [
+  // Frostbite Caverns east along the north, then down the east edge past the farm to Magma Depths
+  [[63, -148], [196, -148]], [[196, -148], [196, 96]], [[196, 96], [167, 96]],
+  // The Mine south between the plate and the airport, along the far shore to Magma Depths
+  [[-131, -30], [-121, -30]], [[-121, -30], [-121, 150]], [[-121, 150], [150, 150]], [[150, 150], [150, 113]],
+  // stubs: The Mine west to the industrial yard; access to the Speedway grounds from The Mine and from Frostbite
+  [[-165, -30], [-176, -30]], [[-121, -30], [-121, -124]], [[29, -148], [-28, -148]],
+];
+export const LAKE = { x: 128, z: -184, rx: 26, rz: 13 };
+const inR = (r: { x0: number; x1: number; z0: number; z1: number }, x: number, z: number, m: number) => x > r.x0 - m && x < r.x1 + m && z > r.z0 - m && z < r.z1 + m;
+const segD = (x: number, z: number, a: P, b: P) => { const dx = b[0] - a[0], dz = b[1] - a[1]; const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz || 1))); return Math.hypot(x - a[0] - t * dx, z - a[1] - t * dz); };
+const inBox = (b: Box2, x: number, z: number, m: number) => Math.abs(x - b.x) < b.w / 2 + m && Math.abs(z - b.z) < b.d / 2 + m;
+/** True where decor must not go (m = clearance). */
+export function keepOut(x: number, z: number, m = 0): boolean {
+  if (!inR({ x0: OUTSKIRTS.x0 + 2, x1: OUTSKIRTS.x1 - 2, z0: OUTSKIRTS.z0 + 2, z1: OUTSKIRTS.z1 - 2 }, x, z, -m)) return true;
+  if (Math.abs(x) < PLATE + 3 + m && Math.abs(z) < PLATE + 3 + m) return true;
+  if (inR({ x0: FARM_X0, x1: FARM_X1, z0: FARM_Z0, z1: FARM_Z1 }, x, z, 3 + m)) return true;
+  for (const r of Object.values(RESERVED_VENUES)) if (inR(r, x, z, 2 + m)) return true;
+  for (const s of Object.values(MINE_SITES)) {
+    if (Math.abs(x - s.x) < MINE_APRON / 2 + 2 + m && Math.abs(z - s.z) < MINE_APRON / 2 + 2 + m) return true;
+    const pts: P[] = [...s.track, [s.x, s.z]]; for (let i = 1; i < pts.length; i++) if (segD(x, z, pts[i - 1], pts[i]) < 3.5 + m) return true;
+  }
+  for (const [a, b] of RURAL_ROADS) if (segD(x, z, a, b) < RURAL_ROAD_W / 2 + 1.5 + m) return true;
+  if (((x - LAKE.x) / (LAKE.rx + 3 + m)) ** 2 + ((z - LAKE.z) / (LAKE.rz + 3 + m)) ** 2 < 1) return true;
+  return false;
+}
+function rng(seed: number) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+export interface Outskirts { buildings: OutBuilding[]; fields: OutField[]; trees: Array<[number, number, number]>; rocks: Array<[number, number, number]>; hills: Array<[number, number, number, number]>; lamps: P[]; tanks: P[]; pumps: P[] }
+let cache: Outskirts | null = null;
+export function outskirts(): Outskirts {
+  if (cache) return cache;
+  const r = rng(20261101); const buildings: OutBuilding[] = []; const fields: OutField[] = []; const tanks: P[] = []; const pumps: P[] = [];
+  const free = (b: Box2, m: number) => [[0, 0], [-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1], [0, 1], [-1, 0], [1, 0]].every(([u, v]) => !keepOut(b.x + (u * b.w) / 2, b.z + (v * b.d) / 2, m))
+    && ![...buildings, ...fields].some((o) => Math.abs(o.x - b.x) < (o.w + b.w) / 2 + m && Math.abs(o.z - b.z) < (o.d + b.d) / 2 + m);
+  const put = (b: OutBuilding, m = 1) => { if (free(b, m)) { buildings.push(b); return true; } return false; };
+  // Industrial yard west of The Mine: sheds, warehouses and tanks around the road's end.
+  put({ x: -192, z: -44, w: 16, d: 10, h: 6, kind: 'warehouse', rot: 0 }); put({ x: -192, z: -16, w: 14, d: 9, h: 5, kind: 'warehouse', rot: 0 });
+  put({ x: -210, z: -30, w: 8, d: 14, h: 4, kind: 'shed', rot: 0 }); put({ x: -192, z: -64, w: 18, d: 10, h: 7, kind: 'warehouse', rot: 0 });
+  for (const t of [[-208, -54], [-208, -62], [-200, -76]] as P[]) if (!keepOut(t[0], t[1], 2)) tanks.push(t);
+  // Hamlet on the far shore road: farmhouses either side, a gas station at its east end.
+  for (let x = -96; x <= 116; x += 18) for (const side of [-1, 1]) { if (r() < 0.3) continue; put({ x: x + (r() - 0.5) * 4, z: 150 + side * 9, w: 6, d: 5, h: 3, kind: 'farmhouse', rot: side > 0 ? Math.PI : 0 }); }
+  const gas = (x: number, z: number, rot: number) => { if (put({ x, z, w: 10, d: 8, h: 3.2, kind: 'gas', rot }, 0.5)) pumps.push([x, z]); };
+  gas(-131, -64, Math.PI / 2); gas(184, 112, -Math.PI / 2); gas(142, -139, 0);
+  // Fields with a farmhouse + barn: south band, the strip north of the farm, the west gap and around the lake.
+  const fieldIn = (x0: number, x1: number, z0: number, z1: number, n: number) => { for (let k = 0, tries = 0; k < n && tries < n * 30; tries++) {
+    const w = 14 + Math.floor(r() * 4) * 4, d = 10 + Math.floor(r() * 3) * 4; const f: OutField = { x: x0 + w / 2 + r() * Math.max(0, x1 - x0 - w), z: z0 + d / 2 + r() * Math.max(0, z1 - z0 - d), w, d, crop: Math.floor(r() * 4) };
+    if (!free(f, 2)) continue; fields.push(f); k++;
+    if (r() < 0.55) { const bx = f.x + (f.w / 2 + 5) * (r() < 0.5 ? -1 : 1); put({ x: bx, z: f.z, w: 7, d: 5, h: 4, kind: r() < 0.5 ? 'barn' : 'farmhouse', rot: 0 }); } } };
+  fieldIn(-115, 140, 162, 190, 9); fieldIn(-115, 140, 122, 140, 6); fieldIn(70, 194, -144, -120, 4); fieldIn(-218, -126, -122, -64, 4);
+  fieldIn(150, 206, 120, 190, 3); fieldIn(-218, -126, 150, 190, 3); fieldIn(-26, 190, -214, -154, 5);
+  // Hills along the far edges, rocks near the mines.
+  const hills: Array<[number, number, number, number]> = []; for (let t = 0; hills.length < 22 && t < 400; t++) {
+    const e = Math.floor(r() * 4); const u = r(); const x = e < 2 ? OUTSKIRTS.x0 + 8 + u * (OUTSKIRTS.x1 - OUTSKIRTS.x0 - 16) : e === 2 ? OUTSKIRTS.x0 + 10 : OUTSKIRTS.x1 - 10;
+    const z = e === 0 ? OUTSKIRTS.z0 + 10 : e === 1 ? OUTSKIRTS.z1 - 10 : OUTSKIRTS.z0 + 8 + u * (OUTSKIRTS.z1 - OUTSKIRTS.z0 - 16); const rad = 7 + r() * 7;
+    if (!keepOut(x, z, rad * 0.6) && !fields.some((f) => inBox(f, x, z, rad))) hills.push([x, z, rad, 3 + r() * 5]); }
+  const rocks: Array<[number, number, number]> = []; for (const s of Object.values(MINE_SITES)) for (let t = 0, n = 0; n < 14 && t < 200; t++) {
+    const a = r() * Math.PI * 2, d = MINE_APRON / 2 + 4 + r() * 16; const x = s.x + Math.cos(a) * d, z = s.z + Math.sin(a) * d;
+    if (!keepOut(x, z, 0.5) && ![...buildings, ...fields].some((o) => inBox(o, x, z, 1))) { rocks.push([x, z, 0.6 + r() * 1.4]); n++; } }
+  // Forest: clumps scattered over whatever is left.
+  const trees: Array<[number, number, number]> = []; const clear = (x: number, z: number) => !keepOut(x, z, 0.5) && ![...buildings, ...fields].some((o) => inBox(o, x, z, 1.5)) && !hills.some(([hx, hz, hr]) => Math.hypot(x - hx, z - hz) < hr * 0.8);
+  for (let c = 0; c < 420; c++) { const cx = OUTSKIRTS.x0 + r() * (OUTSKIRTS.x1 - OUTSKIRTS.x0), cz = OUTSKIRTS.z0 + r() * (OUTSKIRTS.z1 - OUTSKIRTS.z0); if (!clear(cx, cz)) continue;
+    const n = 6 + Math.floor(r() * 14), sp = 5 + r() * 8; for (let i = 0; i < n; i++) { const x = cx + (r() - 0.5) * 2 * sp, z = cz + (r() - 0.5) * 2 * sp; if (clear(x, z)) trees.push([x, z, 0.8 + r() * 0.9]); } }
+  // Road lamps every 18 units, alternating sides.
+  const lamps: P[] = []; for (const [a, b] of RURAL_ROADS) { const L = Math.hypot(b[0] - a[0], b[1] - a[1]); const ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L;
+    for (let s = 9, k = 0; s < L; s += 18, k++) { const o = (k % 2 ? 1 : -1) * (RURAL_ROAD_W / 2 + 0.8); lamps.push([a[0] + ux * s - uz * o, a[1] + uz * s + ux * o]); } }
+  cache = { buildings, fields, trees, rocks, hills, lamps, tanks, pumps }; return cache;
+}
