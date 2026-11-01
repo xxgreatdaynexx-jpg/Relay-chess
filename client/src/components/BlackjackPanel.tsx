@@ -3,7 +3,7 @@ import { useWindowDrag } from '@/lib/windowDrag';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { CardFace } from '@/components/SolitairePanel';
 import { NamePrompt, OutOfChips } from '@/components/CasinoCommon';
-import { handValue, type BJSeatView, type BJTableView } from '../../../shared/casino';
+import { BLACKJACK_BETS, handValue, type BJSeatView, type BJTableView } from '../../../shared/casino';
 import { useWalletChips } from '@/lib/wallet';
 import { emitCasino, useCountdown, useSavedName } from '@/lib/casino';
 import { socket } from '@/lib/net';
@@ -12,7 +12,7 @@ import { bjSeatPositions, towardCentre } from '@/lib/tableLayout';
 import { playCardFlick, playSolitaireWin, playYourTurn } from '@/lib/sounds';
 
 const OPEN_KEY = 'relay-blackjack-open';
-const BETS = [5, 25, 100, 500];
+const BETS = BLACKJACK_BETS;
 const SHOE = { x: 86, y: 9 };
 const DEALER = { x: 50, y: 13 };
 const LABEL: Record<string, string> = {

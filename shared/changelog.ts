@@ -6,7 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-01T03:30:00-06:00', title: 'Farm district', bullets: [
+  { commit: '', at: '2026-11-01T03:35:00-06:00', title: 'More bet sizes', bullets: [
+    'Roulette and Blackjack now have 1, 50 and 1000 chip bets alongside the usual 5, 25, 100 and 500 (thanks Larry!).',
+  ] },
+  { commit: '7c97354', at: '2026-11-01T03:30:00-06:00', title: 'Farm district', bullets: [
     'A new farm district sits on the east edge of the map, with fenced fields, barns and silos. Its 20 farm plots are farmland you can buy, from 4×4 plots at about 3,500 chips up to a 12×10 field at about 22,000. Prices follow the daily price index, and farmland pays the usual property tax.',
     'Click a plot you own to open your farm. Pick a seed from the shop and plant tiles one at a time or all at once. Crops grow in real time on the server clock.',
     'There are 9 crops, from strawberries (2 minutes) to sunflowers (12 hours). Slower crops are worth more. Harvest within twice the grow time, or the crop withers and is lost.',
