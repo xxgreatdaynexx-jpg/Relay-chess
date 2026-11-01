@@ -6,7 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-01T15:50:00-06:00', title: 'Brighter resort sunset', bullets: [
+  { commit: '', at: '2026-11-01T16:00:00-06:00', title: 'The resort sunset finally shows', bullets: [
+    'Fixed the sky shader, so the gold-to-violet sunset now actually shows behind the town, with the sun setting over the casino.',
+  ] },
+  { commit: 'e62a864', at: '2026-11-01T15:50:00-06:00', title: 'Brighter resort sunset', bullets: [
     'The sky over the resort glows gold, coral and violet instead of fading to black.',
   ] },
   { commit: '2df229e', at: '2026-11-01T15:40:00-06:00', title: 'Resort view fixed', bullets: [
