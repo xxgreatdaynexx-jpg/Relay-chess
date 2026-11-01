@@ -1732,3 +1732,18 @@ html, body { overflow-x: clip; }
 .dealer-garage i { width: 14px; height: 14px; border-radius: 50%; } .dealer-garage button { padding: 3px 10px; border-radius: 999px; font-size: 12px; }
 .dealer-drive { margin-top: 12px; width: 100%; }
 @media (max-width: 640px) { .dealer-body { grid-template-columns: 1fr; overflow-y: auto; } .dealer-list { max-height: 30vh; border-right: 0; } .dealer-preview { height: 170px; } }
+/* Fishing Dock */
+.fish-panel { width: min(340px, calc(100% - 24px)); }
+.fish-water { position: relative; height: 170px; border-radius: 12px; background: linear-gradient(#1d4a66, #0d2a3e); border: 1px solid rgba(120,200,255,.25); display: flex; align-items: center; justify-content: center; text-align: center; user-select: none; touch-action: none; }
+.fish-cast { padding: 10px 16px; border-radius: 10px; background: rgba(79,195,217,.2); border: 1px solid rgba(79,195,217,.6); font-weight: 800; font-size: 15px; }
+.fish-wait { opacity: .85; font-size: 15px; } .fish-bite { font-size: 22px; color: #ffd24a; animation: fish-pulse .35s infinite alternate; }
+@keyframes fish-pulse { from { transform: scale(1); } to { transform: scale(1.12); } }
+.fish-reel { display: flex; gap: 12px; align-items: stretch; height: 150px; }
+.fish-meter { position: relative; width: 42px; border-radius: 8px; background: rgba(0,0,0,.35); overflow: hidden; }
+.fish-zone { position: absolute; left: 0; right: 0; background: rgba(90,209,122,.45); border-top: 2px solid #5ad17a; border-bottom: 2px solid #5ad17a; }
+.fish-hook { position: absolute; left: 0; right: 0; height: 14px; line-height: 14px; font-size: 13px; text-align: center; background: rgba(255,120,90,.55); } .fish-hook.in { background: rgba(255,230,120,.75); }
+.fish-prog { position: relative; width: 12px; border-radius: 6px; background: rgba(0,0,0,.35); overflow: hidden; } .fish-prog > div { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(#ffe27a, #5ad17a); }
+.fish-tip { align-self: center; font-size: 11px; opacity: .75; text-align: left; }
+.fish-msg { color: #e2c47c; opacity: 1 !important; }
+.fish-cooler { list-style: none; display: flex; flex-direction: column; gap: 2px; max-height: 160px; overflow: auto; }
+.fish-cooler li { display: grid; grid-template-columns: 1fr auto auto auto; gap: 6px; align-items: center; } .fish-cooler li button { opacity: .6; padding: 0 4px; }

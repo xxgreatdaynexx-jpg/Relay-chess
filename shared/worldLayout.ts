@@ -240,10 +240,11 @@ export const LANDMARK_SLOTS: Record<string, [number, number]> = {
   factory: [-65, 13],
   warehouse: [65, -39],
   airport: [-142, 66], // outskirts, west, in RESERVED_VENUES.airport (shared/venues.ts AIRPORT_SLOT)
+  dock: [128, -161], // outskirts, north shore of the lake (shared/outskirts.ts DOCK): the fishing dock
   racetrack: [-103, -169], // outskirts, north-west, in RESERVED_VENUES.racetrack: infield of the oval
 };
 /** Outskirts landmarks sit square to the map, not to a street. */
-const SQUARE_LM = new Set(['airport', 'racetrack']);
+const SQUARE_LM = new Set(['airport', 'racetrack', 'dock']);
 export const SPARE_SLOTS: [number, number][] = [[13, 42], [-13, -39], [-39, -13], [13, -65]];
 
 /**
@@ -282,7 +283,7 @@ function placeLandmarks(ids: string[]): Record<string, OBB> {
   }
   return out;
 }
-export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'mine-frost', 'mine-magma', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer', 'airport', 'racetrack'];
+export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'mine-frost', 'mine-magma', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer', 'airport', 'racetrack', 'dock'];
 let lmCache: { key: string; v: Record<string, OBB> } | null = null;
 /** Landmark footprints for the given spot ids (defaults to every known slot). */
 export function landmarks(ids: string[] = LANDMARK_IDS): Record<string, OBB> {

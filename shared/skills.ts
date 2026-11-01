@@ -11,6 +11,7 @@ export const SKILLS = [
   { id: 'trading', label: 'Trading', icon: '📈', how: 'Stock, options and Market trades.' },
   { id: 'gambling', label: 'Gambling', icon: '🎰', how: 'Bets placed at the casino (by stake).' },
   { id: 'chess', label: 'Chess', icon: '♟️', how: 'Finish chess or checkers games against people.' },
+  { id: 'fishing', label: 'Fishing', icon: '🎣', how: 'Land fish at the Fishing Dock (rarer catches give more XP).' },
   { id: 'property', label: 'Property', icon: '🏠', how: 'Buy real estate and pay property tax.' },
 ] as const;
 export type SkillId = (typeof SKILLS)[number]['id'];

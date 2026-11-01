@@ -69,6 +69,7 @@ function DeedList({ owned, me, onOpen, onClose }: { owned: Map<string, OwnedProp
 import { request } from '@/lib/net';
 import type { Drive, DriveInput } from '@/lib/worldDrive';
 const Venues = lazy(() => import('./Venues').then((m) => ({ default: m.Venues })));
+const FishingPanel = lazy(() => import('./FishingPanel').then((m) => ({ default: m.FishingPanel })));
 const Dealership = lazy(() => import('./Dealership').then((m) => ({ default: m.Dealership })));
 
 const CASINO_GAMES = [
@@ -120,7 +121,7 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
     return () => { dead = true; socket.off('re_changed', load); };
   }, []);
   useEffect(() => { worldRef.current?.setOwned([...owned.keys()]); }, [owned, loading]);
-  const [dealer, setDealer] = useState(false);
+  const [dealer, setDealer] = useState(false); const [dock, setDock] = useState(false);
   const driveRef = useRef<Drive | null>(null);
   const [driving, setDriving] = useState(false); const [near, setNear] = useState<string | null>(null); const [kmh, setKmh] = useState(0);
   const meRef = useRef(me); meRef.current = me;
@@ -164,11 +165,13 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
       case 'chat': openTab('chat-tab'); break;
       case 'leaderboard': onLeaderboard(); break;
       case 'dealer': setDealer(true); return;
+      case 'dock': setDock(true); return;
       case 'airport': case 'racetrack': setVenue(id); return;
     }
     // Every other building opens as a panel on top of the city; closing it reveals the city again.
   };
   const goRef = useRef(go); goRef.current = go;
+  useEffect(() => { if (!dock || driving || loading) return; const t = setTimeout(() => worldRef.current?.flyTo('dock'), 600); return () => clearTimeout(t); }, [dock, loading, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (mode !== '3d') return;
@@ -242,6 +245,7 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
         <div className="world-pad" data-testid="world-pad"><div>{pad('left', '◀')}{pad('right', '▶')}</div><div>{pad('down', '▼')}{pad('up', '▲')}</div></div>
       </>}
       {venue && <Suspense fallback={<div className="world-loading">Opening…</div>}><Venues kind={venue} me={me} driving={driving} onClose={() => setVenue(null)} onFly={async (to) => driveRef.current ? driveRef.current.fly(to) : { ok: false, error: 'Switch to the 3D city to fly.' }} onDriveFrom={driveFrom} /></Suspense>}
+      {dock && <Suspense fallback={<div className="world-loading">Opening the dock…</div>}><FishingPanel me={me} onClose={() => setDock(false)} /></Suspense>}
       {dealer && <Suspense fallback={<div className="world-loading">Opening the dealership…</div>}><Dealership onClose={() => setDealer(false)} onDrive={startDrive} /></Suspense>}
       {casino && (
         <div className="world-casino" onMouseDown={(e) => { if (e.target === e.currentTarget) setCasino(false); }} data-testid="world-casino">

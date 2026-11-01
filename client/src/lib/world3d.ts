@@ -8,7 +8,7 @@ import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, TILE, clampMapTarget } from '../../../shared/farm';
 import { buildVenues } from './worldVenues';
 import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN, MINE_SITES, MINE_APRON, OUTSKIRTS } from './worldLayout';
-import { outskirts, countryHomes, countryBusinesses, businessType, lakeShape, RURAL_ROADS, RURAL_ROAD_W, LAKE } from '../../../shared/outskirts';
+import { outskirts, countryHomes, countryBusinesses, businessType, lakeShape, RURAL_ROADS, RURAL_ROAD_W, LAKE, DOCK } from '../../../shared/outskirts';
 
 import { WORLD_SPOTS } from './worldSpots';
 import { buildCar } from './carModels';
@@ -232,6 +232,19 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
         g.add(cyl(1, 1.3, 13, dark, -3.5, 0, -3.5, 10), cyl(2.2, 1.6, 2.2, mat({ color: 0x9fd4ff, emissive: 0x4aa0ff, emissiveIntensity: 0.7 * NEON, transparent: true, opacity: 0.8 }), -3.5, 13, -3.5, 10), cyl(2.4, 2.4, 0.3, neon, -3.5, 15.2, -3.5, 10));
         g.add(box(5, 1.6, 1.4, mat({ color: 0xb8bcc4 }), -7.5, 1.4, -2.5));
         height = 17; break; }
+      case 'dock': {
+        // Fishing Dock: a timber boathouse with a bait-shop sign, and a plank pier out over the lake (world -z).
+        const wood = mat({ color: 0x8a6440, roughness: 0.9 }), plank = mat({ color: 0xa47a4c, roughness: 0.95 }), post = mat({ color: 0x5a4028, roughness: 1 });
+        g.add(box(8, 3.6, 6, wood, 0, 0.15, 1), box(0.2, 1.6, 2.6, mat({ color: 0x2a2018 }), 0, 0.15, 4.05));
+        const roof = new THREE.Mesh(geo(new THREE.ConeGeometry(6.2, 2.4, 4)), mat({ color: 0x8c3b2e, flatShading: true })); roof.rotation.y = Math.PI / 4; roof.scale.set(1, 1, 0.78); roof.position.set(0, 4.95, 1); g.add(roof);
+        g.add(box(3.4, 1, 0.2, neon, 0, 2.8, 4.1), box(1.6, 0.9, 1, mat({ color: 0x3fa7d6 }), 3, 0.15, -3), box(1.6, 0.9, 1, mat({ color: 0xd8dde8 }), 3, 1.05, -3));
+        const P0 = -4.5, P1 = -22; // pier from the pad edge out over the water
+        g.add(box(3, 0.25, -P1 + P0, plank, 0, 0.35, (P0 + P1) / 2));
+        for (let z = P0 - 1; z >= P1; z -= 3) for (const x of [-1.4, 1.4]) g.add(cyl(0.16, 0.16, 1.6, post, x, -0.9, z, 6));
+        g.add(box(6, 0.25, 3, plank, 0, 0.35, P1 + 1.5));
+        g.add(cyl(0.08, 0.08, 2.6, dark, 2.7, 0.6, P1 + 0.4, 6), box(0.5, 0.35, 0.5, mat({ color: 0xffe2a0, emissive: 0xffc060, emissiveIntensity: 1.2 * NEON }), 2.7, 3.2, P1 + 0.4));
+        const boat = new THREE.Mesh(geo(new THREE.CylinderGeometry(0.9, 0.6, 4.2, 8, 1, false, 0, Math.PI)), mat({ color: 0xe8e2d0, side: THREE.DoubleSide })); boat.rotation.set(Math.PI / 2, 0, Math.PI); boat.scale.set(1, 1, 0.6); boat.position.set(-3, 0.45, -12); g.add(boat);
+        height = 8; break; }
       case 'racetrack': {
         // Grandstand in the infield: stepped seating under a cantilevered roof, timing tower with a lap board.
         for (let i = 0; i < 4; i++) g.add(box(10, 0.8 + i * 0.8, 1.4, mat({ color: i % 2 ? 0x6a7090 : 0x8088a8 }), 0, 0, 2.6 - i * 1.4));
@@ -431,14 +444,25 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     inst(unitBox, mat({ color: 0xe8e8ee, emissive: 0xff4d6d, emissiveIntensity: 0.45 * NEON }), gas.length, (i) => { const b = gas[i]; const [x, z] = front(b, 2.2); d.rotation.y = b.rot; d.position.set(x, 3.6, z); d.scale.set(b.w, 0.35, 4.4); });
     inst(unitBox, mat({ color: 0xc8c8d0, emissive: 0x4aa8ff, emissiveIntensity: 0.35 * NEON }), gas.length * 2, (i) => { const b = gas[i >> 1]; const [x, z] = front(b, 2.2); const sd = i % 2 ? 2.5 : -2.5; d.rotation.y = b.rot; d.position.set(x + Math.cos(b.rot) * sd, 0.75, z - Math.sin(b.rot) * sd); d.scale.set(0.7, 1.5, 0.7); });
     inst(geo(new THREE.CylinderGeometry(3, 3, 6, 14)), mat({ color: 0xb8bcc4, roughness: 0.5, metalness: 0.4 }), O.tanks.length, (i) => d.position.set(O.tanks[i][0], 3, O.tanks[i][1]));
-    // lake: the river's water shader in an irregular outline, with the same sandy bank
+    // lake: the river's water shader in a smooth organic outline, ringed by a wet-sand → sand → grass bank that slopes
+    // under the waterline (no coplanar faces: bank y < water y, polygonOffset on the bank), reeds, lily pads and rocks.
     { const pts = lakeShape(); const sh = new THREE.Shape(); pts.forEach(([x, z], i) => (i ? sh.lineTo(x - LAKE.x, -(z - LAKE.z)) : sh.moveTo(x - LAKE.x, -(z - LAKE.z)))); sh.closePath();
-      const wg = new THREE.ShapeGeometry(sh, 4); wg.rotateX(-Math.PI / 2); const lake = new THREE.Mesh(geo(wg), waterMat); lake.position.set(LAKE.x, 0.06, LAKE.z); scene.add(lake);
-      const bank: number[] = []; const bi: number[] = []; const n = pts.length;
-      pts.forEach(([x, z]) => { const dx = x - LAKE.x, dz = z - LAKE.z, L = Math.hypot(dx, dz); bank.push(x + (dx / L) * 1.6, 0.03, z + (dz / L) * 1.6, x - (dx / L) * 0.4, 0.03, z - (dz / L) * 0.4); });
-      for (let i = 0; i < n; i++) { const o = i * 2, q = ((i + 1) % n) * 2; bi.push(o, q, o + 1, o + 1, q, q + 1); }
-      const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(bank, 3)); bg.setIndex(bi); bg.computeVertexNormals();
-      scene.add(new THREE.Mesh(geo(bg), mat({ color: 0xb8a27a, roughness: 1, side: THREE.DoubleSide }))); }
+      const wg = new THREE.ShapeGeometry(sh, 6); wg.rotateX(-Math.PI / 2); const lake = new THREE.Mesh(geo(wg), waterMat); lake.position.set(LAKE.x, 0.07, LAKE.z); lake.renderOrder = 1; scene.add(lake);
+      const rings: Array<[number, number, number]> = [[-1.6, 0.0, 0x8e7a58], [0.3, 0.04, 0xc9b48a], [2.2, 0.035, 0xb9a77a], [4, -0.02, 0x4f9e4a]]; // [offset, y, colour]
+      const pos: number[] = []; const col: number[] = []; const bi: number[] = []; const n = pts.length; const c = new THREE.Color(); const R = rings.length;
+      pts.forEach(([x, z], i) => { const [px0, pz0] = pts[(i + n - 1) % n]!, [px1, pz1] = pts[(i + 1) % n]!; let nx = pz1 - pz0, nz = -(px1 - px0); const L = Math.hypot(nx, nz) || 1; nx /= L; nz /= L;
+        if (nx * (x - LAKE.x) + nz * (z - LAKE.z) < 0) { nx = -nx; nz = -nz; }
+        for (const [o, y, hx] of rings) { pos.push(x + nx * o, y, z + nz * o); c.setHex(hx); col.push(c.r, c.g, c.b); } });
+      for (let i = 0; i < n; i++) for (let r = 0; r < R - 1; r++) { const a = i * R + r, b = ((i + 1) % n) * R + r; bi.push(a, b, a + 1, a + 1, b, b + 1); }
+      const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); bg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); bg.setIndex(bi); bg.computeVertexNormals();
+      scene.add(new THREE.Mesh(geo(bg), mat({ vertexColors: true, roughness: 1, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })));
+      const L = O.lake;
+      inst(geo(new THREE.CylinderGeometry(0.05, 0.07, 1, 4)), mat({ color: 0x6f8f3a, roughness: 1 }), L.reeds.length * 3, (i) => { const [x, z, s] = L.reeds[(i / 3) | 0]; const k = i % 3; const h = s * (1.4 + k * 0.35); d.position.set(x + (k - 1) * 0.18, h / 2, z + ((k * 7) % 3 - 1) * 0.15); d.rotation.set(((k - 1) * 0.12), 0, ((i % 5) - 2) * 0.05); d.scale.set(1, h, 1); });
+      inst(geo(new THREE.CylinderGeometry(0.11, 0.11, 0.5, 6)), mat({ color: 0x5a3a20, roughness: 1 }), L.reeds.length, (i) => { const [x, z, s] = L.reeds[i]; d.position.set(x, s * 1.75, z + 0.15); d.rotation.set(0, 0, 0); d.scale.set(1, 1, 1); });
+      inst(geo(new THREE.CircleGeometry(1, 9, 0.4, Math.PI * 2 - 0.5)), mat({ color: 0x3f8f3a, roughness: 0.8, side: THREE.DoubleSide }), L.lilies.length * 3, (i) => { const [x, z, s] = L.lilies[(i / 3) | 0]; const k = i % 3; d.position.set(x + Math.cos(k * 2.1) * s * 1.6, 0.09, z + Math.sin(k * 2.1) * s * 1.6); d.rotation.set(-Math.PI / 2, 0, i * 1.7); d.scale.set(s * (0.7 + k * 0.2), s * (0.7 + k * 0.2), 1); });
+      inst(geo(new THREE.DodecahedronGeometry(1, 0)), mat({ color: 0x7a7670, roughness: 1, flatShading: true }), L.rocks.length, (i) => { const [x, z, s] = L.rocks[i]; d.position.set(x, s * 0.2, z); d.scale.set(s, s * 0.55, s * 0.8); d.rotation.set(0, i * 2.3, 0); });
+      // gravel path from the lake road up to the boathouse
+      { const [[x0, z0], [x1, z1]] = DOCK.path; const pth = new THREE.Mesh(geo(new THREE.PlaneGeometry(2.6, Math.abs(z1 - z0) + 0.6)), mat({ color: 0xa89a80, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })); pth.rotation.x = -Math.PI / 2; pth.position.set((x0 + x1) / 2, 0.02, (z0 + z1) / 2); scene.add(pth); } }
     // low rolling hills in the grass colour, rocks near the mines
     inst(geo(new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2)), mat({ color: 0x3f9a45, roughness: 1, flatShading: true, emissive: 0x0f3a14, emissiveIntensity: 0.6 }), O.hills.length, (i) => { const [x, z, r, h] = O.hills[i]; d.position.set(x, -0.05, z); d.scale.set(r, h * 0.6, r * 0.8); d.rotation.y = i; });
     inst(geo(new THREE.DodecahedronGeometry(1, 0)), mat({ color: 0x6a6670, roughness: 1, flatShading: true }), O.rocks.length, (i) => { const [x, z, s] = O.rocks[i]; d.position.set(x, s * 0.3, z); d.scale.set(s, s * 0.6, s); d.rotation.set(0, i * 2, 0); });

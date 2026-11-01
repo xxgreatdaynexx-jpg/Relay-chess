@@ -24,9 +24,16 @@ export const RURAL_ROADS: Array<[P, P]> = [
   // stubs: The Mine west to the industrial yard; access to the Speedway grounds from The Mine and from Frostbite
   [[-165, -30], [-176, -30]], [[-121, -30], [-121, -124]], [[29, -148], [-28, -148]],
 ];
-export const LAKE = { x: 128, z: -184, rx: 26, rz: 13 };
-/** Lake outline: a gently wobbly ellipse inside LAKE's rx/rz (closed ring of points, world xz). */
-export const lakeShape = (): P[] => Array.from({ length: 48 }, (_, i) => { const a = (i / 48) * Math.PI * 2; const k = 0.86 + 0.08 * Math.sin(a * 3 + 0.7) + 0.05 * Math.sin(a * 5 + 2.1); return [LAKE.x + Math.cos(a) * LAKE.rx * k, LAKE.z + Math.sin(a) * LAKE.rz * k] as P; });
+export const LAKE = { x: 128, z: -187, rx: 30, rz: 16 };
+/** Shore radius factor at angle a (0..1 of rx/rz): a few low, smooth lobes and a cove by the dock (north shore, +z). */
+const lakeK = (a: number) => 0.87 + 0.06 * Math.sin(2 * a + 0.9) + 0.04 * Math.sin(3 * a + 2.4) - 0.025 * Math.cos(5 * a + 0.3);
+/** Lake outline: a smooth organic ring of 96 points (world xz), counter-clockwise from +x. */
+export const lakeShape = (): P[] => Array.from({ length: 96 }, (_, i) => { const a = (i / 96) * Math.PI * 2; const k = lakeK(a); return [LAKE.x + Math.cos(a) * LAKE.rx * k, LAKE.z + Math.sin(a) * LAKE.rz * k] as P; });
+/** True inside the water (with margin m, + = bigger). */
+export const inLake = (x: number, z: number, m = 0) => { const dx = (x - LAKE.x) / LAKE.rx, dz = (z - LAKE.z) / LAKE.rz; const a = Math.atan2(dz, dx); const k = lakeK(a); const r = Math.hypot(dx * LAKE.rx, dz * LAKE.rz); const R = Math.hypot(Math.cos(a) * LAKE.rx * k, Math.sin(a) * LAKE.rz * k); return r < R + m; };
+/** Fishing dock on the north shore: boathouse pad (= the 'dock' landmark, 12x12) between the road and the water, a pier out into the lake and a short gravel path up to the road. */
+export const DOCK = { x: 128, z: -161, pierZ1: -167, pierZ0: -183, pierW: 3, path: [[128, -150.5], [128, -155]] as [P, P] };
+export const DOCK_BOX = { x0: DOCK.x - 8, x1: DOCK.x + 8, z0: DOCK.pierZ0 - 1, z1: -149 };
 const inR = (r: { x0: number; x1: number; z0: number; z1: number }, x: number, z: number, m: number) => x > r.x0 - m && x < r.x1 + m && z > r.z0 - m && z < r.z1 + m;
 const segD = (x: number, z: number, a: P, b: P) => { const dx = b[0] - a[0], dz = b[1] - a[1]; const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz || 1))); return Math.hypot(x - a[0] - t * dx, z - a[1] - t * dz); };
 const inBox = (b: Box2, x: number, z: number, m: number) => Math.abs(x - b.x) < b.w / 2 + m && Math.abs(z - b.z) < b.d / 2 + m;
@@ -42,11 +49,13 @@ export function keepOut(x: number, z: number, m = 0): boolean {
   }
   for (const [a, b] of RURAL_ROADS) if (segD(x, z, a, b) < RURAL_ROAD_W / 2 + 1.5 + m) return true;
   for (const [a, b, w] of VENUE_ROADS) if (segD(x, z, a, b) < w / 2 + 1.5 + m) return true; // Airport / Speedway access roads (shared/venues.ts)
-  if (((x - LAKE.x) / (LAKE.rx + 3 + m)) ** 2 + ((z - LAKE.z) / (LAKE.rz + 3 + m)) ** 2 < 1) return true;
+  if (inLake(x, z, 4 + m)) return true; // water + a clean grass/sand bank all round
+  if (inR(DOCK_BOX, x, z, 1 + m)) return true;
   return false;
 }
 function rng(seed: number) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
-export interface Outskirts { buildings: OutBuilding[]; fields: OutField[]; trees: Array<[number, number, number]>; rocks: Array<[number, number, number]>; hills: Array<[number, number, number, number]>; lamps: P[]; tanks: P[]; pumps: P[] }
+export interface LakeDecor { reeds: Array<[number, number, number]>; lilies: Array<[number, number, number]>; rocks: Array<[number, number, number]> }
+export interface Outskirts { lake: LakeDecor; buildings: OutBuilding[]; fields: OutField[]; trees: Array<[number, number, number]>; rocks: Array<[number, number, number]>; hills: Array<[number, number, number, number]>; lamps: P[]; tanks: P[]; pumps: P[] }
 let cache: Outskirts | null = null;
 export function outskirts(): Outskirts {
   if (cache) return cache;
@@ -83,10 +92,20 @@ export function outskirts(): Outskirts {
   const trees: Array<[number, number, number]> = []; const clear = (x: number, z: number) => !keepOut(x, z, 0.5) && ![...buildings, ...fields].some((o) => inBox(o, x, z, 1.5)) && !hills.some(([hx, hz, hr]) => Math.hypot(x - hx, z - hz) < hr * 0.8);
   for (let c = 0; c < 420; c++) { const cx = OUTSKIRTS.x0 + r() * (OUTSKIRTS.x1 - OUTSKIRTS.x0), cz = OUTSKIRTS.z0 + r() * (OUTSKIRTS.z1 - OUTSKIRTS.z0); if (!clear(cx, cz)) continue;
     const n = 6 + Math.floor(r() * 14), sp = 5 + r() * 8; for (let i = 0; i < n; i++) { const x = cx + (r() - 0.5) * 2 * sp, z = cz + (r() - 0.5) * 2 * sp; if (clear(x, z)) trees.push([x, z, 0.8 + r() * 0.9]); } }
+  // Lakeside: reed beds and lily pads in sheltered bays, a few shore rocks, and a loose ring of trees back from the
+  // bank (never in the water, on the dock or its path).
+  const lake: LakeDecor = { reeds: [], lilies: [], rocks: [] }; const shore = lakeShape(); const byDock = (x: number, z: number) => Math.abs(x - DOCK.x) < 10 && z > LAKE.z;
+  shore.forEach(([x, z], i) => { const dx = x - LAKE.x, dz = z - LAKE.z, L = Math.hypot(dx, dz), ux = dx / L, uz = dz / L; if (byDock(x, z)) return;
+    const bed = Math.sin(i * 0.37) > 0.35; // reed beds come in runs along the shore
+    if (bed) for (let k = 0; k < 3; k++) { const o = -0.6 + r() * 1.4, t = (r() - 0.5) * 1.2; lake.reeds.push([x + ux * o - uz * t, z + uz * o + ux * t, 0.7 + r() * 0.6]); }
+    if (bed && r() < 0.35) { const o = -2 - r() * 3; lake.lilies.push([x + ux * o, z + uz * o, 0.45 + r() * 0.4]); }
+    if (!bed && r() < 0.12) lake.rocks.push([x + ux * (0.6 + r()), z + uz * (0.6 + r()), 0.5 + r() * 0.7]); });
+  for (let i = 0; i < 70; i++) { const a = r() * Math.PI * 2, k = lakeK(a), d = 6 + r() * 8; const x = LAKE.x + Math.cos(a) * (LAKE.rx * k + d), z = LAKE.z + Math.sin(a) * (LAKE.rz * k + d);
+    if (!byDock(x, z) && clear(x, z) && !inLake(x, z, 5)) trees.push([x, z, 0.9 + r() * 0.8]); }
   // Road lamps every 18 units, alternating sides.
   const lamps: P[] = []; for (const [a, b] of RURAL_ROADS) { const L = Math.hypot(b[0] - a[0], b[1] - a[1]); const ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L;
     for (let s = 9, k = 0; s < L; s += 18, k++) { const o = (k % 2 ? 1 : -1) * (RURAL_ROAD_W / 2 + 0.8); const lx = a[0] + ux * s - uz * o, lz = a[1] + uz * s + ux * o; if (!VENUE_ROADS.some(([p, q, w]) => segD(lx, lz, p, q) < w / 2 + 0.6)) lamps.push([lx, lz]); } }
-  cache = { buildings, fields, trees, rocks, hills, lamps, tanks, pumps }; return cache;
+  cache = { lake, buildings, fields, trees, rocks, hills, lamps, tanks, pumps }; return cache;
 }
 
 const HOUSE_COLORS = housingType('house').colors;

@@ -6,8 +6,16 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T13:30:00-06:00', title: 'Fishing Dock, and a prettier lake', bullets: [
+    'The big lake in the north-east has been redone. It has a smooth, natural shoreline, a sandy bank that fades into the grass, reed beds, lily pads, rocks and trees around it.',
+    'The new Fishing Dock is on the north shore, with a boathouse and a pier out over the water. Click it on the map, or drive up and press E.',
+    'To fish: cast, wait for the bite, then strike. Hold to reel and let go to give the fish line. Keep the hook in the green zone until the catch bar fills. Rarer and bigger fish fight harder.',
+    'There are 16 catches, from old boots to the legendary Crystal Koi and Old Chud, the Lake Monster. Each comes in a range of sizes, and bigger ones are worth more.',
+    'Your catch goes in your cooler, which holds 40. Sell it to the fishmonger at the dock for chips. Prices follow the price index. You get full price on the first 500 each day, then half, then a tenth, up to about 1,350 a day.',
+    'The dock has a board for the biggest catches. Every catch also trains the new 🎣 Fishing skill (more XP for rarer fish).',
+  ] },
   { commit: '', at: '2026-11-01T13:00:00-06:00', title: 'Skills: level up like RuneScape', bullets: [
-    'New 🧭 Skills tab: nine skills from level 1 to 99 on the classic RuneScape XP curve, plus your total level and a title.',
+    'New 🧭 Skills tab: ten skills from level 1 to 99 on the classic RuneScape XP curve, plus your total level and a title.',
     'Every activity trains a skill: Mining (break ore), Engineering (factory output), Farming (harvests), Racing (Speedway laps), Combat (Arena kills and wins), Trading (stocks and Market), Gambling (casino bets), Chess (finished games vs people) and Property (buying real estate, paying tax).',
     'XP drops pop up as you earn it, and you get a level-up fanfare. Hover a skill to see XP to the next level.',
     'Hiscores for every skill and overall, and skills now show on player profiles in the chat list.',

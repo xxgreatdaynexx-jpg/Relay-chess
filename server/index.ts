@@ -13,6 +13,7 @@ import { initRealEstate } from './realEstate.js';
 import { initCars } from './cars.js';
 import { initRace } from './race.js';
 import { initFarm } from './farm.js';
+import { initFishing } from './fishing.js';
 import { getMines, initMinesStorage } from './mines.js';
 import { getFactory, initFactory } from './factory.js';
 import { initAccountStorage } from './accounts.js';
@@ -39,6 +40,7 @@ await initRealEstate();
 await initCars();
 await initRace();
 await initFarm();
+await initFishing();
 await initConquestStorage();
 await initSolitroStorage();
 
