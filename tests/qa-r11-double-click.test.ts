@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { once, SAME_INTENT_MS } from '../server/stocks';
+import { once } from '../server/stocks';
 import { isDoubleBet, DOUBLE_CLICK_MS } from '../client/src/lib/doubleClick';
 
 const src = (f: string) => readFileSync(new URL(`../${f}`, import.meta.url), 'utf8');
@@ -13,10 +13,10 @@ describe('QA r11: double-clicked fund buy charges once (server)', () => {
       once('QA-Dbl1', 'stk2_fund_buy', 'rid-aaaaaaaa', run, body('rid-aaaaaaaa')),
       once('QA-Dbl1', 'stk2_fund_buy', 'rid-bbbbbbbb', run, body('rid-bbbbbbbb')),
     ]);
-    expect(charges).toBe(1); expect(a).toEqual(b);
-    // a click just after the first one finished is still a double-click
+    expect(charges).toBe(1); expect(b).toEqual({ ...(a as object), replayed: true });
+    // r12: once the first finished, an identical order is a real new order (the client lock covers the double-click gap)
     await once('QA-Dbl1', 'stk2_fund_buy', 'rid-cccccccc', run, body('rid-cccccccc'));
-    expect(charges).toBe(1);
+    expect(charges).toBe(2);
   });
   it('different units, another player, or after the window trade for real', async () => {
     let charges = 0; const run = () => { charges++; return {}; };
@@ -24,7 +24,6 @@ describe('QA r11: double-clicked fund buy charges once (server)', () => {
     await once('QA-Dbl2', 'stk2_fund_buy', 'rid-22222222', run, { fund: 'CHFIN', units: 2 });
     await once('QA-Dbl3', 'stk2_fund_buy', 'rid-33333333', run, { fund: 'CHFIN', units: 1 });
     expect(charges).toBe(3);
-    expect(SAME_INTENT_MS).toBeLessThanOrEqual(2000);
   });
   it('a failed attempt is not cached, so a real retry runs', async () => {
     let n = 0; const run = () => { n++; if (n === 1) throw new Error('db'); return { ok: 1 }; };
@@ -39,8 +38,8 @@ describe('QA r11: double-clicked fund buy charges once (server)', () => {
 describe('QA r11: client locks against double-clicks', () => {
   it('StocksPage money handlers take a synchronous lock', () => {
     const s = src('client/src/components/StocksPage.tsx');
-    expect(s.match(/if \(lk\.current\) return; lk\.current = true; setBusy\(/g)?.length).toBe(5);
-    expect(s.match(/setBusy\(false\); lk\.current = false;/g)?.length).toBe(5);
+    expect(s.match(/useMoneyAction\(\)/g)?.length).toBe(4);
+    expect(s.match(/await run\(/g)?.length).toBe(5);
   });
   it('slots spin and blackjack actions are locked while in flight', () => {
     expect(src('client/src/components/SlotsPanel.tsx')).toMatch(/if \(!machine \|\| spinLock\.current\) return;\s*spinLock\.current = true;/);

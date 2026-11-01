@@ -3,6 +3,7 @@ import { backdropDismiss } from '@/lib/backdrop';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TopTab } from '@/components/TopTabs';
 import { request, socket } from '@/lib/net';
+import { useMoneyAction } from '@/lib/moneyAction';
 import { useAccount } from '@/lib/auth';
 import { DIV_HOUR_UTC, FUND_MAX_ORDER, OPT_EXPIRIES, OPT_STRIKES, SHORT_INIT, SHORT_MAINT, BORROW_FEE, FUND_BY_ID, fundQuote, strikeFor } from '../../../shared/derivs';
 import { MAX_TICK_IMPACT, MAX_TRADE_IMPACT, STOCK_FEE, STOCK_SPREAD, quote, parseQty, COMPANY_BY_TICKER, type NewsItem, type SectorInfo } from '../../../shared/stocks';
@@ -127,16 +128,16 @@ function CompanyView({ ticker, onBack, onTraded }: { ticker: string; onBack: () 
   const account = useAccount();
   const [range, setRange] = useState<'24h' | '7d' | '30d'>('24h');
   const [d, setD] = useState<CompanyResp | null>(null);
-  const [qty, setQty] = useState('1'); const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null); const [busy, setBusy] = useState<string | false>(false); const lk = useRef(false); /* QA r11: sync lock, a double-click lands before React re-renders the disabled button */
+  const [qty, setQty] = useState('1'); const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null); const { busy, run } = useMoneyAction(); /* QA r12: lock + spinner set synchronously on click, held for the whole request */
   const load = useCallback(() => request('stk_company', { ticker, range }).then((r) => { if (r.ok) setD(r as unknown as CompanyResp); }), [ticker, range]);
   useEffect(() => { void load(); const iv = setInterval(() => void load(), 30_000); return () => clearInterval(iv); }, [load]);
   if (!d) return <p className="opacity-60">Loading {ticker}…</p>;
   const c = d.company; const meta = COMPANY_BY_TICKER.get(ticker)!; const pq = parseQty(qty); const shares = pq.ok ? pq.n : 0; const qtyErr = pq.ok || qty.trim() === '' ? null : pq.error; const held = d.mine?.shares ?? 0;
   const qb = shares ? quote(meta, c.price, 'buy', shares) : null, qs = shares && held > 0 ? quote(meta, c.price, 'sell', Math.min(shares, held)) : null;
   const trade = async (side: 'buy' | 'sell') => {
-    if (lk.current) return; lk.current = true; setBusy(side); setMsg(null);
-    const r = await request(side === 'buy' ? 'stk_buy' : 'stk_sell', { ticker, shares });
-    setBusy(false); lk.current = false;
+    const r = await run(side, () => { setMsg(null); return request(side === 'buy' ? 'stk_buy' : 'stk_sell', { ticker, shares }); });
+    if (!r) return;
+    if (r.replayed) return setMsg({ ok: true, t: ALREADY });
     const x = r as unknown as { fill: number; total: number; fee: number };
     if (r.ok) { setMsg({ ok: true, t: `${side === 'buy' ? 'Bought' : 'Sold'} ${shares} ${ticker} at ${x.fill.toFixed(2)} — ${side === 'buy' ? 'paid' : 'received'} 🪙 ${n(x.total)} (fee ${x.fee}).` }); void load(); onTraded(); }
     else setMsg({ ok: false, t: r.error ?? 'Trade failed.' });
@@ -193,14 +194,14 @@ const Msg = ({ m }: { m: { ok: boolean; t: string } | null }) => (m ? <p classNa
 const Card = ({ k, v, title, cls }: { k: string; v: React.ReactNode; title?: string; cls?: string }) => <div className="rounded bg-white/5 p-2" title={title}><div className="opacity-60">{k}</div><b className={cls}>{v}</b></div>;
 
 interface FundRow { id: string; name: string; kind: 'index' | 'mutual'; blurb: string; fee: number; expense: number; nav: number; yield: number; holdings: Array<{ ticker: string; weight: number }> }
-function FundsView({ onTraded }: { onTraded: () => void }) {
+export function FundsView({ onTraded }: { onTraded: () => void }) {
   const account = useAccount(); const [fs, setFs] = useState<FundRow[] | null>(null); const [sel, setSel] = useState<string | null>(null);
-  const [units, setUnits] = useState('1'); const [m, setM] = useState<{ ok: boolean; t: string } | null>(null); const [busy, setBusy] = useState<string | false>(false); const lk = useRef(false); /* QA r11: sync lock, a double-click lands before React re-renders the disabled button */ const [mine, setMine] = useState<Record<string, number>>({});
+  const [units, setUnits] = useState('1'); const [m, setM] = useState<{ ok: boolean; t: string } | null>(null); const { busy, run } = useMoneyAction(); /* QA r12: lock + spinner set synchronously on click, held for the whole request */ const [mine, setMine] = useState<Record<string, number>>({});
   const load = useCallback(() => { void request('stk2_funds').then((r) => r.ok && setFs((r as unknown as { funds: FundRow[] }).funds)); if (account) void request('stk2_portfolio').then((r) => r.ok && setMine(Object.fromEntries((r as unknown as Port).funds.map((f) => [f.fund, f.units])))); }, [account]);
   useEffect(() => { load(); const iv = setInterval(load, 30_000); return () => clearInterval(iv); }, [load]);
   if (!fs) return <p className="opacity-60">Loading funds…</p>;
   const pu = parseQty(units, { decimals: 2 }); const u = pu.ok ? pu.n : 0; const uErr = pu.ok || units.trim() === '' ? null : pu.error.replaceAll('shares', 'units');
-  const go = async (side: 'buy' | 'sell', id: string) => { if (lk.current) return; lk.current = true; setBusy(`${side}:${id}`); const r = await request(side === 'buy' ? 'stk2_fund_buy' : 'stk2_fund_sell', { fund: id, units: u }); setBusy(false); lk.current = false; const x = r as unknown as { total: number; fee: number }; say(setM)(r, `${side === 'buy' ? 'Bought' : 'Sold'} ${u} ${id} — 🪙 ${n(x.total)} (fee ${x.fee}).`); if (r.ok) { load(); onTraded(); } };
+  const go = async (side: 'buy' | 'sell', id: string) => { const r = await run(`${side}:${id}`, () => request(side === 'buy' ? 'stk2_fund_buy' : 'stk2_fund_sell', { fund: id, units: u })); if (!r) return; if (r.replayed) return setM({ ok: true, t: ALREADY }); const x = r as unknown as { total: number; fee: number }; say(setM)(r, `${side === 'buy' ? 'Bought' : 'Sold'} ${u} ${id} — 🪙 ${n(x.total)} (fee ${x.fee}).`); if (r.ok) { load(); onTraded(); } };
   return (
     <div data-testid="stk-funds">
       <p className="mb-2 text-xs opacity-70">Funds hold a basket of companies. <b>Index funds</b>: {0.25}% fee, no ongoing cost. <b>Mutual funds</b>: actively picked, 0.5% fee plus a daily expense ratio (taken from your units and burned). Dividends of the companies inside are passed through daily. Max 🪙 {n(FUND_MAX_ORDER)} per order.</p>
@@ -226,13 +227,13 @@ function FundsView({ onTraded }: { onTraded: () => void }) {
 
 function ShortsView({ data, onTraded }: { data: ListResp; onTraded: () => void }) {
   const account = useAccount(); const [t, setT] = useState(data.companies[0]?.ticker ?? ''); const [qty, setQty] = useState('1'); const [p, setP] = useState<Port | null>(null);
-  const [m, setM] = useState<{ ok: boolean; t: string } | null>(null); const [busy, setBusy] = useState<string | false>(false); const lk = useRef(false); /* QA r11: sync lock, a double-click lands before React re-renders the disabled button */
+  const [m, setM] = useState<{ ok: boolean; t: string } | null>(null); const { busy, run } = useMoneyAction(); /* QA r12: lock + spinner set synchronously on click, held for the whole request */
   const load = useCallback(() => { if (account) void request('stk2_portfolio').then((r) => r.ok && setP(r as unknown as Port)); }, [account]);
   useEffect(() => { load(); const iv = setInterval(load, 30_000); return () => clearInterval(iv); }, [load]);
   if (!account) return <p className="opacity-70">Sign in to short stocks.</p>;
   const c = data.companies.find((x) => x.ticker === t); const ps = parseQty(qty); const sh = ps.ok ? ps.n : 0; const shErr = ps.ok || qty.trim() === '' ? null : ps.error;
-  const open = async () => { if (lk.current) return; lk.current = true; setBusy('open'); const r = await request('stk2_short_open', { ticker: t, shares: sh }); setBusy(false); lk.current = false; const x = r as unknown as { fill: number; collateral: number; liqPrice: number }; say(setM)(r, `Shorted ${sh} ${t} at ${x.fill?.toFixed(2)} — 🪙 ${n(x.collateral)} locked as collateral. Liquidated at ${x.liqPrice}.`); if (r.ok) { load(); onTraded(); } };
-  const close = async (id: string) => { if (lk.current) return; lk.current = true; setBusy(`close:${id}`); const r = await request('stk2_short_close', { id }); setBusy(false); lk.current = false; const x = r as unknown as { payout: number; pnl: number }; say(setM)(r, `Closed — got back 🪙 ${n(x.payout)} (P&L ${x.pnl >= 0 ? '+' : ''}${n(x.pnl)}).`); if (r.ok) { load(); onTraded(); } };
+  const open = async () => { const r = await run('open', () => request('stk2_short_open', { ticker: t, shares: sh })); if (!r) return; if (r.replayed) return setM({ ok: true, t: ALREADY }); const x = r as unknown as { fill: number; collateral: number; liqPrice: number }; say(setM)(r, `Shorted ${sh} ${t} at ${x.fill?.toFixed(2)} — 🪙 ${n(x.collateral)} locked as collateral. Liquidated at ${x.liqPrice}.`); if (r.ok) { load(); onTraded(); } };
+  const close = async (id: string) => { const r = await run(`close:${id}`, () => request('stk2_short_close', { id })); if (!r) return; if (r.replayed) return setM({ ok: true, t: ALREADY }); const x = r as unknown as { payout: number; pnl: number }; say(setM)(r, `Closed — got back 🪙 ${n(x.payout)} (P&L ${x.pnl >= 0 ? '+' : ''}${n(x.pnl)}).`); if (r.ok) { load(); onTraded(); } };
   return (
     <div data-testid="stk-shorts">
       <p className="mb-2 text-xs opacity-70">Short = bet a stock falls. You lock {SHORT_INIT * 100}% of the position as collateral (plus the 1% fee). If the price rises until your equity drops below {SHORT_MAINT * 100}% of the position, it's auto-closed at market. You can never lose more than your collateral. Borrow fee {(BORROW_FEE * 100).toFixed(2)}%/day is taken from collateral and burned. Short sales move the price like a sell (same 2% / 5% caps).</p>
@@ -257,12 +258,12 @@ function OptionsView({ data }: { data: ListResp }) {
   const account = useAccount(); const [t, setT] = useState(data.companies[0]?.ticker ?? ''); const [kind, setKind] = useState<'call' | 'put'>('call');
   const [off, setOff] = useState<number>(0); const [days, setDays] = useState<number>(1); const [qty, setQty] = useState('10');
   const [q, setQ] = useState<{ premium: number; breakeven: number; strike: number } | null>(null); const [qe, setQe] = useState<string | null>(null);
-  const [m, setM] = useState<{ ok: boolean; t: string } | null>(null); const [busy, setBusy] = useState<string | false>(false); const lk = useRef(false); /* QA r11: sync lock, a double-click lands before React re-renders the disabled button */ const [p, setP] = useState<Port | null>(null);
+  const [m, setM] = useState<{ ok: boolean; t: string } | null>(null); const { busy, run } = useMoneyAction(); /* QA r12: lock + spinner set synchronously on click, held for the whole request */ const [p, setP] = useState<Port | null>(null);
   const c = data.companies.find((x) => x.ticker === t); const strike = c ? strikeFor(c.price, off) : 0; const po = parseQty(qty); const n2 = po.ok ? po.n : 0; const oErr = po.ok || qty.trim() === '' ? null : po.error;
   useEffect(() => { if (!c || !n2) { setQ(null); return; } void request('stk2_opt_quote', { ticker: t, kind, strike, days, qty: n2 }).then((r) => { if (r.ok) { setQ(r as never); setQe(null); } else { setQ(null); setQe(r.error ?? null); } }); }, [t, kind, strike, days, n2, c]);
   const load = useCallback(() => { if (account) void request('stk2_portfolio').then((r) => r.ok && setP(r as unknown as Port)); }, [account]);
   useEffect(() => { load(); const iv = setInterval(load, 30_000); return () => clearInterval(iv); }, [load]);
-  const buy = async () => { if (lk.current) return; lk.current = true; setBusy('buy'); const r = await request('stk2_opt_buy', { ticker: t, kind, strike, days, qty: n2 }); setBusy(false); lk.current = false; const x = r as unknown as { premium: number }; say(setM)(r, `Bought ${n2} ${t} ${strike} ${kind}s, ${days}d — paid 🪙 ${n(x.premium)}.`); if (r.ok) load(); };
+  const buy = async () => { const r = await run('buy', () => request('stk2_opt_buy', { ticker: t, kind, strike, days, qty: n2 })); if (!r) return; if (r.replayed) return setM({ ok: true, t: ALREADY }); const x = r as unknown as { premium: number }; say(setM)(r, `Bought ${n2} ${t} ${strike} ${kind}s, ${days}d — paid 🪙 ${n(x.premium)}.`); if (r.ok) load(); };
   return (
     <div data-testid="stk-options">
       <p className="mb-2 text-xs opacity-70"><b>Call</b> = pays if the price ends above the strike; <b>put</b> = pays if it ends below. You pay the premium up front (burned) and that's the most you can lose. At expiry it settles automatically in chips: (price − strike) × shares for a call. Options don't move the stock price.</p>
@@ -327,3 +328,6 @@ function Portfolio({ onPick }: { onPick: (t: string) => void }) {
 
 /** QA r10: inline spinner on the money button whose request is pending (the button is disabled meanwhile). */
 function Spin() { return <span className="world-spin mr-1" role="status" aria-label="Working…" data-testid="stk-spin" />; }
+
+/** QA r12: the server answered a duplicate of an order that already went through; nothing new happened. */
+const ALREADY = 'Already placed: that order went through once. Nothing new was traded.';

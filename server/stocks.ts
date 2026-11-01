@@ -61,21 +61,22 @@ const replay = new Map<string, { at: number; p: Promise<unknown> }>();
 export function once(name: string | null, ev: string, rid: unknown, run: () => unknown, body?: Record<string, unknown>): Promise<unknown> {
   if (!name) return Promise.resolve().then(run);
   const now = Date.now(); for (const [k, v] of replay) if (now - v.at > 120_000) replay.delete(k);
-  for (const [k, v] of intent) if (v.done && now - v.done > SAME_INTENT_MS) intent.delete(k);
-  // QA r11: a double-click sends two requests with DIFFERENT request ids. An identical order (same player, event
-  // and fields) that is still running or finished < SAME_INTENT_MS ago gets the first answer instead of trading again.
-  const ik = body ? `${name.toLowerCase()}|${ev}|${intentKey(body)}` : null;
-  const ih = ik ? intent.get(ik) : undefined; if (ih) return ih.p;
+  // Same request id = the client's own retry of ONE click (its first ack was lost): answer with the first result as-is.
   const ridOk = typeof rid === 'string' && /^[\w-]{8,64}$/.test(rid);
   const key = ridOk ? `${name.toLowerCase()}|${ev}|${rid}` : null; const hit = key ? replay.get(key) : undefined; if (hit) return hit.p;
+  // QA r11/r12: a double-click sends an identical order with a NEW request id. It is merged ONLY while the first
+  // one is still running (flagged replayed:true). Once it has finished, an identical order is a real new order.
+  // (r11 kept it for 1.5 s after completion, which swallowed a legitimate follow-up sell; the client lock now holds
+  // the button for the whole request plus MIN_BUSY_MS, which covers the double-click gap.)
+  const ik = body ? `${name.toLowerCase()}|${ev}|${intentKey(body)}` : null;
+  const ih = ik ? inflight.get(ik) : undefined;
+  if (ih) return ih.then((r) => ({ ...(r as object), replayed: true }));
   const p = Promise.resolve().then(run);
   if (key) { replay.set(key, { at: now, p }); p.catch(() => replay.delete(key)); } // a failed (uncharged) attempt may be retried for real
-  if (ik) { const rec: { p: Promise<unknown>; done: number } = { p, done: 0 }; intent.set(ik, rec); p.then(() => { rec.done = Date.now(); }, () => intent.delete(ik)); }
+  if (ik) { inflight.set(ik, p); const drop = () => { if (inflight.get(ik) === p) inflight.delete(ik); }; p.then(drop, drop); }
   return p;
 }
-/** QA r11: window in which an identical money order from the same player is treated as a double-click. */
-export const SAME_INTENT_MS = 1500;
-const intent = new Map<string, { p: Promise<unknown>; done: number }>();
+const inflight = new Map<string, Promise<unknown>>();
 const intentKey = (b: Record<string, unknown>) => JSON.stringify(Object.keys(b).filter((k) => k !== 'rid').sort().map((k) => [k, b[k]]));
 
 export function dailyDrift(c: Company, inflPct: number | null, act: Partial<Record<ActivityKey, number>>): number {

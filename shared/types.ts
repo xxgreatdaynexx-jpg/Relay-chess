@@ -243,6 +243,8 @@ export interface PublicState {
 
 export interface Ack {
   ok: boolean;
+  /** QA r12: this answer is a duplicate of an identical order still in progress; nothing new happened. */
+  replayed?: boolean;
   error?: string;
   fatal?: boolean;
   /** The action needs a signed-in name. */
