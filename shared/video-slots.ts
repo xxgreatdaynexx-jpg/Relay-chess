@@ -19,8 +19,13 @@ export const PAYLINES: number[][] = [
   [1, 1, 0, 1, 1], [1, 1, 2, 1, 1], [0, 2, 0, 2, 0], [2, 0, 2, 0, 2], [0, 2, 2, 2, 0],
 ];
 
-export type MachineId = 'dragon' | 'warzone' | 'goldrush';
+export type Engine = 'dragon' | 'warzone' | 'goldrush';
+/** City machines (Chud Casino) and Chud Resort machines (Resort Casino, location-gated on the server). */
+export type MachineId = Engine | 'lagoon' | 'yacht' | 'pearl';
 export const MACHINE_IDS: MachineId[] = ['dragon', 'warzone', 'goldrush'];
+export const RESORT_MACHINE_IDS: MachineId[] = ['lagoon', 'yacht', 'pearl'];
+export const ALL_MACHINE_IDS: MachineId[] = [...MACHINE_IDS, ...RESORT_MACHINE_IDS];
+export const isResortMachine = (m: unknown) => typeof m === 'string' && (RESORT_MACHINE_IDS as string[]).includes(m);
 export type SymKind = 'normal' | 'wild' | 'scatter' | 'bonus' | 'coin';
 
 export interface SymDef {
@@ -33,6 +38,8 @@ export interface SymDef {
 
 export interface MachineConfig {
   id: MachineId;
+  /** Which feature engine runs the machine (resort machines reuse a city engine with their own theme). */
+  engine: Engine;
   name: string;
   tagline: string;
   symbols: SymDef[];
@@ -87,7 +94,7 @@ const S = (id: string, label: string, kind: SymKind, pays?: [number, number, num
 
 export const MACHINES: Record<MachineId, MachineConfig> = {
   dragon: {
-    id: 'dragon',
+    id: 'dragon', engine: 'dragon',
     name: 'Dragon Queen',
     tagline: 'Gold queen is wild · 3+ crowns = free spins ×2 · 3 chests = pick-a-chest',
     buyNote: 'A spin that lands 3+ crowns: 8–15 free spins at ×2',
@@ -110,7 +117,7 @@ export const MACHINES: Record<MachineId, MachineConfig> = {
     ],
   },
   warzone: {
-    id: 'warzone',
+    id: 'warzone', engine: 'warzone',
     name: 'Warzone',
     tagline: 'Expanding wilds fill the reel · random AIRSTRIKE blasts symbols into wilds',
     buyNote: 'A spin with a guaranteed airstrike: 3–6 symbols blasted into wilds',
@@ -132,7 +139,7 @@ export const MACHINES: Record<MachineId, MachineConfig> = {
     ],
   },
   goldrush: {
-    id: 'goldrush',
+    id: 'goldrush', engine: 'goldrush',
     name: 'Gold Rush',
     tagline: 'Classic 7s · 6+ gold coins = HOLD & SPIN · MINI / MINOR / MAJOR / GRAND',
     buyNote: 'A spin that lands 6+ gold coins: Hold & Spin with 3 respins',
@@ -154,7 +161,61 @@ export const MACHINES: Record<MachineId, MachineConfig> = {
       [30, 28, 24, 18, 12, 6, 2, 18],
     ],
   },
+  // ---- Chud Resort (beachfront casino). Each reuses a city engine with an identical pay table and reel weights,
+  // so its RTP is the same as its city twin (verified by simulation in tests/resort.test.ts):
+  //   Tiki Lagoon = Dragon Queen engine (~95.0%) · Yacht Club = Warzone engine (~95.0%) · Pearl Diver = Gold Rush engine (~95.0%).
+  lagoon: {
+    id: 'lagoon', engine: 'dragon',
+    name: 'Tiki Lagoon',
+    tagline: 'Golden Tiki is wild · 3+ sunsets = free spins ×2 · 3 treasure chests = pick-a-chest',
+    buyNote: 'A spin that lands 3+ sunsets: 8–15 free spins at ×2',
+    symbols: [
+      S('r_shell', 'Seashell', 'normal', [5, 15, 50]),
+      S('r_starfish', 'Starfish', 'normal', [5, 20, 60]),
+      S('r_coconut', 'Coconut', 'normal', [10, 25, 80]),
+      S('r_pineapple', 'Pineapple', 'normal', [15, 40, 120]),
+      S('r_parrot', 'Parrot', 'normal', [25, 80, 250]),
+      S('r_tiki', 'Golden Tiki', 'wild', [50, 200, 1000]),
+      S('r_sunset', 'Sunset (scatter)', 'scatter'),
+      S('r_treasure', 'Treasure Chest', 'bonus'),
+    ],
+    weights: [] as number[][],
+  },
+  yacht: {
+    id: 'yacht', engine: 'warzone',
+    name: 'Yacht Club',
+    tagline: 'Gold anchors expand to fill the reel · random FIREWORKS turn symbols into anchors',
+    buyNote: 'A spin with a guaranteed fireworks show: 3–6 symbols turned into wild anchors',
+    symbols: [
+      S('r_flag', 'Club Pennant', 'normal', [5, 15, 50]),
+      S('r_ring', 'Life Ring', 'normal', [5, 20, 60]),
+      S('r_helm', 'Ship’s Wheel', 'normal', [10, 25, 80]),
+      S('r_champagne', 'Champagne', 'normal', [15, 40, 120]),
+      S('r_watch', 'Gold Watch', 'normal', [20, 60, 200]),
+      S('r_yacht', 'Superyacht', 'normal', [30, 100, 400]),
+      S('r_anchor', 'Wild Anchor', 'wild'),
+    ],
+    weights: [] as number[][],
+  },
+  pearl: {
+    id: 'pearl', engine: 'goldrush',
+    name: 'Pearl Diver',
+    tagline: 'Deep-sea treasure · 6+ pearls = HOLD & SPIN · MINI / MINOR / MAJOR / GRAND',
+    buyNote: 'A spin that lands 6+ pearls: Hold & Spin with 3 respins',
+    symbols: [
+      S('r_crab', 'Crab', 'normal', [7, 20, 70]),
+      S('r_fish', 'Angelfish', 'normal', [10, 30, 100]),
+      S('r_seahorse', 'Pufferfish', 'normal', [15, 40, 120]),
+      S('r_turtle', 'Sea Turtle', 'normal', [20, 60, 180]),
+      S('r_dolphin', 'Dolphin', 'normal', [30, 90, 300]),
+      S('r_mermaid', 'Mermaid', 'normal', [60, 200, 750]),
+      S('r_trident', 'Wild Trident', 'wild', [80, 300, 1500]),
+      S('r_pearl', 'Pearl', 'coin'),
+    ],
+    weights: [] as number[][],
+  },
 };
+for (const id of ['lagoon', 'yacht', 'pearl'] as const) MACHINES[id].weights = MACHINES[MACHINES[id].engine].weights.map((r) => [...r]);
 
 // Tunables (validated by tests/video-slots.test.ts simulation).
 export const DQ_FREE_SPINS: Record<number, number> = { 3: 8, 4: 12, 5: 15 };
@@ -269,7 +330,7 @@ function spinUntil(cfg: MachineConfig, rand: () => number, ok: (g: Grid) => bool
 
 function playDragon(cfg: MachineConfig, bet: number, rand: () => number, buy = false): RoundResult {
   const steps: SpinStep[] = [];
-  const res: RoundResult = { machine: 'dragon', bet, steps, totalWin: 0 };
+  const res: RoundResult = { machine: cfg.id, bet, steps, totalWin: 0 };
   const stepFor = (kind: 'base' | 'free', mult: number, forced?: Grid): { step: SpinStep; scatters: number; chests: number } => {
     const grid = forced ?? spinGrid(cfg, rand);
     const wins = evaluateLines(cfg, grid, bet);
@@ -317,6 +378,7 @@ function playDragon(cfg: MachineConfig, bet: number, rand: () => number, buy = f
 }
 
 function playWarzone(cfg: MachineConfig, bet: number, rand: () => number, buy = false): RoundResult {
+  const WILD = cfg.symbols.find((x) => x.kind === 'wild')!.id;
   const grid = spinGrid(cfg, rand);
   const final = cloneGrid(grid);
   const step: SpinStep = { kind: 'base', grid, final, wins: [], multiplier: 1, win: 0 };
@@ -325,22 +387,22 @@ function playWarzone(cfg: MachineConfig, bet: number, rand: () => number, buy = 
     const n = WZ_AIRSTRIKE_MIN + Math.floor(rand() * (WZ_AIRSTRIKE_MAX - WZ_AIRSTRIKE_MIN + 1));
     const cells: [number, number][] = [];
     const open: [number, number][] = [];
-    for (let r = 0; r < VS_REELS; r++) for (let w = 0; w < VS_ROWS; w++) if (final[r]![w] !== 'star') open.push([r, w]);
+    for (let r = 0; r < VS_REELS; r++) for (let w = 0; w < VS_ROWS; w++) if (final[r]![w] !== WILD) open.push([r, w]);
     for (let i = 0; i < n && open.length; i++) {
       const [c] = open.splice(Math.floor(rand() * open.length), 1);
       cells.push(c!);
-      final[c![0]]![c![1]] = 'star';
+      final[c![0]]![c![1]] = WILD;
     }
     step.airstrike = cells;
   }
   const expanded: number[] = [];
   for (let r = 0; r < VS_REELS; r++) {
-    if (grid[r]!.includes('star')) { expanded.push(r); final[r] = Array(VS_ROWS).fill('star'); }
+    if (grid[r]!.includes(WILD)) { expanded.push(r); final[r] = Array(VS_ROWS).fill(WILD); }
   }
   if (expanded.length) step.expanded = expanded;
   step.wins = evaluateLines(cfg, final, bet);
   step.win = Math.floor(sumWins(step.wins));
-  return { machine: 'warzone', bet, steps: [step], totalWin: step.win };
+  return { machine: cfg.id, bet, steps: [step], totalWin: step.win };
 }
 
 function coinValue(rand: () => number): CoinValue {
@@ -352,9 +414,9 @@ function playGoldRush(cfg: MachineConfig, bet: number, rand: () => number, buy =
   const grid = buy ? spinUntil(cfg, rand, (g) => countKind(cfg, g, 'coin') >= GR_TRIGGER) : spinGrid(cfg, rand);
   const wins = evaluateLines(cfg, grid, bet);
   const step: SpinStep = { kind: 'base', grid, final: grid, wins, multiplier: 1, win: Math.floor(sumWins(wins)) };
-  const res: RoundResult = { machine: 'goldrush', bet, steps: [step], totalWin: step.win };
+  const res: RoundResult = { machine: cfg.id, bet, steps: [step], totalWin: step.win };
   if (countKind(cfg, grid, 'coin') >= GR_TRIGGER) {
-    const coins: (CoinValue | null)[][] = grid.map((reel) => reel.map((c) => (c === 'coin' ? coinValue(rand) : null)));
+    const coins: (CoinValue | null)[][] = grid.map((reel) => reel.map((c) => (symOf(cfg, c).kind === 'coin' ? coinValue(rand) : null)));
     const frames: HoldSpin['frames'] = [{ coins: coins.map((r) => [...r]), left: GR_RESPINS }];
     let left = GR_RESPINS;
     const full = () => coins.every((r) => r.every((c) => c !== null));
@@ -380,8 +442,8 @@ function playGoldRush(cfg: MachineConfig, bet: number, rand: () => number, buy =
 
 export function playRound(machine: MachineId, bet: number, rand: () => number): RoundResult {
   const cfg = MACHINES[machine];
-  if (machine === 'dragon') return playDragon(cfg, bet, rand);
-  if (machine === 'warzone') return playWarzone(cfg, bet, rand);
+  if (cfg.engine === 'dragon') return playDragon(cfg, bet, rand);
+  if (cfg.engine === 'warzone') return playWarzone(cfg, bet, rand);
   return playGoldRush(cfg, bet, rand);
 }
 
@@ -390,15 +452,15 @@ export function playRound(machine: MachineId, bet: number, rand: () => number): 
  * round (see tests/video-slots.test.ts `buy-bonus RTP`): multiple ≈ average bonus value / 0.95.
  * Seeded long runs (bet multiples): dragon 16.70 (3M rounds), warzone 9.47 (20M), goldrush 37.57 (6M).
  */
-export const BUY_BONUS_MULT: Record<MachineId, number> = { dragon: 17.6, warzone: 10, goldrush: 39.5 };
-export const BUY_BONUS_LABEL: Record<MachineId, string> = { dragon: 'Free Spins', warzone: 'Airstrike', goldrush: 'Hold & Spin' };
+export const BUY_BONUS_MULT: Record<MachineId, number> = { dragon: 17.6, warzone: 10, goldrush: 39.5, lagoon: 17.6, yacht: 10, pearl: 39.5 };
+export const BUY_BONUS_LABEL: Record<MachineId, string> = { dragon: 'Free Spins', warzone: 'Airstrike', goldrush: 'Hold & Spin', lagoon: 'Free Spins', yacht: 'Fireworks', pearl: 'Hold & Spin' };
 export const buyBonusPrice = (machine: MachineId, bet: number): number => Math.round(BUY_BONUS_MULT[machine] * bet);
 
 /** A bought round: the machine's bonus is guaranteed to trigger on the (paid-for) spin. */
 export function playBuyBonus(machine: MachineId, bet: number, rand: () => number): RoundResult {
   const cfg = MACHINES[machine];
-  const r = machine === 'dragon' ? playDragon(cfg, bet, rand, true)
-    : machine === 'warzone' ? playWarzone(cfg, bet, rand, true) : playGoldRush(cfg, bet, rand, true);
+  const r = cfg.engine === 'dragon' ? playDragon(cfg, bet, rand, true)
+    : cfg.engine === 'warzone' ? playWarzone(cfg, bet, rand, true) : playGoldRush(cfg, bet, rand, true);
   r.bought = true;
   return r;
 }
@@ -412,7 +474,7 @@ export function simulateBuy(machine: MachineId, rounds: number, rand: () => numb
 }
 
 export function isMachineId(x: unknown): x is MachineId {
-  return typeof x === 'string' && (MACHINE_IDS as string[]).includes(x);
+  return typeof x === 'string' && (ALL_MACHINE_IDS as string[]).includes(x);
 }
 
 export interface SimStats { spins: number; rtp: number; hitRate: number; featureRate: number; bonusRate: number; maxWin: number }

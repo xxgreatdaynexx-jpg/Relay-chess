@@ -14,6 +14,8 @@ import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank, type CasinoBank } from './casino-store.js';
 import { px, priceIndex } from './price-index.js';
+import { resortPlotOf, isTropical, TROPICAL_CROPS } from '../shared/resort.js';
+import { requireResort } from './travel.js';
 import { CROPS, cropById, farmPayout, farmPlots, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
 
 export const FARM_MIGRATION = `
@@ -23,7 +25,12 @@ CREATE TABLE IF NOT EXISTS farm_daily (player_key TEXT NOT NULL, day TEXT NOT NU
 export class FarmError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
 const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
-const plotOf = (id: unknown) => (typeof id === 'string' && /^f:\d+$/.test(id) ? farmPlots().find((p) => `f:${p.n}` === id) : undefined);
+/** City plots `f:<n>` and Chud Resort plantation plots `rf:<n>` (shared/resort.ts) share the farm engine and daily cap. */
+const plotOf = (id: unknown): { pid: string; cols: number; rows: number; resort: boolean } | undefined => {
+  if (typeof id !== 'string') return undefined;
+  if (/^f:\d+$/.test(id)) { const p = farmPlots().find((q) => `f:${q.n}` === id); return p && { pid: id, cols: p.cols, rows: p.rows, resort: false }; }
+  const r = resortPlotOf(id); return r && { pid: id, cols: r.cols, rows: r.rows, resort: true };
+};
 interface TileRow { plot_id: string; tile: number; owner_key: string; crop: string; planted_at: string | number; nonce: string }
 
 export class Farm {
@@ -56,7 +63,7 @@ export class Farm {
   /** Anyone can look at a farm (visiting neighbours); only the owner can act on it. */
   async view(id: unknown, name: string | null): Promise<FarmView> {
     const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.');
-    const pid = `f:${p.n}`; const o = await this.ownerOf(this.pool, pid); const now = this.clock();
+    const pid = p.pid; const o = await this.ownerOf(this.pool, pid); const now = this.clock();
     const tiles = o ? (await this.tiles(pid, o.key)).map((r) => this.toTile(r, now)).filter((t): t is FarmTile => !!t) : [];
     const mine = !!o && !!name && o.key === keyOf(name);
     return { id: pid, owner: o?.name ?? null, mine, cols: p.cols, rows: p.rows, tiles, now, today: mine ? await this.today(o!.key) : { gross: 0, paid: 0 }, index: priceIndex() };
@@ -85,7 +92,8 @@ export class Farm {
   /** Plant `crop` on the given empty tiles; seeds are paid now (px-indexed). */
   async plant(name: string, id: unknown, cropId: unknown, tiles: unknown) {
     const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const c = cropById(cropId); if (!c) throw new FarmError('Unknown seed.');
-    const list = this.tileList(p, tiles); const pid = `f:${p.n}`;
+    if (isTropical(c.id) !== p.resort) throw new FarmError(p.resort ? 'Only tropical crops grow at the resort plantation.' : 'Tropical crops only grow at Chud Resort.');
+    const list = this.tileList(p, tiles); const pid = p.pid;
     return this.lock(pid, async () => {
       const cost = px(c.seed) * list.length; const bank = this.bank(); await bank.refresh(name);
       if (bank.account(name).chips < cost) throw new FarmError(`Not enough chips: ${list.length} × ${c.label} seeds cost ${cost.toLocaleString('en-US')}.`);
@@ -106,7 +114,7 @@ export class Farm {
 
   /** Harvest every ready tile (or the given ones). Exactly once: the tiles are deleted in the payout's transaction. */
   async harvest(name: string, id: unknown, tiles?: unknown) {
-    const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const pid = `f:${p.n}`;
+    const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const pid = p.pid;
     const only = tiles === undefined || tiles === null ? null : new Set(this.tileList(p, tiles));
     return this.lock(`h:${keyOf(name)}`, () => this.lock(pid, async () => {
       const now = this.clock(); const key = keyOf(name);
@@ -133,7 +141,7 @@ export class Farm {
 
   /** Clear withered crops (free). */
   async clear(name: string, id: unknown) {
-    const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const pid = `f:${p.n}`; const key = keyOf(name);
+    const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const pid = p.pid; const key = keyOf(name);
     return this.lock(pid, async () => {
       const now = this.clock(); const dead = (await this.tiles(pid, key)).filter((r) => this.toTile(r, now)?.stage === 'withered');
       if (!dead.length) throw new FarmError('Nothing has withered.');
@@ -164,7 +172,7 @@ export async function initFarm(): Promise<void> {
 export function farmRouter() {
   const r = express.Router();
   r.get('/api/farm', async (_req, res) => {
-    const seeds = CROPS.map((c) => ({ id: c.id, seed: px(c.seed), sell: px(c.sell) }));
+    const seeds = [...CROPS, ...TROPICAL_CROPS].map((c) => ({ id: c.id, seed: px(c.seed), sell: px(c.sell) }));
     if (!farm) { res.json({ ok: true, live: false, tiles: [], seeds }); return; }
     try { res.json({ ok: true, live: true, tiles: await farm.mapTiles(), seeds }); } catch { res.status(500).json({ ok: false }); }
   });
@@ -182,7 +190,9 @@ export function registerFarm(io: Server, socket: Socket): void {
   });
   const need = () => { const n = nameOf(); if (!n) throw new FarmError('Sign in to farm.'); return n; };
   on('farm_view', async (b, f) => ({ farm: await f.view(b.id, nameOf()) }));
-  on('farm_plant', (b, f) => f.plant(need(), b.id, b.crop, b.tiles));
-  on('farm_harvest', (b, f) => f.harvest(need(), b.id, b.tiles));
-  on('farm_clear', (b, f) => f.clear(need(), b.id));
+  // Resort plots can only be worked while you are at Chud Resort.
+  const at = async (id: unknown) => { const n = need(); if (typeof id === 'string' && id.startsWith('rf:')) await requireResort(n, FarmError); return n; };
+  on('farm_plant', async (b, f) => f.plant(await at(b.id), b.id, b.crop, b.tiles));
+  on('farm_harvest', async (b, f) => f.harvest(await at(b.id), b.id, b.tiles));
+  on('farm_clear', async (b, f) => f.clear(await at(b.id), b.id));
 }

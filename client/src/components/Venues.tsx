@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { request } from '@/lib/net';
+import { flyToResort, useTrip } from '@/lib/travel';
 import { CAR_BY_ID } from '../../../shared/cars';
 import { FLY_DEST, RACE_SPLIT, fmtLap, type FlyDest } from '../../../shared/venues';
 
@@ -16,6 +17,8 @@ export function Venues({ kind, me, driving, onClose, onFly, onDriveFrom }: {
   kind: 'airport' | 'racetrack'; me: string | null; driving: boolean; onClose: () => void;
   onFly: (to: FlyDest) => Promise<{ ok: boolean; error?: string }>; onDriveFrom: (from: string) => Promise<boolean>;
 }) {
+  const trip = useTrip();
+  const resort = async () => { setBusy(true); setMsg(null); const r = await flyToResort(); setBusy(false); if (r.ok) onClose(); else setMsg(r.error ?? 'Could not buy a ticket.'); };
   const [board, setBoard] = useState<Board | null>(null); const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false);
   const load = () => { void request('race_board').then((r) => { if ((r as { ok: boolean }).ok) setBoard(r as unknown as Board); }); };
   useEffect(() => { if (kind !== 'racetrack') return; load(); const t = window.setInterval(load, 15_000); return () => window.clearInterval(t); }, [kind]);
@@ -31,6 +34,9 @@ export function Venues({ kind, me, driving, onClose, onFly, onDriveFrom }: {
         {driving
           ? (Object.keys(FLY_DEST) as FlyDest[]).filter((d) => d !== 'airport').map((d) => <button key={d} type="button" disabled={busy} onClick={() => void fly(d)} data-testid={`fly-${d}`}>🛫 Fly to {FLY_DEST[d].label}</button>)
           : <button type="button" disabled={busy} onClick={() => void driveFrom('airport')} data-testid="venue-drive-airport">🚗 Get your car at the terminal</button>}
+        <h4>🌴 International departures</h4>
+        <small>Chud Resort: a beachfront resort town with its own casino, 3 exclusive slots, beach houses, hotels, a plantation and the Coral Grotto mine. Only reachable by plane. The flight home is free.</small>
+        {me ? <button type="button" className="venue-resort" disabled={busy} onClick={() => void resort()} data-testid="fly-resort">🏝 Fly to Chud Resort · ticket 🪙 {chips(trip.ticket)}</button> : <small>Sign in to buy a ticket.</small>}
       </> : <>
         <h3>🏁 Chud Hub Speedway</h3>
         <small>Time-trial laps in your own car. Laps are timed by the server through 4 gates. Leaving the asphalt voids the lap.</small>

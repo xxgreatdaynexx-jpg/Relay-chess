@@ -11,6 +11,7 @@
  */
 import { PLATE, PARK_AREA, MINE_SITES, MINE_APRON, OUTSKIRTS, type OBB } from './worldLayout.js';
 import { VENUE_BOUNDS } from './venues.js';
+import { TROPICAL_CROPS } from './resort.js';
 
 export const TILE = 2; // world units per farm tile
 export const WITHER_FACTOR = 2;
@@ -28,7 +29,7 @@ export const CROPS: Crop[] = [
   { id: 'grapes', label: 'Grapes', emoji: '🍇', seed: 150, grow: 8 * H, sell: 330, color: 0x8a4ac0 },
   { id: 'sunflower', label: 'Sunflowers', emoji: '🌻', seed: 250, grow: 12 * H, sell: 560, color: 0xf0c830 },
 ];
-export const cropById = (id: unknown) => CROPS.find((c) => c.id === id);
+export const cropById = (id: unknown) => CROPS.find((c) => c.id === id) ?? TROPICAL_CROPS.find((c) => c.id === id);
 export type Stage = 'growing' | 'ready' | 'withered';
 export const stageOf = (c: Crop, plantedAt: number, now: number): Stage => {
   const ready = plantedAt + c.grow; return now < ready ? 'growing' : now < ready + WITHER_FACTOR * c.grow ? 'ready' : 'withered';

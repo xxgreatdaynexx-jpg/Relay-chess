@@ -14,6 +14,7 @@ import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank, type CasinoBank } from './casino-store.js';
 import { px, priceIndex } from './price-index.js';
+import { requireResort } from './travel.js';
 import { GRACE_DAYS, propertyById as baseProperty, sellBackOf, taxOf, type OwnedProperty } from '../shared/realEstate.js';
 
 export class PropertyError extends Error {}
@@ -186,6 +187,6 @@ export function registerRealEstate(io: Server, socket: Socket): void {
   });
   const need = () => { const n = nameOf(); if (!n) throw new PropertyError('Sign in to buy property.'); return n; };
   on('re_mine', async (_b, e) => ({ properties: await e.mine(need()) }));
-  on('re_buy', (b, e) => e.buy(need(), b.id));
+  on('re_buy', async (b, e) => { const n = need(); if (typeof b.id === 'string' && /^(r|rf):/.test(b.id)) await requireResort(n, PropertyError); return e.buy(n, b.id); });
   on('re_sell', (b, e) => e.sell(need(), b.id));
 }

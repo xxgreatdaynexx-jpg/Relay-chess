@@ -23,8 +23,8 @@ describe('three caves (pt1201u)', () => {
       for (const s of map.spawns) expect(inExit(s[0], s[1]), id).toBe(true);
       expect(CAVES[id].nodes.length, id).toBeGreaterThan(40);
     }
-    expect(new Set(CAVE_DEFS.map((c) => c.rows.join('\n'))).size).toBe(3);
-    expect(new Set(CAVE_DEFS.map((c) => c.theme.sky)).size).toBe(3);
+    expect(new Set(CAVE_DEFS.map((c) => c.rows.join('\n'))).size).toBe(CAVE_DEFS.length);
+    expect(new Set(CAVE_DEFS.map((c) => c.theme.sky)).size).toBe(CAVE_DEFS.length);
   });
   it('payout potential stays within 15% of The Mine', () => {
     const base = caveValueRate(CAVES.mine);

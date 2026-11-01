@@ -1782,3 +1782,33 @@ html, body { overflow-x: clip; }
 .fish3d-card h3 { margin: 2px 0 4px; } .fish3d-rar { font-size: 11px; font-weight: 900; letter-spacing: .12em; }
 @media (max-width: 640px) { .fish3d-reel { right: 8px; padding: 8px; } .fish3d-strain { width: 70px; } .fish3d-hint { white-space: normal; width: 90vw; text-align: center; } }
 .fish-play3d { width: 100%; margin: 6px 0; padding: 10px; border-radius: 10px; font-weight: 900; font-size: 15px; background: linear-gradient(90deg, rgba(79,195,217,.35), rgba(255,95,138,.3)); border: 1px solid rgba(79,195,217,.7); }
+
+/* ---- Chud Resort: slot themes + white-and-gold table skin (html[data-venue=resort]) */
+.vs-resort-note { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #ffe2a0; text-align: center; padding: 4px; border-radius: 8px; background: linear-gradient(90deg, #ff9a6a33, #2fb5b033); }
+.vs-resort-sym { font-size: 40px; line-height: 1; filter: drop-shadow(0 2px 3px #0008) drop-shadow(0 0 8px #fff3); }
+.vs-resort-tiki, .vs-resort-anchor, .vs-resort-trident { filter: drop-shadow(0 0 6px #ffd36a) drop-shadow(0 0 14px #ffb02a); }
+.vs-resort-sunset, .vs-resort-treasure, .vs-resort-pearl { filter: drop-shadow(0 0 8px #ff9ad0) drop-shadow(0 0 16px #ff7a5a); }
+.vs-theme-lagoon.vs-card { background: linear-gradient(135deg, #ff8a5c, #2a9d8f); border-color: #ffd28a; }
+.vs-theme-yacht.vs-card { background: linear-gradient(135deg, #f6f1e6, #1d3a6a 70%); border-color: #d8b25a; }
+.vs-theme-pearl.vs-card { background: linear-gradient(135deg, #0a5a78, #1a1650); border-color: #9ae8f0; }
+.vs-theme-lagoon.vs-card .vs-card-text b, .vs-theme-yacht.vs-card .vs-card-text b, .vs-theme-pearl.vs-card .vs-card-text b { color: #fff6dc; text-shadow: 0 1px 2px #0008; }
+.vs-machine.vs-theme-lagoon { --vs-frame: #ffb36a; --vs-bg: #0e3a40; }
+.vs-machine.vs-theme-yacht { --vs-frame: #d8b25a; --vs-bg: #0d1e3a; }
+.vs-machine.vs-theme-pearl { --vs-frame: #9ae8f0; --vs-bg: #071a33; }
+.vs-theme-lagoon .vs-cell { background: radial-gradient(circle at 50% 35%, #3ec7b8, #0b3a40 78%); }
+.vs-theme-yacht .vs-cell { background: radial-gradient(circle at 50% 35%, #f8f3e8, #c9b48a 50%, #1d3a6a 95%); }
+.vs-theme-pearl .vs-cell { background: radial-gradient(circle at 50% 35%, #2f8fb0, #08203f 78%); }
+[data-venue='resort'] .felt-rail { background: radial-gradient(120% 80% at 50% 0%, rgba(255,255,255,.7), transparent 55%), linear-gradient(180deg, #fbf6ea, #e8dcc0 70%, #cdb98a) !important; box-shadow: 0 1.4cqw 3cqw rgba(0,0,0,.5), inset 0 0 0 0.5cqw #d8b25a, inset 0 -0.6cqw 1cqw rgba(120,90,30,.35) !important; }
+[data-venue='resort'] .felt-cloth { background: radial-gradient(60% 55% at 50% 42%, rgba(255,255,255,.22), transparent 70%), radial-gradient(130% 100% at 50% 50%, transparent 55%, rgba(0,40,50,.5)), linear-gradient(180deg, #2ab3b0, #168a8e 60%, #0c6470) !important; box-shadow: inset 0 0 0 0.35cqw #f2d48a, inset 0 1cqw 2.4cqw rgba(0,0,0,.45) !important; }
+[data-venue='resort'] .rl-board { background: #138a8c !important; border-color: #f2d48a !important; }
+[data-venue='resort'] .rl-board .rl-cell { border-color: rgba(255,240,200,.9) !important; }
+[data-venue='resort'] .casino-tabbtn.on { background: linear-gradient(180deg, #f6d98a, #c89a3a) !important; color: #2a1c06 !important; }
+.resort-casino > div { background: linear-gradient(160deg, #fffaf0, #f0e2c2) !important; color: #2a2016; border: 2px solid #d8b25a !important; }
+.resort-casino h3 { color: #8a6418; font-family: Georgia, serif; letter-spacing: .06em; }
+.resort-casino button { background: #fff !important; color: #2a2016 !important; border: 1px solid #d8b25a !important; }
+.resort-casino button:hover { background: #fff3d6 !important; }
+.world.resort .world-title { color: #fff6e6; text-shadow: 0 2px 8px #a04a2a; }
+.world.resort .world-title span { color: #ffd28a; }
+.resort-flight { position: fixed; inset: 0; display: grid; place-items: center; z-index: 50; background: linear-gradient(180deg, #ff9a6a, #ffd5a0 60%, #4ac0c8); color: #fff; font-size: 28px; font-weight: 800; text-shadow: 0 2px 10px #a04a2a; }
+.resort-flight span { display: inline-block; animation: resort-plane 1.6s ease-in-out infinite; font-size: 64px; }
+@keyframes resort-plane { 0% { transform: translateX(-60px) rotate(-8deg); } 50% { transform: translateX(60px) translateY(-14px) rotate(4deg); } 100% { transform: translateX(-60px) rotate(-8deg); } }

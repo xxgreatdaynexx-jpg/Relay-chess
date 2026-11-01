@@ -9,6 +9,7 @@ import { MINE_SITES } from '@/lib/worldLayout';
 import type { World } from '@/lib/world3d';
 import { FarmGame } from './FarmGame';
 import { useAccount } from '@/lib/auth';
+import { useTrip } from '@/lib/travel';
 import { socket } from '@/lib/net';
 import { indexed } from '../../../shared/priceIndex';
 import { fmtLap } from '../../../shared/venues';
@@ -24,7 +25,7 @@ const chips = (n: number) => n.toLocaleString('en-US');
 type Ack = { ok: boolean; error?: string };
 
 /** Deed panel: list price, owner, daily tax, Buy / Sell back. */
-function DeedPanel({ id, owned, me, onClose, onFarm, onDone }: { id: string; owned: Map<string, OwnedProperty>; me: string | null; onClose: () => void; onFarm?: () => void; onDone?: (ev: 're_buy' | 're_sell', text: string) => void }) {
+export function DeedPanel({ id, owned, me, onClose, onFarm, onDone }: { id: string; owned: Map<string, OwnedProperty>; me: string | null; onClose: () => void; onFarm?: () => void; onDone?: (ev: 're_buy' | 're_sell', text: string) => void }) {
   const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState<null | 're_buy' | 're_sell'>(null); const [msg, setMsg] = useState<string | null>(null); const wallet = useWalletChips();
   if (!p) return null;
   const mine = !!(o && me && o.owner.toLowerCase() === me.toLowerCase()); const short = wallet != null && wallet < p.price ? p.price - wallet : 0;
@@ -66,7 +67,7 @@ function DeedList({ owned, me, onOpen, onClose }: { owned: Map<string, OwnedProp
       <h4>My properties{mine.length ? ` · 🪙 ${chips(value)} · tax 🪙 ${chips(mine.reduce((a, o) => a + taxOf(propertyById(o.id)?.price ?? o.price), 0))}/day` : ''}</h4>
       {mine.length ? mine.map((o) => <button type="button" key={o.id} onClick={() => onOpen(o.id)}>{propertyById(o.id)?.label ?? o.id}<span>🪙 {chips(propertyById(o.id)?.price ?? o.price)}</span></button>) : <small>{me ? 'None yet.' : 'Sign in to buy property.'}</small>}
       <h4>🌾 Farmland (east of the city)</h4>
-      {properties().filter((p) => p.kind === 'farm').map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
+      {properties().filter((p) => p.kind === 'farm' && p.map !== 'resort').map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
       <h4>Landmarks (trophy deeds)</h4>
       {lms.map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
     </div>
@@ -78,6 +79,7 @@ import type { Drive, DriveInput } from '@/lib/worldDrive';
 const Venues = lazyWithReload(() => import('./Venues').then((m) => ({ default: m.Venues })));
 const FishingPanel = lazyWithReload(() => import('./FishingPanel').then((m) => ({ default: m.FishingPanel })));
 const Dealership = lazyWithReload(() => import('./Dealership').then((m) => ({ default: m.Dealership })));
+const ResortMap = lazyWithReload(() => import('./ResortMap').then((m) => ({ default: m.ResortMap })));
 
 const CASINO_GAMES = [
   { tab: 'blackjack-tab', label: '🂡 Blackjack' }, { tab: 'roulette-tab', label: '🎡 Roulette' }, { tab: 'poker-tab', label: '🃏 Poker' },
@@ -102,7 +104,7 @@ function weakDevice() {
 }
 
 /** Home "world": a night city where each landmark opens a part of Chud Hub. */
-export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboard: () => void }) {
+function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboard: () => void }) {
   const me = useAccount();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const worldRef = useRef<World | null>(null);
@@ -280,4 +282,14 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
       )}
     </div>
   );
+}
+
+/** The map the player is on: Chud Hub (city) or Chud Resort (only reachable by plane from the airport). */
+export function WorldMap(props: { onClose: () => void; onLeaderboard: () => void }) {
+  const { loc } = useTrip(); const [flying, setFlying] = useState(false); const prev = useRef(loc);
+  useEffect(() => { if (prev.current === loc) return; prev.current = loc; setFlying(true); const t = window.setTimeout(() => setFlying(false), 1600); return () => window.clearTimeout(t); }, [loc]);
+  return <>
+    {loc === 'resort' ? <Suspense fallback={<div className="world"><div className="world-loading">Landing at Chud Resort…</div></div>}><ResortMap /></Suspense> : <CityMap {...props} />}
+    {flying && <div className="resort-flight" data-testid="resort-flight"><div><span>✈️</span><br />{loc === 'resort' ? 'Flying to Chud Resort…' : 'Flying home to Chud Hub…'}</div></div>}
+  </>;
 }

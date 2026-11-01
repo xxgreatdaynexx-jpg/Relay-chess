@@ -17,6 +17,7 @@
 import { cityFill, landmarks, LANDMARK_IDS, type OBB } from './worldLayout.js';
 import { HOUSING_TYPES } from './housing.js';
 import { farmPlots, farmPrice, plotId } from './farm.js';
+import { resortLots, resortPlots, resortPlotId, resortFarmPrice } from './resort.js';
 import { countryHomes, countryBusinesses, businessType, COMMERCIAL_PRICE, COMMERCIAL_LABEL } from './outskirts.js';
 
 export const TAX_RATE = 0.005;
@@ -35,7 +36,7 @@ const PATCH_LABEL: Record<string, string> = { lot: 'Empty lot', park: 'Park', pl
 const PATCH_REF: Record<string, number> = { lot: 13 * 13 * 0.95, park: 13 * 13 * 0.95, plaza: 81 * 0.95 };
 
 export type PropertyKind = 'building' | 'patch' | 'landmark' | 'farm';
-export interface Property extends OBB { id: string; kind: PropertyKind; type: string; label: string; price: number; h?: number }
+export interface Property extends OBB { id: string; kind: PropertyKind; type: string; label: string; price: number; h?: number; map?: 'resort' }
 
 const clamp = (x: number) => Math.min(1.25, Math.max(0.8, x));
 const round500 = (n: number) => Math.max(500, Math.round(n / 500) * 500);
@@ -60,6 +61,9 @@ export function properties(): Property[] {
   for (const f of farmPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: plotId(f.n), kind: 'farm', type: 'farmland', label: `Farm plot #${f.n} (${f.cols}×${f.rows})`, price: farmPrice(f.cols * f.rows) });
   // Countryside businesses (shared/outskirts.ts): gas stations and warehouses, fixed prices.
   for (const b of countryBusinesses()) { const t = businessType(b); out.push({ x: b.x, z: b.z, w: b.w, d: b.d, rot: b.rot, h: b.h, id: `b:${t}:${pos(b)}`, kind: 'building', type: t, label: COMMERCIAL_LABEL[t]!, price: COMMERCIAL_PRICE[t]! }); }
+  // Chud Resort (shared/resort.ts): its own map, only buyable while you are there (server-enforced).
+  for (const l of resortLots()) out.push({ x: l.x, z: l.z, w: l.w, d: l.d, rot: l.rot, h: l.h, id: l.id, kind: 'building', type: l.type, label: l.label, price: l.price, map: 'resort' });
+  for (const f of resortPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: resortPlotId(f.n), kind: 'farm', type: 'plantation', label: `Plantation plot #${f.n} (${f.cols}×${f.rows})`, price: resortFarmPrice(f.cols * f.rows), map: 'resort' });
   cache = out; byId = new Map(out.map((p) => [p.id, p])); return out;
 }
 export const propertyById = (id: unknown): Property | undefined => { properties(); return typeof id === 'string' ? byId!.get(id) : undefined; };

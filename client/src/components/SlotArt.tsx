@@ -19,6 +19,30 @@ function Svg({ children }: { children: ReactNode }) {
 }
 
 const ART: Record<string, () => ReactNode> = {
+  // ---- Chud Resort machines (Tiki Lagoon, Yacht Club, Pearl Diver): emoji on a glossy resort tile
+  r_shell: () => <span className="vs-resort-sym vs-resort-shell">🐚</span>,
+  r_starfish: () => <span className="vs-resort-sym vs-resort-starfish">⭐</span>,
+  r_coconut: () => <span className="vs-resort-sym vs-resort-coconut">🥥</span>,
+  r_pineapple: () => <span className="vs-resort-sym vs-resort-pineapple">🍍</span>,
+  r_parrot: () => <span className="vs-resort-sym vs-resort-parrot">🦜</span>,
+  r_tiki: () => <span className="vs-resort-sym vs-resort-tiki">🗿</span>,
+  r_sunset: () => <span className="vs-resort-sym vs-resort-sunset">🌅</span>,
+  r_treasure: () => <span className="vs-resort-sym vs-resort-treasure">💰</span>,
+  r_flag: () => <span className="vs-resort-sym vs-resort-flag">🚩</span>,
+  r_ring: () => <span className="vs-resort-sym vs-resort-ring">🛟</span>,
+  r_helm: () => <span className="vs-resort-sym vs-resort-helm">☸️</span>,
+  r_champagne: () => <span className="vs-resort-sym vs-resort-champagne">🍾</span>,
+  r_watch: () => <span className="vs-resort-sym vs-resort-watch">⌚</span>,
+  r_yacht: () => <span className="vs-resort-sym vs-resort-yacht">🛥️</span>,
+  r_anchor: () => <span className="vs-resort-sym vs-resort-anchor">⚓</span>,
+  r_crab: () => <span className="vs-resort-sym vs-resort-crab">🦀</span>,
+  r_fish: () => <span className="vs-resort-sym vs-resort-fish">🐠</span>,
+  r_seahorse: () => <span className="vs-resort-sym vs-resort-seahorse">🐡</span>,
+  r_turtle: () => <span className="vs-resort-sym vs-resort-turtle">🐢</span>,
+  r_dolphin: () => <span className="vs-resort-sym vs-resort-dolphin">🐬</span>,
+  r_mermaid: () => <span className="vs-resort-sym vs-resort-mermaid">🧜‍♀️</span>,
+  r_trident: () => <span className="vs-resort-sym vs-resort-trident">🔱</span>,
+  r_pearl: () => <span className="vs-resort-sym vs-resort-pearl">🦪</span>,
   // ---- Dragon Queen
   pawn: () => <Piece type="p" color="w" className="vs-piece" />,
   knight: () => <Piece type="n" color="w" className="vs-piece" />,

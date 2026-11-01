@@ -84,7 +84,7 @@ export function oreFor(depth: number, r: number, bias: Partial<Record<OreId, num
 
 // ---- caves (pt1201u): three mines on the city outskirts, one engine. Same spawn pocket / EXIT lift in each,
 // different layout, ore mix and look. '~' is a hazard (lava pool / ice pillar): impassable, rendered per theme.
-export type CaveId = 'mine' | 'frost' | 'magma';
+export type CaveId = 'mine' | 'frost' | 'magma' | 'coral';
 export interface CaveTheme { sky: string; fog: string; ambient: string; wall: string; floor: string; lamp: string; hazard: 'lava' | 'ice' | null }
 export interface CaveDef { id: CaveId; name: string; blurb: string; rows: string[]; depthX: number[]; bias: Partial<Record<OreId, number>>; density: number; theme: CaveTheme }
 export const CAVE_DEFS: CaveDef[] = [
@@ -124,10 +124,29 @@ export const CAVE_DEFS: CaveDef[] = [
       '####~~......~###.....######.###......###.....#.~##',
       '##################################################',
     ] },
+  // Chud Resort only (server-gated on location): a sea cave under the volcano. Wide open grottos (no single-tile
+  // corridors), coral pillars '~' as the hazard. Rich in gems and gold, light on coal.
+  { id: 'coral', name: 'Coral Grotto', blurb: 'A turquoise sea cave under the resort volcano. Coral pillars; rich in gems and gold.', depthX: [0, 12, 24, 36], density: 0.4,
+    bias: { stone: 0.8, coal: 0.5, copper: 0.9, silver: 1.2, gold: 1.4, gem: 1.5 },
+    theme: { sky: '#03141a', fog: '#06303a', ambient: '#7fe0e0', wall: '#e89a8a', floor: '#e8d8b0', lamp: '#7ff0ff', hazard: 'ice' },
+    rows: [
+      '##################################################',
+      '####.......####.........~.......####......########',
+      '#SS.................~..............~..........####',
+      '#S......~.......####.......~~.........####.....###',
+      '#SS.............####...............~..####......##',
+      '###.....~~..........~......####...........~.....##',
+      '####..........~.............##........~~........##',
+      '###.....####.........~~...........~.............##',
+      '###.....####....~..........####..........~~....###',
+      '####.........~.............####.....~..........###',
+      '#####.......~~......~................####...######',
+      '##################################################',
+    ] },
 ];
 /** window event (detail = CaveId) the world map fires to open a given mine. */
 export const MINE_CAVE_EVENT = 'relay-mine-cave';
-export const isCave = (v: unknown): v is CaveId => v === 'mine' || v === 'frost' || v === 'magma';
+export const isCave = (v: unknown): v is CaveId => v === 'mine' || v === 'frost' || v === 'magma' || v === 'coral';
 
 function build(def: CaveDef): { map: ArenaMap; nodes: MineNode[] } {
   const ROWS = def.rows.map((r) => r.padEnd(def.rows[0].length, '#'));

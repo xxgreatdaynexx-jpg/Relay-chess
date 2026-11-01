@@ -53,6 +53,10 @@ function pushHoldem(t: HoldemTable | null, now = Date.now()): void {
 let vp: VideoPoker | null = null;
 const poker = () => (vp ??= new VideoPoker(getBank()));
 import { RouletteWheel } from './roulette.js';
+import { isAtResort } from './travel.js';
+import { isResortMachine } from '../shared/video-slots.js';
+/** Chud Resort machines only play at the resort casino. */
+const resortGate = (name: string, machine: unknown) => { if (isResortMachine(machine) && !isAtResort(name)) throw new Error('That machine is at the Palms Resort Casino. Fly to Chud Resort to play it.'); };
 
 type Ack = (res: { ok: boolean; error?: string; [k: string]: unknown }) => void;
 
@@ -208,12 +212,14 @@ export function registerCasino(io: Server, socket: Socket): void {
     if (t.phase === 'showdown') pushBoard(io);
   }));
   socket.on('vslots_spin', wrap((body) => {
-    const result = spinVideoSlot(getBank(), signedIn(socket), body.machine, Number(body.bet));
+    const name = signedIn(socket); resortGate(name, body.machine);
+    const result = spinVideoSlot(getBank(), name, body.machine, Number(body.bet));
     if (result.net > 0) pushBoard(io);
     return { result };
   }));
   socket.on('vslots_buy', wrap((body) => {
-    const result = buyVideoBonus(getBank(), signedIn(socket), body.machine, Number(body.bet));
+    const name = signedIn(socket); resortGate(name, body.machine);
+    const result = buyVideoBonus(getBank(), name, body.machine, Number(body.bet));
     if (result.net > 0) pushBoard(io);
     return { result };
   }));

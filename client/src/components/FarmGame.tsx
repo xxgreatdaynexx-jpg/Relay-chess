@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { socket } from '@/lib/net';
 import { indexed } from '../../../shared/priceIndex';
-import { CROPS, cropById, FARM_TIERS, type FarmView } from '../../../shared/farm';
+import { TROPICAL_CROPS } from '../../../shared/resort';
+import { CROPS as CITY_CROPS, cropById, FARM_TIERS, type FarmView } from '../../../shared/farm';
 
 const chips = (n: number) => n.toLocaleString('en-US');
 const dur = (ms: number) => { const s = Math.max(0, Math.ceil(ms / 1000)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return h ? `${h}h ${m}m` : m ? `${m}m ${x}s` : `${x}s`; };
@@ -12,7 +13,8 @@ export function FarmGame({ id, label, onClose }: { id: string; label: string; on
   const [view, setView] = useState<FarmView | null>(null);
   const [skew, setSkew] = useState(0); // server now - client now
   const [now, setNow] = useState(Date.now());
-  const [seed, setSeed] = useState(CROPS[0].id);
+  const CROPS = id.startsWith('rf:') ? TROPICAL_CROPS : CITY_CROPS; // resort plantation plots grow tropical crops only
+  const [seed, setSeed] = useState(CROPS[0]!.id);
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

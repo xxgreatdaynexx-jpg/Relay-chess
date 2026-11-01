@@ -9,6 +9,7 @@ import { MinesLeaderboard, setMinesBoard } from './mines-board.js';
 import { getVault, playerKey } from './skins.js';
 import { guestName, lineOfSight, moveAllowance, MOVE_CARRY_MAX, normAngle, clampPitch, canStand, validateMove, eyeHeightOf, type Body } from '../shared/fps.js';
 import { CAVES, caveOf, type CaveId, BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, dayKey, isOre, payoutFor, stackKey, priceOf, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId, inExit, CARRY_GRACE_MS, weightOf } from '../shared/mines.js';
+import { isAtResort } from './travel.js';
 
 export const MINES_MIGRATION = [
   // Generic per-player stacks: item_type 'ore' | 'bar' | 'good' (Factory) — also the Market hook for stackables.
@@ -437,6 +438,7 @@ export function registerMines(io: Server, socket: Socket): void {
   socket.on('mines_join', (p: unknown, ack?: Ack) => {
     let m = me();
     const want = caveOf(body(p).cave).id;
+    if (want === 'coral' && !isAtResort(account())) return ack?.({ ok: false, error: 'The Coral Grotto is at Chud Resort. Fly there from Chud Hub International.' });
     if (m && m.cave !== want) {
       // Switching caves on the same socket (or a join that beat the old leave): move to the new cave's spawn.
       // Keeping the old miner would validate every step against the OTHER cave's walls (rubber-banding into

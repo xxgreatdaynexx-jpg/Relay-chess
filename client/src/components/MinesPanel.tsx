@@ -205,7 +205,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
       <div {...win.bar}>
         <span className="font-semibold">⛏️</span>
         <select className="mines-cave" aria-label="Choose mine" data-testid="mines-cave" value={cave} onChange={(e) => { if (isCave(e.target.value)) onCave(e.target.value); }}>
-          {CAVE_DEFS.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {CAVE_DEFS.filter((c) => c.id !== 'coral' || cave === 'coral').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         <span className="opacity-70">{online} mining · {focused ? 'controls on' : 'click to play'}</span>
         {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" title="Reset position" onClick={win.reset}>⟲</button>}

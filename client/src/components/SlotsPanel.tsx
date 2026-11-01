@@ -1,3 +1,4 @@
+import { useTrip } from '@/lib/travel';
 import { TopTab } from '@/components/TopTabs';
 import { useEffect, useRef, useState } from 'react';
 import { NamePrompt, OutOfChips } from '@/components/CasinoCommon';
@@ -7,7 +8,7 @@ import { emitCasino, useSavedName } from '@/lib/casino';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { playBallLand, playCardFlick, playRouletteSpin, playSolitaireWin } from '@/lib/sounds';
 import {
-  BUY_BONUS_LABEL, buyBonusPrice, MACHINE_IDS, MACHINES, PAYLINES, VS_BETS, VS_REELS, VS_ROWS,
+  BUY_BONUS_LABEL, buyBonusPrice, MACHINE_IDS, RESORT_MACHINE_IDS, ALL_MACHINE_IDS, isResortMachine, MACHINES, PAYLINES, VS_BETS, VS_REELS, VS_ROWS,
   type CoinValue, type Grid, type MachineId, type RoundResult, type SpinStep,
 } from '../../../shared/video-slots';
 
@@ -27,12 +28,14 @@ const cellKey = (r: number, w: number) => `${r}:${w}`;
 
 /** Count of feature-trigger symbols on the first `n` reels (anticipation check). */
 function triggerCount(m: MachineId, g: Grid, n: number): number {
-  const ids = m === 'dragon' ? ['crown', 'chest'] : m === 'goldrush' ? ['coin'] : [];
+  const e = MACHINES[m].engine; const kinds = e === 'dragon' ? ['scatter', 'bonus'] : e === 'goldrush' ? ['coin'] : [];
+  const ids = MACHINES[m].symbols.filter((s) => kinds.includes(s.kind)).map((s) => s.id);
   let best = 0;
   for (const id of ids) best = Math.max(best, g.slice(0, n).flat().filter((c) => c === id).length);
   return best;
 }
-const anticipateAt = (m: MachineId) => (m === 'goldrush' ? 4 : m === 'dragon' ? 2 : 99);
+const anticipateAt = (m: MachineId) => (MACHINES[m].engine === 'goldrush' ? 4 : MACHINES[m].engine === 'dragon' ? 2 : 99);
+const HERO: Record<MachineId, string> = { dragon: 'queen', warzone: 'tank', goldrush: 'seven', lagoon: 'r_tiki', yacht: 'r_yacht', pearl: 'r_mermaid' };
 
 /** Modern 5x3 video slots on casino chips. Server decides the whole round; this only animates the script. */
 export function SlotsPanel() {
@@ -40,9 +43,11 @@ export function SlotsPanel() {
   const win = useWindowDrag('slots', winRef);
   const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) === '1');
   const [name] = useSavedName();
+  const resort = useTrip().loc === 'resort';
+  useEffect(() => { if (machine && isResortMachine(machine) !== resort) setMachine(null); }, [resort]); // eslint-disable-line react-hooks/exhaustive-deps
   const [machine, setMachine] = useState<MachineId | null>(() => {
     const m = localStorage.getItem(MACHINE_KEY);
-    return m && (MACHINE_IDS as string[]).includes(m) ? (m as MachineId) : null;
+    return m && (ALL_MACHINE_IDS as string[]).includes(m) ? (m as MachineId) : null;
   });
   const [grid, setGrid] = useState<Grid>(() => randomGrid(machine ?? 'dragon'));
   const [spinning, setSpinning] = useState<boolean[]>(Array(VS_REELS).fill(false));
@@ -105,7 +110,7 @@ export function SlotsPanel() {
       setBlast(new Set(step.airstrike.map(([r, w]) => cellKey(r, w))));
       playBallLand();
       await wait(900);
-      setGrid((g) => g.map((reel, r) => reel.map((c, w) => (step.airstrike!.some(([a, b]) => a === r && b === w) ? 'star' : c))));
+      setGrid((g) => g.map((reel, r) => reel.map((c, w) => (step.airstrike!.some(([a, b]) => a === r && b === w) ? (MACHINES[m].symbols.find((x) => x.kind === 'wild')?.id ?? 'star') : c))));
       await wait(350);
       setBlast(new Set()); setBanner('');
     }
@@ -265,9 +270,10 @@ export function SlotsPanel() {
           {!name ? <NamePrompt /> : !machine || !cfg ? (
             <div className="vs-lobby" data-testid="vs-selector">
               <div className="vs-lobby-title">Choose a machine</div>
-              {MACHINE_IDS.map((id) => {
+              {resort && <div className="vs-resort-note" data-testid="vs-resort">🌴 Chud Resort exclusives</div>}
+              {(resort ? RESORT_MACHINE_IDS : MACHINE_IDS).map((id) => {
                 const c = MACHINES[id];
-                const hero = id === 'dragon' ? 'queen' : id === 'warzone' ? 'tank' : 'seven';
+                const hero = HERO[id];
                 return (
                   <button type="button" key={id} className={`vs-card vs-theme-${id}`} onClick={() => { setMachine(id); setGrid(randomGrid(id)); setMsg('Pick a bet and Spin.'); setLit(new Set()); }} data-testid={`vs-pick-${id}`}>
                     <span className="vs-card-art"><SlotSymbol id={hero} /></span>
