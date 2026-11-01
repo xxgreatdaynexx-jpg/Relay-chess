@@ -24,7 +24,7 @@ function plane(): THREE.Group {
 const disposeTree = (o: THREE.Object3D) => o.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh) { m.geometry.dispose(); (Array.isArray(m.material) ? m.material : [m.material]).forEach((x) => x.dispose()); } });
 
 /** Builds the venue grounds into `scene`; returns the per-frame animation step and a disposer for the planes. */
-export function buildVenues(scene: THREE.Scene, { mat, geo }: Mk): { step: (dt: number, time: number) => void; dispose: () => void } {
+export function buildVenues(scene: THREE.Scene, { mat, geo }: Mk): { step: (dt: number, time: number, cam?: THREE.Vector3) => void; dispose: () => void } {
   const grass = [mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c }), mat({ color: 0x3f9040, roughness: 1, emissive: 0x0d3412, emissiveIntensity: 0.6 }), mat({ color: 0x2a1c12 }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c })];
   const slab = (r: Rect) => { const m = new THREE.Mesh(geo(new THREE.BoxGeometry(r.x1 - r.x0, 3, r.z1 - r.z0)), grass); m.position.set((r.x0 + r.x1) / 2, -1.51, (r.z0 + r.z1) / 2); scene.add(m); };
   slab(AIRPORT); slab(RACETRACK);
@@ -60,7 +60,8 @@ export function buildVenues(scene: THREE.Scene, { mat, geo }: Mk): { step: (dt: 
   { const [x, z, a] = trackPoint(0); const black = mat({ color: 0x111111 }); for (let i = 0; i < 10; i++) for (let j = 0; j < 2; j++) flat(1, 1, (i + j) % 2 ? black : paint, 0, 0, 0.06).position.set(x + Math.sin(a) * (i - 4.5) + Math.cos(a) * (j - 0.5), 0.06, z - Math.cos(a) * (i - 4.5) + Math.sin(a) * (j - 0.5)); }
   const gateMat = mat({ color: 0xff7a1a, emissive: 0xff7a1a, emissiveIntensity: 0.6 * NEON }); const post = geo(new THREE.CylinderGeometry(0.2, 0.2, 3.2, 6));
   for (const [[ax, az], [bx, bz]] of GATES) for (const [x, z] of [[ax, az], [bx, bz]]) { const p = new THREE.Mesh(post, gateMat); p.position.set(x, 1.6, z); scene.add(p); }
-  { const [[ax, az], [bx, bz]] = GATES[0]; const ban = new THREE.Mesh(geo(new THREE.BoxGeometry(Math.hypot(bx - ax, bz - az), 0.8, 0.2)), mat({ color: 0x15171d, emissive: 0xffffff, emissiveIntensity: 0.08 })); ban.position.set((ax + bx) / 2, 3.2, (az + bz) / 2); ban.rotation.y = -Math.atan2(bz - az, bx - ax); scene.add(ban); }
+  let ban: THREE.Mesh;
+  { const [[ax, az], [bx, bz]] = GATES[0]; ban = new THREE.Mesh(geo(new THREE.BoxGeometry(Math.hypot(bx - ax, bz - az), 0.8, 0.2)), mat({ color: 0x15171d, emissive: 0xffffff, emissiveIntensity: 0.08 })); ban.position.set((ax + bx) / 2, 5.5, (az + bz) / 2); ban.rotation.y = -Math.atan2(bz - az, bx - ax); scene.add(ban); }
 
   // ---- Planes: a closed circuit around the runway; they roll along it, rotate, climb out, loop, descend and land ----
   const gz0 = RUNWAY.z1 - 6, gz1 = RUNWAY.z0 + 6; // take off heading north (-z)
@@ -71,7 +72,11 @@ export function buildVenues(scene: THREE.Scene, { mat, geo }: Mk): { step: (dt: 
   ], true, 'centripetal');
   const planes = [plane(), plane()]; planes.forEach((p) => scene.add(p));
   const ts = [0, 0.5]; const tmp = new THREE.Vector3(); const ahead = new THREE.Vector3();
-  const step = (dt: number, time: number) => {
+  // Start banner: fades/shrinks away when the camera comes close, so it never blocks the chase view on the grid.
+  let banK = 1;
+  const step = (dt: number, time: number, cam?: THREE.Vector3) => {
+    if (cam) { const d = Math.hypot(cam.x - ban.position.x, cam.z - ban.position.z); const want = d < 30 ? 0 : 1; banK += (want - banK) * Math.min(1, dt * 3);
+      ban.visible = banK > 0.03; ban.scale.set(1, Math.max(0.03, banK), 1); }
     planes.forEach((p, i) => {
       ts[i] = (ts[i] + dt / 46) % 1; const u = ts[i]; circuit.getPointAt(u, tmp); circuit.getPointAt((u + 0.004) % 1, ahead);
       p.position.copy(tmp); p.lookAt(ahead); p.rotateY(-Math.PI / 2); // model's nose is +x

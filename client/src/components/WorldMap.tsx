@@ -238,7 +238,7 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
       {driving && <>
         <div className="world-speedo" data-testid="world-speedo">{kmh} <small>km/h</small><em>WASD / arrows · E enter · Esc park</em></div>
         {(lap.t0 != null || lap.text) && <div className="world-lap" data-testid="world-lap">{lap.t0 != null && <b>⏱ {fmtLap(Date.now() - lap.t0)} <small>gate {lap.gate}/3</small></b>}{lap.text && <span>{lap.text}</span>}</div>}
-        {nearSpot && <button type="button" className="world-enter" onClick={() => go(nearSpot.id)} data-testid="world-enter">{nearSpot.icon} Enter {nearSpot.label} <kbd>E</kbd></button>}
+        {nearSpot && <button type="button" className="world-enter" onClick={() => go(nearSpot.id)} data-testid="world-enter">{nearSpot.id === 'airport' ? <>🛫 Fly from the Airport</> : <>{nearSpot.icon} Enter {nearSpot.label}</>} <kbd>E</kbd></button>}
         <div className="world-pad" data-testid="world-pad"><div>{pad('left', '◀')}{pad('right', '▶')}</div><div>{pad('down', '▼')}{pad('up', '▲')}</div></div>
       </>}
       {venue && <Suspense fallback={<div className="world-loading">Opening…</div>}><Venues kind={venue} me={me} driving={driving} onClose={() => setVenue(null)} onFly={async (to) => driveRef.current ? driveRef.current.fly(to) : { ok: false, error: 'Switch to the 3D city to fly.' }} onDriveFrom={driveFrom} /></Suspense>}

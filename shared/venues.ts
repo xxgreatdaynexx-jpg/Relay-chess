@@ -73,8 +73,8 @@ export const VENUE_BOUNDS = { x0: Math.min(AIRPORT.x0, RACETRACK.x0), x1: Math.m
 // ---- Fast travel ----
 export type FlyDest = 'racetrack' | 'downtown' | 'airport';
 export const FLY_DEST: Record<FlyDest, { label: string; x: number; z: number; a: number }> = {
-  airport: { label: 'Airport', x: -128, z: 66, a: Math.PI },
-  racetrack: { label: 'Racetrack', x: TRACK.cx - 12, z: TRACK.cz + TRACK.R, a: 0 },
+  airport: { label: 'Airport', x: -131, z: 66, a: Math.PI },
+  racetrack: { label: 'the Speedway', x: TRACK.cx - 12, z: TRACK.cz + TRACK.R, a: 0 },
   downtown: { label: 'Downtown', x: 0, z: 10, a: Math.PI / 2 },
 };
 export const FLY_FROM_R = 40; // must be this close to the terminal to take off

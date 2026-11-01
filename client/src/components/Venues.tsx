@@ -21,7 +21,7 @@ export function Venues({ kind, me, driving, onClose, onFly, onDriveFrom }: {
   useEffect(() => { if (kind !== 'racetrack') return; load(); const t = window.setInterval(load, 15_000); return () => window.clearInterval(t); }, [kind]);
   const enter = async () => { setBusy(true); setMsg(null); const r = await request('race_enter') as { ok: boolean; error?: string; fee?: number }; setBusy(false); setMsg(r.ok ? `You're in! Paid 🪙 ${chips(r.fee ?? 0)}. Your fastest lap today counts.` : r.error ?? 'Failed.'); load(); };
   const fly = async (to: FlyDest) => { setBusy(true); setMsg(null); const r = await onFly(to); setBusy(false); if (r.ok) onClose(); else setMsg(r.error ?? 'Could not fly.'); };
-  const driveFrom = async (from: string) => { setMsg(null); if (!(await onDriveFrom(from))) setMsg('Buy a car at the Car Dealership first.'); else onClose(); };
+  const driveFrom = async (from: string) => { setMsg(null); if (!(await onDriveFrom(from))) setMsg('Buy a car at the Car Dealership first.'); else if (from !== 'airport') onClose(); }; // at the airport, stay open on the Fly buttons
   return (
     <div className="world-deed world-venue" data-testid={`venue-${kind}`}>
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>

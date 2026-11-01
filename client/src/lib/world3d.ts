@@ -562,7 +562,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     if (fly) { fly.t = Math.min(1, fly.t + dt / 0.75); const e = 1 - Math.pow(1 - fly.t, 3); camera.position.lerpVectors(fly.from, fly.to, e); controls.target.lerpVectors(fly.tf, fly.tt, e); camera.lookAt(controls.target);
       if (fly.t >= 1) { const id = fly.id; fly = null; controls.enabled = true; h.onPick(id); } } // the city stays mounted now (0dc4f99): hand zoom/orbit back
     else if (!tick?.(dt)) { panStep(dt); controls.update(); clampPan(); }
-    waterMat.uniforms.uTime.value = time; venues.step(dt, time);
+    waterMat.uniforms.uTime.value = time; venues.step(dt, time, camera.position);
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
     for (const l of lms) { const k = labelScale(camera.position.distanceTo(l.sign.getWorldPosition(tmpV)), portrait) * (l.sign.userData.hover ? 1.2 : 1); l.sign.scale.set(k, k / 4, 1); }
     if (composer) composer.render(); else renderer.render(scene, camera);

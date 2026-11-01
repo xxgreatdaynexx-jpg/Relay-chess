@@ -9,7 +9,7 @@ import type { World } from './world3d';
 import { buildCar } from './carModels';
 import { socket } from './net';
 import { PLATE, shoreZ, roadClearance, obbHit, ROADS, type OBB } from './worldLayout';
-import { FLY_DEST, drivable, onVenueRoad, trackPoint, type LapEvent } from '../../../shared/venues';
+import { FLY_DEST, nearAirport, drivable, onVenueRoad, trackPoint, type LapEvent } from '../../../shared/venues';
 import { CAR_BY_ID, carPhysics, DRIVE_HZ, DRIVE_MAX_VISIBLE, type CarModel } from '../../../shared/cars';
 
 export type DriveInput = { up: boolean; down: boolean; left: boolean; right: boolean };
@@ -62,6 +62,7 @@ export function createDrive(world: World, h: DriveHandlers) {
     m.obj.position.set(m.x, 0, m.z); m.obj.rotation.y = -m.a;
     // Nearby landmark → "Enter" prompt.
     let nb: string | null = null; for (const [id, o] of Object.entries(lm)) if (obbHit(o, m.x, m.z, 5)) { nb = id; break; }
+    if (!nb && nearAirport(m.x, m.z)) nb = 'airport'; // the whole airport (and FLY_FROM_R round the terminal) offers Fly
     if (nb !== near) { near = nb; h.onNear(nb); }
     // Chase camera.
     const back = 9 + Math.abs(m.v) * 0.08; camPos.set(m.x - Math.cos(m.a) * back, 4.5 + Math.abs(m.v) * 0.03, m.z - Math.sin(m.a) * back);

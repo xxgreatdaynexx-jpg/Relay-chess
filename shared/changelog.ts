@@ -6,7 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-01T12:00:00-06:00', title: 'Countryside tidy-up, and country homes for sale', bullets: [
+  { commit: '', at: '2026-11-01T12:40:00-06:00', title: 'Easier flying from the Airport', bullets: [
+    'Drive anywhere on the airport grounds and a “Fly from the Airport” button appears at the bottom of the screen. Click it or press E to pick where to fly.',
+    '“Get your car at the terminal” now leaves the Fly menu open, so you can take off right away to downtown or the Speedway.',
+    'The Speedway start banner now fades away when you are on the grid, so it no longer blocks your view.',
+  ] },
+  { commit: 'cea0064', at: '2026-11-01T12:00:00-06:00', title: 'Countryside tidy-up, and country homes for sale', bullets: [
     'The countryside now matches the city: the same grass, asphalt roads with centre lines, trees and street lamps, and fields with crop rows like the farm.',
     'The lake has been fixed. It now has a proper shoreline and the same water as the river.',
     'Country homes are for sale: 63 detached homes in the hamlet and beside the fields, priced and taxed like city homes. You can also buy the 3 gas stations and 3 industrial warehouses. Click one on the map to see its deed.',
