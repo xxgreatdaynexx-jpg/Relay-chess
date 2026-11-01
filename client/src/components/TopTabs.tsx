@@ -1,3 +1,4 @@
+import { swallowOutside } from '../lib/outsideSwallow';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -96,6 +97,11 @@ export function TopTabs() {
     document.addEventListener('keydown', esc);
     return () => { document.removeEventListener('click', close); document.removeEventListener('keydown', esc); };
   }, []);
+  useEffect(() => {
+    // QA r11: an outside press while More is open only closes the menu; it never reaches the page underneath.
+    if (!moreOpen) return;
+    return swallowOutside(document, (t) => Boolean(moreRef.current && t instanceof Node && moreRef.current.contains(t)), () => setMoreOpen(false));
+  }, [moreOpen]);
   const pick = (id: string) => {
     setMoreOpen(false);
     document.getElementById(`top-tab-${id}`)?.querySelector<HTMLElement>('button')?.click();

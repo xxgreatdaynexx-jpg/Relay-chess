@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T14:55:00-06:00', title: 'More menu closes cleanly', bullets: [
+    'Clicking outside the top bar\'s More menu now only closes it. It no longer also clicks whatever was underneath.',
+  ] },
   { commit: '', at: '2026-11-01T14:50:00-06:00', title: 'Wallet clicks, order spinners and no stuck Mines window', bullets: [
     'Clicking outside the Wallet now only closes it. It no longer also opens the Stock Exchange, Chess Club or whatever was behind it.',
     'Buying or selling stocks, funds, shorts and options shows a spinner on the button while the order goes through, and the button can\'t be clicked twice.',
