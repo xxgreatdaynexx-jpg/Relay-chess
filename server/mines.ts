@@ -71,6 +71,8 @@ export class PgMineStore implements MineStore {
 export class MineError extends Error {}
 /** Debounce for carried-haul saves, and how long a haul restored after a restart waits for its owner. */
 export const CARRY_SAVE_MS = 1500;
+/** Shown while the mines DB is configured but not connected: never serve (or overwrite) storage/factories from empty memory. */
+export const MINES_OFFLINE_MSG = 'Mines storage is reconnecting. Your factory and storage are safe, try again in a minute.';
 export const RESTART_GRACE_MS = 10 * 60_000;
 
 interface Miner extends Body { id: string; name: string; account: string | null; a: number; p: number; lastMove: number; carry: number; lastHit: number; hits: number[]; sprint: boolean; carried: Map<string, Stack>; cave: CaveId }
@@ -96,6 +98,8 @@ export class MinesWorld {
   /** Called before storage is read for selling/quotes so a running factory has caught up. */
   beforeStorage: ((account: string) => void) | null = null;
   store: MineStore | null = null;
+  /** True while a database is configured but not attached: signed-in storage and factory actions refuse (fail closed). */
+  offline = false;
   private chain: Promise<void> = Promise.resolve();
   private saleSeq = 0;
 
@@ -107,9 +111,9 @@ export class MinesWorld {
       // Hauls carried when the last server stopped: restored on the player's next join (restart grace).
       for (const c of carried ?? []) if (c.stacks.length) { this.grace.set(c.key, { stacks: c.stacks.map((x) => ({ ...x })), until: Date.now() + RESTART_GRACE_MS }); this.names.set(c.key, c.name); }
       for (const f of factories ?? []) this.factories.set(f.key, { level: f.level, builtAt: f.builtAt, jobs: f.jobs });
-      for (const i of items) { this.pack(i.key).set(stackKey(i), { type: i.type, id: i.id, qty: i.qty }); this.names.set(i.key, i.name); }
+      for (const i of items) { this.rawPack(i.key).set(stackKey(i), { type: i.type, id: i.id, qty: i.qty }); this.names.set(i.key, i.name); }
       for (const d of daily) { const cur = this.daily.get(d.key); if (!cur || cur.day < d.day) this.daily.set(d.key, d); }
-      this.store = store; return true;
+      this.store = store; this.offline = false; return true;
     } catch (e) { console.error('[mines] postgres unavailable, mines in memory only:', (e as Error).message); return false; }
   }
   async flush() { for (const k of [...this.carryTimers.keys()]) this.saveCarried(k); await this.chain; }
@@ -136,12 +140,15 @@ export class MinesWorld {
   packOf(account: string) { this.names.set(playerKey(account), account.trim()); return this.pack(playerKey(account)); }
   /** Persist pack (+ factory level) plus extra rows in one queued transaction. */
   savePack(account: string, extra: Array<{ sql: string; args: unknown[] }>, withFactory = false): Promise<void> { this.persist({ account }, undefined, withFactory, extra); return this.chain; }
-  private pack(k: string) { let p = this.packs.get(k); if (!p) { p = new Map(); this.packs.set(k, p); } return p; }
+  /** Throws while offline for any signed-in key (guests' in-session packs are memory-only anyway). */
+  guardOnline(k: string) { if (this.offline && !k.startsWith('guest:')) throw new MineError(MINES_OFFLINE_MSG); }
+  private pack(k: string) { this.guardOnline(k); return this.rawPack(k); }
+  private rawPack(k: string) { let p = this.packs.get(k); if (!p) { p = new Map(); this.packs.set(k, p); } return p; }
   packKey(m: Miner) { return m.account ? playerKey(m.account) : `guest:${m.id}`; }
   /** Banked storage (mine_items) of the miner on this socket. */
   backpack(id: string): Stack[] { const m = this.miners.get(id); if (!m) return []; return [...this.pack(this.packKey(m)).values()].filter((s) => s.qty > 0); }
   /** Banked storage by account name (Factory tab: no need to be in the mine). */
-  storage(account: string): Stack[] { return [...(this.packs.get(playerKey(account))?.values() ?? [])].filter((s) => s.qty > 0); }
+  storage(account: string): Stack[] { this.guardOnline(playerKey(account)); return [...(this.packs.get(playerKey(account))?.values() ?? [])].filter((s) => s.qty > 0); }
   /** What the miner is carrying right now (in-session, not banked). */
   carried(id: string): Stack[] { const m = this.miners.get(id); return m ? [...m.carried.values()].filter((s) => s.qty > 0) : []; }
   load(id: string): number { return this.carried(id).reduce((t, s) => t + weightOf(s), 0); }
@@ -172,8 +179,8 @@ export class MinesWorld {
     const m = this.miners.get(id); if (!m) throw new MineError('Join the mine first.');
     if (!inExit(m.x, m.y)) throw new MineError('Walk to the EXIT lift to bank your haul.');
     const banked = this.carried(id); if (!banked.length) return { banked: [], worth: 0 };
-    m.carried.clear();
     const p = this.pack(this.packKey(m));
+    m.carried.clear();
     for (const s of banked) { const k = stackKey(s); const cur = p.get(k); if (cur) cur.qty += s.qty; else p.set(k, { ...s }); }
     if (m.account) { const k = playerKey(m.account); const t = this.carryTimers.get(k); if (t) { clearTimeout(t); this.carryTimers.delete(k); } }
     // Banked stacks and the cleared carry row commit in one transaction: no duplicate or lost haul across a restart.
@@ -279,6 +286,7 @@ export class MinesWorld {
   private signedIn(account: string | null) { if (!account) throw new MineError('Sign in to build a factory.'); return { account }; }
   factoryView(account: string | null, now: number) {
     const m = account ? { account } : null; if (!m) return null;
+    this.guardOnline(playerKey(m.account));
     const f = this.factories.get(playerKey(m.account)); if (!f) return { level: 0, jobs: [], now };
     return { level: f.level, jobs: f.jobs.map((j) => ({ ...j, done: now >= j.doneAt })), now };
   }
@@ -377,7 +385,25 @@ export function resetMines() { world = new MinesWorld(); return world; }
 export async function initMinesStorage(): Promise<void> {
   const url = databaseUrl(); if (!url) { console.warn('[mines] no DATABASE_URL; mines in memory only'); return; }
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
-  if (await world.attach(new PgMineStore(pool))) { console.log('[mines] connected to postgres'); setMinesBoard(new MinesLeaderboard(pool)); }
+  await attachWithRetry(world, () => new PgMineStore(pool), () => setMinesBoard(new MinesLeaderboard(pool)));
+}
+
+/**
+ * Neon cold starts often time out the first connect. A failed attach used to leave the instance running mines from
+ * empty memory: every factory and banked stack looked deleted. Now: retry, and while still down stay `offline`
+ * (signed-in storage/factory actions refuse) and keep retrying in the background until the real rows are loaded.
+ */
+export async function attachWithRetry(w: MinesWorld, mk: () => MineStore, onOk: () => void = () => {}, opts: { tries?: number; delayMs?: number; retryMs?: number } = {}): Promise<boolean> {
+  const tries = opts.tries ?? 4; const delay = opts.delayMs ?? 2000; const retryMs = opts.retryMs ?? 15_000;
+  w.offline = true;
+  const ok = () => { console.log('[mines] connected to postgres'); onOk(); return true; };
+  for (let i = 0; i < tries; i++) {
+    if (await w.attach(mk())) return ok();
+    if (i < tries - 1) await new Promise((r) => setTimeout(r, delay * 2 ** i));
+  }
+  console.error('[mines] still offline: storage and factories refuse until postgres connects (retrying)');
+  const t = setInterval(() => { void w.attach(mk()).then((a) => { if (a) { clearInterval(t); ok(); } }); }, retryMs); t.unref?.();
+  return false;
 }
 
 const roomOf = (c: CaveId) => `mines:${c}`;
@@ -427,7 +453,8 @@ export function registerMines(io: Server, socket: Socket): void {
     try { const r = world.exit(socket.id); ack?.({ ok: true, ...r, ...packMsg() }); }
     catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
   });
-  socket.on('mines_storage', (_p: unknown, ack?: Ack) => ack?.({ ok: true, ...storeMsg() }));
+  const safe = (fn: () => Record<string, unknown>) => (_p: unknown, ack?: Ack) => { try { ack?.({ ok: true, ...fn() }); } catch (e) { ack?.({ ok: false, offline: world.offline, error: (e as Error).message }); } };
+  socket.on('mines_storage', safe(() => storeMsg()));
   socket.on('mines_sell', (p: unknown, ack?: Ack) => {
     try { const r = world.sell(account(), Date.now(), body(p).ore); ack?.({ ok: true, ...r, ...storeMsg() }); }
     catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
@@ -437,9 +464,9 @@ export function registerMines(io: Server, socket: Socket): void {
     try { const r = fn(); ack?.({ ok: true, result: r, ...fact(), ...storeMsg() }); }
     catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
   };
-  socket.on('mines_factory', (_p: unknown, ack?: Ack) => ack?.({ ok: true, ...fact(), ...storeMsg() }));
+  socket.on('mines_factory', safe(() => ({ ...fact(), ...storeMsg() })));
   // Retired (Factory v2): stale clients must not start, collect or upgrade old timed jobs. Opening v2 migrates any old jobs first.
-  const gone = (_p: unknown, ack?: Ack) => { const a = account(); if (a) world.beforeStorage?.(a); ack?.({ ok: false, gone: true, status: 410, error: 'The old factory was replaced. Open the Factory tab to build with machines and belts.', ...storeMsg() }); };
+  const gone = (_p: unknown, ack?: Ack) => { const a = account(); if (world.offline) return ack?.({ ok: false, offline: true, error: MINES_OFFLINE_MSG }); if (a) world.beforeStorage?.(a); ack?.({ ok: false, gone: true, status: 410, error: 'The old factory was replaced. Open the Factory tab to build with machines and belts.', ...storeMsg() }); };
   socket.on('mines_factory_upgrade', gone);
   socket.on('mines_collect', gone);
   socket.on('mines_craft', gone);

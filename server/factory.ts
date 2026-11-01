@@ -1,7 +1,7 @@
 /** Factory v2 (grid builder): server-authoritative sim per player, catch-up on load, persisted with the banked pack. */
 import { px } from './price-index.js';
 import type { Server, Socket } from 'socket.io';
-import { getMines, MineError } from './mines.js';
+import { getMines, MineError, MINES_OFFLINE_MSG } from './mines.js';
 import { getBank } from './casino-store.js';
 import { playerKey } from './skins.js';
 import { stackKey, recipeById, type Stack, type ItemType } from '../shared/mines.js';
@@ -32,6 +32,8 @@ export class FactoryWorld {
    */
   get(account: string | null, now: number, owner = true): FState | null {
     if (!account) return null;
+    // Never build a fresh state (and later save it over the real row) while the stored rows are not loaded.
+    if (getMines().offline) throw new MineError(MINES_OFFLINE_MSG);
     const k = playerKey(account); const lv = this.level(account);
     let s = this.states.get(k);
     if (!s) {
@@ -91,6 +93,7 @@ export class FactoryWorld {
   /** Build (level 1) or expand the building. Same chips as old levels 1..3. */
   expand(account: string | null, now: number) {
     if (!account) throw new MineError('Sign in to build a factory.');
+    if (getMines().offline) throw new MineError(MINES_OFFLINE_MSG);
     const k = playerKey(account); const mines = getMines(); const f = mines.factories.get(k);
     const next = FLOOR_LEVELS[f ? f.level : 0]; if (!next) throw new MineError('Your building is already as big as it gets.');
     const cost = px(next.cost);
@@ -182,13 +185,14 @@ type Ack = (r: Record<string, unknown>) => void;
 const body = (p: unknown) => (p && typeof p === 'object' ? (p as Record<string, unknown>) : {});
 export function registerFactory(_io: Server, socket: Socket): void {
   const account = () => (socket.data.account as { name?: string } | undefined)?.name ?? null;
-  const view = () => {
+  const view = () => { try { return view0(); } catch (e) { return { guest: !account(), now: Date.now(), offline: getMines().offline, error: (e as Error).message /* no state/level/storage: the client keeps what it shows and never offers 'build' */ }; } };
+  const view0 = () => {
     const a = account(); const now = Date.now(); const s = world.get(a, now);
     const storage: Stack[] = a ? getMines().storage(a) : [];
     return { state: s, level: a ? getMines().factories.get(playerKey(a))?.level ?? 0 : 0, storage, guest: !a, now };
   };
   const op = (fn: (b: Record<string, unknown>) => unknown) => (p: unknown, ack?: Ack) => {
-    try { const r = fn(body(p)); ack?.({ ok: true, result: r, ...view() }); }
+    try { if (getMines().offline) throw new MineError(MINES_OFFLINE_MSG); const r = fn(body(p)); ack?.({ ok: true, result: r, ...view() }); }
     catch (e) { ack?.({ ok: false, error: e instanceof MineError ? e.message : 'Factory error.', ...view() }); if (!(e instanceof MineError)) console.error('[factory]', e); }
   };
   socket.on('fac_state', op(() => null));
