@@ -4,9 +4,9 @@
  * buyable). Deterministic so every client draws the same map. Keeps clear of the plate, the farm district, the mines
  * and the spaces RESERVED_VENUES holds for the Airport and Speedway.
  */
-import { PLATE, MINE_SITES, MINE_APRON, OUTSKIRTS, RESERVED_VENUES, type House } from './worldLayout.js';
+import { PLATE, MINE_SITES, MINE_APRON, OUTSKIRTS, RESERVED_VENUES, ROADS, type House } from './worldLayout.js';
 import { housingType } from './housing.js';
-import { FARM_X0, FARM_X1, FARM_Z0, FARM_Z1 } from './farm.js';
+import { FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W } from './farm.js';
 import { AIRPORT_ROADS, RACETRACK_ROADS } from './venues.js';
 const VENUE_ROADS = [...AIRPORT_ROADS, ...RACETRACK_ROADS];
 
@@ -15,14 +15,26 @@ export interface Box2 { x: number; z: number; w: number; d: number }
 export interface OutBuilding extends Box2 { h: number; kind: 'farmhouse' | 'barn' | 'warehouse' | 'gas' | 'shed'; rot: number }
 export interface OutField extends Box2 { crop: number }
 export const RURAL_ROAD_W = 4.5;
-/** Rural roads: straight runs, square corners (each is [from, to]). */
+const NZ = -PLATE - 8, WX = -PLATE - 5, EX = 196, SZ = 150; // the ring of rural roads around the plate + farm
+/**
+ * Rural roads: straight runs, square corners (each is [from, to]). A ring road round the plate and the farm (north road
+ * at NZ, west road at WX, east road at EX, south "far shore" road at SZ); every city road that runs off the plate edge
+ * gets a short stub on to the west road (west side) or the farm's west lane (east side); the speedway access and the
+ * airport access are venue roads (shared/venues.ts) that the ring meets at T junctions. Every end is a junction or a
+ * destination (an apron, the industrial yard); see tests/road-network.test.ts.
+ */
 export const RURAL_ROADS: Array<[P, P]> = [
-  // Frostbite Caverns east along the north, then down the east edge past the farm to Magma Depths
-  [[63, -148], [196, -148]], [[196, -148], [196, 96]], [[196, 96], [167, 96]],
-  // The Mine south between the plate and the airport, along the far shore to Magma Depths
-  [[-131, -30], [-121, -30]], [[-121, -30], [-121, 150]], [[-121, 150], [150, 150]], [[150, 150], [150, 113]],
-  // stubs: The Mine west to the industrial yard; access to the Speedway grounds from The Mine and from Frostbite
-  [[-165, -30], [-176, -30]], [[-121, -30], [-121, -124]], [[29, -148], [-28, -148]],
+  [[-80, NZ], [WX, NZ]], [[0, NZ], [EX, NZ]], // north road (the speedway access road is the stretch between x=-80 and 0)
+  [[EX, NZ], [EX, SZ]], [[WX, NZ], [WX, SZ]], [[WX, SZ], [EX, SZ]], // east, west and south roads
+  [[128, NZ], [128, -150.5]], // north road down to the Fishing Dock's gravel path (DOCK.path)
+  [[WX, -54], [-181, -54]], // industrial yard west of The Mine (between its warehouses)
+  [[EX, 96], [MINE_SITES['mine-magma'].x + MINE_APRON / 2, 96]], // paved spur from the east road to Magma Depths' apron
+  // city roads that run off the plate's east / west edge continue to the farm's west lane / the west road
+  ...ROADS.flatMap((r) => (r.closed || !r.ends ? [] : r.ends.flatMap((e, i): Array<[P, P]> => {
+    const p = i === 0 ? r.pts[0] : r.pts[r.pts.length - 1]; if (e !== 'edge' || Math.abs(Math.abs(p[0]) - PLATE) > 0.5) return [];
+    const z = Math.round(p[1] * 10) / 10; if (AIRPORT_ROADS.some(([a]) => Math.hypot(a[0] - p[0], a[1] - z) < 3)) return []; // the airport road continues shore-w
+    return [[[Math.sign(p[0]) * PLATE, z], [p[0] > 0 ? FARM_LANES[0][0][0] : WX, z]]];
+  }))),
 ];
 export const LAKE = { x: 128, z: -187, rx: 30, rz: 16 };
 /** Shore radius factor at angle a (0..1 of rx/rz): a few low, smooth lobes and a cove by the dock (north shore, +z). */
@@ -48,6 +60,7 @@ export function keepOut(x: number, z: number, m = 0): boolean {
     const pts: P[] = [...s.track, [s.x, s.z]]; for (let i = 1; i < pts.length; i++) if (segD(x, z, pts[i - 1], pts[i]) < 3.5 + m) return true;
   }
   for (const [a, b] of RURAL_ROADS) if (segD(x, z, a, b) < RURAL_ROAD_W / 2 + 1.5 + m) return true;
+  for (const ln of FARM_LANES) if (segD(x, z, ln[0], ln[ln.length - 1]) < FARM_LANE_W / 2 + 1.5 + m) return true;
   for (const [a, b, w] of VENUE_ROADS) if (segD(x, z, a, b) < w / 2 + 1.5 + m) return true; // Airport / Speedway access roads (shared/venues.ts)
   if (inLake(x, z, 4 + m)) return true; // water + a clean grass/sand bank all round
   if (inR(DOCK_BOX, x, z, 1 + m)) return true;
@@ -104,7 +117,7 @@ export function outskirts(): Outskirts {
     if (!byDock(x, z) && clear(x, z) && !inLake(x, z, 5)) trees.push([x, z, 0.9 + r() * 0.8]); }
   // Road lamps every 18 units, alternating sides.
   const lamps: P[] = []; for (const [a, b] of RURAL_ROADS) { const L = Math.hypot(b[0] - a[0], b[1] - a[1]); const ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L;
-    for (let s = 9, k = 0; s < L; s += 18, k++) { const o = (k % 2 ? 1 : -1) * (RURAL_ROAD_W / 2 + 0.8); const lx = a[0] + ux * s - uz * o, lz = a[1] + uz * s + ux * o; if (!VENUE_ROADS.some(([p, q, w]) => segD(lx, lz, p, q) < w / 2 + 0.6)) lamps.push([lx, lz]); } }
+    for (let s = 9, k = 0; s < L; s += 18, k++) { const o = (k % 2 ? 1 : -1) * (RURAL_ROAD_W / 2 + 0.8); const lx = a[0] + ux * s - uz * o, lz = a[1] + uz * s + ux * o; if (!Object.values(RESERVED_VENUES).some((r) => lx >= r.x0 && lx <= r.x1 && lz >= r.z0 && lz <= r.z1) && !VENUE_ROADS.some(([p, q, w]) => segD(lx, lz, p, q) < w / 2 + 0.6)) lamps.push([lx, lz]); } }
   cache = { lake, buildings, fields, trees, rocks, hills, lamps, tanks, pumps }; return cache;
 }
 

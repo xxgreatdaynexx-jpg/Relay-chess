@@ -10,6 +10,7 @@ import { buildVenues } from './worldVenues';
 import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN, MINE_SITES, MINE_APRON, OUTSKIRTS } from './worldLayout';
 import { riverOutline, islandOutline, riverDecor, edgeDist, ISLAND } from '../../../shared/riverLake';
 import { outskirts, countryHomes, countryBusinesses, businessType, lakeShape, RURAL_ROADS, RURAL_ROAD_W, LAKE, DOCK } from '../../../shared/outskirts';
+import { AIRPORT_ROADS, RACETRACK_ROADS, TRACK } from '../../../shared/venues';
 
 import { WORLD_SPOTS } from './worldSpots';
 import { buildCar } from './carModels';
@@ -427,13 +428,13 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   for (const site of Object.values(MINE_SITES)) {
     const top = site.cave === 'frost' ? 0xdfeef7 : site.cave === 'magma' ? 0x3a2a24 : 0x5e5040;
     const side = mat({ color: 0x2a2018 });
-    const apron = new THREE.Mesh(geo(new THREE.BoxGeometry(MINE_APRON, 3, MINE_APRON)), [side, side, mat({ color: top, roughness: 1, flatShading: true, emissive: site.cave === 'magma' ? 0x5a1a08 : site.cave === 'frost' ? 0x2a3a4a : 0x3a2c1c, emissiveIntensity: 0.7 }), side, side, side]);
+    const apron = new THREE.Mesh(geo(new THREE.BoxGeometry(MINE_APRON, 3, MINE_APRON)), [side, side, mat({ color: top, roughness: 1, flatShading: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, emissive: site.cave === 'magma' ? 0x5a1a08 : site.cave === 'frost' ? 0x2a3a4a : 0x3a2c1c, emissiveIntensity: 0.7 }), side, side, side]);
     { const fl = new THREE.PointLight(site.cave === 'frost' ? 0xbfe4ff : site.cave === 'magma' ? 0xff8a40 : 0xffc880, 60, 46, 1.2); fl.position.set(site.x, 14, site.z); scene.add(fl); }
-    apron.position.set(site.x, -1.51, site.z); scene.add(apron);
-    const dirt = mat({ color: site.cave === 'frost' ? 0x9aa8b4 : 0x6a5038, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    apron.position.set(site.x, -1.5, site.z); scene.add(apron); // top flush at y=0 (grass strips -0.03, haul dirt 0.03, roads 0.08)
+    const dirt = mat({ color: site.cave === 'frost' ? 0x9aa8b4 : 0x6a5038, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
     const pts = [...site.track, [site.x, site.z] as [number, number]];
     for (let i = 1; i < pts.length; i++) { const [ax, az] = pts[i - 1], [bx, bz] = pts[i]; const L = Math.hypot(bx - ax, bz - az);
-      const seg = new THREE.Mesh(geo(new THREE.BoxGeometry(3.6, 3.04, L + 3.6)), dirt); seg.position.set((ax + bx) / 2, -1.5, (az + bz) / 2); seg.rotation.y = Math.atan2(bx - ax, bz - az); scene.add(seg); }
+      const seg = new THREE.Mesh(geo(new THREE.BoxGeometry(3.6, 0.06, L + 3.6)), dirt); seg.position.set((ax + bx) / 2, 0, (az + bz) / 2); seg.rotation.y = Math.atan2(bx - ax, bz - az); scene.add(seg); }
   }
   // Countryside (shared/outskirts.ts), drawn with the city's own materials: plate grass, asphalt + dashes, city trees,
   // streetlight poles + glow, river water. Country homes are city 'house' instances above (buyable); gas stations and
@@ -449,8 +450,19 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const grass = mat({ color: 0x3f9a45, roughness: 1, emissive: 0x0f3a14, emissiveIntensity: 0.6 }); const dirtSide = mat({ color: 0x4a3322 });
     for (const [a0, b0, e, f] of strips) { const m = new THREE.Mesh(geo(new THREE.BoxGeometry(b0 - a0, 3, f - e)), [dirtSide, dirtSide, grass, dirtSide, dirtSide, dirtSide]); m.position.set((a0 + b0) / 2, -1.53, (e + f) / 2); scene.add(m); }
     // rural roads: city asphalt at the city road height, centre dashes
-    inst(unitBox, roadMat, RURAL_ROADS.length, (i) => { const [a, b] = RURAL_ROADS[i]; const L = Math.hypot(b[0] - a[0], b[1] - a[1]); d.position.set((a[0] + b[0]) / 2, ROAD_Y - 0.01, (a[1] + b[1]) / 2); d.rotation.y = Math.atan2(b[0] - a[0], b[1] - a[1]); d.scale.set(RURAL_ROAD_W, 0.02, L + RURAL_ROAD_W); })!.renderOrder = 1;
-    const rd: Array<[number, number, number]> = []; for (const [a, b] of RURAL_ROADS) { const L = Math.hypot(b[0] - a[0], b[1] - a[1]); for (let t = 4; t < L - 3; t += 4) rd.push([a[0] + ((b[0] - a[0]) * t) / L, a[1] + ((b[1] - a[1]) * t) / L, Math.atan2(b[1] - a[1], b[0] - a[0])]); }
+    // Rural + venue access roads: one asphalt (city roadMat, top flush with city roads), square-cut ends that extend
+    // half a width so corners/T's close; an end on the speedway's edge is not extended (no road over the track).
+    const allRoads: Array<[[number, number], [number, number], number]> = [...RURAL_ROADS.map(([a, b]) => [a, b, RURAL_ROAD_W] as [[number, number], [number, number], number]), ...AIRPORT_ROADS, ...RACETRACK_ROADS];
+    const onTrackEdge = (p: [number, number]) => Math.abs(Math.hypot(Math.max(0, Math.abs(p[0] - TRACK.cx) - TRACK.L), p[1] - TRACK.cz) - TRACK.R) < TRACK.W / 2 + 0.5;
+    inst(unitBox, roadMat, allRoads.length, (i) => { const [a, b, w] = allRoads[i]; const L = Math.hypot(b[0] - a[0], b[1] - a[1]); const ea = onTrackEdge(a) ? 0 : w / 2, eb = onTrackEdge(b) ? 0 : w / 2;
+      const ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L; d.position.set((a[0] + b[0]) / 2 + (ux * (eb - ea)) / 2, ROAD_Y - 0.01, (a[1] + b[1]) / 2 + (uz * (eb - ea)) / 2); d.rotation.y = Math.atan2(b[0] - a[0], b[1] - a[1]); d.scale.set(w, 0.02, L + ea + eb); })!.renderOrder = 1;
+    // no centre dashes through junctions: skip within a road width of any road end (T's, corners, city joins) or crossing
+    const nodes: Array<[number, number]> = allRoads.flatMap(([a, b]) => [a, b]);
+    for (const [a, b] of allRoads) for (const [c2, e2] of allRoads) { const den = (b[0] - a[0]) * (e2[1] - c2[1]) - (b[1] - a[1]) * (e2[0] - c2[0]); if (Math.abs(den) < 1e-9) continue;
+      const t = ((c2[0] - a[0]) * (e2[1] - c2[1]) - (c2[1] - a[1]) * (e2[0] - c2[0])) / den, u = ((c2[0] - a[0]) * (b[1] - a[1]) - (c2[1] - a[1]) * (b[0] - a[0])) / den;
+      if (t > 0 && t < 1 && u > 0 && u < 1) nodes.push([a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])]); }
+    const rd: Array<[number, number, number]> = []; for (const [a, b, w] of allRoads) { const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      for (let t = 2; t < L - 1; t += 4) { const x = a[0] + ((b[0] - a[0]) * t) / L, z = a[1] + ((b[1] - a[1]) * t) / L; if (nodes.some((n) => Math.hypot(n[0] - x, n[1] - z) < w + 1.5)) continue; rd.push([x, z, Math.atan2(b[1] - a[1], b[0] - a[0])]); } }
     const dm = new THREE.InstancedMesh(dash.geometry, dash.material, rd.length); rd.forEach(([x, z, an], i) => { d.position.set(x, ROAD_Y + 0.03, z); d.rotation.set(0, -an, 0); d.scale.set(1, 1, 1); d.updateMatrix(); dm.setMatrixAt(i, d.matrix); }); dm.renderOrder = 2; scene.add(dm);
     // fields: farm soil with crop rows (same tones as the farm district)
     inst(unitBox, mat({ color: 0xffffff, roughness: 1 }), O.fields.length, (i) => { const f = O.fields[i]; d.position.set(f.x, 0.07, f.z); d.scale.set(f.w, 0.14, f.d); }, () => 0x5a3e28);
@@ -510,10 +522,10 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // barns and silos. Crops on owned plots come from /api/farm (setFarm). Toned-down night palette, a little warm glow.
   const farmTiles = new Map<string, number>(); // plot id -> first index into the crop instanced mesh
   const crops = (() => {
-    const apron = new THREE.Mesh(geo(new THREE.BoxGeometry(FARM_X1 - FARM_X0, 3, FARM_Z1 - FARM_Z0)), [mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a8a40, roughness: 1, emissive: 0x0d3412, emissiveIntensity: 0.6 }), mat({ color: 0x2a1c12 }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c })]);
-    apron.position.set((FARM_X0 + FARM_X1) / 2 + 0.01, -1.51, (FARM_Z0 + FARM_Z1) / 2); scene.add(apron);
+    const apron = new THREE.Mesh(geo(new THREE.BoxGeometry(FARM_X1 - FARM_X0, 3, FARM_Z1 - FARM_Z0)), [mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a8a40, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, emissive: 0x0d3412, emissiveIntensity: 0.6 }), mat({ color: 0x2a1c12 }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c })]);
+    apron.position.set((FARM_X0 + FARM_X1) / 2, -1.5, (FARM_Z0 + FARM_Z1) / 2); scene.add(apron);
     const dirt = mat({ color: 0x6a5038, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-    for (const ln of FARM_LANES) { const [a, b] = [ln[0], ln[ln.length - 1]]; const m = new THREE.Mesh(geo(new THREE.BoxGeometry(FARM_LANE_W, 0.05, Math.abs(b[1] - a[1]))), dirt); m.position.set(a[0], 0.05, (a[1] + b[1]) / 2); scene.add(m); }
+    for (const ln of FARM_LANES) { const [a, b] = [ln[0], ln[ln.length - 1]]; const m = new THREE.Mesh(geo(new THREE.BoxGeometry(FARM_LANE_W, 0.04, Math.abs(b[1] - a[1]))), dirt); m.position.set(a[0], 0.03, (a[1] + b[1]) / 2); scene.add(m); }
     const plots = farmPlots(); const d = new THREE.Object3D();
     const soil = new THREE.InstancedMesh(unitBox, mat({ color: 0x5a3e28, roughness: 1 }), plots.length);
     plots.forEach((p, i) => { d.position.set(p.x, 0.07, p.z); d.scale.set(p.w - 0.8, 0.14, p.d - 0.8); d.rotation.set(0, 0, 0); d.updateMatrix(); soil.setMatrixAt(i, d.matrix); });

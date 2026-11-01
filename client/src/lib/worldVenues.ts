@@ -25,13 +25,12 @@ const disposeTree = (o: THREE.Object3D) => o.traverse((c) => { const m = c as TH
 
 /** Builds the venue grounds into `scene`; returns the per-frame animation step and a disposer for the planes. */
 export function buildVenues(scene: THREE.Scene, { mat, geo }: Mk): { step: (dt: number, time: number, cam?: THREE.Vector3) => void; dispose: () => void } {
-  const grass = [mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c }), mat({ color: 0x3f9040, roughness: 1, emissive: 0x0d3412, emissiveIntensity: 0.6 }), mat({ color: 0x2a1c12 }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c })];
-  const slab = (r: Rect) => { const m = new THREE.Mesh(geo(new THREE.BoxGeometry(r.x1 - r.x0, 3, r.z1 - r.z0)), grass); m.position.set((r.x0 + r.x1) / 2, -1.51, (r.z0 + r.z1) / 2); scene.add(m); };
+  const grass = [mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c }), mat({ color: 0x3f9040, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, emissive: 0x0d3412, emissiveIntensity: 0.6 }), mat({ color: 0x2a1c12 }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c })];
+  const slab = (r: Rect) => { const m = new THREE.Mesh(geo(new THREE.BoxGeometry(r.x1 - r.x0, 3, r.z1 - r.z0)), grass); m.position.set((r.x0 + r.x1) / 2, -1.5, (r.z0 + r.z1) / 2); scene.add(m); };
   slab(AIRPORT); slab(RACETRACK);
   const asphalt = mat({ color: 0x2c2f38, roughness: 0.95 }); const paint = mat({ color: 0xf2f2f2, roughness: 0.8 }); const yellow = mat({ color: 0xffd23a, roughness: 0.8 });
   const flat = (w: number, d: number, m: THREE.Material, x: number, z: number, y = 0.04, rot = 0) => { const o = new THREE.Mesh(geo(new THREE.PlaneGeometry(w, d)), m); o.rotation.set(-Math.PI / 2, 0, rot); o.position.set(x, y, z); scene.add(o); return o; };
-  const road = ([a, b, w]: [[number, number], [number, number], number]) => { const dx = b[0] - a[0], dz = b[1] - a[1]; const L = Math.hypot(dx, dz) + w; flat(L, w, asphalt, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 0.035, -Math.atan2(dz, dx)); };
-  [...AIRPORT_ROADS, ...RACETRACK_ROADS].forEach(road);
+  // access roads + taxiway are drawn with the rural roads in world3d (one asphalt, junction-aware dashes)
 
   // ---- Airport: apron, runway + centreline dashes, threshold bars, edge lights ----
   flat(30, 26, mat({ color: 0x4a4e5a, roughness: 0.9 }), AIRPORT_SLOT[0] - 4, AIRPORT_SLOT[1], 0.03);

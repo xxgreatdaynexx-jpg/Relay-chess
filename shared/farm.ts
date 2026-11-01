@@ -45,7 +45,9 @@ export function farmPayout(gross: number, already: number): number {
 
 // ---- layout: a grass apron east of the plate; two columns of fenced fields along dirt lanes.
 export const FARM_X0 = PLATE, FARM_X1 = PLATE + 70, FARM_Z0 = -PLATE, FARM_Z1 = 62;
-export const FARM_LANES: Array<[number, number][]> = [[[PLATE + 5, FARM_Z0 + 2], [PLATE + 5, FARM_Z1 - 2]], [[PLATE + 37, FARM_Z0 + 2], [PLATE + 37, FARM_Z1 - 2]]];
+/** Dirt lanes: both run north out of the farm to a T on the outskirts' north road (z = -PLATE - 8); the west lane meets
+ * Magma Depths' haul track at its south end, the middle lane runs on to Magma Depths' apron (no dead ends). */
+export const FARM_LANES: Array<[number, number][]> = [[[PLATE + 5, -PLATE - 8], [PLATE + 5, FARM_Z1 - 2]], [[PLATE + 37, -PLATE - 8], [PLATE + 37, 96 - 17]]];
 export const FARM_LANE_W = 4;
 export interface FarmPlot extends OBB { n: number; cols: number; rows: number }
 const SIZES: [number, number][] = [[4, 4], [6, 5], [5, 4], [8, 6], [4, 4], [10, 8], [6, 6], [12, 10], [5, 5], [7, 6], [4, 4], [9, 8], [6, 4], [8, 8], [11, 9], [5, 4]];

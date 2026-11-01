@@ -24,8 +24,12 @@ export const TRACK = { cx: -103, cz: -169, L: 40, R: 24, W: 10 };
 export const RACETRACK: Rect = { x0: TRACK.cx - TRACK.L - TRACK.R - 10, x1: TRACK.cx + TRACK.L + TRACK.R + 10, z0: TRACK.cz - TRACK.R - 12, z1: TRACK.cz + TRACK.R + 12 }; // inside RESERVED_VENUES.racetrack
 /** Grandstand / pit building in the infield (the 'racetrack' world spot). */
 export const RACETRACK_SLOT: [number, number] = [TRACK.cx, TRACK.cz];
-/** Access road off the north end of the north-south boulevard, heading north-west away from Frostbite Caverns. */
-export const RACETRACK_ROADS: Array<[[number, number], [number, number], number]> = [[[0, -PLATE + 1], [-34, -138], 5.5]];
+/** Access road: the north-south boulevard runs straight on north to the outskirts' north road (z = -PLATE - 8), west
+ * along it, then north up to the oval's bottom straight (ends at the track edge; never crosses the track). */
+export const NORTH_ROAD_Z = -PLATE - 8;
+export const RACETRACK_ROADS: Array<[[number, number], [number, number], number]> = [
+  [[0, -PLATE + 1], [0, NORTH_ROAD_Z], 5.5], [[0, NORTH_ROAD_Z], [-80, NORTH_ROAD_Z], 5.5], [[-80, NORTH_ROAD_Z], [-80, TRACK.cz + TRACK.R + TRACK.W / 2], 5.5],
+];
 export const TRACK_LEN = 4 * TRACK.L + 2 * Math.PI * TRACK.R;
 
 /** Distance from (x, z) to the track centreline. */

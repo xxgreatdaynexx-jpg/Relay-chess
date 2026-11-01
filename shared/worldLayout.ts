@@ -253,9 +253,11 @@ export const SPARE_SLOTS: [number, number][] = [[13, 42], [-13, -39], [-39, -13]
  */
 export interface MineSite { cave: 'mine' | 'frost' | 'magma'; x: number; z: number; track: [number, number][] }
 export const MINE_SITES: Record<string, MineSite> = {
-  mine: { cave: 'mine', x: -PLATE - 32, z: -30, track: [[-PLATE - 6, 0], [-PLATE - 18, -8], [-PLATE - 28, -20]] },
-  'mine-frost': { cave: 'frost', x: 46, z: -PLATE - 32, track: [[0, -PLATE - 6], [18, -PLATE - 16], [36, -PLATE - 26]] },
-  'mine-magma': { cave: 'magma', x: PLATE + 34, z: 96, track: [[PLATE + 6, waterfrontZ(PLATE + 6)], [PLATE + 16, 72], [PLATE + 28, 86]] },
+  // Haul tracks start ON the paved/farm network (a T junction) and run square to the pad: The Mine off the west road,
+  // Frostbite off the north road, Magma Depths off the farm's west lane (the east road also has a paved spur to its apron).
+  mine: { cave: 'mine', x: -PLATE - 32, z: -30, track: [[-PLATE - 5, -30]] },
+  'mine-frost': { cave: 'frost', x: 46, z: -PLATE - 32, track: [[46, -PLATE - 8]] },
+  'mine-magma': { cave: 'magma', x: PLATE + 34, z: 96, track: [[PLATE + 5, 60], [PLATE + 5, 96]] },
 };
 /** Outer edge of the countryside around the plate (decor fills it; the pan clamp covers it). */
 export const OUTSKIRTS = { x0: -222, x1: 208, z0: -218, z1: 192 };

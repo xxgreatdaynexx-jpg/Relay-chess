@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T13:30:00-06:00', title: 'Countryside roads fixed', bullets: [
+    'The countryside roads are now one tidy ring around the city and the farm, with no dead ends, doubled roads or random diagonals. Every road ends at a junction or somewhere you can go.',
+    'The Speedway road now goes straight north from the boulevard, along the ring road, and up to the track without crossing it. The Airport road and every other crossing has a proper junction with no centre lines through it.',
+    'The dirt roads to The Mine, Frostbite Caverns and Magma Depths now branch straight off a paved road, a short road leads down to the Fishing Dock, and the farm lanes run up to the ring road and on to Magma Depths.',
+    'The mine yards, the farm and the venue grounds no longer flicker where they meet the grass.',
+  ] },
   { commit: '', at: '2026-11-01T12:50:00-06:00', title: 'The big lake looks natural', bullets: [
     'The long lake between downtown and the far-shore fields is no longer a flat slab. It has a winding south shore with coves and points, rounded ends, and a small wooded island.',
     'The water is lighter in the shallows and darker in the middle, with gentle foam and ripples at the edge. It matches the lake by the Fishing Dock.',
