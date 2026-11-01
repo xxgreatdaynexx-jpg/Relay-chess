@@ -599,7 +599,9 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const tgt = new THREE.Vector3(l.pos.x, Math.min(l.height * 0.5, 10), l.pos.z);
     const dir = camera.position.clone().sub(controls.target).setY(0).normalize();
     // Land at controls.minDistance (24,18 → 30) so OrbitControls takes over without a jump.
-    const to = tgt.clone().add(dir.multiplyScalar(24)).setY(tgt.y + 18);
+    // The airport (tall tower, wide apron, menu on the left) lands further back so the terminal isn't jammed against the camera.
+    const k = id === 'airport' ? 2.6 : 1;
+    const to = tgt.clone().add(dir.multiplyScalar(24 * k)).setY(tgt.y + 18 * k);
     fly = { from: camera.position.clone(), to, tf: controls.target.clone(), tt: tgt, t: 0, id }; controls.enabled = false;
   };
   canvas.addEventListener('pointermove', onMove); canvas.addEventListener('pointerdown', onDown); canvas.addEventListener('pointerup', onUp);
