@@ -63,16 +63,21 @@ export class Mines3D {
     // Hazard cells ('~', solid 'metal'): ice pillars (translucent) or lava pools (glowing pit, heat light).
     const iceMat = new THREE.MeshStandardMaterial({ color: '#bfe8ff', emissive: '#3a8ac0', emissiveIntensity: 0.35, transparent: true, opacity: 0.72, roughness: 0.1, metalness: 0.2 });
     const lavaMat = new THREE.MeshBasicMaterial({ color: '#ff5a10' });
+    const lipMat = new THREE.MeshLambertMaterial({ color: '#2a1410', emissive: '#5a1a04' });
+    const LAVA_LIP = 0.45;
     let heat = 0;
     for (const s of MINE_MAP.solids) if (s.mat === 'concrete' && s.z0 < 1) this.walls.push([s.x0, s.y0, s.x1, s.y1]);
     for (const s of MINE_MAP.solids) {
       const w = s.x1 - s.x0, d = s.y1 - s.y0, h = s.z1 - s.z0;
       if (s.mat === 'metal' && T.hazard === 'lava') {
-        const pool = new THREE.Mesh(new THREE.PlaneGeometry(w, d), lavaMat); pool.rotation.x = -Math.PI / 2; pool.position.set(s.x0 + w / 2, 0.05, s.y0 + d / 2); this.scene.add(pool);
+        // The pool is solid (impassable) over its whole cell, so draw a raised rock lip around it: the edge you
+        // stop at is visible instead of an invisible wall around a flat decal.
+        const lip = new THREE.Mesh(new THREE.BoxGeometry(w, LAVA_LIP, d), lipMat); lip.position.set(s.x0 + w / 2, LAVA_LIP / 2, s.y0 + d / 2); this.scene.add(lip);
+        const pool = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.3, d - 0.3), lavaMat); pool.rotation.x = -Math.PI / 2; pool.position.set(s.x0 + w / 2, LAVA_LIP + 0.01, s.y0 + d / 2); this.scene.add(pool);
         if (heat++ % 2 === 0) { const l = new THREE.PointLight('#ff4a00', 1.6, 7, 1.6); l.position.set(s.x0 + w / 2, 0.8, s.y0 + d / 2); this.scene.add(l); }
         continue;
       }
-      const m = new THREE.Mesh(s.mat === 'metal' && T.hazard === 'ice' ? new THREE.CylinderGeometry(w * 0.42, w * 0.5, h, 7) : new THREE.BoxGeometry(w, h, d), s.mat === 'metal' && T.hazard === 'ice' ? iceMat : wallMat);
+      const m = new THREE.Mesh(s.mat === 'metal' && T.hazard === 'ice' ? new THREE.CylinderGeometry(w * 0.62, w * 0.68, h, 8) : new THREE.BoxGeometry(w, h, d), s.mat === 'metal' && T.hazard === 'ice' ? iceMat : wallMat);
       m.position.set(s.x0 + w / 2, s.z0 + h / 2, s.y0 + d / 2);
       this.scene.add(m);
     }

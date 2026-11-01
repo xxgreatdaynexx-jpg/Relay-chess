@@ -168,6 +168,12 @@ export class MinesWorld {
     return m;
   }
   /** Leaving without the lift: guests lose everything; signed-in players get a short reconnect grace, then the haul is gone. */
+  /** Put a miner at a spawn in another cave (carried ore comes along; the EXIT lift is in the same place in every cave). */
+  moveToCave(m: Miner, caveId: CaveId): void {
+    const spawns = caveOf(caveId).map.spawns; const sp = spawns[this.miners.size % spawns.length];
+    Object.assign(m, { cave: caveOf(caveId).id, x: sp[0], y: sp[1], z: 0, vz: 0, grounded: true, crouch: false, carry: 0 });
+  }
+
   leave(id: string, now = Date.now()) {
     const m = this.miners.get(id); if (!m) return;
     if (!m.account) this.packs.delete(this.packKey(m));
@@ -430,9 +436,18 @@ export function registerMines(io: Server, socket: Socket): void {
   const storeMsg = () => { const a = account(); if (a) world.beforeStorage?.(a); const q = a ? world.quote(a, Date.now()) : null; return { storage: a ? world.storage(a) : [], quote: q ? { gross: q.gross, paid: q.paid, already: q.already } : null, inMine: a ? world.inMine(a) : false, guest: !a }; };
   socket.on('mines_join', (p: unknown, ack?: Ack) => {
     let m = me();
+    const want = caveOf(body(p).cave).id;
+    if (m && m.cave !== want) {
+      // Switching caves on the same socket (or a join that beat the old leave): move to the new cave's spawn.
+      // Keeping the old miner would validate every step against the OTHER cave's walls (rubber-banding into
+      // invisible walls, walking through real ones) and start the player at a spot that is inside rock here.
+      void socket.leave(roomOf(m.cave));
+      world.moveToCave(m, want);
+      void socket.join(roomOf(m.cave));
+    }
     if (!m) {
       if (world.miners.size >= MAX_MINERS) return ack?.({ ok: false, error: 'The mine is full, try again in a bit.' });
-      m = world.join(socket.id, account(), Date.now(), body(p).cave);
+      m = world.join(socket.id, account(), Date.now(), want);
       void socket.join(roomOf(m.cave));
     }
     ensureTicker(io);

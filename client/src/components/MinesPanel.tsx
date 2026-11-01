@@ -84,7 +84,8 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
     const join = () => socket.timeout(8000).emit('mines_join', { cave }, (err: Error | null, r?: { ok: boolean; error?: string; id: string; guest: boolean; x: number; y: number; z: number; a: number; nodes: number[] } & PackMsg) => {
       if (dead) return;
       if (err || !r?.ok) { setStatus(r?.error ?? 'Could not reach the mine.'); return; }
-      Object.assign(m, { id: r.id, x: r.x, y: r.y, z: r.z, a: r.a, joined: true });
+      const ok = canStand(r.x, r.y, r.z, MINE_MAP); const sp = MINE_MAP.spawns[0]; // never start inside this cave's rock
+      Object.assign(m, { id: r.id, x: ok ? r.x : sp[0], y: ok ? r.y : sp[1], z: ok ? r.z : 0, a: r.a, joined: true });
       hp.current = r.nodes; three.current?.setNodes(r.nodes);
       setGuest(r.guest); setPack({ pack: r.pack, load: r.load, cap: r.cap, quote: r.quote });
       setStatus(r.guest ? 'Guest: you can mine, sign in to sell.' : 'Click the view to play. Left click swings.');
