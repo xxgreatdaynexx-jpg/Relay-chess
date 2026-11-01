@@ -1,6 +1,8 @@
 /** Player change requests with one upvote per account, admin-only status changes, Postgres persistence. */
 import express from 'express';
 import pg from 'pg';
+import { bootAttach, reconnectMsg, setBootState } from './boot-retry.js';
+export const REQUESTS_OFFLINE_MSG = reconnectMsg('Requests');
 import { getAccounts, isGuestName, nameKey } from './accounts.js';
 import { adminAuthorized } from './admin.js';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
@@ -21,16 +23,20 @@ const DAY = 86_400_000;
 export class RequestBoard {
   private rows = new Map<number, Row>();
   private nextId = 1;
+  /** True while booting/reconnecting: the board is not loaded, so it is neither shown nor written. */
+  offline = false;
   constructor(private db: Queryable | null = null) {}
 
   async load(): Promise<void> {
     if (!this.db) return;
     for (const stmt of REQUESTS_MIGRATION.split(';')) await this.db.query(stmt);
     const { rows } = await this.db.query('SELECT * FROM change_requests');
+    this.rows.clear();
     for (const r of rows) this.rows.set(r.id, { id: r.id, title: r.title, details: r.details, category: r.category, author: r.author, authorKey: r.author_key, status: r.status, note: r.note ?? undefined, changelog: r.changelog ?? undefined, createdAt: +new Date(r.created_at), updatedAt: +new Date(r.updated_at), voters: new Set() });
     const v = await this.db.query('SELECT request_id, voter_key FROM change_request_votes');
     for (const x of v.rows) this.rows.get(x.request_id)?.voters.add(x.voter_key);
     this.nextId = Math.max(0, ...this.rows.keys()) + 1;
+    this.offline = false;
   }
   private save(r: Row) {
     void this.db?.query(`INSERT INTO change_requests (id,title,details,category,author,author_key,status,note,changelog,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
@@ -39,6 +45,7 @@ export class RequestBoard {
   }
 
   submit(author: string, body: unknown, now = Date.now()): { ok: true; request: PublicRequest } | { ok: false; error: string } {
+    if (this.offline) return { ok: false, error: REQUESTS_OFFLINE_MSG };
     const v = validateRequest((body ?? {}) as Record<string, unknown>);
     if (!v.ok) return v;
     const key = nameKey(author);
@@ -52,6 +59,7 @@ export class RequestBoard {
   }
 
   vote(id: number, voter: string): { ok: true; votes: number; voted: boolean } | { ok: false; error: string } {
+    if (this.offline) return { ok: false, error: REQUESTS_OFFLINE_MSG };
     const r = this.rows.get(id); if (!r) return { ok: false, error: 'No such request.' };
     if (r.status === 'shipped' || r.status === 'declined') return { ok: false, error: 'Voting is closed on this one.' };
     const key = nameKey(voter); const on = !r.voters.has(key);
@@ -61,6 +69,7 @@ export class RequestBoard {
   }
 
   setStatus(id: number, status: unknown, note: unknown, changelog: unknown, now = Date.now()): { ok: true; request: PublicRequest } | { ok: false; error: string; code: number } {
+    if (this.offline) return { ok: false, error: REQUESTS_OFFLINE_MSG, code: 503 };
     const r = this.rows.get(id); if (!r) return { ok: false, error: 'No such request.', code: 404 };
     const s = REQUEST_STATUSES.find((x) => x === status); if (!s) return { ok: false, error: `status must be one of ${REQUEST_STATUSES.join(', ')}.`, code: 400 };
     if (s !== r.status && !NEXT_STATUS[r.status].includes(s)) return { ok: false, error: `Can't move ${r.status} → ${s}. Allowed: ${NEXT_STATUS[r.status].join(', ') || 'none'}.`, code: 409 };
@@ -96,11 +105,12 @@ let board = new RequestBoard();
 export const getRequests = () => board;
 export const setRequestsForTest = (b: RequestBoard) => { board = b; };
 export async function initRequests(): Promise<void> {
-  const url = databaseUrl(); if (!url) return;
+  const url = databaseUrl(); if (!url) { setBootState('requests', 'memory'); return; }
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
   pool.on('error', (e) => console.error('[requests] pool error:', e.message));
-  const b = new RequestBoard(pool);
-  try { await b.load(); board = b; console.log('[requests] loaded from postgres'); } catch (e) { console.error('[requests] load failed, using memory:', (e as Error).message); }
+  const b = new RequestBoard(pool); b.offline = true;
+  board = b;
+  await bootAttach('requests', async () => { try { await b.load(); return true; } catch (e) { console.error('[requests] load failed:', (e as Error).message); return false; } }, { onOk: () => console.log('[requests] loaded from postgres') });
 }
 
 async function signedIn(req: express.Request): Promise<string | null> {
@@ -114,20 +124,22 @@ export function requestsRouter(): express.Router {
   r.get('/api/requests', async (req, res) => {
     const me = await signedIn(req);
     res.set('Cache-Control', 'no-store');
+    if (getRequests().offline) return res.status(503).json({ ok: false, offline: true, error: REQUESTS_OFFLINE_MSG, requests: [] });
     res.json({ ok: true, requests: getRequests().list({ sort: req.query.sort, status: req.query.status, viewer: me, includeQa: isQaName(me ?? undefined) }) });
   });
   r.post('/api/requests', json, async (req, res) => {
     const me = await signedIn(req); if (!me) return res.status(401).json({ ok: false, error: 'Sign in to post a request.' });
     const out = getRequests().submit(me, req.body);
-    res.status(out.ok ? 200 : 400).json(out);
+    res.status(out.ok ? 200 : getRequests().offline ? 503 : 400).json(out);
   });
   r.post('/api/requests/:id/vote', async (req, res) => {
     const me = await signedIn(req); if (!me) return res.status(401).json({ ok: false, error: 'Sign in to vote.' });
     const out = getRequests().vote(Number(req.params.id), me);
-    res.status(out.ok ? 200 : 400).json(out);
+    res.status(out.ok ? 200 : getRequests().offline ? 503 : 400).json(out);
   });
   r.get('/api/admin/requests', (req, res) => {
     if (!adminAuthorized(req.get('authorization'))) return res.status(401).json({ ok: false, error: 'Unauthorized.' });
+    if (getRequests().offline) return res.status(503).json({ ok: false, offline: true, error: REQUESTS_OFFLINE_MSG, requests: [] });
     res.json({ ok: true, requests: getRequests().list({ sort: req.query.sort, status: req.query.status, includeQa: true }) });
   });
   r.post('/api/admin/requests/:id/status', json, (req, res) => {

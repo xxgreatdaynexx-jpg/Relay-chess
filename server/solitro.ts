@@ -1,5 +1,7 @@
 /** Server-authoritative Solitro runs: one live run per signed-in account, persisted to Postgres (write-behind). */
 import pg from 'pg';
+import { bootAttach, reconnectMsg, setBootState } from './boot-retry.js';
+export const SOLITRO_OFFLINE_MSG = reconnectMsg('Solitro');
 import { randomInt } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
@@ -54,11 +56,16 @@ export class SolitroHall {
 
   get usingDatabase(): boolean { return this.store !== null; }
 
+  /** True while booting/reconnecting: runs (and staked buy-ins) are not loaded, so every action refuses. */
+  offline = false;
+  private guard(): void { if (this.offline) throw new Error(SOLITRO_OFFLINE_MSG); }
+
   async attach(store: SolitroStore): Promise<boolean> {
     try {
       await store.init();
-      for (const r of await store.loadAll()) this.recs.set(r.key, r);
-      this.store = store;
+      const next = new Map<string, SolitroRecord>();
+      for (const r of await store.loadAll()) next.set(r.key, r);
+      this.recs = next; this.store = store; this.offline = false;
       return true;
     } catch (err) {
       console.error('[solitro] postgres unavailable, runs are in-memory only:', (err as Error).message);
@@ -88,11 +95,13 @@ export class SolitroHall {
   }
 
   state(name: string): { run: Run | null; best: { bestAnte: number; runs: number; wins: number } } {
+    this.guard();
     const r = this.rec(name);
     return { run: r.run ? viewRun(r.run) : null, best: { bestAnte: r.bestAnte, runs: r.runs, wins: r.wins } };
   }
 
   start(name: string, now = Date.now(), buyIn = 0): Run {
+    this.guard();
     const rec = this.rec(name);
     const b = Math.floor(Number(buyIn) || 0);
     if (!(SOLITRO_BUYINS as readonly number[]).includes(b)) throw new Error('Pick a buy-in from the list.');
@@ -112,6 +121,7 @@ export class SolitroHall {
   }
 
   act(name: string, a: Action): Run {
+    this.guard();
     const rec = this.rec(name);
     if (!rec.run) throw new Error('Start a run first.');
     const before = rec.run;
@@ -124,6 +134,7 @@ export class SolitroHall {
   rawRun(name: string): Run | null { return this.recs.get(keyOf(name))?.run ?? null; }
 
   standings(): SolitroStanding[] {
+    this.guard();
     return [...this.recs.values()]
       .filter((r) => r.runs > 0 && r.bestAnte > 0)
       .map(({ name, bestAnte, bestPlay, runs, wins }) => ({ name, bestAnte, bestPlay, runs, wins }))
@@ -148,9 +159,10 @@ export function resetSolitro(seedFn?: () => number): SolitroHall { hall = new So
 
 export async function initSolitroStorage(): Promise<void> {
   const url = databaseUrl();
-  if (!url) { console.warn('[solitro] no DATABASE_URL set; runs are in-memory only'); return; }
+  if (!url) { console.warn('[solitro] no DATABASE_URL set; runs are in-memory only'); setBootState('solitro', 'memory'); return; }
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
-  if (await hall.attach(new PgSolitroStore(pool))) console.log(`[solitro] connected to postgres (${hall.standings().length} players loaded)`);
+  const h = hall; h.offline = true;
+  await bootAttach('solitro', () => h.attach(new PgSolitroStore(pool)), { onOk: () => console.log(`[solitro] connected to postgres (${h.standings().length} players loaded)`) });
 }
 
 export function solitroBoard(viewerIsQa: boolean): SolitroStanding[] {

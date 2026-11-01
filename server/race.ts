@@ -11,6 +11,7 @@
  * can race and enter but never take a prize (their share is not paid out).
  */
 import pg from 'pg';
+import { bootAttach, setBootState } from './boot-retry.js';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
@@ -158,14 +159,13 @@ export function setSpeedway(s: Speedway | null) {
 }
 let settleTimer: NodeJS.Timeout | null = null;
 export async function initRace(): Promise<void> {
-  const url = databaseUrl(); let s: Speedway;
-  if (!url) s = new Speedway(null);
+  const url = databaseUrl();
+  if (!url) { setSpeedway(new Speedway(null)); setBootState('race', 'memory'); }
   else {
     const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
     pool.on('error', (e) => console.error('[race] pool error:', e.message));
-    try { s = new Speedway(pool as unknown as PoolLike); await s.init(); console.log('[race] ready'); } catch (e) { console.error('[race] init failed:', (e as Error).message); return; }
+    await bootAttach('race', async () => { try { const s = new Speedway(pool as unknown as PoolLike); await s.init(); setSpeedway(s); console.log('[race] ready'); return true; } catch (e) { console.error('[race] init failed:', (e as Error).message); return false; } });
   }
-  setSpeedway(s);
   if (!settleTimer) { settleTimer = setInterval(() => { void speedway?.settle().catch((e) => console.error('[race] settle:', (e as Error).message)); }, 5 * 60_000); settleTimer.unref?.(); }
   setTimeout(() => { void speedway?.settle().catch(() => {}); }, 30_000).unref?.();
 }

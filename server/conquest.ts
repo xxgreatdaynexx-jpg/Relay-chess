@@ -3,6 +3,8 @@ import { getBank } from './casino-store.js';
 import { MAX_WAGER } from '../shared/types.js';
 import type { Server, Socket } from 'socket.io';
 import pg from 'pg';
+import { bootAttach, reconnectMsg, setBootState } from './boot-retry.js';
+export const CONQUEST_OFFLINE_MSG = reconnectMsg('Conquest');
 import { randomInt } from 'node:crypto';
 import { act, autoPlace, botAction, CQ_MAPS, CQ_PALETTE, FACTIONS, MAX_PLAYERS, newGame, publicView, resign, RuleError, type CqAction, type CqState } from '../shared/conquest.js';
 import { Leaderboard } from './leaderboard.js';
@@ -360,10 +362,14 @@ export class ConquestHub {
   }
   /** Shutdown: stop bots and timers, then wait for pending saves. */
   async flush(): Promise<void> { this.stopped = true; this.stop(); await Promise.all([...this.saving.values()]); }
+  /** True while booting/reconnecting: saved tables (and their stakes) are not loaded, so every table action refuses. */
+  offline = false;
   async attach(store: CqSnapshotStore, now = Date.now()): Promise<void> {
-    this.store = store;
     await store.init();
-    for (const t of await store.loadAll()) {
+    const all = await store.loadAll();
+    this.store = store; // only after the real tables are in: an offline hub never saves over them
+    this.offline = false;
+    for (const t of all) {
       this.tables.set(t.code, t);
       // Stakes taken right before a crash, for a war the snapshot never saw start, go back.
       if (!t.game && (t.wager ?? 0) > 0) {
@@ -392,13 +398,16 @@ export function resetConquest(): ConquestHub { hub.stop(); hub = new ConquestHub
 
 export async function initConquestStorage(): Promise<void> {
   const url = databaseUrl();
-  if (!url) { await hub.attach(new MemoryCqStore()); return; }
-  try {
-    const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
-    await hub.attach(new PgCqStore(pool));
-    await hub.board.attachStore(createPgStore(url, 'conquest_leaderboard'));
-    console.log(`[conquest] tables restored: ${hub.tables.size}`);
-  } catch (e) { console.error('[conquest] storage failed:', (e as Error).message); }
+  if (!url) { await hub.attach(new MemoryCqStore()); setBootState('conquest', 'memory'); return; }
+  const h = hub; h.offline = true; h.board.offline = true;
+  const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
+  const tables = new PgCqStore(pool);
+  const boardStore = createPgStore(url, 'conquest_leaderboard');
+  let tablesIn = false;
+  await bootAttach('conquest', async () => {
+    try { if (!tablesIn) { await h.attach(tables); tablesIn = true; } } catch (e) { console.error('[conquest] storage failed:', (e as Error).message); return false; }
+    return h.board.attachStore(boardStore);
+  }, { onOk: () => console.log(`[conquest] tables restored: ${h.tables.size}`) });
 }
 
 type Ack = (res: { ok: boolean; error?: string; [k: string]: unknown }) => void;
@@ -425,6 +434,7 @@ export function registerConquest(io: Server, socket: Socket): void {
   const on = (ev: string, fn: (body: Record<string, unknown>, name: () => string) => unknown) => {
     socket.on(ev, async (payload: unknown, ack?: Ack) => {
       try {
+        if (getConquest().offline) throw new Error(CONQUEST_OFFLINE_MSG);
         const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
         if (typeof body.code === 'string') await getConquest().sync(body.code); // never act on a stale copy
         const extra = fn(body, () => signedIn(socket));

@@ -1,4 +1,6 @@
 import pg from 'pg';
+import { bootAttach, reconnectMsg, setBootState } from './boot-retry.js';
+export const ARENA_OFFLINE_MSG = reconnectMsg('Arena stats');
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { attachFlagStore, FLAGS_MIGRATION } from './arena-anticheat.js';
 
@@ -68,12 +70,15 @@ export class ArenaLedger {
   private pending = new Map<string, Promise<void>>();
 
   get usingDatabase(): boolean { return this.store !== null; }
+  /** True while booting/reconnecting: standings are not loaded, so stat bumps are dropped (never saved over real rows). */
+  offline = false;
 
   async attach(store: ArenaStore): Promise<boolean> {
     try {
       await store.init();
-      for (const r of await store.loadAll()) this.records.set(r.key, r);
-      this.store = store;
+      const next = new Map<string, ArenaRecord>();
+      for (const r of await store.loadAll()) next.set(r.key, r);
+      this.records = next; this.store = store; this.offline = false;
       return true;
     } catch (err) {
       console.error('[arena] postgres unavailable, arena stats are in-memory only:', (err as Error).message);
@@ -91,6 +96,7 @@ export class ArenaLedger {
     return r;
   }
   private bump(name: string, f: (r: ArenaRecord) => void): void {
+    if (this.offline) return; // a save from an empty, offline ledger would overwrite the player's real totals
     const r = this.rec(name);
     f(r);
     this.persist(r);
@@ -128,8 +134,11 @@ export function resetArenaLedger(): ArenaLedger { ledger = new ArenaLedger(); re
 
 export async function initArenaStorage(): Promise<void> {
   const url = databaseUrl();
-  if (!url) { console.warn('[arena] no DATABASE_URL set; arena stats are in-memory only'); return; }
+  if (!url) { console.warn('[arena] no DATABASE_URL set; arena stats are in-memory only'); setBootState('arena', 'memory'); return; }
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
-  if (await ledger.attach(new PgArenaStore(pool))) console.log(`[arena] connected to postgres (${ledger.standings(1e6).length} players loaded)`);
-  try { await pool.query(FLAGS_MIGRATION); attachFlagStore(pool); } catch (e) { console.error('[arena-flag] table setup failed:', (e as Error).message); }
+  const l = ledger; l.offline = true;
+  await bootAttach('arena', () => l.attach(new PgArenaStore(pool)), { onOk: async () => {
+    console.log(`[arena] connected to postgres (${l.standings(1e6).length} players loaded)`);
+    try { await pool.query(FLAGS_MIGRATION); attachFlagStore(pool); } catch (e) { console.error('[arena-flag] table setup failed:', (e as Error).message); }
+  } });
 }

@@ -152,12 +152,14 @@ export function LeaderboardTable({ highlight = [], game = 'chess' }: { highlight
 
 export function ArenaLeaderboard({ you = '' }: { you?: string }) {
   const [rows, setRows] = useState<ArenaRow[] | null>(null);
+  const [err, setErr] = useState('');
   const [sort, setSort] = useState<ArenaSort>('kills');
   useEffect(() => {
     let live = true;
-    fetch('/api/arena-leaderboard', qaHeaders()).then((r) => r.json()).then((d: { rows: ArenaRow[] }) => { if (live) setRows(d.rows ?? []); }).catch(() => live && setRows([]));
+    fetch('/api/arena-leaderboard', qaHeaders()).then((r) => r.json()).then((d: { rows: ArenaRow[]; offline?: boolean; error?: string }) => { if (!live) return; if (d.offline) setErr(d.error ?? 'Arena stats are reconnecting.'); else setRows(d.rows ?? []); }).catch(() => live && setErr('Arena stats could not be loaded.'));
     return () => { live = false; };
   }, []);
+  if (err) return <div className="bj-label" data-testid="arena-board-error">{err}</div>;
   if (!rows) return <div className="bj-label">Loading…</div>;
   if (!rows.length) return <div className="bj-label" data-testid="arena-board-empty">No arena matches yet. Sign in and play to get on the board.</div>;
   const sorted = sortArena(rows, sort);

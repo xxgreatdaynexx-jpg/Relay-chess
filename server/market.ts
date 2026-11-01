@@ -5,6 +5,8 @@ import { getBank } from './casino-store.js';
 import { getAccounts } from './accounts.js';
 import { getVault, playerKey, RuleError, type ItemVault, type Stmt, type StoredItem } from './skins.js';
 import { getMines } from './mines.js';
+import { bootAttach, reconnectMsg, setBootState } from './boot-retry.js';
+import { databaseUrl } from './leaderboard-store.js';
 import { GOODS, MAX_BANKED_STACK, ORES, ORE_ORDER, isOre, nameOf as stackName, type ItemType } from '../shared/mines.js';
 import { CASE_NAME, KEY_NAME, SKINS, SKIN_BY_ID, type SkinItem } from '../shared/skins.js';
 
@@ -65,13 +67,17 @@ export class Market {
   stacks = new Map<string, StackListing>();
   onTrade?: (keys: string[]) => void;
   onStacksReverted?: () => void;
+  /** True until the persisted listings/trades are loaded (boot retry): every market action refuses meanwhile. */
+  offline = false;
   constructor(readonly vault: ItemVault = getVault()) {}
+  guard(): void { if (this.offline || this.vault.offline) throw new RuleError(MARKET_OFFLINE_MSG); }
 
   /** Load persisted market state (after the vault has attached). */
   async load(): Promise<void> {
     const st = this.vault.storage;
     if (!st?.query) return;
     for (const q of MARKET_MIGRATION) await st.query(q);
+    this.listings.clear(); this.stacks.clear(); this.trades.clear(); this.sales.length = 0;
     for (const r of (await st.query("SELECT * FROM market_listings WHERE status = 'active'")).rows) {
       this.listings.set(String(r.id), { id: String(r.id), seller: String(r.seller_key), sellerName: String(r.seller_name), itemId: String(r.item_id), price: Number(r.price), status: 'active', at: Number(r.created_at) });
     }
@@ -386,7 +392,14 @@ export class Market {
 let market = new Market();
 export const getMarket = () => market;
 export function resetMarket(vault?: ItemVault): Market { market = new Market(vault ?? getVault()); return market; }
-export async function initMarketStorage() { try { await market.load(); } catch (e) { console.error('[market] load failed:', (e as Error).message); } }
+export const MARKET_OFFLINE_MSG = reconnectMsg('The market');
+export async function initMarketStorage() {
+  if (!databaseUrl()) { setBootState('market', 'memory'); return; }
+  const m = market; m.offline = true;
+  const go = () => bootAttach('market', async () => { if (m.vault.offline || !m.vault.storage) return false; await m.load(); m.offline = false; return true; });
+  if (m.vault.offline || !m.vault.storage) { setBootState('market', 'offline'); m.vault.onlineListeners.add(() => { void go(); }); return; }
+  await go();
+}
 
 type Ack = (r: { ok: boolean; error?: string; [k: string]: unknown }) => void;
 let wired: Server | null = null;
@@ -395,7 +408,7 @@ export function registerMarket(io: Server, socket: Socket): void {
   const nameOf = () => (socket.data as { account?: { name: string } }).account?.name ?? null;
   const need = () => { const n = nameOf(); if (!n) throw new RuleError('Sign in to buy, sell or trade. Guests can browse.'); return n; };
   const on = (ev: string, fn: (b: Record<string, unknown>) => Record<string, unknown> | void | Promise<Record<string, unknown> | void>) => socket.on(ev, async (payload: unknown, ack?: Ack) => {
-    try { const b = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}; ack?.({ ok: true, ...((await fn(b)) ?? {}) }); }
+    try { market.guard(); const b = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}; ack?.({ ok: true, ...((await fn(b)) ?? {}) }); }
     catch (e) { ack?.({ ok: false, error: e instanceof RuleError || (e as Error).message === 'Not enough chips.' ? (e as Error).message : 'Something went wrong.' }); }
   });
   on('mkt_browse', (b) => ({ listings: market.browse(b, Math.min(5000, Math.max(1, Number(b.limit) || 200))), mine: nameOf() ? market.myListings(nameOf()!) : [], fee: MARKET_FEE, min: MIN_PRICE, max: MAX_PRICE }));

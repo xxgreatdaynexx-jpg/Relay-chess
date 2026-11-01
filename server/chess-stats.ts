@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { bootAttach, setBootState } from './boot-retry.js';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import type { ChessStatRow, MoveQuality } from '../shared/chessStats.js';
 
@@ -63,11 +64,15 @@ export class ChessStatsLedger {
 
   get usingDatabase(): boolean { return this.store !== null; }
 
+  /** True while booting/reconnecting: nothing is loaded, so moves are not recorded and stats are not shown as real. */
+  offline = false;
+
   async attach(store: ChessStatsStore): Promise<boolean> {
     try {
       await store.init();
-      for (const r of await store.loadAll()) this.records.set(r.key, r);
-      this.store = store;
+      const next = new Map<string, ChessStatRecord>();
+      for (const r of await store.loadAll()) next.set(r.key, r);
+      this.records = next; this.store = store; this.offline = false;
       return true;
     } catch (err) {
       console.error('[chess-stats] postgres unavailable, stats are in-memory only:', (err as Error).message);
@@ -77,7 +82,7 @@ export class ChessStatsLedger {
 
   record(name: string, q: MoveQuality): void {
     const key = keyOf(name);
-    if (!key) return;
+    if (!key || this.offline) return;
     const r = this.records.get(key) ?? { key, name: name.trim(), moves: 0, percentileSum: 0, brilliant: 0, great: 0, mistake: 0, blunder: 0 };
     r.name = name.trim();
     r.moves += 1;
@@ -105,7 +110,8 @@ export function resetChessStats(): ChessStatsLedger { ledger = new ChessStatsLed
 
 export async function initChessStatsStorage(): Promise<void> {
   const url = databaseUrl();
-  if (!url) { console.warn('[chess-stats] no DATABASE_URL set; chess move stats are in-memory only'); return; }
+  if (!url) { console.warn('[chess-stats] no DATABASE_URL set; chess move stats are in-memory only'); setBootState('chess-stats', 'memory'); return; }
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
-  if (await ledger.attach(new PgChessStatsStore(pool))) console.log('[chess-stats] connected to postgres');
+  const l = ledger; l.offline = true;
+  await bootAttach('chess-stats', () => l.attach(new PgChessStatsStore(pool)), { onOk: () => console.log('[chess-stats] connected to postgres') });
 }

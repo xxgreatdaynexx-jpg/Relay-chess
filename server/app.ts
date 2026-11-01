@@ -19,6 +19,7 @@ import { registerSockets, stopMaintenance } from './sockets.js';
 import { resetRooms } from './rooms.js';
 import { getConquest } from './conquest.js';
 import { getSolitro, solitroBoard } from './solitro.js';
+import { bootStates, reconnectMsg } from './boot-retry.js';
 import { adminRouter } from './admin.js';
 import { trailerRouter } from './trailers.js';
 import { realEstateRouter } from './realEstate.js';
@@ -60,7 +61,7 @@ export async function createApp(): Promise<AppContext> {
     const bank = getBank();
     res.set('Cache-Control', 'no-store');
     const chipDb = bank.status === 'ok' ? 'ok' : bank.status === 'memory' ? 'memory' : bank.status;
-    res.status(bank.ready ? 200 : 503).json({ ok: bank.ready, chipDb, ...(bank.ready ? {} : { error: bank.lastError ?? 'connecting' }), build: buildInfo() });
+    res.status(bank.ready ? 200 : 503).json({ ok: bank.ready, chipDb, ...(bank.ready ? {} : { error: bank.lastError ?? 'connecting' }), subsystems: bootStates(), build: buildInfo() });
   });
   app.get('/api/build', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(buildInfo()); });
 
@@ -72,29 +73,35 @@ export async function createApp(): Promise<AppContext> {
       res.json({ skill, rows: await getSkills().hiscores(skill) });
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
   });
+  /** A subsystem still reconnecting to Postgres: say so instead of serving an empty board as if it were real. */
+  const offline = (res: express.Response, what: string, key = 'rows') => res.status(503).json({ ok: false, offline: true, error: reconnectMsg(what), [key]: [] });
 
   app.get('/api/leaderboard', async (req, res) => {
     const board = getLeaderboard();
+    if (board.offline) return void offline(res, 'The leaderboard');
     await board.refresh();
     const stats = getChessStats();
     const qa = await viewerIsQa(req);
-    res.json({ rows: boardFor(board.standings(), qa).map((row) => ({ ...row, ...stats.statsFor(row.name) })), source: board.usingDatabase ? 'postgres' : 'memory' });
+    res.json({ rows: boardFor(board.standings(), qa).map((row) => (stats.offline ? row : { ...row, ...stats.statsFor(row.name) })), source: board.usingDatabase ? 'postgres' : 'memory' });
   });
 
   app.get('/api/checkers-leaderboard', async (req, res) => {
     const board = getCheckersLeaderboard();
+    if (board.offline) return void offline(res, 'The leaderboard');
     await board.refresh();
     res.json({ rows: boardFor(board.standings(), await viewerIsQa(req)), source: board.usingDatabase ? 'postgres' : 'memory' });
   });
 
   app.get('/api/conquest-leaderboard', async (req, res) => {
     const board = getConquest().board;
+    if (board.offline) return void offline(res, 'The leaderboard');
     await board.refresh();
     res.json({ rows: boardFor(board.standings(), await viewerIsQa(req)), source: board.usingDatabase ? 'postgres' : 'memory' });
   });
 
   app.get('/api/arena-leaderboard', async (req, res) => {
     const ledger = getArenaLedger();
+    if (ledger.offline) return void offline(res, 'Arena stats');
     res.json({ rows: boardFor(ledger.standings(1e6), await viewerIsQa(req), 100), source: ledger.usingDatabase ? 'postgres' : 'memory' });
   });
 
@@ -107,12 +114,14 @@ export async function createApp(): Promise<AppContext> {
   });
 
   app.get('/api/solitro-leaderboard', async (req, res) => {
+    if (getSolitro().offline) return void offline(res, 'Solitro');
     res.json({ rows: solitroBoard(await viewerIsQa(req)), source: getSolitro().usingDatabase ? 'postgres' : 'memory' });
   });
 
   /** Recent global chat (read-only). QA accounts' messages are only included for a signed-in QA viewer. */
   app.get('/api/chat', async (req, res) => {
     const log = getChatLog();
+    if (log.offline) return void offline(res, 'Chat', 'messages');
     res.json({ messages: log.history(await viewerIsQa(req)), source: log.usingDatabase ? 'postgres' : 'memory' });
   });
 

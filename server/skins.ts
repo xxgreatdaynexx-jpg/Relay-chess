@@ -3,6 +3,7 @@ import pg from 'pg';
 import { randomInt, randomUUID } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
+import { bootAttach, reconnectMsg, setBootState } from './boot-retry.js';
 import { isKnife, skinName, CASE_NAME, DROP_CASE_CHANCE, DROP_MIN_MS, KEY_NAME, rollSkin, SKIN_BY_ID, SKINS, skinToken, type ItemKind, type SkinDef, type SkinItem } from '../shared/skins.js';
 
 export interface StoredItem extends Omit<SkinItem, 'locked'> { locked?: string; owner: string; ownerName: string; sourceKey: string; gone: boolean }
@@ -49,6 +50,7 @@ export class PgItemStore implements ItemStore {
   }
 }
 
+export const OFFLINE_MSG = reconnectMsg('Inventory');
 export const playerKey = (name: string) => name.replace(/\s+/g, ' ').trim().toLowerCase();
 const rand = () => randomInt(0, 2 ** 32) / 2 ** 32;
 export class RuleError extends Error {}
@@ -62,11 +64,19 @@ export class ItemVault {
   readonly listeners = new Set<(ownerKey: string) => void>();
   constructor(private readonly rng: () => number = rand) {}
 
+  /** True while booting/reconnecting to Postgres: inventories are not loaded, so nothing reads as real or writes. */
+  offline = false;
+  readonly onlineListeners = new Set<() => void | Promise<void>>();
+  guard(): void { if (this.offline) throw new RuleError(OFFLINE_MSG); }
+
   async attach(store: ItemStore): Promise<boolean> {
     try {
       await store.init();
-      for (const i of await store.loadAll()) { this.items.set(i.id, i); this.sources.add(i.sourceKey); }
-      this.store = store;
+      const rows = await store.loadAll();
+      // Swap in the real rows wholesale: anything made in memory while offline is discarded, never written over the DB.
+      this.items = new Map(); this.sources = new Set();
+      for (const i of rows) { this.items.set(i.id, i); this.sources.add(i.sourceKey); }
+      this.store = store; this.offline = false;
       return true;
     } catch (e) { console.error('[skins] postgres unavailable, items in memory only:', (e as Error).message); return false; }
   }
@@ -74,6 +84,7 @@ export class ItemVault {
   /** Queue one atomic write of these items + events. */
   get storage(): ItemStore | null { return this.store; }
   commit(items: StoredItem[], events: ItemEvent[], extra: Stmt[] = []) {
+    this.guard();
     for (const k of new Set(items.map((i) => i.owner))) { this.onChange?.(k); for (const l of this.listeners) l(k); }
     if (!this.store) return;
     const snap = items.map((i) => ({ ...i }));
@@ -83,6 +94,7 @@ export class ItemVault {
 
   /** Make a new item, idempotent by sourceKey. Returns null if that source already produced one. */
   make(name: string, kind: ItemKind, sourceKey: string, source: string, skin?: SkinDef): StoredItem | null {
+    this.guard();
     if (this.sources.has(sourceKey)) return null;
     const it: StoredItem = {
       id: randomUUID(), owner: playerKey(name), ownerName: name.trim(), kind, skin: skin?.id ?? '', float: skin ? Math.round(this.rng() * 1e5) / 1e5 : 0,
@@ -97,11 +109,12 @@ export class ItemVault {
     return [...this.items.values()].filter((i) => i.owner === k && !i.gone).sort((a, b) => b.at - a.at);
   }
   view(i: StoredItem): SkinItem { return { id: i.id, kind: i.kind, skin: i.skin, float: i.float, seed: i.seed, at: i.at, source: i.source, equipped: i.equipped, ...(i.locked ? { locked: true } : {}) }; }
-  inventory(name: string): SkinItem[] { return this.owned(name).map((i) => this.view(i)); }
+  inventory(name: string): SkinItem[] { this.guard(); return this.owned(name).map((i) => this.view(i)); }
 
   /** One drop per signed-in human per match: 50% case, 50% key. */
   dropForMatch(matchId: string, players: Array<{ name: string; ms: number; kills: number; deaths: number }>): Array<{ name: string; item: SkinItem }> {
     const out: Array<{ name: string; item: SkinItem }> = [];
+    if (this.offline) { console.warn(`[skins] offline: no drops for match ${matchId}`); return out; }
     for (const p of players) {
       if (p.ms < DROP_MIN_MS && p.kills + p.deaths < 1) continue;
       const kind: ItemKind = this.rng() < DROP_CASE_CHANCE ? 'case' : 'key';
@@ -115,6 +128,7 @@ export class ItemVault {
 
   /** Consume one free case + one free key, roll a skin. Returns the new item and a reel for the unboxing animation. */
   openCase(name: string, caseId?: unknown): { item: SkinItem; reel: string[]; win: number } {
+    this.guard();
     const mine = this.owned(name).filter((i) => !i.locked);
     const c = (typeof caseId === 'string' ? mine.find((i) => i.id === caseId && i.kind === 'case') : undefined) ?? mine.find((i) => i.kind === 'case');
     const k = mine.find((i) => i.kind === 'key');
@@ -135,6 +149,7 @@ export class ItemVault {
 
   /** Equip a skin for its weapon (unequips the other one), or unequip it if already equipped. */
   equip(name: string, itemId: unknown): void {
+    this.guard();
     const i = typeof itemId === 'string' ? this.items.get(itemId) : undefined;
     if (!i || i.gone || i.owner !== playerKey(name) || i.kind !== 'skin') throw new RuleError('That item is not in your inventory.');
     if (i.locked) throw new RuleError('That item is listed or in a trade.');
@@ -161,9 +176,10 @@ export function resetVault(rng?: () => number): ItemVault { vault = new ItemVaul
 
 export async function initSkinStorage(): Promise<void> {
   const url = databaseUrl();
-  if (!url) { console.warn('[skins] no DATABASE_URL; items in memory only'); return; }
+  if (!url) { console.warn('[skins] no DATABASE_URL; items in memory only'); setBootState('skins', 'memory'); return; }
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
-  if (await vault.attach(new PgItemStore(pool))) console.log(`[skins] connected (${vault.items.size} items)`);
+  const v = vault; v.offline = true;
+  await bootAttach('skins', () => v.attach(new PgItemStore(pool)), { onOk: async () => { console.log(`[skins] connected (${v.items.size} items)`); for (const l of v.onlineListeners) await l(); } });
 }
 
 type Ack = (r: { ok: boolean; error?: string; [k: string]: unknown }) => void;
@@ -180,6 +196,7 @@ export function registerSkins(io: Server, socket: Socket): void {
     });
   const need = (n: string | null) => { if (!n) throw new RuleError('Sign in to own skins. Guests can look around.'); return n; };
   on('inv_get', (_b, n) => {
+    if (n) vault.guard();
     for (const r of socket.rooms) if (r.startsWith('inv:')) void socket.leave(r);
     if (n) void socket.join(room(playerKey(n)));
     return { signedIn: !!n, items: n ? vault.inventory(n) : [], catalog: SKINS.length };
@@ -191,6 +208,6 @@ export function registerSkins(io: Server, socket: Socket): void {
     if (d && isKnife(d)) setTimeout(() => io.emit('inv_announce', { name: n!.trim(), skin: d.id, text: `${n!.trim()} unboxed ${skinName(d)}!` }), 5500);
     return r;
   });
-  on('inv_loadout', (_b, n) => ({ loadout: n ? vault.loadout(n) : {} })); // e.g. Mines reads loadout.pickaxe
+  on('inv_loadout', (_b, n) => { if (n) vault.guard(); return { loadout: n ? vault.loadout(n) : {} }; }); // e.g. Mines reads loadout.pickaxe
   on('inv_equip', (b, n) => { vault.equip(need(n), b.id); return { items: vault.inventory(n!) }; });
 }

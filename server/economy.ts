@@ -12,6 +12,7 @@
  */
 import express from 'express';
 import pg from 'pg';
+import { bootAttach, setBootState } from './boot-retry.js';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { SKIN_BY_ID, type Rarity } from '../shared/skins.js';
 import { priceOf, type ItemType } from '../shared/mines.js';
@@ -290,10 +291,11 @@ let econ: Economy | null = null;
 export const getEconomy = () => econ;
 export const setEconomyForTest = (e: Economy | null) => { econ = e; };
 export async function initEconomy(): Promise<void> {
-  const url = databaseUrl(); if (!url) return;
+  const url = databaseUrl(); if (!url) { setBootState('economy', 'memory'); return; }
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
   pool.on('error', (e) => console.error('[economy] pool error:', e.message));
-  try { const s = new PgEconSource(pool); await s.init(); econ = new Economy(s); econ.start(); console.log('[economy] ready'); await initPriceIndex(pool); } catch (e) { console.error('[economy] init failed:', (e as Error).message); }
+  // Everything inside one attempt, and econ is only set (and started) once all of it worked, so a retry never doubles timers.
+  await bootAttach('economy', async () => { try { const s = new PgEconSource(pool); await s.init(); await initPriceIndex(pool); const e = new Economy(s); econ = e; e.start(); console.log('[economy] ready'); return true; } catch (e) { console.error('[economy] init failed:', (e as Error).message); return false; } });
 }
 
 export function economyRouter(): express.Router {

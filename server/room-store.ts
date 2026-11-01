@@ -1,6 +1,7 @@
 /** Persist chess/checkers tables to Postgres so they survive restarts and deploys. */
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import pg from 'pg';
+import { bootAttach, setBootState } from './boot-retry.js';
 import { adoptRoom, EMPTY_ROOM_MS, getRoom, HARD_ROOM_MS, listRooms } from './rooms.js';
 import { persistable, restoreRoom, snapshotRoom, type RoomSnapshot } from './room-snapshot.js';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
@@ -184,17 +185,23 @@ export async function initRoomStorage(store?: RoomStore): Promise<void> {
     const url = databaseUrl();
     const file = process.env.ROOM_SNAPSHOT_FILE;
     if (!url && file) s = new FileRoomStore(file);
-    else if (!url) { console.warn('[rooms] no DATABASE_URL set; tables do not survive restarts'); return; }
+    else if (!url) { console.warn('[rooms] no DATABASE_URL set; tables do not survive restarts'); setBootState('rooms', 'memory'); return; }
     else s = new PgRoomStore(new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 }));
   }
-  try {
-    await s.init();
-    persistence = new RoomPersistence(s);
-    const swept = await persistence.sweep();
-    console.log(`[rooms] table snapshots on (${s instanceof PgRoomStore ? 'postgres' : 'file'}); tables load when a player returns; swept ${swept.length} stale`);
-    persistence.start();
-  } catch (error) {
-    console.error('[rooms] persistence disabled:', (error as Error).message);
-    persistence = null;
-  }
+  const st = s;
+  await bootAttach('rooms', async () => {
+    try {
+      await st.init();
+      const p = new RoomPersistence(st);
+      const swept = await p.sweep();
+      persistence = p;
+      console.log(`[rooms] table snapshots on (${st instanceof PgRoomStore ? 'postgres' : 'file'}); tables load when a player returns; swept ${swept.length} stale`);
+      p.start();
+      return true;
+    } catch (error) {
+      console.error('[rooms] persistence not ready:', (error as Error).message);
+      persistence = null;
+      return false;
+    }
+  }, store ? { tries: 1 } : {});
 }

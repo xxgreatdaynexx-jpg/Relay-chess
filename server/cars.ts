@@ -12,6 +12,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
+import { bootAttach, setBootState } from './boot-retry.js';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
@@ -157,10 +158,10 @@ export const getGarage = () => garage;
 export function setGarage(g: Garage | null) { garage = g; }
 export async function initCars(): Promise<void> {
   const url = databaseUrl();
-  if (!url) { garage = new Garage(null); return; }
+  if (!url) { garage = new Garage(null); setBootState('cars', 'memory'); return; }
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
   pool.on('error', (e) => console.error('[cars] pool error:', e.message));
-  try { const g = new Garage(pool as unknown as PoolLike); await g.init(); garage = g; console.log('[cars] ready'); } catch (e) { console.error('[cars] init failed:', (e as Error).message); }
+  await bootAttach('cars', async () => { try { const g = new Garage(pool as unknown as PoolLike); await g.init(); garage = g; console.log('[cars] ready'); return true; } catch (e) { console.error('[cars] init failed:', (e as Error).message); return false; } });
 }
 
 type Ack = (r: { ok: boolean; error?: string; [k: string]: unknown }) => void;

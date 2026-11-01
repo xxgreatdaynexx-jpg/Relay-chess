@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { LeaderboardStore } from './leaderboard-store.js';
 import { createPgStore, databaseUrl } from './leaderboard-store.js';
+import { bootAttach, setBootState } from './boot-retry.js';
 import type { LeaderboardRow, Side } from '../shared/types.js';
 
 interface Entry {
@@ -39,11 +40,17 @@ export class Leaderboard {
   }
 
   /** Switch to a database store: migrate, then load rows into the cache. Never throws. */
+  /** True while booting/reconnecting: standings are not loaded, so results are not recorded or shown as real. */
+  offline = false;
+
   async attachStore(store: LeaderboardStore): Promise<boolean> {
-    this.store = store;
     try {
       await store.init();
-      await this.refresh();
+      const rows = await store.loadAll();
+      const next = new Map<string, Entry>();
+      for (const row of rows) next.set(row.key, { name: row.name, wins: row.wins, losses: row.losses, draws: row.draws });
+      // The store is only used once the real rows are in: an offline board never writes.
+      this.players = next; this.store = store; this.offline = false;
       return true;
     } catch (err) {
       console.error('[leaderboard] postgres init failed, using in-memory cache:', (err as Error).message);
@@ -84,6 +91,7 @@ export class Leaderboard {
   }
 
   record(game: GameNames): void {
+    if (this.offline) { console.warn('[leaderboard] offline: result not recorded'); return; }
     const white = uniqueNames(game.white);
     const black = uniqueNames(game.black);
     const blackKeys = new Set(black.map((player) => player.key));
@@ -119,6 +127,7 @@ export class Leaderboard {
 
   /** Keep stats merged by case, but show the latest lobby spelling. */
   rememberName(name: string): void {
+    if (this.offline) return;
     const trimmed = name.trim();
     const key = normalizeName(trimmed);
     const entry = key ? this.players.get(key) : undefined;
@@ -216,12 +225,13 @@ export async function initLeaderboardStorage(): Promise<void> {
   const url = databaseUrl();
   if (!url) {
     console.warn('[leaderboard] no DATABASE_URL set; leaderboard is local only and will not survive redeploys');
+    setBootState('leaderboard', 'memory');
     return;
   }
-  const board = new Leaderboard(null);
-  const ok = await board.attachStore(createPgStore(url));
+  const board = new Leaderboard(null); board.offline = true;
   current = board;
-  if (ok) console.log(`[leaderboard] connected to postgres (${board.standings().length} players loaded)`);
+  const store = createPgStore(url);
+  await bootAttach('leaderboard', () => board.attachStore(store), { onOk: () => console.log(`[leaderboard] connected to postgres (${board.standings().length} players loaded)`) });
 }
 
 let checkers = new Leaderboard(databaseUrl() ? null : checkersLeaderboardPath());
@@ -238,10 +248,10 @@ export function getCheckersLeaderboard(): Leaderboard {
 export async function initCheckersLeaderboardStorage(): Promise<void> {
   const url = databaseUrl();
   if (!url) return;
-  const board = new Leaderboard(null);
-  const ok = await board.attachStore(createPgStore(url, 'checkers_leaderboard'));
+  const board = new Leaderboard(null); board.offline = true;
   checkers = board;
-  if (ok) console.log(`[leaderboard] checkers table ready (${board.standings().length} players loaded)`);
+  const store = createPgStore(url, 'checkers_leaderboard');
+  await bootAttach('checkers-leaderboard', () => board.attachStore(store), { onOk: () => console.log(`[leaderboard] checkers table ready (${board.standings().length} players loaded)`) });
 }
 
 export function resetCheckersLeaderboard(file: string | null = null): Leaderboard {

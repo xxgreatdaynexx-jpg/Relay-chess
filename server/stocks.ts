@@ -12,6 +12,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
+import { bootAttach, setBootState } from './boot-retry.js';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
@@ -307,10 +308,10 @@ export function setExchange(e: Exchange | null) { ex = e; }
 export async function initStocks(): Promise<void> {
   const url = databaseUrl();
   const wire = (e: Exchange, pool: pg.Pool | null) => { const dv = new Derivatives(e, pool); setDerivs(dv); e.postTick = (now) => dv.afterTick(now); return dv; };
-  if (!url) { ex = new Exchange(null); wire(ex, null); ex.start(); return; }
+  if (!url) { ex = new Exchange(null); wire(ex, null); ex.start(); setBootState('stocks', 'memory'); return; }
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
   pool.on('error', (e) => console.error('[stocks] pool error:', e.message));
-  try { const e = new Exchange(pool); await e.init(); const dv = wire(e, pool); await dv.init(); ex = e; e.start(); console.log('[stocks] ready'); } catch (e) { console.error('[stocks] init failed:', (e as Error).message); }
+  await bootAttach('stocks', async () => { try { const e = new Exchange(pool); await e.init(); const dv = wire(e, pool); await dv.init(); ex = e; e.start(); console.log('[stocks] ready'); return true; } catch (e) { console.error('[stocks] init failed:', (e as Error).message); return false; } });
 }
 
 type Ack = (r: { ok: boolean; error?: string; [k: string]: unknown }) => void;

@@ -1,5 +1,7 @@
 /** Global chat + online-users presence over the main socket. Chat history is kept in memory and written behind to Postgres. */
 import pg from 'pg';
+import { bootAttach, reconnectMsg, setBootState } from './boot-retry.js';
+export const CHAT_OFFLINE_MSG = reconnectMsg('Chat');
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { isQaName } from '../shared/qa.js';
@@ -70,12 +72,17 @@ export class ChatLog {
   constructor(readonly cap = CHAT_HISTORY) {}
   get usingDatabase(): boolean { return this.store !== null; }
 
+  /** True while booting/reconnecting: history is not loaded, so posts are refused instead of being lost. */
+  offline = false;
+
   async attach(store: ChatStore): Promise<boolean> {
     try {
       await store.init();
+      const offlineSystem = this.messages; // server notes posted while offline are written once connected
       this.messages = (await store.recent(this.cap)).slice(-this.cap);
       this.lastId = this.messages.reduce((m, x) => Math.max(m, x.id), 0);
-      this.store = store;
+      this.store = store; this.offline = false;
+      for (const m of offlineSystem) this.postSystem(m.name, m.text, m.at);
       return true;
     } catch (err) {
       console.error('[chat] postgres unavailable, chat history is in-memory only:', (err as Error).message);
@@ -85,6 +92,7 @@ export class ChatLog {
 
   /** Validates, rate-limits and records a message. The name must come from the server-side identity. */
   post(name: string, raw: unknown, now = Date.now()): { ok: true; message: ChatMessage } | { ok: false; error: string } {
+    if (this.offline) return { ok: false, error: CHAT_OFFLINE_MSG };
     const check = validateChat(raw);
     if (!check.ok) return check;
     const rl = this.limiter.take(name.toLowerCase(), now);
@@ -135,9 +143,10 @@ export function resetChatLog(): ChatLog { log = new ChatLog(); return log; }
 
 export async function initChatStorage(): Promise<void> {
   const url = databaseUrl();
-  if (!url) { console.warn('[chat] no DATABASE_URL set; chat history is in-memory only'); return; }
+  if (!url) { console.warn('[chat] no DATABASE_URL set; chat history is in-memory only'); setBootState('chat', 'memory'); return; }
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
-  if (await log.attach(new PgChatStore(pool))) console.log(`[chat] connected to postgres (${log.size} messages loaded)`);
+  const l = log; l.offline = true;
+  await bootAttach('chat', () => l.attach(new PgChatStore(pool)), { onOk: () => console.log(`[chat] connected to postgres (${l.size} messages loaded)`) });
 }
 
 /* ---------------- presence ---------------- */
@@ -215,7 +224,9 @@ export function registerChat(io: Server, socket: Socket): void {
     if (typeof ack === 'function') ack({ ok: true, ...onlineSnapshot(io, isQaName(nameOf(socket))) });
   });
   socket.on('chat_history', (_payload: unknown, ack?: Ack) => {
-    if (typeof ack === 'function') ack({ ok: true, messages: getChatLog().history(isQaName(nameOf(socket))) });
+    if (typeof ack !== 'function') return;
+    const log = getChatLog();
+    ack(log.offline ? { ok: false, offline: true, error: CHAT_OFFLINE_MSG, messages: [] } : { ok: true, messages: log.history(isQaName(nameOf(socket))) });
   });
   socket.on('chat_send', (payload: unknown, ack?: Ack) => {
     const reply = typeof ack === 'function' ? ack : () => {};

@@ -9,6 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import express from 'express';
 import pg from 'pg';
+import { bootAttach, setBootState } from './boot-retry.js';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank, type CasinoBank } from './casino-store.js';
@@ -158,10 +159,10 @@ export class RealEstate {
 let re: RealEstate | null = null;
 export const getRealEstate = () => re;
 export async function initRealEstate(): Promise<void> {
-  const url = databaseUrl(); if (!url) return;
+  const url = databaseUrl(); if (!url) { setBootState('realestate', 'memory'); return; }
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
   pool.on('error', (e) => console.error('[realestate] pool error:', e.message));
-  try { const r = new RealEstate(pool); await r.init(); re = r; r.start(); console.log('[realestate] ready'); } catch (e) { console.error('[realestate] init failed:', (e as Error).message); }
+  await bootAttach('realestate', async () => { try { const r = new RealEstate(pool); await r.init(); re = r; r.start(); console.log('[realestate] ready'); return true; } catch (e) { console.error('[realestate] init failed:', (e as Error).message); return false; } });
 }
 
 /** Public read: who owns what (names only) + list prices come from the shared catalog on the client. */
