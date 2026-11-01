@@ -9,6 +9,7 @@ import type { World } from './world3d';
 import { buildCar } from './carModels';
 import { socket } from './net';
 import { PLATE, shoreZ, roadClearance, obbHit, ROADS, type OBB } from './worldLayout';
+import { FLY_DEST, drivable, onVenueRoad, trackPoint, type LapEvent } from '../../../shared/venues';
 import { CAR_BY_ID, carPhysics, DRIVE_HZ, DRIVE_MAX_VISIBLE, type CarModel } from '../../../shared/cars';
 
 export type DriveInput = { up: boolean; down: boolean; left: boolean; right: boolean };
@@ -34,7 +35,7 @@ export function spawnNear(x: number, z: number): { x: number; z: number; a: numb
   return best;
 }
 
-export interface DriveHandlers { me: () => string | null; onNear: (id: string | null) => void; onSpeed?: (kmh: number) => void }
+export interface DriveHandlers { me: () => string | null; onNear: (id: string | null) => void; onSpeed?: (kmh: number) => void; onRace?: (ev: Array<LapEvent & { text?: string; best?: boolean }>) => void }
 export function createDrive(world: World, h: DriveHandlers) {
   const { scene, camera, controls } = world; const solids: OBB[] = world.solids; const lm = world.lmBoxes;
   const remotes = new Map<string, Remote>();
@@ -43,13 +44,13 @@ export function createDrive(world: World, h: DriveHandlers) {
   let sendAcc = 0; let near: string | null = null; const camPos = new THREE.Vector3(); const look = new THREE.Vector3();
 
   const hit = (x: number, z: number, r: number) => {
-    if (Math.abs(x) > PLATE - 1 || Math.abs(z) > PLATE - 1 || z > shoreZ(x) - 1.5) return true;
+    if (!drivable(x, z, 1)) return true; // city plate (above the shore) or a venue's grounds
     for (const o of solids) if (Math.abs(o.x - x) < 14 && Math.abs(o.z - z) < 14 && obbHit(o, x, z, r)) return true;
     return false;
   };
   const step = (dt: number) => {
     if (!mine) return; const m = mine, p = m.phys; const i = { up: input.up || touch.up, down: input.down || touch.down, left: input.left || touch.left, right: input.right || touch.right };
-    const off = roadClearance(m.x, m.z) > 1; const vmax = off ? p.vmax * 0.4 : p.vmax;
+    const off = roadClearance(m.x, m.z) > 1 && !onVenueRoad(m.x, m.z); const vmax = off ? p.vmax * 0.4 : p.vmax;
     if (i.up) m.v += (m.v < 0 ? p.accel * 2.5 : p.accel) * dt; else if (i.down) m.v -= (m.v > 0 ? p.accel * 2.5 : p.accel * 0.6) * dt;
     else m.v -= Math.sign(m.v) * Math.min(Math.abs(m.v), (3 + Math.abs(m.v) * 0.25) * dt);
     if (off && Math.abs(m.v) > vmax) m.v -= Math.sign(m.v) * Math.min(Math.abs(m.v) - vmax, 20 * dt);
@@ -90,8 +91,9 @@ export function createDrive(world: World, h: DriveHandlers) {
     }
     for (const [k, r] of remotes) if (!seen.has(k)) { scene.remove(r.obj, r.tag); disposeSprite(r.tag); remotes.delete(k); }
   };
+  const onRace = (ev: Array<LapEvent & { text?: string; best?: boolean }>) => { if (mine) h.onRace?.(ev); };
   const watch = () => socket.emit('drive_watch', true);
-  socket.on('drive_cars', onCars); socket.on('connect', watch); if (socket.connected) watch();
+  socket.on('race_ev', onRace); socket.on('drive_cars', onCars); socket.on('connect', watch); if (socket.connected) watch();
 
   const keys: Record<string, keyof DriveInput> = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right' };
   const kd = (e: KeyboardEvent) => { const k = keys[e.code]; if (!k || !mine || (e.target as HTMLElement)?.closest?.('input,textarea')) return; input[k] = true; e.preventDefault(); };
@@ -103,7 +105,9 @@ export function createDrive(world: World, h: DriveHandlers) {
     get driving() { return !!mine; },
     start(carId: string, color: number, from = 'dealer') {
       const model = CAR_BY_ID.get(carId); if (!model) return; this.stop(false);
-      const o = lm[from] ?? { x: 0, z: 0 }; const sp = spawnNear(o.x, o.z);
+      // 'grid' = the Speedway start line (just behind it, facing the first straight); otherwise the road nearest a landmark.
+      let sp: { x: number; z: number; a: number };
+      if (from === 'grid') { const [x, z, a] = trackPoint(0.985); sp = { x, z, a }; } else if (from === 'airport') { const d = FLY_DEST.airport; sp = { x: d.x, z: d.z, a: d.a }; } else { const o = lm[from] ?? { x: 0, z: 0 }; sp = spawnNear(o.x, o.z); }
       mine = { obj: buildCar(model, color, 'near'), model, phys: carPhysics(model), x: sp.x, z: sp.z, a: sp.a, v: 0 }; scene.add(mine.obj);
       mine.obj.position.set(sp.x, 0, sp.z); mine.obj.rotation.y = -sp.a; controls.enabled = false; controls.autoRotate = false;
       const r = remotes.get(h.me()?.trim().toLowerCase() ?? ''); if (r) { scene.remove(r.obj, r.tag); disposeSprite(r.tag); remotes.delete(r.key); }
@@ -114,9 +118,20 @@ export function createDrive(world: World, h: DriveHandlers) {
       if (resetCam) { camera.position.set(camera.position.x, Math.max(camera.position.y, 40), camera.position.z + 30); }
     },
     touch(k: keyof DriveInput, on: boolean) { touch[k] = on; },
+    /** Airport fast travel: the server moves our accepted pose, then we jump the car there. */
+    fly(to: string): Promise<{ ok: boolean; error?: string }> {
+      return new Promise((res) => {
+        if (!mine) return res({ ok: false, error: 'Drive to the airport first.' });
+        socket.timeout(5000).emit('drive_fly', { to }, (err: unknown, r?: { ok: boolean; error?: string; x?: number; z?: number; a?: number }) => {
+          if (err || !r) return res({ ok: false, error: 'No response. Try again.' });
+          if (r.ok && mine && r.x != null && r.z != null) { Object.assign(mine, { x: r.x, z: r.z, a: r.a ?? 0, v: 0 }); mine.obj.position.set(r.x, 0, r.z); mine.obj.rotation.y = -(r.a ?? 0); camera.position.set(r.x, 60, r.z + 40); }
+          res(r);
+        });
+      });
+    },
     remoteCount: () => remotes.size,
     dispose() {
-      this.stop(false); world.setTick(null); socket.off('drive_cars', onCars); socket.off('connect', watch); socket.emit('drive_watch', false);
+      this.stop(false); world.setTick(null); socket.off('drive_cars', onCars); socket.off('race_ev', onRace); socket.off('connect', watch); socket.emit('drive_watch', false);
       window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku);
       for (const r of remotes.values()) { scene.remove(r.obj, r.tag); disposeSprite(r.tag); } remotes.clear();
     },

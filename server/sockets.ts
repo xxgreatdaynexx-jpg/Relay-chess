@@ -15,6 +15,7 @@ import { registerMarket } from './market.js';
 import { registerStocks } from './stocks.js';
 import { registerRealEstate } from './realEstate.js';
 import { registerCars } from './cars.js';
+import { registerRace } from './race.js';
 import { registerFarm } from './farm.js';
 import { registerMines } from './mines.js';
 import { registerFactory } from './factory.js';
@@ -211,6 +212,7 @@ export function registerSockets(io: Server): void {
     registerStocks(io, socket);
     registerRealEstate(io, socket);
     registerCars(io, socket);
+    registerRace(io, socket);
     registerFarm(io, socket);
     registerMines(io, socket);
     registerFactory(io, socket);

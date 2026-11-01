@@ -7,6 +7,7 @@ import { FarmGame } from './FarmGame';
 import { useAccount } from '@/lib/auth';
 import { socket } from '@/lib/net';
 import { indexed } from '../../../shared/priceIndex';
+import { fmtLap } from '../../../shared/venues';
 import { propertyById as baseProperty, properties as baseProperties, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, type OwnedProperty } from '../../../shared/realEstate';
 
 /** Today's price index from /api/real-estate; list prices and tax scale with it. */
@@ -67,6 +68,7 @@ function DeedList({ owned, me, onOpen, onClose }: { owned: Map<string, OwnedProp
 
 import { request } from '@/lib/net';
 import type { Drive, DriveInput } from '@/lib/worldDrive';
+const Venues = lazy(() => import('./Venues').then((m) => ({ default: m.Venues })));
 const Dealership = lazy(() => import('./Dealership').then((m) => ({ default: m.Dealership })));
 
 const CASINO_GAMES = [
@@ -122,7 +124,24 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
   const driveRef = useRef<Drive | null>(null);
   const [driving, setDriving] = useState(false); const [near, setNear] = useState<string | null>(null); const [kmh, setKmh] = useState(0);
   const meRef = useRef(me); meRef.current = me;
-  const startDrive = (carId: string, color: number) => { setDealer(false); driveRef.current?.start(carId, color); setDriving(!!driveRef.current?.driving); };
+  const [venue, setVenue] = useState<'airport' | 'racetrack' | null>(null);
+  const [lap, setLap] = useState<{ t0: number | null; text: string | null; gate: number }>({ t0: null, text: null, gate: 0 }); const [, setNow] = useState(0);
+  useEffect(() => { if (!driving || lap.t0 == null) return; const t = window.setInterval(() => setNow(Date.now()), 100); return () => window.clearInterval(t); }, [driving, lap.t0]);
+  const onRace = (ev: Array<{ kind: string; ms?: number; gate?: number; text?: string; why?: string }>) => setLap((l) => {
+    let n = { ...l };
+    for (const e of ev) {
+      if (e.kind === 'start') n = { t0: Date.now(), text: n.text, gate: 0 };
+      else if (e.kind === 'gate') n.gate = e.gate ?? n.gate;
+      else if (e.kind === 'lap') n = { t0: Date.now(), text: e.text ?? null, gate: 0 };
+      else if (e.kind === 'void') n = { t0: null, text: `Lap void: ${e.why ?? 'off track'}`, gate: 0 };
+    }
+    return n;
+  });
+  const startDrive = (carId: string, color: number, from?: string) => { setDealer(false); driveRef.current?.start(carId, color, from); setDriving(!!driveRef.current?.driving); setLap({ t0: null, text: null, gate: 0 }); };
+  const driveFrom = async (from: string) => {
+    const a = await request('car_garage') as { ok: boolean; cars?: { carId: string; color: number; active: boolean }[] };
+    const c = a.ok ? a.cars?.find((x) => x.active) ?? a.cars?.[0] : undefined; if (!c) return false; startDrive(c.carId, c.color, from); return true;
+  };
   const stopDrive = () => { driveRef.current?.stop(); setDriving(false); setNear(null); };
   const toggleDrive = async () => {
     if (driving) { stopDrive(); return; }
@@ -145,6 +164,7 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
       case 'chat': openTab('chat-tab'); break;
       case 'leaderboard': onLeaderboard(); break;
       case 'dealer': setDealer(true); return;
+      case 'airport': case 'racetrack': setVenue(id); return;
     }
     // Every other building opens as a panel on top of the city; closing it reveals the city again.
   };
@@ -164,7 +184,7 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
         });
         const w = worldRef.current;
         void import('@/lib/worldDrive').then(({ createDrive }) => { if (dead || worldRef.current !== w) return;
-          driveRef.current = createDrive(w, { me: () => meRef.current ?? null, onNear: setNear, onSpeed: setKmh }); });
+          driveRef.current = createDrive(w, { me: () => meRef.current ?? null, onNear: setNear, onSpeed: setKmh, onRace }); });
       } catch { setMode('2d'); }
       setLoading(false);
     }).catch(() => setMode('2d'));
@@ -217,9 +237,11 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
       {deeds && !deed && <DeedList owned={owned} me={me} onOpen={(id) => setDeed(id)} onClose={() => setDeeds(false)} />}
       {driving && <>
         <div className="world-speedo" data-testid="world-speedo">{kmh} <small>km/h</small><em>WASD / arrows · E enter · Esc park</em></div>
+        {(lap.t0 != null || lap.text) && <div className="world-lap" data-testid="world-lap">{lap.t0 != null && <b>⏱ {fmtLap(Date.now() - lap.t0)} <small>gate {lap.gate}/3</small></b>}{lap.text && <span>{lap.text}</span>}</div>}
         {nearSpot && <button type="button" className="world-enter" onClick={() => go(nearSpot.id)} data-testid="world-enter">{nearSpot.icon} Enter {nearSpot.label} <kbd>E</kbd></button>}
         <div className="world-pad" data-testid="world-pad"><div>{pad('left', '◀')}{pad('right', '▶')}</div><div>{pad('down', '▼')}{pad('up', '▲')}</div></div>
       </>}
+      {venue && <Suspense fallback={<div className="world-loading">Opening…</div>}><Venues kind={venue} me={me} driving={driving} onClose={() => setVenue(null)} onFly={async (to) => driveRef.current ? driveRef.current.fly(to) : { ok: false, error: 'Switch to the 3D city to fly.' }} onDriveFrom={driveFrom} /></Suspense>}
       {dealer && <Suspense fallback={<div className="world-loading">Opening the dealership…</div>}><Dealership onClose={() => setDealer(false)} onDrive={startDrive} /></Suspense>}
       {casino && (
         <div className="world-casino" onMouseDown={(e) => { if (e.target === e.currentTarget) setCasino(false); }} data-testid="world-casino">

@@ -1,3 +1,4 @@
+import { drivable } from './venues.js';
 /**
  * Car Dealership catalog + the pure rules shared by server and client: prices, resale/depreciation, arcade handling,
  * and the sanity limits the server uses to reject absurd driving updates (teleports / impossible speeds).
@@ -62,7 +63,6 @@ export const DRIVE_HZ = 8; // client send rate
 export const DRIVE_BROADCAST_MS = 125; // server snapshot rate (8 Hz)
 export const DRIVE_IDLE_MS = 8000; // no update this long = parked/gone
 export const DRIVE_MAX_VISIBLE = 30;
-export const DRIVE_BOUND = 118; // |x|, |z| limit (plate is 116)
 export const DRIVE_SPEED_CAP = unitsPerSec(420) * 1.35; // fastest car + slack
 
 export interface DriveState { x: number; z: number; a: number; v: number }
@@ -74,7 +74,7 @@ export function validDrive(s: unknown, prev: (DriveState & { t: number }) | null
   if (!s || typeof s !== 'object') return false;
   const { x, z, a, v } = s as Record<string, unknown>;
   if (![x, z, a, v].every((n) => typeof n === 'number' && Number.isFinite(n))) return false;
-  if (Math.abs(x as number) > DRIVE_BOUND || Math.abs(z as number) > DRIVE_BOUND) return false;
+  if (!drivable(x as number, z as number, -2)) return false; // city plate or a venue's grounds (+2 slack)
   const cap = Math.min(DRIVE_SPEED_CAP, unitsPerSec(carTopKmh) * 1.35 + 2);
   if (Math.abs(v as number) > cap) return false;
   if (prev) {

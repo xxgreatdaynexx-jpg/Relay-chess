@@ -16,6 +16,7 @@ import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
 import { px } from './price-index.js';
+import { FLY_DEST, nearAirport, type FlyDest } from '../shared/venues.js';
 import { CAR_BY_ID, CARS, DRIVE_BROADCAST_MS, DRIVE_IDLE_MS, DRIVE_MAX_VISIBLE, carValue, validDrive, type DriveState } from '../shared/cars.js';
 
 export class CarError extends Error {}
@@ -131,6 +132,12 @@ export class DriveRelay {
     this.drivers.set(k, { name: name.trim(), carId: car.carId, color: car.color, sid, t: now, x: st.x, z: st.z, a: st.a, v: st.v });
     return true;
   }
+  /** Airport fast travel: only from near the terminal; moves the accepted pose so the next update isn't a 'teleport'. */
+  fly(name: string, sid: string, to: unknown): { x: number; z: number; a: number } | null {
+    const k = keyOf(name); const d = this.drivers.get(k); const now = this.clock(); const dest = typeof to === 'string' ? FLY_DEST[to as FlyDest] : undefined;
+    if (!dest || !d || d.sid !== sid || now - d.t > DRIVE_IDLE_MS || !nearAirport(d.x, d.z)) return null;
+    Object.assign(d, { x: dest.x, z: dest.z, a: dest.a, v: 0, t: now }); return { x: dest.x, z: dest.z, a: dest.a };
+  }
   stop(name: string, sid?: string) { const k = keyOf(name); const d = this.drivers.get(k); if (d && (!sid || d.sid === sid)) this.drivers.delete(k); }
   dropSocket(sid: string) { for (const [k, d] of this.drivers) if (d.sid === sid) this.drivers.delete(k); }
   snapshot() {
@@ -142,6 +149,10 @@ export class DriveRelay {
 
 let garage: Garage | null = null;
 const relay = new DriveRelay();
+/** Called with every accepted pose (the racetrack's lap timer); `reset` after a fly / stop. Returns events to send back. */
+export type DriveHook = { pose: (name: string, carId: string, x: number, z: number, t: number) => Promise<unknown[]> | unknown[]; reset: (name: string) => void };
+let hook: DriveHook | null = null;
+export const setDriveHook = (h: DriveHook | null) => { hook = h; };
 export const getGarage = () => garage;
 export function setGarage(g: Garage | null) { garage = g; }
 export async function initCars(): Promise<void> {
@@ -173,8 +184,14 @@ export function registerCars(io: Server, socket: Socket): void {
   socket.on('drive_state', async (s: unknown) => {
     const n = nameOf(); if (!n || !garage) return;
     const car = await garage.active(n).catch(() => null); if (!car) return;
-    if (!relay.update(socket.id, n, car, s) && Date.now() - warn > 5000) { warn = Date.now(); socket.emit('drive_reject'); }
+    if (!relay.update(socket.id, n, car, s)) { if (Date.now() - warn > 5000) { warn = Date.now(); socket.emit('drive_reject'); } return; }
+    if (hook) { const st = s as DriveState; const ev = await Promise.resolve(hook.pose(n, car.carId, st.x, st.z, Date.now())).catch(() => []); if (ev.length) socket.emit('race_ev', ev); }
   });
-  socket.on('drive_stop', () => { const n = nameOf(); if (n) relay.stop(n, socket.id); });
+  socket.on('drive_stop', () => { const n = nameOf(); if (n) { relay.stop(n, socket.id); hook?.reset(n); } });
+  socket.on('drive_fly', (b: unknown, ack?: Ack) => {
+    const n = nameOf(); const to = b && typeof b === 'object' ? (b as Record<string, unknown>).to : undefined;
+    const r = n ? relay.fly(n, socket.id, to) : null; if (r && n) hook?.reset(n);
+    ack?.(r ? { ok: true, ...r } : { ok: false, error: 'Drive up to the airport terminal to catch a flight.' });
+  });
   socket.on('disconnect', () => relay.dropSocket(socket.id));
 }

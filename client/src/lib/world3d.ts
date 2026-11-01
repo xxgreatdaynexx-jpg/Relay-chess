@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, TILE, clampMapTarget } from '../../../shared/farm';
+import { buildVenues } from './worldVenues';
 import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN, MINE_SITES, MINE_APRON, OUTSKIRTS } from './worldLayout';
 import { outskirts, RURAL_ROADS, RURAL_ROAD_W, LAKE } from '../../../shared/outskirts';
 
@@ -224,6 +225,18 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
         g.add(box(9, 4.2, 0.4, win(61), 0, 0.3, -5.2), box(0.4, 4.2, 6, dark, -4.4, 0.3, -2.4), box(0.4, 4.2, 6, dark, 4.4, 0.3, -2.4), box(9.6, 0.5, 6.6, neon, 0, 4.5, -2.4));
         g.add(cyl(0.25, 0.25, 9, dark, 5.2, 0, 4.8, 6), box(0.4, 2, 2.6, neon, 5.2, 7.4, 4.8));
         ([['chudmobile', 0xff7a1a, -3, 3.4], ['thunderhorse', 0xc8102e, 0, 3.6], ['hypervolt', 0xf2f4f7, 3, 3.4], ['phantom', 0x111111, 0, -2.4]] as const).forEach(([id, col, x, z]) => { const c = buildCar(CAR_BY_ID.get(id)!, col, 'far'); c.position.set(x, 0.15, z); c.rotation.y = Math.PI / 2 + (x ? 0.5 * Math.sign(x) : 0); c.scale.setScalar(0.8); g.add(c); });
+        height = 10; break; }
+      case 'airport': {
+        // Terminal: long glass hall, control tower with a lit cab and rotating beacon, jet bridge onto the apron.
+        g.add(box(11, 3.6, 6, win(71), 0, 0, 1.5), box(11.6, 0.4, 6.6, dark, 0, 3.6, 1.5), box(11.4, 0.25, 6.4, neon, 0, 4, 1.5));
+        g.add(cyl(1, 1.3, 13, dark, -3.5, 0, -3.5, 10), cyl(2.2, 1.6, 2.2, mat({ color: 0x9fd4ff, emissive: 0x4aa0ff, emissiveIntensity: 0.7 * NEON, transparent: true, opacity: 0.8 }), -3.5, 13, -3.5, 10), cyl(2.4, 2.4, 0.3, neon, -3.5, 15.2, -3.5, 10));
+        g.add(box(5, 1.6, 1.4, mat({ color: 0xb8bcc4 }), -7.5, 1.4, -2.5));
+        height = 17; break; }
+      case 'racetrack': {
+        // Grandstand in the infield: stepped seating under a cantilevered roof, timing tower with a lap board.
+        for (let i = 0; i < 4; i++) g.add(box(10, 0.8 + i * 0.8, 1.4, mat({ color: i % 2 ? 0x6a7090 : 0x8088a8 }), 0, 0, 2.6 - i * 1.4));
+        g.add(box(10.6, 0.3, 6.2, mat({ color: 0xd8dde8 }), 0, 5.2, 0.6), cyl(0.2, 0.2, 5.2, dark, -5, 0, -2, 6), cyl(0.2, 0.2, 5.2, dark, 5, 0, -2, 6));
+        g.add(box(1.8, 9, 1.8, dark, -4.8, 0, 4.6), box(2.4, 1.6, 0.3, neon, -4.8, 7.4, 3.6));
         height = 10; break; }
       case 'stocks': {
         // Stock Exchange: columned hall with a scrolling green ticker band and a bull on the steps.
@@ -518,6 +531,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const resizeComposer = () => { if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(canvas.clientWidth || 1, canvas.clientHeight || 1); } };
   const ro = new ResizeObserver(() => { resize(); resizeComposer(); }); ro.observe(canvas); resize(); resizeComposer();
 
+  const venues = buildVenues(scene, { mat, geo });
   const tmpV = new THREE.Vector3(); const clock = new THREE.Clock(); let raf = 0; let running = true; let time = 0;
   const d = new THREE.Object3D(); const hp = headG.attributes.position as THREE.BufferAttribute;
   const blink = (lms.find((l) => l.id === 'leaderboard')!.root.userData as { blink?: THREE.Object3D }).blink;
@@ -532,7 +546,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     if (fly) { fly.t = Math.min(1, fly.t + dt / 0.75); const e = 1 - Math.pow(1 - fly.t, 3); camera.position.lerpVectors(fly.from, fly.to, e); controls.target.lerpVectors(fly.tf, fly.tt, e); camera.lookAt(controls.target);
       if (fly.t >= 1) { const id = fly.id; fly = null; controls.enabled = true; h.onPick(id); } } // the city stays mounted now (0dc4f99): hand zoom/orbit back
     else if (!tick?.(dt)) { panStep(dt); controls.update(); clampPan(); }
-    waterMat.uniforms.uTime.value = time;
+    waterMat.uniforms.uTime.value = time; venues.step(dt, time);
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
     for (const l of lms) { const k = labelScale(camera.position.distanceTo(l.sign.getWorldPosition(tmpV)), portrait) * (l.sign.userData.hover ? 1.2 : 1); l.sign.scale.set(k, k / 4, 1); }
     if (composer) composer.render(); else renderer.render(scene, camera);
@@ -561,7 +575,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     setRunning(v: boolean) { running = v && !document.hidden; clock.getDelta(); },
     project(id: string) { const l = lms.find((x) => x.id === id); if (!l) return null; const v = l.pos.clone().setY(l.height + 2.2).project(camera); const rc = canvas.getBoundingClientRect(); return { x: rc.left + (v.x + 1) / 2 * rc.width, y: rc.top + (1 - v.y) / 2 * rc.height }; },
     hover(id: string | null) { setHover(id); },
-    dispose() { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); parkDead = true; trailerMeshes = []; cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
+    dispose() { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); parkDead = true; trailerMeshes = []; cancelAnimationFrame(raf); venues.dispose(); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
   };
 }
 export type World = ReturnType<typeof createWorld>;

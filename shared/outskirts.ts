@@ -6,6 +6,8 @@
  */
 import { PLATE, MINE_SITES, MINE_APRON, OUTSKIRTS, RESERVED_VENUES } from './worldLayout.js';
 import { FARM_X0, FARM_X1, FARM_Z0, FARM_Z1 } from './farm.js';
+import { AIRPORT_ROADS, RACETRACK_ROADS } from './venues.js';
+const VENUE_ROADS = [...AIRPORT_ROADS, ...RACETRACK_ROADS];
 
 type P = [number, number];
 export interface Box2 { x: number; z: number; w: number; d: number }
@@ -36,6 +38,7 @@ export function keepOut(x: number, z: number, m = 0): boolean {
     const pts: P[] = [...s.track, [s.x, s.z]]; for (let i = 1; i < pts.length; i++) if (segD(x, z, pts[i - 1], pts[i]) < 3.5 + m) return true;
   }
   for (const [a, b] of RURAL_ROADS) if (segD(x, z, a, b) < RURAL_ROAD_W / 2 + 1.5 + m) return true;
+  for (const [a, b, w] of VENUE_ROADS) if (segD(x, z, a, b) < w / 2 + 1.5 + m) return true; // Airport / Speedway access roads (shared/venues.ts)
   if (((x - LAKE.x) / (LAKE.rx + 3 + m)) ** 2 + ((z - LAKE.z) / (LAKE.rz + 3 + m)) ** 2 < 1) return true;
   return false;
 }
@@ -77,6 +80,6 @@ export function outskirts(): Outskirts {
     const n = 6 + Math.floor(r() * 14), sp = 5 + r() * 8; for (let i = 0; i < n; i++) { const x = cx + (r() - 0.5) * 2 * sp, z = cz + (r() - 0.5) * 2 * sp; if (clear(x, z)) trees.push([x, z, 0.8 + r() * 0.9]); } }
   // Road lamps every 18 units, alternating sides.
   const lamps: P[] = []; for (const [a, b] of RURAL_ROADS) { const L = Math.hypot(b[0] - a[0], b[1] - a[1]); const ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L;
-    for (let s = 9, k = 0; s < L; s += 18, k++) { const o = (k % 2 ? 1 : -1) * (RURAL_ROAD_W / 2 + 0.8); lamps.push([a[0] + ux * s - uz * o, a[1] + uz * s + ux * o]); } }
+    for (let s = 9, k = 0; s < L; s += 18, k++) { const o = (k % 2 ? 1 : -1) * (RURAL_ROAD_W / 2 + 0.8); const lx = a[0] + ux * s - uz * o, lz = a[1] + uz * s + ux * o; if (!VENUE_ROADS.some(([p, q, w]) => segD(lx, lz, p, q) < w / 2 + 0.6)) lamps.push([lx, lz]); } }
   cache = { buildings, fields, trees, rocks, hills, lamps, tanks, pumps }; return cache;
 }

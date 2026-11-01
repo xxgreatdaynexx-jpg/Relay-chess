@@ -239,7 +239,11 @@ export const LANDMARK_SLOTS: Record<string, [number, number]> = {
   market: [-39, 42], // waterfront market
   factory: [-65, 13],
   warehouse: [65, -39],
+  airport: [-142, 66], // outskirts, west, in RESERVED_VENUES.airport (shared/venues.ts AIRPORT_SLOT)
+  racetrack: [-103, -169], // outskirts, north-west, in RESERVED_VENUES.racetrack: infield of the oval
 };
+/** Outskirts landmarks sit square to the map, not to a street. */
+const SQUARE_LM = new Set(['airport', 'racetrack']);
 export const SPARE_SLOTS: [number, number][] = [[13, 42], [-13, -39], [-39, -13], [13, -65]];
 
 /**
@@ -268,17 +272,17 @@ function placeLandmarks(ids: string[]): Record<string, OBB> {
   for (const id of ids) {
     if (MINE_SITES[id]) continue;
     const want = LANDMARK_SLOTS[id] ?? spare.shift(); if (!want) continue;
-    let placed: OBB | null = null;
+    let placed: OBB | null = SQUARE_LM.has(id) ? { x: want[0], z: want[1], w: PAD, d: PAD, rot: 0 } : null; // outskirts venues: fixed spot off the plate
     for (let rad = 0; rad <= 36 && !placed; rad += 2) for (let k = 0; k < Math.max(1, rad * 3) && !placed; k++) {
       const a = (k / Math.max(1, rad * 3)) * Math.PI * 2; const x = want[0] + Math.cos(a) * rad, z = want[1] + Math.sin(a) * rad;
-      const b: OBB = { x, z, w: PAD, d: PAD, rot: -nearestTangent(x, z) };
+      const b: OBB = { x, z, w: PAD, d: PAD, rot: SQUARE_LM.has(id) ? 0 : -nearestTangent(x, z) };
       if (clearOfRoads(b, 1.2) && !Object.values(out).some((o) => obbOverlap(o, b, 5))) placed = b;
     }
     if (placed) out[id] = placed;
   }
   return out;
 }
-export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'mine-frost', 'mine-magma', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer'];
+export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'mine-frost', 'mine-magma', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer', 'airport', 'racetrack'];
 let lmCache: { key: string; v: Record<string, OBB> } | null = null;
 /** Landmark footprints for the given spot ids (defaults to every known slot). */
 export function landmarks(ids: string[] = LANDMARK_IDS): Record<string, OBB> {
