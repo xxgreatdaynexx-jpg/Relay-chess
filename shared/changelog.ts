@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T14:50:00-06:00', title: 'Wallet clicks, order spinners and no stuck Mines window', bullets: [
+    'Clicking outside the Wallet now only closes it. It no longer also opens the Stock Exchange, Chess Club or whatever was behind it.',
+    'Buying or selling stocks, funds, shorts and options shows a spinner on the button while the order goes through, and the button can\'t be clicked twice.',
+    'Reloading the page no longer reopens an empty Mines or Arena window that blocked the screen.',
+  ] },
   { commit: '', at: '2026-11-01T14:35:00-06:00', title: 'Fairer shorts, safer retries, and tidier panels', bullets: [
     'Opening a short and closing it straight away now costs only the trading fees. Before, rounding on each side could take 2 extra chips on a small short.',
     'Stock, fund, short and option orders wait longer for a slow server and retry once by themselves. A retry can never charge you twice.',

@@ -1812,3 +1812,5 @@ html, body { overflow-x: clip; }
 .resort-flight { position: fixed; inset: 0; display: grid; place-items: center; z-index: 50; background: linear-gradient(180deg, #ff9a6a, #ffd5a0 60%, #4ac0c8); color: #fff; font-size: 28px; font-weight: 800; text-shadow: 0 2px 10px #a04a2a; }
 .resort-flight span { display: inline-block; animation: resort-plane 1.6s ease-in-out infinite; font-size: 64px; }
 @keyframes resort-plane { 0% { transform: translateX(-60px) rotate(-8deg); } 50% { transform: translateX(60px) translateY(-14px) rotate(4deg); } 100% { transform: translateX(-60px) rotate(-8deg); } }
+/* QA r10: click-swallowing backdrops for the Wallet dropdown (transparent; an outside click only closes them). */
+.wallet-backdrop { position: fixed; inset: 0; z-index: 59; background: transparent; }

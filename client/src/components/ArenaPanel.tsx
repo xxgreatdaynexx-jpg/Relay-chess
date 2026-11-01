@@ -1,3 +1,4 @@
+import { restoreOpen } from '@/lib/restoreOpen';
 import { TopTab } from '@/components/TopTabs';
 import { ix, usePriceIndex } from '../lib/priceIndex';
 import { useWalletChips } from '@/lib/wallet';
@@ -55,8 +56,8 @@ function colorFor(id: string) {
 
 /** Pull-down shared arena shooter, fixed top-right on every screen. */
 export function ArenaPanel() {
-  const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) === '1');
-  useEffect(() => localStorage.setItem(OPEN_KEY, open ? '1' : '0'), [open]);
+  const [open, setOpen] = useState(() => restoreOpen(OPEN_KEY));
+  
   return (
     <div className={`fps-wrap ${open ? 'fps-open' : ''}`} data-testid="arena">
       <TopTab id="arena"><button type="button" className="sol-tab fps-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="arena-tab">

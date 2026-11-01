@@ -1,3 +1,4 @@
+import { backdropDismiss } from '@/lib/backdrop';
 import { useEffect, useRef, useState } from 'react';
 import { RESORT_SPOTS } from '../../../shared/resort';
 import { MINE_CAVE_EVENT } from '../../../shared/mines';
@@ -98,7 +99,7 @@ export function ResortMap() {
         </div>
       )}
       {casino && (
-        <div className="world-casino resort-casino" onMouseDown={(e) => { if (e.target === e.currentTarget) setCasino(false); }} data-testid="resort-casino">
+        <div className="world-casino resort-casino" {...backdropDismiss(() => setCasino(false))} data-testid="resort-casino">
           <div><h3>🌴 Palms Resort Casino</h3>
             {RESORT_GAMES.map((g) => <button key={g.tab} type="button" onClick={() => { setCasino(false); openTab(g.tab); }} data-testid={`resort-casino-${g.tab}`}>{g.label}</button>)}
             <button type="button" className="world-casino-x" onClick={() => setCasino(false)}>Back to the beach</button>

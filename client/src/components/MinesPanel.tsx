@@ -1,3 +1,4 @@
+import { restoreOpen } from '@/lib/restoreOpen';
 import { importWithReload, reloadOnceForChunkError } from '@/lib/chunkReload';
 import { TopTab } from '@/components/TopTabs';
 import { usePriceIndex } from '../lib/priceIndex';
@@ -23,8 +24,8 @@ interface PackMsg { pack: Stack[]; load: number; cap: number; quote: Quote }
 
 /** Shared mine: walk the cave, swing at ore, sell your backpack to the house. Same movement as the Arena. */
 export function MinesPanel() {
-  const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) === '1');
-  useEffect(() => localStorage.setItem(OPEN_KEY, open ? '1' : '0'), [open]);
+  const [open, setOpen] = useState(() => restoreOpen(OPEN_KEY));
+  
   const [cave, setCave] = useState<CaveId>(() => { const v = localStorage.getItem(CAVE_KEY); return isCave(v) ? v : 'mine'; });
   useEffect(() => localStorage.setItem(CAVE_KEY, cave), [cave]);
   // The city map's three mine buildings send you to a specific cave.

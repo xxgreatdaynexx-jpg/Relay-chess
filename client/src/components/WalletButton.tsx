@@ -1,3 +1,4 @@
+import { backdropDismiss } from '@/lib/backdrop';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { request, socket } from '@/lib/net';
@@ -88,12 +89,8 @@ export function WalletButton() {
     return () => { socket.off('daily_report', onReport); window.clearTimeout(t); window.clearTimeout(retry); window.clearTimeout(bonusTimer); socket.off('connect', onConnect); socket.off('wallet', onWallet); socket.off('daily_bonus', onBonus); };
   }, [account]);
 
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => { const t = e.target as Node; if (!ref.current?.contains(t) && !panelRef.current?.contains(t)) setOpen(false); };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, [open]);
+  // QA r10: outside clicks are caught by a transparent backdrop (below), so they only close the Wallet and never
+  // reach the venue card / map behind it (the old document mousedown listener let the click through).
 
   const signedIn = Boolean(account) && chips !== null;
   return (
@@ -108,6 +105,7 @@ export function WalletButton() {
         <span aria-hidden>🪙</span>
         <span data-testid="wallet-chips">{unavailable && account ? 'Wallet unavailable' : signedIn ? chips!.toLocaleString() : 'Wallet'}</span>
       </button>
+      {open && createPortal(<div className="wallet-backdrop" data-testid="wallet-backdrop" {...backdropDismiss(() => setOpen(false))} />, document.body)}
       {open && createPortal(
         <div ref={panelRef} className="wallet-panel" role="dialog" aria-label="Wallet" data-testid="wallet-panel">
           <div className="mb-2 flex gap-1" role="tablist">
