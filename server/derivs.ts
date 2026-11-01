@@ -186,8 +186,8 @@ export class Derivatives {
   }
 
   /** Close (player) or liquidate (system). Returns the payout; null when it was already closed elsewhere. */
-  private async settleShort(s: ShortPos, how: 'closed' | 'liquidated', price: number, buyback: number, fee: number, imp: number | null, c: Company) {
-    const payout = Math.max(0, Math.floor(s.collateral + s.proceeds - buyback - fee));
+  private async settleShort(s: ShortPos, how: 'closed' | 'liquidated', price: number, buyback: number, fee: number, imp: number | null, c: Company, exact?: number) {
+    const payout = exact ?? Math.max(0, Math.floor(s.collateral + s.proceeds - buyback - fee));
     const now = this.clock(); let commit: (() => void) | null = null;
     const memo = how === 'closed' ? `Closed short ${s.shares} ${s.ticker} @ ${price.toFixed(2)} (fee ${fee})` : `Short ${s.shares} ${s.ticker} liquidated @ ${price.toFixed(2)} (fee ${fee})`;
     await this.atomic([{ name: s.name, amount: payout, key: `short:${s.id}:close`, game: 'stocks', memo }], async (cl) => {
@@ -201,9 +201,10 @@ export class Derivatives {
   }
   async closeShort(name: string, id: unknown) {
     const s = (await this.shorts(name)).find((x) => x.id === id); if (!s) throw new StockError('That short is already closed.');
-    const c = COMPANY_BY_TICKER.get(s.ticker)!; const price = this.price(c.ticker)!; const { q } = shortClose(c, s, price); // buy back: ask side, pushes the price up (same math the UI shows)
+    const c = COMPANY_BY_TICKER.get(s.ticker)!; const price = this.price(c.ticker)!; const { q, payout: exact } = shortClose(c, s, price); // buy back: ask side, pushes the price up (same math the UI shows)
     if (q.gross > maxOrderChips(c) * 2) throw new StockError('This short is too big to close in one go right now. Wait for the price to settle.');
-    try { const payout = await this.settleShort(s, 'closed', q.fill, q.gross, q.fee, Math.min(q.imp, MAX_TICK_IMPACT), c); return { id: s.id, ticker: s.ticker, shares: s.shares, fill: r2(q.fill), payout, pnl: payout - s.collateral - s.fees, balance: getBank().account(name).chips }; }
+    const fees0 = s.fees; // (memory mode mutates `s` in settle; P&L must use the fees paid before this close)
+    try { const payout = await this.settleShort(s, 'closed', q.fill, q.gross, q.fee, Math.min(q.imp, MAX_TICK_IMPACT), c, exact); return { id: s.id, ticker: s.ticker, shares: s.shares, fill: r2(q.fill), payout, pnl: payout - s.collateral - fees0, balance: getBank().account(name).chips }; }
     catch (e) { if (e instanceof Skip) throw new StockError('That short was just updated. Refresh and try again.'); throw e; }
   }
 

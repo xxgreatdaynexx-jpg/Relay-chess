@@ -1,3 +1,4 @@
+import { backdropDismiss } from '@/lib/backdrop';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { lazyWithReload } from '@/lib/lazyWithReload';
 import { importWithReload } from '@/lib/chunkReload';
@@ -115,6 +116,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   const [panel, setPanel] = useState<WorldPanel>(NONE);
   const casino = panel.k === 'casino'; const setCasino = (v: boolean) => setPanel((c) => (v ? { k: 'casino' } : closePanel(c, 'casino')));
   useEffect(() => { if (panel.k !== 'none') window.dispatchEvent(new Event(WALLET_CLOSE)); }, [panel.k]);
+  const firstMode = useRef(true); useEffect(() => { if (firstMode.current) { firstMode.current = false; return; } setPanel(NONE); }, [mode]); // QA r9: switching 2D/3D closes map panels (Airport stayed up)
   useEffect(() => { const close = () => setPanel(NONE); window.addEventListener(CLOSE_WORLD_PANELS, close); return () => window.removeEventListener(CLOSE_WORLD_PANELS, close); }, []);
   const [owned, setOwned] = useState<Map<string, OwnedProperty>>(new Map());
   const [toast, setToast] = useState<string | null>(null); const toastT = useRef(0);
@@ -273,7 +275,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       {dock && <Suspense fallback={<div className="world-loading">Opening the dock…</div>}><FishingPanel me={me} onClose={() => setDock(false)} /></Suspense>}
       {dealer && <Suspense fallback={<div className="world-loading">Opening the dealership…</div>}><Dealership onClose={() => setDealer(false)} onDrive={startDrive} /></Suspense>}
       {casino && (
-        <div className="world-casino" onMouseDown={(e) => { if (e.target === e.currentTarget) setCasino(false); }} data-testid="world-casino">
+        <div className="world-casino" {...backdropDismiss(() => setCasino(false))} data-testid="world-casino">
           <div><h3>🎰 Chud Casino</h3>
             {CASINO_GAMES.map((g) => <button key={g.tab} type="button" onClick={() => { setCasino(false); openTab(g.tab); }} data-testid={`world-casino-${g.tab}`}>{g.label}</button>)}
             <button type="button" className="world-casino-x" onClick={() => setCasino(false)}>Back to the city</button>

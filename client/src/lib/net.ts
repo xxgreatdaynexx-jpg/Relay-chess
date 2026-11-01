@@ -17,14 +17,21 @@ export const socket: Socket = io({
   transports: ['websocket', 'polling'],
 });
 
+/** Money-moving stock events. QA r9: they carry a request id (`rid`) so a retry is answered with the first result
+ *  instead of trading twice, get a longer time limit (a cold DB connection can take > 8 s), and are retried once on timeout. */
+const IDEMPOTENT = /^stk2?_(buy|sell|fund_buy|fund_sell|short_open|short_close|opt_buy|opt_close|opt_sell)$/;
+const newRid = () => (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 export function request(event: string, data?: unknown, onOk?: (ack: Ack) => void): Promise<Ack> {
-  return new Promise((resolve) => {
-    socket.timeout(8000).emit(event, data ?? {}, (error: Error | null, ack?: Ack) => {
-      const result: Ack = error || !ack ? { ok: false, error: 'No response from the server.' } : ack;
-      if (result.ok) onOk?.(result);
-      resolve(result);
-    });
-  });
+  const money = IDEMPOTENT.test(event);
+  const payload = money && data && typeof data === 'object' ? { ...(data as object), rid: newRid() } : (data ?? {});
+  const once = (ms: number) => new Promise<Ack | null>((resolve) => { socket.timeout(ms).emit(event, payload, (error: Error | null, ack?: Ack) => resolve(error || !ack ? null : ack)); });
+  return (async () => {
+    let ack = await once(money ? 20_000 : 8000);
+    if (!ack && money) ack = await once(20_000); // same rid: the server replays the first answer, never charges twice
+    const result: Ack = ack ?? { ok: false, error: 'No response from the server.' };
+    if (result.ok) onOk?.(result);
+    return result;
+  })();
 }
 
 // Re-sends the stored session on every (re)connect. The token is forgotten ONLY when the server

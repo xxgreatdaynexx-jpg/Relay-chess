@@ -54,6 +54,18 @@ const gauss = (r: () => number) => { const u = Math.max(1e-12, r()), v = r(); re
 const clamp = (x: number, a: number, b: number) => Math.min(b, Math.max(a, x));
 
 /** Anchor drift per day for a company: inflation x sector sensitivity + activity signal, capped. Pure, for tests. */
+/** QA r9: replay cache for money-moving requests. A client retry with the same request id gets the first call's
+ *  result (or waits for it if it is still running) instead of running the trade again. Kept for 2 minutes. */
+const replay = new Map<string, { at: number; p: Promise<unknown> }>();
+export function once(name: string | null, ev: string, rid: unknown, run: () => unknown): Promise<unknown> {
+  if (typeof rid !== 'string' || !/^[\w-]{8,64}$/.test(rid) || !name) return Promise.resolve().then(run);
+  const now = Date.now(); for (const [k, v] of replay) if (now - v.at > 120_000) replay.delete(k);
+  const key = `${name.toLowerCase()}|${ev}|${rid}`; const hit = replay.get(key); if (hit) return hit.p;
+  const p = Promise.resolve().then(run); replay.set(key, { at: now, p });
+  p.catch(() => replay.delete(key)); // a failed (uncharged) attempt may be retried for real
+  return p;
+}
+
 export function dailyDrift(c: Company, inflPct: number | null, act: Partial<Record<ActivityKey, number>>): number {
   const s = SECTOR_BY_ID.get(c.sector)!;
   const infl = clamp((inflPct ?? 0) / 100, -INFL_CAP, INFL_CAP) * s.infl;
@@ -320,7 +332,7 @@ export function registerStocks(io: Server, socket: Socket): void {
   if (wired !== io && ex) { wired = io; const e = ex; e.onTick = () => io.to('stocks').emit('stk_tick', { prices: COMPANIES.map((c) => [c.ticker, e.price(c.ticker)]) }); }
   const nameOf = () => (socket.data as { account?: { name: string } }).account?.name ?? null;
   const on = (ev: string, fn: (b: Record<string, unknown>, e: Exchange) => unknown) => socket.on(ev, async (payload: unknown, ack?: Ack) => {
-    try { if (!ex) throw new StockError('The exchange is starting up. Try again in a moment.'); const b = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}; ack?.({ ok: true, ...((await fn(b, ex)) as object ?? {}) }); }
+    try { if (!ex) throw new StockError('The exchange is starting up. Try again in a moment.'); const b = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}; const e0 = ex; ack?.({ ok: true, ...((await once(nameOf(), ev, b.rid, () => fn(b, e0))) as object ?? {}) }); }
     catch (e) { ack?.({ ok: false, error: e instanceof StockError || /^(Not enough chips\.|Wallet temporarily unavailable\.)$/.test((e as Error).message) ? (e as Error).message : 'Something went wrong.' }); }
   });
   const need = () => { const n = nameOf(); if (!n) throw new StockError('Sign in to trade. Guests can browse.'); return n; };

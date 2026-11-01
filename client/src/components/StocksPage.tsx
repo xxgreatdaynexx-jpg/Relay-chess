@@ -1,3 +1,4 @@
+import { backdropDismiss } from '@/lib/backdrop';
 /** Stock Exchange: its own top-nav tab (/stocks, #stocks). Market list, company page with charts + buy/sell, portfolio, news. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { TopTab } from '@/components/TopTabs';
@@ -40,7 +41,7 @@ export function StocksPage() {
     <div data-testid="stocks-page">
       <TopTab id="stocks"><button type="button" className="sol-tab" aria-expanded={open} id="stocks-tab" onClick={() => (open ? close() : setOpen(true))} data-testid="stocks-tab">{open ? '▴ Stocks' : '📈 Stocks'}</button></TopTab>
       {open && (
-        <div className="inv-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
+        <div className="inv-backdrop" {...backdropDismiss(() => close())}>
           <div className="inv-win mkt-win" role="dialog" aria-label="Stock Exchange">
             <header className="inv-head">
               <h2>📈 Stock Exchange</h2>

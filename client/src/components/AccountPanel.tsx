@@ -1,3 +1,4 @@
+import { backdropDismiss } from '@/lib/backdrop';
 import { useEffect, useState } from 'react';
 import { useAccount } from '@/lib/auth';
 import { logout, socket } from '@/lib/net';
@@ -45,7 +46,7 @@ export function AccountPanel() {
   }, [open]);
   if (!open) return null;
   return (
-    <div className="acct-scrim" onPointerDown={(e) => e.target === e.currentTarget && setOpen(null)}>
+    <div className="acct-scrim" {...backdropDismiss(() => setOpen(null))}>
       <div className="acct-panel" role="dialog" aria-label="Account and settings" data-testid="account-panel">
         <div className="acct-head">
           <div className="acct-tabs" role="tablist">

@@ -1,3 +1,4 @@
+import { backdropDismiss } from '@/lib/backdrop';
 /** Market: its own top-nav tab (/market, #market). Sub-tabs: Skins (listings, sell, trades) and Resources (ore, bars, goods from banked storage).
  *  Other panels open it with openMarket({...}); the 3D hub's Market building routes to /market. */
 import { useCallback, useEffect, useState } from 'react';
@@ -33,7 +34,7 @@ export function MarketPage() {
     <div data-testid="market-page">
       <TopTab id="market"><button type="button" className="sol-tab" aria-expanded={open} id="market-tab" onClick={() => (open ? close() : setOpen(true))} data-testid="market-tab">{open ? '▴ Market' : '🏪 Market'}</button></TopTab>
       {open && (
-        <div className="inv-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
+        <div className="inv-backdrop" {...backdropDismiss(() => close())}>
           <div className="inv-win mkt-win" role="dialog" aria-label="Market">
             <header className="inv-head">
               <h2>🏪 Market</h2>

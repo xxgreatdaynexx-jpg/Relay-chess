@@ -1,3 +1,4 @@
+import { backdropDismiss } from '@/lib/backdrop';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { request } from '@/lib/net';
@@ -43,7 +44,7 @@ export function Dealership({ onClose, onDrive }: { onClose: () => void; onDrive:
   };
   const active = g?.cars.find((c) => c.active);
   return (
-    <div className="dealer" data-testid="dealership" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="dealer" data-testid="dealership" {...backdropDismiss(() => onClose())}>
       <div className="dealer-box">
         <header><h3>🚗 Chud Motors</h3>{g?.chips != null && <span className="dealer-chips">{fmt(g.chips)} chips</span>}<button type="button" onClick={onClose} aria-label="Close" data-testid="dealer-close">✕</button></header>
         <div className="dealer-body">

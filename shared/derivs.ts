@@ -76,9 +76,12 @@ export const shortEquity = (s: { collateral: number; proceeds: number; shares: n
 export const needsLiquidation = (s: { collateral: number; proceeds: number; shares: number }, price: number) => s.collateral + s.proceeds - price * s.shares < SHORT_MAINT * price * s.shares;
 /** Price at which a short gets liquidated. */
 /** Exactly what closing a short pays at `price` now (buy back at the ask with impact, rounded up, minus the 1% fee). The UI shows this, the server pays this. */
-export function shortClose(c: Company, s: { collateral: number; proceeds: number; shares: number; fees: number }, price: number) {
+export function shortClose(c: Company, s: { collateral: number; proceeds: number; shares: number; fees: number; entry?: number }, price: number) {
   const q = quote(c, price, 'buy', s.shares);
-  const payout = Math.max(0, Math.floor(s.collateral + s.proceeds - q.gross - q.fee));
+  // QA r9: settle the exact price difference (entry fill vs buy-back fill), rounded once. Before, the open floored the sale
+  // proceeds and the close ceiled the buy-back, so a tiny short lost up to ~2 chips to rounding on top of the two fees.
+  const diff = s.entry != null && s.entry > 0 ? Math.round((s.entry - q.fill) * s.shares) : s.proceeds - q.gross;
+  const payout = Math.max(0, s.collateral + diff - q.fee);
   return { q, payout, pnl: payout - s.collateral - s.fees };
 }
 export const liquidationPrice = (s: { collateral: number; proceeds: number; shares: number }) => (s.collateral + s.proceeds) / ((1 + SHORT_MAINT) * s.shares);

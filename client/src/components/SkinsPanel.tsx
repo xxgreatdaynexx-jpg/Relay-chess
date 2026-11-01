@@ -1,3 +1,4 @@
+import { backdropDismiss } from '@/lib/backdrop';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { TopTab } from './TopTabs';
@@ -122,7 +123,7 @@ function Inventory({ onClose }: { onClose: () => void }) {
   const def = cur?.kind === 'skin' ? SKIN_BY_ID.get(cur.skin) : undefined;
 
   return (
-    <div className="inv-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }} data-testid="inventory">
+    <div className="inv-backdrop" {...backdropDismiss(() => onClose())} data-testid="inventory">
       <div className="inv-win" role="dialog" aria-label="Inventory">
         <header className="inv-head">
           <nav className="inv-tabs" role="tablist">{([['inv', '🎒 Inventory']] as const).map(([k, t]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)} data-testid={`inv-tab-${k}`}>{t}</button>)}</nav><button type="button" onClick={() => { onClose(); openMarket({ tab: 'skins' }); }} data-testid="inv-goto-market">🏪 Market</button><span className="inv-count">{items.length} items · 📦 {cases} · 🔑 {keys}</span>

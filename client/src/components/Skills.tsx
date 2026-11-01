@@ -1,3 +1,4 @@
+import { backdropDismiss } from '@/lib/backdrop';
 import { CLOSE_WORLD_PANELS, WALLET_CLOSE } from '@/lib/worldPanels';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -91,6 +92,7 @@ export function SkillsPanel() {
     return () => { window.clearTimeout(t); window.clearTimeout(luTimer); socket.off('xp', onXp); };
   }, [account]);
   useEffect(() => { if (open && account) load(); }, [open, account]);
+  useEffect(() => { if (!open) return; const k = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [open]); // QA r9: Esc closes Skills
   useEffect(() => { if (open) { window.dispatchEvent(new Event(CLOSE_WORLD_PANELS)); window.dispatchEvent(new Event(WALLET_CLOSE)); } }, [open]); // QA r8: no stale deed/Airport panel behind Skills
 
   const lu = levelUp && skillDef(levelUp.skill);
@@ -109,7 +111,7 @@ export function SkillsPanel() {
           <div className="text-sm">Your {lu.label} level is now {levelUp.level}. {badgeFor(levelUp.level)}</div>
         </div>, document.body)}
       {open && (
-        <div className="inv-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
+        <div className="inv-backdrop" {...backdropDismiss(() => setOpen(false))}>
           <div className="inv-win" role="dialog" aria-label="Skills" data-testid="skills-panel" style={{ maxWidth: 520 }}>
             <header className="inv-head">
               <h2>🧭 Skills</h2>

@@ -6,6 +6,13 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T14:35:00-06:00', title: 'Fairer shorts, safer retries, and tidier panels', bullets: [
+    'Opening a short and closing it straight away now costs only the trading fees. Before, rounding on each side could take 2 extra chips on a small short.',
+    'Stock, fund, short and option orders wait longer for a slow server and retry once by themselves. A retry can never charge you twice.',
+    'Esc now closes Skills.',
+    'Switching between the 2D map and the 3D city closes any open panel, such as the Airport.',
+    'Clicking outside a panel to close it no longer also clicks whatever was behind it (like a mine on the map).',
+  ] },
   { commit: '', at: '2026-11-01T14:30:00-06:00', title: 'Chud Resort: fly to a beachfront resort town', bullets: [
     'Chud Resort is a new map you can only reach by plane. Buy a ticket at the Chud Hub Airport for about 500 chips (follows the price index). The flight home is free.',
     'The Palms Resort Casino has 3 exclusive slots, Tiki Lagoon, Yacht Club and Pearl Diver, with the same payout rates as the city machines. Its blackjack and roulette tables have ivory, gold and lagoon-blue felt.',
