@@ -16,6 +16,8 @@ import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
 import { getEconomy } from './economy.js';
+import { Derivatives, getDerivs, setDerivs } from './derivs.js';
+import { divYield } from '../shared/derivs.js';
 import { COMPANIES, COMPANY_BY_TICKER, SECTOR_BY_ID, SECTORS, IMPACT_HALF_LIFE_MS, MAX_TICK_IMPACT, TICK_MS, dailyEvents, maxOrderChips, quote, seeded, hash32, type ActivityKey, type Company, type NewsItem } from '../shared/stocks.js';
 
 export class StockError extends Error {}
@@ -89,6 +91,8 @@ export class Exchange {
   private timer: NodeJS.Timeout | null = null;
   private ticking = false;
   onTick?: () => void;
+  /** Runs on the instance that won the tick slot, after prices moved (dividends, expiries, liquidations). */
+  postTick?: (now: number) => Promise<void>;
   constructor(private readonly pool: pg.Pool | null, private readonly clock = () => Date.now()) {
     for (const c of COMPANIES) this.rows.set(c.ticker, { ticker: c.ticker, base: c.start, anchor: c.start, imp: 0, tickImp: 0, tickSlot: 0, held: 0 });
   }
@@ -179,6 +183,7 @@ export class Exchange {
         }
         await this.reload();
       } else if (slot % HIST_EVERY === 0) for (const c of COMPANIES) { const h = this.memHist.get(c.ticker) ?? []; h.push([slot * TICK_MS, this.price(c.ticker)!]); this.memHist.set(c.ticker, h); }
+      if (this.postTick) await this.postTick(now).catch((e) => console.error('[stocks] post-tick failed:', (e as Error).message));
       this.onTick?.();
       return true;
     } finally { this.ticking = false; }
@@ -204,7 +209,7 @@ export class Exchange {
   // ---------- reads ----------
   summary(c: Company) {
     const row = this.rows.get(c.ticker)!; const price = priceOf(row); const prev = this.prev24.get(c.ticker) ?? c.start;
-    return { ticker: c.ticker, name: c.name, sector: c.sector, price, chg: Math.round(((price - prev) / prev) * 10000) / 100, volume: this.vol24.get(c.ticker) ?? 0, shares: c.shares, held: row.held, cap: Math.round(price * c.shares), playerPct: Math.round((row.held / c.shares) * 10000) / 100 };
+    return { ticker: c.ticker, name: c.name, sector: c.sector, price, chg: Math.round(((price - prev) / prev) * 10000) / 100, volume: this.vol24.get(c.ticker) ?? 0, shares: c.shares, held: row.held, cap: Math.round(price * c.shares), divYield: divYield(c.ticker), playerPct: Math.round((row.held / c.shares) * 10000) / 100 };
   }
   list() {
     const all = COMPANIES.map((c) => this.summary(c));
@@ -285,6 +290,9 @@ export class Exchange {
     return { side, ticker: c.ticker, shares, fill: Math.round(q.fill * 100) / 100, gross: q.gross, fee: q.fee, total: q.total, price: this.price(c.ticker), balance: bank.account(name).chips };
   }
 
+  /** Memory-mode holdings of every player (tests / dev). */
+  memHoldings() { return [...this.memHold].flatMap(([k, hs]) => [...hs.values()].filter((h) => h.shares > 0).map((h) => ({ k, name: k, ticker: h.ticker, shares: h.shares }))); }
+
   /** Player-held shares by ticker (non-QA) for the Bank Economy. */
   async playerHeld(): Promise<Map<string, number>> {
     if (!this.pool) { const m = new Map<string, number>(); for (const [k, hs] of this.memHold) if (!k.startsWith('qa-')) for (const h of hs.values()) m.set(h.ticker, (m.get(h.ticker) ?? 0) + h.shares); return m; }
@@ -298,10 +306,11 @@ export const getExchange = () => ex;
 export function setExchange(e: Exchange | null) { ex = e; }
 export async function initStocks(): Promise<void> {
   const url = databaseUrl();
-  if (!url) { ex = new Exchange(null); ex.start(); return; }
+  const wire = (e: Exchange, pool: pg.Pool | null) => { const dv = new Derivatives(e, pool); setDerivs(dv); e.postTick = (now) => dv.afterTick(now); return dv; };
+  if (!url) { ex = new Exchange(null); wire(ex, null); ex.start(); return; }
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
   pool.on('error', (e) => console.error('[stocks] pool error:', e.message));
-  try { const e = new Exchange(pool); await e.init(); ex = e; e.start(); console.log('[stocks] ready'); } catch (e) { console.error('[stocks] init failed:', (e as Error).message); }
+  try { const e = new Exchange(pool); await e.init(); const dv = wire(e, pool); await dv.init(); ex = e; e.start(); console.log('[stocks] ready'); } catch (e) { console.error('[stocks] init failed:', (e as Error).message); }
 }
 
 type Ack = (r: { ok: boolean; error?: string; [k: string]: unknown }) => void;
@@ -319,4 +328,13 @@ export function registerStocks(io: Server, socket: Socket): void {
   on('stk_portfolio', (_b, e) => e.portfolio(need()));
   on('stk_buy', (b, e) => e.trade(need(), 'buy', b.ticker, b.shares));
   on('stk_sell', (b, e) => e.trade(need(), 'sell', b.ticker, b.shares));
+  const dv = () => { const x = getDerivs(); if (!x) throw new StockError('The exchange is starting up. Try again in a moment.'); return x; };
+  on('stk2_funds', () => ({ funds: dv().funds() }));
+  on('stk2_portfolio', () => dv().portfolio(need()));
+  on('stk2_fund_buy', (b) => dv().tradeFund(need(), 'buy', b.fund, b.units));
+  on('stk2_fund_sell', (b) => dv().tradeFund(need(), 'sell', b.fund, b.units));
+  on('stk2_short_open', (b) => dv().openShort(need(), b.ticker, b.shares));
+  on('stk2_short_close', (b) => dv().closeShort(need(), b.id));
+  on('stk2_opt_quote', (b) => dv().optionQuote(b.ticker, b.kind, b.strike, b.days, b.qty));
+  on('stk2_opt_buy', (b) => dv().buyOption(need(), b.ticker, b.kind, b.strike, b.days, b.qty));
 }

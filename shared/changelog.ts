@@ -6,6 +6,14 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T01:30:00-06:00', title: 'Stock Exchange: dividends, funds, shorts and options', bullets: [
+    'Dividends: real estate, finance, energy, food and some industrial, retail, healthcare and defense companies now pay holders a small dividend every day at 10 AM CST. Each company shows its daily yield.',
+    'Index funds (CH100, Tech, Mining, Finance, Energy, Entertainment) hold a basket of companies for a 0.25% fee and pass their dividends through.',
+    'Mutual funds (Rocket Growth, Dividend Income, Crypto Degen) are hand-picked baskets with a 0.5% fee and a small daily expense.',
+    'Shorts: bet a stock goes down. You lock 150% of the position as collateral, pay a small daily borrow fee, and get auto-closed if it rises too far, so you can never lose more than you put in.',
+    'Options: buy calls or puts with 1, 3 or 7-day expiry. You pay the premium up front, and they cash out automatically at expiry.',
+    'The Portfolio tab now shows stocks, funds, shorts and options together, and all of it counts toward your assets in the Bank.',
+  ] },
   { commit: '', at: '2026-11-01T01:30:00-06:00', title: 'Prices & payouts follow inflation', bullets: [
     'Arena prizes and spawn costs, Mines ore prices, Factory buildings and machines, and the daily bonus now move with the economy\'s inflation, so your chips keep their buying power.',
     'The index updates once a day (midnight UTC), smoothed and capped at 3% a day. See it in the Bank: "Prices & payouts: x1.00".',
