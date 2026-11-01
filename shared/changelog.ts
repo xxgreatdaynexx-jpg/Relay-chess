@@ -6,6 +6,14 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T13:50:00-06:00', title: 'Fishing is now a real 3D game', bullets: [
+    'At the Fishing Dock, press “🎮 Play 3D fishing” to stand on the pier at night, with moonlight on the water, reeds, lily pads and the glowing boathouse.',
+    'Aim with the mouse (or A/D), then hold to charge your cast and let go. Watch the line fly and the bobber splash down, then wait for it to dip and strike fast.',
+    'In the fight, the fish runs left and right and the rod bends. Rare fish jump out of the water. Keep an eye on the tension and line strain.',
+    'Every species has its own 3D model when you land it. The Crystal Koi glows, and Old Chud is a real monster.',
+    'Other anglers at the dock show up with their name tags. It works on phones too: tap and hold.',
+    'Catches, prices, the cooler, selling, Fishing XP and the biggest-catch board all work the same as before. The quick 2D game is still there.',
+  ] },
   { commit: '', at: '2026-11-01T13:45:00-06:00', title: 'Stocks, Daily Report and Chud Hub map fixes', bullets: [
     'Share and unit boxes no longer quietly drop a minus sign or a decimal point (so "-5" no longer turns into 5). You now get a clear message: whole, positive numbers only (fund units allow 2 decimals). The server checks this too.',
     'The Daily Report now counts your funds, shorts, options, property and cars as assets, the same way the Bank does.',

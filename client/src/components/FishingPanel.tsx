@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { reloadOnceForChunkError } from '@/lib/chunkReload';
 import { request } from '@/lib/net';
 import { FISH_DAILY_MAX, fishById, fishPayout, fmtKg, RARITY_COLOR, Reel, REEL_DT, type FishCatch, type FishView } from '../../../shared/fishing';
 
+// The 3D game is its own lazy chunk; a stale chunk after a deploy reloads the tab once (same as the arena and mines).
+const Fishing3DGame = lazy(() => import('./Fishing3DGame').then((m) => ({ default: m.Fishing3DGame })).catch((e) => { reloadOnceForChunkError(e); throw e; }));
 const chips = (n: number) => n.toLocaleString('en-US');
 type Phase = { k: 'idle' } | { k: 'wait'; until: number } | { k: 'bite'; until: number } | { k: 'reel' } | { k: 'busy' };
 type BoardRow = { name: string; fish: string; grams: number; value: number };
@@ -10,7 +14,7 @@ type BoardRow = { name: string; fish: string; grams: number; value: number };
  *  hook in the fish's zone until the catch bar fills. The server rolls the fish and replays the reel. */
 export function FishingPanel({ me, onClose }: { me: string | null; onClose: () => void }) {
   const [view, setView] = useState<FishView | null>(null); const [board, setBoard] = useState<BoardRow[]>([]);
-  const [phase, setPhase] = useState<Phase>({ k: 'idle' }); const [msg, setMsg] = useState<string | null>(null);
+  const [phase, setPhase] = useState<Phase>({ k: 'idle' }); const [play3d, setPlay3d] = useState(false); const [msg, setMsg] = useState<string | null>(null);
   const [reelUi, setReelUi] = useState<{ x: number; c: number; h: number; prog: number } | null>(null);
   const holdRef = useRef(false); const phaseRef = useRef(phase); phaseRef.current = phase;
   const reelRef = useRef<{ reel: Reel; inputs: string; t0: number; raf: number } | null>(null);
@@ -73,7 +77,9 @@ export function FishingPanel({ me, onClose }: { me: string | null; onClose: () =
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <h3>🎣 Fishing Dock</h3>
       {!me ? <small>Sign in to fish.</small> : <>
-        <small>Cast, wait for the bite, strike, then <b>hold</b> (Space or mouse) to reel — keep the hook inside the fish’s green zone until the catch bar fills. Rarer and bigger fish fight harder.</small>
+        <button type="button" className="fish-play3d" data-testid="fish-3d" disabled={phase.k !== 'idle'} onClick={() => setPlay3d(true)}>🎮 Play 3D fishing</button>
+        {play3d && createPortal(<Suspense fallback={<div className="fish3d"><div className="fish3d-msg">Loading the lake…</div></div>}><Fishing3DGame me={me} onClose={() => { setPlay3d(false); load(); }} onChange={load} /></Suspense>, document.body)}
+        <small>Quick cast (2D): cast, wait for the bite, strike, then <b>hold</b> (Space or mouse) to reel — keep the hook inside the fish’s green zone until the catch bar fills. Rarer and bigger fish fight harder.</small>
         <div className="fish-water" data-testid="fish-stage" onPointerDown={(e) => { e.preventDefault(); const k = phaseRef.current.k; if (k === 'reel') holdRef.current = true; else if (k === 'wait' || k === 'bite') void hook(); }}>
           {phase.k === 'reel' && reelUi ? <div className="fish-reel" data-testid="fish-reel">
             <div className="fish-meter"><div className="fish-zone" style={{ bottom: `${(reelUi.c - reelUi.h) * 100}%`, height: `${reelUi.h * 200}%` }} /><div className={`fish-hook${Math.abs(reelUi.x - reelUi.c) <= reelUi.h ? ' in' : ''}`} style={{ bottom: `calc(${reelUi.x * 100}% - 6px)` }}>🪝</div></div>

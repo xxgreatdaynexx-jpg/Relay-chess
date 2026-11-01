@@ -115,3 +115,19 @@ describe('lake + dock', () => {
     expect(propertyById('lm:dock')!.label).toBe('Fishing Dock');
   });
 });
+
+describe('3D fishing (pt1220u)', () => {
+  it('lists other anglers at the dock for 20 s, never yourself', async () => {
+    const { markHere, anglersHere, HERE_MS } = await import('../server/fishing');
+    const t = 1_000_000; markHere('Alice', t); markHere('Bob', t + 1000);
+    expect(anglersHere('Alice', t + 2000)).toEqual(['Bob']);
+    expect(anglersHere(null, t + HERE_MS + 500)).toEqual(['Bob']);
+    expect(anglersHere(null, t + 1000 + HERE_MS + 1)).toEqual([]);
+  });
+  it('builds a 3D model for every species, bigger for heavier fish', async () => {
+    const { buildFish } = await import('../client/src/lib/fishing3d');
+    const { FISH } = await import('../shared/fishing');
+    for (const f of FISH) { const g = buildFish(f.id, Math.round(f.max * 1000)); expect(g.children.length).toBeGreaterThan(0); }
+    expect(buildFish('bass', 4000).scale.x).toBeGreaterThan(buildFish('bass', 500).scale.x);
+  });
+});

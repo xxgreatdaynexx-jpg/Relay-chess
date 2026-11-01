@@ -173,6 +173,13 @@ export async function initFishing(): Promise<void> {
   } catch (e) { console.error('[fishing] init failed:', (e as Error).message); }
 }
 
+/** Who is fishing at the dock right now (any fish_* action in the last 20 s), for the 3D scene's other anglers. */
+const HERE = new Map<string, number>();
+export const HERE_MS = 20_000;
+export function markHere(name: string, now = Date.now()) { HERE.set(name, now); if (HERE.size > 500) for (const [k, t] of HERE) if (now - t > HERE_MS) HERE.delete(k); }
+export function anglersHere(except: string | null, now = Date.now()): string[] {
+  const out: string[] = []; for (const [k, t] of HERE) { if (now - t > HERE_MS) { HERE.delete(k); continue; } if (k !== except && out.length < 8) out.push(k); } return out;
+}
 /** Per-socket token bucket: 8 actions, refills 4/s. */
 function bucket(cap = 8, perSec = 4) { let tok = cap, at = Date.now(); return () => { const n = Date.now(); tok = Math.min(cap, tok + ((n - at) / 1000) * perSec); at = n; if (tok < 1) return false; tok -= 1; return true; }; }
 type Ack = (r: Record<string, unknown>) => void;
@@ -184,6 +191,7 @@ export function registerFishing(_io: Server, socket: Socket): void {
       if (!take()) throw new FishError('Slow down.');
       if (!fishing) throw new FishError('The dock is closed right now.');
       const name = nameOf(); if (needName && !name) throw new FishError('Sign in to fish.');
+      if (name && needName) markHere(name);
       const b = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
       ack?.({ ok: true, ...((await fn(b, fishing, name ?? '')) as object ?? {}) });
     } catch (e) { ack?.({ ok: false, error: e instanceof FishError ? e.message : 'Something went wrong.' }); if (!(e instanceof FishError)) console.error(`[fishing] ${ev}:`, (e as Error).message); }
@@ -195,5 +203,6 @@ export function registerFishing(_io: Server, socket: Socket): void {
   on('fish_reel_in', (_b, f, n) => { f.reelIn(n); return {}; });
   on('fish_sell', (b, f, n) => f.sell(n, b.ids));
   on('fish_release', (b, f, n) => f.release(n, b.ids));
+  on('fish_here', () => ({ anglers: anglersHere(nameOf()) }));
   on('fish_board', async (_b, f) => ({ board: await f.board() }), false);
 }
