@@ -238,14 +238,28 @@ export const LANDMARK_SLOTS: Record<string, [number, number]> = {
   arena: [65, 13],
   market: [-39, 42], // waterfront market
   factory: [-65, 13],
-  mine: [-65, -39],
   warehouse: [65, -39],
 };
 export const SPARE_SLOTS: [number, number][] = [[13, 42], [-13, -39], [-39, -13], [13, -65]];
 
+/**
+ * The three mines sit out in the outskirts, off the city plate (pt1201u): The Mine to the west, Frostbite Caverns to
+ * the north, Magma Depths to the south-east past the farm. Each is reached by a dirt haul track off a road end.
+ */
+export interface MineSite { cave: 'mine' | 'frost' | 'magma'; x: number; z: number; track: [number, number][] }
+export const MINE_SITES: Record<string, MineSite> = {
+  mine: { cave: 'mine', x: -PLATE - 32, z: -30, track: [[-PLATE - 6, 0], [-PLATE - 18, -8], [-PLATE - 28, -20]] },
+  'mine-frost': { cave: 'frost', x: 46, z: -PLATE - 32, track: [[0, -PLATE - 6], [18, -PLATE - 16], [36, -PLATE - 26]] },
+  'mine-magma': { cave: 'magma', x: PLATE + 34, z: 96, track: [[PLATE + 6, waterfrontZ(PLATE + 6)], [PLATE + 16, 72], [PLATE + 28, 86]] },
+};
+export const MINE_APRON = 34; // rocky ground square around each outskirts mine
+const siteBox = (s: MineSite): OBB => { const t = s.track[s.track.length - 1]; return { x: s.x, z: s.z, w: PAD, d: PAD, rot: Math.atan2(t[0] - s.x, t[1] - s.z) }; };
+
 function placeLandmarks(ids: string[]): Record<string, OBB> {
   const out: Record<string, OBB> = {}; const spare = [...SPARE_SLOTS];
+  for (const id of ids) if (MINE_SITES[id]) out[id] = siteBox(MINE_SITES[id]);
   for (const id of ids) {
+    if (MINE_SITES[id]) continue;
     const want = LANDMARK_SLOTS[id] ?? spare.shift(); if (!want) continue;
     let placed: OBB | null = null;
     for (let rad = 0; rad <= 36 && !placed; rad += 2) for (let k = 0; k < Math.max(1, rad * 3) && !placed; k++) {
@@ -257,7 +271,7 @@ function placeLandmarks(ids: string[]): Record<string, OBB> {
   }
   return out;
 }
-export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer'];
+export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'mine-frost', 'mine-magma', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer'];
 let lmCache: { key: string; v: Record<string, OBB> } | null = null;
 /** Landmark footprints for the given spot ids (defaults to every known slot). */
 export function landmarks(ids: string[] = LANDMARK_IDS): Record<string, OBB> {

@@ -6,7 +6,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, TILE, clampMapTarget } from '../../../shared/farm';
-import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN } from './worldLayout';
+import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN, MINE_SITES, MINE_APRON } from './worldLayout';
 
 import { WORLD_SPOTS } from './worldSpots';
 import { buildCar } from './carModels';
@@ -184,8 +184,11 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
         for (let i = 0; i < 4; i++) { const t = cyl(0.9, 1.1, 8, dark, i % 2 ? 4 : -4, 0, i < 2 ? 4 : -4, 8); g.add(t); g.add(cyl(1.3, 0.2, 1.4, neon, t.position.x, 8, t.position.z, 8)); }
         const ivory = mat({ color: 0xf1ead6, emissive: 0xf1ead6, emissiveIntensity: 0.25 * NEON }); ems.push(ivory);
         g.add(cyl(2.4, 2.8, 0.8, ivory, 0, 5, 0, 16), cyl(1.2, 2, 4.2, ivory, 0, 5.8, 0, 16), cyl(1.7, 1.2, 0.7, ivory, 0, 10, 0, 16), box(0.6, 2.4, 0.6, neon, 0, 10.7, 0), box(1.8, 0.6, 0.6, neon, 0, 11.6, 0)); height = 14; break; }
-      case 'mine': {
-        const hill = new THREE.Mesh(geo(new THREE.ConeGeometry(6.5, 7, 7)), mat({ color: 0x6b5a48, flatShading: true })); hill.position.y = 3.5; g.add(hill);
+      case 'mine': case 'mine-frost': case 'mine-magma': {
+        const hillC = spot.id === 'mine-frost' ? 0xd8ecf8 : spot.id === 'mine-magma' ? 0x3a2622 : 0x6b5a48;
+        const hill = new THREE.Mesh(geo(new THREE.ConeGeometry(6.5, 7, 7)), mat({ color: hillC, flatShading: true, ...(spot.id === 'mine-magma' ? { emissive: 0xff4a00, emissiveIntensity: 0.12 } : {}) }));
+        if (spot.id === 'mine-magma') { const lava = cyl(1.2, 0.6, 0.6, mat({ color: 0xff6a20, emissive: 0xff4a00, emissiveIntensity: 1.4 * NEON }), 0, 6.6, 0, 8); g.add(lava); }
+        if (spot.id === 'mine-frost') for (let i = 0; i < 5; i++) { const a = i * 1.3; const ic = new THREE.Mesh(geo(new THREE.ConeGeometry(0.5, 2.6, 5)), mat({ color: 0xbfe8ff, emissive: 0x5ab8ff, emissiveIntensity: 0.6 * NEON })); ic.position.set(Math.cos(a) * 4.2, 1.3, Math.sin(a) * 4.2 - 1); g.add(ic); } hill.position.y = 3.5; g.add(hill);
         const tun = box(3, 3, 2, mat({ color: 0x0a0806 }), 0, 0, 5.4); g.add(tun, box(3.8, 0.5, 2.2, neon, 0, 3, 5.4));
         g.add(box(0.4, 6, 0.4, dark, -3, 0, 5.6), box(0.4, 6, 0.4, dark, 3, 0, 5.6), box(6.8, 0.4, 0.4, dark, 0, 6, 5.6));
         const cart = box(1.6, 1, 1, mat({ color: 0x8a5a2b }), 4, 0.2, 3); g.add(cart, box(1.2, 0.5, 0.7, mat({ color: 0xffb347, emissive: 0xff8a00, emissiveIntensity: 0.8 * NEON }), 4, 1.2, 3)); height = 9; break; }
@@ -368,6 +371,17 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   };
   let parkDead = false;
   void fetch('/api/trailer-park').then((r) => r.json()).then((j: { lots?: { lot: number; name: string }[] }) => { if (!parkDead && Array.isArray(j?.lots)) addTrailers(j.lots); }).catch(() => {});
+  // Outskirts mines (MINE_SITES): a rocky apron under each one and a dirt haul track back to the city's road end.
+  for (const site of Object.values(MINE_SITES)) {
+    const top = site.cave === 'frost' ? 0xdfeef7 : site.cave === 'magma' ? 0x3a2a24 : 0x5e5040;
+    const side = mat({ color: 0x2a2018 });
+    const apron = new THREE.Mesh(geo(new THREE.BoxGeometry(MINE_APRON, 3, MINE_APRON)), [side, side, mat({ color: top, roughness: 1, flatShading: true }), side, side, side]);
+    apron.position.set(site.x, -1.51, site.z); scene.add(apron);
+    const dirt = mat({ color: site.cave === 'frost' ? 0x9aa8b4 : 0x6a5038, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    const pts = [...site.track, [site.x, site.z] as [number, number]];
+    for (let i = 1; i < pts.length; i++) { const [ax, az] = pts[i - 1], [bx, bz] = pts[i]; const L = Math.hypot(bx - ax, bz - az);
+      const seg = new THREE.Mesh(geo(new THREE.BoxGeometry(3.6, 3.04, L + 3.6)), dirt); seg.position.set((ax + bx) / 2, -1.5, (az + bz) / 2); seg.rotation.y = Math.atan2(bx - ax, bz - az); scene.add(seg); }
+  }
   // Farm district (shared/farm.ts): a grass apron east of the plate, dirt lanes, fenced fields (farmland properties),
   // barns and silos. Crops on owned plots come from /api/farm (setFarm). Toned-down night palette, a little warm glow.
   const farmTiles = new Map<string, number>(); // plot id -> first index into the crop instanced mesh
@@ -432,11 +446,13 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     if (id === hovered) return; hovered = id; canvas.style.cursor = id ? 'pointer' : 'grab';
     for (const l of lms) { const on = l.id === id; l.root.scale.setScalar(on ? 1.06 : 1); l.sign.userData.hover = on; for (const m of l.emissive) m.emissiveIntensity = on ? (m.map ? 1.6 : 3) * NEON : (m.map ? 0.9 : 1.6) * NEON; }
   };
-  const onMove = (e: PointerEvent) => { if (fly || e.pointerType === 'touch') return; const id = pick(e.clientX, e.clientY); setHover(id); h.onHover(id, e.clientX, e.clientY); };
-  let down: { x: number; y: number; t: number } | null = null;
-  const onDown = (e: PointerEvent) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; controls.autoRotate = false; };
+  const clearTip = () => { setHover(null); h.onHover(null, 0, 0); };
+  // Drag-panning: no hover highlight or tooltip while the pointer is held and moving (it used to linger after the pan).
+  const onMove = (e: PointerEvent) => { if (fly || e.pointerType === 'touch') return; if (down && e.buttons) { if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) { down.drag = true; clearTip(); } if (down.drag) return; } const id = pick(e.clientX, e.clientY); setHover(id); h.onHover(id, e.clientX, e.clientY); };
+  let down: { x: number; y: number; t: number; drag?: boolean } | null = null;
+  const onDown = (e: PointerEvent) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; controls.autoRotate = false; h.onHover(null, 0, 0); };
   const onUp = (e: PointerEvent) => {
-    if (!down || fly) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y); down = null; if (moved > 8) return;
+    if (!down || fly) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y); const dragged = moved > 8 || !!down.drag; down = null; if (dragged) { clearTip(); return; }
     const id = pick(e.clientX, e.clientY); if (!id) { setHover(null); h.onHover(null, 0, 0); return; }
     if (id.startsWith('trailer:')) { h.onHover(id, e.clientX, e.clientY); return; } // trailers: just the label, no interiors
     if (id.startsWith('b:') || id.startsWith('p:') || id.startsWith('f:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel

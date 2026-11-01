@@ -3,7 +3,9 @@ export type WorldSpot = { id: string; label: string; icon: string; color: number
 export const WORLD_SPOTS: WorldSpot[] = [
   { id: 'casino', label: 'Casino', icon: '🎰', color: 0xff3cac, blurb: 'Blackjack, roulette, poker, slots, solitaire' },
   { id: 'chess', label: 'Chess Club', icon: '♞', color: 0x7cf0ff, blurb: 'Chess, checkers & board games' },
-  { id: 'mine', label: 'The Mine', icon: '⛏', color: 0xffb347, blurb: 'Dig ore & rock, haul it out' },
+  { id: 'mine', label: 'The Mine', icon: '⛏', color: 0xffb347, blurb: 'Dig ore & rock, haul it out (west outskirts)' },
+  { id: 'mine-frost', label: 'Frostbite Caverns', icon: '❄', color: 0x8fd8ff, blurb: 'Icy halls: iron, silver & crystal (north outskirts)' },
+  { id: 'mine-magma', label: 'Magma Depths', icon: '🌋', color: 0xff6a20, blurb: 'Lava tube: coal & gold (south-east outskirts)' },
   { id: 'arena', label: 'Arena', icon: '🎯', color: 0xff4040, blurb: 'Multiplayer FPS deathmatch' },
   { id: 'factory', label: 'Factory', icon: '🏭', color: 0xffe066, blurb: 'Smelt ore, craft goods' },
   { id: 'warehouse', label: 'Warehouse', icon: '🎒', color: 0x9dff6a, blurb: 'Your inventory & skins' },

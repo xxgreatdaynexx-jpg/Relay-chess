@@ -6,7 +6,13 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-01T11:30:00-06:00', title: 'Pan around the city map', bullets: [
+  { commit: '', at: '2026-11-01T12:30:00-06:00', title: 'Three mines on the outskirts', bullets: [
+    'The Mine has moved out of the city to the west outskirts, at the end of a dirt haul track off the east–west boulevard.',
+    'Two new mines have opened. Frostbite Caverns is north of the city: wide frozen halls with ice pillars, heavier on iron, silver and crystal. Magma Depths is south-east past the farm: a narrow, winding lava tube with pools you can’t cross, heavier on coal and gold.',
+    'Click any mine on the map to go down, or switch mines from the picker at the top of the Mines window. All three pay about the same over time, and your storage, factory and daily selling limit are shared between them.',
+    'Fixed: the building name tooltip no longer stays on screen after you drag the map.',
+  ] },
+  { commit: '1f083cf', at: '2026-11-01T11:30:00-06:00', title: 'Pan around the city map', bullets: [
     'Drag the city map with the mouse, or with one finger on a phone, to slide it around. You can reach every corner, from the Trailer Park to the farm district on the east edge.',
     'You can also pan with the arrow keys or WASD. They don\'t pan while you\'re typing in a box or driving a car, because driving uses those keys.',
     'Right-drag, or two fingers, to rotate. Use the mouse wheel or pinch to zoom. A short click still opens buildings and plots, and a drag never does.',

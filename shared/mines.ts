@@ -74,47 +74,106 @@ function hash(n: number): number { let h = Math.imul(n, 2654435761) >>> 0; h = (
 export function depthAt(x: number): number { const cx = x / CELL; let d = 0; for (let i = 0; i < DEPTH_X.length; i++) if (cx >= DEPTH_X[i]) d = i; return d; }
 
 /** Ore for a node slot: weighted among ores unlocked at this depth; rarer ores get a boost deeper. */
-export function oreFor(depth: number, r: number): OreId {
-  const pool = ORE_ORDER.filter((o) => ORES[o].minDepth <= depth).map((o) => [o, ORES[o].spawnWeight * (ORES[o].minDepth > 0 ? 1 + depth * 0.5 : 1) * (o === 'stone' ? Math.max(0.4, 1 - depth * 0.2) : 1)] as const);
+export function oreFor(depth: number, r: number, bias: Partial<Record<OreId, number>> = {}): OreId {
+  const pool = ORE_ORDER.filter((o) => ORES[o].minDepth <= depth).map((o) => [o, (bias[o] ?? 1) * ORES[o].spawnWeight * (ORES[o].minDepth > 0 ? 1 + depth * 0.5 : 1) * (o === 'stone' ? Math.max(0.4, 1 - depth * 0.2) : 1)] as const);
   const total = pool.reduce((s, [, w]) => s + w, 0);
   let t = r * total;
   for (const [o, w] of pool) { t -= w; if (t <= 0) return o; }
   return pool[pool.length - 1][0];
 }
 
-function build(): { map: ArenaMap; nodes: MineNode[] } {
+// ---- caves (pt1201u): three mines on the city outskirts, one engine. Same spawn pocket / EXIT lift in each,
+// different layout, ore mix and look. '~' is a hazard (lava pool / ice pillar): impassable, rendered per theme.
+export type CaveId = 'mine' | 'frost' | 'magma';
+export interface CaveTheme { sky: string; fog: string; ambient: string; wall: string; floor: string; lamp: string; hazard: 'lava' | 'ice' | null }
+export interface CaveDef { id: CaveId; name: string; blurb: string; rows: string[]; depthX: number[]; bias: Partial<Record<OreId, number>>; density: number; theme: CaveTheme }
+export const CAVE_DEFS: CaveDef[] = [
+  { id: 'mine', name: 'The Mine', blurb: 'The classic shaft: one long tunnel, deeper is richer.', rows: ROWS, depthX: DEPTH_X, bias: {}, density: 0.42,
+    theme: { sky: '#07070a', fog: '#0b0a0d', ambient: '#8a7a6a', wall: '#9a8f86', floor: '#6e6258', lamp: '#ff9a40', hazard: null } },
+  { id: 'frost', name: 'Frostbite Caverns', blurb: 'Wide frozen halls and ice pillars. Rich in iron, silver and crystal, light on coal.', depthX: [0, 12, 24, 36], density: 0.4,
+    bias: { coal: 0.5, copper: 0.7, iron: 1.4, silver: 1.8, gold: 0.6, gem: 1.3 },
+    theme: { sky: '#060b14', fog: '#0a1626', ambient: '#8fb4d8', wall: '#9ec4dc', floor: '#c8dceb', lamp: '#8fd8ff', hazard: 'ice' },
+    rows: [
+      '##################################################',
+      '#####.......~~.......####........~.........#######',
+      '#SS.......................##.................~..##',
+      '#S.....~.......~~.....~........~~......~.........#',
+      '#SS........~.........~~..........##......~~......#',
+      '####...........~...........~...........~.........#',
+      '#####..~~......................~~.........~.....##',
+      '####.......~.........~~.............~...........##',
+      '###...~~.........~..........~~..........##......##',
+      '###..........~~.........~...........~.........####',
+      '####......................~~...........~......####',
+      '##################################################',
+    ] },
+  { id: 'magma', name: 'Magma Depths', blurb: 'A winding, narrow lava tube with pools you can’t cross. Heavy on coal and gold.', depthX: [0, 12, 24, 36], density: 0.46,
+    bias: { stone: 0.7, coal: 1.8, silver: 0.5, gold: 1.6, gem: 0.8, diamond: 1.2 },
+    theme: { sky: '#120604', fog: '#1a0703', ambient: '#a86a4a', wall: '#5a3a32', floor: '#3a2622', lamp: '#ff6a20', hazard: 'lava' },
+    rows: [
+      '##################################################',
+      '####...~~...######.........####...~~....##########',
+      '#SS.........######..######..####..##....###.....##',
+      '#S....###...######..######..........##..###..~..##',
+      '#SS...###...........######..####....##.......~..##',
+      '###########.####.##########.####.######.####.#####',
+      '###########.####.##########......######.####.#####',
+      '####.........###...........####...........##...###',
+      '####..#####..###.###########..##.######...##.#.###',
+      '####..#####......###...........~~..........#.#..##',
+      '####~~......~###.....######.###......###.....#.~##',
+      '##################################################',
+    ] },
+];
+/** window event (detail = CaveId) the world map fires to open a given mine. */
+export const MINE_CAVE_EVENT = 'relay-mine-cave';
+export const isCave = (v: unknown): v is CaveId => v === 'mine' || v === 'frost' || v === 'magma';
+
+function build(def: CaveDef): { map: ArenaMap; nodes: MineNode[] } {
+  const ROWS = def.rows.map((r) => r.padEnd(def.rows[0].length, '#'));
   const solids: Solid[] = [];
   const spawns: Array<[number, number, number]> = [];
   const W = ROWS[0].length, D = ROWS.length;
-  const wall = (x: number, y: number) => y < 0 || y >= D || x < 0 || x >= W || ROWS[y][x] === '#';
+  const wall = (x: number, y: number) => y < 0 || y >= D || x < 0 || x >= W || ROWS[y][x] === '#' || ROWS[y][x] === '~';
   ROWS.forEach((row, y) => [...row].forEach((c, x) => {
     if (c === '#') solids.push({ x0: x * CELL, y0: y * CELL, x1: (x + 1) * CELL, y1: (y + 1) * CELL, z0: 0, z1: CEIL + 1, mat: 'concrete' });
+    else if (c === '~') solids.push({ x0: x * CELL, y0: y * CELL, x1: (x + 1) * CELL, y1: (y + 1) * CELL, z0: 0, z1: CEIL + 1, mat: 'metal' });
     else if (c === 'S') spawns.push([x * CELL + 1, y * CELL + 1, 0]);
   }));
   // ceiling slab over the whole cave
   solids.push({ x0: 0, y0: 0, x1: W * CELL, y1: D * CELL, z0: CEIL, z1: CEIL + 1, mat: 'concrete' });
   const nodes: MineNode[] = [];
   let id = 0;
+  const depthOf = (x: number) => { const cx = x / CELL; let d = 0; for (let i = 0; i < def.depthX.length; i++) if (cx >= def.depthX[i]) d = i; return d; };
   ROWS.forEach((row, y) => [...row].forEach((c, x) => {
-    if (c === '#' || c === 'S' || x < 3) return;
+    if (c === '#' || c === '~' || c === 'S' || x < 3) return;
     const adj: Array<[number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => wall(x + dx, y + dy)) as Array<[number, number]>;
     if (!adj.length) return;
     const seed = x * 131 + y * 17;
-    if (hash(seed) > 0.42) return;
+    if (hash(seed) > def.density) return;
     const [dx, dy] = adj[Math.floor(hash(seed + 7) * adj.length)];
     // sit against the wall, half embedded
     const nx = x * CELL + 1 + dx * 0.75, ny = y * CELL + 1 + dy * 0.75;
-    const depth = depthAt(nx);
+    const depth = depthOf(nx);
     const nz = 0.35 + hash(seed + 3) * 1.4;
-    nodes.push({ id: id++, x: nx, y: ny, z: nz, ore: oreFor(depth, hash(seed + 11)), depth });
+    nodes.push({ id: id++, x: nx, y: ny, z: nz, ore: oreFor(depth, hash(seed + 11), def.bias), depth });
   }));
-  const map: ArenaMap = { id: 'mine', name: 'The Mine', w: W * CELL, d: D * CELL, solids, ramps: [], spawns, sky: '#07070a', fog: '#0b0a0d', ground: 'sand' };
+  const map: ArenaMap = { id: def.id === 'mine' ? 'mine' : `mine-${def.id}`, name: def.name, w: W * CELL, d: D * CELL, solids, ramps: [], spawns, sky: def.theme.sky, fog: def.theme.fog, ground: 'sand' };
   return { map, nodes };
 }
 
-const built = build();
-export const MINE_MAP: ArenaMap = built.map;
-export const MINE_NODES: MineNode[] = built.nodes;
+export interface Cave extends CaveDef { map: ArenaMap; nodes: MineNode[] }
+export const CAVES: Record<CaveId, Cave> = Object.fromEntries(CAVE_DEFS.map((d) => [d.id, { ...d, ...build(d) }])) as Record<CaveId, Cave>;
+export const caveOf = (id: unknown): Cave => CAVES[isCave(id) ? id : 'mine'];
+export const MINE_MAP: ArenaMap = CAVES.mine.map;
+export const MINE_NODES: MineNode[] = CAVES.mine.nodes;
+/** Average house value of one node's ore (balance check across caves). */
+export function caveNodeValue(c: Cave): number {
+  const ev = (depth: number) => { const pool = ORE_ORDER.filter((o) => ORES[o].minDepth <= depth); const w = pool.map((o) => (c.bias[o] ?? 1) * ORES[o].spawnWeight); const t = w.reduce((a, b) => a + b, 0); return pool.reduce((a, o, i) => a + (w[i] / t) * ORES[o].price, 0); };
+  return c.nodes.reduce((t, n) => t + ev(n.depth), 0) / Math.max(1, c.nodes.length);
+}
+/** Expected house value per minute a cave pays out (all nodes on respawn cycle) — used to keep the three caves balanced. */
+export function caveValueRate(c: Cave): number { return caveNodeValue(c) * c.nodes.length; }
 
 export interface Stack { type: ItemType; id: string; qty: number }
 export const stackKey = (s: { type: ItemType; id: string }) => `${s.type}:${s.id}`;

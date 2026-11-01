@@ -11,10 +11,12 @@ import { socket } from '@/lib/net';
 import { mouseLook, readLook, LOCK_KEYS, arenaKey, crouchHeld, shouldBlockShortcut } from '@/lib/arenaInput';
 import { playPickaxe, unlockSounds } from '@/lib/sounds';
 import type { Mines3D, MinerView } from '@/lib/mines3d';
-import { BACKPACK_CAP, MINE_MAP, MINE_NODES, NODE_R, ORES, ORE_ORDER, REACH, SWING_MS, isOre, inExit, priceOf, type Stack } from '../../../shared/mines';
+import { MINE_CAVE_EVENT, CAVES, CAVE_DEFS, isCave, type CaveId, type MineNode, BACKPACK_CAP, NODE_R, ORES, ORE_ORDER, REACH, SWING_MS, isOre, inExit, priceOf, type Stack } from '../../../shared/mines';
 import { canStand, clampPitch, eyeHeightOf, moveHorizontal, speedOf, stepVertical, tryJump, type Body } from '../../../shared/fps';
 
 const OPEN_KEY = 'relay-mines-open';
+const CAVE_KEY = 'relay-mines-cave';
+
 type Quote = { gross: number; paid: number; already: number } | null;
 interface PackMsg { pack: Stack[]; load: number; cap: number; quote: Quote }
 
@@ -22,21 +24,25 @@ interface PackMsg { pack: Stack[]; load: number; cap: number; quote: Quote }
 export function MinesPanel() {
   const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) === '1');
   useEffect(() => localStorage.setItem(OPEN_KEY, open ? '1' : '0'), [open]);
+  const [cave, setCave] = useState<CaveId>(() => { const v = localStorage.getItem(CAVE_KEY); return isCave(v) ? v : 'mine'; });
+  useEffect(() => localStorage.setItem(CAVE_KEY, cave), [cave]);
+  // The city map's three mine buildings send you to a specific cave.
+  useEffect(() => { const on = (e: Event) => { const c = (e as CustomEvent).detail; if (isCave(c)) { setCave(c); setOpen(true); } }; window.addEventListener(MINE_CAVE_EVENT, on); return () => window.removeEventListener(MINE_CAVE_EVENT, on); }, []);
   return (
     <div className={`mines-wrap ${open ? 'mines-open' : ''}`} data-testid="mines">
       <TopTab id="mines"><button type="button" className="sol-tab fps-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="mines-tab">
         {open ? '▴ Mines' : '⛏️ Mines'}
       </button></TopTab>
-      {open && <MinesGame onClose={() => setOpen(false)} />}
+      {open && <MinesGame key={cave} cave={cave} onCave={setCave} onClose={() => setOpen(false)} />}
     </div>
   );
 }
 
 /** Nearest node the crosshair is on, within reach (ray vs sphere). */
-function aimNode(x: number, y: number, ez: number, a: number, p: number, hp: number[]): number {
+function aimNode(nodes: MineNode[], x: number, y: number, ez: number, a: number, p: number, hp: number[]): number {
   const d = [Math.cos(p) * Math.cos(a), Math.cos(p) * Math.sin(a), Math.sin(p)];
   let best = -1, bt = REACH + NODE_R;
-  MINE_NODES.forEach((n, i) => {
+  nodes.forEach((n, i) => {
     if (hp[i] === -1) return;
     const o = [n.x - x, n.y - y, n.z - ez];
     const t = o[0] * d[0] + o[1] * d[1] + o[2] * d[2];
@@ -47,7 +53,8 @@ function aimNode(x: number, y: number, ez: number, a: number, p: number, hp: num
   return best;
 }
 
-function MinesGame({ onClose }: { onClose: () => void }) {
+function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId) => void; onClose: () => void }) {
+  const C = CAVES[cave]; const MINE_MAP = C.map; const MINE_NODES = C.nodes;
   const pidx = usePriceIndex();
   const wrapRef = useRef<HTMLDivElement>(null);
   const glRef = useRef<HTMLCanvasElement>(null);
@@ -73,14 +80,14 @@ function MinesGame({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     let dead = false;
     const m = me.current;
-    const join = () => socket.timeout(8000).emit('mines_join', {}, (err: Error | null, r?: { ok: boolean; error?: string; id: string; guest: boolean; x: number; y: number; z: number; a: number; nodes: number[] } & PackMsg) => {
+    const join = () => socket.timeout(8000).emit('mines_join', { cave }, (err: Error | null, r?: { ok: boolean; error?: string; id: string; guest: boolean; x: number; y: number; z: number; a: number; nodes: number[] } & PackMsg) => {
       if (dead) return;
       if (err || !r?.ok) { setStatus(r?.error ?? 'Could not reach the mine.'); return; }
       Object.assign(m, { id: r.id, x: r.x, y: r.y, z: r.z, a: r.a, joined: true });
       hp.current = r.nodes; three.current?.setNodes(r.nodes);
       setGuest(r.guest); setPack({ pack: r.pack, load: r.load, cap: r.cap, quote: r.quote });
       setStatus(r.guest ? 'Guest: you can mine, sign in to sell.' : 'Click the view to play. Left click swings.');
-      (window as unknown as { __minesQA?: unknown }).__minesQA = { me: m, hp, sock: socket, swing: () => three.current?.swing(), aim: () => aimNode(m.x, m.y, m.z + eyeHeightOf(m), m.a, m.p, hp.current) };
+      (window as unknown as { __minesQA?: unknown }).__minesQA = { me: m, hp, sock: socket, swing: () => three.current?.swing(), aim: () => aimNode(MINE_NODES, m.x, m.y, m.z + eyeHeightOf(m), m.a, m.p, hp.current) };
     });
     const onState = (s: { players: MinerView[]; nodes: number[] }) => { hp.current = s.nodes; three.current?.setNodes(s.nodes); three.current?.setOthers(s.players, m.id); setOnline(s.players.length); };
     const onFx = (f: { node: number; broke: boolean }) => { three.current?.burstAt(f.node, f.broke); };
@@ -90,7 +97,7 @@ function MinesGame({ onClose }: { onClose: () => void }) {
     // 3D scene
     import('@/lib/mines3d').then(({ Mines3D }) => {
       if (dead || !glRef.current) return;
-      try { three.current = new Mines3D(glRef.current); three.current.setNodes(hp.current); socket.timeout(3000).emit('inv_loadout', {}, (err: Error | null, r?: { ok: boolean; loadout?: Record<string, string | null> }) => { if (!err && r?.ok) three.current?.setPickSkin(r.loadout?.pickaxe ?? null); }); } catch (e) { setGlError('3D is unavailable here: ' + (e as Error).message); }
+      try { three.current = new Mines3D(glRef.current, cave); three.current.setNodes(hp.current); socket.timeout(3000).emit('inv_loadout', {}, (err: Error | null, r?: { ok: boolean; loadout?: Record<string, string | null> }) => { if (!err && r?.ok) three.current?.setPickSkin(r.loadout?.pickaxe ?? null); }); } catch (e) { setGlError('3D is unavailable here: ' + (e as Error).message); }
     });
     let raf = 0, last = performance.now(), sendAcc = 0, lastDraw = 0;
     const frame = (t: number) => {
@@ -113,7 +120,7 @@ function MinesGame({ onClose }: { onClose: () => void }) {
         sendAcc += dt;
         if (sendAcc >= 1 / 15) { sendAcc = 0; socket.volatile.emit('mines_move', { x: m.x, y: m.y, z: m.z, a: m.a, p: m.p, c: m.crouch, s: m.sprint }); }
         if (inExit(m.x, m.y) && packRef.current.pack.length && performance.now() - exiting.current > 1500) { exiting.current = performance.now(); bankHaul(); }
-        const ai = aimNode(m.x, m.y, m.z + eyeHeightOf(m), m.a, m.p, hp.current);
+        const ai = aimNode(MINE_NODES, m.x, m.y, m.z + eyeHeightOf(m), m.a, m.p, hp.current);
         setAim((o) => (o === ai ? o : ai));
       }
       // Hidden tab, or covered by another window without the pointer lock: draw at ~4 fps so other windows stay responsive.
@@ -151,7 +158,7 @@ function MinesGame({ onClose }: { onClose: () => void }) {
     if (!m.joined || now - m.lastSwing < SWING_MS) return;
     m.lastSwing = now;
     three.current?.swing();
-    const node = aimNode(m.x, m.y, m.z + eyeHeightOf(m), m.a, m.p, hp.current);
+    const node = aimNode(MINE_NODES, m.x, m.y, m.z + eyeHeightOf(m), m.a, m.p, hp.current);
     if (node < 0) { playPickaxe('swing'); return; }
     socket.timeout(3000).emit('mines_hit', { node }, (err: Error | null, r?: { ok: boolean; error?: string; hp: number; broke: boolean; full?: boolean; ore?: string } & Partial<PackMsg>) => {
       if (err || !r) return;
@@ -192,7 +199,10 @@ function MinesGame({ onClose }: { onClose: () => void }) {
     >
       {win.grips}
       <div {...win.bar}>
-        <span className="font-semibold">⛏️ Mines</span>
+        <span className="font-semibold">⛏️</span>
+        <select className="mines-cave" aria-label="Choose mine" data-testid="mines-cave" value={cave} onChange={(e) => { if (isCave(e.target.value)) onCave(e.target.value); }}>
+          {CAVE_DEFS.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
         <span className="opacity-70">{online} mining · {focused ? 'controls on' : 'click to play'}</span>
         {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" title="Reset position" onClick={win.reset}>⟲</button>}
         {wallet !== null && <span className="ml-auto text-xs font-semibold" data-testid="mines-wallet">🪙 {wallet.toLocaleString()}</span>}

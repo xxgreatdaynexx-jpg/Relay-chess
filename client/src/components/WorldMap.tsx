@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { WORLD_SPOTS } from '@/lib/worldSpots';
+import { MINE_CAVE_EVENT } from '../../../shared/mines';
+import { MINE_SITES } from '@/lib/worldLayout';
 import type { World } from '@/lib/world3d';
 import { FarmGame } from './FarmGame';
 import { useAccount } from '@/lib/auth';
@@ -133,7 +135,7 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
     switch (id) {
       case 'casino': setCasino(true); return;
       case 'chess': onClose(); return;
-      case 'mine': openTab('mines-tab'); break;
+      case 'mine': case 'mine-frost': case 'mine-magma': window.dispatchEvent(new CustomEvent(MINE_CAVE_EVENT, { detail: MINE_SITES[id].cave })); break;
       case 'arena': openTab('arena-tab'); break;
       case 'factory': openTab('factory-tab') || openTab('mines-tab'); break;
       case 'warehouse': window.dispatchEvent(new CustomEvent('open-inventory', { detail: { tab: 'inv' } })); break;

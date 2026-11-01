@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { applyPickSkin, skinnedPickaxe } from './pickaxeModel';
 import { animateMiner, buildMiner, setMinerSkin, type MinerRig } from './minerAvatar';
-import { MINE_EXIT, MINE_MAP, MINE_NODES, ORES } from '../../../shared/mines';
+import { CAVES, MINE_EXIT, ORES, type CaveId, type MineNode } from '../../../shared/mines';
 
 export interface MinerView { id: string; name: string; x: number; y: number; z: number; a: number; c: boolean; sw: number; pk?: string | null }
 
@@ -36,29 +36,41 @@ export class Mines3D {
   private hitDue = -1;
   private lamp: THREE.PointLight;
 
-  constructor(canvas: HTMLCanvasElement) {
+  private caveNodes: MineNode[];
+  constructor(canvas: HTMLCanvasElement, caveId: CaveId = 'mine') {
+    const cave = CAVES[caveId]; const MINE_MAP = cave.map; const MINE_NODES = cave.nodes; const T = cave.theme;
+    this.caveNodes = MINE_NODES;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-    this.scene.background = new THREE.Color('#0b0907');
-    this.scene.fog = new THREE.Fog('#0b0907', 6, 26);
-    this.scene.add(new THREE.AmbientLight('#8a7a6a', 0.55));
+    this.scene.background = new THREE.Color(caveId === 'mine' ? '#0b0907' : T.sky);
+    this.scene.fog = new THREE.Fog(caveId === 'mine' ? '#0b0907' : T.fog, 6, T.hazard === 'ice' ? 32 : 26);
+    this.scene.add(new THREE.AmbientLight(T.ambient, T.hazard === 'ice' ? 0.7 : 0.55));
     this.lamp = new THREE.PointLight('#ffd9a0', 2.2, 14, 1.4); this.scene.add(this.lamp);
     const tex = rockTex();
-    const wallMat = new THREE.MeshLambertMaterial({ map: tex, color: '#9a8f86' });
+    const wallMat = new THREE.MeshLambertMaterial({ map: tex, color: T.wall });
+    // Hazard cells ('~', solid 'metal'): ice pillars (translucent) or lava pools (glowing pit, heat light).
+    const iceMat = new THREE.MeshStandardMaterial({ color: '#bfe8ff', emissive: '#3a8ac0', emissiveIntensity: 0.35, transparent: true, opacity: 0.72, roughness: 0.1, metalness: 0.2 });
+    const lavaMat = new THREE.MeshBasicMaterial({ color: '#ff5a10' });
+    let heat = 0;
     for (const s of MINE_MAP.solids) {
       const w = s.x1 - s.x0, d = s.y1 - s.y0, h = s.z1 - s.z0;
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat);
+      if (s.mat === 'metal' && T.hazard === 'lava') {
+        const pool = new THREE.Mesh(new THREE.PlaneGeometry(w, d), lavaMat); pool.rotation.x = -Math.PI / 2; pool.position.set(s.x0 + w / 2, 0.05, s.y0 + d / 2); this.scene.add(pool);
+        if (heat++ % 2 === 0) { const l = new THREE.PointLight('#ff4a00', 1.6, 7, 1.6); l.position.set(s.x0 + w / 2, 0.8, s.y0 + d / 2); this.scene.add(l); }
+        continue;
+      }
+      const m = new THREE.Mesh(s.mat === 'metal' && T.hazard === 'ice' ? new THREE.CylinderGeometry(w * 0.42, w * 0.5, h, 7) : new THREE.BoxGeometry(w, h, d), s.mat === 'metal' && T.hazard === 'ice' ? iceMat : wallMat);
       m.position.set(s.x0 + w / 2, s.z0 + h / 2, s.y0 + d / 2);
       this.scene.add(m);
     }
     const floorTex = tex.clone(); floorTex.repeat.set(MINE_MAP.w / 3, MINE_MAP.d / 3); floorTex.needsUpdate = true;
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(MINE_MAP.w, MINE_MAP.d), new THREE.MeshLambertMaterial({ map: floorTex, color: '#6e6258' }));
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(MINE_MAP.w, MINE_MAP.d), new THREE.MeshLambertMaterial({ map: floorTex, color: T.floor }));
     floor.rotation.x = -Math.PI / 2; floor.position.set(MINE_MAP.w / 2, 0, MINE_MAP.d / 2); this.scene.add(floor);
     // Lanterns along the tunnels (cheap: emissive dots + a few lights).
     let lights = 0;
     for (const s of MINE_MAP.spawns.concat(MINE_NODES.filter((_, i) => i % 9 === 0).map((n) => [n.x, n.y, 0] as [number, number, number]))) {
       if (lights++ > 10) break;
-      const l = new THREE.PointLight('#ff9a40', 1.2, 9, 1.6); l.position.set(s[0], 3.2, s[1]); this.scene.add(l);
+      const l = new THREE.PointLight(T.lamp, 1.2, 9, 1.6); l.position.set(s[0], 3.2, s[1]); this.scene.add(l);
     }
     { // EXIT lift: glowing sign + floor pad at the entrance pocket
       const c = document.createElement('canvas'); c.width = 512; c.height = 160; const x = c.getContext('2d');
@@ -123,7 +135,7 @@ export class Mines3D {
   }
 
   burstAt(node: number, big: boolean) {
-    const n = MINE_NODES[node]; if (!n) return;
+    const n = this.caveNodes[node]; if (!n) return;
     const col = new THREE.Color(ORES[n.ore].color);
     const at = new THREE.Vector3(n.x, n.z, n.y);
     for (let i = 0; i < (big ? 22 : 7); i++) { // chips

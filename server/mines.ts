@@ -7,7 +7,7 @@ import { getBank } from './casino-store.js';
 import { MinesLeaderboard, setMinesBoard } from './mines-board.js';
 import { getVault, playerKey } from './skins.js';
 import { guestName, lineOfSight, moveAllowance, MOVE_CARRY_MAX, normAngle, clampPitch, canStand, validateMove, eyeHeightOf, type Body } from '../shared/fps.js';
-import { BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, dayKey, isOre, payoutFor, stackKey, priceOf, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId, inExit, CARRY_GRACE_MS, weightOf } from '../shared/mines.js';
+import { CAVES, caveOf, type CaveId, BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, dayKey, isOre, payoutFor, stackKey, priceOf, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId, inExit, CARRY_GRACE_MS, weightOf } from '../shared/mines.js';
 
 export const MINES_MIGRATION = [
   // Generic per-player stacks: item_type 'ore' | 'bar' | 'good' (Factory) — also the Market hook for stackables.
@@ -73,12 +73,14 @@ export class MineError extends Error {}
 export const CARRY_SAVE_MS = 1500;
 export const RESTART_GRACE_MS = 10 * 60_000;
 
-interface Miner extends Body { id: string; name: string; account: string | null; a: number; p: number; lastMove: number; carry: number; lastHit: number; hits: number[]; sprint: boolean; carried: Map<string, Stack> }
+interface Miner extends Body { id: string; name: string; account: string | null; a: number; p: number; lastMove: number; carry: number; lastHit: number; hits: number[]; sprint: boolean; carried: Map<string, Stack>; cave: CaveId }
 interface NodeState { node: MineNode; hp: number; downUntil: number }
 
 export class MinesWorld {
   miners = new Map<string, Miner>();
-  nodes: NodeState[] = MINE_NODES.map((n) => ({ node: n, hp: ORES[n.ore].hits, downUntil: 0 }));
+  /** Per-cave rock state (pt1201u). `nodes` stays The Mine's for back-compat. */
+  caveNodes: Record<CaveId, NodeState[]> = Object.fromEntries(Object.values(CAVES).map((c) => [c.id, c.nodes.map((n) => ({ node: n, hp: ORES[n.ore].hits, downUntil: 0 }))])) as Record<CaveId, NodeState[]>;
+  nodes: NodeState[] = this.caveNodes.mine;
   /** signed-in backpacks by player key; guests keep theirs on the miner id (lost on leave) */
   packs = new Map<string, Map<string, Stack>>();
   names = new Map<string, string>();
@@ -145,9 +147,10 @@ export class MinesWorld {
   load(id: string): number { return this.carried(id).reduce((t, s) => t + weightOf(s), 0); }
   inMine(account: string) { const k = playerKey(account); for (const m of this.miners.values()) if (m.account && playerKey(m.account) === k) return true; return false; }
 
-  join(id: string, account: string | null, now: number): Miner {
-    const sp = MINE_MAP.spawns[this.miners.size % MINE_MAP.spawns.length];
-    const m: Miner = { id, name: account?.trim() || guestName(), account: account?.trim() || null, x: sp[0], y: sp[1], z: 0, vz: 0, grounded: true, crouch: false, a: 0, p: 0, lastMove: now, carry: 0, lastHit: 0, hits: [], sprint: false, carried: new Map() };
+  join(id: string, account: string | null, now: number, caveId: unknown = 'mine'): Miner {
+    const cave = caveOf(caveId); const spawns = cave.map.spawns;
+    const sp = spawns[this.miners.size % spawns.length];
+    const m: Miner = { id, name: account?.trim() || guestName(), account: account?.trim() || null, x: sp[0], y: sp[1], z: 0, vz: 0, grounded: true, crouch: false, a: 0, p: 0, lastMove: now, carry: 0, lastHit: 0, hits: [], sprint: false, carried: new Map(), cave: cave.id };
     this.miners.set(id, m);
     if (m.account) {
       const k = playerKey(m.account); this.names.set(k, m.account);
@@ -191,9 +194,9 @@ export class MinesWorld {
     const speedBody = { crouch: m.crouch, sprint: m.sprint };
     const allowed = moveAllowance(speedBody, dt, m.carry);
     const want = typeof x === 'number' && typeof y === 'number' ? Math.hypot(x - m.x, y - m.y) : 0;
-    validateMove(m, x, y, dt, MINE_MAP, allowed);
+    validateMove(m, x, y, dt, caveOf(m.cave).map, allowed);
     m.carry = Math.min(MOVE_CARRY_MAX, Math.max(0, allowed - want));
-    if (typeof z === 'number' && Number.isFinite(z) && z >= 0 && z <= 1.4 && canStand(m.x, m.y, z, MINE_MAP)) m.z = z;
+    if (typeof z === 'number' && Number.isFinite(z) && z >= 0 && z <= 1.4 && canStand(m.x, m.y, z, caveOf(m.cave).map)) m.z = z;
     const na = normAngle(a); if (na !== null) m.a = na;
     const np = clampPitch(p); if (np !== null) m.p = np;
     return typeof x === 'number' && typeof y === 'number' && Math.hypot(x - m.x, y - m.y) > 0.6;
@@ -204,7 +207,7 @@ export class MinesWorld {
   /** One pickaxe hit. Validates reach, line of sight, swing rate and backpack room. */
   hit(id: string, nodeId: unknown, now: number): { node: number; hp: number; broke: boolean; ore?: OreId; full?: boolean } {
     const m = this.miners.get(id); if (!m) throw new MineError('Join the mine first.');
-    const n = typeof nodeId === 'number' ? this.nodes[nodeId] : undefined;
+    const n = typeof nodeId === 'number' ? this.caveNodes[m.cave][nodeId] : undefined;
     if (!n) throw new MineError('No rock there.');
     if (now - m.lastHit < SWING_MIN_MS) throw new MineError('Too fast.');
     m.hits = m.hits.filter((t) => now - t < 10_000);
@@ -217,7 +220,7 @@ export class MinesWorld {
     // LOS to a point on the node's near face (centre sits half inside the wall).
     const toward = Math.hypot(eye.x - c.x, eye.y - c.y) || 1;
     const face = { x: c.x + ((eye.x - c.x) / toward) * NODE_R * 0.9, y: c.y + ((eye.y - c.y) / toward) * NODE_R * 0.9, z: c.z };
-    if (!lineOfSight(eye, face, MINE_MAP)) throw new MineError('Something is in the way.');
+    if (!lineOfSight(eye, face, caveOf(m.cave).map)) throw new MineError('Something is in the way.');
     const ore = ORES[c.ore];
     if (this.load(id) + ore.weight > BACKPACK_CAP) return { node: c.id, hp: n.hp, broke: false, full: true };
     m.lastHit = now; m.hits.push(now);
@@ -353,7 +356,7 @@ export class MinesWorld {
     return true;
   }
 
-  nodesView(now: number) { return this.nodes.map((n) => (this.nodeAvailable(n, now) ? n.hp : -1)); }
+  nodesView(now: number, cave: CaveId = 'mine') { return this.caveNodes[cave].map((n) => (this.nodeAvailable(n, now) ? n.hp : -1)); }
   private skinCache = new Map<string, { pk: string | null; at: number }>();
   /** Equipped pickaxe skin for third-person rendering (cached 5s; guests = stock). */
   private pickSkin(m: Miner): string | null {
@@ -364,7 +367,7 @@ export class MinesWorld {
     try { pk = (getVault()?.loadout(m.account) as Record<string, string | undefined> | undefined)?.pickaxe ?? null; } catch { pk = null; }
     this.skinCache.set(m.id, { pk, at: now }); return pk;
   }
-  playersView() { return [...this.miners.values()].map((m) => ({ id: m.id, name: m.name, x: +m.x.toFixed(2), y: +m.y.toFixed(2), z: +m.z.toFixed(2), a: +m.a.toFixed(3), p: +m.p.toFixed(3), c: !!m.crouch, sw: m.lastHit, pk: this.pickSkin(m) })); }
+  playersView(cave?: CaveId) { return [...this.miners.values()].filter((m) => !cave || m.cave === cave).map((m) => ({ id: m.id, name: m.name, x: +m.x.toFixed(2), y: +m.y.toFixed(2), z: +m.z.toFixed(2), a: +m.a.toFixed(3), p: +m.p.toFixed(3), c: !!m.crouch, sw: m.lastHit, pk: this.pickSkin(m) })); }
 }
 
 let world = new MinesWorld();
@@ -377,7 +380,7 @@ export async function initMinesStorage(): Promise<void> {
   if (await world.attach(new PgMineStore(pool))) { console.log('[mines] connected to postgres'); setMinesBoard(new MinesLeaderboard(pool)); }
 }
 
-const ROOM = 'mines';
+const roomOf = (c: CaveId) => `mines:${c}`;
 const MAX_MINERS = 24;
 let ticker: ReturnType<typeof setInterval> | null = null;
 type Ack = (r: Record<string, unknown>) => void;
@@ -387,7 +390,8 @@ function ensureTicker(io: Server) {
   if (ticker) return;
   ticker = setInterval(() => {
     if (!world.miners.size) { clearInterval(ticker!); ticker = null; return; }
-    io.to(ROOM).emit('mines_state', { t: Date.now(), players: world.playersView(), nodes: world.nodesView(Date.now()) });
+    const now = Date.now(); const live = new Set([...world.miners.values()].map((m) => m.cave));
+    for (const c of live) io.to(roomOf(c)).emit('mines_state', { t: now, players: world.playersView(c), nodes: world.nodesView(now, c) });
   }, 100);
   ticker.unref?.();
 }
@@ -397,15 +401,15 @@ export function registerMines(io: Server, socket: Socket): void {
   const me = () => world.miners.get(socket.id);
   const packMsg = () => ({ pack: world.carried(socket.id), load: world.load(socket.id), cap: BACKPACK_CAP });
   const storeMsg = () => { const a = account(); if (a) world.beforeStorage?.(a); const q = a ? world.quote(a, Date.now()) : null; return { storage: a ? world.storage(a) : [], quote: q ? { gross: q.gross, paid: q.paid, already: q.already } : null, inMine: a ? world.inMine(a) : false, guest: !a }; };
-  socket.on('mines_join', (_p: unknown, ack?: Ack) => {
+  socket.on('mines_join', (p: unknown, ack?: Ack) => {
     let m = me();
     if (!m) {
       if (world.miners.size >= MAX_MINERS) return ack?.({ ok: false, error: 'The mine is full, try again in a bit.' });
-      m = world.join(socket.id, account(), Date.now());
-      void socket.join(ROOM);
+      m = world.join(socket.id, account(), Date.now(), body(p).cave);
+      void socket.join(roomOf(m.cave));
     }
     ensureTicker(io);
-    ack?.({ ok: true, id: socket.id, name: m.name, guest: !m.account, x: m.x, y: m.y, z: m.z, a: m.a, nodes: world.nodesView(Date.now()), ...packMsg() });
+    ack?.({ ok: true, id: socket.id, name: m.name, guest: !m.account, cave: m.cave, x: m.x, y: m.y, z: m.z, a: m.a, nodes: world.nodesView(Date.now(), m.cave), ...packMsg() });
   });
   socket.on('mines_move', (p: unknown) => {
     const b = body(p);
@@ -414,7 +418,7 @@ export function registerMines(io: Server, socket: Socket): void {
   socket.on('mines_hit', (p: unknown, ack?: Ack) => {
     try {
       const r = world.hit(socket.id, body(p).node, Date.now());
-      socket.to(ROOM).emit('mines_fx', { node: r.node, hp: r.hp, broke: r.broke, by: socket.id });
+      socket.to(roomOf(me()!.cave)).emit('mines_fx', { node: r.node, hp: r.hp, broke: r.broke, by: socket.id });
       ack?.({ ok: true, ...r, ...(r.broke ? packMsg() : {}) });
     } catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
   });
@@ -439,7 +443,7 @@ export function registerMines(io: Server, socket: Socket): void {
   socket.on('mines_factory_upgrade', gone);
   socket.on('mines_collect', gone);
   socket.on('mines_craft', gone);
-  const leave = () => { if (me()) { world.leave(socket.id); void socket.leave(ROOM); io.to(ROOM).emit('mines_left', { id: socket.id }); } };
+  const leave = () => { const m = me(); if (m) { const room = roomOf(m.cave); world.leave(socket.id); void socket.leave(room); io.to(room).emit('mines_left', { id: socket.id }); } };
   socket.on('mines_leave', leave);
   socket.on('disconnect', leave);
 }

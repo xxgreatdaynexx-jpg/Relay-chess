@@ -35,7 +35,7 @@ describe('world layout (organic city)', () => {
       if (r.cul) { const [x, z] = r.pts[r.pts.length - 1]; samples.push([x, z, CUL_R]); }
       for (const [x, z, hw] of samples) for (const b of solids) expect(obbHit(b, x, z, hw), `${r.id} through building at ${b.x.toFixed(1)},${b.z.toFixed(1)}`).toBe(false);
     }
-    for (const b of solids) expect(b.z).toBeLessThan(shoreZ(b.x));
+    for (const b of solids) if (Math.abs(b.x) <= PLATE && Math.abs(b.z) <= PLATE) expect(b.z).toBeLessThan(shoreZ(b.x)); // outskirts mines sit off the plate (no water there)
     for (const h of houses) expect(roadClearance(h.x, h.z, 40)).toBeLessThan(30);
   });
   it('cars follow the curved roads in-lane and never cross a building', () => {
