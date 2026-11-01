@@ -14,11 +14,11 @@ import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import { getBank } from './casino-store.js';
 import { StockError, keyOf, priceOf, type Exchange } from './stocks.js';
-import { COMPANIES, COMPANY_BY_TICKER, MAX_TICK_IMPACT, maxOrderChips, quote, type Company } from '../shared/stocks.js';
+import { COMPANIES, COMPANY_BY_TICKER, MAX_TICK_IMPACT, maxOrderChips, parseQty, quote, type Company } from '../shared/stocks.js';
 import {
   BORROW_FEE, DIV_HOUR_UTC, FUNDS, FUND_BY_ID, FUND_MAX_ORDER, MAX_OPEN_OPTIONS, MAX_OPEN_SHORTS, OPT_EXPIRIES, OPT_MAX_PREMIUM, OPT_MAX_QTY,
   SHORT_INIT, daysLeft, divYield, dividendOf, fundDivPerUnit, fundQuote, fundYield, liquidationPrice, navOf, needsLiquidation, optionPayout,
-  optionPremium, optionValue, shortEquity, type Fund,
+  optionPremium, optionValue, shortClose, shortEquity, type Fund,
 } from '../shared/derivs.js';
 
 const DAY = 86_400_000;
@@ -135,7 +135,7 @@ export class Derivatives {
     const stocks = await this.ex.portfolio(name);
     const funds = (await this.fundPositions(name)).map((p) => { const f = FUND_BY_ID.get(p.fund)!; const nav = this.nav(f); const value = Math.floor(nav * p.units); return { ...p, name: f.name, kind: f.kind, nav, value, pnl: value - p.cost }; });
     const now = this.clock();
-    const shorts = (await this.shorts(name)).map((s) => { const p = this.price(s.ticker)!; const eqv = Math.floor(shortEquity(s, p)); return { ...s, price: p, equity: eqv, pnl: Math.round(s.proceeds - p * s.shares - s.fees), liqPrice: r2(liquidationPrice(s)) }; });
+    const shorts = (await this.shorts(name)).map((s) => { const p = this.price(s.ticker)!; const eqv = Math.floor(shortEquity(s, p)); const cl = shortClose(COMPANY_BY_TICKER.get(s.ticker)!, s, p); return { ...s, price: p, equity: eqv, closeValue: cl.payout, pnl: cl.pnl, liqPrice: r2(liquidationPrice(s)) }; });
     const options = (await this.options(name)).map((o) => ({ ...o, price: this.price(o.ticker), mark: this.optionMark(o), hoursLeft: Math.max(0, Math.round((o.expiry - now) / 360_000) / 10) }));
     const history = { shorts: (await this.shorts(name, 'all')).filter((s) => s.status !== 'open').slice(0, 20), options: (await this.options(name, 'all')).filter((o) => o.status !== 'open').slice(0, 20) };
     const totals = { stocks: stocks.value, funds: funds.reduce((a, f) => a + f.value, 0), shorts: shorts.reduce((a, s) => a + s.equity, 0), options: options.reduce((a, o) => a + o.mark, 0) };
@@ -144,8 +144,7 @@ export class Derivatives {
 
   // ---------- funds ----------
   async tradeFund(name: string, side: 'buy' | 'sell', id: unknown, u: unknown) {
-    const f = this.fund(id); let units = Math.round(Number(u) * 100) / 100;
-    if (!(units > 0) || units > 1_000_000) throw new StockError('Enter how many units (up to 2 decimals).');
+    const f = this.fund(id); const pu = parseQty(u, { decimals: 2, max: 1_000_000 }); if (!pu.ok) throw new StockError(pu.error.replaceAll('shares', 'units')); let units = pu.n;
     const k = keyOf(name); const nav = this.nav(f);
     if (side === 'sell') { const have = (await this.fundPositions(name)).find((p) => p.fund === f.id)?.units ?? 0; if (units > have + 1e-9) { if (units - have < 0.01) units = have; else throw new StockError(`You own ${have.toFixed(2)} ${f.id} units.`); } }
     const q = fundQuote(f, nav, side, units);
@@ -168,7 +167,7 @@ export class Derivatives {
 
   // ---------- shorts ----------
   async openShort(name: string, t: unknown, n: unknown) {
-    const c = this.comp(t); const shares = Number(n); if (!Number.isInteger(shares) || shares < 1 || shares > 1_000_000) throw new StockError('Enter a whole number of shares.');
+    const c = this.comp(t); const ps = parseQty(n); if (!ps.ok) throw new StockError(ps.error); const shares = ps.n;
     const price = this.price(c.ticker)!; const q = quote(c, price, 'sell', shares); // you sell borrowed shares: bid side, pushes the price down
     if (q.gross > maxOrderChips(c)) throw new StockError(`Order too large: max ${maxOrderChips(c).toLocaleString()} chips per trade (about ${Math.max(1, Math.floor(maxOrderChips(c) / price))} shares).`);
     if ((await this.shorts(name)).length >= MAX_OPEN_SHORTS) throw new StockError(`You can have at most ${MAX_OPEN_SHORTS} open shorts.`);
@@ -202,7 +201,7 @@ export class Derivatives {
   }
   async closeShort(name: string, id: unknown) {
     const s = (await this.shorts(name)).find((x) => x.id === id); if (!s) throw new StockError('That short is already closed.');
-    const c = COMPANY_BY_TICKER.get(s.ticker)!; const price = this.price(c.ticker)!; const q = quote(c, price, 'buy', s.shares); // buy back: ask side, pushes the price up
+    const c = COMPANY_BY_TICKER.get(s.ticker)!; const price = this.price(c.ticker)!; const { q } = shortClose(c, s, price); // buy back: ask side, pushes the price up (same math the UI shows)
     if (q.gross > maxOrderChips(c) * 2) throw new StockError('This short is too big to close in one go right now. Wait for the price to settle.');
     try { const payout = await this.settleShort(s, 'closed', q.fill, q.gross, q.fee, Math.min(q.imp, MAX_TICK_IMPACT), c); return { id: s.id, ticker: s.ticker, shares: s.shares, fill: r2(q.fill), payout, pnl: payout - s.collateral - s.fees, balance: getBank().account(name).chips }; }
     catch (e) { if (e instanceof Skip) throw new StockError('That short was just updated. Refresh and try again.'); throw e; }
@@ -212,7 +211,7 @@ export class Derivatives {
   optionQuote(t: unknown, kind: unknown, strike: unknown, days: unknown, qty: unknown) {
     const c = this.comp(t); if (kind !== 'call' && kind !== 'put') throw new StockError('Pick a call or a put.');
     const d = Number(days); if (!(OPT_EXPIRIES as readonly number[]).includes(d)) throw new StockError(`Expiry must be ${OPT_EXPIRIES.join(', ')} days.`);
-    const n = Number(qty); if (!Number.isInteger(n) || n < 1 || n > OPT_MAX_QTY) throw new StockError(`Cover 1 to ${OPT_MAX_QTY} shares.`);
+    const pq = parseQty(qty, { max: OPT_MAX_QTY }); if (!pq.ok) throw new StockError(`${pq.error} Cover 1 to ${OPT_MAX_QTY} shares per option.`); const n = pq.n;
     const S = this.price(c.ticker)!; const K = Math.round(Number(strike) * 100) / 100;
     if (!(K > 0) || Math.abs(K / S - 1) > 0.25) throw new StockError('Strike must be within 25% of the current price.');
     const premium = optionPremium(c, kind, S, K, d, n);

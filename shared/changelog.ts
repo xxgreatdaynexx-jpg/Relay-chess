@@ -6,6 +6,17 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T13:45:00-06:00', title: 'Stocks, Daily Report and Chud Hub map fixes', bullets: [
+    'Share and unit boxes no longer quietly drop a minus sign or a decimal point (so "-5" no longer turns into 5). You now get a clear message: whole, positive numbers only (fund units allow 2 decimals). The server checks this too.',
+    'The Daily Report now counts your funds, shorts, options, property and cars as assets, the same way the Bank does.',
+    'Inflation now reads the same on the Daily Report and the Bank\'s Economy tab: same numbers, same labels, with an "as of" time. Smoothed inflation says "needs a closed day" instead of "—/day".',
+    'Fund Buy and Sell buttons show the exact chips you\'ll pay or get, and the shorts table shows what closing pays you, to the chip.',
+    '"You own 1 share" (not "1 shares"), and Sell shows no price when you own none.',
+    'On the 2D map, "Line up on the grid" and "Get your car at the terminal" now switch to the 3D city and put you in your car (or tell you to buy one first).',
+    'Buying property without enough chips now tells you how many more you need. Deeds show the 70% sell-back price.',
+    'Airport and Speedway panels no longer overlap the deed and real estate panels, and prices stay on one line. Map popups stay clear of the 🔊 volume button at high zoom.',
+    'The 3D city can\'t be dragged far off screen when zoomed out.',
+  ] },
   { commit: '', at: '2026-11-01T13:30:00-06:00', title: 'Countryside roads fixed', bullets: [
     'The countryside roads are now one tidy ring around the city and the farm, with no dead ends, doubled roads or random diagonals. Every road ends at a junction or somewhere you can go.',
     'The Speedway road now goes straight north from the boulevard, along the ring road, and up to the track without crossing it. The Airport road and every other crossing has a proper junction with no centre lines through it.',

@@ -23,7 +23,7 @@ export function VolumeControl() {
   return (
     <div
       data-testid="volume-control"
-      className="group fixed bottom-3 left-3 z-50 flex items-center gap-2 rounded-full bg-black/55 px-2.5 py-1.5 text-[#fff6d8] shadow-lg backdrop-blur"
+      className="volume-control group fixed bottom-3 left-3 z-50 flex items-center gap-2 rounded-full bg-black/55 px-2.5 py-1.5 text-[#fff6d8] shadow-lg backdrop-blur"
     >
       <button
         type="button"

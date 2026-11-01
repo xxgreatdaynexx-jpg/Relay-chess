@@ -21,7 +21,7 @@ export function Venues({ kind, me, driving, onClose, onFly, onDriveFrom }: {
   useEffect(() => { if (kind !== 'racetrack') return; load(); const t = window.setInterval(load, 15_000); return () => window.clearInterval(t); }, [kind]);
   const enter = async () => { setBusy(true); setMsg(null); const r = await request('race_enter') as { ok: boolean; error?: string; fee?: number }; setBusy(false); setMsg(r.ok ? `You're in! Paid 🪙 ${chips(r.fee ?? 0)}. Your fastest lap today counts.` : r.error ?? 'Failed.'); load(); };
   const fly = async (to: FlyDest) => { setBusy(true); setMsg(null); const r = await onFly(to); setBusy(false); if (r.ok) onClose(); else setMsg(r.error ?? 'Could not fly.'); };
-  const driveFrom = async (from: string) => { setMsg(null); if (!(await onDriveFrom(from))) setMsg('Buy a car at the Car Dealership first.'); else if (from !== 'airport') onClose(); }; // at the airport, stay open on the Fly buttons
+  const driveFrom = async (from: string) => { setMsg(null); setBusy(true); const ok = await onDriveFrom(from).catch(() => false); setBusy(false); if (!ok) setMsg('You need a car first: buy one at the Car Dealership, then come back.'); else if (from !== 'airport') onClose(); else setMsg(driving ? null : 'Opening the 3D city and bringing your car to the terminal…'); }; // at the airport, stay open on the Fly buttons
   return (
     <div className="world-deed world-venue" data-testid={`venue-${kind}`}>
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
@@ -30,11 +30,11 @@ export function Venues({ kind, me, driving, onClose, onFly, onDriveFrom }: {
         <small>Fast travel: you and your car fly to any stop. Free, takes a second. You have to be at the airport in your car.</small>
         {driving
           ? (Object.keys(FLY_DEST) as FlyDest[]).filter((d) => d !== 'airport').map((d) => <button key={d} type="button" disabled={busy} onClick={() => void fly(d)} data-testid={`fly-${d}`}>🛫 Fly to {FLY_DEST[d].label}</button>)
-          : <button type="button" onClick={() => void driveFrom('airport')} data-testid="venue-drive-airport">🚗 Get your car at the terminal</button>}
+          : <button type="button" disabled={busy} onClick={() => void driveFrom('airport')} data-testid="venue-drive-airport">🚗 Get your car at the terminal</button>}
       </> : <>
         <h3>🏁 Chud Hub Speedway</h3>
         <small>Time-trial laps in your own car. Laps are timed by the server through 4 gates. Leaving the asphalt voids the lap.</small>
-        <button type="button" onClick={() => void driveFrom('grid')} data-testid="venue-grid">🏎 Line up on the grid</button>
+        <button type="button" disabled={busy} onClick={() => void driveFrom('grid')} data-testid="venue-grid">🏎 Line up on the grid</button>
         {board && <>
           <h4>🏆 Daily Cup · {board.cup.day} (UTC)</h4>
           <small>Entry 🪙 {chips(board.cup.entry)} · pool 🪙 {chips(board.cup.pool)} (fees + 🪙 {chips(board.cup.seed)} from the house) · {board.cup.entrants} entered.

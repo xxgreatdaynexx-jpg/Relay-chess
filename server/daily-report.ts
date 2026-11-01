@@ -9,6 +9,7 @@ import { getBank } from './casino-store.js';
 import { getEconomy, utcDay } from './economy.js';
 import { getExchange } from './stocks.js';
 import { priceIndexView } from './price-index.js';
+import { inflationView, type InflationStatsInput } from '../shared/inflation.js';
 
 export const REPORT_MIGRATION = `CREATE TABLE IF NOT EXISTS daily_reports (
   player_key TEXT NOT NULL, day TEXT NOT NULL, cash BIGINT NOT NULL, assets BIGINT NOT NULL, total BIGINT NOT NULL,
@@ -50,7 +51,7 @@ function snapshots(): SnapshotStore {
 }
 
 const pct = (now: number, then: number | null | undefined) => (then ? Math.round(((now - then) / then) * 10000) / 100 : null);
-type Econ = { cash: number; assets: number; total: number; change?: { cash: number | null; total: number | null }; inflation?: { cash7: number | null; total7: number | null } };
+type Econ = { cash: number; assets: number; total: number } & Partial<InflationStatsInput>;
 
 export async function buildDailyReport(name: string, bonus: number | null, now = Date.now()) {
   const key = name.replace(/\s+/g, ' ').trim().toLowerCase();
@@ -74,7 +75,10 @@ export async function buildDailyReport(name: string, bonus: number | null, now =
   await snaps.save(key, { day, ...me }).catch((e) => console.error('[daily-report] snapshot failed:', (e as Error).message));
   return {
     day, bonus,
-    economy: stats ? { cash: stats.cash, assets: stats.assets, total: stats.total, inflation: stats.change?.cash ?? null, inflation7: stats.inflation?.cash7 ?? null, totalChange: stats.change?.total ?? null, priceIndex: priceIndexView().index, priceIndexPct: priceIndexView().appliedPct, movers } : null,
+    // Inflation comes from the same Economy.stats() object the Bank's Economy tab renders, through the same inflationView().
+    economy: stats ? { cash: stats.cash, assets: stats.assets, total: stats.total,
+      inflation: inflationView({ at: stats.at ?? now, change: stats.change ?? { cash: null, total: null }, inflation: stats.inflation ?? { cash7: null, total7: null }, priceIndex: stats.priceIndex ?? priceIndexView() }),
+      priceIndex: priceIndexView().index, priceIndexPct: priceIndexView().appliedPct, movers } : null,
     me: {
       ...me, categories: (assets?.categories ?? []).map((c) => ({ key: c.key, label: c.label, value: c.value, units: c.units })),
       since: prev ? { day: prev.day, total: me.total - prev.total, totalPct: pct(me.total, prev.total), cash: me.cash - prev.cash, assets: me.assets - prev.assets } : null,

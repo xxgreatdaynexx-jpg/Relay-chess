@@ -5,7 +5,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
-import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, TILE, clampMapTarget } from '../../../shared/farm';
+import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, TILE, clampMapTarget, panInset } from '../../../shared/farm';
 import { buildVenues } from './worldVenues';
 import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN, MINE_SITES, MINE_APRON, OUTSKIRTS } from './worldLayout';
 import { riverOutline, islandOutline, riverDecor, edgeDist, ISLAND } from '../../../shared/riverLake';
@@ -95,7 +95,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const v = fwd.multiplyScalar(fz).add(right.multiplyScalar(fx)).normalize().multiplyScalar(dt * Math.max(40, camera.position.distanceTo(controls.target) * 0.8));
     controls.target.add(v); camera.position.add(v);
   };
-  const clampPan = () => { const t = controls.target; const [x, z] = clampMapTarget(t.x, t.z); if (x !== t.x || z !== t.z) { const dx = x - t.x, dz = z - t.z; t.x = x; t.z = z; camera.position.x += dx; camera.position.z += dz; } };
+  const clampPan = () => { const t = controls.target; const [x, z] = clampMapTarget(t.x, t.z, panInset(camera.position.distanceTo(t), controls.minDistance, controls.maxDistance)); if (x !== t.x || z !== t.z) { const dx = x - t.x, dz = z - t.z; t.x = x; t.z = z; camera.position.x += dx; camera.position.z += dz; } };
 
   scene.add(new THREE.HemisphereLight(0x7a8cff, 0x2a4a30, 1.3));
   const moon = new THREE.DirectionalLight(0xaabbff, 1.1); moon.position.set(-30, 60, 20); scene.add(moon);

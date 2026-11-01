@@ -85,4 +85,14 @@ export const MAP_BOUNDS = {
   x0: Math.min(-PLATE, OUTSKIRTS.x0 + 10, VENUE_BOUNDS.x0, PARK_AREA.x - PARK_AREA.w / 2, ...SITES.map((s) => s.x - HALF)) - 6, x1: Math.max(FARM_X1, OUTSKIRTS.x1 - 10, VENUE_BOUNDS.x1, ...SITES.map((s) => s.x + HALF)) + 4,
   z0: Math.min(-PLATE, FARM_Z0, OUTSKIRTS.z0 + 10, VENUE_BOUNDS.z0, PARK_AREA.z - PARK_AREA.d / 2, ...SITES.map((s) => s.z - HALF)) - 6, z1: Math.max(PLATE, FARM_Z1, OUTSKIRTS.z1 - 10, VENUE_BOUNDS.z1, PARK_AREA.z + PARK_AREA.d / 2, ...SITES.map((s) => s.z + HALF)) + 6,
 };
-export const clampMapTarget = (x: number, z: number): [number, number] => [Math.min(MAP_BOUNDS.x1, Math.max(MAP_BOUNDS.x0, x)), Math.min(MAP_BOUNDS.z1, Math.max(MAP_BOUNDS.z0, z))];
+/** Zoom-aware pan inset: the further out the camera is, the more of the view already shows the edges, so the target must stay nearer the middle
+ *  (QA r7: at full zoom-out you could drag the city almost off screen). 0 when close in, ~half the half-extent at max distance. */
+export const panInset = (dist: number, minD = 30, maxD = 360) => {
+  const k = Math.min(1, Math.max(0, (dist - minD) / (maxD - minD)));
+  return k * 0.55 * Math.min(MAP_BOUNDS.x1 - MAP_BOUNDS.x0, MAP_BOUNDS.z1 - MAP_BOUNDS.z0) / 2;
+};
+export const clampMapTarget = (x: number, z: number, inset = 0): [number, number] => {
+  const cx = (MAP_BOUNDS.x0 + MAP_BOUNDS.x1) / 2, cz = (MAP_BOUNDS.z0 + MAP_BOUNDS.z1) / 2;
+  const x0 = Math.min(cx, MAP_BOUNDS.x0 + inset), x1 = Math.max(cx, MAP_BOUNDS.x1 - inset), z0 = Math.min(cz, MAP_BOUNDS.z0 + inset), z1 = Math.max(cz, MAP_BOUNDS.z1 - inset);
+  return [Math.min(x1, Math.max(x0, x)), Math.min(z1, Math.max(z0, z))];
+};

@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { WORLD_SPOTS } from '@/lib/worldSpots';
+import { useWalletChips } from '@/lib/wallet';
 import { MINE_CAVE_EVENT } from '../../../shared/mines';
 import { MINE_SITES } from '@/lib/worldLayout';
 import type { World } from '@/lib/world3d';
@@ -23,8 +24,8 @@ type Ack = { ok: boolean; error?: string };
 function DeedPanel({ id, owned, me, onClose, onFarm }: { id: string; owned: Map<string, OwnedProperty>; me: string | null; onClose: () => void; onFarm?: () => void }) {
   const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
   if (!p) return null;
-  const mine = !!(o && me && o.owner.toLowerCase() === me.toLowerCase());
-  const act = (ev: 're_buy' | 're_sell') => { setBusy(true); setMsg(null); socket.timeout(10_000).emit(ev, { id }, (err: Error | null, r?: Ack) => { setBusy(false); setMsg(err ? 'No answer from the server. Try again.' : r?.ok ? (ev === 're_buy' ? 'It’s yours.' : 'Sold back to the city.') : r?.error ?? 'Something went wrong.'); }); };
+  const mine = !!(o && me && o.owner.toLowerCase() === me.toLowerCase()); const wallet = useWalletChips(); const short = wallet != null && wallet < p.price ? p.price - wallet : 0;
+  const act = (ev: 're_buy' | 're_sell') => { setBusy(true); setMsg(null); socket.timeout(10_000).emit(ev, { id }, (err: Error | null, r?: Ack) => { setBusy(false); setMsg(err ? 'No answer from the server. Try again.' : r?.ok ? (ev === 're_buy' ? 'It’s yours.' : 'Sold back to the city.') : (ev === 're_buy' && (r?.error === 'Not enough chips.' || r?.error === 'Something went wrong.') && short ? `Not enough chips: ${p.label} costs 🪙 ${chips(p.price)}; you need 🪙 ${chips(short)} more.` : r?.error ?? 'Something went wrong.')); }); };
   return (
     <div className="world-deed" data-testid="world-deed">
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
@@ -33,15 +34,17 @@ function DeedPanel({ id, owned, me, onClose, onFarm }: { id: string; owned: Map<
       <dl>
         <dt>Price</dt><dd data-testid="deed-price">🪙 {chips(p.price)}</dd>
         <dt>Owner</dt><dd data-testid="deed-owner">{o ? (mine ? 'You' : o.owner) : 'City of Chud Hub (for sale)'}</dd>
+        <dt>Sell-back</dt><dd data-testid="deed-sellback">🪙 {chips(sellBackOf(p.price))} (70% of price)</dd>
         <dt>Property tax</dt><dd data-testid="deed-tax">🪙 {chips(taxOf(p.price))}/day ({(TAX_RATE * 100).toFixed(1)}%)</dd>
         {o && o.arrears > 0 && <><dt>Arrears</dt><dd className="text-rose-300">{o.arrears} unpaid day{o.arrears > 1 ? 's' : ''} (repossessed at {GRACE_DAYS})</dd></>}
       </dl>
-      {!o && (me ? <button type="button" disabled={busy} onClick={() => act('re_buy')} data-testid="deed-buy">Buy for 🪙 {chips(p.price)}</button> : <small>Sign in to buy.</small>)}
+      {!o && (me ? <button type="button" disabled={busy} onClick={() => (short ? setMsg(`Not enough chips: ${p.label} costs 🪙 ${chips(p.price)}; you have 🪙 ${chips(wallet ?? 0)} (need 🪙 ${chips(short)} more).`) : act('re_buy'))} aria-describedby={short ? 'deed-short' : undefined} data-testid="deed-buy">Buy for 🪙 {chips(p.price)}</button> : <small>Sign in to buy.</small>)}
       {mine && <button type="button" disabled={busy} onClick={() => act('re_sell')} data-testid="deed-sell">Sell to the city for 🪙 {chips(sellBackOf(p.price))} (70%)</button>}
       {p.kind === 'farm' && o && onFarm && <button type="button" onClick={onFarm} data-testid="deed-farm">{mine ? '🌾 Open farm' : '👀 Visit farm'}</button>}
       {p.kind === 'farm' && !o && <small>Farmland: buy it to plant crops (FarmVille-style, real-time).</small>}
-      {msg && <small data-testid="deed-msg">{msg}</small>}
-      <small className="opacity-60">Tax is charged once per UTC day and burned. {GRACE_DAYS} unpaid days in a row and the city takes it back (no refund).</small>
+      {!o && me && short > 0 && !msg && <small id="deed-short" className="text-amber-300" data-testid="deed-short">You need 🪙 {chips(short)} more chips to buy this.</small>}
+      {msg && <small role="status" data-testid="deed-msg">{msg}</small>}
+      <small className="opacity-60">You can sell any property back to the city at any time for 70% of its price. Tax is charged once per UTC day and burned. {GRACE_DAYS} unpaid days in a row and the city takes it back (no refund).</small>
     </div>
   );
 }
@@ -123,6 +126,7 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
   useEffect(() => { worldRef.current?.setOwned([...owned.keys()]); }, [owned, loading]);
   const [dealer, setDealer] = useState(false); const [dock, setDock] = useState(false);
   const driveRef = useRef<Drive | null>(null);
+  const pendingDrive = useRef<{ carId: string; color: number; from?: string } | null>(null); const startDriveRef = useRef<(carId: string, color: number, from?: string) => void>(() => {});
   const [driving, setDriving] = useState(false); const [near, setNear] = useState<string | null>(null); const [kmh, setKmh] = useState(0);
   const meRef = useRef(me); meRef.current = me;
   const [venue, setVenue] = useState<'airport' | 'racetrack' | null>(null);
@@ -141,8 +145,12 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
   const startDrive = (carId: string, color: number, from?: string) => { setDealer(false); driveRef.current?.start(carId, color, from); setDriving(!!driveRef.current?.driving); setLap({ t0: null, text: null, gate: 0 }); };
   const driveFrom = async (from: string) => {
     const a = await request('car_garage') as { ok: boolean; cars?: { carId: string; color: number; active: boolean }[] };
-    const c = a.ok ? a.cars?.find((x) => x.active) ?? a.cars?.[0] : undefined; if (!c) return false; startDrive(c.carId, c.color, from); return true;
+    const c = a.ok ? a.cars?.find((x) => x.active) ?? a.cars?.[0] : undefined; if (!c) return false;
+    // 2D map has no driving: switch to the 3D city and start there once the drive module is ready (QA r7: these buttons did nothing in 2D).
+    if (!driveRef.current) { pendingDrive.current = { carId: c.carId, color: c.color, from }; if (mode !== '3d') setMode('3d'); return true; }
+    startDrive(c.carId, c.color, from); return true;
   };
+  startDriveRef.current = startDrive;
   const stopDrive = () => { driveRef.current?.stop(); setDriving(false); setNear(null); };
   const toggleDrive = async () => {
     if (driving) { stopDrive(); return; }
@@ -166,7 +174,7 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
       case 'leaderboard': onLeaderboard(); break;
       case 'dealer': setDealer(true); return;
       case 'dock': setDock(true); return;
-      case 'airport': case 'racetrack': setVenue(id); return;
+      case 'airport': case 'racetrack': setDeed(null); setDeeds(false); setFarm(null); setVenue(id); return;
     }
     // Every other building opens as a panel on top of the city; closing it reveals the city again.
   };
@@ -182,12 +190,13 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
         worldRef.current = createWorld(canvasRef.current, {
           onHover: (id, x, y) => setTip(id ? { id, x, y } : null),
           onPick: (id) => goRef.current(id),
-          onProperty: (id) => { setDeeds(false); const o = ownedRef.current.get(id); const m = meRef.current;
+          onProperty: (id) => { setDeeds(false); setVenue(null); const o = ownedRef.current.get(id); const m = meRef.current;
             if (id.startsWith('f:') && o && m && o.owner.toLowerCase() === m.toLowerCase()) { setDeed(null); setFarm(id); } else { setFarm(null); setDeed(id); } },
         });
         const w = worldRef.current;
         void import('@/lib/worldDrive').then(({ createDrive }) => { if (dead || worldRef.current !== w) return;
-          driveRef.current = createDrive(w, { me: () => meRef.current ?? null, onNear: setNear, onSpeed: setKmh, onRace }); });
+          driveRef.current = createDrive(w, { me: () => meRef.current ?? null, onNear: setNear, onSpeed: setKmh, onRace });
+          const pd = pendingDrive.current; pendingDrive.current = null; if (pd) startDriveRef.current(pd.carId, pd.color, pd.from); });
       } catch { setMode('2d'); }
       setLoading(false);
     }).catch(() => setMode('2d'));
@@ -231,7 +240,7 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
       {!spot && tipProp && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#c9a24a' }} data-testid="world-tip"><b>{tipProp.label}</b><span>{ownerLine}</span><em>Click for the deed</em></div>}
       {trailer && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#ffb36b' }} data-testid="world-tip">{me && trailer.toLowerCase() === me.toLowerCase() ? <b>🏠 Your trailer</b> : <><b>🏠 {trailer}'s trailer</b><span>Chud Acres Trailer Park</span></>}</div>}
       <div className="world-corner">
-        <button type="button" onClick={() => { setDeed(null); setFarm(null); setDeeds(!deeds); }} data-testid="world-deeds-btn">🏛 Real estate</button>
+        <button type="button" onClick={() => { setDeed(null); setFarm(null); setVenue(null); setDeeds(!deeds); }} data-testid="world-deeds-btn">🏛 Real estate</button>
         {mode === '3d' && !loading && <button type="button" onClick={() => void toggleDrive()} data-testid="world-drive">{driving ? '🅿 Park' : '🚗 Drive'}</button>}
         <button type="button" onClick={() => setMode(mode === '3d' ? '2d' : '3d')} data-testid="world-mode">{mode === '3d' ? '▦ 2D map' : '🌃 3D city'}</button>
       </div>

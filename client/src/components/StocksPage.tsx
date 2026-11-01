@@ -3,8 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { TopTab } from '@/components/TopTabs';
 import { request, socket } from '@/lib/net';
 import { useAccount } from '@/lib/auth';
-import { DIV_HOUR_UTC, FUND_MAX_ORDER, OPT_EXPIRIES, OPT_STRIKES, SHORT_INIT, SHORT_MAINT, BORROW_FEE, strikeFor } from '../../../shared/derivs';
-import { MAX_TICK_IMPACT, MAX_TRADE_IMPACT, STOCK_FEE, STOCK_SPREAD, quote, COMPANY_BY_TICKER, type NewsItem, type SectorInfo } from '../../../shared/stocks';
+import { DIV_HOUR_UTC, FUND_MAX_ORDER, OPT_EXPIRIES, OPT_STRIKES, SHORT_INIT, SHORT_MAINT, BORROW_FEE, FUND_BY_ID, fundQuote, strikeFor } from '../../../shared/derivs';
+import { MAX_TICK_IMPACT, MAX_TRADE_IMPACT, STOCK_FEE, STOCK_SPREAD, quote, parseQty, COMPANY_BY_TICKER, type NewsItem, type SectorInfo } from '../../../shared/stocks';
 
 interface Row { ticker: string; name: string; sector: string; price: number; chg: number; volume: number; shares: number; held: number; cap: number; playerPct: number; divYield?: number }
 interface ListResp { companies: Row[]; sectors: SectorInfo[]; news: NewsItem[]; totals: { cap: number; playerOwned: number; offshore: number }; drift: { inflPct: number | null; activity: Record<string, number> } }
@@ -130,8 +130,8 @@ function CompanyView({ ticker, onBack, onTraded }: { ticker: string; onBack: () 
   const load = useCallback(() => request('stk_company', { ticker, range }).then((r) => { if (r.ok) setD(r as unknown as CompanyResp); }), [ticker, range]);
   useEffect(() => { void load(); const iv = setInterval(() => void load(), 30_000); return () => clearInterval(iv); }, [load]);
   if (!d) return <p className="opacity-60">Loading {ticker}…</p>;
-  const c = d.company; const meta = COMPANY_BY_TICKER.get(ticker)!; const shares = Math.max(0, Math.floor(Number(qty) || 0));
-  const qb = shares ? quote(meta, c.price, 'buy', shares) : null, qs = shares ? quote(meta, c.price, 'sell', shares) : null;
+  const c = d.company; const meta = COMPANY_BY_TICKER.get(ticker)!; const pq = parseQty(qty); const shares = pq.ok ? pq.n : 0; const qtyErr = pq.ok || qty.trim() === '' ? null : pq.error; const held = d.mine?.shares ?? 0;
+  const qb = shares ? quote(meta, c.price, 'buy', shares) : null, qs = shares && held > 0 ? quote(meta, c.price, 'sell', Math.min(shares, held)) : null;
   const trade = async (side: 'buy' | 'sell') => {
     setBusy(true); setMsg(null);
     const r = await request(side === 'buy' ? 'stk_buy' : 'stk_sell', { ticker, shares });
@@ -156,12 +156,13 @@ function CompanyView({ ticker, onBack, onTraded }: { ticker: string; onBack: () 
         <div className="rounded bg-white/5 p-2"><div className="opacity-60">Trend (inflation + activity)</div><b className={tone(d.drift)}>{pc(d.drift * 100)}/day</b></div>
       </div>
       <div className="mt-3 rounded bg-white/5 p-2">
-        {d.mine && <p className="mb-1 text-xs" data-testid="stk-mine">You own <b>{d.mine.shares}</b> shares (player-owned asset) worth 🪙 {n(d.mine.shares * c.price)} · cost 🪙 {n(d.mine.cost)}</p>}
+        {d.mine && <p className="mb-1 text-xs" data-testid="stk-mine">You own <b>{plural(d.mine.shares, 'share', 'shares')}</b> (player-owned asset) worth 🪙 {n(d.mine.shares * c.price)} · cost 🪙 {n(d.mine.cost)}</p>}
         {!account ? <p className="text-xs opacity-70">Sign in to trade. Guests can browse.</p> : (
           <div className="flex flex-wrap items-center gap-2">
-            <input className="w-24 rounded bg-black/30 px-2 py-1" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, ''))} aria-label="Shares" data-testid="stk-qty" />
+            <input className="w-24 rounded bg-black/30 px-2 py-1" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value)} aria-label="Shares" aria-invalid={!!qtyErr} data-testid="stk-qty" />
             <button type="button" disabled={busy || !shares} className="rounded bg-emerald-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void trade('buy')} data-testid="stk-buy">Buy {qb ? `· 🪙 ${n(qb.total)}` : ''}</button>
-            <button type="button" disabled={busy || !shares || !d.mine} className="rounded bg-rose-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void trade('sell')} data-testid="stk-sell">Sell {qs ? `· 🪙 ${n(qs.total)}` : ''}</button>
+            <button type="button" disabled={busy || !shares || held < 1 || shares > held} title={held < 1 ? "You don't own any shares to sell." : shares > held ? `You only own ${plural(held, 'share', 'shares')}.` : undefined} className="rounded bg-rose-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void trade('sell')} data-testid="stk-sell">Sell {qs && shares <= held ? `· 🪙 ${n(qs.total)}` : ''}</button>
+            <QtyErr e={qtyErr} />
           </div>)}
         <p className="mt-1 text-[11px] opacity-60">Max 🪙 {n(d.maxOrder)} per order (moves the price ≤ {MAX_TRADE_IMPACT * 100}%; ≤ {MAX_TICK_IMPACT * 100}% per 30s for everyone). Your order moves the price; the effect fades over a few hours. {STOCK_FEE * 100}% fee is burned.</p>
         {msg && <p className={`mt-1 text-xs ${msg.ok ? 'text-emerald-400' : 'text-rose-400'}`} data-testid="stk-msg">{msg.t}</p>}
@@ -183,6 +184,9 @@ function NewsFeed({ news, onPick }: { news: NewsItem[]; onPick?: (t: string) => 
 }
 
 
+/** Shares input: keeps exactly what was typed (no silent stripping) and validates with the server's parser. */
+const QtyErr = ({ e }: { e: string | null }) => (e ? <span className="text-[11px] text-rose-400" data-testid="stk-qty-err">{e}</span> : null);
+const plural = (k: number, one: string, many: string) => `${k.toLocaleString()} ${k === 1 ? one : many}`;
 const say = (set: (m: { ok: boolean; t: string } | null) => void) => (r: { ok: boolean; error?: string }, t: string) => set(r.ok ? { ok: true, t } : { ok: false, t: r.error ?? 'Failed.' });
 const Msg = ({ m }: { m: { ok: boolean; t: string } | null }) => (m ? <p className={`mt-1 text-xs ${m.ok ? 'text-emerald-400' : 'text-rose-400'}`} data-testid="stk-msg">{m.t}</p> : null);
 const Card = ({ k, v, title, cls }: { k: string; v: React.ReactNode; title?: string; cls?: string }) => <div className="rounded bg-white/5 p-2" title={title}><div className="opacity-60">{k}</div><b className={cls}>{v}</b></div>;
@@ -194,7 +198,7 @@ function FundsView({ onTraded }: { onTraded: () => void }) {
   const load = useCallback(() => { void request('stk2_funds').then((r) => r.ok && setFs((r as unknown as { funds: FundRow[] }).funds)); if (account) void request('stk2_portfolio').then((r) => r.ok && setMine(Object.fromEntries((r as unknown as Port).funds.map((f) => [f.fund, f.units])))); }, [account]);
   useEffect(() => { load(); const iv = setInterval(load, 30_000); return () => clearInterval(iv); }, [load]);
   if (!fs) return <p className="opacity-60">Loading funds…</p>;
-  const u = Math.max(0, Math.floor(Number(units) || 0));
+  const pu = parseQty(units, { decimals: 2 }); const u = pu.ok ? pu.n : 0; const uErr = pu.ok || units.trim() === '' ? null : pu.error.replaceAll('shares', 'units');
   const go = async (side: 'buy' | 'sell', id: string) => { setBusy(true); const r = await request(side === 'buy' ? 'stk2_fund_buy' : 'stk2_fund_sell', { fund: id, units: u }); setBusy(false); const x = r as unknown as { total: number; fee: number }; say(setM)(r, `${side === 'buy' ? 'Bought' : 'Sold'} ${u} ${id} — 🪙 ${n(x.total)} (fee ${x.fee}).`); if (r.ok) { load(); onTraded(); } };
   return (
     <div data-testid="stk-funds">
@@ -208,9 +212,10 @@ function FundsView({ onTraded }: { onTraded: () => void }) {
           <p className="mt-1 text-[11px] opacity-70">{f.holdings.length} holdings: {f.holdings.slice(0, 15).map((h) => `${h.ticker} ${h.weight}%`).join(' · ')}{f.holdings.length > 15 ? ' …' : ''}</p>
           {!account ? <p className="text-xs opacity-70">Sign in to trade.</p> : (
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <input className="w-24 rounded bg-black/30 px-2 py-1" inputMode="numeric" value={units} onChange={(e) => setUnits(e.target.value.replace(/\D/g, ''))} aria-label="Units" data-testid="stk-fund-units" />
-              <button type="button" disabled={busy || !u} className="rounded bg-emerald-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void go('buy', f.id)} data-testid="stk-fund-buy">Buy · ≈🪙 {n(u * f.nav * (1 + f.fee))}</button>
-              <button type="button" disabled={busy || !u || !mine[f.id]} className="rounded bg-rose-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void go('sell', f.id)} data-testid="stk-fund-sell">Sell</button>
+              <input className="w-24 rounded bg-black/30 px-2 py-1" inputMode="numeric" value={units} onChange={(e) => setUnits(e.target.value)} aria-label="Units" aria-invalid={!!uErr} data-testid="stk-fund-units" />
+              <button type="button" disabled={busy || !u} className="rounded bg-emerald-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void go('buy', f.id)} data-testid="stk-fund-buy">Buy{u ? ` · 🪙 ${n(fundQuote(FUND_BY_ID.get(f.id)!, f.nav, 'buy', u).total)}` : ''}</button>
+              <button type="button" disabled={busy || !u || !mine[f.id]} className="rounded bg-rose-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void go('sell', f.id)} data-testid="stk-fund-sell">Sell{u && mine[f.id] ? ` · 🪙 ${n(fundQuote(FUND_BY_ID.get(f.id)!, f.nav, 'sell', Math.min(u, mine[f.id]!)).total)}` : ''}</button>
+              <QtyErr e={uErr} />
             </div>)}
           <Msg m={m} />
         </div>); })()}
@@ -224,7 +229,7 @@ function ShortsView({ data, onTraded }: { data: ListResp; onTraded: () => void }
   const load = useCallback(() => { if (account) void request('stk2_portfolio').then((r) => r.ok && setP(r as unknown as Port)); }, [account]);
   useEffect(() => { load(); const iv = setInterval(load, 30_000); return () => clearInterval(iv); }, [load]);
   if (!account) return <p className="opacity-70">Sign in to short stocks.</p>;
-  const c = data.companies.find((x) => x.ticker === t); const sh = Math.max(0, Math.floor(Number(qty) || 0));
+  const c = data.companies.find((x) => x.ticker === t); const ps = parseQty(qty); const sh = ps.ok ? ps.n : 0; const shErr = ps.ok || qty.trim() === '' ? null : ps.error;
   const open = async () => { setBusy(true); const r = await request('stk2_short_open', { ticker: t, shares: sh }); setBusy(false); const x = r as unknown as { fill: number; collateral: number; liqPrice: number }; say(setM)(r, `Shorted ${sh} ${t} at ${x.fill?.toFixed(2)} — 🪙 ${n(x.collateral)} locked as collateral. Liquidated at ${x.liqPrice}.`); if (r.ok) { load(); onTraded(); } };
   const close = async (id: string) => { setBusy(true); const r = await request('stk2_short_close', { id }); setBusy(false); const x = r as unknown as { payout: number; pnl: number }; say(setM)(r, `Closed — got back 🪙 ${n(x.payout)} (P&L ${x.pnl >= 0 ? '+' : ''}${n(x.pnl)}).`); if (r.ok) { load(); onTraded(); } };
   return (
@@ -232,8 +237,9 @@ function ShortsView({ data, onTraded }: { data: ListResp; onTraded: () => void }
       <p className="mb-2 text-xs opacity-70">Short = bet a stock falls. You lock {SHORT_INIT * 100}% of the position as collateral (plus the 1% fee). If the price rises until your equity drops below {SHORT_MAINT * 100}% of the position, it's auto-closed at market. You can never lose more than your collateral. Borrow fee {(BORROW_FEE * 100).toFixed(2)}%/day is taken from collateral and burned. Short sales move the price like a sell (same 2% / 5% caps).</p>
       <div className="flex flex-wrap items-center gap-2">
         <select className="rounded bg-black/30 px-2 py-1" value={t} onChange={(e) => setT(e.target.value)} data-testid="stk-short-ticker">{[...data.companies].sort((a, b) => a.ticker.localeCompare(b.ticker)).map((x) => <option key={x.ticker} value={x.ticker}>{x.ticker} · {x.price.toFixed(2)}</option>)}</select>
-        <input className="w-24 rounded bg-black/30 px-2 py-1" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, ''))} aria-label="Shares" data-testid="stk-short-qty" />
+        <input className="w-24 rounded bg-black/30 px-2 py-1" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value)} aria-label="Shares" aria-invalid={!!shErr} data-testid="stk-short-qty" />
         <button type="button" disabled={busy || !sh} className="rounded bg-rose-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void open()} data-testid="stk-short-open">Short · locks ≈🪙 {c ? n(c.price * sh * SHORT_INIT) : '—'}</button>
+        <QtyErr e={shErr} />
       </div>
       <Msg m={m} />
       <ShortTable p={p} onClose={close} busy={busy} />
@@ -242,8 +248,8 @@ function ShortsView({ data, onTraded }: { data: ListResp; onTraded: () => void }
 }
 function ShortTable({ p, onClose, busy }: { p: Port | null; onClose?: (id: string) => void; busy?: boolean }) {
   if (!p) return null; if (!p.shorts.length) return <p className="mt-2 text-xs opacity-60">No open shorts.</p>;
-  return <table className="mt-2 w-full text-[12px] tabular-nums"><thead className="opacity-70"><tr><th className="text-left">Short</th><th className="text-right">Entry → now</th><th className="text-right">Collateral</th><th className="text-right">Equity</th><th className="text-right">P&amp;L</th><th className="text-right">Liq. at</th>{onClose && <th />}</tr></thead>
-    <tbody>{p.shorts.map((s) => <tr key={s.id} className="border-t border-white/5" data-testid="stk-short-row"><td><b>{s.ticker}</b> ×{s.shares}</td><td className="text-right">{s.entry.toFixed(2)} → {s.price.toFixed(2)}</td><td className="text-right">{n(s.collateral)}</td><td className="text-right">{n(s.equity)}</td><td className={`text-right ${tone(s.pnl)}`}>{s.pnl >= 0 ? '+' : ''}{n(s.pnl)}</td><td className="text-right">{s.liqPrice.toFixed(2)}</td>{onClose && <td className="text-right"><button type="button" disabled={busy} className="rounded bg-white/10 px-2 py-0.5" onClick={() => onClose(s.id)} data-testid="stk-short-close">Close</button></td>}</tr>)}</tbody></table>;
+  return <table className="mt-2 w-full text-[12px] tabular-nums"><thead className="opacity-70"><tr><th className="text-left">Short</th><th className="text-right">Entry → now</th><th className="text-right">Collateral</th><th className="text-right" title="What closing now pays back (buy-back at the ask, rounded, minus the 1% fee)">Close value</th><th className="text-right">P&amp;L</th><th className="text-right">Liq. at</th>{onClose && <th />}</tr></thead>
+    <tbody>{p.shorts.map((s) => <tr key={s.id} className="border-t border-white/5" data-testid="stk-short-row"><td><b>{s.ticker}</b> ×{s.shares}</td><td className="text-right">{s.entry.toFixed(2)} → {s.price.toFixed(2)}</td><td className="text-right">{n(s.collateral)}</td><td className="text-right" title={`Equity ${n(s.equity)}`}>{n(s.closeValue ?? s.equity)}</td><td className={`text-right ${tone(s.pnl)}`}>{s.pnl >= 0 ? '+' : ''}{n(s.pnl)}</td><td className="text-right">{s.liqPrice.toFixed(2)}</td>{onClose && <td className="text-right"><button type="button" disabled={busy} className="rounded bg-white/10 px-2 py-0.5" onClick={() => onClose(s.id)} data-testid="stk-short-close">Close</button></td>}</tr>)}</tbody></table>;
 }
 
 function OptionsView({ data }: { data: ListResp }) {
@@ -251,7 +257,7 @@ function OptionsView({ data }: { data: ListResp }) {
   const [off, setOff] = useState<number>(0); const [days, setDays] = useState<number>(1); const [qty, setQty] = useState('10');
   const [q, setQ] = useState<{ premium: number; breakeven: number; strike: number } | null>(null); const [qe, setQe] = useState<string | null>(null);
   const [m, setM] = useState<{ ok: boolean; t: string } | null>(null); const [busy, setBusy] = useState(false); const [p, setP] = useState<Port | null>(null);
-  const c = data.companies.find((x) => x.ticker === t); const strike = c ? strikeFor(c.price, off) : 0; const n2 = Math.max(0, Math.floor(Number(qty) || 0));
+  const c = data.companies.find((x) => x.ticker === t); const strike = c ? strikeFor(c.price, off) : 0; const po = parseQty(qty); const n2 = po.ok ? po.n : 0; const oErr = po.ok || qty.trim() === '' ? null : po.error;
   useEffect(() => { if (!c || !n2) { setQ(null); return; } void request('stk2_opt_quote', { ticker: t, kind, strike, days, qty: n2 }).then((r) => { if (r.ok) { setQ(r as never); setQe(null); } else { setQ(null); setQe(r.error ?? null); } }); }, [t, kind, strike, days, n2, c]);
   const load = useCallback(() => { if (account) void request('stk2_portfolio').then((r) => r.ok && setP(r as unknown as Port)); }, [account]);
   useEffect(() => { load(); const iv = setInterval(load, 30_000); return () => clearInterval(iv); }, [load]);
@@ -264,7 +270,8 @@ function OptionsView({ data }: { data: ListResp }) {
         <select className="rounded bg-black/30 px-2 py-1" value={kind} onChange={(e) => setKind(e.target.value as 'call' | 'put')} data-testid="stk-opt-kind"><option value="call">Call 📈</option><option value="put">Put 📉</option></select>
         <select className="rounded bg-black/30 px-2 py-1" value={off} onChange={(e) => setOff(Number(e.target.value))} data-testid="stk-opt-strike">{OPT_STRIKES.map((o) => <option key={o} value={o}>Strike {c ? strikeFor(c.price, o).toFixed(2) : ''} ({o === 0 ? 'at the money' : `${o > 0 ? '+' : ''}${o * 100}%`})</option>)}</select>
         <select className="rounded bg-black/30 px-2 py-1" value={days} onChange={(e) => setDays(Number(e.target.value))} data-testid="stk-opt-days">{OPT_EXPIRIES.map((d) => <option key={d} value={d}>{d} day{d > 1 ? 's' : ''}</option>)}</select>
-        <input className="w-20 rounded bg-black/30 px-2 py-1" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, ''))} aria-label="Shares covered" data-testid="stk-opt-qty" />
+        <input className="w-20 rounded bg-black/30 px-2 py-1" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value)} aria-label="Shares covered" aria-invalid={!!oErr} data-testid="stk-opt-qty" />
+        <QtyErr e={oErr} />
         {account ? <button type="button" disabled={busy || !q} className="rounded bg-emerald-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void buy()} data-testid="stk-opt-buy">Buy · 🪙 {q ? n(q.premium) : '—'}</button> : <span className="text-xs opacity-70">Sign in to trade.</span>}
       </div>
       {q && <p className="mt-1 text-xs opacity-80">Breakeven at expiry: <b>{q.breakeven.toFixed(2)}</b>. Max loss 🪙 {n(q.premium)}.</p>}
@@ -283,7 +290,7 @@ function OptTable({ p }: { p: Port | null }) {
 interface Port {
   stocks: { holdings: Array<{ ticker: string; name: string; shares: number; cost: number; price: number; value: number; pnl: number; pnlPct: number }>; value: number; cost: number; pnl: number };
   funds: Array<{ fund: string; name: string; kind: string; units: number; nav: number; value: number; cost: number; pnl: number }>;
-  shorts: Array<{ id: string; ticker: string; shares: number; entry: number; price: number; collateral: number; equity: number; pnl: number; liqPrice: number }>;
+  shorts: Array<{ id: string; ticker: string; shares: number; entry: number; price: number; collateral: number; equity: number; closeValue?: number; pnl: number; liqPrice: number }>;
   options: Array<{ id: string; ticker: string; kind: string; strike: number; qty: number; premium: number; price: number | null; mark: number; hoursLeft: number }>;
   history: { shorts: Array<{ id: string; ticker: string; shares: number; status: string; payout?: number | null; collateral: number; closedAt?: number | null }>; options: Array<{ id: string; ticker: string; kind: string; strike: number; qty: number; premium: number; status: string; payout?: number | null; settlePrice?: number | null }> };
   totals: { stocks: number; funds: number; shorts: number; options: number; all: number };

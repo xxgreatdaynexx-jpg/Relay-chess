@@ -2,7 +2,7 @@
  * Stock Exchange v2: dividends, index funds, mutual funds, shorts and options (calls + puts).
  * All defaults live here so the server, the UI and the tests agree. Game-balanced, not real-world.
  */
-import { COMPANIES, COMPANY_BY_TICKER, hash32, seeded, type Company, type Sector } from './stocks.js';
+import { COMPANIES, COMPANY_BY_TICKER, hash32, quote, seeded, type Company, type Sector } from './stocks.js';
 
 // ---------- dividends ----------
 /** Dividends pay once per real (UTC) day at 16:00 UTC (10:00 AM CST). */
@@ -75,6 +75,12 @@ export const MAX_OPEN_SHORTS = 20;
 export const shortEquity = (s: { collateral: number; proceeds: number; shares: number }, price: number) => Math.max(0, s.collateral + s.proceeds - price * s.shares);
 export const needsLiquidation = (s: { collateral: number; proceeds: number; shares: number }, price: number) => s.collateral + s.proceeds - price * s.shares < SHORT_MAINT * price * s.shares;
 /** Price at which a short gets liquidated. */
+/** Exactly what closing a short pays at `price` now (buy back at the ask with impact, rounded up, minus the 1% fee). The UI shows this, the server pays this. */
+export function shortClose(c: Company, s: { collateral: number; proceeds: number; shares: number; fees: number }, price: number) {
+  const q = quote(c, price, 'buy', s.shares);
+  const payout = Math.max(0, Math.floor(s.collateral + s.proceeds - q.gross - q.fee));
+  return { q, payout, pnl: payout - s.collateral - s.fees };
+}
 export const liquidationPrice = (s: { collateral: number; proceeds: number; shares: number }) => (s.collateral + s.proceeds) / ((1 + SHORT_MAINT) * s.shares);
 
 // ---------- options ----------

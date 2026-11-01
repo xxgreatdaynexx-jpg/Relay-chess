@@ -1,10 +1,11 @@
 import { createPortal } from 'react-dom';
+import { INFLATION_LABELS as L, type InflationView } from '../../../shared/inflation';
 
 export interface Mover { ticker: string; name: string; price: number; chg: number }
 export interface DailyReportData {
   day: string;
   bonus: number | null;
-  economy: { cash: number; assets: number; total: number; inflation: number | null; inflation7: number | null; totalChange: number | null; priceIndex?: number; priceIndexPct?: number | null; movers: { up: Mover[]; down: Mover[] } | null } | null;
+  economy: { cash: number; assets: number; total: number; inflation: InflationView; priceIndex?: number; priceIndexPct?: number | null; movers: { up: Mover[]; down: Mover[] } | null } | null;
   me: { cash: number; assets: number; total: number; categories: Array<{ key: string; label: string; value: number; units: number }>; since: { day: string; total: number; totalPct: number | null; cash: number; assets: number } | null };
 }
 
@@ -39,9 +40,14 @@ export function DailyReport({ report, onClose }: { report: DailyReportData; onCl
           <h3 className="mt-4 text-xs uppercase tracking-wide opacity-70">Economy</h3>
           <Row label="Liquid cash (all players)" value={n(e.cash)} />
           <Row label="Asset worth" value={n(e.assets)} />
-          <Row label="Total economy" value={`${n(e.total)} (${pct(e.totalChange)})`} />
-          <Row label="Inflation since yesterday" value={pct(e.inflation)} cls={tone(e.inflation)} />
-          <Row label="Inflation, 7-day avg / day" value={pct(e.inflation7)} />
+          <Row label="Total net worth" value={n(e.total)} />
+          <div title={L.tip} data-testid="daily-report-inflation">
+            <Row label={L.cashToday} value={pct(e.inflation.cashToday)} cls={tone(e.inflation.cashToday)} />
+            <Row label={L.totalToday} value={pct(e.inflation.totalToday)} cls={tone(e.inflation.totalToday)} />
+            <Row label={`Cash ${L.avg7}`} value={pct(e.inflation.cash7)} />
+            <Row label={L.smoothed} value={e.inflation.smoothed == null ? L.smoothedEmpty : pct(e.inflation.smoothed)} />
+            <p className="text-[10px] opacity-50">As of {new Date(e.inflation.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · same numbers as Bank › Economy</p>
+          </div>
           {e.priceIndex != null && <Row label="Prices & payouts index" value={`x${e.priceIndex.toFixed(2)}${e.priceIndexPct != null ? ` (${pct(e.priceIndexPct)} today)` : ''}`} />}
           {e.movers && <div className="mt-2 grid grid-cols-2 gap-3 text-xs">
             {(['up', 'down'] as const).map((k) => <div key={k}>

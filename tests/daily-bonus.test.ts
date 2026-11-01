@@ -72,7 +72,7 @@ describe('daily report', () => {
     getBank().transfer('QA-Tess', 1000, { game: 'daily_bonus', key: 'k1' });
     const first = await buildDailyReport('QA-Tess', 1000, NOV1);
     expect(first.bonus).toBe(1000);
-    expect(first.economy).toMatchObject({ cash: 50_000, assets: 70, total: 50_070, inflation: 25 });
+    expect(first.economy).toMatchObject({ cash: 50_000, assets: 70, total: 50_070, inflation: { cashToday: 25 } });
     expect(first.me).toMatchObject({ cash: 2000, assets: 70, total: 2070, since: null });
     expect(first.me.categories).toEqual([{ key: 'ore', label: 'Ore', value: 70, units: 10 }]);
     getBank().transfer('QA-Tess', -500, { game: 'slots' });

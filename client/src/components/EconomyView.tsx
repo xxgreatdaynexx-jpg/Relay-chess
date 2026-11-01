@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { fmtIndex } from '../../../shared/priceIndex';
+import { INFLATION_LABELS as L, inflationView } from '../../../shared/inflation';
 
 interface Cat { key: string; label: string; value: number; units: number; estValue: number }
 interface Flow { game: string; amount: number }
@@ -74,7 +75,7 @@ export function EconomyView() {
       {e.priceIndex && (
         <div className="mt-2 rounded-lg bg-white/5 p-2" data-testid="econ-price-index" title={`House-set payouts (Arena prizes and spawns, Mines ore, Factory, daily bonus) and house-set prices move together with a ${e.priceIndex.params.emaDays}-day smoothed cash inflation x ${e.priceIndex.params.passThrough} pass-through, capped at ±${Math.round(e.priceIndex.params.maxDaily * 100)}%/day, floor x${e.priceIndex.params.floor.toFixed(2)}. Casino odds, player market prices and stocks are not indexed.`}>
           <div className="text-sm font-bold tabular-nums">📈 {fmtIndex(e.priceIndex.index, e.priceIndex.appliedPct)}</div>
-          <div className="text-[11px] opacity-60">Smoothed inflation {pc(e.priceIndex.emaPct)}/day · casino odds unchanged ⓘ</div>
+          <div className="text-[11px] opacity-60">{L.smoothed}: {e.priceIndex.emaPct == null ? L.smoothedEmpty : pc(e.priceIndex.emaPct)} · casino odds unchanged ⓘ</div>
         </div>
       )}
       {e.realEstate && (
@@ -83,14 +84,16 @@ export function EconomyView() {
           <div>{n(e.realEstate.owned)} properties owned · tax burned today 🪙 {n(e.realEstate.taxToday)} · all time 🪙 {n(e.realEstate.taxBurned)} · repossessed {n(e.realEstate.repossessed)}</div>
         </div>
       )}
-      <div className="mt-3 text-xs uppercase tracking-wide opacity-70">Daily inflation</div>
-      <table className="mt-1 w-full text-[12px] tabular-nums" data-testid="econ-inflation">
-        <thead><tr className="opacity-60"><th className="text-left font-normal" /><th className="font-normal">Today</th><th className="font-normal">7-day avg</th><th className="font-normal">30-day avg</th></tr></thead>
+      {(() => { const iv = inflationView(e); return (<>
+      <div className="mt-3 text-xs uppercase tracking-wide opacity-70" title={L.tip}>Daily inflation ⓘ</div>
+      <table className="mt-1 w-full text-[12px] tabular-nums" data-testid="econ-inflation" title={L.tip}>
+        <thead><tr className="opacity-60"><th className="text-left font-normal" /><th className="font-normal">Today</th><th className="font-normal">{L.avg7}</th><th className="font-normal">{L.avg30}</th></tr></thead>
         <tbody>
-          <tr><td>Cash</td><td className={`text-center ${tone(e.change.cash)}`}>{pc(e.change.cash)}</td><td className={`text-center ${tone(e.inflation.cash7)}`}>{pc(e.inflation.cash7)}</td><td className={`text-center ${tone(e.inflation.cash30)}`}>{pc(e.inflation.cash30)}</td></tr>
-          <tr><td>Net worth</td><td className={`text-center ${tone(e.change.total)}`}>{pc(e.change.total)}</td><td className={`text-center ${tone(e.inflation.total7)}`}>{pc(e.inflation.total7)}</td><td className={`text-center ${tone(e.inflation.total30)}`}>{pc(e.inflation.total30)}</td></tr>
+          <tr><td>{L.cashToday}</td><td className={`text-center ${tone(iv.cashToday)}`}>{pc(iv.cashToday)}</td><td className={`text-center ${tone(iv.cash7)}`}>{pc(iv.cash7)}</td><td className={`text-center ${tone(iv.cash30)}`}>{pc(iv.cash30)}</td></tr>
+          <tr><td>{L.totalToday}</td><td className={`text-center ${tone(iv.totalToday)}`}>{pc(iv.totalToday)}</td><td className={`text-center ${tone(iv.total7)}`}>{pc(iv.total7)}</td><td className={`text-center ${tone(iv.total30)}`}>{pc(iv.total30)}</td></tr>
         </tbody>
       </table>
+      <p className="text-[10px] opacity-50">As of {new Date(iv.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · same numbers as the Daily Report</p></>); })()}
       <Chart h={e.history} live={e} />
       <div className="mt-3 text-xs uppercase tracking-wide opacity-70">Assets</div>
       <ul className="mt-1" data-testid="econ-cats">

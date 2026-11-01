@@ -56,6 +56,23 @@ export const MAX_TRADE_IMPACT = 0.02; // one order moves a price at most 2%
 export const MAX_TICK_IMPACT = 0.05; // all orders in one tick move a price at most 5%
 export const TICK_MS = 30_000;
 export const IMPACT_HALF_LIFE_MS = 2 * 3_600_000;
+/**
+ * Strict quantity parser shared by the UI and the server: a positive whole number (or up to `decimals` decimals for fund units).
+ * Rejects '-3', '2.5' (for shares), '1e3', '', ' 3x' and anything else, instead of silently stripping characters.
+ */
+export function parseQty(raw: unknown, opts: { decimals?: number; max?: number } = {}): { ok: true; n: number } | { ok: false; error: string } {
+  const dec = opts.decimals ?? 0, max = opts.max ?? 1_000_000;
+  const unit = dec ? 'a positive number' : 'a positive whole number';
+  const s = typeof raw === 'number' ? (Number.isFinite(raw) ? String(raw) : '') : typeof raw === 'string' ? raw.trim() : '';
+  if (!s) return { ok: false, error: `Enter ${unit} of shares.` };
+  if (s.startsWith('-')) return { ok: false, error: `Quantity can't be negative. Enter ${unit} of shares.` };
+  const re = dec ? new RegExp(`^\\d+(\\.\\d{1,${dec}})?$`) : /^\d+$/;
+  if (!re.test(s)) return { ok: false, error: dec ? `Enter ${unit} of shares (up to ${dec} decimals).` : `Whole shares only. Enter ${unit} of shares.` };
+  const n = Number(s);
+  if (!(n > 0)) return { ok: false, error: `Enter ${unit} of shares (at least ${dec ? '0.01' : '1'}).` };
+  if (n > max) return { ok: false, error: `At most ${max.toLocaleString()} per order.` };
+  return { ok: true, n };
+}
 export const feeOf = (chips: number) => Math.max(1, Math.ceil(chips * STOCK_FEE));
 /** Price impact (log-fraction) of an order worth `value` chips, capped per trade. */
 export const impactOf = (c: Company, value: number) => Math.min(MAX_TRADE_IMPACT, value / c.liquidity);

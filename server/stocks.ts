@@ -19,7 +19,7 @@ import { getBank } from './casino-store.js';
 import { getEconomy } from './economy.js';
 import { Derivatives, getDerivs, setDerivs } from './derivs.js';
 import { divYield } from '../shared/derivs.js';
-import { COMPANIES, COMPANY_BY_TICKER, SECTOR_BY_ID, SECTORS, IMPACT_HALF_LIFE_MS, MAX_TICK_IMPACT, TICK_MS, dailyEvents, maxOrderChips, quote, seeded, hash32, type ActivityKey, type Company, type NewsItem } from '../shared/stocks.js';
+import { COMPANIES, COMPANY_BY_TICKER, SECTOR_BY_ID, SECTORS, IMPACT_HALF_LIFE_MS, MAX_TICK_IMPACT, TICK_MS, dailyEvents, maxOrderChips, parseQty, quote, seeded, hash32, type ActivityKey, type Company, type NewsItem } from '../shared/stocks.js';
 
 export class StockError extends Error {}
 const DAY = 86_400_000;
@@ -244,7 +244,7 @@ export class Exchange {
   // ---------- trading ----------
   async trade(name: string, side: 'buy' | 'sell', t: unknown, n: unknown) {
     const c = typeof t === 'string' ? COMPANY_BY_TICKER.get(t) : undefined; if (!c) throw new StockError('Unknown company.');
-    const shares = Number(n); if (!Number.isInteger(shares) || shares < 1 || shares > 1_000_000) throw new StockError('Enter a whole number of shares.');
+    const ps = parseQty(n); if (!ps.ok) throw new StockError(ps.error); const shares = ps.n;
     const bank = getBank(); const k = keyOf(name); const row = this.rows.get(c.ticker)!; const price = priceOf(row);
     const q = quote(c, price, side, shares);
     if (q.gross > maxOrderChips(c)) throw new StockError(`Order too large: max ${maxOrderChips(c).toLocaleString()} chips per trade (about ${Math.max(1, Math.floor(maxOrderChips(c) / price))} shares).`);
@@ -253,7 +253,7 @@ export class Exchange {
     const slot = this.slotNow(); const used = row.tickSlot === slot ? row.tickImp : 0;
     if (used + Math.abs(q.imp) > MAX_TICK_IMPACT) throw new StockError('Heavy trading in this stock right now. Try a smaller order or wait a few seconds.');
     if (side === 'buy' && !bank.canAfford(name, q.total)) throw new StockError('Not enough chips.');
-    if (side === 'sell') { const h = (await this.holdings(name)).find((x) => x.ticker === c.ticker); if (!h || h.shares < shares) throw new StockError(`You own ${h?.shares ?? 0} ${c.ticker} shares.`); }
+    if (side === 'sell') { const h = (await this.holdings(name)).find((x) => x.ticker === c.ticker); if (!h || h.shares < shares) throw new StockError(`You own ${h?.shares ?? 0} ${c.ticker} share${(h?.shares ?? 0) === 1 ? '' : 's'}.`); }
     const id = randomUUID(); const at = this.clock();
     const memo = `${side === 'buy' ? 'Bought' : 'Sold'} ${shares} ${c.ticker} @ ${q.fill.toFixed(2)} (fee ${q.fee})`;
     const w = bank.transferAtomic([{ name, amount: side === 'buy' ? -q.total : q.total, key: `stk:${id}`, game: 'stocks', memo }]);
