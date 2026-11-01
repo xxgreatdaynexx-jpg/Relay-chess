@@ -6,7 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-01T15:30:00-06:00', title: 'Resort sunset, now in view', bullets: [
+  { commit: '', at: '2026-11-01T15:40:00-06:00', title: 'Resort view fixed', bullets: [
+    'Fixed the resort opening to a blank sunset screen. The camera now starts over the town again.',
+  ] },
+  { commit: 'da278d9', at: '2026-11-01T15:30:00-06:00', title: 'Resort sunset, now in view', bullets: [
     'The resort opens at a lower golden-hour angle, so you can see the sunset sky over the town.',
     'The Palms casino bar now sits top-right, clear of the table and slot panels.',
   ] },

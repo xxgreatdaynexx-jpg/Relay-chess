@@ -56,7 +56,7 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   disposables.push(skyM); scene.add(new THREE.Mesh(geo(new THREE.SphereGeometry(800, 32, 16)), skyM));
   scene.fog = new THREE.Fog(0xd8743e, 420, 1100); // warm haze, far enough that the town keeps its colour
   const camera = new THREE.PerspectiveCamera(38, 1, 0.5, 1700);
-  const home = new THREE.Vector3(-40, 72, 240); const homeT = new THREE.Vector3(0, 10, -30); // low golden-hour angle so the sunset sky shows above the town camera.position.copy(home);
+  const home = new THREE.Vector3(-40, 72, 240); const homeT = new THREE.Vector3(0, 10, -30); camera.position.copy(home); // low golden-hour angle so the sunset sky shows above the town
   const controls = new OrbitControls(camera, canvas);
   controls.target.copy(homeT); controls.enableDamping = true; controls.dampingFactor = 0.08;
   controls.minDistance = 30; controls.maxDistance = 360; controls.maxPolarAngle = 1.36; controls.minPolarAngle = 0.35;
