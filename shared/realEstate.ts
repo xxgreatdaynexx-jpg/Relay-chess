@@ -22,11 +22,11 @@ export const GRACE_DAYS = 3;
 export const BASE_PRICE: Record<string, number> = { lot: 8_000, park: 20_000, plaza: 25_000, house: 15_000, rowhouse: 30_000, apartment: 60_000, tower: 150_000 };
 export const LANDMARK_PRICE: Record<string, number> = {
   casino: 2_000_000, bank: 2_000_000, stocks: 1_500_000, arena: 1_000_000, chess: 1_000_000, market: 1_000_000,
-  factory: 750_000, mine: 750_000, warehouse: 500_000, leaderboard: 500_000, chat: 500_000,
+  factory: 750_000, mine: 750_000, warehouse: 500_000, leaderboard: 500_000, chat: 500_000, dealer: 750_000,
 };
 export const LANDMARK_LABEL: Record<string, string> = {
   casino: 'Casino', bank: 'Bank', stocks: 'Stock Exchange', arena: 'Arena', chess: 'Chess Club', market: 'Market',
-  factory: 'Factory', mine: 'Mine', warehouse: 'Warehouse', leaderboard: 'Leaderboard', chat: 'Chat Hall',
+  factory: 'Factory', mine: 'Mine', warehouse: 'Warehouse', leaderboard: 'Leaderboard', chat: 'Chat Hall', dealer: 'Car Dealership',
 };
 const PATCH_LABEL: Record<string, string> = { lot: 'Empty lot', park: 'Park', plaza: 'Plaza' };
 const PATCH_REF: Record<string, number> = { lot: 13 * 13 * 0.95, park: 13 * 13 * 0.95, plaza: 81 * 0.95 };

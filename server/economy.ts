@@ -21,6 +21,7 @@ import { getExchange } from './stocks.js';
 import { initPriceIndex, priceIndexView, refreshPriceIndex, PRICE_INDEX_PARAMS } from './price-index.js';
 import { getDerivs } from './derivs.js';
 import { getRealEstate } from './realEstate.js';
+import { getGarage } from './cars.js';
 
 export const ECON_MIGRATION = `CREATE TABLE IF NOT EXISTS daily_economy (
   day TEXT PRIMARY KEY, cash BIGINT NOT NULL, assets BIGINT, total BIGINT, est_pct REAL, flows JSONB, source TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
@@ -44,6 +45,8 @@ export interface Holdings {
   extra?: Array<{ key: string; label: string; value: number }>;
   /** Player-owned real estate (World Map) at list price. */
   property?: { n: number; value: number };
+  /** Cars (Dealership) at their depreciated resale value. */
+  cars?: Array<{ carId: string; value: number }>;
 }
 export interface Flow { game: string; amount: number }
 export interface DayRow { day: string; cash: number; assets: number | null; total: number | null; estPct: number | null; flows: { faucets: Flow[]; sinks: Flow[]; transfers?: Flow[] } | null; source: string }
@@ -107,6 +110,7 @@ export function valueHoldings(h: Holdings, prices: Map<string, number>) {
   for (const st of h.stocks ?? []) if (st.n > 0) add('stocks', 'Stocks', st.price, st.n, false);
   for (const x of h.extra ?? []) if (x.value > 0) add(x.key, x.label, x.value, 1, false);
   if (h.property && h.property.n > 0) { add('property', 'Real estate', h.property.value / h.property.n, h.property.n, false); }
+  for (const c of h.cars ?? []) add('cars', 'Cars', c.value, 1, false);
   for (const m of h.machines) if (isKind(m.kind)) add('factory', 'Factory machines', Math.round(KINDS[m.kind].cost * MACHINE_RESALE), m.n, true);
   const list = Object.values(cats).map((c) => ({ ...c, value: Math.round(c.value), estValue: Math.round(c.estValue) })).sort((a, b) => b.value - a.value);
   const total = list.reduce((a, c) => a + c.value, 0), est = list.reduce((a, c) => a + c.estValue, 0);
@@ -187,6 +191,7 @@ export class Economy {
     const dv = getDerivs(); if (dv) h.extra = await dv.economyAssets().catch(() => []);
     const re = getRealEstate(); let realEstate: unknown = null;
     if (re) { h.property = await re.playerValue().catch(() => undefined); realEstate = await re.stats().catch(() => null); }
+    const g = getGarage(); if (g) h.cars = await g.values().catch(() => []);
     const v = valueHoldings(h, marketPrices(sales, now));
     return { realEstate, cash, assets: v.total, total: cash + v.total, estPct: v.estPct, categories: v.categories, offshore, totalWithOffshore: cash + v.total + offshore };
   }
@@ -206,7 +211,7 @@ export class Economy {
       priceIndex: { ...priceIndexView(), params: PRICE_INDEX_PARAMS },
       flows, net: flows.faucets.reduce((a, f) => a + f.amount, 0) - flows.sinks.reduce((a, f) => a + f.amount, 0),
       history: hist.slice(-60).map((d) => ({ day: d.day, cash: d.cash, assets: d.assets, total: d.total, source: d.source })),
-      method: 'Prices: median of the last 20 sales in 30 days. No sales: same rarity + weapon, then same rarity, then a base value (est.). Ore/goods without sales use the house price (est.). Factory machines at 50% of Machinist cost (est.). Stocks: player-owned shares at the live exchange price; shares no player owns are offshore assets (shown separately, not in net worth). Funds at NAV, shorts at equity (collateral + unrealized P&L), options at model value. QA accounts excluded.',
+      method: 'Prices: median of the last 20 sales in 30 days. No sales: same rarity + weapon, then same rarity, then a base value (est.). Ore/goods without sales use the house price (est.). Factory machines at 50% of Machinist cost (est.). Cars: depreciated dealer resale value. Stocks: player-owned shares at the live exchange price; shares no player owns are offshore assets (shown separately, not in net worth). Funds at NAV, shorts at equity (collateral + unrealized P&L), options at model value. QA accounts excluded.',
     };
   }
 

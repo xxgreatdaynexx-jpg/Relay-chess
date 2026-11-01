@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T01:45:00-06:00', title: 'Car dealership & driving', bullets: [
+    'Chud Motors is open on the city map: 20 cars from a stolen shopping cart (800 chips) to the Chudmobile hypercar (250,000), each with colour options, stats and a 3D preview. Prices follow the inflation index.',
+    'Own as many cars as you like (up to 12) and pick your active one. Cars count toward your Bank assets, and you can sell one back for 60% of today\'s price (down 0.5% a day, never below 40%).',
+    'Hit Drive on the city map to drive your car around town: WASD or arrow keys, or the on-screen pad on phones. Roll up to a building and press E to go in, Esc to park.',
+    'Everyone on the city map sees other players driving, with name tags.',
+  ] },
   { commit: '', at: '2026-11-01T01:45:00-06:00', title: 'City real estate', bullets: [
     'Every building, empty lot, park and plaza on the city map is now for sale. Click one to see its deed: price, owner, daily property tax, and a Buy button.',
     'Prices are steep and follow the daily price index: empty lots from about 6,500 chips, homes 9,500 to 23,000, row houses 20,000 to 42,000, apartment blocks 42,000 to 90,000 and towers 100,000 to 180,000.',

@@ -1692,3 +1692,33 @@ html, body { overflow-x: clip; }
 .req-vote.on { background: #e8c26a; color: #1b1d2e; }
 .req-st { padding: 0 6px; border-radius: 999px; background: rgba(255,255,255,.12); }
 .req-st-approved { background: #2d6a4f; } .req-st-declined { background: #6a2d2d; } .req-st-in_progress { background: #8a6d1d; } .req-st-shipped { background: #1d5a8a; }
+
+/* Car dealership + driving (cars) */
+.world-speedo { position: absolute; left: 12px; bottom: 56px; padding: 6px 12px; border-radius: 10px; background: rgba(12,14,24,.8); font: 700 20px system-ui; }
+.world-speedo small { font-size: 11px; opacity: .7; } .world-speedo em { display: block; font: 400 10px system-ui; opacity: .6; }
+.world-enter { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); padding: 8px 16px; border-radius: 999px; background: rgba(12,14,24,.88); border: 1px solid rgba(255,255,255,.25); font-weight: 700; }
+.world-enter kbd { margin-left: 6px; padding: 0 5px; border: 1px solid #fff5; border-radius: 4px; font-size: 11px; }
+.world-pad { position: absolute; right: 12px; bottom: 12px; display: none; gap: 10px; }
+.world-pad div { display: flex; gap: 8px; } .world-pad button { width: 58px; height: 58px; border-radius: 14px; background: rgba(12,14,24,.6); border: 1px solid rgba(255,255,255,.2); font-size: 22px; touch-action: none; user-select: none; }
+.world-pad { flex-direction: column; } .world-pad div:first-child { position: fixed; left: 12px; bottom: 70px; }
+@media (pointer: coarse) { .world-pad { display: flex; } .world-speedo em { display: none; } }
+.dealer { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; background: #000a; }
+.dealer-box { width: min(920px, 96vw); max-height: 92vh; display: flex; flex-direction: column; background: #12141d; border: 1px solid #ffffff22; border-radius: 14px; overflow: hidden; }
+.dealer-box header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #ffffff14; } .dealer-box header h3 { margin: 0; flex: 1; }
+.dealer-chips { font-weight: 700; color: #ffd27a; } .dealer-box header button { background: none; border: 0; font-size: 18px; }
+.dealer-body { display: grid; grid-template-columns: 250px 1fr; min-height: 0; overflow: hidden; }
+.dealer-list { overflow-y: auto; padding: 6px; border-right: 1px solid #ffffff14; }
+.dealer-list h4 { margin: 10px 6px 4px; font-size: 11px; text-transform: uppercase; opacity: .6; }
+.dealer-list button { display: flex; width: 100%; justify-content: space-between; gap: 6px; padding: 6px 8px; border-radius: 8px; background: none; border: 0; text-align: left; font-size: 13px; }
+.dealer-list button.on { background: #ff7a1a26; outline: 1px solid #ff7a1a88; } .dealer-list b { color: #ffd27a; font-size: 12px; }
+.dealer-main { overflow-y: auto; padding: 12px 16px; } .dealer-main h3 { margin: 8px 0 2px; } .dealer-main h3 small { font-size: 12px; opacity: .6; } .dealer-main p { margin: 2px 0 8px; opacity: .8; }
+.dealer-preview { width: 100%; height: 220px; display: block; border-radius: 10px; background: radial-gradient(#2a2f40, #12141d); }
+.dealer-stats { display: flex; gap: 14px; font-size: 13px; opacity: .85; }
+.dealer-colors { display: flex; gap: 8px; margin: 10px 0; } .dealer-colors button { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #fff3; } .dealer-colors button.on { border-color: #fff; }
+.dealer-buy { display: flex; align-items: center; gap: 12px; } .dealer-buy b { font-size: 18px; color: #ffd27a; }
+.dealer-buy button, .dealer-drive { padding: 7px 18px; border-radius: 999px; background: #ff7a1a; color: #111; font-weight: 800; border: 0; } .dealer-buy button:disabled { opacity: .5; }
+.dealer-note { display: block; margin: 6px 0; opacity: .6; } .dealer-msg { margin: 6px 0; padding: 6px 10px; border-radius: 8px; background: #ffffff10; }
+.dealer-garage h4 { margin: 10px 0 4px; } .dealer-garage div { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; } .dealer-garage div span { flex: 1; }
+.dealer-garage i { width: 14px; height: 14px; border-radius: 50%; } .dealer-garage button { padding: 3px 10px; border-radius: 999px; font-size: 12px; }
+.dealer-drive { margin-top: 12px; width: 100%; }
+@media (max-width: 640px) { .dealer-body { grid-template-columns: 1fr; overflow-y: auto; } .dealer-list { max-height: 30vh; border-right: 0; } .dealer-preview { height: 170px; } }

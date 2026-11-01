@@ -10,6 +10,7 @@ import { getVault, initSkinStorage } from './skins.js';
 import { initMarketStorage } from './market.js';
 import { initStocks } from './stocks.js';
 import { initRealEstate } from './realEstate.js';
+import { initCars } from './cars.js';
 import { getMines, initMinesStorage } from './mines.js';
 import { getFactory, initFactory } from './factory.js';
 import { initAccountStorage } from './accounts.js';
@@ -33,6 +34,7 @@ await initRequests();
 await initEconomy();
 await initStocks();
 await initRealEstate();
+await initCars();
 await initConquestStorage();
 await initSolitroStorage();
 

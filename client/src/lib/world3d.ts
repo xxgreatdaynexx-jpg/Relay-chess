@@ -8,6 +8,8 @@ import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN } from './worldLayout';
 
 import { WORLD_SPOTS } from './worldSpots';
+import { buildCar } from './carModels';
+import { CAR_BY_ID } from '../../../shared/cars';
 import { HOUSING_TYPES, type HousingType } from './housing';
 import { buildingId, patchId } from '../../../shared/realEstate';
 
@@ -194,6 +196,13 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
           g.add(box(4, 2.4, 3.4, mat({ color: 0x705038 }), sx, 0, sz));
           const aw = new THREE.Mesh(geo(new THREE.ConeGeometry(3.3, 1.6, 4)), mat({ color: cols[i], emissive: cols[i], emissiveIntensity: 0.4 * NEON })); aw.rotation.y = Math.PI / 4; aw.position.set(sx, 3.2, sz); g.add(aw); }
         g.add(cyl(0.3, 0.3, 7, dark, 0, 0, 0, 6), box(2.4, 0.5, 0.5, neon, 0, 7, 0)); height = 9; break; }
+      case 'dealer': {
+        // Car Dealership: glass showroom, forecourt with three display cars, pylon sign.
+        g.add(box(9, 0.3, 6, mat({ color: 0x2b2f3a }), 0, 0, -2.4), box(9, 4.2, 0.3, mat({ color: 0x9fd4ff, transparent: true, opacity: 0.35, roughness: 0.1, metalness: 0.4 }), 0, 0.3, 0.6));
+        g.add(box(9, 4.2, 0.4, win(61), 0, 0.3, -5.2), box(0.4, 4.2, 6, dark, -4.4, 0.3, -2.4), box(0.4, 4.2, 6, dark, 4.4, 0.3, -2.4), box(9.6, 0.5, 6.6, neon, 0, 4.5, -2.4));
+        g.add(cyl(0.25, 0.25, 9, dark, 5.2, 0, 4.8, 6), box(0.4, 2, 2.6, neon, 5.2, 7.4, 4.8));
+        ([['chudmobile', 0xff7a1a, -3, 3.4], ['thunderhorse', 0xc8102e, 0, 3.6], ['hypervolt', 0xf2f4f7, 3, 3.4], ['phantom', 0x111111, 0, -2.4]] as const).forEach(([id, col, x, z]) => { const c = buildCar(CAR_BY_ID.get(id)!, col, 'far'); c.position.set(x, 0.15, z); c.rotation.y = Math.PI / 2 + (x ? 0.5 * Math.sign(x) : 0); c.scale.setScalar(0.8); g.add(c); });
+        height = 10; break; }
       case 'stocks': {
         // Stock Exchange: columned hall with a scrolling green ticker band and a bull on the steps.
         g.add(box(10, 1, 8, mat({ color: 0xcfd6dc })), box(9, 6, 6.6, win(51), 0, 1), box(9.6, 0.5, 7.2, mat({ color: 0xcfd6dc }), 0, 7));
@@ -398,12 +407,13 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     if (fwAge < 2.2) { fwAge += dt; for (let i = 0; i < FP; i++) { fwVel[i * 3 + 1] -= 4 * dt; fwPos[i * 3] += fwVel[i * 3] * dt; fwPos[i * 3 + 1] += fwVel[i * 3 + 1] * dt; fwPos[i * 3 + 2] += fwVel[i * 3 + 2] * dt; } fwG.attributes.position.needsUpdate = true; fwM.opacity = Math.max(0, 1 - fwAge / 2.2); }
     if (fly) { fly.t = Math.min(1, fly.t + dt / 0.75); const e = 1 - Math.pow(1 - fly.t, 3); camera.position.lerpVectors(fly.from, fly.to, e); controls.target.lerpVectors(fly.tf, fly.tt, e); camera.lookAt(controls.target);
       if (fly.t >= 1) { const id = fly.id; fly = null; controls.enabled = true; h.onPick(id); } } // the city stays mounted now (0dc4f99): hand zoom/orbit back
-    else controls.update();
+    else if (!tick?.(dt)) controls.update();
     waterMat.uniforms.uTime.value = time;
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
     for (const l of lms) { const k = labelScale(camera.position.distanceTo(l.sign.getWorldPosition(tmpV)), portrait) * (l.sign.userData.hover ? 1.2 : 1); l.sign.scale.set(k, k / 4, 1); }
     if (composer) composer.render(); else renderer.render(scene, camera);
   };
+  let tick: ((dt: number) => boolean) | null = null;
   const vis = () => { running = !document.hidden; clock.getDelta(); }; document.addEventListener('visibilitychange', vis);
   frame();
   // Owned-property markers: a small muted-gold diamond over each owned building/lot (no glow, no bloom).
@@ -421,6 +431,8 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   };
   return {
     flyTo, setOwned,
+    // Driving (worldDrive.ts) hooks: the tick runs every frame; returning true means it owns the camera.
+    scene, camera, controls, solids, lmBoxes, setTick(f: ((dt: number) => boolean) | null) { tick = f; },
     reset() { fly = null; controls.enabled = true; camera.position.copy(home); controls.target.set(0, 0, 0); setHover(null); },
     setRunning(v: boolean) { running = v && !document.hidden; clock.getDelta(); },
     project(id: string) { const l = lms.find((x) => x.id === id); if (!l) return null; const v = l.pos.clone().setY(l.height + 2.2).project(camera); const rc = canvas.getBoundingClientRect(); return { x: rc.left + (v.x + 1) / 2 * rc.width, y: rc.top + (1 - v.y) / 2 * rc.height }; },

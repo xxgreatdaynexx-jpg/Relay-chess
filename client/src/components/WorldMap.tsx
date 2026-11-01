@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { WORLD_SPOTS } from '@/lib/worldSpots';
 import type { World } from '@/lib/world3d';
 import { useAccount } from '@/lib/auth';
@@ -58,6 +58,9 @@ function DeedList({ owned, me, onOpen, onClose }: { owned: Map<string, OwnedProp
   );
 }
 
+import { request } from '@/lib/net';
+import type { Drive, DriveInput } from '@/lib/worldDrive';
+const Dealership = lazy(() => import('./Dealership').then((m) => ({ default: m.Dealership })));
 
 const CASINO_GAMES = [
   { tab: 'blackjack-tab', label: '🂡 Blackjack' }, { tab: 'roulette-tab', label: '🎡 Roulette' }, { tab: 'poker-tab', label: '🃏 Poker' },
@@ -100,6 +103,17 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
     return () => { dead = true; socket.off('re_changed', load); };
   }, []);
   useEffect(() => { worldRef.current?.setOwned([...owned.keys()]); }, [owned, loading]);
+  const [dealer, setDealer] = useState(false);
+  const driveRef = useRef<Drive | null>(null);
+  const [driving, setDriving] = useState(false); const [near, setNear] = useState<string | null>(null); const [kmh, setKmh] = useState(0);
+  const meRef = useRef(me); meRef.current = me;
+  const startDrive = (carId: string, color: number) => { setDealer(false); driveRef.current?.start(carId, color); setDriving(!!driveRef.current?.driving); };
+  const stopDrive = () => { driveRef.current?.stop(); setDriving(false); setNear(null); };
+  const toggleDrive = async () => {
+    if (driving) { stopDrive(); return; }
+    const a = await request('car_garage') as { ok: boolean; cars?: { carId: string; color: number; active: boolean }[] };
+    const c = a.ok ? a.cars?.find((x) => x.active) : undefined; if (c) startDrive(c.carId, c.color); else setDealer(true);
+  };
   useEffect(() => { localStorage.setItem(MODE_KEY, mode); }, [mode]);
 
   const go = (id: string) => {
@@ -115,6 +129,7 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
       case 'stocks': openTab('stocks-tab'); break;
       case 'chat': openTab('chat-tab'); break;
       case 'leaderboard': onLeaderboard(); break;
+      case 'dealer': setDealer(true); return;
     }
     // Every other building opens as a panel on top of the city; closing it reveals the city again.
   };
@@ -131,10 +146,13 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
           onPick: (id) => goRef.current(id),
           onProperty: (id) => { setDeeds(false); setDeed(id); },
         });
+        const w = worldRef.current;
+        void import('@/lib/worldDrive').then(({ createDrive }) => { if (dead || worldRef.current !== w) return;
+          driveRef.current = createDrive(w, { me: () => meRef.current ?? null, onNear: setNear, onSpeed: setKmh }); });
       } catch { setMode('2d'); }
       setLoading(false);
     }).catch(() => setMode('2d'));
-    return () => { dead = true; worldRef.current?.dispose(); worldRef.current = null; };
+    return () => { dead = true; driveRef.current?.dispose(); driveRef.current = null; setDriving(false); worldRef.current?.dispose(); worldRef.current = null; };
   }, [mode]);
   // Pause the city while a building's panel is open over it (saves GPU for Arena/Mines).
   useEffect(() => {
@@ -147,7 +165,10 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
     }, 400);
     return () => window.clearInterval(t);
   }, [casino]);
-  useEffect(() => { worldRef.current?.setRunning(!casino); if (!casino) worldRef.current?.reset(); }, [casino]);
+  useEffect(() => { worldRef.current?.setRunning(!casino); if (!casino && !driveRef.current?.driving) worldRef.current?.reset(); }, [casino]);
+  useEffect(() => { if (!driving) return; const k = (e: KeyboardEvent) => { if ((e.target as HTMLElement)?.closest?.('input,textarea')) return; if (e.code === 'KeyE' && near) goRef.current(near); if (e.code === 'Escape') stopDrive(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [driving, near]);
+  const pad = (k: keyof DriveInput, label: string) => <button type="button" className={`world-pad-${k}`} onPointerDown={(e) => { e.preventDefault(); driveRef.current?.touch(k, true); }} onPointerUp={() => driveRef.current?.touch(k, false)} onPointerLeave={() => driveRef.current?.touch(k, false)} onPointerCancel={() => driveRef.current?.touch(k, false)} data-testid={`world-pad-${k}`}>{label}</button>;
+  const nearSpot = near && WORLD_SPOTS.find((s) => s.id === near);
 
   const spot = tip && WORLD_SPOTS.find((s) => s.id === tip.id);
   const trailer = tip?.id.startsWith('trailer:') ? tip.id.slice(8) : null;
@@ -172,10 +193,17 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
       {trailer && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#ffb36b' }} data-testid="world-tip">{me && trailer.toLowerCase() === me.toLowerCase() ? <b>🏠 Your trailer</b> : <><b>🏠 {trailer}'s trailer</b><span>Chud Acres Trailer Park</span></>}</div>}
       <div className="world-corner">
         <button type="button" onClick={() => { setDeed(null); setDeeds(!deeds); }} data-testid="world-deeds-btn">🏛 Real estate</button>
+        {mode === '3d' && !loading && <button type="button" onClick={() => void toggleDrive()} data-testid="world-drive">{driving ? '🅿 Park' : '🚗 Drive'}</button>}
         <button type="button" onClick={() => setMode(mode === '3d' ? '2d' : '3d')} data-testid="world-mode">{mode === '3d' ? '▦ 2D map' : '🌃 3D city'}</button>
       </div>
       {deed && <DeedPanel id={deed} owned={owned} me={me} onClose={() => setDeed(null)} />}
       {deeds && !deed && <DeedList owned={owned} me={me} onOpen={(id) => setDeed(id)} onClose={() => setDeeds(false)} />}
+      {driving && <>
+        <div className="world-speedo" data-testid="world-speedo">{kmh} <small>km/h</small><em>WASD / arrows · E enter · Esc park</em></div>
+        {nearSpot && <button type="button" className="world-enter" onClick={() => go(nearSpot.id)} data-testid="world-enter">{nearSpot.icon} Enter {nearSpot.label} <kbd>E</kbd></button>}
+        <div className="world-pad" data-testid="world-pad"><div>{pad('left', '◀')}{pad('right', '▶')}</div><div>{pad('down', '▼')}{pad('up', '▲')}</div></div>
+      </>}
+      {dealer && <Suspense fallback={<div className="world-loading">Opening the dealership…</div>}><Dealership onClose={() => setDealer(false)} onDrive={startDrive} /></Suspense>}
       {casino && (
         <div className="world-casino" onMouseDown={(e) => { if (e.target === e.currentTarget) setCasino(false); }} data-testid="world-casino">
           <div><h3>🎰 Chud Casino</h3>
