@@ -4,7 +4,8 @@
  * buyable). Deterministic so every client draws the same map. Keeps clear of the plate, the farm district, the mines
  * and the spaces RESERVED_VENUES holds for the Airport and Speedway.
  */
-import { PLATE, MINE_SITES, MINE_APRON, OUTSKIRTS, RESERVED_VENUES } from './worldLayout.js';
+import { PLATE, MINE_SITES, MINE_APRON, OUTSKIRTS, RESERVED_VENUES, type House } from './worldLayout.js';
+import { housingType } from './housing.js';
 import { FARM_X0, FARM_X1, FARM_Z0, FARM_Z1 } from './farm.js';
 import { AIRPORT_ROADS, RACETRACK_ROADS } from './venues.js';
 const VENUE_ROADS = [...AIRPORT_ROADS, ...RACETRACK_ROADS];
@@ -24,6 +25,8 @@ export const RURAL_ROADS: Array<[P, P]> = [
   [[-165, -30], [-176, -30]], [[-121, -30], [-121, -124]], [[29, -148], [-28, -148]],
 ];
 export const LAKE = { x: 128, z: -184, rx: 26, rz: 13 };
+/** Lake outline: a gently wobbly ellipse inside LAKE's rx/rz (closed ring of points, world xz). */
+export const lakeShape = (): P[] => Array.from({ length: 48 }, (_, i) => { const a = (i / 48) * Math.PI * 2; const k = 0.86 + 0.08 * Math.sin(a * 3 + 0.7) + 0.05 * Math.sin(a * 5 + 2.1); return [LAKE.x + Math.cos(a) * LAKE.rx * k, LAKE.z + Math.sin(a) * LAKE.rz * k] as P; });
 const inR = (r: { x0: number; x1: number; z0: number; z1: number }, x: number, z: number, m: number) => x > r.x0 - m && x < r.x1 + m && z > r.z0 - m && z < r.z1 + m;
 const segD = (x: number, z: number, a: P, b: P) => { const dx = b[0] - a[0], dz = b[1] - a[1]; const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz || 1))); return Math.hypot(x - a[0] - t * dx, z - a[1] - t * dz); };
 const inBox = (b: Box2, x: number, z: number, m: number) => Math.abs(x - b.x) < b.w / 2 + m && Math.abs(z - b.z) < b.d / 2 + m;
@@ -55,22 +58,24 @@ export function outskirts(): Outskirts {
   put({ x: -192, z: -44, w: 16, d: 10, h: 6, kind: 'warehouse', rot: 0 }); put({ x: -192, z: -16, w: 14, d: 9, h: 5, kind: 'warehouse', rot: 0 });
   put({ x: -210, z: -30, w: 8, d: 14, h: 4, kind: 'shed', rot: 0 }); put({ x: -192, z: -64, w: 18, d: 10, h: 7, kind: 'warehouse', rot: 0 });
   for (const t of [[-208, -54], [-208, -62], [-200, -76]] as P[]) if (!keepOut(t[0], t[1], 2)) tanks.push(t);
-  // Hamlet on the far shore road: farmhouses either side, a gas station at its east end.
-  for (let x = -96; x <= 116; x += 18) for (const side of [-1, 1]) { if (r() < 0.3) continue; put({ x: x + (r() - 0.5) * 4, z: 150 + side * 9, w: 6, d: 5, h: 3, kind: 'farmhouse', rot: side > 0 ? Math.PI : 0 }); }
+  // Hamlet on the far shore road: detached homes (city 'house' type and size) both sides, facing the road.
+  const HOUSE = housingType('house'); const home = (x: number, z: number, rot: number) => { const w = 2.8 + r() * 0.4, d = 2.8 + r() * 0.4;
+    return put({ x, z, w, d, h: HOUSE.floorH * (r() < 0.5 ? 1 : 2), kind: 'farmhouse', rot }, 0.8); };
+  for (let x = -100; x <= 112; x += 7) for (const side of [-1, 1]) { if (Math.abs(x - 60) < 12 || r() < 0.25) continue; home(x, 150 + side * 6.5, side > 0 ? Math.PI : 0); }
   const gas = (x: number, z: number, rot: number) => { if (put({ x, z, w: 10, d: 8, h: 3.2, kind: 'gas', rot }, 0.5)) pumps.push([x, z]); };
-  gas(-131, -64, Math.PI / 2); gas(184, 112, -Math.PI / 2); gas(142, -139, 0);
+  gas(60, 160, Math.PI); gas(186, 112, Math.PI / 2); gas(142, -138, Math.PI);
   // Fields with a farmhouse + barn: south band, the strip north of the farm, the west gap and around the lake.
   const fieldIn = (x0: number, x1: number, z0: number, z1: number, n: number) => { for (let k = 0, tries = 0; k < n && tries < n * 30; tries++) {
     const w = 14 + Math.floor(r() * 4) * 4, d = 10 + Math.floor(r() * 3) * 4; const f: OutField = { x: x0 + w / 2 + r() * Math.max(0, x1 - x0 - w), z: z0 + d / 2 + r() * Math.max(0, z1 - z0 - d), w, d, crop: Math.floor(r() * 4) };
     if (!free(f, 2)) continue; fields.push(f); k++;
-    if (r() < 0.55) { const bx = f.x + (f.w / 2 + 5) * (r() < 0.5 ? -1 : 1); put({ x: bx, z: f.z, w: 7, d: 5, h: 4, kind: r() < 0.5 ? 'barn' : 'farmhouse', rot: 0 }); } } };
+    if (r() < 0.7) { const sd = r() < 0.5 ? -1 : 1; const bx = f.x + (f.w / 2 + 4.5) * sd; if (put({ x: bx, z: f.z - 3, w: 6, d: 4.5, h: 3.4, kind: 'barn', rot: 0 })) home(bx, f.z + 3.5, sd > 0 ? -Math.PI / 2 : Math.PI / 2); } } };
   fieldIn(-115, 140, 162, 190, 9); fieldIn(-115, 140, 122, 140, 6); fieldIn(70, 194, -144, -120, 4); fieldIn(-218, -126, -122, -64, 4);
   fieldIn(150, 206, 120, 190, 3); fieldIn(-218, -126, 150, 190, 3); fieldIn(-26, 190, -214, -154, 5);
   // Hills along the far edges, rocks near the mines.
   const hills: Array<[number, number, number, number]> = []; for (let t = 0; hills.length < 22 && t < 400; t++) {
     const e = Math.floor(r() * 4); const u = r(); const x = e < 2 ? OUTSKIRTS.x0 + 8 + u * (OUTSKIRTS.x1 - OUTSKIRTS.x0 - 16) : e === 2 ? OUTSKIRTS.x0 + 10 : OUTSKIRTS.x1 - 10;
     const z = e === 0 ? OUTSKIRTS.z0 + 10 : e === 1 ? OUTSKIRTS.z1 - 10 : OUTSKIRTS.z0 + 8 + u * (OUTSKIRTS.z1 - OUTSKIRTS.z0 - 16); const rad = 7 + r() * 7;
-    if (!keepOut(x, z, rad * 0.6) && !fields.some((f) => inBox(f, x, z, rad))) hills.push([x, z, rad, 3 + r() * 5]); }
+    if (!keepOut(x, z, rad) && ![...fields, ...buildings].some((o) => inBox(o, x, z, rad))) hills.push([x, z, rad, 3 + r() * 5]); }
   const rocks: Array<[number, number, number]> = []; for (const s of Object.values(MINE_SITES)) for (let t = 0, n = 0; n < 14 && t < 200; t++) {
     const a = r() * Math.PI * 2, d = MINE_APRON / 2 + 4 + r() * 16; const x = s.x + Math.cos(a) * d, z = s.z + Math.sin(a) * d;
     if (!keepOut(x, z, 0.5) && ![...buildings, ...fields].some((o) => inBox(o, x, z, 1))) { rocks.push([x, z, 0.6 + r() * 1.4]); n++; } }
@@ -83,3 +88,13 @@ export function outskirts(): Outskirts {
     for (let s = 9, k = 0; s < L; s += 18, k++) { const o = (k % 2 ? 1 : -1) * (RURAL_ROAD_W / 2 + 0.8); const lx = a[0] + ux * s - uz * o, lz = a[1] + uz * s + ux * o; if (!VENUE_ROADS.some(([p, q, w]) => segD(lx, lz, p, q) < w / 2 + 0.6)) lamps.push([lx, lz]); } }
   cache = { buildings, fields, trees, rocks, hills, lamps, tanks, pumps }; return cache;
 }
+
+const HOUSE_COLORS = housingType('house').colors;
+/** Countryside homes as city-style detached homes (buyable: same ids, pricing and deeds as city houses). */
+export const countryHomes = (): House[] => outskirts().buildings.filter((b) => b.kind === 'farmhouse').map((b, i) => ({ x: b.x, z: b.z, w: b.w, d: b.d, rot: b.rot, h: b.h, type: 'house', color: HOUSE_COLORS[i % HOUSE_COLORS.length] }));
+/** Buyable country businesses: gas stations and the industrial yard's warehouses. */
+export const COMMERCIAL_PRICE: Record<string, number> = { gas: 60_000, depot: 90_000 };
+export const COMMERCIAL_LABEL: Record<string, string> = { gas: 'Gas station', depot: 'Industrial warehouse' };
+/** Property type of a country business ('depot' so it never reads as the Warehouse landmark). */
+export const businessType = (b: OutBuilding) => (b.kind === 'warehouse' ? 'depot' : 'gas');
+export const countryBusinesses = () => outskirts().buildings.filter((b) => b.kind === 'gas' || b.kind === 'warehouse');

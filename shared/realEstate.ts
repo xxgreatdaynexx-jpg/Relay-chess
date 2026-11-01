@@ -17,6 +17,7 @@
 import { cityFill, landmarks, LANDMARK_IDS, type OBB } from './worldLayout.js';
 import { HOUSING_TYPES } from './housing.js';
 import { farmPlots, farmPrice, plotId } from './farm.js';
+import { countryHomes, countryBusinesses, businessType, COMMERCIAL_PRICE, COMMERCIAL_LABEL } from './outskirts.js';
 
 export const TAX_RATE = 0.005;
 export const SELL_BACK = 0.7;
@@ -48,7 +49,7 @@ export function properties(): Property[] {
   if (cache) return cache;
   const { houses, patches } = cityFill(7); const out: Property[] = [];
   for (const [id, b] of Object.entries(landmarks())) if (LANDMARK_IDS.includes(id)) out.push({ ...b, id: `lm:${id}`, kind: 'landmark', type: id, label: LANDMARK_LABEL[id] ?? id, price: LANDMARK_PRICE[id] ?? 500_000 });
-  for (const h of houses) {
+  for (const h of [...houses, ...countryHomes()]) {
     const t = HOUSING_TYPES.find((x) => x.id === h.type); if (!t) continue;
     const ref = ((t.w[0] + t.w[1]) / 2) * ((t.d[0] + t.d[1]) / 2), midH = ((t.floors[0] + t.floors[1]) / 2) * t.floorH;
     const price = round500((BASE_PRICE[t.id] ?? 15_000) * clamp((h.w * h.d) / ref) * clamp(h.h / midH));
@@ -57,6 +58,8 @@ export function properties(): Property[] {
   for (const p of patches) out.push({ x: p.x, z: p.z, w: p.w, d: p.d, rot: p.rot, id: `p:${p.kind}:${pos(p)}`, kind: 'patch', type: p.kind, label: PATCH_LABEL[p.kind] ?? p.kind, price: round500(BASE_PRICE[p.kind]! * clamp((p.w * p.d) / PATCH_REF[p.kind]!)) });
   // Farm district (shared/farm.ts): farmland plots, priced by tile count.
   for (const f of farmPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: plotId(f.n), kind: 'farm', type: 'farmland', label: `Farm plot #${f.n} (${f.cols}×${f.rows})`, price: farmPrice(f.cols * f.rows) });
+  // Countryside businesses (shared/outskirts.ts): gas stations and warehouses, fixed prices.
+  for (const b of countryBusinesses()) { const t = businessType(b); out.push({ x: b.x, z: b.z, w: b.w, d: b.d, rot: b.rot, h: b.h, id: `b:${t}:${pos(b)}`, kind: 'building', type: t, label: COMMERCIAL_LABEL[t]!, price: COMMERCIAL_PRICE[t]! }); }
   cache = out; byId = new Map(out.map((p) => [p.id, p])); return out;
 }
 export const propertyById = (id: unknown): Property | undefined => { properties(); return typeof id === 'string' ? byId!.get(id) : undefined; };

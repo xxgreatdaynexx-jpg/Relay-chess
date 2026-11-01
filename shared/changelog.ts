@@ -6,13 +6,18 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-01T12:31:00-06:00', title: 'Airport & Speedway', bullets: [
+  { commit: '', at: '2026-11-01T12:00:00-06:00', title: 'Countryside tidy-up, and country homes for sale', bullets: [
+    'The countryside now matches the city: the same grass, asphalt roads with centre lines, trees and street lamps, and fields with crop rows like the farm.',
+    'The lake has been fixed. It now has a proper shoreline and the same water as the river.',
+    'Country homes are for sale: 63 detached homes in the hamlet and beside the fields, priced and taxed like city homes. You can also buy the 3 gas stations and 3 industrial warehouses. Click one on the map to see its deed.',
+  ] },
+  { commit: '64ca84e', at: '2026-11-01T11:42:56-06:00', title: 'Airport & Speedway', bullets: [
     'Chud Hub International Airport is open in the west outskirts, at the end of the west shore road. It has a terminal, a control tower and a runway, and airliners take off, circle and land. Drive up to the terminal in your car and fly to downtown or the Speedway for free.',
     'The Chud Hub Speedway is an oval track in the north-west outskirts, between The Mine and Frostbite Caverns. Line up on the grid in any car you own and set time-trial laps. The server times every lap through 4 gates, and a lap doesn\'t count if you leave the asphalt. Today\'s fastest laps and the all-time board are shown at the track.',
     'Daily Cup: enter for about 250 chips (follows the price index). Your fastest lap after entering counts. At the end of the UTC day the top 3 split the pool 50/30/20. The pool is every entry fee plus 2,000 chips from the house.',
     'Both are landmark deeds you can buy: the Airport for about 3,000,000 chips and the Speedway for about 1,500,000.',
   ] },
-  { commit: '34c8def', at: '2026-11-01T11:40:00-06:00', title: 'The countryside fills in', bullets: [
+  { commit: '34c8def', at: '2026-11-01T11:34:25-06:00', title: 'The countryside fills in', bullets: [
     'The open ground between the city and the mines is now countryside: forests, crop fields with farmhouses and barns, hills, rocky ground around the mines and a lake in the north-east.',
     'New country roads with street lamps link all three mines, plus a little hamlet on the far shore, three gas stations and an industrial yard beside The Mine.',
     'The outskirts are better lit at night, so the mines are easy to spot. Space has been kept free in the west and north-west for what comes next.',

@@ -8,7 +8,7 @@ import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, TILE, clampMapTarget } from '../../../shared/farm';
 import { buildVenues } from './worldVenues';
 import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN, MINE_SITES, MINE_APRON, OUTSKIRTS } from './worldLayout';
-import { outskirts, RURAL_ROADS, RURAL_ROAD_W, LAKE } from '../../../shared/outskirts';
+import { outskirts, countryHomes, countryBusinesses, businessType, lakeShape, RURAL_ROADS, RURAL_ROAD_W, LAKE } from '../../../shared/outskirts';
 
 import { WORLD_SPOTS } from './worldSpots';
 import { buildCar } from './carModels';
@@ -270,7 +270,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // Filler: housing along every street's frontage (turned to face it), plus parks, plazas and lots (worldLayout.cityFill).
   // Housing is data-driven (housing.ts): one instanced body (+ instanced gable roof) per type, tinted per instance.
   const r = rng(7);
-  const { houses: fillers, patches } = cityFill(7, lmIds);
+  const { houses: cityHouses, patches } = cityFill(7, lmIds); const fillers = [...cityHouses, ...countryHomes()];
   const roofGeo = (() => { const sh = new THREE.Shape(); sh.moveTo(-0.5, 0); sh.lineTo(0.5, 0); sh.lineTo(0, 1); sh.closePath();
     const g = new THREE.ExtrudeGeometry(sh, { depth: 1, bevelEnabled: false }); g.translate(0, 0, -0.5); g.rotateY(Math.PI / 2); return geo(g); })();
   const unitBox = geo(new THREE.BoxGeometry(1, 1, 1));
@@ -397,42 +397,58 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     for (let i = 1; i < pts.length; i++) { const [ax, az] = pts[i - 1], [bx, bz] = pts[i]; const L = Math.hypot(bx - ax, bz - az);
       const seg = new THREE.Mesh(geo(new THREE.BoxGeometry(3.6, 3.04, L + 3.6)), dirt); seg.position.set((ax + bx) / 2, -1.5, (az + bz) / 2); seg.rotation.y = Math.atan2(bx - ax, bz - az); scene.add(seg); }
   }
-  // Countryside (shared/outskirts.ts): ground around the plate, rural roads, fields, farmhouses, hamlet, gas stations,
-  // industrial yard, lake, hills, rocks, forest and road lamps. All instanced (about 16 draw calls) and decorative.
+  // Countryside (shared/outskirts.ts), drawn with the city's own materials: plate grass, asphalt + dashes, city trees,
+  // streetlight poles + glow, river water. Country homes are city 'house' instances above (buyable); gas stations and
+  // warehouses are buyable too. All instanced (~16 draw calls).
   {
     const O = outskirts(); const d = new THREE.Object3D(); const c = new THREE.Color();
-    const inst = (g: THREE.BufferGeometry, m: THREE.Material, n: number, f: (i: number) => void, colors?: (i: number) => number) => { if (!n) return;
+    const inst = (g: THREE.BufferGeometry, m: THREE.Material, n: number, f: (i: number) => void, colors?: (i: number) => number) => { if (!n) return null;
       const im = new THREE.InstancedMesh(g, m, n); for (let i = 0; i < n; i++) { d.position.set(0, 0, 0); d.rotation.set(0, 0, 0); d.scale.set(1, 1, 1); f(i); d.updateMatrix(); im.setMatrixAt(i, d.matrix); if (colors) im.setColorAt(i, c.setHex(colors(i))); }
-      scene.add(im); };
+      scene.add(im); return im; };
     const { x0, x1, z0, z1 } = OUTSKIRTS; const P = PLATE;
+    // ground: same grass as the plate, a hair under it and under the farm/mine aprons (strips around the plate: no overlap)
     const strips: Array<[number, number, number, number]> = [[x0, x1, z0, -P], [x0, x1, P, z1], [x0, -P, -P, P], [P, x1, -P, P]];
-    inst(unitBox, mat({ color: 0x2f6a36, roughness: 1, emissive: 0x0d2a14, emissiveIntensity: 0.7 }), 4, (i) => { const [a, b, e, f] = strips[i]; d.position.set((a + b) / 2, -1.56, (e + f) / 2); d.scale.set(b - a, 3, f - e); });
-    const roadM = mat({ color: 0x3a3a42, roughness: 0.95, emissive: 0x15151c, emissiveIntensity: 0.6, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-    inst(unitBox, roadM, RURAL_ROADS.length, (i) => { const [a, b] = RURAL_ROADS[i]; const L = Math.hypot(b[0] - a[0], b[1] - a[1]); d.position.set((a[0] + b[0]) / 2, 0.02, (a[1] + b[1]) / 2); d.rotation.y = Math.atan2(b[0] - a[0], b[1] - a[1]); d.scale.set(RURAL_ROAD_W, 0.06, L + RURAL_ROAD_W); });
-    const CROPS = [0x6a8a2a, 0xb89a3a, 0x4a7a3a, 0x5a3e28];
-    inst(unitBox, mat({ color: 0xffffff, roughness: 1, emissive: 0x1a2010, emissiveIntensity: 0.5 }), O.fields.length, (i) => { const f = O.fields[i]; d.position.set(f.x, 0.06, f.z); d.scale.set(f.w, 0.14, f.d); }, (i) => CROPS[O.fields[i].crop]);
-    const BODY: Record<string, number> = { farmhouse: 0xd8cbb0, barn: 0x8a2a22, warehouse: 0x6a7280, gas: 0xe8e8ee, shed: 0x8a7a60 };
-    const B = O.buildings;
-    inst(unitBox, mat({ color: 0xffffff, roughness: 0.85 }), B.length, (i) => { const b = B[i]; d.position.set(b.x, b.h / 2, b.z); d.rotation.y = b.rot; d.scale.set(b.w, b.h, b.d); }, (i) => BODY[B[i].kind]);
-    const pitched = B.filter((b) => b.kind !== 'warehouse' && b.kind !== 'gas');
-    inst(roofGeo, mat({ color: 0xffffff, roughness: 0.8, flatShading: true }), pitched.length, (i) => { const b = pitched[i]; d.position.set(b.x, b.h, b.z); d.rotation.y = b.rot; d.scale.set(b.w + 0.3, 2, b.d + 0.3); }, (i) => (pitched[i].kind === 'barn' ? 0x3a3a40 : 0x6a3a2a));
-    // warm window glow on every building's front face
-    inst(unitBox, mat({ color: 0xffd08a, emissive: 0xffb050, emissiveIntensity: 0.9 * NEON }), B.length, (i) => { const b = B[i]; d.rotation.y = b.rot; d.position.set(b.x + Math.sin(b.rot) * (b.d / 2 + 0.06), b.h * 0.55, b.z + Math.cos(b.rot) * (b.d / 2 + 0.06)); d.scale.set(Math.min(3, b.w * 0.5), Math.min(1.2, b.h * 0.3), 0.1); });
-    // gas station canopies with a neon edge, pump islands, yard tanks
-    inst(unitBox, mat({ color: 0xffffff, emissive: 0xff4d6d, emissiveIntensity: 0.8 * NEON }), O.pumps.length, (i) => { const [x, z] = O.pumps[i]; d.position.set(x, 4.2, z + 9); d.scale.set(10, 0.5, 6); });
-    inst(unitBox, mat({ color: 0xc8c8d0, emissive: 0x4aa8ff, emissiveIntensity: 0.5 * NEON }), O.pumps.length * 2, (i) => { const [x, z] = O.pumps[i >> 1]; d.position.set(x + (i % 2 ? 2.5 : -2.5), 0.8, z + 9); d.scale.set(0.8, 1.6, 0.8); });
+    const grass = mat({ color: 0x3f9a45, roughness: 1, emissive: 0x0f3a14, emissiveIntensity: 0.6 }); const dirtSide = mat({ color: 0x4a3322 });
+    for (const [a0, b0, e, f] of strips) { const m = new THREE.Mesh(geo(new THREE.BoxGeometry(b0 - a0, 3, f - e)), [dirtSide, dirtSide, grass, dirtSide, dirtSide, dirtSide]); m.position.set((a0 + b0) / 2, -1.53, (e + f) / 2); scene.add(m); }
+    // rural roads: city asphalt at the city road height, centre dashes
+    inst(unitBox, roadMat, RURAL_ROADS.length, (i) => { const [a, b] = RURAL_ROADS[i]; const L = Math.hypot(b[0] - a[0], b[1] - a[1]); d.position.set((a[0] + b[0]) / 2, ROAD_Y - 0.01, (a[1] + b[1]) / 2); d.rotation.y = Math.atan2(b[0] - a[0], b[1] - a[1]); d.scale.set(RURAL_ROAD_W, 0.02, L + RURAL_ROAD_W); })!.renderOrder = 1;
+    const rd: Array<[number, number, number]> = []; for (const [a, b] of RURAL_ROADS) { const L = Math.hypot(b[0] - a[0], b[1] - a[1]); for (let t = 4; t < L - 3; t += 4) rd.push([a[0] + ((b[0] - a[0]) * t) / L, a[1] + ((b[1] - a[1]) * t) / L, Math.atan2(b[1] - a[1], b[0] - a[0])]); }
+    const dm = new THREE.InstancedMesh(dash.geometry, dash.material, rd.length); rd.forEach(([x, z, an], i) => { d.position.set(x, ROAD_Y + 0.03, z); d.rotation.set(0, -an, 0); d.scale.set(1, 1, 1); d.updateMatrix(); dm.setMatrixAt(i, d.matrix); }); dm.renderOrder = 2; scene.add(dm);
+    // fields: farm soil with crop rows (same tones as the farm district)
+    inst(unitBox, mat({ color: 0xffffff, roughness: 1 }), O.fields.length, (i) => { const f = O.fields[i]; d.position.set(f.x, 0.07, f.z); d.scale.set(f.w, 0.14, f.d); }, () => 0x5a3e28);
+    const rows: Array<[number, number, number, number]> = []; for (const f of O.fields) for (let z = f.z - f.d / 2 + 1.5; z < f.z + f.d / 2 - 1; z += 2) rows.push([f.x, z, f.w - 1.2, f.crop]);
+    inst(unitBox, mat({ color: 0xffffff, roughness: 1, emissive: 0x0a2a10, emissiveIntensity: 0.4 }), rows.length, (i) => { const [x, z, w] = rows[i]; d.position.set(x, 0.22, z); d.scale.set(w, 0.16, 0.9); }, (i) => [0x3f8a3a, 0x8a7a3a, 0x2f7a36, 0x6a8a34][rows[i][3]]);
+    // barns + sheds (farm-district barn red, dark roofs), warehouses + gas stations (buyable)
+    const outb = O.buildings.filter((b) => b.kind === 'barn' || b.kind === 'shed'); const biz = countryBusinesses();
+    inst(unitBox, mat({ color: 0xffffff, roughness: 0.85 }), outb.length, (i) => { const b = outb[i]; d.position.set(b.x, b.h / 2, b.z); d.rotation.y = b.rot; d.scale.set(b.w, b.h, b.d); }, (i) => (outb[i].kind === 'barn' ? 0x8a2a22 : 0x6a5a48));
+    inst(roofGeo, mat({ color: 0x3a3a40, roughness: 0.8, flatShading: true }), outb.length, (i) => { const b = outb[i]; d.position.set(b.x, b.h, b.z); d.rotation.y = b.rot; d.scale.set(b.w + 0.3, 1.8, b.d + 0.3); });
+    const bizM = inst(unitBox, mat({ color: 0xffffff, roughness: 0.8 }), biz.length, (i) => { const b = biz[i]; d.position.set(b.x, b.h / 2, b.z); d.rotation.y = b.rot; d.scale.set(b.w, b.h, b.d); }, (i) => (biz[i].kind === 'gas' ? 0xd8d4cc : 0x5a6270));
+    if (bizM) { bizM.userData.props = biz.map((b) => buildingId(businessType(b), b)); pickables.push(bizM); biz.forEach((b, i) => propTop.set(bizM.userData.props[i], [b.x, b.h, b.z])); }
+    const front = (b: { x: number; z: number; d: number; rot: number }, o: number): [number, number] => [b.x + Math.sin(b.rot) * (b.d / 2 + o), b.z + Math.cos(b.rot) * (b.d / 2 + o)];
+    const lit = [...outb, ...biz];
+    inst(unitBox, mat({ color: 0xffd08a, emissive: 0xffb050, emissiveIntensity: 0.7 * NEON }), lit.length, (i) => { const b = lit[i]; const [x, z] = front(b, 0.05); d.rotation.y = b.rot; d.position.set(x, b.h * 0.5, z); d.scale.set(Math.min(3, b.w * 0.4), Math.min(1, b.h * 0.25), 0.08); });
+    const gas = biz.filter((b) => b.kind === 'gas');
+    inst(unitBox, mat({ color: 0xe8e8ee, emissive: 0xff4d6d, emissiveIntensity: 0.45 * NEON }), gas.length, (i) => { const b = gas[i]; const [x, z] = front(b, 2.2); d.rotation.y = b.rot; d.position.set(x, 3.6, z); d.scale.set(b.w, 0.35, 4.4); });
+    inst(unitBox, mat({ color: 0xc8c8d0, emissive: 0x4aa8ff, emissiveIntensity: 0.35 * NEON }), gas.length * 2, (i) => { const b = gas[i >> 1]; const [x, z] = front(b, 2.2); const sd = i % 2 ? 2.5 : -2.5; d.rotation.y = b.rot; d.position.set(x + Math.cos(b.rot) * sd, 0.75, z - Math.sin(b.rot) * sd); d.scale.set(0.7, 1.5, 0.7); });
     inst(geo(new THREE.CylinderGeometry(3, 3, 6, 14)), mat({ color: 0xb8bcc4, roughness: 0.5, metalness: 0.4 }), O.tanks.length, (i) => d.position.set(O.tanks[i][0], 3, O.tanks[i][1]));
-    // lake, hills, rocks
-    { const lake = new THREE.Mesh(geo(new THREE.CircleGeometry(1, 40)), mat({ color: 0x1a4a7a, roughness: 0.2, metalness: 0.3, emissive: 0x0a2a5a, emissiveIntensity: 0.6 })); lake.rotation.x = -Math.PI / 2; lake.scale.set(LAKE.rx, LAKE.rz, 1); lake.position.set(LAKE.x, 0.05, LAKE.z); scene.add(lake); }
-    inst(geo(new THREE.ConeGeometry(1, 1, 7, 1)), mat({ color: 0x3a5a34, roughness: 1, flatShading: true, emissive: 0x0d2210, emissiveIntensity: 0.6 }), O.hills.length, (i) => { const [x, z, r, h] = O.hills[i]; d.position.set(x, h / 2 - 0.1, z); d.scale.set(r, h, r); d.rotation.y = i; });
-    inst(geo(new THREE.DodecahedronGeometry(1, 0)), mat({ color: 0x6a6670, roughness: 1, flatShading: true, emissive: 0x1a1a22, emissiveIntensity: 0.6 }), O.rocks.length, (i) => { const [x, z, s] = O.rocks[i]; d.position.set(x, s * 0.4, z); d.scale.set(s, s * 0.7, s); d.rotation.set(i, i * 2, 0); });
-    // forest: pine-ish cones on short trunks
+    // lake: the river's water shader in an irregular outline, with the same sandy bank
+    { const pts = lakeShape(); const sh = new THREE.Shape(); pts.forEach(([x, z], i) => (i ? sh.lineTo(x - LAKE.x, -(z - LAKE.z)) : sh.moveTo(x - LAKE.x, -(z - LAKE.z)))); sh.closePath();
+      const wg = new THREE.ShapeGeometry(sh, 4); wg.rotateX(-Math.PI / 2); const lake = new THREE.Mesh(geo(wg), waterMat); lake.position.set(LAKE.x, 0.06, LAKE.z); scene.add(lake);
+      const bank: number[] = []; const bi: number[] = []; const n = pts.length;
+      pts.forEach(([x, z]) => { const dx = x - LAKE.x, dz = z - LAKE.z, L = Math.hypot(dx, dz); bank.push(x + (dx / L) * 1.6, 0.03, z + (dz / L) * 1.6, x - (dx / L) * 0.4, 0.03, z - (dz / L) * 0.4); });
+      for (let i = 0; i < n; i++) { const o = i * 2, q = ((i + 1) % n) * 2; bi.push(o, q, o + 1, o + 1, q, q + 1); }
+      const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(bank, 3)); bg.setIndex(bi); bg.computeVertexNormals();
+      scene.add(new THREE.Mesh(geo(bg), mat({ color: 0xb8a27a, roughness: 1, side: THREE.DoubleSide }))); }
+    // low rolling hills in the grass colour, rocks near the mines
+    inst(geo(new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2)), mat({ color: 0x3f9a45, roughness: 1, flatShading: true, emissive: 0x0f3a14, emissiveIntensity: 0.6 }), O.hills.length, (i) => { const [x, z, r, h] = O.hills[i]; d.position.set(x, -0.05, z); d.scale.set(r, h * 0.6, r * 0.8); d.rotation.y = i; });
+    inst(geo(new THREE.DodecahedronGeometry(1, 0)), mat({ color: 0x6a6670, roughness: 1, flatShading: true }), O.rocks.length, (i) => { const [x, z, s] = O.rocks[i]; d.position.set(x, s * 0.3, z); d.scale.set(s, s * 0.6, s); d.rotation.set(0, i * 2, 0); });
+    // forest: the city's tree (trunk + low-poly crown, same materials)
     const T = O.trees;
-    inst(geo(new THREE.CylinderGeometry(0.18, 0.25, 1, 5)), mat({ color: 0x5a3a22 }), T.length, (i) => { const [x, z, s] = T[i]; d.position.set(x, 0.6 * s, z); d.scale.set(s, 1.2 * s, s); });
-    inst(geo(new THREE.ConeGeometry(1.3, 3.2, 6)), mat({ color: 0xffffff, flatShading: true, emissive: 0x0a2a10, emissiveIntensity: 0.45 }), T.length, (i) => { const [x, z, s] = T[i]; d.position.set(x, 2.6 * s, z); d.scale.set(s, s, s); d.rotation.y = i; }, (i) => [0x2a7a38, 0x245e2e, 0x347f3c][i % 3]);
-    // road lamps (glow only, no real lights)
-    inst(geo(new THREE.CylinderGeometry(0.07, 0.09, 3, 4)), mat({ color: 0x40444f }), O.lamps.length, (i) => d.position.set(O.lamps[i][0], 1.5, O.lamps[i][1]));
-    inst(geo(new THREE.SphereGeometry(0.32, 8, 6)), mat({ color: 0xfff0c0, emissive: 0xffd080, emissiveIntensity: 1.2 }), O.lamps.length, (i) => d.position.set(O.lamps[i][0], 3.1, O.lamps[i][1]));
+    inst(trunk.geometry, trunk.material, T.length, (i) => { const [x, z, s] = T[i]; d.position.set(x, 0.7 * s, z); d.scale.set(s, 1.4 * s, s); });
+    inst(crown.geometry, crown.material, T.length, (i) => { const [x, z, s] = T[i]; d.position.set(x, 2.1 * s, z); d.scale.set(s * 1.1, s * 1.3, s * 1.1); d.rotation.y = i; });
+    // road lamps: the city's streetlight pole + glow
+    inst(pole.geometry, pole.material, O.lamps.length, (i) => d.position.set(O.lamps[i][0], 1.2, O.lamps[i][1]));
+    inst(geo(new THREE.SphereGeometry(0.22, 8, 6)), mat({ color: 0xfff0c0, emissive: 0xffd080, emissiveIntensity: 1 }), O.lamps.length, (i) => d.position.set(O.lamps[i][0], 2.45, O.lamps[i][1]));
   }
   // Farm district (shared/farm.ts): a grass apron east of the plate, dirt lanes, fenced fields (farmland properties),
   // barns and silos. Crops on owned plots come from /api/farm (setFarm). Toned-down night palette, a little warm glow.
