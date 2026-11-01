@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ArenaWorld, END_SCREEN_MS, MATCH_MS, SUDDEN_MS, type MatchResult } from '../server/arena-world.js';
-import { claimArenaName, getArenaWorld, MATCH_PRIZE, onArenaMatchEnd, resetArena, registerArenaClient } from '../server/fps.js';
+import { claimArenaName, getArenaWorld, MATCH_PRIZE, onArenaMatchEnd, resetArena, armArenaClient, registerArenaClient } from '../server/fps.js';
 import { resetBank } from '../server/casino-store.js';
 import { RESPAWN_MS } from '../shared/fps.js';
 
@@ -93,4 +93,4 @@ describe('arena timed matches with sudden death', () => {
 });
 
 /** These tests drive the world directly: every joining socket is a ready, always-heartbeating client (fail-closed gate). */
-function liveClients() { const w = getArenaWorld(); const j = w.join.bind(w); w.join = ((id: string, ...r: unknown[]) => { registerArenaClient(id, true, Infinity); return (j as (...a: unknown[]) => ReturnType<typeof w.join>)(id, ...r); }) as typeof w.join; }
+function liveClients() { const w = getArenaWorld(); const j = w.join.bind(w); w.join = ((id: string, ...r: unknown[]) => { registerArenaClient(id, true, Infinity); armArenaClient(id); return (j as (...a: unknown[]) => ReturnType<typeof w.join>)(id, ...r); }) as typeof w.join; }

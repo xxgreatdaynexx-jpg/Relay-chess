@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { RESPAWN_MS } from '../shared/fps.js';
-import { claimArenaName, getArenaWorld, isArenaClientLive, LIVE_MS, markArenaLive, registerArenaClient, resetArena, touchArenaClient } from '../server/fps.js';
+import { armArenaClient, claimArenaName, getArenaWorld, isArenaClientLive, LIVE_MS, markArenaLive, registerArenaClient, resetArena, touchArenaClient } from '../server/fps.js';
 import { resetBank } from '../server/casino-store.js';
 import { isMissingAssetPath } from '../server/app.js';
 import { importWithReload, isChunkLoadError, reloadOnceForChunkError } from '../client/src/lib/chunkReload.js';
@@ -29,6 +29,7 @@ describe('arena: no spawn or charge until the client is rendering', () => {
     const w = getArenaWorld();
     claimArenaName('s2', 'live');
     registerArenaClient('s2', true, 1000);
+    armArenaClient('s2'); // the player clicked Play
     const f = w.join('s2', 'live', 1000, 'pistol');
     expect(f.alive).toBe(true);
     const afterFirst = bank.account('live').chips;
@@ -77,6 +78,33 @@ describe('chunk-load reload guard', () => {
 
 describe('spawn gate fails closed for old / unknown clients', () => {
   beforeEach(() => { resetArena(); resetBank(); });
+  it('opening the Arena (join, ready, heartbeating) never spawns or charges until the player clicks Play', () => {
+    const bank = resetBank();
+    const start = bank.account('opener').chips;
+    const w = getArenaWorld();
+    claimArenaName('p1', 'opener');
+    registerArenaClient('p1', true, 1000);
+    const f = w.join('p1', 'opener', 1000, 'pistol');
+    expect(f.alive).toBe(false);
+    for (let t = 1000; t < 61_000; t += 500) { markArenaLive('p1', t); touchArenaClient('p1', t); w.tick(t); }
+    expect(f.alive).toBe(false);
+    expect(bank.account('opener').chips).toBe(start);
+    // explicit Play click (server: fps_respawn arms the socket) -> spawns and pays exactly once
+    armArenaClient('p1'); markArenaLive('p1', 61_000); w.requestRespawn('p1', 'pistol', 61_000); w.tick(61_000);
+    expect(f.alive).toBe(true);
+    expect(bank.account('opener').chips).toBe(start - 10);
+    w.tick(61_500);
+    expect(bank.account('opener').chips).toBe(start - 10);
+  });
+  it('the server arms a socket only on fps_respawn, and a (re)join disarms it', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('server/fps.ts', 'utf8');
+    expect(src).toMatch(/socket\.on\('fps_respawn'[^\n]*armed\.add\(socket\.id\)/);
+    expect(src.match(/armed\.add\(/g)?.length).toBe(2); // fps_respawn + the test hook
+    expect(src).toMatch(/armed\.delete\(socket\.id\); \/\/ a \(re\)join never spawns/);
+    const panel = readFileSync('client/src/components/ArenaPanel.tsx', 'utf8');
+    expect(panel).toMatch(/data-testid="arena-play-btn"[^\n]*onClick=\{\(\) => respawnNow\(\)\}/);
+  });
   it('an old client that never sends ready is never charged, even while it sends moves and respawn clicks', () => {
     const bank = resetBank();
     const before = bank.account('old').chips;

@@ -39,13 +39,19 @@ export function markArenaLive(id: string, now = Date.now()): void { if (liveAt.h
 export function touchArenaClient(id: string, now = Date.now()): void { const t = liveAt.get(id); if (t !== undefined && t !== -Infinity) liveAt.set(id, now); }
 /** Register a socket-joined client; ready=false until its engine is up. */
 export function registerArenaClient(id: string, ready: boolean, now = Date.now()): void { liveAt.set(id, ready ? now : -Infinity); }
+/** Sockets whose player clicked Play/Respawn (fps_respawn) at least once since joining. Opening the Arena never spawns
+ * or charges by itself: a human's first life (and so the first spawn fee) only starts after that explicit request. */
+const armed = new Set<string>();
+/** Explicit user spawn request (Play / Respawn click or Space). Also a test hook. */
+export function armArenaClient(id: string): void { armed.add(id); }
+export const isArenaClientArmed = (id: string) => armed.has(id);
 /** Fail closed: an unknown socket (never joined via fps_join, map reset, reconnect) is NOT live. */
 export const isArenaClientLive = (id: string, now = Date.now()) => now - (liveAt.get(id) ?? -Infinity) <= LIVE_MS;
 
 /** Charge one spawn. Returns false (stay dead) when the player can't afford even the cheapest loadout, 'wait' (stay dead,
  * nothing charged) while the client isn't live. */
 export function chargeSpawn(f: ArenaFighter, now: number): boolean | 'wait' {
-  if (!isBot(f.id) && !isArenaClientLive(f.id, now)) return 'wait';
+  if (!isBot(f.id) && (!isArenaClientLive(f.id, now) || !armed.has(f.id))) return 'wait';
   const name = isBot(f.id) ? undefined : claimed.get(f.id);
   if (!name) { f.stake = 0; f.lifeId = ''; return true; }
   const held = resumable.get(acct(name));
@@ -212,6 +218,7 @@ export function resetArena(): void {
   world = newWorld();
   resumable.clear();
   liveAt.clear();
+  armed.clear();
   world.audit = newAudit();
   wireWorld(world);
   botHeading.clear();
@@ -295,6 +302,7 @@ function ensureTicker(io: Server): void {
 function leave(io: Server, socket: Socket): void {
   holdPaidLife(socket.id);
   liveAt.delete(socket.id);
+  armed.delete(socket.id);
   if (!world.leave(socket.id)) return;
   claimed.delete(socket.id);
   world.skins.delete(socket.id);
@@ -318,6 +326,7 @@ export function registerFps(io: Server, socket: Socket): void {
       const perks = perksFor(account);
       if (perks.size) world.perks.set(socket.id, perks); // before join, so detection skips them
       registerArenaClient(socket.id, body(payload).ready === true);
+      armed.delete(socket.id); // a (re)join never spawns until the player clicks Play
       world.join(socket.id, account ?? guestName(), Date.now(), body(payload).w);
       dropIo = io;
       if (account) world.skins.set(socket.id, getVault().loadout(account)); else world.skins.delete(socket.id);
@@ -344,7 +353,7 @@ export function registerFps(io: Server, socket: Socket): void {
   socket.on('fps_crouch', (p: unknown) => world.crouch(socket.id, body(p).on));
   socket.on('fps_jump', () => emit(io, world.jump(socket.id, Date.now())));
   socket.on('fps_live', () => markArenaLive(socket.id));
-  socket.on('fps_respawn', (p: unknown) => { touchArenaClient(socket.id); if (world.requestRespawn(socket.id, body(p).w, Date.now())) broadcastState(io); });
+  socket.on('fps_respawn', (p: unknown) => { touchArenaClient(socket.id); armed.add(socket.id); if (world.requestRespawn(socket.id, body(p).w, Date.now())) broadcastState(io); });
   socket.on('fps_loadout', (p: unknown) => world.setLoadout(socket.id, body(p).w, Date.now()));
   socket.on('fps_weapon', (p: unknown) => world.switchWeapon(socket.id, body(p).w, Date.now()));
   socket.on('fps_reload', () => world.reload(socket.id, Date.now()));

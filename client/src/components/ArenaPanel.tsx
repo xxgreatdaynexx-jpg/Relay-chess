@@ -86,6 +86,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const loadoutRef = useRef(loadout);
   /** True once the lazy 3D engine is up; the server won't spawn/charge us before that. */
   const engineReady = useRef(false);
+  /** False until this join's first life starts: opening the Arena shows a Play button and never spawns/charges by itself. */
+  const [spawnedOnce, setSpawnedOnce] = useState(false);
   const [life, setLife] = useState<{ alive: boolean; stake: number; broke: boolean; lo: WeaponId; paid: boolean; rs: number }>({ alive: true, stake: 0, broke: false, lo: 'pistol', paid: false, rs: 0 });
   const [matchUi, setMatchUi] = useState<{ phase: 'play' | 'sudden' | 'ended'; alive: number; sd: number; end: MatchEnd | null }>({ phase: 'play', alive: 0, sd: 0, end: null });
   const [chipToasts, setChipToasts] = useState<Array<{ key: number; amount: number; memo: string }>>([]);
@@ -333,6 +335,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         if (err || !ack?.ok) return setStatus(ack?.error || 'Could not reach the arena.');
         if (ack.map) mapRef.current = mapById(ack.map);
         Object.assign(me.current, { id: ack.id, x: ack.x, y: ack.y, z: ack.z ?? 0, vz: 0, grounded: true, p: 0, a: ack.a, joined: true, alive: ack.alive !== false });
+        setSpawnedOnce(ack.alive === true);
         setStatus('');
         // Local QA only (?arenaBots=N needs ARENA_QA_BOTS=1 on the server): read-only handle for play-test scripts.
         if (qaBots) (window as unknown as { __arenaQA?: unknown }).__arenaQA = { me: me.current, snaps: snaps.current, banner, sock: socket };
@@ -393,6 +396,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         lifeLoRef.current = mine.lo ?? null;
         extraRef.current = mine.ex ?? [];
         const nl = { alive: mine.alive, stake: mine.stk ?? 0, broke: !!mine.bk, lo: mine.lo ?? 'pistol', paid: false, rs: mine.alive ? 0 : Math.ceil((mine.rs ?? 0) / 1000) };
+        if (nl.alive) setSpawnedOnce(true);
         setLife((o) => (o.alive === nl.alive && o.stake === nl.stake && o.broke === nl.broke && o.lo === nl.lo && o.paid === nl.paid && o.rs === nl.rs ? o : nl));
         m.uavUntil = mine.uav ? performance.now() + mine.uav : 0;
         // The server owns the loadout: if our weapon disagrees for longer than a switch takes, adopt the server's.
@@ -1301,7 +1305,14 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         {killCam?.playing && (
           <div data-testid="arena-killcam-on" aria-live="polite" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', pointerEvents: 'none' }}>Kill cam playing</div>
         )}
-        {!life.alive && me.current.joined && matchUi.phase === 'play' && (
+        {!life.alive && !spawnedOnce && me.current.joined && matchUi.phase === 'play' && (
+          <div className="fps-respawn" data-testid="arena-play" style={{ position: 'absolute', left: '50%', bottom: '14%', transform: 'translateX(-50%)', zIndex: 5, background: 'rgba(0,0,0,.72)', color: '#e6e9df', padding: '10px 14px', borderRadius: 6, textAlign: 'center', fontSize: 12 }}
+            onMouseDown={(e) => e.stopPropagation()}>
+            <div style={{ marginBottom: 6 }}>{wallet !== null ? <>Spawn costs <b>{spawnCost(loadout)} 🪙</b> ({WEAPONS[loadout].name}); nothing is charged until you press Play.</> : <>Guest: spawns are free.</>}</div>
+            <button type="button" data-testid="arena-play-btn" style={{ padding: '5px 16px', borderRadius: 4, border: 0, background: '#e6e9df', color: '#15170f', fontWeight: 800 }} onClick={() => respawnNow()}>▶ Play</button>
+          </div>
+        )}
+        {!life.alive && spawnedOnce && me.current.joined && matchUi.phase === 'play' && (
           <div className="fps-respawn" data-testid="arena-respawn" data-killcam={killCam?.playing ? '1' : '0'} style={{ display: killCam?.playing ? 'none' : undefined, position: 'absolute', left: '50%', bottom: '14%', transform: 'translateX(-50%)', zIndex: 5, background: 'rgba(0,0,0,.72)', color: '#e6e9df', padding: '8px 10px', borderRadius: 6, textAlign: 'center', fontSize: 12 }}
             onMouseDown={(e) => e.stopPropagation()}>
             <div data-testid="arena-kia-header" style={{ marginBottom: 6, fontWeight: 800, letterSpacing: '.12em', fontFamily: 'monospace', fontSize: 13 }}>KILLED IN ACTION · PICK YOUR LOADOUT</div>

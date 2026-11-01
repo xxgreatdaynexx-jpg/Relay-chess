@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T14:55:00-06:00', title: 'Arena waits for you to press Play', bullets: [
+    'Opening the Arena from the top bar no longer drops you straight into the match or charges a spawn fee. You join as a spectator and pay only when you press Play.',
+  ] },
   { commit: '', at: '2026-11-01T14:55:00-06:00', title: 'More menu closes cleanly', bullets: [
     'Clicking outside the top bar\'s More menu now only closes it. It no longer also clicks whatever was underneath.',
   ] },

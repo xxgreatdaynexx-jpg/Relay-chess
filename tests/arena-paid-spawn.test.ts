@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { affordableLoadout, canHold, cheapestSpawn, RESPAWN_MS, SPAWN_EXTRAS, SPAWN_PRICE, spawnCost } from '../shared/fps.js';
-import { claimArenaName, holdPaidLife, getArenaWorld, recordArena, resetArena, registerArenaClient } from '../server/fps.js';
+import { claimArenaName, holdPaidLife, getArenaWorld, recordArena, resetArena, armArenaClient, registerArenaClient } from '../server/fps.js';
 import { resetBank } from '../server/casino-store.js';
 
 const kill = (killerId: string | null, victimId: string) => {
@@ -126,4 +126,4 @@ describe('knife-only free spawn', () => {
 });
 
 /** These tests drive the world directly: every joining socket is a ready, always-heartbeating client (fail-closed gate). */
-function liveClients() { const w = getArenaWorld(); const j = w.join.bind(w); w.join = ((id: string, ...r: unknown[]) => { registerArenaClient(id, true, Infinity); return (j as (...a: unknown[]) => ReturnType<typeof w.join>)(id, ...r); }) as typeof w.join; }
+function liveClients() { const w = getArenaWorld(); const j = w.join.bind(w); w.join = ((id: string, ...r: unknown[]) => { registerArenaClient(id, true, Infinity); armArenaClient(id); return (j as (...a: unknown[]) => ReturnType<typeof w.join>)(id, ...r); }) as typeof w.join; }
