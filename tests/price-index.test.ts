@@ -5,7 +5,7 @@ import { indexed, stepIndex, fmtIndex, PI_FLOOR, PI_MAX_DAILY, type IndexState }
 import { advancePriceIndex, rawRate, setPriceIndexForTest, px } from '../server/price-index';
 import { payoutOdds, betReturn, RED, WHEEL } from '../shared/casino';
 import { POKER_PAYS } from '../shared/casino-games';
-import { MACHINES, DQ_SCATTER_PAY, DQ_FREE_MULT, GR_GRAND_MULT, DQ_CHEST_PRIZES, GR_COIN_VALUES } from '../shared/video-slots';
+import { MACHINES, MACHINE_IDS, DQ_SCATTER_PAY, DQ_FREE_MULT, GR_GRAND_MULT, DQ_CHEST_PRIZES, GR_COIN_VALUES } from '../shared/video-slots';
 
 /**
  * Economy sim: cash C, daily faucets F*idx and sinks S*idx (both indexed, as in the game), plus organic growth g
@@ -98,9 +98,12 @@ describe('stored index (Postgres claim)', () => {
   });
 });
 
+// The city machines exactly as they were before Chud Resort, so CASINO_HASH stays unchanged. The `engine` tag is metadata only.
+// The resort machines copy these pay tables and weights (tests/resort.test.ts checks that they match).
+const CITY_MACHINES = Object.fromEntries(MACHINE_IDS.map((id) => { const { engine: _e, ...rest } = MACHINES[id]; return [id, rest]; }));
 describe('casino is never indexed', () => {
   it('payout tables are byte-for-byte unchanged', () => {
-    const tables = JSON.stringify({ odds: ['straight', 'split', 'street', 'corner', 'line', 'dozen', 'column', 'red'].map((k) => payoutOdds(k as never)), RED: [...RED], WHEEL, POKER_PAYS, MACHINES, DQ_SCATTER_PAY, DQ_FREE_MULT, GR_GRAND_MULT, DQ_CHEST_PRIZES, GR_COIN_VALUES });
+    const tables = JSON.stringify({ odds: ['straight', 'split', 'street', 'corner', 'line', 'dozen', 'column', 'red'].map((k) => payoutOdds(k as never)), RED: [...RED], WHEEL, POKER_PAYS, MACHINES: CITY_MACHINES, DQ_SCATTER_PAY, DQ_FREE_MULT, GR_GRAND_MULT, DQ_CHEST_PRIZES, GR_COIN_VALUES });
     expect(createHash('sha256').update(tables).digest('hex')).toBe(CASINO_HASH);
   });
   it('roulette returns are identical at any index', () => {
