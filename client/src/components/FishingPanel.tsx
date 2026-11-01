@@ -1,11 +1,11 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazyWithReload } from '@/lib/lazyWithReload';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { reloadOnceForChunkError } from '@/lib/chunkReload';
 import { request } from '@/lib/net';
 import { FISH_DAILY_MAX, fishById, fishPayout, fmtKg, RARITY_COLOR, Reel, REEL_DT, type FishCatch, type FishView } from '../../../shared/fishing';
 
 // The 3D game is its own lazy chunk; a stale chunk after a deploy reloads the tab once (same as the arena and mines).
-const Fishing3DGame = lazy(() => import('./Fishing3DGame').then((m) => ({ default: m.Fishing3DGame })).catch((e) => { reloadOnceForChunkError(e); throw e; }));
+const Fishing3DGame = lazyWithReload(() => import('./Fishing3DGame').then((m) => ({ default: m.Fishing3DGame })));
 const chips = (n: number) => n.toLocaleString('en-US');
 type Phase = { k: 'idle' } | { k: 'wait'; until: number } | { k: 'bite'; until: number } | { k: 'reel' } | { k: 'busy' };
 type BoardRow = { name: string; fish: string; grams: number; value: number };

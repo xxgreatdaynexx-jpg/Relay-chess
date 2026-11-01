@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { affordableLoadout, canHold, cheapestSpawn, RESPAWN_MS, SPAWN_EXTRAS, SPAWN_PRICE, spawnCost } from '../shared/fps.js';
-import { claimArenaName, holdPaidLife, getArenaWorld, recordArena, resetArena } from '../server/fps.js';
+import { claimArenaName, holdPaidLife, getArenaWorld, recordArena, resetArena, registerArenaClient } from '../server/fps.js';
 import { resetBank } from '../server/casino-store.js';
 
 const kill = (killerId: string | null, victimId: string) => {
@@ -13,7 +13,7 @@ const kill = (killerId: string | null, victimId: string) => {
 };
 
 describe('arena paid spawns', () => {
-  beforeEach(() => { resetArena(); resetBank(); });
+  beforeEach(() => { resetArena(); resetBank(); liveClients(); });
 
   it('prices: one table, pistol cheapest, extras pluggable', () => {
     expect(SPAWN_PRICE).toEqual({ pistol: 10, smg: 15, shotgun: 20, sniper: 25, rocket: 35, ar15: 25, knife: 0 });
@@ -95,7 +95,7 @@ describe('arena paid spawns', () => {
 });
 
 describe('knife-only free spawn', () => {
-  beforeEach(() => { resetArena(); resetBank(); });
+  beforeEach(() => { resetArena(); resetBank(); liveClients(); });
   it('is live now that the knife ships, and never hands out a free pistol', async () => {
     const f = await import('../shared/fps.js');
     expect(f.knifeOnlyAvailable()).toBe(true);
@@ -124,3 +124,6 @@ describe('knife-only free spawn', () => {
     }
   });
 });
+
+/** These tests drive the world directly: every joining socket is a ready, always-heartbeating client (fail-closed gate). */
+function liveClients() { const w = getArenaWorld(); const j = w.join.bind(w); w.join = ((id: string, ...r: unknown[]) => { registerArenaClient(id, true, Infinity); return (j as (...a: unknown[]) => ReturnType<typeof w.join>)(id, ...r); }) as typeof w.join; }

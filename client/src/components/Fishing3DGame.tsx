@@ -1,3 +1,4 @@
+import { importWithReload } from '@/lib/chunkReload';
 import { useEffect, useRef, useState } from 'react';
 import { request } from '@/lib/net';
 import { reloadOnceForChunkError } from '@/lib/chunkReload';
@@ -35,7 +36,7 @@ export function Fishing3DGame({ me, onClose, onChange }: { me: string | null; on
 
   useEffect(() => {
     load(); let dead = false;
-    import('@/lib/fishing3d').then(({ Fishing3D }) => {
+    importWithReload(() => import('@/lib/fishing3d')).then(({ Fishing3D }) => {
       if (dead || !cv.current) return;
       try { three.current = new Fishing3D(cv.current); three.current.onSplash = (big) => sfx.current?.splash(big); } catch { setGlError('3D is not available on this device.'); }
     }).catch((e) => { if (!reloadOnceForChunkError(e)) setGlError('Could not load the 3D engine. Refresh to try again.'); });

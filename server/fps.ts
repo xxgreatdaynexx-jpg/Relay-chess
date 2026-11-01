@@ -33,10 +33,14 @@ export const LIVE_MS = 10_000;
 /** socket id -> last time the client proved it is live (-Infinity = joined, not rendering yet). Only ids joined over a socket. */
 const liveAt = new Map<string, number>();
 /** Mark a joined client live (test hook too). */
+/** fps_live (sent only by a client whose 3D engine is running) marks the socket ready + live. */
 export function markArenaLive(id: string, now = Date.now()): void { if (liveAt.has(id)) liveAt.set(id, now); }
+/** Activity (moves / respawn clicks) only refreshes a client that has ALREADY proven it is ready; old/broken clients that never send ready stay unchargeable. */
+export function touchArenaClient(id: string, now = Date.now()): void { const t = liveAt.get(id); if (t !== undefined && t !== -Infinity) liveAt.set(id, now); }
 /** Register a socket-joined client; ready=false until its engine is up. */
 export function registerArenaClient(id: string, ready: boolean, now = Date.now()): void { liveAt.set(id, ready ? now : -Infinity); }
-export const isArenaClientLive = (id: string, now = Date.now()) => !liveAt.has(id) || now - (liveAt.get(id) ?? -Infinity) <= LIVE_MS;
+/** Fail closed: an unknown socket (never joined via fps_join, map reset, reconnect) is NOT live. */
+export const isArenaClientLive = (id: string, now = Date.now()) => now - (liveAt.get(id) ?? -Infinity) <= LIVE_MS;
 
 /** Charge one spawn. Returns false (stay dead) when the player can't afford even the cheapest loadout, 'wait' (stay dead,
  * nothing charged) while the client isn't live. */
@@ -333,14 +337,14 @@ export function registerFps(io: Server, socket: Socket): void {
   });
   socket.on('fps_move', (p: unknown) => {
     const b = body(p);
-    markArenaLive(socket.id);
+    touchArenaClient(socket.id);
     world.move(socket.id, b.x, b.y, b.a, Date.now(), b.p, b.c, b.s, b.q, b.b);
   });
   socket.on('fps_shoot', (p: unknown) => emit(io, world.shoot(socket.id, body(p).a, Date.now(), body(p).p, body(p).vt, body(p).h, body(p).sid, body(p).z)));
   socket.on('fps_crouch', (p: unknown) => world.crouch(socket.id, body(p).on));
   socket.on('fps_jump', () => emit(io, world.jump(socket.id, Date.now())));
   socket.on('fps_live', () => markArenaLive(socket.id));
-  socket.on('fps_respawn', (p: unknown) => { markArenaLive(socket.id); if (world.requestRespawn(socket.id, body(p).w, Date.now())) broadcastState(io); });
+  socket.on('fps_respawn', (p: unknown) => { touchArenaClient(socket.id); if (world.requestRespawn(socket.id, body(p).w, Date.now())) broadcastState(io); });
   socket.on('fps_loadout', (p: unknown) => world.setLoadout(socket.id, body(p).w, Date.now()));
   socket.on('fps_weapon', (p: unknown) => world.switchWeapon(socket.id, body(p).w, Date.now()));
   socket.on('fps_reload', () => world.reload(socket.id, Date.now()));

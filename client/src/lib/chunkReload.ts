@@ -29,3 +29,12 @@ export function installChunkReload(): void {
   window.addEventListener('vite:preloadError', (ev) => { if (reloadOnceForChunkError((ev as Event & { payload?: unknown }).payload ?? new Error('ChunkLoadError'))) ev.preventDefault(); });
   window.addEventListener('unhandledrejection', (ev) => { reloadOnceForChunkError(ev.reason); });
 }
+
+/** Wrap ANY dynamic import: on a stale-chunk error, reload once (and keep the promise pending so nothing renders a blank/error
+ * screen meanwhile); if we already reloaded recently, rethrow so the caller's error handling runs. */
+export function importWithReload<T>(load: () => Promise<T>, env: Env | null = browserEnv()): Promise<T> {
+  return load().catch((e: unknown) => {
+    if (reloadOnceForChunkError(e, env)) return new Promise<T>(() => {});
+    throw e;
+  });
+}

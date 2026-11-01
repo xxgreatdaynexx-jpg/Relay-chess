@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ArenaWorld, END_SCREEN_MS, MATCH_MS, SUDDEN_MS, type MatchResult } from '../server/arena-world.js';
-import { claimArenaName, getArenaWorld, MATCH_PRIZE, onArenaMatchEnd, resetArena } from '../server/fps.js';
+import { claimArenaName, getArenaWorld, MATCH_PRIZE, onArenaMatchEnd, resetArena, registerArenaClient } from '../server/fps.js';
 import { resetBank } from '../server/casino-store.js';
 import { RESPAWN_MS } from '../shared/fps.js';
 
@@ -14,7 +14,7 @@ function world3() {
 }
 
 describe('arena timed matches with sudden death', () => {
-  beforeEach(() => { resetArena(); resetBank(); });
+  beforeEach(() => { resetArena(); resetBank(); liveClients(); });
 
   it('3 min of respawning play, then sudden death: no respawns, last alive wins, end screen, next match', () => {
     const { w, a, b, c, res } = world3();
@@ -78,7 +78,7 @@ describe('arena timed matches with sudden death', () => {
     expect(bank.account('Hana').chips).toBe(before + 300);
     expect(seen).toHaveLength(1);
     // solo human vs a bot: no prize
-    resetArena();
+    resetArena(); liveClients();
     claimArenaName('h1', 'Hana');
     const w2 = getArenaWorld();
     w2.join('h1', 'Hana', T0); const bot = w2.join('arena-bot-1', 'Bot', T0);
@@ -91,3 +91,6 @@ describe('arena timed matches with sudden death', () => {
     void h1;
   });
 });
+
+/** These tests drive the world directly: every joining socket is a ready, always-heartbeating client (fail-closed gate). */
+function liveClients() { const w = getArenaWorld(); const j = w.join.bind(w); w.join = ((id: string, ...r: unknown[]) => { registerArenaClient(id, true, Infinity); return (j as (...a: unknown[]) => ReturnType<typeof w.join>)(id, ...r); }) as typeof w.join; }

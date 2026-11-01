@@ -1,4 +1,4 @@
-import { reloadOnceForChunkError } from '@/lib/chunkReload';
+import { importWithReload, reloadOnceForChunkError } from '@/lib/chunkReload';
 import { TopTab } from '@/components/TopTabs';
 import { usePriceIndex } from '../lib/priceIndex';
 import { MiningLeaderboard } from '@/components/MiningLeaderboard';
@@ -98,7 +98,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
     socket.on('mines_state', onState); socket.on('mines_fx', onFx); socket.on('mines_correct', onCorrect); socket.on('connect', join);
     if (socket.connected) join(); else socket.connect();
     // 3D scene
-    import('@/lib/mines3d').then(({ Mines3D }) => {
+    importWithReload(() => import('@/lib/mines3d')).then(({ Mines3D }) => {
       if (dead || !glRef.current) return;
       try { three.current = new Mines3D(glRef.current, cave); three.current.setNodes(hp.current); socket.timeout(3000).emit('inv_loadout', {}, (err: Error | null, r?: { ok: boolean; loadout?: Record<string, string | null> }) => { if (!err && r?.ok) three.current?.setPickSkin(r.loadout?.pickaxe ?? null); }); } catch (e) { setGlError('3D is unavailable here: ' + (e as Error).message); }
     }).catch((e) => { if (!reloadOnceForChunkError(e)) setGlError('Could not load the 3D engine. Refresh to try again.'); });

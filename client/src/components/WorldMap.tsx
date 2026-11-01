@@ -1,4 +1,6 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { lazyWithReload } from '@/lib/lazyWithReload';
+import { importWithReload } from '@/lib/chunkReload';
 import { WORLD_SPOTS } from '@/lib/worldSpots';
 import { useWalletChips } from '@/lib/wallet';
 import { CLOSE_WORLD_PANELS, WALLET_CLOSE, NONE, closePanel, panelId, togglePanel, type WorldPanel } from '@/lib/worldPanels';
@@ -73,9 +75,9 @@ function DeedList({ owned, me, onOpen, onClose }: { owned: Map<string, OwnedProp
 
 import { request } from '@/lib/net';
 import type { Drive, DriveInput } from '@/lib/worldDrive';
-const Venues = lazy(() => import('./Venues').then((m) => ({ default: m.Venues })));
-const FishingPanel = lazy(() => import('./FishingPanel').then((m) => ({ default: m.FishingPanel })));
-const Dealership = lazy(() => import('./Dealership').then((m) => ({ default: m.Dealership })));
+const Venues = lazyWithReload(() => import('./Venues').then((m) => ({ default: m.Venues })));
+const FishingPanel = lazyWithReload(() => import('./FishingPanel').then((m) => ({ default: m.FishingPanel })));
+const Dealership = lazyWithReload(() => import('./Dealership').then((m) => ({ default: m.Dealership })));
 
 const CASINO_GAMES = [
   { tab: 'blackjack-tab', label: '🂡 Blackjack' }, { tab: 'roulette-tab', label: '🎡 Roulette' }, { tab: 'poker-tab', label: '🃏 Poker' },
@@ -192,7 +194,7 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
   useEffect(() => {
     if (mode !== '3d') return;
     let dead = false;
-    void import('@/lib/world3d').then(({ createWorld }) => {
+    void importWithReload(() => import('@/lib/world3d')).then(({ createWorld }) => {
       if (dead || !canvasRef.current) return;
       try {
         worldRef.current = createWorld(canvasRef.current, {
@@ -202,7 +204,7 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
             if (id.startsWith('f:') && o && m && o.owner.toLowerCase() === m.toLowerCase()) setFarm(id); else setDeed(id); },
         });
         const w = worldRef.current;
-        void import('@/lib/worldDrive').then(({ createDrive }) => { if (dead || worldRef.current !== w) return;
+        void importWithReload(() => import('@/lib/worldDrive')).then(({ createDrive }) => { if (dead || worldRef.current !== w) return;
           driveRef.current = createDrive(w, { me: () => meRef.current ?? null, onNear: setNear, onSpeed: setKmh, onRace });
           const pd = pendingDrive.current; pendingDrive.current = null; if (pd) startDriveRef.current(pd.carId, pd.color, pd.from); });
       } catch { setMode('2d'); }

@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { RESPAWN_MS } from '../shared/fps.js';
-import { claimArenaName, getArenaWorld, LIVE_MS, markArenaLive, registerArenaClient, resetArena } from '../server/fps.js';
+import { claimArenaName, getArenaWorld, isArenaClientLive, LIVE_MS, markArenaLive, registerArenaClient, resetArena, touchArenaClient } from '../server/fps.js';
 import { resetBank } from '../server/casino-store.js';
 import { isMissingAssetPath } from '../server/app.js';
-import { isChunkLoadError, reloadOnceForChunkError } from '../client/src/lib/chunkReload.js';
+import { importWithReload, isChunkLoadError, reloadOnceForChunkError } from '../client/src/lib/chunkReload.js';
 
 describe('arena: no spawn or charge until the client is rendering', () => {
   beforeEach(() => { resetArena(); resetBank(); });
@@ -72,5 +72,51 @@ describe('chunk-load reload guard', () => {
     const e = env();
     expect(reloadOnceForChunkError(new Error('boom'), e)).toBe(false);
     expect(e.n()).toBe(0);
+  });
+});
+
+describe('spawn gate fails closed for old / unknown clients', () => {
+  beforeEach(() => { resetArena(); resetBank(); });
+  it('an old client that never sends ready is never charged, even while it sends moves and respawn clicks', () => {
+    const bank = resetBank();
+    const before = bank.account('old').chips;
+    const w = getArenaWorld();
+    claimArenaName('o1', 'old');
+    registerArenaClient('o1', false, 1000);
+    const f = w.join('o1', 'old', 1000, 'pistol');
+    for (let t = 1000; t < 61_000; t += 500) { touchArenaClient('o1', t); w.requestRespawn('o1', 'pistol', t); w.tick(t); }
+    expect(f.alive).toBe(false);
+    expect(bank.account('old').chips).toBe(before);
+  });
+  it('a socket that never registered (reconnect / reset) is not live', () => {
+    expect(isArenaClientLive('never-joined', 5000)).toBe(false);
+    registerArenaClient('r1', false, 1000);
+    expect(isArenaClientLive('r1', 1000)).toBe(false);
+    markArenaLive('r1', 2000);
+    expect(isArenaClientLive('r1', 2000)).toBe(true);
+    expect(isArenaClientLive('r1', 2000 + LIVE_MS + 1)).toBe(false);
+  });
+});
+
+describe('every lazy import reloads once on a stale chunk', () => {
+  it('importWithReload reloads once and stays pending; rethrows after', async () => {
+    const m = new Map<string, string>(); let n = 0;
+    const env = { storage: { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) }, reload: () => { n++; }, now: () => 9_000_000 };
+    const err = () => Promise.reject(new TypeError('Failed to fetch dynamically imported module: https://chudhub.club/assets/Dealership-u2uD7tHU.js'));
+    const p = importWithReload(err, env);
+    const r = await Promise.race([p.then(() => 'resolved', () => 'rejected'), new Promise((res) => setTimeout(() => res('pending'), 20))]);
+    expect(r).toBe('pending');
+    expect(n).toBe(1);
+    await expect(importWithReload(err, env)).rejects.toThrow(/dynamically imported/);
+    expect(n).toBe(1);
+  });
+  it('no client code uses a bare lazy() or unwrapped dynamic import()', async () => {
+    const { readdirSync, readFileSync, statSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const bad: string[] = [];
+    const walk = (d: string) => { for (const e of readdirSync(d)) { const p = join(d, e); if (statSync(p).isDirectory()) walk(p); else if (/\.tsx?$/.test(e) && !/lazyWithReload|chunkReload/.test(e)) {
+      readFileSync(p, 'utf8').split('\n').forEach((l, i) => { if (/(^|[^\w.])lazy\(/.test(l) || (/(^|[^\w>] ?)import\(/.test(l) && !/(importWithReload|lazyWithReload)\(\(\) => import\(/.test(l) && !/^\s*(\/\/|\*)/.test(l) && !/typeof import\(/.test(l))) bad.push(`${p}:${i + 1}`); }); } } };
+    walk('client/src');
+    expect(bad).toEqual([]);
   });
 });

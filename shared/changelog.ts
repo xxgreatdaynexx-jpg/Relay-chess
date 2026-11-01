@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T14:20:00-06:00', title: 'No more blank screens after an update', bullets: [
+    'If an update lands while you have the game open, clicking the Car Dealership, the Airport or any other screen that loads separately now reloads the page once instead of leaving a blank green screen.',
+    'Arena spawn fees are now only charged to a game that is open and running on your screen. Old tabs from before an update are never charged.',
+  ] },
   { commit: '', at: '2026-11-01T14:20:00-06:00', title: 'Mines: find Keys and Chests', bullets: [
     'Every ore you break in any mine has a 5% chance to drop a Key or a Chest (50/50) straight into your inventory.',
     'Sign in to get drops; guests don\'t get them.',

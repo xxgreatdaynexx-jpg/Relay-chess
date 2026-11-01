@@ -15,7 +15,7 @@ import type { ArenaMap } from '../../../shared/arenaMaps';
 import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playKnife, playHeadshotDing, playLockBeep, playPickup, play360NoScope, playMultiKill, shotFalloff, unlockSounds } from '@/lib/sounds';
 import { isTypingTarget, spaceRespawns } from '@/lib/respawnKey';
 import { DEATH_HOLD_MS, fitSpeed, killCardText, sampleKillCam, shotsBetween, type CamFrame, type CamShot, type KillCard } from '@/lib/killcam';
-import { reloadOnceForChunkError } from '@/lib/chunkReload';
+import { importWithReload, reloadOnceForChunkError } from '@/lib/chunkReload';
 import { headHitFeedback } from '@/lib/arenaHeadFx';
 import { arenaLiveHud, kiaCanvasStrip } from '@/lib/arenaHud';
 import { feedParts, popupScale, POPUP_MS, type FeedItem } from '@/lib/arenaFeed';
@@ -542,7 +542,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     let g3: Arena3D | null = null;
     let cancelled = false;
     // three.js is loaded on demand so it never weighs down the rest of the site.
-    import('@/lib/arena3d').then(({ Arena3D: A }) => {
+    importWithReload(() => import('@/lib/arena3d')).then(({ Arena3D: A }) => {
       if (cancelled) return;
       try { g3 = new A(gl); engineReady.current = true; socket.emit('fps_live'); raf = requestAnimationFrame(frame); } catch { setGlError('This browser could not start 3D graphics (WebGL).'); }
     }).catch((e) => { if (!reloadOnceForChunkError(e)) setGlError('Could not load the 3D engine. Refresh to try again.'); });
