@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { WORLD_SPOTS } from '@/lib/worldSpots';
 import { useWalletChips } from '@/lib/wallet';
+import { CLOSE_WORLD_PANELS, WALLET_CLOSE, NONE, closePanel, panelId, togglePanel, type WorldPanel } from '@/lib/worldPanels';
 import { MINE_CAVE_EVENT } from '../../../shared/mines';
 import { MINE_SITES } from '@/lib/worldLayout';
 import type { World } from '@/lib/world3d';
@@ -21,11 +22,12 @@ const chips = (n: number) => n.toLocaleString('en-US');
 type Ack = { ok: boolean; error?: string };
 
 /** Deed panel: list price, owner, daily tax, Buy / Sell back. */
-function DeedPanel({ id, owned, me, onClose, onFarm }: { id: string; owned: Map<string, OwnedProperty>; me: string | null; onClose: () => void; onFarm?: () => void }) {
-  const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
+function DeedPanel({ id, owned, me, onClose, onFarm, onDone }: { id: string; owned: Map<string, OwnedProperty>; me: string | null; onClose: () => void; onFarm?: () => void; onDone?: (ev: 're_buy' | 're_sell', text: string) => void }) {
+  const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState<null | 're_buy' | 're_sell'>(null); const [msg, setMsg] = useState<string | null>(null); const wallet = useWalletChips();
   if (!p) return null;
-  const mine = !!(o && me && o.owner.toLowerCase() === me.toLowerCase()); const wallet = useWalletChips(); const short = wallet != null && wallet < p.price ? p.price - wallet : 0;
-  const act = (ev: 're_buy' | 're_sell') => { setBusy(true); setMsg(null); socket.timeout(10_000).emit(ev, { id }, (err: Error | null, r?: Ack) => { setBusy(false); setMsg(err ? 'No answer from the server. Try again.' : r?.ok ? (ev === 're_buy' ? 'It’s yours.' : 'Sold back to the city.') : (ev === 're_buy' && (r?.error === 'Not enough chips.' || r?.error === 'Something went wrong.') && short ? `Not enough chips: ${p.label} costs 🪙 ${chips(p.price)}; you need 🪙 ${chips(short)} more.` : r?.error ?? 'Something went wrong.')); }); };
+  const mine = !!(o && me && o.owner.toLowerCase() === me.toLowerCase()); const short = wallet != null && wallet < p.price ? p.price - wallet : 0;
+  // QA r8: pending state on the button, and on success a toast + immediate (optimistic) ownership update via onDone.
+  const act = (ev: 're_buy' | 're_sell') => { setBusy(ev); setMsg(null); socket.timeout(15_000).emit(ev, { id }, (err: Error | null, r?: Ack) => { setBusy(null); if (!err && r?.ok) { const text = ev === 're_buy' ? `🏛 ${p.label} is yours! Paid 🪙 ${chips(p.price)}.` : `Sold ${p.label} back to the city for 🪙 ${chips(sellBackOf(p.price))}.`; setMsg(text); onDone?.(ev, text); return; } setMsg(err ? 'No answer from the server. Try again.' : (ev === 're_buy' && (r?.error === 'Not enough chips.' || r?.error === 'Something went wrong.') && short ? `Not enough chips: ${p.label} costs 🪙 ${chips(p.price)}; you need 🪙 ${chips(short)} more.` : r?.error ?? 'Something went wrong.')); }); };
   return (
     <div className="world-deed" data-testid="world-deed">
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
@@ -38,8 +40,8 @@ function DeedPanel({ id, owned, me, onClose, onFarm }: { id: string; owned: Map<
         <dt>Property tax</dt><dd data-testid="deed-tax">🪙 {chips(taxOf(p.price))}/day ({(TAX_RATE * 100).toFixed(1)}%)</dd>
         {o && o.arrears > 0 && <><dt>Arrears</dt><dd className="text-rose-300">{o.arrears} unpaid day{o.arrears > 1 ? 's' : ''} (repossessed at {GRACE_DAYS})</dd></>}
       </dl>
-      {!o && (me ? <button type="button" disabled={busy} onClick={() => (short ? setMsg(`Not enough chips: ${p.label} costs 🪙 ${chips(p.price)}; you have 🪙 ${chips(wallet ?? 0)} (need 🪙 ${chips(short)} more).`) : act('re_buy'))} aria-describedby={short ? 'deed-short' : undefined} data-testid="deed-buy">Buy for 🪙 {chips(p.price)}</button> : <small>Sign in to buy.</small>)}
-      {mine && <button type="button" disabled={busy} onClick={() => act('re_sell')} data-testid="deed-sell">Sell to the city for 🪙 {chips(sellBackOf(p.price))} (70%)</button>}
+      {!o && (me ? <button type="button" disabled={!!busy} aria-busy={busy === 're_buy'} onClick={() => (short ? setMsg(`Not enough chips: ${p.label} costs 🪙 ${chips(p.price)}; you have 🪙 ${chips(wallet ?? 0)} (need 🪙 ${chips(short)} more).`) : act('re_buy'))} aria-describedby={short ? 'deed-short' : undefined} data-testid="deed-buy">{busy === 're_buy' ? <><span className="world-spin" aria-hidden /> Buying…</> : <>Buy for 🪙 {chips(p.price)}</>}</button> : <small>Sign in to buy.</small>)}
+      {mine && <button type="button" disabled={!!busy} aria-busy={busy === 're_sell'} onClick={() => act('re_sell')} data-testid="deed-sell">{busy === 're_sell' ? <><span className="world-spin" aria-hidden /> Selling…</> : <>Sell to the city for 🪙 {chips(sellBackOf(p.price))} (70%)</>}</button>}
       {p.kind === 'farm' && o && onFarm && <button type="button" onClick={onFarm} data-testid="deed-farm">{mine ? '🌾 Open farm' : '👀 Visit farm'}</button>}
       {p.kind === 'farm' && !o && <small>Farmland: buy it to plant crops (FarmVille-style, real-time).</small>}
       {!o && me && short > 0 && !msg && <small id="deed-short" className="text-amber-300" data-testid="deed-short">You need 🪙 {chips(short)} more chips to buy this.</small>}
@@ -105,16 +107,21 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
   const [mode, setMode] = useState<'3d' | '2d'>(() => (localStorage.getItem(MODE_KEY) as '3d' | '2d' | null) ?? (weakDevice() ? '2d' : '3d'));
   const [loading, setLoading] = useState(mode === '3d');
   const [tip, setTip] = useState<{ id: string; x: number; y: number } | null>(null);
-  const [casino, setCasino] = useState(false);
+  // One main panel at a time (QA r8): deed / real estate list / farm / venue / dealer / casino share one slot.
+  const [panel, setPanel] = useState<WorldPanel>(NONE);
+  const casino = panel.k === 'casino'; const setCasino = (v: boolean) => setPanel((c) => (v ? { k: 'casino' } : closePanel(c, 'casino')));
+  useEffect(() => { if (panel.k !== 'none') window.dispatchEvent(new Event(WALLET_CLOSE)); }, [panel.k]);
+  useEffect(() => { const close = () => setPanel(NONE); window.addEventListener(CLOSE_WORLD_PANELS, close); return () => window.removeEventListener(CLOSE_WORLD_PANELS, close); }, []);
   const [owned, setOwned] = useState<Map<string, OwnedProperty>>(new Map());
-  const [deed, setDeed] = useState<string | null>(null);
-  const [deeds, setDeeds] = useState(false);
-  const [farm, setFarm] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null); const toastT = useRef(0);
+  const deed = panelId(panel, 'deed'); const setDeed = (id: string | null) => setPanel((c) => (id ? { k: 'deed', id } : closePanel(c, 'deed')));
+  const deeds = panel.k === 'deeds'; const setDeeds = (v: boolean) => setPanel((c) => (v ? { k: 'deeds' } : closePanel(c, 'deeds')));
+  const farm = panelId(panel, 'farm'); const setFarm = (id: string | null) => setPanel((c) => (id ? { k: 'farm', id } : closePanel(c, 'farm')));
   const ownedRef = useRef(owned); ownedRef.current = owned;
   useEffect(() => {
     let dead = false;
     const load = () => { void fetch('/api/farm').then((r) => r.json()).then((d: { tiles?: Array<[string, number, string, string]> }) => { if (!dead && Array.isArray(d?.tiles)) worldRef.current?.setFarm(d.tiles); }).catch(() => {}); };
-    if (!loading) load(); socket.on('farm_changed', load); const t = window.setInterval(load, 60_000);
+    if (!loading) load(); socket.on('farm_changed', load); const t = window.setInterval(load, 15_000); // QA r8: crops on the map grow live (was 60 s)
     return () => { dead = true; socket.off('farm_changed', load); window.clearInterval(t); };
   }, [loading]);
   useEffect(() => {
@@ -124,12 +131,13 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
     return () => { dead = true; socket.off('re_changed', load); };
   }, []);
   useEffect(() => { worldRef.current?.setOwned([...owned.keys()]); }, [owned, loading]);
-  const [dealer, setDealer] = useState(false); const [dock, setDock] = useState(false);
+  const dealer = panel.k === 'dealer'; const setDealer = (v: boolean) => setPanel((c) => (v ? { k: 'dealer' } : closePanel(c, 'dealer')));
+  const dock = panel.k === 'dock'; const setDock = (v: boolean) => setPanel((c) => (v ? { k: 'dock' } : closePanel(c, 'dock')));
   const driveRef = useRef<Drive | null>(null);
   const pendingDrive = useRef<{ carId: string; color: number; from?: string } | null>(null); const startDriveRef = useRef<(carId: string, color: number, from?: string) => void>(() => {});
   const [driving, setDriving] = useState(false); const [near, setNear] = useState<string | null>(null); const [kmh, setKmh] = useState(0);
   const meRef = useRef(me); meRef.current = me;
-  const [venue, setVenue] = useState<'airport' | 'racetrack' | null>(null);
+  const venue = panelId(panel, 'venue') as 'airport' | 'racetrack' | null; const setVenue = (id: 'airport' | 'racetrack' | null) => setPanel((c) => (id ? { k: 'venue', id } : closePanel(c, 'venue')));
   const [lap, setLap] = useState<{ t0: number | null; text: string | null; gate: number }>({ t0: null, text: null, gate: 0 }); const [, setNow] = useState(0);
   useEffect(() => { if (!driving || lap.t0 == null) return; const t = window.setInterval(() => setNow(Date.now()), 100); return () => window.clearInterval(t); }, [driving, lap.t0]);
   const onRace = (ev: Array<{ kind: string; ms?: number; gate?: number; text?: string; why?: string }>) => setLap((l) => {
@@ -174,7 +182,7 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
       case 'leaderboard': onLeaderboard(); break;
       case 'dealer': setDealer(true); return;
       case 'dock': setDock(true); return;
-      case 'airport': case 'racetrack': setDeed(null); setDeeds(false); setFarm(null); setVenue(id); return;
+      case 'airport': case 'racetrack': setVenue(id); return;
     }
     // Every other building opens as a panel on top of the city; closing it reveals the city again.
   };
@@ -190,8 +198,8 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
         worldRef.current = createWorld(canvasRef.current, {
           onHover: (id, x, y) => setTip(id ? { id, x, y } : null),
           onPick: (id) => goRef.current(id),
-          onProperty: (id) => { setDeeds(false); setVenue(null); const o = ownedRef.current.get(id); const m = meRef.current;
-            if (id.startsWith('f:') && o && m && o.owner.toLowerCase() === m.toLowerCase()) { setDeed(null); setFarm(id); } else { setFarm(null); setDeed(id); } },
+          onProperty: (id) => { const o = ownedRef.current.get(id); const m = meRef.current;
+            if (id.startsWith('f:') && o && m && o.owner.toLowerCase() === m.toLowerCase()) setFarm(id); else setDeed(id); },
         });
         const w = worldRef.current;
         void import('@/lib/worldDrive').then(({ createDrive }) => { if (dead || worldRef.current !== w) return;
@@ -240,13 +248,17 @@ export function WorldMap({ onClose, onLeaderboard }: { onClose: () => void; onLe
       {!spot && tipProp && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#c9a24a' }} data-testid="world-tip"><b>{tipProp.label}</b><span>{ownerLine}</span><em>Click for the deed</em></div>}
       {trailer && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#ffb36b' }} data-testid="world-tip">{me && trailer.toLowerCase() === me.toLowerCase() ? <b>🏠 Your trailer</b> : <><b>🏠 {trailer}'s trailer</b><span>Chud Acres Trailer Park</span></>}</div>}
       <div className="world-corner">
-        <button type="button" onClick={() => { setDeed(null); setFarm(null); setVenue(null); setDeeds(!deeds); }} data-testid="world-deeds-btn">🏛 Real estate</button>
+        <button type="button" onClick={() => setPanel((c) => togglePanel(c, { k: 'deeds' }))} data-testid="world-deeds-btn">🏛 Real estate</button>
         {mode === '3d' && !loading && <button type="button" onClick={() => void toggleDrive()} data-testid="world-drive">{driving ? '🅿 Park' : '🚗 Drive'}</button>}
         <button type="button" onClick={() => setMode(mode === '3d' ? '2d' : '3d')} data-testid="world-mode">{mode === '3d' ? '▦ 2D map' : '🌃 3D city'}</button>
       </div>
-      {deed && <DeedPanel id={deed} owned={owned} me={me} onClose={() => setDeed(null)} onFarm={() => { setFarm(deed); setDeed(null); }} />}
+      {deed && <DeedPanel id={deed} owned={owned} me={me} onClose={() => setDeed(null)} onFarm={() => setFarm(deed)} onDone={(ev, text) => {
+        setToast(text); window.clearTimeout(toastT.current); toastT.current = window.setTimeout(() => setToast(null), 4000);
+        setOwned((m) => { const n = new Map(m); if (ev === 're_buy' && me) n.set(deed, { id: deed, owner: me, price: propertyById(deed)?.price ?? 0, arrears: 0, boughtAt: Date.now() }); else n.delete(deed); return n; });
+      }} />}
+      {toast && <div className="world-toast" role="status" data-testid="world-toast">{toast}</div>}
       {farm && <FarmGame id={farm} label={propertyById(farm)?.label ?? 'Farm'} onClose={() => setFarm(null)} />}
-      {deeds && !deed && <DeedList owned={owned} me={me} onOpen={(id) => setDeed(id)} onClose={() => setDeeds(false)} />}
+      {deeds && <DeedList owned={owned} me={me} onOpen={(id) => setDeed(id)} onClose={() => setDeeds(false)} />}
       {driving && <>
         <div className="world-speedo" data-testid="world-speedo">{kmh} <small>km/h</small><em>WASD / arrows · E enter · Esc park</em></div>
         {(lap.t0 != null || lap.text) && <div className="world-lap" data-testid="world-lap">{lap.t0 != null && <b>⏱ {fmtLap(Date.now() - lap.t0)} <small>gate {lap.gate}/3</small></b>}{lap.text && <span>{lap.text}</span>}</div>}

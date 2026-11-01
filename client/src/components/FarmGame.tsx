@@ -24,6 +24,14 @@ export function FarmGame({ id, label, onClose }: { id: string; label: string; on
   }, [id]);
   useEffect(() => { load(); const h = (e: { id?: string }) => { if (e?.id === id) load(); }; socket.on('farm_changed', h); return () => { socket.off('farm_changed', h); }; }, [id, load]);
   useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(t); }, []);
+  // QA r8: live growth. Re-sync with the server right after the next crop ripens or withers, on tab focus, and every 30 s.
+  useEffect(() => {
+    if (!view) return; const tn = Date.now() + skew;
+    const next = Math.min(...view.tiles.flatMap((x) => [x.readyAt, x.witherAt]).filter((v) => v > tn), tn + 30_000);
+    const tm = window.setTimeout(load, Math.max(500, next - tn + 400));
+    const vis = () => { if (document.visibilityState === 'visible') load(); }; document.addEventListener('visibilitychange', vis);
+    return () => { window.clearTimeout(tm); document.removeEventListener('visibilitychange', vis); };
+  }, [view, skew, load]);
   const t = now + skew; const idx = view?.index ?? 1;
   const byTile = new Map((view?.tiles ?? []).map((x) => [x.tile, x]));
   const stage = (tile: number) => { const x = byTile.get(tile); if (!x) return 'empty'; return t >= x.witherAt ? 'withered' : t >= x.readyAt ? 'ready' : 'growing'; };
@@ -53,7 +61,7 @@ export function FarmGame({ id, label, onClose }: { id: string; label: string; on
           {Array.from({ length: n }, (_, i) => { const x = byTile.get(i); const s = stage(i); const c = x && cropById(x.crop);
             const title = !x ? 'Empty' : s === 'growing' ? `${c?.label}: ready in ${dur(x.readyAt - t)}` : s === 'ready' ? `${c?.label}: ready! withers in ${dur(x.witherAt - t)}` : `${c?.label}: withered`;
             return <button key={i} type="button" title={title} className={`farm-tile farm-${s}${sel.has(i) ? ' farm-sel' : ''}`} onClick={() => click(i)} data-testid={`farm-tile-${i}`}>
-              {s === 'empty' ? '' : s === 'withered' ? '🥀' : s === 'ready' ? c?.emoji : '🌱'}
+              {s === 'empty' ? '' : s === 'withered' ? '🥀' : s === 'ready' ? c?.emoji : x && (t - x.plantedAt) / (x.readyAt - x.plantedAt) >= 0.5 ? '🌿' : '🌱'}
               {s === 'growing' && x && <i style={{ width: `${Math.min(100, (100 * (t - x.plantedAt)) / (x.readyAt - x.plantedAt))}%` }} />}
             </button>; })}
         </div>

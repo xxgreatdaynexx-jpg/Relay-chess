@@ -16,6 +16,10 @@ export const CHANGELOG: ChangelogEntry[] = [
     'Buying property without enough chips now tells you how many more you need. Deeds show the 70% sell-back price.',
     'Airport and Speedway panels no longer overlap the deed and real estate panels, and prices stay on one line. Map popups stay clear of the 🔊 volume button at high zoom.',
     'The 3D city can\'t be dragged far off screen when zoomed out.',
+    'Only one map panel is open at a time: buying land or opening a farm no longer brings back the Real estate list, and the Wallet and Real estate panels close each other instead of piling up.',
+    'Opening Skills closes any open deed, Airport or Wallet panel, and Esc now closes the Wallet.',
+    'Buying or selling property shows a spinner right away and a confirmation when it\'s done, and the deed updates straight away. Buying is also a little faster on the server.',
+    'Crops grow live: the farm panel updates when a crop ripens or withers (no reload needed), and crops on the map refresh every 15 seconds.',
   ] },
   { commit: '', at: '2026-11-01T13:30:00-06:00', title: 'Countryside roads fixed', bullets: [
     'The countryside roads are now one tidy ring around the city and the farm, with no dead ends, doubled roads or random diagonals. Every road ends at a junction or somewhere you can go.',

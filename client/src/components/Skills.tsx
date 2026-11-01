@@ -1,3 +1,4 @@
+import { CLOSE_WORLD_PANELS, WALLET_CLOSE } from '@/lib/worldPanels';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { request, socket } from '@/lib/net';
@@ -90,6 +91,7 @@ export function SkillsPanel() {
     return () => { window.clearTimeout(t); window.clearTimeout(luTimer); socket.off('xp', onXp); };
   }, [account]);
   useEffect(() => { if (open && account) load(); }, [open, account]);
+  useEffect(() => { if (open) { window.dispatchEvent(new Event(CLOSE_WORLD_PANELS)); window.dispatchEvent(new Event(WALLET_CLOSE)); } }, [open]); // QA r8: no stale deed/Airport panel behind Skills
 
   const lu = levelUp && skillDef(levelUp.skill);
   return (

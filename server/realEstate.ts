@@ -79,8 +79,8 @@ export class RealEstate {
     await this.atomic(name, -p.price, 'property_buy', `Bought ${p.label} (${p.id})`, async (cl) => {
       // The insert wins only if the row now carries our deed nonce (a concurrent buyer's row = conflict, DO NOTHING).
       const deed = randomUUID();
-      await cl.query('INSERT INTO properties (id, owner_key, owner_name, price, bought_at, deed) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING', [p.id, keyOf(name), name.trim(), p.price, this.clock(), deed]);
-      const r = await cl.query('SELECT deed FROM properties WHERE id = $1', [p.id]);
+      // One round trip (QA r8 speed): RETURNING yields a row only if our insert won.
+      const r = await cl.query('INSERT INTO properties (id, owner_key, owner_name, price, bought_at, deed) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING RETURNING deed', [p.id, keyOf(name), name.trim(), p.price, this.clock(), deed]);
       if (r.rows[0]?.deed !== deed) throw new PropertyError('Someone already owns this property.');
     });
     this.onChange?.();

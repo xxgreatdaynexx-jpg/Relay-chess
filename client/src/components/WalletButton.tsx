@@ -5,6 +5,7 @@ import { useAccount } from '@/lib/auth';
 import { openAccount } from '@/lib/settings';
 import { setWalletChips } from '@/lib/wallet';
 import { EconomyView } from './EconomyView';
+import { CLOSE_WORLD_PANELS, WALLET_CLOSE } from '@/lib/worldPanels';
 import { DailyReport, type DailyReportData } from './DailyReport';
 
 interface Tx { key: string | null; game: string; amount: number; balance: number; memo?: string; at: number }
@@ -29,6 +30,13 @@ export function WalletButton() {
   const [open, setOpen] = useState(false);
   const [unavailable, setUnavailable] = useState<string | null>(null);
   const [view, setView] = useState<'me' | 'econ'>('me');
+  // QA r8: Esc closes the Wallet; opening it drops any map panel (one main panel at a time); map panels close it.
+  useEffect(() => {
+    if (!open) return; window.dispatchEvent(new Event(CLOSE_WORLD_PANELS));
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+  useEffect(() => { const close = () => setOpen(false); window.addEventListener(WALLET_CLOSE, close); return () => window.removeEventListener(WALLET_CLOSE, close); }, []);
   const [bonusToast, setBonusToast] = useState('');
   const [report, setReport] = useState<DailyReportData | null>(null);
   const [reportErr, setReportErr] = useState('');

@@ -1753,3 +1753,8 @@ html, body { overflow-x: clip; }
 .world-deed > button:not(.world-deed-x) { flex-wrap: wrap; }
 /* QA r7: at high zoom (narrow CSS viewport) the fixed 🔊 widget sat on top of popups; end the map popups above it so they never sit under it. */
 @media (max-width: 700px), (max-height: 520px) { .world-deed { max-height: calc(100% - 112px); } .world-casino > div { margin-bottom: 52px; } }
+/* QA r8: one map panel at a time sits above the map chrome; property buy/sell spinner + toast. */
+.world-toast { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 6; padding: 8px 14px; border-radius: 999px; background: rgba(20,60,30,.95); border: 1px solid #7fd06a; font-weight: 700; font-size: 13px; pointer-events: none; }
+.world-spin { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: world-spin .7s linear infinite; vertical-align: -2px; }
+@keyframes world-spin { to { transform: rotate(360deg); } }
+.world-corner { z-index: 5; }
