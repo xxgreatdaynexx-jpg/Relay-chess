@@ -6,6 +6,13 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T12:40:00-06:00', title: 'Arena: head shots fixed, and no spawn fees when the game can’t load', bullets: [
+    'Head shots land again on every gun. Players who were running, sprinting or crouching were drawn with their head leaning forward of where it really is, so a shot at the head you could see often missed. Their head is now drawn exactly where it counts.',
+    'Shooting while jumping or landing now fires from the height you actually see, so head shots in the air register too.',
+    'The head shot ding and the red head shot number now only show when the server confirms a head shot, with the real damage.',
+    'The Arena no longer spawns you or charges a spawn fee until the 3D game has loaded and is on your screen. If it stops drawing (a tab left behind after an update), you stop respawning and paying.',
+    'After an update, an old tab now reloads itself once to get the new version instead of failing to load the 3D game.',
+  ] },
   { commit: '', at: '2026-11-01T12:15:00-06:00', title: 'Name tags in the mines', bullets: [
     'Other miners now have their name above their head in every mine: The Mine, Frostbite Caverns and Magma Depths.',
     'Tags stay readable from a distance, fade out the farther away someone is, and hide when a rock wall is in the way. You never see your own tag. (Request #4, thanks carter2.)',

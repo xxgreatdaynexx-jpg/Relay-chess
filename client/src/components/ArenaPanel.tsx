@@ -15,6 +15,8 @@ import type { ArenaMap } from '../../../shared/arenaMaps';
 import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playKnife, playHeadshotDing, playLockBeep, playPickup, play360NoScope, playMultiKill, shotFalloff, unlockSounds } from '@/lib/sounds';
 import { isTypingTarget, spaceRespawns } from '@/lib/respawnKey';
 import { DEATH_HOLD_MS, fitSpeed, killCardText, sampleKillCam, shotsBetween, type CamFrame, type CamShot, type KillCard } from '@/lib/killcam';
+import { reloadOnceForChunkError } from '@/lib/chunkReload';
+import { headHitFeedback } from '@/lib/arenaHeadFx';
 import { arenaLiveHud, kiaCanvasStrip } from '@/lib/arenaHud';
 import { feedParts, popupScale, POPUP_MS, type FeedItem } from '@/lib/arenaFeed';
 import {
@@ -81,6 +83,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   // Paid spawns: the loadout you pick on the death screen (saved), what's staked on this life, and +/- chip toasts.
   const [loadout, setLoadoutState] = useState<WeaponId>(() => { const v = typeof localStorage !== 'undefined' ? localStorage.getItem('arena-loadout') : null; return v && isWeapon(v) ? v : 'pistol'; });
   const loadoutRef = useRef(loadout);
+  /** True once the lazy 3D engine is up; the server won't spawn/charge us before that. */
+  const engineReady = useRef(false);
   const [life, setLife] = useState<{ alive: boolean; stake: number; broke: boolean; lo: WeaponId; paid: boolean; rs: number }>({ alive: true, stake: 0, broke: false, lo: 'pistol', paid: false, rs: 0 });
   const [matchUi, setMatchUi] = useState<{ phase: 'play' | 'sudden' | 'ended'; alive: number; sd: number; end: MatchEnd | null }>({ phase: 'play', alive: 0, sd: 0, end: null });
   const [chipToasts, setChipToasts] = useState<Array<{ key: number; amount: number; memo: string }>>([]);
@@ -173,6 +177,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     w.__arenaKCSeek = (ms: number) => { const kc = kcRef.current; if (kc) { kc.start = performance.now() - ms; kc.ct = -1; } return 1; };
   }
   const pred = useRef(new ShotPredictor()).current;
+  /** When our last predicted shot looked like a headshot (the server decides head/body). */
+  const headFx = useRef({ predAt: -1e9 }).current;
   const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, hitDeny: 0, dmgNums: [] as Array<{ v: number; head: boolean; at: number; denied?: number }>, killmark: 0, headmark: 0, melee: { at: -1e9, heavy: false }, meleeAt: new Map<string, { at: number; heavy: boolean }>(), nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string; fall: number }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number; sniper?: boolean }>, impacts: [] as Array<{ x: number; y: number; z: number; player: boolean; at: number }>, blasts: [] as Array<{ x: number; y: number; z: number; big: boolean }>, shells: 0, rockets: new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number; seek?: number }>(), lockAt: 0, lockBeep: 0, weaponAt: new Map<string, { w: string; at: number }>(), hitAt: new Map<string, number>(), shotAt: new Map<string, number>(), shake: 0, jetAt: 0, nades: new Map<number, Grenade>(), nadeSeq: 0, nadeAt: -1e9, nadesLeft: GRENADES_PER_LIFE });
   const banner = useRef<{ text: string; sub: string; at: number } | null>(null);
   const touch = useRef({ up: false, down: false, left: false, right: false, lookUp: false, lookDown: false });
@@ -270,7 +276,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       const sid = pred.newSid();
       const r = launchRocket(-sid, { id: m.id, x: m.x, y: m.y, z: m.z, a: m.a, p: m.p, crouch: m.crouch }, now);
       fx.current.rockets.set(-sid, { id: -sid, x: r.x, y: r.y, z: r.z, vx: r.vx, vy: r.vy, vz: r.vz, at: now });
-      socket.emit('fps_shoot', { a: m.a, p: m.p, vt, sid });
+      socket.emit('fps_shoot', { a: m.a, p: m.p, z: m.z, vt, sid });
       kick();
       return;
     }
@@ -285,11 +291,15 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     if (ps.hits.size) {
       fx.current.hitmark = now; fx.current.hitDeny = 0;
       playHit();
-      if (ps.head) playHeadshotDing();
-      fx.current.dmgNums.push({ v: Math.round(ps.dmg), head: ps.head, at: now });
-      if (fx.current.dmgNums.length > 8) fx.current.dmgNums.shift();
+      // Headshot ding + head damage number come from the server's verdict (onHit), never from the zero-spread
+      // prediction: the server rolls real spread, so a predicted head could land as a body hit or miss.
+      if (ps.head) headFx.predAt = now;
+      else {
+        fx.current.dmgNums.push({ v: Math.round(ps.dmg), head: false, at: now });
+        if (fx.current.dmgNums.length > 8) fx.current.dmgNums.shift();
+      }
     }
-    socket.emit('fps_shoot', { a: m.a, p: m.p, vt, sid });
+    socket.emit('fps_shoot', { a: m.a, p: m.p, z: m.z, vt, sid });
     kick();
   }
   /** Server said our predicted hit missed: quietly fade the marker and damage number (rare). */
@@ -318,7 +328,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     const join = () => {
       const qaBots = Number(new URLSearchParams(window.location.search).get('arenaBots')) || 0;
       const want = localStorage.getItem(MAP_KEY);
-      socket.timeout(8000).emit('fps_join', { ...(qaBots ? { qaBots } : {}), ...(want && MAPS[want] ? { map: want } : {}), w: loadoutRef.current }, (err: Error | null, ack?: { ok: boolean; id?: string; x?: number; y?: number; z?: number; a?: number; map?: string; error?: string; alive?: boolean; broke?: boolean }) => {
+      socket.timeout(8000).emit('fps_join', { ready: engineReady.current, ...(qaBots ? { qaBots } : {}), ...(want && MAPS[want] ? { map: want } : {}), w: loadoutRef.current }, (err: Error | null, ack?: { ok: boolean; id?: string; x?: number; y?: number; z?: number; a?: number; map?: string; error?: string; alive?: boolean; broke?: boolean }) => {
         if (err || !ack?.ok) return setStatus(ack?.error || 'Could not reach the arena.');
         if (ack.map) mapRef.current = mapById(ack.map);
         Object.assign(me.current, { id: ack.id, x: ack.x, y: ack.y, z: ack.z ?? 0, vz: 0, grounded: true, p: 0, a: ack.a, joined: true, alive: ack.alive !== false });
@@ -394,12 +404,18 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       }
       setBoard([...s.players, ...((s.roster ?? []) as NetPlayer[])].sort((a, b) => b.k - a.k || a.d - b.d));
     };
-    const onHit = (h: { by: string | null; target: string; cause: string }) => {
+    const onHit = (h: { by: string | null; target: string; cause: string; dmg?: number; head?: boolean }) => {
       const now = performance.now();
       fx.current.hitAt.set(h.target, now);
       if (h.by === me.current.id && h.target !== me.current.id) {
         // Already shown by the prediction? Don't double up; otherwise (spread luck, splash) show it now.
         if (now - fx.current.hitmark > 600 || fx.current.hitDeny) { fx.current.hitmark = now; fx.current.hitDeny = 0; playHit(); }
+        const n = headHitFeedback(h, now, headFx.predAt);
+        if (n) {
+          if (n.head) playHeadshotDing();
+          fx.current.dmgNums.push({ v: n.v, head: n.head, at: now });
+          if (fx.current.dmgNums.length > 8) fx.current.dmgNums.shift();
+        }
       }
       else if (h.target === me.current.id) {
         fx.current.hurt = now;
@@ -528,8 +544,9 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     // three.js is loaded on demand so it never weighs down the rest of the site.
     import('@/lib/arena3d').then(({ Arena3D: A }) => {
       if (cancelled) return;
-      try { g3 = new A(gl); raf = requestAnimationFrame(frame); } catch { setGlError('This browser could not start 3D graphics (WebGL).'); }
-    }).catch(() => setGlError('Could not load the 3D engine. Refresh to try again.'));
+      try { g3 = new A(gl); engineReady.current = true; socket.emit('fps_live'); raf = requestAnimationFrame(frame); } catch { setGlError('This browser could not start 3D graphics (WebGL).'); }
+    }).catch((e) => { if (!reloadOnceForChunkError(e)) setGlError('Could not load the 3D engine. Refresh to try again.'); });
+    let liveSentAt = 0;
     const r = new ArenaRenderer();
     const prevPos = new Map<string, { x: number; y: number; t: number }>();
     const tags = new TagVisibility();
@@ -547,6 +564,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       last = now;
       const map = mapRef.current;
       if (!g3) return;
+      // Heartbeat: the server only spawns/charges us while the 3D view is actually rendering.
+      if (now - liveSentAt > 2000) { liveSentAt = now; socket.emit('fps_live'); }
       g3.setMap(map);
       // Size: internal resolution follows the CSS size × devicePixelRatio (capped), or reduced in LO.
       const cssW = canvas.clientWidth || 480;

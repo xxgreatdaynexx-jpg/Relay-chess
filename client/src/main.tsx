@@ -6,8 +6,10 @@ import '@fontsource-variable/outfit';
 import { App } from './App';
 import './index.css';
 import { initSettings } from './lib/settings';
+import { installChunkReload } from './lib/chunkReload';
 
 initSettings();
+installChunkReload();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

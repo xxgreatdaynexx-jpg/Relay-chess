@@ -143,6 +143,12 @@ export async function createApp(): Promise<AppContext> {
         },
       }),
     );
+    // A hashed asset that isn't in this build (old tab after a deploy) is a real 404, never the SPA shell served as
+    // text/html: that made lazy chunks "load" as HTML and broke the 3D engine silently.
+    app.use((req, res, next) => {
+      if (isMissingAssetPath(req.path)) { res.setHeader('Cache-Control', 'no-store'); return res.status(404).type('text/plain').send('Not found'); }
+      next();
+    });
     app.use((req, res, next) => {
       if (req.method !== 'GET' && req.method !== 'HEAD') return next();
       // Always revalidate the shell so a deploy is picked up on the next load (no stale bundle).
@@ -174,4 +180,10 @@ export async function closeApp(ctx: AppContext): Promise<void> {
     });
   }
   resetRooms();
+}
+
+/** A request for a static file (hashed /assets/* or anything with a static extension) that express.static didn't find. */
+export function isMissingAssetPath(p: string): boolean {
+  if (p.startsWith('/api/') || p.startsWith('/socket.io')) return false;
+  return p.startsWith('/assets/') || /\.(?:m?js|css|map|wasm|woff2?|ttf|png|jpe?g|gif|svg|webp|avif|ico|glb|gltf|mp3|ogg|wav)$/i.test(p);
 }

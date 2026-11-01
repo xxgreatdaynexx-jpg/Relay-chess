@@ -39,6 +39,8 @@ export const nextInRotation = (id: string): string => MAP_ROTATION[(MAP_ROTATION
 export const FIRE_JITTER_MS = 25;
 /** A broke fighter re-checks the wallet this often (a refill lets them back in). */
 export const BROKE_RETRY_MS = 1000;
+/** How far (m) a shot's client-reported foot height may differ from the server's and still be used as the ray origin. */
+export const SHOT_Z_TOLERANCE = 0.6;
 /** 360 no-scope: an unscoped sniper kill after >= NOSCOPE_DEG of one-way spin within NOSCOPE_WINDOW_MS (humans only). */
 export const NOSCOPE_DEG = 330;
 export const NOSCOPE_WINDOW_MS = 1500;
@@ -126,7 +128,7 @@ const zeroShots = () => Object.fromEntries(WEAPON_ORDER.map((w) => [w, -1e9])) a
 export class ArenaWorld {
   readonly fighters = new Map<string, ArenaFighter>();
   /** Paid-spawn hook: charge for a spawn (first join and every respawn). Return false to keep the fighter dead (broke). */
-  spawnGate: ((f: ArenaFighter, now: number) => boolean) | null = null;
+  spawnGate: ((f: ArenaFighter, now: number) => boolean | 'wait') | null = null;
   strikes: Strike[] = [];
   drones = new Map<string, Drone>();
   /** RPG rockets in flight (server-simulated projectiles). */
@@ -272,8 +274,13 @@ export class ArenaWorld {
     f.earned = 0; f.matchJoinedAt = now;
     this.fighters.set(id, f);
     if (this.phase !== 'play') Object.assign(f, { alive: false, respawnAt: now, weapon: 'pistol' }); // late joiner: spectate until the next match
-    else if (this.spawnGate && !this.spawnGate(f, now)) Object.assign(f, { alive: false, broke: true, respawnAt: now + BROKE_RETRY_MS, weapon: 'pistol' });
-    else f.weapon = f.loadout;
+    else {
+      const g = this.spawnGate ? this.spawnGate(f, now) : true;
+      // 'wait': the client isn't rendering yet (3D engine still loading / failed): stay dead, uncharged, and re-check soon.
+      if (g === 'wait') Object.assign(f, { alive: false, broke: false, respawnAt: now + BROKE_RETRY_MS, weapon: 'pistol' });
+      else if (!g) Object.assign(f, { alive: false, broke: true, respawnAt: now + BROKE_RETRY_MS, weapon: 'pistol' });
+      else f.weapon = f.loadout;
+    }
     this.audit?.join(id, name);
     return f;
   }
@@ -437,7 +444,7 @@ export class ArenaWorld {
     return this.killcam.get(id, now);
   }
 
-  shoot(id: string, a: unknown, now: number, p?: unknown, viewT?: unknown, heavy?: unknown, sidIn?: unknown): ArenaEvent[] {
+  shoot(id: string, a: unknown, now: number, p?: unknown, viewT?: unknown, heavy?: unknown, sidIn?: unknown, zIn?: unknown): ArenaEvent[] {
     const sid = cleanSid(sidIn);
     const f = this.fighters.get(id);
     if (!f || !f.alive || this.phase === 'ended') return [];
@@ -487,6 +494,10 @@ export class ArenaWorld {
     }
     let shot: ReturnType<typeof fireWeapon>;
     let blocked = 0;
+    // Fire from the height the shooter actually saw (their predicted z mid-jump/landing), within a small tolerance:
+    // the server's copy of the jump arc lags by the input latency, which put the ray ~0.2-0.4 m off a 0.2 m head.
+    const serverZ = f.z;
+    if (typeof zIn === 'number' && Number.isFinite(zIn) && Math.abs(zIn - f.z) <= SHOT_Z_TOLERANCE) f.z = zIn;
     try {
       if (this.hasPerk(f.id, 'aimassist')) this.assistAim(f);
       const useSpec = this.hasPerk(f.id, 'aimassist') ? { ...spec, spread: spec.spread * ASSIST_SPREAD } : spec;
@@ -500,7 +511,7 @@ export class ArenaWorld {
         shot.hits.delete(tid); shot.heads.delete(tid); blocked += 1;
       }
     }
-    finally { for (const [o, x, y, z, c] of restore) { o.x = x; o.y = y; o.z = z; o.crouch = c; } }
+    finally { f.z = serverZ; for (const [o, x, y, z, c] of restore) { o.x = x; o.y = y; o.z = z; o.crouch = c; } }
     const events: ArenaEvent[] = [{
       ev: 'fps_shot',
       data: {
@@ -799,7 +810,11 @@ export class ArenaWorld {
       if (f.alive) this.history.record(f.id, now, f.x, f.y, f.z, !!f.crouch); else this.history.forget(f.id);
       if (f.alive && f.z <= KILL_Z) { f.alive = false; f.respawnAt = now; } // fell out of the world: never happens on valid maps
       if (!f.alive && this.phase !== 'play') continue; // sudden death / end screen: no respawns (and no spawn charges)
-      if (!f.alive && now >= f.respawnAt && this.spawnGate && !this.spawnGate(f, now)) { f.broke = true; f.respawnAt = now + BROKE_RETRY_MS; continue; }
+      if (!f.alive && now >= f.respawnAt && this.spawnGate) {
+        const g = this.spawnGate(f, now);
+        if (g === 'wait') { f.broke = false; f.respawnAt = now + BROKE_RETRY_MS; continue; } // client not live: no spawn, no charge
+        if (!g) { f.broke = true; f.respawnAt = now + BROKE_RETRY_MS; continue; }
+      }
       if (maybeRespawn(f, now, all, this.rand, this.map)) {
         f.moveSeq = undefined; f.moveCarry = 0; f.lastMove = now; f.physAt = now; // fresh movement state for the new life
         f.crouch = false;

@@ -3,6 +3,7 @@
  * three.js uses Y up, so world (x, y, z) maps to three (x, z, y). All textures are procedural (no external assets).
  */
 import { applySkin, tickSkins } from './skinRender';
+import { leanHeadCompensation, MODEL_HEAD_Y } from './soldierPose';
 import * as THREE from 'three';
 import type { ArenaMap, Material, Ramp } from '../../../shared/arenaMaps';
 import type { WeaponId } from '../../../shared/fps';
@@ -626,7 +627,7 @@ export class Arena3D {
     }
     add(new THREE.BoxGeometry(0.3, 0.58, 0.48), body, 0, 1.08, 0); // torso
     add(new THREE.BoxGeometry(0.16, 0.12, 0.5), dark, 0.02, 0.86, 0); // belt
-    add(new THREE.BoxGeometry(0.26, 0.26, 0.24), skin, 0, 1.53, 0); // head
+    add(new THREE.BoxGeometry(0.26, 0.26, 0.24), skin, 0, MODEL_HEAD_Y, 0); // head
     add(new THREE.BoxGeometry(0.29, 0.1, 0.27), body, 0, 1.68, 0); // helmet/cap
     add(new THREE.BoxGeometry(0.06, 0.06, 0.2), dark, 0.13, 1.56, 0); // goggles
     // Arms + gun hang off a shoulder pivot that follows the player's pitch.
@@ -787,6 +788,9 @@ export class Arena3D {
       rig.rotation.z = -0.12;
       s.legs[0].rotation.z = 1.2 + shuffle; s.legs[1].rotation.z = -1.1 - shuffle;
     }
+    // Leans rotate the rig about the feet, which swung the head 0.12-0.33 m forward of the server's head hitbox
+    // (crouch/run/sprint): shift the rig back so the drawn head always sits on the hitbox.
+    rig.position.x = leanHeadCompensation(rig.rotation.z);
     if (p.flinch) { rig.rotation.z += 0.22 * p.flinch; rig.rotation.x = Math.sin(p.t / 30) * 0.05 * p.flinch; }
   }
 
