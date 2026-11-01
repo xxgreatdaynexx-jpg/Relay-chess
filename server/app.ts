@@ -64,6 +64,15 @@ export async function createApp(): Promise<AppContext> {
   });
   app.get('/api/build', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(buildInfo()); });
 
+  app.get('/api/hiscores', async (req, res) => {
+    try {
+      const skill = typeof req.query.skill === 'string' ? req.query.skill : 'overall';
+      const { getSkills } = await import('./skills.js');
+      res.set('Cache-Control', 'no-store');
+      res.json({ skill, rows: await getSkills().hiscores(skill) });
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+  });
+
   app.get('/api/leaderboard', async (req, res) => {
     const board = getLeaderboard();
     await board.refresh();

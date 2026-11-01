@@ -1,7 +1,8 @@
 import { BuildTag, ChangelogButton } from './Changelog';
 import { RequestsButton } from './Requests';
 import { useEffect, useRef, useState } from 'react';
-import { socket } from '@/lib/net';
+import { request, socket } from '@/lib/net';
+import { SkillGrid, type SkillProfile } from './Skills';
 import { loadAuth, useAccount } from '@/lib/auth';
 import { openAccount } from '@/lib/settings';
 import { TopTab } from '@/components/TopTabs';
@@ -19,7 +20,7 @@ const readSeen = (): number | null => { try { const v = localStorage.getItem(SEE
 const writeSeen = (id: number) => { try { localStorage.setItem(SEEN_KEY, String(id)); } catch { /* blocked */ } };
 const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
-interface Profile { chess?: { wins: number; losses: number; draws: number }; arena?: { kills: number; deaths: number; kd: number } }
+interface Profile { skills?: SkillProfile | null; chess?: { wins: number; losses: number; draws: number }; arena?: { kills: number; deaths: number; kd: number } }
 
 export function ChatDrawer() {
   const me = useAccount();
@@ -102,11 +103,11 @@ export function ChatDrawer() {
     const tok = loadAuth()?.token;
     if (tok) headers['X-Relay-Session'] = tok;
     const get = async (url: string) => { try { return ((await (await fetch(url, { headers })).json()) as { rows: Array<Record<string, unknown> & { name: string }> }).rows; } catch { return []; } };
-    const [chess, arena] = await Promise.all([get('/api/leaderboard'), get('/api/arena-leaderboard')]);
+    const [chess, arena, skills] = await Promise.all([get('/api/leaderboard'), get('/api/arena-leaderboard'), request('skills_get', { name: u.name }).then((r) => (r.ok ? (r as unknown as SkillProfile) : null)).catch(() => null)]);
     const same = (r: { name: string }) => r.name.toLowerCase() === u.name.toLowerCase();
     const c = chess.find(same) as Profile['chess'] | undefined;
     const a = arena.find(same) as Profile['arena'] | undefined;
-    setProfile({ chess: c, arena: a });
+    setProfile({ chess: c, arena: a, skills });
   }
 
   function send(e: React.FormEvent) {
@@ -155,12 +156,14 @@ export function ChatDrawer() {
           </ul>
           {picked && (
             <div className="chat-profile" data-testid="chat-profile">
-              <div className="chat-head"><b>{picked.name}</b><button type="button" className="acct-close" aria-label="Close profile" onClick={() => setPicked(null)}>✕</button></div>
+              <div className="chat-head"><b>{picked.name}{profile?.skills ? <span className="chat-qa" data-testid="profile-level-tag" title={`Total level ${profile.skills.total}`}>Lv {profile.skills.total}</span> : null}</b><button type="button" className="acct-close" aria-label="Close profile" onClick={() => setPicked(null)}>✕</button></div>
               <div className="chat-dim">{pickedUser ? pickedUser.where : 'Offline'}</div>
               {!profile ? <div className="chat-dim">Loading stats…</div> : (
                 <div className="chat-stats">
                   <span>Chess: {profile.chess ? `${profile.chess.wins}W ${profile.chess.losses}L ${profile.chess.draws}D` : 'no rated games'}</span>
                   <span>Arena: {profile.arena ? `${profile.arena.kills} kills · K/D ${profile.arena.kd}` : 'no matches'}</span>
+                  {profile.skills && <span data-testid="profile-total-level">🧭 Total level {profile.skills.total} · {profile.skills.title}</span>}
+                  {profile.skills && <div className="mt-1" data-testid="profile-skills"><SkillGrid profile={profile.skills} compact /></div>}
                 </div>
               )}
               {pickedUser?.table && pickedUser.name !== me && (

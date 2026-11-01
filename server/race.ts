@@ -14,6 +14,7 @@ import pg from 'pg';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
+import { awardXp } from './skills.js';
 import { px } from './price-index.js';
 import { setDriveHook, keyOf } from './cars.js';
 import { CAR_BY_ID } from '../shared/cars.js';
@@ -47,6 +48,7 @@ export class Speedway {
     for (const e of evs) {
       if (e.kind !== 'lap') { out.push(e); continue; }
       const best = await this.record(name, carId, e.ms!, t);
+      awardXp(name, 'racing', best ? 50 : 30);
       out.push({ ...e, best, text: `Lap ${fmtLap(e.ms!)}${best ? ' · personal best today!' : ''}` });
     }
     return out;

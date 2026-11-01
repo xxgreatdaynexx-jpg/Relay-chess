@@ -4,6 +4,7 @@ import { GameError } from './errors.js';
 import { getBank } from './casino-store.js';
 import { beginBlunderCheck } from './blunders.js';
 import { getChessStats } from './chess-stats.js';
+import { awardXp } from './skills.js';
 import { peekHint, requestHint } from './hints.js';
 import { getCheckersLeaderboard, getLeaderboard, normalizeName } from './leaderboard.js';
 import { CheckersGame } from './checkers-game.js';
@@ -783,6 +784,8 @@ export class Room {
       white: named('white'),
       black: named('black'),
     });
+    // Chess skill: every human in a finished game (bot games return above) — win 60, draw 40, loss 25
+    for (const side of ['white', 'black'] as const) for (const n of named(side)) awardXp(n, 'chess', result.winner === side ? 60 : result.winner ? 25 : 40);
   }
 }
 

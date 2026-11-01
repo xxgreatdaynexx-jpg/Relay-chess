@@ -6,6 +6,13 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T13:00:00-06:00', title: 'Skills: level up like RuneScape', bullets: [
+    'New 🧭 Skills tab: nine skills from level 1 to 99 on the classic RuneScape XP curve, plus your total level and a title.',
+    'Every activity trains a skill: Mining (break ore), Engineering (factory output), Farming (harvests), Racing (Speedway laps), Combat (Arena kills and wins), Trading (stocks and Market), Gambling (casino bets), Chess (finished games vs people) and Property (buying real estate, paying tax).',
+    'XP drops pop up as you earn it, and you get a level-up fanfare. Hover a skill to see XP to the next level.',
+    'Hiscores for every skill and overall, and skills now show on player profiles in the chat list.',
+    'Skills are cosmetic (titles and badges). They never change casino odds, payouts or chips.',
+  ] },
   { commit: '', at: '2026-11-01T12:40:00-06:00', title: 'Arena: head shots fixed, and no spawn fees when the game can’t load', bullets: [
     'Head shots land again on every gun. Players who were running, sprinting or crouching were drawn with their head leaning forward of where it really is, so a shot at the head you could see often missed. Their head is now drawn exactly where it counts.',
     'Shooting while jumping or landing now fires from the height you actually see, so head shots in the air register too.',

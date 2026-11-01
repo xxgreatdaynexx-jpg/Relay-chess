@@ -3,6 +3,7 @@ import { px } from './price-index.js';
 import type { Server, Socket } from 'socket.io';
 import { getMines, MineError, MINES_OFFLINE_MSG } from './mines.js';
 import { getBank } from './casino-store.js';
+import { awardXp } from './skills.js';
 import { playerKey } from './skins.js';
 import { stackKey, recipeById, type Stack, type ItemType } from '../shared/mines.js';
 import { MAX_CATCHUP_MS, TICK_MS, advance, canPlace, contents, FLOOR_LEVELS, frecipe, gridOf, isItemKey, isKind, KINDS, MAX_ENTS, newState, type Dir, type Ent, type FState, type Kind, type Storage } from '../shared/factory.js';
@@ -49,7 +50,12 @@ export class FactoryWorld {
     s.floor = Math.max(1, lv);
     const seen = s.seen ?? s.at; const until = Math.min(now, seen + MAX_CATCHUP_MS);
     const before = s.at;
-    if (until > s.at) advance(s, this.storage(account), until, MAX_CATCHUP_MS);
+    if (until > s.at) {
+      // Engineering XP: 2 per bar/good the factory adds to storage while catching up (capped per hour/day in skills.ts)
+      const st = this.storage(account); let made = 0;
+      advance(s, { get: st.get, add: (key, d) => { if (d > 0 && !key.startsWith('ore:')) made += d; st.add(key, d); } }, until, MAX_CATCHUP_MS);
+      if (made > 0) awardXp(account, 'engineering', made * 2);
+    }
     if (now - s.at >= TICK_MS) s.at = now - ((now - s.at) % TICK_MS); // idle past the 8h window: skip, no production
     if (owner) s.seen = now;
     if (s.at !== before || owner) this.mark(account);

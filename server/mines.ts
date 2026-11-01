@@ -4,6 +4,7 @@ import { px, priceIndex } from './price-index.js';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
+import { awardXp } from './skills.js';
 import { MinesLeaderboard, setMinesBoard } from './mines-board.js';
 import { getVault, playerKey } from './skins.js';
 import { guestName, lineOfSight, moveAllowance, MOVE_CARRY_MAX, normAngle, clampPitch, canStand, validateMove, eyeHeightOf, type Body } from '../shared/fps.js';
@@ -444,6 +445,7 @@ export function registerMines(io: Server, socket: Socket): void {
   socket.on('mines_hit', (p: unknown, ack?: Ack) => {
     try {
       const r = world.hit(socket.id, body(p).node, Date.now());
+      if (r.broke && r.ore) awardXp(account(), 'mining', ORES[r.ore].hits * 5); // XP scales with ore hardness
       socket.to(roomOf(me()!.cave)).emit('mines_fx', { node: r.node, hp: r.hp, broke: r.broke, by: socket.id });
       ack?.({ ok: true, ...r, ...(r.broke ? packMsg() : {}) });
     } catch (e) { ack?.({ ok: false, error: (e as Error).message }); }

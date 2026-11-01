@@ -17,6 +17,7 @@ import { registerRealEstate } from './realEstate.js';
 import { registerCars } from './cars.js';
 import { registerRace } from './race.js';
 import { registerFarm } from './farm.js';
+import { registerSkills, startSkills } from './skills.js';
 import { registerMines } from './mines.js';
 import { registerFactory } from './factory.js';
 import { registerConquest } from './conquest.js';
@@ -172,6 +173,7 @@ export function registerSockets(io: Server): void {
   startMaintenance(io);
   startCasino(io);
   startWallet(io);
+  startSkills(io);
   startPresence(io);
 
   io.use((socket, next) => {
@@ -214,6 +216,7 @@ export function registerSockets(io: Server): void {
     registerCars(io, socket);
     registerRace(io, socket);
     registerFarm(io, socket);
+    registerSkills(io, socket);
     registerMines(io, socket);
     registerFactory(io, socket);
     registerChat(io, socket);

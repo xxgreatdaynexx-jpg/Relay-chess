@@ -24,6 +24,7 @@ import { AccountButton, AccountPanel } from '@/components/AccountPanel';
 import { socket } from '@/lib/net';
 import { WorldMap } from '@/components/WorldMap';
 import { WalletButton } from '@/components/WalletButton';
+import { SkillsPanel } from '@/components/Skills';
 import { TournamentScreen } from '@/components/TournamentScreen';
 import { TournamentPing } from '@/components/TournamentPing';
 import { tournamentFromLocation } from '@/lib/tournament';
@@ -210,6 +211,7 @@ export function App() {
         <FactoryPanel />
         <MarketPage />
         <StocksPage />
+        <SkillsPanel />
         <SkinsPanel />
         <ConquestPanel />
       </div>
