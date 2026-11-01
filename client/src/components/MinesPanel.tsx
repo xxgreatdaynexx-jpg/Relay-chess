@@ -10,7 +10,7 @@ const BG_FRAME_MS = 250;
 import { useEffect, useRef, useState } from 'react';
 import { socket } from '@/lib/net';
 import { mouseLook, readLook, LOCK_KEYS, arenaKey, crouchHeld, shouldBlockShortcut } from '@/lib/arenaInput';
-import { playPickaxe, unlockSounds } from '@/lib/sounds';
+import { playPickaxe, playPickup, unlockSounds } from '@/lib/sounds';
 import type { Mines3D, MinerView } from '@/lib/mines3d';
 import { MINE_CAVE_EVENT, CAVES, CAVE_DEFS, isCave, type CaveId, type MineNode, BACKPACK_CAP, NODE_R, ORES, ORE_ORDER, REACH, SWING_MS, isOre, inExit, priceOf, type Stack } from '../../../shared/mines';
 import { canStand, clampPitch, eyeHeightOf, moveHorizontal, speedOf, stepVertical, tryJump, type Body } from '../../../shared/fps';
@@ -76,6 +76,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
   const hp = useRef<number[]>(MINE_NODES.map((n) => ORES[n.ore].hits));
   const me = useRef({ id: '', x: MINE_MAP.spawns[0][0], y: MINE_MAP.spawns[0][1], z: 0, vz: 0, grounded: true, crouch: false, sprint: false, a: 0, p: 0, walk: 0, lastSwing: 0, joined: false });
   const three = useRef<Mines3D | null>(null);
+  const [loot, setLoot] = useState('');
   const flash = (t: string) => { setToast(t); window.setTimeout(() => setToast((c) => (c === t ? '' : c)), 2200); };
 
   useEffect(() => {
@@ -162,7 +163,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
     three.current?.swing();
     const node = aimNode(MINE_NODES, m.x, m.y, m.z + eyeHeightOf(m), m.a, m.p, hp.current);
     if (node < 0) { playPickaxe('swing'); return; }
-    socket.timeout(3000).emit('mines_hit', { node }, (err: Error | null, r?: { ok: boolean; error?: string; hp: number; broke: boolean; full?: boolean; ore?: string } & Partial<PackMsg>) => {
+    socket.timeout(3000).emit('mines_hit', { node }, (err: Error | null, r?: { ok: boolean; error?: string; hp: number; broke: boolean; full?: boolean; ore?: string; drop?: { kind: string; id: string } } & Partial<PackMsg>) => {
       if (err || !r) return;
       if (!r.ok) { playPickaxe('swing'); if (r.error && !/fast/.test(r.error)) flash(r.error); return; }
       if (r.full) { flash('Pack full! Head back to the EXIT lift to bank your haul.'); return; }
@@ -170,6 +171,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
       three.current?.burstAt(node, r.broke);
       hp.current[node] = r.broke ? -1 : r.hp; three.current?.setNodes(hp.current);
       if (r.broke && r.pack) { setPack({ pack: r.pack, load: r.load ?? 0, cap: r.cap ?? BACKPACK_CAP, quote: r.quote ?? null }); if (r.ore && isOre(r.ore)) flash(`+1 ${ORES[r.ore].name}`); }
+      if (r.drop) { setLoot(r.drop.kind === 'key' ? '🗝️ Found a Key!' : '🧰 Found a Chest!'); playPickup(); window.setTimeout(() => setLoot(''), 3200); }
     });
   }
   function bankHaul() {
@@ -216,6 +218,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
           <div className="mines-cross" aria-hidden="true">{aimed ? '⊕' : '+'}</div>
           {aimed && <div className="mines-aim" style={{ color: ORES[aimed.ore].color }}>{ORES[aimed.ore].name} · {Math.max(0, hp.current[aim])}/{ORES[aimed.ore].hits}</div>}
           {toast && <div className="mines-toast" data-testid="mines-toast">{toast}</div>}
+          {loot && <div className="mines-toast mines-loot" data-testid="mines-loot">{loot}</div>}
           {glError && <div className="mines-toast">{glError}</div>}
           <div className="mines-haul" data-testid="mines-haul">🎒 {pack.pack.reduce((t, s) => t + s.qty, 0)} carried · ~🪙{carriedWorth}{inExit(me.current.x, me.current.y) ? ' · at EXIT' : ''}</div>
           <div className="mines-hint">{status} · WASD move · Shift sprint · Ctrl/C crouch · Space jump · Esc release</div>

@@ -6,6 +6,8 @@ import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { bootAttach, reconnectMsg, setBootState } from './boot-retry.js';
 import { isKnife, skinName, CASE_NAME, DROP_CASE_CHANCE, DROP_MIN_MS, KEY_NAME, rollSkin, SKIN_BY_ID, SKINS, skinToken, type ItemKind, type SkinDef, type SkinItem } from '../shared/skins.js';
 
+/** Chance that breaking an ore node in any mine drops a case (chest) or key. */
+export const MINE_DROP_CHANCE = 0.05;
 export interface StoredItem extends Omit<SkinItem, 'locked'> { locked?: string; owner: string; ownerName: string; sourceKey: string; gone: boolean }
 export interface ItemEvent { item: string; kind: string; from: string | null; to: string | null; memo: string; at: number }
 export interface Stmt { sql: string; args: unknown[] }
@@ -110,6 +112,21 @@ export class ItemVault {
   }
   view(i: StoredItem): SkinItem { return { id: i.id, kind: i.kind, skin: i.skin, float: i.float, seed: i.seed, at: i.at, source: i.source, equipped: i.equipped, ...(i.locked ? { locked: true } : {}) }; }
   inventory(name: string): SkinItem[] { this.guard(); return this.owned(name).map((i) => this.view(i)); }
+
+  /**
+   * Mines bonus: each ore node a signed-in miner breaks rolls MINE_DROP_CHANCE for a case (chest) or key, 50/50.
+   * Idempotent by sourceKey (one per break). Refused while inventory is offline (fail closed, nothing minted).
+   */
+  dropForMine(name: string, sourceKey: string, memo: string, roll: () => number = this.rng): SkinItem | null {
+    if (this.offline) return null;
+    if (roll() >= MINE_DROP_CHANCE) return null;
+    const kind: ItemKind = roll() < 0.5 ? 'case' : 'key';
+    const it = this.make(name, kind, sourceKey, 'mine-drop');
+    if (!it) return null;
+    this.commit([it], [{ item: it.id, kind: 'drop', from: null, to: it.owner, memo, at: Date.now() }]);
+    console.log(`[skins] mine drop: ${name} ${kind} (${memo})`);
+    return this.view(it);
+  }
 
   /** One drop per signed-in human per match: 50% case, 50% key. */
   dropForMatch(matchId: string, players: Array<{ name: string; ms: number; kills: number; deaths: number }>): Array<{ name: string; item: SkinItem }> {

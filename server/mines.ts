@@ -461,8 +461,17 @@ export function registerMines(io: Server, socket: Socket): void {
     try {
       const r = world.hit(socket.id, body(p).node, Date.now());
       if (r.broke && r.ore) awardXp(account(), 'mining', ORES[r.ore].hits * 5); // XP scales with ore hardness
+      let drop: { kind: string; id: string } | undefined;
+      const mm = me();
+      if (r.broke && r.ore && mm?.account) {
+        try {
+          const now = Date.now();
+          const it = getVault().dropForMine(mm.account, `mine-drop:${playerKey(mm.account)}:${mm.cave}:${r.node}:${now}`, `${r.ore} in ${mm.cave}`);
+          if (it) drop = { kind: it.kind, id: it.id };
+        } catch (e) { console.warn('[mines] drop skipped:', (e as Error).message); }
+      }
       socket.to(roomOf(me()!.cave)).emit('mines_fx', { node: r.node, hp: r.hp, broke: r.broke, by: socket.id });
-      ack?.({ ok: true, ...r, ...(r.broke ? packMsg() : {}) });
+      ack?.({ ok: true, ...r, ...(r.broke ? packMsg() : {}), ...(drop ? { drop } : {}) });
     } catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
   });
   socket.on('mines_pack', (_p: unknown, ack?: Ack) => ack?.({ ok: true, ...packMsg() }));

@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T14:20:00-06:00', title: 'Mines: find Keys and Chests', bullets: [
+    'Every ore you break in any mine has a 5% chance to drop a Key or a Chest (50/50) straight into your inventory.',
+    'Sign in to get drops; guests don\'t get them.',
+  ] },
   { commit: '', at: '2026-11-01T13:50:00-06:00', title: 'Fishing is now a real 3D game', bullets: [
     'At the Fishing Dock, press “🎮 Play 3D fishing” to stand on the pier at night, with moonlight on the water, reeds, lily pads and the glowing boathouse.',
     'Aim with the mouse (or A/D), then hold to charge your cast and let go. Watch the line fly and the bobber splash down, then wait for it to dip and strike fast.',
