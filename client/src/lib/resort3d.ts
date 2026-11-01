@@ -46,8 +46,8 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
     vertexShader: 'varying vec3 vp; void main(){ vp = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
     fragmentShader: `varying vec3 vp; void main(){ float y = vp.y;
       vec3 gold = vec3(1.0,0.48,0.12); vec3 coral = vec3(0.95,0.22,0.16); vec3 mag = vec3(0.45,0.09,0.28); vec3 indigo = vec3(0.04,0.03,0.16);
-      vec3 c = mix(gold, coral, smoothstep(0.0,0.08,y)); c = mix(c, mag, smoothstep(0.08,0.25,y)); c = mix(c, indigo, smoothstep(0.25,0.65,y));
-      vec3 sd = normalize(vec3(0.0,0.05,1.0)); float s = max(dot(vp, sd), 0.0);
+      vec3 c = mix(gold, coral, smoothstep(0.0,0.04,y)); c = mix(c, mag, smoothstep(0.04,0.16,y)); c = mix(c, indigo, smoothstep(0.16,0.5,y));
+      vec3 sd = normalize(vec3(0.25,0.06,-1.0)); // sun sets behind the town, framed by the default camera float s = max(dot(vp, sd), 0.0);
       c += vec3(1.0,0.75,0.4)*pow(s,900.0)*6.0 + vec3(1.0,0.45,0.15)*pow(s,24.0)*0.6 + vec3(0.9,0.3,0.2)*pow(s,4.0)*0.15;
       if (y < 0.0) c = gold*0.9; gl_FragColor = vec4(c,1.0);
       #include <tonemapping_fragment>
@@ -56,10 +56,10 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   disposables.push(skyM); scene.add(new THREE.Mesh(geo(new THREE.SphereGeometry(800, 32, 16)), skyM));
   scene.fog = new THREE.Fog(0xd8743e, 420, 1100); // warm haze, far enough that the town keeps its colour
   const camera = new THREE.PerspectiveCamera(38, 1, 0.5, 1700);
-  const home = new THREE.Vector3(-40, 120, 205); camera.position.copy(home);
+  const home = new THREE.Vector3(-40, 72, 240); const homeT = new THREE.Vector3(0, 10, -30); // low golden-hour angle so the sunset sky shows above the town camera.position.copy(home);
   const controls = new OrbitControls(camera, canvas);
-  controls.target.set(0, 0, 0); controls.enableDamping = true; controls.dampingFactor = 0.08;
-  controls.minDistance = 30; controls.maxDistance = 360; controls.maxPolarAngle = 1.25; controls.minPolarAngle = 0.35;
+  controls.target.copy(homeT); controls.enableDamping = true; controls.dampingFactor = 0.08;
+  controls.minDistance = 30; controls.maxDistance = 360; controls.maxPolarAngle = 1.36; controls.minPolarAngle = 0.35;
   controls.enablePan = true; controls.screenSpacePanning = false; controls.panSpeed = 1.1; controls.autoRotate = false;
   controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
   controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
@@ -256,7 +256,7 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   return {
     setFarm, setOwned, lotIds,
     setRunning(v: boolean) { running = v; clock.getDelta(); },
-    reset() { camera.position.copy(home); controls.target.set(0, 0, 0); },
+    reset() { camera.position.copy(home); controls.target.copy(homeT); },
     dispose() { cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
   };
 }

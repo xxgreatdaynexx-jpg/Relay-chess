@@ -1822,7 +1822,7 @@ html, body { overflow-x: clip; }
   linear-gradient(180deg, #3a1d14 0%, #6e2f1c 38%, #1f3a2c 62%, #0f241b 100%); }
 .resort-floor::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 38%;
   background: repeating-linear-gradient(45deg, rgba(216,178,90,.08) 0 14px, transparent 14px 28px); pointer-events: none; }
-.resort-floor-bar { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; z-index: 1;
+.resort-floor-bar { position: absolute; top: 64px; right: 16px; /* clear of the game panel, which opens top-left */ display: flex; align-items: center; gap: 10px; z-index: 1;
   padding: 8px 14px; border-radius: 12px; background: linear-gradient(160deg, #fffaf0, #f0e2c2); color: #2a2016; border: 2px solid #d8b25a; box-shadow: 0 6px 24px #0006; }
 .resort-floor-bar b { color: #8a6418; font-family: Georgia, serif; letter-spacing: .06em; }
 .resort-floor-bar button { padding: 5px 10px; border-radius: 8px; background: #fff; border: 1px solid #d8b25a; color: #2a2016; font-weight: 700; }
