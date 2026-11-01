@@ -12,9 +12,11 @@
  * floor count for buildings, each clamped to 0.8..1.25. Rounded to 500. Landmarks have a fixed price.
  * Tax: 0.5% of list price per UTC day (rounded up), charged once a day. 3 unpaid days in a row = repossessed, no refund.
  * Sell back to the city: 70% of list price.
+ * Farmland (Farm district, shared/farm.ts): 180 per tile + 500, rounded to 500 (4x4 = 3,500 ... 12x10 = 22,000).
  */
 import { cityFill, landmarks, LANDMARK_IDS, type OBB } from './worldLayout.js';
 import { HOUSING_TYPES } from './housing.js';
+import { farmPlots, farmPrice, plotId } from './farm.js';
 
 export const TAX_RATE = 0.005;
 export const SELL_BACK = 0.7;
@@ -31,7 +33,7 @@ export const LANDMARK_LABEL: Record<string, string> = {
 const PATCH_LABEL: Record<string, string> = { lot: 'Empty lot', park: 'Park', plaza: 'Plaza' };
 const PATCH_REF: Record<string, number> = { lot: 13 * 13 * 0.95, park: 13 * 13 * 0.95, plaza: 81 * 0.95 };
 
-export type PropertyKind = 'building' | 'patch' | 'landmark';
+export type PropertyKind = 'building' | 'patch' | 'landmark' | 'farm';
 export interface Property extends OBB { id: string; kind: PropertyKind; type: string; label: string; price: number; h?: number }
 
 const clamp = (x: number) => Math.min(1.25, Math.max(0.8, x));
@@ -53,6 +55,8 @@ export function properties(): Property[] {
     out.push({ x: h.x, z: h.z, w: h.w, d: h.d, rot: h.rot, h: h.h, id: `b:${t.id}:${pos(h)}`, kind: 'building', type: t.id, label: t.label, price });
   }
   for (const p of patches) out.push({ x: p.x, z: p.z, w: p.w, d: p.d, rot: p.rot, id: `p:${p.kind}:${pos(p)}`, kind: 'patch', type: p.kind, label: PATCH_LABEL[p.kind] ?? p.kind, price: round500(BASE_PRICE[p.kind]! * clamp((p.w * p.d) / PATCH_REF[p.kind]!)) });
+  // Farm district (shared/farm.ts): farmland plots, priced by tile count.
+  for (const f of farmPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: plotId(f.n), kind: 'farm', type: 'farmland', label: `Farm plot #${f.n} (${f.cols}×${f.rows})`, price: farmPrice(f.cols * f.rows) });
   cache = out; byId = new Map(out.map((p) => [p.id, p])); return out;
 }
 export const propertyById = (id: unknown): Property | undefined => { properties(); return typeof id === 'string' ? byId!.get(id) : undefined; };

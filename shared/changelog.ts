@@ -6,13 +6,19 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-01T01:45:00-06:00', title: 'Car dealership & driving', bullets: [
+  { commit: '', at: '2026-11-01T03:30:00-06:00', title: 'Farm district', bullets: [
+    'A new farm district sits on the east edge of the map, with fenced fields, barns and silos. Its 20 farm plots are farmland you can buy, from 4×4 plots at about 3,500 chips up to a 12×10 field at about 22,000. Prices follow the daily price index, and farmland pays the usual property tax.',
+    'Click a plot you own to open your farm. Pick a seed from the shop and plant tiles one at a time or all at once. Crops grow in real time on the server clock.',
+    'There are 9 crops, from strawberries (2 minutes) to sunflowers (12 hours). Slower crops are worth more. Harvest within twice the grow time, or the crop withers and is lost.',
+    'A harvest always gives back what the seeds cost. Profit pays in full for the first 500 chips each day, then at half rate, then at a tenth, so the daily cap is about 1,350 chips. Owned fields show their crops on the map, and you can visit anyone\'s farm to look around.',
+  ] },
+  { commit: '4f82d28', at: '2026-11-01T01:45:00-06:00', title: 'Car dealership & driving', bullets: [
     'Chud Motors is open on the city map: 20 cars from a stolen shopping cart (800 chips) to the Chudmobile hypercar (250,000), each with colour options, stats and a 3D preview. Prices follow the inflation index.',
     'Own as many cars as you like (up to 12) and pick your active one. Cars count toward your Bank assets, and you can sell one back for 60% of today\'s price (down 0.5% a day, never below 40%).',
     'Hit Drive on the city map to drive your car around town: WASD or arrow keys, or the on-screen pad on phones. Roll up to a building and press E to go in, Esc to park.',
     'Everyone on the city map sees other players driving, with name tags.',
   ] },
-  { commit: '', at: '2026-11-01T01:45:00-06:00', title: 'City real estate', bullets: [
+  { commit: '13ff030', at: '2026-11-01T01:45:00-06:00', title: 'City real estate', bullets: [
     'Every building, empty lot, park and plaza on the city map is now for sale. Click one to see its deed: price, owner, daily property tax, and a Buy button.',
     'Prices are steep and follow the daily price index: empty lots from about 6,500 chips, homes 9,500 to 23,000, row houses 20,000 to 42,000, apartment blocks 42,000 to 90,000 and towers 100,000 to 180,000.',
     'Landmarks are trophy deeds from 500,000 up to 2,000,000 chips. Owning one is bragging rights only, and the building stays open to everyone.',

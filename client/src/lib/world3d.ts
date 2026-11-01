@@ -5,6 +5,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
+import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, TILE } from '../../../shared/farm';
 import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN } from './worldLayout';
 
 import { WORLD_SPOTS } from './worldSpots';
@@ -350,6 +351,57 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   };
   let parkDead = false;
   void fetch('/api/trailer-park').then((r) => r.json()).then((j: { lots?: { lot: number; name: string }[] }) => { if (!parkDead && Array.isArray(j?.lots)) addTrailers(j.lots); }).catch(() => {});
+  // Farm district (shared/farm.ts): a grass apron east of the plate, dirt lanes, fenced fields (farmland properties),
+  // barns and silos. Crops on owned plots come from /api/farm (setFarm). Toned-down night palette, a little warm glow.
+  const farmTiles = new Map<string, number>(); // plot id -> first index into the crop instanced mesh
+  const crops = (() => {
+    const apron = new THREE.Mesh(geo(new THREE.BoxGeometry(FARM_X1 - FARM_X0, 3, FARM_Z1 - FARM_Z0)), [mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a8a40, roughness: 1, emissive: 0x0d3412, emissiveIntensity: 0.6 }), mat({ color: 0x2a1c12 }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c })]);
+    apron.position.set((FARM_X0 + FARM_X1) / 2 + 0.01, -1.51, (FARM_Z0 + FARM_Z1) / 2); scene.add(apron);
+    const dirt = mat({ color: 0x6a5038, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    for (const ln of FARM_LANES) { const [a, b] = [ln[0], ln[ln.length - 1]]; const m = new THREE.Mesh(geo(new THREE.BoxGeometry(FARM_LANE_W, 0.05, Math.abs(b[1] - a[1]))), dirt); m.position.set(a[0], 0.05, (a[1] + b[1]) / 2); scene.add(m); }
+    const plots = farmPlots(); const d = new THREE.Object3D();
+    const soil = new THREE.InstancedMesh(unitBox, mat({ color: 0x5a3e28, roughness: 1 }), plots.length);
+    plots.forEach((p, i) => { d.position.set(p.x, 0.07, p.z); d.scale.set(p.w - 0.8, 0.14, p.d - 0.8); d.rotation.set(0, 0, 0); d.updateMatrix(); soil.setMatrixAt(i, d.matrix); });
+    soil.userData.props = plots.map((p) => plotId(p.n)); pickables.push(soil); scene.add(soil);
+    plots.forEach((p) => propTop.set(plotId(p.n), [p.x, 0.6, p.z]));
+    // furrows: a faint darker stripe per tile row
+    const nf = plots.reduce((a, p) => a + p.rows, 0); const fur = new THREE.InstancedMesh(unitBox, mat({ color: 0x3e2a1a, roughness: 1 }), nf); let k = 0;
+    for (const p of plots) for (let r = 0; r < p.rows; r++) { d.position.set(p.x, 0.15, p.z - (p.rows * TILE) / 2 + TILE * (r + 0.5)); d.scale.set(p.cols * TILE - 0.3, 0.03, 0.7); d.updateMatrix(); fur.setMatrixAt(k++, d.matrix); }
+    scene.add(fur);
+    // fences: two rails per side + corner posts
+    const rails = new THREE.InstancedMesh(unitBox, mat({ color: 0x8a6a48, roughness: 0.9 }), plots.length * 8); const posts = new THREE.InstancedMesh(unitBox, mat({ color: 0x6a4e34 }), plots.length * 4); k = 0; let q = 0;
+    for (const p of plots) { const hw = p.w / 2 - 0.2, hd = p.d / 2 - 0.2;
+      for (const y of [0.35, 0.75]) for (const [x, z, w, dd] of [[p.x, p.z - hd, p.w - 0.4, 0.08], [p.x, p.z + hd, p.w - 0.4, 0.08], [p.x - hw, p.z, 0.08, p.d - 0.4], [p.x + hw, p.z, 0.08, p.d - 0.4]] as const) { d.position.set(x, y, z); d.scale.set(w, 0.08, dd); d.updateMatrix(); rails.setMatrixAt(k++, d.matrix); }
+      for (const [x, z] of [[-hw, -hd], [hw, -hd], [-hw, hd], [hw, hd]]) { d.position.set(p.x + x, 0.5, p.z + z); d.scale.set(0.2, 1, 0.2); d.updateMatrix(); posts.setMatrixAt(q++, d.matrix); } }
+    scene.add(rails, posts);
+    // barns (red, white trim, warm window glow) and silos
+    for (const b of BARNS) { const g = new THREE.Group();
+      g.add(box(b.w, 4.2, b.d, mat({ color: 0x8a2a22, roughness: 0.85 })));
+      const roof = new THREE.Mesh(roofGeo, mat({ color: 0x3a3a40, roughness: 0.8, flatShading: true })); roof.scale.set(b.w + 0.4, 2.2, b.d + 0.4); roof.position.y = 4.2; roof.rotation.y = Math.PI / 2; g.add(roof);
+      g.add(box(3, 2.8, 0.1, mat({ color: 0xe8e0d0, emissive: 0xffc070, emissiveIntensity: 0.25 * NEON }), 0, 0, -b.d / 2 - 0.05));
+      g.add(box(1.2, 0.8, 0.1, mat({ color: 0xffd08a, emissive: 0xffb050, emissiveIntensity: 0.7 * NEON }), 0, 3.1, -b.d / 2 - 0.05));
+      g.position.set(b.x, 0, b.z); scene.add(g); }
+    const siloMat = mat({ color: 0xb8bcc4, roughness: 0.5, metalness: 0.4 });
+    for (const [x, z] of SILOS) { const c = new THREE.Mesh(geo(new THREE.CylinderGeometry(1.5, 1.5, 7, 16)), siloMat); c.position.set(x, 3.5, z); const dome = new THREE.Mesh(geo(new THREE.SphereGeometry(1.5, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2)), siloMat); dome.position.set(x, 7, z); scene.add(c, dome); }
+    { const sg = new THREE.Group(); const post = mat({ color: 0x5a4a3a }); const panel = signTexture('FARMLAND', '#9be07a', 'Chud Acres Farms'); disposables.push(panel);
+      const pm = mat({ color: 0xffffff, map: panel, emissiveMap: panel, emissive: 0xffffff, emissiveIntensity: 0.45 * NEON });
+      sg.add(box(0.3, 4, 0.3, post, -2.6, 0, 0), box(0.3, 4, 0.3, post, 2.6, 0, 0)); const pan = new THREE.Mesh(geo(new THREE.BoxGeometry(6, 1.8, 0.2)), pm); pan.position.set(0, 3.6, 0); sg.add(pan);
+      sg.position.set(FARM_X0 + 1.6, 0, 0); sg.rotation.y = Math.PI / 2; scene.add(sg); }
+    // crops: one instance per tile (hidden until /api/farm says something grows there)
+    let total = 0; for (const p of plots) { farmTiles.set(plotId(p.n), total); total += p.cols * p.rows; }
+    const cm = new THREE.InstancedMesh(geo(new THREE.ConeGeometry(0.55, 1, 6)), mat({ color: 0xffffff, roughness: 0.8, emissive: 0x101808, emissiveIntensity: 0.4 }), total);
+    cm.count = 0; cm.frustumCulled = false; scene.add(cm); return cm;
+  })();
+  const setFarm = (tiles: Array<[string, number, string, string]>) => {
+    const d = new THREE.Object3D(); const c = new THREE.Color(); let n = 0; const plots = new Map(farmPlots().map((p) => [plotId(p.n), p]));
+    for (const [pid, t, crop, stage] of tiles) {
+      const p = plots.get(pid); const cr = cropById(crop); if (!p || !cr || n >= crops.instanceMatrix.count) continue; const [x, z] = tileXZ(p, t);
+      const hgt = stage === 'ready' ? 1.3 : stage === 'withered' ? 0.45 : 0.7;
+      d.position.set(x, 0.14 + hgt / 2, z); d.scale.set(stage === 'ready' ? 1 : 0.7, hgt, stage === 'ready' ? 1 : 0.7); d.rotation.set(0, 0, 0); d.updateMatrix();
+      crops.setMatrixAt(n, d.matrix); crops.setColorAt(n, c.setHex(stage === 'ready' ? cr.color : stage === 'withered' ? 0x5a4a30 : 0x3f8a3a)); n++;
+    }
+    crops.count = n; crops.instanceMatrix.needsUpdate = true; if (crops.instanceColor) crops.instanceColor.needsUpdate = true;
+  };
   // Stars
   const stG = new THREE.BufferGeometry(); const sp: number[] = []; for (let i = 0; i < 400; i++) { const a = r() * Math.PI * 2, e = 0.15 + r() * 1.2, R = 420; sp.push(Math.cos(a) * Math.cos(e) * R, Math.sin(e) * R, Math.sin(a) * Math.cos(e) * R); }
   stG.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3)); disposables.push(stG);
@@ -370,7 +422,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     if (!down || fly) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y); down = null; if (moved > 8) return;
     const id = pick(e.clientX, e.clientY); if (!id) { setHover(null); h.onHover(null, 0, 0); return; }
     if (id.startsWith('trailer:')) { h.onHover(id, e.clientX, e.clientY); return; } // trailers: just the label, no interiors
-    if (id.startsWith('b:') || id.startsWith('p:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel
+    if (id.startsWith('b:') || id.startsWith('p:') || id.startsWith('f:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel
     flyTo(id);
   };
   const flyTo = (id: string) => {
@@ -430,7 +482,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     marks.count = n; marks.instanceMatrix.needsUpdate = true;
   };
   return {
-    flyTo, setOwned,
+    flyTo, setOwned, setFarm,
     // Driving (worldDrive.ts) hooks: the tick runs every frame; returning true means it owns the camera.
     scene, camera, controls, solids, lmBoxes, setTick(f: ((dt: number) => boolean) | null) { tick = f; },
     reset() { fly = null; controls.enabled = true; camera.position.copy(home); controls.target.set(0, 0, 0); setHover(null); },

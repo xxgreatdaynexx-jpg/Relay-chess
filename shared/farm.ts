@@ -1,0 +1,77 @@
+/**
+ * Farm district (Chud Acres Farms): farmland plots on the east edge of the city map, outside the city plate, and the
+ * FarmVille-style crop game played inside an owned plot. Plots are real-estate properties (type 'farmland', id `f:<n>`):
+ * bought, taxed and repossessed by the real-estate system. All chip amounts here are BASE units: the server scales seed
+ * costs and harvest payouts by the price index (px / priceIndex).
+ *
+ * Crops grow on the server clock. A crop is ready at plantedAt + grow, and withers at ready + WITHER_FACTOR x grow.
+ * Harvest pays back the seed cost in full plus the crop's profit (sell - seed) through a per-player daily
+ * diminishing-returns tier (like the Mines): full, half, a tenth, then nothing, so farming can never flood the
+ * economy (at most ~1,350 base chips of profit per player per day) and never pays less than the seeds cost.
+ */
+import { PLATE, type OBB } from './worldLayout.js';
+
+export const TILE = 2; // world units per farm tile
+export const WITHER_FACTOR = 2;
+export interface Crop { id: string; label: string; emoji: string; seed: number; grow: number; sell: number; color: number }
+const M = 60_000, H = 60 * M;
+/** Base chips. Fast crops pay little per hour unless you keep coming back; slow ones are the big money per click. */
+export const CROPS: Crop[] = [
+  { id: 'strawberry', label: 'Strawberries', emoji: '🍓', seed: 5, grow: 2 * M, sell: 8, color: 0xd84a5a },
+  { id: 'wheat', label: 'Wheat', emoji: '🌾', seed: 10, grow: 5 * M, sell: 16, color: 0xd8b860 },
+  { id: 'carrot', label: 'Carrots', emoji: '🥕', seed: 15, grow: 15 * M, sell: 27, color: 0xe08a3a },
+  { id: 'corn', label: 'Corn', emoji: '🌽', seed: 25, grow: 30 * M, sell: 46, color: 0xe8d050 },
+  { id: 'tomato', label: 'Tomatoes', emoji: '🍅', seed: 40, grow: 1 * H, sell: 76, color: 0xd8443a },
+  { id: 'potato', label: 'Potatoes', emoji: '🥔', seed: 60, grow: 2 * H, sell: 120, color: 0xb08a5a },
+  { id: 'pumpkin', label: 'Pumpkins', emoji: '🎃', seed: 90, grow: 4 * H, sell: 190, color: 0xe0782a },
+  { id: 'grapes', label: 'Grapes', emoji: '🍇', seed: 150, grow: 8 * H, sell: 330, color: 0x8a4ac0 },
+  { id: 'sunflower', label: 'Sunflowers', emoji: '🌻', seed: 250, grow: 12 * H, sell: 560, color: 0xf0c830 },
+];
+export const cropById = (id: unknown) => CROPS.find((c) => c.id === id);
+export type Stage = 'growing' | 'ready' | 'withered';
+export const stageOf = (c: Crop, plantedAt: number, now: number): Stage => {
+  const ready = plantedAt + c.grow; return now < ready ? 'growing' : now < ready + WITHER_FACTOR * c.grow ? 'ready' : 'withered';
+};
+
+/** Daily profit tiers (base chips of profit, per player, reset at 00:00 UTC): full, half, a tenth, then zero. */
+export const FARM_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: 500, rate: 1 }, { upTo: 1500, rate: 0.5 }, { upTo: 5000, rate: 0.1 }, { upTo: Infinity, rate: 0 }];
+/** Profit paid for `gross` base profit when `already` base profit was harvested today (floored once). */
+export function farmPayout(gross: number, already: number): number {
+  let left = gross, at = already, pay = 0, lo = 0;
+  for (const t of FARM_TIERS) { if (left <= 0) break; const take = Math.min(left, Math.max(0, t.upTo - Math.max(at, lo))); pay += take * t.rate; left -= take; at += take; lo = t.upTo; }
+  return Math.floor(pay + 1e-9);
+}
+
+// ---- layout: a grass apron east of the plate; two columns of fenced fields along dirt lanes.
+export const FARM_X0 = PLATE, FARM_X1 = PLATE + 70, FARM_Z0 = -PLATE, FARM_Z1 = 62;
+export const FARM_LANES: Array<[number, number][]> = [[[PLATE + 5, FARM_Z0 + 2], [PLATE + 5, FARM_Z1 - 2]], [[PLATE + 37, FARM_Z0 + 2], [PLATE + 37, FARM_Z1 - 2]]];
+export const FARM_LANE_W = 4;
+export interface FarmPlot extends OBB { n: number; cols: number; rows: number }
+const SIZES: [number, number][] = [[4, 4], [6, 5], [5, 4], [8, 6], [4, 4], [10, 8], [6, 6], [12, 10], [5, 5], [7, 6], [4, 4], [9, 8], [6, 4], [8, 8], [11, 9], [5, 4]];
+/** Fixed plot price (base chips) from the tile count: 180 per tile + 500, rounded to 500. A 4x4 = 3,500. */
+export const farmPrice = (tiles: number) => Math.max(500, Math.round((180 * tiles + 500) / 500) * 500);
+let plotCache: FarmPlot[] | null = null;
+export function farmPlots(): FarmPlot[] {
+  if (plotCache) return plotCache;
+  const out: FarmPlot[] = []; const cols = [{ x0: PLATE + 8, x1: PLATE + 34.5 }, { x0: PLATE + 40, x1: FARM_X1 - 2 }];
+  let k = 0;
+  for (const c of cols) {
+    let z = FARM_Z0 + 4;
+    for (;;) {
+      const [a, b] = SIZES[k % SIZES.length]; const w = a * TILE + 2, d = b * TILE + 2;
+      if (z + d > FARM_Z1 - 14) break; // leave room for the barnyard at the south end
+      out.push({ n: out.length + 1, cols: a, rows: b, w, d, rot: 0, x: c.x0 + w / 2, z: z + d / 2 }); z += d + 2.5; k++;
+    }
+  }
+  plotCache = out; return out;
+}
+/** Decorative barns and silos (barnyard at the south end of each column). */
+export const BARNS: OBB[] = [{ x: PLATE + 18, z: FARM_Z1 - 7, w: 10, d: 7, rot: 0 }, { x: PLATE + 52, z: FARM_Z1 - 7, w: 12, d: 8, rot: 0 }];
+export const SILOS: [number, number][] = [[PLATE + 27, FARM_Z1 - 8], [PLATE + 62, FARM_Z1 - 8], [PLATE + 65.5, FARM_Z1 - 6]];
+export const plotId = (n: number) => `f:${n}`;
+/** Tile centre in world space (tile index = row * cols + col). */
+export const tileXZ = (p: FarmPlot, i: number): [number, number] => [p.x - (p.cols * TILE) / 2 + TILE * ((i % p.cols) + 0.5), p.z - (p.rows * TILE) / 2 + TILE * (Math.floor(i / p.cols) + 0.5)];
+
+/** What the client gets for one plot. `now` is the server clock (clients never send timestamps). */
+export interface FarmTile { tile: number; crop: string; plantedAt: number; stage: Stage; readyAt: number; witherAt: number }
+export interface FarmView { id: string; owner: string | null; mine: boolean; cols: number; rows: number; tiles: FarmTile[]; now: number; today: { gross: number; paid: number }; index: number }
