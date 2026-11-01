@@ -34,21 +34,27 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   const tier = detectWorldTier(); const r = rng(20261101);
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier !== 'low', powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, TIER_PIXEL_RATIO[tier])); canvas.dataset.tier = tier;
-  renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+  renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.95;
   renderer.shadowMap.enabled = tier !== 'low'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   const scene = new THREE.Scene(); const disposables: Array<{ dispose(): void }> = [];
   const mat = (p: THREE.MeshStandardMaterialParameters) => { const m = new THREE.MeshStandardMaterial(p); disposables.push(m); return m; };
   const geo = <G extends THREE.BufferGeometry>(g: G) => { disposables.push(g); return g; };
 
-  // Sunset sky dome.
+  // Sunset sky dome: deep indigo overhead through magenta and coral to a glowing gold horizon, with a sun disc and halo.
+  // Output is linear and goes through the renderer's tone mapping + sRGB conversion like every other material.
   const skyM = new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false, uniforms: {},
     vertexShader: 'varying vec3 vp; void main(){ vp = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    fragmentShader: `varying vec3 vp; void main(){ float y = vp.y; vec3 hor = vec3(1.0,0.62,0.38); vec3 mid = vec3(0.98,0.45,0.42); vec3 top = vec3(0.24,0.22,0.48);
-      vec3 c = mix(hor, mid, smoothstep(0.0,0.18,y)); c = mix(c, top, smoothstep(0.18,0.7,y));
-      vec3 sd = normalize(vec3(0.0,0.06,1.0)); float s = max(dot(vp, sd), 0.0); c += vec3(1.0,0.8,0.5)*pow(s,400.0)*2.0 + vec3(1.0,0.55,0.3)*pow(s,12.0)*0.35;
-      if (y < 0.0) c = hor; gl_FragColor = vec4(c,1.0); }` });
+    fragmentShader: `varying vec3 vp; void main(){ float y = vp.y;
+      vec3 gold = vec3(1.0,0.48,0.12); vec3 coral = vec3(0.95,0.22,0.16); vec3 mag = vec3(0.45,0.09,0.28); vec3 indigo = vec3(0.04,0.03,0.16);
+      vec3 c = mix(gold, coral, smoothstep(0.0,0.08,y)); c = mix(c, mag, smoothstep(0.08,0.25,y)); c = mix(c, indigo, smoothstep(0.25,0.65,y));
+      vec3 sd = normalize(vec3(0.0,0.05,1.0)); float s = max(dot(vp, sd), 0.0);
+      c += vec3(1.0,0.75,0.4)*pow(s,900.0)*6.0 + vec3(1.0,0.45,0.15)*pow(s,24.0)*0.6 + vec3(0.9,0.3,0.2)*pow(s,4.0)*0.15;
+      if (y < 0.0) c = gold*0.9; gl_FragColor = vec4(c,1.0);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }` });
   disposables.push(skyM); scene.add(new THREE.Mesh(geo(new THREE.SphereGeometry(800, 32, 16)), skyM));
-  scene.fog = new THREE.Fog(0xf2a57a, 280, 760);
+  scene.fog = new THREE.Fog(0xd8743e, 420, 1100); // warm haze, far enough that the town keeps its colour
   const camera = new THREE.PerspectiveCamera(38, 1, 0.5, 1700);
   const home = new THREE.Vector3(-40, 120, 205); camera.position.copy(home);
   const controls = new OrbitControls(camera, canvas);
@@ -59,8 +65,8 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
   const clampPan = () => { const t = controls.target; const [x, z] = clampResortTarget(t.x, t.z); if (x !== t.x || z !== t.z) { camera.position.x += x - t.x; camera.position.z += z - t.z; t.x = x; t.z = z; } };
 
-  scene.add(new THREE.HemisphereLight(0xffd6b0, 0x6a8a6a, 1.1));
-  const sun = new THREE.DirectionalLight(0xffb070, 2.6); sun.position.set(-40, 60, 160); sun.castShadow = renderer.shadowMap.enabled;
+  scene.add(new THREE.HemisphereLight(0xffc49a, 0x3a4a5a, 0.9));
+  const sun = new THREE.DirectionalLight(0xff9a50, 3.2); sun.position.set(-40, 60, 160); sun.castShadow = renderer.shadowMap.enabled;
   Object.assign(sun.shadow.camera, { left: -150, right: 150, top: 120, bottom: -120, near: 10, far: 400 }); sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0005; scene.add(sun);
 
   // Ground: lush land, sand, ocean.
@@ -68,12 +74,36 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   land.rotation.x = -Math.PI / 2; land.position.set(0, -0.02, (RESORT_Z0 - 80 + SHORE_Z) / 2); land.receiveShadow = true; scene.add(land);
   const sand = new THREE.Mesh(geo(new THREE.PlaneGeometry(RESORT_X1 - RESORT_X0 + 120, SHORE_Z - BOARDWALK_Z + 6)), mat({ color: 0xf2dcac, roughness: 1 }));
   sand.rotation.x = -Math.PI / 2; sand.position.set(0, 0.01, (BOARDWALK_Z + SHORE_Z + 6) / 2); sand.receiveShadow = true; scene.add(sand);
-  const waterMat = new THREE.ShaderMaterial({ transparent: true, uniforms: { uTime: { value: 0 } },
-    vertexShader: 'uniform float uTime; varying vec2 vUv; varying float vw; void main(){ vUv = uv; vec3 p = position; float w = sin(p.x*0.08+uTime*1.2)*0.25 + sin(p.y*0.13-uTime*0.9)*0.2; p.z += w; vw = w; gl_Position = projectionMatrix*modelViewMatrix*vec4(p,1.0); }',
-    fragmentShader: `uniform float uTime; varying vec2 vUv; varying float vw; void main(){ float d = vUv.y; vec3 shallow = vec3(0.30,0.85,0.82); vec3 deep = vec3(0.08,0.30,0.48);
-      vec3 c = mix(shallow, deep, smoothstep(0.92,0.55,d)); float foam = smoothstep(0.985,1.0,d + vw*0.02 + sin(vUv.x*80.0+uTime*2.0)*0.004);
-      float gl = pow(max(0.0, sin(vUv.x*220.0+uTime*3.0)*sin(vUv.y*170.0-uTime*2.0)),12.0)*smoothstep(0.35,0.5,vUv.x)*smoothstep(0.65,0.5,vUv.x);
-      c = mix(c, vec3(1.0), foam*0.8) + vec3(1.0,0.75,0.45)*gl*0.8; gl_FragColor = vec4(c, 0.96); }` });
+  // Ocean: turquoise shallows to deep sapphire, wave normals, sun specular + sunset sky reflection (fresnel), shoreline foam.
+  const SUN_DIR = new THREE.Vector3(0, 0.12, 1).normalize();
+  const waterMat = new THREE.ShaderMaterial({ transparent: true, fog: true, uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 }, uSun: { value: SUN_DIR } }]),
+    vertexShader: `uniform float uTime; varying vec2 vUv; varying vec3 vW; varying vec3 vN;
+      #include <fog_pars_vertex>
+      float h(vec2 p){ return sin(p.x*0.08+uTime*1.2)*0.25 + sin(p.y*0.13-uTime*0.9)*0.2 + sin((p.x+p.y)*0.21+uTime*1.7)*0.08; }
+      void main(){ vUv = uv; vec3 p = position; p.z += h(p.xy);
+        float e = 0.5; float dx = h(p.xy+vec2(e,0.0)) - h(p.xy-vec2(e,0.0)); float dy = h(p.xy+vec2(0.0,e)) - h(p.xy-vec2(0.0,e));
+        vN = normalize((modelMatrix*vec4(-dx/(2.0*e), -dy/(2.0*e), 1.0, 0.0)).xyz);
+        vec4 wp = modelMatrix*vec4(p,1.0); vW = wp.xyz; vec4 mvPosition = viewMatrix*wp; gl_Position = projectionMatrix*mvPosition;
+        #include <fog_vertex>
+      }`,
+    fragmentShader: `uniform float uTime; uniform vec3 uSun; varying vec2 vUv; varying vec3 vW; varying vec3 vN;
+      #include <fog_pars_fragment>
+      void main(){ float d = vUv.y; // 1.0 at the shoreline
+        vec3 shallow = vec3(0.02,0.42,0.42); vec3 mid = vec3(0.01,0.16,0.26); vec3 deep = vec3(0.005,0.05,0.13);
+        vec3 c = mix(mid, shallow, smoothstep(0.90,0.99,d)); c = mix(deep, c, smoothstep(0.55,0.90,d));
+        vec3 n = normalize(vN + vec3(sin(vW.x*1.7+uTime*2.1), 0.0, cos(vW.z*1.9-uTime*1.6))*0.06);
+        vec3 v = normalize(cameraPosition - vW); float fr = pow(1.0 - max(dot(n, v), 0.0), 4.0);
+        c = mix(c, vec3(0.9,0.38,0.2), fr*0.55); // sunset sky reflected at grazing angles
+        vec3 hv = normalize(uSun + v); float sp = pow(max(dot(n, hv), 0.0), 220.0); float glint = pow(max(dot(n, hv), 0.0), 40.0);
+        c += vec3(1.0,0.72,0.4)*(sp*3.0 + glint*0.25);
+        float edge = d + sin(vUv.x*90.0 + uTime*1.3)*0.004 + sin(vUv.x*37.0 - uTime*0.8)*0.003;
+        float foam = smoothstep(0.988,0.997,edge) + smoothstep(0.97,0.975,edge)*(1.0-smoothstep(0.975,0.98,edge))*0.5*(0.5+0.5*sin(uTime*1.5));
+        c = mix(c, vec3(0.95,0.93,0.88), clamp(foam,0.0,1.0)*0.9);
+        gl_FragColor = vec4(c, 0.97);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+        #include <fog_fragment>
+      }` });
   disposables.push(waterMat);
   const water = new THREE.Mesh(geo(new THREE.PlaneGeometry(1400, 700, 140, 70)), waterMat); water.rotation.x = -Math.PI / 2; water.position.set(0, -0.15, SHORE_Z + 350); scene.add(water);
 
@@ -84,7 +114,7 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   const prom = new THREE.Mesh(geo(new THREE.BoxGeometry(10, 0.2, 30)), stone); prom.position.set(0, 0.1, 4); prom.receiveShadow = true; scene.add(prom);
   const road = new THREE.Mesh(geo(new THREE.BoxGeometry(RESORT_X1 - RESORT_X0 - 20, 0.12, 5)), mat({ color: 0x8a8070, roughness: 1 })); road.position.set(0, 0.06, -32); scene.add(road);
   // Lamp posts with warm globes along the boardwalk.
-  const glowMat = mat({ color: 0xffe2a8, emissive: 0xffc070, emissiveIntensity: 1.6 });
+  const glowMat = mat({ color: 0xffe2a8, emissive: 0xffb050, emissiveIntensity: 4 });
   const lampN = 24; const posts = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(0.12, 0.15, 4, 6)), mat({ color: 0x2a2a2a, metalness: 0.6, roughness: 0.4 }), lampN);
   const globes = new THREE.InstancedMesh(geo(new THREE.SphereGeometry(0.4, 10, 8)), glowMat, lampN); const d = new THREE.Object3D();
   for (let i = 0; i < lampN; i++) { const x = RESORT_X0 + 20 + i * ((RESORT_X1 - RESORT_X0 - 40) / (lampN - 1)); d.position.set(x, 2, BOARDWALK_Z - 2.4); d.scale.set(1, 1, 1); d.updateMatrix(); posts.setMatrixAt(i, d.matrix); d.position.y = 4.2; d.updateMatrix(); globes.setMatrixAt(i, d.matrix); }
@@ -135,7 +165,8 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
     const hit = box(s.w, s.h, s.d, new THREE.MeshBasicMaterial({ visible: false }), 0, s.h / 2, 0, g); hit.userData.spot = s.id; pickables.push(hit);
     if (s.id === 'r-casino') {
       box(30, 10, 18, white, 0, 5, 0, g); box(18, 6, 12, white, 0, 13, 0, g);
-      const dome = new THREE.Mesh(geo(new THREE.SphereGeometry(6, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2)), gold); dome.position.set(0, 16, 0); dome.castShadow = true; g.add(dome);
+      const domeMat = mat({ color: 0xf0c868, metalness: 0.7, roughness: 0.25, emissive: 0xffa830, emissiveIntensity: 1.4 }); // lit gold dome, picked up by bloom
+      const dome = new THREE.Mesh(geo(new THREE.SphereGeometry(6, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2)), domeMat); dome.position.set(0, 16, 0); dome.castShadow = true; g.add(dome);
       for (let i = -3; i <= 3; i++) { const c = new THREE.Mesh(geo(new THREE.CylinderGeometry(0.5, 0.5, 9, 12)), white); c.position.set(i * 4, 4.5, 9.8); c.castShadow = true; g.add(c); }
       box(30, 0.8, 3, gold, 0, 9.4, 10, g); box(26, 7, 0.2, glass, 0, 4, 9.05, g);
       label('Palms Casino', 'Tiki · Yacht · Pearl', '#d8b25a', s.x, 26, s.z, 1.4);
@@ -209,7 +240,7 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
 
   const resize = () => { const w = canvas.clientWidth || 1, hh = canvas.clientHeight || 1; renderer.setSize(w, hh, false); camera.aspect = w / hh; camera.fov = w < hh ? 62 : 38; camera.updateProjectionMatrix(); };
   let composer: EffectComposer | null = null;
-  if (tier === 'high') { composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera)); composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.28, 0.5, 0.92)); composer.addPass(new OutputPass()); }
+  if (tier !== 'low') { composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera)); composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.6, 0.82)); composer.addPass(new OutputPass()); }
   const ro = new ResizeObserver(() => { resize(); if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(canvas.clientWidth || 1, canvas.clientHeight || 1); } }); ro.observe(canvas); resize();
 
   const clock = new THREE.Clock(); let raf = 0; let running = true; let time = 0; const tmp = new THREE.Vector3();
