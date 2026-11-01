@@ -4,6 +4,17 @@ import { applyPickSkin, skinnedPickaxe } from './pickaxeModel';
 import { animateMiner, buildMiner, setMinerSkin, type MinerRig } from './minerAvatar';
 import { CAVES, MINE_EXIT, ORES, type CaveId, type MineNode } from '../../../shared/mines';
 
+function nameTag(name: string): THREE.Sprite {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64; const x = c.getContext('2d')!;
+  x.font = '600 30px system-ui, sans-serif'; const t = name.length > 16 ? name.slice(0, 15) + '…' : name; const w = Math.min(248, x.measureText(t).width + 28);
+  x.fillStyle = 'rgba(10,8,6,0.72)'; x.beginPath(); x.roundRect((256 - w) / 2, 10, w, 44, 14); x.fill();
+  x.fillStyle = '#fff4dc'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(t, 128, 33);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false }));
+  s.position.y = 2.15; s.scale.set(1.6, 0.4, 1); s.renderOrder = 5; return s;
+}
+function disposeTag(s: THREE.Sprite) { const m = s.material as THREE.SpriteMaterial; m.map?.dispose(); m.dispose(); }
+
 export interface MinerView { id: string; name: string; x: number; y: number; z: number; a: number; c: boolean; sw: number; pk?: string | null }
 
 const rockTex = (() => {
@@ -26,7 +37,8 @@ export class Mines3D {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(75, 1, 0.05, 80);
   private nodes: Array<{ g: THREE.Group; ore: THREE.Mesh; crack: THREE.Mesh; max: number }> = [];
-  private others = new Map<string, MinerRig & { sw?: number }>();
+  private others = new Map<string, MinerRig & { sw?: number; tag?: THREE.Sprite; tagName?: string }>();
+  private walls: Array<[number, number, number, number]> = [];
   private parts: Particle[] = [];
   private pick: THREE.Group;
   private swingT = 1;
@@ -52,6 +64,7 @@ export class Mines3D {
     const iceMat = new THREE.MeshStandardMaterial({ color: '#bfe8ff', emissive: '#3a8ac0', emissiveIntensity: 0.35, transparent: true, opacity: 0.72, roughness: 0.1, metalness: 0.2 });
     const lavaMat = new THREE.MeshBasicMaterial({ color: '#ff5a10' });
     let heat = 0;
+    for (const s of MINE_MAP.solids) if (s.mat === 'concrete' && s.z0 < 1) this.walls.push([s.x0, s.y0, s.x1, s.y1]);
     for (const s of MINE_MAP.solids) {
       const w = s.x1 - s.x0, d = s.y1 - s.y0, h = s.z1 - s.z0;
       if (s.mat === 'metal' && T.hazard === 'lava') {
@@ -169,11 +182,12 @@ export class Mines3D {
       let g = this.others.get(p.id);
       if (!g) { g = buildMiner(p.pk ?? null); this.scene.add(g.root); this.others.set(p.id, g); }
       setMinerSkin(g, p.pk ?? null);
+      if (g.tagName !== p.name) { if (g.tag) { g.root.remove(g.tag); disposeTag(g.tag); } g.tag = nameTag(p.name); g.tagName = p.name; g.root.add(g.tag); }
       g.root.position.set(p.x, p.z - (p.c ? 0.3 : 0), p.y);
       g.root.rotation.y = -p.a;
       g.sw = p.sw;
     }
-    for (const [id, g] of this.others) if (!seen.has(id)) { this.scene.remove(g.root); this.others.delete(id); }
+    for (const [id, g] of this.others) if (!seen.has(id)) { this.scene.remove(g.root); if (g.tag) disposeTag(g.tag); this.others.delete(id); }
   }
 
   render(cam: { x: number; y: number; z: number; a: number; p: number }, dt: number, walk: number) {
@@ -196,7 +210,16 @@ export class Mines3D {
     this.hitDue = t;
     this.kick = Math.max(0, this.kick - dt * 0.25);
     this.camera.rotation.x += this.kick;
-    for (const g of this.others.values()) animateMiner(g, dt, g.sw ?? 0);
+    for (const g of this.others.values()) {
+      animateMiner(g, dt, g.sw ?? 0);
+      if (!g.tag) continue;
+      // Name tag: fades out with distance, stays a readable size, hidden when a rock wall is in the way.
+      const px = g.root.position.x, py = g.root.position.z, d = Math.hypot(px - cam.x, py - cam.y);
+      const m = g.tag.material as THREE.SpriteMaterial;
+      m.opacity = Math.max(0, Math.min(1, (22 - d) / 8));
+      g.tag.visible = m.opacity > 0.02 && this.clear(cam.x, cam.y, px, py);
+      const k = Math.max(1, Math.min(2.2, d / 7)); g.tag.scale.set(1.6 * k, 0.4 * k, 1);
+    }
     for (let i = this.parts.length - 1; i >= 0; i--) {
       const p = this.parts[i];
       p.life -= dt; p.v.y -= 9 * dt; p.m.position.addScaledVector(p.v, dt);
@@ -206,6 +229,13 @@ export class Mines3D {
       if (p.life <= 0) { this.scene.remove(p.m); (p.m.material as THREE.Material).dispose(); p.m.geometry.dispose(); this.parts.splice(i, 1); }
     }
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /** Floor-plan line of sight between two points (rock wall cells only). */
+  private clear(x0: number, y0: number, x1: number, y1: number): boolean {
+    const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 0.5);
+    for (let i = 1; i < n; i++) { const x = x0 + (x1 - x0) * i / n, y = y0 + (y1 - y0) * i / n; for (const w of this.walls) if (x > w[0] && x < w[2] && y > w[1] && y < w[3]) return false; }
+    return true;
   }
 
   dispose() { this.renderer.dispose(); }
