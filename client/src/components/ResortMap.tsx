@@ -27,7 +27,7 @@ export function ResortMap() {
   const [owned, setOwned] = useState<Map<string, OwnedProperty>>(new Map()); const ownedRef = useRef(owned); ownedRef.current = owned;
   const meRef = useRef(me); meRef.current = me;
   const [deed, setDeed] = useState<string | null>(null); const [farm, setFarm] = useState<string | null>(null);
-  const [casino, setCasino] = useState(false); const [air, setAir] = useState(false); const [msg, setMsg] = useState<string | null>(null); const [list, setList] = useState(false);
+  const [casino, setCasino] = useState(false); const [floor, setFloor] = useState<string | null>(null); const [air, setAir] = useState(false); const [msg, setMsg] = useState<string | null>(null); const [list, setList] = useState(false);
 
   useEffect(() => {
     let dead = false;
@@ -49,7 +49,7 @@ export function ResortMap() {
     load(); loadFarm(); socket.on('re_changed', load); socket.on('farm_changed', loadFarm); const t = window.setInterval(loadFarm, 60_000);
     return () => { dead = true; socket.off('re_changed', load); socket.off('farm_changed', loadFarm); window.clearInterval(t); };
   }, [loading]);
-  useEffect(() => { worldRef.current?.setRunning(!casino); }, [casino]);
+  useEffect(() => { worldRef.current?.setRunning(!casino && !floor); }, [casino, floor]);
 
   function go(id: string) {
     switch (id) {
@@ -98,10 +98,18 @@ export function ResortMap() {
           {msg && <small>{msg}</small>}
         </div>
       )}
+      {floor && !casino && (
+        // Playing a resort game: the table/slot panel opens over the casino interior instead of the beach map.
+        <div className="resort-floor" data-testid="resort-floor">
+          <div className="resort-floor-bar"><b>🌴 Palms Resort Casino</b><span>{floor}</span>
+            <button type="button" onClick={() => setCasino(true)} data-testid="resort-floor-games">Games</button>
+            <button type="button" onClick={() => setFloor(null)} data-testid="resort-floor-leave">Back to the beach</button></div>
+        </div>
+      )}
       {casino && (
         <div className="world-casino resort-casino" {...backdropDismiss(() => setCasino(false))} data-testid="resort-casino">
           <div><h3>🌴 Palms Resort Casino</h3>
-            {RESORT_GAMES.map((g) => <button key={g.tab} type="button" onClick={() => { setCasino(false); openTab(g.tab); }} data-testid={`resort-casino-${g.tab}`}>{g.label}</button>)}
+            {RESORT_GAMES.map((g) => <button key={g.tab} type="button" onClick={() => { setCasino(false); setFloor(g.label); openTab(g.tab); }} data-testid={`resort-casino-${g.tab}`}>{g.label}</button>)}
             <button type="button" className="world-casino-x" onClick={() => setCasino(false)}>Back to the beach</button>
           </div>
         </div>

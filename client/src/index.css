@@ -1814,3 +1814,16 @@ html, body { overflow-x: clip; }
 @keyframes resort-plane { 0% { transform: translateX(-60px) rotate(-8deg); } 50% { transform: translateX(60px) translateY(-14px) rotate(4deg); } 100% { transform: translateX(-60px) rotate(-8deg); } }
 /* QA r10: click-swallowing backdrops for the Wallet dropdown (transparent; an outside click only closes them). */
 .wallet-backdrop { position: fixed; inset: 0; z-index: 59; background: transparent; }
+
+/* Resort casino floor: backdrop behind resort games so they play inside the casino, not over the beach. */
+.resort-floor { position: absolute; inset: 0; z-index: 2; background:
+  radial-gradient(ellipse at 50% 12%, rgba(255,214,140,.55), transparent 55%),
+  repeating-linear-gradient(90deg, rgba(216,178,90,.14) 0 2px, transparent 2px 120px),
+  linear-gradient(180deg, #3a1d14 0%, #6e2f1c 38%, #1f3a2c 62%, #0f241b 100%); }
+.resort-floor::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 38%;
+  background: repeating-linear-gradient(45deg, rgba(216,178,90,.08) 0 14px, transparent 14px 28px); pointer-events: none; }
+.resort-floor-bar { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; z-index: 1;
+  padding: 8px 14px; border-radius: 12px; background: linear-gradient(160deg, #fffaf0, #f0e2c2); color: #2a2016; border: 2px solid #d8b25a; box-shadow: 0 6px 24px #0006; }
+.resort-floor-bar b { color: #8a6418; font-family: Georgia, serif; letter-spacing: .06em; }
+.resort-floor-bar button { padding: 5px 10px; border-radius: 8px; background: #fff; border: 1px solid #d8b25a; color: #2a2016; font-weight: 700; }
+.resort-floor-bar button:hover { background: #fff3d6; }
