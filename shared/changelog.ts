@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T14:30:00-06:00', title: 'Factory: crafted goods sell for about 15% less', bullets: [
+    'House prices for factory-made bars and goods are down about 15%, for example Silver Ring 120 → 100, Cut Crystal 100 → 85, Crystal Ring 340 → 290, Machine Part 360 → 305, Diamond Crown 1,100 → 935, Engine 1,400 → 1,190 and Mining Drill 2,400 → 2,040.',
+    'Food products made from farm crops and fish drop a little less (about 5–10%) so cooking still pays a small premium over selling the crop. Raw ore, crop and fish prices, recipes, timers, daily caps and existing market listings are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T14:20:00-06:00', title: 'Market: sell several cases or keys at once', bullets: [
     'Market → Skins → Sell now has a tick box on every item, plus "All cases" and "All keys" boxes. Tick as many as you like.',
     'With items ticked, the side panel lets you set how many cases and keys to sell, one price each, and shows what you get if they all sell after the 5% fee. One Confirm lists them all.',
