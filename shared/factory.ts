@@ -9,7 +9,7 @@ export const MAX_CATCHUP_MS = 8 * 3600_000;
 export type Dir = 0 | 1 | 2 | 3; // E S W N
 export const DX = [1, 0, -1, 0] as const;
 export const DY = [0, 1, 0, -1] as const;
-export type Kind = 'belt' | 'underground' | 'splitter' | 'inserter' | 'chest_in' | 'chest_out' | 'smelter' | 'press' | 'roller' | 'drawer' | 'assembler' | 'jeweler' | 'fabricator';
+export type Kind = 'belt' | 'underground' | 'splitter' | 'inserter' | 'chest_in' | 'chest_out' | 'smelter' | 'press' | 'roller' | 'drawer' | 'assembler' | 'jeweler' | 'fabricator' | 'mill' | 'cannery';
 export interface KindDef { id: Kind; name: string; size: 1 | 2; cost: number; minFloor: number; color: string; desc: string; machine?: boolean }
 export const KINDS: Record<Kind, KindDef> = {
   belt:       { id: 'belt',       name: 'Conveyor Belt', size: 1, cost: 3,    minFloor: 1, color: '#c9a227', desc: 'Moves items 2 tiles/s. Drag to lay a line.' },
@@ -24,9 +24,11 @@ export const KINDS: Record<Kind, KindDef> = {
   drawer:     { id: 'drawer',     name: 'Wire Drawer',   size: 2, cost: 350,  minFloor: 1, color: '#806a40', desc: 'Ingots -> wire.', machine: true },
   assembler:  { id: 'assembler',  name: 'Assembler',     size: 2, cost: 800,  minFloor: 2, color: '#40708a', desc: 'Parts -> gears, screws, pipes, frames, circuits, tools.', machine: true },
   jeweler:    { id: 'jeweler',    name: "Jeweler's Bench", size: 2, cost: 1200, minFloor: 2, color: '#8a4090', desc: 'Gems + precious metal -> rings, chains, crowns.', machine: true },
-  fabricator: { id: 'fabricator', name: 'Fabricator',    size: 2, cost: 4000, minFloor: 3, color: '#9a3a3a', desc: 'High tier: engines, computers, drills.', machine: true },
+  fabricator: { id: 'fabricator', name: 'Fabricator',    size: 2, cost: 4000, minFloor: 3, color: '#9a3a3a', desc: 'High tier: engines, computers, drills, generators, robots.', machine: true },
+  mill:       { id: 'mill',       name: 'Mill & Press',  size: 2, cost: 350,  minFloor: 1, color: '#9a7a3a', desc: 'Crops -> flour, sugar, juice, oil, cocoa, coconut milk.', machine: true },
+  cannery:    { id: 'cannery',    name: 'Food Line',     size: 2, cost: 900,  minFloor: 2, color: '#a04a5a', desc: 'Flour, fish and produce -> bread, chocolate, canned fish, pies, banquets.', machine: true },
 };
-export const KIND_ORDER: Kind[] = ['belt', 'underground', 'splitter', 'inserter', 'chest_in', 'chest_out', 'smelter', 'press', 'roller', 'drawer', 'assembler', 'jeweler', 'fabricator'];
+export const KIND_ORDER: Kind[] = ['belt', 'underground', 'splitter', 'inserter', 'chest_in', 'chest_out', 'smelter', 'press', 'roller', 'drawer', 'assembler', 'jeweler', 'fabricator', 'mill', 'cannery'];
 export const UG_MAX = 5;
 /** Belt-like: holds one item and moves it on. */
 export const isBeltish = (k: Kind) => k === 'belt' || k === 'splitter' || k === 'underground';
@@ -89,6 +91,30 @@ export const FRECIPES: FRecipe[] = [
   R('f_engine', 'fabricator', [['good:machine_part', 2], ['good:circuit', 1], ['good:pipe', 2], ['good:frame', 1]], ['good:engine', 1], 20),
   R('f_computer', 'fabricator', [['good:circuit', 4], ['good:frame', 2], ['good:cut_crystal', 1], ['good:silver_wire', 4]], ['good:computer', 1], 20),
   R('f_drill', 'fabricator', [['good:engine', 1], ['good:tool', 2], ['good:cut_diamond', 1]], ['good:drill', 1], 25),
+  // pt1252u: game resources in (ore from every cave, farm + plantation crops, fish from the cooler, cooked dishes)
+  R('s_steel', 'smelter', [['bar:iron_bar', 2], ['ore:coal', 2]], ['bar:steel', 1], 6),
+  R('a_bearing', 'assembler', [['bar:steel', 1], ['good:screw', 2]], ['good:bearing', 1], 6),
+  R('a_motor', 'assembler', [['good:wire', 4], ['good:gear', 1], ['good:bearing', 1]], ['good:motor', 1], 10),
+  R('f_generator', 'fabricator', [['good:motor', 2], ['good:frame', 1], ['good:pipe', 1]], ['good:generator', 1], 20),
+  R('f_robot', 'fabricator', [['good:computer', 1], ['good:motor', 2], ['bar:steel', 2]], ['good:robot', 1], 30),
+  R('j_bracelet', 'jeweler', [['good:cut_crystal', 2], ['good:silver_wire', 2]], ['good:bracelet', 1], 10),
+  R('m_flour', 'mill', [['good:crop_wheat', 2]], ['good:flour', 1], 3),
+  R('m_cornmeal', 'mill', [['good:crop_corn', 1]], ['good:cornmeal', 1], 3),
+  R('m_sugar', 'mill', [['good:crop_corn', 1]], ['good:sugar', 1], 4),
+  R('m_juice', 'mill', [['good:crop_strawberry', 3]], ['good:berry_juice', 1], 3),
+  R('m_tropical', 'mill', [['good:crop_pineapple', 1], ['good:crop_banana', 1], ['good:crop_mango', 1]], ['good:tropical_juice', 1], 5),
+  R('m_oil', 'mill', [['good:crop_sunflower', 1]], ['good:sunflower_oil', 1], 6),
+  R('m_cocoa', 'mill', [['good:crop_cacao', 1]], ['good:cocoa', 1], 6),
+  R('m_coconut', 'mill', [['good:crop_coconut', 1]], ['good:coconut_milk', 1], 5),
+  R('k_wine', 'cannery', [['good:crop_grapes', 2]], ['good:wine', 1], 12),
+  R('k_bread', 'cannery', [['good:flour', 2]], ['good:bread', 1], 5),
+  R('k_chocolate', 'cannery', [['good:cocoa', 1], ['good:sugar', 1], ['good:coconut_milk', 1]], ['good:chocolate', 2], 10),
+  R('k_canned', 'cannery', [['good:fish_fillet', 6], ['good:iron_sheet', 1]], ['good:canned_fish', 2], 6),
+  R('k_fish_oil', 'cannery', [['good:fish_fillet', 8]], ['good:fish_oil', 1], 6),
+  R('k_pie', 'cannery', [['good:crop_pumpkin', 1], ['good:flour', 1], ['good:sugar', 1]], ['good:pumpkin_pie', 1], 8),
+  R('k_salsa', 'cannery', [['good:crop_tomato', 2], ['bar:glass', 1]], ['good:salsa', 1], 5),
+  R('k_soup', 'cannery', [['good:crop_carrot', 1], ['good:crop_potato', 1], ['good:crop_tomato', 1], ['good:iron_sheet', 1]], ['good:veggie_soup', 2], 8),
+  R('k_banquet', 'cannery', [['good:fish_portion', 6], ['good:bread', 1], ['good:wine', 1]], ['good:banquet', 1], 15),
 ];
 export const frecipe = (id: unknown) => FRECIPES.find((r) => r.id === id);
 export const recipesFor = (k: Kind) => FRECIPES.filter((r) => r.machine === k);
@@ -157,8 +183,8 @@ function accepts(e: Ent, key: string, st?: Storage): boolean {
     const need = r.in.find(([k]) => k === key); if (!need) return false;
     return (e.ib?.[key] ?? 0) < need[1] * 2;
   }
-  // output chests back up (instead of overflowing) once that banked stack hits the storage limit
-  return e.k === 'chest_out' && (!st || st.get(key) < MAX_BANKED_STACK);
+  // output chests back up (instead of overflowing) once that banked stack hits the storage limit; "Only accept" filter
+  return e.k === 'chest_out' && (!e.f || e.f === key) && (!st || st.get(key) < MAX_BANKED_STACK);
 }
 function give(s: FState, st: Storage, e: Ent, key: string) {
   if (e.k === 'chest_out') { st.add(key, 1); s.stored[key] = (s.stored[key] ?? 0) + 1; return; }
@@ -279,5 +305,14 @@ export function contents(e: Ent): Array<[string, number]> {
 }
 
 /** Value multiplier check used by tests/balance: each recipe's output is worth more than its inputs. */
+/** Recipes that consume this item (for the recipe browser's chain view). */
+export const usedIn = (key: string) => FRECIPES.filter((r) => r.in.some(([k]) => k === key));
+/** Recipe that makes this item, if any. */
+export const madeBy = (key: string) => FRECIPES.find((r) => r.out[0] === key);
+/** Chain depth: 0 = raw input (ore / imported), 1 = made from raw only, ... */
+export function tierOf(key: string, seen = new Set<string>()): number {
+  const r = madeBy(key); if (!r || seen.has(key)) return 0; seen.add(key);
+  return 1 + Math.max(...r.in.map(([k]) => tierOf(k, seen)));
+}
 export const recipeIn = (r: FRecipe) => r.in.reduce((t, [k, q]) => t + q * priceOfKey(k), 0);
 export const recipeOut = (r: FRecipe) => r.out[1] * priceOfKey(r.out[0]);

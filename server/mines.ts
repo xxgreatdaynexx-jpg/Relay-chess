@@ -8,7 +8,7 @@ import { awardXp } from './skills.js';
 import { MinesLeaderboard, setMinesBoard } from './mines-board.js';
 import { getVault, playerKey } from './skins.js';
 import { guestName, lineOfSight, moveAllowance, MOVE_CARRY_MAX, normAngle, clampPitch, canStand, validateMove, eyeHeightOf, type Body } from '../shared/fps.js';
-import { CAVES, caveOf, type CaveId, BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, dayKey, isOre, payoutFor, stackKey, priceOf, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId, inExit, CARRY_GRACE_MS, weightOf } from '../shared/mines.js';
+import { CAVES, caveOf, type CaveId, BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, dayKey, isOre, payoutFor, stackKey, priceOf, sellable, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId, inExit, CARRY_GRACE_MS, weightOf } from '../shared/mines.js';
 import { isAtResort } from './travel.js';
 
 export const MINES_MIGRATION = [
@@ -263,7 +263,7 @@ export class MinesWorld {
   quote(account: string, now: number, only?: unknown): { gross: number; paid: number; already: number; items: Stack[] } {
     const m = { account };
     this.beforeStorage?.(account);
-    const items = this.storage(account).filter((s) => priceOf(s) > 0 && (typeof only !== 'string' || s.id === only || stackKey(s) === only));
+    const items = this.storage(account).filter((s) => sellable(s) && (typeof only !== 'string' || s.id === only || stackKey(s) === only));
     const gross = items.reduce((t, s) => t + s.qty * priceOf(s), 0);
     const k = playerKey(m.account); const d = this.daily.get(k); const already = d && d.day === dayKey(now) ? d.gross : 0;
     // House ore/goods prices follow the price index (tiers stay in base units so the daily caps scale too).

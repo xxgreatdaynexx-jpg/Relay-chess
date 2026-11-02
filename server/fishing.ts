@@ -16,6 +16,7 @@ import { px, priceIndex } from './price-index.js';
 import { emitActivity } from './activity.js';
 import { awardXp } from './skills.js';
 import { isQaName } from '../shared/qa.js';
+import type { ImportSink } from './farm.js';
 import {
   BITE_MAX_MS, BITE_MIN_MS, CAST_COOLDOWN_MS, COOLER_MAX, FISH, FISH_XP, fishById, fishDiff, fishPayout, fishValue, HOOK_WINDOW_MS,
   REEL_DT, replayReel, rollFish, rollWeight, type FishCatch, type FishView,
@@ -28,6 +29,8 @@ ALTER TABLE fish_catches ADD COLUMN IF NOT EXISTS dish TEXT;
 ALTER TABLE fish_catches ADD COLUMN IF NOT EXISTS raw_value INTEGER;
 CREATE TABLE IF NOT EXISTS fish_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
 `;
+/** Factory units for one cooler fish (base value): raw -> fillets (8 each), cooked -> portions (10 each). */
+export const fishImportQty = (value: number, cooked: boolean) => Math.floor(value / (cooked ? 10 : 8));
 export class FishError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
 const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
@@ -136,6 +139,31 @@ export class Fishing {
       const p = run(); w.bind(p);
       try { await p; } catch (e) { w.revert(); if (e instanceof FishError) throw e; console.error('[fishing] sell failed:', (e as Error).message); throw new FishError('Something went wrong. Nothing was sold.'); }
       return { sold: rows.length, gross, paid, chips: this.bank().account(name).chips };
+    });
+  }
+  /** pt1252u: move fish from the cooler into Factory storage. Raw fish -> fillets (1 per 8 base value), cooked dishes ->
+   * portions (1 per 10). Junk can't go. One UPDATE (still yours, unsold) + the storage write in the same transaction. */
+  async toFactory(name: string, ids: unknown, sink: ImportSink): Promise<{ moved: number; items: Array<[string, number]> }> {
+    const key = keyOf(name);
+    return this.lock(`c:${key}`, async () => {
+      const all = (await this.pool.query('SELECT id, species, value, dish FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL', [key])).rows as Array<{ id: string; species: string; value: number; dish: string | null }>;
+      const want = Array.isArray(ids) ? new Set(ids.filter((x): x is string => typeof x === 'string').slice(0, COOLER_MAX)) : null;
+      const rows = all.filter((r) => (!want || want.has(r.id)) && fishById(r.species)?.rarity !== 'junk' && fishImportQty(Number(r.value), !!r.dish) > 0);
+      if (!rows.length) throw new FishError(want ? 'Those fish can\'t go to the factory (junk or too small).' : 'No fish in your cooler big enough for the factory.');
+      let fillet = 0, portion = 0; for (const r of rows) { const n = fishImportQty(Number(r.value), !!r.dish); if (r.dish) portion += n; else fillet += n; }
+      const items: Array<[string, number]> = []; if (fillet) items.push(['fish_fillet', fillet]); if (portion) items.push(['fish_portion', portion]);
+      const cl = await this.pool.connect();
+      try {
+        await cl.query('BEGIN');
+        const ph = rows.map((_, i) => `$${i + 3}`).join(',');
+        const u = await cl.query(`UPDATE fish_catches SET sold_at = $1 WHERE player_key = $2 AND sold_at IS NULL AND id IN (${ph})`, [this.clock(), key, ...rows.map((r) => r.id)]);
+        if (u.rowCount !== rows.length) throw new FishError('Your cooler changed — try again.');
+        await sink.write(cl, items);
+        await cl.query('COMMIT');
+      } catch (e) { await cl.query('ROLLBACK').catch(() => {}); if (e instanceof FishError) throw e; console.error('[fishing] toFactory failed:', (e as Error).message); throw new FishError('Something went wrong. Nothing was moved.'); }
+      finally { cl.release(); }
+      sink.after(items);
+      return { moved: rows.length, items };
     });
   }
   async release(name: string, ids: unknown): Promise<{ released: number }> {

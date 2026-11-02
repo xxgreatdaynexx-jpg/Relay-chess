@@ -6,6 +6,14 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T21:00:00-06:00', title: 'Factory: 23 new recipes and crops & fish as inputs', bullets: [
+    'New 🚚 Bring in tab in the Factory: harvest every ready crop on your farm plots straight into factory storage (instead of selling them), and send your fish cooler in: raw fish become Fish Fillets, cooked dishes become Cooked Fish Portions. Plantation crops go while you are at Chud Resort.',
+    'Two new machines: 🌾 Mill & Press (flour, cornmeal, sugar, berry and tropical juice, sunflower oil, cocoa, coconut milk) and 🥫 Food Line from building level 2 (wine, bread, chocolate, canned fish, fish oil, pumpkin pie, salsa, veggie soup and the Banquet Platter).',
+    'New metal and jewelry chains: Steel Ingot → Ball Bearing → Electric Motor → Generator and Robot, plus the Grotto Bracelet. Ore from every cave (Mine, Frostbite, Magma, Coral Grotto) already feeds the factory.',
+    'Each product sells for a bit more than its inputs. Imported crops and fish can not be sold raw to the house, so craft them first. Sales use the usual daily limits and price index.',
+    'The 📜 Recipes tab now shows full chains: pick a product (or click a recipe) to see what makes it, down to raw inputs, and what it feeds. Output Chests get an "Only accept" filter.',
+    'Food products give Cooking XP and everything else gives Engineering XP.',
+  ] },
   { commit: '', at: '2026-11-01T20:52:00-06:00', title: 'Countryside crop fields are farms you can buy', bullets: [
     'Requested by Dayne: every striped crop field in the countryside is now a farm you can buy. Click one to open its deed.',
     'They work like the Farm district: plant, grow and harvest crops, pay daily tax, and sell back to the city for 70% of what you paid.',

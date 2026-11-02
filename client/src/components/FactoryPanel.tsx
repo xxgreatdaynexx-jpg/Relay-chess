@@ -6,7 +6,7 @@ import { socket } from '@/lib/net';
 import { FactoryBuilder } from '@/components/FactoryBuilder';
 type Ack = { ok: boolean; error?: string; storage?: Stack[]; quote?: unknown; inMine?: boolean; guest?: boolean };
 import { openMarket } from '@/components/MarketPage';
-import { ORES, SELL_TIERS, isOre, nameOf, priceOf, stackKey, type Stack } from '../../../shared/mines';
+import { ORES, SELL_TIERS, isOre, nameOf, priceOf, sellable, stackKey, type Stack } from '../../../shared/mines';
 
 const OPEN_KEY = 'relay-factory-open';
 type Quote = { gross: number; paid: number; already: number } | null;
@@ -60,7 +60,7 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
           <ul className="factory-list">
             {st.storage.map((s) => (
               <li key={stackKey(s)}><span className="mines-dot" style={{ background: s.type === 'ore' && isOre(s.id) ? ORES[s.id].color : '#d9b45a' }} />{nameOf(s)}<b>×{s.qty}</b><small>🪙{priceOf(s)}</small>
-                {canSell && <button type="button" onClick={() => sell(stackKey(s))}>Sell</button>}</li>
+                {canSell && sellable(s) && <button type="button" onClick={() => sell(stackKey(s))}>Sell</button>}{!sellable(s) && <small title="Imported input: craft it in the factory to sell">craft</small>}</li>
             ))}
             {!st.storage.length && <li className="opacity-60">Empty. Mine ore and walk out through the EXIT lift to bank it here.</li>}
           </ul>

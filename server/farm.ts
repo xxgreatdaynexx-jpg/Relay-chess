@@ -23,6 +23,8 @@ export const FARM_MIGRATION = `
 CREATE TABLE IF NOT EXISTS farm_tiles (plot_id TEXT NOT NULL, tile INTEGER NOT NULL, owner_key TEXT NOT NULL, crop TEXT NOT NULL, planted_at BIGINT NOT NULL, nonce TEXT NOT NULL, PRIMARY KEY (plot_id, tile));
 CREATE TABLE IF NOT EXISTS farm_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
 `;
+/** Where a harvest/catch goes instead of the market (server/factory-import.ts): written in the same DB transaction. */
+export interface ImportSink { write(cl: pg.PoolClient, items: Array<[string, number]>): Promise<void>; after(items: Array<[string, number]>): void }
 export class FarmError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
 const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
@@ -115,7 +117,7 @@ export class Farm {
   }
 
   /** Harvest every ready tile (or the given ones). Exactly once: the tiles are deleted in the payout's transaction. */
-  async harvest(name: string, id: unknown, tiles?: unknown) {
+  async harvest(name: string, id: unknown, tiles?: unknown, sink?: ImportSink) {
     const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const pid = p.pid;
     const only = tiles === undefined || tiles === null ? null : new Set(this.tileList(p, tiles));
     return this.lock(`h:${keyOf(name)}`, () => this.lock(pid, async () => {
@@ -124,6 +126,18 @@ export class Farm {
       if (!ready.length) throw new FarmError('Nothing is ready to harvest.');
       let seeds = 0, profit = 0; const counts = new Map<string, number>();
       for (const r of ready) { const c = cropById(r.crop)!; seeds += c.seed; profit += c.sell - c.seed; counts.set(c.label, (counts.get(c.label) ?? 0) + 1); }
+      if (sink) { // pt1252u: send the crops to your Factory storage instead of selling them (no chips, no farm tier)
+        const items: Array<[string, number]> = []; for (const r of ready) { const id = `crop_${r.crop}`; const at = items.find((x) => x[0] === id); if (at) at[1]++; else items.push([id, 1]); }
+        await this.atomic(name, 0, 'farm_to_factory', '', async (cl) => {
+          await this.mustOwn(cl, pid, name);
+          let gone = 0;
+          for (const r of ready) gone += (await cl.query('DELETE FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3 AND owner_key = $4', [pid, r.tile, r.nonce, key])).rowCount ?? 0;
+          if (gone !== ready.length) throw new FarmError('Already harvested.');
+          await sink.write(cl, items);
+        });
+        sink.after(items); this.onChange?.(pid);
+        return { harvested: ready.length, paid: 0, toFactory: items, chips: this.bank().account(name).chips };
+      }
       const day = utcDay(now); const t = await this.today(key);
       const paid = Math.floor((seeds + farmPayout(profit, t.gross)) * priceIndex());
       const memo = `Farm ${pid}: harvested ${[...counts].map(([l, n]) => `${n} ${l}`).join(', ')}`.slice(0, 200);
@@ -139,6 +153,11 @@ export class Farm {
       this.onChange?.(pid);
       return { harvested: ready.length, paid, chips: this.bank().account(name).chips };
     }));
+  }
+
+  /** Plots where this player has planted tiles (for "send every ready crop to the factory"). */
+  async myPlots(name: string): Promise<string[]> {
+    return ((await this.pool.query('SELECT DISTINCT plot_id FROM farm_tiles WHERE owner_key = $1', [keyOf(name)])).rows as Array<{ plot_id: string }>).map((r) => String(r.plot_id));
   }
 
   /** Clear withered crops (free). */

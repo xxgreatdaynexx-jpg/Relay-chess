@@ -4,12 +4,17 @@ import type { Server, Socket } from 'socket.io';
 import { getMines, MineError, MINES_OFFLINE_MSG } from './mines.js';
 import { getBank } from './casino-store.js';
 import { awardXp } from './skills.js';
+import { getFarm, FarmError, type ImportSink } from './farm.js';
+import { getFishing, FishError } from './fishing.js';
+import { requireResort } from './travel.js';
 import { playerKey } from './skins.js';
-import { stackKey, recipeById, type Stack, type ItemType } from '../shared/mines.js';
+import { MAX_BANKED_STACK, stackKey, isFood, recipeById, type Stack, type ItemType } from '../shared/mines.js';
 import { MAX_CATCHUP_MS, TICK_MS, advance, canPlace, contents, FLOOR_LEVELS, frecipe, gridOf, isItemKey, isKind, KINDS, MAX_ENTS, newState, type Dir, type Ent, type FState, type Kind, type Storage } from '../shared/factory.js';
 
 const SAVE_MS = 4000;
 const upsert = (k: string, name: string, s: FState) => ({ sql: `INSERT INTO factory_v2 (player_key, owner_name, data, updated_at) VALUES ($1,$2,$3,now()) ON CONFLICT (player_key) DO UPDATE SET owner_name = EXCLUDED.owner_name, data = EXCLUDED.data, updated_at = now()`, args: [k, name, JSON.stringify(s)] });
+
+const isFoodKey = (k: string) => { const [t, id] = k.split(':'); return isFood({ type: t as ItemType, id }); };
 
 export class FactoryWorld {
   states = new Map<string, FState>();
@@ -52,9 +57,10 @@ export class FactoryWorld {
     const before = s.at;
     if (until > s.at) {
       // Engineering XP: 2 per bar/good the factory adds to storage while catching up (capped per hour/day in skills.ts)
-      const st = this.storage(account); let made = 0;
-      advance(s, { get: st.get, add: (key, d) => { if (d > 0 && !key.startsWith('ore:')) made += d; st.add(key, d); } }, until, MAX_CATCHUP_MS);
+      const st = this.storage(account); let made = 0, food = 0;
+      advance(s, { get: st.get, add: (key, d) => { if (d > 0 && !key.startsWith('ore:')) { if (isFoodKey(key)) food += d; else made += d; } st.add(key, d); } }, until, MAX_CATCHUP_MS);
       if (made > 0) awardXp(account, 'engineering', made * 2);
+      if (food > 0) awardXp(account, 'cooking', food * 2);
     }
     if (now - s.at >= TICK_MS) s.at = now - ((now - s.at) % TICK_MS); // idle past the 8h window: skip, no production
     if (owner) s.seen = now;
@@ -137,7 +143,7 @@ export class FactoryWorld {
       const bad = canPlace(s, g, k, x, y, d); if (bad) { err = bad; continue; }
       const e: Ent = { id: ++s.seq, k, x, y, d: d as Dir };
       if (KINDS[k].machine) { const r = typeof b.r === 'string' && frecipe(b.r)?.machine === k ? b.r : undefined; if (r) e.r = r; }
-      if ((k === 'chest_in' || k === 'inserter') && isItemKey(b.f)) e.f = b.f;
+      if ((k === 'chest_in' || k === 'inserter' || k === 'chest_out') && isItemKey(b.f)) e.f = b.f;
       s.ents.push(e); for (const [cx, cy] of [[x, y], ...(KINDS[k].size === 2 ? [[x + 1, y], [x, y + 1], [x + 1, y + 1]] : [])]) g.set(cy * 1000 + cx, e);
       s.kit[k] = (s.kit[k] ?? 0) - 1; placed++;
     }
@@ -171,13 +177,38 @@ export class FactoryWorld {
       if (e.r !== r.id) { for (const [k, q] of contents({ ...e, it: null })) st.add(k, q); e.ib = {}; e.ob = 0; e.p = 0; e.r = r.id; }
     }
     if ('f' in b) {
-      if (e.k !== 'chest_in' && e.k !== 'inserter') throw new MineError('Only input chests and inserters take a filter.');
+      if (e.k !== 'chest_in' && e.k !== 'inserter' && e.k !== 'chest_out') throw new MineError('Only chests and inserters take a filter.');
       if (b.f !== null && !isItemKey(b.f)) throw new MineError('Unknown item.');
       e.f = (b.f as string | null) ?? undefined;
     }
     this.markNow(account!, s);
     return { id: e.id };
   }
+}
+
+/** pt1252u: a sink that lands imported crops/fish in this player's banked storage (mine_items) inside the caller's
+ * DB transaction (so the source rows and the storage row commit together), then mirrors it into the in-memory pack
+ * and queues a full pack save behind any in-flight one (the chain is serialized, so the last write wins with it). */
+export async function writeImport(cl: { query: (sql: string, args: unknown[]) => Promise<unknown> }, account: string, items: Array<[string, number]>) {
+  for (const [id, n] of items) await cl.query('INSERT INTO mine_items (player_key, owner_name, item_type, item_id, qty) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (player_key, item_type, item_id) DO UPDATE SET qty = mine_items.qty + EXCLUDED.qty, updated_at = now()', [playerKey(account), account.trim(), 'good', id, n]);
+}
+export function factorySink(account: string): ImportSink {
+  const m = getMines(); if (m.offline) throw new MineError(MINES_OFFLINE_MSG);
+  world.get(account, Date.now()); // settle the sim first (throws while offline)
+  const pack = m.packOf(account);
+  return {
+    async write(cl, items) {
+      for (const [id, n] of items) {
+        const cur = pack.get(stackKey({ type: 'good', id }))?.qty ?? 0;
+        if (cur + n > MAX_BANKED_STACK) throw new MineError('Your factory storage is full for that item.');
+      }
+      await writeImport(cl, account, items);
+    },
+    after(items) {
+      for (const [id, n] of items) { const k = stackKey({ type: 'good', id }); const s = pack.get(k); if (s) s.qty += n; else pack.set(k, { type: 'good', id, qty: n }); }
+      void m.savePack(account, []).catch(() => {});
+    },
+  };
 }
 
 let world = new FactoryWorld();
@@ -201,6 +232,34 @@ export function registerFactory(_io: Server, socket: Socket): void {
     try { if (getMines().offline) throw new MineError(MINES_OFFLINE_MSG); const r = fn(body(p)); ack?.({ ok: true, result: r, ...view() }); }
     catch (e) { ack?.({ ok: false, error: e instanceof MineError ? e.message : 'Factory error.', ...view() }); if (!(e instanceof MineError)) console.error('[factory]', e); }
   };
+  // Bring crops / fish in from the rest of the game (async: DB transaction with the source rows).
+  const aop = (fn: (a: string, b: Record<string, unknown>) => Promise<unknown>) => async (p: unknown, ack?: Ack) => {
+    try {
+      const a = account(); if (!a) throw new MineError('Sign in to use the factory.');
+      if (getMines().offline) throw new MineError(MINES_OFFLINE_MSG);
+      const r = await fn(a, body(p)); ack?.({ ok: true, result: r, ...view() });
+    } catch (e) {
+      const known = e instanceof MineError || e instanceof FarmError || e instanceof FishError;
+      ack?.({ ok: false, error: known ? (e as Error).message : 'Factory error.', ...view() }); if (!known) console.error('[factory import]', e);
+    }
+  };
+  socket.on('fac_import_farm', aop(async (a, b) => {
+    const f = getFarm(); if (!f) throw new MineError('The farm is offline right now.');
+    if (typeof b.plot === 'string') { if (b.plot.startsWith('rf:')) await requireResort(a, FarmError); return f.harvest(a, b.plot, b.tiles, factorySink(a)); }
+    // every plot with ready crops (resort plantation only while you're at the resort)
+    const got: Array<[string, number]> = []; let harvested = 0; let skippedResort = false;
+    for (const pid of await f.myPlots(a)) {
+      if (pid.startsWith('rf:')) { try { await requireResort(a, FarmError); } catch { skippedResort = true; continue; } }
+      try { const r = await f.harvest(a, pid, undefined, factorySink(a)); harvested += r.harvested; for (const [id, n] of r.toFactory ?? []) { const x = got.find((g) => g[0] === id); if (x) x[1] += n; else got.push([id, n]); } }
+      catch (e) { if (!(e instanceof FarmError)) throw e; }
+    }
+    if (!harvested) throw new MineError(skippedResort ? 'Nothing ready here. (Plantation crops can only be sent while you\'re at Chud Resort.)' : 'No ready crops on your farm plots.');
+    return { harvested, toFactory: got, skippedResort };
+  }));
+  socket.on('fac_import_fish', aop(async (a, b) => {
+    const f = getFishing(); if (!f) throw new MineError('Fishing is offline right now.');
+    return f.toFactory(a, b.ids, factorySink(a));
+  }));
   socket.on('fac_state', op(() => null));
   socket.on('fac_expand', op(() => world.expand(account(), Date.now())));
   socket.on('fac_buy', op((b) => world.buy(account(), b.kind, b.n, Date.now())));

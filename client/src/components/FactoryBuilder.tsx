@@ -1,12 +1,13 @@
+import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ix, usePriceIndex } from '../lib/priceIndex';
 import { socket } from '@/lib/net';
-import type { Stack } from '../../../shared/mines';
-import { CHEST_ITEMS, DX, DY, FLOOR_LEVELS, FRECIPES, KINDS, KIND_ORDER, TICK_MS, colorOfKey, floorSize, frecipe, gridOf, cellId, nameOfKey, priceOfKey, recipeTicks, recipesFor, step, canPlace, type Dir, type Ent, type FState, type Grid, type Kind, undergroundPairs } from '../../../shared/factory';
+import { GOODS, type Stack } from '../../../shared/mines';
+import { madeBy, tierOf, usedIn, CHEST_ITEMS, DX, DY, FLOOR_LEVELS, FRECIPES, KINDS, KIND_ORDER, TICK_MS, colorOfKey, floorSize, frecipe, gridOf, cellId, nameOfKey, priceOfKey, recipeTicks, recipesFor, step, canPlace, type Dir, type Ent, type FState, type Grid, type Kind, undergroundPairs } from '../../../shared/factory';
 
 export type FAck = { ok: boolean; error?: string; state?: FState | null; level?: number; storage?: Stack[]; guest?: boolean; now?: number; result?: unknown };
 type Tool = 'select' | 'remove' | Kind;
-const ICON: Record<Kind, string> = { belt: '➡', underground: '⤵', splitter: '⑂', inserter: '🦾', chest_in: '📥', chest_out: '📤', smelter: '🔥', press: '🔨', roller: '⚙', drawer: '🧵', assembler: '🏗', jeweler: '💎', fabricator: '🏭' };
+const ICON: Record<Kind, string> = { belt: '➡', underground: '⤵', splitter: '⑂', inserter: '🦾', chest_in: '📥', chest_out: '📤', smelter: '🔥', press: '🔨', roller: '⚙', drawer: '🧵', assembler: '🏗', jeweler: '💎', fabricator: '🏭', mill: '🌾', cannery: '🥫' };
 const hash = (x: number, y: number) => { let h = Math.imul(x * 374761393 + y * 668265263, 1274126177) >>> 0; h ^= h >>> 13; return (h % 1000) / 1000; };
 
 /** Factorio-ish grid factory: server-authoritative sim, predicted locally between syncs. */
@@ -21,7 +22,8 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
   const [dir, setDir] = useState<Dir>(0);
   const [sel, setSel] = useState<number | null>(null);
   const [moving, setMoving] = useState<number | null>(null);
-  const [side, setSide] = useState<'build' | 'shop' | 'recipes'>('build');
+  const [side, setSide] = useState<'build' | 'shop' | 'recipes' | 'import'>('build');
+  const [chain, setChain] = useState<string>('');
   const [buyN, setBuyN] = useState(1);
   const ui = useRef({ tool, dir, sel, moving, hover: null as null | [number, number], drag: [] as Array<{ x: number; y: number; d: Dir }>, dragging: false, removing: new Set<number>(), z: 1, px: 0, py: 0, pan: null as null | { x: number; y: number; px: number; py: number; moved: boolean; btn: number }, pts: new Map<number, { x: number; y: number }>(), pinch: null as null | { d: number; z: number; cx: number; cy: number; px: number; py: number }, space: false, mini: null as null | { x: number; y: number; w: number; s: number } });
   const [zoomed, setZoomed] = useState(false);
@@ -231,7 +233,7 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
         </div>
         <aside className="fac-side">
           <div className="fac-tabs">
-            {(['build', 'shop', 'recipes'] as const).map((t) => <button type="button" key={t} className={side === t ? 'on' : ''} onClick={() => setSide(t)} data-testid={`fac-tab-${t}`}>{t === 'build' ? '🧰 Build' : t === 'shop' ? '🛒 Machinist' : '📜 Recipes'}</button>)}
+            {(['build', 'shop', 'recipes', 'import'] as const).map((t) => <button type="button" key={t} className={side === t ? 'on' : ''} onClick={() => setSide(t)} data-testid={`fac-tab-${t}`}>{t === 'build' ? '🧰 Build' : t === 'shop' ? '🛒 Machinist' : t === 'recipes' ? '📜 Recipes' : '🚚 Bring in'}</button>)}
           </div>
           {selEnt && <Inspect e={selEnt} storage={storageList} store={sim.current.store} onEdit={(b) => call('fac_edit', { id: selEnt.id, ...b })} onRemove={() => { call('fac_remove', { ids: [selEnt.id] }); setSel(null); }} onMove={() => { setMoving(selEnt.id); setDir(selEnt.d); }} onClose={() => setSel(null)} />}
           {side === 'build' && <div className="fac-palette">
@@ -249,15 +251,45 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
                 <button type="button" disabled={locked} onClick={() => call('fac_buy', { kind: k, n: buyN }, () => flash(`Bought ${buyN}× ${d.name}`))} data-testid={`fac-buy-${k}`}>🪙 {(ix(d.cost, pidx) * buyN).toLocaleString()}</button></div>
             ); })}
           </div>}
-          {side === 'recipes' && <div className="fac-recipes">
+          {side === 'recipes' && <div className="fac-recipes" data-testid="fac-recipes">
+            <label className="fac-chainpick">Show chain for <select value={chain} onChange={(ev) => setChain(ev.target.value)} data-testid="fac-chain-pick">
+              <option value="">— pick a product —</option>
+              {FRECIPES.map((r) => r.out[0]).filter((k, i, a) => a.indexOf(k) === i).sort((a, b) => tierOf(a) - tierOf(b) || nameOfKey(a).localeCompare(nameOfKey(b))).map((k) => <option key={k} value={k}>T{tierOf(k)} · {nameOfKey(k)}</option>)}
+            </select></label>
+            {chain && <Chain k={chain} pick={setChain} />}
             {KIND_ORDER.filter((k) => KINDS[k].machine).map((k) => (
-              <div key={k}><h4>{ICON[k]} {KINDS[k].name}</h4>
-                {recipesFor(k).map((r) => <div key={r.id} className="fac-rec"><span>{r.in.map(([key, q]) => <i key={key}><Dot k={key} />{q} {nameOfKey(key)}</i>)}</span><span>→ <Dot k={r.out[0]} />{r.out[1]} {nameOfKey(r.out[0])} <small>{r.secs}s · 🪙{priceOfKey(r.out[0])}</small></span></div>)}
+              <div key={k}><h4>{ICON[k]} {KINDS[k].name}{KINDS[k].minFloor > 1 ? <small> · level {KINDS[k].minFloor}+</small> : null}</h4>
+                {recipesFor(k).map((r) => <div key={r.id} className="fac-rec" title={recTip(r.out[0])} onClick={() => setChain(r.out[0])}><span>{r.in.map(([key, q]) => <i key={key}><Dot k={key} />{q} {nameOfKey(key)}</i>)}</span><span>→ <Dot k={r.out[0]} />{r.out[1]} {nameOfKey(r.out[0])} <small>T{tierOf(r.out[0])} · {r.secs}s · 🪙{ix(priceOfKey(r.out[0]), pidx)}</small></span></div>)}
               </div>
             ))}
           </div>}
+          {side === 'import' && <div className="fac-import" data-testid="fac-import">
+            <p className="mines-note">Bring resources in from the rest of the game. They land in your banked storage, where an Input Chest can pull them. Ore from every cave (The Mine, Frostbite, Magma, Coral Grotto) is already there when you bank it.</p>
+            <button type="button" className="fac-btn" onClick={() => call('fac_import_farm', {}, (r) => { const g = (r.result as { toFactory?: Array<[string, number]> } | undefined)?.toFactory ?? []; flash(`Sent to the factory: ${g.map(([id, n]) => `${n} ${nameOfKey(`good:${id}`)}`).join(', ')}`); })} data-testid="fac-import-farm">🌾 Harvest every ready crop into the factory</button>
+            <small className="mines-note">Instead of selling them: no chips now and no farm tier used. Plantation crops only while you're at Chud Resort.</small>
+            <button type="button" className="fac-btn" onClick={() => call('fac_import_fish', {}, (r) => { const g = (r.result as { items?: Array<[string, number]>; moved?: number } | undefined); flash(`Moved ${g?.moved ?? 0} fish: ${(g?.items ?? []).map(([id, n]) => `${n} ${nameOfKey(`good:${id}`)}`).join(', ')}`); })} data-testid="fac-import-fish">🐟 Send my cooler to the factory</button>
+            <small className="mines-note">Raw fish become Fish Fillets (1 per 8 chips of value), cooked dishes become Cooked Fish Portions (1 per 10). Junk stays. Imported crops and fish can't be sold raw to the house: craft them.</small>
+            <h4>Imported stock</h4>
+            <ul className="fac-stock">{CHEST_ITEMS.filter((k) => isRawKey(k) && (sim.current.store.get(k) ?? 0) > 0).map((k) => <li key={k}><Dot k={k} />{sim.current.store.get(k)} {nameOfKey(k)}</li>)}</ul>
+          </div>}
         </aside>
       </div>
+    </div>
+  );
+}
+
+const recTip = (k: string) => { const u = usedIn(k); return `${nameOfKey(k)} (tier ${tierOf(k)})${u.length ? `\nUsed in: ${u.map((r) => nameOfKey(r.out[0])).join(', ')}` : '\nEnd product: sell it'}`; };
+const isRawKey = (k: string) => { const [t, id] = k.split(':'); return t !== 'ore' && !!GOODS[id]?.raw; };
+/** Recipe tree for one product: what makes it (recursively, down to raw inputs) and what it feeds. */
+function Chain({ k, pick }: { k: string; pick: (k: string) => void }) {
+  const node = (key: string, q: number, depth: number): React.ReactElement => { const r = madeBy(key); return (
+    <li key={`${key}:${depth}`}><button type="button" className="fac-chainitem" onClick={() => r && pick(key)}><Dot k={key} />{q}× {nameOfKey(key)}</button>{r ? <small> ({ICON[r.machine]} {KINDS[r.machine].name}, {r.secs}s)</small> : <small> · raw</small>}
+      {r && depth < 6 && <ul>{r.in.map(([ik, iq]) => node(ik, iq, depth + 1))}</ul>}</li>); };
+  const r = madeBy(k); const u = usedIn(k);
+  return (
+    <div className="fac-chain" data-testid="fac-chain">
+      <ul>{node(k, r?.out[1] ?? 1, 0)}</ul>
+      <p className="mines-note">{u.length ? <>Feeds: {u.map((x) => <button type="button" key={x.id} className="fac-chainitem" onClick={() => pick(x.out[0])}><Dot k={x.out[0]} />{nameOfKey(x.out[0])}</button>)}</> : 'End product — sell it from storage.'}</p>
     </div>
   );
 }
@@ -283,6 +315,10 @@ function Inspect({ e, storage, store, onEdit, onRemove, onMove, onClose }: { e: 
         {storage.map((k) => <option key={k} value={k}>{nameOfKey(k)}</option>)}
       </select></label>}
       {e.k === 'underground' && <p className="mines-note">Pairs with the next underground ahead facing the same way (2–6 tiles). Items skip everything in between.</p>}
+      {e.k === 'chest_out' && <label>Only accept <select value={e.f ?? ''} onChange={(ev) => onEdit({ f: ev.target.value || null })} data-testid="fac-out-filter">
+        <option value="">— anything —</option>
+        {storage.map((k) => <option key={k} value={k}>{nameOfKey(k)}</option>)}
+      </select></label>}
       {e.k === 'chest_in' && <label>Pulls <select value={e.f ?? ''} onChange={(ev) => onEdit({ f: ev.target.value || null })} data-testid="fac-filter">
         <option value="">— nothing —</option>
         {storage.map((k) => <option key={k} value={k}>{nameOfKey(k)} ({store.get(k) ?? 0} banked)</option>)}
@@ -420,7 +456,7 @@ function drawChest(ctx: CanvasRenderingContext2D, e: Ent, x: number, y: number, 
   const p = ts * 0.1; ctx.fillStyle = '#6b4a2a'; ctx.fillRect(x + p, y + p, ts - 2 * p, ts - 2 * p);
   ctx.fillStyle = e.k === 'chest_in' ? '#3f7fbf' : '#3fa060'; ctx.fillRect(x + p, y + ts * 0.42, ts - 2 * p, ts * 0.14);
   ctx.strokeStyle = '#2a1c10'; ctx.lineWidth = Math.max(1, ts * 0.06); ctx.strokeRect(x + p, y + p, ts - 2 * p, ts - 2 * p);
-  if (e.k === 'chest_in' && e.f) drawItem(ctx, e.f, x + ts / 2, y + ts * 0.28, ts * 0.16);
+  if ((e.k === 'chest_in' || e.k === 'chest_out') && e.f) drawItem(ctx, e.f, x + ts / 2, y + ts * 0.28, ts * 0.16);
   ctx.fillStyle = 'rgba(255,255,255,.75)'; arrow(ctx, x + ts / 2 + DX[e.d] * ts * 0.3, y + ts / 2 + DY[e.d] * ts * 0.3, e.d, ts * 0.12);
 }
 function drawInserter(ctx: CanvasRenderingContext2D, e: Ent, x: number, y: number, ts: number, frac: number) {

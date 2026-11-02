@@ -200,7 +200,7 @@ export const stackKey = (s: { type: ItemType; id: string }) => `${s.type}:${s.id
 // ---------------------------------------------------------------- Factory (stage 2)
 // Bars ('bar') and crafted goods ('good') live in the same generic stack table as ore.
 export type MachineId = 'furnace' | 'workbench';
-export interface ItemDef { type: ItemType; id: string; name: string; price: number; color: string }
+export interface ItemDef { type: ItemType; id: string; name: string; price: number; color: string; /** imported raw input (crops, fish): valued for recipes, never sold raw to the house */ raw?: true; /** food: crafting it gives Cooking XP instead of Engineering */ food?: true }
 export interface Recipe { id: string; machine: MachineId; name: string; in: Array<{ type: ItemType; id: string; qty: number }>; out: { type: ItemType; id: string; qty: number }; ms: number }
 
 /** Bars and goods. House price per unit, in chips. */
@@ -238,6 +238,48 @@ export const GOODS: Record<string, ItemDef> = {
   engine:       { type: 'good', id: 'engine',       name: 'Engine',        price: 1400, color: '#c0563a' },
   computer:     { type: 'good', id: 'computer',     name: 'Computer',      price: 1150, color: '#4a7fd0' },
   drill:        { type: 'good', id: 'drill',        name: 'Mining Drill',  price: 2400, color: '#e0a030' },
+  // Factory inputs brought in from the rest of the game (pt1252u). raw = can't be sold to the house as-is: craft it.
+  // Prices are the reference value (the crop's sell price; fish fillets ~ base chips per fillet).
+  crop_strawberry: { type: 'good', id: 'crop_strawberry', name: 'Strawberries', price: 8,   color: '#d84a5a', raw: true },
+  crop_wheat:      { type: 'good', id: 'crop_wheat',      name: 'Wheat',        price: 16,  color: '#d8b860', raw: true },
+  crop_carrot:     { type: 'good', id: 'crop_carrot',     name: 'Carrots',      price: 27,  color: '#e08a3a', raw: true },
+  crop_corn:       { type: 'good', id: 'crop_corn',       name: 'Corn',         price: 46,  color: '#e8d050', raw: true },
+  crop_tomato:     { type: 'good', id: 'crop_tomato',     name: 'Tomatoes',     price: 76,  color: '#d8443a', raw: true },
+  crop_potato:     { type: 'good', id: 'crop_potato',     name: 'Potatoes',     price: 120, color: '#b08a5a', raw: true },
+  crop_pumpkin:    { type: 'good', id: 'crop_pumpkin',    name: 'Pumpkins',     price: 190, color: '#e0782a', raw: true },
+  crop_grapes:     { type: 'good', id: 'crop_grapes',     name: 'Grapes',       price: 330, color: '#8a4ac0', raw: true },
+  crop_sunflower:  { type: 'good', id: 'crop_sunflower',  name: 'Sunflowers',   price: 560, color: '#f0c830', raw: true },
+  crop_pineapple:  { type: 'good', id: 'crop_pineapple',  name: 'Pineapples',   price: 55,  color: '#f2c230', raw: true },
+  crop_banana:     { type: 'good', id: 'crop_banana',     name: 'Bananas',      price: 96,  color: '#f6dc4a', raw: true },
+  crop_mango:      { type: 'good', id: 'crop_mango',      name: 'Mangoes',      price: 165, color: '#f28a2a', raw: true },
+  crop_coconut:    { type: 'good', id: 'crop_coconut',    name: 'Coconuts',     price: 300, color: '#8a5a32', raw: true },
+  crop_cacao:      { type: 'good', id: 'crop_cacao',      name: 'Cacao Pods',   price: 540, color: '#6a3a22', raw: true },
+  fish_fillet:     { type: 'good', id: 'fish_fillet',     name: 'Fish Fillet',  price: 8,   color: '#f0a090', raw: true },
+  fish_portion:    { type: 'good', id: 'fish_portion',    name: 'Cooked Fish Portion', price: 10, color: '#d88a50', raw: true },
+  // Factory products made from them
+  flour:           { type: 'good', id: 'flour',           name: 'Flour',            price: 38,   color: '#f2ead8', food: true },
+  cornmeal:        { type: 'good', id: 'cornmeal',        name: 'Cornmeal',         price: 54,   color: '#f0d470', food: true },
+  sugar:           { type: 'good', id: 'sugar',           name: 'Sugar',            price: 52,   color: '#fafafa', food: true },
+  berry_juice:     { type: 'good', id: 'berry_juice',     name: 'Berry Juice',      price: 29,   color: '#e04060', food: true },
+  tropical_juice:  { type: 'good', id: 'tropical_juice',  name: 'Tropical Juice',   price: 370,  color: '#ffb030', food: true },
+  sunflower_oil:   { type: 'good', id: 'sunflower_oil',   name: 'Sunflower Oil',    price: 640,  color: '#ffe060', food: true },
+  cocoa:           { type: 'good', id: 'cocoa',           name: 'Cocoa Powder',     price: 615,  color: '#5a3020', food: true },
+  coconut_milk:    { type: 'good', id: 'coconut_milk',    name: 'Coconut Milk',     price: 345,  color: '#f4f0e8', food: true },
+  wine:            { type: 'good', id: 'wine',            name: 'Wine',             price: 760,  color: '#7a1a3a', food: true },
+  bread:           { type: 'good', id: 'bread',           name: 'Bread',            price: 90,   color: '#c8904a', food: true },
+  chocolate:       { type: 'good', id: 'chocolate',       name: 'Chocolate Bar',    price: 590,  color: '#4a2416', food: true },
+  canned_fish:     { type: 'good', id: 'canned_fish',     name: 'Canned Fish',      price: 52,   color: '#9ab0c0', food: true },
+  fish_oil:        { type: 'good', id: 'fish_oil',        name: 'Fish Oil',         price: 75,   color: '#d8c060', food: true },
+  pumpkin_pie:     { type: 'good', id: 'pumpkin_pie',     name: 'Pumpkin Pie',      price: 330,  color: '#d87a30', food: true },
+  salsa:           { type: 'good', id: 'salsa',           name: 'Salsa Jar',        price: 185,  color: '#c83a2a', food: true },
+  veggie_soup:     { type: 'good', id: 'veggie_soup',     name: 'Canned Veggie Soup', price: 155, color: '#d0703a', food: true },
+  banquet:         { type: 'good', id: 'banquet',         name: 'Banquet Platter',  price: 1080, color: '#e0b060', food: true },
+  steel:           { type: 'bar',  id: 'steel',           name: 'Steel Ingot',      price: 68,   color: '#8ea0b0' },
+  bearing:         { type: 'good', id: 'bearing',         name: 'Ball Bearing',     price: 92,   color: '#a8b4c0' },
+  motor:           { type: 'good', id: 'motor',           name: 'Electric Motor',   price: 340,  color: '#4a90a0' },
+  generator:       { type: 'good', id: 'generator',       name: 'Generator',        price: 1000, color: '#a07a30' },
+  robot:           { type: 'good', id: 'robot',           name: 'Robot',            price: 2300, color: '#60a0d0' },
+  bracelet:        { type: 'good', id: 'bracelet',        name: 'Grotto Bracelet',  price: 305,  color: '#40d0c0' },
 };
 const o = (id: OreId, qty: number) => ({ type: 'ore' as const, id, qty });
 const b = (id: string, qty: number) => ({ type: 'bar' as const, id, qty });
@@ -264,6 +306,9 @@ export function priceOf(s: { type: ItemType; id: string }): number {
   const d = GOODS[s.id]; return d && d.type === s.type ? d.price : 0;
 }
 export function nameOf(s: { type: ItemType; id: string }): string { return s.type === 'ore' && isOre(s.id) ? ORES[s.id].name : GOODS[s.id]?.name ?? s.id; }
+/** Can the house buy this as-is? (Raw factory imports can't be: craft them first.) */
+export const sellable = (s: { type: ItemType; id: string }) => priceOf(s) > 0 && !(s.type !== 'ore' && GOODS[s.id]?.raw);
+export const isFood = (s: { type: ItemType; id: string }) => s.type !== 'ore' && !!GOODS[s.id]?.food;
 export const inputValue = (r: Recipe) => r.in.reduce((t, i) => t + i.qty * priceOf(i), 0);
 
 /** Factory levels: chips to reach the level, slots per machine (parallel jobs) and max batch size. */
