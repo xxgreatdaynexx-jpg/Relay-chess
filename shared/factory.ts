@@ -152,6 +152,14 @@ export function splitSeq(w: [number, number, number]): number[] {
 }
 export const splitLabel = (e: { w?: unknown }) => splitWeights(e).join(':');
 export interface Storage { get(key: string): number; add(key: string, delta: number): void }
+/** The storage stack an Input Chest filtered to `f` draws from. Crops harvested to the pantry bank as `food:<crop>`
+ *  (pt1312u) while factory recipes and chest filters use `good:crop_<crop>`; they are the same crop, so a crop chest
+ *  pulls the import stack first and the pantry stack second (the line always carries the `good:` key). */
+export const pantryAlias = (f: string): string | null => (f.startsWith('good:crop_') ? `food:${f.slice('good:crop_'.length)}` : null);
+export function stockKey(st: Storage, f: string): string | null {
+  if (st.get(f) > 0) return f;
+  const alt = pantryAlias(f); return alt && st.get(alt) > 0 ? alt : null;
+}
 
 /** A machine holds at most one finished craft; while it holds any output it stops (backs up) until a belt/inserter/chest takes it. Over-cap legacy buffers just drain. */
 export const OUT_CAP_CRAFTS = 1;
@@ -236,10 +244,10 @@ export function step(s: FState, g: Grid, st: Storage): boolean {
   }
   // 2) input chests push their filter item forward (belt or machine), 1/tick
   for (const e of s.ents) {
-    if (e.k !== 'chest_in' || !e.f || st.get(e.f) < 1) continue;
+    const from = e.k === 'chest_in' && e.f ? stockKey(st, e.f) : null; if (!from || !e.f) continue;
     const t = at(e.x + DX[e.d], e.y + DY[e.d]); if (!t) continue;
-    if (isBeltish(t.k) && !t.it) { st.add(e.f, -1); t.it = e.f; t.m = 0; ch = true; }
-    else if (KINDS[t.k].machine && accepts(t, e.f, st)) { st.add(e.f, -1); give(s, st, t, e.f); ch = true; }
+    if (isBeltish(t.k) && !t.it) { st.add(from, -1); t.it = e.f; t.m = 0; ch = true; }
+    else if (KINDS[t.k].machine && accepts(t, e.f, st)) { st.add(from, -1); give(s, st, t, e.f); ch = true; }
   }
   // 3) inserters
   for (const e of s.ents) {
@@ -256,7 +264,7 @@ export function step(s: FState, g: Grid, st: Storage): boolean {
     const want = (k: string) => (!e.f || e.f === k) && ( isBeltish(dst.k) ? !dst.it : dst.k !== 'inserter' && accepts(dst, k, st));
     let got: string | null = null;
     if (isBeltish(src.k) && src.it && want(src.it)) { got = src.it; src.it = null; }
-    else if (src.k === 'chest_in' && src.f && st.get(src.f) > 0 && want(src.f)) { got = src.f; st.add(src.f, -1); }
+    else if (src.k === 'chest_in' && src.f && stockKey(st, src.f) && want(src.f)) { got = src.f; st.add(stockKey(st, src.f)!, -1); }
     else if (KINDS[src.k].machine && src.ob) { const r = frecipe(src.r); if (r && want(r.out[0])) { got = r.out[0]; src.ob--; } }
     if (got) { e.it = got; e.t = INSERTER_TICKS - 1; ch = true; }
   }
