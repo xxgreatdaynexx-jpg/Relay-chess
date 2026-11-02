@@ -12,7 +12,8 @@ const hex = (c: RGB) => '#' + c.map((v) => Math.max(0, Math.min(255, Math.round(
 /** amt > 0 lightens toward white, < 0 darkens toward black. */
 export const shade = (h: string, amt: number) => { const c = rgb(h); return hex(c.map((v) => (amt >= 0 ? v + (255 - v) * amt : v * (1 + amt))) as RGB); };
 const L = (h: string) => shade(h, 0.38), D = (h: string) => shade(h, -0.35);
-const P = (pts: string, fill: string, extra = '') => `<polygon points="${pts}" fill="${fill}" stroke="${OL}" stroke-width="1.1" stroke-linejoin="round"${extra}/>`;
+// `extra` may carry its own stroke-width; never emit it twice (a duplicate attribute is invalid XML and the <img> shows broken).
+const P = (pts: string, fill: string, extra = '') => `<polygon points="${pts}" fill="${fill}" stroke="${OL}"${/stroke-width=/.test(extra) ? '' : ' stroke-width="1.1"'} stroke-linejoin="round"${extra}/>`;
 const Pn = (pts: string, fill: string, op = 1) => `<polygon points="${pts}" fill="${fill}" opacity="${op}"/>`;
 const C = (cx: number, cy: number, r: number, fill: string, sw = 1.1) => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" stroke="${OL}" stroke-width="${sw}"/>`;
 const E = (cx: number, cy: number, rx: number, ry: number, fill: string, sw = 1.1) => `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${fill}" stroke="${OL}" stroke-width="${sw}"/>`;
@@ -171,7 +172,8 @@ const GOOD_ICONS: Record<string, () => string> = {
   pumpkin_pie: () => pie('#e08a2a'), salsa: () => jar('#d8402a'), banquet: cloche,
 };
 
-const svg = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">${body}</svg>`;
+// Explicit width/height so the svg has an intrinsic size (a viewBox alone falls back to 300x150).
+const svg = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">${body}</svg>`;
 const ALIAS: Record<string, string> = { crystal: 'gem', strawberry: 'crop_strawberry', wheat: 'crop_wheat', carrot: 'crop_carrot', corn: 'crop_corn', tomato: 'crop_tomato', potato: 'crop_potato', pumpkin: 'crop_pumpkin', grapes: 'crop_grapes', sunflower: 'crop_sunflower', pineapple: 'crop_pineapple', banana: 'crop_banana', mango: 'crop_mango', coconut: 'crop_coconut', cacao: 'crop_cacao' };
 const cache = new Map<string, string>();
 

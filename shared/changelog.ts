@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T23:00:00-06:00', title: 'Ore icons show up again', bullets: [
+    'Copper, iron, silver and gold ore icons no longer show as broken images in Factory storage, the mine pack and the Market.',
+  ] },
   { commit: '', at: '2026-11-01T23:00:00-06:00', title: 'Chud Customs: the Mechanic Shop', bullets: [
     'Requested by Dayne: a new 🔧 Mechanic Shop next to the Car Dealership where you can upgrade and customise the cars you own.',
     'Performance: Engine, Turbo, Tires, Handling and Nitro, each with 3 tiers. They really change how your car drives in the city and at the Speedway. Hold Shift or N (or the 🔥 button on mobile) to fire nitro. Upgrades help, but a maxed cheap car still can\'t catch a top supercar.',
