@@ -97,9 +97,9 @@ describe('countryside fields farm like farmland (pt1250u)', () => {
     expect(s.ledger('ida', 'farm_harvest').length).toBe(1);
     const before = s.chips('ida'); await s.re.sell('Ida', id); expect(s.chips('ida') - before).toBe(Math.floor(plot.price * 0.7));
   });
-  it('ripe crops last at least 12 hours before withering; long crops keep their longer window (request #19)', () => {
+  it('ripe crops last at least 36 hours (or 3x grow) before withering; long crops keep their longer window (request #19)', () => {
     const H = 60 * 60_000;
-    for (const c of CROPS) { expect(ripeWindow(c.grow)).toBe(Math.max(12 * H, WITHER_FACTOR * c.grow)); expect(stageOf(c, 0, c.grow + 12 * H - 1)).toBe('ready'); }
-    expect(ripeWindow(30 * 60_000)).toBe(12 * H); expect(ripeWindow(12 * H)).toBe(24 * H); expect(ripeWindow(8 * H, 3)).toBe(24 * H);
+    for (const c of CROPS) { expect(ripeWindow(c.grow)).toBe(Math.max(36 * H, WITHER_FACTOR * c.grow)); expect(stageOf(c, 0, c.grow + 36 * H - 1)).toBe('ready'); }
+    expect(ripeWindow(30 * 60_000)).toBe(36 * H); expect(ripeWindow(12 * H)).toBe(36 * H); expect(ripeWindow(16 * H)).toBe(48 * H); expect(ripeWindow(12 * H, 4)).toBe(48 * H); expect(WITHER_FACTOR).toBe(3);
   });
 });

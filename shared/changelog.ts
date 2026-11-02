@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T16:50:00-06:00', title: 'Farm: ripe crops last much longer before withering', bullets: [
+    'Requested by carter2: ripe crops now stay harvestable for at least 36 hours, or 3x their grow time if that is longer (it was 12 hours or 2x grow time). Sunflowers and Cacao now last 36 hours instead of 24.',
+    'Crops already in the ground get the longer window too, and the Greenhouse still adds on top. Grow times, yields and the daily farm limit are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T16:22:00-06:00', title: 'Stock Exchange: public trade history', bullets: [
     'Every company page now shows its recent trades: who bought or sold, how many shares, the price, the chips and the time (CST).',
     'Short opens, covers and liquidations and option buys (CALL / PUT with strike and expiry) and expiries are listed too, clearly labelled.',

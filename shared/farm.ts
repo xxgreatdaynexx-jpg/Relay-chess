@@ -4,7 +4,7 @@
  * bought, taxed and repossessed by the real-estate system. All chip amounts here are BASE units: the server scales seed
  * costs and harvest payouts by the price index (px / priceIndex).
  *
- * Crops grow on the server clock. A crop is ready at plantedAt + grow, and withers at ready + ripeWindow (max of 12 h and WITHER_FACTOR x grow).
+ * Crops grow on the server clock. A crop is ready at plantedAt + grow, and withers at ready + ripeWindow (max of 36 h and WITHER_FACTOR x grow).
  * Harvest pays back the seed cost in full plus the crop's profit (sell - seed) through a per-player daily
  * daily tier (like the Mines): full up to 100,000, then nothing, so farming can never flood the
  * economy (at most 100,000 base chips of profit per player per day) and never pays less than the seeds cost.
@@ -14,10 +14,10 @@ import { VENUE_BOUNDS } from './venues.js';
 import { TROPICAL_CROPS } from './resort.js';
 
 export const TILE = 2; // world units per farm tile
-export const WITHER_FACTOR = 2;
-/** Request #19: ripe crops always last at least 12 hours before withering (players have jobs). */
-export const MIN_RIPE_MS = 12 * 60 * 60_000;
-/** How long a ripe crop stays harvestable: the longer of 12 h or wither factor x grow time. */
+export const WITHER_FACTOR = 3;
+/** Request #19 + carter2 follow-up: ripe crops always last at least 36 hours before withering. */
+export const MIN_RIPE_MS = 36 * 60 * 60_000;
+/** How long a ripe crop stays harvestable: the longer of 36 h or wither factor x grow time. */
 export const ripeWindow = (grow: number, wither = WITHER_FACTOR) => Math.max(MIN_RIPE_MS, wither * grow);
 export interface Crop { id: string; label: string; emoji: string; seed: number; grow: number; sell: number; color: number }
 const M = 60_000, H = 60 * M;
