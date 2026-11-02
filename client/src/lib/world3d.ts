@@ -16,7 +16,7 @@ import { outskirts, countryHomes, countryBusinesses, businessType, lakeShape, RU
 import { AIRPORT_ROADS, RACETRACK_ROADS, TRACK } from '../../../shared/venues';
 
 import { WORLD_SPOTS } from './worldSpots';
-import { addXmas, type XmasRoof, type XmasDecor } from './worldXmas';
+import { addXmas, xmasGround, type XmasRoof, type XmasDecor } from './worldXmas';
 import { xmasOn } from '../../../shared/holiday';
 import { buildCar } from './carModels';
 import { CAR_BY_ID } from '../../../shared/cars';
@@ -108,8 +108,8 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const geo = <T extends THREE.BufferGeometry>(g: T) => { disposables.push(g); return g; };
 
   // Plate: grass slab with dirt edge, water strip along the front. Layout lives in worldLayout.ts.
-  const S = PLATE;
-  const slab = new THREE.Mesh(geo(new THREE.BoxGeometry(S * 2, 3, S * 2)), [mat({ color: 0x4a3322 }), mat({ color: 0x4a3322 }), mat({ color: 0x3f9a45, roughness: 1, emissive: 0x0f3a14, emissiveIntensity: 0.6 }), mat({ color: 0x2a1c12 }), mat({ color: 0x4a3322 }), mat({ color: 0x4a3322 })]);
+  const S = PLATE; const XM = xmasOn(); const keep = <M extends THREE.Material>(m: M) => { disposables.push(m); if ('map' in m && m.map) disposables.push(m.map as THREE.Texture); return m; };
+  const slab = new THREE.Mesh(geo(new THREE.BoxGeometry(S * 2, 3, S * 2)), [mat({ color: 0x4a3322 }), mat({ color: 0x4a3322 }), (XM ? keep(xmasGround(S * 2, S * 2, tier === 'low')) : mat({ color: 0x3f9a45, roughness: 1, emissive: 0x0f3a14, emissiveIntensity: 0.6 })), mat({ color: 0x2a1c12 }), mat({ color: 0x4a3322 }), mat({ color: 0x4a3322 })]);
   slab.position.y = -1.5; scene.add(slab);
   // Animated water: scrolling ripples + moonlight glints, fogged like the rest of the scene. Each lake gets its own copy
   // with a distance-to-shore texture so shallows are lighter, the middle darker, and a thin foam/ripple line rings the shore.
@@ -389,12 +389,12 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     { const b = lmBoxes.chat; if (b) decor.push({ x: b.x, z: b.z, scale: 1.9, big: true }); } // the big plaza tree
     corner('casino', 5.2, 5.2); corner('casino', -5.2, 5.2); corner('arena', 5.4, 5.4); corner('arena', -5.4, 5.4); corner('cityhall', 5, 5, 0.6);
     for (const site of Object.values(MINE_SITES)) decor.push({ x: site.x + 9, z: site.z + 9, scale: 0.9 });
-    xmas = addXmas(scene, { tier, half: PLATE + 50, roofs: xmasRoofs, decor, roads: xmasRoads, footprints: Object.entries(lmBoxes).filter(([id]) => !id.startsWith('mine')).map(([, b]) => ({ x: b.x, z: b.z, w: b.w, d: b.d, rot: b.rot, top: 0 })) });
+    xmas = addXmas(scene, { tier, half: PLATE + 50, roofs: xmasRoofs, decor, roads: xmasRoads, ground: { x0: OUTSKIRTS.x0, x1: OUTSKIRTS.x1, z0: OUTSKIRTS.z0, z1: OUTSKIRTS.z1 }, frost: false, footprints: Object.entries(lmBoxes).filter(([id]) => !id.startsWith('mine')).map(([, b]) => ({ x: b.x, z: b.z, w: b.w, d: b.d, rot: b.rot, top: 0 })) });
   }
   // Open-space patches: parks (grass), plazas (paving + fountain glow), lots (dirt) — one instanced slab, tinted, rotated.
   if (patches.length) {
     const gm = new THREE.InstancedMesh(unitBox, mat({ color: 0xffffff, roughness: 1 }), patches.length); const d = new THREE.Object3D(); const c = new THREE.Color();
-    patches.forEach((b, i) => { d.position.set(b.x, 0.04, b.z); d.scale.set(b.w, 0.08, b.d); d.rotation.set(0, b.rot, 0); d.updateMatrix(); gm.setMatrixAt(i, d.matrix); gm.setColorAt(i, c.setHex(b.kind === 'park' ? 0x2e7a36 : b.kind === 'plaza' ? 0x77727a : 0x4a3a2c)); });
+    patches.forEach((b, i) => { d.position.set(b.x, 0.04, b.z); d.scale.set(b.w, 0.08, b.d); d.rotation.set(0, b.rot, 0); d.updateMatrix(); gm.setMatrixAt(i, d.matrix); gm.setColorAt(i, c.setHex(XM ? (b.kind === 'plaza' ? 0xb4bccb : b.kind === 'park' ? 0xe6edf8 : 0xd4dbe8) : b.kind === 'park' ? 0x2e7a36 : b.kind === 'plaza' ? 0x77727a : 0x4a3a2c)); });
     scene.add(gm); gm.userData.props = patches.map((b) => patchId(b.kind, b)); pickables.push(gm);
     patches.forEach((b, i) => propTop.set(gm.userData.props[i], [b.x, 0.1, b.z]));
     const plazas = patches.filter((b) => b.kind === 'plaza');
@@ -509,7 +509,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     // ground: same grass as the plate, a hair under it and under the farm/mine aprons (strips around the plate: no overlap)
     const strips: Array<[number, number, number, number]> = [[x0, x1, z0, -P], [x0, x1, P, z1], [x0, -P, -P, P], [P, x1, -P, P]];
     const grass = mat({ color: 0x3f9a45, roughness: 1, emissive: 0x0f3a14, emissiveIntensity: 0.6 }); const dirtSide = mat({ color: 0x4a3322 });
-    for (const [a0, b0, e, f] of strips) { const m = new THREE.Mesh(geo(new THREE.BoxGeometry(b0 - a0, 3, f - e)), [dirtSide, dirtSide, grass, dirtSide, dirtSide, dirtSide]); m.position.set((a0 + b0) / 2, -1.53, (e + f) / 2); scene.add(m); }
+    for (const [a0, b0, e, f] of strips) { const m = new THREE.Mesh(geo(new THREE.BoxGeometry(b0 - a0, 3, f - e)), [dirtSide, dirtSide, XM ? keep(xmasGround(b0 - a0, f - e, tier === 'low')) : grass, dirtSide, dirtSide, dirtSide]); m.position.set((a0 + b0) / 2, -1.53, (e + f) / 2); scene.add(m); }
     // rural roads: city asphalt at the city road height, centre dashes
     // Rural + venue access roads: one asphalt (city roadMat, top flush with city roads), square-cut ends that extend
     // half a width so corners/T's close; an end on the speedway's edge is not extended (no road over the track).
@@ -571,7 +571,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       inst(trunk.geometry, trunk.material, R.trees.length, (i) => { const [x, z, s] = R.trees[i]; d.position.set(x, 0.7 * s, z); d.rotation.set(0, 0, 0); d.scale.set(s, 1.4 * s, s); });
       inst(crown.geometry, crown.material, R.trees.length, (i) => { const [x, z, s] = R.trees[i]; d.position.set(x, 2.1 * s, z); d.scale.set(s * 1.1, s * 1.3, s * 1.1); d.rotation.y = i; }); }
     // low rolling hills in the grass colour, rocks near the mines
-    inst(geo(new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2)), mat({ color: 0x3f9a45, roughness: 1, flatShading: true, emissive: 0x0f3a14, emissiveIntensity: 0.6 }), O.hills.length, (i) => { const [x, z, r, h] = O.hills[i]; d.position.set(x, -0.05, z); d.scale.set(r, h * 0.6, r * 0.8); d.rotation.y = i; });
+    inst(geo(new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2)), (XM ? mat({ color: 0xeef3ff, roughness: 0.95, flatShading: true, emissive: 0x1a2238, emissiveIntensity: 0.6 }) : mat({ color: 0x3f9a45, roughness: 1, flatShading: true, emissive: 0x0f3a14, emissiveIntensity: 0.6 })), O.hills.length, (i) => { const [x, z, r, h] = O.hills[i]; d.position.set(x, -0.05, z); d.scale.set(r, h * 0.6, r * 0.8); d.rotation.y = i; });
     inst(geo(new THREE.DodecahedronGeometry(1, 0)), mat({ color: 0x6a6670, roughness: 1, flatShading: true }), O.rocks.length, (i) => { const [x, z, s] = O.rocks[i]; d.position.set(x, s * 0.3, z); d.scale.set(s, s * 0.6, s); d.rotation.set(0, i * 2, 0); });
     // forest: the city's tree (trunk + low-poly crown, same materials)
     const T = O.trees;
@@ -585,7 +585,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // barns and silos. Crops on owned plots come from /api/farm (setFarm). Toned-down night palette, a little warm glow.
   const farmTiles = new Map<string, number>(); // plot id -> first index into the crop instanced mesh
   const crops = (() => {
-    const apron = new THREE.Mesh(geo(new THREE.BoxGeometry(FARM_X1 - FARM_X0, 3, FARM_Z1 - FARM_Z0)), [mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a8a40, roughness: 1, emissive: 0x0d3412, emissiveIntensity: 0.6 }), mat({ color: 0x2a1c12 }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c })]);
+    const apron = new THREE.Mesh(geo(new THREE.BoxGeometry(FARM_X1 - FARM_X0, 3, FARM_Z1 - FARM_Z0)), [mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c }), (XM ? keep(xmasGround(FARM_X1 - FARM_X0, FARM_Z1 - FARM_Z0, tier === 'low')) : mat({ color: 0x3a8a40, roughness: 1, emissive: 0x0d3412, emissiveIntensity: 0.6 })), mat({ color: 0x2a1c12 }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c })]);
     // Bug 12:28 AM: the grass top used a negative polygonOffset, which at the low camera angle pulled it in front of
     // the 0.14-high soil plots and furrows (only fence rails showed: wireframe-looking, z-fighting fields). The top now
     // sits a hair below y=0 with no offset, so the solid soil/furrows/crops always win the depth test.

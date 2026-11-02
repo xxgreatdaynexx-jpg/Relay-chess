@@ -3,6 +3,8 @@
  * airliners flying a take-off / circuit / landing loop) and the Speedway grounds (oval asphalt with kerbs, start/finish
  * chequers, timing-gate posts, access road). The terminal and grandstand buildings are landmark cases in world3d.ts.
  */
+import { xmasOn } from '../../../shared/holiday';
+import { xmasGround } from './worldXmas';
 import * as THREE from 'three';
 import { AIRPORT, AIRPORT_SLOT, RUNWAY, AIRPORT_ROADS, RACETRACK, RACETRACK_ROADS, TRACK, trackPoint, GATES, type Rect } from '../../../shared/venues';
 const NEON = 0.65; // matches world3d's toned-down neon
@@ -26,7 +28,9 @@ const disposeTree = (o: THREE.Object3D) => o.traverse((c) => { const m = c as TH
 /** Builds the venue grounds into `scene`; returns the per-frame animation step and a disposer for the planes. */
 export function buildVenues(scene: THREE.Scene, { mat, geo }: Mk): { step: (dt: number, time: number, cam?: THREE.Vector3) => void; dispose: () => void } {
   const grass = [mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c }), mat({ color: 0x3f9040, roughness: 1, emissive: 0x0d3412, emissiveIntensity: 0.6 }), mat({ color: 0x2a1c12 }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c })];
-  const slab = (r: Rect) => { const m = new THREE.Mesh(geo(new THREE.BoxGeometry(r.x1 - r.x0, 3, r.z1 - r.z0)), grass); m.position.set((r.x0 + r.x1) / 2, -1.51, (r.z0 + r.z1) / 2); scene.add(m); };
+  const snowy: THREE.Material[] = []; // Christmas: the venue grounds are snow too (world3d swaps the rest of the map)
+  const slab = (r: Rect) => { let top = grass; if (xmasOn()) { const sm = xmasGround(r.x1 - r.x0, r.z1 - r.z0, false); snowy.push(sm); top = [grass[0], grass[1], sm, grass[3], grass[4], grass[5]]; }
+    const m = new THREE.Mesh(geo(new THREE.BoxGeometry(r.x1 - r.x0, 3, r.z1 - r.z0)), top); m.position.set((r.x0 + r.x1) / 2, -1.51, (r.z0 + r.z1) / 2); scene.add(m); };
   slab(AIRPORT); slab(RACETRACK);
   // Tarmac layers (pt1243u fix: the grass used to carry a polygon offset that pulled it over every surface here, so the
   // runway, apron and track never showed). Surfaces now sit at road height with their own offsets, markings above them.
@@ -101,5 +105,5 @@ export function buildVenues(scene: THREE.Scene, { mat, geo }: Mk): { step: (dt: 
       (p.userData.blink as THREE.Object3D).visible = Math.sin(time * 5 + i) > 0.3;
     });
   };
-  return { step, dispose: () => planes.forEach(disposeTree) };
+  return { step, dispose: () => { planes.forEach(disposeTree); snowy.forEach((m) => { (m as THREE.MeshStandardMaterial).map?.dispose(); m.dispose(); }); } };
 }
