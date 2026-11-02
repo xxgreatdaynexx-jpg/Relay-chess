@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T23:40:00-06:00', title: 'Sharper, calmer building labels', bullets: [
+    'City and resort building labels are now crisp on every screen, with softer colours, a thinner border and no glow bleeding from them.',
+  ] },
   { commit: '', at: '2026-11-01T23:30:00-06:00', title: 'Arena: crouch is C (on-screen hint)', bullets: [
     'Crouch is now C (Ctrl closed tabs). C works with Shift held, Caps Lock and any keyboard layout, and a corner hint shows C crouch · Shift sprint.',
   ] },

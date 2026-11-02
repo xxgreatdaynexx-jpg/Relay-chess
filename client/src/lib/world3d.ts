@@ -4,6 +4,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { asLabel, dimColor, drawLabel, LABEL_LAYER, LABEL_TEXT, labelMaterial, renderScene } from './labelSprite';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { skyNow, parseTod, mix as mixHex } from '../../../shared/daynight';
 import { fieldPlotId } from '../../../shared/fieldFarms';
@@ -22,6 +23,7 @@ import { buildingId, patchId } from '../../../shared/realEstate';
 
 type Handlers = { onHover: (id: string | null, x: number, y: number) => void; onPick: (id: string) => void; onProperty?: (id: string) => void; onTrailer?: (name: string) => boolean };
 
+let labelRenderer: THREE.WebGLRenderer | null = null;
 function rng(seed: number) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
 
 function windowsTexture(seed: number, warm: string, cool: string) {
@@ -48,14 +50,7 @@ function housingTextures(seed: number, ht: HousingType) {
 }
 
 function signTexture(text: string, color: string, sub?: string) {
-  const c = document.createElement('canvas'); c.width = 512; c.height = sub ? 192 : 128;
-  const g = c.getContext('2d')!;
-  g.fillStyle = 'rgba(8,6,20,0.88)'; g.beginPath(); g.roundRect(6, 6, 500, c.height - 12, 26); g.fill();
-  g.strokeStyle = color; g.lineWidth = 6; g.shadowColor = color; g.shadowBlur = 24; g.stroke();
-  g.font = '800 64px Outfit Variable, system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillStyle = '#fff'; g.fillText(text, 256, sub ? 74 : 66); g.shadowBlur = 0;
-  if (sub) { g.font = '600 34px Outfit Variable, system-ui, sans-serif'; g.fillStyle = color; g.fillText(sub, 256, 142); }
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+  return drawLabel(text, { bg: 'rgba(10,8,22,0.82)', border: dimColor(color, 0.6), text: LABEL_TEXT, sub: dimColor(color, 0.8) }, sub, labelRenderer);
 }
 
 function glowTexture() {
@@ -70,7 +65,7 @@ const NEON = 0.65;
 export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const tier = detectWorldTier();
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier !== 'low', powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, TIER_PIXEL_RATIO[tier]));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, TIER_PIXEL_RATIO[tier])); labelRenderer = renderer;
   canvas.dataset.tier = tier;
   renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
   const scene = new THREE.Scene();
@@ -338,8 +333,8 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     }
     g.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.userData.spot = spot.id; pickables.push(o); } });
     const st = signTexture(`${spot.icon} ${spot.label}`, hex); disposables.push(st);
-    const sm = new THREE.SpriteMaterial({ map: st, transparent: true, toneMapped: false, depthWrite: false }); disposables.push(sm);
-    const sign = new THREE.Sprite(sm); sign.scale.set(8, 2, 1); sign.userData.base = 8; sign.position.set(0, height + 2.2, 0); sign.userData.spot = spot.id; g.add(sign); pickables.push(sign);
+    const sm = labelMaterial(st); disposables.push(sm);
+    const sign = asLabel(new THREE.Sprite(sm)); sign.scale.set(8, 2, 1); sign.userData.base = 8; sign.position.set(0, height + 2.2, 0); sign.userData.spot = spot.id; g.add(sign); pickables.push(sign);
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: spot.color, transparent: true, opacity: 0.24, blending: THREE.AdditiveBlending, depthWrite: false })); halo.scale.set(16, 16, 1); halo.position.y = 0.6; g.add(halo);
     scene.add(g);
     lms.push({ id: spot.id, root: g, hit: [], emissive: ems, sign, pos: g.position.clone(), height });
@@ -616,7 +611,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const stM = new THREE.PointsMaterial({ color: 0xffffff, size: 0.8, sizeAttenuation: false, fog: false, transparent: true }); disposables.push(stM); scene.add(new THREE.Points(stG, stM));
 
   // Interaction.
-  const ray = new THREE.Raycaster(); const ndc = new THREE.Vector2();
+  const ray = new THREE.Raycaster(); ray.layers.enable(LABEL_LAYER); const ndc = new THREE.Vector2();
   let hovered: string | null = null; let fly: { from: THREE.Vector3; to: THREE.Vector3; tf: THREE.Vector3; tt: THREE.Vector3; t: number; id: string } | null = null;
   const pick = (cx: number, cy: number) => { const rc = canvas.getBoundingClientRect(); ndc.set(((cx - rc.left) / rc.width) * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1); ray.setFromCamera(ndc, camera); const hit = ray.intersectObjects(pickables, false)[0]; const tr = hit?.object.userData.trailers as string[] | undefined; if (tr && hit?.instanceId != null) return `trailer:${tr[hit.instanceId]}`; const pr = hit?.object.userData.props as string[] | undefined; if (pr && hit?.instanceId != null) return pr[hit.instanceId] ?? null; return (hit?.object.userData.spot as string | undefined) ?? null; };
   const setHover = (id: string | null) => {
@@ -708,7 +703,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     for (const w of waterMats) w.uniforms.uTime.value = time; venues.step(dt, time, camera.position);
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
     for (const l of lms) { const k = labelScale(camera.position.distanceTo(l.sign.getWorldPosition(tmpV)), portrait) * (l.sign.userData.hover ? 1.2 : 1); l.sign.scale.set(k, k / 4, 1); }
-    if (composer) composer.render(); else renderer.render(scene, camera);
+    renderScene(renderer, composer, scene, camera);
   };
   let tick: ((dt: number) => boolean) | null = null;
   const vis = () => { running = !document.hidden; clock.getDelta(); }; document.addEventListener('visibilitychange', vis);

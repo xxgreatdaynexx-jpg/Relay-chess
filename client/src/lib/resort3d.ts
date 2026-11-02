@@ -1,6 +1,7 @@
 // Chud Resort 3D map: a golden-hour beachfront town. Ocean, sand, palms, boardwalk, hotels, condos, villas, pool,
 // marina with superyachts, an airfield, the Paradise Plantation and the Coral Grotto. Same camera/pan rules as the city.
 import * as THREE from 'three';
+import { asLabel, dimColor, drawLabel, LABEL_LAYER, labelMaterial, renderScene } from './labelSprite';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -14,14 +15,9 @@ type Handlers = { onHover: (id: string | null, x: number, y: number) => void; on
 function rng(seed: number) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
 
 function signTexture(text: string, color: string, sub?: string) {
-  const c = document.createElement('canvas'); c.width = 512; c.height = sub ? 192 : 128; const g = c.getContext('2d')!;
-  const gr = g.createLinearGradient(0, 0, 0, c.height); gr.addColorStop(0, 'rgba(255,250,240,.96)'); gr.addColorStop(1, 'rgba(250,236,210,.96)');
-  g.fillStyle = gr; g.beginPath(); g.roundRect(6, 6, 500, c.height - 12, 30); g.fill();
-  g.strokeStyle = color; g.lineWidth = 7; g.stroke();
-  g.font = '800 60px Outfit Variable, Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#2a2016'; g.fillText(text, 256, sub ? 74 : 66);
-  if (sub) { g.font = '600 32px Outfit Variable, system-ui, sans-serif'; g.fillStyle = '#9a7420'; g.fillText(sub, 256, 142); }
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+  return drawLabel(text, { bg: (g, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, 'rgba(226,220,208,.94)'); gr.addColorStop(1, 'rgba(214,204,184,.94)'); return gr; }, border: dimColor(color, 0.75), text: '#2a2016', sub: '#7d6020', font: 'Outfit Variable, Georgia, serif', radius: 30 }, sub, labelRenderer);
 }
+let labelRenderer: THREE.WebGLRenderer | null = null;
 function facadeTexture(seed: number, balconies: boolean) {
   const c = document.createElement('canvas'); c.width = 64; c.height = 128; const g = c.getContext('2d')!; const r = rng(seed);
   g.fillStyle = '#f4efe6'; g.fillRect(0, 0, 64, 128);
@@ -32,7 +28,7 @@ function facadeTexture(seed: number, balconies: boolean) {
 export type Resort = ReturnType<typeof createResort>;
 export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   const tier = detectWorldTier(); const r = rng(20261101);
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier !== 'low', powerPreference: 'high-performance' });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier !== 'low', powerPreference: 'high-performance' }); labelRenderer = renderer;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, TIER_PIXEL_RATIO[tier])); canvas.dataset.tier = tier;
   renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.95;
   renderer.shadowMap.enabled = tier !== 'low'; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -150,8 +146,8 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   // Labels.
   const signs: THREE.Sprite[] = [];
   const label = (text: string, sub: string | undefined, color: string, x: number, y: number, z: number, k = 1) => {
-    const tex = signTexture(text, color, sub); disposables.push(tex); const m = new THREE.SpriteMaterial({ map: tex, depthWrite: false, fog: false }); disposables.push(m);
-    const s = new THREE.Sprite(m); s.position.set(x, y, z); s.userData.k = k; s.scale.set(8, 2, 1); scene.add(s); signs.push(s); return s;
+    const tex = signTexture(text, color, sub); disposables.push(tex); const m = labelMaterial(tex, { fog: false }); disposables.push(m);
+    const s = asLabel(new THREE.Sprite(m)); s.position.set(x, y, z); s.userData.k = k; s.scale.set(8, 2, 1); scene.add(s); signs.push(s); return s;
   };
 
   const pickables: THREE.Object3D[] = []; const spotRoots = new Map<string, THREE.Object3D>();
@@ -229,7 +225,7 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   const setOwned = (ids: string[]) => { let n = 0; for (const id of ids) { const t = propTop.get(id); if (!t || n >= 64) continue; d.position.set(t[0], t[1] + 1, t[2]); d.rotation.set(0, 0, 0); d.scale.set(1, 1.5, 1); d.updateMatrix(); marks.setMatrixAt(n++, d.matrix); } marks.count = n; marks.instanceMatrix.needsUpdate = true; };
 
   // Interaction (same rules as the city: drag pans, click picks).
-  const ray = new THREE.Raycaster(); const ndc = new THREE.Vector2();
+  const ray = new THREE.Raycaster(); ray.layers.enable(LABEL_LAYER); const ndc = new THREE.Vector2();
   const pick = (cx: number, cy: number) => { const rc = canvas.getBoundingClientRect(); ndc.set(((cx - rc.left) / rc.width) * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1); ray.setFromCamera(ndc, camera); const o = ray.intersectObjects(pickables, false)[0]?.object; return (o?.userData.spot ?? o?.userData.lot ?? null) as string | null; };
   let down: { x: number; y: number; drag?: boolean } | null = null;
   const onMove = (e: PointerEvent) => { if (e.pointerType === 'touch') return; if (down && e.buttons) { if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) { down.drag = true; h.onHover(null, 0, 0); } if (down.drag) return; } const id = pick(e.clientX, e.clientY); canvas.style.cursor = id ? 'pointer' : 'grab'; h.onHover(id, e.clientX, e.clientY); };
@@ -250,7 +246,7 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
     controls.update(); clampPan();
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
     for (const s of signs) { const k = labelScale(camera.position.distanceTo(s.getWorldPosition(tmp)), portrait) * (s.userData.k as number); s.scale.set(k, k / 4 * ((s.material.map!.image as { height: number }).height / 128), 1); }
-    if (composer) composer.render(); else renderer.render(scene, camera);
+    renderScene(renderer, composer, scene, camera);
   };
   const vis = () => { running = !document.hidden; clock.getDelta(); }; document.addEventListener('visibilitychange', vis); frame();
   return {
