@@ -1,5 +1,6 @@
 /** Public skin Market (escrowed listings, 5% fee burned, cheapest first, price history) and player Trades. Server-authoritative: every action is a socket request validated server-side. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ItemIcon } from './ItemIcon';
 import { request, socket } from '@/lib/net';
 import { PriceChart, RecentSales } from './MarketCharts';
 import { PAGE, sortCatalog, type CatEntry, type SortKey } from '@/lib/marketCatalog';
@@ -106,8 +107,7 @@ export function MarketView({ onListYours }: { onListYours?: (itemId: string) => 
 }
 
 interface StackRow { id: string; type: string; itemId: string; name: string; color?: string; qty: number; total: number; unit: number; seller: string; mine: boolean }
-const ORE_COLOR: Record<string, string> = { stone: '#8a8580', coal: '#2e2e33', copper: '#d9793d', iron: '#b0a090', silver: '#e8edf2', gold: '#ffcf3a', crystal: '#c070ff', diamond: '#9ff6ff' };
-const Chip = ({ r }: { r: { type?: string; itemId?: string; id?: string; color?: string } }) => <span className="mkt-mat" style={{ background: r.color ?? ORE_COLOR[(r.itemId ?? r.id)!] ?? '#888' }} aria-hidden>{r.type === 'ore' ? '⛏' : r.type === 'bar' ? '▬' : '⚙'}</span>;
+const Chip = ({ r }: { r: { type?: string; itemId?: string; id?: string; what?: string } }) => { const w = r.what?.startsWith('stack:') ? r.what.slice(6).split(':') : null; return <ItemIcon type={w?.[0] ?? r.type} id={w?.[1] ?? r.itemId ?? r.id ?? ''} size={22} className="mkt-mat-icon" />; };
 
 /** Resources sub-tab: every ore / bar / good, listed or not; unit-price listings, partial buys, 5% fee. */
 export function MaterialsView({ initialSell }: { initialSell?: string | null } = {}) {

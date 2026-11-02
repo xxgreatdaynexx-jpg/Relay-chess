@@ -1,4 +1,5 @@
 import { restoreOpen } from '@/lib/restoreOpen';
+import { ItemIcon } from './ItemIcon';
 import { importWithReload, reloadOnceForChunkError } from '@/lib/chunkReload';
 import { TopTab } from '@/components/TopTabs';
 import { usePriceIndex } from '../lib/priceIndex';
@@ -231,14 +232,14 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
           <div className="mines-load">⛏️ Carried {pack.load}/{pack.cap}<div className="mines-bar"><i style={{ width: `${Math.min(100, (pack.load / pack.cap) * 100)}%` }} /></div></div>
           <ul>
             {ORE_ORDER.map((id) => { const s = pack.pack.find((p) => p.type === 'ore' && p.id === id); if (!s) return null; return (
-              <li key={id}><span className="mines-dot" style={{ background: ORES[id].color }} />{ORES[id].name}<b>×{s.qty}</b></li>
+              <li key={id}><ItemIcon type="ore" id={id} />{ORES[id].name}<b>×{s.qty}</b></li>
             ); })}
             {pack.pack.length === 0 && <li className="opacity-60">Nothing carried. Go swing at some rock.</li>}
           </ul>
           <button type="button" className="mines-sell" disabled title="Leave the mine to sell" data-testid="mines-sell">Leave the mine to sell</button>
           <p className="mines-note">Walk back to the glowing <b>EXIT</b> lift at the entrance to bank your haul. Drop out without it and you lose what you carry (60s to reconnect).{guest ? ' Guests can mine but not sell.' : ' Sell and smelt banked ore in the 🏭 Factory tab.'}</p>
           <details className="mines-prices mines-board" data-testid="mines-board-panel"><summary>🏆 Leaderboard</summary><MiningLeaderboard compact you={guest ? '' : loadName()} /></details>
-          <details className="mines-prices"><summary>Prices</summary>{ORE_ORDER.map((id) => <div key={id}><span className="mines-dot" style={{ background: ORES[id].color }} />{ORES[id].name}: {ORES[id].price} · {ORES[id].hits} hits</div>)}</details>
+          <details className="mines-prices"><summary>Prices</summary>{ORE_ORDER.map((id) => <div key={id}><ItemIcon type="ore" id={id} />{ORES[id].name}: {ORES[id].price} · {ORES[id].hits} hits</div>)}</details>
         </aside>
       </div>
     </div>

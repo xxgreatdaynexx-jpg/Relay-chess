@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T21:20:00-06:00', title: 'New item icons', bullets: [
+    'Requested by Dayne: the plain coloured dots are gone. Every ore, gem, bar, factory part, crop, fish and food product now has its own drawn icon.',
+    'You will see them in your mine backpack, factory storage, recipes and machines, on factory belts, and in the Market resources list. Prices and drops are unchanged.',
+  ] },
   { commit: '', at: '2026-11-01T21:15:00-06:00', title: 'Fishing: brand-new fish models', bullets: [
     'Requested by Dayne: every fish you catch now has its own proper 3D model: real body shape, fins, tail, eyes, mouth and markings for each species.',
     'Bluegill and Pumpkinseed are round with their dark ear flaps, Yellow Perch has its tiger bars and orange fins, Largemouth Bass gets its big jaw and dark side stripe, Rainbow Trout its pink band and spots.',

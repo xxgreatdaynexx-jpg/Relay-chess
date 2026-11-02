@@ -1,0 +1,147 @@
+/**
+ * Item icon registry: one crafted 24x24 SVG per resource item (ores, gems, bars, factory goods, crops, fish, food).
+ * Pure presentation — never touches prices, odds or recipes. Unknown ids get a tinted crate fallback.
+ * Use itemIconUri(type, id) for <img src>, or ItemIcon (client/src/components/ItemIcon.tsx) in React.
+ */
+import { GOODS, ORES, isOre } from './mines.js';
+
+const OL = '#1b1510';
+type RGB = [number, number, number];
+const rgb = (h: string): RGB => { const s = h.replace('#', ''); const f = s.length === 3 ? s.split('').map((c) => c + c).join('') : s; return [0, 2, 4].map((i) => parseInt(f.slice(i, i + 2), 16) || 0) as RGB; };
+const hex = (c: RGB) => '#' + c.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+/** amt > 0 lightens toward white, < 0 darkens toward black. */
+export const shade = (h: string, amt: number) => { const c = rgb(h); return hex(c.map((v) => (amt >= 0 ? v + (255 - v) * amt : v * (1 + amt))) as RGB); };
+const L = (h: string) => shade(h, 0.38), D = (h: string) => shade(h, -0.35);
+const P = (pts: string, fill: string, extra = '') => `<polygon points="${pts}" fill="${fill}" stroke="${OL}" stroke-width="1.1" stroke-linejoin="round"${extra}/>`;
+const Pn = (pts: string, fill: string, op = 1) => `<polygon points="${pts}" fill="${fill}" opacity="${op}"/>`;
+const C = (cx: number, cy: number, r: number, fill: string, sw = 1.1) => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" stroke="${OL}" stroke-width="${sw}"/>`;
+const E = (cx: number, cy: number, rx: number, ry: number, fill: string, sw = 1.1) => `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${fill}" stroke="${OL}" stroke-width="${sw}"/>`;
+const R = (x: number, y: number, w: number, h: number, fill: string, rx = 1, sw = 1.1) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${fill}" stroke="${OL}" stroke-width="${sw}"/>`;
+const Pa = (d: string, fill: string, sw = 1.1) => `<path d="${d}" fill="${fill}" stroke="${OL}" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round"/>`;
+const Ln = (d: string, col: string, w = 1.2) => `<path d="${d}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
+const glint = (x: number, y: number, s = 1) => `<path d="M${x} ${y - 2 * s}L${x + 0.6 * s} ${y - 0.6 * s}L${x + 2 * s} ${y}L${x + 0.6 * s} ${y + 0.6 * s}L${x} ${y + 2 * s}L${x - 0.6 * s} ${y + 0.6 * s}L${x - 2 * s} ${y}L${x - 0.6 * s} ${y - 0.6 * s}Z" fill="#fff" opacity=".9"/>`;
+
+// ---------------------------------------------------------------- shape templates
+const rock = (body: string, nug?: string) => {
+  let s = P('3,15 5,8 11,4 18,6 21,12 19,18 10,20', body) + Pn('5,8 11,4 18,6 13,9', L(body), 0.85) + Pn('18,6 21,12 19,18 14,12', D(body), 0.8);
+  if (nug) s += P('7,11 10,9.5 11,12 8.5,13.5', nug, ' stroke-width="0.8"') + P('13,13 16.5,12 17,15.5 13.5,16.5', nug, ' stroke-width="0.8"') + P('9,16 11,15 11.8,17.5 9.5,18', nug, ' stroke-width="0.8"') + Pn('7,11 10,9.5 9.5,11', L(nug)) + Pn('13,13 16.5,12 15,13.5', L(nug));
+  return s;
+};
+const coal = (c: string) => P('3,15 6,7 12,4 19,7 21,14 16,20 8,19', c) + Pn('6,7 12,4 13,10 7,12', '#55565c', 0.9) + Pn('13,10 19,7 21,14', '#3a3b40', 0.9) + Pn('8,19 7,12 13,10 16,20', '#18181b') + glint(10, 8, 0.9) + glint(17, 11, 0.6);
+const crystals = (c: string) => P('8,21 5,11 8,5 11,11 11,21', c) + Pn('8,5 11,11 11,21 8,21', D(c), 0.6) + P('13,21 12,9 16,3 20,9 19,21', L(c)) + Pn('16,3 20,9 19,21 16,21', c, 0.7) + P('3,21 3,15 5,13 7,15 7,21', D(c)) + glint(14.5, 8, 0.9);
+const diamond = (c: string) => P('4,9 8,4 16,4 20,9 12,21', c) + Pn('4,9 20,9 12,21', D(c), 0.45) + Ln('M8 4L10 9L12 4L14 9L16 4M10 9L12 21L14 9', OL, 0.7) + Pn('8,4 10,9 4,9', L(c)) + glint(17, 6, 1.1);
+const ingot = (c: string) => P('8,7 19,7 17,11 6,11', L(c)) + P('6,11 17,11 18,17 3,17', c) + P('17,11 19,7 21,13 18,17', D(c)) + Ln('M9 8.5L13 8.5', '#fff', 1) + Ln('M5 15L9 15', '#fff', 0.7);
+const brick = (c: string) => P('3,9 13,6 21,9 11,12', L(c)) + P('3,9 11,12 11,19 3,16', c) + P('11,12 21,9 21,16 11,19', D(c)) + Ln('M3 12.5L11 15.5L21 12.5M7 10.7L7 17.5M16 10.5L16 17.5', shade(c, -0.55), 0.7);
+const pane = (c: string) => P('5,4 18,4 18,20 5,20', c, ' fill-opacity=".75"') + Ln('M8 7L11 7M8 9L9.5 9', '#fff', 1.1) + Ln('M15 17L12 14', '#fff', 0.9) + P('18,4 20,6 20,22 18,20', D(c));
+const plate = (c: string, rivets = true) => P('2,12 12,7 22,12 12,17', L(c)) + P('2,12 12,17 12,19 2,14', c) + P('12,17 22,12 22,14 12,19', D(c)) + (rivets ? C(7, 12, 0.8, D(c), 0.5) + C(17, 12, 0.8, D(c), 0.5) + C(12, 9.5, 0.8, D(c), 0.5) + C(12, 14.5, 0.8, D(c), 0.5) : Ln('M6 11L12 8.2', '#fff', 0.8));
+const coins = (c: string) => E(12, 17, 8, 3.5, D(c)) + E(12, 15, 8, 3.5, c) + E(12, 12, 8, 3.5, D(c)) + E(12, 10, 8, 3.5, c) + E(12, 10, 5, 2, L(c), 0.6) + glint(16, 8, 0.7);
+const ring = (c: string, gem: string) => `<ellipse cx="12" cy="14" rx="7.5" ry="6" fill="none" stroke="${OL}" stroke-width="4.2"/><ellipse cx="12" cy="14" rx="7.5" ry="6" fill="none" stroke="${c}" stroke-width="2.4"/><path d="M6.5 11.5A7.5 6 0 0 1 9 8.6" fill="none" stroke="#fff" stroke-width="1" opacity=".8"/>` + P('9,7 12,3 15,7 12,9', gem) + glint(13, 5, 0.6);
+const coil = (c: string) => E(12, 18, 8, 3, D(c)) + E(12, 15, 8, 3, c) + E(12, 12, 8, 3, D(c)) + E(12, 9, 8, 3, c) + E(12, 9, 3, 1, '#2a2018', 0.6) + Ln('M20 9L22 4', c, 2) + Ln('M6 8.4L10 6.6', L(c), 0.9);
+function gearPath(cx: number, cy: number, ro: number, ri: number, n: number) { let d = ''; for (let i = 0; i < n * 4; i++) { const a = (i / (n * 4)) * Math.PI * 2 - Math.PI / 2; const r = i % 4 < 2 ? ro : ri; d += (i ? 'L' : 'M') + (cx + Math.cos(a) * r).toFixed(2) + ' ' + (cy + Math.sin(a) * r).toFixed(2); } return d + 'Z'; }
+const gear = (c: string) => Pa(gearPath(12, 12, 10, 7.6, 8), c) + C(12, 12, 4.8, L(c), 0.8) + C(12, 12, 2.2, '#2a2420') + Ln('M7 8A6 6 0 0 1 11 6', '#fff', 0.8);
+const rods = (c: string) => [0, 4, 8].map((o) => Pa(`M${3 + o} ${17 - o * 0.3}L${15 + o} ${7 - o * 0.3}L${16.6 + o} ${8.8 - o * 0.3}L${4.6 + o} ${18.8 - o * 0.3}Z`, o === 4 ? L(c) : c, 0.9)).join('');
+const screw = (c: string) => Pa('M10 9L14 9L14 19L12 22L10 19Z', c) + Ln('M10 11L14 12M10 13.5L14 14.5M10 16L14 17M10 18.5L13.5 19.5', D(c), 0.8) + E(12, 7, 6, 2.6, L(c)) + Pa('M6 7L6 8.6A6 2.6 0 0 0 18 8.6L18 7', c, 0.9) + Ln('M9.5 7L14.5 7', '#2a2420', 1.2);
+const pipe = (c: string) => Pa('M5 7L17 7A3.5 6 0 0 1 17 19L5 19Z', c) + E(5, 13, 3.5, 6, D(c)) + E(5, 13, 2, 3.8, '#1a1612', 0.6) + Ln('M7 9L16 9', L(c), 1.2) + R(10, 6.2, 2, 13.6, D(c), 0.4, 0.7);
+const frame = (c: string) => Pa('M4 7L20 7L20 19L4 19Z', 'none') + Ln('M4 7L20 7L20 19L4 19Z', OL, 4) + Ln('M4 7L20 7L20 19L4 19Z', c, 2.4) + Ln('M4 7L20 19M20 7L4 19', OL, 3.2) + Ln('M4 7L20 19M20 7L4 19', D(c), 1.8) + [[4, 7], [20, 7], [20, 19], [4, 19]].map(([x, y]) => C(x, y, 1.3, L(c), 0.6)).join('');
+const circuit = (c: string) => R(2.5, 5, 19, 14, c, 1.5) + Ln('M5 8L9 8L9 11M5 16L8 16L8 13M19 8L15 8M19 16L16 13M12 5.5L12 8', '#e8d38a', 0.9) + R(9, 9, 6, 6, '#22262b', 0.6, 0.8) + C(5, 8, 0.8, '#e8d38a', 0.4) + C(19, 16, 0.8, '#e8d38a', 0.4) + Ln('M10.5 10.5L13.5 10.5', '#667', 0.6);
+const lens = (c: string) => C(12, 12, 8.5, '#4a5560', 1.2) + C(12, 12, 6.8, c, 0.8) + `<circle cx="12" cy="12" r="6.8" fill="#fff" opacity=".15"/>` + Ln('M8.5 10A4.5 4.5 0 0 1 11 7.6', '#fff', 1.3) + glint(15, 14, 0.6);
+const leaf = (c: string) => Pa('M4 6L18 4L20 18L6 20Z', c) + Pa('M4 6L18 4L20 18L6 20Z', 'none', 0) + Ln('M7 8L14 7M8 12L16 11M9 16L13 15.5', L(c), 0.9) + Pa('M16 4.3L18 4L20 18L18.4 18.3Z', D(c), 0.6);
+const chain = (c: string) => [[6, 15], [10.5, 11], [15, 7]].map(([x, y], i) => `<ellipse cx="${x}" cy="${y}" rx="4.4" ry="2.6" transform="rotate(-42 ${x} ${y})" fill="none" stroke="${OL}" stroke-width="${i === 1 ? 3.6 : 4}"/><ellipse cx="${x}" cy="${y}" rx="4.4" ry="2.6" transform="rotate(-42 ${x} ${y})" fill="none" stroke="${i === 1 ? D(c) : c}" stroke-width="${i === 1 ? 1.6 : 2}"/>`).join('') + glint(17, 5, 0.6);
+const crown = (c: string, gem: string) => Pa('M3 18L4 7L8.5 12L12 4L15.5 12L20 7L21 18Z', c) + R(3, 17, 18, 3.5, D(c), 0.8) + C(12, 13, 1.7, gem, 0.7) + C(7, 15, 1.2, gem, 0.6) + C(17, 15, 1.2, gem, 0.6) + C(4, 7, 1, gem, 0.5) + C(12, 4, 1, gem, 0.5) + C(20, 7, 1, gem, 0.5) + glint(10, 9, 0.6);
+const pickaxe = (c: string) => Ln('M6 20L16 7', OL, 3.6) + Ln('M6 20L16 7', '#9a6a3a', 2) + Pa('M5 9Q12 1 21 7Q14 5 12 8L11 7Q9 6 5 9Z', c) + Ln('M8 6.5Q12 3.5 17 4.6', L(c), 0.8);
+const engine = (c: string) => R(4, 10, 16, 10, c, 1.5) + R(5, 5, 4, 6, D(c), 0.8) + R(10, 5, 4, 6, D(c), 0.8) + R(15, 5, 4, 6, D(c), 0.8) + R(4.5, 4, 5, 2, '#444', 0.6, 0.7) + R(9.5, 4, 5, 2, '#444', 0.6, 0.7) + R(14.5, 4, 5, 2, '#444', 0.6, 0.7) + C(12, 15, 3, '#333', 0.8) + C(12, 15, 1.2, '#999', 0.5) + Ln('M6 12L9 12', L(c), 0.9);
+const computer = (c: string) => R(2.5, 3.5, 19, 13, '#2e3238', 1.4) + R(4, 5, 16, 10, c, 0.6, 0.6) + Ln('M6 7L12 7M6 9.5L15 9.5M6 12L10 12', '#cfe6ff', 0.9) + Pa('M10 16.5L14 16.5L15 20L9 20Z', '#555b63') + R(6.5, 19.5, 11, 1.8, '#3a3f45', 0.6, 0.8);
+const drill = (c: string) => R(3, 6, 11, 9, c, 2) + Pa('M7 15L11 15L10 21L8 21Z', '#3a3a3a') + Pa('M14 8L18 9L22 10.5L18 12L14 13Z', '#b8bec6') + Ln('M15.5 8.7L16.5 12.3M18 9.3L18.6 11.7', '#6a7078', 0.7) + Ln('M5 8L11 8', L(c), 1) + R(4.5, 10, 3, 3, '#333', 0.5, 0.6);
+const part = (c: string) => Pa(gearPath(9, 14, 7, 5.2, 7), D(c)) + C(9, 14, 2, '#222') + Pa('M14 3L19.5 3L22 7.5L19.5 12L14 12L11.5 7.5Z', c) + C(16.75, 7.5, 1.9, '#222', 0.8) + Ln('M14.5 4.2L19 4.2', L(c), 0.8);
+const bearing = (c: string) => C(12, 12, 9.5, c) + C(12, 12, 7.3, '#2a2a2e', 0.6) + [0, 1, 2, 3, 4, 5, 6, 7].map((i) => { const a = (i / 8) * Math.PI * 2; return C(+(12 + Math.cos(a) * 5.6).toFixed(2), +(12 + Math.sin(a) * 5.6).toFixed(2), 1.5, L(c), 0.6); }).join('') + C(12, 12, 3.6, D(c)) + C(12, 12, 1.8, '#111', 0.5) + Ln('M5 8A8 8 0 0 1 9 4.3', '#fff', 0.9);
+const motor = (c: string) => Pa('M5 6L16 6A3 6 0 0 1 16 18L5 18Z', c) + E(5, 12, 3, 6, D(c)) + Ln('M8 6.4L8 17.6M11 6.4L11 17.6M14 6.4L14 17.6', D(c), 0.9) + R(18, 11, 4.5, 2, '#bbb', 0.4, 0.7) + Pa('M7 18L6 21L15 21L14 18Z', '#3a3a3a') + Ln('M6 8L15 8', L(c), 0.9);
+const generator = (c: string) => R(3, 6, 18, 13, c, 2) + R(5, 8, 14, 9, D(c), 1, 0.7) + Pa('M13 8.5L8.5 13L11.5 13L10 17L15.5 11.5L12.5 11.5Z', '#ffd84a', 0.8) + R(5, 19, 3, 2, '#333', 0.4, 0.6) + R(16, 19, 3, 2, '#333', 0.4, 0.6);
+const robot = (c: string) => Ln('M12 5L12 2.5', OL, 1.4) + C(12, 2.3, 1.3, '#ff4a4a', 0.6) + R(5, 5, 14, 10, c, 2.5) + C(9, 10, 2, '#9ff') + C(15, 10, 2, '#9ff') + C(9, 10, 0.8, '#033', 0.3) + C(15, 10, 0.8, '#033', 0.3) + R(8.5, 12.6, 7, 1.5, '#333', 0.5, 0.5) + R(7, 16, 10, 6, D(c), 1.5) + R(3, 8, 2, 4, D(c), 0.6, 0.8) + R(19, 8, 2, 4, D(c), 0.6, 0.8) + Ln('M7 7L11 7', L(c), 0.9);
+const bracelet = (c: string, gem: string) => `<ellipse cx="12" cy="13" rx="9" ry="5.5" fill="none" stroke="${OL}" stroke-width="4.6"/><ellipse cx="12" cy="13" rx="9" ry="5.5" fill="none" stroke="${c}" stroke-width="2.8"/>` + C(12, 18.5, 1.8, gem, 0.7) + C(6, 17, 1.4, gem, 0.6) + C(18, 17, 1.4, gem, 0.6) + Ln('M4.5 11A9 5.5 0 0 1 9 7.8', '#fff', 0.9);
+// food & farm
+const sack = (c: string, label: string) => Pa('M6 7Q5 14 5 19Q5 21 8 21L16 21Q19 21 19 19Q19 14 18 7Z', '#e6d7b3') + Pa('M7 7L9 3.5L12 5L15 3.5L17 7Z', '#efe3c4') + Ln('M7.5 7L16.5 7', '#8a6a3a', 1.6) + R(8.5, 11, 7, 6, label, 1, 0.7) + Ln('M7 9Q6.5 14 7 19', '#fff', 0.8);
+const bottle = (liq: string, glass = '#8fd0b0', cap = '#7a4a2a') => Pa('M10 2.5L14 2.5L14 7Q18 9 18 13L18 20Q18 21.5 16.5 21.5L7.5 21.5Q6 21.5 6 20L6 13Q6 9 10 7Z', glass) + Pa('M6.6 12L17.4 12L17.4 20Q17.4 20.9 16.4 20.9L7.6 20.9Q6.6 20.9 6.6 20Z', liq, 0) + R(9.6, 1.5, 4.8, 2.5, cap, 0.6, 0.8) + R(8, 14, 8, 4.5, '#f4eee0', 0.6, 0.6) + Ln('M8 9.5Q7.6 12 7.8 17', '#fff', 0.9);
+const can = (label: string, mark: string) => Pa('M5 6L19 6L19 19A7 2.5 0 0 1 5 19Z', '#c8ccd2') + E(12, 6, 7, 2.5, '#e0e4e8') + E(12, 6, 5, 1.6, '#b8bcc2', 0.5) + R(5, 9, 14, 8, label, 0, 0.8) + mark + Ln('M6.5 10L6.5 16', '#fff', 0.8);
+const fishMark = (c: string) => Pa('M8 13Q11 10.5 15 13Q11 15.5 8 13Z', c, 0.6) + Pa('M15 13L17 11.5L17 14.5Z', c, 0.6);
+const jar = (c: string) => R(6, 4, 12, 3, '#d33', 0.8) + Pa('M6 7L18 7Q19 9 19 12L19 19Q19 21 17 21L7 21Q5 21 5 19L5 12Q5 9 6 7Z', '#cfe8f0') + Pa('M5.6 11L18.4 11L18.4 19Q18.4 20.4 17 20.4L7 20.4Q5.6 20.4 5.6 19Z', c, 0) + C(9, 15, 1, '#3a8a2a', 0.3) + C(14, 17, 0.9, '#3a8a2a', 0.3) + C(12, 13.5, 0.8, '#f5e070', 0.3) + R(8, 13, 8, 3.5, '#f4eee0', 0.5, 0.5) + Ln('M7 9L7 18', '#fff', 0.8);
+const carton = (c: string) => Pa('M6 8L12 3L18 8L18 21L6 21Z', '#f2f2ee') + Pa('M12 3L18 8L18 21L12 21L12 8Z', '#d8d8d2', 0.8) + Pa('M6 8L12 8L12 21L6 21Z', 'none', 0.8) + R(7, 12, 4, 5, c, 0.4, 0.6) + Pa('M14 13A1.8 2 0 1 0 14 17A1.8 2 0 1 0 14 13Z', '#8a5a30', 0.6);
+const loaf = (c: string) => Pa('M3 16Q3 8 12 8Q21 8 21 16L21 18Q21 19 20 19L4 19Q3 19 3 18Z', c) + Ln('M7 10.5L9 13M11 9.5L13 12.5M15 10L17 12.8', shade(c, 0.45), 1.2) + Pa('M3 16Q3 8 12 8', 'none', 0) + Ln('M4.5 14Q6 10 10 9.2', '#fff', 0.7);
+const chocolate = () => Pa('M3 8L17 4L21 16L7 20Z', '#5a3420') + Ln('M7.7 6.7L11.7 18.7M12.3 5.3L16.3 17.3M5 13.5L19 9.5', '#3a2012', 1) + Pa('M3 8L10 6L14 18.3L7 20Z', '#c03a3a', 0.9) + R(7.5, 10.5, 3, 4, '#f0d070', 0.3, 0.4);
+const pie = (c: string) => E(12, 15, 10, 5, '#d9a35a') + E(12, 13.5, 8.2, 3.8, c) + Ln('M7 12L17 15M8 15L16 11.5M12 10L12 17', '#e9be78', 1.1) + Pa('M2 15A10 5 0 0 0 22 15L21 17.5A10 4 0 0 1 3 17.5Z', '#b8823e', 0.8);
+const cloche = () => E(12, 18.5, 10, 2.8, '#e8e8ea') + Pa('M3.5 17.5A8.5 9 0 0 1 20.5 17.5Z', '#d4b048') + C(12, 7.3, 1.6, '#e8c860', 0.7) + Ln('M7 15A6 6.5 0 0 1 10 10', '#fff6c8', 1.2);
+const fillet = (c: string) => Pa('M3 14Q6 7 14 8Q20 9 21 13Q19 17 12 18Q5 18 3 14Z', c) + Ln('M8 11Q10 13 8 16M12 10Q14 13 12 17M16 10Q18 13 16 16.5', shade(c, 0.5), 0.9) + Ln('M6 11Q9 8.6 13 9', '#fff', 0.8);
+const portion = (c: string) => E(12, 15.5, 10, 5, '#f4f4f0') + E(12, 15.5, 7.5, 3.5, '#e2e2dc', 0.5) + Pa('M5.5 15Q8 11 13 11.5Q18 12 18.5 14.5Q17 17.5 12 17.5Q7 17.5 5.5 15Z', c) + Ln('M9 13Q10 14.5 9 16.5M13 12.3Q14 14.5 13 17', '#7a4a20', 0.8) + C(17, 13, 1.3, '#f3e070', 0.5) + Pa('M15.5 11L17.5 9.5L18 11.5Z', '#3a9a3a', 0.5);
+const drop = (c: string) => Pa('M12 3Q19 11 19 15A7 7 0 0 1 5 15Q5 11 12 3Z', c) + Ln('M8.5 14Q8.5 11 11 8', '#fff', 1.1);
+// crops
+const strawberry = () => Pa('M12 21Q4 15 5 10Q6 7 12 8Q18 7 19 10Q20 15 12 21Z', '#e0334a') + Pa('M7 8L9 5L11 7.5L12 4L13 7.5L15 5L17 8Q12 10 7 8Z', '#3fa03a', 0.8) + [[9, 11], [12, 12], [15, 11], [10.5, 15], [13.5, 15], [12, 18]].map(([x, y]) => `<ellipse cx="${x}" cy="${y}" rx=".5" ry=".8" fill="#ffe680"/>`).join('') + Ln('M7 11Q7.5 9.5 9 9.2', '#fff', 0.9);
+const wheat = () => Ln('M8 22L12 6M12 22L12 4M16 22L12 6', '#a57a2a', 1.4) + [[12, 4], [9.6, 8], [14.4, 8]].map(([x, y]) => [0, 3, 6].map((o) => `<ellipse cx="${x - 1.4}" cy="${y + o}" rx="1.4" ry="2" fill="#e8c860" stroke="${OL}" stroke-width=".6"/><ellipse cx="${x + 1.4}" cy="${y + o}" rx="1.4" ry="2" fill="#d8b04a" stroke="${OL}" stroke-width=".6"/>`).join('')).join('');
+const carrot = () => Pa('M9 7Q14 5 16 9L6 21Q4 20 5 18Z', '#ee8a2a') + Ln('M8 11L10 12M7 14L9 15M6.5 17L8 17.8', '#b0581a', 0.8) + Pa('M14 7Q15 2 18 2Q17 5 15.5 7.6Z', '#3faa3a', 0.8) + Pa('M15.5 8Q20 6 22 8Q19 10 16 9Z', '#3faa3a', 0.8) + Pa('M15 7.4Q17 3 20.5 4Q18.5 6.5 15.8 8.3Z', '#52c04a', 0.8);
+const corn = () => Pa('M12 2Q17 6 16 14Q15 19 12 21Q9 19 8 14Q7 6 12 2Z', '#f2d34a') + Ln('M10 7L14 7M9.2 10L14.8 10M9 13L15 13M9.6 16L14.4 16M12 3L12 20', '#c8a028', 0.7) + Pa('M12 21Q4 18 4 9Q7 14 11 15Z', '#5ab04a') + Pa('M12 21Q20 18 20 9Q17 14 13 15Z', '#4a9a3a');
+const tomato = () => C(12, 13.5, 8, '#e0402e') + Pa('M8 7.5L10.5 7.5L12 5L13.5 7.5L16 7.5L13.5 9L12 11L10.5 9Z', '#3fa03a', 0.7) + Ln('M7 11Q8 8.6 10 8.4', '#fff', 1) + Ln('M12 5L12 3', '#3a7a2a', 1.3);
+const potato = () => Pa('M4 13Q4 7 11 6.5Q20 6 20.5 12Q21 18 13 18.5Q4 19 4 13Z', '#c8995a') + [[8, 11], [14, 9.5], [16, 14], [10, 15]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r=".8" fill="#8a6430"/>`).join('') + Ln('M6.5 10Q8 8 11 7.8', '#ecc88a', 1);
+const pumpkin = () => E(12, 14, 9.5, 7, '#ee8a22') + E(12, 14, 5, 7, '#f59a32', 0.8) + E(12, 14, 1.8, 7, '#e07a18', 0.7) + Pa('M11 7.5L11.5 3L14 3.6L13 7.5Z', '#5a7a2a', 0.8) + Ln('M5 11Q6 9 8 8.5', '#ffd08a', 0.9);
+const grapes = () => [[9, 9], [13, 9], [17, 9], [11, 12.5], [15, 12.5], [9, 12.6], [13, 16], [11, 19], [15, 16]].map(([x, y]) => C(x, y, 2.4, '#7a3aa8', 0.8) + `<circle cx="${x - 0.8}" cy="${y - 0.8}" r=".6" fill="#d8b0f0"/>`).join('') + Ln('M13 6.5L14 2.5', '#6a4a20', 1.3) + Pa('M14 4Q19 2 21 5Q17 7 14 4Z', '#4aa03a', 0.7);
+const sunflower = () => Ln('M12 14L12 23', '#3a8a2a', 1.6) + Array.from({ length: 12 }, (_, i) => `<ellipse cx="12" cy="4.2" rx="1.9" ry="3.6" fill="#f6c91c" stroke="${OL}" stroke-width=".6" transform="rotate(${i * 30} 12 11)"/>`).join('') + C(12, 11, 4, '#6a3a1a', 0.8) + Ln('M10.5 10L11.5 11M12.5 10L13.5 11M11 12L12 13M13 12.5L13.5 13', '#3a1e0a', 0.7);
+const pineapple = () => Pa('M12 8L9 2L11.5 4.5L12 1L12.5 4.5L15 2Z', '#3aa040', 0.7) + Pa('M8 8L10 5L12 7.5L14 5L16 8Z', '#2f8a34', 0.7) + E(12, 15, 6, 7.5, '#e8b030') + Ln('M7.4 11L14 21M9 8.5L17.5 18.6M6.5 15L11 21.8M16.6 11L10 21M15 8.5L6.5 18.6M17.5 15L13 21.8', '#9a6a18', 0.6) + Ln('M8 12Q8.5 9.4 10 8.8', '#fff', 0.8);
+const banana = () => Pa('M4 7Q4 18 15 19Q19 19 21 17Q14 17 10.5 13.5Q7 10 6 5Z', '#f5d83a') + Pa('M4 7Q4 18 15 19Q19 19 21 17Q19 21 14 21Q3 20 3 8Z', '#e0b820', 0.8) + Pa('M4.5 3.5L6.5 5L6 6L4 5Z', '#5a4a1a', 0.7) + Ln('M7.5 10Q9 14 13 16', '#fff4a0', 0.9);
+const mango = () => Pa('M6 18Q2 12 6 7Q11 2 17 6Q22 10 18 16Q14 21 6 18Z', '#f5a028') + Pa('M17 6Q22 10 18 16Q14 21 6 18Q14 17 17 6Z', '#e05a2a', 0) + Pa('M13 4Q15 0 20 1Q18 4.6 14.5 4.8Z', '#3fa03a', 0.7) + Ln('M7 9Q9 6 12 5.6', '#fff', 1);
+const coconut = () => C(12, 13, 8.5, '#6a4022') + Ln('M6 9L9 12M9 7L11 10M14 16L17 18M5 14L7 16', '#4a2a12', 0.8) + Pa('M10 21A8.5 8.5 0 0 1 3.5 13Q8 18 15 15Q12 20 10 21Z', '#53311a', 0) + [[10, 9], [14, 9], [12, 12]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1" fill="#2a160a"/>`).join('') + Ln('M6.5 8Q8 5.6 10.5 5', '#a87a50', 0.9);
+const cacao = () => Pa('M4 16Q3 10 9 6Q15 3 19 6Q22 10 18 16Q13 21 8 20Q5 19 4 16Z', '#b8642a') + Ln('M6 15Q8 9 15 5.5M8.5 18.5Q12 12 18.5 8M5 12Q9 8 13 5', '#7a3a14', 0.8) + Ln('M7 9Q9 6.4 12 5.4', '#e8a060', 0.9) + Pa('M19 6L21.5 3.5', 'none', 1.2);
+const crate = (c: string) => R(4, 6, 16, 14, c, 1) + Ln('M4 10.5L20 10.5M4 15.5L20 15.5', D(c), 0.9) + Ln('M5 7L19 19', shade(c, -0.25), 1.2) + `<text x="12" y="16" text-anchor="middle" font-family="Arial,sans-serif" font-weight="900" font-size="9" fill="#fff" stroke="${OL}" stroke-width=".8" paint-order="stroke">?</text>`;
+
+// ---------------------------------------------------------------- registry
+const GEM = '#c070ff', DIA = '#9ff6ff';
+const ORE_ICONS: Record<string, () => string> = {
+  stone: () => rock('#8e8882'),
+  coal: () => coal('#2b2b2e'),
+  copper: () => rock('#7a706a', '#e07a38'),
+  iron: () => rock('#6e6460', '#c9a48a'),
+  silver: () => rock('#6a6e74', '#eef3f8'),
+  gold: () => rock('#6e6258', '#ffcf2e'),
+  gem: () => crystals('#b04df0'),
+  diamond: () => diamond('#7ff3ff'),
+};
+const GOOD_ICONS: Record<string, () => string> = {
+  brick: () => brick('#a8978a'),
+  copper_bar: () => ingot('#dd7a3a'), iron_bar: () => ingot('#9aa2ac'), silver_bar: () => ingot('#dfe6ee'), gold_bar: () => ingot('#ffc828'), steel: () => ingot('#6f8090'),
+  glass: () => pane('#a8e0e8'),
+  wire: () => coil('#e08a4a'), silver_wire: () => coil('#dfe6ee'),
+  gear: () => gear('#9aa0a8'), tool: () => pickaxe('#8a9aaa'),
+  cut_crystal: () => diamond(GEM), cut_diamond: () => diamond(DIA),
+  silver_ring: () => ring('#e8edf2', '#7fd0ff'), gold_ring: () => ring('#ffd24a', GEM), bracelet: () => bracelet('#d8b45a', '#3fd0c0'),
+  machine_part: () => part('#7a98b0'), crown: () => crown('#ffcf3a', DIA),
+  iron_plate: () => plate('#9fa6ae'), copper_plate: () => plate('#d08850'), iron_sheet: () => plate('#c4ccd4', false),
+  silver_coin: () => coins('#e4e9ee'), gold_coin: () => coins('#f6c840'),
+  iron_rod: () => rods('#8c939b'), gold_leaf: () => leaf('#ffd84a'), screw: () => screw('#8d959d'), pipe: () => pipe('#7f8a94'), frame: () => frame('#6a737c'),
+  circuit: () => circuit('#2f9a4a'), lens: () => lens('#bff2ff'), gold_chain: () => chain('#ffd24a'),
+  engine: () => engine('#c0563a'), computer: () => computer('#3a6fc0'), drill: () => drill('#e0a030'),
+  bearing: () => bearing('#b8c0c8'), motor: () => motor('#3f7fc0'), generator: () => generator('#d06a2a'), robot: () => robot('#9aa8b8'),
+  crop_strawberry: strawberry, crop_wheat: wheat, crop_carrot: carrot, crop_corn: corn, crop_tomato: tomato, crop_potato: potato, crop_pumpkin: pumpkin,
+  crop_grapes: grapes, crop_sunflower: sunflower, crop_pineapple: pineapple, crop_banana: banana, crop_mango: mango, crop_coconut: coconut, crop_cacao: cacao,
+  fish_fillet: () => fillet('#f29a7a'), fish_portion: () => portion('#d8904a'),
+  flour: () => sack('#f6f2e8', '#d8b860'), cornmeal: () => sack('#f0d050', '#e0a020'), sugar: () => sack('#ffffff', '#6aa0e0'), cocoa: () => sack('#6a3a20', '#a05a30'),
+  berry_juice: () => bottle('#c8304a', '#e8c0d0', '#e04a5a'), tropical_juice: () => bottle('#f6a830', '#fae8c0', '#3faa3a'), sunflower_oil: () => bottle('#f2d040', '#f8f0c0', '#e0b020'),
+  fish_oil: () => drop('#d8b84a'), wine: () => bottle('#6a1030', '#2a5a3a', '#a01a3a'), coconut_milk: () => carton('#e8e4dc'),
+  bread: () => loaf('#c8873a'), chocolate: chocolate, canned_fish: () => can('#3a7ac0', fishMark('#e8eef4')), veggie_soup: () => can('#d0402e', C(12, 13, 2.6, '#f2d34a', 0.6) + C(9, 14, 1, '#3aa03a', 0.4) + C(15, 12, 1, '#ee8a2a', 0.4)),
+  pumpkin_pie: () => pie('#e08a2a'), salsa: () => jar('#d8402a'), banquet: cloche,
+};
+
+const svg = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">${body}</svg>`;
+const ALIAS: Record<string, string> = { crystal: 'gem' };
+const cache = new Map<string, string>();
+
+/** True when the item has a crafted icon (not the fallback crate). */
+export function hasItemIcon(type: string | undefined, id: string): boolean { const i = ALIAS[id] ?? id; return type === 'ore' ? i in ORE_ICONS : i in GOOD_ICONS || (type == null && i in ORE_ICONS); }
+/** SVG markup for an item. `type` is 'ore' | 'bar' | 'good' (optional: ids are unique across ore and goods except none). */
+export function itemIconSvg(type: string | undefined, id: string): string {
+  const i = ALIAS[id] ?? id; const k = `${type ?? ''}:${i}`; const hit = cache.get(k); if (hit) return hit;
+  const f = type === 'ore' ? ORE_ICONS[i] : GOOD_ICONS[i] ?? (type == null ? ORE_ICONS[i] : undefined);
+  const tint = (type === 'ore' && isOre(i) ? ORES[i].color : GOODS[i]?.color) ?? '#9a7a4a';
+  const out = svg(f ? f() : crate(shade(tint, -0.1)));
+  cache.set(k, out); return out;
+}
+export const itemIconUri = (type: string | undefined, id: string) => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(itemIconSvg(type, id));
+/** Same as itemIconUri but from a "type:id" stack key. */
+export const itemIconUriKey = (key: string) => { const [t, ...rest] = key.split(':'); return itemIconUri(t, rest.join(':')); };
+/** Every id with a crafted icon (for tests / the contact sheet). */
+export const ICON_ORE_IDS = Object.keys(ORE_ICONS), ICON_GOOD_IDS = Object.keys(GOOD_ICONS);

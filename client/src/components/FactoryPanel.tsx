@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ItemIcon } from './ItemIcon';
 import { TopTab } from '@/components/TopTabs';
 import { useWalletChips } from '@/lib/wallet';
 import { useWindowDrag } from '@/lib/windowDrag';
@@ -59,7 +60,7 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
           <h3>📦 Storage <button type="button" className="mkt-link" onClick={() => openMarket({ tab: 'resources' })} data-testid="factory-goto-market">Sell on Market →</button></h3>
           <ul className="factory-list">
             {st.storage.map((s) => (
-              <li key={stackKey(s)}><span className="mines-dot" style={{ background: s.type === 'ore' && isOre(s.id) ? ORES[s.id].color : '#d9b45a' }} />{nameOf(s)}<b>×{s.qty}</b><small>🪙{priceOf(s)}</small>
+              <li key={stackKey(s)}><ItemIcon type={s.type} id={s.id} />{nameOf(s)}<b>×{s.qty}</b><small>🪙{priceOf(s)}</small>
                 {canSell && sellable(s) && <button type="button" onClick={() => sell(stackKey(s))}>Sell</button>}{!sellable(s) && <small title="Imported input: craft it in the factory to sell">craft</small>}</li>
             ))}
             {!st.storage.length && <li className="opacity-60">Empty. Mine ore and walk out through the EXIT lift to bank it here.</li>}

@@ -1,4 +1,6 @@
 import type React from 'react';
+import { ItemIcon } from './ItemIcon';
+import { itemIconUriKey } from '../../../shared/itemIcons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ix, usePriceIndex } from '../lib/priceIndex';
 import { socket } from '@/lib/net';
@@ -294,7 +296,7 @@ function Chain({ k, pick }: { k: string; pick: (k: string) => void }) {
   );
 }
 
-function Dot({ k }: { k: string }) { return <span className="mines-dot" style={{ background: colorOfKey(k) }} />; }
+function Dot({ k }: { k: string }) { return <ItemIcon k={k} size={16} />; }
 
 function Inspect({ e, storage, store, onEdit, onRemove, onMove, onClose }: { e: Ent; storage: string[]; store: Map<string, number>; onEdit: (b: object) => void; onRemove: () => void; onMove: () => void; onClose: () => void }) {
   const d = KINDS[e.k]; const r = frecipe(e.r);
@@ -443,7 +445,10 @@ function drawBelt(ctx: CanvasRenderingContext2D, e: Ent, x: number, y: number, t
   if (e.d % 2 === 0) { ctx.fillRect(x, y + ts * 0.06, ts, rail); ctx.fillRect(x, y + ts * 0.94 - rail, ts, rail); } else { ctx.fillRect(x + ts * 0.06, y, rail, ts); ctx.fillRect(x + ts * 0.94 - rail, y, rail, ts); }
   if (e.k === 'splitter') { ctx.fillStyle = 'rgba(232,198,74,.85)'; for (const dd of [3, 0, 1]) arrow(ctx, x + ts / 2 + DX[(e.d + dd) % 4] * ts * 0.28, y + ts / 2 + DY[(e.d + dd) % 4] * ts * 0.28, (e.d + dd) % 4, ts * 0.13); }
 }
+const ICON_IMG = new Map<string, HTMLImageElement>();
+function iconImg(key: string) { let im = ICON_IMG.get(key); if (!im) { im = new Image(); im.src = itemIconUriKey(key); ICON_IMG.set(key, im); } return im.complete && im.naturalWidth ? im : null; }
 function drawItem(ctx: CanvasRenderingContext2D, key: string, cx: number, cy: number, r: number) {
+  const im = typeof Image !== 'undefined' ? iconImg(key) : null; if (im) { ctx.drawImage(im, cx - r * 1.15, cy - r * 1.15, r * 2.3, r * 2.3); return; }
   const type = key.split(':')[0]; ctx.fillStyle = colorOfKey(key); ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = Math.max(1, r * 0.18);
   ctx.beginPath();
   if (type === 'ore') { for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; const rr = r * (0.75 + 0.25 * ((i * 37) % 5) / 4); ctx.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr); } ctx.closePath(); }
