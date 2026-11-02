@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T00:40:00-06:00', title: 'Sell how many you want + request board sorting', bullets: [
+    "Requested by carter2: choose how many to sell to the house. Factory storage (tap Sell… on any item, including factory goods and ore), the fishing cooler and the kitchen fridge now have a quantity picker with a number box, a slider and 1 / 10 / Half / All buttons, plus a live payout preview that respects the 100,000-a-day cap. Sell all still works.",
+    'The server checks the amount is a whole number you actually own and sells exactly that many through the normal wallet ledger. Double clicks can never sell the same items twice. Fish and dishes sell the most valuable ones first.',
+    'Requested by carter2: the change request board sorts by Newest (default), Oldest or Most votes (ties go to the newer one), and every request shows when it was posted in Alberta time.',
+  ] },
   { commit: '', at: '2026-11-02T00:30:00-06:00', title: 'Car steering fixed', bullets: [
     'Left (A or ←) now turns the car left and right (D or →) turns it right, in the city and on the Speedway, with every car and Mechanic Shop upgrade. Steering was mirrored.',
   ] },

@@ -9,6 +9,7 @@ import { miningSwingMul, miningBonusChance } from '../shared/skillPerks.js';
 import { MinesLeaderboard, setMinesBoard } from './mines-board.js';
 import { getVault, playerKey } from './skins.js';
 import { guestName, lineOfSight, moveAllowance, MOVE_CARRY_MAX, normAngle, clampPitch, canStand, validateMove, eyeHeightOf, type Body } from '../shared/fps.js';
+import { parseSellQty } from '../shared/sellQty.js';
 import { CAVES, caveOf, type CaveId, BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, SWING_MS, dayKey, isOre, payoutFor, stackKey, priceOf, sellable, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId, inExit, weightOf } from '../shared/mines.js';
 import { isAtResort } from './travel.js';
 
@@ -308,19 +309,29 @@ export class MinesWorld {
   }
 
   /** Sell ore to the house. Signed-in only. Stone etc. pay fractional chips: the whole sale is floored once. */
-  sell(account: string | null, now: number, only?: unknown): { paid: number; gross: number; sold: Stack[] } {
+  sell(account: string | null, now: number, only?: unknown, qtyIn?: unknown): { paid: number; gross: number; sold: Stack[] } {
     if (!account) throw new MineError('Sign in to sell ore. Guests can mine but not sell.');
     if (this.inMine(account)) throw new MineError('Leave the mine to sell.');
     const m = { account };
-    const q = this.quote(account, now, only);
+    let q = this.quote(account, now, only);
     if (!q.items.length) throw new MineError('Nothing to sell.');
+    // Partial sale (request #11): one stack, an integer 1..owned. Re-quote just that slice so the tier cap applies to it.
+    let partial: { key: string; qty: number } | null = null;
+    if (qtyIn !== undefined && qtyIn !== null) {
+      if (typeof only !== 'string' || q.items.length !== 1) throw new MineError('Pick one item to sell a quantity.');
+      const v = parseSellQty(qtyIn, q.items[0].qty); if (!v.ok) throw new MineError(v.error);
+      const s0 = q.items[0]; const items = [{ ...s0, qty: v.qty }]; const gross = v.qty * priceOf(s0);
+      q = { ...q, items, gross, paid: Math.floor(payoutFor(gross, q.already) * priceIndex()) };
+      partial = { key: stackKey(s0), qty: v.qty };
+    }
     if (q.paid < 1) throw new MineError('Not worth a chip yet. Mine a bit more (stone is 1 chip per 10).');
     const k = playerKey(m.account); const day = dayKey(now);
     const ledgerKey = `mine:sell:${k}:${now}:${++this.saleSeq}`;
     const memo = `Mines: sold ${q.items.map((s) => `${s.qty} ${nameOf(s)}`).join(', ')}`.slice(0, 200);
     getBank().transfer(m.account, q.paid, { key: ledgerKey, game: 'mines', memo });
     const p = this.pack(k);
-    for (const s of q.items) p.delete(stackKey(s));
+    if (partial) { const cur = p.get(partial.key)!; const left = cur.qty - partial.qty; if (left > 0) p.set(partial.key, { ...cur, qty: left }); else p.delete(partial.key); }
+    else for (const s of q.items) p.delete(stackKey(s));
     const prev = this.daily.get(k); const base = prev && prev.day === day ? prev : { day, gross: 0, paid: 0 };
     const nd = { day, gross: base.gross + q.gross, paid: base.paid + q.paid }; this.daily.set(k, nd);
     this.persist(m, { day, gross: q.gross, paid: q.paid, items: JSON.stringify(q.items), ledgerKey, at: now, dayGross: nd.gross, dayPaid: nd.paid });
@@ -476,7 +487,7 @@ export function registerMines(io: Server, socket: Socket): void {
   const account = () => (socket.data.account as { name?: string } | undefined)?.name ?? null;
   const me = () => world.miners.get(socket.id);
   const packMsg = () => ({ pack: world.carried(socket.id), load: world.load(socket.id), cap: BACKPACK_CAP });
-  const storeMsg = () => { const a = account(); if (a) world.beforeStorage?.(a); const q = a ? world.quote(a, Date.now()) : null; return { storage: a ? world.storage(a) : [], quote: q ? { gross: q.gross, paid: q.paid, already: q.already } : null, inMine: a ? world.inMine(a) : false, guest: !a }; };
+  const storeMsg = () => { const a = account(); if (a) world.beforeStorage?.(a); const q = a ? world.quote(a, Date.now()) : null; return { storage: a ? world.storage(a) : [], quote: q ? { gross: q.gross, paid: q.paid, already: q.already, index: priceIndex() } : null, inMine: a ? world.inMine(a) : false, guest: !a }; };
   socket.on('mines_join', async (p: unknown, ack?: Ack) => {
     let m = me();
     const want = caveOf(body(p).cave).id;
@@ -528,7 +539,7 @@ export function registerMines(io: Server, socket: Socket): void {
   const safe = (fn: () => Record<string, unknown>) => (_p: unknown, ack?: Ack) => { try { ack?.({ ok: true, ...fn() }); } catch (e) { ack?.({ ok: false, offline: world.offline, error: (e as Error).message }); } };
   socket.on('mines_storage', safe(() => storeMsg()));
   socket.on('mines_sell', (p: unknown, ack?: Ack) => {
-    try { const r = world.sell(account(), Date.now(), body(p).ore); ack?.({ ok: true, ...r, ...storeMsg() }); }
+    try { const r = world.sell(account(), Date.now(), body(p).ore, body(p).qty); ack?.({ ok: true, ...r, ...storeMsg() }); }
     catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
   });
   const fact = () => ({ factory: world.factoryView(account(), Date.now()) });

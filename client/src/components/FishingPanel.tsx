@@ -1,3 +1,5 @@
+import { SellQtyPicker } from './SellQtyPicker';
+import { pickForQty } from '../../../shared/sellQty';
 import { lazyWithReload } from '@/lib/lazyWithReload';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -70,7 +72,7 @@ export function FishingPanel({ me, onClose, spot = 'lake' }: { me: string | null
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('pointerup', mup); };
   });
 
-  const sell = async (ids?: string[]) => { setPhase({ k: 'busy' }); setMsg(null); const r = await request('fish_sell', ids ? { ids } : {}) as { ok: boolean; error?: string; sold?: number; paid?: number };
+  const sell = async (ids?: string[], qty?: number) => { setPhase({ k: 'busy' }); setMsg(null); const r = await request('fish_sell', { ...(ids ? { ids } : {}), ...(qty ? { qty } : {}) }) as { ok: boolean; error?: string; sold?: number; paid?: number };
     setMsg(r.ok ? `Sold ${r.sold} for 🪙 ${chips(r.paid ?? 0)}.` : r.error ?? 'Could not sell.'); setPhase({ k: 'idle' }); load(); };
   const release = async (id: string) => { await request('fish_release', { ids: [id] }); load(); };
 
@@ -100,6 +102,7 @@ export function FishingPanel({ me, onClose, spot = 'lake' }: { me: string | null
         {cooler.length ? <ul className="fish-cooler" data-testid="fish-cooler">{cooler.map((c) => { const f = fishById(c.fish); return (
           <li key={c.id}><span style={{ color: f ? RARITY_COLOR[f.rarity] : undefined }}><FishGlyph id={c.fish} /> {f?.label ?? c.fish}</span> <small>{fmtKg(c.grams)}</small> <b>🪙 {chips(Math.floor(c.value * idx))}</b> <button type="button" title="Release" onClick={() => void release(c.id)}>↩</button></li>); })}</ul>
           : <small>Empty. Go catch something!</small>}
+        {cooler.length > 1 && view && <SellQtyPicker owned={cooler.length} unit="fish" testid="fish-qty" disabled={phase.k !== 'idle'} preview={(n) => Math.floor(fishPayout(pickForQty(cooler, n).reduce((a, c) => a + c.value, 0), view.today.gross) * idx)} onSell={(n) => sell(undefined, n)} />}
         {cooler.length > 0 && <button type="button" disabled={phase.k !== 'idle' || est <= 0} onClick={() => void sell()} data-testid="fish-sell">💰 Sell all to the fishmonger <span>🪙 {chips(est)}</span></button>}
         {view && <small data-testid="fish-cap">Today: 🪙 {chips(view.today.paid)} sold. Full price up to 100,000 a day (max {chips(FISH_DAILY_MAX)}/day, resets 00:00 UTC). {capLeft > 0 ? '' : 'The fishmonger is full for today.'}</small>}
       </>}

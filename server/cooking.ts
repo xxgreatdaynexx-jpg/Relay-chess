@@ -10,6 +10,7 @@
  *  - Selling dishes credits chips through the atomic wallet (ledger 'cook_sell') with the daily tier, like fishing.
  */
 import { randomInt, randomUUID } from 'node:crypto';
+import { parseSellQty, pickForQty } from '../shared/sellQty.js';
 import pg from 'pg';
 import type { Server, Socket } from 'socket.io';
 import { getBank, type CasinoBank } from './casino-store.js';
@@ -221,12 +222,13 @@ export class Cooking {
     });
   }
 
-  async sell(name: string, ids?: unknown) {
+  async sell(name: string, ids?: unknown, qtyIn?: unknown) {
     const key = keyOf(name);
     return this.lock(`c:${key}`, async () => {
       let rows = await this.dishes(key);
       if (Array.isArray(ids)) { const want = new Set(ids.filter((x): x is string => typeof x === 'string').slice(0, DISHES_MAX)); rows = rows.filter((r) => want.has(r.id)); }
       if (!rows.length) throw new CookError('Nothing to sell.');
+      if (qtyIn !== undefined && qtyIn !== null) { const v = parseSellQty(qtyIn, rows.length); if (!v.ok) throw new CookError(v.error); rows = pickForQty(rows, v.qty); }
       const day = utcDay(this.clock()); const t = await this.today(key);
       const gross = rows.reduce((a, r) => a + r.value, 0);
       const paid = Math.floor(cookPayout(gross, t.gross) * priceIndex());
@@ -283,5 +285,5 @@ export function registerCooking(_io: Server, socket: Socket): void {
   on('grocery_buy', (b, c, n) => c.buy(n, b.item, b.qty, b.nonce));
   on('cook_start', (b, c, n) => c.start(n, b.recipe));
   on('cook_finish', (b, c, n) => c.finish(n, b.id, b.presses));
-  on('cook_sell', (b, c, n) => c.sell(n, b.ids));
+  on('cook_sell', (b, c, n) => c.sell(n, b.ids, b.qty));
 }

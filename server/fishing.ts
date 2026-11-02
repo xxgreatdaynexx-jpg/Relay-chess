@@ -8,6 +8,7 @@
  * Every landed catch is announced on the skill-activity bus (server/activity.ts) for the Fishing skill.
  */
 import { randomInt, randomUUID } from 'node:crypto';
+import { parseSellQty, pickForQty } from '../shared/sellQty.js';
 import pg from 'pg';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
@@ -127,12 +128,13 @@ export class Fishing {
   reelIn(name: string) { this.casts.delete(keyOf(name)); }
 
   /** Sell from the cooler (all, or the given ids) for chips: daily tiers on base value, then the price index. */
-  async sell(name: string, ids?: unknown): Promise<{ sold: number; gross: number; paid: number; chips: number }> {
+  async sell(name: string, ids?: unknown, qtyIn?: unknown): Promise<{ sold: number; gross: number; paid: number; chips: number }> {
     const key = keyOf(name);
     return this.lock(`c:${key}`, async () => {
       let rows = await this.cooler(key);
       if (Array.isArray(ids)) { const want = new Set(ids.filter((x): x is string => typeof x === 'string').slice(0, COOLER_MAX)); rows = rows.filter((r) => want.has(r.id)); }
       if (!rows.length) throw new FishError('Nothing to sell.');
+      if (qtyIn !== undefined && qtyIn !== null) { const v = parseSellQty(qtyIn, rows.length); if (!v.ok) throw new FishError(v.error); rows = pickForQty(rows, v.qty); }
       const day = utcDay(this.clock()); const t = await this.today(key);
       // Pan-fried dishes (fishPan) count toward the ONE daily cooking-sales cap (kitchen_daily, shared with recipe
       // dishes), not the raw-fish tiers. If that cap is used up, dishes stay in the cooler instead of selling for 0.
@@ -275,7 +277,7 @@ export function registerFishing(io: Server, socket: Socket): void {
   on('fish_hook', async (_b, f, n) => { const r = await f.hook(n); pose(n, { pose: 'reel' }); return r; });
   on('fish_land', async (b, f, n) => { const r = await f.land(n, b.inputs); pose(n, r.caught && r.fish ? { pose: 'catch', fish: r.fish.fish } : { pose: 'idle' }); return r; });
   on('fish_reel_in', (_b, f, n) => { f.reelIn(n); pose(n, { pose: 'idle' }); return {}; });
-  on('fish_sell', (b, f, n) => f.sell(n, b.ids));
+  on('fish_sell', (b, f, n) => f.sell(n, b.ids, b.qty));
   on('fish_release', (b, f, n) => f.release(n, b.ids));
   on('fish_here', () => { void socket.join(DOCK_ROOM); return { anglers: anglersHere(nameOf()), states: anglerStates(nameOf()) }; });
   const leave = () => { void socket.leave(DOCK_ROOM); const n = nameOf(); if (n && leaveDock(n)) pushDock(); };

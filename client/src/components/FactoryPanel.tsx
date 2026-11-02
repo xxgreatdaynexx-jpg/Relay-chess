@@ -7,10 +7,11 @@ import { socket } from '@/lib/net';
 import { FactoryBuilder } from '@/components/FactoryBuilder';
 type Ack = { ok: boolean; error?: string; storage?: Stack[]; quote?: unknown; inMine?: boolean; guest?: boolean };
 import { openMarket } from '@/components/MarketPage';
-import { ORES, SELL_TIERS, isOre, nameOf, priceOf, sellable, stackKey, type Stack } from '../../../shared/mines';
+import { SellQtyPicker } from './SellQtyPicker';
+import { ORES, SELL_TIERS, payoutFor, isOre, nameOf, priceOf, sellable, stackKey, type Stack } from '../../../shared/mines';
 
 const OPEN_KEY = 'relay-factory-open';
-type Quote = { gross: number; paid: number; already: number } | null;
+type Quote = { gross: number; paid: number; already: number; index?: number } | null;
 
 /** Factory tab: banked storage from the Mines, the house Sell desk (daily cap) and the furnace/workbench. */
 export function FactoryPanel() {
@@ -34,12 +35,14 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
   const apply = (r: Ack) => setSt((c) => ({ storage: r.storage ?? c.storage, quote: (r.quote as Quote) ?? null, inMine: r.inMine ?? c.inMine, guest: r.guest ?? c.guest }));
   const refresh = () => socket.timeout(5000).emit('mines_storage', {}, (err: Error | null, r?: Ack) => { if (!err && r?.ok) apply(r); });
   useEffect(() => { refresh(); const t = window.setInterval(refresh, 4000); socket.on('connect', refresh); return () => { window.clearInterval(t); socket.off('connect', refresh); }; }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  function sell(only?: string) {
-    socket.timeout(5000).emit('mines_sell', only ? { ore: only } : {}, (err: Error | null, r?: Ack & { paid: number }) => {
+  const [pick, setPick] = useState<string | null>(null);
+  function sell(only?: string, qty?: number) {
+    return new Promise<void>((done) => socket.timeout(5000).emit('mines_sell', only ? { ore: only, ...(qty ? { qty } : {}) } : {}, (err: Error | null, r?: Ack & { paid: number }) => {
+      done();
       if (err || !r) return flash('Sell failed, try again.');
       if (!r.ok) return flash(r.error ?? 'Sell failed.');
       apply(r); flash(`Sold for 🪙 ${r.paid}`);
-    });
+    }));
   }
   const q = st.quote;
   const tier = q ? SELL_TIERS.find((t) => q.already < t.upTo) ?? SELL_TIERS[SELL_TIERS.length - 1] : SELL_TIERS[0];
@@ -61,7 +64,8 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
           <ul className="factory-list">
             {st.storage.map((s) => (
               <li key={stackKey(s)}><ItemIcon type={s.type} id={s.id} />{nameOf(s)}<b>×{s.qty}</b><small>🪙{priceOf(s)}</small>
-                {canSell && sellable(s) && <button type="button" onClick={() => sell(stackKey(s))}>Sell</button>}{!sellable(s) && <small title="Imported input: craft it in the factory to sell">craft</small>}</li>
+                {canSell && sellable(s) && <button type="button" aria-expanded={pick === stackKey(s)} onClick={() => setPick((c) => (c === stackKey(s) ? null : stackKey(s)))} data-testid="factory-sell-pick">Sell…</button>}{!sellable(s) && <small title="Imported input: craft it in the factory to sell">craft</small>}
+                {canSell && sellable(s) && pick === stackKey(s) && <SellQtyPicker owned={s.qty} unit={nameOf(s)} testid="factory-qty" preview={(n) => Math.floor(payoutFor(n * priceOf(s), q?.already ?? 0) * (q?.index ?? 1))} onSell={(n) => sell(stackKey(s), n)} />}</li>
             ))}
             {!st.storage.length && <li className="opacity-60">Empty. Mine ore and walk out through the EXIT lift to bank it here.</li>}
           </ul>

@@ -17,7 +17,7 @@ export const REQUESTS_MIGRATION = `CREATE TABLE IF NOT EXISTS change_requests (
 CREATE TABLE IF NOT EXISTS change_request_votes (request_id INTEGER NOT NULL, voter_key TEXT NOT NULL, PRIMARY KEY (request_id, voter_key))`;
 
 interface Row { id: number; title: string; details: string; category: RequestCategory; author: string; authorKey: string; status: RequestStatus; note?: string; changelog?: string; createdAt: number; updatedAt: number; voters: Set<string> }
-export type Sort = 'top' | 'new' | 'status';
+export type Sort = 'top' | 'new' | 'old' | 'status';
 const DAY = 86_400_000;
 
 export class RequestBoard {
@@ -90,10 +90,11 @@ export class RequestBoard {
     const vk = opts.viewer ? nameKey(opts.viewer) : null;
     const st = REQUEST_STATUSES.find((x) => x === opts.status);
     const order = { in_progress: 0, approved: 1, open: 2, shipped: 3, declined: 4 } as const;
-    const sort = (['top', 'new', 'status'] as const).find((x) => x === opts.sort) ?? 'top';
+    const sort = (['top', 'new', 'old', 'status'] as const).find((x) => x === opts.sort) ?? 'top';
+    const newest = (a: Row, b: Row) => b.createdAt - a.createdAt || b.id - a.id;
     return [...this.rows.values()]
       .filter((r) => (!st || r.status === st) && (opts.includeQa || !isQaName(r.author)))
-      .sort((a, b) => sort === 'new' ? b.createdAt - a.createdAt : sort === 'status' ? order[a.status] - order[b.status] || b.voters.size - a.voters.size : b.voters.size - a.voters.size || b.createdAt - a.createdAt)
+      .sort((a, b) => sort === 'new' ? newest(a, b) : sort === 'old' ? -newest(a, b) : sort === 'status' ? order[a.status] - order[b.status] || b.voters.size - a.voters.size || newest(a, b) : b.voters.size - a.voters.size || newest(a, b))
       .map((r) => this.view(r, vk));
   }
   private view(r: Row, vk?: string | null): PublicRequest {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { loadAuth } from '../lib/auth';
+import { chatTimeFull, chatTimeLabel } from '../../../shared/chatTime';
 import { DETAILS_MAX, PER_DAY, REQUEST_CATEGORIES, REQUEST_STATUSES, STATUS_LABEL, TITLE_MAX, similarTitles, validateRequest, type PublicRequest, type RequestStatus } from '../../../shared/requests';
 
 const authHeaders = (): Record<string, string> => { const t = loadAuth()?.token; return t ? { 'X-Relay-Session': t } : {}; };
@@ -19,7 +20,7 @@ export function RequestsButton() {
 function RequestsPanel({ onClose }: { onClose: () => void }) {
   const me = loadAuth()?.name;
   const canPost = !!loadAuth()?.token && !isGuest(me);
-  const [sort, setSort] = useState<'top' | 'new' | 'status'>('top');
+  const [sort, setSort] = useState<'new' | 'old' | 'top' | 'status'>('new');
   const [status, setStatus] = useState<RequestStatus | ''>('');
   const [list, setList] = useState<PublicRequest[] | null>(null);
   const [all, setAll] = useState<PublicRequest[]>([]);
@@ -59,7 +60,9 @@ function RequestsPanel({ onClose }: { onClose: () => void }) {
     <div className="chat-clog chat-req" data-testid="requests" role="dialog" aria-label="Change requests">
       <div className="chat-head"><b>💡 Change requests</b><button type="button" className="acct-close" aria-label="Close requests" onClick={onClose}>✕</button></div>
       <div className="req-bar">
-        {(['top', 'new', 'status'] as const).map((s) => <button key={s} type="button" className={sort === s ? 'on' : ''} onClick={() => setSort(s)} data-testid={`requests-sort-${s}`}>{s === 'top' ? 'Top' : s === 'new' ? 'New' : 'Status'}</button>)}
+        <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} aria-label="Sort requests" data-testid="requests-sort">
+          <option value="new">Newest</option><option value="old">Oldest</option><option value="top">Most votes</option><option value="status">By status</option>
+        </select>
         <select value={status} onChange={(e) => setStatus(e.target.value as RequestStatus | '')} aria-label="Filter by status" data-testid="requests-filter">
           <option value="">All statuses</option>
           {REQUEST_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
@@ -86,7 +89,7 @@ function RequestsPanel({ onClose }: { onClose: () => void }) {
           <li key={r.id} data-testid="requests-item">
             <button type="button" className={`req-vote${r.voted ? ' on' : ''}`} disabled={!canPost || r.status === 'shipped' || r.status === 'declined'} onClick={() => vote(r.id)} aria-pressed={!!r.voted} aria-label={`Upvote, ${r.votes} votes`} data-testid="requests-vote">▲<b>{r.votes}</b></button>
             <div>
-              <div className="chat-clog-meta"><span className={`req-st req-st-${r.status}`}>{STATUS_LABEL[r.status]}</span><span>{r.category} · {r.author}</span></div>
+              <div className="chat-clog-meta"><span className={`req-st req-st-${r.status}`}>{STATUS_LABEL[r.status]}</span><span>{r.category} · {r.author}</span><time className="chat-dim" dateTime={new Date(r.createdAt).toISOString()} title={chatTimeFull(r.createdAt)} data-testid="requests-date">{chatTimeLabel(r.createdAt)}</time></div>
               <b>{r.title}</b>
               {r.details && <p>{r.details}</p>}
               {r.note && <p className="req-note">Dev note: {r.note}</p>}
