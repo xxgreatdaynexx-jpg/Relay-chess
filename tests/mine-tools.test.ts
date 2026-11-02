@@ -6,7 +6,7 @@ import { MinesWorld } from '../server/mines';
 import { MINE_MAP, MINE_NODES, SWING_MIN_MS, SWING_MS } from '../shared/mines';
 import { canStand } from '../shared/fps';
 import { miningBonusChance, miningSwingMul } from '../shared/skillPerks';
-import { canBuyTool, combinedBonus, combinedSwingMul, MAX_TOTAL_BONUS, MIN_SWING_MUL, MINE_TOOLS, toolDef } from '../shared/mineTools';
+import { canBuyTool, combinedBonus, extraOreRoll, combinedSwingMul, MAX_TOTAL_BONUS, MIN_SWING_MUL, MINE_TOOLS, toolDef } from '../shared/mineTools';
 import { hasItemIcon } from '../shared/itemIcons';
 
 async function setup() {
@@ -29,13 +29,14 @@ describe('mining tools: tiers (request #16)', () => {
     }
     for (const t of MINE_TOOLS) expect(hasItemIcon('tool', t.id), t.id).toBe(true);
   });
-  it('tool × Mining perk never goes below 40% of base; extra-ore bonus capped at 20% total', () => {
+  it('tool × Mining perk never goes below 25% of base (4× speed); extra-ore bonus capped', () => {
     expect(combinedSwingMul(1, 'pickaxe')).toBe(1);
-    expect(combinedSwingMul(1, 'hand_drill')).toBeCloseTo(0.8);
-    expect(combinedSwingMul(miningSwingMul(99), 'plasma_cutter')).toBe(MIN_SWING_MUL);
-    for (const t of MINE_TOOLS) for (const l of [1, 30, 60, 99]) expect(combinedSwingMul(miningSwingMul(l), t.id)).toBeGreaterThanOrEqual(0.4);
-    expect(combinedBonus(miningBonusChance(99), 'plasma_cutter')).toBe(MAX_TOTAL_BONUS);
-    expect(combinedBonus(0, 'power_drill')).toBeCloseTo(0.02); expect(combinedBonus(0, 'hand_drill')).toBe(0);
+    expect(combinedSwingMul(1, 'hand_drill')).toBeCloseTo(1 / 1.4);
+    expect(combinedSwingMul(miningSwingMul(99), 'plasma_cutter')).toBeGreaterThanOrEqual(MIN_SWING_MUL); expect(combinedSwingMul(1, 'plasma_cutter')).toBeCloseTo(0.5);
+    for (const t of MINE_TOOLS) for (const l of [1, 30, 60, 99]) expect(combinedSwingMul(miningSwingMul(l), t.id)).toBeGreaterThanOrEqual(0.25);
+    expect(combinedBonus(miningBonusChance(99), 'plasma_cutter')).toBeCloseTo(5 + miningBonusChance(99)); expect(combinedBonus(100, 'plasma_cutter')).toBe(MAX_TOTAL_BONUS);
+    expect(extraOreRoll(3.5, 0.49)).toBe(4); expect(extraOreRoll(3.5, 0.5)).toBe(3); expect(extraOreRoll(0.5, 0.9)).toBe(0);
+    expect(combinedBonus(0, 'power_drill')).toBeCloseTo(2); expect(combinedBonus(0, 'hand_drill')).toBe(1); expect(combinedBonus(0, 'steel_pick')).toBe(0.5);
   });
   it('tiers are bought in order', () => {
     expect(canBuyTool(['pickaxe'], 'steel_pick')).toBe(true);
@@ -88,15 +89,15 @@ describe('mining tools: in the mine', () => {
     w.miningLevel = () => 1; w.bonusRng = () => 1; w.toolOf = () => 'jackhammer';
     w.join('a', 'Tool-Miner', 0); stand('a', 0);
     w.hit('a', 0, 10_000);
-    const fast = Math.ceil(SWING_MIN_MS * 0.64);
+    const fast = Math.ceil(SWING_MIN_MS / 1.8);
     expect(() => w.hit('a', 0, 10_000 + fast - 5)).toThrow(/fast/);
     expect(() => w.hit('a', 0, 10_000 + fast + 1)).not.toThrow();
-    expect(w.swingMsFor('Tool-Miner')).toBe(Math.round(SWING_MS * 0.64));
+    expect(w.swingMsFor('Tool-Miner')).toBe(Math.round(SWING_MS / 1.8));
     w.miningLevel = () => 99; w.toolOf = () => 'plasma_cutter';
-    expect(w.swingMsFor('Tool-Miner')).toBe(Math.round(SWING_MS * 0.4));
+    expect(w.swingMsFor('Tool-Miner')).toBe(Math.round(SWING_MS * miningSwingMul(99) / 2));
     expect(w.playersView('mine')[0]).toMatchObject({ tl: 'plasma_cutter' });
   });
-  it('the shop hook drives toolOf, and a top tool adds at most one extra ore (no extra rolls)', async () => {
+  it('the shop hook drives toolOf, and a tool adds its expected extra ore with one roll', async () => {
     const s = await setup(); await s.fund('Ore-Guy', 400_000);
     for (const t of MINE_TOOLS.slice(1, 4)) await s.tools.buy('Ore-Guy', t.id);
     setMineTools(s.tools);
@@ -104,8 +105,8 @@ describe('mining tools: in the mine', () => {
     w.miningLevel = () => 1; let rolls = 0; w.bonusRng = () => { rolls++; return 0.01; };
     w.join('b', 'Ore-Guy', 0); stand('b', 0);
     let t = 50_000, r; do { r = w.hit('b', 0, t); t += SWING_MIN_MS; } while (!r.broke && !r.full);
-    expect(rolls).toBe(1); expect(r).toMatchObject({ broke: true, bonus: 1 });
-    expect([...w.miners.get('b')!.carried.values()].reduce((a, x) => a + x.qty, 0)).toBe(2);
+    expect(rolls).toBe(1); expect(r).toMatchObject({ broke: true, bonus: 2 });
+    expect([...w.miners.get('b')!.carried.values()].reduce((a, x) => a + x.qty, 0)).toBe(3);
     expect(toolDef('power_drill').bonus).toBeGreaterThan(0.01);
     setMineTools(null);
   });

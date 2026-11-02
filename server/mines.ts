@@ -6,7 +6,7 @@ import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
 import { awardXp, skillLevel } from './skills.js';
 import { miningSwingMul, miningBonusChance } from '../shared/skillPerks.js';
-import { combinedBonus, combinedSwingMul, DEFAULT_TOOL, type MineToolId } from '../shared/mineTools.js';
+import { combinedBonus, extraOreRoll, combinedSwingMul, DEFAULT_TOOL, type MineToolId } from '../shared/mineTools.js';
 import { MinesLeaderboard, setMinesBoard } from './mines-board.js';
 import { getVault, playerKey } from './skins.js';
 import { guestName, lineOfSight, moveAllowance, MOVE_CARRY_MAX, normAngle, clampPitch, canStand, validateMove, eyeHeightOf, type Body } from '../shared/fps.js';
@@ -100,7 +100,7 @@ export class MinesWorld {
   bonusRng: () => number = () => Math.random();
   /** Equipped mining tool (request #16). Tests can override. */
   toolOf: (account: string | null) => MineToolId = (a) => toolHook(a);
-  /** Tool × Mining-perk swing multiplier, floored at MIN_SWING_MUL (40% of the base time). */
+  /** Tool × Mining-perk swing multiplier, floored at MIN_SWING_MUL (25% of the base time). */
   swingMulFor(account: string | null) { return combinedSwingMul(miningSwingMul(this.miningLevel(account)), this.toolOf(account)); }
   swingMsFor(account: string | null) { return Math.round(SWING_MS * this.swingMulFor(account)); }
   miners = new Map<string, Miner>();
@@ -287,8 +287,9 @@ export class MinesWorld {
     n.hp -= 1;
     if (n.hp > 0) return { node: c.id, hp: n.hp, broke: false };
     n.downUntil = now + ore.respawnMs; n.hp = 0;
-    // Mining perk + tool: small chance of one extra ore (only if it fits), capped at MAX_TOTAL_BONUS. Never rolls an extra key/chest drop.
-    const bonus = this.bonusRng() < combinedBonus(miningBonusChance(lvl), tool) && this.load(id) + 2 * ore.weight <= BACKPACK_CAP ? 1 : 0;
+    // Mining perk + tool: expected extra ore (only what fits), capped at MAX_TOTAL_BONUS. Never rolls an extra key/chest drop.
+    const want = extraOreRoll(combinedBonus(miningBonusChance(lvl), tool), this.bonusRng());
+    const bonus = Math.max(0, Math.min(want, Math.floor((BACKPACK_CAP - this.load(id)) / ore.weight) - 1));
     { const key = `ore:${c.ore}`; const cur = m.carried.get(key); if (cur) cur.qty += 1 + bonus; else m.carried.set(key, { type: 'ore', id: c.ore, qty: 1 + bonus }); }
     if (m.account) this.markCarried(playerKey(m.account));
     return { node: c.id, hp: 0, broke: true, ore: c.ore, ...(bonus ? { bonus } : {}) };

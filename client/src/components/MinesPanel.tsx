@@ -274,12 +274,12 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
               return (
                 <div key={t.id} className={`mines-tool ${on ? 'on' : ''}`} data-testid={`mines-tool-${t.id}`} title={t.blurb}>
                   <ItemIcon type="tool" id={t.id} />
-                  <span className="mines-tool-name">{t.name}<small>{Math.round((1 - t.swingMul) * 100) ? `${Math.round((1 - t.swingMul) * 100)}% faster` : 'Starter'}{t.bonus ? ` · +${Math.round(t.bonus * 100)}% extra ore` : ''}</small></span>
+                  <span className="mines-tool-name">{t.name}<small>{t.tier ? `${+(1 / t.swingMul).toFixed(2)}× speed` : 'Starter'}{t.bonus ? ` · +${Math.round(t.bonus * 100)}% ore` : ''}</small></span>
                   {on ? <em>Equipped</em> : owned ? <button type="button" onClick={() => equipTool(t.id)}>Equip</button>
                     : <button type="button" disabled={!can || (wallet != null && wallet < price)} onClick={() => buyTool(t.id)} title={can ? '' : guest ? 'Sign in to buy' : 'Buy the previous tier first'}>🪙{price.toLocaleString()}</button>}
                 </div>
               ); })}
-            <p className="mines-note">Tools stack with your Mining level (fastest swing is {Math.round(combinedSwingMul(0, 'pickaxe') * 100)}% of base). Key/chest drops are unchanged.</p>
+            <p className="mines-note">Tools stack with your Mining level (up to {+(1 / combinedSwingMul(0, 'pickaxe')).toFixed(1)}× speed). Key/chest drops are unchanged.</p>
             {toolMsg && <p className="mines-note" data-testid="mines-tool-msg">{toolMsg}</p>}
           </details>
           <details className="mines-prices mines-board" data-testid="mines-board-panel"><summary>🏆 Leaderboard</summary><MiningLeaderboard compact you={guest ? '' : loadName()} /></details>
