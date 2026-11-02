@@ -1,8 +1,9 @@
 import type { Server, Socket } from 'socket.io';
 import { px, priceIndex } from './price-index.js';
-import { affordableLoadout, isKnifeOnly, guestName, MOVE_SPEED, spawnCost, TICK_HZ, WEAPONS } from '../shared/fps.js';
+import { affordableLoadout, isKnifeOnly, killBonus, KILL_BONUS_REPEAT, KILL_BONUS_WINDOW_MS, guestName, MOVE_SPEED, spawnCost, TICK_HZ, WEAPONS } from '../shared/fps.js';
 import { randomUUID } from 'node:crypto';
 import { getBank } from './casino-store.js';
+import { getAccounts } from './accounts.js';
 import { ArenaWorld, type ArenaEvent, type ArenaFighter, type MatchResult } from './arena-world.js';
 import { getVault, playerKey } from './skins.js';
 import { getArenaLedger } from './arena-store.js';
@@ -77,23 +78,54 @@ export function chargeSpawn(f: ArenaFighter, now: number): boolean | 'wait' {
 }
 
 /** Pay a dead fighter's stake to their killer (once per life, ledger key per kill) or burn it to the house. Returns the bounty paid. */
-export function settleBounty(killerId: string | null, victimId: string, w: ArenaWorld = world): number {
+export function settleBounty(killerId: string | null, victimId: string, w: ArenaWorld = world, now = Date.now()): number {
+  return settleKill(killerId, victimId, w, now).bounty;
+}
+
+// ---- Kill bonus: a kill pays the victim's stake plus a house-paid +KILL_BONUS_PCT (see shared/fps.ts killBonus).
+/** Account name (lowercase) -> ms epoch when it turns 24h old (0 = old/unknown-age account). Absent = not looked up yet: no bonus (fail closed). */
+const adultAt = new Map<string, number>();
+/** Test hook / join hook: record when an account becomes eligible as a bonus victim. */
+export function setArenaAccountAdultAt(name: string, at: number): void { adultAt.set(acct(name), at); }
+async function lookupAccountAge(name: string): Promise<void> {
+  try { const lock = await getAccounts().tradeLockMs(name); adultAt.set(acct(name), lock > 0 ? Date.now() + lock : 0); } catch { /* stay unknown: no bonus */ }
+}
+/** killer|victim -> recent bonus-paying kill times (anti-farm: only KILL_BONUS_REPEAT per pair per KILL_BONUS_WINDOW_MS). */
+const bonusKills = new Map<string, number[]>();
+
+/** Stake to the killer + the house kill bonus (separate ledger entries), or burn the stake to the house. */
+export function settleKill(killerId: string | null, victimId: string, w: ArenaWorld = world, now = Date.now()): { bounty: number; bonus: number } {
   const v = w.fighters.get(victimId);
-  if (!v || !v.stake || !v.lifeId) return 0;
+  if (!v || !v.stake || !v.lifeId) return { bounty: 0, bonus: 0 };
   const stake = v.stake;
   const victimName = claimed.get(victimId);
   v.stake = 0;
   const k = killerId && killerId !== victimId && !isBot(killerId) ? claimed.get(killerId) : undefined;
   const bank = getBank();
   if (k && acct(k) !== acct(victimName ?? '')) {
+    const kf = w.fighters.get(killerId!);
     if (bank.transfer(k, stake, { key: `arena-bounty:${v.lifeId}`, game: 'arena', memo: `Bounty · ${v.name}` })) {
-      const kf = w.fighters.get(killerId!);
       if (kf) kf.earned = (kf.earned ?? 0) + stake;
     }
-    return stake;
+    let bonus = 0;
+    const adult = victimName ? adultAt.get(acct(victimName)) : undefined;
+    if (victimName && !isBot(victimId) && !isArenaBot(victimId) && !victimId.startsWith(QA_BOT_PREFIX) && adult !== undefined && adult <= now) {
+      const pair = `${acct(k)}|${acct(victimName)}`;
+      const recent = (bonusKills.get(pair) ?? []).filter((t) => now - t < KILL_BONUS_WINDOW_MS);
+      if (recent.length < KILL_BONUS_REPEAT) {
+        const b = killBonus(stake);
+        if (bank.transfer(k, b, { key: `arena-kill-bonus:${v.lifeId}`, game: 'arena', memo: 'Kill bonus' })) {
+          bonus = b;
+          recent.push(now);
+          if (kf) kf.earned = (kf.earned ?? 0) + b;
+        }
+      }
+      if (recent.length) bonusKills.set(pair, recent); else bonusKills.delete(pair);
+    }
+    return { bounty: stake, bonus };
   }
   if (victimName) bank.transfer(victimName, 0, { key: `arena-burn:${v.lifeId}`, game: 'arena', memo: `Stake ${stake} to the house` });
-  return 0;
+  return { bounty: 0, bonus: 0 };
 }
 
 /** A signed-in player leaving mid-life keeps that paid life (stake + loadout) for RESUME_MS so a reconnect isn't charged twice. */
@@ -227,6 +259,8 @@ export function resetArena(): void {
   botHeading.clear();
   arenaBots = new ArenaBots();
   claimed.clear();
+  adultAt.clear();
+  bonusKills.clear();
   if (ticker) clearInterval(ticker);
   ticker = null;
 }
@@ -238,8 +272,9 @@ export function recordArena(events: ArenaEvent[], w: ArenaWorld = world): void {
     const d = e.data as Record<string, unknown>;
     if (e.ev === 'fps_kill') {
       const killerId = d.killerId as string | null, victimId = d.victimId as string;
-      const bounty = settleBounty(killerId, victimId, w);
+      const { bounty, bonus } = settleKill(killerId, victimId, w);
       if (bounty) d.bounty = bounty;
+      if (bonus) d.bonus = bonus;
       // Arena bot kills and deaths never touch lifetime stats (match scoreboard only).
       if ((killerId && isArenaBot(killerId)) || isArenaBot(victimId)) continue;
       const v = claimed.get(victimId);
@@ -326,6 +361,7 @@ export function registerFps(io: Server, socket: Socket): void {
       }
       const account = (socket.data.account as { name?: string } | undefined)?.name;
       claimArenaName(socket.id, account ?? null);
+      if (account) void lookupAccountAge(account);
       const perks = perksFor(account);
       if (perks.size) world.perks.set(socket.id, perks); // before join, so detection skips them
       registerArenaClient(socket.id, body(payload).ready === true);

@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T00:45:00-06:00', title: 'Arena: kills pay a little more than a death costs', bullets: [
+    'Requested by Dayne: a kill now pays the victim\'s spawn stake plus a house kill bonus of +20% of it (at least 1 chip). At base prices: pistol +10 +2, SMG +15 +3, shotgun +20 +4, sniper and AR-15 +25 +5, rocket +35 +7.',
+    'The kill feed and the chip pop-up show it like "+25 +5 bonus", and the end-of-match earned total includes it.',
+    'No bonus for killing bots, free knife-only lives, yourself or your own account, or accounts under 24 hours old, and only the first 3 kills of the same player every 10 minutes earn it (the stake always pays).',
+  ] },
   { commit: '', at: '2026-11-02T00:40:00-06:00', title: 'Sell how many you want + request board sorting', bullets: [
     "Requested by carter2: choose how many to sell to the house. Factory storage (tap Sell… on any item, including factory goods and ore), the fishing cooler and the kitchen fridge now have a quantity picker with a number box, a slider and 1 / 10 / Half / All buttons, plus a live payout preview that respects the 100,000-a-day cap. Sell all still works.",
     'The server checks the amount is a whole number you actually own and sells exactly that many through the normal wallet ledger. Double clicks can never sell the same items twice. Fish and dishes sell the most valuable ones first.',

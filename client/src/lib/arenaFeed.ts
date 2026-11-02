@@ -1,7 +1,7 @@
 /** Pure kill-feed / multi-kill pop-up helpers (DOM-free so they can be unit-tested). */
-export interface FeedItem { key: number; killer: string; victim: string; cause: string; self: boolean; mine: boolean; head?: boolean; noscope?: boolean; nut?: boolean; multi?: string }
+export interface FeedItem { key: number; killer: string; victim: string; cause: string; self: boolean; mine: boolean; head?: boolean; noscope?: boolean; nut?: boolean; multi?: string; bounty?: number; bonus?: number }
 
-export type FeedPart = { t: 'killer' | 'victim' | 'multi'; text: string } | { t: 'weapon'; cause: string } | { t: 'head' } | { t: 'nut' } | { t: 'noscope' };
+export type FeedPart = { t: 'killer' | 'victim' | 'multi' | 'chips'; text: string } | { t: 'weapon'; cause: string } | { t: 'head' } | { t: 'nut' } | { t: 'noscope' };
 
 /** Ordered pieces of one feed line: killer · weapon · [headshot icon] · victim, or a "NAME — TRIPLE KILL" line. */
 export function feedParts(f: FeedItem): FeedPart[] {
@@ -13,6 +13,7 @@ export function feedParts(f: FeedItem): FeedPart[] {
   if (f.head && !f.self) out.push({ t: 'head' });
   else if (f.nut && !f.self) out.push({ t: 'nut' });
   out.push({ t: 'victim', text: f.victim });
+  if (f.bounty && !f.self) out.push({ t: 'chips', text: chipsLabel(f.bounty, f.bonus) });
   return out;
 }
 
@@ -21,3 +22,8 @@ export function popupScale(level: number): number {
   return 1 + 0.18 * (Math.max(1, Math.min(5, level)) - 1);
 }
 export const POPUP_MS = 1500;
+
+/** "+60 🪙" or "+60 +12 bonus" for a paid kill. */
+export function chipsLabel(bounty: number, bonus?: number): string {
+  return `+${bounty}${bonus ? ` +${bonus} bonus` : ''}`;
+}

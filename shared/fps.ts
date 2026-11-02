@@ -930,3 +930,10 @@ export function grenadeDamage(c: Vec3, ownerId: string, targets: Target[], map: 
   }
   return hits;
 }
+
+/** Kill bonus: the house adds this share of the victim's stake on top of the bounty (round down, min 1). */
+export const KILL_BONUS_PCT = 0.2;
+/** Anti-farm: the bonus pays for at most this many kills of the same victim per killer per window (the stake always pays). */
+export const KILL_BONUS_REPEAT = 3;
+export const KILL_BONUS_WINDOW_MS = 10 * 60_000;
+export const killBonus = (stake: number): number => (stake > 0 ? Math.max(1, Math.floor(stake * KILL_BONUS_PCT)) : 0);

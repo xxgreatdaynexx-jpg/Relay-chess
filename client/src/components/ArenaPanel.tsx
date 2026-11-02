@@ -92,14 +92,19 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const [spawnedOnce, setSpawnedOnce] = useState(false);
   const [life, setLife] = useState<{ alive: boolean; stake: number; broke: boolean; lo: WeaponId; paid: boolean; rs: number }>({ alive: true, stake: 0, broke: false, lo: 'pistol', paid: false, rs: 0 });
   const [matchUi, setMatchUi] = useState<{ phase: 'play' | 'sudden' | 'ended'; alive: number; sd: number; end: MatchEnd | null }>({ phase: 'play', alive: 0, sd: 0, end: null });
-  const [chipToasts, setChipToasts] = useState<Array<{ key: number; amount: number; memo: string }>>([]);
+  const [chipToasts, setChipToasts] = useState<Array<{ key: number; amount: number; memo: string; bonus?: number }>>([]);
   useEffect(() => {
     let n = 0;
     const onWallet = (p: { tx?: { game?: string; amount?: number; memo?: string } }) => {
       const t = p?.tx;
       if (!t || t.game !== 'arena' || !t.amount) return;
       const key = ++n + Date.now();
-      setChipToasts((o) => [...o.slice(-2), { key, amount: t.amount!, memo: t.memo ?? '' }]);
+      // The house kill bonus folds into the bounty toast it follows: "+60 +12 bonus".
+      setChipToasts((o) => {
+        const last = o[o.length - 1];
+        if (t.memo === 'Kill bonus' && last && last.memo.startsWith('Bounty') && !last.bonus) return [...o.slice(0, -1), { ...last, bonus: t.amount! }];
+        return [...o.slice(-2), { key, amount: t.amount!, memo: t.memo ?? '' }];
+      });
       setTimeout(() => setChipToasts((o) => o.filter((x) => x.key !== key)), 2600);
     };
     socket.on('wallet', onWallet);
@@ -473,7 +478,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         fx.current.rockets.set(s.rocket.id, { ...s.rocket, at: local ? local.at : now });
       }
     };
-    const onKill = (k: { killer: string; victim: string; killerId: string | null; victimId: string; cause: string; headshot?: boolean; noscope?: boolean; nut?: boolean }) => {
+    const onKill = (k: { killer: string; victim: string; killerId: string | null; victimId: string; cause: string; headshot?: boolean; noscope?: boolean; nut?: boolean; bounty?: number; bonus?: number }) => {
       const self = k.killerId === k.victimId || !k.killerId;
       if (k.victimId === me.current.id) { releaseOnDeath(); deathAtRef.current = performance.now(); kcRef.current = null; setKillCam(null); }
       if (k.killerId === me.current.id && !self) { fx.current.killmark = performance.now(); if (k.headshot) fx.current.headmark = performance.now(); }
@@ -484,7 +489,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         const fall = by && by.id !== v.id ? Math.atan2(v.y - by.y, v.x - by.x) - v.a : Math.PI;
         fx.current.deaths.set(k.victimId, { at: performance.now(), x: v.x, y: v.y, z: v.z, a: v.a, name: v.name, fall });
       }
-      pushFeed({ killer: k.killer, victim: k.victim, cause: k.cause, self, mine: k.killerId === me.current.id || k.victimId === me.current.id, head: !!k.headshot && !self, noscope: !!k.noscope && !self, nut: !!k.nut && !self });
+      pushFeed({ killer: k.killer, victim: k.victim, cause: k.cause, self, mine: k.killerId === me.current.id || k.victimId === me.current.id, head: !!k.headshot && !self, noscope: !!k.noscope && !self, nut: !!k.nut && !self, bounty: k.bounty, bonus: k.bonus });
     };
     let popKey = 0;
     // Everyone gets the feed line; only the killer gets the pop-up (fps_multi_me is sent to the killer's socket alone).
@@ -1337,7 +1342,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         )}
         {chipToasts.length > 0 && (
           <div className="fps-chip-toasts" data-testid="arena-chip-toasts" style={{ position: 'absolute', top: '18%', left: '50%', transform: 'translateX(-50%)', zIndex: 5, pointerEvents: 'none', textAlign: 'center', fontWeight: 800 }}>
-            {chipToasts.map((t) => <div key={t.key} style={{ color: t.amount > 0 ? '#9be37a' : '#ff8a7a', textShadow: '0 1px 3px #000' }}>{t.amount > 0 ? '+' : '−'}{Math.abs(t.amount)} 🪙 <span style={{ fontWeight: 500, opacity: 0.8 }}>{t.memo}</span></div>)}
+            {chipToasts.map((t) => <div key={t.key} style={{ color: t.amount > 0 ? '#9be37a' : '#ff8a7a', textShadow: '0 1px 3px #000' }}>{t.amount > 0 ? '+' : '−'}{Math.abs(t.amount)}{t.bonus ? ` +${t.bonus} bonus` : ''} 🪙 <span style={{ fontWeight: 500, opacity: 0.8 }}>{t.memo}</span></div>)}
           </div>
         )}
         {matchUi.phase === 'sudden' && (
@@ -1435,7 +1440,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         <div className="fps-feed" data-testid="arena-feed">
           {feed.map((f) => (
             <div key={f.key} className={`${f.mine ? 'fps-feed-me' : ''}${f.head ? ' fps-feed-head' : ''}${f.multi ? ' fps-feed-multi' : ''}`}>
-              {feedParts(f).map((p, i) => p.t === 'weapon' ? <WeaponIcon key={i} cause={p.cause} /> : p.t === 'head' ? <HeadshotIcon key={i} /> : p.t === 'nut' ? <span key={i} className="fps-nuticon" style={{ flex: 'none', fontSize: 12, filter: 'drop-shadow(0 0 2px rgba(255,140,200,.8))' }} aria-label="nut shot" role="img">🥜</span> : p.t === 'noscope' ? <span key={i} className="fps-360" aria-label="360 no-scope">360</span> : <span key={i} className={p.t === 'killer' ? 'fps-k' : p.t === 'multi' ? 'fps-multi-t' : ''}>{p.text}</span>)}
+              {feedParts(f).map((p, i) => p.t === 'weapon' ? <WeaponIcon key={i} cause={p.cause} /> : p.t === 'head' ? <HeadshotIcon key={i} /> : p.t === 'nut' ? <span key={i} className="fps-nuticon" style={{ flex: 'none', fontSize: 12, filter: 'drop-shadow(0 0 2px rgba(255,140,200,.8))' }} aria-label="nut shot" role="img">🥜</span> : p.t === 'noscope' ? <span key={i} className="fps-360" aria-label="360 no-scope">360</span> : <span key={i} className={p.t === 'killer' ? 'fps-k' : p.t === 'multi' ? 'fps-multi-t' : p.t === 'chips' ? 'fps-feed-chips' : ''}>{p.text}</span>)}
             </div>
           ))}
         </div>
