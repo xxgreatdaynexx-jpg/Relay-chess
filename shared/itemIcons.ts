@@ -173,16 +173,52 @@ const GOOD_ICONS: Record<string, () => string> = {
 };
 
 // Explicit width/height so the svg has an intrinsic size (a viewBox alone falls back to 300x150).
+
+// ---------------------------------------------------------------- reef fish (Reef Pier at Chud Resort, pt1304u): side view, head right
+type FishOpt = { body: string; belly?: string; fin: string; hh?: number; x0?: number; nose?: number; tail?: 'fork' | 'round' | 'lunate'; dorsal?: string; extra?: string; over?: string };
+const fishSide = (o: FishOpt) => {
+  const hh = o.hh ?? 5, x0 = o.x0 ?? 6, nx = o.nose ?? 21, y = 12;
+  const tail = o.tail === 'round' ? Pa(`M${x0 + 1} ${y}C${x0 - 2} ${y - 5} ${x0 - 5} ${y - 4} ${x0 - 4} ${y}C${x0 - 5} ${y + 4} ${x0 - 2} ${y + 5} ${x0 + 1} ${y}Z`, o.fin)
+    : o.tail === 'lunate' ? Pa(`M${x0 + 1} ${y}L${x0 - 3} ${y - 7}Q${x0 - 2} ${y} ${x0 - 3} ${y + 7}Z`, o.fin)
+    : P(`${x0 + 1},${y} ${x0 - 4},${y - 5} ${x0 - 2.5},${y} ${x0 - 4},${y + 5}`, o.fin);
+  const dorsal = o.dorsal ?? Pa(`M${x0 + 4} ${y - hh * 0.8}Q${(x0 + nx) / 2} ${y - hh - 3} ${(x0 + nx) / 2 + 3} ${y - hh * 0.9}Z`, o.fin, 0.9);
+  const body = `M${nx} ${y}C${nx - 2} ${y - hh} ${x0 + 4} ${y - hh} ${x0} ${y}C${x0 + 4} ${y + hh} ${nx - 2} ${y + hh} ${nx} ${y}Z`;
+  const belly = o.belly ? `<path d="M${nx - 1} ${y + 0.5}C${nx - 3} ${y + hh * 0.85} ${x0 + 5} ${y + hh * 0.85} ${x0 + 1} ${y + 0.5}Z" fill="${o.belly}" opacity=".9"/>` : '';
+  const ex = nx - 3.2, ey = y - hh * 0.25;
+  return tail + dorsal + (o.extra ?? '') + Pa(body, o.body) + belly + (o.over ?? '') + `<path d="${body}" fill="none" stroke="${OL}" stroke-width="1.1"/>` + Pa(`M${x0 + 9} ${y + 1}l-2.5 2.2l3 .2z`, o.fin, 0.7) + C(ex, ey, 1.2, '#fff', 0.6) + C(ex + 0.25, ey, 0.6, OL, 0);
+};
+const band = (x: number, hh: number, w = 1.6, c = '#fff') => `<path d="M${x} ${12 - hh}Q${x - 1} 12 ${x} ${12 + hh}" fill="none" stroke="${OL}" stroke-width="${w + 1}"/><path d="M${x} ${12 - hh}Q${x - 1} 12 ${x} ${12 + hh}" fill="none" stroke="${c}" stroke-width="${w}"/>`;
+const bill = (c: string) => P('20,11.6 23.6,11.2 20.4,12.6', c, ' stroke-width="0.7"');
+const FISH_ICONS: Record<string, () => string> = {
+  clownfish: () => fishSide({ body: '#ff7a1a', fin: '#ff8a2a', hh: 5.2, tail: 'round', dorsal: Pa('M10 7.5Q13 4 16 7.5Z', '#ff8a2a', 0.9), over: band(17, 4.2) + band(12.5, 4.8) + band(8, 2.8, 1.2) }),
+  bluetang: () => fishSide({ body: '#2a5ad8', fin: '#f6d020', hh: 6.2, x0: 5, tail: 'lunate', dorsal: Pa('M8 7Q14 3.5 19 8Z', '#1f44b0', 0.9), over: Pa('M9 10C12 7 16 8 18 10C15 9.5 13 11 11 13C14 14 15 15 16 16C12 16 9 14 9 10Z', '#0d1a40', 0.5) }),
+  damsel: () => fishSide({ body: '#e8ecf0', belly: '#f8f8fa', fin: '#e6c84a', hh: 5.6, over: '<path d="M8 8.5C11 6 17 6 20 10L20 9Z" fill="#f2d84a" opacity=".85"/>' + [9, 11.5, 14, 16.5, 19].map((x) => Ln(`M${x} ${x > 18 ? 9.5 : 7.4}L${x} ${x > 18 ? 14.5 : 16.6}`, '#1b1510', 1.1)).join('') }),
+  parrotfish: () => fishSide({ body: '#2ac0a0', belly: '#ff9ac0', fin: '#c05ac8', hh: 5.4, tail: 'lunate', over: [8, 11, 14].map((x) => Ln(`M${x} 9Q${x + 1.4} 12 ${x} 15`, '#ff7ab0', 0.8)).join('') + Ln('M20 11L21.4 12L20 13', '#f8f0e0', 1.3) }),
+  snapper: () => fishSide({ body: '#e84a4a', belly: '#ffb0a0', fin: '#d83a3a', hh: 5.4, dorsal: P('9,8 11,4.5 13,7 15,4.8 17,8', '#d83a3a', ' stroke-width="0.9"'), over: Ln('M9 10.4L18 9.6', '#ff8a8a', 0.8) }),
+  triggerfish: () => fishSide({ body: '#efe6cc', belly: '#f8f0d8', fin: '#3a8ad8', hh: 6, tail: 'round', over: Ln('M10 7L13 17', '#1a4ab0', 1.2) + Ln('M14.5 7.4L16 16.6', '#1a1a1a', 1.4) + Ln('M8 13H13', '#f2c820', 1) + Ln('M17 13.5H21', '#f2c820', 1) }),
+  mahimahi: () => fishSide({ body: '#3ab84a', belly: '#f6d820', fin: '#2a7ad0', hh: 5.2, x0: 4, tail: 'fork', dorsal: Pa('M7 8.6Q12 3.4 20.6 7.4L20 9Z', '#2a7ad0', 0.9), over: [9, 12, 15].map((x) => C(x, 11.6, 0.55, '#1a5a8a', 0)).join('') }),
+  barracuda: () => fishSide({ body: '#a8b4bc', belly: '#eef2f4', fin: '#5a6a74', hh: 3, x0: 4, nose: 22.5, tail: 'fork', dorsal: P('8,10 9,7.2 10.6,9.4', '#5a6a74', ' stroke-width="0.8"'), over: [8, 10.5, 13, 15.5].map((x) => Ln(`M${x} 9.6L${x - 0.8} 12`, '#3a4650', 1.1)).join('') + Ln('M19.4 12.6L22.4 12.2', '#1b1510', 0.7) }),
+  grouper: () => fishSide({ body: '#8a5a3a', belly: '#c89a6a', fin: '#6a4028', hh: 6, tail: 'round', over: [[9, 9], [12, 8.4], [15, 9], [10.5, 12.5], [13.5, 12], [16.5, 11.4], [12, 15], [8, 13]].map(([x, y]) => C(x!, y!, 0.75, '#e8b05a', 0)).join('') + Ln('M18 14.2Q20 14.5 21 12.8', '#3a2010', 0.9) }),
+  yellowfin: () => fishSide({ body: '#1f3a78', belly: '#d8e2ea', fin: '#f6c820', hh: 5, x0: 5, tail: 'lunate', dorsal: P('11,8 13,2.6 14.6,7.6', '#f6c820', ' stroke-width="0.9"'), extra: P('11,16 13,21.4 14.6,16.4', '#f6c820', ' stroke-width="0.9"'), over: Ln('M7.6 11.4L18 10.6', '#f6d040', 0.9) + [7, 8.4, 9.8].map((x) => Pn(`${x},8.6 ${x + 0.8},7.8 ${x + 0.8},9`, '#f6d820')).join('') }),
+  sailfish: () => fishSide({ body: '#1e4aa8', belly: '#dce6f2', fin: '#2a3a88', hh: 3.8, x0: 4, nose: 20, tail: 'lunate', dorsal: Pa('M6.5 9.4C7 2 13 1.4 17.6 8.6Z', '#3a5ad0', 0.9) + [8.5, 11, 13.5].map((x) => Ln(`M${x} ${x < 10 ? 4.5 : 3.6}L${x} 9`, '#7ab0ff', 0.6)).join(''), extra: bill('#2a3a88'), over: [8, 10, 12].map((x) => Ln(`M${x} 9.2L${x} 13`, '#8ab8ff', 0.6)).join('') }),
+  marlin: () => fishSide({ body: '#163c94', belly: '#e2ecf6', fin: '#0e2668', hh: 4.6, x0: 4, nose: 20, tail: 'lunate', dorsal: P('8,8.2 9.6,3.2 12,7.4 17,8', '#0e2668', ' stroke-width="0.9"'), extra: bill('#0e2668'), over: [7.5, 9.5, 11.5, 13.5].map((x) => Ln(`M${x} 8.6L${x} 14`, '#7ad0ff', 0.7)).join('') + `<circle cx="18" cy="9" r="0.6" fill="#ffd27a"/>` }),
+  manta: () => Pa('M12 5C14 7 17 9 22.5 9.4C19 12 16 15.6 13 16.4L12 21L11 16.4C8 15.6 5 12 1.5 9.4C7 9 10 7 12 5Z', '#2a2440') + `<path d="M12 7.6C13.6 9.4 16.4 10.8 19.4 10.4C16.6 12.4 14.6 14.4 12 14.8C9.4 14.4 7.4 12.4 4.6 10.4C7.6 10.8 10.4 9.4 12 7.6Z" fill="#ff8a5a" opacity=".55"/>` + Pa('M10.4 5.6L9.6 3.4L11.2 4.8ZM13.6 5.6L14.4 3.4L12.8 4.8Z', '#2a2440', 0.8) + C(8.6, 9.6, 0.7, '#fff', 0.4) + C(15.4, 9.6, 0.7, '#fff', 0.4) + Ln('M12 8V14', '#ffd0a0', 0.6) + glint(18, 7, 0.7),
+  flipflop: () => E(12, 13, 5.2, 9, '#ff5a8a') + E(12, 13.6, 3.8, 7.4, '#ffd0e0', 0.6) + Ln('M8.8 9.6L12 7.6L15.2 9.6', '#2ac0d0', 1.6) + C(12, 7.6, 0.8, '#2ac0d0', 0.6),
+  coconutshell: () => Pa('M3 12C3 18 7.5 21 12 21C16.5 21 21 18 21 12Z', '#7a4a24') + E(12, 12, 9, 2.4, '#f6f0e2') + E(12, 12, 6.6, 1.5, '#e8dcc0', 0.5) + Ln('M6 16L8 18.4M11 17L12 19.6M16 16L15 18.6', '#4a2a10', 0.8),
+};
+/** Reef species with a crafted fish icon (type 'fish'). */
+export const ICON_FISH_IDS = Object.keys(FISH_ICONS);
+
 const svg = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">${body}</svg>`;
 const ALIAS: Record<string, string> = { crystal: 'gem', strawberry: 'crop_strawberry', wheat: 'crop_wheat', carrot: 'crop_carrot', corn: 'crop_corn', tomato: 'crop_tomato', potato: 'crop_potato', pumpkin: 'crop_pumpkin', grapes: 'crop_grapes', sunflower: 'crop_sunflower', pineapple: 'crop_pineapple', banana: 'crop_banana', mango: 'crop_mango', coconut: 'crop_coconut', cacao: 'crop_cacao' };
 const cache = new Map<string, string>();
 
 /** True when the item has a crafted icon (not the fallback crate). */
-export function hasItemIcon(type: string | undefined, id: string): boolean { const i = ALIAS[id] ?? id; return type === 'ore' ? i in ORE_ICONS : i in GOOD_ICONS || (type == null && i in ORE_ICONS); }
+export function hasItemIcon(type: string | undefined, id: string): boolean { const i = ALIAS[id] ?? id; return type === 'fish' ? i in FISH_ICONS : type === 'ore' ? i in ORE_ICONS : i in GOOD_ICONS || (type == null && i in ORE_ICONS); }
 /** SVG markup for an item. `type` is 'ore' | 'bar' | 'good' (optional: ids are unique across ore and goods except none). */
 export function itemIconSvg(type: string | undefined, id: string): string {
   const i = ALIAS[id] ?? id; const k = `${type ?? ''}:${i}`; const hit = cache.get(k); if (hit) return hit;
-  const f = type === 'ore' ? ORE_ICONS[i] : GOOD_ICONS[i] ?? (type == null ? ORE_ICONS[i] : undefined);
+  const f = type === 'fish' ? FISH_ICONS[i] : type === 'ore' ? ORE_ICONS[i] : GOOD_ICONS[i] ?? (type == null ? ORE_ICONS[i] : undefined);
   const tint = (type === 'ore' && isOre(i) ? ORES[i].color : GOODS[i]?.color) ?? '#9a7a4a';
   const out = svg(f ? f() : crate(shade(tint, -0.1)));
   cache.set(k, out); return out;

@@ -23,6 +23,8 @@ import {
   REEL_DT, replayReel, rollFish, rollWeight, anglerAim, type AnglerState, type FishCatch, type FishView,
 } from '../shared/fishing.js';
 import { cookPayout } from '../shared/cooking.js';
+import { isFishSpot, type FishSpot } from '../shared/fishing.js';
+import { isAtResort } from './travel.js';
 
 export const FISH_MIGRATION = `
 CREATE TABLE IF NOT EXISTS fish_catches (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, name TEXT NOT NULL, species TEXT NOT NULL, weight_g INTEGER NOT NULL, value INTEGER NOT NULL, caught_at BIGINT NOT NULL, sold_at BIGINT);
@@ -78,14 +80,16 @@ export class Fishing {
   }
 
   /** Throw a line. The fish (and when it bites) is decided now and stays server-side. */
-  async cast(name: string): Promise<{ biteIn: number }> {
+  async cast(name: string, spotIn: unknown = 'lake', atResort: (n: string) => boolean = isAtResort): Promise<{ biteIn: number }> {
     const key = keyOf(name); const now = this.clock();
+    const spot: FishSpot = isFishSpot(spotIn) ? spotIn : 'lake';
+    if (spot === 'reef' && !atResort(name)) throw new FishError('The Reef Pier is at Chud Resort. Fly there first.');
     if (now - (this.lastCast.get(key) ?? -Infinity) < CAST_COOLDOWN_MS) throw new FishError('Easy — let the line settle first.');
     const n = Number((await this.pool.query('SELECT count(*) AS n FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL', [key])).rows[0]?.n ?? 0);
     if (n >= COOLER_MAX) throw new FishError(`Your cooler is full (${COOLER_MAX}). Sell or release some fish first.`);
     this.lastCast.set(key, now);
     const lvl = await skillLevelAsync(name, 'fishing'); // Fishing perk: a little rare-fish luck and quicker bites
-    const f = rollFish(fishingLuckRoll(this.rng.unit(), lvl), this.rng.unit()); const grams = rollWeight(f, this.rng.unit());
+    const f = rollFish(fishingLuckRoll(this.rng.unit(), lvl), this.rng.unit(), spot); const grams = rollWeight(f, this.rng.unit());
     const biteIn = Math.max(BITE_MIN_MS, Math.round(this.rng.int(BITE_MIN_MS, BITE_MAX_MS + 1) * fishingBiteMul(lvl)));
     this.casts.set(key, { castAt: now, biteAt: now + biteIn, fish: f.id, grams, seed: this.rng.int(1, 2 ** 31), hookedAt: null });
     return { biteIn };
@@ -267,7 +271,7 @@ export function registerFishing(io: Server, socket: Socket): void {
   on('fish_state', async (_b, f, n) => ({ state: await f.view(n), prices: Object.fromEntries(FISH.map((x) => [x.id, px(x.base)])) }));
   const pushDock = () => { try { io.to(DOCK_ROOM).emit('fish_anglers', { anglers: anglerStates(null) }); } catch { /* best effort */ } };
   const pose = (n: string, patch: Partial<Omit<AnglerState, 'name' | 'since'>>) => { markHere(n, Date.now(), patch); pushDock(); };
-  on('fish_cast', async (b, f, n) => { const r = await f.cast(n); pose(n, { pose: 'cast', ...anglerAim(b.yaw, b.power) }); return r; });
+  on('fish_cast', async (b, f, n) => { const r = await f.cast(n, b.spot); pose(n, { pose: 'cast', ...anglerAim(b.yaw, b.power) }); return r; });
   on('fish_hook', async (_b, f, n) => { const r = await f.hook(n); pose(n, { pose: 'reel' }); return r; });
   on('fish_land', async (b, f, n) => { const r = await f.land(n, b.inputs); pose(n, r.caught && r.fish ? { pose: 'catch', fish: r.fish.fish } : { pose: 'idle' }); return r; });
   on('fish_reel_in', (_b, f, n) => { f.reelIn(n); pose(n, { pose: 'idle' }); return {}; });

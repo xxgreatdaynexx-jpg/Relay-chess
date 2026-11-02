@@ -14,6 +14,7 @@ interface Spec {
   dorsal: Fin[]; anal: Fin; pect: number; pelv: number; eye: { t: number; y: number; r: number; iris: string };
   back: string; side: string; belly: string; fin: string; finTip?: string; mouth?: 'big' | 'duck' | 'small' | 'under'; barbels?: number;
   swim: number; paint: (p: Painter) => void; glow?: number; metal?: number;
+  /** Billfish rostrum length (fraction of body length). */ bill?: number;
 }
 
 // Profiles are sampled at 11 stations from the tail peduncle (t=0) to the snout (t=1), as fractions of body length.
@@ -66,6 +67,55 @@ const S: Record<string, Spec> = {
     dorsal: [{ z0: .22, z1: .66, h: .12 }], anal: { z0: .15, z1: .28, h: .11 }, pect: .22, pelv: .14, eye: { t: .87, y: .04, r: .03, iris: '#202830' },
     back: '#ffffff', side: '#fbfbff', belly: '#f4f6ff', fin: '#f4f8ff', finTip: '#ff6a2a', mouth: 'small', barbels: 2, swim: .8,
     paint: (p) => { p.base(); p.koi(); p.bigScales('rgba(150,180,220,.22)', 'rgba(255,255,255,.4)'); }, glow: 0x2a5a80, metal: .35 },
+  // ---- Reef Pier (Chud Resort, pt1304u): tropical species
+  clownfish: { len: .7, h: [.07, .09, .14, .2, .24, .26, .26, .24, .2, .13, .03], w: [.025, .035, .05, .07, .085, .09, .09, .085, .075, .055, .015], tail: 'round', tailH: .26,
+    dorsal: [{ z0: .45, z1: .7, h: .12, spiny: true }, { z0: .18, z1: .42, h: .14 }], anal: { z0: .16, z1: .34, h: .12 }, pect: .17, pelv: .11, eye: { t: .86, y: .05, r: .05, iris: '#ff8a1a' },
+    back: '#ff6a0a', side: '#ff7a1a', belly: '#ff9a3a', fin: '#ff7a1a', finTip: '#141010', mouth: 'small', swim: 1.4,
+    paint: (p) => { p.base(); p.bands([.78, .5, .14], [.07, .09, .05], '#ffffff', '#141010'); } },
+  bluetang: { len: .9, h: [.05, .08, .17, .27, .33, .35, .34, .3, .24, .15, .03], w: [.02, .03, .045, .06, .07, .075, .075, .07, .06, .045, .012], tail: 'square', tailH: .3,
+    dorsal: [{ z0: .1, z1: .8, h: .1 }], anal: { z0: .1, z1: .55, h: .09 }, pect: .17, pelv: .1, eye: { t: .86, y: .06, r: .04, iris: '#202a40' },
+    back: '#1838c0', side: '#2a5ae0', belly: '#3a6ae8', fin: '#1a2a90', finTip: '#f6d020', mouth: 'small', swim: 1.2,
+    paint: (p) => { p.base(); p.palette('#0b1230'); p.tail('#f6d020', .08); } },
+  damsel: { len: .7, h: [.06, .08, .15, .23, .28, .3, .29, .26, .2, .13, .03], w: [.02, .03, .045, .06, .07, .075, .075, .07, .06, .045, .012], tail: 'fork', tailH: .3,
+    dorsal: [{ z0: .4, z1: .72, h: .14, spiny: true }, { z0: .15, z1: .4, h: .14 }], anal: { z0: .15, z1: .35, h: .12 }, pect: .15, pelv: .11, eye: { t: .86, y: .05, r: .045, iris: '#c8c8a0' },
+    back: '#e8d040', side: '#e4ecef', belly: '#f6f8fa', fin: '#c8c8b0', mouth: 'small', swim: 1.3,
+    paint: (p) => { p.base(); p.bars(5, .15, .85, 'rgba(15,15,20,.9)', .035, .8); p.gill(.78); p.scales(.08); }, metal: .25 },
+  parrotfish: { len: 1.2, h: [.05, .06, .09, .13, .16, .17, .17, .16, .14, .1, .04], w: [.02, .03, .05, .065, .08, .085, .085, .08, .07, .055, .025], tail: 'deep', tailH: .26,
+    dorsal: [{ z0: .18, z1: .78, h: .07 }], anal: { z0: .15, z1: .45, h: .07 }, pect: .14, pelv: .09, eye: { t: .88, y: .04, r: .03, iris: '#f6a020' },
+    back: '#1a9a8a', side: '#30c8a8', belly: '#7ae0c0', fin: '#c05ac8', finTip: '#30c8e8', mouth: 'duck', swim: 1,
+    paint: (p) => { p.base(); p.bigScales('rgba(240,90,170,.55)', 'rgba(255,240,140,.35)'); p.squiggles(.82, 1, '#ff7ab0'); }, metal: .2 },
+  snapper: { len: 1.1, h: [.05, .06, .09, .14, .18, .2, .2, .19, .16, .11, .03], w: [.02, .03, .045, .065, .075, .08, .08, .075, .065, .05, .015], tail: 'fork', tailH: .28,
+    dorsal: [{ z0: .4, z1: .72, h: .14, spiny: true }, { z0: .18, z1: .4, h: .12 }], anal: { z0: .16, z1: .32, h: .11 }, pect: .17, pelv: .1, eye: { t: .86, y: .05, r: .04, iris: '#e83a2a' },
+    back: '#b81a2a', side: '#ea4a4a', belly: '#ffc0b0', fin: '#e23a3a', mouth: 'big', swim: 1,
+    paint: (p) => { p.base(); p.gill(.76); p.scales(.14); }, metal: .3 },
+  triggerfish: { len: .9, h: [.05, .07, .13, .2, .25, .27, .27, .25, .21, .14, .04], w: [.02, .03, .045, .06, .065, .07, .07, .065, .055, .04, .015], tail: 'round', tailH: .22,
+    dorsal: [{ z0: .62, z1: .72, h: .14, spiny: true }, { z0: .12, z1: .45, h: .12 }], anal: { z0: .12, z1: .42, h: .11 }, pect: .12, pelv: .06, eye: { t: .8, y: .08, r: .035, iris: '#f2c820' },
+    back: '#c8bc9c', side: '#efe6cc', belly: '#fbf6e8', fin: '#d8cca8', finTip: '#3a8ad8', mouth: 'small', swim: 1.1,
+    paint: (p) => { p.base(); p.picasso(); } },
+  mahimahi: { len: 1.6, h: [.04, .05, .07, .09, .11, .13, .15, .17, .19, .19, .1], w: [.015, .02, .03, .04, .05, .055, .06, .06, .055, .045, .02], tail: 'fork', tailH: .3,
+    dorsal: [{ z0: .1, z1: .95, h: .09, sweep: .2 }], anal: { z0: .1, z1: .45, h: .07 }, pect: .12, pelv: .08, eye: { t: .9, y: 0, r: .028, iris: '#d8c060' },
+    back: '#1a6a9a', side: '#3ab84a', belly: '#f6d820', fin: '#2a7ad0', mouth: 'small', swim: 1.1,
+    paint: (p) => { p.base(); p.flush(0, 1, .55, '#f6e020', .6); p.spots(70, .05, .85, .2, .7, '#1a5aa0', .006, .011); }, metal: .45 },
+  barracuda: { len: 1.9, h: [.03, .035, .045, .055, .062, .065, .065, .062, .055, .04, .015], w: [.015, .02, .03, .04, .045, .048, .048, .045, .04, .03, .01], tail: 'fork', tailH: .2,
+    dorsal: [{ z0: .55, z1: .65, h: .08, spiny: true }, { z0: .2, z1: .28, h: .06 }], anal: { z0: .2, z1: .28, h: .06 }, pect: .08, pelv: .06, eye: { t: .84, y: .02, r: .022, iris: '#e8e0c0' },
+    back: '#3a4a58', side: '#b8c4cc', belly: '#f2f6f8', fin: '#4a5a66', mouth: 'duck', swim: .9,
+    paint: (p) => { p.base(); p.bars(20, .05, .8, 'rgba(30,40,50,.55)', .018, .45); p.spots(24, .05, .7, .55, .75, '#20262c', .005, .009); }, metal: .6 },
+  grouper: { len: 1.5, h: [.05, .06, .09, .13, .16, .18, .18, .17, .15, .11, .05], w: [.025, .035, .055, .075, .09, .1, .1, .1, .09, .075, .04], y: [0, 0, 0, 0, 0, 0, 0, 0, -.005, -.01, -.015], tail: 'round', tailH: .22,
+    dorsal: [{ z0: .45, z1: .75, h: .1, spiny: true }, { z0: .18, z1: .45, h: .1 }], anal: { z0: .16, z1: .32, h: .09 }, pect: .16, pelv: .11, eye: { t: .85, y: .05, r: .03, iris: '#c8a040' },
+    back: '#4a2a18', side: '#8a5a3a', belly: '#d8b088', fin: '#6a4028', mouth: 'big', swim: .8,
+    paint: (p) => { p.base(); p.mottle(40, .05, .8, 'rgba(40,20,10,.35)'); p.spots(120, 0, .95, .05, .85, '#f0b860', .006, .011); p.gill(.74); } },
+  yellowfin: { len: 1.8, h: [.025, .035, .06, .1, .13, .15, .155, .15, .13, .09, .03], w: [.02, .03, .05, .075, .095, .105, .105, .1, .085, .06, .02], tail: 'deep', tailH: .3,
+    dorsal: [{ z0: .38, z1: .48, h: .26, sweep: 1.2 }, { z0: .62, z1: .76, h: .08, spiny: true }], anal: { z0: .38, z1: .48, h: .26 }, pect: .2, pelv: .08, eye: { t: .88, y: .03, r: .026, iris: '#c8d0d8' },
+    back: '#0e1e4a', side: '#3a5a90', belly: '#e8eef4', fin: '#f6c820', finTip: '#f6d820', mouth: 'small', swim: 1.4,
+    paint: (p) => { p.base(); p.stripe(.4, .04, 'rgba(250,210,40,.9)'); p.finlets('#f6d020'); }, metal: .7 },
+  sailfish: { len: 2.2, h: [.025, .03, .04, .055, .065, .072, .075, .072, .065, .05, .02], w: [.015, .02, .03, .04, .045, .05, .05, .048, .042, .032, .012], tail: 'deep', tailH: .26,
+    dorsal: [{ z0: .22, z1: .86, h: .3, sweep: .1 }], anal: { z0: .2, z1: .35, h: .07 }, pect: .14, pelv: .16, eye: { t: .86, y: .02, r: .022, iris: '#b8c8e0' },
+    back: '#0e2a6a', side: '#2a5ab8', belly: '#e0e8f2', fin: '#2a4ab0', finTip: '#5a8af0', mouth: 'small', swim: 1.2, bill: .28,
+    paint: (p) => { p.base(); p.bars(14, .1, .82, 'rgba(140,200,255,.55)', .012, .7); p.spots(40, .1, .8, .2, .5, '#8ac8ff', .004, .007); }, metal: .6 },
+  marlin: { len: 2.6, h: [.025, .035, .05, .07, .085, .095, .1, .095, .085, .065, .025], w: [.015, .025, .04, .055, .065, .07, .07, .068, .06, .045, .015], tail: 'deep', tailH: .3,
+    dorsal: [{ z0: .6, z1: .82, h: .14, sweep: 1 }, { z0: .14, z1: .2, h: .04 }], anal: { z0: .3, z1: .4, h: .08 }, pect: .17, pelv: .1, eye: { t: .86, y: .025, r: .022, iris: '#c8d8f0' },
+    back: '#08184a', side: '#1a4aa8', belly: '#e8eef6', fin: '#0e2668', finTip: '#2a5ad0', mouth: 'small', swim: 1.1, bill: .25,
+    paint: (p) => { p.base(); p.bars(12, .15, .85, 'rgba(110,210,255,.75)', .014, .75); }, glow: 0x05153a, metal: .65 },
 };
 
 const W = 256, H = 128;
@@ -88,6 +138,17 @@ class Painter {
   scales(a: number) { this.g.strokeStyle = `rgba(0,0,0,${a})`; this.g.lineWidth = 1; for (let y = 0; y < H; y += 5) for (let x = (y / 5) % 2 ? 0 : 3; x < W * .78; x += 6) { this.g.beginPath(); this.g.arc(x, y, 3.2, -1.2, 1.2); this.g.stroke(); } }
   bigScales(dark: string, lite: string) { for (let y = -4; y < H; y += 10) for (let x = (y / 10) % 2 ? 0 : 6; x < W * .78; x += 12) { this.g.strokeStyle = dark; this.g.lineWidth = 1.4; this.g.beginPath(); this.g.arc(x, y, 7, -1.3, 1.3); this.g.stroke(); this.g.strokeStyle = lite; this.g.lineWidth = 1; this.g.beginPath(); this.g.arc(x - 2, y, 5, -1, 1); this.g.stroke(); } }
   scutes() { this.g.fillStyle = 'rgba(225,215,190,.9)'; for (const y of [.03, .45, .78]) for (let x = 10; x < W * .82; x += 14) { this.g.beginPath(); this.g.moveTo(x - 5, y * H); this.g.lineTo(x, y * H - 4); this.g.lineTo(x + 5, y * H); this.g.lineTo(x, y * H + 4); this.g.fill(); } }
+  /** Full-height vertical bands (clownfish): a dark edge then a bright core, wavy and narrowing at the back/belly. */
+  bands(xs: number[], ws: number[], col: string, edge: string) { xs.forEach((x, i) => { const w = ws[i]! * W; for (const [c, k] of [[edge, 1], [col, .7]] as const) { this.g.fillStyle = c; this.g.beginPath(); this.g.moveTo(x * W - w * k / 2, 0); this.g.quadraticCurveTo(x * W - w * k * .9, H / 2, x * W - w * k / 2, H); this.g.lineTo(x * W + w * k / 2, H); this.g.quadraticCurveTo(x * W + w * k * .1, H / 2, x * W + w * k / 2, 0); this.g.fill(); } }); }
+  /** Blue tang "palette" swoosh. */
+  palette(col: string) { this.g.fillStyle = col; this.g.beginPath(); this.g.moveTo(.92 * W, H * .2); this.g.bezierCurveTo(.6 * W, H * .05, .3 * W, H * .1, .1 * W, H * .3); this.g.bezierCurveTo(.3 * W, H * .32, .45 * W, H * .5, .55 * W, H * .62); this.g.bezierCurveTo(.4 * W, H * .55, .3 * W, H * .4, .25 * W, H * .32); this.g.bezierCurveTo(.5 * W, H * .3, .75 * W, H * .4, .92 * W, H * .2); this.g.fill(); }
+  tail(col: string, w: number) { this.g.fillStyle = col; this.g.fillRect(0, 0, w * W, H); }
+  /** Picasso triggerfish: blue/yellow lines, black eye band, a dark belly wedge. */
+  picasso() { const g = this.g; g.lineWidth = 4; g.strokeStyle = '#1a4ab0'; for (const x of [.6, .64, .68]) { g.beginPath(); g.moveTo(x * W, 0); g.lineTo((x - .12) * W, H); g.stroke(); }
+    g.strokeStyle = '#141414'; g.lineWidth = 7; g.beginPath(); g.moveTo(.82 * W, 0); g.lineTo(.74 * W, H * .75); g.stroke(); g.fillStyle = '#2a2a2a'; g.beginPath(); g.moveTo(.1 * W, H); g.lineTo(.5 * W, H * .5); g.lineTo(.6 * W, H); g.fill();
+    g.strokeStyle = '#f2c820'; g.lineWidth = 3; g.beginPath(); g.moveTo(.88 * W, H * .62); g.lineTo(W, H * .62); g.stroke(); g.strokeStyle = '#3a8ad8'; g.lineWidth = 2; g.beginPath(); g.moveTo(.86 * W, H * .5); g.lineTo(W, H * .48); g.stroke(); }
+  /** Tuna finlets: little yellow triangles along the back and belly near the tail. */
+  finlets(col: string) { this.g.fillStyle = col; for (let i = 0; i < 7; i++) { const x = (.04 + i * .045) * W; for (const y of [0, H]) { this.g.beginPath(); this.g.moveTo(x, y); this.g.lineTo(x + 6, y); this.g.lineTo(x + 3, y + (y ? -6 : 6)); this.g.fill(); } } }
   koi() { // kohaku: big red-orange patches on the back, clean white belly, a red crown on the head
     const blobs: Array<[number, number, number, number]> = [[.16, .12, 30, 40], [.4, .08, 38, 46], [.62, .14, 28, 38], [.9, .1, 22, 30]];
     this.g.fillStyle = '#ff4a1c'; for (const [x, y, rx, ry] of blobs) { this.g.beginPath(); for (let k = 0; k <= 20; k++) { const a = k / 20 * Math.PI * 2; const rr = 1 + Math.sin(a * 3 + x * 9) * .18; this.g.lineTo(x * W + Math.cos(a) * rx * rr, y * H + Math.sin(a) * ry * rr); } this.g.fill(); }
@@ -182,14 +243,39 @@ export function buildFishModel(id: string, tier: FishTier = 'mid'): THREE.Group 
       const st = id === 'sturgeon' ? new THREE.Vector3(sx * (.006 + row * .01) * L, Y0(.9) - H0(.9), Z(.92)) : new THREE.Vector3(sx * W0(.96) * (row === 0 ? 1 : .6), Y0(.96) + (row === 0 ? .01 : -.02 - row * .01) * L, tipZ - .03 * L);
       const c = new THREE.CatmullRomCurve3([st, st.clone().add(new THREE.Vector3(sx * len * .35, -len * .25, -len * .1)), st.clone().add(new THREE.Vector3(sx * len * .6, -len * .55, -len * .5)), st.clone().add(new THREE.Vector3(sx * len * .7, -len * .6, -len))]);
       g.add(new THREE.Mesh(new THREE.TubeGeometry(c, low ? 6 : 12, (big ? .005 : .003) * L, low ? 3 : 5, false), bm)); } }
+  if (s.bill) { const bl = s.bill * L; const bg = new THREE.ConeGeometry(.012 * L, bl, low ? 6 : 10); bg.rotateX(Math.PI / 2); const b = new THREE.Mesh(bg, mat); b.position.set(0, Y0(.99) + .004 * L, tipZ + bl / 2 - .01 * L); g.add(b); }
   if (id === 'sturgeon') { const sm = new THREE.MeshStandardMaterial({ color: 0xcfc6b0, roughness: .6 }); for (let i = 0; i < 9; i++) { const t = .22 + i * .065; const sc = new THREE.Mesh(new THREE.ConeGeometry(.012 * L, .03 * L, 4), sm); sc.position.set(0, Y0(t) + H0(t) * .98, Z(t)); attach(sc, t); } }
   g.userData.swim = { u, parts, L, sp: s.swim };
+  return g;
+}
+
+/** Sunset Manta (Reef Pier legendary): a flat diamond of wings with cephalic fins, a whip tail and a warm sunset glow underneath; wings flap. */
+export function buildManta(tier: FishTier = 'mid'): THREE.Group {
+  const g = new THREE.Group(); const low = tier === 'low'; const L = 1.6;
+  const top = new THREE.MeshPhysicalMaterial({ color: 0x241e3a, roughness: .45, clearcoat: low ? 0 : .8, sheen: .4, sheenColor: new THREE.Color(0xff9a6a), emissive: 0x3a1408, emissiveIntensity: .35 });
+  const under = new THREE.MeshStandardMaterial({ color: 0xffe0cc, roughness: .5, emissive: 0xff7a3a, emissiveIntensity: .45, side: THREE.DoubleSide });
+  const wingPts: Array<[number, number]> = [[0, .5], [.25, .35], [.62, .1], [1, -.08], [.6, -.18], [.25, -.3], [0, -.35]];
+  const wings: THREE.Object3D[] = [];
+  for (const sx of [-1, 1]) {
+    const sh = new THREE.Shape(); sh.moveTo(0, wingPts[0]![1] * L * .55); for (const [x, z] of wingPts.slice(1)) sh.lineTo(x * L * .55 * sx, z * L * .55);
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: .03, bevelEnabled: !low, bevelThickness: .03, bevelSize: .03, bevelSegments: 2, curveSegments: 4 }); geo.rotateX(Math.PI / 2);
+    const piv = new THREE.Group(); const w = new THREE.Mesh(geo, top); const wu = new THREE.Mesh(geo, under); wu.position.y = -.035; wu.scale.set(.96, 1, .96); piv.add(w, wu); g.add(piv); piv.userData.wing = sx; wings.push(piv);
+  }
+  const body = new THREE.Mesh(new THREE.SphereGeometry(.22, low ? 12 : 24, low ? 8 : 16), top); body.scale.set(1.1, .45, 1.6); g.add(body);
+  const finM = new THREE.MeshStandardMaterial({ color: 0x241e3a, roughness: .5, side: THREE.DoubleSide });
+  for (const sx of [-1, 1]) { const c = new THREE.Mesh(new THREE.CylinderGeometry(.03, .05, .22, 6, 1, true), finM); c.rotation.x = Math.PI / 2 - .2; c.position.set(sx * .12, 0, .36); g.add(c);
+    const e = new THREE.Mesh(new THREE.SphereGeometry(.025, 8, 6), new THREE.MeshPhysicalMaterial({ color: 0x050505, clearcoat: 1 })); e.position.set(sx * .2, .03, .22); g.add(e); }
+  const tc = new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0, -.3), new THREE.Vector3(0, .02, -.7), new THREE.Vector3(.05, .04, -1.1)]);
+  g.add(new THREE.Mesh(new THREE.TubeGeometry(tc, low ? 6 : 14, .012, 5, false), finM));
+  for (let i = 0; i < 5; i++) { const sp = new THREE.Mesh(new THREE.CircleGeometry(.035, 10), new THREE.MeshBasicMaterial({ color: 0xffd8a0, transparent: true, opacity: .8 })); sp.rotation.x = -Math.PI / 2; sp.position.set((i - 2) * .09, .075, .05 - Math.abs(i - 2) * .04); g.add(sp); }
+  g.userData.swim = { u: { uT: { value: 0 } }, parts: [], L, sp: 1, wings };
   return g;
 }
 /** Swim motion: call each frame with seconds. */
 export function animateFish(g: THREE.Object3D, t: number) {
   let sw = g.userData.swim as { u: { uT: { value: number } }; parts: THREE.Object3D[]; L: number; sp: number } | undefined;
   if (!sw) { g.traverse((o) => { if (!sw && o.userData.swim) sw = o.userData.swim; }); if (!sw) return; }
+  const wings = (sw as { wings?: THREE.Object3D[] }).wings; if (wings) for (const w of wings) w.rotation.z = (w.userData.wing as number) * Math.sin(t * 2.2) * .35;
   sw.u.uT.value = t; for (const p of sw.parts) { const zn = p.userData.zn as number; const x = bend(zn, t, sw.sp) * sw.L, d = (bend(zn + .01, t, sw.sp) - bend(zn - .01, t, sw.sp)) / .02;
     p.position.x = (p.userData.x0 as number) + x; if (p.userData.tail) p.rotation.y = Math.atan(d) * 1.6; else if (p.userData.flap) p.rotation.y = (p.userData.flap as number) * (.5 + Math.sin(t * 4 * sw.sp) * .25); }
 }

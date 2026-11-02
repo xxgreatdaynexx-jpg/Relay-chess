@@ -4,7 +4,8 @@ import { request, socket } from '@/lib/net';
 import { makeFishingSfx, type FishingSfx } from '@/lib/fishingSfx';
 import { reloadOnceForChunkError } from '@/lib/chunkReload';
 import type { Fishing3D } from '@/lib/fishing3d';
-import { fishById, fmtKg, RARITY_COLOR, Reel, REEL_DT, type AnglerState, type FishCatch, type FishView } from '../../../shared/fishing';
+import { fishById, fmtKg, RARITY_COLOR, Reel, REEL_DT, type AnglerState, type FishCatch, type FishSpot, type FishView } from '../../../shared/fishing';
+import { FishGlyph } from './FishGlyph';
 
 const chips = (n: number) => n.toLocaleString('en-US');
 type Phase = 'idle' | 'charge' | 'flying' | 'wait' | 'bite' | 'hooking' | 'reel' | 'landing' | 'show';
@@ -12,7 +13,7 @@ type Card = { fish: string; grams: number; value: number; xp: number } | null;
 
 /** Real 3D fishing at the dock (pt1220u). Same server flow as the panel: fish_cast → (bite) → fish_hook → reel sim → fish_land
  *  with the input timeline, which the server replays. Cast power/aim only place the bobber (cosmetic, no effect on the roll). */
-export function Fishing3DGame({ me, onClose, onChange }: { me: string | null; onClose: () => void; onChange?: () => void }) {
+export function Fishing3DGame({ me, onClose, onChange, spot = 'lake' }: { me: string | null; onClose: () => void; onChange?: () => void; spot?: FishSpot }) {
   const cv = useRef<HTMLCanvasElement>(null); const three = useRef<Fishing3D | null>(null);
   const [phase, setPhaseS] = useState<Phase>('idle'); const ph = useRef<Phase>('idle');
   const [msg, setMsg] = useState<string | null>('Aim with the mouse (or drag), hold to charge your cast, let go to cast.');
@@ -27,7 +28,7 @@ export function Fishing3DGame({ me, onClose, onChange }: { me: string | null; on
     load(); let dead = false;
     importWithReload(() => import('@/lib/fishing3d')).then(({ Fishing3D }) => {
       if (dead || !cv.current) return;
-      try { three.current = new Fishing3D(cv.current); three.current.onSplash = (big, other) => sfx.current?.splash(big, other); if (pending.current) three.current.setOthers(pending.current); } catch { setGlError('3D is not available on this device.'); }
+      try { three.current = new Fishing3D(cv.current, { spot }); three.current.onSplash = (big, other) => sfx.current?.splash(big, other); if (pending.current) three.current.setOthers(pending.current); } catch { setGlError('3D is not available on this device.'); }
     }).catch((e) => { if (!reloadOnceForChunkError(e)) setGlError('Could not load the 3D engine. Refresh to try again.'); });
     const onResize = () => three.current?.resize(); window.addEventListener('resize', onResize);
     // other anglers at the dock
@@ -64,7 +65,7 @@ export function Fishing3DGame({ me, onClose, onChange }: { me: string | null; on
   const reset = () => { sfx.current?.stopAll(); hold.current = false; g.current.reel = null; setReelUi(null); three.current?.setPhase('idle'); setPhase('idle'); };
   const castNow = async () => {
     const s = g.current; const pw = s.power; setPhase('flying'); three.current?.cast(pw); sfx.current?.whoosh(); setMsg(null); setCard(null);
-    const r = await request('fish_cast', { yaw: three.current?.yaw ?? 0, power: pw }) as { ok: boolean; error?: string; biteIn?: number };
+    const r = await request('fish_cast', { yaw: three.current?.yaw ?? 0, power: pw, spot }) as { ok: boolean; error?: string; biteIn?: number };
     if (!r.ok) { setMsg(r.error ?? 'Could not cast.'); reset(); return; }
     s.biteAt = Date.now() + (r.biteIn ?? 3000);
   };
@@ -116,7 +117,7 @@ export function Fishing3DGame({ me, onClose, onChange }: { me: string | null; on
     <div className="fish3d" data-testid="fish3d">
       <canvas ref={cv} className="fish3d-canvas" onPointerDown={(e) => { e.preventDefault(); aim(e.clientX); press(); }} onPointerMove={(e) => aim(e.clientX)} />
       <div className="fish3d-top">
-        <b>🎣 Fishing Dock</b>
+        <b>{spot === 'reef' ? '🌴 Reef Pier' : '🎣 Fishing Dock'}</b>
         <span data-testid="fish3d-cooler">🧊 {cooler.length}/40</span>
         {cooler.length > 0 && <button type="button" data-testid="fish3d-sell" disabled={phase !== 'idle' && phase !== 'show'} onClick={() => void sell()}>💰 Sell catch</button>}
         <button type="button" className="fish3d-x" onClick={onClose} aria-label="Close">✕</button>
@@ -135,7 +136,7 @@ export function Fishing3DGame({ me, onClose, onChange }: { me: string | null; on
       </div>}
       {card && f && <div className="fish3d-card" data-testid="fish3d-catch" style={{ borderColor: RARITY_COLOR[f.rarity] }}>
         <div className="fish3d-rar" style={{ color: RARITY_COLOR[f.rarity] }}>{f.rarity.toUpperCase()}</div>
-        <h3>{f.emoji} {f.label}</h3><div>{fmtKg(card.grams)} · worth ~🪙 {chips(card.value)} · +{card.xp} Fishing XP</div>
+        <h3><FishGlyph id={card.fish} size={26} /> {f.label}</h3><div>{fmtKg(card.grams)} · worth ~🪙 {chips(card.value)} · +{card.xp} Fishing XP</div>
         <small>Kept in your cooler. Click or press Space to cast again.</small>
       </div>}
     </div>

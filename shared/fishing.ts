@@ -12,7 +12,10 @@
  * daily tier like the farm: full price up to 100,000 base chips a day, then nothing.
  */
 export type Rarity = 'junk' | 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
-export interface Fish { id: string; label: string; emoji: string; rarity: Rarity; min: number; max: number; base: number }
+/** Where a species lives: 'lake' = the city dock (default), 'reef' = the Chud Resort pier (pt1304u). */
+export type FishSpot = 'lake' | 'reef';
+export const isFishSpot = (v: unknown): v is FishSpot => v === 'lake' || v === 'reef';
+export interface Fish { id: string; label: string; emoji: string; rarity: Rarity; min: number; max: number; base: number; spot?: FishSpot }
 /** Weights in kg; base = sale value (base chips) of an average-sized one. */
 export const FISH: Fish[] = [
   { id: 'boot', label: 'Old Boot', emoji: '🥾', rarity: 'junk', min: 0.4, max: 1.2, base: 2 },
@@ -31,7 +34,26 @@ export const FISH: Fish[] = [
   { id: 'goldcarp', label: 'Golden Carp', emoji: '🐉', rarity: 'epic', min: 2, max: 15, base: 140 },
   { id: 'koi', label: 'Crystal Koi', emoji: '💎', rarity: 'legendary', min: 2, max: 10, base: 450 },
   { id: 'oldchud', label: 'Old Chud, the Lake Monster', emoji: '🐋', rarity: 'legendary', min: 80, max: 250, base: 500 },
+  // ---- Reef Pier at Chud Resort (pt1304u): tropical species, same rarity odds and value bands as the lake.
+  { id: 'flipflop', label: 'Lost Flip-Flop', emoji: '🩴', rarity: 'junk', min: 0.1, max: 0.4, base: 1, spot: 'reef' },
+  { id: 'coconutshell', label: 'Drift Coconut', emoji: '🥥', rarity: 'junk', min: 0.3, max: 1.2, base: 2, spot: 'reef' },
+  { id: 'clownfish', label: 'Clownfish', emoji: '🐠', rarity: 'common', min: 0.05, max: 0.25, base: 7, spot: 'reef' },
+  { id: 'bluetang', label: 'Blue Tang', emoji: '🐟', rarity: 'common', min: 0.1, max: 0.6, base: 8, spot: 'reef' },
+  { id: 'damsel', label: 'Sergeant Major', emoji: '🐟', rarity: 'common', min: 0.05, max: 0.3, base: 6, spot: 'reef' },
+  { id: 'parrotfish', label: 'Rainbow Parrotfish', emoji: '🐠', rarity: 'uncommon', min: 0.8, max: 6, base: 20, spot: 'reef' },
+  { id: 'snapper', label: 'Red Snapper', emoji: '🐟', rarity: 'uncommon', min: 0.5, max: 8, base: 22, spot: 'reef' },
+  { id: 'triggerfish', label: 'Picasso Triggerfish', emoji: '🐡', rarity: 'uncommon', min: 0.2, max: 2, base: 18, spot: 'reef' },
+  { id: 'mahimahi', label: 'Mahi-Mahi', emoji: '🐬', rarity: 'rare', min: 3, max: 18, base: 50, spot: 'reef' },
+  { id: 'barracuda', label: 'Great Barracuda', emoji: '🦈', rarity: 'rare', min: 2, max: 20, base: 45, spot: 'reef' },
+  { id: 'grouper', label: 'Coral Grouper', emoji: '🐟', rarity: 'rare', min: 2, max: 25, base: 42, spot: 'reef' },
+  { id: 'yellowfin', label: 'Yellowfin Tuna', emoji: '🐟', rarity: 'epic', min: 10, max: 90, base: 130, spot: 'reef' },
+  { id: 'sailfish', label: 'Sailfish', emoji: '🗡️', rarity: 'epic', min: 15, max: 60, base: 135, spot: 'reef' },
+  { id: 'marlin', label: 'Blue Marlin', emoji: '🐋', rarity: 'legendary', min: 60, max: 240, base: 480, spot: 'reef' },
+  { id: 'manta', label: 'Sunset Manta', emoji: '🌅', rarity: 'legendary', min: 40, max: 200, base: 460, spot: 'reef' },
 ];
+/** Species that can bite at a spot. */
+export const fishPool = (spot: FishSpot = 'lake') => FISH.filter((f) => (f.spot ?? 'lake') === spot);
+export const spotOf = (f: Fish): FishSpot => f.spot ?? 'lake';
 export const fishById = (id: unknown) => FISH.find((f) => f.id === id);
 /** Chance of each rarity per bite (percent, sums to 100). */
 export const RARITY_ODDS: Record<Rarity, number> = { junk: 10, common: 46, uncommon: 26, rare: 12, epic: 5, legendary: 1 };
@@ -41,10 +63,10 @@ const DIFF: Record<Rarity, number> = { junk: 0.05, common: 0.15, uncommon: 0.35,
 export const FISH_XP: Record<Rarity, number> = { junk: 2, common: 10, uncommon: 20, rare: 40, epic: 80, legendary: 200 };
 
 /** Pick a species from two uniform draws in [0,1). */
-export function rollFish(u1: number, u2: number): Fish {
+export function rollFish(u1: number, u2: number, spot: FishSpot = 'lake'): Fish {
   let acc = 0; let rar: Rarity = 'common';
   for (const r of Object.keys(RARITY_ODDS) as Rarity[]) { acc += RARITY_ODDS[r]; if (u1 * 100 < acc) { rar = r; break; } }
-  const pool = FISH.filter((f) => f.rarity === rar); return pool[Math.min(pool.length - 1, Math.floor(u2 * pool.length))]!;
+  const pool = fishPool(spot).filter((f) => f.rarity === rar); return pool[Math.min(pool.length - 1, Math.floor(u2 * pool.length))]!;
 }
 /** Weight (grams) from a uniform draw: big ones are rarer (u^2). */
 export const rollWeight = (f: Fish, u: number) => Math.round((f.min + (f.max - f.min) * u * u) * 1000);

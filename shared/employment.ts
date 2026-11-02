@@ -12,7 +12,7 @@
  * bring in 3x the fish dock's old daily sell cap, so after the sell tiers it could never pay for itself).
  */
 import { CAVES, ORES, type OreId } from './mines.js';
-import { FISH, RARITY_ODDS, rollFish, rollWeight, fishValue, type Fish } from './fishing.js';
+import { fishPool, RARITY_ODDS, rollFish, rollWeight, fishValue, type Fish } from './fishing.js';
 
 export const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 export const MAX_WORKERS = 3;
@@ -30,7 +30,7 @@ export const isMinerCave = (v: unknown): v is MinerCave => v === 'mine' || v ===
 export const FISHER_ITEM_EV = (() => {
   let ev = 0, tot = 0;
   for (const r of Object.keys(RARITY_ODDS) as Array<keyof typeof RARITY_ODDS>) {
-    if (r === 'junk') continue; const pool = FISH.filter((f) => f.rarity === r);
+    if (r === 'junk') continue; const pool = fishPool('lake').filter((f) => f.rarity === r);
     ev += RARITY_ODDS[r] * pool.reduce((a, f) => a + f.base, 0) / pool.length; tot += RARITY_ODDS[r];
   }
   return ev / tot;

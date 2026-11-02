@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T00:15:00-06:00', title: 'Chud Resort: the Reef Pier (tropical fishing)', bullets: [
+    'Requested by Dayne: a new Reef Pier sticks out into the ocean at Chud Resort. Fly to the resort, tap the pier, and fish the reef at golden-hour sunset with turquoise water and palms.',
+    '15 new tropical species with their own 3D models and icons: Lost Flip-Flop and Drift Coconut (junk); Clownfish, Blue Tang, Sergeant Major (common); Rainbow Parrotfish, Red Snapper, Picasso Triggerfish (uncommon); Mahi-Mahi, Great Barracuda, Coral Grouper (rare); Yellowfin Tuna and Sailfish (epic); Blue Marlin and the Sunset Manta (legendary).',
+    'Same casting, bites, reeling, Fishing skill perks, cooler, Top catches board and kitchen fillets as the lake. Rarity odds are unchanged, prices sit in the same ranges as lake fish, and sales share the same 100,000-a-day fishing limit.',
+  ] },
   { commit: '', at: '2026-11-02T00:05:00-06:00', title: 'Request board: 20 requests a day', bullets: [
     'Requested by Dayne: you can now post up to 20 requests a day on the request board, up from 3.',
   ] },

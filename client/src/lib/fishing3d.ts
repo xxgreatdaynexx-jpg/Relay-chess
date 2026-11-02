@@ -7,9 +7,9 @@
  */
 import * as THREE from 'three';
 import { DOCK, inLake, LAKE, lakeShape } from '../../../shared/outskirts';
-import { fishById, RARITY_COLOR, type Rarity } from '../../../shared/fishing';
+import { fishById, RARITY_COLOR, type FishSpot, type Rarity } from '../../../shared/fishing';
 import { mix, parseTod, skyNow, type Sky } from '../../../shared/daynight';
-import { animateFish, buildFishModel } from './fishModels';
+import { animateFish, buildFishModel, buildManta } from './fishModels';
 import { detectWorldTier, TIER_PIXEL_RATIO } from './worldTier';
 
 export type View3DPhase = 'idle' | 'charge' | 'flying' | 'wait' | 'bite' | 'reel' | 'show';
@@ -98,13 +98,17 @@ export class Fishing3D {
   private rare = false; private nibbleAt = 0; private nibble = 0; private dip = 0; private camShake = 0;
   onSplash: ((big: boolean, other: boolean) => void) | null = null;
 
-  constructor(private canvas: HTMLCanvasElement) {
+  /** Reef Pier at Chud Resort (pt1304u): turquoise water, sand, palms, the resort's endless sunset. */
+  readonly reef: boolean;
+  constructor(private canvas: HTMLCanvasElement, opts: { spot?: FishSpot } = {}) {
+    this.reef = opts.spot === 'reef';
     this.tier = detectWorldTier(); const tier = this.tier; canvas.dataset.tier = tier;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: tier !== 'low', powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, TIER_PIXEL_RATIO[tier] + (tier === 'high' ? 0.25 : 0)));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace; this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.15;
     this.camera = new THREE.PerspectiveCamera(55, 1, 0.1, 600);
     try { this.todOverride = parseTod(new URLSearchParams(location.search).get('tod')); } catch { /* no location */ }
+    if (this.reef && this.todOverride == null) { const k0 = skyNow(new Date(), null); this.todOverride = Math.round(k0.sunset - 22); } // the resort lives at golden hour
     this.sky = skyNow(new Date(), this.todOverride);
     const s = this.scene; s.fog = new THREE.FogExp2(0x0b0f2a, 0.0105);
     // sky dome: zenith → horizon gradient from the real Alberta time sky, sun glow + warm band near the horizon
@@ -173,7 +177,7 @@ export class Fishing3D {
     const shape = new THREE.Shape(lakeShape().map(([x, z]) => new THREE.Vector2(x, -z)));
     const wg = new THREE.ShapeGeometry(shape, 8); wg.rotateX(-Math.PI / 2); const water = new THREE.Mesh(wg, this.waterMat); water.position.y = 0.05; s.add(water); this.track(wg, this.waterMat);
     // lake mist: soft billboards drifting low over the water (more at night and dawn)
-    if (tier !== 'low') { const mt = mistTex(); this.track(mt); let sd = 9; const rr = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+    if (tier !== 'low' && !this.reef) { const mt = mistTex(); this.track(mt); let sd = 9; const rr = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
       for (let i = 0; i < (tier === 'high' ? 22 : 12); i++) { const a = rr() * Math.PI * 2, r = rr() * 0.8; const m = new THREE.SpriteMaterial({ map: mt, transparent: true, depthWrite: false, opacity: 0.3, color: 0xdfe8ff });
         const sp2 = new THREE.Sprite(m); sp2.position.set(LAKE.x + Math.cos(a) * LAKE.rx * r, 0.9 + rr() * 0.8, LAKE.z + Math.sin(a) * LAKE.rz * r); sp2.scale.set(14 + rr() * 10, 3.5 + rr() * 2, 1); sp2.userData.ph = rr() * 6; s.add(sp2); this.mist.push(sp2); this.track(m); } }
     // fireflies at night: additive points that drift and blink around the shore
@@ -186,7 +190,7 @@ export class Fishing3D {
         fragmentShader: 'uniform sampler2D uMap; varying float vA; void main(){ vec4 t = texture2D(uMap, gl_PointCoord); gl_FragColor = vec4(vec3(0.85,1.0,0.35) * t.a * vA * 1.6, t.a * vA); }' });
       this.fireflies = new THREE.Points(fg, this.ffMat); this.fireflies.frustumCulled = false; s.add(this.fireflies); this.track(fg, this.ffMat); }
     // ground + bank ring
-    const groundM = new THREE.MeshLambertMaterial({ color: 0x1f5a2a }); const ground = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), groundM); ground.rotation.x = -Math.PI / 2; ground.position.set(LAKE.x, -0.02, LAKE.z); s.add(ground); this.track(groundM, ground.geometry);
+    const groundM = new THREE.MeshLambertMaterial({ color: this.reef ? 0xe2c88e : 0x1f5a2a }); const ground = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), groundM); ground.rotation.x = -Math.PI / 2; ground.position.set(LAKE.x, -0.02, LAKE.z); s.add(ground); this.track(groundM, ground.geometry);
     const ring = lakeShape(); const bp: number[] = [], bc: number[] = [], bi: number[] = []; const cols = [[0.36, 0.3, 0.2], [0.62, 0.55, 0.38], [0.55, 0.5, 0.32], [0.14, 0.36, 0.17]]; const offs = [-1.2, 1, 2.6, 4.2], ys = [-0.15, 0.03, 0.06, 0.0];
     ring.forEach(([x, z]) => { const dx = x - LAKE.x, dz = z - LAKE.z, d = Math.hypot(dx, dz); offs.forEach((o, k) => { bp.push(x + dx / d * o, ys[k]!, z + dz / d * o); bc.push(...cols[k]!); }); });
     for (let i = 0; i < ring.length; i++) { const j = (i + 1) % ring.length; for (let k = 0; k < 3; k++) { const a = i * 4 + k, b = j * 4 + k; bi.push(a, b, a + 1, b, b + 1, a + 1); } }
@@ -200,7 +204,7 @@ export class Fishing3D {
     for (let i = 0; i < 400 && n < 90; i++) { const a = rnd() * Math.PI * 2, r = 1.15 + rnd() * 0.9; const x = LAKE.x + Math.cos(a) * LAKE.rx * r, z = LAKE.z + Math.sin(a) * LAKE.rz * r * 1.6;
       if (inLake(x, z, 5) || (Math.abs(x - DOCK.x) < 9 && z > DOCK.pierZ0 - 2)) continue; const k = 0.8 + rnd() * 0.9;
       m4.compose(v.set(x, 0.8 * k, z), q.identity(), sc.set(k, k, k)); trunks.setMatrixAt(n, m4); m4.compose(v.set(x, 2.4 * k, z), q.setFromEuler(new THREE.Euler(rnd(), rnd(), 0)), sc.set(k, k * 1.2, k)); leaves.setMatrixAt(n, m4); n++; }
-    trunks.count = leaves.count = n; s.add(trunks, leaves); this.track(trunkG, leafG, trunkM, leafM);
+    trunks.count = leaves.count = n; if (this.reef) this.palms(s); else s.add(trunks, leaves); this.track(trunkG, leafG, trunkM, leafM);
     const reedG = new THREE.CylinderGeometry(0.03, 0.05, 1.6, 4); reedG.translate(0, 0.8, 0); const reedM = new THREE.MeshLambertMaterial({ color: 0x6a8a3a }); addSway(reedM, this.uTime, 0.22, 1.6); const reeds = new THREE.InstancedMesh(reedG, reedM, tier === 'low' ? 120 : 260);
     const headG = new THREE.CapsuleGeometry(0.07, 0.25, 2, 6); const headM = new THREE.MeshLambertMaterial({ color: 0x5a3a1e }); headM.onBeforeCompile = (sh) => { sh.uniforms.uTime = this.uTime; sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
     #ifdef USE_INSTANCING
@@ -209,10 +213,10 @@ export class Fishing3D {
     for (let i = 0; i < 1200 && n < reeds.count; i++) { const [px, pz] = ring[Math.floor(rnd() * ring.length)]!; const x = px + (rnd() - 0.5) * 3, z = pz + (rnd() - 0.5) * 3;
       if (Math.abs(x - DOCK.x) < 5 && z > DOCK.pierZ0 - 3) continue; const k = 0.7 + rnd() * 0.7; const tilt = new THREE.Euler((rnd() - 0.5) * 0.3, 0, (rnd() - 0.5) * 0.3);
       m4.compose(v.set(x, -0.1, z), q.setFromEuler(tilt), sc.set(1, k, 1)); reeds.setMatrixAt(n, m4); const top = new THREE.Vector3(0, 1.5 * k, 0).applyEuler(tilt); m4.compose(v.set(x + top.x, top.y - 0.1, z + top.z), q, sc.set(1, 1, 1)); heads.setMatrixAt(n, m4); n++; }
-    reeds.count = heads.count = n; s.add(reeds, heads); this.track(reedG, reedM, headG, headM);
+    reeds.count = heads.count = n; if (!this.reef) s.add(reeds, heads); this.track(reedG, reedM, headG, headM);
     const lilyG = new THREE.CircleGeometry(0.45, 10, 0.3, Math.PI * 1.8); lilyG.rotateX(-Math.PI / 2); const lilyM = new THREE.MeshLambertMaterial({ color: 0x2f7d3a }); const lilies = new THREE.InstancedMesh(lilyG, lilyM, 40); n = 0;
     for (let i = 0; i < 300 && n < 40; i++) { const a = rnd() * Math.PI * 2, r = 0.55 + rnd() * 0.35; const x = LAKE.x + Math.cos(a) * LAKE.rx * r, z = LAKE.z + Math.sin(a) * LAKE.rz * r; if (!inLake(x, z, -1) || Math.abs(x - DOCK.x) < 6) continue; m4.compose(v.set(x, 0.08, z), q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * 6), sc.set(1, 1, 1)); lilies.setMatrixAt(n++, m4); }
-    lilies.count = n; s.add(lilies); this.track(lilyG, lilyM);
+    lilies.count = n; if (!this.reef) s.add(lilies); this.track(lilyG, lilyM);
     // pier + boathouse
     const wood = woodTex(); const wood2 = wood.clone(); wood2.needsUpdate = true; wood2.repeat.set(1, 2.4); this.track(wood, wood2);
     const plankM = new THREE.MeshStandardMaterial({ map: wood2, color: 0xc9a27a, roughness: 0.85, metalness: 0 }); const postM = new THREE.MeshStandardMaterial({ color: 0x3b2a1c, roughness: 0.9 });
@@ -225,7 +229,7 @@ export class Fishing3D {
     const lampPole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 3, 6), postM); lampPole.position.set(DOCK.x - 3.2, 2, DOCK.pierZ0 + 0.4); s.add(lampPole); this.track(lampPole.geometry);
     this.bulbM = new THREE.MeshBasicMaterial({ color: 0xffd9a0 }); const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), this.bulbM); bulb.position.copy(lampPos); s.add(bulb); this.lamp.position.copy(bulb.position); this.track(this.bulbM, bulb.geometry);
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.dropTex, color: 0xffc477, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.6 })); halo.scale.setScalar(2.2); halo.position.copy(lampPos); halo.userData.lampHalo = true; s.add(halo); this.track(halo.material); this.lampHalo = halo;
-    const wallM = new THREE.MeshLambertMaterial({ color: 0x2a2730 }), roofM = new THREE.MeshLambertMaterial({ color: 0x5a1f2c }); this.track(wallM, roofM);
+    const wallM = new THREE.MeshLambertMaterial({ color: this.reef ? 0xf2e6cc : 0x2a2730 }), roofM = new THREE.MeshLambertMaterial({ color: this.reef ? 0x2aa8a0 : 0x5a1f2c }); this.track(wallM, roofM);
     const house = new THREE.Mesh(new THREE.BoxGeometry(7, 3.6, 6), wallM); house.position.set(DOCK.x, 1.8, DOCK.z - 1); s.add(house); this.track(house.geometry);
     const roof = new THREE.Mesh(new THREE.ConeGeometry(5.6, 2.2, 4), roofM); roof.rotation.y = Math.PI / 4; roof.position.set(DOCK.x, 4.7, DOCK.z - 1); s.add(roof); this.track(roof.geometry);
     this.signM = new THREE.MeshBasicMaterial({ color: 0x4fc3d9 }); const signM = this.signM; const sign = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.35, 0.1), signM); sign.position.set(DOCK.x, 3.0, DOCK.z - 4.05); s.add(sign); this.track(signM, sign.geometry);
@@ -268,11 +272,24 @@ export class Fishing3D {
     this.applySky();
     this.resize();
   }
+
+  /** Reef shore: curved coconut palms with drooping fronds around the bay (deterministic). */
+  private palms(s: THREE.Scene) {
+    const trunkM = new THREE.MeshLambertMaterial({ color: 0x8a6a44 }), frondM = new THREE.MeshLambertMaterial({ color: 0x2f9a48, side: THREE.DoubleSide }), nutM = new THREE.MeshLambertMaterial({ color: 0x5a3a1a }); this.track(trunkM, frondM, nutM);
+    const fg = new THREE.PlaneGeometry(0.5, 2.6, 1, 4); fg.translate(0, 1.3, 0); { const p = fg.getAttribute('position') as THREE.BufferAttribute; for (let i = 0; i < p.count; i++) { const y = p.getY(i); p.setZ(i, -0.18 * y * y); p.setX(i, p.getX(i) * (1 - y / 3)); } fg.computeVertexNormals(); } this.track(fg);
+    let sd = 41; const r = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+    let placed = 0; for (let i = 0; i < 400 && placed < 34; i++) { const a = r() * Math.PI * 2, rr = 1.12 + r() * 0.5; const x = LAKE.x + Math.cos(a) * LAKE.rx * rr, z = LAKE.z + Math.sin(a) * LAKE.rz * rr * 1.4;
+      if (inLake(x, z, 3) || (Math.abs(x - DOCK.x) < 9 && z > DOCK.pierZ0 - 2)) continue; placed++;
+      const h = 5 + r() * 3.5, lean = (r() - 0.5) * 0.5; const c = new THREE.QuadraticBezierCurve3(new THREE.Vector3(x, 0, z), new THREE.Vector3(x + lean * 2, h * 0.55, z), new THREE.Vector3(x + lean * 4.5, h, z + (r() - 0.5)));
+      const tg = new THREE.TubeGeometry(c, 8, 0.2, 6, false); this.track(tg); s.add(new THREE.Mesh(tg, trunkM)); const top = c.getPoint(1);
+      for (let k = 0; k < 7; k++) { const f = new THREE.Mesh(fg, frondM); f.position.copy(top); f.rotation.set(0, k / 7 * Math.PI * 2 + r(), 0); f.rotateX(1.05 + r() * 0.3); s.add(f); }
+      for (let k = 0; k < 3; k++) { const n = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 5), nutM); this.track(n.geometry); n.position.set(top.x + Math.cos(k * 2.1) * 0.2, top.y - 0.15, top.z + Math.sin(k * 2.1) * 0.2); s.add(n); } }
+  }
   private track(...d: Array<{ dispose(): void }>) { this.disposables.push(...d); }
   /** Real Alberta time sky (shared with the city): sky dome, sun or moon light, water colours, lamp + neon on at dusk, mist, fireflies. */
   private applySky() {
     const k = skyNow(new Date(), this.todOverride); this.sky = k; const d2r = Math.PI / 180;
-    const e = k.elev * d2r, a = k.az * d2r; const sunDir = new THREE.Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e));
+    const e = k.elev * d2r, a = this.reef ? -0.38 : k.az * d2r; const sunDir = new THREE.Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e)); // reef: the sun sets over the open sea, in view
     const top = mix(mix(0x050817, 0x1c2350, Math.max(0, 1 - k.stars)), 0x3f86d8, k.day), hor = k.horizon;
     const u = this.skyMat.uniforms; (u.uTop!.value as THREE.Color).setHex(top); (u.uHor!.value as THREE.Color).setHex(hor); (u.uSunDir!.value as THREE.Vector3).copy(sunDir); (u.uSunCol!.value as THREE.Color).setHex(k.sunColor); u.uWarm!.value = k.warm; u.uDay!.value = k.day;
     (this.scene.fog as THREE.FogExp2).color.setHex(k.fog); (this.scene.fog as THREE.FogExp2).density = 0.0068 - 0.0025 * k.day;
@@ -288,9 +305,10 @@ export class Fishing3D {
     if (this.lampHalo) { (this.lampHalo.material as THREE.SpriteMaterial).opacity = 0.75 * lit; this.lampHalo.visible = lit > 0.02; }
     const w = this.waterMat.uniforms; (w.uLightDir!.value as THREE.Vector3).copy(L); (w.uLightCol!.value as THREE.Color).setHex(useSun ? k.sunColor : 0xdfe6ff).multiplyScalar(useSun ? 1 : 0.6 + k.moonI * 0.4);
     (w.uSkyTop!.value as THREE.Color).setHex(top); (w.uSkyHor!.value as THREE.Color).setHex(hor);
-    (w.uDeep!.value as THREE.Color).setHex(mix(0x020a1c, 0x0b3a5c, k.day)); (w.uShallow!.value as THREE.Color).setHex(mix(mix(0x06213a, 0x2f8f8a, k.day), 0x8a6a40, k.warm * 0.25)); w.uDay!.value = k.day; w.uLampI!.value = lit;
+    if (this.reef) { (w.uDeep!.value as THREE.Color).setHex(mix(0x041a3a, 0x0a5a8a, k.day)); (w.uShallow!.value as THREE.Color).setHex(mix(mix(0x0a3a4a, 0x2ad8c8, k.day), 0xff9a6a, k.warm * 0.18)); }
+    else { (w.uDeep!.value as THREE.Color).setHex(mix(0x020a1c, 0x0b3a5c, k.day)); (w.uShallow!.value as THREE.Color).setHex(mix(mix(0x06213a, 0x2f8f8a, k.day), 0x8a6a40, k.warm * 0.25)); } w.uDay!.value = k.day; w.uLampI!.value = lit;
     for (const m of this.mist) (m.material as THREE.SpriteMaterial).color.setHex(mix(mix(0x8a96c8, 0xf2f6ff, k.day), 0xffc8a0, k.warm * 0.6));
-    if (this.ffMat) this.ffMat.uniforms.uOn!.value = lit;
+    if (this.ffMat) this.ffMat.uniforms.uOn!.value = this.reef ? 0 : lit;
   }
   resize() { const w = this.canvas.clientWidth || 800, h = this.canvas.clientHeight || 600; this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
 
@@ -480,6 +498,11 @@ export function buildFish(id: string, grams: number, tier: Tier = 'mid'): THREE.
   if (model) { g.add(model); g.userData.swim = model.userData.swim;
     if (id === 'koi') { const halo = new THREE.Mesh(new THREE.SphereGeometry(0.9, 16, 12), new THREE.MeshBasicMaterial({ color: 0x66ccff, transparent: true, opacity: 0.14, depthWrite: false })); halo.scale.set(0.55, 0.75, 1.15); g.add(halo); }
     const k = Math.min(1.6, Math.max(0.55, 0.6 + Math.log10(1 + kg) * 0.9)); g.scale.setScalar(k); g.rotation.y = Math.PI / 2; return g; }
+  if (id === 'manta') { const m = buildManta(tier); g.add(m); g.userData.swim = m.userData.swim; const k = Math.min(1.5, 0.7 + Math.log10(1 + kg) * 0.35); g.scale.setScalar(k); return g; }
+  if (id === 'flipflop') { const sole = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.06, 18), new THREE.MeshLambertMaterial({ color: 0xff5a8a })); sole.scale.set(1, 1, 2.3); g.add(sole);
+    const strapM = new THREE.MeshLambertMaterial({ color: 0x2ac0d0 }); for (const sx of [-1, 1]) { const s = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.022, 6, 12, Math.PI / 2), strapM); s.rotation.set(0, sx * 0.9, 0); s.position.set(sx * 0.02, 0.03, 0.2); g.add(s); } g.rotation.x = -0.6; return g; }
+  if (id === 'coconutshell') { const shell = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x6a3e1c, roughness: 0.95, side: THREE.DoubleSide })); g.add(shell);
+    const meat = new THREE.Mesh(new THREE.CircleGeometry(0.26, 18), new THREE.MeshLambertMaterial({ color: 0xf6f0e2 })); meat.rotation.x = -Math.PI / 2; meat.position.y = -0.01; g.add(meat); g.rotation.x = 0.5; return g; }
   if (id === 'boot') { const m = new THREE.MeshLambertMaterial({ color: 0x4a3524 }); const a = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.6, 0.3), m); const b = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.22, 0.7), m); b.position.set(0, -0.2, 0.2); g.add(a, b); return g; }
   if (id === 'can') { const m = new THREE.MeshLambertMaterial({ color: 0x8a5a3a }); g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.45, 14), m)); return g; }
   if (id === 'weeds') { const m = new THREE.MeshLambertMaterial({ color: 0x3f7a2f, side: THREE.DoubleSide }); for (let i = 0; i < 7; i++) { const s = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 0.9), m); s.position.x = (i - 3) * 0.05; s.rotation.z = (i - 3) * 0.12; g.add(s); } return g; }
