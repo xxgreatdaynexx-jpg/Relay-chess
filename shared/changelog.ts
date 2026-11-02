@@ -6,7 +6,7 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-02T15:20:00-06:00', title: 'Stock Exchange: funds show their daily % change', bullets: [
+  { commit: '', at: '2026-11-02T15:13:00-06:00', title: 'Stock Exchange: funds show their daily % change', bullets: [
     'The Funds table has a new Day % column: how much each fund\'s NAV moved over the last 24 hours, green when up and red when down — same as the 24h column on stocks.',
     'Opening a fund shows its NAV and today\'s change too. Display only: NAV, fees, dividends and trading are unchanged.',
   ] },
