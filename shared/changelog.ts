@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T13:10:00-06:00', title: 'Mines: Tool Shop ore bonus rebalanced', bullets: [
+    'Tool Shop extra ore is toned down: Steel Pickaxe +25%, Hand Drill +50%, Power Drill +100%, Jackhammer +150%, Plasma Cutter +200%.',
+    'Total extra ore from tool plus Mining skill is now capped at +250%.',
+    'Swing speeds (1.2× to 2×), prices, key and chest drops and ownership are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T13:05:00-06:00', title: 'Market: easier resource selling + Resource Inventory', bullets: [
     'Market → Resources now shows "Your storage" as a grid of icon tiles with how many you have, the current lowest listing and the last sale. Tap one to open a sell card.',
     'The sell card has a quantity slider with 25%, 50% and Max, a unit price prefilled to undercut the lowest listing by 1 (with Match lowest, Undercut and Last sale buttons), a clear "You receive X after the 5% fee" line and how your price compares to the house. A new My listings section lets you cancel your listings.',

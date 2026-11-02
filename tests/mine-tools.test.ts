@@ -34,9 +34,10 @@ describe('mining tools: tiers (request #16)', () => {
     expect(combinedSwingMul(1, 'hand_drill')).toBeCloseTo(1 / 1.4);
     expect(combinedSwingMul(miningSwingMul(99), 'plasma_cutter')).toBeGreaterThanOrEqual(MIN_SWING_MUL); expect(combinedSwingMul(1, 'plasma_cutter')).toBeCloseTo(0.5);
     for (const t of MINE_TOOLS) for (const l of [1, 30, 60, 99]) expect(combinedSwingMul(miningSwingMul(l), t.id)).toBeGreaterThanOrEqual(0.25);
-    expect(combinedBonus(miningBonusChance(99), 'plasma_cutter')).toBeCloseTo(5 + miningBonusChance(99)); expect(combinedBonus(100, 'plasma_cutter')).toBe(MAX_TOTAL_BONUS);
+    expect(combinedBonus(miningBonusChance(99), 'plasma_cutter')).toBeCloseTo(2 + miningBonusChance(99)); expect(combinedBonus(100, 'plasma_cutter')).toBe(MAX_TOTAL_BONUS);
     expect(extraOreRoll(3.5, 0.49)).toBe(4); expect(extraOreRoll(3.5, 0.5)).toBe(3); expect(extraOreRoll(0.5, 0.9)).toBe(0);
-    expect(combinedBonus(0, 'power_drill')).toBeCloseTo(2); expect(combinedBonus(0, 'hand_drill')).toBe(1); expect(combinedBonus(0, 'steel_pick')).toBe(0.5);
+    expect(combinedBonus(0, 'power_drill')).toBeCloseTo(1); expect(combinedBonus(0, 'hand_drill')).toBe(0.5); expect(combinedBonus(0, 'steel_pick')).toBe(0.25);
+    expect(MINE_TOOLS.map((t) => t.bonus)).toEqual([0, 0.25, 0.5, 1, 1.5, 2]); expect(MAX_TOTAL_BONUS).toBe(2.5);
   });
   it('tiers are bought in order', () => {
     expect(canBuyTool(['pickaxe'], 'steel_pick')).toBe(true);
@@ -105,8 +106,8 @@ describe('mining tools: in the mine', () => {
     w.miningLevel = () => 1; let rolls = 0; w.bonusRng = () => { rolls++; return 0.01; };
     w.join('b', 'Ore-Guy', 0); stand('b', 0);
     let t = 50_000, r; do { r = w.hit('b', 0, t); t += SWING_MIN_MS; } while (!r.broke && !r.full);
-    expect(rolls).toBe(1); expect(r).toMatchObject({ broke: true, bonus: 2 });
-    expect([...w.miners.get('b')!.carried.values()].reduce((a, x) => a + x.qty, 0)).toBe(3);
+    expect(rolls).toBe(1); expect(r).toMatchObject({ broke: true, bonus: 1 });
+    expect([...w.miners.get('b')!.carried.values()].reduce((a, x) => a + x.qty, 0)).toBe(2);
     expect(toolDef('power_drill').bonus).toBeGreaterThan(0.01);
     setMineTools(null);
   });
