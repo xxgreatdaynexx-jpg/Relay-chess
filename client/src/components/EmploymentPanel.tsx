@@ -78,7 +78,7 @@ export function EmploymentPanel({ onClose }: { onClose: () => void }) {
           <ul className="employ-list">
             {JOBS.map((j) => { const p = jobs.find((x) => x.id === j.id); return (
               <li key={j.id}>
-                <b>{j.emoji} {j.label}</b><small>{j.blurb}</small>
+                <b>{j.emoji} {j.label}</b>{j.bias && <small className="employ-bias" data-testid={`employ-bias-${j.cave}`}>{j.bias}</small>}<small>{j.blurb}</small>
                 {p && <small>Hire 🪙 {chips(p.hire)} + 🪙 {chips(p.wage)}/day · a full day's haul ≈ 🪙 {chips(p.dayValue)}</small>}
                 <button type="button" disabled={!!busy || !v.canHire || !p} data-testid={`employ-hire-${j.id}`} onClick={() => act(`h:${j.id}`, 'employ_hire', { job: j.id }, (r) => `Hired ${j.label} for 🪙 ${chips((r.charged as number) ?? 0)} (fee + first day).`)}>{busy === `h:${j.id}` ? 'Hiring…' : p ? `Hire for 🪙 ${chips(p.hire + p.wage)}` : 'Hire'}</button>
               </li>); })}

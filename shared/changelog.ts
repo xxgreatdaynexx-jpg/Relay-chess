@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T12:50:00-06:00', title: 'Hired miners specialise by mine', bullets: [
+    'Employment Office miners now bring back mostly their mine\'s signature ores: Magma Depths is mostly coal & copper, Frostbite mostly silver & crystal, and the main Mine mostly iron, rock & gold (gold the rarest of the three).',
+    'About 60–65% of picks are those ores; the rest still come from the mine\'s normal mix. Items per hour, value per hour, wages and hire fees stay the same. The hire list shows each mine\'s bias.',
+    'Mining by hand is unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T12:35:00-06:00', title: 'Mines: Tool Shop tools wear your pickaxe skin', bullets: [
     'Your equipped pickaxe skin now shows on whichever Tool Shop tool you hold: the Steel Pickaxe head, the drill housings, the Jackhammer body and the Plasma Cutter barrel get the skin\'s pattern, colours and finish, in first person and on other miners.',
     'Drill bits, the chisel, the plasma jet and the grips keep their normal look so each tool still reads as itself. With no skin equipped, tools look the same as before.',
