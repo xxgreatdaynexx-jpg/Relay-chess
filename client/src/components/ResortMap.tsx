@@ -11,7 +11,7 @@ import { socket } from '@/lib/net';
 import { flyHome } from '@/lib/travel';
 import { DeedPanel } from './WorldMap';
 import { FarmGame } from './FarmGame';
-import { KitchenPanel } from './KitchenPanel';
+import { FishPanPanel as KitchenPanel } from './FishPanPanel';
 
 const chips = (n: number) => n.toLocaleString('en-US');
 let IDX = 1;

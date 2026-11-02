@@ -84,7 +84,7 @@ function DeedList({ owned, me, onOpen, onClose }: { owned: Map<string, OwnedProp
 import { request } from '@/lib/net';
 import type { Drive, DriveInput } from '@/lib/worldDrive';
 const Venues = lazyWithReload(() => import('./Venues').then((m) => ({ default: m.Venues })));
-const KitchenPanel = lazyWithReload(() => import('./KitchenPanel').then((m) => ({ default: m.KitchenPanel })));
+const KitchenPanel = lazyWithReload(() => import('./FishPanPanel').then((m) => ({ default: m.FishPanPanel })));
 const FishingPanel = lazyWithReload(() => import('./FishingPanel').then((m) => ({ default: m.FishingPanel })));
 const Dealership = lazyWithReload(() => import('./Dealership').then((m) => ({ default: m.Dealership })));
 const ResortMap = lazyWithReload(() => import('./ResortMap').then((m) => ({ default: m.ResortMap })));

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { request } from '@/lib/net';
 import { fishById, fmtKg, RARITY_COLOR } from '../../../shared/fishing';
-import { COOK_DT, COOK_LEVEL, COOK_MAX_STEPS, cookable, doneWindow, BURN_OVER, judge, OUTCOME_MULT, Pan, type Outcome } from '../../../shared/cooking';
+import { COOK_DT, COOK_LEVEL, COOK_MAX_STEPS, cookable, doneWindow, BURN_OVER, judge, OUTCOME_MULT, Pan, type Outcome } from '../../../shared/fishPan';
 
 const chips = (n: number) => n.toLocaleString('en-US');
 type Item = { id: string; fish: string; grams: number; value: number; dish: string | null; raw: number | null };
@@ -36,18 +36,18 @@ function tone(d: number) {
 }
 
 /** Home kitchen: pick a raw fish from your cooler, cook it in a pan (heat + flips), plate it. The server replays it. */
-export function KitchenPanel({ me, home, onClose }: { me: string | null; home: string; onClose: () => void }) {
+export function FishPanPanel({ me, home, onClose }: { me: string | null; home: string; onClose: () => void }) {
   const [st, setSt] = useState<State | null>(null); const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState<string | null>(null);
   const [ui, setUi] = useState<{ heat: number; dial: number; down: number; up: number; flips: number; t: number; flipAnim: number } | null>(null);
   const [done, setDone] = useState<Done | null>(null);
   const live = useRef<Live | null>(null); const sfx = useSizzle();
-  const load = useCallback(() => { if (me) void request('cook_state').then((r) => { if (r.ok) setSt(r as unknown as State); else setMsg(String(r.error ?? 'The kitchen is closed.')); }); }, [me]);
+  const load = useCallback(() => { if (me) void request('pan_state').then((r) => { if (r.ok) setSt(r as unknown as State); else setMsg(String(r.error ?? 'The kitchen is closed.')); }); }, [me]);
   useEffect(() => { load(); }, [load]);
-  useEffect(() => () => { if (live.current) { cancelAnimationFrame(live.current.raf); void request('cook_cancel'); } }, []);
+  useEffect(() => () => { if (live.current) { cancelAnimationFrame(live.current.raf); void request('pan_cancel'); } }, []);
 
   const begin = async (it: Item) => {
     if (busy) return; setBusy('start:' + it.id); setMsg(null); setDone(null); sfx.start();
-    const r = await request('cook_start', { id: it.id }) as { ok: boolean; error?: string; seed?: number; thick?: number; level?: number; fish?: string };
+    const r = await request('pan_start', { id: it.id }) as { ok: boolean; error?: string; seed?: number; thick?: number; level?: number; fish?: string };
     setBusy(null); if (!r.ok) { setMsg(r.error ?? 'Could not start.'); return; }
     const L: Live = { pan: new Pan(r.seed!, r.thick!), inputs: '', t0: performance.now(), raf: 0, fish: r.fish!, level: r.level!, pending: ['2'] };
     live.current = L; let flipAt = -1e9;
@@ -65,7 +65,7 @@ export function KitchenPanel({ me, home, onClose }: { me: string | null; home: s
   const flip = () => { const L = live.current; if (L && !L.pending.includes('f')) L.pending.push('f'); };
   const plate = async () => {
     const L = live.current; if (!L || busy) return; cancelAnimationFrame(L.raf); live.current = null; setBusy('plate'); sfx.set(0);
-    const r = await request('cook_plate', { inputs: L.inputs }) as { ok: boolean; error?: string } & Partial<Done>;
+    const r = await request('pan_plate', { inputs: L.inputs }) as { ok: boolean; error?: string } & Partial<Done>;
     setBusy(null); setUi(null);
     if (!r.ok) setMsg(r.error ?? 'Something went wrong.'); else { setDone({ ...(r as Done), fish: L.fish }); sfx.ding(); }
     load();

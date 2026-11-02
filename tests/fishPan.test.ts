@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
 import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { Fishing, type FishRng } from '../server/fishing';
-import { Cooking } from '../server/cooking';
+import { FishPan } from '../server/fishPan';
 import { Reel, fishById, sizeFrac, FISH_DAILY_MAX } from '../shared/fishing';
-import { Pan, judge, replayCook, cookedValue, doneWindow, OUTCOME_MULT } from '../shared/cooking';
+import { Pan, judge, replayCook, cookedValue, doneWindow, OUTCOME_MULT } from '../shared/fishPan';
 import { SKILLS } from '../shared/skills';
 import { CAPS } from '../server/skills';
 
@@ -23,7 +23,7 @@ async function setup(level = 1) {
   const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
   let now = T0; const rng: FishRng = { unit: () => 0.5, int: (lo) => (lo === 1 ? 42 : 2000) }; // u=0.5 → common
   const f = new Fishing(pool, () => bank, () => now, rng); await f.init();
-  let lvl = level; const c = new Cooking(pool, async () => lvl, () => now, () => 7);
+  let lvl = level; const c = new FishPan(pool, async () => lvl, () => now, () => 7);
   const adv = (ms: number) => { now += ms; };
   const catchOne = async (name: string) => { const { biteIn } = await f.cast(name); adv(biteIn + 100); const h = f.hook(name); const inp = playReel(h.seed, h.diff); adv(inp.length * 50 + 1300); const r = await f.land(name, inp); return r.fish!; };
   return { db, pool, bank, f, c, adv, catchOne, setLevel: (n: number) => { lvl = n; } };
@@ -47,7 +47,7 @@ describe('cooking rules', () => {
   });
 });
 
-describe('Cooking server', () => {
+describe('FishPan server', () => {
   it('cooks an owned raw fish exactly once and the dish sells through the capped fish market', async () => {
     const { f, c, adv, catchOne, bank } = await setup();
     const fish = await catchOne('Cook1'); const sp = fishById(fish.fish)!;
