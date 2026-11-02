@@ -2134,3 +2134,20 @@ html.xmas .top-menu-btn::before { content: '🎄 '; }
 .chip-amt { white-space: nowrap; }
 
 select, option, input, textarea, button { font-family: inherit; }
+/* Market: bulk sell (tick several cases / keys, one price each, one confirm) */
+.mkt-bulkbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 6px 10px; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.mkt-bulkbar label { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; }
+.mkt-pickcell { position: relative; padding: 0; }
+.mkt-pickcell > button { all: unset; display: flex; flex-direction: column; align-items: center; width: 100%; height: 100%; cursor: pointer; box-sizing: border-box; padding: 6px; }
+.mkt-pickbox { position: absolute; top: 4px; left: 4px; z-index: 1; width: 16px; height: 16px; cursor: pointer; }
+.mkt-pickcell.picked { outline: 2px solid #6ad66a; outline-offset: -2px; }
+.mkt-bulk { flex-direction: column; align-items: stretch; }
+.mkt-bulk-qty input { width: 70px; }
+.mkt-confirm { display: inline-flex; gap: 6px; align-items: center; }
+.mkt-bulk input[type=number] { width: 90px; padding: 4px 6px; border-radius: 6px; border: 1px solid rgba(255,255,255,.25); background: rgba(0,0,0,.35); color: inherit; font: inherit; }
+.mkt-bulk label { display: flex; gap: 8px; align-items: center; }
+.mkt-bulk button { padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(106,214,106,.6); background: rgba(106,214,106,.16); color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+.mkt-bulk button:disabled { opacity: .45; cursor: default; }
+.mkt-bulk [data-testid=mkt-bulk-confirm] { background: #2f8f3a; border-color: #6ad66a; }
+.mkt-bulkbar button { padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.06); color: inherit; font: inherit; cursor: pointer; }
+@media (max-width: 640px) { .mkt-bulkbar { gap: 8px; } }

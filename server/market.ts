@@ -124,6 +124,24 @@ export class Market {
     return l;
   }
 
+  /** List several of your own items at one price each, all or nothing: every check runs first, then one commit (one DB transaction). */
+  listMany(name: string, itemIds: unknown, price: unknown): Listing[] {
+    if (!Array.isArray(itemIds) || !itemIds.length) throw new RuleError('Pick at least one item to list.');
+    const ids = [...new Set(itemIds)];
+    if (ids.length !== itemIds.length) throw new RuleError('The same item was picked twice.');
+    if (ids.length > MAX_LISTINGS) throw new RuleError(`You can list at most ${MAX_LISTINGS} at once.`);
+    const items = ids.map((id) => { const i = this.mine(name, id); if (i.locked) throw new RuleError(`${this.label(i)} is already listed or in a trade.`); return i; });
+    const p = intIn(price, MIN_PRICE, MAX_PRICE, 'Price');
+    const k = playerKey(name);
+    const active = [...this.listings.values()].filter((l) => l.status === 'active' && l.seller === k).length + [...this.stacks.values()].filter((l) => l.seller === k).length;
+    if (active + items.length > MAX_LISTINGS) throw new RuleError(`You can have at most ${MAX_LISTINGS} listings (${Math.max(0, MAX_LISTINGS - active)} slots left).`);
+    const at = Date.now();
+    const out = items.map((i) => ({ id: randomUUID(), seller: k, sellerName: name.trim(), itemId: i.id, price: p, status: 'active' as const, at }));
+    items.forEach((i, n) => { i.equipped = false; i.locked = `listing:${out[n]!.id}`; this.listings.set(out[n]!.id, out[n]!); });
+    this.vault.commit(items, items.map((i, n) => ({ item: i.id, kind: 'list', from: k, to: null, memo: `listed ${out[n]!.id} for ${p} (bulk ${items.length})`, at })), out.map(listingStmt));
+    return out;
+  }
+
   cancel(name: string, listingId: unknown): void {
     const l = typeof listingId === 'string' ? this.listings.get(listingId) : undefined;
     if (!l || l.status !== 'active' || l.seller !== playerKey(name)) throw new RuleError('That listing is not active.');
@@ -438,6 +456,7 @@ export function registerMarket(io: Server, socket: Socket): void {
   on('mkt_recent', (b) => ({ sales: market.recentSales(b.what) }));
   on('mkt_my_history', () => market.myHistory(need()));
   on('mkt_list', async (b) => { const me = need(); await gate(me); return { listing: market.list(me, b.id, b.price) }; });
+  on('mkt_list_many', async (b) => { const me = need(); await gate(me); const ls = market.listMany(me, b.ids, b.price); return { count: ls.length, listings: ls }; });
   on('mkt_cancel', (b) => { market.cancel(need(), b.id); });
   on('mkt_buy', async (b) => { const me = need(); await gate(me, market.listings.get(str(b.id))?.sellerName); return market.buy(me, b.id); });
   on('mkt_stacks', (b) => { const me = nameOf() ? playerKey(nameOf()!) : null; return { listings: market.browseStacks(b).map((l) => ({ ...l, mine: !!me && market.stacks.get(l.id)?.seller === me })) }; });

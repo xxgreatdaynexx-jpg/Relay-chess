@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T14:20:00-06:00', title: 'Market: sell several cases or keys at once', bullets: [
+    'Market → Skins → Sell now has a tick box on every item, plus "All cases" and "All keys" boxes. Tick as many as you like.',
+    'With items ticked, the side panel lets you set how many cases and keys to sell, one price each, and shows what you get if they all sell after the 5% fee. One Confirm lists them all.',
+    'Each item still becomes its own listing at that price, so buyers can buy one at a time. It is all or nothing: if any ticked item can\'t be listed (already listed, in a trade, or over the 50-listing limit), nothing is listed.',
+    'Fees and how buying works are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T14:10:00-06:00', title: 'Mines: much stronger specialities, clearer labels, slower rare respawns, rarer drops', bullets: [
     'Each cave is now mostly its signature ores, by hand and for hired miners alike: The Mine about 86% Iron Ore, Stone & Gold Ore (Gold Ore the lightest), Magma Depths about 85% Coal & Copper Ore, and Frostbite Caverns about 82% Silver Ore & Crystal (Crystal stays rare: it is worth 5× Silver Ore).',
     'Average value per rock and per hired-miner pick stays within 5% of before. Coral Grotto\'s mix is unchanged.',

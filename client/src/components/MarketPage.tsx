@@ -63,19 +63,60 @@ export function MarketPage() {
   );
 }
 
-/** Pick one of your own skins / cases / keys and list it. */
+/** Pick one of your own skins / cases / keys and list it, or tick several (checkboxes, select all cases / keys, quantity) and list them all at one price each in one confirm. */
 function SellSkins({ initial, onListed }: { initial: string | null; onListed: () => void }) {
   const account = useAccount();
   const [items, setItems] = useState<SkinItem[]>([]); const [sel, setSel] = useState<string | null>(initial);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const load = useCallback(() => { void request('inv_get', {}).then((r) => { const a = r as { ok: boolean; items?: SkinItem[] }; if (a.ok) setItems((a.items ?? []).filter((i) => !i.locked)); }); }, []);
   useEffect(() => { load(); socket.on('inv_changed', load); return () => { socket.off('inv_changed', load); }; }, [load, account]);
+  useEffect(() => { setPicked((p) => { const live = new Set(items.map((i) => i.id)); const n = new Set([...p].filter((id) => live.has(id))); return n.size === p.size ? p : n; }); }, [items]);
   if (!account) return <p className="inv-note">Sign in to sell.</p>;
   const cur = items.find((i) => i.id === sel) ?? null;
+  const toggle = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const cases = items.filter((i) => i.kind === 'case'); const keys = items.filter((i) => i.kind === 'key');
+  const allOf = (xs: SkinItem[]) => xs.length > 0 && xs.every((i) => picked.has(i.id));
+  const setGroup = (xs: SkinItem[], on: boolean) => setPicked((p) => { const n = new Set(p); for (const i of xs) { if (on) n.add(i.id); else n.delete(i.id); } return n; });
+  const chosen = items.filter((i) => picked.has(i.id));
   return (
-    <div className="inv-body" data-testid="mkt-sell-skins">
-      <div className="inv-grid">{items.map((i) => <button type="button" key={i.id} className={`inv-cell ${sel === i.id ? 'sel' : ''}`} onClick={() => setSel(i.id)} title={label(i)}><Swatch item={i} size={72} /><span className="inv-name">{label(i)}</span></button>)}
-        {!items.length && <p className="inv-note">Nothing to sell yet. Arena matches drop cases and keys.</p>}</div>
-      <aside className="inv-detail">{cur ? <><div className="inv-preview"><Swatch item={cur} size={160} /></div><h3>{label(cur)}</h3><SellForm item={cur} onDone={onListed} /></> : <p className="inv-note">Pick an item to list.</p>}</aside>
+    <>
+      {(cases.length > 0 || keys.length > 0 || picked.size > 0) && <div className="mkt-bulkbar" data-testid="mkt-bulkbar">
+        <span>Sell several at once:</span>
+        {cases.length > 0 && <label><input type="checkbox" checked={allOf(cases)} onChange={(e) => setGroup(cases, e.target.checked)} data-testid="mkt-all-cases" /> All cases ({cases.length})</label>}
+        {keys.length > 0 && <label><input type="checkbox" checked={allOf(keys)} onChange={(e) => setGroup(keys, e.target.checked)} data-testid="mkt-all-keys" /> All keys ({keys.length})</label>}
+        {picked.size > 0 && <button type="button" onClick={() => setPicked(new Set())} data-testid="mkt-clear">Clear ({picked.size})</button>}
+      </div>}
+      <div className="inv-body" data-testid="mkt-sell-skins">
+        <div className="inv-grid">{items.map((i) => <div key={i.id} className={`inv-cell mkt-pickcell ${sel === i.id ? 'sel' : ''} ${picked.has(i.id) ? 'picked' : ''}`}>
+          <input type="checkbox" className="mkt-pickbox" checked={picked.has(i.id)} onChange={() => toggle(i.id)} aria-label={`Select ${label(i)}`} data-testid="mkt-pick" />
+          <button type="button" onClick={() => setSel(i.id)} title={label(i)}><Swatch item={i} size={72} /><span className="inv-name">{label(i)}</span></button></div>)}
+          {!items.length && <p className="inv-note">Nothing to sell yet. Arena matches drop cases and keys.</p>}</div>
+        <aside className="inv-detail">{chosen.length > 0 ? <BulkSellForm items={chosen} pool={{ case: cases, key: keys }} setGroupQty={(kind, n) => setPicked((p) => { const pool = kind === 'case' ? cases : keys; const nn = new Set([...p].filter((id) => !pool.some((x) => x.id === id))); for (const x of pool.slice(0, n)) nn.add(x.id); return nn; })} onDone={() => { setPicked(new Set()); onListed(); }} />
+          : cur ? <><div className="inv-preview"><Swatch item={cur} size={160} /></div><h3>{label(cur)}</h3><SellForm item={cur} onDone={onListed} /></> : <p className="inv-note">Pick an item to list, or tick several to list them together.</p>}</aside>
+      </div>
+    </>
+  );
+}
+
+/** One price per item for every ticked item; one confirm lists them all (server checks all first, then one transaction). */
+function BulkSellForm({ items, pool, setGroupQty, onDone }: { items: SkinItem[]; pool: { case: SkinItem[]; key: SkinItem[] }; setGroupQty: (kind: 'case' | 'key', n: number) => void; onDone: () => void }) {
+  const [price, setPrice] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false); const [confirm, setConfirm] = useState(false);
+  const p = Math.floor(Number(price)); const n = items.length;
+  const fee = p > 0 ? Math.max(1, Math.ceil(p * 0.05)) : 0;
+  const counts = { case: items.filter((i) => i.kind === 'case').length, key: items.filter((i) => i.kind === 'key').length, skin: items.filter((i) => i.kind === 'skin').length };
+  const fmt = (x: number) => x.toLocaleString();
+  useEffect(() => { setConfirm(false); }, [n, p]);
+  const go = () => { setBusy(true); setErr(''); void request('mkt_list_many', { ids: items.map((i) => i.id), price: p }).then((r) => { const a = r as { ok: boolean; error?: string }; setBusy(false); if (a.ok) onDone(); else { setErr(a.error ?? 'Failed'); setConfirm(false); } }); };
+  return (
+    <div className="mkt-sell mkt-bulk" data-testid="mkt-bulk">
+      <h3>{n} selected</h3>
+      {(['case', 'key'] as const).map((k) => pool[k].length > 0 && <label key={k} className="mkt-bulk-qty">{k === 'case' ? 'Cases' : 'Keys'} <input type="number" min={0} max={pool[k].length} value={counts[k]} onChange={(e) => setGroupQty(k, Math.max(0, Math.min(pool[k].length, Math.floor(Number(e.target.value)) || 0)))} data-testid={`mkt-qty-${k}`} /> <small>of {pool[k].length}</small></label>)}
+      {counts.skin > 0 && <p className="inv-note">+ {counts.skin} skin{counts.skin > 1 ? 's' : ''}</p>}
+      <label>Price each <input type="number" min={1} step={1} value={price} onChange={(e) => setPrice(e.target.value)} data-testid="mkt-bulk-price" /></label>
+      {p > 0 && <span>Each lists separately at {fmt(p)}. If all sell you get {fmt(n * (p - fee))} (fee {fee} each)</span>}
+      {!confirm ? <button type="button" disabled={!(p > 0) || busy} onClick={() => setConfirm(true)} data-testid="mkt-bulk-list">List {n} for {p > 0 ? fmt(p) : '…'} each</button>
+        : <span className="mkt-confirm">List all {n} now? <button type="button" disabled={busy} onClick={go} data-testid="mkt-bulk-confirm">Confirm</button> <button type="button" onClick={() => setConfirm(false)}>Back</button></span>}
+      {err && <p className="inv-err">{err}</p>}
     </div>
   );
 }
