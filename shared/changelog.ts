@@ -6,12 +6,17 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-01T19:30:00-06:00', title: 'Sell options before expiry', bullets: [
+  { commit: '', at: '2026-11-01T19:40:00-06:00', title: 'Runway and Speedway tarmac is back', bullets: [
+    'The Airport runway, apron and the Speedway track were hidden under the grass. They show again.',
+    'The runway now has edge lines, thresholds, aiming points and blue edge lights, with a parallel taxiway linked at both ends.',
+    'The Speedway has red-and-white kerbs, a pit lane with garages, and grandstands along both straights.',
+  ] },
+  { commit: 'b26a208', at: '2026-11-01T19:30:00-06:00', title: 'Sell options before expiry', bullets: [
     'Requested by Jay: you can now sell a call or put you hold before it expires, from the Options tab. Sell all of it or just part.',
     'You get the current model value of the option, less the 5% house edge and a 1% fee, so you always get back a bit less than it would cost to buy right now.',
     'Whatever you keep still cashes out automatically at expiry, like before.',
   ] },
-  { commit: '', at: '2026-11-01T16:00:00-06:00', title: 'The resort sunset finally shows', bullets: [
+  { commit: '4ccb717', at: '2026-11-01T16:00:00-06:00', title: 'The resort sunset finally shows', bullets: [
     'Fixed the sky shader, so the gold-to-violet sunset now actually shows behind the town, with the sun setting over the casino.',
   ] },
   { commit: 'e62a864', at: '2026-11-01T15:50:00-06:00', title: 'Brighter resort sunset', bullets: [

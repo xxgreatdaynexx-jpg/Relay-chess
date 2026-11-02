@@ -25,38 +25,57 @@ const disposeTree = (o: THREE.Object3D) => o.traverse((c) => { const m = c as TH
 
 /** Builds the venue grounds into `scene`; returns the per-frame animation step and a disposer for the planes. */
 export function buildVenues(scene: THREE.Scene, { mat, geo }: Mk): { step: (dt: number, time: number, cam?: THREE.Vector3) => void; dispose: () => void } {
-  const grass = [mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c }), mat({ color: 0x3f9040, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, emissive: 0x0d3412, emissiveIntensity: 0.6 }), mat({ color: 0x2a1c12 }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c })];
-  const slab = (r: Rect) => { const m = new THREE.Mesh(geo(new THREE.BoxGeometry(r.x1 - r.x0, 3, r.z1 - r.z0)), grass); m.position.set((r.x0 + r.x1) / 2, -1.5, (r.z0 + r.z1) / 2); scene.add(m); };
+  const grass = [mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c }), mat({ color: 0x3f9040, roughness: 1, emissive: 0x0d3412, emissiveIntensity: 0.6 }), mat({ color: 0x2a1c12 }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c })];
+  const slab = (r: Rect) => { const m = new THREE.Mesh(geo(new THREE.BoxGeometry(r.x1 - r.x0, 3, r.z1 - r.z0)), grass); m.position.set((r.x0 + r.x1) / 2, -1.51, (r.z0 + r.z1) / 2); scene.add(m); };
   slab(AIRPORT); slab(RACETRACK);
-  const asphalt = mat({ color: 0x2c2f38, roughness: 0.95 }); const paint = mat({ color: 0xf2f2f2, roughness: 0.8 }); const yellow = mat({ color: 0xffd23a, roughness: 0.8 });
+  // Tarmac layers (pt1243u fix: the grass used to carry a polygon offset that pulled it over every surface here, so the
+  // runway, apron and track never showed). Surfaces now sit at road height with their own offsets, markings above them.
+  const tar = (o: THREE.MeshStandardMaterialParameters, k: number) => mat({ ...o, polygonOffset: true, polygonOffsetFactor: -k, polygonOffsetUnits: -2 * k });
+  const asphalt = tar({ color: 0x3a3d47, roughness: 0.95 }, 2); const paint = tar({ color: 0xf2f2f2, roughness: 0.8 }, 4); const yellow = tar({ color: 0xffd23a, roughness: 0.8 }, 4);
   const flat = (w: number, d: number, m: THREE.Material, x: number, z: number, y = 0.04, rot = 0) => { const o = new THREE.Mesh(geo(new THREE.PlaneGeometry(w, d)), m); o.rotation.set(-Math.PI / 2, 0, rot); o.position.set(x, y, z); scene.add(o); return o; };
   // access roads + taxiway are drawn with the rural roads in world3d (one asphalt, junction-aware dashes)
 
   // ---- Airport: apron, runway + centreline dashes, threshold bars, edge lights ----
-  flat(30, 26, mat({ color: 0x4a4e5a, roughness: 0.9 }), AIRPORT_SLOT[0] - 4, AIRPORT_SLOT[1], 0.03);
-  const rl = RUNWAY.z1 - RUNWAY.z0; flat(RUNWAY.w, rl, asphalt, RUNWAY.x, (RUNWAY.z0 + RUNWAY.z1) / 2, 0.045);
-  for (let z = RUNWAY.z0 + 10; z < RUNWAY.z1 - 10; z += 7) flat(0.4, 3.5, paint, RUNWAY.x, z, 0.05);
-  for (const z of [RUNWAY.z0 + 3, RUNWAY.z1 - 3]) for (let k = -3; k <= 3; k++) if (k) flat(0.7, 4, paint, RUNWAY.x + k * 1.2, z, 0.05);
+  const apronMat = tar({ color: 0x6e7178, roughness: 0.9 }, 1); const shoulder = tar({ color: 0x2a2c33, roughness: 0.95 }, 1);
+  flat(34, 30, apronMat, AIRPORT_SLOT[0] - 6, AIRPORT_SLOT[1], 0.07);
+  const rl = RUNWAY.z1 - RUNWAY.z0, rz = (RUNWAY.z0 + RUNWAY.z1) / 2;
+  flat(RUNWAY.w + 2, rl + 4, shoulder, RUNWAY.x, rz, 0.07); flat(RUNWAY.w, rl, asphalt, RUNWAY.x, rz, 0.085);
+  for (let z = RUNWAY.z0 + 12; z < RUNWAY.z1 - 12; z += 7) flat(0.4, 3.5, paint, RUNWAY.x, z, 0.1); // centreline
+  for (const sx of [-1, 1]) flat(0.3, rl - 2, paint, RUNWAY.x + sx * (RUNWAY.w / 2 - 0.4), rz, 0.1); // edge lines
+  for (const z of [RUNWAY.z0 + 3, RUNWAY.z1 - 3]) for (let k = -3; k <= 3; k++) if (k) flat(0.7, 4, paint, RUNWAY.x + k * 1.2, z, 0.1); // thresholds
+  for (const z of [RUNWAY.z0 + 24, RUNWAY.z1 - 24]) for (const sx of [-1, 1]) flat(1.4, 6, paint, RUNWAY.x + sx * 2.2, z, 0.1); // aiming points
+  // parallel taxiway west of the terminal road, with links on to the runway at both ends and the middle
+  const TX = RUNWAY.x + RUNWAY.w / 2 + 9, tz0 = RUNWAY.z0 + 8, tz1 = RUNWAY.z1 - 8;
+  flat(4.5, tz1 - tz0 + 4.5, asphalt, TX, (tz0 + tz1) / 2, 0.08); flat(0.25, tz1 - tz0, yellow, TX, (tz0 + tz1) / 2, 0.1);
+  for (const z of [tz0, tz1]) { flat(TX - RUNWAY.x, 4.5, asphalt, (TX + RUNWAY.x) / 2, z, 0.08); flat(TX - RUNWAY.x - RUNWAY.w / 2, 0.25, yellow, (TX + RUNWAY.x + RUNWAY.w / 2) / 2, z, 0.1); }
   const lightPos: number[] = []; for (let z = RUNWAY.z0; z <= RUNWAY.z1; z += 6) lightPos.push(RUNWAY.x - RUNWAY.w / 2 - 0.4, z, RUNWAY.x + RUNWAY.w / 2 + 0.4, z);
   const lm = new THREE.InstancedMesh(geo(new THREE.SphereGeometry(0.22, 6, 4)), new THREE.MeshBasicMaterial({ color: 0x9fd0ff }), lightPos.length / 2);
-  { const d = new THREE.Object3D(); for (let i = 0; i < lightPos.length / 2; i++) { d.position.set(lightPos[i * 2], 0.25, lightPos[i * 2 + 1]); d.updateMatrix(); lm.setMatrixAt(i, d.matrix); } } scene.add(lm);
-  flat(0.4, AIRPORT_SLOT[0] - 8 - RUNWAY.x - RUNWAY.w / 2, yellow, (AIRPORT_SLOT[0] - 8 + RUNWAY.x + RUNWAY.w / 2) / 2, AIRPORT_SLOT[1], 0.05, Math.PI / 2); // taxiway centreline
+  { const d = new THREE.Object3D(); for (let i = 0; i < lightPos.length / 2; i++) { d.position.set(lightPos[i * 2], 0.3, lightPos[i * 2 + 1]); d.updateMatrix(); lm.setMatrixAt(i, d.matrix); } } scene.add(lm);
+  flat(0.4, AIRPORT_SLOT[0] - 8 - RUNWAY.x - RUNWAY.w / 2, yellow, (AIRPORT_SLOT[0] - 8 + RUNWAY.x + RUNWAY.w / 2) / 2, AIRPORT_SLOT[1], 0.1, Math.PI / 2); // taxiway centreline
 
   // ---- Speedway: oval ribbon (asphalt), red/white kerbs, chequered start line, gate posts ----
   const N = 160; const pos: number[] = []; const kerb: number[] = []; const kcol: number[] = []; const idx: number[] = [];
   for (let i = 0; i <= N; i++) {
     const [x, z, a] = trackPoint(i / N); const nx = Math.sin(a), nz = -Math.cos(a); // left normal (heading a in x/z)
-    const h = TRACK.W / 2; pos.push(x + nx * h, 0.05, z + nz * h, x - nx * h, 0.05, z - nz * h);
+    const h = TRACK.W / 2; pos.push(x + nx * h, 0.085, z + nz * h, x - nx * h, 0.085, z - nz * h);
     const c = (i % 2) ? [0.85, 0.1, 0.12] : [0.95, 0.95, 0.95];
-    for (const s of [1, -1]) { kerb.push(x + nx * s * h, 0.07, z + nz * s * h, x + nx * s * (h + 0.9), 0.07, z + nz * s * (h + 0.9)); kcol.push(...c, ...c); }
+    for (const s of [1, -1]) { kerb.push(x + nx * s * (h - 0.2), 0.095, z + nz * s * (h - 0.2), x + nx * s * (h + 0.9), 0.095, z + nz * s * (h + 0.9)); kcol.push(...c, ...c); }
     if (i) { const o = (i - 1) * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); }
   }
   const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); tg.setIndex(idx); tg.computeVertexNormals();
-  const tm = new THREE.Mesh(geo(tg), mat({ color: 0x2a2c33, roughness: 0.95, side: THREE.DoubleSide })); scene.add(tm);
+  const tm = new THREE.Mesh(geo(tg), tar({ color: 0x34363e, roughness: 0.95, side: THREE.DoubleSide }, 2)); scene.add(tm);
   const kidx: number[] = []; for (let i = 1; i <= N; i++) for (const s of [0, 1]) { const o = ((i - 1) * 2 + s) * 2; kidx.push(o, o + 1, o + 4, o + 1, o + 5, o + 4); }
   const kg = new THREE.BufferGeometry(); kg.setAttribute('position', new THREE.Float32BufferAttribute(kerb, 3)); kg.setAttribute('color', new THREE.Float32BufferAttribute(kcol, 3)); kg.setIndex(kidx);
-  scene.add(new THREE.Mesh(geo(kg), mat({ color: 0xffffff, vertexColors: true, roughness: 0.8, side: THREE.DoubleSide })));
-  { const [x, z, a] = trackPoint(0); const black = mat({ color: 0x111111 }); for (let i = 0; i < 10; i++) for (let j = 0; j < 2; j++) flat(1, 1, (i + j) % 2 ? black : paint, 0, 0, 0.06).position.set(x + Math.sin(a) * (i - 4.5) + Math.cos(a) * (j - 0.5), 0.06, z - Math.cos(a) * (i - 4.5) + Math.sin(a) * (j - 0.5)); }
+  scene.add(new THREE.Mesh(geo(kg), tar({ color: 0xffffff, vertexColors: true, roughness: 0.8, side: THREE.DoubleSide }, 3)));
+  { const [x, z, a] = trackPoint(0); const black = tar({ color: 0x111111 }, 4); for (let i = 0; i < 10; i++) for (let j = 0; j < 2; j++) flat(1, 1, (i + j) % 2 ? black : paint, 0, 0, 0.1).position.set(x + Math.sin(a) * (i - 4.5) + Math.cos(a) * (j - 0.5), 0.1, z - Math.cos(a) * (i - 4.5) + Math.sin(a) * (j - 0.5)); }
+  // pit lane inside the start straight (with entry/exit links) and grandstands outside both straights
+  { const { cx, cz, L, R, W } = TRACK; const pz = cz + R - W / 2 - 3.2;
+    flat(2 * L - 6, 3.6, asphalt, cx, pz, 0.08); flat(2 * L - 6, 0.2, paint, cx, pz - 1.9, 0.1);
+    for (const sx of [-1, 1]) flat(4, 3.6, asphalt, cx + sx * (L - 3), pz + 1.6, 0.08, sx * 0.6);
+    for (let i = -4; i <= 4; i++) { const b = new THREE.Mesh(geo(new THREE.BoxGeometry(5.6, 1.6, 2.4)), mat({ color: 0x7d8494, roughness: 0.8 })); b.position.set(cx + i * 7, 0.8, pz - 4.2); scene.add(b); }
+    const standMat = mat({ color: 0x8d96a6, roughness: 0.8 }); const seatMat = mat({ color: 0x6a7282, roughness: 0.8 });
+    for (const [z0, dir] of [[cz + R + W / 2 + 2.5, 1], [cz - R - W / 2 - 2.5, -1]] as Array<[number, number]>) for (let r = 0; r < 4; r++) {
+      const st = new THREE.Mesh(geo(new THREE.BoxGeometry(2 * L - 14, 0.8 + r * 0.9, 1.6)), r % 2 ? seatMat : standMat); st.position.set(cx + (dir > 0 ? -16 : 0), (0.8 + r * 0.9) / 2, z0 + dir * r * 1.6); scene.add(st); } }
   const gateMat = mat({ color: 0xff7a1a, emissive: 0xff7a1a, emissiveIntensity: 0.6 * NEON }); const post = geo(new THREE.CylinderGeometry(0.2, 0.2, 3.2, 6));
   for (const [[ax, az], [bx, bz]] of GATES) for (const [x, z] of [[ax, az], [bx, bz]]) { const p = new THREE.Mesh(post, gateMat); p.position.set(x, 1.6, z); scene.add(p); }
   let ban: THREE.Mesh;
