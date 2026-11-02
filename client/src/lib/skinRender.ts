@@ -34,7 +34,7 @@ export function paintSkin(ctx: CanvasRenderingContext2D, size: number, skin: Ski
 
 interface SkinMat { mat: THREE.MeshPhongMaterial; skin: SkinDef }
 const mats = new Map<string, SkinMat>();
-function skinMaterial(token: string): SkinMat | null {
+export function skinMaterial(token: string): SkinMat | null {
   const hit = mats.get(token); if (hit) return hit;
   const p = parseToken(token); if (!p || typeof document === 'undefined') return null;
   const cv = document.createElement('canvas'); cv.width = cv.height = 256;
@@ -88,7 +88,7 @@ export function applySkin(root: THREE.Object3D, token: string | null | undefined
  *  Re-project UVs in model space (dominant-normal planar mapping) at a fixed density relative to the
  *  whole weapon, so the pattern tiles ~3.5x along the gun with consistent scale across parts. */
 const TILES = 3.5;
-function skinUVs(root: THREE.Object3D): void {
+export function skinUVs(root: THREE.Object3D): void {
   root.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
   const size = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3());

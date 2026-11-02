@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildPickaxe, applyPickSkin } from './pickaxeModel';
+import { skinMaterial, skinUVs } from './skinRender';
 import { toolDef, type MineToolId } from '../../../shared/mineTools';
 
 /**
@@ -26,6 +27,7 @@ function drill(body: string, big: boolean): THREE.Group {
   const core = new THREE.Mesh(new THREE.CylinderGeometry(0.008 * s, 0.008 * s, L, 8), steel); core.rotation.z = Math.PI / 2; core.position.x = L / 2; bit.add(core);
   const tip = new THREE.Mesh(new THREE.ConeGeometry(0.016 * s, 0.04, 10), steel); tip.rotation.z = -Math.PI / 2; tip.position.x = L + 0.02; bit.add(tip);
   if (big) { const side = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.14, 8), dark); side.position.set(0.15, 0.24 * s, 0.07); side.rotation.x = Math.PI / 2; g.add(side); }
+  motor.userData.skinPart = true; if (!big) batt.userData.skinPart = true;
   g.add(grip, batt, motor, vent, trig, chuck, bit); g.userData.spin = bit;
   return g;
 }
@@ -44,6 +46,7 @@ function jackhammer(): THREE.Group {
   const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.2, 8), steel); rod.position.y = 0.1;
   const point = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.06, 4), steel); point.position.y = 0.23; point.rotation.y = Math.PI / 4;
   piston.add(rod, point);
+  body.userData.skinPart = true;
   g.add(bar, gripsA, gripsB, body, fins, hose, collar, piston); g.userData.piston = piston;
   return g;
 }
@@ -61,6 +64,7 @@ function plasma(): THREE.Group {
   const glow = new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.16, 12), new THREE.MeshBasicMaterial({ color: '#4ad8ff', transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false })); glow.position.y = 0.08;
   flame.add(core, glow); flame.visible = false;
   const light = new THREE.PointLight('#6ae0ff', 0, 2.5, 2); light.position.y = 0.6;
+  body.userData.skinPart = true;
   g.add(grip, body, ring1, ring2, cell, nozzle, flame, light); g.userData.flame = flame; g.userData.light = light;
   return g;
 }
@@ -68,7 +72,7 @@ function plasma(): THREE.Group {
 function steelPick(): THREE.Group {
   const g = buildPickaxe(); applyPickSkin(g, null);
   // Polished steel head + dark ash handle so it reads different from the starter pick.
-  g.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh) return; if (m.name === 'pick-head') m.material = std('#dfe7ef', 0.45, 0.25, { emissive: '#2a3036', emissiveIntensity: 0.4 }); if (m.name === 'pick-handle') m.material = std('#3a2a1e', 0, 0.6); });
+  g.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh) return; if (m.name === 'pick-head') { m.userData.skinPart = true; } if (m.name === 'pick-head') m.material = std('#dfe7ef', 0.45, 0.25, { emissive: '#2a3036', emissiveIntensity: 0.4 }); if (m.name === 'pick-handle') m.material = std('#3a2a1e', 0, 0.6); });
   return g;
 }
 
@@ -91,4 +95,14 @@ export function animateMineTool(g: THREE.Object3D, t: number, work: number): { j
   if (flame) { flame.visible = work > 0; flame.scale.set(1, 0.8 + Math.random() * 0.5, 1); if (light) light.intensity = work > 0 ? 1.2 + Math.random() * 0.6 : 0; }
   const amp = work > 0 ? (piston ? 0.012 : flame ? 0.002 : 0.006) : 0;
   return { jx: (Math.random() - 0.5) * amp, jy: (Math.random() - 0.5) * amp };
+}
+
+/** Equipped pickaxe skin on a Tool Shop tool (pt1349u): the skin's pattern/colours/finish go on the main body or head
+ *  (drill motor housing, jackhammer body, plasma barrel, steel pick head). Bits, chisel, jet, grips stay stock so the
+ *  tool still reads as itself. null = the tool's default look. Cheap when unchanged. */
+export function skinMineTool(g: THREE.Object3D, token: string | null | undefined): void {
+  const tk = token ?? null; if ((g.userData.toolSkin ?? null) === tk) return; g.userData.toolSkin = tk;
+  const sm = tk ? skinMaterial(tk) : null;
+  if (sm && !g.userData.skinUV) { g.userData.skinUV = true; skinUVs(g); }
+  g.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh || !m.userData.skinPart) return; if (!m.userData.toolBase) m.userData.toolBase = m.material; m.material = sm ? sm.mat : m.userData.toolBase as THREE.Material; });
 }

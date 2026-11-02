@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T12:35:00-06:00', title: 'Mines: Tool Shop tools wear your pickaxe skin', bullets: [
+    'Your equipped pickaxe skin now shows on whichever Tool Shop tool you hold: the Steel Pickaxe head, the drill housings, the Jackhammer body and the Plasma Cutter barrel get the skin\'s pattern, colours and finish, in first person and on other miners.',
+    'Drill bits, the chisel, the plasma jet and the grips keep their normal look so each tool still reads as itself. With no skin equipped, tools look the same as before.',
+    'Tool stats, prices and ownership are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T12:30:00-06:00', title: 'Owning property raises your worker cap', bullets: [
     'Every building or landmark you own adds Employment Office hire slots on top of the base 3: +1 for a detached home (under 25K), +2 for row houses, apartments, gas stations and beach houses (25K–75K), +3 for towers, depots, condos and villas (75K–250K), and +4 for the beach hotel and landmarks (250K+).',
     'Bonuses from all your properties add up, to a max of +7 (10 workers). Empty lots, parks, plazas and farm plots add no slots.',

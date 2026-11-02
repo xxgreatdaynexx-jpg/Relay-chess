@@ -1,7 +1,7 @@
 /** Mines: three.js cave scene (lazy-loaded). Map coords are (x, y) on the floor and z up; three.js is y-up, so (x, z, y). */
 import * as THREE from 'three';
 import { applyPickSkin, skinnedPickaxe } from './pickaxeModel';
-import { buildMineTool, animateMineTool } from './mineToolModels';
+import { buildMineTool, animateMineTool, skinMineTool } from './mineToolModels';
 import type { MineToolId } from '../../../shared/mineTools';
 import { animateMiner, buildMiner, setMinerSkin, setMinerTool, type MinerRig } from './minerAvatar';
 import { CAVES, MINE_EXIT, ORES, type CaveId, type MineNode } from '../../../shared/mines';
@@ -155,7 +155,7 @@ export class Mines3D {
   swing() { this.swingT = 0; }
   /** Equipped pickaxe skin (inv_loadout.pickaxe) for the viewmodel and third-person miners. */
   setPickSkin(token: string | null | undefined) {
-    this.pickSkin = token ?? null; applyPickSkin(this.pickModel, this.pickSkin);
+    this.pickSkin = token ?? null; applyPickSkin(this.pickModel, this.pickSkin); if (this.toolModel) skinMineTool(this.toolModel, this.pickSkin);
   }
 
   /** Equipped mining tool (request #16): swap the viewmodel; the starter pickaxe keeps its skin. */
@@ -163,7 +163,7 @@ export class Mines3D {
     if (id === this.toolId) return; this.toolId = id;
     if (this.toolModel) { this.pick.remove(this.toolModel); this.toolModel = null; }
     const m = buildMineTool(id); this.pickModel.visible = !m;
-    if (m) { m.position.copy(this.pickModel.position); m.rotation.copy(this.pickModel.rotation); this.pick.add(m); this.toolModel = m; }
+    if (m) { skinMineTool(m, this.pickSkin); m.position.copy(this.pickModel.position); m.rotation.copy(this.pickModel.rotation); this.pick.add(m); this.toolModel = m; }
   }
 
   burstAt(node: number, big: boolean) {

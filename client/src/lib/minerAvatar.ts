@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { addRim, lowDetail, rbox } from './charLook';
 import { applyPickSkin, skinnedPickaxe } from './pickaxeModel';
-import { buildMineTool, animateMineTool } from './mineToolModels';
+import { buildMineTool, animateMineTool, skinMineTool } from './mineToolModels';
 import type { MineToolId } from '../../../shared/mineTools';
 
 /** Low-poly miner avatar for other players in Mines. Faces local +X. Shared geometries/materials across all miners. */
@@ -76,10 +76,10 @@ export function setMinerTool(r: MinerRig, tool: MineToolId | undefined) {
   const id = tool ?? 'pickaxe'; if (r.tool === id) return; r.tool = id;
   if (r.toolModel) { r.armR.remove(r.toolModel); r.toolModel = null; }
   const m = buildMineTool(id); r.pick.visible = !m;
-  if (m) { m.position.copy(r.pick.position); m.rotation.copy(r.pick.rotation); m.scale.setScalar(0.95); r.armR.add(m); r.toolModel = m; }
+  if (m) { skinMineTool(m, r.skin); m.position.copy(r.pick.position); m.rotation.copy(r.pick.rotation); m.scale.setScalar(0.95); r.armR.add(m); r.toolModel = m; }
 }
 
-export function setMinerSkin(r: MinerRig, skin: string | null) { if (r.skin !== skin) { r.skin = skin; applyPickSkin(r.pick, skin); } }
+export function setMinerSkin(r: MinerRig, skin: string | null) { if (r.skin !== skin) { r.skin = skin; applyPickSkin(r.pick, skin); if (r.toolModel) skinMineTool(r.toolModel, skin); } }
 
 /** Walk cycle from actual displacement; overhead swing when the server's last-hit stamp changes. */
 export function animateMiner(r: MinerRig, dt: number, sw: number) {
