@@ -110,8 +110,8 @@ describe('Coral Grotto', () => {
     // every ore node sits next to a reachable floor cell
     for (const n of CAVES.coral.nodes) { const cx = Math.floor(n.x / CELL), cy = Math.floor(n.y / CELL); expect([[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => seen.has(`${cx + dx!},${cy + dy!}`)), `node ${n.id}`).toBe(true); }
     for (const s of map.spawns) expect(inExit(s[0], s[1])).toBe(true);
-    const nv = (id: 'coral' | 'mine') => CAVES[id].nodes.reduce((a, n) => a + ORES[n.ore].price, 0) / CAVES[id].nodes.length; // pt1354u: real placed nodes, not the theoretical rate
-    expect(caveValueRate(CAVES.coral)).toBeGreaterThan(0); const ratio = nv('coral') / nv('mine'); console.log('[coral-payout]', ratio.toFixed(3));
+    const nv = (id: 'coral') => CAVES[id].nodes.reduce((a, n) => a + ORES[n.ore].price, 0) / CAVES[id].nodes.length; // pt1354u: real placed nodes, not the theoretical rate
+    expect(caveValueRate(CAVES.coral)).toBeGreaterThan(0); const ratio = nv('coral') / 7.297; // pt1379u: vs The Mine before request #25 cut its gold; nv('mine') now lower by design console.log('[coral-payout]', ratio.toFixed(3));
     expect(Math.abs(ratio - 1)).toBeLessThan(0.15);
   });
 });

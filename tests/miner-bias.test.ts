@@ -13,7 +13,7 @@ describe('miner gather bias (pt1350u)', () => {
     expect(Object.keys(MINER_BIAS.magma.ores).sort()).toEqual(['coal', 'copper']);
     expect(Object.keys(MINER_BIAS.frost.ores).sort()).toEqual(['gem', 'silver']);
     expect(Object.keys(MINER_BIAS.mine.ores).sort()).toEqual(['gold', 'iron', 'stone']);
-    for (const c of MINER_CAVES) { expect(share(c)).toBeGreaterThanOrEqual(0.8); expect(share(c)).toBeLessThanOrEqual(0.9); }
+    for (const c of MINER_CAVES) { expect(share(c)).toBeGreaterThanOrEqual(0.75); expect(share(c)).toBeLessThanOrEqual(0.9); }
   });
   it('gold is the lightest of the main Mine bias', () => {
     const b = MINER_BIAS.mine.ores; expect(b.gold!).toBeLessThan(b.iron!); expect(b.gold!).toBeLessThan(b.stone!);

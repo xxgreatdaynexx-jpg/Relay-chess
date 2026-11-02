@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T15:45:00-06:00', title: 'Mines: more iron, less gold', bullets: [
+    'Requested by chessguy2: iron was the hardest ore to come by. The Mine is now about 51% Iron Ore, 26% Stone and 10% Gold Ore (was 34%, 28% and 24%), with a little Copper Ore, Silver Ore and Crystal in the rest.',
+    'Iron Ore rocks respawn in 6 minutes (was 12m 30s), faster than Copper Ore, so iron is clearly common. Gold Ore stays at 30 minutes.',
+    'Frostbite Caverns (about 9% Iron Ore, was none) and Magma Depths (about 3%, was none) now have some iron among their other rocks. Hired miners bring back the same mix as the rocks. Coral Grotto is unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T15:24:00-06:00', title: 'Employment Office: workers now bring something in every 5 minutes', bullets: [
     'Every hired worker now brings in one item every 5 minutes, which is 288 a day on a full day.',
     'Miners were 1 ore every 10 minutes (144 a day), so they now bring in twice as much. Fishers were 1 fish an hour (24 a day), so they now bring in 12 times as much.',

@@ -14,7 +14,7 @@ export const ORES: Record<OreId, OreDef> = {
   stone:   { id: 'stone',   name: 'Stone',      hits: 2,  respawnMs: 150_000,  price: 0.1, color: '#8a8580', weight: 1, minDepth: 0, spawnWeight: 40 },
   coal:    { id: 'coal',    name: 'Coal',       hits: 3,  respawnMs: 250_000,  price: 1,   color: '#2b2b2e', weight: 1, minDepth: 0, spawnWeight: 22 },
   copper:  { id: 'copper',  name: 'Copper Ore', hits: 4,  respawnMs: 450_000,  price: 2,   color: '#c4733b', weight: 1, minDepth: 0, spawnWeight: 16 },
-  iron:    { id: 'iron',    name: 'Iron Ore',   hits: 5,  respawnMs: 750_000,  price: 4,   color: '#a98f7f', weight: 1, minDepth: 1, spawnWeight: 12 },
+  iron:    { id: 'iron',    name: 'Iron Ore',   hits: 5,  respawnMs: 360_000,  price: 4,   color: '#a98f7f', weight: 1, minDepth: 1, spawnWeight: 12 },
   silver:  { id: 'silver',  name: 'Silver Ore', hits: 6,  respawnMs: 1_200_000,  price: 8,   color: '#d5dbe2', weight: 1, minDepth: 1, spawnWeight: 7 },
   gold:    { id: 'gold',    name: 'Gold Ore',   hits: 7,  respawnMs: 1_800_000, price: 15,  color: '#f0c23a', weight: 1, minDepth: 2, spawnWeight: 5 },
   gem:     { id: 'gem',     name: 'Crystal',    hits: 9,  respawnMs: 3_000_000, price: 40,  color: '#b04df0', weight: 1, minDepth: 2, spawnWeight: 2.5 },
@@ -90,10 +90,10 @@ export type CaveId = 'mine' | 'frost' | 'magma' | 'coral';
 export interface CaveTheme { sky: string; fog: string; ambient: string; wall: string; floor: string; lamp: string; hazard: 'lava' | 'ice' | null }
 export interface CaveDef { id: CaveId; name: string; blurb: string; rows: string[]; depthX: number[]; bias: Partial<Record<OreId, number>>; /** signature ores allowed from the first section on (ignore minDepth) */ anyDepth?: OreId[]; density: number; theme: CaveTheme }
 export const CAVE_DEFS: CaveDef[] = [
-  { id: 'mine', name: 'The Mine', blurb: 'The classic shaft: one long tunnel. Mostly Iron Ore, Stone & Gold Ore. Deeper is richer.', rows: ROWS, depthX: DEPTH_X, bias: { stone: 0.638, coal: 0.196, copper: 0.024, iron: 3.312, silver: 2.142, gold: 9, gem: 0.031, diamond: 0.643 }, density: 0.42,
+  { id: 'mine', name: 'The Mine', blurb: 'The classic shaft: one long tunnel. Mostly Iron Ore, Stone & Gold Ore. Deeper is richer.', rows: ROWS, depthX: DEPTH_X, bias: { stone: 1.184, coal: 0.013, copper: 0.733, iron: 11.173, silver: 1.55, gold: 6.959, gem: 2.862, diamond: 0.013 }, density: 0.42,
     theme: { sky: '#07070a', fog: '#0b0a0d', ambient: '#8a7a6a', wall: '#9a8f86', floor: '#6e6258', lamp: '#ff9a40', hazard: null } },
   { id: 'frost', name: 'Frostbite Caverns', anyDepth: ['silver'], blurb: 'Wide frozen halls and ice pillars. Mostly Silver Ore, with some Crystal.', depthX: [0, 12, 24, 36], density: 0.4,
-    bias: { stone: 2.653, coal: 0.022, copper: 0.061, iron: 0.011, silver: 24.102, gold: 0.018, gem: 0.311, diamond: 0.156 },
+    bias: { stone: 1.177, coal: 0.038, copper: 0.081, iron: 2.5, silver: 16.959, gold: 0.007, gem: 0.424, diamond: 0.063 },
     theme: { sky: '#060b14', fog: '#0a1626', ambient: '#8fb4d8', wall: '#9ec4dc', floor: '#c8dceb', lamp: '#8fd8ff', hazard: 'ice' },
     rows: [
       '##################################################',
@@ -110,7 +110,7 @@ export const CAVE_DEFS: CaveDef[] = [
       '##################################################',
     ] },
   { id: 'magma', name: 'Magma Depths', blurb: 'A winding, narrow lava tube with pools you can’t cross. Mostly Coal & Copper Ore.', depthX: [0, 12, 24, 36], density: 0.46,
-    bias: { stone: 0.051, coal: 2.721, copper: 4.444, iron: 0.017, silver: 0.837, gold: 1.649, gem: 0.661, diamond: 0.622 },
+    bias: { stone: 0.379, coal: 3.07, copper: 5.425, iron: 0.745, silver: 0.114, gold: 0.008, gem: 1.959, diamond: 1.394 },
     theme: { sky: '#120604', fog: '#1a0703', ambient: '#a86a4a', wall: '#5a3a32', floor: '#3a2622', lamp: '#ff6a20', hazard: 'lava' },
     rows: [
       '##################################################',
