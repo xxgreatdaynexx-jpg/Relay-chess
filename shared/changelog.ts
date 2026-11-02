@@ -6,7 +6,7 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-02T16:06:00-06:00', title: 'Factory: pantry crops feed your machines', bullets: [
+  { commit: '', at: '2026-11-02T15:55:00-06:00', title: 'Factory: pantry crops feed your machines', bullets: [
     'Crops you harvested to the pantry now go into a factory Input Chest set to that crop, so pantry sunflowers feed the Mill & Press and come out as Sunflower Oil.',
     'Pantry food in factory Storage is now labelled "pantry" instead of "craft". It is never sold to the house; cook it, sell it on the Market, or feed crops to the factory.',
   ] },
