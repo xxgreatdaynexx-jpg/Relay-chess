@@ -6,7 +6,7 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-02T16:50:00-06:00', title: 'Farm: ripe crops last much longer before withering', bullets: [
+  { commit: '', at: '2026-11-02T16:52:00-06:00', title: 'Farm: ripe crops last much longer before withering', bullets: [
     'Requested by carter2: ripe crops now stay harvestable for at least 36 hours, or 3x their grow time if that is longer (it was 12 hours or 2x grow time). Sunflowers and Cacao now last 36 hours instead of 24.',
     'Crops already in the ground get the longer window too, and the Greenhouse still adds on top. Grow times, yields and the daily farm limit are unchanged.',
   ] },
