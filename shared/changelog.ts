@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T01:35:00-06:00', title: 'Frostbite Caverns: ice pillar no longer pinches a tunnel', bullets: [
+    'An ice pillar in Frostbite Caverns sat in a narrow gap and forced a detour. It has moved into the open hall, so the gap is walkable again.',
+  ] },
   { commit: '', at: '2026-11-02T01:25:00-06:00', title: 'Mines: buy faster mining tools in the new Tool Shop', bullets: [
     'Requested by Liam: a 🛠️ Tool Shop in the Mines sidebar sells five upgrades over the starter pickaxe, bought in order and kept forever. At base prices: Steel Pickaxe 2,500 (10% faster), Hand Drill 10,000 (20% faster), Power Drill 30,000 (28% faster, +2% extra ore), Jackhammer 75,000 (36% faster, +3% extra ore), Plasma Cutter 200,000 (44% faster, +5% extra ore).',
     'Tools stack with your Mining level, but a swing is never faster than 40% of the base time, and the extra-ore chance tops out at 20% total. Key and chest drops are unchanged.',

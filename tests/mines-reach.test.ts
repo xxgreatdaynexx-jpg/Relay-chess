@@ -56,7 +56,7 @@ describe('switching caves on one socket', () => {
 });
 
 // r18: the flood fill above only proved every node/EXIT is reachable by SOME route, so a lava pool that fully
-// severed a corridor (Magma had three) still passed while players hit a dead end. These two checks close that gap.
+// severed a corridor (Magma had four, Frostbite one ice pillar) still passed while players hit a dead end. These two checks close that gap.
 const isHaz = (c: string) => c === '~';
 const isFloor = (c: string) => c !== '#' && c !== '~';
 describe('hazards never sever a passage', () => {
@@ -70,8 +70,7 @@ describe('hazards never sever a passage', () => {
         expect(missing, `${cave} cells cut off from spawn ${sx},${sy}`).toEqual([]);
       }
     });
-    // Lava caves only: Frostbite's ice pillar at 31,3 makes a 6-cell detour by design (flagged in r18, not changed).
-    if (CAVES[cave].theme.hazard === 'lava') it(`${cave}: walking around each hazard pool is a short detour (no pool blocks a corridor)`, () => {
+    it(`${cave}: walking around each hazard pool is a short detour (no pool blocks a corridor)`, () => {
       const { rows } = CAVES[cave]; const H = rows.length, W = rows[0].length;
       const at = (x: number, y: number) => (y < 0 || y >= H || x < 0 || x >= W ? '#' : rows[y][x]);
       const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
