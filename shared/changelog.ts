@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T01:15:00-06:00', title: 'Farm district: solid fields again', bullets: [
+    'Fixed: farm plots east of the city showed as thin outlines that flickered. The grass was drawing over the soil; now every plot shows solid soil with its furrow rows and crops on top.',
+  ] },
   { commit: '', at: '2026-11-02T01:15:00-06:00', title: 'City Hall: weekly mayor elections', bullets: [
     'Requested by Liam: a new City Hall stands in the middle of town. Every week Chudhub elects a mayor (Alberta time): file Monday to Thursday, vote Friday and Saturday, results Sunday, and the winner serves Monday to Sunday.',
     'Running costs 2,500 chips (burned, not refunded) plus a short slogan. One vote per account; your account must be a day old and have played a few games. Ties go to whoever filed first.',

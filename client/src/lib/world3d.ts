@@ -571,18 +571,21 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // barns and silos. Crops on owned plots come from /api/farm (setFarm). Toned-down night palette, a little warm glow.
   const farmTiles = new Map<string, number>(); // plot id -> first index into the crop instanced mesh
   const crops = (() => {
-    const apron = new THREE.Mesh(geo(new THREE.BoxGeometry(FARM_X1 - FARM_X0, 3, FARM_Z1 - FARM_Z0)), [mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a8a40, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, emissive: 0x0d3412, emissiveIntensity: 0.6 }), mat({ color: 0x2a1c12 }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c })]);
-    apron.position.set((FARM_X0 + FARM_X1) / 2, -1.5, (FARM_Z0 + FARM_Z1) / 2); scene.add(apron);
+    const apron = new THREE.Mesh(geo(new THREE.BoxGeometry(FARM_X1 - FARM_X0, 3, FARM_Z1 - FARM_Z0)), [mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a8a40, roughness: 1, emissive: 0x0d3412, emissiveIntensity: 0.6 }), mat({ color: 0x2a1c12 }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c })]);
+    // Bug 12:28 AM: the grass top used a negative polygonOffset, which at the low camera angle pulled it in front of
+    // the 0.14-high soil plots and furrows (only fence rails showed: wireframe-looking, z-fighting fields). The top now
+    // sits a hair below y=0 with no offset, so the solid soil/furrows/crops always win the depth test.
+    apron.position.set((FARM_X0 + FARM_X1) / 2, -1.5 - 0.02, (FARM_Z0 + FARM_Z1) / 2); scene.add(apron);
     const dirt = mat({ color: 0x6a5038, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     for (const ln of FARM_LANES) { const [a, b] = [ln[0], ln[ln.length - 1]]; const m = new THREE.Mesh(geo(new THREE.BoxGeometry(FARM_LANE_W, 0.04, Math.abs(b[1] - a[1]))), dirt); m.position.set(a[0], 0.03, (a[1] + b[1]) / 2); scene.add(m); }
     const plots = farmPlots(); const d = new THREE.Object3D();
-    const soil = new THREE.InstancedMesh(unitBox, mat({ color: 0x5a3e28, roughness: 1 }), plots.length);
+    const soil = new THREE.InstancedMesh(unitBox, mat({ color: 0x5a3e28, roughness: 1, emissive: 0x1a1008, emissiveIntensity: 0.5 }), plots.length);
     plots.forEach((p, i) => { d.position.set(p.x, 0.07, p.z); d.scale.set(p.w - 0.8, 0.14, p.d - 0.8); d.rotation.set(0, 0, 0); d.updateMatrix(); soil.setMatrixAt(i, d.matrix); });
     soil.userData.props = plots.map((p) => plotId(p.n)); pickables.push(soil); scene.add(soil);
     plots.forEach((p) => propTop.set(plotId(p.n), [p.x, 0.6, p.z]));
     // furrows: a faint darker stripe per tile row
     const nf = plots.reduce((a, p) => a + p.rows, 0); const fur = new THREE.InstancedMesh(unitBox, mat({ color: 0x3e2a1a, roughness: 1 }), nf); let k = 0;
-    for (const p of plots) for (let r = 0; r < p.rows; r++) { d.position.set(p.x, 0.15, p.z - (p.rows * TILE) / 2 + TILE * (r + 0.5)); d.scale.set(p.cols * TILE - 0.3, 0.03, 0.7); d.updateMatrix(); fur.setMatrixAt(k++, d.matrix); }
+    for (const p of plots) for (let r = 0; r < p.rows; r++) { d.position.set(p.x, 0.165, p.z - (p.rows * TILE) / 2 + TILE * (r + 0.5)); d.scale.set(p.cols * TILE - 0.3, 0.03, 0.7); d.updateMatrix(); fur.setMatrixAt(k++, d.matrix); }
     scene.add(fur);
     // fences: two rails per side + corner posts
     const rails = new THREE.InstancedMesh(unitBox, mat({ color: 0x8a6a48, roughness: 0.9 }), plots.length * 8); const posts = new THREE.InstancedMesh(unitBox, mat({ color: 0x6a4e34 }), plots.length * 4); k = 0; let q = 0;
