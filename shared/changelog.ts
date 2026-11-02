@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T15:20:00-06:00', title: 'Stock Exchange: funds show their daily % change', bullets: [
+    'The Funds table has a new Day % column: how much each fund\'s NAV moved over the last 24 hours, green when up and red when down — same as the 24h column on stocks.',
+    'Opening a fund shows its NAV and today\'s change too. Display only: NAV, fees, dividends and trading are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T14:38:00-06:00', title: 'Factory: machines hold just one finished item', bullets: [
     'Every factory machine now holds at most one finished craft. Once it has one ready, it stops and waits ("backed up") until a belt, inserter or chest takes it, then starts the next one.',
     'The machine panel shows output as e.g. "0/1 ready", and says "backed up — waiting for pickup" while it is full.',

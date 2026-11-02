@@ -61,6 +61,8 @@ export class Derivatives {
   private comp(t: unknown): Company { const c = typeof t === 'string' ? COMPANY_BY_TICKER.get(t) : undefined; if (!c) throw new StockError('Unknown company.'); return c; }
   private fund(id: unknown): Fund { const f = typeof id === 'string' ? FUND_BY_ID.get(id) : undefined; if (!f) throw new StockError('Unknown fund.'); return f; }
   nav(f: Fund) { return navOf(f, this.price); }
+  /** Display only: NAV change vs the NAV from the same rolling-24h prices the stock table's 24h column uses. */
+  dayPct(f: Fund) { const prev = navOf(f, (t) => this.ex.prev24.get(t) ?? null); return prev > 0 ? Math.round(((this.nav(f) - prev) / prev) * 10000) / 100 : 0; }
 
   /** Run `body` in one transaction with the wallet moves (memory mode: just run it). Skip = nothing happens, quietly. */
   private async atomic<T>(moves: Move[], body: (cl: Cl | null) => Promise<T>): Promise<T> {
@@ -110,7 +112,7 @@ export class Derivatives {
 
   // ---------- reads ----------
   funds() {
-    return FUNDS.map((f) => ({ id: f.id, name: f.name, kind: f.kind, blurb: f.blurb, fee: f.fee, expense: f.expense, nav: this.nav(f), divPerUnit: r2(fundDivPerUnit(f, this.price) * 10000) / 10000, yield: fundYield(f, this.price),
+    return FUNDS.map((f) => ({ id: f.id, name: f.name, kind: f.kind, blurb: f.blurb, fee: f.fee, expense: f.expense, nav: this.nav(f), dayPct: this.dayPct(f), divPerUnit: r2(fundDivPerUnit(f, this.price) * 10000) / 10000, yield: fundYield(f, this.price),
       holdings: f.weights.map(([t, w]) => ({ ticker: t, name: COMPANY_BY_TICKER.get(t)!.name, weight: Math.round(w * 10000) / 100, price: this.price(t) })) }));
   }
   async fundPositions(name: string): Promise<FundPos[]> {

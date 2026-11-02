@@ -199,7 +199,7 @@ const say = (set: (m: { ok: boolean; t: string } | null) => void) => (r: { ok: b
 const Msg = ({ m }: { m: { ok: boolean; t: string } | null }) => (m ? <p className={`mt-1 text-xs ${m.ok ? 'text-emerald-400' : 'text-rose-400'}`} data-testid="stk-msg">{m.t}</p> : null);
 const Card = ({ k, v, title, cls }: { k: string; v: React.ReactNode; title?: string; cls?: string }) => <div className="rounded bg-white/5 p-2" title={title}><div className="opacity-60">{k}</div><b className={cls}>{v}</b></div>;
 
-interface FundRow { id: string; name: string; kind: 'index' | 'mutual'; blurb: string; fee: number; expense: number; nav: number; yield: number; holdings: Array<{ ticker: string; weight: number }> }
+interface FundRow { id: string; name: string; kind: 'index' | 'mutual'; blurb: string; fee: number; expense: number; nav: number; dayPct?: number; yield: number; holdings: Array<{ ticker: string; weight: number }> }
 export function FundsView({ onTraded }: { onTraded: () => void }) {
   const account = useAccount(); const [fs, setFs] = useState<FundRow[] | null>(null); const [sel, setSel] = useState<string | null>(null);
   const [units, setUnits] = useState('1'); const [m, setM] = useState<{ ok: boolean; t: string } | null>(null); const { busy, run } = useMoneyAction(); /* QA r12: lock + spinner set synchronously on click, held for the whole request */ const [mine, setMine] = useState<Record<string, number>>({});
@@ -211,12 +211,13 @@ export function FundsView({ onTraded }: { onTraded: () => void }) {
   return (
     <div data-testid="stk-funds">
       <p className="mb-2 text-xs opacity-70">Funds hold a basket of companies. <b>Index funds</b>: {0.25}% fee, no ongoing cost. <b>Mutual funds</b>: actively picked, 0.5% fee plus a daily expense ratio (taken from your units and burned). Dividends of the companies inside are passed through daily. Max 🪙 {n(FUND_MAX_ORDER)} per order.</p>
-      <table className="w-full text-[12px] tabular-nums"><thead className="opacity-70"><tr><th className="text-left">Fund</th><th className="text-left">Type</th><th className="text-right">NAV</th><th className="text-right">Div/day</th><th className="text-right">Fee · expense/day</th><th className="text-right">You own</th></tr></thead>
+      <table className="w-full text-[12px] tabular-nums"><thead className="opacity-70"><tr><th className="text-left">Fund</th><th className="text-left">Type</th><th className="text-right">NAV</th><th className="text-right" title="NAV change over the last 24 hours">Day %</th><th className="text-right">Div/day</th><th className="text-right">Fee · expense/day</th><th className="text-right">You own</th></tr></thead>
         <tbody>{fs.map((f) => <tr key={f.id} className={`cursor-pointer border-t border-white/5 hover:bg-white/5 ${sel === f.id ? 'bg-white/10' : ''}`} onClick={() => setSel(sel === f.id ? null : f.id)} data-testid={`stk-fund-${f.id}`}>
-          <td><b>{f.id}</b> <span className="opacity-70">{f.name}</span></td><td>{f.kind === 'index' ? 'Index' : 'Mutual'}</td><td className="text-right">{f.nav.toFixed(2)}</td><td className="text-right">{(f.yield * 100).toFixed(3)}%</td><td className="text-right">{(f.fee * 100).toFixed(2)}% · {f.expense ? `${(f.expense * 100).toFixed(2)}%` : '—'}</td><td className="text-right">{mine[f.id] ? mine[f.id]!.toFixed(2) : '—'}</td></tr>)}</tbody></table>
+          <td><b>{f.id}</b> <span className="opacity-70">{f.name}</span></td><td>{f.kind === 'index' ? 'Index' : 'Mutual'}</td><td className="text-right">{f.nav.toFixed(2)}</td><td className={`text-right ${tone(f.dayPct ?? 0)}`} data-testid={`stk-fund-day-${f.id}`}>{(f.dayPct ?? 0) >= 0 ? '+' : ''}{(f.dayPct ?? 0).toFixed(2)}%</td><td className="text-right">{(f.yield * 100).toFixed(3)}%</td><td className="text-right">{(f.fee * 100).toFixed(2)}% · {f.expense ? `${(f.expense * 100).toFixed(2)}%` : '—'}</td><td className="text-right">{mine[f.id] ? mine[f.id]!.toFixed(2) : '—'}</td></tr>)}</tbody></table>
       {sel && (() => { const f = fs.find((x) => x.id === sel)!; return (
         <div className="mt-2 rounded bg-white/5 p-2" data-testid="stk-fund-detail">
           <p className="text-xs"><b>{f.name}</b>: {f.blurb}</p>
+          <p className="mt-1 text-xs" data-testid="stk-fund-detail-day">NAV {f.nav.toFixed(2)} · <span className={tone(f.dayPct ?? 0)}>{(f.dayPct ?? 0) >= 0 ? '+' : ''}{(f.dayPct ?? 0).toFixed(2)}% today (24h)</span></p>
           <p className="mt-1 text-[11px] opacity-70">{f.holdings.length} holdings: {f.holdings.slice(0, 15).map((h) => `${h.ticker} ${h.weight}%`).join(' · ')}{f.holdings.length > 15 ? ' …' : ''}</p>
           {!account ? <p className="text-xs opacity-70">Sign in to trade.</p> : (
             <div className="mt-2 flex flex-wrap items-center gap-2">
