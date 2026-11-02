@@ -14,7 +14,7 @@ import { usePanelDrag } from '@/lib/panelDrag';
 
 export type MarketTab = 'skins' | 'resources';
 export type SkinsSub = 'listings' | 'sell' | 'trades';
-export interface OpenMarket { tab?: MarketTab; sub?: SkinsSub; item?: string; stack?: string }
+export interface OpenMarket { tab?: MarketTab; sub?: SkinsSub; item?: string; stack?: string; /** Inventory the player came from; ← Back returns there (else to the city). */ from?: 'skins' | 'resources' }
 const EV = 'chud:open-market';
 /** Open the Market tab from anywhere (Inventory "Sell on Market", Factory "Sell on Market", the hub). */
 export function openMarket(o: OpenMarket = {}) { window.dispatchEvent(new CustomEvent<OpenMarket>(EV, { detail: o })); }
@@ -26,14 +26,15 @@ export function MarketPage() {
   useDoing('market', null, open);
   const [hist, setHist] = useState(false);
   const [tab, setTab] = useState<MarketTab>(() => (window.location.hash === '#market-resources' ? 'resources' : 'skins'));
-  const [sub, setSub] = useState<SkinsSub>('listings'); const [item, setItem] = useState<string | null>(null); const [stack, setStack] = useState<string | null>(null);
+  const [sub, setSub] = useState<SkinsSub>('listings'); const [item, setItem] = useState<string | null>(null); const [stack, setStack] = useState<string | null>(null); const [from, setFrom] = useState<'skins' | 'resources' | null>(null);
   useEffect(() => {
-    const on = (e: Event) => { const d = (e as CustomEvent<OpenMarket>).detail ?? {}; setOpen(true); setHist(false); if (d.tab) setTab(d.tab); if (d.sub) setSub(d.sub); setItem(d.item ?? null); setStack(d.stack ?? null); };
+    const on = (e: Event) => { const d = (e as CustomEvent<OpenMarket>).detail ?? {}; setOpen(true); setHist(false); if (d.tab) setTab(d.tab); if (d.sub) setSub(d.sub); setItem(d.item ?? null); setStack(d.stack ?? null); setFrom(d.from ?? null); };
     const pop = () => { if (atMarket()) setOpen(true); };
     window.addEventListener(EV, on); window.addEventListener('popstate', pop); window.addEventListener('hashchange', pop);
     return () => { window.removeEventListener(EV, on); window.removeEventListener('popstate', pop); window.removeEventListener('hashchange', pop); };
   }, []);
   const close = () => { setOpen(false); if (window.location.pathname === '/market' || window.location.hash.startsWith('#market')) history.replaceState(history.state, '', '/'); };
+  const back = () => { const f = from; close(); setFrom(null); if (f === 'skins') window.dispatchEvent(new CustomEvent('open-inventory', { detail: { tab: 'inv' } })); else if (f === 'resources') window.dispatchEvent(new Event('open-resource-inventory')); };
   return (
     <div data-testid="market-page">
       <TopTab id="market"><button type="button" className="sol-tab" aria-expanded={open} id="market-tab" onClick={() => (open ? close() : setOpen(true))} data-testid="market-tab">{open ? '▴ Market' : '🏪 Market'}</button></TopTab>
@@ -41,6 +42,7 @@ export function MarketPage() {
         <div className="inv-backdrop" {...backdropDismiss(() => close())}>
           <div className="inv-win mkt-win" role="dialog" aria-label="Market" data-drag-panel="market" onPointerDown={dragMarket.onPointerDown} style={dragMarket.style()} ref={dragMarket.ref}>{dragMarket.handle}
             <header className="inv-head">
+              <button type="button" className="mkt-back" onClick={back} aria-label={from === 'skins' ? 'Back to Skin Inventory' : from === 'resources' ? 'Back to Resource Inventory' : 'Back to the city'} data-testid="mkt-back">← Back<span className="mkt-back-to">{from === 'skins' ? ' to Skin Inventory' : from === 'resources' ? ' to Resource Inventory' : ' to city'}</span></button>
               <h2>🏪 Market</h2>
               <nav className="inv-tabs" role="tablist">
                 {([['skins', '🎨 Skins'], ['resources', '⛏ Resources']] as const).map(([k, t]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => { setTab(k); setHist(false); }} data-testid={`mkt-tab-${k}`}>{t}</button>)}

@@ -2072,3 +2072,51 @@ html.xmas .top-menu-btn::before { content: '🎄 '; }
 .frs-rec i.frs-hit { color: #ffd46b; font-weight: 600; }
 .frs-rec small { opacity: .6; }
 .frs-mach { font-size: 11px; opacity: .7; }
+
+/* Market → Resources: storage grid + sell card + my listings; Resource Inventory window */
+.msell { margin-top: 10px; }
+.msell-h { font-size: 14px; margin: 10px 0 6px; display: flex; gap: 6px; align-items: baseline; }
+.msell-h small { opacity: .6; font-weight: 400; font-size: 11px; }
+.msell-grid, .res-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; }
+.msell-tile, .res-tile { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 8px 4px 6px; border-radius: 8px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); color: inherit; font-size: 11px; text-align: center; cursor: pointer; }
+.msell-tile:hover { background: rgba(255,255,255,.09); }
+.msell-tile.on { border-color: #7cf; background: rgba(124,204,255,.15); }
+.msell-qty { position: absolute; top: 3px; right: 6px; font-size: 11px; color: #ffd46b; }
+.msell-name, .res-tile span { font-weight: 600; font-size: 12px; line-height: 1.2; }
+.msell-tile small { opacity: .65; }
+.msell-card { margin: 10px 0; padding: 12px; border-radius: 10px; background: rgba(0,0,0,.28); border: 1px solid rgba(124,204,255,.35); max-width: 520px; }
+.msell-card-h { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+.msell-card-h div { display: flex; flex-direction: column; }
+.msell-card-h small { opacity: .65; }
+.msell-x { margin-left: auto; }
+.msell-l { display: block; font-size: 11px; opacity: .7; margin: 8px 0 3px; }
+.msell-qrow { display: flex; gap: 8px; align-items: center; }
+.msell-qrow input[type=range] { flex: 1; }
+.msell-qrow input[type=number], .msell-unit { width: 100px; padding: 4px 6px; }
+.msell-btns { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.msell-btns button { padding: 3px 9px; border-radius: 12px; font-size: 12px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.15); }
+.msell-btns button:disabled { opacity: .4; }
+.msell-get { margin: 10px 0 2px; font-size: 14px; }
+.msell-get b { color: #8f8; }
+.msell-cmp { font-size: 12px; opacity: .8; margin: 0; }
+.msell-cmp .up { color: #8f8; } .msell-cmp .down { color: #f99; }
+.msell-list { display: block; width: 100%; margin-top: 10px; padding: 10px; font-size: 15px; font-weight: 700; border-radius: 8px; background: linear-gradient(#4f8f3a, #366a26); color: #fff; }
+.msell-list:disabled { opacity: .5; }
+.msell-mine { display: flex; flex-direction: column; gap: 4px; }
+.msell-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 4px 6px; border-radius: 6px; background: rgba(255,255,255,.04); font-size: 13px; }
+.msell-row button { margin-left: auto; }
+.res-win { height: min(640px, 92vh); }
+.res-filters { display: flex; flex-wrap: wrap; gap: 5px; padding: 8px 12px; }
+.res-filters input { flex: 1 1 140px; padding: 4px 8px; }
+.res-filters button { padding: 3px 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,.15); background: transparent; color: inherit; }
+.res-filters button.on { background: rgba(124,204,255,.18); border-color: #7cf; }
+.res-grid { padding: 0 12px 12px; overflow-y: auto; align-content: start; }
+.res-tile { cursor: default; }
+.res-tile button { margin-top: 4px; font-size: 11px; padding: 2px 8px; border-radius: 10px; background: rgba(124,204,255,.18); border: 1px solid #7cf; color: inherit; }
+@media (max-width: 520px) {
+  .msell-grid, .res-grid { grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); }
+  .msell-card { max-width: none; padding: 10px; }
+  .res-win { width: 100vw; height: 100dvh; border-radius: 0; }
+}
+.mkt-back { flex-shrink: 0; padding: 5px 12px; border-radius: 8px; font-weight: 700; background: rgba(124,204,255,.16); border: 1px solid #7cf; color: inherit; white-space: nowrap; }
+@media (max-width: 520px) { .mkt-back { padding: 6px 10px; } .mkt-back-to { display: none; } .mkt-win .inv-head { flex-wrap: wrap; row-gap: 6px; } .mkt-win .inv-head > h2 { flex: 1; } .mkt-win .inv-head > .inv-tabs { order: 5; flex-basis: 100%; } }

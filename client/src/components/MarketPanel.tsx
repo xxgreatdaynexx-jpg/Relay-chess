@@ -8,6 +8,7 @@ import { useAccount } from '@/lib/auth';
 import { RARITY_COLOR, RARITY_NAME, SKIN_BY_ID, WEAPON_NAME, isKnife, wearOf, type SkinItem } from '../../../shared/skins';
 import { Swatch, label, rarityOf } from './SkinsPanel';
 import { lockLeft } from '../../../shared/tradeLock';
+import { StorageSellPanel } from './ResourceSell';
 
 type Ack = { ok: boolean; error?: string; [k: string]: unknown };
 interface ListingView { id: string; price: number; seller: string; at: number; item: SkinItem }
@@ -133,7 +134,7 @@ export function MaterialsView({ initialSell }: { initialSell?: string | null } =
   const [rows, setRows] = useState<StackRow[]>([]); const [pack, setPack] = useState<Array<{ type: string; id: string; qty: number; name: string }>>([]);
   const [type, setType] = useState('all'); const [q, setQ] = useState(''); const [sort, setSort] = useState<SortKey>('name'); const [listed, setListed] = useState(false); const [page, setPage] = useState(0);
   const [qty, setQty] = useState<Record<string, string>>({});
-  const [pick, setPick] = useState<string | null>(initialSell ? `stack:${initialSell}` : null); const [sell, setSell] = useState(initialSell ?? ''); const [sq, setSq] = useState(''); const [su, setSu] = useState('');
+  const [pick, setPick] = useState<string | null>(initialSell ? `stack:${initialSell}` : null); const [sell, setSell] = useState(initialSell ?? '');
   const [err, setErr] = useState(''); const [msg, setMsg] = useState('');
   const load = useCallback(() => {
     setTick((t) => t + 1);
@@ -147,8 +148,6 @@ export function MaterialsView({ initialSell }: { initialSell?: string | null } =
   const cur = cat.find((e) => e.what === pick) ?? shown[0] ?? null;
   const here = cur ? rows.filter((r) => `stack:${r.type}:${r.itemId}` === cur.what) : [];
   const act = async (ev: string, body: object, ok: string) => { setErr(''); setMsg(''); const r = (await request(ev, body)) as Ack; if (!r.ok) setErr(r.error ?? 'Failed'); else { setMsg(ok); load(); } };
-  const s = pack.find((p) => `${p.type}:${p.id}` === sell); const n = Math.floor(Number(sq)), u = Math.floor(Number(su));
-  const fee = n > 0 && u > 0 ? Math.max(1, Math.ceil(n * u * 0.05)) : 0;
   const owns = cur ? pack.find((p) => `stack:${p.type}:${p.id}` === cur.what) : undefined;
   return (
     <div className="mkt-mats" data-testid="mkt-mats">
@@ -176,13 +175,7 @@ export function MaterialsView({ initialSell }: { initialSell?: string | null } =
         {account && owns && <button type="button" onClick={() => setSell(`${owns.type}:${owns.id}`)} data-testid="mkt-list-yours">List yours (×{owns.qty})</button>}
         <PriceChart what={cur.what} /><RecentSales what={cur.what} />
       </div>}
-      {account && <div className="mkt-sell">
-        <select value={sell} onChange={(e) => setSell(e.target.value)} data-testid="mkt-mat-pick"><option value="">Sell from storage…</option>{pack.map((p) => <option key={`${p.type}:${p.id}`} value={`${p.type}:${p.id}`}>{p.name} ×{p.qty}</option>)}</select>
-        <label>Qty <input type="number" min={1} max={s?.qty} value={sq} onChange={(e) => setSq(e.target.value)} style={{ width: 70 }} /></label>
-        <label>Unit price <input type="number" min={1} value={su} onChange={(e) => setSu(e.target.value)} style={{ width: 80 }} /></label>
-        {fee > 0 && <span>You get up to {chipsFmt(n * u - fee)} (fee {fee})</span>}
-        <button type="button" disabled={!s || !(n > 0) || !(u > 0)} onClick={() => s && void act('mkt_list_stack', { type: s.type, id: s.id, qty: n, unit: u }, `Listed ${n} ${s.name}.`)}>List</button>
-      </div>}
+      {account && <StorageSellPanel pack={pack} rows={rows} cat={cat} sell={sell} setSell={setSell} act={act} />}
       <p className="inv-note">Ore, bars and goods from the Mines. Buy any amount; sellers pay a 5% fee (burned). Listed items leave your storage until sold or cancelled.</p>
     </div>
   );

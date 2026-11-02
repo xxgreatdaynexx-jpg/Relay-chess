@@ -1,6 +1,7 @@
 import PlayerProfile from './components/PlayerProfile';
 import { useEffect, useRef, useState } from 'react';
 import { SkinsPanel } from '@/components/SkinsPanel';
+import { ResourceInventory } from '@/components/ResourceSell';
 import { HomeScreen } from '@/components/HomeScreen';
 import { LeaderboardScreen } from '@/components/Leaderboard';
 import { RoomScreen } from '@/components/RoomScreen';
@@ -215,6 +216,7 @@ export function App() {
         <StocksPage />
         <SkillsPanel />
         <SkinsPanel />
+        <ResourceInventory />
         <ConquestPanel />
       </div>
       <AccountPanel />

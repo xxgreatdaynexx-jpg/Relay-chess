@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 
 /** Slot order in the top bar. */
 export const TOP_TAB_ORDER = ['blackjack', 'roulette', 'poker', 'slots', 'solitaire', 'arena', 'mines', 'factory', 'market', 'stocks', 'skills'] as const;
-export type TopTabId = (typeof TOP_TAB_ORDER)[number] | 'account' | 'chat' | 'wallet' | 'inventory';
+export type TopTabId = (typeof TOP_TAB_ORDER)[number] | 'account' | 'chat' | 'wallet' | 'inventory' | 'resinv';
 
 /**
  * Pure layout for the priority+ bar: given each game tab's width (in order) and the room left for them,
@@ -125,6 +125,7 @@ export function TopTabs() {
       <div id="top-tab-wallet" className="top-tab-slot top-tab-wallet" />
       <div id="top-tab-chat" className="top-tab-slot top-tab-chat" />
       <div id="top-tab-inventory" className="top-tab-slot top-tab-inventory" />
+      <div id="top-tab-resinv" className="top-tab-slot top-tab-inventory top-tab-resinv" />
       <div id="top-tab-account" className="top-tab-slot top-tab-account" />
     </nav>
   );

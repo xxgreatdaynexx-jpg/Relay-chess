@@ -6,6 +6,13 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T13:05:00-06:00', title: 'Market: easier resource selling + Resource Inventory', bullets: [
+    'Market → Resources now shows "Your storage" as a grid of icon tiles with how many you have, the current lowest listing and the last sale. Tap one to open a sell card.',
+    'The sell card has a quantity slider with 25%, 50% and Max, a unit price prefilled to undercut the lowest listing by 1 (with Match lowest, Undercut and Last sale buttons), a clear "You receive X after the 5% fee" line and how your price compares to the house. A new My listings section lets you cancel your listings.',
+    'The top bar\'s Inventory is now two buttons: 🎒 Skin Inventory (your skins, as before) and 📦 Resource Inventory (ores, bars, goods, fish, crops and dishes with quantities and a Sell on Market button that opens the sell card).',
+    'The Market has a clear ← Back button: it takes you back to the Skin or Resource Inventory you came from, or to the city if you opened the Market directly.',
+    'Fees, prices and how listings work are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T12:50:00-06:00', title: 'Hired miners specialise by mine', bullets: [
     'Employment Office miners now bring back mostly their mine\'s signature ores: Magma Depths is mostly coal & copper, Frostbite mostly silver & crystal, and the main Mine mostly iron, rock & gold (gold the rarest of the three).',
     'About 60–65% of picks are those ores; the rest still come from the mine\'s normal mix. Items per hour, value per hour, wages and hire fees stay the same. The hire list shows each mine\'s bias.',
