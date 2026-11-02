@@ -11,8 +11,7 @@ import { socket } from '@/lib/net';
 import { flyHome } from '@/lib/travel';
 import { DeedPanel } from './WorldMap';
 import { FarmGame } from './FarmGame';
-import { FishPanPanel as KitchenPanel } from './FishPanPanel';
-import { CookingHost } from './CookingPanels';
+import { CookingHost, openKitchen } from './CookingPanels';
 
 const chips = (n: number) => n.toLocaleString('en-US');
 let IDX = 1;
@@ -28,7 +27,6 @@ export function ResortMap() {
   const [loading, setLoading] = useState(true); const [tip, setTip] = useState<{ id: string; x: number; y: number } | null>(null);
   const [owned, setOwned] = useState<Map<string, OwnedProperty>>(new Map()); const ownedRef = useRef(owned); ownedRef.current = owned;
   const meRef = useRef(me); meRef.current = me;
-  const [kitchen, setKitchen] = useState<string | null>(null);
   const [deed, setDeed] = useState<string | null>(null); const [farm, setFarm] = useState<string | null>(null);
   const [casino, setCasino] = useState(false); const [floor, setFloor] = useState<string | null>(null); const [air, setAir] = useState(false); const [msg, setMsg] = useState<string | null>(null); const [list, setList] = useState(false);
 
@@ -69,7 +67,7 @@ export function ResortMap() {
   return (
     <div className="world resort" data-testid="resort-map">
       <canvas ref={canvasRef} className="world-canvas" data-testid="resort-canvas" />
-      <CookingHost />
+      <CookingHost me={me} />
       <div className="world-title"><span>CHUD</span> RESORT<small>beachfront · tap a spot</small></div>
       {loading && <div className="world-loading">Landing at Chud Resort…</div>}
       {spot && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#' + spot.color.toString(16).padStart(6, '0') }} data-testid="world-tip"><b>{spot.icon} {spot.label}</b><span>{spot.blurb}</span><em>Click to enter</em></div>}
@@ -78,8 +76,7 @@ export function ResortMap() {
         <button type="button" onClick={() => { setDeed(null); setFarm(null); setList(!list); }} data-testid="resort-deeds-btn">🏝 Resort real estate</button>
         <button type="button" onClick={() => void home()} data-testid="resort-fly-home">✈️ Fly home (free)</button>
       </div>
-      {kitchen && <Suspense fallback={<div className="world-loading">Opening the kitchen…</div>}><KitchenPanel me={me} home={kitchen} onClose={() => setKitchen(null)} /></Suspense>}
-      {deed && <DeedPanel id={deed} owned={owned} me={me} onKitchen={() => { setKitchen(baseProperty(deed)?.label ?? deed); setDeed(null); }} onClose={() => setDeed(null)} onFarm={() => { setFarm(deed); setDeed(null); }} />}
+      {deed && <DeedPanel id={deed} owned={owned} me={me} onKitchen={() => { openKitchen(baseProperty(deed)?.label ?? deed); setDeed(null); }} onClose={() => setDeed(null)} onFarm={() => { setFarm(deed); setDeed(null); }} />}
       {farm && <FarmGame id={farm} label={baseProperty(farm)?.label ?? 'Plantation'} onClose={() => setFarm(null)} />}
       {list && !deed && (
         <div className="world-deed world-deeds" data-testid="resort-deeds">

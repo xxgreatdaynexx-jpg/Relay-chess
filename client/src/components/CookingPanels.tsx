@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { request } from '@/lib/net';
+import { FishPanPanel } from './FishPanPanel';
 import { COOK_DAILY_MAX, RECIPES, STAPLES, STEPS, dishValue, ingInfo, needleAt, qualityLabel, type GroceryKind, type KitchenView, type Recipe, type StepSpec } from '../../../shared/cooking';
 
 const chips = (n: number) => n.toLocaleString('en-US');
@@ -74,9 +75,9 @@ function Stove({ cook, onDone }: { cook: Cook; onDone: (presses: number[]) => vo
 }
 
 /** Kitchen: open from any home you own. Pantry, recipe book (unlocks by Cooking level), the stove minigame and the fridge. */
-export function KitchenPanel({ onClose, onGrocery }: { onClose: () => void; onGrocery: () => void }) {
+export function KitchenPanel({ me, home, onClose, onGrocery }: { me: string | null; home: string; onClose: () => void; onGrocery: () => void }) {
   const { s, err, load } = useKitchen(); const [cook, setCook] = useState<Cook | null>(null); const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);
-  const [tab, setTab] = useState<'book' | 'fridge'>('book');
+  const [tab, setTab] = useState<'book' | 'fridge' | 'fish'>('book');
   const v = s?.state; const idx = v?.index ?? 1;
   const start = async (r: Recipe) => {
     if (busy) return; setBusy(r.id); setMsg(null);
@@ -100,6 +101,7 @@ export function KitchenPanel({ onClose, onGrocery }: { onClose: () => void; onGr
     setBusy(null); setMsg(r.ok ? `🍽️ Sold ${r.sold} dish${r.sold === 1 ? '' : 'es'} for 🪙 ${chips(r.paid ?? 0)}.` : r.error ?? 'Could not sell.'); load();
   };
   const left = v ? Math.max(0, Math.floor(COOK_DAILY_MAX * idx) - v.today.paid) : 0;
+  if (tab === 'fish') return <FishPanPanel me={me} home={home} onClose={() => { setTab('book'); load(); }} />;
   return (
     <div className="world-deed world-venue kitchen-panel" data-testid="venue-kitchen">
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
@@ -108,10 +110,11 @@ export function KitchenPanel({ onClose, onGrocery }: { onClose: () => void; onGr
         <div className="k-counter"><span>🔪</span><span>🥖</span><span className="k-pot">🍲<i>♨</i></span><span>🪴</span></div>
       </div>
       <h3>🍳 Kitchen {v && <small>Cooking lvl {v.level}</small>}</h3>
+      <small className="opacity-70" data-testid="kitchen-home">{home}</small>
       {err && <small className="text-rose-300">{err}</small>}
       {v && !v.hasHome && <small className="text-amber-300" data-testid="kitchen-nohome">You need a home to cook: any property, farmhouse or your Trailer Park trailer.</small>}
       {cook ? <Stove cook={cook} onDone={(p) => void finish(p)} /> : <>
-        <div className="kitchen-tabs"><button type="button" aria-pressed={tab === 'book'} onClick={() => setTab('book')}>📖 Recipes</button><button type="button" aria-pressed={tab === 'fridge'} onClick={() => setTab('fridge')} data-testid="kitchen-fridge-tab">🧊 Fridge ({v?.dishes.length ?? 0})</button><button type="button" onClick={onGrocery} data-testid="kitchen-grocery">🛒 Grocery Store</button></div>
+        <div className="kitchen-tabs"><button type="button" aria-pressed={tab === 'book'} onClick={() => setTab('book')}>📖 Recipes</button><button type="button" aria-pressed={tab === 'fridge'} onClick={() => setTab('fridge')} data-testid="kitchen-fridge-tab">🧊 Fridge ({v?.dishes.length ?? 0})</button><button type="button" onClick={() => setTab('fish')} data-testid="kitchen-fishpan-tab">🐟 Pan-fry a fish</button><button type="button" onClick={onGrocery} data-testid="kitchen-grocery">🛒 Grocery Store</button></div>
         {tab === 'book' ? <ul className="kitchen-book" data-testid="kitchen-book">{RECIPES.map((r) => {
           const locked = !v || v.level < r.level; const ok = !!v && Object.entries(r.ings).every(([id, n]) => have(v, id) >= n);
           return <li key={r.id} className={locked ? 'locked' : ''}><span className="k-emoji">{locked ? '🔒' : r.emoji}</span><div><b>{r.label}</b> <small>lvl {r.level} · ~🪙 {chips(Math.floor(dishValue(r, 0.8) * idx))}</small>
@@ -119,7 +122,7 @@ export function KitchenPanel({ onClose, onGrocery }: { onClose: () => void; onGr
             {!locked && <button type="button" disabled={!!busy || !ok || !v?.hasHome} aria-busy={busy === r.id} onClick={() => void start(r)} data-testid={`cook-${r.id}`}>{busy === r.id ? '…' : 'Cook'}</button>}</li>; })}</ul>
           : <div className="kitchen-fridge" data-testid="kitchen-fridge">{v?.dishes.length ? <ul>{v.dishes.map((d) => { const r = RECIPES.find((x) => x.id === d.recipe); return <li key={d.id}>{r?.emoji} {r?.label} <small>{qualityLabel(d.quality)} · 🪙 {chips(Math.floor(d.value * idx))}</small></li>; })}</ul> : <small>Nothing in the fridge yet — cook something!</small>}
             <button type="button" disabled={!!busy || !v?.dishes.length} aria-busy={busy === 'sell'} onClick={() => void sell()} data-testid="kitchen-sell">{busy === 'sell' ? 'Selling…' : 'Sell all dishes'}</button>
-            <small className="opacity-70">Today: 🪙 {chips(v?.today.paid ?? 0)} earned · daily cap ~🪙 {chips(Math.floor(COOK_DAILY_MAX * idx))} (full price for the first 500, then half, then a tenth){left === 0 && v?.today.paid ? ' · cap reached' : ''}</small></div>}
+            <small className="opacity-70">Today: 🪙 {chips(v?.today.paid ?? 0)} earned · daily cap ~🪙 {chips(Math.floor(COOK_DAILY_MAX * idx))} (shared by recipe and pan-fried fish dishes: full price for the first 500, then half, then a tenth){left === 0 && v?.today.paid ? ' · cap reached' : ''}</small></div>}
       </>}
       {msg && <small role="status" data-testid="kitchen-msg">{msg}</small>}
       <small className="opacity-60">Fish come from your cooler, crops from your farm (harvest “to pantry”), staples from the Grocery Store. Low Cooking level = more burnt dishes.</small>
@@ -128,10 +131,15 @@ export function KitchenPanel({ onClose, onGrocery }: { onClose: () => void; onGr
 }
 
 /** Mounted once per map: opens the Kitchen / Grocery Store when anything fires OPEN_KITCHEN / OPEN_GROCERY. */
-export function CookingHost() {
-  const [open, setOpen] = useState<null | 'kitchen' | 'grocery'>(null);
-  useEffect(() => { const k = () => setOpen('kitchen'), g = () => setOpen('grocery'); window.addEventListener(OPEN_KITCHEN, k); window.addEventListener(OPEN_GROCERY, g); return () => { window.removeEventListener(OPEN_KITCHEN, k); window.removeEventListener(OPEN_GROCERY, g); }; }, []);
-  if (open === 'kitchen') return <KitchenPanel onClose={() => setOpen(null)} onGrocery={() => setOpen('grocery')} />;
+export function CookingHost({ me }: { me: string | null }) {
+  const [open, setOpen] = useState<null | 'kitchen' | 'grocery'>(null); const [home, setHome] = useState('Your home');
+  useEffect(() => {
+    const k = (e: Event) => { const d = (e as CustomEvent<string | undefined>).detail; if (typeof d === 'string' && d) setHome(d); setOpen('kitchen'); }, g = () => setOpen('grocery');
+    window.addEventListener(OPEN_KITCHEN, k); window.addEventListener(OPEN_GROCERY, g); return () => { window.removeEventListener(OPEN_KITCHEN, k); window.removeEventListener(OPEN_GROCERY, g); };
+  }, []);
+  if (open === 'kitchen') return <KitchenPanel me={me} home={home} onClose={() => setOpen(null)} onGrocery={() => setOpen('grocery')} />;
   if (open === 'grocery') return <GroceryPanel onClose={() => setOpen(null)} onKitchen={() => setOpen('kitchen')} />;
   return null;
 }
+/** Open the recipe kitchen (with the fish pan tab) for one of your homes. */
+export const openKitchen = (home: string) => window.dispatchEvent(new CustomEvent(OPEN_KITCHEN, { detail: home }));

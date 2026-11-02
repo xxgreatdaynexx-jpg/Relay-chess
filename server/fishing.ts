@@ -22,12 +22,14 @@ import {
   BITE_MAX_MS, BITE_MIN_MS, CAST_COOLDOWN_MS, COOLER_MAX, FISH, FISH_XP, fishById, fishDiff, fishPayout, fishValue, HOOK_WINDOW_MS,
   REEL_DT, replayReel, rollFish, rollWeight, type FishCatch, type FishView,
 } from '../shared/fishing.js';
+import { cookPayout } from '../shared/cooking.js';
 
 export const FISH_MIGRATION = `
 CREATE TABLE IF NOT EXISTS fish_catches (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, name TEXT NOT NULL, species TEXT NOT NULL, weight_g INTEGER NOT NULL, value INTEGER NOT NULL, caught_at BIGINT NOT NULL, sold_at BIGINT);
 CREATE INDEX IF NOT EXISTS fish_catches_player ON fish_catches (player_key, sold_at);
 ALTER TABLE fish_catches ADD COLUMN IF NOT EXISTS dish TEXT;
 ALTER TABLE fish_catches ADD COLUMN IF NOT EXISTS raw_value INTEGER;
+CREATE TABLE IF NOT EXISTS kitchen_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
 CREATE TABLE IF NOT EXISTS fish_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
 `;
 /** Factory units for one cooler fish (base value): raw -> fillets (8 each), cooked -> portions (10 each). */
@@ -54,6 +56,14 @@ export class Fishing {
   private async cooler(key: string): Promise<FishCatch[]> {
     const r = await this.pool.query('SELECT id, species, weight_g, value, caught_at FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL ORDER BY caught_at DESC', [key]);
     return (r.rows as Row[]).map((x) => ({ id: x.id, fish: x.species, grams: Number(x.weight_g), value: Number(x.value), at: Number(x.caught_at) }));
+  }
+  private async dishIds(key: string): Promise<Set<string>> {
+    const r = await this.pool.query('SELECT id FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL AND dish IS NOT NULL', [key]);
+    return new Set((r.rows as Array<{ id: string }>).map((x) => String(x.id)));
+  }
+  private async kitchenToday(key: string) {
+    const r = await this.pool.query('SELECT gross, paid FROM kitchen_daily WHERE player_key = $1 AND day = $2', [key, utcDay(this.clock())]).catch(() => ({ rows: [] as Array<Record<string, unknown>> }));
+    return { gross: Number(r.rows[0]?.gross ?? 0), paid: Number(r.rows[0]?.paid ?? 0) };
   }
   private async today(key: string) {
     const r = await this.pool.query('SELECT gross, paid FROM fish_daily WHERE player_key = $1 AND day = $2', [key, utcDay(this.clock())]);
@@ -119,9 +129,16 @@ export class Fishing {
       if (Array.isArray(ids)) { const want = new Set(ids.filter((x): x is string => typeof x === 'string').slice(0, COOLER_MAX)); rows = rows.filter((r) => want.has(r.id)); }
       if (!rows.length) throw new FishError('Nothing to sell.');
       const day = utcDay(this.clock()); const t = await this.today(key);
-      const gross = rows.reduce((a, r) => a + r.value, 0);
-      const base = fishPayout(gross, t.gross); const paid = Math.floor(base * priceIndex());
-      if (paid <= 0) throw new FishError("The fishmonger has bought all they can from you today. Come back after 00:00 UTC (or release your catch).");
+      // Pan-fried dishes (fishPan) count toward the ONE daily cooking-sales cap (kitchen_daily, shared with recipe
+      // dishes), not the raw-fish tiers. If that cap is used up, dishes stay in the cooler instead of selling for 0.
+      const dishIds = await this.dishIds(key); const k = await this.kitchenToday(key);
+      let dishRows = rows.filter((r) => dishIds.has(r.id)); const rawRows = rows.filter((r) => !dishIds.has(r.id));
+      let dGross = dishRows.reduce((a, r) => a + r.value, 0); let dPaid = Math.floor(cookPayout(dGross, k.gross) * priceIndex());
+      if (dPaid <= 0 && dishRows.length) { dishRows = []; dGross = 0; dPaid = 0; }
+      rows = [...rawRows, ...dishRows];
+      const gross = rawRows.reduce((a, r) => a + r.value, 0);
+      const base = fishPayout(gross, t.gross); const fPaid = Math.floor(base * priceIndex()); const paid = fPaid + dPaid;
+      if (paid <= 0 || !rows.length) throw new FishError(rawRows.length ? "The fishmonger has bought all they can from you today. Come back after 00:00 UTC (or release your catch)." : 'You have hit today\'s cooking sales cap (shared by every dish you cook). Come back after 00:00 UTC (6 PM CST).');
       const counts = new Map<string, number>(); for (const r of rows) counts.set(fishById(r.fish)?.label ?? r.fish, (counts.get(fishById(r.fish)?.label ?? r.fish) ?? 0) + 1);
       const memo = `Fish market: sold ${[...counts].map(([l, n]) => `${n} ${l}`).join(', ')}`.slice(0, 200);
       const body = async (cl: pg.PoolClient) => {
@@ -131,6 +148,11 @@ export class Fishing {
         if (t.gross === 0 && t.paid === 0) await cl.query('INSERT INTO fish_daily (player_key, day, gross, paid) VALUES ($1,$2,0,0) ON CONFLICT (player_key, day) DO NOTHING', [key, day]);
         const d = await cl.query('UPDATE fish_daily SET gross = gross + $3, paid = paid + $4 WHERE player_key = $1 AND day = $2 AND gross = $5', [key, day, gross, paid, t.gross]);
         if (d.rowCount !== 1) throw new FishError('Busy — try again.');
+        if (dishRows.length) {
+          await cl.query('INSERT INTO kitchen_daily (player_key, day, gross, paid) VALUES ($1,$2,0,0) ON CONFLICT (player_key, day) DO NOTHING', [key, day]);
+          const kd = await cl.query('UPDATE kitchen_daily SET gross = gross + $3, paid = paid + $4 WHERE player_key = $1 AND day = $2 AND gross = $5', [key, day, dGross, dPaid, k.gross]);
+          if (kd.rowCount !== 1) throw new FishError('Busy — try again.');
+        }
       };
       const w = this.bank().transferAtomic([{ name, amount: paid, key: `fish_sell:${randomUUID()}`, game: 'fish_sell', memo }]);
       const run = async () => {
@@ -140,7 +162,7 @@ export class Fishing {
       };
       const p = run(); w.bind(p);
       try { await p; } catch (e) { w.revert(); if (e instanceof FishError) throw e; console.error('[fishing] sell failed:', (e as Error).message); throw new FishError('Something went wrong. Nothing was sold.'); }
-      return { sold: rows.length, gross, paid, chips: this.bank().account(name).chips };
+      return { sold: rows.length, gross: gross + dGross, paid, chips: this.bank().account(name).chips };
     });
   }
   /** pt1252u: move fish from the cooler into Factory storage. Raw fish -> fillets (1 per 8 base value), cooked dishes ->

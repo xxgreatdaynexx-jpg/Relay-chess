@@ -11,6 +11,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     '21 recipes in a recipe book that unlock as you level, from Pan-Fried Fish at level 1 to a Chocolate Soufflé at 92. They use fish from your cooler, crops from your farm or plantation, and groceries.',
     'Cooking is a timing game: heat, flip, stir and plate. Press when the needle is in the green. Low level or sloppy timing can burn the dish.',
     'Sell dishes from your fridge for a bit more than the ingredients are worth. Earnings are capped each day (full price for the first 500 chips of dishes, then less).',
+    'The fish pan from earlier tonight is now the 🐟 Pan-fry a fish tab in the same Kitchen, still opened from 🏠 My home. Your Cooking level, XP and any pan-fried dishes you already have are kept.',
+    'All cooking sales now share one daily cap: pan-fried fish dishes (still sold at the Fishing Dock) and recipe dishes count toward the same limit. Raw fish keep their own fish-market limit.',
     'New 🛒 Grocery Store in the city (west midtown) with 30 ingredients on six shelves. Groceries and crops can also be bought and sold on the Market.',
     'Farms have a new “🧺 To pantry” harvest button that keeps crops for cooking instead of selling them.',
   ] },
@@ -20,7 +22,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     'When the server restarts, it now saves every backpack before it shuts down.',
     'Stock Exchange: order buttons stay locked until the trade is done, and "You own" updates straight away instead of briefly showing the old count.',
   ] },
-    { commit: 'a05b626', at: '2026-11-01T21:20:00-06:00', title: 'New item icons', bullets: [
+  { commit: 'a05b626', at: '2026-11-01T21:20:00-06:00', title: 'New item icons', bullets: [
     'Requested by Dayne: the plain coloured dots are gone. Every ore, gem, bar, factory part, crop, fish and food product now has its own drawn icon.',
     'You will see them in your mine backpack, factory storage, recipes and machines, on factory belts, and in the Market resources list. Prices and drops are unchanged.',
   ] },

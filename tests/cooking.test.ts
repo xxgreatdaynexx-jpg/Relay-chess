@@ -39,7 +39,7 @@ describe('kitchen server', () => {
   async function setup() {
     const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
     const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool)); setPriceIndexForTest(1);
-    await pool.query('CREATE TABLE fish_catches (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, name TEXT NOT NULL, species TEXT NOT NULL, weight_g INTEGER NOT NULL, value INTEGER NOT NULL, caught_at BIGINT NOT NULL, sold_at BIGINT)');
+    await pool.query('CREATE TABLE fish_catches (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, name TEXT NOT NULL, species TEXT NOT NULL, weight_g INTEGER NOT NULL, value INTEGER NOT NULL, caught_at BIGINT NOT NULL, sold_at BIGINT, dish TEXT, raw_value INTEGER)');
     await pool.query('CREATE TABLE properties (id TEXT PRIMARY KEY, owner_key TEXT NOT NULL)');
     let now = T0; const c = new Cooking(pool, () => bank, () => now); await c.init();
     const ledger = (game: string) => db.public.many(`SELECT amount FROM wallet_transactions WHERE game = '${game}'`) as Array<{ amount: number }>;

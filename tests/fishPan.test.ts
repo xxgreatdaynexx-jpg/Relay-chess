@@ -64,6 +64,19 @@ describe('FishPan server', () => {
     expect(bank.account('Cook1').chips).toBeGreaterThan(0);
     await expect(c.start('Cook1', fish.id)).rejects.toThrow(/isn't in your cooler/);
   });
+  it('pan dishes count toward the one shared cooking-sales cap (kitchen_daily), and stay unsold once it is full', async () => {
+    const { f, c, adv, catchOne, pool } = await setup();
+    const day = new Date(T0).toISOString().slice(0, 10);
+    const a = await catchOne('Cook3'); const s = await c.start('Cook3', a.id); const inp = cookWell(s.seed, s.thick); adv(inp.length * 100); const r = await c.plate('Cook3', inp);
+    const sold = await f.sell('Cook3', [a.id]); expect(sold.gross).toBe(r.value);
+    const k = (await pool.query('SELECT gross, paid FROM kitchen_daily WHERE player_key = $1 AND day = $2', ['cook3', day])).rows[0];
+    expect(Number(k.gross)).toBe(r.value); expect(Number(k.paid)).toBe(sold.paid);
+    const fd = (await pool.query('SELECT gross FROM fish_daily WHERE player_key = $1 AND day = $2', ['cook3', day])).rows[0]; expect(Number(fd?.gross ?? 0)).toBe(0);
+    await pool.query('UPDATE kitchen_daily SET gross = 99999 WHERE player_key = $1 AND day = $2', ['cook3', day]);
+    const b = await catchOne('Cook3'); const s2 = await c.start('Cook3', b.id); const inp2 = cookWell(s2.seed, s2.thick); adv(inp2.length * 100); await c.plate('Cook3', inp2);
+    await expect(f.sell('Cook3', [b.id])).rejects.toThrow(/cooking sales cap/);
+    expect((await f.view('Cook3')).cooler.some((x) => x.id === b.id)).toBe(true);
+  });
   it('refuses other players fish, bad ids, locked recipes, sold fish mid-cook and concurrent plates', async () => {
     const { f, c, adv, catchOne, setLevel } = await setup();
     const fish = await catchOne('Cook2');

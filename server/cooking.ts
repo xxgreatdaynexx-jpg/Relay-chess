@@ -80,7 +80,7 @@ export class Cooking {
     return out;
   }
   private async fishRows(key: string) {
-    const r = await this.pool.query('SELECT id, species, value FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL ORDER BY value ASC, caught_at ASC', [key]).catch(() => ({ rows: [] }));
+    const r = await this.pool.query('SELECT id, species, value FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL AND dish IS NULL ORDER BY value ASC, caught_at ASC', [key]).catch(() => ({ rows: [] }));
     return (r.rows as Array<{ id: string; species: string }>).map((x) => ({ id: String(x.id), rarity: fishById(x.species)?.rarity ?? 'junk' }));
   }
   private async dishes(key: string): Promise<Dish[]> {
@@ -137,7 +137,7 @@ export class Cooking {
           for (let i = 0; i < q; i++) {
             const f = pool.find((x) => ok.includes(x.rarity)); if (!f) throw new CookError(`You need ${FISH_ING[ing as FishIng].label.toLowerCase()} from your fishing cooler.`);
             pool = pool.filter((x) => x !== f);
-            extra.push({ sql: 'INSERT INTO kitchen_fish_used (fish_id, cook_id) VALUES ((SELECT id FROM fish_catches WHERE id = $1 AND player_key = $2 AND sold_at IS NULL), $3)', args: [f.id, key, id] });
+            extra.push({ sql: 'INSERT INTO kitchen_fish_used (fish_id, cook_id) VALUES ((SELECT id FROM fish_catches WHERE id = $1 AND player_key = $2 AND sold_at IS NULL AND dish IS NULL), $3)', args: [f.id, key, id] });
             extra.push({ sql: 'UPDATE fish_catches SET sold_at = $2 WHERE id = $1', args: [f.id, now] });
           }
         } else deltas.push({ id: ing, delta: -q });
