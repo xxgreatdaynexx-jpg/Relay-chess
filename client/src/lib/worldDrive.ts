@@ -13,6 +13,7 @@ import { FLY_DEST, nearAirport, drivable, onVenueRoad, trackPoint, type LapEvent
 import { CAR_BY_ID, DRIVE_HZ, DRIVE_MAX_VISIBLE, type CarModel } from '../../../shared/cars';
 import { moddedPhysics, normMods, parseLook, NITRO_TOP, NITRO_ACCEL, NITRO_RECHARGE, STOCK_MODS, type CarMods } from '../../../shared/mechanic';
 import { request } from './net';
+import { stepCar } from '../../../shared/drivePhysics';
 
 export type DriveInput = { up: boolean; down: boolean; left: boolean; right: boolean; boost?: boolean };
 type Snap = [string, string, number, number, number, number, number, string?];
@@ -52,16 +53,7 @@ export function createDrive(world: World, h: DriveHandlers) {
   };
   const step = (dt: number) => {
     if (!mine) return; const m = mine, p = m.phys; const i = { up: input.up || touch.up, down: input.down || touch.down, left: input.left || touch.left, right: input.right || touch.right };
-    const boost = !!(input.boost || touch.boost) && i.up && p.nitro > 0 && m.tank > 0.05 && m.v >= 0;
-    m.tank = boost ? Math.max(0, m.tank - dt) : Math.min(p.nitro, m.tank + NITRO_RECHARGE * dt);
-    const top = boost ? p.vmax * NITRO_TOP : p.vmax; const acc = boost ? p.accel * NITRO_ACCEL : p.accel;
-    const off = roadClearance(m.x, m.z) > 1 && !onVenueRoad(m.x, m.z); const vmax = off ? top * p.offroad : top;
-    if (i.up) m.v += (m.v < 0 ? acc * 2.5 : acc) * dt; else if (i.down) m.v -= (m.v > 0 ? p.accel * 2.5 : p.accel * 0.6) * dt;
-    else m.v -= Math.sign(m.v) * Math.min(Math.abs(m.v), (3 + Math.abs(m.v) * 0.25) * dt);
-    if (off && Math.abs(m.v) > vmax) m.v -= Math.sign(m.v) * Math.min(Math.abs(m.v) - vmax, 20 * dt);
-    if (m.v > top) m.v = Math.max(top, m.v - (6 + m.v * 0.5) * dt); m.v = Math.max(-p.reverse, m.v);
-    const steer = (i.left ? 1 : 0) - (i.right ? 1 : 0); const grip = Math.min(1, Math.abs(m.v) / 6) * Math.sign(m.v || 1) * (1 - Math.min(p.gripLoss, Math.abs(m.v) / p.vmax * p.gripLoss));
-    m.a += steer * p.steer * grip * dt;
+    const boost = stepCar(m, p, { ...i, boost: !!(input.boost || touch.boost) }, dt, roadClearance(m.x, m.z) > 1 && !onVenueRoad(m.x, m.z));
     const nx = m.x + Math.cos(m.a) * m.v * dt, nz = m.z + Math.sin(m.a) * m.v * dt; const r = m.model.dims[1] * 0.5;
     if (!hit(nx, nz, r)) { m.x = nx; m.z = nz; } else if (!hit(nx, m.z, r)) { m.x = nx; m.v *= 0.7; } else if (!hit(m.x, nz, r)) { m.z = nz; m.v *= 0.7; } else m.v *= -0.3;
     m.obj.position.set(m.x, 0, m.z); m.obj.rotation.y = -m.a;

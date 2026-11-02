@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T00:30:00-06:00', title: 'Car steering fixed', bullets: [
+    'Left (A or ←) now turns the car left and right (D or →) turns it right, in the city and on the Speedway, with every car and Mechanic Shop upgrade. Steering was mirrored.',
+  ] },
   { commit: '', at: '2026-11-02T00:30:00-06:00', title: 'Fishing panel can be moved', bullets: [
     'The Fishing Dock and Reef Pier panel can now be dragged by its top bar too.',
   ] },
