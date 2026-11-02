@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T22:00:00-06:00', title: 'Reopen your Daily Report any time', bullets: [
+    'Requested by Dayne: a new 📰 button next to your wallet in the top bar opens your Daily Report whenever you want (it is also still in the Wallet).',
+    'The report now has a "Past 7 days" list with your cash, net worth and daily change.',
+    'Guests get a reminder to sign in. Nothing about chips or the daily bonus changed.',
+  ] },
   { commit: '', at: '2026-11-01T21:45:00-06:00', title: 'Cooking and the Grocery Store', bullets: [
     'Requested by Dayne: a new Cooking skill. Open the 🍳 Kitchen from any home you own (city or resort property, farm plot, or tap your own Trailer Park trailer).',
     '21 recipes in a recipe book that unlock as you level, from Pan-Fried Fish at level 1 to a Chocolate Soufflé at 92. They use fish from your cooler, crops from your farm or plantation, and groceries.',

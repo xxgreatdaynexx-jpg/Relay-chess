@@ -6,6 +6,7 @@ export interface Mover { ticker: string; name: string; price: number; chg: numbe
 export interface DailyReportData {
   day: string;
   bonus: number | null;
+  history?: Array<{ day: string; cash: number; assets: number; total: number }>;
   economy: { cash: number; assets: number; total: number; inflation: InflationView; priceIndex?: number; priceIndexPct?: number | null; movers: { up: Mover[]; down: Mover[] } | null } | null;
   me: { cash: number; assets: number; total: number; categories: Array<{ key: string; label: string; value: number; units: number }>; since: { day: string; total: number; totalPct: number | null; cash: number; assets: number } | null };
 }
@@ -56,6 +57,14 @@ export function DailyReport({ report, onClose }: { report: DailyReportData; onCl
               {e.movers![k].map((m) => <div key={m.ticker} className="flex justify-between" title={m.name}><span className="font-semibold">{m.ticker}</span><span className={tone(m.chg)}>{pct(m.chg)}</span></div>)}
             </div>)}
           </div>}
+        </>}
+        {report.history && report.history.length > 0 && <>
+          <h3 className="mt-4 text-xs uppercase tracking-wide opacity-70">Past 7 days</h3>
+          <div data-testid="daily-report-history" className="text-xs">
+            <div className="grid grid-cols-4 gap-2 py-0.5 opacity-60"><span>Day</span><span className="text-right">Cash</span><span className="text-right">Net worth</span><span className="text-right">Change</span></div>
+            {report.history.map((h, i) => { const prev = report.history![i + 1]; const d = prev ? h.total - prev.total : null; return (
+              <div key={h.day} className="grid grid-cols-4 gap-2 py-0.5 tabular-nums"><span>{h.day.slice(5)}</span><span className="text-right">{n(h.cash)}</span><span className="text-right font-semibold">{n(h.total)}</span><span className={`text-right ${tone(d)}`}>{d == null ? '—' : signed(d)}</span></div>); })}
+          </div>
         </>}
         <button type="button" className="mt-5 w-full rounded-full bg-[#e8c26a] py-2 text-sm font-bold text-[#1b1d2e]" onClick={onClose}>Got it</button>
       </div>

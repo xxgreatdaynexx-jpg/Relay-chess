@@ -16,11 +16,12 @@ export const REPORT_MIGRATION = `CREATE TABLE IF NOT EXISTS daily_reports (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (player_key, day))`;
 
 export interface Snapshot { day: string; cash: number; assets: number; total: number }
-export interface SnapshotStore { last(key: string, before: string): Promise<Snapshot | null>; save(key: string, s: Snapshot): Promise<void> }
+export interface SnapshotStore { last(key: string, before: string): Promise<Snapshot | null>; save(key: string, s: Snapshot): Promise<void>; history?(key: string, limit: number): Promise<Snapshot[]> }
 
 export class MemorySnapshots implements SnapshotStore {
   rows = new Map<string, Snapshot[]>();
   async last(key: string, before: string) { return (this.rows.get(key) ?? []).filter((s) => s.day < before).sort((a, b) => b.day.localeCompare(a.day))[0] ?? null; }
+  async history(key: string, limit: number) { return [...(this.rows.get(key) ?? [])].sort((a, b) => b.day.localeCompare(a.day)).slice(0, limit); }
   async save(key: string, s: Snapshot) { const l = (this.rows.get(key) ?? []).filter((x) => x.day !== s.day); l.push(s); this.rows.set(key, l); }
 }
 export class PgSnapshots implements SnapshotStore {
@@ -31,6 +32,11 @@ export class PgSnapshots implements SnapshotStore {
     await this.init();
     const r = (await this.db.query('SELECT day, cash, assets, total FROM daily_reports WHERE player_key = $1 AND day < $2 ORDER BY day DESC LIMIT 1', [key, before])).rows[0];
     return r ? { day: String(r.day), cash: Number(r.cash), assets: Number(r.assets), total: Number(r.total) } : null;
+  }
+  async history(key: string, limit: number) {
+    await this.init();
+    const r = (await this.db.query('SELECT day, cash, assets, total FROM daily_reports WHERE player_key = $1 ORDER BY day DESC LIMIT $2', [key, limit])).rows;
+    return r.map((x) => ({ day: String(x.day), cash: Number(x.cash), assets: Number(x.assets), total: Number(x.total) }));
   }
   async save(key: string, s: Snapshot) {
     await this.init();
@@ -73,8 +79,10 @@ export async function buildDailyReport(name: string, bonus: number | null, now =
   const snaps = snapshots();
   const prev = await snaps.last(key, day).catch(() => null);
   await snaps.save(key, { day, ...me }).catch((e) => console.error('[daily-report] snapshot failed:', (e as Error).message));
+  // Read-only: the last 7 daily snapshots (newest first) for the "Past 7 days" list when the report is reopened.
+  const history = snaps.history ? await snaps.history(key, 7).catch(() => []) : [];
   return {
-    day, bonus,
+    day, bonus, history,
     // Inflation comes from the same Economy.stats() object the Bank's Economy tab renders, through the same inflationView().
     economy: stats ? { cash: stats.cash, assets: stats.assets, total: stats.total,
       inflation: inflationView({ at: stats.at ?? now, change: stats.change ?? { cash: null, total: null }, inflation: stats.inflation ?? { cash7: null, total7: null }, priceIndex: stats.priceIndex ?? priceIndexView() }),

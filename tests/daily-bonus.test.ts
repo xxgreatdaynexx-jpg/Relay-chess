@@ -79,6 +79,7 @@ describe('daily report', () => {
     const next = await buildDailyReport('QA-Tess', null, NOV1 + 86_400_000);
     expect(next.me.since).toMatchObject({ day: '2026-11-01', total: -500, cash: -500, assets: 0 });
     expect(next.me.since!.totalPct).toBeCloseTo(-24.15, 1);
+    expect(next.history.map((h) => h.day)).toEqual(['2026-11-02', '2026-11-01']);
   });
 
   it('stores one snapshot per player per day in Postgres', async () => {
@@ -89,5 +90,7 @@ describe('daily report', () => {
     expect(db.public.many('SELECT * FROM daily_reports')).toHaveLength(1);
     expect(await s.last('qa-tess', '2026-11-02')).toEqual({ day: '2026-11-01', cash: 5, assets: 2, total: 7 });
     expect(await s.last('qa-tess', '2026-11-01')).toBeNull();
+    await s.save('qa-tess', { day: '2026-11-02', cash: 9, assets: 1, total: 10 });
+    expect((await s.history('qa-tess', 7)).map((x) => x.day)).toEqual(['2026-11-02', '2026-11-01']);
   });
 });

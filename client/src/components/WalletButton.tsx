@@ -93,6 +93,12 @@ export function WalletButton() {
   // reach the venue card / map behind it (the old document mousedown listener let the click through).
 
   const signedIn = Boolean(account) && chips !== null;
+  const [reportToast, setReportToast] = useState('');
+  const openReport = () => {
+    setReportErr('');
+    if (!account) { setReportToast('Sign in to see your Daily Report.'); window.setTimeout(() => setReportToast(''), 3500); return; }
+    void request('daily_report_get').then((r) => { const rep = (r as unknown as { report?: DailyReportData }).report; if (r.ok && rep) { setOpen(false); setReport(rep); } else { const m = r.error || 'Could not load the report.'; setReportErr(m); setReportToast(m); window.setTimeout(() => setReportToast(''), 3500); } });
+  };
   return (
     <div ref={ref} className="wallet-wrap">
       {report && <DailyReport report={report} onClose={() => setReport(null)} />}
@@ -100,6 +106,9 @@ export function WalletButton() {
         <div role="status" data-testid="daily-bonus-toast" className="fixed top-16 left-1/2 z-50 -translate-x-1/2 rounded-full border border-[#e8c26a]/60 bg-[#1b1d2e]/95 px-4 py-2 text-sm font-bold text-[#e8c26a] shadow-lg">
           🎁 {bonusToast}
         </div>, document.body)}
+      {reportToast && createPortal(
+        <div role="status" data-testid="daily-report-toast" className="fixed top-16 left-1/2 z-50 -translate-x-1/2 rounded-full border border-white/20 bg-[#1b1d2e]/95 px-4 py-2 text-sm font-semibold text-cream shadow-lg">{reportToast}</div>, document.body)}
+      <button type="button" className="wallet-btn mr-1" title="Daily Report" aria-label="Open Daily Report" data-testid="daily-report-button" onClick={() => openReport()}><span aria-hidden>📰</span></button>
       <button type="button" className={`wallet-btn ${bump}`} aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="wallet-button"
         aria-label={signedIn ? `Wallet: ${chips} chips` : 'Wallet'}>
         <span aria-hidden>🪙</span>
@@ -129,7 +138,7 @@ export function WalletButton() {
               </div>
               <p className="mt-1 text-[11px] opacity-60">Same chips in every game: wager on chess, checkers and Conquest tables, or play the casino.</p>
               <button type="button" data-testid="open-daily-report" className="mt-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold hover:bg-white/20"
-                onClick={() => { setReportErr(''); void request('daily_report_get').then((r) => { const rep = (r as unknown as { report?: DailyReportData }).report; if (r.ok && rep) { setOpen(false); setReport(rep); } else setReportErr(r.error || 'Could not load the report.'); }); }}>📊 Daily report</button>
+                onClick={() => openReport()}>📊 Daily report</button>
               {reportErr && <p className="mt-1 text-xs text-rose-300">{reportErr}</p>}
               <div className="mt-3 text-xs uppercase tracking-wide opacity-70">Recent</div>
               {history.length === 0 ? <p className="mt-1 text-sm opacity-60">No chip moves yet.</p> : (
