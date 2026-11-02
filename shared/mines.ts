@@ -34,8 +34,8 @@ export const MAX_BANKED_STACK = 1_000_000;
 export const BACKPACK_CAP = 120;   // total weight units
 
 // ---- house selling: daily diminishing returns (per signed-in player, per UTC day)
-/** Gross chips earned (at full price) per day; tiers pay full, half, then a fifth. */
-export const SELL_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: 600, rate: 1 }, { upTo: 1200, rate: 0.5 }, { upTo: Infinity, rate: 0.2 }];
+/** Gross chips earned (at full price) per day; full price up to 100,000, then nothing. */
+export const SELL_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: 100_000, rate: 1 }, { upTo: Infinity, rate: 0 }];
 export const dayKey = (now: number) => new Date(now).toISOString().slice(0, 10);
 
 /** Chips paid for `gross` full-price value when `already` gross was sold today. Fractions floor at the end. */

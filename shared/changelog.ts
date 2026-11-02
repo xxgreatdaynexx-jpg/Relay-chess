@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T23:30:00-06:00', title: 'Much higher daily selling limits', bullets: [
+    'Requested by Dayne: selling ore, factory goods, fish, farm crops and cooked dishes to the house now pays full price up to 100,000 a day for each, instead of dropping to half and less after the first few hundred.',
+    'Past 100,000 in a day the house stops buying that kind of item until the reset. Limits still scale with the price index and reset at 00:00 UTC (6 PM Alberta time).',
+    'Employment Office worker prices are unchanged and still cost about half of what the worker brings in.',
+  ] },
   { commit: '', at: '2026-11-01T23:30:00-06:00', title: 'Arena: cleaner clock and a better AR-15 red dot', bullets: [
     'Requested by Dayne: in Search & Destroy and Capture the Flag, the mode label under the round clock no longer overlaps the clock digits. The clock box is a little taller and the label sits cleanly below the time.',
     'Requested by Dayne: the AR-15 red dot is now a small, sharp dot sitting exactly where your shots go when you aim down sights. The sight housing is a thin open frame with a clear window, so it no longer blocks your view.',

@@ -96,7 +96,7 @@ export function FishingPanel({ me, onClose }: { me: string | null; onClose: () =
           <li key={c.id}><span style={{ color: f ? RARITY_COLOR[f.rarity] : undefined }}>{f?.emoji} {f?.label ?? c.fish}</span> <small>{fmtKg(c.grams)}</small> <b>🪙 {chips(Math.floor(c.value * idx))}</b> <button type="button" title="Release" onClick={() => void release(c.id)}>↩</button></li>); })}</ul>
           : <small>Empty. Go catch something!</small>}
         {cooler.length > 0 && <button type="button" disabled={phase.k !== 'idle' || est <= 0} onClick={() => void sell()} data-testid="fish-sell">💰 Sell all to the fishmonger <span>🪙 {chips(est)}</span></button>}
-        {view && <small data-testid="fish-cap">Today: 🪙 {chips(view.today.paid)} sold. Full price on the first 500, then half, then a tenth (max {chips(FISH_DAILY_MAX)}/day, resets 00:00 UTC). {capLeft > 0 ? '' : 'The fishmonger is full for today.'}</small>}
+        {view && <small data-testid="fish-cap">Today: 🪙 {chips(view.today.paid)} sold. Full price up to 100,000 a day (max {chips(FISH_DAILY_MAX)}/day, resets 00:00 UTC). {capLeft > 0 ? '' : 'The fishmonger is full for today.'}</small>}
       </>}
       {board.length > 0 && <><h4>🏆 Biggest catches</h4><ol className="venue-board" data-testid="fish-board">{board.map((b, i) => { const f = fishById(b.fish); return <li key={b.name + i}><b>{f?.emoji} {fmtKg(b.grams)}</b> <span className="player-link" data-player={b.name}>{b.name}</span> <small>{f?.label}</small></li>; })}</ol></>}
     </div>

@@ -72,7 +72,7 @@ describe('FishPan server', () => {
     const k = (await pool.query('SELECT gross, paid FROM kitchen_daily WHERE player_key = $1 AND day = $2', ['cook3', day])).rows[0];
     expect(Number(k.gross)).toBe(r.value); expect(Number(k.paid)).toBe(sold.paid);
     const fd = (await pool.query('SELECT gross FROM fish_daily WHERE player_key = $1 AND day = $2', ['cook3', day])).rows[0]; expect(Number(fd?.gross ?? 0)).toBe(0);
-    await pool.query('UPDATE kitchen_daily SET gross = 99999 WHERE player_key = $1 AND day = $2', ['cook3', day]);
+    await pool.query('UPDATE kitchen_daily SET gross = 100000 WHERE player_key = $1 AND day = $2', ['cook3', day]);
     const b = await catchOne('Cook3'); const s2 = await c.start('Cook3', b.id); const inp2 = cookWell(s2.seed, s2.thick); adv(inp2.length * 100); await c.plate('Cook3', inp2);
     await expect(f.sell('Cook3', [b.id])).rejects.toThrow(/cooking sales cap/);
     expect((await f.view('Cook3')).cooler.some((x) => x.id === b.id)).toBe(true);

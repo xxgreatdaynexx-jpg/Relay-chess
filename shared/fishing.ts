@@ -9,7 +9,7 @@
  * uses only + - * / and a 32-bit integer RNG, so it is bit-for-bit identical in every JS engine.
  *
  * Sale values are BASE chips: the server scales them by the price index (px). Sales go through a per-player daily
- * diminishing-returns tier like the farm (full, half, a tenth, then nothing): at most 1,350 base chips a day.
+ * daily tier like the farm: full price up to 100,000 base chips a day, then nothing.
  */
 export type Rarity = 'junk' | 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
 export interface Fish { id: string; label: string; emoji: string; rarity: Rarity; min: number; max: number; base: number }
@@ -56,8 +56,8 @@ export const fishValue = (f: Fish, grams: number) => Math.max(1, Math.round(f.ba
 export const fishDiff = (f: Fish, grams: number) => Math.min(1, DIFF[f.rarity] + 0.1 * sizeFrac(f, grams));
 export const fmtKg = (g: number) => (g >= 10_000 ? `${(g / 1000).toFixed(1)} kg` : `${(g / 1000).toFixed(2)} kg`);
 
-/** Daily tiers on base sale value (per player, reset 00:00 UTC): full, half, a tenth, then zero → max 1,350 a day. */
-export const FISH_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: 500, rate: 1 }, { upTo: 1500, rate: 0.5 }, { upTo: 5000, rate: 0.1 }, { upTo: Infinity, rate: 0 }];
+/** Daily tiers on base sale value (per player, reset 00:00 UTC): full up to 100,000, then zero. */
+export const FISH_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: 100_000, rate: 1 }, { upTo: Infinity, rate: 0 }];
 export const FISH_DAILY_MAX = FISH_TIERS.reduce((a, t, i) => a + (Number.isFinite(t.upTo) ? (t.upTo - (i ? FISH_TIERS[i - 1]!.upTo : 0)) * t.rate : 0), 0);
 export function fishPayout(gross: number, already: number): number {
   let left = gross, at = already, pay = 0, lo = 0;

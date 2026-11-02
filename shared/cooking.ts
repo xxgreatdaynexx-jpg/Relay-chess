@@ -6,7 +6,7 @@
  * Ingredients: fish from your fishing cooler, crops you harvest "to the pantry" (farm + resort plantation), and a few
  * cheap staples bought in the kitchen. Values are BASE chips; the server scales by the price index (px).
  * A dish's base value is ~1.35x its raw ingredients (x0.8..1.2 for quality). Sales go through a per-player daily tier
- * like fishing (full, half, a tenth, then nothing) but smaller: at most 1,100 base chips of dishes a day.
+ * like fishing: full price up to 100,000 base chips of dishes a day, then nothing.
  */
 import { CROPS } from './farm.js';
 import { TROPICAL_CROPS } from './resort.js';
@@ -107,7 +107,7 @@ export function burnChance(level: number, r: Recipe, q: number): number {
   return Math.min(0.95, skill * (1.2 - q) + sloppy);
 }
 
-export const COOK_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: 500, rate: 1 }, { upTo: 1500, rate: 0.5 }, { upTo: 3000, rate: 0.1 }, { upTo: Infinity, rate: 0 }];
+export const COOK_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: 100_000, rate: 1 }, { upTo: Infinity, rate: 0 }];
 export const COOK_DAILY_MAX = COOK_TIERS.reduce((a, t, i) => a + (Number.isFinite(t.upTo) ? (t.upTo - (i ? COOK_TIERS[i - 1]!.upTo : 0)) * t.rate : 0), 0);
 export function cookPayout(gross: number, already: number): number {
   let left = gross, at = already, pay = 0, lo = 0;

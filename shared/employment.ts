@@ -9,7 +9,7 @@
  *   hire  = 35% of a full day's expected output  (≈ 5%/day over 7 days)
  * Miners: 1 ore / 10 min from the chosen mine's normal ore mix (no key/chest drops).
  * Fishers: 1 fish / hour from the normal catch table minus junk (a fish is ~11x an ore: at 1 / 10 min a fisher would
- * bring in 3x the fish dock's whole daily sell cap, so after the sell tiers it could never pay for itself).
+ * bring in 3x the fish dock's old daily sell cap, so after the sell tiers it could never pay for itself).
  */
 import { CAVES, ORES, type OreId } from './mines.js';
 import { FISH, RARITY_ODDS, rollFish, rollWeight, fishValue, type Fish } from './fishing.js';

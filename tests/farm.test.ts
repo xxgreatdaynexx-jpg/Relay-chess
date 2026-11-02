@@ -41,8 +41,8 @@ describe('farm district', () => {
     expect(stageOf(c, 0, c.grow - 1)).toBe('growing'); expect(stageOf(c, 0, c.grow)).toBe('ready'); expect(stageOf(c, 0, c.grow * (1 + WITHER_FACTOR) - 1)).toBe('ready'); expect(stageOf(c, 0, c.grow * (1 + WITHER_FACTOR))).toBe('withered');
   });
   it('daily tiers: full, half, a tenth, then nothing (bounded profit per day)', () => {
-    expect(farmPayout(500, 0)).toBe(500); expect(farmPayout(1000, 0)).toBe(750); expect(farmPayout(100, 1500)).toBe(10); expect(farmPayout(1000, 5000)).toBe(0);
-    expect(farmPayout(1e9, 0)).toBe(500 + 500 + 350); expect(FARM_TIERS.at(-1)!.rate).toBe(0);
+    expect(farmPayout(500, 0)).toBe(500); expect(farmPayout(1000, 0)).toBe(1000); expect(farmPayout(200, 99_900)).toBe(100); expect(farmPayout(1000, 100_000)).toBe(0);
+    expect(farmPayout(1e9, 0)).toBe(100_000); expect(FARM_TIERS.at(-1)!.rate).toBe(0);
   });
   it('only the owner can plant; seeds are paid via farm_seed; harvest pays exactly once via farm_harvest on the server clock', async () => {
     const s = await setup(); const plot = propertyById(s.id)!;

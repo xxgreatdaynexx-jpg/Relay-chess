@@ -78,7 +78,7 @@ export function FarmGame({ id, label, onClose }: { id: string; label: string; on
           <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', {}, (r) => `Harvested ${r.harvested} for 🪙 ${chips(Number(r.paid))}.`)} data-testid="farm-harvest">Harvest {ready.length} ready</button>
           <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', { pantry: true }, (r) => `🧺 ${r.harvested} crop${r.harvested === 1 ? '' : 's'} into your kitchen pantry.`)} title="Keep the crops for cooking instead of selling them" data-testid="farm-harvest-pantry">🧺 To pantry</button>
           {withered.length > 0 && <button type="button" disabled={busy} onClick={() => act('farm_clear', {}, (r) => `Cleared ${r.cleared} withered.`)} data-testid="farm-clear">Clear {withered.length} withered</button>}
-          <small data-testid="farm-today">Today’s farm profit: 🪙 {chips(view.today.gross)} (paid 🪙 {chips(view.today.paid)}). Profit pays in full up to {chips(indexed(FARM_TIERS[0].upTo, idx))}/day, then less; daily cap ≈ 🪙 {chips(indexed(cap, idx))}. Seeds are always refunded on harvest.</small>
+          <small data-testid="farm-today">Today’s farm profit: 🪙 {chips(view.today.gross)} (paid 🪙 {chips(view.today.paid)}). Profit pays in full up to {chips(indexed(FARM_TIERS[0].upTo, idx))}/day; daily cap ≈ 🪙 {chips(indexed(cap, idx))}. Seeds are always refunded on harvest.</small>
         </>}
         {msg && <small data-testid="farm-msg">{msg}</small>}
       </>}

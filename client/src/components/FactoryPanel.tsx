@@ -69,7 +69,7 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
           {st.guest ? <p className="mines-note">Sign in to sell for chips.</p> : st.inMine ? <p className="mines-note" data-testid="factory-inmine">You're still in the mine. Leave the mine to sell.</p> : (
             <button type="button" className="mines-sell" disabled={!q || q.paid < 1} onClick={() => sell()} data-testid="factory-sell">Sell all{q ? ` · 🪙 ${q.paid}` : ''}</button>
           )}
-          <p className="mines-note">Sold today: {Math.floor(q?.already ?? 0)} · paying {Math.round(tier.rate * 100)}%. Daily cap: full price to 600, 50% to 1,200, then 20% (resets 00:00 UTC).</p>
+          <p className="mines-note">Sold today: {Math.floor(q?.already ?? 0)} · paying {Math.round(tier.rate * 100)}%. Daily cap: full price up to 100,000, then nothing (resets 00:00 UTC).</p>
         </section>
         <section className="factory-col factory-machines">
           <FactoryBuilder guest={st.guest} flash={flash} onStorage={(storage) => setSt((c) => ({ ...c, storage }))} />

@@ -6,8 +6,8 @@
  *
  * Crops grow on the server clock. A crop is ready at plantedAt + grow, and withers at ready + WITHER_FACTOR x grow.
  * Harvest pays back the seed cost in full plus the crop's profit (sell - seed) through a per-player daily
- * diminishing-returns tier (like the Mines): full, half, a tenth, then nothing, so farming can never flood the
- * economy (at most ~1,350 base chips of profit per player per day) and never pays less than the seeds cost.
+ * daily tier (like the Mines): full up to 100,000, then nothing, so farming can never flood the
+ * economy (at most 100,000 base chips of profit per player per day) and never pays less than the seeds cost.
  */
 import { PLATE, PARK_AREA, MINE_SITES, MINE_APRON, OUTSKIRTS, type OBB } from './worldLayout.js';
 import { VENUE_BOUNDS } from './venues.js';
@@ -35,8 +35,8 @@ export const stageOf = (c: Crop, plantedAt: number, now: number): Stage => {
   const ready = plantedAt + c.grow; return now < ready ? 'growing' : now < ready + WITHER_FACTOR * c.grow ? 'ready' : 'withered';
 };
 
-/** Daily profit tiers (base chips of profit, per player, reset at 00:00 UTC): full, half, a tenth, then zero. */
-export const FARM_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: 500, rate: 1 }, { upTo: 1500, rate: 0.5 }, { upTo: 5000, rate: 0.1 }, { upTo: Infinity, rate: 0 }];
+/** Daily profit tiers (base chips of profit, per player, reset at 00:00 UTC): full up to 100,000, then zero. */
+export const FARM_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: 100_000, rate: 1 }, { upTo: Infinity, rate: 0 }];
 /** Profit paid for `gross` base profit when `already` base profit was harvested today (floored once). */
 export function farmPayout(gross: number, already: number): number {
   let left = gross, at = already, pay = 0, lo = 0;

@@ -23,7 +23,7 @@ describe('cooking rules', () => {
   });
   it('dishes beat raw ingredients modestly; daily cap is small', () => {
     for (const r of RECIPES) { expect(dishValue(r, 0.6)).toBeGreaterThan(rawValue(r)); expect(dishValue(r, 1)).toBeLessThanOrEqual(Math.ceil(rawValue(r) * 1.35 * 1.2)); }
-    expect(COOK_DAILY_MAX).toBe(1150); expect(cookPayout(10_000, 0)).toBe(1150); expect(cookPayout(10, 3000)).toBe(0);
+    expect(COOK_DAILY_MAX).toBe(100_000); expect(cookPayout(10_000, 0)).toBe(10_000); expect(cookPayout(1e9, 0)).toBe(100_000); expect(cookPayout(10, 100_000)).toBe(0);
   });
   it('burning: likely at low level, gone 30 levels past the recipe', () => {
     const r = recipeById('fried_fish')!; expect(burnChance(1, r, 0.5)).toBeGreaterThan(0.15); expect(burnChance(40, r, 0.9)).toBe(0); expect(burnChance(1, r, 0.1)).toBeGreaterThan(0.6);

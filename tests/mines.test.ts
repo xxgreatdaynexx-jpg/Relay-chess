@@ -87,16 +87,16 @@ describe('selling', () => {
     expect(() => sellAs('g', 1000)).toThrow(/Sign in/);
     expect(() => sellAs('a', 1000)).toThrow(/Nothing/);
   });
-  it('diminishing returns per day', () => {
+  it('full price up to the daily cap', () => {
     expect(payoutFor(600, 0)).toBe(600);
-    expect(payoutFor(100, 600)).toBe(50);
-    expect(payoutFor(200, 500)).toBe(150);
-    expect(payoutFor(1000, 1200)).toBe(200);
+    expect(payoutFor(100, 600)).toBe(100);
+    expect(payoutFor(200, 99_900)).toBe(100);
+    expect(payoutFor(1000, 100_000)).toBe(0);
     w.join('a', 'QA-Rich', 0);
     w.add(w.miners.get('a')!, [{ type: 'ore', id: 'diamond', qty: 4 }]);
     expect(sellAs('a', 1000).paid).toBe(600);
     w.add(w.miners.get('a')!, [{ type: 'ore', id: 'diamond', qty: 4 }]);
-    expect(sellAs('a', 2000).paid).toBe(300);
+    expect(sellAs('a', 2000).paid).toBe(600);
     w.add(w.miners.get('a')!, [{ type: 'ore', id: 'diamond', qty: 1 }]);
     expect(sellAs('a', 2000 + 86_400_000).paid).toBe(150); // next day resets
   });

@@ -35,7 +35,7 @@ describe('fishing rules', () => {
     const koi = fishById('koi')!; expect(fishDiff(koi, rollWeight(koi, 1))).toBeGreaterThan(fishDiff(fishById('bluegill')!, 100));
   });
   it('daily cap mirrors the farm: full, half, a tenth, then nothing (max 1,350)', () => {
-    expect(FISH_DAILY_MAX).toBe(1350); expect(fishPayout(500, 0)).toBe(500); expect(fishPayout(100, 500)).toBe(50); expect(fishPayout(10_000, 0)).toBe(1350); expect(fishPayout(50, 5000)).toBe(0);
+    expect(FISH_DAILY_MAX).toBe(100_000); expect(fishPayout(500, 0)).toBe(500); expect(fishPayout(100, 500)).toBe(100); expect(fishPayout(200, 99_900)).toBe(100); expect(fishPayout(1e9, 0)).toBe(100_000); expect(fishPayout(50, 100_000)).toBe(0);
   });
   it('reel sim is deterministic, winnable with skill and lost by mashing', () => {
     let won = 0, mashed = 0;
@@ -78,7 +78,7 @@ describe('fishing server', () => {
     expect((await f.view('seller')).cooler).toEqual([]);
     for (let i = 0; i < 2; i++) { await fishOnce('Seller'); adv(1500); }
     const s2 = await f.sell('Seller').catch((e) => e as Error); // past 5,000 base already? then capped to 0 → refused
-    if (s2 instanceof Error) expect(s2.message).toMatch(/bought all/); else expect(s2.paid).toBeLessThanOrEqual(Math.ceil((1350 - fishPayout(gross, 0)) * 1.2));
+    if (s2 instanceof Error) expect(s2.message).toMatch(/bought all/); else expect(s2.paid).toBeLessThanOrEqual(Math.ceil((FISH_DAILY_MAX - fishPayout(gross, 0)) * 1.2));
     setPriceIndexForTest(1);
   });
   it('caps the cooler, releases fish, and the board shows one best catch per real player', async () => {
