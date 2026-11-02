@@ -6,7 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-02T12:40:00-06:00', title: 'Factory gets a makeover', bullets: [
+  { commit: '', at: '2026-11-02T12:10:00-06:00', title: 'Factory: search recipes by ingredient', bullets: [
+    'Requested by Liam: the Factory\'s 📜 Recipes tab has a search box. Type any item or ingredient (partial or loose spelling works, like "cop" or "cpr wire") to see every recipe it\'s used in and the recipe that makes it, with icons and which machine does each one.',
+    'Click a recipe to open its full production chain. Recipes, speeds and prices are unchanged.',
+  ] },
+  { commit: '', at: '2026-11-02T12:06:00-06:00', title: 'Factory gets a makeover', bullets: [
     'The factory floor is now concrete tiles with a painted walkway, steel walls with copper pipes, vents, steam and hazard stripes, and warm work lights.',
     'Belts are rubber with moving cleats and steel rollers; machines have painted housings, bolts, vents, shadows, a glowing status lamp, and their own touches (smelter glow and smoke, sparks on the press). Items cast soft shadows.',
     'The Factory panels are cleaner, with icon tiles on the build palette and a striped inspect panel. The Factory building in the city is rebuilt with a steel shed, sawtooth roof, loading bay, brick chimney and pipes.',

@@ -1,5 +1,6 @@
 import type React from 'react';
 import { ItemIcon } from './ItemIcon';
+import { FactoryRecipeSearch } from './FactoryRecipeSearch';
 import { itemIconUriKey } from '../../../shared/itemIcons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ix, usePriceIndex } from '../lib/priceIndex';
@@ -255,6 +256,7 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
             ); })}
           </div>}
           {side === 'recipes' && <div className="fac-recipes" data-testid="fac-recipes">
+            <FactoryRecipeSearch icons={ICON} pick={(k) => { setChain(k); window.setTimeout(() => document.querySelector('[data-testid=fac-chain]')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 0); }} />
             <label className="fac-chainpick">Show chain for <select value={chain} onChange={(ev) => setChain(ev.target.value)} data-testid="fac-chain-pick">
               <option value="">— pick a product —</option>
               {FRECIPES.map((r) => r.out[0]).filter((k, i, a) => a.indexOf(k) === i).sort((a, b) => tierOf(a) - tierOf(b) || nameOfKey(a).localeCompare(nameOfKey(b))).map((k) => <option key={k} value={k}>T{tierOf(k)} · {nameOfKey(k)}</option>)}

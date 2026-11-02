@@ -2057,3 +2057,18 @@ html.xmas .top-menu-btn::before { content: '🎄 '; }
 @media (prefers-reduced-motion: reduce) { html.xmas .top-tabs::after { animation: none; } }
 
 .employ-log table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 4px 0; } .employ-log th, .employ-log td { text-align: left; padding: 2px 4px; border-bottom: 1px solid #ffffff1a; } .employ-log td:nth-child(2), .employ-log th:nth-child(2) { text-align: right; } .employ-log tfoot td { font-weight: 700; border-bottom: 0; }
+
+/* Factory recipe search */
+.frs { margin: 0 0 8px; }
+.frs-input { width: 100%; padding: 5px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,.18); background: rgba(0,0,0,.3); color: inherit; }
+.frs-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 5px 0; }
+.frs-chips button { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 10px; font-size: 12px; background: rgba(255,255,255,.07); }
+.frs-chips button.on { background: rgba(255,200,80,.3); }
+.frs-res h4 { display: flex; align-items: center; gap: 5px; margin: 6px 0 2px; }
+.frs-res h5 { font-size: 12px; opacity: .75; margin: 6px 0 2px; }
+.frs-rec { display: flex; flex-direction: column; align-items: flex-start; width: 100%; text-align: left; padding: 3px 4px; border-radius: 4px; border-bottom: 1px solid rgba(255,255,255,.05); }
+.frs-rec:hover { background: rgba(255,255,255,.06); }
+.frs-rec i { font-style: normal; margin-right: 6px; display: inline-flex; align-items: center; gap: 2px; }
+.frs-rec i.frs-hit { color: #ffd46b; font-weight: 600; }
+.frs-rec small { opacity: .6; }
+.frs-mach { font-size: 11px; opacity: .7; }
