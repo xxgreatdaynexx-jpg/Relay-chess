@@ -10,6 +10,7 @@ vi.mock('@/lib/net', () => ({
   request: (ev: string, data?: unknown) => {
     if (ev === 'stk2_funds') return Promise.resolve({ ok: true, funds: [{ id: 'CHFIN', name: 'Chud Finance Index', kind: 'index', blurb: 'b', fee: 0.0025, expense: 0, nav: 100, yield: 0, holdings: [] }] });
     if (ev === 'stk2_portfolio') return Promise.resolve({ ok: true, funds: [{ fund: 'CHFIN', units: 3 }], shorts: [], options: [] });
+    if (ev === 'stk2_trades') return Promise.resolve({ ok: true, trades: [] });
     return new Promise<Ack>((resolve) => calls.push({ ev, data, resolve }));
   },
 }));

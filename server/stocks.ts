@@ -311,7 +311,7 @@ export class Exchange {
       if (!this.pool) {
         const m = this.memHold.get(k) ?? new Map<string, Holding>(); this.memHold.set(k, m); const h = m.get(c.ticker) ?? { ticker: c.ticker, shares: 0, cost: 0 };
         if (side === 'sell') { if (h.shares < shares) throw new StockError('Not enough shares.'); h.cost -= Math.round((h.cost * shares) / h.shares); h.shares -= shares; } else { h.shares += shares; h.cost += costDelta; }
-        m.set(c.ticker, h); { const lm = this.memLife.get(k) ?? new Map(); this.memLife.set(k, lm); const lt = lm.get(c.ticker) ?? { bought: 0, sold: 0 }; if (side === 'buy') lt.bought += q.total; else lt.sold += q.total; lm.set(c.ticker, lt); } row.held += side === 'buy' ? shares : -shares; row.imp += q.imp; row.tickImp = used + Math.abs(q.imp); row.tickSlot = slot; return;
+        m.set(c.ticker, h); this.memTrades.unshift({ name: name.trim(), key: k, ticker: c.ticker, side, shares, price: q.fill, chips: q.total, at }); this.memTrades.length = Math.min(this.memTrades.length, 500); { const lm = this.memLife.get(k) ?? new Map(); this.memLife.set(k, lm); const lt = lm.get(c.ticker) ?? { bought: 0, sold: 0 }; if (side === 'buy') lt.bought += q.total; else lt.sold += q.total; lm.set(c.ticker, lt); } row.held += side === 'buy' ? shares : -shares; row.imp += q.imp; row.tickImp = used + Math.abs(q.imp); row.tickSlot = slot; return;
       }
       await w.after;
       const cl = await this.pool.connect();
@@ -344,6 +344,14 @@ export class Exchange {
   memHoldings() { return [...this.memHold].flatMap(([k, hs]) => [...hs.values()].filter((h) => h.shares > 0).map((h) => ({ k, name: k, ticker: h.ticker, shares: h.shares }))); }
 
   /** Player-held shares by ticker (non-QA) for the Bank Economy. */
+  /** Memory-mode trade log (tests / dev only; prod reads stock_trades). */
+  memTrades: Array<{ name: string; key: string; ticker: string; side: string; shares: number; price: number; chips: number; at: number }> = [];
+  /** Public trade feed: newest stock buys/sells, QA accounts hidden. Read-only. */
+  async recentTrades(tickers: string[] | null, limit: number) {
+    if (!this.pool) return this.memTrades.filter((t) => !t.key.startsWith('qa-') && (!tickers || tickers.includes(t.ticker))).slice(0, limit);
+    return (await this.pool.query("SELECT name, ticker, side, shares, price, chips, at FROM stock_trades WHERE player_key NOT LIKE 'qa-%' AND ($1::text[] IS NULL OR ticker = ANY($1)) ORDER BY at DESC LIMIT $2", [tickers, limit])).rows
+      .map((x) => ({ name: String(x.name), ticker: String(x.ticker), side: String(x.side), shares: Number(x.shares), price: Number(x.price), chips: Number(x.chips), at: Number(x.at) }));
+  }
   async playerHeld(): Promise<Map<string, number>> {
     if (!this.pool) { const m = new Map<string, number>(); for (const [k, hs] of this.memHold) if (!k.startsWith('qa-')) for (const h of hs.values()) m.set(h.ticker, (m.get(h.ticker) ?? 0) + h.shares); return m; }
     return new Map((await this.pool.query("SELECT ticker, SUM(shares) s FROM stock_holdings WHERE player_key NOT LIKE 'qa-%' GROUP BY 1")).rows.map((x) => [String(x.ticker), Number(x.s)]));
@@ -388,5 +396,6 @@ export function registerStocks(io: Server, socket: Socket): void {
   on('stk2_opt_quote', (b) => dv().optionQuote(b.ticker, b.kind, b.strike, b.days, b.qty));
   on('stk2_opt_sell_quote', async (b) => { const q = await dv().optionSellQuote(need(), b.id, b.qty); return { id: q.o.id, qty: q.qty, payout: q.payout, basis: q.basis }; });
   on('stk2_opt_sell', (b) => dv().sellOption(need(), b.id, b.qty));
+  on('stk2_trades', (b) => dv().publicTrades(b.ticker, b.fund, b.limit));
   on('stk2_opt_buy', (b) => dv().buyOption(need(), b.ticker, b.kind, b.strike, b.days, b.qty));
 }

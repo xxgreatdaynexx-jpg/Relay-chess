@@ -42,6 +42,7 @@ export interface OptionPos { id: string; key: string; name: string; ticker: stri
 type Move = { name: string; amount: number; key: string; game: string; memo?: string };
 type Cl = { query: (sql: string, args?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }> };
 class Skip extends Error {}
+export interface PublicTrade { kind: 'buy' | 'sell' | 'short' | 'cover' | 'liquidated' | 'call' | 'put' | 'expired'; opt?: 'call' | 'put'; name: string; ticker: string; qty: number; price: number; chips: number; at: number; strike?: number; expiry?: number }
 
 const shortOf = (x: Record<string, unknown>): ShortPos => ({ id: String(x.id), key: String(x.player_key), name: String(x.name), ticker: String(x.ticker), shares: Number(x.shares), entry: Number(x.entry), proceeds: Number(x.proceeds), collateral: Number(x.collateral), fees: Number(x.fees), openedAt: Number(x.opened_at), status: String(x.status), closedAt: x.closed_at == null ? null : Number(x.closed_at), closePrice: x.close_price == null ? null : Number(x.close_price), payout: x.payout == null ? null : Number(x.payout) });
 const optOf = (x: Record<string, unknown>): OptionPos => ({ id: String(x.id), key: String(x.player_key), name: String(x.name), ticker: String(x.ticker), kind: String(x.kind) as 'call' | 'put', strike: Number(x.strike), qty: Number(x.qty), premium: Number(x.premium), openedAt: Number(x.opened_at), expiry: Number(x.expiry), status: String(x.status), settlePrice: x.settle_price == null ? null : Number(x.settle_price), payout: x.payout == null ? null : Number(x.payout) });
@@ -134,6 +135,35 @@ export class Derivatives {
   optionMark(o: OptionPos) { const c = COMPANY_BY_TICKER.get(o.ticker)!; const S = this.price(o.ticker) ?? c.start; return Math.floor(optionValue(o.kind, S, o.strike, c.vol, daysLeft(o.expiry, this.clock())) * o.qty); }
 
   /** Everything a player owns on the exchange, valued at mark. */
+  /** Public trade history (read-only): stock buys/sells, short opens/covers/liquidations, option buys and expiries.
+   *  `ticker` = one company; `fund` = trades in that fund's underlying companies; neither = whole exchange. QA hidden. */
+  async publicTrades(t: unknown, f: unknown, n: unknown) {
+    const limit = Math.max(1, Math.min(100, Math.floor(Number(n) || 50)));
+    let tickers: string[] | null = null;
+    if (typeof t === 'string' && t) { if (!COMPANY_BY_TICKER.has(t)) throw new StockError('Unknown company.'); tickers = [t]; }
+    else if (typeof f === 'string' && f) { const fd = FUNDS.find((x) => x.id === f); if (!fd) throw new StockError('Unknown fund.'); tickers = Object.keys(fd.weights); }
+    const ok = (x: { key: string; ticker: string }) => !x.key.startsWith('qa-') && (!tickers || tickers.includes(x.ticker));
+    const out: PublicTrade[] = (await this.ex.recentTrades(tickers, limit)).map((x) => ({ kind: x.side === 'buy' ? 'buy' : 'sell', name: x.name, ticker: x.ticker, qty: x.shares, price: Math.round(x.price * 100) / 100, chips: x.chips, at: x.at }));
+    let sh: ShortPos[]; let op: OptionPos[];
+    if (!this.pool) { sh = [...this.mShorts.values()].filter(ok); op = [...this.mOpts.values()].filter(ok); }
+    else {
+      const [a, b] = await Promise.all([
+        this.pool.query("SELECT * FROM stk_shorts WHERE player_key NOT LIKE 'qa-%' AND ($1::text[] IS NULL OR ticker = ANY($1)) ORDER BY GREATEST(opened_at, COALESCE(closed_at, 0)) DESC LIMIT $2", [tickers, limit]),
+        this.pool.query("SELECT * FROM stk_options WHERE player_key NOT LIKE 'qa-%' AND ($1::text[] IS NULL OR ticker = ANY($1)) ORDER BY GREATEST(opened_at, CASE WHEN status = 'settled' THEN expiry ELSE 0 END) DESC LIMIT $2", [tickers, limit]),
+      ]);
+      sh = a.rows.map(shortOf); op = b.rows.map(optOf);
+    }
+    for (const s of sh) {
+      out.push({ kind: 'short', name: s.name, ticker: s.ticker, qty: s.shares, price: s.entry, chips: s.proceeds, at: s.openedAt });
+      if (s.closedAt != null) out.push({ kind: s.status === 'liquidated' ? 'liquidated' : 'cover', name: s.name, ticker: s.ticker, qty: s.shares, price: s.closePrice ?? 0, chips: s.payout ?? 0, at: s.closedAt });
+    }
+    for (const o of op) {
+      out.push({ kind: o.kind, name: o.name, ticker: o.ticker, qty: o.qty, price: o.strike, chips: o.premium, at: o.openedAt, strike: o.strike, expiry: o.expiry });
+      if (o.status === 'settled') out.push({ kind: 'expired', opt: o.kind, name: o.name, ticker: o.ticker, qty: o.qty, price: o.settlePrice ?? 0, chips: o.payout ?? 0, at: o.expiry, strike: o.strike, expiry: o.expiry });
+    }
+    return { trades: out.filter((x) => x.at <= this.clock()).sort((a, b) => b.at - a.at).slice(0, limit) };
+  }
+
   async portfolio(name: string) {
     const stocks = await this.ex.portfolio(name);
     const funds = (await this.fundPositions(name)).map((p) => { const f = FUND_BY_ID.get(p.fund)!; const nav = this.nav(f); const value = Math.floor(nav * p.units); return { ...p, name: f.name, kind: f.kind, nav, value, pnl: value - p.cost }; });

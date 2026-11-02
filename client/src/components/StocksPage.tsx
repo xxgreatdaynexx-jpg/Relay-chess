@@ -109,6 +109,7 @@ function MarketList({ data, onPick }: { data: ListResp; onPick: (t: string) => v
           </tr>))}</tbody>
       </table>
       <p className="mt-2 text-[11px] opacity-60">Prices move every 30s. Drift follows chip inflation ({data.drift.inflPct == null ? '—' : pc(data.drift.inflPct)}/day) and in-game activity by sector. Fee {STOCK_FEE * 100}% + {STOCK_SPREAD * 100}% spread per trade.</p>
+      <TradeFeed onPick={onPick} />
     </div>
   );
 }
@@ -177,6 +178,33 @@ function CompanyView({ ticker, onBack, onTraded }: { ticker: string; onBack: () 
       </div>
       <h4 className="mt-3 text-xs uppercase tracking-wide opacity-70">News {d.upcoming ? <span className="normal-case opacity-60">· {d.upcoming} more expected today</span> : null}</h4>
       <NewsFeed news={d.news} />
+      <TradeFeed ticker={ticker} title={`Recent ${ticker} trades`} />
+    </div>
+  );
+}
+
+interface PubTrade { kind: 'buy' | 'sell' | 'short' | 'cover' | 'liquidated' | 'call' | 'put' | 'expired'; opt?: 'call' | 'put'; name: string; ticker: string; qty: number; price: number; chips: number; at: number; strike?: number; expiry?: number }
+/** Alberta time (UTC-6 all year), labelled CST. */
+const cst = (t: number) => { const d = new Date(t - 6 * 3600_000); const today = new Date(Date.now() - 6 * 3600_000).toISOString().slice(0, 10) === d.toISOString().slice(0, 10); const h = d.getUTCHours(), m = d.getUTCMinutes(); return `${today ? '' : `${d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })} ${d.getUTCDate()} `}${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'} CST`; };
+const cstDay = (t: number) => { const d = new Date(t - 6 * 3600_000); return `${d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })} ${d.getUTCDate()}`; };
+const TAG: Record<PubTrade['kind'], [string, string]> = { buy: ['BUY', 'bg-emerald-700'], sell: ['SELL', 'bg-rose-700'], short: ['SHORT', 'bg-orange-700'], cover: ['COVER', 'bg-sky-700'], liquidated: ['LIQUIDATED', 'bg-red-900'], call: ['CALL', 'bg-violet-700'], put: ['PUT', 'bg-fuchsia-800'], expired: ['EXPIRED', 'bg-zinc-600'] };
+export function TradeFeed({ ticker, fund, onPick, title = 'Recent trades' }: { ticker?: string; fund?: string; onPick?: (t: string) => void; title?: string }) {
+  const [ts, setTs] = useState<PubTrade[] | null>(null); const [lim, setLim] = useState(25);
+  const load = useCallback(() => request('stk2_trades', { ticker, fund, limit: lim }).then((r) => { if (r.ok) setTs((r as unknown as { trades: PubTrade[] }).trades); }), [ticker, fund, lim]);
+  useEffect(() => { void load(); const iv = setInterval(() => void load(), 20_000); return () => clearInterval(iv); }, [load]);
+  return (
+    <div className="mt-3" data-testid="stk-trades">
+      <h4 className="text-xs uppercase tracking-wide opacity-70">{title} <span className="normal-case opacity-60">· public · stocks, shorts &amp; options</span></h4>
+      {!ts ? <p className="text-xs opacity-60">Loading trades…</p> : !ts.length ? <p className="text-xs opacity-60">No trades yet.</p> : (
+        <table className="mt-1 w-full text-[11px] tabular-nums"><thead className="opacity-60"><tr><th className="text-left">Time</th><th className="text-left">Player</th><th className="text-left">Type</th><th className="text-left">Stock</th><th className="text-right">Qty</th><th className="text-right">Price</th><th className="text-right">Chips</th></tr></thead>
+          <tbody>{ts.map((t, i) => { const [lab, cls] = TAG[t.kind]; const opt = t.kind === 'call' || t.kind === 'put' || t.kind === 'expired'; return (
+            <tr key={`${t.at}-${i}`} className="border-t border-white/5" data-testid="stk-trade-row">
+              <td className="whitespace-nowrap opacity-70">{cst(t.at)}</td><td className="max-w-[9rem] truncate">{t.name}</td>
+              <td className="whitespace-nowrap"><span className={`rounded px-1 font-semibold ${cls}`}>{t.kind === 'expired' ? `${(t.opt ?? '').toUpperCase()} EXPIRED` : lab}</span>{opt && t.strike != null ? <span className="ml-1 opacity-70">{t.strike.toFixed(2)} strike · exp {cstDay(t.expiry!)}</span> : null}</td>
+              <td><button type="button" className={onPick ? 'font-bold hover:underline' : 'font-bold'} onClick={() => onPick?.(t.ticker)}>{t.ticker}</button></td>
+              <td className="text-right">{t.qty.toLocaleString()}{opt ? ' ct' : ''}</td><td className="text-right">{t.kind === 'call' || t.kind === 'put' ? '—' : t.price.toFixed(2)}</td><td className="text-right">🪙 {n(t.chips)}</td>
+            </tr>); })}</tbody></table>)}
+      {ts && ts.length >= lim && lim < 100 && <button type="button" className="mt-1 text-[11px] opacity-70 hover:opacity-100" onClick={() => setLim(100)} data-testid="stk-trades-more">Show more</button>}
     </div>
   );
 }
@@ -227,6 +255,7 @@ export function FundsView({ onTraded }: { onTraded: () => void }) {
               <QtyErr e={uErr} />
             </div>)}
           <Msg m={m} />
+          <TradeFeed fund={f.id} title={`Recent trades in ${f.id}'s companies`} />
         </div>); })()}
     </div>
   );

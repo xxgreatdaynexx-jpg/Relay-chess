@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T16:35:00-06:00', title: 'Stock Exchange: public trade history', bullets: [
+    'Every company page now shows its recent trades: who bought or sold, how many shares, the price, the chips and the time (CST).',
+    'Short opens, covers and liquidations and option buys (CALL / PUT with strike and expiry) and expiries are listed too, clearly labelled.',
+    'The Stocks tab has a "Recent trades" feed for the whole exchange, and each fund shows recent trades in the companies it holds. Read-only: prices and fees are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T15:55:00-06:00', title: 'Factory: pantry crops feed your machines', bullets: [
     'Crops you harvested to the pantry now go into a factory Input Chest set to that crop, so pantry sunflowers feed the Mill & Press and come out as Sunflower Oil.',
     'Pantry food in factory Storage is now labelled "pantry" instead of "craft". It is never sold to the house; cook it, sell it on the Market, or feed crops to the factory.',
