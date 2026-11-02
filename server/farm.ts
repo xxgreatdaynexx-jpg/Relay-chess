@@ -193,7 +193,7 @@ export class Farm {
     if (failed) { console.error('[farm] pantry harvest failed:', (failed as Error).message); throw new FarmError('Already harvested (or storage hiccup). Nothing was lost.'); }
     awardXp(name, 'farming', Math.min(400, 10 + Math.round(value / 5)));
     this.onChange?.(pid);
-    return { harvested: ready.length, paid: 0, pantry: Object.fromEntries(counts), chips: this.bank().account(name).chips };
+    return { harvested: ready.length, paid: 0, pantry: Object.fromEntries(counts), toFactory: undefined as Array<[string, number]> | undefined, chips: this.bank().account(name).chips };
   }
 
   /** Clear withered crops (free). */
