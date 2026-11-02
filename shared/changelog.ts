@@ -6,7 +6,7 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-02T15:45:00-06:00', title: 'Mines: more iron, less gold', bullets: [
+  { commit: '', at: '2026-11-02T15:33:00-06:00', title: 'Mines: more iron, less gold', bullets: [
     'Requested by chessguy2: iron was the hardest ore to come by. The Mine is now about 51% Iron Ore, 26% Stone and 10% Gold Ore (was 34%, 28% and 24%), with a little Copper Ore, Silver Ore and Crystal in the rest.',
     'Iron Ore rocks respawn in 6 minutes (was 12m 30s), faster than Copper Ore, so iron is clearly common. Gold Ore stays at 30 minutes.',
     'Frostbite Caverns (about 9% Iron Ore, was none) and Magma Depths (about 3%, was none) now have some iron among their other rocks. Hired miners bring back the same mix as the rocks. Coral Grotto is unchanged.',
