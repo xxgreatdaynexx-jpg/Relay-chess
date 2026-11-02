@@ -15,7 +15,7 @@ import { databaseUrl } from './leaderboard-store.js';
 import { getBank, type CasinoBank } from './casino-store.js';
 import { px, priceIndex } from './price-index.js';
 import { requireResort } from './travel.js';
-import { GRACE_DAYS, propertyById as baseProperty, sellBackOf, taxOf, type OwnedProperty } from '../shared/realEstate.js';
+import { GRACE_DAYS, propertyById as baseProperty, sellBackOf, taxOf, landPrice, landMultiplier, type OwnedProperty } from '../shared/realEstate.js';
 
 export class PropertyError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
@@ -70,36 +70,55 @@ export class RealEstate {
     try { await p; } catch (e) { w.revert(); if (e instanceof PropertyError) throw e; console.error(`[realestate] ${game} failed:`, (e as Error).message); throw new PropertyError(/chips|balance|null value/i.test((e as Error).message) ? 'Not enough chips.' : 'Something went wrong. Nothing was charged.'); }
   }
 
-  async buy(name: string, id: unknown) {
-    const p = propertyById(id); if (!p) throw new PropertyError('That property is not for sale.');
-    return this.lock(p.id, () => this.buyNow(name, p));
+  /** Parcels this player owns right now (the n in list × LAND_GROWTH^n). */
+  async ownedCount(name: string, cl: { query: pg.Pool['query'] } = this.pool): Promise<number> {
+    return Number((await cl.query('SELECT COUNT(*) n FROM properties WHERE owner_key = $1', [keyOf(name)])).rows[0].n);
   }
-  private async buyNow(name: string, p: NonNullable<ReturnType<typeof propertyById>>) {
+  /** What this player would pay for a property right now. */
+  async quote(name: string, id: unknown) {
+    const p = propertyById(id); if (!p) throw new PropertyError('That property is not for sale.');
+    const owned = await this.ownedCount(name);
+    return { id: p.id, list: p.price, owned, multiplier: landMultiplier(owned), price: landPrice(p.price, owned) };
+  }
+  /** max: the price the player saw; a higher price now (they bought something else meanwhile) refuses instead of surprising them. */
+  async buy(name: string, id: unknown, max?: unknown) {
+    const p = propertyById(id); if (!p) throw new PropertyError('That property is not for sale.');
+    // per-buyer lock too: two parallel buys by one player can't both be priced at the same n
+    return this.lock(`owner:${keyOf(name)}`, () => this.lock(p.id, () => this.buyNow(name, p, typeof max === 'number' && Number.isFinite(max) ? max : undefined)));
+  }
+  private async buyNow(name: string, p: NonNullable<ReturnType<typeof propertyById>>, max?: number) {
     const bank = this.bank(); await bank.refresh(name);
-    if (bank.account(name).chips < p.price) throw new PropertyError(`Not enough chips: ${p.label} costs ${p.price.toLocaleString('en-US')}.`);
-    await this.atomic(name, -p.price, 'property_buy', `Bought ${p.label} (${p.id})`, async (cl) => {
+    const owned = await this.ownedCount(name); const price = landPrice(p.price, owned);
+    if (max !== undefined && price > max) throw new PropertyError(`The price changed: you own ${owned} now, so ${p.label} costs ${price.toLocaleString('en-US')}. Check the deed and try again.`);
+    if (bank.account(name).chips < price) throw new PropertyError(`Not enough chips: ${p.label} costs ${price.toLocaleString('en-US')}${owned ? ` (×${+landMultiplier(owned).toFixed(2)} because you own ${owned})` : ''}.`);
+    await this.atomic(name, -price, 'property_buy', `Bought ${p.label} (${p.id})${owned ? ` ×${+landMultiplier(owned).toFixed(2)}, owned ${owned}` : ''}`, async (cl) => {
+      // cross-instance: the count must still be what we priced at (a parallel buy elsewhere = refuse, nothing charged)
+      if ((await this.ownedCount(name, cl)) !== owned) throw new PropertyError('You just bought another property: the price went up. Check the deed and try again.');
       // The insert wins only if the row now carries our deed nonce (a concurrent buyer's row = conflict, DO NOTHING).
       const deed = randomUUID();
-      // One round trip (QA r8 speed): RETURNING yields a row only if our insert won.
-      const r = await cl.query('INSERT INTO properties (id, owner_key, owner_name, price, bought_at, deed) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING RETURNING deed', [p.id, keyOf(name), name.trim(), p.price, this.clock(), deed]);
+      // One round trip (QA r8 speed): RETURNING yields a row only if our insert won. price = what was actually paid.
+      const r = await cl.query('INSERT INTO properties (id, owner_key, owner_name, price, bought_at, deed) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING RETURNING deed', [p.id, keyOf(name), name.trim(), price, this.clock(), deed]);
       if (r.rows[0]?.deed !== deed) throw new PropertyError('Someone already owns this property.');
     });
     this.onChange?.();
-    return { id: p.id, price: p.price, chips: bank.account(name).chips };
+    return { id: p.id, price, list: p.price, owned, multiplier: landMultiplier(owned), chips: bank.account(name).chips };
   }
 
   async sell(name: string, id: unknown) {
     const p = propertyById(id); if (!p) throw new PropertyError('Unknown property.');
-    return this.lock(p.id, () => this.sellNow(name, p));
+    return this.lock(`owner:${keyOf(name)}`, () => this.lock(p.id, () => this.sellNow(name, p)));
   }
   private async sellNow(name: string, p: NonNullable<ReturnType<typeof propertyById>>) {
-    const back = sellBackOf(p.price); const bank = this.bank();
+    // 70% of what this owner actually paid (no buy-cheap/sell-at-list arbitrage either way)
+    const row = (await this.pool.query('SELECT price FROM properties WHERE id = $1 AND owner_key = $2', [p.id, keyOf(name)])).rows[0] as { price: string } | undefined;
+    if (!row) throw new PropertyError('You do not own this property.');
+    const paid = Number(row.price); const back = sellBackOf(paid); const bank = this.bank();
     await this.atomic(name, back, 'property_sell', `Sold ${p.label} (${p.id}) to the city`, async (cl) => {
-      const r = await cl.query('DELETE FROM properties WHERE id = $1 AND owner_key = $2 RETURNING id', [p.id, keyOf(name)]);
+      const r = await cl.query('DELETE FROM properties WHERE id = $1 AND owner_key = $2 AND price = $3 RETURNING id', [p.id, keyOf(name), paid]);
       if (!r.rowCount) throw new PropertyError('You do not own this property.');
     });
     this.onChange?.();
-    return { id: p.id, chips: back, balance: bank.account(name).chips };
+    return { id: p.id, chips: back, paid, balance: bank.account(name).chips };
   }
 
   /**
@@ -187,6 +206,7 @@ export function registerRealEstate(io: Server, socket: Socket): void {
   });
   const need = () => { const n = nameOf(); if (!n) throw new PropertyError('Sign in to buy property.'); return n; };
   on('re_mine', async (_b, e) => ({ properties: await e.mine(need()) }));
-  on('re_buy', async (b, e) => { const n = need(); if (typeof b.id === 'string' && /^(r|rf):/.test(b.id)) await requireResort(n, PropertyError); return e.buy(n, b.id); });
+  on('re_buy', async (b, e) => { const n = need(); if (typeof b.id === 'string' && /^(r|rf):/.test(b.id)) await requireResort(n, PropertyError); return e.buy(n, b.id, b.max); });
+  on('re_quote', async (b, e) => e.quote(need(), b.id));
   on('re_sell', (b, e) => e.sell(need(), b.id));
 }

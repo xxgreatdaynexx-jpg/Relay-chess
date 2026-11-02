@@ -4,7 +4,7 @@ import { newDb } from 'pg-mem';
 import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
 import { px, setPriceIndexForTest } from '../server/price-index';
-import { properties, propertyById, buildingId, patchId, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS } from '../shared/realEstate';
+import { properties, propertyById, buildingId, patchId, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, LAND_GROWTH, landPrice, landMultiplierNote } from '../shared/realEstate';
 import { cityFill, LANDMARK_IDS, PARK_AREA, obbOverlap } from '../shared/worldLayout';
 import { WORLD_SPOTS } from '../client/src/lib/worldSpots';
 
@@ -116,4 +116,28 @@ describe('real estate: buy / sell / tax', () => {
     await s.fund('Ivy', 5000); s.setNow(T0 + 2 * DAY); await s.re.runTax();
     expect((await s.re.owned())[0]!.arrears).toBe(0); expect(s.chips('ivy')).toBe(5000 - taxOf(p.price));
   });
+});
+
+describe('real estate: land gets pricier the more you own', () => {
+  const cheap = (k: number) => [...properties()].filter((p) => p.kind !== 'landmark').sort((a, b) => a.price - b.price).slice(0, k);
+  it('price = list × LAND_GROWTH^n; sell-back is 70% of what was paid; tax stays on list', async () => {
+    const s = await setup(); const ps = cheap(4); const list = ps.map((p) => px(p.price));
+    const cost = list.reduce((a, l, i) => a + landPrice(l, i), 0); await s.fund('Ivy', cost);
+    for (let i = 0; i < 4; i++) { const q = await s.re.quote('Ivy', ps[i]!.id); expect(q.owned).toBe(i); expect(q.price).toBe(Math.round(list[i]! * LAND_GROWTH ** i));
+      const r = await s.re.buy('Ivy', ps[i]!.id, q.price); expect(r.price).toBe(q.price); }
+    expect(s.chips('ivy')).toBe(0);
+    expect(s.ledger('ivy', 'property_buy').map((x) => -Number(x.amount))).toEqual(list.map((l, i) => landPrice(l, i)));
+    const mine = await s.re.mine('Ivy'); for (const m of mine) expect(m.tax).toBe(taxOf(px(propertyById(m.id)!.price)));
+    await s.re.sell('Ivy', ps[3]!.id); expect(s.chips('ivy')).toBe(sellBackOf(landPrice(list[3]!, 3)));
+    // after selling, the next purchase is priced at the new (lower) count
+    expect((await s.re.quote('Ivy', ps[3]!.id)).owned).toBe(3);
+  });
+  it('refuses when the price rose past what the player saw, and parallel buys by one player cannot share a count', async () => {
+    const s = await setup(); const [a, b] = cheap(2); await s.fund('Jo', 10_000_000);
+    const qa = await s.re.quote('Jo', a!.id), qb = await s.re.quote('Jo', b!.id);
+    const r = await Promise.allSettled([s.re.buy('Jo', a!.id, qa.price), s.re.buy('Jo', b!.id, qb.price)]);
+    expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
+    expect((r.find((x) => x.status === 'rejected') as PromiseRejectedResult).reason.message).toMatch(/price changed/);
+  });
+  it('note text', () => { expect(landMultiplierNote(0)).toBe(''); expect(landMultiplierNote(2)).toBe('×2.25 because you own 2'); });
 });

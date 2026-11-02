@@ -6,18 +6,24 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-01T19:45:00-06:00', title: 'Real day and night in the city', bullets: [
+  { commit: '', at: '2026-11-01T20:40:00-06:00', title: 'Land gets pricier the more you own', bullets: [
+    'Requested by Dayne: every parcel you already own makes your next one 1.5× more expensive. Your 1st costs the list price, the 2nd ×1.5, the 3rd ×2.25, the 4th ×3.38, and so on.',
+    'This covers city, outskirts, countryside, farmland, resort properties and plantation plots. Free Trailer Park lots do not count.',
+    'The deed shows your price and why, for example "×2.25 because you own 2". Selling back to the city pays 70% of what you actually paid.',
+    'Daily tax stays on the list price, and everything you already own keeps the price you paid for it.',
+  ] },
+  { commit: '1857275', at: '2026-11-01T19:14:03-06:00', title: 'Real day and night in the city', bullets: [
     'Requested by Dayne: the city and outskirts now follow the real time of day on Mountain Time, so everyone sees the same sky.',
     'The sun rises and sets at the real Denver times, with dawn, golden hour and dusk in between. The light, shadows, fog and sky colour all follow it, and the moon and stars come out at night.',
     'Neon signs, street lamps and windows switch on at dusk and off after sunrise, at the same softer neon level as before.',
     'A small clock in the top left shows the Mountain Time and the time of day. The resort and the mines are unchanged.',
   ] },
-  { commit: '', at: '2026-11-01T19:40:00-06:00', title: 'Runway and Speedway tarmac is back', bullets: [
+  { commit: '8bb3762', at: '2026-11-01T19:03:09-06:00', title: 'Runway and Speedway tarmac is back', bullets: [
     'The Airport runway, apron and the Speedway track were hidden under the grass. They show again.',
     'The runway now has edge lines, thresholds, aiming points and blue edge lights, with a parallel taxiway linked at both ends.',
     'The Speedway has red-and-white kerbs, a pit lane with garages, and grandstands along both straights.',
   ] },
-  { commit: 'b26a208', at: '2026-11-01T19:30:00-06:00', title: 'Sell options before expiry', bullets: [
+  { commit: 'b26a208', at: '2026-11-01T18:48:42-06:00', title: 'Sell options before expiry', bullets: [
     'Requested by Jay: you can now sell a call or put you hold before it expires, from the Options tab. Sell all of it or just part.',
     'You get the current model value of the option, less the 5% house edge and a 1% fee, so you always get back a bit less than it would cost to buy right now.',
     'Whatever you keep still cashes out automatically at expiry, like before.',

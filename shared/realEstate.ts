@@ -43,6 +43,14 @@ const round500 = (n: number) => Math.max(500, Math.round(n / 500) * 500);
 const pos = (b: OBB) => `${Math.round(b.x * 10)}:${Math.round(b.z * 10)}`;
 export const taxOf = (price: number) => Math.ceil(price * TAX_RATE);
 export const sellBackOf = (price: number) => Math.floor(price * SELL_BACK);
+/** Land gets pricier the more you own (pt1248u): purchase price = list price × LAND_GROWTH^n, n = parcels the buyer already
+ * owns (every property row: city, outskirts, countryside, farmland, resort, plantation; Trailer Park lots are separate and free).
+ * Tax stays on the list price; sell-back is 70% of what was actually paid. Tune here. */
+export const LAND_GROWTH = 1.5;
+export const landMultiplier = (owned: number) => LAND_GROWTH ** Math.max(0, Math.floor(owned));
+export const landPrice = (listPrice: number, owned: number) => Math.round(listPrice * landMultiplier(owned));
+/** "×2.25 because you own 2" (empty when you own none). */
+export const landMultiplierNote = (owned: number) => owned > 0 ? `×${+landMultiplier(owned).toFixed(2)} because you own ${owned}` : '';
 
 let cache: Property[] | null = null; let byId: Map<string, Property> | null = null;
 /** Every property on the map (deterministic: same layout -> same ids and prices). */
