@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { addRim, lowDetail, rbox } from './charLook';
 import { applyPickSkin, skinnedPickaxe } from './pickaxeModel';
 import { buildMineTool, animateMineTool } from './mineToolModels';
 import type { MineToolId } from '../../../shared/mineTools';
@@ -6,17 +7,17 @@ import type { MineToolId } from '../../../shared/mineTools';
 /** Low-poly miner avatar for other players in Mines. Faces local +X. Shared geometries/materials across all miners. */
 let S: ReturnType<typeof shared> | null = null;
 function shared() {
-  const L = (c: string) => new THREE.MeshLambertMaterial({ color: c });
+  const L = (c: string) => addRim(new THREE.MeshLambertMaterial({ color: c }), 0xfff4e0, 0.25); // soft rim (pt1340u)
   return {
-    box: new THREE.BoxGeometry(1, 1, 1),
-    cyl: new THREE.CylinderGeometry(0.5, 0.5, 1, 8),
-    sph: new THREE.SphereGeometry(0.5, 10, 8),
+    box: rbox(1, 1, 1, 0.14),
+    cyl: new THREE.CylinderGeometry(0.5, 0.5, 1, lowDetail() ? 8 : 14),
+    sph: new THREE.SphereGeometry(0.5, lowDetail() ? 10 : 16, lowDetail() ? 8 : 12),
     hat: new THREE.SphereGeometry(0.5, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
     brim: new THREE.CylinderGeometry(0.5, 0.5, 1, 14),
     beam: (() => { const g = new THREE.ConeGeometry(0.42, 3.2, 12, 1, true); g.translate(0, -1.6, 0); g.rotateZ(Math.PI / 2); return g; })(),
     m: {
       skin: L('#d9a27c'), overall: L('#2f4a78'), vest: L('#c8f03a'), stripe: new THREE.MeshBasicMaterial({ color: '#e8e8e0' }),
-      boot: L('#3a2716'), glove: L('#8a5a2c'), belt: L('#4a3020'), pouch: L('#6b4a2a'), hat: L('#f2c21a'),
+      boot: L('#3a2716'), eye: new THREE.MeshBasicMaterial({ color: '#1a1410' }), buckle: new THREE.MeshLambertMaterial({ color: '#c9a640', emissive: '#3a2a08' }), glove: L('#8a5a2c'), belt: L('#4a3020'), pouch: L('#6b4a2a'), hat: L('#f2c21a'),
       lamp: new THREE.MeshBasicMaterial({ color: '#fff6d0' }),
       beam: new THREE.MeshBasicMaterial({ color: '#fff1c0', transparent: true, opacity: 0.045, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
     },
@@ -34,6 +35,7 @@ export function buildMiner(skin: string | null): MinerRig {
   const leg = (z: number) => {
     const g = new THREE.Group(); g.position.set(0, 0.82, z);
     g.add(part(s.box, m.overall, 0.17, 0.72, 0.17, 0, -0.38, 0), part(s.box, m.boot, 0.27, 0.13, 0.19, 0.04, -0.77, 0));
+    if (!lowDetail()) g.add(part(s.box, m.belt, 0.29, 0.03, 0.2, 0.04, -0.835, 0));
     return g;
   };
   const legL = leg(-0.11), legR = leg(0.11);
@@ -49,6 +51,11 @@ export function buildMiner(skin: string | null): MinerRig {
     part(s.cyl, m.lamp, 0.07, 0.03, 0.07, 0.15, 0.9, 0),           // headlamp
   );
   const lamp = torso.children[torso.children.length - 1]; lamp.rotation.z = Math.PI / 2;
+  if (!lowDetail()) torso.add( // face + belt buckle + boot soles (pt1340u)
+    part(s.sph, m.eye, 0.035, 0.045, 0.035, 0.122, 0.8, -0.05), part(s.sph, m.eye, 0.035, 0.045, 0.035, 0.122, 0.8, 0.05),
+    part(s.sph, m.skin, 0.05, 0.05, 0.05, 0.135, 0.76, 0), part(s.box, m.eye, 0.01, 0.012, 0.06, 0.125, 0.71, 0),
+    part(s.box, m.buckle, 0.03, 0.06, 0.07, 0.15, 0.06, 0),
+  );
   const beam = new THREE.Mesh(s.beam, m.beam); beam.position.set(0.17, 0.9, 0); beam.rotation.z = -0.12; torso.add(beam);
   const arm = (z: number) => {
     const g = new THREE.Group(); g.position.set(0, 0.62, z);

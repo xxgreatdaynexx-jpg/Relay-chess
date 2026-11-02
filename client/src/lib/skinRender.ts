@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { gunMaterials } from './arenaGuns';
 import { parseToken, type SkinDef } from '../../../shared/skins';
+import { addRim, lowDetail } from './charLook';
 
 function mulberry(seed: number) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 
@@ -42,8 +43,11 @@ function skinMaterial(token: string): SkinMat | null {
   // Punch up contrast/saturation so the pattern reads on small 3D parts and in-hand.
   const cx = cv.getContext('2d')!; cx.filter = 'contrast(1.35) saturate(1.25)'; cx.drawImage(raw, 0, 0); cx.filter = 'none';
   const tex = new THREE.CanvasTexture(cv); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.colorSpace = THREE.SRGBColorSpace;
-  tex.magFilter = THREE.NearestFilter;
-  const mat = new THREE.MeshPhongMaterial({ map: tex, shininess: p.skin.finish === 'gloss' ? 90 : p.skin.finish === 'metal' ? 60 : p.skin.finish === 'matte' ? 8 : p.skin.rarity === 'common' ? 30 : 70, specular: p.skin.finish === 'metal' ? 0x999999 : 0x444444, flatShading: true });
+  // Smooth, mip-mapped pattern with a touch of anisotropy (crisp nearest-filter only on low-tier devices).
+  if (lowDetail()) tex.magFilter = THREE.NearestFilter; else { tex.anisotropy = 4; tex.generateMipmaps = true; tex.minFilter = THREE.LinearMipmapLinearFilter; }
+  const mat = new THREE.MeshPhongMaterial({ map: tex, shininess: p.skin.finish === 'gloss' ? 90 : p.skin.finish === 'metal' ? 60 : p.skin.finish === 'matte' ? 8 : p.skin.rarity === 'common' ? 30 : 70, specular: p.skin.finish === 'metal' ? 0xb0b0b0 : p.skin.finish === 'gloss' ? 0x777777 : 0x444444, flatShading: lowDetail() });
+  // Soft rim tinted by the skin's accent colour so silhouettes read in dark maps (identity/colours unchanged).
+  addRim(mat, p.skin.colors[1], p.skin.rarity === 'common' ? 0.18 : 0.3, 2.5);
   if (p.skin.fx) { mat.emissive = new THREE.Color(p.skin.colors[1]); mat.emissiveMap = tex; mat.emissiveIntensity = 0.5; }
   const m = { mat, skin: p.skin }; mats.set(token, m); return m;
 }

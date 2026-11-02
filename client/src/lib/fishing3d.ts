@@ -6,6 +6,7 @@
  * Old Chud the lake monster).
  */
 import * as THREE from 'three';
+import { buildAngler, type AnglerRig } from './anglerModel';
 import { DOCK, inLake, LAKE, lakeShape } from '../../../shared/outskirts';
 import { fishById, RARITY_COLOR, type FishSpot, type Rarity } from '../../../shared/fishing';
 import { mix, parseTod, skyNow, type Sky } from '../../../shared/daynight';
@@ -77,7 +78,7 @@ export class Fishing3D {
   readonly tier: Tier;
   private disposables: Array<{ dispose(): void }> = [];
   private waterMat: THREE.ShaderMaterial; private t = 0; private uTime = { value: 0 };
-  private angler = new THREE.Group(); private rodPts: THREE.Vector3[] = []; private rod: THREE.Mesh; private rodGeo: THREE.BufferGeometry | null = null; private reel = new THREE.Group();
+  private angler = new THREE.Group(); private anglerRig: ReturnType<typeof buildAngler> | null = null; private rodPts: THREE.Vector3[] = []; private rod: THREE.Mesh; private rodGeo: THREE.BufferGeometry | null = null; private reel = new THREE.Group();
   private line: THREE.Line; private lineGeo = new THREE.BufferGeometry(); private bobber = new THREE.Group();
   private shadow: THREE.Mesh; private splashes: Array<{ ring: THREE.Mesh; ring2: THREE.Mesh; drops: THREE.Points; vel: Float32Array; age: number; life: number }> = [];
   private ringGeo = new THREE.RingGeometry(0.85, 1, 40); private dropTex = noiseTex();
@@ -235,17 +236,7 @@ export class Fishing3D {
     this.signM = new THREE.MeshBasicMaterial({ color: 0x4fc3d9 }); const signM = this.signM; const sign = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.35, 0.1), signM); sign.position.set(DOCK.x, 3.0, DOCK.z - 4.05); s.add(sign); this.track(signM, sign.geometry);
     // rowboat
     const boatM = new THREE.MeshLambertMaterial({ color: 0x8a3b2b }); const boat = new THREE.Mesh(new THREE.CapsuleGeometry(0.7, 2.4, 3, 8), boatM); boat.rotation.z = Math.PI / 2; boat.scale.set(1, 1, 0.5); boat.rotation.y = 0.3; boat.position.set(DOCK.x - 3.6, 0.15, DOCK.pierZ0 + 6); s.add(boat); this.track(boatM, boat.geometry);
-    // angler: body, head, cap, arms
-    const skinM = new THREE.MeshLambertMaterial({ color: 0xd9a27a }), shirtM = new THREE.MeshLambertMaterial({ color: 0x2f6fb0 }), capM = new THREE.MeshLambertMaterial({ color: 0xff5f8a }), pantsM = new THREE.MeshLambertMaterial({ color: 0x2b2d3a });
-    this.track(skinM, shirtM, capM, pantsM);
-    const legs = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.8, 0.3), pantsM); legs.position.y = 0.4;
-    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.55, 3, 8), shirtM); torso.position.y = 1.15;
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), skinM); head.position.y = 1.75;
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.26, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), capM); cap.position.y = 1.8; const brim = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 0.25), capM); brim.position.set(0, 1.82, -0.25);
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.5, 2, 6), shirtM); arm.position.set(0.22, 1.2, -0.3); arm.rotation.x = -1.1;
-    const arm2 = arm.clone(); arm2.position.x = -0.18;
-    for (const m of [legs, torso, head, cap, brim, arm, arm2]) this.track(m.geometry);
-    this.angler.add(legs, torso, head, cap, brim, arm, arm2); this.angler.position.set(STAND.x, 0.65, STAND.z); s.add(this.angler);
+    { const a = buildAngler(); this.track(...a.disposables); this.angler.add(a.root); this.anglerRig = a; } this.angler.position.set(STAND.x, 0.65, STAND.z); s.add(this.angler);
     const rodM = new THREE.MeshStandardMaterial({ color: 0x1d2633, roughness: 0.3, metalness: 0.4 }); this.rod = new THREE.Mesh(new THREE.BufferGeometry(), rodM); s.add(this.rod); this.track(rodM);
     // reel + cork handle at the grip (follows the rod butt every frame)
     { const cork = new THREE.MeshStandardMaterial({ color: 0xb08a5a, roughness: 0.95 }), metal = new THREE.MeshStandardMaterial({ color: 0xc9ced6, roughness: 0.25, metalness: 0.9 }), dark = new THREE.MeshStandardMaterial({ color: 0x20252c, roughness: 0.4, metalness: 0.6 }); this.track(cork, metal, dark);
@@ -350,7 +341,7 @@ export class Fishing3D {
     const keep = new Set(list.map((o) => o.name));
     for (const [k, o] of this.others) if (!keep.has(k)) { this.dropOther(o); this.others.delete(k); }
     list.forEach((o, i) => { let e = this.others.get(o.name);
-      if (!e) { const g = this.angler.clone(); const tag = makeTag(o.name); tag.position.y = 2.5; g.add(tag);
+      if (!e) { const rig = buildAngler(); const g = new THREE.Group(); g.add(rig.root); g.userData.rig = rig; const tag = makeTag(o.name); tag.position.y = 2.5; g.add(tag);
         const rod = new THREE.Mesh(kit.rodGeo, kit.rodM); rod.position.set(0.25, 1.15, -0.35); g.add(rod);
         const lineGeo = new THREE.BufferGeometry(); lineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9 * 3), 3));
         const line = new THREE.Line(lineGeo, kit.lineM); line.frustumCulled = false; line.visible = false;
@@ -378,6 +369,7 @@ export class Fishing3D {
         bobAt.lerp(e.g.position.clone().setY(0), Math.min(0.75, age / 8)); bobAt.x += Math.sin(t * 3 + e.at) * 0.6; bobAt.z += Math.cos(t * 2.3) * 0.3;
         if (!e.splashed) { e.splashed = true; this.splash(bobAt, true, true); } }
       else if (e.pose === 'catch') { tilt = age < 4 ? 0.2 : -0.35; if (e.fishModel) { e.fishModel.visible = age < 4; e.fishModel.rotation.y = Math.PI / 2 + Math.sin(t * 6) * 0.3; } }
+      (e.g.userData.rig as AnglerRig | undefined)?.animate(t, e.pose);
       e.rod.rotation.set(tilt + shake, 0, shake * 0.5); e.g.updateMatrixWorld(true);
       tip.set(0, 2.4, 0).applyMatrix4(e.rod.matrixWorld);
       e.bob.visible = bobVis; e.line.visible = bobVis; if (bobVis) e.bob.position.copy(bobAt);
@@ -405,6 +397,7 @@ export class Fishing3D {
     for (const m of this.mist) { const ph = m.userData.ph as number; m.position.x += Math.sin(t * 0.05 + ph) * dt * 0.4; (m.material as THREE.SpriteMaterial).opacity = (0.1 + 0.16 * (1 - this.sky.day) + 0.12 * this.sky.warm) * (0.75 + 0.25 * Math.sin(t * 0.3 + ph)); }
     // angler faces the aim; the rod bends toward the line with tension
     this.angler.rotation.y = -this.yaw;
+    this.anglerRig?.animate(t, this.phase, this.power);
     const fwd = new THREE.Vector3(Math.sin(this.yaw), 0, -Math.cos(this.yaw)), right = new THREE.Vector3(Math.cos(this.yaw), 0, Math.sin(this.yaw));
     const grip = new THREE.Vector3(STAND.x, 1.75, STAND.z).addScaledVector(fwd, 0.45).addScaledVector(right, 0.2);
     let lift = 1.05; if (this.phase === 'charge') lift = 1.05 + 0.9 * this.power; if (this.phase === 'flying' && this.flight && this.flight.t < 0.25) lift = 0.3;

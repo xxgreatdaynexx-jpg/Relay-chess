@@ -3,7 +3,8 @@
  * three.js uses Y up, so world (x, y, z) maps to three (x, z, y). All textures are procedural (no external assets).
  */
 import { applySkin, tickSkins } from './skinRender';
-import { leanHeadCompensation, MODEL_HEAD_Y } from './soldierPose';
+import { leanHeadCompensation } from './soldierPose';
+import { buildSoldierBody } from './soldierModel';
 import * as THREE from 'three';
 import type { ArenaMap, Material, Ramp } from '../../../shared/arenaMaps';
 import type { WeaponId } from '../../../shared/fps';
@@ -614,30 +615,9 @@ export class Arena3D {
   private soldier(id: string, color: string) {
     let s = this.soldiers.get(id);
     if (s) return s;
-    const g = new THREE.Group();
-    const outer = g;
-    const rig = new THREE.Group(); outer.add(rig);
-    const body = new THREE.MeshLambertMaterial({ color, transparent: true });
-    const skin = new THREE.MeshLambertMaterial({ color: 0xc89a70, transparent: true });
-    const dark = new THREE.MeshLambertMaterial({ color: 0x2b2a26, transparent: true });
-    const add = (geo: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = rig) => {
-      const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); parent.add(o); return o;
-    };
-    const legs: THREE.Object3D[] = [];
-    for (const side of [-0.11, 0.11]) {
-      const pivot = new THREE.Group(); pivot.position.set(0, 0.8, side); rig.add(pivot);
-      add(new THREE.BoxGeometry(0.18, 0.8, 0.17), dark, 0, -0.4, 0, pivot);
-      legs.push(pivot);
-    }
-    add(new THREE.BoxGeometry(0.3, 0.58, 0.48), body, 0, 1.08, 0); // torso
-    add(new THREE.BoxGeometry(0.16, 0.12, 0.5), dark, 0.02, 0.86, 0); // belt
-    add(new THREE.BoxGeometry(0.26, 0.26, 0.24), skin, 0, MODEL_HEAD_Y, 0); // head
-    add(new THREE.BoxGeometry(0.29, 0.1, 0.27), body, 0, 1.68, 0); // helmet/cap
-    add(new THREE.BoxGeometry(0.06, 0.06, 0.2), dark, 0.13, 1.56, 0); // goggles
-    // Arms + gun hang off a shoulder pivot that follows the player's pitch.
-    const aim = new THREE.Group(); aim.position.set(0.04, 1.3, 0.05); rig.add(aim);
+    const { outer, rig, body, legs, aim, mats } = buildSoldierBody(color);
     this.scene.add(outer);
-    s = { g: outer, rig, body, legs, seen: true, aim, guns: new Map(), w: null, mats: [body, skin, dark] };
+    s = { g: outer, rig, body, legs, seen: true, aim, guns: new Map(), w: null, mats };
     this.soldiers.set(id, s);
     return s;
   }

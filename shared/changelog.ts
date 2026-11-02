@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T02:30:00-06:00', title: 'Nicer skins, characters and fishing anglers', bullets: [
+    'Every weapon and pickaxe skin renders smoother: sharper, filtered patterns, softer shading and a subtle rim light in the skin\'s own accent colour. Names, colours, patterns, rarity, prices and ownership are unchanged.',
+    'Arena soldiers get bevelled armour, a plate carrier, shoulder and knee pads, boots, a glowing visor and a soft rim light, in your same team colour. Mine workers get rounded gear, a face and a brass belt buckle.',
+    'The fishing anglers on the lake dock and the Reef Pier are now proper fishermen: bucket hat, khaki vest with pockets, beard, waders and boots. They breathe, look around and move their arms when casting, reeling and showing off a catch.',
+    'Hitboxes, animations, aim and gameplay are unchanged. Phones and low-end devices get a lighter version.',
+  ] },
   { commit: '', at: '2026-11-02T02:15:00-06:00', title: 'Chat shows what everyone is doing', bullets: [
     'The Online list in chat now shows each player\'s live activity next to their name, like "⛏️ Mining · Magma Depths", "🌾 Farming · North Field", "🍳 Cooking", "📈 Stock market" or "🎰 Casino · Blackjack". Their chat messages get the same little tag.',
     'Covers mining (which mine), the factory, cooking and the grocery, farming (which farm), fishing (lake or resort reef), the stock market and skin market, every casino game, the arena (which mode), chess and checkers tables, Conquest, solitaire, real estate, City Hall, the job board, the dealership, the mechanic, driving, the airport and racetrack, the resort, skills, inventory and the city. After 5 minutes with no input you show as 💤 Idle.',
