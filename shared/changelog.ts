@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T16:06:00-06:00', title: 'Factory: pantry crops feed your machines', bullets: [
+    'Crops you harvested to the pantry now go into a factory Input Chest set to that crop, so pantry sunflowers feed the Mill & Press and come out as Sunflower Oil.',
+    'Pantry food in factory Storage is now labelled "pantry" instead of "craft". It is never sold to the house; cook it, sell it on the Market, or feed crops to the factory.',
+  ] },
   { commit: '', at: '2026-11-02T15:47:00-06:00', title: 'Stock Exchange: dividends are 30x bigger', bullets: [
     'Every dividend-paying company now pays 30x its old daily yield (e.g. 0.15%/day is now 4.5%/day). Funds pass the bigger dividends straight through.',
     'Prices, trading fees and fund expense ratios are unchanged. Dividends still pay once a day at 10 AM CST.',
