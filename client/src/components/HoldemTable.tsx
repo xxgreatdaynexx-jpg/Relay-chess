@@ -6,9 +6,13 @@ import { CardFace } from '@/components/SolitairePanel';
 import { emitCasino, useCountdown } from '@/lib/casino';
 import { socket } from '@/lib/net';
 import { playCardFlick, playSolitaireWin } from '@/lib/sounds';
-import { HE_BIG, HE_SEATS, HE_MAX_BUYIN, HE_MIN_BUYIN, HE_SMALL, HE_SPECTATE_DELAY_MS, type HESpectateView, type HEView } from '../../../shared/holdem';
+import { heStakes, HE_SEATS, HE_SPECTATE_DELAY_MS, HE_STAKES, type HEStakes, type HEStakesId, type HESpectateView, type HEView } from '../../../shared/holdem';
 
-interface TableInfo { id: string; seated: number; phase: string; watchers: number }
+interface TableInfo { id: string; stakes?: HEStakesId; seated: number; phase: string; watchers: number }
+
+const k = (n: number) => (n >= 1000 && n % 1000 === 0 ? `${n / 1000}K` : n.toLocaleString());
+/** Lobby label for a tier, e.g. "High Stakes 5K · blinds 25/50 · buy-in 5K". */
+export const stakesLabel = (t: HEStakes) => `${t.label} · blinds ${t.small}/${t.big} · buy-in ${t.minBuyIn === t.maxBuyIn ? k(t.minBuyIn) : `${k(t.minBuyIn)}–${k(t.maxBuyIn)}`}`;
 
 const PHASE: Record<HEView['phase'], string> = { waiting: 'Waiting for players', preflop: 'Pre-flop', flop: 'Flop', turn: 'Turn', river: 'River', showdown: 'Showdown' };
 
@@ -16,6 +20,8 @@ const PHASE: Record<HEView['phase'], string> = { waiting: 'Waiting for players',
 export function HoldemTableView({ name }: { name: string }) {
   const [v, setV] = useState<HEView | null>(null);
   const [buyIn, setBuyIn] = useState(500);
+  const [pick, setPick] = useState<HEStakesId>(() => heStakes(localStorage.getItem('relay-he-stakes')).id);
+  useEffect(() => { localStorage.setItem('relay-he-stakes', pick); }, [pick]);
   const [raise, setRaise] = useState(0);
   const [err, setErr] = useState('');
   const [spec, setSpec] = useState<{ table: string; delayMs: number; view: HESpectateView | null } | null>(null);
@@ -62,12 +68,14 @@ export function HoldemTableView({ name }: { name: string }) {
   if (spec) return <SpectateView spec={spec} onStop={stopSpec} />;
   const o = v?.options;
   const seated = v?.you != null;
+  const cur = heStakes(seated ? v?.stakes : pick);
+  const tierOf = (t: { stakes?: HEStakesId }) => heStakes(t.stakes);
   return (
     <div className="bj-table he-table" data-testid="holdem">
       <div className="bj-status" data-testid="he-status">
-        {!v ? `No-Limit Hold'em · blinds ${HE_SMALL}/${HE_BIG} · 2–6 players` : v.phase === 'showdown'
+        {!v || (!seated && v.phase === 'waiting') ? `No-Limit Hold'em · ${stakesLabel(cur)} · 2–6 players` : v.phase === 'showdown'
           ? v.winners.map((w) => `${w.name} wins ${w.amount} (${w.hand})`).join(' · ')
-          : `${v.id} · ${PHASE[v.phase]}${v.pot ? ` · pot ${v.pot}` : ''}${secs !== null && v.toAct !== null ? ` · ${v.seats[v.toAct]?.name ?? ''} ${secs}s` : ''}`}
+          : `${v.id} · ${heStakes(v.stakes).label} ${heStakes(v.stakes).small}/${heStakes(v.stakes).big} · ${PHASE[v.phase]}${v.pot ? ` · pot ${v.pot}` : ''}${secs !== null && v.toAct !== null ? ` · ${v.seats[v.toAct]?.name ?? ''} ${secs}s` : ''}`}
       </div>
       {v && v.phase !== 'showdown' && v.toAct !== null && <TurnTimerBar deadline={v.deadline} serverNow={v.serverNow} testId="he-timer" />}
       <HoldemFelt v={v} />
@@ -79,7 +87,7 @@ export function HoldemTableView({ name }: { name: string }) {
             : <button type="button" onClick={() => void send('he_action', { action: 'call' })} data-testid="he-call">Call {o.call}</button>}
           {o.raise && (
             <>
-              <input type="range" min={o.minRaiseTo} max={o.maxRaiseTo} step={HE_SMALL} value={raise} onChange={(e) => setRaise(Number(e.target.value))} aria-label="Raise to" />
+              <input type="range" min={o.minRaiseTo} max={o.maxRaiseTo} step={heStakes(v?.stakes).small} value={raise} onChange={(e) => setRaise(Number(e.target.value))} aria-label="Raise to" />
               <button type="button" className="bj-deal" onClick={() => void send('he_action', raise >= o.maxRaiseTo ? { action: 'allin' } : { action: 'raise', amount: raise })} data-testid="he-raise">
                 {raise >= o.maxRaiseTo ? `All-in ${o.maxRaiseTo}` : `${v!.currentBet ? 'Raise to' : 'Bet'} ${raise}`}
               </button>
@@ -93,8 +101,15 @@ export function HoldemTableView({ name }: { name: string }) {
           ? <button type="button" onClick={() => void send('he_leave')} data-testid="he-leave">Stand up & cash out</button>
           : (
             <>
-              <label className="bj-label">Buy-in <input type="number" min={HE_MIN_BUYIN} max={HE_MAX_BUYIN} step={50} value={buyIn} onChange={(e) => setBuyIn(Number(e.target.value))} className="he-buyin" /></label>
-              <button type="button" className="bj-deal" onClick={() => void send('he_sit', { buyIn })} data-testid="he-sit">Sit down</button>
+              <div className="he-stakes" role="radiogroup" aria-label="Table stakes" data-testid="he-stakes">
+                {HE_STAKES.map((t) => (
+                  <button type="button" key={t.id} role="radio" aria-checked={pick === t.id} className={`he-stake ${pick === t.id ? 'on' : ''} ${t.id === 'classic' ? '' : 'high'}`} onClick={() => setPick(t.id)} data-testid={`he-stakes-${t.id}`}>
+                    <b>{t.label}</b><span>Blinds {t.small}/{t.big}</span><span>Buy-in {t.minBuyIn === t.maxBuyIn ? t.minBuyIn.toLocaleString() : `${t.minBuyIn}–${t.maxBuyIn}`}</span>
+                  </button>
+                ))}
+              </div>
+              {cur.minBuyIn !== cur.maxBuyIn && <label className="bj-label">Buy-in <input type="number" min={cur.minBuyIn} max={cur.maxBuyIn} step={50} value={buyIn} onChange={(e) => setBuyIn(Number(e.target.value))} className="he-buyin" /></label>}
+              <button type="button" className="bj-deal" onClick={() => void send('he_sit', { buyIn: cur.minBuyIn === cur.maxBuyIn ? cur.minBuyIn : buyIn, stakes: cur.id })} data-testid="he-sit">Sit down · {cur.label}</button>
             </>
           )}
       </div>
@@ -104,7 +119,7 @@ export function HoldemTableView({ name }: { name: string }) {
           <span className="bj-label">Spectate (see every hand):</span>
           {tables.map((t) => (
             <button type="button" key={t.id} onClick={() => void spectate(t.id)} data-testid={`he-spectate-${t.id}`}>
-              Watch {t.id} · {t.seated} seated · 👁 {t.watchers}
+              Watch {t.id} · {tierOf(t).label} {tierOf(t).small}/{tierOf(t).big} · {t.seated} seated · 👁 {t.watchers}
             </button>
           ))}
         </div>

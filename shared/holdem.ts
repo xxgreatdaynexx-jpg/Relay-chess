@@ -7,6 +7,19 @@ export const HE_BIG = 10;
 export const HE_MIN_BUYIN = 100;
 export const HE_MAX_BUYIN = 1000;
 export const HE_TURN_MS = 25000;
+
+/** Table tiers. Blinds keep the classic ratio: big blind = max buy-in / 100, small blind = big / 2. */
+export interface HEStakes { id: HEStakesId; label: string; small: number; big: number; minBuyIn: number; maxBuyIn: number }
+export type HEStakesId = 'classic' | '5k' | '10k' | '25k' | '100k';
+const tier = (id: HEStakesId, label: string, buyIn: number): HEStakes => ({ id, label, small: buyIn / 200, big: buyIn / 100, minBuyIn: buyIn, maxBuyIn: buyIn });
+export const HE_STAKES: readonly HEStakes[] = [
+  { id: 'classic', label: 'Classic', small: HE_SMALL, big: HE_BIG, minBuyIn: HE_MIN_BUYIN, maxBuyIn: HE_MAX_BUYIN },
+  tier('5k', 'High Stakes 5K', 5_000),
+  tier('10k', 'High Stakes 10K', 10_000),
+  tier('25k', 'High Roller 25K', 25_000),
+  tier('100k', 'High Roller 100K', 100_000),
+];
+export const heStakes = (id: unknown): HEStakes => HE_STAKES.find((x) => x.id === id) ?? HE_STAKES[0]!;
 export const HE_NEXT_HAND_MS = 4000;
 
 export type HEPhase = 'waiting' | 'preflop' | 'flop' | 'turn' | 'river' | 'showdown';
@@ -29,6 +42,8 @@ export interface HEWinner { name: string; amount: number; hand: string }
 
 export interface HEView {
   id: string;
+  /** Table tier (blinds and buy-in). */
+  stakes?: HEStakesId;
   phase: HEPhase;
   seats: (HESeatView | null)[];
   board: CasinoCard[];

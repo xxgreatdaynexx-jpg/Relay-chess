@@ -1,7 +1,7 @@
 /** Multiplayer No-Limit Texas Hold'em tables (5/10 blinds). Chips come from the casino bank at buy-in and go back on leaving. */
 import type { CasinoCard } from '../shared/casino.js';
 import {
-  bestHand, HE_BIG, HE_MAX_BUYIN, HE_MIN_BUYIN, HE_NEXT_HAND_MS, HE_SEATS, HE_SMALL, HE_TURN_MS,
+  bestHand, heStakes, HE_NEXT_HAND_MS, HE_SEATS, HE_TURN_MS, type HEStakes, type HEStakesId,
   equity, type HEAction, type HEPhase, type HESeatView, type HESpectateView, type HEView, type HEWinner,
 } from '../shared/holdem.js';
 import { makeShoe } from './blackjack.js';
@@ -35,13 +35,18 @@ export class HoldemTable {
   toAct: number | null = null;
   deadline: number | null = null;
   currentBet = 0;
-  minRaise = HE_BIG;
+  minRaise: number;
+  readonly tier: HEStakes;
   winners: HEWinner[] = [];
   revealed = new Set<number>();
   handNo = 0;
   nextHandAt: number | null = null;
 
-  constructor(readonly id: string, private readonly bank: CasinoBank, private readonly rand: () => number = secureRand, private readonly deckFn?: () => CasinoCard[]) {}
+  constructor(readonly id: string, private readonly bank: CasinoBank, private readonly rand: () => number = secureRand, private readonly deckFn?: () => CasinoCard[], stakes: HEStakesId = 'classic') {
+    this.tier = heStakes(stakes);
+    this.minRaise = this.tier.big;
+  }
+  get stakes(): HEStakesId { return this.tier.id; }
 
   seatOf(name: string): number {
     return this.seats.findIndex((s) => s && key(s.name) === key(name));
@@ -50,7 +55,8 @@ export class HoldemTable {
 
   sit(name: string, buyIn: number, now: number): number {
     if (this.seatOf(name) >= 0) throw new Error('You are already at this table.');
-    if (!Number.isInteger(buyIn) || buyIn < HE_MIN_BUYIN || buyIn > HE_MAX_BUYIN) throw new Error(`Buy in for ${HE_MIN_BUYIN}–${HE_MAX_BUYIN} chips.`);
+    const { minBuyIn: lo, maxBuyIn: hi } = this.tier;
+    if (!Number.isInteger(buyIn) || buyIn < lo || buyIn > hi) throw new Error(lo === hi ? `This table's buy-in is ${lo.toLocaleString()} chips.` : `Buy in for ${lo}–${hi} chips.`);
     const i = this.seats.findIndex((s) => !s);
     if (i < 0) throw new Error('Table is full.');
     this.bank.debit(name, buyIn, 'holdem');
@@ -116,10 +122,10 @@ export class HoldemTable {
       do { this.seats[i]!.hole.push(this.draw()); i = this.next(i, (s) => s.inHand); } while (i !== sb);
     }
     this.phase = 'preflop';
-    this.post(sb, HE_SMALL, 'SB');
-    this.post(bb, HE_BIG, 'BB');
-    this.currentBet = HE_BIG;
-    this.minRaise = HE_BIG;
+    this.post(sb, this.tier.small, 'SB');
+    this.post(bb, this.tier.big, 'BB');
+    this.currentBet = this.tier.big;
+    this.minRaise = this.tier.big;
     this.setTurn(this.next(bb, (s) => s.inHand && !s.folded && !s.allIn), now);
     if (this.toAct === null || this.roundDone()) this.advance(now);
   }
@@ -221,7 +227,7 @@ export class HoldemTable {
     while (true) {
       for (const s of this.seats) if (s) { s.bet = 0; s.acted = false; }
       this.currentBet = 0;
-      this.minRaise = HE_BIG;
+      this.minRaise = this.tier.big;
       if (this.phase === 'preflop') { this.phase = 'flop'; this.board.push(this.draw(), this.draw(), this.draw()); }
       else if (this.phase === 'flop') { this.phase = 'turn'; this.board.push(this.draw()); }
       else if (this.phase === 'turn') { this.phase = 'river'; this.board.push(this.draw()); }
@@ -329,7 +335,7 @@ export class HoldemTable {
     });
     const pot = this.seats.reduce((a, s) => a + (s && s.inHand ? s.total : 0), 0);
     return {
-      id: this.id, phase: this.phase, seats, board: this.board, pot: this.inPlay() ? pot : 0, button: this.button,
+      id: this.id, stakes: this.tier.id, phase: this.phase, seats, board: this.board, pot: this.inPlay() ? pot : 0, button: this.button,
       toAct: this.toAct, deadline: this.deadline, currentBet: this.currentBet, minRaiseTo: this.currentBet + this.minRaise,
       you: me >= 0 ? me : null, options: me >= 0 ? this.options(me) : null, winners: this.winners, handNo: this.handNo, nextHandAt: this.nextHandAt, serverNow: now,
     };
@@ -354,7 +360,7 @@ export function spectateView(t: HoldemTable, now: number, delayMs: number, rand:
   return { ...base, seats, you: null, options: null, spectator: true, delayMs, watchers: 0, odds };
 }
 
-/** All the tables. New players fill the busiest table with an open seat. */
+/** All the tables. New players fill the busiest table of their chosen stakes with an open seat. */
 export class HoldemRoom {
   tables: HoldemTable[] = [];
   private n = 0;
@@ -364,11 +370,13 @@ export class HoldemRoom {
     return this.tables.find((t) => t.seatOf(name) >= 0) ?? null;
   }
 
-  sit(name: string, buyIn: number, now: number): HoldemTable {
+  sit(name: string, buyIn: number, now: number, stakes: HEStakesId = 'classic'): HoldemTable {
     const cur = this.tableOf(name);
     if (cur) return cur;
-    const open = this.tables.filter((t) => t.seated < HE_SEATS).sort((a, b) => b.seated - a.seated)[0];
-    const t = open ?? new HoldemTable(`T${++this.n}`, this.bank, this.rand);
+    const tier = heStakes(stakes);
+    if (!Number.isInteger(buyIn) || buyIn < tier.minBuyIn || buyIn > tier.maxBuyIn) throw new Error(tier.minBuyIn === tier.maxBuyIn ? `This table's buy-in is ${tier.minBuyIn.toLocaleString()} chips.` : `Buy in for ${tier.minBuyIn}–${tier.maxBuyIn} chips.`);
+    const open = this.tables.filter((t) => t.stakes === tier.id && t.seated < HE_SEATS).sort((a, b) => b.seated - a.seated)[0];
+    const t = open ?? new HoldemTable(`${tier.id === 'classic' ? 'T' : `${tier.id.toUpperCase()}-`}${++this.n}`, this.bank, this.rand, undefined, tier.id);
     if (!open) this.tables.push(t);
     t.sit(name, buyIn, now);
     return t;

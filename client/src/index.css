@@ -609,6 +609,12 @@ input {
 .he-empty { opacity: 0.5; padding-top: 30px; }
 .he-controls input[type=range] { flex: 1; min-width: 90px; }
 .he-buyin { width: 72px; margin-left: 4px; }
+.he-stakes { display: flex; flex-wrap: wrap; gap: 4px; width: 100%; justify-content: center; }
+.he-stake { display: flex; flex-direction: column; align-items: center; padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,.2); font-size: 11px; line-height: 1.25; }
+.he-stake b { font-size: 12px; }
+.he-stake.high { border-color: rgba(234,179,8,.55); }
+.he-stake.high b { color: #facc15; }
+.he-stake.on { background: rgba(34,197,94,.25); border-color: #22c55e; }
 .he-card .sol-card { position: relative; width: 100%; height: auto; aspect-ratio: 5 / 7; }
 
 /* Arena: tactical HUD */

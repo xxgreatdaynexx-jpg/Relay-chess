@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T13:45:00-06:00', title: 'Poker: high-stakes Hold\'em tables', bullets: [
+    'The Hold\'em lobby now lets you pick a table: Classic (blinds 5/10, buy-in 100–1,000) or the new High Stakes 5K (blinds 25/50), High Stakes 10K (50/100), High Roller 25K (125/250) and High Roller 100K (500/1,000).',
+    'Each high-stakes table has a fixed buy-in of 5K, 10K, 25K or 100K chips, and you can only sit down if you have the full buy-in. Blinds keep the same ratio as the classic table.',
+    'Each tier has its own tables, so you only play against people at the same stakes. Hand rules, dealing and payouts are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T13:40:00-06:00', title: 'Countryside farms look like real farms', bullets: [
     'Requested by Dayne: the buyable crop fields around the city (snowy map too) now look like the Farm district: dark soil, furrow rows, a fence, and your crops growing on them instead of flat green and dark stripes.',
   ] },

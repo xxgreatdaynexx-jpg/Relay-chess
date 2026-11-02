@@ -8,7 +8,7 @@ import { signedIn } from './auth-sockets.js';
 import { VideoPoker } from './video-poker.js';
 import { buyVideoBonus, spinVideoSlot } from './slots.js';
 import { HoldemRoom, type HoldemTable } from './holdem.js';
-import { HE_SPECTATE_DELAY_MS, type HEAction } from '../shared/holdem.js';
+import { heStakes, HE_SPECTATE_DELAY_MS, type HEAction } from '../shared/holdem.js';
 import { HoldemSpectators, type Viewer } from './holdem-spectate.js';
 
 const envDelay = Number(process.env.HOLDEM_SPECTATOR_DELAY_MS);
@@ -33,7 +33,7 @@ function pushSpectators(now = Date.now()): void {
   }
 }
 function tableList() {
-  return room().tables.map((t) => ({ id: t.id, seated: t.seated, phase: t.phase, watchers: spectators.count(t.id) }));
+  return room().tables.map((t) => ({ id: t.id, stakes: t.stakes, seated: t.seated, phase: t.phase, watchers: spectators.count(t.id) }));
 }
 
 let holdem: HoldemRoom | null = null;
@@ -190,7 +190,7 @@ export function registerCasino(io: Server, socket: Socket): void {
     spectators.noteIdentity(viewer(socket));
     spectators.unwatch(socket.id);
     heWatchers.add(socket);
-    const t = room().sit(name, Number(body.buyIn), now);
+    const t = room().sit(name, Number(body.buyIn), now, heStakes(body.stakes).id);
     pushHoldem(null, now);
     return { state: t.view(name, now) };
   }));

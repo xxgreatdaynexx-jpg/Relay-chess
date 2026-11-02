@@ -150,3 +150,49 @@ describe('hold\'em table', () => {
     expect(room.tableOf('P6')!.id).toBe('T2');
   });
 });
+
+describe('hold\'em stakes tiers', () => {
+  it('defines 5K/10K/25K/100K tiers with blinds at the classic ratio', async () => {
+    const { HE_STAKES, HE_SMALL, HE_BIG, HE_MAX_BUYIN } = await import('../shared/holdem.js');
+    expect(HE_STAKES.map((t) => [t.id, t.small, t.big, t.minBuyIn, t.maxBuyIn])).toEqual([
+      ['classic', HE_SMALL, HE_BIG, 100, HE_MAX_BUYIN],
+      ['5k', 25, 50, 5000, 5000], ['10k', 50, 100, 10000, 10000], ['25k', 125, 250, 25000, 25000], ['100k', 500, 1000, 100000, 100000],
+    ]);
+    for (const t of HE_STAKES) { expect(t.maxBuyIn / t.big).toBe(HE_MAX_BUYIN / HE_BIG); expect(t.big).toBe(t.small * 2); }
+  });
+
+  it('posts the tier blinds and moves chips only through the bank', () => {
+    const bank = new CasinoBank();
+    bank.account('Ann').chips = 30000; bank.account('Bob').chips = 30000;
+    const t = new HoldemTable('X', bank, Math.random, () => cards('AS KS 2D 7C QS JS TS 3H 4H 9C 8D'), '25k');
+    t.sit('Ann', 25000, 0); t.sit('Bob', 25000, 0);
+    expect(bank.account('Ann').chips).toBe(5000);
+    t.startHand(0);
+    const v = t.view('Ann', 0);
+    expect(v.stakes).toBe('25k');
+    expect(v.pot).toBe(375);
+    expect(v.currentBet).toBe(250);
+    expect(() => t.sit('Cy', 5000, 0)).toThrow(/25,000/);
+    const total = () => bank.account('Ann').chips + bank.account('Bob').chips + t.seats.reduce((a, s) => a + (s?.stack ?? 0), 0);
+    t.act(t.seats[t.toAct!]!.name, 'fold', 0, 0);
+    t.leave('Ann', 0); t.leave('Bob', 0);
+    expect(total()).toBe(60000);
+  });
+
+  it('only seats players who have the full buy-in, and keeps tiers on separate tables', () => {
+    const bank = new CasinoBank();
+    const room = new HoldemRoom(bank);
+    bank.account('Poor').chips = 4999;
+    expect(() => room.sit('Poor', 5000, 0, '5k')).toThrow(/Not enough chips/);
+    expect(bank.account('Poor').chips).toBe(4999);
+    expect(() => room.sit('Poor', 1000, 0, '5k')).toThrow(/buy-in is 5,000/);
+    bank.account('Rich').chips = 200000;
+    bank.account('Reg').chips = 1000;
+    const hi = room.sit('Rich', 100000, 0, '100k');
+    const lo = room.sit('Reg', 500, 0);
+    expect(hi).not.toBe(lo);
+    expect(hi.stakes).toBe('100k');
+    expect(lo.stakes).toBe('classic');
+    expect(bank.account('Rich').chips).toBe(100000);
+  });
+});
