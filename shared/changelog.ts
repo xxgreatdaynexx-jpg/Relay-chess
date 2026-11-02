@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T01:50:00-06:00', title: 'Chudhub goes Christmas (through Jan 5)', bullets: [
+    'Requested by Liam: snow falls over the city and the resort, rooftops are capped with snow and the streets have a frosty coat.',
+    'Twinkling Christmas lights line the buildings, a big decorated tree with presents stands in the central plaza, and smaller trees dress up the casino, the arena, City Hall, every mine entrance and the resort casino. The top bar gets a candy-cane trim and a string of lights.',
+    'Phones and low-end devices get lighter snow and fewer lights so the city stays smooth.',
+    'Purely cosmetic: no changes to chips, prices, odds or payouts. The theme switches off by itself after January 5, 2027 (Alberta time).',
+  ] },
   { commit: '', at: '2026-11-02T01:50:00-06:00', title: 'Request board: Scheduled status', bullets: [
     'Requests can now be marked Scheduled with a planned date, shown as a purple badge like "Scheduled · Nov 7". Scheduled requests sort right after In progress.',
   ] },

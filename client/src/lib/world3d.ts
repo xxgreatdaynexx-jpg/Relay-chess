@@ -16,6 +16,8 @@ import { outskirts, countryHomes, countryBusinesses, businessType, lakeShape, RU
 import { AIRPORT_ROADS, RACETRACK_ROADS, TRACK } from '../../../shared/venues';
 
 import { WORLD_SPOTS } from './worldSpots';
+import { addXmas, type XmasRoof, type XmasDecor } from './worldXmas';
+import { xmasOn } from '../../../shared/holiday';
 import { buildCar } from './carModels';
 import { CAR_BY_ID } from '../../../shared/cars';
 import { HOUSING_TYPES, type HousingType } from './housing';
@@ -362,6 +364,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const unitBox = geo(new THREE.BoxGeometry(1, 1, 1));
   const housingMeshes: Record<string, THREE.InstancedMesh> = {};
   const propTop = new Map<string, [number, number, number]>();
+  const xmasRoofs: XmasRoof[] = [];
   HOUSING_TYPES.forEach((ht, ti) => {
     const list = fillers.filter((f) => f.type === ht.id); if (!list.length) return;
     const [map, em] = housingTextures(200 + ti, ht); disposables.push(map, em);
@@ -376,7 +379,18 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     // Real estate: every building is a property (stable id from type + position, matches shared/realEstate).
     body.userData.props = list.map((f) => buildingId(ht.id, f)); pickables.push(body); if (roof) { roof.userData.props = body.userData.props; pickables.push(roof); }
     list.forEach((f, i) => propTop.set(body.userData.props[i], [f.x, f.h + (roof ? Math.min(1.6, f.d * 0.45) : 0), f.z]));
+    list.forEach((f) => xmasRoofs.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: f.rot, top: f.h + (roof ? Math.min(1.6, f.d * 0.45) : 0), gable: !!roof }));
   });
+  // Christmas theme (request #17): date-gated in shared/holiday.ts (XMAS_END), cosmetic only.
+  let xmas: ReturnType<typeof addXmas> | null = null;
+  if (xmasOn()) {
+    const decor: XmasDecor[] = [];
+    const corner = (id: string, lx: number, lz: number, scale = 0.8) => { const b = lmBoxes[id]; if (!b) return; const c = Math.cos(b.rot), sn = Math.sin(b.rot); decor.push({ x: b.x + lx * c + lz * sn, z: b.z - lx * sn + lz * c, scale }); };
+    { const b = lmBoxes.chat; if (b) decor.push({ x: b.x, z: b.z, scale: 1.9, big: true }); } // the big plaza tree
+    corner('casino', 5.2, 5.2); corner('casino', -5.2, 5.2); corner('arena', 5.4, 5.4); corner('arena', -5.4, 5.4); corner('cityhall', 5, 5, 0.6);
+    for (const site of Object.values(MINE_SITES)) decor.push({ x: site.x + 9, z: site.z + 9, scale: 0.9 });
+    xmas = addXmas(scene, { tier, half: PLATE + 50, roofs: xmasRoofs, decor });
+  }
   // Open-space patches: parks (grass), plazas (paving + fountain glow), lots (dirt) — one instanced slab, tinted, rotated.
   if (patches.length) {
     const gm = new THREE.InstancedMesh(unitBox, mat({ color: 0xffffff, roughness: 1 }), patches.length); const d = new THREE.Object3D(); const c = new THREE.Color();
@@ -716,6 +730,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       if (fly.t >= 1) { const id = fly.id; fly = null; controls.enabled = true; h.onPick(id); } } // the city stays mounted now (0dc4f99): hand zoom/orbit back
     else if (!tick?.(dt)) { panStep(dt); controls.update(); clampPan(); }
     skyT += dt; if (skyT > 1) { skyT = 0; applySky(); }
+    xmas?.step(dt);
     for (const w of waterMats) w.uniforms.uTime.value = time; venues.step(dt, time, camera.position);
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
     for (const l of lms) { const k = labelScale(camera.position.distanceTo(l.sign.getWorldPosition(tmpV)), portrait) * (l.sign.userData.hover ? 1.2 : 1); l.sign.scale.set(k, k / 4, 1); }
@@ -745,7 +760,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     setRunning(v: boolean) { running = v && !document.hidden; clock.getDelta(); },
     project(id: string) { const l = lms.find((x) => x.id === id); if (!l) return null; const v = l.pos.clone().setY(l.height + 2.2).project(camera); const rc = canvas.getBoundingClientRect(); return { x: rc.left + (v.x + 1) / 2 * rc.width, y: rc.top + (1 - v.y) / 2 * rc.height }; },
     hover(id: string | null) { setHover(id); },
-    dispose() { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); parkDead = true; trailerMeshes = []; cancelAnimationFrame(raf); venues.dispose(); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
+    dispose() { xmas?.dispose(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); parkDead = true; trailerMeshes = []; cancelAnimationFrame(raf); venues.dispose(); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
   };
 }
 export type World = ReturnType<typeof createWorld>;

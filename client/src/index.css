@@ -2023,3 +2023,12 @@ html, body { overflow-x: clip; }
 .mines-tool button { font-size: 11px; padding: 2px 7px; border-radius: 5px; background: #2b3a2b; color: #e8f5e0; border: 1px solid #4b6b4b; cursor: pointer; white-space: nowrap; }
 .mines-tool button:disabled { opacity: .45; cursor: not-allowed; }
 .mines-tool em { font-size: 11px; font-style: normal; color: #ffc850; }
+
+/* Christmas theme (request #17): cosmetic accent only, on while <html class="xmas"> (shared/holiday.ts). */
+html.xmas .top-tabs { border-bottom: 3px solid transparent; border-image: repeating-linear-gradient(135deg, #d8283a 0 10px, #f4f8ff 10px 20px, #2a8a4a 20px 30px, #f4f8ff 30px 40px) 3; }
+html.xmas .top-tabs::after { content: ''; position: absolute; left: 0; right: 0; bottom: -9px; height: 6px; pointer-events: none;
+  background: radial-gradient(circle, #ff4050 0 2px, transparent 3px) 0 0 / 36px 6px repeat-x, radial-gradient(circle, #40e080 0 2px, transparent 3px) 12px 0 / 36px 6px repeat-x, radial-gradient(circle, #ffd040 0 2px, transparent 3px) 24px 0 / 36px 6px repeat-x;
+  animation: xmas-twinkle 1.6s steps(2) infinite; }
+html.xmas .top-menu-btn::before { content: '🎄 '; }
+@keyframes xmas-twinkle { 50% { filter: brightness(0.55); } }
+@media (prefers-reduced-motion: reduce) { html.xmas .top-tabs::after { animation: none; } }

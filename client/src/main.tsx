@@ -8,7 +8,11 @@ import './index.css';
 import { initSettings } from './lib/settings';
 import { installChunkReload } from './lib/chunkReload';
 
+import { xmasOn } from '../../shared/holiday';
+
 initSettings();
+// Christmas theme (request #17): festive UI accent until shared/holiday.ts XMAS_END.
+if (xmasOn()) document.documentElement.classList.add('xmas');
 installChunkReload();
 
 createRoot(document.getElementById('root')!).render(

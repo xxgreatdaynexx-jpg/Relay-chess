@@ -7,6 +7,8 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { addXmas } from './worldXmas';
+import { xmasOn } from '../../../shared/holiday';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { RESORT_SPOTS, resortLots, resortPlots, resortPlotId, rfTileXZ, RF_TILE, clampResortTarget, SHORE_Z, BOARDWALK_Z, RESORT_X0, RESORT_X1, RESORT_Z0 } from '../../../shared/resort';
 import { cropById } from '../../../shared/farm';
@@ -247,10 +249,12 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   if (tier !== 'low') { composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera)); composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.6, 0.82)); composer.addPass(new OutputPass()); }
   const ro = new ResizeObserver(() => { resize(); if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(canvas.clientWidth || 1, canvas.clientHeight || 1); } }); ro.observe(canvas); resize();
 
+  // Christmas theme (request #17): snow and a decorated tree by the resort casino; no frost layer on the beach.
+  const xmas = xmasOn() ? addXmas(scene, { tier, half: 130, roofs: [], frost: false, decor: [{ x: -20, z: -4, scale: 1.1, big: true }, { x: 20, z: -4, scale: 1.1 }, { x: 108, z: -58, scale: 0.8 }] }) : null;
   const clock = new THREE.Clock(); let raf = 0; let running = true; let time = 0; const tmp = new THREE.Vector3();
   const frame = () => {
     raf = requestAnimationFrame(frame); if (!running) return; const dt = Math.min(clock.getDelta(), 0.05); time += dt;
-    waterMat.uniforms.uTime!.value = time; yachts.forEach((y, i) => { y.position.y = 0.3 + Math.sin(time * 1.1 + i) * 0.12; y.rotation.z = Math.sin(time * 0.9 + i * 2) * 0.02; });
+    xmas?.step(dt); waterMat.uniforms.uTime!.value = time; yachts.forEach((y, i) => { y.position.y = 0.3 + Math.sin(time * 1.1 + i) * 0.12; y.rotation.z = Math.sin(time * 0.9 + i * 2) * 0.02; });
     controls.update(); clampPan();
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
     for (const s of signs) { const k = labelScale(camera.position.distanceTo(s.getWorldPosition(tmp)), portrait) * (s.userData.k as number); s.scale.set(k, k / 4 * ((s.material.map!.image as { height: number }).height / 128), 1); }
@@ -261,6 +265,6 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
     setFarm, setOwned, lotIds,
     setRunning(v: boolean) { running = v; clock.getDelta(); },
     reset() { camera.position.copy(home); controls.target.copy(homeT); },
-    dispose() { cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
+    dispose() { xmas?.dispose(); cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
   };
 }
