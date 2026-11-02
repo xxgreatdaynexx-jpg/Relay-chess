@@ -6,7 +6,7 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-02T15:20:00-06:00', title: 'Employment Office: workers now bring something in every 5 minutes', bullets: [
+  { commit: '', at: '2026-11-02T15:24:00-06:00', title: 'Employment Office: workers now bring something in every 5 minutes', bullets: [
     'Every hired worker now brings in one item every 5 minutes, which is 288 a day on a full day.',
     'Miners were 1 ore every 10 minutes (144 a day), so they now bring in twice as much. Fishers were 1 fish an hour (24 a day), so they now bring in 12 times as much.',
     'Hire fees and daily wages are unchanged, so every worker earns a lot more. Each mine\'s ore mix, auto-deposit, the last-24-hour pickup list, the 8-hour check-in, the 3-worker limit and the daily sell caps are unchanged.',
