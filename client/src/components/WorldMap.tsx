@@ -276,7 +276,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
         </div>
       )}
       <div className="world-clock" data-testid="world-clock" title={`Alberta time · sunrise ${fmtClock(sky.sunrise)} · sunset ${fmtClock(sky.sunset)}`}><span>{sky.icon}</span><b>{fmtClock(sky.minutes)}</b><small>AB · {sky.label}</small></div>
-      <div className="world-title"><span>CHUD</span> HUB<small>pick a spot on the map</small></div>
+      <div className="world-title"><span>CHUD</span> HUB</div>
       {loading && mode === '3d' && <div className="world-loading">Building the city…</div>}
       {spot && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#' + spot.color.toString(16).padStart(6, '0') }} data-testid="world-tip"><b>{spot.icon} {spot.label}</b><span>{spot.blurb}</span>{ownerLine && <span className="world-tip-owner">🏛 {ownerLine}</span>}<em>Click to enter</em></div>}
       {!spot && tipProp && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#c9a24a' }} data-testid="world-tip"><b>{tipProp.label}</b><span>{ownerLine}</span><em>Click for the deed</em></div>}
