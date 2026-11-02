@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T13:15:00-06:00', title: 'Mines: no more head bob', bullets: [
+    'Walking and running in the mines no longer bobs or sways your view and held tool: the camera stays at a steady height.',
+    'The tool swing animation and the Arena camera are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T13:10:00-06:00', title: 'Mines: Tool Shop ore bonus rebalanced', bullets: [
     'Tool Shop extra ore is toned down: Steel Pickaxe +25%, Hand Drill +50%, Power Drill +100%, Jackhammer +150%, Plasma Cutter +200%.',
     'Total extra ore from tool plus Mining skill is now capped at +250%.',

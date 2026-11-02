@@ -215,7 +215,7 @@ export class Mines3D {
     this.camera.rotation.set(cam.p, -cam.a - Math.PI / 2, 0);
     this.lamp.position.set(cam.x, cam.z + 0.4, cam.y);
     this.swingT = Math.min(1, this.swingT + dt / 0.5);
-    const t = (globalThis as { __pickPoseT?: number }).__pickPoseT ?? this.swingT, bob = Math.sin(walk * 9) * 0.01, sway = Math.cos(walk * 4.5) * 0.008;
+    const t = (globalThis as { __pickPoseT?: number }).__pickPoseT ?? this.swingT, bob = 0, sway = 0; void walk; // no walk bob in the mines (pt1356u): steady camera + tool, swing unchanged
     // anticipation (slow raise, cock back + roll) → strike (accelerating arc) → impact hold + recoil → follow-through settle
     const ease = (x: number) => x * x * (3 - 2 * x);
     let rx = 0, rz = 0, dy = 0, dz = 0, dx = 0;
