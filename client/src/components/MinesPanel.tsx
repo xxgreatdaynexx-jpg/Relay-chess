@@ -127,6 +127,8 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
         sendAcc += dt;
         if (sendAcc >= 1 / 15) { sendAcc = 0; socket.volatile.emit('mines_move', { x: m.x, y: m.y, z: m.z, a: m.a, p: m.p, c: m.crouch, s: m.sprint }); }
         if (inExit(m.x, m.y) && packRef.current.pack.length && performance.now() - exiting.current > 1500) { exiting.current = performance.now(); bankHaul(); }
+        // Hold left click / long-press: keep swinging at the normal (Mining-perk) cadence; swing() gates the rate, the server stays authoritative.
+        if (holding.current) { if (document.hidden || !document.hasFocus()) holding.current = null; else swingRef.current(); }
         const ai = aimNode(MINE_NODES, m.x, m.y, m.z + eyeHeightOf(m), m.a, m.p, hp.current);
         setAim((o) => (o === ai ? o : ai));
       }
@@ -160,6 +162,16 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
     return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('pointerlockchange', onLock); };
   }, []);
 
+  const holding = useRef<null | 'mouse' | 'touch'>(null);
+  const swingRef = useRef<() => void>(() => {});
+  swingRef.current = swing;
+  useEffect(() => {
+    const stop = () => { holding.current = null; };
+    const onUp = (e: MouseEvent) => { if (e.button === 0) stop(); };
+    const onLock = () => { if (document.pointerLockElement !== glRef.current && holding.current === 'mouse') stop(); };
+    document.addEventListener('mouseup', onUp); document.addEventListener('pointerlockchange', onLock); window.addEventListener('blur', stop); document.addEventListener('visibilitychange', stop);
+    return () => { stop(); document.removeEventListener('mouseup', onUp); document.removeEventListener('pointerlockchange', onLock); window.removeEventListener('blur', stop); document.removeEventListener('visibilitychange', stop); };
+  }, []);
   function swing() {
     const m = me.current, now = performance.now();
     if (!m.joined || now - m.lastSwing < swingMs.current) return;
@@ -203,7 +215,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
       onPointerMove={win.onPanelMove}
       role="dialog" aria-label="Mines" tabIndex={0}
       onFocus={() => setFocused(true)}
-      onBlur={(e) => { if (!wrapRef.current?.contains(e.relatedTarget as Node)) { setFocused(false); keys.current.clear(); } }}
+      onBlur={(e) => { if (!wrapRef.current?.contains(e.relatedTarget as Node)) { setFocused(false); keys.current.clear(); holding.current = null; } }}
       onKeyDown={(e) => onKey(e, true)} onKeyUp={(e) => onKey(e, false)}
     >
       {win.grips}
@@ -219,7 +231,9 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
       </div>
       <div className="mines-body">
         <div className="mines-view">
-          <canvas ref={glRef} className="mines-gl" data-testid="mines-canvas" onMouseDown={(e) => { if (e.button !== 0) return; const wasActive = focused; if (document.pointerLockElement !== glRef.current) lock(); if (wasActive || document.pointerLockElement === glRef.current) swing(); }} />
+          <canvas ref={glRef} className="mines-gl" data-testid="mines-canvas" onMouseDown={(e) => { if (e.button !== 0) return; const wasActive = focused; if (document.pointerLockElement !== glRef.current) lock(); if (wasActive || document.pointerLockElement === glRef.current) { swing(); holding.current = 'mouse'; } }}
+            onPointerDown={(e) => { if (e.pointerType !== 'touch') return; swing(); holding.current = 'touch'; }}
+            onPointerUp={(e) => { if (e.pointerType === 'touch') holding.current = null; }} onPointerCancel={() => { holding.current = null; }} onContextMenu={(e) => e.preventDefault()} />
           <div className="mines-cross" aria-hidden="true">{aimed ? '⊕' : '+'}</div>
           {aimed && <div className="mines-aim" style={{ color: ORES[aimed.ore].color }}>{ORES[aimed.ore].name} · {Math.max(0, hp.current[aim])}/{ORES[aimed.ore].hits}</div>}
           {toast && <div className="mines-toast" data-testid="mines-toast">{toast}</div>}

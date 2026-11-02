@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T22:20:00-06:00', title: 'Hold to keep swinging in the mines', bullets: [
+    'Requested by Dayne: hold left click (or press and hold on a touch screen) to keep swinging your pickaxe in every mine, including the Coral Grotto.',
+    'It swings at your normal speed (faster with a higher Mining level) and hits whatever ore is under your crosshair. Let go, click away or open another window to stop.',
+    'Ore, drop chances and XP are unchanged.',
+  ] },
   { commit: '', at: '2026-11-01T22:15:00-06:00', title: 'Biggest catches sorted by weight', bullets: [
     'Reported by Dayne: the 🏆 Biggest catches board at the dock was ordered by how much each fish was worth, not how heavy it was. It now lists the heaviest catch first, with ties going to whoever caught it first.',
     'Your own best catch and the 🎣 Biggest fish on player profiles use the same rule.',
