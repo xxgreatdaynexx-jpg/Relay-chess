@@ -91,3 +91,13 @@ describe('request board sorting (request #12)', () => {
     expect(rb.list({ sort: 'top' }).map((r) => r.id)).toEqual([a.request.id, c.request.id, b.request.id]);
   });
 });
+
+describe('sell picker layout (never clipped)', () => {
+  it('opens as a wrapping full-width row', async () => {
+    const { readFileSync } = await import('node:fs');
+    const css = readFileSync(new URL('../client/src/index.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/\.factory-list li \{ flex-wrap: wrap;/);
+    expect(css).toMatch(/\.sell-qty \{[^}]*flex: 1 1 100%;[^}]*max-width: 100%;[^}]*min-width: 0;/);
+    expect(css).not.toMatch(/\.sell-qty input\[type=range\] \{[^}]*min-width: 80px/);
+  });
+});

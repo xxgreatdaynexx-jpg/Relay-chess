@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T01:00:00-06:00', title: 'Sell picker fits on screen', bullets: [
+    "Fixed: tapping Sell… in Factory storage opened the quantity picker squeezed beside the item, so the slider, Half/All and Sell buttons were cut off. It now opens as a full-width row under the item and wraps on narrow screens and phones. The fishing cooler and kitchen fridge pickers fit the same way.",
+  ] },
   { commit: '', at: '2026-11-02T01:00:00-06:00', title: 'Magma Depths: lava no longer blocks tunnels', bullets: [
     'Three lava pools in Magma Depths sat across tunnels and forced long detours or dead ends. They now sit in side pockets, so every tunnel can be walked straight through.',
   ] },

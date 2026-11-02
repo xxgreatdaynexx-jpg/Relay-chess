@@ -1978,10 +1978,15 @@ html, body { overflow-x: clip; }
 .panel-drag-handle:hover::after { opacity: .45; }
 [data-drag-panel] h1, [data-drag-panel] h2, [data-drag-panel] h3 { cursor: move; }
 /* Partial selling (request #11) */
-.sell-qty { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; padding: 6px; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; }
-.sell-qty-row { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.sell-qty { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; padding: 6px; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; flex: 1 1 100%; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
+.sell-qty-row { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.sell-qty input[type=range] { min-width: 0; }
+.sell-qty .sell-qty-go { white-space: normal; max-width: 100%; text-align: center; }
+.sell-qty small { width: auto !important; text-align: left !important; flex-basis: 100%; }
+/* Rows that host a picker wrap so it opens as a full-width row under the item. */
+.factory-list li { flex-wrap: wrap; min-width: 0; }
 .sell-qty input[type=number] { width: 4.5em; background: rgba(0,0,0,.3); color: inherit; border: 1px solid rgba(255,255,255,.2); border-radius: 4px; padding: 1px 4px; }
-.sell-qty input[type=range] { flex: 1; min-width: 80px; }
+.sell-qty input[type=range] { flex: 1 1 80px; }
 .sell-qty button { padding: 1px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.06); color: inherit; }
 .sell-qty .sell-qty-go { margin-left: auto; background: #2f7d4a; font-weight: 600; }
 .sell-qty .sell-qty-go:disabled { opacity: .5; }
