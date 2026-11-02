@@ -21,6 +21,7 @@ import { px } from './price-index.js';
 import { getMines, MINES_OFFLINE_MSG } from './mines.js';
 import { getFactory } from './factory.js';
 import { playerKey } from './skins.js';
+import { workerBonusTotal } from '../shared/realEstate.js';
 import { ORES, MAX_BANKED_STACK, stackKey, type OreId } from '../shared/mines.js';
 import { COOLER_MAX } from '../shared/fishing.js';
 import {
@@ -148,15 +149,21 @@ export class Employment {
     const nextAt = w.status === 'working' ? Math.min(w.lastAt + w.job.everyMs, w.paidUntil, w.seenAt + OFFLINE_CAP_MS) : null;
     return { id: w.id, job: w.job.id, status: w.status, hiredAt: w.hiredAt, paidUntil: w.paidUntil, seenAt: w.seenAt, nextAt, box: w.box, boxValue: px(boxValue(w.box)), wage: this.wagePrice(w.job) };
   }
-  private async canHire(key: string, n: number): Promise<string | undefined> {
-    if (n >= MAX_WORKERS) return `You can employ at most ${MAX_WORKERS} workers.`;
+  /** Base cap + property bonus (owned buildings/landmarks; see shared/realEstate workerBonusOf). Fails to base if the table is missing. */
+  async capOf(key: string, name?: string): Promise<{ max: number; base: number; bonus: number }> {
+    let bonus = 0;
+    try { const alt = (name ?? key).trim().toLowerCase(); const r = await this.pool.query('SELECT id FROM properties WHERE owner_key = $1 OR owner_key = $2', [key, alt]); bonus = workerBonusTotal((r.rows as Array<{ id: string }>).map((x) => x.id)); } catch { bonus = 0; }
+    return { max: MAX_WORKERS + bonus, base: MAX_WORKERS, bonus };
+  }
+  private async canHire(key: string, n: number, max = MAX_WORKERS): Promise<string | undefined> {
+    if (n >= max) return n > max ? `You have ${n} workers but your cap is ${max} — they keep working, but you can't hire more until you're under the cap.` : `You can employ at most ${max} workers. Own more property to raise the cap.`;
     const age = await this.accountAge(key); if (age === null || age < MIN_ACCOUNT_AGE_MS) return 'Accounts must be at least 24 hours old to hire workers.';
     return undefined;
   }
   async view(name: string | null): Promise<EmployView> {
     const now = this.clock();
     const jobs = JOBS.map((j) => ({ id: j.id, hire: this.hirePrice(j), wage: this.wagePrice(j), perDay: itemsPerDay(j), dayValue: px(Math.round(dayValue(j))) }));
-    if (!name) return { workers: [], jobs, now, canHire: false, reason: 'Sign in to hire workers.', max: MAX_WORKERS };
+    if (!name) return { workers: [], jobs, now, canHire: false, reason: 'Sign in to hire workers.', max: MAX_WORKERS, base: MAX_WORKERS, bonus: 0 };
     const key = playerKey(name);
     return this.lock(key, async () => {
       const ws = await this.rows(key); for (const w of ws) await this.settle(name, w, now);
@@ -164,8 +171,8 @@ export class Employment {
       for (const w of ws) if (w.status === 'working' && w.seenAt !== now) { if (now > w.seenAt + OFFLINE_CAP_MS) w.lastAt = now; w.seenAt = now; await this.save(this.pool, w); }
       let notes: string[] = []; try { notes = (await this.deliver(name, key, ws, now)).notes; } catch (e) { notes = [e instanceof EmployError ? e.message : 'Storage is offline — your workers are holding their haul until it is back.']; }
       await this.flushLog(key);
-      const reason = await this.canHire(key, ws.length);
-      return { workers: ws.map((w) => this.toView(w)), jobs, now, canHire: !reason, reason, max: MAX_WORKERS, log: await this.log(key, now), notes };
+      const cap = await this.capOf(key, name); const reason = await this.canHire(key, ws.length, cap.max);
+      return { workers: ws.map((w) => this.toView(w)), jobs, now, canHire: !reason, reason, max: cap.max, base: cap.base, bonus: cap.bonus, log: await this.log(key, now), notes };
     });
   }
   async hire(name: string, jobId: unknown) {
@@ -173,11 +180,11 @@ export class Employment {
     const key = playerKey(name);
     return this.lock(key, async () => {
       const now = this.clock(); const n = (await this.rows(key)).length;
-      const why = await this.canHire(key, n); if (why) throw new EmployError(why);
+      const cap = await this.capOf(key, name); const why = await this.canHire(key, n, cap.max); if (why) throw new EmployError(why);
       const id = randomUUID(); const cost = this.hirePrice(j) + this.wagePrice(j);
       await this.tx(async (cl) => {
         const c = Number((await cl.query('SELECT count(*) AS n FROM employ_workers WHERE owner_key = $1', [key])).rows[0]?.n ?? 0);
-        if (c >= MAX_WORKERS) throw new EmployError(`You can employ at most ${MAX_WORKERS} workers.`);
+        if (c >= cap.max) throw new EmployError(`You can employ at most ${cap.max} workers.`);
         await cl.query('INSERT INTO employ_workers (id, owner_key, owner_name, job, hired_at, last_at, seen_at, paid_until, status, box) VALUES ($1,$2,$3,$4,$5,$5,$5,$6,$7,$8)', [id, key, name.trim(), j.id, now, now + DAY, 'working', '{}']);
       }, { name, amount: -cost, game: 'employ_hire', memo: `Hired ${j.label} (fee + first day's wage)` });
       return { id, charged: cost };

@@ -85,3 +85,17 @@ export const buildingId = (type: string, b: OBB) => `b:${type}:${pos(b)}`;
 export const patchId = (kind: string, b: OBB) => `p:${kind}:${pos(b)}`;
 
 export interface OwnedProperty { id: string; owner: string; price: number; arrears: number; boughtAt: number }
+
+/** Worker cap from property (pt1344u): each owned building or landmark adds Employment Office hire slots, by its base
+ * (un-indexed) list price. Empty lots, parks, plazas, farmland and plantation plots add none (they are land, not housing).
+ *   under 25,000 (detached home)                       +1
+ *   25,000 – 74,999 (row houses, apartment, gas station, beach house) +2
+ *   75,000 – 249,999 (tower, depot, condo, villa)      +3
+ *   250,000+ (hotel, landmarks)                        +4
+ * Bonuses from all owned properties add up, capped at +WORKER_BONUS_MAX. */
+export const WORKER_BONUS_MAX = 7;
+export const workerBonusOf = (id: unknown): number => {
+  const p = propertyById(id); if (!p || (p.kind !== 'building' && p.kind !== 'landmark')) return 0;
+  return p.price < 25_000 ? 1 : p.price < 75_000 ? 2 : p.price < 250_000 ? 3 : 4;
+};
+export const workerBonusTotal = (ids: Iterable<unknown>): number => { let n = 0; for (const id of ids) n += workerBonusOf(id); return Math.min(WORKER_BONUS_MAX, n); };

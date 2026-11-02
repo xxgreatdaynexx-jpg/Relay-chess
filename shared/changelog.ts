@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T12:30:00-06:00', title: 'Owning property raises your worker cap', bullets: [
+    'Every building or landmark you own adds Employment Office hire slots on top of the base 3: +1 for a detached home (under 25K), +2 for row houses, apartments, gas stations and beach houses (25K–75K), +3 for towers, depots, condos and villas (75K–250K), and +4 for the beach hotel and landmarks (250K+).',
+    'Bonuses from all your properties add up, to a max of +7 (10 workers). Empty lots, parks, plazas and farm plots add no slots.',
+    'The office shows "Worker cap: X (base 3 + Z from property)", and each property deed shows its bonus.',
+    'Sell or lose a property and anyone above your new cap keeps working, you just can\'t hire again until you\'re under it. Nobody gets fired. Wages, rates and prices are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T12:10:00-06:00', title: 'Factory: search recipes by ingredient', bullets: [
     'Requested by Liam: the Factory\'s 📜 Recipes tab has a search box. Type any item or ingredient (partial or loose spelling works, like "cop" or "cpr wire") to see every recipe it\'s used in and the recipe that makes it, with icons and which machine does each one.',
     'Click a recipe to open its full production chain. Recipes, speeds and prices are unchanged.',

@@ -71,4 +71,4 @@ export type WorkerStatus = 'working' | 'idle' | 'unpaid';
 export interface WorkerView { id: string; job: string; status: WorkerStatus; hiredAt: number; paidUntil: number; seenAt: number; nextAt: number | null; box: WorkerBox; boxValue: number; wage: number }
 /** Last-24 h pick-up log, totalled per item. */
 export interface EmployLogItem { type: 'ore' | 'fish'; id: string; qty: number; lastAt: number }
-export interface EmployView { log?: EmployLogItem[]; notes?: string[]; workers: WorkerView[]; jobs: Array<{ id: string; hire: number; wage: number; perDay: number; dayValue: number }>; now: number; canHire: boolean; reason?: string; max: number }
+export interface EmployView { log?: EmployLogItem[]; notes?: string[]; workers: WorkerView[]; jobs: Array<{ id: string; hire: number; wage: number; perDay: number; dayValue: number }>; now: number; canHire: boolean; reason?: string; max: number; base?: number; bonus?: number }

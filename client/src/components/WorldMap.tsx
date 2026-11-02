@@ -19,7 +19,7 @@ import { socket } from '@/lib/net';
 import { indexed } from '../../../shared/priceIndex';
 import { skyNow, parseTod, fmtClock, hex } from '../../../shared/daynight';
 import { fmtLap } from '../../../shared/venues';
-import { propertyById as baseProperty, properties as baseProperties, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, landPrice, landMultiplierNote, LAND_GROWTH, type OwnedProperty } from '../../../shared/realEstate';
+import { propertyById as baseProperty, properties as baseProperties, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, workerBonusOf, WORKER_BONUS_MAX, landPrice, landMultiplierNote, LAND_GROWTH, type OwnedProperty } from '../../../shared/realEstate';
 
 /** Today's price index from /api/real-estate; list prices and tax scale with it. */
 let IDX = 1;
@@ -52,6 +52,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }:
         {o ? <><dt>{mine ? 'You paid' : 'Paid'}</dt><dd data-testid="deed-price">🪙 {chips(cost)}</dd></> : <><dt>Your price</dt><dd data-testid="deed-price">🪙 {chips(cost)}{note && <small className="block text-amber-300" data-testid="deed-multiplier">List 🪙 {chips(p.price)} · {note}</small>}</dd></>}
         <dt>Owner</dt><dd data-testid="deed-owner">{o ? (mine ? 'You' : o.owner) : 'City of Chud Hub (for sale)'}</dd>
         <dt>Sell-back</dt><dd data-testid="deed-sellback">🪙 {chips(sellBackOf(cost))} (70% of {o ? 'what was paid' : 'your price'})</dd>
+        {workerBonusOf(p.id) > 0 && <><dt>Worker cap</dt><dd data-testid="deed-workers">+{workerBonusOf(p.id)} Employment Office worker{workerBonusOf(p.id) > 1 ? 's' : ''} (property bonus max +{WORKER_BONUS_MAX})</dd></>}
         <dt>Property tax</dt><dd data-testid="deed-tax">🪙 {chips(taxOf(p.price))}/day ({(TAX_RATE * 100).toFixed(1)}%)</dd>
         {o && o.arrears > 0 && <><dt>Arrears</dt><dd className="text-rose-300">{o.arrears} unpaid day{o.arrears > 1 ? 's' : ''} (repossessed at {GRACE_DAYS})</dd></>}
       </dl>
