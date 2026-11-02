@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T00:16:00-06:00', title: 'Every panel can be moved', bullets: [
+    'Grocery Store, Recipe Kitchen, Chud Customs, Employment Office, Daily Report and every other panel can now be dragged by its top bar (mouse or touch), stays on screen and remembers where you left it.',
+  ] },
   { commit: '', at: '2026-11-02T00:15:00-06:00', title: 'Chud Resort: the Reef Pier (tropical fishing)', bullets: [
     'Requested by Dayne: a new Reef Pier sticks out into the ocean at Chud Resort. Fly to the resort, tap the pier, and fish the reef at golden-hour sunset with turquoise water and palms.',
     '15 new tropical species with their own 3D models and icons: Lost Flip-Flop and Drift Coconut (junk); Clownfish, Blue Tang, Sergeant Major (common); Rainbow Parrotfish, Red Snapper, Picasso Triggerfish (uncommon); Mahi-Mahi, Great Barracuda, Coral Grouper (rare); Yellowfin Tuna and Sailfish (epic); Blue Marlin and the Sunset Manta (legendary).',

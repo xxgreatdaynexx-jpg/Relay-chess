@@ -8,6 +8,7 @@ import { setWalletChips } from '@/lib/wallet';
 import { EconomyView } from './EconomyView';
 import { CLOSE_WORLD_PANELS, WALLET_CLOSE } from '@/lib/worldPanels';
 import { DailyReport, type DailyReportData } from './DailyReport';
+import { usePanelDrag } from '@/lib/panelDrag';
 
 interface Tx { key: string | null; game: string; amount: number; balance: number; memo?: string; at: number }
 interface WalletPush { chips: number; tx?: Tx; start?: number }
@@ -25,6 +26,7 @@ function when(at: number): string {
 
 /** Unified chip wallet in the top bar: live balance for every game, and history. */
 export function WalletButton() {
+  const dragWallet = usePanelDrag('wallet');
   const account = useAccount();
   const [chips, setChips] = useState<number | null>(null);
   const [history, setHistory] = useState<Tx[]>([]);
@@ -116,7 +118,7 @@ export function WalletButton() {
       </button>
       {open && createPortal(<div className="wallet-backdrop" data-testid="wallet-backdrop" {...backdropDismiss(() => setOpen(false))} />, document.body)}
       {open && createPortal(
-        <div ref={panelRef} className="wallet-panel" role="dialog" aria-label="Wallet" data-testid="wallet-panel">
+        <div ref={(el) => { panelRef.current = el; dragWallet.ref.current = el; }} className="wallet-panel" role="dialog" aria-label="Wallet" data-testid="wallet-panel" data-drag-panel="wallet" onPointerDown={dragWallet.onPointerDown} style={dragWallet.style()}>{dragWallet.handle}
           <div className="mb-2 flex gap-1" role="tablist">
             {([['me', '🪙 My wallet'], ['econ', '🌍 Economy']] as const).map(([k, l]) => (
               <button key={k} type="button" role="tab" aria-selected={view === k} data-testid={`wallet-tab-${k}`} onClick={() => setView(k)}

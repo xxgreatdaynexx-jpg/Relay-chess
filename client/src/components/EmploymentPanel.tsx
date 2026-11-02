@@ -4,6 +4,7 @@ import { request } from '@/lib/net';
 import { JOBS, jobById, OFFLINE_CAP_MS, type EmployView, type WorkerView } from '../../../shared/employment';
 import { ORES, type OreId } from '../../../shared/mines';
 import { fishById } from '../../../shared/fishing';
+import { usePanelDrag } from '@/lib/panelDrag';
 
 const chips = (n: number) => Math.round(n).toLocaleString('en-US');
 export const OPEN_EMPLOY = 'open-employment';
@@ -24,6 +25,7 @@ function Box({ w }: { w: WorkerView }) {
 
 /** Employment Office (city): hire AI miners and fishers (pt1274u). Prices come from the server at today's index. */
 export function EmploymentPanel({ onClose }: { onClose: () => void }) {
+  const dragEmploy = usePanelDrag('employ');
   const [v, setV] = useState<EmployView | null>(null); const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);
   const take = (r: { ok: boolean; error?: string; view?: unknown }) => { if (r.view) setV(r.view as EmployView); if (!r.ok) setMsg(r.error ?? 'Something went wrong.'); };
@@ -36,7 +38,7 @@ export function EmploymentPanel({ onClose }: { onClose: () => void }) {
   };
   const jobs = v?.jobs ?? [];
   return (
-    <div className="world-deed world-venue employ-panel" data-testid="venue-employ">
+    <div className="world-deed world-venue employ-panel" data-testid="venue-employ" data-drag-panel="employ" onPointerDown={dragEmploy.onPointerDown} style={dragEmploy.style()} ref={dragEmploy.ref}>{dragEmploy.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <div className="employ-front"><span>🧑‍🏭 EMPLOYMENT OFFICE</span><small>Hire AI workers · up to {v?.max ?? 3}</small></div>
       <p className="employ-rules">A worker costs about half of what they bring in. Their haul goes to your normal storage (ores to mine storage, fish to your cooler) and sells under the usual daily limits. They stop working {dur(OFFLINE_CAP_MS)} after your last visit, so check in to keep them busy. Wages are charged once a day; if you can't pay, they stop (no debt). Firing is free but refunds nothing. Workers don't give you skill XP.</p>

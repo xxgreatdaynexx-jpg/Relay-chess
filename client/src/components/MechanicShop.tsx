@@ -5,6 +5,7 @@ import { request } from '@/lib/net';
 import { buildCar } from '@/lib/carModels';
 import { CAR_BY_ID, type CarModel } from '../../../shared/cars';
 import { COSMETIC_SLOTS, GLOWS, KITS, MAX_TIER, PAINTS, PERF_PARTS, RIMS, moddedStats, normMods, type CarMods, type CosmeticSlot, type PerfPart } from '../../../shared/mechanic';
+import { usePanelDrag } from '@/lib/panelDrag';
 
 type Owned = { id: string; carId: string; color: number; active: boolean; value: number; mods: CarMods; prices: { perf: Record<PerfPart, number | null>; cosmetic: number } | null };
 type Shop = { signedIn: boolean; cars: Owned[]; chips: number | null };
@@ -39,6 +40,7 @@ function Bay({ car, color, look }: { car: CarModel; color: number; look: CarMods
 }
 
 export function MechanicShop({ onClose, onDrive }: { onClose: () => void; onDrive: (carId: string, color: number) => void }) {
+  const dragMechanic = usePanelDrag('mechanic');
   const [shop, setShop] = useState<Shop | null>(null); const [sel, setSel] = useState<string | null>(null);
   const [tab, setTab] = useState<'perf' | 'look'>('perf'); const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false);
   const [tryLook, setTryLook] = useState<Partial<CarMods>>({});
@@ -54,7 +56,7 @@ export function MechanicShop({ onClose, onDrive }: { onClose: () => void; onDriv
   const opts: Record<CosmeticSlot, ReadonlyArray<{ id: string; label: string; color?: number; metallic?: boolean }>> = { paint: PAINTS, rims: RIMS, kit: KITS, glow: GLOWS };
   return (
     <div className="dealer" data-testid="mechanic" {...backdropDismiss(() => onClose())}>
-      <div className="dealer-box">
+      <div className="dealer-box" data-drag-panel="mechanic" onPointerDown={dragMechanic.onPointerDown} style={dragMechanic.style()} ref={dragMechanic.ref}>{dragMechanic.handle}
         <header><h3>🔧 Chud Customs</h3>{shop?.chips != null && <span className="dealer-chips">{fmt(shop.chips)} chips</span>}<button type="button" onClick={onClose} aria-label="Close" data-testid="mech-close">✕</button></header>
         <div className="dealer-body" style={{ display: 'block' }}>
           {!shop && <p>Opening the garage…</p>}

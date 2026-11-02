@@ -3,6 +3,7 @@ import { ItemIcon } from './ItemIcon';
 import { request } from '@/lib/net';
 import { FishPanPanel } from './FishPanPanel';
 import { COOK_DAILY_MAX, FILLET_CAP, FISH_ING, RECIPES, STAPLES, STEPS, dishValue, ingInfo, needleAt, qualityLabel, type GroceryKind, type KitchenView, type Recipe, type StepSpec } from '../../../shared/cooking';
+import { usePanelDrag } from '@/lib/panelDrag';
 
 const chips = (n: number) => n.toLocaleString('en-US');
 export const OPEN_KITCHEN = 'open-kitchen';
@@ -22,6 +23,7 @@ const have = (v: KitchenView, id: string) => (id === 'fish' ? v.fish.fish : id =
 /** Grocery Store (city): shelves of cooking ingredients at px() prices. Each buy carries a nonce (server dedupes); the
  *  button locks while in flight and a retry after a network error reuses the same nonce. */
 export function GroceryPanel({ onClose, onKitchen }: { onClose: () => void; onKitchen?: () => void }) {
+  const dragGrocery = usePanelDrag('grocery');
   const { s, err, load } = useKitchen(); const [qty, setQty] = useState(5); const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);
   const pending = useRef(new Map<string, string>());
   const buy = async (item: string) => {
@@ -34,7 +36,7 @@ export function GroceryPanel({ onClose, onKitchen }: { onClose: () => void; onKi
     else setMsg(r.error ?? 'Could not buy that.');
   };
   return (
-    <div className="world-deed world-venue grocery-panel" data-testid="venue-grocery">
+    <div className="world-deed world-venue grocery-panel" data-testid="venue-grocery" data-drag-panel="grocery" onPointerDown={dragGrocery.onPointerDown} style={dragGrocery.style()} ref={dragGrocery.ref}>{dragGrocery.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <div className="grocery-front"><span>🛒 CHUD FRESH</span><small>Grocery Store · open daily</small></div>
       <div className="grocery-qty">Buy <select value={qty} onChange={(e) => setQty(+e.target.value)} data-testid="grocery-qty">{[1, 5, 10, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}</select> at a time
@@ -77,6 +79,7 @@ function Stove({ cook, onDone }: { cook: Cook; onDone: (presses: number[]) => vo
 
 /** Kitchen: open from any home you own. Pantry, recipe book (unlocks by Cooking level), the stove minigame and the fridge. */
 export function KitchenPanel({ me, home, onClose, onGrocery }: { me: string | null; home: string; onClose: () => void; onGrocery: () => void }) {
+  const dragKitchen = usePanelDrag('kitchen');
   const { s, err, load } = useKitchen(); const [cook, setCook] = useState<Cook | null>(null); const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);
   const [tab, setTab] = useState<'book' | 'fridge' | 'fish'>('book');
   const v = s?.state; const idx = v?.index ?? 1;
@@ -104,7 +107,7 @@ export function KitchenPanel({ me, home, onClose, onGrocery }: { me: string | nu
   const left = v ? Math.max(0, Math.floor(COOK_DAILY_MAX * idx) - v.today.paid) : 0;
   if (tab === 'fish') return <FishPanPanel me={me} home={home} onClose={() => { setTab('book'); load(); }} />;
   return (
-    <div className="world-deed world-venue kitchen-panel" data-testid="venue-kitchen">
+    <div className="world-deed world-venue kitchen-panel" data-testid="venue-kitchen" data-drag-panel="kitchen" onPointerDown={dragKitchen.onPointerDown} style={dragKitchen.style()} ref={dragKitchen.ref}>{dragKitchen.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <div className="kitchen-scene" aria-hidden>
         <div className="k-window"><span>🌙</span></div><div className="k-shelf">🫙🧂🍯🌿</div><div className="k-fridge">🧊</div>

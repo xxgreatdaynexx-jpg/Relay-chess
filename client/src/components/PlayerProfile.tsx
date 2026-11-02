@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { backdropDismiss } from '@/lib/backdrop';
 import { SkillGrid, type SkillProfile } from './Skills';
+import { usePanelDrag } from '@/lib/panelDrag';
 
 /** Open any player's public profile from anywhere: `openPlayer('Name')` or an element with `data-player="Name"`. */
 export const openPlayer = (name: string) => window.dispatchEvent(new CustomEvent('open-player', { detail: name }));
@@ -94,6 +95,7 @@ export function PlayerProfileView({ p, close }: { p: PublicProfile; close: () =>
 
 /** Mounted once in App: opens on the `open-player` event or any click on a `[data-player]` element. Esc / backdrop close. */
 export default function PlayerProfile() {
+  const dragProfile = usePanelDrag('profile');
   const [name, setName] = useState<string | null>(null);
   const [p, setP] = useState<PublicProfile | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -118,7 +120,7 @@ export default function PlayerProfile() {
   const close = () => setName(null);
   return createPortal(
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4" {...backdropDismiss(close)} data-testid="player-profile">
-      <div role="dialog" aria-label={`${name}'s profile`} className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/15 bg-[#1b1d2e] p-5 text-cream shadow-2xl">
+      <div role="dialog" aria-label={`${name}'s profile`} className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/15 bg-[#1b1d2e] p-5 text-cream shadow-2xl" data-drag-panel="profile" onPointerDown={dragProfile.onPointerDown} style={dragProfile.style()} ref={dragProfile.ref}>{dragProfile.handle}
         {p ? <PlayerProfileView p={p} close={close} />
           : <div className="flex items-center justify-between"><span className="text-sm opacity-70">{err ?? `Loading ${name}…`}</span><button type="button" aria-label="Close" className="px-2 text-lg opacity-70" onClick={close}>×</button></div>}
       </div>

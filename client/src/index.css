@@ -1969,3 +1969,10 @@ html, body { overflow-x: clip; }
 .farm-upgrades { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
 .farm-upgrades > button { border: 1px solid rgba(255,255,255,.15); border-radius: 8px; padding: 6px 8px; background: rgba(255,255,255,.04); display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; }
 .farm-upgrades > button span { font-size: 11px; opacity: .85; }
+
+/* Shared drag grip for floating panels (usePanelDrag). Leaves the top-right close button free. */
+:where([data-drag-panel]) { position: relative; }
+.panel-drag-handle { position: absolute; top: 0; left: 0; right: 48px; height: 14px; cursor: move; touch-action: none; z-index: 2; }
+.panel-drag-handle::after { content: ''; position: absolute; left: 50%; top: 5px; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: currentColor; opacity: .22; }
+.panel-drag-handle:hover::after { opacity: .45; }
+[data-drag-panel] h1, [data-drag-panel] h2, [data-drag-panel] h3 { cursor: move; }

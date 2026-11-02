@@ -7,6 +7,7 @@ import { useMoneyAction } from '@/lib/moneyAction';
 import { useAccount } from '@/lib/auth';
 import { DIV_HOUR_UTC, FUND_MAX_ORDER, OPT_EXPIRIES, OPT_STRIKES, SHORT_INIT, SHORT_MAINT, BORROW_FEE, FUND_BY_ID, fundQuote, strikeFor } from '../../../shared/derivs';
 import { MAX_TICK_IMPACT, MAX_TRADE_IMPACT, STOCK_FEE, STOCK_SPREAD, quote, parseQty, COMPANY_BY_TICKER, type NewsItem, type SectorInfo } from '../../../shared/stocks';
+import { usePanelDrag } from '@/lib/panelDrag';
 
 interface Row { ticker: string; name: string; sector: string; price: number; chg: number; volume: number; shares: number; held: number; cap: number; playerPct: number; divYield?: number }
 interface ListResp { companies: Row[]; sectors: SectorInfo[]; news: NewsItem[]; totals: { cap: number; playerOwned: number; offshore: number }; drift: { inflPct: number | null; activity: Record<string, number> } }
@@ -19,6 +20,7 @@ const tone = (x: number) => (x > 0 ? 'text-emerald-400' : x < 0 ? 'text-rose-400
 const ago = (t: number) => { const m = Math.round((Date.now() - t) / 60000); return m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`; };
 
 export function StocksPage() {
+  const dragStocks = usePanelDrag('stocks');
   const [open, setOpen] = useState(atStocks);
   const [view, setView] = useState<'market' | 'funds' | 'shorts' | 'options' | 'portfolio' | 'news'>('market');
   const [ticker, setTicker] = useState<string | null>(null);
@@ -43,7 +45,7 @@ export function StocksPage() {
       <TopTab id="stocks"><button type="button" className="sol-tab" aria-expanded={open} id="stocks-tab" onClick={() => (open ? close() : setOpen(true))} data-testid="stocks-tab">{open ? '▴ Stocks' : '📈 Stocks'}</button></TopTab>
       {open && (
         <div className="inv-backdrop" {...backdropDismiss(() => close())}>
-          <div className="inv-win mkt-win" role="dialog" aria-label="Stock Exchange">
+          <div className="inv-win mkt-win" role="dialog" aria-label="Stock Exchange" data-drag-panel="stocks" onPointerDown={dragStocks.onPointerDown} style={dragStocks.style()} ref={dragStocks.ref}>{dragStocks.handle}
             <header className="inv-head">
               <h2>📈 Stock Exchange</h2>
               <nav className="inv-tabs" role="tablist">

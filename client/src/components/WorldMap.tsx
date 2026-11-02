@@ -30,6 +30,7 @@ type Ack = { ok: boolean; error?: string };
 
 /** Deed panel: list price, owner, daily tax, Buy / Sell back. */
 export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }: { id: string; owned: Map<string, OwnedProperty>; me: string | null; onClose: () => void; onFarm?: () => void; onKitchen?: () => void; onDone?: (ev: 're_buy' | 're_sell', text: string, paid?: number) => void }) {
+  const dragDeed = usePanelDrag('deed');
   const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState<null | 're_buy' | 're_sell'>(null); const [msg, setMsg] = useState<string | null>(null); const wallet = useWalletChips();
   if (!p) return null;
   const mine = !!(o && me && o.owner.toLowerCase() === me.toLowerCase());
@@ -40,7 +41,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }:
   // QA r8: pending state on the button, and on success a toast + immediate (optimistic) ownership update via onDone.
   const act = (ev: 're_buy' | 're_sell') => { setBusy(ev); setMsg(null); socket.timeout(15_000).emit(ev, ev === 're_buy' ? { id, max: cost } : { id }, (err: Error | null, r?: Ack & { price?: number; chips?: number }) => { setBusy(null); if (!err && r?.ok) { const paid = ev === 're_buy' ? (r.price ?? cost) : cost; const text = ev === 're_buy' ? `🏛 ${p.label} is yours! Paid 🪙 ${chips(paid)}.` : `Sold ${p.label} back to the city for 🪙 ${chips(r.chips ?? sellBackOf(cost))}.`; setMsg(text); onDone?.(ev, text, paid); return; } setMsg(err ? 'No answer from the server. Try again.' : (ev === 're_buy' && (r?.error === 'Not enough chips.' || r?.error === 'Something went wrong.') && short ? `Not enough chips: ${p.label} costs 🪙 ${chips(cost)}; you need 🪙 ${chips(short)} more.` : r?.error ?? 'Something went wrong.')); }); };
   return (
-    <div className="world-deed" data-testid="world-deed">
+    <div className="world-deed" data-testid="world-deed" data-drag-panel="deed" onPointerDown={dragDeed.onPointerDown} style={dragDeed.style()} ref={dragDeed.ref}>{dragDeed.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <h3>{p.kind === 'landmark' ? '🏛' : p.kind === 'patch' ? '🌳' : p.kind === 'farm' ? '🌾' : '🏠'} {p.label}</h3>
       {p.kind === 'landmark' && <small>Trophy property: stays open to every player. Ownership is prestige only.</small>}
@@ -65,11 +66,12 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }:
 
 /** Landmark deeds + the signed-in player's properties. */
 function DeedList({ owned, me, onOpen, onClose }: { owned: Map<string, OwnedProperty>; me: string | null; onOpen: (id: string) => void; onClose: () => void }) {
+  const dragDeeds = usePanelDrag('deeds');
   const mine = me ? [...owned.values()].filter((o) => o.owner.toLowerCase() === me.toLowerCase()) : [];
   const lms = properties().filter((p) => p.kind === 'landmark').sort((a, b) => b.price - a.price);
   const value = mine.reduce((a, o) => a + (propertyById(o.id)?.price ?? o.price), 0);
   return (
-    <div className="world-deed world-deeds" data-testid="world-deeds">
+    <div className="world-deed world-deeds" data-testid="world-deeds" data-drag-panel="deeds" onPointerDown={dragDeeds.onPointerDown} style={dragDeeds.style()} ref={dragDeeds.ref}>{dragDeeds.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <h3>🏛 Real estate</h3>
       <small>Click any building, lot, park or plaza on the map to see its deed. The Trailer Park stays free.</small>
@@ -85,6 +87,7 @@ function DeedList({ owned, me, onOpen, onClose }: { owned: Map<string, OwnedProp
 
 import { request } from '@/lib/net';
 import type { Drive, DriveInput } from '@/lib/worldDrive';
+import { usePanelDrag } from '@/lib/panelDrag';
 const Venues = lazyWithReload(() => import('./Venues').then((m) => ({ default: m.Venues })));
 const FishingPanel = lazyWithReload(() => import('./FishingPanel').then((m) => ({ default: m.FishingPanel })));
 const Dealership = lazyWithReload(() => import('./Dealership').then((m) => ({ default: m.Dealership })));
@@ -115,6 +118,7 @@ function weakDevice() {
 
 /** Home "world": a night city where each landmark opens a part of Chud Hub. */
 function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboard: () => void }) {
+  const dragHome = usePanelDrag('home');
   const me = useAccount();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const worldRef = useRef<World | null>(null);
@@ -281,7 +285,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
         {mode === '3d' && !loading && <button type="button" onClick={() => void toggleDrive()} data-testid="world-drive">{driving ? '🅿 Park' : '🚗 Drive'}</button>}
         <button type="button" onClick={() => setMode(mode === '3d' ? '2d' : '3d')} data-testid="world-mode">{mode === '3d' ? '▦ 2D map' : '🌃 3D city'}</button>
       </div>
-      {home && me && <div className="world-deed world-deeds" data-testid="world-home">
+      {home && me && <div className="world-deed world-deeds" data-testid="world-home" data-drag-panel="home" onPointerDown={dragHome.onPointerDown} style={dragHome.style()} ref={dragHome.ref}>{dragHome.handle}
         <button type="button" className="world-deed-x" onClick={() => setPanel(NONE)} aria-label="Close">✕</button>
         <h3>🏠 My home</h3>
         <small>Your trailer at Chud Acres Trailer Park, plus any property you own. Every home has a kitchen.</small>

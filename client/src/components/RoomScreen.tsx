@@ -23,6 +23,7 @@ import { applyMove as applyCheckers, findMove as findCheckers, parseFen as parse
 import { loadSession, prettyCode } from '@/lib/session';
 import { formatClock } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { usePanelDrag } from '@/lib/panelDrag';
 import {
   CLOCK_PRESETS,
   modeLabel,
@@ -1050,9 +1051,10 @@ function BailoutCheckout({
   onPay: () => void;
   onAccept: () => void;
 }) {
+  const dragBailout = usePanelDrag('bailout');
   return (
     <div className="bailout-backdrop" data-testid="bailout-popup" role="dialog" aria-modal="true" aria-labelledby="bailout-title">
-      <div className="w-[min(92vw,420px)] overflow-hidden rounded-2xl bg-white text-center text-[#001c64] shadow-2xl">
+      <div className="w-[min(92vw,420px)] overflow-hidden rounded-2xl bg-white text-center text-[#001c64] shadow-2xl" data-drag-panel="bailout" onPointerDown={dragBailout.onPointerDown} style={dragBailout.style()} ref={dragBailout.ref}>{dragBailout.handle}
         <div className="bg-[#003087] px-4 py-3 text-3xl font-extrabold italic tracking-tight text-white">PayPal</div>
         <div className="px-6 py-6">
           <h2 id="bailout-title" className="font-serif text-2xl leading-snug">

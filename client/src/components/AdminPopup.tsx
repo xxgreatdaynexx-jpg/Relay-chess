@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { request, socket } from '@/lib/net';
 import { useAccount } from '@/lib/auth';
+import { usePanelDrag } from '@/lib/panelDrag';
 
 interface PopupMsg { id: string; from: string; text: string; at: number }
 
 /** Shows admin direct messages as a modal; OK acknowledges (marks delivered) on the server. */
 export function AdminPopup() {
+  const dragAdmin = usePanelDrag('admin');
   const account = useAccount();
   const [queue, setQueue] = useState<PopupMsg[]>([]);
   useEffect(() => {
@@ -26,7 +28,7 @@ export function AdminPopup() {
   return createPortal(
     <div className="admin-popup-backdrop" role="dialog" aria-modal="true" aria-labelledby="admin-popup-from"
       style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: '#16181d', color: '#f2f2f2', border: '1px solid #3a3f4b', borderRadius: 12, maxWidth: 440, width: '100%', padding: '20px 22px', boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }}>
+      <div style={dragAdmin.style({ background: '#16181d', color: '#f2f2f2', border: '1px solid #3a3f4b', borderRadius: 12, maxWidth: 440, width: '100%', padding: '20px 22px', boxShadow: '0 12px 40px rgba(0,0,0,0.5)' })} data-drag-panel="admin" onPointerDown={dragAdmin.onPointerDown} ref={dragAdmin.ref}>{dragAdmin.handle}
         <div id="admin-popup-from" style={{ fontSize: 13, opacity: 0.75, marginBottom: 8 }}>Message from <b>{cur.from}</b></div>
         <div style={{ fontSize: 16, lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{cur.text}</div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>

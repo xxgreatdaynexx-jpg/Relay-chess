@@ -8,6 +8,7 @@ import { useAccount } from '@/lib/auth';
 import { paintSkin } from '@/lib/skinRender';
 import { skinThumb, mountInspect } from '../lib/skinThumbs';
 import { skinToken, CASE_ODDS_TABLE, KNIFE_IN_CASES, isKnife, skinName, CASE_NAME, KEY_NAME, RARITY_COLOR, RARITY_NAME, SKIN_BY_ID, WEAPON_NAME, wearOf, type Rarity, type SkinItem } from '../../../shared/skins';
+import { usePanelDrag } from '@/lib/panelDrag';
 
 const RANK: Record<Rarity, number> = { common: 0, rare: 1, ultra: 2 };
 
@@ -77,6 +78,7 @@ export function SkinsPanel() {
 }
 
 function Inventory({ onClose }: { onClose: () => void }) {
+  const dragInventory = usePanelDrag('inventory');
   const account = useAccount();
   const [items, setItems] = useState<SkinItem[]>([]);
   const [signedIn, setSignedIn] = useState(true);
@@ -124,7 +126,7 @@ function Inventory({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="inv-backdrop" {...backdropDismiss(() => onClose())} data-testid="inventory">
-      <div className="inv-win" role="dialog" aria-label="Inventory">
+      <div className="inv-win" role="dialog" aria-label="Inventory" data-drag-panel="inventory" onPointerDown={dragInventory.onPointerDown} style={dragInventory.style()} ref={dragInventory.ref}>{dragInventory.handle}
         <header className="inv-head">
           <nav className="inv-tabs" role="tablist">{([['inv', '🎒 Inventory']] as const).map(([k, t]) => <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)} data-testid={`inv-tab-${k}`}>{t}</button>)}</nav><button type="button" onClick={() => { onClose(); openMarket({ tab: 'skins' }); }} data-testid="inv-goto-market">🏪 Market</button><span className="inv-count">{items.length} items · 📦 {cases} · 🔑 {keys}</span>
           <button type="button" className="inv-open-btn" disabled={!cases || !keys} onClick={() => void open()} data-testid="inv-open">Open {CASE_NAME}</button>

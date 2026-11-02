@@ -1,6 +1,7 @@
 import { backdropDismiss } from '@/lib/backdrop';
 import { createPortal } from 'react-dom';
 import { INFLATION_LABELS as L, type InflationView } from '../../../shared/inflation';
+import { usePanelDrag } from '@/lib/panelDrag';
 
 export interface Mover { ticker: string; name: string; price: number; chg: number }
 export interface DailyReportData {
@@ -22,10 +23,11 @@ function Row({ label, value, cls = '' }: { label: string; value: string; cls?: s
 
 /** Dismissable Daily Report: first sign-in of the day (with the bonus) or reopened from the Bank. */
 export function DailyReport({ report, onClose }: { report: DailyReportData; onClose: () => void }) {
+  const dragDaily = usePanelDrag('daily');
   const e = report.economy, me = report.me;
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" {...backdropDismiss(onClose)} data-testid="daily-report">
-      <div role="dialog" aria-label="Daily report" className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/15 bg-[#1b1d2e] p-5 text-cream shadow-2xl" >
+      <div role="dialog" aria-label="Daily report" className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/15 bg-[#1b1d2e] p-5 text-cream shadow-2xl"  data-drag-panel="daily" onPointerDown={dragDaily.onPointerDown} style={dragDaily.style()} ref={dragDaily.ref}>{dragDaily.handle}
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold">📊 Daily Report <span className="text-xs font-normal opacity-60">{report.day}</span></h2>
           <button type="button" aria-label="Close" className="rounded-full px-2 text-lg opacity-70 hover:opacity-100" onClick={onClose} data-testid="daily-report-close">×</button>

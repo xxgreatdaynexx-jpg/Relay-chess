@@ -4,6 +4,7 @@ import { indexed } from '../../../shared/priceIndex';
 import { TROPICAL_CROPS } from '../../../shared/resort';
 import { FARM_UPGRADES, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradePrice } from '../../../shared/farmUpgrades';
 import { CROPS as CITY_CROPS, cropById, FARM_TIERS, type FarmView } from '../../../shared/farm';
+import { usePanelDrag } from '@/lib/panelDrag';
 
 const chips = (n: number) => n.toLocaleString('en-US');
 const dur = (ms: number) => { const s = Math.max(0, Math.ceil(ms / 1000)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return h ? `${h}h ${m}m` : m ? `${m}m ${x}s` : `${x}s`; };
@@ -11,6 +12,7 @@ type Ack = { ok: boolean; error?: string; [k: string]: unknown };
 
 /** FarmVille-style plot: a tile grid sized to the plot, a seed shop and real-time (server-clocked) crops. */
 export function FarmGame({ id, label, onClose }: { id: string; label: string; onClose: () => void }) {
+  const dragFarm = usePanelDrag('farm');
   const [view, setView] = useState<FarmView | null>(null);
   const [skew, setSkew] = useState(0); // server now - client now
   const [now, setNow] = useState(Date.now());
@@ -55,7 +57,7 @@ export function FarmGame({ id, label, onClose }: { id: string; label: string; on
   };
   const cap = FARM_TIERS.reduce((a, x, i) => a + (Math.min(x.upTo, 1e12) - (i ? FARM_TIERS[i - 1].upTo : 0)) * x.rate, 0);
   return (
-    <div className="world-deed world-farm" data-testid="farm-game">
+    <div className="world-deed world-farm" data-testid="farm-game" data-drag-panel="farm" onPointerDown={dragFarm.onPointerDown} style={dragFarm.style()} ref={dragFarm.ref}>{dragFarm.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <h3>🌾 {label}</h3>
       {!view ? <small>{msg ?? 'Loading the farm…'}</small> : <>

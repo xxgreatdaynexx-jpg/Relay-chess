@@ -3,6 +3,7 @@ import { request } from '@/lib/net';
 import { flyToResort, useTrip } from '@/lib/travel';
 import { CAR_BY_ID } from '../../../shared/cars';
 import { FLY_DEST, RACE_SPLIT, fmtLap, type FlyDest } from '../../../shared/venues';
+import { usePanelDrag } from '@/lib/panelDrag';
 
 const chips = (n: number) => n.toLocaleString('en-US');
 type Row = { name: string; car: string; ms: number };
@@ -17,6 +18,7 @@ export function Venues({ kind, me, driving, onClose, onFly, onDriveFrom }: {
   kind: 'airport' | 'racetrack'; me: string | null; driving: boolean; onClose: () => void;
   onFly: (to: FlyDest) => Promise<{ ok: boolean; error?: string }>; onDriveFrom: (from: string) => Promise<boolean>;
 }) {
+  const dragVenue = usePanelDrag('venue');
   const trip = useTrip();
   const resort = async () => { setBusy(true); setMsg(null); const r = await flyToResort(); setBusy(false); if (r.ok) onClose(); else setMsg(r.error ?? 'Could not buy a ticket.'); };
   const [board, setBoard] = useState<Board | null>(null); const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false);
@@ -26,7 +28,7 @@ export function Venues({ kind, me, driving, onClose, onFly, onDriveFrom }: {
   const fly = async (to: FlyDest) => { setBusy(true); setMsg(null); const r = await onFly(to); setBusy(false); if (r.ok) onClose(); else setMsg(r.error ?? 'Could not fly.'); };
   const driveFrom = async (from: string) => { setMsg(null); setBusy(true); const ok = await onDriveFrom(from).catch(() => false); setBusy(false); if (!ok) setMsg('You need a car first: buy one at the Car Dealership, then come back.'); else if (from !== 'airport') onClose(); else setMsg(driving ? null : 'Opening the 3D city and bringing your car to the terminal…'); }; // at the airport, stay open on the Fly buttons
   return (
-    <div className="world-deed world-venue" data-testid={`venue-${kind}`}>
+    <div className="world-deed world-venue" data-testid={`venue-${kind}`} data-drag-panel="venue" onPointerDown={dragVenue.onPointerDown} style={dragVenue.style()} ref={dragVenue.ref}>{dragVenue.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       {kind === 'airport' ? <>
         <h3>✈️ Chud Hub International</h3>

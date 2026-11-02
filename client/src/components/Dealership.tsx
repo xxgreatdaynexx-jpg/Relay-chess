@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { request } from '@/lib/net';
 import { buildCar } from '@/lib/carModels';
 import { CARS, TIER_LABEL, type CarModel } from '../../../shared/cars';
+import { usePanelDrag } from '@/lib/panelDrag';
 
 type Owned = { id: string; carId: string; color: number; paid: number; boughtAt: number; active: boolean; value: number };
 type Garage = { signedIn: boolean; cars: Owned[]; chips: number | null };
@@ -30,6 +31,7 @@ function Preview({ car, color }: { car: CarModel; color: number }) {
 }
 
 export function Dealership({ onClose, onDrive }: { onClose: () => void; onDrive: (carId: string, color: number) => void }) {
+  const dragDealer = usePanelDrag('dealer');
   const [cars, setCars] = useState<Priced[]>(CARS);
   const [g, setG] = useState<Garage | null>(null);
   const [sel, setSel] = useState(CARS[0].id); const [col, setCol] = useState(0);
@@ -45,7 +47,7 @@ export function Dealership({ onClose, onDrive }: { onClose: () => void; onDrive:
   const active = g?.cars.find((c) => c.active);
   return (
     <div className="dealer" data-testid="dealership" {...backdropDismiss(() => onClose())}>
-      <div className="dealer-box">
+      <div className="dealer-box" data-drag-panel="dealer" onPointerDown={dragDealer.onPointerDown} style={dragDealer.style()} ref={dragDealer.ref}>{dragDealer.handle}
         <header><h3>🚗 Chud Motors</h3>{g?.chips != null && <span className="dealer-chips">{fmt(g.chips)} chips</span>}<button type="button" onClick={onClose} aria-label="Close" data-testid="dealer-close">✕</button></header>
         <div className="dealer-body">
           <aside className="dealer-list">

@@ -9,6 +9,7 @@ import { MarketView, MaterialsView, SellForm, TradesView } from './MarketPanel';
 import { Swatch, label } from './SkinsPanel';
 import { MyHistoryView } from './MarketCharts';
 import type { SkinItem } from '../../../shared/skins';
+import { usePanelDrag } from '@/lib/panelDrag';
 
 export type MarketTab = 'skins' | 'resources';
 export type SkinsSub = 'listings' | 'sell' | 'trades';
@@ -19,6 +20,7 @@ export function openMarket(o: OpenMarket = {}) { window.dispatchEvent(new Custom
 const atMarket = () => window.location.pathname === '/market' || window.location.hash === '#market';
 
 export function MarketPage() {
+  const dragMarket = usePanelDrag('market');
   const [open, setOpen] = useState(atMarket);
   const [hist, setHist] = useState(false);
   const [tab, setTab] = useState<MarketTab>(() => (window.location.hash === '#market-resources' ? 'resources' : 'skins'));
@@ -35,7 +37,7 @@ export function MarketPage() {
       <TopTab id="market"><button type="button" className="sol-tab" aria-expanded={open} id="market-tab" onClick={() => (open ? close() : setOpen(true))} data-testid="market-tab">{open ? '▴ Market' : '🏪 Market'}</button></TopTab>
       {open && (
         <div className="inv-backdrop" {...backdropDismiss(() => close())}>
-          <div className="inv-win mkt-win" role="dialog" aria-label="Market">
+          <div className="inv-win mkt-win" role="dialog" aria-label="Market" data-drag-panel="market" onPointerDown={dragMarket.onPointerDown} style={dragMarket.style()} ref={dragMarket.ref}>{dragMarket.handle}
             <header className="inv-head">
               <h2>🏪 Market</h2>
               <nav className="inv-tabs" role="tablist">

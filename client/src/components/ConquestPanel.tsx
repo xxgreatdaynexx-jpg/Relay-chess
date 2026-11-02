@@ -5,6 +5,7 @@ import { ConquestMap, type Flight } from '@/components/ConquestMap';
 import { FactionBanner, UnitSprite } from '@/components/ConquestUnits';
 import { BattleFx, type Battle } from '@/components/ConquestFx';
 import { CQ_MAPS, CQ_PALETTE, CQ_PALETTE_NAMES, FACTIONS, factionById, mapById, MAX_PLAYERS, START_ARMIES, tradeValue, type CqMap, type CqView } from '../../../shared/conquest';
+import { usePanelDrag } from '@/lib/panelDrag';
 
 interface TableView { code: string; host: string; seats: Array<{ name: string; bot: boolean; color?: number; faction?: string }>; settings: { turnMs: number; manualSetup: boolean; map: string; perks: boolean }; you: number; deadline: number; game: CqView | null; wager?: number; pot?: number; wagerResult?: { pot: number; deltas: Record<string, number>; refunded: boolean } | null }
 const TURN_CHOICES = [30_000, 60_000, 90_000, 180_000, 300_000];
@@ -370,10 +371,11 @@ function Game({ table, call }: { table: TableView; call: (ev: string, b?: unknow
 }
 
 function Rules({ onClose, map }: { onClose: () => void; map?: CqMap }) {
+  const dragCqRules = usePanelDrag('cqRules');
   const CONTINENTS = (map ?? mapById('chud')).continents;
   return (
     <div className="cq-rules" role="dialog" aria-label="How to play Chud Conquest" data-testid="cq-rules">
-      <div className="cq-rules-card">
+      <div className="cq-rules-card" data-drag-panel="cqRules" onPointerDown={dragCqRules.onPointerDown} style={dragCqRules.style()} ref={dragCqRules.ref}>{dragCqRules.handle}
         <header><h3>How to play</h3><button type="button" onClick={onClose} aria-label="Close rules" data-testid="cq-rules-close">✕</button></header>
         <p><b>Goal:</b> hold every territory on the map (the Chudlands has 28, Classic World 42, Europe 1812 47, Mars 33, the Isles 32). 2–8 commanders; bots are welcome. Starting armies scale with the map and player count, and later seats get a few extra to offset moving last.</p>
         <h4>1 · Deployment</h4>

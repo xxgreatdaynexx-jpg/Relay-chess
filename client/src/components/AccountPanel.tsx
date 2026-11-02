@@ -5,6 +5,7 @@ import { logout, socket } from '@/lib/net';
 import { AccountBox } from '@/components/AccountBox';
 import { ACCOUNT_EVT, openAccount, resetSettings, resetWindowPositions, updateSettings, useSettings } from '@/lib/settings';
 import { ACCENTS, BOARD_PRESETS, THEMES, type Theme } from '../../../shared/settings';
+import { usePanelDrag } from '@/lib/panelDrag';
 
 const THEME_LABEL: Record<Theme, string> = { dark: 'Dark', light: 'Light', contrast: 'High contrast' };
 
@@ -32,6 +33,7 @@ export function PlayingAs() {
 }
 
 export function AccountPanel() {
+  const dragAccount = usePanelDrag('account');
   const [open, setOpen] = useState<null | 'account' | 'settings'>(null);
   useEffect(() => {
     const on = (e: Event) => setOpen(((e as CustomEvent).detail as 'account' | 'settings') ?? 'account');
@@ -47,7 +49,7 @@ export function AccountPanel() {
   if (!open) return null;
   return (
     <div className="acct-scrim" {...backdropDismiss(() => setOpen(null))}>
-      <div className="acct-panel" role="dialog" aria-label="Account and settings" data-testid="account-panel">
+      <div className="acct-panel" role="dialog" aria-label="Account and settings" data-testid="account-panel" data-drag-panel="account" onPointerDown={dragAccount.onPointerDown} style={dragAccount.style()} ref={dragAccount.ref}>{dragAccount.handle}
         <div className="acct-head">
           <div className="acct-tabs" role="tablist">
             <button type="button" role="tab" aria-selected={open === 'account'} onClick={() => setOpen('account')} data-testid="tab-account">Account</button>

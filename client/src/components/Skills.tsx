@@ -7,6 +7,7 @@ import { useAccount } from '@/lib/auth';
 import { TopTab } from './TopTabs';
 import { SKILLS, MAX_LEVEL, progress, skillDef, badgeFor, titleFor } from '../../../shared/skills';
 import { perkText } from '../../../shared/skillPerks';
+import { usePanelDrag } from '@/lib/panelDrag';
 
 export interface SkillRow { id: string; xp: number; level: number; rank: number | null }
 export interface SkillProfile { name: string; total: number; title: string; totalXp: number; skills: SkillRow[] }
@@ -71,6 +72,7 @@ function Hiscores() {
 
 /** Top-bar Skills tab + window, plus XP drops and level-up fanfare from 'xp' pushes. */
 export function SkillsPanel() {
+  const dragSkills = usePanelDrag('skills');
   const account = useAccount();
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<'me' | 'hi'>('me');
@@ -114,7 +116,7 @@ export function SkillsPanel() {
         </div>, document.body)}
       {open && (
         <div className="inv-backdrop" {...backdropDismiss(() => setOpen(false))}>
-          <div className="inv-win" role="dialog" aria-label="Skills" data-testid="skills-panel" style={{ maxWidth: 520 }}>
+          <div className="inv-win" role="dialog" aria-label="Skills" data-testid="skills-panel" style={dragSkills.style({ maxWidth: 520 })} data-drag-panel="skills" onPointerDown={dragSkills.onPointerDown} ref={dragSkills.ref}>{dragSkills.handle}
             <header className="inv-head">
               <h2>🧭 Skills</h2>
               <nav className="inv-tabs" role="tablist">

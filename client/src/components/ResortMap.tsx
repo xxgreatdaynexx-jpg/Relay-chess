@@ -14,6 +14,7 @@ import { FarmGame } from './FarmGame';
 import { CookingHost, openKitchen } from './CookingPanels';
 import { lazyWithReload } from '@/lib/lazyWithReload';
 const FishingPanel = lazyWithReload(() => import('./FishingPanel').then((m) => ({ default: m.FishingPanel })));
+import { usePanelDrag } from '@/lib/panelDrag';
 
 const chips = (n: number) => n.toLocaleString('en-US');
 let IDX = 1;
@@ -25,6 +26,8 @@ function openTab(testId: string) { const el = document.querySelector<HTMLElement
 
 /** Chud Resort: a separate beachfront map. Everything here is gated on the server by the player's location. */
 export function ResortMap() {
+  const dragResortAir = usePanelDrag('resortAir');
+  const dragResortDeeds = usePanelDrag('resortDeeds');
   const me = useAccount(); const canvasRef = useRef<HTMLCanvasElement>(null); const worldRef = useRef<Resort | null>(null);
   const [loading, setLoading] = useState(true); const [tip, setTip] = useState<{ id: string; x: number; y: number } | null>(null);
   const [owned, setOwned] = useState<Map<string, OwnedProperty>>(new Map()); const ownedRef = useRef(owned); ownedRef.current = owned;
@@ -82,7 +85,7 @@ export function ResortMap() {
       {deed && <DeedPanel id={deed} owned={owned} me={me} onKitchen={() => { openKitchen(baseProperty(deed)?.label ?? deed); setDeed(null); }} onClose={() => setDeed(null)} onFarm={() => { setFarm(deed); setDeed(null); }} />}
       {farm && <FarmGame id={farm} label={baseProperty(farm)?.label ?? 'Plantation'} onClose={() => setFarm(null)} />}
       {list && !deed && (
-        <div className="world-deed world-deeds" data-testid="resort-deeds">
+        <div className="world-deed world-deeds" data-testid="resort-deeds" data-drag-panel="resortDeeds" onPointerDown={dragResortDeeds.onPointerDown} style={dragResortDeeds.style()} ref={dragResortDeeds.ref}>{dragResortDeeds.handle}
           <button type="button" className="world-deed-x" onClick={() => setList(false)} aria-label="Close">✕</button>
           <h3>🏝 Chud Resort real estate</h3>
           <small>Premium beachfront. Same rules as the city: 0.5%/day tax, sell back for 70%, repossessed after 3 unpaid days.</small>
@@ -96,7 +99,7 @@ export function ResortMap() {
       )}
       {pier && <Suspense fallback={null}><FishingPanel me={me} spot="reef" onClose={() => setPier(false)} /></Suspense>}
       {air && (
-        <div className="world-deed world-venue" data-testid="venue-resort-airfield">
+        <div className="world-deed world-venue" data-testid="venue-resort-airfield" data-drag-panel="resortAir" onPointerDown={dragResortAir.onPointerDown} style={dragResortAir.style()} ref={dragResortAir.ref}>{dragResortAir.handle}
           <button type="button" className="world-deed-x" onClick={() => setAir(false)} aria-label="Close">✕</button>
           <h3>✈️ Chud Resort Airfield</h3>
           <small>Your ticket included the flight home.</small>
