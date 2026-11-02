@@ -1990,3 +1990,25 @@ html, body { overflow-x: clip; }
 .sell-qty button { padding: 1px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.06); color: inherit; }
 .sell-qty .sell-qty-go { margin-left: auto; background: #2f7d4a; font-weight: 600; }
 .sell-qty .sell-qty-go:disabled { opacity: .5; }
+/* City Hall (pt1312u) */
+.cityhall-panel { width: min(500px, calc(100% - 24px)); max-height: calc(100% - 24px); overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.cityhall-front { border-radius: 12px; padding: 10px 12px; background: linear-gradient(135deg, #3a3f55, #b8975a); color: #fff; display: flex; flex-direction: column; }
+.cityhall-front span { font-weight: 900; letter-spacing: .1em; font-size: 17px; } .cityhall-front small { opacity: .85; }
+.cityhall-panel h4 { font-size: 13px; font-weight: 800; margin: 4px 0 0; }
+.cityhall-mayor { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 10px; background: rgba(217,194,122,.12); border: 1px solid rgba(217,194,122,.35); }
+.cityhall-rates { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.cityhall-rates > div { display: flex; flex-direction: column; align-items: center; padding: 6px; border-radius: 8px; background: rgba(255,255,255,.05); }
+.cityhall-rates b { font-size: 15px; } .cityhall-rates small { font-size: 10px; opacity: .75; }
+.cityhall-pending, .cityhall-sched, .cityhall-rules { font-size: 11px; opacity: .8; margin: 0; }
+.cityhall-list, .cityhall-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.cityhall-list li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,.05); }
+.cityhall-list li > div { flex: 1; display: flex; flex-direction: column; } .cityhall-list li small { opacity: .75; font-style: italic; }
+.cityhall-votes { font-weight: 800; }
+.cityhall-list button, .cityhall-file button, .cityhall-powers button { padding: 4px 10px; border-radius: 8px; background: #b8975a; color: #111; font-weight: 800; }
+.cityhall-list button:disabled, .cityhall-file button:disabled, .cityhall-powers button:disabled { opacity: .45; }
+.cityhall-file { display: flex; gap: 6px; } .cityhall-file input { flex: 1; padding: 4px 8px; border-radius: 8px; background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.15); }
+.cityhall-powers { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(217,194,122,.35); }
+.cityhall-rate { display: flex; flex-direction: column; font-size: 12px; } .cityhall-rate small { opacity: .7; }
+.cityhall-log li { font-size: 11px; opacity: .85; }
+.cityhall-banner { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 30; padding: 6px 12px; border-radius: 10px; background: rgba(30,32,44,.92); border: 1px solid rgba(217,194,122,.5); color: #f3ead2; font-size: 13px; display: flex; gap: 10px; align-items: center; }
+.cityhall-banner button { opacity: .7; }

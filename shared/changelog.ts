@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T01:15:00-06:00', title: 'City Hall: weekly mayor elections', bullets: [
+    'Requested by Liam: a new City Hall stands in the middle of town. Every week Chudhub elects a mayor (Alberta time): file Monday to Thursday, vote Friday and Saturday, results Sunday, and the winner serves Monday to Sunday.',
+    'Running costs 2,500 chips (burned, not refunded) plus a short slogan. One vote per account; your account must be a day old and have played a few games. Ties go to whoever filed first.',
+    'The mayor can move property tax (0.375%–0.625% a day, normally 0.5%) and market and stock trading fees (3.75%–6.25% and 0.75%–1.25%, normally 5% and 1%) by up to 25% either way, once a day. Changes start at the next midnight and every change is logged publicly at City Hall.',
+    'The mayor has no salary and cannot touch casino odds, balances, sell limits or anything else.',
+  ] },
   { commit: '', at: '2026-11-02T01:00:00-06:00', title: 'Sell picker fits on screen', bullets: [
     "Fixed: tapping Sell… in Factory storage opened the quantity picker squeezed beside the item, so the slider, Half/All and Sell buttons were cut off. It now opens as a full-width row under the item and wraps on narrow screens and phones. The fishing cooler and kitchen fridge pickers fit the same way.",
   ] },

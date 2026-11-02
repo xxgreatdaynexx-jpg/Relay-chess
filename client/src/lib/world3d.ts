@@ -267,6 +267,19 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
         g.add(cyl(0.08, 0.08, 4, dark, -3.4, 6.4, 0, 6), box(1.4, 0.8, 0.05, amber, -2.65, 9.4, 0));
         for (const x of [-2.2, -1, 1, 2.2]) g.add(cyl(0.1, 0.1, 0.9, dark, x, 0, 3.2, 6));
         height = 10; break; }
+      case 'cityhall': {
+        // City Hall: pale stone civic hall on a stepped plinth, six columns, pediment, a dome with a flag, and lamp posts.
+        const stone = mat({ color: 0xe6e0d0, roughness: 0.85 }), roofM = mat({ color: 0x5c6f7a, roughness: 0.6, metalness: 0.2 }), gold = mat({ color: 0xd9c27a, emissive: 0xd9c27a, emissiveIntensity: 0.2 * NEON });
+        g.add(box(10, 0.4, 8, stone, 0, 0, -0.5), box(9.2, 0.4, 7.2, stone, 0, 0.4, -0.5), box(8, 4.4, 5, stone, 0, 0.8, -1.4));
+        for (let i = 0; i < 6; i++) g.add(cyl(0.28, 0.32, 3.8, stone, -3.25 + i * 1.3, 0.8, 1.7, 10));
+        g.add(box(8.6, 0.5, 1.6, stone, 0, 4.6, 1.5), box(8.4, 0.5, 6.2, stone, 0, 5.2, -0.9));
+        const ped = new THREE.Mesh(geo(new THREE.ConeGeometry(4.8, 1.6, 4)), stone); ped.rotation.y = Math.PI / 4; ped.scale.set(1, 1, 0.3); ped.position.set(0, 5.7, 1.5); g.add(ped);
+        g.add(cyl(1.9, 1.9, 1.4, stone, 0, 5.7, -1.4, 18));
+        const dome = new THREE.Mesh(geo(new THREE.SphereGeometry(1.9, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2)), roofM); dome.position.set(0, 7.1, -1.4); g.add(dome);
+        g.add(cyl(0.05, 0.05, 2, dark, 0, 9, -1.4, 6), box(1.1, 0.6, 0.04, gold, 0.55, 10.3, -1.4), box(3.6, 0.55, 0.12, gold, 0, 4.15, 2.35));
+        g.add(box(1.4, 2.2, 0.15, mat({ color: 0x4a3524 }), 0, 0.8, 1.15));
+        for (const x of [-4.4, 4.4]) g.add(cyl(0.07, 0.07, 2.6, dark, x, 0, 3.2, 6), box(0.35, 0.35, 0.35, gold, x, 2.6, 3.2));
+        height = 11; break; }
       case 'dealer': {
         // Car Dealership: glass showroom, forecourt with three display cars, pylon sign.
         g.add(box(9, 0.3, 6, mat({ color: 0x2b2f3a }), 0, 0, -2.4), box(9, 4.2, 0.3, mat({ color: 0x9fd4ff, transparent: true, opacity: 0.35, roughness: 0.1, metalness: 0.4 }), 0, 0.3, 0.6));

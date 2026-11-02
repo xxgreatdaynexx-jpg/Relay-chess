@@ -27,9 +27,10 @@ describe('real estate catalog', () => {
     const { houses, patches } = cityFill(7);
     expect(ps.filter((p) => p.kind === 'building' && p.map !== 'resort')).toHaveLength(houses.length + countryHomes().length + countryBusinesses().length);
     expect(ps.filter((p) => p.kind === 'patch')).toHaveLength(patches.length);
-    expect(ps.filter((p) => p.kind === 'landmark').map((p) => p.type).sort()).toEqual([...LANDMARK_IDS].sort());
+    expect(ps.filter((p) => p.kind === 'landmark').map((p) => p.type).sort()).toEqual([...LANDMARK_IDS].filter((id) => id !== 'cityhall').sort());
     for (const p of ps) { expect(p.price).toBeGreaterThan(0); if (p.kind !== 'landmark') expect(obbOverlap(PARK_AREA, p)).toBe(false); }
     expect(ps.some((p) => /trailer/i.test(p.id))).toBe(false);
+    expect(ps.some((p) => p.type === 'cityhall')).toBe(false); // City Hall is civic, never for sale
   });
   it('the map (client landmark set) yields the same ids the server sells', () => {
     const lmIds = [...LANDMARK_IDS, ...WORLD_SPOTS.map((s) => s.id).filter((id) => !LANDMARK_IDS.includes(id))];

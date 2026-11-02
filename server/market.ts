@@ -15,6 +15,7 @@ import { GOODS, MAX_BANKED_STACK, ORES, ORE_ORDER, isOre, nameOf as stackName, t
 import { CASE_NAME, KEY_NAME, SKINS, SKIN_BY_ID, type SkinItem } from '../shared/skins.js';
 import { skillLevel } from './skills.js';
 import { tradingFeeMul } from '../shared/skillPerks.js';
+import { cityFeeMul } from './mayor.js';
 
 export const MARKET_FEE = 0.05;
 export const MIN_PRICE = 1;
@@ -23,8 +24,9 @@ export const MAX_LISTINGS = 50;
 export const MAX_TRADES = 20;
 export const MAX_TRADE_ITEMS = 20;
 /** `mul` is the seller's Trading perk (0.7..1); never below 1 chip. */
-export const feeOf = (price: number, mul = 1) => Math.max(1, Math.ceil(price * MARKET_FEE * Math.max(0.7, Math.min(1, mul))));
-const sellerFee = (price: number, seller: string) => feeOf(price, tradingFeeMul(skillLevel(seller, 'trading')));
+/** mul = Trading-skill discount (0.7..1); city = the mayor's fee multiplier (0.75..1.25, server/mayor.ts). */
+export const feeOf = (price: number, mul = 1, city = 1) => Math.max(1, Math.ceil(price * MARKET_FEE * Math.max(0.7, Math.min(1, mul)) * Math.max(0.75, Math.min(1.25, city))));
+const sellerFee = (price: number, seller: string) => feeOf(price, tradingFeeMul(skillLevel(seller, 'trading')), cityFeeMul());
 
 export interface Listing { id: string; seller: string; sellerName: string; itemId: string; price: number; status: 'active' | 'sold' | 'cancelled'; at: number; closedAt?: number; buyer?: string }
 export interface Sale { id: string; listingId: string; itemId: string; what: string; price: number; fee: number; seller: string; buyer: string; at: number }

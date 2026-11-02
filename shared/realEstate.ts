@@ -53,12 +53,14 @@ export const landPrice = (listPrice: number, owned: number) => Math.round(listPr
 /** "×2.25 because you own 2" (empty when you own none). */
 export const landMultiplierNote = (owned: number) => owned > 0 ? `×${+landMultiplier(owned).toFixed(2)} because you own ${owned}` : '';
 
+/** Civic buildings are not for sale (City Hall belongs to the city). */
+export const CIVIC_IDS = new Set(['cityhall']);
 let cache: Property[] | null = null; let byId: Map<string, Property> | null = null;
 /** Every property on the map (deterministic: same layout -> same ids and prices). */
 export function properties(): Property[] {
   if (cache) return cache;
   const { houses, patches } = cityFill(7); const out: Property[] = [];
-  for (const [id, b] of Object.entries(landmarks())) if (LANDMARK_IDS.includes(id)) out.push({ ...b, id: `lm:${id}`, kind: 'landmark', type: id, label: LANDMARK_LABEL[id] ?? id, price: LANDMARK_PRICE[id] ?? 500_000 });
+  for (const [id, b] of Object.entries(landmarks())) if (LANDMARK_IDS.includes(id) && !CIVIC_IDS.has(id)) out.push({ ...b, id: `lm:${id}`, kind: 'landmark', type: id, label: LANDMARK_LABEL[id] ?? id, price: LANDMARK_PRICE[id] ?? 500_000 });
   for (const h of [...houses, ...countryHomes()]) {
     const t = HOUSING_TYPES.find((x) => x.id === h.type); if (!t) continue;
     const ref = ((t.w[0] + t.w[1]) / 2) * ((t.d[0] + t.d[1]) / 2), midH = ((t.floors[0] + t.floors[1]) / 2) * t.floorH;

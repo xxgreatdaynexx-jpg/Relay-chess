@@ -6,6 +6,7 @@ import { getArenaLedger } from './arena-store.js';
 import express from 'express';
 import { buildInfo } from './build.js';
 import { requestsRouter } from './requests.js';
+import { mayorRouter } from './mayor.js';
 import { economyRouter } from './economy.js';
 import { priceIndexRouter } from './price-index.js';
 import { createServer, type Server as HttpServer } from 'node:http';
@@ -47,6 +48,7 @@ export async function createApp(): Promise<AppContext> {
   app.use(farmRouter());
   app.use(employmentRouter());
   app.use(requestsRouter());
+  app.use(mayorRouter());
   app.use(economyRouter());
   app.use(priceIndexRouter());
   app.get('/health', (_req, res) => {

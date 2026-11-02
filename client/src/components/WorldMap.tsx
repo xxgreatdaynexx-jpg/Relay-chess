@@ -1,6 +1,7 @@
 import { backdropDismiss } from '@/lib/backdrop';
 import { CookingHost, OPEN_GROCERY, openKitchen } from './CookingPanels';
 import { EmploymentHost, OPEN_EMPLOY } from './EmploymentPanel';
+import { CityHallHost, OPEN_CITYHALL } from './CityHallPanel';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { lazyWithReload } from '@/lib/lazyWithReload';
 import { importWithReload } from '@/lib/chunkReload';
@@ -210,6 +211,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       case 'dock': setDock(true); return;
       case 'grocery': window.dispatchEvent(new Event(OPEN_GROCERY)); return;
       case 'employ': window.dispatchEvent(new Event(OPEN_EMPLOY)); return;
+      case 'cityhall': window.dispatchEvent(new Event(OPEN_CITYHALL)); return;
       case 'airport': case 'racetrack': setVenue(id); return;
     }
     // Every other building opens as a panel on top of the city; closing it reveals the city again.
@@ -298,6 +300,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       }} />}
       <CookingHost me={me} />
       <EmploymentHost />
+      <CityHallHost />
       {toast && <div className="world-toast" role="status" data-testid="world-toast">{toast}</div>}
       {farm && <FarmGame id={farm} label={propertyById(farm)?.label ?? 'Farm'} onClose={() => setFarm(null)} />}
       {deeds && <DeedList owned={owned} me={me} onOpen={(id) => setDeed(id)} onClose={() => setDeeds(false)} />}
