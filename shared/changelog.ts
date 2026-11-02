@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T23:20:00-06:00', title: 'No trading for the first 24 hours', bullets: [
+    'Requested by Dayne: new accounts cannot trade with other players for their first 24 hours. That covers trade offers, counters and accepts, and listing or buying on the Market.',
+    'It works both ways: nobody can trade with, or buy from, an account that is less than a day old.',
+    'The Market and Trades screens show how long is left. Cancelling or declining an offer still works, and the daily bonus is unchanged.',
+  ] },
   { commit: '', at: '2026-11-01T23:15:00-06:00', title: 'Employment Office: hire AI miners and fishers', bullets: [
     'Requested by Dayne: a new Employment Office in the city (north of the plaza) lets you hire up to 3 AI workers.',
     'Miners bring in 1 ore every 10 minutes from the mine you pick (The Mine, Frostbite Caverns or Magma Depths), using that mine\'s normal ore mix. Fishers bring in 1 fish every hour from the normal catch table, with no junk.',

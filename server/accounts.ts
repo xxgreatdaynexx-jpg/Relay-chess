@@ -1,3 +1,4 @@
+import { NEW_ACCOUNT_TRADE_MS } from '../shared/tradeLock.js';
 /** Name accounts: a name can be claimed with a password; using a claimed name needs that password or a session. */
 import { friendlyPassword } from './friendly-password.js';
 import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
@@ -37,7 +38,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
 
 const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex');
 
-export interface AccountRow { key: string; name: string; passwordHash: string }
+export interface AccountRow { key: string; name: string; passwordHash: string; /** ms epoch; absent = treat as an old account. */ createdAt?: number }
 export interface AccountStore {
   init(): Promise<void>;
   get(key: string): Promise<AccountRow | null>;
@@ -86,9 +87,10 @@ export class PgAccountStore implements AccountStore {
     for (const sql of ACCOUNTS_MIGRATION) await this.db.query(sql);
   }
   async get(key: string) {
-    const { rows } = await this.db.query('SELECT player_key, name, password_hash FROM players WHERE player_key = $1', [key]);
+    const { rows } = await this.db.query('SELECT player_key, name, password_hash, created_at FROM players WHERE player_key = $1', [key]);
     const r = rows[0];
-    return r ? { key: String(r.player_key), name: String(r.name), passwordHash: String(r.password_hash) } : null;
+    const at = r?.created_at ? new Date(r.created_at as string | Date).getTime() : NaN;
+    return r ? { key: String(r.player_key), name: String(r.name), passwordHash: String(r.password_hash), ...(Number.isFinite(at) ? { createdAt: at } : {}) } : null;
   }
   async create(row: AccountRow) {
     const res = await this.db.query('INSERT INTO players (player_key, name, password_hash) VALUES ($1, $2, $3) ON CONFLICT (player_key) DO NOTHING RETURNING player_key', [row.key, row.name, row.passwordHash]);
@@ -140,7 +142,7 @@ export class MemoryAccountStore implements AccountStore {
   async get(key: string) { return this.accounts.get(key) ?? null; }
   async create(row: AccountRow) {
     if (this.accounts.has(row.key)) return false;
-    this.accounts.set(row.key, row);
+    this.accounts.set(row.key, { ...row, createdAt: row.createdAt ?? Date.now() });
     return true;
   }
   async remove(key: string) {
@@ -203,6 +205,13 @@ export class Accounts {
   async status(name: string): Promise<{ claimed: boolean; reserved: boolean }> {
     if (isGuestName(name) || isBotName(name)) return { claimed: false, reserved: true };
     return { claimed: !!(await this.store.get(nameKey(name))), reserved: false };
+  }
+
+  /** ms until this account may trade with other players (0 = allowed; unknown / old accounts are allowed). */
+  async tradeLockMs(name: string, now = Date.now()): Promise<number> {
+    const row = await this.store.get(nameKey(name));
+    if (!row?.createdAt) return 0;
+    return Math.max(0, row.createdAt + NEW_ACCOUNT_TRADE_MS - now);
   }
 
   private check(ip: string, key: string, now: number) {

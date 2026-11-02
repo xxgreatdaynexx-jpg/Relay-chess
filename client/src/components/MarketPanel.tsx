@@ -7,6 +7,7 @@ import { PAGE, sortCatalog, type CatEntry, type SortKey } from '@/lib/marketCata
 import { useAccount } from '@/lib/auth';
 import { RARITY_COLOR, RARITY_NAME, SKIN_BY_ID, WEAPON_NAME, isKnife, wearOf, type SkinItem } from '../../../shared/skins';
 import { Swatch, label, rarityOf } from './SkinsPanel';
+import { lockLeft } from '../../../shared/tradeLock';
 
 type Ack = { ok: boolean; error?: string; [k: string]: unknown };
 interface ListingView { id: string; price: number; seller: string; at: number; item: SkinItem }
@@ -14,6 +15,21 @@ interface History { what: string; sales: Array<{ price: number; at: number }>; c
 interface TradeView { id: string; fromName: string; toName: string; giveChips: number; wantChips: number; giveItems: SkinItem[]; wantItems: SkinItem[]; at: number; counterOf?: string }
 const whatOf = (i: SkinItem) => (i.kind === 'skin' ? i.skin : i.kind);
 const chipsFmt = (n: number) => `${n.toLocaleString()} 🪙`;
+
+/** First-24h trade lock banner: asks the server how long is left and counts down each minute. */
+export function TradeLockNote() {
+  const account = useAccount();
+  const [until, setUntil] = useState(0); const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    setUntil(0); if (!account) return;
+    let live = true;
+    void request('trade_status', {}).then((r) => { const a = r as Ack; if (live && a.ok && Number(a.lockMs) > 0) { setNow(Date.now()); setUntil(Date.now() + Number(a.lockMs)); } });
+    return () => { live = false; };
+  }, [account]);
+  useEffect(() => { if (!until) return; const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, [until]);
+  if (!until || until <= now) return null;
+  return <p className="inv-err" role="status" data-testid="trade-lock">New accounts can't trade with other players for their first 24 hours. You can trade in {lockLeft(until - now)}.</p>;
+}
 
 function Cell({ item, sel, onClick, children }: { item: SkinItem; sel?: boolean; onClick?: () => void; children?: React.ReactNode }) {
   const r = rarityOf(item);
@@ -72,6 +88,7 @@ export function MarketView({ onListYours }: { onListYours?: (itemId: string) => 
   const act = async (ev: string, body: object, ok: string) => { setErr(''); setMsg(''); const r = (await request(ev, body)) as Ack; if (!r.ok) setErr(r.error ?? 'Failed'); else { setMsg(ok); load(); } };
   return (
     <>
+      <TradeLockNote />
       <Controls q={q} setQ={setQ} sort={sort} setSort={setSort} listed={listed} setListed={setListed}>
         <select value={kind} onChange={(e) => setKind(e.target.value)} data-testid="mkt-kind"><option value="all">Everything</option><option value="skin">Skins</option><option value="case">Cases</option><option value="key">Keys</option></select>
         <select value={weapon} onChange={(e) => setWeapon(e.target.value)} data-testid="mkt-weapon"><option value="all">All weapons</option>{['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'ar15', 'knife', 'pickaxe'].map((w) => <option key={w} value={w}>{WEAPON_NAME[w] ?? w}</option>)}</select>
@@ -135,6 +152,7 @@ export function MaterialsView({ initialSell }: { initialSell?: string | null } =
   const owns = cur ? pack.find((p) => `stack:${p.type}:${p.id}` === cur.what) : undefined;
   return (
     <div className="mkt-mats" data-testid="mkt-mats">
+      <TradeLockNote />
       <Controls q={q} setQ={setQ} sort={sort} setSort={setSort} listed={listed} setListed={setListed}>
         <select value={type} onChange={(e) => setType(e.target.value)} data-testid="mkt-type"><option value="all">All resources</option><option value="ore">Ore</option><option value="bar">Bars</option><option value="good">Goods</option><option value="food">Groceries & crops</option></select>
       </Controls>
@@ -216,6 +234,7 @@ export function TradesView({ seed }: { seed?: string | null }) {
   const side = (items: SkinItem[], chips: number) => <div className="trade-side">{items.map((i) => <Cell key={i.id} item={i} />)}{chips > 0 && <span className="mkt-price">+ {chipsFmt(chips)}</span>}{!items.length && !chips && <span className="inv-note">nothing</span>}</div>;
   return (
     <div className="trades" data-testid="trades">
+      <TradeLockNote />
       {msg && <p className="mkt-ok">{msg}</p>}{err && <p className="inv-err">{err}</p>}
       {!composing && <button type="button" onClick={() => setComposing(true)} data-testid="trade-new">New trade offer</button>}
       {composing && <section className="trade-compose" data-testid="trade-compose">

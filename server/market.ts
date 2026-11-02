@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import { getBank } from './casino-store.js';
 import { getAccounts } from './accounts.js';
+import { otherLockMsg, selfLockMsg } from '../shared/tradeLock.js';
 import { getVault, playerKey, RuleError, type ItemVault, type Stmt, type StoredItem } from './skins.js';
 import { getMines } from './mines.js';
 import { bootAttach, reconnectMsg, setBootState } from './boot-retry.js';
@@ -419,28 +420,38 @@ export function registerMarket(io: Server, socket: Socket): void {
     try { market.guard(); const b = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}; ack?.({ ok: true, ...((await fn(b)) ?? {}) }); }
     catch (e) { ack?.({ ok: false, error: e instanceof RuleError || (e as Error).message === 'Not enough chips.' ? (e as Error).message : 'Something went wrong.' }); }
   });
+  /** First-24h rule: blocks both sides of any player-to-player transfer. */
+  const gate = async (me: string, other?: string | null) => {
+    const a = getAccounts();
+    const mine = await a.tradeLockMs(me);
+    if (mine > 0) throw new RuleError(selfLockMsg(mine));
+    if (other && playerKey(other) !== playerKey(me)) { const o = await a.tradeLockMs(other); if (o > 0) throw new RuleError(otherLockMsg(other.trim(), o)); }
+  };
+  const str = (v: unknown) => (typeof v === 'string' ? v : '');
+  on('trade_status', async () => { const n = nameOf(); return { lockMs: n ? await getAccounts().tradeLockMs(n) : 0 }; });
   on('mkt_browse', (b) => ({ listings: market.browse(b, Math.min(5000, Math.max(1, Number(b.limit) || 200))), mine: nameOf() ? market.myListings(nameOf()!) : [], fee: MARKET_FEE, min: MIN_PRICE, max: MAX_PRICE }));
   on('mkt_catalog', (b) => market.catalog(b.side));
   on('mkt_history', (b) => market.history(String(b.what ?? '')));
   on('mkt_chart', (b) => market.chart(String(b.what ?? ''), b.range));
   on('mkt_recent', (b) => ({ sales: market.recentSales(b.what) }));
   on('mkt_my_history', () => market.myHistory(need()));
-  on('mkt_list', (b) => ({ listing: market.list(need(), b.id, b.price) }));
+  on('mkt_list', async (b) => { const me = need(); await gate(me); return { listing: market.list(me, b.id, b.price) }; });
   on('mkt_cancel', (b) => { market.cancel(need(), b.id); });
-  on('mkt_buy', (b) => market.buy(need(), b.id));
+  on('mkt_buy', async (b) => { const me = need(); await gate(me, market.listings.get(str(b.id))?.sellerName); return market.buy(me, b.id); });
   on('mkt_stacks', (b) => { const me = nameOf() ? playerKey(nameOf()!) : null; return { listings: market.browseStacks(b).map((l) => ({ ...l, mine: !!me && market.stacks.get(l.id)?.seller === me })) }; });
   on('mkt_my_stacks', () => { const n = nameOf(); const p = n ? getMines().packs.get(playerKey(n)) : undefined; return { stacks: p ? [...p.values()].filter((x) => x.qty > 0 && isStackable(x.type, x.id)).map((x) => ({ ...x, name: stackName(x) })) : [] }; });
-  on('mkt_list_stack', (b) => ({ listing: market.listStack(need(), b.type, b.id, b.qty, b.unit) }));
+  on('mkt_list_stack', async (b) => { const me = need(); await gate(me); return { listing: market.listStack(me, b.type, b.id, b.qty, b.unit) }; });
   on('mkt_cancel_stack', (b) => { market.cancelStack(need(), b.id); });
-  on('mkt_buy_stack', (b) => market.buyStack(need(), b.id, b.qty));
+  on('mkt_buy_stack', async (b) => { const me = need(); await gate(me, market.stacks.get(str(b.id))?.sellerName); return market.buyStack(me, b.id, b.qty); });
   on('trade_list', () => (nameOf() ? market.tradesFor(nameOf()!) : { incoming: [], outgoing: [] }));
   on('trade_offer', async (b) => {
     const me = need();
     if (typeof b.to !== 'string' || !(await getAccounts().status(b.to)).claimed) throw new RuleError('No registered player by that name.');
+    await gate(me, b.to);
     return { trade: market.offer(me, b.to, b.give, b.want, b.giveChips, b.wantChips) };
   });
-  on('trade_counter', (b) => ({ trade: market.counter(need(), b.id, b.give, b.want, b.giveChips, b.wantChips) }));
-  on('trade_accept', (b) => { market.accept(need(), b.id); });
+  on('trade_counter', async (b) => { const me = need(); await gate(me, market.trades.get(str(b.id))?.fromName); return { trade: market.counter(me, b.id, b.give, b.want, b.giveChips, b.wantChips) }; });
+  on('trade_accept', async (b) => { const me = need(); await gate(me, market.trades.get(str(b.id))?.fromName); market.accept(me, b.id); });
   on('trade_decline', (b) => { market.decline(need(), b.id); });
   on('trade_cancel', (b) => { market.cancelTrade(need(), b.id); });
   on('trade_peek', (b) => {
