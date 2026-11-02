@@ -1,4 +1,5 @@
 import { backdropDismiss } from '@/lib/backdrop';
+import { CookingHost, OPEN_GROCERY, OPEN_KITCHEN } from './CookingPanels';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { lazyWithReload } from '@/lib/lazyWithReload';
 import { importWithReload } from '@/lib/chunkReload';
@@ -53,6 +54,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }:
       {mine && <button type="button" disabled={!!busy} aria-busy={busy === 're_sell'} onClick={() => act('re_sell')} data-testid="deed-sell">{busy === 're_sell' ? <><span className="world-spin" aria-hidden /> Selling…</> : <>Sell to the city for 🪙 {chips(sellBackOf(cost))} (70%)</>}</button>}
       {mine && onKitchen && p.kind !== 'landmark' && <button type="button" onClick={onKitchen} data-testid="deed-kitchen">🍳 Kitchen</button>}
       {p.kind === 'farm' && o && onFarm && <button type="button" onClick={onFarm} data-testid="deed-farm">{mine ? '🌾 Open farm' : '👀 Visit farm'}</button>}
+      {mine && p.kind !== 'landmark' && <button type="button" onClick={() => window.dispatchEvent(new Event(OPEN_KITCHEN))} data-testid="deed-kitchen">🍳 Kitchen</button>}
       {p.kind === 'farm' && !o && <small>Farmland: buy it to plant crops (FarmVille-style, real-time).</small>}
       {!o && me && short > 0 && !msg && <small id="deed-short" className="text-amber-300" data-testid="deed-short">You need 🪙 {chips(short)} more chips to buy this.</small>}
       {msg && <small role="status" data-testid="deed-msg">{msg}</small>}
@@ -199,6 +201,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       case 'leaderboard': onLeaderboard(); break;
       case 'dealer': setDealer(true); return;
       case 'dock': setDock(true); return;
+      case 'grocery': window.dispatchEvent(new Event(OPEN_GROCERY)); return;
       case 'airport': case 'racetrack': setVenue(id); return;
     }
     // Every other building opens as a panel on top of the city; closing it reveals the city again.
@@ -217,6 +220,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
         worldRef.current = createWorld(canvasRef.current, {
           onHover: (id, x, y) => setTip(id ? { id, x, y } : null),
           onPick: (id) => { if (id) goRef.current(id); }, // '' = a profile "Show on map" glide, not a building
+          onTrailer: (id) => { const m = meRef.current; if (!m || id.slice(8).toLowerCase() !== m.toLowerCase()) return false; window.dispatchEvent(new Event(OPEN_KITCHEN)); return true; },
           onProperty: (id) => { const o = ownedRef.current.get(id); const m = meRef.current;
             if ((id.startsWith('f:') || id.startsWith('cf:')) && o && m && o.owner.toLowerCase() === m.toLowerCase()) setFarm(id); else setDeed(id); },
           onTrailer: (n) => { const m = meRef.current; if (m && n.toLowerCase() === m.toLowerCase()) { setPanel({ k: 'home' }); return true; } return false; },
@@ -286,6 +290,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
         setToast(text); window.clearTimeout(toastT.current); toastT.current = window.setTimeout(() => setToast(null), 4000);
         setOwned((m) => { const n = new Map(m); if (ev === 're_buy' && me) n.set(deed, { id: deed, owner: me, price: paid ?? propertyById(deed)?.price ?? 0, arrears: 0, boughtAt: Date.now() }); else n.delete(deed); return n; });
       }} />}
+      <CookingHost />
       {toast && <div className="world-toast" role="status" data-testid="world-toast">{toast}</div>}
       {farm && <FarmGame id={farm} label={propertyById(farm)?.label ?? 'Farm'} onClose={() => setFarm(null)} />}
       {deeds && <DeedList owned={owned} me={me} onOpen={(id) => setDeed(id)} onClose={() => setDeeds(false)} />}

@@ -12,6 +12,7 @@ import { flyHome } from '@/lib/travel';
 import { DeedPanel } from './WorldMap';
 import { FarmGame } from './FarmGame';
 import { FishPanPanel as KitchenPanel } from './FishPanPanel';
+import { CookingHost } from './CookingPanels';
 
 const chips = (n: number) => n.toLocaleString('en-US');
 let IDX = 1;
@@ -68,6 +69,7 @@ export function ResortMap() {
   return (
     <div className="world resort" data-testid="resort-map">
       <canvas ref={canvasRef} className="world-canvas" data-testid="resort-canvas" />
+      <CookingHost />
       <div className="world-title"><span>CHUD</span> RESORT<small>beachfront · tap a spot</small></div>
       {loading && <div className="world-loading">Landing at Chud Resort…</div>}
       {spot && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#' + spot.color.toString(16).padStart(6, '0') }} data-testid="world-tip"><b>{spot.icon} {spot.label}</b><span>{spot.blurb}</span><em>Click to enter</em></div>}

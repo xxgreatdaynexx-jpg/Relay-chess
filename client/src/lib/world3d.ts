@@ -251,6 +251,16 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
           g.add(box(4, 2.4, 3.4, mat({ color: 0x705038 }), sx, 0, sz));
           const aw = new THREE.Mesh(geo(new THREE.ConeGeometry(3.3, 1.6, 4)), mat({ color: cols[i], emissive: cols[i], emissiveIntensity: 0.4 * NEON })); aw.rotation.y = Math.PI / 4; aw.position.set(sx, 3.2, sz); g.add(aw); }
         g.add(cyl(0.3, 0.3, 7, dark, 0, 0, 0, 6), box(2.4, 0.5, 0.5, neon, 0, 7, 0)); height = 9; break; }
+      case 'grocery': {
+        // Grocery Store: a wide supermarket with a glass front, green awning, CHUD FRESH sign, produce stands and carts.
+        const wall = mat({ color: 0xf1ead8 }), green = mat({ color: 0x3fae55, emissive: 0x3fae55, emissiveIntensity: 0.25 * NEON });
+        g.add(box(10, 4, 7, wall, 0, 0, -1.2), box(10.4, 0.4, 7.4, dark, 0, 4, -1.2));
+        g.add(box(8, 2.6, 0.2, mat({ color: 0x9fd4ff, transparent: true, opacity: 0.45, roughness: 0.1, metalness: 0.3, emissive: 0xfff2c0, emissiveIntensity: 0.25 * NEON }), 0, 0.3, 2.35));
+        g.add(box(10.4, 0.35, 1.6, green, 0, 3, 3), box(6, 1, 0.3, neon, 0, 4.5, 2.3));
+        const prod = [0xff4a3a, 0xffb02e, 0x7ad94a, 0xffe14a];
+        prod.forEach((c, i) => { const x = -3.9 + i * 2.6; g.add(box(1.8, 0.7, 1, mat({ color: 0x8a6440 }), x, 0, 4.4), box(1.6, 0.3, 0.8, mat({ color: c }), x, 0.7, 4.4)); });
+        g.add(box(1, 0.8, 0.6, mat({ color: 0xb8bcc4, metalness: 0.6 }), 4.4, 0.3, 5.4), box(1, 0.8, 0.6, mat({ color: 0xb8bcc4, metalness: 0.6 }), 4.4, 0.3, 6.2));
+        height = 7; break; }
       case 'dealer': {
         // Car Dealership: glass showroom, forecourt with three display cars, pylon sign.
         g.add(box(9, 0.3, 6, mat({ color: 0x2b2f3a }), 0, 0, -2.4), box(9, 4.2, 0.3, mat({ color: 0x9fd4ff, transparent: true, opacity: 0.35, roughness: 0.1, metalness: 0.4 }), 0, 0.3, 0.6));

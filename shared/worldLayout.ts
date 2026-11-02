@@ -189,7 +189,7 @@ export function roadClearance(x: number, z: number, reach = 16): number {
   return best;
 }
 /** Nearest road sample's tangent angle (for facing a building to its street). */
-function nearestTangent(x: number, z: number): number {
+export function nearestTangent(x: number, z: number): number {
   let best = Infinity, ang = 0;
   for (const r of ROADS) for (let i = 0; i < r.pts.length; i++) { const d = Math.hypot(r.pts[i][0] - x, r.pts[i][1] - z); if (d < best) { best = d; const a = r.pts[Math.max(0, i - 1)], b = r.pts[Math.min(r.pts.length - 1, i + 1)]; ang = Math.atan2(b[1] - a[1], b[0] - a[0]); } }
   return ang;
@@ -210,7 +210,7 @@ export function obbOverlap(a: OBB, b: OBB, m = 0): boolean {
   return true;
 }
 /** Footprint clear of every road (centre + corners + edge midpoints) by `m`, and on land. */
-function clearOfRoads(b: OBB, m: number): boolean {
+export function clearOfRoads(b: OBB, m: number): boolean {
   const cs = obbCorners(b); const pts = [[b.x, b.z], ...cs, ...cs.map((p, i) => [(p[0] + cs[(i + 1) % 4][0]) / 2, (p[1] + cs[(i + 1) % 4][1]) / 2])];
   if (!cs.every(([x, z]) => onLand(x, z, 1.5))) return false;
   // road samples are 1 apart; check samples against the box itself so long buildings are covered too
@@ -241,6 +241,7 @@ export const LANDMARK_SLOTS: Record<string, [number, number]> = {
   warehouse: [65, -39],
   airport: [-142, 66], // outskirts, west, in RESERVED_VENUES.airport (shared/venues.ts AIRPORT_SLOT)
   dock: [128, -161], // outskirts, north shore of the lake (shared/outskirts.ts DOCK): the fishing dock
+  grocery: [-39, -13], // Grocery Store (pt1315u): midtown block west of downtown; houses/patches under it are cleared in cityFill
   racetrack: [-103, -169], // outskirts, north-west, in RESERVED_VENUES.racetrack: infield of the oval
 };
 /** Outskirts landmarks sit square to the map, not to a street. */
@@ -285,7 +286,9 @@ function placeLandmarks(ids: string[]): Record<string, OBB> {
   }
   return out;
 }
-export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'mine-frost', 'mine-magma', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer', 'airport', 'racetrack', 'dock'];
+export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'mine-frost', 'mine-magma', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer', 'airport', 'racetrack', 'dock', 'grocery'];
+/** Landmarks added after launch: they clear the fill under them instead of reshuffling it. */
+const LATE_LM = new Set(['grocery']);
 let lmCache: { key: string; v: Record<string, OBB> } | null = null;
 /** Landmark footprints for the given spot ids (defaults to every known slot). */
 export function landmarks(ids: string[] = LANDMARK_IDS): Record<string, OBB> {
@@ -300,7 +303,9 @@ export interface House extends OBB { h: number; type: string; color: number }
 
 /** Parks, plazas and empty lots in open ground, then housing along every street's frontage, facing the street. */
 export function cityFill(seed = 7, ids?: string[]): { houses: House[]; patches: Patch[] } {
-  const rand = rng(seed); const lms = landmarkBoxes(ids);
+  // The Grocery Store came after the city was laid out: keep the fill's random sequence exactly as before (same houses, same
+  // property ids) by leaving it out here, then clear whatever stands on its pad at the end.
+  const rand = rng(seed); const all = landmarks(ids); const lms = Object.entries(all).filter(([id]) => !LATE_LM.has(id)).map(([, b]) => b);
   const taken: OBB[] = [...lms, PARK_AREA]; const houses: House[] = []; const patches: Patch[] = [];
   const free = (b: OBB, m: number) => !obbOverlap(PARK_AREA, b, m) && !taken.some((o) => Math.abs(o.x - b.x) < 30 && Math.abs(o.z - b.z) < 30 && obbOverlap(o, b, m));
   // Open-space patches first so the frontage fill leaves them alone.
@@ -341,7 +346,9 @@ export function cityFill(seed = 7, ids?: string[]): { houses: House[]; patches: 
     const hh: House = { ...hb, h: floors * t.floorH, type: t.id, color: t.colors[Math.floor(rand() * t.colors.length)] };
     houses.push(hh); taken.push(hh);
   }
-  return { houses, patches };
+  const late = Object.entries(all).filter(([id]) => LATE_LM.has(id)).map(([, b]) => b);
+  const clear = (b: OBB) => !late.some((l) => obbOverlap(l, b, 1.5));
+  return { houses: houses.filter(clear), patches: patches.filter(clear) };
 }
 /**
  * Trailer Park on the north-west edge: a gravel spine running west off the north boulevard with lots on both

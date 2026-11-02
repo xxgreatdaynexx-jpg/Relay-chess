@@ -1888,3 +1888,40 @@ html, body { overflow-x: clip; }
 @keyframes fish3d-pop { from { transform: translateX(-50%) translateY(14px) scale(.92); opacity: 0; } to { transform: translateX(-50%); opacity: 1; } }
 .item-icon { width: auto; display: inline-block; flex: none; vertical-align: middle; margin-right: 5px; image-rendering: auto; filter: drop-shadow(0 1px 1px rgba(0,0,0,.45)); }
 .mkt-mat-icon { margin-right: 2px; }
+
+/* ---- Cooking: Grocery Store + Kitchen ---- */
+.grocery-panel, .kitchen-panel { width: min(460px, calc(100% - 24px)); max-height: calc(100% - 24px); overflow-y: auto; }
+.grocery-front { border-radius: 12px; padding: 10px 12px; background: linear-gradient(135deg, #2f8f47, #6ad66a); color: #fff; display: flex; flex-direction: column; box-shadow: inset 0 -6px 0 repeating-linear-gradient(90deg, #fff 0 14px, #e04646 14px 28px); }
+.grocery-front span { font-weight: 900; letter-spacing: .12em; font-size: 18px; } .grocery-front small { opacity: .85; }
+.grocery-qty { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 13px; } .grocery-qty select { background: #1d2230; border-radius: 6px; padding: 2px 6px; } .grocery-qty button { margin-left: auto; }
+.grocery-aisles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+.grocery-shelf { background: linear-gradient(#3a2c22, #2a2019); border: 1px solid rgba(255,220,170,.18); border-radius: 10px; padding: 6px 8px; }
+.grocery-shelf h4 { font-size: 12px; font-weight: 800; margin: 0 0 4px; color: #ffe1a8; }
+.grocery-shelf ul { display: flex; flex-direction: column; gap: 3px; } .grocery-shelf li { display: grid; grid-template-columns: 24px 1fr auto; grid-template-rows: auto auto; column-gap: 6px; align-items: center; border-bottom: 2px solid #6b4a31; padding-bottom: 3px; }
+.grocery-item { grid-row: span 2; font-size: 20px; } .grocery-shelf li b { font-size: 12px; } .grocery-shelf li small { font-size: 10px; opacity: .75; grid-column: 2; }
+.grocery-shelf li button { grid-row: 1 / span 2; grid-column: 3; font-size: 11px; padding: 3px 7px; border-radius: 7px; background: rgba(106,214,106,.18); border: 1px solid rgba(106,214,106,.55); }
+.grocery-shelf li button:disabled { opacity: .5; }
+.kitchen-scene { position: relative; height: 110px; border-radius: 12px; overflow: hidden; background: linear-gradient(#f6d9b0 0 62%, #8a5a3a 62% 66%, #c98f5e 66%); box-shadow: inset 0 0 40px rgba(255,170,80,.35); }
+.kitchen-scene::before { content: ''; position: absolute; inset: 0 0 38% 0; background: repeating-linear-gradient(90deg, rgba(255,255,255,.18) 0 22px, transparent 22px 24px), repeating-linear-gradient(0deg, rgba(255,255,255,.18) 0 22px, transparent 22px 24px); }
+.k-window { position: absolute; left: 14px; top: 10px; width: 64px; height: 46px; border: 4px solid #fff7ea; border-radius: 6px; background: linear-gradient(#20305a, #4a3f78); display: flex; justify-content: flex-end; padding: 3px; font-size: 14px; }
+.k-shelf { position: absolute; left: 96px; top: 18px; font-size: 18px; border-bottom: 4px solid #8a5a3a; padding: 0 4px; }
+.k-fridge { position: absolute; right: 14px; top: 8px; width: 42px; height: 92px; border-radius: 6px; background: linear-gradient(90deg, #e9eef5, #c9d3df); display: flex; align-items: center; justify-content: center; font-size: 16px; box-shadow: inset 0 -40px 0 -38px #999; }
+.k-counter { position: absolute; left: 0; right: 64px; bottom: 6px; display: flex; justify-content: space-around; font-size: 24px; }
+.k-pot { position: relative; } .k-pot i { position: absolute; left: 6px; top: -16px; font-style: normal; font-size: 14px; opacity: .7; animation: k-steam 1.6s infinite ease-out; }
+@keyframes k-steam { from { transform: translateY(4px); opacity: .8; } to { transform: translateY(-10px); opacity: 0; } }
+.kitchen-panel h3 small { font-size: 12px; opacity: .7; margin-left: 6px; }
+.kitchen-tabs { display: flex; gap: 6px; } .kitchen-tabs button { flex: 1; padding: 5px; border-radius: 8px; background: rgba(255,255,255,.06); font-size: 12px; } .kitchen-tabs button[aria-pressed='true'] { background: rgba(255,179,107,.25); outline: 1px solid rgba(255,179,107,.6); }
+.kitchen-book { display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow-y: auto; }
+.kitchen-book li { display: grid; grid-template-columns: 28px 1fr auto; gap: 6px; align-items: center; padding: 4px 6px; border-radius: 8px; background: rgba(255,240,220,.05); }
+.kitchen-book li.locked { opacity: .45; } .k-emoji { font-size: 20px; } .kitchen-book b { font-size: 13px; } .kitchen-book small { font-size: 11px; opacity: .7; }
+.k-ings { display: flex; flex-wrap: wrap; gap: 4px; font-size: 12px; } .k-ings span { padding: 0 4px; border-radius: 5px; background: rgba(255,255,255,.06); } .k-ings .miss { outline: 1px solid rgba(255,90,90,.6); } .k-ings em { font-style: normal; font-size: 10px; opacity: .7; }
+.kitchen-book button, .kitchen-fridge button { padding: 4px 10px; border-radius: 8px; background: rgba(255,179,107,.2); border: 1px solid rgba(255,179,107,.6); font-weight: 700; font-size: 12px; } .kitchen-book button:disabled, .kitchen-fridge button:disabled { opacity: .4; }
+.kitchen-fridge { display: flex; flex-direction: column; gap: 6px; } .kitchen-fridge ul { display: flex; flex-direction: column; gap: 2px; max-height: 200px; overflow-y: auto; font-size: 13px; }
+.stove { display: flex; flex-direction: column; gap: 8px; padding: 8px; border-radius: 12px; background: linear-gradient(#2a2a30, #1a1a1f); }
+.stove-steps { display: flex; justify-content: space-between; font-size: 11px; } .stove-steps span { opacity: .45; } .stove-steps .on { opacity: 1; color: #ffd24a; font-weight: 800; } .stove-steps .done { opacity: .8; color: #8fe08f; }
+.stove-pan { height: 70px; display: flex; align-items: center; justify-content: center; position: relative; background: radial-gradient(circle at 50% 60%, #444 0 34px, #222 35px 38px, transparent 39px); }
+.stove-food { font-size: 30px; transition: transform .2s; } .stove-food.s1 { transform: rotate(180deg); } .stove-food.s2 { transform: rotate(25deg); } .stove-food.s3 { transform: scale(1.15); }
+.stove-flame { position: absolute; bottom: 0; font-size: 18px; animation: fish-pulse .3s infinite alternate; }
+.stove-bar { position: relative; height: 18px; border-radius: 9px; background: linear-gradient(90deg, #4a7bd8, #e0a040, #e04040); } .stove-bar i { position: absolute; top: 0; bottom: 0; background: rgba(120,255,140,.75); border-radius: 6px; box-shadow: 0 0 8px #7f7; }
+.stove-bar b { position: absolute; top: -4px; bottom: -4px; width: 4px; margin-left: -2px; background: #fff; border-radius: 2px; box-shadow: 0 0 6px #fff; }
+.stove-press { padding: 12px; border-radius: 10px; background: rgba(255,179,107,.25); border: 1px solid rgba(255,179,107,.7); font-weight: 900; font-size: 16px; user-select: none; touch-action: none; }
