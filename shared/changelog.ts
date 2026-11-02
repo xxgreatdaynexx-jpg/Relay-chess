@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T23:25:00-06:00', title: 'Arena: headshots on moving players, no more Ctrl keys', bullets: [
+    'Arena headshots now register on strafing players and when you are moving or on a higher ping, for every gun.',
+    'Ctrl is no longer an Arena key: crouch is C, sprint is Shift, so Ctrl+W cannot close the tab mid-fight. Letting go of Ctrl/Cmd or switching tabs stops all movement, and closing the tab mid-match asks "Leave the match?" first.',
+  ] },
   { commit: '', at: '2026-11-01T23:25:00-06:00', title: 'Arena: Search & Destroy and Capture the Flag', bullets: [
     'Requested by Dayne: the Arena has two new team modes next to the usual Deathmatch. Pick one with the new DM / S&D / CTF buttons beside the map picker. It starts right away if you are alone, otherwise it is queued for the next match, just like maps.',
     'Search & Destroy: Blue and Red take turns attacking and defending bomb sites A and B. Attackers stand still on a site to plant (3 s); defenders stand still on the bomb to defuse (5 s). One life per round, sides swap at halftime, first to 4 rounds wins.',

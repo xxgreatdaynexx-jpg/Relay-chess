@@ -5,7 +5,7 @@ import { useWalletChips } from '@/lib/wallet';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useRef, useState } from 'react';
 import { socket } from '@/lib/net';
-import { LOOK_KEY, SENS_MAX, SENS_MIN, mouseLook, readLook, type LookPrefs, FPS_KEY, fpsFrom, hotkeyFor, isLockedTo, readFpsPref, stepFovKick, viewZoom, ARENA_GAME_KEYS, LOCK_KEYS, arenaKey, crouchHeld, shouldBlockShortcut } from '@/lib/arenaInput';
+import { LOOK_KEY, SENS_MAX, SENS_MIN, mouseLook, readLook, type LookPrefs, FPS_KEY, fpsFrom, hotkeyFor, isLockedTo, readFpsPref, stepFovKick, viewZoom, ARENA_GAME_KEYS, LOCK_KEYS, arenaKey, crouchHeld, shouldBlockShortcut, isModifierChord, isModifierRelease, releaseHeld, LEAVE_PROMPT, shouldPromptLeave } from '@/lib/arenaInput';
 import { ArenaRenderer, minimapSize } from '@/lib/arenaRender';
 import type { Arena3D, Fx3D, Soldier3D, Viewmodel3D } from '@/lib/arena3d';
 import { prefersReducedMotion } from '@/lib/motion';
@@ -284,7 +284,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       const sid = pred.newSid();
       const r = launchRocket(-sid, { id: m.id, x: m.x, y: m.y, z: m.z, a: m.a, p: m.p, crouch: m.crouch }, now);
       fx.current.rockets.set(-sid, { id: -sid, x: r.x, y: r.y, z: r.z, vx: r.vx, vy: r.vy, vz: r.vz, at: now });
-      socket.emit('fps_shoot', { a: m.a, p: m.p, z: m.z, vt, sid });
+      socket.emit('fps_shoot', { a: m.a, p: m.p, x: m.x, y: m.y, z: m.z, vt, sid });
       kick();
       return;
     }
@@ -307,7 +307,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         if (fx.current.dmgNums.length > 8) fx.current.dmgNums.shift();
       }
     }
-    socket.emit('fps_shoot', { a: m.a, p: m.p, z: m.z, vt, sid });
+    socket.emit('fps_shoot', { a: m.a, p: m.p, x: m.x, y: m.y, z: m.z, vt, sid });
     kick();
   }
   /** Server said our predicted hit missed: quietly fade the marker and damage number (rare). */
@@ -614,7 +614,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         m.a += turn * (m.scoped ? 0.8 : 2.6) * tk * dt;
         m.p = clampPitch(m.p + look * 1.6 * tk * dt) ?? m.p;
         const len = Math.hypot(fwd, side) || 1;
-        // Crouch: hold Ctrl or C (or the touch toggle). Standing back up waits for headroom, same rule as the server.
+        // Crouch: hold C (or the touch toggle). Standing back up waits for headroom, same rule as the server.
         const wantCrouch = crouchHeld(k, touchCrouchRef.current);
         const wasCrouched = m.crouch;
         applyCrouch(m, wantCrouch, map);
@@ -1093,12 +1093,15 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     const active = () => document.pointerLockElement === canvasRef.current || !!wrapRef.current?.contains(document.activeElement);
     const onKeyGuard = (e: KeyboardEvent) => { if (shouldBlockShortcut(e, active())) e.preventDefault(); };
-    const onLeave = (e: BeforeUnloadEvent) => { if (me.current.joined && phaseRef.current !== 'ended') { e.preventDefault(); e.returnValue = ''; } };
+    // Ctrl/Cmd released (often right after a tab switch/close attempt): drop every held key and movement.
+    const onModUp = (e: KeyboardEvent) => { if (isModifierRelease(e)) { releaseHeld(keys.current, me.current); setShowBoard(false); } };
+    window.addEventListener('keyup', onModUp, true);
+    const onLeave = (e: BeforeUnloadEvent) => { if (shouldPromptLeave(!!me.current.joined, phaseRef.current)) { e.preventDefault(); e.returnValue = LEAVE_PROMPT; return LEAVE_PROMPT; } };
     const onFs = () => { setIsFs(!!document.fullscreenElement); if (!document.fullscreenElement) { try { (navigator as Navigator & { keyboard?: { unlock?: () => void } }).keyboard?.unlock?.(); } catch { /* ok */ } wrapRef.current?.focus({ preventScroll: true }); } };
     window.addEventListener('keydown', onKeyGuard, true);
     window.addEventListener('beforeunload', onLeave);
     document.addEventListener('fullscreenchange', onFs);
-    return () => { window.removeEventListener('keydown', onKeyGuard, true); window.removeEventListener('beforeunload', onLeave); document.removeEventListener('fullscreenchange', onFs); };
+    return () => { window.removeEventListener('keyup', onModUp, true); window.removeEventListener('keydown', onKeyGuard, true); window.removeEventListener('beforeunload', onLeave); document.removeEventListener('fullscreenchange', onFs); };
   }, []);
 
   // Pointer-lock mouse look, mouse buttons (left fire, right scope) and wheel weapon switch.
@@ -1120,20 +1123,21 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       if (on) refocusArena();
       // Losing the lock / focus drops held keys we'll never see the keyup for (Shift would keep sprinting).
       if (!on) { me.current.firing = false; setScope(false); keys.current.delete('shift'); me.current.sprint = false; }
-      if (!document.hasFocus() || document.hidden) keys.current.clear();
     };
+    // Window blur / tab hidden: we'll never get the keyups, so stop all held movement, sprint and fire.
+    const dropAll = () => { releaseHeld(keys.current, me.current); setScope(false); sync(); };
     document.addEventListener('pointerlockchange', sync);
     document.addEventListener('pointerlockerror', sync);
-    window.addEventListener('blur', sync);
-    document.addEventListener('visibilitychange', sync);
+    window.addEventListener('blur', dropAll);
+    document.addEventListener('visibilitychange', dropAll);
     document.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     canvas?.addEventListener('wheel', onWheel, { passive: false });
     return () => {
       document.removeEventListener('pointerlockchange', sync);
       document.removeEventListener('pointerlockerror', sync);
-      window.removeEventListener('blur', sync);
-      document.removeEventListener('visibilitychange', sync);
+      window.removeEventListener('blur', dropAll);
+      document.removeEventListener('visibilitychange', dropAll);
       document.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
       canvas?.removeEventListener('wheel', onWheel);
@@ -1163,6 +1167,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     if (down && key === ' ' && spaceRespawns({ repeat: e.repeat, alive: me.current.alive, phase: phaseRef.current, broke: life.broke, sinceDeathMs: performance.now() - deathAtRef.current, typing: isTypingTarget(e.target) })) { e.preventDefault(); e.stopPropagation(); respawnNow(); return; }
     if (down && key === 'k' && !e.repeat && !me.current.alive && phaseRef.current === 'play') { e.preventDefault(); e.stopPropagation(); watchKillCam(); return; }
     e.stopPropagation();
+    // Ctrl/Cmd chords are browser shortcuts, not game input (keyups still release).
+    if (down && isModifierChord(e)) return;
     if (!GAME_KEYS.has(key)) return;
     e.preventDefault();
     if (key === 'tab') { setShowBoard(down); return; }
@@ -1300,7 +1306,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
           <label>Touch <input type="range" min={SENS_MIN} max={SENS_MAX} step={0.05} value={look.touch} data-testid="arena-touch-sens" onChange={(e) => setLook({ touch: +e.target.value })} /><span>{look.touch.toFixed(2)}</span></label>
           <label>Explosions <input type="range" min={0} max={1} step={0.05} value={boomVol} data-testid="arena-explosion-vol" onChange={(e) => { setExplosionVolume(+e.target.value); setBoomVol(+e.target.value); }} /><span>{Math.round(boomVol * 100)}%</span></label>
           <label><input type="checkbox" checked={look.invertY} data-testid="arena-invert-y" onChange={(e) => setLook({ invertY: e.target.checked })} /> Invert Y</label>
-          <button type="button" data-testid="arena-fullscreen" onClick={toggleFullscreen}>Fullscreen (protects Ctrl+W)</button>
+          <button type="button" data-testid="arena-fullscreen" onClick={toggleFullscreen}>Fullscreen</button>
           <button type="button" onClick={() => setLook({ sens: 1, scope: 0.31, touch: 1, invertY: false })}>Reset</button>
         </div>
       )}
@@ -1456,13 +1462,13 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         <>
         {fsSupported && !isFs && !fsDismissed && (
           <div className="fps-fs-offer" data-testid="arena-fs-offer">
-            <button type="button" onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}>⛶ Play fullscreen <small>(recommended: protects Ctrl+W)</small></button>
+            <button type="button" onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}>⛶ Play fullscreen</button>
             <button type="button" aria-label="Dismiss" onClick={(e) => { e.stopPropagation(); setFsDismissed(true); try { sessionStorage.setItem('relay-arena-fs-dismissed', '1'); } catch { /* ok */ } }}>×</button>
           </div>
         )}
         <div className="fps-help" data-testid="arena-help">
-          <span className="fps-help-full">WASD move · mouse look · Q/E turn · PgUp/PgDn look · click or F shoot · Space jump · Shift sprint · Ctrl/C crouch (play fullscreen so Ctrl+W can't close the tab) · 1–6 / wheel guns · 7/V knife (click slash, right-click stab) · R reload · G frag grenade · right-click scope/aim · Tab scores · M maps · F3 fps · Esc frees mouse</span>
-          <span className="fps-help-short">WASD move · click shoot · Space jump · Shift sprint · Ctrl/C crouch · 1–6 guns · 7/V knife · R reload · G frag · Tab scores · M maps · F3 fps · Esc frees mouse</span>
+          <span className="fps-help-full">WASD move · mouse look · Q/E turn · PgUp/PgDn look · click or F shoot · Space jump · Shift sprint · C crouch · 1–6 / wheel guns · 7/V knife (click slash, right-click stab) · R reload · G frag grenade · right-click scope/aim · Tab scores · M maps · F3 fps · Esc frees mouse</span>
+          <span className="fps-help-short">WASD move · click shoot · Space jump · Shift sprint · C crouch · 1–6 guns · 7/V knife · R reload · G frag · Tab scores · M maps · F3 fps · Esc frees mouse</span>
         </div>
         </>
       )}

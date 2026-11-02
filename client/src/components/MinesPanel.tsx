@@ -201,7 +201,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
   function onKey(e: React.KeyboardEvent, down: boolean) {
     const k = arenaKey(e);
     if (shouldBlockShortcut(e, true)) e.preventDefault();
-    if (['w', 'a', 's', 'd', ' ', 'shift', 'control', 'c'].includes(k)) { e.preventDefault(); if (down) keys.current.add(k); else keys.current.delete(k); }
+    if (['w', 'a', 's', 'd', ' ', 'shift', 'c'].includes(k)) { e.preventDefault(); if (down) keys.current.add(k); else keys.current.delete(k); }
   }
   const lock = () => { unlockSounds?.(); const c = glRef.current; if (c && document.pointerLockElement !== c) { try { (c.requestPointerLock as unknown as (o?: object) => unknown)?.call(c, { unadjustedMovement: false }); } catch { /* ignore */ } (navigator as unknown as { keyboard?: { lock?: (k: string[]) => Promise<void> } }).keyboard?.lock?.(LOCK_KEYS).catch?.(() => {}); } };
   const carriedWorth = Math.floor(pack.pack.reduce((t, s) => t + s.qty * priceOf(s), 0) * pidx);
@@ -240,7 +240,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
           {loot && <div className="mines-toast mines-loot" data-testid="mines-loot">{loot}</div>}
           {glError && <div className="mines-toast">{glError}</div>}
           <div className="mines-haul" data-testid="mines-haul">🎒 {pack.pack.reduce((t, s) => t + s.qty, 0)} carried · ~🪙{carriedWorth}{inExit(me.current.x, me.current.y) ? ' · at EXIT' : ''}</div>
-          <div className="mines-hint">{status} · WASD move · Shift sprint · Ctrl/C crouch · Space jump · Esc release</div>
+          <div className="mines-hint">{status} · WASD move · Shift sprint · C crouch · Space jump · Esc release</div>
         </div>
         <aside className="mines-side" data-testid="mines-pack">
           <div className="mines-load">⛏️ Carried {pack.load}/{pack.cap}<div className="mines-bar"><i style={{ width: `${Math.min(100, (pack.load / pack.cap) * 100)}%` }} /></div></div>

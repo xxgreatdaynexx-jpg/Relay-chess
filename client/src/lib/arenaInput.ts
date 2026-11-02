@@ -74,7 +74,7 @@ export function viewZoom(scopeZoom: number, fovKick: number, keepGun = false): {
 // ---------------------------------------------------------------- Ctrl / browser-shortcut safety
 
 /** Keys the Arena owns (lowercased e.key; digits by physical code). */
-export const ARENA_GAME_KEYS = new Set(['tab', 'w', 'a', 's', 'd', 'q', 'e', 'f', 'r', 'g', 'control', 'c', 'shift', ' ', '1', '2', '3', '4', '5', '6', '7', 'v', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown']);
+export const ARENA_GAME_KEYS = new Set(['tab', 'w', 'a', 's', 'd', 'q', 'e', 'f', 'r', 'g', 'c', 'shift', ' ', '1', '2', '3', '4', '5', '6', '7', 'v', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown']);
 export const arenaKey = (e: { key: string; code?: string }): string => (/^Digit[1-7]$/.test(e.code ?? '') ? e.code!.slice(5) : e.key.toLowerCase());
 /**
  * Window-level guard while the Arena is active: swallow Ctrl/Cmd + game-key combos (Ctrl+S save, Ctrl+D bookmark,
@@ -84,14 +84,25 @@ export const arenaKey = (e: { key: string; code?: string }): string => (/^Digit[
 export function shouldBlockShortcut(e: { key: string; code?: string; ctrlKey?: boolean; metaKey?: boolean }, active: boolean): boolean {
   if (!active || !(e.ctrlKey || e.metaKey)) return false;
   const k = arenaKey(e);
-  return ARENA_GAME_KEYS.has(k) && k !== 'control';
+  return ARENA_GAME_KEYS.has(k);
 }
-/** Ctrl is the crouch key, C the alternate. */
-export const crouchHeld = (keys: Set<string>, touch: boolean): boolean => keys.has('control') || keys.has('c') || touch;
+/** C crouches. Ctrl is never a game key (Ctrl+W closes the tab, and browsers won't let a page stop it). */
+export const crouchHeld = (keys: Set<string>, touch: boolean): boolean => keys.has('c') || touch;
+/** A Ctrl/Cmd chord is a browser shortcut, never game input: don't start movement from it. */
+export const isModifierChord = (e: { ctrlKey?: boolean; metaKey?: boolean }): boolean => !!(e.ctrlKey || e.metaKey);
+/** Releasing Ctrl/Cmd (the tab may be about to switch/close) drops every held key; we may never see their keyups. */
+export const isModifierRelease = (e: { key: string }): boolean => e.key === 'Control' || e.key === 'Meta' || e.key === 'OS';
+/** Reset held-key + movement state (keyup lost to blur, tab switch, Ctrl/Cmd chord). */
+export function releaseHeld(keys: Set<string>, m: { firing?: boolean; sprint?: boolean; semiPending?: boolean }): void {
+  keys.clear(); m.firing = false; m.sprint = false; m.semiPending = false;
+}
+export const LEAVE_PROMPT = 'Leave the match?';
+/** beforeunload: ask only while a match is actually active (joined, not ended). */
+export const shouldPromptLeave = (joined: boolean, phase: string | null | undefined): boolean => joined && phase !== 'ended';
 /** Sends a boolean only when it changes (crouch/sprint state). */
 export function changeSender(send: (on: boolean) => void): (on: boolean) => void {
   let last: boolean | undefined;
   return (on) => { if (on !== last) { last = on; send(on); } };
 }
 /** Keys navigator.keyboard.lock() grabs in fullscreen so Ctrl+W & co. go to the game. */
-export const LOCK_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyR', 'KeyF', 'KeyC', 'KeyV', 'ControlLeft', 'ControlRight', 'ShiftLeft', 'Space', 'Tab', 'Escape'];
+export const LOCK_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyR', 'KeyF', 'KeyC', 'KeyV', 'ShiftLeft', 'Space', 'Tab', 'Escape'];

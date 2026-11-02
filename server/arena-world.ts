@@ -43,6 +43,8 @@ export const FIRE_JITTER_MS = 25;
 export const BROKE_RETRY_MS = 1000;
 /** How far (m) a shot's client-reported foot height may differ from the server's and still be used as the ray origin. */
 export const SHOT_Z_TOLERANCE = 0.6;
+/** How far (m) a shot's client-reported x/y may be from the server's copy and still be the ray origin (unsent movement since the last ~32 ms move packet + latency). */
+export const SHOT_XY_TOLERANCE = 0.6;
 /** 360 no-scope: an unscoped sniper kill after >= NOSCOPE_DEG of one-way spin within NOSCOPE_WINDOW_MS (humans only). */
 export const NOSCOPE_DEG = 330;
 export const NOSCOPE_WINDOW_MS = 1500;
@@ -515,7 +517,7 @@ export class ArenaWorld {
     return this.killcam.get(id, now);
   }
 
-  shoot(id: string, a: unknown, now: number, p?: unknown, viewT?: unknown, heavy?: unknown, sidIn?: unknown, zIn?: unknown): ArenaEvent[] {
+  shoot(id: string, a: unknown, now: number, p?: unknown, viewT?: unknown, heavy?: unknown, sidIn?: unknown, zIn?: unknown, xIn?: unknown, yIn?: unknown): ArenaEvent[] {
     const sid = cleanSid(sidIn);
     const f = this.fighters.get(id);
     if (!f || !f.alive || this.phase === 'ended') return [];
@@ -568,8 +570,14 @@ export class ArenaWorld {
     let blocked = 0;
     // Fire from the height the shooter actually saw (their predicted z mid-jump/landing), within a small tolerance:
     // the server's copy of the jump arc lags by the input latency, which put the ray ~0.2-0.4 m off a 0.2 m head.
-    const serverZ = f.z;
+    const serverZ = f.z, serverX = f.x, serverY = f.y;
     if (typeof zIn === 'number' && Number.isFinite(zIn) && Math.abs(zIn - f.z) <= SHOT_Z_TOLERANCE) f.z = zIn;
+    // Same for x/y: the client fires from its predicted position, up to one move packet (+ jitter) ahead of the server's copy.
+    // A strafing shooter's ray origin was 0.1-0.3 m off, enough to slide past a 0.2 m head. Only within tolerance and in sight.
+    if (typeof xIn === 'number' && typeof yIn === 'number' && Number.isFinite(xIn) && Number.isFinite(yIn) && Math.hypot(xIn - f.x, yIn - f.y) <= SHOT_XY_TOLERANCE) {
+      const from = eyeOf(f);
+      if (lineOfSight(from, { x: xIn, y: yIn, z: from.z }, this.map)) { f.x = xIn; f.y = yIn; }
+    }
     try {
       if (this.hasPerk(f.id, 'aimassist')) this.assistAim(f);
       const useSpec = this.hasPerk(f.id, 'aimassist') ? { ...spec, spread: spec.spread * ASSIST_SPREAD } : spec;
@@ -583,7 +591,7 @@ export class ArenaWorld {
         shot.hits.delete(tid); shot.heads.delete(tid); blocked += 1;
       }
     }
-    finally { f.z = serverZ; for (const [o, x, y, z, c] of restore) { o.x = x; o.y = y; o.z = z; o.crouch = c; } }
+    finally { f.x = serverX; f.y = serverY; f.z = serverZ; for (const [o, x, y, z, c] of restore) { o.x = x; o.y = y; o.z = z; o.crouch = c; } }
     const events: ArenaEvent[] = [{
       ev: 'fps_shot',
       data: {

@@ -1,7 +1,8 @@
 /** Arena netcode smoothing: snapshot buffer + interpolation/extrapolation, and lag-compensation history. Pure; shared by client, server and tests. */
 export const INTERP_DELAY_MS = 100;
 export const EXTRAP_MAX_MS = 150;
-export const LAG_COMP_MAX_MS = 200;
+/** Max rewind. now - viewT = RTT + INTERP_DELAY_MS (+ clock-estimate slack): 200 capped anyone over ~100 ms ping, so moving heads were missed. */
+export const LAG_COMP_MAX_MS = 400;
 export const LOCAL_STEP_S = 1 / 120;
 
 export interface Pose { id: string; x: number; y: number; z: number; a: number; p: number; alive?: boolean }

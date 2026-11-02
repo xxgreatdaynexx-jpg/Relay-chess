@@ -352,7 +352,7 @@ export function registerFps(io: Server, socket: Socket): void {
     touchArenaClient(socket.id);
     world.move(socket.id, b.x, b.y, b.a, Date.now(), b.p, b.c, b.s, b.q, b.b);
   });
-  socket.on('fps_shoot', (p: unknown) => emit(io, world.shoot(socket.id, body(p).a, Date.now(), body(p).p, body(p).vt, body(p).h, body(p).sid, body(p).z)));
+  socket.on('fps_shoot', (p: unknown) => emit(io, world.shoot(socket.id, body(p).a, Date.now(), body(p).p, body(p).vt, body(p).h, body(p).sid, body(p).z, body(p).x, body(p).y)));
   socket.on('fps_crouch', (p: unknown) => world.crouch(socket.id, body(p).on));
   socket.on('fps_jump', () => emit(io, world.jump(socket.id, Date.now())));
   socket.on('fps_live', () => markArenaLive(socket.id));

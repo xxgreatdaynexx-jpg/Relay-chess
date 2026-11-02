@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ARENA_GAME_KEYS, arenaKey, changeSender, crouchHeld, shouldBlockShortcut } from '../client/src/lib/arenaInput';
+import { ARENA_GAME_KEYS, LOCK_KEYS, LEAVE_PROMPT, arenaKey, changeSender, crouchHeld, isModifierChord, isModifierRelease, releaseHeld, shouldBlockShortcut, shouldPromptLeave } from '../client/src/lib/arenaInput';
 
 describe('arena Ctrl / key-repeat safety', () => {
   it('blocks Ctrl/Cmd + game-key browser shortcuts only while the Arena is active', () => {
@@ -15,8 +15,11 @@ describe('arena Ctrl / key-repeat safety', () => {
     const guard = (e: KeyboardEventLike) => { if (shouldBlockShortcut(e, true)) e.preventDefault(); };
     for (const key of ['w', 's', 'd']) { const e = { key, ctrlKey: true, preventDefault: vi.fn() }; guard(e); expect(e.preventDefault).toHaveBeenCalledOnce(); }
   });
-  it('Ctrl crouches (default), C is the alternate', () => {
-    expect(crouchHeld(new Set(['control']), false)).toBe(true);
+  it('C crouches; Ctrl is not bound to anything', () => {
+    expect(crouchHeld(new Set(['control']), false)).toBe(false);
+    expect(ARENA_GAME_KEYS.has('control')).toBe(false);
+    expect(LOCK_KEYS.some((k) => k.startsWith('Control'))).toBe(false);
+    expect(ARENA_GAME_KEYS.has('shift')).toBe(true);
     expect(crouchHeld(new Set(['c']), false)).toBe(true);
     expect(crouchHeld(new Set(['w']), false)).toBe(false);
   });
@@ -34,11 +37,37 @@ describe('arena Ctrl / key-repeat safety', () => {
     expect(src).toMatch(/wantCrouch !== net\.sentCrouch/);
     expect(src).toMatch(/addEventListener\('beforeunload'/);
     expect(src).toMatch(/(keyboard|kb)\?\.lock\?\.\(LOCK_KEYS\)/);
-    expect(src).toMatch(/Ctrl\/C crouch/);
+    expect(src).toMatch(/· C crouch/);
+    expect(src).not.toMatch(/Ctrl\/C crouch|protects Ctrl/);
+    expect(src).toMatch(/if \(down && isModifierChord\(e\)\) return;/);
+    expect(src).toMatch(/addEventListener\('blur', dropAll\)/);
+    expect(src).toMatch(/addEventListener\('visibilitychange', dropAll\)/);
+    expect(src).toMatch(/isModifierRelease\(e\)\) \{ releaseHeld/);
   });
   it('digits map by physical key and all game keys are known', () => {
     expect(arenaKey({ key: '@', code: 'Digit2' })).toBe('2');
     expect(ARENA_GAME_KEYS.has('c')).toBe(true);
+  });
+});
+describe('arena held-key release + leave prompt', () => {
+  it('Ctrl/Cmd chords are not game input; releasing Ctrl/Cmd is detected', () => {
+    expect(isModifierChord({ ctrlKey: true })).toBe(true);
+    expect(isModifierChord({ metaKey: true })).toBe(true);
+    expect(isModifierChord({})).toBe(false);
+    for (const key of ['Control', 'Meta']) expect(isModifierRelease({ key })).toBe(true);
+    expect(isModifierRelease({ key: 'Shift' })).toBe(false);
+  });
+  it('releaseHeld clears every held key and movement/fire/sprint state', () => {
+    const keys = new Set(['w', 'shift', 'c', 'f']); const m = { firing: true, sprint: true, semiPending: true };
+    releaseHeld(keys, m);
+    expect(keys.size).toBe(0); expect(m).toEqual({ firing: false, sprint: false, semiPending: false });
+  });
+  it('asks "Leave the match?" only while a match is active', () => {
+    expect(LEAVE_PROMPT).toBe('Leave the match?');
+    expect(shouldPromptLeave(true, 'play')).toBe(true);
+    expect(shouldPromptLeave(true, 'sudden')).toBe(true);
+    expect(shouldPromptLeave(true, 'ended')).toBe(false);
+    expect(shouldPromptLeave(false, 'play')).toBe(false);
   });
 });
 type KeyboardEventLike = { key: string; ctrlKey?: boolean; preventDefault: () => void };
