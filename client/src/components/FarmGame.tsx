@@ -7,6 +7,8 @@ import { CROPS as CITY_CROPS, cropById, FARM_TIERS, type FarmView } from '../../
 import { usePanelDrag } from '@/lib/panelDrag';
 
 const chips = (n: number) => n.toLocaleString('en-US');
+/** Compact countdown on ripe tiles, e.g. "11h" or "40m" (full text is in the tooltip). */
+const witherHint = (ms: number) => { const m = Math.max(0, Math.ceil(ms / 60_000)); return m >= 60 ? `${Math.floor(m / 60)}h` : `${m}m`; };
 const dur = (ms: number) => { const s = Math.max(0, Math.ceil(ms / 1000)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return h ? `${h}h ${m}m` : m ? `${m}m ${x}s` : `${x}s`; };
 type Ack = { ok: boolean; error?: string; [k: string]: unknown };
 
@@ -61,12 +63,13 @@ export function FarmGame({ id, label, onClose }: { id: string; label: string; on
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <h3>🌾 {label}</h3>
       {!view ? <small>{msg ?? 'Loading the farm…'}</small> : <>
-        <small>{view.mine ? 'Your farm. Pick a seed, select empty tiles (or plant them all), come back when it’s ready. Crops wither twice their grow time after ripening.' : `${view.owner ?? 'Nobody'}'s farm (visiting, read-only).`}</small>
+        <small>{view.mine ? 'Your farm. Pick a seed, select empty tiles (or plant them all), come back when it’s ready. Ripe crops wait at least 12 hours before they wither.' : `${view.owner ?? 'Nobody'}'s farm (visiting, read-only).`}</small>
         <div className="farm-grid" style={{ gridTemplateColumns: `repeat(${view.cols}, 1fr)` }} data-testid="farm-grid">
           {Array.from({ length: n }, (_, i) => { const x = byTile.get(i); const s = stage(i); const c = x && cropById(x.crop);
             const title = !x ? 'Empty' : s === 'growing' ? `${c?.label}: ready in ${dur(x.readyAt - t)}` : s === 'ready' ? `${c?.label}: ready! withers in ${dur(x.witherAt - t)}` : `${c?.label}: withered`;
             return <button key={i} type="button" title={title} className={`farm-tile farm-${s}${sel.has(i) ? ' farm-sel' : ''}`} onClick={() => click(i)} data-testid={`farm-tile-${i}`}>
               {s === 'empty' ? '' : s === 'withered' ? '🥀' : s === 'ready' ? c?.emoji : x && (t - x.plantedAt) / (x.readyAt - x.plantedAt) >= 0.5 ? '🌿' : '🌱'}
+              {s === 'ready' && x && <b className="farm-wither" data-testid={`farm-wither-${i}`}>{witherHint(x.witherAt - t)}</b>}
               {s === 'growing' && x && <i style={{ width: `${Math.min(100, (100 * (t - x.plantedAt)) / (x.readyAt - x.plantedAt))}%` }} />}
             </button>; })}
         </div>

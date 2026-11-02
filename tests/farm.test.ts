@@ -4,7 +4,7 @@ import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
 import { Farm } from '../server/farm';
 import { setPriceIndexForTest } from '../server/price-index';
-import { CROPS, cropById, farmPayout, farmPlots, FARM_TIERS, FARM_X0, PARK_SAFE, stageOf, WITHER_FACTOR } from './farm-helpers';
+import { CROPS, cropById, farmPayout, farmPlots, FARM_TIERS, FARM_X0, MIN_RIPE_MS, PARK_SAFE, ripeWindow, stageOf, WITHER_FACTOR } from './farm-helpers';
 import { properties, propertyById } from '../shared/realEstate';
 import { obbOverlap, PARK_AREA, PLATE } from '../shared/worldLayout';
 
@@ -38,7 +38,7 @@ describe('farm district', () => {
     for (let i = 1; i < CROPS.length; i++) { expect(CROPS[i]!.grow).toBeGreaterThan(CROPS[i - 1]!.grow); expect(CROPS[i]!.seed).toBeGreaterThan(CROPS[i - 1]!.seed); }
     for (const c of CROPS) expect(c.sell).toBeGreaterThan(c.seed);
     const c = cropById('corn')!;
-    expect(stageOf(c, 0, c.grow - 1)).toBe('growing'); expect(stageOf(c, 0, c.grow)).toBe('ready'); expect(stageOf(c, 0, c.grow * (1 + WITHER_FACTOR) - 1)).toBe('ready'); expect(stageOf(c, 0, c.grow * (1 + WITHER_FACTOR))).toBe('withered');
+    expect(stageOf(c, 0, c.grow - 1)).toBe('growing'); expect(stageOf(c, 0, c.grow)).toBe('ready'); expect(stageOf(c, 0, c.grow + ripeWindow(c.grow) - 1)).toBe('ready'); expect(stageOf(c, 0, c.grow + ripeWindow(c.grow))).toBe('withered');
   });
   it('daily tiers: full, half, a tenth, then nothing (bounded profit per day)', () => {
     expect(farmPayout(500, 0)).toBe(500); expect(farmPayout(1000, 0)).toBe(1000); expect(farmPayout(200, 99_900)).toBe(100); expect(farmPayout(1000, 100_000)).toBe(0);
@@ -67,13 +67,13 @@ describe('farm district', () => {
     await s.fund('Ida', plot.price + 50); await s.re.buy('Ida', s.id);
     await expect(s.farm.plant('Ida', s.id, 'sunflower', [0])).rejects.toThrow(/Not enough chips/); expect(s.chips('ida')).toBe(50);
     await s.farm.plant('Ida', s.id, 'strawberry', [0, 1]);
-    s.setNow(T0 + 2 * M * (1 + WITHER_FACTOR));
+    s.setNow(T0 + 2 * M + MIN_RIPE_MS);
     await expect(s.farm.harvest('Ida', s.id)).rejects.toThrow(/Nothing is ready/);
     expect((await s.farm.clear('Ida', s.id)).cleared).toBe(2);
     setPriceIndexForTest(1.5);
     try {
       await s.farm.plant('Ida', s.id, 'strawberry', [5]); expect(s.chips('ida')).toBe(40 - Math.round(5 * 1.5) + 0);
-      s.setNow(T0 + 2 * M * (1 + WITHER_FACTOR) + 2 * M); const before = s.chips('ida');
+      s.setNow(T0 + 2 * M + MIN_RIPE_MS + 2 * M); const before = s.chips('ida');
       const r = await s.farm.harvest('Ida', s.id); expect(r.paid).toBe(Math.floor(8 * 1.5)); expect(s.chips('ida')).toBe(before + r.paid);
     } finally { setPriceIndexForTest(1); }
   });
@@ -96,5 +96,10 @@ describe('countryside fields farm like farmland (pt1250u)', () => {
     await s.farm.plant('Ida', id, 'wheat', [0, 1]); s.setNow(T0 + 5 * 60_000); await s.farm.harvest('Ida', id);
     expect(s.ledger('ida', 'farm_harvest').length).toBe(1);
     const before = s.chips('ida'); await s.re.sell('Ida', id); expect(s.chips('ida') - before).toBe(Math.floor(plot.price * 0.7));
+  });
+  it('ripe crops last at least 12 hours before withering; long crops keep their longer window (request #19)', () => {
+    const H = 60 * 60_000;
+    for (const c of CROPS) { expect(ripeWindow(c.grow)).toBe(Math.max(12 * H, WITHER_FACTOR * c.grow)); expect(stageOf(c, 0, c.grow + 12 * H - 1)).toBe('ready'); }
+    expect(ripeWindow(30 * 60_000)).toBe(12 * H); expect(ripeWindow(12 * H)).toBe(24 * H); expect(ripeWindow(8 * H, 3)).toBe(24 * H);
   });
 });

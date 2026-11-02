@@ -19,7 +19,7 @@ import { requireResort } from './travel.js';
 import { fieldPlotOf } from '../shared/fieldFarms.js';
 import { getMines } from './mines.js';
 import { awardXp } from './skills.js';
-import { CROPS, cropById, farmPayout, farmPlots, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
+import { CROPS, cropById, farmPayout, farmPlots, ripeWindow, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
 import { skillLevelAsync } from './skills.js';
 import { farmingGrowMul } from '../shared/skillPerks.js';
 import { combinedGrowMul, fertilizerProfitMul, greenhouseWither, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradeDef, upgradePrice, type FarmUpgradeLevels } from '../shared/farmUpgrades.js';
@@ -67,7 +67,7 @@ export class Farm {
   }
   private toTile(r: TileRow, now: number, wither = WITHER_FACTOR): FarmTile | null {
     const c = cropById(r.crop); if (!c) return null; const at = Number(r.planted_at);
-    const readyAt = at + c.grow, witherAt = at + c.grow * (1 + wither);
+    const readyAt = at + c.grow, witherAt = readyAt + ripeWindow(c.grow, wither);
     return { tile: Number(r.tile), crop: c.id, plantedAt: at, stage: wither === WITHER_FACTOR ? stageOf(c, at, now) : now < readyAt ? 'growing' : now < witherAt ? 'ready' : 'withered', readyAt, witherAt };
   }
   /** Upgrade levels bought by the CURRENT owner (a previous owner's upgrades do not carry over). */

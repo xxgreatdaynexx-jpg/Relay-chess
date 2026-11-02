@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T02:00:00-06:00', title: 'Farm: ripe crops last 12 hours before withering', bullets: [
+    'Requested by carter2: ripe crops now wait at least 12 hours before they wither, instead of twice their grow time (which was only 4 minutes for strawberries and 1 hour for corn). Crops that take longer, like sunflowers, keep their longer window, and the Greenhouse still extends those.',
+    'Crops already in the ground get the new window too. Ripe tiles now show a small "withers in" countdown (e.g. 11h). Grow times, yields and the daily farm limit are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T01:50:00-06:00', title: 'Chudhub goes Christmas (through Jan 5)', bullets: [
     'Requested by Liam: snow falls over the city and the resort, rooftops are capped with snow and the streets have a frosty coat.',
     'Twinkling Christmas lights line the buildings, a big decorated tree with presents stands in the central plaza, and smaller trees dress up the casino, the arena, City Hall, every mine entrance and the resort casino. The top bar gets a candy-cane trim and a string of lights.',

@@ -58,7 +58,7 @@ describe('farm upgrades (request #6)', () => {
     await s.farm.plant('Gus', s.id, 'wheat', [0]);
     const w = cropById('wheat')!; const t = (await s.farm.view(s.id, 'Gus')).tiles[0]!;
     expect(t.readyAt - T0).toBe(Math.round(w.grow * 0.8)); // sprinklers lvl 2 = 20% faster
-    expect(t.witherAt - t.readyAt).toBe(w.grow * 3); // greenhouse lvl 1 = 3x grow ripe window
+    expect(t.witherAt - t.readyAt).toBe(12 * 60 * 60_000); // ripe window is at least 12 h (greenhouse 3x grow is shorter for wheat)
     s.setNow(t.readyAt);
     const h = await s.farm.harvest('Gus', s.id);
     expect(h.paid).toBe(w.seed + Math.floor((w.sell - w.seed) * 1.1));
