@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { socket, request } from '@/lib/net';
 import { loadAuth } from '@/lib/auth';
@@ -43,6 +44,7 @@ export function ConquestPanel() {
 }
 
 function ConquestWindow({ intent, onClose }: { intent: { code?: string; create?: boolean }; onClose: () => void }) {
+  useDoing('conquest');
   const [table, setTable] = useState<TableView | null>(null);
   const [list, setList] = useState<Listing[]>([]);
   const [err, setErr] = useState('');

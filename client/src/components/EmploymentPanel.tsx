@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { useCallback, useEffect, useState } from 'react';
 import { ItemIcon } from './ItemIcon';
 import { request } from '@/lib/net';
@@ -34,6 +35,7 @@ function HaulLog({ log }: { log: EmployLogItem[] }) {
 
 /** Employment Office (city): hire AI miners and fishers (pt1274u). Prices come from the server at today's index. */
 export function EmploymentPanel({ onClose }: { onClose: () => void }) {
+  useDoing('jobs');
   const dragEmploy = usePanelDrag('employ');
   const [v, setV] = useState<EmployView | null>(null); const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);

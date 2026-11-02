@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T02:15:00-06:00', title: 'Chat shows what everyone is doing', bullets: [
+    'The Online list in chat now shows each player\'s live activity next to their name, like "⛏️ Mining · Magma Depths", "🌾 Farming · North Field", "🍳 Cooking", "📈 Stock market" or "🎰 Casino · Blackjack". Their chat messages get the same little tag.',
+    'Covers mining (which mine), the factory, cooking and the grocery, farming (which farm), fishing (lake or resort reef), the stock market and skin market, every casino game, the arena (which mode), chess and checkers tables, Conquest, solitaire, real estate, City Hall, the job board, the dealership, the mechanic, driving, the airport and racetrack, the resort, skills, inventory and the city. After 5 minutes with no input you show as 💤 Idle.',
+    'Status only: nothing gets posted into the chat feed, and nothing about chips changes.',
+  ] },
   { commit: '', at: '2026-11-02T02:15:00-06:00', title: 'Employment Office: workers deposit automatically', bullets: [
     'Hired miners now drop their ore straight into your factory storage and fishers put their catch in your cooler. There is no Collect button any more.',
     'The office lists what each crew picked up in the last 24 hours (amount and last pick-up time) with a total. If your storage or cooler is full, workers hold the overflow and deposit it once there is room, so nothing is lost.',

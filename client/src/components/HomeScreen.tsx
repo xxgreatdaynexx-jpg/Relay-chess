@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { ScrollIntro } from '@/components/ScrollIntro';
 import { notifyNameChanged } from '@/lib/casino';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
@@ -41,6 +42,7 @@ export function HomeScreen({
   onLeaderboard: () => void;
   onTournament: (code: string) => void;
 }) {
+  useDoing('chess', 'Lobby');
   const saved = loadSession();
   const name = useAccount();
   const [code, setCode] = useState(initialCode);

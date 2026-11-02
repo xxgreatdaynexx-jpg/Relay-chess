@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { backdropDismiss } from '@/lib/backdrop';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
@@ -31,6 +32,7 @@ function Preview({ car, color }: { car: CarModel; color: number }) {
 }
 
 export function Dealership({ onClose, onDrive }: { onClose: () => void; onDrive: (carId: string, color: number) => void }) {
+  useDoing('dealership');
   const dragDealer = usePanelDrag('dealer');
   const [cars, setCars] = useState<Priced[]>(CARS);
   const [g, setG] = useState<Garage | null>(null);

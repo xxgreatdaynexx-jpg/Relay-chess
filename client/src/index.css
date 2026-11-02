@@ -1095,6 +1095,7 @@ html, body { overflow-x: clip; }
 .chat-uname { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-where { font-size: 11px; color: rgba(244,239,228,.6); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-qa { margin-left: 5px; font-size: 9px; font-weight: 800; padding: 0 4px; border-radius: 4px; background: #7a5cff; color: #fff; vertical-align: middle; }
+.chat-doing-tag { margin-left: 6px; font-size: 10px; padding: 0 5px; border-radius: 6px; background: rgba(244,239,228,.08); color: rgba(244,239,228,.7); white-space: nowrap; vertical-align: middle; max-width: 60%; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
 .chat-profile { margin: 0 8px 8px; padding: 0 8px 8px; border-radius: 10px; background: rgba(255,255,255,.06); }
 .chat-profile .chat-head { padding: 6px 0; }
 .chat-stats { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }

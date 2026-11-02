@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { useEffect, useState } from 'react';
 import { request } from '@/lib/net';
 import { flyToResort, useTrip } from '@/lib/travel';
@@ -18,6 +19,7 @@ export function Venues({ kind, me, driving, onClose, onFly, onDriveFrom }: {
   kind: 'airport' | 'racetrack'; me: string | null; driving: boolean; onClose: () => void;
   onFly: (to: FlyDest) => Promise<{ ok: boolean; error?: string }>; onDriveFrom: (from: string) => Promise<boolean>;
 }) {
+  useDoing(kind === 'airport' ? 'airport' : 'racetrack');
   const dragVenue = usePanelDrag('venue');
   const trip = useTrip();
   const resort = async () => { setBusy(true); setMsg(null); const r = await flyToResort(); setBusy(false); if (r.ok) onClose(); else setMsg(r.error ?? 'Could not buy a ticket.'); };

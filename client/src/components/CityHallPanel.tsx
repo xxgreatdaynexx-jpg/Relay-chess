@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { useCallback, useEffect, useState } from 'react';
 import { request } from '@/lib/net';
 import { usePanelDrag } from '@/lib/panelDrag';
@@ -12,6 +13,7 @@ const PHASE: Record<string, string> = { filing: 'Candidates filing (Mon–Thu)',
 
 /** City Hall (pt1312u): run for mayor, vote, and — if you're mayor — nudge property tax and trading fees within ±25%. */
 export function CityHallPanel({ onClose, initial }: { onClose: () => void; initial?: CityHallView }) {
+  useDoing('cityhall');
   const drag = usePanelDrag('cityhall');
   const [v, setV] = useState<CityHallView | null>(initial ?? null); const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);

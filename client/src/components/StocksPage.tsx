@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { backdropDismiss } from '@/lib/backdrop';
 /** Stock Exchange: its own top-nav tab (/stocks, #stocks). Market list, company page with charts + buy/sell, portfolio, news. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -22,6 +23,7 @@ const ago = (t: number) => { const m = Math.round((Date.now() - t) / 60000); ret
 export function StocksPage() {
   const dragStocks = usePanelDrag('stocks');
   const [open, setOpen] = useState(atStocks);
+  useDoing('stocks', null, open);
   const [view, setView] = useState<'market' | 'funds' | 'shorts' | 'options' | 'portfolio' | 'news'>('market');
   const [ticker, setTicker] = useState<string | null>(null);
   const [data, setData] = useState<ListResp | null>(null);

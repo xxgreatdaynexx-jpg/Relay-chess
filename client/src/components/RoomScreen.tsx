@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { useAccount } from '@/lib/auth';
 import { AccountButton } from '@/components/AccountPanel';
 import { getSettings } from '@/lib/settings';
@@ -61,6 +62,7 @@ export function RoomScreen({
   onLeaderboard: () => void;
   onAnalyze: () => void;
 }) {
+  useDoing(state.spectating ? 'watching' : state.gameType === 'checkers' ? 'checkers' : 'chess', state.code);
   const [pending, setPending] = useState<Pending | null>(null);
   const [flipped, setFlipped] = useState(false);
   const [resignOpen, setResignOpen] = useState(false);

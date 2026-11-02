@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { request } from '@/lib/net';
 import { fishById, fmtKg, RARITY_COLOR } from '../../../shared/fishing';
@@ -37,6 +38,7 @@ function tone(d: number) {
 
 /** Home kitchen: pick a raw fish from your cooler, cook it in a pan (heat + flips), plate it. The server replays it. */
 export function FishPanPanel({ me, home, onClose }: { me: string | null; home: string; onClose: () => void }) {
+  useDoing('cooking', 'Fish pan');
   const [st, setSt] = useState<State | null>(null); const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState<string | null>(null);
   const [ui, setUi] = useState<{ heat: number; dial: number; down: number; up: number; flips: number; t: number; flipAnim: number } | null>(null);
   const [done, setDone] = useState<Done | null>(null);

@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { useEffect, useMemo, useState } from 'react';
 import { Board } from '@/components/Board';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,7 @@ function evalText(s: number): string {
 
 /** Post-game review for Relay Checkers: alpha-beta engine in the browser, eval bar, best-move arrow, move grades. */
 export function CheckersAnalysisScreen({ game, onBack, onMainMenu }: { game: FinishedGame; onBack: () => void; onMainMenu: () => void }) {
+  useDoing('analysis', 'Checkers');
   const fens = useMemo(() => [game.moves[0]?.fenBefore ?? INITIAL_CHECKERS_FEN, ...game.moves.map((m) => m.fenAfter ?? '')], [game]);
   const [index, setIndex] = useState(fens.length - 1);
   const [evals, setEvals] = useState<Array<Ev | undefined>>([]);

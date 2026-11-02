@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { restoreOpen } from '@/lib/restoreOpen';
 import { ItemIcon } from './ItemIcon';
 import { importWithReload, reloadOnceForChunkError } from '@/lib/chunkReload';
@@ -58,6 +59,7 @@ function aimNode(nodes: MineNode[], x: number, y: number, ez: number, a: number,
 }
 
 function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId) => void; onClose: () => void }) {
+  useDoing('mining', CAVES[cave]?.name);
   const C = CAVES[cave]; const MINE_MAP = C.map; const MINE_NODES = C.nodes;
   const pidx = usePriceIndex();
   const wrapRef = useRef<HTMLDivElement>(null);

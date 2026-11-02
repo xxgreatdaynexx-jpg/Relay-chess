@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { TopTab } from '@/components/TopTabs';
 import { useEffect, useRef, useState } from 'react';
 import { NamePrompt, OutOfChips } from '@/components/CasinoCommon';
@@ -18,6 +19,7 @@ export function PokerPanel() {
   const winRef = useRef<HTMLDivElement>(null);
   const win = useWindowDrag('poker', winRef);
   const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) === '1');
+  useDoing('casino', 'Poker', open);
   const [tab, setTab] = useState<'holdem' | 'play'>(() => (localStorage.getItem('relay-poker-mode') === 'play' ? 'play' : 'holdem'));
   const [name] = useSavedName();
   const [v, setV] = useState<PokerView | null>(null);

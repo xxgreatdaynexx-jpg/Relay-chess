@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -42,6 +43,7 @@ export function BoardSwitch({ value, onChange }: { value: BoardKind; onChange: (
 }
 
 export function LeaderboardScreen({ onBack, onMainMenu }: { onBack: () => void; onMainMenu?: () => void }) {
+  useDoing('leaderboard');
   const [board, setBoard] = useState<BoardKind>(loadBoard);
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col px-4 py-5 sm:px-8">

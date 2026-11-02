@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { backdropDismiss } from '@/lib/backdrop';
 /** Market: its own top-nav tab (/market, #market). Sub-tabs: Skins (listings, sell, trades) and Resources (ore, bars, goods from banked storage).
  *  Other panels open it with openMarket({...}); the 3D hub's Market building routes to /market. */
@@ -22,6 +23,7 @@ const atMarket = () => window.location.pathname === '/market' || window.location
 export function MarketPage() {
   const dragMarket = usePanelDrag('market');
   const [open, setOpen] = useState(atMarket);
+  useDoing('market', null, open);
   const [hist, setHist] = useState(false);
   const [tab, setTab] = useState<MarketTab>(() => (window.location.hash === '#market-resources' ? 'resources' : 'skins'));
   const [sub, setSub] = useState<SkinsSub>('listings'); const [item, setItem] = useState<string | null>(null); const [stack, setStack] = useState<string | null>(null);

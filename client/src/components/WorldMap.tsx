@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { backdropDismiss } from '@/lib/backdrop';
 import { CookingHost, OPEN_GROCERY, openKitchen } from './CookingPanels';
 import { EmploymentHost, OPEN_EMPLOY } from './EmploymentPanel';
@@ -31,6 +32,7 @@ type Ack = { ok: boolean; error?: string };
 
 /** Deed panel: list price, owner, daily tax, Buy / Sell back. */
 export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }: { id: string; owned: Map<string, OwnedProperty>; me: string | null; onClose: () => void; onFarm?: () => void; onKitchen?: () => void; onDone?: (ev: 're_buy' | 're_sell', text: string, paid?: number) => void }) {
+  useDoing('realestate', propertyById(id)?.label);
   const dragDeed = usePanelDrag('deed');
   const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState<null | 're_buy' | 're_sell'>(null); const [msg, setMsg] = useState<string | null>(null); const wallet = useWalletChips();
   if (!p) return null;
@@ -67,6 +69,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }:
 
 /** Landmark deeds + the signed-in player's properties. */
 function DeedList({ owned, me, onOpen, onClose }: { owned: Map<string, OwnedProperty>; me: string | null; onOpen: (id: string) => void; onClose: () => void }) {
+  useDoing('realestate');
   const dragDeeds = usePanelDrag('deeds');
   const mine = me ? [...owned.values()].filter((o) => o.owner.toLowerCase() === me.toLowerCase()) : [];
   const lms = properties().filter((p) => p.kind === 'landmark').sort((a, b) => b.price - a.price);
@@ -162,6 +165,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   const driveRef = useRef<Drive | null>(null);
   const pendingDrive = useRef<{ carId: string; color: number; from?: string } | null>(null); const startDriveRef = useRef<(carId: string, color: number, from?: string) => void>(() => {});
   const [driving, setDriving] = useState(false); const [near, setNear] = useState<string | null>(null); const [kmh, setKmh] = useState(0);
+  useDoing('city'); useDoing('driving', null, driving);
   const meRef = useRef(me); meRef.current = me;
   const venue = panelId(panel, 'venue') as 'airport' | 'racetrack' | null; const setVenue = (id: 'airport' | 'racetrack' | null) => setPanel((c) => (id ? { k: 'venue', id } : closePanel(c, 'venue')));
   const [lap, setLap] = useState<{ t0: number | null; text: string | null; gate: number }>({ t0: null, text: null, gate: 0 }); const [, setNow] = useState(0);

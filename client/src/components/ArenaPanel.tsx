@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { restoreOpen } from '@/lib/restoreOpen';
 import { TopTab } from '@/components/TopTabs';
 import { ix, usePriceIndex } from '../lib/priceIndex';
@@ -212,6 +213,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const [mapInfo, setMapInfo] = useState<{ map: string; next: string; picked: boolean; secs: number }>({ map: MAP.id, next: '', picked: false, secs: 0 });
   /** Game mode now / next (picker), and the live team-mode view for the canvas HUD. */
   const [modeInfo, setModeInfo] = useState<{ mode: ModeId; next: ModeId; snd: boolean }>({ mode: 'dm', next: 'dm', snd: false });
+  useDoing('arena', MODE_INFO[modeInfo.mode]?.name);
   const mvRef = useRef<ModeView | null>(null);
 
   function setWeapon(w: WeaponId) {

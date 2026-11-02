@@ -10,6 +10,8 @@ import { openAccount } from '@/lib/settings';
 import { TopTab } from '@/components/TopTabs';
 import type { Activity, ChatMessage, OnlineSnapshot, OnlineUser } from '../../../shared/chat';
 import { CHAT_MAX_LEN } from '../../../shared/chat';
+import { doingLabel } from '../../../shared/doing';
+import { currentDoing } from '@/lib/doing';
 
 const SEEN_KEY = 'relay-chat-seen';
 const OPEN_KEY = 'relay-chat-open';
@@ -22,6 +24,9 @@ const readSeen = (): number | null => { try { const v = localStorage.getItem(SEE
 const writeSeen = (id: number) => { try { localStorage.setItem(SEEN_KEY, String(id)); } catch { /* blocked */ } };
 
 interface Profile { skills?: SkillProfile | null; chess?: { wins: number; losses: number; draws: number }; arena?: { kills: number; deaths: number; kd: number } }
+
+/** Table seats/watching beat the generic status; otherwise show the live activity, falling back to the old label. */
+const statusOf = (u: OnlineUser): string => (u.table ? u.where : u.doing ? doingLabel(u.doing) : u.where);
 
 export function ChatDrawer() {
   const me = useAccount();
@@ -40,13 +45,17 @@ export function ChatDrawer() {
   useEffect(() => { try { localStorage.setItem(OPEN_KEY, open ? '1' : '0'); } catch { /* blocked */ } }, [open]);
 
   useEffect(() => {
-    let lastActs = '';
+    let lastKey = '';
+    let lastAt = 0;
     const report = (force = false) => {
       const acts = openActivities();
-      const key = acts.join(',');
-      if (!socket.connected || (!force && key === lastActs)) return;
-      lastActs = key;
-      socket.emit('presence', { activities: acts });
+      const doing = currentDoing();
+      const key = acts.join(',') + '|' + JSON.stringify(doing);
+      const now = Date.now();
+      // Send on change (checked every second), plus a 20s heartbeat so a dropped/throttled update self-heals.
+      if (!socket.connected || (!force && key === lastKey && now - lastAt < 20_000)) return;
+      lastKey = key; lastAt = now;
+      socket.emit('presence', { activities: acts, doing });
     };
     const onConnect = () => {
       report(true);
@@ -70,7 +79,7 @@ export function ChatDrawer() {
     socket.on('online', onOnline);
     socket.on('chat_msg', onMsg);
     if (socket.connected) onConnect(); else socket.connect();
-    const t = window.setInterval(() => report(), 2500);
+    const t = window.setInterval(() => report(), 1000);
     return () => { socket.off('connect', onConnect); socket.off('online', onOnline); socket.off('chat_msg', onMsg); window.clearInterval(t); };
   }, []);
 
@@ -123,6 +132,8 @@ export function ChatDrawer() {
     });
   }
 
+  const doingByName = new Map(online.users.map((u) => [u.name.toLowerCase(), u.doing ? doingLabel(u.doing) : '']));
+  const doingOf = (name: string) => doingByName.get(name.toLowerCase()) || '';
   const pickedUser = picked && 'where' in picked ? picked : online.users.find((u) => picked && u.name.toLowerCase() === picked.name.toLowerCase());
 
   return (
@@ -150,7 +161,7 @@ export function ChatDrawer() {
                 <button type="button" className="chat-user" onClick={() => { void pick(u); openPlayer(u.name); }} data-testid="chat-user">
                   <span className="chat-dot" aria-hidden="true" />
                   <span className="chat-uname">{u.name}{u.name === me && <span className="chat-dim"> (you)</span>}{u.qa && <span className="chat-qa">QA</span>}</span>
-                  <span className="chat-where">{u.where}</span>
+                  <span className="chat-where" data-testid="chat-doing">{statusOf(u)}</span>
                 </button>
               </li>
             ))}
@@ -158,7 +169,7 @@ export function ChatDrawer() {
           {picked && (
             <div className="chat-profile" data-testid="chat-profile">
               <div className="chat-head"><b>{picked.name}{profile?.skills ? <span className="chat-qa" data-testid="profile-level-tag" title={`Total level ${profile.skills.total}`}>Lv {profile.skills.total}</span> : null}</b><button type="button" className="acct-close" aria-label="Close profile" onClick={() => setPicked(null)}>✕</button></div>
-              <div className="chat-dim">{pickedUser ? pickedUser.where : 'Offline'}</div>
+              <div className="chat-dim">{pickedUser ? statusOf(pickedUser) : 'Offline'}</div>
               {!profile ? <div className="chat-dim">Loading stats…</div> : (
                 <div className="chat-stats">
                   <span>Chess: {profile.chess ? `${profile.chess.wins}W ${profile.chess.losses}L ${profile.chess.draws}D` : 'no rated games'}</span>
@@ -181,6 +192,7 @@ export function ChatDrawer() {
               <div key={m.id} className={`chat-msg${m.name === me ? ' mine' : ''}`}>
                 <button type="button" className="chat-from" onClick={() => { void pick({ name: m.name }); openPlayer(m.name); }}>{m.name}</button>
                 {m.qa && <span className="chat-qa">QA</span>}
+                {doingOf(m.name) && <span className="chat-doing-tag" data-testid="chat-msg-doing" title="What they're doing right now">{doingOf(m.name)}</span>}
                 <time className="chat-time" dateTime={new Date(m.at).toISOString()} title={chatTimeFull(m.at)} data-testid="chat-time">{chatTimeLabel(m.at)}</time>
                 <div className="chat-text">{m.text}</div>
               </div>

@@ -1,4 +1,5 @@
 /** Site-wide chat + online list: shared types and pure helpers (used by server and tests). */
+import type { Doing } from './doing.js';
 export const CHAT_MAX_LEN = 300;
 export const CHAT_HISTORY = 200;
 export const ACTIVITIES = ['blackjack', 'roulette', 'poker', 'slots', 'solitaire', 'arena'] as const;
@@ -14,6 +15,8 @@ export interface OnlineUser {
   activities: Activity[];
   /** Short human label, e.g. "Lobby", "Table K3QX", "Arena · Slots". */
   where: string;
+  /** Live status (mining, farming, stocks…) from their most recently active tab. Status only, never a chat post. */
+  doing?: Doing | null;
 }
 export interface OnlineSnapshot { users: OnlineUser[]; guests: number }
 

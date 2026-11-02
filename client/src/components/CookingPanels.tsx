@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { SellQtyPicker } from './SellQtyPicker';
 import { pickForQty } from '../../../shared/sellQty';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -25,6 +26,7 @@ const have = (v: KitchenView, id: string) => (id === 'fish' ? v.fish.fish : id =
 /** Grocery Store (city): shelves of cooking ingredients at px() prices. Each buy carries a nonce (server dedupes); the
  *  button locks while in flight and a retry after a network error reuses the same nonce. */
 export function GroceryPanel({ onClose, onKitchen }: { onClose: () => void; onKitchen?: () => void }) {
+  useDoing('grocery');
   const dragGrocery = usePanelDrag('grocery');
   const { s, err, load } = useKitchen(); const [qty, setQty] = useState(5); const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);
   const pending = useRef(new Map<string, string>());
@@ -81,6 +83,7 @@ function Stove({ cook, onDone }: { cook: Cook; onDone: (presses: number[]) => vo
 
 /** Kitchen: open from any home you own. Pantry, recipe book (unlocks by Cooking level), the stove minigame and the fridge. */
 export function KitchenPanel({ me, home, onClose, onGrocery }: { me: string | null; home: string; onClose: () => void; onGrocery: () => void }) {
+  useDoing('cooking', home);
   const dragKitchen = usePanelDrag('kitchen');
   const { s, err, load } = useKitchen(); const [cook, setCook] = useState<Cook | null>(null); const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);
   const [tab, setTab] = useState<'book' | 'fridge' | 'fish'>('book');

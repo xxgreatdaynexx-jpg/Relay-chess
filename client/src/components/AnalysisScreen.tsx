@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { ThinkSummary } from './ThinkTimes';
 import { Chess } from 'chess.js';
 import { ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Copy, FlipVertical2 } from 'lucide-react';
@@ -107,6 +108,7 @@ export function AnalysisScreen({
   onBack: () => void;
   onMainMenu: () => void;
 }) {
+  useDoing('analysis');
   const { start, plies } = useMemo(() => buildPositions(game), [game]);
   const setup = { mode: game.mode, pairSide: game.pairSide };
   const active = seatsFor(setup);

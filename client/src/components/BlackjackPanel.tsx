@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { TopTab } from '@/components/TopTabs';
 import { TurnTimerBar } from './TurnTimerBar';
 import { useWindowDrag } from '@/lib/windowDrag';
@@ -30,6 +31,7 @@ export function BlackjackPanel() {
   const winRef = useRef<HTMLDivElement>(null);
   const win = useWindowDrag('blackjack', winRef);
   const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) === '1');
+  useDoing('casino', 'Blackjack', open);
   const [tab, setTab] = useState<'table'>('table');
   const [name] = useSavedName();
   const [t, setT] = useState<BJTableView | null>(null);

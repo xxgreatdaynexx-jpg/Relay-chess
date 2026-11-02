@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { useCallback, useEffect, useState } from 'react';
 import { socket } from '@/lib/net';
 import { indexed } from '../../../shared/priceIndex';
@@ -14,6 +15,7 @@ type Ack = { ok: boolean; error?: string; [k: string]: unknown };
 
 /** FarmVille-style plot: a tile grid sized to the plot, a seed shop and real-time (server-clocked) crops. */
 export function FarmGame({ id, label, onClose }: { id: string; label: string; onClose: () => void }) {
+  useDoing('farming', label);
   const dragFarm = usePanelDrag('farm');
   const [view, setView] = useState<FarmView | null>(null);
   const [skew, setSkew] = useState(0); // server now - client now

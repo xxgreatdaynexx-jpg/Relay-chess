@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { request, socket } from '@/lib/net';
@@ -13,6 +14,7 @@ const ROUND_NAMES = (count: number, r: number) => {
 };
 
 export function TournamentScreen({ code, onHome, onEnterRoom }: { code: string; onHome: () => void; onEnterRoom: () => void }) {
+  useDoing('tournament', code);
   const name = loadName();
   const [view, setView] = useState<TournamentView | null>(null);
   const [error, setError] = useState('');

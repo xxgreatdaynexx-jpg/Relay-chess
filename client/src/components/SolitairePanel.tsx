@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { TopTab } from '@/components/TopTabs';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useRef, useState } from 'react';
@@ -40,6 +41,7 @@ export function SolitairePanel() {
   const winRef = useRef<HTMLDivElement>(null);
   const win = useWindowDrag('solitaire', winRef);
   const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) === '1');
+  useDoing('solitaire', null, open);
   const [mode, setMode] = useState<SolMode>(() => (localStorage.getItem(MODE_KEY) === 'classic' ? 'classic' : 'solitro'));
   useEffect(() => { localStorage.setItem(OPEN_KEY, open ? '1' : '0'); }, [open]);
   useEffect(() => { localStorage.setItem(MODE_KEY, mode); }, [mode]);

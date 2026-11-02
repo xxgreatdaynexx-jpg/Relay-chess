@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { backdropDismiss } from '@/lib/backdrop';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { RESORT_SPOTS } from '../../../shared/resort';
@@ -26,6 +27,7 @@ function openTab(testId: string) { const el = document.querySelector<HTMLElement
 
 /** Chud Resort: a separate beachfront map. Everything here is gated on the server by the player's location. */
 export function ResortMap() {
+  useDoing('resort');
   const dragResortAir = usePanelDrag('resortAir');
   const dragResortDeeds = usePanelDrag('resortDeeds');
   const me = useAccount(); const canvasRef = useRef<HTMLCanvasElement>(null); const worldRef = useRef<Resort | null>(null);

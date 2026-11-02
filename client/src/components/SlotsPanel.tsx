@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { useTrip } from '@/lib/travel';
 import { TopTab } from '@/components/TopTabs';
 import { useEffect, useRef, useState } from 'react';
@@ -42,6 +43,7 @@ export function SlotsPanel() {
   const winRef = useRef<HTMLDivElement>(null);
   const win = useWindowDrag('slots', winRef);
   const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) === '1');
+  useDoing('casino', 'Slots', open);
   const [name] = useSavedName();
   const resort = useTrip().loc === 'resort';
   useEffect(() => { if (machine && isResortMachine(machine) !== resort) setMachine(null); }, [resort]); // eslint-disable-line react-hooks/exhaustive-deps

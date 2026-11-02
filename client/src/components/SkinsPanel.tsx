@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { backdropDismiss } from '@/lib/backdrop';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -78,6 +79,7 @@ export function SkinsPanel() {
 }
 
 function Inventory({ onClose }: { onClose: () => void }) {
+  useDoing('skins');
   const dragInventory = usePanelDrag('inventory');
   const account = useAccount();
   const [items, setItems] = useState<SkinItem[]>([]);

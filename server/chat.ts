@@ -7,6 +7,7 @@ import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { isQaName } from '../shared/qa.js';
 import { isBotName, isGuestName, type Identity } from './accounts.js';
 import { getRoom } from './rooms.js';
+import { cleanDoing, type Doing } from '../shared/doing.js';
 import {
   CHAT_HISTORY, cleanActivities, validateChat, whereLabel,
   type Activity, type ChatMessage, type OnlineSnapshot, type OnlineUser,
@@ -151,12 +152,13 @@ export async function initChatStorage(): Promise<void> {
 
 /* ---------------- presence ---------------- */
 
-export interface PresenceSource { name: string | null; code?: string; spectating?: boolean; activities: Activity[] }
+export interface PresenceSource { name: string | null; code?: string; spectating?: boolean; activities: Activity[]; doing?: Doing | null; doingAt?: number }
 
 /** Merge per-socket presence into one entry per signed-in user. Bots never appear; guests are only counted. */
 export function buildSnapshot(sources: Iterable<PresenceSource>, viewerIsQa: boolean, tableType: (code: string) => 'chess' | 'checkers' | null): OnlineSnapshot {
   const byKey = new Map<string, OnlineUser>();
   let guests = 0;
+  const doingAt = new Map<string, number>();
   for (const s of sources) {
     if (!s.name || isGuestName(s.name)) { guests += 1; continue; }
     if (isBotName(s.name)) continue;
@@ -167,6 +169,8 @@ export function buildSnapshot(sources: Iterable<PresenceSource>, viewerIsQa: boo
     const gt = s.code ? tableType(s.code) : null;
     if (s.code && gt && (!u.table || (u.table.watching && !s.spectating))) u.table = { code: s.code, gameType: gt, watching: Boolean(s.spectating) };
     for (const a of s.activities) if (!u.activities.includes(a)) u.activities.push(a);
+    // Several tabs: the one that reported most recently wins (that's the tab they're actually using).
+    if (s.doing && (!u.doing || (s.doingAt ?? 0) >= (doingAt.get(key) ?? 0))) { u.doing = s.doing; doingAt.set(key, s.doingAt ?? 0); }
   }
   const users = [...byKey.values()].map((u) => ({ ...u, where: whereLabel(u.table, u.activities) }));
   users.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
@@ -179,6 +183,8 @@ const sourceOf = (s: Socket): PresenceSource => ({
   code: typeof s.data.code === 'string' ? s.data.code : undefined,
   spectating: Boolean(s.data.spectating),
   activities: (s.data.activities as Activity[] | undefined) ?? [],
+  doing: (s.data.doing as Doing | null | undefined) ?? null,
+  doingAt: typeof s.data.doingAt === 'number' ? s.data.doingAt : 0,
 });
 const roomType = (code: string): 'chess' | 'checkers' | null => {
   const room = getRoom(code);
@@ -217,8 +223,14 @@ type Ack = (res: { ok: boolean; error?: string; [k: string]: unknown }) => void;
 export function registerChat(io: Server, socket: Socket): void {
   socket.data.activities = [];
   socket.on('presence', (payload: unknown) => {
-    const body = (payload && typeof payload === 'object' ? payload : {}) as { activities?: unknown };
+    const body = (payload && typeof payload === 'object' ? payload : {}) as { activities?: unknown; doing?: unknown };
     socket.data.activities = cleanActivities(body.activities);
+    // Throttle: at most one status change per socket every 500ms (the 2s presence tick batches the broadcast anyway).
+    const now = Date.now();
+    if ('doing' in body && now - ((socket.data.doingAt as number | undefined) ?? 0) >= 500) {
+      const next = cleanDoing(body.doing);
+      if (JSON.stringify(next) !== JSON.stringify(socket.data.doing ?? null)) { socket.data.doing = next; socket.data.doingAt = now; }
+    }
   });
   socket.on('online_get', (_payload: unknown, ack?: Ack) => {
     if (typeof ack === 'function') ack({ ok: true, ...onlineSnapshot(io, isQaName(nameOf(socket))) });

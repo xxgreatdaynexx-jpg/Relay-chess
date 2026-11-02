@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { SellQtyPicker } from './SellQtyPicker';
 import { pickForQty } from '../../../shared/sellQty';
 import { lazyWithReload } from '@/lib/lazyWithReload';
@@ -17,6 +18,7 @@ type BoardRow = { name: string; fish: string; grams: number; value: number };
 /** Fishing Dock: cast, wait for the bite, strike, then reel (hold to reel up, release to let it run) keeping the
  *  hook in the fish's zone until the catch bar fills. The server rolls the fish and replays the reel. */
 export function FishingPanel({ me, onClose, spot = 'lake' }: { me: string | null; onClose: () => void; spot?: FishSpot }) {
+  useDoing('fishing', spot === 'reef' ? 'Resort reef' : 'Lake');
   const dragFishing = usePanelDrag('fishing');
   const reef = spot === 'reef';
   const [view, setView] = useState<FishView | null>(null); const [board, setBoard] = useState<BoardRow[]>([]);

@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { TopTab } from '@/components/TopTabs';
 import { TurnTimerBar } from './TurnTimerBar';
 import { useWindowDrag } from '@/lib/windowDrag';
@@ -94,6 +95,7 @@ export function RoulettePanel() {
   const winRef = useRef<HTMLDivElement>(null);
   const win = useWindowDrag('roulette', winRef);
   const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) === '1');
+  useDoing('casino', 'Roulette', open);
   const [tab, setTab] = useState<'wheel'>('wheel');
   const [name] = useSavedName();
   const [v, setV] = useState<RouletteView | null>(null);

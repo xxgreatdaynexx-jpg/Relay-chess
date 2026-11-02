@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { useEffect, useRef, useState } from 'react';
 import { ItemIcon } from './ItemIcon';
 import { TopTab } from '@/components/TopTabs';
@@ -26,6 +27,7 @@ export function FactoryPanel() {
 }
 
 function FactoryWindow({ onClose }: { onClose: () => void }) {
+  useDoing('factory');
   const wrapRef = useRef<HTMLDivElement>(null);
   const win = useWindowDrag('factory', wrapRef);
   const wallet = useWalletChips();

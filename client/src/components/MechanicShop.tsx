@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { backdropDismiss } from '@/lib/backdrop';
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
@@ -40,6 +41,7 @@ function Bay({ car, color, look }: { car: CarModel; color: number; look: CarMods
 }
 
 export function MechanicShop({ onClose, onDrive }: { onClose: () => void; onDrive: (carId: string, color: number) => void }) {
+  useDoing('mechanic');
   const dragMechanic = usePanelDrag('mechanic');
   const [shop, setShop] = useState<Shop | null>(null); const [sel, setSel] = useState<string | null>(null);
   const [tab, setTab] = useState<'perf' | 'look'>('perf'); const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false);

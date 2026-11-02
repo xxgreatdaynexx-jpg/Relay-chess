@@ -1,3 +1,4 @@
+import { useDoing } from '@/lib/doing';
 import { backdropDismiss } from '@/lib/backdrop';
 import { CLOSE_WORLD_PANELS, WALLET_CLOSE } from '@/lib/worldPanels';
 import { useEffect, useState } from 'react';
@@ -75,6 +76,7 @@ export function SkillsPanel() {
   const dragSkills = usePanelDrag('skills');
   const account = useAccount();
   const [open, setOpen] = useState(false);
+  useDoing('skills', null, open);
   const [view, setView] = useState<'me' | 'hi'>('me');
   const [me, setMe] = useState<SkillProfile | null>(null);
   const [drops, setDrops] = useState<Array<{ id: number; text: string }>>([]);
