@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { request } from '@/lib/net';
 import { FISH_DAILY_MAX, fishById, fishPayout, fmtKg, RARITY_COLOR, Reel, REEL_DT, type FishCatch, type FishSpot, type FishView } from '../../../shared/fishing';
 import { FishGlyph } from './FishGlyph';
+import { usePanelDrag } from '@/lib/panelDrag';
 
 // The 3D game is its own lazy chunk; a stale chunk after a deploy reloads the tab once (same as the arena and mines).
 const Fishing3DGame = lazyWithReload(() => import('./Fishing3DGame').then((m) => ({ default: m.Fishing3DGame })));
@@ -14,6 +15,7 @@ type BoardRow = { name: string; fish: string; grams: number; value: number };
 /** Fishing Dock: cast, wait for the bite, strike, then reel (hold to reel up, release to let it run) keeping the
  *  hook in the fish's zone until the catch bar fills. The server rolls the fish and replays the reel. */
 export function FishingPanel({ me, onClose, spot = 'lake' }: { me: string | null; onClose: () => void; spot?: FishSpot }) {
+  const dragFishing = usePanelDrag('fishing');
   const reef = spot === 'reef';
   const [view, setView] = useState<FishView | null>(null); const [board, setBoard] = useState<BoardRow[]>([]);
   const [phase, setPhase] = useState<Phase>({ k: 'idle' }); const [play3d, setPlay3d] = useState(false); const [msg, setMsg] = useState<string | null>(null);
@@ -75,7 +77,7 @@ export function FishingPanel({ me, onClose, spot = 'lake' }: { me: string | null
   const cooler = view?.cooler ?? []; const idx = view?.index ?? 1; const gross = cooler.reduce((a, c) => a + c.value, 0);
   const est = view ? Math.floor(fishPayout(gross, view.today.gross) * idx) : 0; const capLeft = Math.max(0, FISH_DAILY_MAX - (view ? fishPayout(view.today.gross, 0) : 0));
   return (
-    <div className={`world-deed world-venue fish-panel${reef ? ' fish-reef' : ''}`} data-testid={reef ? 'venue-reef' : 'venue-dock'}>
+    <div className={`world-deed world-venue fish-panel${reef ? ' fish-reef' : ''}`} data-testid={reef ? 'venue-reef' : 'venue-dock'} data-drag-panel="fishing" onPointerDown={dragFishing.onPointerDown} style={dragFishing.style()} ref={dragFishing.ref}>{dragFishing.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <h3>{reef ? '🌴 Reef Pier' : '🎣 Fishing Dock'}</h3>
       {reef && <small data-testid="reef-blurb">Sunset over the reef: clownfish and tang in the shallows, mahi-mahi and tuna off the drop-off, and the odd Blue Marlin or Sunset Manta.</small>}

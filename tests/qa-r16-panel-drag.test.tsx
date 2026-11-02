@@ -10,8 +10,8 @@ const dir = join(process.cwd(), 'client/src/components');
 const files = readdirSync(dir).filter((f) => f.endsWith('.tsx'));
 const src = (f: string) => readFileSync(join(dir, f), 'utf8');
 
-/** Full-screen overlays (nothing to move) and the fishing dock (owned by the fishing worker). */
-const EXEMPT = new Set(['FishingPanel.tsx', 'Requests.tsx', 'Changelog.tsx', 'ConquestPanel.tsx:cq-overlay']);
+/** Full-screen overlays (nothing to move). */
+const EXEMPT = new Set(['Requests.tsx', 'Changelog.tsx', 'ConquestPanel.tsx:cq-overlay']);
 const PANEL_ROOT = /<div[^>]*(className="[^"]*\b(world-deed|inv-win|dealer-box|acct-panel|wallet-panel|cq-rules|cq-rules-card|sol-panel)[" ]|role="dialog")/g;
 
 describe('every floating panel uses the shared drag behaviour', () => {
@@ -20,7 +20,7 @@ describe('every floating panel uses the shared drag behaviour', () => {
     'Venues.tsx': ['venue'], 'FarmGame.tsx': ['farm'], 'ResortMap.tsx': ['resortDeeds', 'resortAir'], 'WorldMap.tsx': ['deed', 'deeds', 'home'],
     'Dealership.tsx': ['dealer'], 'MarketPage.tsx': ['market'], 'StocksPage.tsx': ['stocks'], 'Skills.tsx': ['skills'], 'SkinsPanel.tsx': ['inventory'],
     'PlayerProfile.tsx': ['profile'], 'AccountPanel.tsx': ['account'], 'WalletButton.tsx': ['wallet'], 'ConquestPanel.tsx': ['cqRules'],
-    'AdminPopup.tsx': ['admin'], 'RoomScreen.tsx': ['bailout'],
+    'AdminPopup.tsx': ['admin'], 'FishingPanel.tsx': ['fishing'], 'RoomScreen.tsx': ['bailout'],
   };
   for (const [f, ids] of Object.entries(expected)) it(`${f} panels are draggable`, () => {
     const s = src(f);
