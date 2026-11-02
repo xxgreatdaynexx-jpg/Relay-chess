@@ -12,6 +12,11 @@ export const CHANGELOG: ChangelogEntry[] = [
   { commit: '', at: '2026-11-02T00:30:00-06:00', title: 'Fishing panel can be moved', bullets: [
     'The Fishing Dock and Reef Pier panel can now be dragged by its top bar too.',
   ] },
+  { commit: '', at: '2026-11-02T00:20:00-06:00', title: 'Arena: Final Killcam and Nut Shots', bullets: [
+    'Request board #10 (Liam): when an Arena match ends (Deathmatch, Search & Destroy or CTF), everyone watches the last kill from the killer\'s view, old-school CoD style. It shows a FINAL KILLCAM banner with killer ➜ victim and the weapon, and slows down on the killing shot. Press Space, K or Skip to go straight to the results. Payouts are not delayed.',
+    'Nut shots, inspired by Combat Arms: hitting someone just below the belt does 1.5× damage, pops up NUT SHOT! with a sound, and slows the victim for a moment. The kill feed shows a 🥜 icon.',
+    'Headshots and nut shots now each give a little Combat XP (up to 100 per match). The match results show HS and NS columns.',
+  ] },
   { commit: '', at: '2026-11-02T00:20:00-06:00', title: 'Arena: hit markers only on real damage', bullets: [
     'Fixed: the hit marker, hit sound and damage number no longer show on a guess. They appear only when the server confirms your shot actually took health off an enemy.',
     'No marker on teammates in Search & Destroy and Capture the Flag, on dead or respawning players, or on hits that did no damage.',

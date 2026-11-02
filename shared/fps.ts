@@ -29,6 +29,16 @@ export const BODY_TOP = 1.36;
 export const HEAD_Z = 1.55;
 export const HEAD_R = 0.2;
 export const HEADSHOT_MULT = 2;
+/** Nut shot (Combat Arms style): a small groin box just below the pelvis, inside the body box. */
+export const GROIN_HALF = 0.12;
+export const GROIN_Z0 = 0.74;
+export const GROIN_Z1 = 0.9;
+export const CROUCH_GROIN_Z0 = 0.44;
+export const CROUCH_GROIN_Z1 = 0.58;
+export const NUTSHOT_MULT = 1.5;
+/** Victim staggers (slowed) this long after a nut shot. */
+export const NUT_STAGGER_MS = 700;
+export const NUT_STAGGER_MULT = 0.55;
 /** Crouching (hold Ctrl or C): a shorter capsule, lower eye and hitboxes, slower and a little more accurate. */
 export const CROUCH_HEIGHT = 1.15;
 export const CROUCH_EYE_HEIGHT = 0.98;
@@ -316,8 +326,11 @@ export interface Target {
 export const eyeOf = (s: { x: number; y: number; z: number; crouch?: boolean }): Vec3 => ({ x: s.x, y: s.y, z: s.z + eyeHeightOf(s) });
 export const chestOf = (s: { x: number; y: number; z: number; crouch?: boolean }): Vec3 => ({ x: s.x, y: s.y, z: s.z + (s.crouch ? 0.62 : 1.0) });
 
-/** Ray vs one fighter's hitboxes: body box and head sphere. */
-export function rayFighter(o: Vec3, d: Vec3, t: Target): { dist: number; head: boolean } | null {
+/** Groin box [z0, z1] above the feet (lower when crouched). */
+export const groinZOf = (b: Crouchy): [number, number] => (b.crouch ? [CROUCH_GROIN_Z0, CROUCH_GROIN_Z1] : [GROIN_Z0, GROIN_Z1]);
+
+/** Ray vs one fighter's hitboxes: body box, head sphere, and the groin box (nut shot) inside the body. */
+export function rayFighter(o: Vec3, d: Vec3, t: Target): { dist: number; head: boolean; nut?: boolean } | null {
   // head sphere
   const cx = t.x - o.x, cy = t.y - o.y, cz = t.z + headZOf(t) - o.z;
   const along = cx * d.x + cy * d.y + cz * d.z;
@@ -328,7 +341,11 @@ export function rayFighter(o: Vec3, d: Vec3, t: Target): { dist: number; head: b
   }
   const body = rayBox(o, d, t.x - BODY_HALF, t.y - BODY_HALF, t.z, t.x + BODY_HALF, t.y + BODY_HALF, t.z + bodyTopOf(t));
   if (!Number.isFinite(head) && !Number.isFinite(body)) return null;
-  return head < body ? { dist: head, head: true } : { dist: body, head: false };
+  if (head < body) return { dist: head, head: true };
+  const [g0, g1] = groinZOf(t);
+  const groin = rayBox(o, d, t.x - GROIN_HALF, t.y - GROIN_HALF, t.z + g0, t.x + GROIN_HALF, t.y + GROIN_HALF, t.z + g1);
+  // Must enter the groin right behind the body face (a steep shot through the chest doesn't count).
+  return Number.isFinite(groin) && groin - body <= 0.3 ? { dist: body, head: false, nut: true } : { dist: body, head: false };
 }
 
 /** Hitscan from the shooter's eye along yaw/pitch: nearest living target in front of the first wall. */
@@ -337,11 +354,11 @@ export function hitscan(
   targets: Target[],
   map: ArenaMap = MAP,
   range = MAX_RANGE,
-): { id: string; dist: number; head: boolean } | null {
+): { id: string; dist: number; head: boolean; nut?: boolean } | null {
   const o = eyeOf(shooter);
   const d = dirFrom(shooter.a, shooter.p);
   const wall = rayWorld(o, d, map, range);
-  let best: { id: string; dist: number; head: boolean } | null = null;
+  let best: { id: string; dist: number; head: boolean; nut?: boolean } | null = null;
   for (const t of targets) {
     if (t.id === shooter.id || !t.alive) continue;
     const h = rayFighter(o, d, t);
@@ -495,6 +512,8 @@ export interface WeaponSpec {
   semi?: boolean;
   /** Headshot multiplier override (default HEADSHOT_MULT). */
   headMult?: number;
+  /** Nut shot multiplier override (default NUTSHOT_MULT). */
+  nutMult?: number;
   /** Extra spread while moving: spread × (1 + moveSpread × speed/MOVE_SPEED); sprinting (or just stopped) uses sprintSpread. */
   moveSpread?: number;
   sprintSpread?: number;
@@ -554,6 +573,8 @@ export interface ShotResult {
   hits: Map<string, number>;
   /** Target ids that took at least one headshot. */
   heads: Set<string>;
+  /** Target ids that took at least one nut shot (and no headshot from this pull). */
+  nuts: Set<string>;
   /** Rocket impact point, if any. */
   impact?: Vec3;
   /** Rays for tracers: yaw, pitch, length. */
@@ -583,6 +604,7 @@ export function fireWeapon(
   const spread = weaponSpread(weapon, { scoped: opts.scoped, crouch: shooter.crouch, speed: opts.speed, sprinting: opts.sprinting });
   const hits = new Map<string, number>();
   const heads = new Set<string>();
+  const nuts = new Set<string>();
   const rays: ShotResult['rays'] = [];
   const eye = eyeOf(shooter);
   if (weapon.splash) {
@@ -599,7 +621,7 @@ export function fireWeapon(
       const dmg = s.id === shooter.id ? Math.round(s.damage * SELF_SPLASH) : s.damage;
       if (dmg > 0) hits.set(s.id, dmg);
     }
-    return { hits, heads, impact, rays };
+    return { hits, heads, nuts, impact, rays };
   }
   for (let i = 0; i < weapon.pellets; i++) {
     const a = shooter.a + (rand() * 2 - 1) * spread;
@@ -607,12 +629,14 @@ export function fireWeapon(
     const hit = hitscan({ ...shooter, a, p }, targets, map, weapon.range);
     rays.push({ a, p, dist: hit ? hit.dist : rayWorld(eye, dirFrom(a, p), map, weapon.range), ...(hit ? { hit: hit.id } : {}) });
     if (hit) {
-      hits.set(hit.id, (hits.get(hit.id) ?? 0) + weapon.damage * (hit.head ? weapon.headMult ?? HEADSHOT_MULT : 1) * damageFalloff(weapon, hit.dist));
+      hits.set(hit.id, (hits.get(hit.id) ?? 0) + weapon.damage * (hit.head ? weapon.headMult ?? HEADSHOT_MULT : hit.nut ? weapon.nutMult ?? NUTSHOT_MULT : 1) * damageFalloff(weapon, hit.dist));
       if (hit.head) heads.add(hit.id);
+      else if (hit.nut) nuts.add(hit.id);
     }
   }
+  for (const id of heads) nuts.delete(id); // a headshot wins the label
   for (const [id, dmg] of hits) hits.set(id, Math.round(dmg));
-  return { hits, heads, rays };
+  return { hits, heads, nuts, rays };
 }
 
 // ---------------------------------------------------------------- killstreaks

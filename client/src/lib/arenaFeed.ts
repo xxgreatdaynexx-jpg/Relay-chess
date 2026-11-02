@@ -1,7 +1,7 @@
 /** Pure kill-feed / multi-kill pop-up helpers (DOM-free so they can be unit-tested). */
-export interface FeedItem { key: number; killer: string; victim: string; cause: string; self: boolean; mine: boolean; head?: boolean; noscope?: boolean; multi?: string }
+export interface FeedItem { key: number; killer: string; victim: string; cause: string; self: boolean; mine: boolean; head?: boolean; noscope?: boolean; nut?: boolean; multi?: string }
 
-export type FeedPart = { t: 'killer' | 'victim' | 'multi'; text: string } | { t: 'weapon'; cause: string } | { t: 'head' } | { t: 'noscope' };
+export type FeedPart = { t: 'killer' | 'victim' | 'multi'; text: string } | { t: 'weapon'; cause: string } | { t: 'head' } | { t: 'nut' } | { t: 'noscope' };
 
 /** Ordered pieces of one feed line: killer · weapon · [headshot icon] · victim, or a "NAME — TRIPLE KILL" line. */
 export function feedParts(f: FeedItem): FeedPart[] {
@@ -11,6 +11,7 @@ export function feedParts(f: FeedItem): FeedPart[] {
   out.push({ t: 'weapon', cause: f.cause });
   if (f.noscope && !f.self) out.push({ t: 'noscope' });
   if (f.head && !f.self) out.push({ t: 'head' });
+  else if (f.nut && !f.self) out.push({ t: 'nut' });
   out.push({ t: 'victim', text: f.victim });
   return out;
 }

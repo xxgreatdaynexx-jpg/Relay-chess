@@ -13,9 +13,9 @@ import { predictShot, ShotPredictor, adoptServerAmmo, INPUT_SEND_MS, PREDICTED_R
 import { INTERP_DELAY_MS, LOCAL_STEP_S, SnapBuffer, samplePlayers } from '../../../shared/netInterp';
 import { TagVisibility, tagVisible } from '@/lib/arenaTags';
 import type { ArenaMap } from '../../../shared/arenaMaps';
-import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playKnife, playHeadshotDing, playLockBeep, playPickup, play360NoScope, playMultiKill, shotFalloff, unlockSounds } from '@/lib/sounds';
+import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, playStreakCall, playWeaponShot, playKnife, playHeadshotDing, playNutShot, playLockBeep, playPickup, play360NoScope, playMultiKill, shotFalloff, unlockSounds } from '@/lib/sounds';
 import { isTypingTarget, spaceRespawns } from '@/lib/respawnKey';
-import { DEATH_HOLD_MS, fitSpeed, killCardText, sampleKillCam, shotsBetween, type CamFrame, type CamShot, type KillCard } from '@/lib/killcam';
+import { DEATH_HOLD_MS, finalCamSpeed, finalCardText, fitSpeed, killCardText, sampleKillCam, shotsBetween, type CamFrame, type CamShot, type KillCard } from '@/lib/killcam';
 import { importWithReload, reloadOnceForChunkError } from '@/lib/chunkReload';
 import { showsHitMarker } from '@/lib/arenaHeadFx';
 import { arenaLiveHud, kiaCanvasStrip } from '@/lib/arenaHud';
@@ -23,7 +23,7 @@ import { drawModeHud } from '@/lib/arenaModeHud';
 import { MODE_IDS, MODE_INFO, TEAM_COLORS, TEAM_NAMES, type ModeId, type ModeView, type TeamId } from '../../../shared/arenaModes';
 import { feedParts, popupScale, POPUP_MS, type FeedItem } from '@/lib/arenaFeed';
 import {
-  AIRSTRIKE_RADIUS, launchRocket, RESPAWN_PICK_MS, canHold, isKnifeOnly, knifeOnlyAvailable, cheapestSpawn, isWeapon, spawnCost as spawnCostBase, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, weaponSpread, MoveHistory, reconcileMove, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
+  AIRSTRIKE_RADIUS, launchRocket, RESPAWN_PICK_MS, canHold, isKnifeOnly, knifeOnlyAvailable, cheapestSpawn, isWeapon, spawnCost as spawnCostBase, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, NUT_STAGGER_MS, NUT_STAGGER_MULT, weaponSpread, MoveHistory, reconcileMove, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
   GRENADE_FUSE_MS, GRENADE_THROW_MS, GRENADES_PER_LIFE, stepGrenade, throwGrenade, type Grenade,
 } from '../../../shared/fps';
 
@@ -37,7 +37,7 @@ const SCOPE_ZOOM = 3.5;
 const FOV = 68; // vertical, degrees
 
 interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number; bot?: boolean; c?: boolean; s?: boolean; lo?: WeaponId; stk?: number; bk?: boolean; rs?: number; sk?: string; q?: number; ex?: WeaponId[]; gn?: number }
-interface MatchEnd { matchId: string; winnerId: string | null; reason: string; players: Array<{ id: string; name: string; kills: number; deaths: number; earned: number; alive: boolean; bot: boolean; team?: TeamId; obj?: number }>; prize?: { name: string; amount: number }; inMs: number; teams?: { mode: ModeId; winner: TeamId | null; score: [number, number] } }
+interface MatchEnd { matchId: string; winnerId: string | null; reason: string; players: Array<{ id: string; name: string; kills: number; deaths: number; earned: number; alive: boolean; bot: boolean; team?: TeamId; obj?: number; hs?: number; ns?: number }>; prize?: { name: string; amount: number }; inMs: number; teams?: { mode: ModeId; winner: TeamId | null; score: [number, number] } }
 interface NetState { mode?: ModeId; nextMode?: ModeId; mv?: ModeView; phase?: 'play' | 'sudden' | 'ended'; alive?: number; sd?: number; end?: MatchEnd; t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null; wh?: boolean; mysk?: Record<string, string>; roster?: Array<Pick<NetPlayer, 'id' | 'name' | 'k' | 'd' | 'st' | 'bot'>>; radar?: Array<{ x: number; y: number }>; rockets?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; seek?: number; lock?: string | null }>; drops?: Array<{ id: number; w: WeaponId; x: number; y: number; z: number; left: number; sk?: string }>; nades?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; left: number }> }
 interface Snap extends NetState { recv: number }
 type Quality = 'hd' | 'lo';
@@ -151,8 +151,18 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const specRef = useRef<string | null>(null);
   // Kill cam: fetched on request from the respawn screen, played until done or until we respawn (never delays it).
   const deathAtRef = useRef(0);
-  const kcRef = useRef<{ track: CamFrame[]; card: KillCard; start: number; speed: number; shots?: CamShot[]; ct: number; fireAt: number; hitAt: number; walk: number } | null>(null);
-  const [killCam, setKillCam] = useState<{ card: KillCard | null; playing: boolean; note?: string } | null>(null);
+  const kcRef = useRef<{ track: CamFrame[]; card: KillCard; start: number; speed: number; shots?: CamShot[]; ct: number; fireAt: number; hitAt: number; walk: number; final?: boolean; seenEnd?: boolean } | null>(null);
+  const [killCam, setKillCam] = useState<{ card: KillCard | null; playing: boolean; note?: string; final?: boolean } | null>(null);
+  /** FINAL KILLCAM: the match's last kill replayed for everyone from the killer's view, inside the server's replay window. */
+  function startFinalCam(fc: { card?: KillCard; track?: CamFrame[] | null; shots?: CamShot[]; ms: number }) {
+    const tr = fc.track;
+    if (!fc.card || !fc.card.killerId || !tr || tr.length < 2) return;
+    const speed = finalCamSpeed(tr[tr.length - 1].t - tr[0].t, fc.ms);
+    if (speed === null) return;
+    kcRef.current = { track: tr, card: fc.card, start: performance.now(), speed, shots: fc.shots, ct: -1, fireAt: -1e9, hitAt: -1e9, walk: 0, final: true };
+    setKillCam({ card: fc.card, playing: true, final: true });
+  }
+  function skipFinalCam() { if (kcRef.current?.final) { kcRef.current = null; setKillCam(null); } }
   function watchKillCam() {
     if (me.current.alive || phaseRef.current !== 'play' || kcRef.current) return;
     socket.timeout(4000).emit('fps_killcam', {}, (err: Error | null, r?: unknown) => {
@@ -179,12 +189,13 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('arenaKC')) {
     const w = window as unknown as { __arenaKC?: unknown; __arenaKCSeek?: unknown };
     w.__arenaKC = (res: { ok: boolean; card?: KillCard; track?: CamFrame[] | null; shots?: CamShot[] }) => { kcRef.current = null; deathAtRef.current = performance.now() + 60_000; startKillCam(res); };
+    (w as { __arenaFinalKC?: unknown }).__arenaFinalKC = (fc: { card?: KillCard; track?: CamFrame[] | null; shots?: CamShot[]; ms: number }) => { kcRef.current = null; startFinalCam(fc); };
     w.__arenaKCSeek = (ms: number) => { const kc = kcRef.current; if (kc) { kc.start = performance.now() - ms; kc.ct = -1; } return 1; };
   }
   const pred = useRef(new ShotPredictor()).current;
   /** When our last predicted shot looked like a headshot (the server decides head/body). */
   const headFx = useRef({ predAt: -1e9 }).current;
-  const fx = useRef({ muzzle: 0, hurt: 0, hitmark: 0, hitDeny: 0, dmgNums: [] as Array<{ v: number; head: boolean; at: number; denied?: number }>, killmark: 0, headmark: 0, melee: { at: -1e9, heavy: false }, meleeAt: new Map<string, { at: number; heavy: boolean }>(), nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string; fall: number }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number; sniper?: boolean }>, impacts: [] as Array<{ x: number; y: number; z: number; player: boolean; at: number }>, blasts: [] as Array<{ x: number; y: number; z: number; big: boolean }>, shells: 0, rockets: new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number; seek?: number }>(), lockAt: 0, lockBeep: 0, weaponAt: new Map<string, { w: string; at: number }>(), hitAt: new Map<string, number>(), shotAt: new Map<string, number>(), shake: 0, jetAt: 0, nades: new Map<number, Grenade>(), nadeSeq: 0, nadeAt: -1e9, nadesLeft: GRENADES_PER_LIFE });
+  const fx = useRef({ stagger: 0, muzzle: 0, hurt: 0, hitmark: 0, hitDeny: 0, dmgNums: [] as Array<{ v: number; head: boolean; at: number; denied?: number }>, killmark: 0, headmark: 0, melee: { at: -1e9, heavy: false }, meleeAt: new Map<string, { at: number; heavy: boolean }>(), nukeFlash: 0, dmgDirs: [] as Array<{ a: number; at: number }>, deaths: new Map<string, { at: number; x: number; y: number; z: number; a: number; name: string; fall: number }>(), booms: [] as Array<{ x: number; y: number; z: number; at: number; big: boolean }>, tracers: [] as Array<{ o: [number, number, number]; e: [number, number, number]; at: number; sniper?: boolean }>, impacts: [] as Array<{ x: number; y: number; z: number; player: boolean; at: number }>, blasts: [] as Array<{ x: number; y: number; z: number; big: boolean }>, shells: 0, rockets: new Map<number, { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; at: number; seek?: number }>(), lockAt: 0, lockBeep: 0, weaponAt: new Map<string, { w: string; at: number }>(), hitAt: new Map<string, number>(), shotAt: new Map<string, number>(), shake: 0, jetAt: 0, nades: new Map<number, Grenade>(), nadeSeq: 0, nadeAt: -1e9, nadesLeft: GRENADES_PER_LIFE });
   const banner = useRef<{ text: string; sub: string; at: number } | null>(null);
   const touch = useRef({ up: false, down: false, left: false, right: false, lookUp: false, lookDown: false });
   const [touchCrouch, setTouchCrouch] = useState(false);
@@ -411,9 +422,18 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       }
       setBoard([...s.players, ...((s.roster ?? []) as NetPlayer[])].sort((a, b) => b.k - a.k || a.d - b.d));
     };
-    const onHit = (h: { by: string | null; target: string; cause: string; dmg?: number; head?: boolean }) => {
+    const onHit = (h: { by: string | null; target: string; cause: string; dmg?: number; head?: boolean; nut?: boolean }) => {
       const now = performance.now();
       fx.current.hitAt.set(h.target, now);
+      // NUT SHOT feedback only on server-confirmed health loss (same rule as the hit marker).
+      if (h.nut && h.by && h.target !== h.by && (h.dmg ?? 0) > 0) {
+        if (showsHitMarker(h, me.current.id)) {
+          playNutShot();
+          const key = ++popKey;
+          setMultiPop({ key, title: 'NUT SHOT!', level: 4 });
+          window.setTimeout(() => setMultiPop((p) => (p?.key === key ? null : p)), POPUP_MS);
+        } else if (h.target === me.current.id) { playNutShot(); fx.current.stagger = now + NUT_STAGGER_MS; }
+      }
       if (h.by === me.current.id && h.target !== me.current.id) {
         // Hit marker only on a server-confirmed hit that dealt damage (never predicted).
         if (!showsHitMarker(h, me.current.id)) return;
@@ -453,7 +473,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         fx.current.rockets.set(s.rocket.id, { ...s.rocket, at: local ? local.at : now });
       }
     };
-    const onKill = (k: { killer: string; victim: string; killerId: string | null; victimId: string; cause: string; headshot?: boolean; noscope?: boolean }) => {
+    const onKill = (k: { killer: string; victim: string; killerId: string | null; victimId: string; cause: string; headshot?: boolean; noscope?: boolean; nut?: boolean }) => {
       const self = k.killerId === k.victimId || !k.killerId;
       if (k.victimId === me.current.id) { releaseOnDeath(); deathAtRef.current = performance.now(); kcRef.current = null; setKillCam(null); }
       if (k.killerId === me.current.id && !self) { fx.current.killmark = performance.now(); if (k.headshot) fx.current.headmark = performance.now(); }
@@ -464,7 +484,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         const fall = by && by.id !== v.id ? Math.atan2(v.y - by.y, v.x - by.x) - v.a : Math.PI;
         fx.current.deaths.set(k.victimId, { at: performance.now(), x: v.x, y: v.y, z: v.z, a: v.a, name: v.name, fall });
       }
-      pushFeed({ killer: k.killer, victim: k.victim, cause: k.cause, self, mine: k.killerId === me.current.id || k.victimId === me.current.id, head: !!k.headshot && !self, noscope: !!k.noscope && !self });
+      pushFeed({ killer: k.killer, victim: k.victim, cause: k.cause, self, mine: k.killerId === me.current.id || k.victimId === me.current.id, head: !!k.headshot && !self, noscope: !!k.noscope && !self, nut: !!k.nut && !self });
     };
     let popKey = 0;
     // Everyone gets the feed line; only the killer gets the pop-up (fps_multi_me is sent to the killer's socket alone).
@@ -527,6 +547,8 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       }
     };
     socket.on('fps_noscope', onNoScope);
+    const onMatchEnd = (e: { finalCam?: { card?: KillCard; track?: CamFrame[] | null; shots?: CamShot[]; ms: number } }) => { if (e.finalCam) startFinalCam(e.finalCam); };
+    socket.on('fps_match_end', onMatchEnd);
     socket.on('fps_boom', onBoom);
     const onDrone = () => playWeaponShot('smg', 0.3);
     socket.on('fps_drone_shot', onDrone);
@@ -537,7 +559,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     return () => {
       window.clearInterval(pingT);
       socket.emit('fps_leave');
-      for (const [e, h] of [['fps_state', onState], ['fps_hit', onHit], ['fps_shot', onShot], ['fps_kill', onKill], ['fps_streak', onStreak], ['fps_multi', onMulti], ['fps_multi_me', onMultiMe], ['fps_pickup', onPickup], ['fps_noscope', onNoScope], ['fps_boom', onBoom], ['fps_drone_shot', onDrone], ['fps_nuke', onNuke], ['connect', join]] as const) socket.off(e, h as never);
+      for (const [e, h] of [['fps_state', onState], ['fps_hit', onHit], ['fps_shot', onShot], ['fps_kill', onKill], ['fps_streak', onStreak], ['fps_multi', onMulti], ['fps_multi_me', onMultiMe], ['fps_pickup', onPickup], ['fps_noscope', onNoScope], ['fps_match_end', onMatchEnd], ['fps_boom', onBoom], ['fps_drone_shot', onDrone], ['fps_nuke', onNuke], ['connect', join]] as const) socket.off(e, h as never);
     };
   }, []);
 
@@ -621,10 +643,11 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         if (m.sprint && !wantSprint) m.sprintEndAt = now;
         if (m.sprint !== wantSprint) lastSend = 0;
         m.sprint = wantSprint;
-        const sp = (speedOf(m) * 0.95 * dt) / len; // speedOf includes the ADS/scope slowdown
+        const sp = (speedOf(m) * 0.95 * dt) / len;
+        const stg = now < fx.current.stagger ? NUT_STAGGER_MULT : 1; // NUT SHOT stagger: brief local slow // speedOf includes the ADS/scope slowdown
         // a turns from +x toward +y; "right" is +90°.
-        const dx = (Math.cos(m.a) * fwd - Math.sin(m.a) * side) * sp;
-        const dy = (Math.sin(m.a) * fwd + Math.cos(m.a) * side) * sp;
+        const dx = (Math.cos(m.a) * fwd - Math.sin(m.a) * side) * sp * stg;
+        const dy = (Math.sin(m.a) * fwd + Math.cos(m.a) * side) * sp * stg;
         // Local prediction with the exact same physics the server runs.
         // Fixed-timestep simulation (120 Hz) decoupled from the render rate; rendered position is interpolated below.
         net.acc = Math.min(0.1, net.acc + dt);
@@ -675,11 +698,13 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       // shots replay with flash, tracers, sound and hit marker; then a short hold on the victim going down. Stops on respawn.
       let kcVictim: Soldier3D | null = null;
       let kcView: { zoom: number; vm: Viewmodel3D | null; scoped: boolean; w: WeaponId; slow: boolean; hold: number } | null = null;
-      if (kcRef.current && (m.alive || phaseRef.current !== 'play')) { kcRef.current = null; setKillCam(null); }
+      // The final cam can arrive before the 'ended' snapshot, so it only stops once the next match has actually started.
+      if (kcRef.current?.final && phaseRef.current !== 'play') kcRef.current.seenEnd = true;
+      if (kcRef.current && (kcRef.current.final ? kcRef.current.seenEnd && phaseRef.current === 'play' : m.alive || phaseRef.current !== 'play')) { kcRef.current = null; setKillCam(null); }
       if (kcRef.current) {
         const kc = kcRef.current;
         const smp = sampleKillCam(kc.track, kc.card.killerId!, kc.card.victimId, now - kc.start, kc.speed);
-        if (smp.done || !smp.killer) { kcRef.current = null; setKillCam((o) => (o ? { ...o, playing: false } : o)); }
+        if (smp.done || !smp.killer) { const fin = kc.final; kcRef.current = null; setKillCam((o) => (fin ? null : o ? { ...o, playing: false } : o)); }
         else {
           const k = smp.killer;
           const kw = (isWeapon(k[7]) ? k[7] : 'pistol') as WeaponId;
@@ -872,13 +897,13 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         ctx.textBaseline = 'middle';
         ctx.font = `900 ${Math.round(14 * lu)}px ui-monospace, Menlo, monospace`; ctx.textAlign = 'left';
         ctx.fillStyle = Math.floor(now / 500) % 2 ? '#ff4b3a' : '#c8302a'; ctx.beginPath(); ctx.arc(18 * lu, bar / 2, 5 * lu, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#f2f2ea'; ctx.fillText('KILL CAM', 30 * lu, bar / 2);
-        if (kcView.slow) { ctx.textAlign = 'left'; ctx.fillStyle = '#ffb4a8'; ctx.font = `800 ${Math.round(11 * lu)}px ui-monospace, Menlo, monospace`; ctx.fillText('SLOW-MO', 118 * lu, bar / 2); }
+        ctx.fillStyle = kc?.final ? '#ffd36a' : '#f2f2ea'; ctx.fillText(kc?.final ? 'FINAL KILLCAM' : 'KILL CAM', 30 * lu, bar / 2);
+        if (kcView.slow) { ctx.textAlign = 'left'; ctx.fillStyle = '#ffb4a8'; ctx.font = `800 ${Math.round(11 * lu)}px ui-monospace, Menlo, monospace`; ctx.fillText('SLOW-MO', (kc?.final ? 158 : 118) * lu, bar / 2); }
         if (kc) {
           ctx.textAlign = 'center'; ctx.fillStyle = '#f2f2ea'; ctx.font = `800 ${Math.round(13 * lu)}px ui-monospace, Menlo, monospace`;
-          ctx.fillText(killCardText(kc.card, (w) => (isWeapon(w) ? WEAPONS[w].name : w)), W2 / 2, H2 - bar / 2 - 7 * lu);
+          ctx.fillText((kc.final ? finalCardText : killCardText)(kc.card, (w) => (isWeapon(w) ? WEAPONS[w].name : w)), W2 / 2, H2 - bar / 2 - 7 * lu);
           ctx.font = `600 ${Math.round(10 * lu)}px ui-monospace, Menlo, monospace`; ctx.fillStyle = '#a9ae9e';
-          ctx.fillText('SPACE  RESPAWN NOW', W2 / 2, H2 - bar / 2 + 9 * lu);
+          ctx.fillText(kc.final ? 'SPACE / K  SKIP' : 'SPACE  RESPAWN NOW', W2 / 2, H2 - bar / 2 + 9 * lu);
         }
         ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
         raf = requestAnimationFrame(frame);
@@ -1158,6 +1183,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       if (hk === 'picker') { e.preventDefault(); e.stopPropagation(); openPicker(); return; }
       if (hk === 'fps') { e.preventDefault(); e.stopPropagation(); setShowFps((v) => !v); return; }
     }
+    if (down && kcRef.current?.final && (key === ' ' || key === 'k' || key === 'enter' || key === 'escape')) { e.preventDefault(); e.stopPropagation(); skipFinalCam(); return; }
     if (key === 'escape' || key === 'm' || key === 'f3') return;
     if (down && key === ' ' && spaceRespawns({ repeat: e.repeat, alive: me.current.alive, phase: phaseRef.current, broke: life.broke, sinceDeathMs: performance.now() - deathAtRef.current, typing: isTypingTarget(e.target) })) { e.preventDefault(); e.stopPropagation(); respawnNow(); return; }
     if (down && key === 'k' && !e.repeat && !me.current.alive && phaseRef.current === 'play') { e.preventDefault(); e.stopPropagation(); watchKillCam(); return; }
@@ -1319,7 +1345,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
             SUDDEN DEATH · {matchUi.alive} alive · {clock(matchUi.sd * 1000)}{!life.alive ? ' · spectating' : ''}
           </div>
         )}
-        {matchUi.phase === 'ended' && matchUi.end && (
+        {matchUi.phase === 'ended' && matchUi.end && !killCam?.final && (
           <div data-testid="arena-match-end" style={{ position: 'absolute', inset: '10% 15%', zIndex: 6, background: 'rgba(0,0,0,.82)', color: '#e6e9df', padding: 12, borderRadius: 8, overflow: 'auto', fontSize: 12 }} onMouseDown={(e) => e.stopPropagation()}>
             <div style={{ fontSize: 18, fontWeight: 800, textAlign: 'center' }}>MATCH OVER</div>
             {matchUi.end.teams && (
@@ -1332,10 +1358,14 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
               {matchUi.end.prize && <span style={{ color: '#9be37a' }}> · +{matchUi.end.prize.amount} 🪙 WINNER</span>}
               <span className="opacity-70"> · next match in {Math.ceil(matchUi.end.inMs / 1000)}s</span>
             </div>
-            <table style={{ width: '100%' }}><thead><tr><th style={{ textAlign: 'left' }}>Player</th><th>K</th><th>D</th>{matchUi.end.teams && <th title="Objectives: plants, defuses, captures, flag returns">OBJ</th>}<th>🪙 won</th></tr></thead>
-              <tbody>{matchUi.end.players.map((p) => <tr key={p.id} style={{ fontWeight: p.id === me.current.id ? 800 : 400 }}><td>{p.id === matchUi.end!.winnerId ? '🏆 ' : ''}{p.team !== undefined && <span style={{ color: TEAM_COLORS[p.team] }}>■ </span>}<span className="player-link" data-player={p.name}>{p.name}</span></td><td style={{ textAlign: 'center' }}>{p.kills}</td><td style={{ textAlign: 'center' }}>{p.deaths}</td>{matchUi.end!.teams && <td style={{ textAlign: 'center' }}>{p.obj ?? 0}</td>}<td style={{ textAlign: 'center' }}>{p.earned ? `+${p.earned}` : '—'}{p.id === matchUi.end!.winnerId && matchUi.end!.prize ? ` +${matchUi.end!.prize.amount}` : ''}</td></tr>)}</tbody>
+            <table style={{ width: '100%' }}><thead><tr><th style={{ textAlign: 'left' }}>Player</th><th>K</th><th>D</th><th title="Headshots">HS</th><th title="Nut shots">NS</th>{matchUi.end.teams && <th title="Objectives: plants, defuses, captures, flag returns">OBJ</th>}<th>🪙 won</th></tr></thead>
+              <tbody>{matchUi.end.players.map((p) => <tr key={p.id} style={{ fontWeight: p.id === me.current.id ? 800 : 400 }}><td>{p.id === matchUi.end!.winnerId ? '🏆 ' : ''}{p.team !== undefined && <span style={{ color: TEAM_COLORS[p.team] }}>■ </span>}<span className="player-link" data-player={p.name}>{p.name}</span></td><td style={{ textAlign: 'center' }}>{p.kills}</td><td style={{ textAlign: 'center' }}>{p.deaths}</td><td style={{ textAlign: 'center' }}>{p.hs ?? 0}</td><td style={{ textAlign: 'center' }} data-testid="arena-end-ns">{p.ns ?? 0}</td>{matchUi.end!.teams && <td style={{ textAlign: 'center' }}>{p.obj ?? 0}</td>}<td style={{ textAlign: 'center' }}>{p.earned ? `+${p.earned}` : '—'}{p.id === matchUi.end!.winnerId && matchUi.end!.prize ? ` +${matchUi.end!.prize.amount}` : ''}</td></tr>)}</tbody>
             </table>
           </div>
+        )}
+        {killCam?.final && killCam.playing && (
+          <button type="button" data-testid="arena-finalcam-skip" style={{ position: 'absolute', right: 12, bottom: '11%', zIndex: 7, padding: '4px 10px', borderRadius: 4, border: '1px solid #ffd36a', background: 'rgba(0,0,0,.6)', color: '#ffd36a', fontWeight: 800 }}
+            onMouseDown={(e) => e.stopPropagation()} onClick={() => skipFinalCam()}>Skip ⏭ <kbd>Space</kbd></button>
         )}
         {killCam?.playing && (
           <div data-testid="arena-killcam-on" aria-live="polite" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', pointerEvents: 'none' }}>Kill cam playing</div>
@@ -1405,7 +1435,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         <div className="fps-feed" data-testid="arena-feed">
           {feed.map((f) => (
             <div key={f.key} className={`${f.mine ? 'fps-feed-me' : ''}${f.head ? ' fps-feed-head' : ''}${f.multi ? ' fps-feed-multi' : ''}`}>
-              {feedParts(f).map((p, i) => p.t === 'weapon' ? <WeaponIcon key={i} cause={p.cause} /> : p.t === 'head' ? <HeadshotIcon key={i} /> : p.t === 'noscope' ? <span key={i} className="fps-360" aria-label="360 no-scope">360</span> : <span key={i} className={p.t === 'killer' ? 'fps-k' : p.t === 'multi' ? 'fps-multi-t' : ''}>{p.text}</span>)}
+              {feedParts(f).map((p, i) => p.t === 'weapon' ? <WeaponIcon key={i} cause={p.cause} /> : p.t === 'head' ? <HeadshotIcon key={i} /> : p.t === 'nut' ? <span key={i} className="fps-nuticon" style={{ flex: 'none', fontSize: 12, filter: 'drop-shadow(0 0 2px rgba(255,140,200,.8))' }} aria-label="nut shot" role="img">🥜</span> : p.t === 'noscope' ? <span key={i} className="fps-360" aria-label="360 no-scope">360</span> : <span key={i} className={p.t === 'killer' ? 'fps-k' : p.t === 'multi' ? 'fps-multi-t' : ''}>{p.text}</span>)}
             </div>
           ))}
         </div>

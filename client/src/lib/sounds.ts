@@ -523,6 +523,22 @@ export function playHeadshotDing(): void {
   }
 }
 
+/** Arena NUT SHOT: a cartoon "boing" (falling pitch wobble) over a dull thud. */
+export function playNutShot(): void {
+  const ctx = audio();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const o = ctx.createOscillator(); o.type = 'triangle';
+  o.frequency.setValueAtTime(520, now); o.frequency.exponentialRampToValueAtTime(140, now + 0.45);
+  const lfo = ctx.createOscillator(); lfo.frequency.value = 18;
+  const lg = ctx.createGain(); lg.gain.value = 40; lfo.connect(lg); lg.connect(o.frequency);
+  const g = ctx.createGain(); g.gain.setValueAtTime(0.22, now); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
+  o.connect(g); g.connect(output(ctx)); o.start(now); lfo.start(now); o.stop(now + 0.52); lfo.stop(now + 0.52);
+  const t = ctx.createOscillator(); t.type = 'sine'; t.frequency.setValueAtTime(110, now); t.frequency.exponentialRampToValueAtTime(45, now + 0.15);
+  const tg = ctx.createGain(); tg.gain.setValueAtTime(0.35, now); tg.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+  t.connect(tg); tg.connect(output(ctx)); t.start(now); t.stop(now + 0.2);
+}
+
 /** Roulette: ball rattling around the wheel, slowing down. Routed through the master volume. */
 export function playRouletteSpin(seconds = 5): void {
   const ctx = audio();

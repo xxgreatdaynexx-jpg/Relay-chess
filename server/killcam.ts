@@ -5,6 +5,10 @@ export const KILLCAM_MS = 4000;
 const RING_MS = KILLCAM_MS + 1000;
 /** A kill cam can be requested for this long after the death. */
 export const KILLCAM_TTL_MS = 30_000;
+/** Final killcam: how long the end-of-match replay holds the end screen (replay + slow-mo + death hold, skippable). */
+export const FINAL_CAM_MS = 6000;
+/** The final killcam only plays if the last kill happened this recently before the match ended. */
+export const FINAL_CAM_MAX_AGE_MS = 20_000;
 
 /** One player's pose in a frame: [x, y, z, yaw, pitch, crouch(0/1), fired(0/1), weapon, scoped(0/1)]. */
 export type CamPose = [number, number, number, number, number, number, number, string, number];
@@ -13,7 +17,7 @@ export interface CamFrame { t: number; p: Record<string, CamPose> }
 export interface CamShot { t: number; id: string; w: string; o: [number, number, number]; rays: Array<[number, number, number, number]>; sc: number; hit: number }
 /** Poses are also sampled on every move / shot (up to ~40 Hz), not only on the 15 Hz tick, so the replay is smooth. */
 const SAMPLE_MIN_MS = 12;
-export interface KillCard { killerId: string | null; killer: string; victimId: string; weapon: string; dist: number; head: boolean; bot: boolean; at: number }
+export interface KillCard { killerId: string | null; killer: string; victimId: string; weapon: string; dist: number; head: boolean; nut?: boolean; victim?: string; bot: boolean; at: number }
 export interface KillCam { card: KillCard; track: CamFrame[] | null; shots?: CamShot[] }
 
 interface PoseSrc { id: string; alive: boolean; x: number; y: number; z: number; a: number; p: number; crouch?: boolean; weapon: string; scopedSince?: number }
@@ -29,6 +33,8 @@ export class KillCamBuffer {
   private shotLog: CamShot[] = [];
   private fired = new Set<string>();
   private last = new Map<string, KillCam>();
+  /** The most recent kill of anyone by someone else (bots too), with a track: the match's final killcam. */
+  private lastFinal: KillCam | null = null;
 
   /** Mark a shot so the next frame shows a muzzle flash for this fighter. */
   shot(id: string) { this.fired.add(id); }
@@ -66,7 +72,7 @@ export class KillCamBuffer {
     const self = !card.killerId || card.killerId === card.victimId;
     let track: CamFrame[] | null = null;
     let shots: CamShot[] | undefined;
-    if (!card.bot && !self) {
+    if (!self) {
       const from = card.at - KILLCAM_MS;
       const ks = (this.streams.get(card.killerId!) ?? []).filter((x) => x.t >= from && x.t <= card.at);
       const vs = (this.streams.get(card.victimId) ?? []).filter((x) => x.t >= from && x.t <= card.at);
@@ -80,7 +86,17 @@ export class KillCamBuffer {
       if (ks.length < 2) track = null; // not enough data: card only
       else shots = this.shotLog.filter((x) => x.id === card.killerId && x.t >= track![0].t && x.t <= card.at);
     }
+    if (track) this.lastFinal = shots ? { card, track, shots } : { card, track };
+    // Per-victim kill cam: bot kills stay card-only (as before).
+    if (card.bot) { track = null; shots = undefined; }
     this.last.set(card.victimId, shots ? { card, track, shots } : { card, track });
+  }
+
+  /** The final killcam for a match ending now: the last kill with replay data, if recent enough. */
+  final(now: number): KillCam | null {
+    const k = this.lastFinal;
+    if (!k || !k.track || now - k.card.at > FINAL_CAM_MAX_AGE_MS) return null;
+    return k;
   }
 
   /** The victim's last kill cam, or null if none / expired / they've since respawned. */
@@ -90,7 +106,7 @@ export class KillCamBuffer {
     return k;
   }
   forget(id: string) { this.last.delete(id); this.streams.delete(id); }
-  clear() { this.streams.clear(); this.shotLog = []; this.last.clear(); this.fired.clear(); }
+  clear() { this.streams.clear(); this.shotLog = []; this.last.clear(); this.fired.clear(); this.lastFinal = null; }
   /** Number of pose samples held. */
   get size() { let n = 0; for (const s of this.streams.values()) n += s.length; return n; }
 }

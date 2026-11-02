@@ -3,7 +3,7 @@
 export type CamPose = [number, number, number, number, number, number, number, string, number?];
 export interface CamFrame { t: number; p: Record<string, CamPose> }
 export interface CamShot { t: number; id: string; w: string; o: [number, number, number]; rays: Array<[number, number, number, number]>; sc: number; hit: number }
-export interface KillCard { killerId: string | null; killer: string; victimId: string; weapon: string; dist: number; head: boolean; bot: boolean; at: number }
+export interface KillCard { killerId: string | null; killer: string; victimId: string; weapon: string; dist: number; head: boolean; nut?: boolean; victim?: string; bot: boolean; at: number }
 
 /** The last this-many ms of the track play slowed down. */
 export const SLOWMO_MS = 500;
@@ -103,5 +103,21 @@ export function killCardText(c: KillCard, weaponName: (w: string) => string): st
   const bits = [weaponName(c.weapon)];
   if (c.dist > 0) bits.push(`${c.dist.toFixed(1)} m`);
   if (c.head) bits.push('HS');
+  else if (c.nut) bits.push('NUT SHOT');
   return `KILLED BY ${c.killer} — ${bits.join(', ')}`;
+}
+
+/** Final killcam caption: "KILLER ➜ VICTIM — weapon, 12.3 m, HS". */
+export function finalCardText(c: KillCard, weaponName: (w: string) => string): string {
+  const bits = [weaponName(c.weapon)];
+  if (c.dist > 0) bits.push(`${c.dist.toFixed(1)} m`);
+  if (c.head) bits.push('HS');
+  else if (c.nut) bits.push('NUT SHOT');
+  return `${c.killer} ➜ ${c.victim ?? '?'} — ${bits.join(', ')}`;
+}
+
+/** Playback speed that fits a final-killcam track (plus the death hold) inside the server's replay window, or null if it can't sensibly fit. */
+export function finalCamSpeed(spanMs: number, windowMs: number): number | null {
+  const sp = fitSpeed(spanMs, windowMs - DEATH_HOLD_MS - 300);
+  return Number.isFinite(sp) && sp > 0 && sp <= 3 ? sp : null;
 }

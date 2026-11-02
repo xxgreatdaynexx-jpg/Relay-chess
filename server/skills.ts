@@ -190,11 +190,15 @@ export function ledgerXp(game: string, amount: number, memo?: string): { skill: 
 }
 
 /** Combat XP for one finished arena match row. Exported for tests. */
-export function combatXp(p: { kills: number; participationMs: number; obj?: number }, won: boolean): number {
+/** Small Combat XP per headshot / nut shot landed (capped per match). */
+export const PRECISION_XP = 5;
+export const PRECISION_XP_CAP = 20;
+export function combatXp(p: { kills: number; participationMs: number; obj?: number; hs?: number; ns?: number }, won: boolean): number {
   const obj = Math.min(OBJ_XP_CAP, Math.max(0, p.obj ?? 0));
   if (p.participationMs < 30_000 && !p.kills && !obj) return 0;
   // Objectives (bomb plant/defuse, flag capture/return) in team modes: OBJ_XP each, capped.
-  return Math.min(40, Math.max(0, p.kills)) * 25 + obj * OBJ_XP + (p.participationMs >= 60_000 ? 50 : 0) + (won ? 150 : 0);
+  const precise = Math.min(PRECISION_XP_CAP, Math.max(0, p.hs ?? 0) + Math.max(0, p.ns ?? 0));
+  return Math.min(40, Math.max(0, p.kills)) * 25 + precise * PRECISION_XP + obj * OBJ_XP + (p.participationMs >= 60_000 ? 50 : 0) + (won ? 150 : 0);
 }
 
 let unsubArena: (() => void) | null = null;
