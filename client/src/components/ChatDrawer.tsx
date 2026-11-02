@@ -1,4 +1,5 @@
 import { BuildTag, ChangelogButton } from './Changelog';
+import { chatTimeLabel, chatTimeFull } from '../../../shared/chatTime';
 import { RequestsButton } from './Requests';
 import { useEffect, useRef, useState } from 'react';
 import { request, socket } from '@/lib/net';
@@ -19,7 +20,6 @@ const PANELS: Array<[Activity, string]> = [
 const openActivities = (): Activity[] => PANELS.filter(([, sel]) => document.querySelector(sel)).map(([a]) => a);
 const readSeen = (): number | null => { try { const v = localStorage.getItem(SEEN_KEY); return v ? Number(v) : null; } catch { return null; } };
 const writeSeen = (id: number) => { try { localStorage.setItem(SEEN_KEY, String(id)); } catch { /* blocked */ } };
-const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 interface Profile { skills?: SkillProfile | null; chess?: { wins: number; losses: number; draws: number }; arena?: { kills: number; deaths: number; kd: number } }
 
@@ -181,7 +181,7 @@ export function ChatDrawer() {
               <div key={m.id} className={`chat-msg${m.name === me ? ' mine' : ''}`}>
                 <button type="button" className="chat-from" onClick={() => { void pick({ name: m.name }); openPlayer(m.name); }}>{m.name}</button>
                 {m.qa && <span className="chat-qa">QA</span>}
-                <time className="chat-time" dateTime={new Date(m.at).toISOString()}>{time(m.at)}</time>
+                <time className="chat-time" dateTime={new Date(m.at).toISOString()} title={chatTimeFull(m.at)} data-testid="chat-time">{chatTimeLabel(m.at)}</time>
                 <div className="chat-text">{m.text}</div>
               </div>
             ))}
