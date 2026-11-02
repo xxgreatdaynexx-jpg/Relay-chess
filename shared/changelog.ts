@@ -25,6 +25,12 @@ export const CHANGELOG: ChangelogEntry[] = [
     'Cooking is a new skill (1–99) in the Skills panel and hiscores. Higher levels widen the "done" window so you burn less, and unlock rarer fish: uncommon at 10, rare at 25, epic at 45, legendary at 65.',
     'A nicely cooked dish is worth 30% more than the raw fish (a perfect one 50%); a burnt one is worth a fifth. Sell dishes at the Fishing Dock as usual, and the fish market daily limits still apply.',
   ] },
+  { commit: '', at: '2026-11-01T20:47:00-06:00', title: 'The 3D fishing game looks much better', bullets: [
+    'Requested by Dayne: the lake follows the real Mountain Time day and night cycle, with a blue sky by day, golden dusk and a starry night with the moon low over the far shore.',
+    'The water has sky reflections, sun or moon glitter, deeper colour in the middle, caustics and foam near the shore, and ripples where the bobber lands.',
+    'Mist rolls over the lake, fireflies come out at night, and the reeds and trees sway. The pier has real wood planks, the rod tapers and has a reel, and fish are shaded with fins and eyes.',
+    'Splashes are bigger, and a catch rises out of the water with a coloured glow, sparkles and a camera sweep. The meters and catch card got a glassy look. Catches, prices and XP are unchanged, and slower devices get lighter effects.',
+  ] },
   { commit: '823ee78', at: '2026-11-01T20:21:00-06:00', title: "Click a player to see what they own", bullets: [
     "Requested by Dayne: click a player's name to open their profile. This works in the online list, chat, trailers on the map, the leaderboards, the mines board, the dock's biggest catches, the race boards and the Arena results.",
     'The profile shows their chips and net worth (the same numbers as the Daily Report), their property and land with a 📍 button that flies the map to each one, their farms and what is growing, their cars and trailer, stocks, funds and options, their best skins, skill levels, biggest fish, and when they joined. It also shows whether they are online right now.',

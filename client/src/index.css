@@ -1780,7 +1780,7 @@ html, body { overflow-x: clip; }
 .fish3d-prog > div { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(#ffd24a, #5fe08a); }
 .fish3d-strain { display: flex; flex-direction: column; justify-content: flex-end; gap: 4px; width: 110px; color: #cfe9ff; }
 .fish3d-strain > div { height: 10px; border-radius: 5px; background: #0d1d33; overflow: hidden; } .fish3d-strain > div > div { height: 100%; }
-.fish3d-card { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); min-width: min(360px, 90vw); padding: 12px 18px; border-radius: 14px; background: rgba(10,14,40,.85); border: 2px solid; color: #e8f6ff; text-align: center; }
+.fish3d-card { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); min-width: min(360px, 90vw); padding: 12px 18px; border-radius: 14px; background: linear-gradient(180deg, rgba(22,30,64,.86), rgba(8,10,30,.9)); backdrop-filter: blur(8px); border: 2px solid; color: #e8f6ff; text-align: center; }
 .fish3d-card h3 { margin: 2px 0 4px; } .fish3d-rar { font-size: 11px; font-weight: 900; letter-spacing: .12em; }
 @media (max-width: 640px) { .fish3d-reel { right: 8px; padding: 8px; } .fish3d-strain { width: 70px; } .fish3d-hint { white-space: normal; width: 90vw; text-align: center; } }
 .fish-play3d { width: 100%; margin: 6px 0; padding: 10px; border-radius: 10px; font-weight: 900; font-size: 15px; background: linear-gradient(90deg, rgba(79,195,217,.35), rgba(255,95,138,.3)); border: 1px solid rgba(79,195,217,.7); }
@@ -1881,3 +1881,8 @@ html, body { overflow-x: clip; }
 .kit-actions kbd { font-size: 10px; opacity: .7; margin-left: 4px; }
 .kit-done { padding: 10px 12px; border-radius: 12px; display: flex; flex-direction: column; gap: 3px; background: rgba(127,208,106,.15); border: 1px solid #7fd06a; } .kit-done.perfect { background: rgba(255,207,80,.18); border-color: #ffcf50; } .kit-done.burnt { background: rgba(255,80,60,.15); border-color: #ff6a50; } .kit-done.undercooked { background: rgba(120,170,255,.15); border-color: #7aa8ff; }
 .kit-done b { font-size: 15px; } .kit-msg { color: #ffb36b; } .kit-help { opacity: .6; font-size: 11px; }
+/* fishing 3D polish: glass meters + rarity pop on the catch card */
+.fish3d-meter, .fish3d-power, .fish3d-reel { backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,.16); box-shadow: 0 6px 20px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.14); }
+.fish3d-prog, .fish3d-strain, .fish3d-zone { transition: width .12s ease-out, height .12s ease-out, top .08s linear, background-color .2s; box-shadow: 0 0 10px rgba(140,220,255,.45); }
+.fish3d-card { animation: fish3d-pop .45s cubic-bezier(.2,1.4,.4,1) both; box-shadow: 0 0 34px rgba(120,200,255,.28), 0 12px 30px rgba(0,0,0,.45); }
+@keyframes fish3d-pop { from { transform: translateX(-50%) translateY(14px) scale(.92); opacity: 0; } to { transform: translateX(-50%); opacity: 1; } }
