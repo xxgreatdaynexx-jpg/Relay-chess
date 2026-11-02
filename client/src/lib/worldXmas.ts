@@ -9,7 +9,7 @@ import type { WorldTier } from './worldTier';
  */
 export interface XmasRoof { x: number; z: number; w: number; d: number; top: number; rot: number; gable?: boolean }
 export interface XmasDecor { x: number; z: number; rot?: number; scale?: number; big?: boolean }
-export interface XmasOpts { tier: WorldTier; half: number; roofs: XmasRoof[]; decor: XmasDecor[]; frost?: boolean }
+export interface XmasOpts { tier: WorldTier; half: number; roofs: XmasRoof[]; decor: XmasDecor[]; frost?: boolean; roads?: THREE.BufferGeometry[]; footprints?: XmasRoof[] }
 
 const LIGHT_COLORS = [0xff3040, 0x30e070, 0xffd040, 0x40a0ff, 0xff70d0];
 
@@ -33,10 +33,41 @@ export function addXmas(scene: THREE.Scene, o: XmasOpts) {
       fragmentShader: `varying float vA; void main() { float d = length(gl_PointCoord - 0.5); if (d > 0.5) discard; gl_FragColor = vec4(1.0, 1.0, 1.0, (1.0 - d * 2.0) * 0.9 * vA); }` });
     disposables.push(g, m); const pts = new THREE.Points(g, m); pts.frustumCulled = false; pts.renderOrder = 5; root.add(pts); }
 
-  // Frosty ground: a faint white layer over the plate (roads and water draw above it).
+  // Ground snow (pt1331u "make the snow on the ground nicer"): a noise-textured snow sheet (soft white, blue in the
+  // low spots, glossy glints via a low roughness map), drifts piled against building bases and trees, slush on roads,
+  // and a scatter of twinkling glints. Low tier: smaller texture, fewer drifts and glints.
+  const tex = snowTextures(low ? 128 : 256); disposables.push(tex.map, tex.rough, tex.slush);
+  const snowMat = new THREE.MeshStandardMaterial({ color: 0xf2f6ff, map: tex.map, roughnessMap: tex.rough, roughness: 1, metalness: 0, emissive: 0x1a2238, emissiveIntensity: 0.6 });
+  disposables.push(snowMat);
   if (o.frost !== false) { const g = new THREE.PlaneGeometry(o.half * 2, o.half * 2); g.rotateX(-Math.PI / 2);
-    const m = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.17, roughness: 1, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-    disposables.push(g, m); const f = new THREE.Mesh(g, m); f.position.y = 0.045; f.renderOrder = 0; root.add(f); }
+    const m = snowMat.clone(); m.map = tex.map.clone(); m.map.repeat.set(o.half / 22, o.half / 22); m.map.needsUpdate = true; m.roughnessMap = m.map; m.transparent = true; m.opacity = 0.93; m.depthWrite = false;
+    m.polygonOffset = true; m.polygonOffsetFactor = -1; m.polygonOffsetUnits = -1; disposables.push(g, m, m.map);
+    const f = new THREE.Mesh(g, m); f.position.y = 0.045; f.renderOrder = 0; root.add(f); }
+  // slushy, partly cleared roads: the road surface again, streaked with grey-white slush that thins toward the middle
+  for (const src of o.roads ?? []) { const rg = src.clone(); const pa = rg.attributes.position as THREE.BufferAttribute; const uv = new Float32Array(pa.count * 2);
+    for (let i = 0; i < pa.count; i++) { uv[i * 2] = pa.getX(i) / 9; uv[i * 2 + 1] = pa.getZ(i) / 9; } rg.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); disposables.push(rg);
+    const m = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, color: 0xc9d2e0, alphaMap: tex.slush, transparent: true, opacity: 0.7, roughness: 0.35, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    disposables.push(m); const me = new THREE.Mesh(rg, m); me.renderOrder = 1; root.add(me); }
+  // drifts: flattened lumpy mounds hugging building edges (city houses + landmark/resort footprints) and tree bases
+  { const spots: [number, number, number, number, number][] = []; const rnd = mulberry(1225);
+    const maxD = low ? 350 : o.tier === 'mid' ? 1400 : 2600;
+    const edge = (r: XmasRoof, n: number) => { const cs = Math.cos(r.rot), sn = Math.sin(r.rot);
+      for (let k = 0; k < n; k++) { const side = Math.floor(rnd() * 4), f = rnd() * 2 - 1; const hw = r.w / 2 + 0.35, hd = r.d / 2 + 0.35;
+        const [lx, lz] = side === 0 ? [f * hw, -hd] : side === 1 ? [hw, f * hd] : side === 2 ? [f * hw, hd] : [-hw, f * hd];
+        spots.push([r.x + lx * cs + lz * sn, r.z - lx * sn + lz * cs, 0.6 + rnd() * 1.2, 0.25 + rnd() * 0.35, rnd() * 6.28]); } };
+    const all = [...o.roofs, ...(o.footprints ?? [])]; const per = Math.max(1, Math.min(3, Math.floor(maxD * 0.8 / Math.max(1, all.length))));
+    for (const r of all) edge(r, per);
+    for (const dc of o.decor) { const sc = dc.scale ?? 1; for (let k = 0; k < 5; k++) { const a = rnd() * 6.28, rr = (2.2 + rnd() * 1.6) * sc; spots.push([dc.x + Math.cos(a) * rr, dc.z + Math.sin(a) * rr, (0.9 + rnd()) * sc, (0.3 + rnd() * 0.3) * sc, a]); } }
+    const n = Math.min(spots.length, maxD);
+    const g = new THREE.IcosahedronGeometry(1, low ? 0 : 1); g.translate(0, -0.35, 0); disposables.push(g);
+    const dm = new THREE.InstancedMesh(g, snowMat, n); const d = new THREE.Object3D();
+    for (let i = 0; i < n; i++) { const [x, z, w, h, a] = spots[i]; d.position.set(x, 0, z); d.rotation.set(0, a, 0); d.scale.set(w * 1.6, h, w); d.updateMatrix(); dm.setMatrixAt(i, d.matrix); }
+    root.add(dm);
+    // glints: tiny white points that flash briefly, scattered over the snow and on the drifts
+    const gn = low ? 250 : o.tier === 'mid' ? 900 : 1800; const pos: number[] = [], col: number[] = [], ph: number[] = [];
+    for (let i = 0; i < gn; i++) { if (o.frost !== false && i % 3) { pos.push((rnd() * 2 - 1) * o.half, 0.09, (rnd() * 2 - 1) * o.half); } else { const sp = spots[Math.floor(rnd() * n)]; if (!sp) continue; pos.push(sp[0] + (rnd() - 0.5) * sp[2], sp[3] * 0.6, sp[1] + (rnd() - 0.5) * sp[2]); }
+      col.push(0.85, 0.92, 1); ph.push(rnd() * 6.28); }
+    if (pos.length) root.add(lightPoints(pos, col, ph, 0.35, 8.0)); }
 
   // Snow caps on rooftops + string lights around each roof edge.
   if (o.roofs.length) {
@@ -56,11 +87,11 @@ export function addXmas(scene: THREE.Scene, o: XmasOpts) {
   // Trees + presents at key spots.
   for (const dc of o.decor) root.add(tree(dc));
 
-  function lightPoints(pos: number[], col: number[], ph: number[], size: number) {
+  function lightPoints(pos: number[], col: number[], ph: number[], size: number, sharp = 1) {
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setAttribute('ph', new THREE.Float32BufferAttribute(ph, 1));
-    const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uTime, uSize: { value: size } },
-      vertexShader: `attribute vec3 color; attribute float ph; uniform float uTime, uSize; varying vec3 vC; varying float vB;
-        void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mv; vB = 0.55 + 0.45 * sin(uTime * 2.2 + ph); vC = color;
+    const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uTime, uSize: { value: size }, uSharp: { value: sharp } },
+      vertexShader: `attribute vec3 color; attribute float ph; uniform float uTime, uSize, uSharp; varying vec3 vC; varying float vB;
+        void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mv; vB = pow(0.5 + 0.5 * sin(uTime * 2.2 + ph), uSharp) * (uSharp > 1.5 ? 1.4 : 0.9) + (uSharp > 1.5 ? 0.0 : 0.1); vC = color;
           gl_PointSize = clamp(uSize * 220.0 / -mv.z, 1.5, 10.0); }`,
       fragmentShader: `varying vec3 vC; varying float vB; void main() { float d = length(gl_PointCoord - 0.5); if (d > 0.5) discard; float a = pow(1.0 - d * 2.0, 1.6); gl_FragColor = vec4(vC * (0.6 + vB), a * vB); }` });
     disposables.push(g, m); const p = new THREE.Points(g, m); p.renderOrder = 6; return p; }
@@ -94,3 +125,23 @@ export function addXmas(scene: THREE.Scene, o: XmasOpts) {
   };
 }
 export type Xmas = ReturnType<typeof addXmas>;
+
+function mulberry(a: number) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+/** Tileable snow textures drawn once on a canvas: colour (white with blue-grey hollows), and a streaky slush alpha. */
+function snowTextures(size: number) {
+  const rnd = mulberry(77);
+  const mk = (draw: (g: CanvasRenderingContext2D) => void, srgb: boolean) => { const c = document.createElement('canvas'); c.width = c.height = size; const g = c.getContext('2d')!; draw(g);
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 2; return t; };
+  const blobs = (g: CanvasRenderingContext2D, n: number, rMin: number, rMax: number, col: (a: number) => string) => {
+    for (let i = 0; i < n; i++) { const x = rnd() * size, y = rnd() * size, r = (rMin + rnd() * (rMax - rMin)) * size; const a = rnd();
+      for (const [ox, oy] of [[0, 0], [size, 0], [-size, 0], [0, size], [0, -size]]) { const gr = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r); gr.addColorStop(0, col(a)); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(x + ox - r, y + oy - r, r * 2, r * 2); } } };
+  const map = mk((g) => { g.fillStyle = '#f4f7ff'; g.fillRect(0, 0, size, size);
+    blobs(g, 26, 0.08, 0.22, (a) => `rgba(175,195,230,${0.07 + a * 0.1})`); // blue hollows
+    blobs(g, 30, 0.04, 0.12, (a) => `rgba(255,255,255,${0.15 + a * 0.2})`); // bright crests
+    const id = g.getImageData(0, 0, size, size); for (let i = 0; i < id.data.length; i += 4) { const n = (rnd() - 0.5) * 14; id.data[i] += n; id.data[i + 1] += n; id.data[i + 2] += n * 0.6; } g.putImageData(id, 0, 0); }, true);
+  const rough = map; // brighter crests are glossier enough; reuse to save a texture
+  const slush = mk((g) => { g.fillStyle = '#000'; g.fillRect(0, 0, size, size);
+    blobs(g, 22, 0.08, 0.2, (a) => `rgba(255,255,255,${0.25 + a * 0.5})`);
+    g.globalCompositeOperation = 'destination-out'; for (let i = 0; i < 8; i++) { g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(0, rnd() * size, size, size * 0.04); } }, false);
+  return { map, rough, slush };
+}

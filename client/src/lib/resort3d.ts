@@ -250,7 +250,7 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   const ro = new ResizeObserver(() => { resize(); if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(canvas.clientWidth || 1, canvas.clientHeight || 1); } }); ro.observe(canvas); resize();
 
   // Christmas theme (request #17): snow and a decorated tree by the resort casino; no frost layer on the beach.
-  const xmas = xmasOn() ? addXmas(scene, { tier, half: 130, roofs: [], frost: false, decor: [{ x: -20, z: -4, scale: 1.1, big: true }, { x: 20, z: -4, scale: 1.1 }, { x: 108, z: -58, scale: 0.8 }] }) : null;
+  const xmas = xmasOn() ? addXmas(scene, { tier, half: 130, roofs: [], frost: false, footprints: RESORT_SPOTS.filter((s) => s.id !== 'r-pier' && s.id !== 'r-marina').map((s) => ({ x: s.x, z: s.z, w: s.w, d: s.d, rot: 0, top: 0 })), decor: [{ x: -20, z: -4, scale: 1.1, big: true }, { x: 20, z: -4, scale: 1.1 }, { x: 108, z: -58, scale: 0.8 }] }) : null;
   const clock = new THREE.Clock(); let raf = 0; let running = true; let time = 0; const tmp = new THREE.Vector3();
   const frame = () => {
     raf = requestAnimationFrame(frame); if (!running) return; const dt = Math.min(clock.getDelta(), 0.05); time += dt;

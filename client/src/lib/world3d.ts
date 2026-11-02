@@ -162,7 +162,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     shoreBank(out, 1, BANK, (x, z) => (z <= shoreZ(x) + 0.5 ? 0.3 : 1)); shoreBank(isl, -1, [[-1.6, 0.02, 0x6f6048], [0, 0.035, 0x8e7a58], [1.2, 0.035, 0xc9b48a], [2.6, 0.03, 0x4f9e4a]], (x, z) => Math.min(1, Math.hypot((x - ISLAND.x) / ISLAND.rx, (z - ISLAND.z) / ISLAND.rz) * 0.6)); }
   // Roads: ONE merged mesh at ONE height: ribbons along each curved centreline + filled junction caps + cul-de-sac circles.
   // Overlaps are the same surface (no per-road height steps to z-fight); polygonOffset keeps it above the grass at every zoom.
-  const ROAD_Y = 0.08;
+  const ROAD_Y = 0.08; const xmasRoads: THREE.BufferGeometry[] = [];
   const roadMat = mat({ color: 0x23252c, roughness: 0.9, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
   { const pos: number[] = []; const idx: number[] = []; let base = 0; const y = ROAD_Y;
     const disc = (cx: number, cz: number, r: number) => { const c0 = base; pos.push(cx, y, cz); for (let j = 0; j <= 24; j++) { const a = j / 24 * Math.PI * 2; pos.push(cx + Math.cos(a) * r, y, cz + Math.sin(a) * r); if (j) idx.push(c0, c0 + j, c0 + j + 1); } base += 26; };
@@ -173,7 +173,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     for (const j of JUNCTIONS) disc(j.x, j.z, j.r);
     for (const [cx, cz] of CUL_ENDS) disc(cx, cz, CUL_R);
     const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); rg.setIndex(idx); rg.computeVertexNormals();
-    const roadMesh = new THREE.Mesh(geo(rg), roadMat); roadMesh.renderOrder = 1; scene.add(roadMesh); }
+    const roadMesh = new THREE.Mesh(geo(rg), roadMat); roadMesh.renderOrder = 1; scene.add(roadMesh); xmasRoads.push(rg); }
   // Lane dashes: flat, a layer above the asphalt (own polygonOffset), and not painted across junctions.
   const dashSpots: [number, number, number][] = [];
   const inJunction = (x: number, z: number) => JUNCTIONS.some((j) => Math.hypot(j.x - x, j.z - z) < j.r + 0.6);
@@ -389,7 +389,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     { const b = lmBoxes.chat; if (b) decor.push({ x: b.x, z: b.z, scale: 1.9, big: true }); } // the big plaza tree
     corner('casino', 5.2, 5.2); corner('casino', -5.2, 5.2); corner('arena', 5.4, 5.4); corner('arena', -5.4, 5.4); corner('cityhall', 5, 5, 0.6);
     for (const site of Object.values(MINE_SITES)) decor.push({ x: site.x + 9, z: site.z + 9, scale: 0.9 });
-    xmas = addXmas(scene, { tier, half: PLATE + 50, roofs: xmasRoofs, decor });
+    xmas = addXmas(scene, { tier, half: PLATE + 50, roofs: xmasRoofs, decor, roads: xmasRoads, footprints: Object.entries(lmBoxes).filter(([id]) => !id.startsWith('mine')).map(([, b]) => ({ x: b.x, z: b.z, w: b.w, d: b.d, rot: b.rot, top: 0 })) });
   }
   // Open-space patches: parks (grass), plazas (paving + fountain glow), lots (dirt) — one instanced slab, tinted, rotated.
   if (patches.length) {
