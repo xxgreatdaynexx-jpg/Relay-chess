@@ -362,5 +362,7 @@ export function registerStocks(io: Server, socket: Socket): void {
   on('stk2_short_open', (b) => dv().openShort(need(), b.ticker, b.shares));
   on('stk2_short_close', (b) => dv().closeShort(need(), b.id));
   on('stk2_opt_quote', (b) => dv().optionQuote(b.ticker, b.kind, b.strike, b.days, b.qty));
+  on('stk2_opt_sell_quote', async (b) => { const q = await dv().optionSellQuote(need(), b.id, b.qty); return { id: q.o.id, qty: q.qty, payout: q.payout, basis: q.basis }; });
+  on('stk2_opt_sell', (b) => dv().sellOption(need(), b.id, b.qty));
   on('stk2_opt_buy', (b) => dv().buyOption(need(), b.ticker, b.kind, b.strike, b.days, b.qty));
 }

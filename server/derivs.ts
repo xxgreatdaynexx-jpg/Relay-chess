@@ -16,6 +16,7 @@ import { getBank } from './casino-store.js';
 import { StockError, keyOf, priceOf, type Exchange } from './stocks.js';
 import { COMPANIES, COMPANY_BY_TICKER, MAX_TICK_IMPACT, maxOrderChips, parseQty, quote, type Company } from '../shared/stocks.js';
 import {
+  optionBid,
   BORROW_FEE, DIV_HOUR_UTC, FUNDS, FUND_BY_ID, FUND_MAX_ORDER, MAX_OPEN_OPTIONS, MAX_OPEN_SHORTS, OPT_EXPIRIES, OPT_MAX_PREMIUM, OPT_MAX_QTY,
   SHORT_INIT, daysLeft, divYield, dividendOf, fundDivPerUnit, fundQuote, fundYield, liquidationPrice, navOf, needsLiquidation, optionPayout,
   optionPremium, optionValue, shortClose, shortEquity, type Fund,
@@ -136,7 +137,7 @@ export class Derivatives {
     const funds = (await this.fundPositions(name)).map((p) => { const f = FUND_BY_ID.get(p.fund)!; const nav = this.nav(f); const value = Math.floor(nav * p.units); return { ...p, name: f.name, kind: f.kind, nav, value, pnl: value - p.cost }; });
     const now = this.clock();
     const shorts = (await this.shorts(name)).map((s) => { const p = this.price(s.ticker)!; const eqv = Math.floor(shortEquity(s, p)); const cl = shortClose(COMPANY_BY_TICKER.get(s.ticker)!, s, p); return { ...s, price: p, equity: eqv, closeValue: cl.payout, pnl: cl.pnl, liqPrice: r2(liquidationPrice(s)) }; });
-    const options = (await this.options(name)).map((o) => ({ ...o, price: this.price(o.ticker), mark: this.optionMark(o), hoursLeft: Math.max(0, Math.round((o.expiry - now) / 360_000) / 10) }));
+    const options = (await this.options(name)).map((o) => ({ ...o, price: this.price(o.ticker), mark: this.optionMark(o), bid: o.expiry > now ? optionBid(COMPANY_BY_TICKER.get(o.ticker)!, o.kind, this.price(o.ticker)!, o.strike, daysLeft(o.expiry, now), o.qty) : 0, hoursLeft: Math.max(0, Math.round((o.expiry - now) / 360_000) / 10) }));
     const history = { shorts: (await this.shorts(name, 'all')).filter((s) => s.status !== 'open').slice(0, 20), options: (await this.options(name, 'all')).filter((o) => o.status !== 'open').slice(0, 20) };
     const totals = { stocks: stocks.value, funds: funds.reduce((a, f) => a + f.value, 0), shorts: shorts.reduce((a, s) => a + s.equity, 0), options: options.reduce((a, o) => a + o.mark, 0) };
     return { stocks, funds, shorts, options, history, totals: { ...totals, all: totals.stocks + totals.funds + totals.shorts + totals.options } };
@@ -233,6 +234,42 @@ export class Derivatives {
     return { ...q, id, balance: getBank().account(name).chips };
   }
 
+  private selling = new Set<string>();
+  /** What selling `qty` of held option `id` would pay right now. */
+  async optionSellQuote(name: string, id: unknown, qty: unknown) {
+    const k = keyOf(name); const o = (await this.options(name)).find((x) => x.id === id && x.key === k);
+    if (!o) throw new StockError("You don't hold that option (it may have expired or been sold).");
+    const now = this.clock(); if (o.expiry <= now) throw new StockError('That option has expired. It settles automatically at the next price tick.');
+    const pq = parseQty(qty ?? o.qty, { max: o.qty }); if (!pq.ok) throw new StockError(`${pq.error} You hold ${o.qty}.`);
+    const c = COMPANY_BY_TICKER.get(o.ticker)!; const S = this.price(o.ticker)!;
+    const payout = optionBid(c, o.kind, S, o.strike, daysLeft(o.expiry, now), pq.n);
+    const basis = pq.n === o.qty ? o.premium : Math.round((o.premium * pq.n) / o.qty);
+    return { o, qty: pq.n, price: S, payout, basis };
+  }
+  /** Sell to close (all or part). Payout via the atomic wallet; row update is conditional on the qty we priced. */
+  async sellOption(name: string, id: unknown, qty: unknown) {
+    const lockId = String(id);
+    if (this.selling.has(lockId)) throw new StockError('A sale of this option is already in progress.');
+    this.selling.add(lockId);
+    try {
+      const { o, qty: n, price: S, payout, basis } = await this.optionSellQuote(name, id, qty);
+      if (payout < 1) throw new StockError('That option is worth less than 1 chip right now, so it can only be held to expiry.');
+      const left = o.qty - n; const now = this.clock();
+      await this.atomic([{ name, amount: payout, key: `opt:${o.id}:sell:${o.qty}`, game: 'stocks', memo: `Sold ${n}x ${o.ticker} ${o.strike} ${o.kind} for ${payout}` }], async (cl) => {
+        if (!cl) {
+          const m = this.mOpts.get(o.id); if (!m || m.status !== 'open' || m.qty !== o.qty || m.expiry <= now) throw new StockError('That option changed. Try again.');
+          if (left) Object.assign(m, { qty: left, premium: m.premium - basis }); else Object.assign(m, { status: 'sold', settlePrice: S, payout });
+          return;
+        }
+        const u = left
+          ? await cl.query('UPDATE stk_options SET qty = $2, premium = premium - $3 WHERE id = $1 AND status = \'open\' AND qty = $4 AND player_key = $5 AND expiry > $6', [o.id, left, basis, o.qty, o.key, now])
+          : await cl.query('UPDATE stk_options SET status = \'sold\', settle_price = $2, payout = $3 WHERE id = $1 AND status = \'open\' AND qty = $4 AND player_key = $5 AND expiry > $6', [o.id, S, payout, o.qty, o.key, now]);
+        if ((u.rowCount ?? 0) === 0) throw new StockError('That option changed. Try again.');
+      });
+      return { id: o.id, ticker: o.ticker, kind: o.kind, strike: o.strike, sold: n, left, price: S, payout, pnl: payout - basis, balance: getBank().account(name).chips };
+    } finally { this.selling.delete(lockId); }
+  }
+
   // ---------- jobs (tick winner) ----------
   async afterTick(now = this.clock()) {
     if (this.running) return; this.running = true;
@@ -259,8 +296,8 @@ export class Derivatives {
       const S = this.price(o.ticker)!; const payout = optionPayout(o.kind, S, o.strike, o.qty);
       try {
         await this.atomic([{ name: o.name, amount: payout, key: `opt:${o.id}:settle`, game: 'stocks', memo: `${o.ticker} ${o.strike} ${o.kind} expired @ ${S.toFixed(2)}` }], async (cl) => {
-          if (!cl) { const m = this.mOpts.get(o.id); if (!m || m.status !== 'open') throw new Skip(); Object.assign(m, { status: 'settled', settlePrice: S, payout }); return; }
-          const u = await cl.query('UPDATE stk_options SET status = \'settled\', settle_price = $2, payout = $3 WHERE id = $1 AND status = \'open\'', [o.id, S, payout]);
+          if (!cl) { const m = this.mOpts.get(o.id); if (!m || m.status !== 'open' || m.qty !== o.qty) throw new Skip(); Object.assign(m, { status: 'settled', settlePrice: S, payout }); return; }
+          const u = await cl.query('UPDATE stk_options SET status = \'settled\', settle_price = $2, payout = $3 WHERE id = $1 AND status = \'open\' AND qty = $4', [o.id, S, payout, o.qty]);
           if ((u.rowCount ?? 0) === 0) throw new Skip();
         });
         n++;

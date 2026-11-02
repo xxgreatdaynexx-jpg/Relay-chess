@@ -264,9 +264,10 @@ function OptionsView({ data }: { data: ListResp }) {
   const load = useCallback(() => { if (account) void request('stk2_portfolio').then((r) => r.ok && setP(r as unknown as Port)); }, [account]);
   useEffect(() => { load(); const iv = setInterval(load, 30_000); return () => clearInterval(iv); }, [load]);
   const buy = async () => { const r = await run('buy', () => request('stk2_opt_buy', { ticker: t, kind, strike, days, qty: n2 })); if (!r) return; if (r.replayed) return setM({ ok: true, t: ALREADY }); const x = r as unknown as { premium: number }; say(setM)(r, `Bought ${n2} ${t} ${strike} ${kind}s, ${days}d — paid 🪙 ${n(x.premium)}.`); if (r.ok) load(); };
+  const sell = async (id: string, q2: number) => { const r = await run(`sell:${id}`, () => request('stk2_opt_sell', { id, qty: q2 })); if (!r) return; if (r.replayed) return setM({ ok: true, t: ALREADY }); const x = r as unknown as { sold: number; left: number; payout: number; pnl: number; ticker: string; kind: string }; say(setM)(r, `Sold ${x.sold} ${x.ticker} ${x.kind}${x.sold > 1 ? 's' : ''} for 🪙 ${n(x.payout)} (P&L ${x.pnl >= 0 ? '+' : ''}${n(x.pnl)})${x.left ? ` — ${x.left} still held` : ''}.`); load(); };
   return (
     <div data-testid="stk-options">
-      <p className="mb-2 text-xs opacity-70"><b>Call</b> = pays if the price ends above the strike; <b>put</b> = pays if it ends below. You pay the premium up front (burned) and that's the most you can lose. At expiry it settles automatically in chips: (price − strike) × shares for a call. Options don't move the stock price.</p>
+      <p className="mb-2 text-xs opacity-70"><b>Call</b> = pays if the price ends above the strike; <b>put</b> = pays if it ends below. You pay the premium up front (burned) and that's the most you can lose. At expiry it settles automatically in chips: (price − strike) × shares for a call. Or sell early (all or part) at the current model value, less the 5% house edge and 1% fee. Options don't move the stock price.</p>
       <div className="flex flex-wrap items-center gap-2">
         <select className="rounded bg-black/30 px-2 py-1" value={t} onChange={(e) => setT(e.target.value)} data-testid="stk-opt-ticker">{[...data.companies].sort((a, b) => a.ticker.localeCompare(b.ticker)).map((x) => <option key={x.ticker} value={x.ticker}>{x.ticker} · {x.price.toFixed(2)}</option>)}</select>
         <select className="rounded bg-black/30 px-2 py-1" value={kind} onChange={(e) => setKind(e.target.value as 'call' | 'put')} data-testid="stk-opt-kind"><option value="call">Call 📈</option><option value="put">Put 📉</option></select>
@@ -279,21 +280,30 @@ function OptionsView({ data }: { data: ListResp }) {
       {q && <p className="mt-1 text-xs opacity-80">Breakeven at expiry: <b>{q.breakeven.toFixed(2)}</b>. Max loss 🪙 {n(q.premium)}.</p>}
       {qe && <p className="mt-1 text-xs text-rose-400">{qe}</p>}
       <Msg m={m} />
-      <OptTable p={p} />
+      <OptTable p={p} onSell={account ? sell : undefined} busy={busy} />
     </div>
   );
 }
-function OptTable({ p }: { p: Port | null }) {
+function OptSell({ o, onSell, busy }: { o: Port['options'][number]; onSell: (id: string, q: number) => void; busy: string | false }) {
+  const [q, setQ] = useState(String(o.qty)); useEffect(() => setQ(String(o.qty)), [o.qty]);
+  const k = Math.max(0, Math.min(o.qty, Math.floor(Number(q) || 0))); const bid = Math.floor(((o.bid ?? 0) * k) / o.qty); const mine = busy === `sell:${o.id}`;
+  const expired = o.hoursLeft <= 0;
+  return <span className="inline-flex items-center gap-1">
+    <input className="w-12 rounded bg-black/30 px-1 py-0.5 text-right" inputMode="numeric" value={q} onChange={(e) => setQ(e.target.value.replace(/\D/g, ''))} aria-label="Contracts to sell" data-testid="stk-opt-sell-qty" disabled={!!busy || expired} />
+    <button type="button" disabled={!!busy || expired || !k || Number(q) > o.qty || bid < 1} title={expired ? 'Expired: settles at the next tick' : bid < 1 ? 'Worth less than 1 chip: hold to expiry' : 'Sell to close at the current model value, less the house edge and 1% fee'} className="rounded bg-rose-600 px-2 py-0.5 font-semibold disabled:opacity-40" onClick={() => onSell(o.id, k)} data-testid="stk-opt-sell" aria-busy={mine}>{mine && <Spin />}Sell · 🪙 {n(bid)}</button>
+  </span>;
+}
+function OptTable({ p, onSell, busy = false }: { p: Port | null; onSell?: (id: string, q: number) => void; busy?: string | false }) {
   if (!p) return null; if (!p.options.length) return <p className="mt-2 text-xs opacity-60">No open options.</p>;
-  return <table className="mt-2 w-full text-[12px] tabular-nums"><thead className="opacity-70"><tr><th className="text-left">Option</th><th className="text-right">Strike · now</th><th className="text-right">Premium</th><th className="text-right">Value now</th><th className="text-right">Expires in</th></tr></thead>
-    <tbody>{p.options.map((o) => <tr key={o.id} className="border-t border-white/5" data-testid="stk-opt-row"><td><b>{o.ticker}</b> {o.kind} ×{o.qty}</td><td className="text-right">{o.strike.toFixed(2)} · {o.price?.toFixed(2)}</td><td className="text-right">{n(o.premium)}</td><td className={`text-right ${tone(o.mark - o.premium)}`}>{n(o.mark)}</td><td className="text-right">{o.hoursLeft}h</td></tr>)}</tbody></table>;
+  return <table className="mt-2 w-full text-[12px] tabular-nums"><thead className="opacity-70"><tr><th className="text-left">Option</th><th className="text-right">Strike · now</th><th className="text-right">Premium</th><th className="text-right">Value now</th><th className="text-right">Expires in</th>{onSell && <th className="text-right">Sell to close</th>}</tr></thead>
+    <tbody>{p.options.map((o) => <tr key={o.id} className="border-t border-white/5" data-testid="stk-opt-row"><td><b>{o.ticker}</b> {o.kind} ×{o.qty}</td><td className="text-right">{o.strike.toFixed(2)} · {o.price?.toFixed(2)}</td><td className="text-right">{n(o.premium)}</td><td className={`text-right ${tone(o.mark - o.premium)}`}>{n(o.mark)}</td><td className="text-right">{o.hoursLeft}h</td>{onSell && <td className="text-right"><OptSell o={o} onSell={onSell} busy={busy} /></td>}</tr>)}</tbody></table>;
 }
 
 interface Port {
   stocks: { holdings: Array<{ ticker: string; name: string; shares: number; cost: number; price: number; value: number; pnl: number; pnlPct: number }>; value: number; cost: number; pnl: number };
   funds: Array<{ fund: string; name: string; kind: string; units: number; nav: number; value: number; cost: number; pnl: number }>;
   shorts: Array<{ id: string; ticker: string; shares: number; entry: number; price: number; collateral: number; equity: number; closeValue?: number; pnl: number; liqPrice: number }>;
-  options: Array<{ id: string; ticker: string; kind: string; strike: number; qty: number; premium: number; price: number | null; mark: number; hoursLeft: number }>;
+  options: Array<{ id: string; ticker: string; kind: string; strike: number; qty: number; premium: number; price: number | null; mark: number; bid?: number; hoursLeft: number }>;
   history: { shorts: Array<{ id: string; ticker: string; shares: number; status: string; payout?: number | null; collateral: number; closedAt?: number | null }>; options: Array<{ id: string; ticker: string; kind: string; strike: number; qty: number; premium: number; status: string; payout?: number | null; settlePrice?: number | null }> };
   totals: { stocks: number; funds: number; shorts: number; options: number; all: number };
 }

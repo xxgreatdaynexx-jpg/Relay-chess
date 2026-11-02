@@ -39,7 +39,7 @@ describe('QA r11: client locks against double-clicks', () => {
   it('StocksPage money handlers take a synchronous lock', () => {
     const s = src('client/src/components/StocksPage.tsx');
     expect(s.match(/useMoneyAction\(\)/g)?.length).toBe(4);
-    expect(s.match(/await run\(/g)?.length).toBe(5);
+    expect(s.match(/await run\(/g)?.length).toBe(6) // + options sell-to-close (request #5);
   });
   it('slots spin and blackjack actions are locked while in flight', () => {
     expect(src('client/src/components/SlotsPanel.tsx')).toMatch(/if \(!machine \|\| spinLock\.current\) return;\s*spinLock\.current = true;/);

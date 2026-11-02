@@ -109,6 +109,10 @@ export function optionValue(kind: 'call' | 'put', S: number, K: number, vol: num
   return Math.max(intrinsic, v);
 }
 export const optionPremium = (c: Company, kind: 'call' | 'put', S: number, K: number, days: number, qty: number) => Math.max(1, Math.ceil(optionValue(kind, S, K, c.vol, days) * (1 + OPT_EDGE) * qty));
+/** Sell-to-close bid: the same model value the buy quote uses, minus the house edge and the 1% trade fee (floor).
+ *  Always below the buy premium for the same contract, so buy-then-sell can never make chips. */
+export const OPT_SELL_FEE = 0.01;
+export const optionBid = (c: Company, kind: 'call' | 'put', S: number, K: number, days: number, qty: number) => Math.max(0, Math.floor(optionValue(kind, S, K, c.vol, days) * (1 - OPT_EDGE) * (1 - OPT_SELL_FEE) * qty));
 export const optionPayout = (kind: 'call' | 'put', S: number, K: number, qty: number) => Math.floor((kind === 'call' ? Math.max(0, S - K) : Math.max(0, K - S)) * qty);
 export const strikeFor = (price: number, off: number) => Math.max(0.01, Math.round(price * (1 + off) * 100) / 100);
 export const daysLeft = (expiry: number, now: number) => Math.max(0, (expiry - now) / DAYMS);
