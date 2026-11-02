@@ -1614,6 +1614,28 @@ html, body { overflow-x: clip; }
 .fac-buf { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .fac-iact { display: flex; gap: 4px; }
 .fac-empty { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+/* Factory look (pt1342u): brushed-steel side panel, card palette, icon tiles */
+.fac-canvas { background: radial-gradient(120% 90% at 50% 40%, #1c1f23, #0d0f11); border: 1px solid rgba(255,255,255,.08); box-shadow: inset 0 0 0 1px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.35); }
+.fac-chip { background: linear-gradient(#3a3f46, #2a2e33); border: 1px solid rgba(255,255,255,.12); box-shadow: inset 0 1px 0 rgba(255,255,255,.12); }
+.fac-btn { background: linear-gradient(#8a6b1c, #5e4812); border: 1px solid rgba(255,214,102,.35); box-shadow: inset 0 1px 0 rgba(255,240,190,.25), 0 1px 2px rgba(0,0,0,.4); }
+.fac-btn:hover { filter: brightness(1.12); }
+.fac-side { background: linear-gradient(180deg, rgba(40,44,50,.55), rgba(22,24,28,.55)); border: 1px solid rgba(255,255,255,.07); border-radius: 10px; padding: 6px; }
+.fac-tabs { background: rgba(0,0,0,.3); padding: 3px; border-radius: 8px; }
+.fac-tabs button { border-radius: 6px; background: transparent; font-weight: 600; transition: background .15s; }
+.fac-tabs button:hover { background: rgba(255,255,255,.08); }
+.fac-tabs button.on, .fac-tools button.on, .fac-buyn button.on { background: linear-gradient(#e2b93a, #b38c1c); color: #141210; box-shadow: inset 0 1px 0 rgba(255,250,210,.5); }
+.fac-palette button { background: linear-gradient(#30353b, #24282d); border: 1px solid rgba(255,255,255,.07); border-radius: 8px; padding: 5px 6px; transition: transform .08s, border-color .15s; }
+.fac-palette button:hover:not(:disabled) { border-color: rgba(231,180,22,.55); transform: translateY(-1px); }
+.fac-palette button.on { background: linear-gradient(#4a3f1c, #2f2812); border-color: #e2b93a; color: #ffe9a8; }
+.fac-ic { display: inline-grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: 6px; font-size: 14px; background: linear-gradient(145deg, #4a5058, #2a2e33); box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 1px 2px rgba(0,0,0,.5); }
+.fac-shoprow { padding: 5px 4px; border-radius: 7px; border-bottom: 1px solid rgba(255,255,255,.05); }
+.fac-shoprow:hover { background: rgba(255,255,255,.04); }
+.fac-shoprow button { background: linear-gradient(#3b4148, #2a2e33); border: 1px solid rgba(255,255,255,.1); }
+.fac-inspect { background: linear-gradient(180deg, rgba(60,52,24,.6), rgba(30,28,20,.6)); border: 1px solid rgba(226,185,58,.45); box-shadow: 0 4px 14px rgba(0,0,0,.35); position: relative; padding-top: 10px; }
+.fac-inspect::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 4px; border-radius: 8px 8px 0 0; background: repeating-linear-gradient(-45deg, #e7b416 0 6px, #1a1a1a 6px 12px); }
+.fac-zoom button { background: linear-gradient(#353a41, #1f2226); box-shadow: 0 2px 6px rgba(0,0,0,.4); }
+.fac-rec { border-radius: 6px; padding: 3px 4px; } .fac-rec:hover { background: rgba(255,255,255,.04); cursor: pointer; }
+.fac-hint { backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,.12); }
 @media (max-width: 720px) { .fac-main { flex-direction: column; } .fac-side { width: auto; max-height: 34vh; } .fac-canvas { min-height: 52vh; } }
 
 /* ---- World map home */

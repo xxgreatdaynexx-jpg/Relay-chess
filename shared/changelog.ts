@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T12:40:00-06:00', title: 'Factory gets a makeover', bullets: [
+    'The factory floor is now concrete tiles with a painted walkway, steel walls with copper pipes, vents, steam and hazard stripes, and warm work lights.',
+    'Belts are rubber with moving cleats and steel rollers; machines have painted housings, bolts, vents, shadows, a glowing status lamp, and their own touches (smelter glow and smoke, sparks on the press). Items cast soft shadows.',
+    'The Factory panels are cleaner, with icon tiles on the build palette and a striped inspect panel. The Factory building in the city is rebuilt with a steel shed, sawtooth roof, loading bay, brick chimney and pipes.',
+    'Layout, recipes, rates and how everything works are unchanged. Phones and slower devices get a lighter version without the blur shadows, sparks and light pools.',
+  ] },
   { commit: '', at: '2026-11-02T02:30:00-06:00', title: 'Nicer skins, characters and fishing anglers', bullets: [
     'Every weapon and pickaxe skin renders smoother: sharper, filtered patterns, softer shading and a subtle rim light in the skin\'s own accent colour. Names, colours, patterns, rarity, prices and ownership are unchanged.',
     'Arena soldiers get bevelled armour, a plate carrier, shoulder and knee pads, boots, a glowing visor and a soft rim light, in your same team colour. Mine workers get rounded gear, a face and a brass belt buckle.',

@@ -229,9 +229,23 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
         for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + Math.PI / 4; g.add(box(0.5, 9, 0.5, dark, Math.cos(a) * 6.6, 0, Math.sin(a) * 6.6), box(1.4, 0.6, 1.4, mat({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 2 * NEON }), Math.cos(a) * 6.6, 9, Math.sin(a) * 6.6)); }
         height = 11; break; }
       case 'factory': {
-        g.add(box(10, 5, 7, win(31)));
-        for (let i = 0; i < 3; i++) g.add(box(3.3, 1.6, 7, dark, -3.3 + i * 3.3, 5, 0));
-        g.add(cyl(0.9, 1.1, 10, mat({ color: 0x7a3b2e }), 3.5, 0, -2, 10), box(2, 0.5, 2, neon, 3.5, 10, -2)); height = 12; break; }
+        // Factory (pt1342u): concrete plinth, painted-steel shed with sawtooth roof, brick chimney, pipe runs, vents, hazard-striped loading bay.
+        const concrete = mat({ color: 0x8d8a84, roughness: 0.95 }), steelM = mat({ color: 0x5f6f7e, roughness: 0.45, metalness: 0.55 }), trim = mat({ color: 0xd9a21b, roughness: 0.5, metalness: 0.2 });
+        const pipeM = mat({ color: 0xb87333, roughness: 0.35, metalness: 0.8 }), brick = mat({ color: 0x7a3b2e, roughness: 0.9 }), black = mat({ color: 0x1c1d20, roughness: 0.8 });
+        g.add(box(10.6, 0.4, 7.6, concrete), box(10, 4.6, 7, steelM, 0, 0.4), box(9.4, 1.6, 0.12, win(31), 0, 2.4, 3.52));
+        for (let i = 0; i < 6; i++) g.add(box(0.12, 4.6, 0.12, mat({ color: 0x3b4650, metalness: 0.6, roughness: 0.4 }), -4.9 + i * 1.96, 0.4, 3.54));
+        for (let i = 0; i < 3; i++) { const t = new THREE.Mesh(geo(new THREE.CylinderGeometry(0.01, 1.9, 3.3, 3, 1)), dark); t.rotation.z = Math.PI / 2; t.rotation.y = Math.PI / 2; t.scale.set(1, 1, 0.75); t.position.set(-3.3 + i * 3.3, 5.6, 0); g.add(t); g.add(box(3.1, 0.9, 0.1, win(33 + i), -3.3 + i * 3.3, 5, 1.55)); }
+        // loading bay: roll-up door, hazard posts, lamp
+        g.add(box(3.2, 2.6, 0.15, mat({ color: 0x9aa3ab, metalness: 0.5, roughness: 0.5 }), -2.6, 0.4, 3.56), box(3.6, 0.25, 0.3, trim, -2.6, 3.0, 3.6));
+        for (const x of [-4.6, -0.6]) for (let k = 0; k < 4; k++) g.add(box(0.3, 0.3, 0.3, k % 2 ? black : trim, x, 0.4 + k * 0.3, 4.0));
+        g.add(box(0.6, 0.2, 0.4, mat({ color: 0xfff2c0, emissive: 0xffd27a, emissiveIntensity: 1.5 * NEON }), -2.6, 3.3, 3.75));
+        // chimney with bands + neon cap, rooftop vents, pipe run with elbows
+        g.add(cyl(0.9, 1.1, 10, brick, 3.5, 0, -2, 12), cyl(1.15, 1.15, 0.3, black, 3.5, 6, -2, 12), cyl(1.15, 1.15, 0.3, black, 3.5, 8.4, -2, 12), box(2, 0.5, 2, neon, 3.5, 10, -2));
+        for (const x of [-4, -1]) g.add(cyl(0.45, 0.45, 0.8, mat({ color: 0xaab2ba, metalness: 0.7, roughness: 0.3 }), x, 6.4, -2.2, 10), cyl(0.6, 0.6, 0.12, black, x, 7.2, -2.2, 10));
+        g.add(cyl(0.22, 0.22, 4.4, pipeM, 5.2, 0.4, 1.5, 8), cyl(0.22, 0.22, 4.4, pipeM, 5.2, 0.4, -0.5, 8));
+        const hp = new THREE.Mesh(geo(new THREE.CylinderGeometry(0.22, 0.22, 2.6, 8)), pipeM); hp.rotation.x = Math.PI / 2; hp.position.set(5.2, 4.8, 0.5); g.add(hp);
+        g.add(box(0.5, 0.5, 0.5, mat({ color: 0x9a5a2a, metalness: 0.7, roughness: 0.35 }), 5.2, 0.4, 1.5), box(1.2, 1.4, 1.2, mat({ color: 0x4a7a5a, metalness: 0.4, roughness: 0.5 }), 5.6, 0.4, -2.4));
+        g.add(box(10.2, 0.2, 0.25, trim, 0, 4.85, 3.55)); height = 12; break; }
       case 'warehouse': {
         g.add(box(11, 5, 8, mat({ color: 0x5b6b7a })));
         const roof = new THREE.Mesh(geo(new THREE.CylinderGeometry(4, 4, 11, 12, 1, false, 0, Math.PI)), mat({ color: 0x8395a6 })); roof.rotation.z = Math.PI / 2; roof.rotation.y = Math.PI / 2; roof.position.y = 5; g.add(roof);
