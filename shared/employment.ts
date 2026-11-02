@@ -7,6 +7,7 @@
  * fish → cooler), so it sells through the usual daily sell tiers (no cap bypass) and gives the owner no skill XP.
  *   wage  = 45% of a full day's expected output
  *   hire  = 35% of a full day's expected output  (≈ 5%/day over 7 days)
+ * pt1378u: every worker now picks every 5 min (miners 2x, fishers 12x); wage/hire are still priced off the old rates below.
  * Miners: 1 ore / 10 min, biased toward the mine's signature ores (MINER_BIAS), no key/chest drops.
  * Fishers: 1 fish / hour from the normal catch table minus junk (a fish is ~11x an ore: at 1 / 10 min a fisher would
  * bring in 3x the fish dock's old daily sell cap, so after the sell tiers it could never pay for itself).
@@ -70,20 +71,24 @@ export const WORKER_EV_BEFORE: Record<MinerCave, number> = { mine: 7.297, frost:
 /** Per-ore value of the cave's current node mix. */
 export const unbiasedItemEv = (c: MinerCave) => CAVES[c].nodes.reduce((a, n) => a + ORES[n.ore].price, 0) / CAVES[c].nodes.length;
 export const minerItemEv = (c: MinerCave) => evOf(minerTable(c));
-export interface JobDef { id: string; kind: WorkerKind; cave?: MinerCave; label: string; emoji: string; everyMs: number; itemEv: number; blurb: string; /** miners: 'Mostly …' gather bias */ bias?: string }
+export interface JobDef { id: string; kind: WorkerKind; cave?: MinerCave; label: string; emoji: string; everyMs: number; /** pt1378u: wage/hire stay priced off the old interval, so the 5-min buff is pure extra output */ priceEveryMs: number; itemEv: number; blurb: string; /** miners: 'Mostly …' gather bias */ bias?: string }
+/** pt1378u: every worker brings in one pick every 5 minutes (288/day). */
+export const WORKER_EVERY_MS = 5 * MIN;
 const r5 = (n: number) => Math.max(5, Math.round(n / 5) * 5);
 export const JOBS: JobDef[] = [
-  ...MINER_CAVES.map((c): JobDef => ({ id: `miner:${c}`, kind: 'miner', cave: c, label: `Miner · ${CAVES[c].name}`, emoji: '⛏️', everyMs: 10 * MIN, itemEv: minerItemEv(c), blurb: `1 ore every 10 min from ${CAVES[c].name}. ${MINER_BIAS[c].label}. No keys or chests.`, bias: MINER_BIAS[c].label })),
-  { id: 'fisher', kind: 'fisher', label: 'Fisher · Lake Dock', emoji: '🎣', everyMs: 60 * MIN, itemEv: FISHER_ITEM_EV, blurb: '1 fish every hour from the normal catch table (no junk). Goes in your cooler.' },
+  ...MINER_CAVES.map((c): JobDef => ({ id: `miner:${c}`, kind: 'miner', cave: c, label: `Miner · ${CAVES[c].name}`, emoji: '⛏️', everyMs: WORKER_EVERY_MS, priceEveryMs: 10 * MIN, itemEv: minerItemEv(c), blurb: `1 ore every 5 min from ${CAVES[c].name}. ${MINER_BIAS[c].label}. No keys or chests.`, bias: MINER_BIAS[c].label })),
+  { id: 'fisher', kind: 'fisher', label: 'Fisher · Lake Dock', emoji: '🎣', everyMs: WORKER_EVERY_MS, priceEveryMs: 60 * MIN, itemEv: FISHER_ITEM_EV, blurb: '1 fish every 5 min from the normal catch table (no junk). Goes in your cooler.' },
 ];
 export const jobById = (id: unknown) => JOBS.find((j) => j.id === id);
 /** Items on a full day, expected base value of a full day, and the BASE prices derived from it. */
 export const itemsPerDay = (j: JobDef) => DAY / j.everyMs;
 export const dayValue = (j: JobDef) => itemsPerDay(j) * j.itemEv;
-export const baseWage = (j: JobDef) => r5(dayValue(j) * WAGE_SHARE);
-export const baseHire = (j: JobDef) => r5(dayValue(j) * HIRE_SHARE);
+/** Old-rate day value that wages and hire fees are anchored to (unchanged by the pt1378u speed buff). */
+export const priceDayValue = (j: JobDef) => DAY / j.priceEveryMs * j.itemEv;
+export const baseWage = (j: JobDef) => r5(priceDayValue(j) * WAGE_SHARE);
+export const baseHire = (j: JobDef) => r5(priceDayValue(j) * HIRE_SHARE);
 /** Cost / expected output over the first `days` days (hire fee + wages). ≈ 0.5 over a week. */
-export const costShare = (j: JobDef, days = AMORTISE_DAYS) => (baseHire(j) + baseWage(j) * days) / (dayValue(j) * days);
+export const costShare = (j: JobDef, days = AMORTISE_DAYS) => (baseHire(j) + baseWage(j) * days) / (priceDayValue(j) * days);
 
 /** Uniform [0,1) source (crypto on the server, seeded in tests). */
 export type Unit = () => number;
