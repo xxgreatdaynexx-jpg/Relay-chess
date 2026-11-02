@@ -25,17 +25,21 @@ import { ORES, MAX_BANKED_STACK, stackKey, type OreId } from '../shared/mines.js
 import { COOLER_MAX } from '../shared/fishing.js';
 import {
   JOBS, jobById, baseHire, baseWage, itemsPerDay, dayValue, rollOre, rollWorkerFish, boxCount,
-  DAY, MAX_WORKERS, OFFLINE_CAP_MS, MIN_ACCOUNT_AGE_MS, type JobDef, type Unit, type WorkerBox, type WorkerStatus, type WorkerView, type EmployView,
+  DAY, MAX_WORKERS, OFFLINE_CAP_MS, MIN_ACCOUNT_AGE_MS, type JobDef, type EmployLogItem, type Unit, type WorkerBox, type WorkerStatus, type WorkerView, type EmployView,
 } from '../shared/employment.js';
 
 export const EMPLOY_MIGRATION = `
 CREATE TABLE IF NOT EXISTS employ_workers (id TEXT PRIMARY KEY, owner_key TEXT NOT NULL, owner_name TEXT NOT NULL, job TEXT NOT NULL, hired_at BIGINT NOT NULL, last_at BIGINT NOT NULL, seen_at BIGINT NOT NULL, paid_until BIGINT NOT NULL, status TEXT NOT NULL, box TEXT NOT NULL DEFAULT '{}');
 CREATE INDEX IF NOT EXISTS employ_workers_owner ON employ_workers (owner_key);
+CREATE TABLE IF NOT EXISTS employ_log (owner_key TEXT NOT NULL, item_type TEXT NOT NULL, item_id TEXT NOT NULL, qty INTEGER NOT NULL, at BIGINT NOT NULL);
+CREATE INDEX IF NOT EXISTS employ_log_owner ON employ_log (owner_key, at);
 `;
 export class EmployError extends Error {}
+const HOUR_MS = 3_600_000;
+interface LogRow { type: 'ore' | 'fish'; id: string; qty: number; at: number }
 type Q = { query: (sql: string, args?: unknown[]) => Promise<{ rows: any[]; rowCount?: number | null }> };
 /** Where a miner's ores land (banked mine storage), inside the caller's transaction. */
-export interface OreSink { write(cl: Q, items: Array<[OreId, number]>): Promise<void>; after(items: Array<[OreId, number]>): void }
+export interface OreSink { write(cl: Q, items: Array<[OreId, number]>): Promise<void>; after(items: Array<[OreId, number]>): void; /** Free space for this ore (default: unlimited). */ room?(id: OreId): number }
 interface Row { id: string; owner_key: string; owner_name: string; job: string; hired_at: string | number; last_at: string | number; seen_at: string | number; paid_until: string | number; status: string; box: string }
 interface W { id: string; job: JobDef; hiredAt: number; lastAt: number; seenAt: number; paidUntil: number; status: WorkerStatus; box: WorkerBox }
 const parse = (r: Row): W | null => {
@@ -52,6 +56,7 @@ export function mineOreSink(account: string): OreSink {
   try { getFactory().get(account, Date.now()); } catch { /* settle the factory sim if it has one */ }
   const pack = m.packOf(account);
   return {
+    room: (id) => Math.max(0, MAX_BANKED_STACK - (pack.get(stackKey({ type: 'ore', id }))?.qty ?? 0)),
     async write(cl, items) {
       for (const [id, n] of items) if ((pack.get(stackKey({ type: 'ore', id }))?.qty ?? 0) + n > MAX_BANKED_STACK) throw new EmployError('Your mine storage is full for that ore.');
       for (const [id, n] of items) await cl.query('INSERT INTO mine_items (player_key, owner_name, item_type, item_id, qty) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (player_key, item_type, item_id) DO UPDATE SET qty = mine_items.qty + EXCLUDED.qty, updated_at = now()', [playerKey(account), account.trim(), 'ore', id, n]);
@@ -95,19 +100,39 @@ export class Employment {
   private save(cl: Q, w: W) {
     return cl.query('UPDATE employ_workers SET last_at = $2, seen_at = $3, paid_until = $4, status = $5, box = $6 WHERE id = $1', [w.id, w.lastAt, w.seenAt, w.paidUntil, w.status, JSON.stringify(w.box)]);
   }
-  private produce(w: W, until: number) {
+  /** Pick-up log rows waiting to be written (owner key → rows), filled by produce(). */
+  private pendingLog = new Map<string, LogRow[]>();
+  private produce(w: W, until: number, key?: string) {
     const every = w.job.everyMs; if (until <= w.lastAt) return; const n = Math.floor((until - w.lastAt) / every); if (n <= 0) return;
+    const log = key ? (this.pendingLog.get(key) ?? []) : null; if (log && key) this.pendingLog.set(key, log);
     for (let i = 0; i < n; i++) {
-      if (w.job.kind === 'miner') { const o = rollOre(w.job.cave!, this.unit); (w.box.ores ??= {})[o] = (w.box.ores[o] ?? 0) + 1; }
-      else { const f = rollWorkerFish(this.unit); (w.box.fish ??= []).push({ species: f.fish.id, grams: f.grams, value: f.value }); }
+      const at = w.lastAt + (i + 1) * every; let type: 'ore' | 'fish', id: string;
+      if (w.job.kind === 'miner') { const o = rollOre(w.job.cave!, this.unit); (w.box.ores ??= {})[o] = (w.box.ores[o] ?? 0) + 1; type = 'ore'; id = o; }
+      else { const f = rollWorkerFish(this.unit); (w.box.fish ??= []).push({ species: f.fish.id, grams: f.grams, value: f.value }); type = 'fish'; id = f.fish.id; }
+      if (log) { const b = Math.floor(at / HOUR_MS); const last = log.find((r) => r.type === type && r.id === id && Math.floor(r.at / HOUR_MS) === b); if (last) { last.qty++; last.at = at; } else log.push({ type, id, qty: 1, at }); }
     }
     w.lastAt += n * every;
+  }
+  private async flushLog(key: string) {
+    const rows = this.pendingLog.get(key); this.pendingLog.delete(key); if (!rows?.length) return;
+    try { for (const r of rows) await this.pool.query('INSERT INTO employ_log (owner_key, item_type, item_id, qty, at) VALUES ($1,$2,$3,$4,$5)', [key, r.type, r.id, r.qty, r.at]); }
+    catch (e) { console.error('[employ] log write failed:', (e as Error).message); }
+  }
+  /** What the workers picked up in the last 24 h, totalled per item (newest pick-up time per item). */
+  async log(key: string, now = this.clock()): Promise<EmployLogItem[]> {
+    const r = await this.pool.query('SELECT item_type, item_id, qty, at FROM employ_log WHERE owner_key = $1 AND at > $2', [key, now - DAY]);
+    const m = new Map<string, EmployLogItem>();
+    for (const x of r.rows as Array<{ item_type: string; item_id: string; qty: number | string; at: number | string }>) {
+      const k = `${x.item_type}:${x.item_id}`; const e = m.get(k) ?? { type: x.item_type as 'ore' | 'fish', id: x.item_id, qty: 0, lastAt: 0 };
+      e.qty += Number(x.qty); e.lastAt = Math.max(e.lastAt, Number(x.at)); m.set(k, e);
+    }
+    return [...m.values()].sort((a, b) => b.qty - a.qty || b.lastAt - a.lastAt);
   }
   /** Bring one worker up to `now`: produce, then charge each new day's wage (or stop). */
   private async settle(name: string, w: W, now: number) {
     for (let guard = 0; guard < 4; guard++) {
       if (w.status !== 'working') return;
-      this.produce(w, Math.min(now, w.paidUntil, w.seenAt + OFFLINE_CAP_MS));
+      this.produce(w, Math.min(now, w.paidUntil, w.seenAt + OFFLINE_CAP_MS), playerKey(name));
       if (now < w.paidUntil) { await this.save(this.pool, w); return; }
       if (w.seenAt + OFFLINE_CAP_MS <= w.paidUntil) { w.status = 'idle'; await this.save(this.pool, w); return; }
       const next = { ...w, paidUntil: w.paidUntil + DAY };
@@ -135,8 +160,12 @@ export class Employment {
     const key = playerKey(name);
     return this.lock(key, async () => {
       const ws = await this.rows(key); for (const w of ws) await this.settle(name, w, now);
+      // Opening the office is a check-in: working workers keep going for another 8 h (same rule the old Collect had).
+      for (const w of ws) if (w.status === 'working' && w.seenAt !== now) { if (now > w.seenAt + OFFLINE_CAP_MS) w.lastAt = now; w.seenAt = now; await this.save(this.pool, w); }
+      let notes: string[] = []; try { notes = (await this.deliver(name, key, ws, now)).notes; } catch (e) { notes = [e instanceof EmployError ? e.message : 'Storage is offline — your workers are holding their haul until it is back.']; }
+      await this.flushLog(key);
       const reason = await this.canHire(key, ws.length);
-      return { workers: ws.map((w) => this.toView(w)), jobs, now, canHire: !reason, reason, max: MAX_WORKERS };
+      return { workers: ws.map((w) => this.toView(w)), jobs, now, canHire: !reason, reason, max: MAX_WORKERS, log: await this.log(key, now), notes };
     });
   }
   async hire(name: string, jobId: unknown) {
@@ -162,20 +191,44 @@ export class Employment {
       if (id !== undefined && !ws.length) throw new EmployError('No such worker.');
       let ores = 0, fish = 0, charged = 0; const notes: string[] = [];
       for (const w of ws) await this.settle(name, w, now);
+      const d = await this.deliver(name, key, ws, now); ores = d.ores; fish = d.fish; notes.push(...d.notes);
+      for (const w of ws) {
+        if (w.status === 'working') { if (now > w.seenAt + OFFLINE_CAP_MS) w.lastAt = now; w.seenAt = now; await this.save(this.pool, w); continue; }
+        // Stopped (idle / unpaid): start a fresh paid day now.
+        const next: W = { ...w, status: 'working', lastAt: now, seenAt: now, paidUntil: now + DAY };
+        try { await this.tx((cl) => this.save(cl, next).then(() => {}), { name, amount: -this.wagePrice(w.job), game: 'employ_wage', memo: `${w.job.label} daily wage` }); Object.assign(w, next); charged += this.wagePrice(w.job); }
+        catch (e) { if (!(e instanceof EmployError) || e.message !== 'Not enough chips.') throw e; w.seenAt = now; await this.save(this.pool, w); notes.push(`Not enough chips to pay ${w.job.label}'s wage — they stay off until you can.`); }
+      }
+      await this.flushLog(key);
+      return { ores, fish, charged, notes };
+    });
+  }
+  /** Auto-deposit: move every worker's haul into storage (ores → banked mine/factory storage, fish → cooler) as far
+   * as it fits. Anything that doesn't fit stays in the worker's box and goes in on a later pass. Caller holds the lock. */
+  private async deliver(name: string, key: string, ws: W[], now: number) {
+    let ores = 0, fish = 0; const notes: string[] = [];
       // Ores → mine storage (one transaction for all miners).
       const oreItems = new Map<OreId, number>();
       for (const w of ws) for (const [o, q] of Object.entries(w.box.ores ?? {})) if (q) oreItems.set(o as OreId, (oreItems.get(o as OreId) ?? 0) + q);
       if (oreItems.size) {
-        const items = [...oreItems]; const sink = this.sink(name);
-        const after = ws.map((w) => ({ ...w, box: { ...w.box, ores: {} } }));
-        await this.tx(async (cl) => { await sink.write(cl, items); for (const a of after) await this.save(cl, a); });
-        sink.after(items); for (const w of ws) w.box.ores = {}; ores = items.reduce((a, [, q]) => a + q, 0);
+        const sink = this.sink(name);
+        // Only what fits: the rest stays with the miner and goes in on a later pass (never lost).
+        const fit = new Map<OreId, number>(); for (const [o, q] of oreItems) { const n = Math.min(q, Math.max(0, Math.floor(sink.room?.(o) ?? Infinity))); if (n > 0) fit.set(o, n); }
+        const items = [...fit];
+        if (items.length) {
+          const left = new Map(fit);
+          const after = ws.map((w) => { const box = { ...w.box, ores: { ...(w.box.ores ?? {}) } }; for (const [o, q] of Object.entries(box.ores)) { const take = Math.min(q ?? 0, left.get(o as OreId) ?? 0); if (take) { left.set(o as OreId, (left.get(o as OreId) ?? 0) - take); const rest = (q ?? 0) - take; if (rest > 0) box.ores[o as OreId] = rest; else delete box.ores[o as OreId]; } } return { ...w, box }; });
+          await this.tx(async (cl) => { await sink.write(cl, items); for (const a of after) await this.save(cl, a); });
+          sink.after(items); ws.forEach((w, i) => { w.box.ores = after[i]!.box.ores; }); ores = items.reduce((a, [, q]) => a + q, 0);
+        }
+        if (ws.some((w) => Object.values(w.box.ores ?? {}).some((q) => q))) notes.push('Your storage is full for some ores — your miners are holding the rest until there is room.');
       }
       // Fish → cooler, as far as it has room (the rest waits in the box).
       if (ws.some((w) => w.box.fish?.length)) {
         await this.tx(async (cl) => {
           let free = COOLER_MAX - Number((await cl.query('SELECT count(*) AS n FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL', [key])).rows[0]?.n ?? 0);
           for (const w of ws) {
+            if (!w.box.fish?.length) continue;
             const keep: NonNullable<WorkerBox['fish']> = [];
             for (const f of w.box.fish ?? []) {
               if (free <= 0) { keep.push(f); continue; }
@@ -187,15 +240,17 @@ export class Employment {
         });
         if (ws.some((w) => w.box.fish?.length)) notes.push('Your cooler is full — the rest of the fish are waiting with your fisher.');
       }
-      for (const w of ws) {
-        if (w.status === 'working') { if (now > w.seenAt + OFFLINE_CAP_MS) w.lastAt = now; w.seenAt = now; await this.save(this.pool, w); continue; }
-        // Stopped (idle / unpaid): start a fresh paid day now.
-        const next: W = { ...w, status: 'working', lastAt: now, seenAt: now, paidUntil: now + DAY };
-        try { await this.tx((cl) => this.save(cl, next).then(() => {}), { name, amount: -this.wagePrice(w.job), game: 'employ_wage', memo: `${w.job.label} daily wage` }); Object.assign(w, next); charged += this.wagePrice(w.job); }
-        catch (e) { if (!(e instanceof EmployError) || e.message !== 'Not enough chips.') throw e; w.seenAt = now; await this.save(this.pool, w); notes.push(`Not enough chips to pay ${w.job.label}'s wage — they stay off until you can.`); }
-      }
-      return { ores, fish, charged, notes };
-    });
+    return { ores, fish, notes };
+  }
+  /** Background pass (every few minutes + once at boot): settle and auto-deposit for every employer. No check-in. */
+  async sweep() {
+    const r = await this.pool.query('SELECT DISTINCT owner_name, owner_key FROM employ_workers');
+    for (const o of r.rows as Array<{ owner_name: string; owner_key: string }>) {
+      try {
+        await this.lock(o.owner_key, async () => { const now = this.clock(); const ws = await this.rows(o.owner_key); for (const w of ws) await this.settle(o.owner_name, w, now); await this.deliver(o.owner_name, o.owner_key, ws, now); await this.flushLog(o.owner_key); });
+      } catch (e) { if (!(e instanceof EmployError)) console.error('[employ] sweep', o.owner_key, (e as Error).message); }
+    }
+    await this.pool.query('DELETE FROM employ_log WHERE at < $1', [this.clock() - 2 * DAY]).catch(() => {});
   }
   /** Fire: collects what it can first; no refund of fees or wages. */
   async fire(name: string, id: unknown) {
@@ -208,10 +263,12 @@ export class Employment {
   private async collect0(name: string, key: string, id: string) {
     return this.lock(key, async () => {
       const now = this.clock(); const w = (await this.rows(key)).find((x) => x.id === id); if (!w) return { ores: 0, fish: 0 };
-      if (w.status === 'working') this.produce(w, Math.min(now, w.paidUntil, w.seenAt + OFFLINE_CAP_MS));
+      if (w.status === 'working') this.produce(w, Math.min(now, w.paidUntil, w.seenAt + OFFLINE_CAP_MS), key);
+      await this.flushLog(key);
       let ores = 0, fish = 0;
-      const items = Object.entries(w.box.ores ?? {}).filter(([, q]) => q) as Array<[OreId, number]>;
-      if (items.length) { const sink = this.sink(name); await this.tx(async (cl) => { await sink.write(cl, items); await this.save(cl, { ...w, box: { ...w.box, ores: {} } }); }); sink.after(items); w.box.ores = {}; ores = items.reduce((a, [, q]) => a + q, 0); }
+      const sink = this.sink(name);
+      const items = (Object.entries(w.box.ores ?? {}).filter(([, q]) => q) as Array<[OreId, number]>).map(([o, q]): [OreId, number] => [o, Math.min(q, Math.max(0, Math.floor(sink.room?.(o) ?? Infinity)))]).filter(([, q]) => q > 0);
+      if (items.length) { await this.tx(async (cl) => { await sink.write(cl, items); await this.save(cl, { ...w, box: { ...w.box, ores: {} } }); }); sink.after(items); w.box.ores = {}; ores = items.reduce((a, [, q]) => a + q, 0); }
       if (w.box.fish?.length) await this.tx(async (cl) => {
         let free = COOLER_MAX - Number((await cl.query('SELECT count(*) AS n FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL', [key])).rows[0]?.n ?? 0);
         for (const f of w.box.fish ?? []) { if (free-- <= 0) break; await cl.query('INSERT INTO fish_catches (id, player_key, name, species, weight_g, value, caught_at, hired) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [randomUUID(), key, name.trim(), f.species, f.grams, f.value, now, true]); fish++; }
@@ -224,12 +281,20 @@ export { boxCount };
 
 let emp: Employment | null = null;
 export const getEmployment = () => emp;
+const SWEEP_MS = 5 * 60_000;
+let sweepTimer: ReturnType<typeof setInterval> | null = null;
+/** Auto-deposit loop. The first pass (30 s after boot) also deposits any haul left over from the old Collect button. */
+function startEmploySweep(e: Employment) {
+  if (sweepTimer) clearInterval(sweepTimer);
+  const run = () => { void e.sweep().catch((x) => console.error('[employ] sweep failed:', (x as Error).message)); };
+  setTimeout(run, 30_000).unref?.(); sweepTimer = setInterval(run, SWEEP_MS); sweepTimer.unref?.();
+}
 export const setEmploymentForTest = (e: Employment | null) => { emp = e; };
 export async function initEmployment(): Promise<void> {
   const url = databaseUrl(); if (!url) { setBootState('employ', 'memory'); return; }
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
   pool.on('error', (e) => console.error('[employ] pool error:', e.message));
-  await bootAttach('employ', async () => { try { const e = new Employment(pool); await e.init(); emp = e; console.log('[employ] ready'); return true; } catch (e) { console.error('[employ] init failed:', (e as Error).message); return false; } });
+  await bootAttach('employ', async () => { try { const e = new Employment(pool); await e.init(); emp = e; console.log('[employ] ready'); startEmploySweep(e); return true; } catch (e) { console.error('[employ] init failed:', (e as Error).message); return false; } });
 }
 /** Public read: today's prices. */
 export function employmentRouter() {

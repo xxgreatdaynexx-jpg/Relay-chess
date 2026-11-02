@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T02:15:00-06:00', title: 'Employment Office: workers deposit automatically', bullets: [
+    'Hired miners now drop their ore straight into your factory storage and fishers put their catch in your cooler. There is no Collect button any more.',
+    'The office lists what each crew picked up in the last 24 hours (amount and last pick-up time) with a total. If your storage or cooler is full, workers hold the overflow and deposit it once there is room, so nothing is lost.',
+    'Anything workers were already holding gets deposited automatically. Opening the office still counts as your check-in, so the 8-hour away limit still applies. Pay, gather rates and prices are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T02:00:00-06:00', title: 'Farm: ripe crops last 12 hours before withering', bullets: [
     'Requested by carter2: ripe crops now wait at least 12 hours before they wither, instead of twice their grow time (which was only 4 minutes for strawberries and 1 hour for corn). Crops that take longer, like sunflowers, keep their longer window, and the Greenhouse still extends those.',
     'Crops already in the ground get the new window too. Ripe tiles now show a small "withers in" countdown (e.g. 11h). Grow times, yields and the daily farm limit are unchanged.',

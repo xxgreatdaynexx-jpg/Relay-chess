@@ -2032,3 +2032,5 @@ html.xmas .top-tabs::after { content: ''; position: absolute; left: 0; right: 0;
 html.xmas .top-menu-btn::before { content: '🎄 '; }
 @keyframes xmas-twinkle { 50% { filter: brightness(0.55); } }
 @media (prefers-reduced-motion: reduce) { html.xmas .top-tabs::after { animation: none; } }
+
+.employ-log table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 4px 0; } .employ-log th, .employ-log td { text-align: left; padding: 2px 4px; border-bottom: 1px solid #ffffff1a; } .employ-log td:nth-child(2), .employ-log th:nth-child(2) { text-align: right; } .employ-log tfoot td { font-weight: 700; border-bottom: 0; }

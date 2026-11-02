@@ -70,21 +70,41 @@ describe('employment office', () => {
     await expect(s.e.hire('Poor', 'miner:mine')).rejects.toThrow(/Not enough chips/);
     expect((await s.e.view('Poor')).workers).toHaveLength(0);
   });
-  it('1 ore / 10 min, lazily from timestamps; collect moves it to storage; nothing accrues 8 h after the last visit', async () => {
+  it('1 ore / 10 min, auto-deposited (no collect); the log lists the last 24 h; nothing accrues 8 h after the last visit', async () => {
     const s = await setup(); await s.addPlayer('Gus'); await s.fund('Gus', 100_000);
     await s.e.hire('Gus', 'miner:mine');
+    const total = () => [...s.stored.values()].reduce((a, b) => a + b, 0);
     s.setNow(T0 + 65 * MIN); let v = await s.e.view('Gus');
-    expect(Object.values(v.workers[0]!.box.ores ?? {}).reduce((a, n) => a + (n ?? 0), 0)).toBe(6);
-    const c = await s.e.collect('Gus'); expect(c.ores).toBe(6); expect([...s.stored.values()].reduce((a, b) => a + b, 0)).toBe(6);
-    // away 20 h: only 8 h since the visit count (48 ores) and the next day is idle, not charged
-    s.setNow(T0 + 65 * MIN + 20 * HOUR); v = await s.e.view('Gus');
-    expect(Object.values(v.workers[0]!.box.ores ?? {}).reduce((a, n) => a + (n ?? 0), 0)).toBe(48);
-    s.setNow(T0 + 30 * HOUR); v = await s.e.view('Gus');
+    expect(total()).toBe(6); expect(Object.keys(v.workers[0]!.box.ores ?? {})).toHaveLength(0);
+    expect(v.log!.reduce((a, x) => a + x.qty, 0)).toBe(6); expect(v.log!.every((x) => x.type === 'ore' && x.lastAt <= T0 + 65 * MIN)).toBe(true);
+    // away 20 h: the background sweep keeps depositing, but only 8 h past the visit count (48 more)
+    s.setNow(T0 + 65 * MIN + 20 * HOUR); await s.e.sweep(); expect(total()).toBe(54);
+    s.setNow(T0 + 30 * HOUR); await s.e.sweep(); v = await s.e.view('Gus');
     expect(v.workers[0]!.status).toBe('idle'); expect(s.ledger('gus', 'employ_wage')).toEqual([]);
-    // collecting brings them back for a new paid day
+    // the 24 h log only counts what was picked up after T0+6h
+    expect(v.log!.reduce((a, x) => a + x.qty, 0)).toBe(18); // items at T0+6h10m … T0+9h05m
+    // re-hire brings them back for a new paid day
     const before = s.chips('gus'); const c2 = await s.e.collect('Gus');
-    expect(c2.ores).toBe(48); expect(c2.charged).toBe(baseWage(miner)); expect(s.chips('gus')).toBe(before - baseWage(miner));
+    expect(c2.ores).toBe(0); expect(c2.charged).toBe(baseWage(miner)); expect(s.chips('gus')).toBe(before - baseWage(miner));
     expect((await s.e.view('Gus')).workers[0]!.status).toBe('working');
+  });
+  it('full storage: the overflow is held by the worker and deposited when room frees up (never lost)', async () => {
+    const s = await setup(); await s.addPlayer('Gus'); await s.fund('Gus', 100_000);
+    let cap = 1; const got = new Map<string, number>();
+    const e = new Employment(s.pool as never, () => s.bank, () => now, () => ({ room: (id) => Math.max(0, cap - (got.get(id) ?? 0)), async write(_cl, items) { for (const [id, n] of items) got.set(id, (got.get(id) ?? 0) + n); }, after() {} }), seeded(7));
+    let now = T0; await e.hire('Gus', 'miner:mine');
+    now = T0 + 60 * MIN; let v = await e.view('Gus');
+    const sum = () => [...got.values()].reduce((a, b) => a + b, 0);
+    expect(sum()).toBe(got.size); expect(sum()).toBeLessThan(6); expect(sum() + Object.values(v.workers[0]!.box.ores ?? {}).reduce((a, n) => a + (n ?? 0), 0)).toBe(6);
+    expect(v.notes!.join(' ')).toMatch(/full/);
+    cap = 1000; await e.sweep(); v = await e.view('Gus');
+    expect(sum()).toBe(6); expect(Object.keys(v.workers[0]!.box.ores ?? {})).toHaveLength(0);
+  });
+  it('rollout: a haul left in a worker box from the old Collect button is deposited by the first sweep', async () => {
+    const s = await setup(); await s.addPlayer('Gus'); await s.fund('Gus', 100_000); await s.e.hire('Gus', 'miner:mine');
+    await s.pool.query(`UPDATE employ_workers SET box = $1`, [JSON.stringify({ ores: { copper: 7 } })]);
+    await s.e.sweep(); expect(s.stored.get('copper')).toBe(7);
+    expect(JSON.parse(String(s.db.public.one('SELECT box FROM employ_workers').box)).ores).toEqual({});
   });
   it('survives a restart (new instance, same DB) and charges the next day’s wage while you keep visiting', async () => {
     const s = await setup(); await s.addPlayer('Gus'); await s.fund('Gus', 100_000); await s.e.hire('Gus', 'miner:mine');
@@ -106,7 +126,7 @@ describe('employment office', () => {
   });
   it('fish go to the cooler marked hired (not on the board), up to the cooler limit', async () => {
     const s = await setup(); await s.addPlayer('Gus'); await s.fund('Gus', 100_000); await s.e.hire('Gus', 'fisher');
-    s.setNow(T0 + 5 * HOUR + MIN); const c = await s.e.collect('Gus'); expect(c.fish).toBe(5); expect(s.cooler('gus')).toBe(5);
+    s.setNow(T0 + 5 * HOUR + MIN); await s.e.view('Gus'); expect(s.cooler('gus')).toBe(5);
     expect(Number(s.db.public.one(`SELECT count(*) AS n FROM fish_catches WHERE hired = true`).n)).toBe(5);
     expect(s.db.public.many(`SELECT species FROM fish_catches`).every((r: { species: string }) => r.species !== 'boot')).toBe(true);
   });

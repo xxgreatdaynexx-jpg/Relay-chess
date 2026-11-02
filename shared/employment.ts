@@ -69,4 +69,6 @@ export interface WorkerBox { ores?: Partial<Record<OreId, number>>; fish?: Array
 export const boxCount = (b: WorkerBox) => Object.values(b.ores ?? {}).reduce((a, n) => a + (n ?? 0), 0) + (b.fish?.length ?? 0);
 export type WorkerStatus = 'working' | 'idle' | 'unpaid';
 export interface WorkerView { id: string; job: string; status: WorkerStatus; hiredAt: number; paidUntil: number; seenAt: number; nextAt: number | null; box: WorkerBox; boxValue: number; wage: number }
-export interface EmployView { workers: WorkerView[]; jobs: Array<{ id: string; hire: number; wage: number; perDay: number; dayValue: number }>; now: number; canHire: boolean; reason?: string; max: number }
+/** Last-24 h pick-up log, totalled per item. */
+export interface EmployLogItem { type: 'ore' | 'fish'; id: string; qty: number; lastAt: number }
+export interface EmployView { log?: EmployLogItem[]; notes?: string[]; workers: WorkerView[]; jobs: Array<{ id: string; hire: number; wage: number; perDay: number; dayValue: number }>; now: number; canHire: boolean; reason?: string; max: number }
