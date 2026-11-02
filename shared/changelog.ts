@@ -17,13 +17,13 @@ export const CHANGELOG: ChangelogEntry[] = [
     'Lifetime return = chips you got from selling + what your shares are worth now − chips you spent buying, fees included, divided by chips spent buying.',
     'Display only: prices, fees and trading are unchanged. (Liam\'s request)',
   ] },
-  { commit: '', at: '2026-11-02T14:35:00-06:00', title: 'Mines: rocks take 10× longer to respawn', bullets: [
-    'Every ore rock in every cave (Coral Grotto too) now takes 10× as long to come back: Stone 2.5m, Coal ~4m, Copper Ore 7.5m, Iron Ore 12.5m, Silver Ore 20m, Gold Ore 30m, Crystal 50m, Diamond 80m.',
-    'Hired miners, key and chest drops and Tool Shop bonuses are unchanged.',
-  ] },
   { commit: '', at: '2026-11-02T14:30:00-06:00', title: 'Factory: crafted goods sell for about 15% less', bullets: [
     'House prices for factory-made bars and goods are down about 15%, for example Silver Ring 120 → 100, Cut Crystal 100 → 85, Crystal Ring 340 → 290, Machine Part 360 → 305, Diamond Crown 1,100 → 935, Engine 1,400 → 1,190 and Mining Drill 2,400 → 2,040.',
     'Food products made from farm crops and fish drop a little less (about 5–10%) so cooking still pays a small premium over selling the crop. Raw ore, crop and fish prices, recipes, timers, daily caps and existing market listings are unchanged.',
+  ] },
+  { commit: '', at: '2026-11-02T14:26:00-06:00', title: 'Mines: rocks take 10× longer to respawn', bullets: [
+    'Every ore rock in every cave (Coral Grotto too) now takes 10× as long to come back: Stone 2.5m, Coal ~4m, Copper Ore 7.5m, Iron Ore 12.5m, Silver Ore 20m, Gold Ore 30m, Crystal 50m, Diamond 80m.',
+    'Hired miners, key and chest drops and Tool Shop bonuses are unchanged.',
   ] },
   { commit: '', at: '2026-11-02T14:20:00-06:00', title: 'Market: sell several cases or keys at once', bullets: [
     'Market → Skins → Sell now has a tick box on every item, plus "All cases" and "All keys" boxes. Tick as many as you like.',
