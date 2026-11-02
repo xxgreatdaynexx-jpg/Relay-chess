@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T13:40:00-06:00', title: 'Countryside farms look like real farms', bullets: [
+    'Requested by Dayne: the buyable crop fields around the city (snowy map too) now look like the Farm district: dark soil, furrow rows, a fence, and your crops growing on them instead of flat green and dark stripes.',
+  ] },
   { commit: '', at: '2026-11-02T13:40:00-06:00', title: 'Magma Depths: a bit brighter', bullets: [
     'Magma Depths is moderately brighter: more ambient light, a warm glow from above, lighter rock walls and fog that starts further away.',
     'Lava pools glow warmer and stronger and throw more light onto the tunnel around them. Rock stays dark and the lava is still the star.',

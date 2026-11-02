@@ -7,7 +7,10 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { asLabel, dimColor, drawLabel, LABEL_LAYER, LABEL_TEXT, labelMaterial, renderScene } from './labelSprite';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { skyNow, parseTod, mix as mixHex } from '../../../shared/daynight';
-import { fieldPlotId } from '../../../shared/fieldFarms';
+import { fieldPlotId, fieldPlots } from '../../../shared/fieldFarms';
+
+/** Every farm plot drawn by the farm renderer: Farm-district plots (f:<n>) and the countryside field farms (cf:<n>). */
+export const allFarmPlots = () => [...farmPlots().map((p) => ({ ...p, id: plotId(p.n) })), ...fieldPlots().map((p) => ({ ...p, id: fieldPlotId(p.n) }))];
 import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, TILE, clampMapTarget, panInset } from '../../../shared/farm';
 import { buildVenues } from './worldVenues';
 import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN, MINE_SITES, MINE_APRON, OUTSKIRTS } from './worldLayout';
@@ -539,12 +542,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const rd: Array<[number, number, number]> = []; for (const [a, b, w] of allRoads) { const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
       for (let t = 2; t < L - 1; t += 4) { const x = a[0] + ((b[0] - a[0]) * t) / L, z = a[1] + ((b[1] - a[1]) * t) / L; if (nodes.some((n) => Math.hypot(n[0] - x, n[1] - z) < w + 1.5)) continue; rd.push([x, z, Math.atan2(b[1] - a[1], b[0] - a[0])]); } }
     const dm = new THREE.InstancedMesh(dash.geometry, dash.material, rd.length); rd.forEach(([x, z, an], i) => { d.position.set(x, ROAD_Y + 0.03, z); d.rotation.set(0, -an, 0); d.scale.set(1, 1, 1); d.updateMatrix(); dm.setMatrixAt(i, d.matrix); }); dm.renderOrder = 2; scene.add(dm);
-    // fields: farm soil with crop rows (same tones as the farm district)
-    const fieldM = inst(unitBox, mat({ color: 0xffffff, roughness: 1 }), O.fields.length, (i) => { const f = O.fields[i]; d.position.set(f.x, 0.07, f.z); d.scale.set(f.w, 0.14, f.d); }, () => 0x5a3e28);
-    // pt1250u: every field is a buyable farm (cf:<n>, shared/fieldFarms.ts)
-    if (fieldM) { fieldM.userData.props = O.fields.map((_, i) => fieldPlotId(i)); pickables.push(fieldM); O.fields.forEach((f, i) => propTop.set(fieldPlotId(i), [f.x, 0.6, f.z])); }
-    const rows: Array<[number, number, number, number]> = []; for (const f of O.fields) for (let z = f.z - f.d / 2 + 1.5; z < f.z + f.d / 2 - 1; z += 2) rows.push([f.x, z, f.w - 1.2, f.crop]);
-    inst(unitBox, mat({ color: 0xffffff, roughness: 1, emissive: 0x0a2a10, emissiveIntensity: 0.4 }), rows.length, (i) => { const [x, z, w] = rows[i]; d.position.set(x, 0.22, z); d.scale.set(w, 0.16, 0.9); }, (i) => [0x3f8a3a, 0x8a7a3a, 0x2f7a36, 0x6a8a34][rows[i][3]]);
+    // Countryside field farms (cf:<n>) are drawn by the farm renderer below (soil, furrows, fence, crops), like the Farm district.
     // barns + sheds (farm-district barn red, dark roofs), warehouses + gas stations (buyable)
     const outb = O.buildings.filter((b) => b.kind === 'barn' || b.kind === 'shed'); const biz = countryBusinesses();
     inst(unitBox, mat({ color: 0xffffff, roughness: 0.85 }), outb.length, (i) => { const b = outb[i]; d.position.set(b.x, b.h / 2, b.z); d.rotation.y = b.rot; d.scale.set(b.w, b.h, b.d); }, (i) => (outb[i].kind === 'barn' ? 0x8a2a22 : 0x6a5a48));
@@ -606,11 +604,11 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     apron.position.set((FARM_X0 + FARM_X1) / 2, -1.5 - 0.02, (FARM_Z0 + FARM_Z1) / 2); scene.add(apron);
     const dirt = mat({ color: 0x6a5038, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     for (const ln of FARM_LANES) { const [a, b] = [ln[0], ln[ln.length - 1]]; const m = new THREE.Mesh(geo(new THREE.BoxGeometry(FARM_LANE_W, 0.04, Math.abs(b[1] - a[1]))), dirt); m.position.set(a[0], 0.03, (a[1] + b[1]) / 2); scene.add(m); }
-    const plots = farmPlots(); const d = new THREE.Object3D();
+    const plots = allFarmPlots(); const d = new THREE.Object3D();
     const soil = new THREE.InstancedMesh(unitBox, mat({ color: 0x5a3e28, roughness: 1, emissive: 0x1a1008, emissiveIntensity: 0.5 }), plots.length);
     plots.forEach((p, i) => { d.position.set(p.x, 0.07, p.z); d.scale.set(p.w - 0.8, 0.14, p.d - 0.8); d.rotation.set(0, 0, 0); d.updateMatrix(); soil.setMatrixAt(i, d.matrix); });
-    soil.userData.props = plots.map((p) => plotId(p.n)); pickables.push(soil); scene.add(soil);
-    plots.forEach((p) => propTop.set(plotId(p.n), [p.x, 0.6, p.z]));
+    soil.userData.props = plots.map((p) => p.id); pickables.push(soil); scene.add(soil);
+    plots.forEach((p) => propTop.set(p.id, [p.x, 0.6, p.z]));
     // furrows: a faint darker stripe per tile row
     const nf = plots.reduce((a, p) => a + p.rows, 0); const fur = new THREE.InstancedMesh(unitBox, mat({ color: 0x3e2a1a, roughness: 1 }), nf); let k = 0;
     for (const p of plots) for (let r = 0; r < p.rows; r++) { d.position.set(p.x, 0.165, p.z - (p.rows * TILE) / 2 + TILE * (r + 0.5)); d.scale.set(p.cols * TILE - 0.3, 0.03, 0.7); d.updateMatrix(); fur.setMatrixAt(k++, d.matrix); }
@@ -635,12 +633,12 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       sg.add(box(0.3, 4, 0.3, post, -2.6, 0, 0), box(0.3, 4, 0.3, post, 2.6, 0, 0)); const pan = new THREE.Mesh(geo(new THREE.BoxGeometry(6, 1.8, 0.2)), pm); pan.position.set(0, 3.6, 0); sg.add(pan);
       sg.position.set(FARM_X0 + 1.6, 0, 0); sg.rotation.y = Math.PI / 2; scene.add(sg); }
     // crops: one instance per tile (hidden until /api/farm says something grows there)
-    let total = 0; for (const p of plots) { farmTiles.set(plotId(p.n), total); total += p.cols * p.rows; }
+    let total = 0; for (const p of plots) { farmTiles.set(p.id, total); total += p.cols * p.rows; }
     const cm = new THREE.InstancedMesh(geo(new THREE.ConeGeometry(0.55, 1, 6)), mat({ color: 0xffffff, roughness: 0.8, emissive: 0x101808, emissiveIntensity: 0.4 }), total);
     cm.count = 0; cm.frustumCulled = false; scene.add(cm); return cm;
   })();
   const setFarm = (tiles: Array<[string, number, string, string]>) => {
-    const d = new THREE.Object3D(); const c = new THREE.Color(); let n = 0; const plots = new Map(farmPlots().map((p) => [plotId(p.n), p]));
+    const d = new THREE.Object3D(); const c = new THREE.Color(); let n = 0; const plots = new Map(allFarmPlots().map((p) => [p.id, p]));
     for (const [pid, t, crop, stage] of tiles) {
       const p = plots.get(pid); const cr = cropById(crop); if (!p || !cr || n >= crops.instanceMatrix.count) continue; const [x, z] = tileXZ(p, t);
       const hgt = stage === 'ready' ? 1.3 : stage === 'withered' ? 0.45 : 0.7;
