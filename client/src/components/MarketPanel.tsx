@@ -152,10 +152,11 @@ export function MaterialsView({ initialSell }: { initialSell?: string | null } =
   return (
     <div className="mkt-mats" data-testid="mkt-mats">
       <TradeLockNote />
+      {msg && <p className="mkt-ok">{msg}</p>}{err && <p className="inv-err">{err}</p>}
+      {account && <StorageSellPanel pack={pack} rows={rows} cat={cat} sell={sell} setSell={setSell} act={act} />}
       <Controls q={q} setQ={setQ} sort={sort} setSort={setSort} listed={listed} setListed={setListed}>
         <select value={type} onChange={(e) => setType(e.target.value)} data-testid="mkt-type"><option value="all">All resources</option><option value="ore">Ore</option><option value="bar">Bars</option><option value="good">Goods</option><option value="food">Groceries & crops</option></select>
       </Controls>
-      {msg && <p className="mkt-ok">{msg}</p>}{err && <p className="inv-err">{err}</p>}
       <table className="mkt-table" data-testid="mkt-res-catalog"><thead><tr><th>Item</th><th>Lowest</th><th>Listings</th><th>Last sale</th></tr></thead><tbody>
         {shown.map((e) => <tr key={e.what} className={cur?.what === e.what ? 'sel' : ''} onClick={() => setPick(e.what)} style={{ cursor: 'pointer' }}><td><Chip r={e} /> {e.name}</td><td>{e.lowest != null ? chipsFmt(e.lowest) : <span className="mkt-none">No listings</span>}</td><td>{e.listings}</td><td>{e.last != null ? chipsFmt(e.last) : '—'}</td></tr>)}
         {!shown.length && <tr><td colSpan={4} className="inv-note">Nothing matches.</td></tr>}
@@ -172,10 +173,9 @@ export function MaterialsView({ initialSell }: { initialSell?: string | null } =
             </td></tr>); })}
           {!here.length && <tr><td colSpan={4} className="inv-note">No listings{cur.last != null ? ` · last sale ${chipsFmt(cur.last)}` : ''}.</td></tr>}
         </tbody></table>
-        {account && owns && <button type="button" onClick={() => setSell(`${owns.type}:${owns.id}`)} data-testid="mkt-list-yours">List yours (×{owns.qty})</button>}
+        {account && owns && <button type="button" onClick={() => { setSell(`${owns.type}:${owns.id}`); document.querySelector('.mkt-mats .msell')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} data-testid="mkt-list-yours">List yours (×{owns.qty})</button>}
         <PriceChart what={cur.what} /><RecentSales what={cur.what} />
       </div>}
-      {account && <StorageSellPanel pack={pack} rows={rows} cat={cat} sell={sell} setSell={setSell} act={act} />}
       <p className="inv-note">Ore, bars and goods from the Mines. Buy any amount; sellers pay a 5% fee (burned). Listed items leave your storage until sold or cancelled.</p>
     </div>
   );

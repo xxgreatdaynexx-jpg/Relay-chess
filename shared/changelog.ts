@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T13:20:00-06:00', title: 'Market: sell section on top + chip icon fix', bullets: [
+    'On Market → Resources, Your storage, the sell card and My listings now sit at the top, above the item list.',
+    'Chip amounts in the sell card and storage tiles show a proper chip icon instead of an empty box on devices missing the coin emoji.',
+  ] },
   { commit: '', at: '2026-11-02T13:15:00-06:00', title: 'Mines: no more head bob', bullets: [
     'Walking and running in the mines no longer bobs or sways your view and held tool: the camera stays at a steady height.',
     'The tool swing animation and the Arena camera are unchanged.',
@@ -15,17 +19,17 @@ export const CHANGELOG: ChangelogEntry[] = [
     'Total extra ore from tool plus Mining skill is now capped at +250%.',
     'Swing speeds (1.2× to 2×), prices, key and chest drops and ownership are unchanged.',
   ] },
-  { commit: '', at: '2026-11-02T13:05:00-06:00', title: 'Market: easier resource selling + Resource Inventory', bullets: [
+  { commit: '', at: '2026-11-02T12:50:00-06:00', title: 'Hired miners specialise by mine', bullets: [
+    'Employment Office miners now bring back mostly their mine\'s signature ores: Magma Depths is mostly coal & copper, Frostbite mostly silver & crystal, and the main Mine mostly iron, rock & gold (gold the rarest of the three).',
+    'About 60–65% of picks are those ores; the rest still come from the mine\'s normal mix. Items per hour, value per hour, wages and hire fees stay the same. The hire list shows each mine\'s bias.',
+    'Mining by hand is unchanged.',
+  ] },
+  { commit: '', at: '2026-11-02T12:48:00-06:00', title: 'Market: easier resource selling + Resource Inventory', bullets: [
     'Market → Resources now shows "Your storage" as a grid of icon tiles with how many you have, the current lowest listing and the last sale. Tap one to open a sell card.',
     'The sell card has a quantity slider with 25%, 50% and Max, a unit price prefilled to undercut the lowest listing by 1 (with Match lowest, Undercut and Last sale buttons), a clear "You receive X after the 5% fee" line and how your price compares to the house. A new My listings section lets you cancel your listings.',
     'The top bar\'s Inventory is now two buttons: 🎒 Skin Inventory (your skins, as before) and 📦 Resource Inventory (ores, bars, goods, fish, crops and dishes with quantities and a Sell on Market button that opens the sell card).',
     'The Market has a clear ← Back button: it takes you back to the Skin or Resource Inventory you came from, or to the city if you opened the Market directly.',
     'Fees, prices and how listings work are unchanged.',
-  ] },
-  { commit: '', at: '2026-11-02T12:50:00-06:00', title: 'Hired miners specialise by mine', bullets: [
-    'Employment Office miners now bring back mostly their mine\'s signature ores: Magma Depths is mostly coal & copper, Frostbite mostly silver & crystal, and the main Mine mostly iron, rock & gold (gold the rarest of the three).',
-    'About 60–65% of picks are those ores; the rest still come from the mine\'s normal mix. Items per hour, value per hour, wages and hire fees stay the same. The hire list shows each mine\'s bias.',
-    'Mining by hand is unchanged.',
   ] },
   { commit: '', at: '2026-11-02T12:35:00-06:00', title: 'Mines: Tool Shop tools wear your pickaxe skin', bullets: [
     'Your equipped pickaxe skin now shows on whichever Tool Shop tool you hold: the Steel Pickaxe head, the drill housings, the Jackhammer body and the Plasma Cutter barrel get the skin\'s pattern, colours and finish, in first person and on other miners.',

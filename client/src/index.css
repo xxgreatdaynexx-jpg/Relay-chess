@@ -2120,3 +2120,5 @@ html.xmas .top-menu-btn::before { content: '🎄 '; }
 }
 .mkt-back { flex-shrink: 0; padding: 5px 12px; border-radius: 8px; font-weight: 700; background: rgba(124,204,255,.16); border: 1px solid #7cf; color: inherit; white-space: nowrap; }
 @media (max-width: 520px) { .mkt-back { padding: 6px 10px; } .mkt-back-to { display: none; } .mkt-win .inv-head { flex-wrap: wrap; row-gap: 6px; } .mkt-win .inv-head > h2 { flex: 1; } .mkt-win .inv-head > .inv-tabs { order: 5; flex-basis: 100%; } }
+.chip-coin { display: inline-block; vertical-align: -0.14em; }
+.chip-amt { white-space: nowrap; }

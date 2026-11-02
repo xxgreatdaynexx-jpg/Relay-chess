@@ -14,7 +14,11 @@ import { listFee, pctQty, receiveFor, suggestUnit } from '../../../shared/market
 export interface PackItem { type: string; id: string; qty: number; name: string }
 export interface MyStackRow { id: string; type: string; itemId: string; name: string; qty: number; total: number; unit: number; mine: boolean }
 type Ack = { ok: boolean; error?: string; [k: string]: unknown };
-const fmt = (n: number) => `${n.toLocaleString()} 🪙`;
+/** Chip coin drawn as SVG: the 🪙 emoji is missing from some system fonts (e.g. older Windows) and showed as ▯. */
+export function ChipCoin() {
+  return <svg className="chip-coin" viewBox="0 0 16 16" width="1em" height="1em" aria-label="chips" role="img"><circle cx="8" cy="8" r="7.2" fill="#e7b33c" stroke="#9a6b12" strokeWidth="1.2" /><circle cx="8" cy="8" r="4.3" fill="none" stroke="#fff3c4" strokeWidth="1" strokeDasharray="2 1.6" /></svg>;
+}
+const fmt = (n: number) => <span className="chip-amt">{n.toLocaleString()} <ChipCoin /></span>;
 const house = (p: { type: string; id: string }) => { try { return priceOf({ type: p.type as ItemType, id: p.id }); } catch { return 0; } };
 const TYPE_LABEL: Record<string, string> = { ore: 'Ore', bar: 'Bars', good: 'Goods', food: 'Food', fish: 'Fish', crop: 'Crops', dish: 'Dishes' };
 
@@ -69,14 +73,14 @@ function SellCard({ p, e, act, onDone }: { p: PackItem; e?: CatEntry; act: (ev: 
         <input type="number" min={1} max={p.qty} value={n} onChange={(ev) => setN(Number(ev.target.value))} data-testid="msell-qty" />
       </div>
       <div className="msell-btns">{([['25%', 0.25], ['50%', 0.5], ['Max', 1]] as const).map(([t, f]) => <button type="button" key={t} onClick={() => setN(pctQty(p.qty, f))}>{t}</button>)}</div>
-      <label className="msell-l">Unit price (🪙 each)</label>
+      <label className="msell-l">Unit price (<ChipCoin /> each)</label>
       <input className="msell-unit" type="number" min={1} value={u} onChange={(ev) => setU(Number(ev.target.value))} data-testid="msell-unit" />
       <div className="msell-btns">
         <button type="button" disabled={e?.lowest == null} onClick={() => e?.lowest != null && setU(e.lowest)}>Match lowest{e?.lowest != null ? ` (${e.lowest})` : ''}</button>
         <button type="button" disabled={e?.lowest == null} onClick={() => e?.lowest != null && setU(Math.max(1, e.lowest - 1))}>Undercut −1</button>
         <button type="button" disabled={e?.last == null} onClick={() => e?.last != null && setU(e.last)}>Last sale{e?.last != null ? ` (${e.last})` : ''}</button>
       </div>
-      <p className="msell-get" data-testid="msell-get">You receive <b>{fmt(get)}</b> after the 5% fee ({fee.toLocaleString()} 🪙)</p>
+      <p className="msell-get" data-testid="msell-get">You receive <b>{fmt(get)}</b> after the 5% fee ({fmt(fee)})</p>
       {hp > 0 && <p className="msell-cmp" data-testid="msell-house">House pays up to {fmt(hp * q)} ({hp} each, daily cap applies): listing is {unit > hp ? <span className="up">{Math.round((unit / hp - 1) * 100)}% above</span> : unit < hp ? <span className="down">{Math.round((1 - unit / hp) * 100)}% below</span> : 'equal to'} the house.</p>}
       <button type="button" className="msell-list" disabled={busy} onClick={() => { setBusy(true); void act('mkt_list_stack', { type: p.type, id: p.id, qty: q, unit }, `Listed ${q} ${p.name} at ${unit} each.`).then(() => { setBusy(false); onDone(); }); }} data-testid="msell-list">List {q.toLocaleString()} for {fmt(q * unit)}</button>
     </div>
