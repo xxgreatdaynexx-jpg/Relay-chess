@@ -22,6 +22,7 @@ import { registerFarm } from './farm.js';
 import { registerSkills, startSkills } from './skills.js';
 import { registerFishing } from './fishing.js';
 import { registerFishPan } from './fishPan.js';
+import { registerCooking } from './cooking.js';
 import { registerMines } from './mines.js';
 import { registerFactory } from './factory.js';
 import { registerConquest } from './conquest.js';
@@ -226,6 +227,7 @@ export function registerSockets(io: Server): void {
     registerSkills(io, socket);
     registerFishing(io, socket);
     registerFishPan(io, socket);
+    registerCooking(io, socket);
     registerMines(io, socket);
     registerFactory(io, socket);
     registerChat(io, socket);

@@ -17,6 +17,8 @@ import { px, priceIndex } from './price-index.js';
 import { resortPlotOf, isTropical, TROPICAL_CROPS } from '../shared/resort.js';
 import { requireResort } from './travel.js';
 import { fieldPlotOf } from '../shared/fieldFarms.js';
+import { getMines } from './mines.js';
+import { awardXp } from './skills.js';
 import { CROPS, cropById, farmPayout, farmPlots, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
 import { skillLevelAsync } from './skills.js';
 import { farmingGrowMul } from '../shared/skillPerks.js';
@@ -47,7 +49,7 @@ export class Farm {
     this.locks.set(id, tail); void tail.then(() => { if (this.locks.get(id) === tail) this.locks.delete(id); }); return p;
   }
   constructor(private readonly pool: pg.Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now()) {}
-  async init() { await this.pool.query(FARM_MIGRATION); }
+  async init() { await this.pool.query(FARM_MIGRATION); await this.pool.query('CREATE TABLE IF NOT EXISTS kitchen_harvests (tile_key TEXT PRIMARY KEY NOT NULL, at BIGINT NOT NULL)'); }
 
   private async ownerOf(q: { query: pg.Pool['query'] } | pg.PoolClient, id: string): Promise<{ key: string; name: string } | null> {
     const r = await q.query('SELECT owner_key, owner_name FROM properties WHERE id = $1', [id]);
@@ -121,13 +123,14 @@ export class Farm {
   }
 
   /** Harvest every ready tile (or the given ones). Exactly once: the tiles are deleted in the payout's transaction. */
-  async harvest(name: string, id: unknown, tiles?: unknown, sink?: ImportSink) {
+  async harvest(name: string, id: unknown, tiles?: unknown, sink?: ImportSink, pantry = false) {
     const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const pid = p.pid;
     const only = tiles === undefined || tiles === null ? null : new Set(this.tileList(p, tiles));
     return this.lock(`h:${keyOf(name)}`, () => this.lock(pid, async () => {
       const now = this.clock(); const key = keyOf(name);
       const ready = (await this.tiles(pid, key)).filter((r) => (!only || only.has(Number(r.tile))) && this.toTile(r, now)?.stage === 'ready');
       if (!ready.length) throw new FarmError('Nothing is ready to harvest.');
+      if (pantry) return this.harvestToPantry(name, pid, key, ready, now);
       let seeds = 0, profit = 0; const counts = new Map<string, number>();
       for (const r of ready) { const c = cropById(r.crop)!; seeds += c.seed; profit += c.sell - c.seed; counts.set(c.label, (counts.get(c.label) ?? 0) + 1); }
       if (sink) { // pt1252u: send the crops to your Factory storage instead of selling them (no chips, no farm tier)
@@ -162,6 +165,35 @@ export class Farm {
   /** Plots where this player has planted tiles (for "send every ready crop to the factory"). */
   async myPlots(name: string): Promise<string[]> {
     return ((await this.pool.query('SELECT DISTINCT plot_id FROM farm_tiles WHERE owner_key = $1', [keyOf(name)])).rows as Array<{ plot_id: string }>).map((r) => String(r.plot_id));
+  }
+
+  /** Harvest into the kitchen pantry instead of selling (pt1312u): no chips, no daily-tier use; Farming XP as usual.
+   * Tiles are claimed with a NOT NULL guard row in the SAME transaction as the pantry stacks (Mines' stack table). */
+  private async harvestToPantry(name: string, pid: string, key: string, ready: TileRow[], now: number) {
+    const counts = new Map<string, number>(); let value = 0;
+    for (const r of ready) { const c = cropById(r.crop)!; counts.set(c.id, (counts.get(c.id) ?? 0) + 1); value += c.sell; }
+    const extra: Array<{ sql: string; args: unknown[] }> = [];
+    for (const r of ready) {
+      extra.push({ sql: `INSERT INTO kitchen_harvests (tile_key, at) VALUES ((SELECT t.plot_id || ':' || t.tile || ':' || t.nonce FROM farm_tiles t JOIN properties p ON p.id = t.plot_id AND p.owner_key = $4
+        WHERE t.plot_id = $1 AND t.tile = $2 AND t.nonce = $3 AND t.owner_key = $4), $5)`, args: [pid, r.tile, r.nonce, key, now] });
+      extra.push({ sql: 'DELETE FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3', args: [pid, r.tile, r.nonce] });
+    }
+    const mines = getMines(); let failed: Error | null = null; let done: Promise<unknown> = Promise.resolve(); let rows: Array<{ sql: string; args: unknown[] }> | null = null;
+    const deltas = [...counts].map(([id, n]) => ({ type: 'food' as const, id, delta: n }));
+    let ok = false;
+    try { ok = mines.adjustStacks(name, deltas, extra, (r) => { rows = r; }, { bind: (p) => { done = p; }, onFail: (e) => { failed = e; } }); }
+    catch (e) { throw new FarmError((e as Error).message || 'Storage is offline right now.'); }
+    if (!ok) throw new FarmError('Could not store that.');
+    if (rows) {
+      const cl = await this.pool.connect();
+      try { await cl.query('BEGIN'); for (const s of rows as Array<{ sql: string; args: unknown[] }>) await cl.query(s.sql, s.args); await cl.query('COMMIT'); }
+      catch (e) { await cl.query('ROLLBACK').catch(() => {}); mines.adjustStacks(name, deltas.map((d) => ({ ...d, delta: -d.delta }))); failed = e as Error; }
+      finally { cl.release(); }
+    } else await done;
+    if (failed) { console.error('[farm] pantry harvest failed:', (failed as Error).message); throw new FarmError('Already harvested (or storage hiccup). Nothing was lost.'); }
+    awardXp(name, 'farming', Math.min(400, 10 + Math.round(value / 5)));
+    this.onChange?.(pid);
+    return { harvested: ready.length, paid: 0, pantry: Object.fromEntries(counts), chips: this.bank().account(name).chips };
   }
 
   /** Clear withered crops (free). */
@@ -218,6 +250,6 @@ export function registerFarm(io: Server, socket: Socket): void {
   // Resort plots can only be worked while you are at Chud Resort.
   const at = async (id: unknown) => { const n = need(); if (typeof id === 'string' && id.startsWith('rf:')) await requireResort(n, FarmError); return n; };
   on('farm_plant', async (b, f) => f.plant(await at(b.id), b.id, b.crop, b.tiles));
-  on('farm_harvest', async (b, f) => f.harvest(await at(b.id), b.id, b.tiles));
+  on('farm_harvest', async (b, f) => f.harvest(await at(b.id), b.id, b.tiles, undefined, b.pantry === true));
   on('farm_clear', async (b, f) => f.clear(await at(b.id), b.id));
 }

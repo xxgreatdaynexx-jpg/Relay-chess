@@ -17,6 +17,7 @@ import { initTravel } from './travel.js';
 import { initFarm } from './farm.js';
 import { initFishing } from './fishing.js';
 import { initFishPan } from './fishPan.js';
+import { initCooking } from './cooking.js';
 import { getMines, initMinesStorage } from './mines.js';
 import { getFactory, initFactory } from './factory.js';
 import { initAccountStorage } from './accounts.js';
@@ -47,6 +48,7 @@ await initTravel();
 await initFarm();
 await initFishing();
 initFishPan();
+await initCooking();
 await initConquestStorage();
 await initSolitroStorage();
 
