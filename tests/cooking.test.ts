@@ -82,3 +82,16 @@ describe('kitchen server', () => {
     expect(r.burnt).toBe(true); expect(r.dish).toBeNull();
   });
 });
+
+describe('Grocery Store venue', async () => {
+  const { landmarks, cityFill, obbOverlap, roadClearance, RESERVED_VENUES, MINE_SITES } = await import('../shared/worldLayout');
+  it('sits on a city block, clear of roads, landmarks, houses and reserved venues', () => {
+    const all = landmarks(); const g = all.grocery!; expect(g).toBeTruthy();
+    expect(Math.abs(g.x)).toBeLessThan(100); expect(Math.abs(g.z)).toBeLessThan(100);
+    expect(roadClearance(g.x, g.z)).toBeGreaterThan(6);
+    for (const [id, b] of Object.entries(all)) if (id !== 'grocery') expect(obbOverlap(b, g, 2)).toBe(false);
+    const { houses, patches } = cityFill(7); for (const h of [...houses, ...patches]) expect(obbOverlap(h, g, 1)).toBe(false);
+    for (const r of Object.values(RESERVED_VENUES)) expect(g.x > r.x0 && g.x < r.x1 && g.z > r.z0 && g.z < r.z1).toBe(false);
+    for (const m of Object.values(MINE_SITES)) expect(Math.hypot(m.x - g.x, m.z - g.z)).toBeGreaterThan(40);
+  });
+});

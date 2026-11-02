@@ -7,7 +7,9 @@ import { getVault, playerKey, RuleError, type ItemVault, type Stmt, type StoredI
 import { getMines } from './mines.js';
 import { bootAttach, reconnectMsg, setBootState } from './boot-retry.js';
 import { databaseUrl } from './leaderboard-store.js';
-import { isFood } from '../shared/cooking.js';
+import { isFood, STAPLES } from '../shared/cooking.js';
+import { CROPS } from '../shared/farm.js';
+import { TROPICAL_CROPS } from '../shared/resort.js';
 import { GOODS, MAX_BANKED_STACK, ORES, ORE_ORDER, isOre, nameOf as stackName, type ItemType } from '../shared/mines.js';
 import { CASE_NAME, KEY_NAME, SKINS, SKIN_BY_ID, type SkinItem } from '../shared/skins.js';
 import { skillLevel } from './skills.js';
@@ -248,7 +250,8 @@ export class Market {
     for (const x of this.publicSales()) { const a = get(x.what); if (a.lastAt == null || x.at >= a.lastAt) { a.last = x.price; a.lastAt = x.at; } }
     if (side === 'resources') {
       for (const l of this.stacks.values()) { const a = get(stackWhat(l.type, l.itemId)); a.listings++; if (a.lowest == null || l.unit < a.lowest) a.lowest = l.unit; }
-      const defs = [...ORE_ORDER.map((id) => ({ type: 'ore' as ItemType, id, color: ORES[id].color })), ...Object.values(GOODS).map((g) => ({ type: g.type, id: g.id, color: g.color }))];
+      const defs = [...ORE_ORDER.map((id) => ({ type: 'ore' as ItemType, id, color: ORES[id].color })), ...Object.values(GOODS).map((g) => ({ type: g.type, id: g.id, color: g.color })),
+        ...[...STAPLES.map((s) => s.id), ...CROPS.map((c) => c.id), ...TROPICAL_CROPS.map((c) => c.id)].filter((id) => isFood(id)).map((id) => ({ type: 'food' as ItemType, id, color: '#6ad66a' }))];
       return { items: defs.map((d) => ({ what: stackWhat(d.type, d.id), type: d.type, id: d.id, name: stackName(d), color: d.color, ...get(stackWhat(d.type, d.id)) })) };
     }
     for (const l of this.listings.values()) { const i = this.vault.items.get(l.itemId); if (!i) continue; const a = get(i.kind === 'skin' ? i.skin : i.kind); a.listings++; if (a.lowest == null || l.price < a.lowest) a.lowest = l.price; }

@@ -136,7 +136,7 @@ export function MaterialsView({ initialSell }: { initialSell?: string | null } =
   return (
     <div className="mkt-mats" data-testid="mkt-mats">
       <Controls q={q} setQ={setQ} sort={sort} setSort={setSort} listed={listed} setListed={setListed}>
-        <select value={type} onChange={(e) => setType(e.target.value)} data-testid="mkt-type"><option value="all">All resources</option><option value="ore">Ore</option><option value="bar">Bars</option><option value="good">Goods</option></select>
+        <select value={type} onChange={(e) => setType(e.target.value)} data-testid="mkt-type"><option value="all">All resources</option><option value="ore">Ore</option><option value="bar">Bars</option><option value="good">Goods</option><option value="food">Groceries & crops</option></select>
       </Controls>
       {msg && <p className="mkt-ok">{msg}</p>}{err && <p className="inv-err">{err}</p>}
       <table className="mkt-table" data-testid="mkt-res-catalog"><thead><tr><th>Item</th><th>Lowest</th><th>Listings</th><th>Last sale</th></tr></thead><tbody>
