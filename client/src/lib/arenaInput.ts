@@ -75,7 +75,8 @@ export function viewZoom(scopeZoom: number, fovKick: number, keepGun = false): {
 
 /** Keys the Arena owns (lowercased e.key; digits by physical code). */
 export const ARENA_GAME_KEYS = new Set(['tab', 'w', 'a', 's', 'd', 'q', 'e', 'f', 'r', 'g', 'c', 'shift', ' ', '1', '2', '3', '4', '5', '6', '7', 'v', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown']);
-export const arenaKey = (e: { key: string; code?: string }): string => (/^Digit[1-7]$/.test(e.code ?? '') ? e.code!.slice(5) : e.key.toLowerCase());
+/** Digits and C (crouch) go by physical key, so Shift (sprint+crouch), Caps Lock and non-QWERTY layouts can't break them. */
+export const arenaKey = (e: { key: string; code?: string }): string => (/^Digit[1-7]$/.test(e.code ?? '') ? e.code!.slice(5) : e.code === 'KeyC' ? 'c' : e.key.toLowerCase());
 /**
  * Window-level guard while the Arena is active: swallow Ctrl/Cmd + game-key combos (Ctrl+S save, Ctrl+D bookmark,
  * Ctrl+A select-all, Ctrl+R reload, Ctrl+Q…) so they never reach the browser. Ctrl+W/Ctrl+T/Ctrl+N are reserved by

@@ -71,3 +71,31 @@ describe('arena held-key release + leave prompt', () => {
   });
 });
 type KeyboardEventLike = { key: string; ctrlKey?: boolean; preventDefault: () => void };
+
+import { applyCrouch, gridMap } from '../shared/fps';
+describe('C crouches (keydown → held keys → crouch state)', () => {
+  const map = gridMap(['#####', '#...#', '#...#', '#####']);
+  const press = (keys: Set<string>, e: { key: string; code: string; ctrlKey?: boolean; shiftKey?: boolean }, down: boolean) => {
+    const key = arenaKey(e);
+    if (down && isModifierChord(e)) return;
+    if (!ARENA_GAME_KEYS.has(key)) return;
+    if (down) keys.add(key); else keys.delete(key);
+  };
+  for (const ev of [{ key: 'c', code: 'KeyC' }, { key: 'C', code: 'KeyC', shiftKey: true }, { key: 'j', code: 'KeyC' } /* Dvorak etc. */]) {
+    it(`keydown ${ev.key}/${ev.code} crouches, keyup stands`, () => {
+      const keys = new Set<string>(); const body = { x: 2, y: 2, z: 0, vz: 0, grounded: true, crouch: false };
+      press(keys, ev, true);
+      expect(applyCrouch(body, crouchHeld(keys, false), map)).toBe(true);
+      press(keys, ev, false);
+      expect(applyCrouch(body, crouchHeld(keys, false), map)).toBe(false);
+    });
+  }
+  it('Shift sprint + C crouch together keep crouch held', () => {
+    const keys = new Set<string>(); press(keys, { key: 'Shift', code: 'ShiftLeft' }, true); press(keys, { key: 'C', code: 'KeyC', shiftKey: true }, true);
+    expect(crouchHeld(keys, false)).toBe(true);
+  });
+  it('the Arena shows an on-screen C crouch / Shift sprint hint', async () => {
+    const src = (await import('node:fs')).readFileSync('client/src/components/ArenaPanel.tsx', 'utf8');
+    expect(src).toMatch(/data-testid="arena-controls-hint"[\s\S]{0,400}<b>C<\/b> crouch · <b>Shift<\/b> sprint/);
+  });
+});

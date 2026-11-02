@@ -1437,6 +1437,11 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         {showFps && <div ref={fpsRef} className="fps-fps" data-testid="arena-fps" aria-live="off">… FPS</div>}
         {(status || glError) && <div className="fps-status">{glError || status}</div>}
       </div>
+      {!isTouch && (
+        <div className="fps-keyhint" data-testid="arena-controls-hint" style={{ position: 'absolute', left: 8, bottom: 8, zIndex: 3, pointerEvents: 'none', font: '600 11px system-ui, sans-serif', color: '#fff', background: 'rgba(0,0,0,.45)', borderRadius: 6, padding: '3px 7px', opacity: 0.85 }}>
+          <b>C</b> crouch · <b>Shift</b> sprint · <b>Space</b> jump · <b>R</b> reload
+        </div>
+      )}
       {isTouch ? (
         <div className="fps-touch">
           <div className="fps-dpad">
