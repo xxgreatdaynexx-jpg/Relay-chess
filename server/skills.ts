@@ -12,6 +12,7 @@ import { getBank } from './casino-store.js';
 import { onArenaMatchEnd } from './fps.js';
 import { SKILLS, isSkill, levelFor, totalLevel, titleFor, MAX_XP, type SkillId } from '../shared/skills.js';
 import { isQaName } from '../shared/qa.js';
+import { OBJ_XP, OBJ_XP_CAP } from '../shared/arenaModes.js';
 
 export const SKILLS_MIGRATION = `CREATE TABLE IF NOT EXISTS player_skills (
   player_key TEXT NOT NULL,
@@ -189,9 +190,11 @@ export function ledgerXp(game: string, amount: number, memo?: string): { skill: 
 }
 
 /** Combat XP for one finished arena match row. Exported for tests. */
-export function combatXp(p: { kills: number; participationMs: number }, won: boolean): number {
-  if (p.participationMs < 30_000 && !p.kills) return 0;
-  return Math.min(40, Math.max(0, p.kills)) * 25 + (p.participationMs >= 60_000 ? 50 : 0) + (won ? 150 : 0);
+export function combatXp(p: { kills: number; participationMs: number; obj?: number }, won: boolean): number {
+  const obj = Math.min(OBJ_XP_CAP, Math.max(0, p.obj ?? 0));
+  if (p.participationMs < 30_000 && !p.kills && !obj) return 0;
+  // Objectives (bomb plant/defuse, flag capture/return) in team modes: OBJ_XP each, capped.
+  return Math.min(40, Math.max(0, p.kills)) * 25 + obj * OBJ_XP + (p.participationMs >= 60_000 ? 50 : 0) + (won ? 150 : 0);
 }
 
 let unsubArena: (() => void) | null = null;
@@ -210,7 +213,7 @@ export function startSkills(io: Server): void {
   unsubArena?.();
   unsubArena = onArenaMatchEnd((r) => {
     const humans = new Set(r.players.flatMap((p) => (p.account ? [keyOf(p.account)] : []))).size; // win bonus needs a real opponent
-    for (const p of r.players) if (p.account) awardXp(p.account, 'combat', combatXp(p, humans >= 2 && p.id === r.winnerId));
+    for (const p of r.players) if (p.account) awardXp(p.account, 'combat', combatXp(p, humans >= 2 && (p.id === r.winnerId || (!!r.teams && r.teams.winner !== null && p.team === r.teams.winner))));
   });
   unsubXp = s.onXp((e) => io.to(`w:${keyOf(e.name)}`).emit('xp', e));
 }

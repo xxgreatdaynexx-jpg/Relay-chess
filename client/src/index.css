@@ -1050,6 +1050,7 @@ html[data-theme="contrast"] .top-tabs .sol-tab[aria-expanded="true"] { backgroun
 .fps-maps-pick button { padding: 1px 8px; border-radius: 6px; background: rgba(255,255,255,.12); font-weight: 700; }
 .fps-maps-pick button.is-on { background: #c8a24a; color: #1d1609; }
 .fps-maps-pick button.is-next { outline: 1px solid #c8a24a; }
+.fps-maps-pick.fps-modes { margin-left: 8px; align-items: center; }
 /* Full-bleed sections use 100vw, which includes the scrollbar; clip (not hidden, so sticky still works) to avoid a sideways scrollbar. */
 html, body { overflow-x: clip; }
 /* Narrow screens: open casino windows from the bottom so they never cover the site header / Main Menu. */

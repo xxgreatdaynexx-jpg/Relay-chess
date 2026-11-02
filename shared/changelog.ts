@@ -6,6 +6,13 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T23:25:00-06:00', title: 'Arena: Search & Destroy and Capture the Flag', bullets: [
+    'Requested by Dayne: the Arena has two new team modes next to the usual Deathmatch. Pick one with the new DM / S&D / CTF buttons beside the map picker. It starts right away if you are alone, otherwise it is queued for the next match, just like maps.',
+    'Search & Destroy: Blue and Red take turns attacking and defending bomb sites A and B. Attackers stand still on a site to plant (3 s); defenders stand still on the bomb to defuse (5 s). One life per round, sides swap at halftime, first to 4 rounds wins.',
+    'Capture the Flag: grab the enemy flag and bring it to your base while your own flag is home. Dropped flags return on their own after 20 s, or straight away if a teammate touches them. First to 3 captures or the most after 8 minutes wins.',
+    'Teams are balanced automatically and bots fill empty spots and play the objective. No friendly fire, and you can always see your teammates. The HUD shows team scores, the round clock, bomb and flag status, and markers for sites, bombs, flags and bases.',
+    'Plants, defuses, captures and flag returns give extra Combat XP. Spawn costs and the match prize are unchanged: the prize goes to the top player on the winning team.',
+  ] },
   { commit: '', at: '2026-11-01T23:20:00-06:00', title: 'No trading for the first 24 hours', bullets: [
     'Requested by Dayne: new accounts cannot trade with other players for their first 24 hours. That covers trade offers, counters and accepts, and listing or buying on the Market.',
     'It works both ways: nobody can trade with, or buy from, an account that is less than a day old.',

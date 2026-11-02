@@ -100,7 +100,13 @@ export function findPath(nodes: NavNode[], a: number, b: number): number[] {
 // ---------------------------------------------------------------- spawn / despawn rules
 
 /** How many bots should be in the arena for this many humans: 3 with exactly one human, otherwise none. */
-export const wantedBots = (humans: number) => (humans === 1 ? ARENA_BOT_COUNT : 0);
+export const wantedBots = (humans: number, team = false) => {
+  if (!team) return humans === 1 ? ARENA_BOT_COUNT : 0;
+  // Team modes: fill both sides to at least 3 (bots top up the short side), at most 5 bots.
+  if (humans < 1) return 0;
+  const side = Math.max(3, Math.ceil(humans / 2));
+  return Math.max(0, Math.min(BOT_NAMES.length, side * 2 - humans));
+};
 
 interface BotMind { path: number[]; goal: number; strafe: number; strafeUntil: number; target: string | null; seenAt: number; wobble: number; retreat: boolean; leaving: boolean; jumpAt: number; last: number }
 
@@ -114,7 +120,7 @@ export class ArenaBots {
    */
   sync(world: ArenaWorld, now: number, isHuman: (id: string) => boolean): void {
     const humans = [...world.fighters.keys()].filter(isHuman).length;
-    const want = wantedBots(humans);
+    const want = wantedBots(humans, !!world.modes);
     const mine = [...world.fighters.keys()].filter(isArenaBot);
     if (humans === 0) { for (const id of mine) this.remove(world, id); return; }
     if (mine.length > want) {
@@ -158,7 +164,8 @@ export class ArenaBots {
       // Vision: nearest living enemy in line of sight within 30 tiles.
       let foe: ArenaFighter | null = null, fd = 30;
       for (const t of world.fighters.values()) {
-        if (t.id === id || !t.alive || isArenaBot(t.id)) continue; // bots hunt humans (and QA bots), not each other
+        if (t.id === id || !t.alive) continue;
+        if (world.modes ? !world.modes.enemies(id, t.id) : isArenaBot(t.id)) continue; // FFA: bots hunt humans (and QA bots), not each other; team modes: the other team
         const d = Math.hypot(t.x - f.x, t.y - f.y, t.z - f.z);
         if (d < fd && lineOfSight(eyeOf(f), chestOf(t), world.map)) { foe = t; fd = d; }
       }
@@ -171,8 +178,11 @@ export class ArenaBots {
       if (f.ammo[f.weapon] === 0) world.reload(id, now);
       // Movement: follow the path to a goal (a random node, or toward the foe), strafing in fights.
       const here = nearestNode(nodes, f.x, f.y, f.z);
-      if (!m.path.length || (foe && now % 2000 < 70)) {
-        let goal = Math.floor(this.rand() * nodes.length);
+      const obj = world.modes && !foe ? world.modes.botGoal(f) : null;
+      const atObj = !!obj && Math.hypot(obj.x - f.x, obj.y - f.y) < 0.9;
+      if (obj && !atObj && m.path.length && now % 1500 < 70) m.path = []; // objectives move (carriers, dropped flags): re-plan
+      if (!atObj && (!m.path.length || (foe && now % 2000 < 70))) {
+        let goal = obj ? nearestNode(nodes, obj.x, obj.y, obj.z) : Math.floor(this.rand() * nodes.length);
         if (foe && !m.retreat) goal = nearestNode(nodes, foe.x, foe.y, foe.z);
         if (m.retreat && foe) {
           // Cover-ish: a nearby node the foe can't see.
@@ -195,7 +205,12 @@ export class ArenaBots {
         else if (f.grounded && m.last >= 0 && nodes[m.last]?.jump.includes(m.path[0]) && d < 1.2) out.push(...world.jump(id, now));
         else { dx = ((n.x - f.x) / d) * step; dy = ((n.y - f.y) / d) * step; }
       }
-      let face = Math.atan2(dy, dx);
+      if (obj && (atObj || (!m.path.length && Math.hypot(obj.x - f.x, obj.y - f.y) < 2.5))) {
+        const d = Math.hypot(obj.x - f.x, obj.y - f.y);
+        if (d >= 0.3 && !world.modes!.isHolding(id)) { dx = ((obj.x - f.x) / d) * step; dy = ((obj.y - f.y) / d) * step; } else { dx = 0; dy = 0; }
+      }
+      if (world.modes?.isHolding(id) && !foe) { dx = 0; dy = 0; }
+      let face = dx || dy ? Math.atan2(dy, dx) : f.a;
       if (foe) {
         if (now > m.strafeUntil) { m.strafe = this.rand() < 0.5 ? -1 : 1; m.strafeUntil = now + 500 + this.rand() * 900; }
         const toFoe = Math.atan2(foe.y - f.y, foe.x - f.x);

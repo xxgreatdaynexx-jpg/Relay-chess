@@ -17,6 +17,8 @@ import { meleeHit } from '../shared/fps.js';
 import { applyCrouch, canSprint, headZOf, speedOf, SPRINT_FIRE_DELAY_MS, SPRINT_FIRE_SLACK_MS } from '../shared/fps.js';
 import { canHold, isKnifeOnly, REGEN_DELAY_MS, REGEN_HPS, RESPAWN_PICK_MS } from '../shared/fps.js';
 import { KillCamBuffer } from './killcam.js';
+import { TeamMode, type ModeHost } from './arena-modes.js';
+import { CTF_MS, isModeId, type ModeId, type TeamId } from '../shared/arenaModes.js';
 
 /** Drones hover at least this high, and always above the map's tallest structure. */
 export const DRONE_Z = 8;
@@ -30,8 +32,8 @@ export const SUDDEN_MS = 90_000;
 /** End screen (scoreboard) before the next match loads. */
 export const END_SCREEN_MS = 10_000;
 export type MatchPhase = 'play' | 'sudden' | 'ended';
-export interface MatchResultRow { id: string; name: string; kills: number; deaths: number; earned: number; alive: boolean; bot: boolean; participationMs: number; account?: string }
-export interface MatchResult { matchId: string; map: string; startedAt: number; endedAt: number; winnerId: string | null; reason: 'last-alive' | 'cap' | 'empty'; players: MatchResultRow[]; prize?: { name: string; amount: number } }
+export interface MatchResultRow { id: string; name: string; kills: number; deaths: number; earned: number; alive: boolean; bot: boolean; participationMs: number; account?: string; team?: TeamId; obj?: number }
+export interface MatchResult { matchId: string; map: string; startedAt: number; endedAt: number; winnerId: string | null; reason: 'last-alive' | 'cap' | 'empty' | 'team'; players: MatchResultRow[]; prize?: { name: string; amount: number }; teams?: { mode: ModeId; winner: TeamId | null; score: [number, number] } }
 /** Map that follows `id` in the rotation. */
 export const nextInRotation = (id: string): string => MAP_ROTATION[(MAP_ROTATION.indexOf(id) + 1) % MAP_ROTATION.length];
 
@@ -65,6 +67,8 @@ export const PICKUP_R = 1.2;
 export interface WeaponDrop { id: number; w: WeaponId; x: number; y: number; z: number; ammo: number; sk?: string; at: number; until: number }
 
 export interface ArenaFighter extends Fighter {
+  /** last shot attempt (a shot cancels a plant/defuse) */
+  shotAt?: number;
   /** last time this fighter took damage / last regen step */
   hurtAt?: number;
   regenAt?: number;
@@ -143,6 +147,51 @@ export class ArenaWorld {
   private nadeSeq = 0;
   nuke: { ownerId: string; by: string; at: number } | null = null;
 
+  /** Game mode of the current match; nextMode is a pick for the next match. */
+  mode: ModeId = 'dm';
+  nextMode: ModeId | null = null;
+  /** Team-mode controller (null in deathmatch). */
+  modes: TeamMode | null = null;
+  get modeHost(): ModeHost {
+    const w = this; // eslint-disable-line @typescript-eslint/no-this-alias
+    return {
+      fighters: w.fighters,
+      get map() { return w.map; },
+      isBot: (id) => id.startsWith('arena-bot-') || id.startsWith('qa-bot-'),
+      hurt: (by, t, amt, now, cause) => w.damage(by, t, amt, now, cause),
+      refresh: (f, now, at) => w.refresh(f as ArenaFighter, now, at),
+    };
+  }
+  get upcomingMode(): ModeId { return this.nextMode ?? this.mode; }
+  /** Same rules as pickMap: a solo human's pick restarts the match in that mode now; otherwise it's queued. */
+  pickMode(id: unknown, pickerId: string, now: number, isHuman: (id: string) => boolean = () => true): ArenaEvent[] | null {
+    if (!isModeId(id) || !this.fighters.has(pickerId)) return null;
+    const humans = [...this.fighters.keys()].filter(isHuman);
+    const by = this.fighters.get(pickerId)!.name;
+    if (humans.length === 1 && humans[0] === pickerId) {
+      if (id === this.mode && this.phase !== 'ended') return [];
+      this.nextMode = id;
+      return [...this.changeMap(this.map, now, by), { ev: 'fps_mode', data: { kind: 'load', mode: id, by } }];
+    }
+    this.nextMode = id;
+    return [{ ev: 'fps_mode', data: { kind: 'next', mode: id, by } }];
+  }
+  /** Survivor carried into a new round: back to spawn, full health and ammo, same (already paid) life. */
+  refresh(f: ArenaFighter, now: number, [x, y, z]: [number, number, number]): void {
+    Object.assign(f, { x, y, z, vz: 0, grounded: true, crouch: false, wantCrouch: false, sprint: false, p: 0, physAt: now, lastMove: now, hp: MAX_HP, ammo: fullAmmo(), reloadUntil: 0, nades: GRENADES_PER_LIFE, moveSeq: undefined, moveCarry: 0 });
+  }
+  private setupMode(now: number): ArenaEvent[] {
+    if (this.nextMode) { this.mode = this.nextMode; this.nextMode = null; }
+    if (this.mode === 'dm') { this.modes = null; return []; }
+    const host = this.modeHost;
+    this.modes = new TeamMode(this.mode, this.map, this.rand);
+    // Team modes have their own clocks (S&D is round-driven): no sudden death.
+    this.matchEndsAt = now + (this.mode === 'ctf' ? CTF_MS : 60 * 60_000);
+    return this.modes.start(now, host);
+  }
+  /** True if `a` may not hurt `b` (teammates in a team mode; self-damage still counts). */
+  friendly(a: string | null, b: string): boolean { return !!this.modes?.friendly(a, b); }
+
   /** Map picked by a player for the next match (validated), or null to follow the rotation. */
   nextMapId: string | null = null;
   /** When the current match ends (0 until someone joins). */
@@ -208,7 +257,8 @@ export class ArenaWorld {
       Object.assign(f, { x, y, z, vz: 0, grounded: true, crouch: false, wantCrouch: false, sprint: false, p: 0, physAt: now, lastMove: now, hp: MAX_HP, alive: f.alive, respawnAt: f.alive ? 0 : Math.min(f.respawnAt, now), kills: 0, deaths: 0, streak: 0, uavUntil: 0, headshots: 0, ammo: fullAmmo(), reloadUntil: 0, lastShotAt: zeroShots(), earned: 0, matchJoinedAt: now });
       placed.push(f);
     }
-    return [{ ev: 'fps_map', data: { phase: 'load', map: map.id, by } }];
+    const modeEvents = this.setupMode(now);
+    return [{ ev: 'fps_map', data: { phase: 'load', map: map.id, by, mode: this.mode } }, ...modeEvents];
   }
 
   private startMatch(now: number): void {
@@ -230,13 +280,21 @@ export class ArenaWorld {
       id: f.id, name: f.name, kills: f.kills, deaths: f.deaths, earned: f.earned ?? 0, alive: f.alive, bot: f.id.startsWith('arena-bot-') || f.id.startsWith('qa-bot-'),
       participationMs: Math.max(0, now - Math.max(f.matchJoinedAt ?? this.matchStartAt, this.matchStartAt)),
     }));
-    const byScore = (a: MatchResultRow, b: MatchResultRow) => b.kills - a.kills || a.deaths - b.deaths;
+    const tm = this.modes;
+    if (tm) for (const r of rows) { const t = tm.teamOf(r.id); if (t !== undefined) r.team = t; r.obj = tm.obj.get(r.id) ?? 0; }
+    const byScore = (a: MatchResultRow, b: MatchResultRow) => (tm ? (b.obj ?? 0) * 2 + b.kills - ((a.obj ?? 0) * 2 + a.kills) : 0) || b.kills - a.kills || a.deaths - b.deaths;
     rows.sort((a, b) => Number(b.alive) - Number(a.alive) || byScore(a, b));
     let winnerId: string | null = null;
+    // Team modes: the winner (the single prize slot, same 300 / 2-human rule) is the winning team's MVP.
+    if (reason === 'team' && tm) {
+      const w = tm.over?.winner ?? null;
+      winnerId = [...rows].filter((r) => w === null || r.team === w).sort(byScore)[0]?.id ?? null;
+      rows.sort((a, b) => Number(w !== null && b.team === w) - Number(w !== null && a.team === w) || byScore(a, b));
+    }
     if (reason === 'last-alive') winnerId = rows.find((r) => r.alive)?.id ?? [...rows].sort(byScore)[0]?.id ?? null;
     else if (reason === 'cap') winnerId = [...rows].sort(byScore)[0]?.id ?? null;
     if (winnerId) rows.sort((a, b) => Number(b.id === winnerId) - Number(a.id === winnerId));
-    const result: MatchResult = { matchId: this.matchId, map: this.map.id, startedAt: this.matchStartAt, endedAt: now, winnerId, reason, players: rows };
+    const result: MatchResult = { matchId: this.matchId, map: this.map.id, startedAt: this.matchStartAt, endedAt: now, winnerId, reason, players: rows, ...(tm ? { teams: { mode: tm.mode, winner: tm.over?.winner ?? null, score: [...tm.score] as [number, number] } } : {}) };
     this.lastResult = result;
     this.strikes = []; this.rockets = []; this.grenades = []; this.drones.clear();
     try { this.onMatchEnd?.(result); } catch (e) { console.error('arena match-end hook failed', e); }
@@ -246,6 +304,10 @@ export class ArenaWorld {
   /** Match clock: play -> sudden death (no respawns) -> end screen -> next map. */
   private stepMatch(now: number): ArenaEvent[] {
     if (!this.matchEndsAt || this.nuke) return [];
+    if (this.modes && this.phase === 'play') {
+      if (this.modes.over) return this.endMatch(now, 'team');
+      return [];
+    }
     if (this.phase === 'play' && now >= this.matchEndsAt) {
       if (this.aliveCount() <= 1) return this.endMatch(now, this.aliveCount() === 1 ? 'last-alive' : 'empty');
       this.phase = 'sudden';
@@ -275,9 +337,15 @@ export class ArenaWorld {
     f.weapon = f.loadout;
     f.earned = 0; f.matchJoinedAt = now;
     this.fighters.set(id, f);
-    if (this.phase !== 'play') Object.assign(f, { alive: false, respawnAt: now, weapon: 'pistol' }); // late joiner: spectate until the next match
+    if (this.modes) {
+      this.modes.assign(id, this.modeHost);
+      [f.x, f.y, f.z] = this.modes.spawnPoint(f, this.modeHost);
+    }
+    if (this.modes && this.phase === 'play' && !this.modes.mayRespawn(f, now)) Object.assign(f, { alive: false, respawnAt: now + BROKE_RETRY_MS, weapon: 'pistol' }); // S&D mid-round: wait for the next round
+    else if (this.phase !== 'play') Object.assign(f, { alive: false, respawnAt: now, weapon: 'pistol' }); // late joiner: spectate until the next match
     else {
       const g = this.spawnGate ? this.spawnGate(f, now) : true;
+      if (g === true) this.modes?.spawned(f);
       // 'wait': the client isn't rendering yet (3D engine still loading / failed): stay dead, uncharged, and re-check soon.
       if (g === 'wait') Object.assign(f, { alive: false, broke: false, respawnAt: now + BROKE_RETRY_MS, weapon: 'pistol' });
       else if (!g) Object.assign(f, { alive: false, broke: true, respawnAt: now + BROKE_RETRY_MS, weapon: 'pistol' });
@@ -288,6 +356,7 @@ export class ArenaWorld {
   }
 
   leave(id: string): boolean {
+    this.modes?.leave(id, this.modeHost);
     this.drones.delete(id);
     this.strikes = this.strikes.filter((s) => s.ownerId !== id);
     this.rockets = this.rockets.filter((r) => r.ownerId !== id);
@@ -450,6 +519,7 @@ export class ArenaWorld {
     const sid = cleanSid(sidIn);
     const f = this.fighters.get(id);
     if (!f || !f.alive || this.phase === 'ended') return [];
+    f.shotAt = now; // cancels a plant/defuse in progress
     const spec = WEAPONS[f.weapon];
     this.settleReload(f, now);
     if (f.reloadUntil) return [];
@@ -584,12 +654,14 @@ export class ArenaWorld {
   private damage(byId: string | null, targetId: string, amount: number, now: number, cause: string, head = false, noscope = false): ArenaEvent[] {
     const t = this.fighters.get(targetId);
     if (!t || !t.alive) return [];
+    if (this.friendly(byId, targetId)) return []; // no friendly fire in team modes
     if (amount > 0) amount = amount * Math.max(0.95, Math.min(1, this.armorOf(t) || 1));
     const killed = applyDamage(t, now, amount);
     if (amount > 0) t.hurtAt = now;
     const out: ArenaEvent[] = [{ ev: 'fps_hit', data: { by: byId, target: targetId, hp: Math.round(t.hp), dmg: Math.round(amount), cause, ...(head ? { head: true } : {}) } }];
     if (!killed) return out;
     t.streak = 0;
+    this.modes?.onDeath(t, now);
     this.dropWeapon(t, now);
     // Humans get the loadout picker for RESPAWN_PICK_MS (or until they press Respawn); bots come straight back.
     if (!t.id.startsWith('arena-bot-') && !t.id.startsWith('qa-bot-')) t.respawnAt = Math.max(t.respawnAt, now + RESPAWN_PICK_MS);
@@ -813,6 +885,7 @@ export class ArenaWorld {
       if (f.alive) this.history.record(f.id, now, f.x, f.y, f.z, !!f.crouch); else this.history.forget(f.id);
       if (f.alive && f.z <= KILL_Z) { f.alive = false; f.respawnAt = now; } // fell out of the world: never happens on valid maps
       if (!f.alive && this.phase !== 'play') continue; // sudden death / end screen: no respawns (and no spawn charges)
+      if (!f.alive && this.modes && !this.modes.mayRespawn(f, now)) continue; // S&D: one life per round (no charge either)
       if (!f.alive && now >= f.respawnAt && this.spawnGate) {
         const g = this.spawnGate(f, now);
         if (g === 'wait') { f.broke = false; f.respawnAt = now + BROKE_RETRY_MS; continue; } // client not live: no spawn, no charge
@@ -830,8 +903,10 @@ export class ArenaWorld {
         f.ammo = fullAmmo();
         f.reloadUntil = 0;
         f.streak = 0;
+        if (this.modes) { [f.x, f.y, f.z] = this.modes.spawnPoint(f, this.modeHost); this.modes.spawned(f); }
       }
     }
+    if (this.modes && this.phase === 'play' && !this.nuke) out.push(...this.modes.step(now, this.modeHost));
     out.push(...this.stepDrops(now));
     out.push(...this.stepRockets(now));
     out.push(...this.stepGrenades(now));
@@ -860,7 +935,7 @@ export class ArenaWorld {
         // Bombs fall from the sky, so they burst on the highest surface there (a roof or catwalk shields people under it).
         const bz = roofAt(bx, by, this.map);
         out.push({ ev: 'fps_boom', data: { x: +bx.toFixed(2), y: +by.toFixed(2), z: +bz.toFixed(2), r: AIRSTRIKE_RADIUS, cause: 'airstrike' } });
-        const live = [...this.fighters.values()].filter((f) => f.id !== st.ownerId);
+        const live = [...this.fighters.values()].filter((f) => f.id !== st.ownerId && !this.friendly(st.ownerId, f.id));
         for (const v of splashTargets({ x: bx, y: by, z: bz }, AIRSTRIKE_RADIUS, AIRSTRIKE_DAMAGE, live, this.map)) out.push(...this.damage(st.ownerId, v.id, v.damage, now, 'airstrike'));
       }
       st.bombs = left;
@@ -879,7 +954,7 @@ export class ArenaWorld {
       let best: ArenaFighter | null = null;
       let bestD = DRONE_RANGE;
       for (const t of all) {
-        if (t.id === id || !t.alive) continue;
+        if (t.id === id || !t.alive || this.friendly(id, t.id)) continue;
         const dist = Math.hypot(t.x - pos.x, t.y - pos.y);
         if (dist >= bestD) continue;
         if (!lineOfSight(pos, chestOf(t), this.map)) continue;
@@ -928,14 +1003,21 @@ export class ArenaWorld {
     const roster: Array<{ id: string; name: string; k: number; d: number; st: number; bot?: boolean }> = [];
     const radar: Array<{ x: number; y: number }> = [];
     const uav = v.uavUntil > now;
+    const mates = this.modes;
     for (const p of full.players) {
-      if (seen.has(p.id)) { players.push(p); continue; }
+      if (seen.has(p.id) || (mates && p.id !== viewerId && !mates.enemies(viewerId, p.id))) { players.push(p); continue; }
       roster.push({ id: p.id, name: p.name, k: p.k, d: p.d, st: p.st, ...(p.bot ? { bot: true } : {}) });
       if (uav && p.alive) radar.push({ x: Math.round(p.x), y: Math.round(p.y) });
     }
     const eye = { x: v.x, y: v.y, z: v.z };
     const drops = full.drops.filter((d) => canSee(eye, d, this.map));
-    return { ...full, players, roster, drops, ...(uav ? { radar } : {}) };
+    let mv = (full as { mv?: import('../shared/arenaModes.js').ModeView }).mv;
+    // Defenders don't get the bomb's position while an attacker is carrying (or has dropped) it out of their sight.
+    if (mv?.snd && mates && mates.teamOf(viewerId) !== mv.snd.attackers && (mv.snd.bomb.state === 'carried' || mv.snd.bomb.state === 'dropped')) {
+      const c = mv.snd.bomb.carrier;
+      if (!c || !seen.has(c)) mv = { ...mv, snd: { ...mv.snd, bomb: { state: mv.snd.bomb.state, x: 0, y: 0, z: 0, ...(c && seen.has(c) ? { carrier: c } : {}) } } };
+    }
+    return { ...full, players, roster, drops, ...(mv ? { mv } : {}), ...(uav ? { radar } : {}) };
   }
 
   /** A shot event as seen by `viewerId`: a hidden shooter only gives away a coarse origin (for sound), no tracer rays. */
@@ -965,8 +1047,11 @@ export class ArenaWorld {
       map: this.map.id,
       next: this.upcomingMapId,
       picked: this.nextMapId !== null,
-      left: this.matchEndsAt ? Math.max(0, this.matchEndsAt - now) : MATCH_MS,
+      left: this.modes ? (this.modes.mode === 'ctf' ? Math.max(0, this.modes.endsAt - now) : this.modes.view(now, this.modeHost).snd!.left) : this.matchEndsAt ? Math.max(0, this.matchEndsAt - now) : MATCH_MS,
       phase: this.phase,
+      mode: this.mode,
+      nextMode: this.upcomingMode,
+      ...(this.modes ? { mv: this.modes.view(now, this.modeHost) } : {}),
       alive: this.aliveCount(),
       ...(this.phase === 'sudden' ? { sd: Math.max(0, this.suddenEndsAt - now) } : {}),
       ...(this.phase === 'ended' && this.lastResult ? { end: { ...this.lastResult, inMs: Math.max(0, this.endScreenUntil - now) } } : {}),

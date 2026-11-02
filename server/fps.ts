@@ -373,6 +373,11 @@ export function registerFps(io: Server, socket: Socket): void {
     if (ev) { emit(io, ev); broadcastState(io); }
     if (typeof ack === 'function') ack({ ok: !!ev, map: world.map.id, next: world.upcomingMapId });
   });
+  socket.on('fps_mode', (p: unknown, ack?: (res: unknown) => void) => {
+    const ev = world.pickMode(body(p).mode, socket.id, Date.now(), isHuman);
+    if (ev) { emit(io, ev); broadcastState(io); }
+    if (typeof ack === 'function') ack({ ok: !!ev, mode: world.mode, next: world.upcomingMode });
+  });
   socket.on('fps_ping', (ack?: unknown) => { if (typeof ack === 'function') ack(Date.now()); });
   socket.on('fps_leave', () => leave(io, socket));
   socket.on('disconnect', () => leave(io, socket));

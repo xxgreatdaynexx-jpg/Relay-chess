@@ -19,6 +19,8 @@ import { DEATH_HOLD_MS, fitSpeed, killCardText, sampleKillCam, shotsBetween, typ
 import { importWithReload, reloadOnceForChunkError } from '@/lib/chunkReload';
 import { headHitFeedback } from '@/lib/arenaHeadFx';
 import { arenaLiveHud, kiaCanvasStrip } from '@/lib/arenaHud';
+import { drawModeHud } from '@/lib/arenaModeHud';
+import { MODE_IDS, MODE_INFO, TEAM_COLORS, TEAM_NAMES, type ModeId, type ModeView, type TeamId } from '../../../shared/arenaModes';
 import { feedParts, popupScale, POPUP_MS, type FeedItem } from '@/lib/arenaFeed';
 import {
   AIRSTRIKE_RADIUS, launchRocket, RESPAWN_PICK_MS, canHold, isKnifeOnly, knifeOnlyAvailable, cheapestSpawn, isWeapon, spawnCost as spawnCostBase, applyCrouch, canSprint, SPRINT_FIRE_DELAY_MS, clampPitch, CROUCH_LERP_SPEED, CROUCH_SPREAD_MULT, EYE_HEIGHT, eyeHeightOf, mapById, speedOf, MAP, MAPS, MAX_HP, MAX_PITCH, MOVE_SPEED, moveHorizontal, weaponSpread, MoveHistory, reconcileMove, ROCKET_GRAVITY, ROCKET_LIFE_MS, stepVertical, surfaceNormal, STREAKS, tryJump, SWITCH_MS, TICK_HZ, WEAPON_ORDER, WEAPONS, type WeaponId,
@@ -35,8 +37,8 @@ const SCOPE_ZOOM = 3.5;
 const FOV = 68; // vertical, degrees
 
 interface NetPlayer { id: string; name: string; x: number; y: number; z: number; a: number; p: number; hp: number; k: number; d: number; alive: boolean; w: WeaponId; ammo: number; rl: number; g: boolean; st: number; uav: number; bot?: boolean; c?: boolean; s?: boolean; lo?: WeaponId; stk?: number; bk?: boolean; rs?: number; sk?: string; q?: number; ex?: WeaponId[]; gn?: number }
-interface MatchEnd { matchId: string; winnerId: string | null; reason: string; players: Array<{ id: string; name: string; kills: number; deaths: number; earned: number; alive: boolean; bot: boolean }>; prize?: { name: string; amount: number }; inMs: number }
-interface NetState { phase?: 'play' | 'sudden' | 'ended'; alive?: number; sd?: number; end?: MatchEnd; t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null; wh?: boolean; mysk?: Record<string, string>; roster?: Array<Pick<NetPlayer, 'id' | 'name' | 'k' | 'd' | 'st' | 'bot'>>; radar?: Array<{ x: number; y: number }>; rockets?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; seek?: number; lock?: string | null }>; drops?: Array<{ id: number; w: WeaponId; x: number; y: number; z: number; left: number; sk?: string }>; nades?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; left: number }> }
+interface MatchEnd { matchId: string; winnerId: string | null; reason: string; players: Array<{ id: string; name: string; kills: number; deaths: number; earned: number; alive: boolean; bot: boolean; team?: TeamId; obj?: number }>; prize?: { name: string; amount: number }; inMs: number; teams?: { mode: ModeId; winner: TeamId | null; score: [number, number] } }
+interface NetState { mode?: ModeId; nextMode?: ModeId; mv?: ModeView; phase?: 'play' | 'sudden' | 'ended'; alive?: number; sd?: number; end?: MatchEnd; t: number; map?: string; next?: string; picked?: boolean; left?: number; players: NetPlayer[]; drones: Array<{ ownerId: string; x: number; y: number; z: number }>; strikes: Array<{ x: number; y: number; z: number; inMs: number; r?: number; locked?: boolean }>; nuke: { by: string; inMs: number } | null; wh?: boolean; mysk?: Record<string, string>; roster?: Array<Pick<NetPlayer, 'id' | 'name' | 'k' | 'd' | 'st' | 'bot'>>; radar?: Array<{ x: number; y: number }>; rockets?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; seek?: number; lock?: string | null }>; drops?: Array<{ id: number; w: WeaponId; x: number; y: number; z: number; left: number; sk?: string }>; nades?: Array<{ id: number; ownerId: string; x: number; y: number; z: number; vx: number; vy: number; vz: number; left: number }> }
 interface Snap extends NetState { recv: number }
 type Quality = 'hd' | 'lo';
 
@@ -192,6 +194,9 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
   const touchSprintRef = useRef(false);
   useEffect(() => { touchSprintRef.current = touchSprint; }, [touchSprint]);
   const [mapInfo, setMapInfo] = useState<{ map: string; next: string; picked: boolean; secs: number }>({ map: MAP.id, next: '', picked: false, secs: 0 });
+  /** Game mode now / next (picker), and the live team-mode view for the canvas HUD. */
+  const [modeInfo, setModeInfo] = useState<{ mode: ModeId; next: ModeId; snd: boolean }>({ mode: 'dm', next: 'dm', snd: false });
+  const mvRef = useRef<ModeView | null>(null);
 
   function setWeapon(w: WeaponId) {
     const m = me.current;
@@ -369,6 +374,11 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         phaseRef.current = ph;
         const mu = { phase: ph, alive: s.alive ?? 0, sd: Math.ceil((s.sd ?? 0) / 1000), end: s.end ?? null };
         setMatchUi((o) => (o.phase === mu.phase && o.alive === mu.alive && o.sd === mu.sd && (o.end?.matchId ?? '') === (mu.end?.matchId ?? '') ? o : mu));
+      }
+      {
+        mvRef.current = s.mv ?? null;
+        const mi = { mode: s.mode ?? 'dm', next: s.nextMode ?? s.mode ?? 'dm', snd: !!s.mv?.snd };
+        setModeInfo((o) => (o.mode === mi.mode && o.next === mi.next && o.snd === mi.snd ? o : mi));
       }
       if (s.map) {
         const info = { map: s.map, next: s.next ?? '', picked: !!s.picked, secs: Math.ceil((s.left ?? 0) / 1000) };
@@ -795,7 +805,10 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         ctx.globalAlpha = alpha;
         const bw = Math.max(16, 40 / Math.max(1, s.dist / 3)) * (H / 400);
         ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(s.sx - bw / 2, s.sy, bw, 3);
-        ctx.fillStyle = p.hp > 40 ? '#cfd4c4' : '#d9473a'; ctx.fillRect(s.sx - bw / 2, s.sy, (bw * p.hp) / MAX_HP, 3);
+        const pt = mvRef.current?.tm?.[p.id], myT = mvRef.current?.tm?.[m.id];
+        const mate = pt !== undefined && pt === myT;
+        ctx.fillStyle = mate ? TEAM_COLORS[pt] : p.hp > 40 ? '#cfd4c4' : '#d9473a'; ctx.fillRect(s.sx - bw / 2, s.sy, (bw * p.hp) / MAX_HP, 3);
+        if (pt !== undefined) { ctx.fillStyle = TEAM_COLORS[pt]; ctx.font = `700 ${Math.max(8, Math.round(H / 70))}px ui-monospace, Menlo, monospace`; ctx.textAlign = 'center'; ctx.fillText(mate ? p.name : '▼', s.sx, s.sy - 3); ctx.textAlign = 'left'; }
         ctx.globalAlpha = 1;
       }
       // Owner-granted wallhack (the server only sends hidden enemies to that account): outlines + health through walls.
@@ -991,6 +1004,13 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       // Radar (UAV)
       const live = (snap?.strikes ?? []).filter((s) => s.inMs >= 0);
       r.minimap(ctx, map, m, m.uavUntil > now ? [...others, ...(snap?.radar ?? [])] : [], live);
+      // Team modes: scores, clock, bomb/flag status and objective markers.
+      if (mvRef.current) {
+        const mv = mvRef.current;
+        const left = Math.max(0, (mv.snd ? mv.snd.left : mv.ctf?.left ?? 0) - (now - (snap?.recv ?? now)));
+        const nameOf = (id: string) => snap?.players.find((q) => q.id === id)?.name ?? snap?.roster?.find((q) => q.id === id)?.name ?? '?';
+        drawModeHud(ctx, mv, { myId: m.id, W: W2, H: H2, u, mono, project: (x, y, z) => (g3 ? g3.project(x, y, z, W2, H2) : null), names: nameOf, left });
+      }
       // Airstrike warning: countdown, danger-close when you're in the zone, jets overhead just before impact.
       for (const s of live) {
         const left = Math.max(0, s.inMs - (now - (snap?.recv ?? now)));
@@ -1263,6 +1283,15 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
             </button>
           ))}
         </span>
+        <span className="fps-maps-pick fps-modes" data-testid="arena-mode-picker" role="group" aria-label="Pick a game mode">
+          {MODE_IDS.map((id) => (
+            <button key={id} type="button" data-testid={`arena-mode-${id}`} aria-pressed={id === modeInfo.mode}
+              className={id === modeInfo.mode ? 'is-on' : id === modeInfo.next ? 'is-next' : ''}
+              title={`${MODE_INFO[id].name}: ${MODE_INFO[id].blurb}${id === modeInfo.mode ? ' (playing now)' : ' Vote for it (starts now if you are alone).'}`}
+              onClick={() => socket.emit('fps_mode', { mode: id })}>{MODE_INFO[id].short}</button>
+          ))}
+          {modeInfo.next !== modeInfo.mode && <span className="opacity-70">next: {MODE_INFO[modeInfo.next].short}</span>}
+        </span>
       </div>
       {lookOpen && (
         <div className="fps-look" data-testid="arena-look">
@@ -1292,13 +1321,18 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         {matchUi.phase === 'ended' && matchUi.end && (
           <div data-testid="arena-match-end" style={{ position: 'absolute', inset: '10% 15%', zIndex: 6, background: 'rgba(0,0,0,.82)', color: '#e6e9df', padding: 12, borderRadius: 8, overflow: 'auto', fontSize: 12 }} onMouseDown={(e) => e.stopPropagation()}>
             <div style={{ fontSize: 18, fontWeight: 800, textAlign: 'center' }}>MATCH OVER</div>
+            {matchUi.end.teams && (
+              <div data-testid="arena-team-result" style={{ textAlign: 'center', fontSize: 16, fontWeight: 800, marginBottom: 4, color: matchUi.end.teams.winner === null ? '#e6e9df' : TEAM_COLORS[matchUi.end.teams.winner] }}>
+                {MODE_INFO[matchUi.end.teams.mode].name}: {matchUi.end.teams.winner === null ? 'DRAW' : `${TEAM_NAMES[matchUi.end.teams.winner].toUpperCase()} WINS`} {matchUi.end.teams.score[0]}–{matchUi.end.teams.score[1]}
+              </div>
+            )}
             <div style={{ textAlign: 'center', marginBottom: 8 }}>
               Winner: <b>{matchUi.end.players.find((p) => p.id === matchUi.end!.winnerId)?.name ?? 'nobody'}</b>
               {matchUi.end.prize && <span style={{ color: '#9be37a' }}> · +{matchUi.end.prize.amount} 🪙 WINNER</span>}
               <span className="opacity-70"> · next match in {Math.ceil(matchUi.end.inMs / 1000)}s</span>
             </div>
-            <table style={{ width: '100%' }}><thead><tr><th style={{ textAlign: 'left' }}>Player</th><th>K</th><th>D</th><th>🪙 won</th></tr></thead>
-              <tbody>{matchUi.end.players.map((p) => <tr key={p.id} style={{ fontWeight: p.id === me.current.id ? 800 : 400 }}><td>{p.id === matchUi.end!.winnerId ? '🏆 ' : ''}<span className="player-link" data-player={p.name}>{p.name}</span></td><td style={{ textAlign: 'center' }}>{p.kills}</td><td style={{ textAlign: 'center' }}>{p.deaths}</td><td style={{ textAlign: 'center' }}>{p.earned ? `+${p.earned}` : '—'}{p.id === matchUi.end!.winnerId && matchUi.end!.prize ? ` +${matchUi.end!.prize.amount}` : ''}</td></tr>)}</tbody>
+            <table style={{ width: '100%' }}><thead><tr><th style={{ textAlign: 'left' }}>Player</th><th>K</th><th>D</th>{matchUi.end.teams && <th title="Objectives: plants, defuses, captures, flag returns">OBJ</th>}<th>🪙 won</th></tr></thead>
+              <tbody>{matchUi.end.players.map((p) => <tr key={p.id} style={{ fontWeight: p.id === me.current.id ? 800 : 400 }}><td>{p.id === matchUi.end!.winnerId ? '🏆 ' : ''}{p.team !== undefined && <span style={{ color: TEAM_COLORS[p.team] }}>■ </span>}<span className="player-link" data-player={p.name}>{p.name}</span></td><td style={{ textAlign: 'center' }}>{p.kills}</td><td style={{ textAlign: 'center' }}>{p.deaths}</td>{matchUi.end!.teams && <td style={{ textAlign: 'center' }}>{p.obj ?? 0}</td>}<td style={{ textAlign: 'center' }}>{p.earned ? `+${p.earned}` : '—'}{p.id === matchUi.end!.winnerId && matchUi.end!.prize ? ` +${matchUi.end!.prize.amount}` : ''}</td></tr>)}</tbody>
             </table>
           </div>
         )}
@@ -1308,6 +1342,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         {!life.alive && !spawnedOnce && me.current.joined && matchUi.phase === 'play' && (
           <div className="fps-respawn" data-testid="arena-play" style={{ position: 'absolute', left: '50%', bottom: '14%', transform: 'translateX(-50%)', zIndex: 5, background: 'rgba(0,0,0,.72)', color: '#e6e9df', padding: '10px 14px', borderRadius: 6, textAlign: 'center', fontSize: 12 }}
             onMouseDown={(e) => e.stopPropagation()}>
+            {modeInfo.mode !== 'dm' && <div data-testid="arena-mode-note" style={{ marginBottom: 6, color: '#ffd36a' }}>{MODE_INFO[modeInfo.mode].name}: {MODE_INFO[modeInfo.mode].blurb}{modeInfo.snd ? ' Joining mid-round? You spawn at the next round.' : ''}</div>}
             <div style={{ marginBottom: 6 }}>{wallet !== null ? <>Spawn costs <b>{spawnCost(loadout)} 🪙</b> ({WEAPONS[loadout].name}); nothing is charged until you press Play.</> : <>Guest: spawns are free.</>}</div>
             <button type="button" data-testid="arena-play-btn" style={{ padding: '5px 16px', borderRadius: 4, border: 0, background: '#e6e9df', color: '#15170f', fontWeight: 800 }} onClick={() => respawnNow()}>▶ Play</button>
           </div>
@@ -1315,6 +1350,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         {!life.alive && spawnedOnce && me.current.joined && matchUi.phase === 'play' && (
           <div className="fps-respawn" data-testid="arena-respawn" data-killcam={killCam?.playing ? '1' : '0'} style={{ display: killCam?.playing ? 'none' : undefined, position: 'absolute', left: '50%', bottom: '14%', transform: 'translateX(-50%)', zIndex: 5, background: 'rgba(0,0,0,.72)', color: '#e6e9df', padding: '8px 10px', borderRadius: 6, textAlign: 'center', fontSize: 12 }}
             onMouseDown={(e) => e.stopPropagation()}>
+ {modeInfo.snd && <div data-testid="arena-snd-wait" style={{ marginBottom: 6, color: '#ffd36a' }}>Search &amp; Destroy: one life per round. You spawn again when the next round starts.</div>}
             <div data-testid="arena-kia-header" style={{ marginBottom: 6, fontWeight: 800, letterSpacing: '.12em', fontFamily: 'monospace', fontSize: 13 }}>KILLED IN ACTION · PICK YOUR LOADOUT</div>
             {killCam?.card && <div data-testid="arena-killcard" style={{ marginBottom: 6, fontWeight: 800, letterSpacing: '.04em', color: '#ffb4a8' }}>{killCardText(killCam.card, (w) => (isWeapon(w) ? WEAPONS[w].name : w))}</div>}
             {killCam?.note && <div style={{ marginBottom: 6, opacity: 0.75 }}>{killCam.note}</div>}
