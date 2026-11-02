@@ -6,6 +6,13 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T21:15:00-06:00', title: 'Fishing: brand-new fish models', bullets: [
+    'Requested by Dayne: every fish you catch now has its own proper 3D model: real body shape, fins, tail, eyes, mouth and markings for each species.',
+    'Bluegill and Pumpkinseed are round with their dark ear flaps, Yellow Perch has its tiger bars and orange fins, Largemouth Bass gets its big jaw and dark side stripe, Rainbow Trout its pink band and spots.',
+    'Catfish have whiskers, Walleye glassy eyes and dark saddles, Northern Pike a long duck-bill snout with pale bean spots, Sturgeon bony plates, barbels and a shark tail, Golden Carp big shiny scales.',
+    'Crystal Koi is now a white koi with red patches and long flowing fins (still with its blue glow). Fish swim in your hands: the body waves and the tail and fins move.',
+    'Looks only: catch odds, weights, prices and XP are unchanged.',
+  ] },
   { commit: '', at: '2026-11-01T21:10:00-06:00', title: 'Skills now give real perks', bullets: [
     'Requested by Dayne: every skill except Gambling now helps you, a little more each level from 1 to 99. Your current perk shows under each skill in the Skills panel.',
     '⛏️ Mining: up to 35% faster swings and up to a 15% chance of double ore in every mine (Mine, Frostbite, Magma, Coral Grotto, resort). Key and chest drop odds are unchanged.',

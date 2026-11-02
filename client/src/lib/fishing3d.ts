@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { DOCK, inLake, LAKE, lakeShape } from '../../../shared/outskirts';
 import { fishById, RARITY_COLOR, type Rarity } from '../../../shared/fishing';
 import { mix, parseTod, skyNow, type Sky } from '../../../shared/daynight';
+import { animateFish, buildFishModel } from './fishModels';
 import { detectWorldTier, TIER_PIXEL_RATIO } from './worldTier';
 
 export type View3DPhase = 'idle' | 'charge' | 'flying' | 'wait' | 'bite' | 'reel' | 'show';
@@ -313,7 +314,7 @@ export class Fishing3D {
   }
   showCatch(fishId: string, grams: number) {
     const g = this.catchGroup; for (const ch of [...g.children]) if (ch !== this.catchLight) { g.remove(ch); ch.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); const mt = m.material as THREE.Material | undefined; if (mt) mt.dispose(); }); }
-    const f = fishById(fishId); const model = buildFish(fishId, grams); g.add(model);
+    const f = fishById(fishId); const model = buildFish(fishId, grams, this.tier); g.add(model); this.catchModel = model;
     const rc = fishId === 'oldchud' ? 0x66ff44 : fishId === 'goldcarp' ? 0xffb21e : fishId === 'koi' ? 0x66ccff : RAR_HEX[f?.rarity ?? 'common'] ?? 0xd8dde8; const big = f ? RARE.includes(f.rarity) || fishId === 'oldchud' : false;
     this.catchLight.intensity = fishId === 'koi' ? 30 : fishId === 'goldcarp' ? 16 : fishId === 'oldchud' ? 22 : big ? 14 : 6; this.catchLight.color.setHex(rc);
     (this.catchGlow.material as THREE.SpriteMaterial).color.setHex(rc); (this.sparkles.material as THREE.PointsMaterial).color.setHex(rc); this.catchGlow.userData.big = big; this.sparkles.visible = f?.rarity !== 'junk'; this.catchGlow.visible = f?.rarity !== 'junk'; this.revealT = 0;
@@ -399,7 +400,7 @@ export class Fishing3D {
       (s.drops.material as THREE.PointsMaterial).opacity = 1 - u;
       if (u >= 1) { this.scene.remove(s.ring, s.ring2, s.drops); (s.ring.material as THREE.Material).dispose(); (s.ring2.material as THREE.Material).dispose(); s.drops.geometry.dispose(); (s.drops.material as THREE.Material).dispose(); this.splashes.splice(i, 1); } }
     // caught fish: dangles and turns in front of the camera
-    if (this.catchGroup.visible) { this.revealT += dt; const pop = Math.min(1, this.revealT / 0.5); const ease = 1 - Math.pow(1 - pop, 3) + Math.sin(pop * Math.PI) * 0.12;
+    if (this.catchGroup.visible) { this.revealT += dt; if (this.catchModel) animateFish(this.catchModel, t); const pop = Math.min(1, this.revealT / 0.5); const ease = 1 - Math.pow(1 - pop, 3) + Math.sin(pop * Math.PI) * 0.12;
       this.catchGroup.rotation.y += dt * 0.9; this.catchGroup.rotation.z = Math.sin(t * 3) * 0.12; this.catchGroup.position.y = 2.3 + Math.sin(t * 2) * 0.08 - (1 - ease) * 1.6; this.catchGroup.scale.setScalar(0.4 + 0.6 * ease);
       const big = !!this.catchGlow.userData.big; this.catchGlow.position.copy(this.catchGroup.position); this.catchGlow.scale.setScalar((big ? 5 : 3.4) * (0.9 + 0.1 * Math.sin(t * 3)) * ease);
       (this.catchGlow.material as THREE.SpriteMaterial).opacity = (big ? 0.85 : 0.5) * Math.min(1, this.revealT * 2);
@@ -415,6 +416,7 @@ export class Fishing3D {
     this.renderer.render(this.scene, this.camera);
   }
   private camLook: THREE.Vector3 | null = null;
+  private catchModel: THREE.Group | null = null;
   dispose() {
     this.rodGeo?.dispose(); for (const d of this.disposables) d.dispose();
     for (const s of this.splashes) { (s.ring.material as THREE.Material).dispose(); (s.ring2.material as THREE.Material).dispose(); s.drops.geometry.dispose(); (s.drops.material as THREE.Material).dispose(); }
@@ -431,8 +433,12 @@ function makeTag(name: string): THREE.Sprite {
 }
 
 /** A 3D model of a catch: species colours and shape, scaled by weight. Junk gets its own props. */
-export function buildFish(id: string, grams: number): THREE.Group {
+export function buildFish(id: string, grams: number, tier: Tier = 'mid'): THREE.Group {
   const g = new THREE.Group(); const f = fishById(id); const kg = grams / 1000;
+  const model = buildFishModel(id, tier);
+  if (model) { g.add(model); g.userData.swim = model.userData.swim;
+    if (id === 'koi') { const halo = new THREE.Mesh(new THREE.SphereGeometry(0.9, 16, 12), new THREE.MeshBasicMaterial({ color: 0x66ccff, transparent: true, opacity: 0.14, depthWrite: false })); halo.scale.set(0.55, 0.75, 1.15); g.add(halo); }
+    const k = Math.min(1.6, Math.max(0.55, 0.6 + Math.log10(1 + kg) * 0.9)); g.scale.setScalar(k); g.rotation.y = Math.PI / 2; return g; }
   if (id === 'boot') { const m = new THREE.MeshLambertMaterial({ color: 0x4a3524 }); const a = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.6, 0.3), m); const b = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.22, 0.7), m); b.position.set(0, -0.2, 0.2); g.add(a, b); return g; }
   if (id === 'can') { const m = new THREE.MeshLambertMaterial({ color: 0x8a5a3a }); g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.45, 14), m)); return g; }
   if (id === 'weeds') { const m = new THREE.MeshLambertMaterial({ color: 0x3f7a2f, side: THREE.DoubleSide }); for (let i = 0; i < 7; i++) { const s = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 0.9), m); s.position.x = (i - 3) * 0.05; s.rotation.z = (i - 3) * 0.12; g.add(s); } return g; }
