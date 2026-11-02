@@ -1959,3 +1959,13 @@ html, body { overflow-x: clip; }
 .employ-list li button:disabled { opacity: .5; }
 .employ-btns { display: flex; gap: 6px; } .employ-list li .employ-fire { background: rgba(255,80,80,.12); border-color: rgba(255,80,80,.4); }
 .employ-box { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; } .employ-box span { display: inline-flex; align-items: center; gap: 2px; }
+/* Casino turn-timer bar (request #7) */
+.turn-timer { position: relative; height: 10px; border-radius: 5px; background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.15); overflow: hidden; margin: 4px 0; min-width: 120px; }
+.turn-timer > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; transition: width .1s linear, background .3s; }
+.turn-timer > span { position: absolute; right: 6px; top: -2px; font-size: 10px; font-weight: 700; color: #fff; text-shadow: 0 0 2px #000; line-height: 14px; }
+.turn-timer-low > i { animation: turn-timer-pulse .5s ease-in-out infinite alternate; }
+@keyframes turn-timer-pulse { from { opacity: 1; } to { opacity: .55; } }
+/* Farm upgrades (request #6) */
+.farm-upgrades { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.farm-upgrades > button { border: 1px solid rgba(255,255,255,.15); border-radius: 8px; padding: 6px 8px; background: rgba(255,255,255,.04); display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; }
+.farm-upgrades > button span { font-size: 11px; opacity: .85; }

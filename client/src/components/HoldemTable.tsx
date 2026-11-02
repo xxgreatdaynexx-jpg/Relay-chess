@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from 'react';
+import { TurnTimerBar } from './TurnTimerBar';
 import { at, Chips, dealStyle, FeltTable } from '@/components/FeltTable';
 import { blindSeats, ovalSeatPositions, towardCentre } from '@/lib/tableLayout';
 import { CardFace } from '@/components/SolitairePanel';
@@ -68,6 +69,7 @@ export function HoldemTableView({ name }: { name: string }) {
           ? v.winners.map((w) => `${w.name} wins ${w.amount} (${w.hand})`).join(' · ')
           : `${v.id} · ${PHASE[v.phase]}${v.pot ? ` · pot ${v.pot}` : ''}${secs !== null && v.toAct !== null ? ` · ${v.seats[v.toAct]?.name ?? ''} ${secs}s` : ''}`}
       </div>
+      {v && v.phase !== 'showdown' && v.toAct !== null && <TurnTimerBar deadline={v.deadline} serverNow={v.serverNow} testId="he-timer" />}
       <HoldemFelt v={v} />
       {seated && o && (
         <div className="bj-controls he-controls">

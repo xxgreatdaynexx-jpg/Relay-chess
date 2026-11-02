@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T23:45:00-06:00', title: 'Farm upgrades and a casino turn-timer bar', bullets: [
+    'Request board #6 (Farm Upgrades): owned farm plots now have three upgrades, each with 3 levels. Sprinklers make crops grow 10/20/30% faster (stacks with the Farming skill, never below half the grow time). Fertilizer adds +10/20/30% crop profit (still inside the 100,000/day farm limit). Greenhouse keeps ripe crops from withering for longer.',
+    'Upgrade prices scale with the plot size and the price index. They belong to whoever bought them; a new owner of the plot starts fresh.',
+    'Request board #7: blackjack, roulette and Hold\'em now show a draining progress bar for every betting and turn timer, synced to the server clock. It turns amber, then red and pulses in the last quarter.',
+  ] },
   { commit: '', at: '2026-11-01T23:40:00-06:00', title: 'Sharper, calmer building labels', bullets: [
     'City and resort building labels are now crisp on every screen, with softer colours, a thinner border and no glow bleeding from them.',
   ] },

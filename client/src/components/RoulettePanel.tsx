@@ -1,4 +1,5 @@
 import { TopTab } from '@/components/TopTabs';
+import { TurnTimerBar } from './TurnTimerBar';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NamePrompt, OutOfChips } from '@/components/CasinoCommon';
@@ -206,6 +207,7 @@ export function RoulettePanel() {
                 <Wheel view={v} />
                 <div className="rl-side">
                   <div className="bj-status" data-testid="rl-status">{status}</div>
+                  {v?.phase === 'betting' && <TurnTimerBar deadline={v.deadline} serverNow={v.serverNow} testId="rl-timer" />}
                   <div className="rl-history" aria-label="Last 10 numbers">
                     {(v?.history ?? []).map((n, i) => <span key={i} className={`rl-h rl-${color(n)}`}>{n}</span>)}
                   </div>

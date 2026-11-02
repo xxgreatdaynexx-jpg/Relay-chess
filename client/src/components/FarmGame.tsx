@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { socket } from '@/lib/net';
 import { indexed } from '../../../shared/priceIndex';
 import { TROPICAL_CROPS } from '../../../shared/resort';
+import { FARM_UPGRADES, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradePrice } from '../../../shared/farmUpgrades';
 import { CROPS as CITY_CROPS, cropById, FARM_TIERS, type FarmView } from '../../../shared/farm';
 
 const chips = (n: number) => n.toLocaleString('en-US');
@@ -77,6 +78,16 @@ export function FarmGame({ id, label, onClose }: { id: string; label: string; on
           <button type="button" disabled={busy || !empties.length} onClick={() => plant(empties)} data-testid="farm-plant-all">Plant all {empties.length} empty<span>🪙 {chips(indexed(crop.seed, idx) * empties.length)}</span></button>
           <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', {}, (r) => `Harvested ${r.harvested} for 🪙 ${chips(Number(r.paid))}.`)} data-testid="farm-harvest">Harvest {ready.length} ready</button>
           <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', { pantry: true }, (r) => `🧺 ${r.harvested} crop${r.harvested === 1 ? '' : 's'} into your kitchen pantry.`)} title="Keep the crops for cooking instead of selling them" data-testid="farm-harvest-pantry">🧺 To pantry</button>
+          <h4>Upgrades</h4>
+          <div className="farm-upgrades" data-testid="farm-upgrades">
+            {FARM_UPGRADES.map((u) => { const lvl = (view.upgrades ?? NO_UPGRADES)[u.id]; const base = upgradePrice(u.id, lvl, n); const cost = base === null ? null : indexed(base, idx);
+              return <button key={u.id} type="button" disabled={busy || cost === null} title={u.blurb} data-testid={`farm-upgrade-${u.id}`}
+                onClick={() => cost !== null && window.confirm(`Buy ${u.label} level ${lvl + 1} for 🪙 ${chips(cost)}?`) && act('farm_upgrade', { kind: u.id }, (r) => `${u.label} is now level ${r.level} (🪙 ${chips(Number(r.cost))}).`)}>
+                <b>{u.emoji} {u.label} {lvl}/{MAX_UPGRADE_LEVEL}</b>
+                <span>{lvl ? u.effect(lvl) : u.blurb}</span>
+                <span>{cost === null ? 'Maxed out' : `Next: ${u.effect(lvl + 1)} · 🪙 ${chips(cost)}`}</span>
+              </button>; })}
+          </div>
           {withered.length > 0 && <button type="button" disabled={busy} onClick={() => act('farm_clear', {}, (r) => `Cleared ${r.cleared} withered.`)} data-testid="farm-clear">Clear {withered.length} withered</button>}
           <small data-testid="farm-today">Today’s farm profit: 🪙 {chips(view.today.gross)} (paid 🪙 {chips(view.today.paid)}). Profit pays in full up to {chips(indexed(FARM_TIERS[0].upTo, idx))}/day; daily cap ≈ 🪙 {chips(indexed(cap, idx))}. Seeds are always refunded on harvest.</small>
         </>}

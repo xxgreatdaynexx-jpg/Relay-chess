@@ -1,4 +1,5 @@
 import { TopTab } from '@/components/TopTabs';
+import { TurnTimerBar } from './TurnTimerBar';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { CardFace } from '@/components/SolitairePanel';
@@ -115,6 +116,7 @@ export function BlackjackPanel() {
             <>
               <div className="bj-table">
                 <div className="bj-status" data-testid="bj-status">{status}</div>
+                {t && (t.phase === 'betting' || t.phase === 'playing') && <TurnTimerBar deadline={t.deadline} serverNow={t.serverNow} testId="bj-timer" />}
                 <FeltTable kind="bj" testId="bj-felt">{(aspect) => {
                   const pos = bjSeatPositions(t?.maxSeats ?? 5);
                   return (
