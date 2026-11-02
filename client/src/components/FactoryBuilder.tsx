@@ -312,7 +312,7 @@ function Inspect({ e, storage, store, onEdit, onRemove, onMove, onClose }: { e: 
       </select></label>}
       {d.machine && r && <div className="fac-buf">
         {r.in.map(([k, q]) => <span key={k}><Dot k={k} />{e.ib?.[k] ?? 0}/{q}</span>)}
-        <span>→ <Dot k={r.out[0]} />{e.ob ?? 0} ready</span>
+        <span>→ <Dot k={r.out[0]} />{e.ob ?? 0}/{r.out[1]} ready{(e.ob ?? 0) > 0 && <b className="fac-backed" data-testid="fac-backed"> · backed up — waiting for pickup</b>}</span>
         <div className="mines-bar"><i style={{ width: `${((e.p ?? 0) / recipeTicks(r)) * 100}%` }} /></div>
       </div>}
       {e.k === 'inserter' && <label>Only grab <select value={e.f ?? ''} onChange={(ev) => onEdit({ f: ev.target.value || null })} data-testid="fac-ins-filter">

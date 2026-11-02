@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T14:45:00-06:00', title: 'Factory: machines hold just one finished item', bullets: [
+    'Every factory machine now holds at most one finished craft. Once it has one ready, it stops and waits ("backed up") until a belt, inserter or chest takes it, then starts the next one.',
+    'The machine panel shows output as e.g. "0/1 ready", and says "backed up — waiting for pickup" while it is full.',
+    'Machines already holding more than one keep everything: they just finish draining before they craft again. Nothing was deleted.',
+  ] },
   { commit: '', at: '2026-11-02T14:35:00-06:00', title: 'Stock Exchange: lifetime returns on your portfolio', bullets: [
     'Stock Exchange → Portfolio now shows your lifetime stock return as a percentage and in chips, green when you\'re up and red when you\'re down, with realized and unrealized parts split out.',
     'Each stock you hold has a new Lifetime column, and stocks you\'ve fully sold show up under Closed positions with their final return.',

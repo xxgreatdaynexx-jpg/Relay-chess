@@ -5,7 +5,7 @@ import type { Server, Socket } from 'socket.io';
 import { FactoryWorld, resetFactory } from '../server/factory';
 import { getBank, resetBank } from '../server/casino-store';
 import { GOODS, MAX_BANKED_STACK } from '../shared/mines';
-import { FRECIPES, KINDS, advance, gridOf, newState, undergroundPairs, recipeIn, recipeOut, step, TICK_MS, MAX_CATCHUP_MS, type FState, type Storage } from '../shared/factory';
+import { FRECIPES, KINDS, recipesFor, advance, gridOf, newState, undergroundPairs, recipeIn, recipeOut, step, TICK_MS, MAX_CATCHUP_MS, type FState, type Storage } from '../shared/factory';
 
 let w: MinesWorld; let f: FactoryWorld;
 const rich = (n: string, chips: number) => getBank().transfer(n, chips - getBank().account(n).chips, { game: 'test' });
@@ -155,6 +155,18 @@ describe('factory v2 stage 2', () => {
     advance(s, st, 600_000);
     expect(st.m['good:iron_plate']).toBe(MAX_BANKED_STACK);
     expect(s.ents.some((x) => x.it === 'good:iron_plate' || (x.ob ?? 0) > 0)).toBe(true);
+  });
+  it('machines hold at most one finished craft and stop until it is taken; legacy over-cap buffers drain', () => {
+    const s = newState(3, 0); let id = 0; const e = (k: any, x: number, y: number, d: any, extra: object = {}) => s.ents.push({ id: ++id, k, x, y, d, ...extra });
+    const r = FRECIPES.find((x) => x.in.length === 1)!; const kind = Object.keys(KINDS).find((k) => recipesFor(k as any).some((x) => x.id === r.id))!;
+    e(kind, 0, 0, 0, { r: r.id, ib: { [r.in[0][0]]: r.in[0][1] * 10 }, ob: 0 }); s.seq = id; // nothing in front: output can never leave
+    const st = mem({});
+    advance(s, st, 600_000);
+    expect(s.ents[0].ob).toBe(r.out[1]); expect(s.ents[0].p ?? 0).toBe(0);
+    expect(s.ents[0].ib![r.in[0][0]]).toBe(r.in[0][1] * 9);
+    s.ents[0].ob = r.out[1] * 4; s.ents[0].ib = { [r.in[0][0]]: r.in[0][1] }; // legacy buffer: kept, no crafting until drained
+    advance(s, st, 1_200_000);
+    expect(s.ents[0].ob).toBe(r.out[1] * 4); expect(s.ents[0].ib![r.in[0][0]]).toBe(r.in[0][1]);
   });
   it('background sweep and storage access catch the sim up; 8h window counts from last owner activity', () => {
     vi.useFakeTimers(); const t0 = 1_800_000_000_000; vi.setSystemTime(t0);

@@ -153,7 +153,9 @@ export function splitSeq(w: [number, number, number]): number[] {
 export const splitLabel = (e: { w?: unknown }) => splitWeights(e).join(':');
 export interface Storage { get(key: string): number; add(key: string, delta: number): void }
 
-export const OUT_CAP_CRAFTS = 4;
+/** A machine holds at most one finished craft; while it holds any output it stops (backs up) until a belt/inserter/chest takes it. Over-cap legacy buffers just drain. */
+export const OUT_CAP_CRAFTS = 1;
+export const backedUp = (e: { ob?: number }) => (e.ob ?? 0) > 0;
 export const INSERTER_TICKS = 2;
 
 export function newState(floor: number, now: number): FState {
@@ -216,7 +218,7 @@ export function step(s: FState, g: Grid, st: Storage): boolean {
     if (!KINDS[e.k].machine) continue;
     const r = frecipe(e.r); if (!r) continue;
     if (!e.p) {
-      if ((e.ob ?? 0) + r.out[1] <= r.out[1] * OUT_CAP_CRAFTS && r.in.every(([k, q]) => (e.ib?.[k] ?? 0) >= q)) {
+      if (!backedUp(e) && r.in.every(([k, q]) => (e.ib?.[k] ?? 0) >= q)) {
         for (const [k, q] of r.in) { e.ib![k] -= q; if (!e.ib![k]) delete e.ib![k]; }
         e.p = 1; ch = true;
       }
