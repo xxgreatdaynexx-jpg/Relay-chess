@@ -13,10 +13,10 @@ const chips = (n: string) => getBank().account(n).chips;
 const setPrice = (e: Exchange, t: string, p: number) => { const r = e.rows.get(t)!; r.base = p; r.imp = 0; };
 
 describe('v2 defaults', () => {
-  it('pays dividends only in some sectors, 0.05-0.2%/day', () => {
+  it('pays dividends only in some sectors, 0.05-0.2%/day base x DIV_MULT', () => {
     const payers = [...DIV_YIELD].filter(([, y]) => y > 0);
     expect(payers.length).toBeGreaterThan(20);
-    for (const [t, y] of payers) { expect(y).toBeGreaterThanOrEqual(0.0005); expect(y).toBeLessThanOrEqual(0.002); expect(['realestate', 'finance', 'energy', 'food', 'industrials', 'retail', 'healthcare', 'defense']).toContain(COMPANY_BY_TICKER.get(t)!.sector); }
+    for (const [t, y] of payers) { expect(y).toBeGreaterThanOrEqual(0.0005 * 30 - 1e-12); expect(y).toBeLessThanOrEqual(0.002 * 30 + 1e-12); expect(['realestate', 'finance', 'energy', 'food', 'industrials', 'retail', 'healthcare', 'defense']).toContain(COMPANY_BY_TICKER.get(t)!.sector); }
     for (const c of COMPANY_BY_TICKER.values()) if (c.sector === 'crypto' || c.sector === 'tech') expect(DIV_YIELD.get(c.ticker)).toBe(0);
   });
   it('funds: weights sum to 1, NAV starts at 100', () => {

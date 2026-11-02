@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T15:47:00-06:00', title: 'Stock Exchange: dividends are 30x bigger', bullets: [
+    'Every dividend-paying company now pays 30x its old daily yield (e.g. 0.15%/day is now 4.5%/day). Funds pass the bigger dividends straight through.',
+    'Prices, trading fees and fund expense ratios are unchanged. Dividends still pay once a day at 10 AM CST.',
+  ] },
   { commit: '', at: '2026-11-02T15:33:00-06:00', title: 'Mines: more iron, less gold', bullets: [
     'Requested by chessguy2: iron was the hardest ore to come by. The Mine is now about 51% Iron Ore, 26% Stone and 10% Gold Ore (was 34%, 28% and 24%), with a little Copper Ore, Silver Ore and Crystal in the rest.',
     'Iron Ore rocks respawn in 6 minutes (was 12m 30s), faster than Copper Ore, so iron is clearly common. Gold Ore stays at 30 minutes.',

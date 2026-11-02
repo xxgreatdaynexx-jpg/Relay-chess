@@ -18,11 +18,13 @@ export const DIV_SECTORS: Partial<Record<Sector, { min: number; max: number; pct
   healthcare: { min: 0.0005, max: 0.0008, pct: 0.5 },
   defense: { min: 0.0005, max: 0.0008, pct: 0.5 },
 };
+/** Global dividend multiplier (Dayne, Nov 2 2026: 30x). Applied on top of the seeded per-ticker base yield. */
+export const DIV_MULT = 30;
 /** Daily dividend yield per ticker (0 = no dividend). Deterministic (seeded by ticker). */
 export const DIV_YIELD = new Map<string, number>(COMPANIES.map((c) => {
   const s = DIV_SECTORS[c.sector]; if (!s) return [c.ticker, 0];
   const r = seeded(hash32(`div:${c.ticker}`)); if (r() >= s.pct) return [c.ticker, 0];
-  return [c.ticker, Math.round((s.min + r() * (s.max - s.min)) * 100000) / 100000];
+  return [c.ticker, (Math.round((s.min + r() * (s.max - s.min)) * 100000) / 100000) * DIV_MULT];
 }));
 export const divYield = (t: string) => DIV_YIELD.get(t) ?? 0;
 /** Chips a holding earns today (floored; under 1 chip pays nothing). */
