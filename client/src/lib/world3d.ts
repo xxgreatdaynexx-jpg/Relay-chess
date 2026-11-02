@@ -5,6 +5,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
+import { skyNow, parseTod, mix as mixHex } from '../../../shared/daynight';
 import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, TILE, clampMapTarget, panInset } from '../../../shared/farm';
 import { buildVenues } from './worldVenues';
 import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN, MINE_SITES, MINE_APRON, OUTSKIRTS } from './worldLayout';
@@ -97,8 +98,12 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   };
   const clampPan = () => { const t = controls.target; const [x, z] = clampMapTarget(t.x, t.z, panInset(camera.position.distanceTo(t), controls.minDistance, controls.maxDistance)); if (x !== t.x || z !== t.z) { const dx = x - t.x, dz = z - t.z; t.x = x; t.z = z; camera.position.x += dx; camera.position.z += dz; } };
 
-  scene.add(new THREE.HemisphereLight(0x7a8cff, 0x2a4a30, 1.3));
+  const hemi = new THREE.HemisphereLight(0x7a8cff, 0x2a4a30, 1.3); scene.add(hemi);
   const moon = new THREE.DirectionalLight(0xaabbff, 1.1); moon.position.set(-30, 60, 20); scene.add(moon);
+  // Real-time sun (pt1246u): Mountain Time, Denver latitude. Shadows on high-tier only (keeps weak hardware cheap).
+  const sun = new THREE.DirectionalLight(0xfff4e0, 0); scene.add(sun, sun.target);
+  if (tier === 'high') { renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+    const sc = sun.shadow.camera; sc.left = -PLATE * 1.6; sc.right = PLATE * 1.6; sc.top = PLATE * 1.6; sc.bottom = -PLATE * 1.6; sc.near = 10; sc.far = 900; sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.4; }
   const glowTex = glowTexture();
   const disposables: { dispose(): void }[] = [glowTex];
   const mat = (o: THREE.MeshStandardMaterialParameters) => { const m = new THREE.MeshStandardMaterial(o); disposables.push(m); return m; };
@@ -572,7 +577,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // Stars
   const stG = new THREE.BufferGeometry(); const sp: number[] = []; for (let i = 0; i < 400; i++) { const a = r() * Math.PI * 2, e = 0.15 + r() * 1.2, R = 420; sp.push(Math.cos(a) * Math.cos(e) * R, Math.sin(e) * R, Math.sin(a) * Math.cos(e) * R); }
   stG.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3)); disposables.push(stG);
-  const stM = new THREE.PointsMaterial({ color: 0xffffff, size: 0.8, sizeAttenuation: false, fog: false }); disposables.push(stM); scene.add(new THREE.Points(stG, stM));
+  const stM = new THREE.PointsMaterial({ color: 0xffffff, size: 0.8, sizeAttenuation: false, fog: false, transparent: true }); disposables.push(stM); scene.add(new THREE.Points(stG, stM));
 
   // Interaction.
   const ray = new THREE.Raycaster(); const ndc = new THREE.Vector2();
@@ -580,7 +585,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const pick = (cx: number, cy: number) => { const rc = canvas.getBoundingClientRect(); ndc.set(((cx - rc.left) / rc.width) * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1); ray.setFromCamera(ndc, camera); const hit = ray.intersectObjects(pickables, false)[0]; const tr = hit?.object.userData.trailers as string[] | undefined; if (tr && hit?.instanceId != null) return `trailer:${tr[hit.instanceId]}`; const pr = hit?.object.userData.props as string[] | undefined; if (pr && hit?.instanceId != null) return pr[hit.instanceId] ?? null; return (hit?.object.userData.spot as string | undefined) ?? null; };
   const setHover = (id: string | null) => {
     if (id === hovered) return; hovered = id; canvas.style.cursor = id ? 'pointer' : 'grab';
-    for (const l of lms) { const on = l.id === id; l.root.scale.setScalar(on ? 1.06 : 1); l.sign.userData.hover = on; for (const m of l.emissive) m.emissiveIntensity = on ? (m.map ? 1.6 : 3) * NEON : (m.map ? 0.9 : 1.6) * NEON; }
+    for (const l of lms) { const on = l.id === id; l.root.scale.setScalar(on ? 1.06 : 1); l.sign.userData.hover = on; for (const m of l.emissive) { m.userData.ei = on ? (m.map ? 1.6 : 3) * NEON : (m.map ? 0.9 : 1.6) * NEON; m.emissiveIntensity = m.userData.ei * glowK; } }
   };
   const clearTip = () => { setHover(null); h.onHover(null, 0, 0); };
   // Drag-panning: no hover highlight or tooltip while the pointer is held and moving (it used to linger after the pan).
@@ -618,6 +623,31 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const ro = new ResizeObserver(() => { resize(); resizeComposer(); }); ro.observe(canvas); resize(); resizeComposer();
 
   const venues = buildVenues(scene, { mat, geo });
+  // Day/night: remember every glow's night intensity, then scale it by how dark it is (neon stays at the toned-down NEON level at night).
+  let glowK = 1; const glowMats: THREE.MeshStandardMaterial[] = [];
+  scene.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | THREE.MeshStandardMaterial[] | undefined;
+    if (tier === 'high' && (o as THREE.Mesh).isMesh && !(o as THREE.Mesh).userData.noShadow) { o.castShadow = true; o.receiveShadow = true; }
+    for (const x of Array.isArray(m) ? m : m ? [m] : []) if (x.isMeshStandardMaterial && x.emissiveIntensity > 0 && x.userData.ei == null) { x.userData.ei = x.emissiveIntensity; glowMats.push(x); } });
+  const discTex = (inner: string, outer: string) => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d')!; const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, inner); gr.addColorStop(0.35, inner); gr.addColorStop(0.5, outer); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(c); disposables.push(t); return t; };
+  const sunDisc = new THREE.Sprite(new THREE.SpriteMaterial({ map: discTex('#fff8e0', 'rgba(255,200,120,0.35)'), fog: false, depthWrite: false, transparent: true })); sunDisc.scale.setScalar(70);
+  const moonDisc = new THREE.Sprite(new THREE.SpriteMaterial({ map: discTex('#e8eeff', 'rgba(160,180,255,0.18)'), fog: false, depthWrite: false, transparent: true })); moonDisc.scale.setScalar(36);
+  disposables.push(sunDisc.material, moonDisc.material); scene.add(sunDisc, moonDisc);
+  const todOverride = parseTod(new URLSearchParams(location.search).get('tod'));
+  const bg = scene.background as THREE.Color; const fogC = (scene.fog as THREE.Fog).color; const dirV = new THREE.Vector3();
+  const applySky = () => {
+    const k = skyNow(new Date(), todOverride);
+    bg.setHex(k.sky); fogC.setHex(k.fog); (scene.fog as THREE.Fog).near = 260 + 140 * k.day; (scene.fog as THREE.Fog).far = 640 + 260 * k.day;
+    hemi.color.setHex(k.hemiSky); hemi.groundColor.setHex(k.hemiGround); hemi.intensity = k.hemiI;
+    renderer.toneMappingExposure = k.exposure;
+    // sun direction from elevation/azimuth (world: -z = north, +x = east)
+    const e = k.elev * Math.PI / 180, a = k.az * Math.PI / 180; dirV.set(Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e));
+    sun.position.copy(dirV).multiplyScalar(400); sun.target.position.set(0, 0, 0); sun.color.setHex(k.sunColor); sun.intensity = k.sunI; sun.visible = k.sunI > 0.01;
+    sunDisc.position.copy(dirV).multiplyScalar(560); sunDisc.visible = k.elev > -3; (sunDisc.material as THREE.SpriteMaterial).color.setHex(mixHex(0xffffff, 0xffa060, k.warm));
+    moonDisc.position.copy(dirV).multiplyScalar(-560).setY(Math.max(80, -dirV.y * 560)); moonDisc.visible = k.stars > 0.05; (moonDisc.material as THREE.SpriteMaterial).opacity = k.stars;
+    moon.intensity = k.moonI; moon.visible = k.moonI > 0.01; stM.opacity = k.stars;
+    glowK = 0.1 + 0.9 * k.lights; for (const m of glowMats) m.emissiveIntensity = (m.userData.ei as number) * glowK;
+  };
+  applySky(); let skyT = 0;
   const tmpV = new THREE.Vector3(); const clock = new THREE.Clock(); let raf = 0; let running = true; let time = 0;
   const d = new THREE.Object3D(); const hp = headG.attributes.position as THREE.BufferAttribute;
   const blink = (lms.find((l) => l.id === 'leaderboard')!.root.userData as { blink?: THREE.Object3D }).blink;
@@ -632,6 +662,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     if (fly) { fly.t = Math.min(1, fly.t + dt / 0.75); const e = 1 - Math.pow(1 - fly.t, 3); camera.position.lerpVectors(fly.from, fly.to, e); controls.target.lerpVectors(fly.tf, fly.tt, e); camera.lookAt(controls.target);
       if (fly.t >= 1) { const id = fly.id; fly = null; controls.enabled = true; h.onPick(id); } } // the city stays mounted now (0dc4f99): hand zoom/orbit back
     else if (!tick?.(dt)) { panStep(dt); controls.update(); clampPan(); }
+    skyT += dt; if (skyT > 1) { skyT = 0; applySky(); }
     for (const w of waterMats) w.uniforms.uTime.value = time; venues.step(dt, time, camera.position);
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
     for (const l of lms) { const k = labelScale(camera.position.distanceTo(l.sign.getWorldPosition(tmpV)), portrait) * (l.sign.userData.hover ? 1.2 : 1); l.sign.scale.set(k, k / 4, 1); }

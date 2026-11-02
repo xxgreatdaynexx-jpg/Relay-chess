@@ -13,6 +13,7 @@ import { useAccount } from '@/lib/auth';
 import { useTrip } from '@/lib/travel';
 import { socket } from '@/lib/net';
 import { indexed } from '../../../shared/priceIndex';
+import { skyNow, parseTod, fmtClock, hex } from '../../../shared/daynight';
 import { fmtLap } from '../../../shared/venues';
 import { propertyById as baseProperty, properties as baseProperties, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, type OwnedProperty } from '../../../shared/realEstate';
 
@@ -111,6 +112,9 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   const worldRef = useRef<World | null>(null);
   const [mode, setMode] = useState<'3d' | '2d'>(() => (localStorage.getItem(MODE_KEY) as '3d' | '2d' | null) ?? (weakDevice() ? '2d' : '3d'));
   const [loading, setLoading] = useState(mode === '3d');
+  // Real-time Mountain Time sky (pt1246u); ?tod=HH:MM pins it for QA screenshots.
+  const [sky, setSky] = useState(() => skyNow(new Date(), parseTod(new URLSearchParams(location.search).get('tod'))));
+  useEffect(() => { const o = parseTod(new URLSearchParams(location.search).get('tod')); const t = setInterval(() => setSky(skyNow(new Date(), o)), 20000); return () => clearInterval(t); }, []);
   const [tip, setTip] = useState<{ id: string; x: number; y: number } | null>(null);
   // One main panel at a time (QA r8): deed / real estate list / farm / venue / dealer / casino share one slot.
   const [panel, setPanel] = useState<WorldPanel>(NONE);
@@ -238,7 +242,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   const tipOwner = tipProp ? owned.get(tipProp.id)?.owner : undefined;
   const ownerLine = tipProp ? (tipOwner ? `Owned by ${tipOwner}` : `For sale · 🪙 ${chips(tipProp.price)}`) : null;
   return (
-    <div className="world" data-testid="world-map">
+    <div className="world" data-testid="world-map" data-tod={sky.phase} style={{ background: `radial-gradient(120% 90% at 50% 0%, ${hex(sky.horizon)}, ${hex(sky.sky)} 70%)`, ['--glow' as string]: String(0.25 + 0.75 * sky.lights) }}>
       {mode === '3d' ? <canvas ref={canvasRef} className="world-canvas" data-testid="world-canvas" /> : (
         <div className="world-grid" data-testid="world-grid">
           {WORLD_SPOTS.map((s) => (
@@ -248,6 +252,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
           ))}
         </div>
       )}
+      <div className="world-clock" data-testid="world-clock" title={`Mountain Time · sunrise ${fmtClock(sky.sunrise)} · sunset ${fmtClock(sky.sunset)}`}><span>{sky.icon}</span><b>{fmtClock(sky.minutes)}</b><small>MT · {sky.label}</small></div>
       <div className="world-title"><span>CHUD</span> HUB<small>pick a spot on the map</small></div>
       {loading && mode === '3d' && <div className="world-loading">Building the city…</div>}
       {spot && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#' + spot.color.toString(16).padStart(6, '0') }} data-testid="world-tip"><b>{spot.icon} {spot.label}</b><span>{spot.blurb}</span>{ownerLine && <span className="world-tip-owner">🏛 {ownerLine}</span>}<em>Click to enter</em></div>}

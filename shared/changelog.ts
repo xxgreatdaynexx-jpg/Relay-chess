@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T19:45:00-06:00', title: 'Real day and night in the city', bullets: [
+    'Requested by Dayne: the city and outskirts now follow the real time of day on Mountain Time, so everyone sees the same sky.',
+    'The sun rises and sets at the real Denver times, with dawn, golden hour and dusk in between. The light, shadows, fog and sky colour all follow it, and the moon and stars come out at night.',
+    'Neon signs, street lamps and windows switch on at dusk and off after sunrise, at the same softer neon level as before.',
+    'A small clock in the top left shows the Mountain Time and the time of day. The resort and the mines are unchanged.',
+  ] },
   { commit: '', at: '2026-11-01T19:40:00-06:00', title: 'Runway and Speedway tarmac is back', bullets: [
     'The Airport runway, apron and the Speedway track were hidden under the grass. They show again.',
     'The runway now has edge lines, thresholds, aiming points and blue edge lights, with a parallel taxiway linked at both ends.',
