@@ -35,6 +35,7 @@ export const CAPS: Record<SkillId, { hour: number; day: number }> = {
   chess: { hour: 1500, day: 10000 },
   fishing: { hour: 2500, day: 20000 },
   property: { hour: 3000, day: 8000 },
+  cooking: { hour: 2500, day: 20000 },
 };
 
 export const keyOf = (name: string) => name.replace(/\s+/g, ' ').trim().toLowerCase();

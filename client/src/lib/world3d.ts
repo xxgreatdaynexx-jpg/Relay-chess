@@ -19,7 +19,7 @@ import { CAR_BY_ID } from '../../../shared/cars';
 import { HOUSING_TYPES, type HousingType } from './housing';
 import { buildingId, patchId } from '../../../shared/realEstate';
 
-type Handlers = { onHover: (id: string | null, x: number, y: number) => void; onPick: (id: string) => void; onProperty?: (id: string) => void };
+type Handlers = { onHover: (id: string | null, x: number, y: number) => void; onPick: (id: string) => void; onProperty?: (id: string) => void; onTrailer?: (name: string) => boolean };
 
 function rng(seed: number) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
 
@@ -595,7 +595,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const onUp = (e: PointerEvent) => {
     if (!down || fly) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y); const dragged = moved > 8 || !!down.drag; down = null; if (dragged) { clearTip(); return; }
     const id = pick(e.clientX, e.clientY); if (!id) { setHover(null); h.onHover(null, 0, 0); return; }
-    if (id.startsWith('trailer:')) { h.onHover(id, e.clientX, e.clientY); window.dispatchEvent(new CustomEvent('open-player', { detail: id.slice(8) })); return; } // trailers: label + the owner's profile
+    if (id.startsWith('trailer:')) { h.onHover(id, e.clientX, e.clientY); if (h.onTrailer?.(id.slice(8))) return; window.dispatchEvent(new CustomEvent('open-player', { detail: id.slice(8) })); return; } // trailers: your own opens your home (kitchen), others the owner's profile
     if (id.startsWith('b:') || id.startsWith('p:') || id.startsWith('f:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel
     flyTo(id);
   };

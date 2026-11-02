@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T20:50:00-06:00', title: 'Cook your catch in your own kitchen', bullets: [
+    'Every home now has a 🍳 Kitchen: open it from 🏠 My home on the city map, by clicking your trailer in the Trailer Park, or from the deed of any property you own (city or resort).',
+    'Pick a raw fish from your cooler and cook it on the stove: set the heat, flip it at the right moment and plate it when both sides are golden. Too early and it is undercooked, too long and it burns.',
+    'Cooking is a new skill (1–99) in the Skills panel and hiscores. Higher levels widen the "done" window so you burn less, and unlock rarer fish: uncommon at 10, rare at 25, epic at 45, legendary at 65.',
+    'A nicely cooked dish is worth 30% more than the raw fish (a perfect one 50%); a burnt one is worth a fifth. Sell dishes at the Fishing Dock as usual, and the fish market daily limits still apply.',
+  ] },
   { commit: '', at: '2026-11-01T20:45:00-06:00', title: "Click a player to see what they own", bullets: [
     "Requested by Dayne: click a player's name to open their profile. This works in the online list, chat, trailers on the map, the leaderboards, the mines board, the dock's biggest catches, the race boards and the Arena results.",
     'The profile shows their chips and net worth (the same numbers as the Daily Report), their property and land with a 📍 button that flies the map to each one, their farms and what is growing, their cars and trailer, stocks, funds and options, their best skins, skill levels, biggest fish, and when they joined. It also shows whether they are online right now.',

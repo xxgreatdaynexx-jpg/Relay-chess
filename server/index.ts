@@ -15,6 +15,7 @@ import { initRace } from './race.js';
 import { initTravel } from './travel.js';
 import { initFarm } from './farm.js';
 import { initFishing } from './fishing.js';
+import { initCooking } from './cooking.js';
 import { getMines, initMinesStorage } from './mines.js';
 import { getFactory, initFactory } from './factory.js';
 import { initAccountStorage } from './accounts.js';
@@ -43,6 +44,7 @@ await initRace();
 await initTravel();
 await initFarm();
 await initFishing();
+initCooking();
 await initConquestStorage();
 await initSolitroStorage();
 

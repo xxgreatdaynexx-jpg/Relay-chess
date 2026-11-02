@@ -24,6 +24,8 @@ import {
 export const FISH_MIGRATION = `
 CREATE TABLE IF NOT EXISTS fish_catches (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, name TEXT NOT NULL, species TEXT NOT NULL, weight_g INTEGER NOT NULL, value INTEGER NOT NULL, caught_at BIGINT NOT NULL, sold_at BIGINT);
 CREATE INDEX IF NOT EXISTS fish_catches_player ON fish_catches (player_key, sold_at);
+ALTER TABLE fish_catches ADD COLUMN IF NOT EXISTS dish TEXT;
+ALTER TABLE fish_catches ADD COLUMN IF NOT EXISTS raw_value INTEGER;
 CREATE TABLE IF NOT EXISTS fish_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
 `;
 export class FishError extends Error {}
@@ -42,7 +44,7 @@ export class Fishing {
     const prev = this.locks.get(id) ?? Promise.resolve(); const p = prev.then(fn, fn); const tail = p.catch(() => {});
     this.locks.set(id, tail); void tail.then(() => { if (this.locks.get(id) === tail) this.locks.delete(id); }); return p;
   }
-  constructor(private readonly pool: pg.Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now(), private readonly rng: FishRng = cryptoRng) {}
+  constructor(readonly pool: pg.Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now(), private readonly rng: FishRng = cryptoRng) {}
   async init() { await this.pool.query(FISH_MIGRATION); }
 
   private async cooler(key: string): Promise<FishCatch[]> {
@@ -55,7 +57,7 @@ export class Fishing {
   }
   async view(name: string): Promise<FishView> {
     const key = keyOf(name);
-    const best = (await this.pool.query("SELECT species, weight_g FROM fish_catches WHERE player_key = $1 ORDER BY value DESC, weight_g DESC LIMIT 1", [key])).rows[0];
+    const best = (await this.pool.query("SELECT species, weight_g FROM fish_catches WHERE player_key = $1 ORDER BY COALESCE(raw_value, value) DESC, weight_g DESC LIMIT 1", [key])).rows[0];
     const n = (await this.pool.query('SELECT count(*) AS n FROM fish_catches WHERE player_key = $1', [key])).rows[0];
     return { cooler: await this.cooler(key), today: await this.today(key), index: priceIndex(), best: best ? { fish: String(best.species), grams: Number(best.weight_g) } : null, totals: { caught: Number(n?.n ?? 0) } };
   }
@@ -148,7 +150,7 @@ export class Fishing {
   /** Biggest catch per species-weight (one entry per player, junk excluded, QA accounts hidden). */
   async board(limit = 10): Promise<Array<{ name: string; fish: string; grams: number; value: number; at: number }>> {
     const real = FISH.filter((f) => f.rarity !== 'junk').map((f) => `'${f.id}'`).join(',');
-    const r = await this.pool.query(`SELECT name, player_key, species, weight_g, value, caught_at FROM fish_catches WHERE species IN (${real}) ORDER BY value DESC, weight_g DESC LIMIT 400`);
+    const r = await this.pool.query(`SELECT name, player_key, species, weight_g, COALESCE(raw_value, value) AS value, caught_at FROM fish_catches WHERE species IN (${real}) ORDER BY COALESCE(raw_value, value) DESC, weight_g DESC LIMIT 400`);
     const seen = new Set<string>(); const out: Array<{ name: string; fish: string; grams: number; value: number; at: number }> = [];
     for (const x of r.rows as Array<Row & { name: string; player_key: string }>) {
       if (seen.has(x.player_key) || isQaName(x.name)) continue; seen.add(x.player_key);
