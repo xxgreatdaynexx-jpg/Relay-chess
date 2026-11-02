@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ItemIcon } from './ItemIcon';
 import { request } from '@/lib/net';
 import { FishPanPanel } from './FishPanPanel';
-import { COOK_DAILY_MAX, RECIPES, STAPLES, STEPS, dishValue, ingInfo, needleAt, qualityLabel, type GroceryKind, type KitchenView, type Recipe, type StepSpec } from '../../../shared/cooking';
+import { COOK_DAILY_MAX, FILLET_CAP, FISH_ING, RECIPES, STAPLES, STEPS, dishValue, ingInfo, needleAt, qualityLabel, type GroceryKind, type KitchenView, type Recipe, type StepSpec } from '../../../shared/cooking';
 
 const chips = (n: number) => n.toLocaleString('en-US');
 export const OPEN_KITCHEN = 'open-kitchen';
@@ -116,10 +116,11 @@ export function KitchenPanel({ me, home, onClose, onGrocery }: { me: string | nu
       {v && !v.hasHome && <small className="text-amber-300" data-testid="kitchen-nohome">You need a home to cook: any property, farmhouse or your Trailer Park trailer.</small>}
       {cook ? <Stove cook={cook} onDone={(p) => void finish(p)} /> : <>
         <div className="kitchen-tabs"><button type="button" aria-pressed={tab === 'book'} onClick={() => setTab('book')}>📖 Recipes</button><button type="button" aria-pressed={tab === 'fridge'} onClick={() => setTab('fridge')} data-testid="kitchen-fridge-tab">🧊 Fridge ({v?.dishes.length ?? 0})</button><button type="button" onClick={() => setTab('fish')} data-testid="kitchen-fishpan-tab">🐟 Pan-fry a fish</button><button type="button" onClick={onGrocery} data-testid="kitchen-grocery">🛒 Grocery Store</button></div>
+        {tab === 'book' && <small className="opacity-70 block" data-testid="kitchen-fillets">🔪 Fish are cut into fillets: 1 per {FISH_ING.fish.base} chips of value (fine fish: 1 per {FISH_ING.fish_fine.base}), up to {FILLET_CAP} per fish. Each fish recipe uses one fillet. You have 🐟 {v?.fish.fish ?? 0} fillets ({v?.fillets?.fish ?? 0} already cut) · 🍣 {v?.fish.fish_fine ?? 0} fine.</small>}
         {tab === 'book' ? <ul className="kitchen-book" data-testid="kitchen-book">{RECIPES.map((r) => {
           const locked = !v || v.level < r.level; const ok = !!v && Object.entries(r.ings).every(([id, n]) => have(v, id) >= n);
           return <li key={r.id} className={locked ? 'locked' : ''}><span className="k-emoji">{locked ? '🔒' : <ItemIcon type="food" id={r.id} size={28} />}</span><div><b>{r.label}</b> <small>lvl {r.level} · ~🪙 {chips(Math.floor(dishValue(r, 0.8) * idx))}</small>
-            <div className="k-ings">{Object.entries(r.ings).map(([id, n]) => { const inf = ingInfo(id); const h = v ? have(v, id) : 0; return <span key={id} className={h >= n ? 'ok' : 'miss'} title={inf?.label}>{id === 'fish' || id === 'fish_fine' ? inf?.emoji : <ItemIcon type="food" id={id} size={16} />}{n > 1 ? `×${n}` : ''} <em>{h}</em></span>; })}</div></div>
+            <div className="k-ings">{Object.entries(r.ings).map(([id, n]) => { const inf = ingInfo(id); const h = v ? have(v, id) : 0; return <span key={id} className={h >= n ? 'ok' : 'miss'} title={id === 'fish' || id === 'fish_fine' ? `${inf?.label}: fillets you have` : inf?.label}>{id === 'fish' || id === 'fish_fine' ? inf?.emoji : <ItemIcon type="food" id={id} size={16} />}{n > 1 ? `×${n}` : ''} <em>{h}</em></span>; })}</div></div>
             {!locked && <button type="button" disabled={!!busy || !ok || !v?.hasHome} aria-busy={busy === r.id} onClick={() => void start(r)} data-testid={`cook-${r.id}`}>{busy === r.id ? '…' : 'Cook'}</button>}</li>; })}</ul>
           : <div className="kitchen-fridge" data-testid="kitchen-fridge">{v?.dishes.length ? <ul>{v.dishes.map((d) => { const r = RECIPES.find((x) => x.id === d.recipe); return <li key={d.id}><ItemIcon type="food" id={d.recipe} size={20} /> {r?.label} <small>{qualityLabel(d.quality)} · 🪙 {chips(Math.floor(d.value * idx))}</small></li>; })}</ul> : <small>Nothing in the fridge yet — cook something!</small>}
             <button type="button" disabled={!!busy || !v?.dishes.length} aria-busy={busy === 'sell'} onClick={() => void sell()} data-testid="kitchen-sell">{busy === 'sell' ? 'Selling…' : 'Sell all dishes'}</button>

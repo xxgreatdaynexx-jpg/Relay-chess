@@ -50,6 +50,11 @@ export const stapleById = (id: unknown) => STAPLES.find((s) => s.id === id);
 /** Fish ingredients are generic: 'fish' = any non-junk fish, 'fish_fine' = rare or better. The cheapest match is used. */
 export const FISH_ING = { fish: { label: 'Fish (any)', emoji: '🐟', base: 8, rarities: ['common', 'uncommon', 'rare', 'epic', 'legendary'] }, fish_fine: { label: 'Fine fish (rare+)', emoji: '🍣', base: 50, rarities: ['rare', 'epic', 'legendary'] } } as const;
 export type FishIng = keyof typeof FISH_ING;
+/** pt1299u: a cooler fish is cut into fillets for the kitchen: 1 fillet per `base` chips of the fish's base value
+ *  (8 for any fish, 50 for fine fish), at least 1, at most FILLET_CAP. A fillet is worth `base`, so a fish worth 8+
+ *  never makes more fillet value than it sells for (n * base <= value). Leftover fillets wait on the cutting board. */
+export const FILLET_CAP = 12;
+export const filletsFrom = (ing: FishIng, value: number) => Math.max(1, Math.min(FILLET_CAP, Math.floor((Number(value) || 0) / FISH_ING[ing].base)));
 export const isFishIng = (id: string): id is FishIng => id in FISH_ING;
 const ALL_CROPS = [...CROPS, ...TROPICAL_CROPS];
 export const cropIng = (id: string) => ALL_CROPS.find((c) => c.id === id);
@@ -139,4 +144,4 @@ export function judgeCook(seed: number, diff: number, presses: unknown): number 
 export const qualityLabel = (q: number) => (q >= 0.95 ? 'Perfect' : q >= 0.8 ? 'Great' : q >= 0.6 ? 'Good' : q >= 0.35 ? 'OK' : 'Sloppy');
 
 export interface Dish { id: string; recipe: string; quality: number; value: number; at: number }
-export interface KitchenView { pantry: Record<string, number>; fish: { fish: number; fish_fine: number }; dishes: Dish[]; today: { gross: number; paid: number }; index: number; level: number; xp: number; hasHome: boolean }
+export interface KitchenView { pantry: Record<string, number>; fish: { fish: number; fish_fine: number }; fillets?: { fish: number; fish_fine: number }; dishes: Dish[]; today: { gross: number; paid: number }; index: number; level: number; xp: number; hasHome: boolean }

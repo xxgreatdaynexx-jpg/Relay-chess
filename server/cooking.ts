@@ -21,13 +21,16 @@ import { databaseUrl } from './leaderboard-store.js';
 import { fishById } from '../shared/fishing.js';
 import {
   COOK_EXPIRE_MS, DISHES_MAX, FISH_ING, PANTRY_MAX, RECIPES, STAPLES, burnChance, cookPayout, cookSteps, cookXp, dishValue, foodInfo,
-  isFishIng, judgeCook, recipeById, stapleById, type Dish, type FishIng, type KitchenView,
+  filletsFrom, isFishIng, judgeCook, recipeById, stapleById, type Dish, type FishIng, type KitchenView,
 } from '../shared/cooking.js';
 
 export const COOK_MIGRATION = `
 CREATE TABLE IF NOT EXISTS kitchen_cooks (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, recipe TEXT NOT NULL, seed BIGINT NOT NULL, started_at BIGINT NOT NULL, done BOOLEAN NOT NULL DEFAULT false, quality REAL, burnt BOOLEAN);
 CREATE INDEX IF NOT EXISTS kitchen_cooks_player ON kitchen_cooks (player_key, done);
 CREATE TABLE IF NOT EXISTS kitchen_fish_used (fish_id TEXT PRIMARY KEY NOT NULL, cook_id TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS kitchen_fillets (player_key TEXT NOT NULL, kind TEXT NOT NULL, qty INTEGER NOT NULL DEFAULT 0 CHECK (qty >= 0), PRIMARY KEY (player_key, kind));
+ALTER TABLE kitchen_cooks ADD COLUMN IF NOT EXISTS fillet_kind TEXT;
+ALTER TABLE kitchen_cooks ADD COLUMN IF NOT EXISTS fillets INTEGER;
 CREATE TABLE IF NOT EXISTS kitchen_harvests (tile_key TEXT PRIMARY KEY NOT NULL, at BIGINT NOT NULL);
 CREATE TABLE IF NOT EXISTS kitchen_dishes (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, name TEXT NOT NULL, recipe TEXT NOT NULL, quality REAL NOT NULL, value INTEGER NOT NULL, cooked_at BIGINT NOT NULL, sold_at BIGINT);
 CREATE INDEX IF NOT EXISTS kitchen_dishes_player ON kitchen_dishes (player_key, sold_at);
@@ -81,7 +84,12 @@ export class Cooking {
   }
   private async fishRows(key: string) {
     const r = await this.pool.query('SELECT id, species, value FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL AND dish IS NULL ORDER BY value ASC, caught_at ASC', [key]).catch(() => ({ rows: [] }));
-    return (r.rows as Array<{ id: string; species: string }>).map((x) => ({ id: String(x.id), rarity: fishById(x.species)?.rarity ?? 'junk' }));
+    return (r.rows as Array<{ id: string; species: string; value: number }>).map((x) => ({ id: String(x.id), rarity: fishById(x.species)?.rarity ?? 'junk', value: Number(x.value) }));
+  }
+  /** Fillets already cut and waiting on the cutting board (pt1299u). */
+  private async fillets(key: string): Promise<{ fish: number; fish_fine: number }> {
+    const r = await this.pool.query('SELECT kind, qty FROM kitchen_fillets WHERE player_key = $1', [key]).catch(() => ({ rows: [] }));
+    const out = { fish: 0, fish_fine: 0 }; for (const x of r.rows as Array<{ kind: string; qty: number }>) if (x.kind === 'fish' || x.kind === 'fish_fine') out[x.kind] = Number(x.qty); return out;
   }
   private async dishes(key: string): Promise<Dish[]> {
     const r = await this.pool.query('SELECT id, recipe, quality, value, cooked_at FROM kitchen_dishes WHERE player_key = $1 AND sold_at IS NULL ORDER BY cooked_at DESC', [key]);
@@ -95,18 +103,22 @@ export class Cooking {
    *  The marker row (NOT NULL guard) makes the refund happen at most once and never after a plate. */
   async refundStale(name: string): Promise<number> {
     const key = keyOf(name); const now = this.clock();
-    const stale = (await this.pool.query('SELECT id, recipe FROM kitchen_cooks WHERE player_key = $1 AND done = false AND started_at <= $2', [key, now - COOK_EXPIRE_MS])).rows as Array<{ id: string; recipe: string }>;
+    const stale = (await this.pool.query('SELECT id, recipe, fillet_kind, fillets FROM kitchen_cooks WHERE player_key = $1 AND done = false AND started_at <= $2', [key, now - COOK_EXPIRE_MS])).rows as Array<{ id: string; recipe: string; fillet_kind: string | null; fillets: number | null }>;
     let n = 0;
     for (const c of stale) {
       const r = recipeById(c.recipe);
       const deltas = r ? Object.entries(r.ings).filter(([i]) => !isFishIng(i)).map(([id, q]) => ({ id, delta: q })) : [];
-      const fishIds = ((await this.pool.query('SELECT fish_id FROM kitchen_fish_used WHERE cook_id = $1', [c.id])).rows as Array<{ fish_id: string }>).map((x) => x.fish_id).filter((f) => !f.startsWith('refund:'));
+      const fishIds = ((await this.pool.query('SELECT fish_id FROM kitchen_fish_used WHERE cook_id = $1', [c.id])).rows as Array<{ fish_id: string }>).map((x) => x.fish_id).filter((f) => !f.startsWith('refund:') && !c.fillet_kind); // new cooks: the fish was cut, refund the fillets instead
       const extra: Stmt[] = [
         { sql: "INSERT INTO kitchen_fish_used (fish_id, cook_id) VALUES ((SELECT 'refund:' || id FROM kitchen_cooks WHERE id = $1 AND player_key = $2 AND done = false), $1)", args: [c.id, key] },
         ...fishIds.flatMap((f) => [
           { sql: 'DELETE FROM kitchen_fish_used WHERE fish_id = $1 AND cook_id = $2', args: [f, c.id] },
           { sql: 'UPDATE fish_catches SET sold_at = NULL WHERE id = $1 AND player_key = $2', args: [f.replace(/^\((.*)\)$/, '$1'), key] } // pg-mem stores the scalar subquery as '(id)',
         ]),
+        ...(c.fillet_kind && Number(c.fillets) > 0 ? [ // fillets go back to the cutting board (the fish was already cut)
+          { sql: 'INSERT INTO kitchen_fillets (player_key, kind, qty) VALUES ($1,$2,0) ON CONFLICT (player_key, kind) DO NOTHING', args: [key, c.fillet_kind] },
+          { sql: 'UPDATE kitchen_fillets SET qty = qty + $3 WHERE player_key = $1 AND kind = $2', args: [key, c.fillet_kind, Number(c.fillets)] },
+        ] : []),
         { sql: 'UPDATE kitchen_cooks SET done = true, quality = NULL, burnt = NULL WHERE id = $1', args: [c.id] },
       ];
       try { await this.packTx(name, deltas, extra); n++; } catch (e) { console.error('[cooking] refund failed:', (e as Error).message); }
@@ -117,9 +129,11 @@ export class Cooking {
   async view(name: string): Promise<KitchenView> {
     const key = keyOf(name);
     await this.lock(`c:${key}`, () => this.refundStale(name)).catch(() => 0); const fish = await this.fishRows(key); const lv = await this.level(name);
-    const fine = (FISH_ING.fish_fine.rarities as readonly string[]);
+    const fine = (FISH_ING.fish_fine.rarities as readonly string[]); const board = await this.fillets(key);
+    const cut = (ing: FishIng) => fish.filter((f) => (FISH_ING[ing].rarities as readonly string[]).includes(f.rarity)).reduce((a, f) => a + filletsFrom(ing, f.value), 0);
+    void fine;
     return {
-      pantry: this.pantry(name), fish: { fish: fish.filter((f) => f.rarity !== 'junk').length, fish_fine: fish.filter((f) => fine.includes(f.rarity)).length },
+      pantry: this.pantry(name), fish: { fish: board.fish + cut('fish'), fish_fine: board.fish_fine + cut('fish_fine') }, fillets: board,
       dishes: await this.dishes(key), today: await this.today(key), index: priceIndex(), level: lv.level, xp: lv.xp, hasHome: await this.hasHome(name),
     };
   }
@@ -155,21 +169,25 @@ export class Cooking {
       if (nd >= DISHES_MAX) throw new CookError(`Your fridge is full (${DISHES_MAX} dishes). Sell some first.`);
       const id = randomUUID(); const seed = randomInt(1, 2 ** 31);
       const extra: Stmt[] = []; const deltas: Array<{ id: string; delta: number }> = [];
-      let pool = await this.fishRows(key);
+      let pool = await this.fishRows(key); const board = await this.fillets(key); let filletKind: FishIng | null = null, filletsUsed = 0;
       for (const [ing, q] of Object.entries(r.ings)) {
         if (isFishIng(ing)) {
-          const ok = FISH_ING[ing as FishIng].rarities as readonly string[];
-          for (let i = 0; i < q; i++) {
-            const f = pool.find((x) => ok.includes(x.rarity)); if (!f) throw new CookError(`You need ${FISH_ING[ing as FishIng].label.toLowerCase()} from your fishing cooler.`);
-            pool = pool.filter((x) => x !== f);
+          // pt1299u: use fillets on the cutting board first; cut the cheapest matching fish into fillets as needed.
+          const ok = FISH_ING[ing].rarities as readonly string[]; let stock = board[ing], cutN = 0;
+          while (stock + cutN < q) {
+            const f = pool.find((x) => ok.includes(x.rarity)); if (!f) throw new CookError(`You need ${FISH_ING[ing].label.toLowerCase()} from your fishing cooler.`);
+            pool = pool.filter((x) => x !== f); cutN += filletsFrom(ing, f.value);
             extra.push({ sql: 'INSERT INTO kitchen_fish_used (fish_id, cook_id) VALUES ((SELECT id FROM fish_catches WHERE id = $1 AND player_key = $2 AND sold_at IS NULL AND dish IS NULL), $3)', args: [f.id, key, id] });
             extra.push({ sql: 'UPDATE fish_catches SET sold_at = $2 WHERE id = $1', args: [f.id, now] });
           }
+          stock = stock + cutN - q; board[ing] = stock; filletKind = ing; filletsUsed = q;
+          extra.push({ sql: 'INSERT INTO kitchen_fillets (player_key, kind, qty) VALUES ($1,$2,0) ON CONFLICT (player_key, kind) DO NOTHING', args: [key, ing] });
+          extra.push({ sql: 'UPDATE kitchen_fillets SET qty = qty + $3 WHERE player_key = $1 AND kind = $2', args: [key, ing, cutN - q] }); // CHECK (qty >= 0) aborts on a race
         } else deltas.push({ id: ing, delta: -q });
       }
       const have = this.pantry(name); const miss = deltas.filter((d) => (have[d.id] ?? 0) < -d.delta).map((d) => foodInfo(d.id)?.label ?? d.id);
       if (miss.length) throw new CookError(`Missing: ${miss.join(', ')}.`);
-      extra.push({ sql: 'INSERT INTO kitchen_cooks (id, player_key, recipe, seed, started_at) VALUES ($1,$2,$3,$4,$5)', args: [id, key, r.id, seed, now] });
+      extra.push({ sql: 'INSERT INTO kitchen_cooks (id, player_key, recipe, seed, started_at, fillet_kind, fillets) VALUES ($1,$2,$3,$4,$5,$6,$7)', args: [id, key, r.id, seed, now, filletKind, filletKind ? filletsUsed : null] });
       await this.packTx(name, deltas, extra);
       return { cook: { id, recipe: r.id, seed, diff: r.diff, steps: cookSteps(seed, r.diff) }, pantry: this.pantry(name) };
     });

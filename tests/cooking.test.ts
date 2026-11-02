@@ -4,7 +4,7 @@ import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { Cooking } from '../server/cooking';
 import { getMines } from '../server/mines';
 import { setPriceIndexForTest } from '../server/price-index';
-import { COOK_DAILY_MAX, RECIPES, STAPLES, burnChance, cookPayout, cookSteps, dishValue, foodInfo, judgeCook, rawValue, recipeById, stepScore } from '../shared/cooking';
+import { FILLET_CAP, FISH_ING, filletsFrom, COOK_DAILY_MAX, RECIPES, STAPLES, burnChance, cookPayout, cookSteps, dishValue, foodInfo, judgeCook, rawValue, recipeById, stepScore } from '../shared/cooking';
 import { SKILLS } from '../shared/skills';
 import { isStackable } from '../server/market';
 import { priceOf } from '../shared/mines';
@@ -31,6 +31,11 @@ describe('cooking rules', () => {
   it('judge: perfect timing scores 1; bad timelines are rejected', () => {
     expect(judgeCook(7, 0.3, perfect(7, 0.3))).toBe(1);
     expect(judgeCook(7, 0.3, [1, 2, 3])).toBeNull(); expect(judgeCook(7, 0.3, [100, 500, 500, 500])).toBeNull();
+  });
+  it('fillets: 1 per base value, min 1, capped, and never worth more than the fish (value >= base)', () => {
+    expect(filletsFrom('fish', 6)).toBe(1); expect(filletsFrom('fish', 15)).toBe(1); expect(filletsFrom('fish', 24)).toBe(3); expect(filletsFrom('fish', 99)).toBe(12); expect(filletsFrom('fish', 5000)).toBe(FILLET_CAP);
+    expect(filletsFrom('fish_fine', 99)).toBe(1); expect(filletsFrom('fish_fine', 300)).toBe(6);
+    for (const ing of ['fish', 'fish_fine'] as const) for (let v = FISH_ING[ing].base; v < 3000; v += 7) expect(filletsFrom(ing, v) * FISH_ING[ing].base).toBeLessThanOrEqual(v);
   });
   it('food is Market-stackable but never house-sold', () => { expect(isStackable('food', 'flour')).toBe(true); expect(isStackable('food', 'nope')).toBe(false); expect(priceOf({ type: 'food', id: 'beef' })).toBe(0); });
 });
@@ -73,7 +78,7 @@ describe('kitchen server', () => {
       await expect(c.sell(me)).rejects.toThrow(/Nothing/);
     }
   });
-  it('walking away mid-cook refunds the ingredients and the fish (never burns)', async () => {
+  it('walking away mid-cook refunds the ingredients and the fish fillets (never burns)', async () => {
     const { pool, c, bank, adv } = await setup(); const me = 'QA-Cook3'; bank.account(me);
     await pool.query("INSERT INTO properties VALUES ('h:3', 'qa-cook3')"); await pool.query("INSERT INTO fish_catches VALUES ('k1','qa-cook3','QA-Cook3','perch',300,8,1,NULL)");
     for (const item of ['oil', 'salt', 'lemon']) await c.buy(me, item, 1, `nonce3-${item}-01`);
@@ -82,10 +87,21 @@ describe('kitchen server', () => {
     adv(10 * 60_000);
     await expect(c.finish(me, cook.id, perfect(cook.seed, cook.diff))).rejects.toThrow(/pantry/);
     for (const item of ['oil', 'salt', 'lemon']) expect(getMines().stackQty(me, 'food', item)).toBe(1);
-    expect((await pool.query("SELECT sold_at FROM fish_catches WHERE id = 'k1'")).rows[0].sold_at).toBeNull();
+    expect((await c.view(me)).fillets).toEqual({ fish: 1, fish_fine: 0 }); // the perch was cut; its fillet is back on the board
     await expect(c.finish(me, cook.id, perfect(cook.seed, cook.diff))).rejects.toThrow(/stove/);
     expect(await c.refundStale(me)).toBe(0); // only once
     const again = await c.start(me, 'fried_fish'); expect(again.cook.id).not.toBe(cook.id);
+  });
+  it('pt1299u: a valuable fish is cut into several fillets (1 per 8 value, capped); leftovers feed later cooks', async () => {
+    const { pool, c, bank } = await setup(); const me = 'QA-Cook4'; bank.account(me);
+    await pool.query("INSERT INTO properties VALUES ('h:4', 'qa-cook4')"); await pool.query("INSERT INTO fish_catches VALUES ('b1','qa-cook4','QA-Cook4','catfish',5000,99,1,NULL)");
+    expect((await c.view(me)).fish.fish).toBe(12);
+    for (const item of ['oil', 'salt', 'lemon']) await c.buy(me, item, 3, `nonce4-${item}-01`);
+    const a = await c.start(me, 'fried_fish'); await c.finish(me, a.cook.id, [250, 250, 250, 250]);
+    let v = await c.view(me); expect(v.fillets).toEqual({ fish: 11, fish_fine: 0 }); expect(v.fish.fish).toBe(11);
+    expect((await pool.query("SELECT sold_at FROM fish_catches WHERE id = 'b1'")).rows[0].sold_at).not.toBeNull();
+    const b = await c.start(me, 'fried_fish'); await c.finish(me, b.cook.id, [250, 250, 250, 250]);
+    v = await c.view(me); expect(v.fillets!.fish).toBe(10);
   });
   it('a speed-hacked cook burns', async () => {
     const { pool, c, bank } = await setup(); const me = 'QA-Cook2'; bank.account(me);

@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T23:50:00-06:00', title: 'Kitchen: big fish give more fillets', bullets: [
+    'Requested by Dayne: the kitchen now cuts each fish into fillets based on its value: 1 fillet per 8 chips (fine fish: 1 per 50), up to 12 per fish. A 99-chip fish gives 12 fillets instead of 1, and each fish recipe uses one fillet.',
+    'Leftover fillets stay on your cutting board for the next dish. The recipe book shows how many fillets you have. Dish sales still count toward the 100,000-a-day cooking limit.',
+  ] },
   { commit: '', at: '2026-11-01T23:45:00-06:00', title: 'Farm upgrades and a casino turn-timer bar', bullets: [
     'Request board #6 (Farm Upgrades): owned farm plots now have three upgrades, each with 3 levels. Sprinklers make crops grow 10/20/30% faster (stacks with the Farming skill, never below half the grow time). Fertilizer adds +10/20/30% crop profit (still inside the 100,000/day farm limit). Greenhouse keeps ripe crops from withering for longer.',
     'Upgrade prices scale with the plot size and the price index. They belong to whoever bought them; a new owner of the plot starts fresh.',
