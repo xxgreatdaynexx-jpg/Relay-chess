@@ -15,7 +15,7 @@ import { socket } from '@/lib/net';
 import { mouseLook, readLook, LOCK_KEYS, arenaKey, crouchHeld, shouldBlockShortcut } from '@/lib/arenaInput';
 import { playPickaxe, playPickup, unlockSounds } from '@/lib/sounds';
 import type { Mines3D, MinerView } from '@/lib/mines3d';
-import { MINE_CAVE_EVENT, CAVES, CAVE_DEFS, isCave, type CaveId, type MineNode, BACKPACK_CAP, NODE_R, ORES, ORE_ORDER, REACH, SWING_MS, isOre, inExit, priceOf, type Stack } from '../../../shared/mines';
+import { MINE_CAVE_EVENT, CAVES, CAVE_DEFS, CAVE_MAIN_ORES, isCave, type CaveId, type MineNode, BACKPACK_CAP, NODE_R, ORES, ORE_ORDER, REACH, SWING_MS, isOre, inExit, priceOf, type Stack } from '../../../shared/mines';
 import { MINE_TOOLS, canBuyTool, combinedSwingMul, type MineToolId, type MineToolsView } from '../../../shared/mineTools';
 import { canStand, clampPitch, eyeHeightOf, moveHorizontal, speedOf, stepVertical, tryJump, type Body } from '../../../shared/fps';
 
@@ -240,7 +240,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
       <div {...win.bar}>
         <span className="font-semibold">⛏️</span>
         <select className="mines-cave" aria-label="Choose mine" data-testid="mines-cave" value={cave} onChange={(e) => { if (isCave(e.target.value)) onCave(e.target.value); }}>
-          {CAVE_DEFS.filter((c) => c.id !== 'coral' || cave === 'coral').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {CAVE_DEFS.filter((c) => c.id !== 'coral' || cave === 'coral').map((c) => <option key={c.id} value={c.id}>{c.name} · {CAVE_MAIN_ORES[c.id]}</option>)}
         </select>
         <span className="opacity-70">{online} mining · {focused ? 'controls on' : 'click to play'}</span>
         {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" title="Reset position" onClick={win.reset}>⟲</button>}

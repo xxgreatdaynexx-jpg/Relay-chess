@@ -13,13 +13,13 @@ describe('miner gather bias (pt1350u)', () => {
     expect(Object.keys(MINER_BIAS.magma.ores).sort()).toEqual(['coal', 'copper']);
     expect(Object.keys(MINER_BIAS.frost.ores).sort()).toEqual(['gem', 'silver']);
     expect(Object.keys(MINER_BIAS.mine.ores).sort()).toEqual(['gold', 'iron', 'stone']);
-    for (const c of MINER_CAVES) { expect(share(c)).toBeGreaterThanOrEqual(0.6 - 1e-9); expect(share(c)).toBeLessThanOrEqual(0.7 + 1e-9); }
+    for (const c of MINER_CAVES) { expect(share(c)).toBeGreaterThanOrEqual(0.8); expect(share(c)).toBeLessThanOrEqual(0.9); }
   });
   it('gold is the lightest of the main Mine bias', () => {
     const b = MINER_BIAS.mine.ores; expect(b.gold!).toBeLessThan(b.iron!); expect(b.gold!).toBeLessThan(b.stone!);
   });
-  it('keeps value per hour within 2% of the old mix, items per hour unchanged', () => {
-    for (const c of MINER_CAVES) { expect(Math.abs(minerItemEv(c) - WORKER_EV_BEFORE[c]) / WORKER_EV_BEFORE[c]).toBeLessThan(0.02); expect(unbiasedItemEv(c)).toBeGreaterThan(0); }
+  it('keeps value per hour within 5% of the old mix (pt1357u), items per hour unchanged', () => {
+    for (const c of MINER_CAVES) { expect(Math.abs(minerItemEv(c) - WORKER_EV_BEFORE[c]) / WORKER_EV_BEFORE[c]).toBeLessThan(0.05); expect(unbiasedItemEv(c)).toBeGreaterThan(0); }
     for (const j of JOBS.filter((x) => x.kind === 'miner')) expect(itemsPerDay(j)).toBe(144);
   });
   it('rolls match the table', () => {
@@ -29,9 +29,9 @@ describe('miner gather bias (pt1350u)', () => {
       expect(Math.abs(v / N - minerItemEv(c)) / minerItemEv(c)).toBeLessThan(0.05); }
   });
   it('hire cards carry the bias label', () => {
-    expect(JOBS.find((j) => j.id === 'miner:magma')!.bias).toBe('Mostly coal & copper');
-    expect(JOBS.find((j) => j.id === 'miner:frost')!.bias).toBe('Mostly silver & crystal');
-    expect(JOBS.find((j) => j.id === 'miner:mine')!.bias).toBe('Mostly iron, rock & gold');
+    expect(JOBS.find((j) => j.id === 'miner:magma')!.bias).toBe('Mostly Coal & Copper Ore');
+    expect(JOBS.find((j) => j.id === 'miner:frost')!.bias).toBe('Mostly Silver Ore & Crystal');
+    expect(JOBS.find((j) => j.id === 'miner:mine')!.bias).toBe('Mostly Iron Ore, Stone & Gold Ore');
     expect(isMinerCave('coral')).toBe(false);
   });
 });

@@ -7,7 +7,7 @@ import { bootAttach, reconnectMsg, setBootState } from './boot-retry.js';
 import { isKnife, skinName, CASE_NAME, DROP_CASE_CHANCE, DROP_MIN_MS, KEY_NAME, rollSkin, SKIN_BY_ID, SKINS, skinToken, type ItemKind, type SkinDef, type SkinItem } from '../shared/skins.js';
 
 /** Chance that breaking an ore node in any mine drops a case (chest) or key. */
-export const MINE_DROP_CHANCE = 0.05;
+export const MINE_DROP_CHANCE = 0.01;
 export interface StoredItem extends Omit<SkinItem, 'locked'> { locked?: string; owner: string; ownerName: string; sourceKey: string; gone: boolean }
 export interface ItemEvent { item: string; kind: string; from: string | null; to: string | null; memo: string; at: number }
 export interface Stmt { sql: string; args: unknown[] }

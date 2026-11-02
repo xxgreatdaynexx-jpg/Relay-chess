@@ -6,7 +6,14 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-02T13:50:00-06:00', title: 'Caves now match their miners', bullets: [
+  { commit: '', at: '2026-11-02T14:10:00-06:00', title: 'Mines: much stronger specialities, clearer labels, slower rare respawns, rarer drops', bullets: [
+    'Each cave is now mostly its signature ores, by hand and for hired miners alike: The Mine about 86% Iron Ore, Stone & Gold Ore (Gold Ore the lightest), Magma Depths about 85% Coal & Copper Ore, and Frostbite Caverns about 82% Silver Ore & Crystal (Crystal stays rare: it is worth 5× Silver Ore).',
+    'Average value per rock and per hired-miner pick stays within 5% of before. Coral Grotto\'s mix is unchanged.',
+    'Rock respawn time now climbs with value: Stone 15s, Coal 25s, Copper Ore 45s, Iron Ore 75s, Silver Ore 2m, Gold Ore 3m, Crystal 5m, Diamond 8m (was 20s, 30s, 45s, 1m, 1.5m, 2m, 3m, 5m).',
+    'Key and chest drops from breaking a rock are now 1% per rock (was 5%), in every cave. Still 50/50 key or chest.',
+    'The mine picker, city map tiles, cave descriptions and Employment Office list now name each mine\'s main ores by their in-game names (e.g. Crystal, Copper Ore).',
+  ] },
+  { commit: '', at: '2026-11-02T13:45:00-06:00', title: 'Caves now match their miners', bullets: [
     'The ore you find by hand now follows each mine\'s speciality, the same mix your hired miners bring back: The Mine is mostly iron, rock & gold (gold the rarest of the three), Frostbite Caverns mostly silver with some crystal, and Magma Depths mostly coal & copper.',
     'About 60–65% of rocks in each cave are its signature ores. Average value per rock is about the same as before, and the cave layouts, rock spots, respawn times, key and chest drops and Tool Shop bonuses are unchanged. Coral Grotto is unchanged.',
   ] },

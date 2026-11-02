@@ -4,7 +4,7 @@
  * (× price index on the server). Effects are applied server-side in MinesWorld.hit():
  *  - swing time multiplier stacks with the Mining skill perk (up to −35%) but the total never goes below MIN_SWING_MUL (25%)
  *  - tools add expected extra ore per hit (0.5 = +50%: whole part guaranteed, fraction is a chance), stacked with the skill's 15%, capped at MAX_TOTAL_BONUS (+250%)
- * Tools never touch the 5% key/chest drop rate and never roll an extra drop.
+ * Tools never touch the 1% key/chest drop rate and never roll an extra drop.
  */
 export type MineToolId = 'pickaxe' | 'steel_pick' | 'hand_drill' | 'power_drill' | 'jackhammer' | 'plasma_cutter';
 export interface MineToolDef { id: MineToolId; name: string; tier: number; /** base chips (× price index); 0 = free starter */ price: number; /** swing/break time multiplier (before the skill perk) */ swingMul: number; /** extra-ore chance added to the skill's */ bonus: number; blurb: string; color: string; kind: 'pick' | 'drill' | 'hammer' | 'plasma' }

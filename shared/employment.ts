@@ -45,11 +45,11 @@ export const FISHER_ITEM_EV = (() => {
  */
 export interface MinerBias { share: number; ores: Partial<Record<OreId, number>>; restScale?: Partial<Record<OreId, number>>; label: string }
 export const MINER_BIAS: Record<MinerCave, MinerBias> = {
-  // gold weighted least (it is the priciest)
-  mine:  { share: 0.6,  ores: { iron: 0.55, stone: 0.28, gold: 0.17 }, label: 'Mostly iron, rock & gold' },
-  // crystal is 5x silver's price, so it stays the rare half; the diamond jackpot leaves the remainder to pay for it
-  frost: { share: 0.6,  ores: { silver: 0.95, gem: 0.05 }, restScale: { diamond: 0 }, label: 'Mostly silver & crystal' },
-  magma: { share: 0.65, ores: { coal: 0.5, copper: 0.5 }, label: 'Mostly coal & copper' },
+  // pt1357u: ~85% signature, matching the cave rocks exactly (gold lightest of the three)
+  mine:  { share: 0.86,  ores: { iron: 32, stone: 26, gold: 22 }, label: 'Mostly Iron Ore, Stone & Gold Ore' },
+  // crystal is 5x silver's price, so it stays a rare pick; the rest is mostly stone
+  frost: { share: 0.817, ores: { silver: 66, gem: 1 }, label: 'Mostly Silver Ore & Crystal' },
+  magma: { share: 0.854, ores: { coal: 1, copper: 1 }, label: 'Mostly Coal & Copper Ore' },
 };
 /** The normal (unbiased) node mix: ore -> fraction of nodes. */
 export function caveMix(c: MinerCave): Partial<Record<OreId, number>> {

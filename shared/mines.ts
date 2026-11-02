@@ -11,14 +11,14 @@ export type OreId = 'stone' | 'coal' | 'copper' | 'iron' | 'silver' | 'gold' | '
 export interface OreDef { id: OreId; name: string; hits: number; respawnMs: number; /** house price per unit, in chips (fractional: stone is 1 chip per 10) */ price: number; color: string; weight: number; minDepth: number; spawnWeight: number }
 
 export const ORES: Record<OreId, OreDef> = {
-  stone:   { id: 'stone',   name: 'Stone',      hits: 2,  respawnMs: 20_000,  price: 0.1, color: '#8a8580', weight: 1, minDepth: 0, spawnWeight: 40 },
-  coal:    { id: 'coal',    name: 'Coal',       hits: 3,  respawnMs: 30_000,  price: 1,   color: '#2b2b2e', weight: 1, minDepth: 0, spawnWeight: 22 },
+  stone:   { id: 'stone',   name: 'Stone',      hits: 2,  respawnMs: 15_000,  price: 0.1, color: '#8a8580', weight: 1, minDepth: 0, spawnWeight: 40 },
+  coal:    { id: 'coal',    name: 'Coal',       hits: 3,  respawnMs: 25_000,  price: 1,   color: '#2b2b2e', weight: 1, minDepth: 0, spawnWeight: 22 },
   copper:  { id: 'copper',  name: 'Copper Ore', hits: 4,  respawnMs: 45_000,  price: 2,   color: '#c4733b', weight: 1, minDepth: 0, spawnWeight: 16 },
-  iron:    { id: 'iron',    name: 'Iron Ore',   hits: 5,  respawnMs: 60_000,  price: 4,   color: '#a98f7f', weight: 1, minDepth: 1, spawnWeight: 12 },
-  silver:  { id: 'silver',  name: 'Silver Ore', hits: 6,  respawnMs: 90_000,  price: 8,   color: '#d5dbe2', weight: 1, minDepth: 1, spawnWeight: 7 },
-  gold:    { id: 'gold',    name: 'Gold Ore',   hits: 7,  respawnMs: 120_000, price: 15,  color: '#f0c23a', weight: 1, minDepth: 2, spawnWeight: 5 },
-  gem:     { id: 'gem',     name: 'Crystal',    hits: 9,  respawnMs: 180_000, price: 40,  color: '#b04df0', weight: 1, minDepth: 2, spawnWeight: 2.5 },
-  diamond: { id: 'diamond', name: 'Diamond',    hits: 12, respawnMs: 300_000, price: 150, color: '#7ff3ff', weight: 1, minDepth: 3, spawnWeight: 0.6 },
+  iron:    { id: 'iron',    name: 'Iron Ore',   hits: 5,  respawnMs: 75_000,  price: 4,   color: '#a98f7f', weight: 1, minDepth: 1, spawnWeight: 12 },
+  silver:  { id: 'silver',  name: 'Silver Ore', hits: 6,  respawnMs: 120_000,  price: 8,   color: '#d5dbe2', weight: 1, minDepth: 1, spawnWeight: 7 },
+  gold:    { id: 'gold',    name: 'Gold Ore',   hits: 7,  respawnMs: 180_000, price: 15,  color: '#f0c23a', weight: 1, minDepth: 2, spawnWeight: 5 },
+  gem:     { id: 'gem',     name: 'Crystal',    hits: 9,  respawnMs: 300_000, price: 40,  color: '#b04df0', weight: 1, minDepth: 2, spawnWeight: 2.5 },
+  diamond: { id: 'diamond', name: 'Diamond',    hits: 12, respawnMs: 480_000, price: 150, color: '#7ff3ff', weight: 1, minDepth: 3, spawnWeight: 0.6 },
 };
 export const ORE_ORDER: OreId[] = ['stone', 'coal', 'copper', 'iron', 'silver', 'gold', 'gem', 'diamond'];
 export const isOre = (v: unknown): v is OreId => typeof v === 'string' && v in ORES;
@@ -76,8 +76,8 @@ function hash(n: number): number { let h = Math.imul(n, 2654435761) >>> 0; h = (
 export function depthAt(x: number): number { const cx = x / CELL; let d = 0; for (let i = 0; i < DEPTH_X.length; i++) if (cx >= DEPTH_X[i]) d = i; return d; }
 
 /** Ore for a node slot: weighted among ores unlocked at this depth; rarer ores get a boost deeper. */
-export function oreFor(depth: number, r: number, bias: Partial<Record<OreId, number>> = {}): OreId {
-  const pool = ORE_ORDER.filter((o) => ORES[o].minDepth <= depth).map((o) => [o, (bias[o] ?? 1) * ORES[o].spawnWeight * (ORES[o].minDepth > 0 ? 1 + depth * 0.5 : 1) * (o === 'stone' ? Math.max(0.4, 1 - depth * 0.2) : 1)] as const);
+export function oreFor(depth: number, r: number, bias: Partial<Record<OreId, number>> = {}, anyDepth: OreId[] = []): OreId {
+  const pool = ORE_ORDER.filter((o) => ORES[o].minDepth <= depth || anyDepth.includes(o)).map((o) => [o, (bias[o] ?? 1) * ORES[o].spawnWeight * (ORES[o].minDepth > 0 ? 1 + depth * 0.5 : 1) * (o === 'stone' ? Math.max(0.4, 1 - depth * 0.2) : 1)] as const);
   const total = pool.reduce((s, [, w]) => s + w, 0);
   let t = r * total;
   for (const [o, w] of pool) { t -= w; if (t <= 0) return o; }
@@ -88,12 +88,12 @@ export function oreFor(depth: number, r: number, bias: Partial<Record<OreId, num
 // different layout, ore mix and look. '~' is a hazard (lava pool / ice pillar): impassable, rendered per theme.
 export type CaveId = 'mine' | 'frost' | 'magma' | 'coral';
 export interface CaveTheme { sky: string; fog: string; ambient: string; wall: string; floor: string; lamp: string; hazard: 'lava' | 'ice' | null }
-export interface CaveDef { id: CaveId; name: string; blurb: string; rows: string[]; depthX: number[]; bias: Partial<Record<OreId, number>>; density: number; theme: CaveTheme }
+export interface CaveDef { id: CaveId; name: string; blurb: string; rows: string[]; depthX: number[]; bias: Partial<Record<OreId, number>>; /** signature ores allowed from the first section on (ignore minDepth) */ anyDepth?: OreId[]; density: number; theme: CaveTheme }
 export const CAVE_DEFS: CaveDef[] = [
-  { id: 'mine', name: 'The Mine', blurb: 'The classic shaft: one long tunnel, mostly iron, rock and gold. Deeper is richer.', rows: ROWS, depthX: DEPTH_X, bias: { stone: 0.4, coal: 0.98, copper: 0.85, iron: 4, silver: 1.15, gold: 4.6, gem: 1.5, diamond: 0.75 }, density: 0.42,
+  { id: 'mine', name: 'The Mine', blurb: 'The classic shaft: one long tunnel. Mostly Iron Ore, Stone & Gold Ore. Deeper is richer.', rows: ROWS, depthX: DEPTH_X, bias: { stone: 0.638, coal: 0.196, copper: 0.024, iron: 3.312, silver: 2.142, gold: 9, gem: 0.031, diamond: 0.643 }, density: 0.42,
     theme: { sky: '#07070a', fog: '#0b0a0d', ambient: '#8a7a6a', wall: '#9a8f86', floor: '#6e6258', lamp: '#ff9a40', hazard: null } },
-  { id: 'frost', name: 'Frostbite Caverns', blurb: 'Wide frozen halls and ice pillars. Mostly silver, with crystal; light on coal.', depthX: [0, 12, 24, 36], density: 0.4,
-    bias: { stone: 0.2, coal: 0.1, copper: 0.15, iron: 1.8, silver: 9.35, gold: 0.5, gem: 1.04, diamond: 0.05 },
+  { id: 'frost', name: 'Frostbite Caverns', anyDepth: ['silver'], blurb: 'Wide frozen halls and ice pillars. Mostly Silver Ore, with some Crystal.', depthX: [0, 12, 24, 36], density: 0.4,
+    bias: { stone: 2.653, coal: 0.022, copper: 0.061, iron: 0.011, silver: 24.102, gold: 0.018, gem: 0.311, diamond: 0.156 },
     theme: { sky: '#060b14', fog: '#0a1626', ambient: '#8fb4d8', wall: '#9ec4dc', floor: '#c8dceb', lamp: '#8fd8ff', hazard: 'ice' },
     rows: [
       '##################################################',
@@ -109,8 +109,8 @@ export const CAVE_DEFS: CaveDef[] = [
       '####......................~~...........~......####',
       '##################################################',
     ] },
-  { id: 'magma', name: 'Magma Depths', blurb: 'A winding, narrow lava tube with pools you can’t cross. Mostly coal and copper.', depthX: [0, 12, 24, 36], density: 0.46,
-    bias: { stone: 0.35, coal: 1.85, copper: 2.6, iron: 0.8, silver: 0.85, gold: 1.15, gem: 0.43, diamond: 1.65 },
+  { id: 'magma', name: 'Magma Depths', blurb: 'A winding, narrow lava tube with pools you can’t cross. Mostly Coal & Copper Ore.', depthX: [0, 12, 24, 36], density: 0.46,
+    bias: { stone: 0.051, coal: 2.721, copper: 4.444, iron: 0.017, silver: 0.837, gold: 1.649, gem: 0.661, diamond: 0.622 },
     theme: { sky: '#120604', fog: '#1a0703', ambient: '#a86a4a', wall: '#5a3a32', floor: '#3a2622', lamp: '#ff6a20', hazard: 'lava' },
     rows: [
       '##################################################',
@@ -128,7 +128,7 @@ export const CAVE_DEFS: CaveDef[] = [
     ] },
   // Chud Resort only (server-gated on location): a sea cave under the volcano. Wide open grottos (no single-tile
   // corridors), coral pillars '~' as the hazard. Rich in gems and gold, light on coal.
-  { id: 'coral', name: 'Coral Grotto', blurb: 'A turquoise sea cave under the resort volcano. Coral pillars; rich in gems and gold.', depthX: [0, 12, 24, 36], density: 0.4,
+  { id: 'coral', name: 'Coral Grotto', blurb: 'A turquoise sea cave under the resort volcano. Coral pillars; a mixed haul with extra Crystal and Gold Ore.', depthX: [0, 12, 24, 36], density: 0.4,
     bias: { stone: 0.8, coal: 0.5, copper: 0.9, silver: 1.2, gold: 1.4, gem: 1.5 },
     theme: { sky: '#03141a', fog: '#06303a', ambient: '#7fe0e0', wall: '#e89a8a', floor: '#e8d8b0', lamp: '#7ff0ff', hazard: 'ice' },
     rows: [
@@ -177,11 +177,14 @@ function build(def: CaveDef): { map: ArenaMap; nodes: MineNode[] } {
     const nx = x * CELL + 1 + dx * 0.75, ny = y * CELL + 1 + dy * 0.75;
     const depth = depthOf(nx);
     const nz = 0.35 + hash(seed + 3) * 1.4;
-    nodes.push({ id: id++, x: nx, y: ny, z: nz, ore: oreFor(depth, hash(seed + 11), def.bias), depth });
+    nodes.push({ id: id++, x: nx, y: ny, z: nz, ore: oreFor(depth, hash(seed + 11), def.bias, def.anyDepth), depth });
   }));
   const map: ArenaMap = { id: def.id === 'mine' ? 'mine' : `mine-${def.id}`, name: def.name, w: W * CELL, d: D * CELL, solids, ramps: [], spawns, sky: def.theme.sky, fog: def.theme.fog, ground: 'sand' };
   return { map, nodes };
 }
+
+/** Each cave's main ores, by the names players see (pt1357u): mine picker, map tiles, job list. */
+export const CAVE_MAIN_ORES: Record<CaveId, string> = { mine: 'Iron Ore, Stone & Gold Ore', frost: 'Silver Ore & Crystal', magma: 'Coal & Copper Ore', coral: 'Mixed ores' };
 
 export interface Cave extends CaveDef { map: ArenaMap; nodes: MineNode[] }
 export const CAVES: Record<CaveId, Cave> = Object.fromEntries(CAVE_DEFS.map((d) => [d.id, { ...d, ...build(d) }])) as Record<CaveId, Cave>;
