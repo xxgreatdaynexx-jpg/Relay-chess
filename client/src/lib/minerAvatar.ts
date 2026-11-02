@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { applyPickSkin, skinnedPickaxe } from './pickaxeModel';
+import { buildMineTool, animateMineTool } from './mineToolModels';
+import type { MineToolId } from '../../../shared/mineTools';
 
 /** Low-poly miner avatar for other players in Mines. Faces local +X. Shared geometries/materials across all miners. */
 let S: ReturnType<typeof shared> | null = null;
@@ -24,7 +26,7 @@ function part(geo: THREE.BufferGeometry, mat: THREE.Material, sx: number, sy: nu
   const m = new THREE.Mesh(geo, mat); m.scale.set(sx, sy, sz); m.position.set(x, y, z); return m;
 }
 
-export interface MinerRig { root: THREE.Group; legL: THREE.Group; legR: THREE.Group; armL: THREE.Group; armR: THREE.Group; torso: THREE.Group; pick: THREE.Group; skin: string | null; phase: number; swingT: number; lastSw: number; last: THREE.Vector3 }
+export interface MinerRig { root: THREE.Group; legL: THREE.Group; legR: THREE.Group; armL: THREE.Group; armR: THREE.Group; torso: THREE.Group; pick: THREE.Group; skin: string | null; tool?: string; toolModel?: THREE.Group | null; phase: number; swingT: number; lastSw: number; last: THREE.Vector3 }
 
 export function buildMiner(skin: string | null): MinerRig {
   const s = S ?? (S = shared()); const { m } = s;
@@ -62,6 +64,14 @@ export function buildMiner(skin: string | null): MinerRig {
   return { root, legL, legR, armL, armR, torso, pick, skin, phase: 0, swingT: 1, lastSw: 0, last: new THREE.Vector3(NaN, 0, 0) };
 }
 
+/** Equipped mining tool (request #16): swaps the held pickaxe for the bought tool's model. */
+export function setMinerTool(r: MinerRig, tool: MineToolId | undefined) {
+  const id = tool ?? 'pickaxe'; if (r.tool === id) return; r.tool = id;
+  if (r.toolModel) { r.armR.remove(r.toolModel); r.toolModel = null; }
+  const m = buildMineTool(id); r.pick.visible = !m;
+  if (m) { m.position.copy(r.pick.position); m.rotation.copy(r.pick.rotation); m.scale.setScalar(0.95); r.armR.add(m); r.toolModel = m; }
+}
+
 export function setMinerSkin(r: MinerRig, skin: string | null) { if (r.skin !== skin) { r.skin = skin; applyPickSkin(r.pick, skin); } }
 
 /** Walk cycle from actual displacement; overhead swing when the server's last-hit stamp changes. */
@@ -81,5 +91,6 @@ export function animateMiner(r: MinerRig, dt: number, sw: number) {
   else if (t < 0.55) a = 2.4 - 3.0 * ((t - 0.4) / 0.15) ** 2; // chop down
   else a = -0.6 * (1 - (t - 0.55) / 0.45);                  // recover
   r.armR.rotation.z = t < 1 ? a : w * amp * 0.8 + 0.25;
+  if (r.toolModel) animateMineTool(r.toolModel, performance.now() / 1000, t < 1 ? 1 : 0);
   r.torso.rotation.z = t < 1 ? -Math.max(0, -a) * 0.15 + Math.max(0, a) * 0.04 : 0;
 }

@@ -2012,3 +2012,14 @@ html, body { overflow-x: clip; }
 .cityhall-log li { font-size: 11px; opacity: .85; }
 .cityhall-banner { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 30; padding: 6px 12px; border-radius: 10px; background: rgba(30,32,44,.92); border: 1px solid rgba(217,194,122,.5); color: #f3ead2; font-size: 13px; display: flex; gap: 10px; align-items: center; }
 .cityhall-banner button { opacity: .7; }
+
+/* 🛠️ Mines Tool Shop (request #16) */
+.mines-tools .mines-tools-now { font-size: 12px; margin: 4px 0 6px; opacity: .9; }
+.mines-tool { display: flex; align-items: center; gap: 6px; padding: 4px 5px; border-radius: 6px; border: 1px solid transparent; }
+.mines-tool + .mines-tool { margin-top: 2px; }
+.mines-tool.on { border-color: rgba(255, 200, 80, .55); background: rgba(255, 200, 80, .08); }
+.mines-tool .mines-tool-name { flex: 1; display: flex; flex-direction: column; line-height: 1.15; font-size: 12px; }
+.mines-tool .mines-tool-name small { opacity: .65; font-size: 10.5px; }
+.mines-tool button { font-size: 11px; padding: 2px 7px; border-radius: 5px; background: #2b3a2b; color: #e8f5e0; border: 1px solid #4b6b4b; cursor: pointer; white-space: nowrap; }
+.mines-tool button:disabled { opacity: .45; cursor: not-allowed; }
+.mines-tool em { font-size: 11px; font-style: normal; color: #ffc850; }

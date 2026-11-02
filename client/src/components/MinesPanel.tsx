@@ -15,6 +15,7 @@ import { mouseLook, readLook, LOCK_KEYS, arenaKey, crouchHeld, shouldBlockShortc
 import { playPickaxe, playPickup, unlockSounds } from '@/lib/sounds';
 import type { Mines3D, MinerView } from '@/lib/mines3d';
 import { MINE_CAVE_EVENT, CAVES, CAVE_DEFS, isCave, type CaveId, type MineNode, BACKPACK_CAP, NODE_R, ORES, ORE_ORDER, REACH, SWING_MS, isOre, inExit, priceOf, type Stack } from '../../../shared/mines';
+import { MINE_TOOLS, canBuyTool, combinedSwingMul, type MineToolId, type MineToolsView } from '../../../shared/mineTools';
 import { canStand, clampPitch, eyeHeightOf, moveHorizontal, speedOf, stepVertical, tryJump, type Body } from '../../../shared/fps';
 
 const OPEN_KEY = 'relay-mines-open';
@@ -68,6 +69,20 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
   const [pack, setPack] = useState<PackMsg>({ pack: [], load: 0, cap: BACKPACK_CAP, quote: null });
   const [guest, setGuest] = useState(true);
   const [online, setOnline] = useState(0);
+  // 🛠️ Tool Shop (request #16): owned/equipped tools + live prices; buying or equipping returns the new swing time.
+  const [tools, setTools] = useState<MineToolsView | null>(null);
+  const [toolMsg, setToolMsg] = useState('');
+  const [swingShown, setSwingShown] = useState(SWING_MS);
+  const applyTools = (r?: { ok: boolean; error?: string; tools?: MineToolsView; swingMs?: number }) => {
+    if (!r) return; if (!r.ok) { setToolMsg(r.error ?? 'Tool shop error.'); return; }
+    if (r.tools) { setTools(r.tools); three.current?.setTool(r.tools.equipped); }
+    if (typeof r.swingMs === 'number' && r.swingMs > 0) { swingMs.current = r.swingMs; setSwingShown(r.swingMs); }
+  };
+  const toolEmit = (ev: string, body: object, done?: string) => socket.timeout(8000).emit(ev, body, (err: Error | null, r?: { ok: boolean; error?: string; tools?: MineToolsView; swingMs?: number }) => {
+    if (err) { setToolMsg('The tool shop did not answer. Try again.'); return; } applyTools(r); if (r?.ok && done) setToolMsg(done);
+  });
+  const buyTool = (id: MineToolId) => toolEmit('mine_tools_buy', { tool: id }, `Bought the ${MINE_TOOLS.find((t) => t.id === id)?.name}. Equipped.`);
+  const equipTool = (id: MineToolId) => toolEmit('mine_tools_equip', { tool: id });
   const [aim, setAim] = useState(-1);
   const [toast, setToast] = useState('');
   const [focused, setFocused] = useState(false);
@@ -88,7 +103,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
     const join = () => socket.timeout(8000).emit('mines_join', { cave }, (err: Error | null, r?: { ok: boolean; error?: string; id: string; guest: boolean; x: number; y: number; z: number; a: number; nodes: number[]; swingMs?: number } & PackMsg) => {
       if (dead) return;
       if (err || !r?.ok) { setStatus(r?.error ?? 'Could not reach the mine.'); return; }
-      if (typeof r.swingMs === 'number' && r.swingMs > 0) swingMs.current = r.swingMs;
+      if (typeof r.swingMs === 'number' && r.swingMs > 0) { swingMs.current = r.swingMs; setSwingShown(r.swingMs); }
       const ok = canStand(r.x, r.y, r.z, MINE_MAP); const sp = MINE_MAP.spawns[0]; // never start inside this cave's rock
       Object.assign(m, { id: r.id, x: ok ? r.x : sp[0], y: ok ? r.y : sp[1], z: ok ? r.z : 0, a: r.a, joined: true });
       hp.current = r.nodes; three.current?.setNodes(r.nodes);
@@ -104,7 +119,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
     // 3D scene
     importWithReload(() => import('@/lib/mines3d')).then(({ Mines3D }) => {
       if (dead || !glRef.current) return;
-      try { three.current = new Mines3D(glRef.current, cave); three.current.setNodes(hp.current); socket.timeout(3000).emit('inv_loadout', {}, (err: Error | null, r?: { ok: boolean; loadout?: Record<string, string | null> }) => { if (!err && r?.ok) three.current?.setPickSkin(r.loadout?.pickaxe ?? null); }); } catch (e) { setGlError('3D is unavailable here: ' + (e as Error).message); }
+      try { three.current = new Mines3D(glRef.current, cave); three.current.setNodes(hp.current); socket.timeout(3000).emit('inv_loadout', {}, (err: Error | null, r?: { ok: boolean; loadout?: Record<string, string | null> }) => { if (!err && r?.ok) three.current?.setPickSkin(r.loadout?.pickaxe ?? null); }); toolEmit('mine_tools_view', {}); } catch (e) { setGlError('3D is unavailable here: ' + (e as Error).message); }
     }).catch((e) => { if (!reloadOnceForChunkError(e)) setGlError('Could not load the 3D engine. Refresh to try again.'); });
     let raf = 0, last = performance.now(), sendAcc = 0, lastDraw = 0;
     const frame = (t: number) => {
@@ -128,6 +143,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
         if (sendAcc >= 1 / 15) { sendAcc = 0; socket.volatile.emit('mines_move', { x: m.x, y: m.y, z: m.z, a: m.a, p: m.p, c: m.crouch, s: m.sprint }); }
         if (inExit(m.x, m.y) && packRef.current.pack.length && performance.now() - exiting.current > 1500) { exiting.current = performance.now(); bankHaul(); }
         // Hold left click / long-press: keep swinging at the normal (Mining-perk) cadence; swing() gates the rate, the server stays authoritative.
+        if (three.current) three.current.working = !!holding.current;
         if (holding.current) { if (document.hidden || !document.hasFocus()) holding.current = null; else swingRef.current(); }
         const ai = aimNode(MINE_NODES, m.x, m.y, m.z + eyeHeightOf(m), m.a, m.p, hp.current);
         setAim((o) => (o === ai ? o : ai));
@@ -252,6 +268,20 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
           </ul>
           <button type="button" className="mines-sell" disabled title="Leave the mine to sell" data-testid="mines-sell">Leave the mine to sell</button>
           <p className="mines-note">Walk back to the glowing <b>EXIT</b> lift at the entrance to bank your haul. If you drop out without it, your haul is saved and waits in your backpack for next time.{guest ? ' Guests can mine but not sell.' : ' Sell and smelt banked ore in the 🏭 Factory tab.'}</p>
+          <details className="mines-prices mines-tools" open data-testid="mines-tool-shop"><summary>🛠️ Tool Shop</summary>
+            <div className="mines-tools-now">Swing: <b>{(swingShown / 1000).toFixed(2)}s</b>{tools ? ` · ${MINE_TOOLS.find((t) => t.id === tools.equipped)?.name}` : ''}</div>
+            {MINE_TOOLS.map((t) => { const owned = t.tier === 0 || !!tools?.owned.includes(t.id), on = (tools?.equipped ?? 'pickaxe') === t.id, price = tools?.prices[t.id] ?? t.price, can = !!tools && !guest && canBuyTool(tools.owned, t.id);
+              return (
+                <div key={t.id} className={`mines-tool ${on ? 'on' : ''}`} data-testid={`mines-tool-${t.id}`} title={t.blurb}>
+                  <ItemIcon type="tool" id={t.id} />
+                  <span className="mines-tool-name">{t.name}<small>{Math.round((1 - t.swingMul) * 100) ? `${Math.round((1 - t.swingMul) * 100)}% faster` : 'Starter'}{t.bonus ? ` · +${Math.round(t.bonus * 100)}% extra ore` : ''}</small></span>
+                  {on ? <em>Equipped</em> : owned ? <button type="button" onClick={() => equipTool(t.id)}>Equip</button>
+                    : <button type="button" disabled={!can || (wallet != null && wallet < price)} onClick={() => buyTool(t.id)} title={can ? '' : guest ? 'Sign in to buy' : 'Buy the previous tier first'}>🪙{price.toLocaleString()}</button>}
+                </div>
+              ); })}
+            <p className="mines-note">Tools stack with your Mining level (fastest swing is {Math.round(combinedSwingMul(0, 'pickaxe') * 100)}% of base). Key/chest drops are unchanged.</p>
+            {toolMsg && <p className="mines-note" data-testid="mines-tool-msg">{toolMsg}</p>}
+          </details>
           <details className="mines-prices mines-board" data-testid="mines-board-panel"><summary>🏆 Leaderboard</summary><MiningLeaderboard compact you={guest ? '' : loadName()} /></details>
           <details className="mines-prices"><summary>Prices</summary>{ORE_ORDER.map((id) => <div key={id}><ItemIcon type="ore" id={id} />{ORES[id].name}: {ORES[id].price} · {ORES[id].hits} hits</div>)}</details>
         </aside>

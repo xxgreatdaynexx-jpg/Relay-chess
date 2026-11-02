@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T01:25:00-06:00', title: 'Mines: buy faster mining tools in the new Tool Shop', bullets: [
+    'Requested by Liam: a 🛠️ Tool Shop in the Mines sidebar sells five upgrades over the starter pickaxe, bought in order and kept forever. At base prices: Steel Pickaxe 2,500 (10% faster), Hand Drill 10,000 (20% faster), Power Drill 30,000 (28% faster, +2% extra ore), Jackhammer 75,000 (36% faster, +3% extra ore), Plasma Cutter 200,000 (44% faster, +5% extra ore).',
+    'Tools stack with your Mining level, but a swing is never faster than 40% of the base time, and the extra-ore chance tops out at 20% total. Key and chest drops are unchanged.',
+    'Each tool has its own 3D model in your hands and on other miners: drill bits spin and buzz, the jackhammer hammers and the plasma cutter fires a jet while you hold to mine. Switch between owned tools any time with Equip.',
+  ] },
   { commit: '', at: '2026-11-02T01:15:00-06:00', title: 'Farm district: solid fields again', bullets: [
     'Fixed: farm plots east of the city showed as thin outlines that flickered. The grass was drawing over the soil; now every plot shows solid soil with its furrow rows and crops on top.',
   ] },

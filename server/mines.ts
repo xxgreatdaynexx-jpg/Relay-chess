@@ -6,6 +6,7 @@ import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
 import { awardXp, skillLevel } from './skills.js';
 import { miningSwingMul, miningBonusChance } from '../shared/skillPerks.js';
+import { combinedBonus, combinedSwingMul, DEFAULT_TOOL, type MineToolId } from '../shared/mineTools.js';
 import { MinesLeaderboard, setMinesBoard } from './mines-board.js';
 import { getVault, playerKey } from './skins.js';
 import { guestName, lineOfSight, moveAllowance, MOVE_CARRY_MAX, normAngle, clampPitch, canStand, validateMove, eyeHeightOf, type Body } from '../shared/fps.js';
@@ -80,6 +81,9 @@ export class PgMineStore implements MineStore {
 }
 
 export class MineError extends Error {}
+/** Equipped mining tool per account (server/mineTools.ts installs the real lookup once Postgres is attached). */
+let toolHook: (account: string | null) => MineToolId = () => DEFAULT_TOOL;
+export const setMineToolHook = (f: (account: string | null) => MineToolId) => { toolHook = f; };
 /** Debounce for carried-haul saves, and how long a haul restored after a restart waits for its owner. */
 export const CARRY_SAVE_MS = 1500;
 /** Shown while the mines DB is configured but not connected: never serve (or overwrite) storage/factories from empty memory. */
@@ -94,6 +98,11 @@ export class MinesWorld {
   miningLevel: (account: string | null) => number = (a) => (a ? skillLevel(a, 'mining') : 1);
   /** RNG for the bonus-ore roll (tests can override). */
   bonusRng: () => number = () => Math.random();
+  /** Equipped mining tool (request #16). Tests can override. */
+  toolOf: (account: string | null) => MineToolId = (a) => toolHook(a);
+  /** Tool × Mining-perk swing multiplier, floored at MIN_SWING_MUL (40% of the base time). */
+  swingMulFor(account: string | null) { return combinedSwingMul(miningSwingMul(this.miningLevel(account)), this.toolOf(account)); }
+  swingMsFor(account: string | null) { return Math.round(SWING_MS * this.swingMulFor(account)); }
   miners = new Map<string, Miner>();
   /** Per-cave rock state (pt1201u). `nodes` stays The Mine's for back-compat. */
   caveNodes: Record<CaveId, NodeState[]> = Object.fromEntries(Object.values(CAVES).map((c) => [c.id, c.nodes.map((n) => ({ node: n, hp: ORES[n.ore].hits, downUntil: 0 }))])) as Record<CaveId, NodeState[]>;
@@ -259,7 +268,7 @@ export class MinesWorld {
     if (m.restoring) throw new MineError('Loading your backpack...');
     const n = typeof nodeId === 'number' ? this.caveNodes[m.cave][nodeId] : undefined;
     if (!n) throw new MineError('No rock there.');
-    const lvl = this.miningLevel(m.account); const mul = miningSwingMul(lvl);
+    const lvl = this.miningLevel(m.account); const tool = this.toolOf(m.account); const mul = combinedSwingMul(miningSwingMul(lvl), tool);
     if (now - m.lastHit < SWING_MIN_MS * mul) throw new MineError('Too fast.');
     m.hits = m.hits.filter((t) => now - t < 10_000);
     if (m.hits.length >= Math.ceil(MAX_HITS_PER_10S / mul)) throw new MineError('Too fast.');
@@ -278,8 +287,8 @@ export class MinesWorld {
     n.hp -= 1;
     if (n.hp > 0) return { node: c.id, hp: n.hp, broke: false };
     n.downUntil = now + ore.respawnMs; n.hp = 0;
-    // Mining perk: small chance of one extra ore (only if it fits). Never rolls an extra key/chest drop.
-    const bonus = this.bonusRng() < miningBonusChance(lvl) && this.load(id) + 2 * ore.weight <= BACKPACK_CAP ? 1 : 0;
+    // Mining perk + tool: small chance of one extra ore (only if it fits), capped at MAX_TOTAL_BONUS. Never rolls an extra key/chest drop.
+    const bonus = this.bonusRng() < combinedBonus(miningBonusChance(lvl), tool) && this.load(id) + 2 * ore.weight <= BACKPACK_CAP ? 1 : 0;
     { const key = `ore:${c.ore}`; const cur = m.carried.get(key); if (cur) cur.qty += 1 + bonus; else m.carried.set(key, { type: 'ore', id: c.ore, qty: 1 + bonus }); }
     if (m.account) this.markCarried(playerKey(m.account));
     return { node: c.id, hp: 0, broke: true, ore: c.ore, ...(bonus ? { bonus } : {}) };
@@ -436,7 +445,7 @@ export class MinesWorld {
     try { pk = (getVault()?.loadout(m.account) as Record<string, string | undefined> | undefined)?.pickaxe ?? null; } catch { pk = null; }
     this.skinCache.set(m.id, { pk, at: now }); return pk;
   }
-  playersView(cave?: CaveId) { return [...this.miners.values()].filter((m) => !cave || m.cave === cave).map((m) => ({ id: m.id, name: m.name, x: +m.x.toFixed(2), y: +m.y.toFixed(2), z: +m.z.toFixed(2), a: +m.a.toFixed(3), p: +m.p.toFixed(3), c: !!m.crouch, sw: m.lastHit, pk: this.pickSkin(m) })); }
+  playersView(cave?: CaveId) { return [...this.miners.values()].filter((m) => !cave || m.cave === cave).map((m) => ({ id: m.id, name: m.name, x: +m.x.toFixed(2), y: +m.y.toFixed(2), z: +m.z.toFixed(2), a: +m.a.toFixed(3), p: +m.p.toFixed(3), c: !!m.crouch, sw: m.lastHit, pk: this.pickSkin(m), tl: this.toolOf(m.account) })); }
 }
 
 let world = new MinesWorld();
@@ -508,7 +517,7 @@ export function registerMines(io: Server, socket: Socket): void {
     }
     ensureTicker(io);
     if (m.restoring) { try { await m.restoring; } catch (e) { return ack?.({ ok: false, error: (e as Error).message }); } if (world.miners.get(socket.id) !== m) return ack?.({ ok: false, error: 'Left the mine.' }); }
-    ack?.({ ok: true, swingMs: Math.round(SWING_MS * miningSwingMul(world.miningLevel(m.account))), id: socket.id, name: m.name, guest: !m.account, cave: m.cave, x: m.x, y: m.y, z: m.z, a: m.a, nodes: world.nodesView(Date.now(), m.cave), ...packMsg() });
+    ack?.({ ok: true, swingMs: world.swingMsFor(m.account), tool: world.toolOf(m.account), id: socket.id, name: m.name, guest: !m.account, cave: m.cave, x: m.x, y: m.y, z: m.z, a: m.a, nodes: world.nodesView(Date.now(), m.cave), ...packMsg() });
   });
   socket.on('mines_move', (p: unknown) => {
     const b = body(p);
@@ -528,7 +537,7 @@ export function registerMines(io: Server, socket: Socket): void {
         } catch (e) { console.warn('[mines] drop skipped:', (e as Error).message); }
       }
       socket.to(roomOf(me()!.cave)).emit('mines_fx', { node: r.node, hp: r.hp, broke: r.broke, by: socket.id });
-      ack?.({ ok: true, ...r, swingMs: Math.round(SWING_MS * miningSwingMul(world.miningLevel(account()))), ...(r.broke ? packMsg() : {}), ...(drop ? { drop } : {}) });
+      ack?.({ ok: true, ...r, swingMs: world.swingMsFor(account()), ...(r.broke ? packMsg() : {}), ...(drop ? { drop } : {}) });
     } catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
   });
   socket.on('mines_pack', (_p: unknown, ack?: Ack) => ack?.({ ok: true, ...packMsg() }));

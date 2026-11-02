@@ -1,7 +1,9 @@
 /** Mines: three.js cave scene (lazy-loaded). Map coords are (x, y) on the floor and z up; three.js is y-up, so (x, z, y). */
 import * as THREE from 'three';
 import { applyPickSkin, skinnedPickaxe } from './pickaxeModel';
-import { animateMiner, buildMiner, setMinerSkin, type MinerRig } from './minerAvatar';
+import { buildMineTool, animateMineTool } from './mineToolModels';
+import type { MineToolId } from '../../../shared/mineTools';
+import { animateMiner, buildMiner, setMinerSkin, setMinerTool, type MinerRig } from './minerAvatar';
 import { CAVES, MINE_EXIT, ORES, type CaveId, type MineNode } from '../../../shared/mines';
 
 function nameTag(name: string): THREE.Sprite {
@@ -15,7 +17,7 @@ function nameTag(name: string): THREE.Sprite {
 }
 function disposeTag(s: THREE.Sprite) { const m = s.material as THREE.SpriteMaterial; m.map?.dispose(); m.dispose(); }
 
-export interface MinerView { id: string; name: string; x: number; y: number; z: number; a: number; c: boolean; sw: number; pk?: string | null }
+export interface MinerView { id: string; name: string; x: number; y: number; z: number; a: number; c: boolean; sw: number; pk?: string | null; tl?: MineToolId }
 
 const rockTex = (() => {
   let t: THREE.CanvasTexture | null = null;
@@ -44,6 +46,10 @@ export class Mines3D {
   private swingT = 1;
   private pickModel: THREE.Group;
   private pickSkin: string | null = null;
+  private toolModel: THREE.Group | null = null;
+  private toolId: MineToolId = 'pickaxe';
+  /** Hold-to-mine: true while the mouse is held so drills keep spinning between swings. */
+  working = false;
   private kick = 0;
   private hitDue = -1;
   private lamp: THREE.PointLight;
@@ -152,6 +158,14 @@ export class Mines3D {
     this.pickSkin = token ?? null; applyPickSkin(this.pickModel, this.pickSkin);
   }
 
+  /** Equipped mining tool (request #16): swap the viewmodel; the starter pickaxe keeps its skin. */
+  setTool(id: MineToolId) {
+    if (id === this.toolId) return; this.toolId = id;
+    if (this.toolModel) { this.pick.remove(this.toolModel); this.toolModel = null; }
+    const m = buildMineTool(id); this.pickModel.visible = !m;
+    if (m) { m.position.copy(this.pickModel.position); m.rotation.copy(this.pickModel.rotation); this.pick.add(m); this.toolModel = m; }
+  }
+
   burstAt(node: number, big: boolean) {
     const n = this.caveNodes[node]; if (!n) return;
     const col = new THREE.Color(ORES[n.ore].color);
@@ -186,7 +200,7 @@ export class Mines3D {
       seen.add(p.id);
       let g = this.others.get(p.id);
       if (!g) { g = buildMiner(p.pk ?? null); this.scene.add(g.root); this.others.set(p.id, g); }
-      setMinerSkin(g, p.pk ?? null);
+      setMinerSkin(g, p.pk ?? null); setMinerTool(g, p.tl);
       if (g.tagName !== p.name) { if (g.tag) { g.root.remove(g.tag); disposeTag(g.tag); } g.tag = nameTag(p.name); g.tagName = p.name; g.root.add(g.tag); }
       g.root.position.set(p.x, p.z - (p.c ? 0.3 : 0), p.y);
       g.root.rotation.y = -p.a;
@@ -211,6 +225,10 @@ export class Mines3D {
     else { const k = ease((t - 0.58) / 0.42), o = Math.sin(k * Math.PI) * 0.12; rx = -1.0 * (1 - k) + o; rz = -0.1 * (1 - k); dy = -0.05 * (1 - k); dz = -0.12 * (1 - k); dx = -0.1 * (1 - k); }
     this.pick.position.set(0.36 + dx + sway, -0.33 + bob + dy, -0.6 + dz);
     this.pick.rotation.set(-0.12 + rx, 0.22, 0.3 + rz);
+    if (this.toolModel) { // powered tools: spin/hammer/flame + vibration while swinging or held
+      const work = this.working || t < 1 ? 1 : 0, j = animateMineTool(this.toolModel, performance.now() / 1000, work);
+      this.pick.position.x += j.jx; this.pick.position.y += j.jy;
+    }
     if (this.hitDue < 0.5 && t >= 0.5) this.kick = Math.max(this.kick, 0.025);
     this.hitDue = t;
     this.kick = Math.max(0, this.kick - dt * 0.25);

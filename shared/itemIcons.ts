@@ -214,11 +214,19 @@ const ALIAS: Record<string, string> = { crystal: 'gem', strawberry: 'crop_strawb
 const cache = new Map<string, string>();
 
 /** True when the item has a crafted icon (not the fallback crate). */
-export function hasItemIcon(type: string | undefined, id: string): boolean { const i = ALIAS[id] ?? id; return type === 'fish' ? i in FISH_ICONS : type === 'ore' ? i in ORE_ICONS : i in GOOD_ICONS || (type == null && i in ORE_ICONS); }
+/** Buyable mining tools (request #16), type 'tool'. */
+const jackhammerIcon = () => R(10, 2.5, 4, 3, '#222', 0.6, 0.8) + Ln('M4 4L20 4', OL, 3.2) + Ln('M4 4L20 4', '#2a2a2a', 1.8) + R(8, 5.5, 8, 10, '#e05a20', 1.6) + Ln('M8.5 8L15.5 8M8.5 10.5L15.5 10.5M8.5 13L15.5 13', '#7a2e10', 0.8) + R(10.5, 15.5, 3, 2, '#9aa2ac', 0.4, 0.8) + Pa('M11.2 17.5L12.8 17.5L12.8 20.5L12 22L11.2 20.5Z', '#c8ced6');
+const plasmaIcon = () => R(3, 13, 4, 8, '#15171a', 1.2) + Pa('M5 13L15 5L18 8L8 16Z', '#2c3138') + Ln('M8 11.5L10.5 14M11 9L13.5 11.5', '#4ad8ff', 1.2) + Pa('M15 5L17 3L20 6L18 8Z', '#c8ced6') + Pa('M19 4L23 1L21.5 5.5Z', '#8ff0ff', 0.6) + glint(21, 3, 0.8);
+const TOOL_ICONS: Record<string, () => string> = {
+  pickaxe: () => pickaxe('#8a9aaa'), steel_pick: () => pickaxe('#dfe8f2'),
+  hand_drill: () => drill('#c0563a'), power_drill: () => drill('#f0b020') + glint(19, 9, 0.8),
+  jackhammer: jackhammerIcon, plasma_cutter: plasmaIcon,
+};
+export function hasItemIcon(type: string | undefined, id: string): boolean { const i = ALIAS[id] ?? id; if (type === 'tool') return i in TOOL_ICONS; return type === 'fish' ? i in FISH_ICONS : type === 'ore' ? i in ORE_ICONS : i in GOOD_ICONS || (type == null && i in ORE_ICONS); }
 /** SVG markup for an item. `type` is 'ore' | 'bar' | 'good' (optional: ids are unique across ore and goods except none). */
 export function itemIconSvg(type: string | undefined, id: string): string {
   const i = ALIAS[id] ?? id; const k = `${type ?? ''}:${i}`; const hit = cache.get(k); if (hit) return hit;
-  const f = type === 'fish' ? FISH_ICONS[i] : type === 'ore' ? ORE_ICONS[i] : GOOD_ICONS[i] ?? (type == null ? ORE_ICONS[i] : undefined);
+  const f = type === 'tool' ? TOOL_ICONS[i] : type === 'fish' ? FISH_ICONS[i] : type === 'ore' ? ORE_ICONS[i] : GOOD_ICONS[i] ?? (type == null ? ORE_ICONS[i] : undefined);
   const tint = (type === 'ore' && isOre(i) ? ORES[i].color : GOODS[i]?.color) ?? '#9a7a4a';
   const out = svg(f ? f() : crate(shade(tint, -0.1)));
   cache.set(k, out); return out;
