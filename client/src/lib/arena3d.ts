@@ -135,6 +135,8 @@ function rampGeo(r: Ramp, unit: number): THREE.BufferGeometry {
 }
 
 /** First-person weapon state: kick 0..1 (just fired), lower 0..1 (switching), reload 0..1 progress or -1, bob walk phase. */
+/** ADS: distance (m) from the eye to the optic window. Close enough that the stock and buffer tube sit behind the camera instead of filling the screen. */
+export const ADS_EYE_RELIEF = 0.16;
 export interface Viewmodel3D { /** aiming down sights: gun pulled to centre, still visible */ ads?: boolean; w: WeaponId; kick: number; lower: number; reload: number; bob: number; muzzle: boolean; /** equipped skin token */ sk?: string | null; /** knife swing 0..1, or -1 */ swing?: number; heavy?: boolean }
 export interface View3D { x: number; y: number; z: number; a: number; p: number; zoom: number; vm?: Viewmodel3D | null }
 export interface Soldier3D {
@@ -539,8 +541,10 @@ export class Arena3D {
     const r = vm.reload >= 0 && vm.reload <= 1 ? Math.sin(Math.PI * vm.reload) : 0;
     const sway = Math.sin(vm.bob) * 0.006, dip = Math.abs(Math.cos(vm.bob)) * 0.006;
     g.root.visible = true;
-    const ax = vm.ads ? 0 : vx, ay = vm.ads ? vy * 0.55 : vy;
-    g.root.position.set(ax + sway * (vm.ads ? 0.3 : 1), ay - dip - vm.lower * 0.28 - r * 0.05, vz + k * 0.045 * heavy);
+    // ADS: with an optic, put its window centre exactly on the camera axis (screen centre = aim point).
+    const sg = g.spec.sight;
+    const ax = vm.ads ? (sg ? -sg[0] : 0) : vx, ay = vm.ads ? (sg ? -sg[1] : vy * 0.55) : vy;
+    g.root.position.set(ax + sway * (vm.ads ? 0.3 : 1), ay - dip - vm.lower * 0.28 - r * 0.05, (vm.ads && sg ? -ADS_EYE_RELIEF - sg[2] : vz) + k * 0.045 * heavy);
     this.vmAt.copy(g.root.position);
     g.root.rotation.set(k * 0.12 * heavy - vm.lower * 0.7 + r * 0.3, vm.ads ? 0 : 0.06, -r * 0.55);
     // magazine / warhead: out during the first half of a reload, back in the second

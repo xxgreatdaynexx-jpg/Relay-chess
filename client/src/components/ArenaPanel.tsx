@@ -839,8 +839,10 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
         ctx.beginPath(); ctx.moveTo(0, H2 / 2); ctx.lineTo(W2, H2 / 2); ctx.moveTo(W2 / 2, 0); ctx.lineTo(W2 / 2, H2); ctx.stroke();
       } else if (m.alive && ads) {
         // AR-15 red-dot sight while aiming down sights.
-        ctx.fillStyle = 'rgba(255,40,40,.95)'; ctx.shadowColor = 'rgba(255,0,0,.9)'; ctx.shadowBlur = H2 / 120;
-        ctx.beginPath(); ctx.arc(W2 / 2, H2 / 2, Math.max(1.5, H2 / 260), 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+        // Small crisp dot, exactly on the aim point (the optic window is centred on screen in ADS): faint halo + solid core.
+        const rd = Math.max(1.25, H2 / 420), cxr = Math.round(W2 / 2), cyr = Math.round(H2 / 2);
+        ctx.fillStyle = 'rgba(255,40,40,.22)'; ctx.beginPath(); ctx.arc(cxr, cyr, rd * 2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ff2a2a'; ctx.beginPath(); ctx.arc(cxr, cyr, rd, 0, Math.PI * 2); ctx.fill();
       } else if (m.alive) {
         const cs = H2 / 40;
         const spread = (weaponSpread(WEAPONS[m.weapon], { scoped: m.scoped, crouch: m.crouch, speed: m.sprint ? 0 : Math.hypot(m.x - (net.prev?.x ?? m.x), m.y - (net.prev?.y ?? m.y)) * 120, sprinting: m.sprint }) * (H2 / 2)) / Math.tan(((FOV / zoom) * Math.PI) / 360) * 0.6;

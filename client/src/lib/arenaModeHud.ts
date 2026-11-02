@@ -35,6 +35,15 @@ export function modeStatus(mv: ModeView, myId: string, names: (id: string) => st
   return { line: '', hint: '' };
 }
 
+/** Clock + mode-label layout (pure: unit tested). Digits (cap height ≈ 0.75 em) end at clockBase; the label's top (≈ labelBase − 0.75·labelPx) stays ≥ 2u below them. */
+export function clockLayout(u: number) {
+  const clockPx = Math.max(8, (8 * u) | 0), labelPx = Math.max(6, (4 * u) | 0);
+  const clockBase = Math.round(clockPx * 0.95) + 1;
+  const labelBase = clockBase + Math.max(2 * u, 2) + Math.ceil(labelPx * 0.8);
+  const boxH = Math.max(14 * u, labelBase + Math.max(2, 1.5 * u));
+  return { clockPx, labelPx, clockBase, labelBase, boxH };
+}
+
 export function drawModeHud(ctx: CanvasRenderingContext2D, mv: ModeView | null | undefined, o: { myId: string; W: number; H: number; u: number; mono: string; project: Proj; names: (id: string) => string; left: number }): void {
   if (!mv || !mv.teams) return;
   const { W, H, u, mono } = o;
@@ -73,10 +82,13 @@ export function drawModeHud(ctx: CanvasRenderingContext2D, mv: ModeView | null |
     ctx.fillStyle = '#fff'; ctx.font = `800 ${(10 * u) | 0}px ${mono}`; ctx.fillText(String(score), x + bw / 2, top + 10.5 * u);
     ctx.font = `700 ${(4.5 * u) | 0}px ${mono}`; ctx.fillText(`${TEAM_NAMES[t].toUpperCase()}${mine === t ? ' · YOU' : ''} ${mv.teams!.alive[t]}/${mv.teams!.size[t]}`, x + bw / 2, top + bh + 5 * u);
   };
-  ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(cx - 18 * u, top, 36 * u, bh);
-  ctx.fillStyle = mv.snd?.bomb.state === 'planted' ? '#ff6b5a' : '#e6e9df'; ctx.font = `800 ${(8 * u) | 0}px ${mono}`;
-  ctx.fillText(clockOf(o.left), cx, top + 9 * u);
-  ctx.font = `600 ${(4 * u) | 0}px ${mono}`; ctx.fillStyle = '#a9ae9e'; ctx.fillText(MODE_INFO[mv.mode].short, cx, top + 13 * u);
+  // Clock box is taller than the team boxes so the mode label sits clearly below the digits (no overlap).
+  const L = clockLayout(u);
+  ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(cx - 18 * u, top, 36 * u, L.boxH);
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = mv.snd?.bomb.state === 'planted' ? '#ff6b5a' : '#e6e9df'; ctx.font = `800 ${L.clockPx}px ${mono}`;
+  ctx.fillText(clockOf(o.left), cx, top + L.clockBase);
+  ctx.font = `600 ${L.labelPx}px ${mono}`; ctx.fillStyle = '#a9ae9e'; ctx.fillText(MODE_INFO[mv.mode].short, cx, top + L.labelBase);
   team(0, cx - 18 * u - bw, s0);
   team(1, cx + 18 * u, s1);
   const st = modeStatus(mv, o.myId, o.names);

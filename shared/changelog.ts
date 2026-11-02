@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T23:30:00-06:00', title: 'Arena: cleaner clock and a better AR-15 red dot', bullets: [
+    'Requested by Dayne: in Search & Destroy and Capture the Flag, the mode label under the round clock no longer overlaps the clock digits. The clock box is a little taller and the label sits cleanly below the time.',
+    'Requested by Dayne: the AR-15 red dot is now a small, sharp dot sitting exactly where your shots go when you aim down sights. The sight housing is a thin open frame with a clear window, so it no longer blocks your view.',
+  ] },
   { commit: '', at: '2026-11-01T23:25:00-06:00', title: 'Arena: headshots on moving players, no more Ctrl keys', bullets: [
     'Arena headshots now register on strafing players and when you are moving or on a higher ping, for every gun.',
     'Ctrl is no longer an Arena key: crouch is C, sprint is Shift, so Ctrl+W cannot close the tab mid-fight. Letting go of Ctrl/Cmd or switching tabs stops all movement, and closing the tab mid-match asks "Leave the match?" first.',

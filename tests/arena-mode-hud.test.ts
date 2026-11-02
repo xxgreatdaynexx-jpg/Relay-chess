@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { modeStatus, clockOf } from '../client/src/lib/arenaModeHud';
+import { modeStatus, clockOf, clockLayout } from '../client/src/lib/arenaModeHud';
 import type { ModeView } from '../shared/arenaModes';
 
 const names = (id: string) => id.toUpperCase();
@@ -24,5 +24,16 @@ describe('arena mode HUD text', () => {
     const s = modeStatus(mv, 'me', names);
     expect(s.line).toBe('YOUR FLAG: dropped 0:09 · ENEMY FLAG: YOU');
     expect(s.hint).toMatch(/must be home/);
+  });
+});
+
+describe('clockLayout', () => {
+  it.each([1, 1.5, 2, 3, 4])('mode label sits below the clock digits and inside the box (u=%s)', (u) => {
+    const L = clockLayout(u);
+    const labelTop = L.labelBase - L.labelPx * 0.8;
+    expect(labelTop - L.clockBase).toBeGreaterThanOrEqual(Math.max(2, 2 * u) - 0.01);
+    expect(L.boxH).toBeGreaterThan(L.labelBase);
+    // stays above the status line (top + 14u + 7u)
+    expect(L.boxH).toBeLessThanOrEqual(21 * u);
   });
 });
