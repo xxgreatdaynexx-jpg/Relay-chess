@@ -61,14 +61,16 @@ export class Mines3D {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     this.scene.background = new THREE.Color(caveId === 'mine' ? '#0b0907' : T.sky);
-    this.scene.fog = new THREE.Fog(caveId === 'mine' ? '#0b0907' : T.fog, 6, T.hazard === 'ice' ? 32 : 26);
-    this.scene.add(new THREE.AmbientLight(T.ambient, T.hazard === 'ice' ? 0.7 : 0.55));
+    const lava = T.hazard === 'lava'; // Magma Depths brightened (request #21): lighter, further fog + stronger ambient/hemi + warmer lava spill
+    this.scene.fog = new THREE.Fog(caveId === 'mine' ? '#0b0907' : lava ? '#3a1507' : T.fog, lava ? 8 : 6, T.hazard === 'ice' ? 32 : lava ? 34 : 26);
+    this.scene.add(new THREE.AmbientLight(T.ambient, T.hazard === 'ice' ? 0.7 : lava ? 1.35 : 0.55));
+    if (lava) this.scene.add(new THREE.HemisphereLight('#ffb27a', '#5a1a08', 0.9));
     this.lamp = new THREE.PointLight('#ffd9a0', 2.2, 14, 1.4); this.scene.add(this.lamp);
     const tex = rockTex();
-    const wallMat = new THREE.MeshLambertMaterial({ map: tex, color: T.wall });
+    const wallMat = new THREE.MeshLambertMaterial({ map: tex, color: T.hazard === 'lava' ? '#7a4c3e' : T.wall });
     // Hazard cells ('~', solid 'metal'): ice pillars (translucent) or lava pools (glowing pit, heat light).
     const iceMat = new THREE.MeshStandardMaterial({ color: '#bfe8ff', emissive: '#3a8ac0', emissiveIntensity: 0.35, transparent: true, opacity: 0.72, roughness: 0.1, metalness: 0.2 });
-    const lavaMat = new THREE.MeshBasicMaterial({ color: '#ff5a10' });
+    const lavaMat = new THREE.MeshBasicMaterial({ color: T.hazard === 'lava' ? '#ff7a1e' : '#ff5a10' });
     const lipMat = new THREE.MeshLambertMaterial({ color: '#2a1410', emissive: '#5a1a04' });
     const LAVA_LIP = 0.45;
     let heat = 0;
@@ -80,7 +82,7 @@ export class Mines3D {
         // stop at is visible instead of an invisible wall around a flat decal.
         const lip = new THREE.Mesh(new THREE.BoxGeometry(w, LAVA_LIP, d), lipMat); lip.position.set(s.x0 + w / 2, LAVA_LIP / 2, s.y0 + d / 2); this.scene.add(lip);
         const pool = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.3, d - 0.3), lavaMat); pool.rotation.x = -Math.PI / 2; pool.position.set(s.x0 + w / 2, LAVA_LIP + 0.01, s.y0 + d / 2); this.scene.add(pool);
-        if (heat++ % 2 === 0) { const l = new THREE.PointLight('#ff4a00', 1.6, 7, 1.6); l.position.set(s.x0 + w / 2, 0.8, s.y0 + d / 2); this.scene.add(l); }
+        if (heat++ % 2 === 0) { const l = new THREE.PointLight('#ff6a14', 2.8, 11, 1.4); l.position.set(s.x0 + w / 2, 0.8, s.y0 + d / 2); this.scene.add(l); }
         continue;
       }
       const m = new THREE.Mesh(s.mat === 'metal' && T.hazard === 'ice' ? new THREE.CylinderGeometry(w * 0.62, w * 0.68, h, 8) : new THREE.BoxGeometry(w, h, d), s.mat === 'metal' && T.hazard === 'ice' ? iceMat : wallMat);
@@ -94,7 +96,7 @@ export class Mines3D {
     let lights = 0;
     for (const s of MINE_MAP.spawns.concat(MINE_NODES.filter((_, i) => i % 9 === 0).map((n) => [n.x, n.y, 0] as [number, number, number]))) {
       if (lights++ > 10) break;
-      const l = new THREE.PointLight(T.lamp, 1.2, 9, 1.6); l.position.set(s[0], 3.2, s[1]); this.scene.add(l);
+      const l = new THREE.PointLight(T.lamp, T.hazard === 'lava' ? 1.6 : 1.2, T.hazard === 'lava' ? 11 : 9, 1.6); l.position.set(s[0], 3.2, s[1]); this.scene.add(l);
     }
     { // EXIT lift: glowing sign + floor pad at the entrance pocket
       const c = document.createElement('canvas'); c.width = 512; c.height = 160; const x = c.getContext('2d');

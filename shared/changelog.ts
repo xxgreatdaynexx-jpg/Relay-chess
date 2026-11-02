@@ -6,9 +6,17 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T13:40:00-06:00', title: 'Magma Depths: a bit brighter', bullets: [
+    'Magma Depths is moderately brighter: more ambient light, a warm glow from above, lighter rock walls and fog that starts further away.',
+    'Lava pools glow warmer and stronger and throw more light onto the tunnel around them. Rock stays dark and the lava is still the star.',
+  ] },
   { commit: '', at: '2026-11-02T13:35:00-06:00', title: 'Chip icon shows everywhere', bullets: [
     'The chip coin now shows as a proper icon across the whole site (wallet, Market, games, Mines, Farm, Stocks, toasts and chat) instead of an empty box on devices whose fonts lack the coin emoji.',
     'Amounts and prices are unchanged.',
+  ] },
+  { commit: '', at: '2026-11-02T13:20:00-06:00', title: 'Market: sell section on top + chip icon fix', bullets: [
+    'On Market → Resources, Your storage, the sell card and My listings now sit at the top, above the item list.',
+    'Chip amounts in the sell card and storage tiles show a proper chip icon instead of an empty box on devices missing the coin emoji.',
   ] },
   { commit: '', at: '2026-11-02T13:15:00-06:00', title: 'Mines: no more head bob', bullets: [
     'Walking and running in the mines no longer bobs or sways your view and held tool: the camera stays at a steady height.',
