@@ -8,7 +8,7 @@ export const STATUS_LABEL: Record<RequestStatus, string> = { open: 'Open', appro
 export const NEXT_STATUS: Record<RequestStatus, RequestStatus[]> = {
   open: ['approved', 'declined'], approved: ['in_progress', 'declined', 'shipped'], declined: ['open'], in_progress: ['shipped', 'approved'], shipped: [],
 };
-export const TITLE_MAX = 80, DETAILS_MAX = 500, PER_DAY = 3;
+export const TITLE_MAX = 80, DETAILS_MAX = 500, PER_DAY = 20;
 
 export interface PublicRequest {
   id: number; title: string; details: string; category: RequestCategory; author: string; status: RequestStatus;

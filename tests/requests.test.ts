@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RequestBoard } from '../server/requests';
-import { similarTitles, validateRequest } from '../shared/requests';
+import { PER_DAY, similarTitles, validateRequest } from '../shared/requests';
 import { CHANGELOG } from '../shared/changelog';
 
 const body = (title: string, category = 'Arena', details = '') => ({ title, details, category });
@@ -16,14 +16,15 @@ describe('change requests', () => {
     expect(validateRequest(body('aaaaaaaaaaaa please')).ok).toBe(false);
     expect(validateRequest(body('Night map for the arena')).ok).toBe(true);
   });
-  it('limits 3 per day per account and blocks exact duplicates', () => {
+  it('limits PER_DAY per day per account and blocks exact duplicates', () => {
+    expect(PER_DAY).toBe(20);
     const b = new RequestBoard(); const t = 1_000_000;
-    expect(b.submit('alice', body('First idea for arena'), t).ok).toBe(true);
-    expect(b.submit('Alice', body('first idea for arena'), t).ok).toBe(false);
-    expect(b.submit('alice', body('Second idea for mines'), t).ok).toBe(true);
-    expect(b.submit('alice', body('Third idea for market'), t).ok).toBe(true);
-    expect(b.submit('alice', body('Fourth idea for casino'), t).ok).toBe(false);
-    expect(b.submit('alice', body('Fourth idea for casino'), t + 86_400_001).ok).toBe(true);
+    const words = ['arena','mines','market','casino','farm','fishing','racing','kitchen','stocks','factory','garage','resort','chess','poker','trading','skills','backpack','leaderboard','profile','lottery','bank'];
+    expect(b.submit('alice', body('Idea about arena'), t).ok).toBe(true);
+    expect(b.submit('Alice', body('idea about arena'), t).ok).toBe(false);
+    for (let i = 1; i < PER_DAY; i++) expect(b.submit('alice', body(`Idea about ${words[i]}`), t).ok).toBe(true);
+    expect(b.submit('alice', body(`Idea about ${words[PER_DAY]}`), t).ok).toBe(false);
+    expect(b.submit('alice', body(`Idea about ${words[PER_DAY]}`), t + 86_400_001).ok).toBe(true);
   });
   it('one vote per account, toggles, sorts by top/new', () => {
     const b = new RequestBoard();

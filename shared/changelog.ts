@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T00:05:00-06:00', title: 'Request board: 20 requests a day', bullets: [
+    'Requested by Dayne: you can now post up to 20 requests a day on the request board, up from 3.',
+  ] },
   { commit: '', at: '2026-11-01T23:59:00-06:00', title: 'Chat: timestamps in Alberta time', bullets: [
     'Request board (carter2): every chat message now shows a small time in Alberta time (AB), like 11:52 PM AB. Older messages say Yesterday or the date, and hovering shows the full date.',
   ] },

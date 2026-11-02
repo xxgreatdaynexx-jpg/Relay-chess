@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { loadAuth } from '../lib/auth';
-import { DETAILS_MAX, REQUEST_CATEGORIES, REQUEST_STATUSES, STATUS_LABEL, TITLE_MAX, similarTitles, validateRequest, type PublicRequest, type RequestStatus } from '../../../shared/requests';
+import { DETAILS_MAX, PER_DAY, REQUEST_CATEGORIES, REQUEST_STATUSES, STATUS_LABEL, TITLE_MAX, similarTitles, validateRequest, type PublicRequest, type RequestStatus } from '../../../shared/requests';
 
 const authHeaders = (): Record<string, string> => { const t = loadAuth()?.token; return t ? { 'X-Relay-Session': t } : {}; };
 const isGuest = (n?: string) => !n || /^guest/i.test(n.trim());
@@ -76,7 +76,7 @@ function RequestsPanel({ onClose }: { onClose: () => void }) {
           <select value={category} onChange={(e) => setCategory(e.target.value)} data-testid="requests-category"><option value="">Category…</option>{REQUEST_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
           {err && <div className="chat-err" data-testid="requests-error">{err}</div>}
           <button type="submit" disabled={busy} data-testid="requests-submit">Post request</button>
-          <small className="chat-dim">Up to 3 a day.</small>
+          <small className="chat-dim">Up to {PER_DAY} a day.</small>
         </form>
       )}
       <ol className="chat-clog-list req-list">
