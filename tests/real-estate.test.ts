@@ -141,3 +141,15 @@ describe('real estate: land gets pricier the more you own', () => {
   });
   it('note text', () => { expect(landMultiplierNote(0)).toBe(''); expect(landMultiplierNote(2)).toBe('×2.25 because you own 2'); });
 });
+
+describe('countryside crop fields are buyable farms (pt1250u)', () => {
+  it('every outskirts field is a cf: farm property, priced by tiles like farmland, overlapping no other property', async () => {
+    const { outskirts } = await import('../shared/outskirts'); const { farmPrice } = await import('../shared/farm');
+    const cf = properties().filter((p) => p.id.startsWith('cf:'));
+    expect(cf).toHaveLength(outskirts().fields.length); expect(cf.length).toBeGreaterThan(20);
+    const others = properties().filter((p) => !p.id.startsWith('cf:') && p.map !== 'resort');
+    for (const p of cf) { expect(p.kind).toBe('farm'); expect(p.price).toBe(farmPrice(Math.floor(p.w / 2) * Math.floor(p.d / 2)));
+      for (const o of others) expect(obbOverlap(p, o), `${p.id} vs ${o.id}`).toBe(false);
+      for (const q of cf) if (q !== p) expect(obbOverlap(p, q)).toBe(false); }
+  });
+});

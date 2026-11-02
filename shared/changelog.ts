@@ -6,18 +6,23 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-01T20:50:00-06:00', title: 'Cook your catch in your own kitchen', bullets: [
+  { commit: '', at: '2026-11-01T20:52:00-06:00', title: 'Countryside crop fields are farms you can buy', bullets: [
+    'Requested by Dayne: every striped crop field in the countryside is now a farm you can buy. Click one to open its deed.',
+    'They work like the Farm district: plant, grow and harvest crops, pay daily tax, and sell back to the city for 70% of what you paid.',
+    'Bigger fields cost more, priced the same way as farmland. They count toward the new price for owning more land.',
+  ] },
+  { commit: '22ff26c', at: '2026-11-01T20:50:00-06:00', title: 'Cook your catch in your own kitchen', bullets: [
     'Every home now has a 🍳 Kitchen: open it from 🏠 My home on the city map, by clicking your trailer in the Trailer Park, or from the deed of any property you own (city or resort).',
     'Pick a raw fish from your cooler and cook it on the stove: set the heat, flip it at the right moment and plate it when both sides are golden. Too early and it is undercooked, too long and it burns.',
     'Cooking is a new skill (1–99) in the Skills panel and hiscores. Higher levels widen the "done" window so you burn less, and unlock rarer fish: uncommon at 10, rare at 25, epic at 45, legendary at 65.',
     'A nicely cooked dish is worth 30% more than the raw fish (a perfect one 50%); a burnt one is worth a fifth. Sell dishes at the Fishing Dock as usual, and the fish market daily limits still apply.',
   ] },
-  { commit: '', at: '2026-11-01T20:45:00-06:00', title: "Click a player to see what they own", bullets: [
+  { commit: '823ee78', at: '2026-11-01T20:21:00-06:00', title: "Click a player to see what they own", bullets: [
     "Requested by Dayne: click a player's name to open their profile. This works in the online list, chat, trailers on the map, the leaderboards, the mines board, the dock's biggest catches, the race boards and the Arena results.",
     'The profile shows their chips and net worth (the same numbers as the Daily Report), their property and land with a 📍 button that flies the map to each one, their farms and what is growing, their cars and trailer, stocks, funds and options, their best skins, skill levels, biggest fish, and when they joined. It also shows whether they are online right now.',
     'Only public info is shown. Close it with Esc or by clicking outside.',
   ] },
-  { commit: '', at: '2026-11-01T20:40:00-06:00', title: 'Land gets pricier the more you own', bullets: [
+  { commit: '5205c1a', at: '2026-11-01T20:18:44-06:00', title: 'Land gets pricier the more you own', bullets: [
     'Requested by Dayne: every parcel you already own makes your next one 1.5× more expensive. Your 1st costs the list price, the 2nd ×1.5, the 3rd ×2.25, the 4th ×3.38, and so on.',
     'This covers city, outskirts, countryside, farmland, resort properties and plantation plots. Free Trailer Park lots do not count.',
     'The deed shows your price and why, for example "×2.25 because you own 2". Selling back to the city pays 70% of what you actually paid.',

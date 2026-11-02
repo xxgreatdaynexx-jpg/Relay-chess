@@ -24,7 +24,7 @@ async function setup() {
 
 describe('farm district', () => {
   it('plots are farmland properties east of the plate, never overlapping each other or the Trailer Park; a small plot is a few days of login bonuses', () => {
-    const plots = properties().filter((p) => p.type === 'farmland');
+    const plots = properties().filter((p) => p.type === 'farmland' && p.id.startsWith('f:'));
     expect(plots.length).toBe(farmPlots().length); expect(plots.length).toBeGreaterThanOrEqual(12);
     for (const p of plots) { expect(p.x - p.w / 2).toBeGreaterThanOrEqual(FARM_X0); expect(obbOverlap(p, PARK_AREA, 1)).toBe(false); }
     for (let i = 0; i < plots.length; i++) for (let j = i + 1; j < plots.length; j++) expect(obbOverlap(plots[i]!, plots[j]!, 0.5)).toBe(false);
@@ -85,5 +85,16 @@ describe('farm district', () => {
     expect((await s.farm.view(s.id, 'Kim')).tiles).toHaveLength(0);
     await expect(s.farm.harvest('Kim', s.id)).rejects.toThrow(/Nothing is ready/);
     await s.farm.plant('Kim', s.id, 'wheat', [0]); expect((await s.farm.view(s.id, 'Kim')).tiles).toHaveLength(1);
+  });
+});
+
+describe('countryside fields farm like farmland (pt1250u)', () => {
+  it('buy a cf: field, plant, harvest, sell back 70% of paid', async () => {
+    const s = await setup(); const id = 'cf:0'; const plot = propertyById(id)!;
+    await s.fund('Ida', plot.price + 1000); await s.re.buy('Ida', id);
+    const v = await s.farm.view(id, 'Ida'); expect(v.mine).toBe(true); expect(v.cols * v.rows).toBeGreaterThan(20);
+    await s.farm.plant('Ida', id, 'wheat', [0, 1]); s.setNow(T0 + 5 * 60_000); await s.farm.harvest('Ida', id);
+    expect(s.ledger('ida', 'farm_harvest').length).toBe(1);
+    const before = s.chips('ida'); await s.re.sell('Ida', id); expect(s.chips('ida') - before).toBe(Math.floor(plot.price * 0.7));
   });
 });

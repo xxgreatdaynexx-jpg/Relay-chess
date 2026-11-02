@@ -218,7 +218,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
           onHover: (id, x, y) => setTip(id ? { id, x, y } : null),
           onPick: (id) => { if (id) goRef.current(id); }, // '' = a profile "Show on map" glide, not a building
           onProperty: (id) => { const o = ownedRef.current.get(id); const m = meRef.current;
-            if (id.startsWith('f:') && o && m && o.owner.toLowerCase() === m.toLowerCase()) setFarm(id); else setDeed(id); },
+            if ((id.startsWith('f:') || id.startsWith('cf:')) && o && m && o.owner.toLowerCase() === m.toLowerCase()) setFarm(id); else setDeed(id); },
           onTrailer: (n) => { const m = meRef.current; if (m && n.toLowerCase() === m.toLowerCase()) { setPanel({ k: 'home' }); return true; } return false; },
         });
         const w = worldRef.current;

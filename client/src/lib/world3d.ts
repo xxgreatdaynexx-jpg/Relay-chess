@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { skyNow, parseTod, mix as mixHex } from '../../../shared/daynight';
+import { fieldPlotId } from '../../../shared/fieldFarms';
 import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, TILE, clampMapTarget, panInset } from '../../../shared/farm';
 import { buildVenues } from './worldVenues';
 import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN, MINE_SITES, MINE_APRON, OUTSKIRTS } from './worldLayout';
@@ -470,7 +471,9 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       for (let t = 2; t < L - 1; t += 4) { const x = a[0] + ((b[0] - a[0]) * t) / L, z = a[1] + ((b[1] - a[1]) * t) / L; if (nodes.some((n) => Math.hypot(n[0] - x, n[1] - z) < w + 1.5)) continue; rd.push([x, z, Math.atan2(b[1] - a[1], b[0] - a[0])]); } }
     const dm = new THREE.InstancedMesh(dash.geometry, dash.material, rd.length); rd.forEach(([x, z, an], i) => { d.position.set(x, ROAD_Y + 0.03, z); d.rotation.set(0, -an, 0); d.scale.set(1, 1, 1); d.updateMatrix(); dm.setMatrixAt(i, d.matrix); }); dm.renderOrder = 2; scene.add(dm);
     // fields: farm soil with crop rows (same tones as the farm district)
-    inst(unitBox, mat({ color: 0xffffff, roughness: 1 }), O.fields.length, (i) => { const f = O.fields[i]; d.position.set(f.x, 0.07, f.z); d.scale.set(f.w, 0.14, f.d); }, () => 0x5a3e28);
+    const fieldM = inst(unitBox, mat({ color: 0xffffff, roughness: 1 }), O.fields.length, (i) => { const f = O.fields[i]; d.position.set(f.x, 0.07, f.z); d.scale.set(f.w, 0.14, f.d); }, () => 0x5a3e28);
+    // pt1250u: every field is a buyable farm (cf:<n>, shared/fieldFarms.ts)
+    if (fieldM) { fieldM.userData.props = O.fields.map((_, i) => fieldPlotId(i)); pickables.push(fieldM); O.fields.forEach((f, i) => propTop.set(fieldPlotId(i), [f.x, 0.6, f.z])); }
     const rows: Array<[number, number, number, number]> = []; for (const f of O.fields) for (let z = f.z - f.d / 2 + 1.5; z < f.z + f.d / 2 - 1; z += 2) rows.push([f.x, z, f.w - 1.2, f.crop]);
     inst(unitBox, mat({ color: 0xffffff, roughness: 1, emissive: 0x0a2a10, emissiveIntensity: 0.4 }), rows.length, (i) => { const [x, z, w] = rows[i]; d.position.set(x, 0.22, z); d.scale.set(w, 0.16, 0.9); }, (i) => [0x3f8a3a, 0x8a7a3a, 0x2f7a36, 0x6a8a34][rows[i][3]]);
     // barns + sheds (farm-district barn red, dark roofs), warehouses + gas stations (buyable)
@@ -596,7 +599,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     if (!down || fly) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y); const dragged = moved > 8 || !!down.drag; down = null; if (dragged) { clearTip(); return; }
     const id = pick(e.clientX, e.clientY); if (!id) { setHover(null); h.onHover(null, 0, 0); return; }
     if (id.startsWith('trailer:')) { h.onHover(id, e.clientX, e.clientY); if (h.onTrailer?.(id.slice(8))) return; window.dispatchEvent(new CustomEvent('open-player', { detail: id.slice(8) })); return; } // trailers: your own opens your home (kitchen), others the owner's profile
-    if (id.startsWith('b:') || id.startsWith('p:') || id.startsWith('f:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel
+    if (id.startsWith('b:') || id.startsWith('p:') || id.startsWith('f:') || id.startsWith('cf:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel
     flyTo(id);
   };
   /** Glide the camera to a world point (player-profile "show on map" for land and farms). */

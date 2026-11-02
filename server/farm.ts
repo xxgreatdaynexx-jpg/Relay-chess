@@ -16,6 +16,7 @@ import { getBank, type CasinoBank } from './casino-store.js';
 import { px, priceIndex } from './price-index.js';
 import { resortPlotOf, isTropical, TROPICAL_CROPS } from '../shared/resort.js';
 import { requireResort } from './travel.js';
+import { fieldPlotOf } from '../shared/fieldFarms.js';
 import { CROPS, cropById, farmPayout, farmPlots, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
 
 export const FARM_MIGRATION = `
@@ -29,6 +30,7 @@ const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
 const plotOf = (id: unknown): { pid: string; cols: number; rows: number; resort: boolean } | undefined => {
   if (typeof id !== 'string') return undefined;
   if (/^f:\d+$/.test(id)) { const p = farmPlots().find((q) => `f:${q.n}` === id); return p && { pid: id, cols: p.cols, rows: p.rows, resort: false }; }
+  const c = fieldPlotOf(id); if (c) return { pid: id as string, cols: c.cols, rows: c.rows, resort: false };
   const r = resortPlotOf(id); return r && { pid: id, cols: r.cols, rows: r.rows, resort: true };
 };
 interface TileRow { plot_id: string; tile: number; owner_key: string; crop: string; planted_at: string | number; nonce: string }
