@@ -129,6 +129,8 @@ export class ArenaWorld {
   readonly fighters = new Map<string, ArenaFighter>();
   /** Paid-spawn hook: charge for a spawn (first join and every respawn). Return false to keep the fighter dead (broke). */
   spawnGate: ((f: ArenaFighter, now: number) => boolean | 'wait') | null = null;
+  /** Combat perk: damage-taken multiplier for a fighter (0.95..1). Bots and guests get 1. */
+  armorOf: (f: ArenaFighter) => number = () => 1;
   strikes: Strike[] = [];
   drones = new Map<string, Drone>();
   /** RPG rockets in flight (server-simulated projectiles). */
@@ -582,9 +584,10 @@ export class ArenaWorld {
   private damage(byId: string | null, targetId: string, amount: number, now: number, cause: string, head = false, noscope = false): ArenaEvent[] {
     const t = this.fighters.get(targetId);
     if (!t || !t.alive) return [];
+    if (amount > 0) amount = amount * Math.max(0.95, Math.min(1, this.armorOf(t) || 1));
     const killed = applyDamage(t, now, amount);
     if (amount > 0) t.hurtAt = now;
-    const out: ArenaEvent[] = [{ ev: 'fps_hit', data: { by: byId, target: targetId, hp: Math.round(t.hp), dmg: amount, cause, ...(head ? { head: true } : {}) } }];
+    const out: ArenaEvent[] = [{ ev: 'fps_hit', data: { by: byId, target: targetId, hp: Math.round(t.hp), dmg: Math.round(amount), cause, ...(head ? { head: true } : {}) } }];
     if (!killed) return out;
     t.streak = 0;
     this.dropWeapon(t, now);

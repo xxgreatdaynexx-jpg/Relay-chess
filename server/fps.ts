@@ -9,6 +9,8 @@ import { getArenaLedger } from './arena-store.js';
 import { ArenaBots, isArenaBot, warmNavGraphs } from './arena-bots.js';
 import { MAPS } from '../shared/arenaMaps.js';
 import { ArenaAntiCheat, perksFor, recordFlag, type ArenaFlag } from './arena-anticheat.js';
+import { skillLevel } from './skills.js';
+import { combatDamageMul } from '../shared/skillPerks.js';
 if (process.env.NODE_ENV !== 'test' && !process.env.VITEST) warmNavGraphs(Object.values(MAPS));
 
 /** socket id -> claimed account name; guests are absent and never recorded. */
@@ -130,6 +132,7 @@ export function finishMatch(r: MatchResult): void {
 function newWorld(): ArenaWorld {
   const w = new ArenaWorld();
   w.spawnGate = chargeSpawn;
+  w.armorOf = (f) => { const n = claimed.get(f.id); return n ? combatDamageMul(skillLevel(n, 'combat')) : 1; }; // Combat perk
   w.onMatchEnd = finishMatch;
   return w;
 }

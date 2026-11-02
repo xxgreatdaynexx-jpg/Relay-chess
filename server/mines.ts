@@ -4,11 +4,12 @@ import { px, priceIndex } from './price-index.js';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
-import { awardXp } from './skills.js';
+import { awardXp, skillLevel } from './skills.js';
+import { miningSwingMul, miningBonusChance } from '../shared/skillPerks.js';
 import { MinesLeaderboard, setMinesBoard } from './mines-board.js';
 import { getVault, playerKey } from './skins.js';
 import { guestName, lineOfSight, moveAllowance, MOVE_CARRY_MAX, normAngle, clampPitch, canStand, validateMove, eyeHeightOf, type Body } from '../shared/fps.js';
-import { CAVES, caveOf, type CaveId, BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, dayKey, isOre, payoutFor, stackKey, priceOf, sellable, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId, inExit, CARRY_GRACE_MS, weightOf } from '../shared/mines.js';
+import { CAVES, caveOf, type CaveId, BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, SWING_MS, dayKey, isOre, payoutFor, stackKey, priceOf, sellable, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId, inExit, CARRY_GRACE_MS, weightOf } from '../shared/mines.js';
 import { isAtResort } from './travel.js';
 
 export const MINES_MIGRATION = [
@@ -81,6 +82,10 @@ interface Miner extends Body { id: string; name: string; account: string | null;
 interface NodeState { node: MineNode; hp: number; downUntil: number }
 
 export class MinesWorld {
+  /** Mining level for an account (perks). Tests can override. */
+  miningLevel: (account: string | null) => number = (a) => (a ? skillLevel(a, 'mining') : 1);
+  /** RNG for the bonus-ore roll (tests can override). */
+  bonusRng: () => number = () => Math.random();
   miners = new Map<string, Miner>();
   /** Per-cave rock state (pt1201u). `nodes` stays The Mine's for back-compat. */
   caveNodes: Record<CaveId, NodeState[]> = Object.fromEntries(Object.values(CAVES).map((c) => [c.id, c.nodes.map((n) => ({ node: n, hp: ORES[n.ore].hits, downUntil: 0 }))])) as Record<CaveId, NodeState[]>;
@@ -220,13 +225,14 @@ export class MinesWorld {
   nodeAvailable(n: NodeState, now: number) { if (n.downUntil && now >= n.downUntil) { n.downUntil = 0; n.hp = ORES[n.node.ore].hits; } return !n.downUntil; }
 
   /** One pickaxe hit. Validates reach, line of sight, swing rate and backpack room. */
-  hit(id: string, nodeId: unknown, now: number): { node: number; hp: number; broke: boolean; ore?: OreId; full?: boolean } {
+  hit(id: string, nodeId: unknown, now: number): { node: number; hp: number; broke: boolean; ore?: OreId; full?: boolean; bonus?: number } {
     const m = this.miners.get(id); if (!m) throw new MineError('Join the mine first.');
     const n = typeof nodeId === 'number' ? this.caveNodes[m.cave][nodeId] : undefined;
     if (!n) throw new MineError('No rock there.');
-    if (now - m.lastHit < SWING_MIN_MS) throw new MineError('Too fast.');
+    const lvl = this.miningLevel(m.account); const mul = miningSwingMul(lvl);
+    if (now - m.lastHit < SWING_MIN_MS * mul) throw new MineError('Too fast.');
     m.hits = m.hits.filter((t) => now - t < 10_000);
-    if (m.hits.length >= MAX_HITS_PER_10S) throw new MineError('Too fast.');
+    if (m.hits.length >= Math.ceil(MAX_HITS_PER_10S / mul)) throw new MineError('Too fast.');
     if (!this.nodeAvailable(n, now)) throw new MineError('That vein is mined out.');
     const eye = { x: m.x, y: m.y, z: m.z + eyeHeightOf(m) };
     const c = n.node;
@@ -242,9 +248,11 @@ export class MinesWorld {
     n.hp -= 1;
     if (n.hp > 0) return { node: c.id, hp: n.hp, broke: false };
     n.downUntil = now + ore.respawnMs; n.hp = 0;
-    { const key = `ore:${c.ore}`; const cur = m.carried.get(key); if (cur) cur.qty += 1; else m.carried.set(key, { type: 'ore', id: c.ore, qty: 1 }); }
+    // Mining perk: small chance of one extra ore (only if it fits). Never rolls an extra key/chest drop.
+    const bonus = this.bonusRng() < miningBonusChance(lvl) && this.load(id) + 2 * ore.weight <= BACKPACK_CAP ? 1 : 0;
+    { const key = `ore:${c.ore}`; const cur = m.carried.get(key); if (cur) cur.qty += 1 + bonus; else m.carried.set(key, { type: 'ore', id: c.ore, qty: 1 + bonus }); }
     if (m.account) this.markCarried(playerKey(m.account));
-    return { node: c.id, hp: 0, broke: true, ore: c.ore };
+    return { node: c.id, hp: 0, broke: true, ore: c.ore, ...(bonus ? { bonus } : {}) };
   }
 
   add(m: Miner, stacks: Stack[]) {
@@ -453,7 +461,7 @@ export function registerMines(io: Server, socket: Socket): void {
       void socket.join(roomOf(m.cave));
     }
     ensureTicker(io);
-    ack?.({ ok: true, id: socket.id, name: m.name, guest: !m.account, cave: m.cave, x: m.x, y: m.y, z: m.z, a: m.a, nodes: world.nodesView(Date.now(), m.cave), ...packMsg() });
+    ack?.({ ok: true, swingMs: Math.round(SWING_MS * miningSwingMul(world.miningLevel(m.account))), id: socket.id, name: m.name, guest: !m.account, cave: m.cave, x: m.x, y: m.y, z: m.z, a: m.a, nodes: world.nodesView(Date.now(), m.cave), ...packMsg() });
   });
   socket.on('mines_move', (p: unknown) => {
     const b = body(p);
@@ -473,7 +481,7 @@ export function registerMines(io: Server, socket: Socket): void {
         } catch (e) { console.warn('[mines] drop skipped:', (e as Error).message); }
       }
       socket.to(roomOf(me()!.cave)).emit('mines_fx', { node: r.node, hp: r.hp, broke: r.broke, by: socket.id });
-      ack?.({ ok: true, ...r, ...(r.broke ? packMsg() : {}), ...(drop ? { drop } : {}) });
+      ack?.({ ok: true, ...r, swingMs: Math.round(SWING_MS * miningSwingMul(world.miningLevel(account()))), ...(r.broke ? packMsg() : {}), ...(drop ? { drop } : {}) });
     } catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
   });
   socket.on('mines_pack', (_p: unknown, ack?: Ack) => ack?.({ ok: true, ...packMsg() }));

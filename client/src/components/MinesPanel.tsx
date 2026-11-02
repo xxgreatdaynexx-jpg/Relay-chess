@@ -59,6 +59,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
   const C = CAVES[cave]; const MINE_MAP = C.map; const MINE_NODES = C.nodes;
   const pidx = usePriceIndex();
   const wrapRef = useRef<HTMLDivElement>(null);
+  const swingMs = useRef(SWING_MS); // server-sent, shorter with Mining level
   const glRef = useRef<HTMLCanvasElement>(null);
   const win = useWindowDrag('mines', wrapRef);
   const wallet = useWalletChips();
@@ -83,9 +84,10 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
   useEffect(() => {
     let dead = false;
     const m = me.current;
-    const join = () => socket.timeout(8000).emit('mines_join', { cave }, (err: Error | null, r?: { ok: boolean; error?: string; id: string; guest: boolean; x: number; y: number; z: number; a: number; nodes: number[] } & PackMsg) => {
+    const join = () => socket.timeout(8000).emit('mines_join', { cave }, (err: Error | null, r?: { ok: boolean; error?: string; id: string; guest: boolean; x: number; y: number; z: number; a: number; nodes: number[]; swingMs?: number } & PackMsg) => {
       if (dead) return;
       if (err || !r?.ok) { setStatus(r?.error ?? 'Could not reach the mine.'); return; }
+      if (typeof r.swingMs === 'number' && r.swingMs > 0) swingMs.current = r.swingMs;
       const ok = canStand(r.x, r.y, r.z, MINE_MAP); const sp = MINE_MAP.spawns[0]; // never start inside this cave's rock
       Object.assign(m, { id: r.id, x: ok ? r.x : sp[0], y: ok ? r.y : sp[1], z: ok ? r.z : 0, a: r.a, joined: true });
       hp.current = r.nodes; three.current?.setNodes(r.nodes);
@@ -159,19 +161,20 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
 
   function swing() {
     const m = me.current, now = performance.now();
-    if (!m.joined || now - m.lastSwing < SWING_MS) return;
+    if (!m.joined || now - m.lastSwing < swingMs.current) return;
     m.lastSwing = now;
     three.current?.swing();
     const node = aimNode(MINE_NODES, m.x, m.y, m.z + eyeHeightOf(m), m.a, m.p, hp.current);
     if (node < 0) { playPickaxe('swing'); return; }
-    socket.timeout(3000).emit('mines_hit', { node }, (err: Error | null, r?: { ok: boolean; error?: string; hp: number; broke: boolean; full?: boolean; ore?: string; drop?: { kind: string; id: string } } & Partial<PackMsg>) => {
+    socket.timeout(3000).emit('mines_hit', { node }, (err: Error | null, r?: { ok: boolean; error?: string; hp: number; broke: boolean; full?: boolean; ore?: string; bonus?: number; swingMs?: number; drop?: { kind: string; id: string } } & Partial<PackMsg>) => {
       if (err || !r) return;
+      if (typeof r.swingMs === 'number' && r.swingMs > 0) swingMs.current = r.swingMs;
       if (!r.ok) { playPickaxe('swing'); if (r.error && !/fast/.test(r.error)) flash(r.error); return; }
       if (r.full) { flash('Pack full! Head back to the EXIT lift to bank your haul.'); return; }
       playPickaxe(r.broke ? 'break' : 'hit');
       three.current?.burstAt(node, r.broke);
       hp.current[node] = r.broke ? -1 : r.hp; three.current?.setNodes(hp.current);
-      if (r.broke && r.pack) { setPack({ pack: r.pack, load: r.load ?? 0, cap: r.cap ?? BACKPACK_CAP, quote: r.quote ?? null }); if (r.ore && isOre(r.ore)) flash(`+1 ${ORES[r.ore].name}`); }
+      if (r.broke && r.pack) { setPack({ pack: r.pack, load: r.load ?? 0, cap: r.cap ?? BACKPACK_CAP, quote: r.quote ?? null }); if (r.ore && isOre(r.ore)) flash(r.bonus ? `+${1 + r.bonus} ${ORES[r.ore].name} ⛏️ Mining bonus!` : `+1 ${ORES[r.ore].name}`); }
       if (r.drop) { setLoot(r.drop.kind === 'key' ? '🗝️ Found a Key!' : '🧰 Found a Chest!'); playPickup(); window.setTimeout(() => setLoot(''), 3200); }
     });
   }

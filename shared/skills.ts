@@ -1,19 +1,20 @@
 /**
  * RuneScape-style skills: shared registry + XP curve (client and server).
+ * Level perks live in shared/skillPerks.ts (perkText shows them in the Skills panel).
  * To add a skill: add an entry to SKILLS (id, label, icon, how) and award XP with awardXp(name, '<id>', n) on the server.
  */
 export const SKILLS = [
-  { id: 'mining', label: 'Mining', icon: '⛏️', how: 'Break ore in any mine (deeper ores give more XP).' },
-  { id: 'engineering', label: 'Engineering', icon: '⚙️', how: 'Bars and goods your factory produces.' },
-  { id: 'farming', label: 'Farming', icon: '🌾', how: 'Harvest crops on your farm.' },
-  { id: 'racing', label: 'Racing', icon: '🏁', how: 'Complete laps at the Speedway (personal bests give a bonus).' },
-  { id: 'combat', label: 'Combat', icon: '⚔️', how: 'Arena kills, finishing matches and winning them.' },
-  { id: 'trading', label: 'Trading', icon: '📈', how: 'Stock, options and Market trades.' },
+  { id: 'mining', label: 'Mining', icon: '⛏️', how: 'Break ore in any mine (deeper ores give more XP). Higher levels swing faster and sometimes get double ore.' },
+  { id: 'engineering', label: 'Engineering', icon: '⚙️', how: 'Bars and goods your factory produces. Higher levels craft faster.' },
+  { id: 'farming', label: 'Farming', icon: '🌾', how: 'Harvest crops on your farm. Higher levels grow crops faster.' },
+  { id: 'racing', label: 'Racing', icon: '🏁', how: 'Complete laps at the Speedway (personal bests give a bonus). Higher levels get a Daily Cup entry discount.' },
+  { id: 'combat', label: 'Combat', icon: '⚔️', how: 'Arena kills, finishing matches and winning them. Higher levels take a little less damage.' },
+  { id: 'trading', label: 'Trading', icon: '📈', how: 'Stock, options and Market trades. Higher levels pay lower stock and Market fees.' },
   { id: 'gambling', label: 'Gambling', icon: '🎰', how: 'Bets placed at the casino (by stake).' },
-  { id: 'chess', label: 'Chess', icon: '♟️', how: 'Finish chess or checkers games against people.' },
-  { id: 'fishing', label: 'Fishing', icon: '🎣', how: 'Land fish at the Fishing Dock (rarer catches give more XP).' },
+  { id: 'chess', label: 'Chess', icon: '♟️', how: 'Finish chess or checkers games against people. Higher levels add a few chips to your daily bonus.' },
+  { id: 'fishing', label: 'Fishing', icon: '🎣', how: 'Land fish at the Fishing Dock (rarer catches give more XP). Higher levels get quicker bites and rarer fish.' },
   { id: 'cooking', label: 'Cooking', icon: '🍳', how: 'Cook fish from your cooler in your home Kitchen (perfect dishes give more XP).' },
-  { id: 'property', label: 'Property', icon: '🏠', how: 'Buy real estate and pay property tax.' },
+  { id: 'property', label: 'Property', icon: '🏠', how: 'Buy real estate and pay property tax. Higher levels pay less property tax.' },
 ] as const;
 export type SkillId = (typeof SKILLS)[number]['id'];
 export const isSkill = (v: unknown): v is SkillId => typeof v === 'string' && SKILLS.some((s) => s.id === v);

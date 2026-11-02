@@ -20,6 +20,8 @@ import { getEconomy } from './economy.js';
 import { Derivatives, getDerivs, setDerivs } from './derivs.js';
 import { divYield } from '../shared/derivs.js';
 import { COMPANIES, COMPANY_BY_TICKER, SECTOR_BY_ID, SECTORS, IMPACT_HALF_LIFE_MS, MAX_TICK_IMPACT, TICK_MS, dailyEvents, maxOrderChips, parseQty, quote, seeded, hash32, type ActivityKey, type Company, type NewsItem } from '../shared/stocks.js';
+import { skillLevelAsync } from './skills.js';
+import { tradingFeeMul } from '../shared/skillPerks.js';
 
 export class StockError extends Error {}
 const DAY = 86_400_000;
@@ -271,7 +273,7 @@ export class Exchange {
     const c = typeof t === 'string' ? COMPANY_BY_TICKER.get(t) : undefined; if (!c) throw new StockError('Unknown company.');
     const ps = parseQty(n); if (!ps.ok) throw new StockError(ps.error); const shares = ps.n;
     const bank = getBank(); const k = keyOf(name); const row = this.rows.get(c.ticker)!; const price = priceOf(row);
-    const q = quote(c, price, side, shares);
+    const q = quote(c, price, side, shares, tradingFeeMul(await skillLevelAsync(name, 'trading'))); // Trading perk
     if (q.gross > maxOrderChips(c)) throw new StockError(`Order too large: max ${maxOrderChips(c).toLocaleString()} chips per trade (about ${Math.max(1, Math.floor(maxOrderChips(c) / price))} shares).`);
     if (side === 'sell' && q.total < 1) throw new StockError('Too small to sell after the fee.');
     if (side === 'buy' && row.held + shares > c.shares) throw new StockError(`Only ${c.shares - row.held} shares are left offshore.`);

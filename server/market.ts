@@ -9,6 +9,8 @@ import { bootAttach, reconnectMsg, setBootState } from './boot-retry.js';
 import { databaseUrl } from './leaderboard-store.js';
 import { GOODS, MAX_BANKED_STACK, ORES, ORE_ORDER, isOre, nameOf as stackName, type ItemType } from '../shared/mines.js';
 import { CASE_NAME, KEY_NAME, SKINS, SKIN_BY_ID, type SkinItem } from '../shared/skins.js';
+import { skillLevel } from './skills.js';
+import { tradingFeeMul } from '../shared/skillPerks.js';
 
 export const MARKET_FEE = 0.05;
 export const MIN_PRICE = 1;
@@ -16,7 +18,9 @@ export const MAX_PRICE = 1_000_000;
 export const MAX_LISTINGS = 50;
 export const MAX_TRADES = 20;
 export const MAX_TRADE_ITEMS = 20;
-export const feeOf = (price: number) => Math.max(1, Math.ceil(price * MARKET_FEE));
+/** `mul` is the seller's Trading perk (0.7..1); never below 1 chip. */
+export const feeOf = (price: number, mul = 1) => Math.max(1, Math.ceil(price * MARKET_FEE * Math.max(0.7, Math.min(1, mul))));
+const sellerFee = (price: number, seller: string) => feeOf(price, tradingFeeMul(skillLevel(seller, 'trading')));
 
 export interface Listing { id: string; seller: string; sellerName: string; itemId: string; price: number; status: 'active' | 'sold' | 'cancelled'; at: number; closedAt?: number; buyer?: string }
 export interface Sale { id: string; listingId: string; itemId: string; what: string; price: number; fee: number; seller: string; buyer: string; at: number }
@@ -133,7 +137,7 @@ export class Market {
     if (!i || i.gone || i.owner !== l.seller || i.locked !== `listing:${l.id}`) throw new RuleError('That listing is no longer valid.');
     const bank = this.bank();
     if (!bank.canAfford(name, l.price)) throw new RuleError('Not enough chips.');
-    const fee = feeOf(l.price);
+    const fee = sellerFee(l.price, l.sellerName);
     bank.transfer(name, -l.price, { key: `mkt:buy:${l.id}`, game: 'market', memo: `Bought ${this.label(i)}` });
     bank.transfer(l.sellerName, l.price - fee, { key: `mkt:sell:${l.id}`, game: 'market', memo: `Sold ${this.label(i)} (${fee} fee)` });
     const now = Date.now();
@@ -179,7 +183,7 @@ export class Market {
     const k = playerKey(name);
     if (l.seller === k) throw new RuleError("You can't buy your own listing. Cancel it instead.");
     const n = intIn(qty, 1, l.qty, 'Quantity');
-    const price = n * l.unit; const fee = feeOf(price);
+    const price = n * l.unit; const fee = sellerFee(price, l.sellerName);
     const bank = this.bank(); const mines = getMines();
     if (!bank.canAfford(name, price)) throw new RuleError('Not enough chips.');
     // Purchases land in BANKED storage (uncapped; the 120 cap is the carried in-mine pack). Only a sanity limit per stack.

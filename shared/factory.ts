@@ -118,7 +118,8 @@ export const FRECIPES: FRecipe[] = [
 ];
 export const frecipe = (id: unknown) => FRECIPES.find((r) => r.id === id);
 export const recipesFor = (k: Kind) => FRECIPES.filter((r) => r.machine === k);
-export const recipeTicks = (r: FRecipe) => Math.round((r.secs * 1000) / TICK_MS);
+/** Ticks per craft; `mul` (0.75..1) is the owner's Engineering perk (shared/skillPerks.ts). */
+export const recipeTicks = (r: FRecipe, mul = 1) => Math.max(1, Math.round((r.secs * 1000 * Math.max(0.5, Math.min(1, Number(mul) || 1))) / TICK_MS));
 /** Everything an input chest may be filtered to: ores + all registered bars/goods. */
 export const CHEST_ITEMS: string[] = [...Object.keys(ORES).map((o) => `ore:${o}`), ...Object.values(GOODS).map((g) => `${g.type}:${g.id}`)];
 export const isItemKey = (v: unknown): v is string => typeof v === 'string' && CHEST_ITEMS.includes(v);
@@ -135,7 +136,7 @@ export interface Ent {
   rr?: number;           // round-robin cursor
   t?: number;            // inserter swing timer
 }
-export interface FState { v: 1; floor: number; tick: number; at: number; seen?: number; ents: Ent[]; kit: Partial<Record<Kind, number>>; seq: number; made: Record<string, number>; stored: Record<string, number> }
+export interface FState { v: 1; floor: number; tick: number; at: number; seen?: number; ents: Ent[]; kit: Partial<Record<Kind, number>>; seq: number; made: Record<string, number>; stored: Record<string, number>; /** Engineering perk craft-time multiplier (server-set) */ spd?: number }
 export interface Storage { get(key: string): number; add(key: string, delta: number): void }
 
 export const OUT_CAP_CRAFTS = 4;
@@ -205,7 +206,7 @@ export function step(s: FState, g: Grid, st: Storage): boolean {
         for (const [k, q] of r.in) { e.ib![k] -= q; if (!e.ib![k]) delete e.ib![k]; }
         e.p = 1; ch = true;
       }
-    } else if (++e.p >= recipeTicks(r)) { e.p = 0; e.ob = (e.ob ?? 0) + r.out[1]; s.made[r.out[0]] = (s.made[r.out[0]] ?? 0) + r.out[1]; ch = true; }
+    } else if (++e.p >= recipeTicks(r, s.spd)) { e.p = 0; e.ob = (e.ob ?? 0) + r.out[1]; s.made[r.out[0]] = (s.made[r.out[0]] ?? 0) + r.out[1]; ch = true; }
     else ch = true;
     if (e.ob) {
       const fc = frontCells(e);

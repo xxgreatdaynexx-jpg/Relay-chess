@@ -20,6 +20,8 @@ import { px } from './price-index.js';
 import { setDriveHook, keyOf } from './cars.js';
 import { CAR_BY_ID } from '../shared/cars.js';
 import { LapTimer, RACE_ENTRY_BASE, RACE_SEED_BASE, RACE_SPLIT, fmtLap, type LapEvent } from '../shared/venues.js';
+import { skillLevelAsync } from './skills.js';
+import { racingEntryMul } from '../shared/skillPerks.js';
 
 export class RaceError extends Error {}
 export const RACE_MIGRATION = `CREATE TABLE IF NOT EXISTS race_laps (day TEXT NOT NULL, player_key TEXT NOT NULL, name TEXT NOT NULL, car_id TEXT NOT NULL, ms INTEGER NOT NULL, at BIGINT NOT NULL, PRIMARY KEY (day, player_key));
@@ -80,7 +82,7 @@ export class Speedway {
 
   /** Enter today's Cup: one atomic ledger + entry write. */
   async enter(name: string) {
-    const day = dayOf(this.clock()); const k = keyOf(name); const fee = px(RACE_ENTRY_BASE);
+    const day = dayOf(this.clock()); const k = keyOf(name); const fee = Math.max(1, Math.round(px(RACE_ENTRY_BASE) * racingEntryMul(await skillLevelAsync(name, 'racing')))); // Racing perk
     if (await this.isEntered(day, k)) throw new RaceError('You are already in today\'s Cup. Set your fastest lap!');
     const bank = getBank(); if (!bank.canAfford(name, fee)) throw new RaceError('Not enough chips.');
     const w = bank.transferAtomic([{ name, amount: -fee, key: `race_entry:${day}:${k}`, game: 'race_entry', memo: `Speedway Daily Cup entry (${day})` }]);

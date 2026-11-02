@@ -6,6 +6,7 @@ import { request, socket } from '@/lib/net';
 import { useAccount } from '@/lib/auth';
 import { TopTab } from './TopTabs';
 import { SKILLS, MAX_LEVEL, progress, skillDef, badgeFor, titleFor } from '../../../shared/skills';
+import { perkText } from '../../../shared/skillPerks';
 
 export interface SkillRow { id: string; xp: number; level: number; rank: number | null }
 export interface SkillProfile { name: string; total: number; title: string; totalXp: number; skills: SkillRow[] }
@@ -20,8 +21,8 @@ export function SkillGrid({ profile, compact = false }: { profile: SkillProfile;
     <div className={`grid gap-1.5 ${compact ? 'grid-cols-3' : 'grid-cols-3'}`} data-testid="skills-grid">
       {profile.skills.map((s) => {
         const d = skillDef(s.id); if (!d) return null;
-        const p = progress(s.xp);
-        const tip = p.level >= MAX_LEVEL ? `${d.label}: ${fmt(s.xp)} XP (max level)` : `${d.label}: ${fmt(s.xp)} XP · ${fmt(p.toNext)} XP to level ${p.level + 1}${s.rank ? ` · rank #${s.rank}` : ''}\n${d.how}`;
+        const p = progress(s.xp); const perk = perkText(s.id, p.level);
+        const tip = `${p.level >= MAX_LEVEL ? `${d.label}: ${fmt(s.xp)} XP (max level)` : `${d.label}: ${fmt(s.xp)} XP · ${fmt(p.toNext)} XP to level ${p.level + 1}${s.rank ? ` · rank #${s.rank}` : ''}`}\n${d.how}${perk ? `\nPerk: ${perk}` : ''}`;
         return (
           <div key={s.id} title={tip} tabIndex={0} data-testid={`skill-${s.id}`}
             className="relative rounded-md border border-[#e8c26a]/30 bg-[#2a2418] px-2 py-1.5 shadow-inner outline-none focus:ring-1 focus:ring-[#e8c26a]">
@@ -34,6 +35,7 @@ export function SkillGrid({ profile, compact = false }: { profile: SkillProfile;
               <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-300" style={{ width: `${Math.round(p.pct * 100)}%` }} />
             </div>
             {!compact && <div className="mt-0.5 text-[10px] opacity-60 tabular-nums">{p.level >= MAX_LEVEL ? 'MAX' : `${fmt(p.toNext)} to ${p.level + 1}`} {badgeFor(p.level)}</div>}
+            {!compact && perk && <div className="mt-0.5 text-[10px] leading-tight text-emerald-300/80" data-testid={`skill-perk-${s.id}`}>{perk}</div>}
           </div>
         );
       })}

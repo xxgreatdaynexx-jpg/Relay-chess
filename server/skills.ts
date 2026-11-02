@@ -3,7 +3,7 @@
  * XP is only awarded here, server-side, from real completed actions (hooks in mines/farm/race/factory/rooms/fps and the
  * wallet ledger). Every award goes through per-player per-skill hourly + daily caps so nothing can be spammed.
  * Postgres table player_skills is the source of truth; the upsert adds atomically so several instances never lose XP.
- * Purely cosmetic: XP never moves chips and never touches casino odds or payouts.
+ * XP never moves chips and never touches casino odds or payouts. Levels drive small perks (shared/skillPerks.ts).
  */
 import pg from 'pg';
 import type { Server, Socket } from 'socket.io';
@@ -70,6 +70,24 @@ export class Skills {
   private chain = new Map<string, Promise<unknown>>();
   private board: { at: number; rows: Row[] } | null = null;
   private listeners = new Set<(e: XpEvent) => void>();
+  /** Cached XP per player key (for perks). Filled by award/profile/levelOf; stale by at most one award. */
+  private xpCache = new Map<string, { at: number; xp: Record<string, number> }>();
+  private warming = new Set<string>();
+  /** Level right now from cache (1 when unknown); starts a background load so the next call is right. Never throws. */
+  levelSync(name: string | null | undefined, skill: SkillId): number {
+    if (!name) return 1; const key = keyOf(name); const c = this.xpCache.get(key);
+    if (!c || this.clock() - c.at > 300_000) void this.levelOf(name, skill).catch(() => 1);
+    return c ? levelFor(c.xp[skill] ?? 0) : 1;
+  }
+  /** Level from the store (cached 60s). Resolves 1 on any error. */
+  async levelOf(name: string | null | undefined, skill: SkillId): Promise<number> {
+    if (!name) return 1; const key = keyOf(name); if (!key) return 1;
+    const c = this.xpCache.get(key); if (c && this.clock() - c.at < 60_000) return levelFor(c.xp[skill] ?? 0);
+    if (this.warming.has(key)) return c ? levelFor(c.xp[skill] ?? 0) : 1;
+    this.warming.add(key);
+    try { const rows = await this.store.one(key); const xp: Record<string, number> = {}; for (const r of rows) xp[r.skill] = Number(r.xp); this.xpCache.set(key, { at: this.clock(), xp }); return levelFor(xp[skill] ?? 0); }
+    catch { return c ? levelFor(c.xp[skill] ?? 0) : 1; } finally { this.warming.delete(key); }
+  }
   constructor(readonly store: SkillStore, private clock = () => Date.now()) {}
   onXp(fn: (e: XpEvent) => void) { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; }
 
@@ -96,6 +114,7 @@ export class Skills {
       const before = levelFor(xp - g), level = levelFor(xp);
       const mine = await this.store.one(key).catch(() => [] as Row[]);
       const map: Record<string, number> = {}; for (const r of mine) map[r.skill] = Number(r.xp); map[skill] = xp;
+      this.xpCache.set(key, { at: this.clock(), xp: { ...map } });
       const e: XpEvent = { name: clean, skill, gained: g, xp, level, leveledUp: level > before, total: totalLevel(map) };
       for (const fn of this.listeners) { try { fn(e); } catch (err) { console.error('[skills] listener', err); } }
       return e;
@@ -107,6 +126,7 @@ export class Skills {
   async profile(name: string) {
     const key = keyOf(name); const rows = await this.store.one(key);
     const xp: Record<string, number> = {}; for (const r of rows) xp[r.skill] = Number(r.xp);
+    this.xpCache.set(key, { at: this.clock(), xp: { ...xp } });
     const total = totalLevel(xp);
     const all = await this.rows();
     const rank = (sk: string) => { const mine = xp[sk] ?? 0; if (!mine) return null; return 1 + all.filter((r) => r.skill === sk && !isQaName(r.name) && Number(r.xp) > mine).length; };
@@ -146,6 +166,9 @@ export function getSkills(): Skills {
   return (skills = new Skills(new PgSkillStore(pool)));
 }
 /** Fire-and-forget XP award used by activity hooks. */
+/** Perk level helpers (never throw; 1 when unknown). */
+export function skillLevel(name: string | null | undefined, skill: SkillId): number { try { return getSkills().levelSync(name, skill); } catch { return 1; } }
+export async function skillLevelAsync(name: string | null | undefined, skill: SkillId): Promise<number> { try { return await getSkills().levelOf(name, skill); } catch { return 1; } }
 export function awardXp(name: string | null | undefined, skill: SkillId, amount: number): void {
   try { void getSkills().award(name, skill, amount); } catch (e) { console.error('[skills] award', (e as Error).message); }
 }

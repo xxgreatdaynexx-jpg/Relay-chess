@@ -3,7 +3,8 @@ import { px } from './price-index.js';
 import type { Server, Socket } from 'socket.io';
 import { getMines, MineError, MINES_OFFLINE_MSG } from './mines.js';
 import { getBank } from './casino-store.js';
-import { awardXp } from './skills.js';
+import { awardXp, skillLevel } from './skills.js';
+import { engineeringTimeMul } from '../shared/skillPerks.js';
 import { getFarm, FarmError, type ImportSink } from './farm.js';
 import { getFishing, FishError } from './fishing.js';
 import { requireResort } from './travel.js';
@@ -53,6 +54,7 @@ export class FactoryWorld {
       this.states.set(k, s);
     }
     s.floor = Math.max(1, lv);
+    s.spd = engineeringTimeMul(skillLevel(account, 'engineering')); // Engineering perk: faster crafts
     const seen = s.seen ?? s.at; const until = Math.min(now, seen + MAX_CATCHUP_MS);
     const before = s.at;
     if (until > s.at) {

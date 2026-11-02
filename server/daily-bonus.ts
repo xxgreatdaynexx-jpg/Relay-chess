@@ -3,6 +3,8 @@ import type { Socket } from 'socket.io';
 import { getBank } from './casino-store.js';
 import { px } from './price-index.js';
 import { buildDailyReport } from './daily-report.js';
+import { skillLevelAsync } from './skills.js';
+import { chessDailyBonus } from '../shared/skillPerks.js';
 
 export const DAILY_BONUS = 1000;
 export const DAILY_BONUS_GAME = 'daily_bonus';
@@ -23,7 +25,7 @@ export async function claimDailyBonus(name: string, now = Date.now()): Promise<{
   const key = dailyBonusKey(name, day);
   if (bank.hasKey(key)) return null;
   try {
-    const amount = dailyBonusAmount();
+    const amount = dailyBonusAmount() + px(chessDailyBonus(await skillLevelAsync(name, 'chess'))); // Chess perk (tiny, same ledger row)
     const ok = await bank.transferConfirmed(name, amount, { key, game: DAILY_BONUS_GAME, memo: `Daily login bonus ${day}` });
     return ok ? { amount, chips: bank.account(name).chips, day } : null;
   } catch (e) {

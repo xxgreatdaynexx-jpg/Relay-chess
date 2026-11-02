@@ -16,6 +16,8 @@ import { getBank, type CasinoBank } from './casino-store.js';
 import { px, priceIndex } from './price-index.js';
 import { requireResort } from './travel.js';
 import { GRACE_DAYS, propertyById as baseProperty, sellBackOf, taxOf, landPrice, landMultiplier, type OwnedProperty } from '../shared/realEstate.js';
+import { skillLevelAsync } from './skills.js';
+import { propertyTaxMul } from '../shared/skillPerks.js';
 
 export class PropertyError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
@@ -131,7 +133,7 @@ export class RealEstate {
     const due = ((await this.pool.query('SELECT * FROM properties WHERE bought_at < $1 ORDER BY owner_key, price', [start])).rows as Row[]).filter((r) => !done.has(r.id));
     const out = { charged: 0, paid: 0, unpaid: 0, repossessed: 0 }; const bank = this.bank();
     for (const r of due) {
-      const amount = taxOf(propertyById(r.id)?.price ?? Number(r.price));
+      const amount = Math.max(1, Math.round(taxOf(propertyById(r.id)?.price ?? Number(r.price)) * propertyTaxMul(await skillLevelAsync(r.owner_name, 'property')))); // Property perk
       try { await bank.refresh(r.owner_name); } catch { continue; }
       const can = bank.account(r.owner_name).chips >= amount;
       const claim = async (cl: pg.PoolClient, paid: boolean, repo: boolean) => {

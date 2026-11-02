@@ -73,17 +73,18 @@ export function parseQty(raw: unknown, opts: { decimals?: number; max?: number }
   if (n > max) return { ok: false, error: `At most ${max.toLocaleString()} per order.` };
   return { ok: true, n };
 }
-export const feeOf = (chips: number) => Math.max(1, Math.ceil(chips * STOCK_FEE));
+/** `mul` is the Trading perk (0.7..1); the fee never drops below 1 chip. */
+export const feeOf = (chips: number, mul = 1) => Math.max(1, Math.ceil(chips * STOCK_FEE * Math.max(0.7, Math.min(1, mul))));
 /** Price impact (log-fraction) of an order worth `value` chips, capped per trade. */
 export const impactOf = (c: Company, value: number) => Math.min(MAX_TRADE_IMPACT, value / c.liquidity);
 /** Largest order (chips) a single trade can be. */
 export const maxOrderChips = (c: Company) => Math.floor(MAX_TRADE_IMPACT * c.liquidity);
 /** Quote: average fill price over the impact, plus half the spread. */
-export function quote(c: Company, price: number, side: 'buy' | 'sell', shares: number) {
+export function quote(c: Company, price: number, side: 'buy' | 'sell', shares: number, feeMul = 1) {
   const value = price * shares; const imp = impactOf(c, value) * (side === 'buy' ? 1 : -1);
   const fill = price * (1 + imp / 2) * (side === 'buy' ? 1 + STOCK_SPREAD / 2 : 1 - STOCK_SPREAD / 2);
   const gross = side === 'buy' ? Math.ceil(fill * shares) : Math.floor(fill * shares);
-  const fee = feeOf(gross);
+  const fee = feeOf(gross, feeMul);
   return { imp, fill, gross, fee, total: side === 'buy' ? gross + fee : gross - fee };
 }
 

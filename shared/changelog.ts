@@ -6,6 +6,15 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T21:10:00-06:00', title: 'Skills now give real perks', bullets: [
+    'Requested by Dayne: every skill except Gambling now helps you, a little more each level from 1 to 99. Your current perk shows under each skill in the Skills panel.',
+    '⛏️ Mining: up to 35% faster swings and up to a 15% chance of double ore in every mine (Mine, Frostbite, Magma, Coral Grotto, resort). Key and chest drop odds are unchanged.',
+    '⚙️ Engineering: factory machines craft up to 25% faster. 🌾 Farming: crops grow up to 25% faster.',
+    '🏁 Racing: up to 20% off the Daily Cup entry. ⚔️ Combat: take up to 5% less damage in the Arena.',
+    '📈 Trading: up to 30% off stock and Market fees (never below 1 chip). 🏠 Property: up to 20% off daily property tax.',
+    '🎣 Fishing: bites come up to 25% sooner and rarer fish are a bit more likely. ♟️ Chess: up to +50 chips on your daily bonus.',
+    '🍳 Cooking keeps its perks. 🎰 Gambling is bragging rights only: casino odds and payouts never change. Daily limits are unchanged.',
+  ] },
   { commit: '', at: '2026-11-01T21:00:00-06:00', title: 'Factory: 23 new recipes and crops & fish as inputs', bullets: [
     'New 🚚 Bring in tab in the Factory: harvest every ready crop on your farm plots straight into factory storage (instead of selling them), and send your fish cooler in: raw fish become Fish Fillets, cooked dishes become Cooked Fish Portions. Plantation crops go while you are at Chud Resort.',
     'Two new machines: 🌾 Mill & Press (flour, cornmeal, sugar, berry and tropical juice, sunflower oil, cocoa, coconut milk) and 🥫 Food Line from building level 2 (wine, bread, chocolate, canned fish, fish oil, pumpkin pie, salsa, veggie soup and the Banquet Platter).',

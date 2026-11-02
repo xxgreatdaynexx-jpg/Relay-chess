@@ -14,9 +14,10 @@ import { databaseUrl } from './leaderboard-store.js';
 import { getBank, PgCasinoStore, type CasinoBank } from './casino-store.js';
 import { px, priceIndex } from './price-index.js';
 import { emitActivity } from './activity.js';
-import { awardXp } from './skills.js';
+import { awardXp, skillLevelAsync } from './skills.js';
 import { isQaName } from '../shared/qa.js';
 import type { ImportSink } from './farm.js';
+import { fishingLuckRoll, fishingBiteMul } from '../shared/skillPerks.js';
 import {
   BITE_MAX_MS, BITE_MIN_MS, CAST_COOLDOWN_MS, COOLER_MAX, FISH, FISH_XP, fishById, fishDiff, fishPayout, fishValue, HOOK_WINDOW_MS,
   REEL_DT, replayReel, rollFish, rollWeight, type FishCatch, type FishView,
@@ -72,8 +73,9 @@ export class Fishing {
     const n = Number((await this.pool.query('SELECT count(*) AS n FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL', [key])).rows[0]?.n ?? 0);
     if (n >= COOLER_MAX) throw new FishError(`Your cooler is full (${COOLER_MAX}). Sell or release some fish first.`);
     this.lastCast.set(key, now);
-    const f = rollFish(this.rng.unit(), this.rng.unit()); const grams = rollWeight(f, this.rng.unit());
-    const biteIn = this.rng.int(BITE_MIN_MS, BITE_MAX_MS + 1);
+    const lvl = await skillLevelAsync(name, 'fishing'); // Fishing perk: a little rare-fish luck and quicker bites
+    const f = rollFish(fishingLuckRoll(this.rng.unit(), lvl), this.rng.unit()); const grams = rollWeight(f, this.rng.unit());
+    const biteIn = Math.max(BITE_MIN_MS, Math.round(this.rng.int(BITE_MIN_MS, BITE_MAX_MS + 1) * fishingBiteMul(lvl)));
     this.casts.set(key, { castAt: now, biteAt: now + biteIn, fish: f.id, grams, seed: this.rng.int(1, 2 ** 31), hookedAt: null });
     return { biteIn };
   }
