@@ -1886,7 +1886,7 @@ html, body { overflow-x: clip; }
 .fish3d-prog, .fish3d-strain, .fish3d-zone { transition: width .12s ease-out, height .12s ease-out, top .08s linear, background-color .2s; box-shadow: 0 0 10px rgba(140,220,255,.45); }
 .fish3d-card { animation: fish3d-pop .45s cubic-bezier(.2,1.4,.4,1) both; box-shadow: 0 0 34px rgba(120,200,255,.28), 0 12px 30px rgba(0,0,0,.45); }
 @keyframes fish3d-pop { from { transform: translateX(-50%) translateY(14px) scale(.92); opacity: 0; } to { transform: translateX(-50%); opacity: 1; } }
-.item-icon { width: auto; display: inline-block; flex: none; vertical-align: middle; margin-right: 5px; image-rendering: auto; filter: drop-shadow(0 1px 1px rgba(0,0,0,.45)); }
+.item-icon { width: var(--ii, 20px); height: var(--ii, 20px); max-width: none; display: inline-block; flex: none; vertical-align: middle; margin-right: 5px; image-rendering: auto; filter: drop-shadow(0 1px 1px rgba(0,0,0,.45)); }
 .mkt-mat-icon { margin-right: 2px; }
 
 /* ---- Cooking: Grocery Store + Kitchen ---- */
