@@ -268,6 +268,18 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
         g.add(cyl(0.25, 0.25, 9, dark, 5.2, 0, 4.8, 6), box(0.4, 2, 2.6, neon, 5.2, 7.4, 4.8));
         ([['chudmobile', 0xff7a1a, -3, 3.4], ['thunderhorse', 0xc8102e, 0, 3.6], ['hypervolt', 0xf2f4f7, 3, 3.4], ['phantom', 0x111111, 0, -2.4]] as const).forEach(([id, col, x, z]) => { const c = buildCar(CAR_BY_ID.get(id)!, col, 'far'); c.position.set(x, 0.15, z); c.rotation.y = Math.PI / 2 + (x ? 0.5 * Math.sign(x) : 0); c.scale.setScalar(0.8); g.add(c); });
         height = 10; break; }
+      case 'mechanic': {
+        // Mechanic Shop: brick garage with three roll-up bays (one open with a car on a lift), tyre stacks, wrench sign.
+        const brick = mat({ color: 0x8e4b3a, roughness: 0.95 }), steel = mat({ color: 0x9aa3b2, metalness: 0.6, roughness: 0.4 }), door = mat({ color: 0xc9ced6, metalness: 0.3 });
+        const amber = mat({ color: 0xffa62b, emissive: 0xffa62b, emissiveIntensity: 1.3 * NEON });
+        g.add(box(11, 0.2, 9, mat({ color: 0x4a4f58 }), 0, 0, 0.5), box(11, 4.6, 6, brick, 0, 0.2, -1.5), box(11.4, 0.4, 6.4, dark, 0, 4.8, -1.5));
+        [-3.5, 0, 3.5].forEach((x, i) => { g.add(box(2.9, i === 1 ? 0.8 : 3.2, 0.15, i === 1 ? door : door, x, i === 1 ? 2.6 : 0.2, 1.55)); for (let k = 0; k < (i === 1 ? 2 : 8); k++) g.add(box(2.9, 0.04, 0.17, dark, x, (i === 1 ? 2.7 : 0.4) + k * 0.38, 1.56)); });
+        g.add(box(2.9, 2.4, 0.1, mat({ color: 0x1a1d24 }), 0, 0.2, 1.3), cyl(0.12, 0.12, 1.2, steel, -1, 0.2, 0.4, 6), cyl(0.12, 0.12, 1.2, steel, 1, 0.2, 0.4, 6), box(2.4, 0.12, 1.6, steel, 0, 1.3, 0.4));
+        const lifted = buildCar(CAR_BY_ID.get('thunderhorse')!, 0x1e90ff, 'far', { paint: null, rims: 'gold', kit: 'wing', glow: 'cyan' }); lifted.position.set(0, 1.4, 0.4); lifted.rotation.y = Math.PI / 2; lifted.scale.setScalar(0.62); g.add(lifted);
+        g.add(box(9, 0.9, 0.3, amber, 0, 5.3, 1.4), box(0.3, 3, 0.3, dark, 5.2, 0.2, 4.4), box(0.5, 1.8, 0.5, amber, 5.2, 3.2, 4.4));
+        for (const [x, z] of [[-5, 3.6], [-4.2, 4.4]] as const) for (let k = 0; k < 3; k++) g.add(cyl(0.45, 0.45, 0.3, mat({ color: 0x151515, roughness: 0.9 }), x, 0.2 + k * 0.32, z, 12));
+        const nc = buildCar(CAR_BY_ID.get('chudmobile')!, 0xff3b6b, 'far', { paint: null, rims: 'neon', kit: 'lip', glow: 'pink' }); nc.position.set(3, 0.15, 3.6); nc.rotation.y = 0.4; nc.scale.setScalar(0.8); g.add(nc);
+        height = 7; break; }
       case 'airport': {
         // Terminal: long glass hall, control tower with a lit cab and rotating beacon, jet bridge onto the apron.
         g.add(box(11, 3.6, 6, win(71), 0, 0, 1.5), box(11.6, 0.4, 6.6, dark, 0, 3.6, 1.5), box(11.4, 0.25, 6.4, neon, 0, 4, 1.5));

@@ -1925,3 +1925,24 @@ html, body { overflow-x: clip; }
 .stove-bar { position: relative; height: 18px; border-radius: 9px; background: linear-gradient(90deg, #4a7bd8, #e0a040, #e04040); } .stove-bar i { position: absolute; top: 0; bottom: 0; background: rgba(120,255,140,.75); border-radius: 6px; box-shadow: 0 0 8px #7f7; }
 .stove-bar b { position: absolute; top: -4px; bottom: -4px; width: 4px; margin-left: -2px; background: #fff; border-radius: 2px; box-shadow: 0 0 6px #fff; }
 .stove-press { padding: 12px; border-radius: 10px; background: rgba(255,179,107,.25); border: 1px solid rgba(255,179,107,.7); font-weight: 900; font-size: 16px; user-select: none; touch-action: none; }
+/* Mechanic Shop */
+.world-nitro { display: block; width: 110px; height: 6px; margin-top: 4px; border-radius: 3px; background: rgba(255,255,255,.12); overflow: hidden; }
+.world-nitro i { display: block; height: 100%; background: linear-gradient(90deg, #00b4ff, #7cf0ff); transition: width .1s linear; }
+.world-nitro.on i { background: linear-gradient(90deg, #ff6a00, #ffd000); }
+.mech-tabs { display: flex; gap: 6px; margin: 8px 0; }
+.mech-tabs button { flex: 1; padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); color: inherit; cursor: pointer; }
+.mech-tabs button.on { background: #ffa62b; color: #1a1205; font-weight: 700; }
+.mech-row { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; padding: 8px 10px; margin: 6px 0; border-radius: 10px; background: rgba(255,255,255,.05); }
+.mech-row h5 { margin: 0; font-size: 14px; } .mech-row small { opacity: .7; }
+.mech-pips { display: flex; gap: 3px; margin-top: 3px; } .mech-pips i { width: 22px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.15); } .mech-pips i.on { background: #ffa62b; }
+.mech-row button, .mech-opts button { padding: 6px 10px; border-radius: 8px; border: 0; background: #ffa62b; color: #1a1205; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.mech-row button:disabled, .mech-opts button:disabled { opacity: .45; cursor: default; }
+.mech-opts { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+.mech-opts button { background: rgba(255,255,255,.08); color: inherit; font-weight: 500; border: 2px solid transparent; }
+.mech-opts button.on { border-color: #ffa62b; }
+.mech-opts button.sw { width: 30px; height: 30px; padding: 0; border-radius: 50%; }
+.mech-opts button.sw.met { box-shadow: inset -6px -6px 10px rgba(0,0,0,.35), inset 5px 5px 8px rgba(255,255,255,.55); }
+.mech-stats span b.up { color: #7dff9a; }
+.mech-cars { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.mech-cars button { padding: 5px 9px; border-radius: 8px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); color: inherit; cursor: pointer; }
+.mech-cars button.on { border-color: #ffa62b; }

@@ -5,6 +5,8 @@
  */
 import * as THREE from 'three';
 import type { CarModel } from '../../../shared/cars';
+import { PAINTS, RIMS, GLOWS, type CarMods } from '../../../shared/mechanic';
+export type CarLook = Partial<Pick<CarMods, 'paint' | 'rims' | 'kit' | 'glow'>>;
 
 const unit = new THREE.BoxGeometry(1, 1, 1);
 const wheelG = new THREE.CylinderGeometry(1, 1, 1, 10); wheelG.rotateX(Math.PI / 2);
@@ -16,11 +18,12 @@ const m = (color: number, o: Partial<THREE.MeshStandardMaterialParameters> = {},
 };
 const GLASS = 0x1a2433, TYRE = 0x15161a, CHROME = 0xc9ced6;
 
-export function buildCar(c: CarModel, color: number, lod: 'near' | 'far' = 'near'): THREE.Group {
+export function buildCar(c: CarModel, color: number, lod: 'near' | 'far' = 'near', look: CarLook = {}): THREE.Group {
+  const pnt = look.paint ? PAINTS.find((x) => x.id === look.paint) : undefined; if (pnt) color = pnt.color;
   const g = new THREE.Group(); const [L, W, H] = c.dims;
   const add = (mat: THREE.Material, sx: number, sy: number, sz: number, x: number, y: number, z = 0, geo: THREE.BufferGeometry = unit) => {
     const o = new THREE.Mesh(geo, mat); o.scale.set(sx, sy, sz); o.position.set(x, y, z); g.add(o); return o; };
-  const paint = m(color), glass = m(GLASS, { metalness: 0.6, roughness: 0.15 }, 'g'), tyre = m(TYRE, { roughness: 0.9, metalness: 0 }, 't');
+  const paint = pnt?.metallic ? m(color, { metalness: 0.95, roughness: 0.18 }, 'met') : m(color), glass = m(GLASS, { metalness: 0.6, roughness: 0.15 }, 'g'), tyre = m(TYRE, { roughness: 0.9, metalness: 0 }, 't');
   const head = m(0xfff2c0, { emissive: 0xfff2c0, emissiveIntensity: 1.2 }, 'h'), tail = m(0xff2020, { emissive: 0xff2020, emissiveIntensity: 0.9 }, 'tl');
   let wheelR = H * 0.32, clear = wheelR; const st = c.style;
   if (st === 'monster') { wheelR = H * 0.55; clear = wheelR * 1.5; }
@@ -64,8 +67,20 @@ export function buildCar(c: CarModel, color: number, lod: 'near' | 'far' = 'near
   }
   if (lod === 'near' || st === 'monster') {
     const ww = st === 'monster' ? 0.45 : st === 'cart' ? 0.04 : 0.2; const wx = L * (st === 'limo' ? 0.4 : 0.32);
-    for (const sx of [wx, -wx]) for (const sz of [W / 2, -W / 2]) add(tyre, wheelR, wheelR, ww, sx, wheelR, sz, wheelG);
+    const rim = RIMS.find((x) => x.id === look.rims && 'color' in x) as { color: number } | undefined;
+    const rimM = rim ? m(rim.color, { metalness: 0.9, roughness: 0.2, ...(look.rims === 'neon' ? { emissive: rim.color, emissiveIntensity: 0.8 } : {}) }, 'rim') : null;
+    for (const sx of [wx, -wx]) for (const sz of [W / 2, -W / 2]) { add(tyre, wheelR, wheelR, ww, sx, wheelR, sz, wheelG); if (rimM && st !== 'cart') add(rimM, wheelR * 0.62, wheelR * 0.62, ww + 0.03, sx, wheelR, sz, wheelG); }
   }
+  // Mechanic Shop body kits (rear of the car is -x) and underglow.
+  if (st !== 'cart' && look.kit && look.kit !== 'none') {
+    const trim = m(0x15171c, { roughness: 0.5 }, 'kit'); const deck = clear + H * 0.5;
+    if (look.kit === 'lip' || look.kit === 'widebody') { add(trim, 0.12, 0.06, W * 1.02, L / 2 + 0.03, clear + 0.02); add(trim, L * 0.6, 0.07, 0.06, 0, clear + 0.03, W / 2 + 0.02); add(trim, L * 0.6, 0.07, 0.06, 0, clear + 0.03, -W / 2 - 0.02); }
+    if (look.kit === 'ducktail') add(paint, 0.22, 0.08, W * 0.95, -L / 2 + 0.1, deck + 0.05);
+    if (look.kit === 'wing' || look.kit === 'widebody') { add(trim, 0.3, 0.05, W * 1.05, -L * 0.46, deck + 0.34); for (const z of [W * 0.33, -W * 0.33]) add(trim, 0.06, 0.32, 0.05, -L * 0.44, deck + 0.17, z); }
+    if (look.kit === 'widebody') for (const sx of [L * 0.32, -L * 0.32]) for (const z of [W / 2 + 0.06, -W / 2 - 0.06]) add(paint, wheelR * 2.3, 0.1, 0.12, sx, clear + wheelR * 0.95, z);
+  }
+  const glow = GLOWS.find((x) => x.id === look.glow && 'color' in x) as { color: number } | undefined;
+  if (glow) add(m(glow.color, { emissive: glow.color, emissiveIntensity: 1.6, transparent: true, opacity: 0.85 }, 'uglow'), L * 0.9, 0.02, W * 1.0, 0, 0.04);
   return g;
 }
 

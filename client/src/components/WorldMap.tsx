@@ -87,6 +87,7 @@ import type { Drive, DriveInput } from '@/lib/worldDrive';
 const Venues = lazyWithReload(() => import('./Venues').then((m) => ({ default: m.Venues })));
 const FishingPanel = lazyWithReload(() => import('./FishingPanel').then((m) => ({ default: m.FishingPanel })));
 const Dealership = lazyWithReload(() => import('./Dealership').then((m) => ({ default: m.Dealership })));
+const MechanicShop = lazyWithReload(() => import('./MechanicShop').then((m) => ({ default: m.MechanicShop })));
 const ResortMap = lazyWithReload(() => import('./ResortMap').then((m) => ({ default: m.ResortMap })));
 
 const CASINO_GAMES = [
@@ -149,6 +150,8 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   }, []);
   useEffect(() => { worldRef.current?.setOwned([...owned.keys()]); }, [owned, loading]);
   const dealer = panel.k === 'dealer'; const setDealer = (v: boolean) => setPanel((c) => (v ? { k: 'dealer' } : closePanel(c, 'dealer')));
+  const mechanic = panel.k === 'mechanic'; const setMechanic = (v: boolean) => setPanel((c) => (v ? { k: 'mechanic' } : closePanel(c, 'mechanic')));
+  const [nitro, setNitro] = useState<{ have: number; full: number; on: boolean } | null>(null);
   const dock = panel.k === 'dock'; const setDock = (v: boolean) => setPanel((c) => (v ? { k: 'dock' } : closePanel(c, 'dock')));
   const driveRef = useRef<Drive | null>(null);
   const pendingDrive = useRef<{ carId: string; color: number; from?: string } | null>(null); const startDriveRef = useRef<(carId: string, color: number, from?: string) => void>(() => {});
@@ -198,6 +201,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       case 'chat': openTab('chat-tab'); break;
       case 'leaderboard': onLeaderboard(); break;
       case 'dealer': setDealer(true); return;
+      case 'mechanic': setMechanic(true); return;
       case 'dock': setDock(true); return;
       case 'grocery': window.dispatchEvent(new Event(OPEN_GROCERY)); return;
       case 'airport': case 'racetrack': setVenue(id); return;
@@ -224,7 +228,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
         });
         const w = worldRef.current;
         void importWithReload(() => import('@/lib/worldDrive')).then(({ createDrive }) => { if (dead || worldRef.current !== w) return;
-          driveRef.current = createDrive(w, { me: () => meRef.current ?? null, onNear: setNear, onSpeed: setKmh, onRace });
+          driveRef.current = createDrive(w, { me: () => meRef.current ?? null, onNear: setNear, onSpeed: setKmh, onRace, onNitro: setNitro });
           const pd = pendingDrive.current; pendingDrive.current = null; if (pd) startDriveRef.current(pd.carId, pd.color, pd.from); });
       } catch { setMode('2d'); }
       setLoading(false);
@@ -291,13 +295,14 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       {farm && <FarmGame id={farm} label={propertyById(farm)?.label ?? 'Farm'} onClose={() => setFarm(null)} />}
       {deeds && <DeedList owned={owned} me={me} onOpen={(id) => setDeed(id)} onClose={() => setDeeds(false)} />}
       {driving && <>
-        <div className="world-speedo" data-testid="world-speedo">{kmh} <small>km/h</small><em>WASD / arrows · E enter · Esc park</em></div>
+        <div className="world-speedo" data-testid="world-speedo">{kmh} <small>km/h</small><em>WASD / arrows · E enter · Esc park{nitro ? ' · Shift/N nitro' : ''}</em>{nitro && <span className={`world-nitro${nitro.on ? ' on' : ''}`} data-testid="world-nitro"><i style={{ width: `${Math.round((nitro.have / nitro.full) * 100)}%` }} /></span>}</div>
         {(lap.t0 != null || lap.text) && <div className="world-lap" data-testid="world-lap">{lap.t0 != null && <b>⏱ {fmtLap(Date.now() - lap.t0)} <small>gate {lap.gate}/3</small></b>}{lap.text && <span>{lap.text}</span>}</div>}
         {nearSpot && <button type="button" className="world-enter" onClick={() => go(nearSpot.id)} data-testid="world-enter">{nearSpot.id === 'airport' ? <>🛫 Fly from the Airport</> : <>{nearSpot.icon} Enter {nearSpot.label}</>} <kbd>E</kbd></button>}
-        <div className="world-pad" data-testid="world-pad"><div>{pad('left', '◀')}{pad('right', '▶')}</div><div>{pad('down', '▼')}{pad('up', '▲')}</div></div>
+        <div className="world-pad" data-testid="world-pad"><div>{pad('left', '◀')}{pad('right', '▶')}</div><div>{pad('down', '▼')}{nitro && pad('boost', '🔥')}{pad('up', '▲')}</div></div>
       </>}
       {venue && <Suspense fallback={<div className="world-loading">Opening…</div>}><Venues kind={venue} me={me} driving={driving} onClose={() => setVenue(null)} onFly={async (to) => driveRef.current ? driveRef.current.fly(to) : { ok: false, error: 'Switch to the 3D city to fly.' }} onDriveFrom={driveFrom} /></Suspense>}
       {dock && <Suspense fallback={<div className="world-loading">Opening the dock…</div>}><FishingPanel me={me} onClose={() => setDock(false)} /></Suspense>}
+      {mechanic && <Suspense fallback={<div className="world-loading">Opening the garage…</div>}><MechanicShop onClose={() => setMechanic(false)} onDrive={(carId, color) => { setMechanic(false); startDrive(carId, color, 'mechanic'); }} /></Suspense>}
       {dealer && <Suspense fallback={<div className="world-loading">Opening the dealership…</div>}><Dealership onClose={() => setDealer(false)} onDrive={startDrive} /></Suspense>}
       {casino && (
         <div className="world-casino" {...backdropDismiss(() => setCasino(false))} data-testid="world-casino">

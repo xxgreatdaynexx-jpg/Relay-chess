@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T23:00:00-06:00', title: 'Chud Customs: the Mechanic Shop', bullets: [
+    'Requested by Dayne: a new 🔧 Mechanic Shop next to the Car Dealership where you can upgrade and customise the cars you own.',
+    'Performance: Engine, Turbo, Tires, Handling and Nitro, each with 3 tiers. They really change how your car drives in the city and at the Speedway. Hold Shift or N (or the 🔥 button on mobile) to fire nitro. Upgrades help, but a maxed cheap car still can\'t catch a top supercar.',
+    'Looks: 17 paints (7 metallic), 6 rim styles, 4 body kits and spoilers, and 6 underglow colours. Preview them on the lift before you buy, and everyone sees them when you drive.',
+    'Prices scale with the car\'s value. Upgrades are permanent, can\'t be refunded and don\'t raise the sell-back price. Going back to stock looks is free.',
+  ] },
   { commit: '', at: '2026-11-01T22:20:00-06:00', title: 'Hold to keep swinging in the mines', bullets: [
     'Requested by Dayne: hold left click (or press and hold on a touch screen) to keep swinging your pickaxe in every mine, including the Coral Grotto.',
     'It swings at your normal speed (faster with a higher Mining level) and hits whatever ore is under your crosshair. Let go, click away or open another window to stop.',

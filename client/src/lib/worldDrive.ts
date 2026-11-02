@@ -10,11 +10,13 @@ import { buildCar } from './carModels';
 import { socket } from './net';
 import { PLATE, shoreZ, roadClearance, obbHit, ROADS, type OBB } from './worldLayout';
 import { FLY_DEST, nearAirport, drivable, onVenueRoad, trackPoint, type LapEvent } from '../../../shared/venues';
-import { CAR_BY_ID, carPhysics, DRIVE_HZ, DRIVE_MAX_VISIBLE, type CarModel } from '../../../shared/cars';
+import { CAR_BY_ID, DRIVE_HZ, DRIVE_MAX_VISIBLE, type CarModel } from '../../../shared/cars';
+import { moddedPhysics, normMods, parseLook, NITRO_TOP, NITRO_ACCEL, NITRO_RECHARGE, STOCK_MODS, type CarMods } from '../../../shared/mechanic';
+import { request } from './net';
 
-export type DriveInput = { up: boolean; down: boolean; left: boolean; right: boolean };
-type Snap = [string, string, number, number, number, number, number];
-type Remote = { name: string; key: string; obj: THREE.Group; tag: THREE.Sprite; lod: 'near' | 'far'; carId: string; color: number; buf: { t: number; x: number; z: number; a: number }[] };
+export type DriveInput = { up: boolean; down: boolean; left: boolean; right: boolean; boost?: boolean };
+type Snap = [string, string, number, number, number, number, number, string?];
+type Remote = { name: string; key: string; obj: THREE.Group; tag: THREE.Sprite; lod: 'near' | 'far'; carId: string; color: number; look: string; buf: { t: number; x: number; z: number; a: number }[] };
 const INTERP_MS = 160;
 
 function nameTag(text: string): THREE.Sprite {
@@ -35,11 +37,11 @@ export function spawnNear(x: number, z: number): { x: number; z: number; a: numb
   return best;
 }
 
-export interface DriveHandlers { me: () => string | null; onNear: (id: string | null) => void; onSpeed?: (kmh: number) => void; onRace?: (ev: Array<LapEvent & { text?: string; best?: boolean }>) => void }
+export interface DriveHandlers { me: () => string | null; onNear: (id: string | null) => void; onSpeed?: (kmh: number) => void; onRace?: (ev: Array<LapEvent & { text?: string; best?: boolean }>) => void; onNitro?: (n: { have: number; full: number; on: boolean } | null) => void }
 export function createDrive(world: World, h: DriveHandlers) {
   const { scene, camera, controls } = world; const solids: OBB[] = world.solids; const lm = world.lmBoxes;
   const remotes = new Map<string, Remote>();
-  let mine: { obj: THREE.Group; model: CarModel; phys: ReturnType<typeof carPhysics>; x: number; z: number; a: number; v: number } | null = null;
+  let mine: { obj: THREE.Group; model: CarModel; mods: CarMods; phys: ReturnType<typeof moddedPhysics>; x: number; z: number; a: number; v: number; tank: number } | null = null; let nitroSent = '';
   const input: DriveInput = { up: false, down: false, left: false, right: false }; const touch: DriveInput = { up: false, down: false, left: false, right: false };
   let sendAcc = 0; let near: string | null = null; const camPos = new THREE.Vector3(); const look = new THREE.Vector3();
 
@@ -50,12 +52,15 @@ export function createDrive(world: World, h: DriveHandlers) {
   };
   const step = (dt: number) => {
     if (!mine) return; const m = mine, p = m.phys; const i = { up: input.up || touch.up, down: input.down || touch.down, left: input.left || touch.left, right: input.right || touch.right };
-    const off = roadClearance(m.x, m.z) > 1 && !onVenueRoad(m.x, m.z); const vmax = off ? p.vmax * 0.4 : p.vmax;
-    if (i.up) m.v += (m.v < 0 ? p.accel * 2.5 : p.accel) * dt; else if (i.down) m.v -= (m.v > 0 ? p.accel * 2.5 : p.accel * 0.6) * dt;
+    const boost = !!(input.boost || touch.boost) && i.up && p.nitro > 0 && m.tank > 0.05 && m.v >= 0;
+    m.tank = boost ? Math.max(0, m.tank - dt) : Math.min(p.nitro, m.tank + NITRO_RECHARGE * dt);
+    const top = boost ? p.vmax * NITRO_TOP : p.vmax; const acc = boost ? p.accel * NITRO_ACCEL : p.accel;
+    const off = roadClearance(m.x, m.z) > 1 && !onVenueRoad(m.x, m.z); const vmax = off ? top * p.offroad : top;
+    if (i.up) m.v += (m.v < 0 ? acc * 2.5 : acc) * dt; else if (i.down) m.v -= (m.v > 0 ? p.accel * 2.5 : p.accel * 0.6) * dt;
     else m.v -= Math.sign(m.v) * Math.min(Math.abs(m.v), (3 + Math.abs(m.v) * 0.25) * dt);
     if (off && Math.abs(m.v) > vmax) m.v -= Math.sign(m.v) * Math.min(Math.abs(m.v) - vmax, 20 * dt);
-    m.v = Math.max(-p.reverse, Math.min(p.vmax, m.v));
-    const steer = (i.left ? 1 : 0) - (i.right ? 1 : 0); const grip = Math.min(1, Math.abs(m.v) / 6) * Math.sign(m.v || 1) * (1 - Math.min(0.45, Math.abs(m.v) / p.vmax * 0.45));
+    if (m.v > top) m.v = Math.max(top, m.v - (6 + m.v * 0.5) * dt); m.v = Math.max(-p.reverse, m.v);
+    const steer = (i.left ? 1 : 0) - (i.right ? 1 : 0); const grip = Math.min(1, Math.abs(m.v) / 6) * Math.sign(m.v || 1) * (1 - Math.min(p.gripLoss, Math.abs(m.v) / p.vmax * p.gripLoss));
     m.a += steer * p.steer * grip * dt;
     const nx = m.x + Math.cos(m.a) * m.v * dt, nz = m.z + Math.sin(m.a) * m.v * dt; const r = m.model.dims[1] * 0.5;
     if (!hit(nx, nz, r)) { m.x = nx; m.z = nz; } else if (!hit(nx, m.z, r)) { m.x = nx; m.v *= 0.7; } else if (!hit(m.x, nz, r)) { m.z = nz; m.v *= 0.7; } else m.v *= -0.3;
@@ -69,6 +74,7 @@ export function createDrive(world: World, h: DriveHandlers) {
     camera.position.lerp(camPos, 1 - Math.exp(-dt * 6)); look.set(m.x + Math.cos(m.a) * 4, 1.2, m.z + Math.sin(m.a) * 4); controls.target.lerp(look, 1 - Math.exp(-dt * 10)); camera.lookAt(controls.target);
     sendAcc += dt; if (sendAcc >= 1 / DRIVE_HZ) { sendAcc = 0; socket.emit('drive_state', { x: +m.x.toFixed(2), z: +m.z.toFixed(2), a: +m.a.toFixed(3), v: +m.v.toFixed(2) }); }
     h.onSpeed?.(Math.round(Math.abs(m.v) * 8.5));
+    if (p.nitro > 0) { const k = `${m.tank.toFixed(1)}|${boost}`; if (k !== nitroSent) { nitroSent = k; h.onNitro?.({ have: m.tank, full: p.nitro, on: boost }); } }
   };
   const renderRemotes = () => {
     const now = performance.now() - INTERP_MS; const cam = camera.position;
@@ -78,16 +84,16 @@ export function createDrive(world: World, h: DriveHandlers) {
       if (b.length > 1 && now > b[0].t) { const t = Math.min(1, (now - b[0].t) / Math.max(1, b[1].t - b[0].t)); x += (b[1].x - x) * t; z += (b[1].z - z) * t; a = lerpAngle(a, b[1].a, t); }
       r.obj.position.set(x, 0, z); r.obj.rotation.y = -a; r.tag.position.set(x, 3.2, z);
       const lod = Math.hypot(cam.x - x, cam.z - z) > 60 ? 'far' : 'near';
-      if (lod !== r.lod) { scene.remove(r.obj); r.obj = buildCar(CAR_BY_ID.get(r.carId)!, r.color, lod); r.obj.position.set(x, 0, z); r.obj.rotation.y = -a; r.lod = lod; scene.add(r.obj); }
+      if (lod !== r.lod) { scene.remove(r.obj); r.obj = buildCar(CAR_BY_ID.get(r.carId)!, r.color, lod, parseLook(r.look)); r.obj.position.set(x, 0, z); r.obj.rotation.y = -a; r.lod = lod; scene.add(r.obj); }
     }
   };
   const onCars = (list: Snap[]) => {
     const me = h.me()?.trim().toLowerCase(); const t = performance.now(); const seen = new Set<string>();
-    for (const [name, carId, color, x, z, a] of list.slice(0, DRIVE_MAX_VISIBLE)) {
+    for (const [name, carId, color, x, z, a, , lk] of list.slice(0, DRIVE_MAX_VISIBLE)) { const look = lk ?? '';
       const key = name.trim().toLowerCase(); if (key === me && mine) continue; const model = CAR_BY_ID.get(carId); if (!model) continue; seen.add(key);
       let r = remotes.get(key);
-      if (r && (r.carId !== carId || r.color !== color)) { scene.remove(r.obj, r.tag); disposeSprite(r.tag); remotes.delete(key); r = undefined; }
-      if (!r) { r = { name, key, obj: buildCar(model, color, 'far'), tag: nameTag(name), lod: 'far', carId, color, buf: [] }; scene.add(r.obj, r.tag); remotes.set(key, r); }
+      if (r && (r.carId !== carId || r.color !== color || r.look !== look)) { scene.remove(r.obj, r.tag); disposeSprite(r.tag); remotes.delete(key); r = undefined; }
+      if (!r) { r = { name, key, obj: buildCar(model, color, 'far', parseLook(look)), tag: nameTag(name), lod: 'far', carId, color, look, buf: [] }; scene.add(r.obj, r.tag); remotes.set(key, r); }
       r.buf.push({ t, x, z, a }); if (r.buf.length > 6) r.buf.shift();
     }
     for (const [k, r] of remotes) if (!seen.has(k)) { scene.remove(r.obj, r.tag); disposeSprite(r.tag); remotes.delete(k); }
@@ -96,7 +102,7 @@ export function createDrive(world: World, h: DriveHandlers) {
   const watch = () => socket.emit('drive_watch', true);
   socket.on('race_ev', onRace); socket.on('drive_cars', onCars); socket.on('connect', watch); if (socket.connected) watch();
 
-  const keys: Record<string, keyof DriveInput> = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right' };
+  const keys: Record<string, keyof DriveInput> = { ShiftLeft: 'boost', ShiftRight: 'boost', KeyN: 'boost', KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right' };
   const kd = (e: KeyboardEvent) => { const k = keys[e.code]; if (!k || !mine || (e.target as HTMLElement)?.closest?.('input,textarea')) return; input[k] = true; e.preventDefault(); };
   const ku = (e: KeyboardEvent) => { const k = keys[e.code]; if (k) input[k] = false; };
   window.addEventListener('keydown', kd); window.addEventListener('keyup', ku);
@@ -109,13 +115,19 @@ export function createDrive(world: World, h: DriveHandlers) {
       // 'grid' = the Speedway start line (just behind it, facing the first straight); otherwise the road nearest a landmark.
       let sp: { x: number; z: number; a: number };
       if (from === 'grid') { const [x, z, a] = trackPoint(0.985); sp = { x, z, a }; } else if (from === 'airport') { const d = FLY_DEST.airport; sp = { x: d.x, z: d.z, a: d.a }; } else { const o = lm[from] ?? { x: 0, z: 0 }; sp = spawnNear(o.x, o.z); }
-      mine = { obj: buildCar(model, color, 'near'), model, phys: carPhysics(model), x: sp.x, z: sp.z, a: sp.a, v: 0 }; scene.add(mine.obj);
+      const mods = { ...STOCK_MODS }; mine = { obj: buildCar(model, color, 'near'), model, mods, phys: moddedPhysics(model, mods), x: sp.x, z: sp.z, a: sp.a, v: 0, tank: 0 }; scene.add(mine.obj); h.onNitro?.(null); nitroSent = '';
+      // Mechanic Shop mods for the active car (the server checks speed against the same numbers).
+      const want = mine; void request('car_garage').then((a) => {
+        const c = a.ok ? (a as unknown as { cars?: Array<{ carId: string; active: boolean; mods?: unknown }> }).cars?.find((x) => x.active && x.carId === carId) : undefined;
+        if (!c || mine !== want) return; const md = normMods(c.mods); want.mods = md; want.phys = moddedPhysics(model, md); want.tank = want.phys.nitro;
+        const o = buildCar(model, color, 'near', md); o.position.copy(want.obj.position); o.rotation.copy(want.obj.rotation); scene.remove(want.obj); want.obj = o; scene.add(o);
+      }).catch(() => {});
       mine.obj.position.set(sp.x, 0, sp.z); mine.obj.rotation.y = -sp.a; controls.enabled = false; controls.autoRotate = false;
       const r = remotes.get(h.me()?.trim().toLowerCase() ?? ''); if (r) { scene.remove(r.obj, r.tag); disposeSprite(r.tag); remotes.delete(r.key); }
     },
     stop(resetCam = true) {
       if (!mine) return; scene.remove(mine.obj); mine = null; socket.emit('drive_stop'); controls.enabled = true; near = null; h.onNear(null);
-      Object.assign(input, { up: false, down: false, left: false, right: false });
+      Object.assign(input, { up: false, down: false, left: false, right: false, boost: false }); h.onNitro?.(null);
       if (resetCam) { camera.position.set(camera.position.x, Math.max(camera.position.y, 40), camera.position.z + 30); }
     },
     touch(k: keyof DriveInput, on: boolean) { touch[k] = on; },

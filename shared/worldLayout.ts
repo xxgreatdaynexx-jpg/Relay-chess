@@ -242,6 +242,7 @@ export const LANDMARK_SLOTS: Record<string, [number, number]> = {
   airport: [-142, 66], // outskirts, west, in RESERVED_VENUES.airport (shared/venues.ts AIRPORT_SLOT)
   dock: [128, -161], // outskirts, north shore of the lake (shared/outskirts.ts DOCK): the fishing dock
   grocery: [-39, -13], // Grocery Store (pt1315u): midtown block west of downtown; houses/patches under it are cleared in cityFill
+  mechanic: [-13, 42], // Mechanic Shop: block west of the dealership; houses/patches under it are cleared in cityFill
   racetrack: [-103, -169], // outskirts, north-west, in RESERVED_VENUES.racetrack: infield of the oval
 };
 /** Outskirts landmarks sit square to the map, not to a street. */
@@ -286,9 +287,9 @@ function placeLandmarks(ids: string[]): Record<string, OBB> {
   }
   return out;
 }
-export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'mine-frost', 'mine-magma', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer', 'airport', 'racetrack', 'dock', 'grocery'];
+export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'mine-frost', 'mine-magma', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer', 'airport', 'racetrack', 'dock', 'grocery', 'mechanic'];
 /** Landmarks added after launch: they clear the fill under them instead of reshuffling it. */
-const LATE_LM = new Set(['grocery']);
+const LATE_LM = new Set(['grocery', 'mechanic']);
 let lmCache: { key: string; v: Record<string, OBB> } | null = null;
 /** Landmark footprints for the given spot ids (defaults to every known slot). */
 export function landmarks(ids: string[] = LANDMARK_IDS): Record<string, OBB> {
