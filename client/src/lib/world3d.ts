@@ -261,6 +261,17 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
         prod.forEach((c, i) => { const x = -3.9 + i * 2.6; g.add(box(1.8, 0.7, 1, mat({ color: 0x8a6440 }), x, 0, 4.4), box(1.6, 0.3, 0.8, mat({ color: c }), x, 0.7, 4.4)); });
         g.add(box(1, 0.8, 0.6, mat({ color: 0xb8bcc4, metalness: 0.6 }), 4.4, 0.3, 5.4), box(1, 0.8, 0.6, mat({ color: 0xb8bcc4, metalness: 0.6 }), 4.4, 0.3, 6.2));
         height = 7; break; }
+      case 'employ': {
+        // Employment Office: brick two-storey office with a glass door, HELP WANTED board, flag and a queue rope.
+        const brick = mat({ color: 0x9a5a3c }), trim = mat({ color: 0xe9e1cf }), amber = mat({ color: 0xe0a23a, emissive: 0xe0a23a, emissiveIntensity: 0.35 * NEON });
+        g.add(box(8, 6, 6, brick, 0, 0, -1.5), box(8.4, 0.4, 6.4, trim, 0, 6, -1.5), box(8.2, 0.25, 6.2, trim, 0, 3, -1.5));
+        const glass = mat({ color: 0x9fd4ff, transparent: true, opacity: 0.5, roughness: 0.1, metalness: 0.3, emissive: 0xfff2c0, emissiveIntensity: 0.25 * NEON });
+        g.add(box(1.8, 2.4, 0.2, glass, 0, 0, 1.55));
+        for (const x of [-2.8, -1.5, 1.5, 2.8]) g.add(box(0.9, 1.1, 0.15, glass, x, 1, 1.55), box(0.9, 1.1, 0.15, glass, x, 3.9, 1.55));
+        g.add(box(5, 0.9, 0.3, amber, 0, 5, 1.6), box(1.6, 1.2, 0.15, trim, 3, 0.6, 2.9), cyl(0.06, 0.06, 1.2, dark, 3, 0, 2.9, 6));
+        g.add(cyl(0.08, 0.08, 4, dark, -3.4, 6.4, 0, 6), box(1.4, 0.8, 0.05, amber, -2.65, 9.4, 0));
+        for (const x of [-2.2, -1, 1, 2.2]) g.add(cyl(0.1, 0.1, 0.9, dark, x, 0, 3.2, 6));
+        height = 10; break; }
       case 'dealer': {
         // Car Dealership: glass showroom, forecourt with three display cars, pylon sign.
         g.add(box(9, 0.3, 6, mat({ color: 0x2b2f3a }), 0, 0, -2.4), box(9, 4.2, 0.3, mat({ color: 0x9fd4ff, transparent: true, opacity: 0.35, roughness: 0.1, metalness: 0.4 }), 0, 0.3, 0.6));

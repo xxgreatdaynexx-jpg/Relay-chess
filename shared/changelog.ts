@@ -6,6 +6,13 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T23:15:00-06:00', title: 'Employment Office: hire AI miners and fishers', bullets: [
+    'Requested by Dayne: a new Employment Office in the city (north of the plaza) lets you hire up to 3 AI workers.',
+    'Miners bring in 1 ore every 10 minutes from the mine you pick (The Mine, Frostbite Caverns or Magma Depths), using that mine\'s normal ore mix. Fishers bring in 1 fish every hour from the normal catch table, with no junk.',
+    'Each worker has a hire fee plus a daily wage. Together they come to about half of what the worker brings in over their first week, at today\'s prices.',
+    'Their haul goes to your mine storage or your cooler and sells under the usual daily limits. You get no skill XP from workers.',
+    'Workers stop 8 hours after your last visit, so check in to keep them busy. If you can\'t pay the next day\'s wage they stop working, with no debt. You can fire a worker any time, but nothing is refunded. Accounts must be at least 24 hours old to hire.',
+  ] },
   { commit: '', at: '2026-11-01T23:05:00-06:00', title: 'The sky runs on Alberta time', bullets: [
     'Requested by Dayne: the day and night cycle in the city, outskirts and at the lake now follows Alberta time and the real sun over Edmonton instead of Denver.',
     'The game clock is Alberta time, UTC−6 all year with no daylight saving changes.',

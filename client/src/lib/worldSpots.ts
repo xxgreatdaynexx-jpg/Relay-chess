@@ -18,6 +18,7 @@ export const WORLD_SPOTS: WorldSpot[] = [
   { id: 'dock', label: 'Fishing Dock', icon: '🎣', color: 0x4fc3d9, blurb: 'Cast, reel & sell your catch at the lake' },
   { id: 'racetrack', label: 'Speedway', icon: '🏁', color: 0xff4d6d, blurb: 'Time-trial your cars, Daily Cup prizes' },
   { id: 'grocery', label: 'Grocery Store', icon: '🛒', color: 0x6ad66a, blurb: 'Cooking ingredients: staples, produce, meat & spices' },
+  { id: 'employ', label: 'Employment Office', icon: '🧑‍🏭', color: 0xe0a23a, blurb: 'Hire AI miners & fishers to work for you' },
   { id: 'leaderboard', label: 'Leaderboard', icon: '🏆', color: 0xe8c26a, blurb: 'Who’s on top' },
   { id: 'chat', label: 'Plaza Chat', icon: '💬', color: 0x66b3ff, blurb: 'Chat & who’s online' },
 ];

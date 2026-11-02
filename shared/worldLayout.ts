@@ -243,6 +243,7 @@ export const LANDMARK_SLOTS: Record<string, [number, number]> = {
   dock: [128, -161], // outskirts, north shore of the lake (shared/outskirts.ts DOCK): the fishing dock
   grocery: [-39, -13], // Grocery Store (pt1315u): midtown block west of downtown; houses/patches under it are cleared in cityFill
   mechanic: [-13, 42], // Mechanic Shop: block west of the dealership; houses/patches under it are cleared in cityFill
+  employ: [-13, -39], // Employment Office (pt1274u): block north of the plaza; cleared like the grocery (no owned lots under it)
   racetrack: [-103, -169], // outskirts, north-west, in RESERVED_VENUES.racetrack: infield of the oval
 };
 /** Outskirts landmarks sit square to the map, not to a street. */
@@ -287,9 +288,9 @@ function placeLandmarks(ids: string[]): Record<string, OBB> {
   }
   return out;
 }
-export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'mine-frost', 'mine-magma', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer', 'airport', 'racetrack', 'dock', 'grocery', 'mechanic'];
+export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'mine-frost', 'mine-magma', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer', 'airport', 'racetrack', 'dock', 'grocery', 'mechanic', 'employ'];
 /** Landmarks added after launch: they clear the fill under them instead of reshuffling it. */
-const LATE_LM = new Set(['grocery', 'mechanic']);
+const LATE_LM = new Set(['grocery', 'mechanic', 'employ']);
 let lmCache: { key: string; v: Record<string, OBB> } | null = null;
 /** Landmark footprints for the given spot ids (defaults to every known slot). */
 export function landmarks(ids: string[] = LANDMARK_IDS): Record<string, OBB> {

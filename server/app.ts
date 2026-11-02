@@ -25,6 +25,7 @@ import { trailerRouter } from './trailers.js';
 import { realEstateRouter } from './realEstate.js';
 import { playerProfileRouter } from './player-profile.js';
 import { farmRouter } from './farm.js';
+import { employmentRouter } from './employment.js';
 import { getMinesBoard } from './mines-board.js';
 import { isMinePeriod } from '../shared/minesBoard.js';
 
@@ -44,6 +45,7 @@ export async function createApp(): Promise<AppContext> {
   app.use(trailerRouter());
   app.use(realEstateRouter());
   app.use(farmRouter());
+  app.use(employmentRouter());
   app.use(requestsRouter());
   app.use(economyRouter());
   app.use(priceIndexRouter());
