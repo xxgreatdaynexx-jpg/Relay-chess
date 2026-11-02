@@ -11,14 +11,14 @@ export type OreId = 'stone' | 'coal' | 'copper' | 'iron' | 'silver' | 'gold' | '
 export interface OreDef { id: OreId; name: string; hits: number; respawnMs: number; /** house price per unit, in chips (fractional: stone is 1 chip per 10) */ price: number; color: string; weight: number; minDepth: number; spawnWeight: number }
 
 export const ORES: Record<OreId, OreDef> = {
-  stone:   { id: 'stone',   name: 'Stone',      hits: 2,  respawnMs: 15_000,  price: 0.1, color: '#8a8580', weight: 1, minDepth: 0, spawnWeight: 40 },
-  coal:    { id: 'coal',    name: 'Coal',       hits: 3,  respawnMs: 25_000,  price: 1,   color: '#2b2b2e', weight: 1, minDepth: 0, spawnWeight: 22 },
-  copper:  { id: 'copper',  name: 'Copper Ore', hits: 4,  respawnMs: 45_000,  price: 2,   color: '#c4733b', weight: 1, minDepth: 0, spawnWeight: 16 },
-  iron:    { id: 'iron',    name: 'Iron Ore',   hits: 5,  respawnMs: 75_000,  price: 4,   color: '#a98f7f', weight: 1, minDepth: 1, spawnWeight: 12 },
-  silver:  { id: 'silver',  name: 'Silver Ore', hits: 6,  respawnMs: 120_000,  price: 8,   color: '#d5dbe2', weight: 1, minDepth: 1, spawnWeight: 7 },
-  gold:    { id: 'gold',    name: 'Gold Ore',   hits: 7,  respawnMs: 180_000, price: 15,  color: '#f0c23a', weight: 1, minDepth: 2, spawnWeight: 5 },
-  gem:     { id: 'gem',     name: 'Crystal',    hits: 9,  respawnMs: 300_000, price: 40,  color: '#b04df0', weight: 1, minDepth: 2, spawnWeight: 2.5 },
-  diamond: { id: 'diamond', name: 'Diamond',    hits: 12, respawnMs: 480_000, price: 150, color: '#7ff3ff', weight: 1, minDepth: 3, spawnWeight: 0.6 },
+  stone:   { id: 'stone',   name: 'Stone',      hits: 2,  respawnMs: 150_000,  price: 0.1, color: '#8a8580', weight: 1, minDepth: 0, spawnWeight: 40 },
+  coal:    { id: 'coal',    name: 'Coal',       hits: 3,  respawnMs: 250_000,  price: 1,   color: '#2b2b2e', weight: 1, minDepth: 0, spawnWeight: 22 },
+  copper:  { id: 'copper',  name: 'Copper Ore', hits: 4,  respawnMs: 450_000,  price: 2,   color: '#c4733b', weight: 1, minDepth: 0, spawnWeight: 16 },
+  iron:    { id: 'iron',    name: 'Iron Ore',   hits: 5,  respawnMs: 750_000,  price: 4,   color: '#a98f7f', weight: 1, minDepth: 1, spawnWeight: 12 },
+  silver:  { id: 'silver',  name: 'Silver Ore', hits: 6,  respawnMs: 1_200_000,  price: 8,   color: '#d5dbe2', weight: 1, minDepth: 1, spawnWeight: 7 },
+  gold:    { id: 'gold',    name: 'Gold Ore',   hits: 7,  respawnMs: 1_800_000, price: 15,  color: '#f0c23a', weight: 1, minDepth: 2, spawnWeight: 5 },
+  gem:     { id: 'gem',     name: 'Crystal',    hits: 9,  respawnMs: 3_000_000, price: 40,  color: '#b04df0', weight: 1, minDepth: 2, spawnWeight: 2.5 },
+  diamond: { id: 'diamond', name: 'Diamond',    hits: 12, respawnMs: 4_800_000, price: 150, color: '#7ff3ff', weight: 1, minDepth: 3, spawnWeight: 0.6 },
 };
 export const ORE_ORDER: OreId[] = ['stone', 'coal', 'copper', 'iron', 'silver', 'gold', 'gem', 'diamond'];
 export const isOre = (v: unknown): v is OreId => typeof v === 'string' && v in ORES;

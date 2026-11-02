@@ -21,6 +21,6 @@ describe('cave node spawn bias matches the worker bias (pt1354u)', () => {
   it('respawn time rises with ore value (pt1357u)', () => {
     const ids = (['stone', 'coal', 'copper', 'iron', 'silver', 'gold', 'gem', 'diamond'] as OreId[]);
     for (let i = 1; i < ids.length; i++) { expect(ORES[ids[i]].price).toBeGreaterThan(ORES[ids[i - 1]].price); expect(ORES[ids[i]].respawnMs).toBeGreaterThan(ORES[ids[i - 1]].respawnMs); }
-    expect(ORES.stone.respawnMs).toBe(15_000); expect(ORES.diamond.respawnMs).toBe(480_000);
+    expect(ORES.stone.respawnMs).toBe(150_000); expect(ORES.diamond.respawnMs).toBe(4_800_000);
   });
 });

@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T14:35:00-06:00', title: 'Mines: rocks take 10× longer to respawn', bullets: [
+    'Every ore rock in every cave (Coral Grotto too) now takes 10× as long to come back: Stone 2.5m, Coal ~4m, Copper Ore 7.5m, Iron Ore 12.5m, Silver Ore 20m, Gold Ore 30m, Crystal 50m, Diamond 80m.',
+    'Hired miners, key and chest drops and Tool Shop bonuses are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T14:30:00-06:00', title: 'Factory: crafted goods sell for about 15% less', bullets: [
     'House prices for factory-made bars and goods are down about 15%, for example Silver Ring 120 → 100, Cut Crystal 100 → 85, Crystal Ring 340 → 290, Machine Part 360 → 305, Diamond Crown 1,100 → 935, Engine 1,400 → 1,190 and Mining Drill 2,400 → 2,040.',
     'Food products made from farm crops and fish drop a little less (about 5–10%) so cooking still pays a small premium over selling the crop. Raw ore, crop and fish prices, recipes, timers, daily caps and existing market listings are unchanged.',
@@ -16,7 +20,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     'Each item still becomes its own listing at that price, so buyers can buy one at a time. It is all or nothing: if any ticked item can\'t be listed (already listed, in a trade, or over the 50-listing limit), nothing is listed.',
     'Fees and how buying works are unchanged.',
   ] },
-  { commit: '', at: '2026-11-02T14:10:00-06:00', title: 'Mines: much stronger specialities, clearer labels, slower rare respawns, rarer drops', bullets: [
+  { commit: '', at: '2026-11-02T14:02:00-06:00', title: 'Mines: much stronger specialities, clearer labels, slower rare respawns, rarer drops', bullets: [
     'Each cave is now mostly its signature ores, by hand and for hired miners alike: The Mine about 86% Iron Ore, Stone & Gold Ore (Gold Ore the lightest), Magma Depths about 85% Coal & Copper Ore, and Frostbite Caverns about 82% Silver Ore & Crystal (Crystal stays rare: it is worth 5× Silver Ore).',
     'Average value per rock and per hired-miner pick stays within 5% of before. Coral Grotto\'s mix is unchanged.',
     'Rock respawn time now climbs with value: Stone 15s, Coal 25s, Copper Ore 45s, Iron Ore 75s, Silver Ore 2m, Gold Ore 3m, Crystal 5m, Diamond 8m (was 20s, 30s, 45s, 1m, 1.5m, 2m, 3m, 5m).',
