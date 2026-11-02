@@ -306,7 +306,9 @@ function OptTable({ p, onSell, busy = false }: { p: Port | null; onSell?: (id: s
 }
 
 interface Port {
-  stocks: { holdings: Array<{ ticker: string; name: string; shares: number; cost: number; price: number; value: number; pnl: number; pnlPct: number }>; value: number; cost: number; pnl: number };
+  stocks: { holdings: Array<{ ticker: string; name: string; shares: number; cost: number; price: number; value: number; pnl: number; pnlPct: number; lifePnl?: number; lifePct?: number }>; value: number; cost: number; pnl: number;
+    lifetime?: Array<{ ticker: string; name: string; open: boolean; invested: number; sold: number; value: number; realized: number; pnl: number; pct: number }>;
+    lifeTotal?: { invested: number; sold: number; value: number; realized: number; pnl: number; pct: number } };
   funds: Array<{ fund: string; name: string; kind: string; units: number; nav: number; value: number; cost: number; pnl: number }>;
   shorts: Array<{ id: string; ticker: string; shares: number; entry: number; price: number; collateral: number; equity: number; closeValue?: number; pnl: number; liqPrice: number }>;
   options: Array<{ id: string; ticker: string; kind: string; strike: number; qty: number; premium: number; price: number | null; mark: number; bid?: number; hoursLeft: number }>;
@@ -326,10 +328,19 @@ function Portfolio({ onPick }: { onPick: (t: string) => void }) {
         <Card k="Total (Bank assets)" v={`🪙 ${n(p.totals.all)}`} title="Everything here counts toward your asset worth in the Bank, at market value" />
         <Card k="Stocks" v={`🪙 ${n(p.totals.stocks)}`} /><Card k="Funds" v={`🪙 ${n(p.totals.funds)}`} /><Card k="Short equity" v={`🪙 ${n(p.totals.shorts)}`} title="Collateral + unrealized P&L" /><Card k="Options (value)" v={`🪙 ${n(p.totals.options)}`} />
       </div>
+      {s.lifeTotal && s.lifeTotal.invested > 0 && <div className="mb-2 rounded border border-white/10 p-2 text-xs" data-testid="stk-life-total" title="Lifetime return = (chips received from sells + current value of shares held − chips spent on buys, fees included) ÷ chips spent on buys">
+        <span className="uppercase opacity-70">Lifetime stock return</span>{' '}
+        <b className={`text-base ${tone(s.lifeTotal.pnl)}`}>{pc(s.lifeTotal.pct)}</b>{' '}
+        <span className={tone(s.lifeTotal.pnl)}>({s.lifeTotal.pnl >= 0 ? '+' : ''}🪙 {n(s.lifeTotal.pnl)})</span>
+        <span className="ml-2 opacity-70">invested 🪙 {n(s.lifeTotal.invested)} · realized <span className={tone(s.lifeTotal.realized)}>{s.lifeTotal.realized >= 0 ? '+' : ''}{n(s.lifeTotal.realized)}</span> · unrealized <span className={tone(s.pnl)}>{s.pnl >= 0 ? '+' : ''}{n(s.pnl)}</span></span>
+      </div>}
       <h4 className="mt-2 text-xs uppercase opacity-70">Stocks <span className={`normal-case ${tone(s.pnl)}`}>P&amp;L {s.pnl >= 0 ? '+' : ''}{n(s.pnl)}</span></h4>
       {!s.holdings.length ? <p className="text-xs opacity-60">No stock yet.</p> : (
-        <table className="w-full text-[12px] tabular-nums"><thead className="opacity-70"><tr><th className="text-left">Company</th><th className="text-right">Shares</th><th className="text-right">Price</th><th className="text-right">Value</th><th className="text-right">P&amp;L</th></tr></thead>
-          <tbody>{s.holdings.map((h) => <tr key={h.ticker} className="cursor-pointer border-t border-white/5 hover:bg-white/5" onClick={() => onPick(h.ticker)}><td><b>{h.ticker}</b> <span className="opacity-70">{h.name}</span></td><td className="text-right">{h.shares}</td><td className="text-right">{h.price.toFixed(2)}</td><td className="text-right">{n(h.value)}</td><td className={`text-right ${tone(h.pnl)}`}>{h.pnl >= 0 ? '+' : ''}{n(h.pnl)} ({pc(h.pnlPct)})</td></tr>)}</tbody></table>)}
+        <table className="w-full text-[12px] tabular-nums"><thead className="opacity-70"><tr><th className="text-left">Company</th><th className="text-right">Shares</th><th className="text-right">Price</th><th className="text-right">Value</th><th className="text-right">P&amp;L</th><th className="text-right" title="Sells + current value − buys, fees included, over everything you've ever traded in this stock">Lifetime</th></tr></thead>
+          <tbody>{s.holdings.map((h) => <tr key={h.ticker} className="cursor-pointer border-t border-white/5 hover:bg-white/5" onClick={() => onPick(h.ticker)}><td><b>{h.ticker}</b> <span className="opacity-70">{h.name}</span></td><td className="text-right">{h.shares}</td><td className="text-right">{h.price.toFixed(2)}</td><td className="text-right">{n(h.value)}</td><td className={`text-right ${tone(h.pnl)}`}>{h.pnl >= 0 ? '+' : ''}{n(h.pnl)} ({pc(h.pnlPct)})</td><td className={`text-right ${tone(h.lifePnl ?? h.pnl)}`} data-testid="stk-life-row"><b>{pc(h.lifePct ?? h.pnlPct)}</b> <span className="opacity-80">({(h.lifePnl ?? h.pnl) >= 0 ? '+' : ''}{n(h.lifePnl ?? h.pnl)})</span></td></tr>)}</tbody></table>)}
+      {(s.lifetime ?? []).some((x) => !x.open) && <>
+        <h4 className="mt-3 text-xs uppercase opacity-70">Closed positions (lifetime)</h4>
+        <table className="w-full text-[12px] tabular-nums"><tbody>{(s.lifetime ?? []).filter((x) => !x.open).map((x) => <tr key={x.ticker} className="border-t border-white/5" data-testid="stk-life-closed"><td><b>{x.ticker}</b> <span className="opacity-70">{x.name}</span></td><td className="text-right opacity-70">in 🪙 {n(x.invested)} · out 🪙 {n(x.sold)}</td><td className={`text-right ${tone(x.pnl)}`}><b>{pc(x.pct)}</b> ({x.pnl >= 0 ? '+' : ''}{n(x.pnl)})</td></tr>)}</tbody></table></>}
       <h4 className="mt-3 text-xs uppercase opacity-70">Funds</h4>
       {!p.funds.length ? <p className="text-xs opacity-60">No funds.</p> : (
         <table className="w-full text-[12px] tabular-nums"><tbody>{p.funds.map((f) => <tr key={f.fund} className="border-t border-white/5"><td><b>{f.fund}</b> <span className="opacity-70">{f.name}</span></td><td className="text-right">{f.units.toFixed(2)} u</td><td className="text-right">NAV {f.nav.toFixed(2)}</td><td className="text-right">🪙 {n(f.value)}</td><td className={`text-right ${tone(f.pnl)}`}>{f.pnl >= 0 ? '+' : ''}{n(f.pnl)}</td></tr>)}</tbody></table>)}

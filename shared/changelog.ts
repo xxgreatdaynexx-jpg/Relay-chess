@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T14:35:00-06:00', title: 'Stock Exchange: lifetime returns on your portfolio', bullets: [
+    'Stock Exchange → Portfolio now shows your lifetime stock return as a percentage and in chips, green when you\'re up and red when you\'re down, with realized and unrealized parts split out.',
+    'Each stock you hold has a new Lifetime column, and stocks you\'ve fully sold show up under Closed positions with their final return.',
+    'Lifetime return = chips you got from selling + what your shares are worth now − chips you spent buying, fees included, divided by chips spent buying.',
+    'Display only: prices, fees and trading are unchanged. (Liam\'s request)',
+  ] },
   { commit: '', at: '2026-11-02T14:35:00-06:00', title: 'Mines: rocks take 10× longer to respawn', bullets: [
     'Every ore rock in every cave (Coral Grotto too) now takes 10× as long to come back: Stone 2.5m, Coal ~4m, Copper Ore 7.5m, Iron Ore 12.5m, Silver Ore 20m, Gold Ore 30m, Crystal 50m, Diamond 80m.',
     'Hired miners, key and chest drops and Tool Shop bonuses are unchanged.',

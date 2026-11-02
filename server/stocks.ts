@@ -115,6 +115,8 @@ export class Exchange {
   news: NewsItem[] = [];
   // memory mode (no DB: tests / dev)
   private memHold = new Map<string, Map<string, Holding>>();
+  /** Memory-mode lifetime trade totals per player/ticker (tests / dev): chips paid on buys, chips received on sells. */
+  private memLife = new Map<string, Map<string, { bought: number; sold: number }>>();
   private memHist = new Map<string, Array<[number, number]>>();
   private memSlot = 0;
   private timer: NodeJS.Timeout | null = null;
@@ -263,10 +265,29 @@ export class Exchange {
     if (!this.pool) return [...(this.memHold.get(k)?.values() ?? [])].filter((h) => h.shares > 0);
     return (await this.pool.query('SELECT ticker, shares, cost FROM stock_holdings WHERE player_key = $1 AND shares > 0 ORDER BY ticker', [k])).rows.map((x) => ({ ticker: String(x.ticker), shares: Number(x.shares), cost: Number(x.cost) }));
   }
+  /** Lifetime buy/sell chip totals per ticker from the trade log (buys incl. fee paid, sells net of fee). Read-only. */
+  async lifetimeTotals(name: string): Promise<Map<string, { bought: number; sold: number }>> {
+    const k = keyOf(name);
+    if (!this.pool) return new Map([...(this.memLife.get(k) ?? new Map()).entries()].map(([t, v]) => [t, { ...v }]));
+    const rows = (await this.pool.query("SELECT ticker, COALESCE(SUM(CASE WHEN side = 'buy' THEN chips ELSE 0 END),0) b, COALESCE(SUM(CASE WHEN side = 'sell' THEN chips ELSE 0 END),0) s FROM stock_trades WHERE player_key = $1 GROUP BY ticker", [k])).rows;
+    return new Map(rows.map((x) => [String(x.ticker), { bought: Number(x.b), sold: Number(x.s) }]));
+  }
   async portfolio(name: string) {
     const hs = (await this.holdings(name)).map((h) => { const p = this.price(h.ticker) ?? 0; const value = Math.round(p * h.shares); return { ...h, name: COMPANY_BY_TICKER.get(h.ticker)?.name ?? h.ticker, price: p, value, pnl: value - h.cost, pnlPct: h.cost ? Math.round(((value - h.cost) / h.cost) * 10000) / 100 : 0 }; });
     const value = hs.reduce((a, h) => a + h.value, 0), cost = hs.reduce((a, h) => a + h.cost, 0);
-    return { holdings: hs, value, cost, pnl: value - cost };
+    const life = await this.lifetimeTotals(name).catch(() => new Map<string, { bought: number; sold: number }>());
+    const pct = (pnl: number, base: number) => (base ? Math.round((pnl / base) * 10000) / 100 : 0);
+    const held = new Map(hs.map((h) => [h.ticker, h]));
+    const tickers = new Set([...held.keys(), ...life.keys()]);
+    const lifetime = [...tickers].sort().map((t) => {
+      const h = held.get(t); const l = life.get(t) ?? { bought: h?.cost ?? 0, sold: 0 };
+      const v = h?.value ?? 0; const pnl = l.sold + v - l.bought;
+      return { ticker: t, name: COMPANY_BY_TICKER.get(t)?.name ?? t, open: !!h, invested: l.bought, sold: l.sold, value: v, realized: pnl - (h ? h.value - h.cost : 0), pnl, pct: pct(pnl, l.bought) };
+    });
+    const inv = lifetime.reduce((a, x) => a + x.invested, 0), lp = lifetime.reduce((a, x) => a + x.pnl, 0);
+    const lifeTotal = { invested: inv, sold: lifetime.reduce((a, x) => a + x.sold, 0), value, realized: lifetime.reduce((a, x) => a + x.realized, 0), pnl: lp, pct: pct(lp, inv) };
+    for (const h of hs) { const l = lifetime.find((x) => x.ticker === h.ticker)!; Object.assign(h, { lifePnl: l.pnl, lifePct: l.pct }); }
+    return { holdings: hs as Array<(typeof hs)[number] & { lifePnl: number; lifePct: number }>, value, cost, pnl: value - cost, lifetime, lifeTotal };
   }
 
   // ---------- trading ----------
@@ -290,7 +311,7 @@ export class Exchange {
       if (!this.pool) {
         const m = this.memHold.get(k) ?? new Map<string, Holding>(); this.memHold.set(k, m); const h = m.get(c.ticker) ?? { ticker: c.ticker, shares: 0, cost: 0 };
         if (side === 'sell') { if (h.shares < shares) throw new StockError('Not enough shares.'); h.cost -= Math.round((h.cost * shares) / h.shares); h.shares -= shares; } else { h.shares += shares; h.cost += costDelta; }
-        m.set(c.ticker, h); row.held += side === 'buy' ? shares : -shares; row.imp += q.imp; row.tickImp = used + Math.abs(q.imp); row.tickSlot = slot; return;
+        m.set(c.ticker, h); { const lm = this.memLife.get(k) ?? new Map(); this.memLife.set(k, lm); const lt = lm.get(c.ticker) ?? { bought: 0, sold: 0 }; if (side === 'buy') lt.bought += q.total; else lt.sold += q.total; lm.set(c.ticker, lt); } row.held += side === 'buy' ? shares : -shares; row.imp += q.imp; row.tickImp = used + Math.abs(q.imp); row.tickSlot = slot; return;
       }
       await w.after;
       const cl = await this.pool.connect();
