@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T22:10:00-06:00', title: 'See other players fishing, cleaner fishing sounds', bullets: [
+    'Requested by Dayne: at the Fishing Dock you now see other anglers cast, their line and bobber in the water, their rod bending while they reel, and the fish they land, live.',
+    'Fishing sounds were cleaned up: reel clicks are a soft tick instead of a buzz, sounds no longer stack on top of each other, everything stops when you cancel or leave the dock, and other players\' splashes play quietly.',
+  ] },
   { commit: '', at: '2026-11-01T22:00:00-06:00', title: 'Reopen your Daily Report any time', bullets: [
     'Requested by Dayne: a new 📰 button next to your wallet in the top bar opens your Daily Report whenever you want (it is also still in the Wallet).',
     'The report now has a "Past 7 days" list with your cash, net worth and daily change.',

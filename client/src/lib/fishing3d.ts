@@ -82,7 +82,8 @@ export class Fishing3D {
   private shadow: THREE.Mesh; private splashes: Array<{ ring: THREE.Mesh; ring2: THREE.Mesh; drops: THREE.Points; vel: Float32Array; age: number; life: number }> = [];
   private ringGeo = new THREE.RingGeometry(0.85, 1, 40); private dropTex = noiseTex();
   private catchGroup = new THREE.Group(); private catchLight = new THREE.PointLight(0x66ccff, 0, 12); private catchGlow: THREE.Sprite; private sparkles: THREE.Points; private revealT = 0;
-  private others = new Map<string, { g: THREE.Group; tag: THREE.Sprite }>();
+  private others = new Map<string, OtherAngler>();
+  private otherKit: { rodGeo: THREE.CylinderGeometry; rodM: THREE.MeshStandardMaterial; bobGeo: THREE.SphereGeometry; bobM: THREE.MeshStandardMaterial; lineM: THREE.LineBasicMaterial } | null = null;
   // sky / day-night
   private skyMat: THREE.ShaderMaterial; private starM: THREE.PointsMaterial; private moon: THREE.Sprite; private sunSprite: THREE.Sprite;
   private hemi: THREE.HemisphereLight; private key: THREE.DirectionalLight; private lamp: THREE.PointLight; private neon: THREE.PointLight; private bulbM: THREE.MeshBasicMaterial; private signM: THREE.MeshBasicMaterial;
@@ -95,7 +96,7 @@ export class Fishing3D {
   private flight: { from: THREE.Vector3; to: THREE.Vector3; t: number; dur: number } | null = null;
   private fishPos = new THREE.Vector3(); private fishVel = new THREE.Vector3(); private jump = { t: -1, h: 0 }; private reelProg = 0; private reelC = 0.5;
   private rare = false; private nibbleAt = 0; private nibble = 0; private dip = 0; private camShake = 0;
-  onSplash: ((big: boolean) => void) | null = null;
+  onSplash: ((big: boolean, other: boolean) => void) | null = null;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.tier = detectWorldTier(); const tier = this.tier; canvas.dataset.tier = tier;
@@ -322,16 +323,52 @@ export class Fishing3D {
     void f;
   }
   hideCatch() { this.catchGroup.visible = false; this.catchGlow.visible = false; this.sparkles.visible = false; }
-  /** Other anglers on the dock (world presence): name tags floating above simple figures. */
-  setOthers(list: Array<{ name: string; slot: number }>) {
+  /** Other anglers on the dock (pt242u): a figure + name tag, plus their own rod, line and bobber animated from the
+   *  pose the server broadcasts (cast arc → floating bobber, bent rod + thrashing line while reeling, catch held up). */
+  setOthers(list: Array<{ name: string; pose?: OtherPose; yaw?: number; power?: number; fish?: string }>) {
+    const kit = (this.otherKit ??= (() => { const k = { rodGeo: new THREE.CylinderGeometry(0.012, 0.03, 2.4, 5), rodM: new THREE.MeshStandardMaterial({ color: 0x1d2633, roughness: 0.3, metalness: 0.4 }),
+      bobGeo: new THREE.SphereGeometry(0.09, 10, 8), bobM: new THREE.MeshStandardMaterial({ color: 0xff3b30, roughness: 0.4 }), lineM: new THREE.LineBasicMaterial({ color: 0xdfe8f0, transparent: true, opacity: 0.7 }) };
+      k.rodGeo.translate(0, 1.2, 0); this.track(k.rodGeo, k.rodM, k.bobGeo, k.bobM, k.lineM); return k; })());
     const keep = new Set(list.map((o) => o.name));
-    for (const [k, o] of this.others) if (!keep.has(k)) { this.scene.remove(o.g); this.others.delete(k); }
+    for (const [k, o] of this.others) if (!keep.has(k)) { this.dropOther(o); this.others.delete(k); }
     list.forEach((o, i) => { let e = this.others.get(o.name);
-      if (!e) { const g = this.angler.clone(); const tag = makeTag(o.name); tag.position.y = 2.5; g.add(tag); this.scene.add(g); e = { g, tag }; this.others.set(o.name, e); }
-      const side = i % 2 ? 1 : -1, row = Math.floor(i / 2); e.g.position.set(DOCK.x + side * (2.2 + (row % 2) * 0.6), 0.65, DOCK.pierZ0 + 1.2 + row * 2.6); e.g.rotation.y = side * -0.4; });
+      if (!e) { const g = this.angler.clone(); const tag = makeTag(o.name); tag.position.y = 2.5; g.add(tag);
+        const rod = new THREE.Mesh(kit.rodGeo, kit.rodM); rod.position.set(0.25, 1.15, -0.35); g.add(rod);
+        const lineGeo = new THREE.BufferGeometry(); lineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9 * 3), 3));
+        const line = new THREE.Line(lineGeo, kit.lineM); line.frustumCulled = false; line.visible = false;
+        const bob = new THREE.Mesh(kit.bobGeo, kit.bobM); bob.visible = false;
+        this.scene.add(g, line, bob); e = { g, tag, rod, line, bob, pose: 'idle', at: this.t, yaw: 0, power: 0.5, fish: null, fishModel: null, target: new THREE.Vector3(), splashed: false }; this.others.set(o.name, e); }
+      const side = i % 2 ? 1 : -1, row = Math.floor(i / 2); e.g.position.set(DOCK.x + side * (2.2 + (row % 2) * 0.6), 0.65, DOCK.pierZ0 + 1.2 + row * 2.6);
+      const pose = o.pose ?? 'idle'; const fish = pose === 'catch' ? o.fish ?? null : null;
+      if (pose !== e.pose || fish !== e.fish) { e.pose = pose; e.at = this.t; e.splashed = false; e.yaw = side * -0.4 + (o.yaw ?? 0) * 0.5; e.power = o.power ?? 0.5;
+        const dir = new THREE.Vector3(Math.sin(e.yaw), 0, -Math.cos(e.yaw)); let d = 3 + e.power * 9; const p = new THREE.Vector3();
+        for (; d > 2; d -= 0.5) { p.set(e.g.position.x + dir.x * d, 0.1, e.g.position.z + dir.z * d); if (inLake(p.x, p.z, -1)) break; } e.target.copy(p);
+        if (e.fishModel) { e.g.remove(e.fishModel); disposeTree(e.fishModel); e.fishModel = null; } e.fish = fish;
+        if (fish) { e.fishModel = buildFish(fish, 900, 'low'); e.fishModel.scale.multiplyScalar(0.6); e.fishModel.position.set(0.5, 1.9, -0.6); e.g.add(e.fishModel); } }
+      e.g.rotation.y = -e.yaw; });
+  }
+  private dropOther(o: OtherAngler) { this.scene.remove(o.g, o.line, o.bob); (o.tag.material as THREE.SpriteMaterial).map?.dispose(); o.tag.material.dispose(); o.line.geometry.dispose(); if (o.fishModel) disposeTree(o.fishModel); }
+  /** Per-frame animation of the other anglers' rods, lines and bobbers. */
+  private stepOthers() {
+    const t = this.t; const tip = new THREE.Vector3();
+    for (const e of this.others.values()) {
+      const age = t - e.at; let tilt = -0.35, shake = 0; let bobVis = false; const bobAt = e.target.clone();
+      if (e.pose === 'cast') { const k = Math.min(1, age / 0.7); tilt = age < 0.25 ? -1.4 + age * 2 : -0.9 + k * 0.4; bobVis = true;
+        if (k < 1) { bobAt.lerpVectors(tip.copy(e.rod.position).applyMatrix4(e.g.matrixWorld).setY(2.6), e.target, k); bobAt.y = 2.6 * (1 - k) + Math.sin(k * Math.PI) * 1.5 + 0.1 * k; }
+        else { if (!e.splashed) { e.splashed = true; this.splash(e.target, false, true); } bobAt.y = 0.1 + Math.sin(t * 2.2 + e.at) * 0.03; } }
+      else if (e.pose === 'reel') { tilt = -0.15; shake = Math.sin(t * 23) * 0.08 + Math.sin(t * 9) * 0.05; bobVis = true; bobAt.y = 0.02;
+        bobAt.lerp(e.g.position.clone().setY(0), Math.min(0.75, age / 8)); bobAt.x += Math.sin(t * 3 + e.at) * 0.6; bobAt.z += Math.cos(t * 2.3) * 0.3;
+        if (!e.splashed) { e.splashed = true; this.splash(bobAt, true, true); } }
+      else if (e.pose === 'catch') { tilt = age < 4 ? 0.2 : -0.35; if (e.fishModel) { e.fishModel.visible = age < 4; e.fishModel.rotation.y = Math.PI / 2 + Math.sin(t * 6) * 0.3; } }
+      e.rod.rotation.set(tilt + shake, 0, shake * 0.5); e.g.updateMatrixWorld(true);
+      tip.set(0, 2.4, 0).applyMatrix4(e.rod.matrixWorld);
+      e.bob.visible = bobVis; e.line.visible = bobVis; if (bobVis) e.bob.position.copy(bobAt);
+      if (bobVis) { const pa = e.line.geometry.getAttribute('position') as THREE.BufferAttribute; const sag = e.pose === 'reel' ? 0.05 : 0.6;
+        for (let i = 0; i <= 8; i++) { const u = i / 8; pa.setXYZ(i, tip.x + (bobAt.x - tip.x) * u, tip.y + (bobAt.y - tip.y) * u - Math.sin(u * Math.PI) * sag, tip.z + (bobAt.z - tip.z) * u); } pa.needsUpdate = true; }
+    }
   }
   private tipPos(): THREE.Vector3 { return this.rodPts[this.rodPts.length - 1]!.clone(); }
-  private splash(at: THREE.Vector3, big: boolean) {
+  private splash(at: THREE.Vector3, big: boolean, other = false) {
     const rm = new THREE.MeshBasicMaterial({ color: 0xcfefff, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide });
     const ring = new THREE.Mesh(this.ringGeo, rm); ring.rotation.x = -Math.PI / 2; ring.position.set(at.x, 0.09, at.z); this.scene.add(ring);
     const ring2 = new THREE.Mesh(this.ringGeo, rm.clone()); ring2.rotation.x = -Math.PI / 2; ring2.position.set(at.x, 0.085, at.z); this.scene.add(ring2);
@@ -340,12 +377,13 @@ export class Fishing3D {
     const dg = new THREE.BufferGeometry(); dg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     const dm = new THREE.PointsMaterial({ map: this.dropTex, size: big ? 0.32 : 0.2, transparent: true, depthWrite: false, color: 0xeefaff, blending: THREE.AdditiveBlending });
     const drops = new THREE.Points(dg, dm); this.scene.add(drops); this.splashes.push({ ring, ring2, drops, vel, age: 0, life: big ? 1.5 : 1.0 });
-    const u = (this.waterMat.uniforms.uRip!.value as THREE.Vector4[])[this.ripIdx++ % 4]!; u.set(at.x, at.z, this.t, big ? 0.6 : 0.35); this.onSplash?.(big);
+    const u = (this.waterMat.uniforms.uRip!.value as THREE.Vector4[])[this.ripIdx++ % 4]!; u.set(at.x, at.z, this.t, big ? 0.6 : 0.35); this.onSplash?.(big, other);
   }
 
   step(dt: number) {
     this.t += dt; const t = this.t; this.waterMat.uniforms.uTime!.value = t; this.uTime.value = t;
     this.skyT += dt; if (this.skyT > 1) { this.skyT = 0; this.applySky(); }
+    if (this.others.size) this.stepOthers();
     for (const m of this.mist) { const ph = m.userData.ph as number; m.position.x += Math.sin(t * 0.05 + ph) * dt * 0.4; (m.material as THREE.SpriteMaterial).opacity = (0.1 + 0.16 * (1 - this.sky.day) + 0.12 * this.sky.warm) * (0.75 + 0.25 * Math.sin(t * 0.3 + ph)); }
     // angler faces the aim; the rod bends toward the line with tension
     this.angler.rotation.y = -this.yaw;
@@ -421,11 +459,14 @@ export class Fishing3D {
     this.rodGeo?.dispose(); for (const d of this.disposables) d.dispose();
     for (const s of this.splashes) { (s.ring.material as THREE.Material).dispose(); (s.ring2.material as THREE.Material).dispose(); s.drops.geometry.dispose(); (s.drops.material as THREE.Material).dispose(); }
     this.catchGroup.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose(); (m.material as THREE.Material | undefined)?.dispose?.(); });
-    for (const o of this.others.values()) { (o.tag.material as THREE.SpriteMaterial).map?.dispose(); o.tag.material.dispose(); }
+    for (const o of this.others.values()) this.dropOther(o); this.others.clear();
     this.renderer.dispose();
   }
 }
 
+export type OtherPose = 'idle' | 'cast' | 'reel' | 'catch';
+interface OtherAngler { g: THREE.Group; tag: THREE.Sprite; rod: THREE.Mesh; line: THREE.Line; bob: THREE.Mesh; pose: OtherPose; at: number; yaw: number; power: number; fish: string | null; fishModel: THREE.Group | null; target: THREE.Vector3; splashed: boolean }
+function disposeTree(g: THREE.Object3D) { g.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mat)) mat.forEach((x) => x.dispose()); else mat?.dispose?.(); }); }
 function makeTag(name: string): THREE.Sprite {
   const c = document.createElement('canvas'); c.width = 256; c.height = 64; const g = c.getContext('2d')!;
   g.fillStyle = 'rgba(10,14,40,.75)'; g.beginPath(); g.roundRect(4, 10, 248, 44, 16); g.fill(); g.fillStyle = '#e8f6ff'; g.font = 'bold 28px sans-serif'; g.textAlign = 'center'; g.fillText(name.slice(0, 16), 128, 42);

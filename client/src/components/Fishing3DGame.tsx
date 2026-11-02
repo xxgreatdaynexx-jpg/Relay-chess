@@ -1,25 +1,14 @@
 import { importWithReload } from '@/lib/chunkReload';
 import { useEffect, useRef, useState } from 'react';
-import { request } from '@/lib/net';
+import { request, socket } from '@/lib/net';
+import { makeFishingSfx, type FishingSfx } from '@/lib/fishingSfx';
 import { reloadOnceForChunkError } from '@/lib/chunkReload';
 import type { Fishing3D } from '@/lib/fishing3d';
-import { fishById, fmtKg, RARITY_COLOR, Reel, REEL_DT, type FishCatch, type FishView } from '../../../shared/fishing';
+import { fishById, fmtKg, RARITY_COLOR, Reel, REEL_DT, type AnglerState, type FishCatch, type FishView } from '../../../shared/fishing';
 
 const chips = (n: number) => n.toLocaleString('en-US');
 type Phase = 'idle' | 'charge' | 'flying' | 'wait' | 'bite' | 'hooking' | 'reel' | 'landing' | 'show';
 type Card = { fish: string; grams: number; value: number; xp: number } | null;
-
-/** Tiny WebAudio kit: plop, splash, reel clicks. Created on the first user gesture. */
-function makeSfx() {
-  let ac: AudioContext | null = null; const ctx = () => (ac ??= new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)());
-  const noise = (dur: number, vol: number, f0: number) => { const c = ctx(); const b = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate); const d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) ** 2;
-    const s = c.createBufferSource(); s.buffer = b; const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = f0; const g = c.createGain(); g.gain.value = vol; s.connect(f).connect(g).connect(c.destination); s.start(); };
-  const tone = (f0: number, f1: number, dur: number, vol: number, type: OscillatorType = 'sine') => { const c = ctx(); const o = c.createOscillator(); o.type = type; const g = c.createGain(); o.frequency.setValueAtTime(f0, c.currentTime); o.frequency.exponentialRampToValueAtTime(f1, c.currentTime + dur);
-    g.gain.setValueAtTime(vol, c.currentTime); g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + dur); o.connect(g).connect(c.destination); o.start(); o.stop(c.currentTime + dur); };
-  return { splash: (big: boolean) => { try { noise(big ? 0.6 : 0.3, big ? 0.35 : 0.2, big ? 1800 : 2600); } catch { /* no audio */ } },
-    plop: () => { try { tone(500, 140, 0.18, 0.3); } catch { /* */ } }, click: () => { try { tone(1800, 1200, 0.03, 0.05, 'square'); } catch { /* */ } },
-    win: () => { try { tone(523, 1046, 0.35, 0.18, 'triangle'); } catch { /* */ } }, whoosh: () => { try { noise(0.35, 0.12, 900); } catch { /* */ } } };
-}
 
 /** Real 3D fishing at the dock (pt1220u). Same server flow as the panel: fish_cast → (bite) → fish_hook → reel sim → fish_land
  *  with the input timeline, which the server replays. Cast power/aim only place the bobber (cosmetic, no effect on the roll). */
@@ -30,7 +19,7 @@ export function Fishing3DGame({ me, onClose, onChange }: { me: string | null; on
   const [power, setPower] = useState(0); const [reelUi, setReelUi] = useState<{ x: number; c: number; h: number; prog: number; ten: number } | null>(null);
   const [card, setCard] = useState<Card>(null); const [view, setView] = useState<FishView | null>(null); const [glError, setGlError] = useState<string | null>(null);
   const hold = useRef(false); const g = useRef({ power: 0, pdir: 1, biteAt: 0, biteEnd: 0, reel: null as Reel | null, inputs: '', t0: 0, rare: false, lastClick: 0 });
-  const sfx = useRef<ReturnType<typeof makeSfx> | null>(null);
+  const sfx = useRef<FishingSfx | null>(null); const pending = useRef<AnglerState[] | null>(null);
   const setPhase = (p: Phase) => { ph.current = p; setPhaseS(p); };
   const load = () => { if (me) void request('fish_state').then((r) => { if (r.ok) setView((r as unknown as { state: FishView }).state); }); };
 
@@ -38,12 +27,17 @@ export function Fishing3DGame({ me, onClose, onChange }: { me: string | null; on
     load(); let dead = false;
     importWithReload(() => import('@/lib/fishing3d')).then(({ Fishing3D }) => {
       if (dead || !cv.current) return;
-      try { three.current = new Fishing3D(cv.current); three.current.onSplash = (big) => sfx.current?.splash(big); } catch { setGlError('3D is not available on this device.'); }
+      try { three.current = new Fishing3D(cv.current); three.current.onSplash = (big, other) => sfx.current?.splash(big, other); if (pending.current) three.current.setOthers(pending.current); } catch { setGlError('3D is not available on this device.'); }
     }).catch((e) => { if (!reloadOnceForChunkError(e)) setGlError('Could not load the 3D engine. Refresh to try again.'); });
     const onResize = () => three.current?.resize(); window.addEventListener('resize', onResize);
     // other anglers at the dock
-    const here = () => { if (me) void request('fish_here').then((r) => { if (r.ok) three.current?.setOthers(((r as unknown as { anglers: string[] }).anglers ?? []).map((name, slot) => ({ name, slot }))); }); };
-    here(); const hi = window.setInterval(here, 5000);
+    // other anglers at the dock: live 'fish_anglers' pushes (cast / reel / catch), with a slow poll as a fallback
+    const show = (list: AnglerState[]) => { const others = list.filter((a) => a.name !== me); pending.current = others; three.current?.setOthers(others); };
+    const here = () => { void request('fish_here').then((r) => { if (r.ok) { const x = r as unknown as { anglers?: string[]; states?: AnglerState[] };
+      show(x.states ?? (x.anglers ?? []).map((name) => ({ name, pose: 'idle', since: Date.now(), yaw: 0, power: 0.5 }))); } }); };
+    const onPush = (p: { anglers?: AnglerState[] }) => show(p?.anglers ?? []);
+    socket.on('fish_anglers', onPush);
+    if (me) here(); const hi = window.setInterval(() => { if (me) here(); }, 5000);
     let raf = 0, last = performance.now();
     const frame = (t: number) => {
       raf = requestAnimationFrame(frame); const dt = Math.min(0.05, (t - last) / 1000); last = t; const s = g.current; const p = ph.current; const now = Date.now();
@@ -56,20 +50,21 @@ export function Fishing3DGame({ me, onClose, onChange }: { me: string | null; on
         while (s.inputs.length < due && !r.s.done) { const h = hold.current; s.inputs += h ? '1' : '0'; r.tick(h); }
         three.current?.setReel(r.s.x, r.s.c, r.s.h, r.s.prog, hold.current, s.rare);
         setReelUi({ x: r.s.x, c: r.s.c, h: r.s.h, prog: r.s.prog, ten: three.current?.tension ?? 0 });
-        if (hold.current && t - s.lastClick > 70) { s.lastClick = t; sfx.current?.click(); }
+        if (hold.current && t - s.lastClick > 120) { s.lastClick = t; sfx.current?.click(); }
         if (r.s.done) void finish(s.inputs);
       }
       three.current?.step(dt);
     };
     raf = requestAnimationFrame(frame);
-    return () => { dead = true; cancelAnimationFrame(raf); window.clearInterval(hi); window.removeEventListener('resize', onResize); three.current?.dispose(); three.current = null;
+    return () => { dead = true; cancelAnimationFrame(raf); window.clearInterval(hi); socket.off('fish_anglers', onPush); socket.emit('fish_leave');
+      sfx.current?.dispose(); sfx.current = null; window.removeEventListener('resize', onResize); three.current?.dispose(); three.current = null;
       if (!['idle', 'show', 'charge'].includes(ph.current)) void request('fish_reel_in'); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const reset = () => { hold.current = false; g.current.reel = null; setReelUi(null); three.current?.setPhase('idle'); setPhase('idle'); };
+  const reset = () => { sfx.current?.stopAll(); hold.current = false; g.current.reel = null; setReelUi(null); three.current?.setPhase('idle'); setPhase('idle'); };
   const castNow = async () => {
     const s = g.current; const pw = s.power; setPhase('flying'); three.current?.cast(pw); sfx.current?.whoosh(); setMsg(null); setCard(null);
-    const r = await request('fish_cast') as { ok: boolean; error?: string; biteIn?: number };
+    const r = await request('fish_cast', { yaw: three.current?.yaw ?? 0, power: pw }) as { ok: boolean; error?: string; biteIn?: number };
     if (!r.ok) { setMsg(r.error ?? 'Could not cast.'); reset(); return; }
     s.biteAt = Date.now() + (r.biteIn ?? 3000);
   };
@@ -96,7 +91,7 @@ export function Fishing3DGame({ me, onClose, onChange }: { me: string | null; on
 
   // input: pointer (mouse + touch) and keyboard
   const press = () => {
-    sfx.current ??= makeSfx(); const p = ph.current;
+    sfx.current ??= makeFishingSfx(); const p = ph.current;
     if (p === 'show') { three.current?.hideCatch(); setCard(null); reset(); return; }
     if (p === 'idle') { if (!me) { setMsg('Sign in to fish.'); return; } g.current.power = 0; g.current.pdir = 1; setPhase('charge'); three.current?.setPhase('charge'); return; }
     if (p === 'wait' || p === 'bite' || p === 'flying') { void strike(); return; }

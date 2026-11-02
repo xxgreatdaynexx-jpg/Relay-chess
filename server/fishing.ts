@@ -20,7 +20,7 @@ import type { ImportSink } from './farm.js';
 import { fishingLuckRoll, fishingBiteMul } from '../shared/skillPerks.js';
 import {
   BITE_MAX_MS, BITE_MIN_MS, CAST_COOLDOWN_MS, COOLER_MAX, FISH, FISH_XP, fishById, fishDiff, fishPayout, fishValue, HOOK_WINDOW_MS,
-  REEL_DT, replayReel, rollFish, rollWeight, type FishCatch, type FishView,
+  REEL_DT, replayReel, rollFish, rollWeight, anglerAim, type AnglerState, type FishCatch, type FishView,
 } from '../shared/fishing.js';
 import { cookPayout } from '../shared/cooking.js';
 
@@ -227,17 +227,30 @@ export async function initFishing(): Promise<void> {
   } catch (e) { console.error('[fishing] init failed:', (e as Error).message); }
 }
 
-/** Who is fishing at the dock right now (any fish_* action in the last 20 s), for the 3D scene's other anglers. */
-const HERE = new Map<string, number>();
+/** Who is fishing at the dock right now (any fish_* action in the last 20 s), and what they are doing, so other players
+ *  see their cast, line, reel and catch (pt242u). Changes are pushed to the 'fish-dock' room as 'fish_anglers'. */
+const HERE = new Map<string, AnglerState>();
 export const HERE_MS = 20_000;
-export function markHere(name: string, now = Date.now()) { HERE.set(name, now); if (HERE.size > 500) for (const [k, t] of HERE) if (now - t > HERE_MS) HERE.delete(k); }
-export function anglersHere(except: string | null, now = Date.now()): string[] {
-  const out: string[] = []; for (const [k, t] of HERE) { if (now - t > HERE_MS) { HERE.delete(k); continue; } if (k !== except && out.length < 8) out.push(k); } return out;
+export const DOCK_ROOM = 'fish-dock';
+export function markHere(name: string, now = Date.now(), patch?: Partial<Omit<AnglerState, 'name' | 'since'>>) {
+  const prev = HERE.get(name);
+  const next: AnglerState = { name, pose: 'idle', yaw: 0, power: 0.5, ...prev, ...(patch ?? {}), since: patch?.pose ? now : prev?.since ?? now } as AnglerState;
+  if (patch?.pose && patch.pose !== 'catch') delete next.fish;
+  (next as AnglerState & { seen?: number }).seen = now; HERE.set(name, next);
+  if (HERE.size > 500) for (const [k, a] of HERE) if (now - ((a as AnglerState & { seen?: number }).seen ?? 0) > HERE_MS) HERE.delete(k);
 }
+export function leaveDock(name: string) { return HERE.delete(name); }
+export function anglerStates(except: string | null, now = Date.now()): AnglerState[] {
+  const out: AnglerState[] = [];
+  for (const [k, a] of HERE) { const seen = (a as AnglerState & { seen?: number }).seen ?? 0; if (now - seen > HERE_MS) { HERE.delete(k); continue; }
+    if (k !== except && out.length < 8) out.push({ name: a.name, pose: a.pose, since: a.since, yaw: a.yaw, power: a.power, ...(a.fish ? { fish: a.fish } : {}) }); }
+  return out;
+}
+export function anglersHere(except: string | null, now = Date.now()): string[] { return anglerStates(except, now).map((a) => a.name); }
 /** Per-socket token bucket: 8 actions, refills 4/s. */
 function bucket(cap = 8, perSec = 4) { let tok = cap, at = Date.now(); return () => { const n = Date.now(); tok = Math.min(cap, tok + ((n - at) / 1000) * perSec); at = n; if (tok < 1) return false; tok -= 1; return true; }; }
 type Ack = (r: Record<string, unknown>) => void;
-export function registerFishing(_io: Server, socket: Socket): void {
+export function registerFishing(io: Server, socket: Socket): void {
   const nameOf = () => (socket.data as { account?: { name: string } }).account?.name ?? null;
   const take = bucket();
   const on = (ev: string, fn: (b: Record<string, unknown>, f: Fishing, name: string) => unknown, needName = true) => socket.on(ev, async (payload: unknown, ack?: Ack) => {
@@ -251,12 +264,17 @@ export function registerFishing(_io: Server, socket: Socket): void {
     } catch (e) { ack?.({ ok: false, error: e instanceof FishError ? e.message : 'Something went wrong.' }); if (!(e instanceof FishError)) console.error(`[fishing] ${ev}:`, (e as Error).message); }
   });
   on('fish_state', async (_b, f, n) => ({ state: await f.view(n), prices: Object.fromEntries(FISH.map((x) => [x.id, px(x.base)])) }));
-  on('fish_cast', (_b, f, n) => f.cast(n));
-  on('fish_hook', (_b, f, n) => f.hook(n));
-  on('fish_land', (b, f, n) => f.land(n, b.inputs));
-  on('fish_reel_in', (_b, f, n) => { f.reelIn(n); return {}; });
+  const pushDock = () => { try { io.to(DOCK_ROOM).emit('fish_anglers', { anglers: anglerStates(null) }); } catch { /* best effort */ } };
+  const pose = (n: string, patch: Partial<Omit<AnglerState, 'name' | 'since'>>) => { markHere(n, Date.now(), patch); pushDock(); };
+  on('fish_cast', async (b, f, n) => { const r = await f.cast(n); pose(n, { pose: 'cast', ...anglerAim(b.yaw, b.power) }); return r; });
+  on('fish_hook', async (_b, f, n) => { const r = await f.hook(n); pose(n, { pose: 'reel' }); return r; });
+  on('fish_land', async (b, f, n) => { const r = await f.land(n, b.inputs); pose(n, r.caught && r.fish ? { pose: 'catch', fish: r.fish.fish } : { pose: 'idle' }); return r; });
+  on('fish_reel_in', (_b, f, n) => { f.reelIn(n); pose(n, { pose: 'idle' }); return {}; });
   on('fish_sell', (b, f, n) => f.sell(n, b.ids));
   on('fish_release', (b, f, n) => f.release(n, b.ids));
-  on('fish_here', () => ({ anglers: anglersHere(nameOf()) }));
+  on('fish_here', () => { void socket.join(DOCK_ROOM); return { anglers: anglersHere(nameOf()), states: anglerStates(nameOf()) }; });
+  const leave = () => { void socket.leave(DOCK_ROOM); const n = nameOf(); if (n && leaveDock(n)) pushDock(); };
+  socket.on('fish_leave', (_p: unknown, ack?: Ack) => { leave(); ack?.({ ok: true }); });
+  socket.on('disconnect', () => { const n = nameOf(); if (n && leaveDock(n)) pushDock(); });
   on('fish_board', async (_b, f) => ({ board: await f.board() }), false);
 }
