@@ -130,7 +130,7 @@ export function LeaderboardTable({ highlight = [], game = 'chess' }: { highlight
             return (
               <tr key={row.name.toLowerCase()} className={cn('border-t border-white/10', mine && 'bg-brass/15')} data-testid="leaderboard-row">
                 <td className="px-3 py-2 text-cream/50">{index + 1}</td>
-                <td className="px-2 py-2 font-medium">{row.name}<QaTag on={(row as { qa?: boolean }).qa} /></td>
+                <td className="px-2 py-2 font-medium"><span className="player-link" data-player={row.name}>{row.name}</span><QaTag on={(row as { qa?: boolean }).qa} /></td>
                 <td className="tabular px-2 py-2">{row.wins}</td>
                 <td className="tabular px-2 py-2">{row.losses}</td>
                 <td className="tabular px-2 py-2">{row.draws}</td>
@@ -179,7 +179,7 @@ export function ArenaLeaderboard({ you = '' }: { you?: string }) {
         <tbody>
           {sorted.map((r, i) => (
             <tr key={r.name} className={cn('border-t border-white/10', r.name.toLowerCase() === you.toLowerCase() && 'casino-me')}>
-              <td className="tabular px-2 py-2">{i + 1}</td><td className="px-2 py-2">{r.name}<QaTag on={(r as { qa?: boolean }).qa} /></td>
+              <td className="tabular px-2 py-2">{i + 1}</td><td className="px-2 py-2"><span className="player-link" data-player={r.name}>{r.name}</span><QaTag on={(r as { qa?: boolean }).qa} /></td>
               {ARENA_COLS.map(([k]) => <td key={k} className="tabular px-2 py-2">{k === 'kd' ? r.kd.toFixed(2) : r[k]}</td>)}
             </tr>
           ))}

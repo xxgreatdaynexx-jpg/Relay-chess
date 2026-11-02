@@ -2,6 +2,7 @@ import { BuildTag, ChangelogButton } from './Changelog';
 import { RequestsButton } from './Requests';
 import { useEffect, useRef, useState } from 'react';
 import { request, socket } from '@/lib/net';
+import { openPlayer } from './PlayerProfile';
 import { SkillGrid, type SkillProfile } from './Skills';
 import { loadAuth, useAccount } from '@/lib/auth';
 import { openAccount } from '@/lib/settings';
@@ -146,7 +147,7 @@ export function ChatDrawer() {
             {online.users.length === 0 && <li className="chat-dim">No one signed in right now.</li>}
             {online.users.map((u) => (
               <li key={u.name}>
-                <button type="button" className="chat-user" onClick={() => void pick(u)} data-testid="chat-user">
+                <button type="button" className="chat-user" onClick={() => { void pick(u); openPlayer(u.name); }} data-testid="chat-user">
                   <span className="chat-dot" aria-hidden="true" />
                   <span className="chat-uname">{u.name}{u.name === me && <span className="chat-dim"> (you)</span>}{u.qa && <span className="chat-qa">QA</span>}</span>
                   <span className="chat-where">{u.where}</span>
@@ -178,7 +179,7 @@ export function ChatDrawer() {
             {messages.length === 0 && <div className="chat-dim">No messages yet. Say hi!</div>}
             {messages.map((m) => (
               <div key={m.id} className={`chat-msg${m.name === me ? ' mine' : ''}`}>
-                <button type="button" className="chat-from" onClick={() => void pick({ name: m.name })}>{m.name}</button>
+                <button type="button" className="chat-from" onClick={() => { void pick({ name: m.name }); openPlayer(m.name); }}>{m.name}</button>
                 {m.qa && <span className="chat-qa">QA</span>}
                 <time className="chat-time" dateTime={new Date(m.at).toISOString()}>{time(m.at)}</time>
                 <div className="chat-text">{m.text}</div>

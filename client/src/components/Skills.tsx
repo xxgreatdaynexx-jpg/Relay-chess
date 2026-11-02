@@ -60,7 +60,7 @@ function Hiscores() {
       {!rows ? <p className="text-sm opacity-60">Loading…</p> : rows.length === 0 ? <p className="text-sm opacity-60">No one has XP here yet. Be the first!</p> : (
         <table className="w-full text-sm tabular-nums">
           <thead><tr className="text-left text-xs opacity-60"><th>#</th><th>Player</th><th className="text-right">{skill === 'overall' ? 'Total' : 'Level'}</th><th className="text-right">XP</th></tr></thead>
-          <tbody>{rows.map((r) => <tr key={r.name} className="border-t border-white/5"><td>{r.rank}</td><td>{r.name}{r.title && <span className="ml-1 text-xs opacity-50">{r.title}</span>}</td><td className="text-right font-bold text-[#f5d27a]">{r.level}</td><td className="text-right opacity-80">{fmt(r.xp)}</td></tr>)}</tbody>
+          <tbody>{rows.map((r) => <tr key={r.name} className="border-t border-white/5"><td>{r.rank}</td><td><span className="player-link" data-player={r.name}>{r.name}</span>{r.title && <span className="ml-1 text-xs opacity-50">{r.title}</span>}</td><td className="text-right font-bold text-[#f5d27a]">{r.level}</td><td className="text-right opacity-80">{fmt(r.xp)}</td></tr>)}</tbody>
         </table>
       )}
     </div>

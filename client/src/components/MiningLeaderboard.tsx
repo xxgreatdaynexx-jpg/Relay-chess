@@ -41,7 +41,7 @@ export function MiningLeaderboard({ you = '', compact = false }: { you?: string;
               {rows.map((r, i) => (
                 <tr key={r.name} className={cn('border-t border-white/10', r.name.toLowerCase() === you.toLowerCase() && 'casino-me')} data-testid="mining-row">
                   <td className="tabular px-2 py-1 opacity-60">{i + 1}</td>
-                  <td className="px-2 py-1 font-medium">{r.name}</td>
+                  <td className="px-2 py-1 font-medium"><span className="player-link" data-player={r.name}>{r.name}</span></td>
                   <td className="tabular px-2 py-1 text-right">{fmt(r)}</td>
                 </tr>
               ))}

@@ -1298,7 +1298,7 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
               <span className="opacity-70"> · next match in {Math.ceil(matchUi.end.inMs / 1000)}s</span>
             </div>
             <table style={{ width: '100%' }}><thead><tr><th style={{ textAlign: 'left' }}>Player</th><th>K</th><th>D</th><th>🪙 won</th></tr></thead>
-              <tbody>{matchUi.end.players.map((p) => <tr key={p.id} style={{ fontWeight: p.id === me.current.id ? 800 : 400 }}><td>{p.id === matchUi.end!.winnerId ? '🏆 ' : ''}{p.name}</td><td style={{ textAlign: 'center' }}>{p.kills}</td><td style={{ textAlign: 'center' }}>{p.deaths}</td><td style={{ textAlign: 'center' }}>{p.earned ? `+${p.earned}` : '—'}{p.id === matchUi.end!.winnerId && matchUi.end!.prize ? ` +${matchUi.end!.prize.amount}` : ''}</td></tr>)}</tbody>
+              <tbody>{matchUi.end.players.map((p) => <tr key={p.id} style={{ fontWeight: p.id === me.current.id ? 800 : 400 }}><td>{p.id === matchUi.end!.winnerId ? '🏆 ' : ''}<span className="player-link" data-player={p.name}>{p.name}</span></td><td style={{ textAlign: 'center' }}>{p.kills}</td><td style={{ textAlign: 'center' }}>{p.deaths}</td><td style={{ textAlign: 'center' }}>{p.earned ? `+${p.earned}` : '—'}{p.id === matchUi.end!.winnerId && matchUi.end!.prize ? ` +${matchUi.end!.prize.amount}` : ''}</td></tr>)}</tbody>
             </table>
           </div>
         )}

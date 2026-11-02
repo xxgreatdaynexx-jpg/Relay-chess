@@ -23,6 +23,7 @@ import { bootStates, reconnectMsg } from './boot-retry.js';
 import { adminRouter } from './admin.js';
 import { trailerRouter } from './trailers.js';
 import { realEstateRouter } from './realEstate.js';
+import { playerProfileRouter } from './player-profile.js';
 import { farmRouter } from './farm.js';
 import { getMinesBoard } from './mines-board.js';
 import { isMinePeriod } from '../shared/minesBoard.js';
@@ -148,6 +149,7 @@ export async function createApp(): Promise<AppContext> {
     pingTimeout: 20000,
   });
   registerSockets(io);
+  app.use(playerProfileRouter(io, viewerIsQa));
 
   if (process.env.NODE_ENV === 'production') {
     const clientDist = fileURLToPath(new URL('../client', import.meta.url));

@@ -201,6 +201,8 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
     // Every other building opens as a panel on top of the city; closing it reveals the city again.
   };
   const goRef = useRef(go); goRef.current = go;
+  // Player profile "Show on map": land/farm coordinates from /api/player.
+  useEffect(() => { const on = (e: Event) => { const d = (e as CustomEvent<{ x: number; z: number }>).detail; if (d && Number.isFinite(d.x) && Number.isFinite(d.z)) worldRef.current?.focusXZ(d.x, d.z); }; window.addEventListener('world-focus', on); return () => window.removeEventListener('world-focus', on); }, []);
   useEffect(() => { if (!dock || driving || loading) return; const t = setTimeout(() => worldRef.current?.flyTo('dock'), 600); return () => clearTimeout(t); }, [dock, loading, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -211,7 +213,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       try {
         worldRef.current = createWorld(canvasRef.current, {
           onHover: (id, x, y) => setTip(id ? { id, x, y } : null),
-          onPick: (id) => goRef.current(id),
+          onPick: (id) => { if (id) goRef.current(id); }, // '' = a profile "Show on map" glide, not a building
           onProperty: (id) => { const o = ownedRef.current.get(id); const m = meRef.current;
             if (id.startsWith('f:') && o && m && o.owner.toLowerCase() === m.toLowerCase()) setFarm(id); else setDeed(id); },
         });

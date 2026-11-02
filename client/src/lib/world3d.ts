@@ -595,9 +595,15 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const onUp = (e: PointerEvent) => {
     if (!down || fly) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y); const dragged = moved > 8 || !!down.drag; down = null; if (dragged) { clearTip(); return; }
     const id = pick(e.clientX, e.clientY); if (!id) { setHover(null); h.onHover(null, 0, 0); return; }
-    if (id.startsWith('trailer:')) { h.onHover(id, e.clientX, e.clientY); return; } // trailers: just the label, no interiors
+    if (id.startsWith('trailer:')) { h.onHover(id, e.clientX, e.clientY); window.dispatchEvent(new CustomEvent('open-player', { detail: id.slice(8) })); return; } // trailers: label + the owner's profile
     if (id.startsWith('b:') || id.startsWith('p:') || id.startsWith('f:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel
     flyTo(id);
+  };
+  /** Glide the camera to a world point (player-profile "show on map" for land and farms). */
+  const focusXZ = (x: number, z: number) => {
+    h.onHover(null, 0, 0); const tgt = new THREE.Vector3(x, 2, z);
+    const dir = camera.position.clone().sub(controls.target).setY(0).normalize();
+    fly = { from: camera.position.clone(), to: tgt.clone().add(dir.multiplyScalar(24)).setY(20), tf: controls.target.clone(), tt: tgt, t: 0, id: '' }; controls.enabled = false;
   };
   const flyTo = (id: string) => {
     const l = lms.find((x) => x.id === id); if (!l) return; setHover(id); h.onHover(null, 0, 0);
@@ -685,7 +691,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     marks.count = n; marks.instanceMatrix.needsUpdate = true;
   };
   return {
-    flyTo, setOwned, setFarm,
+    flyTo, focusXZ, setOwned, setFarm,
     // Driving (worldDrive.ts) hooks: the tick runs every frame; returning true means it owns the camera.
     scene, camera, controls, solids, lmBoxes, setTick(f: ((dt: number) => boolean) | null) { tick = f; },
     reset() { fly = null; controls.enabled = true; camera.position.copy(home); controls.target.set(0, 0, 0); setHover(null); },

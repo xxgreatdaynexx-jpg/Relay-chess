@@ -1829,3 +1829,7 @@ html, body { overflow-x: clip; }
 .resort-floor-bar b { color: #8a6418; font-family: Georgia, serif; letter-spacing: .06em; }
 .resort-floor-bar button { padding: 5px 10px; border-radius: 8px; background: #fff; border: 1px solid #d8b25a; color: #2a2016; font-weight: 700; }
 .resort-floor-bar button:hover { background: #fff3d6; }
+
+/* Player profile: any name you can click to see that player's assets. */
+.player-link { cursor: pointer; text-decoration: underline dotted rgba(232, 194, 106, 0.55); text-underline-offset: 3px; }
+.player-link:hover { color: #e8c26a; }

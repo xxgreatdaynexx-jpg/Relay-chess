@@ -1,3 +1,4 @@
+import PlayerProfile from './components/PlayerProfile';
 import { useEffect, useRef, useState } from 'react';
 import { SkinsPanel } from '@/components/SkinsPanel';
 import { HomeScreen } from '@/components/HomeScreen';
@@ -217,6 +218,7 @@ export function App() {
       </div>
       <AccountPanel />
       <ChatDrawer />
+      <PlayerProfile />
       <TopTab id="wallet"><WalletButton /></TopTab>
       <TopTab id="account"><AccountButton /></TopTab>
       {showWorld ? (

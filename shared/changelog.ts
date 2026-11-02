@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T20:45:00-06:00', title: "Click a player to see what they own", bullets: [
+    "Requested by Dayne: click a player's name to open their profile. This works in the online list, chat, trailers on the map, the leaderboards, the mines board, the dock's biggest catches, the race boards and the Arena results.",
+    'The profile shows their chips and net worth (the same numbers as the Daily Report), their property and land with a 📍 button that flies the map to each one, their farms and what is growing, their cars and trailer, stocks, funds and options, their best skins, skill levels, biggest fish, and when they joined. It also shows whether they are online right now.',
+    'Only public info is shown. Close it with Esc or by clicking outside.',
+  ] },
   { commit: '', at: '2026-11-01T20:40:00-06:00', title: 'Land gets pricier the more you own', bullets: [
     'Requested by Dayne: every parcel you already own makes your next one 1.5× more expensive. Your 1st costs the list price, the 2nd ×1.5, the 3rd ×2.25, the 4th ×3.38, and so on.',
     'This covers city, outskirts, countryside, farmland, resort properties and plantation plots. Free Trailer Park lots do not count.',

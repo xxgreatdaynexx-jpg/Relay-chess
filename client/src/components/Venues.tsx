@@ -9,7 +9,7 @@ type Row = { name: string; car: string; ms: number };
 type Board = { today: Row[]; allTime: Row[]; cup: { day: string; entry: number; seed: number; pool: number; entrants: number; entered: boolean; standings: Row[] }; lastCup: { day: string; pool: number; payouts: Array<{ name: string; rank: number; amount: number }> } | null };
 
 const Rows = ({ rows, id }: { rows: Row[]; id: string }) => rows.length
-  ? <ol className="venue-board" data-testid={id}>{rows.map((r, i) => <li key={r.name + i}><b>{fmtLap(r.ms)}</b> {r.name} <small>{CAR_BY_ID.get(r.car)?.name ?? r.car}</small></li>)}</ol>
+  ? <ol className="venue-board" data-testid={id}>{rows.map((r, i) => <li key={r.name + i}><b>{fmtLap(r.ms)}</b> <span className="player-link" data-player={r.name}>{r.name}</span> <small>{CAR_BY_ID.get(r.car)?.name ?? r.car}</small></li>)}</ol>
   : <small>No laps yet.</small>;
 
 /** Airport (fast travel) and Speedway (boards, Daily Cup, start on the grid) panels. */
