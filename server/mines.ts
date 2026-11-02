@@ -9,7 +9,7 @@ import { miningSwingMul, miningBonusChance } from '../shared/skillPerks.js';
 import { MinesLeaderboard, setMinesBoard } from './mines-board.js';
 import { getVault, playerKey } from './skins.js';
 import { guestName, lineOfSight, moveAllowance, MOVE_CARRY_MAX, normAngle, clampPitch, canStand, validateMove, eyeHeightOf, type Body } from '../shared/fps.js';
-import { CAVES, caveOf, type CaveId, BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, SWING_MS, dayKey, isOre, payoutFor, stackKey, priceOf, sellable, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId, inExit, CARRY_GRACE_MS, weightOf } from '../shared/mines.js';
+import { CAVES, caveOf, type CaveId, BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, SWING_MS, dayKey, isOre, payoutFor, stackKey, priceOf, sellable, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId, inExit, weightOf } from '../shared/mines.js';
 import { isAtResort } from './travel.js';
 
 export const MINES_MIGRATION = [
@@ -30,7 +30,7 @@ export const MINES_MIGRATION = [
 ];
 export interface FactoryState { level: number; builtAt: number; jobs: Job[] }
 
-export interface MineStore { init(): Promise<void>; load(): Promise<{ items: Array<{ key: string; name: string; type: ItemType; id: string; qty: number }>; daily: Array<{ key: string; day: string; gross: number; paid: number }>; factories?: Array<{ key: string } & FactoryState>; carried?: Array<{ key: string; name: string; stacks: Stack[] }>; fv2?: Array<{ key: string; name?: string; data: unknown }> }>; saveCarried?(key: string, name: string, stacks: Stack[]): Promise<void>; save(key: string, name: string, stacks: Stack[], sale?: { day: string; gross: number; paid: number; items: string; ledgerKey: string; at: number; dayGross: number; dayPaid: number }, factory?: FactoryState, extra?: Array<{ sql: string; args: unknown[] }>): Promise<void> }
+export interface MineStore { init(): Promise<void>; load(): Promise<{ items: Array<{ key: string; name: string; type: ItemType; id: string; qty: number }>; daily: Array<{ key: string; day: string; gross: number; paid: number }>; factories?: Array<{ key: string } & FactoryState>; carried?: Array<{ key: string; name: string; stacks: Stack[] }>; fv2?: Array<{ key: string; name?: string; data: unknown }> }>; saveCarried?(key: string, name: string, stacks: Stack[]): Promise<void>; loadCarried?(key: string): Promise<Stack[]>; save(key: string, name: string, stacks: Stack[], sale?: { day: string; gross: number; paid: number; items: string; ledgerKey: string; at: number; dayGross: number; dayPaid: number }, factory?: FactoryState, extra?: Array<{ sql: string; args: unknown[] }>): Promise<void> }
 
 export class PgMineStore implements MineStore {
   constructor(private readonly db: Queryable & { connect?: () => Promise<pg.PoolClient> }) { db.on?.('error', (e) => console.error('[mines] pool error:', e.message)); }
@@ -43,6 +43,13 @@ export class PgMineStore implements MineStore {
     const carried = (await this.db.query('SELECT * FROM mine_carried')).rows.map((r) => ({ key: String(r.player_key), name: String(r.owner_name), stacks: (typeof r.items === 'string' ? JSON.parse(r.items) : r.items) as Stack[] }));
     const fv2 = (await this.db.query('SELECT player_key, owner_name, data FROM factory_v2')).rows.map((r) => ({ key: String(r.player_key), name: String(r.owner_name), data: typeof r.data === 'string' ? JSON.parse(r.data) : r.data }));
     return { items, daily, factories, carried, fv2 };
+  }
+  /** Fresh read of one player's carried haul (on join: never trust a boot-time snapshot, another instance may have saved since). */
+  async loadCarried(key: string): Promise<Stack[]> {
+    const r = (await this.db.query('SELECT items FROM mine_carried WHERE player_key = $1', [key])).rows[0];
+    if (!r) return [];
+    const v = (typeof r.items === 'string' ? JSON.parse(r.items) : r.items) as Stack[];
+    return Array.isArray(v) ? v.filter((s) => s && Number(s.qty) > 0).map((s) => ({ type: s.type, id: s.id, qty: Number(s.qty) })) : [];
   }
   /** Idempotent: absolute snapshot upsert, or delete when empty. */
   async saveCarried(key: string, name: string, stacks: Stack[]) {
@@ -78,7 +85,7 @@ export const CARRY_SAVE_MS = 1500;
 export const MINES_OFFLINE_MSG = 'Mines storage is reconnecting. Your factory and storage are safe, try again in a minute.';
 export const RESTART_GRACE_MS = 10 * 60_000;
 
-interface Miner extends Body { id: string; name: string; account: string | null; a: number; p: number; lastMove: number; carry: number; lastHit: number; hits: number[]; sprint: boolean; carried: Map<string, Stack>; cave: CaveId }
+interface Miner extends Body { restoring?: Promise<void>; id: string; name: string; account: string | null; a: number; p: number; lastMove: number; carry: number; lastHit: number; hits: number[]; sprint: boolean; carried: Map<string, Stack>; cave: CaveId }
 interface NodeState { node: MineNode; hp: number; downUntil: number }
 
 export class MinesWorld {
@@ -95,7 +102,7 @@ export class MinesWorld {
   names = new Map<string, string>();
   daily = new Map<string, { day: string; gross: number; paid: number }>();
   factories = new Map<string, FactoryState>();
-  /** carried hauls of players who dropped without exiting, kept for CARRY_GRACE_MS */
+  /** carried hauls of signed-in players who dropped without exiting. Kept (in memory AND in mine_carried) until they come back and bank it: restarts, deploys and disconnects never wipe a haul. */
   grace = new Map<string, { stacks: Stack[]; until: number }>();
   private jobSeq = 0;
   /** Factory v2 rows loaded at boot (server/factory.ts owns them). */
@@ -116,19 +123,27 @@ export class MinesWorld {
       const { items, daily, factories, carried, fv2 } = await store.load();
       for (const r of fv2 ?? []) { this.fv2.set(r.key, r.data); if (r.name) this.fv2Names.set(r.key, r.name); }
       // Hauls carried when the last server stopped: restored on the player's next join (restart grace).
-      for (const c of carried ?? []) if (c.stacks.length) { this.grace.set(c.key, { stacks: c.stacks.map((x) => ({ ...x })), until: Date.now() + RESTART_GRACE_MS }); this.names.set(c.key, c.name); }
+      if (!store.loadCarried) for (const c of carried ?? []) if (c.stacks.length) { this.grace.set(c.key, { stacks: c.stacks.map((x) => ({ ...x })), until: Date.now() + RESTART_GRACE_MS }); this.names.set(c.key, c.name); }
       for (const f of factories ?? []) this.factories.set(f.key, { level: f.level, builtAt: f.builtAt, jobs: f.jobs });
       for (const i of items) { this.rawPack(i.key).set(stackKey(i), { type: i.type, id: i.id, qty: i.qty }); this.names.set(i.key, i.name); }
       for (const d of daily) { const cur = this.daily.get(d.key); if (!cur || cur.day < d.day) this.daily.set(d.key, d); }
       this.store = store; this.offline = false; return true;
     } catch (e) { console.error('[mines] postgres unavailable, mines in memory only:', (e as Error).message); return false; }
   }
-  async flush() { for (const k of [...this.carryTimers.keys()]) this.saveCarried(k); await this.chain; }
+  /** Set on SIGTERM: no new hauls once the final save has started. */
+  closing = false;
+  /** Write pending hauls. On shutdown (closing) every signed-in miner's and every dropped player's haul is written, not just the debounced ones. */
+  async flush() {
+    const keys = new Set(this.carryTimers.keys());
+    if (this.closing) { for (const m of this.miners.values()) if (m.account && !m.restoring) keys.add(playerKey(m.account)); for (const k of this.grace.keys()) keys.add(k); }
+    for (const k of keys) this.saveCarried(k);
+    await this.chain;
+  }
   private carryTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** Current carried haul for a player key: online miner's, else unexpired grace, else nothing. */
   private carriedOf(k: string, now = Date.now()): Stack[] {
     for (const m of this.miners.values()) if (m.account && playerKey(m.account) === k) return [...m.carried.values()].filter((s) => s.qty > 0).map((s) => ({ ...s }));
-    const g = this.grace.get(k); return g && now <= g.until ? g.stacks.map((s) => ({ ...s })) : [];
+    const g = this.grace.get(k); void now; return g ? g.stacks.map((s) => ({ ...s })) : [];
   }
   /** Queue an absolute snapshot of the carried haul now (ordered on the same chain as pack saves). */
   private saveCarried(k: string) {
@@ -169,9 +184,21 @@ export class MinesWorld {
     if (m.account) {
       const k = playerKey(m.account); this.names.set(k, m.account);
       const g = this.grace.get(k);
-      if (g) { this.grace.delete(k); if (now <= g.until) for (const s of g.stacks) m.carried.set(stackKey(s), { ...s }); }
+      if (g) { this.grace.delete(k); for (const s of g.stacks) m.carried.set(stackKey(s), { ...s }); }
+      else if (this.store?.loadCarried) { const r = this.restoreCarried(m, k); m.restoring = r; r.catch(() => {}); }
     }
     return m;
+  }
+  /** Resolves once a joining miner's saved haul has loaded (tests, and the join handler's ack). */
+  ready(id: string): Promise<void> { return this.miners.get(id)?.restoring ?? Promise.resolve(); }
+  /** Load the saved haul from Postgres for a signed-in join (hits wait for it). A read failure keeps the miner locked out of mining rather than letting a save overwrite the row with an empty haul. */
+  private async restoreCarried(m: Miner, k: string): Promise<void> {
+    const store = this.store!;
+    let saved: Stack[] | null = null;
+    for (let i = 0; i < 3 && !saved; i++) { try { await this.chain; saved = await store.loadCarried!(k); } catch (e) { console.error('[mines] carry load failed:', (e as Error).message); await new Promise((r) => setTimeout(r, 300 * (i + 1))); } }
+    if (!saved) throw new MineError('Could not load your backpack. Leave and rejoin the mine in a moment; your haul is safe.');
+    for (const s of saved) { const key = stackKey(s); const cur = m.carried.get(key); if (cur) cur.qty += s.qty; else m.carried.set(key, { ...s }); }
+    m.restoring = undefined;
   }
   /** Leaving without the lift: guests lose everything; signed-in players get a short reconnect grace, then the haul is gone. */
   /** Put a miner at a spawn in another cave (carried ore comes along; the EXIT lift is in the same place in every cave). */
@@ -183,13 +210,13 @@ export class MinesWorld {
   leave(id: string, now = Date.now()) {
     const m = this.miners.get(id); if (!m) return;
     if (!m.account) this.packs.delete(this.packKey(m));
-    else { const c = this.carried(id); if (c.length) this.grace.set(playerKey(m.account), { stacks: c.map((s) => ({ ...s })), until: now + CARRY_GRACE_MS }); }
-    this.miners.delete(id);
-    for (const [k, g] of this.grace) if (now > g.until) { this.grace.delete(k); this.saveCarried(k); }
+    else if (!m.restoring) { const k = playerKey(m.account); const c = this.carried(id); if (c.length) this.grace.set(k, { stacks: c.map((s) => ({ ...s })), until: Infinity }); this.miners.delete(id); this.saveCarried(k); } // a miner whose haul never loaded leaves the saved row untouched
+    this.miners.delete(id); void now;
   }
   /** Walk into the lift: everything carried moves into banked storage. Position is the server-validated one. */
   exit(id: string): { banked: Stack[]; worth: number } {
     const m = this.miners.get(id); if (!m) throw new MineError('Join the mine first.');
+    if (m.restoring) throw new MineError('Loading your backpack...');
     if (!inExit(m.x, m.y)) throw new MineError('Walk to the EXIT lift to bank your haul.');
     const banked = this.carried(id); if (!banked.length) return { banked: [], worth: 0 };
     const p = this.pack(this.packKey(m));
@@ -227,6 +254,8 @@ export class MinesWorld {
   /** One pickaxe hit. Validates reach, line of sight, swing rate and backpack room. */
   hit(id: string, nodeId: unknown, now: number): { node: number; hp: number; broke: boolean; ore?: OreId; full?: boolean; bonus?: number } {
     const m = this.miners.get(id); if (!m) throw new MineError('Join the mine first.');
+    if (this.closing) throw new MineError('The server is restarting. Your haul is saved, mine again in a moment.');
+    if (m.restoring) throw new MineError('Loading your backpack...');
     const n = typeof nodeId === 'number' ? this.caveNodes[m.cave][nodeId] : undefined;
     if (!n) throw new MineError('No rock there.');
     const lvl = this.miningLevel(m.account); const mul = miningSwingMul(lvl);
@@ -443,10 +472,11 @@ export function registerMines(io: Server, socket: Socket): void {
   const me = () => world.miners.get(socket.id);
   const packMsg = () => ({ pack: world.carried(socket.id), load: world.load(socket.id), cap: BACKPACK_CAP });
   const storeMsg = () => { const a = account(); if (a) world.beforeStorage?.(a); const q = a ? world.quote(a, Date.now()) : null; return { storage: a ? world.storage(a) : [], quote: q ? { gross: q.gross, paid: q.paid, already: q.already } : null, inMine: a ? world.inMine(a) : false, guest: !a }; };
-  socket.on('mines_join', (p: unknown, ack?: Ack) => {
+  socket.on('mines_join', async (p: unknown, ack?: Ack) => {
     let m = me();
     const want = caveOf(body(p).cave).id;
     if (want === 'coral' && !isAtResort(account())) return ack?.({ ok: false, error: 'The Coral Grotto is at Chud Resort. Fly there from Chud Hub International.' });
+    if (m && !m.account && account()) { const room = roomOf(m.cave); world.leave(socket.id); void socket.leave(room); m = undefined; } // signed in after joining as a guest: rejoin as the account so the saved haul loads
     if (m && m.cave !== want) {
       // Switching caves on the same socket (or a join that beat the old leave): move to the new cave's spawn.
       // Keeping the old miner would validate every step against the OTHER cave's walls (rubber-banding into
@@ -461,6 +491,7 @@ export function registerMines(io: Server, socket: Socket): void {
       void socket.join(roomOf(m.cave));
     }
     ensureTicker(io);
+    if (m.restoring) { try { await m.restoring; } catch (e) { return ack?.({ ok: false, error: (e as Error).message }); } if (world.miners.get(socket.id) !== m) return ack?.({ ok: false, error: 'Left the mine.' }); }
     ack?.({ ok: true, swingMs: Math.round(SWING_MS * miningSwingMul(world.miningLevel(m.account))), id: socket.id, name: m.name, guest: !m.account, cave: m.cave, x: m.x, y: m.y, z: m.z, a: m.a, nodes: world.nodesView(Date.now(), m.cave), ...packMsg() });
   });
   socket.on('mines_move', (p: unknown) => {

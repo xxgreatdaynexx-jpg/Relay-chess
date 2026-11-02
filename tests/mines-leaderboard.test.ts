@@ -8,8 +8,8 @@ import type { Stack } from '../shared/mines';
 
 const setup = () => { const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); return new Pool(); };
 /** One trip: join, carry, walk onto the EXIT lift, bank, leave. */
-const trip = (w: MinesWorld, id: string, account: string | null, stacks: Stack[]) => {
-  const m = w.join(id, account, Date.now());
+const trip = async (w: MinesWorld, id: string, account: string | null, stacks: Stack[]) => {
+  const m = w.join(id, account, Date.now()); await w.ready(id);
   for (const s of stacks) m.carried.set(`${s.type}:${s.id}`, { ...s });
   m.x = 4; m.y = 7; const r = w.exit(id); w.leave(id); return r;
 };
@@ -23,9 +23,9 @@ describe('mining leaderboard (server-side, persisted events only)', () => {
   const settle = async () => { await w.flush(); await getBank().flush(); };
 
   it('ranks chips from house sales, ore banked, and best single haul', async () => {
-    trip(w, 'a', 'Digger', [{ type: 'ore', id: 'coal', qty: 10 }]);
-    trip(w, 'a2', 'Digger', [{ type: 'ore', id: 'iron', qty: 5 }]); // worth 20: best haul
-    trip(w, 'b', 'Rocky', [{ type: 'ore', id: 'coal', qty: 30 }]);
+    await trip(w, 'a', 'Digger', [{ type: 'ore', id: 'coal', qty: 10 }]);
+    await trip(w, 'a2', 'Digger', [{ type: 'ore', id: 'iron', qty: 5 }]); // worth 20: best haul
+    await trip(w, 'b', 'Rocky', [{ type: 'ore', id: 'coal', qty: 30 }]);
     w.sell('Digger', Date.now()); await settle();
     const b = await board.board('all', Date.now(), true);
     expect(b.chips.map((r) => r.name)).toEqual(['Digger']);
@@ -35,7 +35,7 @@ describe('mining leaderboard (server-side, persisted events only)', () => {
   });
 
   it('chips come from the wallet ledger, not the in-memory bank; factory spending is not counted', async () => {
-    trip(w, 'a', 'Digger', [{ type: 'ore', id: 'iron', qty: 10 }]); w.sell('Digger', Date.now());
+    await trip(w, 'a', 'Digger', [{ type: 'ore', id: 'iron', qty: 10 }]); w.sell('Digger', Date.now());
     getBank().transfer('Digger', 500, { key: 'gift:1', game: 'mines', memo: 'not a sale' });
     await settle();
     const fresh = new MinesLeaderboard(pool); // a restarted server reads the same numbers
@@ -43,9 +43,9 @@ describe('mining leaderboard (server-side, persisted events only)', () => {
   });
 
   it('excludes QA- accounts and guests', async () => {
-    trip(w, 'q', 'QA-Tester', [{ type: 'ore', id: 'coal', qty: 50 }]); w.sell('QA-Tester', Date.now());
-    trip(w, 'g', null, [{ type: 'ore', id: 'coal', qty: 50 }]);
-    trip(w, 'a', 'Digger', [{ type: 'ore', id: 'coal', qty: 2 }]);
+    await trip(w, 'q', 'QA-Tester', [{ type: 'ore', id: 'coal', qty: 50 }]); w.sell('QA-Tester', Date.now());
+    await trip(w, 'g', null, [{ type: 'ore', id: 'coal', qty: 50 }]);
+    await trip(w, 'a', 'Digger', [{ type: 'ore', id: 'coal', qty: 2 }]);
     await settle();
     const b = await board.board('all', Date.now(), true);
     for (const list of [b.chips, b.ore, b.haul]) expect(list.some((r) => /^qa-|^guest/i.test(r.name))).toBe(false);
@@ -64,7 +64,7 @@ describe('mining leaderboard (server-side, persisted events only)', () => {
   });
 
   it('banking writes the haul row in the same transaction as the banked stacks', async () => {
-    trip(w, 'a', 'Digger', [{ type: 'ore', id: 'coal', qty: 4 }]); await settle();
+    await trip(w, 'a', 'Digger', [{ type: 'ore', id: 'coal', qty: 4 }]); await settle();
     const r = (await pool.query('SELECT ore_qty, worth FROM mine_banks')).rows;
     expect(r).toEqual([{ ore_qty: 4, worth: 4 }]);
     expect((await pool.query('SELECT qty FROM mine_items')).rows[0].qty).toBe(4);

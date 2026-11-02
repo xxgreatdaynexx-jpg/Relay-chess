@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T21:30:00-06:00', title: 'Your mining backpack is never lost', bullets: [
+    'What you carry in the mines (every cave, including the Coral Grotto) is saved as you mine and comes back when you rejoin, even after a server restart or update.',
+    'Leaving the mine without the lift no longer throws your haul away. It waits in your backpack until you come back and bank it.',
+    'When the server restarts, it now saves every backpack before it shuts down.',
+    'Stock Exchange: order buttons stay locked until the trade is done, and "You own" updates straight away instead of briefly showing the old count.',
+  ] },
   { commit: '', at: '2026-11-01T21:20:00-06:00', title: 'New item icons', bullets: [
     'Requested by Dayne: the plain coloured dots are gone. Every ore, gem, bar, factory part, crop, fish and food product now has its own drawn icon.',
     'You will see them in your mine backpack, factory storage, recipes and machines, on factory belts, and in the Market resources list. Prices and drops are unchanged.',

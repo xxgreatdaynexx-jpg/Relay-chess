@@ -129,17 +129,19 @@ function CompanyView({ ticker, onBack, onTraded }: { ticker: string; onBack: () 
   const [range, setRange] = useState<'24h' | '7d' | '30d'>('24h');
   const [d, setD] = useState<CompanyResp | null>(null);
   const [qty, setQty] = useState('1'); const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null); const { busy, run } = useMoneyAction(); /* QA r12: lock + spinner set synchronously on click, held for the whole request */
-  const load = useCallback(() => request('stk_company', { ticker, range }).then((r) => { if (r.ok) setD(r as unknown as CompanyResp); }), [ticker, range]);
+  const loadSeq = useRef(0); // QA r13: only the newest response may paint 'You own' (an older poll landing late showed a stale count)
+  const load = useCallback(() => { const seq = ++loadSeq.current; return request('stk_company', { ticker, range }).then((r) => { if (r.ok && seq === loadSeq.current) setD(r as unknown as CompanyResp); }); }, [ticker, range]);
   useEffect(() => { void load(); const iv = setInterval(() => void load(), 30_000); return () => clearInterval(iv); }, [load]);
   if (!d) return <p className="opacity-60">Loading {ticker}…</p>;
   const c = d.company; const meta = COMPANY_BY_TICKER.get(ticker)!; const pq = parseQty(qty); const shares = pq.ok ? pq.n : 0; const qtyErr = pq.ok || qty.trim() === '' ? null : pq.error; const held = d.mine?.shares ?? 0;
   const qb = shares ? quote(meta, c.price, 'buy', shares) : null, qs = shares && held > 0 ? quote(meta, c.price, 'sell', Math.min(shares, held)) : null;
   const trade = async (side: 'buy' | 'sell') => {
-    const r = await run(side, () => { setMsg(null); return request(side === 'buy' ? 'stk_buy' : 'stk_sell', { ticker, shares }); });
+    // QA r13: the lock (and spinner) stays until the refreshed holding is on screen, so 'You own' never shows the pre-trade count
+    const r = await run(side, async () => { setMsg(null); const a = await request(side === 'buy' ? 'stk_buy' : 'stk_sell', { ticker, shares }); if (a.ok && !a.replayed) await load().catch(() => {}); return a; });
     if (!r) return;
     if (r.replayed) return setMsg({ ok: true, t: ALREADY });
     const x = r as unknown as { fill: number; total: number; fee: number };
-    if (r.ok) { setMsg({ ok: true, t: `${side === 'buy' ? 'Bought' : 'Sold'} ${shares} ${ticker} at ${x.fill.toFixed(2)} — ${side === 'buy' ? 'paid' : 'received'} 🪙 ${n(x.total)} (fee ${x.fee}).` }); void load(); onTraded(); }
+    if (r.ok) { setMsg({ ok: true, t: `${side === 'buy' ? 'Bought' : 'Sold'} ${shares} ${ticker} at ${x.fill.toFixed(2)} — ${side === 'buy' ? 'paid' : 'received'} 🪙 ${n(x.total)} (fee ${x.fee}).` }); onTraded(); }
     else setMsg({ ok: false, t: r.error ?? 'Trade failed.' });
   };
   const offPct = 100 - c.playerPct;

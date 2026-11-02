@@ -165,7 +165,7 @@ describe('factory', () => {
   });
 });
 
-import { CARRY_GRACE_MS, inExit } from '../shared/mines';
+import { inExit } from '../shared/mines';
 describe('extraction', () => {
   it('mined ore is carried, only banks at the EXIT lift', () => {
     w.join('a', 'QA-Haul', 0); stand('a', 0);
@@ -186,17 +186,18 @@ describe('extraction', () => {
     w.leave('a', 1000);
     expect(w.sell('QA-Haul', 1000).paid).toBe(30);
   });
-  it('dropping without exiting keeps the haul for the grace window, then it is lost', () => {
+  it('dropping without exiting keeps the haul until the player comes back (no expiry); guests still lose theirs', () => {
     const carry = (id: string) => w.miners.get(id)!.carried.set('ore:diamond', { type: 'ore', id: 'diamond', qty: 3 });
     w.join('a', 'QA-Drop', 0); carry('a'); w.leave('a', 1000);
-    w.join('b', 'QA-Drop', 1000 + CARRY_GRACE_MS - 1);
+    w.join('b', 'QA-Drop', 1000 + 6 * 3_600_000);
     expect(w.carried('b')).toEqual([{ type: 'ore', id: 'diamond', qty: 3 }]);
     w.leave('b', 5000);
-    w.join('c', 'QA-Drop', 5000 + CARRY_GRACE_MS + 1);
-    expect(w.carried('c')).toEqual([]);
+    w.join('x', 'QA-Other', 9_999_999); w.leave('x', 9_999_999); // someone else leaving never sweeps it away
+    w.join('c', 'QA-Drop', 30 * 86_400_000);
+    expect(w.carried('c')).toEqual([{ type: 'ore', id: 'diamond', qty: 3 }]);
     expect(w.storage('QA-Drop')).toEqual([]);
     w.join('g', null, 0); w.miners.get('g')!.carried.set('ore:gold', { type: 'ore', id: 'gold', qty: 1 }); w.leave('g', 0);
-    expect(w.grace.size).toBe(0);
+    expect([...w.grace.keys()].some((k) => k.startsWith('guest:'))).toBe(false);
   });
   it('factory works from banked storage without being in the mine', () => {
     getBank().transfer('QA-Out', 0, { game: 'test' });

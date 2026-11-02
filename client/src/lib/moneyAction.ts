@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 
 /** QA r12: the spinner stays at least this long, so it's visible even when the server answers in 50 ms, and a
  *  second click of a double-click (≈ 200–300 ms later) always lands on a disabled button. */
-export const MIN_BUSY_MS = 450;
+export const MIN_BUSY_MS = 500;
 
 /**
  * One money action at a time per panel. `run(key, fn)` flips the lock and the render state in the click handler

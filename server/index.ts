@@ -62,25 +62,30 @@ httpServer.listen(port, '0.0.0.0', () => {
  * Save every table, stop taking connections, then exit. Clients auto-reconnect to the new instance.
  */
 let shuttingDown = false;
+const SHUTDOWN_STEP_MS = 5_000;
 async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`[shutdown] ${signal}: saving tables`);
   const hard = setTimeout(() => process.exit(0), 20_000);
   hard.unref();
-  try {
-    const p = getRoomPersistence();
-    if (p) { p.stop(); await p.flush(); }
-    await getChatLog().flush();
-    await getSolitro().flush();
-    await getConquest().flush();
-    await getBank().flush();
-    await getVault().flush();
-    await getFactory().flush();
-    await getMines().flush();
-  } catch (error) {
-    console.error('[shutdown] save failed:', (error as Error).message);
-  }
+  // Backpacks first (fast, most valuable), then every other table. Each step has its own timeout so one stuck store cannot block the rest.
+  getMines().closing = true;
+  const step = async (label: string, f: () => Promise<unknown> | undefined) => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    try { await Promise.race([Promise.resolve().then(f), new Promise((_, rej) => { t = setTimeout(() => rej(new Error('timed out')), SHUTDOWN_STEP_MS); })]); }
+    catch (error) { console.error(`[shutdown] ${label} save failed:`, (error as Error).message); }
+    finally { if (t) clearTimeout(t); }
+  };
+  await step('mines', () => getMines().flush());
+  await step('rooms', async () => { const p = getRoomPersistence(); if (p) { p.stop(); await p.flush(); } });
+  await step('chat', () => getChatLog().flush());
+  await step('solitro', () => getSolitro().flush());
+  await step('conquest', () => getConquest().flush());
+  await step('bank', () => getBank().flush());
+  await step('vault', () => getVault().flush());
+  await step('factory', () => getFactory().flush());
+  await step('mines (after factory)', () => getMines().flush());
   httpServer.close();
   console.log('[shutdown] done');
   process.exit(0);

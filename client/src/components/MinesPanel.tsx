@@ -237,7 +237,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
             {pack.pack.length === 0 && <li className="opacity-60">Nothing carried. Go swing at some rock.</li>}
           </ul>
           <button type="button" className="mines-sell" disabled title="Leave the mine to sell" data-testid="mines-sell">Leave the mine to sell</button>
-          <p className="mines-note">Walk back to the glowing <b>EXIT</b> lift at the entrance to bank your haul. Drop out without it and you lose what you carry (60s to reconnect).{guest ? ' Guests can mine but not sell.' : ' Sell and smelt banked ore in the 🏭 Factory tab.'}</p>
+          <p className="mines-note">Walk back to the glowing <b>EXIT</b> lift at the entrance to bank your haul. If you drop out without it, your haul is saved and waits in your backpack for next time.{guest ? ' Guests can mine but not sell.' : ' Sell and smelt banked ore in the 🏭 Factory tab.'}</p>
           <details className="mines-prices mines-board" data-testid="mines-board-panel"><summary>🏆 Leaderboard</summary><MiningLeaderboard compact you={guest ? '' : loadName()} /></details>
           <details className="mines-prices"><summary>Prices</summary>{ORE_ORDER.map((id) => <div key={id}><ItemIcon type="ore" id={id} />{ORES[id].name}: {ORES[id].price} · {ORES[id].hits} hits</div>)}</details>
         </aside>

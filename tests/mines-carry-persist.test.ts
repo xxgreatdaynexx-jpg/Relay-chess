@@ -13,19 +13,19 @@ describe('mines carried haul survives restarts', () => {
   it('SIGTERM flush writes the debounced carry, and a new server restores it on join', async () => {
     const pool = setup();
     const w = new MinesWorld(); await w.attach(new PgMineStore(pool));
-    w.join('a', 'QA-Carrier', 0); carry(w, 'a', 5);
+    w.join('a', 'QA-Carrier', 0); await w.ready('a'); carry(w, 'a', 5);
     await w.flush(); // what server/index.ts shutdown() awaits on SIGTERM
     const w2 = new MinesWorld(); await w2.attach(new PgMineStore(pool));
-    w2.join('b', 'QA-Carrier', Date.now());
+    w2.join('b', 'QA-Carrier', Date.now()); await w2.ready('b');
     expect(w2.carried('b')).toEqual([{ type: 'ore', id: 'coal', qty: 5 }]);
   });
   it('extraction banks once: no duplicate after a restart', async () => {
     const pool = setup();
     const w = new MinesWorld(); await w.attach(new PgMineStore(pool));
-    const m = w.join('a', 'QA-Carrier', 0); carry(w, 'a', 4); await w.flush();
+    const m = w.join('a', 'QA-Carrier', 0); await w.ready('a'); carry(w, 'a', 4); await w.flush();
     m.x = 4; m.y = 7; w.exit('a'); await w.flush();
     const w2 = new MinesWorld(); await w2.attach(new PgMineStore(pool));
-    w2.join('b', 'QA-Carrier', Date.now());
+    w2.join('b', 'QA-Carrier', Date.now()); await w2.ready('b');
     expect(w2.carried('b')).toEqual([]);
     expect(w2.backpack('b')).toEqual([{ type: 'ore', id: 'coal', qty: 4 }]);
     expect(total(w2, 'b')).toBe(4);
@@ -33,10 +33,10 @@ describe('mines carried haul survives restarts', () => {
   it('exit while a carry save is pending still lands exactly once', async () => {
     const pool = setup();
     const w = new MinesWorld(); await w.attach(new PgMineStore(pool));
-    const m = w.join('a', 'QA-Carrier', 0); carry(w, 'a', 3);
+    const m = w.join('a', 'QA-Carrier', 0); await w.ready('a'); carry(w, 'a', 3);
     m.x = 4; m.y = 7; w.exit('a'); await w.flush();
     const w2 = new MinesWorld(); await w2.attach(new PgMineStore(pool));
-    w2.join('b', 'QA-Carrier', Date.now());
+    w2.join('b', 'QA-Carrier', Date.now()); await w2.ready('b');
     expect(total(w2, 'b')).toBe(3);
   });
   it('guests stay in memory only', async () => {
