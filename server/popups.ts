@@ -1,0 +1,101 @@
+import pg from 'pg';
+import type { Server, Socket } from 'socket.io';
+import { randomUUID } from 'node:crypto';
+import { databaseUrl, type Queryable } from './leaderboard-store.js';
+import { signedIn } from './auth-sockets.js';
+
+/** Admin-only direct popups: stored per player (Postgres when available), delivered over socket, cleared on OK. */
+export const POPUP_TEXT_MAX = 500;
+export const POPUP_FROM_MAX = 32;
+export interface Popup { id: string; player: string; from: string; text: string; createdAt: number; ackedAt: number | null }
+
+const pkey = (n: string) => n.trim().toLowerCase();
+const roomOf = (name: string) => `w:${pkey(name)}`; // same room wallet_sub joins
+
+export class PopupStore {
+  private mem = new Map<string, Popup>();
+  db: Queryable | null = null;
+  async attach(db: Queryable): Promise<void> {
+    await db.query(`CREATE TABLE IF NOT EXISTS admin_popups (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, player TEXT NOT NULL, sender TEXT NOT NULL, body TEXT NOT NULL, created_at BIGINT NOT NULL, acked_at BIGINT)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS admin_popups_pending ON admin_popups (player_key) WHERE acked_at IS NULL`);
+    this.db = db;
+  }
+  async add(player: string, from: string, text: string): Promise<Popup> {
+    const p: Popup = { id: randomUUID(), player, from, text, createdAt: Date.now(), ackedAt: null };
+    if (this.db) await this.db.query(`INSERT INTO admin_popups (id, player_key, player, sender, body, created_at) VALUES ($1,$2,$3,$4,$5,$6)`, [p.id, pkey(player), player, from, text, p.createdAt]);
+    else this.mem.set(p.id, p);
+    return p;
+  }
+  async pending(player: string): Promise<Popup[]> {
+    if (this.db) {
+      const r = await this.db.query(`SELECT id, player, sender, body, created_at FROM admin_popups WHERE player_key=$1 AND acked_at IS NULL ORDER BY created_at`, [pkey(player)]);
+      return (r.rows as Array<Record<string, unknown>>).map((x) => ({ id: String(x.id), player: String(x.player), from: String(x.sender), text: String(x.body), createdAt: Number(x.created_at), ackedAt: null }));
+    }
+    return [...this.mem.values()].filter((p) => pkey(p.player) === pkey(player) && p.ackedAt === null).sort((a, b) => a.createdAt - b.createdAt);
+  }
+  /** Only the addressed player can acknowledge. Returns true when it flipped to delivered. */
+  async ack(player: string, id: string): Promise<boolean> {
+    if (this.db) {
+      const r = await this.db.query(`UPDATE admin_popups SET acked_at=$1 WHERE id=$2 AND player_key=$3 AND acked_at IS NULL`, [Date.now(), id, pkey(player)]);
+      return (r as { rowCount?: number }).rowCount === 1;
+    }
+    const p = this.mem.get(id);
+    if (!p || pkey(p.player) !== pkey(player) || p.ackedAt !== null) return false;
+    p.ackedAt = Date.now(); return true;
+  }
+  async status(id: string): Promise<'queued' | 'delivered' | null> {
+    if (this.db) {
+      const r = await this.db.query(`SELECT acked_at FROM admin_popups WHERE id=$1`, [id]);
+      const row = (r.rows as Array<Record<string, unknown>>)[0];
+      return row ? (row.acked_at == null ? 'queued' : 'delivered') : null;
+    }
+    const p = this.mem.get(id); return p ? (p.ackedAt === null ? 'queued' : 'delivered') : null;
+  }
+}
+
+let store = new PopupStore();
+let io: Server | null = null;
+export const getPopups = () => store;
+export function resetPopups(): PopupStore { store = new PopupStore(); return store; }
+
+export async function initPopupStorage(): Promise<void> {
+  const url = databaseUrl();
+  if (!url) { console.warn('[popups] no DATABASE_URL; popups are in-memory only'); return; }
+  try {
+    const pool = new pg.Pool({ connectionString: url, max: 1, connectionTimeoutMillis: 10_000 });
+    pool.on('error', (e) => console.error('[popups] pool error:', e.message));
+    await store.attach(pool);
+    console.log('[popups] connected to postgres');
+  } catch (e) { console.error('[popups] postgres attach failed:', (e as Error).message); }
+}
+
+const wire = (p: Popup) => ({ id: p.id, from: p.from, text: p.text, at: p.createdAt });
+
+/** Queue a popup and push it to any open tabs of that player. */
+export async function sendPopup(player: string, from: string, text: string): Promise<{ popup: Popup; online: boolean }> {
+  const popup = await store.add(player, from, text);
+  let online = false;
+  if (io) { const socks = await io.in(roomOf(player)).fetchSockets(); online = socks.length > 0; io.to(roomOf(player)).emit('admin_popup', wire(popup)); }
+  return { popup, online };
+}
+
+export function startPopups(server: Server): void { io = server; }
+
+export function registerPopups(_io: Server, socket: Socket): void {
+  const reply = (ack: unknown, res: unknown) => { if (typeof ack === 'function') (ack as (r: unknown) => void)(res); };
+  socket.on('popup_pending', async (_p: unknown, ack?: unknown) => {
+    let name = ''; try { name = signedIn(socket); } catch { return reply(ack, { ok: true, popups: [] }); }
+    socket.join(roomOf(name));
+    try { reply(ack, { ok: true, popups: (await store.pending(name)).map(wire) }); } catch { reply(ack, { ok: false, popups: [] }); }
+  });
+  socket.on('popup_ack', async (p: unknown, ack?: unknown) => {
+    const id = (p as { id?: unknown } | null)?.id;
+    let name = ''; try { name = signedIn(socket); } catch { return reply(ack, { ok: false }); }
+    if (typeof id !== 'string' || id.length > 64) return reply(ack, { ok: false });
+    try {
+      const done = await store.ack(name, id);
+      if (done) console.log(`[popups] delivered ${id} to ${name}`);
+      reply(ack, { ok: true }); if (io) io.to(roomOf(name)).emit('admin_popup_done', { id });
+    } catch { reply(ack, { ok: false }); }
+  });
+}

@@ -3,6 +3,7 @@ import express from 'express';
 import { getAccounts, nameKey } from './accounts.js';
 import { getBank, WALLET_UNAVAILABLE } from './casino-store.js';
 import { getVault } from './skins.js';
+import { getPopups, POPUP_FROM_MAX, POPUP_TEXT_MAX, sendPopup } from './popups.js';
 
 /** Constant-time token check. Rejects everything when ADMIN_GRANT_TOKEN is unset or short. */
 export function adminAuthorized(header: string | undefined, token = process.env.ADMIN_GRANT_TOKEN): boolean {
@@ -112,6 +113,33 @@ export function adminRouter(): express.Router {
     resetKeys.add(key);
     console.log(`[admin] reset-password applied: ${out.name} sessionsRevoked=${out.sessionsRevoked} friendly=${friendly === true} key=${key} memo=${JSON.stringify(memo ?? '')} from ${ip}`);
     res.json({ ok: true, player: out.name, sessionsRevoked: out.sessionsRevoked, tempPassword: out.password });
+  });
+  /** POST /api/admin/popup {name, text, from}: queue a modal popup for one player (no chips). GET ?id= for status. */
+  r.post('/api/admin/popup', express.json({ limit: '4kb' }), async (req, res) => {
+    const ip = req.ip ?? '?';
+    if (!adminAuthorized(req.get('authorization'))) {
+      console.warn(`[admin] popup rejected: unauthorized from ${ip}`);
+      return res.status(401).json({ ok: false, error: 'Unauthorized.' });
+    }
+    const { name, text, from } = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof name !== 'string' || !name.trim()) return res.status(400).json({ ok: false, error: 'name is required.' });
+    if (typeof text !== 'string' || !text.trim() || text.length > POPUP_TEXT_MAX) return res.status(400).json({ ok: false, error: `text is required (up to ${POPUP_TEXT_MAX} chars).` });
+    if (from !== undefined && (typeof from !== 'string' || !from.trim() || from.length > POPUP_FROM_MAX)) return res.status(400).json({ ok: false, error: `from must be up to ${POPUP_FROM_MAX} chars.` });
+    let row;
+    try { row = await getAccounts().store.get(nameKey(name)); } catch { return res.status(503).json({ ok: false, error: 'Accounts unavailable.' }); }
+    if (!row) return res.status(404).json({ ok: false, error: 'Unknown player.' });
+    try {
+      const { popup, online } = await sendPopup(row.name, typeof from === 'string' ? from.trim() : 'Admin', text.trim());
+      console.log(`[admin] popup queued ${popup.id} for ${row.name} from ${ip} online=${online}`);
+      res.json({ ok: true, id: popup.id, player: row.name, online, status: 'queued' });
+    } catch { res.status(503).json({ ok: false, error: 'Popup storage unavailable.' }); }
+  });
+  r.get('/api/admin/popup', async (req, res) => {
+    if (!adminAuthorized(req.get('authorization'))) return res.status(401).json({ ok: false, error: 'Unauthorized.' });
+    const id = typeof req.query.id === 'string' ? req.query.id : '';
+    const status = id ? await getPopups().status(id).catch(() => null) : null;
+    if (!status) return res.status(404).json({ ok: false, error: 'Unknown popup.' });
+    res.json({ ok: true, id, status });
   });
   return r;
 }

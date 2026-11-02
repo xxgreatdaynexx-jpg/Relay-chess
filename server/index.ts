@@ -1,4 +1,5 @@
 import { initRequests } from './requests.js';
+import { initPopupStorage } from './popups.js';
 import { initEconomy } from './economy.js';
 import { getChatLog, initChatStorage } from './chat.js';
 import { initArenaStorage } from './arena-store.js';
@@ -36,6 +37,7 @@ await initAccountStorage();
 await initRoomStorage();
 await initChatStorage();
 await initRequests();
+await initPopupStorage();
 await initEconomy();
 await initStocks();
 await initRealEstate();
