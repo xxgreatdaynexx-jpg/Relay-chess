@@ -6,7 +6,7 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-02T14:45:00-06:00', title: 'Factory: machines hold just one finished item', bullets: [
+  { commit: '', at: '2026-11-02T14:38:00-06:00', title: 'Factory: machines hold just one finished item', bullets: [
     'Every factory machine now holds at most one finished craft. Once it has one ready, it stops and waits ("backed up") until a belt, inserter or chest takes it, then starts the next one.',
     'The machine panel shows output as e.g. "0/1 ready", and says "backed up — waiting for pickup" while it is full.',
     'Machines already holding more than one keep everything: they just finish draining before they craft again. Nothing was deleted.',
