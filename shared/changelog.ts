@@ -6,24 +6,32 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-01T21:30:00-06:00', title: 'Your mining backpack is never lost', bullets: [
+  { commit: '', at: '2026-11-01T21:45:00-06:00', title: 'Cooking and the Grocery Store', bullets: [
+    'Requested by Dayne: a new Cooking skill. Open the 🍳 Kitchen from any home you own (city or resort property, farm plot, or tap your own Trailer Park trailer).',
+    '21 recipes in a recipe book that unlock as you level, from Pan-Fried Fish at level 1 to a Chocolate Soufflé at 92. They use fish from your cooler, crops from your farm or plantation, and groceries.',
+    'Cooking is a timing game: heat, flip, stir and plate. Press when the needle is in the green. Low level or sloppy timing can burn the dish.',
+    'Sell dishes from your fridge for a bit more than the ingredients are worth. Earnings are capped each day (full price for the first 500 chips of dishes, then less).',
+    'New 🛒 Grocery Store in the city (west midtown) with 30 ingredients on six shelves. Groceries and crops can also be bought and sold on the Market.',
+    'Farms have a new “🧺 To pantry” harvest button that keeps crops for cooking instead of selling them.',
+  ] },
+  { commit: '923e79b', at: '2026-11-01T21:30:00-06:00', title: 'Your mining backpack is never lost', bullets: [
     'What you carry in the mines (every cave, including the Coral Grotto) is saved as you mine and comes back when you rejoin, even after a server restart or update.',
     'Leaving the mine without the lift no longer throws your haul away. It waits in your backpack until you come back and bank it.',
     'When the server restarts, it now saves every backpack before it shuts down.',
     'Stock Exchange: order buttons stay locked until the trade is done, and "You own" updates straight away instead of briefly showing the old count.',
   ] },
-  { commit: '', at: '2026-11-01T21:20:00-06:00', title: 'New item icons', bullets: [
+    { commit: 'a05b626', at: '2026-11-01T21:20:00-06:00', title: 'New item icons', bullets: [
     'Requested by Dayne: the plain coloured dots are gone. Every ore, gem, bar, factory part, crop, fish and food product now has its own drawn icon.',
     'You will see them in your mine backpack, factory storage, recipes and machines, on factory belts, and in the Market resources list. Prices and drops are unchanged.',
   ] },
-  { commit: '', at: '2026-11-01T21:15:00-06:00', title: 'Fishing: brand-new fish models', bullets: [
+  { commit: '1692572', at: '2026-11-01T21:15:00-06:00', title: 'Fishing: brand-new fish models', bullets: [
     'Requested by Dayne: every fish you catch now has its own proper 3D model: real body shape, fins, tail, eyes, mouth and markings for each species.',
     'Bluegill and Pumpkinseed are round with their dark ear flaps, Yellow Perch has its tiger bars and orange fins, Largemouth Bass gets its big jaw and dark side stripe, Rainbow Trout its pink band and spots.',
     'Catfish have whiskers, Walleye glassy eyes and dark saddles, Northern Pike a long duck-bill snout with pale bean spots, Sturgeon bony plates, barbels and a shark tail, Golden Carp big shiny scales.',
     'Crystal Koi is now a white koi with red patches and long flowing fins (still with its blue glow). Fish swim in your hands: the body waves and the tail and fins move.',
     'Looks only: catch odds, weights, prices and XP are unchanged.',
   ] },
-  { commit: '', at: '2026-11-01T21:10:00-06:00', title: 'Skills now give real perks', bullets: [
+  { commit: 'ce24ecc', at: '2026-11-01T21:10:00-06:00', title: 'Skills now give real perks', bullets: [
     'Requested by Dayne: every skill except Gambling now helps you, a little more each level from 1 to 99. Your current perk shows under each skill in the Skills panel.',
     '⛏️ Mining: up to 35% faster swings and up to a 15% chance of double ore in every mine (Mine, Frostbite, Magma, Coral Grotto, resort). Key and chest drop odds are unchanged.',
     '⚙️ Engineering: factory machines craft up to 25% faster. 🌾 Farming: crops grow up to 25% faster.',
@@ -32,7 +40,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     '🎣 Fishing: bites come up to 25% sooner and rarer fish are a bit more likely. ♟️ Chess: up to +50 chips on your daily bonus.',
     '🍳 Cooking keeps its perks. 🎰 Gambling is bragging rights only: casino odds and payouts never change. Daily limits are unchanged.',
   ] },
-  { commit: '', at: '2026-11-01T21:00:00-06:00', title: 'Factory: 23 new recipes and crops & fish as inputs', bullets: [
+  { commit: '6742cf6', at: '2026-11-01T21:00:00-06:00', title: 'Factory: 23 new recipes and crops & fish as inputs', bullets: [
     'New 🚚 Bring in tab in the Factory: harvest every ready crop on your farm plots straight into factory storage (instead of selling them), and send your fish cooler in: raw fish become Fish Fillets, cooked dishes become Cooked Fish Portions. Plantation crops go while you are at Chud Resort.',
     'Two new machines: 🌾 Mill & Press (flour, cornmeal, sugar, berry and tropical juice, sunflower oil, cocoa, coconut milk) and 🥫 Food Line from building level 2 (wine, bread, chocolate, canned fish, fish oil, pumpkin pie, salsa, veggie soup and the Banquet Platter).',
     'New metal and jewelry chains: Steel Ingot → Ball Bearing → Electric Motor → Generator and Robot, plus the Grotto Bracelet. Ore from every cave (Mine, Frostbite, Magma, Coral Grotto) already feeds the factory.',
@@ -40,7 +48,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     'The 📜 Recipes tab now shows full chains: pick a product (or click a recipe) to see what makes it, down to raw inputs, and what it feeds. Output Chests get an "Only accept" filter.',
     'Food products give Cooking XP and everything else gives Engineering XP.',
   ] },
-  { commit: '', at: '2026-11-01T20:52:00-06:00', title: 'Countryside crop fields are farms you can buy', bullets: [
+  { commit: '48d1e91', at: '2026-11-01T20:52:00-06:00', title: 'Countryside crop fields are farms you can buy', bullets: [
     'Requested by Dayne: every striped crop field in the countryside is now a farm you can buy. Click one to open its deed.',
     'They work like the Farm district: plant, grow and harvest crops, pay daily tax, and sell back to the city for 70% of what you paid.',
     'Bigger fields cost more, priced the same way as farmland. They count toward the new price for owning more land.',
@@ -51,7 +59,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     'Cooking is a new skill (1–99) in the Skills panel and hiscores. Higher levels widen the "done" window so you burn less, and unlock rarer fish: uncommon at 10, rare at 25, epic at 45, legendary at 65.',
     'A nicely cooked dish is worth 30% more than the raw fish (a perfect one 50%); a burnt one is worth a fifth. Sell dishes at the Fishing Dock as usual, and the fish market daily limits still apply.',
   ] },
-  { commit: '', at: '2026-11-01T20:47:00-06:00', title: 'The 3D fishing game looks much better', bullets: [
+  { commit: 'aa15f8d', at: '2026-11-01T20:47:00-06:00', title: 'The 3D fishing game looks much better', bullets: [
     'Requested by Dayne: the lake follows the real Mountain Time day and night cycle, with a blue sky by day, golden dusk and a starry night with the moon low over the far shore.',
     'The water has sky reflections, sun or moon glitter, deeper colour in the middle, caustics and foam near the shore, and ripples where the bobber lands.',
     'Mist rolls over the lake, fireflies come out at night, and the reeds and trees sway. The pier has real wood planks, the rod tapers and has a reel, and fish are shaded with fins and eyes.',
