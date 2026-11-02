@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T23:05:00-06:00', title: 'The sky runs on Alberta time', bullets: [
+    'Requested by Dayne: the day and night cycle in the city, outskirts and at the lake now follows Alberta time and the real sun over Edmonton instead of Denver.',
+    'The game clock is Alberta time, UTC−6 all year with no daylight saving changes.',
+    'Expect long summer evenings (sunset after 10 PM in June, with only a short dim night) and short winter days (the sun is up from about 9:50 AM to 5:15 PM in late December).',
+    'The clock in the top left now says AB and its tooltip says Alberta time.',
+  ] },
   { commit: '', at: '2026-11-01T23:00:00-06:00', title: 'Ore icons show up again', bullets: [
     'Copper, iron, silver and gold ore icons no longer show as broken images in Factory storage, the mine pack and the Market.',
   ] },

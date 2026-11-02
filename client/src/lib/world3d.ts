@@ -101,7 +101,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
 
   const hemi = new THREE.HemisphereLight(0x7a8cff, 0x2a4a30, 1.3); scene.add(hemi);
   const moon = new THREE.DirectionalLight(0xaabbff, 1.1); moon.position.set(-30, 60, 20); scene.add(moon);
-  // Real-time sun (pt1246u): Mountain Time, Denver latitude. Shadows on high-tier only (keeps weak hardware cheap).
+  // Real-time sun (pt1246u): Alberta time, Edmonton latitude. Shadows on high-tier only (keeps weak hardware cheap).
   const sun = new THREE.DirectionalLight(0xfff4e0, 0); scene.add(sun, sun.target);
   if (tier === 'high') { renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
     const sc = sun.shadow.camera; sc.left = -PLATE * 1.6; sc.right = PLATE * 1.6; sc.top = PLATE * 1.6; sc.bottom = -PLATE * 1.6; sc.near = 10; sc.far = 900; sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.4; }

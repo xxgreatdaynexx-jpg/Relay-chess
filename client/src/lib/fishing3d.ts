@@ -89,7 +89,7 @@ export class Fishing3D {
   private hemi: THREE.HemisphereLight; private key: THREE.DirectionalLight; private lamp: THREE.PointLight; private neon: THREE.PointLight; private bulbM: THREE.MeshBasicMaterial; private signM: THREE.MeshBasicMaterial;
   private mist: THREE.Sprite[] = []; private fireflies: THREE.Points | null = null; private ffMat: THREE.ShaderMaterial | null = null;
   private lampHalo: THREE.Sprite | null = null; private todOverride: number | null = null; private skyT = 99; private ripIdx = 0;
-  /** Current sky (Mountain Time), exposed for QA. */
+  /** Current sky (Alberta time), exposed for QA. */
   sky: Sky;
   // view state
   phase: View3DPhase = 'idle'; yaw = 0; power = 0; tension = 0; private bob = new THREE.Vector3(); private target = new THREE.Vector3();
@@ -107,7 +107,7 @@ export class Fishing3D {
     try { this.todOverride = parseTod(new URLSearchParams(location.search).get('tod')); } catch { /* no location */ }
     this.sky = skyNow(new Date(), this.todOverride);
     const s = this.scene; s.fog = new THREE.FogExp2(0x0b0f2a, 0.0105);
-    // sky dome: zenith → horizon gradient from the real Mountain Time sky, sun glow + warm band near the horizon
+    // sky dome: zenith → horizon gradient from the real Alberta time sky, sun glow + warm band near the horizon
     this.skyMat = new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false,
       uniforms: { uTop: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color() }, uWarm: { value: 0 }, uDay: { value: 1 } },
       vertexShader: 'varying vec3 vD; void main(){ vD = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
@@ -269,7 +269,7 @@ export class Fishing3D {
     this.resize();
   }
   private track(...d: Array<{ dispose(): void }>) { this.disposables.push(...d); }
-  /** Real Mountain Time sky (shared with the city): sky dome, sun or moon light, water colours, lamp + neon on at dusk, mist, fireflies. */
+  /** Real Alberta time sky (shared with the city): sky dome, sun or moon light, water colours, lamp + neon on at dusk, mist, fireflies. */
   private applySky() {
     const k = skyNow(new Date(), this.todOverride); this.sky = k; const d2r = Math.PI / 180;
     const e = k.elev * d2r, a = k.az * d2r; const sunDir = new THREE.Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e));

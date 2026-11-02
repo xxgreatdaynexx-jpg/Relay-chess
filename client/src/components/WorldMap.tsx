@@ -119,7 +119,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   const worldRef = useRef<World | null>(null);
   const [mode, setMode] = useState<'3d' | '2d'>(() => (localStorage.getItem(MODE_KEY) as '3d' | '2d' | null) ?? (weakDevice() ? '2d' : '3d'));
   const [loading, setLoading] = useState(mode === '3d');
-  // Real-time Mountain Time sky (pt1246u); ?tod=HH:MM pins it for QA screenshots.
+  // Real-time Alberta time sky (pt1246u); ?tod=HH:MM pins it for QA screenshots.
   const [sky, setSky] = useState(() => skyNow(new Date(), parseTod(new URLSearchParams(location.search).get('tod'))));
   useEffect(() => { const o = parseTod(new URLSearchParams(location.search).get('tod')); const t = setInterval(() => setSky(skyNow(new Date(), o)), 20000); return () => clearInterval(t); }, []);
   const [tip, setTip] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -267,7 +267,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
           ))}
         </div>
       )}
-      <div className="world-clock" data-testid="world-clock" title={`Mountain Time · sunrise ${fmtClock(sky.sunrise)} · sunset ${fmtClock(sky.sunset)}`}><span>{sky.icon}</span><b>{fmtClock(sky.minutes)}</b><small>MT · {sky.label}</small></div>
+      <div className="world-clock" data-testid="world-clock" title={`Alberta time · sunrise ${fmtClock(sky.sunrise)} · sunset ${fmtClock(sky.sunset)}`}><span>{sky.icon}</span><b>{fmtClock(sky.minutes)}</b><small>AB · {sky.label}</small></div>
       <div className="world-title"><span>CHUD</span> HUB<small>pick a spot on the map</small></div>
       {loading && mode === '3d' && <div className="world-loading">Building the city…</div>}
       {spot && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#' + spot.color.toString(16).padStart(6, '0') }} data-testid="world-tip"><b>{spot.icon} {spot.label}</b><span>{spot.blurb}</span>{ownerLine && <span className="world-tip-owner">🏛 {ownerLine}</span>}<em>Click to enter</em></div>}
