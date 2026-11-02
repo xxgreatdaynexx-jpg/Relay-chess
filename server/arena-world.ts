@@ -664,9 +664,13 @@ export class ArenaWorld {
     if (!t || !t.alive) return [];
     if (this.friendly(byId, targetId)) return []; // no friendly fire in team modes
     if (amount > 0) amount = amount * Math.max(0.95, Math.min(1, this.armorOf(t) || 1));
+    const hpBefore = t.hp;
     const killed = applyDamage(t, now, amount);
-    if (amount > 0) t.hurtAt = now;
-    const out: ArenaEvent[] = [{ ev: 'fps_hit', data: { by: byId, target: targetId, hp: Math.round(t.hp), dmg: Math.round(amount), cause, ...(head ? { head: true } : {}) } }];
+    const dealt = hpBefore - t.hp;
+    // No damage dealt (0 / negative amount, already at 0 hp) means no fps_hit, so the client never shows a marker.
+    if (!(dealt > 0) && !killed) return [];
+    t.hurtAt = now;
+    const out: ArenaEvent[] = [{ ev: 'fps_hit', data: { by: byId, target: targetId, hp: Math.round(t.hp), dmg: Math.max(1, Math.round(dealt)), cause, ...(head ? { head: true } : {}) } }];
     if (!killed) return out;
     t.streak = 0;
     this.modes?.onDeath(t, now);

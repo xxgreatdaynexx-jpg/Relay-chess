@@ -17,7 +17,7 @@ import { getExplosionVolume, setExplosionVolume, playArenaExplosion, playHit, pl
 import { isTypingTarget, spaceRespawns } from '@/lib/respawnKey';
 import { DEATH_HOLD_MS, fitSpeed, killCardText, sampleKillCam, shotsBetween, type CamFrame, type CamShot, type KillCard } from '@/lib/killcam';
 import { importWithReload, reloadOnceForChunkError } from '@/lib/chunkReload';
-import { headHitFeedback } from '@/lib/arenaHeadFx';
+import { showsHitMarker } from '@/lib/arenaHeadFx';
 import { arenaLiveHud, kiaCanvasStrip } from '@/lib/arenaHud';
 import { drawModeHud } from '@/lib/arenaModeHud';
 import { MODE_IDS, MODE_INFO, TEAM_COLORS, TEAM_NAMES, type ModeId, type ModeView, type TeamId } from '../../../shared/arenaModes';
@@ -296,17 +296,9 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
     const ps = predictShot({ id: m.id, x: m.x, y: m.y, z: m.z, a: m.a, p: m.p, crouch: m.crouch }, spec, targets, mapRef.current, m.scoped);
     pushRays(m.weapon, [m.x, m.y, m.z], ps.rays.map((r) => [r.a, r.p, r.dist, r.hit ? 1 : 0]), now);
     pred.add(sid, ps.hits.size > 0, ps.head, now);
-    if (ps.hits.size) {
-      fx.current.hitmark = now; fx.current.hitDeny = 0;
-      playHit();
-      // Headshot ding + head damage number come from the server's verdict (onHit), never from the zero-spread
-      // prediction: the server rolls real spread, so a predicted head could land as a body hit or miss.
-      if (ps.head) headFx.predAt = now;
-      else {
-        fx.current.dmgNums.push({ v: Math.round(ps.dmg), head: false, at: now });
-        if (fx.current.dmgNums.length > 8) fx.current.dmgNums.shift();
-      }
-    }
+    // No predicted hit marker / damage number / hit sound: those only come from the server's fps_hit
+    // (onHit) when it actually dealt damage, so a marker always means real damage.
+    if (ps.hits.size && ps.head) headFx.predAt = now;
     socket.emit('fps_shoot', { a: m.a, p: m.p, x: m.x, y: m.y, z: m.z, vt, sid });
     kick();
   }
@@ -423,10 +415,11 @@ function ArenaGame({ onClose }: { onClose: () => void }) {
       const now = performance.now();
       fx.current.hitAt.set(h.target, now);
       if (h.by === me.current.id && h.target !== me.current.id) {
-        // Already shown by the prediction? Don't double up; otherwise (spread luck, splash) show it now.
-        if (now - fx.current.hitmark > 600 || fx.current.hitDeny) { fx.current.hitmark = now; fx.current.hitDeny = 0; playHit(); }
-        const n = headHitFeedback(h, now, headFx.predAt);
-        if (n) {
+        // Hit marker only on a server-confirmed hit that dealt damage (never predicted).
+        if (!showsHitMarker(h, me.current.id)) return;
+        fx.current.hitmark = now; fx.current.hitDeny = 0; playHit();
+        const n = { v: Math.round(h.dmg ?? 0), head: !!h.head };
+        {
           if (n.head) playHeadshotDing();
           fx.current.dmgNums.push({ v: n.v, head: n.head, at: now });
           if (fx.current.dmgNums.length > 8) fx.current.dmgNums.shift();

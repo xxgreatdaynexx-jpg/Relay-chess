@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T00:20:00-06:00', title: 'Arena: hit markers only on real damage', bullets: [
+    'Fixed: the hit marker, hit sound and damage number no longer show on a guess. They appear only when the server confirms your shot actually took health off an enemy.',
+    'No marker on teammates in Search & Destroy and Capture the Flag, on dead or respawning players, or on hits that did no damage.',
+  ] },
   { commit: '', at: '2026-11-02T00:16:00-06:00', title: 'Every panel can be moved', bullets: [
     'Grocery Store, Recipe Kitchen, Chud Customs, Employment Office, Daily Report and every other panel can now be dragged by its top bar (mouse or touch), stays on screen and remembers where you left it.',
   ] },
