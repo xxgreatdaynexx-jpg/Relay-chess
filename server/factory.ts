@@ -10,7 +10,7 @@ import { getFishing, FishError } from './fishing.js';
 import { requireResort } from './travel.js';
 import { playerKey } from './skins.js';
 import { MAX_BANKED_STACK, stackKey, isFood, recipeById, type Stack, type ItemType } from '../shared/mines.js';
-import { MAX_CATCHUP_MS, TICK_MS, advance, canPlace, contents, FLOOR_LEVELS, frecipe, gridOf, isItemKey, isKind, KINDS, MAX_ENTS, newState, type Dir, type Ent, type FState, type Kind, type Storage } from '../shared/factory.js';
+import { MAX_CATCHUP_MS, TICK_MS, advance, canPlace, contents, FLOOR_LEVELS, frecipe, gridOf, isItemKey, isKind, isSplitWeights, MAX_SPLIT_W, KINDS, MAX_ENTS, newState, type Dir, type Ent, type FState, type Kind, type Storage } from '../shared/factory.js';
 
 const SAVE_MS = 4000;
 const upsert = (k: string, name: string, s: FState) => ({ sql: `INSERT INTO factory_v2 (player_key, owner_name, data, updated_at) VALUES ($1,$2,$3,now()) ON CONFLICT (player_key) DO UPDATE SET owner_name = EXCLUDED.owner_name, data = EXCLUDED.data, updated_at = now()`, args: [k, name, JSON.stringify(s)] });
@@ -182,6 +182,12 @@ export class FactoryWorld {
       if (e.k !== 'chest_in' && e.k !== 'inserter' && e.k !== 'chest_out') throw new MineError('Only chests and inserters take a filter.');
       if (b.f !== null && !isItemKey(b.f)) throw new MineError('Unknown item.');
       e.f = (b.f as string | null) ?? undefined;
+    }
+    if ('w' in b) {
+      if (e.k !== 'splitter') throw new MineError('Only splitters take a ratio.');
+      if (b.w !== null && !isSplitWeights(b.w)) throw new MineError(`Ratio weights must be whole numbers 0-${MAX_SPLIT_W}, at least one above 0.`);
+      const w = b.w as [number, number, number] | null;
+      e.w = w && !(w[0] === 1 && w[1] === 1 && w[2] === 1) ? [w[0], w[1], w[2]] : undefined; e.rr = 0;
     }
     this.markNow(account!, s);
     return { id: e.id };

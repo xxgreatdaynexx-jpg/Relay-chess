@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ix, usePriceIndex } from '../lib/priceIndex';
 import { socket } from '@/lib/net';
 import { GOODS, type Stack } from '../../../shared/mines';
-import { madeBy, tierOf, usedIn, CHEST_ITEMS, DX, DY, FLOOR_LEVELS, FRECIPES, KINDS, KIND_ORDER, TICK_MS, colorOfKey, floorSize, frecipe, gridOf, cellId, nameOfKey, priceOfKey, recipeTicks, recipesFor, step, canPlace, type Dir, type Ent, type FState, type Grid, type Kind, undergroundPairs } from '../../../shared/factory';
+import { madeBy, tierOf, usedIn, CHEST_ITEMS, DX, DY, FLOOR_LEVELS, FRECIPES, KINDS, KIND_ORDER, TICK_MS, colorOfKey, floorSize, frecipe, gridOf, cellId, nameOfKey, priceOfKey, recipeTicks, recipesFor, step, canPlace, splitWeights, splitLabel, MAX_SPLIT_W, type Dir, type Ent, type FState, type Grid, type Kind, undergroundPairs } from '../../../shared/factory';
 
 export type FAck = { ok: boolean; error?: string; state?: FState | null; level?: number; storage?: Stack[]; guest?: boolean; now?: number; result?: unknown };
 type Tool = 'select' | 'remove' | Kind;
@@ -316,6 +316,7 @@ function Inspect({ e, storage, store, onEdit, onRemove, onMove, onClose }: { e: 
         <option value="">— anything —</option>
         {storage.map((k) => <option key={k} value={k}>{nameOfKey(k)}</option>)}
       </select></label>}
+      {e.k === 'splitter' && <SplitRatio e={e} onEdit={onEdit} />}
       {e.k === 'underground' && <p className="mines-note">Pairs with the next underground ahead facing the same way (2–6 tiles). Items skip everything in between.</p>}
       {e.k === 'chest_out' && <label>Only accept <select value={e.f ?? ''} onChange={(ev) => onEdit({ f: ev.target.value || null })} data-testid="fac-out-filter">
         <option value="">— anything —</option>
@@ -330,6 +331,20 @@ function Inspect({ e, storage, store, onEdit, onRemove, onMove, onClose }: { e: 
         <button type="button" onClick={onMove}>✥ Move</button>
         <button type="button" onClick={onRemove}>🧲 Pick up</button>
       </div>
+    </div>
+  );
+}
+
+const SPLIT_PRESETS: Array<[string, [number, number, number]]> = [['Even 1:1:1', [1, 1, 1]], ['L/R 1:1', [1, 0, 1]], ['2:1', [2, 0, 1]], ['3:1', [3, 0, 1]], ['Ahead 2:1:1', [1, 2, 1]]];
+function SplitRatio({ e, onEdit }: { e: Ent; onEdit: (b: object) => void }) {
+  const w = splitWeights(e); const set = (nw: [number, number, number]) => { if (nw.some((n) => n > 0)) onEdit({ w: nw }); };
+  return (
+    <div className="fac-ratio" data-testid="fac-split-ratio">
+      <div>Ratio <b data-testid="fac-split-label">{splitLabel(e)}</b> <small>(left : ahead : right)</small></div>
+      <div className="fac-iact">{SPLIT_PRESETS.map(([n, p]) => <button key={n} type="button" aria-pressed={p.join() === w.join()} onClick={() => set(p)}>{n}</button>)}</div>
+      <div className="fac-iact">{(['Left', 'Ahead', 'Right'] as const).map((n, i) => <label key={n}>{n} <input type="number" min={0} max={MAX_SPLIT_W} step={1} value={w[i]} data-testid={`fac-split-w${i}`}
+        onChange={(ev) => { const v = Math.max(0, Math.min(MAX_SPLIT_W, Math.floor(Number(ev.target.value) || 0))); const nw = [...w] as [number, number, number]; nw[i] = v; set(nw); }} style={{ width: '3em', background: 'rgba(0,0,0,.4)', border: '1px solid #666', borderRadius: 4, color: 'inherit', padding: '0 4px' }} /></label>)}</div>
+      <p className="mines-note">Items go out in this ratio, in a fixed repeating order. 0 shuts an output. If the next output is full, the item takes the next free one.</p>
     </div>
   );
 }
@@ -384,6 +399,7 @@ function render(cv: HTMLCanvasElement, c: SimRef, frac: number, t: number, u: Ui
     if (off(e)) continue;
     if (e.k === 'belt' || e.k === 'splitter' || e.k === 'underground') { if (e.it) { const back = e.m ? 1 - frac : 0; const md = e.m ? e.m - 1 : e.d; drawItem(ctx, e.it, X(e.x) + ts / 2 - DX[md] * ts * back, Y(e.y) + ts / 2 - DY[md] * ts * back, ts * 0.34); } }
   }
+  for (const e of s.ents) if (e.k === 'splitter' && !off(e)) drawSplitLabel(ctx, e, X(e.x), Y(e.y), ts);
   for (const e of s.ents) {
     if (off(e)) continue;
     const px = X(e.x), py = Y(e.y);
@@ -443,7 +459,11 @@ function drawBelt(ctx: CanvasRenderingContext2D, e: Ent, x: number, y: number, t
   ctx.restore();
   ctx.fillStyle = '#55585d'; const rail = Math.max(1, ts * 0.09);
   if (e.d % 2 === 0) { ctx.fillRect(x, y + ts * 0.06, ts, rail); ctx.fillRect(x, y + ts * 0.94 - rail, ts, rail); } else { ctx.fillRect(x + ts * 0.06, y, rail, ts); ctx.fillRect(x + ts * 0.94 - rail, y, rail, ts); }
-  if (e.k === 'splitter') { ctx.fillStyle = 'rgba(232,198,74,.85)'; for (const dd of [3, 0, 1]) arrow(ctx, x + ts / 2 + DX[(e.d + dd) % 4] * ts * 0.28, y + ts / 2 + DY[(e.d + dd) % 4] * ts * 0.28, (e.d + dd) % 4, ts * 0.13); }
+  if (e.k === 'splitter') { ctx.fillStyle = 'rgba(232,198,74,.85)'; for (const dd of [3, 0, 1]) { if (!splitWeights(e)[[3, 0, 1].indexOf(dd)]) continue; arrow(ctx, x + ts / 2 + DX[(e.d + dd) % 4] * ts * 0.28, y + ts / 2 + DY[(e.d + dd) % 4] * ts * 0.28, (e.d + dd) % 4, ts * 0.13); }
+ }
+}
+function drawSplitLabel(ctx: CanvasRenderingContext2D, e: Ent, x: number, y: number, ts: number) {
+  if (!e.w || ts < 18) return; const t = splitLabel(e); ctx.font = `bold ${Math.max(7, Math.round(ts * 0.2))}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; const tw = ctx.measureText(t).width; ctx.fillStyle = 'rgba(0,0,0,.72)'; ctx.fillRect(x + ts / 2 - tw / 2 - 2, y + ts * 0.84 - ts * 0.12, tw + 4, ts * 0.24); ctx.fillStyle = '#ffe9a0'; ctx.fillText(t, x + ts / 2, y + ts * 0.85);
 }
 const ICON_IMG = new Map<string, HTMLImageElement>();
 function iconImg(key: string) { let im = ICON_IMG.get(key); if (!im) { im = new Image(); im.src = itemIconUriKey(key); ICON_IMG.set(key, im); } return im.complete && im.naturalWidth ? im : null; }

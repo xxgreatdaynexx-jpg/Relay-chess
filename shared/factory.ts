@@ -134,9 +134,23 @@ export interface Ent {
   ib?: Record<string, number>; // machine input buffer
   ob?: number;           // machine output buffer (qty of recipe output)
   rr?: number;           // round-robin cursor
+  w?: [number, number, number]; // splitter output weights [left, ahead, right] (absent = 1:1:1)
   t?: number;            // inserter swing timer
 }
 export interface FState { v: 1; floor: number; tick: number; at: number; seen?: number; ents: Ent[]; kit: Partial<Record<Kind, number>>; seq: number; made: Record<string, number>; stored: Record<string, number>; /** Engineering perk craft-time multiplier (server-set) */ spd?: number }
+/** Splitter ratios (pt1301u): integer weight 0..MAX_SPLIT_W per output [left, ahead, right]; at least one > 0. */
+export const MAX_SPLIT_W = 9;
+export const isSplitWeights = (v: unknown): v is [number, number, number] => Array.isArray(v) && v.length === 3 && v.every((n) => Number.isInteger(n) && n >= 0 && n <= MAX_SPLIT_W) && v.some((n) => n > 0);
+export const splitWeights = (e: { w?: unknown }): [number, number, number] => (isSplitWeights(e.w) ? e.w : [1, 1, 1]);
+const SEQ = new Map<string, number[]>();
+/** Deterministic smooth weighted round-robin order of output slots (0 left, 1 ahead, 2 right). 1:1:1 -> [0,1,2]. */
+export function splitSeq(w: [number, number, number]): number[] {
+  const key = w.join(':'); let seq = SEQ.get(key); if (seq) return seq;
+  seq = []; const cur = [0, 0, 0]; const tot = w[0] + w[1] + w[2];
+  for (let n = 0; n < tot; n++) { let b = -1; for (let i = 0; i < 3; i++) { if (!w[i]) continue; cur[i] += w[i]; if (b < 0 || cur[i] > cur[b]) b = i; } cur[b] -= tot; seq.push(b); }
+  SEQ.set(key, seq); return seq;
+}
+export const splitLabel = (e: { w?: unknown }) => splitWeights(e).join(':');
 export interface Storage { get(key: string): number; add(key: string, delta: number): void }
 
 export const OUT_CAP_CRAFTS = 4;
@@ -255,13 +269,18 @@ export function step(s: FState, g: Grid, st: Storage): boolean {
       if (out) { if (out.it && !done.has(out.id) && depth < 2000) move(out, depth + 1); if (!out.it) { out.it = e.it; out.m = 0; e.it = null; done.add(out.id); ch = true; } return; }
     }
     let dirs: number[] = [e.d];
-    if (e.k === 'splitter') { const c = e.rr ?? 0; dirs = [0, 1, 2].map((i) => (e.d + [3, 0, 1][(c + i) % 3]) % 4); }
+    let adv = 0;
+    if (e.k === 'splitter') {
+      const seq = splitSeq(splitWeights(e)); const c = (e.rr ?? 0) % seq.length; adv = (c + 1) % seq.length;
+      const order: number[] = []; for (let i = 0; i < seq.length; i++) { const sl = seq[(c + i) % seq.length]; if (!order.includes(sl)) order.push(sl); }
+      dirs = order.map((sl) => (e.d + [3, 0, 1][sl]) % 4);
+    }
     for (const d of dirs) {
       const t = at(e.x + DX[d], e.y + DY[d]); if (!t) continue;
       if (isBeltish(t.k)) {
         if (t.it && !done.has(t.id) && depth < 2000) move(t, depth + 1);
-        if (!t.it && !(t.k !== 'splitter' && t.d === (d + 2) % 4) && !(t.k === 'underground' && ugOut.has(t.id) && d === t.d)) { t.it = e.it; t.m = 1 + d; e.it = null; done.add(t.id); ch = true; if (e.k === 'splitter') e.rr = ((e.rr ?? 0) + 1) % 3; return; }
-      } else if (t.k !== 'inserter' && t.k !== 'chest_in' && accepts(t, e.it, st)) { give(s, st, t, e.it); e.it = null; ch = true; if (e.k === 'splitter') e.rr = ((e.rr ?? 0) + 1) % 3; return; }
+        if (!t.it && !(t.k !== 'splitter' && t.d === (d + 2) % 4) && !(t.k === 'underground' && ugOut.has(t.id) && d === t.d)) { t.it = e.it; t.m = 1 + d; e.it = null; done.add(t.id); ch = true; if (e.k === 'splitter') e.rr = adv; return; }
+      } else if (t.k !== 'inserter' && t.k !== 'chest_in' && accepts(t, e.it, st)) { give(s, st, t, e.it); e.it = null; ch = true; if (e.k === 'splitter') e.rr = adv; return; }
     }
   };
   for (const e of s.ents) if (isBeltish(e.k)) move(e, 0);

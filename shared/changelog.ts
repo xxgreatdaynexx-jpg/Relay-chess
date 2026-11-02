@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-01T23:55:00-06:00', title: 'Factory: splitter ratios', bullets: [
+    'Requested by Dayne: click a splitter to set how it divides items between its left, ahead and right outputs — presets like 1:1, 2:1 and 3:1, or any whole-number weights from 0 to 9 (0 shuts that output).',
+    'Items go out in a fixed, evenly spread order (2:1 sends left, right, left, …). If the next output is backed up, the item takes the next free one so the line never jams.',
+    'Splitters with a custom ratio show it on the tile. Existing splitters stay at an even 1:1:1 split.',
+  ] },
   { commit: '', at: '2026-11-01T23:50:00-06:00', title: 'Kitchen: big fish give more fillets', bullets: [
     'Requested by Dayne: the kitchen now cuts each fish into fillets based on its value: 1 fillet per 8 chips (fine fish: 1 per 50), up to 12 per fish. A 99-chip fish gives 12 fillets instead of 1, and each fish recipe uses one fillet.',
     'Leftover fillets stay on your cutting board for the next dish. The recipe book shows how many fillets you have. Dish sales still count toward the 100,000-a-day cooking limit.',
