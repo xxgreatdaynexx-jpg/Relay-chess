@@ -101,7 +101,52 @@ const ORE_ICONS: Record<string, () => string> = {
   gem: () => crystals('#b04df0'),
   diamond: () => diamond('#7ff3ff'),
 };
+
+// ---------------------------------------------------------------- kitchen groceries + dishes
+const shaker = (c: string, cap = '#c8ccd2') => Pa('M8 8L16 8L17 20Q17 21 16 21L8 21Q7 21 7 20Z', c) + Pa('M8 8Q8 4 12 4Q16 4 16 8Z', cap) + C(10.5, 6, 0.5, OL, 0.3) + C(12, 5.3, 0.5, OL, 0.3) + C(13.5, 6, 0.5, OL, 0.3) + Ln('M9 10L9 18', '#fff', 0.8);
+const egg3 = () => E(7.5, 15, 3.6, 4.6, '#f6ead6') + E(16.5, 15, 3.6, 4.6, '#efd8b8') + E(12, 12, 3.8, 5, '#fbf3e6') + Ln('M10.3 9.5Q11 8 12.3 7.8', '#fff', 0.9);
+const block = (top: string, side: string, holes = false) => P('3,10 13,6 21,9 11,13', top) + P('3,10 11,13 11,19 3,16', side) + P('11,13 21,9 21,15 11,19', D(side)) + (holes ? C(6, 13.5, 0.9, D(side), 0.4) + C(15, 14, 1.1, D(side), 0.4) + C(18.5, 12.5, 0.7, D(side), 0.4) + C(12, 9.5, 0.8, D(top), 0.4) : '');
+const meat = (c: string, fat = '#f6e6dc') => Pa('M4 12Q4 5 12 5Q20 5 20 11Q20 18 13 19Q4 20 4 12Z', fat) + Pa('M6 12Q6 7 12 7Q18 7 18 11Q18 16 13 17Q6 17.5 6 12Z', c, 0.7) + Ln('M9 10Q12 9 14 11', L(c), 0.9);
+const drum = () => Pa('M4 15Q3 7 11 6Q17 6 16 12Q15 17 9 18Z', '#d88a3a') + Ln('M15 13L20 18', OL, 3.4) + Ln('M15 13L20 18', '#f4ead8', 2) + C(20.5, 18.5, 1.6, '#f4ead8', 0.8) + Ln('M6 11Q7 8 10 7.5', L('#d88a3a'), 0.9);
+const strips = () => [0, 5].map((o) => Pa(`M3 ${8 + o}Q8 ${5 + o} 12 ${8 + o}Q16 ${11 + o} 21 ${8 + o}L21 ${11 + o}Q16 ${14 + o} 12 ${11 + o}Q8 ${8 + o} 3 ${11 + o}Z`, '#c8503a', 0.9) + Ln(`M4 ${9.5 + o}Q8 ${7 + o} 12 ${9.5 + o}Q16 ${12 + o} 20 ${9.5 + o}`, '#f4d2c0', 0.8)).join('');
+const shrimp = () => Pa('M18 7Q21 13 16 18Q10 21 6 17L9 15Q12 17 14 15Q16 12 14 9Z', '#f0805a') + Ln('M15.5 9.5L18.5 8.5M16 12.5L19.5 12.5M15 15.5L18 17', D('#f0805a'), 0.8) + Pa('M6 17L3 19L4 15Z', '#e0603a', 0.8) + C(15.5, 8.4, 0.6, OL, 0.3);
+const bulb = (c: string, stem: string) => Pa('M12 4Q13 7 17 10Q20 14 17 18Q14 21 12 21Q10 21 7 18Q4 14 7 10Q11 7 12 4Z', c) + Ln('M12 4L12 1.8', stem, 1.6) + Ln('M9 12Q8.5 16 10 19M15 12Q15.5 16 14 19', D(c), 0.7);
+const lettuce = () => C(12, 13, 8, '#6ac04a') + Pa('M6 12Q9 6 12 12Q15 6 18 12Q15 16 12 13Q9 16 6 12Z', '#9ae070', 0.8) + Ln('M12 13L12 20', '#e8f8c8', 1);
+const bell = (c: string) => Pa('M6 9Q4 15 7 19Q12 22 17 19Q20 15 18 9Q15 7 12 9Q9 7 6 9Z', c) + Pa('M11 8L12 4L14 5L13 8.4Z', '#3a8a2a', 0.8) + Ln('M8 11Q7.5 15 9 17.5', L(c), 1);
+const mushroom = () => R(10, 12, 4, 8, '#f2e8d8', 1.4) + Pa('M3 13Q3 5 12 5Q21 5 21 13Z', '#b07a4a') + C(8, 9, 1, '#f2e2c8', 0.4) + C(14, 8, 1.2, '#f2e2c8', 0.4) + C(17, 11, 0.8, '#f2e2c8', 0.4);
+const lemon = () => E(12, 13, 8.5, 6, '#f6dc3a') + C(3.8, 13, 1.2, '#e8c020', 0.6) + C(20.2, 13, 1.2, '#e8c020', 0.6) + Ln('M8 10Q11 8.5 14 9', '#fff8c0', 1);
+const sprig = () => Ln('M12 21L12 6', '#3a7a2a', 1.4) + [8, 11, 14, 17].map((y, i) => E(i % 2 ? 15.5 : 8.5, y, 3.2, 1.7, '#5ab84a', 0.7)).join('') + E(12, 4.5, 1.7, 2.6, '#5ab84a', 0.7);
+const sticks = () => [0, 4, 8].map((o) => R(4 + o, 6 - o * 0.2, 3.4, 15, '#a0582a', 1.6, 0.9) + Ln(`M${5 + o} ${8 - o * 0.2}L${5 + o} ${19 - o * 0.2}`, '#c8804a', 0.6)).join('');
+const tofu = () => block('#f4f0e2', '#e8e0c8');
+const box = (c: string, mark: string) => R(5, 4, 14, 17, c, 1.2) + R(7, 8, 10, 7, '#f6efe0', 0.6, 0.7) + mark + Ln('M7 6L17 6', L(c), 1);
+const honey = () => Pa('M7 6L17 6Q19 9 19 13L19 19Q19 21 17 21L7 21Q5 21 5 19L5 13Q5 9 7 6Z', '#f0a820') + R(6, 3, 12, 3.5, '#8a5a2a', 0.8) + Ln('M8 10Q7 14 8 18', '#ffe080', 1) + R(8.5, 12, 7, 4, '#fff4d8', 0.6, 0.6);
+/** A dish on a plate: food colours piled in the middle. */
+const dish = (a: string, b: string, c2 = '#f4eee0', garnish = '#4aa03a') => E(12, 16, 10, 4.5, '#f6f6f2') + E(12, 15.5, 7, 3, '#e4e4de', 0.5) + Pa('M6 15Q6 8 12 8Q18 8 18 15Z', a) + E(10, 12, 2.8, 2, b, 0.6) + E(14.5, 13, 2.2, 1.6, c2, 0.6) + C(12, 9.6, 1, garnish, 0.5);
+const bowl = (soup: string, bits: string[]) => Pa('M3 11L21 11Q21 20 12 20Q3 20 3 11Z', '#e8e2d6') + E(12, 11, 9, 2.6, soup) + bits.map((b, i) => C(8 + i * 3, 10.8 + (i % 2) * 0.6, 0.9, b, 0.4)).join('') + Ln('M5 13Q6 17 10 18.5', '#fff', 0.9);
+const taco = () => Pa('M3 17Q3 6 12 6Q21 6 21 17Z', '#f0c050') + Pa('M5 15Q6 10 12 9Q18 10 19 15Z', '#6ac04a', 0.8) + E(12, 12, 4, 1.6, '#f29a7a', 0.6) + C(9, 11, 0.9, '#d8402a', 0.4) + C(15, 11, 0.9, '#d8402a', 0.4);
+const sandwich = () => Pa('M3 9L21 9L19 12L5 12Z', '#e8b060') + Pa('M4 12L20 12L20 14L4 14Z', '#6ac04a', 0.7) + Pa('M4 14L20 14L20 15.5L4 15.5Z', '#d8402a', 0.7) + Pa('M4 15.5L20 15.5L20 17L4 17Z', '#c8503a', 0.7) + Pa('M4 17L20 17L19 20L5 20Z', '#e8b060');
+const burger = () => Pa('M4 11Q4 4 12 4Q20 4 20 11Z', '#d8903a') + R(3.5, 11, 17, 1.6, '#6ac04a', 0.6, 0.6) + R(4, 12.6, 16, 1.4, '#f6c838', 0.4, 0.6) + R(4, 14, 16, 3, '#6a3a20', 1.2) + Pa('M4 17L20 17Q20 20 17 20L7 20Q4 20 4 17Z', '#d8903a') + C(9, 7, 0.5, '#fff3c8', 0.3) + C(14, 6.5, 0.5, '#fff3c8', 0.3);
+const fries = () => [6, 9, 12, 15].map((x, i) => R(x, 4 + (i % 2) * 2, 2.4, 10, '#f6d040', 0.4, 0.7)).join('') + Pa('M5 11L19 11L17 21L7 21Z', '#d8302a') + E(12, 11, 7, 1.4, '#b02020', 0.6) + Pa('M12 14L15 15L12 16Z', '#f6d040', 0.5);
+const tart = (fill: string, dots: string) => Pa('M3 13L21 13L19 18L5 18Z', '#d8a058') + E(12, 13, 9, 3.4, '#e8b870') + E(12, 12.6, 7, 2.4, fill, 0.6) + [8, 11, 14, 16].map((x, i) => C(x, 12.4 + (i % 2) * 0.6, 1, dots, 0.4)).join('');
+const souffle = () => Pa('M5 12L19 12L18 20L6 20Z', '#f6f6f2') + Ln('M8 12L8 20M11 12L11 20M14 12L14 20M17 12L16.5 20', '#d8d8d0', 0.6) + Pa('M5 12Q4 5 12 5Q20 5 19 12Z', '#7a4a2a') + Ln('M8 8Q11 6 14 7', '#a87050', 1) + C(12, 5, 0.8, '#f6f6f2', 0.4);
+const FOOD_ICONS: Record<string, () => string> = {
+  salt: () => shaker('#ffffff'), black_pepper: () => shaker('#4a4a4a'), chili: () => shaker('#d8402a'), curry_powder: () => shaker('#e8b020'),
+  oil: () => bottle('#e8c840', '#f6f0c8', '#3a8a2a'), soy_sauce: () => bottle('#3a1a0a', '#2a2a2a', '#d8302a'),
+  rice: () => sack('#f8f8f0', '#d0d0c0'), pasta: () => box('#3a6ac0', Ln('M9 10L15 13M9 12L15 11.5M9 13.5L15 10', '#f0d070', 1.1)),
+  eggs: egg3, milk: () => carton('#f4f8fc'), butter: () => block('#f8e890', '#f2d860'), cheese: () => block('#f6c838', '#e8b020', true),
+  chicken: drum, beef: () => meat('#c83a3a'), bacon: strips, tofu, shrimp,
+  onion: () => bulb('#c8905a', '#6a8a3a'), garlic: () => bulb('#f4efe2', '#a8b88a'), lettuce, pepper_bell: () => bell('#3aa84a'),
+  mushroom, lemon, herbs: sprig, cinnamon: sticks, tomato_sauce: () => can('#d8302a', C(12, 13, 2.6, '#f04a3a', 0.6) + Pa('M11 10.6L12 9.4L13 10.6Z', '#3a8a2a', 0.4)), honey,
+  fried_fish: () => dish('#d89a4a', '#f6dc3a', '#f4eee0'), scrambled_eggs: () => dish('#f6dc58', '#f6c838', '#fff3b0'), jam_toast: () => dish('#d8a058', '#d8304a', '#e84a5a'),
+  farm_bread: () => loaf('#b8742a'), fish_tacos: taco, carrot_soup: () => bowl('#ee8a2a', ['#4aa03a', '#f6c060', '#4aa03a']), blt: sandwich,
+  tomato_pasta: () => dish('#f0d070', '#d8402a', '#f6e8a0'), chicken_stirfry: () => dish('#f4f0e0', '#d88a3a', '#3aa84a', '#d8402a'), fish_chips: fries,
+  mushroom_risotto: () => dish('#f0e8c8', '#b07a4a', '#e8d8b0'), pineapple_rice: () => dish('#f6e8a0', '#f6c838', '#d8402a'), beef_burger: burger,
+  banana_bread: () => loaf('#8a5a2a'), garlic_shrimp: () => dish('#f6e8a0', '#f0805a', '#f0805a'), mango_salmon: () => dish('#f6f0e0', '#f29a5a', '#f6b030'),
+  coconut_curry: () => bowl('#f0b030', ['#f29a7a', '#f4f0e0', '#4aa03a']), beef_stew: () => bowl('#8a4a2a', ['#ee8a2a', '#d8b878', '#c83a3a']),
+  grape_tart: () => tart('#8a3ab0', '#6a2a90'), cacao_souffle: souffle,
+};
 const GOOD_ICONS: Record<string, () => string> = {
+  ...FOOD_ICONS,
   brick: () => brick('#a8978a'),
   copper_bar: () => ingot('#dd7a3a'), iron_bar: () => ingot('#9aa2ac'), silver_bar: () => ingot('#dfe6ee'), gold_bar: () => ingot('#ffc828'), steel: () => ingot('#6f8090'),
   glass: () => pane('#a8e0e8'),
@@ -127,7 +172,7 @@ const GOOD_ICONS: Record<string, () => string> = {
 };
 
 const svg = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">${body}</svg>`;
-const ALIAS: Record<string, string> = { crystal: 'gem' };
+const ALIAS: Record<string, string> = { crystal: 'gem', strawberry: 'crop_strawberry', wheat: 'crop_wheat', carrot: 'crop_carrot', corn: 'crop_corn', tomato: 'crop_tomato', potato: 'crop_potato', pumpkin: 'crop_pumpkin', grapes: 'crop_grapes', sunflower: 'crop_sunflower', pineapple: 'crop_pineapple', banana: 'crop_banana', mango: 'crop_mango', coconut: 'crop_coconut', cacao: 'crop_cacao' };
 const cache = new Map<string, string>();
 
 /** True when the item has a crafted icon (not the fallback crate). */

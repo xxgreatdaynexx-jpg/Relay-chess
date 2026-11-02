@@ -91,8 +91,32 @@ export class Cooking {
     const r = await this.pool.query('SELECT gross, paid FROM kitchen_daily WHERE player_key = $1 AND day = $2', [key, utcDay(this.clock())]);
     return { gross: Number(r.rows[0]?.gross ?? 0), paid: Number(r.rows[0]?.paid ?? 0) };
   }
+  /** Walked away mid-cook: a cook left on the stove past COOK_EXPIRE_MS is refunded (pantry items + fish back), never burnt.
+   *  The marker row (NOT NULL guard) makes the refund happen at most once and never after a plate. */
+  async refundStale(name: string): Promise<number> {
+    const key = keyOf(name); const now = this.clock();
+    const stale = (await this.pool.query('SELECT id, recipe FROM kitchen_cooks WHERE player_key = $1 AND done = false AND started_at <= $2', [key, now - COOK_EXPIRE_MS])).rows as Array<{ id: string; recipe: string }>;
+    let n = 0;
+    for (const c of stale) {
+      const r = recipeById(c.recipe);
+      const deltas = r ? Object.entries(r.ings).filter(([i]) => !isFishIng(i)).map(([id, q]) => ({ id, delta: q })) : [];
+      const fishIds = ((await this.pool.query('SELECT fish_id FROM kitchen_fish_used WHERE cook_id = $1', [c.id])).rows as Array<{ fish_id: string }>).map((x) => x.fish_id).filter((f) => !f.startsWith('refund:'));
+      const extra: Stmt[] = [
+        { sql: "INSERT INTO kitchen_fish_used (fish_id, cook_id) VALUES ((SELECT 'refund:' || id FROM kitchen_cooks WHERE id = $1 AND player_key = $2 AND done = false), $1)", args: [c.id, key] },
+        ...fishIds.flatMap((f) => [
+          { sql: 'DELETE FROM kitchen_fish_used WHERE fish_id = $1 AND cook_id = $2', args: [f, c.id] },
+          { sql: 'UPDATE fish_catches SET sold_at = NULL WHERE id = $1 AND player_key = $2', args: [f.replace(/^\((.*)\)$/, '$1'), key] } // pg-mem stores the scalar subquery as '(id)',
+        ]),
+        { sql: 'UPDATE kitchen_cooks SET done = true, quality = NULL, burnt = NULL WHERE id = $1', args: [c.id] },
+      ];
+      try { await this.packTx(name, deltas, extra); n++; } catch (e) { console.error('[cooking] refund failed:', (e as Error).message); }
+    }
+    return n;
+  }
+
   async view(name: string): Promise<KitchenView> {
-    const key = keyOf(name); const fish = await this.fishRows(key); const lv = await this.level(name);
+    const key = keyOf(name);
+    await this.lock(`c:${key}`, () => this.refundStale(name)).catch(() => 0); const fish = await this.fishRows(key); const lv = await this.level(name);
     const fine = (FISH_ING.fish_fine.rarities as readonly string[]);
     return {
       pantry: this.pantry(name), fish: { fish: fish.filter((f) => f.rarity !== 'junk').length, fish_fine: fish.filter((f) => fine.includes(f.rarity)).length },
@@ -123,6 +147,7 @@ export class Cooking {
     return this.lock(`c:${key}`, async () => {
       if (!(await this.hasHome(name))) throw new CookError('You need a home with a kitchen: buy a property or a farm plot, or get a Trailer Park trailer.');
       const { level } = await this.level(name); if (level < r.level) throw new CookError(`${r.label} needs Cooking level ${r.level}.`);
+      await this.refundStale(name);
       const now = this.clock();
       const busy = await this.pool.query('SELECT id FROM kitchen_cooks WHERE player_key = $1 AND done = false AND started_at > $2 LIMIT 1', [key, now - COOK_EXPIRE_MS]);
       if (busy.rows.length) throw new CookError('Finish the dish on the stove first.');
@@ -157,9 +182,10 @@ export class Cooking {
       const row = (await this.pool.query('SELECT recipe, seed, started_at FROM kitchen_cooks WHERE id = $1 AND player_key = $2 AND done = false', [cookId, key])).rows[0];
       if (!row) throw new CookError('Nothing on the stove.');
       const r = recipeById(row.recipe)!; const now = this.clock(); const elapsed = now - Number(row.started_at);
+      if (elapsed > COOK_EXPIRE_MS) { await this.refundStale(name); throw new CookError('You left it on the stove too long. Your ingredients went back to the pantry.'); }
       let q = judgeCook(Number(row.seed), r.diff, presses);
       const total = Array.isArray(presses) ? (presses as number[]).reduce((a, b) => a + (Number(b) || 0), 0) : 0;
-      if (q === null || elapsed > COOK_EXPIRE_MS || elapsed < total - 400) q = 0; // impossible / abandoned / faster than real time
+      if (q === null || elapsed < total - 400) q = 0; // impossible / faster than real time
       const { level } = await this.level(name);
       const burnt = q === 0 || randomInt(0, 1_000_000) / 1_000_000 < burnChance(level, r, q);
       const dish: Dish | null = burnt ? null : { id: randomUUID(), recipe: r.id, quality: Math.round(q * 1000) / 1000, value: dishValue(r, q), at: now };

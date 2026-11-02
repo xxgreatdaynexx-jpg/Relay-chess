@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ItemIcon } from './ItemIcon';
 import { request } from '@/lib/net';
 import { FishPanPanel } from './FishPanPanel';
 import { COOK_DAILY_MAX, RECIPES, STAPLES, STEPS, dishValue, ingInfo, needleAt, qualityLabel, type GroceryKind, type KitchenView, type Recipe, type StepSpec } from '../../../shared/cooking';
@@ -42,7 +43,7 @@ export function GroceryPanel({ onClose, onKitchen }: { onClose: () => void; onKi
       <div className="grocery-aisles">
         {SHELVES.map(([kind, title]) => <section key={kind} className="grocery-shelf"><h4>{title}</h4><ul>
           {STAPLES.filter((x) => x.kind === kind).map((x) => { const p = s?.prices[x.id] ?? x.base; return (
-            <li key={x.id}><span className="grocery-item">{x.emoji}</span><b>{x.label}</b><small>🪙 {chips(p)} · have {s ? s.state.pantry[x.id] ?? 0 : '–'}</small>
+            <li key={x.id}><span className="grocery-item"><ItemIcon type="food" id={x.id} size={28} /></span><b>{x.label}</b><small>🪙 {chips(p)} · have {s ? s.state.pantry[x.id] ?? 0 : '–'}</small>
               <button type="button" disabled={!!busy || !s} aria-busy={busy === x.id} onClick={() => void buy(x.id)} data-testid={`grocery-buy-${x.id}`}>{busy === x.id ? '…' : `🪙 ${chips(p * qty)}`}</button></li>); })}
         </ul></section>)}
       </div>
@@ -117,10 +118,10 @@ export function KitchenPanel({ me, home, onClose, onGrocery }: { me: string | nu
         <div className="kitchen-tabs"><button type="button" aria-pressed={tab === 'book'} onClick={() => setTab('book')}>📖 Recipes</button><button type="button" aria-pressed={tab === 'fridge'} onClick={() => setTab('fridge')} data-testid="kitchen-fridge-tab">🧊 Fridge ({v?.dishes.length ?? 0})</button><button type="button" onClick={() => setTab('fish')} data-testid="kitchen-fishpan-tab">🐟 Pan-fry a fish</button><button type="button" onClick={onGrocery} data-testid="kitchen-grocery">🛒 Grocery Store</button></div>
         {tab === 'book' ? <ul className="kitchen-book" data-testid="kitchen-book">{RECIPES.map((r) => {
           const locked = !v || v.level < r.level; const ok = !!v && Object.entries(r.ings).every(([id, n]) => have(v, id) >= n);
-          return <li key={r.id} className={locked ? 'locked' : ''}><span className="k-emoji">{locked ? '🔒' : r.emoji}</span><div><b>{r.label}</b> <small>lvl {r.level} · ~🪙 {chips(Math.floor(dishValue(r, 0.8) * idx))}</small>
-            <div className="k-ings">{Object.entries(r.ings).map(([id, n]) => { const inf = ingInfo(id); const h = v ? have(v, id) : 0; return <span key={id} className={h >= n ? 'ok' : 'miss'} title={inf?.label}>{inf?.emoji}{n > 1 ? `×${n}` : ''} <em>{h}</em></span>; })}</div></div>
+          return <li key={r.id} className={locked ? 'locked' : ''}><span className="k-emoji">{locked ? '🔒' : <ItemIcon type="food" id={r.id} size={28} />}</span><div><b>{r.label}</b> <small>lvl {r.level} · ~🪙 {chips(Math.floor(dishValue(r, 0.8) * idx))}</small>
+            <div className="k-ings">{Object.entries(r.ings).map(([id, n]) => { const inf = ingInfo(id); const h = v ? have(v, id) : 0; return <span key={id} className={h >= n ? 'ok' : 'miss'} title={inf?.label}>{id === 'fish' || id === 'fish_fine' ? inf?.emoji : <ItemIcon type="food" id={id} size={16} />}{n > 1 ? `×${n}` : ''} <em>{h}</em></span>; })}</div></div>
             {!locked && <button type="button" disabled={!!busy || !ok || !v?.hasHome} aria-busy={busy === r.id} onClick={() => void start(r)} data-testid={`cook-${r.id}`}>{busy === r.id ? '…' : 'Cook'}</button>}</li>; })}</ul>
-          : <div className="kitchen-fridge" data-testid="kitchen-fridge">{v?.dishes.length ? <ul>{v.dishes.map((d) => { const r = RECIPES.find((x) => x.id === d.recipe); return <li key={d.id}>{r?.emoji} {r?.label} <small>{qualityLabel(d.quality)} · 🪙 {chips(Math.floor(d.value * idx))}</small></li>; })}</ul> : <small>Nothing in the fridge yet — cook something!</small>}
+          : <div className="kitchen-fridge" data-testid="kitchen-fridge">{v?.dishes.length ? <ul>{v.dishes.map((d) => { const r = RECIPES.find((x) => x.id === d.recipe); return <li key={d.id}><ItemIcon type="food" id={d.recipe} size={20} /> {r?.label} <small>{qualityLabel(d.quality)} · 🪙 {chips(Math.floor(d.value * idx))}</small></li>; })}</ul> : <small>Nothing in the fridge yet — cook something!</small>}
             <button type="button" disabled={!!busy || !v?.dishes.length} aria-busy={busy === 'sell'} onClick={() => void sell()} data-testid="kitchen-sell">{busy === 'sell' ? 'Selling…' : 'Sell all dishes'}</button>
             <small className="opacity-70">Today: 🪙 {chips(v?.today.paid ?? 0)} earned · daily cap ~🪙 {chips(Math.floor(COOK_DAILY_MAX * idx))} (shared by recipe and pan-fried fish dishes: full price for the first 500, then half, then a tenth){left === 0 && v?.today.paid ? ' · cap reached' : ''}</small></div>}
       </>}

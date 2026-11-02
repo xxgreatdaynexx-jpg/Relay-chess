@@ -73,7 +73,21 @@ describe('kitchen server', () => {
       await expect(c.sell(me)).rejects.toThrow(/Nothing/);
     }
   });
-  it('a speed-hacked or abandoned cook burns', async () => {
+  it('walking away mid-cook refunds the ingredients and the fish (never burns)', async () => {
+    const { pool, c, bank, adv } = await setup(); const me = 'QA-Cook3'; bank.account(me);
+    await pool.query("INSERT INTO properties VALUES ('h:3', 'qa-cook3')"); await pool.query("INSERT INTO fish_catches VALUES ('k1','qa-cook3','QA-Cook3','perch',300,8,1,NULL)");
+    for (const item of ['oil', 'salt', 'lemon']) await c.buy(me, item, 1, `nonce3-${item}-01`);
+    const { cook } = await c.start(me, 'fried_fish');
+    expect(getMines().stackQty(me, 'food', 'oil')).toBe(0);
+    adv(10 * 60_000);
+    await expect(c.finish(me, cook.id, perfect(cook.seed, cook.diff))).rejects.toThrow(/pantry/);
+    for (const item of ['oil', 'salt', 'lemon']) expect(getMines().stackQty(me, 'food', item)).toBe(1);
+    expect((await pool.query("SELECT sold_at FROM fish_catches WHERE id = 'k1'")).rows[0].sold_at).toBeNull();
+    await expect(c.finish(me, cook.id, perfect(cook.seed, cook.diff))).rejects.toThrow(/stove/);
+    expect(await c.refundStale(me)).toBe(0); // only once
+    const again = await c.start(me, 'fried_fish'); expect(again.cook.id).not.toBe(cook.id);
+  });
+  it('a speed-hacked cook burns', async () => {
     const { pool, c, bank } = await setup(); const me = 'QA-Cook2'; bank.account(me);
     await pool.query("INSERT INTO properties VALUES ('h:2', 'qa-cook2')"); await pool.query("INSERT INTO fish_catches VALUES ('g1','qa-cook2','QA-Cook2','perch',300,8,1,NULL)");
     for (const item of ['oil', 'salt', 'lemon']) await c.buy(me, item, 1, `nonce2-${item}-01`);
@@ -93,5 +107,13 @@ describe('Grocery Store venue', async () => {
     const { houses, patches } = cityFill(7); for (const h of [...houses, ...patches]) expect(obbOverlap(h, g, 1)).toBe(false);
     for (const r of Object.values(RESERVED_VENUES)) expect(g.x > r.x0 && g.x < r.x1 && g.z > r.z0 && g.z < r.z1).toBe(false);
     for (const m of Object.values(MINE_SITES)) expect(Math.hypot(m.x - g.x, m.z - g.z)).toBeGreaterThan(40);
+  });
+});
+
+describe('kitchen icons', async () => {
+  const { hasItemIcon } = await import('../shared/itemIcons');
+  it('every grocery, crop ingredient and dish has a crafted icon', () => {
+    for (const s of STAPLES) expect(hasItemIcon('food', s.id)).toBe(true);
+    for (const r of RECIPES) { expect(hasItemIcon('food', r.id)).toBe(true); for (const id of Object.keys(r.ings)) if (id !== 'fish' && id !== 'fish_fine') expect(hasItemIcon('food', id)).toBe(true); }
   });
 });

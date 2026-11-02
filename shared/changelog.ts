@@ -14,6 +14,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     'The fish pan from earlier tonight is now the 🐟 Pan-fry a fish tab in the same Kitchen, still opened from 🏠 My home. Your Cooking level, XP and any pan-fried dishes you already have are kept.',
     'All cooking sales now share one daily cap: pan-fried fish dishes (still sold at the Fishing Dock) and recipe dishes count toward the same limit. Raw fish keep their own fish-market limit.',
     'New 🛒 Grocery Store in the city (west midtown) with 30 ingredients on six shelves. Groceries and crops can also be bought and sold on the Market.',
+    'Walked away from the stove? Nothing burns: after 2 minutes the ingredients and fish go back to your pantry and cooler. Groceries and dishes have their own drawn icons.',
     'Farms have a new “🧺 To pantry” harvest button that keeps crops for cooking instead of selling them.',
   ] },
   { commit: '923e79b', at: '2026-11-01T21:30:00-06:00', title: 'Your mining backpack is never lost', bullets: [
