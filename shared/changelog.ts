@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T01:00:00-06:00', title: 'Magma Depths: lava no longer blocks tunnels', bullets: [
+    'Three lava pools in Magma Depths sat across tunnels and forced long detours or dead ends. They now sit in side pockets, so every tunnel can be walked straight through.',
+  ] },
   { commit: '', at: '2026-11-02T00:45:00-06:00', title: 'Arena: kills pay a little more than a death costs', bullets: [
     'Requested by Dayne: a kill now pays the victim\'s spawn stake plus a house kill bonus of +20% of it (at least 1 chip). At base prices: pistol +10 +2, SMG +15 +3, shotgun +20 +4, sniper and AR-15 +25 +5, rocket +35 +7.',
     'The kill feed and the chip pop-up show it like "+25 +5 bonus", and the end-of-match earned total includes it.',
