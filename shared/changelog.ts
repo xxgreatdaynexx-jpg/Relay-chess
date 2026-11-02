@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T01:50:00-06:00', title: 'Request board: Scheduled status', bullets: [
+    'Requests can now be marked Scheduled with a planned date, shown as a purple badge like "Scheduled · Nov 7". Scheduled requests sort right after In progress.',
+  ] },
   { commit: '', at: '2026-11-02T01:45:00-06:00', title: 'Mines: Tool Shop tools buffed', bullets: [
     'Every Tool Shop upgrade got a big buff, same prices: Steel Pickaxe 1.2× swing speed and +50% ore, Hand Drill 1.4× and +100%, Power Drill 1.6× and +200%, Jackhammer 1.8× and +350%, Plasma Cutter 2× and +500%.',
     'Ore bonus is extra ore per rock on average: +350% means 3 guaranteed extras plus a 50% shot at a 4th (backpack space permitting). Stacks with your Mining level; swings can now reach 4× base speed. Key and chest drops and daily sell caps are unchanged.',

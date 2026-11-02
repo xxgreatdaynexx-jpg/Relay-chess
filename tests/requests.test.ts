@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RequestBoard } from '../server/requests';
-import { PER_DAY, similarTitles, validateRequest } from '../shared/requests';
+import { NEXT_STATUS, PER_DAY, parseScheduledFor, similarTitles, statusBadge, validateRequest } from '../shared/requests';
 import { CHANGELOG } from '../shared/changelog';
 
 const body = (title: string, category = 'Arena', details = '') => ({ title, details, category });
@@ -55,5 +55,19 @@ describe('change requests', () => {
   });
   it('suggests similar titles', () => {
     expect(similarTitles('sniper zoom', [{ title: 'Add sniper scope zoom' }, { title: 'Bigger mines' }])).toHaveLength(1);
+  });
+  it('supports a scheduled status with an optional date', () => {
+    expect(NEXT_STATUS.open).toContain('scheduled'); expect(NEXT_STATUS.approved).toContain('scheduled');
+    expect(NEXT_STATUS.scheduled).toEqual(['approved', 'in_progress', 'declined']);
+    expect(parseScheduledFor('2026-11-07')).toBe('2026-11-07'); expect(parseScheduledFor('2026-02-30')).toBeNull(); expect(parseScheduledFor('Nov 7')).toBeNull();
+    const b = new RequestBoard(); const sub = b.submit('liam', body('PVP hockey mode'), 1); if (!sub.ok) throw new Error();
+    const id = sub.request.id;
+    const bad = b.setStatus(id, 'scheduled', undefined, undefined, 2, 'soon'); expect(bad.ok).toBe(false);
+    const ok = b.setStatus(id, 'scheduled', undefined, undefined, 3, '2026-11-07'); expect(ok.ok && ok.request.scheduledFor).toBe('2026-11-07');
+    expect(ok.ok && statusBadge(ok.request)).toBe('Scheduled · Nov 7');
+    expect(statusBadge({ status: 'scheduled' })).toBe('Scheduled');
+    expect(b.setStatus(id, 'shipped', undefined, CHANGELOG[0].title).ok).toBe(false);
+    const ip = b.setStatus(id, 'in_progress', undefined, undefined, 4); expect(ip.ok && ip.request.scheduledFor).toBeUndefined();
+    expect(b.setStatus(id, 'scheduled', undefined, undefined, 5, '2026-11-07').ok).toBe(false);
   });
 });

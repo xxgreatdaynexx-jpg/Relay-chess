@@ -1703,7 +1703,7 @@ html, body { overflow-x: clip; }
 .req-vote { display: flex; flex-direction: column; align-items: center; min-width: 38px; padding: 3px; border-radius: 6px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.18); color: inherit; font-size: 11px; }
 .req-vote.on { background: #e8c26a; color: #1b1d2e; }
 .req-st { padding: 0 6px; border-radius: 999px; background: rgba(255,255,255,.12); }
-.req-st-approved { background: #2d6a4f; } .req-st-declined { background: #6a2d2d; } .req-st-in_progress { background: #8a6d1d; } .req-st-shipped { background: #1d5a8a; }
+.req-st-approved { background: #2d6a4f; } .req-st-declined { background: #6a2d2d; } .req-st-in_progress { background: #8a6d1d; } .req-st-scheduled { background: #5b3d8a; } .req-st-shipped { background: #1d5a8a; }
 
 /* Car dealership + driving (cars) */
 .world-speedo { position: absolute; left: 12px; bottom: 56px; padding: 6px 12px; border-radius: 10px; background: rgba(12,14,24,.8); font: 700 20px system-ui; }

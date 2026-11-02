@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { loadAuth } from '../lib/auth';
 import { chatTimeFull, chatTimeLabel } from '../../../shared/chatTime';
-import { DETAILS_MAX, PER_DAY, REQUEST_CATEGORIES, REQUEST_STATUSES, STATUS_LABEL, TITLE_MAX, similarTitles, validateRequest, type PublicRequest, type RequestStatus } from '../../../shared/requests';
+import { DETAILS_MAX, PER_DAY, REQUEST_CATEGORIES, REQUEST_STATUSES, STATUS_LABEL, TITLE_MAX, statusBadge, similarTitles, validateRequest, type PublicRequest, type RequestStatus } from '../../../shared/requests';
 
 const authHeaders = (): Record<string, string> => { const t = loadAuth()?.token; return t ? { 'X-Relay-Session': t } : {}; };
 const isGuest = (n?: string) => !n || /^guest/i.test(n.trim());
@@ -89,7 +89,7 @@ function RequestsPanel({ onClose }: { onClose: () => void }) {
           <li key={r.id} data-testid="requests-item">
             <button type="button" className={`req-vote${r.voted ? ' on' : ''}`} disabled={!canPost || r.status === 'shipped' || r.status === 'declined'} onClick={() => vote(r.id)} aria-pressed={!!r.voted} aria-label={`Upvote, ${r.votes} votes`} data-testid="requests-vote">▲<b>{r.votes}</b></button>
             <div>
-              <div className="chat-clog-meta"><span className={`req-st req-st-${r.status}`}>{STATUS_LABEL[r.status]}</span><span>{r.category} · {r.author}</span><time className="chat-dim" dateTime={new Date(r.createdAt).toISOString()} title={chatTimeFull(r.createdAt)} data-testid="requests-date">{chatTimeLabel(r.createdAt)}</time></div>
+              <div className="chat-clog-meta"><span className={`req-st req-st-${r.status}`} data-testid="requests-status">{statusBadge(r)}</span><span>{r.category} · {r.author}</span><time className="chat-dim" dateTime={new Date(r.createdAt).toISOString()} title={chatTimeFull(r.createdAt)} data-testid="requests-date">{chatTimeLabel(r.createdAt)}</time></div>
               <b>{r.title}</b>
               {r.details && <p>{r.details}</p>}
               {r.note && <p className="req-note">Dev note: {r.note}</p>}

@@ -8,15 +8,16 @@ import { adminAuthorized } from './admin.js';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { isQaName } from '../shared/qa.js';
 import { CHANGELOG } from '../shared/changelog.js';
-import { NEXT_STATUS, PER_DAY, REQUEST_STATUSES, validateRequest, type PublicRequest, type RequestCategory, type RequestStatus } from '../shared/requests.js';
+import { NEXT_STATUS, PER_DAY, parseScheduledFor, REQUEST_STATUSES, validateRequest, type PublicRequest, type RequestCategory, type RequestStatus } from '../shared/requests.js';
 
 export const REQUESTS_MIGRATION = `CREATE TABLE IF NOT EXISTS change_requests (
   id INTEGER PRIMARY KEY, title TEXT NOT NULL, details TEXT NOT NULL, category TEXT NOT NULL, author TEXT NOT NULL,
   author_key TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open', note TEXT, changelog TEXT,
   created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL);
-CREATE TABLE IF NOT EXISTS change_request_votes (request_id INTEGER NOT NULL, voter_key TEXT NOT NULL, PRIMARY KEY (request_id, voter_key))`;
+CREATE TABLE IF NOT EXISTS change_request_votes (request_id INTEGER NOT NULL, voter_key TEXT NOT NULL, PRIMARY KEY (request_id, voter_key));
+ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS scheduled_for TEXT`;
 
-interface Row { id: number; title: string; details: string; category: RequestCategory; author: string; authorKey: string; status: RequestStatus; note?: string; changelog?: string; createdAt: number; updatedAt: number; voters: Set<string> }
+interface Row { id: number; title: string; details: string; category: RequestCategory; author: string; authorKey: string; status: RequestStatus; note?: string; changelog?: string; scheduledFor?: string; createdAt: number; updatedAt: number; voters: Set<string> }
 export type Sort = 'top' | 'new' | 'old' | 'status';
 const DAY = 86_400_000;
 
@@ -32,16 +33,16 @@ export class RequestBoard {
     for (const stmt of REQUESTS_MIGRATION.split(';')) await this.db.query(stmt);
     const { rows } = await this.db.query('SELECT * FROM change_requests');
     this.rows.clear();
-    for (const r of rows) this.rows.set(r.id, { id: r.id, title: r.title, details: r.details, category: r.category, author: r.author, authorKey: r.author_key, status: r.status, note: r.note ?? undefined, changelog: r.changelog ?? undefined, createdAt: +new Date(r.created_at), updatedAt: +new Date(r.updated_at), voters: new Set() });
+    for (const r of rows) this.rows.set(r.id, { id: r.id, title: r.title, details: r.details, category: r.category, author: r.author, authorKey: r.author_key, status: r.status, note: r.note ?? undefined, changelog: r.changelog ?? undefined, scheduledFor: r.scheduled_for ?? undefined, createdAt: +new Date(r.created_at), updatedAt: +new Date(r.updated_at), voters: new Set() });
     const v = await this.db.query('SELECT request_id, voter_key FROM change_request_votes');
     for (const x of v.rows) this.rows.get(x.request_id)?.voters.add(x.voter_key);
     this.nextId = Math.max(0, ...this.rows.keys()) + 1;
     this.offline = false;
   }
   private save(r: Row) {
-    void this.db?.query(`INSERT INTO change_requests (id,title,details,category,author,author_key,status,note,changelog,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-      ON CONFLICT (id) DO UPDATE SET status=EXCLUDED.status, note=EXCLUDED.note, changelog=EXCLUDED.changelog, updated_at=EXCLUDED.updated_at`,
-      [r.id, r.title, r.details, r.category, r.author, r.authorKey, r.status, r.note ?? null, r.changelog ?? null, new Date(r.createdAt), new Date(r.updatedAt)]).catch((e) => console.error('[requests] save failed:', (e as Error).message));
+    void this.db?.query(`INSERT INTO change_requests (id,title,details,category,author,author_key,status,note,changelog,created_at,updated_at,scheduled_for) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      ON CONFLICT (id) DO UPDATE SET status=EXCLUDED.status, note=EXCLUDED.note, changelog=EXCLUDED.changelog, updated_at=EXCLUDED.updated_at, scheduled_for=EXCLUDED.scheduled_for`,
+      [r.id, r.title, r.details, r.category, r.author, r.authorKey, r.status, r.note ?? null, r.changelog ?? null, new Date(r.createdAt), new Date(r.updatedAt), r.scheduledFor ?? null]).catch((e) => console.error('[requests] save failed:', (e as Error).message));
   }
 
   submit(author: string, body: unknown, now = Date.now()): { ok: true; request: PublicRequest } | { ok: false; error: string } {
@@ -68,7 +69,7 @@ export class RequestBoard {
     return { ok: true, votes: r.voters.size, voted: on };
   }
 
-  setStatus(id: number, status: unknown, note: unknown, changelog: unknown, now = Date.now()): { ok: true; request: PublicRequest } | { ok: false; error: string; code: number } {
+  setStatus(id: number, status: unknown, note: unknown, changelog: unknown, now = Date.now(), scheduledFor?: unknown): { ok: true; request: PublicRequest } | { ok: false; error: string; code: number } {
     if (this.offline) return { ok: false, error: REQUESTS_OFFLINE_MSG, code: 503 };
     const r = this.rows.get(id); if (!r) return { ok: false, error: 'No such request.', code: 404 };
     const s = REQUEST_STATUSES.find((x) => x === status); if (!s) return { ok: false, error: `status must be one of ${REQUEST_STATUSES.join(', ')}.`, code: 400 };
@@ -81,7 +82,12 @@ export class RequestBoard {
       if (!e) return { ok: false, error: 'No CHANGELOG entry matches that commit/title.', code: 400 };
       link = e.commit || e.title;
     }
-    r.status = s; r.updatedAt = now; if (typeof note === 'string') r.note = note.trim() || undefined; if (link) r.changelog = link;
+    let sched: string | undefined;
+    if (s === 'scheduled' && scheduledFor !== undefined && scheduledFor !== null && scheduledFor !== '') {
+      const d = parseScheduledFor(scheduledFor); if (!d) return { ok: false, error: 'scheduledFor must be a date like 2026-11-07.', code: 400 };
+      sched = d;
+    }
+    r.status = s; r.updatedAt = now; r.scheduledFor = s === 'scheduled' ? sched : undefined; if (typeof note === 'string') r.note = note.trim() || undefined; if (link) r.changelog = link;
     this.save(r);
     return { ok: true, request: this.view(r) };
   }
@@ -89,7 +95,7 @@ export class RequestBoard {
   list(opts: { sort?: unknown; status?: unknown; viewer?: string | null; includeQa?: boolean }): PublicRequest[] {
     const vk = opts.viewer ? nameKey(opts.viewer) : null;
     const st = REQUEST_STATUSES.find((x) => x === opts.status);
-    const order = { in_progress: 0, approved: 1, open: 2, shipped: 3, declined: 4 } as const;
+    const order = { in_progress: 0, scheduled: 1, approved: 2, open: 3, shipped: 4, declined: 5 } as const;
     const sort = (['top', 'new', 'old', 'status'] as const).find((x) => x === opts.sort) ?? 'top';
     const newest = (a: Row, b: Row) => b.createdAt - a.createdAt || b.id - a.id;
     return [...this.rows.values()]
@@ -98,7 +104,7 @@ export class RequestBoard {
       .map((r) => this.view(r, vk));
   }
   private view(r: Row, vk?: string | null): PublicRequest {
-    return { id: r.id, title: r.title, details: r.details, category: r.category, author: r.author, status: r.status, votes: r.voters.size, ...(vk ? { voted: r.voters.has(vk) } : {}), createdAt: r.createdAt, updatedAt: r.updatedAt, ...(r.note ? { note: r.note } : {}), ...(r.changelog ? { changelog: r.changelog } : {}), ...(isQaName(r.author) ? { qa: true } : {}) };
+    return { id: r.id, title: r.title, details: r.details, category: r.category, author: r.author, status: r.status, votes: r.voters.size, ...(vk ? { voted: r.voters.has(vk) } : {}), createdAt: r.createdAt, updatedAt: r.updatedAt, ...(r.note ? { note: r.note } : {}), ...(r.changelog ? { changelog: r.changelog } : {}), ...(r.scheduledFor ? { scheduledFor: r.scheduledFor } : {}), ...(isQaName(r.author) ? { qa: true } : {}) };
   }
 }
 
@@ -145,8 +151,8 @@ export function requestsRouter(): express.Router {
   });
   r.post('/api/admin/requests/:id/status', json, (req, res) => {
     if (!adminAuthorized(req.get('authorization'))) return res.status(401).json({ ok: false, error: 'Unauthorized.' });
-    const { status, note, changelog } = (req.body ?? {}) as Record<string, unknown>;
-    const out = getRequests().setStatus(Number(req.params.id), status, note, changelog);
+    const { status, note, changelog, scheduledFor } = (req.body ?? {}) as Record<string, unknown>;
+    const out = getRequests().setStatus(Number(req.params.id), status, note, changelog, Date.now(), scheduledFor);
     if (!out.ok) return res.status(out.code).json({ ok: false, error: out.error });
     console.log(`[admin] request #${req.params.id} -> ${String(status)} from ${req.ip ?? '?'}`);
     res.json(out);
