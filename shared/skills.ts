@@ -13,7 +13,7 @@ export const SKILLS = [
   { id: 'gambling', label: 'Gambling', icon: '🎰', how: 'Bets placed at the casino (by stake).' },
   { id: 'chess', label: 'Chess', icon: '♟️', how: 'Finish chess or checkers games against people. Higher levels add a few chips to your daily bonus.' },
   { id: 'fishing', label: 'Fishing', icon: '🎣', how: 'Land fish at the Fishing Dock (rarer catches give more XP). Higher levels get quicker bites and rarer fish.' },
-  { id: 'cooking', label: 'Cooking', icon: '🍳', how: 'Cook fish from your cooler in your home Kitchen (perfect dishes give more XP).' },
+  { id: 'cooking', label: 'Cooking', icon: '🍳', how: 'Cook recipes or pan-fry fish in the kitchen of any home you own (harder dishes give more XP).' },
   { id: 'property', label: 'Property', icon: '🏠', how: 'Buy real estate and pay property tax. Higher levels pay less property tax.' },
 ] as const;
 export type SkillId = (typeof SKILLS)[number]['id'];

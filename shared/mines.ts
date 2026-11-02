@@ -3,8 +3,10 @@
  * Items are generic stacks { type, id, qty } (type 'ore' now; 'bar' / 'good' for the Factory), never skins.
  */
 import type { ArenaMap, Solid } from './arenaMaps.js';
+import { foodInfo } from './cooking.js';
 
-export type ItemType = 'ore' | 'bar' | 'good';
+/** 'food' = cooking ingredients (groceries + crops harvested to the pantry): Market-tradeable, never house-sold. */
+export type ItemType = 'ore' | 'bar' | 'good' | 'food';
 export type OreId = 'stone' | 'coal' | 'copper' | 'iron' | 'silver' | 'gold' | 'gem' | 'diamond';
 export interface OreDef { id: OreId; name: string; hits: number; respawnMs: number; /** house price per unit, in chips (fractional: stone is 1 chip per 10) */ price: number; color: string; weight: number; minDepth: number; spawnWeight: number }
 
@@ -302,13 +304,14 @@ export const RECIPES: Recipe[] = [
 export const recipeById = (id: unknown) => RECIPES.find((r) => r.id === id);
 /** House price of one unit of any item (0 = not sellable). */
 export function priceOf(s: { type: ItemType; id: string }): number {
+  if (s.type === 'food') return 0;
   if (s.type === 'ore') return isOre(s.id) ? ORES[s.id].price : 0;
   const d = GOODS[s.id]; return d && d.type === s.type ? d.price : 0;
 }
-export function nameOf(s: { type: ItemType; id: string }): string { return s.type === 'ore' && isOre(s.id) ? ORES[s.id].name : GOODS[s.id]?.name ?? s.id; }
 /** Can the house buy this as-is? (Raw factory imports can't be: craft them first.) */
 export const sellable = (s: { type: ItemType; id: string }) => priceOf(s) > 0 && !(s.type !== 'ore' && GOODS[s.id]?.raw);
 export const isFood = (s: { type: ItemType; id: string }) => s.type !== 'ore' && !!GOODS[s.id]?.food;
+export function nameOf(s: { type: ItemType; id: string }): string { if (s.type === 'food') return foodInfo(s.id)?.label ?? s.id; return s.type === 'ore' && isOre(s.id) ? ORES[s.id].name : GOODS[s.id]?.name ?? s.id; }
 export const inputValue = (r: Recipe) => r.in.reduce((t, i) => t + i.qty * priceOf(i), 0);
 
 /** Factory levels: chips to reach the level, slots per machine (parallel jobs) and max batch size. */

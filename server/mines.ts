@@ -386,11 +386,17 @@ export class MinesWorld {
   /** Weight of an account's stored pack (same units as BACKPACK_CAP). */
   packLoad(account: string): number { let t = 0; for (const s of this.pack(playerKey(account)).values()) t += s.qty * (s.type === 'ore' && isOre(s.id) ? ORES[s.id].weight : 1); return t; }
   adjustStack(account: string, type: ItemType, id: string, delta: number, extra: Array<{ sql: string; args: unknown[] }> = [], fallback?: (rows: Array<{ sql: string; args: unknown[] }>) => void, opts: { after?: Promise<unknown>; bind?: (p: Promise<unknown>) => void; onFail?: (e: Error) => void } = {}): boolean {
+    return this.adjustStacks(account, [{ type, id, delta }], extra, fallback, opts);
+  }
+  /** Several stack deltas, all-or-nothing (false and no change if any withdrawal would go negative), one transaction. */
+  adjustStacks(account: string, deltas: Array<{ type: ItemType; id: string; delta: number }>, extra: Array<{ sql: string; args: unknown[] }> = [], fallback?: (rows: Array<{ sql: string; args: unknown[] }>) => void, opts: { after?: Promise<unknown>; bind?: (p: Promise<unknown>) => void; onFail?: (e: Error) => void } = {}): boolean {
     this.beforeStorage?.(account);
-    const k = playerKey(account); const p = this.pack(k); const key = stackKey({ type, id });
-    const cur = p.get(key)?.qty ?? 0;
-    if (!Number.isInteger(delta) || cur + delta < 0) return false;
-    if (cur + delta === 0) p.delete(key); else p.set(key, { type, id, qty: cur + delta });
+    const k = playerKey(account); const p = this.pack(k);
+    const sum = new Map<string, { type: ItemType; id: string; delta: number }>();
+    for (const d of deltas) { if (!Number.isInteger(d.delta)) return false; const key = stackKey(d); const c = sum.get(key); if (c) c.delta += d.delta; else sum.set(key, { ...d }); }
+    for (const [key, d] of sum) if ((p.get(key)?.qty ?? 0) + d.delta < 0) return false;
+    const apply = (sign: number) => { for (const [key, d] of sum) { const n = (p.get(key)?.qty ?? 0) + sign * d.delta; if (n <= 0) p.delete(key); else p.set(key, { type: d.type, id: d.id, qty: n }); } };
+    apply(1);
     this.names.set(k, account.trim());
     if (!this.store) { fallback?.(extra); return true; }
     const snap = [...p.values()].map((s) => ({ ...s })); const store = this.store;
@@ -400,9 +406,8 @@ export class MinesWorld {
     this.chain = job.catch((e) => {
       console.error('[mines] save failed:', (e as Error).message);
       if (!opts.onFail) return;
-      // Nothing committed: undo the in-memory delta so memory matches the DB, then let the caller undo its side.
-      const now = p.get(key)?.qty ?? 0; const back = now - delta;
-      if (back <= 0) p.delete(key); else p.set(key, { type, id, qty: back });
+      // Nothing committed: undo the in-memory deltas so memory matches the DB, then let the caller undo its side.
+      apply(-1);
       try { opts.onFail(e as Error); } catch (err) { console.error('[mines] rollback failed:', (err as Error).message); }
     });
     opts.bind?.(this.chain);

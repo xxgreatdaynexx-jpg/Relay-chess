@@ -7,6 +7,7 @@ import { getVault, playerKey, RuleError, type ItemVault, type Stmt, type StoredI
 import { getMines } from './mines.js';
 import { bootAttach, reconnectMsg, setBootState } from './boot-retry.js';
 import { databaseUrl } from './leaderboard-store.js';
+import { isFood } from '../shared/cooking.js';
 import { GOODS, MAX_BANKED_STACK, ORES, ORE_ORDER, isOre, nameOf as stackName, type ItemType } from '../shared/mines.js';
 import { CASE_NAME, KEY_NAME, SKINS, SKIN_BY_ID, type SkinItem } from '../shared/skins.js';
 import { skillLevel } from './skills.js';
@@ -31,7 +32,7 @@ export const MAX_STACK_QTY = 100_000;
 /** Stackable listing (Mines ore / bars / goods from mine_items): unit price, partial buys. Escrowed qty leaves the seller's pack. */
 export interface StackListing { id: string; seller: string; sellerName: string; type: ItemType; itemId: string; qty: number; total: number; unit: number; status: 'active' | 'sold' | 'cancelled'; at: number; closedAt?: number; sold: number }
 export const stackWhat = (type: string, id: string) => `stack:${type}:${id}`;
-export const isStackable = (type: unknown, id: unknown): type is ItemType => typeof id === 'string' && ((type === 'ore' && isOre(id)) || ((type === 'bar' || type === 'good') && GOODS[id]?.type === type));
+export const isStackable = (type: unknown, id: unknown): type is ItemType => typeof id === 'string' && ((type === 'food' && isFood(id)) || (type === 'ore' && isOre(id)) || ((type === 'bar' || type === 'good') && GOODS[id]?.type === type));
 export const MARKET_MIGRATION = [
   `CREATE TABLE IF NOT EXISTS market_listings (id TEXT PRIMARY KEY, seller_key TEXT NOT NULL, seller_name TEXT NOT NULL, item_id TEXT NOT NULL, price INTEGER NOT NULL, status TEXT NOT NULL, buyer_key TEXT, created_at BIGINT NOT NULL, closed_at BIGINT)`,
   `CREATE TABLE IF NOT EXISTS market_sales (id TEXT PRIMARY KEY, listing_id TEXT NOT NULL UNIQUE, item_id TEXT NOT NULL, what TEXT NOT NULL, price INTEGER NOT NULL, fee INTEGER NOT NULL, seller_key TEXT NOT NULL, buyer_key TEXT NOT NULL, at BIGINT NOT NULL)`,
