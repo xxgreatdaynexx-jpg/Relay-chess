@@ -88,8 +88,8 @@ export async function buildPlayerProfile(raw: string, deps: ProfileDeps) {
   const skins = { total: skinItems.length, cases: items.filter((i) => i.kind === 'case').length, keys: items.filter((i) => i.kind === 'key').length, highlights };
 
   const skills = await safe(() => getSkills().profile(name), null);
-  const fish = (await row1('SELECT species, weight_g, value, caught_at FROM fish_catches WHERE player_key = $1 ORDER BY weight_g DESC LIMIT 1'))[0];
-  const biggestFish = fish ? { species: String(fish.species), label: fishById(fish.species)?.label ?? String(fish.species), emoji: fishById(fish.species)?.emoji ?? '🐟', grams: Number(fish.weight_g), value: Number(fish.value), at: Number(new Date(fish.caught_at as string)) } : null;
+  const fish = (await row1('SELECT species, weight_g, value, caught_at FROM fish_catches WHERE player_key = $1 ORDER BY weight_g DESC, caught_at ASC, id ASC LIMIT 1'))[0];
+  const biggestFish = fish ? { species: String(fish.species), label: fishById(fish.species)?.label ?? String(fish.species), emoji: fishById(fish.species)?.emoji ?? '🐟', grams: Number(fish.weight_g), value: Number(fish.value), at: Number(fish.caught_at) } : null;
   const since = (await row1('SELECT created_at FROM players WHERE player_key = $1'))[0];
 
   return {

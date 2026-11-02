@@ -91,6 +91,22 @@ describe('fishing server', () => {
   });
 });
 
+describe('biggest catches order (pt1267u)', () => {
+  it('sorts heaviest first by grams (not value, not as strings), ties to the earliest catch', async () => {
+    const { f, pool } = await setup();
+    const ins = (id: string, name: string, sp: string, g: number, v: number, at: number) => pool.query("INSERT INTO fish_catches (id, player_key, name, species, weight_g, value, caught_at) VALUES ($1,$2,$3,$4,$5,$6,$7)", [id, name.toLowerCase(), name, sp, g, v, at]);
+    await ins('a', 'Light', 'bass', 900, 500, 1); // pricey but light
+    await ins('b', 'Heavy', 'perch', 10000, 5, 2); // '10000' < '900' as a string
+    await ins('c', 'TieLate', 'perch', 2000, 9, 30);
+    await ins('d', 'TieEarly', 'perch', 2000, 1, 20);
+    await ins('e', 'Heavy', 'bass', 950, 999, 3); // Heavy's lighter fish never shows
+    const board = await f.board();
+    expect(board.map((x) => x.name)).toEqual(['Heavy', 'TieEarly', 'TieLate', 'Light']);
+    expect(board.map((x) => x.grams)).toEqual([10000, 2000, 2000, 900]);
+    expect((await f.view('Heavy')).best).toEqual({ fish: 'perch', grams: 10000 });
+  });
+});
+
 describe('lake + dock', () => {
   const o = outskirts();
   const roadHits = (x: number, z: number, m: number) => RURAL_ROADS.some((pl) => pl.some((p, i) => { if (!i) return false; const [ax, az] = pl[i - 1]!, [bx, bz] = p; const L2 = (bx - ax) ** 2 + (bz - az) ** 2; const t = Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (z - az) * (bz - az)) / L2)); return Math.hypot(x - ax - t * (bx - ax), z - az - t * (bz - az)) < RURAL_ROAD_W / 2 + m; }));
