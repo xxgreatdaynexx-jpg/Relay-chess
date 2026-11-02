@@ -49,8 +49,7 @@ export const MINER_BIAS: Record<MinerCave, MinerBias> = {
   mine:  { share: 0.6,  ores: { iron: 0.55, stone: 0.28, gold: 0.17 }, label: 'Mostly iron, rock & gold' },
   // crystal is 5x silver's price, so it stays the rare half; the diamond jackpot leaves the remainder to pay for it
   frost: { share: 0.6,  ores: { silver: 0.95, gem: 0.05 }, restScale: { diamond: 0 }, label: 'Mostly silver & crystal' },
-  // coal/copper are cheap, so some of the remainder's stone is trimmed to keep value/hour level
-  magma: { share: 0.65, ores: { coal: 0.5, copper: 0.5 }, restScale: { stone: 2 / 3 }, label: 'Mostly coal & copper' },
+  magma: { share: 0.65, ores: { coal: 0.5, copper: 0.5 }, label: 'Mostly coal & copper' },
 };
 /** The normal (unbiased) node mix: ore -> fraction of nodes. */
 export function caveMix(c: MinerCave): Partial<Record<OreId, number>> {
@@ -66,7 +65,9 @@ export function minerTable(c: MinerCave): Array<[OreId, number]> {
   const rt = rest.reduce((a, [, w]) => a + w, 0);
   return [...Object.entries(b.ores).map(([o, w]): [OreId, number] => [o as OreId, b.share * (w ?? 0) / bt]), ...rest.map(([o, w]): [OreId, number] => [o, (1 - b.share) * w / rt])];
 }
-/** Old unbiased per-ore value (kept for the balance check). */
+/** Worker value per ore before any bias (pt1350u baseline, from the old node mix): the economy anchor the tests hold to. */
+export const WORKER_EV_BEFORE: Record<MinerCave, number> = { mine: 7.297, frost: 6.665, magma: 2.674 };
+/** Per-ore value of the cave's current node mix. */
 export const unbiasedItemEv = (c: MinerCave) => CAVES[c].nodes.reduce((a, n) => a + ORES[n.ore].price, 0) / CAVES[c].nodes.length;
 export const minerItemEv = (c: MinerCave) => evOf(minerTable(c));
 export interface JobDef { id: string; kind: WorkerKind; cave?: MinerCave; label: string; emoji: string; everyMs: number; itemEv: number; blurb: string; /** miners: 'Mostly …' gather bias */ bias?: string }

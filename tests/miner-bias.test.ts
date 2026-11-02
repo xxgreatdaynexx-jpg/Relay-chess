@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MINER_CAVES, MINER_BIAS, minerTable, minerItemEv, unbiasedItemEv, rollOre, JOBS, itemsPerDay, isMinerCave } from '../shared/employment';
+import { MINER_CAVES, MINER_BIAS, minerTable, minerItemEv, unbiasedItemEv, WORKER_EV_BEFORE, rollOre, JOBS, itemsPerDay, isMinerCave } from '../shared/employment';
 import { ORES, isOre, type OreId } from '../shared/mines';
 
 function seeded(s: number) { return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; }
@@ -19,7 +19,7 @@ describe('miner gather bias (pt1350u)', () => {
     const b = MINER_BIAS.mine.ores; expect(b.gold!).toBeLessThan(b.iron!); expect(b.gold!).toBeLessThan(b.stone!);
   });
   it('keeps value per hour within 2% of the old mix, items per hour unchanged', () => {
-    for (const c of MINER_CAVES) expect(Math.abs(minerItemEv(c) - unbiasedItemEv(c)) / unbiasedItemEv(c)).toBeLessThan(0.02);
+    for (const c of MINER_CAVES) { expect(Math.abs(minerItemEv(c) - WORKER_EV_BEFORE[c]) / WORKER_EV_BEFORE[c]).toBeLessThan(0.02); expect(unbiasedItemEv(c)).toBeGreaterThan(0); }
     for (const j of JOBS.filter((x) => x.kind === 'miner')) expect(itemsPerDay(j)).toBe(144);
   });
   it('rolls match the table', () => {

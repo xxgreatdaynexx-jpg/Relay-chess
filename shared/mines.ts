@@ -90,10 +90,10 @@ export type CaveId = 'mine' | 'frost' | 'magma' | 'coral';
 export interface CaveTheme { sky: string; fog: string; ambient: string; wall: string; floor: string; lamp: string; hazard: 'lava' | 'ice' | null }
 export interface CaveDef { id: CaveId; name: string; blurb: string; rows: string[]; depthX: number[]; bias: Partial<Record<OreId, number>>; density: number; theme: CaveTheme }
 export const CAVE_DEFS: CaveDef[] = [
-  { id: 'mine', name: 'The Mine', blurb: 'The classic shaft: one long tunnel, deeper is richer.', rows: ROWS, depthX: DEPTH_X, bias: {}, density: 0.42,
+  { id: 'mine', name: 'The Mine', blurb: 'The classic shaft: one long tunnel, mostly iron, rock and gold. Deeper is richer.', rows: ROWS, depthX: DEPTH_X, bias: { stone: 0.4, coal: 0.98, copper: 0.85, iron: 4, silver: 1.15, gold: 4.6, gem: 1.5, diamond: 0.75 }, density: 0.42,
     theme: { sky: '#07070a', fog: '#0b0a0d', ambient: '#8a7a6a', wall: '#9a8f86', floor: '#6e6258', lamp: '#ff9a40', hazard: null } },
-  { id: 'frost', name: 'Frostbite Caverns', blurb: 'Wide frozen halls and ice pillars. Rich in iron, silver and crystal, light on coal.', depthX: [0, 12, 24, 36], density: 0.4,
-    bias: { coal: 0.5, copper: 0.7, iron: 1.4, silver: 1.8, gold: 0.6, gem: 1.3 },
+  { id: 'frost', name: 'Frostbite Caverns', blurb: 'Wide frozen halls and ice pillars. Mostly silver, with crystal; light on coal.', depthX: [0, 12, 24, 36], density: 0.4,
+    bias: { stone: 0.2, coal: 0.1, copper: 0.15, iron: 1.8, silver: 9.35, gold: 0.5, gem: 1.04, diamond: 0.05 },
     theme: { sky: '#060b14', fog: '#0a1626', ambient: '#8fb4d8', wall: '#9ec4dc', floor: '#c8dceb', lamp: '#8fd8ff', hazard: 'ice' },
     rows: [
       '##################################################',
@@ -109,8 +109,8 @@ export const CAVE_DEFS: CaveDef[] = [
       '####......................~~...........~......####',
       '##################################################',
     ] },
-  { id: 'magma', name: 'Magma Depths', blurb: 'A winding, narrow lava tube with pools you can’t cross. Heavy on coal and gold.', depthX: [0, 12, 24, 36], density: 0.46,
-    bias: { stone: 0.7, coal: 1.8, silver: 0.5, gold: 1.6, gem: 0.8, diamond: 1.2 },
+  { id: 'magma', name: 'Magma Depths', blurb: 'A winding, narrow lava tube with pools you can’t cross. Mostly coal and copper.', depthX: [0, 12, 24, 36], density: 0.46,
+    bias: { stone: 0.35, coal: 1.85, copper: 2.6, iron: 0.8, silver: 0.85, gold: 1.15, gem: 0.43, diamond: 1.65 },
     theme: { sky: '#120604', fog: '#1a0703', ambient: '#a86a4a', wall: '#5a3a32', floor: '#3a2622', lamp: '#ff6a20', hazard: 'lava' },
     rows: [
       '##################################################',

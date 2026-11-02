@@ -26,9 +26,12 @@ describe('three caves (pt1201u)', () => {
     expect(new Set(CAVE_DEFS.map((c) => c.rows.join('\n'))).size).toBe(CAVE_DEFS.length);
     expect(new Set(CAVE_DEFS.map((c) => c.theme.sky)).size).toBe(CAVE_DEFS.length);
   });
-  it('payout potential stays within 15% of The Mine', () => {
-    const base = caveValueRate(CAVES.mine);
-    for (const id of ids) expect(Math.abs(caveValueRate(CAVES[id]) / base - 1), id).toBeLessThan(0.15);
+  it('average value per placed node stays within 3% of before the pt1354u spawn bias (Coral untouched)', () => {
+    // pt1354u: the theoretical caveValueRate() no longer tracks the hashed node layout once biases are this strong,
+    // so balance is held on the real nodes players mine (house value per node).
+    const BEFORE: Record<string, number> = { mine: 7.297, frost: 6.665, magma: 2.674, coral: 7.085 };
+    for (const id of ids) { const n = CAVES[id].nodes; const v = n.reduce((a, x) => a + ORES[x.ore].price, 0) / n.length;
+      expect(Math.abs(v / BEFORE[id]! - 1), id).toBeLessThan(id === 'coral' ? 0.001 : 0.03); expect(caveValueRate(CAVES[id]), id).toBeGreaterThan(0); }
   });
   it('miners join a chosen cave and mine that cave’s rock only', () => {
     w.join('f', 'QA-Frost', 0, 'frost'); w.join('m', 'QA-Main', 0); w.join('x', 'QA-Bad', 0, 'nope');

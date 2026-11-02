@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T13:50:00-06:00', title: 'Caves now match their miners', bullets: [
+    'The ore you find by hand now follows each mine\'s speciality, the same mix your hired miners bring back: The Mine is mostly iron, rock & gold (gold the rarest of the three), Frostbite Caverns mostly silver with some crystal, and Magma Depths mostly coal & copper.',
+    'About 60–65% of rocks in each cave are its signature ores. Average value per rock is about the same as before, and the cave layouts, rock spots, respawn times, key and chest drops and Tool Shop bonuses are unchanged. Coral Grotto is unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T13:45:00-06:00', title: 'Poker: high-stakes Hold\'em tables', bullets: [
     'The Hold\'em lobby now lets you pick a table: Classic (blinds 5/10, buy-in 100–1,000) or the new High Stakes 5K (blinds 25/50), High Stakes 10K (50/100), High Roller 25K (125/250) and High Roller 100K (500/1,000).',
     'Each high-stakes table has a fixed buy-in of 5K, 10K, 25K or 100K chips, and you can only sit down if you have the full buy-in. Blinds keep the same ratio as the classic table.',
@@ -39,17 +43,17 @@ export const CHANGELOG: ChangelogEntry[] = [
     'Total extra ore from tool plus Mining skill is now capped at +250%.',
     'Swing speeds (1.2× to 2×), prices, key and chest drops and ownership are unchanged.',
   ] },
-  { commit: '', at: '2026-11-02T12:50:00-06:00', title: 'Hired miners specialise by mine', bullets: [
-    'Employment Office miners now bring back mostly their mine\'s signature ores: Magma Depths is mostly coal & copper, Frostbite mostly silver & crystal, and the main Mine mostly iron, rock & gold (gold the rarest of the three).',
-    'About 60–65% of picks are those ores; the rest still come from the mine\'s normal mix. Items per hour, value per hour, wages and hire fees stay the same. The hire list shows each mine\'s bias.',
-    'Mining by hand is unchanged.',
-  ] },
   { commit: '', at: '2026-11-02T12:48:00-06:00', title: 'Market: easier resource selling + Resource Inventory', bullets: [
     'Market → Resources now shows "Your storage" as a grid of icon tiles with how many you have, the current lowest listing and the last sale. Tap one to open a sell card.',
     'The sell card has a quantity slider with 25%, 50% and Max, a unit price prefilled to undercut the lowest listing by 1 (with Match lowest, Undercut and Last sale buttons), a clear "You receive X after the 5% fee" line and how your price compares to the house. A new My listings section lets you cancel your listings.',
     'The top bar\'s Inventory is now two buttons: 🎒 Skin Inventory (your skins, as before) and 📦 Resource Inventory (ores, bars, goods, fish, crops and dishes with quantities and a Sell on Market button that opens the sell card).',
     'The Market has a clear ← Back button: it takes you back to the Skin or Resource Inventory you came from, or to the city if you opened the Market directly.',
     'Fees, prices and how listings work are unchanged.',
+  ] },
+  { commit: '', at: '2026-11-02T12:35:00-06:00', title: 'Hired miners specialise by mine', bullets: [
+    'Employment Office miners now bring back mostly their mine\'s signature ores: Magma Depths is mostly coal & copper, Frostbite mostly silver & crystal, and the main Mine mostly iron, rock & gold (gold the rarest of the three).',
+    'About 60–65% of picks are those ores; the rest still come from the mine\'s normal mix. Items per hour, value per hour, wages and hire fees stay the same. The hire list shows each mine\'s bias.',
+    'Mining by hand is unchanged.',
   ] },
   { commit: '', at: '2026-11-02T12:35:00-06:00', title: 'Mines: Tool Shop tools wear your pickaxe skin', bullets: [
     'Your equipped pickaxe skin now shows on whichever Tool Shop tool you hold: the Steel Pickaxe head, the drill housings, the Jackhammer body and the Plasma Cutter barrel get the skin\'s pattern, colours and finish, in first person and on other miners.',

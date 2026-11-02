@@ -10,7 +10,7 @@ import { Farm } from '../server/farm';
 import { MACHINES, RESORT_MACHINE_IDS, MACHINE_IDS, BUY_BONUS_MULT, mulberry32, simulate, simulateBuy, playRound, isMachineId } from '../shared/video-slots';
 import { RESORT_TICKET_BASE, resortLots, resortPlots, TROPICAL_CROPS, RESORT_TYPES, resortFarmPrice, RESORT_X0, RESORT_X1, RESORT_Z0, RESORT_Z1, SHORE_Z, RESORT_SPOTS } from '../shared/resort';
 import { properties, propertyById, BASE_PRICE, taxOf, sellBackOf } from '../shared/realEstate';
-import { CAVES, CELL, caveValueRate, inExit } from '../shared/mines';
+import { CAVES, CELL, ORES, caveValueRate, inExit } from '../shared/mines';
 import { canStand } from '../shared/fps';
 import { obbOverlap } from '../shared/worldLayout';
 
@@ -110,7 +110,8 @@ describe('Coral Grotto', () => {
     // every ore node sits next to a reachable floor cell
     for (const n of CAVES.coral.nodes) { const cx = Math.floor(n.x / CELL), cy = Math.floor(n.y / CELL); expect([[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => seen.has(`${cx + dx!},${cy + dy!}`)), `node ${n.id}`).toBe(true); }
     for (const s of map.spawns) expect(inExit(s[0], s[1])).toBe(true);
-    const ratio = caveValueRate(CAVES.coral) / caveValueRate(CAVES.mine); console.log('[coral-payout]', ratio.toFixed(3));
+    const nv = (id: 'coral' | 'mine') => CAVES[id].nodes.reduce((a, n) => a + ORES[n.ore].price, 0) / CAVES[id].nodes.length; // pt1354u: real placed nodes, not the theoretical rate
+    expect(caveValueRate(CAVES.coral)).toBeGreaterThan(0); const ratio = nv('coral') / nv('mine'); console.log('[coral-payout]', ratio.toFixed(3));
     expect(Math.abs(ratio - 1)).toBeLessThan(0.15);
   });
 });
