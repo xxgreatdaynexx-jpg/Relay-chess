@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T19:59:00-06:00', title: 'Farm: crops sell for 3% less', bullets: [
+    'Harvest prices for every farm and plantation crop are down about 3%, for example Potatoes 120 → 115, Pumpkins 190 → 185, Grapes 330 → 320, Sunflowers 560 → 545 and Cacao 540 → 525.',
+    'The cheapest crops round to the same price. Seed costs, grow times, yields, ripe windows, Fertilizer and factory/food product prices are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T19:19:00-06:00', title: 'Factory: crafted goods sell for 5% more', bullets: [
     'House prices for everything the factory makes are up about 5%, for example Silver Ring 100 → 105, Crystal Ring 290 → 305, Engine 1,190 → 1,250, Mining Drill 2,040 → 2,140, Sunflower Oil 615 → 645 and Banquet Platter 950 → 1,000.',
     'The cheapest items (Stone Brick, Glass, Screw, Glass Lens) round to the same price. Raw ore, crop and fish prices, recipes, timers, output caps and existing market listings are unchanged.',

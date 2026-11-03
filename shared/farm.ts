@@ -25,13 +25,13 @@ const M = 60_000, H = 60 * M;
 export const CROPS: Crop[] = [
   { id: 'strawberry', label: 'Strawberries', emoji: '🍓', seed: 5, grow: 2 * M, sell: 8, color: 0xd84a5a },
   { id: 'wheat', label: 'Wheat', emoji: '🌾', seed: 10, grow: 5 * M, sell: 16, color: 0xd8b860 },
-  { id: 'carrot', label: 'Carrots', emoji: '🥕', seed: 15, grow: 15 * M, sell: 27, color: 0xe08a3a },
-  { id: 'corn', label: 'Corn', emoji: '🌽', seed: 25, grow: 30 * M, sell: 46, color: 0xe8d050 },
-  { id: 'tomato', label: 'Tomatoes', emoji: '🍅', seed: 40, grow: 1 * H, sell: 76, color: 0xd8443a },
-  { id: 'potato', label: 'Potatoes', emoji: '🥔', seed: 60, grow: 2 * H, sell: 120, color: 0xb08a5a },
-  { id: 'pumpkin', label: 'Pumpkins', emoji: '🎃', seed: 90, grow: 4 * H, sell: 190, color: 0xe0782a },
-  { id: 'grapes', label: 'Grapes', emoji: '🍇', seed: 150, grow: 8 * H, sell: 330, color: 0x8a4ac0 },
-  { id: 'sunflower', label: 'Sunflowers', emoji: '🌻', seed: 250, grow: 12 * H, sell: 560, color: 0xf0c830 },
+  { id: 'carrot', label: 'Carrots', emoji: '🥕', seed: 15, grow: 15 * M, sell: 26, color: 0xe08a3a },
+  { id: 'corn', label: 'Corn', emoji: '🌽', seed: 25, grow: 30 * M, sell: 45, color: 0xe8d050 },
+  { id: 'tomato', label: 'Tomatoes', emoji: '🍅', seed: 40, grow: 1 * H, sell: 74, color: 0xd8443a },
+  { id: 'potato', label: 'Potatoes', emoji: '🥔', seed: 60, grow: 2 * H, sell: 115, color: 0xb08a5a },
+  { id: 'pumpkin', label: 'Pumpkins', emoji: '🎃', seed: 90, grow: 4 * H, sell: 185, color: 0xe0782a },
+  { id: 'grapes', label: 'Grapes', emoji: '🍇', seed: 150, grow: 8 * H, sell: 320, color: 0x8a4ac0 },
+  { id: 'sunflower', label: 'Sunflowers', emoji: '🌻', seed: 250, grow: 12 * H, sell: 545, color: 0xf0c830 },
 ];
 export const cropById = (id: unknown) => CROPS.find((c) => c.id === id) ?? TROPICAL_CROPS.find((c) => c.id === id);
 export type Stage = 'growing' | 'ready' | 'withered';
