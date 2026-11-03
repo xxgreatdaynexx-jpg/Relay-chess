@@ -30,6 +30,7 @@ import { WalletButton } from '@/components/WalletButton';
 import { AdminPopup } from '@/components/AdminPopup';
 import { SkillsPanel } from '@/components/Skills';
 import { TournamentScreen } from '@/components/TournamentScreen';
+import { NightlyEventBanner } from '@/components/NightlyEventBanner';
 import { TournamentPing } from '@/components/TournamentPing';
 import { tournamentFromLocation } from '@/lib/tournament';
 import { clearSession, clearSpectate, codeFromLocation, loadSession, loadSpectate } from '@/lib/session';
@@ -203,6 +204,7 @@ export function App() {
   return (
     <>
       <TopTabs />
+      <NightlyEventBanner />
       <VolumeControl />
       <div className="app-panels">
         <BlackjackPanel />

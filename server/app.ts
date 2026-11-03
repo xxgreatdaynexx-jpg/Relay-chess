@@ -1,4 +1,5 @@
 import { getBank } from './casino-store.js';
+import { nightlyView } from './nightly-event.js';
 import { getAccounts } from './accounts.js';
 import { validateSettings } from '../shared/settings.js';
 import { getChessStats } from './chess-stats.js';
@@ -73,6 +74,7 @@ export async function createApp(): Promise<AppContext> {
     const chipDb = bank.status === 'ok' ? 'ok' : bank.status === 'memory' ? 'memory' : bank.status;
     res.status(bank.ready ? 200 : 503).json({ ok: bank.ready, chipDb, ...(bank.ready ? {} : { error: bank.lastError ?? 'connecting' }), subsystems: bootStates(), build: buildInfo() });
   });
+  app.get('/api/nightly-event', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(nightlyView()); });
   app.get('/api/build', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(buildInfo()); });
 
   app.get('/api/hiscores', async (req, res) => {

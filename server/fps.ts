@@ -1,4 +1,5 @@
 import type { Server, Socket } from 'socket.io';
+import { payNightlyBonus } from './nightly-event.js';
 import { px, priceIndex } from './price-index.js';
 import { affordableLoadout, isKnifeOnly, killBonus, KILL_BONUS_REPEAT, KILL_BONUS_WINDOW_MS, guestName, MOVE_SPEED, spawnCost, TICK_HZ, WEAPONS } from '../shared/fps.js';
 import { randomUUID } from 'node:crypto';
@@ -155,7 +156,7 @@ export function finishMatch(r: MatchResult): void {
   const winner = r.players.find((p) => p.id === r.winnerId) as { account?: string } | undefined;
   if (winner?.account && humans.size >= PRIZE_MIN_HUMANS) {
     const prize = px(MATCH_PRIZE);
-    getBank().transfer(winner.account, prize, { key: `arena-win:${r.matchId}`, game: 'arena', memo: 'WINNER' });
+    if (getBank().transfer(winner.account, prize, { key: `arena-win:${r.matchId}`, game: 'arena', memo: 'WINNER' })) payNightlyBonus(winner.account, 'arena', prize, `arena:${r.matchId}`); // nightly 10x (#35)
     r.prize = { name: winner.account, amount: prize };
   }
   for (const fn of matchEndHooks) { try { fn(r); } catch (e) { console.error('arena match-end hook', e); } }
