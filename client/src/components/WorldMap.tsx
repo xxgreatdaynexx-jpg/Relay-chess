@@ -19,7 +19,7 @@ import { socket } from '@/lib/net';
 import { indexed } from '../../../shared/priceIndex';
 import { skyNow, parseTod, fmtClock, hex } from '../../../shared/daynight';
 import { fmtLap } from '../../../shared/venues';
-import { propertyById as baseProperty, properties as baseProperties, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, workerBonusOf, WORKER_BONUS_MAX, landPrice, landMultiplierNote, LAND_GROWTH, type OwnedProperty } from '../../../shared/realEstate';
+import { propertyById as baseProperty, properties as baseProperties, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, workerBonusOf, WORKER_BONUS_MAX, landPrice, landMultiplierNote, landSurchargePct, SURCHARGE_PCT_PER_1K, type OwnedProperty } from '../../../shared/realEstate';
 
 /** Today's price index from /api/real-estate; list prices and tax scale with it. */
 let IDX = 1;
@@ -37,9 +37,10 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }:
   const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState<null | 're_buy' | 're_sell'>(null); const [msg, setMsg] = useState<string | null>(null); const wallet = useWalletChips();
   if (!p) return null;
   const mine = !!(o && me && o.owner.toLowerCase() === me.toLowerCase());
-  // pt1248u: you pay list × LAND_GROWTH^n (n = parcels you own); sell-back is 70% of what you paid; tax stays on list.
-  const nOwned = me ? [...owned.values()].filter((x) => x.owner.toLowerCase() === me.toLowerCase()).length : 0;
-  const cost = o ? (o.price || p.price) : landPrice(p.price, nOwned); const note = !o ? landMultiplierNote(nOwned) : '';
+  // pt1388u: you pay list × (1 + 2% per 1,000 of property you own, uncapped); sell-back is 70% of what you paid; tax stays on list.
+  const ownedValue = me ? [...owned.entries()].filter(([, x]) => x.owner.toLowerCase() === me.toLowerCase()).reduce((a, [k, x]) => a + (propertyById(k)?.price ?? x.price ?? 0), 0) : 0;
+  const surcharge = +landSurchargePct(ownedValue).toFixed(1);
+  const cost = o ? (o.price || p.price) : landPrice(p.price, ownedValue); const note = !o ? landMultiplierNote(ownedValue) : '';
   const short = wallet != null && wallet < cost ? cost - wallet : 0;
   // QA r8: pending state on the button, and on success a toast + immediate (optimistic) ownership update via onDone.
   const act = (ev: 're_buy' | 're_sell') => { setBusy(ev); setMsg(null); socket.timeout(15_000).emit(ev, ev === 're_buy' ? { id, max: cost } : { id }, (err: Error | null, r?: Ack & { price?: number; chips?: number }) => { setBusy(null); if (!err && r?.ok) { const paid = ev === 're_buy' ? (r.price ?? cost) : cost; const text = ev === 're_buy' ? `🏛 ${p.label} is yours! Paid 🪙 ${chips(paid)}.` : `Sold ${p.label} back to the city for 🪙 ${chips(r.chips ?? sellBackOf(cost))}.`; setMsg(text); onDone?.(ev, text, paid); return; } setMsg(err ? 'No answer from the server. Try again.' : (ev === 're_buy' && (r?.error === 'Not enough chips.' || r?.error === 'Something went wrong.') && short ? `Not enough chips: ${p.label} costs 🪙 ${chips(cost)}; you need 🪙 ${chips(short)} more.` : r?.error ?? 'Something went wrong.')); }); };
@@ -49,21 +50,21 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }:
       <h3>{p.kind === 'landmark' ? '🏛' : p.kind === 'patch' ? '🌳' : p.kind === 'farm' ? '🌾' : '🏠'} {p.label}</h3>
       {p.kind === 'landmark' && <small>Trophy property: stays open to every player. Ownership is prestige only.</small>}
       <dl>
-        {o ? <><dt>{mine ? 'You paid' : 'Paid'}</dt><dd data-testid="deed-price">🪙 {chips(cost)}</dd></> : <><dt>Your price</dt><dd data-testid="deed-price">🪙 {chips(cost)}{note && <small className="block text-amber-300" data-testid="deed-multiplier">List 🪙 {chips(p.price)} · {note}</small>}</dd></>}
+        {o ? <><dt>{mine ? 'You paid' : 'Paid'}</dt><dd data-testid="deed-price">🪙 {chips(cost)}</dd></> : <><dt>Your surcharge</dt><dd data-testid="deed-surcharge">+{surcharge}%</dd><dt>Your price</dt><dd data-testid="deed-price">🪙 {chips(cost)}{note && <small className="block text-amber-300" data-testid="deed-multiplier">List 🪙 {chips(p.price)} · {note}</small>}</dd></>}
         <dt>Owner</dt><dd data-testid="deed-owner">{o ? (mine ? 'You' : o.owner) : 'City of Chud Hub (for sale)'}</dd>
         <dt>Sell-back</dt><dd data-testid="deed-sellback">🪙 {chips(sellBackOf(cost))} (70% of {o ? 'what was paid' : 'your price'})</dd>
         {workerBonusOf(p.id) > 0 && <><dt>Worker cap</dt><dd data-testid="deed-workers">+{workerBonusOf(p.id)} Employment Office worker{workerBonusOf(p.id) > 1 ? 's' : ''} (property bonus max +{WORKER_BONUS_MAX})</dd></>}
         <dt>Property tax</dt><dd data-testid="deed-tax">🪙 {chips(taxOf(p.price))}/day ({(TAX_RATE * 100).toFixed(1)}%)</dd>
         {o && o.arrears > 0 && <><dt>Arrears</dt><dd className="text-rose-300">{o.arrears} unpaid day{o.arrears > 1 ? 's' : ''} (repossessed at {GRACE_DAYS})</dd></>}
       </dl>
-      {!o && (me ? <button type="button" disabled={!!busy} aria-busy={busy === 're_buy'} onClick={() => (short ? setMsg(`Not enough chips: ${p.label} costs 🪙 ${chips(cost)}; you have 🪙 ${chips(wallet ?? 0)} (need 🪙 ${chips(short)} more).`) : act('re_buy'))} aria-describedby={short ? 'deed-short' : undefined} data-testid="deed-buy">{busy === 're_buy' ? <><span className="world-spin" aria-hidden /> Buying…</> : <>Buy for 🪙 {chips(cost)}</>}</button> : <small>Sign in to buy.</small>)}
+      {!o && (me ? <button type="button" disabled={!!busy} aria-busy={busy === 're_buy'} onClick={() => (short ? setMsg(`Not enough chips: ${p.label} costs 🪙 ${chips(cost)}; you have 🪙 ${chips(wallet ?? 0)} (need 🪙 ${chips(short)} more).`) : act('re_buy'))} aria-describedby={short ? 'deed-short' : undefined} data-testid="deed-buy">{busy === 're_buy' ? <><span className="world-spin" aria-hidden /> Buying…</> : <>Buy for 🪙 {chips(cost)}{me ? ` (+${surcharge}% surcharge)` : ''}</>}</button> : <small>Sign in to buy.</small>)}
       {mine && <button type="button" disabled={!!busy} aria-busy={busy === 're_sell'} onClick={() => act('re_sell')} data-testid="deed-sell">{busy === 're_sell' ? <><span className="world-spin" aria-hidden /> Selling…</> : <>Sell to the city for 🪙 {chips(sellBackOf(cost))} (70%)</>}</button>}
       {mine && onKitchen && p.kind !== 'landmark' && <button type="button" onClick={onKitchen} data-testid="deed-kitchen">🍳 Kitchen</button>}
       {p.kind === 'farm' && o && onFarm && <button type="button" onClick={onFarm} data-testid="deed-farm">{mine ? '🌾 Open farm' : '👀 Visit farm'}</button>}
       {p.kind === 'farm' && !o && <small>Farmland: buy it to plant crops (FarmVille-style, real-time).</small>}
       {!o && me && short > 0 && !msg && <small id="deed-short" className="text-amber-300" data-testid="deed-short">You need 🪙 {chips(short)} more chips to buy this.</small>}
       {msg && <small role="status" data-testid="deed-msg">{msg}</small>}
-      <small className="opacity-60">You can sell any property back to the city at any time for 70% of what you paid. Each parcel you already own makes the next one ×{LAND_GROWTH} pricier (Trailer Park lots don't count). Tax is on the list price, charged once per UTC day and burned. {GRACE_DAYS} unpaid days in a row and the city takes it back (no refund).</small>
+      <small className="opacity-60">You can sell any property back to the city at any time for 70% of what you paid. Surcharge: +{SURCHARGE_PCT_PER_1K}% on your next purchase for every 🪙 1,000 of property you already own, no cap (Trailer Park lots don't count). Tax is on the list price, charged once per UTC day and burned. {GRACE_DAYS} unpaid days in a row and the city takes it back (no refund).</small>
     </div>
   );
 }

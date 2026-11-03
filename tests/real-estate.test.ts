@@ -4,7 +4,7 @@ import { newDb } from 'pg-mem';
 import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
 import { px, setPriceIndexForTest } from '../server/price-index';
-import { properties, propertyById, buildingId, patchId, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, LAND_GROWTH, landPrice, landMultiplierNote } from '../shared/realEstate';
+import { properties, propertyById, buildingId, patchId, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, landPrice, landMultiplierNote, landSurchargePct } from '../shared/realEstate';
 import { cityFill, LANDMARK_IDS, PARK_AREA, obbOverlap } from '../shared/worldLayout';
 import { WORLD_SPOTS } from '../client/src/lib/worldSpots';
 
@@ -121,15 +121,17 @@ describe('real estate: buy / sell / tax', () => {
 
 describe('real estate: land gets pricier the more you own', () => {
   const cheap = (k: number) => [...properties()].filter((p) => p.kind !== 'landmark').sort((a, b) => a.price - b.price).slice(0, k);
-  it('price = list × LAND_GROWTH^n; sell-back is 70% of what was paid; tax stays on list', async () => {
+  it('price = list × (1 + 2% per 1,000 owned, uncapped); sell-back is 70% of what was paid; tax stays on list', async () => {
     const s = await setup(); const ps = cheap(4); const list = ps.map((p) => px(p.price));
-    const cost = list.reduce((a, l, i) => a + landPrice(l, i), 0); await s.fund('Ivy', cost);
-    for (let i = 0; i < 4; i++) { const q = await s.re.quote('Ivy', ps[i]!.id); expect(q.owned).toBe(i); expect(q.price).toBe(Math.round(list[i]! * LAND_GROWTH ** i));
+    const before = list.map((_, i) => list.slice(0, i).reduce((a, b) => a + b, 0));
+    const cost = list.reduce((a, l, i) => a + landPrice(l, before[i]!), 0); await s.fund('Ivy', cost);
+    for (let i = 0; i < 4; i++) { const q = await s.re.quote('Ivy', ps[i]!.id); expect(q.owned).toBe(i); expect(q.ownedValue).toBe(before[i]); expect(q.surchargePct).toBeCloseTo(before[i]! / 1000 * 2);
+      expect(q.price).toBe(Math.round(list[i]! * (1 + before[i]! / 1000 * 2 / 100)));
       const r = await s.re.buy('Ivy', ps[i]!.id, q.price); expect(r.price).toBe(q.price); }
     expect(s.chips('ivy')).toBe(0);
-    expect(s.ledger('ivy', 'property_buy').map((x) => -Number(x.amount))).toEqual(list.map((l, i) => landPrice(l, i)));
+    expect(s.ledger('ivy', 'property_buy').map((x) => -Number(x.amount))).toEqual(list.map((l, i) => landPrice(l, before[i]!)));
     const mine = await s.re.mine('Ivy'); for (const m of mine) expect(m.tax).toBe(taxOf(px(propertyById(m.id)!.price)));
-    await s.re.sell('Ivy', ps[3]!.id); expect(s.chips('ivy')).toBe(sellBackOf(landPrice(list[3]!, 3)));
+    await s.re.sell('Ivy', ps[3]!.id); expect(s.chips('ivy')).toBe(sellBackOf(landPrice(list[3]!, before[3]!)));
     // after selling, the next purchase is priced at the new (lower) count
     expect((await s.re.quote('Ivy', ps[3]!.id)).owned).toBe(3);
   });
@@ -140,7 +142,11 @@ describe('real estate: land gets pricier the more you own', () => {
     expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
     expect((r.find((x) => x.status === 'rejected') as PromiseRejectedResult).reason.message).toMatch(/price changed/);
   });
-  it('note text', () => { expect(landMultiplierNote(0)).toBe(''); expect(landMultiplierNote(2)).toBe('×2.25 because you own 2'); });
+  it('surcharge formula and note text (no cap)', () => {
+    expect(landSurchargePct(0)).toBe(0); expect(landSurchargePct(5000)).toBe(10); expect(landSurchargePct(100_000)).toBe(200); expect(landSurchargePct(500_000)).toBe(1000);
+    expect(landPrice(10_000, 5000)).toBe(11_000); expect(landPrice(10_000, 100_000)).toBe(30_000);
+    expect(landMultiplierNote(0)).toBe(''); expect(landMultiplierNote(5000)).toBe('+10% surcharge: you own 5,000 in property');
+  });
 });
 
 describe('countryside crop fields are buyable farms (pt1250u)', () => {

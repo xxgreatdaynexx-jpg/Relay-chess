@@ -44,14 +44,18 @@ const round500 = (n: number) => Math.max(500, Math.round(n / 500) * 500);
 const pos = (b: OBB) => `${Math.round(b.x * 10)}:${Math.round(b.z * 10)}`;
 export const taxOf = (price: number) => Math.ceil(price * TAX_RATE);
 export const sellBackOf = (price: number) => Math.floor(price * SELL_BACK);
-/** Land gets pricier the more you own (pt1248u): purchase price = list price × LAND_GROWTH^n, n = parcels the buyer already
- * owns (every property row: city, outskirts, countryside, farmland, resort, plantation; Trailer Park lots are separate and free).
- * Tax stays on the list price; sell-back is 70% of what was actually paid. Tune here. */
-export const LAND_GROWTH = 1.5;
-export const landMultiplier = (owned: number) => LAND_GROWTH ** Math.max(0, Math.floor(owned));
-export const landPrice = (listPrice: number, owned: number) => Math.round(listPrice * landMultiplier(owned));
-/** "×2.25 because you own 2" (empty when you own none). */
-export const landMultiplierNote = (owned: number) => owned > 0 ? `×${+landMultiplier(owned).toFixed(2)} because you own ${owned}` : '';
+/** Land surcharge (pt1388u, replaces the old ×1.5-per-parcel growth): the next purchase costs list × (1 + surcharge),
+ * surcharge % = SURCHARGE_PCT_PER_1K × (total list value of the properties the buyer already owns ÷ 1,000). No cap.
+ * Owning nothing = 0%. A 5,000 farm owned = +10%; 100,000 owned = +200%. Tax stays on the list price; sell-back is 70% of
+ * what was actually paid. Trailer Park lots are separate and free. Tune here. */
+export const SURCHARGE_PCT_PER_1K = 2;
+/** Surcharge percent for a buyer whose owned properties are worth ownedValue (list prices). */
+export const landSurchargePct = (ownedValue: number) => Math.max(0, ownedValue) / 1000 * SURCHARGE_PCT_PER_1K;
+export const landMultiplier = (ownedValue: number) => 1 + landSurchargePct(ownedValue) / 100;
+export const landPrice = (listPrice: number, ownedValue: number) => Math.round(listPrice * landMultiplier(ownedValue));
+const pctText = (ownedValue: number) => `+${+landSurchargePct(ownedValue).toFixed(1)}%`;
+/** "+10% surcharge: you own 5,000 in property" (empty when you own none). */
+export const landMultiplierNote = (ownedValue: number) => ownedValue > 0 ? `${pctText(ownedValue)} surcharge: you own ${Math.round(ownedValue).toLocaleString('en-US')} in property` : '';
 
 /** Civic buildings are not for sale (City Hall belongs to the city). */
 export const CIVIC_IDS = new Set(['cityhall']);

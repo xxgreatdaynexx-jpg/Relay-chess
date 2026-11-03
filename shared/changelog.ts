@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T19:10:00-06:00', title: 'Real estate: surcharge now based on what you own', bullets: [
+    'Requested by carter2: the old ×1.5-per-property price jump is gone. Your next purchase now costs +2% for every 1,000 chips of property you already own (by list price), with no cap.',
+    'Owning nothing means no surcharge. A 5,000 farm adds +10%; 50,000 of property adds +100%; 100,000 adds +200%. The deed panel and Buy button show your current surcharge.',
+    'List prices, property tax and the 70% sell-back are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T16:52:00-06:00', title: 'Farm: ripe crops last much longer before withering', bullets: [
     'Requested by carter2: ripe crops now stay harvestable for at least 36 hours, or 3x their grow time if that is longer (it was 12 hours or 2x grow time). Sunflowers and Cacao now last 36 hours instead of 24.',
     'Crops already in the ground get the longer window too, and the Greenhouse still adds on top. Grow times, yields and the daily farm limit are unchanged.',
