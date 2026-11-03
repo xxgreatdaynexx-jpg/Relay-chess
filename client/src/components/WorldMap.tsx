@@ -145,6 +145,8 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   const deed = panelId(panel, 'deed'); const setDeed = (id: string | null) => setPanel((c) => (id ? { k: 'deed', id } : closePanel(c, 'deed')));
   const home = panel.k === 'home';
   const deeds = panel.k === 'deeds'; const setDeeds = (v: boolean) => setPanel((c) => (v ? { k: 'deeds' } : closePanel(c, 'deeds')));
+  // #32: farm plots are tiny 3D tiles and don't exist on the 2D map, so on phones there was no reliable way in. Owned farms get a direct button.
+  const myFarms = me ? [...owned.values()].filter((o) => (o.id.startsWith('f:') || o.id.startsWith('cf:')) && o.owner.toLowerCase() === me.toLowerCase()).map((o) => o.id) : [];
   const farm = panelId(panel, 'farm'); const setFarm = (id: string | null) => setPanel((c) => (id ? { k: 'farm', id } : closePanel(c, 'farm')));
   const ownedRef = useRef(owned); ownedRef.current = owned;
   useEffect(() => {
@@ -290,6 +292,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       <div className="world-corner">
         <button type="button" onClick={() => setPanel((c) => togglePanel(c, { k: 'deeds' }))} data-testid="world-deeds-btn">🏛 Real estate</button>
         {me && <button type="button" onClick={() => setPanel((c) => togglePanel(c, { k: 'home' }))} data-testid="world-home-btn">🏠 My home</button>}
+        {myFarms.length > 0 && <button type="button" onClick={() => setFarm(myFarms[0])} data-testid="world-farm-btn">🌾 My farm{myFarms.length > 1 ? 's' : ''}</button>}
         {mode === '3d' && !loading && <button type="button" onClick={() => void toggleDrive()} data-testid="world-drive">{driving ? '🅿 Park' : '🚗 Drive'}</button>}
         <button type="button" onClick={() => setMode(mode === '3d' ? '2d' : '3d')} data-testid="world-mode">{mode === '3d' ? '▦ 2D map' : '🌃 3D city'}</button>
       </div>
@@ -299,6 +302,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
         <small>Your trailer at Chud Acres Trailer Park, plus any property you own. Every home has a kitchen.</small>
         <button type="button" onClick={() => { setPanel(NONE); openKitchen('Your trailer · Chud Acres'); }} data-testid="home-kitchen-trailer">🚐 Your trailer<span>🍳 Kitchen</span></button>
         {[...owned.values()].filter((o) => o.owner.toLowerCase() === me.toLowerCase() && propertyById(o.id)?.kind !== 'landmark').map((o) => <button type="button" key={o.id} onClick={() => { setPanel(NONE); openKitchen(propertyById(o.id)?.label ?? o.id); }} data-testid={`home-kitchen-${o.id}`}>{propertyById(o.id)?.label ?? o.id}<span>🍳 Kitchen</span></button>)}
+        {myFarms.map((id) => <button type="button" key={'farm-' + id} onClick={() => setFarm(id)} data-testid={`home-farm-${id}`}>{propertyById(id)?.label ?? id}<span>🌾 Open farm</span></button>)}
       </div>}
       {deed && <DeedPanel id={deed} owned={owned} me={me} onKitchen={() => { openKitchen(propertyById(deed)?.label ?? deed); setDeed(null); }} onClose={() => setDeed(null)} onFarm={() => setFarm(deed)} onDone={(ev, text, paid) => {
         setToast(text); window.clearTimeout(toastT.current); toastT.current = window.setTimeout(() => setToast(null), 4000);
