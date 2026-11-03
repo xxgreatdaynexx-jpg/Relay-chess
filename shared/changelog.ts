@@ -6,6 +6,16 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-03T17:30:00-06:00', title: 'The Millionaire Update', bullets: [
+    'Fishing: new bait and fly tiers that make rarer fish more likely, and rod skins you can unbox in Chud Cases.',
+    'Nightly 10x event: every night 8 to 9 PM (Alberta time) one game (chess, checkers, arena or poker, picked each day) pays winners a 10x bonus, capped per win and per night. A banner shows which game.',
+    'Poker: a full-screen button makes the table fill your screen. Press Esc to exit.',
+    'Farm: the seed shop shows your real grow time and profit per tile after your Farming level and plot upgrades.',
+    'Farm: your Farming level now gives bonus crops on every harvest, up to +25% at level 99. Bonus crops still count toward the daily farm cap.',
+    'Farm on mobile: a new "My farm" button on the map opens your farm, and on phones it opens full screen.',
+    'Profiles: a net worth chart shows how your wealth has changed over time.',
+    'Stocks: your total dividends earned now show on your portfolio and profile.',
+  ] },
   { commit: '', at: '2026-11-03T16:30:00-06:00', title: 'House-sell cap now follows total player wealth', bullets: [
     'Each day at the reset (6 PM CST) the daily house-sell cap changes by half the percent that total player assets (cash + holdings, the Bank total) changed over the previous day. If total wealth doubles, the cap goes up 50%; if it drops 20%, the cap drops 10%.',
     'The cap can fall when total wealth falls, but never below 100,000. If a day\'s wealth snapshot is missing, the cap stays the same. Prices and payouts still use the price index as before.',
