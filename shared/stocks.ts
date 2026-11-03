@@ -93,6 +93,8 @@ export interface NewsItem { id: string; ticker: string; at: number; headline: st
 const GOOD = ['beats earnings estimates', 'wins a big city contract', 'unveils a hit new product', 'is the subject of a merger rumor', 'gets an analyst upgrade', 'reports record quarterly sales', 'announces a share buyback', 'lands a celebrity endorsement'];
 const BAD = ['misses earnings estimates', 'is hit by an accounting scandal', 'issues a product recall', 'loses a major contract', 'gets an analyst downgrade', 'CEO resigns abruptly', 'faces a regulator investigation', 'suffers a warehouse fire'];
 /** The day's scheduled events for one company (seeded by ticker + UTC day): 1-2 events at fixed times, shock scaled by volatility. */
+/** Admin-requested reschedules of a seeded event (same id, move and headline; only the time changes). */
+export const NEWS_TIME_OVERRIDES: Record<string, number> = { 'CHNX:2026-11-03:0': Date.parse('2026-11-03T06:15:00Z') };
 export function dailyEvents(c: Company, day: string): NewsItem[] {
   const r = seeded(hash32(`${c.ticker}:${day}`)); const t0 = Date.parse(`${day}T00:00:00Z`);
   const n = r() < 0.25 ? 2 : 1; const out: NewsItem[] = [];
@@ -101,5 +103,6 @@ export function dailyEvents(c: Company, day: string): NewsItem[] {
     const size = c.vol * (0.8 + r() * 1.7); // ~1-2.5 daily sigmas
     out.push({ id: `${c.ticker}:${day}:${i}`, ticker: c.ticker, at: t0 + Math.floor(r() * 86_400_000), headline: `${c.name} ${what}`, move: Math.round((good ? size : -size) * 10000) / 10000, good });
   }
+  for (const e of out) { const o = NEWS_TIME_OVERRIDES[e.id]; if (o !== undefined) e.at = o; }
   return out.sort((a, b) => a.at - b.at);
 }
