@@ -24,5 +24,6 @@ export const LAUNCH: LaunchPopup = {
     { icon: '🌊', title: 'Deep-sea fishing', text: 'Own a boat? Head out from the Marina to the Outer Banks, Blue Water and the Abyss for 16 new species, including the Black Marlin, Giant Squid and Coelacanth. Bigger boats reach farther and get faster bites.' },
     { icon: '💎', title: 'Premium Coral Grotto', text: 'The resort Grotto now runs rich in Gold Ore, Crystal and Diamond, and has two ores found nowhere else: Fire Opal and Abyssal Pearl. Craft them into Cut Fire Opal, Pearl Necklaces and the Tidecrown at the Jeweler.' },
     { icon: '🏝️', title: 'Bigger Chud Resort', text: 'The island doubled: Banyan Bay to the west and Sapphire Heights to the east, with Oceanfront estates, Clifftop mansions, Penthouse skyrises and six big Estate plantation plots. Priced for millionaires.' },
+    { icon: '🛩️', title: 'Private jets', text: 'The Private Jet Hangar at Chud Hub International sells three jets. If you own one, you never buy a resort ticket again. Upkeep is steep and charged every day. Unpaid days pile up as arrears, and too many in a row gets the jet repossessed.' },
   ],
 };

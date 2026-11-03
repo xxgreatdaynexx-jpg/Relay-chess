@@ -12,14 +12,21 @@ import { getBank } from './casino-store.js';
 import { px } from './price-index.js';
 import { requireResort } from './travel.js';
 import { setFishBoatHook } from './fishing.js';
-import { BOATS, MAX_BOATS, bestBoat, fleetModel, fleetResale, type FleetKind } from '../shared/fleet.js';
+import { setTravelJetHook } from './travel.js';
+import { GRACE_DAYS } from '../shared/realEstate.js';
+import { BOATS, JETS, MAX_JETS, MAX_BOATS, bestBoat, fleetModel, fleetResale, type FleetKind } from '../shared/fleet.js';
 
 export class FleetError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
 
 export const FLEET_MIGRATION = `CREATE TABLE IF NOT EXISTS fleet_owned (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL,
   model TEXT NOT NULL, paid BIGINT NOT NULL, bought_at BIGINT NOT NULL, arrears INT NOT NULL DEFAULT 0, upkeep_paid BIGINT NOT NULL DEFAULT 0);
-CREATE INDEX IF NOT EXISTS fleet_owned_player ON fleet_owned (player_key);`;
+CREATE INDEX IF NOT EXISTS fleet_owned_player ON fleet_owned (player_key);
+CREATE TABLE IF NOT EXISTS fleet_upkeep (day TEXT NOT NULL, craft_id TEXT NOT NULL, owner_key TEXT NOT NULL, amount BIGINT NOT NULL, paid BOOLEAN NOT NULL,
+  repossessed BOOLEAN NOT NULL DEFAULT FALSE, at BIGINT NOT NULL, claim TEXT NOT NULL, PRIMARY KEY (day, craft_id));`;
+const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
+/** Daily jet upkeep at today's price index. */
+export const jetUpkeep = (model: string) => px(fleetModel(model, 'jet')?.upkeep ?? 0);
 
 export interface OwnedCraft { id: string; kind: FleetKind; model: string; paid: number; boughtAt: number; arrears: number; upkeepPaid: number }
 type Q = { query: (sql: string, args?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }> };
@@ -48,7 +55,7 @@ export class Fleet {
 
   async buy(name: string, kind: FleetKind, modelId: unknown) {
     const m = fleetModel(modelId, kind); if (!m) throw new FleetError(kind === 'boat' ? 'That boat is not in the Marina.' : 'That jet is not in the Hangar.');
-    const mine = await this.owned(name, kind); const cap = kind === 'boat' ? MAX_BOATS : 2;
+    const mine = await this.owned(name, kind); const cap = kind === 'boat' ? MAX_BOATS : MAX_JETS;
     if (mine.length >= cap) throw new FleetError(`You already own ${cap} ${kind === 'boat' ? 'boats' : 'jets'}. Sell one first.`);
     const price = px(m.price); const bank = getBank(); if (!bank.canAfford(name, price)) throw new FleetError('Not enough chips.');
     const id = randomUUID(); const at = this.clock(); const k = keyOf(name); const game = `${kind}_buy`;
@@ -90,6 +97,60 @@ export class Fleet {
     return { paid: pay, chips: bank.account(name).chips };
   }
 
+  /** Best (priciest) jet this player owns, or null. */
+  async jetOf(name: string): Promise<string | null> {
+    const j = (await this.owned(name, 'jet')).map((c) => fleetModel(c.model, 'jet')).filter((m) => !!m).sort((a, b) => b!.price - a!.price)[0];
+    return j?.name ?? null;
+  }
+  private memUpkeep = new Set<string>();
+  /**
+   * Daily jet upkeep (#11), same pattern as property tax: once per UTC day per jet owned since before today.
+   * Paid -> ONE transaction (ledger 'jet_upkeep' + claim row + arrears = 0). Unpaid -> arrears+1;
+   * GRACE_DAYS unpaid days in a row -> repossessed (row deleted, no refund). Claim nonce makes reruns no-ops.
+   */
+  async runUpkeep(): Promise<{ charged: number; paid: number; unpaid: number; repossessed: number }> {
+    const now = this.clock(); const day = utcDay(now); const start = Date.parse(`${day}T00:00:00Z`); const bank = getBank();
+    const out = { charged: 0, paid: 0, unpaid: 0, repossessed: 0 };
+    const jets: Array<OwnedCraft & { owner: string; key: string }> = this.pool
+      ? (await this.pool.query("SELECT * FROM fleet_owned WHERE kind = 'jet' AND bought_at < $1 AND id NOT IN (SELECT craft_id FROM fleet_upkeep WHERE day = $2) ORDER BY player_key, bought_at", [start, day])).rows.map((r) => ({ ...row(r), owner: String(r.name), key: String(r.player_key) }))
+      : [...this.mem.entries()].flatMap(([key, l]) => l.filter((c) => c.kind === 'jet' && c.boughtAt < start && !this.memUpkeep.has(`${day}:${c.id}`)).map((c) => ({ ...c, owner: key, key })));
+    for (const j of jets) {
+      const amount = jetUpkeep(j.model); if (amount <= 0) continue;
+      try { await bank.refresh(j.owner); } catch { continue; }
+      const repo = j.arrears + 1 >= GRACE_DAYS; const label = fleetModel(j.model)?.name ?? j.model;
+      const claim = async (cl: Q, paid: boolean) => {
+        const nonce = randomUUID();
+        await cl.query('INSERT INTO fleet_upkeep (day, craft_id, owner_key, amount, paid, repossessed, at, claim) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING', [day, j.id, j.key, amount, paid, !paid && repo, now, nonce]);
+        if ((await cl.query('SELECT claim FROM fleet_upkeep WHERE day = $1 AND craft_id = $2', [day, j.id])).rows[0]?.claim !== nonce) throw new FleetError('claimed');
+        const u = paid ? await cl.query('UPDATE fleet_owned SET arrears = 0, upkeep_paid = upkeep_paid + $3 WHERE id = $1 AND player_key = $2', [j.id, j.key, amount])
+          : repo ? await cl.query('DELETE FROM fleet_owned WHERE id = $1 AND player_key = $2', [j.id, j.key])
+          : await cl.query('UPDATE fleet_owned SET arrears = arrears + 1 WHERE id = $1 AND player_key = $2', [j.id, j.key]);
+        if (!u.rowCount) throw new FleetError('changed');
+      };
+      try {
+        if (bank.account(j.owner).chips >= amount) {
+          const w = bank.transferAtomic([{ name: j.owner, amount: -amount, key: `jet_upkeep:${day}:${j.id}`, game: 'jet_upkeep', memo: `Jet upkeep ${day}: ${label} (crew, fuel, hangar)` }]);
+          const run = async () => {
+            if (!this.pool) { this.memUpkeep.add(`${day}:${j.id}`); const c = this.mem.get(j.key)?.find((x) => x.id === j.id); if (c) { c.arrears = 0; c.upkeepPaid += amount; } return; }
+            await w.after; const cl = await this.pool.connect();
+            try { await cl.query('BEGIN'); await claim(cl, true); for (const s of w.stmts) await cl.query(s.sql, s.args); await cl.query('COMMIT'); }
+            catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); }
+          };
+          const p = run(); w.bind(p);
+          try { await p; out.paid++; out.charged += amount; continue; } catch (e) { w.revert(); if (e instanceof FleetError) throw e; if (!/chips|balance/i.test((e as Error).message)) throw e; }
+        }
+        if (!this.pool) { this.memUpkeep.add(`${day}:${j.id}`); const l = this.mem.get(j.key) ?? []; const i = l.findIndex((x) => x.id === j.id); if (i >= 0) { if (repo) l.splice(i, 1); else l[i]!.arrears++; } }
+        else { const cl = await this.pool.connect(); try { await cl.query('BEGIN'); await claim(cl, false); await cl.query('COMMIT'); } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); } }
+        out.unpaid++; if (repo) out.repossessed++;
+      } catch (e) { if (!(e instanceof FleetError)) console.error('[fleet] upkeep failed:', (e as Error).message); }
+    }
+    if (out.paid + out.unpaid) { console.log(`[fleet] jet upkeep ${day}: paid ${out.paid} (${out.charged} chips), unpaid ${out.unpaid}, repossessed ${out.repossessed}`); this.onChange?.(); }
+    return out;
+  }
+  private timer: ReturnType<typeof setInterval> | null = null;
+  start() { const run = () => { void this.runUpkeep().catch((e) => console.error('[fleet] upkeep run failed:', (e as Error).message)); }; this.timer = setInterval(run, 10 * 60_000); this.timer.unref?.(); setTimeout(run, 30_000).unref?.(); }
+  stop() { if (this.timer) clearInterval(this.timer); this.timer = null; }
+
   /** Every player's fleet at resale value (economy assets; QA excluded). */
   async values(): Promise<number> {
     const all = this.pool ? (await this.pool.query("SELECT model, paid FROM fleet_owned WHERE player_key NOT LIKE 'qa-%'")).rows.map((r) => ({ model: String(r.model), paid: Number(r.paid) }))
@@ -102,13 +163,14 @@ export class Fleet {
 let fleet: Fleet | null = null;
 export const getFleet = () => fleet;
 setFishBoatHook(async (n) => (fleet ? fleet.boatOf(n) : bestBoat([])));
+setTravelJetHook(async (n) => (fleet ? fleet.jetOf(n) : null));
 export function setFleet(f: Fleet | null) { fleet = f; }
 export async function initFleet(): Promise<void> {
   const url = databaseUrl();
-  if (!url) { fleet = new Fleet(null); setBootState('fleet', 'memory'); return; }
+  if (!url) { fleet = new Fleet(null); fleet.start(); setBootState('fleet', 'memory'); return; }
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
   pool.on('error', (e) => console.error('[fleet] pool error:', e.message));
-  await bootAttach('fleet', async () => { try { const f = new Fleet(pool as unknown as PoolLike); await f.init(); fleet = f; console.log('[fleet] ready'); return true; } catch (e) { console.error('[fleet] init failed:', (e as Error).message); return false; } });
+  await bootAttach('fleet', async () => { try { const f = new Fleet(pool as unknown as PoolLike); await f.init(); fleet = f; f.start(); console.log('[fleet] ready'); return true; } catch (e) { console.error('[fleet] init failed:', (e as Error).message); return false; } });
 }
 
 type Ack = (r: { ok: boolean; error?: string; [k: string]: unknown }) => void;
@@ -121,5 +183,7 @@ export function registerFleet(_io: Server, socket: Socket): void {
   });
   on('marina_view', async (_b, f) => ({ ...(await f.view(nameOf())), catalog: BOATS.map((m) => ({ ...m, basePrice: m.price, price: px(m.price) })) }));
   on('marina_buy', async (b, f) => { const n = need(); await requireResort(n, FleetError); return f.buy(n, 'boat', b.model); });
+  on('hangar_view', async (_b, f) => ({ ...(await f.view(nameOf())), catalog: JETS.map((m) => ({ ...m, basePrice: m.price, price: px(m.price), upkeep: jetUpkeep(m.id) })) }));
+  on('hangar_buy', async (b, f) => f.buy(need(), 'jet', b.model)); // the Hangar is at Chud Hub International (and the resort airfield): no location gate
   on('fleet_sell', async (b, f) => { const n = need(); const c = (await f.owned(n)).find((x) => x.id === b.id); if (c?.kind === 'boat') await requireResort(n, FleetError); return f.sell(n, b.id); });
 }

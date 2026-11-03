@@ -36,7 +36,7 @@ export function ResortMap() {
   const [owned, setOwned] = useState<Map<string, OwnedProperty>>(new Map()); const ownedRef = useRef(owned); ownedRef.current = owned;
   const meRef = useRef(me); meRef.current = me;
   const [deed, setDeed] = useState<string | null>(null); const [farm, setFarm] = useState<string | null>(null);
-  const [casino, setCasino] = useState(false); const [floor, setFloor] = useState<string | null>(null); const [air, setAir] = useState(false); const [msg, setMsg] = useState<string | null>(null); const [list, setList] = useState(false); const [pier, setPier] = useState(false); const [marina, setMarina] = useState(false); const [deepSea, setDeepSea] = useState(false);
+  const [casino, setCasino] = useState(false); const [floor, setFloor] = useState<string | null>(null); const [air, setAir] = useState(false); const [msg, setMsg] = useState<string | null>(null); const [list, setList] = useState(false); const [pier, setPier] = useState(false); const [marina, setMarina] = useState(false); const [deepSea, setDeepSea] = useState(false); const [hangar, setHangar] = useState(false);
 
   useEffect(() => {
     let dead = false;
@@ -102,13 +102,15 @@ export function ResortMap() {
         </div>
       )}
       {marina && <Suspense fallback={null}><FleetStore kind="boat" onClose={() => setMarina(false)} onDeepSea={() => { setMarina(false); setDeepSea(true); }} /></Suspense>}
+      {hangar && <Suspense fallback={null}><FleetStore kind="jet" onClose={() => setHangar(false)} /></Suspense>}
       {deepSea && <Suspense fallback={null}><FishingPanel me={me} spot="deep" onClose={() => setDeepSea(false)} /></Suspense>}
       {pier && <Suspense fallback={null}><FishingPanel me={me} spot="reef" onClose={() => setPier(false)} /></Suspense>}
       {air && (
         <div className="world-deed world-venue" data-testid="venue-resort-airfield" data-drag-panel="resortAir" onPointerDown={dragResortAir.onPointerDown} style={dragResortAir.style()} ref={dragResortAir.ref}>{dragResortAir.handle}
           <button type="button" className="world-deed-x" onClick={() => setAir(false)} aria-label="Close">✕</button>
           <h3>✈️ Chud Resort Airfield</h3>
-          <small>Your ticket included the flight home.</small>
+          <small>The flight home is always free.</small>
+          <button type="button" onClick={() => { setAir(false); setHangar(true); }} data-testid="resort-open-hangar">🛩 Private Jet Hangar</button>
           <button type="button" onClick={() => void home()} data-testid="resort-fly-home-2">🛫 Fly home to Chud Hub</button>
           {msg && <small>{msg}</small>}
         </div>

@@ -37,13 +37,16 @@ export class Travel {
     return { loc: this.where(name), ticket: name && waiver(name, 'resort') ? 0 : px(RESORT_TICKET_BASE), tickets };
   }
 
-  /** Buy a ticket and fly to `dest` (atomic: ledger + location). A waived ticket (private jet etc.) skips the ledger. */
-  async fly(name: string, dest: Destination = 'resort') {
-    if (!isDestination(dest)) throw new TravelError('Unknown destination.');
-    const D = DESTINATIONS[dest]; const k = keyOf(name); if (this.where(name) === dest) throw new TravelError(`You are already at ${D.name}.`);
-    const waived = waiver(name, dest);
-    const fee = waived ? 0 : px(D.ticket); const bank = getBank();
-    if (fee > 0 && !bank.canAfford(name, fee)) throw new TravelError(`Not enough chips: a ticket costs ${fee.toLocaleString('en-US')}.`);
+  /** Buy a ticket and fly to the resort (atomic: ledger + location). */
+  async fly(name: string) {
+    const k = keyOf(name); if (this.where(name) === 'resort') throw new TravelError('You are already at Chud Resort.');
+    const jet = await jetHook(name).catch(() => null); // #11: private-jet owners fly free (they pay daily upkeep instead)
+    if (jet) {
+      if (this.pool) await this.pool.query("INSERT INTO player_location (player_key, name, loc, since) VALUES ($1,$2,'resort',$3) ON CONFLICT (player_key) DO UPDATE SET loc = 'resort', name = EXCLUDED.name, since = EXCLUDED.since", [k, name.trim(), this.clock()]);
+      this.loc.set(k, 'resort'); return { loc: 'resort' as Location, fee: 0, jet, chips: getBank().account(name).chips };
+    }
+    const fee = px(RESORT_TICKET_BASE); const bank = getBank();
+    if (!bank.canAfford(name, fee)) throw new TravelError(`Not enough chips: a ticket costs ${fee.toLocaleString('en-US')}.`);
     const now = this.clock(); this.tickets++;
     const w = fee > 0 ? bank.transferAtomic([{ name, amount: -fee, key: `${D.game}:${k}:${now}:${this.tickets}`, game: D.game, memo: `Plane ticket: Chud Hub International → ${D.name}` }]) : { stmts: [], after: Promise.resolve(), bind: () => {}, revert: () => {} };
     const run = async () => {
@@ -69,6 +72,9 @@ export class Travel {
   }
 }
 
+/** #11: name of the player's private jet (server/fleet.ts sets this), or null. */
+let jetHook: (name: string) => Promise<string | null> = async () => null;
+export const setTravelJetHook = (f: typeof jetHook) => { jetHook = f; };
 let travel: Travel = new Travel(null);
 export const getTravel = () => travel;
 export function setTravel(t: Travel) { travel = t; }
@@ -99,7 +105,7 @@ export function registerTravel(_io: Server, socket: Socket): void {
     catch (e) { ack?.({ ok: false, error: e instanceof TravelError || /^(Not enough chips\.|Wallet temporarily unavailable\.)$/.test((e as Error).message) ? (e as Error).message : 'Something went wrong.' }); }
   });
   const need = () => { const n = nameOf(); if (!n) throw new TravelError('Sign in to fly.'); return n; };
-  on('trip_status', () => travel.status(nameOf()));
-  on('trip_buy', (b) => { const d = (b as { dest?: unknown } | undefined)?.dest; return travel.fly(need(), d === undefined ? 'resort' : (d as Destination)); });
+  on('trip_status', async () => { const n = nameOf(); return { ...travel.status(n), jet: n ? await jetHook(n).catch(() => null) : null }; });
+  on('trip_buy', () => travel.fly(need()));
   on('trip_home', () => travel.home(need()));
 }
