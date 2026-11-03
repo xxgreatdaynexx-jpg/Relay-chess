@@ -90,8 +90,8 @@ describe('selling', () => {
   it('full price up to the daily cap', () => {
     expect(payoutFor(600, 0)).toBe(600);
     expect(payoutFor(100, 600)).toBe(100);
-    expect(payoutFor(200, 24_900)).toBe(100);
-    expect(payoutFor(1000, 25_000)).toBe(0);
+    expect(payoutFor(200, 99_900)).toBe(100);
+    expect(payoutFor(1000, 100_000)).toBe(0);
     w.join('a', 'QA-Rich', 0);
     w.add(w.miners.get('a')!, [{ type: 'ore', id: 'diamond', qty: 4 }]);
     expect(sellAs('a', 1000).paid).toBe(600);

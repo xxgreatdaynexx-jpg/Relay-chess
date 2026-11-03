@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T20:45:00-06:00', title: 'Mines & Factory: house cap back to 100,000 a day', bullets: [
+    'The daily house-sell cap is back to 100,000 base chips per player (it was 25,000 for a short time tonight), then nothing until the reset at 6 PM CST (00:00 UTC).',
+    'It still rises with inflation: 100,000 × the daily price index (about 106,000 today at 1.06), recalculated at each reset. The Factory sell panel shows today\'s cap. Prices and the Market are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T20:22:00-06:00', title: 'Mines & Factory: house buys up to 25,000 a day', bullets: [
     'Selling ore, bars and factory goods to the house now pays full price up to 25,000 base chips per player per day (was 100,000), then nothing until the reset at 6 PM CST (00:00 UTC).',
     'The cap rises with inflation: it is 25,000 × the daily price index (about 26,500 today at index 1.06) and is recalculated at each daily reset. The Factory sell panel shows today\'s cap.',

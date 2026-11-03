@@ -34,9 +34,9 @@ export const MAX_BANKED_STACK = 1_000_000;
 export const BACKPACK_CAP = 120;   // total weight units
 
 // ---- house selling: daily diminishing returns (per signed-in player, per UTC day)
-/** House daily cap in base chips (pt1396u): full price up to 25,000 base a day, then nothing. Payouts are × the daily price
- * index, so the effective chip cap is 25,000 × index and rises with inflation each UTC day. */
-export const HOUSE_DAILY_BASE = 25_000;
+/** House daily cap in base chips (pt1396u, restored to 100,000 in pt1398u): full price up to 100,000 base a day, then nothing. Payouts are × the daily price
+ * index, so the effective chip cap is 100,000 × index and rises with inflation each UTC day. */
+export const HOUSE_DAILY_BASE = 100_000;
 export const houseCapChips = (index: number) => Math.floor(HOUSE_DAILY_BASE * index);
 export const SELL_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: HOUSE_DAILY_BASE, rate: 1 }, { upTo: Infinity, rate: 0 }];
 export const dayKey = (now: number) => new Date(now).toISOString().slice(0, 10);
