@@ -23,7 +23,7 @@ export interface Crop { id: string; label: string; emoji: string; seed: number; 
 const M = 60_000, H = 60 * M;
 /** Base chips. Fast crops pay little per hour unless you keep coming back; slow ones are the big money per click. */
 export const CROPS: Crop[] = [
-  { id: 'strawberry', label: 'Strawberries', emoji: '🍓', seed: 5, grow: 2 * M, sell: 8, color: 0xd84a5a },
+  { id: 'strawberry', label: 'Strawberries', emoji: '🍓', seed: 5, grow: 4 * M, sell: 8, color: 0xd84a5a },
   { id: 'wheat', label: 'Wheat', emoji: '🌾', seed: 10, grow: 5 * M, sell: 16, color: 0xd8b860 },
   { id: 'carrot', label: 'Carrots', emoji: '🥕', seed: 15, grow: 15 * M, sell: 26, color: 0xe08a3a },
   { id: 'corn', label: 'Corn', emoji: '🌽', seed: 25, grow: 30 * M, sell: 45, color: 0xe8d050 },

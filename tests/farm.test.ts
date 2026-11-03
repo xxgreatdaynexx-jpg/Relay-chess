@@ -67,13 +67,13 @@ describe('farm district', () => {
     await s.fund('Ida', plot.price + 50); await s.re.buy('Ida', s.id);
     await expect(s.farm.plant('Ida', s.id, 'sunflower', [0])).rejects.toThrow(/Not enough chips/); expect(s.chips('ida')).toBe(50);
     await s.farm.plant('Ida', s.id, 'strawberry', [0, 1]);
-    s.setNow(T0 + 2 * M + MIN_RIPE_MS);
+    s.setNow(T0 + 4 * M + MIN_RIPE_MS);
     await expect(s.farm.harvest('Ida', s.id)).rejects.toThrow(/Nothing is ready/);
     expect((await s.farm.clear('Ida', s.id)).cleared).toBe(2);
     setPriceIndexForTest(1.5);
     try {
       await s.farm.plant('Ida', s.id, 'strawberry', [5]); expect(s.chips('ida')).toBe(40 - Math.round(5 * 1.5) + 0);
-      s.setNow(T0 + 2 * M + MIN_RIPE_MS + 2 * M); const before = s.chips('ida');
+      s.setNow(T0 + 4 * M + MIN_RIPE_MS + 4 * M); const before = s.chips('ida');
       const r = await s.farm.harvest('Ida', s.id); expect(r.paid).toBe(Math.floor(8 * 1.5)); expect(s.chips('ida')).toBe(before + r.paid);
     } finally { setPriceIndexForTest(1); }
   });

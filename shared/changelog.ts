@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-03T15:30:00-06:00', title: 'Farm: strawberries take twice as long to grow', bullets: [
+    'Strawberries now take 4 minutes to grow instead of 2, so Berry Juice is slower to make. Seed cost, sell price, yields, XP and the juice recipe are unchanged.',
+  ] },
   { commit: '', at: '2026-11-03T11:59:00-06:00', title: 'Real estate: property panel fits without scrolling sideways', bullets: [
     'Long values on a property deed (the surcharge note, owner, sell-back) now wrap inside the panel instead of being cut off, and the panel no longer scrolls sideways on narrow or normal screens. Prices and rules are unchanged.',
   ] },
