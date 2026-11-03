@@ -143,9 +143,9 @@ describe('AR-15 skin set', () => {
 describe('pickaxe skins', () => {
   it('adds 55 mining skins (30/20/5) last, in the gun case pool, without shifting older skins', async () => {
     const { SKINS, SKIN_WEAPONS, rollSkin } = await import('../shared/skins');
-    expect(SKINS.length).toBe(440);
-    expect(SKIN_WEAPONS[SKIN_WEAPONS.length - 1]).toBe('pickaxe');
-    const p = SKINS.slice(-55); expect(p.every((s) => s.weapon === 'pickaxe')).toBe(true);
+    expect(SKINS.length).toBe(495);
+    expect(SKIN_WEAPONS[SKIN_WEAPONS.length - 2]).toBe('pickaxe');
+    const p = SKINS.slice(385, 440); expect(p.every((s) => s.weapon === 'pickaxe')).toBe(true);
     expect(['common', 'rare', 'ultra'].map((r) => p.filter((s) => s.rarity === r).length)).toEqual([30, 20, 5]);
     expect(SKINS.slice(0, 385).some((s) => s.weapon === 'pickaxe')).toBe(false);
     let x = 1; const rng = () => ((x = (x * 16807) % 2147483647) / 2147483647); let hit = false;

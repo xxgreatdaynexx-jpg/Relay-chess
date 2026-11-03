@@ -2156,3 +2156,14 @@ select, option, input, textarea, button { font-family: inherit; }
 .mkt-bulk [data-testid=mkt-bulk-confirm] { background: #2f8f3a; border-color: #6ad66a; }
 .mkt-bulkbar button { padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.06); color: inherit; font: inherit; cursor: pointer; }
 @media (max-width: 640px) { .mkt-bulkbar { gap: 8px; } }
+
+/* Tackle shop (request #28) */
+.tackle-shop { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; padding: 6px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; background: rgba(0,0,0,.18); }
+.tackle-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; }
+.tackle-cols ul { list-style: none; display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; }
+.tackle-cols h5 { margin: 2px 0; font-size: .8em; opacity: .75; text-transform: uppercase; letter-spacing: .05em; }
+.tackle-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px; align-items: center; font-size: .82em; padding: 3px 4px; border-radius: 6px; }
+.tackle-row small { opacity: .7; overflow-wrap: anywhere; }
+.tackle-row.on { background: rgba(90, 209, 122, .14); outline: 1px solid rgba(90, 209, 122, .45); }
+.tackle-row em { font-size: .8em; color: #5ad17a; font-style: normal; }
+.tackle-swatch { display: inline-block; width: 28px; height: 8px; border-radius: 4px; vertical-align: middle; }

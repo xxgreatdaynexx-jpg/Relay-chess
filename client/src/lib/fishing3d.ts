@@ -101,6 +101,11 @@ export class Fishing3D {
 
   /** Reef Pier at Chud Resort (pt1304u): turquoise water, sand, palms, the resort's endless sunset. */
   readonly reef: boolean;
+  /** Equipped rod skin (request #28, Chud Case drop): tint the rod blank with the skin's main colour. */
+  setRodSkin(colors: readonly string[] | null) {
+    const m = this.rod.material as THREE.MeshStandardMaterial; m.color.set(colors?.[1] ?? '#1d2633');
+    m.emissive.set(colors?.[0] ?? '#000000'); m.emissiveIntensity = colors ? 0.25 : 0; m.needsUpdate = true;
+  }
   constructor(private canvas: HTMLCanvasElement, opts: { spot?: FishSpot } = {}) {
     this.reef = opts.spot === 'reef';
     this.tier = detectWorldTier(); const tier = this.tier; canvas.dataset.tier = tier;

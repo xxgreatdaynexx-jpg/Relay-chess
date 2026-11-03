@@ -8,6 +8,29 @@ import { request } from '@/lib/net';
 import { FISH_DAILY_MAX, fishById, fishPayout, fmtKg, RARITY_COLOR, Reel, REEL_DT, type FishCatch, type FishSpot, type FishView } from '../../../shared/fishing';
 import { FishGlyph } from './FishGlyph';
 import { usePanelDrag } from '@/lib/panelDrag';
+import { canBuyGear, FISH_BAITS, FISH_FLIES, type FishGearDef, type FishGearView } from '../../../shared/fishGear';
+import { parseToken } from '../../../shared/skins';
+
+/** Tackle shop (request #28): bait tiers (rarer fish) and fly tiers (faster bites, harder fight), plus the equipped rod skin from Chud Cases. */
+export function TackleShop({ me }: { me: string | null }) {
+  const [gear, setGear] = useState<FishGearView | null>(null); const [msg, setMsg] = useState<string | null>(null); const [rod, setRod] = useState<string | null>(null);
+  useEffect(() => { void request('fish_gear_view').then((r) => { if (r.ok) setGear((r as unknown as { gear: FishGearView }).gear); });
+    void request('inv_loadout').then((r) => setRod(((r as { loadout?: Record<string, string> }).loadout?.rod) ?? null)); }, [me]);
+  const act = async (ev: 'fish_gear_buy' | 'fish_gear_equip', id: string) => { setMsg(null); const r = await request(ev, { gear: id }) as { ok: boolean; error?: string; gear?: FishGearView; cost?: number };
+    if (r.ok && r.gear) { setGear(r.gear); if (ev === 'fish_gear_buy') setMsg(`Bought for 🪙 ${chips(r.cost ?? 0)}.`); } else setMsg(r.error ?? 'Could not do that.'); };
+  const rodSkin = parseToken(rod);
+  const row = (g: FishGearDef) => { const owned = !!gear?.owned.includes(g.id); const on = gear ? (g.kind === 'bait' ? gear.bait : gear.fly) === g.id : g.tier === 0; const price = gear?.prices[g.id] ?? g.price;
+    return <li key={g.id} className={`tackle-row${on ? ' on' : ''}`} data-testid={`tackle-${g.id}`}><span>{g.emoji} <b>{g.name}</b><br /><small>{g.blurb}</small></span>
+      {on ? <em>Equipped</em> : owned ? <button type="button" disabled={!me} onClick={() => void act('fish_gear_equip', g.id)}>Equip</button>
+        : <button type="button" disabled={!me || !gear || !canBuyGear(gear.owned, g.id)} onClick={() => void act('fish_gear_buy', g.id)}>🪙 {chips(price)}</button>}</li>; };
+  return <div className="tackle-shop" data-testid="tackle-shop">
+    <h4>🧰 Tackle Shop</h4>
+    <small>Bait pulls rarer fish (stacks with your Fishing level, capped). Flies make fish bite faster but fight harder. Buy tiers in order.</small>
+    <div className="tackle-cols"><div><h5>Bait</h5><ul>{FISH_BAITS.map(row)}</ul></div><div><h5>Flies</h5><ul>{FISH_FLIES.map(row)}</ul></div></div>
+    <small data-testid="tackle-rod">🎣 Rod skin: {rodSkin ? <><span className="tackle-swatch" style={{ background: `linear-gradient(90deg, ${rodSkin.skin.colors.join(',')})` }} /> <b>{rodSkin.skin.name}</b></> : 'Stock'} · Rod skins drop from Chud Cases. Equip them in your Inventory.</small>
+    {msg && <small className="fish-msg" data-testid="tackle-msg">{msg}</small>}
+  </div>;
+}
 
 // The 3D game is its own lazy chunk; a stale chunk after a deploy reloads the tab once (same as the arena and mines).
 const Fishing3DGame = lazyWithReload(() => import('./Fishing3DGame').then((m) => ({ default: m.Fishing3DGame })));
@@ -100,6 +123,7 @@ export function FishingPanel({ me, onClose, spot = 'lake' }: { me: string | null
           : <button type="button" className="fish-cast" disabled={phase.k === 'busy'} onClick={() => void cast()} data-testid="fish-cast">🎣 Cast line <kbd>Space</kbd></button>}
         </div>
         {msg && <small data-testid="fish-msg" className="fish-msg">{msg}</small>}
+        <TackleShop me={me} />
         <h4>🧊 Cooler · {cooler.length}/40</h4>
         {cooler.length ? <ul className="fish-cooler" data-testid="fish-cooler">{cooler.map((c) => { const f = fishById(c.fish); return (
           <li key={c.id}><span style={{ color: f ? RARITY_COLOR[f.rarity] : undefined }}><FishGlyph id={c.fish} /> {f?.label ?? c.fish}</span> <small>{fmtKg(c.grams)}</small> <b>🪙 {chips(Math.floor(c.value * idx))}</b> <button type="button" title="Release" onClick={() => void release(c.id)}>↩</button></li>); })}</ul>
