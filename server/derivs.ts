@@ -172,7 +172,17 @@ export class Derivatives {
     const options = (await this.options(name)).map((o) => ({ ...o, price: this.price(o.ticker), mark: this.optionMark(o), bid: o.expiry > now ? optionBid(COMPANY_BY_TICKER.get(o.ticker)!, o.kind, this.price(o.ticker)!, o.strike, daysLeft(o.expiry, now), o.qty) : 0, hoursLeft: Math.max(0, Math.round((o.expiry - now) / 360_000) / 10) }));
     const history = { shorts: (await this.shorts(name, 'all')).filter((s) => s.status !== 'open').slice(0, 20), options: (await this.options(name, 'all')).filter((o) => o.status !== 'open').slice(0, 20) };
     const totals = { stocks: stocks.value, funds: funds.reduce((a, f) => a + f.value, 0), shorts: shorts.reduce((a, s) => a + s.equity, 0), options: options.reduce((a, o) => a + o.mark, 0) };
-    return { stocks, funds, shorts, options, history, totals: { ...totals, all: totals.stocks + totals.funds + totals.shorts + totals.options } };
+    const dividends = await this.dividendTotals(name);
+    return { stocks, funds, shorts, options, history, dividends, totals: { ...totals, all: totals.stocks + totals.funds + totals.shorts + totals.options } };
+  }
+
+  /** #37 (Jay): lifetime dividend earnings, read-only from the wallet ledger (game='dividend'). Display only. */
+  async dividendTotals(name: string): Promise<{ total: number; last7: number; days: number }> {
+    if (!this.pool) return { total: 0, last7: 0, days: 0 };
+    try {
+      const r = await this.pool.query(`SELECT COALESCE(SUM(amount),0) AS total, COALESCE(SUM(CASE WHEN created_at > now() - interval '7 days' THEN amount ELSE 0 END),0) AS last7, COUNT(*) AS days FROM wallet_transactions WHERE player_key = $1 AND game = 'dividend'`, [name.trim().toLowerCase()]);
+      const x = r.rows[0] ?? {}; return { total: Number(x.total ?? 0), last7: Number(x.last7 ?? 0), days: Number(x.days ?? 0) };
+    } catch { return { total: 0, last7: 0, days: 0 }; }
   }
 
   // ---------- funds ----------
