@@ -77,11 +77,11 @@ export function FarmGame({ id, label, onClose }: { id: string; label: string; on
         </div>
         {view.mine && <>
           <h4>Seed shop</h4>
-          <small className="farm-outlook-note" data-testid="farm-outlook-note">With your boosts: Farming lv {view.farmingLevel ?? 1}{view.growMul !== undefined && view.growMul < 1 ? ` · ${Math.round((1 - view.growMul) * 100)}% faster` : ''}{view.profitMul !== undefined && view.profitMul > 1 ? ` · +${Math.round((view.profitMul - 1) * 100)}% profit` : ''} (profit still counts toward the daily farm cap)</small>
+          <small className="farm-outlook-note" data-testid="farm-outlook-note">With your boosts: Farming lv {view.farmingLevel ?? 1}{view.growMul !== undefined && view.growMul < 1 ? ` · ${Math.round((1 - view.growMul) * 100)}% faster` : ''}{view.yieldBonus ? ` · +${(view.yieldBonus * 100).toFixed(1)}% bonus crops` : ''}{view.profitMul !== undefined && view.profitMul > 1 ? ` · +${Math.round((view.profitMul - 1) * 100)}% profit` : ''} (profit still counts toward the daily farm cap)</small>
           <div className="farm-seeds" data-testid="farm-seeds">
             {CROPS.map((c) => <button key={c.id} type="button" className={seed === c.id ? 'on' : ''} onClick={() => setSeed(c.id)} data-testid={`farm-seed-${c.id}`}>
               <b>{c.emoji} {c.label}</b><span>🪙{chips(indexed(c.seed, idx))} → {chips(indexed(c.sell, idx))} · {dur(c.grow)}</span>
-              {(() => { const o = cropOutlook(c, view.growMul, view.profitMul); return <span className="farm-outlook" data-testid={`farm-outlook-${c.id}`}>⏱ {dur(o.grow)} · <b>+🪙{chips(indexed(o.profit, idx))}</b> profit/tile</span>; })()}
+              {(() => { const o = cropOutlook(c, view.growMul, view.profitMul, view.yieldBonus); return <span className="farm-outlook" data-testid={`farm-outlook-${c.id}`}>⏱ {dur(o.grow)} · <b>+🪙{chips(indexed(o.profit, idx))}</b> profit/tile</span>; })()}
             </button>)}
           </div>
           <button type="button" disabled={busy || !sel.size} onClick={() => plant([...sel])} data-testid="farm-plant-sel">Plant {sel.size || ''} selected<span>🪙 {chips(indexed(crop.seed, idx) * sel.size)}</span></button>
