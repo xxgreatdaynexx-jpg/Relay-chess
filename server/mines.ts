@@ -13,6 +13,9 @@ import { guestName, lineOfSight, moveAllowance, MOVE_CARRY_MAX, normAngle, clamp
 import { parseSellQty } from '../shared/sellQty.js';
 import { CAVES, caveOf, type CaveId, BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, SWING_MS, dayKey, isOre, payoutFor, houseCapBase, stackKey, priceOf, sellable, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId, inExit, weightOf } from '../shared/mines.js';
 import { isAtResort } from './travel.js';
+import { levelOf, hasFloors, inLadder, canRideTo, respawnFloor, elevatorStops, MAX_FLOOR, clampFloor } from '../shared/mineFloors.js';
+import { MOBS, MOB_AGGRO, MOB_REACH, MOB_RESPAWN_MS, SAFE_X, mobCount, mobDmg, mobHp, mobKindFor, lootCount, hitThrough, maxHpOf, weaponDef, lostOnDeath, REGEN_AFTER_MS, REGEN_PER_S, type MobKind, type WeaponId, type ArmorId } from '../shared/mineCombat.js';
+import { oreFor, mineHash } from '../shared/mines.js';
 import { sinkLostToday } from './sink-room.js';
 import { effectiveAlready } from '../shared/sinkRoom.js';
 import { houseCapIndex } from './house-cap-index.js';
@@ -87,13 +90,18 @@ export class MineError extends Error {}
 /** Equipped mining tool per account (server/mineTools.ts installs the real lookup once Postgres is attached). */
 let toolHook: (account: string | null) => MineToolId = () => DEFAULT_TOOL;
 export const setMineToolHook = (f: (account: string | null) => MineToolId) => { toolHook = f; };
+/** Equipped weapon + armor and deepest floor reached (server/mineGear.ts installs the Postgres-backed versions). */
+let gearHook: (account: string | null) => { weapon: WeaponId; armor: ArmorId } = () => ({ weapon: 'rusty_sword', armor: 'none' });
+let depthHook: { get: (account: string) => number; record: (account: string, floor: number) => void } = { get: () => 1, record: () => {} };
+export const setMineGearHooks = (g: typeof gearHook, d: typeof depthHook) => { gearHook = g; depthHook = d; };
+export interface MobState { id: number; kind: MobKind; x: number; y: number; hx: number; hy: number; hp: number; max: number; dmg: number; deadUntil: number; lastAttack: number; a: number }
 /** Debounce for carried-haul saves, and how long a haul restored after a restart waits for its owner. */
 export const CARRY_SAVE_MS = 1500;
 /** Shown while the mines DB is configured but not connected: never serve (or overwrite) storage/factories from empty memory. */
 export const MINES_OFFLINE_MSG = 'Mines storage is reconnecting. Your factory and storage are safe, try again in a minute.';
 export const RESTART_GRACE_MS = 10 * 60_000;
 
-interface Miner extends Body { restoring?: Promise<void>; id: string; name: string; account: string | null; a: number; p: number; lastMove: number; carry: number; lastHit: number; hits: number[]; sprint: boolean; carried: Map<string, Stack>; cave: CaveId }
+interface Miner extends Body { restoring?: Promise<void>; id: string; name: string; account: string | null; a: number; p: number; lastMove: number; carry: number; lastHit: number; hits: number[]; sprint: boolean; carried: Map<string, Stack>; cave: CaveId; floor: number; hp: number; lastHurt: number; lastAttack: number; deepest: number; lastFloorMove: number }
 interface NodeState { node: MineNode; hp: number; downUntil: number }
 
 export class MinesWorld {
@@ -110,6 +118,141 @@ export class MinesWorld {
   /** Per-cave rock state (pt1201u). `nodes` stays The Mine's for back-compat. */
   caveNodes: Record<CaveId, NodeState[]> = Object.fromEntries(Object.values(CAVES).map((c) => [c.id, c.nodes.map((n) => ({ node: n, hp: ORES[n.ore].hits, downUntil: 0 }))])) as Record<CaveId, NodeState[]>;
   nodes: NodeState[] = this.caveNodes.mine;
+  /** Mine floors 2..MAX_FLOOR: rock state per floor, created when someone first goes down there. */
+  floorNodes = new Map<number, NodeState[]>();
+  /** Creatures per floor (floor 3+), created on first visit; they only act while someone is on that floor. */
+  floorMobs = new Map<number, MobState[]>();
+  gearOf: (account: string | null) => { weapon: WeaponId; armor: ArmorId } = (a) => gearHook(a);
+  deepestOf(m: Miner) { return Math.max(m.deepest, m.account ? depthHook.get(m.account) : 1); }
+  maxHp(m: Miner) { return maxHpOf(this.gearOf(m.account).armor); }
+  mapOf(m: Miner) { return levelOf(m.cave, m.floor).map; }
+  nodeStates(cave: CaveId, floor = 1): NodeState[] {
+    if (!hasFloors(cave) || floor <= 1) return this.caveNodes[cave];
+    let n = this.floorNodes.get(floor);
+    if (!n) { n = levelOf(cave, floor).nodes.map((node) => ({ node, hp: ORES[node.ore].hits, downUntil: 0 })); this.floorNodes.set(floor, n); }
+    return n;
+  }
+  mobsOn(floor: number): MobState[] {
+    let list = this.floorMobs.get(floor);
+    if (list) return list;
+    list = [];
+    const map = levelOf('mine', floor).map; const n = mobCount(floor);
+    const spots: Array<[number, number]> = [];
+    for (let y = 1; y < map.d / 2 - 1; y++) for (let x = 10; x < map.w / 2 - 2; x++) if (canStand(x * 2 + 1, y * 2 + 1, 0, map)) spots.push([x * 2 + 1, y * 2 + 1]);
+    for (let i = 0; i < n && spots.length; i++) {
+      const [x, y] = spots[Math.floor(mineHash(floor * 4243 + i * 31) * spots.length)];
+      const kind = mobKindFor(floor, mineHash(floor * 977 + i * 13)); const max = mobHp(kind, floor);
+      list.push({ id: i, kind, x, y, hx: x, hy: y, hp: max, max, dmg: mobDmg(kind, floor), deadUntil: 0, lastAttack: 0, a: 0 });
+    }
+    this.floorMobs.set(floor, list);
+    return list;
+  }
+  /** Put a miner on a floor of The Mine, at the lift. */
+  setFloor(m: Miner, floor: number, now = Date.now()) {
+    const f = clampFloor(floor); const sp = levelOf(m.cave, f).map.spawns; const p = sp[this.miners.size % sp.length];
+    Object.assign(m, { floor: f, x: p[0], y: p[1], z: 0, vz: 0, grounded: true, crouch: false, carry: 0, lastMove: now, lastFloorMove: now });
+    if (f > m.deepest) m.deepest = f;
+    if (m.account && f > 1) depthHook.record(m.account, f);
+  }
+  /** Ladder at the far end of a floor: go one floor down. */
+  descend(id: string, now: number): number {
+    const m = this.miners.get(id); if (!m) throw new MineError('Join the mine first.');
+    if (!hasFloors(m.cave)) throw new MineError('This cave has one floor.');
+    if (!inLadder(m.x, m.y)) throw new MineError('Find the ladder at the far end of the floor.');
+    if (m.floor >= MAX_FLOOR) throw new MineError('This is the bottom of the mine.');
+    if (now - m.lastFloorMove < 800) throw new MineError('Too fast.');
+    this.setFloor(m, m.floor + 1, now);
+    return m.floor;
+  }
+  /** Elevator in the lift: any stop (1, 5, 10, ...) at or above the deepest floor you've reached. */
+  ride(id: string, to: unknown, now: number): number {
+    const m = this.miners.get(id); if (!m) throw new MineError('Join the mine first.');
+    if (!hasFloors(m.cave)) throw new MineError('This cave has no elevator.');
+    if (!inExit(m.x, m.y)) throw new MineError('Step into the lift to use the elevator.');
+    const f = typeof to === 'number' && Number.isInteger(to) ? to : NaN;
+    if (!canRideTo(f, this.deepestOf(m))) throw new MineError('Reach that floor first.');
+    if (now - m.lastFloorMove < 800) throw new MineError('Too fast.');
+    this.setFloor(m, f, now);
+    return m.floor;
+  }
+  /** Weapon swing at a creature: weapon cooldown, reach (eye to the creature's body) and line of sight. */
+  attack(id: string, mobId: unknown, now: number): { mob: number; hp: number; killed: boolean; dmg: number; loot?: Stack[] } {
+    const m = this.miners.get(id); if (!m) throw new MineError('Join the mine first.');
+    if (m.restoring) throw new MineError('Loading your backpack...');
+    const list = this.floorMobs.get(m.floor);
+    const mob = hasFloors(m.cave) && list && typeof mobId === 'number' ? list[mobId] : undefined;
+    if (!mob || mob.deadUntil) throw new MineError('Nothing to hit.');
+    const w = weaponDef(this.gearOf(m.account).weapon);
+    if (now - m.lastAttack < w.ms - 80) throw new MineError('Too fast.');
+    const def = MOBS[mob.kind]; const eye = { x: m.x, y: m.y, z: m.z + eyeHeightOf(m) }; const c = { x: mob.x, y: mob.y, z: def.z };
+    if (Math.hypot(c.x - eye.x, c.y - eye.y, c.z - eye.z) - def.radius > w.reach) throw new MineError('Too far.');
+    if (!lineOfSight(eye, c, this.mapOf(m))) throw new MineError('Something is in the way.');
+    m.lastAttack = now; m.lastHurt = Math.max(m.lastHurt, now - REGEN_AFTER_MS + 2000);
+    mob.hp = Math.max(0, mob.hp - w.dmg);
+    if (mob.hp > 0) return { mob: mob.id, hp: mob.hp, killed: false, dmg: w.dmg };
+    mob.deadUntil = now + MOB_RESPAWN_MS;
+    // loot: ore rolled from this floor's mix, only what fits in the backpack
+    const lvl = levelOf(m.cave, m.floor); const loot: Stack[] = [];
+    for (let i = 0; i < lootCount(m.floor); i++) {
+      const ore = oreFor(3, this.bonusRng(), lvl.bias, lvl.anyDepth);
+      if (this.load(id) + ORES[ore].weight > BACKPACK_CAP) break;
+      const key = `ore:${ore}`; const cur = m.carried.get(key); if (cur) cur.qty += 1; else m.carried.set(key, { type: 'ore', id: ore, qty: 1 });
+      const l = loot.find((s) => s.id === ore); if (l) l.qty++; else loot.push({ type: 'ore', id: ore, qty: 1 });
+    }
+    if (loot.length && m.account) this.markCarried(playerKey(m.account));
+    return { mob: mob.id, hp: 0, killed: true, dmg: w.dmg, loot };
+  }
+  /** Dying: drop half (rounded up) of each carried stack, wake at the nearest elevator stop at or above, full HP. */
+  die(m: Miner, now: number): { floor: number; lost: Stack[] } {
+    const lost: Stack[] = [];
+    for (const [k, s] of m.carried) { const q = lostOnDeath(s.qty); if (q > 0) lost.push({ ...s, qty: q }); s.qty -= q; if (s.qty <= 0) m.carried.delete(k); }
+    if (lost.length && m.account) this.markCarried(playerKey(m.account));
+    const from = m.floor;
+    this.setFloor(m, respawnFloor(from), now);
+    m.hp = this.maxHp(m); m.lastHurt = 0;
+    return { floor: m.floor, lost };
+  }
+  private lastMobTick = 0;
+  /** Server tick: creatures chase and hit miners on their floor; regen out of combat. Returns hits and deaths for the socket layer. */
+  tickMobs(now: number): { hurt: Array<{ id: string; hp: number; max: number; dmg: number; by: number }>; died: Array<{ id: string; floor: number; lost: Stack[]; room: string }> } {
+    const dt = Math.min(0.25, this.lastMobTick ? (now - this.lastMobTick) / 1000 : 0.1); this.lastMobTick = now;
+    const hurt: Array<{ id: string; hp: number; max: number; dmg: number; by: number }> = []; const died: Array<{ id: string; floor: number; lost: Stack[]; room: string }> = [];
+    const byFloor = new Map<number, Miner[]>();
+    for (const m of this.miners.values()) {
+      const max = this.maxHp(m); if (m.hp > max) m.hp = max;
+      if (m.hp < max && now - m.lastHurt > REGEN_AFTER_MS) m.hp = Math.min(max, m.hp + REGEN_PER_S * dt);
+      if (inExit(m.x, m.y)) m.hp = max; // the lift heals you
+      if (hasFloors(m.cave) && m.floor >= 3) { const l = byFloor.get(m.floor) ?? []; l.push(m); byFloor.set(m.floor, l); }
+    }
+    for (const [floor, miners] of byFloor) {
+      const map = levelOf('mine', floor).map;
+      for (const mob of this.mobsOn(floor)) {
+        if (mob.deadUntil) { if (now >= mob.deadUntil) Object.assign(mob, { deadUntil: 0, hp: mob.max, x: mob.hx, y: mob.hy }); else continue; }
+        const def = MOBS[mob.kind]; let best: Miner | null = null; let bd = MOB_AGGRO;
+        for (const m of miners) {
+          if (m.x < SAFE_X || m.hp <= 0) continue;
+          const d = Math.hypot(m.x - mob.x, m.y - mob.y);
+          if (d < bd && lineOfSight({ x: mob.x, y: mob.y, z: def.z }, { x: m.x, y: m.y, z: m.z + 1 }, map)) { best = m; bd = d; }
+        }
+        if (!best) continue;
+        mob.a = Math.atan2(best.y - mob.y, best.x - mob.x);
+        if (bd > MOB_REACH * 0.8) {
+          const step = def.speed * dt; const nx = mob.x + Math.cos(mob.a) * step, ny = mob.y + Math.sin(mob.a) * step;
+          if (nx >= SAFE_X && canStand(nx, mob.y, 0, map)) mob.x = nx;
+          if (canStand(mob.x, ny, 0, map)) mob.y = ny;
+        }
+        if (bd <= MOB_REACH && now - mob.lastAttack >= def.attackMs) {
+          mob.lastAttack = now;
+          const dmg = hitThrough(mob.dmg, this.gearOf(best.account).armor);
+          best.hp -= dmg; best.lastHurt = now;
+          if (best.hp <= 0) { const r = this.die(best, now); died.push({ id: best.id, ...r, room: roomOf(best.cave, best.floor) }); }
+          else hurt.push({ id: best.id, hp: Math.round(best.hp), max: this.maxHp(best), dmg, by: mob.id });
+        }
+      }
+    }
+    return { hurt, died };
+  }
+  mobsView(floor: number) { return (this.floorMobs.get(floor) ?? []).map((b) => ({ id: b.id, k: b.kind, x: +b.x.toFixed(2), y: +b.y.toFixed(2), a: +b.a.toFixed(2), hp: b.deadUntil ? 0 : b.hp, max: b.max })); }
   /** signed-in backpacks by player key; guests keep theirs on the miner id (lost on leave) */
   packs = new Map<string, Map<string, Stack>>();
   names = new Map<string, string>();
@@ -192,7 +335,8 @@ export class MinesWorld {
   join(id: string, account: string | null, now: number, caveId: unknown = 'mine'): Miner {
     const cave = caveOf(caveId); const spawns = cave.map.spawns;
     const sp = spawns[this.miners.size % spawns.length];
-    const m: Miner = { id, name: account?.trim() || guestName(), account: account?.trim() || null, x: sp[0], y: sp[1], z: 0, vz: 0, grounded: true, crouch: false, a: 0, p: 0, lastMove: now, carry: 0, lastHit: 0, hits: [], sprint: false, carried: new Map(), cave: cave.id };
+    const m: Miner = { id, name: account?.trim() || guestName(), account: account?.trim() || null, x: sp[0], y: sp[1], z: 0, vz: 0, grounded: true, crouch: false, a: 0, p: 0, lastMove: now, carry: 0, lastHit: 0, hits: [], sprint: false, carried: new Map(), cave: cave.id, floor: 1, hp: 0, lastHurt: 0, lastAttack: 0, deepest: 1, lastFloorMove: 0 };
+    m.hp = this.maxHp(m);
     this.miners.set(id, m);
     if (m.account) {
       const k = playerKey(m.account); this.names.set(k, m.account);
@@ -217,7 +361,7 @@ export class MinesWorld {
   /** Put a miner at a spawn in another cave (carried ore comes along; the EXIT lift is in the same place in every cave). */
   moveToCave(m: Miner, caveId: CaveId): void {
     const spawns = caveOf(caveId).map.spawns; const sp = spawns[this.miners.size % spawns.length];
-    Object.assign(m, { cave: caveOf(caveId).id, x: sp[0], y: sp[1], z: 0, vz: 0, grounded: true, crouch: false, carry: 0 });
+    Object.assign(m, { cave: caveOf(caveId).id, floor: 1, x: sp[0], y: sp[1], z: 0, vz: 0, grounded: true, crouch: false, carry: 0 });
   }
 
   leave(id: string, now = Date.now()) {
@@ -254,9 +398,9 @@ export class MinesWorld {
     const speedBody = { crouch: m.crouch, sprint: m.sprint };
     const allowed = moveAllowance(speedBody, dt, m.carry);
     const want = typeof x === 'number' && typeof y === 'number' ? Math.hypot(x - m.x, y - m.y) : 0;
-    validateMove(m, x, y, dt, caveOf(m.cave).map, allowed);
+    validateMove(m, x, y, dt, this.mapOf(m), allowed);
     m.carry = Math.min(MOVE_CARRY_MAX, Math.max(0, allowed - want));
-    if (typeof z === 'number' && Number.isFinite(z) && z >= 0 && z <= 1.4 && canStand(m.x, m.y, z, caveOf(m.cave).map)) m.z = z;
+    if (typeof z === 'number' && Number.isFinite(z) && z >= 0 && z <= 1.4 && canStand(m.x, m.y, z, this.mapOf(m))) m.z = z;
     const na = normAngle(a); if (na !== null) m.a = na;
     const np = clampPitch(p); if (np !== null) m.p = np;
     return typeof x === 'number' && typeof y === 'number' && Math.hypot(x - m.x, y - m.y) > 0.6;
@@ -269,7 +413,7 @@ export class MinesWorld {
     const m = this.miners.get(id); if (!m) throw new MineError('Join the mine first.');
     if (this.closing) throw new MineError('The server is restarting. Your haul is saved, mine again in a moment.');
     if (m.restoring) throw new MineError('Loading your backpack...');
-    const n = typeof nodeId === 'number' ? this.caveNodes[m.cave][nodeId] : undefined;
+    const n = typeof nodeId === 'number' ? this.nodeStates(m.cave, m.floor)[nodeId] : undefined;
     if (!n) throw new MineError('No rock there.');
     const lvl = this.miningLevel(m.account); const tool = this.toolOf(m.account); const mul = combinedSwingMul(miningSwingMul(lvl), tool);
     if (now - m.lastHit < SWING_MIN_MS * mul) throw new MineError('Too fast.');
@@ -283,7 +427,7 @@ export class MinesWorld {
     // LOS to a point on the node's near face (centre sits half inside the wall).
     const toward = Math.hypot(eye.x - c.x, eye.y - c.y) || 1;
     const face = { x: c.x + ((eye.x - c.x) / toward) * NODE_R * 0.9, y: c.y + ((eye.y - c.y) / toward) * NODE_R * 0.9, z: c.z };
-    if (!lineOfSight(eye, face, caveOf(m.cave).map)) throw new MineError('Something is in the way.');
+    if (!lineOfSight(eye, face, this.mapOf(m))) throw new MineError('Something is in the way.');
     const ore = ORES[c.ore];
     if (this.load(id) + ore.weight > BACKPACK_CAP) return { node: c.id, hp: n.hp, broke: false, full: true };
     m.lastHit = now; m.hits.push(now);
@@ -441,7 +585,7 @@ export class MinesWorld {
     return true;
   }
 
-  nodesView(now: number, cave: CaveId = 'mine') { return this.caveNodes[cave].map((n) => (this.nodeAvailable(n, now) ? n.hp : -1)); }
+  nodesView(now: number, cave: CaveId = 'mine', floor = 1) { return this.nodeStates(cave, floor).map((n) => (this.nodeAvailable(n, now) ? n.hp : -1)); }
   private skinCache = new Map<string, { pk: string | null; at: number }>();
   /** Equipped pickaxe skin for third-person rendering (cached 5s; guests = stock). */
   private pickSkin(m: Miner): string | null {
@@ -452,7 +596,7 @@ export class MinesWorld {
     try { pk = (getVault()?.loadout(m.account) as Record<string, string | undefined> | undefined)?.pickaxe ?? null; } catch { pk = null; }
     this.skinCache.set(m.id, { pk, at: now }); return pk;
   }
-  playersView(cave?: CaveId) { return [...this.miners.values()].filter((m) => !cave || m.cave === cave).map((m) => ({ id: m.id, name: m.name, x: +m.x.toFixed(2), y: +m.y.toFixed(2), z: +m.z.toFixed(2), a: +m.a.toFixed(3), p: +m.p.toFixed(3), c: !!m.crouch, sw: m.lastHit, pk: this.pickSkin(m), tl: this.toolOf(m.account) })); }
+  playersView(cave?: CaveId, floor?: number) { return [...this.miners.values()].filter((m) => (!cave || m.cave === cave) && (floor === undefined || m.floor === floor)).map((m) => ({ id: m.id, name: m.name, x: +m.x.toFixed(2), y: +m.y.toFixed(2), z: +m.z.toFixed(2), a: +m.a.toFixed(3), p: +m.p.toFixed(3), c: !!m.crouch, sw: m.lastHit, pk: this.pickSkin(m), tl: this.toolOf(m.account), hp: Math.round(m.hp), mhp: this.maxHp(m), wp: this.gearOf(m.account).weapon, at: m.lastAttack })); }
 }
 
 let world = new MinesWorld();
@@ -483,18 +627,31 @@ export async function attachWithRetry(w: MinesWorld, mk: () => MineStore, onOk: 
   return false;
 }
 
-const roomOf = (c: CaveId) => `mines:${c}`;
+/** Socket room per cave, and per floor for The Mine below floor 1. */
+export const roomOf = (c: CaveId, floor = 1) => (hasFloors(c) && floor > 1 ? `mines:${c}:f${floor}` : `mines:${c}`);
+const roomOfM = (m: { cave: CaveId; floor: number }) => roomOf(m.cave, m.floor);
 const MAX_MINERS = 24;
 let ticker: ReturnType<typeof setInterval> | null = null;
 type Ack = (r: Record<string, unknown>) => void;
 const body = (p: unknown) => (p && typeof p === 'object' ? (p as Record<string, unknown>) : {});
 
+const floorMsg = (m: Miner) => ({ floor: m.floor, deepest: world.deepestOf(m), stops: hasFloors(m.cave) ? elevatorStops(world.deepestOf(m)) : [], hp: Math.round(m.hp), maxHp: world.maxHp(m), nodes: world.nodesView(Date.now(), m.cave, m.floor), x: m.x, y: m.y, z: m.z });
 function ensureTicker(io: Server) {
   if (ticker) return;
   ticker = setInterval(() => {
     if (!world.miners.size) { clearInterval(ticker!); ticker = null; return; }
-    const now = Date.now(); const live = new Set([...world.miners.values()].map((m) => m.cave));
-    for (const c of live) io.to(roomOf(c)).emit('mines_state', { t: now, players: world.playersView(c), nodes: world.nodesView(now, c) });
+    const now = Date.now();
+    const { hurt, died } = world.tickMobs(now);
+    for (const h of hurt) io.to(h.id).emit('mines_hurt', h);
+    for (const d of died) {
+      for (const s of io.sockets.sockets.get(d.id)?.rooms ?? []) if (s.startsWith('mines:')) void io.sockets.sockets.get(d.id)?.leave(s);
+      void io.sockets.sockets.get(d.id)?.join(d.room);
+      const m = world.miners.get(d.id);
+      if (m) io.to(d.id).emit('mines_died', { ...floorMsg(m), lost: d.lost, pack: world.carried(d.id), load: world.load(d.id), cap: BACKPACK_CAP });
+    }
+    const live = new Map<string, { cave: CaveId; floor: number }>();
+    for (const m of world.miners.values()) live.set(roomOfM(m), { cave: m.cave, floor: m.floor });
+    for (const [room, l] of live) io.to(room).emit('mines_state', { t: now, floor: l.floor, players: world.playersView(l.cave, l.floor), nodes: world.nodesView(now, l.cave, l.floor), mobs: world.mobsView(l.floor) });
   }, 100);
   ticker.unref?.();
 }
@@ -508,23 +665,23 @@ export function registerMines(io: Server, socket: Socket): void {
     let m = me();
     const want = caveOf(body(p).cave).id;
     if (want === 'coral' && !isAtResort(account())) return ack?.({ ok: false, error: 'The Coral Grotto is at Chud Resort. Fly there from Chud Hub International.' });
-    if (m && !m.account && account()) { const room = roomOf(m.cave); world.leave(socket.id); void socket.leave(room); m = undefined; } // signed in after joining as a guest: rejoin as the account so the saved haul loads
+    if (m && !m.account && account()) { const room = roomOfM(m); world.leave(socket.id); void socket.leave(room); m = undefined; } // signed in after joining as a guest: rejoin as the account so the saved haul loads
     if (m && m.cave !== want) {
       // Switching caves on the same socket (or a join that beat the old leave): move to the new cave's spawn.
       // Keeping the old miner would validate every step against the OTHER cave's walls (rubber-banding into
       // invisible walls, walking through real ones) and start the player at a spot that is inside rock here.
-      void socket.leave(roomOf(m.cave));
+      void socket.leave(roomOfM(m));
       world.moveToCave(m, want);
-      void socket.join(roomOf(m.cave));
+      void socket.join(roomOfM(m));
     }
     if (!m) {
       if (world.miners.size >= MAX_MINERS) return ack?.({ ok: false, error: 'The mine is full, try again in a bit.' });
       m = world.join(socket.id, account(), Date.now(), want);
-      void socket.join(roomOf(m.cave));
+      void socket.join(roomOfM(m));
     }
     ensureTicker(io);
     if (m.restoring) { try { await m.restoring; } catch (e) { return ack?.({ ok: false, error: (e as Error).message }); } if (world.miners.get(socket.id) !== m) return ack?.({ ok: false, error: 'Left the mine.' }); }
-    ack?.({ ok: true, swingMs: world.swingMsFor(m.account), tool: world.toolOf(m.account), id: socket.id, name: m.name, guest: !m.account, cave: m.cave, x: m.x, y: m.y, z: m.z, a: m.a, nodes: world.nodesView(Date.now(), m.cave), ...packMsg() });
+    ack?.({ ok: true, swingMs: world.swingMsFor(m.account), tool: world.toolOf(m.account), id: socket.id, name: m.name, guest: !m.account, cave: m.cave, a: m.a, ...floorMsg(m), ...packMsg() });
   });
   socket.on('mines_move', (p: unknown) => {
     const b = body(p);
@@ -539,15 +696,35 @@ export function registerMines(io: Server, socket: Socket): void {
       if (r.broke && r.ore && mm?.account) {
         try {
           const now = Date.now();
-          const it = getVault().dropForMine(mm.account, `mine-drop:${playerKey(mm.account)}:${mm.cave}:${r.node}:${now}`, `${r.ore} in ${mm.cave}`);
+          const it = getVault().dropForMine(mm.account, `mine-drop:${playerKey(mm.account)}:${mm.cave}${mm.floor > 1 ? `-f${mm.floor}` : ''}:${r.node}:${now}`, `${r.ore} in ${mm.cave}${mm.floor > 1 ? ` floor ${mm.floor}` : ''}`);
           if (it) drop = { kind: it.kind, id: it.id };
         } catch (e) { console.warn('[mines] drop skipped:', (e as Error).message); }
       }
-      socket.to(roomOf(me()!.cave)).emit('mines_fx', { node: r.node, hp: r.hp, broke: r.broke, by: socket.id });
+      socket.to(roomOfM(me()!)).emit('mines_fx', { node: r.node, hp: r.hp, broke: r.broke, by: socket.id });
       ack?.({ ok: true, ...r, swingMs: world.swingMsFor(account()), ...(r.broke ? packMsg() : {}), ...(drop ? { drop } : {}) });
     } catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
   });
   socket.on('mines_pack', (_p: unknown, ack?: Ack) => ack?.({ ok: true, ...packMsg() }));
+  // Floors (Millionaire Update #13): ladder down, elevator, weapon attacks.
+  const changeFloor = (fn: (m: Miner) => void) => (p: unknown, ack?: Ack) => {
+    try {
+      const m = me(); if (!m) throw new MineError('Join the mine first.');
+      const before = roomOfM(m); fn(m); const after = roomOfM(m);
+      if (before !== after) { void socket.leave(before); io.to(before).emit('mines_left', { id: socket.id }); void socket.join(after); }
+      ack?.({ ok: true, ...floorMsg(m), ...packMsg() });
+    } catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
+    void p;
+  };
+  socket.on('mines_descend', (p: unknown, ack?: Ack) => changeFloor(() => world.descend(socket.id, Date.now()))(p, ack));
+  socket.on('mines_elevator', (p: unknown, ack?: Ack) => changeFloor(() => world.ride(socket.id, body(p).floor, Date.now()))(p, ack));
+  socket.on('mines_attack', (p: unknown, ack?: Ack) => {
+    try {
+      const r = world.attack(socket.id, body(p).mob, Date.now());
+      if (r.killed) { const m = me(); const f = m?.floor ?? 1; const lst = world.floorMobs.get(f)?.[r.mob]; awardXp(account(), 'mining', lst ? MOBS[lst.kind].xp : 5); }
+      socket.to(roomOfM(me()!)).emit('mines_mobfx', { mob: r.mob, hp: r.hp, killed: r.killed, by: socket.id });
+      ack?.({ ok: true, ...r, ...(r.loot?.length ? packMsg() : {}) });
+    } catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
+  });
   socket.on('mines_exit', (_p: unknown, ack?: Ack) => {
     try { const r = world.exit(socket.id); ack?.({ ok: true, ...r, ...packMsg() }); }
     catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
@@ -569,7 +746,7 @@ export function registerMines(io: Server, socket: Socket): void {
   socket.on('mines_factory_upgrade', gone);
   socket.on('mines_collect', gone);
   socket.on('mines_craft', gone);
-  const leave = () => { const m = me(); if (m) { const room = roomOf(m.cave); world.leave(socket.id); void socket.leave(room); io.to(room).emit('mines_left', { id: socket.id }); } };
+  const leave = () => { const m = me(); if (m) { const room = roomOfM(m); world.leave(socket.id); void socket.leave(room); io.to(room).emit('mines_left', { id: socket.id }); } };
   socket.on('mines_leave', leave);
   socket.on('disconnect', leave);
 }

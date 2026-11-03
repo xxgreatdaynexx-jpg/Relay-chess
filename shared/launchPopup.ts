@@ -18,6 +18,7 @@ export const LAUNCH: LaunchPopup = {
     { icon: '🌱', title: 'Farming level = bonus crops', text: 'Your Farming level now gives bonus yield on harvests, up to +25% more crops at level 99.' },
     { icon: '📱', title: 'Farm on mobile', text: 'Tap “🌾 My farm” on the map to open your farm. On phones it opens full screen.' },
     { icon: '📈', title: 'Net worth charts', text: 'Player profiles now chart net worth over time.' },
+    { icon: '🪜', title: 'The Mine goes deep', text: '40 floors under The Mine with richer ore the deeper you go, an elevator every 5 floors, creatures to fight and a ⚔️ Weapon Store.' },
     { icon: '💰', title: 'Dividend totals', text: 'See every chip you\'ve earned from dividends on your Stocks portfolio and profile.' },
   ],
 };

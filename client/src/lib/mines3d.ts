@@ -4,7 +4,49 @@ import { applyPickSkin, skinnedPickaxe } from './pickaxeModel';
 import { buildMineTool, animateMineTool, skinMineTool } from './mineToolModels';
 import type { MineToolId } from '../../../shared/mineTools';
 import { animateMiner, buildMiner, setMinerSkin, setMinerTool, type MinerRig } from './minerAvatar';
-import { CAVES, MINE_EXIT, ORES, type CaveId, type MineNode } from '../../../shared/mines';
+import { MINE_EXIT, ORES, type CaveId, type MineNode } from '../../../shared/mines';
+import { levelOf, hasFloors, LADDER, MAX_FLOOR } from '../../../shared/mineFloors';
+import { MOBS, type MobKind } from '../../../shared/mineCombat';
+
+export interface MobView { id: number; k: MobKind; x: number; y: number; a: number; hp: number; max: number }
+interface MobRig { root: THREE.Group; body: THREE.Object3D; wings?: THREE.Object3D[]; bar: THREE.Sprite; barBg: THREE.Sprite; hurt: number; kind: MobKind; hp: number; t: number }
+function buildMob(kind: MobKind): MobRig {
+  const d = MOBS[kind]; const root = new THREE.Group(); const col = new THREE.Color(d.color);
+  const mat = new THREE.MeshStandardMaterial({ color: col, roughness: 0.6, emissive: kind === 'golem' || kind === 'wraith' ? col : '#000', emissiveIntensity: kind === 'wraith' ? 0.6 : 0.35, transparent: kind === 'slime' || kind === 'wraith', opacity: kind === 'wraith' ? 0.75 : kind === 'slime' ? 0.85 : 1 });
+  const eyeMat = new THREE.MeshBasicMaterial({ color: kind === 'wraith' ? '#ffffff' : kind === 'golem' ? '#ffe070' : '#ff3030' });
+  const body = new THREE.Group(); let wings: THREE.Object3D[] | undefined;
+  const eyes = (z: number, y: number, sp: number, r = 0.06) => { for (const s of [-1, 1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), eyeMat); e.position.set(z, y, s * sp); body.add(e); } };
+  if (kind === 'slime') { const b = new THREE.Mesh(new THREE.SphereGeometry(0.45, 16, 12), mat); b.scale.set(1, 0.75, 1); b.position.y = 0.34; body.add(b); eyes(0.36, 0.45, 0.14); }
+  else if (kind === 'bat') {
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 10), mat); body.add(b); eyes(0.18, 0.05, 0.08, 0.04);
+    wings = [-1, 1].map((s) => { const w = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.55), new THREE.MeshStandardMaterial({ color: '#2a2030', side: THREE.DoubleSide })); w.rotation.x = Math.PI / 2; w.position.set(0, 0, s * 0.35); body.add(w); return w; });
+    body.position.y = MOBS.bat.z;
+  } else if (kind === 'crab') {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.4, 0.9), mat); b.position.y = 0.35; body.add(b); eyes(0.42, 0.62, 0.15, 0.07);
+    for (const s of [-1, 1]) { const c = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.18, 0.18), mat); c.position.set(0.5, 0.35, s * 0.42); body.add(c); for (let i = 0; i < 3; i++) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.3, 0.06), mat); l.position.set(-0.25 + i * 0.25, 0.12, s * 0.48); body.add(l); } }
+  } else if (kind === 'golem') {
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.9, 1.0), mat); torso.position.y = 1.1; body.add(torso);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.45, 0.5), mat); head.position.y = 1.8; body.add(head);
+    for (const s of [-1, 1]) { const arm = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.9, 0.3), mat); arm.position.set(0, 1.0, s * 0.68); body.add(arm); const leg = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.65, 0.32), mat); leg.position.set(0, 0.33, s * 0.25); body.add(leg); }
+    const e = new THREE.Group(); body.add(e); for (const s of [-1, 1]) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), eyeMat); m.position.set(0.26, 1.85, s * 0.12); body.add(m); }
+  } else {
+    const b = new THREE.Mesh(new THREE.ConeGeometry(0.42, 1.5, 12, 1, true), mat); b.rotation.x = Math.PI; b.position.y = 1.15; body.add(b);
+    const h = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 10), mat); h.position.y = 1.95; body.add(h); eyes(0.24, 1.98, 0.1, 0.05);
+  }
+  root.add(body);
+  const bg = new THREE.Sprite(new THREE.SpriteMaterial({ color: '#200a0a', depthWrite: false, fog: false })); const bar = new THREE.Sprite(new THREE.SpriteMaterial({ color: '#ff4040', depthWrite: false, fog: false }));
+  const top = kind === 'golem' ? 2.35 : kind === 'wraith' ? 2.5 : kind === 'bat' ? 2.0 : 1.05;
+  bg.position.y = top; bar.position.y = top; bg.scale.set(0.9, 0.09, 1); bar.scale.set(0.86, 0.06, 1); bar.renderOrder = 6; bg.renderOrder = 5;
+  root.add(bg); root.add(bar);
+  return { root, body, wings, bar, barBg: bg, hurt: 0, kind, hp: -1, t: Math.random() * 6 };
+}
+function buildSword(): THREE.Group {
+  const g = new THREE.Group();
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.75, 0.015), new THREE.MeshStandardMaterial({ color: '#d8dde6', metalness: 0.8, roughness: 0.25, emissive: '#2a3040', emissiveIntensity: 0.3 })); blade.position.y = 0.48; g.add(blade);
+  const guard = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.04, 0.05), new THREE.MeshStandardMaterial({ color: '#8a6a30', metalness: 0.6 })); guard.position.y = 0.1; g.add(guard);
+  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.2, 8), new THREE.MeshStandardMaterial({ color: '#3a2414' })); g.add(grip);
+  return g;
+}
 
 function nameTag(name: string): THREE.Sprite {
   const c = document.createElement('canvas'); c.width = 256; c.height = 64; const x = c.getContext('2d')!;
@@ -55,14 +97,19 @@ export class Mines3D {
   private lamp: THREE.PointLight;
 
   private caveNodes: MineNode[];
-  constructor(canvas: HTMLCanvasElement, caveId: CaveId = 'mine') {
-    const cave = CAVES[caveId]; const MINE_MAP = cave.map; const MINE_NODES = cave.nodes; const T = cave.theme;
+  private mobs = new Map<number, MobRig>();
+  private sword: THREE.Group;
+  private swordT = 1;
+  readonly floor: number;
+  constructor(canvas: HTMLCanvasElement, caveId: CaveId = 'mine', floor = 1) {
+    const cave = levelOf(caveId, floor); const MINE_MAP = cave.map; const MINE_NODES = cave.nodes; const T = cave.theme;
+    this.floor = cave.floor; const classic = caveId === 'mine' && cave.floor < 10;
     this.caveNodes = MINE_NODES;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-    this.scene.background = new THREE.Color(caveId === 'mine' ? '#0b0907' : T.sky);
+    this.scene.background = new THREE.Color(classic ? '#0b0907' : T.sky);
     const lava = T.hazard === 'lava'; // Magma Depths brightened (request #21): lighter, further fog + stronger ambient/hemi + warmer lava spill
-    this.scene.fog = new THREE.Fog(caveId === 'mine' ? '#0b0907' : lava ? '#3a1507' : T.fog, lava ? 8 : 6, T.hazard === 'ice' ? 32 : lava ? 34 : 26);
+    this.scene.fog = new THREE.Fog(classic ? '#0b0907' : lava ? '#3a1507' : T.fog, lava ? 8 : 6, T.hazard === 'ice' ? 32 : lava ? 34 : 26);
     this.scene.add(new THREE.AmbientLight(T.ambient, T.hazard === 'ice' ? 0.7 : lava ? 1.35 : 0.55));
     if (lava) this.scene.add(new THREE.HemisphereLight('#ffb27a', '#5a1a08', 0.9));
     this.lamp = new THREE.PointLight('#ffd9a0', 2.2, 14, 1.4); this.scene.add(this.lamp);
@@ -90,8 +137,8 @@ export class Mines3D {
       this.scene.add(m);
     }
     const floorTex = tex.clone(); floorTex.repeat.set(MINE_MAP.w / 3, MINE_MAP.d / 3); floorTex.needsUpdate = true;
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(MINE_MAP.w, MINE_MAP.d), new THREE.MeshLambertMaterial({ map: floorTex, color: T.floor }));
-    floor.rotation.x = -Math.PI / 2; floor.position.set(MINE_MAP.w / 2, 0, MINE_MAP.d / 2); this.scene.add(floor);
+    const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(MINE_MAP.w, MINE_MAP.d), new THREE.MeshLambertMaterial({ map: floorTex, color: T.floor }));
+    floorMesh.rotation.x = -Math.PI / 2; floorMesh.position.set(MINE_MAP.w / 2, 0, MINE_MAP.d / 2); this.scene.add(floorMesh);
     // Lanterns along the tunnels (cheap: emissive dots + a few lights).
     let lights = 0;
     for (const s of MINE_MAP.spawns.concat(MINE_NODES.filter((_, i) => i % 9 === 0).map((n) => [n.x, n.y, 0] as [number, number, number]))) {
@@ -107,6 +154,17 @@ export class Mines3D {
       const pad = new THREE.Mesh(new THREE.PlaneGeometry(MINE_EXIT.x1 - MINE_EXIT.x0, MINE_EXIT.y1 - MINE_EXIT.y0), new THREE.MeshBasicMaterial({ color: '#2cff7a', transparent: true, opacity: 0.16, depthWrite: false }));
       pad.rotation.x = -Math.PI / 2; pad.position.set((MINE_EXIT.x0 + MINE_EXIT.x1) / 2, 0.02, (MINE_EXIT.y0 + MINE_EXIT.y1) / 2); this.scene.add(pad);
       const gl = new THREE.PointLight('#3dff8a', 1.4, 7, 1.6); gl.position.set(MINE_EXIT.sign.x + 0.6, MINE_EXIT.sign.z, MINE_EXIT.sign.y); this.scene.add(gl);
+    }
+    if (hasFloors(caveId) && cave.floor < MAX_FLOOR) { // ladder down at the far end: dark shaft + glowing frame + sign
+      const hole = new THREE.Mesh(new THREE.CircleGeometry(1.1, 24), new THREE.MeshBasicMaterial({ color: '#000000' })); hole.rotation.x = -Math.PI / 2; hole.position.set(LADDER.cx, 0.02, LADDER.cy); this.scene.add(hole);
+      const ring = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.35, 24), new THREE.MeshBasicMaterial({ color: '#ffcc40', transparent: true, opacity: 0.8 })); ring.rotation.x = -Math.PI / 2; ring.position.set(LADDER.cx, 0.03, LADDER.cy); this.scene.add(ring);
+      const railMat = new THREE.MeshLambertMaterial({ color: '#8a5a2a' });
+      for (const s of [-0.35, 0.35]) { const r = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.6, 0.08), railMat); r.position.set(LADDER.cx + s, 0.5, LADDER.cy); this.scene.add(r); }
+      for (let i = 0; i < 4; i++) { const r = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.06), railMat); r.position.set(LADDER.cx, 0.0 + i * 0.4, LADDER.cy); this.scene.add(r); }
+      const c = document.createElement('canvas'); c.width = 512; c.height = 160; const x = c.getContext('2d');
+      if (x) { x.fillStyle = '#231a06'; x.fillRect(0, 0, 512, 160); x.strokeStyle = '#ffcc40'; x.lineWidth = 8; x.strokeRect(6, 6, 500, 148); x.fillStyle = '#ffd860'; x.font = 'bold 64px sans-serif'; x.textAlign = 'center'; x.fillText('LADDER ↓', 256, 78); x.font = 'bold 34px sans-serif'; x.fillText(`to floor ${cave.floor + 1}`, 256, 130); }
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 0.62), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c) })); sign.position.set(LADDER.x1 - 0.05, 2.5, LADDER.cy); sign.rotation.y = -Math.PI / 2; this.scene.add(sign);
+      const gl = new THREE.PointLight('#ffcc40', 1.6, 8, 1.6); gl.position.set(LADDER.cx, 1.5, LADDER.cy); this.scene.add(gl);
     }
     for (const n of MINE_NODES) {
       const def = ORES[n.ore];
@@ -137,6 +195,7 @@ export class Mines3D {
     this.pickModel.position.set(0, -0.22, 0); this.pickModel.rotation.y = Math.PI / 2;
     this.pick.add(this.pickModel); this.pick.scale.setScalar(0.72);
     this.camera.add(this.pick);
+    this.sword = buildSword(); this.sword.visible = false; this.camera.add(this.sword);
     this.scene.add(this.camera);
     this.camera.add(new THREE.PointLight('#fff1d6', 0.9, 6, 1.5));
   }
@@ -166,6 +225,36 @@ export class Mines3D {
     if (this.toolModel) { this.pick.remove(this.toolModel); this.toolModel = null; }
     const m = buildMineTool(id); this.pickModel.visible = !m;
     if (m) { skinMineTool(m, this.pickSkin); m.position.copy(this.pickModel.position); m.rotation.copy(this.pickModel.rotation); this.pick.add(m); this.toolModel = m; }
+  }
+
+  /** Weapon swing: the sword replaces the pickaxe for one strike. */
+  swingSword() { this.swordT = 0; }
+  /** Creatures on this floor (server ticks). hp 0 = dead (hidden until it respawns). */
+  setMobs(list: MobView[]) {
+    const seen = new Set<number>();
+    for (const b of list) {
+      let r = this.mobs.get(b.id);
+      if (r && r.kind !== b.k) { this.scene.remove(r.root); this.mobs.delete(b.id); r = undefined; }
+      if (!r) { r = buildMob(b.k); this.scene.add(r.root); this.mobs.set(b.id, r); }
+      seen.add(b.id);
+      if (r.hp >= 0 && b.hp < r.hp) r.hurt = 0.25;
+      r.hp = b.hp; r.root.visible = b.hp > 0;
+      r.root.position.set(b.x, 0, b.y); r.root.rotation.y = -b.a;
+      const f = Math.max(0, Math.min(1, b.hp / b.max)); r.bar.scale.x = 0.86 * f;
+      (r.bar.material as THREE.SpriteMaterial).color.set(f > 0.5 ? '#50e050' : f > 0.25 ? '#ffc030' : '#ff4040');
+    }
+    for (const [id, r] of this.mobs) if (!seen.has(id)) { this.scene.remove(r.root); this.mobs.delete(id); }
+  }
+  /** A hit landed on a creature (yours or another miner's): red flash + sparks. */
+  mobHit(id: number, killed: boolean) {
+    const r = this.mobs.get(id); if (!r) return; r.hurt = 0.3;
+    const at = new THREE.Vector3(r.root.position.x, MOBS[r.kind].z + 0.2, r.root.position.z);
+    for (let i = 0; i < (killed ? 26 : 10); i++) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.06), new THREE.MeshBasicMaterial({ color: i % 2 ? MOBS[r.kind].color : '#ff3a2a' }));
+      m.position.copy(at); this.scene.add(m);
+      this.parts.push({ m, v: new THREE.Vector3((Math.random() - 0.5) * 4, Math.random() * 3 + 1, (Math.random() - 0.5) * 4), life: 0.5 + Math.random() * 0.4 });
+    }
+    this.kick = Math.max(this.kick, 0.03);
   }
 
   burstAt(node: number, big: boolean) {
@@ -244,6 +333,19 @@ export class Mines3D {
       m.opacity = Math.max(0, Math.min(1, (22 - d) / 8));
       g.tag.visible = m.opacity > 0.02 && this.clear(cam.x, cam.y, px, py);
       const k = Math.max(1, Math.min(2.2, d / 7)); g.tag.scale.set(1.6 * k, 0.4 * k, 1);
+    }
+    this.swordT = Math.min(1, this.swordT + dt / 0.35);
+    this.sword.visible = this.swordT < 1; this.pick.visible = !this.sword.visible;
+    if (this.sword.visible) { const k = this.swordT; const arc = Math.sin(k * Math.PI); this.sword.position.set(0.32 - k * 0.5, -0.32 + arc * 0.08, -0.55); this.sword.rotation.set(-0.4 - arc * 0.4, 0.2, -1.2 + k * 2.2); }
+    const now = performance.now() / 1000;
+    for (const r of this.mobs.values()) {
+      r.t += dt;
+      if (r.kind === 'slime') { const s = 1 + Math.sin(r.t * 5) * 0.12; r.body.scale.set(1 / s, s, 1 / s); }
+      else if (r.kind === 'bat') { r.body.position.y = MOBS.bat.z + Math.sin(r.t * 3) * 0.2; r.wings?.forEach((w, i) => { w.rotation.x = Math.PI / 2 + (i ? 1 : -1) * Math.sin(now * 18) * 0.7; }); }
+      else if (r.kind === 'wraith') r.body.position.y = Math.sin(r.t * 2) * 0.15;
+      else if (r.kind === 'golem') r.body.rotation.z = Math.sin(r.t * 3) * 0.04;
+      r.hurt = Math.max(0, r.hurt - dt);
+      r.body.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined; if (m && 'emissive' in m && m.emissive) { if (m.userData.e0 === undefined) m.userData.e0 = m.emissive.getHex(); m.emissive.setHex(r.hurt > 0 ? 0xff2020 : m.userData.e0); } });
     }
     for (let i = this.parts.length - 1; i >= 0; i--) {
       const p = this.parts[i];
