@@ -43,7 +43,7 @@ export const RESORT_SPOTS: ResortSpot[] = [
   { id: 'r-mine', label: 'Coral Grotto', icon: '🐚', blurb: 'A sea cave under the volcano: coral pillars, rich in gems and gold.', x: 100, z: -72, w: 22, d: 22, h: 14, color: 0xff8a7a },
   { id: 'r-farm', label: 'Paradise Plantation', icon: '🥥', blurb: 'Buy a plot and grow coconuts, pineapples, mangoes, bananas and cacao.', x: -74, z: -32, w: 12, d: 8, h: 6, color: 0x7ed08a },
   { id: 'r-pier', label: 'Reef Pier', icon: '🎣', blurb: 'Fish the reef at sunset: clownfish, parrotfish, mahi-mahi, yellowfin, sailfish, and the rare Blue Marlin or Sunset Manta.', x: -60, z: 50, w: 8, d: 26, h: 4, color: 0x3ad8c8 },
-  { id: 'r-marina', label: 'Marina', icon: '🛥️', blurb: 'Superyachts at the docks. Pure vibes.', x: 92, z: 48, w: 30, d: 14, h: 2, color: 0xffffff },
+  { id: 'r-marina', label: 'Marina', icon: '🛥️', blurb: 'Buy a skiff, sportfisher, yacht or superyacht. Boats unlock deep-sea fishing and count toward your net worth.', x: 92, z: 48, w: 30, d: 14, h: 2, color: 0xffffff },
 ];
 
 // ---- properties

@@ -24,6 +24,7 @@ import { initHouseCapIndex, refreshHouseCap, houseCapView } from './house-cap-in
 import { getDerivs } from './derivs.js';
 import { getRealEstate } from './realEstate.js';
 import { getGarage } from './cars.js';
+import { getFleet } from './fleet.js';
 
 export const ECON_MIGRATION = `CREATE TABLE IF NOT EXISTS daily_economy (
   day TEXT PRIMARY KEY, cash BIGINT NOT NULL, assets BIGINT, total BIGINT, est_pct REAL, flows JSONB, source TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
@@ -185,6 +186,7 @@ export class Economy {
     if (re) { const mine = await re.mine(name).catch(() => []); if (mine.length) h.property = { n: mine.length, value: mine.reduce((a, p) => a + p.value, 0) }; }
     const g = getGarage();
     if (g) h.cars = (await g.garage(name).catch(() => ({ cars: [] as Array<{ carId: string; value: number }> }))).cars.map((c) => ({ carId: c.carId, value: c.value }));
+    const fl = getFleet(); if (fl) { const v = await fl.valueOf(name).catch(() => 0); if (v > 0) h.extra = [...(h.extra ?? []), { key: 'fleet', label: 'Boats & jets', value: v }]; }
     return valueHoldings(h, marketPrices(sales, now));
   }
 
@@ -201,6 +203,7 @@ export class Economy {
     const re = getRealEstate(); let realEstate: unknown = null;
     if (re) { h.property = await re.playerValue().catch(() => undefined); realEstate = await re.stats().catch(() => null); }
     const g = getGarage(); if (g) h.cars = await g.values().catch(() => []);
+    const fl = getFleet(); if (fl) { const v = await fl.values().catch(() => 0); if (v > 0) h.extra = [...(h.extra ?? []), { key: 'fleet', label: 'Boats & jets', value: v }]; }
     const v = valueHoldings(h, marketPrices(sales, now));
     return { realEstate, cash, assets: v.total, total: cash + v.total, estPct: v.estPct, categories: v.categories, offshore, totalWithOffshore: cash + v.total + offshore };
   }

@@ -14,6 +14,7 @@ import { DeedPanel } from './WorldMap';
 import { FarmGame } from './FarmGame';
 import { CookingHost, openKitchen } from './CookingPanels';
 import { lazyWithReload } from '@/lib/lazyWithReload';
+const FleetStore = lazyWithReload(() => import('./FleetStore').then((m) => ({ default: m.FleetStore })));
 const FishingPanel = lazyWithReload(() => import('./FishingPanel').then((m) => ({ default: m.FishingPanel })));
 import { usePanelDrag } from '@/lib/panelDrag';
 
@@ -35,7 +36,7 @@ export function ResortMap() {
   const [owned, setOwned] = useState<Map<string, OwnedProperty>>(new Map()); const ownedRef = useRef(owned); ownedRef.current = owned;
   const meRef = useRef(me); meRef.current = me;
   const [deed, setDeed] = useState<string | null>(null); const [farm, setFarm] = useState<string | null>(null);
-  const [casino, setCasino] = useState(false); const [floor, setFloor] = useState<string | null>(null); const [air, setAir] = useState(false); const [msg, setMsg] = useState<string | null>(null); const [list, setList] = useState(false); const [pier, setPier] = useState(false);
+  const [casino, setCasino] = useState(false); const [floor, setFloor] = useState<string | null>(null); const [air, setAir] = useState(false); const [msg, setMsg] = useState<string | null>(null); const [list, setList] = useState(false); const [pier, setPier] = useState(false); const [marina, setMarina] = useState(false);
 
   useEffect(() => {
     let dead = false;
@@ -66,6 +67,7 @@ export function ResortMap() {
       case 'r-mine': window.dispatchEvent(new CustomEvent(MINE_CAVE_EVENT, { detail: 'coral' })); break;
       case 'r-farm': setList(true); break;
       case 'r-pier': setPier(true); break;
+      case 'r-marina': setMarina(true); break;
     }
   }
   const home = async () => { setMsg(null); const r = await flyHome(); if (!r.ok) setMsg(r.error ?? 'Could not fly.'); };
@@ -99,6 +101,7 @@ export function ResortMap() {
           </div>)}
         </div>
       )}
+      {marina && <Suspense fallback={null}><FleetStore kind="boat" onClose={() => setMarina(false)} /></Suspense>}
       {pier && <Suspense fallback={null}><FishingPanel me={me} spot="reef" onClose={() => setPier(false)} /></Suspense>}
       {air && (
         <div className="world-deed world-venue" data-testid="venue-resort-airfield" data-drag-panel="resortAir" onPointerDown={dragResortAir.onPointerDown} style={dragResortAir.style()} ref={dragResortAir.ref}>{dragResortAir.handle}

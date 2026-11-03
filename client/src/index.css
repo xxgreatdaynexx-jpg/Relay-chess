@@ -2212,12 +2212,11 @@ body.he-full-open { overflow: hidden; }
 /* #34: in the CSS full-screen fallback, hide the top bar (it sat over the table and the exit button) */
 body.he-full-open .top-tabs { visibility: hidden; }
 body.he-full-open .he-table.he-full { visibility: visible; }
-/* Fort McChud */
-.world.fortmc .world-title { color: #f4efe6; text-shadow: 0 2px 8px #6a3a10; } .world.fortmc .world-title span { color: #f2b630; }
-.fort-hud { position: absolute; left: 50%; transform: translateX(-50%); top: 58px; z-index: 5; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; font-size: 12px; pointer-events: none; }
-.fort-hud span { background: rgba(14,16,20,.82); border: 1px solid #f2b63066; border-radius: 10px; padding: 3px 8px; color: #f4efe6; } .fort-hud .bad { border-color: #ff5a4a; color: #ffb0a0; }
-.fort-panel { max-height: 72vh; overflow-y: auto; } .fort-panel button span { display: block; font-size: 11px; opacity: .7; font-weight: 400; }
-.fort-tabs { display: flex; flex-wrap: wrap; gap: 4px; } .fort-tabs button { min-width: 34px; padding: 4px 6px; } .fort-tabs button.on { outline: 2px solid #f2b630; }
-.fort-stock { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 8px; font-size: 12px; }
-.fort-unit { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 13px; } .fort-unit button { padding: 2px 8px; }
-.fort-panel .ok { color: #7ae08a; } .fort-panel .warn { color: #f2c84a; } .fort-panel .bad { color: #ff7a6a; }
+/* Marina + Hangar (Millionaire Update #10b / #11) */
+.fleet .dealer-box { background: linear-gradient(180deg, #0f1a24, #12141d); border-color: #d8b25a55; }
+.fleet .dealer-box header h3 { color: #f4d58a; }
+.fleet-owned { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 4px 8px; font-size: 13px; }
+.fleet-owned button { font-size: 12px; } .fleet-arrears { color: #ff8a6a; font-style: normal; }
+.fleet-stats { margin: 6px 0 10px; padding-left: 18px; font-size: 13px; line-height: 1.6; } .fleet-stats b { color: #ffd27a; }
+.fleet-buy { display: block; margin: 10px 0 4px; padding: 9px 16px; font-weight: 700; background: linear-gradient(180deg, #e8c46a, #b88a2a); color: #1a1206; border: 0; border-radius: 8px; }
+.fleet-msg { display: block; margin-top: 4px; }

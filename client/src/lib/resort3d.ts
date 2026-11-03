@@ -193,7 +193,7 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
       label('🎣 Reef Pier', 'Tropical fishing', '#3ad8c8', s.x, 9, s.z);
     } else if (s.id === 'r-marina') {
       box(30, 0.5, 3, wood, 0, 0.3, -6, g); for (const x of [-10, 0, 10]) box(2, 0.5, 12, wood, x, 0.3, 1, g);
-      label('🛥 Marina', undefined, '#ffffff', s.x, 12, s.z);
+      label('🛥 Marina', 'Boats · yachts · deep sea', '#ffffff', s.x, 12, s.z);
     }
   }
   // Superyachts bobbing at the marina.
