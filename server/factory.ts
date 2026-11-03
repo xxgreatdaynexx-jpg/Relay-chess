@@ -1,4 +1,5 @@
 /** Factory v2 (grid builder): server-authoritative sim per player, catch-up on load, persisted with the banked pack. */
+import { Router as expressRouter } from 'express';
 import { px } from './price-index.js';
 import type { Server, Socket } from 'socket.io';
 import { getMines, MineError, MINES_OFFLINE_MSG } from './mines.js';
@@ -276,3 +277,32 @@ export function registerFactory(_io: Server, socket: Socket): void {
   socket.on('fac_edit', op((b) => world.edit(account(), b, Date.now())));
 }
 export type { Kind };
+
+/**
+ * Read-only view of another player's factory (pt1409u). GET only: no socket op, no owner clock refresh (owner=false),
+ * nothing a viewer can change. Returns layout, machines, belts/chests, recipes and level, never storage, chips, the
+ * unplaced kit or the owner's stored totals.
+ */
+export function publicFactoryView(name: string, now = Date.now()) {
+  const clean = name.replace(/\s+/g, ' ').trim().slice(0, 40); if (!clean) return null;
+  const level = getMines().factories.get(playerKey(clean))?.level ?? 0;
+  const s = world.get(clean, now, false); if (!s) return null;
+  const state = JSON.parse(JSON.stringify({ v: s.v, floor: s.floor, tick: s.tick, at: s.at, ents: s.ents, seq: s.seq, made: s.made, spd: s.spd, kit: {}, stored: {} })) as FState;
+  return { name: clean, level, state, machines: s.ents.filter((e) => KINDS[e.k] && !['belt', 'underground', 'splitter', 'inserter', 'chest_in', 'chest_out'].includes(e.k)).length, now };
+}
+export function factoryViewRouter(): ReturnType<typeof expressRouter> {
+  const r = expressRouter();
+  const cache = new Map<string, { t: number; v: ReturnType<typeof publicFactoryView> }>(); // 1s per-player cache: cheap polling, one catch-up per second
+  r.get('/api/factory/view/:name', (req, res) => {
+    try {
+      if (getMines().offline) return res.status(503).json({ ok: false, error: MINES_OFFLINE_MSG });
+      const key = playerKey(String(req.params.name ?? '')); const t = Date.now(); const hit = cache.get(key);
+      const v = hit && hit.t > t - 1000 ? hit.v : publicFactoryView(String(req.params.name ?? ''), t);
+      if (!hit || hit.v !== v) { if (cache.size > 2000) cache.clear(); cache.set(key, { t, v }); }
+      if (!v) return res.status(404).json({ ok: false, error: 'That player has no factory yet.' });
+      res.set('Cache-Control', 'no-store'); res.json({ ok: true, ...v });
+    } catch (e) { res.status(e instanceof MineError ? 503 : 500).json({ ok: false, error: e instanceof MineError ? e.message : 'Could not load that factory.' }); }
+  });
+  r.all('/api/factory/view/:name', (_req, res) => res.status(405).json({ ok: false, error: 'Read-only.' }));
+  return r;
+}

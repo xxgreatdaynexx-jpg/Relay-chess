@@ -1,3 +1,4 @@
+import { openFactoryView } from './FactoryViewer';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { backdropDismiss } from '@/lib/backdrop';
@@ -54,6 +55,7 @@ export function PlayerProfileView({ p, close }: { p: PublicProfile; close: () =>
           {since && <span> · Member since {since}</span>}
           {p.skills && <span> · 🧭 Total level {p.skills.total}</span>}
         </div>
+        <button type="button" className="mt-1 rounded bg-white/10 px-2 py-0.5 text-xs hover:bg-white/20" onClick={() => openFactoryView(p.name)} data-testid="profile-view-factory">🏭 View factory</button>
       </div>
       <button type="button" aria-label="Close" className="rounded-full px-2 text-lg opacity-70 hover:opacity-100" onClick={close} data-testid="player-profile-close">×</button>
     </div>

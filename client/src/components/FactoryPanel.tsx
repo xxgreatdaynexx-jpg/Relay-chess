@@ -6,6 +6,7 @@ import { useWalletChips } from '@/lib/wallet';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { socket } from '@/lib/net';
 import { FactoryBuilder } from '@/components/FactoryBuilder';
+import { openFactoryView } from '@/components/FactoryViewer';
 type Ack = { ok: boolean; error?: string; storage?: Stack[]; quote?: unknown; inMine?: boolean; guest?: boolean };
 import { openMarket } from '@/components/MarketPage';
 import { SellQtyPicker } from './SellQtyPicker';
@@ -34,6 +35,8 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
   const wallet = useWalletChips();
   const [st, setSt] = useState<{ storage: Stack[]; quote: Quote; inMine: boolean; guest: boolean }>({ storage: [], quote: null, inMine: false, guest: true });
   const [toast, setToast] = useState('');
+  const [names, setNames] = useState<string[]>([]);
+  useEffect(() => { fetch('/api/leaderboard').then((r) => r.json()).then((j: unknown) => { const rows = Array.isArray(j) ? j : (j as { rows?: unknown[] })?.rows; if (Array.isArray(rows)) setNames(rows.map((x) => (x as { name?: string }).name).filter((x): x is string => typeof x === 'string').slice(0, 200)); }).catch(() => {}); }, []);
   const flash = (t: string) => { setToast(t); window.setTimeout(() => setToast((c) => (c === t ? '' : c)), 2600); };
   const apply = (r: Ack) => setSt((c) => ({ storage: r.storage ?? c.storage, quote: (r.quote as Quote) ?? null, inMine: r.inMine ?? c.inMine, guest: r.guest ?? c.guest }));
   const refresh = () => socket.timeout(5000).emit('mines_storage', {}, (err: Error | null, r?: Ack) => { if (!err && r?.ok) apply(r); });
@@ -80,6 +83,11 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
           <p className="mines-note">Sold today: {Math.floor(q?.already ?? 0)} · paying {Math.round(tier.rate * 100)}%. Daily cap today: full price up to 🪙 {houseCapChips(pxIdx).toLocaleString('en-US')} (100,000 × price index {pxIdx.toFixed(4)}, rises with inflation), then nothing (resets 00:00 UTC).{(q?.lost ?? 0) > 0 && <> Room refunded today: +🪙 {Math.floor(q!.lost!).toLocaleString('en-US')} from chips you lost to the house (casino net losses, purchases, fees, taxes). Room left: 🪙 {Math.max(0, Math.floor((HOUSE_DAILY_BASE - (q!.effAlready ?? q!.already)) * pxIdx)).toLocaleString('en-US')}.</>}</p>
         </section>
         <section className="factory-col factory-machines">
+          <form className="factory-viewpick" onSubmit={(e) => { e.preventDefault(); const v = String(new FormData(e.currentTarget).get('who') ?? '').trim(); if (v) openFactoryView(v); }} data-testid="factory-view-picker">
+            <input name="who" list="factory-view-names" placeholder="View a player's factory…" maxLength={40} className="rounded bg-black/30 px-2 py-0.5 text-xs" aria-label="Player name" />
+            <datalist id="factory-view-names">{names.map((x) => <option key={x} value={x} />)}</datalist>
+            <button type="submit" className="ml-1 rounded bg-white/10 px-2 py-0.5 text-xs">🏭 View</button>
+          </form>
           <FactoryBuilder guest={st.guest} flash={flash} onStorage={(storage) => setSt((c) => ({ ...c, storage }))} />
         </section>
       </div>

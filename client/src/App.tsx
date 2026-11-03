@@ -1,3 +1,4 @@
+import { FactoryViewer } from '@/components/FactoryViewer';
 import PlayerProfile from './components/PlayerProfile';
 import { useEffect, useRef, useState } from 'react';
 import { SkinsPanel } from '@/components/SkinsPanel';
@@ -222,6 +223,7 @@ export function App() {
       <AccountPanel />
       <ChatDrawer />
       <PlayerProfile />
+      <FactoryViewer />
       <TopTab id="wallet"><WalletButton /></TopTab>
       <TopTab id="account"><AccountButton /></TopTab>
       {showWorld ? (

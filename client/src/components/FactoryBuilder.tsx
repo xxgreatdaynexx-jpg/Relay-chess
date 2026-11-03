@@ -356,10 +356,10 @@ function SplitRatio({ e, onEdit }: { e: Ent; onEdit: (b: object) => void }) {
 const ZMAX = 5;
 function view(w: number, h: number, size: number, u: { z: number; px: number; py: number }) { const L = layout(w, h, size); const ts = Math.max(6, Math.round(L.ts * u.z)); return { ts, ox: Math.floor((w - ts * size) / 2 + u.px), oy: Math.floor((h - ts * size) / 2 + u.py) }; }
 function layout(w: number, h: number, size: number) { const pad = Math.min(w, h) * 0.05 + 14; const ts = Math.max(6, Math.floor(Math.min((w - pad * 2) / size, (h - pad * 2) / size))); return { ts, ox: Math.floor((w - ts * size) / 2), oy: Math.floor((h - ts * size) / 2) }; }
-type SimRef = { s: FState | null; g: Grid; store: Map<string, number>; shown: number; shownFrom: number; shownAt: number };
-type UiRef = { tool: Tool; dir: Dir; sel: number | null; moving: number | null; hover: null | [number, number]; drag: Array<{ x: number; y: number; d: Dir }>; removing: Set<number>; z: number; px: number; py: number; mini: null | { x: number; y: number; w: number; s: number } };
+export type SimRef = { s: FState | null; g: Grid; store: Map<string, number>; shown: number; shownFrom: number; shownAt: number };
+export type UiRef = { tool: Tool; dir: Dir; sel: number | null; moving: number | null; hover: null | [number, number]; drag: Array<{ x: number; y: number; d: Dir }>; removing: Set<number>; z: number; px: number; py: number; mini: null | { x: number; y: number; w: number; s: number } };
 
-function render(cv: HTMLCanvasElement, c: SimRef, frac: number, t: number, u: UiRef) {
+export function render(cv: HTMLCanvasElement, c: SimRef, frac: number, t: number, u: UiRef) {
   const ctx = cv.getContext('2d'); const s = c.s; if (!ctx || !s) return;
   const W = cv.width, H = cv.height; const size = floorSize(s.floor);
   const L = view(W, H, size, u); const ts = L.ts;
