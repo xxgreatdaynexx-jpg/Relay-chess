@@ -26,6 +26,11 @@ import {
 import { cookPayout } from '../shared/cooking.js';
 import { isFishSpot, type FishSpot } from '../shared/fishing.js';
 import { isAtResort } from './travel.js';
+import { baitLuckRoll, gearDef } from '../shared/fishGear.js';
+
+/** Equipped bait + fly per account (server/fishGear.ts installs the real lookup once Postgres is attached). */
+let gearHook: (name: string) => { bait: string; fly: string } = () => ({ bait: 'worm', fly: 'no_fly' });
+export const setFishGearHook = (f: typeof gearHook) => { gearHook = f; };
 
 export const FISH_MIGRATION = `
 CREATE TABLE IF NOT EXISTS fish_catches (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, name TEXT NOT NULL, species TEXT NOT NULL, weight_g INTEGER NOT NULL, value INTEGER NOT NULL, caught_at BIGINT NOT NULL, sold_at BIGINT);
@@ -41,7 +46,7 @@ export const fishImportQty = (value: number, cooked: boolean) => Math.floor(valu
 export class FishError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
 const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
-interface Cast { castAt: number; biteAt: number; fish: string; grams: number; seed: number; hookedAt: number | null }
+interface Cast { castAt: number; biteAt: number; fish: string; grams: number; seed: number; hookedAt: number | null; diffAdd: number }
 interface Row { id: string; species: string; weight_g: number | string; value: number | string; caught_at: number | string }
 export interface FishRng { int(lo: number, hi: number): number; unit(): number }
 const cryptoRng: FishRng = { int: (lo, hi) => randomInt(lo, hi), unit: () => randomInt(0, 2 ** 32) / 2 ** 32 };
@@ -90,9 +95,10 @@ export class Fishing {
     if (n >= COOLER_MAX) throw new FishError(`Your cooler is full (${COOLER_MAX}). Sell or release some fish first.`);
     this.lastCast.set(key, now);
     const lvl = await skillLevelAsync(name, 'fishing'); // Fishing perk: a little rare-fish luck and quicker bites
-    const f = rollFish(fishingLuckRoll(this.rng.unit(), lvl), this.rng.unit(), spot); const grams = rollWeight(f, this.rng.unit());
-    const biteIn = Math.max(BITE_MIN_MS, Math.round(this.rng.int(BITE_MIN_MS, BITE_MAX_MS + 1) * fishingBiteMul(lvl)));
-    this.casts.set(key, { castAt: now, biteAt: now + biteIn, fish: f.id, grams, seed: this.rng.int(1, 2 ** 31), hookedAt: null });
+    const gear = gearHook(name); const fly = gearDef(gear.fly); // Fishing upgrades (#28): bait luck + fly speed/fight
+    const u = this.rng.unit(); const f = rollFish(baitLuckRoll(u, fishingLuckRoll(u, lvl), gear.bait), this.rng.unit(), spot); const grams = rollWeight(f, this.rng.unit());
+    const biteIn = Math.max(BITE_MIN_MS * (fly?.biteMul ?? 1), Math.round(this.rng.int(BITE_MIN_MS, BITE_MAX_MS + 1) * fishingBiteMul(lvl) * (fly?.biteMul ?? 1)));
+    this.casts.set(key, { castAt: now, biteAt: now + biteIn, fish: f.id, grams, seed: this.rng.int(1, 2 ** 31), hookedAt: null, diffAdd: fly?.diffAdd ?? 0 });
     return { biteIn };
   }
   /** Strike when it bites: too early spooks it, too late it is gone. Returns the reel game's seed + difficulty. */
@@ -101,14 +107,14 @@ export class Fishing {
     if (!c || c.hookedAt !== null) throw new FishError('Cast your line first.');
     if (now < c.biteAt - 200) { this.casts.delete(key); throw new FishError('Too early — you spooked it.'); }
     if (now > c.biteAt + HOOK_WINDOW_MS) { this.casts.delete(key); throw new FishError('Too slow — it stole your bait.'); }
-    c.hookedAt = now; return { seed: c.seed, diff: fishDiff(fishById(c.fish)!, c.grams) };
+    c.hookedAt = now; return { seed: c.seed, diff: Math.min(1, fishDiff(fishById(c.fish)!, c.grams) + c.diffAdd) };
   }
   /** Land (or lose) the fish: the server replays the reel timeline. */
   async land(name: string, inputs: unknown): Promise<{ caught: boolean; fish?: FishCatch; xp?: number }> {
     const key = keyOf(name); const c = this.casts.get(key); const now = this.clock();
     if (!c || c.hookedAt === null) throw new FishError('Nothing on the line.');
     this.casts.delete(key);
-    const f = fishById(c.fish)!; const res = replayReel(c.seed, fishDiff(f, c.grams), inputs as string);
+    const f = fishById(c.fish)!; const res = replayReel(c.seed, Math.min(1, fishDiff(f, c.grams) + c.diffAdd), inputs as string);
     if (res === 'invalid') throw new FishError('The line snapped.');
     const steps = (inputs as string).length;
     if (now - c.hookedAt < steps * REEL_DT * 1000 - 600) throw new FishError('The line snapped.'); // faster than real time

@@ -92,7 +92,7 @@ export function MarketView({ onListYours }: { onListYours?: (itemId: string) => 
       <TradeLockNote />
       <Controls q={q} setQ={setQ} sort={sort} setSort={setSort} listed={listed} setListed={setListed}>
         <select value={kind} onChange={(e) => setKind(e.target.value)} data-testid="mkt-kind"><option value="all">Everything</option><option value="skin">Skins</option><option value="case">Cases</option><option value="key">Keys</option></select>
-        <select value={weapon} onChange={(e) => setWeapon(e.target.value)} data-testid="mkt-weapon"><option value="all">All weapons</option>{['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'ar15', 'knife', 'pickaxe'].map((w) => <option key={w} value={w}>{WEAPON_NAME[w] ?? w}</option>)}</select>
+        <select value={weapon} onChange={(e) => setWeapon(e.target.value)} data-testid="mkt-weapon"><option value="all">All weapons</option>{['pistol', 'smg', 'shotgun', 'sniper', 'rocket', 'ar15', 'knife', 'pickaxe', 'rod'].map((w) => <option key={w} value={w}>{WEAPON_NAME[w] ?? w}</option>)}</select>
         <select value={rarity} onChange={(e) => setRarity(e.target.value)}><option value="all">All rarities</option>{(['common', 'rare', 'ultra'] as const).map((r) => <option key={r} value={r}>{RARITY_NAME[r]}</option>)}</select>
       </Controls>
       <div className="inv-body">

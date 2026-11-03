@@ -1,5 +1,6 @@
 import { importWithReload } from '@/lib/chunkReload';
 import { useEffect, useRef, useState } from 'react';
+import { parseToken } from '../../../shared/skins';
 import { request, socket } from '@/lib/net';
 import { makeFishingSfx, type FishingSfx } from '@/lib/fishingSfx';
 import { reloadOnceForChunkError } from '@/lib/chunkReload';
@@ -28,7 +29,7 @@ export function Fishing3DGame({ me, onClose, onChange, spot = 'lake' }: { me: st
     load(); let dead = false;
     importWithReload(() => import('@/lib/fishing3d')).then(({ Fishing3D }) => {
       if (dead || !cv.current) return;
-      try { three.current = new Fishing3D(cv.current, { spot }); three.current.onSplash = (big, other) => sfx.current?.splash(big, other); if (pending.current) three.current.setOthers(pending.current); } catch { setGlError('3D is not available on this device.'); }
+      try { three.current = new Fishing3D(cv.current, { spot }); three.current.onSplash = (big, other) => sfx.current?.splash(big, other); if (pending.current) three.current.setOthers(pending.current); void request('inv_loadout').then((r) => { const t = parseToken((r as { loadout?: Record<string, string> }).loadout?.rod); three.current?.setRodSkin(t ? t.skin.colors : null); }); } catch { setGlError('3D is not available on this device.'); }
     }).catch((e) => { if (!reloadOnceForChunkError(e)) setGlError('Could not load the 3D engine. Refresh to try again.'); });
     const onResize = () => three.current?.resize(); window.addEventListener('resize', onResize);
     // other anglers at the dock
