@@ -36,7 +36,7 @@ export function ResortMap() {
   const [owned, setOwned] = useState<Map<string, OwnedProperty>>(new Map()); const ownedRef = useRef(owned); ownedRef.current = owned;
   const meRef = useRef(me); meRef.current = me;
   const [deed, setDeed] = useState<string | null>(null); const [farm, setFarm] = useState<string | null>(null);
-  const [casino, setCasino] = useState(false); const [floor, setFloor] = useState<string | null>(null); const [air, setAir] = useState(false); const [msg, setMsg] = useState<string | null>(null); const [list, setList] = useState(false); const [pier, setPier] = useState(false); const [marina, setMarina] = useState(false);
+  const [casino, setCasino] = useState(false); const [floor, setFloor] = useState<string | null>(null); const [air, setAir] = useState(false); const [msg, setMsg] = useState<string | null>(null); const [list, setList] = useState(false); const [pier, setPier] = useState(false); const [marina, setMarina] = useState(false); const [deepSea, setDeepSea] = useState(false);
 
   useEffect(() => {
     let dead = false;
@@ -101,7 +101,8 @@ export function ResortMap() {
           </div>)}
         </div>
       )}
-      {marina && <Suspense fallback={null}><FleetStore kind="boat" onClose={() => setMarina(false)} /></Suspense>}
+      {marina && <Suspense fallback={null}><FleetStore kind="boat" onClose={() => setMarina(false)} onDeepSea={() => { setMarina(false); setDeepSea(true); }} /></Suspense>}
+      {deepSea && <Suspense fallback={null}><FishingPanel me={me} spot="deep" onClose={() => setDeepSea(false)} /></Suspense>}
       {pier && <Suspense fallback={null}><FishingPanel me={me} spot="reef" onClose={() => setPier(false)} /></Suspense>}
       {air && (
         <div className="world-deed world-venue" data-testid="venue-resort-airfield" data-drag-panel="resortAir" onPointerDown={dragResortAir.onPointerDown} style={dragResortAir.style()} ref={dragResortAir.ref}>{dragResortAir.handle}

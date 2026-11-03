@@ -28,7 +28,7 @@ function Preview({ m }: { m: FleetModel }) {
 }
 
 /** Marina (boats) and Hangar (private jets): browse, buy, sell back. Chips move on the server only. */
-export function FleetStore({ kind, onClose }: { kind: FleetKind; onClose: () => void }) {
+export function FleetStore({ kind, onClose, onDeepSea }: { kind: FleetKind; onClose: () => void; onDeepSea?: () => void }) {
   const boat = kind === 'boat'; useDoing(boat ? 'resort' : 'airport');
   const drag = usePanelDrag(boat ? 'marina' : 'hangar');
   const base = boat ? BOATS : JETS;
@@ -66,6 +66,7 @@ export function FleetStore({ kind, onClose }: { kind: FleetKind; onClose: () => 
               <li>Sell back <b>70%</b> of list · counts toward net worth</li>
             </ul>
             {boat && v?.deep && <small data-testid="fleet-deep">{v.deep.zone ? `Your best boat (${v.deep.name}) reaches ${DEEP_ZONES[v.deep.zone - 1]!.name}.` : 'Buy any boat to unlock deep-sea fishing from the Marina.'}</small>}
+            {boat && !!v?.deep?.zone && onDeepSea && <button type="button" className="fleet-buy fleet-sea" onClick={onDeepSea} data-testid="fleet-deepsea">🌊 Go deep-sea fishing</button>}
             <button type="button" className="fleet-buy" disabled={busy || !v?.signedIn} onClick={() => void act(boat ? 'marina_buy' : 'hangar_buy', { model: m.id }, (a) => `Bought the ${m.name} for ${fmt(Number(a.price))} chips.`)} data-testid="fleet-buy">{v?.signedIn ? `Buy for ${fmt(m.price)}` : 'Sign in to buy'}</button>
             {msg && <small className="fleet-msg" data-testid="fleet-msg">{msg}</small>}
           </section>

@@ -229,8 +229,25 @@ const FISH_ICONS: Record<string, () => string> = {
   manta: () => Pa('M12 5C14 7 17 9 22.5 9.4C19 12 16 15.6 13 16.4L12 21L11 16.4C8 15.6 5 12 1.5 9.4C7 9 10 7 12 5Z', '#2a2440') + `<path d="M12 7.6C13.6 9.4 16.4 10.8 19.4 10.4C16.6 12.4 14.6 14.4 12 14.8C9.4 14.4 7.4 12.4 4.6 10.4C7.6 10.8 10.4 9.4 12 7.6Z" fill="#ff8a5a" opacity=".55"/>` + Pa('M10.4 5.6L9.6 3.4L11.2 4.8ZM13.6 5.6L14.4 3.4L12.8 4.8Z', '#2a2440', 0.8) + C(8.6, 9.6, 0.7, '#fff', 0.4) + C(15.4, 9.6, 0.7, '#fff', 0.4) + Ln('M12 8V14', '#ffd0a0', 0.6) + glint(18, 7, 0.7),
   flipflop: () => E(12, 13, 5.2, 9, '#ff5a8a') + E(12, 13.6, 3.8, 7.4, '#ffd0e0', 0.6) + Ln('M8.8 9.6L12 7.6L15.2 9.6', '#2ac0d0', 1.6) + C(12, 7.6, 0.8, '#2ac0d0', 0.6),
   coconutshell: () => Pa('M3 12C3 18 7.5 21 12 21C16.5 21 21 18 21 12Z', '#7a4a24') + E(12, 12, 9, 2.4, '#f6f0e2') + E(12, 12, 6.6, 1.5, '#e8dcc0', 0.5) + Ln('M6 16L8 18.4M11 17L12 19.6M16 16L15 18.6', '#4a2a10', 0.8),
+  // deep sea (Millionaire Update #10c, from a Marina boat)
+  ghostnet: () => Pa('M4 6Q12 3 20 6L19 19Q12 22 5 19Z', '#5a6a5a', 0.35) + [7, 10, 13, 16].map((x) => Ln(`M${x} 5L${x + 1} 20`, '#c8d8c0', 0.6)).join('') + [8, 11, 14, 17].map((y) => Ln(`M4.5 ${y}Q12 ${y - 1.5} 19.5 ${y}`, '#c8d8c0', 0.6)).join('') + C(17, 8, 1.2, '#e8a040', 0.6),
+  bonito: () => fishSide({ body: '#2a4a7a', belly: '#e4eaf0', fin: '#3a5a8a', hh: 4.6, tail: 'lunate', over: [9, 11.5, 14].map((x) => Ln(`M${x} 8.4L${x + 3} 11`, '#14243e', 0.9)).join('') }),
+  mackerel: () => fishSide({ body: '#5a8ab0', belly: '#f2f4f6', fin: '#e8c84a', hh: 3.8, x0: 5, tail: 'fork', over: [[9, 10], [12, 9.6], [15, 10], [10.5, 11.6], [13.5, 11.4]].map(([x, y]) => C(x!, y!, 0.6, '#f2c84a', 0)).join('') }),
+  skipjack: () => fishSide({ body: '#24345a', belly: '#dce4ee', fin: '#2a3a68', hh: 5, tail: 'lunate', over: [12.6, 13.8, 15].map((y) => Ln(`M7 ${y}L18 ${y - 0.4}`, '#3a4a6a', 0.7)).join('') }),
+  wahoo: () => fishSide({ body: '#2a6aa8', belly: '#e8eef4', fin: '#1a4a80', hh: 3, x0: 3.5, nose: 22, tail: 'lunate', over: [7, 9, 11, 13, 15, 17].map((x) => Ln(`M${x} 9.4L${x - 0.6} 13.6`, '#103060', 1)).join('') }),
+  kingfish: () => fishSide({ body: '#7a8a9a', belly: '#f0f2f4', fin: '#c8a84a', hh: 4, x0: 4, nose: 21.5, tail: 'fork', over: Ln('M6 12.4Q13 11 20 12', '#e8c860', 0.8) }),
+  lanternfish: () => fishSide({ body: '#1a1a2a', belly: '#2a2a40', fin: '#3a3a5a', hh: 4.2, over: [8, 10.5, 13, 15.5].map((x) => C(x, 14.4, 0.7, '#7af0ff', 0)).join('') + C(19.4, 10.2, 1.1, '#bff8ff', 0) }),
+  amberjack: () => fishSide({ body: '#a89050', belly: '#eee8d4', fin: '#8a7238', hh: 5, tail: 'fork', over: Ln('M15 7.6L19 11.6', '#4a3818', 1.4) + Ln('M7 11.6L18 11.4', '#e8c040', 0.9) }),
+  swordfish: () => fishSide({ body: '#5a4a6a', belly: '#c8c0d0', fin: '#3a2e48', hh: 4.4, x0: 4, nose: 19.4, tail: 'lunate', dorsal: P('9,8 11,3.2 12.6,8', '#3a2e48', ' stroke-width="0.9"'), extra: P('19,11.4 24,11.6 19.2,12.6', '#3a2e48', ' stroke-width="0.7"') }),
+  oarfish: () => Pa('M2 14C6 8 10 16 14 10C17 6 20 9 22 8L22.6 10C20 11 18 9 15.6 12C11 18 7 11 3 16Z', '#d8dce4') + Pa('M3 13C7 7 11 15 15 9C18 5 20 7 22 6', 'none') + Ln('M3 13C7 7 11 15 15 9C18 5 20 7 22 6.6', '#e83a3a', 1.6) + C(21, 8.6, 0.6, OL, 0),
+  bluefin: () => fishSide({ body: '#0e2a5a', belly: '#e0e8f0', fin: '#1a3a6a', hh: 6, x0: 5, tail: 'lunate', over: Ln('M7.6 11.2L18 10.8', '#8ab0d8', 0.9) + [7, 8.4, 9.8].map((x) => Pn(`${x},8.6 ${x + 0.8},7.8 ${x + 0.8},9`, '#f6d820')).join('') }),
+  mako: () => fishSide({ body: '#3a5a9a', belly: '#f0f4f8', fin: '#2a467a', hh: 4.8, x0: 4, tail: 'lunate', dorsal: P('10,8 12.6,2.4 15,7.6', '#2a467a', ' stroke-width="0.9"'), over: [15.6, 16.6, 17.6].map((x) => Ln(`M${x} 10L${x - 0.4} 13.6`, '#1a2a4a', 0.6)).join('') }),
+  anglerfish: () => fishSide({ body: '#3a2a3a', belly: '#4a3a48', fin: '#2a1e2a', hh: 7, x0: 6, tail: 'round', over: P('17,14 18,12.6 19,14 20,12.6 21,14', '#f4f0e8', ' stroke-width="0.5"') }) + Ln('M16 6Q19 1 21.6 4.6', '#8a7a8a', 0.8) + C(21.6, 5, 1.4, '#c8ff6a', 0) + glint(21.6, 5, 0.6),
+  blackmarlin: () => fishSide({ body: '#1a1e2a', belly: '#c8ccd8', fin: '#0e1018', hh: 5, x0: 4, nose: 20, tail: 'lunate', dorsal: P('8,8.2 9.4,4.6 12,7.6 17,8', '#0e1018', ' stroke-width="0.9"'), extra: bill('#0e1018'), over: `<circle cx="18" cy="9" r="0.6" fill="#ff8a4a"/>` }),
+  giantsquid: () => E(14, 9, 7, 3.6, '#c84a3a') + P('20.4,9 23.4,6 23.4,12', '#a83a2a') + [10.4, 11.6, 12.8, 14].map((y, i) => Ln(`M8 ${y - 0.6 + i * 0.4}Q4 ${y + 2} 1.6 ${y + 4 + i}`, '#c84a3a', 1.3)).join('') + C(10, 9, 1.4, '#fff', 0.6) + C(10, 9, 0.7, OL, 0),
+  coelacanth: () => fishSide({ body: '#2a4a7a', belly: '#3a5a8a', fin: '#1e3a64', hh: 5.8, tail: 'round', over: [[9, 9], [12, 10.4], [15, 9.2], [10.5, 13.4], [14, 13.6], [17, 11.6]].map(([x, y]) => C(x!, y!, 0.8, '#e8f0f8', 0)).join('') + Pa('M10 16.6l-1.5 3l3-1.2zM14 16.6l.6 3l1.5-2z', '#1e3a64', 0.8) }),
 };
-/** Reef species with a crafted fish icon (type 'fish'). */
+/** Reef + deep-sea species with a crafted fish icon (type 'fish'). */
 export const ICON_FISH_IDS = Object.keys(FISH_ICONS);
 
 const svg = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">${body}</svg>`;

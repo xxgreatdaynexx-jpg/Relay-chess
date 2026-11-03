@@ -2220,3 +2220,4 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .fleet-stats { margin: 6px 0 10px; padding-left: 18px; font-size: 13px; line-height: 1.6; } .fleet-stats b { color: #ffd27a; }
 .fleet-buy { display: block; margin: 10px 0 4px; padding: 9px 16px; font-weight: 700; background: linear-gradient(180deg, #e8c46a, #b88a2a); color: #1a1206; border: 0; border-radius: 8px; }
 .fleet-msg { display: block; margin-top: 4px; }
+.fleet-sea { background: linear-gradient(180deg, #2a8ad8, #14508a); color: #fff; }

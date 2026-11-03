@@ -41,9 +41,9 @@ type BoardRow = { name: string; fish: string; grams: number; value: number };
 /** Fishing Dock: cast, wait for the bite, strike, then reel (hold to reel up, release to let it run) keeping the
  *  hook in the fish's zone until the catch bar fills. The server rolls the fish and replays the reel. */
 export function FishingPanel({ me, onClose, spot = 'lake' }: { me: string | null; onClose: () => void; spot?: FishSpot }) {
-  useDoing('fishing', spot === 'reef' ? 'Resort reef' : 'Lake');
+  useDoing('fishing', spot === 'deep' ? 'Deep sea' : spot === 'reef' ? 'Resort reef' : 'Lake');
   const dragFishing = usePanelDrag('fishing');
-  const reef = spot === 'reef';
+  const reef = spot === 'reef' || spot === 'deep'; const deep = spot === 'deep';
   const [view, setView] = useState<FishView | null>(null); const [board, setBoard] = useState<BoardRow[]>([]);
   const [phase, setPhase] = useState<Phase>({ k: 'idle' }); const [play3d, setPlay3d] = useState(false); const [msg, setMsg] = useState<string | null>(null);
   const [reelUi, setReelUi] = useState<{ x: number; c: number; h: number; prog: number } | null>(null);
@@ -104,13 +104,14 @@ export function FishingPanel({ me, onClose, spot = 'lake' }: { me: string | null
   const cooler = view?.cooler ?? []; const idx = view?.index ?? 1; const gross = cooler.reduce((a, c) => a + c.value, 0);
   const est = view ? Math.floor(fishPayout(gross, view.today.gross) * idx) : 0; const capLeft = Math.max(0, FISH_DAILY_MAX - (view ? fishPayout(view.today.gross, 0) : 0));
   return (
-    <div className={`world-deed world-venue fish-panel${reef ? ' fish-reef' : ''}`} data-testid={reef ? 'venue-reef' : 'venue-dock'} data-drag-panel="fishing" onPointerDown={dragFishing.onPointerDown} style={dragFishing.style()} ref={dragFishing.ref}>{dragFishing.handle}
+    <div className={`world-deed world-venue fish-panel${reef ? ' fish-reef' : ''}`} data-testid={deep ? 'venue-deep' : reef ? 'venue-reef' : 'venue-dock'} data-drag-panel="fishing" onPointerDown={dragFishing.onPointerDown} style={dragFishing.style()} ref={dragFishing.ref}>{dragFishing.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
-      <h3>{reef ? '🌴 Reef Pier' : '🎣 Fishing Dock'}</h3>
-      {reef && <small data-testid="reef-blurb">Sunset over the reef: clownfish and tang in the shallows, mahi-mahi and tuna off the drop-off, and the odd Blue Marlin or Sunset Manta.</small>}
+      <h3>{deep ? '🌊 Deep-Sea Charter' : reef ? '🌴 Reef Pier' : '🎣 Fishing Dock'}</h3>
+      {deep && <small data-testid="deep-blurb">Out past the reef on your own boat. Better boats reach farther: the Outer Banks (bonito, wahoo, Black Marlin), Blue Water (swordfish, mako, Giant Squid) and the Abyss (oarfish, anglerfish, Coelacanth).</small>}
+      {reef && !deep && <small data-testid="reef-blurb">Sunset over the reef: clownfish and tang in the shallows, mahi-mahi and tuna off the drop-off, and the odd Blue Marlin or Sunset Manta.</small>}
       {!me ? <small>Sign in to fish.</small> : <>
         <button type="button" className="fish-play3d" data-testid="fish-3d" disabled={phase.k !== 'idle'} onClick={() => setPlay3d(true)}>🎮 Play 3D fishing</button>
-        {play3d && createPortal(<Suspense fallback={<div className="fish3d"><div className="fish3d-msg">{reef ? 'Loading the reef…' : 'Loading the lake…'}</div></div>}><Fishing3DGame me={me} spot={spot} onClose={() => { setPlay3d(false); load(); }} onChange={load} /></Suspense>, document.body)}
+        {play3d && createPortal(<Suspense fallback={<div className="fish3d"><div className="fish3d-msg">{deep ? 'Heading out to sea…' : reef ? 'Loading the reef…' : 'Loading the lake…'}</div></div>}><Fishing3DGame me={me} spot={spot} onClose={() => { setPlay3d(false); load(); }} onChange={load} /></Suspense>, document.body)}
         <small>Quick cast (2D): cast, wait for the bite, strike, then <b>hold</b> (Space or mouse) to reel — keep the hook inside the fish’s green zone until the catch bar fills. Rarer and bigger fish fight harder.</small>
         <div className="fish-water" data-testid="fish-stage" onPointerDown={(e) => { e.preventDefault(); const k = phaseRef.current.k; if (k === 'reel') holdRef.current = true; else if (k === 'wait' || k === 'bite') void hook(); }}>
           {phase.k === 'reel' && reelUi ? <div className="fish-reel" data-testid="fish-reel">

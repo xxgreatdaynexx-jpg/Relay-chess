@@ -21,5 +21,6 @@ export const LAUNCH: LaunchPopup = {
     { icon: '🛢️', title: 'Fort McChud', text: 'Fly from the airport to a new oil-sands map. Lease tracts, drill wells, lay pipelines and run a refinery, gas plant and cracker to make fuel and plastics. Or build the very expensive Deep Ore Mine.' },
     { icon: '💰', title: 'Dividend totals', text: 'See every chip you\'ve earned from dividends on your Stocks portfolio and profile.' },
     { icon: '🛥️', title: 'Resort Marina', text: 'Buy a skiff, sportfisher, yacht or superyacht at the Chud Resort Marina. Boats unlock deep-sea fishing and count toward your net worth.' },
+    { icon: '🌊', title: 'Deep-sea fishing', text: 'Own a boat? Head out from the Marina to the Outer Banks, Blue Water and the Abyss for 16 new species, including the Black Marlin, Giant Squid and Coelacanth. Bigger boats reach farther and get faster bites.' },
   ],
 };

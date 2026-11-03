@@ -31,6 +31,9 @@ import { baitLuckRoll, gearDef } from '../shared/fishGear.js';
 
 /** Equipped bait + fly per account (server/fishGear.ts installs the real lookup once Postgres is attached). */
 let gearHook: (name: string) => { bait: string; fly: string } = () => ({ bait: 'worm', fly: 'no_fly' });
+/** Deep sea (#10c): the player's best boat (server/fleet.ts sets this). zone 0 = no boat. */
+let boatHook: (name: string) => Promise<{ zone: number; biteMul: number; name: string | null }> = async () => ({ zone: 0, biteMul: 1, name: null });
+export const setFishBoatHook = (f: typeof boatHook) => { boatHook = f; };
 export const setFishGearHook = (f: typeof gearHook) => { gearHook = f; };
 
 export const FISH_MIGRATION = `
@@ -91,14 +94,17 @@ export class Fishing {
     const key = keyOf(name); const now = this.clock();
     const spot: FishSpot = isFishSpot(spotIn) ? spotIn : 'lake';
     if (spot === 'reef' && !atResort(name)) throw new FishError('The Reef Pier is at Chud Resort. Fly there first.');
+    if (spot === 'deep' && !atResort(name)) throw new FishError('Deep-sea trips leave from the Chud Resort Marina. Fly there first.');
+    const boat = spot === 'deep' ? await boatHook(name) : { zone: 3, biteMul: 1 };
+    if (spot === 'deep' && boat.zone < 1) throw new FishError('You need a boat for deep-sea fishing. Buy one at the Resort Marina.');
     if (now - (this.lastCast.get(key) ?? -Infinity) < CAST_COOLDOWN_MS) throw new FishError('Easy — let the line settle first.');
     const n = Number((await this.pool.query('SELECT count(*) AS n FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL', [key])).rows[0]?.n ?? 0);
     if (n >= COOLER_MAX) throw new FishError(`Your cooler is full (${COOLER_MAX}). Sell or release some fish first.`);
     this.lastCast.set(key, now);
     const lvl = await skillLevelAsync(name, 'fishing'); // Fishing perk: a little rare-fish luck and quicker bites
     const gear = gearHook(name); const fly = gearDef(gear.fly); // Fishing upgrades (#28): bait luck + fly speed/fight
-    const u = this.rng.unit(); const f = rollFish(baitLuckRoll(u, fishingLuckRoll(u, lvl), gear.bait), this.rng.unit(), spot); const grams = rollWeight(f, this.rng.unit());
-    const biteIn = Math.max(BITE_MIN_MS * (fly?.biteMul ?? 1), Math.round(this.rng.int(BITE_MIN_MS, BITE_MAX_MS + 1) * fishingBiteMul(lvl) * (fly?.biteMul ?? 1)));
+    const u = this.rng.unit(); const f = rollFish(baitLuckRoll(u, fishingLuckRoll(u, lvl), gear.bait), this.rng.unit(), spot, boat.zone); const grams = rollWeight(f, this.rng.unit());
+    const biteIn = Math.max(BITE_MIN_MS * (fly?.biteMul ?? 1) * boat.biteMul, Math.round(this.rng.int(BITE_MIN_MS, BITE_MAX_MS + 1) * fishingBiteMul(lvl) * (fly?.biteMul ?? 1) * boat.biteMul));
     this.casts.set(key, { castAt: now, biteAt: now + biteIn, fish: f.id, grams, seed: this.rng.int(1, 2 ** 31), hookedAt: null, diffAdd: fly?.diffAdd ?? 0 });
     return { biteIn };
   }

@@ -11,6 +11,7 @@ import { databaseUrl } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
 import { px } from './price-index.js';
 import { requireResort } from './travel.js';
+import { setFishBoatHook } from './fishing.js';
 import { BOATS, MAX_BOATS, bestBoat, fleetModel, fleetResale, type FleetKind } from '../shared/fleet.js';
 
 export class FleetError extends Error {}
@@ -100,6 +101,7 @@ export class Fleet {
 
 let fleet: Fleet | null = null;
 export const getFleet = () => fleet;
+setFishBoatHook(async (n) => (fleet ? fleet.boatOf(n) : bestBoat([])));
 export function setFleet(f: Fleet | null) { fleet = f; }
 export async function initFleet(): Promise<void> {
   const url = databaseUrl();

@@ -26,6 +26,12 @@ const FISH_LOOK: Record<string, { color: number; belly: number; len: number; fat
   walleye: { color: 0xb59a3b, belly: 0xf0ead0, len: 1.25, fat: 0.32 }, pike: { color: 0x3d6b3a, belly: 0xe9f0c8, len: 1.7, fat: 0.24, spots: 0xd8e6a0 },
   salmon: { color: 0x8aa0b4, belly: 0xf3d4cf, len: 1.5, fat: 0.34, spots: 0x223 }, sturgeon: { color: 0x5a5f66, belly: 0xb9b6ad, len: 2.2, fat: 0.26 },
   goldcarp: { color: 0xffb21e, belly: 0xffe08a, len: 1.3, fat: 0.48, glow: 0x553300 }, koi: { color: 0xe8f6ff, belly: 0xff5f3c, len: 1.4, fat: 0.42, glow: 0x66ccff },
+  // deep sea (#10c)
+  bonito: { color: 0x2a4a7a, belly: 0xe4eaf0, len: 1.2, fat: 0.36 }, mackerel: { color: 0x5a8ab0, belly: 0xf2f4f6, len: 1.1, fat: 0.28, spots: 0xf2c84a }, skipjack: { color: 0x24345a, belly: 0xdce4ee, len: 1.3, fat: 0.4 },
+  wahoo: { color: 0x2a6aa8, belly: 0xe8eef4, len: 1.9, fat: 0.2 }, kingfish: { color: 0x7a8a9a, belly: 0xf0f2f4, len: 1.7, fat: 0.24 }, lanternfish: { color: 0x1a1a2a, belly: 0x2a2a40, len: 0.6, fat: 0.35, glow: 0x2ad8ff },
+  amberjack: { color: 0xa89050, belly: 0xeee8d4, len: 1.6, fat: 0.34 }, swordfish: { color: 0x5a4a6a, belly: 0xc8c0d0, len: 2.4, fat: 0.26 }, oarfish: { color: 0xd8dce4, belly: 0xe83a3a, len: 3, fat: 0.12 },
+  bluefin: { color: 0x0e2a5a, belly: 0xe0e8f0, len: 2.2, fat: 0.45 }, mako: { color: 0x3a5a9a, belly: 0xf0f4f8, len: 2.4, fat: 0.3 }, anglerfish: { color: 0x3a2a3a, belly: 0x4a3a48, len: 1, fat: 0.7, glow: 0x88ff44 },
+  blackmarlin: { color: 0x1a1e2a, belly: 0xc8ccd8, len: 2.8, fat: 0.28, glow: 0x442200 }, giantsquid: { color: 0xc84a3a, belly: 0xe88a7a, len: 2.8, fat: 0.3, glow: 0x441111 }, coelacanth: { color: 0x2a4a7a, belly: 0x3a5a8a, len: 1.8, fat: 0.42, spots: 0xe8f0f8, glow: 0x113366 },
 };
 
 function noiseTex(): THREE.Texture {
@@ -100,14 +106,14 @@ export class Fishing3D {
   onSplash: ((big: boolean, other: boolean) => void) | null = null;
 
   /** Reef Pier at Chud Resort (pt1304u): turquoise water, sand, palms, the resort's endless sunset. */
-  readonly reef: boolean;
+  readonly reef: boolean; readonly deep: boolean;
   /** Equipped rod skin (request #28, Chud Case drop): tint the rod blank with the skin's main colour. */
   setRodSkin(colors: readonly string[] | null) {
     const m = this.rod.material as THREE.MeshStandardMaterial; m.color.set(colors?.[1] ?? '#1d2633');
     m.emissive.set(colors?.[0] ?? '#000000'); m.emissiveIntensity = colors ? 0.25 : 0; m.needsUpdate = true;
   }
   constructor(private canvas: HTMLCanvasElement, opts: { spot?: FishSpot } = {}) {
-    this.reef = opts.spot === 'reef';
+    this.reef = opts.spot === 'reef' || opts.spot === 'deep'; this.deep = opts.spot === 'deep';
     this.tier = detectWorldTier(); const tier = this.tier; canvas.dataset.tier = tier;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: tier !== 'low', powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, TIER_PIXEL_RATIO[tier] + (tier === 'high' ? 0.25 : 0)));
@@ -301,7 +307,8 @@ export class Fishing3D {
     if (this.lampHalo) { (this.lampHalo.material as THREE.SpriteMaterial).opacity = 0.75 * lit; this.lampHalo.visible = lit > 0.02; }
     const w = this.waterMat.uniforms; (w.uLightDir!.value as THREE.Vector3).copy(L); (w.uLightCol!.value as THREE.Color).setHex(useSun ? k.sunColor : 0xdfe6ff).multiplyScalar(useSun ? 1 : 0.6 + k.moonI * 0.4);
     (w.uSkyTop!.value as THREE.Color).setHex(top); (w.uSkyHor!.value as THREE.Color).setHex(hor);
-    if (this.reef) { (w.uDeep!.value as THREE.Color).setHex(mix(0x041a3a, 0x0a5a8a, k.day)); (w.uShallow!.value as THREE.Color).setHex(mix(mix(0x0a3a4a, 0x2ad8c8, k.day), 0xff9a6a, k.warm * 0.18)); }
+    if (this.deep) { (w.uDeep!.value as THREE.Color).setHex(mix(0x010818, 0x03224a, k.day)); (w.uShallow!.value as THREE.Color).setHex(mix(mix(0x04182e, 0x0a4a8a, k.day), 0xff9a6a, k.warm * 0.12)); }
+    else if (this.reef) { (w.uDeep!.value as THREE.Color).setHex(mix(0x041a3a, 0x0a5a8a, k.day)); (w.uShallow!.value as THREE.Color).setHex(mix(mix(0x0a3a4a, 0x2ad8c8, k.day), 0xff9a6a, k.warm * 0.18)); }
     else { (w.uDeep!.value as THREE.Color).setHex(mix(0x020a1c, 0x0b3a5c, k.day)); (w.uShallow!.value as THREE.Color).setHex(mix(mix(0x06213a, 0x2f8f8a, k.day), 0x8a6a40, k.warm * 0.25)); } w.uDay!.value = k.day; w.uLampI!.value = lit;
     for (const m of this.mist) (m.material as THREE.SpriteMaterial).color.setHex(mix(mix(0x8a96c8, 0xf2f6ff, k.day), 0xffc8a0, k.warm * 0.6));
     if (this.ffMat) this.ffMat.uniforms.uOn!.value = this.reef ? 0 : lit;

@@ -118,7 +118,7 @@ export function Fishing3DGame({ me, onClose, onChange, spot = 'lake' }: { me: st
     <div className="fish3d" data-testid="fish3d">
       <canvas ref={cv} className="fish3d-canvas" onPointerDown={(e) => { e.preventDefault(); aim(e.clientX); press(); }} onPointerMove={(e) => aim(e.clientX)} />
       <div className="fish3d-top">
-        <b>{spot === 'reef' ? '🌴 Reef Pier' : '🎣 Fishing Dock'}</b>
+        <b>{spot === 'deep' ? '🌊 Deep Sea' : spot === 'reef' ? '🌴 Reef Pier' : '🎣 Fishing Dock'}</b>
         <span data-testid="fish3d-cooler">🧊 {cooler.length}/40</span>
         {cooler.length > 0 && <button type="button" data-testid="fish3d-sell" disabled={phase !== 'idle' && phase !== 'show'} onClick={() => void sell()}>💰 Sell catch</button>}
         <button type="button" className="fish3d-x" onClick={onClose} aria-label="Close">✕</button>
