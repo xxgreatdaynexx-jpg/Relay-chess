@@ -258,7 +258,13 @@ export class Exchange {
   async company(t: unknown, range: unknown, name: string | null) {
     const c = typeof t === 'string' ? COMPANY_BY_TICKER.get(t) : undefined; if (!c) throw new StockError('Unknown company.');
     const mine = name ? (await this.holdings(name)).find((h) => h.ticker === c.ticker) ?? null : null;
-    return { company: { ...c, ...this.summary(c) }, chart: await this.chart(c.ticker, range), news: this.news.filter((n) => n.ticker === c.ticker).slice(0, 20), upcoming: dailyEvents(c, utcDay(this.clock())).filter((e) => e.at > this.clock()).length, mine, maxOrder: maxOrderChips(c), drift: dailyDrift(c, this.inflPct, this.act) };
+    const callLock = name ? await this.callLocked(name, c.ticker) : false;
+    return { callLock, company: { ...c, ...this.summary(c) }, chart: await this.chart(c.ticker, range), news: this.news.filter((n) => n.ticker === c.ticker).slice(0, 20), upcoming: dailyEvents(c, utcDay(this.clock())).filter((e) => e.at > this.clock()).length, mine, maxOrder: maxOrderChips(c), drift: dailyDrift(c, this.inflPct, this.act) };
+  }
+  /** Dayne t1430u: a player holding an open (unexpired) call on a ticker can't buy that ticker's shares. Read-only check. */
+  async callLocked(name: string, ticker: string): Promise<boolean> {
+    const dv = getDerivs(); if (!dv) return false; const now = this.clock();
+    return (await dv.options(name)).some((o) => o.kind === 'call' && o.ticker === ticker && o.status === 'open' && o.expiry > now);
   }
   async holdings(name: string): Promise<Holding[]> {
     const k = keyOf(name);
@@ -298,6 +304,7 @@ export class Exchange {
     const q = quote(c, price, side, shares, tradingFeeMul(await skillLevelAsync(name, 'trading')), cityFeeMul()); // Trading perk + mayor's fee rate
     if (q.gross > maxOrderChips(c)) throw new StockError(`Order too large: max ${maxOrderChips(c).toLocaleString()} chips per trade (about ${Math.max(1, Math.floor(maxOrderChips(c) / price))} shares).`);
     if (side === 'sell' && q.total < 1) throw new StockError('Too small to sell after the fee.');
+    if (side === 'buy' && await this.callLocked(name, c.ticker)) throw new StockError(`You hold an open call on ${c.ticker}, so you can't buy ${c.ticker} shares until it expires or you sell it. Selling shares is still allowed.`);
     if (side === 'buy' && row.held + shares > c.shares) throw new StockError(`Only ${c.shares - row.held} shares are left offshore.`);
     const slot = this.slotNow(); const used = row.tickSlot === slot ? row.tickImp : 0;
     if (used + Math.abs(q.imp) > MAX_TICK_IMPACT) throw new StockError('Heavy trading in this stock right now. Try a smaller order or wait a few seconds.');

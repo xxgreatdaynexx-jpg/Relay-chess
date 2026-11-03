@@ -128,7 +128,7 @@ function Chart({ pts }: { pts: Array<[number, number]> }) {
   );
 }
 
-interface CompanyResp { company: Row & { blurb: string; vol: number; beta: number; liquidity: number }; chart: Array<[number, number]>; news: NewsItem[]; upcoming: number; mine: { shares: number; cost: number } | null; maxOrder: number; drift: number }
+interface CompanyResp { company: Row & { blurb: string; vol: number; beta: number; liquidity: number }; chart: Array<[number, number]>; news: NewsItem[]; upcoming: number; mine: { shares: number; cost: number } | null; maxOrder: number; drift: number; callLock?: boolean }
 function CompanyView({ ticker, onBack, onTraded }: { ticker: string; onBack: () => void; onTraded: () => void }) {
   const account = useAccount();
   const [range, setRange] = useState<'24h' | '7d' | '30d'>('24h');
@@ -169,9 +169,10 @@ function CompanyView({ ticker, onBack, onTraded }: { ticker: string; onBack: () 
         {!account ? <p className="text-xs opacity-70">Sign in to trade. Guests can browse.</p> : (
           <div className="flex flex-wrap items-center gap-2">
             <input className="w-24 rounded bg-black/30 px-2 py-1" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value)} aria-label="Shares" aria-invalid={!!qtyErr} data-testid="stk-qty" />
-            <button type="button" disabled={!!busy || !shares} className="rounded bg-emerald-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void trade('buy')} data-testid="stk-buy" aria-busy={busy === 'buy'}>{busy === 'buy' && <Spin />}Buy {qb ? `· 🪙 ${n(qb.total)}` : ''}</button>
+            <button type="button" disabled={!!busy || !shares || !!d.callLock} title={d.callLock ? `You hold an open call on ${ticker}: no buying shares until it expires or you sell it.` : undefined} className="rounded bg-emerald-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void trade('buy')} data-testid="stk-buy" aria-busy={busy === 'buy'}>{busy === 'buy' && <Spin />}Buy {qb ? `· 🪙 ${n(qb.total)}` : ''}</button>
             <button type="button" disabled={!!busy || !shares || held < 1 || shares > held} title={held < 1 ? "You don't own any shares to sell." : shares > held ? `You only own ${plural(held, 'share', 'shares')}.` : undefined} className="rounded bg-rose-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void trade('sell')} data-testid="stk-sell" aria-busy={busy === 'sell'}>{busy === 'sell' && <Spin />}Sell {qs && shares <= held ? `· 🪙 ${n(qs.total)}` : ''}</button>
             <QtyErr e={qtyErr} />
+            {d.callLock && <p className="w-full text-xs text-amber-300" data-testid="stk-call-lock">📈 You hold an open call on {ticker}, so buying {ticker} shares is locked until it expires or you sell it. You can still sell.</p>}
           </div>)}
         <p className="mt-1 text-[11px] opacity-60">Max 🪙 {n(d.maxOrder)} per order (moves the price ≤ {MAX_TRADE_IMPACT * 100}%; ≤ {MAX_TICK_IMPACT * 100}% per 30s for everyone). Your order moves the price; the effect fades over a few hours. {STOCK_FEE * 100}% fee is burned.</p>
         {msg && <p className={`mt-1 text-xs ${msg.ok ? 'text-emerald-400' : 'text-rose-400'}`} data-testid="stk-msg">{msg.t}</p>}
