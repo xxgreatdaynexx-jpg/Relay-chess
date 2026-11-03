@@ -9,6 +9,8 @@ import { useAccount } from '@/lib/auth';
 import { DIV_HOUR_UTC, FUND_MAX_ORDER, OPT_EXPIRIES, OPT_STRIKES, SHORT_INIT, SHORT_MAINT, BORROW_FEE, FUND_BY_ID, fundQuote, strikeFor } from '../../../shared/derivs';
 import { MAX_TICK_IMPACT, MAX_TRADE_IMPACT, STOCK_FEE, STOCK_SPREAD, quote, parseQty, COMPANY_BY_TICKER, type NewsItem, type SectorInfo } from '../../../shared/stocks';
 import { usePanelDrag } from '@/lib/panelDrag';
+import { InvestChart, KeyStatsGrid, compact } from '@/components/stocks/InvestChart';
+import type { KeyStats, Period } from '../../../shared/stockStats';
 
 interface Row { ticker: string; name: string; sector: string; price: number; chg: number; volume: number; shares: number; held: number; cap: number; playerPct: number; divYield?: number }
 interface ListResp { companies: Row[]; sectors: SectorInfo[]; news: NewsItem[]; totals: { cap: number; playerOwned: number; offshore: number }; drift: { inflPct: number | null; activity: Record<string, number> } }
@@ -114,24 +116,11 @@ function MarketList({ data, onPick }: { data: ListResp; onPick: (t: string) => v
   );
 }
 
-function Chart({ pts }: { pts: Array<[number, number]> }) {
-  if (pts.length < 2) return <p className="text-xs opacity-60">Not enough history yet: the chart fills in every 10 minutes.</p>;
-  const W = 600, H = 160; const v = pts.map((p) => p[1]); const lo = Math.min(...v), hi = Math.max(...v); const span = hi - lo || 1;
-  const t0 = pts[0]![0], t1 = pts[pts.length - 1]![0] || t0 + 1;
-  const d = pts.map(([t, p]) => `${(((t - t0) / (t1 - t0 || 1)) * W).toFixed(1)},${(H - ((p - lo) / span) * (H - 10) - 5).toFixed(1)}`).join(' ');
-  const up = v[v.length - 1]! >= v[0]!;
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="h-40 w-full rounded bg-black/20" preserveAspectRatio="none" data-testid="stk-chart">
-      <polyline points={d} fill="none" stroke={up ? '#34d399' : '#fb7185'} strokeWidth="2" vectorEffect="non-scaling-stroke" />
-      <text x="4" y="12" fill="#fff8" fontSize="11">{hi.toFixed(2)}</text><text x="4" y={H - 4} fill="#fff8" fontSize="11">{lo.toFixed(2)}</text>
-    </svg>
-  );
-}
 
-interface CompanyResp { company: Row & { blurb: string; vol: number; beta: number; liquidity: number }; chart: Array<[number, number]>; news: NewsItem[]; mine: { shares: number; cost: number } | null; maxOrder: number; drift: number; callLock?: boolean }
+interface CompanyResp { company: Row & { blurb: string; vol: number; beta: number; liquidity: number }; chart: Array<[number, number]>; stats?: KeyStats; news: NewsItem[]; upcoming: number; mine: { shares: number; cost: number } | null; maxOrder: number; drift: number; callLock?: boolean }
 function CompanyView({ ticker, onBack, onTraded }: { ticker: string; onBack: () => void; onTraded: () => void }) {
   const account = useAccount();
-  const [range, setRange] = useState<'24h' | '7d' | '30d'>('24h');
+  const [range, setRange] = useState<Period>('1d');
   const [d, setD] = useState<CompanyResp | null>(null);
   const [qty, setQty] = useState('1'); const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null); const { busy, run } = useMoneyAction(); /* QA r12: lock + spinner set synchronously on click, held for the whole request */
   const loadSeq = useRef(0); // QA r13: only the newest response may paint 'You own' (an older poll landing late showed a stale count)
@@ -153,16 +142,14 @@ function CompanyView({ ticker, onBack, onTraded }: { ticker: string; onBack: () 
   return (
     <div data-testid="stk-company">
       <button type="button" className="mb-2 text-xs opacity-70 hover:opacity-100" onClick={onBack}>← All companies</button>
-      <div className="flex flex-wrap items-baseline gap-3"><h3 className="text-lg font-bold">{c.name} <span className="opacity-60">{c.ticker}</span></h3><span className="text-xl font-bold tabular-nums">🪙 {c.price.toFixed(2)}</span><span className={tone(c.chg)}>{pc(c.chg)} 24h</span></div>
+      <div className="mb-2 flex flex-wrap items-center gap-2"><span className="rounded-lg bg-white/10 px-2 py-1 text-sm font-black tracking-wide">{c.ticker}</span><h3 className="text-lg font-bold">{c.name}</h3><span className="text-xs opacity-60">{c.sector}</span><span className={`ivx-pill ml-auto ${c.chg > 0 ? 'up' : c.chg < 0 ? 'down' : 'flat'}`}>{pc(c.chg)} 24h</span></div>
       <p className="mb-2 text-xs opacity-70">{c.blurb}</p>
-      <p className="mb-2 text-xs" data-testid="stk-div">{c.divYield ? <>💰 Pays a dividend of <b>{(c.divYield * 100).toFixed(2)}%/day</b> (≈ 🪙 {(c.price * c.divYield).toFixed(2)} per share), every day at {DIV_HOUR_UTC}:00 UTC.</> : <span className="opacity-60">No dividend: growth company.</span>}</p>
-      <div className="mb-1 flex gap-1">{(['24h', '7d', '30d'] as const).map((r) => <button key={r} type="button" className={`rounded px-2 py-0.5 text-xs ${range === r ? 'bg-white/20' : 'bg-white/5'}`} onClick={() => setRange(r)} data-testid={`stk-range-${r}`}>{r}</button>)}</div>
-      <Chart pts={d.chart} />
-      <div className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-        <div className="rounded bg-white/5 p-2"><div className="opacity-60">Market cap</div><b>🪙 {n(c.cap)}</b></div>
-        <div className="rounded bg-white/5 p-2" title="Player-owned shares count as assets; the rest is offshore"><div className="opacity-60">Player-owned / 🏝 offshore</div><b>{c.playerPct.toFixed(2)}% / {offPct.toFixed(2)}%</b><div className="mt-1 h-1.5 rounded bg-white/10"><div className="h-1.5 rounded bg-emerald-400" style={{ width: `${Math.min(100, c.playerPct)}%` }} /></div></div>
-        <div className="rounded bg-white/5 p-2"><div className="opacity-60">Volatility · beta</div><b>{(meta.vol * 100).toFixed(1)}%/day · {meta.beta}</b></div>
-        <div className="rounded bg-white/5 p-2"><div className="opacity-60">Trend (inflation + activity)</div><b className={tone(d.drift)}>{pc(d.drift * 100)}/day</b></div>
+      <InvestChart pts={d.chart} period={range} onPeriod={setRange} value={c.price} testid="stk-chart" />
+      {d.stats && <KeyStatsGrid s={d.stats} />}
+      <div className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+        <div className="ivx-stat" data-testid="stk-div"><div className="ivx-k">Dividend</div>{c.divYield ? <div>Pays <b>{(c.divYield * 100).toFixed(2)}%/day</b> (≈ 🪙 {(c.price * c.divYield).toFixed(2)}/share) at {DIV_HOUR_UTC}:00 UTC</div> : <div className="opacity-60">No dividend: growth company.</div>}</div>
+        <div className="ivx-stat" title="Player-owned shares count as assets; the rest is offshore"><div className="ivx-k">Player-owned / 🏝 offshore</div><b>{c.playerPct.toFixed(2)}% / {offPct.toFixed(2)}%</b><div className="mt-1 h-1.5 rounded bg-white/10"><div className="h-1.5 rounded bg-emerald-400" style={{ width: `${Math.min(100, c.playerPct)}%` }} /></div></div>
+        <div className="ivx-stat"><div className="ivx-k">Trend (inflation + activity)</div><b className={tone(d.drift)}>{pc(d.drift * 100)}/day</b></div>
       </div>
       <div className="mt-3 rounded bg-white/5 p-2">
         {d.mine && <p className="mb-1 text-xs" data-testid="stk-mine">You own <b>{plural(d.mine.shares, 'share', 'shares')}</b> (player-owned asset) worth 🪙 {n(d.mine.shares * c.price)} · cost 🪙 {n(d.mine.cost)}</p>}
@@ -247,6 +234,8 @@ export function FundsView({ onTraded }: { onTraded: () => void }) {
         <div className="mt-2 rounded bg-white/5 p-2" data-testid="stk-fund-detail">
           <p className="text-xs"><b>{f.name}</b>: {f.blurb}</p>
           <p className="mt-1 text-xs" data-testid="stk-fund-detail-day">NAV {f.nav.toFixed(2)} · <span className={tone(f.dayPct ?? 0)}>{(f.dayPct ?? 0) >= 0 ? '+' : ''}{(f.dayPct ?? 0).toFixed(2)}% today (24h)</span></p>
+          <div className="mt-2"><FundChart id={f.id} nav={f.nav} /></div>
+          <div className="ivx-stats"><div className="ivx-stat"><div className="ivx-k">NAV / unit</div><div className="ivx-v">{f.nav.toFixed(2)}</div></div><div className="ivx-stat"><div className="ivx-k">Div yield</div><div className="ivx-v">{(f.yield * 100).toFixed(3)}%/day</div></div><div className="ivx-stat"><div className="ivx-k">Fee · expense</div><div className="ivx-v">{(f.fee * 100).toFixed(2)}% · {f.expense ? `${(f.expense * 100).toFixed(2)}%/d` : '—'}</div></div><div className="ivx-stat"><div className="ivx-k">Holdings</div><div className="ivx-v">{f.holdings.length}</div></div></div>
           <p className="mt-1 text-[11px] opacity-70">{f.holdings.length} holdings: {f.holdings.slice(0, 15).map((h) => `${h.ticker} ${h.weight}%`).join(' · ')}{f.holdings.length > 15 ? ' …' : ''}</p>
           {!account ? <p className="text-xs opacity-70">Sign in to trade.</p> : (
             <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -260,6 +249,25 @@ export function FundsView({ onTraded }: { onTraded: () => void }) {
         </div>); })()}
     </div>
   );
+}
+
+function FundChart({ id, nav }: { id: string; nav: number }) {
+  const [period, setPeriod] = useState<Period>('1d'); const [pts, setPts] = useState<Array<[number, number]> | null>(null);
+  useEffect(() => { let live = true; const go = () => void request('stk3_fund_chart', { fund: id, range: period }).then((r) => { if (live && r.ok) setPts((r as unknown as { chart: Array<[number, number]> }).chart); }); go(); const iv = setInterval(go, 60_000); return () => { live = false; clearInterval(iv); }; }, [id, period]);
+  if (!pts) return <p className="text-xs opacity-60">Loading chart…</p>;
+  return <InvestChart pts={pts} period={period} onPeriod={setPeriod} value={nav} prefix="NAV " testid="stk-fund-chart" height={150} />;
+}
+function PortfolioChart() {
+  const [period, setPeriod] = useState<Period>('1d'); const [pts, setPts] = useState<Array<[number, number]> | null>(null);
+  useEffect(() => { let live = true; const go = () => void request('stk3_portfolio_chart', { range: period }).then((r) => { if (live && r.ok) setPts((r as unknown as { chart: Array<[number, number]> }).chart); }); go(); const iv = setInterval(go, 60_000); return () => { live = false; clearInterval(iv); }; }, [period]);
+  if (!pts) return <p className="text-xs opacity-60">Loading chart…</p>;
+  return <InvestChart pts={pts} period={period} onPeriod={setPeriod} decimals={0} testid="stk-port-chart" empty="Your portfolio chart starts now: a new point is saved every 10 minutes." />;
+}
+function Allocation({ t }: { t: Port['totals'] }) {
+  const parts: Array<[string, number, string]> = [['Stocks', t.stocks, '#22c55e'], ['Funds', t.funds, '#38bdf8'], ['Shorts', t.shorts, '#f97316'], ['Options', t.options, '#a78bfa']];
+  const sum = parts.reduce((a, p) => a + Math.max(0, p[1]), 0); if (!sum) return null;
+  return <div className="ivx-card mt-2" data-testid="stk-alloc"><div className="ivx-k mb-1">Allocation</div><div className="ivx-alloc">{parts.map(([k, v, c]) => v > 0 ? <div key={k} style={{ width: `${(v / sum) * 100}%`, background: c }} title={`${k} ${((v / sum) * 100).toFixed(1)}%`} /> : null)}</div>
+    <div className="mt-1 flex flex-wrap gap-3 text-[11px]">{parts.map(([k, v, c]) => <span key={k} className="inline-flex items-center gap-1"><i className="inline-block h-2 w-2 rounded-full" style={{ background: c }} />{k} <b>🪙 {compact(v)}</b> <span className="opacity-60">{sum ? ((Math.max(0, v) / sum) * 100).toFixed(1) : 0}%</span></span>)}</div></div>;
 }
 
 function ShortsView({ data, onTraded }: { data: ListResp; onTraded: () => void }) {
@@ -355,6 +363,9 @@ function Portfolio({ onPick }: { onPick: (t: string) => void }) {
   const s = p.stocks;
   return (
     <div data-testid="stk-portfolio">
+      <PortfolioChart />
+      <Allocation t={p.totals} />
+      <div className="mt-2" />
       <div className="mb-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
         <Card k="Total (Bank assets)" v={`🪙 ${n(p.totals.all)}`} title="Everything here counts toward your asset worth in the Bank, at market value" />
         <Card k="Stocks" v={`🪙 ${n(p.totals.stocks)}`} /><Card k="Funds" v={`🪙 ${n(p.totals.funds)}`} /><Card k="Short equity" v={`🪙 ${n(p.totals.shorts)}`} title="Collateral + unrealized P&L" /><Card k="Options (value)" v={`🪙 ${n(p.totals.options)}`} />
