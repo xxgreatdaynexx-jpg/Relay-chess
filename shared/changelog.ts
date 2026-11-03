@@ -6,7 +6,7 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-02T23:00:00-06:00', title: 'Profiles: house sell room left today', bullets: [
+  { commit: '', at: '2026-11-02T22:50:00-06:00', title: 'Profiles: house sell room left today', bullets: [
     'Every player profile now shows how much house-sell room that player has left today out of the daily cap (100,000 × price index), plus what they sold to the house today and the room refunded from chips lost to the house.',
     'Visible to everyone. It resets at 6 PM CST (00:00 UTC). Caps, prices and payouts are unchanged.',
   ] },
