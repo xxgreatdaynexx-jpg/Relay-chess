@@ -111,7 +111,10 @@ export class Farm {
     const upgrades = o ? await this.upgrades(this.pool, pid, o.key) : { ...NO_UPGRADES };
     const tiles = o ? (await this.tiles(pid, o.key)).map((r) => this.toTile(r, now, this.withers(upgrades))).filter((t): t is FarmTile => !!t) : [];
     const mine = !!o && !!name && o.key === keyOf(name);
-    return { id: pid, owner: o?.name ?? null, mine, cols: p.cols, rows: p.rows, tiles, now, today: mine ? await this.today(o!.key) : { gross: 0, paid: 0 }, index: priceIndex(), upgrades };
+    // #33 (Jay): the viewer's real grow time and profit after Farming XP + this plot's upgrades, so the seed shop shows them.
+    const lvl = name ? await skillLevelAsync(name, 'farming').catch(() => 1) : 1;
+    const growMul = combinedGrowMul(farmingGrowMul(lvl), mine ? upgrades.sprinkler : 0), profitMul = fertilizerProfitMul(mine ? upgrades.fertilizer : 0);
+    return { id: pid, owner: o?.name ?? null, mine, cols: p.cols, rows: p.rows, tiles, now, today: mine ? await this.today(o!.key) : { gross: 0, paid: 0 }, index: priceIndex(), upgrades, farmingLevel: lvl, growMul, profitMul };
   }
 
   private async atomic(name: string, amount: number, game: string, memo: string, body: (cl: pg.PoolClient) => Promise<void>) {

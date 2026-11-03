@@ -82,7 +82,9 @@ export const tileXZ = (p: FarmPlot, i: number): [number, number] => [p.x - (p.co
 
 /** What the client gets for one plot. `now` is the server clock (clients never send timestamps). */
 export interface FarmTile { tile: number; crop: string; plantedAt: number; stage: Stage; readyAt: number; witherAt: number }
-export interface FarmView { id: string; owner: string | null; mine: boolean; cols: number; rows: number; tiles: FarmTile[]; now: number; today: { gross: number; paid: number }; index: number; upgrades?: import('./farmUpgrades.js').FarmUpgradeLevels }
+export interface FarmView { id: string; owner: string | null; mine: boolean; cols: number; rows: number; tiles: FarmTile[]; now: number; today: { gross: number; paid: number }; index: number; upgrades?: import('./farmUpgrades.js').FarmUpgradeLevels; farmingLevel?: number; growMul?: number; profitMul?: number }
+/** #33: what one tile of `c` really takes and earns after Farming XP + upgrades (base chips; seed comes back on harvest). */
+export const cropOutlook = (c: Crop, growMul = 1, profitMul = 1) => ({ grow: Math.round(c.grow * growMul), profit: Math.floor((c.sell - c.seed) * profitMul) });
 
 /** Where the camera may look: the whole plate (incl. the Trailer Park), the farm district on the east edge, the outskirts mines and the Airport / Speedway (shared/venues.ts). */
 const SITES = Object.values(MINE_SITES); const HALF = MINE_APRON / 2;
