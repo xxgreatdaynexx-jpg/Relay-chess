@@ -15,7 +15,7 @@ export function FeltTable({ kind, children, testId }: { kind: 'bj' | 'he'; child
       const w = el.clientWidth;
       if (!w) return;
       const aspect = tableAspect(w, kind);
-      const availH = Math.max(240, (el.closest('.sol-panel')?.clientHeight ?? window.innerHeight) - 120);
+      const availH = Math.max(240, (el.closest('.he-full') ? window.innerHeight - 60 : el.closest('.sol-panel')?.clientHeight ?? window.innerHeight) - 120);
       const f = fitTable(w, availH, aspect, Math.min(280, w));
       setBox((b) => (b.w === f.w && b.h === f.h && b.aspect === aspect ? b : { ...f, aspect }));
     };

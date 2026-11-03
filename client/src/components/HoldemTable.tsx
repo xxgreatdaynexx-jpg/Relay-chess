@@ -59,6 +59,24 @@ export function HoldemTableView({ name }: { name: string }) {
   useEffect(() => { if (won) playSolitaireWin(); }, [won, hand]);
   const secs = useCountdown(v?.deadline ?? null, v?.serverNow);
 
+  // Full-screen mode (#34, Liam): the table fills the window (and the real screen when the browser allows it).
+  const [full, setFull] = useState(false);
+  const toggleFull = () => {
+    const next = !full; setFull(next);
+    try {
+      if (next && document.fullscreenEnabled && !document.fullscreenElement) void document.documentElement.requestFullscreen().catch(() => {});
+      if (!next && document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    } catch { /* overlay mode still works */ }
+  };
+  useEffect(() => {
+    if (!full) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setFull(false); };
+    const onFs = () => { if (!document.fullscreenElement) setFull(false); };
+    window.addEventListener('keydown', onKey); document.addEventListener('fullscreenchange', onFs);
+    document.body.classList.add('he-full-open');
+    return () => { window.removeEventListener('keydown', onKey); document.removeEventListener('fullscreenchange', onFs); document.body.classList.remove('he-full-open'); };
+  }, [full]);
+
   const send = async (event: string, payload: unknown = {}) => {
     setErr('');
     const r = await emitCasino<{ state: HEView | null }>(event, payload);
@@ -71,7 +89,8 @@ export function HoldemTableView({ name }: { name: string }) {
   const cur = heStakes(seated ? v?.stakes : pick);
   const tierOf = (t: { stakes?: HEStakesId }) => heStakes(t.stakes);
   return (
-    <div className="bj-table he-table" data-testid="holdem">
+    <div className={`bj-table he-table${full ? ' he-full' : ''}`} data-testid="holdem">
+      <button type="button" className="he-full-btn" onClick={toggleFull} data-testid="he-fullscreen" aria-pressed={full} title={full ? 'Exit full screen (Esc)' : 'Full screen'}>{full ? '✕ Exit full screen' : '⛶ Full screen'}</button>
       <div className="bj-status" data-testid="he-status">
         {!v || (!seated && v.phase === 'waiting') ? `No-Limit Hold'em · ${stakesLabel(cur)} · 2–6 players` : v.phase === 'showdown'
           ? v.winners.map((w) => `${w.name} wins ${w.amount} (${w.hand})`).join(' · ')
