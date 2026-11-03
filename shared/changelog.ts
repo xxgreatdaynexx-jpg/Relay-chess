@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T19:30:00-06:00', title: 'Factory: crafted goods sell for 5% more', bullets: [
+    'House prices for everything the factory makes are up about 5%, for example Silver Ring 100 → 105, Crystal Ring 290 → 305, Engine 1,190 → 1,250, Mining Drill 2,040 → 2,140, Sunflower Oil 615 → 645 and Banquet Platter 950 → 1,000.',
+    'The cheapest items (Stone Brick, Glass, Screw, Glass Lens) round to the same price. Raw ore, crop and fish prices, recipes, timers, output caps and existing market listings are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T19:10:00-06:00', title: 'Real estate: surcharge now based on what you own', bullets: [
     'Requested by carter2: the old ×1.5-per-property price jump is gone. Your next purchase now costs +2% for every 1,000 chips of property you already own (by list price), with no cap.',
     'Owning nothing means no surcharge. A 5,000 farm adds +10%; 50,000 of property adds +100%; 100,000 adds +200%. The deed panel and Buy button show your current surcharge.',
