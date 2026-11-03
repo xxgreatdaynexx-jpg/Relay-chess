@@ -20,6 +20,7 @@ import { KINDS, isKind } from '../shared/factory.js';
 import { COMPANIES } from '../shared/stocks.js';
 import { getExchange } from './stocks.js';
 import { initPriceIndex, priceIndexView, refreshPriceIndex, PRICE_INDEX_PARAMS } from './price-index.js';
+import { initHouseCapIndex, refreshHouseCap, houseCapView } from './house-cap-index.js';
 import { getDerivs } from './derivs.js';
 import { getRealEstate } from './realEstate.js';
 import { getGarage } from './cars.js';
@@ -217,6 +218,7 @@ export class Economy {
       change: { cash: pct(live.cash, y?.cash), assets: pct(live.assets, y?.assets), total: pct(live.total, y?.total) },
       inflation: { cash7: avgDaily(cashSeries, 7), cash30: avgDaily(cashSeries, 30), total7: avgDaily(totalSeries, 7), total30: avgDaily(totalSeries, 30) },
       priceIndex: { ...priceIndexView(), params: PRICE_INDEX_PARAMS },
+      houseCap: houseCapView(),
       flows, net: flows.faucets.reduce((a, f) => a + f.amount, 0) - flows.sinks.reduce((a, f) => a + f.amount, 0),
       history: hist.slice(-60).map((d) => ({ day: d.day, cash: d.cash, assets: d.assets, total: d.total, source: d.source })),
       method: 'Prices: median of the last 20 sales in 30 days. No sales: same rarity + weapon, then same rarity, then a base value (est.). Ore/goods without sales use the house price (est.). Factory machines at 50% of Machinist cost (est.). Cars: depreciated dealer resale value. Stocks: player-owned shares at the live exchange price; shares no player owns are offshore assets (shown separately, not in net worth). Funds at NAV, shorts at equity (collateral + unrealized P&L), options at model value. QA accounts excluded.',
@@ -241,7 +243,7 @@ export class Economy {
 
   /** Snapshot at each UTC midnight (plus catch-up on boot). */
   start() {
-    const arm = () => { const now = this.clock(); const next = dayStart(utcDay(now)) + DAY + 5_000; this.timer = setTimeout(() => { this.cached = null; void this.catchUp(this.clock()).catch((e) => console.error('[economy] snapshot failed:', (e as Error).message)).finally(() => { refreshPriceIndex(); arm(); }); }, next - now); this.timer.unref?.(); };
+    const arm = () => { const now = this.clock(); const next = dayStart(utcDay(now)) + DAY + 5_000; this.timer = setTimeout(() => { this.cached = null; void this.catchUp(this.clock()).catch((e) => console.error('[economy] snapshot failed:', (e as Error).message)).finally(() => { refreshPriceIndex(); refreshHouseCap(); arm(); }); }, next - now); this.timer.unref?.(); };
     void this.catchUp(this.clock()).catch((e) => console.error('[economy] catch-up failed:', (e as Error).message));
     arm();
   }
@@ -302,7 +304,7 @@ export async function initEconomy(): Promise<void> {
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
   pool.on('error', (e) => console.error('[economy] pool error:', e.message));
   // Everything inside one attempt, and econ is only set (and started) once all of it worked, so a retry never doubles timers.
-  await bootAttach('economy', async () => { try { const s = new PgEconSource(pool); await s.init(); await initPriceIndex(pool); const e = new Economy(s); econ = e; e.start(); console.log('[economy] ready'); return true; } catch (e) { console.error('[economy] init failed:', (e as Error).message); return false; } });
+  await bootAttach('economy', async () => { try { const s = new PgEconSource(pool); await s.init(); await initPriceIndex(pool); await initHouseCapIndex(pool); const e = new Economy(s); econ = e; e.start(); console.log('[economy] ready'); return true; } catch (e) { console.error('[economy] init failed:', (e as Error).message); return false; } });
 }
 
 export function economyRouter(): express.Router {

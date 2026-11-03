@@ -38,13 +38,17 @@ export const BACKPACK_CAP = 120;   // total weight units
  * index, so the effective chip cap is 100,000 × index and rises with inflation each UTC day. */
 export const HOUSE_DAILY_BASE = 100_000;
 export const houseCapChips = (index: number) => Math.floor(HOUSE_DAILY_BASE * index);
+/** House-sell cap (pt1442u) follows total player assets, not the price index: capIndex = cap / 100K. Sales are tracked
+ * in base units (chips / price index), so the cap in base units is 100K x capIndex / priceIndex. */
+export const houseCapBase = (capIndex: number, priceIdx: number) => (HOUSE_DAILY_BASE * (capIndex > 0 ? capIndex : 1)) / (priceIdx > 0 ? priceIdx : 1);
 export const SELL_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: HOUSE_DAILY_BASE, rate: 1 }, { upTo: Infinity, rate: 0 }];
 export const dayKey = (now: number) => new Date(now).toISOString().slice(0, 10);
 
 /** Chips paid for `gross` full-price value when `already` gross was sold today. Fractions floor at the end. */
-export function payoutFor(gross: number, already: number): number {
+export function payoutFor(gross: number, already: number, cap: number = HOUSE_DAILY_BASE): number {
   let left = gross, at = already, pay = 0, lo = -Infinity; // already < 0 (sink room, pt1405u) widens the first tier
-  for (const t of SELL_TIERS) {
+  const tiers = cap === HOUSE_DAILY_BASE ? SELL_TIERS : [{ upTo: cap, rate: 1 }, { upTo: Infinity, rate: 0 }];
+  for (const t of tiers) {
     if (left <= 0) break;
     const room = Math.max(0, t.upTo - Math.max(at, lo));
     const take = Math.min(left, room);

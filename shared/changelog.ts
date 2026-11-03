@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-03T16:30:00-06:00', title: 'House-sell cap now follows total player wealth', bullets: [
+    'Each day at the reset (6 PM CST) the daily house-sell cap changes by half the percent that total player assets (cash + holdings, the Bank total) changed over the previous day. If total wealth doubles, the cap goes up 50%; if it drops 20%, the cap drops 10%.',
+    'The cap can fall when total wealth falls, but never below 100,000. If a day\'s wealth snapshot is missing, the cap stays the same. Prices and payouts still use the price index as before.',
+  ] },
   { commit: '', at: '2026-11-03T15:45:00-06:00', title: 'Farm: every crop takes twice as long to grow', bullets: [
     'All farm and tropical crops now take double their old grow time (for example wheat 5 to 10 minutes, tomatoes 1 to 2 hours, cacao 12 to 24 hours). Seed costs, sell prices, yields, XP and recipes are unchanged.',
   ] },
