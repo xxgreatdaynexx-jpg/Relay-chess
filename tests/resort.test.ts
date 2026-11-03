@@ -8,7 +8,7 @@ import { Travel, setTravel, isAtResort } from '../server/travel';
 import { RealEstate } from '../server/realEstate';
 import { Farm } from '../server/farm';
 import { MACHINES, RESORT_MACHINE_IDS, MACHINE_IDS, BUY_BONUS_MULT, mulberry32, simulate, simulateBuy, playRound, isMachineId } from '../shared/video-slots';
-import { RESORT_TICKET_BASE, resortLots, resortPlots, TROPICAL_CROPS, RESORT_TYPES, resortFarmPrice, RESORT_X0, RESORT_X1, RESORT_Z0, RESORT_Z1, SHORE_Z, RESORT_SPOTS } from '../shared/resort';
+import { RESORT_TICKET_BASE, resortLots, resortPlots, TROPICAL_CROPS, RESORT_TYPES, resortFarmPrice, resortEstateFarmPrice, RESORT_X0, RESORT_X1, RESORT_Z0, RESORT_Z1, SHORE_Z, RESORT_SPOTS } from '../shared/resort';
 import { properties, propertyById, BASE_PRICE, taxOf, sellBackOf } from '../shared/realEstate';
 import { CAVES, CELL, ORES, caveValueRate, inExit } from '../shared/mines';
 import { canStand } from '../shared/fps';
@@ -77,7 +77,7 @@ describe('resort properties and plantation', () => {
     expect(RESORT_TYPES.beachhouse!.price).toBeGreaterThan(BASE_PRICE.house!); expect(RESORT_TYPES.condo!.price).toBeGreaterThan(BASE_PRICE.apartment!); expect(RESORT_TYPES.villa!.price).toBeGreaterThan(BASE_PRICE.tower! * 0.9); expect(RESORT_TYPES.hotel!.price).toBeGreaterThan(BASE_PRICE.tower!);
     for (const l of lots) { const p = propertyById(l.id)!; expect(p.map).toBe('resort'); expect(p.price).toBe(l.price); expect(taxOf(p.price)).toBe(Math.ceil(p.price * 0.005)); expect(sellBackOf(p.price)).toBe(Math.floor(p.price * 0.7)); }
     const rp = properties().filter((p) => p.map === 'resort').map((p) => p.price); console.log('[resort-prices]', Math.min(...rp), Math.max(...rp));
-    for (const f of resortPlots()) expect(propertyById(`rf:${f.n}`)!.price).toBe(resortFarmPrice(f.cols * f.rows));
+    for (const f of resortPlots()) expect(propertyById(`rf:${f.n}`)!.price).toBe(f.estate ? resortEstateFarmPrice(f.cols * f.rows) : resortFarmPrice(f.cols * f.rows));
   });
   it('tropical crops are profitable and slow-to-valuable', () => {
     for (let i = 1; i < TROPICAL_CROPS.length; i++) expect(TROPICAL_CROPS[i]!.grow).toBeGreaterThan(TROPICAL_CROPS[i - 1]!.grow);

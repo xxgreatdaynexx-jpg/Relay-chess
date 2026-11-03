@@ -18,7 +18,7 @@ import { cityFill, landmarks, LANDMARK_IDS, type OBB } from './worldLayout.js';
 import { HOUSING_TYPES } from './housing.js';
 import { farmPlots, farmPrice, plotId } from './farm.js';
 import { fieldPlots, fieldPlotId } from './fieldFarms.js';
-import { resortLots, resortPlots, resortPlotId, resortFarmPrice } from './resort.js';
+import { resortLots, resortPlots, resortPlotId, resortPlotPrice } from './resort.js';
 import { countryHomes, countryBusinesses, businessType, COMMERCIAL_PRICE, COMMERCIAL_LABEL } from './outskirts.js';
 
 export const TAX_RATE = 0.005;
@@ -80,7 +80,7 @@ export function properties(): Property[] {
   for (const b of countryBusinesses()) { const t = businessType(b); out.push({ x: b.x, z: b.z, w: b.w, d: b.d, rot: b.rot, h: b.h, id: `b:${t}:${pos(b)}`, kind: 'building', type: t, label: COMMERCIAL_LABEL[t]!, price: COMMERCIAL_PRICE[t]! }); }
   // Chud Resort (shared/resort.ts): its own map, only buyable while you are there (server-enforced).
   for (const l of resortLots()) out.push({ x: l.x, z: l.z, w: l.w, d: l.d, rot: l.rot, h: l.h, id: l.id, kind: 'building', type: l.type, label: l.label, price: l.price, map: 'resort' });
-  for (const f of resortPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: resortPlotId(f.n), kind: 'farm', type: 'plantation', label: `Plantation plot #${f.n} (${f.cols}×${f.rows})`, price: resortFarmPrice(f.cols * f.rows), map: 'resort' });
+  for (const f of resortPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: resortPlotId(f.n), kind: 'farm', type: 'plantation', label: `${f.estate ? 'Estate plantation' : 'Plantation plot'} #${f.n} (${f.cols}×${f.rows})`, price: resortPlotPrice(f), map: 'resort' });
   cache = out; byId = new Map(out.map((p) => [p.id, p])); return out;
 }
 export const propertyById = (id: unknown): Property | undefined => { properties(); return typeof id === 'string' ? byId!.get(id) : undefined; };

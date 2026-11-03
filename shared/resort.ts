@@ -11,6 +11,7 @@
  *   Beach house 45,000 · Condo 80,000 · Villa 140,000 · Hotel 450,000 (size factor 0.9..1.2, rounded to 500).
  *   City equivalents: detached home 15,000, apartment block 60,000, residential tower 150,000.
  * Plantation plots (ids `rf:<n>`): 300 per tile + 2,000, rounded to 500 (vs 180/tile + 500 in the city).
+ *   #10e estate plots rf:7..12: 900 per tile + 25,000. Estates 650K, clifftop mansions 1.1M, penthouse skyrises 1.8M.
  * Tropical crops (coconut, pineapple, mango, banana, cacao) grow only on resort plots and share the city farm's
  * daily profit tiers (shared/farm.ts FARM_TIERS) — the cap is per player across both maps.
  */
@@ -30,7 +31,7 @@ export const DESTINATIONS: Record<Destination, { name: string; ticket: number; g
 };
 
 // ---- map
-export const RESORT_X0 = -130, RESORT_X1 = 130, RESORT_Z0 = -100, RESORT_Z1 = 70;
+export const RESORT_X0 = -200, RESORT_X1 = 200, RESORT_Z0 = -130, RESORT_Z1 = 70; // #10e: was ±130 / -100 (Banyan Bay west, Sapphire Heights east)
 export const SHORE_Z = 38; // sand from ~22 to 38, ocean beyond
 export const BOARDWALK_Z = 20;
 export const clampResortTarget = (x: number, z: number): [number, number] => [Math.min(RESORT_X1 - 10, Math.max(RESORT_X0 + 10, x)), Math.min(RESORT_Z1 - 10, Math.max(RESORT_Z0 + 10, z))];
@@ -52,6 +53,10 @@ export const RESORT_TYPES: Record<string, { label: string; price: number; floors
   condo: { label: 'Oceanview condo', price: 80_000, floors: [4, 6], floorH: 3, color: 0xe8f1f2 },
   villa: { label: 'Hillside villa', price: 140_000, floors: [2, 2], floorH: 3.4, color: 0xfff6e6 },
   hotel: { label: 'Beachfront hotel', price: 450_000, floors: [9, 13], floorH: 3, color: 0xf3e6cf },
+  // #10e expansion: the expensive end of the island
+  oceanestate: { label: 'Oceanfront estate', price: 650_000, floors: [2, 3], floorH: 3.6, color: 0xfaf3e4 },
+  clifftop: { label: 'Clifftop mansion', price: 1_100_000, floors: [2, 3], floorH: 4, color: 0xf4efe8 },
+  skyrise: { label: 'Penthouse skyrise', price: 1_800_000, floors: [18, 24], floorH: 3, color: 0xdfe9f0 },
 };
 export interface ResortLot extends OBB { id: string; type: string; label: string; price: number; h: number; n: number }
 const round500 = (n: number) => Math.max(500, Math.round(n / 500) * 500);
@@ -73,14 +78,23 @@ export function resortLots(): ResortLot[] {
   for (const x of [-60, -40, 40, 60]) add('condo', x, -14, 12, 10);
   // Hillside villas.
   for (const x of [-60, -40, -20, 20, 40, 60, 80]) add('villa', x, -48 - (Math.abs(x) % 3) * 2, 13, 11);
+  // #10e (appended so existing ids never shift): Banyan Bay (west) and Sapphire Heights (east).
+  for (const x of [-176, -152, 152, 176]) add('oceanestate', x, 28, 14, 9);
+  for (const x of [-176, -152, 152, 176]) add('clifftop', x, -46, 16, 14);
+  for (const x of [150, 178]) add('skyrise', x, 2, 16, 14);
   lotCache = out; return out;
 }
 
 // ---- plantation (farm plots)
 export const RF_TILE = 2;
-export interface ResortPlot extends OBB { n: number; cols: number; rows: number }
+export interface ResortPlot extends OBB { n: number; cols: number; rows: number; /** #10e estate plots: bigger, pricier */ estate?: true }
 const RF_SIZES: [number, number][] = [[5, 4], [6, 5], [4, 4], [8, 6], [6, 6], [7, 5]];
 export const resortFarmPrice = (tiles: number) => round500(300 * tiles + 2000);
+/** #10e estate plantations: 900 per tile + 25,000 (3x the per-tile price of the original plots). */
+export const resortEstateFarmPrice = (tiles: number) => round500(900 * tiles + 25_000);
+export const resortPlotPrice = (p: Pick<ResortPlot, 'cols' | 'rows' | 'estate'>) => (p.estate ? resortEstateFarmPrice : resortFarmPrice)(p.cols * p.rows);
+/** Estate plots (n 7..12): [cols, rows, x, z]. */
+const RF_ESTATES: [number, number, number, number][] = [[8, 6, -184, -112], [10, 7, -158, -112], [8, 7, -184, -86], [10, 6, -158, -86], [8, 6, 150, -92], [10, 7, 178, -92]];
 let plotCache: ResortPlot[] | null = null;
 export function resortPlots(): ResortPlot[] {
   if (plotCache) return plotCache;
@@ -90,6 +104,7 @@ export function resortPlots(): ResortPlot[] {
     if (col === 0 && i > 0) z += 18;
     out.push({ n: i + 1, cols: c, rows: r, w, d, rot: 0, x: col === 0 ? -118 + w / 2 : -100 + w / 2 + 4, z: z + d / 2 });
   });
+  RF_ESTATES.forEach(([c, r, x, z], i) => out.push({ n: RF_SIZES.length + i + 1, cols: c, rows: r, w: c * RF_TILE + 2, d: r * RF_TILE + 2, rot: 0, x, z, estate: true }));
   plotCache = out; return out;
 }
 export const resortPlotId = (n: number) => `rf:${n}`;
