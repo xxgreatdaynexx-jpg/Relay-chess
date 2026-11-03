@@ -6,7 +6,7 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-02T21:00:00-06:00', title: 'Wealth tax: the richest share with everyone else', bullets: [
+  { commit: '', at: '2026-11-02T20:47:00-06:00', title: 'Wealth tax: the richest share with everyone else', bullets: [
     'Every day at the reset (6 PM CST / 00:00 UTC), players active in the last 7 days with a net worth (chips + assets, same as profiles) above 2× the median pay 1% of the amount above that line.',
     'It comes from chips only: never more than your chip balance, never below 0, and nothing is sold. Every chip collected is split evenly among the active players below the line (ledger: "Wealth tax share"), so nothing is burned.',
     'The Economy panel shows today\'s threshold, your estimated tax or share, and the last payout. The first run is at the next reset.',
