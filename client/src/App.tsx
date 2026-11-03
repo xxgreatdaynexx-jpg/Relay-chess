@@ -28,6 +28,7 @@ import { socket } from '@/lib/net';
 import { WorldMap } from '@/components/WorldMap';
 import { WalletButton } from '@/components/WalletButton';
 import { AdminPopup } from '@/components/AdminPopup';
+import { LaunchPopup } from '@/components/LaunchPopup';
 import { SkillsPanel } from '@/components/Skills';
 import { TournamentScreen } from '@/components/TournamentScreen';
 import { NightlyEventBanner } from '@/components/NightlyEventBanner';
@@ -320,6 +321,7 @@ export function App() {
         </div>
       )}
       <AdminPopup />
+      <LaunchPopup />
     </>
   );
 }
