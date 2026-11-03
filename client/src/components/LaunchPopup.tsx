@@ -16,7 +16,7 @@ export function LaunchPopup() {
   if (!l) return null;
   const done = () => { setL(null); void request('launch_ack', { id: l.id }); };
   return createPortal(
-    <div className="launch-backdrop" role="dialog" aria-modal="true" aria-labelledby="launch-title" data-testid="launch-popup">
+    <div className="launch-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="launch-title" data-testid="launch-popup">
       <div className="launch-card">
         <div className="launch-burst">💸</div>
         <h2 id="launch-title" className="launch-title">{l.title}</h2>
