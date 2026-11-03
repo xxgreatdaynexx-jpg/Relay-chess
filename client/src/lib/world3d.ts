@@ -757,7 +757,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   let down: { x: number; y: number; t: number; drag?: boolean } | null = null;
   const onDown = (e: PointerEvent) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; controls.autoRotate = false; h.onHover(null, 0, 0); };
   const onUp = (e: PointerEvent) => {
-    if (!down || fly) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y); const dragged = moved > 8 || !!down.drag; down = null; if (dragged) { clearTip(); return; }
+    if (!down || fly) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y); const dragged = moved > (e.pointerType === "touch" ? 16 : 8) || !!down.drag; down = null; if (dragged) { clearTip(); return; }
     const id = pick(e.clientX, e.clientY); if (!id) { setHover(null); h.onHover(null, 0, 0); return; }
     if (id === MILLIONAIRE_SIGN) { h.onHover(null, 0, 0); window.dispatchEvent(new CustomEvent('open-millionaire-trailer')); return; }
     if (id.startsWith('trailer:')) { h.onHover(id, e.clientX, e.clientY); if (h.onTrailer?.(id.slice(8))) return; window.dispatchEvent(new CustomEvent('open-player', { detail: id.slice(8) })); return; } // trailers: your own opens your home (kitchen), others the owner's profile

@@ -35,6 +35,7 @@ export function usePanelDrag<T extends HTMLElement = HTMLDivElement>(id: string)
     const r = el.getBoundingClientRect();
     const cur = offRef.current;
     if (!r.width && !r.height) return o; // not laid out (jsdom / hidden)
+    if (r.width >= window.innerWidth && r.height >= window.innerHeight) return { dx: 0, dy: 0 }; // full-screen sheet (phone farm): nothing to drag/clamp
     return clampOffset(o, { left: r.left - cur.dx, top: r.top - cur.dy, width: r.width, height: r.height }, window.innerWidth, window.innerHeight, M, M);
   }, []);
 
