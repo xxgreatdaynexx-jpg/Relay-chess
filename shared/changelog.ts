@@ -6,7 +6,7 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-02T19:59:00-06:00', title: 'Farm: crops sell for 3% less', bullets: [
+  { commit: '', at: '2026-11-02T19:45:00-06:00', title: 'Farm: crops sell for 3% less', bullets: [
     'Harvest prices for every farm and plantation crop are down about 3%, for example Potatoes 120 → 115, Pumpkins 190 → 185, Grapes 330 → 320, Sunflowers 560 → 545 and Cacao 540 → 525.',
     'The cheapest crops round to the same price. Seed costs, grow times, yields, ripe windows, Fertilizer and factory/food product prices are unchanged.',
   ] },
