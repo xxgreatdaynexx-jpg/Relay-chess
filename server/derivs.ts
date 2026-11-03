@@ -21,10 +21,14 @@ import {
   SHORT_INIT, daysLeft, divYield, dividendOf, fundDivPerUnit, fundQuote, fundYield, liquidationPrice, navOf, needsLiquidation, optionPayout,
   optionPremium, optionValue, shortClose, shortEquity, type Fund,
 } from '../shared/derivs.js';
+import { TICK_MS } from '../shared/stocks.js';
+import { fundSeries, periodSpec } from '../shared/stockStats.js';
 
 const DAY = 86_400_000;
 const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
 const r2 = (x: number) => Math.round(x * 100) / 100;
+const SNAP_EVERY = 20; // MU #9: portfolio value snapshot every 20 ticks (10 min), same cadence as stock_history
+const SNAP_MS = SNAP_EVERY * TICK_MS;
 
 export const DERIVS_MIGRATION = `
 CREATE TABLE IF NOT EXISTS stk_fund_units (player_key TEXT NOT NULL, name TEXT NOT NULL, fund TEXT NOT NULL, units DOUBLE PRECISION NOT NULL CHECK (units >= 0), cost BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, fund));
@@ -34,7 +38,9 @@ CREATE INDEX IF NOT EXISTS stk_shorts_open ON stk_shorts (status, player_key);
 CREATE TABLE IF NOT EXISTS stk_options (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, name TEXT NOT NULL, ticker TEXT NOT NULL, kind TEXT NOT NULL, strike DOUBLE PRECISION NOT NULL, qty BIGINT NOT NULL CHECK (qty > 0),
   premium BIGINT NOT NULL, opened_at BIGINT NOT NULL, expiry BIGINT NOT NULL, status TEXT NOT NULL DEFAULT 'open', settle_price DOUBLE PRECISION, payout BIGINT);
 CREATE INDEX IF NOT EXISTS stk_options_open ON stk_options (status, expiry);
-CREATE TABLE IF NOT EXISTS stk_claims (id TEXT PRIMARY KEY, at BIGINT NOT NULL, info JSONB);`;
+CREATE TABLE IF NOT EXISTS stk_claims (id TEXT PRIMARY KEY, at BIGINT NOT NULL, info JSONB);
+CREATE TABLE IF NOT EXISTS stk_portfolio_snap (player_key TEXT NOT NULL, t BIGINT NOT NULL, value BIGINT NOT NULL, stocks BIGINT NOT NULL DEFAULT 0, funds BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, t));
+CREATE INDEX IF NOT EXISTS stk_portfolio_snap_t ON stk_portfolio_snap (t);`;
 
 export interface FundPos { fund: string; units: number; cost: number }
 export interface ShortPos { id: string; key: string; name: string; ticker: string; shares: number; entry: number; proceeds: number; collateral: number; fees: number; openedAt: number; status: string; closedAt?: number | null; closePrice?: number | null; payout?: number | null }
@@ -53,6 +59,8 @@ export class Derivatives {
   private mShorts = new Map<string, ShortPos>();
   private mOpts = new Map<string, OptionPos>();
   private mClaims = new Map<string, unknown>();
+  /** MU #9 memory-mode portfolio value snapshots: key -> [t, value][] */
+  private mSnaps = new Map<string, Array<[number, number]>>();
   private running = false;
   lastDaily: { day: string; info: unknown } | null = null;
   constructor(private readonly ex: Exchange, private readonly pool: pg.Pool | null, private readonly clock = () => Date.now()) {}
@@ -302,6 +310,41 @@ export class Derivatives {
     } finally { this.selling.delete(lockId); }
   }
 
+  // ---------- MU #9: charts (display only; read prices, write only snapshot rows) ----------
+  async fundChart(id: unknown, range: unknown) {
+    const f = this.fund(id); const tickers = f.weights.map(([t]) => t);
+    const pts = fundSeries(f.id, await this.ex.histMany(tickers, range)); pts.push([this.clock(), this.nav(f)]);
+    return { fund: f.id, chart: pts };
+  }
+  /** Everyone holding anything on the exchange (stocks, funds, open shorts/options). */
+  private async snapPlayers(): Promise<string[]> {
+    if (!this.pool) { const ks = new Set<string>(this.ex.memHoldings().map((h) => h.k)); for (const [k, m] of this.mFunds) if ([...m.values()].some((p) => p.units > 1e-9)) ks.add(k); for (const x of [...this.mShorts.values(), ...this.mOpts.values()]) if (x.status === 'open') ks.add(x.key); return [...ks]; }
+    return (await this.pool.query(`SELECT DISTINCT name FROM (SELECT DISTINCT ON (player_key) player_key, name FROM (
+      SELECT player_key, name FROM stock_holdings WHERE shares > 0 UNION ALL SELECT player_key, name FROM stk_fund_units WHERE units > 0
+      UNION ALL SELECT player_key, name FROM stk_shorts WHERE status = 'open' UNION ALL SELECT player_key, name FROM stk_options WHERE status = 'open') a ORDER BY player_key) b`)).rows.map((x) => String(x.name));
+  }
+  async snapshot(name: string, t: number) {
+    const p = await this.portfolio(name); const k = keyOf(name);
+    if (!this.pool) { const h = this.mSnaps.get(k) ?? []; if (!h.length || h[h.length - 1]![0] < t) h.push([t, p.totals.all]); this.mSnaps.set(k, h); return; }
+    await this.pool.query('INSERT INTO stk_portfolio_snap (player_key, t, value, stocks, funds) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING', [k, t, Math.round(p.totals.all), Math.round(p.totals.stocks), Math.round(p.totals.funds)]);
+  }
+  async snapshotAll(now = this.clock()) {
+    const t = Math.floor(now / SNAP_MS) * SNAP_MS;
+    for (const n of await this.snapPlayers()) await this.snapshot(n, t).catch(() => {});
+    if (this.pool && Math.floor(now / TICK_MS) % (SNAP_EVERY * 36) === 0) await this.pool.query('DELETE FROM stk_portfolio_snap WHERE t < $1', [now - 31 * DAY]);
+  }
+  /** Portfolio value over time (stocks + funds + short equity + option value, same as the Total card). */
+  async portfolioChart(name: string, range: unknown) {
+    const { ms, step } = periodSpec(range); const now = this.clock(); const k = keyOf(name);
+    const p = await this.portfolio(name);
+    await this.snapshot(name, Math.floor(now / SNAP_MS) * SNAP_MS).catch(() => {}); // first open seeds the chart
+    let pts: Array<[number, number]>;
+    if (this.pool) pts = (await this.pool.query('SELECT (t / $3) * $3 b, (ARRAY_AGG(value ORDER BY t DESC))[1] v FROM stk_portfolio_snap WHERE player_key = $1 AND t >= $2 GROUP BY 1 ORDER BY 1', [k, now - ms, step])).rows.map((x) => [Number(x.b), Number(x.v)]);
+    else pts = (this.mSnaps.get(k) ?? []).filter(([t]) => t >= now - ms);
+    pts.push([now, p.totals.all]);
+    return { chart: pts, totals: p.totals };
+  }
+
   // ---------- jobs (tick winner) ----------
   async afterTick(now = this.clock()) {
     if (this.running) return; this.running = true;
@@ -309,6 +352,7 @@ export class Derivatives {
       await this.liquidate().catch((e) => console.error('[stocks2] liquidations failed:', (e as Error).message));
       await this.expire(now).catch((e) => console.error('[stocks2] expiries failed:', (e as Error).message));
       await this.daily(now).catch((e) => console.error('[stocks2] daily payout failed:', (e as Error).message));
+      if (Math.floor(now / TICK_MS) % SNAP_EVERY === 0) await this.snapshotAll(now).catch((e) => console.error('[stocks2] portfolio snapshots failed:', (e as Error).message));
     } finally { this.running = false; }
   }
   /** Close every short whose equity fell under the maintenance margin, at the mark price (no extra impact), fee 1%. */

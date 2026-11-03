@@ -11,6 +11,7 @@ vi.mock('@/lib/net', () => ({
     if (ev === 'stk2_funds') return Promise.resolve({ ok: true, funds: [{ id: 'CHFIN', name: 'Chud Finance Index', kind: 'index', blurb: 'b', fee: 0.0025, expense: 0, nav: 100, yield: 0, holdings: [] }] });
     if (ev === 'stk2_portfolio') return Promise.resolve({ ok: true, funds: [{ fund: 'CHFIN', units: 3 }], shorts: [], options: [] });
     if (ev === 'stk2_trades') return Promise.resolve({ ok: true, trades: [] });
+    if (ev === 'stk3_fund_chart') return Promise.resolve({ ok: true, fund: 'CHFIN', chart: [] }); // MU #9 fund chart
     return new Promise<Ack>((resolve) => calls.push({ ev, data, resolve }));
   },
 }));

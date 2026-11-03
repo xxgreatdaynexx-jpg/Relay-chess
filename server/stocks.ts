@@ -23,6 +23,7 @@ import { COMPANIES, COMPANY_BY_TICKER, SECTOR_BY_ID, SECTORS, IMPACT_HALF_LIFE_M
 import { skillLevelAsync } from './skills.js';
 import { tradingFeeMul } from '../shared/skillPerks.js';
 import { cityFeeMul } from './mayor.js';
+import { keyStats, periodSpec, priceStats } from '../shared/stockStats.js';
 
 export class StockError extends Error {}
 const DAY = 86_400_000;
@@ -248,7 +249,7 @@ export class Exchange {
     return { companies: all, sectors: SECTORS, news: this.news.slice(0, 40), totals: { cap, playerOwned: Math.round(owned), offshore: Math.round(cap - owned) }, drift: { inflPct: this.inflPct, activity: this.act } };
   }
   async chart(t: string, range: unknown) {
-    const ms = range === '30d' ? 30 * DAY : range === '7d' ? 7 * DAY : DAY; const step = range === '30d' ? 4 * 3_600_000 : range === '7d' ? 3_600_000 : 600_000;
+    const { ms, step } = periodSpec(range); // MU #9: 1D/1W/1M/All (legacy 24h/7d/30d still accepted)
     const now = this.clock(); let pts: Array<[number, number]>;
     if (this.pool) pts = (await this.pool.query('SELECT (t / $3) * $3 b, (ARRAY_AGG(price ORDER BY t DESC))[1] p FROM stock_history WHERE ticker = $1 AND t >= $2 GROUP BY 1 ORDER BY 1', [t, now - ms, step])).rows.map((x) => [Number(x.b), Number(x.p)]);
     else pts = (this.memHist.get(t) ?? []).filter(([x]) => x >= now - ms);
@@ -259,7 +260,24 @@ export class Exchange {
     const c = typeof t === 'string' ? COMPANY_BY_TICKER.get(t) : undefined; if (!c) throw new StockError('Unknown company.');
     const mine = name ? (await this.holdings(name)).find((h) => h.ticker === c.ticker) ?? null : null;
     const callLock = name ? await this.callLocked(name, c.ticker) : false;
-    return { callLock, company: { ...c, ...this.summary(c) }, chart: await this.chart(c.ticker, range), news: this.news.filter((n) => n.ticker === c.ticker).slice(0, 20), upcoming: dailyEvents(c, utcDay(this.clock())).filter((e) => e.at > this.clock()).length, mine, maxOrder: maxOrderChips(c), drift: dailyDrift(c, this.inflPct, this.act) };
+    const chart = await this.chart(c.ticker, range);
+    return { callLock, company: { ...c, ...this.summary(c) }, chart, stats: await this.keyStats(c), period: range, news: this.news.filter((n) => n.ticker === c.ticker).slice(0, 20), upcoming: dailyEvents(c, utcDay(this.clock())).filter((e) => e.at > this.clock()).length, mine, maxOrder: maxOrderChips(c), drift: dailyDrift(c, this.inflPct, this.act) };
+  }
+  /** MU #9: display-only key stats (P/E, EPS, ranges, realized volatility, avg volume). Reads history; changes nothing. */
+  async keyStats(c: Company) {
+    const now = this.clock(); const price = this.price(c.ticker)!;
+    const [all, day] = await Promise.all([this.chart(c.ticker, 'all'), this.chart(c.ticker, '1d')]);
+    let avg: number | null = null;
+    if (this.pool) { const r = (await this.pool.query('SELECT COALESCE(SUM(shares),0) s, MIN(at) a FROM stock_trades WHERE ticker = $1 AND at >= $2', [c.ticker, now - 7 * DAY])).rows[0]; const first = Number(r?.a ?? 0); const days = first ? Math.max(1, Math.min(7, (now - first) / DAY)) : 7; avg = Math.round(Number(r?.s ?? 0) / days); }
+    const st = keyStats(c, price, all.slice(0, -1), this.vol24.get(c.ticker) ?? 0, now, avg);
+    const d = priceStats(day.slice(0, -1), price, now);
+    return { ...st, open: d.open, dayLo: d.dayLo, dayHi: d.dayHi, realizedVol: d.realizedVol ?? st.realizedVol };
+  }
+  /** MU #9: raw bucketed history for many tickers (fund charts). */
+  async histMany(tickers: string[], range: unknown): Promise<Array<{ ticker: string; t: number; price: number }>> {
+    const { ms, step } = periodSpec(range); const now = this.clock();
+    if (this.pool) return (await this.pool.query('SELECT ticker, (t / $3) * $3 b, (ARRAY_AGG(price ORDER BY t DESC))[1] p FROM stock_history WHERE ticker = ANY($1) AND t >= $2 GROUP BY 1, 2 ORDER BY 2', [tickers, now - ms, step])).rows.map((x) => ({ ticker: String(x.ticker), t: Number(x.b), price: Number(x.p) }));
+    return tickers.flatMap((t) => (this.memHist.get(t) ?? []).filter(([x]) => x >= now - ms).map(([x, p]) => ({ ticker: t, t: x, price: p })));
   }
   /** Dayne t1430u: a player holding an open (unexpired) call on a ticker can't buy that ticker's shares. Read-only check. */
   async callLocked(name: string, ticker: string): Promise<boolean> {
@@ -404,5 +422,7 @@ export function registerStocks(io: Server, socket: Socket): void {
   on('stk2_opt_sell_quote', async (b) => { const q = await dv().optionSellQuote(need(), b.id, b.qty); return { id: q.o.id, qty: q.qty, payout: q.payout, basis: q.basis }; });
   on('stk2_opt_sell', (b) => dv().sellOption(need(), b.id, b.qty));
   on('stk2_trades', (b) => dv().publicTrades(b.ticker, b.fund, b.limit));
+  on('stk3_fund_chart', (b) => dv().fundChart(b.fund, b.range));
+  on('stk3_portfolio_chart', (b) => dv().portfolioChart(need(), b.range));
   on('stk2_opt_buy', (b) => dv().buyOption(need(), b.ticker, b.kind, b.strike, b.days, b.qty));
 }
