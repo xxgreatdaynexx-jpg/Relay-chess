@@ -2184,3 +2184,8 @@ select, option, input, textarea, button { font-family: inherit; }
 .he-table.he-full .he-controls button, .he-table.he-full .bj-controls button { font-size: 18px; padding: 10px 20px; }
 .he-table.he-full .bj-status { font-size: 18px; }
 body.he-full-open { overflow: hidden; }
+
+/* Farm outlook after boosts (#33) */
+.farm-outlook { display: block; font-size: 11px; color: #86efac; }
+.farm-outlook b { color: #fde047; }
+.farm-outlook-note { display: block; color: #a7f3d0; margin: 4px 0; }
