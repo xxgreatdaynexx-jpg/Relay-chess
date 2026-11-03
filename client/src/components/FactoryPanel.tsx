@@ -9,7 +9,8 @@ import { FactoryBuilder } from '@/components/FactoryBuilder';
 type Ack = { ok: boolean; error?: string; storage?: Stack[]; quote?: unknown; inMine?: boolean; guest?: boolean };
 import { openMarket } from '@/components/MarketPage';
 import { SellQtyPicker } from './SellQtyPicker';
-import { ORES, SELL_TIERS, payoutFor, isOre, nameOf, priceOf, sellable, stackKey, type Stack } from '../../../shared/mines';
+import { usePriceIndex } from '@/lib/priceIndex';
+import { ORES, SELL_TIERS, houseCapChips, payoutFor, isOre, nameOf, priceOf, sellable, stackKey, type Stack } from '../../../shared/mines';
 
 const OPEN_KEY = 'relay-factory-open';
 type Quote = { gross: number; paid: number; already: number; index?: number } | null;
@@ -47,6 +48,7 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
     }));
   }
   const q = st.quote;
+  const pxIdx = usePriceIndex();
   const tier = q ? SELL_TIERS.find((t) => q.already < t.upTo) ?? SELL_TIERS[SELL_TIERS.length - 1] : SELL_TIERS[0];
   const canSell = !st.guest && !st.inMine;
   return (
@@ -75,7 +77,7 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
           {st.guest ? <p className="mines-note">Sign in to sell for chips.</p> : st.inMine ? <p className="mines-note" data-testid="factory-inmine">You're still in the mine. Leave the mine to sell.</p> : (
             <button type="button" className="mines-sell" disabled={!q || q.paid < 1} onClick={() => sell()} data-testid="factory-sell">Sell all{q ? ` · 🪙 ${q.paid}` : ''}</button>
           )}
-          <p className="mines-note">Sold today: {Math.floor(q?.already ?? 0)} · paying {Math.round(tier.rate * 100)}%. Daily cap: full price up to 100,000, then nothing (resets 00:00 UTC).</p>
+          <p className="mines-note">Sold today: {Math.floor(q?.already ?? 0)} · paying {Math.round(tier.rate * 100)}%. Daily cap today: full price up to 🪙 {houseCapChips(pxIdx).toLocaleString('en-US')} (25,000 × price index {pxIdx.toFixed(4)}, rises with inflation), then nothing (resets 00:00 UTC).</p>
         </section>
         <section className="factory-col factory-machines">
           <FactoryBuilder guest={st.guest} flash={flash} onStorage={(storage) => setSt((c) => ({ ...c, storage }))} />

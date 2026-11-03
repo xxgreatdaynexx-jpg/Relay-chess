@@ -54,7 +54,7 @@ describe('mines/factory partial sell', () => {
     expect(() => w.sell('QA-Part', 1000, 'ore:gold', 5)).toThrow();
   });
   it('respects the daily tier cap on the chosen slice', () => {
-    expect(payoutFor(10 * 15, 100_000 - 30)).toBe(30);
+    expect(payoutFor(10 * 15, 25_000 - 30)).toBe(30);
   });
 });
 

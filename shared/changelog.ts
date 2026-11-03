@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T20:30:00-06:00', title: 'Mines & Factory: house buys up to 25,000 a day', bullets: [
+    'Selling ore, bars and factory goods to the house now pays full price up to 25,000 base chips per player per day (was 100,000), then nothing until the reset at 6 PM CST (00:00 UTC).',
+    'The cap rises with inflation: it is 25,000 × the daily price index (about 26,500 today at index 1.06) and is recalculated at each daily reset. The Factory sell panel shows today\'s cap.',
+    'Anyone who already sold more than 25,000 today simply gets nothing more until the reset; nothing is taken back. Farm, fishing and cooking caps, prices and the Market are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T19:45:00-06:00', title: 'Farm: crops sell for 3% less', bullets: [
     'Harvest prices for every farm and plantation crop are down about 3%, for example Potatoes 120 → 115, Pumpkins 190 → 185, Grapes 330 → 320, Sunflowers 560 → 545 and Cacao 540 → 525.',
     'The cheapest crops round to the same price. Seed costs, grow times, yields, ripe windows, Fertilizer and factory/food product prices are unchanged.',
