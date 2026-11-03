@@ -65,7 +65,7 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
 
   scene.add(new THREE.HemisphereLight(0xffc49a, 0x3a4a5a, 0.9));
   const sun = new THREE.DirectionalLight(0xff9a50, 3.2); sun.position.set(-40, 60, 160); sun.castShadow = renderer.shadowMap.enabled;
-  Object.assign(sun.shadow.camera, { left: -150, right: 150, top: 120, bottom: -120, near: 10, far: 400 }); sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0005; scene.add(sun);
+  Object.assign(sun.shadow.camera, { left: -215, right: 215, top: 150, bottom: -150, near: 10, far: 450 }); sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0005; scene.add(sun);
 
   // Ground: lush land, sand, ocean.
   const land = new THREE.Mesh(geo(new THREE.PlaneGeometry(RESORT_X1 - RESORT_X0 + 120, SHORE_Z - RESORT_Z0 + 80)), mat({ color: 0x6f9a4a, roughness: 1 }));
@@ -196,6 +196,8 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
       label('🛥 Marina', 'Boats · yachts · deep sea', '#ffffff', s.x, 12, s.z);
     }
   }
+  label('🌺 Banyan Bay', 'Oceanfront estates · plantations', '#3fa86a', -170, 22, -40, 1.3);
+  label('💎 Sapphire Heights', 'Clifftop mansions · skyrises', '#5aa8e8', 168, 30, -40, 1.3);
   // Superyachts bobbing at the marina.
   const yachts: THREE.Group[] = [];
   for (const [x, z, len] of [[87, 51, 16], [97, 51, 12], [107, 49, 20], [70, 60, 24]] as const) {
@@ -206,6 +208,62 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   // Resort pool + cabanas between the casino and the boardwalk.
   box(16, 0.3, 8, stone, 0, 0.15, -3.5); const pw = box(14, 0.12, 6, pool, 0, 0.33, -3.5); pw.castShadow = false;
   for (const x of [-10, 10]) { box(3, 0.2, 3, white, x, 2.6, -3.5); for (const dx of [-1.3, 1.3]) for (const dz of [-1.3, 1.3]) box(0.15, 2.6, 0.15, wood, x + dx, 1.3, -3.5 + dz); }
+
+
+  // #10a: resort visual overhaul (on par with Chud City): volcanic ridge, avenues + street lamps, live traffic,
+  // sailboats and jet skis, a private jet circling, a lighthouse, flower hedges and district signs.
+  const anims: Array<(t: number, dt: number) => void> = [];
+  { // Volcanic ridge behind the town (fog-softened silhouette).
+    const ridgeM = mat({ color: 0x4a5a3a, roughness: 1, flatShading: true }); const ridgeTop = mat({ color: 0x6a5040, roughness: 1, flatShading: true });
+    for (let i = 0; i < 16; i++) { const x = RESORT_X0 - 40 + i * ((RESORT_X1 - RESORT_X0 + 80) / 15) + (r() - 0.5) * 16; const hh = 40 + r() * 55; const rad = 34 + r() * 26;
+      const c = new THREE.Mesh(geo(new THREE.ConeGeometry(rad, hh, 7, 3)), i % 3 ? ridgeM : ridgeTop); c.position.set(x, hh / 2 - 2, RESORT_Z0 - 50 - r() * 40); c.rotation.y = r() * 3; scene.add(c); }
+  }
+  // Avenues: back road, cross streets out to the new districts, warm street lamps.
+  const asphalt = mat({ color: 0x3e3c3a, roughness: 0.95 }); const lineM = mat({ color: 0xf2e2b0, roughness: 0.8 });
+  const road2 = new THREE.Mesh(geo(new THREE.BoxGeometry(RESORT_X1 - RESORT_X0 - 20, 0.12, 6)), asphalt); road2.position.set(0, 0.07, -64); road2.receiveShadow = true; scene.add(road2);
+  for (const x of [-136, -40, 40, 136]) { const c = new THREE.Mesh(geo(new THREE.BoxGeometry(5, 0.12, 82)), asphalt); c.position.set(x, 0.065, -24); c.receiveShadow = true; scene.add(c); }
+  const dashN = 80; const dashes = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(2.2, 0.05, 0.25)), lineM, dashN);
+  for (let i = 0; i < dashN; i++) { d.position.set(RESORT_X0 + 14 + (i % 40) * 9.4, 0.15, i < 40 ? -32 : -64); d.rotation.set(0, 0, 0); d.scale.set(1, 1, 1); d.updateMatrix(); dashes.setMatrixAt(i, d.matrix); }
+  scene.add(dashes);
+  const stN = 34; const sPost = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(0.14, 0.18, 6, 6)), mat({ color: 0x24221f, metalness: 0.6, roughness: 0.4 }), stN); const sGlobe = new THREE.InstancedMesh(geo(new THREE.SphereGeometry(0.5, 10, 8)), glowMat, stN);
+  for (let i = 0; i < stN; i++) { const x = RESORT_X0 + 18 + (i % 17) * 22.5, z = i < 17 ? -35.6 : -67.6; d.position.set(x, 3, z); d.rotation.set(0, 0, 0); d.updateMatrix(); sPost.setMatrixAt(i, d.matrix); d.position.y = 6.2; d.updateMatrix(); sGlobe.setMatrixAt(i, d.matrix); }
+  scene.add(sPost, sGlobe);
+  // Traffic: convertibles and shuttles looping both avenues.
+  const carCols = [0xf26b5b, 0xffffff, 0x2fb5b0, 0xf6c445, 0x1a1a1a, 0xd8b25a, 0x3a6ab0];
+  for (let i = 0; i < 14; i++) {
+    const car = new THREE.Group(); const lane = i % 2 ? 1 : -1; const z = (i < 8 ? -32 : -64) + lane * 1.4; const big = i % 5 === 0;
+    box(big ? 7 : 4, big ? 2.4 : 1, 1.8, mat({ color: carCols[i % carCols.length]!, metalness: 0.5, roughness: 0.35 }), 0, big ? 1.4 : 0.8, 0, car);
+    if (!big) box(1.9, 0.6, 1.6, glass, -0.3, 1.5, 0, car); else box(6.8, 0.8, 1.85, glass, 0, 1.9, 0, car);
+    for (const [wx, wz] of [[-1.3, 0.9], [1.3, 0.9], [-1.3, -0.9], [1.3, -0.9]] as const) box(0.7, 0.7, 0.3, mat({ color: 0x111111 }), wx * (big ? 2 : 1), 0.35, wz, car);
+    box(0.1, 0.3, 1.2, glowMat, (big ? 3.5 : 2) * lane, 0.9, 0, car);
+    scene.add(car); const span = RESORT_X1 - RESORT_X0 - 30; const off = r() * span; const sp = 9 + r() * 6;
+    anims.push((t) => { const u = ((off + t * sp) % span); car.position.set(lane > 0 ? RESORT_X0 + 15 + u : RESORT_X1 - 15 - u, 0.1, z); car.rotation.y = lane > 0 ? 0 : Math.PI; });
+  }
+  // Sailboats + jet skis on the bay.
+  const sailM = mat({ color: 0xfff8ec, roughness: 0.6, side: THREE.DoubleSide });
+  for (let i = 0; i < 9; i++) {
+    const b = new THREE.Group(); const R = 70 + r() * 120, cx = (r() - 0.5) * 220, cz = SHORE_Z + 90 + r() * 80, w = (0.02 + r() * 0.03) * (i % 2 ? 1 : -1), ph = r() * 6.28; scene.add(b);
+    if (i < 6) { box(1.6, 0.8, 6, white, 0, 0.4, 0, b); box(1.65, 0.12, 6, mat({ color: [0x1a3a6a, 0xd84a3a, 0x2fb5b0][i % 3]! }), 0, 0.05, 0, b);
+      const mast = new THREE.Mesh(geo(new THREE.CylinderGeometry(0.08, 0.08, 9, 5)), white); mast.position.set(0, 5, 0.4); b.add(mast);
+      const sail = new THREE.Mesh(geo(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 1.2, 0.5), new THREE.Vector3(0, 9.2, 0.5), new THREE.Vector3(0, 1.2, -2.8)])), sailM); sail.geometry.computeVertexNormals(); b.add(sail); }
+    else { box(0.9, 0.6, 2.4, mat({ color: 0xf6c445, metalness: 0.4 }), 0, 0.3, 0, b); box(0.4, 0.8, 0.3, mat({ color: 0x1a1a1a }), 0, 0.9, -0.2, b); }
+    anims.push((t) => { const a = ph + t * w * (i < 6 ? 1 : 3.5); b.position.set(cx + Math.cos(a) * R, 0.1 + Math.sin(t * 1.3 + i) * 0.1, cz + Math.sin(a) * R * 0.35); b.rotation.y = -a + (w > 0 ? 0 : Math.PI); b.rotation.z = Math.sin(t + i) * 0.05; });
+  }
+  // A private jet (feature #11) on a slow circuit over the island.
+  { const jet = new THREE.Group(); scene.add(jet);
+    box(1.6, 1.6, 14, white, 0, 0, 0, jet); box(15, 0.2, 2.6, white, 0, -0.2, 0.5, jet); box(0.2, 3, 2, gold, 0, 1.6, -6.2, jet); box(5, 0.15, 1.4, white, 0, 2.8, -6.4, jet); box(1.65, 0.4, 3, glass, 0, 0.4, 5.4, jet);
+    for (const x of [-1.6, 1.6]) box(0.9, 0.9, 2.6, gold, x, 0.5, -4, jet);
+    anims.push((t) => { const a = t * 0.07; jet.position.set(Math.cos(a) * 170, 70 + Math.sin(t * 0.3) * 4, -30 + Math.sin(a) * 110); jet.rotation.set(0, -a + Math.PI, 0.25); }); }
+  // Lighthouse on the east point with a sweeping beam.
+  { const lh = new THREE.Group(); lh.position.set(192, 0, SHORE_Z + 2); scene.add(lh);
+    for (let i = 0; i < 6; i++) { const c = new THREE.Mesh(geo(new THREE.CylinderGeometry(2.4 - i * 0.22, 2.6 - i * 0.22, 3, 14)), i % 2 ? white : mat({ color: 0xd84a3a, roughness: 0.6 })); c.position.y = 1.5 + i * 3; c.castShadow = true; lh.add(c); }
+    const lamp = new THREE.Mesh(geo(new THREE.SphereGeometry(1.2, 14, 10)), mat({ color: 0xfff0c0, emissive: 0xffd070, emissiveIntensity: 5 })); lamp.position.y = 19.5; lh.add(lamp);
+    const beam = new THREE.Mesh(geo(new THREE.ConeGeometry(4, 50, 16, 1, true)), new THREE.MeshBasicMaterial({ color: 0xffe0a0, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide })); disposables.push(beam.material as THREE.Material);
+    beam.rotation.z = Math.PI / 2; beam.position.x = 25; const piv = new THREE.Group(); piv.position.y = 19.5; piv.add(beam); lh.add(piv); anims.push((t) => { piv.rotation.y = t * 0.6; }); }
+  // Flowering hedges along the avenues.
+  { const hN = 120; const hedge = new THREE.InstancedMesh(geo(new THREE.IcosahedronGeometry(1, 0)), mat({ roughness: 0.9, flatShading: true }), hN); const fc = [0x2f7a3a, 0x3a8a40, 0xe0508a, 0xf6a040, 0xd84aa0];
+    for (let i = 0; i < hN; i++) { d.position.set(RESORT_X0 + 12 + (i % 60) * 6.4 + r() * 2, 0.6, i < 60 ? -28.5 : -60.5); d.rotation.set(r(), r(), r()); const k = 0.7 + r() * 0.5; d.scale.set(k * 1.3, k, k); d.updateMatrix(); hedge.setMatrixAt(i, d.matrix); hedge.setColorAt(i, cc.setHex(fc[i % 5 === 0 ? 2 + (i % 3) : i % 2]!)); }
+    hedge.castShadow = true; scene.add(hedge); }
 
   // Properties.
   const lotIds: string[] = []; const propTop = new Map<string, [number, number, number]>();
@@ -257,7 +315,7 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   const clock = new THREE.Clock(); let raf = 0; let running = true; let time = 0; const tmp = new THREE.Vector3();
   const frame = () => {
     raf = requestAnimationFrame(frame); if (!running) return; const dt = Math.min(clock.getDelta(), 0.05); time += dt;
-    xmas?.step(dt); waterMat.uniforms.uTime!.value = time; yachts.forEach((y, i) => { y.position.y = 0.3 + Math.sin(time * 1.1 + i) * 0.12; y.rotation.z = Math.sin(time * 0.9 + i * 2) * 0.02; });
+    xmas?.step(dt); waterMat.uniforms.uTime!.value = time; anims.forEach((f) => f(time, dt)); yachts.forEach((y, i) => { y.position.y = 0.3 + Math.sin(time * 1.1 + i) * 0.12; y.rotation.z = Math.sin(time * 0.9 + i * 2) * 0.02; });
     controls.update(); clampPan();
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
     for (const s of signs) { const k = labelScale(camera.position.distanceTo(s.getWorldPosition(tmp)), portrait) * (s.userData.k as number); s.scale.set(k, k / 4 * ((s.material.map!.image as { height: number }).height / 128), 1); }

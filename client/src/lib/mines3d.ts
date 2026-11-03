@@ -171,11 +171,11 @@ export class Mines3D {
       const g = new THREE.Group();
       const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.55, 0), new THREE.MeshLambertMaterial({ color: '#5a524c', flatShading: true }));
       g.add(rock);
-      const shiny = n.ore === 'gem' || n.ore === 'diamond' || n.ore === 'gold' || n.ore === 'silver';
+      const shiny = n.ore === 'gem' || n.ore === 'diamond' || n.ore === 'gold' || n.ore === 'silver' || n.ore === 'opal' || n.ore === 'pearl'; // #10d: Grotto-exclusive ores glow too
       const mat = new THREE.MeshStandardMaterial({ color: def.color, emissive: shiny ? def.color : '#000', emissiveIntensity: shiny ? 0.45 : 0, roughness: shiny ? 0.25 : 0.9, metalness: shiny ? 0.6 : 0, flatShading: true });
       const ore = new THREE.Group() as unknown as THREE.Mesh;
       for (let i = 0; i < 6; i++) {
-        const c = new THREE.Mesh(n.ore === 'gem' || n.ore === 'diamond' ? new THREE.OctahedronGeometry(0.14 + (i % 3) * 0.04) : new THREE.IcosahedronGeometry(0.13 + (i % 2) * 0.05, 0), mat);
+        const c = new THREE.Mesh(n.ore === 'pearl' ? new THREE.SphereGeometry(0.12 + (i % 3) * 0.03, 12, 8) : n.ore === 'gem' || n.ore === 'diamond' || n.ore === 'opal' ? new THREE.OctahedronGeometry(0.14 + (i % 3) * 0.04) : new THREE.IcosahedronGeometry(0.13 + (i % 2) * 0.05, 0), mat);
         const th = i * 1.9, ph = 0.4 + (i % 3) * 0.5;
         c.position.set(Math.cos(th) * Math.sin(ph) * 0.5, Math.cos(ph) * 0.45, Math.sin(th) * Math.sin(ph) * 0.5);
         (ore as unknown as THREE.Group).add(c);
