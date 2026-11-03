@@ -2167,3 +2167,10 @@ select, option, input, textarea, button { font-family: inherit; }
 .tackle-row.on { background: rgba(90, 209, 122, .14); outline: 1px solid rgba(90, 209, 122, .45); }
 .tackle-row em { font-size: .8em; color: #5ad17a; font-style: normal; }
 .tackle-swatch { display: inline-block; width: 28px; height: 8px; border-radius: 4px; vertical-align: middle; }
+
+/* Nightly 10x event banner (#35) */
+.nightly-banner { display: flex; align-items: center; gap: 10px; justify-content: center; padding: 6px 12px; margin: 6px auto; max-width: 900px; border-radius: 10px; font-size: 14px; color: #fde68a; background: linear-gradient(90deg, rgba(120, 53, 15, .55), rgba(180, 83, 9, .35)); border: 1px solid rgba(251, 191, 36, .45); }
+.nightly-banner.live { color: #fff7d6; background: linear-gradient(90deg, #b45309, #d97706, #b45309); box-shadow: 0 0 18px rgba(251, 191, 36, .5); animation: nightlyPulse 2s ease-in-out infinite; }
+.nightly-x { font-weight: 900; font-size: 18px; color: #facc15; text-shadow: 0 0 8px rgba(250, 204, 21, .7); }
+.nightly-banner.live .nightly-x { color: #fff; }
+@keyframes nightlyPulse { 50% { box-shadow: 0 0 28px rgba(251, 191, 36, .8); } }

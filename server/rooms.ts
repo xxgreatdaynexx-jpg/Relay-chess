@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { payNightlyBonus } from './nightly-event.js';
 import { RelayGame, type Timing } from './engine.js';
 import { GameError } from './errors.js';
 import { getBank } from './casino-store.js';
@@ -759,8 +760,9 @@ export class Room {
       for (const n of winners) {
         const amount = share + rest;
         rest = 0;
-        bank.transfer(n, amount, { key: this.stakeKey(e.round, n, 'payout'), game: this.gameType, memo: `Won at ${this.code}` });
+        const paidOut = bank.transfer(n, amount, { key: this.stakeKey(e.round, n, 'payout'), game: this.gameType, memo: `Won at ${this.code}` });
         const stake = held.find((s) => normalizeName(s.name) === normalizeName(n))?.amount ?? 0;
+        if (paidOut) payNightlyBonus(n, this.gameType === 'checkers' ? 'checkers' : 'chess', amount - stake, `${this.code}:${e.round}`, bank); // nightly 10x (#35)
         deltas[n] = amount - stake;
       }
     }

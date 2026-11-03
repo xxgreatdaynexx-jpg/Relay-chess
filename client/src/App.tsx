@@ -31,6 +31,7 @@ import { WalletButton } from '@/components/WalletButton';
 import { AdminPopup } from '@/components/AdminPopup';
 import { SkillsPanel } from '@/components/Skills';
 import { TournamentScreen } from '@/components/TournamentScreen';
+import { NightlyEventBanner } from '@/components/NightlyEventBanner';
 import { TournamentPing } from '@/components/TournamentPing';
 import TrailerPopup from '@/components/TrailerPopup';
 import { tournamentFromLocation } from '@/lib/tournament';
@@ -205,7 +206,7 @@ export function App() {
   return (
     <>
       <TopTabs />
-      <JailScreen />
+      <NightlyEventBanner />
       <VolumeControl />
       <div className="app-panels">
         <BlackjackPanel />
