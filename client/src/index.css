@@ -2174,3 +2174,13 @@ select, option, input, textarea, button { font-family: inherit; }
 .nightly-x { font-weight: 900; font-size: 18px; color: #facc15; text-shadow: 0 0 8px rgba(250, 204, 21, .7); }
 .nightly-banner.live .nightly-x { color: #fff; }
 @keyframes nightlyPulse { 50% { box-shadow: 0 0 28px rgba(251, 191, 36, .8); } }
+
+/* Poker full-screen mode (#34) */
+.he-table { position: relative; }
+.he-full-btn { position: absolute; top: 6px; right: 6px; z-index: 3; font-size: 12px; padding: 3px 9px; border-radius: 8px; background: rgba(0, 0, 0, .45); color: #e5e7eb; border: 1px solid rgba(255, 255, 255, .2); cursor: pointer; }
+.he-full-btn:hover { background: rgba(0, 0, 0, .7); }
+.he-table.he-full { position: fixed; inset: 0; z-index: 9000; margin: 0; max-width: none; width: 100vw; height: 100vh; overflow: auto; border-radius: 0; padding: 18px 2vw; display: flex; flex-direction: column; justify-content: center; background: radial-gradient(ellipse at center, #14532d 0%, #052e16 70%, #020617 100%); }
+.he-table.he-full .felt-fit { flex: 1 1 auto; min-height: 0; width: 100%; max-width: none; }
+.he-table.he-full .he-controls button, .he-table.he-full .bj-controls button { font-size: 18px; padding: 10px 20px; }
+.he-table.he-full .bj-status { font-size: 18px; }
+body.he-full-open { overflow: hidden; }
