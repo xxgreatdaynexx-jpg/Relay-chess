@@ -8,7 +8,7 @@ describe('house room', () => {
   it('reports cap, sold, refunded and left; lists active players only', () => {
     resetSinkRoomForTest(); const now = Date.now(); const m = getMines();
     m.daily.set('hrtest', { day: dayKey(now), gross: 30_000, paid: 30_000 });
-    recordSink('hrtest', { game: 'property_buy', amount: -5_000 }, now);
+    recordSink('hrtest', { game: 'car_buy', amount: -5_000 }, now); // car purchases still free room (property_buy no longer does)
     const r = houseRoom('hrtest', now);
     expect(r.soldToday).toBe(Math.floor(30_000 * r.index));
     expect(r.refunded).toBe(5_000);

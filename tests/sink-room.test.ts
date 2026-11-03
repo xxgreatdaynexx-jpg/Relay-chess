@@ -12,16 +12,17 @@ describe('sink room', () => {
       { game: 'holdem', amount: -400 }, { game: 'stocks', amount: -1000 },
     ])).toBe(0);
   });
-  it('counts casino NET losses, house purchases, fees, taxes and admin removals', () => {
+  it('counts casino NET losses, market fees, wealth tax, admin removals, cars and property tax; not other purchases, upkeep or wages', () => {
     expect(sinkLoss([{ game: 'blackjack', amount: -100 }, { game: 'blackjack', amount: 60 }])).toBe(40);
     expect(sinkLoss([{ game: 'slots', amount: -100 }, { game: 'slots', amount: 300 }])).toBe(0);
-    expect(sinkLoss([{ game: 'property_buy', amount: -5000 }, { game: 'property_tax', amount: -25 }, { game: 'admin', amount: -10 }, { game: 'wealth_tax', amount: -99, memo: 'Wealth tax' }])).toBe(5134);
-    expect(sinkLoss([{ game: 'mines', amount: -2000 }, { game: 'mines', amount: 3000 }])).toBe(2000); // house sales don't offset purchases
+    expect(sinkLoss([{ game: 'property_buy', amount: -5000 }, { game: 'property_tax', amount: -25 }, { game: 'admin', amount: -10 }, { game: 'wealth_tax', amount: -99, memo: 'Wealth tax' }])).toBe(134);
+    expect(sinkLoss([{ game: 'resort_ticket', amount: -100 }, { game: 'race_entry', amount: -20 }, { game: 'mayor_filing', amount: -5 }, { game: 'car_mod', amount: -1 }])).toBe(126);
+    for (const g of ['property_buy', 'farm_seed', 'farm_upgrade', 'mine_tool', 'mines', 'grocery', 'employ_wage', 'employ_hire']) expect(sinkLoss([{ game: g, amount: -2000 }]), g).toBe(0);
     expect(sinkLoss([{ game: 'market', amount: 950, memo: 'Sold 1 Gold Bar (50 fee)' }])).toBe(50);
   });
   it('running accumulator matches the batch rule and resets each day', () => {
     const d = new SinkDay(); d.add('d1', { game: 'roulette', amount: -100 }); d.add('d1', { game: 'roulette', amount: 30 }); d.add('d1', { game: 'car_buy', amount: -10 });
-    expect(d.lost('d1')).toBe(80); expect(d.lost('d2')).toBe(0); d.add('d2', { game: 'car_buy', amount: -1 }); expect(d.lost('d2')).toBe(1);
+    expect(d.lost('d1')).toBe(80); // car purchases still free room expect(d.lost('d2')).toBe(0); d.add('d2', { game: 'admin', amount: -1 }); d.add('d2', { game: 'grocery', amount: -5 }); expect(d.lost('d2')).toBe(1);
   });
   it('lost chips widen the cap, at most cap + lost, never beyond today', () => {
     const t = Date.UTC(2026, 10, 3, 12);
