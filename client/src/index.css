@@ -2207,3 +2207,6 @@ body.he-full-open { overflow: hidden; }
 .launch-list b { display: block; color: #ffe3a0; font-size: 14px; } .launch-list span { font-size: 13px; opacity: .85; }
 .launch-ico { font-size: 22px; line-height: 1.2; opacity: 1 !important; }
 .launch-ok { margin-top: 14px; padding: 10px 26px; border: 0; border-radius: 999px; font-weight: 800; font-size: 15px; color: #1a1406; background: linear-gradient(180deg, #ffe08a, #d9a83a); box-shadow: 0 4px 14px rgba(232,194,106,.4); cursor: pointer; }
+/* #34: in the CSS full-screen fallback, hide the top bar (it sat over the table and the exit button) */
+body.he-full-open .top-tabs { visibility: hidden; }
+body.he-full-open .he-table.he-full { visibility: visible; }
