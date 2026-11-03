@@ -2196,41 +2196,14 @@ body.he-full-open { overflow: hidden; }
   .world-farm .world-deed-x { position: fixed; top: 8px; right: 10px; z-index: 61; font-size: 20px; }
 }
 
-/* MU #9: investing-app look for the Stock Exchange (charts, period toggles, key stats). */
-.ivx-chart-card { border-radius: 14px; padding: 12px 14px 10px; background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02)); border: 1px solid rgba(255,255,255,.08); }
-.ivx-big { font-size: 28px; line-height: 1.1; font-weight: 800; letter-spacing: -.02em; }
-.ivx-periods { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(0,0,0,.3); }
-.ivx-periods > button { padding: 3px 11px; border-radius: 999px; font-size: 12px; font-weight: 700; opacity: .65; }
-.ivx-periods > button.on { background: rgba(255,255,255,.14); opacity: 1; color: #fff; }
-.ivx-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
-@media (max-width: 520px) { .ivx-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ivx-big { font-size: 24px; } }
-.ivx-stat { border-radius: 10px; padding: 7px 9px; background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.05); min-width: 0; }
-.ivx-k { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; opacity: .55; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ivx-v { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.ivx-card { border-radius: 14px; padding: 10px 12px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07); }
-.ivx-pill { display: inline-block; border-radius: 6px; padding: 1px 6px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.ivx-pill.up { background: rgba(34,197,94,.16); color: #4ade80; } .ivx-pill.down { background: rgba(244,63,94,.16); color: #fb7185; } .ivx-pill.flat { background: rgba(255,255,255,.08); }
-.ivx-alloc { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.08); }
-/* MU #9 v2: explainers, hover dot, sub-tabs */
-.ivx-k-i { display: flex; align-items: center; gap: 4px; overflow: visible; }
-.ivx-info-wrap { position: relative; display: inline-flex; }
-.ivx-info { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 999px; font: italic 700 9px/1 Georgia, serif; text-transform: none; letter-spacing: 0; background: rgba(124,204,255,.18); color: #9dd8ff; border: 1px solid rgba(124,204,255,.4); cursor: help; flex: none; opacity: 1; }
-.ivx-info:hover, .ivx-info[aria-expanded="true"] { background: #7cf; color: #04121c; }
-.ivx-tip { position: fixed; z-index: 99999; width: min(260px, calc(100vw - 16px)); padding: 8px 10px; border-radius: 10px; background: #0d1622; border: 1px solid rgba(124,204,255,.45); box-shadow: 0 10px 30px rgba(0,0,0,.55); font-size: 12px; line-height: 1.35; text-transform: none; letter-spacing: 0; font-weight: 400; color: #e8f2fb; white-space: normal; pointer-events: auto; }
-.ivx-tip.up { transform: translateY(-100%); }
-.ivx-tip b { display: block; margin-bottom: 2px; color: #fde68a; }
-.ivx-dot { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 999px; border: 2px solid #fff; pointer-events: none; box-shadow: 0 0 0 3px rgba(0,0,0,.25); }
-.stk-sub { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid rgba(255,255,255,.08); margin: 6px 0 10px; }
-.stk-sub::-webkit-scrollbar { display: none; }
-.stk-sub > button { flex: none; padding: 6px 10px; font-size: 12px; font-weight: 700; opacity: .6; border-bottom: 2px solid transparent; white-space: nowrap; }
-.stk-sub > button.on { opacity: 1; border-color: #7cf; color: #fff; }
-.mkt-win .inv-tabs.stk-nav { overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap; min-width: 0; }
-.mkt-win .inv-tabs.stk-nav > button { flex: none; white-space: nowrap; padding: 4px 8px; font-size: 12px; }
-.stk-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 8px; background: rgba(0,0,0,.3); }
-.stk-seg > button { padding: 2px 9px; border-radius: 6px; font-size: 12px; font-weight: 700; opacity: .65; }
-.stk-seg > button.on { background: rgba(255,255,255,.14); opacity: 1; }
-.stk-chain td, .stk-chain th { padding: 3px 4px; }
-.stk-chain .itm { background: rgba(124,204,255,.07); }
-.stk-chain button { width: 100%; border-radius: 6px; padding: 2px 4px; }
-.stk-chain button:hover { background: rgba(255,255,255,.1); }
-.stk-star { font-size: 16px; line-height: 1; color: #fbbf24; }
+/* The Millionaire Update launch popup */
+.launch-backdrop { position: fixed; inset: 0; z-index: 9999; background: radial-gradient(circle at 50% 30%, rgba(232,194,106,.18), rgba(0,0,0,.78) 60%); display: flex; align-items: center; justify-content: center; padding: 14px; }
+.launch-card { width: 100%; max-width: 520px; max-height: calc(100vh - 28px); overflow-y: auto; background: linear-gradient(180deg, #1d1a12, #111318 40%); border: 1px solid #e8c26a88; border-radius: 18px; box-shadow: 0 0 0 1px #000, 0 20px 60px rgba(0,0,0,.6), 0 0 40px rgba(232,194,106,.25); padding: 22px 22px 18px; color: #f4efe2; text-align: center; }
+.launch-burst { font-size: 44px; line-height: 1; filter: drop-shadow(0 0 12px #e8c26a); }
+.launch-title { margin: 6px 0 2px; font-size: 28px; font-weight: 900; letter-spacing: .5px; background: linear-gradient(90deg, #ffe7a3, #e8c26a, #c9962e); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.launch-sub { margin: 0 0 12px; opacity: .8; font-size: 14px; }
+.launch-list { list-style: none; margin: 0; padding: 0; text-align: left; display: grid; gap: 8px; }
+.launch-list li { display: flex; gap: 10px; align-items: flex-start; background: rgba(255,255,255,.05); border: 1px solid rgba(232,194,106,.18); border-radius: 12px; padding: 8px 10px; }
+.launch-list b { display: block; color: #ffe3a0; font-size: 14px; } .launch-list span { font-size: 13px; opacity: .85; }
+.launch-ico { font-size: 22px; line-height: 1.2; opacity: 1 !important; }
+.launch-ok { margin-top: 14px; padding: 10px 26px; border: 0; border-radius: 999px; font-weight: 800; font-size: 15px; color: #1a1406; background: linear-gradient(180deg, #ffe08a, #d9a83a); box-shadow: 0 4px 14px rgba(232,194,106,.4); cursor: pointer; }
