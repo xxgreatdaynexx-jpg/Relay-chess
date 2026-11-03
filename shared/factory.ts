@@ -134,6 +134,7 @@ export interface Ent {
   ib?: Record<string, number>; // machine input buffer
   ob?: number;           // machine output buffer (qty of recipe output)
   rr?: number;           // round-robin cursor
+  n?: number;            // input chest: items handed out (relative; least-filled-first fairness, normalised each tick)
   w?: [number, number, number]; // splitter output weights [left, ahead, right] (absent = 1:1:1)
   t?: number;            // inserter swing timer
 }
@@ -151,6 +152,12 @@ export function splitSeq(w: [number, number, number]): number[] {
   SEQ.set(key, seq); return seq;
 }
 export const splitLabel = (e: { w?: unknown }) => splitWeights(e).join(':');
+/** Least-filled first; ties keep a round-robin order whose start rotates with `tick` (stable sort of a rotated list). */
+export function fairOrder<T>(list: T[], fill: (x: T) => number, tick: number): T[] {
+  if (list.length < 2) return list.slice();
+  const r = ((tick % list.length) + list.length) % list.length;
+  return [...list.slice(r), ...list.slice(0, r)].sort((a, b) => fill(a) - fill(b));
+}
 export interface Storage { get(key: string): number; add(key: string, delta: number): void }
 /** The storage stack an Input Chest filtered to `f` draws from. Crops harvested to the pantry bank as `food:<crop>`
  *  (pt1312u) while factory recipes and chest filters use `good:crop_<crop>`; they are the same crop, so a crop chest
@@ -242,16 +249,21 @@ export function step(s: FState, g: Grid, st: Storage): boolean {
       }
     }
   }
-  // 2) input chests push their filter item forward (belt or machine), 1/tick
-  for (const e of s.ents) {
-    const from = e.k === 'chest_in' && e.f ? stockKey(st, e.f) : null; if (!from || !e.f) continue;
+  // 2) input chests push their filter item forward (belt or machine), 1/tick. Fair share (r21): chests drawing the
+  //    same scarce stack go least-filled first, ties round-robin from a start that rotates every tick.
+  const chests = s.ents.filter((e) => e.k === 'chest_in' && e.f);
+  for (const e of fairOrder(chests, (c) => c.n ?? 0, s.tick)) {
+    const from = e.f ? stockKey(st, e.f) : null; if (!from || !e.f) continue;
     const t = at(e.x + DX[e.d], e.y + DY[e.d]); if (!t) continue;
-    if (isBeltish(t.k) && !t.it) { st.add(from, -1); t.it = e.f; t.m = 0; ch = true; }
-    else if (KINDS[t.k].machine && accepts(t, e.f, st)) { st.add(from, -1); give(s, st, t, e.f); ch = true; }
+    if (isBeltish(t.k) && !t.it) { st.add(from, -1); t.it = e.f; t.m = 0; e.n = (e.n ?? 0) + 1; ch = true; }
+    else if (KINDS[t.k].machine && accepts(t, e.f, st)) { st.add(from, -1); give(s, st, t, e.f); e.n = (e.n ?? 0) + 1; ch = true; }
   }
-  // 3) inserters
-  for (const e of s.ents) {
-    if (e.k !== 'inserter') continue;
+  // 3) inserters (the ones pulling from an input chest take their turns in the same fair order, in their own slots)
+  const ins = s.ents.filter((e) => e.k === 'inserter');
+  const srcChest = (e: Ent) => { const c = at(e.x - DX[e.d], e.y - DY[e.d]); return c && c.k === 'chest_in' ? c : null; };
+  const fromChest = fairOrder(ins.filter((e) => srcChest(e)), (e) => srcChest(e)!.n ?? 0, s.tick); let fi = 0;
+  for (const e0 of ins) {
+    const e = srcChest(e0) ? fromChest[fi++] : e0;
     const src = at(e.x - DX[e.d], e.y - DY[e.d]); const dst = at(e.x + DX[e.d], e.y + DY[e.d]);
     if (e.t) { e.t--; ch = true; continue; }
     if (e.it) {
@@ -264,10 +276,11 @@ export function step(s: FState, g: Grid, st: Storage): boolean {
     const want = (k: string) => (!e.f || e.f === k) && ( isBeltish(dst.k) ? !dst.it : dst.k !== 'inserter' && accepts(dst, k, st));
     let got: string | null = null;
     if (isBeltish(src.k) && src.it && want(src.it)) { got = src.it; src.it = null; }
-    else if (src.k === 'chest_in' && src.f && stockKey(st, src.f) && want(src.f)) { got = src.f; st.add(stockKey(st, src.f)!, -1); }
+    else if (src.k === 'chest_in' && src.f && stockKey(st, src.f) && want(src.f)) { got = src.f; st.add(stockKey(st, src.f)!, -1); src.n = (src.n ?? 0) + 1; }
     else if (KINDS[src.k].machine && src.ob) { const r = frecipe(src.r); if (r && want(r.out[0])) { got = r.out[0]; src.ob--; } }
     if (got) { e.it = got; e.t = INSERTER_TICKS - 1; ch = true; }
   }
+  if (chests.length) { const lo = Math.min(...chests.map((c) => c.n ?? 0)); if (lo > 0) for (const c of chests) c.n = (c.n ?? 0) - lo; }
   // 4) belts (downstream first so a full line flows as a block)
   const ug = undergroundPairs(s, g); const ugOut = new Set([...ug.values()].map((x) => x.id));
   const done = new Set<number>();

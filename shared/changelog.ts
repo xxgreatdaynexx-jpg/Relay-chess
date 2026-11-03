@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T22:12:00-06:00', title: 'Factory: input chests share incoming items fairly', bullets: [
+    'When ore, crops or other items trickle into storage, every Input Chest set to that item now gets its turn instead of the first chest you built taking them all.',
+    'The chest that has handed out the fewest items goes first; ties take turns, and the starting chest rotates every tick. Inserters pulling from Input Chests share the same way. Caps, recipes and prices are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T21:19:00-06:00', title: 'Mines & Factory: chips you lose free up house-sell room', bullets: [
     'Chips you lose to the house today now add the same amount of room under your daily house-sell cap (100,000 × price index), until the reset at 6 PM CST (00:00 UTC).',
     'What counts: net casino losses (blackjack, roulette, slots, video poker, Solitro, cases), house purchases (property, seeds, farm upgrades, cars and mods, mine tools, factory builds, groceries, resort tickets, race entries, mayor filing, wages and hire fees), property tax, Market fees, the wealth tax and admin removals.',
