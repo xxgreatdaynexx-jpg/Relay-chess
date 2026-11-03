@@ -396,6 +396,7 @@ interface Port {
   options: Array<{ id: string; ticker: string; kind: string; strike: number; qty: number; premium: number; price: number | null; mark: number; bid?: number; hoursLeft: number }>;
   history: { shorts: Array<{ id: string; ticker: string; shares: number; status: string; payout?: number | null; collateral: number; closedAt?: number | null }>; options: Array<{ id: string; ticker: string; kind: string; strike: number; qty: number; premium: number; status: string; payout?: number | null; settlePrice?: number | null }> };
   totals: { stocks: number; funds: number; shorts: number; options: number; all: number };
+  dividends?: { total: number; last7: number; days: number };
 }
 function Portfolio({ onPick }: { onPick: (t: string) => void }) {
   const account = useAccount(); const [p, setP] = useState<Port | null>(null); const [err, setErr] = useState<string | null>(null);
@@ -413,6 +414,10 @@ function Portfolio({ onPick }: { onPick: (t: string) => void }) {
         <Card k="Total (Bank assets)" v={`🪙 ${n(p.totals.all)}`} title="Everything here counts toward your asset worth in the Bank, at market value" />
         <Card k="Stocks" v={`🪙 ${n(p.totals.stocks)}`} /><Card k="Funds" v={`🪙 ${n(p.totals.funds)}`} /><Card k="Short equity" v={`🪙 ${n(p.totals.shorts)}`} title="Collateral + unrealized P&L" /><Card k="Options (value)" v={`🪙 ${n(p.totals.options)}`} />
       </div>
+      {p.dividends && <div className="mb-2 rounded border border-emerald-400/30 bg-emerald-400/5 p-2 text-xs" data-testid="stk-div-total" title="Every daily dividend payout you've received (stocks + fund pass-through), from your wallet history">
+        <span className="uppercase opacity-70">💰 Total dividends earned</span>{' '}<b className="text-base text-emerald-300">🪙 {n(p.dividends.total)}</b>
+        <span className="ml-2 opacity-70">last 7 days 🪙 {n(p.dividends.last7)} · {p.dividends.days} payout{p.dividends.days === 1 ? '' : 's'}</span>
+      </div>}
       {s.lifeTotal && s.lifeTotal.invested > 0 && <div className="mb-2 rounded border border-white/10 p-2 text-xs" data-testid="stk-life-total" title="Lifetime return = (chips received from sells + current value of shares held − chips spent on buys, fees included) ÷ chips spent on buys">
         <span className="uppercase opacity-70">Lifetime stock return</span>{' '}
         <b className={`text-base ${tone(s.lifeTotal.pnl)}`}>{pc(s.lifeTotal.pct)}</b>{' '}
