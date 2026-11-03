@@ -6,15 +6,15 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-03T22:10:00-06:00', title: 'Fixed a stock news exploit', bullets: [
-    'Fixed a stock news exploit.',
-  ] },
-  { commit: '', at: '2026-11-03T20:05:00-06:00', title: 'Fixed a stock price manipulation exploit', bullets: [
-    'Players can no longer pump a stock far past its market price with a string of small buys. Options are now priced off the market price, not the player-pushed price.',
-  ] },
-  { commit: '', at: '2026-11-03T20:00:00-06:00', title: 'City Jail', bullets: [
-    'There is now a City Jail on the west side of the map between the Speedway and the Airport. Admins can jail a player with a reason and an optional timer.',
-    'While jailed you can\'t trade or earn anything. You show up behind bars on the map with your timer and progress. To get out early, type "I\'m sorry grok." 10,000 times, one line at a time. Pasting doesn\'t count. No chips are taken.',
+  { commit: '', at: '2026-11-03T17:30:00-06:00', title: 'The Millionaire Update', bullets: [
+    'Fishing: new bait and fly tiers that make rarer fish more likely, and rod skins you can unbox in Chud Cases.',
+    'Nightly 10x event: every night 8 to 9 PM (Alberta time) one game (chess, checkers, arena or poker, picked each day) pays winners a 10x bonus, capped per win and per night. A banner shows which game.',
+    'Poker: a full-screen button makes the table fill your screen. Press Esc to exit.',
+    'Farm: the seed shop shows your real grow time and profit per tile after your Farming level and plot upgrades.',
+    'Farm: your Farming level now gives bonus crops on every harvest, up to +25% at level 99. Bonus crops still count toward the daily farm cap.',
+    'Farm on mobile: a new "My farm" button on the map opens your farm, and on phones it opens full screen.',
+    'Profiles: a net worth chart shows how your wealth has changed over time.',
+    'Stocks: your total dividends earned now show on your portfolio and profile.',
   ] },
   { commit: '', at: '2026-11-03T16:30:00-06:00', title: 'House-sell cap now follows total player wealth', bullets: [
     'Each day at the reset (6 PM CST) the daily house-sell cap changes by half the percent that total player assets (cash + holdings, the Bank total) changed over the previous day. If total wealth doubles, the cap goes up 50%; if it drops 20%, the cap drops 10%.',
