@@ -2,6 +2,8 @@ import { useDoing } from '@/lib/doing';
 import { ROYALTY_VENUE, royaltyPct, buyoutPrice, BUYOUT_PROTECT_MS } from '../../../shared/royalty';
 import { backdropDismiss } from '@/lib/backdrop';
 import { CookingHost, OPEN_GROCERY, openKitchen } from './CookingPanels';
+import { openFurnitureStore, enterHome } from './Homes';
+import { isHomeProperty } from '../../../shared/homes';
 import { EmploymentHost, OPEN_EMPLOY } from './EmploymentPanel';
 import { CityHallHost, OPEN_CITYHALL } from './CityHallPanel';
 import { Suspense, useEffect, useRef, useState } from 'react';
@@ -34,7 +36,18 @@ const chips = (n: number) => n.toLocaleString('en-US');
 type Ack = { ok: boolean; error?: string };
 
 /** Deed panel: list price, owner, daily tax, Buy / Sell back. */
-export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }: { id: string; owned: Map<string, OwnedProperty>; me: string | null; onClose: () => void; onFarm?: () => void; onKitchen?: () => void; onDone?: (ev: 're_buy' | 're_sell' | 're_buyout', text: string, paid?: number) => void }) {
+/** 2D map: owned houses as small owner-name tags (Millionaire Update). Collapsed to 6 on phones. */
+function OwnedHomes2D({ owned, onPick }: { owned: Map<string, OwnedProperty>; onPick: (id: string) => void }) {
+  const [all, setAll] = useState(false);
+  const homes = [...owned.values()].filter((o) => isHomeProperty(propertyById(o.id))).sort((a, b) => a.owner.localeCompare(b.owner));
+  if (!homes.length) return null;
+  const cap = typeof window !== 'undefined' && window.innerWidth < 640 && !all ? 6 : homes.length;
+  return <section className="world-owned2d" data-testid="world-owned2d"><h4>🏠 Owned homes</h4>
+    <div>{homes.slice(0, cap).map((o) => <button key={o.id} type="button" className="owner-tag" onClick={() => onPick(o.id)} data-testid={`owner-tag-${o.id}`}><b>{o.owner}</b><small>{propertyById(o.id)?.label ?? o.id}</small></button>)}
+      {cap < homes.length && <button type="button" className="owner-tag more" onClick={() => setAll(true)}>+{homes.length - cap} more</button>}</div></section>;
+}
+
+export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }: { id: string; owned: Map<string, OwnedProperty>; me: string | null; onClose: () => void; onFarm?: () => void; onKitchen?: () => void; onDone?: (ev: 're_buy' | 're_sell', text: string, paid?: number) => void }) {
   useDoing('realestate', propertyById(id)?.label);
   const dragDeed = usePanelDrag('deed');
   const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState<null | 're_buy' | 're_sell' | 're_buyout'>(null); const [msg, setMsg] = useState<string | null>(null); const wallet = useWalletChips();
@@ -69,6 +82,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }:
       {mine && <button type="button" disabled={!!busy} aria-busy={busy === 're_sell'} onClick={() => act('re_sell')} data-testid="deed-sell">{busy === 're_sell' ? <><span className="world-spin" aria-hidden /> Selling…</> : <>Sell to the city for 🪙 {chips(sellBackOf(Math.min(cost, o?.basis ?? cost)))} (70%)</>}</button>}
       {bo > 0 && me && <button type="button" disabled={!!busy || protLeft > 0} aria-busy={busy === 're_buyout'} onClick={buyout} data-testid="deed-buyout" title={protLeft > 0 ? 'Protected after a purchase' : `Pays ${o?.owner} 2x what they paid`}>{busy === 're_buyout' ? <><span className="world-spin" aria-hidden /> Buying out…</> : protLeft > 0 ? <>🛡 Hostile buyout: 🪙 {chips(bo)} (protected {Math.ceil(protLeft / 3_600_000)}h)</> : <>⚔️ Hostile buyout: 🪙 {chips(bo)}</>}</button>}
       {mine && onKitchen && p.kind !== 'landmark' && <button type="button" onClick={onKitchen} data-testid="deed-kitchen">🍳 Kitchen</button>}
+      {o && isHomeProperty(p) && <button type="button" onClick={() => { enterHome(p.id); onClose(); }} data-testid="deed-enter">{mine ? '🛋️ Enter & decorate' : `🚪 Visit ${o.owner}'s home`}</button>}
       {p.kind === 'farm' && o && onFarm && <button type="button" onClick={onFarm} data-testid="deed-farm">{mine ? '🌾 Open farm' : '👀 Visit farm'}</button>}
       {p.kind === 'farm' && !o && <small>Farmland: buy it to plant crops (FarmVille-style, real-time).</small>}
       {!o && me && short > 0 && !msg && <small id="deed-short" className="text-amber-300" data-testid="deed-short">You need 🪙 {chips(short)} more chips to buy this.</small>}
@@ -172,8 +186,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
     load(); socket.on('re_changed', load);
     return () => { dead = true; socket.off('re_changed', load); };
   }, []);
-  useEffect(() => { worldRef.current?.setOwned([...owned.keys()]); }, [owned, loading]);
-  const freight = panel.k === 'freight'; const setFreight = (v: boolean) => setPanel((c) => (v ? { k: 'freight' } : closePanel(c, 'freight')));
+  useEffect(() => { worldRef.current?.setOwned([...owned.keys()]); worldRef.current?.setOwnerLabels([...owned.values()].filter((o) => isHomeProperty(propertyById(o.id))).map((o) => ({ id: o.id, owner: o.owner }))); }, [owned, loading]);
   const dealer = panel.k === 'dealer'; const setDealer = (v: boolean) => setPanel((c) => (v ? { k: 'dealer' } : closePanel(c, 'dealer')));
   const mechanic = panel.k === 'mechanic'; const setMechanic = (v: boolean) => setPanel((c) => (v ? { k: 'mechanic' } : closePanel(c, 'mechanic')));
   const [nitro, setNitro] = useState<{ have: number; full: number; on: boolean } | null>(null);
@@ -233,6 +246,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       case 'mechanic': setMechanic(true); return;
       case 'dock': setDock(true); return;
       case 'grocery': window.dispatchEvent(new Event(OPEN_GROCERY)); return;
+      case 'furniture': openFurnitureStore(); return;
       case 'employ': window.dispatchEvent(new Event(OPEN_EMPLOY)); return;
       case 'cityhall': window.dispatchEvent(new Event(OPEN_CITYHALL)); return;
       case 'airport': case 'racetrack': setVenue(id); return;
@@ -297,6 +311,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
               <span className="world-tile-icon">{s.icon}</span><b>{s.label}</b><small>{s.blurb}</small>
             </button>
           ))}
+          <OwnedHomes2D owned={owned} onPick={(id) => setDeed(id)} />
         </div>
       )}
       <div className="world-clock" data-testid="world-clock" title={`Alberta time · sunrise ${fmtClock(sky.sunrise)} · sunset ${fmtClock(sky.sunset)}`}><span>{sky.icon}</span><b>{fmtClock(sky.minutes)}</b><small>AB · {sky.label}</small></div>
@@ -319,6 +334,8 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
         <small>Your trailer at Chud Acres Trailer Park, plus any property you own. Every home has a kitchen.</small>
         <button type="button" onClick={() => { setPanel(NONE); openKitchen('Your trailer · Chud Acres'); }} data-testid="home-kitchen-trailer">🚐 Your trailer<span>🍳 Kitchen</span></button>
         {[...owned.values()].filter((o) => o.owner.toLowerCase() === me.toLowerCase() && propertyById(o.id)?.kind !== 'landmark').map((o) => <button type="button" key={o.id} onClick={() => { setPanel(NONE); openKitchen(propertyById(o.id)?.label ?? o.id); }} data-testid={`home-kitchen-${o.id}`}>{propertyById(o.id)?.label ?? o.id}<span>🍳 Kitchen</span></button>)}
+        {[...owned.values()].filter((o) => o.owner.toLowerCase() === me.toLowerCase() && isHomeProperty(propertyById(o.id))).map((o) => <button type="button" key={'in-' + o.id} onClick={() => { setPanel(NONE); enterHome(o.id); }} data-testid={`home-enter-${o.id}`}>{propertyById(o.id)?.label ?? o.id}<span>🛋️ Enter & decorate</span></button>)}
+        <button type="button" onClick={() => { setPanel(NONE); openFurnitureStore(); }} data-testid="home-furniture-store">🛋️ Furniture Store<span>Shop</span></button>
         {myFarms.map((id) => <button type="button" key={'farm-' + id} onClick={() => setFarm(id)} data-testid={`home-farm-${id}`}>{propertyById(id)?.label ?? id}<span>🌾 Open farm</span></button>)}
       </div>}
       {deed && <DeedPanel id={deed} owned={owned} me={me} onKitchen={() => { openKitchen(propertyById(deed)?.label ?? deed); setDeed(null); }} onClose={() => setDeed(null)} onFarm={() => setFarm(deed)} onDone={(ev, text, paid) => {

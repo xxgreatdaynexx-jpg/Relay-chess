@@ -5,6 +5,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { lowDetail } from './charLook';
 import { asLabel, dimColor, drawLabel, LABEL_LAYER, LABEL_TEXT, labelMaterial, renderScene } from './labelSprite';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { skyNow, parseTod, mix as mixHex } from '../../../shared/daynight';
@@ -318,6 +319,15 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
         prod.forEach((c, i) => { const x = -3.9 + i * 2.6; g.add(box(1.8, 0.7, 1, mat({ color: 0x8a6440 }), x, 0, 4.4), box(1.6, 0.3, 0.8, mat({ color: c }), x, 0.7, 4.4)); });
         g.add(box(1, 0.8, 0.6, mat({ color: 0xb8bcc4, metalness: 0.6 }), 4.4, 0.3, 5.4), box(1, 0.8, 0.6, mat({ color: 0xb8bcc4, metalness: 0.6 }), 4.4, 0.3, 6.2));
         height = 7; break; }
+      case 'furniture': {
+        // Furniture Store: a two-tone showroom with a big glass front, a purple FURNITURE sign, a sofa and lamp in the window and a delivery van.
+        const wall = mat({ color: 0xe8dcc8 }), plum = mat({ color: 0x7b4fa8, emissive: 0xc77dff, emissiveIntensity: 0.35 * NEON });
+        g.add(box(10, 4.6, 7, wall, 0, 0, -1.2), box(10.4, 0.4, 7.4, dark, 0, 4.6, -1.2), box(10.2, 0.6, 0.3, plum, 0, 3.6, 2.4));
+        g.add(box(8.6, 3, 0.2, mat({ color: 0x9fd4ff, transparent: true, opacity: 0.4, roughness: 0.1, metalness: 0.3, emissive: 0xfff2c0, emissiveIntensity: 0.25 * NEON }), 0, 0.3, 2.35));
+        g.add(box(3, 0.6, 1.1, mat({ color: 0xc04a4a }), -2.2, 0.3, 1.4), box(3, 0.9, 0.35, mat({ color: 0xc04a4a }), -2.2, 0.6, 0.95));
+        g.add(cyl(0.06, 0.06, 1.8, dark, 2.4, 0.3, 1.4, 6), cyl(0.35, 0.2, 0.5, mat({ color: 0xffe9a8, emissive: 0xffe9a8, emissiveIntensity: 0.6 * NEON }), 2.4, 2.1, 1.4, 10));
+        g.add(box(6.5, 1.1, 0.3, neon, 0, 5.2, 2.2), box(2.6, 1.6, 1.6, mat({ color: 0xf4f4f4 }), 4.2, 0, 4.6), box(1.2, 1.2, 1.5, plum, 4.2, 0, 3.2));
+        height = 8; break; }
       case 'employ': {
         // Employment Office: brick two-storey office with a glass door, HELP WANTED board, flag and a queue rope.
         const brick = mat({ color: 0x9a5a3c }), trim = mat({ color: 0xe9e1cf }), amber = mat({ color: 0xe0a23a, emissive: 0xe0a23a, emissiveIntensity: 0.35 * NEON });
@@ -834,6 +844,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       if (fly.t >= 1) { const id = fly.id; fly = null; controls.enabled = true; h.onPick(id); } } // the city stays mounted now (0dc4f99): hand zoom/orbit back
     else if (!tick?.(dt)) { panStep(dt); controls.update(); clampPan(); }
     skyT += dt; if (skyT > 1) { skyT = 0; applySky(); }
+    stepTags?.(dt);
     xmas?.step(dt);
     for (const w of waterMats) w.uniforms.uTime.value = time; venues.step(dt, time, camera.position);
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
@@ -841,8 +852,30 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     renderScene(renderer, composer, scene, camera);
   };
   let tick: ((dt: number) => boolean) | null = null;
+  let stepTags: ((dt: number) => void) | null = null;
   const vis = () => { running = !document.hidden; clock.getDelta(); }; document.addEventListener('visibilitychange', vis);
   frame();
+  // Owner name tags (Millionaire Update): a small label over each OWNED HOME, styled like the landmark signs at ~45% size.
+  // To keep phones and the zoomed-out city readable, tags only show within OWNER_TAG_RANGE of the camera target (shorter
+  // on small/low-tier screens) and at most OWNER_TAG_MAX at once, nearest first.
+  const ownerTags = new Map<string, THREE.Sprite>();
+  const small = () => lowDetail() || window.innerWidth < 640;
+  const setOwnerLabels = (list: Array<{ id: string; owner: string }>) => {
+    const want = new Set(list.map((o) => o.id + '|' + o.owner));
+    for (const [k, sp] of ownerTags) if (!want.has(k)) { scene.remove(sp); sp.material.map?.dispose(); sp.material.dispose(); ownerTags.delete(k); }
+    for (const o of list) { const k = o.id + '|' + o.owner; if (ownerTags.has(k)) continue; const t = propTop.get(o.id); if (!t) continue;
+      const tex = signTexture(`🏠 ${o.owner}`, '#e8c26a'); const sp = asLabel(new THREE.Sprite(labelMaterial(tex))); sp.scale.set(3.6, 0.9, 1); sp.position.set(t[0], t[1] + 2.6, t[2]); sp.visible = false; sp.userData.ownerTag = o.id; scene.add(sp); ownerTags.set(k, sp); }
+    tagT = 1;
+  };
+  let tagT = 0;
+  const OWNER_TAG_MAX = 40, OWNER_TAG_RANGE = 170;
+  const stepOwnerTags = (dt: number) => {
+    tagT += dt; if (tagT < 0.25 || !ownerTags.size) return; tagT = 0;
+    const range = small() ? OWNER_TAG_RANGE * 0.55 : OWNER_TAG_RANGE, max = small() ? 12 : OWNER_TAG_MAX; const c = controls.target;
+    const near = [...ownerTags.values()].map((sp) => ({ sp, d: Math.hypot(sp.position.x - c.x, sp.position.z - c.z) })).sort((a, b) => a.d - b.d);
+    near.forEach((n, i) => { n.sp.visible = n.d < range && i < max; });
+  };
+  stepTags = stepOwnerTags;
   // Owned-property markers: a small muted-gold diamond over each owned building/lot (no glow, no bloom).
   const MAX_MARK = propTop.size + lms.length;
   const marks = new THREE.InstancedMesh(geo(new THREE.OctahedronGeometry(0.45, 0)), mat({ color: 0xc9a24a, emissive: 0x2a1e06, roughness: 0.5, metalness: 0.4, flatShading: true }), MAX_MARK);
@@ -857,7 +890,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     marks.count = n; marks.instanceMatrix.needsUpdate = true;
   };
   return {
-    flyTo, focusXZ, setOwned, setFarm,
+    flyTo, focusXZ, setOwned, setOwnerLabels, setFarm,
     // Driving (worldDrive.ts) hooks: the tick runs every frame; returning true means it owns the camera.
     scene, camera, controls, solids, lmBoxes, setTick(f: ((dt: number) => boolean) | null) { tick = f; },
     reset() { fly = null; controls.enabled = true; camera.position.copy(home); controls.target.set(0, 0, 0); setHover(null); },

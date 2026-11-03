@@ -11,6 +11,7 @@ export const LAUNCH: LaunchPopup = {
   title: 'The Millionaire Update',
   subtitle: 'A big one. Here\'s everything new:',
   items: [
+    { icon: '🏠', title: 'Enter & decorate your home', text: 'Walk into any house you own, decorate it Sims-style with furniture from the new Furniture Store on the map, and invite friends over to hang out and chat.' },
     { icon: '🎣', title: 'Fishing upgrades', text: 'New bait and fly tiers that pull rarer fish, plus rod skins you can unbox in Chud Cases.' },
     { icon: '🌙', title: 'Nightly 10x event', text: 'Every night 8–9 PM (Alberta time) one game (chess, checkers, arena or poker) pays winners 10x. Check the banner to see which.' },
     { icon: '🃏', title: 'Poker full-screen', text: 'Hit the full-screen button at the poker table to fill your whole screen. Esc exits.' },

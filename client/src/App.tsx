@@ -38,6 +38,7 @@ import TrailerPopup from '@/components/TrailerPopup';
 import { tournamentFromLocation } from '@/lib/tournament';
 import { clearSession, clearSpectate, codeFromLocation, loadSession, loadSpectate } from '@/lib/session';
 import type { PublicState } from '../../shared/types';
+import { HomesHost } from '@/components/Homes';
 
 export function App() {
   const saved = loadSession();
@@ -325,6 +326,7 @@ export function App() {
       )}
       <AdminPopup />
       <LaunchPopup />
+      <HomesHost />
     </>
   );
 }

@@ -2214,16 +2214,36 @@ body.he-full-open { overflow: hidden; }
 body.he-full-open .top-tabs { visibility: hidden; }
 body.he-full-open .he-table.he-full { visibility: visible; }
 
-/* Logistics (Millionaire Update) */
-.freight-tabs { display: flex; gap: 6px; padding: 8px 14px 0; flex-wrap: wrap; } .freight-tabs button { padding: 6px 12px; border-radius: 999px; background: #ffffff10; border: 1px solid #ffffff1a; } .freight-tabs button.on { background: #f59e0b33; border-color: #f59e0b; color: #ffd27a; }
-.freight-body { padding: 12px 14px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
-.freight-modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; margin-bottom: 10px; }
-.freight-modes button { text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: 10px; background: #ffffff0a; border: 1px solid #ffffff1a; } .freight-modes button.on { border-color: #f59e0b; background: #f59e0b1f; } .freight-modes button:disabled { opacity: .45; }
-.freight-modes small { color: #ffd27a; } .freight-modes em { font-style: normal; font-size: 12px; opacity: .7; }
-.freight-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; align-items: end; } .freight-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; opacity: .9; } .freight-form label:has(button) { flex-direction: row; flex-wrap: wrap; align-items: center; }
-.freight-form select, .freight-form input { background: #0b0d14; border: 1px solid #ffffff22; border-radius: 8px; padding: 6px 8px; color: inherit; font-size: 14px; }
-.freight-quote { grid-column: 1 / -1; padding: 8px 10px; border-radius: 8px; background: #ffffff08; } .freight-form .dealer-drive { grid-column: 1 / -1; }
-.freight-truck { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; background: #ffffff08; margin-bottom: 6px; } .freight-truck i { width: 28px; height: 28px; border-radius: 6px; } .freight-truck div { flex: 1; display: flex; flex-direction: column; } .freight-truck small { opacity: .7; }
-.freight-truck button { padding: 6px 12px; border-radius: 8px; background: #f59e0b; color: #111; font-weight: 700; border: 0; }
-.freight-live-row { display: flex; flex-direction: column; padding: 8px 10px; border-radius: 8px; background: #ffffff08; margin-bottom: 6px; } .freight-live-row em { font-style: normal; color: #ffd27a; font-size: 12px; }
-@media (max-width: 640px) { .freight .dealer-box { width: 100vw; max-height: 100vh; height: 100%; border-radius: 0; } }
+/* Millionaire Update: owned-home owner tags on the 2D map */
+.world-owned2d { grid-column: 1 / -1; margin-top: 4px; }
+.world-owned2d h4 { font-size: 12px; opacity: .7; margin: 0 0 6px; }
+.world-owned2d > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.owner-tag { display: inline-flex; flex-direction: column; align-items: flex-start; padding: 3px 8px; border-radius: 8px; background: rgba(10,8,22,.82); border: 1px solid rgba(232,194,106,.5); color: #dcd8e6; font-size: 11px; line-height: 1.2; }
+.owner-tag b { color: #e8c26a; font-weight: 600; } .owner-tag small { opacity: .6; font-size: 10px; } .owner-tag.more { justify-content: center; }
+/* Millionaire Update: Furniture Store + home interiors */
+.furn-store { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.55); display: grid; place-items: center; }
+.furn-box { width: min(860px, calc(100% - 20px)); max-height: calc(100% - 30px); overflow: auto; background: #15121f; border: 1px solid #c77dff66; border-radius: 14px; padding: 12px; color: #e7e2f2; display: flex; flex-direction: column; gap: 8px; }
+.furn-box header { display: flex; align-items: center; gap: 10px; } .furn-box header h3 { flex: 1; font-weight: 700; color: #d7a8ff; }
+.furn-cats { display: flex; flex-wrap: wrap; gap: 4px; } .furn-cats button { padding: 3px 8px; border-radius: 999px; background: #ffffff14; font-size: 12px; } .furn-cats .on { background: #c77dff; color: #160c22; }
+.furn-body { display: grid; grid-template-columns: 1fr 1.2fr; gap: 10px; min-height: 300px; }
+.furn-list { display: flex; flex-direction: column; gap: 4px; } .furn-list button { width: 100%; display: grid; grid-template-columns: 1fr auto; text-align: left; padding: 6px 8px; border-radius: 8px; background: #ffffff0d; }
+.furn-list button small { opacity: .6; grid-column: 1 / -1; font-size: 11px; } .furn-list .on { outline: 2px solid #c77dff; background: #c77dff22; }
+.furn-detail { display: flex; flex-direction: column; gap: 6px; } .furn-preview { width: 100%; height: 220px; border-radius: 10px; background: radial-gradient(#2e2640, #120f1a); }
+.furn-buy { display: flex; gap: 8px; align-items: center; } .furn-buy button, .furn-style button { padding: 5px 12px; border-radius: 8px; background: #c77dff; color: #160c22; font-weight: 700; } .furn-buy button:disabled { opacity: .5; }
+.furn-styles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; } .furn-style { display: flex; flex-direction: column; gap: 3px; padding: 8px; border-radius: 10px; background: #ffffff0d; }
+.furn-style > span { height: 44px; border-radius: 6px; border: 1px solid #ffffff33; } .furn-style em { color: #5affc8; font-size: 12px; } .furn-msg { color: #f3d27a; }
+@media (max-width: 640px) { .furn-body { grid-template-columns: 1fr; } .furn-preview { height: 160px; } }
+.home-int { position: fixed; inset: 0; z-index: 55; background: #0d0c13; color: #e7e2f2; } .home-canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+.home-top { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; background: rgba(10,8,22,.8); padding: 6px 10px; border-radius: 10px; }
+.home-top b { flex: 1; min-width: 160px; } .home-top button { padding: 4px 10px; border-radius: 8px; background: #ffffff1a; font-size: 13px; } .home-top .on { background: #5affc8; color: #0b1a14; } .home-peers { font-size: 12px; opacity: .8; }
+.home-access { position: absolute; top: 56px; right: 8px; background: rgba(10,8,22,.94); padding: 10px; border-radius: 10px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; width: 260px; }
+.home-access input[type=text], .home-access input:not([type]) { background: #ffffff14; border-radius: 6px; padding: 4px 6px; } .home-access button { background: #c77dff; color: #160c22; border-radius: 6px; padding: 3px 8px; }
+.home-build { position: absolute; top: 56px; left: 8px; bottom: 150px; width: 220px; overflow: auto; background: rgba(10,8,22,.9); padding: 10px; border-radius: 10px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.home-build h4 { font-size: 11px; opacity: .65; text-transform: uppercase; margin-top: 4px; } .home-build ul { display: flex; flex-direction: column; gap: 3px; } .home-build li button { width: 100%; text-align: left; padding: 4px 6px; border-radius: 6px; background: #ffffff0f; } .home-build li .on { background: #5affc833; outline: 1px solid #5affc8; }
+.home-build > button { background: #c77dff; color: #160c22; border-radius: 8px; padding: 4px 8px; font-weight: 600; } .home-sel { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px; border-radius: 8px; background: #5affc81a; } .home-sel b { width: 100%; } .home-sel button { padding: 2px 8px; border-radius: 6px; background: #ffffff1a; }
+.home-swatches { display: flex; flex-wrap: wrap; gap: 5px; } .home-swatches button { width: 26px; height: 26px; border-radius: 6px; border: 2px solid #ffffff33; } .home-swatches .on { border-color: #5affc8; }
+.home-chat { position: absolute; right: 8px; bottom: 8px; width: min(340px, calc(100% - 16px)); background: rgba(10,8,22,.82); border-radius: 10px; padding: 8px; font-size: 13px; } .home-chat ul { max-height: 110px; overflow: auto; } .home-chat b { color: #e8c26a; }
+.home-chat form { display: flex; gap: 4px; margin-top: 4px; } .home-chat input { flex: 1; background: #ffffff14; border-radius: 6px; padding: 4px 6px; } .home-chat button { background: #ffffff1a; border-radius: 6px; padding: 3px 8px; }
+.home-msg, .home-note { position: absolute; left: 50%; transform: translateX(-50%); top: 64px; background: rgba(40,20,20,.92); padding: 6px 12px; border-radius: 8px; font-size: 13px; } .home-note { position: fixed; z-index: 70; top: 20px; }
+.home-help { position: absolute; left: 10px; bottom: 10px; opacity: .6; font-size: 12px; }
+@media (max-width: 640px) { .home-build { width: 160px; bottom: 170px; } .home-chat ul { max-height: 70px; } .home-help { display: none; } }
