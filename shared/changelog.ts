@@ -6,16 +6,6 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-03T16:35:00-06:00', title: 'Coming in the Millionaire Update', bullets: [
-    'Fishing upgrades: bait tiers, fly tiers, and rod skins in cases.',
-    'Nightly 10x reward events in chess, checkers, arena and poker.',
-    'Full-screen poker.',
-    'Farm: see crop grow time and profit after all your upgrades.',
-    'Farm on mobile fixed.',
-    'Net worth charts on player profiles.',
-    'Total dividend earnings.',
-    'And more to come.',
-  ] },
   { commit: '', at: '2026-11-03T16:30:00-06:00', title: 'House-sell cap now follows total player wealth', bullets: [
     'Each day at the reset (6 PM CST) the daily house-sell cap changes by half the percent that total player assets (cash + holdings, the Bank total) changed over the previous day. If total wealth doubles, the cap goes up 50%; if it drops 20%, the cap drops 10%.',
     'The cap can fall when total wealth falls, but never below 100,000. If a day\'s wealth snapshot is missing, the cap stays the same. Prices and payouts still use the price index as before.',
