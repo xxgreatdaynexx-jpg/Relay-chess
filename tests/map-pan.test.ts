@@ -18,6 +18,6 @@ describe('map panning', () => {
     const src = readFileSync(new URL('../client/src/lib/world3d.ts', import.meta.url), 'utf8');
     expect(src).toMatch(/LEFT: THREE\.MOUSE\.PAN/); expect(src).toMatch(/ONE: THREE\.TOUCH\.PAN/);
     expect(src).toMatch(/typing\(\) \|\| !controls\.enabled/); expect(src).toMatch(/clampPan\(\)/);
-    expect(src).toMatch(/const dragged = moved > 8/); expect(src).toMatch(/if \(dragged\) \{ clearTip\(\); return; \}/); expect(src).toMatch(/down\.drag = true; clearTip\(\)/);
+    expect(src).toMatch(/const dragged = moved > \(e\.pointerType === "touch" \? 16 : 8\)/); expect(src).toMatch(/if \(dragged\) \{ clearTip\(\); return; \}/); expect(src).toMatch(/down\.drag = true; clearTip\(\)/);
   });
 });
