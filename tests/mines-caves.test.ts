@@ -29,7 +29,7 @@ describe('three caves (pt1201u)', () => {
   it('average value per placed node stays within 5% of before the pt1354u spawn bias (pt1357u: ~85% signature) (Coral untouched)', () => {
     // pt1354u: the theoretical caveValueRate() no longer tracks the hashed node layout once biases are this strong,
     // so balance is held on the real nodes players mine (house value per node).
-    const BEFORE: Record<string, number> = { mine: 5.606, frost: 6.665, magma: 2.674, coral: 7.085 };
+    const BEFORE: Record<string, number> = { mine: 5.606, frost: 6.665, magma: 2.674, coral: 9.894 }; // coral: #10d premium Grotto (Fire Opal + Abyssal Pearl, more gold/crystal), ~1.36x The Mine
     for (const id of ids) { const n = CAVES[id].nodes; const v = n.reduce((a, x) => a + ORES[x.ore].price, 0) / n.length;
       expect(Math.abs(v / BEFORE[id]! - 1), id).toBeLessThan(id === 'coral' ? 0.001 : 0.05); expect(caveValueRate(CAVES[id]), id).toBeGreaterThan(0); }
   });

@@ -101,6 +101,8 @@ const ORE_ICONS: Record<string, () => string> = {
   gold: () => rock('#6e6258', '#ffcf2e'),
   gem: () => crystals('#b04df0'),
   diamond: () => diamond('#7ff3ff'),
+  opal: () => rock('#4a3a3a', '#ff6a3a') + C(9, 13, 1.6, '#ffd24a', 0.4) + C(14.5, 11, 1.2, '#3fd0c0', 0.4) + glint(16, 8, 0.7),
+  pearl: () => E(12, 13, 6.4, 6.4, '#e8f0ff') + E(10, 11, 2.4, 2, '#ffffff', 0) + E(14, 15.5, 2, 1.4, '#c8b8e8', 0) + glint(16.5, 8.5, 0.8),
 };
 
 // ---------------------------------------------------------------- kitchen groceries + dishes
@@ -178,6 +180,7 @@ const GOOD_ICONS: Record<string, () => string> = {
   cut_crystal: () => diamond(GEM), cut_diamond: () => diamond(DIA),
   silver_ring: () => ring('#e8edf2', '#7fd0ff'), gold_ring: () => ring('#ffd24a', GEM), bracelet: () => bracelet('#d8b45a', '#3fd0c0'),
   machine_part: () => part('#7a98b0'), crown: () => crown('#ffcf3a', DIA),
+  cut_opal: () => diamond('#ff6a3a'), pearl_necklace: () => chain('#eef2ff') + C(12, 18, 2, '#f8faff', 1.1), tidecrown: () => crown('#7ff0ff', '#ff6a3a'),
   iron_plate: () => plate('#9fa6ae'), copper_plate: () => plate('#d08850'), iron_sheet: () => plate('#c4ccd4', false),
   silver_coin: () => coins('#e4e9ee'), gold_coin: () => coins('#f6c840'),
   iron_rod: () => rods('#8c939b'), gold_leaf: () => leaf('#ffd84a'), screw: () => screw('#8d959d'), pipe: () => pipe('#7f8a94'), frame: () => frame('#6a737c'),

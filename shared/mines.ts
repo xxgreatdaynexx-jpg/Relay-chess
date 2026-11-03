@@ -7,8 +7,8 @@ import { foodInfo } from './cooking.js';
 
 /** 'food' = cooking ingredients (groceries + crops harvested to the pantry): Market-tradeable, never house-sold. */
 export type ItemType = 'ore' | 'bar' | 'good' | 'food';
-export type OreId = 'stone' | 'coal' | 'copper' | 'iron' | 'silver' | 'gold' | 'gem' | 'diamond';
-export interface OreDef { id: OreId; name: string; hits: number; respawnMs: number; /** house price per unit, in chips (fractional: stone is 1 chip per 10) */ price: number; color: string; weight: number; minDepth: number; spawnWeight: number }
+export type OreId = 'stone' | 'coal' | 'copper' | 'iron' | 'silver' | 'gold' | 'gem' | 'diamond' | 'opal' | 'pearl';
+export interface OreDef { id: OreId; name: string; hits: number; respawnMs: number; /** house price per unit, in chips (fractional: stone is 1 chip per 10) */ price: number; color: string; weight: number; minDepth: number; spawnWeight: number; /** resort-only (#10d): spawns only in caves whose bias lists it */ exclusive?: boolean }
 
 export const ORES: Record<OreId, OreDef> = {
   stone:   { id: 'stone',   name: 'Stone',      hits: 2,  respawnMs: 150_000,  price: 0.1, color: '#8a8580', weight: 1, minDepth: 0, spawnWeight: 40 },
@@ -19,8 +19,10 @@ export const ORES: Record<OreId, OreDef> = {
   gold:    { id: 'gold',    name: 'Gold Ore',   hits: 7,  respawnMs: 1_800_000, price: 15,  color: '#f0c23a', weight: 1, minDepth: 2, spawnWeight: 5 },
   gem:     { id: 'gem',     name: 'Crystal',    hits: 9,  respawnMs: 3_000_000, price: 40,  color: '#b04df0', weight: 1, minDepth: 2, spawnWeight: 2.5 },
   diamond: { id: 'diamond', name: 'Diamond',    hits: 12, respawnMs: 4_800_000, price: 150, color: '#7ff3ff', weight: 1, minDepth: 3, spawnWeight: 0.6 },
+  opal:    { id: 'opal',    name: 'Fire Opal',     hits: 10, respawnMs: 3_600_000, price: 60, color: '#ff6a3a', weight: 1, minDepth: 1, spawnWeight: 1.6, exclusive: true },
+  pearl:   { id: 'pearl',   name: 'Abyssal Pearl', hits: 11, respawnMs: 4_200_000, price: 90, color: '#e8f0ff', weight: 1, minDepth: 2, spawnWeight: 1, exclusive: true },
 };
-export const ORE_ORDER: OreId[] = ['stone', 'coal', 'copper', 'iron', 'silver', 'gold', 'gem', 'diamond'];
+export const ORE_ORDER: OreId[] = ['stone', 'coal', 'copper', 'iron', 'silver', 'gold', 'gem', 'diamond', 'opal', 'pearl'];
 export const isOre = (v: unknown): v is OreId => typeof v === 'string' && v in ORES;
 
 // ---- mining rules (server-checked)
@@ -85,7 +87,7 @@ export function depthAt(x: number): number { const cx = x / CELL; let d = 0; for
 
 /** Ore for a node slot: weighted among ores unlocked at this depth; rarer ores get a boost deeper. */
 export function oreFor(depth: number, r: number, bias: Partial<Record<OreId, number>> = {}, anyDepth: OreId[] = []): OreId {
-  const pool = ORE_ORDER.filter((o) => ORES[o].minDepth <= depth || anyDepth.includes(o)).map((o) => [o, (bias[o] ?? 1) * ORES[o].spawnWeight * (ORES[o].minDepth > 0 ? 1 + depth * 0.5 : 1) * (o === 'stone' ? Math.max(0.4, 1 - depth * 0.2) : 1)] as const);
+  const pool = ORE_ORDER.filter((o) => (!ORES[o].exclusive || bias[o] != null) && (ORES[o].minDepth <= depth || anyDepth.includes(o))).map((o) => [o, (bias[o] ?? 1) * ORES[o].spawnWeight * (ORES[o].minDepth > 0 ? 1 + depth * 0.5 : 1) * (o === 'stone' ? Math.max(0.4, 1 - depth * 0.2) : 1)] as const);
   const total = pool.reduce((s, [, w]) => s + w, 0);
   let t = r * total;
   for (const [o, w] of pool) { t -= w; if (t <= 0) return o; }
@@ -136,8 +138,8 @@ export const CAVE_DEFS: CaveDef[] = [
     ] },
   // Chud Resort only (server-gated on location): a sea cave under the volcano. Wide open grottos (no single-tile
   // corridors), coral pillars '~' as the hazard. Rich in gems and gold, light on coal.
-  { id: 'coral', name: 'Coral Grotto', blurb: 'A turquoise sea cave under the resort volcano. Coral pillars; a mixed haul with extra Crystal and Gold Ore.', depthX: [0, 12, 24, 36], density: 0.4,
-    bias: { stone: 0.8, coal: 0.5, copper: 0.9, silver: 1.2, gold: 1.4, gem: 1.5 },
+  { id: 'coral', name: 'Coral Grotto', blurb: 'A turquoise sea cave under the resort volcano. Premium haul: Gold Ore, Crystal and Diamond, plus two ores found nowhere else, Fire Opal and Abyssal Pearl.', depthX: [0, 12, 24, 36], density: 0.4,
+    bias: { stone: 0.7, coal: 0.45, copper: 0.85, silver: 1.4, gold: 1.4, gem: 1.3, diamond: 0.8, opal: 1.3, pearl: 2 },
     theme: { sky: '#03141a', fog: '#06303a', ambient: '#7fe0e0', wall: '#e89a8a', floor: '#e8d8b0', lamp: '#7ff0ff', hazard: 'ice' },
     rows: [
       '##################################################',
@@ -294,63 +296,10 @@ export const GOODS: Record<string, ItemDef> = {
   generator:       { type: 'good', id: 'generator',       name: 'Generator',        price: 890, color: '#a07a30' },
   robot:           { type: 'good', id: 'robot',           name: 'Robot',            price: 2060, color: '#60a0d0' },
   bracelet:        { type: 'good', id: 'bracelet',        name: 'Grotto Bracelet',  price: 275,  color: '#40d0c0' },
-  // Millionaire Update (pt1466u): doubled factory recipes. Prices = inputs x ~1.3-1.5 (same premium band as v2).
-  bronze: { type: 'bar', id: 'bronze', name: 'Bronze Ingot', price: 21, color: '#b5803a' },
-  electrum: { type: 'bar', id: 'electrum', name: 'Electrum Ingot', price: 46, color: '#e6d58a' },
-  tempered_glass: { type: 'bar', id: 'tempered_glass', name: 'Tempered Glass', price: 13, color: '#7fc8d8' },
-  concrete: { type: 'bar', id: 'concrete', name: 'Concrete Block', price: 6, color: '#a8a49c' },
-  stainless: { type: 'bar', id: 'stainless', name: 'Stainless Steel', price: 105, color: '#c4d0dc' },
-  crystal_glass: { type: 'bar', id: 'crystal_glass', name: 'Crystal Glass', price: 61, color: '#d8b0ff' },
-  steel_plate: { type: 'good', id: 'steel_plate', name: 'Steel Plate', price: 79, color: '#7a8c9c' },
-  bronze_medal: { type: 'good', id: 'bronze_medal', name: 'Bronze Medal', price: 14, color: '#c08a40' },
-  electrum_coin: { type: 'good', id: 'electrum_coin', name: 'Electrum Coin', price: 31, color: '#ecdc90' },
-  floor_tile: { type: 'good', id: 'floor_tile', name: 'Floor Tile', price: 9, color: '#b86a4a' },
-  steel_beam: { type: 'good', id: 'steel_beam', name: 'Steel I-Beam', price: 159, color: '#5f6f7f' },
-  copper_foil: { type: 'good', id: 'copper_foil', name: 'Copper Foil', price: 11, color: '#e89a60' },
-  silver_leaf: { type: 'good', id: 'silver_leaf', name: 'Silver Leaf', price: 22, color: '#eef2f6' },
-  bronze_sheet: { type: 'good', id: 'bronze_sheet', name: 'Bronze Sheet', price: 28, color: '#a87430' },
-  mirror: { type: 'good', id: 'mirror', name: 'Mirror', price: 47, color: '#d0eef8' },
-  steel_cable: { type: 'good', id: 'steel_cable', name: 'Steel Cable', price: 41, color: '#6a7a8a' },
-  gold_wire: { type: 'good', id: 'gold_wire', name: 'Gold Wire', price: 40, color: '#ffcc40' },
-  spring: { type: 'good', id: 'spring', name: 'Spring', price: 21, color: '#9aa4ae' },
-  fiber_optic: { type: 'good', id: 'fiber_optic', name: 'Fiber Optic Cable', price: 41, color: '#c890ff' },
-  valve: { type: 'good', id: 'valve', name: 'Valve', price: 155, color: '#8a6a5a' },
-  hinge: { type: 'good', id: 'hinge', name: 'Hinge', price: 27, color: '#8a929a' },
-  battery: { type: 'good', id: 'battery', name: 'Battery', price: 68, color: '#3aa060' },
-  sensor: { type: 'good', id: 'sensor', name: 'Sensor', price: 213, color: '#4ac0c0' },
-  microchip: { type: 'good', id: 'microchip', name: 'Microchip', price: 339, color: '#2a6a3a' },
-  solar_panel: { type: 'good', id: 'solar_panel', name: 'Solar Panel', price: 213, color: '#2a4aa0' },
-  padlock: { type: 'good', id: 'padlock', name: 'Padlock', price: 103, color: '#b08a3a' },
-  pump: { type: 'good', id: 'pump', name: 'Water Pump', price: 710, color: '#3a70a0' },
-  girder: { type: 'good', id: 'girder', name: 'Steel Girder', price: 434, color: '#5a6470' },
-  lantern: { type: 'good', id: 'lantern', name: 'Lantern', price: 106, color: '#e8b040' },
-  electrum_ring: { type: 'good', id: 'electrum_ring', name: 'Electrum Ring', price: 182, color: '#e6d58a' },
-  diamond_necklace: { type: 'good', id: 'diamond_necklace', name: 'Diamond Necklace', price: 398, color: '#c8fbff' },
-  pocket_watch: { type: 'good', id: 'pocket_watch', name: 'Pocket Watch', price: 209, color: '#e0b850' },
-  tiara: { type: 'good', id: 'tiara', name: 'Silver Tiara', price: 359, color: '#e8eef6' },
-  trophy: { type: 'good', id: 'trophy', name: 'Trophy Cup', price: 129, color: '#d8a830' },
-  scepter: { type: 'good', id: 'scepter', name: 'Royal Scepter', price: 532, color: '#ffd040' },
-  earrings: { type: 'good', id: 'earrings', name: 'Crystal Earrings', price: 228, color: '#ffd860' },
-  tractor: { type: 'good', id: 'tractor', name: 'Tractor', price: 2267, color: '#3a9a3a' },
-  turbine: { type: 'good', id: 'turbine', name: 'Wind Turbine', price: 1997, color: '#d8e0e8' },
-  server_rack: { type: 'good', id: 'server_rack', name: 'Server Rack', price: 2900, color: '#2a3a5a' },
-  satellite: { type: 'good', id: 'satellite', name: 'Satellite', price: 2105, color: '#c0c8e0' },
-  drone: { type: 'good', id: 'drone', name: 'Drone', price: 2204, color: '#505a64' },
-  telescope: { type: 'good', id: 'telescope', name: 'Telescope', price: 568, color: '#4a5aa0' },
-  excavator: { type: 'good', id: 'excavator', name: 'Excavator', price: 5535, color: '#f0b020' },
-  mech_suit: { type: 'good', id: 'mech_suit', name: 'Mech Suit', price: 3442, color: '#a03a3a' },
-  starch: { type: 'good', id: 'starch', name: 'Potato Starch', price: 150, color: '#f4f0e0', food: true },
-  carrot_juice: { type: 'good', id: 'carrot_juice', name: 'Carrot Juice', price: 105, color: '#f08a30', food: true },
-  mango_puree: { type: 'good', id: 'mango_puree', name: 'Mango Puree', price: 208, color: '#f6a030', food: true },
-  grape_juice: { type: 'good', id: 'grape_juice', name: 'Grape Juice', price: 416, color: '#7a3ab0', food: true },
-  pumpkin_seeds: { type: 'good', id: 'pumpkin_seeds', name: 'Roasted Pumpkin Seeds', price: 241, color: '#e8d8a0', food: true },
-  tomato_paste: { type: 'good', id: 'tomato_paste', name: 'Tomato Paste', price: 192, color: '#b82a20', food: true },
-  pasta_dinner: { type: 'good', id: 'pasta_dinner', name: 'Pasta Dinner', price: 346, color: '#e8c860', food: true },
-  choc_cake: { type: 'good', id: 'choc_cake', name: 'Chocolate Cake', price: 965, color: '#5a2a18', food: true },
-  jam_jar: { type: 'good', id: 'jam_jar', name: 'Strawberry Jam', price: 143, color: '#d8304a', food: true },
-  cornbread: { type: 'good', id: 'cornbread', name: 'Cornbread', price: 211, color: '#e0b040', food: true },
-  smoothie: { type: 'good', id: 'smoothie', name: 'Tropical Smoothie', price: 428, color: '#f0a0b0', food: true },
-  fish_pie: { type: 'good', id: 'fish_pie', name: 'Fish Pie', price: 260, color: '#e8c890', food: true },
+  // Coral Grotto exclusives (#10d)
+  cut_opal:        { type: 'good', id: 'cut_opal',        name: 'Cut Fire Opal',    price: 70,   color: '#ff7a4a' },
+  pearl_necklace:  { type: 'good', id: 'pearl_necklace',  name: 'Pearl Necklace',   price: 370,  color: '#eef2ff' },
+  tidecrown:       { type: 'good', id: 'tidecrown',       name: 'Tidecrown',        price: 1600, color: '#7ff0ff' },
 };
 const o = (id: OreId, qty: number) => ({ type: 'ore' as const, id, qty });
 const b = (id: string, qty: number) => ({ type: 'bar' as const, id, qty });

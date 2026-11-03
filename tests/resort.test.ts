@@ -100,7 +100,7 @@ describe('resort properties and plantation', () => {
 });
 
 describe('Coral Grotto', () => {
-  it('fully connected, spawns in the EXIT lift, payout within 15% of The Mine', () => {
+  it('fully connected, spawns in the EXIT lift, payout a premium over The Mine (#10d)', () => {
     const map = CAVES.coral.map; const W = map.w / CELL, D = map.d / CELL;
     const open = (x: number, y: number) => canStand(x * CELL + 1, y * CELL + 1, 0, map);
     const seen = new Set<string>(); const q = [[Math.floor(map.spawns[0]![0] / CELL), Math.floor(map.spawns[0]![1] / CELL)]];
@@ -112,6 +112,6 @@ describe('Coral Grotto', () => {
     for (const s of map.spawns) expect(inExit(s[0], s[1])).toBe(true);
     const nv = (id: 'coral') => CAVES[id].nodes.reduce((a, n) => a + ORES[n.ore].price, 0) / CAVES[id].nodes.length; // pt1354u: real placed nodes, not the theoretical rate
     expect(caveValueRate(CAVES.coral)).toBeGreaterThan(0); const ratio = nv('coral') / 7.297; // pt1379u: vs The Mine before request #25 cut its gold; nv('mine') now lower by design console.log('[coral-payout]', ratio.toFixed(3));
-    expect(Math.abs(ratio - 1)).toBeLessThan(0.15);
+    expect(ratio).toBeGreaterThan(1.2); expect(ratio).toBeLessThan(1.5); // #10d: the resort Grotto is the premium cave (costs a flight)
   });
 });
