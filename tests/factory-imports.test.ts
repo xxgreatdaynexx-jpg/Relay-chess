@@ -68,7 +68,7 @@ describe('imports are atomic and server-side', () => {
     bank.transfer('Gus', 100_000, { game: 'admin' }); await bank.flush();
     const p = farmPlots().find((x) => x.cols * x.rows === 16)!; const id = `f:${p.n}`;
     await re.buy('Gus', id); await farm.plant('Gus', id, 'wheat', [0, 1, 2]);
-    now += 6 * 60_000; const chips = bank.account('Gus').chips;
+    now += 11 * 60_000; const chips = bank.account('Gus').chips;
     expect(await farm.myPlots('Gus')).toEqual([id]);
     const r = await farm.harvest('Gus', id, undefined, sink('Gus'));
     expect(r.harvested).toBe(3); expect(r.paid).toBe(0); expect(qty('crop_wheat')).toBe(3); expect(after.at(-1)).toEqual([['crop_wheat', 3]]);

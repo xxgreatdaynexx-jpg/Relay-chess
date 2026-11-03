@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-03T15:45:00-06:00', title: 'Farm: every crop takes twice as long to grow', bullets: [
+    'All farm and tropical crops now take double their old grow time (for example wheat 5 to 10 minutes, tomatoes 1 to 2 hours, cacao 12 to 24 hours). Seed costs, sell prices, yields, XP and recipes are unchanged.',
+  ] },
   { commit: '', at: '2026-11-03T15:30:00-06:00', title: 'Farm: strawberries take twice as long to grow', bullets: [
     'Strawberries now take 4 minutes to grow instead of 2, so Berry Juice is slower to make. Seed cost, sell price, yields, XP and the juice recipe are unchanged.',
   ] },

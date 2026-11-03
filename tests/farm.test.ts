@@ -55,7 +55,7 @@ describe('farm district', () => {
     await expect(s.farm.plant('Gus', s.id, 'carrot', [3, 4])).rejects.toThrow(/already planted/);
     expect(s.chips('gus')).toBe(960);
     await expect(s.farm.harvest('Gus', s.id)).rejects.toThrow(/Nothing is ready/);
-    s.setNow(T0 + 5 * M);
+    s.setNow(T0 + 10 * M);
     const [a, b] = await Promise.allSettled([s.farm.harvest('Gus', s.id), s.farm.harvest('Gus', s.id)]);
     expect([a, b].filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(s.chips('gus')).toBe(960 + 64); expect(s.ledger('gus', 'farm_harvest')).toEqual([{ amount: 64 }]);
@@ -93,7 +93,7 @@ describe('countryside fields farm like farmland (pt1250u)', () => {
     const s = await setup(); const id = 'cf:0'; const plot = propertyById(id)!;
     await s.fund('Ida', plot.price + 1000); await s.re.buy('Ida', id);
     const v = await s.farm.view(id, 'Ida'); expect(v.mine).toBe(true); expect(v.cols * v.rows).toBeGreaterThan(20);
-    await s.farm.plant('Ida', id, 'wheat', [0, 1]); s.setNow(T0 + 5 * 60_000); await s.farm.harvest('Ida', id);
+    await s.farm.plant('Ida', id, 'wheat', [0, 1]); s.setNow(T0 + 10 * 60_000); await s.farm.harvest('Ida', id);
     expect(s.ledger('ida', 'farm_harvest').length).toBe(1);
     const before = s.chips('ida'); await s.re.sell('Ida', id); expect(s.chips('ida') - before).toBe(Math.floor(plot.price * 0.7));
   });

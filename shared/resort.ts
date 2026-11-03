@@ -91,10 +91,10 @@ export const rfTileXZ = (p: ResortPlot, i: number): [number, number] => [p.x - (
 const M = 60_000, H = 60 * M;
 /** Tropical crops (base chips). Margins match the city's slow crops (~2.1-2.2x), so the daily cap does the limiting. */
 export const TROPICAL_CROPS: Crop[] = [
-  { id: 'pineapple', label: 'Pineapples', emoji: '🍍', seed: 30, grow: 20 * M, sell: 53, color: 0xf2c230 },
-  { id: 'banana', label: 'Bananas', emoji: '🍌', seed: 50, grow: 1 * H, sell: 93, color: 0xf6dc4a },
-  { id: 'mango', label: 'Mangoes', emoji: '🥭', seed: 80, grow: 3 * H, sell: 160, color: 0xf28a2a },
-  { id: 'coconut', label: 'Coconuts', emoji: '🥥', seed: 140, grow: 6 * H, sell: 290, color: 0x8a5a32 },
-  { id: 'cacao', label: 'Cacao', emoji: '🍫', seed: 240, grow: 12 * H, sell: 525, color: 0x6a3a22 },
+  { id: 'pineapple', label: 'Pineapples', emoji: '🍍', seed: 30, grow: 40 * M, sell: 53, color: 0xf2c230 },
+  { id: 'banana', label: 'Bananas', emoji: '🍌', seed: 50, grow: 2 * H, sell: 93, color: 0xf6dc4a },
+  { id: 'mango', label: 'Mangoes', emoji: '🥭', seed: 80, grow: 6 * H, sell: 160, color: 0xf28a2a },
+  { id: 'coconut', label: 'Coconuts', emoji: '🥥', seed: 140, grow: 12 * H, sell: 290, color: 0x8a5a32 },
+  { id: 'cacao', label: 'Cacao', emoji: '🍫', seed: 240, grow: 24 * H, sell: 525, color: 0x6a3a22 },
 ];
 export const isTropical = (id: unknown) => TROPICAL_CROPS.some((c) => c.id === id);
