@@ -1,4 +1,5 @@
 import { useDoing } from '@/lib/doing';
+import { ROYALTY_VENUE, royaltyPct } from '../../../shared/royalty';
 import { backdropDismiss } from '@/lib/backdrop';
 import { CookingHost, OPEN_GROCERY, openKitchen } from './CookingPanels';
 import { EmploymentHost, OPEN_EMPLOY } from './EmploymentPanel';
@@ -23,6 +24,8 @@ import { propertyById as baseProperty, properties as baseProperties, taxOf, sell
 
 /** Today's price index from /api/real-estate; list prices and tax scale with it. */
 let IDX = 1;
+/** Monument royalties earned by each landmark's current owner (from /api/real-estate). */
+let ROY: Record<string, number> = {};
 const priced = <T extends { price: number }>(p: T): T => ({ ...p, price: indexed(p.price, IDX) });
 const propertyById = (id: string) => { const p = baseProperty(id); return p ? priced(p) : undefined; };
 const properties = () => baseProperties().map(priced);
@@ -48,12 +51,13 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }:
     <div className="world-deed" data-testid="world-deed" data-drag-panel="deed" onPointerDown={dragDeed.onPointerDown} style={dragDeed.style()} ref={dragDeed.ref}>{dragDeed.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <h3>{p.kind === 'landmark' ? '🏛' : p.kind === 'patch' ? '🌳' : p.kind === 'farm' ? '🌾' : '🏠'} {p.label}</h3>
-      {p.kind === 'landmark' && <small>Trophy property: stays open to every player. Ownership is prestige only.</small>}
+      {p.kind === 'landmark' && <small>{ROYALTY_VENUE[p.type] ? 'Monument: stays open to every player, and the owner earns a royalty on what others earn here.' : 'Trophy property: stays open to every player. Ownership is prestige only.'}</small>}
       <dl>
         {o ? <><dt>{mine ? 'You paid' : 'Paid'}</dt><dd data-testid="deed-price">🪙 {chips(cost)}</dd></> : <><dt>Your surcharge</dt><dd data-testid="deed-surcharge">+{surcharge}%</dd><dt>Your price</dt><dd data-testid="deed-price">🪙 {chips(cost)}{note && <small className="block text-amber-300" data-testid="deed-multiplier">List 🪙 {chips(p.price)} · {note}</small>}</dd></>}
         <dt>Owner</dt><dd data-testid="deed-owner">{o ? (mine ? 'You' : o.owner) : 'City of Chud Hub (for sale)'}</dd>
         <dt>Sell-back</dt><dd data-testid="deed-sellback">🪙 {chips(sellBackOf(cost))} (70% of {o ? 'what was paid' : 'your price'})</dd>
         {workerBonusOf(p.id) > 0 && <><dt>Worker cap</dt><dd data-testid="deed-workers">+{workerBonusOf(p.id)} Employment Office worker{workerBonusOf(p.id) > 1 ? 's' : ''} (property bonus max +{WORKER_BONUS_MAX})</dd></>}
+        {p.kind === 'landmark' && ROYALTY_VENUE[p.type] && <><dt>Royalty</dt><dd data-testid="deed-royalty">{royaltyPct(p.type)} of {ROYALTY_VENUE[p.type]}, minted to the owner on top (the player keeps 100%). Not paid on the owner's own earnings.{o && <small className="block text-amber-300" data-testid="deed-royalty-income">Royalty income{mine ? '' : ` (${o.owner})`}: 🪙 {chips(ROY[p.id] ?? 0)} since bought</small>}</dd></>}
         <dt>Property tax</dt><dd data-testid="deed-tax">🪙 {chips(taxOf(p.price))}/day ({(TAX_RATE * 100).toFixed(1)}%)</dd>
         {o && o.arrears > 0 && <><dt>Arrears</dt><dd className="text-rose-300">{o.arrears} unpaid day{o.arrears > 1 ? 's' : ''} (repossessed at {GRACE_DAYS})</dd></>}
       </dl>
@@ -157,7 +161,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   }, [loading]);
   useEffect(() => {
     let dead = false;
-    const load = () => { void fetch('/api/real-estate').then((r) => r.json()).then((d: { owned?: OwnedProperty[]; index?: number }) => { if (typeof d.index === 'number' && d.index > 0) IDX = d.index; if (!dead) setOwned(new Map((d.owned ?? []).map((o) => [o.id, o]))); }).catch(() => {}); };
+    const load = () => { void fetch('/api/real-estate').then((r) => r.json()).then((d: { owned?: OwnedProperty[]; index?: number; royalties?: Record<string, number> }) => { if (typeof d.index === 'number' && d.index > 0) IDX = d.index; ROY = d.royalties ?? {}; if (!dead) setOwned(new Map((d.owned ?? []).map((o) => [o.id, o]))); }).catch(() => {}); };
     load(); socket.on('re_changed', load);
     return () => { dead = true; socket.off('re_changed', load); };
   }, []);

@@ -1,4 +1,5 @@
 import { openFactoryView } from './FactoryViewer';
+import { LANDMARK_LABEL } from '../../../shared/realEstate';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { backdropDismiss } from '@/lib/backdrop';
@@ -12,7 +13,7 @@ export const openPlayer = (name: string) => window.dispatchEvent(new CustomEvent
 interface Spot { x: number | null; z: number | null; map: string }
 export interface PublicProfile {
   name: string; memberSince: string | null; online: boolean; where?: string | null;
-  chips: number | null; assets: number; netWorth: number; history?: NetWorthHistory; dividends?: number; categories: Array<{ key: string; label: string; value: number }>;
+  chips: number | null; assets: number; netWorth: number; history?: NetWorthHistory; dividends?: number; royalties?: Array<{ lm: string; total: number }>; categories: Array<{ key: string; label: string; value: number }>;
   properties: Array<Spot & { id: string; label: string; type: string; value: number }>;
   farms: Array<Spot & { plot: string; label: string; crops: Array<{ crop: string; label: string; emoji: string; n: number; ready: number }> }>;
   cars: Array<{ carId: string; name: string; value: number }>; trailer: { lot: number } | null;
@@ -67,6 +68,7 @@ export function PlayerProfileView({ p, close }: { p: PublicProfile; close: () =>
       <div className="rounded-xl bg-[#e8c26a]/15 p-2 text-[#e8c26a]"><div className="text-[10px] uppercase opacity-80">Net worth</div><div className="font-bold tabular-nums" data-testid="player-profile-networth">{n(p.netWorth)}</div></div>
     </div>
     {p.history && <Section title="📈 Net worth over time" testid="profile-networth-chart"><NetWorthChart h={p.history} now={Date.now()} current={p.netWorth} /></Section>}
+    {!!p.royalties?.length && <div className="mt-2 rounded-xl bg-amber-400/10 px-2 py-1 text-xs text-amber-200" data-testid="profile-royalties">🏛 Monument royalties earned: <b className="tabular-nums">🪙 {n(p.royalties.reduce((t, r) => t + r.total, 0))}</b><span className="opacity-80"> · {p.royalties.map((r) => `${LANDMARK_LABEL[r.lm] ?? r.lm} 🪙 ${n(r.total)}`).join(' · ')}</span></div>}
     {p.dividends != null && p.dividends > 0 && <div className="mt-2 rounded-xl bg-emerald-400/10 px-2 py-1 text-xs text-emerald-200" data-testid="profile-dividends">💰 Total dividends earned: <b className="tabular-nums">🪙 {n(p.dividends)}</b></div>}
     {p.houseRoom && <div className="mt-2 rounded-xl bg-white/5 px-2 py-1 text-xs" data-testid="profile-house-room"><span className="opacity-75">🏦 House sell room left today:</span> <b className="tabular-nums">🪙 {n(p.houseRoom.left)}</b> <span className="opacity-60">of {n(p.houseRoom.cap)} · sold today {n(p.houseRoom.soldToday)} · refunded room +{n(p.houseRoom.refunded)} · resets 6 PM CST</span></div>}
     {p.categories.length > 0 && <div className="mt-2">{p.categories.map((c) => <Line key={c.key} left={<span className="opacity-75">{c.label}</span>} right={n(c.value)} />)}</div>}
