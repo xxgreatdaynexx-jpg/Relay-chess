@@ -1787,7 +1787,12 @@ html, body { overflow-x: clip; }
 .fish-cooler li { display: grid; grid-template-columns: 1fr auto auto auto; gap: 6px; align-items: center; } .fish-cooler li button { opacity: .6; padding: 0 4px; }
 /* QA r7: Airport/Speedway panels sit above the deed/real-estate panels, are opaque (no map bleed-through) and keep prices on one line. */
 .world-venue { z-index: 4; background: rgba(14,15,26,.985); width: min(360px, calc(100% - 24px)); }
-.world-deed dd, .world-deed button span, .venue-board b { white-space: nowrap; }
+.world-deed button span, .venue-board b { white-space: nowrap; }
+/* r22: deed panel never scrolls sideways. Labels stay on one line; long values (surcharge note, owner, sell-back) wrap inside their column. */
+.world-deed { overflow-x: hidden; } .world-deed > * { min-width: 0; max-width: 100%; }
+.world-deed dl { grid-template-columns: max-content minmax(0, 1fr); } .world-deed dt { white-space: nowrap; }
+.world-deed dd { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.world-deed dd small, .world-deed small { overflow-wrap: anywhere; }
 .world-deed > button:not(.world-deed-x) { flex-wrap: wrap; }
 /* QA r7: at high zoom (narrow CSS viewport) the fixed 🔊 widget sat on top of popups; end the map popups above it so they never sit under it. */
 @media (max-width: 700px), (max-height: 520px) { .world-deed { max-height: calc(100% - 112px); } .world-casino > div { margin-bottom: 52px; } }

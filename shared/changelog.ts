@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-03T11:59:00-06:00', title: 'Real estate: property panel fits without scrolling sideways', bullets: [
+    'Long values on a property deed (the surcharge note, owner, sell-back) now wrap inside the panel instead of being cut off, and the panel no longer scrolls sideways on narrow or normal screens. Prices and rules are unchanged.',
+  ] },
   { commit: '', at: '2026-11-03T10:45:00-06:00', title: 'Stocks: no buying shares while you hold a call on them', bullets: [
     'If you hold an open call option on a company, you can\'t buy that company\'s shares until the call expires or you sell it. The Buy button is locked with a short note.',
     'Selling shares, other companies, puts and shorts are unaffected. Prices, fees and payouts are unchanged.',
