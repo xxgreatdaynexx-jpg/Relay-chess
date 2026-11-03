@@ -43,7 +43,7 @@ export const dayKey = (now: number) => new Date(now).toISOString().slice(0, 10);
 
 /** Chips paid for `gross` full-price value when `already` gross was sold today. Fractions floor at the end. */
 export function payoutFor(gross: number, already: number): number {
-  let left = gross, at = already, pay = 0, lo = 0;
+  let left = gross, at = already, pay = 0, lo = -Infinity; // already < 0 (sink room, pt1405u) widens the first tier
   for (const t of SELL_TIERS) {
     if (left <= 0) break;
     const room = Math.max(0, t.upTo - Math.max(at, lo));

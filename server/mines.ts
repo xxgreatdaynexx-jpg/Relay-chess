@@ -13,6 +13,8 @@ import { guestName, lineOfSight, moveAllowance, MOVE_CARRY_MAX, normAngle, clamp
 import { parseSellQty } from '../shared/sellQty.js';
 import { CAVES, caveOf, type CaveId, BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, SWING_MS, dayKey, isOre, payoutFor, stackKey, priceOf, sellable, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId, inExit, weightOf } from '../shared/mines.js';
 import { isAtResort } from './travel.js';
+import { sinkLostToday } from './sink-room.js';
+import { effectiveAlready } from '../shared/sinkRoom.js';
 
 export const MINES_MIGRATION = [
   // Generic per-player stacks: item_type 'ore' | 'bar' | 'good' (Factory) — also the Market hook for stackables.
@@ -308,14 +310,16 @@ export class MinesWorld {
     this.chain = this.chain.then(() => store.save(k, m.account!, snap, sale, fs, extra)).catch((e) => console.error('[mines] save failed:', (e as Error).message));
   }
 
-  quote(account: string, now: number, only?: unknown): { gross: number; paid: number; already: number; items: Stack[] } {
+  quote(account: string, now: number, only?: unknown): { gross: number; paid: number; already: number; lost: number; effAlready: number; items: Stack[] } {
     const m = { account };
     this.beforeStorage?.(account);
     const items = this.storage(account).filter((s) => sellable(s) && (typeof only !== 'string' || s.id === only || stackKey(s) === only));
     const gross = items.reduce((t, s) => t + s.qty * priceOf(s), 0);
     const k = playerKey(m.account); const d = this.daily.get(k); const already = d && d.day === dayKey(now) ? d.gross : 0;
+    // Chips lost to sinks today free up room (pt1405u), converted to base chips; may push effAlready below 0.
+    const lost = sinkLostToday(account, now); const effAlready = effectiveAlready(already, lost, priceIndex());
     // House ore/goods prices follow the price index (tiers stay in base units so the daily caps scale too).
-    return { gross, paid: Math.floor(payoutFor(gross, already) * priceIndex()), already, items };
+    return { gross, paid: Math.floor(payoutFor(gross, effAlready) * priceIndex()), already, lost, effAlready, items };
   }
 
   /** Sell ore to the house. Signed-in only. Stone etc. pay fractional chips: the whole sale is floored once. */
@@ -331,7 +335,7 @@ export class MinesWorld {
       if (typeof only !== 'string' || q.items.length !== 1) throw new MineError('Pick one item to sell a quantity.');
       const v = parseSellQty(qtyIn, q.items[0].qty); if (!v.ok) throw new MineError(v.error);
       const s0 = q.items[0]; const items = [{ ...s0, qty: v.qty }]; const gross = v.qty * priceOf(s0);
-      q = { ...q, items, gross, paid: Math.floor(payoutFor(gross, q.already) * priceIndex()) };
+      q = { ...q, items, gross, paid: Math.floor(payoutFor(gross, q.effAlready) * priceIndex()) };
       partial = { key: stackKey(s0), qty: v.qty };
     }
     if (q.paid < 1) throw new MineError('Not worth a chip yet. Mine a bit more (stone is 1 chip per 10).');
@@ -497,7 +501,7 @@ export function registerMines(io: Server, socket: Socket): void {
   const account = () => (socket.data.account as { name?: string } | undefined)?.name ?? null;
   const me = () => world.miners.get(socket.id);
   const packMsg = () => ({ pack: world.carried(socket.id), load: world.load(socket.id), cap: BACKPACK_CAP });
-  const storeMsg = () => { const a = account(); if (a) world.beforeStorage?.(a); const q = a ? world.quote(a, Date.now()) : null; return { storage: a ? world.storage(a) : [], quote: q ? { gross: q.gross, paid: q.paid, already: q.already, index: priceIndex() } : null, inMine: a ? world.inMine(a) : false, guest: !a }; };
+  const storeMsg = () => { const a = account(); if (a) world.beforeStorage?.(a); const q = a ? world.quote(a, Date.now()) : null; return { storage: a ? world.storage(a) : [], quote: q ? { gross: q.gross, paid: q.paid, already: q.already, lost: q.lost, effAlready: q.effAlready, index: priceIndex() } : null, inMine: a ? world.inMine(a) : false, guest: !a }; };
   socket.on('mines_join', async (p: unknown, ack?: Ack) => {
     let m = me();
     const want = caveOf(body(p).cave).id;

@@ -10,10 +10,10 @@ type Ack = { ok: boolean; error?: string; storage?: Stack[]; quote?: unknown; in
 import { openMarket } from '@/components/MarketPage';
 import { SellQtyPicker } from './SellQtyPicker';
 import { usePriceIndex } from '@/lib/priceIndex';
-import { ORES, SELL_TIERS, houseCapChips, payoutFor, isOre, nameOf, priceOf, sellable, stackKey, type Stack } from '../../../shared/mines';
+import { ORES, SELL_TIERS, houseCapChips, HOUSE_DAILY_BASE, payoutFor, isOre, nameOf, priceOf, sellable, stackKey, type Stack } from '../../../shared/mines';
 
 const OPEN_KEY = 'relay-factory-open';
-type Quote = { gross: number; paid: number; already: number; index?: number } | null;
+type Quote = { gross: number; paid: number; already: number; lost?: number; effAlready?: number; index?: number } | null;
 
 /** Factory tab: banked storage from the Mines, the house Sell desk (daily cap) and the furnace/workbench. */
 export function FactoryPanel() {
@@ -49,7 +49,7 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
   }
   const q = st.quote;
   const pxIdx = usePriceIndex();
-  const tier = q ? SELL_TIERS.find((t) => q.already < t.upTo) ?? SELL_TIERS[SELL_TIERS.length - 1] : SELL_TIERS[0];
+  const tier = q ? SELL_TIERS.find((t) => (q.effAlready ?? q.already) < t.upTo) ?? SELL_TIERS[SELL_TIERS.length - 1] : SELL_TIERS[0];
   const canSell = !st.guest && !st.inMine;
   return (
     <div ref={wrapRef} className={`sol-panel factory-panel${win.className}`} style={win.style} onPointerDownCapture={win.front} onPointerMove={win.onPanelMove} role="dialog" aria-label="Factory">
@@ -69,7 +69,7 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
             {st.storage.map((s) => (
               <li key={stackKey(s)}><ItemIcon type={s.type} id={s.id} />{nameOf(s)}<b>×{s.qty}</b><small>🪙{priceOf(s)}</small>
                 {canSell && sellable(s) && <button type="button" aria-expanded={pick === stackKey(s)} onClick={() => setPick((c) => (c === stackKey(s) ? null : stackKey(s)))} data-testid="factory-sell-pick">Sell…</button>}{!sellable(s) && (s.type === 'food' ? <small title="Pantry food: never sold to the house. Cook it, sell it on the Market, or feed it to a factory Input Chest (crops)">pantry</small> : <small title="Imported input: craft it in the factory to sell">craft</small>)}
-                {canSell && sellable(s) && pick === stackKey(s) && <SellQtyPicker owned={s.qty} unit={nameOf(s)} testid="factory-qty" preview={(n) => Math.floor(payoutFor(n * priceOf(s), q?.already ?? 0) * (q?.index ?? 1))} onSell={(n) => sell(stackKey(s), n)} />}</li>
+                {canSell && sellable(s) && pick === stackKey(s) && <SellQtyPicker owned={s.qty} unit={nameOf(s)} testid="factory-qty" preview={(n) => Math.floor(payoutFor(n * priceOf(s), q?.effAlready ?? q?.already ?? 0) * (q?.index ?? 1))} onSell={(n) => sell(stackKey(s), n)} />}</li>
             ))}
             {!st.storage.length && <li className="opacity-60">Empty. Mine ore and walk out through the EXIT lift to bank it here.</li>}
           </ul>
@@ -77,7 +77,7 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
           {st.guest ? <p className="mines-note">Sign in to sell for chips.</p> : st.inMine ? <p className="mines-note" data-testid="factory-inmine">You're still in the mine. Leave the mine to sell.</p> : (
             <button type="button" className="mines-sell" disabled={!q || q.paid < 1} onClick={() => sell()} data-testid="factory-sell">Sell all{q ? ` · 🪙 ${q.paid}` : ''}</button>
           )}
-          <p className="mines-note">Sold today: {Math.floor(q?.already ?? 0)} · paying {Math.round(tier.rate * 100)}%. Daily cap today: full price up to 🪙 {houseCapChips(pxIdx).toLocaleString('en-US')} (100,000 × price index {pxIdx.toFixed(4)}, rises with inflation), then nothing (resets 00:00 UTC).</p>
+          <p className="mines-note">Sold today: {Math.floor(q?.already ?? 0)} · paying {Math.round(tier.rate * 100)}%. Daily cap today: full price up to 🪙 {houseCapChips(pxIdx).toLocaleString('en-US')} (100,000 × price index {pxIdx.toFixed(4)}, rises with inflation), then nothing (resets 00:00 UTC).{(q?.lost ?? 0) > 0 && <> Room refunded today: +🪙 {Math.floor(q!.lost!).toLocaleString('en-US')} from chips you lost to the house (casino net losses, purchases, fees, taxes). Room left: 🪙 {Math.max(0, Math.floor((HOUSE_DAILY_BASE - (q!.effAlready ?? q!.already)) * pxIdx)).toLocaleString('en-US')}.</>}</p>
         </section>
         <section className="factory-col factory-machines">
           <FactoryBuilder guest={st.guest} flash={flash} onStorage={(storage) => setSt((c) => ({ ...c, storage }))} />

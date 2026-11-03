@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T21:35:00-06:00', title: 'Mines & Factory: chips you lose free up house-sell room', bullets: [
+    'Chips you lose to the house today now add the same amount of room under your daily house-sell cap (100,000 × price index), until the reset at 6 PM CST (00:00 UTC).',
+    'What counts: net casino losses (blackjack, roulette, slots, video poker, Solitro, cases), house purchases (property, seeds, farm upgrades, cars and mods, mine tools, factory builds, groceries, resort tickets, race entries, mayor filing, wages and hire fees), property tax, Market fees, the wealth tax and admin removals.',
+    'What does not: trades, gifts, tips, transfers, Market purchases from other players, Hold\'em, stocks and wealth tax shares. The Factory sell panel shows the room refunded today. Casino odds and prices are unchanged.',
+  ] },
   { commit: '', at: '2026-11-02T20:47:00-06:00', title: 'Wealth tax: the richest share with everyone else', bullets: [
     'Every day at the reset (6 PM CST / 00:00 UTC), players active in the last 7 days with a net worth (chips + assets, same as profiles) above 2× the median pay 1% of the amount above that line.',
     'It comes from chips only: never more than your chip balance, never below 0, and nothing is sold. Every chip collected is split evenly among the active players below the line (ledger: "Wealth tax share"), so nothing is burned.',
