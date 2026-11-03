@@ -2,7 +2,7 @@
 import { useId, useMemo, useRef, useState } from 'react';
 import { PERIODS, seriesChange, type Period, type KeyStats } from '../../../../shared/stockStats';
 
-const fmtTime = (t: number, p: Period) => { const d = new Date(t - 6 * 3600_000); const h = d.getUTCHours(), m = d.getUTCMinutes(); const hm = `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; const md = `${d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })} ${d.getUTCDate()}`; return p === '1d' ? `${hm} CST` : `${md}, ${hm} CST`; };
+const fmtTime = (t: number, p: Period) => { const d = new Date(t); const hm = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); return p === '1d' ? hm : `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${hm}`; };
 const LABEL: Record<Period, string> = { '1d': 'Today', '1w': 'Past week', '1m': 'Past month', all: 'All time' };
 export const compact = (x: number) => { const a = Math.abs(x); return a >= 1e9 ? `${(x / 1e9).toFixed(2)}B` : a >= 1e6 ? `${(x / 1e6).toFixed(2)}M` : a >= 1e4 ? `${(x / 1e3).toFixed(1)}K` : Math.round(x).toLocaleString(); };
 
