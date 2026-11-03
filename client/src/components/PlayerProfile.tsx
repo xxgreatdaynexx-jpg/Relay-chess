@@ -21,6 +21,7 @@ export interface PublicProfile {
   shorts: Array<{ ticker: string; shares: number; value: number }>;
   skins: { total: number; cases: number; keys: number; highlights: Array<{ name: string; weapon: string; rarity: string; color: string; equipped: boolean }> };
   skills: SkillProfile | null;
+  houseRoom?: { cap: number; soldToday: number; refunded: number; left: number } | null;
   biggestFish: { label: string; emoji: string; grams: number; value: number; at: number } | null;
 }
 
@@ -64,6 +65,7 @@ export function PlayerProfileView({ p, close }: { p: PublicProfile; close: () =>
       <div className="rounded-xl bg-white/5 p-2"><div className="text-[10px] uppercase opacity-60">Assets</div><div className="font-bold tabular-nums">{n(p.assets)}</div></div>
       <div className="rounded-xl bg-[#e8c26a]/15 p-2 text-[#e8c26a]"><div className="text-[10px] uppercase opacity-80">Net worth</div><div className="font-bold tabular-nums" data-testid="player-profile-networth">{n(p.netWorth)}</div></div>
     </div>
+    {p.houseRoom && <div className="mt-2 rounded-xl bg-white/5 px-2 py-1 text-xs" data-testid="profile-house-room"><span className="opacity-75">🏦 House sell room left today:</span> <b className="tabular-nums">🪙 {n(p.houseRoom.left)}</b> <span className="opacity-60">of {n(p.houseRoom.cap)} · sold today {n(p.houseRoom.soldToday)} · refunded room +{n(p.houseRoom.refunded)} · resets 6 PM CST</span></div>}
     {p.categories.length > 0 && <div className="mt-2">{p.categories.map((c) => <Line key={c.key} left={<span className="opacity-75">{c.label}</span>} right={n(c.value)} />)}</div>}
     <Section title={`🏠 Property & land (${p.properties.length})`} testid="profile-properties">
       {p.properties.length ? p.properties.map((x) => <Line key={x.id} left={<>{x.label}<MapBtn s={x} close={close} /></>} right={n(x.value)} />) : <None t="No property." />}

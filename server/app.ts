@@ -27,6 +27,7 @@ import { adminRouter } from './admin.js';
 import { trailerRouter } from './trailers.js';
 import { realEstateRouter } from './realEstate.js';
 import { playerProfileRouter } from './player-profile.js';
+import { houseRoomRouter } from './house-room.js';
 import { farmRouter } from './farm.js';
 import { employmentRouter } from './employment.js';
 import { getMinesBoard } from './mines-board.js';
@@ -158,6 +159,7 @@ export async function createApp(): Promise<AppContext> {
   });
   registerSockets(io);
   app.use(playerProfileRouter(io, viewerIsQa));
+  app.use(houseRoomRouter());
 
   if (process.env.NODE_ENV === 'production') {
     const clientDist = fileURLToPath(new URL('../client', import.meta.url));

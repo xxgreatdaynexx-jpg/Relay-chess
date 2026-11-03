@@ -15,6 +15,7 @@ export function recordSink(name: string, row: { game: string; amount: number; me
   d.add(dayKey(now), row);
 }
 export const sinkLostToday = (name: string, now = Date.now()) => days.get(playerKey(name))?.lost(dayKey(now)) ?? 0;
+export const sinkKeysToday = (now = Date.now()) => { const day = dayKey(now); return [...days].filter(([, d]) => d.day === day && d.lost(day) > 0).map(([k]) => k); };
 export const resetSinkRoomForTest = () => { days.clear(); seen.clear(); };
 
 export function startSinkRoom(): void {

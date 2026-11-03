@@ -13,6 +13,7 @@ import { getRealEstate } from './realEstate.js';
 import { getGarage } from './cars.js';
 import { getVault } from './skins.js';
 import { getSkills } from './skills.js';
+import { houseRoom } from './house-room.js';
 import { isQaName } from '../shared/qa.js';
 import { propertyById } from '../shared/realEstate.js';
 import { cropById } from '../shared/farm.js';
@@ -24,6 +25,8 @@ export const keyOf = (n: string) => n.replace(/\s+/g, ' ').trim().toLowerCase();
 export const validName = (n: unknown): n is string => typeof n === 'string' && n.trim().length > 0 && n.length <= 40 && /^[\w .\-]+$/.test(n);
 const RANK: Record<string, number> = { ultra: 3, rare: 2, common: 1 };
 const safe = async <T>(p: () => Promise<T> | T, fallback: T): Promise<T> => { try { return await p(); } catch { return fallback; } };
+
+const safeSync = <T>(f: () => T): T | null => { try { return f(); } catch { return null; } };
 
 type Q = { query: (sql: string, args?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> };
 let pool: pg.Pool | null = null;
@@ -97,6 +100,7 @@ export async function buildPlayerProfile(raw: string, deps: ProfileDeps) {
     chips, assets: assetTotal, netWorth: (chips ?? 0) + assetTotal,
     categories: (assets?.categories ?? []).filter((c) => c.value > 0).map((c) => ({ key: c.key, label: c.label, value: Math.round(c.value) })),
     properties, farms, cars, trailer, stocks, funds, options, shorts, skins, skills, biggestFish,
+    houseRoom: safeSync(() => houseRoom(name, now)),
   };
 }
 
