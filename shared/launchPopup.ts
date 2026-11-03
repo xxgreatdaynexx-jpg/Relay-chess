@@ -18,6 +18,7 @@ export const LAUNCH: LaunchPopup = {
     { icon: '🌱', title: 'Farming level = bonus crops', text: 'Your Farming level now gives bonus yield on harvests, up to +25% more crops at level 99.' },
     { icon: '📱', title: 'Farm on mobile', text: 'Tap “🌾 My farm” on the map to open your farm. On phones it opens full screen.' },
     { icon: '📈', title: 'Net worth charts', text: 'Player profiles now chart net worth over time.' },
+    { icon: '🏛', title: 'Monument royalties', text: 'Own a monument? Earn 1% of what other players make there: ore from the mines, factory goods, fish at the dock, Speedway prizes, market sales and the casino\'s house win. Paid on top, nobody loses a chip.' },
     { icon: '💰', title: 'Dividend totals', text: 'See every chip you\'ve earned from dividends on your Stocks portfolio and profile.' },
   ],
 };

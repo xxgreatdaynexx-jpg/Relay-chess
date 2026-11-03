@@ -7,6 +7,7 @@
  * is advanced with an optimistic check, so a fish sells exactly once and the daily cap holds across instances.
  * Every landed catch is announced on the skill-activity bus (server/activity.ts) for the Fishing skill.
  */
+import { royaltyEarn } from './royalty.js';
 import { randomInt, randomUUID } from 'node:crypto';
 import { parseSellQty, pickForQty } from '../shared/sellQty.js';
 import pg from 'pg';
@@ -175,6 +176,7 @@ export class Fishing {
       };
       const p = run(); w.bind(p);
       try { await p; } catch (e) { w.revert(); if (e instanceof FishError) throw e; console.error('[fishing] sell failed:', (e as Error).message); throw new FishError('Something went wrong. Nothing was sold.'); }
+      royaltyEarn('dock', name, paid);
       return { sold: rows.length, gross: gross + dGross, paid, chips: this.bank().account(name).chips };
     });
   }

@@ -106,6 +106,7 @@ export async function buildPlayerProfile(raw: string, deps: ProfileDeps) {
     const cl = (await db.query(`SELECT DISTINCT ON (date_trunc('day', created_at)) date_trunc('day', created_at) AS d, balance FROM wallet_transactions WHERE player_key = $1 AND created_at > now() - interval '30 days' ORDER BY date_trunc('day', created_at), id DESC`, [key])).rows.map((x) => ({ t: new Date(x.d as string).getTime() + 86_399_000, chips: Number(x.balance) }));
     return { points: pts, chips: cl };
   }, { points: [], chips: [] });
+  const royalties = await safe(async () => (await row1("SELECT split_part(tx_key, ':', 2) AS lm, COALESCE(SUM(amount),0) AS total FROM wallet_transactions WHERE player_key = $1 AND game = 'monument_royalty' GROUP BY 1 ORDER BY 2 DESC")).map((r) => ({ lm: String(r.lm), total: Number(r.total) })), [] as Array<{ lm: string; total: number }>);
   const dividends = await safe(async () => { const x = (await row1("SELECT COALESCE(SUM(amount),0) AS total FROM wallet_transactions WHERE player_key = $1 AND game = 'dividend'"))[0]; return Number(x?.total ?? 0); }, 0);
 
   return {
@@ -114,7 +115,7 @@ export async function buildPlayerProfile(raw: string, deps: ProfileDeps) {
     categories: (assets?.categories ?? []).filter((c) => c.value > 0).map((c) => ({ key: c.key, label: c.label, value: Math.round(c.value) })),
     properties, farms, cars, trailer, stocks, funds, options, shorts, skins, skills, biggestFish,
     houseRoom: safeSync(() => houseRoom(name, now)),
-    history, dividends,
+    history, dividends, royalties,
   };
 }
 

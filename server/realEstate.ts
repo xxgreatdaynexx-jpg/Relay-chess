@@ -13,6 +13,7 @@ import { bootAttach, setBootState } from './boot-retry.js';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank, type CasinoBank } from './casino-store.js';
+import { getRoyalties } from './royalty.js';
 import { px, priceIndex } from './price-index.js';
 import { requireResort } from './travel.js';
 import { GRACE_DAYS, propertyById as baseProperty, sellBackOf, taxOf, landPrice, landMultiplier, landSurchargePct, landMultiplierNote, type OwnedProperty } from '../shared/realEstate.js';
@@ -51,6 +52,19 @@ export class RealEstate {
 
   async owned(): Promise<OwnedProperty[]> {
     return ((await this.pool.query('SELECT * FROM properties ORDER BY id')).rows as Row[]).map(toOwned);
+  }
+  async ownerOf(id: string): Promise<{ key: string; name: string } | null> {
+    const r = (await this.pool.query('SELECT owner_key, owner_name FROM properties WHERE id = $1', [id])).rows[0] as { owner_key: string; owner_name: string } | undefined;
+    return r ? { key: String(r.owner_key), name: String(r.owner_name) } : null;
+  }
+  /** Monument royalties earned by each landmark's CURRENT owner since they bought it (ledger game 'monument_royalty'). */
+  async royalties(): Promise<Record<string, number>> {
+    try {
+      const rows = (await this.pool.query(`SELECT p.id, COALESCE(SUM(t.amount), 0) s FROM properties p JOIN wallet_transactions t
+          ON t.game = 'monument_royalty' AND t.player_key = p.owner_key AND t.tx_key LIKE 'royalty:' || substr(p.id, 4) || ':%' AND t.created_at >= to_timestamp(p.bought_at / 1000.0)
+        WHERE p.id LIKE 'lm:%' GROUP BY p.id`)).rows as { id: string; s: unknown }[];
+      return Object.fromEntries(rows.map((r) => [r.id, Number(r.s)]));
+    } catch { return {}; }
   }
   async mine(name: string) {
     const rows = ((await this.pool.query('SELECT * FROM properties WHERE owner_key = $1 ORDER BY price DESC', [keyOf(name)])).rows as Row[]);
@@ -199,7 +213,7 @@ export function realEstateRouter() {
   const r = express.Router();
   r.get('/api/real-estate', async (_req, res) => {
     if (!re) { res.json({ ok: true, live: false, owned: [] }); return; }
-    try { res.json({ ok: true, live: true, owned: await re.owned(), index: priceIndex(), stats: await re.stats() }); } catch { res.status(500).json({ ok: false }); }
+    try { res.json({ ok: true, live: true, owned: await re.owned(), index: priceIndex(), stats: await re.stats(), royalties: await re.royalties() }); } catch { res.status(500).json({ ok: false }); }
   });
   return r;
 }
@@ -207,7 +221,7 @@ export function realEstateRouter() {
 type Ack = (r: { ok: boolean; error?: string; [k: string]: unknown }) => void;
 let wired: Server | null = null;
 export function registerRealEstate(io: Server, socket: Socket): void {
-  if (wired !== io && re) { wired = io; re.onChange = () => io.emit('re_changed'); }
+  if (wired !== io && re) { wired = io; re.onChange = () => { getRoyalties().forget(); io.emit('re_changed'); }; }
   const nameOf = () => (socket.data as { account?: { name: string } }).account?.name ?? null;
   const on = (ev: string, fn: (b: Record<string, unknown>, e: RealEstate) => unknown) => socket.on(ev, async (payload: unknown, ack?: Ack) => {
     try { if (!re) throw new PropertyError('Real estate is offline right now.'); const b = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}; ack?.({ ok: true, ...((await fn(b, re)) as object ?? {}) }); }
