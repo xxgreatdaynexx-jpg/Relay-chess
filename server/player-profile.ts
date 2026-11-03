@@ -94,6 +94,19 @@ export async function buildPlayerProfile(raw: string, deps: ProfileDeps) {
   const fish = (await row1('SELECT species, weight_g, value, caught_at FROM fish_catches WHERE player_key = $1 AND COALESCE(hired, FALSE) = FALSE ORDER BY weight_g DESC, caught_at ASC, id ASC LIMIT 1'))[0];
   const biggestFish = fish ? { species: String(fish.species), label: fishById(fish.species)?.label ?? String(fish.species), emoji: fishById(fish.species)?.emoji ?? '🐟', grams: Number(fish.weight_g), value: Number(fish.value), at: Number(fish.caught_at) } : null;
   const since = (await row1('SELECT created_at FROM players WHERE player_key = $1'))[0];
+  // #31 (chessguy2): net worth chart. A snapshot is stored at most hourly when the profile is built, plus the chips
+  // line is backfilled from the wallet ledger (daily closing balance, 30 days). Read-only for the wallet.
+  const netWorthNow = (chips ?? 0) + assetTotal;
+  const history = await safe(async () => {
+    if (!db) return { points: [] as Array<{ t: number; net: number }>, chips: [] as Array<{ t: number; chips: number }> };
+    await db.query('CREATE TABLE IF NOT EXISTS networth_history (player_key TEXT NOT NULL, t BIGINT NOT NULL, net BIGINT NOT NULL, chips BIGINT NOT NULL, PRIMARY KEY (player_key, t))');
+    const last = (await db.query('SELECT MAX(t) AS t FROM networth_history WHERE player_key = $1', [key])).rows[0];
+    if (chips != null && (!last?.t || Number(last.t) < now - 3_600_000)) await db.query('INSERT INTO networth_history (player_key, t, net, chips) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING', [key, now, Math.round(netWorthNow), Math.round(chips)]);
+    const pts = (await db.query('SELECT t, net FROM networth_history WHERE player_key = $1 AND t > $2 ORDER BY t', [key, now - 90 * 86_400_000])).rows.map((x) => ({ t: Number(x.t), net: Number(x.net) }));
+    const cl = (await db.query(`SELECT DISTINCT ON (date_trunc('day', created_at)) date_trunc('day', created_at) AS d, balance FROM wallet_transactions WHERE player_key = $1 AND created_at > now() - interval '30 days' ORDER BY date_trunc('day', created_at), id DESC`, [key])).rows.map((x) => ({ t: new Date(x.d as string).getTime() + 86_399_000, chips: Number(x.balance) }));
+    return { points: pts, chips: cl };
+  }, { points: [], chips: [] });
+  const dividends = await safe(async () => { const x = (await row1("SELECT COALESCE(SUM(amount),0) AS total FROM wallet_transactions WHERE player_key = $1 AND game = 'dividend'"))[0]; return Number(x?.total ?? 0); }, 0);
 
   return {
     name, memberSince: since ? new Date(since.created_at as string).toISOString() : null, ...deps.online(key),
@@ -101,6 +114,7 @@ export async function buildPlayerProfile(raw: string, deps: ProfileDeps) {
     categories: (assets?.categories ?? []).filter((c) => c.value > 0).map((c) => ({ key: c.key, label: c.label, value: Math.round(c.value) })),
     properties, farms, cars, trailer, stocks, funds, options, shorts, skins, skills, biggestFish,
     houseRoom: safeSync(() => houseRoom(name, now)),
+    history, dividends,
   };
 }
 
