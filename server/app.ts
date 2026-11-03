@@ -8,6 +8,7 @@ import { buildInfo } from './build.js';
 import { requestsRouter } from './requests.js';
 import { mayorRouter } from './mayor.js';
 import { economyRouter } from './economy.js';
+import { wealthTaxRouter } from './wealth-tax.js';
 import { priceIndexRouter } from './price-index.js';
 import { createServer, type Server as HttpServer } from 'node:http';
 import path from 'node:path';
@@ -50,6 +51,7 @@ export async function createApp(): Promise<AppContext> {
   app.use(requestsRouter());
   app.use(mayorRouter());
   app.use(economyRouter());
+  app.use(wealthTaxRouter());
   app.use(priceIndexRouter());
   app.get('/health', (_req, res) => {
     res.json({ ok: true });

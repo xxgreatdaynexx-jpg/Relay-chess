@@ -1,6 +1,7 @@
 import { initRequests } from './requests.js';
 import { initPopupStorage } from './popups.js';
 import { initEconomy } from './economy.js';
+import { startWealthTax } from './wealth-tax.js';
 import { getChatLog, initChatStorage } from './chat.js';
 import { initArenaStorage } from './arena-store.js';
 import { initChessStatsStorage } from './chess-stats.js';
@@ -54,6 +55,7 @@ await initEmployment();
 await initMayor();
 await initFishing();
 initFishPan();
+startWealthTax();
 await initCooking();
 await initConquestStorage();
 await initSolitroStorage();

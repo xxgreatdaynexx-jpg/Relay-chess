@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { WealthTaxCard } from './WealthTaxCard';
 import { fmtIndex } from '../../../shared/priceIndex';
 import { INFLATION_LABELS as L, inflationView } from '../../../shared/inflation';
 
@@ -16,7 +17,7 @@ interface Econ {
 const n = (v: number) => v.toLocaleString();
 const pc = (v: number | null | undefined) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`);
 const tone = (v: number | null | undefined) => (v == null ? 'opacity-60' : v > 0 ? 'text-amber-300' : v < 0 ? 'text-sky-300' : '');
-const LABEL: Record<string, string> = { property_buy: '🏠 Property bought', property_sell: '🏠 Property sold back', property_tax: '🏠 Property tax', farm_seed: '🌱 Farm seeds', farm_harvest: '🌾 Farm harvests', mines: '⛏ Mines & factory', market: '🏪 Market', 'market fees': '🏪 Market fees', trade: '🤝 Trades & gifts', gift: '🎁 Gifts', tip: '🎁 Tips', transfer: '🤝 Transfers', p2p: '🤝 Transfers', arena: '🔫 Arena', refill: '♻ Refills', admin: '🛠 Admin grants', blackjack: '🂡 Blackjack', roulette: '🎡 Roulette', slots: '🎰 Slots', holdem: "♠ Hold'em", 'video-poker': '🃏 Video poker', chess: '♞ Chess', checkers: '⛀ Checkers', conquest: '⚔ Conquest', solitro: '🃏 Solitro', casino: '🎲 Casino' };
+const LABEL: Record<string, string> = { property_buy: '🏠 Property bought', property_sell: '🏠 Property sold back', property_tax: '🏠 Property tax', farm_seed: '🌱 Farm seeds', farm_harvest: '🌾 Farm harvests', mines: '⛏ Mines & factory', market: '🏪 Market', 'market fees': '🏪 Market fees', trade: '🤝 Trades & gifts', gift: '🎁 Gifts', tip: '🎁 Tips', transfer: '🤝 Transfers', p2p: '🤝 Transfers', arena: '🔫 Arena', refill: '♻ Refills', admin: '🛠 Admin grants', blackjack: '🂡 Blackjack', roulette: '🎡 Roulette', slots: '🎰 Slots', holdem: "♠ Hold'em", 'video-poker': '🃏 Video poker', chess: '♞ Chess', checkers: '⛀ Checkers', conquest: '⚔ Conquest', wealth_tax: '⚖ Wealth tax', solitro: '🃏 Solitro', casino: '🎲 Casino' };
 
 function Chart({ h, live }: { h: Econ['history']; live: Econ }) {
   const pts = [...h.map((d) => ({ day: d.day, cash: d.cash, total: d.total })), { day: 'now', cash: live.cash, total: live.total as number | null }];
@@ -84,6 +85,7 @@ export function EconomyView() {
           <div>{n(e.realEstate.owned)} properties owned · tax burned today 🪙 {n(e.realEstate.taxToday)} · all time 🪙 {n(e.realEstate.taxBurned)} · repossessed {n(e.realEstate.repossessed)}</div>
         </div>
       )}
+      <WealthTaxCard />
       {(() => { const iv = inflationView(e); return (<>
       <div className="mt-3 text-xs uppercase tracking-wide opacity-70" title={L.tip}>Daily inflation ⓘ</div>
       <table className="mt-1 w-full text-[12px] tabular-nums" data-testid="econ-inflation" title={L.tip}>

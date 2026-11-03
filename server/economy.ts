@@ -31,7 +31,7 @@ export const SKIN_BASE: Record<Rarity, number> = { common: 40, rare: 150, ultra:
 export const CASE_BASE = 50, KEY_BASE = 100, MACHINE_RESALE = 0.5;
 const DAY = 86_400_000, WINDOW = 30 * DAY, RECENT_N = 20, STALE_N = 5, CACHE_MS = 5 * 60_000, BACKFILL_DAYS = 90;
 /** Ledger games where chips only move player -> player (trades, gifts, escrow). Never created or destroyed. */
-export const P2P_GAMES = new Set(['trade', 'gift', 'tip', 'transfer', 'p2p']);
+export const P2P_GAMES = new Set(['trade', 'gift', 'tip', 'transfer', 'p2p', 'wealth_tax']);
 /** Player-to-player with a burned fee: only the fee leaves the economy. */
 const FEE_GAMES = new Set(['market']);
 
