@@ -80,6 +80,7 @@ export interface MineNode { id: number; x: number; y: number; z: number; ore: Or
 
 function hash(n: number): number { let h = Math.imul(n, 2654435761) >>> 0; h = (h ^ (h >>> 15)) >>> 0; h = Math.imul(h, 2246822519) >>> 0; h = (h ^ (h >>> 13)) >>> 0; return h / 2 ** 32; }
 
+export const mineHash = (n: number) => hash(n);
 export function depthAt(x: number): number { const cx = x / CELL; let d = 0; for (let i = 0; i < DEPTH_X.length; i++) if (cx >= DEPTH_X[i]) d = i; return d; }
 
 /** Ore for a node slot: weighted among ores unlocked at this depth; rarer ores get a boost deeper. */
@@ -157,7 +158,8 @@ export const CAVE_DEFS: CaveDef[] = [
 export const MINE_CAVE_EVENT = 'relay-mine-cave';
 export const isCave = (v: unknown): v is CaveId => v === 'mine' || v === 'frost' || v === 'magma' || v === 'coral';
 
-function build(def: CaveDef): { map: ArenaMap; nodes: MineNode[] } {
+/** Exported for the floor generator (shared/mineFloors.ts). `seed` shifts the node hash so generated floors don't repeat. */
+export function buildCave(def: CaveDef, seed0 = 0): { map: ArenaMap; nodes: MineNode[] } {
   const ROWS = def.rows.map((r) => r.padEnd(def.rows[0].length, '#'));
   const solids: Solid[] = [];
   const spawns: Array<[number, number, number]> = [];
@@ -177,7 +179,7 @@ function build(def: CaveDef): { map: ArenaMap; nodes: MineNode[] } {
     if (c === '#' || c === '~' || c === 'S' || x < 3) return;
     const adj: Array<[number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => wall(x + dx, y + dy)) as Array<[number, number]>;
     if (!adj.length) return;
-    const seed = x * 131 + y * 17;
+    const seed = x * 131 + y * 17 + seed0;
     if (hash(seed) > def.density) return;
     const [dx, dy] = adj[Math.floor(hash(seed + 7) * adj.length)];
     // sit against the wall, half embedded
@@ -194,7 +196,7 @@ function build(def: CaveDef): { map: ArenaMap; nodes: MineNode[] } {
 export const CAVE_MAIN_ORES: Record<CaveId, string> = { mine: 'Iron Ore, Stone & Gold Ore', frost: 'Silver Ore & Crystal', magma: 'Coal & Copper Ore', coral: 'Mixed ores' };
 
 export interface Cave extends CaveDef { map: ArenaMap; nodes: MineNode[] }
-export const CAVES: Record<CaveId, Cave> = Object.fromEntries(CAVE_DEFS.map((d) => [d.id, { ...d, ...build(d) }])) as Record<CaveId, Cave>;
+export const CAVES: Record<CaveId, Cave> = Object.fromEntries(CAVE_DEFS.map((d) => [d.id, { ...d, ...buildCave(d) }])) as Record<CaveId, Cave>;
 export const caveOf = (id: unknown): Cave => CAVES[isCave(id) ? id : 'mine'];
 export const MINE_MAP: ArenaMap = CAVES.mine.map;
 export const MINE_NODES: MineNode[] = CAVES.mine.nodes;
