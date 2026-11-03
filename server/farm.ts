@@ -21,7 +21,7 @@ import { getMines } from './mines.js';
 import { awardXp } from './skills.js';
 import { CROPS, cropById, farmPayout, farmPlots, ripeWindow, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
 import { skillLevelAsync } from './skills.js';
-import { farmingGrowMul } from '../shared/skillPerks.js';
+import { bonusCrops, farmingGrowMul, farmingYieldBonus } from '../shared/skillPerks.js';
 import { combinedGrowMul, fertilizerProfitMul, greenhouseWither, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradeDef, upgradePrice, type FarmUpgradeLevels } from '../shared/farmUpgrades.js';
 
 export const FARM_MIGRATION = `
@@ -50,7 +50,7 @@ export class Farm {
     const prev = this.locks.get(id) ?? Promise.resolve(); const p = prev.then(fn, fn); const tail = p.catch(() => {});
     this.locks.set(id, tail); void tail.then(() => { if (this.locks.get(id) === tail) this.locks.delete(id); }); return p;
   }
-  constructor(private readonly pool: pg.Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now()) {}
+  constructor(private readonly pool: pg.Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now(), readonly rand: () => number = Math.random) {}
   async init() { await this.pool.query(FARM_MIGRATION); await this.pool.query('CREATE TABLE IF NOT EXISTS kitchen_harvests (tile_key TEXT PRIMARY KEY NOT NULL, at BIGINT NOT NULL)'); }
 
   private async ownerOf(q: { query: pg.Pool['query'] } | pg.PoolClient, id: string): Promise<{ key: string; name: string } | null> {
@@ -115,7 +115,7 @@ export class Farm {
     // #33 (Jay): the viewer's real grow time and profit after Farming XP + this plot's upgrades, so the seed shop shows them.
     const lvl = name ? await skillLevelAsync(name, 'farming').catch(() => 1) : 1;
     const growMul = combinedGrowMul(farmingGrowMul(lvl), mine ? upgrades.sprinkler : 0), profitMul = fertilizerProfitMul(mine ? upgrades.fertilizer : 0);
-    return { id: pid, owner: o?.name ?? null, mine, cols: p.cols, rows: p.rows, tiles, now, today: mine ? await this.today(o!.key) : { gross: 0, paid: 0 }, index: priceIndex(), upgrades, farmingLevel: lvl, growMul, profitMul };
+    return { id: pid, owner: o?.name ?? null, mine, cols: p.cols, rows: p.rows, tiles, now, today: mine ? await this.today(o!.key) : { gross: 0, paid: 0 }, index: priceIndex(), upgrades, farmingLevel: lvl, growMul, profitMul, yieldBonus: farmingYieldBonus(lvl) };
   }
 
   private async atomic(name: string, amount: number, game: string, memo: string, body: (cl: pg.PoolClient) => Promise<void>) {
@@ -177,8 +177,12 @@ export class Farm {
       if (pantry) return this.harvestToPantry(name, pid, key, ready, now);
       let seeds = 0, profit = 0; const counts = new Map<string, number>();
       for (const r of ready) { const c = cropById(r.crop)!; seeds += c.seed; profit += c.sell - c.seed; counts.set(c.label, (counts.get(c.label) ?? 0) + 1); }
+      // Farming level bonus yield: extra crops of random harvested kinds (full sell value, no seed). Inside the daily farm tier.
+      const extra = bonusCrops(ready.length, farmingYieldBonus(await skillLevelAsync(name, 'farming').catch(() => 1)), this.rand);
+      const bonus: typeof ready = []; for (let i = 0; i < extra; i++) bonus.push(ready[Math.floor(this.rand() * ready.length)]);
+      for (const r of bonus) { const c = cropById(r.crop)!; profit += c.sell; counts.set(c.label, (counts.get(c.label) ?? 0) + 1); }
       if (sink) { // pt1252u: send the crops to your Factory storage instead of selling them (no chips, no farm tier)
-        const items: Array<[string, number]> = []; for (const r of ready) { const id = `crop_${r.crop}`; const at = items.find((x) => x[0] === id); if (at) at[1]++; else items.push([id, 1]); }
+        const items: Array<[string, number]> = []; for (const r of [...ready, ...bonus]) { const id = `crop_${r.crop}`; const at = items.find((x) => x[0] === id); if (at) at[1]++; else items.push([id, 1]); }
         await this.atomic(name, 0, 'farm_to_factory', '', async (cl) => {
           await this.mustOwn(cl, pid, name);
           let gone = 0;
@@ -203,7 +207,7 @@ export class Farm {
         if (!u.rowCount) throw new FarmError('Busy, try again.');
       });
       this.onChange?.(pid);
-      return { harvested: ready.length, paid, chips: this.bank().account(name).chips };
+      return { harvested: ready.length, bonus: extra, paid, chips: this.bank().account(name).chips };
     }));
   }
 

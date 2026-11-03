@@ -13,6 +13,8 @@ export const MINING_MAX_SPEEDUP = 0.35;
 export const MINING_MAX_BONUS = 0.15;
 export const ENGINEERING_MAX_SPEEDUP = 0.25;
 export const FARMING_MAX_SPEEDUP = 0.25;
+/** Farming level bonus yield (Dayne, Nov 3 2026): up to +25% crops at 99. Separate from the #27 fertilizer rework (Nov 6). */
+export const FARMING_MAX_YIELD = 0.25;
 export const RACING_MAX_DISCOUNT = 0.2;
 export const COMBAT_MAX_ARMOR = 0.05;
 export const TRADING_MAX_DISCOUNT = 0.3;
@@ -29,6 +31,10 @@ export const miningBonusChance = (l: number) => MINING_MAX_BONUS * perkT(l);
 export const engineeringTimeMul = (l: number) => 1 - ENGINEERING_MAX_SPEEDUP * perkT(l);
 /** Farming: crop grow time multiplier (1 -> 0.75). */
 export const farmingGrowMul = (l: number) => 1 - FARMING_MAX_SPEEDUP * perkT(l);
+/** Farming: bonus yield fraction (0 -> +25%). Extra crops = tiles × this; the fractional part is rolled as a chance. */
+export const farmingYieldBonus = (l: number) => FARMING_MAX_YIELD * perkT(l);
+/** Extra crops for a harvest of `tiles` tiles at bonus `y`: floor(tiles·y) plus one more with probability of the remainder. */
+export const bonusCrops = (tiles: number, y: number, rand: () => number = Math.random) => { const e = Math.max(0, tiles * y); const k = Math.floor(e); return k + (rand() < e - k ? 1 : 0); };
 /** Racing: Daily Cup entry fee multiplier (1 -> 0.8). The prize pool uses the fees actually paid. */
 export const racingEntryMul = (l: number) => 1 - RACING_MAX_DISCOUNT * perkT(l);
 /** Combat: arena damage taken multiplier (1 -> 0.95). */
