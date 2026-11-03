@@ -1,6 +1,6 @@
 /**
  * Daily wealth tax (pt1397u). At each UTC reset: active players (any ledger row in the last 7 days, QA excluded), net
- * worth = chips + assets (same as the profile/leaderboard), threshold = 2× median. Above it pay 1% of the excess from
+ * worth = chips + assets (same as the profile/leaderboard), threshold = 2× the median of active players at 10K+ (under 10K never pay). Above it pay 1% of the excess from
  * chips only; the total is split evenly among active players below it. All debits and credits land in ONE Postgres
  * transaction (atomic wallet + ledger) with per-player-per-day keys, plus a wealth_tax_days row (PK = day) so a day can
  * never run twice, even across instances or restarts.

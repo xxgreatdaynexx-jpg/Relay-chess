@@ -3,6 +3,8 @@ export const WEALTH_TAX_RATE = 0.01;
 export const WEALTH_TAX_MULT = 2;
 export const WEALTH_TAX_ACTIVE_DAYS = 7;
 export const WEALTH_TAX_GAME = 'wealth_tax';
+/** Median is taken only over active players at or above this net worth; nobody below it ever pays. */
+export const WEALTH_TAX_MEDIAN_MIN = 10_000;
 
 export type WealthRow = { name: string; netWorth: number; chips: number };
 export type WealthPlan = {
@@ -31,9 +33,12 @@ export function split(total: number, names: string[]): Array<{ name: string; amo
 
 /** Full plan for one day. Recipients are active players below the threshold, in a stable (name) order. */
 export function planWealthTax(rows: WealthRow[]): WealthPlan {
-  const med = median(rows.map((r) => r.netWorth)); const threshold = Math.floor(med * WEALTH_TAX_MULT);
+  const base = rows.filter((r) => r.netWorth >= WEALTH_TAX_MEDIAN_MIN);
+  // Nobody at 10K+: no median, no tax.
+  if (!base.length) return { median: 0, threshold: 0, taxes: [], shares: [], total: 0 };
+  const med = median(base.map((r) => r.netWorth)); const threshold = Math.floor(med * WEALTH_TAX_MULT);
   const sorted = [...rows].sort((a, b) => a.name.localeCompare(b.name));
-  const taxes = sorted.map((r) => ({ name: r.name, amount: taxFor(r, threshold), netWorth: r.netWorth })).filter((t) => t.amount > 0);
+  const taxes = sorted.filter((r) => r.netWorth >= WEALTH_TAX_MEDIAN_MIN).map((r) => ({ name: r.name, amount: taxFor(r, threshold), netWorth: r.netWorth })).filter((t) => t.amount > 0);
   const total = taxes.reduce((a, t) => a + t.amount, 0);
   const shares = split(total, sorted.filter((r) => r.netWorth < threshold).map((r) => r.name));
   // No one below the threshold to receive it: collect nothing (redistributed, never burned).

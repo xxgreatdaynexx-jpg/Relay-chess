@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-02T23:59:00-06:00', title: 'Wealth tax: median now counts only players worth 10,000+', bullets: [
+    'The daily wealth tax median is now taken only over active players with a net worth of 10,000 or more. The threshold is still 2× that median, and anyone under 10,000 never pays.',
+    'Every chip collected is still split evenly among all active players below the threshold. If nobody is at 10,000+, no tax is collected.',
+  ] },
   { commit: '', at: '2026-11-02T23:18:00-06:00', title: 'House-sell room: most purchases no longer count', bullets: [
     'Only these now free up room under your daily house-sell cap: net casino losses, buying cars and car mods, property tax, resort tickets, race entries, mayor filing, Market seller fees, the wealth tax and admin removals.',
     'Buying property, farm seeds and upgrades, mine tools, factory builds and upgrades, groceries, wages and hiring no longer add room.',
