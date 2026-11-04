@@ -14,6 +14,8 @@ import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank, type CasinoBank } from './casino-store.js';
 import { getRoyalties } from './royalty.js';
+import { sendPopup } from './popups.js';
+import { BUYOUT_MUL, BUYOUT_PROTECT_MS, buyoutPrice } from '../shared/royalty.js';
 import { px, priceIndex } from './price-index.js';
 import { requireResort } from './travel.js';
 import { GRACE_DAYS, propertyById as baseProperty, sellBackOf, taxOf, landPrice, landMultiplier, landSurchargePct, landMultiplierNote, type OwnedProperty } from '../shared/realEstate.js';
@@ -30,13 +32,14 @@ CREATE TABLE IF NOT EXISTS properties (id TEXT PRIMARY KEY, owner_key TEXT NOT N
   bought_at BIGINT NOT NULL, arrears INT NOT NULL DEFAULT 0, tax_paid BIGINT NOT NULL DEFAULT 0, deed TEXT);
 CREATE INDEX IF NOT EXISTS properties_owner ON properties (owner_key);
 CREATE TABLE IF NOT EXISTS property_tax (day TEXT NOT NULL, property_id TEXT NOT NULL, owner_key TEXT NOT NULL, amount BIGINT NOT NULL, paid BOOLEAN NOT NULL,
-  repossessed BOOLEAN NOT NULL DEFAULT false, at BIGINT NOT NULL, claim TEXT, PRIMARY KEY (day, property_id));`;
+  repossessed BOOLEAN NOT NULL DEFAULT false, at BIGINT NOT NULL, claim TEXT, PRIMARY KEY (day, property_id));
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS city_price BIGINT;`;
 
 type Pool = pg.Pool;
-interface Row { id: string; owner_key: string; owner_name: string; price: string | number; bought_at: string | number; arrears: number; tax_paid: string | number }
+interface Row { id: string; owner_key: string; owner_name: string; price: string | number; bought_at: string | number; arrears: number; tax_paid: string | number; city_price?: string | number | null }
 /** Catalog entry with today's indexed list price (list prices and tax follow the price index). */
 const propertyById = (id: Parameters<typeof baseProperty>[0]) => { const p = baseProperty(id); return p ? { ...p, price: px(p.price) } : undefined; };
-const toOwned = (r: Row): OwnedProperty => ({ id: r.id, owner: r.owner_name, price: Number(r.price), arrears: Number(r.arrears), boughtAt: Number(r.bought_at) });
+const toOwned = (r: Row): OwnedProperty => ({ id: r.id, owner: r.owner_name, price: Number(r.price), arrears: Number(r.arrears), boughtAt: Number(r.bought_at), ...(r.city_price != null && Number(r.city_price) !== Number(r.price) ? { basis: Number(r.city_price) } : {}) });
 
 export class RealEstate {
   onChange?: () => void;
@@ -72,9 +75,9 @@ export class RealEstate {
   }
 
   /** Atomic: the ledger rows and the ownership change commit together, or neither does. */
-  private async atomic(name: string, amount: number, game: string, memo: string, body: (cl: pg.PoolClient) => Promise<void>) {
+  private async atomic(name: string, amount: number, game: string, memo: string, body: (cl: pg.PoolClient) => Promise<void>, more: Array<{ name: string; amount: number; game: string; memo: string }> = []) {
     const bank = this.bank();
-    const w = bank.transferAtomic([{ name, amount, key: `${game}:${randomUUID()}`, game, memo }]);
+    const w = bank.transferAtomic([{ name, amount, key: `${game}:${randomUUID()}`, game, memo }, ...more.map((m) => ({ ...m, key: `${m.game}:${randomUUID()}` }))]);
     const run = async () => {
       await w.after; const cl = await this.pool.connect();
       try {
@@ -120,11 +123,36 @@ export class RealEstate {
       // The insert wins only if the row now carries our deed nonce (a concurrent buyer's row = conflict, DO NOTHING).
       const deed = randomUUID();
       // One round trip (QA r8 speed): RETURNING yields a row only if our insert won. price = what was actually paid.
-      const r = await cl.query('INSERT INTO properties (id, owner_key, owner_name, price, bought_at, deed) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING RETURNING deed', [p.id, keyOf(name), name.trim(), price, this.clock(), deed]);
+      const r = await cl.query('INSERT INTO properties (id, owner_key, owner_name, price, bought_at, deed, city_price) VALUES ($1,$2,$3,$4,$5,$6,$4) ON CONFLICT (id) DO NOTHING RETURNING deed', [p.id, keyOf(name), name.trim(), price, this.clock(), deed]);
       if (r.rows[0]?.deed !== deed) throw new PropertyError('Someone already owns this property.');
     });
     this.onChange?.();
     return { id: p.id, price, list: p.price, owned, ownedValue: value, surchargePct: landSurchargePct(value), multiplier: landMultiplier(value), chips: bank.account(name).chips };
+  }
+
+  /** Hostile buyout (monuments only): pay the current owner BUYOUT_MUL x what they paid, in one transaction. */
+  async buyout(name: string, id: unknown, max?: unknown) {
+    const p = propertyById(id); if (!p || p.kind !== 'landmark') throw new PropertyError('Only monuments can be bought out.');
+    return this.lock(`owner:${keyOf(name)}`, () => this.lock(p.id, () => this.buyoutNow(name, p, typeof max === 'number' && Number.isFinite(max) ? max : undefined)));
+  }
+  private async buyoutNow(name: string, p: NonNullable<ReturnType<typeof propertyById>>, max?: number) {
+    const row = (await this.pool.query('SELECT owner_key, owner_name, price, bought_at FROM properties WHERE id = $1', [p.id])).rows[0] as { owner_key: string; owner_name: string; price: unknown; bought_at: unknown } | undefined;
+    if (!row) throw new PropertyError(`${p.label} belongs to the city: buy it normally.`);
+    if (row.owner_key === keyOf(name)) throw new PropertyError('You already own this monument.');
+    const paid = Number(row.price); const price = buyoutPrice(paid); const now = this.clock();
+    const until = Number(row.bought_at) + BUYOUT_PROTECT_MS;
+    if (now < until) throw new PropertyError(`${p.label} is protected from buyouts for ${Math.ceil((until - now) / 3_600_000)} more hour(s).`);
+    if (max !== undefined && price > max) throw new PropertyError(`The buyout price changed to ${price.toLocaleString('en-US')}. Check the deed and try again.`);
+    const bank = this.bank(); await bank.refresh(name);
+    if (bank.account(name).chips < price) throw new PropertyError(`Not enough chips: the buyout costs ${price.toLocaleString('en-US')}.`);
+    const prev = String(row.owner_name);
+    await this.atomic(name, -price, 'property_buyout', `Hostile buyout of ${p.label} (${p.id}) from ${prev}`, async (cl) => {
+      const r = await cl.query('UPDATE properties SET owner_key = $1, owner_name = $2, city_price = COALESCE(city_price, price), price = $3, bought_at = $4, arrears = 0 WHERE id = $5 AND owner_key = $6 AND price = $7 RETURNING id', [keyOf(name), name.trim(), price, now, p.id, row.owner_key, paid]);
+      if (!r.rowCount) throw new PropertyError('The owner changed: check the deed and try again.');
+    }, [{ name: prev, amount: price, game: 'property_buyout', memo: `${name.trim()} bought out your ${p.label} (${p.id})` }]);
+    this.onChange?.();
+    void sendPopup(prev, 'City of Chud Hub', `🏛 Hostile buyout! ${name.trim()} bought your ${p.label} for 🪙 ${price.toLocaleString('en-US')} (${BUYOUT_MUL}x what you paid). The chips are in your wallet; its royalties now go to ${name.trim()}.`).catch(() => {});
+    return { id: p.id, price, from: prev, chips: bank.account(name).chips };
   }
 
   async sell(name: string, id: unknown) {
@@ -133,9 +161,10 @@ export class RealEstate {
   }
   private async sellNow(name: string, p: NonNullable<ReturnType<typeof propertyById>>) {
     // 70% of what this owner actually paid (no buy-cheap/sell-at-list arbitrage either way)
-    const row = (await this.pool.query('SELECT price FROM properties WHERE id = $1 AND owner_key = $2', [p.id, keyOf(name)])).rows[0] as { price: string } | undefined;
+    const row = (await this.pool.query('SELECT price, city_price FROM properties WHERE id = $1 AND owner_key = $2', [p.id, keyOf(name)])).rows[0] as { price: string; city_price: string | null } | undefined;
     if (!row) throw new PropertyError('You do not own this property.');
-    const paid = Number(row.price); const back = sellBackOf(paid); const bank = this.bank();
+    // After a hostile buyout the city still only refunds 70% of what IT was paid (no buyout -> sell-back loop between alts).
+    const paid = Number(row.price); const back = sellBackOf(Math.min(paid, Number(row.city_price ?? paid))); const bank = this.bank();
     await this.atomic(name, back, 'property_sell', `Sold ${p.label} (${p.id}) to the city`, async (cl) => {
       const r = await cl.query('DELETE FROM properties WHERE id = $1 AND owner_key = $2 AND price = $3 RETURNING id', [p.id, keyOf(name), paid]);
       if (!r.rowCount) throw new PropertyError('You do not own this property.');
@@ -232,4 +261,5 @@ export function registerRealEstate(io: Server, socket: Socket): void {
   on('re_buy', async (b, e) => { const n = need(); if (typeof b.id === 'string' && /^(r|rf):/.test(b.id)) await requireResort(n, PropertyError); return e.buy(n, b.id, b.max); });
   on('re_quote', async (b, e) => e.quote(need(), b.id));
   on('re_sell', (b, e) => e.sell(need(), b.id));
+  on('re_buyout', (b, e) => e.buyout(need(), b.id, b.max));
 }

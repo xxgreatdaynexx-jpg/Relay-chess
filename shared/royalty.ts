@@ -23,3 +23,9 @@ export const HOUSE_GAMES = new Set(['blackjack', 'roulette', 'slots', 'video-pok
 /** Mine cave id -> landmark id. Coral (resort reef) has no landmark. */
 export const CAVE_LANDMARK: Record<string, string> = { mine: 'mine', frost: 'mine-frost', magma: 'mine-magma' };
 export const royaltyPct = (lm: string) => `${+(royaltyRate(lm) * 100).toFixed(2)}%`;
+
+/** Hostile buyouts: any player can force-buy a monument for BUYOUT_MUL x what its owner paid (that becomes the new price). */
+export const BUYOUT_MUL = 2;
+/** A monument can't be bought out within this long after its last purchase or buyout. */
+export const BUYOUT_PROTECT_MS = 24 * 3_600_000;
+export const buyoutPrice = (paid: number) => Math.round(paid * BUYOUT_MUL);
