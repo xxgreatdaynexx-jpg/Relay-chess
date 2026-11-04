@@ -812,7 +812,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const onUp = (e: PointerEvent) => {
     if (!down || fly) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y); const dragged = moved > (e.pointerType === "touch" ? 16 : 8) || !!down.drag; down = null; if (dragged) { clearTip(); return; }
     const id = pick(e.clientX, e.clientY); if (!id) { setHover(null); h.onHover(null, 0, 0); return; }
-    if (id === MILLIONAIRE_SIGN) { h.onHover(null, 0, 0); window.dispatchEvent(new CustomEvent('open-millionaire-trailer')); return; }
+    if (id === MILLIONAIRE_SIGN) { h.onHover(null, 0, 0); window.dispatchEvent(new CustomEvent('open-launch-popup')); return; }
     if (id.startsWith('trailer:')) { h.onHover(id, e.clientX, e.clientY); if (h.onTrailer?.(id.slice(8))) return; window.dispatchEvent(new CustomEvent('open-player', { detail: id.slice(8) })); return; } // trailers: your own opens your home (kitchen), others the owner's profile
     if (id.startsWith('b:') || id.startsWith('p:') || id.startsWith('f:') || id.startsWith('cf:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel
     flyTo(id);
