@@ -18,7 +18,7 @@ import type { WeaponId } from '../../../shared/mineCombat';
 function WeaponIcon({ id, fallback }: { id: WeaponId; fallback: string }) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => { let live = true; import('@/lib/mineWeaponModels').then((m) => { const u = m.weaponThumb(id, 64); if (live) setSrc(u); }).catch(() => {}); return () => { live = false; }; }, [id]);
-  return src ? <img src={src} alt="" width={32} height={32} data-testid={`mines-weapon-icon-${id}`} style={{ width: 32, height: 32, flex: '0 0 32px' }} />
+  return src ? <img src={src} alt="" width={36} height={36} data-testid={`mines-weapon-icon-${id}`} style={{ width: 36, height: 36, flex: '0 0 36px' }} />
     : <span style={{ fontSize: 20, width: 28, textAlign: 'center' }}>{fallback}</span>;
 }
 import { socket } from '@/lib/net';

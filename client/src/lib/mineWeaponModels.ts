@@ -11,9 +11,9 @@ export interface WeaponModelSpec {
 }
 export const WEAPON_MODELS: Record<WeaponId, WeaponModelSpec> = {
   rusty_sword:    { blade: '#9a5a2c', bladeShape: 'chipped', bladeLen: 0.7, bladeW: 0.05, guard: '#5e4a36', guardW: 0.18, grip: '#5a4a3a', gripLen: 0.2, metalness: 0.35, roughness: 0.85, pits: true },
-  copper_sword:   { blade: '#d9824a', bladeShape: 'straight', bladeLen: 0.72, bladeW: 0.05, guard: '#b86b36', guardW: 0.16, grip: '#4a2c18', gripLen: 0.2, metalness: 0.9, roughness: 0.22 },
+  copper_sword:   { blade: '#f09a5c', bladeShape: 'straight', bladeLen: 0.72, bladeW: 0.05, guard: '#b86b36', guardW: 0.16, grip: '#4a2c18', gripLen: 0.2, metalness: 0.9, roughness: 0.22 },
   iron_sword:     { blade: '#5d636b', bladeShape: 'broad', bladeLen: 0.78, bladeW: 0.065, guard: '#3a3d42', guardW: 0.3, grip: '#2a1c12', gripLen: 0.22, metalness: 0.75, roughness: 0.45 },
-  steel_claymore: { blade: '#eef2f7', bladeShape: 'great', bladeLen: 1.25, bladeW: 0.1, guard: '#aab2bd', guardW: 0.46, grip: '#2b2b34', gripLen: 0.42, metalness: 0.95, roughness: 0.12 },
+  steel_claymore: { blade: '#f4f8ff', bladeShape: 'great', bladeLen: 1.25, bladeW: 0.1, guard: '#aab2bd', guardW: 0.46, grip: '#2b2b34', gripLen: 0.42, metalness: 0.95, roughness: 0.12 },
   crystal_blade:  { blade: '#9a6bff', bladeShape: 'faceted', bladeLen: 0.82, bladeW: 0.075, guard: '#3b2a5c', guardW: 0.22, grip: '#22163a', gripLen: 0.2, metalness: 0.1, roughness: 0.1, emissive: '#7a3cff', translucent: true },
   diamond_saber:  { blade: '#dffaff', bladeShape: 'curved', bladeLen: 0.85, bladeW: 0.055, guard: '#e8c26a', guardW: 0.24, grip: '#1c2a44', gripLen: 0.2, metalness: 0.6, roughness: 0.05, emissive: '#5fe8ff', sparkle: true, ornate: true },
 };
@@ -23,7 +23,7 @@ export const weaponModelSpec = (id: string | null | undefined): WeaponModelSpec 
 function mat(color: string, s: WeaponModelSpec, low: boolean, part: 'blade' | 'hilt') {
   const glow = part === 'blade' && s.emissive;
   if (low) return new THREE.MeshLambertMaterial({ color, emissive: glow ? s.emissive : '#000000', emissiveIntensity: glow ? 0.8 : 0, transparent: part === 'blade' && !!s.translucent, opacity: part === 'blade' && s.translucent ? 0.8 : 1 });
-  return new THREE.MeshStandardMaterial({ color, metalness: part === 'blade' ? s.metalness : 0.5, roughness: part === 'blade' ? s.roughness : 0.7,
+  return new THREE.MeshStandardMaterial({ color, metalness: part === 'blade' ? Math.min(0.55, s.metalness) : 0.4, roughness: part === 'blade' ? s.roughness : 0.7,
     emissive: glow ? s.emissive! : '#000000', emissiveIntensity: glow ? 0.9 : 0, transparent: part === 'blade' && !!s.translucent, opacity: part === 'blade' && s.translucent ? 0.72 : 1, flatShading: s.bladeShape === 'faceted' });
 }
 
@@ -39,6 +39,14 @@ function bladeGeo(s: WeaponModelSpec): THREE.BufferGeometry {
   const g = new THREE.ExtrudeGeometry(sh, { depth: s.bladeShape === 'great' ? 0.022 : 0.014, bevelEnabled: false }); g.translate(0, 0, -0.008); return g;
 }
 
+let spark: THREE.Texture | null = null;
+function sparkTex(): THREE.Texture | null {
+  if (spark || typeof document === 'undefined') return spark;
+  const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d'); if (!x) return null;
+  const gr = x.createRadialGradient(16, 16, 0, 16, 16, 16); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(200,250,255,0.8)'); gr.addColorStop(1, 'rgba(120,230,255,0)');
+  x.fillStyle = gr; x.beginPath(); for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, r = i % 2 ? 4 : 16; x.lineTo(16 + Math.cos(a) * r, 16 + Math.sin(a) * r); } x.fill();
+  spark = new THREE.CanvasTexture(c); return spark;
+}
 /** Build the weapon model (grip at origin, blade along +y). */
 export function buildWeaponModel(id: string | null | undefined, low = false): THREE.Group {
   const s = weaponModelSpec(id), g = new THREE.Group(); g.name = `weapon:${id ?? 'rusty_sword'}`;
@@ -56,7 +64,7 @@ export function buildWeaponModel(id: string | null | undefined, low = false): TH
   if (s.pits) { const wrap = new THREE.Mesh(new THREE.TorusGeometry(0.025, 0.006, 4, 8), mat('#8a7a5a', s, low, 'hilt')); wrap.rotation.x = Math.PI / 2; wrap.position.y = gy - s.gripLen * 0.6; g.add(wrap); }
   const pom = new THREE.Mesh(new THREE.SphereGeometry(s.bladeShape === 'great' ? 0.04 : 0.03, 8, 6), mat(s.guard, s, low, 'hilt')); pom.position.y = gy - s.gripLen - 0.015; g.add(pom);
   if (s.sparkle) {
-    const sm = new THREE.SpriteMaterial({ color: '#ffffff', transparent: true, opacity: 0.9, depthWrite: false, fog: false });
+    const sm = new THREE.SpriteMaterial({ map: sparkTex(), color: '#ffffff', transparent: true, opacity: 0.9, depthWrite: false, fog: false });
     for (let i = 0; i < (low ? 2 : 5); i++) { const sp = new THREE.Sprite(sm); sp.scale.setScalar(0.035); sp.position.set(0.02 + i * 0.012, gy + 0.15 + i * 0.14, 0.012); sp.name = 'sparkle'; g.add(sp); }
   }
   if (s.bladeShape === 'great') g.scale.setScalar(0.85); // keeps the greatsword in frame while still far bigger
@@ -75,8 +83,8 @@ export function weaponThumb(id: WeaponId, size = 56): string | null {
   try {
     const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); r.setSize(size, size, false);
     const s = new THREE.Scene(); s.add(new THREE.HemisphereLight('#ffffff', '#555555', 1.8)); const d = new THREE.DirectionalLight('#ffffff', 2.4); d.position.set(2, 3, 3); s.add(d);
-    const g = buildWeaponModel(id); g.rotation.set(0, 0.3, -0.78); const box = new THREE.Box3().setFromObject(g), c = box.getCenter(new THREE.Vector3()); g.position.sub(c); s.add(g);
-    const sz = box.getSize(new THREE.Vector3()).length(); const cam = new THREE.PerspectiveCamera(30, 1, 0.01, 20); cam.position.set(0, 0, sz * 1.85); cam.lookAt(0, 0, 0);
+    const g = buildWeaponModel(id); g.rotation.set(0, 0.35, -0.785); const box = new THREE.Box3().setFromObject(g), c = box.getCenter(new THREE.Vector3()); g.position.sub(c); s.add(g);
+    const sz = box.getSize(new THREE.Vector3()).length(); const cam = new THREE.PerspectiveCamera(30, 1, 0.01, 20); cam.position.set(0, 0, sz * 1.2); cam.lookAt(0, 0, 0);
     r.render(s, cam); const url = r.domElement.toDataURL('image/png'); r.dispose(); r.forceContextLoss?.(); thumbs.set(k, url); return url;
   } catch { return null; }
 }
