@@ -19,6 +19,7 @@ export const LAUNCH: LaunchPopup = {
     { icon: '📱', title: 'Farm on mobile', text: 'Tap “🌾 My farm” on the map to open your farm. On phones it opens full screen.' },
     { icon: '📈', title: 'Net worth charts', text: 'Player profiles now chart net worth over time.' },
     { icon: '🏛', title: 'Monument royalties', text: 'Own a monument? Earn 1% of what other players make there: ore from the mines, factory goods, fish at the dock, Speedway prizes, market sales and the casino\'s house win. Paid on top, nobody loses a chip.' },
+    { icon: '⚔️', title: 'Hostile buyouts', text: 'Want someone\'s monument? Force-buy it for 2x what they paid; every chip goes to them and the royalties become yours. Each purchase is protected for 24 hours.' },
     { icon: '💰', title: 'Dividend totals', text: 'See every chip you\'ve earned from dividends on your Stocks portfolio and profile.' },
   ],
 };

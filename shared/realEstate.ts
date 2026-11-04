@@ -88,7 +88,7 @@ export const propertyById = (id: unknown): Property | undefined => { properties(
 export const buildingId = (type: string, b: OBB) => `b:${type}:${pos(b)}`;
 export const patchId = (kind: string, b: OBB) => `p:${kind}:${pos(b)}`;
 
-export interface OwnedProperty { id: string; owner: string; price: number; arrears: number; boughtAt: number }
+export interface OwnedProperty { id: string; owner: string; price: number; arrears: number; boughtAt: number; /** what the city was paid, when a buyout raised price above it (sell-back basis) */ basis?: number }
 
 /** Worker cap from property (pt1344u): each owned building or landmark adds Employment Office hire slots, by its base
  * (un-indexed) list price. Empty lots, parks, plazas, farmland and plantation plots add none (they are land, not housing).
