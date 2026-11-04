@@ -97,8 +97,11 @@ export function buildJet(m: FleetModel): THREE.Group {
   addTail(g, { r: R, len: L, y: R + 1, fin: trim, stab: body, tTail: m.id !== 'chudone', h: m.id === 'chudone' ? 2.4 : 2.9, c: m.id === 'chudone' ? 2.6 : 2.8 });
   // mu-visuals: rounded turbofan nacelles (intake lip, fan, spinner, nozzle) hung under the wings on pylons, in the plane's colour.
   const wingY = R + 0.6 - 0.12 * k, nr = R * (m.id === 'chudone' ? 0.36 : 0.42), nl = L * 0.2, pyl = 0.28 * k;
-  for (const sx of m.id === 'chudone' ? [0.2, 0.36] : [0.22]) for (const s of [-1, 1]) { const x = s * sx * L, le = L * 0.1 - sx * L * 0.4;
-    const n = nacelle({ len: nl, r: nr, pylon: pyl, body, lipColor: m.id === 'chudone' ? 0xd8b25a : undefined }); n.position.set(x, wingY - pyl - nr, le + nl * 0.05); g.add(n); }
+  // QA#1: bizjets (Citation, G700) carry two engines on the aft fuselage sides on horizontal pylons; only the BBJ (chudone) keeps underwing pods.
+  if (m.id === 'chudone') { for (const sx of [0.2, 0.36]) for (const s of [-1, 1]) { const x = s * sx * L, le = L * 0.1 - sx * L * 0.4;
+    const n = nacelle({ len: nl, r: nr, pylon: pyl, body, lipColor: 0xd8b25a }); n.position.set(x, wingY - pyl - nr, le + nl * 0.05); g.add(n); } }
+  else for (const s of [-1, 1]) { const ar = R * 0.46, apy = R * 0.28;
+    const n = nacelle({ len: L * 0.17, r: ar, pylon: apy, body }); n.rotation.z = s * Math.PI / 2; n.position.set(s * (R * 0.92 + apy + ar), R + 1 + R * 0.4, -L * 0.33); n.userData.part = 'aftEngine'; g.add(n); }
   for (const z of [L * 0.32, -L * 0.1]) for (const x of z > 0 ? [0] : [-R * 0.8, R * 0.8]) add(g, new THREE.CylinderGeometry(0.18 * k, 0.18 * k, 0.3 * k, 10), M(0x111111), x, 0.2, z).rotation.z = Math.PI / 2;
   // mu-visuals detail: cockpit windshield, cabin window row, winglets, landing-gear struts, nav lights.
   for (let i = 0; i < Math.round(6 * k + 2); i++) for (const sx of [-1, 1]) { const wn = add(g, new THREE.CircleGeometry(R * 0.16, 10), win, sx * R * 1.01, R + 1 + R * 0.3, L * 0.3 - i * (L * 0.55 / Math.round(6 * k + 2))); wn.rotation.y = sx * Math.PI / 2; }
