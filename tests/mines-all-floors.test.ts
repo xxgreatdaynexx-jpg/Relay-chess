@@ -50,6 +50,7 @@ describe('every mine gets the descent (Nov 4)', () => {
     expect(inExit(m.x, m.y)).toBe(true); t += 1000; expect(w.ride('c1', 1, t)).toBe(1); t += 1000; expect(w.ride('c1', 5, t)).toBe(5);
     const mob = w.mobsOn(5, 'magma').find((b) => !b.deadUntil)!; Object.assign(m, { x: mob.x - 1.2, y: mob.y, z: 0 });
     const r = w.attack('c1', mob.id, t + 3000); expect(r.killed).toBe(true);
+    w.moveToCave(m, 'frost'); expect(m.floor).toBe(1); expect(w.deepestOf(m)).toBe(1); // depth reached in Magma does not open Frost's elevator
     for (const s of r.loot ?? []) expect(CAVES.magma.bias[s.id as OreId]).toBeGreaterThan(0);
   });
   it('deepest floor is saved per cave (The Mine keeps the old key)', async () => {

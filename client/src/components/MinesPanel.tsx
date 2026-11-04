@@ -17,7 +17,7 @@ import type { WeaponId } from '../../../shared/mineCombat';
 /** Weapon Store icon: a small render of the same 3D model the player holds (lazy, so three.js stays out of the main chunk). */
 function WeaponIcon({ id, fallback }: { id: WeaponId; fallback: string }) {
   const [src, setSrc] = useState<string | null>(null);
-  useEffect(() => { let live = true; import('@/lib/mineWeaponModels').then((m) => { const u = m.weaponThumb(id, 64); if (live) setSrc(u); }).catch(() => {}); return () => { live = false; }; }, [id]);
+  useEffect(() => { let live = true; importWithReload(() => import('@/lib/mineWeaponModels')).then((m) => { const u = m.weaponThumb(id, 64); if (live) setSrc(u); }).catch(() => {}); return () => { live = false; }; }, [id]);
   return src ? <img src={src} alt="" width={36} height={36} data-testid={`mines-weapon-icon-${id}`} style={{ width: 36, height: 36, flex: '0 0 36px' }} />
     : <span style={{ fontSize: 20, width: 28, textAlign: 'center' }}>{fallback}</span>;
 }

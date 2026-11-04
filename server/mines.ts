@@ -364,7 +364,7 @@ export class MinesWorld {
   /** Put a miner at a spawn in another cave (carried ore comes along; the EXIT lift is in the same place in every cave). */
   moveToCave(m: Miner, caveId: CaveId): void {
     const spawns = caveOf(caveId).map.spawns; const sp = spawns[this.miners.size % spawns.length];
-    Object.assign(m, { cave: caveOf(caveId).id, floor: 1, x: sp[0], y: sp[1], z: 0, vz: 0, grounded: true, crouch: false, carry: 0 });
+    Object.assign(m, { cave: caveOf(caveId).id, floor: 1, deepest: 1, x: sp[0], y: sp[1], z: 0, vz: 0, grounded: true, crouch: false, carry: 0 });
   }
 
   leave(id: string, now = Date.now()) {
