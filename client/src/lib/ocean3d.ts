@@ -51,7 +51,7 @@ export function oceanMaterial(coastA: [number, number, number, number, number], 
         vec3 c = mix(mix(shallowN, deepN, depth), mix(shallowD, deepD, depth), uDay);
         vec3 sky = mix(vec3(0.04, 0.06, 0.12), vec3(0.62, 0.78, 0.92), uDay);
         c = mix(c, sky, fr * 0.55);
-        vec3 hh = normalize(uSun + v); float spec = pow(max(dot(n, hh), 0.0), 120.0) * (0.35 + 1.4 * uDay);
+        vec3 hh = normalize(uSun + v); float spec = min(pow(max(dot(n, hh), 0.0), 220.0) * (0.3 + 0.45 * uDay), 0.7);
         float surf = (1.0 - smoothstep(0.0, 9.0, vD)); float band = pow(max(0.0, sin(vD * 0.8 + uTime * 1.6)), 8.0) * surf;
         float edge = 1.0 - smoothstep(0.0, 1.6, vD);
         float foam = clamp(band * 0.75 + edge * (0.6 + 0.4 * sin(vW.x * 1.3 + uTime * 2.0)), 0.0, 1.0);
