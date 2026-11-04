@@ -12,6 +12,7 @@ import { socket } from '@/lib/net';
 import { flyHome } from '@/lib/travel';
 import { DeedPanel } from './WorldMap';
 import { FarmGame } from './FarmGame';
+import { BuildingInventory } from './BuildingInventory';
 import { CookingHost, openKitchen } from './CookingPanels';
 import { lazyWithReload } from '@/lib/lazyWithReload';
 const FleetStore = lazyWithReload(() => import('./FleetStore').then((m) => ({ default: m.FleetStore })));
@@ -35,7 +36,7 @@ export function ResortMap() {
   const [loading, setLoading] = useState(true); const [tip, setTip] = useState<{ id: string; x: number; y: number } | null>(null);
   const [owned, setOwned] = useState<Map<string, OwnedProperty>>(new Map()); const ownedRef = useRef(owned); ownedRef.current = owned;
   const meRef = useRef(me); meRef.current = me;
-  const [deed, setDeed] = useState<string | null>(null); const [farm, setFarm] = useState<string | null>(null);
+  const [deed, setDeed] = useState<string | null>(null); const [farm, setFarm] = useState<string | null>(null); const [coral, setCoral] = useState(false);
   const [casino, setCasino] = useState(false); const [floor, setFloor] = useState<string | null>(null); const [air, setAir] = useState(false); const [msg, setMsg] = useState<string | null>(null); const [list, setList] = useState(false); const [pier, setPier] = useState(false); const [marina, setMarina] = useState(false); const [deepSea, setDeepSea] = useState(false); const [hangar, setHangar] = useState(false);
 
   useEffect(() => {
@@ -87,9 +88,11 @@ export function ResortMap() {
       {tipProp && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#d8b25a' }} data-testid="world-tip"><b>{tipProp.label}</b><span>{tipOwner ? `Owned by ${tipOwner}` : `For sale · 🪙 ${chips(indexed(tipProp.price, IDX))}`}</span><em>Click for the deed</em></div>}
       <div className="world-corner">
         <button type="button" onClick={() => { setDeed(null); setFarm(null); setList(!list); }} data-testid="resort-deeds-btn">🏝 Resort real estate</button>
+        <button type="button" onClick={() => setCoral(!coral)} data-testid="resort-coral-btn">🐚 Coral Grotto storage</button>
         <button type="button" onClick={() => void home()} data-testid="resort-fly-home">✈️ Fly home (free)</button>
       </div>
       {deed && <DeedPanel id={deed} owned={owned} me={me} onKitchen={() => { openKitchen(baseProperty(deed)?.label ?? deed); setDeed(null); }} onClose={() => setDeed(null)} onFarm={() => { setFarm(deed); setDeed(null); }} />}
+      {coral && <div className="world-deed" data-testid="resort-coral"><button type="button" className="world-deed-x" onClick={() => setCoral(false)} aria-label="Close">✕</button><BuildingInventory building="coral" /></div>}
       {farm && <FarmGame id={farm} label={baseProperty(farm)?.label ?? 'Plantation'} onClose={() => setFarm(null)} />}
       {list && !deed && (
         <div className="world-deed world-deeds" data-testid="resort-deeds" data-drag-panel="resortDeeds" onPointerDown={dragResortDeeds.onPointerDown} style={dragResortDeeds.style()} ref={dragResortDeeds.ref}>{dragResortDeeds.handle}

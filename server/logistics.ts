@@ -32,18 +32,23 @@ CREATE INDEX IF NOT EXISTS truck_owned_player ON truck_owned (player_key);
 CREATE TABLE IF NOT EXISTS freight_shipments (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, name TEXT NOT NULL, to_key TEXT NOT NULL, to_name TEXT NOT NULL,
   mode TEXT NOT NULL, truck TEXT, from_hub TEXT NOT NULL, to_hub TEXT NOT NULL, item_type TEXT NOT NULL, item_id TEXT NOT NULL, qty INTEGER NOT NULL, fee BIGINT NOT NULL,
   created_at BIGINT NOT NULL, depart_at BIGINT NOT NULL, arrive_at BIGINT NOT NULL, status TEXT NOT NULL);
-CREATE INDEX IF NOT EXISTS freight_shipments_status ON freight_shipments (status);`;
+CREATE INDEX IF NOT EXISTS freight_shipments_status ON freight_shipments (status);
+ALTER TABLE freight_shipments ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'move';
+ALTER TABLE freight_shipments ADD COLUMN IF NOT EXISTS src TEXT;
+ALTER TABLE freight_shipments ADD COLUMN IF NOT EXISTS auto BOOLEAN NOT NULL DEFAULT false;`;
 
 export interface OwnedTruck { id: string; truckId: string; paid: number; boughtAt: number }
-export interface Shipment { id: string; owner: string; ownerName: string; toKey: string; toName: string; mode: Mode; truck: string | null; from: HubId; to: HubId; type: ItemType; itemId: string; qty: number; fee: number; createdAt: number; departAt: number; arriveAt: number; status: 'transit' | 'delivered' }
+export interface Shipment { id: string; owner: string; ownerName: string; toKey: string; toName: string; mode: Mode; truck: string | null; from: HubId; to: HubId; type: ItemType; itemId: string; qty: number; fee: number; createdAt: number; departAt: number; arriveAt: number; status: 'transit' | 'delivered';
+  /** 'sell' = a ship-to-sell load: it sells at the Chud City Warehouse on arrival instead of landing in storage. */ kind?: 'move' | 'sell'; /** building inventory it left (autosell) */ src?: string | null; auto?: boolean }
 
-const shipStmt = (s: Shipment): Stmt => ({
-  sql: `INSERT INTO freight_shipments (id, player_key, name, to_key, to_name, mode, truck, from_hub, to_hub, item_type, item_id, qty, fee, created_at, depart_at, arrive_at, status)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status`,
-  args: [s.id, s.owner, s.ownerName, s.toKey, s.toName, s.mode, s.truck, s.from, s.to, s.type, s.itemId, s.qty, s.fee, s.createdAt, s.departAt, s.arriveAt, s.status],
+export const shipStmt = (s: Shipment): Stmt => ({
+  sql: `INSERT INTO freight_shipments (id, player_key, name, to_key, to_name, mode, truck, from_hub, to_hub, item_type, item_id, qty, fee, created_at, depart_at, arrive_at, status, kind, src, auto)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status`,
+  args: [s.id, s.owner, s.ownerName, s.toKey, s.toName, s.mode, s.truck, s.from, s.to, s.type, s.itemId, s.qty, s.fee, s.createdAt, s.departAt, s.arriveAt, s.status, s.kind ?? 'move', s.src ?? null, !!s.auto],
 });
 const rowShip = (r: Record<string, unknown>): Shipment => ({ id: String(r.id), owner: String(r.player_key), ownerName: String(r.name), toKey: String(r.to_key), toName: String(r.to_name), mode: String(r.mode) as Mode, truck: r.truck == null ? null : String(r.truck),
-  from: String(r.from_hub) as HubId, to: String(r.to_hub) as HubId, type: String(r.item_type) as ItemType, itemId: String(r.item_id), qty: Number(r.qty), fee: Number(r.fee), createdAt: Number(r.created_at), departAt: Number(r.depart_at), arriveAt: Number(r.arrive_at), status: String(r.status) as Shipment['status'] });
+  from: String(r.from_hub) as HubId, to: String(r.to_hub) as HubId, type: String(r.item_type) as ItemType, itemId: String(r.item_id), qty: Number(r.qty), fee: Number(r.fee), createdAt: Number(r.created_at), departAt: Number(r.depart_at), arriveAt: Number(r.arrive_at), status: String(r.status) as Shipment['status'],
+  kind: r.kind === 'sell' ? 'sell' : 'move', src: r.src == null ? null : String(r.src), auto: r.auto === true });
 const stackable = isStackable;
 
 export class Logistics {
@@ -96,6 +101,35 @@ export class Logistics {
     return { paid: pay, chips: bank.account(name).chips };
   }
 
+  /** Ship-to-sell loads call this on arrival (server/warehouse.ts). Rejects = retried on the next tick. */
+  onSell: ((s: Shipment) => Promise<void>) | null = null;
+  private selling = new Set<string>();
+  idleTruck(name: string): { id: string; cap: number } | null {
+    const busy = this.busyTrucks(name); const t = this.owned(name).find((x) => !busy.has(x.id)); return t ? { id: t.id, cap: TRUCK_BY_ID.get(t.truckId)!.cap } : null;
+  }
+  /**
+   * Plan a ship-to-sell load from a building on another map (no side effects). The caller commits the goods leaving the
+   * building, the fee debit (ledger 'freight') and shipStmt(s) in ONE transaction, then calls admit(s).
+   */
+  planSell(name: string, b: { mode: unknown; from: HubId; type: string; id: string; qty: number; src: string; auto?: boolean }): Shipment {
+    const mode = b.mode; if (!isMode(mode)) throw new FreightError('Pick how to ship it.');
+    const qty = b.qty; if (!Number.isInteger(qty) || qty < 1 || qty > MAX_SHIP_QTY) throw new FreightError('Pick a quantity.');
+    let truck: string | null = null; let travel = MODES[mode].travelMs; let cap = MODES[mode].cap;
+    if (mode === 'truck') {
+      const t = this.idleTruck(name);
+      if (!this.owned(name).length) throw new FreightError('You do not own a truck. Buy one at the truck store, or hire one for a fee.');
+      if (!t) throw new FreightError('All your trucks are out on deliveries. Hire one, or wait.');
+      const m = TRUCK_BY_ID.get(this.owned(name).find((x) => x.id === t.id)!.truckId)!; truck = t.id; cap = m.cap; travel = truckTravelMs(m);
+    }
+    if (qty > cap) throw new FreightError(`Too much for one ${MODES[mode].label.toLowerCase()}: max ${cap.toLocaleString('en-US')} units.`);
+    const now = this.clock(); const departAt = nextDeparture(mode, now);
+    const s: Shipment = { id: randomUUID(), owner: keyOf(name), ownerName: name.trim(), toKey: keyOf(name), toName: name.trim(), mode, truck, from: b.from, to: 'city', type: b.type as ItemType, itemId: b.id, qty,
+      fee: this.quote(mode, qty), createdAt: now, departAt, arriveAt: mode === 'truck' || mode === 'hired' ? departAt + travel : arrivalOf(mode, departAt), status: 'transit', kind: 'sell', src: b.src, auto: !!b.auto };
+    return s;
+  }
+  /** Register a committed shipment (it now shows on the map and is delivered by tick()). */
+  admit(s: Shipment) { this.ships.set(s.id, s); }
+
   quote(mode: Mode, qty: number) { return feeBase(mode, qty) ? px(feeBase(mode, qty)) : 0; }
 
   /** Send goods. Goods leave storage, the fee (if any) is debited and the shipment row is written, all in one transaction. */
@@ -139,6 +173,12 @@ export class Logistics {
     const now = this.clock(); const out: Shipment[] = [];
     for (const s of [...this.ships.values()]) {
       if (s.arriveAt > now) continue;
+      if (s.kind === 'sell') { // sells at the Chud City Warehouse on arrival; stays in transit (retried) until the sale commits
+        if (this.selling.has(s.id) || !this.onSell) continue;
+        this.selling.add(s.id);
+        void this.onSell(s).then(() => { s.status = 'delivered'; this.ships.delete(s.id); }, (e) => console.error('[logistics] warehouse sale failed (will retry):', (e as Error).message)).finally(() => this.selling.delete(s.id));
+        out.push(s); continue;
+      }
       s.status = 'delivered'; this.ships.delete(s.id);
       getMines().adjustStack(s.toName, s.type, s.itemId, s.qty, [shipStmt(s)], (r) => this.rows(r), { onFail: () => { s.status = 'transit'; this.ships.set(s.id, s); } });
       out.push(s);
@@ -150,11 +190,12 @@ export class Logistics {
   live(): LiveVehicle[] {
     const now = this.clock(); const out = new Map<string, LiveVehicle>();
     for (const s of this.ships.values()) {
-      if (s.arriveAt <= now) continue;
+      if (s.arriveAt <= now || this.selling.has(s.id)) continue;
+      const tag = s.kind === 'sell' ? (s.auto ? ' · auto-sell' : ' · to market') : '';
       if (s.mode === 'truck' || s.mode === 'hired') {
         const m = s.truck ? TRUCK_BY_ID.get(this.owned(s.ownerName).find((t) => t.id === s.truck)?.truckId ?? '') : undefined;
         if (now < s.departAt) continue;
-        out.set(s.id, { id: s.id, mode: s.mode, owner: s.ownerName, truck: m?.id ?? 'hired', label: s.mode === 'truck' ? `${s.ownerName}'s ${m?.name ?? 'truck'}` : `Hired rig · ${s.ownerName}`, color: m?.color ?? 0x9ca3af, from: s.from, to: s.to, departAt: s.departAt, arriveAt: s.arriveAt, loads: 1, units: s.qty });
+        out.set(s.id, { id: s.id, mode: s.mode, owner: s.ownerName, truck: m?.id ?? 'hired', label: (s.mode === 'truck' ? `${s.ownerName}'s ${m?.name ?? 'truck'}` : `Hired rig · ${s.ownerName}`) + tag, color: m?.color ?? 0x9ca3af, from: s.from, to: s.to, departAt: s.departAt, arriveAt: s.arriveAt, loads: 1, units: s.qty });
         continue;
       }
       const dir = s.to === 'city' ? 'in' : 'out'; const id = `${s.mode}:${s.departAt}:${dir}`; const v = out.get(id);

@@ -1,4 +1,5 @@
 import { useDoing } from '@/lib/doing';
+import { BuildingInventory } from './BuildingInventory';
 import { useCallback, useEffect, useState } from 'react';
 import { socket } from '@/lib/net';
 import { indexed } from '../../../shared/priceIndex';
@@ -126,6 +127,7 @@ export function FarmGame({ id, label, onClose }: { id: string; label: string; on
               <button type="button" disabled={busy || !pass.length} onClick={() => run(tool, pass)} data-testid="farm-do-pass">{hasMachine ? `${machineFor.emoji} Whole field (${pass.length})` : `✋ Next ${pass.length} by hand`}<span>{cost(pass)}</span></button>
             </>; })()}
           {tool === 'harvest' && <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', { pantry: true, tiles: ready.slice(0, limit('harvest')) }, (r) => `🧺 ${r.harvested} crop${r.harvested === 1 ? '' : 's'} into your kitchen pantry.`)} title="Keep the crops for cooking instead of selling them" data-testid="farm-harvest-pantry">🧺 To pantry</button>}
+          <BuildingInventory building={id.startsWith('rf:') ? 'resort_farm' : 'farm'} compact />
           <h4>Machinery</h4>
           <div className="farm-upgrades farm-machines" data-testid="farm-machines">
             {MACHINES.map((m) => { const own = !!machines[m.id]; const cost = indexed(m.price, idx);

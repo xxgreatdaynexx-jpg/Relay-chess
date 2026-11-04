@@ -14,7 +14,7 @@ import { parseSellQty } from '../shared/sellQty.js';
 import { royaltyEarn } from './royalty.js';
 import { CAVE_LANDMARK } from '../shared/royalty.js';
 import { CAVES, caveOf, type CaveId, BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, SWING_MS, dayKey, isOre, payoutFor, houseCapBase, stackKey, priceOf, sellable, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId, inExit, weightOf } from '../shared/mines.js';
-import { isAtResort } from './travel.js';
+import { isAtFortMc, isAtResort } from './travel.js';
 import { levelOf, hasFloors, inLadder, canRideTo, respawnFloor, elevatorStops, MAX_FLOOR, clampFloor } from '../shared/mineFloors.js';
 import { MOBS, MOB_AGGRO, MOB_REACH, MOB_RESPAWN_MS, SAFE_X, mobCount, mobDmg, mobHp, mobKindFor, lootCount, hitThrough, maxHpOf, weaponDef, lostOnDeath, REGEN_AFTER_MS, REGEN_PER_S, type MobKind, type WeaponId, type ArmorId } from '../shared/mineCombat.js';
 import { oreFor, mineHash } from '../shared/mines.js';
@@ -374,7 +374,10 @@ export class MinesWorld {
     this.miners.delete(id); void now;
   }
   /** Walk into the lift: everything carried moves into banked storage. Position is the server-validated one. */
-  exit(id: string): { banked: Stack[]; worth: number } {
+  /** Millionaire Update: Coral Grotto (resort) hauls bank into the grotto's own building inventory, not the Chud City
+   * Warehouse (server/warehouse.ts sets this; it returns the SQL rows that land in the same transaction). */
+  coralBin: ((account: string, stacks: Stack[]) => Array<{ sql: string; args: unknown[] }>) | null = null;
+  exit(id: string): { banked: Stack[]; worth: number; bin?: string } {
     const m = this.miners.get(id); if (!m) throw new MineError('Join the mine first.');
     if (m.restoring) throw new MineError('Loading your backpack...');
     if (!inExit(m.x, m.y)) throw new MineError('Walk to the EXIT lift to bank your haul.');
@@ -382,7 +385,8 @@ export class MinesWorld {
     if (m.account) this.lastCave.set(playerKey(m.account), m.cave); // royalties: ore is credited to the cave it was hauled out of
     const p = this.pack(this.packKey(m));
     m.carried.clear();
-    for (const s of banked) { const k = stackKey(s); const cur = p.get(k); if (cur) cur.qty += s.qty; else p.set(k, { ...s }); }
+    const bin = m.cave === 'coral' && m.account && this.coralBin ? this.coralBin(m.account, banked) : null;
+    if (!bin) for (const s of banked) { const k = stackKey(s); const cur = p.get(k); if (cur) cur.qty += s.qty; else p.set(k, { ...s }); }
     if (m.account) { const k = playerKey(m.account); const t = this.carryTimers.get(k); if (t) { clearTimeout(t); this.carryTimers.delete(k); } }
     // Banked stacks and the cleared carry row commit in one transaction: no duplicate or lost haul across a restart.
     const worth = banked.reduce((t, s) => t + s.qty * priceOf(s), 0);
@@ -390,8 +394,9 @@ export class MinesWorld {
     this.persist(m, undefined, false, m.account ? [
       { sql: 'DELETE FROM mine_carried WHERE player_key = $1', args: [playerKey(m.account)] },
       { sql: 'INSERT INTO mine_banks (player_key, owner_name, ore_qty, worth, at) VALUES ($1,$2,$3,$4,$5)', args: [playerKey(m.account), m.account, ore, worth, Date.now()] },
+      ...(bin ?? []),
     ] : undefined);
-    return { banked, worth };
+    return bin ? { banked, worth, bin: 'coral' } : { banked, worth };
   }
 
   /** Reuses Arena's movement validator (speed cap with carry, collision). Returns true if the client should be corrected. */
@@ -744,7 +749,9 @@ export function registerMines(io: Server, socket: Socket): void {
   const safe = (fn: () => Record<string, unknown>) => (_p: unknown, ack?: Ack) => { try { ack?.({ ok: true, ...fn() }); } catch (e) { ack?.({ ok: false, offline: world.offline, error: (e as Error).message }); } };
   socket.on('mines_storage', safe(() => storeMsg()));
   socket.on('mines_sell', (p: unknown, ack?: Ack) => {
-    try { const r = world.sell(account(), Date.now(), body(p).ore, body(p).qty); ack?.({ ok: true, ...r, ...storeMsg() }); }
+    try {
+      // Millionaire Update: the Warehouse market is in Chud City. Away at the resort / Fort McChud you ship goods there instead.
+      if (isAtResort(account()) || isAtFortMc(account())) throw new MineError('The market is the Chud City Warehouse. Travel back to Chud City to sell here, or use Ship & sell from your building.'); const r = world.sell(account(), Date.now(), body(p).ore, body(p).qty); ack?.({ ok: true, ...r, ...storeMsg() }); }
     catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
   });
   const fact = () => ({ factory: world.factoryView(account(), Date.now()) });

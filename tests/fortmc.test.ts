@@ -122,9 +122,10 @@ describe('FortMc server', () => {
     await expect(f.act(n, { op: 'mine' })).rejects.toThrow(/Not enough chips/);
     const spent = 2_500 + tractInfo(1).lease + 2 * 45_000 + 15_000 + 60_000; expect(getBank().account(n).chips).toBe(500_000 - spent);
     clk.now += 6 * H; const v = await f.view(n); expect(v.fort.stock.crude ?? 0).toBeGreaterThan(10);
-    await expect(f.act(n, { op: 'sell', items: [['wellstream', 5]] })).rejects.toThrow(/process it first/);
-    const r = await f.act(n, { op: 'sell', items: [['crude', 10]] }) as { paid: number }; expect(r.paid).toBe(50);
-    const games = (await getBank().recent(n, 50)).map((x: { game: string }) => x.game); expect(games).toContain('fortmc'); expect(games).toContain('fortmc_sale');
+    // Millionaire Update: no market at the fort (selling is ship-to-Warehouse only; see tests/autosell.test.ts).
+    await expect(f.act(n, { op: 'sell', items: [['crude', 10]] })).rejects.toThrow(/no market/);
+    await expect(f.act(n, { op: 'ship_sell', id: 'wellstream', qty: 5, mode: 'hired' })).rejects.toThrow(/process it first/);
+    const games = (await getBank().recent(n, 50)).map((x: { game: string }) => x.game); expect(games).toContain('fortmc');
     clk.now += 20 * H; await f.act(n, { op: 'repair', what: 'all' }); expect((await getBank().recent(n, 1))[0]!.game).toBe('fortmc_upkeep');
   });
   it('Postgres: state + ledger in one transaction, reload, ship ore into a sink', async () => {

@@ -8,6 +8,7 @@ import { importWithReload } from '@/lib/chunkReload';
 import { request, socket } from '@/lib/net';
 import { flyHome } from '@/lib/travel';
 import { usePanelDrag } from '@/lib/panelDrag';
+import { BuildingInventory } from './BuildingInventory';
 
 const chips = (n: number) => Math.floor(n).toLocaleString('en-US');
 type View = { fort: FortState; index: number; today: { gross: number; paid: number }; cap: number; demand: number; value: number };
@@ -60,8 +61,6 @@ export function FortMcMap() {
   const spot = tip && FORT_SPOTS.find((x) => x.id === tip.id); const tipTract = tip?.id.startsWith('t:') ? tractInfo(Number(tip.id.slice(2))) : null;
   const ti = tractInfo(tract); const ts = s?.tracts[String(tract)]; const surveyed = !!s?.surveyed.includes(tract);
   const supply = s?.power.supply ?? 0, demand = view?.demand ?? 0;
-  const sellable = PRODUCT_ORDER.filter((p) => PRODUCTS[p].sellable && whole(s?.stock[p]) > 0);
-  const ores = (Object.keys(ORES) as OreId[]).filter((o) => whole(s?.ore[o]) > 0);
 
   return (
     <div className="world fortmc" data-testid="fortmc-map">
@@ -112,11 +111,10 @@ export function FortMcMap() {
             {UNIT_ORDER.map((k) => { const d = UNITS[k]; const n = s.units.filter((u) => u.k === k).length; return <button key={k} type="button" disabled={busy || n >= d.max} onClick={() => void act({ op: 'build', kind: k }, `${d.name} built.`)} data-testid={`fort-build-${k}`}>{d.icon} {d.name} ({n}/{d.max}) · 🪙 {chips(px(d.cost))}<span>{d.desc}{d.mw ? ` · ${d.mw} MW` : ''}</span></button>; })}
           </>}
           {panel === 'exchange' && <>
-            <h3>💹 Commodity Exchange</h3>
+            <h3>💹 Ship to market</h3>
+            <small>Fort McChud has no market: ship to the Chud City Warehouse and it sells there on arrival.</small>
             <small>Today sold 🪙 {chips(px(view!.today.gross))} gross, paid 🪙 {chips(view!.today.paid)}. Daily tiers: {SELL_TIERS.map((t, i) => `${pct(t.rate * 100)}${t.upTo === Infinity ? ' after' : ` to ${chips(px(t.upTo))}`}`).join(' · ')}.</small>
-            {sellable.map((p: Product) => <button key={p} type="button" disabled={busy} onClick={() => void act({ op: 'sell', items: [[p, whole(s.stock[p])]] })} data-testid={`fort-sell-${p}`}>{PRODUCTS[p].icon} Sell {chips(whole(s.stock[p]))} {PRODUCTS[p].name} · 🪙 {chips(px(whole(s.stock[p]) * PRODUCTS[p].price))}</button>)}
-            {ores.map((o) => <button key={o} type="button" disabled={busy} onClick={() => void act({ op: 'sell', items: [[o, whole(s.ore[o])]] })}>⛏ Sell {chips(whole(s.ore[o]))} {o} ore</button>)}
-            {!sellable.length && !ores.length && <small>Nothing to sell yet. Raw wellstream and raw gas must be processed first.</small>}
+            <BuildingInventory building="fortmc" />
             <button type="button" disabled={busy} onClick={() => void act({ op: 'ship' })} data-testid="fort-ship">🚚 Ship ore + petcoke (as coal) to my factory</button>
           </>}
           {panel === 'mine' && <>

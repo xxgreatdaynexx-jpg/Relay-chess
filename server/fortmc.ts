@@ -13,6 +13,8 @@ import { px, priceIndex } from './price-index.js';
 import { requireFortMc, TravelError } from './travel.js';
 import { mineOreSink, type OreSink } from './employment.js';
 import { playerKey } from './skins.js';
+import { getLogistics, shipStmt, FreightError, type Shipment } from './logistics.js';
+import { saleLogStmt } from './warehouse-log.js';
 import { ORES, isOre, type OreId } from '../shared/mines.js';
 import {
   FORTMC_TICKET_BASE, MINE_LEVELS, PIPES, PRODUCTS, PUMPJACK_COST, SURVEY_COST, UNITS, WELLS_PER_TRACT, WELL_COST,
@@ -86,6 +88,56 @@ export class FortMc {
   }
 
   /** Every paid / state-changing action. */
+  /**
+   * Ship & sell: load `qty` of one product/ore from the fort's tanks/bin onto a truck (own = free, hired/plane/ship = fee,
+   * ledger 'freight') bound for the Chud City Warehouse, where it sells on arrival (sellDelivered). Goods leave the fort,
+   * the fee is debited and the shipment row is written in ONE transaction. `auto` = dispatched by the auto-sell sweep.
+   */
+  private async shipSellIn(name: string, s: FortState, b: Record<string, unknown>, auto: boolean) {
+    const id = b.id; const qty = Math.floor(Number(b.qty));
+    let type: 'fort' | 'ore';
+    if (isProduct(id)) { if (!PRODUCTS[id].sellable) throw new FortError(`${PRODUCTS[id].name} can’t be sold; process it first.`); type = 'fort'; if (!(qty > 0) || qty > whole(s.stock[id])) throw new FortError('You don’t have that much.'); s.stock[id] = (s.stock[id] ?? 0) - qty; }
+    else if (isOre(id)) { type = 'ore'; if (!(qty > 0) || qty > whole(s.ore[id])) throw new FortError('You don’t have that much.'); s.ore[id] = (s.ore[id] ?? 0) - qty; }
+    else throw new FortError('Pick something to ship.');
+    const lg = getLogistics(); if (!lg) throw new FortError('Freight is offline right now.');
+    let sh: Shipment; try { sh = lg.planSell(name, { mode: b.mode, from: 'fortmc', type, id: String(id), qty, src: 'fortmc', auto }); } catch (e) { if (e instanceof FreightError) throw new FortError(e.message); throw e; }
+    const label = type === 'fort' ? PRODUCTS[id as Product].name : ORES[id as OreId].name;
+    await this.commit(name, s, -sh.fee, 'freight', `${auto ? 'Auto-sell' : 'Ship & sell'}: ${qty} ${label} Fort McChud → Chud City Warehouse`, async (cl) => { const st = shipStmt(sh); await cl.query(st.sql, st.args); });
+    lg.admit(sh); return { shipment: sh.id, mode: sh.mode, fee: sh.fee, arriveAt: sh.arriveAt };
+  }
+  /** Auto-sell sweep entry (no travel gate: the trucks go without you). */
+  async autoShip(name: string, id: string, qty: number, mode: string) {
+    return this.lock(playerKey(name), async () => { const s = clone(await this.load(name)); return this.shipSellIn(name, s, { id, qty, mode }, true); });
+  }
+  /** Fort inventory snapshot (whole units) for the warehouse / auto-sell. */
+  async inventory(name: string) { const s = await this.load(name); return { stock: s.stock, ore: s.ore, units: s.units }; }
+  /**
+   * A ship-&-sell load of fort products reached the Chud City Warehouse: pay it at the Commodity Exchange tiers
+   * (fortmc_daily), ledger 'fortmc_sale' keyed by the shipment id (idempotent), log it and mark the shipment delivered.
+   */
+  async sellDelivered(sh: Shipment): Promise<number> {
+    if (!isProduct(sh.itemId)) throw new FortError('Not a fort product.');
+    const name = sh.ownerName; const k = playerKey(name); const gross = Math.floor(sh.qty * PRODUCTS[sh.itemId].price);
+    return this.lock(k, async () => {
+      const t = await this.today(name); const pay = px(sellPayout(gross, t.gross)); const day = t.day;
+      const bank = getBank(); let w;
+      try { w = bank.transferAtomic([{ name, amount: pay, key: `whsale:${sh.id}`, game: 'fortmc_sale', memo: `Chud City Warehouse: sold ${sh.qty} ${PRODUCTS[sh.itemId as Product].name} from Fort McChud`.slice(0, 200) }]); }
+      catch (e) { if ((e as Error).message === 'Already applied.') return 0; throw e; }
+      const rows = [
+        { sql: 'INSERT INTO fortmc_daily (player_key, day, gross, paid) VALUES ($1,$2,$3,$4) ON CONFLICT (player_key, day) DO UPDATE SET gross = fortmc_daily.gross + EXCLUDED.gross, paid = fortmc_daily.paid + EXCLUDED.paid', args: [k, day, gross, pay] },
+        saleLogStmt(sh, 'sold', pay, null), shipStmt({ ...sh, status: 'delivered' }), ...w.stmts,
+      ];
+      const run = async () => {
+        if (!this.pool) return; await w.after; const cl = await this.pool.connect();
+        try { await cl.query('BEGIN'); for (const r of rows) await cl.query(r.sql, r.args); await cl.query('COMMIT'); }
+        catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); }
+      };
+      const p = run(); w.bind(p);
+      try { await p; } catch (e) { w.revert(); throw e; }
+      t.gross += gross; t.paid += pay; return pay;
+    });
+  }
+
   async act(name: string, b: Record<string, unknown>) {
     await this.gate(name);
     return this.lock(playerKey(name), async () => {
@@ -113,20 +165,9 @@ export class FortMc {
           s.mine = { level: lv, cond: 100, on: true }; await this.commit(name, s, -px(MINE_LEVELS[lv - 1]!.cost), 'fortmc', lv === 1 ? 'Built the Deep Ore Mine' : `Deep Ore Mine level ${lv}`); break;
         }
         case 'mine_toggle': { if (!s.mine) throw new FortError('Build the mine first.'); s.mine.on = !s.mine.on; await this.commit(name, s, 0, 'fortmc', 'toggle'); break; }
-        case 'sell': {
-          const items = Array.isArray(b.items) ? b.items as Array<[unknown, unknown]> : []; let gross = 0; const sold: Array<[string, number]> = [];
-          for (const [id, q] of items) {
-            const want = Math.floor(Number(q)); if (!(want > 0)) continue;
-            if (isProduct(id)) { if (!PRODUCTS[id].sellable) throw new FortError(`${PRODUCTS[id].name} can’t be sold; process it first.`); const n = Math.min(want, whole(s.stock[id])); if (n <= 0) continue; s.stock[id] = (s.stock[id] ?? 0) - n; gross += n * PRODUCTS[id].price; sold.push([id, n]); }
-            else if (isOre(id)) { const n = Math.min(want, whole(s.ore[id])); if (n <= 0) continue; s.ore[id] = (s.ore[id] ?? 0) - n; gross += n * ORES[id].price; sold.push([id, n]); }
-          }
-          gross = Math.floor(gross); if (gross <= 0) throw new FortError('Nothing to sell.');
-          const t = await this.today(name); const pay = px(sellPayout(gross, t.gross)); const day = t.day; const k = playerKey(name);
-          await this.commit(name, s, pay, 'fortmc_sale', `Commodity Exchange: ${sold.map(([i, n]) => `${n} ${i}`).join(', ')}`.slice(0, 200), async (cl) => {
-            await cl.query('INSERT INTO fortmc_daily (player_key, day, gross, paid) VALUES ($1,$2,$3,$4) ON CONFLICT (player_key, day) DO UPDATE SET gross = fortmc_daily.gross + EXCLUDED.gross, paid = fortmc_daily.paid + EXCLUDED.paid', [k, day, gross, pay]);
-          });
-          t.gross += gross; t.paid += pay; return { sold, gross, paid: pay };
-        }
+        // Millionaire Update: no selling at the fort. Everything sells at the Chud City Warehouse: ship it there.
+        case 'sell': throw new FortError('Fort McChud has no market. Use Ship & sell: your goods go by truck to the Chud City Warehouse and sell when they arrive.');
+        case 'ship_sell': return this.shipSellIn(name, s, b, false);
         case 'ship': { // ore + petcoke (as coal) -> your factory / mine storage
           const sink = this.oreSink(name); const items: Array<[OreId, number]> = [];
           const room = (id: OreId) => sink.room?.(id) ?? Infinity;
