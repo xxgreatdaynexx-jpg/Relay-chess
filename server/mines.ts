@@ -16,7 +16,7 @@ import { CAVE_LANDMARK } from '../shared/royalty.js';
 import { CAVES, caveOf, type CaveId, BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, SWING_MS, dayKey, isOre, payoutFor, houseCapBase, stackKey, priceOf, sellable, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId, inExit, weightOf } from '../shared/mines.js';
 import { isAtFortMc, isAtResort } from './travel.js';
 import { levelOf, hasFloors, floorKey, inLadder, canRideTo, respawnFloor, elevatorStops, MAX_FLOOR, clampFloor } from '../shared/mineFloors.js';
-import { MOBS, MOB_AGGRO, MOB_REACH, MOB_RESPAWN_MS, SAFE_X, mobCount, mobDmg, mobHp, mobKindFor, lootCount, hitThrough, maxHpOf, weaponDef, lostOnDeath, REGEN_AFTER_MS, REGEN_PER_S, type MobKind, type WeaponId, type ArmorId } from '../shared/mineCombat.js';
+import { MOBS, MOB_AGGRO, MOB_REACH, MOB_RESPAWN_MS, SAFE_X, mobCount, mobDmg, mobHp, mobKindAt, lootCount, hitThrough, maxHpOf, weaponDef, lostOnDeath, REGEN_AFTER_MS, REGEN_PER_S, type MobKind, type WeaponId, type ArmorId } from '../shared/mineCombat.js';
 import { oreFor, mineHash } from '../shared/mines.js';
 import { sinkLostToday } from './sink-room.js';
 import { effectiveAlready } from '../shared/sinkRoom.js';
@@ -143,7 +143,7 @@ export class MinesWorld {
     for (let y = 1; y < map.d / 2 - 1; y++) for (let x = 10; x < map.w / 2 - 2; x++) if (canStand(x * 2 + 1, y * 2 + 1, 0, map)) spots.push([x * 2 + 1, y * 2 + 1]);
     for (let i = 0; i < n && spots.length; i++) {
       const [x, y] = spots[Math.floor(mineHash(floor * 4243 + i * 31 + salt) * spots.length)];
-      const kind = mobKindFor(floor, mineHash(floor * 977 + i * 13)); const max = mobHp(kind, floor);
+      const kind = mobKindAt(floor, i, mineHash(floor * 977 + i * 13)); const max = mobHp(kind, floor);
       list.push({ id: i, kind, x, y, hx: x, hy: y, hp: max, max, dmg: mobDmg(kind, floor), deadUntil: 0, lastAttack: 0, a: 0 });
     }
     this.floorMobs.set(fk, list);

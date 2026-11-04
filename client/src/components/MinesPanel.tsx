@@ -26,7 +26,7 @@ import { mouseLook, readLook, LOCK_KEYS, arenaKey, crouchHeld, shouldBlockShortc
 import { playPickaxe, playPickup, unlockSounds } from '@/lib/sounds';
 import type { Mines3D, MinerView, MobView } from '@/lib/mines3d';
 import { levelOf, hasFloors, inLadder, MAX_FLOOR } from '../../../shared/mineFloors';
-import { MOBS, WEAPONS, ARMORS, weaponDef, canBuyGear, type GearView } from '../../../shared/mineCombat';
+import { MOBS, mobSkin, WEAPONS, ARMORS, weaponDef, canBuyGear, type GearView } from '../../../shared/mineCombat';
 import { MINE_CAVE_EVENT, CAVES, CAVE_DEFS, CAVE_MAIN_ORES, isCave, type CaveId, type MineNode, BACKPACK_CAP, NODE_R, ORES, ORE_ORDER, REACH, SWING_MS, isOre, inExit, priceOf, type Stack } from '../../../shared/mines';
 import { MINE_TOOLS, canBuyTool, combinedSwingMul, type MineToolId, type MineToolsView } from '../../../shared/mineTools';
 import { canStand, clampPitch, eyeHeightOf, moveHorizontal, speedOf, stepVertical, tryJump, type Body } from '../../../shared/fps';
@@ -357,7 +357,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
             onPointerDown={(e) => { if (e.pointerType !== 'touch') return; swing(); holding.current = 'touch'; }}
             onPointerUp={(e) => { if (e.pointerType === 'touch') holding.current = null; }} onPointerCancel={() => { holding.current = null; }} onContextMenu={(e) => e.preventDefault()} />
           <div className="mines-cross" aria-hidden="true" style={aimedMob ? { color: '#ff5050' } : undefined}>{aimedMob ? '⚔' : aimed ? '⊕' : '+'}</div>
-          {aimedMob && <div className="mines-aim" style={{ color: '#ff8080', top: '56%' }} data-testid="mines-mob-aim">{MOBS[aimedMob.k].name} · {aimedMob.hp}/{aimedMob.max}</div>}
+          {aimedMob && <div className="mines-aim" style={{ color: '#ff8080', top: '56%' }} data-testid="mines-mob-aim">{mobSkin(cave, aimedMob.k).name} · {aimedMob.hp}/{aimedMob.max}</div>}
           {floors && <div className="mines-hud" data-testid="mines-hud" style={{ position: 'absolute', left: 10, top: 10, background: 'rgba(10,8,6,0.72)', color: '#fff4dc', padding: '6px 10px', borderRadius: 10, fontSize: 13, minWidth: 170, pointerEvents: 'none', boxShadow: Date.now() - hurtT < 400 ? '0 0 0 3px #ff3030' : undefined }}>
             <div><b>🪜 Floor {floor}</b> · {lvl.current.band}</div>
             <div style={{ marginTop: 4 }}>❤️ {php.hp}/{php.max}<div style={{ height: 7, background: '#3a1010', borderRadius: 4, marginTop: 2 }}><i style={{ display: 'block', height: '100%', borderRadius: 4, width: `${Math.max(0, Math.min(100, (php.hp / php.max) * 100))}%`, background: php.hp / php.max > 0.5 ? '#50d050' : php.hp / php.max > 0.25 ? '#ffc030' : '#ff4040' }} /></div></div>

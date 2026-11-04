@@ -4,8 +4,9 @@
  * and applies damage both ways. Pure numbers here so the client and tests share them.
  */
 import { MAX_FLOOR } from './mineFloors.js';
+import type { CaveId } from './mines.js';
 
-export type MobKind = 'slime' | 'bat' | 'crab' | 'golem' | 'wraith';
+export type MobKind = 'slime' | 'bat' | 'crab' | 'golem' | 'wraith' | 'boss';
 export interface MobDef { kind: MobKind; name: string; minFloor: number; hp: number; dmg: number; speed: number; attackMs: number; radius: number; z: number; color: string; xp: number }
 export const MOBS: Record<MobKind, MobDef> = {
   slime:  { kind: 'slime',  name: 'Cave Slime',   minFloor: 3,  hp: 30,  dmg: 6,  speed: 1.6, attackMs: 1200, radius: 0.45, z: 0.4, color: '#5ad04a', xp: 4 },
@@ -13,7 +14,48 @@ export const MOBS: Record<MobKind, MobDef> = {
   crab:   { kind: 'crab',   name: 'Rock Crab',    minFloor: 14, hp: 75,  dmg: 12, speed: 1.8, attackMs: 1300, radius: 0.5,  z: 0.4, color: '#8a7a6a', xp: 10 },
   golem:  { kind: 'golem',  name: 'Magma Golem',  minFloor: 22, hp: 160, dmg: 22, speed: 1.4, attackMs: 1600, radius: 0.7,  z: 1.0, color: '#d0502a', xp: 18 },
   wraith: { kind: 'wraith', name: 'Abyss Wraith', minFloor: 31, hp: 120, dmg: 28, speed: 2.8, attackMs: 1100, radius: 0.45, z: 1.3, color: '#a070ff', xp: 25 },
+  // Nov 4: one boss per floor on the deepest floors (BOSS_FLOOR+), same stats in every mine.
+  boss:   { kind: 'boss',   name: 'Deep Boss',    minFloor: 37, hp: 520, dmg: 34, speed: 1.5, attackMs: 1500, radius: 0.9,  z: 1.4, color: '#ff3a2a', xp: 80 },
 };
+export const BOSS_FLOOR = 37;
+/** Kind for spawn slot i: slot 0 on the deepest floors is the mine's boss, otherwise the tiered pick. */
+export const mobKindAt = (floor: number, slot: number, r: number): MobKind => (floor >= BOSS_FLOOR && slot === 0 ? 'boss' : mobKindFor(floor, r));
+
+/**
+ * Themed creatures (Nov 4): every mine dresses the same stat tiers (MOBS: HP/damage/speed per depth are identical in
+ * every mine) in its own creatures. `model` picks the procedural rig in client/src/lib/mines3d.ts.
+ */
+export type MobModel = 'blob' | 'bat' | 'golem' | 'wraith' | 'wolf' | 'elemental' | 'yeti' | 'slug' | 'imp' | 'crab' | 'eel' | 'jelly' | 'kraken' | 'drillbot' | 'gaswraith';
+export interface MobSkin { name: string; model: MobModel; color: string; accent: string; scale: number }
+const K = (name: string, model: MobModel, color: string, accent: string, scale = 1): MobSkin => ({ name, model, color, accent, scale });
+export const MOB_SKINS: Record<CaveId, Record<MobKind, MobSkin>> = {
+  mine: {
+    slime: K('Cave Slime', 'blob', '#5ad04a', '#1e6a14'), bat: K('Shaft Bat', 'bat', '#4a3a5a', '#2a2030'),
+    crab: K('Pebble Golem', 'golem', '#8a8580', '#c9b48a', 0.7), golem: K('Rock Golem', 'golem', '#7a726a', '#ffd070'),
+    wraith: K('Vampire Bat', 'bat', '#6a1a2a', '#2a0810', 1.6), boss: K('Granite Colossus', 'golem', '#9a948c', '#ff7040', 1.9),
+  },
+  frost: {
+    slime: K('Frost Pup', 'wolf', '#cfe4f0', '#7aa0b8', 0.7), bat: K('Ice Wisp', 'elemental', '#bfeaff', '#4ab8ff', 0.7),
+    crab: K('Frost Wolf', 'wolf', '#e8f2f8', '#5a7a90'), golem: K('Yeti', 'yeti', '#f4f8fb', '#4a6a80'),
+    wraith: K('Ice Elemental', 'elemental', '#8fd8ff', '#ffffff'), boss: K('Yeti King', 'yeti', '#ffffff', '#3ac0ff', 1.7),
+  },
+  magma: {
+    slime: K('Lava Slug', 'slug', '#ff6a1a', '#3a1608'), bat: K('Fire Imp', 'imp', '#d8301a', '#ffd040'),
+    crab: K('Cinder Slug', 'slug', '#2a1a14', '#ff8a20', 1.3), golem: K('Magma Golem', 'golem', '#d0502a', '#ffb040'),
+    wraith: K('Imp Warlock', 'imp', '#7a1010', '#ff40a0', 1.35), boss: K('Magma Titan', 'golem', '#4a1a10', '#ffcc30', 1.9),
+  },
+  coral: {
+    slime: K('Moon Jellyfish', 'jelly', '#ff8ad8', '#ffffff'), bat: K('Reef Eel', 'eel', '#3a8a5a', '#e8e060'),
+    crab: K('Coral Crab', 'crab', '#e8603a', '#7a2a14'), golem: K('Giant Spider Crab', 'crab', '#b0402a', '#f0d0a0', 1.5),
+    wraith: K('Abyssal Eel', 'eel', '#202a50', '#40f0ff', 1.4), boss: K('The Kraken', 'kraken', '#7a2a6a', '#ffcc40', 1.6),
+  },
+  fortmc: {
+    slime: K('Oil Sludge Blob', 'blob', '#14100c', '#6a4a20'), bat: K('Survey Drone', 'drillbot', '#f2b630', '#2a2a2e', 0.6),
+    crab: K('Rogue Drill Bot', 'drillbot', '#e8a020', '#3a3a40'), golem: K('Sludge Hulk', 'blob', '#2a2016', '#c0a040', 1.7),
+    wraith: K('Gas Wraith', 'gaswraith', '#9ad050', '#e8ff80'), boss: K('The Mega Driller', 'drillbot', '#c03020', '#ffd040', 1.9),
+  },
+};
+export const mobSkin = (cave: CaveId, kind: MobKind): MobSkin => MOB_SKINS[cave]?.[kind] ?? MOB_SKINS.mine[kind];
 export const MOB_ORDER: MobKind[] = ['slime', 'bat', 'crab', 'golem', 'wraith'];
 export const MOB_FLOOR_MIN = 3;
 export const MOB_RESPAWN_MS = 90_000;
