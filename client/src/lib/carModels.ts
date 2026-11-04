@@ -31,11 +31,17 @@ export function buildCar(c: CarModel, color: number, lod: 'near' | 'far' = 'near
   const body = (len: number, hgt: number, x = 0) => add(paint, len, hgt, W, x, clear + hgt / 2);
   const cabin = (len: number, hgt: number, x: number, w = W * 0.86) => { add(glass, len, hgt, w, x, clear + H * 0.5 + hgt / 2); add(paint, len * 0.92, 0.06, w + 0.02, x, clear + H * 0.5 + hgt); };
   switch (st) {
-    case 'cart': {
-      const wire = m(color, { metalness: 0.9, roughness: 0.3 });
-      add(wire, L * 0.8, 0.06, W, 0, clear + 0.05); add(wire, 0.05, H * 0.6, W, L * 0.4, clear + H * 0.35); add(wire, 0.05, H * 0.6, W, -L * 0.4, clear + H * 0.35);
-      add(wire, L * 0.8, H * 0.6, 0.05, 0, clear + H * 0.35, W / 2); add(wire, L * 0.8, H * 0.6, 0.05, 0, clear + H * 0.35, -W / 2);
-      add(m(0xff3b3b, {}, 'r'), 0.05, 0.08, W, -L * 0.55, clear + H * 0.8); break; }
+    case 'cart': { // QA#5: reads as a real shopping cart: wire basket (rim + bars), lower rack, chassis rails, handle on struts.
+      const wire = m(color, { metalness: 0.9, roughness: 0.3 }), red = m(0xff3b3b, {}, 'r'), t = 0.025;
+      const bL = L * 0.78, b0 = clear + 0.34, bH = H * 0.5, bx = L * 0.05, yT = b0 + bH, yM = b0 + bH / 2;
+      add(wire, bL, t, W, bx, b0); // basket floor
+      for (const z of [-W / 2, W / 2]) { add(wire, bL, t * 1.6, t * 1.6, bx, yT, z); add(wire, bL, t, t, bx, yM, z); for (let k = 0; k <= 10; k++) add(wire, t, bH, t, bx - bL / 2 + (bL * k) / 10, yM, z); }
+      for (const x of [bx - bL / 2, bx + bL / 2]) { add(wire, t * 1.6, t * 1.6, W, x, yT); add(wire, t, t, W, x, yM); for (let k = 1; k < 6; k++) add(wire, t, bH, t, x, yM, -W / 2 + (W * k) / 6); }
+      for (const z of [-W * 0.38, W * 0.38]) { add(wire, L * 0.86, 0.035, 0.035, 0, clear + 0.03, z); add(wire, 0.035, b0 - clear, 0.035, bx + bL / 2 - 0.02, (clear + b0) / 2, z); add(wire, 0.035, b0 - clear, 0.035, bx - bL / 2 + 0.02, (clear + b0) / 2, z); }
+      add(wire, L * 0.7, t, W * 0.76, 0, clear + 0.1); // lower rack
+      const hx = bx - bL / 2 - 0.14, hy = yT + 0.12; for (const z of [-W / 2, W / 2]) add(wire, 0.17, 0.03, 0.03, (hx + bx - bL / 2) / 2, (hy + yT) / 2, z).rotation.z = -0.6; // handle struts
+      add(red, 0.06, 0.06, W * 1.04, hx, hy).userData.part = 'cartHandle'; add(red, 0.12, bH * 0.6, W * 0.7, bx - bL / 2 + 0.07, yT - bH * 0.3); // grip + child-seat flap
+      break; }
     case 'van': { body(L, H * 0.85); add(glass, L * 0.2, H * 0.3, W * 0.9, L * 0.38, clear + H * 0.6);
       const bun = m(0xd9a35a, {}, 'bun'), dog = m(0xb5532a, {}, 'dog');
       add(bun, L * 0.6, 0.18, W * 0.5, -L * 0.05, clear + H * 0.95); add(dog, L * 0.7, 0.16, W * 0.22, -L * 0.05, clear + H * 1.05); add(m(0xffe066, { emissive: 0xffd000, emissiveIntensity: 0.4 }, 'mus'), L * 0.6, 0.03, 0.05, -L * 0.05, clear + H * 1.14); break; }
