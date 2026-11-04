@@ -78,7 +78,7 @@ export function KeyStatsGrid({ s }: { s: KeyStats }) {
     <div className="ivx-stats" data-testid="ivx-keystats">
       <S k="Market cap" info="cap" v={`🪙 ${compact(s.cap)}`} title="Price × shares outstanding" testid="ivx-stat-cap" />
       <S k="P/E ratio" info="pe" v={s.pe == null ? '—' : s.pe.toFixed(1)} title={s.pe == null ? 'Negative earnings: no P/E' : 'Price ÷ earnings per share'} testid="ivx-stat-pe" />
-      <S k="EPS" info="eps" v={`${s.eps < 0 ? '−' : ''}🪙 ${Math.abs(s.eps).toFixed(2)}`} cls={s.eps < 0 ? 'text-rose-400' : ''} title="Earnings per share (fixed per company)" testid="ivx-stat-eps" />
+      <S k="EPS" info="eps" v={`🪙 ${s.eps < 0 ? '−' : ''}${Math.abs(s.eps).toFixed(2)}`} cls={s.eps < 0 ? 'text-rose-400' : ''} title="Earnings per share (fixed per company)" testid="ivx-stat-eps" />
       <S k="Div yield" info="yield" v={s.divYieldDay ? `${(s.divYieldDay * 100).toFixed(2)}%/day` : '—'} title={s.divYieldDay ? `≈ 🪙 ${s.divPerShare.toFixed(2)} per share, paid daily` : 'Growth company: no dividend'} testid="ivx-stat-div" />
       <S k="Open" info="open" v={s.open == null ? '—' : s.open.toFixed(2)} title="Price 24 hours ago" />
       <S k="Day low / high" info="dayRange" v={`${s.dayLo.toFixed(2)} – ${s.dayHi.toFixed(2)}`} />
