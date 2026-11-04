@@ -12,6 +12,15 @@ import { isFrontWindow, useWindowDrag } from '@/lib/windowDrag';
 /** Frame budget while the Mines window is behind another one. */
 const BG_FRAME_MS = 250;
 import { useEffect, useRef, useState } from 'react';
+import type { WeaponId } from '../../../shared/mineCombat';
+
+/** Weapon Store icon: a small render of the same 3D model the player holds (lazy, so three.js stays out of the main chunk). */
+function WeaponIcon({ id, fallback }: { id: WeaponId; fallback: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => { let live = true; import('@/lib/mineWeaponModels').then((m) => { const u = m.weaponThumb(id, 64); if (live) setSrc(u); }).catch(() => {}); return () => { live = false; }; }, [id]);
+  return src ? <img src={src} alt="" width={32} height={32} data-testid={`mines-weapon-icon-${id}`} style={{ width: 32, height: 32, flex: '0 0 32px' }} />
+    : <span style={{ fontSize: 20, width: 28, textAlign: 'center' }}>{fallback}</span>;
+}
 import { socket } from '@/lib/net';
 import { mouseLook, readLook, LOCK_KEYS, arenaKey, crouchHeld, shouldBlockShortcut } from '@/lib/arenaInput';
 import { playPickaxe, playPickup, unlockSounds } from '@/lib/sounds';
@@ -245,7 +254,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
       if (dead || !glRef.current) return;
       try {
         const t = new Mines3D(glRef.current, cave, floor); three.current = t;
-        t.resize(glRef.current.clientWidth, glRef.current.clientHeight); t.setNodes(hp.current); t.setMobs(mobs.current);
+        t.resize(glRef.current.clientWidth, glRef.current.clientHeight); t.setNodes(hp.current); t.setMobs(mobs.current); t.setWeapon(gearRef.current?.weapon);
         socket.timeout(3000).emit('inv_loadout', {}, (err: Error | null, r?: { ok: boolean; loadout?: Record<string, string | null> }) => { if (!err && r?.ok) three.current?.setPickSkin(r.loadout?.pickaxe ?? null); });
         toolEmit('mine_tools_view', {});
       } catch (e) { setGlError('3D is unavailable here: ' + (e as Error).message); }
@@ -318,6 +327,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
   const aimedMob = mobAim >= 0 ? mobs.current.find((b) => b.id === mobAim) ?? null : null;
   const floors = hasFloors(cave);
   const wNow = weaponDef(gear?.weapon);
+  useEffect(() => { three.current?.setWeapon(gear?.weapon); }, [gear?.weapon]);
   return (
     <div
       ref={wrapRef}
@@ -379,7 +389,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
             <div className="mines-tools-now">HP <b>{php.max}</b> · {wNow.name} <b>{wNow.dmg}</b> dmg</div>
             {WEAPONS.map((w) => { const owned = w.tier === 0 || !!gear?.owned.includes(w.id), on = (gear?.weapon ?? 'rusty_sword') === w.id, price = gear?.prices[w.id] ?? w.price, can = !!gear && !guest && canBuyGear('weapon', w.id, gear.owned);
               return (<div key={w.id} className={`mines-tool ${on ? 'on' : ''}`} data-testid={`mines-gear-${w.id}`}>
-                <span style={{ fontSize: 20, width: 28, textAlign: 'center' }}>{w.icon}</span>
+                <WeaponIcon id={w.id} fallback={w.icon} />
                 <span className="mines-tool-name">{w.name}<small>{w.dmg} dmg · {(w.ms / 1000).toFixed(2)}s · reach {w.reach}</small></span>
                 {on ? <em>Equipped</em> : owned ? <button type="button" onClick={() => gearEmit('mine_gear_equip', { item: w.id })}>Equip</button>
                   : <span className="mines-lock" title={gearLockReason(WEAPONS, w, can, guest, wallet, price) || undefined} data-testid={`mines-lock-${w.id}`}><button type="button" disabled={!can || (wallet != null && wallet < price)} onClick={() => gearEmit('mine_gear_buy', { item: w.id }, `Bought the ${w.name}. Equipped.`)}>{gearLockReason(WEAPONS, w, can, guest, wallet, price) ? '🔒 ' : ''}🪙{price.toLocaleString()}</button></span>}

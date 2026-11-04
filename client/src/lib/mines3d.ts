@@ -10,6 +10,7 @@ import { animateMiner, buildMiner, setMinerSkin, setMinerTool, type MinerRig } f
 import { MINE_EXIT, ORES, type CaveId, type MineNode } from '../../../shared/mines';
 import { levelOf, hasFloors, LADDER, MAX_FLOOR } from '../../../shared/mineFloors';
 import { MOBS, type MobKind } from '../../../shared/mineCombat';
+import { animateWeaponModel, buildWeaponModel } from './mineWeaponModels';
 
 export interface MobView { id: number; k: MobKind; x: number; y: number; a: number; hp: number; max: number }
 interface MobRig { root: THREE.Group; body: THREE.Object3D; wings?: THREE.Object3D[]; bar: THREE.Sprite; barBg: THREE.Sprite; hurt: number; kind: MobKind; hp: number; t: number }
@@ -80,14 +81,6 @@ function buildMob(kind: MobKind): MobRig {
   root.add(bg); root.add(bar);
   return { root, body, wings, bar, barBg: bg, hurt: 0, kind, hp: -1, t: Math.random() * 6 };
 }
-function buildSword(): THREE.Group {
-  const g = new THREE.Group();
-  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.75, 0.015), new THREE.MeshStandardMaterial({ color: '#d8dde6', metalness: 0.8, roughness: 0.25, emissive: '#2a3040', emissiveIntensity: 0.3 })); blade.position.y = 0.48; g.add(blade);
-  const guard = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.04, 0.05), new THREE.MeshStandardMaterial({ color: '#8a6a30', metalness: 0.6 })); guard.position.y = 0.1; g.add(guard);
-  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.2, 8), new THREE.MeshStandardMaterial({ color: '#3a2414' })); g.add(grip);
-  return g;
-}
-
 function nameTag(name: string): THREE.Sprite { // Chud City label look; the pill grows to fit the whole name
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: cityLabel(name, '#e8c26a'), transparent: true, premultipliedAlpha: true, toneMapped: false, depthWrite: false, fog: false }));
   s.position.y = 2.15; fitLabel(s, 1.6); s.renderOrder = 5; return s;
@@ -135,6 +128,7 @@ export class Mines3D {
   private mobs = new Map<number, MobRig>();
   private sword: THREE.Group;
   private swordT = 1;
+  private weaponId = 'rusty_sword';
   readonly floor: number;
   constructor(canvas: HTMLCanvasElement, caveId: CaveId = 'mine', floor = 1) {
     const cave = levelOf(caveId, floor); const MINE_MAP = cave.map; const MINE_NODES = cave.nodes;
@@ -234,7 +228,7 @@ export class Mines3D {
     this.pickModel.position.set(0, -0.22, 0); this.pickModel.rotation.y = Math.PI / 2;
     this.pick.add(this.pickModel); this.pick.scale.setScalar(0.72);
     this.camera.add(this.pick);
-    this.sword = buildSword(); this.sword.visible = false; this.camera.add(this.sword);
+    this.sword = buildWeaponModel(this.weaponId, detectWorldTier() === 'low'); this.sword.visible = false; this.camera.add(this.sword);
     this.scene.add(this.camera);
     this.camera.add(new THREE.PointLight('#fff1d6', 0.9, 6, 1.5));
   }
@@ -268,6 +262,14 @@ export class Mines3D {
 
   /** Weapon swing: the sword replaces the pickaxe for one strike. */
   swingSword() { this.swordT = 0; }
+  /** Equipped Weapon Store weapon: the held model follows it (each weapon has its own model). */
+  setWeapon(id: string | null | undefined) {
+    const next = id || 'rusty_sword'; if (next === this.weaponId) return; this.weaponId = next;
+    const vis = this.sword.visible, pos = this.sword.position.clone(), rot = this.sword.rotation.clone();
+    this.camera.remove(this.sword); this.sword.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose(); const mm = m.material as THREE.Material | undefined; mm?.dispose?.(); });
+    this.sword = buildWeaponModel(next, detectWorldTier() === 'low'); this.sword.visible = vis; this.sword.position.copy(pos); this.sword.rotation.copy(rot); this.camera.add(this.sword);
+  }
+  get weapon() { return this.weaponId; }
   /** Creatures on this floor (server ticks). hp 0 = dead (hidden until it respawns). */
   setMobs(list: MobView[]) {
     const seen = new Set<number>();
@@ -375,7 +377,7 @@ export class Mines3D {
     }
     this.swordT = Math.min(1, this.swordT + dt / 0.35);
     this.sword.visible = this.swordT < 1; this.pick.visible = !this.sword.visible;
-    if (this.sword.visible) { const k = this.swordT; const arc = Math.sin(k * Math.PI); this.sword.position.set(0.32 - k * 0.5, -0.32 + arc * 0.08, -0.55); this.sword.rotation.set(-0.4 - arc * 0.4, 0.2, -1.2 + k * 2.2); }
+    if (this.sword.visible) { animateWeaponModel(this.sword, performance.now() / 1000); const k = this.swordT; const arc = Math.sin(k * Math.PI); this.sword.position.set(0.32 - k * 0.5, -0.32 + arc * 0.08, -0.55); this.sword.rotation.set(-0.4 - arc * 0.4, 0.2, -1.2 + k * 2.2); }
     const now = performance.now() / 1000;
     for (const r of this.mobs.values()) {
       r.t += dt;
