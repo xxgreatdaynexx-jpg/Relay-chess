@@ -8,6 +8,8 @@ import { request } from '@/lib/net';
 import { useAccount } from '@/lib/auth';
 import type { CatEntry } from '@/lib/marketCatalog';
 import { openMarket } from './MarketPage';
+import { HouseSell } from './HouseSell';
+import { usePriceIndex } from '@/lib/priceIndex';
 import { priceOf, type ItemType } from '../../../shared/mines';
 import { listFee, pctQty, receiveFor, suggestUnit } from '../../../shared/marketSell';
 
@@ -23,8 +25,8 @@ const house = (p: { type: string; id: string }) => { try { return priceOf({ type
 const TYPE_LABEL: Record<string, string> = { ore: 'Ore', bar: 'Bars', good: 'Goods', food: 'Food', fish: 'Fish', crop: 'Crops', dish: 'Dishes' };
 
 /** "Your storage" grid with a sell card and your active listings (Market → Resources). */
-export function StorageSellPanel({ pack, rows, cat, sell, setSell, act }: {
-  pack: PackItem[]; rows: MyStackRow[]; cat: CatEntry[]; sell: string; setSell: (k: string) => void;
+export function StorageSellPanel({ pack, rows, cat, sell, setSell, act, reload }: {
+  pack: PackItem[]; rows: MyStackRow[]; cat: CatEntry[]; sell: string; setSell: (k: string) => void; reload?: () => void;
   act: (ev: string, body: object, ok: string) => Promise<void>;
 }) {
   const info = (k: string) => cat.find((e) => e.what === `stack:${k}`);
@@ -43,7 +45,7 @@ export function StorageSellPanel({ pack, rows, cat, sell, setSell, act }: {
           </button>); })}
         {!pack.length && <p className="inv-note">Your storage is empty. Mine, farm, fish or craft to get resources.</p>}
       </div>
-      {(() => { const p = pack.find((x) => `${x.type}:${x.id}` === sell); return p ? <SellCard key={sell} p={p} e={info(sell)} act={act} onDone={() => setSell('')} /> : null; })()}
+      {(() => { const p = pack.find((x) => `${x.type}:${x.id}` === sell); return p ? <SellCard key={sell} p={p} e={info(sell)} act={act} onDone={() => setSell('')} reload={reload} /> : null; })()}
       <h3 className="msell-h">🏷️ My listings <small>{mine.length || ''}</small></h3>
       <div className="msell-mine" data-testid="msell-mine">
         {mine.map((r) => (
@@ -56,8 +58,8 @@ export function StorageSellPanel({ pack, rows, cat, sell, setSell, act }: {
   );
 }
 
-function SellCard({ p, e, act, onDone }: { p: PackItem; e?: CatEntry; act: (ev: string, body: object, ok: string) => Promise<void>; onDone: () => void }) {
-  const hp = house(p);
+function SellCard({ p, e, act, onDone, reload }: { p: PackItem; e?: CatEntry; act: (ev: string, body: object, ok: string) => Promise<void>; onDone: () => void; reload?: () => void }) {
+  const idx = usePriceIndex(); const hp = Math.floor(house(p) * idx); // house price at today's price index (what Sell to house pays before the daily cap)
   const [n, setN] = useState(p.qty);
   const [u, setU] = useState(() => suggestUnit(e?.lowest, e?.last, hp));
   const [busy, setBusy] = useState(false);
@@ -67,7 +69,8 @@ function SellCard({ p, e, act, onDone }: { p: PackItem; e?: CatEntry; act: (ev: 
     <div className="msell-card" data-testid="msell-card">
       <div className="msell-card-h"><ItemIcon type={p.type} id={p.id} size={36} /><div><b>{p.name}</b><small>{TYPE_LABEL[p.type] ?? p.type} · you have {p.qty.toLocaleString()}</small></div>
         <button type="button" className="msell-x" aria-label="Close sell card" onClick={onDone}>✕</button></div>
-      <label className="msell-l">Quantity</label>
+      <HouseSell type={p.type} id={p.id} qty={p.qty} name={p.name} testid="msell-house-sell" onSold={() => reload?.()} />
+      <label className="msell-l">Or list it on the player market · Quantity</label>
       <div className="msell-qrow">
         <input type="range" min={1} max={p.qty} value={q} onChange={(ev) => setN(Number(ev.target.value))} data-testid="msell-slider" />
         <input type="number" min={1} max={p.qty} value={n} onChange={(ev) => setN(Number(ev.target.value))} data-testid="msell-qty" />
@@ -102,7 +105,7 @@ export function ResourceInventory() {
 function ResWindow({ onClose }: { onClose: () => void }) {
   const account = useAccount();
   const drag = usePanelDrag('resource-inventory');
-  const [pack, setPack] = useState<PackItem[] | null>(null); const [f, setF] = useState('all'); const [q, setQ] = useState('');
+  const [pack, setPack] = useState<PackItem[] | null>(null); const [f, setF] = useState('all'); const [q, setQ] = useState(''); const [house, setHouse] = useState('');
   const load = useCallback(() => void request('mkt_my_stacks', {}).then((r) => { const a = r as Ack; setPack(a.ok ? (a.stacks as PackItem[]) : []); }), []);
   useEffect(() => { load(); }, [load, account]);
   const types = useMemo(() => [...new Set((pack ?? []).map((p) => p.type))], [pack]);
@@ -111,8 +114,9 @@ function ResWindow({ onClose }: { onClose: () => void }) {
   return (
     <div className="inv-backdrop" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }} data-testid="res-inv">
       <div className="inv-win res-win" role="dialog" aria-label="Resource Inventory" data-drag-panel="resource-inventory" onPointerDown={drag.onPointerDown} style={drag.style()} ref={drag.ref}>{drag.handle}
-        <header className="inv-head"><b>📦 Resource Inventory</b><span className="inv-count">{(pack ?? []).length} kinds · {total.toLocaleString()} items</span>
-          <button type="button" onClick={() => { onClose(); openMarket({ from: 'resources', tab: 'resources' }); }}>🏪 Market</button><button type="button" aria-label="Close" onClick={onClose}>✕</button></header>
+        <header className="inv-head"><b>📦 Chud City Warehouse</b><span className="inv-count">{(pack ?? []).length} kinds · {total.toLocaleString()} items</span>
+          <button type="button" onClick={() => { onClose(); openMarket({ from: 'resources', tab: 'resources' }); }}>🏪 Market</button><button type="button" onClick={() => { onClose(); window.dispatchEvent(new CustomEvent('open-inventory', { detail: { tab: 'inv' } })); }} data-testid="res-skins">🎒 Skins</button><button type="button" aria-label="Close" onClick={onClose}>✕</button></header>
+        <p className="res-where" data-testid="res-where">Stored at the Chud City Warehouse. 🏦 Sell to house = instant sale to the game at the house price (price index + daily cap). Sell on Market = list for other players.</p>
         <div className="res-filters"><input type="search" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
           {['all', ...types].map((t) => <button type="button" key={t} className={f === t ? 'on' : ''} onClick={() => setF(t)}>{t === 'all' ? 'All' : TYPE_LABEL[t] ?? t}</button>)}</div>
         <div className="res-grid">
@@ -120,7 +124,9 @@ function ResWindow({ onClose }: { onClose: () => void }) {
           {account && pack === null && <p className="inv-note">Loading…</p>}
           {shown.map((p) => (
             <div key={`${p.type}:${p.id}`} className="res-tile" data-testid="res-tile"><ItemIcon type={p.type} id={p.id} size={34} /><b>×{p.qty.toLocaleString()}</b><span>{p.name}</span>
-              <button type="button" onClick={() => { onClose(); openMarket({ from: 'resources', tab: 'resources', stack: `${p.type}:${p.id}` }); }} data-testid="res-sell">Sell on Market</button></div>
+              <button type="button" className="res-house" onClick={() => setHouse(house === `${p.type}:${p.id}` ? '' : `${p.type}:${p.id}`)} aria-expanded={house === `${p.type}:${p.id}`} data-testid="res-house">🏦 Sell to house</button>
+              <button type="button" onClick={() => { onClose(); openMarket({ from: 'resources', tab: 'resources', stack: `${p.type}:${p.id}` }); }} data-testid="res-sell">Sell on Market</button>
+              {house === `${p.type}:${p.id}` && <div className="res-house-wrap"><HouseSell type={p.type} id={p.id} qty={p.qty} name={p.name} testid="res-house" onSold={() => load()} /></div>}</div>
           ))}
           {account && pack && !shown.length && <p className="inv-note">Nothing here yet. Mine, farm, fish or cook, then bank it.</p>}
         </div>

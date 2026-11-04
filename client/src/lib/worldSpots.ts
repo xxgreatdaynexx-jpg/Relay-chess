@@ -8,7 +8,7 @@ export const WORLD_SPOTS: WorldSpot[] = [
   { id: 'mine-magma', label: 'Magma Depths', icon: '🌋', color: 0xff6a20, blurb: 'Lava tube: mostly Coal & Copper Ore (south-east outskirts)' },
   { id: 'arena', label: 'Arena', icon: '🎯', color: 0xff4040, blurb: 'Multiplayer FPS deathmatch' },
   { id: 'factory', label: 'Factory', icon: '🏭', color: 0xffe066, blurb: 'Smelt ore, craft goods' },
-  { id: 'warehouse', label: 'Warehouse', icon: '🎒', color: 0x9dff6a, blurb: 'Your inventory & skins' },
+  { id: 'warehouse', label: 'Warehouse', icon: '🎒', color: 0x9dff6a, blurb: 'Stored goods: sell to the house or the market' },
   { id: 'bank', label: 'Bank', icon: '🏦', color: 0x4dffb5, blurb: 'Wallet & chip history' },
   { id: 'market', label: 'Market', icon: '🏪', color: 0xb388ff, blurb: 'Skins, materials & trades' },
   { id: 'stocks', label: 'Stock Exchange', icon: '📈', color: 0x34d399, blurb: '100 companies, live prices & news' },

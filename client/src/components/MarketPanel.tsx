@@ -153,7 +153,7 @@ export function MaterialsView({ initialSell }: { initialSell?: string | null } =
     <div className="mkt-mats" data-testid="mkt-mats">
       <TradeLockNote />
       {msg && <p className="mkt-ok">{msg}</p>}{err && <p className="inv-err">{err}</p>}
-      {account && <StorageSellPanel pack={pack} rows={rows} cat={cat} sell={sell} setSell={setSell} act={act} />}
+      {account && <StorageSellPanel pack={pack} rows={rows} cat={cat} sell={sell} setSell={setSell} act={act} reload={load} />}
       <Controls q={q} setQ={setQ} sort={sort} setSort={setSort} listed={listed} setListed={setListed}>
         <select value={type} onChange={(e) => setType(e.target.value)} data-testid="mkt-type"><option value="all">All resources</option><option value="ore">Ore</option><option value="bar">Bars</option><option value="good">Goods</option><option value="food">Groceries & crops</option></select>
       </Controls>

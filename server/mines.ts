@@ -478,6 +478,16 @@ export class MinesWorld {
   }
 
   /** Sell ore to the house. Signed-in only. Stone etc. pay fractional chips: the whole sale is floored once. */
+  /** Sell to the house once per client request id (Chud City Warehouse "Sell to house"): a retried / double-sent request
+   *  with the same `rid` returns the first result (replay: true) and never sells again. No rid = plain sell(). */
+  private sellRids = new Map<string, { at: number; res: { paid: number; gross: number; sold: Stack[] } }>();
+  sellOnce(account: string | null, now: number, only?: unknown, qtyIn?: unknown, rid?: unknown): { paid: number; gross: number; sold: Stack[]; replay?: boolean } {
+    if (typeof rid !== 'string' || !/^[A-Za-z0-9_-]{8,64}$/.test(rid) || !account) return this.sell(account, now, only, qtyIn);
+    for (const [k, v] of this.sellRids) if (now - v.at > 15 * 60_000) this.sellRids.delete(k);
+    const key = `${playerKey(account)}|${rid}`; const hit = this.sellRids.get(key);
+    if (hit) return { ...hit.res, replay: true };
+    const res = this.sell(account, now, only, qtyIn); this.sellRids.set(key, { at: now, res }); return res;
+  }
   sell(account: string | null, now: number, only?: unknown, qtyIn?: unknown): { paid: number; gross: number; sold: Stack[] } {
     if (!account) throw new MineError('Sign in to sell ore. Guests can mine but not sell.');
     if (HOUSE_SELL_BLOCKED.has(playerKey(account))) throw new MineError('House selling is disabled on this account.');
@@ -751,7 +761,7 @@ export function registerMines(io: Server, socket: Socket): void {
   socket.on('mines_sell', (p: unknown, ack?: Ack) => {
     try {
       // Millionaire Update: the Warehouse market is in Chud City. Away at the resort / Fort McChud you ship goods there instead.
-      if (isAtResort(account()) || isAtFortMc(account())) throw new MineError('The market is the Chud City Warehouse. Travel back to Chud City to sell here, or use Ship & sell from your building.'); const r = world.sell(account(), Date.now(), body(p).ore, body(p).qty); ack?.({ ok: true, ...r, ...storeMsg() }); }
+      if (isAtResort(account()) || isAtFortMc(account())) throw new MineError('The market is the Chud City Warehouse. Travel back to Chud City to sell here, or use Ship & sell from your building.'); const r = world.sellOnce(account(), Date.now(), body(p).ore, body(p).qty, body(p).rid); ack?.({ ok: true, ...r, ...storeMsg() }); }
     catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
   });
   const fact = () => ({ factory: world.factoryView(account(), Date.now()) });

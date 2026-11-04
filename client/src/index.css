@@ -2420,3 +2420,8 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .sellall-btns { display: flex; justify-content: flex-end; gap: 10px; }
 .sellall-btns button { padding: 8px 16px; border-radius: 999px; border: 1px solid rgba(255,255,255,.25); background: transparent; color: #f4efe2; font-weight: 700; cursor: pointer; }
 .sellall-btns button.ok { border: 0; color: #1a1406; background: linear-gradient(180deg, #ffe08a, #d9a83a); }
+.house-sell { margin: 8px 0; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(232,194,106,.45); background: rgba(232,194,106,.08); display: grid; gap: 6px; }
+.house-sell > b small { display: block; font-weight: 400; opacity: .75; font-size: 11px; }
+.house-sell-msg { color: #9be29b; font-size: 12px; } .house-sell-note { font-size: 12px; opacity: .8; }
+.res-tile .res-house { margin-top: 4px; } .res-house-wrap { grid-column: 1 / -1; }
+.res-where { font-size: 12px; opacity: .8; margin: 0 0 6px; } .res-tile { position: relative; }

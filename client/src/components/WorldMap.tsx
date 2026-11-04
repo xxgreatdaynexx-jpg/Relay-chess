@@ -240,7 +240,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       case 'mine': case 'mine-frost': case 'mine-magma': window.dispatchEvent(new CustomEvent(MINE_CAVE_EVENT, { detail: MINE_SITES[id].cave })); break;
       case 'arena': openTab('arena-tab'); break;
       case 'factory': openTab('factory-tab') || openTab('mines-tab'); break;
-      case 'warehouse': window.dispatchEvent(new CustomEvent('open-inventory', { detail: { tab: 'inv' } })); break;
+      case 'warehouse': window.dispatchEvent(new Event('open-resource-inventory')); break; // Chud City Warehouse: stored goods, Sell to house / Sell on Market (skins: 🎒 button there)
       case 'market': if (openTab('market-tab')) break; window.dispatchEvent(new CustomEvent('open-inventory', { detail: { tab: 'market' } })); break;
       case 'bank': openTab('wallet-button'); break;
       case 'stocks': openTab('stocks-tab'); break;
