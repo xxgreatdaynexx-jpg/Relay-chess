@@ -5,7 +5,7 @@ import { lazyWithReload } from '@/lib/lazyWithReload';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { request } from '@/lib/net';
-import { FISH_SPOT_CAP, fishById, fishPayout, spotOf, fmtKg, RARITY_COLOR, Reel, REEL_DT, type FishCatch, type FishSpot, type FishView } from '../../../shared/fishing';
+import { fishSellValue, FISH_SPOT_CAP, fishById, fishPayout, spotOf, fmtKg, RARITY_COLOR, Reel, REEL_DT, type FishCatch, type FishSpot, type FishView } from '../../../shared/fishing';
 import { FishGlyph } from './FishGlyph';
 import { usePanelDrag } from '@/lib/panelDrag';
 import { canBuyGear, FISH_BAITS, FISH_FLIES, type FishGearDef, type FishGearView } from '../../../shared/fishGear';
@@ -69,7 +69,7 @@ export function FishingPanel({ me, onClose, spot = 'lake' }: { me: string | null
     setPhase({ k: 'busy' }); const r = await request('fish_land', { inputs }) as { ok: boolean; error?: string; caught?: boolean; fish?: FishCatch; xp?: number };
     setReelUi(null); reelRef.current = null; holdRef.current = false;
     if (!r.ok) setMsg(r.error ?? 'The line snapped.');
-    else if (r.caught && r.fish) { const f = fishById(r.fish.fish)!; setMsg(`${f.emoji} Caught a ${f.label}! ${fmtKg(r.fish.grams)} · worth ~🪙 ${chips(Math.floor(r.fish.value * (view?.index ?? 1)))} · +${boostXp(r.xp ?? 0)} Fishing XP`); }
+    else if (r.caught && r.fish) { const f = fishById(r.fish.fish)!; setMsg(`${f.emoji} Caught a ${f.label}! ${fmtKg(r.fish.grams)} · worth ~🪙 ${chips(Math.floor(fishSellValue(r.fish.value) * (view?.index ?? 1)))} · +${boostXp(r.xp ?? 0)} Fishing XP`); }
     else setMsg(won ? 'The line snapped.' : 'It got away… cast again!');
     setPhase({ k: 'idle' }); load();
   };
@@ -102,9 +102,9 @@ export function FishingPanel({ me, onClose, spot = 'lake' }: { me: string | null
     setMsg(r.ok ? `Sold ${r.sold} for 🪙 ${chips(r.paid ?? 0)}.` : r.error ?? 'Could not sell.'); setPhase({ k: 'idle' }); load(); };
   const release = async (id: string) => { await request('fish_release', { ids: [id] }); load(); };
 
-  const cooler = view?.cooler ?? []; const idx = view?.index ?? 1; const gross = cooler.reduce((a, c) => a + c.value, 0);
+  const cooler = view?.cooler ?? []; const idx = view?.index ?? 1; const gross = fishSellValue(cooler.reduce((a, c) => a + c.value, 0));
   const spotToday = (sp: FishSpot) => (view?.todayBySpot?.[sp] ?? (sp === 'lake' ? view?.today : undefined) ?? { gross: 0, paid: 0 });
-  const estFor = (list: FishCatch[]) => Math.floor((['lake', 'reef', 'deep'] as FishSpot[]).reduce((a, sp) => a + fishPayout(list.filter((c) => { const f = fishById(c.fish); return (f ? spotOf(f) : 'lake') === sp; }).reduce((x, c) => x + c.value, 0), spotToday(sp).gross, sp), 0) * idx);
+  const estFor = (list: FishCatch[]) => Math.floor((['lake', 'reef', 'deep'] as FishSpot[]).reduce((a, sp) => a + fishPayout(list.filter((c) => { const f = fishById(c.fish); return (f ? spotOf(f) : 'lake') === sp; }).reduce((x, c) => x + fishSellValue(c.value), 0), spotToday(sp).gross, sp), 0) * idx);
   const est = view ? estFor(cooler) : 0; const capMax = FISH_SPOT_CAP[spot]; const capLeft = Math.max(0, capMax - spotToday(spot).gross);
   return (
     <div className={`world-deed world-venue fish-panel${reef ? ' fish-reef' : ''}`} data-testid={deep ? 'venue-deep' : reef ? 'venue-reef' : 'venue-dock'} data-drag-panel="fishing" onPointerDown={dragFishing.onPointerDown} style={dragFishing.style()} ref={dragFishing.ref}>{dragFishing.handle}
@@ -130,7 +130,7 @@ export function FishingPanel({ me, onClose, spot = 'lake' }: { me: string | null
         <TackleShop me={me} />
         <h4>🧊 Cooler · {cooler.length}/40</h4>
         {cooler.length ? <ul className="fish-cooler" data-testid="fish-cooler">{cooler.map((c) => { const f = fishById(c.fish); return (
-          <li key={c.id}><span style={{ color: f ? RARITY_COLOR[f.rarity] : undefined }}><FishGlyph id={c.fish} /> {f?.label ?? c.fish}</span> <small>{fmtKg(c.grams)}</small> <b>🪙 {chips(Math.floor(c.value * idx))}</b> <button type="button" title="Release" onClick={() => void release(c.id)}>↩</button></li>); })}</ul>
+          <li key={c.id}><span style={{ color: f ? RARITY_COLOR[f.rarity] : undefined }}><FishGlyph id={c.fish} /> {f?.label ?? c.fish}</span> <small>{fmtKg(c.grams)}</small> <b>🪙 {chips(Math.floor(fishSellValue(c.value) * idx))}</b> <button type="button" title="Release" onClick={() => void release(c.id)}>↩</button></li>); })}</ul>
           : <small>Empty. Go catch something!</small>}
         {cooler.length > 1 && view && <SellQtyPicker owned={cooler.length} unit="fish" testid="fish-qty" disabled={phase.k !== 'idle'} preview={(n) => estFor(pickForQty(cooler, n))} onSell={(n) => sell(undefined, n)} />}
         {cooler.length > 0 && <button type="button" disabled={phase.k !== 'idle' || est <= 0} onClick={() => void sell()} data-testid="fish-sell">💰 Sell all to the fishmonger <span>🪙 {chips(est)}</span></button>}

@@ -21,7 +21,7 @@ import { isQaName } from '../shared/qa.js';
 import type { ImportSink } from './farm.js';
 import { fishingLuckRoll, fishingBiteMul } from '../shared/skillPerks.js';
 import {
-  BITE_MAX_MS, BITE_MIN_MS, CAST_COOLDOWN_MS, fishDailyKey, spotOf, COOLER_MAX, FISH, FISH_XP, fishById, fishDiff, fishPayout, fishValue, HOOK_WINDOW_MS,
+  BITE_MAX_MS, BITE_MIN_MS, CAST_COOLDOWN_MS, fishSellValue, fishDailyKey, spotOf, COOLER_MAX, FISH, FISH_XP, fishById, fishDiff, fishPayout, fishValue, HOOK_WINDOW_MS,
   REEL_DT, replayReel, rollFish, rollWeight, anglerAim, type AnglerState, type FishCatch, type FishView,
 } from '../shared/fishing.js';
 import { cookPayout } from '../shared/cooking.js';
@@ -176,7 +176,7 @@ export class Fishing {
       const spotOfRow = (r: FishCatch): FishSpot => { const f = fishById(r.fish); return f ? spotOf(f) : 'lake'; };
       const bySpot: Array<{ spot: FishSpot; gross: number; t: { gross: number; paid: number }; paid: number }> = [];
       for (const sp of ['lake', 'reef', 'deep'] as FishSpot[]) {
-        const g = rawRows.filter((r) => spotOfRow(r) === sp).reduce((a, r) => a + r.value, 0); if (!g) continue;
+        const g = Math.floor(fishSellValue(rawRows.filter((r) => spotOfRow(r) === sp).reduce((a, r) => a + r.value, 0))); if (!g) continue; // +15% fishing buff
         const t = await this.today(key, sp); bySpot.push({ spot: sp, gross: g, t, paid: Math.floor(fishPayout(g, t.gross, sp) * priceIndex()) });
       }
       // Fish from a spot whose cap is used up stay in the cooler instead of selling for 0.
@@ -207,7 +207,7 @@ export class Fishing {
       const cuts = new Map<string, number>(); const deep = live.find((b) => b.spot === 'deep');
       if (deep && deep.gross > 0) {
         const want = new Set(rows.map((r) => r.id)); const capt = (await this.pool.query('SELECT id, captain, cut, value FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL AND captain IS NOT NULL', [key])).rows as Array<{ id: string; captain: string; cut: number; value: number }>;
-        for (const r of capt) { if (!want.has(r.id)) continue; const share = Number(r.value) * (deep.paid / deep.gross) * Math.min(FLEET_MAX_CUT, Math.max(0, Number(r.cut) || 0)); cuts.set(r.captain, (cuts.get(r.captain) ?? 0) + share); }
+        for (const r of capt) { if (!want.has(r.id)) continue; const share = fishSellValue(Number(r.value)) * (deep.paid / deep.gross) * Math.min(FLEET_MAX_CUT, Math.max(0, Number(r.cut) || 0)); cuts.set(r.captain, (cuts.get(r.captain) ?? 0) + share); }
         for (const [k, v] of cuts) { const f = Math.floor(v); if (f > 0 && keyOf(k) !== key) cuts.set(k, f); else cuts.delete(k); }
       }
       const cutTotal = [...cuts.values()].reduce((a, b) => a + b, 0); const sid = randomUUID();
@@ -323,7 +323,7 @@ export function registerFishing(io: Server, socket: Socket): void {
       ack?.({ ok: true, ...((await fn(b, fishing, name ?? '')) as object ?? {}) });
     } catch (e) { ack?.({ ok: false, error: e instanceof FishError ? e.message : 'Something went wrong.' }); if (!(e instanceof FishError)) console.error(`[fishing] ${ev}:`, (e as Error).message); }
   });
-  on('fish_state', async (_b, f, n) => ({ state: await f.view(n), prices: Object.fromEntries(FISH.map((x) => [x.id, px(x.base)])) }));
+  on('fish_state', async (_b, f, n) => ({ state: await f.view(n), prices: Object.fromEntries(FISH.map((x) => [x.id, px(fishSellValue(x.base))])) }));
   const pushDock = () => { try { io.to(DOCK_ROOM).emit('fish_anglers', { anglers: anglerStates(null) }); } catch { /* best effort */ } };
   const pose = (n: string, patch: Partial<Omit<AnglerState, 'name' | 'since'>>) => { markHere(n, Date.now(), patch); pushDock(); };
   on('fish_cast', async (b, f, n) => { const r = await f.cast(n, b.spot); pose(n, { pose: 'cast', ...anglerAim(b.yaw, b.power) }); return r; });

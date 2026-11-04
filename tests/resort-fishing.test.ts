@@ -71,8 +71,8 @@ describe('fishing profitability by spot (mu-fishing)', () => {
     const deep3 = perMin('deep', 3, 0.9, RESORT_TICKET_BASE); expect(deep3).toBeGreaterThan(deep1); // bigger boats earn a bit more
     expect(fishById('bluegill')!.base).toBe(6); expect(fishById('oldchud')!.base).toBe(500); // pond unchanged
   });
-  it('daily caps are separate per spot: lake 100k, reef 200k, deep 500k', () => {
-    expect(FISH_SPOT_CAP).toEqual({ lake: 100_000, reef: 200_000, deep: 500_000 });
+  it('daily caps are separate per spot: lake 115k, reef 230k, deep 575k (+15% buff)', () => {
+    expect(FISH_SPOT_CAP).toEqual({ lake: 115_000, reef: 230_000, deep: 575_000 });
     for (const sp of ['lake', 'reef', 'deep'] as FishSpot[]) { const c = FISH_SPOT_CAP[sp]; expect(fishPayout(1e9, 0, sp)).toBe(c); expect(fishPayout(10, c, sp)).toBe(0); expect(fishPayout(200, c - 100, sp)).toBe(100); }
     expect(fishDailyKey('ann')).toBe('ann'); expect(fishDailyKey('ann', 'reef')).toBe('ann#reef'); expect(fishDailyKey('ann', 'deep')).toBe('ann#deep');
   });
@@ -81,15 +81,15 @@ describe('fishing profitability by spot (mu-fishing)', () => {
     const put = async (id: string, species: string, value: number) => { await pool.query('INSERT INTO fish_catches (id, player_key, name, species, weight_g, value, caught_at) VALUES ($1,$2,$3,$4,$5,$6,$7)', [id, 'ann', 'Ann', species, 1000, value, T0]); };
     await put('l1', 'bass', 150_000); await put('r1', 'snapper', 150_000); await put('d1', 'wahoo', 450_000);
     const s1 = await f.sell('Ann'); await bank.flush();
-    expect(s1.sold).toBe(3); expect(s1.paid).toBe(Math.floor(100_000 * px) + Math.floor(150_000 * px) + Math.floor(450_000 * px));
+    expect(s1.sold).toBe(3); expect(s1.paid).toBe(Math.floor(115_000 * px) + Math.floor(172_500 * px) + Math.floor(517_500 * px)); // values x1.15, lake capped at 115k
     const v = await f.view('Ann');
-    expect(v.todayBySpot!.lake.gross).toBe(150_000); expect(v.todayBySpot!.reef.gross).toBe(150_000); expect(v.todayBySpot!.deep.gross).toBe(450_000); expect(v.today.gross).toBe(150_000);
+    expect(v.todayBySpot!.lake.gross).toBeCloseTo(172_500); expect(v.todayBySpot!.reef.gross).toBeCloseTo(172_500); expect(v.todayBySpot!.deep.gross).toBeCloseTo(517_500); expect(v.today.gross).toBeCloseTo(172_500);
     await put('l2', 'bass', 50); await put('r2', 'snapper', 80_000); await put('d2', 'wahoo', 80_000);
     const s2 = await f.sell('Ann'); await bank.flush();
-    expect(s2.sold).toBe(2); expect(s2.paid).toBe(Math.floor(50_000 * px) + Math.floor(50_000 * px)); // lake is full: its fish stays in the cooler
+    expect(s2.sold).toBe(2); expect(s2.paid).toBe(Math.floor(57_500 * px) + Math.floor(57_500 * px)); // lake is full: its fish stays in the cooler
     expect((await f.view('Ann')).cooler.map((c) => c.id)).toEqual(['l2']);
     await expect(f.sell('Ann')).rejects.toThrow(/bought all/);
     const rows = (await pool.query('SELECT player_key, gross FROM fish_daily ORDER BY player_key')).rows.map((r: { player_key: string; gross: string | number }) => [r.player_key, Number(r.gross)]);
-    expect(rows).toEqual([['ann', 150_000], ['ann#deep', 530_000], ['ann#reef', 230_000]]);
+    expect(rows).toEqual([['ann', 172_500], ['ann#deep', 609_500], ['ann#reef', 264_500]]);
   });
 });

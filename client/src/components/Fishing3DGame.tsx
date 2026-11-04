@@ -5,7 +5,7 @@ import { request, socket } from '@/lib/net';
 import { makeFishingSfx, type FishingSfx } from '@/lib/fishingSfx';
 import { reloadOnceForChunkError } from '@/lib/chunkReload';
 import type { Fishing3D } from '@/lib/fishing3d';
-import { fishById, fmtKg, RARITY_COLOR, Reel, REEL_DT, type AnglerState, type FishCatch, type FishSpot, type FishView } from '../../../shared/fishing';
+import { fishSellValue, fishById, fmtKg, RARITY_COLOR, Reel, REEL_DT, type AnglerState, type FishCatch, type FishSpot, type FishView } from '../../../shared/fishing';
 import { FishGlyph } from './FishGlyph';
 import { boostXp } from '../../../shared/skills'; // recheck #8: show the +20% XP actually awarded
 
@@ -86,7 +86,7 @@ export function Fishing3DGame({ me, onClose, onChange, spot = 'lake' }: { me: st
     g.current.reel = null; setReelUi(null);
     if (r.ok && r.caught && r.fish) {
       three.current?.showCatch(r.fish.fish, r.fish.grams); sfx.current?.win();
-      setCard({ fish: r.fish.fish, grams: r.fish.grams, value: Math.floor(r.fish.value * (view?.index ?? 1)), xp: r.xp ?? 0 }); setMsg(null); setPhase('show');
+      setCard({ fish: r.fish.fish, grams: r.fish.grams, value: Math.floor(fishSellValue(r.fish.value) * (view?.index ?? 1)), xp: r.xp ?? 0 }); setMsg(null); setPhase('show');
     } else { setMsg(r.ok ? 'It got away… cast again!' : r.error ?? 'The line snapped.'); reset(); }
     load(); onChange?.();
   };

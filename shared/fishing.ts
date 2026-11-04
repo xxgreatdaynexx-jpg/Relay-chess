@@ -9,7 +9,7 @@
  * uses only + - * / and a 32-bit integer RNG, so it is bit-for-bit identical in every JS engine.
  *
  * Sale values are BASE chips: the server scales them by the price index (px). Sales go through a per-player daily
- * daily tier like the farm: full price up to 100,000 base chips a day, then nothing.
+ * daily tier like the farm: full price up to 115,000 base chips a day (pond; reef 230k, ocean 575k), then nothing.
  */
 export type Rarity = 'junk' | 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
 /** Where a species lives: 'lake' = the city dock (default), 'reef' = the Chud Resort pier (pt1304u). */
@@ -100,11 +100,15 @@ export const fishValue = (f: Fish, grams: number) => Math.max(1, Math.round(f.ba
 export const fishDiff = (f: Fish, grams: number) => Math.min(1, DIFF[f.rarity] + 0.1 * sizeFrac(f, grams));
 export const fmtKg = (g: number) => (g >= 10_000 ? `${(g / 1000).toFixed(1)} kg` : `${(g / 1000).toFixed(2)} kg`);
 
-/** Daily tiers on base sale value (per player, reset 00:00 UTC): full up to 100,000, then zero. */
-export const FISH_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: 100_000, rate: 1 }, { upTo: Infinity, rate: 0 }];
+/** Daily tiers on base sale value (per player, reset 00:00 UTC): full up to 115,000, then zero. */
+/** Fishing buff (Millionaire Update): raw fish sell for +15% at every spot (pond, resort reef, ocean skiff..superyacht).
+ *  Applied at the sale (and in the UI), not to the stored catch value, so fillets / factory imports are unchanged. */
+export const FISH_SELL_MUL = 1.15;
+export const fishSellValue = (value: number) => (value * 115) / 100; // = value x FISH_SELL_MUL, exact for integers
+export const FISH_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: 115_000, rate: 1 }, { upTo: Infinity, rate: 0 }];
 export const FISH_DAILY_MAX = FISH_TIERS.reduce((a, t, i) => a + (Number.isFinite(t.upTo) ? (t.upTo - (i ? FISH_TIERS[i - 1]!.upTo : 0)) * t.rate : 0), 0);
 /** Separate per-spot daily caps (mu-fishing): each spot is tracked on its own (fish_daily row per spot). */
-export const FISH_SPOT_CAP: Record<FishSpot, number> = { lake: 100_000, reef: 200_000, deep: 500_000 };
+export const FISH_SPOT_CAP: Record<FishSpot, number> = { lake: 115_000, reef: 230_000, deep: 575_000 };
 export const fishTiers = (spot: FishSpot = 'lake'): Array<{ upTo: number; rate: number }> => [{ upTo: FISH_SPOT_CAP[spot], rate: 1 }, { upTo: Infinity, rate: 0 }];
 /** fish_daily.player_key for a spot: the plain player key for the lake (back-compatible), `key#reef` / `key#deep` otherwise. */
 export const fishDailyKey = (key: string, spot: FishSpot = 'lake') => (spot === 'lake' ? key : `${key}#${spot}`);

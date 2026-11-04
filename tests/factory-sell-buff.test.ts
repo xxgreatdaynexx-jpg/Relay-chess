@@ -46,6 +46,6 @@ describe('factory sell buff', () => {
   });
   it('is in the launch popup and changelog', () => {
     expect(LAUNCH.items.some((i) => /Factory goods sell for more/.test(i.title))).toBe(true);
-    expect(CHANGELOG[0].title).toMatch(/Factory goods/);
+    expect(CHANGELOG.slice(0, 5).some((e) => /Factory goods/.test(e.title))).toBe(true);
   });
 });

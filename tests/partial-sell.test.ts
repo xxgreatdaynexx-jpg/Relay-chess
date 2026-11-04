@@ -69,9 +69,9 @@ describe('fishing partial sell', () => {
     await expect(f.sell('Pat', undefined, 9)).rejects.toThrow(/1 to 4/);
     const [a, b] = await Promise.allSettled([f.sell('Pat', undefined, 2), f.sell('Pat', undefined, 2)]);
     expect(a.status).toBe('fulfilled');
-    expect((a as PromiseFulfilledResult<{ paid: number; sold: number }>).value).toMatchObject({ sold: 2, paid: fishPayout(50, 0) });
+    expect((a as PromiseFulfilledResult<{ paid: number; sold: number }>).value).toMatchObject({ sold: 2, paid: fishPayout(Math.floor(50 * 1.15), 0) });
     // the second click sells the next two (it was queued behind the lock), never the same fish twice
-    if (b.status === 'fulfilled') expect(b.value).toMatchObject({ sold: 2, paid: fishPayout(15, 50) });
+    if (b.status === 'fulfilled') expect(b.value).toMatchObject({ sold: 2, paid: fishPayout(Math.floor(15 * 1.15), Math.floor(50 * 1.15)) });
     await bank.flush();
     const sold = db.public.many("SELECT id FROM fish_catches WHERE player_key = 'pat' AND sold_at IS NOT NULL").map((r) => r.id).sort();
     expect(sold.slice(0, 2)).toEqual(b.status === 'fulfilled' ? ['x1', 'x2'] : ['x2', 'x3']);
