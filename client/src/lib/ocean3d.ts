@@ -113,7 +113,7 @@ export function buildHarbour(o: HarbourOpts) {
   for (let t = 3; t < len; t += 5) { fen.push(new THREE.Matrix4().compose(new THREE.Vector3(o.x + side * (pierW / 2 + 0.25), 0.7, o.z0 + dir * t), rx, new THREE.Vector3(0.8, 1.4, 0.8))); bol.push(new THREE.Matrix4().compose(new THREE.Vector3(o.x + side * (pierW / 2 - 1.1), 1.7, o.z0 + dir * (t + 2.5)), new THREE.Quaternion(), new THREE.Vector3(0.45, 0.6, 0.45))); }
   const fm = new THREE.InstancedMesh(sg('tyre', () => new THREE.TorusGeometry(0.35, 0.18, 6, 10)), sm(0x111111, 0.9), fen.length); fen.forEach((m, i) => fm.setMatrixAt(i, m)); g.add(fm);
   const bm = new THREE.InstancedMesh(CYL8(), sm(0x222222, 0.5, 0.5), bol.length); bol.forEach((m, i) => bm.setMatrixAt(i, m)); g.add(bm);
-  // STS gantry cranes (legs straddle the pier, boom out over the berth)
+  // STS gantry cranes: legs on quay rails on the pier deck, boom out over the ship berthed alongside (QA#6), backreach over land
   const red = sm(0xd9480f, 0.55, 0.2), white = sm(0xf1f5f9, 0.5);
   for (let c = 0; c < (o.cranes ?? 2); c++) { const cr = new THREE.Group(); cr.position.set(o.x, 1.4, o.z0 + dir * (len * (0.35 + c * 0.35))); g.add(cr);
     for (const dx of [-3.4, 3.4]) for (const dz of [-2.2, 2.2]) part(cr, BOX(), red, 0.6, 15, 0.6, dx, 7.5, dz);

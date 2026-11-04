@@ -57,16 +57,18 @@ export interface LiveVehicle { id: string; mode: Mode; label: string; owner: str
 // map you're viewing; a load arriving at that map runs its route backwards. ----
 type Pt = [number, number];
 export interface HubMap { port: { x: number; z: number; pier: Pt[] }; truck: Pt[]; plane: Pt[]; ship: Pt[] }
+// QA#6: ships berth ALONGSIDE the pier face (pier centre = pier x - 7, width 9), under the STS crane booms, and leave parallel
+// to the quay first; they used to sit off the pier tip. Crane legs stay on the pier deck (ocean3d buildHarbour).
 export const HUB_MAPS: Record<HubId, HubMap> = {
-  city: { port: { x: 40, z: 236, pier: [[40, 208], [40, 240]] }, // Chud Hub Harbour on the ocean coast south of the city (shared/ocean.ts)
-    truck: [[65, -39], [52, -39], [0, -39], [0, -124], [0, -215]], plane: [[-200, 130], [-200, 6], [-200, -120], [-260, -320]], ship: [[40, 236], [54, 272], [90, 420], [140, 700]] },
-  resort: { port: { x: 30, z: 66, pier: [[30, 40], [30, 66]] }, // between the Reef Pier and the Marina
-    truck: [[20, -32], [-60, -32], [-125, -32], [-125, -95]], plane: [[-117, -78], [-83, -78], [-20, -90], [120, -200]], ship: [[30, 66], [36, 120], [10, 240], [-40, 400]] },
-  fortmc: { port: { x: 90, z: 120, pier: [[90, 92], [90, 120]] }, // barge terminal on the river mouth
+  city: { port: { x: 42, z: 225, pier: [[40, 208], [40, 240]] }, // Chud Hub Harbour on the ocean coast south of the city (shared/ocean.ts)
+    truck: [[65, -39], [52, -39], [0, -39], [0, -124], [0, -215]], plane: [[-200, 130], [-200, 6], [-200, -120], [-260, -320]], ship: [[42, 225], [42, 252], [54, 276], [90, 420], [140, 700]] },
+  resort: { port: { x: 32, z: 49, pier: [[30, 40], [30, 66]] }, // between the Reef Pier and the Marina
+    truck: [[20, -32], [-60, -32], [-125, -32], [-125, -95]], plane: [[-117, -78], [-83, -78], [-20, -90], [120, -200]], ship: [[32, 49], [32, 72], [36, 120], [10, 240], [-40, 400]] },
+  fortmc: { port: { x: 92, z: 102, pier: [[90, 92], [90, 120]] }, // barge terminal on the river mouth
     // The truck leaves north up the east haul road and exits AT the map edge (FORT_Z0 = -110). It used to run to z=-230,
     // 120 m past the edge and the end of the road, so for most of the trip a tiny truck + label floated far to the north.
     // trucks leave the Commodity Exchange yard along the south road and the east haul road; planes take off from the airstrip
-    truck: [[80, 56], [128, 56], [128, -4], [128, -116]], plane: [[-125, 70], [-85, 70], [-40, 50], [120, -260]], ship: [[90, 120], [120, 140], [150, 240], [170, 420]] },
+    truck: [[80, 56], [128, 56], [128, -4], [128, -116]], plane: [[-125, 70], [-85, 70], [-40, 50], [120, -260]], ship: [[92, 102], [92, 124], [120, 140], [150, 240], [170, 420]] },
 };
 export const PORT = HUB_MAPS.city.port;
 export const DEPOT: Pt = HUB_MAPS.city.truck[0]!; // the Warehouse landmark

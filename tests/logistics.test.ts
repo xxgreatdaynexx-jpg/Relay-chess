@@ -3,7 +3,7 @@ import { getBank, resetBank } from '../server/casino-store';
 import { getMines, resetMines } from '../server/mines';
 import { setPriceIndexForTest } from '../server/price-index';
 import { Logistics } from '../server/logistics';
-import { MODES, TRUCKS, feeBase, nextDeparture, vehiclePose, arrivalOf } from '../shared/logistics';
+import { MODES, TRUCKS, feeBase, nextDeparture, vehiclePose, arrivalOf, HUB_MAPS } from '../shared/logistics';
 import { LAUNCH } from '../shared/launchPopup';
 
 const HOUR = 3_600_000;
@@ -93,6 +93,6 @@ describe('logistics on every map', () => {
   });
   it('a load leaving the city shows arriving at the resort port on the resort map', () => {
     const v = { mode: 'ship' as const, from: 'city' as const, to: 'resort' as const, departAt: 0, arriveAt: arrivalOf('ship', 0) };
-    const end = vehiclePose(v, v.arriveAt - 1, 'resort'); expect(Math.hypot(end.x - 30, end.z - 66)).toBeLessThan(2);
+    const end = vehiclePose(v, v.arriveAt - 1, 'resort'); expect(Math.hypot(end.x - HUB_MAPS.resort.port.x, end.z - HUB_MAPS.resort.port.z)).toBeLessThan(2);
   });
 });
