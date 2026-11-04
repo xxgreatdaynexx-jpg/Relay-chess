@@ -11,7 +11,7 @@ import { HK_DAILY_PAID_WINS } from '../shared/hockey';
 import { LAUNCH } from '../shared/launchPopup';
 import {
   COOP_PLAN, DONOR_REWARD_CAP, DONOR_REWARD_RATE, SELL_BONUS_MAX, contractAt, contractIndex, contractPay, donorReward, partKey, playerCap, projectStages, projectValue,
-  sellBonusK, sellCapBonus, sellBonusPct, CONTRACT_BONUS, CONTRACT_CLAIM_CAP, inStadiumSite, STADIUM_SITE,
+  sellBonusK, sellCapBonus, sellBonusPct, recentDonated, SELL_BONUS_WINDOW_DAYS, SELL_BONUS_WINDOW_MS, CONTRACT_BONUS, CONTRACT_CLAIM_CAP, inStadiumSite, STADIUM_SITE,
 } from '../shared/coop';
 import { HOUSE_DAILY_BASE } from '../shared/mines';
 
@@ -44,7 +44,8 @@ describe('co-op sizing + rules', () => {
     const p1 = contractPay(a, 10, true), p2 = contractPay(a, 20, true); expect(p2.base).toBeCloseTo(p1.base * 2, -1); expect(p1.bonus).toBe(Math.floor(p1.base * CONTRACT_BONUS));
     expect(contractPay(a, 10, false).bonus).toBe(0); expect(contractPay(a, 1e9, true).total).toBe(CONTRACT_CLAIM_CAP); expect(playerCap(a)).toBe(Math.floor(a.qty / 4));
   });
-  it('stadium site keeps trees/rocks out', () => { expect(inStadiumSite(STADIUM_SITE.x, STADIUM_SITE.z)).toBe(true); expect(inStadiumSite(0, 0)).toBe(false); });
+  it('stadium site keeps trees/rocks out', () => { expect(inStadiumSite(STADIUM_SITE.x, STADIUM_SITE.z)).toBe(true); expect(inStadiumSite(0, 0)).toBe(false);
+    expect(inStadiumSite(STADIUM_SITE.x + STADIUM_SITE.w / 2 + 10, STADIUM_SITE.z + STADIUM_SITE.d / 2 + 10)).toBe(true); expect(inStadiumSite(STADIUM_SITE.x + STADIUM_SITE.w / 2 + 13, STADIUM_SITE.z)).toBe(false); });
   it('is in the launch popup', () => {
     const co = LAUNCH.items.filter((i) => i.section === 'Co-op'); expect(co.length).toBeGreaterThanOrEqual(4);
     expect(co.some((i) => /sell-cap/i.test(i.title))).toBe(true); expect(co.some((i) => /contract/i.test(i.title))).toBe(true);
@@ -52,11 +53,11 @@ describe('co-op sizing + rules', () => {
 });
 
 describe('stadium sell-cap bonus', () => {
-  it('K = 30 days of the base cap; curve values at 100k / 1M / 5M', () => {
-    expect(sellBonusK(1)).toBe(3_000_000); expect(sellBonusK(2)).toBe(6_000_000); expect(sellBonusK(0.5)).toBe(3_000_000);
+  it('K = 40 days of the base cap; curve values at 100k / 1M / 5M', () => {
+    expect(sellBonusK(1)).toBe(4_000_000); expect(sellBonusK(2)).toBe(8_000_000); expect(sellBonusK(0.5)).toBe(4_000_000);
     expect(sellCapBonus(0)).toBe(0); expect(sellCapBonus(-5)).toBe(0);
-    expect(sellBonusPct(sellCapBonus(100_000))).toBeCloseTo(1.6, 1); expect(sellBonusPct(sellCapBonus(1_000_000))).toBeCloseTo(14.1, 0);
-    expect(sellBonusPct(sellCapBonus(5_000_000))).toBeCloseTo(40.5, 0);
+    expect(sellBonusPct(sellCapBonus(100_000))).toBeCloseTo(1.2, 1); expect(sellBonusPct(sellCapBonus(1_000_000))).toBeCloseTo(11.0, 0);
+    expect(sellBonusPct(sellCapBonus(5_000_000))).toBeCloseTo(35.6, 0);
     let prev = 0; for (const d of [1e3, 1e4, 1e5, 1e6, 3e6, 1e7]) { const b = sellCapBonus(d); expect(b).toBeGreaterThan(prev); prev = b; } // monotone
   });
   it('hard max +50%', () => { expect(sellCapBonus(1e12)).toBe(SELL_BONUS_MAX); expect(sellCapBonus(25_000_000)).toBeLessThanOrEqual(0.5); });
@@ -66,6 +67,27 @@ describe('stadium sell-cap bonus', () => {
       expect(extraCap30 + donorReward(D, 0)).toBeLessThan(D);
       expect(extraCap30).toBeLessThanOrEqual(D / 2 + 1e-6);
     }
+  });
+  it('worst-case lifetime return of a donation (rebate + 60 days of fully-used extra cap) stays <= 1.0x', () => {
+    let worst = 0;
+    for (const idx of [1, 1.7, 4]) for (const D0 of [0, 1e5, 1e6, 5e6, 2e7]) for (const d of [100, 1e3, 1e4, 1e5, 2.5e5, 1e6, 3e6, 1e7, 2.5e7, 1e9]) {
+      const C = HOUSE_DAILY_BASE * idx; // seller maxes the (boosted) cap every day at 100% margin
+      const extra = SELL_BONUS_WINDOW_DAYS * C * (sellCapBonus(D0 + d, idx) - sellCapBonus(D0, idx)); // d counts for exactly 60 days
+      const ratio = (extra + donorReward(d, 0)) / d; worst = Math.max(worst, ratio);
+      expect(ratio).toBeLessThanOrEqual(1);
+    }
+    expect(worst).toBeLessThan(0.951); expect(worst).toBeGreaterThan(0.94); // analytic bound 60*0.5/40 + 0.2 = 0.95
+  });
+  it('only the last 60 days of donations count; older ones roll off', async () => {
+    const t0 = 500 * DAY; expect(SELL_BONUS_WINDOW_MS).toBe(60 * DAY);
+    const log = [{ at: t0, value: 1_000_000 }, { at: t0 + 30 * DAY, value: 500_000 }];
+    expect(recentDonated(log, t0 + DAY)).toBe(1_000_000); expect(recentDonated(log, t0 + 59 * DAY)).toBe(1_500_000);
+    expect(recentDonated(log, t0 + 60 * DAY)).toBe(500_000); expect(recentDonated(log, t0 + 91 * DAY)).toBe(0);
+    resetBank(); resetMines(); setPriceIndexForTest(1); let now = t0; const c = resetCoop(new Coop(null, () => now));
+    fund('Roller', 2_000_000); await c.donate('Roller', { project: 'stadium', part: 'chips', qty: 1_000_000, nonce: nonce() });
+    expect(c.sellBonus('Roller')).toBeCloseTo(sellCapBonus(1_000_000), 10);
+    now = t0 + 61 * DAY; expect(c.sellBonus('Roller')).toBe(0); expect(c.stadiumDonated('Roller')).toBe(1_000_000);
+    expect(c.view('Roller').stadiumRecent).toBe(0);
   });
   it('stacks across donations (by total given), boosts mines.quote + house room cap', async () => {
     resetBank(); resetMines(); setPriceIndexForTest(1); const c = resetCoop(new Coop(null));

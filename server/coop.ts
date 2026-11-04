@@ -23,7 +23,7 @@ import { isQaName } from '../shared/qa.js';
 import { GOODS, nameOf } from '../shared/mines.js';
 import {
   COOP_PLAN, PROJECT_ORDER, projectStages, stageFull, stagePct, stageValue, partKey, donorReward, DONOR_REWARD_CAP, MIN_DONATION_VALUE,
-  sellCapBonus, contractAt, contractIndex, contractPay, playerCap, CONTRACT_MIN_AGE_MS, CONTRACT_MIN_PLAY_MS, CONTRACT_CLAIM_MS,
+  sellCapBonus, recentDonated, contractAt, contractIndex, contractPay, playerCap, CONTRACT_MIN_AGE_MS, CONTRACT_MIN_PLAY_MS, CONTRACT_CLAIM_MS,
   type ProjectId, type StageNeed, type CoopView, type ProjectView, type ContractView,
 } from '../shared/coop.js';
 
@@ -48,6 +48,7 @@ type DonResult = { id: string; project: ProjectId; stage: number; part: string; 
 export class Coop {
   private done: Record<ProjectId, Array<Record<string, number>>>;
   private donors: Record<ProjectId, Map<string, Donor>>;
+  private stadiumLog = new Map<string, Array<{ at: number; value: number }>>();
   private seen = new Map<string, DonResult | { id: string; contract: string; qty: number }>();
   private contracts = new Map<string, Contract>();
   private chain: Promise<unknown> = Promise.resolve();
@@ -70,7 +71,7 @@ export class Coop {
   async init(): Promise<void> {
     if (!this.pool) return;
     await this.pool.query(COOP_MIGRATION);
-    for (const r of (await this.pool.query('SELECT * FROM coop_donations')).rows) this.applyDonation({ id: String(r.id), project: r.project as ProjectId, stage: Number(r.stage), part: String(r.part), qty: Number(r.qty), value: Number(r.value), reward: Number(r.reward) }, String(r.player_key), String(r.name));
+    for (const r of (await this.pool.query('SELECT * FROM coop_donations')).rows) this.applyDonation({ id: String(r.id), project: r.project as ProjectId, stage: Number(r.stage), part: String(r.part), qty: Number(r.qty), value: Number(r.value), reward: Number(r.reward) }, String(r.player_key), String(r.name), Number(r.at));
     for (const r of (await this.pool.query('SELECT * FROM coop_deliveries')).rows) this.applyDelivery(String(r.id), String(r.contract), String(r.player_key), String(r.name), Number(r.qty), Number(r.at));
     for (const r of (await this.pool.query('SELECT contract, player_key FROM coop_claims')).rows) this.contract(String(r.contract))?.claimed.add(String(r.player_key));
   }
@@ -83,11 +84,14 @@ export class Coop {
   stagesDone(id: ProjectId): number { const st = projectStages(COOP_PLAN[id]); let n = 0; while (n < st.length && stageFull(st[n]!, this.done[id][n]!)) n++; return n; }
   /** Total chips-equivalent this player has given the Hockey Stadium (drives their sell-cap bonus). */
   stadiumDonated(name: string): number { return this.donors.stadium.get(playerKey(name))?.value ?? 0; }
-  sellBonus(name: string): number { return sellCapBonus(this.stadiumDonated(name), houseCapIndex()); }
+  /** Stadium value donated in the last SELL_BONUS_WINDOW_DAYS (only this drives the sell-cap bonus; older gifts roll off). */
+  stadiumRecent(name: string, now = this.clock()): number { return recentDonated(this.stadiumLog.get(playerKey(name)) ?? [], now); }
+  sellBonus(name: string): number { return sellCapBonus(this.stadiumRecent(name), houseCapIndex()); }
   perk(id: ProjectId): boolean { return this.stagesDone(id) >= COOP_PLAN[id].stages.length; }
 
-  private applyDonation(d: DonResult, k: string, name: string) {
+  private applyDonation(d: DonResult, k: string, name: string, at: number) {
     this.seen.set(d.id, d);
+    if (d.project === 'stadium' && d.value > 0) { const l = this.stadiumLog.get(k) ?? []; l.push({ at, value: d.value }); this.stadiumLog.set(k, l); }
     const row = this.done[d.project]?.[d.stage]; if (!row) return; row[d.part] = (row[d.part] ?? 0) + d.qty;
     const m = this.donors[d.project]; const cur = m.get(k) ?? { name, value: 0, rewarded: 0 }; cur.name = name; cur.value += d.value; cur.rewarded += d.reward; m.set(k, cur);
   }
@@ -136,7 +140,7 @@ export class Coop {
         if (!ok) { w?.revert(); throw new CoopError(`You don’t have ${qty.toLocaleString('en-US')} ${g.name} in your Warehouse.`); }
         if (saved) await saved; if (fail) throw new CoopError('That didn’t go through. Nothing was taken.');
       }
-      this.applyDonation(res, k, name.trim()); this.onChange?.();
+      this.applyDonation(res, k, name.trim(), this.clock()); this.onChange?.();
       return res;
     });
   }
@@ -162,7 +166,7 @@ export class Coop {
     const active = this.activeProject(); const me = viewer && active ? this.donors[active].get(playerKey(viewer)) : undefined;
     return { projects: PROJECT_ORDER.map((id) => this.projectView(id, viewer)), active, perks: { stadium: this.perk('stadium'), bridge: this.perk('bridge') },
       ...(viewer && active ? { me: { value: me?.value ?? 0, rewarded: me?.rewarded ?? 0, cap: DONOR_REWARD_CAP } } : {}),
-      ...(viewer ? { sellBonus: this.sellBonus(viewer), stadiumDonated: this.stadiumDonated(viewer) } : {}) };
+      ...(viewer ? { sellBonus: this.sellBonus(viewer), stadiumDonated: this.stadiumDonated(viewer), stadiumRecent: this.stadiumRecent(viewer) } : {}) };
   }
 
   // ------------------------------------------------------------ group contracts

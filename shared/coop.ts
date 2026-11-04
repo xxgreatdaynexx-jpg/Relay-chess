@@ -76,7 +76,7 @@ export const partKey = (g: { type: ItemType; id: string } | 'chips'): PartKey =>
 
 export interface StageView extends StageNeed { done: Record<PartKey, number>; pct: number }
 export interface ProjectView { id: ProjectId; name: string; icon: string; total: number; perk: string; state: 'locked' | 'active' | 'complete'; stage: number; pct: number; stages: StageView[]; top: Array<{ name: string; value: number }> }
-export interface CoopView { projects: ProjectView[]; active: ProjectId | null; perks: { stadium: boolean; bridge: boolean }; me?: { value: number; rewarded: number; cap: number }; sellBonus?: number; stadiumDonated?: number }
+export interface CoopView { projects: ProjectView[]; active: ProjectId | null; perks: { stadium: boolean; bridge: boolean }; me?: { value: number; rewarded: number; cap: number }; sellBonus?: number; stadiumDonated?: number; stadiumRecent?: number }
 
 /** Overall % of a project (by chips-equivalent value, each part clamped to its need). */
 export function stagePct(s: StageNeed, done: Record<PartKey, number>): number {
@@ -129,17 +129,22 @@ export interface ContractView { id: string; item: string; type: ItemType; name: 
 
 // ---------------------------------------------------------------- stadium donor perk: higher daily sell-to-house cap
 /**
- * Every chip-equivalent a player gives the Hockey Stadium permanently raises THEIR daily house-sell cap:
- *   bonus(D) = 50% x (1 - e^(-D / K)),  K = 30 days x the day's full house cap (100,000 base x house cap index).
- * At cap index 1: K = 3,000,000 -> 100k: +1.6%, 1M: +14.2%, 3M: +31.6%, 5M: +40.6%, hard max +50%.
- * No-profit check: the most the bonus can ever earn in H days is H x cap x bonus x margin. With margin <= 100% (the
- * extra room fully used every day, goods that would otherwise sell for nothing) and 1 - e^-x <= x:
- *   30 x C x 0.5 x (1 - e^(-D/K)) <= 15 x C x D / (30 x C) = D / 2.
- * So 30 days of a fully-used bonus is worth at most half the donation; with the capped 20% rebate (<= 50k) the total
- * return stays <= 0.7 x D, always below what was donated. K scales with the cap index, so this holds as the cap grows.
+ * Hockey Stadium chips-equivalent a player gave in the LAST 60 DAYS (D) raises THEIR daily house-sell cap; older gifts roll off:
+ *   bonus(D) = 50% x (1 - e^(-D / K)),  K = 40 days x the day's full house cap (100,000 base x house cap index).
+ * At cap index 1: K = 4,000,000 -> 100k: +1.2%, 1M: +11.1%, 3M: +26.4%, 5M: +35.7%, hard max +50%.
+ * No-profit check (worst case: the extra room fully used every day at 100% margin, on top of ANY other donations, since
+ * the curve is concave the marginal gain of a gift d is <= 0.5 x C x d / K per day), over its whole 60-day life:
+ *   60 x 0.5 x C x d / (40 x C) = 0.75 d;  plus the 20% rebate -> <= 0.95 x d. Always below what was donated.
+ * (With the old K = 30 days and a 60-day window it would have been 1.0 d + 0.2 d = 1.2x, so K was raised to 40 days.)
  */
+export const SELL_BONUS_WINDOW_DAYS = 60;
+export const SELL_BONUS_WINDOW_MS = SELL_BONUS_WINDOW_DAYS * 86_400_000;
+/** Sum of donations made within the window ending at `now` (at > now - window). */
+export function recentDonated(log: ReadonlyArray<{ at: number; value: number }>, now: number): number {
+  let t = 0; for (const e of log) if (e.at > now - SELL_BONUS_WINDOW_MS && e.at <= now) t += e.value; return t;
+}
 export const SELL_BONUS_MAX = 0.5;
-export const SELL_BONUS_K_DAYS = 30;
+export const SELL_BONUS_K_DAYS = 40;
 export const SELL_BONUS_BASE_CAP = 100_000; // = HOUSE_DAILY_BASE (shared/mines.ts)
 export const sellBonusK = (capIndex = 1) => SELL_BONUS_K_DAYS * SELL_BONUS_BASE_CAP * (capIndex > 1 ? capIndex : 1);
 export function sellCapBonus(donated: number, capIndex = 1): number {
@@ -151,4 +156,6 @@ export const sellBonusPct = (b: number) => Math.floor(b * 1000) / 10;
 
 /** Map site of the Hockey Stadium (outskirts, north of the city by the north road; clear of buildings and fields). */
 export const STADIUM_SITE = { x: 4, z: -156, w: 36, d: 28 } as const;
-export const inStadiumSite = (x: number, z: number, pad = 3) => Math.abs(x - STADIUM_SITE.x) <= STADIUM_SITE.w / 2 + pad && Math.abs(z - STADIUM_SITE.z) <= STADIUM_SITE.d / 2 + pad;
+/** Decor (trees/rocks) clearance around the site edge: the finished arena + its forecourt need a clear ring. */
+export const STADIUM_CLEAR_PAD = 12;
+export const inStadiumSite = (x: number, z: number, pad = STADIUM_CLEAR_PAD) => Math.abs(x - STADIUM_SITE.x) <= STADIUM_SITE.w / 2 + pad && Math.abs(z - STADIUM_SITE.z) <= STADIUM_SITE.d / 2 + pad;
