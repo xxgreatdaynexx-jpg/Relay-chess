@@ -60,7 +60,7 @@ describe('FishPan server', () => {
     await expect(c.plate('Cook1', inp)).rejects.toThrow(/Nothing in the pan/);
     const pan = await c.pantry('Cook1'); expect(pan.items[0]!.dish).toBe(r.dish); expect(pan.items[0]!.raw).toBe(fish.value);
     expect((await f.view('Cook1')).best).toBeTruthy();
-    const sold = await f.sell('Cook1'); expect(sold.gross).toBe(r.value); expect(sold.paid).toBeLessThanOrEqual(FISH_DAILY_MAX);
+    const sold = await f.sell('Cook1'); expect(sold.gross).toBe(Math.floor(r.value * 1.5)); // +50% cooking buff expect(sold.paid).toBeLessThanOrEqual(FISH_DAILY_MAX);
     expect(bank.account('Cook1').chips).toBeGreaterThan(0);
     await expect(c.start('Cook1', fish.id)).rejects.toThrow(/isn't in your cooler/);
   });
@@ -68,9 +68,9 @@ describe('FishPan server', () => {
     const { f, c, adv, catchOne, pool } = await setup();
     const day = new Date(T0).toISOString().slice(0, 10);
     const a = await catchOne('Cook3'); const s = await c.start('Cook3', a.id); const inp = cookWell(s.seed, s.thick); adv(inp.length * 100); const r = await c.plate('Cook3', inp);
-    const sold = await f.sell('Cook3', [a.id]); expect(sold.gross).toBe(r.value);
+    const sold = await f.sell('Cook3', [a.id]); expect(sold.gross).toBe(Math.floor(r.value * 1.5));
     const k = (await pool.query('SELECT gross, paid FROM kitchen_daily WHERE player_key = $1 AND day = $2', ['cook3', day])).rows[0];
-    expect(Number(k.gross)).toBe(r.value); expect(Number(k.paid)).toBe(sold.paid);
+    expect(Number(k.gross)).toBe(Math.floor(r.value * 1.5)); expect(Number(k.paid)).toBe(sold.paid);
     const fd = (await pool.query('SELECT gross FROM fish_daily WHERE player_key = $1 AND day = $2', ['cook3', day])).rows[0]; expect(Number(fd?.gross ?? 0)).toBe(0);
     await pool.query('UPDATE kitchen_daily SET gross = 100000 WHERE player_key = $1 AND day = $2', ['cook3', day]);
     const b = await catchOne('Cook3'); const s2 = await c.start('Cook3', b.id); const inp2 = cookWell(s2.seed, s2.thick); adv(inp2.length * 100); await c.plate('Cook3', inp2);

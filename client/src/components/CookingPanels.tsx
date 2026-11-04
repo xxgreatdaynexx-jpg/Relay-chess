@@ -1,4 +1,5 @@
 import { useDoing } from '@/lib/doing';
+import { cookSellValue } from '../../../shared/cooking';
 import { SellQtyPicker } from './SellQtyPicker';
 import { pickForQty } from '../../../shared/sellQty';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -101,7 +102,7 @@ export function KitchenPanel({ me, home, onClose, onGrocery }: { me: string | nu
     const rec = RECIPES.find((x) => x.id === c.recipe)!;
     if (!r.ok) setMsg(r.error ?? 'The stove went cold.');
     else if (r.burnt) setMsg(`💨 Burnt the ${rec.label}! +${r.xp} Cooking XP. It goes in the bin.`);
-    else setMsg(`${rec.emoji} ${qualityLabel(r.quality ?? 0)} ${rec.label}! Worth ~🪙 ${chips(Math.floor((r.dish?.value ?? 0) * idx))} · +${r.xp} Cooking XP`);
+    else setMsg(`${rec.emoji} ${qualityLabel(r.quality ?? 0)} ${rec.label}! Worth ~🪙 ${chips(Math.floor(cookSellValue(r.dish?.value ?? 0) * idx))} · +${r.xp} Cooking XP`);
     load();
   }, [cook, idx, load]);
   const sell = async (qty?: number) => {
@@ -127,11 +128,11 @@ export function KitchenPanel({ me, home, onClose, onGrocery }: { me: string | nu
         {tab === 'book' && <small className="opacity-70 block" data-testid="kitchen-fillets">🔪 Fish are cut into fillets: 1 per {FISH_ING.fish.base} chips of value (fine fish: 1 per {FISH_ING.fish_fine.base}), up to {FILLET_CAP} per fish. Each fish recipe uses one fillet. You have 🐟 {v?.fish.fish ?? 0} fillets ({v?.fillets?.fish ?? 0} already cut) · 🍣 {v?.fish.fish_fine ?? 0} fine.</small>}
         {tab === 'book' ? <ul className="kitchen-book" data-testid="kitchen-book">{RECIPES.map((r) => {
           const locked = !v || v.level < r.level; const ok = !!v && Object.entries(r.ings).every(([id, n]) => have(v, id) >= n);
-          return <li key={r.id} className={locked ? 'locked' : ''}><span className="k-emoji">{locked ? '🔒' : <ItemIcon type="food" id={r.id} size={28} />}</span><div><b>{r.label}</b> <small>lvl {r.level} · ~🪙 {chips(Math.floor(dishValue(r, 0.8) * idx))}</small>
+          return <li key={r.id} className={locked ? 'locked' : ''}><span className="k-emoji">{locked ? '🔒' : <ItemIcon type="food" id={r.id} size={28} />}</span><div><b>{r.label}</b> <small>lvl {r.level} · ~🪙 {chips(Math.floor(cookSellValue(dishValue(r, 0.8)) * idx))}</small>
             <div className="k-ings">{Object.entries(r.ings).map(([id, n]) => { const inf = ingInfo(id); const h = v ? have(v, id) : 0; return <span key={id} className={h >= n ? 'ok' : 'miss'} title={id === 'fish' || id === 'fish_fine' ? `${inf?.label}: fillets you have` : inf?.label}>{id === 'fish' || id === 'fish_fine' ? inf?.emoji : <ItemIcon type="food" id={id} size={16} />}{n > 1 ? `×${n}` : ''} <em>{h}</em></span>; })}</div></div>
             {!locked && <button type="button" disabled={!!busy || !ok || !v?.hasHome} aria-busy={busy === r.id} onClick={() => void start(r)} data-testid={`cook-${r.id}`}>{busy === r.id ? '…' : 'Cook'}</button>}</li>; })}</ul>
-          : <div className="kitchen-fridge" data-testid="kitchen-fridge">{v?.dishes.length ? <ul>{v.dishes.map((d) => { const r = RECIPES.find((x) => x.id === d.recipe); return <li key={d.id}><ItemIcon type="food" id={d.recipe} size={20} /> {r?.label} <small>{qualityLabel(d.quality)} · 🪙 {chips(Math.floor(d.value * idx))}</small></li>; })}</ul> : <small>Nothing in the fridge yet — cook something!</small>}
-            {v && v.dishes.length > 1 && <SellQtyPicker owned={v.dishes.length} unit="dishes" testid="kitchen-qty" disabled={!!busy} preview={(n) => Math.floor(cookPayout(pickForQty(v.dishes, n).reduce((a, d) => a + d.value, 0), v.today.gross ?? 0) * idx)} onSell={(n) => sell(n)} />}
+          : <div className="kitchen-fridge" data-testid="kitchen-fridge">{v?.dishes.length ? <ul>{v.dishes.map((d) => { const r = RECIPES.find((x) => x.id === d.recipe); return <li key={d.id}><ItemIcon type="food" id={d.recipe} size={20} /> {r?.label} <small>{qualityLabel(d.quality)} · 🪙 {chips(Math.floor(cookSellValue(d.value) * idx))}</small></li>; })}</ul> : <small>Nothing in the fridge yet — cook something!</small>}
+            {v && v.dishes.length > 1 && <SellQtyPicker owned={v.dishes.length} unit="dishes" testid="kitchen-qty" disabled={!!busy} preview={(n) => Math.floor(cookPayout(cookSellValue(pickForQty(v.dishes, n).reduce((a, d) => a + d.value, 0)), v.today.gross ?? 0) * idx)} onSell={(n) => sell(n)} />}
             <button type="button" disabled={!!busy || !v?.dishes.length} aria-busy={busy === 'sell'} onClick={() => void sell()} data-testid="kitchen-sell">{busy === 'sell' ? 'Selling…' : 'Sell all dishes'}</button>
             <small className="opacity-70">Today: 🪙 {chips(v?.today.paid ?? 0)} earned · daily cap ~🪙 {chips(Math.floor(COOK_DAILY_MAX * idx))} (shared by recipe and pan-fried fish dishes: full price up to 100,000 a day){left === 0 && v?.today.paid ? ' · cap reached' : ''}</small></div>}
       </>}
