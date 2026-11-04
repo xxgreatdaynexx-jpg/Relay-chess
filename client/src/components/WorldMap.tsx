@@ -107,6 +107,7 @@ const Venues = lazyWithReload(() => import('./Venues').then((m) => ({ default: m
 const FishingPanel = lazyWithReload(() => import('./FishingPanel').then((m) => ({ default: m.FishingPanel })));
 const Dealership = lazyWithReload(() => import('./Dealership').then((m) => ({ default: m.Dealership })));
 const MechanicShop = lazyWithReload(() => import('./MechanicShop').then((m) => ({ default: m.MechanicShop })));
+const FreightYard = lazyWithReload(() => import('./FreightYard').then((m) => ({ default: m.FreightYard })));
 const ResortMap = lazyWithReload(() => import('./ResortMap').then((m) => ({ default: m.ResortMap })));
 const FortMcMap = lazyWithReload(() => import('./FortMcMap').then((m) => ({ default: m.FortMcMap })));
 
@@ -172,11 +173,12 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
     return () => { dead = true; socket.off('re_changed', load); };
   }, []);
   useEffect(() => { worldRef.current?.setOwned([...owned.keys()]); }, [owned, loading]);
+  const freight = panel.k === 'freight'; const setFreight = (v: boolean) => setPanel((c) => (v ? { k: 'freight' } : closePanel(c, 'freight')));
   const dealer = panel.k === 'dealer'; const setDealer = (v: boolean) => setPanel((c) => (v ? { k: 'dealer' } : closePanel(c, 'dealer')));
   const mechanic = panel.k === 'mechanic'; const setMechanic = (v: boolean) => setPanel((c) => (v ? { k: 'mechanic' } : closePanel(c, 'mechanic')));
   const [nitro, setNitro] = useState<{ have: number; full: number; on: boolean } | null>(null);
   const dock = panel.k === 'dock'; const setDock = (v: boolean) => setPanel((c) => (v ? { k: 'dock' } : closePanel(c, 'dock')));
-  const driveRef = useRef<Drive | null>(null);
+  const driveRef = useRef<Drive | null>(null); const freightRef = useRef<{ dispose: () => void } | null>(null);
   const pendingDrive = useRef<{ carId: string; color: number; from?: string } | null>(null); const startDriveRef = useRef<(carId: string, color: number, from?: string) => void>(() => {});
   const [driving, setDriving] = useState(false); const [near, setNear] = useState<string | null>(null); const [drift, setDrift] = useState(false);
   const [kmh, setKmh] = useState(0);
@@ -256,13 +258,14 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
           onTrailer: (n) => { const m = meRef.current; if (m && n.toLowerCase() === m.toLowerCase()) { setPanel({ k: 'home' }); return true; } return false; },
         });
         const w = worldRef.current;
+        void importWithReload(() => import('@/lib/worldFreight')).then(({ createFreight }) => { if (dead || worldRef.current !== w) return; freightRef.current = createFreight(w); });
         void importWithReload(() => import('@/lib/worldDrive')).then(({ createDrive }) => { if (dead || worldRef.current !== w) return;
           driveRef.current = createDrive(w, { me: () => meRef.current ?? null, onNear: setNear, onSpeed: setKmh, onRace, onNitro: setNitro, onDrift: setDrift });
           const pd = pendingDrive.current; pendingDrive.current = null; if (pd) startDriveRef.current(pd.carId, pd.color, pd.from); });
       } catch { setMode('2d'); }
       setLoading(false);
     }).catch(() => setMode('2d'));
-    return () => { dead = true; driveRef.current?.dispose(); driveRef.current = null; setDriving(false); worldRef.current?.dispose(); worldRef.current = null; };
+    return () => { dead = true; freightRef.current?.dispose(); freightRef.current = null; driveRef.current?.dispose(); driveRef.current = null; setDriving(false); worldRef.current?.dispose(); worldRef.current = null; };
   }, [mode]);
   // Pause the city while a building's panel is open over it (saves GPU for Arena/Mines).
   useEffect(() => {
@@ -307,6 +310,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
         {me && <button type="button" onClick={() => setPanel((c) => togglePanel(c, { k: 'home' }))} data-testid="world-home-btn">🏠 My home</button>}
         {myFarms.length > 0 && <button type="button" onClick={() => setFarm(myFarms[0])} data-testid="world-farm-btn">🌾 My farm{myFarms.length > 1 ? 's' : ''}</button>}
         {mode === '3d' && !loading && <button type="button" onClick={() => void toggleDrive()} data-testid="world-drive">{driving ? '🅿 Park' : '🚗 Drive'}</button>}
+        <button type="button" onClick={() => setPanel((c) => togglePanel(c, { k: 'freight' }))} data-testid="world-freight-btn">📦 Logistics</button>
         <button type="button" onClick={() => setMode(mode === '3d' ? '2d' : '3d')} data-testid="world-mode">{mode === '3d' ? '▦ 2D map' : '🌃 3D city'}</button>
       </div>
       {home && me && <div className="world-deed world-deeds" data-testid="world-home" data-drag-panel="home" onPointerDown={dragHome.onPointerDown} style={dragHome.style()} ref={dragHome.ref}>{dragHome.handle}
@@ -336,6 +340,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       {venue && <Suspense fallback={<div className="world-loading">Opening…</div>}><Venues kind={venue} me={me} driving={driving} onClose={() => setVenue(null)} onFly={async (to) => driveRef.current ? driveRef.current.fly(to) : { ok: false, error: 'Switch to the 3D city to fly.' }} onDriveFrom={driveFrom} /></Suspense>}
       {dock && <Suspense fallback={<div className="world-loading">Opening the dock…</div>}><FishingPanel me={me} onClose={() => setDock(false)} /></Suspense>}
       {mechanic && <Suspense fallback={<div className="world-loading">Opening the garage…</div>}><MechanicShop onClose={() => setMechanic(false)} onDrive={(carId, color) => { setMechanic(false); startDrive(carId, color, 'mechanic'); }} /></Suspense>}
+      {freight && <Suspense fallback={<div className="world-loading">Opening the freight yard…</div>}><FreightYard me={me} onClose={() => setFreight(false)} /></Suspense>}
       {dealer && <Suspense fallback={<div className="world-loading">Opening the dealership…</div>}><Dealership onClose={() => setDealer(false)} onDrive={startDrive} /></Suspense>}
       {casino && (
         <div className="world-casino" {...backdropDismiss(() => setCasino(false))} data-testid="world-casino">

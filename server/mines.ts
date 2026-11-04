@@ -561,6 +561,8 @@ export class MinesWorld {
 
   // ------------------------------------------------------------ Market hook (stackable listings)
   /** Current qty of one stack for an account (online or offline). */
+  /** Every stack in a player's banked storage (logistics shipping picker). */
+  stacks(account: string): Array<{ type: ItemType; id: string; qty: number }> { this.beforeStorage?.(account); return [...this.pack(playerKey(account)).values()].map((s) => ({ type: s.type, id: s.id, qty: s.qty })); }
   stackQty(account: string, type: ItemType, id: string): number { this.beforeStorage?.(account); return this.pack(playerKey(account)).get(stackKey({ type, id }))?.qty ?? 0; }
   /** Move qty into (+) or out of (-) an account's pack and persist the pack plus `extra` rows in ONE transaction (queued in order with every other pack save).
    * Returns false (no change) if a withdrawal would go negative. Without a store, `fallback` gets the rows instead. */

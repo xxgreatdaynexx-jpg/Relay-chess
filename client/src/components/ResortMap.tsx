@@ -39,7 +39,7 @@ export function ResortMap() {
   const [casino, setCasino] = useState(false); const [floor, setFloor] = useState<string | null>(null); const [air, setAir] = useState(false); const [msg, setMsg] = useState<string | null>(null); const [list, setList] = useState(false); const [pier, setPier] = useState(false); const [marina, setMarina] = useState(false); const [deepSea, setDeepSea] = useState(false); const [hangar, setHangar] = useState(false);
 
   useEffect(() => {
-    let dead = false;
+    let dead = false; let freight: { dispose: () => void } | null = null;
     void importWithReload(() => import('@/lib/resort3d')).then(({ createResort }) => {
       if (dead || !canvasRef.current) return;
       worldRef.current = createResort(canvasRef.current, {
@@ -47,9 +47,11 @@ export function ResortMap() {
         onPick: (id) => go(id),
         onProperty: (id) => { const o = ownedRef.current.get(id); const m = meRef.current; if (id.startsWith('rf:') && o && m && o.owner.toLowerCase() === m.toLowerCase()) { setDeed(null); setFarm(id); } else { setFarm(null); setDeed(id); } },
       });
+      const w = worldRef.current;
+      void importWithReload(() => import('@/lib/worldFreight')).then(({ createFreight }) => { if (dead || worldRef.current !== w || !w) return; freight = createFreight(w, 'resort'); });
       setLoading(false);
     });
-    return () => { dead = true; worldRef.current?.dispose(); worldRef.current = null; };
+    return () => { dead = true; freight?.dispose(); worldRef.current?.dispose(); worldRef.current = null; };
   }, []);
   useEffect(() => {
     let dead = false;
