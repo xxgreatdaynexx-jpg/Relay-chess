@@ -18,6 +18,7 @@ import { TopTab, TopTabs } from '@/components/TopTabs';
 import { PokerPanel } from '@/components/PokerPanel';
 import { SlotsPanel } from '@/components/SlotsPanel';
 import { ArenaPanel } from '@/components/ArenaPanel';
+import { HockeyPanel } from '@/components/HockeyPanel';
 import { MinesPanel } from '@/components/MinesPanel';
 import { FactoryPanel } from '@/components/FactoryPanel';
 import { MarketPage } from '@/components/MarketPage';
@@ -218,6 +219,7 @@ export function App() {
         <SlotsPanel />
         <SolitairePanel />
         <ArenaPanel />
+        <HockeyPanel />
         <MinesPanel />
         <FactoryPanel />
         <MarketPage />
