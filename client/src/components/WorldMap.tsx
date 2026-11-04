@@ -1,3 +1,5 @@
+import { useNow } from '@/lib/useNow';
+import { mapCountdownLabel } from '../../../shared/launchCountdown';
 import { useDoing } from '@/lib/doing';
 import { backdropDismiss } from '@/lib/backdrop';
 import { CookingHost, OPEN_GROCERY, openKitchen } from './CookingPanels';
@@ -282,6 +284,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
         </div>
       )}
       <div className="world-clock" data-testid="world-clock" title={`Alberta time · sunrise ${fmtClock(sky.sunrise)} · sunset ${fmtClock(sky.sunset)}`}><span>{sky.icon}</span><b>{fmtClock(sky.minutes)}</b><small>AB · {sky.label}</small></div>
+      <MuCountdown />
       <div className="world-title"><span>CHUD</span> HUB</div>
       {loading && mode === '3d' && <div className="world-loading">Building the city…</div>}
       {spot && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#' + spot.color.toString(16).padStart(6, '0') }} data-testid="world-tip"><b>{spot.icon} {spot.label}</b><span>{spot.blurb}</span>{ownerLine && <span className="world-tip-owner">🏛 {ownerLine}</span>}<em>Click to enter</em></div>}
@@ -333,6 +336,11 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
 }
 
 /** The map the player is on: Chud Hub (city) or Chud Resort (only reachable by plane from the airport). */
+function MuCountdown() {
+  const now = useNow();
+  return <button type="button" className="world-mu-count" data-testid="mu-countdown" onClick={() => window.dispatchEvent(new CustomEvent('open-launch-popup'))}>💰 {mapCountdownLabel(now)}</button>;
+}
+
 export function WorldMap(props: { onClose: () => void; onLeaderboard: () => void }) {
   const { loc } = useTrip(); const [flying, setFlying] = useState(false); const prev = useRef(loc);
   useEffect(() => { if (prev.current === loc) return; prev.current = loc; setFlying(true); const t = window.setTimeout(() => setFlying(false), 1600); return () => window.clearTimeout(t); }, [loc]);

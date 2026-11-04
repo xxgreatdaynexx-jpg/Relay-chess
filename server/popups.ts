@@ -3,6 +3,7 @@ import type { Server, Socket } from 'socket.io';
 import { randomUUID } from 'node:crypto';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { signedIn } from './auth-sockets.js';
+import { LAUNCH } from '../shared/launchPopup.js';
 
 /** Admin-only direct popups: stored per player (Postgres when available), delivered over socket, cleared on OK. */
 export const POPUP_TEXT_MAX = 500;
@@ -45,6 +46,18 @@ export class PopupStore {
     if (!p || pkey(p.player) !== pkey(player) || p.ackedAt !== null) return false;
     p.ackedAt = Date.now(); return true;
   }
+  /** One-time launch popup seen flags (shared/launchPopup.ts). */
+  private seen = new Set<string>();
+  async launchSeen(player: string, id: string): Promise<boolean> {
+    if (this.db) { await this.ensureLaunch(); return ((await this.db.query('SELECT 1 FROM launch_seen WHERE player_key=$1 AND launch_id=$2', [pkey(player), id])).rows.length) > 0; }
+    return this.seen.has(`${pkey(player)}|${id}`);
+  }
+  async markLaunch(player: string, id: string): Promise<void> {
+    if (this.db) { await this.ensureLaunch(); await this.db.query('INSERT INTO launch_seen (player_key, launch_id, at) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [pkey(player), id, Date.now()]); return; }
+    this.seen.add(`${pkey(player)}|${id}`);
+  }
+  private launchReady = false;
+  private async ensureLaunch() { if (this.launchReady || !this.db) return; await this.db.query('CREATE TABLE IF NOT EXISTS launch_seen (player_key TEXT NOT NULL, launch_id TEXT NOT NULL, at BIGINT NOT NULL, PRIMARY KEY (player_key, launch_id))'); this.launchReady = true; }
   /** Idempotent fixed-id insert (system messages seeded at boot); never re-queues an acked one. */
   async seed(p: Popup): Promise<void> {
     if (this.db) {
@@ -109,6 +122,15 @@ export function registerPopups(_io: Server, socket: Socket): void {
     let name = ''; try { name = signedIn(socket); } catch { return reply(ack, { ok: true, popups: [] }); }
     socket.join(roomOf(name));
     try { reply(ack, { ok: true, popups: (await store.pending(name)).map(wire) }); } catch { reply(ack, { ok: false, popups: [] }); }
+  });
+  socket.on('launch_pending', async (_p: unknown, ack?: unknown) => {
+    let name = ''; try { name = signedIn(socket); } catch { return reply(ack, { ok: true, launch: null }); }
+    try { reply(ack, { ok: true, launch: (await store.launchSeen(name, LAUNCH.id)) ? null : LAUNCH }); } catch { reply(ack, { ok: false, launch: null }); }
+  });
+  socket.on('launch_ack', async (p: unknown, ack?: unknown) => {
+    let name = ''; try { name = signedIn(socket); } catch { return reply(ack, { ok: false }); }
+    const id = (p as { id?: unknown } | null)?.id; if (id !== LAUNCH.id) return reply(ack, { ok: false });
+    try { await store.markLaunch(name, LAUNCH.id); reply(ack, { ok: true }); } catch { reply(ack, { ok: false }); }
   });
   socket.on('popup_ack', async (p: unknown, ack?: unknown) => {
     const id = (p as { id?: unknown } | null)?.id;

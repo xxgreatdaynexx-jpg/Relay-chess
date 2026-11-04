@@ -2156,3 +2156,29 @@ select, option, input, textarea, button { font-family: inherit; }
 .mkt-bulk [data-testid=mkt-bulk-confirm] { background: #2f8f3a; border-color: #6ad66a; }
 .mkt-bulkbar button { padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.06); color: inherit; font: inherit; cursor: pointer; }
 @media (max-width: 640px) { .mkt-bulkbar { gap: 8px; } }
+/* The Millionaire Update launch popup */
+.launch-backdrop { position: fixed; inset: 0; z-index: 9999; background: radial-gradient(circle at 50% 30%, rgba(232,194,106,.18), rgba(0,0,0,.78) 60%); display: flex; align-items: center; justify-content: center; padding: 14px; }
+.launch-card { width: 100%; max-width: 560px; max-height: calc(100dvh - 28px); display: flex; flex-direction: column; overflow: hidden; background: linear-gradient(180deg, #1d1a12, #111318 40%); border: 1px solid #e8c26a88; border-radius: 18px; box-shadow: 0 0 0 1px #000, 0 20px 60px rgba(0,0,0,.6), 0 0 40px rgba(232,194,106,.25); padding: 22px 22px 18px; color: #f4efe2; text-align: center; }
+.launch-burst { font-size: 44px; line-height: 1; filter: drop-shadow(0 0 12px #e8c26a); }
+.launch-title { margin: 6px 0 2px; font-size: 28px; font-weight: 900; letter-spacing: .5px; background: linear-gradient(90deg, #ffe7a3, #e8c26a, #c9962e); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.launch-sub { margin: 0 0 12px; opacity: .8; font-size: 14px; }
+.launch-list { list-style: none; margin: 0; padding: 0 2px 0 0; text-align: left; display: grid; gap: 8px; align-content: start; overflow-y: auto; min-height: 0; flex: 1 1 auto; overscroll-behavior: contain; }
+.launch-list li { display: flex; gap: 10px; align-items: flex-start; background: rgba(255,255,255,.05); border: 1px solid rgba(232,194,106,.18); border-radius: 12px; padding: 8px 10px; }
+.launch-list b { display: block; color: #ffe3a0; font-size: 14px; } .launch-list span { font-size: 13px; opacity: .85; }
+.launch-count { display: block; font-size: 12px; opacity: .75; margin-top: 2px; }
+.launch-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 10px; margin: 0 -4px; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg, #000 90%, transparent); mask-image: linear-gradient(90deg, #000 90%, transparent); flex: none; }
+.launch-tabs::-webkit-scrollbar { display: none; }
+.launch-tabs button { flex: none; padding: 5px 11px; border-radius: 999px; border: 1px solid rgba(232,194,106,.35); background: rgba(255,255,255,.04); color: #f4efe2; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.launch-tabs button.on { background: linear-gradient(180deg, #ffe08a, #d9a83a); color: #1a1406; border-color: transparent; }
+.launch-nav { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; flex: none; }
+.launch-back { padding: 9px 14px; border-radius: 999px; border: 1px solid rgba(232,194,106,.35); background: transparent; color: #ffe3a0; font-weight: 700; cursor: pointer; }
+.launch-back:disabled { opacity: .3; cursor: default; }
+.launch-dots { font-size: 12px; opacity: .7; }
+.launch-skip { margin-top: 8px; background: none; border: 0; color: #f4efe2; opacity: .55; font-size: 12px; text-decoration: underline; cursor: pointer; flex: none; align-self: center; }
+@media (max-width: 480px) { .launch-card { padding: 16px 14px 12px; } .launch-title { font-size: 23px; } .launch-burst { font-size: 34px; } .launch-ok { padding: 10px 18px; } }
+.launch-ico { font-size: 22px; line-height: 1.2; opacity: 1 !important; }
+.launch-ok { margin-top: 0; padding: 10px 26px; border: 0; border-radius: 999px; font-weight: 800; font-size: 15px; color: #1a1406; background: linear-gradient(180deg, #ffe08a, #d9a83a); box-shadow: 0 4px 14px rgba(232,194,106,.4); cursor: pointer; }
+.launch-when { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 10px; margin: 0 0 8px; font-size: 13px; color: #ffe3a0; flex: none; } .launch-when b { font-variant-numeric: tabular-nums; padding: 2px 10px; border-radius: 999px; background: rgba(232,194,106,.15); border: 1px solid rgba(232,194,106,.4); }
+.launch-extra { display: flex; justify-content: center; gap: 16px; flex: none; }
+.world-mu-count { position: absolute; left: 18px; top: 86px; padding: 2px 9px; border-radius: 999px; background: #1d1a12cc; border: 1px solid #e8c26a66; font: 700 11px/1.3 'Outfit Variable', system-ui, sans-serif; color: #ffe3a0; font-variant-numeric: tabular-nums; z-index: 2; pointer-events: auto; cursor: pointer; white-space: nowrap; backdrop-filter: blur(4px); }
+@media (max-width: 480px) { .world-mu-count { font-size: 10px; padding: 2px 7px; } }
