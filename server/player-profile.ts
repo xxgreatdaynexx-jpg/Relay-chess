@@ -15,6 +15,7 @@ import { getVault } from './skins.js';
 import { getSkills } from './skills.js';
 import { houseRoom } from './house-room.js';
 import { getPlayTime } from './playtime.js';
+import { NETWORTH_MIGRATION } from './networth-snapshots.js';
 import { isQaName } from '../shared/qa.js';
 import { propertyById } from '../shared/realEstate.js';
 import { cropById } from '../shared/farm.js';
@@ -96,12 +97,12 @@ export async function buildPlayerProfile(raw: string, deps: ProfileDeps) {
   const biggestFish = fish ? { species: String(fish.species), label: fishById(fish.species)?.label ?? String(fish.species), emoji: fishById(fish.species)?.emoji ?? '🐟', grams: Number(fish.weight_g), value: Number(fish.value), at: Number(fish.caught_at) } : null;
   const playMs = await safe(() => getPlayTime().total(name), 0);
   const since = (await row1('SELECT created_at FROM players WHERE player_key = $1'))[0];
-  // #31 (chessguy2): net worth chart. A snapshot is stored at most hourly when the profile is built, plus the chips
+  // #31 (chessguy2): net worth chart. A snapshot is stored at most hourly when the profile is built (deduped against the hourly all-player job in networth-snapshots.ts), plus the chips
   // line is backfilled from the wallet ledger (daily closing balance, 30 days). Read-only for the wallet.
   const netWorthNow = (chips ?? 0) + assetTotal;
   const history = await safe(async () => {
     if (!db) return { points: [] as Array<{ t: number; net: number }>, chips: [] as Array<{ t: number; chips: number }> };
-    await db.query('CREATE TABLE IF NOT EXISTS networth_history (player_key TEXT NOT NULL, t BIGINT NOT NULL, net BIGINT NOT NULL, chips BIGINT NOT NULL, PRIMARY KEY (player_key, t))');
+    for (const stmt of NETWORTH_MIGRATION) await db.query(stmt);
     const last = (await db.query('SELECT MAX(t) AS t FROM networth_history WHERE player_key = $1', [key])).rows[0];
     if (chips != null && (!last?.t || Number(last.t) < now - 3_600_000)) await db.query('INSERT INTO networth_history (player_key, t, net, chips) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING', [key, now, Math.round(netWorthNow), Math.round(chips)]);
     const pts = (await db.query('SELECT t, net FROM networth_history WHERE player_key = $1 AND t > $2 ORDER BY t', [key, now - 90 * 86_400_000])).rows.map((x) => ({ t: Number(x.t), net: Number(x.net) }));
