@@ -37,10 +37,12 @@ export class Travel {
     return { loc: this.where(name), ticket: name && waiver(name, 'resort') ? 0 : px(RESORT_TICKET_BASE), tickets };
   }
 
-  /** Buy a ticket and fly to the resort (atomic: ledger + location). */
-  async fly(name: string) {
-    const k = keyOf(name); if (this.where(name) === 'resort') throw new TravelError('You are already at Chud Resort.');
-    const jet = await jetHook(name).catch(() => null); // #11: private-jet owners fly free (they pay daily upkeep instead)
+  /** Buy a ticket and fly to `dest` (atomic: ledger + location). A waived ticket (private jet etc.) skips the ledger. */
+  async fly(name: string, dest: Destination = 'resort') {
+    if (!isDestination(dest)) throw new TravelError('Unknown destination.');
+    const D = DESTINATIONS[dest]; const k = keyOf(name); if (this.where(name) === dest) throw new TravelError(`You are already at ${D.name}.`);
+    // #11: private-jet owners fly free to Chud Resort only (the jet blurb's promise). Fort McChud always charges its ticket (Tess QA: was free with a jet).
+    const jet = dest === 'resort' ? await jetHook(name).catch(() => null) : null;
     const waivedBy = waiver(name, dest); const waived = waivedBy || jet;
     const fee = waived ? 0 : px(D.ticket); const bank = getBank();
     if (fee > 0 && !bank.canAfford(name, fee)) throw new TravelError(`Not enough chips: a ticket costs ${fee.toLocaleString('en-US')}.`);
