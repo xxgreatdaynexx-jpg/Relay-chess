@@ -142,3 +142,12 @@ describe('FortMc server', () => {
     expect((await f2.view(n)).fort.ore.iron ?? 0).toBeLessThan(1);
   }, 30_000);
 });
+
+import { turbineStatus as _ts, newFort as _nf } from '../shared/fortmc';
+describe('turbine idle header (Tess QA #6)', () => {
+  it('turbine on with no gas reads idle; with gas it runs', () => {
+    const s = _nf(0); s.units.push({ k: 'turbine', on: true, cond: 100 } as never);
+    expect(_ts(s)).toEqual({ built: 1, running: 0, idle: true });
+    s.stock.natgas = 50; expect(_ts(s)).toEqual({ built: 1, running: 1, idle: false });
+  });
+});

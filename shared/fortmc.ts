@@ -136,6 +136,11 @@ export const unitCount = (s: FortState, k: UnitKind) => s.units.filter((u) => u.
 const st = (s: FortState, p: Product) => s.stock[p] ?? 0;
 const add = (s: FortState, p: Product, n: number) => { s.stock[p] = Math.max(0, st(s, p) + n); if (n > 0) s.made[p] = (s.made[p] ?? 0) + n; };
 
+/** Tess QA #6: what the power header says about turbines. 'idle' = built and switched on but no natural gas to burn. */
+export function turbineStatus(s: FortState): { built: number; running: number; idle: boolean } {
+  const on = s.units.filter((u) => u.k === 'turbine' && u.on && efficiency(u.cond) > 0); const gas = st(s, 'natgas') > 1e-6;
+  return { built: s.units.filter((u) => u.k === 'turbine').length, running: gas ? on.length : 0, idle: on.length > 0 && !gas };
+}
 /**
  * Power the site actually draws this step. Only equipment with work to do pulls its MW: a well needs its pipeline and room
  * in the wellstream tank; a process unit needs input in its tank (or a running upstream unit feeding it) and room for its

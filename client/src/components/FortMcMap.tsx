@@ -1,6 +1,6 @@
 import { useDoing } from '@/lib/doing';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FORT_SPOTS, MINE_LEVELS, PIPES, PRODUCTS, PRODUCT_ORDER, PUMPJACK_COST, SELL_TIERS, SURVEY_COST, TRACTS, UNITS, UNIT_ORDER, WELLS_PER_TRACT, WELL_COST, ORE_VALUE_PER_UNIT, tractInfo, whole, type FortState, type Product } from '../../../shared/fortmc';
+import { turbineStatus, FORT_SPOTS, MINE_LEVELS, PIPES, PRODUCTS, PRODUCT_ORDER, PUMPJACK_COST, SELL_TIERS, SURVEY_COST, TRACTS, UNITS, UNIT_ORDER, WELLS_PER_TRACT, WELL_COST, ORE_VALUE_PER_UNIT, tractInfo, whole, type FortState, type Product } from '../../../shared/fortmc';
 import { ORES, type OreId } from '../../../shared/mines';
 import { indexed } from '../../../shared/priceIndex';
 import type { FortWorld } from '@/lib/fortmc3d';
@@ -71,7 +71,7 @@ export function FortMcMap() {
       {spot && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#f2b630' }} data-testid="world-tip"><b>{spot.icon} {spot.label}</b><span>{spot.blurb}</span><em>Click to open</em></div>}
       {tipTract && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#c8a060' }} data-testid="world-tip"><b>🛢 {tipTract.name}</b><span>{s?.tracts[String(tipTract.n)]?.leased ? `Your lease · ${s.tracts[String(tipTract.n)]!.wells.length} wells` : s?.surveyed.includes(tipTract.n) ? `Lease 🪙 ${chips(px(tipTract.lease))}` : 'Unsurveyed'}</span><em>Click for the tract</em></div>}
       {s && <div className="fort-hud" data-testid="fort-hud">
-        <span className={supply + 1e-9 < demand ? 'bad' : ''}>⚡ {demand.toFixed(1)}/{supply.toFixed(1)} MW</span>
+        <span className={supply + 1e-9 < demand ? 'bad' : ''}>⚡ {demand.toFixed(1)}/{supply.toFixed(1)} MW</span>{s && turbineStatus(s).idle && <span className="bad" title="Your gas turbines are switched on but there is no natural gas in the tank, so only the 4 MW grid tie is supplying power." data-testid="fort-turbine-idle">⚡ turbine idle · no gas</span>}
         <span>🛢 {chips(whole(s.stock.crude))} crude</span><span>⛽ {chips(whole(s.stock.diesel) + whole(s.stock.gasoline))} fuel</span>
         <span>📦 tank {chips(view!.cap)}</span><span>🏗 {chips(view!.value)} built</span>
       </div>}
@@ -102,7 +102,7 @@ export function FortMcMap() {
           </>}
           {panel === 'plant' && <>
             <h3>🏭 Upgrader & Refinery</h3>
-            <small>Power {demand.toFixed(1)} MW used of {supply.toFixed(1)} MW (4 MW grid tie + turbines). Short on power, everything slows.</small>
+            <small>Power {demand.toFixed(1)} MW used of {supply.toFixed(1)} MW (4 MW grid tie + turbines{s && turbineStatus(s).idle ? ' — turbines idle, no natural gas' : ''}). Short on power, everything slows.</small>
             <div className="fort-stock">{PRODUCT_ORDER.map((p) => <span key={p} title={PRODUCTS[p].name}>{PRODUCTS[p].icon} {PRODUCTS[p].name}: <b>{chips(whole(s.stock[p]))}</b></span>)}</div>
             <h4>Your units</h4>
             {s.units.length ? s.units.map((u) => <div key={u.id} className="fort-unit"><span>{UNITS[u.k].icon} {UNITS[u.k].name} <b className={condCls(u.cond)}>{pct(u.cond)}</b></span>
