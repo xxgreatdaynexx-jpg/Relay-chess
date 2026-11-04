@@ -7,8 +7,6 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { addXmas } from './worldXmas';
-import { xmasOn } from '../../../shared/holiday';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { RESORT_SPOTS, resortLots, resortPlots, resortPlotId, rfTileXZ, RF_TILE, clampResortTarget, SHORE_Z, BOARDWALK_Z, RESORT_X0, RESORT_X1, RESORT_Z0 } from '../../../shared/resort';
 import { cropById } from '../../../shared/farm';
@@ -26,6 +24,8 @@ function facadeTexture(seed: number, balconies: boolean) {
 }
 
 export type Resort = ReturnType<typeof createResort>;
+/** The resort never gets snow (tests). */
+export const RESORT_SNOW = false;
 export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   const tier = detectWorldTier(); const r = rng(20261101);
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier !== 'low', powerPreference: 'high-performance' }); labelRenderer = renderer;
@@ -308,8 +308,8 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   if (tier !== 'low') { composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera)); composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.6, 0.82)); composer.addPass(new OutputPass()); }
   const ro = new ResizeObserver(() => { resize(); if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(canvas.clientWidth || 1, canvas.clientHeight || 1); } }); ro.observe(canvas); resize();
 
-  // Christmas theme (request #17): snow and a decorated tree by the resort casino; no frost layer on the beach.
-  const xmas = xmasOn() ? addXmas(scene, { tier, half: 130, roofs: [], frost: false, footprints: RESORT_SPOTS.filter((s) => s.id !== 'r-pier' && s.id !== 'r-marina').map((s) => ({ x: s.x, z: s.z, w: s.w, d: s.d, rot: 0, top: 0 })), decor: [{ x: -20, z: -4, scale: 1.1, big: true }, { x: 20, z: -4, scale: 1.1 }, { x: 108, z: -58, scale: 0.8 }] }) : null;
+  // Tropical all year: no snow, snowfall or frost on the resort (snow stays in Chud City and Fort McChud).
+  const xmas = null as { step(dt: number): void; dispose(): void } | null;
   const clock = new THREE.Clock(); let raf = 0; let running = true; let time = 0; const tmp = new THREE.Vector3();
   const frame = () => {
     raf = requestAnimationFrame(frame); if (!running) return; const dt = Math.min(clock.getDelta(), 0.05); time += dt;
