@@ -108,6 +108,7 @@ const FishingPanel = lazyWithReload(() => import('./FishingPanel').then((m) => (
 const Dealership = lazyWithReload(() => import('./Dealership').then((m) => ({ default: m.Dealership })));
 const MechanicShop = lazyWithReload(() => import('./MechanicShop').then((m) => ({ default: m.MechanicShop })));
 const ResortMap = lazyWithReload(() => import('./ResortMap').then((m) => ({ default: m.ResortMap })));
+const FortMcMap = lazyWithReload(() => import('./FortMcMap').then((m) => ({ default: m.FortMcMap })));
 
 const CASINO_GAMES = [
   { tab: 'blackjack-tab', label: '🂡 Blackjack' }, { tab: 'roulette-tab', label: '🎡 Roulette' }, { tab: 'poker-tab', label: '🃏 Poker' },
@@ -353,7 +354,9 @@ export function WorldMap(props: { onClose: () => void; onLeaderboard: () => void
   const { loc } = useTrip(); const [flying, setFlying] = useState(false); const prev = useRef(loc);
   useEffect(() => { if (prev.current === loc) return; prev.current = loc; setFlying(true); const t = window.setTimeout(() => setFlying(false), 1600); return () => window.clearTimeout(t); }, [loc]);
   return <>
-    {loc === 'resort' ? <Suspense fallback={<div className="world"><div className="world-loading">Landing at Chud Resort…</div></div>}><ResortMap /></Suspense> : <CityMap {...props} />}
-    {flying && <div className="resort-flight" data-testid="resort-flight"><div><span>✈️</span><br />{loc === 'resort' ? 'Flying to Chud Resort…' : 'Flying home to Chud Hub…'}</div></div>}
+    {loc === 'resort' ? <Suspense fallback={<div className="world"><div className="world-loading">Landing at Chud Resort…</div></div>}><ResortMap /></Suspense>
+      : loc === 'fortmc' ? <Suspense fallback={<div className="world"><div className="world-loading">Landing at Fort McChud…</div></div>}><FortMcMap /></Suspense>
+      : <CityMap {...props} />}
+    {flying && <div className="resort-flight" data-testid="resort-flight"><div><span>✈️</span><br />{loc === 'resort' ? 'Flying to Chud Resort…' : loc === 'fortmc' ? 'Flying to Fort McChud…' : 'Flying home to Chud Hub…'}</div></div>}
   </>;
 }

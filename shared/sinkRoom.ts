@@ -6,7 +6,7 @@
 export const SINK_NET_GAMES = new Set(['blackjack', 'roulette', 'slots', 'video-poker', 'solitro', 'casino']);
 /** House purchases, fees, taxes and removals: every debit counts (credits in the same game, e.g. house sales, don't offset). */
 /** House debits that free room (Dayne, Nov 2): admin, wealth tax, cars, car mods, property tax, resort tickets, race entries, mayor filing. NOT: property purchases, farm seeds/upgrades, mine tools, factory builds, groceries, wages, hiring. */
-export const SINK_DEBIT_GAMES = new Set(['car_buy', 'car_mod', 'property_tax', 'resort_ticket', 'race_entry', 'mayor_filing', 'admin', 'wealth_tax']);
+export const SINK_DEBIT_GAMES = new Set(['car_buy', 'car_mod', 'property_tax', 'resort_ticket', 'fortmc_ticket', 'fortmc_upkeep', 'race_entry', 'mayor_filing', 'admin', 'wealth_tax']);
 /** Player-to-player market: only the burned fee (in the seller's "Sold … (N fee)" memo) counts. */
 export const MARKET_GAME = 'market';
 

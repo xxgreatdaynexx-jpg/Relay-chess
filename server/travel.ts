@@ -8,13 +8,20 @@ import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
 import { px } from './price-index.js';
-import { RESORT_TICKET_BASE, type Location } from '../shared/resort.js';
+import { DESTINATIONS, RESORT_TICKET_BASE, isDestination, isLocation, type Destination, type Location } from '../shared/resort.js';
 
 export class TravelError extends Error {}
 export const TRAVEL_MIGRATION = `CREATE TABLE IF NOT EXISTS player_location (player_key TEXT PRIMARY KEY, name TEXT NOT NULL, loc TEXT NOT NULL, since BIGINT NOT NULL);`;
 type Q = { query: (sql: string, args?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }> };
 type PoolLike = Q & { connect: () => Promise<Q & { release: () => void }> };
 const keyOf = (n: string) => n.trim().toLowerCase();
+/**
+ * Ticket waiver hook: return a reason string to fly free (e.g. a private jet, on the mu-resort branch), or null to pay.
+ * Generic over destinations so every new map gets it for free.
+ */
+export type TicketWaiver = (name: string, dest: Destination) => string | null;
+let waiver: TicketWaiver = () => null;
+export function setTicketWaiver(fn: TicketWaiver | null) { waiver = fn ?? (() => null); }
 
 export class Travel {
   private loc = new Map<string, Location>();
@@ -22,31 +29,36 @@ export class Travel {
   constructor(private readonly pool: PoolLike | null, private readonly clock = () => Date.now()) {}
   async init() {
     if (!this.pool) return; await this.pool.query(TRAVEL_MIGRATION);
-    for (const r of (await this.pool.query("SELECT player_key, loc FROM player_location WHERE loc = 'resort'")).rows) this.loc.set(String(r.player_key), 'resort');
+    for (const r of (await this.pool.query("SELECT player_key, loc FROM player_location WHERE loc <> 'city'")).rows) if (isLocation(r.loc) && r.loc !== 'city') this.loc.set(String(r.player_key), r.loc);
   }
   where(name: string | null | undefined): Location { return name ? this.loc.get(keyOf(name)) ?? 'city' : 'city'; }
-  status(name: string | null) { return { loc: this.where(name), ticket: px(RESORT_TICKET_BASE) }; }
+  status(name: string | null) {
+    const tickets = Object.fromEntries((Object.keys(DESTINATIONS) as Destination[]).map((d) => [d, name && waiver(name, d) ? 0 : px(DESTINATIONS[d].ticket)])) as Record<Destination, number>;
+    return { loc: this.where(name), ticket: name && waiver(name, 'resort') ? 0 : px(RESORT_TICKET_BASE), tickets };
+  }
 
-  /** Buy a ticket and fly to the resort (atomic: ledger + location). */
-  async fly(name: string) {
-    const k = keyOf(name); if (this.where(name) === 'resort') throw new TravelError('You are already at Chud Resort.');
-    const fee = px(RESORT_TICKET_BASE); const bank = getBank();
-    if (!bank.canAfford(name, fee)) throw new TravelError(`Not enough chips: a ticket costs ${fee.toLocaleString('en-US')}.`);
+  /** Buy a ticket and fly to `dest` (atomic: ledger + location). A waived ticket (private jet etc.) skips the ledger. */
+  async fly(name: string, dest: Destination = 'resort') {
+    if (!isDestination(dest)) throw new TravelError('Unknown destination.');
+    const D = DESTINATIONS[dest]; const k = keyOf(name); if (this.where(name) === dest) throw new TravelError(`You are already at ${D.name}.`);
+    const waived = waiver(name, dest);
+    const fee = waived ? 0 : px(D.ticket); const bank = getBank();
+    if (fee > 0 && !bank.canAfford(name, fee)) throw new TravelError(`Not enough chips: a ticket costs ${fee.toLocaleString('en-US')}.`);
     const now = this.clock(); this.tickets++;
-    const w = bank.transferAtomic([{ name, amount: -fee, key: `resort_ticket:${k}:${now}:${this.tickets}`, game: 'resort_ticket', memo: 'Plane ticket: Chud Hub International → Chud Resort' }]);
+    const w = fee > 0 ? bank.transferAtomic([{ name, amount: -fee, key: `${D.game}:${k}:${now}:${this.tickets}`, game: D.game, memo: `Plane ticket: Chud Hub International → ${D.name}` }]) : { stmts: [], after: Promise.resolve(), bind: () => {}, revert: () => {} };
     const run = async () => {
       if (!this.pool) return; await w.after; const cl = await this.pool.connect();
       try {
         await cl.query('BEGIN');
-        await cl.query("INSERT INTO player_location (player_key, name, loc, since) VALUES ($1,$2,'resort',$3) ON CONFLICT (player_key) DO UPDATE SET loc = 'resort', name = EXCLUDED.name, since = EXCLUDED.since", [k, name.trim(), now]);
+        await cl.query("INSERT INTO player_location (player_key, name, loc, since) VALUES ($1,$2,$4,$3) ON CONFLICT (player_key) DO UPDATE SET loc = EXCLUDED.loc, name = EXCLUDED.name, since = EXCLUDED.since", [k, name.trim(), now, dest]);
         for (const s of w.stmts) await cl.query(s.sql, s.args);
         await cl.query('COMMIT');
       } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); }
     };
     const p = run(); w.bind(p);
     try { await p; } catch (e) { w.revert(); console.error('[travel] ticket failed:', (e as Error).message); throw new TravelError(/chips|balance/i.test((e as Error).message) ? 'Not enough chips.' : 'Booking failed. Nothing was charged.'); }
-    this.loc.set(k, 'resort');
-    return { loc: 'resort' as Location, fee, chips: bank.account(name).chips };
+    this.loc.set(k, dest);
+    return { loc: dest as Location, fee, waived: waived ?? undefined, chips: bank.account(name).chips };
   }
 
   /** Free return flight to the city. */
@@ -61,6 +73,11 @@ let travel: Travel = new Travel(null);
 export const getTravel = () => travel;
 export function setTravel(t: Travel) { travel = t; }
 export const isAtResort = (name: string | null | undefined) => travel.where(name) === 'resort';
+export const isAtFortMc = (name: string | null | undefined) => travel.where(name) === 'fortmc';
+/** Throws `Err` unless `name` is at Fort McChud. */
+export async function requireFortMc(name: string | null | undefined, Err: new (m: string) => Error = TravelError) {
+  if (!isAtFortMc(name)) throw new Err('You need to be at Fort McChud for that. Fly there from Chud Hub International.');
+}
 /** Throws `Err` unless `name` is at Chud Resort. */
 export async function requireResort(name: string | null | undefined, Err: new (m: string) => Error = TravelError) {
   if (!isAtResort(name)) throw new Err('You need to be at Chud Resort for that. Fly there from Chud Hub International.');
@@ -76,12 +93,13 @@ export async function initTravel(): Promise<void> {
 type Ack = (r: { ok: boolean; error?: string; [k: string]: unknown }) => void;
 export function registerTravel(_io: Server, socket: Socket): void {
   const nameOf = () => (socket.data as { account?: { name: string } }).account?.name ?? null;
-  const on = (ev: string, fn: () => unknown) => socket.on(ev, async (_b: unknown, ack?: Ack) => {
-    try { ack?.({ ok: true, ...((await fn()) as object ?? {}) }); }
+  const on = (ev: string, fn: (b: unknown) => unknown) => socket.on(ev, async (b: unknown, ack?: Ack) => {
+    if (typeof b === 'function') { ack = b as Ack; b = undefined; }
+    try { ack?.({ ok: true, ...((await fn(b)) as object ?? {}) }); }
     catch (e) { ack?.({ ok: false, error: e instanceof TravelError || /^(Not enough chips\.|Wallet temporarily unavailable\.)$/.test((e as Error).message) ? (e as Error).message : 'Something went wrong.' }); }
   });
   const need = () => { const n = nameOf(); if (!n) throw new TravelError('Sign in to fly.'); return n; };
   on('trip_status', () => travel.status(nameOf()));
-  on('trip_buy', () => travel.fly(need()));
+  on('trip_buy', (b) => { const d = (b as { dest?: unknown } | undefined)?.dest; return travel.fly(need(), d === undefined ? 'resort' : (d as Destination)); });
   on('trip_home', () => travel.home(need()));
 }

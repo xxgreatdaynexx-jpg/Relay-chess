@@ -1,7 +1,7 @@
 import { useDoing } from '@/lib/doing';
 import { useEffect, useState } from 'react';
 import { request } from '@/lib/net';
-import { flyToResort, useTrip } from '@/lib/travel';
+import { flyTo, flyToResort, useTrip } from '@/lib/travel';
 import { CAR_BY_ID } from '../../../shared/cars';
 import { FLY_DEST, RACE_SPLIT, fmtLap, type FlyDest } from '../../../shared/venues';
 import { usePanelDrag } from '@/lib/panelDrag';
@@ -23,6 +23,7 @@ export function Venues({ kind, me, driving, onClose, onFly, onDriveFrom }: {
   const dragVenue = usePanelDrag('venue');
   const trip = useTrip();
   const resort = async () => { setBusy(true); setMsg(null); const r = await flyToResort(); setBusy(false); if (r.ok) onClose(); else setMsg(r.error ?? 'Could not buy a ticket.'); };
+  const fortmc = async () => { setBusy(true); setMsg(null); const r = await flyTo('fortmc'); setBusy(false); if (r.ok) onClose(); else setMsg(r.error ?? 'Could not buy a ticket.'); };
   const [board, setBoard] = useState<Board | null>(null); const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false);
   const load = () => { void request('race_board').then((r) => { if ((r as { ok: boolean }).ok) setBoard(r as unknown as Board); }); };
   useEffect(() => { if (kind !== 'racetrack') return; load(); const t = window.setInterval(load, 15_000); return () => window.clearInterval(t); }, [kind]);
@@ -41,6 +42,8 @@ export function Venues({ kind, me, driving, onClose, onFly, onDriveFrom }: {
         <h4>🌴 International departures</h4>
         <small>Chud Resort: a beachfront resort town with its own casino, 3 exclusive slots, beach houses, hotels, a plantation and the Coral Grotto mine. Only reachable by plane. The flight home is free.</small>
         {me ? <button type="button" className="venue-resort" disabled={busy} onClick={() => void resort()} data-testid="fly-resort">🏝 Fly to Chud Resort · ticket 🪙 {chips(trip.ticket)}</button> : <small>Sign in to buy a ticket.</small>}
+        <small>Fort McChud: an oil-sands boomtown. Lease land, drill wells, run pipelines, a refinery, gas plant and cracker, and build the Deep Ore Mine. The flight home is free.</small>
+        {me && <button type="button" className="venue-resort venue-fortmc" disabled={busy} onClick={() => void fortmc()} data-testid="fly-fortmc">🛢 Fly to Fort McChud · ticket 🪙 {chips(trip.tickets.fortmc)}</button>}
       </> : <>
         <h3>🏁 Chud Hub Speedway</h3>
         <small>Time-trial laps in your own car. Laps are timed by the server through 4 gates. Leaving the asphalt voids the lap.</small>
