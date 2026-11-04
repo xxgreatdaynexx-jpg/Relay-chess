@@ -33,6 +33,11 @@ export const CROPS: Crop[] = [
   { id: 'grapes', label: 'Grapes', emoji: '🍇', seed: 150, grow: 16 * H, sell: 320, color: 0x8a4ac0 },
   { id: 'sunflower', label: 'Sunflowers', emoji: '🌻', seed: 250, grow: 24 * H, sell: 545, color: 0xf0c830 },
 ];
+/** Farming profit -5% (Dayne, 2026-11-04): a harvest sells each crop at 95% of its listed value. Seed costs are unchanged. */
+export const FARM_SELL_MUL = 0.95;
+export const cropSellValue = (c: Pick<Crop, 'sell'>) => c.sell * FARM_SELL_MUL;
+/** Base profit for one harvested crop (sale value minus seed), never negative. */
+export const cropProfit = (c: Pick<Crop, 'sell' | 'seed'>) => Math.max(0, cropSellValue(c) - c.seed);
 export const cropById = (id: unknown) => CROPS.find((c) => c.id === id) ?? TROPICAL_CROPS.find((c) => c.id === id);
 export type Stage = 'growing' | 'ready' | 'withered';
 export const stageOf = (c: Crop, plantedAt: number, now: number): Stage => {

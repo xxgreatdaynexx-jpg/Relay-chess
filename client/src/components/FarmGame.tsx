@@ -4,7 +4,7 @@ import { socket } from '@/lib/net';
 import { indexed } from '../../../shared/priceIndex';
 import { TROPICAL_CROPS } from '../../../shared/resort';
 import { FARM_UPGRADES, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradePrice } from '../../../shared/farmUpgrades';
-import { CROPS as CITY_CROPS, cropById, FARM_TIERS, type FarmView } from '../../../shared/farm';
+import { CROPS as CITY_CROPS, cropById, cropSellValue, FARM_TIERS, type FarmView } from '../../../shared/farm';
 import { usePanelDrag } from '@/lib/panelDrag';
 
 const chips = (n: number) => n.toLocaleString('en-US');
@@ -79,7 +79,7 @@ export function FarmGame({ id, label, onClose }: { id: string; label: string; on
           <h4>Seed shop</h4>
           <div className="farm-seeds" data-testid="farm-seeds">
             {CROPS.map((c) => <button key={c.id} type="button" className={seed === c.id ? 'on' : ''} onClick={() => setSeed(c.id)} data-testid={`farm-seed-${c.id}`}>
-              <b>{c.emoji} {c.label}</b><span>🪙{chips(indexed(c.seed, idx))} → {chips(indexed(c.sell, idx))} · {dur(c.grow)}</span></button>)}
+              <b>{c.emoji} {c.label}</b><span>🪙{chips(indexed(c.seed, idx))} → {chips(indexed(cropSellValue(c), idx))} · {dur(c.grow)}</span></button>)}
           </div>
           <button type="button" disabled={busy || !sel.size} onClick={() => plant([...sel])} data-testid="farm-plant-sel">Plant {sel.size || ''} selected<span>🪙 {chips(indexed(crop.seed, idx) * sel.size)}</span></button>
           <button type="button" disabled={busy || !empties.length} onClick={() => plant(empties)} data-testid="farm-plant-all">Plant all {empties.length} empty<span>🪙 {chips(indexed(crop.seed, idx) * empties.length)}</span></button>

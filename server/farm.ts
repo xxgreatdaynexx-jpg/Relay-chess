@@ -19,7 +19,7 @@ import { requireResort } from './travel.js';
 import { fieldPlotOf } from '../shared/fieldFarms.js';
 import { getMines } from './mines.js';
 import { awardXp } from './skills.js';
-import { CROPS, cropById, farmPayout, farmPlots, ripeWindow, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
+import { CROPS, cropById, cropProfit, cropSellValue, farmPayout, farmPlots, ripeWindow, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
 import { skillLevelAsync } from './skills.js';
 import { farmingGrowMul } from '../shared/skillPerks.js';
 import { combinedGrowMul, fertilizerProfitMul, greenhouseWither, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradeDef, upgradePrice, type FarmUpgradeLevels } from '../shared/farmUpgrades.js';
@@ -173,7 +173,7 @@ export class Farm {
       if (!ready.length) throw new FarmError('Nothing is ready to harvest.');
       if (pantry) return this.harvestToPantry(name, pid, key, ready, now);
       let seeds = 0, profit = 0; const counts = new Map<string, number>();
-      for (const r of ready) { const c = cropById(r.crop)!; seeds += c.seed; profit += c.sell - c.seed; counts.set(c.label, (counts.get(c.label) ?? 0) + 1); }
+      for (const r of ready) { const c = cropById(r.crop)!; seeds += c.seed; profit += cropProfit(c); counts.set(c.label, (counts.get(c.label) ?? 0) + 1); }
       if (sink) { // pt1252u: send the crops to your Factory storage instead of selling them (no chips, no farm tier)
         const items: Array<[string, number]> = []; for (const r of ready) { const id = `crop_${r.crop}`; const at = items.find((x) => x[0] === id); if (at) at[1]++; else items.push([id, 1]); }
         await this.atomic(name, 0, 'farm_to_factory', '', async (cl) => {
@@ -271,7 +271,7 @@ export async function initFarm(): Promise<void> {
 export function farmRouter() {
   const r = express.Router();
   r.get('/api/farm', async (_req, res) => {
-    const seeds = [...CROPS, ...TROPICAL_CROPS].map((c) => ({ id: c.id, seed: px(c.seed), sell: px(c.sell) }));
+    const seeds = [...CROPS, ...TROPICAL_CROPS].map((c) => ({ id: c.id, seed: px(c.seed), sell: px(cropSellValue(c)) }));
     if (!farm) { res.json({ ok: true, live: false, tiles: [], seeds }); return; }
     try { res.json({ ok: true, live: true, tiles: await farm.mapTiles(), seeds }); } catch { res.status(500).json({ ok: false }); }
   });
