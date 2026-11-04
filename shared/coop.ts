@@ -60,8 +60,8 @@ export function projectStages(p: ProjectPlan): StageNeed[] {
 export const stageValue = (s: StageNeed) => s.chips + s.goods.reduce((a, g) => a + g.qty * g.price, 0);
 export const projectValue = (p: ProjectPlan) => projectStages(p).reduce((a, s) => a + stageValue(s), 0);
 
-/** Donor reward: 20% of donated value, capped per player per project. Always strictly below the donation. */
-export const DONOR_REWARD_RATE = 0.2;
+/** Donor reward: 10% of donated value, capped per player per project. Always strictly below the donation. */
+export const DONOR_REWARD_RATE = 0.1;
 export const DONOR_REWARD_CAP = 50_000;
 export const MIN_DONATION_VALUE = 100;
 export function donorReward(value: number, alreadyRewarded: number): number {
@@ -130,12 +130,12 @@ export interface ContractView { id: string; item: string; type: ItemType; name: 
 // ---------------------------------------------------------------- stadium donor perk: higher daily sell-to-house cap
 /**
  * Hockey Stadium chips-equivalent a player gave in the LAST 60 DAYS (D) raises THEIR daily house-sell cap; older gifts roll off:
- *   bonus(D) = 50% x (1 - e^(-D / K)),  K = 40 days x the day's full house cap (100,000 base x house cap index).
- * At cap index 1: K = 4,000,000 -> 100k: +1.2%, 1M: +11.1%, 3M: +26.4%, 5M: +35.7%, hard max +50%.
+ *   bonus(D) = 50% x (1 - e^(-D / K)),  K = 60 days x the day's full house cap (100,000 base x house cap index).
+ * At cap index 1: K = 6,000,000 -> 100k: +0.8%, 1M: +7.7%, 3M: +19.7%, 5M: +28.3%, hard max +50%.
  * No-profit check (worst case: the extra room fully used every day at 100% margin, on top of ANY other donations, since
  * the curve is concave the marginal gain of a gift d is <= 0.5 x C x d / K per day), over its whole 60-day life:
- *   60 x 0.5 x C x d / (40 x C) = 0.75 d;  plus the 20% rebate -> <= 0.95 x d. Always below what was donated.
- * (With the old K = 30 days and a 60-day window it would have been 1.0 d + 0.2 d = 1.2x, so K was raised to 40 days.)
+ *   60 x 0.5 x C x d / (60 x C) = 0.5 d;  plus the 10% rebate -> <= 0.60 x d (Dayne's cap).
+ * (With the old K = 30 days and a 60-day window it would have been 1.0 d + 0.2 d = 1.2x, so K was raised to 40 days; then capped at 0.60x: K 60 days, rebate 20% -> 10%.)
  */
 export const SELL_BONUS_WINDOW_DAYS = 60;
 export const SELL_BONUS_WINDOW_MS = SELL_BONUS_WINDOW_DAYS * 86_400_000;
@@ -144,7 +144,7 @@ export function recentDonated(log: ReadonlyArray<{ at: number; value: number }>,
   let t = 0; for (const e of log) if (e.at > now - SELL_BONUS_WINDOW_MS && e.at <= now) t += e.value; return t;
 }
 export const SELL_BONUS_MAX = 0.5;
-export const SELL_BONUS_K_DAYS = 40;
+export const SELL_BONUS_K_DAYS = 60;
 export const SELL_BONUS_BASE_CAP = 100_000; // = HOUSE_DAILY_BASE (shared/mines.ts)
 export const sellBonusK = (capIndex = 1) => SELL_BONUS_K_DAYS * SELL_BONUS_BASE_CAP * (capIndex > 1 ? capIndex : 1);
 export function sellCapBonus(donated: number, capIndex = 1): number {

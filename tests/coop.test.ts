@@ -34,7 +34,7 @@ describe('co-op sizing + rules', () => {
     expect(Math.abs(projectValue(COOP_PLAN.stadium) - 25_000_000) / 25_000_000).toBeLessThan(0.01);
     expect(COOP_PLAN.bridge.stages).toHaveLength(4);
   });
-  it('donor reward is 20%, capped, and always below the donation', () => {
+  it('donor reward is 10%, capped, and always below the donation', () => {
     expect(donorReward(10_000, 0)).toBe(10_000 * DONOR_REWARD_RATE);
     expect(donorReward(10_000_000, 0)).toBe(DONOR_REWARD_CAP); expect(donorReward(1000, DONOR_REWARD_CAP)).toBe(0);
     for (const v of [100, 1234, 99_999, 5_000_000]) expect(donorReward(v, 0)).toBeLessThan(v);
@@ -53,11 +53,11 @@ describe('co-op sizing + rules', () => {
 });
 
 describe('stadium sell-cap bonus', () => {
-  it('K = 40 days of the base cap; curve values at 100k / 1M / 5M', () => {
-    expect(sellBonusK(1)).toBe(4_000_000); expect(sellBonusK(2)).toBe(8_000_000); expect(sellBonusK(0.5)).toBe(4_000_000);
+  it('K = 60 days of the base cap; curve values at 100k / 1M / 5M', () => {
+    expect(sellBonusK(1)).toBe(6_000_000); expect(sellBonusK(2)).toBe(12_000_000); expect(sellBonusK(0.5)).toBe(6_000_000);
     expect(sellCapBonus(0)).toBe(0); expect(sellCapBonus(-5)).toBe(0);
-    expect(sellBonusPct(sellCapBonus(100_000))).toBeCloseTo(1.2, 1); expect(sellBonusPct(sellCapBonus(1_000_000))).toBeCloseTo(11.0, 0);
-    expect(sellBonusPct(sellCapBonus(5_000_000))).toBeCloseTo(35.6, 0);
+    expect(sellBonusPct(sellCapBonus(100_000))).toBeCloseTo(0.8, 1); expect(sellBonusPct(sellCapBonus(1_000_000))).toBeCloseTo(7.6, 0);
+    expect(sellBonusPct(sellCapBonus(5_000_000))).toBeCloseTo(28.3, 0);
     let prev = 0; for (const d of [1e3, 1e4, 1e5, 1e6, 3e6, 1e7]) { const b = sellCapBonus(d); expect(b).toBeGreaterThan(prev); prev = b; } // monotone
   });
   it('hard max +50%', () => { expect(sellCapBonus(1e12)).toBe(SELL_BONUS_MAX); expect(sellCapBonus(25_000_000)).toBeLessThanOrEqual(0.5); });
@@ -68,15 +68,15 @@ describe('stadium sell-cap bonus', () => {
       expect(extraCap30).toBeLessThanOrEqual(D / 2 + 1e-6);
     }
   });
-  it('worst-case lifetime return of a donation (rebate + 60 days of fully-used extra cap) stays <= 1.0x', () => {
+  it('worst-case lifetime return of a donation (rebate + 60 days of fully-used extra cap) stays <= 0.60x', () => {
     let worst = 0;
     for (const idx of [1, 1.7, 4]) for (const D0 of [0, 1e5, 1e6, 5e6, 2e7]) for (const d of [100, 1e3, 1e4, 1e5, 2.5e5, 1e6, 3e6, 1e7, 2.5e7, 1e9]) {
       const C = HOUSE_DAILY_BASE * idx; // seller maxes the (boosted) cap every day at 100% margin
       const extra = SELL_BONUS_WINDOW_DAYS * C * (sellCapBonus(D0 + d, idx) - sellCapBonus(D0, idx)); // d counts for exactly 60 days
       const ratio = (extra + donorReward(d, 0)) / d; worst = Math.max(worst, ratio);
-      expect(ratio).toBeLessThanOrEqual(1);
+      expect(ratio).toBeLessThanOrEqual(0.6);
     }
-    expect(worst).toBeLessThan(0.951); expect(worst).toBeGreaterThan(0.94); // analytic bound 60*0.5/40 + 0.2 = 0.95
+    expect(worst).toBeLessThanOrEqual(0.6); expect(worst).toBeGreaterThan(0.59); // analytic bound 60*0.5/60 + 0.1 = 0.60
   });
   it('only the last 60 days of donations count; older ones roll off', async () => {
     const t0 = 500 * DAY; expect(SELL_BONUS_WINDOW_MS).toBe(60 * DAY);
@@ -112,9 +112,9 @@ describe('Coop server', () => {
   it('chip donation: debit + reward through the wallet; replay is a no-op', async () => {
     fund('Alice', 100_000); const c0 = chips('Alice'); const nn = nonce();
     const r = await c.donate('Alice', { project: 'stadium', part: 'chips', qty: 50_000, nonce: nn });
-    expect(r.reward).toBe(10_000); expect(chips('Alice')).toBe(c0 - 50_000 + 10_000);
+    expect(r.reward).toBe(5_000); expect(chips("Alice")).toBe(c0 - 50_000 + 5_000);
     const again = await c.donate('Alice', { project: 'stadium', part: 'chips', qty: 50_000, nonce: nn }); expect(again.replay).toBe(true);
-    expect(chips('Alice')).toBe(c0 - 40_000); expect(c.projectView('stadium').top[0]).toEqual({ name: 'Alice', value: 50_000 });
+    expect(chips('Alice')).toBe(c0 - 45_000); expect(c.projectView('stadium').top[0]).toEqual({ name: 'Alice', value: 50_000 });
   });
   it('goods donation takes warehouse stock; refuses what you lack; reward cap holds', async () => {
     const g = projectStages(COOP_PLAN.stadium)[0]!.goods[0]!; const q = Math.min(g.qty, Math.ceil(1000 / g.price)); getMines().adjustStack('Bob', g.type, g.id, q);
