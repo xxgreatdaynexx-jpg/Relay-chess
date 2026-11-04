@@ -1751,6 +1751,7 @@ html, body { overflow-x: clip; }
 .world-pad { flex-direction: column; } .world-pad div:first-child { position: fixed; left: 12px; bottom: 70px; }
 @media (pointer: coarse) { .world-pad { display: flex; } .world-speedo em { display: none; } }
 .dealer { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; background: #000a; }
+.dealer.fleet { position: fixed; z-index: 60; }
 .dealer-box { width: min(920px, 96vw); max-height: 92vh; display: flex; flex-direction: column; background: #12141d; border: 1px solid #ffffff22; border-radius: 14px; overflow: hidden; }
 .dealer-box header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #ffffff14; } .dealer-box header h3 { margin: 0; flex: 1; }
 .dealer-chips { font-weight: 700; color: #ffd27a; } .dealer-box header button { background: none; border: 0; font-size: 18px; }

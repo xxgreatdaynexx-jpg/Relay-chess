@@ -6,6 +6,7 @@ import { request } from '@/lib/net';
 import { buildCraft, disposeTree } from '@/lib/fleetModels';
 import { BOATS, DEEP_ZONES, JETS, type FleetKind, type FleetModel } from '../../../shared/fleet';
 import { usePanelDrag } from '@/lib/panelDrag';
+import { GRACE_DAYS } from '../../../shared/realEstate';
 
 type Owned = { id: string; kind: FleetKind; model: string; paid: number; boughtAt: number; arrears: number; upkeepPaid: number; value: number; upkeep?: number };
 type View = { signedIn: boolean; owned: Owned[]; chips: number | null; catalog: Array<FleetModel & { basePrice: number }>; deep?: { zone: number; name: string | null } };
@@ -62,7 +63,7 @@ export function FleetStore({ kind, onClose, onDeepSea }: { kind: FleetKind; onCl
             <ul className="fleet-stats">
               <li>Price <b>{fmt(m.price)}</b> chips</li>
               {boat ? <><li>Deep-sea range <b>{DEEP_ZONES.slice(0, m.zone ?? 0).map((z) => z.name).join(' · ')}</b></li>{m.biteMul && m.biteMul < 1 && <li>Bites <b>{Math.round((1 - m.biteMul) * 100)}% faster</b> at sea</li>}</>
-                : <><li>Daily upkeep <b>{fmt(m.upkeep ?? 0)}</b> chips (crew, fuel, hangar)</li><li>Free flights to Chud Resort, no ticket</li><li>3 unpaid days → repossessed</li></>}
+                : <><li>Daily upkeep <b>{fmt(m.upkeep ?? 0)}</b> chips (crew, fuel, hangar)</li><li>Free flights to Chud Resort, no ticket</li><li>{GRACE_DAYS} unpaid days in a row → repossessed</li></>}
               <li>Sell back <b>70%</b> of list · counts toward net worth</li>
             </ul>
             {boat && v?.deep && <small data-testid="fleet-deep">{v.deep.zone ? `Your best boat (${v.deep.name}) reaches ${DEEP_ZONES[v.deep.zone - 1]!.name}.` : 'Buy any boat to unlock deep-sea fishing from the Marina.'}</small>}

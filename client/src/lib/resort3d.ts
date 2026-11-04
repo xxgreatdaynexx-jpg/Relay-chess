@@ -326,6 +326,8 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
     setFarm, setOwned, lotIds,
     setRunning(v: boolean) { running = v; clock.getDelta(); },
     reset() { camera.position.copy(home); controls.target.copy(homeT); },
+    /** Point the camera at (x, z) from an offset (QA screenshots). */
+    view(x: number, z: number, dx = 0, dy = 60, dz = 90) { controls.target.set(x, 0, z); camera.position.set(x + dx, dy, z + dz); },
     dispose() { xmas?.dispose(); cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
   };
 }

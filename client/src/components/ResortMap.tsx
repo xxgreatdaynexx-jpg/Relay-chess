@@ -70,6 +70,7 @@ export function ResortMap() {
       case 'r-marina': setMarina(true); break;
     }
   }
+  useEffect(() => { if (!import.meta.env.DEV) return; (window as unknown as { __resortQA?: unknown }).__resortQA = { go, view: (x: number, z: number, dx?: number, dy?: number, dz?: number) => worldRef.current?.view(x, z, dx, dy, dz) }; }); // dev-only QA hook (like __minesQA)
   const home = async () => { setMsg(null); const r = await flyHome(); if (!r.ok) setMsg(r.error ?? 'Could not fly.'); };
   const spot = tip && RESORT_SPOTS.find((s) => s.id === tip.id);
   const tipProp = tip && !spot ? baseProperty(tip.id) : undefined; const tipOwner = tipProp ? owned.get(tipProp.id)?.owner : undefined;
