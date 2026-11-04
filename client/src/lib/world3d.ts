@@ -1,7 +1,7 @@
 import { inStadiumSite } from '../../../shared/coop';
 import * as THREE from 'three';
 import { JAIL_SITE, JAIL_SCALE, type JailInfo } from '../../../shared/jail';
-import { BUILDINGS, BUILDING_IDS, civicPlot, type BuildingId, type CityView } from '../../../shared/city';
+import { BUILDINGS, BUILDING_IDS, civicPlot, type CityView } from '../../../shared/city';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -28,6 +28,7 @@ import { WORLD_SPOTS } from './worldSpots';
 import { addXmas, xmasGround, type XmasRoof, type XmasDecor } from './worldXmas';
 import { xmasOn } from '../../../shared/holiday';
 import { buildCar } from './carModels';
+import { createCivicKit } from './civicModels';
 import { buildOcean, buildBeach, buildBreakwater } from './ocean3d';
 import { OCEAN, COAST_WAVE, coastZ, BREAKWATER } from '../../../shared/ocean';
 import { CAR_BY_ID } from '../../../shared/cars';
@@ -649,32 +650,29 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // Civic district (City Hall phase 2): one plot per mayor building, west of the city. Each plot shows its built stage (0 = empty lot with a
   // "planned" sign, 1–3 = bigger and grander) and, while a stage is being built, scaffolding, cones and a crane. Data from /api/city.
   const civicG = new THREE.Group(); civicG.name = 'civic'; scene.add(civicG); let civicDead = false; let civicKey = '';
-  const CIVIC_COLOR: Record<BuildingId, number> = { highway: 0x5b6470, park: 0x3f9a4a, police: 0x2f5fb8, transit: 0xc9862b, lights: 0xe8d36a, hospital: 0xe9eef2, school: 0xb8483a };
   const civicLabel = (text: string, sub: string, y: number, g: THREE.Group) => { const c = document.createElement('canvas'); c.width = 512; c.height = 160; const x = c.getContext('2d')!;
     x.fillStyle = 'rgba(12,18,30,0.82)'; x.beginPath(); x.roundRect(4, 4, 504, 152, 24); x.fill(); x.strokeStyle = '#ffd36a'; x.lineWidth = 4; x.stroke(); x.textAlign = 'center';
     x.fillStyle = '#fff'; x.font = '800 46px Outfit Variable, system-ui, sans-serif'; x.fillText(text, 256, 64, 480); x.fillStyle = '#ffe9a8'; x.font = '600 34px Outfit Variable, system-ui, sans-serif'; x.fillText(sub, 256, 124, 480);
     const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; disposables.push(tex); const sm = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }); disposables.push(sm);
     const sp = new THREE.Sprite(sm); sp.scale.set(6.4, 2, 1); sp.position.y = y; sp.renderOrder = 9; g.add(sp); };
-  const setCivic = (list: CityView['buildings']) => {
+  // Models (civicModels.ts) follow real Calgary references; shared geometry + palette, so a rebuild only allocates meshes.
+  const civicKit = createCivicKit(tier === 'low', glowTex); const civicBox = geo(new THREE.BoxGeometry(1, 1, 1));
+  const civicPad = mat({ color: 0x9c9384, roughness: 0.95 }), civicSteel = mat({ color: 0xc9c9c9, metalness: 0.6, roughness: 0.4 }), civicYellow = mat({ color: 0xffc21a });
+  // Dev-only preview (screenshots): ?civic=N[b] shows every plot at stage N (b = with the next stage under construction).
+  const civicDev = import.meta.env.DEV ? /^([0-3])(b?)$/.exec(new URLSearchParams(location.search).get('civic') ?? '') : null;
+  const civicCam = civicDev ? new URLSearchParams(location.search).get('civicCam') : null;
+  if (civicCam != null) { const all = civicCam === 'all'; const P = civicPlot(all ? 3 : +civicCam); controls.autoRotate = false; controls.minDistance = 4;
+    controls.target.set(P.x, all ? 0 : 2.4, P.z); camera.position.set(P.x + (all ? 55 : 13), all ? 45 : 9, P.z + (all ? 30 : 13)); controls.update(); }
+  const setCivic = (list0: CityView['buildings']) => {
+    const list = civicDev ? BUILDING_IDS.map((id) => ({ id, stage: +civicDev[1]!, building: civicDev[2] && +civicDev[1]! < 3 ? { stage: +civicDev[1]! + 1, doneAt: 0, startedAt: 0 } : null, stageNow: +civicDev[1]!, nextCost: null })) : list0;
     const key = JSON.stringify(list.map((b) => [b.id, b.stage, b.building?.stage ?? 0])); if (key === civicKey) return; civicKey = key;
     for (const c of [...civicG.children]) civicG.remove(c);
-    const pad = mat({ color: 0x9c9384, roughness: 0.95 }), glass = mat({ color: 0x9fd4ff, metalness: 0.3, roughness: 0.2, emissive: 0x16304a, emissiveIntensity: 0.5 }), cone = mat({ color: 0xff7a1a }), steel = mat({ color: 0xc9c9c9, metalness: 0.6, roughness: 0.4 }), yellow = mat({ color: 0xffc21a }), grass = mat({ color: 0x4fae4f });
+    const pad = civicPad, steel = civicSteel, yellow = civicYellow;
     BUILDING_IDS.forEach((id, i) => { const b = list.find((x) => x.id === id) ?? { id, stage: 0, building: null }; const P = civicPlot(i); const g = new THREE.Group(); g.name = `civic-${id}`; g.position.set(P.x, 0, P.z); civicG.add(g);
-      const B = (w: number, h: number, d: number, m: THREE.Material, x: number, y: number, z: number) => { const o = new THREE.Mesh(geo(new THREE.BoxGeometry(w, h, d)), m); o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
-      B(P.w + 1, 0.12, P.d + 0.6, pad, 0, 0.06, 0); const col = mat({ color: CIVIC_COLOR[id] }); const st = b.stage;
-      if (st === 0) { const post = B(0.15, 1.6, 0.15, steel, -P.w / 2 + 1.5, 0.8, 0); void post; B(2.2, 1, 0.1, yellow, -P.w / 2 + 1.5, 1.8, 0); }
-      if (id === 'park') { if (st) { B(P.w, 0.1, P.d, grass, 0, 0.14, 0); for (let k = 0; k < st * 3; k++) { const t = new THREE.Mesh(geo(new THREE.ConeGeometry(0.7, 2 + (k % 3) * 0.5, 8)), mat({ color: 0x2f7d36 })); t.position.set(-P.w / 2 + 1 + (k % 5) * 2.4, 1.3, -P.d / 2 + 1.2 + Math.floor(k / 5) * 2.2); g.add(t); } if (st >= 2) B(1.6, 0.8, 1.6, steel, 0, 0.5, 0); if (st >= 3) B(0.3, 3, 0.3, yellow, 0, 2, 0); } }
-      else if (id === 'highway') { if (st) { B(P.w, 0.16, 2.2 + st, mat({ color: 0x2c2f33 }), 0, 0.2, 0); for (let k = -2; k <= 2; k++) B(1, 0.02, 0.18, yellow, k * 2.2, 0.3, 0); if (st >= 2) for (const x of [-4, 4]) B(0.6, 2.2, 0.6, steel, x, 1.2, 0); if (st >= 3) B(P.w, 0.4, 3.2, mat({ color: 0x3a3e44 }), 0, 2.5, 0); } }
-      else if (id === 'lights') { for (let k = 0; k < st * 3; k++) { const x = -P.w / 2 + 1 + k * (P.w - 2) / Math.max(1, st * 3 - 1); B(0.14, 3.2, 0.14, steel, x, 1.6, 2.4); B(0.6, 0.25, 0.4, mat({ color: 0xfff2b0, emissive: 0xffe28a, emissiveIntensity: 1.4 }), x, 3.25, 2.2); } if (st) B(P.w, 0.1, 1.6, mat({ color: 0x2c2f33 }), 0, 0.14, 0.6); }
-      else if (st) { const h = [0, 2.6, 4.6, 7][st]!, w = [0, 5, 7.5, 10][st]!; B(w, h, P.d - 1.6, col, 0, h / 2 + 0.12, 0); for (let f = 0; f < st; f++) B(w + 0.05, 0.6, P.d - 1.5, glass, 0, 1.4 + f * 2, 0);
-        B(w + 0.4, 0.25, P.d - 1.2, mat({ color: 0xe6e1d6 }), 0, h + 0.24, 0); if (st >= 3) { B(1.2, 1.6, 1.2, col, 0, h + 1.1, 0); B(0.08, 1.4, 0.08, steel, 0, h + 2.6, 0); }
-        if (id === 'hospital') { B(1.4, 0.4, 0.06, mat({ color: 0xd32020 }), 0, h - 0.5, P.d / 2 - 0.75); B(0.4, 1.4, 0.06, mat({ color: 0xd32020 }), 0, h - 0.5, P.d / 2 - 0.74); }
-        if (id === 'police') B(w * 0.6, 0.35, 0.06, mat({ color: 0x1a3f8a, emissive: 0x2050ff, emissiveIntensity: 0.6 }), 0, h - 0.4, P.d / 2 - 0.75); }
-      if (b.building) { const bh = [0, 3.4, 5.4, 7.8][b.building.stage]!; // scaffolding cage + cones + a little crane
-        for (const [x, z] of [[-P.w / 2 + 0.6, -P.d / 2 + 0.6], [P.w / 2 - 0.6, -P.d / 2 + 0.6], [-P.w / 2 + 0.6, P.d / 2 - 0.6], [P.w / 2 - 0.6, P.d / 2 - 0.6]]) B(0.12, bh, 0.12, yellow, x!, bh / 2, z!);
-        for (let y = 1.2; y < bh; y += 1.6) { B(P.w - 1.2, 0.1, 0.1, yellow, 0, y, P.d / 2 - 0.6); B(P.w - 1.2, 0.1, 0.1, yellow, 0, y, -P.d / 2 + 0.6); }
-        B(0.3, bh + 3, 0.3, yellow, P.w / 2 - 1, (bh + 3) / 2, 0); B(6, 0.25, 0.25, yellow, P.w / 2 - 3.5, bh + 3, 0);
-        for (let k = 0; k < 4; k++) { const c = new THREE.Mesh(geo(new THREE.ConeGeometry(0.25, 0.7, 10)), cone); c.position.set(-P.w / 2 + 1 + k * 1.2, 0.47, P.d / 2 + 0.2); g.add(c); } }
+      const B = (w: number, h: number, d: number, m: THREE.Material, x: number, y: number, z: number) => { const o = new THREE.Mesh(civicBox, m); o.scale.set(w, h, d); o.position.set(x, y, z); o.castShadow = tier !== 'low'; g.add(o); return o; };
+      B(P.w + 1, 0.12, P.d + 0.6, pad, 0, 0.06, 0); const st = b.stage;
+      if (st === 0 && !b.building) { B(0.15, 1.6, 0.15, steel, -P.w / 2 + 1.5, 0.8, 0); B(2.2, 1, 0.1, yellow, -P.w / 2 + 1.5, 1.8, 0); }
+      civicKit.build(id, st, b.building?.stage ?? null, P.w, P.d, g);
       const sp = BUILDINGS[id]; civicLabel(`${sp.icon} ${sp.label}`, b.building ? `🚧 Building stage ${b.building.stage}` : st ? `Stage ${st} / 3` : 'Planned · empty lot', 10.5, g); });
   };
   setCivic([]);
@@ -919,6 +917,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     moonDisc.position.copy(dirV).multiplyScalar(-560).setY(Math.max(80, -dirV.y * 560)); moonDisc.visible = k.stars > 0.05; (moonDisc.material as THREE.SpriteMaterial).opacity = k.stars;
     moon.intensity = k.moonI; moon.visible = k.moonI > 0.01; stM.opacity = k.stars;
     glowK = 0.1 + 0.9 * k.lights; for (const m of glowMats) m.emissiveIntensity = (m.userData.ei as number) * glowK;
+    for (const m of civicKit.glow) m.emissiveIntensity = (m.userData.ei as number) * glowK; for (const m of civicKit.halos) m.opacity = 0.9 * k.lights;
   };
   applySky(); let skyT = 0;
   const tmpV = new THREE.Vector3(); const clock = new THREE.Clock(); let raf = 0; let running = true; let time = 0;
@@ -989,7 +988,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     setRunning(v: boolean) { running = v && !document.hidden; clock.getDelta(); },
     project(id: string) { const l = lms.find((x) => x.id === id); if (!l) return null; const v = l.pos.clone().setY(l.height + 2.2).project(camera); const rc = canvas.getBoundingClientRect(); return { x: rc.left + (v.x + 1) / 2 * rc.width, y: rc.top + (1 - v.y) / 2 * rc.height }; },
     hover(id: string | null) { setHover(id); },
-    dispose() { xmas?.dispose(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); parkDead = true; trailerMeshes = []; jailDead = true; civicDead = true; window.clearInterval(civicPoll); window.removeEventListener('city-changed', loadCivic); window.clearInterval(jailPoll); window.clearInterval(jailTick); for (const o of inmateObjs) o.tex.dispose(); cancelAnimationFrame(raf); venues.dispose(); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
+    dispose() { xmas?.dispose(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); parkDead = true; trailerMeshes = []; jailDead = true; civicDead = true; civicKit.dispose(); window.clearInterval(civicPoll); window.removeEventListener('city-changed', loadCivic); window.clearInterval(jailPoll); window.clearInterval(jailTick); for (const o of inmateObjs) o.tex.dispose(); cancelAnimationFrame(raf); venues.dispose(); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
   };
 }
 export type World = ReturnType<typeof createWorld>;
