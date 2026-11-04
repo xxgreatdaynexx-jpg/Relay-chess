@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-04T12:00:00-06:00', title: 'Sunflower Oil rebalanced', bullets: [
+    'Sunflower Oil rebalanced: its house price is down about 11% (645 → 575). It still takes 1 sunflower and is still one of the best farm-to-factory earners.',
+  ] },
   { commit: '', at: '2026-11-04T11:50:00-06:00', title: 'Wealth tax on big purchases', bullets: [
     'If you hold more than 100,000 in property (what you paid), property and car purchases cost 5% extra, shared equally with every other player active in the last 7 days. The checkout shows the exact amount and how many players share it; items under 1,000 chips are exempt.',
   ] },
