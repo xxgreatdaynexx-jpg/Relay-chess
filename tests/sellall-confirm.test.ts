@@ -18,3 +18,15 @@ describe('#39 Sell all confirmation', () => {
   });
   it('empty storage', () => { expect(sellAllSummary([], 0)).toMatchObject({ items: 0, chips: 0 }); });
 });
+
+import { shipSellSummary, shipSellText } from '../shared/sellConfirm';
+describe('#39 warehouse Ship & sell confirmation', () => {
+  it('shows count, est chips and freight fee', () => {
+    const x = shipSellSummary(30, 4.5, 20);
+    expect(x).toMatchObject({ items: 30, chips: 135, fee: 20, net: 115 });
+    expect(shipSellText('Wheat', x)).toBe('Ship 30 Wheat to the Chud City Warehouse and sell for about 🪙 135, minus a 🪙 20 freight fee (≈ 🪙 115 net)?');
+  });
+  it('own truck: no fee', () => {
+    expect(shipSellText('Steel', shipSellSummary(2, 10, 0))).toBe('Ship 2 Steel to the Chud City Warehouse and sell for about 🪙 20 (your truck, no freight fee)?');
+  });
+});

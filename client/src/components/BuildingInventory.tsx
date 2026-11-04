@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { request, socket } from '@/lib/net';
 import { BUILDINGS, AUTO_DEFAULT, AUTO_MIN_LOAD, AUTO_MAX_FEE_SHARE, type AutoCfg, type BuildingId, type SaleLogRow } from '../../../shared/autosell';
 import { MODES, MODE_IDS, shipFee, type Mode } from '../../../shared/logistics';
+import { SellAllConfirm } from './SellAllConfirm';
+import { shipSellSummary, shipSellText } from '../../../shared/sellConfirm';
 
 type Item = { key: string; label: string; qty: number; unit: number; needed: boolean };
 type View = { buildings: Array<{ id: BuildingId; label: string; icon: string; items: Item[] }>; cfg: Record<string, AutoCfg>; log: SaleLogRow[]; truck: { id: string; cap: number } | null; index?: number };
@@ -15,6 +17,7 @@ const ago = (t: number) => { const m = Math.max(0, Math.round((Date.now() - t) /
 export function BuildingInventory({ building, compact }: { building: BuildingId; compact?: boolean }) {
   const [v, setV] = useState<View | null>(null); const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<Mode>('hired'); const [qty, setQty] = useState<Record<string, string>>({});
+  const [ask, setAsk] = useState<Item | null>(null);
   const load = useCallback(() => { void request('wh_view').then((r) => { const x = r as { ok: boolean } & View; if (x.ok) setV(x); }); }, []);
   useEffect(() => { load(); const on = () => load(); socket.on('wh_sold', on); socket.on('freight_arrived', on); const t = setInterval(load, 15_000); return () => { socket.off('wh_sold', on); socket.off('freight_arrived', on); clearInterval(t); }; }, [load]);
   const b = v?.buildings.find((x) => x.id === building); const meta = BUILDINGS[building];
@@ -28,6 +31,7 @@ export function BuildingInventory({ building, compact }: { building: BuildingId;
   const log = (v?.log ?? []).filter((r) => r.building === building).slice(0, compact ? 4 : 8);
   return (
     <div className="bldg-inv" data-testid={`bldg-inv-${building}`}>
+      {ask && (() => { const n = Math.floor(Number(qty[ask.key] ?? ask.qty)) || 0; return <SellAllConfirm title="Ship & sell?" text={shipSellText(ask.label, shipSellSummary(n, ask.unit, mode === 'truck' ? 0 : shipFee(mode, n, v?.index)))} onCancel={() => setAsk(null)} onConfirm={() => { const it = ask; setAsk(null); void ship(it); }} />; })()}
       <h4>{meta.icon} {meta.label} inventory</h4>
       <small>{meta.blurb}</small>
       {building === 'farm' || (building === 'resort_farm') ? <label className="bldg-auto-row" data-testid={`auto-harvest-${building}`}>
@@ -40,7 +44,7 @@ export function BuildingInventory({ building, compact }: { building: BuildingId;
             <tr key={it.key} data-testid={`bldg-row-${it.key}`}>
               <td><b>{it.label}</b><br /><small>{fmt(it.qty)} here · ~🪙 {fmt(it.unit)}/u</small></td>
               <td><input type="number" min={1} max={it.qty} value={qty[it.key] ?? String(it.qty)} onChange={(e) => setQty({ ...qty, [it.key]: e.target.value })} style={{ width: 70 }} />
-                <button type="button" disabled={busy || n < 1 || n > it.qty} onClick={() => void ship(it)} data-testid={`bldg-ship-${it.key}`}>🚚 Ship &amp; sell{mode !== 'truck' && n > 0 ? ` · fee 🪙 ${fmt(shipFee(mode, n, v?.index))}` : ''}</button></td>
+                <button type="button" disabled={busy || n < 1 || n > it.qty} onClick={() => setAsk(it)} data-testid={`bldg-ship-${it.key}`}>🚚 Ship &amp; sell{mode !== 'truck' && n > 0 ? ` · fee 🪙 ${fmt(shipFee(mode, n, v?.index))}` : ''}</button></td>
               <td className="bldg-auto"><label><input type="checkbox" checked={c.on} onChange={(e) => void setCfg(it.key, { on: e.target.checked })} data-testid={`bldg-auto-${it.key}`} /> Auto-sell</label>
                 <label>Keep <input type="number" min={0} value={c.reserve} onChange={(e) => void setCfg(it.key, { reserve: Math.max(0, Math.floor(Number(e.target.value) || 0)) })} style={{ width: 64 }} data-testid={`bldg-reserve-${it.key}`} /></label>
                 <label title={it.needed ? 'Used by your recipes / running units' : 'Not used by any recipe'}><input type="checkbox" checked={c.keepRecipe} onChange={(e) => void setCfg(it.key, { keepRecipe: e.target.checked })} /> Keep for my recipes{it.needed ? ' ⚙' : ''}</label></td>
