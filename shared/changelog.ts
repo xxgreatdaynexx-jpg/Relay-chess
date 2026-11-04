@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-04T12:30:00-06:00', title: 'Wealth tax threshold now counts property upgrades', bullets: [
+    'Wealth tax threshold now counts property upgrades: the 100,000 line for the 5% purchase tax is what you paid for your property plus the farm upgrades you bought for it. Planted crops do not count.',
+  ] },
   { commit: '', at: '2026-11-04T12:00:00-06:00', title: 'Sunflower Oil rebalanced', bullets: [
     'Sunflower Oil rebalanced: its house price is down about 11% (645 → 575). It still takes 1 sunflower and is still one of the best farm-to-factory earners.',
   ] },

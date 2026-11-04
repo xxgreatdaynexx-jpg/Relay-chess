@@ -6,6 +6,7 @@
  * Recipient credits are batched (CasinoBank.transferAtomic { batch: true }): 3 statements for any number of players.
  */
 import { isJailed } from './jail.js';
+import { propertyPaidPlusUpgradesOf } from './realEstate.js';
 import { isQaName } from '../shared/qa.js';
 import { PURCHASE_SHARE_GAME, PURCHASE_TAX_GAME, purchaseShares, purchaseTaxLine, purchaseTaxOf, type PurchaseTaxQuote } from '../shared/purchaseTax.js';
 
@@ -15,11 +16,8 @@ const DAY = 86_400_000;
 const keyOf = (n: string) => n.replace(/\s+/g, ' ').trim().toLowerCase();
 const junk = (n: string) => isQaName(n) || /^guest/i.test(n.trim()) || /^bot(?![a-z])/i.test(n.trim());
 
-/** Property held, at the price actually paid. */
-export async function propertyPaidValue(db: Q, name: string): Promise<number> {
-  try { return Number((await db.query('SELECT COALESCE(SUM(price),0) v FROM properties WHERE owner_key = $1', [name.trim().toLowerCase()])).rows[0]?.v ?? 0); }
-  catch { return 0; } // no real-estate table = owns nothing
-}
+/** Wealth-tax threshold: property at price paid + upgrades held (shared propertyPaidPlusUpgrades; planted seed NOT counted). */
+export async function propertyPaidValue(db: Q, name: string): Promise<number> { return propertyPaidPlusUpgradesOf(db, name); }
 
 let cache: { at: number; rows: Array<{ key: string; name: string }> } | null = null;
 export const resetPurchaseTaxCache = () => { cache = null; };
