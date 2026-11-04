@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-04T18:30:00-06:00', title: 'Factory goods sell for more', bullets: [
+    'Non-farm factory goods now sell to the house for more, scaled by how many production steps they take: +5% for first-step goods (bars, cut gems), rising evenly to +30% for the deepest products (Drill, Generator, Robot).',
+    'Covers metal, gem, electronics and machine chains. Food and anything made from crops or fish is unchanged.',
+    'Only the house sell price goes up. Recipe values, net worth and all buy prices are unchanged.',
+  ] },
   { commit: '', at: '2026-11-04T14:10:00-06:00', title: 'Launch Trailer', bullets: [
     '🎬 The Millionaire Update Launch Trailer is out! Watch it from the popup or the sign by the airport. Launches Nov 6 at 8 PM.',
   ] },

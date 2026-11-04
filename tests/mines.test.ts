@@ -150,7 +150,7 @@ describe('factory', () => {
     // player leaves; job keeps running
     w.leave('a'); w.join('b', 'QA-Smith', 50_000);
     expect(w.collect(acct('b'), 50_000)).toEqual([{ type: 'bar', id: 'iron_bar', qty: 2 }]);
-    const r = sellAs('b', 50_000, 'bar:iron_bar'); expect(r.paid).toBe(50);
+    const r = sellAs('b', 50_000, 'bar:iron_bar'); expect(r.paid).toBe(52); // 2 x 25 x 1.05 sell buff (tier 1)
   });
   it('persists factory level and running jobs', async () => {
     const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
