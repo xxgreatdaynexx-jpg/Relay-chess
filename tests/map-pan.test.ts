@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { MAP_BOUNDS, clampMapTarget, farmPlots, FARM_X1 } from '../shared/farm';
+import { MAP_BOUNDS, MAP_VIEW, clampMapTarget, farmPlots, FARM_X1 } from '../shared/farm';
 import { PARK_AREA, PLATE } from '../shared/worldLayout';
 
 describe('map panning', () => {
@@ -12,7 +12,7 @@ describe('map panning', () => {
   });
   it('clamps targets off the map', () => {
     expect(clampMapTarget(9999, -9999)).toEqual([MAP_BOUNDS.x1, MAP_BOUNDS.z0]);
-    expect(clampMapTarget(-9999, 9999)).toEqual([MAP_BOUNDS.x0, MAP_BOUNDS.z1]);
+    expect(clampMapTarget(-9999, 9999)).toEqual([MAP_BOUNDS.x0, MAP_VIEW.z1]);
   });
   it('world3d wires drag pan, keys (not while typing/driving) and the clamp', () => {
     const src = readFileSync(new URL('../client/src/lib/world3d.ts', import.meta.url), 'utf8');

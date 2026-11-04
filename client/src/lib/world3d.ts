@@ -24,6 +24,8 @@ import { WORLD_SPOTS } from './worldSpots';
 import { addXmas, xmasGround, type XmasRoof, type XmasDecor } from './worldXmas';
 import { xmasOn } from '../../../shared/holiday';
 import { buildCar } from './carModels';
+import { buildOcean, buildBeach, buildBreakwater } from './ocean3d';
+import { OCEAN, COAST_WAVE, coastZ, BREAKWATER } from '../../../shared/ocean';
 import { CAR_BY_ID } from '../../../shared/cars';
 import { HOUSING_TYPES, type HousingType } from './housing';
 import { buildingId, patchId } from '../../../shared/realEstate';
@@ -200,6 +202,21 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     scene.add(new THREE.Mesh(geo(bg), bankMat));
   };
   const BANK: Array<[number, number, number]> = [[-1.6, 0.02, 0x6f6048], [0.0, 0.035, 0x8e7a58], [1.4, 0.035, 0xc9b48a], [3.2, 0.03, 0xa89a6c], [5.2, 0.012, 0x3f9a45]];
+  // The ocean (mu-visuals): open sea along the whole south edge, OUTSIDE the old map (shared/ocean.ts), so no lot,
+  // field or house moved. A sand beach runs from the outskirts' edge into the surf; a rubble breakwater with a lighthouse
+  // shelters Chud Hub Harbour (the port itself is drawn by worldFreight.port at HUB_MAPS.city.port).
+  const oceanMats: THREE.ShaderMaterial[] = [];
+  { const lowT = tier === 'low'; const oc = buildOcean({ x0: OCEAN.x0, x1: OCEAN.x1, z0: OCEAN.shoreZ - 6, z1: OCEAN.z1, coast: coastZ, segX: lowT ? 90 : 160, segZ: lowT ? 36 : 64 }, [COAST_WAVE[0], COAST_WAVE[1], COAST_WAVE[2], COAST_WAVE[3], OCEAN.shoreZ]);
+    oc.mesh.position.y = -0.35; scene.add(oc.mesh); disposables.push(oc.geo, oc.mat); oceanMats.push(oc.mat);
+    const beach = buildBeach(OUTSKIRTS.x0 - 40, OUTSKIRTS.x1 + 40, OCEAN.beachZ, coastZ); beach.userData.noShadow = true; disposables.push(beach.geometry, beach.material as THREE.Material); scene.add(beach);
+    scene.add(buildBreakwater(BREAKWATER));
+    // dune grass tufts + a few palms/umbrellas along the dry sand (instanced)
+    const n = lowT ? 50 : 120; const tuft = new THREE.InstancedMesh(geo(new THREE.ConeGeometry(0.5, 1.2, 5)), mat({ color: 0x6b8f3a, roughness: 1 }), n); const m4 = new THREE.Matrix4();
+    for (let i = 0; i < n; i++) { const x = OUTSKIRTS.x0 - 30 + ((i * 97.3) % (OUTSKIRTS.x1 - OUTSKIRTS.x0 + 60)); if (Math.abs(x - 33) < 42) { m4.makeScale(0, 0, 0); tuft.setMatrixAt(i, m4); continue; } m4.makeScale(1, 0.6 + ((i * 7) % 5) * 0.15, 1); m4.setPosition(x, 0.5, OCEAN.beachZ + 1.5 + ((i * 13) % 4)); tuft.setMatrixAt(i, m4); }
+    scene.add(tuft);
+    const umb = [[-120, 0xef4444], [-96, 0x3b82f6], [-60, 0xf59e0b], [110, 0x22c55e], [140, 0xec4899], [170, 0x3b82f6]] as const;
+    for (const [x, c] of umb) { const z = (OCEAN.beachZ + coastZ(x)) / 2 + 1; const pole = new THREE.Mesh(geo(new THREE.CylinderGeometry(0.06, 0.06, 2.6, 5)), mat({ color: 0xe5e7eb })); pole.position.set(x, 1.3, z); const top = new THREE.Mesh(geo(new THREE.ConeGeometry(1.6, 0.6, 8)), mat({ color: c, roughness: 0.8 })); top.position.set(x, 2.6, z); const towel = new THREE.Mesh(geo(new THREE.BoxGeometry(1, 0.03, 1.8)), mat({ color: c ^ 0x333333 })); towel.position.set(x + 1.4, 0.07, z); scene.add(pole, top, towel); }
+  }
   // The big lake: the city's waterfront (worldLayout.shoreZ) is its north shore; the south shore, the rounded ends and
   // the island are free-form (shared/riverLake.ts). Banks are narrow on the city side (promenade, roads) and wide elsewhere.
   { const out = riverOutline(), isl = islandOutline(); const wm = makeWater(out, [isl]);
@@ -324,9 +341,21 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
         const wall = mat({ color: 0xe8dcc8 }), plum = mat({ color: 0x7b4fa8, emissive: 0xc77dff, emissiveIntensity: 0.35 * NEON });
         g.add(box(10, 4.6, 7, wall, 0, 0, -1.2), box(10.4, 0.4, 7.4, dark, 0, 4.6, -1.2), box(10.2, 0.6, 0.3, plum, 0, 3.6, 2.4));
         g.add(box(8.6, 3, 0.2, mat({ color: 0x9fd4ff, transparent: true, opacity: 0.4, roughness: 0.1, metalness: 0.3, emissive: 0xfff2c0, emissiveIntensity: 0.25 * NEON }), 0, 0.3, 2.35));
-        g.add(box(3, 0.6, 1.1, mat({ color: 0xc04a4a }), -2.2, 0.3, 1.4), box(3, 0.9, 0.35, mat({ color: 0xc04a4a }), -2.2, 0.6, 0.95));
+        // mu-visuals: showroom vignette (cushioned sofa + armchair on a rug, coffee table, floor lamp), pilasters, striped awning,
+        // a parapet, potted plants by the door and a box van with wheels at the loading side.
+        const sofa = mat({ color: 0xc04a4a }), sofaD = mat({ color: 0x8e3434 }), wood = mat({ color: 0x8a5a36 }), rug = mat({ color: 0xd9c9a3 });
+        g.add(box(5.6, 0.04, 1.9, rug, -1.4, 0.3, 1.25));
+        g.add(box(3, 0.35, 1.1, sofaD, -2.2, 0.3, 1.4), box(1.4, 0.2, 0.8, sofa, -2.92, 0.65, 1.5), box(1.4, 0.2, 0.8, sofa, -1.48, 0.65, 1.5), box(3, 0.85, 0.3, sofaD, -2.2, 0.6, 0.95));
+        for (const x of [-3.62, -0.78]) g.add(box(0.25, 0.55, 1.1, sofaD, x, 0.3, 1.4)); g.add(box(1.2, 0.08, 0.6, wood, -0.2, 0.62, 2), cyl(0.04, 0.04, 0.32, dark, -0.7, 0.3, 2, 4), cyl(0.04, 0.04, 0.32, dark, 0.3, 0.3, 2, 4));
+        g.add(box(1, 0.35, 1, mat({ color: 0x3a6a8a }), 0.9, 0.3, 1.2), box(1, 0.7, 0.25, mat({ color: 0x3a6a8a }), 0.9, 0.6, 0.8));
         g.add(cyl(0.06, 0.06, 1.8, dark, 2.4, 0.3, 1.4, 6), cyl(0.35, 0.2, 0.5, mat({ color: 0xffe9a8, emissive: 0xffe9a8, emissiveIntensity: 0.6 * NEON }), 2.4, 2.1, 1.4, 10));
-        g.add(box(6.5, 1.1, 0.3, neon, 0, 5.2, 2.2), box(2.6, 1.6, 1.6, mat({ color: 0xf4f4f4 }), 4.2, 0, 4.6), box(1.2, 1.2, 1.5, plum, 4.2, 0, 3.2));
+        for (const x of [-4.9, -1.6, 1.6, 4.9]) g.add(box(0.5, 4.6, 0.4, dark, x, 0, 2.4));
+        for (let i = 0; i < 8; i++) g.add(box(1.28, 0.12, 1.3, i % 2 ? mat({ color: 0xf4eee2 }) : plum, -4.48 + i * 1.28, 3.0, 3.05));
+        g.add(box(10.4, 0.8, 0.3, wall, 0, 5, 2.3), box(6.5, 1.1, 0.3, neon, 0, 5.4, 2.5));
+        for (const x of [-4.4, 4.4]) g.add(cyl(0.35, 0.28, 0.6, wood, x, 0, 3.1, 10), cyl(0.45, 0.1, 0.9, mat({ color: 0x3f8a4a }), x, 0.6, 3.1, 8));
+        { const van = new THREE.Group(); van.position.set(6.2, 0, 1); van.rotation.y = Math.PI / 2; g.add(van);
+          van.add(box(3.8, 2, 1.9, mat({ color: 0xf4f4f4 }), -0.4, 0.45, 0), box(1.4, 1.4, 1.85, plum, 1.9, 0.45, 0), box(0.1, 0.6, 1.6, mat({ color: 0x1a2430, metalness: 0.6, roughness: 0.15 }), 2.6, 1.1, 0), box(3.4, 0.5, 0.02, plum, -0.4, 1.5, 0.96));
+          for (const x of [-1.6, 1.8]) for (const z of [-0.85, 0.85]) { const w = cyl(0.38, 0.38, 0.3, dark, x, 0.38, z, 12); w.rotation.x = Math.PI / 2; w.position.y = 0.38; van.add(w); } }
         height = 8; break; }
       case 'employ': {
         // Employment Office: brick two-storey office with a glass door, HELP WANTED board, flag and a queue rope.
@@ -578,6 +607,17 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     for (let x = -W / 2 + 0.9; x <= W / 2 - 0.9; x += 0.75) B(0.14, 5, 0.14, bar, x, 2.8, D / 2 - 0.3); // front bars
     B(W, 0.25, 0.3, bar, 0, 0.45, D / 2 - 0.3); B(W, 0.25, 0.3, bar, 0, 5.15, D / 2 - 0.3);
     for (const x of [-W / 6, W / 6]) B(0.25, 5, D - 1, bar, x, 2.8, 0.2); // cell dividers
+    // mu-visuals: cots + toilets in each cell, barred side windows, a perimeter fence with razor wire, a guard tower with a
+    // glowing searchlight cab, and floodlight poles at the yard corners.
+    const cot = mat({ color: 0x5a6a78, roughness: 0.8 }), steelJ = mat({ color: 0xb8bec4, metalness: 0.7, roughness: 0.3 }), glowJ = mat({ color: 0xfff1c8, emissive: 0xffd890, emissiveIntensity: 1.6 * NEON });
+    for (const cx of [-W / 3, 0, W / 3]) { B(W / 3 - 1.2, 0.35, 1.2, cot, cx, 0.75, -D / 2 + 1.3); B(0.6, 0.6, 0.6, steelJ, cx + W / 6 - 0.9, 0.6, -D / 2 + 1); }
+    for (const sx of [-1, 1]) for (const z of [-D / 4, D / 4]) { B(0.1, 1.2, 1.6, mat({ color: 0x1a2028, emissive: 0x332a10, emissiveIntensity: NEON }), sx * (W / 2 - 0.02), 3.4, z); for (let k = -1; k <= 1; k++) B(0.16, 1.2, 0.1, bar, sx * (W / 2 + 0.02), 3.4, z + k * 0.5); }
+    const FW = W + 3.4, FD = D + 3.4; for (const [w, d, x, z] of [[FW, 0.06, 0, -FD / 2], [0.06, FD, -FW / 2, 0], [0.06, FD, FW / 2, 0]] as const) { B(w, 2.6, d, mat({ color: 0x9aa2aa, metalness: 0.6, roughness: 0.5, transparent: true, opacity: 0.55 }), x, 1.6, z); const rw = new THREE.Mesh(geo(new THREE.CylinderGeometry(0.22, 0.22, Math.max(w, d), 8)), bar); rw.rotation.set(w > d ? 0 : Math.PI / 2, 0, w > d ? Math.PI / 2 : 0); rw.position.set(x, 3.1, z); jailG.add(rw); }
+    for (let x = -FW / 2; x <= FW / 2 + 0.01; x += FW / 6) B(0.14, 3, 0.14, bar, x, 1.5, -FD / 2);
+    { const tx = -FW / 2 + 0.6, tz = -FD / 2 + 0.6; for (const [ox, oz] of [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]] as const) B(0.18, 7, 0.18, bar, tx + ox, 3.5, tz + oz);
+      B(2.4, 1.6, 2.4, wall, tx, 7.8, tz); B(2.5, 0.6, 2.5, glowJ, tx, 8.1, tz); B(2.9, 0.25, 2.9, roof, tx, 8.75, tz); }
+    for (const [x, z] of [[FW / 2, FD / 2], [-FW / 2, FD / 2]] as const) { B(0.16, 6, 0.16, bar, x, 3, z); B(0.9, 0.3, 0.5, glowJ, x, 6.1, z); }
+    B(2, 3.6, 0.2, mat({ color: 0x3a4652, metalness: 0.5 }), W / 2 - 1.6, 2.1, -D / 2 - 0.02); // rear steel door
     const sg = signTexture('CITY JAIL', '#ff8a80', 'Chud Hub Correctional'); disposables.push(sg);
     const sm = mat({ color: 0xffffff, map: sg, emissiveMap: sg, emissive: 0xffffff, emissiveIntensity: 0.5 * NEON });
     const sign = new THREE.Mesh(geo(new THREE.BoxGeometry(9, 2.4, 0.2)), sm); sign.position.set(0, 7.2, D / 2 - 0.3); jailG.add(sign);
@@ -822,6 +862,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     renderer.toneMappingExposure = k.exposure;
     // sun direction from elevation/azimuth (world: -z = north, +x = east)
     const e = k.elev * Math.PI / 180, a = k.az * Math.PI / 180; dirV.set(Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e));
+    for (const o of oceanMats) { o.uniforms.uDay.value = k.day; (o.uniforms.uSun.value as THREE.Vector3).copy(dirV); }
     sun.position.copy(dirV).multiplyScalar(400); sun.target.position.set(0, 0, 0); sun.color.setHex(k.sunColor); sun.intensity = k.sunI; sun.visible = k.sunI > 0.01;
     sunDisc.position.copy(dirV).multiplyScalar(560); sunDisc.visible = k.elev > -3; (sunDisc.material as THREE.SpriteMaterial).color.setHex(mixHex(0xffffff, 0xffa060, k.warm));
     moonDisc.position.copy(dirV).multiplyScalar(-560).setY(Math.max(80, -dirV.y * 560)); moonDisc.visible = k.stars > 0.05; (moonDisc.material as THREE.SpriteMaterial).opacity = k.stars;
@@ -846,7 +887,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     skyT += dt; if (skyT > 1) { skyT = 0; applySky(); }
     stepTags?.(dt);
     xmas?.step(dt);
-    for (const w of waterMats) w.uniforms.uTime.value = time; venues.step(dt, time, camera.position);
+    for (const w of waterMats) w.uniforms.uTime.value = time; for (const w of oceanMats) w.uniforms.uTime.value = time; venues.step(dt, time, camera.position);
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
     for (const l of lms) { const k = labelScale(camera.position.distanceTo(l.sign.getWorldPosition(tmpV)), portrait) * (l.sign.userData.hover ? 1.2 : 1); l.sign.scale.set(k, k / 4, 1); }
     renderScene(renderer, composer, scene, camera);
