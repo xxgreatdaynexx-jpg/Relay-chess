@@ -34,7 +34,13 @@ describe('admin popup', () => {
   it('validates name, text cap and sender', async () => {
     expect((await post({ name: '', text: 'hi' })).status).toBe(400);
     expect((await post({ name: 'QA-Popper', text: '' })).status).toBe(400);
-    expect((await post({ name: 'QA-Popper', text: 'x'.repeat(501) })).status).toBe(400);
+    expect((await post({ name: 'QA-Popper', text: 'x'.repeat(1001) })).status).toBe(400);
+    const long = 'Hi — ' + 'z'.repeat(990);
+    const ok = await post({ name: 'QA-Popper', text: long, from: 'Nora, Chief of Staff' });
+    expect(ok.status).toBe(200);
+    const id = (await ok.json() as { id: string }).id;
+    expect((await getPopups().pending('QA-Popper')).find((x) => x.id === id)?.text).toBe(long);
+    expect(await getPopups().ack('QA-Popper', id)).toBe(true);
     expect((await post({ name: 'QA-Popper', text: 'hi', from: 'y'.repeat(33) })).status).toBe(400);
     expect((await post({ name: 'Nobody-Here', text: 'hi' })).status).toBe(404);
   });

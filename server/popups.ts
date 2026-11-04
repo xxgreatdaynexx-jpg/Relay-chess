@@ -6,7 +6,7 @@ import { signedIn } from './auth-sockets.js';
 import { LAUNCH } from '../shared/launchPopup.js';
 
 /** Admin-only direct popups: stored per player (Postgres when available), delivered over socket, cleared on OK. */
-export const POPUP_TEXT_MAX = 500;
+export const POPUP_TEXT_MAX = 1000; // room for a full apology-length notice; express.json limit 4kb still bounds the body
 export const POPUP_FROM_MAX = 32;
 export interface Popup { id: string; player: string; from: string; text: string; createdAt: number; ackedAt: number | null; title?: string | null; audio?: string | null }
 
