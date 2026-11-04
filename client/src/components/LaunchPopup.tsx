@@ -43,7 +43,7 @@ export function LaunchPopup() {
             ? <button type="button" autoFocus className="launch-ok" onClick={done} data-testid="launch-ok">Let's get rich 🪙</button>
             : <button type="button" autoFocus className="launch-ok" onClick={() => go(p + 1)} data-testid="launch-next">Next ›</button>}
         </div>
-        <div className="launch-extra"><button type="button" className="launch-skip" onClick={() => { done(); window.dispatchEvent(new CustomEvent('open-millionaire-trailer')); }} data-testid="launch-trailer">▶ Watch the trailer</button>{!last && <button type="button" className="launch-skip" onClick={done} data-testid="launch-skip">Skip</button>}</div>
+        <div className="launch-extra"><button type="button" className="launch-skip" onClick={() => { done(); window.dispatchEvent(new CustomEvent('open-launch-trailer')); }} data-testid="launch-trailer">▶ Watch the Launch Trailer</button>{!last && <button type="button" className="launch-skip" onClick={done} data-testid="launch-skip">Skip</button>}</div>
       </div>
     </div>, document.body);
 }

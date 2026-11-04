@@ -1,0 +1,1 @@
+Music: "beat.wav" — original 128 BPM electronic beat synthesised from scratch with music.py (numpy; kick/snare/hats, saw bass, arpeggio, pad, risers). No samples or third-party audio used. Created for this trailer; dedicated to the public domain (CC0 1.0) — no attribution or licence fees required.
