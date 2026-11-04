@@ -26,17 +26,34 @@ type Locker = { items: { item: string; qty: number; placed: number }[]; chips: n
 type Priced = Furniture & { base: number };
 type Catalog = { furniture: Priced[]; walls: { id: string; name: string; price: number; color: number }[]; floors: { id: string; name: string; price: number; color: number }[] };
 
+/** Store showroom for one piece: a wood-plank plinth in a lit wall corner, camera framed to the piece's size. */
+export function furnShowroom(f: Furniture, aspect: number) {
+  const sc = new THREE.Scene(); sc.add(new THREE.HemisphereLight(0xfff4e6, 0x3a3044, 1.5)); const dl = new THREE.DirectionalLight(0xffffff, 2); dl.position.set(3, 6, 4); sc.add(dl);
+  const s = Math.max(f.w, f.d, f.h, 1), P = s * 1.5; const room = new THREE.Group(); room.userData.part = 'showroom';
+  const plank = new THREE.MeshStandardMaterial({ color: 0x8a6440, roughness: 0.65 }), seam = new THREE.MeshStandardMaterial({ color: 0x5e4129, roughness: 0.8 });
+  const fl = new THREE.Mesh(new THREE.BoxGeometry(P * 2, 0.08, P * 2), plank); fl.position.y = -0.04; room.add(fl);
+  for (let i = 1; i < 8; i++) { const l = new THREE.Mesh(new THREE.BoxGeometry(P * 2, 0.005, 0.02), seam); l.position.set(0, 0.002, -P + (i / 8) * P * 2); room.add(l); }
+  const wall = new THREE.MeshStandardMaterial({ color: 0xe9e1d4, roughness: 0.95 }), trim = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 });
+  const wb = new THREE.Mesh(new THREE.BoxGeometry(P * 2, s * 1.6, 0.06), wall); wb.position.set(0, s * 0.8, -P); const wl = new THREE.Mesh(new THREE.BoxGeometry(0.06, s * 1.6, P * 2), wall); wl.position.set(-P, s * 0.8, 0); room.add(wb, wl);
+  const sb = new THREE.Mesh(new THREE.BoxGeometry(P * 2, 0.12, 0.03), trim); sb.position.set(0, 0.06, -P + 0.045); const sl = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.12, P * 2), trim); sl.position.set(-P + 0.045, 0.06, 0); room.add(sb, sl); sc.add(room);
+  const piece = buildFurniture(f); sc.add(piece);
+  const cam = new THREE.PerspectiveCamera(35, aspect, 0.05, 100); const R = Math.hypot(f.w, f.d, f.h) * 0.5 + 0.2, dist = R / Math.sin((35 * Math.PI) / 360) * 1.05;
+  const dir = new THREE.Vector3(1, 0.62, 1.1).normalize(); cam.position.copy(dir.multiplyScalar(dist)).add(new THREE.Vector3(0, f.h * 0.45, 0)); cam.lookAt(0, f.h * 0.45, 0);
+  return { scene: sc, camera: cam, piece };
+}
+
 /** Rotating 3D preview of one furniture piece. */
 function FurnPreview({ f }: { f: Furniture }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const cv = ref.current; if (!cv) return; let r: THREE.WebGLRenderer; try { r = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true }); } catch { return; }
-    r.setPixelRatio(Math.min(2, devicePixelRatio)); r.setSize(cv.clientWidth || 300, cv.clientHeight || 180, false);
-    const sc = new THREE.Scene(); sc.add(new THREE.HemisphereLight(0xffffff, 0x334, 1.7)); const dl = new THREE.DirectionalLight(0xffffff, 1.8); dl.position.set(3, 5, 4); sc.add(dl);
-    const fl = new THREE.Mesh(new THREE.CircleGeometry(3, 40), new THREE.MeshStandardMaterial({ color: 0x2a2433 })); fl.rotation.x = -Math.PI / 2; sc.add(fl);
-    const s = Math.max(f.w, f.d, f.h, 1); const cam = new THREE.PerspectiveCamera(35, (cv.clientWidth || 300) / (cv.clientHeight || 180), 0.05, 100); cam.position.set(s * 1.6, s * 1.2, s * 1.9); cam.lookAt(0, f.h * 0.4, 0);
-    const g = buildFurniture(f); sc.add(g); let raf = 0; const loop = () => { raf = requestAnimationFrame(loop); g.rotation.y += 0.01; r.render(sc, cam); }; loop();
-    return () => { cancelAnimationFrame(raf); r.dispose(); };
+    r.setPixelRatio(Math.min(2, devicePixelRatio)); r.toneMapping = THREE.ACESFilmicToneMapping;
+    const { scene: sc, camera: cam, piece: g } = furnShowroom(f, (cv.clientWidth || 300) / (cv.clientHeight || 180));
+    // Keep the renderer and camera in step with the canvas (the panel reflows on mobile; a fixed aspect squashed the piece).
+    const fit = () => { const w = cv.clientWidth || 300, h = cv.clientHeight || 180; r.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }; fit();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(fit) : null; ro?.observe(cv);
+    let raf = 0; const loop = () => { raf = requestAnimationFrame(loop); g.rotation.y += 0.01; r.render(sc, cam); }; loop();
+    return () => { cancelAnimationFrame(raf); ro?.disconnect(); r.dispose(); };
   }, [f]);
   return <canvas ref={ref} className="furn-preview" data-testid="furn-preview" />;
 }

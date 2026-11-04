@@ -2269,11 +2269,11 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .furn-store { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.55); display: grid; place-items: center; }
 .furn-box { width: min(860px, calc(100% - 20px)); max-height: calc(100% - 30px); overflow: auto; background: #15121f; border: 1px solid #c77dff66; border-radius: 14px; padding: 12px; color: #e7e2f2; display: flex; flex-direction: column; gap: 8px; }
 .furn-box header { display: flex; align-items: center; gap: 10px; } .furn-box header h3 { flex: 1; font-weight: 700; color: #d7a8ff; }
-.furn-cats { display: flex; flex-wrap: wrap; gap: 4px; } .furn-cats button { padding: 3px 8px; border-radius: 999px; background: #ffffff14; font-size: 12px; } .furn-cats .on { background: #c77dff; color: #160c22; }
+.furn-cats { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-start; } .furn-cats button { padding: 3px 8px; border-radius: 999px; background: #ffffff14; font-size: 12px; } .furn-cats .on { background: #c77dff; color: #160c22; }
 .furn-body { display: grid; grid-template-columns: 1fr 1.2fr; gap: 10px; min-height: 300px; }
 .furn-list { display: flex; flex-direction: column; gap: 4px; } .furn-list button { width: 100%; display: grid; grid-template-columns: 1fr auto; text-align: left; padding: 6px 8px; border-radius: 8px; background: #ffffff0d; }
 .furn-list button small { opacity: .6; grid-column: 1 / -1; font-size: 11px; } .furn-list .on { outline: 2px solid #c77dff; background: #c77dff22; }
-.furn-detail { display: flex; flex-direction: column; gap: 6px; } .furn-preview { width: 100%; height: 220px; border-radius: 10px; background: radial-gradient(#2e2640, #120f1a); }
+.furn-detail { display: flex; flex-direction: column; gap: 6px; } .furn-preview { width: 100%; height: 240px; border-radius: 10px; background: linear-gradient(#f3ece2, #d9cdbd); }
 .furn-buy { display: flex; gap: 8px; align-items: center; } .furn-buy button, .furn-style button { padding: 5px 12px; border-radius: 8px; background: #c77dff; color: #160c22; font-weight: 700; } .furn-buy button:disabled { opacity: .5; }
 .furn-styles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; } .furn-style { display: flex; flex-direction: column; gap: 3px; padding: 8px; border-radius: 10px; background: #ffffff0d; }
 .furn-style > span { height: 44px; border-radius: 6px; border: 1px solid #ffffff33; } .furn-style em { color: #5affc8; font-size: 12px; } .furn-msg { color: #f3d27a; }
