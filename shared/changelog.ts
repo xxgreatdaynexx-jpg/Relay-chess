@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-04T08:30:00-06:00', title: 'Total play time on profiles', bullets: [
+    'Player profiles now show total play time (active time only; idle tabs don\'t count).',
+  ] },
   { commit: '', at: '2026-11-03T22:10:00-06:00', title: 'Fixed a stock news exploit', bullets: [
     'Fixed a stock news exploit.',
   ] },

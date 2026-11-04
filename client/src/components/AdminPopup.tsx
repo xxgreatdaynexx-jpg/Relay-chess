@@ -3,6 +3,23 @@ import { createPortal } from 'react-dom';
 import { request, socket } from '@/lib/net';
 import { useAccount } from '@/lib/auth';
 import { usePanelDrag } from '@/lib/panelDrag';
+import { PLAY_BEAT_MS, PLAY_IDLE_MS } from '../../../shared/playtime';
+
+/** Total-play-time heartbeat: active = tab visible and input within PLAY_IDLE_MS. */
+export function PlayTimeBeat() {
+  const account = useAccount();
+  useEffect(() => {
+    if (!account) return;
+    let lastInput = Date.now();
+    const mark = () => { lastInput = Date.now(); };
+    const evs = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'] as const;
+    evs.forEach((e) => window.addEventListener(e, mark, { passive: true }));
+    const beat = () => { if (socket.connected) socket.emit('play_beat', { active: document.visibilityState === 'visible' && Date.now() - lastInput < PLAY_IDLE_MS }); };
+    const t = window.setInterval(beat, PLAY_BEAT_MS); beat();
+    return () => { window.clearInterval(t); evs.forEach((e) => window.removeEventListener(e, mark)); };
+  }, [account]);
+  return null;
+}
 
 export interface PopupMsg { id: string; from: string; text: string; at: number; title?: string | null; audio?: string | null }
 

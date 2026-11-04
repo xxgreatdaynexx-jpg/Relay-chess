@@ -14,6 +14,7 @@ import { getGarage } from './cars.js';
 import { getVault } from './skins.js';
 import { getSkills } from './skills.js';
 import { houseRoom } from './house-room.js';
+import { getPlayTime } from './playtime.js';
 import { isQaName } from '../shared/qa.js';
 import { propertyById } from '../shared/realEstate.js';
 import { cropById } from '../shared/farm.js';
@@ -93,10 +94,11 @@ export async function buildPlayerProfile(raw: string, deps: ProfileDeps) {
   const skills = await safe(() => getSkills().profile(name), null);
   const fish = (await row1('SELECT species, weight_g, value, caught_at FROM fish_catches WHERE player_key = $1 AND COALESCE(hired, FALSE) = FALSE ORDER BY weight_g DESC, caught_at ASC, id ASC LIMIT 1'))[0];
   const biggestFish = fish ? { species: String(fish.species), label: fishById(fish.species)?.label ?? String(fish.species), emoji: fishById(fish.species)?.emoji ?? '🐟', grams: Number(fish.weight_g), value: Number(fish.value), at: Number(fish.caught_at) } : null;
+  const playMs = await safe(() => getPlayTime().total(name), 0);
   const since = (await row1('SELECT created_at FROM players WHERE player_key = $1'))[0];
 
   return {
-    name, memberSince: since ? new Date(since.created_at as string).toISOString() : null, ...deps.online(key),
+    name, memberSince: since ? new Date(since.created_at as string).toISOString() : null, playMs, ...deps.online(key),
     chips, assets: assetTotal, netWorth: (chips ?? 0) + assetTotal,
     categories: (assets?.categories ?? []).filter((c) => c.value > 0).map((c) => ({ key: c.key, label: c.label, value: Math.round(c.value) })),
     properties, farms, cars, trailer, stocks, funds, options, shorts, skins, skills, biggestFish,

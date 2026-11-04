@@ -28,7 +28,7 @@ import { AccountButton, AccountPanel } from '@/components/AccountPanel';
 import { socket } from '@/lib/net';
 import { WorldMap } from '@/components/WorldMap';
 import { WalletButton } from '@/components/WalletButton';
-import { AdminPopup } from '@/components/AdminPopup';
+import { AdminPopup, PlayTimeBeat } from '@/components/AdminPopup';
 import { SkillsPanel } from '@/components/Skills';
 import { TournamentScreen } from '@/components/TournamentScreen';
 import { TournamentPing } from '@/components/TournamentPing';
@@ -322,6 +322,7 @@ export function App() {
         </div>
       )}
       <AdminPopup />
+      <PlayTimeBeat />
     </>
   );
 }
