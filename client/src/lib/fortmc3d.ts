@@ -21,6 +21,8 @@ let labelRenderer: THREE.WebGLRenderer | null = null;
 function signTexture(text: string, color: string, sub?: string) { return cityLabel(text, color, sub, labelRenderer); } // same look as Chud City
 export const clampFortTarget = (x: number, z: number): [number, number] => [Math.min(FORT_X1 - 10, Math.max(FORT_X0 + 10, x)), Math.min(FORT_Z1 - 10, Math.max(FORT_Z0 + 10, z))];
 const TW = 30, TD = 26; // tract pad size
+// QA#8: pumpjacks read toy-sized next to fat flowlines — jacks up 1.45x (columns re-spaced to fit the pad), flowlines ~1/3 radius.
+export const JACK_SCALE = 1.45; export const FLOW_R = [0.13, 0.2] as const;
 
 export type FortWorld = ReturnType<typeof createFortMc>;
 export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
@@ -181,7 +183,7 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
   }
   const jacks: THREE.Object3D[] = [];
   const pumpjack = (parent: THREE.Object3D, x: number, z: number, jack: boolean, broken: boolean) => {
-    const g = new THREE.Group(); g.position.set(x, 0.3, z); parent.add(g);
+    const g = new THREE.Group(); g.position.set(x, 0.3, z); g.scale.setScalar(JACK_SCALE); g.userData.part = 'pumpjack'; parent.add(g);
     // mu-visuals pumpjack: skid + gearbox/motor, A-frame samson post, walking beam with a curved horsehead, crank arms with
     // counterweights, polished rod down to a wellhead with a flow-line tee. All parts share cached unit geometries.
     box(2.2, 0.4, 2.2, conc, 0, 0.2, 0, g); box(1, 0.9, 1, dark, 0, 0.85, 0, g); cyl(0.12, 0.6, steel, 0.6, 1.0, 0, g).rotation.z = Math.PI / 2;
@@ -203,9 +205,9 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
       while (g.children.length) g.remove(g.children[0]!);
       const t = s?.tracts[String(n)]; pads.get(n)!.material = t?.leased ? padOwnM : padM;
       if (!t?.leased) { if (s?.surveyed.includes(n)) box(1.4, 1, 1.4, yellow, 0, 0.8, 0, g); continue; }
-      t.wells.forEach((w, i) => pumpjack(g, -9 + (i % 2) * 14, -5 + Math.floor(i / 2) * 9, w.jack, w.cond < 15));
+      t.wells.forEach((w, i) => pumpjack(g, -6.5 + (i % 2) * 14.6, -5 + Math.floor(i / 2) * 9, w.jack, w.cond < 15));
       if (t.pipe > 0) { // mu-visuals: orthogonal flow line on H-frame sleepers (shared/fortmcPipes.ts), elbows at each 90° corner
-        const rr = t.pipe > 1 ? 0.55 : 0.35, pm = t.pipe > 1 ? yellow : steel, R = pipeRoute(n), H = 1.2;
+        const rr = t.pipe > 1 ? FLOW_R[1] : FLOW_R[0], pm = t.pipe > 1 ? yellow : steel, R = pipeRoute(n), H = 1.2;
         for (let i = 1; i < R.length; i++) { const [ax, az] = R[i - 1]!, [bx, bz] = R[i]!, L = Math.hypot(bx - ax, bz - az); if (L < 0.01) continue; const alongX = Math.abs(bx - ax) > Math.abs(bz - az);
           const c = cyl(rr, L, pm, (ax + bx) / 2, H, (az + bz) / 2, pipesG); if (alongX) c.rotation.z = Math.PI / 2; else c.rotation.x = Math.PI / 2;
           for (let d = 4; d < L - 2; d += 8) { const sx = ax + ((bx - ax) * d) / L, sz = az + ((bz - az) * d) / L; const sp = box(alongX ? 0.25 : 1.8, 0.2, alongX ? 1.8 : 0.25, dark, sx, 0.75, sz, pipesG); sp.castShadow = false;
