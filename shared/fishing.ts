@@ -34,39 +34,40 @@ export const FISH: Fish[] = [
   { id: 'goldcarp', label: 'Golden Carp', emoji: '🐉', rarity: 'epic', min: 2, max: 15, base: 140 },
   { id: 'koi', label: 'Crystal Koi', emoji: '💎', rarity: 'legendary', min: 2, max: 10, base: 450 },
   { id: 'oldchud', label: 'Old Chud, the Lake Monster', emoji: '🐋', rarity: 'legendary', min: 80, max: 250, base: 500 },
-  // ---- Reef Pier at Chud Resort (pt1304u): tropical species, same rarity odds and value bands as the lake.
-  { id: 'flipflop', label: 'Lost Flip-Flop', emoji: '🩴', rarity: 'junk', min: 0.1, max: 0.4, base: 1, spot: 'reef' },
-  { id: 'coconutshell', label: 'Drift Coconut', emoji: '🥥', rarity: 'junk', min: 0.3, max: 1.2, base: 2, spot: 'reef' },
-  { id: 'clownfish', label: 'Clownfish', emoji: '🐠', rarity: 'common', min: 0.05, max: 0.25, base: 7, spot: 'reef' },
-  { id: 'bluetang', label: 'Blue Tang', emoji: '🐟', rarity: 'common', min: 0.1, max: 0.6, base: 8, spot: 'reef' },
-  { id: 'damsel', label: 'Sergeant Major', emoji: '🐟', rarity: 'common', min: 0.05, max: 0.3, base: 6, spot: 'reef' },
-  { id: 'parrotfish', label: 'Rainbow Parrotfish', emoji: '🐠', rarity: 'uncommon', min: 0.8, max: 6, base: 20, spot: 'reef' },
-  { id: 'snapper', label: 'Red Snapper', emoji: '🐟', rarity: 'uncommon', min: 0.5, max: 8, base: 22, spot: 'reef' },
-  { id: 'triggerfish', label: 'Picasso Triggerfish', emoji: '🐡', rarity: 'uncommon', min: 0.2, max: 2, base: 18, spot: 'reef' },
-  { id: 'mahimahi', label: 'Mahi-Mahi', emoji: '🐬', rarity: 'rare', min: 3, max: 18, base: 50, spot: 'reef' },
-  { id: 'barracuda', label: 'Great Barracuda', emoji: '🦈', rarity: 'rare', min: 2, max: 20, base: 45, spot: 'reef' },
-  { id: 'grouper', label: 'Coral Grouper', emoji: '🐟', rarity: 'rare', min: 2, max: 25, base: 42, spot: 'reef' },
-  { id: 'yellowfin', label: 'Yellowfin Tuna', emoji: '🐟', rarity: 'epic', min: 10, max: 90, base: 130, spot: 'reef' },
-  { id: 'sailfish', label: 'Sailfish', emoji: '🗡️', rarity: 'epic', min: 15, max: 60, base: 135, spot: 'reef' },
-  { id: 'marlin', label: 'Blue Marlin', emoji: '🐋', rarity: 'legendary', min: 60, max: 240, base: 480, spot: 'reef' },
-  { id: 'manta', label: 'Sunset Manta', emoji: '🌅', rarity: 'legendary', min: 40, max: 200, base: 460, spot: 'reef' },
+  // ---- Reef Pier at Chud Resort (pt1304u): tropical species, same rarity odds as the lake; values 2x the lake (mu-fishing: resort ≈ 2x pond chips/min after the ticket).
+  { id: 'flipflop', label: 'Lost Flip-Flop', emoji: '🩴', rarity: 'junk', min: 0.1, max: 0.4, base: 2, spot: 'reef' },
+  { id: 'coconutshell', label: 'Drift Coconut', emoji: '🥥', rarity: 'junk', min: 0.3, max: 1.2, base: 4, spot: 'reef' },
+  { id: 'clownfish', label: 'Clownfish', emoji: '🐠', rarity: 'common', min: 0.05, max: 0.25, base: 14, spot: 'reef' },
+  { id: 'bluetang', label: 'Blue Tang', emoji: '🐟', rarity: 'common', min: 0.1, max: 0.6, base: 16, spot: 'reef' },
+  { id: 'damsel', label: 'Sergeant Major', emoji: '🐟', rarity: 'common', min: 0.05, max: 0.3, base: 12, spot: 'reef' },
+  { id: 'parrotfish', label: 'Rainbow Parrotfish', emoji: '🐠', rarity: 'uncommon', min: 0.8, max: 6, base: 40, spot: 'reef' },
+  { id: 'snapper', label: 'Red Snapper', emoji: '🐟', rarity: 'uncommon', min: 0.5, max: 8, base: 45, spot: 'reef' },
+  { id: 'triggerfish', label: 'Picasso Triggerfish', emoji: '🐡', rarity: 'uncommon', min: 0.2, max: 2, base: 35, spot: 'reef' },
+  { id: 'mahimahi', label: 'Mahi-Mahi', emoji: '🐬', rarity: 'rare', min: 3, max: 18, base: 100, spot: 'reef' },
+  { id: 'barracuda', label: 'Great Barracuda', emoji: '🦈', rarity: 'rare', min: 2, max: 20, base: 90, spot: 'reef' },
+  { id: 'grouper', label: 'Coral Grouper', emoji: '🐟', rarity: 'rare', min: 2, max: 25, base: 85, spot: 'reef' },
+  { id: 'yellowfin', label: 'Yellowfin Tuna', emoji: '🐟', rarity: 'epic', min: 10, max: 90, base: 260, spot: 'reef' },
+  { id: 'sailfish', label: 'Sailfish', emoji: '🗡️', rarity: 'epic', min: 15, max: 60, base: 270, spot: 'reef' },
+  { id: 'marlin', label: 'Blue Marlin', emoji: '🐋', rarity: 'legendary', min: 60, max: 240, base: 960, spot: 'reef' },
+  { id: 'manta', label: 'Sunset Manta', emoji: '🌅', rarity: 'legendary', min: 40, max: 200, base: 920, spot: 'reef' },
   // Deep sea (Millionaire Update #10c): only from a boat out of the Resort Marina. Zone = how far out the boat can go.
-  { id: 'ghostnet', label: 'Ghost Net', emoji: '🕸️', rarity: 'junk', min: 0.5, max: 4, base: 2, spot: 'deep', zone: 1 },
-  { id: 'bonito', label: 'Atlantic Bonito', emoji: '🐟', rarity: 'common', min: 1, max: 6, base: 12, spot: 'deep', zone: 1 },
-  { id: 'mackerel', label: 'Spanish Mackerel', emoji: '🐟', rarity: 'common', min: 0.8, max: 5, base: 14, spot: 'deep', zone: 1 },
-  { id: 'skipjack', label: 'Skipjack Tuna', emoji: '🐟', rarity: 'common', min: 2, max: 14, base: 13, spot: 'deep', zone: 2 },
-  { id: 'wahoo', label: 'Wahoo', emoji: '🐟', rarity: 'uncommon', min: 5, max: 40, base: 34, spot: 'deep', zone: 1 },
-  { id: 'kingfish', label: 'Kingfish', emoji: '🐟', rarity: 'uncommon', min: 4, max: 30, base: 36, spot: 'deep', zone: 2 },
-  { id: 'lanternfish', label: 'Lanternfish', emoji: '🏮', rarity: 'uncommon', min: 0.02, max: 0.1, base: 40, spot: 'deep', zone: 3 },
-  { id: 'amberjack', label: 'Greater Amberjack', emoji: '🐟', rarity: 'rare', min: 8, max: 60, base: 70, spot: 'deep', zone: 1 },
-  { id: 'swordfish', label: 'Swordfish', emoji: '🗡️', rarity: 'rare', min: 30, max: 200, base: 85, spot: 'deep', zone: 2 },
-  { id: 'oarfish', label: 'Giant Oarfish', emoji: '🐉', rarity: 'rare', min: 20, max: 120, base: 95, spot: 'deep', zone: 3 },
-  { id: 'bluefin', label: 'Bluefin Tuna', emoji: '🐟', rarity: 'epic', min: 60, max: 400, base: 210, spot: 'deep', zone: 1 },
-  { id: 'mako', label: 'Mako Shark', emoji: '🦈', rarity: 'epic', min: 40, max: 300, base: 240, spot: 'deep', zone: 2 },
-  { id: 'anglerfish', label: 'Abyssal Anglerfish', emoji: '🔦', rarity: 'epic', min: 2, max: 25, base: 260, spot: 'deep', zone: 3 },
-  { id: 'blackmarlin', label: 'Black Marlin', emoji: '🐋', rarity: 'legendary', min: 100, max: 600, base: 750, spot: 'deep', zone: 1 },
-  { id: 'giantsquid', label: 'Giant Squid', emoji: '🦑', rarity: 'legendary', min: 80, max: 450, base: 820, spot: 'deep', zone: 2 },
-  { id: 'coelacanth', label: 'Coelacanth', emoji: '🦕', rarity: 'legendary', min: 30, max: 90, base: 950, spot: 'deep', zone: 3 },
+  // mu-fishing: values ≈ 3.1x the original so the skiff (zone 1) earns ≈ 5x the pond per minute; bigger boats a bit more.
+  { id: 'ghostnet', label: 'Ghost Net', emoji: '🕸️', rarity: 'junk', min: 0.5, max: 4, base: 6, spot: 'deep', zone: 1 },
+  { id: 'bonito', label: 'Atlantic Bonito', emoji: '🐟', rarity: 'common', min: 1, max: 6, base: 35, spot: 'deep', zone: 1 },
+  { id: 'mackerel', label: 'Spanish Mackerel', emoji: '🐟', rarity: 'common', min: 0.8, max: 5, base: 45, spot: 'deep', zone: 1 },
+  { id: 'skipjack', label: 'Skipjack Tuna', emoji: '🐟', rarity: 'common', min: 2, max: 14, base: 40, spot: 'deep', zone: 2 },
+  { id: 'wahoo', label: 'Wahoo', emoji: '🐟', rarity: 'uncommon', min: 5, max: 40, base: 105, spot: 'deep', zone: 1 },
+  { id: 'kingfish', label: 'Kingfish', emoji: '🐟', rarity: 'uncommon', min: 4, max: 30, base: 110, spot: 'deep', zone: 2 },
+  { id: 'lanternfish', label: 'Lanternfish', emoji: '🏮', rarity: 'uncommon', min: 0.02, max: 0.1, base: 125, spot: 'deep', zone: 3 },
+  { id: 'amberjack', label: 'Greater Amberjack', emoji: '🐟', rarity: 'rare', min: 8, max: 60, base: 220, spot: 'deep', zone: 1 },
+  { id: 'swordfish', label: 'Swordfish', emoji: '🗡️', rarity: 'rare', min: 30, max: 200, base: 260, spot: 'deep', zone: 2 },
+  { id: 'oarfish', label: 'Giant Oarfish', emoji: '🐉', rarity: 'rare', min: 20, max: 120, base: 290, spot: 'deep', zone: 3 },
+  { id: 'bluefin', label: 'Bluefin Tuna', emoji: '🐟', rarity: 'epic', min: 60, max: 400, base: 650, spot: 'deep', zone: 1 },
+  { id: 'mako', label: 'Mako Shark', emoji: '🦈', rarity: 'epic', min: 40, max: 300, base: 740, spot: 'deep', zone: 2 },
+  { id: 'anglerfish', label: 'Abyssal Anglerfish', emoji: '🔦', rarity: 'epic', min: 2, max: 25, base: 810, spot: 'deep', zone: 3 },
+  { id: 'blackmarlin', label: 'Black Marlin', emoji: '🐋', rarity: 'legendary', min: 100, max: 600, base: 2330, spot: 'deep', zone: 1 },
+  { id: 'giantsquid', label: 'Giant Squid', emoji: '🦑', rarity: 'legendary', min: 80, max: 450, base: 2540, spot: 'deep', zone: 2 },
+  { id: 'coelacanth', label: 'Coelacanth', emoji: '🦕', rarity: 'legendary', min: 30, max: 90, base: 2950, spot: 'deep', zone: 3 },
 ];
 /** Species that can bite at a spot. */
 export const fishPool = (spot: FishSpot = 'lake') => FISH.filter((f) => (f.spot ?? 'lake') === spot);
@@ -98,9 +99,14 @@ export const fmtKg = (g: number) => (g >= 10_000 ? `${(g / 1000).toFixed(1)} kg`
 /** Daily tiers on base sale value (per player, reset 00:00 UTC): full up to 100,000, then zero. */
 export const FISH_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: 100_000, rate: 1 }, { upTo: Infinity, rate: 0 }];
 export const FISH_DAILY_MAX = FISH_TIERS.reduce((a, t, i) => a + (Number.isFinite(t.upTo) ? (t.upTo - (i ? FISH_TIERS[i - 1]!.upTo : 0)) * t.rate : 0), 0);
-export function fishPayout(gross: number, already: number): number {
+/** Separate per-spot daily caps (mu-fishing): each spot is tracked on its own (fish_daily row per spot). */
+export const FISH_SPOT_CAP: Record<FishSpot, number> = { lake: 100_000, reef: 200_000, deep: 500_000 };
+export const fishTiers = (spot: FishSpot = 'lake'): Array<{ upTo: number; rate: number }> => [{ upTo: FISH_SPOT_CAP[spot], rate: 1 }, { upTo: Infinity, rate: 0 }];
+/** fish_daily.player_key for a spot: the plain player key for the lake (back-compatible), `key#reef` / `key#deep` otherwise. */
+export const fishDailyKey = (key: string, spot: FishSpot = 'lake') => (spot === 'lake' ? key : `${key}#${spot}`);
+export function fishPayout(gross: number, already: number, spot: FishSpot = 'lake'): number {
   let left = gross, at = already, pay = 0, lo = 0;
-  for (const t of FISH_TIERS) { if (left <= 0) break; const take = Math.min(left, Math.max(0, t.upTo - Math.max(at, lo))); pay += take * t.rate; left -= take; at += take; lo = t.upTo; }
+  for (const t of fishTiers(spot)) { if (left <= 0) break; const take = Math.min(left, Math.max(0, t.upTo - Math.max(at, lo))); pay += take * t.rate; left -= take; at += take; lo = t.upTo; }
   return Math.floor(pay + 1e-9);
 }
 
@@ -145,7 +151,7 @@ export function replayReel(seed: number, diff: number, inputs: string): 'caught'
 }
 
 export interface FishCatch { id: string; fish: string; grams: number; value: number; at: number }
-export interface FishView { cooler: FishCatch[]; today: { gross: number; paid: number }; index: number; best: { fish: string; grams: number } | null; totals: { caught: number } }
+export interface FishView { cooler: FishCatch[]; today: { gross: number; paid: number }; /** per-spot sold today (base gross) */ todayBySpot?: Record<FishSpot, { gross: number; paid: number }>; index: number; best: { fish: string; grams: number } | null; totals: { caught: number } }
 
 /** What other players see of an angler at the dock (pt242u). Derived on the server from fish_* actions only:
  *  'cast' = line out (bobber floats; the bite time stays secret), 'reel' = fighting a fish, 'catch' = just landed one. */

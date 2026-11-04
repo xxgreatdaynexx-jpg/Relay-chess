@@ -21,7 +21,7 @@ import { isQaName } from '../shared/qa.js';
 import type { ImportSink } from './farm.js';
 import { fishingLuckRoll, fishingBiteMul } from '../shared/skillPerks.js';
 import {
-  BITE_MAX_MS, BITE_MIN_MS, CAST_COOLDOWN_MS, COOLER_MAX, FISH, FISH_XP, fishById, fishDiff, fishPayout, fishValue, HOOK_WINDOW_MS,
+  BITE_MAX_MS, BITE_MIN_MS, CAST_COOLDOWN_MS, fishDailyKey, spotOf, COOLER_MAX, FISH, FISH_XP, fishById, fishDiff, fishPayout, fishValue, HOOK_WINDOW_MS,
   REEL_DT, replayReel, rollFish, rollWeight, anglerAim, type AnglerState, type FishCatch, type FishView,
 } from '../shared/fishing.js';
 import { cookPayout } from '../shared/cooking.js';
@@ -78,15 +78,15 @@ export class Fishing {
     const r = await this.pool.query('SELECT gross, paid FROM kitchen_daily WHERE player_key = $1 AND day = $2', [key, utcDay(this.clock())]).catch(() => ({ rows: [] as Array<Record<string, unknown>> }));
     return { gross: Number(r.rows[0]?.gross ?? 0), paid: Number(r.rows[0]?.paid ?? 0) };
   }
-  private async today(key: string) {
-    const r = await this.pool.query('SELECT gross, paid FROM fish_daily WHERE player_key = $1 AND day = $2', [key, utcDay(this.clock())]);
+  private async today(key: string, spot: FishSpot = 'lake') {
+    const r = await this.pool.query('SELECT gross, paid FROM fish_daily WHERE player_key = $1 AND day = $2', [fishDailyKey(key, spot), utcDay(this.clock())]);
     return { gross: Number(r.rows[0]?.gross ?? 0), paid: Number(r.rows[0]?.paid ?? 0) };
   }
   async view(name: string): Promise<FishView> {
     const key = keyOf(name);
     const best = (await this.pool.query("SELECT species, weight_g FROM fish_catches WHERE player_key = $1 AND COALESCE(hired, FALSE) = FALSE ORDER BY weight_g DESC, caught_at ASC, id ASC LIMIT 1", [key])).rows[0];
     const n = (await this.pool.query('SELECT count(*) AS n FROM fish_catches WHERE player_key = $1', [key])).rows[0];
-    return { cooler: await this.cooler(key), today: await this.today(key), index: priceIndex(), best: best ? { fish: String(best.species), grams: Number(best.weight_g) } : null, totals: { caught: Number(n?.n ?? 0) } };
+    return { cooler: await this.cooler(key), today: await this.today(key), todayBySpot: { lake: await this.today(key, 'lake'), reef: await this.today(key, 'reef'), deep: await this.today(key, 'deep') }, index: priceIndex(), best: best ? { fish: String(best.species), grams: Number(best.weight_g) } : null, totals: { caught: Number(n?.n ?? 0) } };
   }
 
   /** Throw a line. The fish (and when it bites) is decided now and stays server-side. */
@@ -148,7 +148,7 @@ export class Fishing {
       if (Array.isArray(ids)) { const want = new Set(ids.filter((x): x is string => typeof x === 'string').slice(0, COOLER_MAX)); rows = rows.filter((r) => want.has(r.id)); }
       if (!rows.length) throw new FishError('Nothing to sell.');
       if (qtyIn !== undefined && qtyIn !== null) { const v = parseSellQty(qtyIn, rows.length); if (!v.ok) throw new FishError(v.error); rows = pickForQty(rows, v.qty); }
-      const day = utcDay(this.clock()); const t = await this.today(key);
+      const day = utcDay(this.clock());
       // Pan-fried dishes (fishPan) count toward the ONE daily cooking-sales cap (kitchen_daily, shared with recipe
       // dishes), not the raw-fish tiers. If that cap is used up, dishes stay in the cooler instead of selling for 0.
       const dishIds = await this.dishIds(key); const k = await this.kitchenToday(key);
@@ -156,18 +156,31 @@ export class Fishing {
       let dGross = dishRows.reduce((a, r) => a + r.value, 0); let dPaid = Math.floor(cookPayout(dGross, k.gross) * priceIndex());
       if (dPaid <= 0 && dishRows.length) { dishRows = []; dGross = 0; dPaid = 0; }
       rows = [...rawRows, ...dishRows];
-      const gross = rawRows.reduce((a, r) => a + r.value, 0);
-      const base = fishPayout(gross, t.gross); const fPaid = Math.floor(base * priceIndex()); const paid = fPaid + dPaid;
-      if (paid <= 0 || !rows.length) throw new FishError(rawRows.length ? "The fishmonger has bought all they can from you today. Come back after 00:00 UTC (or release your catch)." : 'You have hit today\'s cooking sales cap (shared by every dish you cook). Come back after 00:00 UTC (6 PM CST).');
+      // mu-fishing: each spot (lake / reef / deep) has its own daily cap, tracked in its own fish_daily row.
+      const spotOfRow = (r: FishCatch): FishSpot => { const f = fishById(r.fish); return f ? spotOf(f) : 'lake'; };
+      const bySpot: Array<{ spot: FishSpot; gross: number; t: { gross: number; paid: number }; paid: number }> = [];
+      for (const sp of ['lake', 'reef', 'deep'] as FishSpot[]) {
+        const g = rawRows.filter((r) => spotOfRow(r) === sp).reduce((a, r) => a + r.value, 0); if (!g) continue;
+        const t = await this.today(key, sp); bySpot.push({ spot: sp, gross: g, t, paid: Math.floor(fishPayout(g, t.gross, sp) * priceIndex()) });
+      }
+      // Fish from a spot whose cap is used up stay in the cooler instead of selling for 0.
+      const live = bySpot.filter((b) => b.paid > 0); const liveSpots = new Set(live.map((b) => b.spot));
+      rows = rows.filter((r) => dishIds.has(r.id) || liveSpots.has(spotOfRow(r)));
+      const gross = live.reduce((a, b) => a + b.gross, 0);
+      const fPaid = live.reduce((a, b) => a + b.paid, 0); const paid = fPaid + dPaid;
+      if (paid <= 0 || !rows.length) throw new FishError(rawRows.length && !live.length ? "The fishmonger has bought all they can from you today. Come back after 00:00 UTC (or release your catch)." : 'You have hit today\'s cooking sales cap (shared by every dish you cook). Come back after 00:00 UTC (6 PM CST).');
       const counts = new Map<string, number>(); for (const r of rows) counts.set(fishById(r.fish)?.label ?? r.fish, (counts.get(fishById(r.fish)?.label ?? r.fish) ?? 0) + 1);
       const memo = `Fish market: sold ${[...counts].map(([l, n]) => `${n} ${l}`).join(', ')}`.slice(0, 200);
       const body = async (cl: pg.PoolClient) => {
         const ph = rows.map((_, i) => `$${i + 3}`).join(',');
         const u = await cl.query(`UPDATE fish_catches SET sold_at = $1 WHERE player_key = $2 AND sold_at IS NULL AND id IN (${ph})`, [this.clock(), key, ...rows.map((r) => r.id)]);
         if (u.rowCount !== rows.length) throw new FishError('Already sold.');
-        if (t.gross === 0 && t.paid === 0) await cl.query('INSERT INTO fish_daily (player_key, day, gross, paid) VALUES ($1,$2,0,0) ON CONFLICT (player_key, day) DO NOTHING', [key, day]);
-        const d = await cl.query('UPDATE fish_daily SET gross = gross + $3, paid = paid + $4 WHERE player_key = $1 AND day = $2 AND gross = $5', [key, day, gross, paid, t.gross]);
-        if (d.rowCount !== 1) throw new FishError('Busy — try again.');
+        for (const b of live) {
+          const dk = fishDailyKey(key, b.spot);
+          if (b.t.gross === 0 && b.t.paid === 0) await cl.query('INSERT INTO fish_daily (player_key, day, gross, paid) VALUES ($1,$2,0,0) ON CONFLICT (player_key, day) DO NOTHING', [dk, day]);
+          const d = await cl.query('UPDATE fish_daily SET gross = gross + $3, paid = paid + $4 WHERE player_key = $1 AND day = $2 AND gross = $5', [dk, day, b.gross, b.paid, b.t.gross]);
+          if (d.rowCount !== 1) throw new FishError('Busy — try again.');
+        }
         if (dishRows.length) {
           await cl.query('INSERT INTO kitchen_daily (player_key, day, gross, paid) VALUES ($1,$2,0,0) ON CONFLICT (player_key, day) DO NOTHING', [key, day]);
           const kd = await cl.query('UPDATE kitchen_daily SET gross = gross + $3, paid = paid + $4 WHERE player_key = $1 AND day = $2 AND gross = $5', [key, day, dGross, dPaid, k.gross]);
