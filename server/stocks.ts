@@ -24,7 +24,7 @@ import { dailyEvents, loadNewsKey, memoryNewsKey, type NewsKey } from './stock-n
 import { skillLevelAsync } from './skills.js';
 import { tradingFeeMul } from '../shared/skillPerks.js';
 import { cityFeeMul } from './mayor.js';
-import { keyStats, periodSpec, priceStats } from '../shared/stockStats.js';
+import { INTERVALS, intervalMs, keyStats, periodSpec, priceStats, seriesChange, toCandles } from '../shared/stockStats.js';
 
 import { isMarketBlocked, MARKET_BLOCKED_MSG } from './house-cap-index.js';
 export class StockError extends Error {}
@@ -267,7 +267,9 @@ export class Exchange {
     const mine = name ? (await this.holdings(name)).find((h) => h.ticker === c.ticker) ?? null : null;
     const callLock = name ? await this.callLocked(name, c.ticker) : false;
     const chart = await this.chart(c.ticker, range);
-    return { callLock, company: { ...c, ...this.summary(c) }, chart, stats: await this.keyStats(c), period: range, news: this.news.filter((n) => n.ticker === c.ticker).slice(0, 20), upcoming: dailyEvents(c, utcDay(this.clock())).filter((e) => e.at > this.clock()).length, mine, maxOrder: maxOrderChips(c), drift: dailyDrift(c, this.inflPct, this.act) };
+    // MU #9 v2: the header badge uses the exact figure the 1D chart shows (first 1D point → live price)
+    const dayChg = seriesChange(periodSpec(range).ms === periodSpec('1d').ms && periodSpec(range).step === periodSpec('1d').step ? chart : await this.chart(c.ticker, '1d')).pct;
+    return { dayChg, callLock, company: { ...c, ...this.summary(c) }, chart, stats: await this.keyStats(c), period: range, news: this.news.filter((n) => n.ticker === c.ticker).slice(0, 20), upcoming: dailyEvents(c, utcDay(this.clock())).filter((e) => e.at > this.clock()).length, mine, maxOrder: maxOrderChips(c), drift: dailyDrift(c, this.inflPct, this.act) };
   }
   /** MU #9: display-only key stats (P/E, EPS, ranges, realized volatility, avg volume). Reads history; changes nothing. */
   async keyStats(c: Company) {
@@ -284,6 +286,36 @@ export class Exchange {
     const { ms, step } = periodSpec(range); const now = this.clock();
     if (this.pool) return (await this.pool.query('SELECT ticker, (t / $3) * $3 b, (ARRAY_AGG(price ORDER BY t DESC))[1] p FROM stock_history WHERE ticker = ANY($1) AND t >= $2 GROUP BY 1, 2 ORDER BY 2', [tickers, now - ms, step])).rows.map((x) => ({ ticker: String(x.ticker), t: Number(x.b), price: Number(x.p) }));
     return tickers.flatMap((t) => (this.memHist.get(t) ?? []).filter(([x]) => x >= now - ms).map(([x, p]) => ({ ticker: t, t: x, price: p })));
+  }
+  /** MU #9 v2: OHLC candles + volume bars from raw 10-minute history and the trade log. Read-only. */
+  async candles(t: unknown, range: unknown, interval: unknown) {
+    const c = typeof t === 'string' ? COMPANY_BY_TICKER.get(t) : undefined; if (!c) throw new StockError('Unknown company.');
+    const { ms } = periodSpec(range); const step = intervalMs(interval); const now = this.clock(); const from = Math.floor((now - ms) / step) * step;
+    let pts: Array<[number, number]>; let vols: Array<[number, number]> = [];
+    if (this.pool) {
+      const [h, v] = await Promise.all([
+        this.pool.query('SELECT t, price FROM stock_history WHERE ticker = $1 AND t >= $2 ORDER BY t', [c.ticker, from]),
+        this.pool.query('SELECT (at / $3) * $3 b, SUM(shares) s FROM stock_trades WHERE ticker = $1 AND at >= $2 GROUP BY 1', [c.ticker, from, step]),
+      ]);
+      pts = h.rows.map((x) => [Number(x.t), Number(x.price)]); vols = v.rows.map((x) => [Number(x.b), Number(x.s)]);
+    } else pts = (this.memHist.get(c.ticker) ?? []).filter(([x]) => x >= from);
+    pts.push([now, this.price(c.ticker)!]);
+    return { ticker: c.ticker, interval: INTERVALS.find((x) => x[2] === step)?.[0] ?? '1h', candles: toCandles(pts, step, vols) };
+  }
+  /** MU #9 v2: biggest player holders of a ticker (names already public in the trade feed). Read-only. */
+  async holders(t: unknown) {
+    const c = typeof t === 'string' ? COMPANY_BY_TICKER.get(t) : undefined; if (!c) throw new StockError('Unknown company.');
+    if (!this.pool) return { holders: [] as Array<{ name: string; shares: number; pct: number }> };
+    const r = await this.pool.query('SELECT name, shares FROM stock_holdings WHERE ticker = $1 AND shares > 0 ORDER BY shares DESC LIMIT 10', [c.ticker]);
+    const n = await this.pool.query('SELECT COUNT(*) n FROM stock_holdings WHERE ticker = $1 AND shares > 0', [c.ticker]);
+    return { count: Number(n.rows[0]?.n ?? 0), holders: r.rows.map((x) => ({ name: String(x.name), shares: Number(x.shares), pct: Math.round((Number(x.shares) / c.shares) * 10000) / 100 })) };
+  }
+  /** MU #9 v2: the signed-in player's own stock orders (newest first). Read-only. */
+  async myOrders(name: string, limit: unknown) {
+    const lim = Math.max(1, Math.min(200, Math.floor(Number(limit) || 50)));
+    if (!this.pool) return { orders: [] as Array<{ id: string; ticker: string; side: string; shares: number; price: number; chips: number; fee: number; at: number }> };
+    const r = await this.pool.query('SELECT id, ticker, side, shares, price, chips, fee, at FROM stock_trades WHERE player_key = $1 ORDER BY at DESC LIMIT $2', [keyOf(name), lim]);
+    return { orders: r.rows.map((x) => ({ id: String(x.id), ticker: String(x.ticker), side: String(x.side), shares: Number(x.shares), price: Number(x.price), chips: Number(x.chips), fee: Number(x.fee), at: Number(x.at) })) };
   }
   /** Dayne t1430u: a player holding an open (unexpired) call on a ticker can't buy that ticker's shares. Read-only check. */
   async callLocked(name: string, ticker: string): Promise<boolean> {
@@ -433,5 +465,8 @@ export function registerStocks(io: Server, socket: Socket): void {
   on('stk2_trades', (b) => dv().publicTrades(b.ticker, b.fund, b.limit));
   on('stk3_fund_chart', (b) => dv().fundChart(b.fund, b.range));
   on('stk3_portfolio_chart', (b) => dv().portfolioChart(need(), b.range));
+  on('stk4_candles', (b, e) => e.candles(b.ticker, b.range, b.interval));
+  on('stk4_holders', (b, e) => e.holders(b.ticker));
+  on('stk4_orders', (b, e) => e.myOrders(need(), b.limit));
   on('stk2_opt_buy', (b) => dv().buyOption(need(), b.ticker, b.kind, b.strike, b.days, b.qty));
 }

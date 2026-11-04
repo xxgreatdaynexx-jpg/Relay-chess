@@ -69,3 +69,23 @@ export function seriesChange(pts: Array<[number, number]>): { abs: number; pct: 
   const a = pts[0]![1], b = pts[pts.length - 1]![1];
   return { abs: Math.round((b - a) * 100) / 100, pct: a ? Math.round(((b - a) / a) * 10000) / 100 : 0 };
 }
+
+/** MU #9 v2: candlestick intervals. Raw history is one point every 10 minutes. */
+export type CandleInterval = '10m' | '1h' | '4h' | '1d';
+export const INTERVALS: Array<[CandleInterval, string, number]> = [['10m', '10m', 600_000], ['1h', '1H', H], ['4h', '4H', 4 * H], ['1d', '1D', D]];
+export const intervalMs = (i: unknown) => INTERVALS.find((x) => x[0] === i)?.[2] ?? H;
+/** Default candle size per period, so every view has a readable number of candles. */
+export const defaultInterval = (p: Period): CandleInterval => (p === '1d' ? '10m' : p === '1w' ? '1h' : p === '1m' ? '4h' : '1d');
+export interface Candle { t: number; o: number; h: number; l: number; c: number; v: number }
+/**
+ * OHLC candles from raw [t, price] points (any order) and [t, shares] trade volume, bucketed by `step` ms.
+ * Each candle opens at the previous candle's close when there is one, so the bodies join up like a real chart.
+ */
+export function toCandles(pts: Array<[number, number]>, step: number, vols: Array<[number, number]> = []): Candle[] {
+  const s = [...pts].sort((a, b) => a[0] - b[0]); const by = new Map<number, Candle>();
+  for (const [t, p] of s) { const b = Math.floor(t / step) * step; const c = by.get(b); if (!c) by.set(b, { t: b, o: p, h: p, l: p, c: p, v: 0 }); else { c.h = Math.max(c.h, p); c.l = Math.min(c.l, p); c.c = p; } }
+  for (const [t, v] of vols) { const c = by.get(Math.floor(t / step) * step); if (c) c.v += v; }
+  const out = [...by.values()].sort((a, b) => a.t - b.t);
+  for (let i = 1; i < out.length; i++) { const c = out[i]!; c.o = out[i - 1]!.c; c.h = Math.max(c.h, c.o); c.l = Math.min(c.l, c.o); }
+  return out;
+}

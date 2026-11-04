@@ -1,5 +1,6 @@
 /** MU #9: investing-app style chart (area + crosshair), period toggles and key-stat cards. Display only. */
 import { useId, useMemo, useRef, useState } from 'react';
+import { Info } from './Explain';
 import { PERIODS, seriesChange, type Period, type KeyStats } from '../../../../shared/stockStats';
 
 const fmtTime = (t: number, p: Period) => { const d = new Date(t); const hm = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); return p === '1d' ? hm : `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${hm}`; };
@@ -41,50 +42,54 @@ export function InvestChart({ pts, period, onPeriod, value, prefix = '🪙 ', de
         <PeriodToggle value={period} onChange={(p) => { setHover(null); onPeriod(p); }} testid={`${testid}-period`} />
       </div>
       {!geo ? <p className="mt-2 rounded bg-black/20 p-6 text-center text-xs opacity-60">{empty}</p> : (
-        <svg ref={ref} viewBox={`0 0 ${W} ${H}`} className="mt-2 w-full touch-none select-none" style={{ height: H }} preserveAspectRatio="none"
+        <div className="relative mt-2">
+        <svg ref={ref} viewBox={`0 0 ${W} ${H}`} className="block w-full touch-none select-none" style={{ height: H }} preserveAspectRatio="none"
           onPointerMove={(e) => move(e.clientX)} onPointerDown={(e) => move(e.clientX)} onPointerLeave={() => setHover(null)} data-testid={`${testid}-svg`}>
           <defs><linearGradient id={gid} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={col} stopOpacity="0.35" /><stop offset="100%" stopColor={col} stopOpacity="0" /></linearGradient></defs>
           <line x1="0" x2={W} y1={geo.base} y2={geo.base} stroke="#fff3" strokeDasharray="3 4" vectorEffect="non-scaling-stroke" />
           <path d={geo.area} fill={`url(#${gid})`} />
           <path d={geo.line} fill="none" stroke={col} strokeWidth="2.25" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-          {hp && <><line x1={geo.X(hp[0])} x2={geo.X(hp[0])} y1="0" y2={H} stroke="#fff6" vectorEffect="non-scaling-stroke" /><circle cx={geo.X(hp[0])} cy={geo.Y(hp[1])} r="4" fill={col} stroke="#fff" strokeWidth="1.5" vectorEffect="non-scaling-stroke" /></>}
-        </svg>)}
+          {hp && <line x1={geo.X(hp[0])} x2={geo.X(hp[0])} y1="0" y2={H} stroke="#fff6" vectorEffect="non-scaling-stroke" />}
+        </svg>
+        {/* MU #9 v2: the hover dot is HTML, not an SVG circle, so it stays round when the stretched chart is narrow (mobile) */}
+        {hp && <span className="ivx-dot" style={{ left: `${(geo.X(hp[0]) / W) * 100}%`, top: `${(geo.Y(hp[1]) / H) * 100}%`, background: col }} data-testid={`${testid}-dot`} />}
+        </div>)}
       {geo && <div className="mt-1 flex justify-between text-[10px] tabular-nums opacity-50"><span>{fmtTime(pts[0]![0], period)}</span><span>Low {geo.lo.toFixed(decimals)} · High {geo.hi.toFixed(decimals)}</span><span>Now</span></div>}
     </div>
   );
 }
 
 /** Range bar (low — marker — high), like the 52-week range on real apps. */
-export function RangeBar({ lo, hi, at, label }: { lo: number; hi: number; at: number; label: string }) {
+export function RangeBar({ lo, hi, at, label, info }: { lo: number; hi: number; at: number; label: string; info?: string }) {
   const pct = hi > lo ? Math.min(100, Math.max(0, ((at - lo) / (hi - lo)) * 100)) : 50;
   return (
     <div className="ivx-stat col-span-2" data-testid={`inv-range-${label.replace(/\W+/g, '').toLowerCase()}`}>
-      <div className="ivx-k">{label}</div>
+      <div className="ivx-k ivx-k-i"><span className="truncate">{label}</span>{info && <Info id={info} label={label} />}</div>
       <div className="mt-1 flex items-center gap-2 tabular-nums text-xs"><span>{lo.toFixed(2)}</span><div className="relative h-1.5 flex-1 rounded-full bg-white/10"><div className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-rose-500/60 to-emerald-500/60" style={{ width: '100%' }} /><div className="absolute -top-1 h-3.5 w-1 rounded bg-white shadow" style={{ left: `calc(${pct}% - 2px)` }} /></div><span>{hi.toFixed(2)}</span></div>
     </div>
   );
 }
 
-const S = ({ k, v, title, cls, testid }: { k: string; v: React.ReactNode; title?: string; cls?: string; testid?: string }) => <div className="ivx-stat" title={title} data-testid={testid}><div className="ivx-k">{k}</div><div className={`ivx-v ${cls ?? ''}`}>{v}</div></div>;
+const S = ({ k, v, title, cls, testid, info }: { k: string; v: React.ReactNode; title?: string; cls?: string; testid?: string; info?: string }) => <div className="ivx-stat" title={title} data-testid={testid}><div className="ivx-k ivx-k-i"><span className="truncate">{k}</span>{info && <Info id={info} label={k} />}</div><div className={`ivx-v ${cls ?? ''}`}>{v}</div></div>;
 
 /** Key statistics grid for one company. Numbers come from the server (derived, deterministic). */
 export function KeyStatsGrid({ s }: { s: KeyStats }) {
   return (
     <div className="ivx-stats" data-testid="ivx-keystats">
-      <S k="Market cap" v={`🪙 ${compact(s.cap)}`} title="Price × shares outstanding" testid="ivx-stat-cap" />
-      <S k="P/E ratio" v={s.pe == null ? '—' : s.pe.toFixed(1)} title={s.pe == null ? 'Negative earnings: no P/E' : 'Price ÷ earnings per share'} testid="ivx-stat-pe" />
-      <S k="EPS" v={`${s.eps < 0 ? '−' : ''}🪙 ${Math.abs(s.eps).toFixed(2)}`} cls={s.eps < 0 ? 'text-rose-400' : ''} title="Earnings per share (fixed per company)" testid="ivx-stat-eps" />
-      <S k="Div yield" v={s.divYieldDay ? `${(s.divYieldDay * 100).toFixed(2)}%/day` : '—'} title={s.divYieldDay ? `≈ 🪙 ${s.divPerShare.toFixed(2)} per share, paid daily` : 'Growth company: no dividend'} testid="ivx-stat-div" />
-      <S k="Open" v={s.open == null ? '—' : s.open.toFixed(2)} title="Price 24 hours ago" />
-      <S k="Day low / high" v={`${s.dayLo.toFixed(2)} – ${s.dayHi.toFixed(2)}`} />
-      <S k="Volume 24h" v={compact(s.volume)} title={`${s.turnoverPct.toFixed(2)}% of shares traded`} testid="ivx-stat-vol" />
-      <S k="Avg volume" v={s.avgVolume == null ? '—' : compact(s.avgVolume)} title="Average daily shares traded, last 7 days" />
-      <S k="Beta" v={s.beta.toFixed(2)} title="How much it moves with the whole market (1 = in line)" testid="ivx-stat-beta" />
-      <S k="Volatility" v={`${(s.vol * 100).toFixed(1)}%/day`} title="Typical daily swing" />
-      <S k="Realized vol" v={s.realizedVol == null ? '—' : `${(s.realizedVol * 100).toFixed(1)}%/day`} title="Measured from the last 24 hours of prices" />
-      <S k="Shares out" v={compact(s.shares)} />
-      <RangeBar lo={s.dayLo} hi={s.dayHi} at={s.price} label="Day range" />
-      <RangeBar lo={s.lo30} hi={s.hi30} at={s.price} label="30-day range" />
+      <S k="Market cap" info="cap" v={`🪙 ${compact(s.cap)}`} title="Price × shares outstanding" testid="ivx-stat-cap" />
+      <S k="P/E ratio" info="pe" v={s.pe == null ? '—' : s.pe.toFixed(1)} title={s.pe == null ? 'Negative earnings: no P/E' : 'Price ÷ earnings per share'} testid="ivx-stat-pe" />
+      <S k="EPS" info="eps" v={`${s.eps < 0 ? '−' : ''}🪙 ${Math.abs(s.eps).toFixed(2)}`} cls={s.eps < 0 ? 'text-rose-400' : ''} title="Earnings per share (fixed per company)" testid="ivx-stat-eps" />
+      <S k="Div yield" info="yield" v={s.divYieldDay ? `${(s.divYieldDay * 100).toFixed(2)}%/day` : '—'} title={s.divYieldDay ? `≈ 🪙 ${s.divPerShare.toFixed(2)} per share, paid daily` : 'Growth company: no dividend'} testid="ivx-stat-div" />
+      <S k="Open" info="open" v={s.open == null ? '—' : s.open.toFixed(2)} title="Price 24 hours ago" />
+      <S k="Day low / high" info="dayRange" v={`${s.dayLo.toFixed(2)} – ${s.dayHi.toFixed(2)}`} />
+      <S k="Volume 24h" info="volume" v={compact(s.volume)} title={`${s.turnoverPct.toFixed(2)}% of shares traded`} testid="ivx-stat-vol" />
+      <S k="Avg volume" info="avgVolume" v={s.avgVolume == null ? '—' : compact(s.avgVolume)} title="Average daily shares traded, last 7 days" />
+      <S k="Beta" info="beta" v={s.beta.toFixed(2)} title="How much it moves with the whole market (1 = in line)" testid="ivx-stat-beta" />
+      <S k="Volatility" info="volatility" v={`${(s.vol * 100).toFixed(1)}%/day`} title="Typical daily swing" />
+      <S k="Realized vol" info="realizedVol" v={s.realizedVol == null ? '—' : `${(s.realizedVol * 100).toFixed(1)}%/day`} title="Measured from the last 24 hours of prices" />
+      <S k="Shares out" info="sharesOut" v={compact(s.shares)} />
+      <RangeBar lo={s.dayLo} hi={s.dayHi} at={s.price} label="Day range" info="dayRange" />
+      <RangeBar lo={s.lo30} hi={s.hi30} at={s.price} label="30-day range" info="range30" />
     </div>
   );
 }
