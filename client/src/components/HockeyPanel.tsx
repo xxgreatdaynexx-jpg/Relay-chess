@@ -81,6 +81,10 @@ function HockeyGameView({ onClose }: { onClose: () => void }) {
       setJoined({ id: r.id, team: r.team, role: r.role, paid: r.paid }); setResult(null);
     });
   };
+  const [arena, setArena] = useState(false); const [watching, setWatching] = useState(false);
+  useEffect(() => { void fetch('/api/coop').then((r) => r.json()).then((j: { projects?: Array<{ id: string; state: string }> }) => setArena(!!j?.projects?.some((p) => p.id === 'stadium' && p.state === 'complete'))).catch(() => {}); }, []);
+  const toggleWatch = () => { if (watching) { socket.emit('hk_unwatch'); setWatching(false); } else socket.emit('hk_watch', null, (r: { ok: boolean; error?: string }) => { if (r?.ok) setWatching(true); else setErr(r?.error ?? 'Spectating is not open yet.'); }); };
+  useEffect(() => () => { socket.emit('hk_unwatch'); }, []);
   const leave = useCallback(() => { socket.emit('hk_leave'); setJoined(null); }, []);
   useEffect(() => () => { socket.emit('hk_leave'); }, []);
 
@@ -220,7 +224,8 @@ function HockeyGameView({ onClose }: { onClose: () => void }) {
           <label className="hk-goalie"><input type="checkbox" checked={pick.goalie} onChange={(e) => setPick((p) => ({ ...p, goalie: e.target.checked }))} data-testid="hockey-goalie" /> Play goalie if the net is open</label>
           <button type="button" className="hk-join" onClick={join} data-testid="hockey-join">Join the rink{pick.team !== undefined ? ` · ${SHORT[pick.team]}` : ' · auto team'}</button>
           {err && <p className="hk-err">{err}</p>}
-          <p className="hk-prize">Free to play. Win a match with at least one other real player on each team and earn <b>{prize} 🪙</b> (up to {HK_DAILY_PAID_WINS} paid wins a day; play most of the match to qualify).</p>
+          <p className="hk-prize">Free to play. Win a match with at least one other real player on each team and earn <b>{prize} 🪙</b> (up to {HK_DAILY_PAID_WINS + (arena ? 1 : 0)} paid wins a day{arena ? ' 🏟️ incl. the Stadium bonus win' : ''}; play most of the match to qualify).</p>
+          {arena && <button type="button" className="hk-watch" onClick={toggleWatch} data-testid="hockey-watch">{watching ? '👋 Stop watching' : '🏟️ Watch from the stands'}</button>}
           {snap && <p className="hk-live">Live now: {snap.ph === 'lobby' ? 'waiting for faceoff' : `${periodLabel(snap.per)} ${hkClock(snap.clk)} · ${snap.sc[0]}–${snap.sc[1]}`}</p>}
         </div>}
         {result && <ResultCard r={result} me={joined?.id ?? null} onClose={() => setResult(null)} />}

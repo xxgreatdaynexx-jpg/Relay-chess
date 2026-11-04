@@ -26,6 +26,7 @@ import { getSolitro, solitroBoard } from './solitro.js';
 import { bootStates, reconnectMsg } from './boot-retry.js';
 import { adminRouter } from './admin.js';
 import { trailerRouter } from './trailers.js';
+import { coopMapSummary } from './coop.js';
 import { realEstateRouter } from './realEstate.js';
 import { playerProfileRouter } from './player-profile.js';
 import { houseRoomRouter } from './house-room.js';
@@ -48,6 +49,7 @@ export async function createApp(): Promise<AppContext> {
   });
   app.use(adminRouter());
   app.use(trailerRouter());
+  app.get('/api/coop', (_req, res) => { res.json({ ok: true, projects: coopMapSummary() }); });
   app.use(realEstateRouter());
   app.use(farmRouter());
   app.use(employmentRouter());

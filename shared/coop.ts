@@ -1,0 +1,154 @@
+/**
+ * Co-op economy (mu-coop-econ): server megaprojects and group contracts.
+ *
+ * Megaprojects: everyone donates chips and real goods to one server-wide build. Each project has 4 stages; a stage
+ * needs its chips AND its goods before the next one opens. Finishing a project unlocks a lasting perk for everyone and
+ * opens the next project. Donor rewards are small, scale with what you gave, are capped per player per project and are
+ * ALWAYS worth less than the donation (a net sink). Order: Hockey Stadium first, then the Fort McChud Bridge.
+ *
+ * Group contracts: a 24 h board at the Chud City Warehouse with one big delivery order. Anyone eligible delivers part of
+ * it from their Warehouse storage (a warehouse truck hauls it to the yard). After the deadline each player claims pay in
+ * proportion to what they delivered, plus a completion bonus if the order was filled in time. Per-player caps and
+ * anti-alt rules (account age + play time; QA, bot and jailed accounts are excluded).
+ */
+import { GOODS, type ItemType } from './mines.js';
+
+export type ProjectId = 'stadium' | 'bridge';
+export interface StagePlan { id: string; name: string; /** goods for this stage: item id (shared/mines GOODS) + share of the stage's goods value */ goods: Array<[string, number]> }
+export interface ProjectPlan { id: ProjectId; name: string; icon: string; /** total chips-equivalent cost (chips + goods at house price) */ total: number; /** share of each stage paid in chips; the rest is goods */ chipShare: number; stages: StagePlan[]; perk: string }
+
+/**
+ * THE sizing constant. Retune a project by changing `total` (and, if wanted, chipShare / the goods split); every stage's
+ * chips and goods quantities are derived from it by projectStages(). Stadium sizing (Nov 4 2026, read-only prod
+ * SELECTs): ~44 weekly-active players, ~400k chips/day of new server income -> 25M is ~9 weeks of the whole server's
+ * income, or ~5-7 weeks of serious group effort as income grows.
+ */
+export const COOP_PLAN: Record<ProjectId, ProjectPlan> = {
+  stadium: {
+    id: 'stadium', name: 'Chud Hub Hockey Stadium', icon: '🏟️', total: 25_000_000, chipShare: 0.6,
+    stages: [
+      { id: 'foundation', name: 'Foundation', goods: [['concrete', 0.6], ['brick', 0.4]] },
+      { id: 'frame', name: 'Steel frame', goods: [['steel_beam', 0.76], ['steel', 0.24]] },
+      { id: 'stands', name: 'Stands', goods: [['concrete', 0.48], ['steel_plate', 0.52]] },
+      { id: 'roof', name: 'Roof', goods: [['glass', 0.48], ['steel_cable', 0.52]] },
+    ],
+    perk: 'Live spectating at the Stadium, and every player gets a 6th paid hockey win a day (was 5).',
+  },
+  bridge: {
+    id: 'bridge', name: 'Fort McChud Bridge', icon: '🌉', total: 10_000_000, chipShare: 0.6,
+    stages: [
+      { id: 'piers', name: 'Piers', goods: [['concrete', 0.7], ['brick', 0.3]] },
+      { id: 'deck', name: 'Deck', goods: [['steel_beam', 0.6], ['steel_plate', 0.4]] },
+      { id: 'cables', name: 'Cables', goods: [['steel_cable', 0.8], ['steel', 0.2]] },
+      { id: 'lights', name: 'Lights & road', goods: [['glass', 0.5], ['concrete', 0.5]] },
+    ],
+    perk: 'Fort McChud tickets cost half for everyone.',
+  },
+};
+export const PROJECT_ORDER: ProjectId[] = ['stadium', 'bridge'];
+
+export interface StageNeed { id: string; name: string; chips: number; goods: Array<{ type: ItemType; id: string; name: string; qty: number; price: number }> }
+/** Chips and goods quantities per stage, derived from the plan (goods qty = value share / house price, rounded up). */
+export function projectStages(p: ProjectPlan): StageNeed[] {
+  const per = p.total / p.stages.length;
+  return p.stages.map((s) => ({
+    id: s.id, name: s.name, chips: Math.round(per * p.chipShare),
+    goods: s.goods.map(([id, share]) => { const g = GOODS[id]!; return { type: g.type, id, name: g.name, price: g.price, qty: Math.ceil((per * (1 - p.chipShare) * share) / g.price) }; }),
+  }));
+}
+/** Chips-equivalent value of a stage / a project at house prices. */
+export const stageValue = (s: StageNeed) => s.chips + s.goods.reduce((a, g) => a + g.qty * g.price, 0);
+export const projectValue = (p: ProjectPlan) => projectStages(p).reduce((a, s) => a + stageValue(s), 0);
+
+/** Donor reward: 20% of donated value, capped per player per project. Always strictly below the donation. */
+export const DONOR_REWARD_RATE = 0.2;
+export const DONOR_REWARD_CAP = 50_000;
+export const MIN_DONATION_VALUE = 100;
+export function donorReward(value: number, alreadyRewarded: number): number {
+  if (!(value > 0)) return 0;
+  const room = Math.max(0, DONOR_REWARD_CAP - Math.max(0, alreadyRewarded));
+  return Math.max(0, Math.min(room, Math.floor(value * DONOR_REWARD_RATE)));
+}
+
+/** Map key for a donation part: 'chips' or 'type:id'. */
+export type PartKey = string;
+export const partKey = (g: { type: ItemType; id: string } | 'chips'): PartKey => (g === 'chips' ? 'chips' : `${g.type}:${g.id}`);
+
+export interface StageView extends StageNeed { done: Record<PartKey, number>; pct: number }
+export interface ProjectView { id: ProjectId; name: string; icon: string; total: number; perk: string; state: 'locked' | 'active' | 'complete'; stage: number; pct: number; stages: StageView[]; top: Array<{ name: string; value: number }> }
+export interface CoopView { projects: ProjectView[]; active: ProjectId | null; perks: { stadium: boolean; bridge: boolean }; me?: { value: number; rewarded: number; cap: number }; sellBonus?: number; stadiumDonated?: number }
+
+/** Overall % of a project (by chips-equivalent value, each part clamped to its need). */
+export function stagePct(s: StageNeed, done: Record<PartKey, number>): number {
+  const v = stageValue(s); if (!v) return 1;
+  let got = Math.min(s.chips, done.chips ?? 0);
+  for (const g of s.goods) got += Math.min(g.qty, done[partKey(g)] ?? 0) * g.price;
+  return Math.min(1, got / v);
+}
+export const stageFull = (s: StageNeed, done: Record<PartKey, number>) => (done.chips ?? 0) >= s.chips && s.goods.every((g) => (done[partKey(g)] ?? 0) >= g.qty);
+/** Build stage for the map: 0 site, 1 foundation, 2 frame, 3 stands, 4 roof/complete (0/25/50/75/100%). */
+export const buildStage = (stagesDone: number) => Math.max(0, Math.min(4, stagesDone));
+
+// ---------------------------------------------------------------- group contracts
+export const CONTRACT_MS = 24 * 3_600_000;
+export interface ContractSpec { id: string; type: ItemType; item: string; qty: number }
+/** Rotating board: one big order per 24 h window (UTC days). */
+export const CONTRACT_ROTATION: Array<{ item: string; qty: number }> = [
+  { item: 'steel', qty: 50_000 }, { item: 'concrete', qty: 300_000 }, { item: 'steel_plate', qty: 30_000 },
+  { item: 'glass', qty: 500_000 }, { item: 'steel_beam', qty: 12_000 }, { item: 'brick', qty: 600_000 }, { item: 'steel_cable', qty: 40_000 },
+];
+/** Pay per unit delivered = house price x this (a hauling premium; goods are consumed). */
+export const CONTRACT_UNIT_MUL = 1.15;
+/** Completion bonus (filled before the deadline) = this share of the player's base pay. */
+export const CONTRACT_BONUS = 0.2;
+/** One player may deliver at most this share of an order. */
+export const CONTRACT_PLAYER_SHARE = 0.25;
+/** And claim at most this many chips from one contract. */
+export const CONTRACT_CLAIM_CAP = 1_000_000;
+/** Anti-alt: account age and play time to take part. */
+export const CONTRACT_MIN_AGE_MS = 3 * 24 * 3_600_000;
+export const CONTRACT_MIN_PLAY_MS = 2 * 3_600_000;
+/** Claims stay open this long after the deadline. */
+export const CONTRACT_CLAIM_MS = 7 * 24 * 3_600_000;
+
+export const contractIndex = (now: number) => Math.floor(now / CONTRACT_MS);
+export function contractAt(index: number): ContractSpec & { start: number; deadline: number } {
+  const r = CONTRACT_ROTATION[((index % CONTRACT_ROTATION.length) + CONTRACT_ROTATION.length) % CONTRACT_ROTATION.length]!;
+  const g = GOODS[r.item]!;
+  return { id: `c${index}`, type: g.type, item: r.item, qty: r.qty, start: index * CONTRACT_MS, deadline: (index + 1) * CONTRACT_MS };
+}
+export const playerCap = (c: { qty: number }) => Math.floor(c.qty * CONTRACT_PLAYER_SHARE);
+/** What a player gets for `mine` units of a contract `filled` in time or not. Never more than CONTRACT_CLAIM_CAP. */
+export function contractPay(c: { item: string }, mine: number, filled: boolean): { base: number; bonus: number; total: number } {
+  const unit = (GOODS[c.item]?.price ?? 0) * CONTRACT_UNIT_MUL;
+  const base = Math.floor(mine * unit); const bonus = filled ? Math.floor(base * CONTRACT_BONUS) : 0;
+  const total = Math.min(CONTRACT_CLAIM_CAP, base + bonus);
+  return { base: Math.min(base, total), bonus: total - Math.min(base, total), total };
+}
+export interface ContractView { id: string; item: string; type: ItemType; name: string; qty: number; delivered: number; start: number; deadline: number; filled: boolean; myDelivered: number; myCap: number; top: Array<{ name: string; qty: number }>; claimable?: { total: number; bonus: number; claimed: boolean } }
+
+// ---------------------------------------------------------------- stadium donor perk: higher daily sell-to-house cap
+/**
+ * Every chip-equivalent a player gives the Hockey Stadium permanently raises THEIR daily house-sell cap:
+ *   bonus(D) = 50% x (1 - e^(-D / K)),  K = 30 days x the day's full house cap (100,000 base x house cap index).
+ * At cap index 1: K = 3,000,000 -> 100k: +1.6%, 1M: +14.2%, 3M: +31.6%, 5M: +40.6%, hard max +50%.
+ * No-profit check: the most the bonus can ever earn in H days is H x cap x bonus x margin. With margin <= 100% (the
+ * extra room fully used every day, goods that would otherwise sell for nothing) and 1 - e^-x <= x:
+ *   30 x C x 0.5 x (1 - e^(-D/K)) <= 15 x C x D / (30 x C) = D / 2.
+ * So 30 days of a fully-used bonus is worth at most half the donation; with the capped 20% rebate (<= 50k) the total
+ * return stays <= 0.7 x D, always below what was donated. K scales with the cap index, so this holds as the cap grows.
+ */
+export const SELL_BONUS_MAX = 0.5;
+export const SELL_BONUS_K_DAYS = 30;
+export const SELL_BONUS_BASE_CAP = 100_000; // = HOUSE_DAILY_BASE (shared/mines.ts)
+export const sellBonusK = (capIndex = 1) => SELL_BONUS_K_DAYS * SELL_BONUS_BASE_CAP * (capIndex > 1 ? capIndex : 1);
+export function sellCapBonus(donated: number, capIndex = 1): number {
+  if (!(donated > 0)) return 0;
+  return Math.min(SELL_BONUS_MAX, SELL_BONUS_MAX * (1 - Math.exp(-donated / sellBonusK(capIndex))));
+}
+/** Bonus as a whole-tenth percent for display (e.g. 14.2). */
+export const sellBonusPct = (b: number) => Math.floor(b * 1000) / 10;
+
+/** Map site of the Hockey Stadium (outskirts, north of the city by the north road; clear of buildings and fields). */
+export const STADIUM_SITE = { x: 4, z: -156, w: 36, d: 28 } as const;
+export const inStadiumSite = (x: number, z: number, pad = 3) => Math.abs(x - STADIUM_SITE.x) <= STADIUM_SITE.w / 2 + pad && Math.abs(z - STADIUM_SITE.z) <= STADIUM_SITE.d / 2 + pad;

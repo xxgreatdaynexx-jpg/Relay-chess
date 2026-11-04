@@ -8,6 +8,7 @@ import type { Server, Socket } from 'socket.io';
 import { getBank } from './casino-store.js';
 import { px } from './price-index.js';
 import { dayKey } from '../shared/mines.js';
+import { coopPerk } from './coop-perks.js';
 import { driveBots, HK_DAILY_PAID_WINS, HK_TICK_HZ, HK_WIN_CHIPS, HockeyGame, prizeWinners, type HkEvent, type HkResult, type HkTeam } from '../shared/hockey.js';
 
 const ROOM = '__hockey_rink';
@@ -51,14 +52,17 @@ export function settleHockey(r: HkResult, now = Date.now()): HkResult {
     // The daily cap lives in the ledger: win n of the day uses tx_key hockey-win:<day>:<acct>:<n> (n = 1..cap). Keys are
     // UNIQUE in wallet_transactions and reloaded on boot, so the cap survives restarts and other instances.
     const bank = getBank();
-    let n = 1;
-    while (n <= HK_DAILY_PAID_WINS && bank.hasKey(hockeyCapKey(day, k, n))) n++;
-    if (n > HK_DAILY_PAID_WINS) continue;
+    let n = 1; const cap = hockeyDailyCap();
+    while (n <= cap && bank.hasKey(hockeyCapKey(day, k, n))) n++;
+    if (n > cap) continue;
     if (bank.transfer(name, amount, { key: hockeyCapKey(day, k, n), game: 'hockey', memo: `Hockey win ${r.matchId}` })) paid.push(name);
   }
   if (paid.length) r.prize = { names: paid, amount };
   return r;
 }
+
+/** Paid wins a day: 5, or 6 once the co-op Hockey Stadium is built (same ledger keys, same anti-farm prize rules). */
+export const hockeyDailyCap = () => HK_DAILY_PAID_WINS + (coopPerk('stadium') ? 1 : 0);
 
 function emit(io: Server, events: HkEvent[]): void {
   for (const e of events) {
@@ -101,6 +105,9 @@ export function registerHockey(io: Server, socket: Socket): void {
     io.to(ROOM).emit('hk_state', game.snapshot());
     ensureTicker(io);
   });
+  // Stadium perk: spectate the live rink from the stands (joins the broadcast room only; never a player, never paid).
+  socket.on('hk_watch', (_p: unknown, ack?: (res: unknown) => void) => { const ok = coopPerk('stadium'); if (ok) socket.join(ROOM); if (typeof ack === 'function') ack(ok ? { ok, snap: game.snapshot() } : { ok, error: 'Spectating opens when the Hockey Stadium is built.' }); });
+  socket.on('hk_unwatch', () => { if (!game.humans().some((h) => h.id === socket.id)) socket.leave(ROOM); });
   socket.on('hk_peek', (_p: unknown, ack?: (res: unknown) => void) => { if (typeof ack === 'function') ack(game.snapshot()); });
   socket.on('hk_input', (p: unknown) => game.setInput(socket.id, p));
   socket.on('hk_goalie', (_p: unknown, ack?: (res: unknown) => void) => { const ok = game.takeGoalie(socket.id); if (typeof ack === 'function') ack({ ok }); });

@@ -1,3 +1,4 @@
+import { sellBonusPct } from '../../../shared/coop';
 import { useDoing } from '@/lib/doing';
 import { useEffect, useRef, useState } from 'react';
 import { ItemIcon } from './ItemIcon';
@@ -16,7 +17,7 @@ import { usePriceIndex } from '@/lib/priceIndex';
 import { ORES, SELL_TIERS, houseCapChips, HOUSE_DAILY_BASE, payoutFor, isOre, nameOf, priceOf, sellable, stackKey, type Stack } from '../../../shared/mines';
 
 const OPEN_KEY = 'relay-factory-open';
-type Quote = { gross: number; paid: number; already: number; lost?: number; effAlready?: number; index?: number; capBase?: number; capIndex?: number } | null;
+type Quote = { gross: number; paid: number; already: number; lost?: number; effAlready?: number; index?: number; capBase?: number; capIndex?: number; sellBonus?: number } | null;
 
 /** Factory tab: banked storage from the Mines, the house Sell desk (daily cap) and the furnace/workbench. */
 export function FactoryPanel() {
@@ -85,7 +86,7 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
           {st.guest ? <p className="mines-note">Sign in to sell for chips.</p> : st.inMine ? <p className="mines-note" data-testid="factory-inmine">You're still in the mine. Leave the mine to sell.</p> : (
             <button type="button" className="mines-sell" disabled={!q || q.paid < 1} onClick={() => setConfirmAll(true)} data-testid="factory-sell">Sell all{q ? ` · 🪙 ${q.paid}` : ''}</button>
           )}
-          <p className="mines-note">Sold today: {Math.floor(q?.already ?? 0)} · paying {Math.round(tier.rate * 100)}%. Daily cap today: full price up to 🪙 {houseCapChips(capIdx).toLocaleString('en-US')} (100,000 × {capIdx.toFixed(4)}; moves each day by the % change in total player assets, never below 100,000), then nothing (resets 00:00 UTC).{(q?.lost ?? 0) > 0 && <> Room refunded today: +🪙 {Math.floor(q!.lost!).toLocaleString('en-US')} from chips you lost to the house (casino net losses, cars and car mods, property tax, resort tickets, race entries, mayor filing, Market seller fees, wealth tax, admin removals). Room left: 🪙 {Math.max(0, Math.floor((capBase - (q!.effAlready ?? q!.already)) * pxIdx)).toLocaleString('en-US')}.</>}</p>
+          <p className="mines-note">Sold today: {Math.floor(q?.already ?? 0)} · paying {Math.round(tier.rate * 100)}%. Daily cap today: full price up to 🪙 {Math.floor(houseCapChips(capIdx) * (1 + (q?.sellBonus ?? 0))).toLocaleString('en-US')} (100,000 × {capIdx.toFixed(4)}{(q?.sellBonus ?? 0) > 0 && <span data-testid="factory-sell-bonus"> × {(1 + q!.sellBonus!).toFixed(3)} 🏟️ Stadium donor bonus +{sellBonusPct(q!.sellBonus!)}%</span>}; moves each day by the % change in total player assets, never below 100,000), then nothing (resets 00:00 UTC).{(q?.lost ?? 0) > 0 && <> Room refunded today: +🪙 {Math.floor(q!.lost!).toLocaleString('en-US')} from chips you lost to the house (casino net losses, cars and car mods, property tax, resort tickets, race entries, mayor filing, Market seller fees, wealth tax, admin removals). Room left: 🪙 {Math.max(0, Math.floor((capBase - (q!.effAlready ?? q!.already)) * pxIdx)).toLocaleString('en-US')}.</>}</p>
         </section>
         <section className="factory-col factory-machines">
           <form className="factory-viewpick" onSubmit={(e) => { e.preventDefault(); const v = String(new FormData(e.currentTarget).get('who') ?? '').trim(); if (v) openFactoryView(v); }} data-testid="factory-view-picker">

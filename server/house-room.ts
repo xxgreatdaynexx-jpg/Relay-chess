@@ -1,4 +1,5 @@
 /** House-sell room (pt1411u): each player's daily house-sell cap status. Read-only, never moves chips. */
+import { sellCapMul } from './coop-perks.js';
 import express from 'express';
 import { getMines } from './mines.js';
 import { sinkLostToday, sinkKeysToday } from './sink-room.js';
@@ -8,15 +9,15 @@ import { dayKey, houseCapChips, houseCapBase } from '../shared/mines.js';
 import { houseCapIndex, HOUSE_SELL_BLOCKED } from './house-cap-index.js';
 import { effectiveAlready } from '../shared/sinkRoom.js';
 
-export type HouseRoom = { cap: number; soldToday: number; refunded: number; left: number; index: number; day: string };
+export type HouseRoom = { cap: number; /** Hockey Stadium donor sell-cap bonus (0..0.5) */ bonus: number; soldToday: number; refunded: number; left: number; index: number; day: string };
 
 /** All figures in chips (today's price index). soldToday is the house gross sold today. */
 export function houseRoom(name: string, now = Date.now()): HouseRoom {
   const idx = priceIndex(); const day = dayKey(now);
   const d = getMines().daily.get(playerKey(name)); const already = d && d.day === day ? d.gross : 0;
   const lost = sinkLostToday(name, now); const eff = effectiveAlready(already, lost, idx);
-  const capIdx = houseCapIndex(); const capBase = HOUSE_SELL_BLOCKED.has(playerKey(name)) ? 0 : houseCapBase(capIdx, idx);
-  return { cap: houseCapChips(capIdx), soldToday: Math.floor(already * idx), refunded: Math.floor(lost), left: Math.max(0, Math.floor((capBase - eff) * idx)), index: idx, day };
+  const capIdx = houseCapIndex(); const capBase = HOUSE_SELL_BLOCKED.has(playerKey(name)) ? 0 : houseCapBase(capIdx, idx) * sellCapMul(name);
+  return { cap: Math.floor(houseCapChips(capIdx) * sellCapMul(name)), bonus: sellCapMul(name) - 1, soldToday: Math.floor(already * idx), refunded: Math.floor(lost), left: Math.max(0, Math.floor((capBase - eff) * idx)), index: idx, day };
 }
 
 /** Every player with house sales or refunded room today. */

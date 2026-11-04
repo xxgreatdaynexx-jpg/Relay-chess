@@ -1,3 +1,4 @@
+import { inStadiumSite } from '../../../shared/coop';
 import * as THREE from 'three';
 import { JAIL_SITE, JAIL_SCALE, type JailInfo } from '../../../shared/jail';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -510,6 +511,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   for (let i = 0; i < 700; i++) { const x = (r() - 0.5) * S * 2 * 0.96, z = (r() - 0.5) * S * 2 * 0.96; if (z > shoreZ(x) - 2) continue; if (roadClearance(x, z) < 1.4) continue; if (blocked(x, z, 1)) continue; treeSpots.push([x, z, 0.7 + r() * 0.6]); }
   // palms along the curving waterfront
   for (let x = -S + 3; x < S - 2; x += 4.4) { const z = shoreZ(x) - 1.4; if (roadClearance(x, z) > 1.4 && !blocked(x, z, 0.8)) treeSpots.push([x, z, -1]); }
+  for (let i = treeSpots.length - 1; i >= 0; i--) if (inStadiumSite(treeSpots[i]![0], treeSpots[i]![1])) treeSpots.splice(i, 1); // co-op Stadium site (after the seeded fill, so nothing else moves)
   const trunk = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(0.15, 0.22, 1, 5)), mat({ color: 0x5a3a22 }), treeSpots.length);
   const crown = new THREE.InstancedMesh(geo(new THREE.IcosahedronGeometry(1, 0)), mat({ color: 0x2f8a3a, flatShading: true, emissive: 0x0a2a10, emissiveIntensity: 0.4 }), treeSpots.length);
   { const d = new THREE.Object3D(); treeSpots.forEach(([x, z, s], i) => {
@@ -717,17 +719,18 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       // gravel path from the lake road up to the boathouse
       { const [[x0, z0], [x1, z1]] = DOCK.path; const pth = new THREE.Mesh(geo(new THREE.PlaneGeometry(2.6, Math.abs(z1 - z0) + 0.6)), mat({ color: 0xa89a80, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })); pth.rotation.x = -Math.PI / 2; pth.position.set((x0 + x1) / 2, 0.02, (z0 + z1) / 2); scene.add(pth); } }
     // the big lake's shore: reeds and lilies in the shallows, rocks, trees on the banks, the ends and the island
-    { const R = riverDecor();
+    { const R0 = riverDecor(); const R = { ...R0, trees: R0.trees.filter(([x, z]) => !inStadiumSite(x, z)), rocks: R0.rocks.filter(([x, z]) => !inStadiumSite(x, z)) };
       inst(geo(new THREE.CylinderGeometry(0.05, 0.07, 1, 4)), mat({ color: 0x6f8f3a, roughness: 1 }), R.reeds.length, (i) => { const [x, z, s] = R.reeds[i]; const h = s * (1.3 + (i % 3) * 0.35); d.position.set(x, h / 2, z); d.rotation.set(((i % 3) - 1) * 0.12, 0, ((i % 5) - 2) * 0.05); d.scale.set(1, h, 1); });
       inst(geo(new THREE.CircleGeometry(1, 9, 0.4, Math.PI * 2 - 0.5)), mat({ color: 0x3f8f3a, roughness: 0.8, side: THREE.DoubleSide }), R.lilies.length, (i) => { const [x, z, s] = R.lilies[i]; d.position.set(x, 0.09, z); d.rotation.set(-Math.PI / 2, 0, i * 1.7); d.scale.set(s, s, 1); });
       inst(geo(new THREE.DodecahedronGeometry(1, 0)), mat({ color: 0x7a7670, roughness: 1, flatShading: true }), R.rocks.length, (i) => { const [x, z, s] = R.rocks[i]; d.position.set(x, s * 0.2, z); d.scale.set(s, s * 0.55, s * 0.8); d.rotation.set(0, i * 2.3, 0); });
       inst(trunk.geometry, trunk.material, R.trees.length, (i) => { const [x, z, s] = R.trees[i]; d.position.set(x, 0.7 * s, z); d.rotation.set(0, 0, 0); d.scale.set(s, 1.4 * s, s); });
       inst(crown.geometry, crown.material, R.trees.length, (i) => { const [x, z, s] = R.trees[i]; d.position.set(x, 2.1 * s, z); d.scale.set(s * 1.1, s * 1.3, s * 1.1); d.rotation.y = i; }); }
+    const oRocks = O.rocks.filter(([x, z]) => !inStadiumSite(x, z)); // co-op Stadium site stays clear (no keepOut: the seeded fill must not move)
     // low rolling hills in the grass colour, rocks near the mines
     inst(geo(new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2)), (XM ? mat({ color: 0xeef3ff, roughness: 0.95, flatShading: true, emissive: 0x1a2238, emissiveIntensity: 0.6 }) : mat({ color: 0x3f9a45, roughness: 1, flatShading: true, emissive: 0x0f3a14, emissiveIntensity: 0.6 })), O.hills.length, (i) => { const [x, z, r, h] = O.hills[i]; d.position.set(x, -0.05, z); d.scale.set(r, h * 0.6, r * 0.8); d.rotation.y = i; });
-    inst(geo(new THREE.DodecahedronGeometry(1, 0)), mat({ color: 0x6a6670, roughness: 1, flatShading: true }), O.rocks.length, (i) => { const [x, z, s] = O.rocks[i]; d.position.set(x, s * 0.3, z); d.scale.set(s, s * 0.6, s); d.rotation.set(0, i * 2, 0); });
+    inst(geo(new THREE.DodecahedronGeometry(1, 0)), mat({ color: 0x6a6670, roughness: 1, flatShading: true }), oRocks.length, (i) => { const [x, z, s] = oRocks[i]; d.position.set(x, s * 0.3, z); d.scale.set(s, s * 0.6, s); d.rotation.set(0, i * 2, 0); });
     // forest: the city's tree (trunk + low-poly crown, same materials)
-    const T = O.trees;
+    const T = O.trees.filter(([x, z]) => !inStadiumSite(x, z));
     inst(trunk.geometry, trunk.material, T.length, (i) => { const [x, z, s] = T[i]; d.position.set(x, 0.7 * s, z); d.scale.set(s, 1.4 * s, s); });
     inst(crown.geometry, crown.material, T.length, (i) => { const [x, z, s] = T[i]; d.position.set(x, 2.1 * s, z); d.scale.set(s * 1.1, s * 1.3, s * 1.1); d.rotation.y = i; });
     // road lamps: the city's streetlight pole + glow
@@ -828,10 +831,10 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     flyTo(id);
   };
   /** Glide the camera to a world point (player-profile "show on map" for land and farms). */
-  const focusXZ = (x: number, z: number) => {
+  const focusXZ = (x: number, z: number, dist = 24, hgt = 20) => {
     h.onHover(null, 0, 0); const tgt = new THREE.Vector3(x, 2, z);
     const dir = camera.position.clone().sub(controls.target).setY(0).normalize();
-    fly = { from: camera.position.clone(), to: tgt.clone().add(dir.multiplyScalar(24)).setY(20), tf: controls.target.clone(), tt: tgt, t: 0, id: '' }; controls.enabled = false;
+    fly = { from: camera.position.clone(), to: tgt.clone().add(dir.multiplyScalar(dist)).setY(hgt), tf: controls.target.clone(), tt: tgt, t: 0, id: '' }; controls.enabled = false;
   };
   const flyTo = (id: string) => {
     const l = lms.find((x) => x.id === id); if (!l) return; setHover(id); h.onHover(null, 0, 0);

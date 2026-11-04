@@ -3,6 +3,7 @@
  * International: px(RESORT_TICKET_BASE) chips, ONE Postgres transaction (ledger row 'resort_ticket' + location
  * upsert). Private-jet owners fly their jet instead (no ticket, any destination). The return flight is free. Resort features call requireResort() / isAtResort() before doing anything.
  */
+import { coopPerk } from './coop-perks.js';
 import pg from 'pg';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
@@ -23,6 +24,9 @@ export type TicketWaiver = (name: string, dest: Destination) => string | null;
 let waiver: TicketWaiver = () => null;
 export function setTicketWaiver(fn: TicketWaiver | null) { waiver = fn ?? (() => null); }
 
+/** Co-op Fort McChud Bridge perk: half-price Fort McChud tickets for everyone. */
+export const ticketPrice = (d: Destination) => { const p = px(DESTINATIONS[d].ticket); return d === 'fortmc' && coopPerk('bridge') ? Math.ceil(p / 2) : p; };
+
 export class Travel {
   private loc = new Map<string, Location>();
   private tickets = 0;
@@ -33,7 +37,7 @@ export class Travel {
   }
   where(name: string | null | undefined): Location { return name ? this.loc.get(keyOf(name)) ?? 'city' : 'city'; }
   status(name: string | null) {
-    const tickets = Object.fromEntries((Object.keys(DESTINATIONS) as Destination[]).map((d) => [d, name && waiver(name, d) ? 0 : px(DESTINATIONS[d].ticket)])) as Record<Destination, number>;
+    const tickets = Object.fromEntries((Object.keys(DESTINATIONS) as Destination[]).map((d) => [d, name && waiver(name, d) ? 0 : ticketPrice(d)])) as Record<Destination, number>;
     return { loc: this.where(name), ticket: name && waiver(name, 'resort') ? 0 : px(RESORT_TICKET_BASE), tickets };
   }
 
@@ -45,7 +49,7 @@ export class Travel {
     // The jet's normal daily upkeep (server/fleet.ts runUpkeep) still applies; flying it costs nothing extra.
     const jet = await jetHook(name).catch(() => null);
     const waivedBy = waiver(name, dest); const waived = waivedBy || jet;
-    const fee = waived ? 0 : px(D.ticket); const bank = getBank();
+    const fee = waived ? 0 : ticketPrice(dest); const bank = getBank();
     if (fee > 0 && !bank.canAfford(name, fee)) throw new TravelError(`Not enough chips: a ticket costs ${fee.toLocaleString('en-US')}.`);
     const now = this.clock(); this.tickets++;
     const w = fee > 0 ? bank.transferAtomic([{ name, amount: -fee, key: `${D.game}:${k}:${now}:${this.tickets}`, game: D.game, memo: `Plane ticket: Chud Hub International → ${D.name}` }]) : { stmts: [], after: Promise.resolve(), bind: () => {}, revert: () => {} };
