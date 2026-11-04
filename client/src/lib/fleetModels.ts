@@ -65,7 +65,18 @@ export function buildBoat(m: FleetModel): THREE.Group {
   const g = new THREE.Group(); const white = M(m.color); const glass = M(0x2a4a6a, { metalness: 0.7, roughness: 0.1 }); const navy = M(0x1a3a6a); const teak = M(0xb07a48, { roughness: 0.8 }); const chrome = M(0xdde4ea, { metalness: 0.9, roughness: 0.2 });
   if (m.id === 'skiff') {
     hull(g, 6, 2.2, 0.8, white, navy); add(g, new THREE.BoxGeometry(1, 0.9, 0.8), white, 0, 1.2, 0); add(g, new THREE.BoxGeometry(1.05, 0.4, 0.1), glass, 0, 1.5, 0.42);
-    for (const x of [-0.45, 0.45]) add(g, new THREE.BoxGeometry(0.35, 0.8, 0.4), M(0x222222), x, 0.9, -2.4);
+    // QA#14: the two black boxes read as speakers. Open skiff now: leaning-post seat behind the console and twin
+    // outboards hung on the transom (bracket, rounded cowling, leg down past the keel, gearcase + skeg, 3-blade prop).
+    add(g, new THREE.BoxGeometry(0.9, 0.6, 0.35), white, 0, 1.05, -0.9); add(g, new THREE.BoxGeometry(0.95, 0.14, 0.5), navy, 0, 1.42, -0.9);
+    const cowl = M(0x1c1f24, { roughness: 0.35, metalness: 0.2 });
+    for (const x of [-0.45, 0.45]) { const ob = new THREE.Group(); ob.position.set(x, 0.3, -3.0); ob.userData.part = 'outboard'; g.add(ob);
+      add(ob, new THREE.BoxGeometry(0.22, 0.3, 0.16), M(0x555a60, { metalness: 0.6 }), 0, 0.85, -0.08);
+      const c = add(ob, new THREE.CapsuleGeometry(0.2, 0.3, 4, 10), cowl, 0, 1.25, -0.32); c.scale.set(1, 1, 1.45);
+      add(ob, new THREE.BoxGeometry(0.41, 0.05, 0.6), M(0xf2f2ea), 0, 1.2, -0.32);
+      add(ob, new THREE.BoxGeometry(0.11, 0.85, 0.24), cowl, 0, 0.52, -0.3);
+      const gc = add(ob, new THREE.CylinderGeometry(0.09, 0.07, 0.5, 8), cowl, 0, 0.1, -0.32); gc.rotation.x = Math.PI / 2;
+      add(ob, new THREE.BoxGeometry(0.04, 0.22, 0.2), cowl, 0, -0.05, -0.3);
+      for (let b = 0; b < 3; b++) { const bl = add(ob, new THREE.BoxGeometry(0.05, 0.26, 0.02), M(0xb8bec4, { metalness: 0.8 }), 0, 0.1, -0.6); bl.rotation.z = (b * Math.PI * 2) / 3; } }
   } else if (m.id === 'sportfisher') {
     hull(g, 12, 3.6, 1.6, white, navy); add(g, new THREE.BoxGeometry(3, 1.4, 4.5), white, 0, 2.3, 0.4); add(g, new THREE.BoxGeometry(3.05, 0.6, 4.4), glass, 0, 2.5, 0.4);
     add(g, new THREE.BoxGeometry(2.4, 0.15, 2.6), white, 0, 4.2, 0.6); for (const x of [-1, 1]) for (const z of [-0.5, 1.7]) add(g, new THREE.CylinderGeometry(0.05, 0.05, 1.2), chrome, x, 3.6, z);
