@@ -10,6 +10,7 @@ import { FishGlyph } from './FishGlyph';
 import { usePanelDrag } from '@/lib/panelDrag';
 import { canBuyGear, FISH_BAITS, FISH_FLIES, type FishGearDef, type FishGearView } from '../../../shared/fishGear';
 import { parseToken } from '../../../shared/skins';
+import { boostXp } from '../../../shared/skills'; // recheck #8: show the +20% XP actually awarded
 
 /** Tackle shop (request #28): bait tiers (rarer fish) and fly tiers (faster bites, harder fight), plus the equipped rod skin from Chud Cases. */
 export function TackleShop({ me }: { me: string | null }) {
@@ -68,7 +69,7 @@ export function FishingPanel({ me, onClose, spot = 'lake' }: { me: string | null
     setPhase({ k: 'busy' }); const r = await request('fish_land', { inputs }) as { ok: boolean; error?: string; caught?: boolean; fish?: FishCatch; xp?: number };
     setReelUi(null); reelRef.current = null; holdRef.current = false;
     if (!r.ok) setMsg(r.error ?? 'The line snapped.');
-    else if (r.caught && r.fish) { const f = fishById(r.fish.fish)!; setMsg(`${f.emoji} Caught a ${f.label}! ${fmtKg(r.fish.grams)} · worth ~🪙 ${chips(Math.floor(r.fish.value * (view?.index ?? 1)))} · +${r.xp} Fishing XP`); }
+    else if (r.caught && r.fish) { const f = fishById(r.fish.fish)!; setMsg(`${f.emoji} Caught a ${f.label}! ${fmtKg(r.fish.grams)} · worth ~🪙 ${chips(Math.floor(r.fish.value * (view?.index ?? 1)))} · +${boostXp(r.xp ?? 0)} Fishing XP`); }
     else setMsg(won ? 'The line snapped.' : 'It got away… cast again!');
     setPhase({ k: 'idle' }); load();
   };

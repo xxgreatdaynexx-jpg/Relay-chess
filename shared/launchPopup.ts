@@ -11,6 +11,7 @@ export const LAUNCH: LaunchPopup = {
   title: 'The Millionaire Update',
   subtitle: 'A big one. Here\'s everything new:',
   items: [
+    { icon: '⚡', title: '+20% XP on every skill', text: 'Every skill now earns 20% more XP from every activity: mining, fishing, farming, cooking, racing, the Arena and the rest. XP drops show the boosted amount.' },
     { icon: '🏠', title: 'Enter & decorate your home', text: 'Walk into any house you own, decorate it Sims-style with furniture from the new Furniture Store on the map, and invite friends over to hang out and chat.' },
     { icon: '🎣', title: 'Fishing upgrades', text: 'New bait and fly tiers that pull rarer fish, plus rod skins you can unbox in Chud Cases.' },
     { icon: '🌙', title: 'Nightly 10x event', text: 'Every night 8–9 PM (Alberta time) one game (chess, checkers, arena or poker) pays winners 10x. Check the banner to see which.' },

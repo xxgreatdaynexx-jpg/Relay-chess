@@ -7,6 +7,7 @@ import { reloadOnceForChunkError } from '@/lib/chunkReload';
 import type { Fishing3D } from '@/lib/fishing3d';
 import { fishById, fmtKg, RARITY_COLOR, Reel, REEL_DT, type AnglerState, type FishCatch, type FishSpot, type FishView } from '../../../shared/fishing';
 import { FishGlyph } from './FishGlyph';
+import { boostXp } from '../../../shared/skills'; // recheck #8: show the +20% XP actually awarded
 
 const chips = (n: number) => n.toLocaleString('en-US');
 type Phase = 'idle' | 'charge' | 'flying' | 'wait' | 'bite' | 'hooking' | 'reel' | 'landing' | 'show';
@@ -137,7 +138,7 @@ export function Fishing3DGame({ me, onClose, onChange, spot = 'lake' }: { me: st
       </div>}
       {card && f && <div className="fish3d-card" data-testid="fish3d-catch" style={{ borderColor: RARITY_COLOR[f.rarity] }}>
         <div className="fish3d-rar" style={{ color: RARITY_COLOR[f.rarity] }}>{f.rarity.toUpperCase()}</div>
-        <h3><FishGlyph id={card.fish} size={26} /> {f.label}</h3><div>{fmtKg(card.grams)} · worth ~🪙 {chips(card.value)} · +{card.xp} Fishing XP</div>
+        <h3><FishGlyph id={card.fish} size={26} /> {f.label}</h3><div>{fmtKg(card.grams)} · worth ~🪙 {chips(card.value)} · +{boostXp(card.xp)} Fishing XP</div>
         <small>Kept in your cooler. Click or press Space to cast again.</small>
       </div>}
     </div>

@@ -7,6 +7,7 @@ import { request } from '@/lib/net';
 import { FishPanPanel } from './FishPanPanel';
 import { COOK_DAILY_MAX, FILLET_CAP, cookPayout, FISH_ING, RECIPES, STAPLES, STEPS, dishValue, ingInfo, needleAt, qualityLabel, type GroceryKind, type KitchenView, type Recipe, type StepSpec } from '../../../shared/cooking';
 import { usePanelDrag } from '@/lib/panelDrag';
+import { boostXp } from '../../../shared/skills'; // recheck #8: show the +20% XP actually awarded
 
 const chips = (n: number) => n.toLocaleString('en-US');
 export const OPEN_KITCHEN = 'open-kitchen';
@@ -100,8 +101,8 @@ export function KitchenPanel({ me, home, onClose, onGrocery }: { me: string | nu
     setBusy(null); setCook(null);
     const rec = RECIPES.find((x) => x.id === c.recipe)!;
     if (!r.ok) setMsg(r.error ?? 'The stove went cold.');
-    else if (r.burnt) setMsg(`💨 Burnt the ${rec.label}! +${r.xp} Cooking XP. It goes in the bin.`);
-    else setMsg(`${rec.emoji} ${qualityLabel(r.quality ?? 0)} ${rec.label}! Worth ~🪙 ${chips(Math.floor((r.dish?.value ?? 0) * idx))} · +${r.xp} Cooking XP`);
+    else if (r.burnt) setMsg(`💨 Burnt the ${rec.label}! +${boostXp(r.xp ?? 0)} Cooking XP. It goes in the bin.`);
+    else setMsg(`${rec.emoji} ${qualityLabel(r.quality ?? 0)} ${rec.label}! Worth ~🪙 ${chips(Math.floor((r.dish?.value ?? 0) * idx))} · +${boostXp(r.xp ?? 0)} Cooking XP`);
     load();
   }, [cook, idx, load]);
   const sell = async (qty?: number) => {

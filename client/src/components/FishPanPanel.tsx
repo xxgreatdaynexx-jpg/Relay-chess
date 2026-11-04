@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { request } from '@/lib/net';
 import { fishById, fmtKg, RARITY_COLOR } from '../../../shared/fishing';
 import { COOK_DT, COOK_LEVEL, COOK_MAX_STEPS, cookable, doneWindow, BURN_OVER, judge, OUTCOME_MULT, Pan, type Outcome } from '../../../shared/fishPan';
+import { boostXp } from '../../../shared/skills'; // recheck #8: show the +20% XP actually awarded
 
 const chips = (n: number) => n.toLocaleString('en-US');
 type Item = { id: string; fish: string; grams: number; value: number; dish: string | null; raw: number | null };
@@ -119,7 +120,7 @@ export function FishPanPanel({ me, home, onClose }: { me: string | null; home: s
           <small data-testid="kit-preview">If you plate now: <b>{preview}</b></small>
         </div>}
         {done && !cooking && <div className={`kit-done ${done.outcome}`} data-testid="kit-done"><h4>{done.outcome === 'perfect' ? '⭐ Perfect!' : done.outcome === 'good' ? '✅ Nicely cooked' : done.outcome === 'burnt' ? '🔥 Burnt…' : '🥶 Undercooked'}</h4>
-          <b>{done.dish}</b><span>Worth 🪙 {chips(Math.floor(done.value * idx))} at the fish market (was 🪙 {chips(Math.floor(done.raw * idx))}) · +{done.xp} Cooking XP</span></div>}
+          <b>{done.dish}</b><span>Worth 🪙 {chips(Math.floor(done.value * idx))} at the fish market (was 🪙 {chips(Math.floor(done.raw * idx))}) · +{boostXp(done.xp)} Cooking XP</span></div>}
         {msg && <small role="status" className="kit-msg" data-testid="kit-msg">{msg}</small>}
         {!cooking && me && <>
           <h4>Your cooler · raw fish</h4>
