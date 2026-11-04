@@ -2,6 +2,7 @@ import { useDoing } from '@/lib/doing';
 import { backdropDismiss } from '@/lib/backdrop';
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { previewScene } from '../lib/fleetPreview';
 import { request } from '@/lib/net';
 import { buildCraft, disposeTree } from '@/lib/fleetModels';
 import { BOATS, DEEP_ZONES, JETS, type FleetKind, type FleetModel } from '../../../shared/fleet';
@@ -18,10 +19,7 @@ function Preview({ m }: { m: FleetModel }) {
     const cv = ref.current; if (!cv) return;
     let r: THREE.WebGLRenderer; try { r = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true, preserveDrawingBuffer: true }); } catch { return; }
     r.setPixelRatio(Math.min(2, devicePixelRatio)); r.setSize(cv.clientWidth || 320, cv.clientHeight || 200, false); r.toneMapping = THREE.ACESFilmicToneMapping;
-    const sc = new THREE.Scene(); sc.add(new THREE.HemisphereLight(0xfff0e0, 0x335, 1.6)); const dl = new THREE.DirectionalLight(0xffd8a8, 2.4); dl.position.set(6, 9, 5); sc.add(dl);
-    const floor = new THREE.Mesh(new THREE.CircleGeometry(40, 48), new THREE.MeshStandardMaterial({ color: m.kind === 'boat' ? 0x0a5a6a : 0x2a2e36, roughness: m.kind === 'boat' ? 0.15 : 0.8, metalness: m.kind === 'boat' ? 0.3 : 0 })); floor.rotation.x = -Math.PI / 2; sc.add(floor);
-    const g = buildCraft(m); sc.add(g); const box = new THREE.Box3().setFromObject(g); const size = box.getSize(new THREE.Vector3()); const s = Math.max(size.x, size.y, size.z);
-    const cam = new THREE.PerspectiveCamera(35, (cv.clientWidth || 320) / (cv.clientHeight || 200), 0.1, 500); cam.position.set(s * 0.95, s * 0.55, s * 0.95); cam.lookAt(0, size.y * 0.35, 0);
+    const { scene: sc, camera: cam, craft: g } = previewScene(m, (cv.clientWidth || 320) / (cv.clientHeight || 200));
     let raf = 0; const loop = () => { raf = requestAnimationFrame(loop); g.rotation.y += 0.006; r.render(sc, cam); }; loop();
     return () => { cancelAnimationFrame(raf); disposeTree(sc); r.dispose(); };
   }, [m]);
