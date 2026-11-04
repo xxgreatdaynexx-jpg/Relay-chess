@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import type { World } from './world3d';
 import { cityLabel } from './labelSprite';
+import { nacelleX } from './nacelle';
 import { socket } from './net';
 import { sg, sm, part, BOX, CYL, CYL8, SPH, buildHarbour, ribTexture } from './ocean3d';
 import { HUBS, HUB_MAPS, onMap, vehiclePose, type HubId, type LiveVehicle } from '../../../shared/logistics';
@@ -42,7 +43,7 @@ export function plane() {
   const wing = sg('wing', () => { const s = new THREE.Shape(); s.moveTo(1.5, 0); s.lineTo(-0.6, 7); s.lineTo(-1.8, 7); s.lineTo(-1.6, 0); const w = new THREE.ExtrudeGeometry(s, { depth: 0.18, bevelEnabled: false }); w.rotateX(Math.PI / 2); return w; });
   for (const sgn of [1, -1]) { const w = new THREE.Mesh(wing, white); w.scale.z = sgn; w.position.set(0.4, -0.35, 0); g.add(w);
     const t = new THREE.Mesh(wing, white); t.scale.set(0.45, 1, sgn * 0.42); t.position.set(-4.4, 0.3, 0); g.add(t);
-    part(g, CYL(), grey, 0.75, 2.0, 0.75, 0.9, -0.85, sgn * 3.0).rotation.z = Math.PI / 2; part(g, CYL8(), sm(0x111827, 0.6), 0.6, 0.05, 0.6, 1.92, -0.85, sgn * 3.0).rotation.z = Math.PI / 2; }
+    const n = nacelleX({ len: 2.3, r: 0.46, pylon: 0.32, body: white }); n.position.set(1.15, -0.53 - 0.32 - 0.46, sgn * 2.9); g.add(n); } // mu-visuals: rounded nacelle on a pylon under each wing
   const fin = sg('fin', () => { const s = new THREE.Shape(); s.moveTo(0, 0); s.lineTo(-2.4, 0); s.lineTo(-3.2, 2.6); s.lineTo(-2.2, 2.6); const w = new THREE.ExtrudeGeometry(s, { depth: 0.16, bevelEnabled: false }); w.translate(0, 0, -0.08); return w; });
   const f = new THREE.Mesh(fin, gold); f.position.set(-2.6, 0.6, 0); g.add(f);
   part(g, SPH(), sm(0xff3b30, 0.3, 0, 0xff3b30, 2), 0.2, 0.2, 0.2, 0.2, -0.32, 7.05); part(g, SPH(), sm(0x22c55e, 0.3, 0, 0x22c55e, 2), 0.2, 0.2, 0.2, 0.2, -0.32, -7.05);

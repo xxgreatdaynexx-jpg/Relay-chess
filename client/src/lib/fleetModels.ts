@@ -1,5 +1,6 @@
 // Procedural low-poly boats and jets (Marina / Hangar previews and the resort map). Caller owns disposal via `dispose(g)`.
 import * as THREE from 'three';
+import { nacelle } from './nacelle';
 import type { FleetModel } from '../../../shared/fleet';
 
 const M = (color: number, o: THREE.MeshStandardMaterialParameters = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.45, metalness: 0.15, ...o });
@@ -54,8 +55,10 @@ export function buildJet(m: FleetModel): THREE.Group {
     const st = add(g, new THREE.ExtrudeGeometry(wing, { depth: 0.08 * k, bevelEnabled: false }), body, 0, R * 1.4 + 1, -L * 0.42); st.rotation.set(Math.PI / 2, 0, 0); st.scale.set(s * 0.35, 0.35, 1); }
   const fin = new THREE.Shape(); fin.moveTo(0, 0); fin.lineTo(-L * 0.18, L * 0.22); fin.lineTo(-L * 0.26, L * 0.22); fin.lineTo(-L * 0.2, 0);
   const tf = add(g, new THREE.ExtrudeGeometry(fin, { depth: 0.1 * k, bevelEnabled: false }), trim, 0.05 * k, R * 1.6 + 1, -L * 0.4); tf.rotation.y = Math.PI / 2;
-  const engines = m.id === 'chudone' ? [-0.25, -0.45].flatMap((x) => [x * L, -x * L]) : [-R * 1.5, R * 1.5];
-  for (const x of engines) { const e = add(g, new THREE.CylinderGeometry(R * 0.42, R * 0.36, L * 0.18, 12), eng, x, m.id === 'chudone' ? R * 0.2 + 0.6 : R * 1.4 + 1, m.id === 'chudone' ? L * 0.1 : -L * 0.3); e.rotation.x = Math.PI / 2; }
+  // mu-visuals: rounded turbofan nacelles (intake lip, fan, spinner, nozzle) hung under the wings on pylons, in the plane's colour.
+  const wingY = R + 0.6 - 0.12 * k, nr = R * (m.id === 'chudone' ? 0.36 : 0.42), nl = L * 0.2, pyl = 0.28 * k;
+  for (const sx of m.id === 'chudone' ? [0.2, 0.36] : [0.22]) for (const s of [-1, 1]) { const x = s * sx * L, le = L * 0.1 - sx * L * 0.4;
+    const n = nacelle({ len: nl, r: nr, pylon: pyl, body, lipColor: m.id === 'chudone' ? 0xd8b25a : undefined }); n.position.set(x, wingY - pyl - nr, le + nl * 0.05); g.add(n); }
   for (const z of [L * 0.32, -L * 0.1]) for (const x of z > 0 ? [0] : [-R * 0.8, R * 0.8]) add(g, new THREE.CylinderGeometry(0.18 * k, 0.18 * k, 0.3 * k, 10), M(0x111111), x, 0.2, z).rotation.z = Math.PI / 2;
   // mu-visuals detail: cockpit windshield, cabin window row, winglets, landing-gear struts, nav lights.
   const ws = add(g, new THREE.SphereGeometry(R * 0.95, 14, 8, -Math.PI / 2, Math.PI, 0, Math.PI / 3), win, 0, R + 1 + R * 0.15, L / 2 - R * 0.2); ws.scale.set(1, 1, 1.6);
