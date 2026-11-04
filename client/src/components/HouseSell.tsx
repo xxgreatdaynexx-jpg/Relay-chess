@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { houseSellPrice } from '../../../shared/sellBuff';
 import { socket } from '@/lib/net';
 import { SellQtyPicker } from './SellQtyPicker';
 import { payoutFor, HOUSE_DAILY_BASE, priceOf, type ItemType } from '../../../shared/mines';
@@ -14,7 +15,7 @@ export function HouseSell({ type, id, qty, name, testid = 'house-sell', onSold }
   const [msg, setMsg] = useState('');
   const apply = (r: Ack) => { setQ(r.quote ?? null); setSt({ inMine: !!r.inMine, guest: !!r.guest }); };
   useEffect(() => { socket.timeout(5000).emit('mines_storage', {}, (err: Error | null, r?: Ack) => { if (!err && r?.ok) apply(r); }); }, [type, id, qty]);
-  let unit = 0; try { unit = priceOf({ type: type as ItemType, id }); } catch { unit = 0; }
+  let unit = 0; try { unit = houseSellPrice({ type, id }); } catch { unit = 0; }
   if (unit <= 0) return <p className="house-sell-note" data-testid={`${testid}-none`}>The house does not buy {name}. List it on the player market instead.</p>;
   const idx = q?.index ?? 1; const capBase = q?.capBase ?? HOUSE_DAILY_BASE; const already = q?.effAlready ?? q?.already ?? 0;
   const preview = (n: number) => Math.floor(payoutFor(n * unit, already, capBase) * idx);

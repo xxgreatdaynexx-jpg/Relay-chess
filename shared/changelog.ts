@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-04T18:30:00-06:00', title: 'Factory goods sell for more', bullets: [
+    'Non-farm factory goods now sell to the house for more, scaled by how many production steps they take: +5% for first-step goods (bars, cut gems, crude oil), rising evenly to +30% for the deepest products (Excavator, Mech Suit, Wind Turbine).',
+    'Covers metal, gem, electronics and machine chains plus Fort McChud oil & gas products. Food and anything made from crops or fish is unchanged.',
+    'Only the house sell price goes up. Recipe values, net worth and all buy prices are unchanged.',
+  ] },
   { commit: '', at: '2026-11-04T18:00:00-06:00', title: 'Co-op: supply contracts, fishing fleets and weekly server events', bullets: [
     'Supply contracts: agree recurring truck deliveries with another player (every 6, 12 or 24 hours, 2–14 deliveries) at a price within ±30% of the house price. The seller posts a 20% bond, the buyer\'s payment sits in escrow and is paid per delivery. A missed delivery refunds that delivery plus a penalty from the bond; two misses breach the contract. See Co-op → Contracts.',
     'Fishing fleets: sportfishers (1 seat), yachts (3) and superyachts (6) can take crew on 30-minute deep-sea trips from the Resort Marina. Crew fish from the captain\'s boat, crewed boats can land three new species (bigeye tuna, opah, blue marlin), and the captain can take a 0–30% cut of what crew sell. Daily ocean caps still apply.',

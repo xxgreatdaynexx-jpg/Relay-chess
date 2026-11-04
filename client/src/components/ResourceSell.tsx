@@ -1,4 +1,5 @@
 /** Resource selling UI: storage grid → sell card → my listings, plus the Resource Inventory top-bar window. UI only: lists via mkt_list_stack / cancels via mkt_cancel_stack. */
+import { houseSellPrice } from '../../../shared/sellBuff';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ItemIcon } from './ItemIcon';
@@ -21,7 +22,7 @@ export function ChipCoin() {
   return <svg className="chip-coin" viewBox="0 0 16 16" width="1em" height="1em" aria-label="chips" role="img"><circle cx="8" cy="8" r="7.2" fill="#e7b33c" stroke="#9a6b12" strokeWidth="1.2" /><circle cx="8" cy="8" r="4.3" fill="none" stroke="#fff3c4" strokeWidth="1" strokeDasharray="2 1.6" /></svg>;
 }
 const fmt = (n: number) => <span className="chip-amt">{n.toLocaleString()} <ChipCoin /></span>;
-const house = (p: { type: string; id: string }) => { try { return priceOf({ type: p.type as ItemType, id: p.id }); } catch { return 0; } };
+const house = (p: { type: string; id: string }) => { try { return houseSellPrice({ type: p.type, id: p.id }); } catch { return 0; } };
 const TYPE_LABEL: Record<string, string> = { ore: 'Ore', bar: 'Bars', good: 'Goods', food: 'Food', fish: 'Fish', crop: 'Crops', dish: 'Dishes' };
 
 /** "Your storage" grid with a sell card and your active listings (Market → Resources). */

@@ -1,4 +1,5 @@
 /** Mines: shared first-person cave. Server-authoritative nodes, backpacks (generic item stacks) and house selling. */
+import { houseSellPrice } from '../shared/sellBuff.js';
 import { sellCapMul } from './coop-perks.js';
 import { cityPolicyMul } from './city-rates.js';
 import pg from 'pg';
@@ -586,7 +587,7 @@ export class MinesWorld {
     const m = { account };
     this.beforeStorage?.(account);
     const items = this.storage(account).filter((s) => sellable(s) && (typeof only !== 'string' || s.id === only || stackKey(s) === only));
-    const gross = items.reduce((t, s) => t + s.qty * priceOf(s), 0) * cityPolicyMul('mining'); // Mining boom policy
+    const gross = items.reduce((t, s) => t + s.qty * houseSellPrice(s), 0) * cityPolicyMul('mining'); // Mining boom policy
     const k = playerKey(m.account); const d = this.daily.get(k); const already = d && d.day === dayKey(now) ? d.gross : 0;
     // Chips lost to sinks today free up room (pt1405u), converted to base chips; may push effAlready below 0.
     const lost = sinkLostToday(account, now); const effAlready = effectiveAlready(already, lost, priceIndex());
@@ -618,7 +619,7 @@ export class MinesWorld {
     if (qtyIn !== undefined && qtyIn !== null) {
       if (typeof only !== 'string' || q.items.length !== 1) throw new MineError('Pick one item to sell a quantity.');
       const v = parseSellQty(qtyIn, q.items[0].qty); if (!v.ok) throw new MineError(v.error);
-      const s0 = q.items[0]; const items = [{ ...s0, qty: v.qty }]; const gross = v.qty * priceOf(s0);
+      const s0 = q.items[0]; const items = [{ ...s0, qty: v.qty }]; const gross = v.qty * houseSellPrice(s0);
       q = { ...q, items, gross, paid: Math.floor(payoutFor(gross, q.effAlready, q.capBase) * priceIndex()) };
       partial = { key: stackKey(s0), qty: v.qty };
     }
@@ -628,7 +629,7 @@ export class MinesWorld {
     const memo = `Mines: sold ${q.items.map((s) => `${s.qty} ${nameOf(s)}`).join(', ')}`.slice(0, 200);
     getBank().transfer(m.account, q.paid, { key: ledgerKey, game: 'mines', memo });
     { // Monument royalties: ore -> the mine it was last hauled out of, everything else (bars/goods/food) -> the Factory
-      const oreG = q.items.filter((s) => s.type === 'ore').reduce((t, s) => t + s.qty * priceOf(s), 0); const share = q.gross > 0 ? oreG / q.gross : 0;
+      const oreG = q.items.filter((s) => s.type === 'ore').reduce((t, s) => t + s.qty * houseSellPrice(s), 0); const share = q.gross > 0 ? oreG / q.gross : 0;
       const cave = CAVE_LANDMARK[this.lastCave.get(k) ?? 'mine'];
       if (cave) royaltyEarn(cave, m.account, q.paid * share); royaltyEarn('factory', m.account, q.paid * (1 - share));
     }

@@ -12,6 +12,7 @@
  * transaction); on arrival Logistics.tick calls onSell -> fort products: FortMc.sellDelivered, crops: Farm.sellShipped,
  * ore/gems/bars: land in the Warehouse and sell there through Mines.sell (house tiers). Every load writes warehouse_sales.
  */
+import { fortSellPrice, houseSellPrice } from '../shared/sellBuff.js';
 import pg from 'pg';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
@@ -97,7 +98,7 @@ export class Warehouse {
     if (b === 'farm') return [];
     if (b === 'fortmc') {
       const f = await getFortMc().inventory(name); const out: Array<{ key: string; label: string; qty: number; unit: number; needed: boolean }> = [];
-      for (const [id, q] of Object.entries(f.stock)) if (isProduct(id) && PRODUCTS[id].sellable && whole(q) > 0) out.push({ key: `fort:${id}`, label: PRODUCTS[id].name, qty: whole(q), unit: PRODUCTS[id].price, needed: f.units.some((u) => u.on && (UNITS[u.k].input === id || UNITS[u.k].alt === id)) });
+      for (const [id, q] of Object.entries(f.stock)) if (isProduct(id) && PRODUCTS[id].sellable && whole(q) > 0) out.push({ key: `fort:${id}`, label: PRODUCTS[id].name, qty: whole(q), unit: fortSellPrice(id), needed: f.units.some((u) => u.on && (UNITS[u.k].input === id || UNITS[u.k].alt === id)) });
       for (const [id, q] of Object.entries(f.ore)) if (isOre(id) && whole(q) > 0) out.push({ key: `ore:${id}`, label: ORES[id].name, qty: whole(q), unit: ORES[id].price, needed: recipeNeeds('ore', id) });
       return out;
     }
@@ -105,7 +106,7 @@ export class Warehouse {
   }
   private describe(t: string, id: string) {
     if (t === 'crop') { const c = cropById(id); return { label: c?.label ?? id, unit: c?.sell ?? 0, needed: recipeNeeds('crop', id) }; }
-    return { label: nameOf({ type: t as ItemType, id }), unit: priceOf({ type: t as ItemType, id }), needed: recipeNeeds(t, id) };
+    return { label: nameOf({ type: t as ItemType, id }), unit: houseSellPrice({ type: t, id }), needed: recipeNeeds(t, id) };
   }
 
   /**

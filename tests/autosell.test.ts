@@ -1,4 +1,5 @@
 // Millionaire Update: building inventories, ship-to-sell at the Chud City Warehouse, auto-sell.
+import { fortSellPrice } from '../shared/sellBuff';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { newDb } from 'pg-mem';
@@ -67,7 +68,7 @@ describe('ship-to-sell + warehouse', () => {
     expect(await games(n)).toContain('freight');
     const live = l.live(); expect(live).toHaveLength(1); expect(live[0]!.label).toBe(`Hired rig · ${n} · to market`);
     now += MODES.hired.travelMs + 1; l.tick(); await new Promise((res) => setTimeout(res, 20));
-    const pay = sellPayout(100 * PRODUCTS.crude.price, 0);
+    const pay = sellPayout(Math.floor(100 * fortSellPrice('crude')), 0);
     expect(chips(n)).toBe(c0 - r.fee + pay); expect(await games(n)).toContain('fortmc_sale');
     expect(l.live()).toHaveLength(0);
     // idempotent: replaying the arrival never pays twice

@@ -5,6 +5,7 @@
  * Ledger games: 'fortmc' (survey, lease, drilling, builds, upgrades, repairs: asset purchases, like mine/factory builds,
  * NOT a sink-room debit), 'fortmc_upkeep' (repairs: pure spend, counted as a sink like property tax) and 'fortmc_sale' (Commodity Exchange payouts). Actions need you to be AT Fort McChud.
  */
+import { fortSellPrice } from '../shared/sellBuff.js';
 import { cityTicketPrice } from './city-rates.js';
 import pg from 'pg';
 import type { Server, Socket } from 'socket.io';
@@ -179,7 +180,7 @@ export class FortMc {
    */
   async sellDelivered(sh: Shipment): Promise<number> {
     if (!isProduct(sh.itemId)) throw new FortError('Not a fort product.');
-    const name = sh.ownerName; const k = playerKey(name); const gross = Math.floor(sh.qty * PRODUCTS[sh.itemId].price);
+    const name = sh.ownerName; const k = playerKey(name); const gross = Math.floor(sh.qty * fortSellPrice(sh.itemId));
     return this.lock(k, async () => {
       const t = await this.today(name); const pay = px(sellPayout(gross, t.gross)); const day = t.day;
       const bank = getBank(); let w;
