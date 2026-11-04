@@ -9,6 +9,9 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
+import { skyNow, parseTod, mix as mixHex } from '../../../shared/daynight';
+import { sg, BOX, SPH, buildOcean, buildBeach } from './ocean3d';
+import { plane as makePlane } from './worldFreight';
 import { FORT_SPOTS, FORT_X0, FORT_X1, FORT_Z0, FORT_Z1, TRACTS, tractInfo, type FortState, type UnitKind } from '../../../shared/fortmc';
 
 type Handlers = { onHover: (id: string | null, x: number, y: number) => void; onPick: (id: string) => void };
@@ -31,13 +34,17 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
   const mat = (p: THREE.MeshStandardMaterialParameters) => { const m = new THREE.MeshStandardMaterial(p); disposables.push(m); return m; };
   const geo = <G extends THREE.BufferGeometry>(g: G) => { disposables.push(g); return g; };
 
-  // Northern dusk sky: steel blue overhead, amber band low on the horizon (flare-lit haze).
-  const skyM = new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false, uniforms: {},
+  // Real-time northern sky (mu-visuals): the same skyNow() clock as Chud City (?tod=HH:MM overrides), with the old amber
+  // flare-lit band kept low on the horizon at dusk/night.
+  const skyU = { uSky: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uWarm: { value: 0 }, uStars: { value: 0 } };
+  const skyM = new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false, uniforms: skyU,
     vertexShader: 'varying vec3 vp; void main(){ vp = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    fragmentShader: `varying vec3 vp; void main(){ float y = vp.y;
-      vec3 amber = vec3(0.95,0.48,0.2); vec3 rose = vec3(0.55,0.32,0.36); vec3 steel = vec3(0.2,0.28,0.42); vec3 night = vec3(0.05,0.07,0.14);
-      vec3 c = mix(amber, rose, smoothstep(0.0,0.08,y)); c = mix(c, steel, smoothstep(0.08,0.3,y)); c = mix(c, night, smoothstep(0.3,0.85,y));
-      if (y < 0.0) c = amber*0.6; gl_FragColor = vec4(c,1.0);
+    fragmentShader: `uniform vec3 uSky; uniform vec3 uHor; uniform float uWarm; uniform float uStars; varying vec3 vp; void main(){ float y = vp.y;
+      vec3 amber = vec3(0.95,0.48,0.2);
+      vec3 c = mix(uHor, uSky, smoothstep(0.0,0.45,y)); c = mix(c, amber, (1.0 - smoothstep(0.0,0.12,y)) * max(uWarm, 0.35*uStars));
+      float st = step(0.9975, fract(sin(dot(floor(vp*420.0), vec3(12.9898,78.233,37.719))) * 43758.5453)) * uStars * smoothstep(0.05,0.3,y);
+      c += vec3(st);
+      if (y < 0.0) c = uHor*0.7; gl_FragColor = vec4(c,1.0);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
     }` });
@@ -53,22 +60,45 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
   controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
   const clampPan = () => { const t = controls.target; const [x, z] = clampFortTarget(t.x, t.z); if (x !== t.x || z !== t.z) { camera.position.x += x - t.x; camera.position.z += z - t.z; t.x = x; t.z = z; } };
 
-  scene.add(new THREE.HemisphereLight(0xb8c8e0, 0x3a3226, 1.0));
+  const hemi = new THREE.HemisphereLight(0xb8c8e0, 0x3a3226, 1.0); scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xffb070, 2.6); sun.position.set(-120, 70, 60); sun.castShadow = renderer.shadowMap.enabled;
   Object.assign(sun.shadow.camera, { left: -170, right: 170, top: 140, bottom: -140, near: 10, far: 500 }); sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0005; scene.add(sun);
 
   // Ground: muskeg + snow patches, gravel roads, tailings ponds.
-  const ground = new THREE.Mesh(geo(new THREE.PlaneGeometry(FORT_X1 - FORT_X0 + 260, FORT_Z1 - FORT_Z0 + 260)), mat({ color: 0x5a5a3e, roughness: 1 }));
+  const groundG = geo(new THREE.PlaneGeometry(FORT_X1 - FORT_X0 + 260, FORT_Z1 - FORT_Z0 + 260, 64, 56)); { const pa = groundG.attributes.position as THREE.BufferAttribute; const col: number[] = []; const c = new THREE.Color(), c2 = new THREE.Color();
+    for (let i = 0; i < pa.count; i++) { const x = pa.getX(i), y = pa.getY(i); const n = Math.sin(x * 0.045 + 1.3) * Math.cos(y * 0.05) + 0.5 * Math.sin(x * 0.13 - y * 0.11) + 0.25 * Math.sin(x * 0.31 + y * 0.27); c.setHex(0x5a5a3e); c2.setHex(n > 0.4 ? 0x3e4630 : n < -0.5 ? 0x77684c : 0x5f5c40); c.lerp(c2, 0.7); col.push(c.r, c.g, c.b); if (x > 74 && -y > 99) pa.setZ(i, -3); } groundG.computeVertexNormals(); // dips under the bay/river water
+    groundG.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); }
+  const ground = new THREE.Mesh(groundG, mat({ color: 0xffffff, vertexColors: true, roughness: 1 }));
   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
   const snowM = mat({ color: 0xe8eef2, roughness: 0.9 });
-  for (let i = 0; i < 26; i++) { const s = new THREE.Mesh(geo(new THREE.CircleGeometry(6 + r() * 14, 12)), snowM); s.rotation.x = -Math.PI / 2; s.position.set(FORT_X0 + r() * (FORT_X1 - FORT_X0), 0.02, FORT_Z0 + r() * (FORT_Z1 - FORT_Z0)); s.scale.y = 0.6 + r() * 0.6; scene.add(s); }
-  const gravel = mat({ color: 0x8a7e6a, roughness: 1 });
-  const road = (w: number, d: number, x: number, z: number) => { const o = new THREE.Mesh(geo(new THREE.BoxGeometry(w, 0.1, d)), gravel); o.position.set(x, 0.05, z); o.receiveShadow = true; scene.add(o); };
-  road(FORT_X1 - FORT_X0 - 10, 6, 0, -4); road(FORT_X1 - FORT_X0 - 10, 6, 0, 56); road(6, 70, -128, 20); road(6, 70, 128, 20);
-  const pond = mat({ color: 0x2a2620, roughness: 0.15, metalness: 0.3, emissive: 0x0a0806 });
+  for (let i = 0; i < 26; i++) { const s = new THREE.Mesh(geo(new THREE.CircleGeometry(6 + r() * 14, 12)), snowM); s.rotation.x = -Math.PI / 2; s.position.set(FORT_X0 + r() * (FORT_X1 - FORT_X0), 0.02, FORT_Z0 + r() * (FORT_Z1 - FORT_Z0)); s.scale.y = 0.6 + r() * 0.6; if (!(s.position.x > 55 && s.position.z > 85)) scene.add(s); }
+  // Haul roads (mu-visuals): packed-gravel ribbons with darker wheel ruts, instanced amber lane markers, and lamp posts
+  // whose heads glow at night (glowMats, driven by the real-time sky like Chud City).
+  const gravel = mat({ color: 0x8a7e6a, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  const rut = mat({ color: 0x5e5446, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  const glowMats: THREE.MeshStandardMaterial[] = [];
+  const glowM = (c: number, e: number, ei: number) => { const m = mat({ color: c, emissive: e, emissiveIntensity: ei, roughness: 0.4 }); m.userData.ei = ei; glowMats.push(m); return m; };
+  const dashM = glowM(0xe0b040, 0xd09020, 0.5); const lampHead = glowM(0xfff1c8, 0xffcc66, 2.6);
+  const dashes: THREE.Matrix4[] = [], posts: THREE.Matrix4[] = [], heads: THREE.Matrix4[] = []; const q0 = new THREE.Quaternion();
+  const road = (w: number, d: number, x: number, z: number) => {
+    const o = new THREE.Mesh(sg('fplane', () => new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2)), gravel); o.scale.set(w, 1, d); o.position.set(x, 0.04, z); o.receiveShadow = true; scene.add(o);
+    const along = w > d; const L = along ? w : d, W = along ? d : w;
+    for (const off of [-W * 0.22, W * 0.22]) { const r2 = new THREE.Mesh(o.geometry, rut); r2.scale.set(along ? L : 0.7, 1, along ? 0.7 : L); r2.position.set(x + (along ? 0 : off), 0.05, z + (along ? off : 0)); scene.add(r2); }
+    for (let t = -L / 2 + 3; t < L / 2 - 2; t += 7) { dashes.push(new THREE.Matrix4().compose(new THREE.Vector3(x + (along ? t : 0), 0.07, z + (along ? 0 : t)), q0, new THREE.Vector3(along ? 2.4 : 0.25, 0.02, along ? 0.25 : 2.4))); }
+    for (let t = -L / 2 + 8; t < L / 2 - 4; t += 26) { const px = x + (along ? t : W / 2 + 1), pz = z + (along ? W / 2 + 1 : t); posts.push(new THREE.Matrix4().compose(new THREE.Vector3(px, 3, pz), q0, new THREE.Vector3(0.22, 6, 0.22))); heads.push(new THREE.Matrix4().compose(new THREE.Vector3(px, 6.1, pz), q0, new THREE.Vector3(0.9, 0.3, 0.9))); }
+  };
+  road(FORT_X1 - FORT_X0 - 10, 6, 0, -4); road(FORT_X1 - FORT_X0 - 10, 6, 0, 56); road(6, 70, -128, 20); road(6, 170, 128, -28); // east haul road runs to the north map edge (truck exit)
+  const inst = (g: THREE.BufferGeometry, m: THREE.Material, list: THREE.Matrix4[]) => { const im = new THREE.InstancedMesh(g, m, list.length); list.forEach((x, i) => im.setMatrixAt(i, x)); scene.add(im); return im; };
+  inst(BOX(), dashM, dashes); inst(sg('fcyl1', () => new THREE.CylinderGeometry(0.5, 0.5, 1, 14)), mat({ color: 0x4b5563, metalness: 0.5, roughness: 0.5 }), posts); inst(BOX(), lampHead, heads);
+  // Ground variation: muskeg vertex colours (wet dark patches, dry tan, moss) so the plain isn't one flat colour.
+  const pond = mat({ color: 0x3a342a, roughness: 0.12, metalness: 0.25, emissive: 0x0a0806 });
   // Logistics (Millionaire Update): the river mouth the Barge Terminal sits on; cargo ships run down it (shared/logistics.ts HUB_MAPS.fortmc).
-  { const river = new THREE.Mesh(geo(new THREE.PlaneGeometry(150, 440)), mat({ color: 0x24506e, roughness: 0.2, metalness: 0.25, emissive: 0x061620 })); river.rotation.x = -Math.PI / 2; river.position.set(165, 0.03, 320); river.receiveShadow = true; scene.add(river);
-    const bay = new THREE.Mesh(geo(new THREE.PlaneGeometry(90, 40)), river.material); bay.rotation.x = -Math.PI / 2; bay.position.set(120, 0.03, 118); scene.add(bay); }
+  // Animated water (mu-visuals): one wave plane for the bay + river mouth (same shader as the city ocean), a gravel/sand
+  // bank along the north shore, and the barge terminal from worldFreight.port on the bay.
+  const fortWater = buildOcean({ x0: 72, x1: 420, z0: 96, z1: 760, coast: () => 100, segX: tier === 'low' ? 40 : 70, segZ: tier === 'low' ? 30 : 50 }, [0.9, 9, 0.5, 4, 100]);
+  fortWater.mesh.position.y = -0.3; scene.add(fortWater.mesh); disposables.push(fortWater.geo, fortWater.mat);
+  { const bank = buildBeach(60, 420, 94, (x) => 100 + 0.9 * Math.sin(x / 9 + 0.7) + 0.5 * Math.sin(x / 4 + 2.1), 120); disposables.push(bank.geometry, bank.material as THREE.Material); scene.add(bank);
+    const wb = new THREE.Mesh(geo(new THREE.PlaneGeometry(6, 680)), mat({ color: 0x8a7e6a, roughness: 1 })); wb.rotation.x = -Math.PI / 2; wb.position.set(70, 0.03, 430); scene.add(wb); }
   for (const [x, z, w, d] of [[-60, 90, 50, 18], [40, 92, 40, 14]] as const) { const p = new THREE.Mesh(geo(new THREE.PlaneGeometry(w, d)), pond); p.rotation.x = -Math.PI / 2; p.position.set(x, 0.04, z); scene.add(p); }
 
   // Spruce forest (instanced), kept off the pads, plant, mine and roads.
@@ -77,7 +107,8 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
     if (Math.abs(z + 4) < 6 || Math.abs(z - 56) < 6) return false;
     for (let n = 1; n <= TRACTS; n++) { const t = tractInfo(n); if (Math.abs(x - t.x) < TW / 2 + 3 && Math.abs(z - t.z) < TD / 2 + 3) return false; }
     for (const s of FORT_SPOTS) if (Math.abs(x - s.x) < s.w / 2 + 5 && Math.abs(z - s.z) < s.d / 2 + 5) return false;
-    if (Math.abs(z - 90) < 14 && x > -90 && x < 64) return false; return true;
+    if (Math.abs(z - 90) < 14 && x > -90 && x < 64) return false; if (z > 59 && z < 82 && x > -82 && x < 62) return false; // process-unit row
+    if (x > 70 && z > 94) return false; if (Math.abs(x - 128) < 7 || Math.abs(x + 128) < 7) return false; return true; // river/bay, haul roads
   };
   for (let i = 0; i < 1400 && spots.length < (tier === 'low' ? 260 : 620); i++) { const x = FORT_X0 - 60 + r() * (FORT_X1 - FORT_X0 + 120), z = FORT_Z0 - 60 + r() * (FORT_Z1 - FORT_Z0 + 120); if (clear(x, z)) spots.push([x, z]); }
   const spruce = new THREE.InstancedMesh(geo(new THREE.ConeGeometry(1.6, 7, 7)), mat({ color: 0x1f3a2a, roughness: 0.9, flatShading: true }), spots.length);
@@ -93,8 +124,16 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
   const yellow = mat({ color: 0xf2b630, roughness: 0.6 }); const white = mat({ color: 0xe8e4dc, roughness: 0.7 }); const red = mat({ color: 0xb0302a, roughness: 0.6 });
   const glass = mat({ color: 0x7ab0d0, metalness: 0.6, roughness: 0.1, emissive: 0x1a3a50, emissiveIntensity: 0.6 });
   const flameM = mat({ color: 0xffa040, emissive: 0xff7a20, emissiveIntensity: 4 });
-  const box = (w: number, hh: number, dd: number, m: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = scene) => { const o = new THREE.Mesh(geo(new THREE.BoxGeometry(w, hh, dd)), m); o.position.set(x, y, z); o.castShadow = o.receiveShadow = true; parent.add(o); return o; };
-  const cyl = (rt: number, hh: number, m: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = scene, rb = rt) => { const o = new THREE.Mesh(geo(new THREE.CylinderGeometry(rt, rb, hh, 14)), m); o.position.set(x, y, z); o.castShadow = true; parent.add(o); return o; };
+  const conc = mat({ color: 0xa8a49a, roughness: 0.95 }); const green = mat({ color: 0x3f6b4a, roughness: 0.6 }); const blue = mat({ color: 0x2f5f9a, roughness: 0.55, metalness: 0.2 });
+  const navRed = glowM(0xff3030, 0xff2020, 2.2); const warmWin = glowM(0xffe2a0, 0xffb040, 1.6);
+  // Office-window texture (lit panes glow at night through glowMats, like Chud City's towers).
+  const winTex = (() => { const c = document.createElement('canvas'); c.width = 64; c.height = 128; const x = c.getContext('2d')!; x.fillStyle = '#1b2a36'; x.fillRect(0, 0, 64, 128);
+    for (let r = 0; r < 16; r++) for (let q = 0; q < 8; q++) { const on = Math.sin(r * 12.9 + q * 78.2) * 43758 % 1; x.fillStyle = Math.abs(on) > 0.45 ? '#ffd890' : '#33485a'; x.fillRect(q * 8 + 1, r * 8 + 2, 6, 5); }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; disposables.push(t); return t; })();
+  const towerWin = (() => { const m = mat({ color: 0xffffff, map: winTex, emissive: 0xffffff, emissiveMap: winTex, emissiveIntensity: 0.9, metalness: 0.3, roughness: 0.3 }); m.userData.ei = 0.9; glowMats.push(m); return m; })();
+  // Shared unit geometries scaled per use (the old helpers built a new BufferGeometry for every box/cylinder).
+  const box = (w: number, hh: number, dd: number, m: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = scene) => { const o = new THREE.Mesh(BOX(), m); o.scale.set(w, hh, dd); o.position.set(x, y, z); o.castShadow = o.receiveShadow = true; parent.add(o); return o; };
+  const cyl = (rt: number, hh: number, m: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = scene, rb = rt) => { const k = Math.round((rb / rt) * 20) / 20; const o = new THREE.Mesh(sg(`fcyl${k}`, () => new THREE.CylinderGeometry(0.5, 0.5 * k, 1, 14)), m); o.scale.set(rt * 2, hh, rt * 2); o.position.set(x, y, z); o.castShadow = true; parent.add(o); return o; };
   const flames: THREE.Mesh[] = [];
 
   for (const s of FORT_SPOTS) {
@@ -102,8 +141,11 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
     const hit = box(s.w, s.h, s.d, new THREE.MeshBasicMaterial({ visible: false }), 0, s.h / 2, 0, g); hit.userData.spot = s.id; hit.castShadow = false; pickables.push(hit);
     if (s.id === 'f-airport') {
       box(56, 0.15, 9, mat({ color: 0x3a3a3e, roughness: 1 }), 8, 0.08, 6, g); for (let i = 0; i < 7; i++) box(4, 0.17, 0.5, white, -16 + i * 8, 0.1, 6, g);
-      box(16, 6, 8, white, -12, 3, -4, g); box(16, 2, 8.2, glass, -12, 5, -4, g); box(1.2, 10, 1.2, red, 2, 5, -6, g); box(3, 2, 3, glass, 2, 11, -6, g);
-      const plane = new THREE.Group(); plane.position.set(14, 1.6, 6); g.add(plane); box(14, 1.6, 1.6, white, 0, 0, 0, plane); box(3, 0.25, 14, white, 0.5, 0, 0, plane); box(2, 2.4, 0.25, red, -6.4, 1.4, 0, plane);
+      box(16, 6, 8, white, -12, 3, -4, g); box(16.2, 2, 8.2, towerWin, -12, 4.6, -4, g); box(17, 0.5, 9, dark, -12, 6.2, -4, g); // terminal
+      { const hg = new THREE.Mesh(sg('fort-hangar', () => new THREE.CylinderGeometry(1, 1, 1, 16, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).rotateY(Math.PI / 2)), mat({ color: 0x8c96a0, metalness: 0.6, roughness: 0.45 })); hg.scale.set(9, 6, 7); hg.rotation.y = Math.PI / 2; hg.position.set(-26, 0, -4); hg.castShadow = true; g.add(hg); box(0.3, 5, 9, dark, -26, 2.5, -0.6, g); }
+      cyl(0.9, 11, conc, 2, 5.5, -6, g); cyl(2.2, 2.4, towerWin, 2, 12, -6, g, 1.6); cyl(2.4, 0.5, dark, 2, 13.4, -6, g); box(0.2, 2, 0.2, steel, 2, 14.6, -6, g); box(0.5, 0.5, 0.5, navRed, 2, 15.7, -6, g); // control tower + beacon
+      for (let i = 0; i < 15; i++) for (const ez of [1.6, 10.4]) box(0.35, 0.35, 0.35, i % 7 === 0 ? navRed : lampHead, -20 + i * 4, 0.25, ez, g); // runway edge lights
+      const plane = new THREE.Group(); plane.position.set(14, 0, 6); g.add(plane); { const pm = makePlane(); pm.scale.setScalar(0.9); pm.position.y = 1.6; plane.add(pm); }
       label('✈ YMC Airport', 'Fly home to Chud Hub', '#5aa8e8', s.x, 16, s.z);
     } else if (s.id === 'f-plant') {
       // Distillation towers, cracker furnace, cooling towers, pipe racks, flare.
@@ -114,9 +156,13 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
       for (let i = 0; i < 3; i++) cyl(0.35, 50, steel, -24 + i * 0.9, 4.8, 0, g).rotation.z = Math.PI / 2;
       for (const [x, z] of [[14, 8], [21, 8], [14, 14], [21, 14]] as const) cyl(2.8, 5, white, x, 2.5, z, g);
       cyl(0.5, 34, dark, 27, 17, -14, g); const fl = new THREE.Mesh(geo(new THREE.ConeGeometry(1.4, 5, 10)), flameM); fl.position.set(27, 36.5, -14); g.add(fl); flames.push(fl);
+      for (const [x, z, hh] of [[-18, -8, 22], [-13, -8, 16], [-8, -8, 26]] as const) { box(0.5, 0.5, 0.5, navRed, x, hh + 0.4, z, g); for (let y = 5; y < hh; y += 8) box(0.35, 0.35, 0.35, warmWin, x + 1.9, y, z, g); }
+      box(0.6, 0.6, 0.6, navRed, 27, 34.4, -14, g);
       label('🏭 Upgrader & Refinery', 'Build · run · repair', '#f2b630', s.x, 34, s.z, 1.3);
     } else if (s.id === 'f-exchange') {
-      box(14, 26, 12, glass, 0, 13, 0, g); box(15, 1, 13, dark, 0, 26.5, 0, g); box(18, 3, 14, dark, 0, 1.5, 0, g);
+      { const t = box(14, 26, 12, towerWin, 0, 13, 0, g); void t; } box(15, 1, 13, dark, 0, 26.5, 0, g); box(18, 3, 14, dark, 0, 1.5, 0, g); box(10, 2.2, 0.3, warmWin, 0, 1.6, 7.1, g);
+      for (const cx of [-6.8, 6.8]) for (const cz of [-5.8, 5.8]) box(0.5, 26, 0.5, dark, cx, 13, cz, g); // corner mullions
+      box(8, 1.2, 0.3, mat({ color: 0x0a1410, emissive: 0x5ad89a, emissiveIntensity: 1.2 }), 0, 24.4, 6.2, g); box(0.3, 4, 0.3, steel, 3, 29, 0, g); box(0.4, 0.4, 0.4, navRed, 3, 31.2, 0, g);
       label('💹 Commodity Exchange', 'Sell · ship to factory', '#5ad89a', s.x, 32, s.z);
     } else if (s.id === 'f-mine') {
       const pit = mat({ color: 0x7a5a3a, roughness: 1, flatShading: true });
@@ -137,13 +183,19 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
   const jacks: THREE.Object3D[] = [];
   const pumpjack = (parent: THREE.Object3D, x: number, z: number, jack: boolean, broken: boolean) => {
     const g = new THREE.Group(); g.position.set(x, 0.3, z); parent.add(g);
-    box(1.2, 0.6, 1.2, dark, 0, 0.3, 0, g); // wellhead
-    if (!jack) { box(0.5, 2.4, 0.5, red, 0, 1.4, 0, g); return; }
-    box(3, 0.5, 1.4, dark, -1.2, 0.25, 0, g); box(0.3, 3.6, 0.3, yellow, -1.2, 1.8, -0.4, g); box(0.3, 3.6, 0.3, yellow, -1.2, 1.8, 0.4, g);
-    const beam = new THREE.Group(); beam.position.set(-1.2, 3.6, 0); g.add(beam); box(5, 0.45, 0.45, broken ? dark : yellow, 0, 0, 0, beam);
-    const head = box(0.6, 1.6, 0.6, dark, 2.5, -0.4, 0, beam); head.rotation.z = 0.2; box(1, 1, 0.6, dark, -2.4, -0.6, 0, beam);
+    // mu-visuals pumpjack: skid + gearbox/motor, A-frame samson post, walking beam with a curved horsehead, crank arms with
+    // counterweights, polished rod down to a wellhead with a flow-line tee. All parts share cached unit geometries.
+    box(2.2, 0.4, 2.2, conc, 0, 0.2, 0, g); box(1, 0.9, 1, dark, 0, 0.85, 0, g); cyl(0.12, 0.6, steel, 0.6, 1.0, 0, g).rotation.z = Math.PI / 2;
+    if (!jack) { cyl(0.18, 2.2, red, 0, 2.2, 0, g); box(0.9, 0.18, 0.9, red, 0, 2.6, 0, g); box(0.9, 0.18, 0.9, red, 0, 1.9, 0, g); return; }
+    box(5.6, 0.4, 1.8, dark, -2.2, 0.2, 0, g); box(1.4, 1, 1.2, steel, -4.4, 0.9, 0, g); box(0.9, 0.8, 0.9, green, -4.4, 1.8, 0, g); // skid, gearbox, motor
+    for (const sz of [-0.55, 0.55]) { const l = box(0.22, 4, 0.22, yellow, -1.6, 2, sz, g); l.rotation.z = 0.12; const l2 = box(0.22, 4, 0.22, yellow, -0.9, 2, sz, g); l2.rotation.z = -0.12; }
+    for (const sz of [-0.75, 0.75]) { const cr = box(0.25, 2.1, 0.5, dark, -4.4, 1.6, sz, g); cr.rotation.z = 0.5; box(1.3, 1.1, 0.3, red, -4.9, 0.9, sz, g); }
+    const beam = new THREE.Group(); beam.position.set(-1.25, 4, 0); g.add(beam); box(5.4, 0.42, 0.42, broken ? dark : yellow, 0, 0, 0, beam);
+    const hh = new THREE.Mesh(horseG, broken ? dark : yellow); hh.position.set(2.65, 0, 0); beam.add(hh); box(0.7, 0.5, 0.5, dark, -2.6, -0.2, 0, beam);
+    box(0.06, 3.6, 0.06, steel, 1.25 + 2.65 + 0.5, 1.95, 0, g); // polished rod / bridle
     if (!broken) jacks.push(beam);
   };
+  const horseG = sg('fort-horsehead', () => { const sh = new THREE.Shape(); sh.moveTo(0, 0.3); sh.absarc(0, -0.9, 1.2, Math.PI / 2, -Math.PI / 2 + 0.3, true); sh.lineTo(-0.4, -1.4); sh.lineTo(-0.4, 0.3); const e = new THREE.ExtrudeGeometry(sh, { depth: 0.7, bevelEnabled: false, curveSegments: 8 }); e.translate(0, 0, -0.35); return e; });
   const setFort = (s: FortState | null) => {
     jacks.length = 0;
     for (const [n, g] of tractGroups) {
@@ -151,17 +203,34 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
       const t = s?.tracts[String(n)]; pads.get(n)!.material = t?.leased ? padOwnM : padM;
       if (!t?.leased) { if (s?.surveyed.includes(n)) box(1.4, 1, 1.4, yellow, 0, 0.8, 0, g); continue; }
       t.wells.forEach((w, i) => pumpjack(g, -9 + (i % 2) * 14, -5 + Math.floor(i / 2) * 9, w.jack, w.cond < 15));
-      if (t.pipe > 0) { const pipe = cyl(t.pipe > 1 ? 0.55 : 0.35, Math.hypot(10 - tractInfo(n).x, 35 - tractInfo(n).z), t.pipe > 1 ? yellow : steel, 0, 0.6, 0, g); const dx = 10 - tractInfo(n).x, dz = 35 - tractInfo(n).z; pipe.position.set(dx / 2, 0.6, dz / 2); pipe.rotation.set(Math.PI / 2, 0, 0); pipe.rotation.order = 'YXZ'; pipe.rotation.y = Math.atan2(dx, dz); }
+      if (t.pipe > 0) { // elevated flow line on H-frame sleepers every ~8 m, with a pig launcher at the pad
+        const dx = 10 - tractInfo(n).x, dz = 35 - tractInfo(n).z, L = Math.hypot(dx, dz), rr = t.pipe > 1 ? 0.55 : 0.35, pm = t.pipe > 1 ? yellow : steel;
+        const pipe = cyl(rr, L, pm, dx / 2, 1.2, dz / 2, g); pipe.rotation.order = 'YXZ'; pipe.rotation.set(Math.PI / 2, Math.atan2(dx, dz), 0);
+        for (let d = 6; d < L - 4; d += 8) { const sx = (dx * d) / L, sz = (dz * d) / L; const sp = box(1.8, 0.2, 0.25, dark, sx, 0.75, sz, g); sp.rotation.y = Math.atan2(dx, dz); sp.castShadow = false; for (const o of [-0.8, 0.8]) { const l = box(0.18, 0.8, 0.18, dark, sx + Math.cos(Math.atan2(dx, dz)) * o, 0.4, sz - Math.sin(Math.atan2(dx, dz)) * o, g); l.castShadow = false; } }
+        cyl(rr * 1.8, 2.4, pm, 2, 1.3, 9, g).rotation.z = Math.PI / 2; box(0.8, 1.4, 0.8, red, 3.4, 0.7, 9, g); }
     }
     // tank farm and extra units around the plant
     while (unitsG.children.length) unitsG.remove(unitsG.children[0]!);
     const count = (k: UnitKind) => s?.units.filter((u) => u.k === k).length ?? 0;
-    for (let i = 0; i < count('tank'); i++) cyl(3, 4, white, -45 + (i % 5) * 7.5, 2, 22 + Math.floor(i / 5) * 7.5, unitsG);
-    for (let i = 0; i < count('turbine'); i++) { box(4, 3, 7, steel, 45 + (i % 4) * 5, 1.5, 22 + Math.floor(i / 4) * 9, unitsG); cyl(0.5, 6, dark, 45 + (i % 4) * 5, 5, 25 + Math.floor(i / 4) * 9, unitsG); }
-    for (let i = 0; i < count('separator'); i++) { const o = cyl(1.4, 6, steel, -32 + i * 3.6, 0.9, 42, unitsG); o.rotation.z = Math.PI / 2; }
+    for (let i = 0; i < count('tank'); i++) { const x = -45 + (i % 5) * 7.5, z = 22 + Math.floor(i / 5) * 7.5; cyl(3, 4.2, white, x, 2.1, z, unitsG); cyl(3.05, 0.25, red, x, 3.2, z, unitsG); cyl(0.15, 0.9, white, x, 4.65, z, unitsG, 3); box(0.4, 4.4, 0.6, dark, x + 3.1, 2.2, z, unitsG); }
+    for (let i = 0; i < count('turbine'); i++) { const x = 45 + (i % 4) * 5, z = 22 + Math.floor(i / 4) * 9; box(4, 3.4, 7, steel, x, 1.7, z, unitsG); box(4.2, 0.4, 7.2, dark, x, 3.5, z, unitsG); box(3, 2.2, 2, green, x, 4.6, z - 2.2, unitsG); cyl(0.7, 6, dark, x, 6.5, z + 2.4, unitsG); box(0.3, 0.3, 0.3, navRed, x, 9.6, z + 2.4, unitsG); }
+    for (let i = 0; i < count('separator'); i++) { const o = cyl(1.4, 6, steel, -32 + i * 3.6, 2.1, 42, unitsG); o.rotation.x = Math.PI / 2; for (const dz of [-2, 2]) box(1.6, 1.4, 0.5, dark, -32 + i * 3.6, 0.7, 42 + dz, unitsG); cyl(0.25, 1.6, yellow, -32 + i * 3.6, 3.6, 42 - 1, unitsG); }
+    // Process units on the row north of the ponds: a slot per kind, up to four copies in a 2x2 grid (mu-visuals).
+    const PROC: UnitKind[] = ['gas_plant', 'refinery', 'reformer', 'coker', 'cracker', 'polymer'];
+    PROC.forEach((k, si) => { const n = Math.min(4, count(k)); for (let i = 0; i < n; i++) { const g = new THREE.Group(); g.position.set(-70 + si * 20 + (i % 2) * 9 - 4.5, 0, 70 + Math.floor(i / 2) * 8.5 - 4.25); unitsG.add(g); procUnit(k, g); } });
     mineRig.visible = !!s?.mine; mineDig = !!s?.mine?.on;
   };
   const unitsG = new THREE.Group(); scene.add(unitsG);
+  function procUnit(k: UnitKind, g: THREE.Group) {
+    box(8, 0.3, 7.5, conc, 0, 0.15, 0, g);
+    const col = (x: number, z: number, r0: number, h0: number, m: THREE.Material = steel) => { cyl(r0, h0, m, x, h0 / 2, z, g); for (let y = 2.5; y < h0; y += 3) cyl(r0 + 0.18, 0.18, yellow, x, y, z, g); box(0.3, 0.3, 0.3, navRed, x, h0 + 0.2, z, g); };
+    if (k === 'gas_plant') { col(-2.4, -2, 0.8, 9); col(-0.4, -2, 0.7, 7); box(4, 2.6, 3, blue, 1.8, 1.4, 1.6, g); for (let i = 0; i < 3; i++) cyl(0.25, 3, dark, 0.6 + i * 1.2, 3.5, 2.4, g); cyl(0.6, 3, white, -2.6, 1.5, 2, g); }
+    else if (k === 'refinery') { col(-2, -1, 1.1, 13); col(0.6, -2, 0.7, 8); box(3, 3.2, 2.6, red, 2.2, 1.6, 1.8, g); cyl(0.3, 4, dark, 2.2, 5.2, 1.8, g); for (const z of [1.2, 2.6]) { const d = cyl(0.5, 3.6, white, -1.8, 0.9, z, g); d.rotation.z = Math.PI / 2; } }
+    else if (k === 'reformer') { for (let i = 0; i < 3; i++) { const sp = new THREE.Mesh(SPH(), steel); sp.scale.setScalar(2.6); sp.position.set(-2.6 + i * 2.6, 2.6, -1.4); sp.castShadow = true; g.add(sp); for (const o of [-0.7, 0.7]) box(0.2, 1.4, 0.2, dark, -2.6 + i * 2.6 + o, 0.7, -1.4, g); } box(6, 2.4, 2, red, 0, 1.2, 2, g); for (let i = 0; i < 3; i++) cyl(0.22, 3.4, dark, -2 + i * 2, 4, 2, g); }
+    else if (k === 'coker') { for (const x of [-1.4, 1.4]) { cyl(1.2, 5, dark, x, 6.5, -0.5, g); cyl(1.2, 1.2, dark, x, 3.4, -0.5, g, 0.2); } for (const [x, z] of [[-3, -2.5], [3, -2.5], [-3, 1.5], [3, 1.5]] as const) box(0.3, 9, 0.3, yellow, x, 4.5, z, g); box(6.4, 0.25, 4.4, yellow, 0, 4.2, -0.5, g); box(6.4, 0.25, 4.4, yellow, 0, 9.1, -0.5, g); box(0.8, 4.5, 0.8, yellow, 0, 11.4, -0.5, g); box(5, 0.8, 1.8, mat({ color: 0x1a1a1a, roughness: 1 }), 0, 0.6, 2.6, g); }
+    else if (k === 'cracker') { box(7, 3.6, 2.2, red, 0, 1.8, -1.8, g); for (let i = 0; i < 5; i++) cyl(0.22, 5, dark, -2.8 + i * 1.4, 6, -1.8, g); col(2.6, 2.2, 0.9, 10); box(3.6, 0.6, 0.6, steel, 0, 4, 0.6, g); const fl = new THREE.Mesh(sg('fcone', () => new THREE.ConeGeometry(0.5, 1, 10)), flameM); fl.scale.set(0.8, 1.6, 0.8); fl.position.set(-2.8, 9.1, -1.8); g.add(fl); }
+    else if (k === 'polymer') { for (const x of [-2.8, -1.2, 0.4]) { cyl(0.7, 6, white, x, 3, -2, g); cyl(0.07, 0.8, white, x, 6.4, -2, g, 0.7); } box(4.2, 3, 3.4, mat({ color: 0xd8d2c4, roughness: 0.8 }), 1.6, 1.5, 1.6, g); box(4.3, 0.3, 3.5, blue, 1.6, 3.1, 1.6, g); const loop = new THREE.Mesh(sg('ftorus', () => new THREE.TorusGeometry(1, 0.12, 6, 18)), steel); loop.scale.setScalar(1.4); loop.position.set(-2, 1.6, 1.8); g.add(loop); }
+  }
   const mineRig = new THREE.Group(); mineRig.visible = false; scene.add(mineRig); let mineDig = false;
   { const m = FORT_SPOTS.find((s) => s.id === 'f-mine')!; mineRig.position.set(m.x, 0, m.z); box(4, 2.4, 6, yellow, 4, -3.6, 2, mineRig); box(3, 1.4, 2.2, yellow, -3, -3.2, -3, mineRig); const wheel = new THREE.Mesh(geo(new THREE.TorusGeometry(1.8, 0.25, 8, 16)), dark); wheel.position.set(-12, 16.5, -11.4); mineRig.add(wheel); mineRig.userData.wheel = wheel; }
 
@@ -180,9 +249,23 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
   if (tier !== 'low') { composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera)); composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.6, 0.6, 0.8)); composer.addPass(new OutputPass()); }
   const ro = new ResizeObserver(() => { resize(); if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(canvas.clientWidth || 1, canvas.clientHeight || 1); } }); ro.observe(canvas); resize();
   setFort(null);
+  const todOverride = parseTod(new URLSearchParams(location.search).get('tod')); const dirV = new THREE.Vector3();
+  const applySky = () => {
+    const k = skyNow(new Date(), todOverride); const fog = scene.fog as THREE.Fog;
+    (skyU.uSky.value as THREE.Color).setHex(k.sky); (skyU.uHor.value as THREE.Color).setHex(mixHex(k.horizon, 0x8a6a5a, 0.25)); skyU.uWarm.value = k.warm; skyU.uStars.value = k.stars;
+    fog.color.setHex(mixHex(k.fog, 0x8a6a5a, 0.2)); fog.near = 300 + 120 * k.day; fog.far = 900 + 260 * k.day;
+    hemi.color.setHex(k.hemiSky); hemi.groundColor.setHex(k.hemiGround); hemi.intensity = Math.max(0.35, k.hemiI); renderer.toneMappingExposure = k.exposure;
+    const e = Math.max(k.elev, -2) * Math.PI / 180, a = k.az * Math.PI / 180; dirV.set(Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e));
+    // below the horizon keep a dim, high "moon" key light so shadows stay readable
+    if (k.sunI > 0.05) { sun.position.copy(dirV).multiplyScalar(220); sun.color.setHex(k.sunColor); sun.intensity = k.sunI; } else { sun.position.set(80, 160, 60); sun.color.setHex(0x9fb4ff); sun.intensity = 0.25 + k.moonI; }
+    fortWater.mat.uniforms.uDay.value = k.day; (fortWater.mat.uniforms.uSun.value as THREE.Vector3).copy(dirV);
+    const gk = 0.12 + 0.88 * k.lights; for (const m of glowMats) m.emissiveIntensity = (m.userData.ei as number) * gk;
+  };
+  applySky(); let skyT = 0;
   const clock = new THREE.Clock(); let raf = 0; let running = true; let time = 0; const tmp = new THREE.Vector3();
   const frame = () => {
     raf = requestAnimationFrame(frame); if (!running) return; const dt = Math.min(clock.getDelta(), 0.05); time += dt;
+    skyT += dt; if (skyT > 1) { skyT = 0; applySky(); } fortWater.mat.uniforms.uTime.value = time;
     jacks.forEach((b, i) => { b.rotation.z = Math.sin(time * 1.6 + i * 0.7) * 0.28; });
     flames.forEach((f) => { f.scale.set(1 + Math.sin(time * 9) * 0.12, 1 + Math.sin(time * 6.3) * 0.25, 1); });
     if (mineDig) (mineRig.userData.wheel as THREE.Object3D).rotation.z += dt * 2;
@@ -193,7 +276,7 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
   };
   const vis = () => { running = !document.hidden; clock.getDelta(); }; document.addEventListener('visibilitychange', vis); frame();
   return {
-    scene,
+    scene, camera, controls,
     setFort,
     setRunning(v: boolean) { running = v; clock.getDelta(); },
     reset() { camera.position.copy(home); controls.target.copy(homeT); },
