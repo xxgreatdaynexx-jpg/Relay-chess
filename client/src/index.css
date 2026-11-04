@@ -2292,3 +2292,11 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .home-msg, .home-note { position: absolute; left: 50%; transform: translateX(-50%); top: 64px; background: rgba(40,20,20,.92); padding: 6px 12px; border-radius: 8px; font-size: 13px; } .home-note { position: fixed; z-index: 70; top: 20px; }
 .home-help { position: absolute; left: 10px; bottom: 10px; opacity: .6; font-size: 12px; }
 @media (max-width: 640px) { .home-build { width: 160px; bottom: 170px; } .home-chat ul { max-height: 70px; } .home-help { display: none; } }
+/* visuals HUD audit: on phones the world corner chips wrapped to two lines and overlapped the title; keep them one line, scrollable, below the title. The top bar fades at its right edge to show it scrolls. */
+@media (max-width: 640px) {
+  .world-corner { left: 10px; right: 0; top: 46px; overflow-x: auto; scrollbar-width: none; padding-right: 24px; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+  .world-corner::-webkit-scrollbar { display: none; }
+  .world-corner button { white-space: nowrap; flex: none; }
+  .world-clock { top: 84px; left: 10px; }
+  .top-tabs { padding-right: 24px; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent); }
+}
