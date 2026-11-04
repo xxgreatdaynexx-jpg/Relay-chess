@@ -24,5 +24,6 @@ export const LAUNCH: LaunchPopup = {
     { icon: '💰', title: 'Dividend totals', text: 'See every chip you\'ve earned from dividends on your Stocks portfolio and profile.' },
     { icon: '📦', title: 'Logistics', text: 'Ship goods map to map from the 📦 Logistics button: cargo ships every 2 hours from each map\'s new ocean port (cheapest), freight planes every hour, your own trucks (free), or hire a truck for a fee. Every load shows on the map while it moves, trucks with their owner\'s name.' },
     { icon: '🚚', title: 'Truck store', text: 'Buy a Pickup, Box Truck, Big Rig or Gold Tanker. Owned trucks haul your goods for free; sell back for 50%.' },
+    { icon: '⚓', title: 'A real ocean & visual glow-up', text: 'Chud Hub now has a real ocean with waves, a beach, a breakwater and a harbour with docks, cranes and containers. Fort McChud got day/night lighting, lit roads and a coastline, and oil units, ships, planes, jets, boats, furniture, the Furniture Store and the jail all got new, more detailed models.' },
   ],
 };

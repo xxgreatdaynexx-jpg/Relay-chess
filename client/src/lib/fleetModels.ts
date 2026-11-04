@@ -4,11 +4,21 @@ import type { FleetModel } from '../../../shared/fleet';
 
 const M = (color: number, o: THREE.MeshStandardMaterialParameters = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.45, metalness: 0.15, ...o });
 function add(g: THREE.Object3D, geo: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z = 0) { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = o.receiveShadow = true; g.add(o); return o; }
-/** Hull: a box with a tapered bow (scaled cone) so it reads as a boat from above. */
+/** Hull (mu-visuals): a top-view shape with a fine ogive bow and squared transom, extruded to the hull depth, with a
+ *  flared sheer cap, a contrasting boot stripe at the waterline, a rub rail and stainless bow/side rails. */
+function hullShape(len: number, beam: number) {
+  const s = new THREE.Shape(); const h = beam / 2, z0 = -len / 2, zb = len * 0.12;
+  s.moveTo(-h * 0.92, z0); s.lineTo(h * 0.92, z0); s.lineTo(h, zb); s.quadraticCurveTo(h * 0.95, len * 0.38, 0, len / 2); s.quadraticCurveTo(-h * 0.95, len * 0.38, -h, zb); s.lineTo(-h * 0.92, z0); return s;
+}
+function hullGeo(len: number, beam: number, depth: number) { const g = new THREE.ExtrudeGeometry(hullShape(len, beam), { depth, bevelEnabled: true, bevelThickness: depth * 0.12, bevelSize: beam * 0.03, bevelSegments: 2, curveSegments: 14 }); g.rotateX(Math.PI / 2); g.translate(0, depth, 0); return g; }
 function hull(g: THREE.Object3D, len: number, beam: number, hgt: number, m: THREE.Material, stripe: THREE.Material) {
-  add(g, new THREE.BoxGeometry(beam, hgt, len * 0.72), m, 0, hgt / 2, -len * 0.14);
-  const bow = add(g, new THREE.ConeGeometry(beam / 2, len * 0.3, 4, 1), m, 0, hgt / 2, len * 0.36); bow.rotation.set(Math.PI / 2, Math.PI / 4, 0); bow.scale.set(1, 1, hgt / beam * 1.4);
-  add(g, new THREE.BoxGeometry(beam * 1.02, hgt * 0.14, len * 0.72), stripe, 0, hgt * 0.25, -len * 0.14);
+  const lower = add(g, hullGeo(len * 0.97, beam * 0.9, hgt * 0.45), stripe, 0, 0, 0); lower.scale.y = 1; // boot stripe / antifoul band
+  add(g, hullGeo(len, beam, hgt * 0.6), m, 0, hgt * 0.4, 0);
+  add(g, hullGeo(len * 1.005, beam * 1.03, hgt * 0.07), M(0x30363c, { roughness: 0.6 }), 0, hgt * 0.62, 0); // rub rail
+  const deck = add(g, new THREE.ShapeGeometry(hullShape(len * 0.96, beam * 0.94), 14), M(0xf2efe8, { roughness: 0.7 }), 0, hgt + 0.02, 0); deck.rotation.x = Math.PI / 2;
+  const chrome = M(0xdde4ea, { metalness: 0.9, roughness: 0.2 });
+  for (const sx of [-1, 1]) { const r = add(g, new THREE.CylinderGeometry(0.035, 0.035, len * 0.62, 6), chrome, sx * beam * 0.44, hgt + 0.55, len * 0.02); r.rotation.x = Math.PI / 2;
+    for (let i = 0; i < 5; i++) add(g, new THREE.CylinderGeometry(0.03, 0.03, 0.55, 5), chrome, sx * beam * 0.44, hgt + 0.28, -len * 0.29 + i * len * 0.155); }
 }
 export function buildBoat(m: FleetModel): THREE.Group {
   const g = new THREE.Group(); const white = M(m.color); const glass = M(0x2a4a6a, { metalness: 0.7, roughness: 0.1 }); const navy = M(0x1a3a6a); const teak = M(0xb07a48, { roughness: 0.8 }); const chrome = M(0xdde4ea, { metalness: 0.9, roughness: 0.2 });
@@ -47,6 +57,12 @@ export function buildJet(m: FleetModel): THREE.Group {
   const engines = m.id === 'chudone' ? [-0.25, -0.45].flatMap((x) => [x * L, -x * L]) : [-R * 1.5, R * 1.5];
   for (const x of engines) { const e = add(g, new THREE.CylinderGeometry(R * 0.42, R * 0.36, L * 0.18, 12), eng, x, m.id === 'chudone' ? R * 0.2 + 0.6 : R * 1.4 + 1, m.id === 'chudone' ? L * 0.1 : -L * 0.3); e.rotation.x = Math.PI / 2; }
   for (const z of [L * 0.32, -L * 0.1]) for (const x of z > 0 ? [0] : [-R * 0.8, R * 0.8]) add(g, new THREE.CylinderGeometry(0.18 * k, 0.18 * k, 0.3 * k, 10), M(0x111111), x, 0.2, z).rotation.z = Math.PI / 2;
+  // mu-visuals detail: cockpit windshield, cabin window row, winglets, landing-gear struts, nav lights.
+  const ws = add(g, new THREE.SphereGeometry(R * 0.95, 14, 8, -Math.PI / 2, Math.PI, 0, Math.PI / 3), win, 0, R + 1 + R * 0.15, L / 2 - R * 0.2); ws.scale.set(1, 1, 1.6);
+  for (let i = 0; i < Math.round(6 * k + 2); i++) for (const sx of [-1, 1]) { const wn = add(g, new THREE.CircleGeometry(R * 0.16, 10), win, sx * R * 1.01, R + 1 + R * 0.3, L * 0.3 - i * (L * 0.55 / Math.round(6 * k + 2))); wn.rotation.y = sx * Math.PI / 2; }
+  for (const s of [-1, 1]) { const wl = add(g, new THREE.BoxGeometry(0.08 * k, 1.4 * k, 0.9 * k), body, s * L * 0.55, R + 0.6 + 0.7 * k, L * 0.1 - L * 0.26); wl.rotation.z = -s * 0.25;
+    add(g, new THREE.SphereGeometry(0.12 * k, 8, 6), M(s < 0 ? 0xff2020 : 0x20ff40, { emissive: s < 0 ? 0xff2020 : 0x20ff40, emissiveIntensity: 1.5 }), s * L * 0.55, R + 0.62, L * 0.1 - L * 0.27); }
+  for (const z of [L * 0.32, -L * 0.1]) for (const x of z > 0 ? [0] : [-R * 0.8, R * 0.8]) add(g, new THREE.CylinderGeometry(0.06 * k, 0.06 * k, 1 - 0.1 + R * 0.1, 6), eng, x, 0.6, z);
   return g;
 }
 export const buildCraft = (m: FleetModel) => (m.kind === 'boat' ? buildBoat(m) : buildJet(m));
