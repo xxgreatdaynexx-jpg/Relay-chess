@@ -49,12 +49,12 @@ describe('Fort McChud -> factory rides a truck', () => {
     await f.factoryDelivered(replay); await f.factoryDelivered(replay); expect(store.get('iron')).toBe(280);
   });
 
-  it('own truck: free, one load per truck, the rest stays at the fort; room counts loads already on the road', async () => {
+  it('own truck: fuel + day upkeep only (mu-cargo), one load per truck, the rest stays at the fort; room counts loads already on the road', async () => {
     seedFort({ iron: 140, gold: 60 });
     await expect(f.act(N, { op: 'ship', mode: 'truck' })).rejects.toThrow(/do not own a truck/);
     await l.buyTruck(N, 'pickup'); const c0 = chips(N);
     const r = await f.act(N, { op: 'ship' }) as { loads: number; fee: number; partial: string | null; shipped: Array<[string, number]> };
-    expect(r.fee).toBe(0); expect(chips(N)).toBe(c0); expect(r.loads).toBe(1); expect(r.partial).toMatch(/trucks are out/);
+    expect(r.fee).toBe(120 + 400); expect(chips(N)).toBe(c0 - 520); expect(r.loads).toBe(1); expect(r.partial).toMatch(/trucks are out/);
     const sent = r.shipped[0]!; const inv = await f.inventory(N);
     expect(Math.floor((inv.ore as Record<string, number>)[sent[0]] ?? 0) + sent[1]).toBe(sent[0] === 'iron' ? 140 : 60);
     expect(l.live()[0]!.label).toMatch(new RegExp(`^${N}'s .* · to factory$`));

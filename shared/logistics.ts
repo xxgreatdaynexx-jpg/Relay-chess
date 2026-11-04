@@ -10,8 +10,9 @@
  *  - cargo ship: departs every 2 hours from each map's ocean port; huge capacity; the cheapest way to move goods.
  */
 import { indexed } from './priceIndex.js';
+import { CARGO } from './cargo.js';
 export type HubId = 'city' | 'resort' | 'fortmc';
-export type Mode = 'truck' | 'hired' | 'plane' | 'ship';
+export type Mode = 'truck' | 'hired' | 'plane' | 'ship' | 'jet' | 'boat';
 export const HUBS: Record<HubId, { label: string; icon: string; port: string }> = {
   city: { label: 'Chud Hub City', icon: '🏙', port: 'Chud Hub Harbour' },
   resort: { label: 'Resort Island', icon: '🏝', port: 'Resort Marina Port' },
@@ -23,9 +24,11 @@ export const isHub = (x: unknown): x is HubId => typeof x === 'string' && x in H
 export interface ModeDef { id: Mode; label: string; icon: string; perUnit: number; minFee: number; travelMs: number; everyMs: number; cap: number; blurb: string }
 const MIN = 60_000, HOUR = 60 * MIN;
 export const MODES: Record<Mode, ModeDef> = {
-  truck: { id: 'truck', label: 'My truck', icon: '🚚', perUnit: 0, minFee: 0, travelMs: 12 * MIN, everyMs: 0, cap: 0, blurb: 'Leaves now. Free: you own the truck.' },
+  truck: { id: 'truck', label: 'My truck', icon: '🚚', perUnit: 0, minFee: 0, travelMs: 12 * MIN, everyMs: 0, cap: 0, blurb: 'Leaves now. Fuel per trip + upkeep the first trip each day; bigger trucks = fewer trips.' },
   hired: { id: 'hired', label: 'Hired truck', icon: '🚛', perUnit: 2, minFee: 25, travelMs: 15 * MIN, everyMs: 0, cap: 2_000, blurb: 'No truck? Pay the fee and a hired rig takes it now.' },
   plane: { id: 'plane', label: 'Freight plane', icon: '✈️', perUnit: 1.5, minFee: 40, travelMs: 8 * MIN, everyMs: HOUR, cap: 10_000, blurb: 'Departs every hour on the hour. Fastest.' },
+  jet: { id: 'jet', label: 'My jet', icon: '🛩️', perUnit: 0, minFee: 0, travelMs: 6 * MIN, everyMs: 0, cap: 0, blurb: 'Your own jet leaves now. Fuel per trip; the hangar upkeep already covers the crew.' },
+  boat: { id: 'boat', label: 'My boat', icon: '🛥️', perUnit: 0, minFee: 0, travelMs: 30 * MIN, everyMs: 0, cap: 0, blurb: 'Your own boat leaves now from the port. Fuel per trip + upkeep the first trip each day.' },
   ship: { id: 'ship', label: 'Cargo ship', icon: '🚢', perUnit: 0.25, minFee: 5, travelMs: 40 * MIN, everyMs: 2 * HOUR, cap: 100_000, blurb: 'Departs every 2 hours from the ocean port. Cheapest.' },
 };
 export const MODE_IDS = Object.keys(MODES) as Mode[];
@@ -40,10 +43,10 @@ export const arrivalOf = (mode: Mode, departAt: number) => departAt + MODES[mode
 export interface TruckModel { id: string; name: string; price: number; cap: number; color: number; speed: number }
 /** Truck store. `speed` scales travel time (1 = 12 min). */
 export const TRUCKS: TruckModel[] = [
-  { id: 'pickup', name: 'Chud Pickup', price: 4_000, cap: 250, color: 0x3b82f6, speed: 1.25 },
-  { id: 'box', name: 'Box Truck', price: 12_000, cap: 1_500, color: 0xf59e0b, speed: 1 },
-  { id: 'semi', name: 'Big Rig Semi', price: 35_000, cap: 6_000, color: 0xdc2626, speed: 0.9 },
-  { id: 'tanker', name: 'Gold Tanker', price: 90_000, cap: 20_000, color: 0xeab308, speed: 1.1 },
+  { id: 'pickup', name: 'Chud Pickup', price: 4_000, cap: CARGO.pickup!.cap, color: 0x3b82f6, speed: 1.25 },
+  { id: 'box', name: 'Box Truck', price: 12_000, cap: CARGO.box!.cap, color: 0xf59e0b, speed: 1 },
+  { id: 'semi', name: 'Big Rig Semi', price: 35_000, cap: CARGO.semi!.cap, color: 0xdc2626, speed: 0.9 },
+  { id: 'tanker', name: 'Gold Tanker', price: 90_000, cap: CARGO.tanker!.cap, color: 0xeab308, speed: 1.1 },
 ];
 export const TRUCK_BY_ID = new Map(TRUCKS.map((t) => [t.id, t]));
 export const MAX_TRUCKS = 6;
@@ -75,7 +78,9 @@ export const HUB_MAPS: Record<HubId, HubMap> = {
 };
 export const PORT = HUB_MAPS.city.port;
 export const DEPOT: Pt = HUB_MAPS.city.truck[0]!; // the Warehouse landmark
-export const routeOf = (mode: Mode, hub: HubId = 'city'): Pt[] => { const m = HUB_MAPS[hub]; return mode === 'plane' ? m.plane : mode === 'ship' ? m.ship : m.truck; };
+export const routeOf = (mode: Mode, hub: HubId = 'city'): Pt[] => { const m = HUB_MAPS[hub]; return mode === 'plane' || mode === 'jet' ? m.plane : mode === 'ship' || mode === 'boat' ? m.ship : m.truck; };
+/** Own-vehicle modes: leave now, fee = trips x trip fee (+ the day's upkeep), capacity from shared/cargo.ts. */
+export const isOwnMode = (m: Mode) => m === 'truck' || m === 'jet' || m === 'boat';
 /** Does this vehicle appear on `hub`'s map? (it leaves from or arrives at that map) */
 export const onMap = (v: Pick<LiveVehicle, 'from' | 'to'>, hub: HubId) => v.from === hub || v.to === hub;
 /** Position along the route at time `now` on `hub`'s map: x, z, heading (rad, atan2(dz,dx)), altitude, and phase. Arriving loads run it backwards. */
@@ -87,7 +92,7 @@ export function vehiclePose(v: Pick<LiveVehicle, 'mode' | 'from' | 'to' | 'depar
   let s = u * total, i = 0; while (i < lens.length - 1 && s > lens[i]!) { s -= lens[i]!; i++; }
   const a0 = path[i]!, a1 = path[i + 1]!; const t = lens[i] ? Math.min(1, s / lens[i]!) : 0;
   const x = a0[0] + (a1[0] - a0[0]) * t, z = a0[1] + (a1[1] - a0[1]) * t;
-  const y = v.mode !== 'plane' ? 0 : inbound ? Math.min(60, Math.max(0, (0.88 - u) * 260)) : Math.min(60, Math.max(0, (u - 0.12) * 260));
+  const y = v.mode !== 'plane' && v.mode !== 'jet' ? 0 : inbound ? Math.min(60, Math.max(0, (0.88 - u) * 260)) : Math.min(60, Math.max(0, (u - 0.12) * 260));
   return { x, z, a: Math.atan2(a1[1] - a0[1], a1[0] - a0[0]), y, phase };
 }
 export const fmtEta = (ms: number) => { const m = Math.max(0, Math.ceil(ms / MIN)); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; };

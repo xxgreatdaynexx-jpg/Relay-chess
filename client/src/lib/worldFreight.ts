@@ -90,7 +90,7 @@ type V = { v: LiveVehicle; obj: THREE.Group; tag: THREE.Sprite };
 /** Draw the port + traffic on one map's scene (city, resort or Fort McChud). */
 export function createFreight(world: Pick<World, 'scene'>, hub: HubId = 'city') {
   const { scene } = world; const p = port(hub); scene.add(p); const live = new Map<string, V>();
-  const build = (v: LiveVehicle) => (v.mode === 'plane' ? plane() : v.mode === 'ship' ? ship() : truck(v.color, v.mode === 'hired'));
+  const build = (v: LiveVehicle) => ((v.mode === 'plane' || v.mode === 'jet') ? plane() : (v.mode === 'ship' || v.mode === 'boat') ? ship() : truck(v.color, v.mode === 'hired'));
   const onLive = (list: LiveVehicle[]) => {
     const seen = new Set<string>();
     for (const v of list) { if (!onMap(v, hub)) continue; seen.add(v.id); const cur = live.get(v.id);
@@ -103,7 +103,7 @@ export function createFreight(world: Pick<World, 'scene'>, hub: HubId = 'city') 
     const now = Date.now();
     for (const [k, o] of live) { const ps = vehiclePose(o.v, now, hub);
       if (ps.phase === 'arrived' || (ps.phase === 'loading' && o.v.mode !== 'ship' && o.v.mode !== 'plane')) { o.obj.visible = o.tag.visible = false; if (ps.phase === 'arrived') { scene.remove(o.obj, o.tag); live.delete(k); } continue; }
-      o.obj.visible = o.tag.visible = true; o.obj.position.set(ps.x, ps.y + (o.v.mode === 'ship' ? -0.2 : 0), ps.z); o.obj.rotation.y = -ps.a; o.tag.position.set(ps.x, ps.y + (o.v.mode === 'ship' ? 7 : o.v.mode === 'plane' ? 3 : 3.4), ps.z); }
+      o.obj.visible = o.tag.visible = true; o.obj.position.set(ps.x, ps.y + ((o.v.mode === 'ship' || o.v.mode === 'boat') ? -0.2 : 0), ps.z); o.obj.rotation.y = -ps.a; o.tag.position.set(ps.x, ps.y + ((o.v.mode === 'ship' || o.v.mode === 'boat') ? 7 : (o.v.mode === 'plane' || o.v.mode === 'jet') ? 3 : 3.4), ps.z); }
   };
   const watch = () => socket.emit('freight_watch', true);
   socket.on('freight_live', onLive); socket.on('connect', watch); if (socket.connected) watch();
