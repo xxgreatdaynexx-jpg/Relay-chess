@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-04T14:10:00-06:00', title: 'Launch Trailer', bullets: [
+    '🎬 The Millionaire Update Launch Trailer is out! Watch it from the popup or the sign by the airport. Launches Nov 6 at 8 PM.',
+  ] },
   { commit: '', at: '2026-11-04T12:30:00-06:00', title: 'Wealth tax threshold now counts property upgrades', bullets: [
     'Wealth tax threshold now counts property upgrades: the 100,000 line for the 5% purchase tax is what you paid for your property plus the farm upgrades you bought for it. Planted crops do not count.',
   ] },
