@@ -17,3 +17,14 @@ describe('superyacht rebuild', () => {
     expect(geos(yacht())).toEqual(geos(yacht()));
   });
 });
+describe('recheck #1: superyacht hull is white', () => {
+  it('topsides white, navy only as a slim boot stripe', () => {
+    const g = yacht(); let top: THREE.Mesh | undefined, boot: THREE.Mesh | undefined;
+    g.traverse((o) => { if (o.userData.part === 'topsides') top = o as THREE.Mesh; if (o.userData.part === 'boot') boot = o as THREE.Mesh; });
+    const col = (m?: THREE.Mesh) => (m!.material as THREE.MeshStandardMaterial).color.getHex();
+    expect(col(top)).toBe(0xf6f6f2);
+    expect(col(boot)).toBe(BOATS.find((b) => b.id === 'superyacht')!.color);
+    const h = (m?: THREE.Mesh) => { m!.geometry.computeBoundingBox(); const b = m!.geometry.boundingBox!; return b.max.y - b.min.y; };
+    expect(h(boot)).toBeLessThan(h(top) * 0.4);
+  });
+});

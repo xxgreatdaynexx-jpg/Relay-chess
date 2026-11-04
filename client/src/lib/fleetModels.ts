@@ -13,16 +13,16 @@ function hullShape(len: number, beam: number) {
   s.moveTo(-h * 0.92, z0); s.lineTo(h * 0.92, z0); s.lineTo(h, zb); s.quadraticCurveTo(h * 0.95, len * 0.38, 0, len / 2); s.quadraticCurveTo(-h * 0.95, len * 0.38, -h, zb); s.lineTo(-h * 0.92, z0); return s;
 }
 function hullGeo(len: number, beam: number, depth: number) { const g = new THREE.ExtrudeGeometry(hullShape(len, beam), { depth, bevelEnabled: true, bevelThickness: depth * 0.12, bevelSize: beam * 0.03, bevelSegments: 2, curveSegments: 14 }); g.rotateX(Math.PI / 2); g.translate(0, depth, 0); return g; }
-function hull(g: THREE.Object3D, len: number, beam: number, hgt: number, m: THREE.Material, stripe: THREE.Material) {
-  const lower = add(g, hullGeo(len * 0.97, beam * 0.9, hgt * 0.45), stripe, 0, 0, 0); lower.scale.y = 1; // boot stripe / antifoul band
-  add(g, hullGeo(len, beam, hgt * 0.6), m, 0, hgt * 0.4, 0);
+function hull(g: THREE.Object3D, len: number, beam: number, hgt: number, m: THREE.Material, stripe: THREE.Material, stripeH = 0.45) {
+  const lower = add(g, hullGeo(len * 0.97, beam * 0.9, hgt * stripeH), stripe, 0, 0, 0); lower.userData.part = 'boot'; // boot stripe / antifoul band
+  const top = add(g, hullGeo(len, beam, hgt * (1.05 - stripeH)), m, 0, hgt * (stripeH - 0.05), 0); top.userData.part = 'topsides';
   add(g, hullGeo(len * 1.005, beam * 1.03, hgt * 0.07), M(0x30363c, { roughness: 0.6 }), 0, hgt * 0.62, 0); // rub rail
   const deck = add(g, new THREE.ShapeGeometry(hullShape(len * 0.96, beam * 0.94), 14), M(0xf2efe8, { roughness: 0.7 }), 0, hgt + 0.02, 0); deck.rotation.x = Math.PI / 2;
   const chrome = M(0xdde4ea, { metalness: 0.9, roughness: 0.2 });
   for (const sx of [-1, 1]) { const r = add(g, new THREE.CylinderGeometry(0.035, 0.035, len * 0.62, 6), chrome, sx * beam * 0.44, hgt + 0.55, len * 0.02); r.rotation.x = Math.PI / 2;
     for (let i = 0; i < 5; i++) add(g, new THREE.CylinderGeometry(0.03, 0.03, 0.55, 5), chrome, sx * beam * 0.44, hgt + 0.28, -len * 0.29 + i * len * 0.155); }
 }
-/** mu-visuals superyacht: a long dark-navy hull with stacked, set-back superstructure tiers built from a rounded,
+/** mu-visuals superyacht: a long white hull (navy boot stripe, gold cove line) with stacked, set-back superstructure tiers built from a rounded,
  *  raked plan (no boxes): wraparound tinted glass bands, overhanging white deck lips, a sun deck with a pool and
  *  loungers, a radar arch, a foredeck helipad and a teak swim platform. Geometry cached + shared (userData.shared). */
 const YG = new Map<string, THREE.BufferGeometry>();
@@ -34,7 +34,10 @@ const tierGeo = (l: number, w: number, hgt: number) => yg(`t${l}|${w}|${hgt}`, (
 function superyacht(g: THREE.Group, m: FleetModel, glass: THREE.Material, teak: THREE.Material, chrome: THREE.Material) {
   const len = 30, beam = 6, hh = 2.6; const white = M(0xf6f6f2, { roughness: 0.35 }), navy = M(m.color, { metalness: 0.3, roughness: 0.3 }), gold = M(0xd8b25a, { metalness: 0.8, roughness: 0.3 });
   const tint = M(0x16242f, { metalness: 0.85, roughness: 0.08 });
-  hull(g, len, beam, hh, navy, gold);
+  // recheck #1: white topsides (Tess: hull read as navy). 7b83221 built the hull from m.color (navy) by design; the
+  // navy now only shows as a slim boot stripe at the waterline with a gold cove line above it.
+  hull(g, len, beam, hh, white, navy, 0.22);
+  add(g, hullGeo(len * 0.985, beam * 1.005, hh * 0.03), gold, 0, hh * 0.2, 0).userData.part = 'cove';
   // superstructure tiers: [length, width, z centre]; each a white lip, a glass band and a white cap
   const tiers: [number, number, number][] = [[len * 0.62, beam * 0.86, -len * 0.04], [len * 0.48, beam * 0.76, -len * 0.02], [len * 0.34, beam * 0.66, 0], [len * 0.18, beam * 0.5, len * 0.03]];
   let y = hh + 0.02;
