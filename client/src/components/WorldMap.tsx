@@ -23,7 +23,7 @@ import { socket } from '@/lib/net';
 import { indexed } from '../../../shared/priceIndex';
 import { skyNow, parseTod, fmtClock, hex } from '../../../shared/daynight';
 import { fmtLap } from '../../../shared/venues';
-import { propertyById as baseProperty, properties as baseProperties, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, workerBonusOf, WORKER_BONUS_MAX, landPrice, landMultiplierNote, landSurchargePct, SURCHARGE_PCT_PER_1K, type OwnedProperty } from '../../../shared/realEstate';
+import { optimisticOwn, propertyById as baseProperty, properties as baseProperties, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, workerBonusOf, WORKER_BONUS_MAX, landPrice, landMultiplierNote, landSurchargePct, SURCHARGE_PCT_PER_1K, type OwnedProperty } from '../../../shared/realEstate';
 
 /** Today's price index from /api/real-estate; list prices and tax scale with it. */
 let IDX = 1;
@@ -347,7 +347,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       </div>}
       {deed && <DeedPanel id={deed} owned={owned} me={me} onKitchen={() => { openKitchen(propertyById(deed)?.label ?? deed); setDeed(null); }} onClose={() => setDeed(null)} onFarm={() => setFarm(deed)} onDone={(ev, text, paid) => {
         setToast(text); window.clearTimeout(toastT.current); toastT.current = window.setTimeout(() => setToast(null), 4000);
-        setOwned((m) => { const n = new Map(m); if ((ev === 're_buy' || ev === 're_buyout') && me) n.set(deed, { id: deed, owner: me, price: paid ?? propertyById(deed)?.price ?? 0, arrears: 0, boughtAt: Date.now() }); else n.delete(deed); return n; });
+        setOwned((m) => { const n = new Map(m); if ((ev === 're_buy' || ev === 're_buyout') && me) n.set(deed, optimisticOwn(m.get(deed), ev, deed, me, paid ?? propertyById(deed)?.price ?? 0, Date.now())); else n.delete(deed); return n; });
       }} />}
       <CookingHost me={me} />
       <EmploymentHost />

@@ -43,6 +43,15 @@ const clamp = (x: number) => Math.min(1.25, Math.max(0.8, x));
 const round500 = (n: number) => Math.max(500, Math.round(n / 500) * 500);
 const pos = (b: OBB) => `${Math.round(b.x * 10)}:${Math.round(b.z * 10)}`;
 export const taxOf = (price: number) => Math.ceil(price * TAX_RATE);
+/**
+ * Tess QA #7: the client's optimistic ownership after a buy/buyout. A buyout keeps the city's sell-back basis (what the
+ * city was originally paid), so the deed's Sell-back matches what the server will refund (was: basis dropped -> 70% of the
+ * buyout price shown, e.g. 840k instead of 420k on the Factory).
+ */
+export function optimisticOwn(prev: OwnedProperty | undefined, ev: 're_buy' | 're_buyout', id: string, me: string, paid: number, now: number): OwnedProperty {
+  const basis = ev === 're_buyout' && prev ? (prev.basis ?? prev.price) : undefined;
+  return { id, owner: me, price: paid, arrears: 0, boughtAt: now, ...(basis != null && basis !== paid ? { basis } : {}) };
+}
 export const sellBackOf = (price: number) => Math.floor(price * SELL_BACK);
 /** Land surcharge (pt1388u, replaces the old ×1.5-per-parcel growth): the next purchase costs list × (1 + surcharge),
  * surcharge % = SURCHARGE_PCT_PER_1K × (total list value of the properties the buyer already owns ÷ 1,000). No cap.
