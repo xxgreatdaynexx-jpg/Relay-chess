@@ -22,6 +22,13 @@ function tag(text: string, color = '#ffd27a'): THREE.Sprite { // Chud City label
 const hullGeo = () => sg('shipHull', () => { // top-view outline: pointed bow (+x), square stern, extruded down; bevelled sheer
   const sh = new THREE.Shape(); sh.moveTo(-9, -2.5); sh.lineTo(5.5, -2.5); sh.quadraticCurveTo(8.6, -2.2, 9.6, 0); sh.quadraticCurveTo(8.6, 2.2, 5.5, 2.5); sh.lineTo(-9, 2.5); sh.quadraticCurveTo(-9.5, 0, -9, -2.5);
   const g = new THREE.ExtrudeGeometry(sh, { depth: 1, bevelEnabled: false, curveSegments: 8 }); g.rotateX(Math.PI / 2); return g; });
+/** QA#15: flared bow. Forward of x=3 the hull pinches in toward the keel and widens back out to the full deck line, with a
+ *  slight sheer rise at the stem, so the bow reads as a ship's flare instead of a vertical extrusion. t = 0 keel .. 1 deck. */
+export const bowPinch = (x: number) => (x <= 3 ? 0 : Math.min(1, (x - 3) / 6.6) ** 1.5);
+export const flareHull = (part: 'upper' | 'lower') => sg(`shipHull-${part}`, () => { const g = hullGeo().clone(); const p = g.attributes.position!;
+  for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), f = bowPinch(x); if (!f) continue; const t = y + 1; // geometry spans y -1..0
+    const w = part === 'upper' ? 1 - f * 0.38 * (1 - t) : 1 - f * 0.38; p.setZ(i, p.getZ(i) * w); if (part === 'upper') p.setY(i, y + f * 0.14 * t); }
+  p.needsUpdate = true; g.computeVertexNormals(); return g; });
 /** QA#11: steer axle + tandem rear (was a tri-axle). */
 export const TRUCK_AXLES = [2.5, -1.75, -2.7] as const;
 export function truck(color: number, hired: boolean) {
@@ -54,10 +61,10 @@ export function plane() {
 }
 export function ship() {
   const g = new THREE.Group(); const navy = sm(0x1e3a8a, 0.55, 0.2), red = sm(0x9f1239, 0.7), deckM = sm(0x4b5563, 0.85), white = sm(0xf1f5f9, 0.5), win = sm(0x0f172a, 0.2, 0.4, 0x7dd3fc, 0.35);
-  const lower = new THREE.Mesh(hullGeo(), red); lower.scale.set(1, 1.2, 1); lower.position.y = 0.2; g.add(lower); // boot-topping (sits in the water)
-  const upper = new THREE.Mesh(hullGeo(), navy); upper.scale.set(1, 2.0, 1); upper.position.y = 2.2; g.add(upper);
+  const lower = new THREE.Mesh(flareHull('lower'), red); lower.scale.set(1, 1.2, 1); lower.position.y = 0.2; g.add(lower); // boot-topping (sits in the water)
+  const upper = new THREE.Mesh(flareHull('upper'), navy); upper.scale.set(1, 2.0, 1); upper.position.y = 2.2; g.add(upper);
   const dk = new THREE.Mesh(hullGeo(), deckM); dk.scale.set(0.98, 0.1, 0.96); dk.position.y = 2.25; g.add(dk);
-  part(g, BOX(), white, 0.08, 0.12, 4.9, 9.15, 2.4, 0); // bow rail tip
+  // (QA#15: the old 4.9-wide bow-rail bar stuck out past the narrow stem; removed)
   // stern superstructure: 4-deck accommodation block, bridge with wings, funnel
   part(g, BOX(), white, 3, 4.2, 4.2, -7, 4.3, 0); part(g, BOX(), white, 2.2, 0.8, 5.6, -6.4, 6.6, 0); part(g, BOX(), win, 0.06, 0.45, 4.6, -5.28, 6.6, 0);
   for (let y = 0; y < 3; y++) part(g, BOX(), win, 0.06, 0.32, 3.4, -5.48, 3.2 + y * 1.1, 0);
