@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-04T17:00:00-06:00', title: 'Co-op mine raids', bullets: [
+    'Start a raid party from the 🤝 Raid Party box in any mine and share the code; up to 4 friends play the same mine in your own instance.',
+    'Creatures scale with party size (more health, a bit more damage), but every member mines their own veins and gets their own ore from every kill.',
+    'Party bosses are tougher and drop a group loot roll: everyone on the floor rolls 1-100 and the top roll wins a bonus ore pot. The elevator goes as deep as anyone in the party has reached.',
+    'Guests, QA, bot and jailed accounts can’t join raid parties.',
+  ] },
   { commit: '', at: '2026-11-04T16:00:00-06:00', title: 'City Hall: treasury, levers, buildings and recall', bullets: [
     'New public city treasury: 25% of property tax and Market / Stock fees go in (the rest is still burned). It can only fund city policies and buildings and never pays out to any player, the mayor included. The full ledger is public in City Hall.',
     'The mayor gets three levers, each with a cooldown: a 0–5% sales tax on the game\'s own shops (cars, trucks, boats, jets, furniture; never trades between players), the purchase wealth tax (3–7%, still 100% shared with players) and warehouse freight fees (80–120%).',

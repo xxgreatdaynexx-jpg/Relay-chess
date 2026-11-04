@@ -12,6 +12,8 @@ import { isFrontWindow, useWindowDrag } from '@/lib/windowDrag';
 /** Frame budget while the Mines window is behind another one. */
 const BG_FRAME_MS = 250;
 import { useEffect, useRef, useState } from 'react';
+import { MineRaidBox, RaidRollBanner } from './MineRaidBox';
+import type { RaidLootMsg } from '../../../shared/mineRaids';
 import type { WeaponId } from '../../../shared/mineCombat';
 
 /** Weapon Store icon: a small render of the same 3D model the player holds (lazy, so three.js stays out of the main chunk). */
@@ -68,7 +70,7 @@ function aimMob(mobs: MobView[], x: number, y: number, ez: number, a: number, p:
   }
   return best;
 }
-interface FloorMsg { floor: number; deepest: number; stops: number[]; hp: number; maxHp: number; nodes: number[]; x: number; y: number; z: number }
+interface FloorMsg { floor: number; deepest: number; stops: number[]; hp: number; maxHp: number; nodes: number[]; x: number; y: number; z: number; raid?: number }
 
 /** Nearest node the crosshair is on, within reach (ray vs sphere). */
 function aimNode(nodes: MineNode[], x: number, y: number, ez: number, a: number, p: number, hp: number[]): number {
@@ -101,6 +103,8 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
   const gearRef = useRef<GearView | null>(null); gearRef.current = gear;
   const [gearMsg, setGearMsg] = useState('');
   const [inLift, setInLift] = useState(false);
+  const [raidN, setRaidN] = useState(0);
+  const [raidRoll, setRaidRoll] = useState<RaidLootMsg | null>(null);
   const floorBusy = useRef(0);
   const gearEmit = (ev: string, body: object, done?: string) => socket.timeout(8000).emit(ev, body, (err: Error | null, r?: { ok: boolean; error?: string; gear?: GearView }) => {
     if (err || !r) { setGearMsg('The weapon store did not answer. Try again.'); return; }
@@ -111,7 +115,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
     const m = me.current;
     lvl.current = levelOf(cave, r.floor);
     hp.current = r.nodes; Object.assign(m, { x: r.x, y: r.y, z: r.z, vz: 0 }); mobs.current = [];
-    setDeepest(r.deepest); setStops(r.stops); setPhp({ hp: r.hp, max: r.maxHp });
+    setDeepest(r.deepest); setStops(r.stops); setPhp({ hp: r.hp, max: r.maxHp }); if (typeof r.raid === 'number') setRaidN(r.raid);
     setFloorS(r.floor);
   };
   const changeFloor = (ev: string, body: object) => {
@@ -167,7 +171,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
       if (dead) return;
       if (err || !r?.ok) { setStatus(r?.error ?? 'Could not reach the mine.'); return; }
       if (typeof r.swingMs === 'number' && r.swingMs > 0) { swingMs.current = r.swingMs; setSwingShown(r.swingMs); }
-      if (typeof r.floor === 'number') { lvl.current = levelOf(cave, r.floor); setFloorS(r.floor); setDeepest(r.deepest ?? 1); setStops(r.stops ?? []); setPhp({ hp: r.hp ?? 100, max: r.maxHp ?? 100 }); }
+      if (typeof r.floor === 'number') { lvl.current = levelOf(cave, r.floor); setFloorS(r.floor); setRaidN(r.raid ?? 0); setDeepest(r.deepest ?? 1); setStops(r.stops ?? []); setPhp({ hp: r.hp ?? 100, max: r.maxHp ?? 100 }); }
       const ok = canStand(r.x, r.y, r.z, MINE_MAP_()); const sp = MINE_MAP_().spawns[0]; // never start inside this cave's rock
       Object.assign(m, { id: r.id, x: ok ? r.x : sp[0], y: ok ? r.y : sp[1], z: ok ? r.z : 0, a: r.a, joined: true });
       hp.current = r.nodes; three.current?.setNodes(r.nodes); gearEmit('mine_gear_view', {});
@@ -175,7 +179,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
       setStatus(r.guest ? 'Guest: you can mine, sign in to sell.' : 'Click the view to play. Left click swings.');
       (window as unknown as { __minesQA?: unknown }).__minesQA = { me: m, hp, sock: socket, swing: () => three.current?.swing(), floor: () => lvl.current.floor, mobs, descend: () => changeFloor('mines_descend', {}), ride: (f: number) => changeFloor('mines_elevator', { floor: f }), attack: () => attackRef.current(), aim: () => aimNode(NODES_(), m.x, m.y, m.z + eyeHeightOf(m), m.a, m.p, hp.current) };
     });
-    const onState = (s: { floor?: number; players: MinerView[]; nodes: number[]; mobs?: MobView[]; shots?: ShotView[]; mfx?: MobFxView[] }) => { if ((s.floor ?? 1) !== lvl.current.floor) return; mobs.current = s.mobs ?? []; three.current?.setMobs(mobs.current); three.current?.setShots(s.shots ?? []); if (s.mfx?.length) three.current?.mobFx(s.mfx); { const c = three.current?.bossCall; const n = c && c.until > performance.now() ? c.name : null; setBossCall((o) => (o === n ? o : n)); } hp.current = s.nodes; three.current?.setNodes(s.nodes); three.current?.setOthers(s.players, m.id); setOnline(s.players.length); };
+    const onState = (s: { raid?: number; floor?: number; players: MinerView[]; nodes: number[]; mobs?: MobView[]; shots?: ShotView[]; mfx?: MobFxView[] }) => { if ((s.floor ?? 1) !== lvl.current.floor) return; { const n = s.raid ?? 0; setRaidN((o) => (o === n ? o : n)); } mobs.current = s.mobs ?? []; three.current?.setMobs(mobs.current); three.current?.setShots(s.shots ?? []); if (s.mfx?.length) three.current?.mobFx(s.mfx); { const c = three.current?.bossCall; const n = c && c.until > performance.now() ? c.name : null; setBossCall((o) => (o === n ? o : n)); } hp.current = s.nodes; three.current?.setNodes(s.nodes); three.current?.setOthers(s.players, m.id); setOnline(s.players.length); };
     const onFx = (f: { node: number; broke: boolean }) => { three.current?.burstAt(f.node, f.broke); };
     const onHurt = (h: { hp: number; max: number; dmg: number; kx?: number; ky?: number }) => { if (h.kx || h.ky) { m.x += h.kx ?? 0; m.y += h.ky ?? 0; } setPhp({ hp: h.hp, max: h.max }); setHurtT(Date.now()); playPickaxe('hit'); };
     const onDied = (d: FloorMsg & PackMsg & { lost: Stack[] }) => {
@@ -184,6 +188,11 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
       flash(`💀 You blacked out! ${n ? `Dropped ${n} ore. ` : ''}Woke up on floor ${d.floor}.`);
     };
     const onMobFx = (f: { mob: number; killed: boolean }) => three.current?.mobHit(f.mob, f.killed);
+    // Co-op raids: moved into / out of the party's instance, a party kill's own-loot share, and the party-boss loot roll.
+    const onRaidMoved = (d: FloorMsg & PackMsg) => { applyFloor(d); three.current?.setNodes(d.nodes); setPack({ pack: d.pack, load: d.load, cap: d.cap, quote: null }); flash(d.raid ? `🤝 Raid party of ${d.raid}: creatures are tougher, every kill drops loot for each of you.` : 'Back in the public mine.'); };
+    const onRaidLoot = (d: PackMsg & { loot: Stack[] }) => { setPack({ pack: d.pack, load: d.load, cap: d.cap, quote: null }); const n = d.loot.reduce((t, s) => t + s.qty, 0); if (n) flash(`🤝 Party kill: +${n} ore for you`); };
+    const onRaidRoll = (d: RaidLootMsg) => { setRaidRoll(d); playPickup(); window.setTimeout(() => setRaidRoll((c) => (c === d ? null : c)), 9000); };
+    socket.on('mines_raid_moved', onRaidMoved); socket.on('mines_raid_loot', onRaidLoot); socket.on('mines_raid_roll', onRaidRoll);
     socket.on('mines_hurt', onHurt); socket.on('mines_died', onDied); socket.on('mines_mobfx', onMobFx);
     const onCorrect = (c: { x: number; y: number; z: number }) => { Object.assign(m, c); m.vz = 0; };
     socket.on('mines_state', onState); socket.on('mines_fx', onFx); socket.on('mines_correct', onCorrect); socket.on('connect', join);
@@ -231,7 +240,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
     const resizeT = window.setInterval(() => { const c = glRef.current; if (c && three.current && (c.width !== Math.round(c.clientWidth * three.current.renderer.getPixelRatio()))) three.current.resize(c.clientWidth, c.clientHeight); }, 500);
     return () => {
       dead = true; cancelAnimationFrame(raf); ro.disconnect(); window.clearInterval(resizeT);
-      socket.off('mines_state', onState); socket.off('mines_fx', onFx); socket.off('mines_correct', onCorrect); socket.off('connect', join); socket.off('mines_hurt', onHurt); socket.off('mines_died', onDied); socket.off('mines_mobfx', onMobFx);
+      socket.off('mines_state', onState); socket.off('mines_fx', onFx); socket.off('mines_correct', onCorrect); socket.off('connect', join); socket.off('mines_hurt', onHurt); socket.off('mines_died', onDied); socket.off('mines_mobfx', onMobFx); socket.off('mines_raid_moved', onRaidMoved); socket.off('mines_raid_loot', onRaidLoot); socket.off('mines_raid_roll', onRaidRoll);
       socket.emit('mines_leave');
       if (document.pointerLockElement) document.exitPointerLock?.();
     };
@@ -358,10 +367,12 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
             onPointerDown={(e) => { if (e.pointerType !== 'touch') return; swing(); holding.current = 'touch'; }}
             onPointerUp={(e) => { if (e.pointerType === 'touch') holding.current = null; }} onPointerCancel={() => { holding.current = null; }} onContextMenu={(e) => e.preventDefault()} />
           <div className="mines-cross" aria-hidden="true" style={aimedMob ? { color: '#ff5050' } : undefined}>{aimedMob ? '⚔' : aimed ? '⊕' : '+'}</div>
-          {aimedMob && <div className="mines-aim" style={{ color: '#ff8080', top: '56%' }} data-testid="mines-mob-aim">{mobSkin(cave, aimedMob.k).name} · {aimedMob.hp}/{aimedMob.max}</div>}
+          {aimedMob && <div className="mines-aim" style={{ color: '#ff8080', top: '56%' }} data-testid="mines-mob-aim">{aimedMob.pt ? '🤝 Party ' : ''}{mobSkin(cave, aimedMob.k).name} · {aimedMob.hp}/{aimedMob.max}</div>}
+          {raidRoll && <RaidRollBanner roll={raidRoll} />}
           {bossCall && <div data-testid="mines-boss-call" style={{ position: 'absolute', left: '50%', top: 64, transform: 'translateX(-50%)', background: 'rgba(60,8,4,0.8)', color: '#ffd8a0', padding: '6px 16px', borderRadius: 10, fontSize: 18, fontWeight: 800, letterSpacing: 1, pointerEvents: 'none', border: '2px solid #ff6a20', textShadow: '0 2px 4px #000' }}>⚠ {bossCall}</div>}
           {floors && <div className="mines-hud" data-testid="mines-hud" style={{ position: 'absolute', left: 10, top: 10, background: 'rgba(10,8,6,0.72)', color: '#fff4dc', padding: '6px 10px', borderRadius: 10, fontSize: 13, minWidth: 170, pointerEvents: 'none', boxShadow: Date.now() - hurtT < 400 ? '0 0 0 3px #ff3030' : undefined }}>
             <div><b>🪜 Floor {floor}</b> · {lvl.current.band}</div>
+            {raidN > 1 && <div data-testid="mines-raid-hud" style={{ marginTop: 3, color: '#7fe8ff', fontWeight: 700 }}>🤝 Raid ×{raidN} · own ore · tougher creatures</div>}
             <div style={{ marginTop: 4 }}>❤️ {php.hp}/{php.max}<div style={{ height: 7, background: '#3a1010', borderRadius: 4, marginTop: 2 }}><i style={{ display: 'block', height: '100%', borderRadius: 4, width: `${Math.max(0, Math.min(100, (php.hp / php.max) * 100))}%`, background: php.hp / php.max > 0.5 ? '#50d050' : php.hp / php.max > 0.25 ? '#ffc030' : '#ff4040' }} /></div></div>
             <div style={{ marginTop: 4, opacity: 0.85 }}>{wNow.icon} {wNow.name} · {wNow.dmg} dmg</div>
             <div className="mines-haul" data-testid="mines-haul" style={{ position: 'static', marginTop: 4, padding: 0, background: 'none' }}>🎒 {pack.pack.reduce((t, s) => t + s.qty, 0)} carried · ~🪙{carriedWorth}{inExit(me.current.x, me.current.y) ? ' · at EXIT' : ''}</div>
@@ -387,6 +398,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
           </ul>
           <button type="button" className="mines-sell" disabled title="Leave the mine to sell" data-testid="mines-sell">Leave the mine to sell</button>
           <p className="mines-note">Walk back to the glowing <b>EXIT</b> lift at the entrance to bank your haul. If you drop out without it, your haul is saved and waits in your backpack for next time.{guest ? ' Guests can mine but not sell.' : ' Sell and smelt banked ore in the 🏭 Factory tab.'}</p>
+          {!guest && <MineRaidBox />}
           {floors && <details className="mines-prices mines-tools" open data-testid="mines-weapon-store"><summary>⚔️ Weapon Store</summary>
             <div className="mines-tools-now">HP <b>{php.max}</b> · {wNow.name} <b>{wNow.dmg}</b> dmg</div>
             {WEAPONS.map((w) => { const owned = w.tier === 0 || !!gear?.owned.includes(w.id), on = (gear?.weapon ?? 'rusty_sword') === w.id, price = gear?.prices[w.id] ?? w.price, can = !!gear && !guest && canBuyGear('weapon', w.id, gear.owned);

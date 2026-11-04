@@ -14,7 +14,7 @@ import { animateWeaponModel, buildWeaponModel } from './mineWeaponModels';
 
 /** st = AI state code (shared/mineAI ST_CODE), tw = attack telegraph, ph = boss phase. */
 export interface MobTel { k: string; x: number; y: number; r: number; dx: number; dy: number; ms: number; n?: string }
-export interface MobView { id: number; k: MobKind; x: number; y: number; a: number; hp: number; max: number; st?: number; mini?: number; ph?: number; tw?: MobTel }
+export interface MobView { id: number; k: MobKind; x: number; y: number; a: number; hp: number; max: number; st?: number; mini?: number; ph?: number; tw?: MobTel; /** co-op raid: party size this creature was scaled for */ pt?: number }
 export interface ShotView { id: number; x: number; y: number; by: number }
 export interface MobFxView { k: 'aoe' | 'phase' | 'split' | 'summon'; x: number; y: number; r?: number; phase?: number; name?: string; by: number }
 interface MobRig { root: THREE.Group; body: THREE.Object3D; wings?: THREE.Object3D[]; anim?: THREE.Object3D[]; model: MobModel; scale: number; bar: THREE.Sprite; barBg: THREE.Sprite; barEdge: THREE.Sprite; hurt: number; kind: MobKind; hp: number; max: number; t: number;
@@ -387,6 +387,7 @@ export class Mines3D {
       if (st === 3 && r.st !== 3) r.wind = 0;
       r.st = st;
       if (b.ph && b.ph !== r.ph) { r.ph = b.ph; }
+      { const em = r.barEdge.material as THREE.SpriteMaterial; const want = b.pt ? '#38d8ff' : '#000000'; if (em.userData.c !== want) { em.userData.c = want; em.color.set(want); em.opacity = b.pt ? 1 : 0.85; r.barEdge.scale.y = (b.pt ? 1.5 : 1) * (r.barEdge.userData.y0 ??= r.barEdge.scale.y); } } // raid creatures: cyan-framed bar
       const f = Math.max(0, Math.min(1, b.hp / b.max)); const w = r.bar.userData.w as number;
       r.bar.scale.x = w * f;
       // keep the fill left-aligned: shift by half the missing width (sprites are camera-facing, so use center)
