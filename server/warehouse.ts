@@ -19,6 +19,7 @@ import { getBank } from './casino-store.js';
 import { getMines } from './mines.js';
 import { getFarm } from './farm.js';
 import { getFortMc } from './fortmc.js';
+import { priceIndex } from './price-index.js';
 import { getLogistics, shipStmt, FreightError, type Shipment } from './logistics.js';
 import { isAtFortMc, isAtResort, requireResort } from './travel.js';
 import { playerKey } from './skins.js';
@@ -68,6 +69,7 @@ export class Warehouse {
     const mines = getMines(); if (!mines.coralBin) mines.coralBin = (acct, stacks) => this.binRows(acct, 'coral', stacks.map((s) => [`${s.type}:${s.id}`, s.qty]));
     const farm = getFarm(); if (farm && !farm.barn) farm.barn = (name, items) => this.binRows(name, 'resort_farm', items.map(([c, n]) => [`crop:${c}`, n]));
     const lg = getLogistics(); if (lg && !lg.onSell) lg.onSell = (s) => this.arrived(s);
+    if (lg && !lg.onFactory) lg.onFactory = (s) => getFortMc().factoryDelivered(s);
   }
   /** Rows that add to a bin in the producer's own transaction (or, with no DB, add in memory now). */
   binRows(name: string, b: BuildingId, items: Array<[string, number]>): Stmt[] {
@@ -218,7 +220,7 @@ export class Warehouse {
   async view(name: string) {
     this.wire(); const cfg = await this.cfgs(name);
     const buildings = await Promise.all((Object.keys(BUILDINGS) as BuildingId[]).map(async (b) => ({ id: b, ...BUILDINGS[b], items: await this.inventory(name, b) })));
-    return { buildings, cfg: Object.fromEntries(cfg), log: await this.log(name), truck: getLogistics()?.idleTruck(name) ?? null };
+    return { buildings, cfg: Object.fromEntries(cfg), log: await this.log(name), truck: getLogistics()?.idleTruck(name) ?? null, index: priceIndex() };
   }
 }
 

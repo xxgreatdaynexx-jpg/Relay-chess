@@ -5,6 +5,7 @@ import { getBank, resetBank, isChipEvent } from '../server/casino-store';
 import { setPriceIndexForTest } from '../server/price-index';
 import { Travel, setTravel, isAtFortMc, isAtResort, setTicketWaiver } from '../server/travel';
 import { FortMc } from '../server/fortmc';
+import { Logistics, setLogistics, LOGISTICS_MIGRATION } from '../server/logistics';
 import { SINK_DEBIT_GAMES } from '../shared/sinkRoom';
 import {
   newFort, settle, step, tractInfo, sellPayout, efficiency, repairCost, powerDemand, MINE_LEVELS, UNITS, STEP_MS, MAX_CATCHUP_MS,
@@ -139,8 +140,12 @@ describe('FortMc server', () => {
     clk.now += 2 * H;
     const f2 = new FortMc(shim(db) as never, () => clk.now, sink as never, async () => {}); await f2.init();
     const v = await f2.view(n); expect(v.fort.mine?.level).toBe(1); expect(v.fort.ore.iron ?? 0).toBeGreaterThan(10); // grid 4 MW < 10 MW: throttled but digging
-    await f2.act(n, { op: 'ship' }); expect(shipped.length).toBeGreaterThan(3);
-    expect((await f2.view(n)).fort.ore.iron ?? 0).toBeLessThan(1);
+    // Millionaire Update: the ore rides hired rigs (fee, ledger 'freight') and lands in the sink only on arrival.
+    await db.exec(LOGISTICS_MIGRATION); const lg = new Logistics(shim(db) as never, () => clk.now); setLogistics(lg); lg.onFactory = (s) => f2.factoryDelivered(s);
+    const r = await f2.act(n, { op: 'ship', mode: 'hired' }) as { fee: number; arriveAt: number; loads: number };
+    expect(r.fee).toBeGreaterThan(0); expect(shipped).toHaveLength(0); expect((await f2.view(n)).fort.ore.iron ?? 0).toBeLessThan(1);
+    clk.now = r.arriveAt + 1; lg.tick(); for (let i = 0; i < 20 && shipped.length < r.loads; i++) await new Promise((res) => setTimeout(res, 50));
+    expect(shipped.length).toBe(r.loads); expect(shipped.length).toBeGreaterThan(3); setLogistics(null);
   }, 30_000);
 });
 

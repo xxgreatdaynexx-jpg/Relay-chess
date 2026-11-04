@@ -16,10 +16,10 @@ import { databaseUrl } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
 import { getMines } from './mines.js';
 import { getAccounts } from './accounts.js';
-import { px } from './price-index.js';
+import { px, priceIndex } from './price-index.js';
 import { nameOf, type ItemType } from '../shared/mines.js';
 import { isStackable } from './market.js';
-import { HUBS, MAX_SHIP_QTY, MAX_TRUCKS, MODES, TRUCKS, TRUCK_BY_ID, TRUCK_SELL_BACK, arrivalOf, feeBase, isHub, isMode, nextDeparture, truckTravelMs, type HubId, type LiveVehicle, type Mode } from '../shared/logistics.js';
+import { HUBS, MAX_SHIP_QTY, MAX_TRUCKS, MODES, TRUCKS, TRUCK_BY_ID, TRUCK_SELL_BACK, arrivalOf, feeBase, shipFee, isHub, isMode, nextDeparture, truckTravelMs, type HubId, type LiveVehicle, type Mode } from '../shared/logistics.js';
 
 export class FreightError extends Error {}
 const keyOf = (n: string) => n.replace(/\s+/g, ' ').trim().toLowerCase();
@@ -39,7 +39,7 @@ ALTER TABLE freight_shipments ADD COLUMN IF NOT EXISTS auto BOOLEAN NOT NULL DEF
 
 export interface OwnedTruck { id: string; truckId: string; paid: number; boughtAt: number }
 export interface Shipment { id: string; owner: string; ownerName: string; toKey: string; toName: string; mode: Mode; truck: string | null; from: HubId; to: HubId; type: ItemType; itemId: string; qty: number; fee: number; createdAt: number; departAt: number; arriveAt: number; status: 'transit' | 'delivered';
-  /** 'sell' = a ship-to-sell load: it sells at the Chud City Warehouse on arrival instead of landing in storage. */ kind?: 'move' | 'sell'; /** building inventory it left (autosell) */ src?: string | null; auto?: boolean }
+  /** 'sell' = a ship-to-sell load: it sells at the Chud City Warehouse on arrival instead of landing in storage. */ kind?: 'move' | 'sell' | 'factory'; /** building inventory it left (autosell) */ src?: string | null; auto?: boolean }
 
 export const shipStmt = (s: Shipment): Stmt => ({
   sql: `INSERT INTO freight_shipments (id, player_key, name, to_key, to_name, mode, truck, from_hub, to_hub, item_type, item_id, qty, fee, created_at, depart_at, arrive_at, status, kind, src, auto)
@@ -48,7 +48,7 @@ export const shipStmt = (s: Shipment): Stmt => ({
 });
 const rowShip = (r: Record<string, unknown>): Shipment => ({ id: String(r.id), owner: String(r.player_key), ownerName: String(r.name), toKey: String(r.to_key), toName: String(r.to_name), mode: String(r.mode) as Mode, truck: r.truck == null ? null : String(r.truck),
   from: String(r.from_hub) as HubId, to: String(r.to_hub) as HubId, type: String(r.item_type) as ItemType, itemId: String(r.item_id), qty: Number(r.qty), fee: Number(r.fee), createdAt: Number(r.created_at), departAt: Number(r.depart_at), arriveAt: Number(r.arrive_at), status: String(r.status) as Shipment['status'],
-  kind: r.kind === 'sell' ? 'sell' : 'move', src: r.src == null ? null : String(r.src), auto: r.auto === true });
+  kind: r.kind === 'sell' || r.kind === 'factory' ? r.kind : 'move', src: r.src == null ? null : String(r.src), auto: r.auto === true });
 const stackable = isStackable;
 
 export class Logistics {
@@ -104,19 +104,21 @@ export class Logistics {
   /** Ship-to-sell loads call this on arrival (server/warehouse.ts). Rejects = retried on the next tick. */
   onSell: ((s: Shipment) => Promise<void>) | null = null;
   private selling = new Set<string>();
-  idleTruck(name: string): { id: string; cap: number } | null {
-    const busy = this.busyTrucks(name); const t = this.owned(name).find((x) => !busy.has(x.id)); return t ? { id: t.id, cap: TRUCK_BY_ID.get(t.truckId)!.cap } : null;
+  /** Fort McChud → your factory loads call this on arrival (server/fortmc.ts factoryDelivered). Rejects = retried. */
+  onFactory: ((s: Shipment) => Promise<void>) | null = null;
+  idleTruck(name: string, skip?: Set<string>): { id: string; cap: number } | null {
+    const busy = this.busyTrucks(name); for (const x of skip ?? []) busy.add(x); const t = this.owned(name).find((x) => !busy.has(x.id)); return t ? { id: t.id, cap: TRUCK_BY_ID.get(t.truckId)!.cap } : null;
   }
   /**
    * Plan a ship-to-sell load from a building on another map (no side effects). The caller commits the goods leaving the
    * building, the fee debit (ledger 'freight') and shipStmt(s) in ONE transaction, then calls admit(s).
    */
-  planSell(name: string, b: { mode: unknown; from: HubId; type: string; id: string; qty: number; src: string; auto?: boolean }): Shipment {
+  planSell(name: string, b: { mode: unknown; from: HubId; type: string; id: string; qty: number; src: string; auto?: boolean; kind?: 'sell' | 'factory'; skip?: Set<string> }): Shipment {
     const mode = b.mode; if (!isMode(mode)) throw new FreightError('Pick how to ship it.');
     const qty = b.qty; if (!Number.isInteger(qty) || qty < 1 || qty > MAX_SHIP_QTY) throw new FreightError('Pick a quantity.');
     let truck: string | null = null; let travel = MODES[mode].travelMs; let cap = MODES[mode].cap;
     if (mode === 'truck') {
-      const t = this.idleTruck(name);
+      const t = this.idleTruck(name, b.skip);
       if (!this.owned(name).length) throw new FreightError('You do not own a truck. Buy one at the truck store, or hire one for a fee.');
       if (!t) throw new FreightError('All your trucks are out on deliveries. Hire one, or wait.');
       const m = TRUCK_BY_ID.get(this.owned(name).find((x) => x.id === t.id)!.truckId)!; truck = t.id; cap = m.cap; travel = truckTravelMs(m);
@@ -124,13 +126,19 @@ export class Logistics {
     if (qty > cap) throw new FreightError(`Too much for one ${MODES[mode].label.toLowerCase()}: max ${cap.toLocaleString('en-US')} units.`);
     const now = this.clock(); const departAt = nextDeparture(mode, now);
     const s: Shipment = { id: randomUUID(), owner: keyOf(name), ownerName: name.trim(), toKey: keyOf(name), toName: name.trim(), mode, truck, from: b.from, to: 'city', type: b.type as ItemType, itemId: b.id, qty,
-      fee: this.quote(mode, qty), createdAt: now, departAt, arriveAt: mode === 'truck' || mode === 'hired' ? departAt + travel : arrivalOf(mode, departAt), status: 'transit', kind: 'sell', src: b.src, auto: !!b.auto };
+      fee: this.quote(mode, qty), createdAt: now, departAt, arriveAt: mode === 'truck' || mode === 'hired' ? departAt + travel : arrivalOf(mode, departAt), status: 'transit', kind: b.kind ?? 'sell', src: b.src, auto: !!b.auto };
     return s;
+  }
+  /** Units of each item already on the road for this player, by load kind (e.g. factory loads count against storage room). */
+  pending(name: string, kind: 'sell' | 'factory'): Map<string, number> {
+    const k = keyOf(name); const m = new Map<string, number>();
+    for (const s of this.ships.values()) if (s.owner === k && s.kind === kind) m.set(s.itemId, (m.get(s.itemId) ?? 0) + s.qty);
+    return m;
   }
   /** Register a committed shipment (it now shows on the map and is delivered by tick()). */
   admit(s: Shipment) { this.ships.set(s.id, s); }
 
-  quote(mode: Mode, qty: number) { return feeBase(mode, qty) ? px(feeBase(mode, qty)) : 0; }
+  quote(mode: Mode, qty: number) { return shipFee(mode, qty, priceIndex()); }
 
   /** Send goods. Goods leave storage, the fee (if any) is debited and the shipment row is written, all in one transaction. */
   async ship(name: string, b: Record<string, unknown>): Promise<{ shipment: Shipment; chips: number | null }> {
@@ -173,6 +181,12 @@ export class Logistics {
     const now = this.clock(); const out: Shipment[] = [];
     for (const s of [...this.ships.values()]) {
       if (s.arriveAt > now) continue;
+      if (s.kind === 'factory') { // Fort McChud ore/petcoke for your factory: lands in factory storage on arrival (retried until it fits)
+        if (this.selling.has(s.id) || !this.onFactory) continue;
+        this.selling.add(s.id);
+        void this.onFactory(s).then(() => { s.status = 'delivered'; this.ships.delete(s.id); }, (e) => console.error('[logistics] factory delivery failed (will retry):', (e as Error).message)).finally(() => this.selling.delete(s.id));
+        out.push(s); continue;
+      }
       if (s.kind === 'sell') { // sells at the Chud City Warehouse on arrival; stays in transit (retried) until the sale commits
         if (this.selling.has(s.id) || !this.onSell) continue;
         this.selling.add(s.id);
@@ -191,7 +205,7 @@ export class Logistics {
     const now = this.clock(); const out = new Map<string, LiveVehicle>();
     for (const s of this.ships.values()) {
       if (s.arriveAt <= now || this.selling.has(s.id)) continue;
-      const tag = s.kind === 'sell' ? (s.auto ? ' · auto-sell' : ' · to market') : '';
+      const tag = s.kind === 'sell' ? (s.auto ? ' · auto-sell' : ' · to market') : s.kind === 'factory' ? ' · to factory' : '';
       if (s.mode === 'truck' || s.mode === 'hired') {
         const m = s.truck ? TRUCK_BY_ID.get(this.owned(s.ownerName).find((t) => t.id === s.truck)?.truckId ?? '') : undefined;
         if (now < s.departAt) continue;

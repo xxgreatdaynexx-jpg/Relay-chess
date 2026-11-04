@@ -9,6 +9,7 @@
  *  - freight plane: departs every hour on the hour from the Airport; fastest flight; mid-price.
  *  - cargo ship: departs every 2 hours from each map's ocean port; huge capacity; the cheapest way to move goods.
  */
+import { indexed } from './priceIndex.js';
 export type HubId = 'city' | 'resort' | 'fortmc';
 export type Mode = 'truck' | 'hired' | 'plane' | 'ship';
 export const HUBS: Record<HubId, { label: string; icon: string; port: string }> = {
@@ -48,6 +49,8 @@ export const TRUCK_BY_ID = new Map(TRUCKS.map((t) => [t.id, t]));
 export const MAX_TRUCKS = 6;
 export const TRUCK_SELL_BACK = 0.5;
 export const truckTravelMs = (t: TruckModel) => Math.round(MODES.truck.travelMs / t.speed);
+/** The fee players actually pay: base fee scaled by today's price index (server Logistics.quote and every client preview). */
+export const shipFee = (mode: Mode, qty: number, index = 1): number => { const f = feeBase(mode, qty); return f ? indexed(f, index) : 0; };
 export const MAX_SHIP_QTY = 100_000;
 
 /** What the map draws: one entry per moving (or loading) vehicle. */

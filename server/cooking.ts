@@ -15,6 +15,7 @@ import pg from 'pg';
 import type { Server, Socket } from 'socket.io';
 import { getBank, type CasinoBank } from './casino-store.js';
 import { px, priceIndex } from './price-index.js';
+import { awayFromMarket } from './travel.js';
 import { awardXp, getSkills } from './skills.js';
 import { getMines } from './mines.js';
 import { getFishing } from './fishing.js';
@@ -285,5 +286,5 @@ export function registerCooking(_io: Server, socket: Socket): void {
   on('grocery_buy', (b, c, n) => c.buy(n, b.item, b.qty, b.nonce));
   on('cook_start', (b, c, n) => c.start(n, b.recipe));
   on('cook_finish', (b, c, n) => c.finish(n, b.id, b.presses));
-  on('cook_sell', (b, c, n) => c.sell(n, b.ids, b.qty));
+  on('cook_sell', (b, c, n) => { awayFromMarket(n, CookError); return c.sell(n, b.ids, b.qty); });
 }

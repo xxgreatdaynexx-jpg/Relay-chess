@@ -14,6 +14,7 @@ import { requireFortMc, TravelError } from './travel.js';
 import { mineOreSink, type OreSink } from './employment.js';
 import { playerKey } from './skins.js';
 import { getLogistics, shipStmt, FreightError, type Shipment } from './logistics.js';
+import { MAX_SHIP_QTY, MODES, isMode } from '../shared/logistics.js';
 import { saleLogStmt } from './warehouse-log.js';
 import { ORES, isOre, type OreId } from '../shared/mines.js';
 import {
@@ -105,6 +106,63 @@ export class FortMc {
     await this.commit(name, s, -sh.fee, 'freight', `${auto ? 'Auto-sell' : 'Ship & sell'}: ${qty} ${label} Fort McChud → Chud City Warehouse`, async (cl) => { const st = shipStmt(sh); await cl.query(st.sql, st.args); });
     lg.admit(sh); return { shipment: sh.id, mode: sh.mode, fee: sh.fee, arriveAt: sh.arriveAt };
   }
+  /**
+   * Ship ore + petcoke (as coal) to your factory storage in Chud City. Like all freight it rides a truck: your idle
+   * truck(s) (free) or hired rigs / plane / ship (fee, ledger 'freight'), one load per ore up to the vehicle's capacity.
+   * Goods leave the fort, the fee is debited and every shipment row is written in ONE transaction; the ore lands in
+   * factory storage when the truck arrives (factoryDelivered). Room counts loads already on the road.
+   */
+  private async shipFactoryIn(name: string, s: FortState, b: Record<string, unknown>) {
+    const lg = getLogistics(); if (!lg) throw new FortError('Freight is offline right now.');
+    const mode = b.mode ?? (lg.idleTruck(name) ? 'truck' : 'hired'); if (!isMode(mode)) throw new FortError('Pick how to ship it.');
+    const sink = this.oreSink(name); const road = lg.pending(name, 'factory');
+    const room = (id: OreId) => Math.max(0, (sink.room?.(id) ?? Infinity) - (road.get(id) ?? 0));
+    const want: Array<[OreId, number]> = [];
+    for (const id of Object.keys(s.ore) as OreId[]) { const n = Math.min(whole(s.ore[id]), room(id)); if (n > 0) want.push([id, n]); }
+    const cokeRoom = room('coal') - (want.find((x) => x[0] === 'coal')?.[1] ?? 0); const coke = Math.max(0, Math.min(whole(s.stock.petcoke), cokeRoom));
+    if (coke > 0) { const c = want.find((x) => x[0] === 'coal'); if (c) c[1] += coke; else want.push(['coal', coke]); }
+    if (!want.length) throw new FortError('Nothing to ship (or your factory storage is full).');
+    const loads: Shipment[] = []; const skip = new Set<string>(); let stop: Error | null = null;
+    for (const [id, total] of want) {
+      let left = total;
+      while (left > 0 && !stop) {
+        const cap = mode === 'truck' ? (lg.idleTruck(name, skip)?.cap ?? 0) : MODES[mode].cap;
+        if (cap <= 0) { stop = new FortError(lg.owned(name).length ? 'All your trucks are out on deliveries. Hire one, or wait.' : 'You do not own a truck. Buy one at the truck store, or hire one for a fee.'); break; }
+        try { const sh = lg.planSell(name, { mode, from: 'fortmc', type: 'ore', id, qty: Math.min(left, cap, MAX_SHIP_QTY), src: 'fortmc', kind: 'factory', skip }); loads.push(sh); if (sh.truck) skip.add(sh.truck); left -= sh.qty; }
+        catch (e) { stop = e instanceof FreightError ? new FortError(e.message) : (e as Error); }
+      }
+      if (stop) break;
+    }
+    if (!loads.length) throw stop ?? new FortError('Nothing to ship.');
+    const sent = new Map<OreId, number>(); for (const l of loads) sent.set(l.itemId as OreId, (sent.get(l.itemId as OreId) ?? 0) + l.qty);
+    let petcoke = 0;
+    for (const [id, n] of sent) { const fromOre = Math.min(n, whole(s.ore[id])); s.ore[id] = (s.ore[id] ?? 0) - fromOre; if (id === 'coal' && n > fromOre) { petcoke = n - fromOre; s.stock.petcoke = (s.stock.petcoke ?? 0) - petcoke; } }
+    const fee = loads.reduce((a, l) => a + l.fee, 0);
+    const what = [...sent].map(([id, n]) => `${n} ${ORES[id].name}`).join(', ');
+    await this.commit(name, s, -fee, 'freight', `Fort McChud → your factory: ${what}`.slice(0, 200), async (cl) => { for (const l of loads) { const st = shipStmt(l); await cl.query(st.sql, st.args); } });
+    for (const l of loads) lg.admit(l);
+    return { shipped: [...sent], petcoke, loads: loads.length, mode, fee, arriveAt: Math.max(...loads.map((l) => l.arriveAt)), partial: stop ? stop.message : null };
+  }
+  private delivered = new Set<string>();
+  /** A Fort McChud → factory load arrived: add it to factory storage exactly once (shipment row flips transit→delivered in the same transaction). */
+  async factoryDelivered(sh: Shipment): Promise<void> {
+    if (!isOre(sh.itemId)) throw new FortError('Not an ore.');
+    const id = sh.itemId; const items: Array<[OreId, number]> = [[id, sh.qty]];
+    return this.lock(playerKey(sh.ownerName), async () => {
+      if (this.delivered.has(sh.id)) return;
+      const sink = this.oreSink(sh.ownerName);
+      if (!this.pool) { await sink.write({ query: async () => ({ rows: [] }) } as unknown as Q, items); sink.after(items); this.delivered.add(sh.id); return; }
+      const cl = await this.pool.connect(); let fresh = false;
+      try {
+        await cl.query('BEGIN');
+        const u = await cl.query("UPDATE freight_shipments SET status = 'delivered' WHERE id = $1 AND status = 'transit'", [sh.id]) as { rowCount?: number | null };
+        fresh = (u.rowCount ?? 0) === 1;
+        if (fresh) await sink.write(cl, items);
+        await cl.query('COMMIT');
+      } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); }
+      if (fresh) sink.after(items); this.delivered.add(sh.id);
+    });
+  }
   /** Auto-sell sweep entry (no travel gate: the trucks go without you). */
   async autoShip(name: string, id: string, qty: number, mode: string) {
     return this.lock(playerKey(name), async () => { const s = clone(await this.load(name)); return this.shipSellIn(name, s, { id, qty, mode }, true); });
@@ -168,15 +226,7 @@ export class FortMc {
         // Millionaire Update: no selling at the fort. Everything sells at the Chud City Warehouse: ship it there.
         case 'sell': throw new FortError('Fort McChud has no market. Use Ship & sell: your goods go by truck to the Chud City Warehouse and sell when they arrive.');
         case 'ship_sell': return this.shipSellIn(name, s, b, false);
-        case 'ship': { // ore + petcoke (as coal) -> your factory / mine storage
-          const sink = this.oreSink(name); const items: Array<[OreId, number]> = [];
-          const room = (id: OreId) => sink.room?.(id) ?? Infinity;
-          for (const [id] of Object.entries(s.ore) as Array<[OreId, number]>) { const n = Math.min(whole(s.ore[id]), room(id)); if (n > 0) { items.push([id, n]); s.ore[id] = (s.ore[id] ?? 0) - n; } }
-          const coke = Math.min(whole(s.stock.petcoke), room('coal') - (items.find((x) => x[0] === 'coal')?.[1] ?? 0));
-          if (coke > 0) { s.stock.petcoke = (s.stock.petcoke ?? 0) - coke; const c = items.find((x) => x[0] === 'coal'); if (c) c[1] += coke; else items.push(['coal', coke]); }
-          if (!items.length) throw new FortError('Nothing to ship (or your factory storage is full).');
-          await this.commit(name, s, 0, 'fortmc', 'ship', (cl) => sink.write(cl, items)); sink.after(items); return { shipped: items, petcoke: coke };
-        }
+        case 'ship': return this.shipFactoryIn(name, s, b);
         default: throw new FortError('Unknown action.');
       }
       return null;

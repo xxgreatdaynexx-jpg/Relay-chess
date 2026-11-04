@@ -26,7 +26,7 @@ import {
 } from '../shared/fishing.js';
 import { cookPayout } from '../shared/cooking.js';
 import { isFishSpot, type FishSpot } from '../shared/fishing.js';
-import { isAtResort } from './travel.js';
+import { isAtResort, awayFromMarket } from './travel.js';
 import { baitLuckRoll, gearDef } from '../shared/fishGear.js';
 
 /** Equipped bait + fly per account (server/fishGear.ts installs the real lookup once Postgres is attached). */
@@ -291,7 +291,7 @@ export function registerFishing(io: Server, socket: Socket): void {
   on('fish_hook', async (_b, f, n) => { const r = await f.hook(n); pose(n, { pose: 'reel' }); return r; });
   on('fish_land', async (b, f, n) => { const r = await f.land(n, b.inputs); pose(n, r.caught && r.fish ? { pose: 'catch', fish: r.fish.fish } : { pose: 'idle' }); return r; });
   on('fish_reel_in', (_b, f, n) => { f.reelIn(n); pose(n, { pose: 'idle' }); return {}; });
-  on('fish_sell', (b, f, n) => f.sell(n, b.ids, b.qty));
+  on('fish_sell', (b, f, n) => { awayFromMarket(n, FishError); return f.sell(n, b.ids, b.qty); });
   on('fish_release', (b, f, n) => f.release(n, b.ids));
   on('fish_here', () => { void socket.join(DOCK_ROOM); return { anglers: anglersHere(nameOf()), states: anglerStates(nameOf()) }; });
   const leave = () => { void socket.leave(DOCK_ROOM); const n = nameOf(); if (n && leaveDock(n)) pushDock(); };

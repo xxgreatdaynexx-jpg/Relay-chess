@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { request, socket } from '@/lib/net';
 import { BUILDINGS, AUTO_DEFAULT, AUTO_MIN_LOAD, AUTO_MAX_FEE_SHARE, type AutoCfg, type BuildingId, type SaleLogRow } from '../../../shared/autosell';
-import { MODES, MODE_IDS, feeBase, type Mode } from '../../../shared/logistics';
+import { MODES, MODE_IDS, shipFee, type Mode } from '../../../shared/logistics';
 
 type Item = { key: string; label: string; qty: number; unit: number; needed: boolean };
-type View = { buildings: Array<{ id: BuildingId; label: string; icon: string; items: Item[] }>; cfg: Record<string, AutoCfg>; log: SaleLogRow[]; truck: { id: string; cap: number } | null };
+type View = { buildings: Array<{ id: BuildingId; label: string; icon: string; items: Item[] }>; cfg: Record<string, AutoCfg>; log: SaleLogRow[]; truck: { id: string; cap: number } | null; index?: number };
 const fmt = (n: number) => Math.floor(n).toLocaleString('en-US');
 const ago = (t: number) => { const m = Math.max(0, Math.round((Date.now() - t) / 60_000)); return m < 1 ? 'just now' : m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`; };
 
@@ -40,7 +40,7 @@ export function BuildingInventory({ building, compact }: { building: BuildingId;
             <tr key={it.key} data-testid={`bldg-row-${it.key}`}>
               <td><b>{it.label}</b><br /><small>{fmt(it.qty)} here · ~🪙 {fmt(it.unit)}/u</small></td>
               <td><input type="number" min={1} max={it.qty} value={qty[it.key] ?? String(it.qty)} onChange={(e) => setQty({ ...qty, [it.key]: e.target.value })} style={{ width: 70 }} />
-                <button type="button" disabled={busy || n < 1 || n > it.qty} onClick={() => void ship(it)} data-testid={`bldg-ship-${it.key}`}>🚚 Ship &amp; sell{mode !== 'truck' && n > 0 ? ` · fee 🪙 ${fmt(feeBase(mode, n))}` : ''}</button></td>
+                <button type="button" disabled={busy || n < 1 || n > it.qty} onClick={() => void ship(it)} data-testid={`bldg-ship-${it.key}`}>🚚 Ship &amp; sell{mode !== 'truck' && n > 0 ? ` · fee 🪙 ${fmt(shipFee(mode, n, v?.index))}` : ''}</button></td>
               <td className="bldg-auto"><label><input type="checkbox" checked={c.on} onChange={(e) => void setCfg(it.key, { on: e.target.checked })} data-testid={`bldg-auto-${it.key}`} /> Auto-sell</label>
                 <label>Keep <input type="number" min={0} value={c.reserve} onChange={(e) => void setCfg(it.key, { reserve: Math.max(0, Math.floor(Number(e.target.value) || 0)) })} style={{ width: 64 }} data-testid={`bldg-reserve-${it.key}`} /></label>
                 <label title={it.needed ? 'Used by your recipes / running units' : 'Not used by any recipe'}><input type="checkbox" checked={c.keepRecipe} onChange={(e) => void setCfg(it.key, { keepRecipe: e.target.checked })} /> Keep for my recipes{it.needed ? ' ⚙' : ''}</label></td>

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { request, socket } from '@/lib/net';
 import { usePanelDrag } from '@/lib/panelDrag';
 import { WarehouseSales } from './BuildingInventory';
-import { HUBS, HUB_IDS, MODES, feeBase, fmtEta, type HubId, type LiveVehicle, type Mode, type TruckModel } from '../../../shared/logistics';
+import { HUBS, HUB_IDS, MODES, shipFee, fmtEta, type HubId, type LiveVehicle, type Mode, type TruckModel } from '../../../shared/logistics';
 
 type Stack = { type: string; id: string; qty: number; name: string };
 type Ship = { id: string; ownerName: string; toName: string; mode: Mode; from: HubId; to: HubId; itemId: string; type: string; qty: number; fee: number; departAt: number; arriveAt: number };
@@ -27,7 +27,7 @@ export function FreightYard({ onClose, me }: { onClose: () => void; me: string |
   useEffect(() => { if (v && !item && v.stacks[0]) setItem(`${v.stacks[0].type}:${v.stacks[0].id}`); if (v && !v.fleet.length && mode === 'truck') setMode('hired'); }, [v]); // eslint-disable-line react-hooks/exhaustive-deps
   const st = v?.stacks.find((s) => `${s.type}:${s.id}` === item); const now = Date.now();
   const idx = v ? (v.modes.find((m) => m.id === 'ship')?.minFeeNow ?? 5) / 5 : 1;
-  const fee = mode === 'truck' ? 0 : Math.round(feeBase(mode, qty) * idx);
+  const fee = mode === 'truck' ? 0 : shipFee(mode, qty, idx);
   const freeTruck = v?.fleet.find((t) => !t.busy);
   const act = async (ev: string, data: unknown, ok: (a: Record<string, unknown>) => string) => { setBusy(true); setMsg(null); const a = await request(ev, data); setBusy(false); setMsg(a.ok ? ok(a as unknown as Record<string, unknown>) : a.error ?? 'Something went wrong.'); load(); };
   const send = () => { if (!st) return; const [type, id] = item.split(':'); void act('freight_ship', { type, id, qty, mode, from: 'city', to, recipient: who.trim() || undefined }, (a) => { const s = (a as { shipment: Ship }).shipment; return `${MODES[mode].icon} ${qty} ${st.name} booked. ${s.departAt > Date.now() ? `Departs ${clock(s.departAt)}, ` : ''}arrives ${clock(s.arriveAt)}.${s.fee ? ` Fee 🪙 ${fmt(s.fee)}.` : ''}`; }); };

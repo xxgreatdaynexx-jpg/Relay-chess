@@ -9,6 +9,7 @@ import { request, socket } from '@/lib/net';
 import { flyHome } from '@/lib/travel';
 import { usePanelDrag } from '@/lib/panelDrag';
 import { BuildingInventory } from './BuildingInventory';
+import { MODES, MODE_IDS, type Mode } from '../../../shared/logistics';
 
 const chips = (n: number) => Math.floor(n).toLocaleString('en-US');
 type View = { fort: FortState; index: number; today: { gross: number; paid: number }; cap: number; demand: number; value: number };
@@ -28,13 +29,14 @@ export function FortMcMap() {
 
   const apply = useCallback((r: { ok: boolean } & Partial<View>) => { if (r.fort) { setView(r as View); worldRef.current?.setFort(r.fort); } }, []);
   const load = useCallback(() => { void request('fort_state').then((r) => apply(r as { ok: boolean } & Partial<View>)); }, [apply]);
+  const [fMode, setFMode] = useState<Mode>('truck');
   const act = async (body: Record<string, unknown>, ok?: string) => {
     setBusy(true); setMsg(null);
-    const r = await request('fort_act', body) as { ok: boolean; error?: string; result?: { paid?: number; shipped?: Array<[string, number]> } } & Partial<View>;
+    const r = await request('fort_act', body) as { ok: boolean; error?: string; result?: { paid?: number; shipped?: Array<[string, number]>; loads?: number; fee?: number; arriveAt?: number; partial?: string | null } } & Partial<View>;
     setBusy(false); apply(r);
     if (!r.ok) setMsg(r.error ?? 'Failed.');
     else if (r.result?.paid !== undefined) setMsg(`Sold for 🪙 ${chips(r.result.paid)}.`);
-    else if (r.result?.shipped) setMsg(`Shipped ${r.result.shipped.map(([i, n]) => `${chips(n)} ${i}`).join(', ')} to your factory storage.`);
+    else if (r.result?.shipped) { const x = r.result; const mins = x.arriveAt ? Math.max(1, Math.round((x.arriveAt - Date.now()) / 60_000)) : 0; setMsg(`🚚 ${x.loads ?? 1} load${(x.loads ?? 1) === 1 ? '' : 's'} on the road to your factory: ${x.shipped!.map(([i, n]) => `${chips(n)} ${i}`).join(', ')}${x.fee ? ` (freight 🪙 ${chips(x.fee)})` : ' (your truck, free)'}${mins ? `, arriving in about ${mins} min` : ''}. It lands in factory storage on arrival.${x.partial ? ` Rest stays here: ${x.partial}` : ''}`); }
     else if (ok) setMsg(ok);
   };
 
@@ -115,7 +117,8 @@ export function FortMcMap() {
             <small>Fort McChud has no market: ship to the Chud City Warehouse and it sells there on arrival.</small>
             <small>Today sold 🪙 {chips(px(view!.today.gross))} gross, paid 🪙 {chips(view!.today.paid)}. Daily tiers: {SELL_TIERS.map((t, i) => `${pct(t.rate * 100)}${t.upTo === Infinity ? ' after' : ` to ${chips(px(t.upTo))}`}`).join(' · ')}.</small>
             <BuildingInventory building="fortmc" />
-            <button type="button" disabled={busy} onClick={() => void act({ op: 'ship' })} data-testid="fort-ship">🚚 Ship ore + petcoke (as coal) to my factory</button>
+            <div className="bldg-modes">To my factory by: {MODE_IDS.map((m) => <button key={m} type="button" className={fMode === m ? 'on' : ''} onClick={() => setFMode(m)} data-testid={`fort-ship-mode-${m}`}>{MODES[m].icon} {MODES[m].label}</button>)}</div>
+            <button type="button" disabled={busy} onClick={() => void act({ op: 'ship', mode: fMode })} data-testid="fort-ship">🚚 Ship ore + petcoke (as coal) to my factory{fMode === 'truck' ? ' · your truck, free' : ' · freight fee'}</button>
           </>}
           {panel === 'mine' && <>
             <h3>⛏ Deep Ore Mine</h3>
