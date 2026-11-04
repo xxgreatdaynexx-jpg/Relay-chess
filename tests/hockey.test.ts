@@ -4,7 +4,8 @@ import {
   SKATE_MAX, TEAM_SIZE, cleanInput, driveBots, hkClock, hockeyBot, prizeWinners, rinkContain, type HkPlayer,
 } from '../shared/hockey.js';
 import { claimHockeyName, resetHockey, settleHockey } from '../server/hockey.js';
-import { resetBank } from '../server/casino-store.js';
+import { PgCasinoStore, resetBank } from '../server/casino-store.js';
+import { newDb } from 'pg-mem';
 import { LAUNCH } from '../shared/launchPopup.js';
 
 const run = (g: HockeyGame, s: number) => { const ev = []; for (let t = 0; t < s; t += HK_DT) ev.push(...g.tick()); return ev; };
@@ -183,6 +184,39 @@ describe('hockey: bots', () => {
     expect(goals).toBeGreaterThan(0);
     expect(maxSpeed).toBeGreaterThan(12);
   });
+  it('bots move the puck by passing and shooting, never by carrying it into the net', () => {
+    let passes = 0, shots = 0, goals = 0, carriedIn = 0;
+    for (const seed of [3, 7, 11, 19]) {
+      const g = new HockeyGame({ seed, periodS: 60 });
+      g.join('h1', 'Liam'); g.fillBots();
+      let prevCarrier: string | null = null;
+      for (let t = 0; t < 400 && g.phase !== 'ended'; t += HK_DT) {
+        driveBots(g);
+        const evs = g.tick();
+        for (const e of evs) {
+          if (e.ev === 'hk_pass') passes++;
+          if (e.ev === 'hk_shot') shots++;
+          if (e.ev === 'hk_goal') { goals++; if (prevCarrier) carriedIn++; }
+        }
+        prevCarrier = g.puck.carrier;
+      }
+    }
+    expect(passes).toBeGreaterThan(20);
+    expect(shots).toBeGreaterThan(10);
+    expect(goals).toBeGreaterThan(0);
+    expect(carriedIn).toBe(0);
+  });
+  it('goals by a bot replaced mid-match stay on the result sheet (and never qualify for a prize)', () => {
+    const g = live();
+    const team = (1 - (g.players.get('h1') as HkPlayer).team) as 0 | 1;
+    const bot = [...g.players.values()].find((p) => p.bot && p.team === team && p.role === 'S') as HkPlayer;
+    bot.goals = 2; bot.shots = 3;
+    g.join('h2', 'Dayne', { team });
+    expect(g.players.has(bot.id)).toBe(false);
+    g.finish();
+    const line = g.result!.players.find((p) => p.name === bot.name)!;
+    expect([line.goals, line.shots, line.playS]).toEqual([2, 3, 0]);
+  });
   it('a bot goalie tracks the puck along its crease', () => {
     const g = live(); const goalie = g.slotOwner(0, 0) as HkPlayer;
     Object.assign(g.puck, { x: -15, y: 8, carrier: null });
@@ -219,6 +253,34 @@ describe('hockey: prizes (wallet + ledger, conservative)', () => {
     for (let i = 2; i < 10; i++) settleHockey(res(`m${i}`));
     expect(bank.account('Liam').chips).toBe(before + HK_WIN_CHIPS * HK_DAILY_PAID_WINS);
     expect(bank.account('Dayne').chips).toBe(1000);
+  });
+});
+
+describe('hockey: daily cap persists in the ledger', () => {
+  beforeEach(() => { resetHockey(1); });
+  it('a restart (new bank on the same Postgres) still sees today\'s paid wins', async () => {
+    const db = newDb({ noAstCoverageCheck: true });
+    const { Pool } = db.adapters.createPg();
+    const pool = new Pool();
+    const res = (id: string) => ({ matchId: id, score: [2, 0] as [number, number], winner: 0 as const, stars: [], players: [
+      { id: 's1', name: 'Liam', team: 0 as const, role: 'S' as const, bot: false, goals: 1, assists: 0, shots: 2, saves: 0, playS: 100 },
+      { id: 's2', name: 'Dayne', team: 1 as const, role: 'S' as const, bot: false, goals: 0, assists: 0, shots: 1, saves: 0, playS: 100 },
+    ] });
+    const now = Date.UTC(2026, 10, 4, 15);
+    let bank = resetBank(); await bank.attach(new PgCasinoStore(pool));
+    claimHockeyName('s1', 'Liam'); claimHockeyName('s2', 'Dayne');
+    const start = bank.account('Liam').chips;
+    for (let i = 0; i < 3; i++) settleHockey(res(`a${i}`), now);
+    await bank.flush();
+    // "Restart": fresh hockey + fresh bank loading keys from Postgres.
+    resetHockey(1); bank = resetBank(); await bank.attach(new PgCasinoStore(pool));
+    claimHockeyName('s1', 'Liam'); claimHockeyName('s2', 'Dayne');
+    for (let i = 0; i < 6; i++) settleHockey(res(`b${i}`), now);
+    await bank.flush();
+    expect(bank.account('Liam').chips).toBe(start + HK_WIN_CHIPS * HK_DAILY_PAID_WINS);
+    // Next UTC day pays again.
+    settleHockey(res('c0'), now + 86_400_000);
+    expect(bank.account('Liam').chips).toBe(start + HK_WIN_CHIPS * (HK_DAILY_PAID_WINS + 1));
   });
 });
 

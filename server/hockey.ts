@@ -18,8 +18,9 @@ game.fillBots();
 let ticker: ReturnType<typeof setInterval> | null = null;
 /** socket id -> signed-in account name (guests are absent and never paid). */
 const claimed = new Map<string, string>();
-/** account(lower) -> { day, paid wins today } */
-const paidToday = new Map<string, { day: string; n: number }>();
+/** Match ids already settled this run (a match never outlives the process). */
+const settled = new Set<string>();
+export const hockeyCapKey = (day: string, acctKey: string, n: number) => `hockey-win:${day}:${acctKey}:${n}`;
 const acct = (n: string) => n.trim().toLowerCase();
 let lastResultId = '';
 
@@ -30,14 +31,15 @@ export function resetHockey(seed?: number): HockeyGame {
   ticker = null;
   game = new HockeyGame({ seed, periodS: devPeriodS() });
   game.fillBots();
-  claimed.clear(); paidToday.clear(); lastResultId = '';
+  claimed.clear(); settled.clear(); lastResultId = '';
   return game;
 }
 
 /** Pays the win prize once per finished match. Returns the result with `prize` and `account` filled in. */
 export function settleHockey(r: HkResult, now = Date.now()): HkResult {
-  if (lastResultId === r.matchId) return r;
+  if (lastResultId === r.matchId || settled.has(r.matchId)) return r;
   lastResultId = r.matchId;
+  settled.add(r.matchId); if (settled.size > 500) settled.delete(settled.values().next().value as string);
   const totalPlayS = Math.max(0, ...r.players.map((p) => p.playS));
   for (const p of r.players) { const a = !p.bot ? claimed.get(p.id) : undefined; if (a) p.account = a; }
   const winners = prizeWinners({ winner: r.winner, players: r.players, totalPlayS });
@@ -46,13 +48,13 @@ export function settleHockey(r: HkResult, now = Date.now()): HkResult {
   const paid: string[] = [];
   for (const name of winners) {
     const k = acct(name);
-    const d = paidToday.get(k);
-    const n = d && d.day === day ? d.n : 0;
-    if (n >= HK_DAILY_PAID_WINS) continue;
-    if (getBank().transfer(name, amount, { key: `hockey-win:${r.matchId}:${k}`, game: 'hockey', memo: 'Hockey win' })) {
-      paidToday.set(k, { day, n: n + 1 });
-      paid.push(name);
-    }
+    // The daily cap lives in the ledger: win n of the day uses tx_key hockey-win:<day>:<acct>:<n> (n = 1..cap). Keys are
+    // UNIQUE in wallet_transactions and reloaded on boot, so the cap survives restarts and other instances.
+    const bank = getBank();
+    let n = 1;
+    while (n <= HK_DAILY_PAID_WINS && bank.hasKey(hockeyCapKey(day, k, n))) n++;
+    if (n > HK_DAILY_PAID_WINS) continue;
+    if (bank.transfer(name, amount, { key: hockeyCapKey(day, k, n), game: 'hockey', memo: `Hockey win ${r.matchId}` })) paid.push(name);
   }
   if (paid.length) r.prize = { names: paid, amount };
   return r;

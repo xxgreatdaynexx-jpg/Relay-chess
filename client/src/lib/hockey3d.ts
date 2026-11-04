@@ -82,6 +82,8 @@ export class Hockey3D {
   private trail: THREE.Mesh;
   private trailPts: THREE.Vector3[] = [];
   private goalLights: THREE.Mesh[] = [];
+  /** Hanging rigs/jumbotron: hidden whenever the camera is above them (they would block the ice on phones). */
+  private overhead: THREE.Mesh[] = [];
   private goalLamps: THREE.PointLight[] = [];
   private burst: THREE.Points;
   private burstV: Float32Array;
@@ -178,8 +180,8 @@ export class Hockey3D {
     crowd.count = n; crowd.instanceMatrix.needsUpdate = true; s.add(crowd);
     // overhead light rigs + jumbotron
     const rigMat = new THREE.MeshStandardMaterial({ color: '#333', emissive: '#fff6dd', emissiveIntensity: 1.5 });
-    for (const x of [-20, -10, 0, 10, 20]) for (const z of [-8, 8]) { const b = new THREE.Mesh(new THREE.BoxGeometry(3, 0.15, 0.6), rigMat); b.position.set(x, 22, z); s.add(b); }
-    const jumbo = new THREE.Mesh(new THREE.BoxGeometry(5, 3, 5), new THREE.MeshStandardMaterial({ color: '#111', emissive: '#1b2a55', emissiveIntensity: 0.8 })); jumbo.position.set(0, 16, 0); s.add(jumbo);
+    for (const x of [-20, -10, 0, 10, 20]) for (const z of [-8, 8]) { const b = new THREE.Mesh(new THREE.BoxGeometry(3, 0.15, 0.6), rigMat); b.position.set(x, 22, z); s.add(b); this.overhead.push(b); }
+    const jumbo = new THREE.Mesh(new THREE.BoxGeometry(5, 3, 5), new THREE.MeshStandardMaterial({ color: '#111', emissive: '#1b2a55', emissiveIntensity: 0.8 })); jumbo.position.set(0, 16, 0); s.add(jumbo); this.overhead.push(jumbo);
     // ---- shared player parts
     this.geo.torso = new THREE.CapsuleGeometry(0.3, 0.55, 4, 10);
     this.geo.leg = new THREE.CapsuleGeometry(0.11, 0.55, 3, 8);
@@ -331,6 +333,7 @@ export class Hockey3D {
     const sh = this.shake * 0.4;
     this.camera.position.set(this.camPos.x + (Math.random() - 0.5) * sh, this.camPos.y + (Math.random() - 0.5) * sh, this.camPos.z);
     this.camera.lookAt(this.camLook);
+    for (const o of this.overhead) o.visible = this.camera.position.y < o.position.y - 2;
     this.renderer.render(this.scene, this.camera);
   }
 

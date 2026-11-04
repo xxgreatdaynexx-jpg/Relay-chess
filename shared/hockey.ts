@@ -169,6 +169,8 @@ export class HockeyGame {
   clock: number;
   score: [number, number] = [0, 0];
   matchId = '';
+  /** Players who left or were replaced mid-match; their goals/saves still show on the result (never paid). */
+  gone: HkPlayer[] = [];
   lastGoal: { team: HkTeam; by: string; assist: string | null; at: number } | null = null;
   result: HkResult | null = null;
   shotsOn: [number, number] = [0, 0];
@@ -211,7 +213,7 @@ export class HockeyGame {
         const cur = this.slotOwner(team, slot);
         if (cur && !cur.bot) continue;
         if (slot === 0 && !want.goalie && slots.slice(0, 3).some((s) => { const c = this.slotOwner(team, s); return !c || c.bot; })) continue;
-        if (cur) this.players.delete(cur.id);
+        if (cur) { this.players.delete(cur.id); if (this.phase !== 'lobby') this.gone.push(cur); }
         const p = this.makePlayer(id, name, team, slot, false);
         if (cur && this.phase !== 'lobby') { Object.assign(p, { x: cur.x, y: cur.y, vx: cur.vx, vy: cur.vy, a: cur.a }); if (this.puck.carrier === cur.id) this.puck.carrier = id; }
         this.players.set(id, p);
@@ -237,6 +239,7 @@ export class HockeyGame {
     const p = this.players.get(id);
     if (!p || p.bot) return false;
     this.players.delete(id);
+    if (this.phase !== 'lobby') this.gone.push(p);
     if (this.puck.carrier === id) this.puck.carrier = null;
     this.fillBots();
     if (!this.humans().length) this.resetToLobby();
@@ -267,6 +270,7 @@ export class HockeyGame {
     this.phase = 'lobby'; this.phaseLeft = LOBBY_S; this.period = 1; this.clock = this.periodS; this.score = [0, 0]; this.shotsOn = [0, 0];
     this.result = null; this.lastGoal = null;
     for (const p of this.players.values()) { p.goals = p.assists = p.shots = p.saves = 0; p.playS = 0; }
+    this.gone = [];
     this.placeFaceoff();
   }
 
@@ -280,6 +284,7 @@ export class HockeyGame {
     this.matchId = `hk-${Math.floor(this.rnd() * 1e9).toString(36)}-${this.matchNo}`;
     this.period = 1; this.clock = this.periodS; this.score = [0, 0]; this.shotsOn = [0, 0]; this.result = null;
     for (const p of this.players.values()) { p.goals = p.assists = p.shots = p.saves = 0; p.playS = 0; p.joinedAt = this.time; }
+    this.gone = [];
     return this.faceoff();
   }
 
@@ -341,6 +346,14 @@ export class HockeyGame {
   finish(): HkEvent[] {
     const winner: HkTeam | null = this.score[0] === this.score[1] ? null : this.score[0] > this.score[1] ? 0 : 1;
     const players = [...this.players.values()].map((p) => ({ id: p.id, name: p.name, team: p.team, role: p.role, bot: p.bot, goals: p.goals, assists: p.assists, shots: p.shots, saves: p.saves, playS: p.playS }));
+    for (const q of this.gone) {
+      if (!(q.goals + q.assists + q.shots + q.saves)) continue;
+      const same = players.find((x) => x.id === q.id && x.team === q.team);
+      if (same) { same.goals += q.goals; same.assists += q.assists; same.shots += q.shots; same.saves += q.saves; continue; }
+      // Departed players keep their line on the sheet but playS 0, so they can never qualify for a prize.
+      players.push({ id: `${q.id}~${players.length}`, name: q.name, team: q.team, role: q.role, bot: q.bot, goals: q.goals, assists: q.assists, shots: q.shots, saves: q.saves, playS: 0 });
+    }
+    players.sort((a, b) => a.team - b.team);
     const stars = [...players].sort((a, b) => (b.goals * 3 + b.assists * 2 + b.saves * 0.5 + b.shots * 0.2) - (a.goals * 3 + a.assists * 2 + a.saves * 0.5 + a.shots * 0.2)).slice(0, 3).map((p) => p.id);
     this.result = { matchId: this.matchId, score: [...this.score] as [number, number], winner, players, stars };
     this.phase = 'ended'; this.phaseLeft = RESULT_S;
@@ -576,15 +589,28 @@ export function hockeyBot(g: HockeyGame, p: HkPlayer): HkInput {
   }
   const carrier = pk.carrier ? g.players.get(pk.carrier) : undefined;
   if (carrier?.id === p.id) {
+    // Carriers move the puck by passing and shooting; they never skate it into the net. The carry target stops at the
+    // top of the slot, so the only ways forward are a shot (in range) or a pass to an open teammate further up.
+    const dir = Math.sign(goalX);
     const dGoal = Math.hypot(goalX - p.x, p.y);
-    // Pressure: an opponent close in front -> pass.
-    const pressured = [...g.players.values()].some((o) => o.team !== p.team && o.role === 'S' && Math.hypot(o.x - p.x, o.y - p.y) < 1.6);
-    const aimY = (g.rnd() - 0.5) * GOAL_HALF * 1.6;
-    if (dGoal < 11 && Math.abs(p.x) < GOAL_X - 0.5) return { ...toward(goalX, aimY), shoot: 0.6 + g.rnd() * 0.4 };
-    if (pressured && g.rnd() < 0.25) return { ...toward(goalX, 0), pass: true };
-    // Drive wide of the net to the slot.
+    const inFront = dir * (goalX - p.x) > 1.5;
+    const pressured = [...g.players.values()].some((o) => o.team !== p.team && o.role === 'S' && Math.hypot(o.x - p.x, o.y - p.y) < 1.8);
+    if (inFront && (dGoal < 7 || (dGoal < 14 && (pressured || g.rnd() < 0.12)))) {
+      const aimY = (g.rnd() < 0.5 ? -1 : 1) * GOAL_HALF * (0.45 + g.rnd() * 0.4);
+      const i = toward(goalX, aimY, dGoal < 7 ? 0.2 : 0.6);
+      return { ...i, aim: Math.atan2(aimY - p.y, goalX - p.x), shoot: 0.65 + g.rnd() * 0.35 };
+    }
+    const ahead = [...g.players.values()].filter((m) => m.team === p.team && m.id !== p.id && m.role === 'S' && dir * (m.x - p.x) > 2
+      && ![...g.players.values()].some((o) => o.team !== p.team && Math.hypot(o.x - m.x, o.y - m.y) < 1.8));
+    const mate = ahead.sort((a, b) => Math.hypot(goalX - a.x, a.y) - Math.hypot(goalX - b.x, b.y))[0];
+    if (mate && (pressured || g.rnd() < 0.06)) {
+      const i = toward(mate.x, mate.y, 0.5);
+      return { ...i, aim: Math.atan2(mate.y + mate.vy * 0.3 - p.y, mate.x + mate.vx * 0.3 - p.x), pass: true };
+    }
+    if (pressured && g.rnd() < 0.3) return { ...toward(goalX, 0, 0.6), pass: true };
+    // Drive to the top of the slot (never past it).
     const lane = Math.abs(p.y) > 4 ? Math.sign(p.y) * 3 : p.y;
-    return toward(goalX - Math.sign(goalX) * 6, lane);
+    return toward(goalX - dir * 9, lane);
   }
   const mates = [...g.players.values()].filter((m) => m.team === p.team && m.role === 'S');
   const chaser = mates.reduce((b, m) => (Math.hypot(m.x - pk.x, m.y - pk.y) < Math.hypot(b.x - pk.x, b.y - pk.y) ? m : b), mates[0]);

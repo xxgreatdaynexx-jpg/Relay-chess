@@ -175,6 +175,8 @@ function HockeyGameView({ onClose }: { onClose: () => void }) {
   const onMouseUp = (e: React.PointerEvent) => { if (e.pointerType === 'mouse' && e.button === 0) releaseShot(); };
 
   const seenRes = useRef('');
+  // A new match (faceoff/play) closes the previous match's card so it never sits over live play.
+  useEffect(() => { if (snap && (snap.ph === 'faceoff' || snap.ph === 'play' || snap.ph === 'goal') && !snap.res) setResult(null); }, [snap?.ph, snap?.res]);
   useEffect(() => { const r = snap?.res; if (r && joined && r.matchId !== seenRes.current) { seenRes.current = r.matchId; setResult(r); setBanner(null); } }, [snap?.res, joined]);
   const me = snap?.p.find((p) => p.id === joined?.id);
   const humans = (t: HkTeam) => snap?.p.filter((p) => p.t === t && !p.b) ?? [];
