@@ -20,5 +20,6 @@ export const LAUNCH: LaunchPopup = {
     { icon: '📈', title: 'Net worth charts', text: 'Player profiles now chart net worth over time.' },
     { icon: '🛢️', title: 'Fort McChud', text: 'Fly from the airport to a new oil-sands map. Lease tracts, drill wells, lay pipelines and run a refinery, gas plant and cracker to make fuel and plastics. Or build the very expensive Deep Ore Mine.' },
     { icon: '💰', title: 'Dividend totals', text: 'See every chip you\'ve earned from dividends on your Stocks portfolio and profile.' },
+    { icon: '🏭', title: 'Twice the factory recipes', text: 'The factory now has 111 recipes, double what it had: bronze, electrum and crystal glass, steel beams and cables, batteries, microchips and solar panels, new jewelry, and huge builds like tractors, drones, satellites, excavators and mech suits. The food line adds cake, jam, pasta, smoothies and more.' },
   ],
 };
