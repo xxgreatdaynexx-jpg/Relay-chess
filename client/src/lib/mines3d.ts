@@ -1,4 +1,5 @@
 /** Mines: three.js cave scene (lazy-loaded). Map coords are (x, y) on the floor and z up; three.js is y-up, so (x, z, y). */
+import { detectWorldTier } from './worldTier';
 import * as THREE from 'three';
 import { cityLabel, fitLabel } from './labelSprite';
 import { applyPickSkin, skinnedPickaxe } from './pickaxeModel';
@@ -139,7 +140,7 @@ export class Mines3D {
     this.floor = cave.floor; const classic = caveId === 'mine' && cave.floor < 10;
     this.caveNodes = MINE_NODES;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
-    this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    this.renderer.setPixelRatio(Math.min(detectWorldTier() === 'low' ? 1 : 2, window.devicePixelRatio || 1));
     this.scene.background = new THREE.Color(classic ? '#0b0907' : T.sky);
     const lava = T.hazard === 'lava'; // Magma Depths brightened (request #21): lighter, further fog + stronger ambient/hemi + warmer lava spill
     this.scene.fog = new THREE.Fog(classic ? '#0b0907' : lava ? '#3a1507' : T.fog, lava ? 8 : 6, T.hazard === 'ice' ? 32 : lava ? 34 : 26);

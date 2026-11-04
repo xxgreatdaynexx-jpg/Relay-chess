@@ -6,8 +6,19 @@ export function worldTier(env: { cores?: number; memory?: number; dpr?: number; 
   if (touch || w < 900 || cores < 8 || mem < 8) return 'mid';
   return 'high';
 }
+/** Manual override: `?lowgfx` (or `?lowgfx=1`) forces 'low'; `?gfx=low|mid|high` forces that tier. The choice is
+ *  remembered in localStorage ('gfx'); `?gfx=auto` (or `?lowgfx=0`) clears it. Null = auto-detect. */
+export function gfxOverride(search: string, store?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null): WorldTier | null {
+  const q = new URLSearchParams(search); const lg = q.get('lowgfx'), g = q.get('gfx');
+  let v: string | null = lg !== null ? (lg === '0' || lg === 'false' ? 'auto' : 'low') : g;
+  if (v === 'auto') { try { store?.removeItem('gfx'); } catch { /* private mode */ } return null; }
+  if (v === 'low' || v === 'mid' || v === 'high') { try { store?.setItem('gfx', v); } catch { /* ignore */ } return v; }
+  try { v = store?.getItem('gfx') ?? null; } catch { v = null; }
+  return v === 'low' || v === 'mid' || v === 'high' ? v : null;
+}
 export function detectWorldTier(): WorldTier {
   if (typeof navigator === 'undefined') return 'mid';
+  const o = gfxOverride(typeof location !== 'undefined' ? location.search : '', typeof localStorage !== 'undefined' ? localStorage : null); if (o) return o;
   const n = navigator as Navigator & { deviceMemory?: number };
   return worldTier({ cores: n.hardwareConcurrency, memory: n.deviceMemory ?? 8, dpr: window.devicePixelRatio, touch: matchMedia?.('(pointer: coarse)').matches, width: window.innerWidth });
 }
