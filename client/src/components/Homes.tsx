@@ -76,6 +76,7 @@ export function FurnitureStore({ onClose }: { onClose: () => void }) {
 type Peer = { sid: string; name: string; x: number; z: number; ry: number };
 type HomeView = { id: string; owner: string; layout: HomeLayout; access: HomeAccess; invites: string[] };
 type ChatLine = { sid: string; name: string; text: string; at: number };
+let leftHome: string | null = null;
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 function nameTag(name: string, color = '#e8c26a') { const t = drawLabel(name, { bg: 'rgba(10,8,22,0.82)', border: color, text: '#dcd8e6' }); const s = new THREE.Sprite(labelMaterial(t)); s.scale.set(1.6, 0.4, 1); s.position.y = 2.2; return s; }
@@ -87,7 +88,7 @@ export function HomeInterior({ me, enter, onClose }: { me: string; enter: { home
   const [build, setBuild] = useState(false); const [locker, setLocker] = useState<Locker | undefined>(enter.locker); const [hold, setHold] = useState<Placed | null>(null); const [pick, setPick] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null); const [showAccess, setShowAccess] = useState(false); const [inv, setInv] = useState(enter.home.invites.join(', '));
   const label = propertyById(home.id)?.label ?? home.id; const owner = enter.owner;
-  const st = useRef({ layout: home.layout, peers: new Map<string, Peer>(enter.peers.map((p) => [p.sid, p])), hold: null as Placed | null, pick: null as string | null, build: false, ghostOk: true, target: null as THREE.Vector3 | null, dirty: 0 });
+  const st = useRef({ me: enter.me, layout: home.layout, peers: new Map<string, Peer>(enter.peers.map((p) => [p.sid, p])), hold: null as Placed | null, pick: null as string | null, build: false, ghostOk: true, target: null as THREE.Vector3 | null, dirty: 0 });
   st.current.layout = home.layout; st.current.hold = hold; st.current.pick = pick; st.current.build = build;
   const free = useMemo(() => { const m = new Map<string, number>(); for (const it of locker?.items ?? []) if (FURN_BY_ID.has(it.item)) m.set(it.item, it.qty - it.placed); for (const p of home.layout.items) m.set(p.f, (m.get(p.f) ?? 0)); return m; }, [locker, home.layout]);
   const save = useCallback(async (layout: HomeLayout) => {
@@ -104,8 +105,13 @@ export function HomeInterior({ me, enter, onClose }: { me: string; enter: { home
     const onChat = (d: ChatLine) => setChat((c) => [...c.slice(-30), d]);
     const onLayout = (d: { id: string; layout: HomeLayout }) => { if (d.id === home.id) setHome((h) => ({ ...h, layout: d.layout })); };
     const onKick = (d: { id: string; why: string }) => { if (d.id === home.id) onClose(d.why); };
-    socket.on('home_peers', onPeers); socket.on('home_pos', onPos); socket.on('home_chat', onChat); socket.on('home_layout', onLayout); socket.on('home_kicked', onKick);
-    return () => { socket.off('home_peers', onPeers); socket.off('home_pos', onPos); socket.off('home_chat', onChat); socket.off('home_layout', onLayout); socket.off('home_kicked', onKick); void request('home_leave'); };
+    // A dropped socket makes the server drop us from the room; on reconnect, walk back in (same access check) so peers stay in sync.
+    const onReconnect = (delay = 400) => { setTimeout(() => { void request('home_enter', { id: home.id }).then((a) => { if (!a.ok) { onClose(a.error ?? 'You were disconnected.'); return; } const r = a as unknown as { peers: Peer[]; home: HomeView; me: string }; const old = st.current.peers.get(st.current.me); st.current.me = r.me; const mine = r.peers.find((p) => p.sid === r.me); if (old && mine) { mine.x = old.x; mine.z = old.z; } onPeers({ id: home.id, peers: r.peers }); setHome((h) => ({ ...h, layout: r.home.layout, access: r.home.access })); }); }, delay); };
+    // React may tear this effect down and set it up again without leaving the room in the UI (StrictMode, fast refresh): rejoin then.
+    if (leftHome === home.id) { leftHome = null; onReconnect(0); }
+    const onConnect = () => onReconnect();
+    socket.on('home_peers', onPeers); socket.on('home_pos', onPos); socket.on('home_chat', onChat); socket.on('home_layout', onLayout); socket.on('home_kicked', onKick); socket.on('connect', onConnect);
+    return () => { socket.off('home_peers', onPeers); socket.off('home_pos', onPos); socket.off('home_chat', onChat); socket.off('home_layout', onLayout); socket.off('home_kicked', onKick); socket.off('connect', onConnect); leftHome = home.id; void request('home_leave'); };
   }, [home.id, onClose]);
 
   // three.js room
@@ -159,9 +165,9 @@ export function HomeInterior({ me, enter, onClose }: { me: string; enter: { home
       let vx = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0), vz = (keys.has('s') || keys.has('arrowdown') ? 1 : 0) - (keys.has('w') || keys.has('arrowup') ? 1 : 0);
       if (vx || vz) st.current.target = null; else if (st.current.target) { const dx = st.current.target.x - myPos.x, dz = st.current.target.z - myPos.z; const dd = Math.hypot(dx, dz); if (dd < 0.1) st.current.target = null; else { vx = dx / dd; vz = dz / dd; } }
       if (vx || vz) { const n = Math.hypot(vx, vz); myPos.x = Math.min(GRID_W - 0.3, Math.max(0.3, myPos.x + (vx / n) * 3 * dt)); myPos.z = Math.min(GRID_D - 0.3, Math.max(0.3, myPos.z + (vz / n) * 3 * dt)); myPos.ry = Math.atan2(vx, vz); if (now - sent > 150) { sent = now; socket.emit('home_pos', myPos); } }
-      const me2 = st.current.peers.get(enter.me); if (me2) Object.assign(me2, myPos);
+      const me2 = st.current.peers.get(st.current.me); if (me2) Object.assign(me2, myPos);
       for (const p of st.current.peers.values()) {
-        let a = rigs.get(p.sid); if (!a) { const rig = buildMiner(null); rig.pick.visible = false; rig.root.scale.setScalar(0.55); const tag = nameTag(p.name, p.sid === enter.me ? '#5affc8' : '#e8c26a'); tag.scale.set(1.6 / 0.55, 0.4 / 0.55, 1); tag.position.y = 2.2 / 0.55 * 0.75; rig.root.add(tag); sc.add(rig.root); rig.root.position.set(p.x, 0, p.z); a = { rig, tag }; rigs.set(p.sid, a); }
+        let a = rigs.get(p.sid); if (!a) { const rig = buildMiner(null); rig.pick.visible = false; rig.root.scale.setScalar(0.55); const tag = nameTag(p.name, p.sid === st.current.me ? '#5affc8' : '#e8c26a'); tag.scale.set(1.6 / 0.55, 0.4 / 0.55, 1); tag.position.y = 2.2 / 0.55 * 0.75; rig.root.add(tag); sc.add(rig.root); rig.root.position.set(p.x, 0, p.z); a = { rig, tag }; rigs.set(p.sid, a); }
         const rp = a.rig.root.position; rp.x += (p.x - rp.x) * Math.min(1, dt * 10); rp.z += (p.z - rp.z) * Math.min(1, dt * 10); a.rig.root.rotation.y = p.ry - Math.PI / 2; animateMiner(a.rig, dt, 0);
       }
       for (const [sid, a] of rigs) if (!st.current.peers.has(sid)) { sc.remove(a.rig.root); rigs.delete(sid); }
