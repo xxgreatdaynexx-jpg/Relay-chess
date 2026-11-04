@@ -48,7 +48,7 @@ function OwnedHomes2D({ owned, onPick }: { owned: Map<string, OwnedProperty>; on
       {cap < homes.length && <button type="button" className="owner-tag more" onClick={() => setAll(true)}>+{homes.length - cap} more</button>}</div></section>;
 }
 
-export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }: { id: string; owned: Map<string, OwnedProperty>; me: string | null; onClose: () => void; onFarm?: () => void; onKitchen?: () => void; onDone?: (ev: 're_buy' | 're_sell', text: string, paid?: number) => void }) {
+export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }: { id: string; owned: Map<string, OwnedProperty>; me: string | null; onClose: () => void; onFarm?: () => void; onKitchen?: () => void; onDone?: (ev: 're_buy' | 're_sell' | 're_buyout', text: string, paid?: number) => void }) {
   useDoing('realestate', propertyById(id)?.label);
   const dragDeed = usePanelDrag('deed');
   const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState<null | 're_buy' | 're_sell' | 're_buyout'>(null); const [msg, setMsg] = useState<string | null>(null); const wallet = useWalletChips(); useEffect(() => setMsg(null), [id]); // Tess QA #5: switching deeds clears the last deed's status
@@ -188,6 +188,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
     return () => { dead = true; socket.off('re_changed', load); };
   }, []);
   useEffect(() => { worldRef.current?.setOwned([...owned.keys()]); worldRef.current?.setOwnerLabels([...owned.values()].filter((o) => isHomeProperty(propertyById(o.id))).map((o) => ({ id: o.id, owner: o.owner }))); }, [owned, loading]);
+  const freight = panel.k === 'freight'; const setFreight = (v: boolean) => setPanel((c) => (v ? { k: 'freight' } : closePanel(c, 'freight')));
   const dealer = panel.k === 'dealer'; const setDealer = (v: boolean) => setPanel((c) => (v ? { k: 'dealer' } : closePanel(c, 'dealer')));
   const mechanic = panel.k === 'mechanic'; const setMechanic = (v: boolean) => setPanel((c) => (v ? { k: 'mechanic' } : closePanel(c, 'mechanic')));
   const [nitro, setNitro] = useState<{ have: number; full: number; on: boolean } | null>(null);

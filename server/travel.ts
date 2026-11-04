@@ -105,6 +105,6 @@ export function registerTravel(_io: Server, socket: Socket): void {
   });
   const need = () => { const n = nameOf(); if (!n) throw new TravelError('Sign in to fly.'); return n; };
   on('trip_status', async () => { const n = nameOf(); return { ...travel.status(n), jet: n ? await jetHook(n).catch(() => null) : null }; });
-  on('trip_buy', () => travel.fly(need()));
+  on('trip_buy', (b) => { const d = (b as { dest?: unknown } | undefined)?.dest; return travel.fly(need(), d === undefined ? 'resort' : (d as Destination)); });
   on('trip_home', () => travel.home(need()));
 }

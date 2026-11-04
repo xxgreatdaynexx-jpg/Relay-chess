@@ -142,7 +142,7 @@ function MarketList({ data, onPick }: { data: ListResp; onPick: (t: string) => v
 }
 
 
-interface CompanyResp { dayChg?: number; company: Row & { blurb: string; vol: number; beta: number; liquidity: number }; chart: Array<[number, number]>; stats?: KeyStats; news: NewsItem[]; upcoming: number; mine: { shares: number; cost: number } | null; maxOrder: number; drift: number; callLock?: boolean }
+interface CompanyResp { dayChg?: number; company: Row & { blurb: string; vol: number; beta: number; liquidity: number }; chart: Array<[number, number]>; stats?: KeyStats; news: NewsItem[]; mine: { shares: number; cost: number } | null; maxOrder: number; drift: number; callLock?: boolean }
 type Sub = 'overview' | 'chart' | 'financials' | 'news' | 'chain' | 'dividends' | 'holders';
 const SUBS: ReadonlyArray<readonly [Sub, string]> = [['overview', 'Overview'], ['chart', 'Chart'], ['financials', 'Key stats'], ['news', 'News'], ['chain', 'Options chain'], ['dividends', 'Dividends'], ['holders', 'Holders & activity']];
 function CompanyView({ ticker, onBack, onTraded, onOption }: { ticker: string; onBack: () => void; onTraded: () => void; onOption: (o: OptPrefill) => void }) {
@@ -185,7 +185,7 @@ function CompanyView({ ticker, onBack, onTraded, onOption }: { ticker: string; o
       </>}
       {sub === 'chart' && <ProChart ticker={ticker} pts={d.chart} period={range} onPeriod={setRange} price={c.price} />}
       {sub === 'financials' && <>{d.stats ? <KeyStatsGrid s={d.stats} /> : <p className="text-xs opacity-60">No stats yet.</p>}{cards}<p className="mt-2 text-[11px] opacity-60">Beta {c.beta.toFixed(2)} <Info id="beta" /> · volatility {(c.vol * 100).toFixed(1)}%/day <Info id="volatility" /></p></>}
-      {sub === 'news' && <><h4 className="text-xs uppercase tracking-wide opacity-70">{c.ticker} news {d.upcoming ? <span className="normal-case opacity-60">· {d.upcoming} more expected today</span> : null}</h4><NewsFeed news={d.news} /></>}
+      {sub === 'news' && <><h4 className="text-xs uppercase tracking-wide opacity-70">{c.ticker} news</h4><NewsFeed news={d.news} /></>}
       {sub === 'chain' && <OptionChain ticker={ticker} price={c.price} onPick={onOption} />}
       {sub === 'dividends' && <Dividends c={c} stats={d.stats} mine={d.mine?.shares ?? 0} />}
       {sub === 'holders' && <Holders ticker={ticker} playerPct={c.playerPct} />}
@@ -203,7 +203,7 @@ function CompanyView({ ticker, onBack, onTraded, onOption }: { ticker: string; o
         {msg && <p className={`mt-1 text-xs ${msg.ok ? 'text-emerald-400' : 'text-rose-400'}`} data-testid="stk-msg">{msg.t}</p>}
       </div>
       {sub === 'overview' && <>
-        <h4 className="mt-3 text-xs uppercase tracking-wide opacity-70">News {d.upcoming ? <span className="normal-case opacity-60">· {d.upcoming} more expected today</span> : null}</h4>
+        <h4 className="mt-3 text-xs uppercase tracking-wide opacity-70">News</h4>
         <NewsFeed news={d.news.slice(0, 5)} />
       </>}
       {(sub === 'overview' || sub === 'holders') && <TradeFeed ticker={ticker} title={`Recent ${ticker} trades`} />}

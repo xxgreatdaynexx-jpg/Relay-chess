@@ -58,6 +58,12 @@ export class PopupStore {
   }
   private launchReady = false;
   private async ensureLaunch() { if (this.launchReady || !this.db) return; await this.db.query('CREATE TABLE IF NOT EXISTS launch_seen (player_key TEXT NOT NULL, launch_id TEXT NOT NULL, at BIGINT NOT NULL, PRIMARY KEY (player_key, launch_id))'); this.launchReady = true; }
+  /** Idempotent fixed-id insert (system messages seeded at boot); never re-queues an acked one. */
+  async seed(p: Popup): Promise<void> {
+    if (this.db) {
+      await this.db.query(`INSERT INTO admin_popups (id, player_key, player, sender, body, created_at, title, audio) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (id) DO NOTHING`, [p.id, pkey(p.player), p.player, p.from, p.text, p.createdAt, p.title ?? null, p.audio ?? null]);
+    } else if (!this.mem.has(p.id)) this.mem.set(p.id, { ...p });
+  }
   async status(id: string): Promise<'queued' | 'delivered' | null> {
     if (this.db) {
       const r = await this.db.query(`SELECT acked_at FROM admin_popups WHERE id=$1`, [id]);

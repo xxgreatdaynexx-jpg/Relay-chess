@@ -209,6 +209,7 @@ export function App() {
     <>
       <TopTabs />
       <NightlyEventBanner />
+      <JailScreen />
       <VolumeControl />
       <div className="app-panels">
         <BlackjackPanel />

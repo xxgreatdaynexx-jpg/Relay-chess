@@ -269,7 +269,7 @@ export class Exchange {
     const chart = await this.chart(c.ticker, range);
     // MU #9 v2: the header badge uses the exact figure the 1D chart shows (first 1D point → live price)
     const dayChg = seriesChange(periodSpec(range).ms === periodSpec('1d').ms && periodSpec(range).step === periodSpec('1d').step ? chart : await this.chart(c.ticker, '1d')).pct;
-    return { dayChg, callLock, company: { ...c, ...this.summary(c) }, chart, stats: await this.keyStats(c), period: range, news: this.news.filter((n) => n.ticker === c.ticker).slice(0, 20), upcoming: dailyEvents(c, utcDay(this.clock())).filter((e) => e.at > this.clock()).length, mine, maxOrder: maxOrderChips(c), drift: dailyDrift(c, this.inflPct, this.act) };
+    return { dayChg, callLock, company: { ...c, ...this.summary(c) }, chart, stats: await this.keyStats(c), period: range, news: this.news.filter((n) => n.ticker === c.ticker).slice(0, 20), mine, maxOrder: maxOrderChips(c), drift: dailyDrift(c, this.inflPct, this.act) };
   }
   /** MU #9: display-only key stats (P/E, EPS, ranges, realized volatility, avg volume). Reads history; changes nothing. */
   async keyStats(c: Company) {

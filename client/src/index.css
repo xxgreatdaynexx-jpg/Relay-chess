@@ -2258,6 +2258,38 @@ body.he-full-open { overflow: hidden; }
 /* #34: in the CSS full-screen fallback, hide the top bar (it sat over the table and the exit button) */
 body.he-full-open .top-tabs { visibility: hidden; }
 body.he-full-open .he-table.he-full { visibility: visible; }
+/* Fort McChud */
+.world.fortmc .world-title { color: #f4efe6; text-shadow: 0 2px 8px #6a3a10; } .world.fortmc .world-title span { color: #f2b630; }
+.fort-hud { position: absolute; left: 50%; transform: translateX(-50%); top: 58px; z-index: 5; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; font-size: 12px; pointer-events: none; }
+.fort-hud span { background: rgba(14,16,20,.82); border: 1px solid #f2b63066; border-radius: 10px; padding: 3px 8px; color: #f4efe6; } .fort-hud .bad { border-color: #ff5a4a; color: #ffb0a0; }
+.fort-panel { max-height: 72vh; overflow-y: auto; } .fort-panel button span { display: block; font-size: 11px; opacity: .7; font-weight: 400; }
+.fort-tabs { display: flex; flex-wrap: wrap; gap: 4px; } .fort-tabs button { min-width: 34px; padding: 4px 6px; } .fort-tabs button.on { outline: 2px solid #f2b630; }
+.fort-stock { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 8px; font-size: 12px; }
+.fort-unit { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 13px; } .fort-unit button { padding: 2px 8px; }
+.fort-panel .ok { color: #7ae08a; } .fort-panel .warn { color: #f2c84a; } .fort-panel .bad { color: #ff7a6a; }
+/* Marina + Hangar (Millionaire Update #10b / #11) */
+.fleet .dealer-box { background: linear-gradient(180deg, #0f1a24, #12141d); border-color: #d8b25a55; }
+.fleet .dealer-box header h3 { color: #f4d58a; }
+.fleet-owned { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 4px 8px; font-size: 13px; }
+.fleet-owned button { font-size: 12px; } .fleet-arrears { color: #ff8a6a; font-style: normal; }
+.fleet-stats { margin: 6px 0 10px; padding-left: 18px; font-size: 13px; line-height: 1.6; } .fleet-stats b { color: #ffd27a; }
+.fleet-buy { display: block; margin: 10px 0 4px; padding: 9px 16px; font-weight: 700; background: linear-gradient(180deg, #e8c46a, #b88a2a); color: #1a1206; border: 0; border-radius: 8px; }
+.fleet-msg { display: block; margin-top: 4px; }
+.fleet-sea { background: linear-gradient(180deg, #2a8ad8, #14508a); color: #fff; }
+
+/* Logistics (Millionaire Update) */
+.freight-tabs { display: flex; gap: 6px; padding: 8px 14px 0; flex-wrap: wrap; } .freight-tabs button { padding: 6px 12px; border-radius: 999px; background: #ffffff10; border: 1px solid #ffffff1a; } .freight-tabs button.on { background: #f59e0b33; border-color: #f59e0b; color: #ffd27a; }
+.freight-body { padding: 12px 14px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+.freight-modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; margin-bottom: 10px; }
+.freight-modes button { text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: 10px; background: #ffffff0a; border: 1px solid #ffffff1a; } .freight-modes button.on { border-color: #f59e0b; background: #f59e0b1f; } .freight-modes button:disabled { opacity: .45; }
+.freight-modes small { color: #ffd27a; } .freight-modes em { font-style: normal; font-size: 12px; opacity: .7; }
+.freight-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; align-items: end; } .freight-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; opacity: .9; } .freight-form label:has(button) { flex-direction: row; flex-wrap: wrap; align-items: center; }
+.freight-form select, .freight-form input { background: #0b0d14; border: 1px solid #ffffff22; border-radius: 8px; padding: 6px 8px; color: inherit; font-size: 14px; }
+.freight-quote { grid-column: 1 / -1; padding: 8px 10px; border-radius: 8px; background: #ffffff08; } .freight-form .dealer-drive { grid-column: 1 / -1; }
+.freight-truck { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; background: #ffffff08; margin-bottom: 6px; } .freight-truck i { width: 28px; height: 28px; border-radius: 6px; } .freight-truck div { flex: 1; display: flex; flex-direction: column; } .freight-truck small { opacity: .7; }
+.freight-truck button { padding: 6px 12px; border-radius: 8px; background: #f59e0b; color: #111; font-weight: 700; border: 0; }
+.freight-live-row { display: flex; flex-direction: column; padding: 8px 10px; border-radius: 8px; background: #ffffff08; margin-bottom: 6px; } .freight-live-row em { font-style: normal; color: #ffd27a; font-size: 12px; }
+@media (max-width: 640px) { .freight .dealer-box { width: 100vw; max-height: 100vh; height: 100%; border-radius: 0; } }
 
 /* Millionaire Update: owned-home owner tags on the 2D map */
 .world-owned2d { grid-column: 1 / -1; margin-top: 4px; }

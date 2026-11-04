@@ -3,7 +3,7 @@
  * The client reports its single most relevant activity; the server validates it here and attaches it to the online list.
  */
 export const DOING_KINDS = [
-  'mining', 'factory', 'cooking', 'grocery', 'farming', 'fishing', 'stocks', 'market', 'casino', 'arena', 'resort',
+  'mining', 'factory', 'cooking', 'grocery', 'farming', 'fishing', 'stocks', 'market', 'casino', 'arena', 'resort', 'fortmc',
   'chess', 'checkers', 'watching', 'conquest', 'solitaire', 'realestate', 'cityhall', 'jobs', 'dealership', 'mechanic', 'logistics',
   'driving', 'airport', 'racetrack', 'skills', 'skins', 'leaderboard', 'tournament', 'analysis', 'city', 'idle',
 ] as const;
@@ -47,7 +47,7 @@ export function doingLabel(d: Doing | null | undefined): string {
 
 /** Higher wins when a client has several things open at once (a game over the city map, etc). */
 export const DOING_RANK: Record<DoingKind, number> = {
-  idle: 0, city: 1, resort: 2, driving: 3, leaderboard: 4, tournament: 5, analysis: 5,
+  idle: 0, city: 1, resort: 2, fortmc: 2, driving: 3, leaderboard: 4, tournament: 5, analysis: 5,
   realestate: 6, cityhall: 6, jobs: 6, dealership: 6, mechanic: 6, logistics: 6, airport: 6, racetrack: 6, grocery: 6, skills: 6, skins: 6,
   farming: 7, cooking: 7, fishing: 7, market: 8, stocks: 8,
   chess: 9, checkers: 9, watching: 9, conquest: 9, solitaire: 9, casino: 9, factory: 9, mining: 10, arena: 10,
