@@ -93,7 +93,8 @@ export function buildJet(m: FleetModel): THREE.Group {
   // mu-visuals nose fix: one coaxial fuselage + rounded blunt nose + tail cone, same radius/segments at each joint (no seam, no step).
   addFuselage(g, { r: R, len: L, nose: R * 1.9, tail: L * 0.25, y: R + 1, body, glass: win });
   add(g, new THREE.BoxGeometry(R * 2.02, R * 0.2, L * 0.9), trim, 0, R + 1 - R * 0.35, 0); add(g, new THREE.BoxGeometry(R * 2.04, R * 0.22, L * 0.78), win, 0, R + 1 + R * 0.35, 0.02 * L);
-  if (m.id === 'chudone') add(g, new THREE.BoxGeometry(R * 1.4, R * 0.9, L * 0.28), body, 0, R * 2 + 1, L * 0.3);
+  // QA#12: the BBJ's roof box read as a cargo pod; it is now a low, flat SATCOM radome faired into the crown.
+  if (m.id === 'chudone') { const dome = add(g, new THREE.SphereGeometry(1, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2), M(0xe8eaec, { roughness: 0.5 }), 0, R * 2 + 1 - 0.04, L * 0.3); dome.scale.set(R * 0.42, R * 0.2, R * 0.95); dome.userData.part = 'satcom'; }
   const wing = new THREE.Shape(); wing.moveTo(0, 0); wing.lineTo(L * 0.55, -L * 0.22); wing.lineTo(L * 0.55, -L * 0.3); wing.lineTo(0, -L * 0.25);
   for (const s of [-1, 1]) { const w = add(g, new THREE.ExtrudeGeometry(wing, { depth: 0.12 * k, bevelEnabled: false }), body, 0, R + 0.6, L * 0.1); w.rotation.set(Math.PI / 2, 0, 0); w.scale.x = s; }
   // mu-visuals tail fins: swept, tapered fin flush on the centreline at the rear; T-tail on the Citation and G700.
