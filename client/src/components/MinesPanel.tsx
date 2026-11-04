@@ -351,6 +351,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
             <div><b>🪜 Floor {floor}</b> · {lvl.current.band}</div>
             <div style={{ marginTop: 4 }}>❤️ {php.hp}/{php.max}<div style={{ height: 7, background: '#3a1010', borderRadius: 4, marginTop: 2 }}><i style={{ display: 'block', height: '100%', borderRadius: 4, width: `${Math.max(0, Math.min(100, (php.hp / php.max) * 100))}%`, background: php.hp / php.max > 0.5 ? '#50d050' : php.hp / php.max > 0.25 ? '#ffc030' : '#ff4040' }} /></div></div>
             <div style={{ marginTop: 4, opacity: 0.85 }}>{wNow.icon} {wNow.name} · {wNow.dmg} dmg</div>
+            <div className="mines-haul" data-testid="mines-haul" style={{ position: 'static', marginTop: 4, padding: 0, background: 'none' }}>🎒 {pack.pack.reduce((t, s) => t + s.qty, 0)} carried · ~🪙{carriedWorth}{inExit(me.current.x, me.current.y) ? ' · at EXIT' : ''}</div>
           </div>}
           {floors && inLift && stops.length > 1 && <div className="mines-elevator" data-testid="mines-elevator" style={{ position: 'absolute', right: 10, top: 10, background: 'rgba(6,35,18,0.88)', border: '2px solid #3dff8a', color: '#cfffe0', padding: '6px 8px', borderRadius: 10, fontSize: 13, maxWidth: 220 }}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>🛗 Elevator</div>
@@ -360,7 +361,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
           {toast && <div className="mines-toast" data-testid="mines-toast">{toast}</div>}
           {loot && <div className="mines-toast mines-loot" data-testid="mines-loot">{loot}</div>}
           {glError && <div className="mines-toast">{glError}</div>}
-          <div className="mines-haul" data-testid="mines-haul">🎒 {pack.pack.reduce((t, s) => t + s.qty, 0)} carried · ~🪙{carriedWorth}{inExit(me.current.x, me.current.y) ? ' · at EXIT' : ''}</div>
+          {!floors && <div className="mines-haul" data-testid="mines-haul">🎒 {pack.pack.reduce((t, s) => t + s.qty, 0)} carried · ~🪙{carriedWorth}{inExit(me.current.x, me.current.y) ? ' · at EXIT' : ''}</div>}
           <div className="mines-hint">{floors ? `Deepest: floor ${deepest} · ` : ''}{status} · WASD move · Shift sprint · C crouch · Space jump · Esc release</div>
         </div>
         <aside className="mines-side" data-testid="mines-pack">

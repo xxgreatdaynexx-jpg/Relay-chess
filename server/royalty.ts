@@ -1,4 +1,5 @@
 /** Monument royalties (shared/royalty.ts): mint a cut of other players' earnings at a landmark to its owner. */
+import { isJailed } from './jail.js';
 import { randomUUID } from 'node:crypto';
 import { getBank, type CasinoBank } from './casino-store.js';
 import { getRealEstate } from './realEstate.js';
@@ -28,6 +29,7 @@ export class Royalties {
     return this.accrue(lm, o, base * royaltyRate(lm), `Royalty ${royaltyPct(lm)}: ${earner.trim()} earned 🪙 ${Math.floor(base).toLocaleString('en-US')} at the ${LANDMARK_LABEL[lm] ?? lm}`);
   }
   private accrue(lm: string, o: Owner, owed: number, memo: string): number {
+    if (isJailed(o.name)) return 0; // City Jail: owners earn no royalties while jailed
     const k = `${lm}|${o.key}`; const c = (this.carry.get(k) ?? 0) + owed; const pay = Math.floor(c);
     this.carry.set(k, c - Math.max(0, pay)); if (pay < 1) return 0;
     try { this.bank().transfer(o.name, pay, { key: `royalty:${lm}:${randomUUID()}`, game: 'monument_royalty', memo: memo.slice(0, 200) }); return pay; }

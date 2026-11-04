@@ -7,6 +7,7 @@
  * Goods are escrowed (out of storage) while in transit and land in the recipient's banked storage on arrival.
  * Every in-transit or loading shipment is broadcast to the 'freight' room so the map can draw the vehicle.
  */
+import { isJailed } from './jail.js';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import type { Server, Socket } from 'socket.io';
@@ -107,6 +108,7 @@ export class Logistics {
     const qty = Number(b.qty); if (!Number.isInteger(qty) || qty < 1 || qty > MAX_SHIP_QTY) throw new FreightError('Pick a quantity.');
     const recipient = typeof b.recipient === 'string' && b.recipient.trim() ? b.recipient.trim().slice(0, 40) : name.trim();
     if (keyOf(recipient) !== keyOf(name) && !(await this.exists(recipient))) throw new FreightError(`No player called ${recipient}.`);
+    if (keyOf(recipient) !== keyOf(name) && isJailed(recipient)) throw new FreightError(`${recipient} is in City Jail and can't receive shipments.`);
     let truck: string | null = null; let travel = MODES[mode].travelMs; let cap = MODES[mode].cap;
     if (mode === 'truck') {
       const busy = this.busyTrucks(name); const mine = this.owned(name);

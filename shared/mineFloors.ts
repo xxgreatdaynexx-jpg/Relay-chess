@@ -35,6 +35,7 @@ export function floorBias(f: number): Record<OreId, number> {
     stone: MINE_BIAS.stone * Math.max(0.3, 1 - 0.02 * k), coal: MINE_BIAS.coal, copper: MINE_BIAS.copper * Math.max(0.3, 1 - 0.02 * k),
     iron: MINE_BIAS.iron * Math.max(0.4, 1 - 0.015 * k), silver: MINE_BIAS.silver * (1 + 0.05 * k), gold: MINE_BIAS.gold * (1 + 0.07 * k),
     gem: MINE_BIAS.gem * (1 + 0.15 * k), diamond: MINE_BIAS.diamond + 0.12 * k,
+    opal: 0, pearl: 0, // Coral Grotto exclusives never spawn in the city mine floors
   };
 }
 

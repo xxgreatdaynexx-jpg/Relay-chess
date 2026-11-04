@@ -32,8 +32,8 @@ import { baitLuckRoll, gearDef } from '../shared/fishGear.js';
 /** Equipped bait + fly per account (server/fishGear.ts installs the real lookup once Postgres is attached). */
 let gearHook: (name: string) => { bait: string; fly: string } = () => ({ bait: 'worm', fly: 'no_fly' });
 /** Deep sea (#10c): the player's best boat (server/fleet.ts sets this). zone 0 = no boat. */
-let boatHook: (name: string) => Promise<{ zone: number; biteMul: number; name: string | null }> = async () => ({ zone: 0, biteMul: 1, name: null });
-export const setFishBoatHook = (f: typeof boatHook) => { boatHook = f; };
+var boatHook: (name: string) => Promise<{ zone: number; biteMul: number; name: string | null }> = async () => ({ zone: 0, biteMul: 1, name: null });
+export function setFishBoatHook(f: typeof boatHook) { boatHook = f; } // hoisted: server/fleet.ts calls it during a circular import
 export const setFishGearHook = (f: typeof gearHook) => { gearHook = f; };
 
 export const FISH_MIGRATION = `

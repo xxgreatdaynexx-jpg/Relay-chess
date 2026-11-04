@@ -66,6 +66,9 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
   const road = (w: number, d: number, x: number, z: number) => { const o = new THREE.Mesh(geo(new THREE.BoxGeometry(w, 0.1, d)), gravel); o.position.set(x, 0.05, z); o.receiveShadow = true; scene.add(o); };
   road(FORT_X1 - FORT_X0 - 10, 6, 0, -4); road(FORT_X1 - FORT_X0 - 10, 6, 0, 56); road(6, 70, -128, 20); road(6, 70, 128, 20);
   const pond = mat({ color: 0x2a2620, roughness: 0.15, metalness: 0.3, emissive: 0x0a0806 });
+  // Logistics (Millionaire Update): the river mouth the Barge Terminal sits on; cargo ships run down it (shared/logistics.ts HUB_MAPS.fortmc).
+  { const river = new THREE.Mesh(geo(new THREE.PlaneGeometry(150, 440)), mat({ color: 0x24506e, roughness: 0.2, metalness: 0.25, emissive: 0x061620 })); river.rotation.x = -Math.PI / 2; river.position.set(165, 0.03, 320); river.receiveShadow = true; scene.add(river);
+    const bay = new THREE.Mesh(geo(new THREE.PlaneGeometry(90, 40)), river.material); bay.rotation.x = -Math.PI / 2; bay.position.set(120, 0.03, 118); scene.add(bay); }
   for (const [x, z, w, d] of [[-60, 90, 50, 18], [40, 92, 40, 14]] as const) { const p = new THREE.Mesh(geo(new THREE.PlaneGeometry(w, d)), pond); p.rotation.x = -Math.PI / 2; p.position.set(x, 0.04, z); scene.add(p); }
 
   // Spruce forest (instanced), kept off the pads, plant, mine and roads.
@@ -190,6 +193,7 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
   };
   const vis = () => { running = !document.hidden; clock.getDelta(); }; document.addEventListener('visibilitychange', vis); frame();
   return {
+    scene,
     setFort,
     setRunning(v: boolean) { running = v; clock.getDelta(); },
     reset() { camera.position.copy(home); controls.target.copy(homeT); },

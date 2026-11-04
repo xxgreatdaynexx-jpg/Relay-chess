@@ -38,7 +38,7 @@ export function FortMcMap() {
   };
 
   useEffect(() => {
-    let dead = false;
+    let dead = false; let freight: { dispose: () => void } | null = null;
     void importWithReload(() => import('@/lib/fortmc3d')).then(({ createFortMc }) => {
       if (dead || !canvasRef.current) return;
       worldRef.current = createFortMc(canvasRef.current, {
@@ -48,9 +48,11 @@ export function FortMcMap() {
           setPanel(({ 'f-plant': 'plant', 'f-exchange': 'exchange', 'f-mine': 'mine', 'f-airport': 'airport' } as Record<string, Panel>)[id] ?? null);
         },
       });
+      const w = worldRef.current;
+      void importWithReload(() => import('@/lib/worldFreight')).then(({ createFreight }) => { if (dead || worldRef.current !== w || !w) return; freight = createFreight(w, 'fortmc'); });
       setLoading(false); load();
     });
-    return () => { dead = true; worldRef.current?.dispose(); worldRef.current = null; };
+    return () => { dead = true; freight?.dispose(); worldRef.current?.dispose(); worldRef.current = null; };
   }, [load]);
   useEffect(() => { const t = window.setInterval(load, 30_000); socket.on('connect', load); return () => { window.clearInterval(t); socket.off('connect', load); }; }, [load]);
 

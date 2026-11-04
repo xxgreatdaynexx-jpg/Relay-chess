@@ -63,7 +63,8 @@ export const HUB_MAPS: Record<HubId, HubMap> = {
   resort: { port: { x: 30, z: 66, pier: [[30, 40], [30, 66]] }, // between the Reef Pier and the Marina
     truck: [[20, -32], [-60, -32], [-125, -32], [-125, -95]], plane: [[-117, -78], [-83, -78], [-20, -90], [120, -200]], ship: [[30, 66], [36, 120], [10, 240], [-40, 400]] },
   fortmc: { port: { x: 90, z: 120, pier: [[90, 92], [90, 120]] }, // barge terminal on the river mouth
-    truck: [[0, 0], [0, -80], [0, -200]], plane: [[-150, 60], [-150, -60], [-220, -260]], ship: [[90, 120], [100, 200], [130, 400]] },
+    // trucks leave the Commodity Exchange yard along the south road and the east haul road; planes take off from the airstrip
+    truck: [[80, 56], [128, 56], [128, -4], [128, -230]], plane: [[-125, 70], [-85, 70], [-40, 50], [120, -260]], ship: [[90, 120], [120, 140], [150, 240], [170, 420]] },
 };
 export const PORT = HUB_MAPS.city.port;
 export const DEPOT: Pt = HUB_MAPS.city.truck[0]!; // the Warehouse landmark

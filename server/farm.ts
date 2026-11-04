@@ -13,6 +13,7 @@ import { bootAttach, setBootState } from './boot-retry.js';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank, type CasinoBank } from './casino-store.js';
+import { isJailed } from './jail.js';
 import { px, priceIndex } from './price-index.js';
 import { resortPlotOf, isTropical, TROPICAL_CROPS } from '../shared/resort.js';
 import { requireResort } from './travel.js';
@@ -56,7 +57,24 @@ export class Farm {
   }
   constructor(private readonly pool: pg.Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now(), readonly rand: () => number = Math.random, private readonly level: (name: string) => Promise<number> = (n) => skillLevelAsync(n, 'farming')) {}
   private lvl = (name: string) => this.level(name).catch(() => 1);
-  async init() { await this.pool.query(FARM_MIGRATION); await this.pool.query('CREATE TABLE IF NOT EXISTS kitchen_harvests (tile_key TEXT PRIMARY KEY NOT NULL, at BIGINT NOT NULL)'); }
+  async init() { await this.pool.query(FARM_MIGRATION); await this.pool.query('CREATE TABLE IF NOT EXISTS kitchen_harvests (tile_key TEXT PRIMARY KEY NOT NULL, at BIGINT NOT NULL)'); await this.refundOldFertilizer().catch((e) => console.error('[farm] fertilizer refund failed:', (e as Error).message)); }
+
+  /** One-time launch migration (Millionaire Update): the old Fertilizer plot upgrade was retired (fertilizer is now a
+   *  consumable), so everyone gets back exactly what the ledger says they paid for it. Idempotent per player through the
+   *  ledger tx_key; players in City Jail are skipped and refunded on a later boot once released. Returns refunds paid. */
+  async refundOldFertilizer(): Promise<number> {
+    const { rows } = await this.pool.query(`SELECT player_key, MAX(name) AS name, -SUM(amount)::bigint AS paid FROM wallet_transactions
+      WHERE game = 'farm_upgrade' AND amount < 0 AND memo LIKE '%: Fertilizer level %' GROUP BY player_key`) as { rows: Array<{ player_key: string; name: string; paid: string }> };
+    let n = 0;
+    for (const r of rows) {
+      const paid = Number(r.paid); if (!(paid > 0) || isJailed(r.name)) continue;
+      try { if (await this.bank().transferConfirmed(r.name, paid, { key: `fert_refund_v1:${r.player_key}`, game: 'farm_fert_refund', memo: `Refund: retired Fertilizer farm upgrade (${paid} chips)` })) n++; }
+      catch (e) { console.error('[farm] fertilizer refund', r.name, (e as Error).message); }
+    }
+    await this.pool.query(`DELETE FROM farm_upgrades WHERE kind = 'fertilizer'`);
+    if (n) console.log(`[farm] refunded the retired Fertilizer upgrade to ${n} players`);
+    return n;
+  }
 
   private async ownerOf(q: { query: pg.Pool['query'] } | pg.PoolClient, id: string): Promise<{ key: string; name: string } | null> {
     const r = await q.query('SELECT owner_key, owner_name FROM properties WHERE id = $1', [id]);

@@ -41,12 +41,9 @@ export class Travel {
   async fly(name: string) {
     const k = keyOf(name); if (this.where(name) === 'resort') throw new TravelError('You are already at Chud Resort.');
     const jet = await jetHook(name).catch(() => null); // #11: private-jet owners fly free (they pay daily upkeep instead)
-    if (jet) {
-      if (this.pool) await this.pool.query("INSERT INTO player_location (player_key, name, loc, since) VALUES ($1,$2,'resort',$3) ON CONFLICT (player_key) DO UPDATE SET loc = 'resort', name = EXCLUDED.name, since = EXCLUDED.since", [k, name.trim(), this.clock()]);
-      this.loc.set(k, 'resort'); return { loc: 'resort' as Location, fee: 0, jet, chips: getBank().account(name).chips };
-    }
-    const fee = px(RESORT_TICKET_BASE); const bank = getBank();
-    if (!bank.canAfford(name, fee)) throw new TravelError(`Not enough chips: a ticket costs ${fee.toLocaleString('en-US')}.`);
+    const waivedBy = waiver(name, dest); const waived = waivedBy || jet;
+    const fee = waived ? 0 : px(D.ticket); const bank = getBank();
+    if (fee > 0 && !bank.canAfford(name, fee)) throw new TravelError(`Not enough chips: a ticket costs ${fee.toLocaleString('en-US')}.`);
     const now = this.clock(); this.tickets++;
     const w = fee > 0 ? bank.transferAtomic([{ name, amount: -fee, key: `${D.game}:${k}:${now}:${this.tickets}`, game: D.game, memo: `Plane ticket: Chud Hub International → ${D.name}` }]) : { stmts: [], after: Promise.resolve(), bind: () => {}, revert: () => {} };
     const run = async () => {
@@ -61,7 +58,7 @@ export class Travel {
     const p = run(); w.bind(p);
     try { await p; } catch (e) { w.revert(); console.error('[travel] ticket failed:', (e as Error).message); throw new TravelError(/chips|balance/i.test((e as Error).message) ? 'Not enough chips.' : 'Booking failed. Nothing was charged.'); }
     this.loc.set(k, dest);
-    return { loc: dest as Location, fee, waived: waived ?? undefined, chips: bank.account(name).chips };
+    return { loc: dest as Location, fee, waived: waivedBy ?? undefined, jet: jet ?? undefined, chips: bank.account(name).chips };
   }
 
   /** Free return flight to the city. */

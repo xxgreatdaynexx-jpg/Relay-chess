@@ -3,7 +3,9 @@ import { GOODS, isOre } from '../shared/mines';
 import { FRECIPES, KINDS, recipeIn, recipeOut, tierOf } from '../shared/factory';
 
 // Millionaire Update: the factory recipe list doubled (55 -> 111). The first 55 are the pre-update recipes.
-const BASE = 55; const OLD = FRECIPES.slice(0, BASE); const NEW = FRECIPES.slice(BASE);
+// The Coral Grotto jewelry recipes (mu-resort) sit inside the old block and are balanced by their own tests.
+const GROTTO = new Set(['j_cut_opal', 'j_pearl_necklace', 'j_tidecrown']); const LIST = FRECIPES.filter((r) => !GROTTO.has(r.id));
+const BASE = 55; const OLD = LIST.slice(0, BASE); const NEW = LIST.slice(BASE);
 const made = new Set(FRECIPES.map((r) => r.out[0]));
 const obtainable = (k: string) => { const [t, id] = k.split(':'); return (t === 'ore' && isOre(id)) || made.has(k) || (GOODS[id]?.type === t && !!GOODS[id]?.raw); };
 const gainPerSec = (r: (typeof FRECIPES)[number]) => (recipeOut(r) - recipeIn(r)) / r.secs;
