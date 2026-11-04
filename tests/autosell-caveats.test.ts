@@ -1,5 +1,5 @@
 // Millionaire Update auto-sell caveats: Fort McChud -> factory by truck, warehouse-only rule for fish/dishes, indexed fee preview.
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { vi, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getBank, resetBank, CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { newDb } from 'pg-mem';
 import { LOGISTICS_MIGRATION } from '../server/logistics';
@@ -67,7 +67,19 @@ describe('Fort McChud -> factory rides a truck', () => {
     const real = f.factoryDelivered.bind(f); let fails = 1;
     l.onFactory = async (s) => { if (fails-- > 0) throw new Error('Your mine storage is full for that ore.'); return real(s); };
     now = r.arriveAt + 1; l.tick(); await flush(); expect(store.get('iron')).toBeUndefined();
-    l.tick(); await flush(); expect(store.get('iron')).toBe(50); l.tick(); await flush(); expect(store.get('iron')).toBe(50);
+    l.tick(); await flush(); expect(store.get('iron')).toBeUndefined(); // backing off: no retry yet
+    now += 30_001; l.tick(); await flush(); expect(store.get('iron')).toBe(50); l.tick(); await flush(); expect(store.get('iron')).toBe(50);
+  });
+
+  it('full-factory retries back off (30 s doubling to 10 min) and log once per load', async () => {
+    seedFort({ iron: 50 }); const r = await f.act(N, { op: 'ship', mode: 'hired' }) as { arriveAt: number };
+    let calls = 0; l.onFactory = async () => { calls++; throw new Error('Your mine storage is full for that ore.'); };
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    now = r.arriveAt + 1; for (let i = 0; i < 50; i++) { l.tick(); await flush(); now += 1000; } // 50 s of 1 s ticks
+    expect(calls).toBe(2); // t=0 and t≈30 s; next not before t≈90 s
+    now += 20 * 60_000; for (let i = 0; i < 5; i++) { l.tick(); await flush(); now += 1000; }
+    expect(calls).toBe(3); expect(err.mock.calls.filter((c) => String(c[0]).includes('factory delivery')).length).toBe(1);
+    err.mockRestore();
   });
 });
 

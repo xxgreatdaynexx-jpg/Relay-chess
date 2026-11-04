@@ -2363,3 +2363,4 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .launch-extra { display: flex; justify-content: center; gap: 16px; flex: none; }
 .world-mu-count { position: absolute; left: 18px; top: 86px; padding: 2px 9px; border-radius: 999px; background: #1d1a12cc; border: 1px solid #e8c26a66; font: 700 11px/1.3 'Outfit Variable', system-ui, sans-serif; color: #ffe3a0; font-variant-numeric: tabular-nums; z-index: 2; pointer-events: auto; cursor: pointer; white-space: nowrap; backdrop-filter: blur(4px); }
 @media (max-width: 480px) { .world-mu-count { font-size: 10px; padding: 2px 7px; } }
+.world-deed.fort-panel:has(.bldg-inv) { width: min(500px, calc(100% - 24px)); } .world-deed.fort-panel .bldg-inv { min-width: 0; }

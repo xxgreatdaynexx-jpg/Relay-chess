@@ -106,6 +106,8 @@ export class Logistics {
   private selling = new Set<string>();
   /** Fort McChud → your factory loads call this on arrival (server/fortmc.ts factoryDelivered). Rejects = retried. */
   onFactory: ((s: Shipment) => Promise<void>) | null = null;
+  /** Failed factory deliveries (factory full): next retry time, doubling 30 s → 10 min; the failure is logged once per load. */
+  factoryBackoff = new Map<string, { wait: number; next: number }>();
   idleTruck(name: string, skip?: Set<string>): { id: string; cap: number } | null {
     const busy = this.busyTrucks(name); for (const x of skip ?? []) busy.add(x); const t = this.owned(name).find((x) => !busy.has(x.id)); return t ? { id: t.id, cap: TRUCK_BY_ID.get(t.truckId)!.cap } : null;
   }
@@ -183,8 +185,9 @@ export class Logistics {
       if (s.arriveAt > now) continue;
       if (s.kind === 'factory') { // Fort McChud ore/petcoke for your factory: lands in factory storage on arrival (retried until it fits)
         if (this.selling.has(s.id) || !this.onFactory) continue;
+        const bo = this.factoryBackoff.get(s.id); if (bo && now < bo.next) continue;
         this.selling.add(s.id);
-        void this.onFactory(s).then(() => { s.status = 'delivered'; this.ships.delete(s.id); }, (e) => console.error('[logistics] factory delivery failed (will retry):', (e as Error).message)).finally(() => this.selling.delete(s.id));
+        void this.onFactory(s).then(() => { s.status = 'delivered'; this.ships.delete(s.id); this.factoryBackoff.delete(s.id); }, (e) => { const prev = this.factoryBackoff.get(s.id); const wait = Math.min(prev ? prev.wait * 2 : 30_000, 10 * 60_000); if (!prev) console.error(`[logistics] factory delivery ${s.id} failed (will retry with backoff, logged once):`, (e as Error).message); this.factoryBackoff.set(s.id, { wait, next: this.clock() + wait }); }).finally(() => this.selling.delete(s.id));
         out.push(s); continue;
       }
       if (s.kind === 'sell') { // sells at the Chud City Warehouse on arrival; stays in transit (retried) until the sale commits
