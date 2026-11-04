@@ -69,7 +69,9 @@ export function buildBoat(m: FleetModel): THREE.Group {
   } else if (m.id === 'sportfisher') {
     hull(g, 12, 3.6, 1.6, white, navy); add(g, new THREE.BoxGeometry(3, 1.4, 4.5), white, 0, 2.3, 0.4); add(g, new THREE.BoxGeometry(3.05, 0.6, 4.4), glass, 0, 2.5, 0.4);
     add(g, new THREE.BoxGeometry(2.4, 0.15, 2.6), white, 0, 4.2, 0.6); for (const x of [-1, 1]) for (const z of [-0.5, 1.7]) add(g, new THREE.CylinderGeometry(0.05, 0.05, 1.2), chrome, x, 3.6, z);
-    for (const s of [-1, 1]) { const r = add(g, new THREE.CylinderGeometry(0.04, 0.06, 7), chrome, s * 1.4, 4.5, 0); r.rotation.z = s * 0.7; }
+    // QA#3: outriggers stand on the cabin sides and splay OUTWARD into a V (never cross over the bridge), with a base clamp.
+    for (const s of [-1, 1]) { const a = 0.5, h = 7; const r = add(g, new THREE.CylinderGeometry(0.04, 0.06, h), chrome, s * (1.25 + Math.sin(a) * h / 2), 3.4 + Math.cos(a) * h / 2, 0.2); r.rotation.z = -s * a; r.userData.part = 'outrigger';
+      add(g, new THREE.CylinderGeometry(0.1, 0.1, 0.35, 8), chrome, s * 1.3, 3.4, 0.2); }
     add(g, new THREE.BoxGeometry(3.4, 0.08, 4), teak, 0, 1.62, -3.6);
   } else if (m.id === 'superyacht') {
     superyacht(g, m, glass, teak, chrome);
