@@ -487,7 +487,16 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   scene.add(new THREE.Points(lg, lpm));
 
   // Cars: each follows a curved road's centreline in its own lane (see worldLayout.ts + tests/world-layout.test.ts).
-  const NC = CAR_COUNT;
+  // Traffic routes (pt1502): city roads that run off the plate edge carry on along their rural stub to the junction, and a
+  // loop of cars drives the rural ring road (north/east/far-shore/west), so cars pass through the plate-edge T junctions.
+  type TRoute = typeof CAR_ROUTES[number];
+  const mkRoute = (road: TRoute['road'], p: [number, number][]): TRoute => { const cum = [0]; for (let i = 1; i < p.length; i++) cum.push(cum[i - 1] + Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1])); return { road, len: cum[cum.length - 1], cum, p }; };
+  const stubFrom = (q: [number, number]): [number, number] | null => { for (const [a, b] of RURAL_ROADS) { if (Math.hypot(a[0] - q[0], a[1] - q[1]) < 1.5 && Math.abs(a[1] - b[1]) < 0.01 && Math.abs(Math.abs(a[0]) - PLATE) < 0.6) return [b[0], b[1]]; } return null; };
+  const cityRoutes: TRoute[] = CAR_ROUTES.map((rt) => { if (rt.road.closed) return rt; const p = [...rt.p]; const s0 = stubFrom(p[0]), s1 = stubFrom(p[p.length - 1]); if (!s0 && !s1) return rt; if (s0) p.unshift(s0); if (s1) p.push(s1); return mkRoute(rt.road, p); });
+  const [rN, rE, rW] = [RURAL_ROADS[1], RURAL_ROADS[2], RURAL_ROADS[3]]; const NZr = rN[0][1], EXr = rE[0][0], SZr = rE[1][1], WXr = rW[0][0];
+  const ruralLoop = mkRoute({ id: 'rural-ring', kind: 'avenue', width: RURAL_ROAD_W, closed: true, pts: [] }, [[WXr, NZr], [EXr, NZr], [EXr, SZr], [WXr, SZr], [WXr, NZr]]);
+  const RURAL_CARS = 6;
+  const NC = CAR_COUNT + RURAL_CARS;
   const carBody = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(1.6, 0.6, 0.9)), mat({ color: 0xffffff, roughness: 0.4, metalness: 0.4 }), NC);
   const carCols = [0xe63946, 0xf1faee, 0x1d9bf0, 0xffb703, 0x8338ec, 0x2a9d8f];
   for (let i = 0; i < NC; i++) carBody.setColorAt(i, new THREE.Color(carCols[i % carCols.length]));
@@ -495,7 +504,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const headM = new THREE.PointsMaterial({ map: glowTex, color: 0xfff2c0, size: 1.3, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }); disposables.push(headM);
   const heads = new THREE.Points(headG, headM);
   scene.add(carBody, heads);
-  const cars = Array.from({ length: NC }, (_, i) => { const route = CAR_ROUTES[i % CAR_ROUTES.length]; return { route, t: r(), sp: (6 + r() * 3) / (route.len * (route.road.closed ? 1 : 2)), lane: LANE }; });
+  const cars = Array.from({ length: NC }, (_, i) => { const route = i >= CAR_COUNT ? ruralLoop : cityRoutes[i % cityRoutes.length]; return { route, t: r(), sp: (6 + r() * 3) / (route.len * (route.road.closed ? 1 : 2)), lane: LANE }; });
 
   // Fireworks: one pooled Points burst system.
   const FP = 160; const fwPos = new Float32Array(FP * 3); const fwVel = new Float32Array(FP * 3); const fwCol = new Float32Array(FP * 3);
