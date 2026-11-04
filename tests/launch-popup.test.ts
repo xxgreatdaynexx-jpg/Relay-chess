@@ -20,6 +20,8 @@ describe('launch popup covers the whole Millionaire Update, paged', () => {
     'tractor', 'Fertilizer', 'candlestick', 'Marina', 'Deep-sea', 'Grotto', 'Banyan Bay', 'Private Jet', 'Logistics', 'Truck',
     'rod skins', 'Net worth', 'Farm on mobile', 'grow time', 'full-screen', '10x', 'Dividend', '+20% XP', 'Speedway', 'recipes',
     'Monument', 'buyout', 'ocean', 'lowgfx', 'price you actually paid',
+    'Big Farms', 'weapon models', 'Fort McChud Mine', 'boss', 'Smarter monsters', 'twice what the pond', 'five times', 'Fly my jet',
+    'passenger seats', 'cargo capacity', 'Co-op mine raids', 'Hockey Stadium', 'sell cap', 'Group contracts',
   ])('mentions %s', (k) => { expect(all.toLowerCase()).toContain(k.toLowerCase()); });
   it('groups every item into contiguous pages that fit', async () => {
     const { launchPages } = await import('../shared/launchPopup');
@@ -30,4 +32,8 @@ describe('launch popup covers the whole Millionaire Update, paged', () => {
     for (const p of pages) expect(p.items.length).toBeLessThanOrEqual(8);
     expect(new Set(LAUNCH.items.map((i) => i.title)).size).toBe(LAUNCH.items.length);
   });
+});
+
+describe('live popup sync keeps the trailer seen id', () => {
+  it('stays millionaire-update-launch-trailer', () => { expect(LAUNCH.id).toBe('millionaire-update-launch-trailer'); });
 });
