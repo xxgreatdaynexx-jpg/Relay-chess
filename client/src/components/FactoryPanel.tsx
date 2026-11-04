@@ -10,6 +10,8 @@ import { openFactoryView } from '@/components/FactoryViewer';
 type Ack = { ok: boolean; error?: string; storage?: Stack[]; quote?: unknown; inMine?: boolean; guest?: boolean };
 import { openMarket } from '@/components/MarketPage';
 import { SellQtyPicker } from './SellQtyPicker';
+import { SellAllConfirm } from './SellAllConfirm';
+import { sellAllSummary, sellAllText } from '../../../shared/sellConfirm';
 import { usePriceIndex } from '@/lib/priceIndex';
 import { ORES, SELL_TIERS, houseCapChips, HOUSE_DAILY_BASE, payoutFor, isOre, nameOf, priceOf, sellable, stackKey, type Stack } from '../../../shared/mines';
 
@@ -42,6 +44,7 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
   const refresh = () => socket.timeout(5000).emit('mines_storage', {}, (err: Error | null, r?: Ack) => { if (!err && r?.ok) apply(r); });
   useEffect(() => { refresh(); const t = window.setInterval(refresh, 4000); socket.on('connect', refresh); return () => { window.clearInterval(t); socket.off('connect', refresh); }; }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [pick, setPick] = useState<string | null>(null);
+  const [confirmAll, setConfirmAll] = useState(false);
   function sell(only?: string, qty?: number) {
     return new Promise<void>((done) => socket.timeout(5000).emit('mines_sell', only ? { ore: only, ...(qty ? { qty } : {}) } : {}, (err: Error | null, r?: Ack & { paid: number }) => {
       done();
@@ -65,6 +68,7 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
         {wallet !== null && <span className="ml-auto text-xs font-semibold">🪙 {wallet.toLocaleString()}</span>}
         <button type="button" className={wallet === null ? 'ml-auto' : ''} aria-label="Close factory" onClick={onClose}>✕</button>
       </div>
+      {confirmAll && q && <SellAllConfirm text={sellAllText(sellAllSummary(st.storage, q.paid))} onCancel={() => setConfirmAll(false)} onConfirm={() => { setConfirmAll(false); void sell(); }} />}
       {toast && <div className="factory-toast" data-testid="factory-toast">{toast}</div>}
       <div className="factory-body">
         <section className="factory-col factory-storage" data-testid="factory-storage">
@@ -79,7 +83,7 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
           </ul>
           <h3>🏦 Sell to the house</h3>
           {st.guest ? <p className="mines-note">Sign in to sell for chips.</p> : st.inMine ? <p className="mines-note" data-testid="factory-inmine">You're still in the mine. Leave the mine to sell.</p> : (
-            <button type="button" className="mines-sell" disabled={!q || q.paid < 1} onClick={() => sell()} data-testid="factory-sell">Sell all{q ? ` · 🪙 ${q.paid}` : ''}</button>
+            <button type="button" className="mines-sell" disabled={!q || q.paid < 1} onClick={() => setConfirmAll(true)} data-testid="factory-sell">Sell all{q ? ` · 🪙 ${q.paid}` : ''}</button>
           )}
           <p className="mines-note">Sold today: {Math.floor(q?.already ?? 0)} · paying {Math.round(tier.rate * 100)}%. Daily cap today: full price up to 🪙 {houseCapChips(capIdx).toLocaleString('en-US')} (100,000 × {capIdx.toFixed(4)}; moves each day by the % change in total player assets, never below 100,000), then nothing (resets 00:00 UTC).{(q?.lost ?? 0) > 0 && <> Room refunded today: +🪙 {Math.floor(q!.lost!).toLocaleString('en-US')} from chips you lost to the house (casino net losses, cars and car mods, property tax, resort tickets, race entries, mayor filing, Market seller fees, wealth tax, admin removals). Room left: 🪙 {Math.max(0, Math.floor((capBase - (q!.effAlready ?? q!.already)) * pxIdx)).toLocaleString('en-US')}.</>}</p>
         </section>

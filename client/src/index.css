@@ -2412,3 +2412,11 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .hk-btn { width: 64px; height: 64px; border-radius: 50%; border: 2px solid #ffffff60; color: #fff; font: 900 13px system-ui; touch-action: none; box-shadow: 0 4px 14px #0008; }
 .hk-btn.shoot { grid-row: span 2; width: 84px; height: 84px; background: #d8202acc; font-size: 15px; } .hk-btn.pass { background: #1f6fd1cc; } .hk-btn.poke { background: #444c66cc; }
 @media (max-width: 560px) { .hk-panel { inset: 40px 0 0 0; border-radius: 0; } .hk-score { top: 6px; font-size: 14px; gap: 5px; } .hk-score > b { font-size: 19px; } .hk-team { font-size: 9px; padding: 4px 5px; } .hk-me { top: auto; bottom: 150px; max-width: 60%; font-size: 11px; } .hk-teams { grid-template-columns: 1fr; } .hk-close { top: auto; bottom: 150px; right: 10px; } }
+/* #39 Sell all confirmation */
+.sellall-backdrop { position: fixed; inset: 0; z-index: 9500; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; padding: 14px; }
+.sellall-card { width: 100%; max-width: 380px; background: #15171d; border: 1px solid #e8c26a77; border-radius: 14px; padding: 16px 18px; color: #f4efe2; box-shadow: 0 16px 40px rgba(0,0,0,.6); }
+.sellall-card h3 { margin: 0 0 8px; font-size: 17px; font-weight: 800; color: #ffe3a0; }
+.sellall-card p { margin: 0 0 14px; font-size: 14px; line-height: 1.4; }
+.sellall-btns { display: flex; justify-content: flex-end; gap: 10px; }
+.sellall-btns button { padding: 8px 16px; border-radius: 999px; border: 1px solid rgba(255,255,255,.25); background: transparent; color: #f4efe2; font-weight: 700; cursor: pointer; }
+.sellall-btns button.ok { border: 0; color: #1a1406; background: linear-gradient(180deg, #ffe08a, #d9a83a); }
