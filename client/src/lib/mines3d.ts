@@ -181,6 +181,7 @@ export class Mines3D {
     for (const s of MINE_MAP.spawns.concat(MINE_NODES.filter((_, i) => i % 9 === 0).map((n) => [n.x, n.y, 0] as [number, number, number]))) {
       if (lights++ > 10) break;
       const l = new THREE.PointLight(T.lamp, T.hazard === 'lava' ? 1.6 : 1.2, T.hazard === 'lava' ? 11 : 9, 1.6); l.position.set(s[0], 3.2, s[1]); this.scene.add(l);
+      const lan = mineLantern(T.lamp); lan.position.set(s[0], 3.2, s[1]); this.scene.add(lan); // mu-visuals: every lamp light has a visible hanging lantern
     }
     { // EXIT lift: glowing sign + floor pad at the entrance pocket
       const c = document.createElement('canvas'); c.width = 512; c.height = 160; const x = c.getContext('2d');
@@ -191,6 +192,7 @@ export class Mines3D {
       const pad = new THREE.Mesh(new THREE.PlaneGeometry(MINE_EXIT.x1 - MINE_EXIT.x0, MINE_EXIT.y1 - MINE_EXIT.y0), new THREE.MeshBasicMaterial({ color: '#2cff7a', transparent: true, opacity: 0.16, depthWrite: false }));
       pad.rotation.x = -Math.PI / 2; pad.position.set((MINE_EXIT.x0 + MINE_EXIT.x1) / 2, 0.02, (MINE_EXIT.y0 + MINE_EXIT.y1) / 2); this.scene.add(pad);
       const gl = new THREE.PointLight('#3dff8a', 1.4, 7, 1.6); gl.position.set(MINE_EXIT.sign.x + 0.6, MINE_EXIT.sign.z, MINE_EXIT.sign.y); this.scene.add(gl);
+      const props = mineExitProps(); props.position.set(MINE_EXIT.x1 - 0.6, 0, MINE_EXIT.y0 + 0.6); props.rotation.y = Math.PI / 2; this.scene.add(props); // crates, barrel and an ore cart in the exit pocket corner
     }
     if (hasFloors(caveId) && cave.floor < MAX_FLOOR) { // ladder down at the far end: dark shaft + glowing frame + sign
       const hole = new THREE.Mesh(new THREE.CircleGeometry(1.1, 24), new THREE.MeshBasicMaterial({ color: '#000000' })); hole.rotation.x = -Math.PI / 2; hole.position.set(LADDER.cx, 0.02, LADDER.cy); this.scene.add(hole);
@@ -403,4 +405,29 @@ export class Mines3D {
   }
 
   dispose() { this.renderer.dispose(); }
+}
+
+/** mu-visuals mine props: a hanging miner's lantern (chain, cap, glowing glass, cage bars). Visual only, no collision. */
+export function mineLantern(color: THREE.ColorRepresentation): THREE.Group {
+  const g = new THREE.Group(); g.userData.prop = 'lantern'; const iron = new THREE.MeshLambertMaterial({ color: '#2b2620' });
+  const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.5, 4), iron); chain.position.y = 0.45; g.add(chain);
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.12, 8), iron); cap.position.y = 0.16; g.add(cap);
+  const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.22, 8), new THREE.MeshBasicMaterial({ color })); g.add(glass);
+  for (let i = 0; i < 4; i++) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.24, 0.02), iron); const a = (i / 4) * Math.PI * 2; b.position.set(Math.cos(a) * 0.11, 0, Math.sin(a) * 0.11); g.add(b); }
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.04, 8), iron); base.position.y = -0.13; g.add(base); return g;
+}
+/** mu-visuals mine props: stacked timber crates, a barrel and an ore cart on a stub of rail. */
+export function mineExitProps(): THREE.Group {
+  const g = new THREE.Group(); g.userData.prop = 'exit'; const wood = new THREE.MeshLambertMaterial({ color: '#7a5230' }), dark = new THREE.MeshLambertMaterial({ color: '#4a3220' }), iron = new THREE.MeshLambertMaterial({ color: '#3d3a36' });
+  const crate = (x: number, y: number, z: number, s: number) => { const c = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), wood); c.position.set(x, y + s / 2, z); c.userData.prop = 'crate'; g.add(c); for (const sy of [-1, 1]) { const b = new THREE.Mesh(new THREE.BoxGeometry(s * 1.02, s * 0.12, s * 1.02), dark); b.position.set(x, y + s / 2 + sy * s * 0.38, z); g.add(b); } };
+  crate(0, 0, 0, 0.6); crate(0.65, 0, 0.05, 0.55); crate(0.3, 0.6, 0.02, 0.5);
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.75, 12), wood); bar.position.set(-0.05, 0.375, 0.75); bar.userData.prop = 'barrel'; g.add(bar);
+  for (const y of [0.12, 0.63]) { const h = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.05, 12), iron); h.position.set(-0.05, y, 0.75); g.add(h); }
+  const cart = new THREE.Group(); cart.userData.prop = 'cart'; cart.position.set(-0.05, 0, 2.5);
+  for (const sx of [-0.28, 0.28]) { const r = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 2.4), iron); r.position.set(sx, 0.03, 0); cart.add(r); }
+  for (let i = 0; i < 6; i++) { const t = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.04, 0.14), dark); t.position.set(0, 0.01, -1.05 + i * 0.42); cart.add(t); }
+  const tub = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.42, 0.9), iron); tub.position.y = 0.42; cart.add(tub);
+  const ore = new THREE.Mesh(new THREE.DodecahedronGeometry(0.3, 0), new THREE.MeshLambertMaterial({ color: '#6a625a', flatShading: true })); ore.scale.set(0.9, 0.45, 1.3); ore.position.y = 0.66; cart.add(ore);
+  for (const sx of [-0.3, 0.3]) for (const sz of [-0.3, 0.3]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.05, 10), iron); w.rotation.z = Math.PI / 2; w.position.set(sx, 0.12, sz); cart.add(w); }
+  g.add(cart); return g;
 }
