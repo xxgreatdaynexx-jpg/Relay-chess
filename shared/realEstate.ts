@@ -17,6 +17,7 @@
 import { cityFill, landmarks, LANDMARK_IDS, type OBB } from './worldLayout.js';
 import { HOUSING_TYPES } from './housing.js';
 import { farmPlots, farmPrice, plotId } from './farm.js';
+import { propertyPaid } from './netWorth.js';
 import { fieldPlots, fieldPlotId } from './fieldFarms.js';
 import { resortLots, resortPlots, resortPlotId, resortPlotPrice } from './resort.js';
 import { countryHomes, countryBusinesses, businessType, COMMERCIAL_PRICE, COMMERCIAL_LABEL } from './outskirts.js';
@@ -47,7 +48,7 @@ const pos = (b: OBB) => `${Math.round(b.x * 10)}:${Math.round(b.z * 10)}`;
  * tax, economy totals -> house-sell cap): the price the owner actually paid (surcharged buy or hostile buyout included);
  * the current list price only when no paid price is recorded. The land surcharge on NEW buys stays on list prices.
  */
-export function propertyValue(paid: number | null | undefined, list: number): number { return paid && paid > 0 ? paid : list; }
+export function propertyValue(paid: number | null | undefined, list: number): number { return propertyPaid(paid, list); }
 export const taxOf = (price: number) => Math.ceil(price * TAX_RATE);
 /** Tess QA #8: property tax is on the price actually paid (buyouts can't dodge it; a surcharged buy pays on what it cost). */
 export const taxBasisOf = (paid: number | null | undefined, list: number) => propertyValue(paid, list);
