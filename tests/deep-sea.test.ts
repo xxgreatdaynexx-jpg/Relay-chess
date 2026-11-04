@@ -8,7 +8,7 @@ import { bestBoat } from '../shared/fleet';
 const deep = fishPool('deep');
 describe('Deep-sea fishing (#10c)', () => {
   it('16 species, zone 1 covers every rarity, each zone adds a tier', () => {
-    expect(deep.length).toBe(16);
+    expect(deep.length).toBe(19); expect(deep.filter((f) => f.crew).map((f) => f.id)).toEqual(['bigeye', 'opah', 'bluemarlin']); // + 3 crew-only (mu-coop3)
     for (const r of Object.keys(RARITY_ODDS) as Rarity[]) expect(deep.some((f) => f.rarity === r && f.zone === 1)).toBe(true);
     for (const z of [1, 2, 3]) expect(deep.some((f) => f.zone === z)).toBe(true);
   });

@@ -15,7 +15,7 @@ export type Rarity = 'junk' | 'common' | 'uncommon' | 'rare' | 'epic' | 'legenda
 /** Where a species lives: 'lake' = the city dock (default), 'reef' = the Chud Resort pier (pt1304u). */
 export type FishSpot = 'lake' | 'reef' | 'deep';
 export const isFishSpot = (v: unknown): v is FishSpot => v === 'lake' || v === 'reef' || v === 'deep';
-export interface Fish { id: string; label: string; emoji: string; rarity: Rarity; min: number; max: number; base: number; spot?: FishSpot; /** Deep sea only: 1 Outer Banks, 2 Blue Water, 3 The Abyss (boat range, shared/fleet.ts). */ zone?: 1 | 2 | 3 }
+export interface Fish { id: string; label: string; emoji: string; rarity: Rarity; min: number; max: number; base: number; spot?: FishSpot; /** Deep sea only: 1 Outer Banks, 2 Blue Water, 3 The Abyss (boat range, shared/fleet.ts). */ zone?: 1 | 2 | 3; /** mu-coop3: only bites on a crewed fishing-fleet trip (server/fishFleet.ts). */ crew?: true }
 /** Weights in kg; base = sale value (base chips) of an average-sized one. */
 export const FISH: Fish[] = [
   { id: 'boot', label: 'Old Boot', emoji: '🥾', rarity: 'junk', min: 0.4, max: 1.2, base: 2 },
@@ -68,6 +68,10 @@ export const FISH: Fish[] = [
   { id: 'blackmarlin', label: 'Black Marlin', emoji: '🐋', rarity: 'legendary', min: 100, max: 600, base: 2330, spot: 'deep', zone: 1 },
   { id: 'giantsquid', label: 'Giant Squid', emoji: '🦑', rarity: 'legendary', min: 80, max: 450, base: 2540, spot: 'deep', zone: 2 },
   { id: 'coelacanth', label: 'Coelacanth', emoji: '🦕', rarity: 'legendary', min: 30, max: 90, base: 2950, spot: 'deep', zone: 3 },
+  // mu-coop3 crew-only deep-sea catches (a crewed fleet boat in The Abyss)
+  { id: 'bigeye', label: 'Bigeye Tuna', emoji: '🐟', rarity: 'rare', min: 20, max: 180, base: 340, spot: 'deep', zone: 3, crew: true },
+  { id: 'opah', label: 'Opah', emoji: '🌕', rarity: 'epic', min: 10, max: 80, base: 900, spot: 'deep', zone: 3, crew: true },
+  { id: 'bluemarlin', label: 'Blue Marlin', emoji: '🐋', rarity: 'legendary', min: 120, max: 700, base: 3200, spot: 'deep', zone: 3, crew: true },
 ];
 /** Species that can bite at a spot. */
 export const fishPool = (spot: FishSpot = 'lake') => FISH.filter((f) => (f.spot ?? 'lake') === spot);
@@ -81,10 +85,10 @@ const DIFF: Record<Rarity, number> = { junk: 0.05, common: 0.15, uncommon: 0.35,
 export const FISH_XP: Record<Rarity, number> = { junk: 2, common: 10, uncommon: 20, rare: 40, epic: 80, legendary: 200 };
 
 /** Pick a species from two uniform draws in [0,1). */
-export function rollFish(u1: number, u2: number, spot: FishSpot = 'lake', maxZone = 3): Fish {
+export function rollFish(u1: number, u2: number, spot: FishSpot = 'lake', maxZone = 3, crew = false): Fish {
   let acc = 0; let rar: Rarity = 'common';
   for (const r of Object.keys(RARITY_ODDS) as Rarity[]) { acc += RARITY_ODDS[r]; if (u1 * 100 < acc) { rar = r; break; } }
-  const pool = fishPool(spot).filter((f) => f.rarity === rar && (f.zone ?? 1) <= Math.max(1, maxZone)); return pool[Math.min(pool.length - 1, Math.floor(u2 * pool.length))]!;
+  const pool = fishPool(spot).filter((f) => f.rarity === rar && (f.zone ?? 1) <= Math.max(1, maxZone) && (!f.crew || crew)); return pool[Math.min(pool.length - 1, Math.floor(u2 * pool.length))]!;
 }
 /** Weight (grams) from a uniform draw: big ones are rarer (u^2). */
 export const rollWeight = (f: Fish, u: number) => Math.round((f.min + (f.max - f.min) * u * u) * 1000);

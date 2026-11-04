@@ -32,6 +32,7 @@ const FISH_LOOK: Record<string, { color: number; belly: number; len: number; fat
   amberjack: { color: 0xa89050, belly: 0xeee8d4, len: 1.6, fat: 0.34 }, swordfish: { color: 0x5a4a6a, belly: 0xc8c0d0, len: 2.4, fat: 0.26 }, oarfish: { color: 0xd8dce4, belly: 0xe83a3a, len: 3, fat: 0.12 },
   bluefin: { color: 0x0e2a5a, belly: 0xe0e8f0, len: 2.2, fat: 0.45 }, mako: { color: 0x3a5a9a, belly: 0xf0f4f8, len: 2.4, fat: 0.3 }, anglerfish: { color: 0x3a2a3a, belly: 0x4a3a48, len: 1, fat: 0.7, glow: 0x88ff44 },
   blackmarlin: { color: 0x1a1e2a, belly: 0xc8ccd8, len: 2.8, fat: 0.28, glow: 0x442200 }, giantsquid: { color: 0xc84a3a, belly: 0xe88a7a, len: 2.8, fat: 0.3, glow: 0x441111 }, coelacanth: { color: 0x2a4a7a, belly: 0x3a5a8a, len: 1.8, fat: 0.42, spots: 0xe8f0f8, glow: 0x113366 },
+  bigeye: { color: 0x1a2e5a, belly: 0xe2e8f0, len: 2, fat: 0.46 }, opah: { color: 0xc84a5a, belly: 0xe8a0a8, len: 1.4, fat: 0.8, spots: 0xf4f0e8 }, bluemarlin: { color: 0x1e5ac8, belly: 0xe8f0fa, len: 3, fat: 0.28, glow: 0x113366 }, // mu-coop3 crew catches
 };
 
 function noiseTex(): THREE.Texture {

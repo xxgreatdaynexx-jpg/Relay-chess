@@ -26,6 +26,7 @@ import {
 } from '../shared/fishing.js';
 import { cookPayout } from '../shared/cooking.js';
 import { isFishSpot, type FishSpot } from '../shared/fishing.js';
+import { FLEET_MAX_CUT } from '../shared/coop3.js';
 import { isAtResort, awayFromMarket } from './travel.js';
 import { baitLuckRoll, gearDef } from '../shared/fishGear.js';
 
@@ -33,7 +34,11 @@ import { baitLuckRoll, gearDef } from '../shared/fishGear.js';
 let gearHook: (name: string) => { bait: string; fly: string } = () => ({ bait: 'worm', fly: 'no_fly' });
 /** Deep sea (#10c): the player's best boat (server/fleet.ts sets this). zone 0 = no boat. */
 var boatHook: (name: string) => Promise<{ zone: number; biteMul: number; name: string | null }> = async () => ({ zone: 0, biteMul: 1, name: null });
-export function setFishBoatHook(f: typeof boatHook) { boatHook = f; } // hoisted: server/fleet.ts calls it during a circular import
+export function setFishBoatHook(f: typeof boatHook) { boatHook = f; }
+/** mu-coop3 fishing fleets (server/fishFleet.ts): the fleet trip this player is on, if any. captain = who earns the cut (null for the captain themself). */
+export type CrewInfo = { tripId: string; captain: string | null; cut: number; zone: number; biteMul: number; crewed: boolean };
+var crewHook: (name: string) => CrewInfo | null = () => null;
+export function setFishCrewHook(f: typeof crewHook | null) { crewHook = f ?? (() => null); } // hoisted: server/fleet.ts calls it during a circular import
 export const setFishGearHook = (f: typeof gearHook) => { gearHook = f; };
 
 export const FISH_MIGRATION = `
@@ -42,6 +47,9 @@ CREATE INDEX IF NOT EXISTS fish_catches_player ON fish_catches (player_key, sold
 ALTER TABLE fish_catches ADD COLUMN IF NOT EXISTS dish TEXT;
 ALTER TABLE fish_catches ADD COLUMN IF NOT EXISTS raw_value INTEGER;
 ALTER TABLE fish_catches ADD COLUMN IF NOT EXISTS hired BOOLEAN;
+ALTER TABLE fish_catches ADD COLUMN IF NOT EXISTS crew_trip TEXT;
+ALTER TABLE fish_catches ADD COLUMN IF NOT EXISTS captain TEXT;
+ALTER TABLE fish_catches ADD COLUMN IF NOT EXISTS cut REAL;
 CREATE TABLE IF NOT EXISTS kitchen_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
 CREATE TABLE IF NOT EXISTS fish_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
 `;
@@ -50,7 +58,7 @@ export const fishImportQty = (value: number, cooked: boolean) => Math.floor(valu
 export class FishError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
 const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
-interface Cast { castAt: number; biteAt: number; fish: string; grams: number; seed: number; hookedAt: number | null; diffAdd: number }
+interface Cast { castAt: number; biteAt: number; fish: string; grams: number; seed: number; hookedAt: number | null; diffAdd: number; crew?: { trip: string; captain: string | null; cut: number } | null }
 interface Row { id: string; species: string; weight_g: number | string; value: number | string; caught_at: number | string }
 export interface FishRng { int(lo: number, hi: number): number; unit(): number }
 const cryptoRng: FishRng = { int: (lo, hi) => randomInt(lo, hi), unit: () => randomInt(0, 2 ** 32) / 2 ** 32 };
@@ -95,7 +103,8 @@ export class Fishing {
     const spot: FishSpot = isFishSpot(spotIn) ? spotIn : 'lake';
     if (spot === 'reef' && !atResort(name)) throw new FishError('The Reef Pier is at Chud Resort. Fly there first.');
     if (spot === 'deep' && !atResort(name)) throw new FishError('Deep-sea trips leave from the Chud Resort Marina. Fly there first.');
-    const boat = spot === 'deep' ? await boatHook(name) : { zone: 3, biteMul: 1 };
+    const crew = spot === 'deep' ? crewHook(name) : null; // on a fleet trip you fish from the captain's boat
+    const boat = crew ? { zone: crew.zone, biteMul: crew.biteMul } : spot === 'deep' ? await boatHook(name) : { zone: 3, biteMul: 1 };
     if (spot === 'deep' && boat.zone < 1) throw new FishError('You need a boat for deep-sea fishing. Buy one at the Resort Marina.');
     if (now - (this.lastCast.get(key) ?? -Infinity) < CAST_COOLDOWN_MS) throw new FishError('Easy — let the line settle first.');
     const n = Number((await this.pool.query('SELECT count(*) AS n FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL', [key])).rows[0]?.n ?? 0);
@@ -103,9 +112,9 @@ export class Fishing {
     this.lastCast.set(key, now);
     const lvl = await skillLevelAsync(name, 'fishing'); // Fishing perk: a little rare-fish luck and quicker bites
     const gear = gearHook(name); const fly = gearDef(gear.fly); // Fishing upgrades (#28): bait luck + fly speed/fight
-    const u = this.rng.unit(); const f = rollFish(baitLuckRoll(u, fishingLuckRoll(u, lvl), gear.bait), this.rng.unit(), spot, boat.zone); const grams = rollWeight(f, this.rng.unit());
+    const u = this.rng.unit(); const f = rollFish(baitLuckRoll(u, fishingLuckRoll(u, lvl), gear.bait), this.rng.unit(), spot, boat.zone, !!crew?.crewed); const grams = rollWeight(f, this.rng.unit());
     const biteIn = Math.max(BITE_MIN_MS * (fly?.biteMul ?? 1) * boat.biteMul, Math.round(this.rng.int(BITE_MIN_MS, BITE_MAX_MS + 1) * fishingBiteMul(lvl) * (fly?.biteMul ?? 1) * boat.biteMul));
-    this.casts.set(key, { castAt: now, biteAt: now + biteIn, fish: f.id, grams, seed: this.rng.int(1, 2 ** 31), hookedAt: null, diffAdd: fly?.diffAdd ?? 0 });
+    this.casts.set(key, { castAt: now, biteAt: now + biteIn, fish: f.id, grams, seed: this.rng.int(1, 2 ** 31), hookedAt: null, diffAdd: fly?.diffAdd ?? 0, crew: crew ? { trip: crew.tripId, captain: crew.captain, cut: crew.cut } : null });
     return { biteIn };
   }
   /** Strike when it bites: too early spooks it, too late it is gone. Returns the reel game's seed + difficulty. */
@@ -130,7 +139,7 @@ export class Fishing {
       const n = Number((await this.pool.query('SELECT count(*) AS n FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL', [key])).rows[0]?.n ?? 0);
       if (n >= COOLER_MAX) throw new FishError('Your cooler is full.');
       const fish: FishCatch = { id: randomUUID(), fish: f.id, grams: c.grams, value: fishValue(f, c.grams), at: now };
-      await this.pool.query('INSERT INTO fish_catches (id, player_key, name, species, weight_g, value, caught_at) VALUES ($1,$2,$3,$4,$5,$6,$7)', [fish.id, key, name, f.id, fish.grams, fish.value, now]);
+      await this.pool.query('INSERT INTO fish_catches (id, player_key, name, species, weight_g, value, caught_at, crew_trip, captain, cut) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)', [fish.id, key, name, f.id, fish.grams, fish.value, now, c.crew?.trip ?? null, c.crew?.captain ?? null, c.crew?.captain ? c.crew.cut : null]);
       const xp = FISH_XP[f.rarity];
       awardXp(name, 'fishing', xp);
       emitActivity({ name, skill: 'fishing', xp, action: 'catch', detail: { fish: f.id, rarity: f.rarity, grams: fish.grams, value: fish.value }, at: now });
@@ -141,7 +150,7 @@ export class Fishing {
   reelIn(name: string) { this.casts.delete(keyOf(name)); }
 
   /** Sell from the cooler (all, or the given ids) for chips: daily tiers on base value, then the price index. */
-  async sell(name: string, ids?: unknown, qtyIn?: unknown): Promise<{ sold: number; gross: number; paid: number; chips: number }> {
+  async sell(name: string, ids?: unknown, qtyIn?: unknown): Promise<{ sold: number; gross: number; paid: number; chips: number; captainCut?: number }> {
     const key = keyOf(name);
     return this.lock(`c:${key}`, async () => {
       let rows = await this.cooler(key);
@@ -187,7 +196,16 @@ export class Fishing {
           if (kd.rowCount !== 1) throw new FishError('Busy — try again.');
         }
       };
-      const w = this.bank().transferAtomic([{ name, amount: paid, key: `fish_sell:${randomUUID()}`, game: 'fish_sell', memo }]);
+      // mu-coop3: fleet catches pay the captain their cut, pro rata from the deep-sea payout (the seller's deep cap is what limits it).
+      const cuts = new Map<string, number>(); const deep = live.find((b) => b.spot === 'deep');
+      if (deep && deep.gross > 0) {
+        const want = new Set(rows.map((r) => r.id)); const capt = (await this.pool.query('SELECT id, captain, cut, value FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL AND captain IS NOT NULL', [key])).rows as Array<{ id: string; captain: string; cut: number; value: number }>;
+        for (const r of capt) { if (!want.has(r.id)) continue; const share = Number(r.value) * (deep.paid / deep.gross) * Math.min(FLEET_MAX_CUT, Math.max(0, Number(r.cut) || 0)); cuts.set(r.captain, (cuts.get(r.captain) ?? 0) + share); }
+        for (const [k, v] of cuts) { const f = Math.floor(v); if (f > 0 && keyOf(k) !== key) cuts.set(k, f); else cuts.delete(k); }
+      }
+      const cutTotal = [...cuts.values()].reduce((a, b) => a + b, 0); const sid = randomUUID();
+      const w = this.bank().transferAtomic([{ name, amount: paid - cutTotal, key: `fish_sell:${sid}`, game: 'fish_sell', memo: cutTotal ? `${memo} (less 🪙 ${cutTotal.toLocaleString('en-US')} captain's cut)`.slice(0, 200) : memo },
+        ...[...cuts].map(([cap, amt]) => ({ name: cap, amount: amt, key: `fish_cut:${sid}:${keyOf(cap)}`, game: 'fish_fleet', memo: `🛥️ Captain's cut from ${name}'s fleet catch` }))]);
       const run = async () => {
         await w.after; const cl = await this.pool.connect();
         try { await cl.query('BEGIN'); await body(cl); for (const s of w.stmts) await cl.query(s.sql, s.args); await cl.query('COMMIT'); }
@@ -196,7 +214,7 @@ export class Fishing {
       const p = run(); w.bind(p);
       try { await p; } catch (e) { w.revert(); if (e instanceof FishError) throw e; console.error('[fishing] sell failed:', (e as Error).message); throw new FishError('Something went wrong. Nothing was sold.'); }
       royaltyEarn('dock', name, paid);
-      return { sold: rows.length, gross: gross + dGross, paid, chips: this.bank().account(name).chips };
+      return { sold: rows.length, gross: gross + dGross, paid: paid - cutTotal, chips: this.bank().account(name).chips, ...(cutTotal ? { captainCut: cutTotal } : {}) };
     });
   }
   /** pt1252u: move fish from the cooler into Factory storage. Raw fish -> fillets (1 per 8 base value), cooked dishes ->

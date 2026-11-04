@@ -253,6 +253,10 @@ const FISH_ICONS: Record<string, () => string> = {
   blackmarlin: () => fishSide({ body: '#1a1e2a', belly: '#c8ccd8', fin: '#0e1018', hh: 5, x0: 4, nose: 20, tail: 'lunate', dorsal: P('8,8.2 9.4,4.6 12,7.6 17,8', '#0e1018', ' stroke-width="0.9"'), extra: bill('#0e1018'), over: `<circle cx="18" cy="9" r="0.6" fill="#ff8a4a"/>` }),
   giantsquid: () => E(14, 9, 7, 3.6, '#c84a3a') + P('20.4,9 23.4,6 23.4,12', '#a83a2a') + [10.4, 11.6, 12.8, 14].map((y, i) => Ln(`M8 ${y - 0.6 + i * 0.4}Q4 ${y + 2} 1.6 ${y + 4 + i}`, '#c84a3a', 1.3)).join('') + C(10, 9, 1.4, '#fff', 0.6) + C(10, 9, 0.7, OL, 0),
   coelacanth: () => fishSide({ body: '#2a4a7a', belly: '#3a5a8a', fin: '#1e3a64', hh: 5.8, tail: 'round', over: [[9, 9], [12, 10.4], [15, 9.2], [10.5, 13.4], [14, 13.6], [17, 11.6]].map(([x, y]) => C(x!, y!, 0.8, '#e8f0f8', 0)).join('') + Pa('M10 16.6l-1.5 3l3-1.2zM14 16.6l.6 3l1.5-2z', '#1e3a64', 0.8) }),
+  // mu-coop3 crew-only catches
+  bigeye: () => fishSide({ body: '#1a2e5a', belly: '#e2e8f0', fin: '#f2c020', hh: 6.2, x0: 5, tail: 'lunate', over: C(17.6, 10.6, 1.5, '#fff', 0) + C(17.8, 10.6, 0.8, OL, 0) + [7.4, 8.8].map((x) => Pn(`${x},8.4 ${x + 0.8},7.6 ${x + 0.8},8.8`, '#f6d820')).join('') }),
+  opah: () => fishSide({ body: '#c84a5a', belly: '#e8a0a8', fin: '#e8302a', hh: 7.4, x0: 6, tail: 'fork', over: [[10, 9], [13, 8], [15, 11], [11, 13], [14, 14]].map(([x, y]) => C(x!, y!, 0.7, '#f4f0e8', 0)).join('') }),
+  bluemarlin: () => fishSide({ body: '#1e5ac8', belly: '#e8f0fa', fin: '#123a8a', hh: 4.8, x0: 4, nose: 20, tail: 'lunate', dorsal: P('8,8.2 9.8,2.8 12.4,7.4 17,8', '#123a8a', ' stroke-width="0.9"'), extra: bill('#123a8a'), over: [7.5, 9.5, 11.5, 13.5, 15.5].map((x) => Ln(`M${x} 9.2L${x - 0.4} 13.4`, '#8ac0ff', 0.7)).join('') }),
 };
 /** Reef + deep-sea species with a crafted fish icon (type 'fish'). */
 export const ICON_FISH_IDS = Object.keys(FISH_ICONS);
