@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { BLUE_X, CORNER_R, CREASE_R, GOAL_HALF, GOAL_X, HK_TEAM_COLORS, NET_DEPTH, PUCK_R, RINK_HALF_L, RINK_HALF_W, type HkRole, type HkTeam } from '../../../shared/hockey';
 import { cityLabel, fitLabel, labelMaterial } from './labelSprite';
+import { disposeRigCache, makeRig, poseRig, type PlayerRig, type Slot } from './hockeyRig';
 
 export interface HkDrawPlayer { id: string; n: string; t: HkTeam; r: HkRole; x: number; y: number; vx: number; vy: number; a: number; me?: boolean; carry?: boolean }
 export interface HkFrame { players: HkDrawPlayer[]; puck: { x: number; y: number; vx: number; vy: number; c: string | null }; focus?: { x: number; y: number } }
@@ -62,16 +63,50 @@ function iceTexture(): THREE.CanvasTexture {
 }
 
 function netTexture(): THREE.CanvasTexture {
-  const c = document.createElement('canvas'); c.width = c.height = 64;
-  const g = c.getContext('2d')!; g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 3;
-  for (let i = 0; i <= 64; i += 16) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 64); g.stroke(); g.beginPath(); g.moveTo(0, i); g.lineTo(64, i); g.stroke(); }
-  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(6, 3);
+  const c = document.createElement('canvas'); c.width = c.height = 32;
+  const g = c.getContext('2d')!; g.strokeStyle = 'rgba(255,255,255,1)'; g.lineWidth = 2.5;
+  g.beginPath(); g.moveTo(0, 16); g.lineTo(16, 0); g.lineTo(32, 16); g.lineTo(16, 32); g.closePath(); g.stroke(); // diamond mesh
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4;
   return t;
 }
 
-interface Rig { root: THREE.Group; body: THREE.Group; legL: THREE.Object3D; legR: THREE.Object3D; stick: THREE.Group; label: THREE.Sprite; ring: THREE.Mesh; phase: number; name: string; role: HkRole; team: HkTeam }
+/** Goalie cage: thin vertical + horizontal bars (alpha-tested). */
+function cageTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d')!;
+  g.fillStyle = '#fff'; for (let i = 0; i < 64; i += 9) g.fillRect(i, 0, 2, 64); for (let j = 4; j < 64; j += 16) g.fillRect(0, j, 64, 2);
+  return new THREE.CanvasTexture(c);
+}
+
+/** Jersey texture for a team + number, wrapped around the torso cylinder (u = .25 is the chest, .75 the back). */
+function jerseyTexture(color: string, num: number, goalie: boolean): THREE.CanvasTexture {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 256;
+  const g = c.getContext('2d')!; const dark = new THREE.Color(color).multiplyScalar(0.45).getStyle();
+  g.fillStyle = color; g.fillRect(0, 0, 512, 256);
+  // waist + arm stripes (white with dark edges)
+  for (const [y, h] of [[196, 22], [176, 8]] as const) { g.fillStyle = dark; g.fillRect(0, y - 3, 512, h + 6); g.fillStyle = '#f4f4f0'; g.fillRect(0, y, 512, h); }
+  g.fillStyle = dark; g.fillRect(0, 0, 512, 14); // collar
+  g.fillStyle = '#f4f4f0'; g.beginPath(); g.moveTo(108, 0); g.lineTo(128, 34); g.lineTo(148, 0); g.fill(); // V-neck
+  const n = String(num); g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+  const draw = (x: number, y: number, px: number) => { g.font = `900 ${px}px Impact, 'Arial Black', system-ui, sans-serif`; g.lineWidth = px * 0.14; g.strokeStyle = dark; g.strokeText(n, x, y); g.fillStyle = '#f4f4f0'; g.fillText(n, x, y); };
+  if (goalie) { g.fillStyle = '#f4f4f0'; g.beginPath(); g.arc(128, 92, 34, 0, Math.PI * 2); g.fill(); g.fillStyle = dark; g.font = '900 30px system-ui'; g.fillText('C', 128, 94); }
+  else draw(128, 92, 58); // chest number (small, under the crest line)
+  draw(384, 96, 120); // big back number
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
+}
+
+interface Rig { rig: PlayerRig; root: THREE.Group; label: THREE.Sprite; ring: THREE.Mesh; name: string; role: HkRole; team: HkTeam; lift: number; alpha: number }
+
+/** Stable jersey number from a player id (goalies wear 1/30/31/35). */
+export function jerseyNumber(id: string, goalie: boolean): number {
+  let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return goalie ? [1, 30, 31, 35][h % 4] : 2 + (h % 97);
+}
+const LABEL_Y = 2.45;
 
 export class Hockey3D {
+  /** Debug-only fixed camera (set via `?hkdebug` → window.__hk). */
+  camOverride: { pos: [number, number, number]; look: [number, number, number] } | null = null;
   renderer: THREE.WebGLRenderer;
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(42, 1, 0.1, 400);
@@ -96,8 +131,14 @@ export class Hockey3D {
   private phone = false;
   private goalLit = -1;
   private goalLitT = 0;
+  private low = false;
+  private puckShadow: THREE.Mesh;
+  private lp = new THREE.Vector3();
+  /** Debug: force the goalie butterfly blend (0..1). */
+  bfOverride: number | null = null;
 
   constructor(canvas: HTMLCanvasElement, opts: { low?: boolean } = {}) {
+    this.low = !!opts.low;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !opts.low, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(opts.low ? 1 : 2, window.devicePixelRatio || 1));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -131,7 +172,7 @@ export class Hockey3D {
     s.add(kick);
     const cap = new THREE.Mesh(ring(RINK_HALF_L + T + 0.08, RINK_HALF_W + T + 0.08, CORNER_R + T + 0.08, RINK_HALF_L - 0.05, RINK_HALF_W - 0.05, CORNER_R - 0.05, 0.08), new THREE.MeshStandardMaterial({ color: '#b3121f', roughness: 0.4 }));
     cap.position.y = BOARD_H; s.add(cap);
-    const glass = new THREE.Mesh(ring(RINK_HALF_L + 0.14, RINK_HALF_W + 0.14, CORNER_R + 0.14, RINK_HALF_L + 0.1, RINK_HALF_W + 0.1, CORNER_R + 0.1, GLASS_H), new THREE.MeshPhysicalMaterial({ color: '#cfe8ff', transparent: true, opacity: 0.13, roughness: 0.05, metalness: 0, depthWrite: false }));
+    const glass = new THREE.Mesh(ring(RINK_HALF_L + 0.14, RINK_HALF_W + 0.14, CORNER_R + 0.14, RINK_HALF_L + 0.1, RINK_HALF_W + 0.1, CORNER_R + 0.1, GLASS_H), new THREE.MeshPhysicalMaterial({ color: '#cfe8ff', transparent: true, opacity: 0.16, roughness: 0.05, metalness: 0, depthWrite: false }));
     glass.position.y = BOARD_H + 0.08; s.add(glass);
     // ad panels on the boards (canvas strip around the long sides)
     const ad = document.createElement('canvas'); ad.width = 1024; ad.height = 64; const ag = ad.getContext('2d')!;
@@ -140,23 +181,65 @@ export class Hockey3D {
     const adTex = new THREE.CanvasTexture(ad); adTex.colorSpace = THREE.SRGBColorSpace; adTex.wrapS = THREE.RepeatWrapping; adTex.repeat.set(3, 1);
     const adMat = new THREE.MeshStandardMaterial({ map: adTex, roughness: 0.55 });
     for (const sy of [-1, 1]) { const p = new THREE.Mesh(new THREE.PlaneGeometry((RINK_HALF_L - CORNER_R) * 2, 0.55), adMat); p.position.set(0, 0.6, sy * (RINK_HALF_W - 0.005)); if (sy < 0) p.rotation.y = 0; else p.rotation.y = Math.PI; s.add(p); }
-    // ---- nets
+    // ---- glass stanchions + top rail, protective netting behind the nets
+    const lowG = !!opts.low;
+    const glassPath = roundRect(RINK_HALF_L + 0.12, RINK_HALF_W + 0.12, CORNER_R + 0.12);
+    const stPts = glassPath.getSpacedPoints(lowG ? 40 : 72);
+    const stan = new THREE.InstancedMesh(new THREE.BoxGeometry(0.05, GLASS_H, 0.06), new THREE.MeshStandardMaterial({ color: '#d9dde2', metalness: 0.6, roughness: 0.35 }), stPts.length - 1);
+    const sm4 = new THREE.Matrix4(), q = new THREE.Quaternion();
+    for (let i = 0; i < stPts.length - 1; i++) { const a0 = stPts[i], a1 = stPts[i + 1]; q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(a1.y - a0.y, a1.x - a0.x)); sm4.compose(new THREE.Vector3(a0.x, BOARD_H + 0.08 + GLASS_H / 2, -a0.y), q, new THREE.Vector3(1, 1, 1)); stan.setMatrixAt(i, sm4); }
+    stan.instanceMatrix.needsUpdate = true; s.add(stan);
+    const railPts = glassPath.getSpacedPoints(lowG ? 80 : 200).map((v) => new THREE.Vector3(v.x, BOARD_H + 0.08 + GLASS_H, -v.y));
+    const rail = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(railPts, true), lowG ? 80 : 200, 0.035, lowG ? 4 : 6, true), new THREE.MeshStandardMaterial({ color: '#c9ced6', metalness: 0.7, roughness: 0.3 }));
+    s.add(rail);
+    // ---- nets: red posts + crossbar, curved white base frame, diamond-mesh netting lofted from the base to the top shelf
     const netTex = netTexture();
-    const netMat = new THREE.MeshStandardMaterial({ map: netTex, alphaMap: netTex, transparent: true, side: THREE.DoubleSide, color: '#ffffff', depthWrite: false });
+    const netMat = new THREE.MeshStandardMaterial({ map: netTex, alphaMap: netTex, transparent: true, side: THREE.DoubleSide, color: '#ffffff', roughness: 0.9, depthWrite: false });
     const postMat = new THREE.MeshStandardMaterial({ color: '#d0101c', roughness: 0.3, metalness: 0.4 });
-    const postGeo = new THREE.CylinderGeometry(0.05, 0.05, 1.22, 10);
+    const frameMat = new THREE.MeshStandardMaterial({ color: '#f2f2f2', roughness: 0.6 });
+    const NSEG = lowG ? 12 : 28;
+    // base frame in plan view: from the left post straight back, around the rounded back, to the right post
+    const base = new THREE.CatmullRomCurve3([[0, -GOAL_HALF], [NET_DEPTH * 0.45, -GOAL_HALF - 0.02], [NET_DEPTH * 0.92, -GOAL_HALF * 0.72], [NET_DEPTH, 0], [NET_DEPTH * 0.92, GOAL_HALF * 0.72], [NET_DEPTH * 0.45, GOAL_HALF + 0.02], [0, GOAL_HALF]].map(([x, z]) => new THREE.Vector3(x, 0.02, z)), false, 'centripetal');
+    const netGeo = (() => {
+      const pos: number[] = [], uv: number[] = [], idx: number[] = [], rows = 6, CB = 1.22;
+      const bp = base.getSpacedPoints(NSEG); let arc = 0;
+      for (let i = 0; i <= NSEG; i++) {
+        const b0 = bp[i]; if (i) arc += b0.distanceTo(bp[i - 1]);
+        const topBack = new THREE.Vector3(b0.x * 0.42, 1.12, b0.z * 0.985), cross = new THREE.Vector3(0, CB, THREE.MathUtils.clamp(b0.z, -GOAL_HALF, GOAL_HALF));
+        // rows: base → top-back (wall, slight inward sag), then top-back → crossbar (shelf)
+        for (let j = 0; j <= rows; j++) {
+          const v = j / rows; let pt: THREE.Vector3, vv: number;
+          if (v <= 0.66) { const k = v / 0.66; pt = b0.clone().lerp(topBack, k); pt.x -= Math.sin(k * Math.PI) * 0.05 * (b0.x / NET_DEPTH); vv = k * 1.15; }
+          else { const k = (v - 0.66) / 0.34; pt = topBack.clone().lerp(cross, k); pt.y -= Math.sin(k * Math.PI) * 0.03; vv = 1.15 + k * topBack.distanceTo(cross); }
+          pos.push(pt.x, pt.y, pt.z); uv.push(arc / 0.11, vv / 0.11);
+        }
+      }
+      for (let i = 0; i < NSEG; i++) for (let j = 0; j < rows; j++) { const a0 = i * (rows + 1) + j, b1 = a0 + rows + 1; idx.push(a0, b1, a0 + 1, b1, b1 + 1, a0 + 1); }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+      return g;
+    })();
+    const postGeo = new THREE.CylinderGeometry(0.03, 0.03, 1.22, lowG ? 6 : 12);
+    const barGeo = new THREE.CylinderGeometry(0.03, 0.03, GOAL_HALF * 2, lowG ? 6 : 12);
+    const baseGeo = new THREE.TubeGeometry(base, NSEG, 0.045, lowG ? 4 : 8, false);
+    const topCurve = new THREE.CatmullRomCurve3(base.getSpacedPoints(10).map((v) => new THREE.Vector3(v.x * 0.42, 1.12, v.z * 0.985)));
+    const topGeo = new THREE.TubeGeometry(topCurve, lowG ? 8 : 20, 0.018, 4, false);
     for (const sx of [-1, 1]) {
       const g = new THREE.Group(); g.position.set(sx * GOAL_X, 0, 0); if (sx < 0) g.rotation.y = Math.PI;
       for (const py of [-GOAL_HALF, GOAL_HALF]) { const p = new THREE.Mesh(postGeo, postMat); p.position.set(0, 0.61, py); p.castShadow = true; g.add(p); }
-      const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, GOAL_HALF * 2, 10), postMat); bar.rotation.x = Math.PI / 2; bar.position.set(0, 1.22, 0); g.add(bar);
-      const back = new THREE.Mesh(new THREE.PlaneGeometry(GOAL_HALF * 2, 1.0), netMat); back.rotation.y = Math.PI / 2; back.position.set(NET_DEPTH, 0.5, 0); g.add(back);
-      for (const py of [-GOAL_HALF, GOAL_HALF]) { const side = new THREE.Mesh(new THREE.PlaneGeometry(NET_DEPTH, 1.1), netMat); side.position.set(NET_DEPTH / 2, 0.55, py); g.add(side); }
-      const top = new THREE.Mesh(new THREE.PlaneGeometry(NET_DEPTH, GOAL_HALF * 2), netMat); top.rotation.x = Math.PI / 2; top.rotation.z = 0; top.position.set(NET_DEPTH / 2, 1.1, 0); g.add(top);
+      const bar = new THREE.Mesh(barGeo, postMat); bar.rotation.x = Math.PI / 2; bar.position.set(0, 1.22, 0); bar.castShadow = true; g.add(bar);
+      g.add(new THREE.Mesh(baseGeo, frameMat)); if (!lowG) g.add(new THREE.Mesh(topGeo, frameMat));
+      const net = new THREE.Mesh(netGeo, netMat); net.renderOrder = 2; g.add(net);
       // goal light behind the glass
       const lampMat = new THREE.MeshStandardMaterial({ color: '#550000', emissive: '#ff1a1a', emissiveIntensity: 0 });
       const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), lampMat);
       lamp.position.set(RINK_HALF_L - GOAL_X + 0.4, BOARD_H + GLASS_H + 0.1, 0); g.add(lamp); this.goalLights.push(lamp);
       const pl = new THREE.PointLight('#ff2a1a', 0, 18); pl.position.copy(lamp.position); g.add(pl); this.goalLamps.push(pl);
+      // protective netting above the end glass (skipped on ?lowgfx: big transparent overdraw)
+      if (!lowG) {
+      const pn = new THREE.Mesh(new THREE.PlaneGeometry((RINK_HALF_W - CORNER_R) * 2 + 6, 3.2), new THREE.MeshBasicMaterial({ map: netTex.clone(), color: '#bbbbbb', transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide }));
+      ((pn.material as THREE.MeshBasicMaterial).map as THREE.Texture).repeat.set(80, 14);
+      pn.rotation.y = Math.PI / 2; pn.position.set(RINK_HALF_L - GOAL_X + 0.15, BOARD_H + GLASS_H + 1.7, 0); g.add(pn);
+      }
       s.add(g);
     }
     // ---- stands: tiered seating + crowd (one InstancedMesh)
@@ -182,32 +265,38 @@ export class Hockey3D {
     const rigMat = new THREE.MeshStandardMaterial({ color: '#333', emissive: '#fff6dd', emissiveIntensity: 1.5 });
     for (const x of [-20, -10, 0, 10, 20]) for (const z of [-8, 8]) { const b = new THREE.Mesh(new THREE.BoxGeometry(3, 0.15, 0.6), rigMat); b.position.set(x, 22, z); s.add(b); this.overhead.push(b); }
     const jumbo = new THREE.Mesh(new THREE.BoxGeometry(5, 3, 5), new THREE.MeshStandardMaterial({ color: '#111', emissive: '#1b2a55', emissiveIntensity: 0.8 })); jumbo.position.set(0, 16, 0); s.add(jumbo); this.overhead.push(jumbo);
-    // ---- shared player parts
-    this.geo.torso = new THREE.CapsuleGeometry(0.3, 0.55, 4, 10);
-    this.geo.leg = new THREE.CapsuleGeometry(0.11, 0.55, 3, 8);
-    this.geo.skate = new THREE.BoxGeometry(0.36, 0.08, 0.12);
-    this.geo.helmet = new THREE.SphereGeometry(0.2, 16, 12);
-    this.geo.visor = new THREE.BoxGeometry(0.08, 0.07, 0.3);
-    this.geo.shaft = new THREE.BoxGeometry(0.04, 1.35, 0.04);
-    this.geo.blade = new THREE.BoxGeometry(0.34, 0.07, 0.03);
-    this.geo.pad = new THREE.BoxGeometry(0.22, 0.75, 0.24);
-    this.geo.blocker = new THREE.BoxGeometry(0.1, 0.32, 0.26);
-    this.geo.glove = new THREE.CylinderGeometry(0.18, 0.18, 0.07, 14);
+    // ---- shared player materials (geometry is merged + cached per role/LOD in hockeyRig)
     this.geo.ring = new THREE.RingGeometry(0.55, 0.7, 28);
-    this.mat.skin = new THREE.MeshStandardMaterial({ color: '#f0c8a0', roughness: 0.7 });
-    this.mat.black = new THREE.MeshStandardMaterial({ color: '#15161a', roughness: 0.6 });
-    this.mat.steel = new THREE.MeshStandardMaterial({ color: '#c8ccd2', metalness: 0.9, roughness: 0.25 });
-    this.mat.white = new THREE.MeshStandardMaterial({ color: '#f5f5f2', roughness: 0.5 });
-    this.mat.visor = new THREE.MeshPhysicalMaterial({ color: '#8fc6ff', transparent: true, opacity: 0.55, roughness: 0.05 });
-    this.mat.stick = new THREE.MeshStandardMaterial({ color: '#2a2a2a', roughness: 0.5 });
-    this.mat.me = new THREE.MeshBasicMaterial({ color: '#ffe066', transparent: true, opacity: 0.85, side: THREE.DoubleSide });
+    const std = (color: string, o: THREE.MeshStandardMaterialParameters = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.6, ...o });
+    Object.assign(this.mat, {
+      skin: std('#e9bf98', { roughness: 0.7 }), black: std('#141518', { roughness: 0.45 }), steel: std('#d5dae0', { metalness: 0.95, roughness: 0.2 }),
+      holder: std('#efefea', { roughness: 0.4 }), stick: std('#1c1d21', { roughness: 0.35, metalness: 0.15 }), tape: std('#f4f4f0', { roughness: 0.9 }),
+      visor: new THREE.MeshPhysicalMaterial({ color: '#b9dcff', transparent: true, opacity: 0.4, roughness: 0.05, side: THREE.DoubleSide, depthWrite: false }),
+      cage: new THREE.MeshStandardMaterial({ map: cageTexture(), transparent: true, alphaTest: 0.3, side: THREE.DoubleSide, color: '#e8e8e8', metalness: 0.6, roughness: 0.3 }),
+      me: new THREE.MeshBasicMaterial({ color: '#ffe066', transparent: true, opacity: 0.85, side: THREE.DoubleSide }),
+    });
     for (const t of [0, 1]) {
-      this.mat[`j${t}`] = new THREE.MeshStandardMaterial({ color: HK_TEAM_COLORS[t], roughness: 0.55 });
-      this.mat[`h${t}`] = new THREE.MeshStandardMaterial({ color: t ? '#0c2d66' : '#5e0c12', roughness: 0.3, metalness: 0.2 });
-      this.mat[`r${t}`] = new THREE.MeshBasicMaterial({ color: HK_TEAM_COLORS[t], transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+      const c = HK_TEAM_COLORS[t], dark = new THREE.Color(c).multiplyScalar(0.42);
+      this.mat[`sleeve${t}`] = std(c, { roughness: 0.75 });
+      this.mat[`pants${t}`] = std(new THREE.Color(c).multiplyScalar(0.16).getStyle(), { roughness: 0.7 });
+      this.mat[`sock${t}`] = std(c, { roughness: 0.8 });
+      this.mat[`helmet${t}`] = std(dark.getStyle(), { roughness: 0.25, metalness: 0.25 });
+      this.mat[`glove${t}`] = std(dark.clone().lerp(new THREE.Color(c), 0.5).getStyle(), { roughness: 0.65 });
+      this.mat[`trim${t}`] = std('#f4f4f0', { roughness: 0.7 });
+      this.mat[`gtrim${t}`] = std(c, { roughness: 0.55 });
+      this.mat[`pad${t}`] = std('#f3f3ef', { roughness: 0.55 });
+      this.mat[`mask${t}`] = std(c, { roughness: 0.25, metalness: 0.2 });
+      this.mat[`r${t}`] = new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
     }
     // ---- puck + trail + goal burst
-    this.puck = new THREE.Mesh(new THREE.CylinderGeometry(PUCK_R, PUCK_R, 0.06, 18), this.mat.black);
+    const pr = PUCK_R, ph = 0.03, e = 0.006;
+    const prof = [new THREE.Vector2(0, -ph), new THREE.Vector2(pr - e, -ph), new THREE.Vector2(pr, -ph + e), new THREE.Vector2(pr, ph - e), new THREE.Vector2(pr - e, ph), new THREE.Vector2(0, ph)];
+    const puckMat = std('#101114', { roughness: 0.35 });
+    const faceTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d')!; g.fillStyle = '#101114'; g.fillRect(0, 0, 128, 128); g.strokeStyle = '#5a5e66'; g.lineWidth = 4; g.beginPath(); g.arc(64, 64, 44, 0, Math.PI * 2); g.stroke(); g.fillStyle = '#8a8f99'; g.font = '900 30px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('CHC', 64, 66); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+    this.puck = new THREE.Mesh(new THREE.LatheGeometry(prof, this.low ? 12 : 28), puckMat);
+    const face = new THREE.Mesh(new THREE.CircleGeometry(pr - e, this.low ? 12 : 28), std('#ffffff', { map: faceTex, roughness: 0.4 })); face.rotation.x = -Math.PI / 2; face.position.y = ph + 0.0005; this.puck.add(face);
+    this.puckShadow = new THREE.Mesh(new THREE.CircleGeometry(pr * 1.6, 16), new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.28, depthWrite: false }));
+    this.puckShadow.rotation.x = -Math.PI / 2; this.puckShadow.visible = !this.low; s.add(this.puckShadow);
     this.puck.castShadow = true; s.add(this.puck);
     this.trail = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: '#9fe0ff', transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false, vertexColors: true }));
     this.trail.frustumCulled = false; s.add(this.trail);
@@ -216,29 +305,71 @@ export class Hockey3D {
     this.burst = new THREE.Points(bg, new THREE.PointsMaterial({ size: 0.22, vertexColors: true, transparent: true, depthWrite: false })); this.burst.visible = false; this.burst.frustumCulled = false; s.add(this.burst);
   }
 
+  private jerseyMat(t: HkTeam, num: number, goalie: boolean): THREE.Material {
+    const k = `jersey${t}-${num}${goalie ? 'G' : ''}`;
+    return (this.mat[k] ??= new THREE.MeshStandardMaterial({ map: jerseyTexture(HK_TEAM_COLORS[t], num, goalie), roughness: 0.75 }));
+  }
+
   private rig(p: HkDrawPlayer): Rig {
     let r = this.rigs.get(p.id);
-    if (r && (r.role !== p.r || r.team !== p.t || r.name !== p.n)) { this.scene.remove(r.root); this.rigs.delete(p.id); r = undefined; }
+    if (r && (r.role !== p.r || r.team !== p.t || r.name !== p.n)) { this.scene.remove(r.root); this.scene.remove(r.label); this.rigs.delete(p.id); r = undefined; }
     if (r) return r;
-    const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
-    const jm = this.mat[`j${p.t}`], hm = this.mat[`h${p.t}`];
-    const add = (g: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = body) => { const o = new THREE.Mesh(g, m); o.position.set(x, y, z); o.castShadow = true; parent.add(o); return o; };
-    const goalie = p.r === 'G';
-    const legPivot = (z: number) => { const g = new THREE.Group(); g.position.set(0, 0.9, z); body.add(g); add(this.geo.leg, goalie ? this.mat.white : this.mat.black, 0, -0.42, 0, g); add(this.geo.skate, this.mat.steel, 0.05, -0.86, 0, g); if (goalie) add(this.geo.pad, this.mat.white, 0.08, -0.45, 0, g); return g; };
-    const legL = legPivot(-0.14), legR = legPivot(0.14);
-    const torso = add(this.geo.torso, jm, 0, 1.38, 0); torso.scale.set(goalie ? 1.35 : 1, 1, goalie ? 1.4 : 1.05);
-    add(this.geo.helmet, hm, 0.02, 1.98, 0);
-    if (goalie) { const mask = add(this.geo.helmet, this.mat.white, 0.08, 1.96, 0); mask.scale.set(0.9, 1.05, 0.95); add(this.geo.blocker, this.mat.white, 0.15, 1.3, 0.48); const gl = add(this.geo.glove, jm, 0.2, 1.4, -0.5); gl.rotation.x = Math.PI / 2; }
-    else add(this.geo.visor, this.mat.visor, 0.18, 1.96, 0);
-    const stick = new THREE.Group(); stick.position.set(0.25, 1.3, 0.25); body.add(stick);
-    const shaft = add(this.geo.shaft, this.mat.stick, 0, 0, 0, stick); shaft.rotation.z = -0.55;
-    const blade = add(this.geo.blade, goalie ? this.mat.white : this.mat.black, 0.5, -0.62, 0, stick); blade.position.set(0.48, -0.58, 0);
-    const rmesh = new THREE.Mesh(this.geo.ring, this.mat[`r${p.t}`]); rmesh.rotation.x = -Math.PI / 2; rmesh.position.y = 0.02; root.add(rmesh);
-    const label = new THREE.Sprite(labelMaterial(cityLabel(p.n, HK_TEAM_COLORS[p.t], goalie ? 'G' : undefined, this.renderer))); label.position.y = 2.65; fitLabel(label, 3); root.add(label);
+    const goalie = p.r === 'G', t = p.t;
+    const jm = this.jerseyMat(t, jerseyNumber(p.id, goalie), goalie);
+    const slotMat = (sl: Slot): THREE.Material => {
+      switch (sl) {
+        case 'jersey': return jm;
+        case 'helmet': return this.mat[goalie ? `mask${t}` : `helmet${t}`];
+        case 'trim': return this.mat[goalie ? `gtrim${t}` : `trim${t}`];
+        case 'pad': return this.mat[`pad${t}`];
+        case 'sleeve': case 'pants': case 'sock': case 'glove': return this.mat[`${sl}${t}`];
+        default: return this.mat[sl];
+      }
+    };
+    const pr = makeRig(goalie, this.low, slotMat, !this.low);
+    const root = pr.root;
+    const rmesh = new THREE.Mesh(this.geo.ring, this.mat[`r${t}`]); rmesh.rotation.x = -Math.PI / 2; rmesh.position.y = 0.02; root.add(rmesh);
+    const label = new THREE.Sprite(labelMaterial(cityLabel(p.n, HK_TEAM_COLORS[t], goalie ? 'G' : undefined, this.renderer))); label.position.y = LABEL_Y; fitLabel(label, 3); label.renderOrder = 10;
+    this.scene.add(label); // labels live in world space so they don't yaw with the player and can be decluttered
     this.scene.add(root);
-    r = { root, body, legL, legR, stick, label, ring: rmesh, phase: Math.random() * 6, name: p.n, role: p.r, team: p.t };
+    r = { rig: pr, root, label, ring: rmesh, name: p.n, role: p.r, team: t, lift: 0, alpha: 1 };
     this.rigs.set(p.id, r);
     return r;
+  }
+
+  /**
+   * Name-label declutter: labels are placed nearest-first in screen space; one that overlaps an already placed label
+   * is lifted (up to 3 rows); if it still collides it fades out, and labels in dense clusters are dimmed. Far labels fade a little too.
+   * Your own label is always placed first and stays opaque.
+   */
+  private declutter(f: HkFrame, dt: number): void {
+    const H = this.renderer.domElement.height / this.renderer.getPixelRatio(), W = this.renderer.domElement.width / this.renderer.getPixelRatio();
+    const camP = this.camera.position, tanH = Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2);
+    const items: { r: Rig; me: boolean; d: number; x: number; y: number; w: number; h: number }[] = [];
+    for (const p of f.players) {
+      const r = this.rigs.get(p.id); if (!r) continue;
+      this.lp.set(r.root.position.x, LABEL_Y, r.root.position.z);
+      const d = this.lp.distanceTo(camP); this.lp.project(this.camera);
+      const pxPerM = H / (2 * d * tanH);
+      items.push({ r, me: !!p.me, d, x: (this.lp.x * 0.5 + 0.5) * W, y: (0.5 - this.lp.y * 0.5) * H, w: r.label.scale.x * pxPerM, h: r.label.scale.y * pxPerM });
+    }
+    items.sort((a, b) => (a.me === b.me ? a.d - b.d : a.me ? -1 : 1));
+    const placed: { x: number; y: number; w: number; h: number }[] = [];
+    const hit = (x: number, y: number, w: number, h: number) => placed.filter((q) => Math.abs(q.x - x) < (q.w + w) / 2 - 2 && Math.abs(q.y - y) < (q.h + h) / 2 - 1).length;
+    const k = 1 - Math.exp(-dt * 10);
+    for (const it of items) {
+      let lift = 0, y = it.y;
+      while (lift < 3 && hit(it.x, y, it.w, it.h)) { lift++; y = it.y - lift * it.h * 1.05; }
+      const crowded = hit(it.x, y, it.w, it.h) > 0;
+      if (!crowded) placed.push({ x: it.x, y, w: it.w, h: it.h });
+      const near = items.filter((o) => o !== it && Math.hypot(o.x - it.x, o.y - it.y) < it.w * 0.9).length;
+      const want = it.me ? 1 : crowded ? 0 : Math.max(0.35, Math.min(1, 1.25 - near * 0.18) * THREE.MathUtils.clamp(1.4 - it.d / 70, 0.55, 1));
+      const liftM = (lift * it.h * 1.05) / (H / (2 * it.d * tanH));
+      it.r.lift += (liftM - it.r.lift) * k; it.r.alpha += (want - it.r.alpha) * k;
+      it.r.label.position.set(it.r.root.position.x, LABEL_Y + it.r.lift, it.r.root.position.z);
+      (it.r.label.material as THREE.SpriteMaterial).opacity = it.r.alpha; it.r.label.visible = it.r.alpha > 0.02;
+      it.r.label.renderOrder = it.me ? 12 : 10;
+    }
   }
 
   resize(w: number, h: number): void {
@@ -272,26 +403,28 @@ export class Hockey3D {
 
   render(f: HkFrame, dt: number): void {
     const seen = new Set<string>();
+    const pk0 = f.puck;
     for (const p of f.players) {
       seen.add(p.id);
       const r = this.rig(p);
       r.root.position.set(p.x, 0, p.y);
       r.root.rotation.y = -p.a;
       const sp = Math.hypot(p.vx, p.vy);
-      r.phase += dt * (2 + sp * 1.1);
-      const sw = Math.min(0.55, sp * 0.07);
-      r.legL.rotation.z = Math.sin(r.phase) * sw; r.legR.rotation.z = -Math.sin(r.phase) * sw;
-      r.legL.rotation.x = -0.12 - Math.max(0, Math.sin(r.phase)) * sw * 0.6; r.legR.rotation.x = 0.12 + Math.max(0, -Math.sin(r.phase)) * sw * 0.6;
-      r.body.rotation.z = -Math.min(0.35, sp * 0.03) - (p.r === 'G' ? 0.25 : 0); // lean forward when skating, goalie crouch
-      r.body.position.y = p.r === 'G' ? -0.18 : -Math.min(0.12, sp * 0.012);
-      r.stick.rotation.y = p.carry ? 0.15 : 0.45 + Math.sin(r.phase * 0.5) * 0.05;
+      // goalies drop into the butterfly when a shot is coming at them from close range
+      let bf = 0;
+      if (p.r === 'G') {
+        const dx = p.x - pk0.x, dy = p.y - pk0.y, d = Math.hypot(dx, dy), ps = Math.hypot(pk0.vx, pk0.vy);
+        const toward = ps > 0.1 ? (pk0.vx * dx + pk0.vy * dy) / (ps * (d || 1)) : 0;
+        bf = this.bfOverride ?? (!pk0.c && ps > 7 && d < 9 && toward > 0.6 ? 1 : 0);
+      }
+      poseRig(r.rig, dt, sp, !!p.carry, bf);
       r.ring.material = p.me ? this.mat.me : this.mat[`r${p.t}`];
       (r.ring.scale as THREE.Vector3).setScalar(p.me ? 1.25 : 1);
     }
-    for (const [id, r] of this.rigs) if (!seen.has(id)) { this.scene.remove(r.root); this.rigs.delete(id); }
+    for (const [id, r] of this.rigs) if (!seen.has(id)) { this.scene.remove(r.root); this.scene.remove(r.label); this.rigs.delete(id); }
     // puck + trail
     const pk = f.puck;
-    this.puck.position.set(pk.x, 0.04, pk.y);
+    this.puck.position.set(pk.x, 0.031, pk.y); this.puckShadow.position.set(pk.x, 0.004, pk.y); this.puck.rotation.y += dt * Math.min(20, Math.hypot(pk.vx, pk.vy) * 1.5);
     const ps = Math.hypot(pk.vx, pk.vy);
     const fast = ps > 6 && !pk.c;
     const lastPt = this.trailPts[0];
@@ -333,12 +466,15 @@ export class Hockey3D {
     const sh = this.shake * 0.4;
     this.camera.position.set(this.camPos.x + (Math.random() - 0.5) * sh, this.camPos.y + (Math.random() - 0.5) * sh, this.camPos.z);
     this.camera.lookAt(this.camLook);
+    const co = this.camOverride; if (co) { this.camera.position.set(co.pos[0], co.pos[1], co.pos[2]); this.camera.lookAt(co.look[0], co.look[1], co.look[2]); }
     for (const o of this.overhead) o.visible = this.camera.position.y < o.position.y - 2;
+    this.camera.updateMatrixWorld(); this.declutter(f, dt);
     this.renderer.render(this.scene, this.camera);
   }
 
   dispose(): void {
     this.scene.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); const mm = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mm)) mm.forEach((x) => x.dispose()); else mm?.dispose?.(); });
+    disposeRigCache();
     this.renderer.dispose();
   }
 }

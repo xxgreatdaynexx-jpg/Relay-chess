@@ -109,12 +109,17 @@ function HockeyGameView({ onClose }: { onClose: () => void }) {
       if (!alive) return;
       const low = new URLSearchParams(location.search).has('lowgfx') || (touch && window.innerWidth < 700);
       const r = new H(c, { low }); r3d.current = r;
+      const dbg = new URLSearchParams(location.search).has('hkdebug');
+      let lastF: HkFrame | null = null, nFrames = 0;
+      if (dbg) (window as unknown as { __hk?: unknown }).__hk = { r, frame: () => lastF, frames: () => nFrames, hold: false };
       const size = () => { const b = c.parentElement!.getBoundingClientRect(); r.resize(b.width, b.height); };
       size(); const ro = new ResizeObserver(size); ro.observe(c.parentElement!);
       const loop = () => {
         if (!alive) { ro.disconnect(); return; }
         const now = performance.now(), dt = Math.min(0.05, (now - last) / 1000); last = now;
-        const f = frameAt(buf.current, joinedRef.current?.id ?? null);
+        const hk = dbg ? (window as unknown as { __hk: { hold: boolean } }).__hk : null;
+        const f = hk?.hold && lastF ? lastF : frameAt(buf.current, joinedRef.current?.id ?? null);
+        lastF = f; nFrames++;
         if (f) { const me = f.players.find((p) => p.me); if (me) f.focus = { x: (me.x * 2 + f.puck.x) / 3, y: (me.y + f.puck.y) / 2 }; r.render(f, dt); }
         raf = requestAnimationFrame(loop);
       };
