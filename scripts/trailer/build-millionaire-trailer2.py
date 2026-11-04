@@ -48,5 +48,5 @@ for W,H,tag in[(1920,1080,'h'),(1080,1920,'v')]:
     run(['ffmpeg','-y','-loop','1','-framerate',str(FPS),'-t',str(D),'-i',(('/nonexistent/'+f+'.png') if os.path.exists('/nonexistent/'+f+'.png') else M+f+'.png'),'-filter_complex',vf,'-frames:v',str(n),'-c:v','libx264','-crf','20','-preset','fast',nm]);segs.append(nm)
   card(f'tmp/{tag}_99.mp4',[("NOV 6 - 8 PM CST","gold",1.2 if tag=='h' else 0.9,-0.3),("chudhub.club","white",0.55,1.1)],4.5)
   open(f'tmp/{tag}.txt','w').write("".join(f"file '{os.path.basename(s)}'\n" for s in segs))
-  out='millionaire-trailer.mp4' if tag=='h' else 'millionaire-trailer-vertical.mp4'
+  out='launch-trailer.mp4' if tag=='h' else 'launch-trailer-vertical.mp4'
   run(['ffmpeg','-y','-f','concat','-safe','0','-i',f'tmp/{tag}.txt','-i','tmp/music.wav','-c:v','libx264','-crf','21','-preset','medium','-pix_fmt','yuv420p','-c:a','aac','-b:a','192k','-shortest','-movflags','+faststart',out])
