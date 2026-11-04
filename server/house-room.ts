@@ -5,7 +5,7 @@ import { sinkLostToday, sinkKeysToday } from './sink-room.js';
 import { priceIndex } from './price-index.js';
 import { playerKey } from './skins.js';
 import { dayKey, houseCapChips, houseCapBase } from '../shared/mines.js';
-import { houseCapIndex } from './house-cap-index.js';
+import { houseCapIndex, HOUSE_SELL_BLOCKED } from './house-cap-index.js';
 import { effectiveAlready } from '../shared/sinkRoom.js';
 
 export type HouseRoom = { cap: number; soldToday: number; refunded: number; left: number; index: number; day: string };
@@ -15,7 +15,7 @@ export function houseRoom(name: string, now = Date.now()): HouseRoom {
   const idx = priceIndex(); const day = dayKey(now);
   const d = getMines().daily.get(playerKey(name)); const already = d && d.day === day ? d.gross : 0;
   const lost = sinkLostToday(name, now); const eff = effectiveAlready(already, lost, idx);
-  const capIdx = houseCapIndex(); const capBase = houseCapBase(capIdx, idx);
+  const capIdx = houseCapIndex(); const capBase = HOUSE_SELL_BLOCKED.has(playerKey(name)) ? 0 : houseCapBase(capIdx, idx);
   return { cap: houseCapChips(capIdx), soldToday: Math.floor(already * idx), refunded: Math.floor(lost), left: Math.max(0, Math.floor((capBase - eff) * idx)), index: idx, day };
 }
 

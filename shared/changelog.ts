@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-03T20:05:00-06:00', title: 'Fixed a stock price manipulation exploit', bullets: [
+    'Players can no longer pump a stock far past its market price with a string of small buys. Options are now priced off the market price, not the player-pushed price.',
+  ] },
   { commit: '', at: '2026-11-03T20:00:00-06:00', title: 'City Jail', bullets: [
     'There is now a City Jail on the west side of the map between the Speedway and the Airport. Admins can jail a player with a reason and an optional timer.',
     'While jailed you can\'t trade or earn anything. You show up behind bars on the map with your timer and progress. To get out early, type "I\'m sorry grok." 10,000 times, one line at a time. Pasting doesn\'t count. No chips are taken.',

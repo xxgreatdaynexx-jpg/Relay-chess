@@ -19,7 +19,7 @@ import { getBank } from './casino-store.js';
 import { getEconomy } from './economy.js';
 import { Derivatives, getDerivs, setDerivs } from './derivs.js';
 import { divYield } from '../shared/derivs.js';
-import { COMPANIES, COMPANY_BY_TICKER, SECTOR_BY_ID, SECTORS, IMPACT_HALF_LIFE_MS, MAX_TICK_IMPACT, TICK_MS, dailyEvents, maxOrderChips, parseQty, quote, seeded, hash32, type ActivityKey, type Company, type NewsItem } from '../shared/stocks.js';
+import { COMPANIES, COMPANY_BY_TICKER, SECTOR_BY_ID, SECTORS, IMPACT_HALF_LIFE_MS, MAX_TICK_IMPACT, impactAllowed, IMPACT_CAP_MSG, TICK_MS, dailyEvents, maxOrderChips, parseQty, quote, seeded, hash32, type ActivityKey, type Company, type NewsItem } from '../shared/stocks.js';
 import { skillLevelAsync } from './skills.js';
 import { tradingFeeMul } from '../shared/skillPerks.js';
 import { cityFeeMul } from './mayor.js';
@@ -129,6 +129,8 @@ export class Exchange {
   }
   slotNow() { return Math.floor(this.clock() / TICK_MS); }
   price(t: string) { const r = this.rows.get(t); return r ? priceOf(r) : null; }
+  /** Price with player impact stripped out (the market's own random walk). Options price and settle off this so a pump can't be cashed out. */
+  basePrice(t: string) { const r = this.rows.get(t); return r ? Math.round(r.base * 100) / 100 : null; }
 
   async init() {
     if (!this.pool) return;
@@ -308,6 +310,7 @@ export class Exchange {
     if (side === 'buy' && row.held + shares > c.shares) throw new StockError(`Only ${c.shares - row.held} shares are left offshore.`);
     const slot = this.slotNow(); const used = row.tickSlot === slot ? row.tickImp : 0;
     if (used + Math.abs(q.imp) > MAX_TICK_IMPACT) throw new StockError('Heavy trading in this stock right now. Try a smaller order or wait a few seconds.');
+    if (!impactAllowed(row.imp, q.imp)) throw new StockError(IMPACT_CAP_MSG);
     if (side === 'buy' && !bank.canAfford(name, q.total)) throw new StockError('Not enough chips.');
     if (side === 'sell') { const h = (await this.holdings(name)).find((x) => x.ticker === c.ticker); if (!h || h.shares < shares) throw new StockError(`You own ${h?.shares ?? 0} ${c.ticker} share${(h?.shares ?? 0) === 1 ? '' : 's'}.`); }
     const id = randomUUID(); const at = this.clock();
@@ -330,6 +333,7 @@ export class Exchange {
         if (Math.abs(live - price) / price > 0.01) throw new StockError('The price just moved. Check the new quote and try again.');
         const u = Number(cur.tick_slot) === slot ? Number(cur.tick_imp) : 0;
         if (u + Math.abs(q.imp) > MAX_TICK_IMPACT) throw new StockError('Heavy trading in this stock right now. Try a smaller order or wait a few seconds.');
+        if (!impactAllowed(Number(cur.imp), q.imp)) throw new StockError(IMPACT_CAP_MSG);
         const dh = side === 'buy' ? shares : -shares;
         if (Number(cur.held) + dh > c.shares) throw new StockError('Not enough shares left offshore.');
         await cl.query('UPDATE stock_prices SET imp = imp + $2, tick_imp = $3, tick_slot = $4, held = held + $5 WHERE ticker = $1', [c.ticker, q.imp, u + Math.abs(q.imp), slot, dh]);

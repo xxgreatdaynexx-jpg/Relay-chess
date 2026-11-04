@@ -15,7 +15,7 @@ import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import { getBank } from './casino-store.js';
 import { StockError, keyOf, priceOf, type Exchange } from './stocks.js';
-import { COMPANIES, COMPANY_BY_TICKER, MAX_TICK_IMPACT, maxOrderChips, parseQty, quote, type Company } from '../shared/stocks.js';
+import { COMPANIES, COMPANY_BY_TICKER, MAX_TICK_IMPACT, impactAllowed, IMPACT_CAP_MSG, maxOrderChips, parseQty, quote, type Company } from '../shared/stocks.js';
 import {
   optionBid,
   BORROW_FEE, DIV_HOUR_UTC, FUNDS, FUND_BY_ID, FUND_MAX_ORDER, MAX_OPEN_OPTIONS, MAX_OPEN_SHORTS, OPT_EXPIRIES, OPT_MAX_PREMIUM, OPT_MAX_QTY,
@@ -60,6 +60,8 @@ export class Derivatives {
 
   async init() { if (this.pool) await this.pool.query(DERIVS_MIGRATION); }
   private price = (t: string) => this.ex.price(t);
+  /** Options use the un-pushed base price (no player impact), so pumping shares can't inflate option value. */
+  private optPrice = (t: string) => this.ex.basePrice(t);
   private comp(t: unknown): Company { const c = typeof t === 'string' ? COMPANY_BY_TICKER.get(t) : undefined; if (!c) throw new StockError('Unknown company.'); return c; }
   private fund(id: unknown): Fund { const f = typeof id === 'string' ? FUND_BY_ID.get(id) : undefined; if (!f) throw new StockError('Unknown fund.'); return f; }
   nav(f: Fund) { return navOf(f, this.price); }
@@ -100,6 +102,7 @@ export class Derivatives {
     if (!cl) {
       const used = row.tickSlot === slot ? row.tickImp : 0;
       if (used + Math.abs(imp) > MAX_TICK_IMPACT) throw new StockError('Heavy trading in this stock right now. Try a smaller order or wait a few seconds.');
+      if (!impactAllowed(row.imp, imp)) throw new StockError(IMPACT_CAP_MSG);
       return () => { row.imp += imp; row.tickImp = used + Math.abs(imp); row.tickSlot = slot; };
     }
     const cur = (await cl.query('SELECT base, imp, tick_imp, tick_slot FROM stock_prices WHERE ticker = $1 FOR UPDATE', [c.ticker])).rows[0];
@@ -108,6 +111,7 @@ export class Derivatives {
     if (Math.abs(live - price) / price > 0.01) throw new StockError('The price just moved. Check the new quote and try again.');
     const u = Number(cur.tick_slot) === slot ? Number(cur.tick_imp) : 0;
     if (u + Math.abs(imp) > MAX_TICK_IMPACT) throw new StockError('Heavy trading in this stock right now. Try a smaller order or wait a few seconds.');
+    if (!impactAllowed(Number(cur.imp), imp)) throw new StockError(IMPACT_CAP_MSG);
     await cl.query('UPDATE stock_prices SET imp = imp + $2, tick_imp = $3, tick_slot = $4 WHERE ticker = $1', [c.ticker, imp, u + Math.abs(imp), slot]);
     return () => { row.base = Number(cur.base); row.imp = Number(cur.imp) + imp; row.tickImp = u + Math.abs(imp); row.tickSlot = slot; };
   }
@@ -133,7 +137,7 @@ export class Derivatives {
     if (!this.pool) return [...this.mOpts.values()].filter((o) => (!k || o.key === k) && (status === 'all' || o.status === 'open')).sort((a, b) => b.openedAt - a.openedAt);
     return (await this.pool.query(`SELECT * FROM stk_options WHERE ($1::text IS NULL OR player_key = $1) AND ($2 = 'all' OR status = 'open') ORDER BY opened_at DESC LIMIT 200`, [k, status])).rows.map(optOf);
   }
-  optionMark(o: OptionPos) { const c = COMPANY_BY_TICKER.get(o.ticker)!; const S = this.price(o.ticker) ?? c.start; return Math.floor(optionValue(o.kind, S, o.strike, c.vol, daysLeft(o.expiry, this.clock())) * o.qty); }
+  optionMark(o: OptionPos) { const c = COMPANY_BY_TICKER.get(o.ticker)!; const S = this.optPrice(o.ticker) ?? c.start; return Math.floor(optionValue(o.kind, S, o.strike, c.vol, daysLeft(o.expiry, this.clock())) * o.qty); }
 
   /** Everything a player owns on the exchange, valued at mark. */
   /** Public trade history (read-only): stock buys/sells, short opens/covers/liquidations, option buys and expiries.
@@ -170,7 +174,7 @@ export class Derivatives {
     const funds = (await this.fundPositions(name)).map((p) => { const f = FUND_BY_ID.get(p.fund)!; const nav = this.nav(f); const value = Math.floor(nav * p.units); return { ...p, name: f.name, kind: f.kind, nav, value, pnl: value - p.cost }; });
     const now = this.clock();
     const shorts = (await this.shorts(name)).map((s) => { const p = this.price(s.ticker)!; const eqv = Math.floor(shortEquity(s, p)); const cl = shortClose(COMPANY_BY_TICKER.get(s.ticker)!, s, p); return { ...s, price: p, equity: eqv, closeValue: cl.payout, pnl: cl.pnl, liqPrice: r2(liquidationPrice(s)) }; });
-    const options = (await this.options(name)).map((o) => ({ ...o, price: this.price(o.ticker), mark: this.optionMark(o), bid: o.expiry > now ? optionBid(COMPANY_BY_TICKER.get(o.ticker)!, o.kind, this.price(o.ticker)!, o.strike, daysLeft(o.expiry, now), o.qty) : 0, hoursLeft: Math.max(0, Math.round((o.expiry - now) / 360_000) / 10) }));
+    const options = (await this.options(name)).map((o) => ({ ...o, price: this.price(o.ticker), mark: this.optionMark(o), bid: o.expiry > now ? optionBid(COMPANY_BY_TICKER.get(o.ticker)!, o.kind, this.optPrice(o.ticker)!, o.strike, daysLeft(o.expiry, now), o.qty) : 0, hoursLeft: Math.max(0, Math.round((o.expiry - now) / 360_000) / 10) }));
     const history = { shorts: (await this.shorts(name, 'all')).filter((s) => s.status !== 'open').slice(0, 20), options: (await this.options(name, 'all')).filter((o) => o.status !== 'open').slice(0, 20) };
     const totals = { stocks: stocks.value, funds: funds.reduce((a, f) => a + f.value, 0), shorts: shorts.reduce((a, s) => a + s.equity, 0), options: options.reduce((a, o) => a + o.mark, 0) };
     return { stocks, funds, shorts, options, history, totals: { ...totals, all: totals.stocks + totals.funds + totals.shorts + totals.options } };
@@ -247,7 +251,7 @@ export class Derivatives {
     const c = this.comp(t); if (kind !== 'call' && kind !== 'put') throw new StockError('Pick a call or a put.');
     const d = Number(days); if (!(OPT_EXPIRIES as readonly number[]).includes(d)) throw new StockError(`Expiry must be ${OPT_EXPIRIES.join(', ')} days.`);
     const pq = parseQty(qty, { max: OPT_MAX_QTY }); if (!pq.ok) throw new StockError(`${pq.error} Cover 1 to ${OPT_MAX_QTY} shares per option.`); const n = pq.n;
-    const S = this.price(c.ticker)!; const K = Math.round(Number(strike) * 100) / 100;
+    const S = this.optPrice(c.ticker)!; const K = Math.round(Number(strike) * 100) / 100;
     if (!(K > 0) || Math.abs(K / S - 1) > 0.25) throw new StockError('Strike must be within 25% of the current price.');
     const premium = optionPremium(c, kind, S, K, d, n);
     if (premium > OPT_MAX_PREMIUM) throw new StockError(`Premium too large: max ${OPT_MAX_PREMIUM.toLocaleString()} chips per order.`);
@@ -274,7 +278,7 @@ export class Derivatives {
     if (!o) throw new StockError("You don't hold that option (it may have expired or been sold).");
     const now = this.clock(); if (o.expiry <= now) throw new StockError('That option has expired. It settles automatically at the next price tick.');
     const pq = parseQty(qty ?? o.qty, { max: o.qty }); if (!pq.ok) throw new StockError(`${pq.error} You hold ${o.qty}.`);
-    const c = COMPANY_BY_TICKER.get(o.ticker)!; const S = this.price(o.ticker)!;
+    const c = COMPANY_BY_TICKER.get(o.ticker)!; const S = this.optPrice(o.ticker)!;
     const payout = optionBid(c, o.kind, S, o.strike, daysLeft(o.expiry, now), pq.n);
     const basis = pq.n === o.qty ? o.premium : Math.round((o.premium * pq.n) / o.qty);
     return { o, qty: pq.n, price: S, payout, basis };
@@ -326,7 +330,7 @@ export class Derivatives {
   async expire(now = this.clock()) {
     let n = 0;
     for (const o of (await this.options(null)).filter((x) => x.expiry <= now)) {
-      const S = this.price(o.ticker)!; const payout = optionPayout(o.kind, S, o.strike, o.qty);
+      const S = this.optPrice(o.ticker)!; const payout = optionPayout(o.kind, S, o.strike, o.qty);
       try {
         await this.atomic([{ name: o.name, amount: payout, key: `opt:${o.id}:settle`, game: 'stocks', memo: `${o.ticker} ${o.strike} ${o.kind} expired @ ${S.toFixed(2)}` }], async (cl) => {
           if (!cl) { const m = this.mOpts.get(o.id); if (!m || m.status !== 'open' || m.qty !== o.qty) throw new Skip(); Object.assign(m, { status: 'settled', settlePrice: S, payout }); return; }

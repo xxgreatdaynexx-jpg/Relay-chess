@@ -15,7 +15,7 @@ import { CAVES, caveOf, type CaveId, BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, M
 import { isAtResort } from './travel.js';
 import { sinkLostToday } from './sink-room.js';
 import { effectiveAlready } from '../shared/sinkRoom.js';
-import { houseCapIndex } from './house-cap-index.js';
+import { houseCapIndex, HOUSE_SELL_BLOCKED } from './house-cap-index.js';
 
 export const MINES_MIGRATION = [
   // Generic per-player stacks: item_type 'ore' | 'bar' | 'good' (Factory) — also the Market hook for stackables.
@@ -320,13 +320,14 @@ export class MinesWorld {
     // Chips lost to sinks today free up room (pt1405u), converted to base chips; may push effAlready below 0.
     const lost = sinkLostToday(account, now); const effAlready = effectiveAlready(already, lost, priceIndex());
     // House ore/goods prices follow the price index (tiers stay in base units so the daily caps scale too).
-    const capIndex = houseCapIndex(); const capBase = houseCapBase(capIndex, priceIndex()); // cap follows total assets (pt1442u)
+    const capIndex = houseCapIndex(); const capBase = HOUSE_SELL_BLOCKED.has(k) ? 0 : houseCapBase(capIndex, priceIndex()); // cap follows total assets (pt1442u)
     return { gross, paid: Math.floor(payoutFor(gross, effAlready, capBase) * priceIndex()), already, lost, effAlready, capBase, capIndex, items };
   }
 
   /** Sell ore to the house. Signed-in only. Stone etc. pay fractional chips: the whole sale is floored once. */
   sell(account: string | null, now: number, only?: unknown, qtyIn?: unknown): { paid: number; gross: number; sold: Stack[] } {
     if (!account) throw new MineError('Sign in to sell ore. Guests can mine but not sell.');
+    if (HOUSE_SELL_BLOCKED.has(playerKey(account))) throw new MineError('House selling is disabled on this account.');
     if (this.inMine(account)) throw new MineError('Leave the mine to sell.');
     const m = { account };
     let q = this.quote(account, now, only);

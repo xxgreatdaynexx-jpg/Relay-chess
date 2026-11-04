@@ -54,6 +54,10 @@ export const STOCK_FEE = 0.01; // 1% (min 1 chip) burned on every trade
 export const STOCK_SPREAD = 0.005; // buys pay +0.25%, sells get -0.25%
 export const MAX_TRADE_IMPACT = 0.02; // one order moves a price at most 2%
 export const MAX_TICK_IMPACT = 0.05; // all orders in one tick move a price at most 5%
+/** Total player push (|imp|, log-price) a stock can carry. Trades that would push past it are rejected; trades that shrink |imp| are always allowed. Stops tick-by-tick pump-and-dump. */
+export const MAX_TOTAL_IMPACT = 0.12;
+export const impactAllowed = (cur: number, d: number) => { const nx = Math.abs(cur + d); return nx <= MAX_TOTAL_IMPACT + 1e-12 || nx < Math.abs(cur); };
+export const IMPACT_CAP_MSG = 'This stock has been pushed as far as players can move it right now. Wait for the price to settle.';
 export const TICK_MS = 30_000;
 export const IMPACT_HALF_LIFE_MS = 2 * 3_600_000;
 /**
