@@ -68,6 +68,8 @@ describe('fishing fleets', () => {
     const sold = await fi.sell('Ann');
     expect(sold.captainCut).toBeGreaterThan(0);     expect(sold.captainCut).toBeLessThanOrEqual(captainShare(sold.paid + sold.captainCut!, 0.25) + 1);
     expect(bank.account('Cap').chips - capBefore).toBe(sold.captainCut);
+    const log = f.mine('Cap')!.log; expect(log.map((e) => e.kind)).toEqual(['catch', 'cut']); expect(log[0]).toMatchObject({ name: 'Ann', fish: c.fish }); expect(log[1]).toMatchObject({ name: 'Ann', chips: sold.captainCut });
+    expect(f.mine('Ann')!.log).toHaveLength(2); expect(f.list('Zed').find((x) => x.id === t.id)!.log).toEqual([]);
     expect(Number(db.public.one(`SELECT count(*) AS n FROM wallet_transactions WHERE game = 'fish_fleet'`).n)).toBe(1);
   });
 

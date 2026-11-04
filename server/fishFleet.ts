@@ -11,16 +11,16 @@ import { randomUUID } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import { getFleet } from './fleet.js';
 import { isAtResort } from './travel.js';
-import { setFishCrewHook, type CrewInfo } from './fishing.js';
+import { setFishCrewHook, setFishFleetNote, type CrewInfo, type FleetNote } from './fishing.js';
 import { playerKey } from './skins.js';
 import { roomOf } from './wallet-sockets.js';
 import { getLinks, socketSigs } from './linked.js';
 import { Coop3Error, Guard } from './coop3-gate.js';
 import { getWeekly } from './weeklyEvent.js';
 import { fleetModel } from '../shared/fleet.js';
-import { FLEET_MAX_CUT, FLEET_REQUEST_TTL_MS, FLEET_TRIP_MS, crewSeats, cutOk, type FleetTripView } from '../shared/coop3.js';
+import { FLEET_MAX_CUT, FLEET_REQUEST_TTL_MS, FLEET_TRIP_MS, crewSeats, cutOk, type FleetTripView, FLEET_LOG_MAX, type FleetLogEntry } from '../shared/coop3.js';
 
-interface Trip { id: string; captain: string; boat: string; boatName: string; zone: number; biteMul: number; seats: number; cut: number; startAt: number; endsAt: number; crew: Map<string, string>; reqs: Map<string, { name: string; at: number }> }
+interface Trip { id: string; captain: string; boat: string; boatName: string; zone: number; biteMul: number; seats: number; cut: number; startAt: number; endsAt: number; crew: Map<string, string>; reqs: Map<string, { name: string; at: number }>; log: FleetLogEntry[] }
 
 export class FishFleet {
   private trips = new Map<string, Trip>();
@@ -56,7 +56,7 @@ export class FishFleet {
     if (!best) throw new Coop3Error('You need a sportfisher, yacht or superyacht to crew a boat (skiffs fit only you).');
     if (this.tripOf(captain)) throw new Coop3Error('You are already on a fleet trip.');
     const now = this.clock();
-    const t: Trip = { id: randomUUID(), captain: captain.trim(), boat: best.id, boatName: best.name, zone: best.zone ?? 1, biteMul: best.biteMul ?? 1, seats: crewSeats(best.id), cut, startAt: now, endsAt: now + FLEET_TRIP_MS, crew: new Map(), reqs: new Map() };
+    const t: Trip = { id: randomUUID(), captain: captain.trim(), boat: best.id, boatName: best.name, zone: best.zone ?? 1, biteMul: best.biteMul ?? 1, seats: crewSeats(best.id), cut, startAt: now, endsAt: now + FLEET_TRIP_MS, crew: new Map(), reqs: new Map(), log: [] };
     this.trips.set(t.id, t); this.onChange?.(t, 'opened', [t.captain]);
     return this.view(t, captain);
   }
@@ -110,7 +110,16 @@ export class FishFleet {
     const k = viewer ? playerKey(viewer) : '';
     const mine = !viewer ? null : playerKey(t.captain) === k ? 'captain' : t.crew.has(k) ? 'crew' : t.reqs.has(k) ? 'requested' : null;
     return { id: t.id, captain: t.captain, boat: t.boat, boatName: t.boatName, zone: t.zone, seats: t.seats, cut: t.cut, startAt: t.startAt, endsAt: t.endsAt, crew: [...t.crew.values()],
+      log: mine ? t.log.slice(-FLEET_LOG_MAX) : [],
       requests: mine === 'captain' ? [...t.reqs.values()].map((r) => r.name) : [], mine };
+  }
+  /** Trip log: crew catches (by trip id) and captain's cuts (by the captain's live trip). In memory, like the trip itself. */
+  note(e: FleetNote) {
+    const t = e.trip ? this.live(this.trips.get(e.trip)) : e.captain ? (() => { const m = this.tripOf(e.captain!); return m?.role === 'captain' ? m.t : undefined; })() : undefined;
+    if (!t) return;
+    t.log.push({ at: this.clock(), name: e.name, kind: e.kind, ...(e.fish ? { fish: e.fish } : {}), ...(e.grams ? { grams: e.grams } : {}), ...(e.chips ? { chips: e.chips } : {}) });
+    if (t.log.length > FLEET_LOG_MAX * 2) t.log.splice(0, t.log.length - FLEET_LOG_MAX);
+    this.onChange?.(t, e.kind, [t.captain, ...t.crew.values()]);
   }
   list(viewer: string | null): FleetTripView[] { return [...this.trips.values()].filter((t) => this.live(t)).map((t) => this.view(t, viewer)).sort((a, b) => (b.mine ? 1 : 0) - (a.mine ? 1 : 0) || a.endsAt - b.endsAt); }
   mine(viewer: string) { const m = this.tripOf(viewer); return m ? this.view(m.t, viewer) : null; }
@@ -118,6 +127,7 @@ export class FishFleet {
 
 let fleetTrips = new FishFleet();
 setFishCrewHook((n) => fleetTrips.crewInfo(n));
+setFishFleetNote((e) => fleetTrips.note(e));
 export const getFishFleet = () => fleetTrips;
 export function resetFishFleet(f?: FishFleet) { fleetTrips = f ?? new FishFleet(); return fleetTrips; }
 

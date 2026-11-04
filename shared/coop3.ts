@@ -66,7 +66,11 @@ export const captainShare = (paid: number, cut: number) => Math.max(0, Math.floo
 export interface FleetTripView {
   id: string; captain: string; boat: string; boatName: string; zone: number; seats: number; cut: number; startAt: number; endsAt: number;
   crew: string[]; requests: string[]; mine: 'captain' | 'crew' | 'requested' | null;
+  /** Trip log (catches + captain's cuts), shown to the captain and crew only. */
+  log: FleetLogEntry[];
 }
+export interface FleetLogEntry { at: number; name: string; kind: 'catch' | 'cut'; fish?: string; grams?: number; chips?: number }
+export const FLEET_LOG_MAX = 8;
 
 // ------------------------------------------------------------ weekly events
 export type EventKind = 'mining' | 'harvest' | 'fishing' | 'trade' | 'hockey';

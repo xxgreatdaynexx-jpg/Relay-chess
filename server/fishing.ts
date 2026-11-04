@@ -40,6 +40,10 @@ export function setFishBoatHook(f: typeof boatHook) { boatHook = f; }
 export type CrewInfo = { tripId: string; captain: string | null; cut: number; zone: number; biteMul: number; crewed: boolean };
 var crewHook: (name: string) => CrewInfo | null = () => null;
 export function setFishCrewHook(f: typeof crewHook | null) { crewHook = f ?? (() => null); } // hoisted: server/fleet.ts calls it during a circular import
+/** mu-coop3: the fleet trip log (catches + captain's cuts), set by server/fishFleet.ts. Called only after the write commits. */
+export type FleetNote = { trip?: string; captain?: string; name: string; kind: 'catch' | 'cut'; fish?: string; grams?: number; chips?: number };
+var fleetNote: (e: FleetNote) => void = () => {};
+export function setFishFleetNote(f: typeof fleetNote | null) { fleetNote = f ?? (() => {}); }
 export const setFishGearHook = (f: typeof gearHook) => { gearHook = f; };
 
 export const FISH_MIGRATION = `
@@ -144,6 +148,7 @@ export class Fishing {
       const xp = FISH_XP[f.rarity];
       awardXp(name, 'fishing', xp);
       eventCredit('fishing', name, 1, fish.id);
+      if (c.crew) { try { fleetNote({ trip: c.crew.trip, name, kind: 'catch', fish: f.id, grams: fish.grams }); } catch { /* log only */ } }
       emitActivity({ name, skill: 'fishing', xp, action: 'catch', detail: { fish: f.id, rarity: f.rarity, grams: fish.grams, value: fish.value }, at: now });
       return { caught: true, fish, xp };
     });
@@ -216,6 +221,7 @@ export class Fishing {
       const p = run(); w.bind(p);
       try { await p; } catch (e) { w.revert(); if (e instanceof FishError) throw e; console.error('[fishing] sell failed:', (e as Error).message); throw new FishError('Something went wrong. Nothing was sold.'); }
       royaltyEarn('dock', name, paid);
+      for (const [cap, amt] of cuts) { try { fleetNote({ captain: cap, name, kind: 'cut', chips: amt }); } catch { /* log only */ } }
       return { sold: rows.length, gross: gross + dGross, paid: paid - cutTotal, chips: this.bank().account(name).chips, ...(cutTotal ? { captainCut: cutTotal } : {}) };
     });
   }

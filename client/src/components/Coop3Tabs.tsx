@@ -1,6 +1,7 @@
 /** Co-op tabs for co-op3: supply contracts, fishing fleets and the weekly server event. */
 import { useEffect, useState } from 'react';
 import { request, socket } from '@/lib/net';
+import { fishById, fmtKg, RARITY_COLOR } from '../../../shared/fishing';
 import { FLEET_MAX_CUT, SC_INTERVALS_H, SC_MAX_DELIVERIES, SC_MIN_DELIVERIES, EVENT_TIERS, scBand, scBond, type EventView, type FleetTripView, type ScView } from '../../../shared/coop3';
 
 const fmt = (n: number) => Math.floor(n).toLocaleString('en-US');
@@ -72,6 +73,9 @@ export function FleetTab({ me }: { me: string | null }) {
       <h4>🛥️ {m.mine === 'captain' ? 'Your trip' : `${m.captain}’s trip`}: {m.boatName}</h4>
       <p>{m.crew.length}/{m.seats} crew · captain’s cut {Math.round(m.cut * 100)}% · zone {m.zone} · ends in {left(m.endsAt)}</p>
       <p>Crew: {m.crew.length ? m.crew.join(', ') : 'nobody yet'}</p>
+      {m.log.length > 0 && <ul className="coop-board fleet-log" data-testid="fleet-log">{m.log.slice().reverse().map((e, i) => { const f = e.fish ? fishById(e.fish) : null;
+        return <li key={`${e.at}-${i}`}>{e.kind === 'catch' ? <span>🎣 {e.name} landed <b style={{ color: f ? RARITY_COLOR[f.rarity] : undefined }}>{f ? `${f.emoji} ${f.label}` : e.fish}</b>{e.grams ? ` · ${fmtKg(e.grams)}` : ''}</span>
+          : <span>💰 {e.name} sold the catch · captain’s cut <b>🪙 {fmt(e.chips ?? 0)}</b> to {m.captain}</span>}</li>; })}</ul>}
       {m.mine === 'requested' && <p>⏳ Waiting for {m.captain} to answer…</p>}
       {m.mine === 'crew' && <p>🎣 Cast at the deep sea. You fish from {m.captain}’s boat; crewed boats can hook 🐟 bigeye tuna, 🌕 opah and 🐋 blue marlin.</p>}
       {m.mine === 'captain' && m.requests.map((r) => <div key={r} className="coop-claim">🙋 {r} wants to join
