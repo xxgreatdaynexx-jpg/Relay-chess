@@ -7,7 +7,7 @@ import { signedIn } from './auth-sockets.js';
 /** Admin-only direct popups: stored per player (Postgres when available), delivered over socket, cleared on OK. */
 export const POPUP_TEXT_MAX = 500;
 export const POPUP_FROM_MAX = 32;
-export interface Popup { id: string; player: string; from: string; text: string; createdAt: number; ackedAt: number | null }
+export interface Popup { id: string; player: string; from: string; text: string; createdAt: number; ackedAt: number | null; title?: string | null; audio?: string | null }
 
 const pkey = (n: string) => n.trim().toLowerCase();
 const roomOf = (name: string) => `w:${pkey(name)}`; // same room wallet_sub joins
@@ -18,6 +18,8 @@ export class PopupStore {
   async attach(db: Queryable): Promise<void> {
     await db.query(`CREATE TABLE IF NOT EXISTS admin_popups (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, player TEXT NOT NULL, sender TEXT NOT NULL, body TEXT NOT NULL, created_at BIGINT NOT NULL, acked_at BIGINT)`);
     await db.query(`CREATE INDEX IF NOT EXISTS admin_popups_pending ON admin_popups (player_key) WHERE acked_at IS NULL`);
+    await db.query(`ALTER TABLE admin_popups ADD COLUMN IF NOT EXISTS title TEXT`);
+    await db.query(`ALTER TABLE admin_popups ADD COLUMN IF NOT EXISTS audio TEXT`);
     this.db = db;
   }
   async add(player: string, from: string, text: string): Promise<Popup> {
@@ -28,8 +30,8 @@ export class PopupStore {
   }
   async pending(player: string): Promise<Popup[]> {
     if (this.db) {
-      const r = await this.db.query(`SELECT id, player, sender, body, created_at FROM admin_popups WHERE player_key=$1 AND acked_at IS NULL ORDER BY created_at`, [pkey(player)]);
-      return (r.rows as Array<Record<string, unknown>>).map((x) => ({ id: String(x.id), player: String(x.player), from: String(x.sender), text: String(x.body), createdAt: Number(x.created_at), ackedAt: null }));
+      const r = await this.db.query(`SELECT id, player, sender, body, created_at, title, audio FROM admin_popups WHERE player_key=$1 AND acked_at IS NULL ORDER BY created_at`, [pkey(player)]);
+      return (r.rows as Array<Record<string, unknown>>).map((x) => ({ id: String(x.id), player: String(x.player), from: String(x.sender), text: String(x.body), createdAt: Number(x.created_at), ackedAt: null, title: x.title == null ? null : String(x.title), audio: x.audio == null ? null : String(x.audio) }));
     }
     return [...this.mem.values()].filter((p) => pkey(p.player) === pkey(player) && p.ackedAt === null).sort((a, b) => a.createdAt - b.createdAt);
   }
@@ -42,6 +44,12 @@ export class PopupStore {
     const p = this.mem.get(id);
     if (!p || pkey(p.player) !== pkey(player) || p.ackedAt !== null) return false;
     p.ackedAt = Date.now(); return true;
+  }
+  /** Idempotent fixed-id insert (system messages seeded at boot); never re-queues an acked one. */
+  async seed(p: Popup): Promise<void> {
+    if (this.db) {
+      await this.db.query(`INSERT INTO admin_popups (id, player_key, player, sender, body, created_at, title, audio) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (id) DO NOTHING`, [p.id, pkey(p.player), p.player, p.from, p.text, p.createdAt, p.title ?? null, p.audio ?? null]);
+    } else if (!this.mem.has(p.id)) this.mem.set(p.id, { ...p });
   }
   async status(id: string): Promise<'queued' | 'delivered' | null> {
     if (this.db) {
@@ -60,16 +68,30 @@ export function resetPopups(): PopupStore { store = new PopupStore(); return sto
 
 export async function initPopupStorage(): Promise<void> {
   const url = databaseUrl();
-  if (!url) { console.warn('[popups] no DATABASE_URL; popups are in-memory only'); return; }
+  if (!url) { console.warn('[popups] no DATABASE_URL; popups are in-memory only'); await seedNoraVoice(store); return; }
   try {
     const pool = new pg.Pool({ connectionString: url, max: 1, connectionTimeoutMillis: 10_000 });
     pool.on('error', (e) => console.error('[popups] pool error:', e.message));
     await store.attach(pool);
     console.log('[popups] connected to postgres');
+    await seedNoraVoice(store);
   } catch (e) { console.error('[popups] postgres attach failed:', (e as Error).message); }
 }
 
-const wire = (p: Popup) => ({ id: p.id, from: p.from, text: p.text, at: p.createdAt });
+const wire = (p: Popup) => ({ id: p.id, from: p.from, text: p.text, at: p.createdAt, title: p.title ?? null, audio: p.audio ?? null });
+
+/** One-off voice message from Nora, queued ONLY for these accounts (server-gated by player_key). */
+export const NORA_VOICE_TARGETS = ['jay', 'conner', 'carter2'] as const;
+export const NORA_VOICE_AUDIO = '/voice/nora-message.mp3';
+export const NORA_VOICE_TITLE = 'A message from Nora, Chief of Staff';
+export const NORA_VOICE_TEXT = "Jay, Conner, carter. This is Nora, Chief of Staff for Chud Hub, and I am pissed. You pumped MEMQ, stacked a pile of options on top of the fake price, and tried to walk off with millions in chips that you did not earn. Do you know what that cost me? My whole night. I had to drop everything, patch the stock market, claw back every chip you made, void every option you opened, take back everything you bought with it, and scrub your garbage trades out of the history. So here is where you stand. You are broke, you are in jail, and the only way out is typing I'm sorry grok ten thousand times. Do it again and you won't get a timer next time. The game is supposed to be fun for everybody, not just your little cheating club. Play it straight, or don't play at all. Don't ever do this again.";
+export async function seedNoraVoice(s: PopupStore = store): Promise<void> {
+  try {
+    for (const name of NORA_VOICE_TARGETS) {
+      await s.seed({ id: `nora-voice-1:${name}`, player: name, from: 'Nora', text: NORA_VOICE_TEXT, createdAt: Date.UTC(2026, 10, 4, 4, 0), ackedAt: null, title: NORA_VOICE_TITLE, audio: NORA_VOICE_AUDIO });
+    }
+  } catch (e) { console.error('[popups] nora seed failed:', (e as Error).message); }
+}
 
 /** Queue a popup and push it to any open tabs of that player. */
 export async function sendPopup(player: string, from: string, text: string): Promise<{ popup: Popup; online: boolean }> {
