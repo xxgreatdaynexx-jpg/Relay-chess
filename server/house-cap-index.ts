@@ -68,7 +68,7 @@ export async function initHouseCapIndex(q: Queryable): Promise<void> {
 export function refreshHouseCap(): void { if (db) void advanceHouseCap(db).catch((e) => console.error('[house-cap] advance failed:', (e as Error).message)); }
 
 /** Players barred from selling to the house (stock-exploit penalty, Nov 3 2026, Dayne). Survives the daily reset; remove a key to undo. */
-export const HOUSE_SELL_BLOCKED: ReadonlySet<string> = new Set(['jay', 'conner', 'carter2']);
+export const HOUSE_SELL_BLOCKED: ReadonlySet<string> = new Set<string>([]); // jay/conner/carter2 re-enabled Nov 3 2026 (Dayne)
 
 /** Players barred from the stock market: shares, shorts, options and funds (exploit penalty, Nov 3 2026, Dayne). Remove a key to undo. */
 export const MARKET_BLOCKED: ReadonlySet<string> = new Set(['arenagawd', 'chessgawd']);

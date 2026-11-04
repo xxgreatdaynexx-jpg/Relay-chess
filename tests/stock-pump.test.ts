@@ -38,5 +38,5 @@ describe('pump-and-dump guard', () => {
 
 import { HOUSE_SELL_BLOCKED } from '../server/house-cap-index';
 describe('house-sell block', () => {
-  it('blocks the exploit accounts', () => { for (const k of ['jay', 'conner', 'carter2']) expect(HOUSE_SELL_BLOCKED.has(k)).toBe(true); expect(HOUSE_SELL_BLOCKED.has('dayne')).toBe(false); });
+  it('house selling is re-enabled for the former exploit accounts', () => { for (const k of ['jay', 'conner', 'carter2']) expect(HOUSE_SELL_BLOCKED.has(k)).toBe(false); expect(HOUSE_SELL_BLOCKED.has('dayne')).toBe(false); });
 });
