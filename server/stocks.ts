@@ -24,6 +24,7 @@ import { skillLevelAsync } from './skills.js';
 import { tradingFeeMul } from '../shared/skillPerks.js';
 import { cityFeeMul } from './mayor.js';
 
+import { isMarketBlocked, MARKET_BLOCKED_MSG } from './house-cap-index.js';
 export class StockError extends Error {}
 const DAY = 86_400_000;
 const TICKS_PER_DAY = DAY / TICK_MS;
@@ -300,6 +301,7 @@ export class Exchange {
 
   // ---------- trading ----------
   async trade(name: string, side: 'buy' | 'sell', t: unknown, n: unknown) {
+    if (isMarketBlocked(name)) throw new StockError(MARKET_BLOCKED_MSG);
     const c = typeof t === 'string' ? COMPANY_BY_TICKER.get(t) : undefined; if (!c) throw new StockError('Unknown company.');
     const ps = parseQty(n); if (!ps.ok) throw new StockError(ps.error); const shares = ps.n;
     const bank = getBank(); const k = keyOf(name); const row = this.rows.get(c.ticker)!; const price = priceOf(row);

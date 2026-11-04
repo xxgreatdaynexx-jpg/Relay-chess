@@ -69,3 +69,8 @@ export function refreshHouseCap(): void { if (db) void advanceHouseCap(db).catch
 
 /** Players barred from selling to the house (stock-exploit penalty, Nov 3 2026, Dayne). Survives the daily reset; remove a key to undo. */
 export const HOUSE_SELL_BLOCKED: ReadonlySet<string> = new Set(['jay', 'conner', 'carter2']);
+
+/** Players barred from the stock market: shares, shorts, options and funds (exploit penalty, Nov 3 2026, Dayne). Remove a key to undo. */
+export const MARKET_BLOCKED: ReadonlySet<string> = new Set(['arenagawd', 'chessgawd']);
+export const MARKET_BLOCKED_MSG = 'Market access suspended';
+export const isMarketBlocked = (name: string | null | undefined): boolean => !!name && MARKET_BLOCKED.has(name.trim().toLowerCase());
