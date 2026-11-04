@@ -24,6 +24,7 @@ import { fieldPlotOf } from '../shared/fieldFarms.js';
 import { resortPlotOf } from '../shared/resort.js';
 import { propertyTaxMul } from '../shared/skillPerks.js';
 import { cityPropertyTaxMul } from './mayor.js';
+import { purchaseTaxMoves, quotePurchaseTax } from './purchase-tax.js';
 
 export class PropertyError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
@@ -68,9 +69,10 @@ export class RealEstate {
   }
 
   /** Atomic: the ledger rows and the ownership change commit together, or neither does. */
-  private async atomic(name: string, amount: number, game: string, memo: string, body: (cl: pg.PoolClient) => Promise<void>) {
-    const bank = this.bank();
-    const w = bank.transferAtomic([{ name, amount, key: `${game}:${randomUUID()}`, game, memo }]);
+  private async atomic(name: string, amount: number, game: string, memo: string, body: (cl: pg.PoolClient) => Promise<void>, extra?: (key: string) => Promise<Array<{ name: string; amount: number; key: string; game: string; memo?: string }>>) {
+    const bank = this.bank(); const key = `${game}:${randomUUID()}`;
+    const more = extra ? await extra(key) : [];
+    const w = bank.transferAtomic([{ name, amount, key, game, memo }, ...more], { batch: more.length > 1 });
     const run = async () => {
       await w.after; const cl = await this.pool.connect();
       try {
@@ -96,7 +98,8 @@ export class RealEstate {
   async quote(name: string, id: unknown) {
     const p = propertyById(id); if (!p) throw new PropertyError('That property is not for sale.');
     const owned = await this.ownedCount(name); const value = await this.ownedValue(name);
-    return { id: p.id, list: p.price, owned, ownedValue: value, surchargePct: landSurchargePct(value), multiplier: landMultiplier(value), price: landPrice(p.price, value) };
+    const price = landPrice(p.price, value); const wealthTax = await quotePurchaseTax(this.pool, name, price, this.clock());
+    return { id: p.id, list: p.price, owned, ownedValue: value, surchargePct: landSurchargePct(value), multiplier: landMultiplier(value), price, wealthTax };
   }
   /** max: the price the player saw; a higher price now (they bought something else meanwhile) refuses instead of surprising them. */
   async buy(name: string, id: unknown, max?: unknown) {
@@ -109,7 +112,9 @@ export class RealEstate {
     const owned = await this.ownedCount(name); const value = await this.ownedValue(name); const price = landPrice(p.price, value);
     const note = landMultiplierNote(value);
     if (max !== undefined && price > max) throw new PropertyError(`The price changed: your surcharge is +${+landSurchargePct(value).toFixed(1)}% now, so ${p.label} costs ${price.toLocaleString('en-US')}. Check the deed and try again.`);
-    if (bank.account(name).chips < price) throw new PropertyError(`Not enough chips: ${p.label} costs ${price.toLocaleString('en-US')}${note ? ` (${note})` : ''}.`);
+    const wq = await quotePurchaseTax(this.pool, name, price, this.clock());
+    if (bank.account(name).chips < price + wq.tax) throw new PropertyError(`Not enough chips: ${p.label} costs ${price.toLocaleString('en-US')}${note ? ` (${note})` : ''}${wq.tax ? ` + ${wq.line}` : ''}.`);
+    let wtax = 0, wn = 0;
     await this.atomic(name, -price, 'property_buy', `Bought ${p.label} (${p.id})${note ? ` ${note}` : ''}`, async (cl) => {
       // cross-instance: the count must still be what we priced at (a parallel buy elsewhere = refuse, nothing charged)
       if ((await this.ownedValue(name, cl)) !== value) throw new PropertyError('You just bought another property: the price went up. Check the deed and try again.');
@@ -118,9 +123,9 @@ export class RealEstate {
       // One round trip (QA r8 speed): RETURNING yields a row only if our insert won. price = what was actually paid.
       const r = await cl.query('INSERT INTO properties (id, owner_key, owner_name, price, bought_at, deed) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING RETURNING deed', [p.id, keyOf(name), name.trim(), price, this.clock(), deed]);
       if (r.rows[0]?.deed !== deed) throw new PropertyError('Someone already owns this property.');
-    });
+    }, async (key) => { const t = await purchaseTaxMoves(this.pool, name, price, key, p.label, this.clock()); wtax = t.tax; wn = t.recipients; return t.moves; });
     this.onChange?.();
-    return { id: p.id, price, list: p.price, owned, ownedValue: value, surchargePct: landSurchargePct(value), multiplier: landMultiplier(value), chips: bank.account(name).chips };
+    return { id: p.id, price, wealthTax: wtax, wealthTaxRecipients: wn, list: p.price, owned, ownedValue: value, surchargePct: landSurchargePct(value), multiplier: landMultiplier(value), chips: bank.account(name).chips };
   }
 
   async sell(name: string, id: unknown) {

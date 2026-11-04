@@ -10,6 +10,7 @@
  * of every active driver at 8 Hz to the 'drive' room (anyone on the city map, guests included). Disconnect, 'drive_stop'
  * or 8 s without an update removes the car.
  */
+import { purchaseTaxMoves, quotePurchaseTax } from './purchase-tax.js';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { bootAttach, setBootState } from './boot-retry.js';
@@ -64,9 +65,11 @@ export class Garage {
     const car = typeof carId === 'string' ? CAR_BY_ID.get(carId) : undefined; if (!car) throw new CarError('That car is not on the lot.');
     const col = typeof color === 'number' && car.colors.includes(color) ? color : car.colors[0]!;
     const mine = await this.owned(name); const price = px(car.price); if (mine.length >= MAX_CARS) throw new CarError(`Garage full (${MAX_CARS} cars). Sell one first.`);
-    const bank = getBank(); if (!bank.canAfford(name, price)) throw new CarError('Not enough chips.');
-    const id = randomUUID(); const at = this.clock(); const k = keyOf(name); const first = !mine.some((c) => c.active);
-    const w = bank.transferAtomic([{ name, amount: -price, key: `car_buy:${id}`, game: 'car_buy', memo: `Bought ${car.name}` }]);
+    const bank = getBank(); const id = randomUUID();
+    const wt = this.pool ? await purchaseTaxMoves(this.pool as never, name, price, `car_buy:${id}`, car.name, this.clock()) : { tax: 0, recipients: 0, moves: [], line: '' };
+    if (!bank.canAfford(name, price + wt.tax)) throw new CarError(wt.tax ? `Not enough chips: ${car.name} costs ${price.toLocaleString('en-US')} + ${wt.line}.` : 'Not enough chips.');
+    const at = this.clock(); const k = keyOf(name); const first = !mine.some((c) => c.active);
+    const w = bank.transferAtomic([{ name, amount: -price, key: `car_buy:${id}`, game: 'car_buy', memo: `Bought ${car.name}` }, ...wt.moves], { batch: wt.moves.length > 2 });
     const run = async () => {
       if (!this.pool) { const l = this.mem.get(k) ?? []; l.push({ id, carId: car.id, color: col, paid: price, boughtAt: at, active: first, mods: { ...STOCK_MODS } }); this.mem.set(k, l); return; }
       await w.after; const cl = await this.pool.connect();
@@ -80,7 +83,14 @@ export class Garage {
     const p = run(); w.bind(p);
     try { await p; } catch (e) { w.revert(); console.error('[cars] buy failed:', (e as Error).message); throw new CarError(/chips|balance|null value/i.test((e as Error).message) ? 'Not enough chips.' : 'Purchase failed. Nothing was charged.'); }
     this.activeCache.delete(k);
-    return { id, car: car.id, price, chips: bank.account(name).chips };
+    return { id, car: car.id, price, wealthTax: wt.tax, wealthTaxRecipients: wt.recipients, chips: bank.account(name).chips };
+  }
+
+  /** Checkout preview: today's price and the purchase wealth tax this buyer would pay on top. */
+  async buyQuote(name: string, carId: unknown) {
+    const car = typeof carId === 'string' ? CAR_BY_ID.get(carId) : undefined; if (!car) throw new CarError('That car is not on the lot.');
+    const price = px(car.price);
+    return { car: car.id, price, wealthTax: this.pool ? await quotePurchaseTax(this.pool as never, name, price, this.clock()) : { tax: 0, recipients: 0, propertyValue: 0, line: '' } };
   }
 
   async sell(name: string, ownedId: unknown) {
@@ -236,6 +246,7 @@ export function registerCars(io: Server, socket: Socket): void {
   });
   on('car_catalog', () => ({ cars: CARS.map((c) => ({ ...c, basePrice: c.price, price: px(c.price) })) }));
   on('car_garage', (_b, g) => g.garage(nameOf()));
+  on('car_quote', (b, g) => g.buyQuote(need(), b.car));
   on('car_buy', (b, g) => g.buy(need(), b.car, b.color));
   on('car_sell', async (b, g) => { const n = need(); const r = await g.sell(n, b.id); relay.stop(n); return r; });
   on('car_active', (b, g) => g.setActive(need(), b.id));
