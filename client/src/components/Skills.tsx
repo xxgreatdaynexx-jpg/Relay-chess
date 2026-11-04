@@ -1,5 +1,5 @@
 import { useDoing } from '@/lib/doing';
-import { backdropDismiss } from '@/lib/backdrop';
+import { backdropDismiss, closeButton, swallowClicksAfterClose } from '@/lib/backdrop';
 import { CLOSE_WORLD_PANELS, WALLET_CLOSE } from '@/lib/worldPanels';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -98,7 +98,7 @@ export function SkillsPanel() {
     return () => { window.clearTimeout(t); window.clearTimeout(luTimer); socket.off('xp', onXp); };
   }, [account]);
   useEffect(() => { if (open && account) load(); }, [open, account]);
-  useEffect(() => { if (!open) return; const k = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [open]); // QA r9: Esc closes Skills
+  useEffect(() => { if (!open) return; const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { swallowClicksAfterClose(); setOpen(false); } }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [open]); // QA r9: Esc closes Skills
   useEffect(() => { if (open) { window.dispatchEvent(new Event(CLOSE_WORLD_PANELS)); window.dispatchEvent(new Event(WALLET_CLOSE)); } }, [open]); // QA r8: no stale deed/Airport panel behind Skills
 
   const lu = levelUp && skillDef(levelUp.skill);
@@ -124,7 +124,7 @@ export function SkillsPanel() {
               <nav className="inv-tabs" role="tablist">
                 {([['me', '📜 My skills'], ['hi', '🏆 Hiscores']] as const).map(([k, t]) => <button key={k} type="button" role="tab" aria-selected={view === k} className={view === k ? 'on' : ''} onClick={() => setView(k)} data-testid={`skills-tab-${k}`}>{t}</button>)}
               </nav>
-              <button type="button" className="ml-auto" aria-label="Close skills" onClick={() => setOpen(false)}>✕</button>
+              <button type="button" className="ml-auto" aria-label="Close skills" data-testid="skills-close" {...closeButton(() => setOpen(false))}>✕</button>
             </header>
             <div className="flex-1 overflow-auto p-3 text-sm">
               {view === 'hi' ? <Hiscores /> : !account ? <p>Sign in to start earning XP. Every activity trains a skill: mine ore, run your factory, farm, race, fight in the Arena, trade, play the casino, play chess or buy property.</p>
