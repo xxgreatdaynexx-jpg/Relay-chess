@@ -67,6 +67,13 @@ describe('oil & gas sim', () => {
     expect(s.stock.crude ?? 0).toBeGreaterThan(0); expect(s.stock.rawgas ?? 0).toBeGreaterThan(0);
     const big = bigFort(); expect(powerDemand(big)).toBeGreaterThan(GRID_MW); step(big); expect(big.power.supply).toBe(GRID_MW); // no gas yet: turbines idle
   });
+  it('regression (mu-visuals): idle units draw no power, so a starter site is not throttled ("11.6 of 4 MW")', () => {
+    const s = newFort(0); s.tracts['1'] = { leased: true, pipe: 1, wells: [{ jack: false, cond: 100 }, { jack: false, cond: 100 }] };
+    let id = 1; for (const k of ['separator', 'gas_plant', 'refinery', 'reformer', 'coker', 'cracker', 'polymer'] as const) s.units.push({ id: id++, k, cond: 100, on: true });
+    const demand = powerDemand(s); expect(demand).toBeLessThanOrEqual(GRID_MW); // only the wells + separator have work: no crude/gas yet downstream of nothing
+    step(s); expect(s.power.supply).toBeGreaterThanOrEqual(powerDemand(s));
+    const empty = newFort(0); empty.units.push({ id: 9, k: 'cracker', cond: 100, on: true }); expect(powerDemand(empty)).toBe(0); // nothing to crack
+  });
   it('full chain makes every product over a day and reaches steady power from its own gas', () => {
     const s = bigFort(); settle(s, 24 * H);
     for (const p of ['crude', 'natgas', 'ngl', 'naphtha', 'diesel', 'gasoline', 'residue', 'petcoke', 'sulfur', 'ethylene', 'plastic'] as const) expect(s.made[p] ?? 0, p).toBeGreaterThan(0);

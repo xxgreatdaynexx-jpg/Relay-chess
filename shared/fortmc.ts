@@ -136,12 +136,31 @@ export const unitCount = (s: FortState, k: UnitKind) => s.units.filter((u) => u.
 const st = (s: FortState, p: Product) => s.stock[p] ?? 0;
 const add = (s: FortState, p: Product, n: number) => { s.stock[p] = Math.max(0, st(s, p) + n); if (n > 0) s.made[p] = (s.made[p] ?? 0) + n; };
 
-/** Power demand if everything that's on ran at full load. */
+/**
+ * Power the site actually draws this step. Only equipment with work to do pulls its MW: a well needs its pipeline and room
+ * in the wellstream tank; a process unit needs input in its tank (or a running upstream unit feeding it) and room for its
+ * outputs; the mine needs ore room. Previously every switched-on unit was billed at full load even when idle (e.g. a
+ * refinery with no crude, a cracker with no NGL), so a starter site showed "11.6 of 4 MW" and the idle units throttled the
+ * ones that did have work.
+ */
 export function powerDemand(s: FortState): number {
-  let mw = 0;
-  for (const t of Object.values(s.tracts)) if (t.pipe > 0) for (const w of t.wells) if (efficiency(w.cond) > 0) mw += WELL_MW + (w.jack ? PUMPJACK_MW : 0);
-  for (const u of s.units) if (u.on && efficiency(u.cond) > 0) mw += UNITS[u.k].mw;
-  if (s.mine?.on && efficiency(s.mine.cond) > 0) mw += MINE_LEVELS[s.mine.level - 1]!.mw;
+  const cap = tankCap(s); const room = (p: Product) => cap - st(s, p) > 1e-6;
+  let mw = 0; let wellsFlow = false;
+  if (room('wellstream')) for (const t of Object.values(s.tracts)) if (t.leased && t.pipe > 0) for (const w of t.wells) if (efficiency(w.cond) > 0) { mw += WELL_MW + (w.jack ? PUMPJACK_MW : 0); wellsFlow = true; }
+  const fed = new Set<Product>(); if (wellsFlow) fed.add('wellstream');
+  for (const k of PROCESS_ORDER) {
+    const d = UNITS[k]; const list = s.units.filter((u) => u.k === k && u.on && efficiency(u.cond) > 0); if (!list.length) continue;
+    const has = (p: Product | undefined) => !!p && (st(s, p) > 1e-6 || fed.has(p));
+    if (!has(d.input) && !has(d.alt)) continue;
+    const outs: Product[] = k === 'separator' ? ['crude', 'rawgas'] : d.out.map(([p]) => p);
+    if (outs.length && !outs.some(room)) continue;
+    // only the wellstream counts as "fed" (wells flow straight in); downstream units need product actually in the tank
+    mw += d.mw * list.length;
+  }
+  if (s.mine?.on && efficiency(s.mine.cond) > 0 ) {
+    const full = MINE_MIX.every(([id]) => (s.ore[id] ?? 0) >= cap - 1e-6);
+    if (!full) mw += MINE_LEVELS[s.mine.level - 1]!.mw;
+  }
   return Math.round(mw * 100) / 100;
 }
 
