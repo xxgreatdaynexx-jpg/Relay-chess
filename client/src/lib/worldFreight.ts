@@ -82,6 +82,10 @@ export function port(hub: HubId) {
   return buildHarbour({ x: x0 - 7, z0, z1, quayW: hub === 'city' ? 76 : 48, quayD: hub === 'city' ? 16 : 10, side: 1, cranes: hub === 'city' ? 2 : 1, stacks: hub === 'city' ? 6 : 3, label: sign });
 }
 
+/** recheck #2: where a loading ship sits at a hub's berth: the first leg of its route, heading = rotation.y the live
+ *  traffic loop applies (-pose.a, bow +x), so the hull lies parallel to the pier, off the fender line. Shared by the
+ *  map and the visual harness (which used to drop the ship at the berth unrotated, across the pier end). */
+export function shipBerth(hub: HubId) { const ps = vehiclePose({ mode: 'ship', from: hub, to: hub === 'city' ? 'resort' : 'city', departAt: 1, arriveAt: 2 }, 0, hub); return { x: ps.x, y: -0.2, z: ps.z, ry: -ps.a }; }
 type V = { v: LiveVehicle; obj: THREE.Group; tag: THREE.Sprite };
 /** Draw the port + traffic on one map's scene (city, resort or Fort McChud). */
 export function createFreight(world: Pick<World, 'scene'>, hub: HubId = 'city') {
