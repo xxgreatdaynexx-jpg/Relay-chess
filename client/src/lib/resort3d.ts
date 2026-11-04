@@ -1,7 +1,7 @@
 // Chud Resort 3D map: a golden-hour beachfront town. Ocean, sand, palms, boardwalk, hotels, condos, villas, pool,
 // marina with superyachts, an airfield, the Paradise Plantation and the Coral Grotto. Same camera/pan rules as the city.
 import * as THREE from 'three';
-import { asLabel, dimColor, drawLabel, LABEL_LAYER, labelMaterial, renderScene } from './labelSprite';
+import { asLabel, cityLabel, dimColor, drawLabel, fitLabel, LABEL_LAYER, labelMaterial, renderScene } from './labelSprite';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -16,9 +16,7 @@ import { cropById } from '../../../shared/farm';
 type Handlers = { onHover: (id: string | null, x: number, y: number) => void; onPick: (id: string) => void; onProperty?: (id: string) => void };
 function rng(seed: number) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
 
-function signTexture(text: string, color: string, sub?: string) {
-  return drawLabel(text, { bg: (g, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, 'rgba(226,220,208,.94)'); gr.addColorStop(1, 'rgba(214,204,184,.94)'); return gr; }, border: dimColor(color, 0.75), text: '#2a2016', sub: '#7d6020', font: 'Outfit Variable, Georgia, serif', radius: 30 }, sub, labelRenderer);
-}
+function signTexture(text: string, color: string, sub?: string) { return cityLabel(text, color, sub, labelRenderer); } // same look as Chud City
 let labelRenderer: THREE.WebGLRenderer | null = null;
 function facadeTexture(seed: number, balconies: boolean) {
   const c = document.createElement('canvas'); c.width = 64; c.height = 128; const g = c.getContext('2d')!; const r = rng(seed);
@@ -149,7 +147,7 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   const signs: THREE.Sprite[] = [];
   const label = (text: string, sub: string | undefined, color: string, x: number, y: number, z: number, k = 1) => {
     const tex = signTexture(text, color, sub); disposables.push(tex); const m = labelMaterial(tex, { fog: false }); disposables.push(m);
-    const s = asLabel(new THREE.Sprite(m)); s.position.set(x, y, z); s.userData.k = k; s.scale.set(8, 2, 1); scene.add(s); signs.push(s); return s;
+    const s = asLabel(new THREE.Sprite(m)); s.position.set(x, y, z); s.userData.k = k; fitLabel(s, 8 * k); scene.add(s); signs.push(s); return s;
   };
 
   const pickables: THREE.Object3D[] = []; const spotRoots = new Map<string, THREE.Object3D>();
@@ -318,7 +316,7 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
     xmas?.step(dt); waterMat.uniforms.uTime!.value = time; anims.forEach((f) => f(time, dt)); yachts.forEach((y, i) => { y.position.y = 0.3 + Math.sin(time * 1.1 + i) * 0.12; y.rotation.z = Math.sin(time * 0.9 + i * 2) * 0.02; });
     controls.update(); clampPan();
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
-    for (const s of signs) { const k = labelScale(camera.position.distanceTo(s.getWorldPosition(tmp)), portrait) * (s.userData.k as number); s.scale.set(k, k / 4 * ((s.material.map!.image as { height: number }).height / 128), 1); }
+    for (const s of signs) { const k = labelScale(camera.position.distanceTo(s.getWorldPosition(tmp)), portrait) * (s.userData.k as number); fitLabel(s, k); }
     renderScene(renderer, composer, scene, camera);
   };
   const vis = () => { running = !document.hidden; clock.getDelta(); }; document.addEventListener('visibilitychange', vis); frame();

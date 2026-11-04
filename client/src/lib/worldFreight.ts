@@ -5,17 +5,14 @@
  */
 import * as THREE from 'three';
 import type { World } from './world3d';
+import { cityLabel } from './labelSprite';
 import { socket } from './net';
 import { sg, sm, part, BOX, CYL, CYL8, SPH, buildHarbour, ribTexture } from './ocean3d';
 import { HUBS, HUB_MAPS, onMap, vehiclePose, type HubId, type LiveVehicle } from '../../../shared/logistics';
 
-function tag(text: string, color = '#ffd27a'): THREE.Sprite {
-  const c = document.createElement('canvas'); c.width = 384; c.height = 64; const x = c.getContext('2d')!;
-  x.font = 'bold 28px system-ui, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
-  const w = Math.min(380, x.measureText(text).width + 28); x.fillStyle = 'rgba(10,12,20,0.8)'; x.beginPath(); x.roundRect((384 - w) / 2, 8, w, 48, 14); x.fill();
-  x.strokeStyle = color; x.lineWidth = 3; x.stroke(); x.fillStyle = '#fff'; x.fillText(text.slice(0, 26), 192, 33);
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true, sizeAttenuation: false })); s.scale.set(0.135, 0.0225, 1); s.center.set(0.5, 0); s.renderOrder = 11; return s;
+function tag(text: string, color = '#ffd27a'): THREE.Sprite { // Chud City label look, pill sized to the full text (no truncation)
+  const t = cityLabel(text, color); const d = t.userData as { w: number; h: number };
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true, premultipliedAlpha: true, toneMapped: false, sizeAttenuation: false })); s.scale.set(0.09 * d.w, 0.0225 * d.h, 1); s.center.set(0.5, 0); s.renderOrder = 11; return s;
 }
 // Vehicles + port share module-level geometry/materials (ocean3d sg/sm caches): many trucks cost one set of buffers.
 const hullGeo = () => sg('shipHull', () => { // top-view outline: pointed bow (+x), square stern, extruded down; bevelled sheer

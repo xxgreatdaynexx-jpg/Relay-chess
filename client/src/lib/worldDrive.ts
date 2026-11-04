@@ -5,6 +5,7 @@
  * capped at DRIVE_MAX_VISIBLE; far cars use the cheap (wheel-less) LOD.
  */
 import * as THREE from 'three';
+import { cityLabel } from './labelSprite';
 import type { World } from './world3d';
 import { buildCar } from './carModels';
 import { socket } from './net';
@@ -25,13 +26,9 @@ type Snap = [string, string, number, number, number, number, number, string?];
 type Remote = { name: string; key: string; obj: THREE.Group; tag: THREE.Sprite; lod: 'near' | 'far'; carId: string; color: number; look: string; buf: { t: number; x: number; z: number; a: number }[]; rx: number; rz: number; rvx: number; rvz: number; ra: number };
 const INTERP_MS = 160;
 
-function nameTag(text: string): THREE.Sprite {
-  const c = document.createElement('canvas'); c.width = 256; c.height = 64; const x = c.getContext('2d')!;
-  x.font = 'bold 30px system-ui, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
-  const w = Math.min(250, x.measureText(text).width + 28); x.fillStyle = 'rgba(10,12,20,0.75)'; x.beginPath(); x.roundRect((256 - w) / 2, 8, w, 48, 14); x.fill();
-  x.fillStyle = '#fff'; x.fillText(text.slice(0, 16), 128, 33);
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true, sizeAttenuation: false })); s.scale.set(0.09, 0.0225, 1); s.center.set(0.5, 0); s.renderOrder = 10; return s;
+function nameTag(text: string): THREE.Sprite { // Chud City label look, sized to the full name
+  const t = cityLabel(text, '#7fd0ff'); const d = t.userData as { w: number; h: number };
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true, premultipliedAlpha: true, toneMapped: false, sizeAttenuation: false })); s.scale.set(0.09 * d.w, 0.0225 * d.h, 1); s.center.set(0.5, 0); s.renderOrder = 10; return s;
 }
 const disposeSprite = (s: THREE.Sprite) => { s.material.map?.dispose(); s.material.dispose(); };
 const lerpAngle = (a: number, b: number, t: number) => { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return a + d * t; };

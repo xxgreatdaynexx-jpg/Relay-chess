@@ -492,7 +492,7 @@ interface OtherAngler { g: THREE.Group; tag: THREE.Sprite; rod: THREE.Mesh; line
 function disposeTree(g: THREE.Object3D) { g.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mat)) mat.forEach((x) => x.dispose()); else mat?.dispose?.(); }); }
 function makeTag(name: string): THREE.Sprite {
   const c = document.createElement('canvas'); c.width = 256; c.height = 64; const g = c.getContext('2d')!;
-  g.fillStyle = 'rgba(10,14,40,.75)'; g.beginPath(); g.roundRect(4, 10, 248, 44, 16); g.fill(); g.fillStyle = '#e8f6ff'; g.font = 'bold 28px sans-serif'; g.textAlign = 'center'; g.fillText(name.slice(0, 16), 128, 42);
+  g.fillStyle = 'rgba(10,14,40,.75)'; g.beginPath(); g.roundRect(4, 10, 248, 44, 16); g.fill(); g.fillStyle = '#e8f6ff'; g.font = 'bold 28px sans-serif'; g.textAlign = 'center'; g.fillText(name, 128, 42, 236);
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthWrite: false })); sp.scale.set(2, 0.5, 1); return sp;
 }
 

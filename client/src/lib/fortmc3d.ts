@@ -3,7 +3,7 @@
 // the Deep Ore Mine's terraced pit, the Commodity Exchange tower and the airport. Same camera/pan rules as the city.
 import { pipeRoute } from '../../../shared/fortmcPipes';
 import * as THREE from 'three';
-import { asLabel, dimColor, drawLabel, LABEL_LAYER, labelMaterial, renderScene } from './labelSprite';
+import { asLabel, cityLabel, dimColor, drawLabel, fitLabel, LABEL_LAYER, labelMaterial, renderScene } from './labelSprite';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -18,9 +18,7 @@ import { FORT_SPOTS, FORT_X0, FORT_X1, FORT_Z0, FORT_Z1, TRACTS, tractInfo, type
 type Handlers = { onHover: (id: string | null, x: number, y: number) => void; onPick: (id: string) => void };
 function rng(seed: number) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
 let labelRenderer: THREE.WebGLRenderer | null = null;
-function signTexture(text: string, color: string, sub?: string) {
-  return drawLabel(text, { bg: (g, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, 'rgba(24,28,34,.92)'); gr.addColorStop(1, 'rgba(14,16,20,.92)'); return gr; }, border: dimColor(color, 0.9), text: '#f4f1ea', sub: color, font: 'Outfit Variable, system-ui, sans-serif', radius: 18 }, sub, labelRenderer);
-}
+function signTexture(text: string, color: string, sub?: string) { return cityLabel(text, color, sub, labelRenderer); } // same look as Chud City
 export const clampFortTarget = (x: number, z: number): [number, number] => [Math.min(FORT_X1 - 10, Math.max(FORT_X0 + 10, x)), Math.min(FORT_Z1 - 10, Math.max(FORT_Z0 + 10, z))];
 const TW = 30, TD = 26; // tract pad size
 
@@ -118,7 +116,7 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
   const signs: THREE.Sprite[] = [];
   const label = (text: string, sub: string | undefined, color: string, x: number, y: number, z: number, k = 1) => {
     const tex = signTexture(text, color, sub); disposables.push(tex); const m = labelMaterial(tex, { fog: false }); disposables.push(m);
-    const s = asLabel(new THREE.Sprite(m)); s.position.set(x, y, z); s.userData.k = k; s.scale.set(8, 2, 1); scene.add(s); signs.push(s); return s;
+    const s = asLabel(new THREE.Sprite(m)); s.position.set(x, y, z); s.userData.k = k; fitLabel(s, 8 * k); scene.add(s); signs.push(s); return s;
   };
   const pickables: THREE.Object3D[] = [];
   const steel = mat({ color: 0x9aa2aa, metalness: 0.7, roughness: 0.35 }); const dark = mat({ color: 0x2c3036, metalness: 0.5, roughness: 0.6 });
@@ -277,7 +275,7 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
     if (mineDig) (mineRig.userData.wheel as THREE.Object3D).rotation.z += dt * 2;
     controls.update(); clampPan();
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
-    for (const s of signs) { const k = labelScale(camera.position.distanceTo(s.getWorldPosition(tmp)), portrait) * (s.userData.k as number); s.scale.set(k, k / 4 * ((s.material.map!.image as { height: number }).height / 128), 1); }
+    for (const s of signs) { const k = labelScale(camera.position.distanceTo(s.getWorldPosition(tmp)), portrait) * (s.userData.k as number); fitLabel(s, k); }
     renderScene(renderer, composer, scene, camera);
   };
   const vis = () => { running = !document.hidden; clock.getDelta(); }; document.addEventListener('visibilitychange', vis); frame();

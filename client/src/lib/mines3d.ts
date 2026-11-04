@@ -1,5 +1,6 @@
 /** Mines: three.js cave scene (lazy-loaded). Map coords are (x, y) on the floor and z up; three.js is y-up, so (x, z, y). */
 import * as THREE from 'three';
+import { cityLabel, fitLabel } from './labelSprite';
 import { applyPickSkin, skinnedPickaxe } from './pickaxeModel';
 import { buildMineTool, animateMineTool, skinMineTool } from './mineToolModels';
 import type { MineToolId } from '../../../shared/mineTools';
@@ -48,14 +49,9 @@ function buildSword(): THREE.Group {
   return g;
 }
 
-function nameTag(name: string): THREE.Sprite {
-  const c = document.createElement('canvas'); c.width = 256; c.height = 64; const x = c.getContext('2d')!;
-  x.font = '600 30px system-ui, sans-serif'; const t = name.length > 16 ? name.slice(0, 15) + '…' : name; const w = Math.min(248, x.measureText(t).width + 28);
-  x.fillStyle = 'rgba(10,8,6,0.72)'; x.beginPath(); x.roundRect((256 - w) / 2, 10, w, 44, 14); x.fill();
-  x.fillStyle = '#fff4dc'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(t, 128, 33);
-  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false }));
-  s.position.y = 2.15; s.scale.set(1.6, 0.4, 1); s.renderOrder = 5; return s;
+function nameTag(name: string): THREE.Sprite { // Chud City label look; the pill grows to fit the whole name
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: cityLabel(name, '#e8c26a'), transparent: true, premultipliedAlpha: true, toneMapped: false, depthWrite: false, fog: false }));
+  s.position.y = 2.15; fitLabel(s, 1.6); s.renderOrder = 5; return s;
 }
 function disposeTag(s: THREE.Sprite) { const m = s.material as THREE.SpriteMaterial; m.map?.dispose(); m.dispose(); }
 
@@ -332,7 +328,7 @@ export class Mines3D {
       const m = g.tag.material as THREE.SpriteMaterial;
       m.opacity = Math.max(0, Math.min(1, (22 - d) / 8));
       g.tag.visible = m.opacity > 0.02 && this.clear(cam.x, cam.y, px, py);
-      const k = Math.max(1, Math.min(2.2, d / 7)); g.tag.scale.set(1.6 * k, 0.4 * k, 1);
+      const k = Math.max(1, Math.min(2.2, d / 7)); fitLabel(g.tag, 1.6 * k);
     }
     this.swordT = Math.min(1, this.swordT + dt / 0.35);
     this.sword.visible = this.swordT < 1; this.pick.visible = !this.sword.visible;

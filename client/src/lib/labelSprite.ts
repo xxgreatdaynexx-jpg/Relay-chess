@@ -30,17 +30,35 @@ export function finishLabelTexture(c: HTMLCanvasElement, renderer?: THREE.WebGLR
 }
 
 export interface LabelStyle { bg: string | CanvasGradient | ((g: CanvasRenderingContext2D, h: number) => string | CanvasGradient); border: string; text: string; sub?: string; font?: string; radius?: number }
-/** Draws a 512 x (128|192) logical label at labelScaleFor() resolution. */
-export function drawLabel(text: string, style: LabelStyle, sub?: string, renderer?: THREE.WebGLRenderer | null, s = labelScaleFor()): THREE.CanvasTexture {
-  const h = sub ? 192 : 128; const c = document.createElement('canvas'); c.width = 512 * s; c.height = h * s;
+const LABEL_FONT = 'Outfit Variable, system-ui, sans-serif';
+let measureCtx: CanvasRenderingContext2D | null = null;
+/** Logical label width (512-unit canvas space) that fits the full title and subtitle: never ellipsised or squeezed. */
+export function labelWidthFor(text: string, sub?: string, font = LABEL_FONT, measure?: (t: string, f: string) => number): number {
+  const m = measure ?? ((t: string, f: string) => { measureCtx ??= document.createElement('canvas').getContext('2d'); if (!measureCtx) return t.length * 34; measureCtx.font = f; return measureCtx.measureText(t).width; });
+  const w = Math.max(m(text, `800 60px ${font}`), sub ? m(sub, `600 32px ${LABEL_FONT}`) : 0);
+  return Math.max(512, Math.ceil(w + 84));
+}
+/** Draws a label at labelScaleFor() resolution: 128 (or 192 with a subtitle) logical units tall. With fit=false it is a fixed
+ *  512 wide (for signs painted on fixed-size panels; long text is scaled down to fit, never cut); fit=true sizes the pill to
+ *  its text, so floating sprites always show the whole name (use fitLabel() to scale the sprite to the texture's aspect). */
+export function drawLabel(text: string, style: LabelStyle, sub?: string, renderer?: THREE.WebGLRenderer | null, s = labelScaleFor(), fit = false): THREE.CanvasTexture {
+  const h = sub ? 192 : 128; const W = fit ? labelWidthFor(text, sub, style.font) : 512; const c = document.createElement('canvas'); c.width = W * s; c.height = h * s;
   const g = c.getContext('2d')!; g.scale(s, s); g.imageSmoothingEnabled = true;
   g.fillStyle = typeof style.bg === 'function' ? style.bg(g, h) : style.bg;
-  g.beginPath(); g.roundRect(8, 8, 496, h - 16, style.radius ?? 26); g.fill();
+  g.beginPath(); g.roundRect(8, 8, W - 16, h - 16, style.radius ?? 26); g.fill();
   g.strokeStyle = style.border; g.lineWidth = 3; g.lineJoin = 'round'; g.stroke();
-  g.font = `800 60px ${style.font ?? 'Outfit Variable, system-ui, sans-serif'}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillStyle = style.text; g.fillText(text, 256, sub ? 74 : 66, 470);
-  if (sub) { g.font = '600 32px Outfit Variable, system-ui, sans-serif'; g.fillStyle = style.sub ?? style.border; g.fillText(sub, 256, 142, 470); }
-  return finishLabelTexture(c, renderer);
+  g.font = `800 60px ${style.font ?? LABEL_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = style.text; g.fillText(text, W / 2, sub ? 74 : 66, W - 42);
+  if (sub) { g.font = `600 32px ${LABEL_FONT}`; g.fillStyle = style.sub ?? style.border; g.fillText(sub, W / 2, 142, W - 42); }
+  const t = finishLabelTexture(c, renderer); t.userData = { w: W / 512, h: h / 128 }; return t;
+}
+/** The one map-label look (Chud City): dark pill, dimmed-neon border, light text. Resort, Fort McChud, ports and mines all use it. */
+export function cityLabel(text: string, color: string, sub?: string, renderer?: THREE.WebGLRenderer | null, fit = true): THREE.CanvasTexture {
+  return drawLabel(text, { bg: 'rgba(10,8,22,0.82)', border: dimColor(color, 0.6), text: LABEL_TEXT, sub: dimColor(color, 0.8) }, sub, renderer, undefined, fit);
+}
+/** Scales a label sprite so its height is k/4 per 128 units and its width follows the texture (no stretching). */
+export function fitLabel(s: THREE.Sprite, k: number): void {
+  const d = (s.material.map?.userData ?? {}) as { w?: number; h?: number }; s.scale.set(k * (d.w ?? 1), (k / 4) * (d.h ?? 1), 1);
 }
 
 export function labelMaterial(map: THREE.Texture, extra: THREE.SpriteMaterialParameters = {}): THREE.SpriteMaterial {

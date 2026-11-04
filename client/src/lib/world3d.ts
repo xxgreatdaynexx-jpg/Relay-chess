@@ -6,7 +6,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { lowDetail } from './charLook';
-import { asLabel, dimColor, drawLabel, LABEL_LAYER, LABEL_TEXT, labelMaterial, renderScene } from './labelSprite';
+import { asLabel, cityLabel, dimColor, drawLabel, fitLabel, LABEL_LAYER, LABEL_TEXT, labelMaterial, renderScene } from './labelSprite';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { skyNow, parseTod, mix as mixHex } from '../../../shared/daynight';
 import { fieldPlotId, fieldPlots } from '../../../shared/fieldFarms';
@@ -446,9 +446,9 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
         height = 7; break; }
     }
     g.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.userData.spot = spot.id; pickables.push(o); } });
-    const st = signTexture(`${spot.icon} ${spot.label}`, hex); disposables.push(st);
+    const st = cityLabel(`${spot.icon} ${spot.label}`, hex, undefined, labelRenderer); disposables.push(st);
     const sm = labelMaterial(st); disposables.push(sm);
-    const sign = asLabel(new THREE.Sprite(sm)); sign.scale.set(8, 2, 1); sign.userData.base = 8; sign.position.set(0, height + 2.2, 0); sign.userData.spot = spot.id; g.add(sign); pickables.push(sign);
+    const sign = asLabel(new THREE.Sprite(sm)); fitLabel(sign, 8); sign.userData.base = 8; sign.position.set(0, height + 2.2, 0); sign.userData.spot = spot.id; g.add(sign); pickables.push(sign);
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: spot.color, transparent: true, opacity: 0.24, blending: THREE.AdditiveBlending, depthWrite: false })); halo.scale.set(16, 16, 1); halo.position.y = 0.6; g.add(halo);
     scene.add(g);
     lms.push({ id: spot.id, root: g, hit: [], emissive: ems, sign, pos: g.position.clone(), height });
@@ -626,7 +626,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   }
   const fmtLeft = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return h ? `${h}h ${m}m` : `${m}m ${String(x).padStart(2, '0')}s`; };
   const drawTag = (o: (typeof inmateObjs)[number]) => { const g = o.c.getContext('2d')!; g.clearRect(0, 0, 512, 192); g.fillStyle = 'rgba(20,8,8,0.82)'; g.beginPath(); g.roundRect(4, 4, 504, 184, 26); g.fill();
-    g.strokeStyle = '#ff6a5a'; g.lineWidth = 5; g.stroke(); g.textAlign = 'center'; g.fillStyle = '#ffd0c8'; g.font = '800 52px Outfit Variable, system-ui, sans-serif'; g.fillText(`🔒 ${o.j.name}`.slice(0, 20), 256, 64);
+    g.strokeStyle = '#ff6a5a'; g.lineWidth = 5; g.stroke(); g.textAlign = 'center'; g.fillStyle = '#ffd0c8'; g.font = '800 52px Outfit Variable, system-ui, sans-serif'; g.fillText(`🔒 ${o.j.name}`, 256, 64, 480);
     g.font = '600 38px Outfit Variable, system-ui, sans-serif'; g.fillStyle = '#fff'; g.fillText(o.j.until == null ? 'No timer' : `⏱ ${fmtLeft(o.j.until - Date.now())}`, 256, 116);
     g.fillStyle = '#ffb3a8'; g.fillText(`${o.j.typed.toLocaleString('en-US')} / ${o.j.needed.toLocaleString('en-US')} sorrys`, 256, 164); o.tex.needsUpdate = true; };
   const setInmates = (list: JailInfo[]) => {
@@ -889,7 +889,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     xmas?.step(dt);
     for (const w of waterMats) w.uniforms.uTime.value = time; for (const w of oceanMats) w.uniforms.uTime.value = time; venues.step(dt, time, camera.position);
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
-    for (const l of lms) { const k = labelScale(camera.position.distanceTo(l.sign.getWorldPosition(tmpV)), portrait) * (l.sign.userData.hover ? 1.2 : 1); l.sign.scale.set(k, k / 4, 1); }
+    for (const l of lms) { const k = labelScale(camera.position.distanceTo(l.sign.getWorldPosition(tmpV)), portrait) * (l.sign.userData.hover ? 1.2 : 1); fitLabel(l.sign, k); }
     renderScene(renderer, composer, scene, camera);
   };
   let tick: ((dt: number) => boolean) | null = null;
@@ -905,7 +905,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const want = new Set(list.map((o) => o.id + '|' + o.owner));
     for (const [k, sp] of ownerTags) if (!want.has(k)) { scene.remove(sp); sp.material.map?.dispose(); sp.material.dispose(); ownerTags.delete(k); }
     for (const o of list) { const k = o.id + '|' + o.owner; if (ownerTags.has(k)) continue; const t = propTop.get(o.id); if (!t) continue;
-      const tex = signTexture(`🏠 ${o.owner}`, '#e8c26a'); const sp = asLabel(new THREE.Sprite(labelMaterial(tex))); sp.scale.set(3.6, 0.9, 1); sp.position.set(t[0], t[1] + 2.6, t[2]); sp.visible = false; sp.userData.ownerTag = o.id; scene.add(sp); ownerTags.set(k, sp); }
+      const tex = cityLabel(`🏠 ${o.owner}`, '#e8c26a', undefined, labelRenderer); const sp = asLabel(new THREE.Sprite(labelMaterial(tex))); fitLabel(sp, 3.6); sp.position.set(t[0], t[1] + 2.6, t[2]); sp.visible = false; sp.userData.ownerTag = o.id; scene.add(sp); ownerTags.set(k, sp); }
     tagT = 1;
   };
   let tagT = 0;
