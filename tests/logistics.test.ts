@@ -46,11 +46,11 @@ describe('Logistics', () => {
     expect(getMines().stackQty('QA-Ship', 'bar', 'iron_bar')).toBe(100);
     expect(chips('QA-Ship')).toBe(c0 - r.shipment.fee); // fee is a sink, nothing refunded or minted
   });
-  it('truck store: buy via ledger, owned truck ships for fuel + day upkeep (mu-cargo), big loads take several trips, shows with owner name, busy truck cannot be sold', async () => {
+  it('truck store: buy via ledger, owned truck ships for fuel only (mu-cargo), big loads take several trips, shows with owner name, busy truck cannot be sold', async () => {
     fund('QA-Hauler'); const c0 = chips('QA-Hauler'); getMines().adjustStack('QA-Hauler', 'ore', 'copper', 300);
     const b = await l.buyTruck('QA-Hauler', 'pickup'); expect(chips('QA-Hauler')).toBe(c0 - TRUCKS[0]!.price);
     const r = await l.ship('QA-Hauler', { mode: 'truck', to: 'fortmc', type: 'ore', id: 'copper', qty: 200 });
-    expect(r.trips).toBe(1); expect(r.shipment.fee).toBe(120 + 400); expect(chips('QA-Hauler')).toBe(c0 - TRUCKS[0]!.price - 520);
+    expect(r.trips).toBe(1); expect(r.shipment.fee).toBe(24); expect(chips('QA-Hauler')).toBe(c0 - TRUCKS[0]!.price - 24);
     expect(l.live()[0]!.label).toBe("QA-Hauler's Chud Pickup");
     await expect(l.ship('QA-Hauler', { mode: 'truck', to: 'resort', type: 'ore', id: 'copper', qty: 10 })).rejects.toThrow(/out on deliveries/);
     await expect(l.sellTruck('QA-Hauler', b.truck.id)).rejects.toThrow(/out on a delivery/);

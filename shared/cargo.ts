@@ -11,10 +11,10 @@ export type CargoKind = 'truck' | 'boat' | 'jet';
 export interface CargoSpec { kind: CargoKind; cap: number; trip: number; /** trucks/boats: base chips the first day a vehicle is used; jets pay the hangar's daily upkeep instead */ useUpkeep: number }
 export const TRUCK_UNIT = 1_000;
 export const CARGO: Record<string, CargoSpec> = {
-  pickup: { kind: 'truck', cap: 1 * TRUCK_UNIT, trip: 120, useUpkeep: 400 }, // small 1x
-  box: { kind: 'truck', cap: 2 * TRUCK_UNIT, trip: 200, useUpkeep: 1_500 },
-  semi: { kind: 'truck', cap: 3 * TRUCK_UNIT, trip: 270, useUpkeep: 4_000 }, // big rig 3x
-  tanker: { kind: 'truck', cap: 6 * TRUCK_UNIT, trip: 420, useUpkeep: 11_000 }, // tanker / road train 6x
+  pickup: { kind: 'truck', cap: 1 * TRUCK_UNIT, trip: 120, useUpkeep: 0 }, // small 1x
+  box: { kind: 'truck', cap: 2 * TRUCK_UNIT, trip: 200, useUpkeep: 0 },
+  semi: { kind: 'truck', cap: 3 * TRUCK_UNIT, trip: 270, useUpkeep: 0 }, // big rig 3x
+  tanker: { kind: 'truck', cap: 6 * TRUCK_UNIT, trip: 420, useUpkeep: 0 }, // tanker / road train 6x
   skiff: { kind: 'boat', cap: 4_000, trip: 200, useUpkeep: 300 },
   sportfisher: { kind: 'boat', cap: 10_000, trip: 400, useUpkeep: 1_200 },
   yacht: { kind: 'boat', cap: 25_000, trip: 800, useUpkeep: 4_500 },
@@ -28,7 +28,11 @@ export const cargoCap = (id: unknown) => cargoOf(id)?.cap ?? 0;
 /** Trips a load needs (one-way legs carrying goods). */
 export const tripsFor = (qty: number, cap: number) => (cap > 0 && qty > 0 ? Math.ceil(qty / cap) : 0);
 /** Base (un-indexed) fee for moving qty in your own vehicle: trips x trip fee, plus the day's upkeep if it has not run yet today. */
-export const ownFeeBase = (id: string, qty: number, firstTripToday: boolean) => { const c = CARGO[id]; if (!c) return 0; return tripsFor(qty, c.cap) * c.trip + (firstTripToday ? c.useUpkeep : 0); };
+/** Own trucks: fuel only, pro-rated to the load (full trip fuel per full load, min OWN_TRUCK_MIN_FUEL). Always well under half a hired rig. */
+export const OWN_TRUCK_MIN_FUEL = 5;
+export const ownFeeBase = (id: string, qty: number, firstTripToday: boolean) => { const c = CARGO[id]; if (!c) return 0;
+  if (c.kind === 'truck') return Math.max(OWN_TRUCK_MIN_FUEL, Math.ceil(Math.max(0, qty) * c.trip / c.cap));
+  return tripsFor(qty, c.cap) * c.trip + (firstTripToday ? c.useUpkeep : 0); };
 /** Per-unit fee on a full load (base chips). */
 export const perUnitBase = (id: string) => { const c = CARGO[id]!; return c.trip / c.cap; };
 /** Wall time for a multi-trip load: there and back between loads, the last leg one-way. */
