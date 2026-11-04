@@ -14,7 +14,7 @@ export function launchPages(l: LaunchPopup): { section: string; items: LaunchIte
 }
 
 export const LAUNCH: LaunchPopup = {
-  id: 'millionaire-update',
+  id: 'millionaire-update-launch',
   title: 'The Millionaire Update',
   subtitle: 'A big one. Here\'s everything new:',
   items: [

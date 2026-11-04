@@ -15,3 +15,10 @@ describe('Millionaire Update countdown', () => {
     expect(mapCountdownLabel(LAUNCH_AT + 3_600_000)).toBe('Millionaire Update: soon');
   });
 });
+
+describe('launch popup re-shows at launch', () => {
+  it('uses a new seen id vs the pre-launch announcement', async () => {
+    const { LAUNCH } = await import('../shared/launchPopup');
+    expect(LAUNCH.id).toBe('millionaire-update-launch');
+  });
+});
