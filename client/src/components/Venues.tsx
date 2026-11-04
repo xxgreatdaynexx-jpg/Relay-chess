@@ -45,9 +45,9 @@ export function Venues({ kind, me, driving, onClose, onFly, onDriveFrom }: {
         <small>Chud Resort: a beachfront resort town with its own casino, 3 exclusive slots, beach houses, hotels, a plantation and the Coral Grotto mine. Only reachable by plane. The flight home is free.</small>
         {me ? <button type="button" className="venue-resort" disabled={busy} onClick={() => void resort()} data-testid="fly-resort">{trip.jet ? <>🛩 Fly your {trip.jet} to Chud Resort · no ticket</> : <>🏝 Fly to Chud Resort · ticket 🪙 {chips(trip.ticket)}</>}</button> : <small>Sign in to buy a ticket.</small>}
         <small>Fort McChud: an oil-sands boomtown. Lease land, drill wells, run pipelines, a refinery, gas plant and cracker, and build the Deep Ore Mine. The flight home is free.</small>
-        {me && <button type="button" className="venue-resort venue-fortmc" disabled={busy} onClick={() => void fortmc()} data-testid="fly-fortmc">🛢 Fly to Fort McChud · ticket 🪙 {chips(trip.tickets.fortmc)}</button>}
+        {me && <button type="button" className="venue-resort venue-fortmc" disabled={busy} onClick={() => void fortmc()} data-testid="fly-fortmc">{trip.jet ? <>🛩 Fly my jet ({trip.jet}) to Fort McChud · no ticket</> : <>🛢 Fly to Fort McChud · ticket 🪙 {chips(trip.tickets.fortmc)}</>}</button>}
         <h4>🛩 Private Jet Hangar</h4>
-        <small>Own a jet and never buy a resort ticket again. Jets have a high daily upkeep (crew, fuel, hangar). Unpaid days pile up as arrears, and too many in a row gets the jet repossessed.</small>
+        <small>Own a jet and never buy a ticket again: fly it to Chud Resort or Fort McChud. Jets have a high daily upkeep (crew, fuel, hangar). Unpaid days pile up as arrears, and too many in a row gets the jet repossessed.</small>
         <button type="button" disabled={busy} onClick={() => setHangar(true)} data-testid="open-hangar">🛩 Browse private jets</button>
         {hangar && <Suspense fallback={null}><FleetStore kind="jet" onClose={() => { setHangar(false); void refreshTrip(); }} /></Suspense>}
       </> : <>

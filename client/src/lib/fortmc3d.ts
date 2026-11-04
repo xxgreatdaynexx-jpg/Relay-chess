@@ -13,6 +13,8 @@ import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { skyNow, parseTod, mix as mixHex } from '../../../shared/daynight';
 import { sg, BOX, SPH, buildOcean, buildBeach } from './ocean3d';
 import { plane as makePlane } from './worldFreight';
+import { buildJet, disposeTree } from './fleetModels';
+import type { FleetModel } from '../../../shared/fleet';
 import { FORT_SPOTS, FORT_X0, FORT_X1, FORT_Z0, FORT_Z1, TRACTS, tractInfo, type FortState, type UnitKind } from '../../../shared/fortmc';
 
 type Handlers = { onHover: (id: string | null, x: number, y: number) => void; onPick: (id: string) => void };
@@ -152,8 +154,11 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
       { const hg = new THREE.Mesh(sg('fort-hangar', () => new THREE.CylinderGeometry(1, 1, 1, 16, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).rotateY(Math.PI / 2)), mat({ color: 0x8c96a0, metalness: 0.6, roughness: 0.45 })); hg.scale.set(9, 6, 7); hg.rotation.y = Math.PI / 2; hg.position.set(-26, 0, -4); hg.castShadow = true; g.add(hg); box(0.3, 5, 9, dark, -26, 2.5, -0.6, g); }
       cyl(0.9, 11, conc, 2, 5.5, -6, g); cyl(2.2, 2.4, towerWin, 2, 12, -6, g, 1.6); cyl(2.4, 0.5, dark, 2, 13.4, -6, g); box(0.2, 2, 0.2, steel, 2, 14.6, -6, g); box(0.5, 0.5, 0.5, navRed, 2, 15.7, -6, g); // control tower + beacon
       for (let i = 0; i < 15; i++) for (const ez of [1.6, 10.4]) box(0.35, 0.35, 0.35, i % 7 === 0 ? navRed : lampHead, -20 + i * 4, 0.25, ez, g); // runway edge lights
-      const plane = new THREE.Group(); plane.position.set(14, 0, 6); g.add(plane); { const pm = makePlane(); pm.scale.setScalar(0.9); pm.position.y = 1.6; plane.add(pm); }
+      const plane = new THREE.Group(); plane.position.set(24, 0, -2); g.add(plane); { const pm = makePlane(); pm.scale.setScalar(0.9); pm.position.y = 1.6; plane.add(pm); } // airliner parked off the runway so private jets can use it
       label('✈ YMC Airport', 'Fly home to Chud Hub', '#5aa8e8', s.x, 16, s.z);
+      // Private-jet apron (mu-jet-mcchud): painted stand + windsock beside the terminal, where an owner's jet parks.
+      box(12, 0.16, 7, mat({ color: 0x4a4a50, roughness: 1 }), 6, 0.09, -1.2, g); for (const [lx, lz, lw, ld] of [[0.2, -4.6, 11.6, 0.2], [0.2, 2.2, 11.6, 0.2], [0.2, -1.2, 0.2, 6.6]] as const) box(lw, 0.18, ld, yellow, 6 + lx - 0.2, 0.1, lz, g);
+      cyl(0.1, 5, steel, 12.5, 2.5, -4.4, g); { const sock = cyl(0.35, 1.8, mat({ color: 0xff7a1a }), 13.3, 4.7, -4.4, g, 0.18); sock.rotation.z = Math.PI / 2; }
     } else if (s.id === 'f-plant') {
       // Distillation towers, cracker furnace, cooling towers, pipe racks, flare.
       for (const [x, z, hh, rr] of [[-18, -8, 22, 1.6], [-13, -8, 16, 1.3], [-8, -8, 26, 1.8]] as const) { cyl(rr, hh, steel, x, hh / 2, z, g); for (let y = 3; y < hh; y += 4) cyl(rr + 0.25, 0.3, yellow, x, y, z, g); towerAccess(g, x, z, rr, hh); }
@@ -292,6 +297,39 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
     fortWater.mat.uniforms.uDay.value = k.day; (fortWater.mat.uniforms.uSun.value as THREE.Vector3).copy(dirV);
     const gk = 0.12 + 0.88 * k.lights; for (const m of glowMats) m.emissiveIntensity = (m.userData.ei as number) * gk;
   };
+
+  // Private jet (mu-jet-mcchud): owners' jets land on / take off from the YMC runway. Runway local x -20..36 at z 6, airport group at the f-airport spot.
+  const ap = FORT_SPOTS.find((x) => x.id === 'f-airport')!; const AX = ap.x, AZ = ap.z;
+  let jet: THREE.Group | null = null; let jetAnim: { mode: 'land' | 'takeoff'; t: number; dur: number; done?: () => void } | null = null;
+  const PARK = { x: 6, z: -1.2 }; const RWY = 6;
+  const jetPose = (j: THREE.Group, x: number, y: number, z: number, yaw: number, pitch: number) => { j.position.set(AX + x, y, AZ + z); j.rotation.set(pitch, yaw, 0, 'YXZ'); };
+  const ease = (u: number) => u * u * (3 - 2 * u);
+  const poseAt = (mode: 'land' | 'takeoff', u: number): [number, number, number, number, number] => {
+    const E = Math.PI / 2; // nose (+z) pointing +x along the runway
+    if (mode === 'land') {
+      if (u < 0.5) { const k = u / 0.5; return [-90 + 72 * k, 24 * (1 - k) ** 1.4, RWY, E, -0.12 * (1 - k) - 0.05]; } // approach + flare to touchdown at x=-18
+      if (u < 0.78) { const k = (u - 0.5) / 0.28; return [-18 + 20 * (1 - (1 - k) ** 2), 0, RWY, E, 0]; } // roll-out to x=2
+      const k = ease((u - 0.78) / 0.22); return [2 + (PARK.x - 2) * k, 0, RWY + (PARK.z - RWY) * k, E + Math.PI * k, 0]; // taxi onto the apron, nose back to the runway
+    }
+    if (u < 0.2) { const k = ease(u / 0.2); const turn = ease(Math.max(0, (k - 0.6) / 0.4)); return [PARK.x + (-16 - PARK.x) * k, 0, PARK.z + (RWY - PARK.z) * k, -E + Math.PI * turn, 0]; } // taxi to the threshold, line up
+    if (u < 0.6) { const k = (u - 0.2) / 0.4; return [-16 + 46 * k * k, 0, RWY, E, k > 0.8 ? -0.18 * (k - 0.8) / 0.2 : 0]; } // take-off roll, rotate at the end
+    const k = (u - 0.6) / 0.4; return [30 + 90 * k, 26 * k ** 1.3, RWY, E, -0.18]; // climb-out
+  };
+  const frameAirport = () => { controls.target.set(AX + 4, 0, AZ + 4); camera.position.set(AX + 34, 34, AZ + 62); controls.update(); };
+  const stepJet = (dt: number) => {
+    if (!jet || !jetAnim) return; jetAnim.t += dt; const u = Math.min(1, jetAnim.t / jetAnim.dur); const [x, y, z, yaw, pitch] = poseAt(jetAnim.mode, u); jetPose(jet, x, y, z, yaw, pitch);
+    if (u >= 1) { const a = jetAnim; jetAnim = null; if (a.mode === 'takeoff') jet.visible = false; a.done?.(); }
+  };
+  const jetApi = {
+    /** Show `model` at YMC: 'park' on the apron, 'land' (approach, touchdown, taxi in) or 'takeoff' (taxi out, roll, climb); `done` fires when it finishes. */
+    jetShow(model: FleetModel, mode: 'park' | 'land' | 'takeoff', done?: () => void) {
+      if (jet) { scene.remove(jet); disposeTree(jet); }
+      jet = buildJet(model); jet.userData.part = 'privateJet'; jet.name = 'privateJet'; if (model.id === 'chudone') jet.scale.setScalar(0.55); else if (model.id === 'g700') jet.scale.setScalar(0.8); scene.add(jet);
+      if (mode === 'park') { jetPose(jet, PARK.x, 0, PARK.z, -Math.PI / 2, 0); jetAnim = null; done?.(); return; }
+      frameAirport(); jetAnim = { mode, t: 0, dur: mode === 'land' ? 9 : 7, done }; stepJet(0);
+    },
+    jetBusy: () => !!jetAnim,
+  };
   applySky(); let skyT = 0;
   const clock = new THREE.Clock(); let raf = 0; let running = true; let time = 0; const tmp = new THREE.Vector3();
   const frame = () => {
@@ -300,6 +338,7 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
     jacks.forEach((b, i) => { b.rotation.z = Math.sin(time * 1.6 + i * 0.7) * 0.28; });
     flames.forEach((f) => { f.scale.set(1 + Math.sin(time * 9) * 0.12, 1 + Math.sin(time * 6.3) * 0.25, 1); });
     if (mineDig) (mineRig.userData.wheel as THREE.Object3D).rotation.z += dt * 2;
+    stepJet(dt);
     controls.update(); clampPan();
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
     for (const s of signs) { const k = labelScale(camera.position.distanceTo(s.getWorldPosition(tmp)), portrait) * (s.userData.k as number); fitLabel(s, k); }
@@ -308,9 +347,9 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
   const vis = () => { running = !document.hidden; clock.getDelta(); }; document.addEventListener('visibilitychange', vis); frame();
   return {
     scene, camera, controls,
-    setFort,
+    setFort, ...jetApi,
     setRunning(v: boolean) { running = v; clock.getDelta(); },
     reset() { camera.position.copy(home); controls.target.copy(homeT); },
-    dispose() { cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
+    dispose() { cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); if (jet) disposeTree(jet); controls.dispose(); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
   };
 }

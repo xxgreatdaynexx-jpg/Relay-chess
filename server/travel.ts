@@ -1,7 +1,7 @@
 /**
  * Chud Resort travel (shared/resort.ts). Every player is in the 'city' unless they bought a plane ticket at Chud Hub
  * International: px(RESORT_TICKET_BASE) chips, ONE Postgres transaction (ledger row 'resort_ticket' + location
- * upsert). The return flight is free. Resort features call requireResort() / isAtResort() before doing anything.
+ * upsert). Private-jet owners fly their jet instead (no ticket, any destination). The return flight is free. Resort features call requireResort() / isAtResort() before doing anything.
  */
 import pg from 'pg';
 import type { Server, Socket } from 'socket.io';
@@ -41,8 +41,9 @@ export class Travel {
   async fly(name: string, dest: Destination = 'resort') {
     if (!isDestination(dest)) throw new TravelError('Unknown destination.');
     const D = DESTINATIONS[dest]; const k = keyOf(name); if (this.where(name) === dest) throw new TravelError(`You are already at ${D.name}.`);
-    // #11: private-jet owners fly free to Chud Resort only (the jet blurb's promise). Fort McChud always charges its ticket (Tess QA: was free with a jet).
-    const jet = dest === 'resort' ? await jetHook(name).catch(() => null) : null;
+    // #11: private-jet owners fly their own jet, no ticket, to every destination (Chud Resort and, per Dayne, Fort McChud).
+    // The jet's normal daily upkeep (server/fleet.ts runUpkeep) still applies; flying it costs nothing extra.
+    const jet = await jetHook(name).catch(() => null);
     const waivedBy = waiver(name, dest); const waived = waivedBy || jet;
     const fee = waived ? 0 : px(D.ticket); const bank = getBank();
     if (fee > 0 && !bank.canAfford(name, fee)) throw new TravelError(`Not enough chips: a ticket costs ${fee.toLocaleString('en-US')}.`);

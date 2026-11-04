@@ -17,7 +17,7 @@ export const BOATS: FleetModel[] = [
   { id: 'superyacht', kind: 'boat', name: 'Chud Royale Superyacht', emoji: '🚢', price: 2_500_000, zone: 3, biteMul: 0.8, color: 0x1a2a4a, blurb: 'Helipad, crew of twelve, a pool on the sun deck. Every zone, fastest bites, maximum status.' },
 ];
 export const JETS: FleetModel[] = [
-  { id: 'citation', kind: 'jet', name: 'Citation Light Jet', emoji: '🛩️', price: 400_000, upkeep: 6_000, color: 0xf4f4f4, blurb: 'Six seats and a short-field takeoff. Fly to Chud Resort whenever you like, no ticket.' },
+  { id: 'citation', kind: 'jet', name: 'Citation Light Jet', emoji: '🛩️', price: 400_000, upkeep: 6_000, color: 0xf4f4f4, blurb: 'Six seats and a short-field takeoff. Fly to Chud Resort or Fort McChud whenever you like, no ticket.' },
   { id: 'g700', kind: 'jet', name: 'Gulfstream G700', emoji: '✈️', price: 1_500_000, upkeep: 18_000, color: 0xdfe6ee, blurb: 'Intercontinental range and a bedroom suite. The tycoon standard.' },
   { id: 'chudone', kind: 'jet', name: 'Chud One (747-8 BBJ)', emoji: '🛫', price: 6_000_000, upkeep: 60_000, color: 0x1f3f8a, blurb: 'A private jumbo with a gold-trimmed boardroom. The loudest flex in Chud Hub.' },
 ];

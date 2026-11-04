@@ -6,7 +6,8 @@ import { indexed } from '../../../shared/priceIndex';
 import type { FortWorld } from '@/lib/fortmc3d';
 import { importWithReload } from '@/lib/chunkReload';
 import { request, socket } from '@/lib/net';
-import { flyHome } from '@/lib/travel';
+import { clearArrival, flyHome, tripNow, useTrip } from '@/lib/travel';
+import { JETS } from '../../../shared/fleet';
 import { usePanelDrag } from '@/lib/panelDrag';
 import { BuildingInventory } from './BuildingInventory';
 import { MODES, MODE_IDS, type Mode } from '../../../shared/logistics';
@@ -26,6 +27,13 @@ export function FortMcMap() {
   const [view, setView] = useState<View | null>(null); const [panel, setPanel] = useState<Panel>(null); const [tract, setTract] = useState(1);
   const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false); useEffect(() => setMsg(null), [panel, tract]); // Tess QA #5: a status line belongs to the panel that produced it
   const px = (base: number) => indexed(base, view?.index ?? 1);
+  // mu-jet-mcchud: a jet owner's own jet lands at YMC on arrival (parks on the apron otherwise) and takes off on the way home.
+  const trip = useTrip(); const [ready, setReady] = useState(false); const jetShown = useRef(false); const [departing, setDeparting] = useState(false);
+  const jetName = trip.arrivedBy ?? trip.jet; const jetModel = jetName ? JETS.find((m) => m.name === jetName) ?? null : null;
+  useEffect(() => {
+    const w = worldRef.current; if (!ready || !w || !jetModel || jetShown.current) return; jetShown.current = true;
+    if (tripNow().arrivedBy) { w.jetShow(jetModel, 'land'); clearArrival(); } else w.jetShow(jetModel, 'park');
+  }, [ready, jetModel]);
 
   const apply = useCallback((r: { ok: boolean } & Partial<View>) => { if (r.fort) { setView(r as View); worldRef.current?.setFort(r.fort); } }, []);
   const load = useCallback(() => { void request('fort_state').then((r) => apply(r as { ok: boolean } & Partial<View>)); }, [apply]);
@@ -53,13 +61,17 @@ export function FortMcMap() {
       });
       const w = worldRef.current;
       void importWithReload(() => import('@/lib/worldFreight')).then(({ createFreight }) => { if (dead || worldRef.current !== w || !w) return; freight = createFreight(w, 'fortmc'); });
-      setLoading(false); load();
+      setLoading(false); setReady(true); load();
     });
     return () => { dead = true; freight?.dispose(); worldRef.current?.dispose(); worldRef.current = null; };
   }, [load]);
   useEffect(() => { const t = window.setInterval(load, 30_000); socket.on('connect', load); return () => { window.clearInterval(t); socket.off('connect', load); }; }, [load]);
 
-  const s = view?.fort; const home = async () => { const r = await flyHome(); if (!r.ok) setMsg(r.error ?? 'Could not fly.'); };
+  const s = view?.fort; const home = async () => {
+    const w = worldRef.current;
+    if (jetModel && w && trip.jet) { if (departing) return; setDeparting(true); setPanel(null); await new Promise<void>((res) => w.jetShow(jetModel, 'takeoff', res)); }
+    const r = await flyHome(); setDeparting(false); if (!r.ok) setMsg(r.error ?? 'Could not fly.');
+  };
   const spot = tip && FORT_SPOTS.find((x) => x.id === tip.id); const tipTract = tip?.id.startsWith('t:') ? tractInfo(Number(tip.id.slice(2))) : null;
   const ti = tractInfo(tract); const ts = s?.tracts[String(tract)]; const surveyed = !!s?.surveyed.includes(tract);
   const supply = s?.power.supply ?? 0, demand = view?.demand ?? 0;
@@ -81,7 +93,7 @@ export function FortMcMap() {
         <button type="button" onClick={() => setPanel('plant')} data-testid="fort-plant-btn">🏭 Plant</button>
         <button type="button" onClick={() => setPanel('exchange')} data-testid="fort-exchange-btn">💹 Exchange</button>
         <button type="button" onClick={() => setPanel('mine')} data-testid="fort-mine-btn">⛏ Mine</button>
-        <button type="button" onClick={() => void home()} data-testid="fortmc-fly-home">✈️ Fly home (free)</button>
+        <button type="button" disabled={departing} onClick={() => void home()} data-testid="fortmc-fly-home">{trip.jet ? <>🛩 Fly my jet home (free)</> : <>✈️ Fly home (free)</>}</button>
       </div>
       {panel && s && (
         <div className="world-deed world-venue fort-panel" data-testid={`fort-${panel}`} data-drag-panel="fortmc" onPointerDown={drag.onPointerDown} style={drag.style()} ref={drag.ref}>{drag.handle}
@@ -143,8 +155,8 @@ export function FortMcMap() {
           </>}
           {panel === 'airport' && <>
             <h3>✈️ Fort McChud Airport (YMC)</h3>
-            <small>Your ticket included the flight home.</small>
-            <button type="button" onClick={() => void home()} data-testid="fortmc-fly-home-2">🛫 Fly home to Chud Hub</button>
+            <small>{trip.jet ? <>Your {trip.jet} is parked on the private-jet apron. Fly it home any time, no ticket (the normal jet upkeep still applies).</> : <>Your ticket included the flight home.</>}</small>
+            <button type="button" disabled={departing} onClick={() => void home()} data-testid="fortmc-fly-home-2">{trip.jet ? <>🛩 Fly my jet home to Chud Hub</> : <>🛫 Fly home to Chud Hub</>}</button>
           </>}
           {msg && <small data-testid="fort-msg">{msg}</small>}
         </div>

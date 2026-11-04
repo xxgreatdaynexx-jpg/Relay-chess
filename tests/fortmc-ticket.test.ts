@@ -11,9 +11,9 @@ describe('Fort McChud ticket (Tess QA #1)', () => {
     expect((await t.fly('QA-NoJet', 'fortmc')).fee).toBe(1500); await t.home('QA-NoJet'); expect((await t.fly('QA-NoJet', 'fortmc')).fee).toBe(1500);
     expect(getBank().account('QA-NoJet').chips).toBe(2000);
   });
-  it('still charges 1,500 when the player owns a Citation; the resort stays free', async () => {
+  it('mu-jet-mcchud: a Citation owner flies their jet to Fort McChud and the resort with no ticket', async () => {
     setTravelJetHook(async () => 'citation'); const t = new Travel(null); setTravel(t); seed('QA-Jet', 5000);
-    expect((await t.fly('QA-Jet', 'fortmc')).fee).toBe(1500); await t.home('QA-Jet'); expect((await t.fly('QA-Jet', 'fortmc')).fee).toBe(1500); await t.home('QA-Jet');
-    expect((await t.fly('QA-Jet', 'resort')).fee).toBe(0); expect(getBank().account('QA-Jet').chips).toBe(2000);
+    expect((await t.fly('QA-Jet', 'fortmc')).fee).toBe(0); await t.home('QA-Jet'); expect((await t.fly('QA-Jet', 'fortmc')).fee).toBe(0); await t.home('QA-Jet');
+    expect((await t.fly('QA-Jet', 'resort')).fee).toBe(0); expect(getBank().account('QA-Jet').chips).toBe(5000);
   });
 });
