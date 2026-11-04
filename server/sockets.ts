@@ -29,6 +29,8 @@ import { registerCooking } from './cooking.js';
 import { registerMines } from './mines.js';
 import { registerFactory } from './factory.js';
 import { registerConquest } from './conquest.js';
+import { getJail } from './jail.js';
+import { jailAllows, jailMessage } from '../shared/jail.js';
 import { analyzePosition, onHintReady } from './hints.js';
 import {
   createRoom,
@@ -184,6 +186,7 @@ export function registerSockets(io: Server): void {
   startPopups(io);
   startSkills(io);
   startPresence(io);
+  getJail().onChange = () => io.emit('jail_changed', { inmates: getJail().list() });
 
   io.use((socket, next) => {
     const token = (socket.handshake.auth as { session?: unknown } | undefined)?.session;
@@ -204,6 +207,26 @@ export function registerSockets(io: Server): void {
       if (getBank().ready || !isChipEvent(event)) return next();
       const ack = packet[packet.length - 1];
       if (typeof ack === 'function') (ack as (r: unknown) => void)({ ok: false, unavailable: true, error: WALLET_UNAVAILABLE });
+    });
+    // Admin jail (pt1478u): a jailed player can't trade or earn. Every other event gets a plain "you're jailed" reply.
+    socket.use((packet, next) => {
+      const event = String(packet[0]); const name = (socket.data.account as { name?: string } | undefined)?.name;
+      const j = name && !jailAllows(event) ? getJail().status(name) : null;
+      if (!j) return next();
+      const ack = packet[packet.length - 1];
+      if (typeof ack === 'function') (ack as (r: unknown) => void)({ ok: false, jailed: true, error: jailMessage(j) });
+      else socket.emit('jail_blocked', { error: jailMessage(j) });
+    });
+    socket.on('jail_status', (_p: unknown, ack?: (r: unknown) => void) => {
+      const name = (socket.data.account as { name?: string } | undefined)?.name; const j = getJail().status(name);
+      if (typeof ack === 'function') ack({ ok: true, jail: j, message: j ? jailMessage(j) : null });
+    });
+    socket.on('jail_type', async (p: unknown, ack?: (r: unknown) => void) => {
+      const name = (socket.data.account as { name?: string } | undefined)?.name;
+      if (typeof ack !== 'function') return;
+      if (!name) return ack({ ok: false, error: 'Sign in first.' });
+      try { const r = await getJail().apologize(name, (p as { text?: unknown } | null)?.text); ack({ ok: !r.error, ...r }); }
+      catch { ack({ ok: false, error: 'Something went wrong. Try again.' }); }
     });
     // Tables saved before a restart/deploy are loaded on demand, before the handler runs.
     socket.use((packet, next) => {

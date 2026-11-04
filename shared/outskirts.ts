@@ -6,6 +6,7 @@
  */
 import { PLATE, MINE_SITES, MINE_APRON, OUTSKIRTS, RESERVED_VENUES, ROADS, type House } from './worldLayout.js';
 import { housingType } from './housing.js';
+import { JAIL_SITE } from './jail.js';
 import { FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W } from './farm.js';
 import { AIRPORT_ROADS, RACETRACK_ROADS } from './venues.js';
 const VENUE_ROADS = [...AIRPORT_ROADS, ...RACETRACK_ROADS];
@@ -55,6 +56,7 @@ export function keepOut(x: number, z: number, m = 0): boolean {
   if (Math.abs(x) < PLATE + 3 + m && Math.abs(z) < PLATE + 3 + m) return true;
   if (inR({ x0: FARM_X0, x1: FARM_X1, z0: FARM_Z0, z1: FARM_Z1 }, x, z, 3 + m)) return true;
   for (const r of Object.values(RESERVED_VENUES)) if (inR(r, x, z, 2 + m)) return true;
+  if (Math.abs(x - JAIL_SITE.x) < JAIL_SITE.w / 2 + 4 + m && Math.abs(z - JAIL_SITE.z) < JAIL_SITE.d / 2 + 4 + m) return true; // admin jail
   for (const s of Object.values(MINE_SITES)) {
     if (Math.abs(x - s.x) < MINE_APRON / 2 + 2 + m && Math.abs(z - s.z) < MINE_APRON / 2 + 2 + m) return true;
     const pts: P[] = [...s.track, [s.x, s.z]]; for (let i = 1; i < pts.length; i++) if (segD(x, z, pts[i - 1], pts[i]) < 3.5 + m) return true;

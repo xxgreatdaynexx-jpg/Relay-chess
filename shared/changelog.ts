@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-03T20:00:00-06:00', title: 'City Jail', bullets: [
+    'There is now a City Jail on the west side of the map between the Speedway and the Airport. Admins can jail a player with a reason and an optional timer.',
+    'While jailed you can\'t trade or earn anything. You show up behind bars on the map with your timer and progress. To get out early, type "I\'m sorry grok." 10,000 times, one line at a time. Pasting doesn\'t count. No chips are taken.',
+  ] },
   { commit: '', at: '2026-11-03T16:30:00-06:00', title: 'House-sell cap now follows total player wealth', bullets: [
     'Each day at the reset (6 PM CST) the daily house-sell cap changes by half the percent that total player assets (cash + holdings, the Bank total) changed over the previous day. If total wealth doubles, the cap goes up 50%; if it drops 20%, the cap drops 10%.',
     'The cap can fall when total wealth falls, but never below 100,000. If a day\'s wealth snapshot is missing, the cap stays the same. Prices and payouts still use the price index as before.',

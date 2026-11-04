@@ -1,3 +1,4 @@
+import { isJailed } from './jail.js';
 /**
  * Stock Exchange v2: dividends, index + mutual funds, shorts, options (calls and puts).
  *
@@ -354,7 +355,7 @@ export class Derivatives {
       : [...this.mFunds].flatMap(([k, m]) => [...m.values()].map((p) => ({ k, name: p.name, fund: p.fund, units: p.units })));
     let expenseBurn = 0;
     for (const r of fundRows) { const f = FUND_BY_ID.get(r.fund); if (!f) continue; add(r.k, r.name, r.units * fundDivPerUnit(f, this.price)); expenseBurn += r.units * f.expense * this.nav(f); }
-    const moves: Move[] = [...pay].map(([k, p]) => ({ name: p.name, amount: Math.floor(p.chips), key: `div:${day}:${k}`, game: 'dividend', memo: `Daily dividends ${day}` })).filter((m) => m.amount >= 1);
+    const moves: Move[] = [...pay].map(([k, p]) => ({ name: p.name, amount: Math.floor(p.chips), key: `div:${day}:${k}`, game: 'dividend', memo: `Daily dividends ${day}` })).filter((m) => m.amount >= 1 && !isJailed(m.name)); // jailed players don't earn dividends
     const shorts = await this.shorts(null);
     const fees = shorts.map((s) => ({ s, fee: Math.min(s.collateral, Math.max(1, Math.ceil(this.price(s.ticker)! * s.shares * BORROW_FEE))) }));
     const info = { day, paid: moves.reduce((a, m) => a + m.amount, 0), players: moves.length, expenseBurn: Math.round(expenseBurn), borrowFees: fees.reduce((a, f) => a + f.fee, 0) };

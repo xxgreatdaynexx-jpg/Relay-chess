@@ -32,7 +32,7 @@ export function split(total: number, names: string[]): Array<{ name: string; amo
 }
 
 /** Full plan for one day. Recipients are active players below the threshold, in a stable (name) order. */
-export function planWealthTax(rows: WealthRow[]): WealthPlan {
+export function planWealthTax(rows: WealthRow[], noShare: (name: string) => boolean = () => false): WealthPlan {
   const base = rows.filter((r) => r.netWorth >= WEALTH_TAX_MEDIAN_MIN);
   // Nobody at 10K+: no median, no tax.
   if (!base.length) return { median: 0, threshold: 0, taxes: [], shares: [], total: 0 };
@@ -40,7 +40,7 @@ export function planWealthTax(rows: WealthRow[]): WealthPlan {
   const sorted = [...rows].sort((a, b) => a.name.localeCompare(b.name));
   const taxes = sorted.filter((r) => r.netWorth >= WEALTH_TAX_MEDIAN_MIN).map((r) => ({ name: r.name, amount: taxFor(r, threshold), netWorth: r.netWorth })).filter((t) => t.amount > 0);
   const total = taxes.reduce((a, t) => a + t.amount, 0);
-  const shares = split(total, sorted.filter((r) => r.netWorth < threshold).map((r) => r.name));
+  const shares = split(total, sorted.filter((r) => r.netWorth < threshold && !noShare(r.name)).map((r) => r.name));
   // No one below the threshold to receive it: collect nothing (redistributed, never burned).
   if (!shares.length) return { median: med, threshold, taxes: [], shares: [], total: 0 };
   return { median: med, threshold, taxes, shares, total };

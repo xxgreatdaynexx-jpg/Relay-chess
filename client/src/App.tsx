@@ -1,4 +1,5 @@
 import { FactoryViewer } from '@/components/FactoryViewer';
+import { JailScreen } from './components/JailScreen';
 import PlayerProfile from './components/PlayerProfile';
 import { useEffect, useRef, useState } from 'react';
 import { SkinsPanel } from '@/components/SkinsPanel';
@@ -203,6 +204,7 @@ export function App() {
   return (
     <>
       <TopTabs />
+      <JailScreen />
       <VolumeControl />
       <div className="app-panels">
         <BlackjackPanel />

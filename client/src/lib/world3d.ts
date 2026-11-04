@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { JAIL_SITE, type JailInfo } from '../../../shared/jail';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -541,6 +542,43 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   };
   let parkDead = false;
   void fetch('/api/trailer-park').then((r) => r.json()).then((j: { lots?: { lot: number; name: string }[] }) => { if (!parkDead && Array.isArray(j?.lots)) addTrailers(j.lots); }).catch(() => {});
+
+  // Admin jail (pt1478u): stone yard + cell block with bars in the west outskirts. Inmates come from /api/jail and stand
+  // behind the bars with a floating tag: name, countdown (or "no timer") and their lines typed.
+  const jailG = new THREE.Group(); jailG.name = 'jail'; jailG.position.set(JAIL_SITE.x, 0, JAIL_SITE.z); scene.add(jailG);
+  let jailDead = false; let inmates: JailInfo[] = []; const inmateObjs: { g: THREE.Group; tex: THREE.CanvasTexture; c: HTMLCanvasElement; j: JailInfo }[] = [];
+  {
+    const W = JAIL_SITE.w, D = JAIL_SITE.d; const stone = mat({ color: 0x6d6a66, roughness: 1 }), wall = mat({ color: 0x8b8680, roughness: 0.95 }), roof = mat({ color: 0x3b3936 }), bar = mat({ color: 0x2a2c30, metalness: 0.8, roughness: 0.35 });
+    const B = (w: number, h: number, d: number, m: THREE.Material, x: number, y: number, z: number) => { const o = new THREE.Mesh(geo(new THREE.BoxGeometry(w, h, d)), m); o.position.set(x, y, z); jailG.add(o); return o; };
+    B(W + 4, 0.3, D + 4, stone, 0, 0.15, 0); // yard slab
+    B(W, 5, 0.6, wall, 0, 2.8, -D / 2 + 0.3); B(0.6, 5, D, wall, -W / 2 + 0.3, 2.8, 0); B(0.6, 5, D, wall, W / 2 - 0.3, 2.8, 0); // back + sides
+    B(W + 0.8, 0.5, D + 0.8, roof, 0, 5.55, 0);
+    for (let x = -W / 2 + 0.9; x <= W / 2 - 0.9; x += 0.75) B(0.14, 5, 0.14, bar, x, 2.8, D / 2 - 0.3); // front bars
+    B(W, 0.25, 0.3, bar, 0, 0.45, D / 2 - 0.3); B(W, 0.25, 0.3, bar, 0, 5.15, D / 2 - 0.3);
+    for (const x of [-W / 6, W / 6]) B(0.25, 5, D - 1, bar, x, 2.8, 0.2); // cell dividers
+    const sg = signTexture('CITY JAIL', '#ff8a80', 'Chud Hub Correctional'); disposables.push(sg);
+    const sm = mat({ color: 0xffffff, map: sg, emissiveMap: sg, emissive: 0xffffff, emissiveIntensity: 0.5 * NEON });
+    const sign = new THREE.Mesh(geo(new THREE.BoxGeometry(9, 2.4, 0.2)), sm); sign.position.set(0, 7.2, D / 2 - 0.3); jailG.add(sign);
+    const lamp = new THREE.PointLight(0xffd8a0, 40, 30, 1.4); lamp.position.set(0, 9, D / 2 + 3); jailG.add(lamp);
+    jailG.scale.setScalar(1.4);
+  }
+  const fmtLeft = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return h ? `${h}h ${m}m` : `${m}m ${String(x).padStart(2, '0')}s`; };
+  const drawTag = (o: (typeof inmateObjs)[number]) => { const g = o.c.getContext('2d')!; g.clearRect(0, 0, 512, 192); g.fillStyle = 'rgba(20,8,8,0.82)'; g.beginPath(); g.roundRect(4, 4, 504, 184, 26); g.fill();
+    g.strokeStyle = '#ff6a5a'; g.lineWidth = 5; g.stroke(); g.textAlign = 'center'; g.fillStyle = '#ffd0c8'; g.font = '800 52px Outfit Variable, system-ui, sans-serif'; g.fillText(`🔒 ${o.j.name}`.slice(0, 20), 256, 64);
+    g.font = '600 38px Outfit Variable, system-ui, sans-serif'; g.fillStyle = '#fff'; g.fillText(o.j.until == null ? 'No timer' : `⏱ ${fmtLeft(o.j.until - Date.now())}`, 256, 116);
+    g.fillStyle = '#ffb3a8'; g.fillText(`${o.j.typed.toLocaleString('en-US')} / ${o.j.needed.toLocaleString('en-US')} sorrys`, 256, 164); o.tex.needsUpdate = true; };
+  const setInmates = (list: JailInfo[]) => {
+    for (const o of inmateObjs) { jailG.remove(o.g); o.tex.dispose(); } inmateObjs.length = 0; inmates = list;
+    const skin = mat({ color: 0xe0b48a }), suit = mat({ color: 0xff7a1a, emissive: 0x4a1c00, emissiveIntensity: 0.4 });
+    list.slice(0, 9).forEach((j, i) => { const g = new THREE.Group(); const cell = i % 3, row = Math.floor(i / 3);
+      g.position.set((cell - 1) * (JAIL_SITE.w / 3), 0.3, JAIL_SITE.d / 2 - 2.2 - row * 3);
+      const body = new THREE.Mesh(geo(new THREE.CylinderGeometry(0.55, 0.6, 1.9, 10)), suit); body.position.y = 1.1; const head = new THREE.Mesh(geo(new THREE.SphereGeometry(0.45, 12, 10)), skin); head.position.y = 2.45; g.add(body, head);
+      const c = document.createElement('canvas'); c.width = 512; c.height = 192; const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true })); sp.scale.set(5.4, 2.0, 1); sp.position.y = 6.2 + row * 2.3; sp.renderOrder = 10; g.add(sp);
+      const o = { g, tex, c, j }; drawTag(o); inmateObjs.push(o); jailG.add(g); });
+  };
+  const loadJail = () => { void fetch('/api/jail').then((r) => r.json()).then((x: { inmates?: JailInfo[] }) => { if (!jailDead && Array.isArray(x?.inmates)) setInmates(x.inmates); }).catch(() => {}); };
+  loadJail(); const jailPoll = window.setInterval(loadJail, 15_000); const jailTick = window.setInterval(() => { for (const o of inmateObjs) drawTag(o); if (inmates.some((j) => j.until != null && j.until <= Date.now())) loadJail(); }, 1000);
   // Outskirts mines (MINE_SITES): a rocky apron under each one and a dirt haul track back to the city's road end.
   for (const site of Object.values(MINE_SITES)) {
     const top = site.cave === 'frost' ? 0xdfeef7 : site.cave === 'magma' ? 0x3a2a24 : 0x5e5040;
@@ -811,7 +849,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     setRunning(v: boolean) { running = v && !document.hidden; clock.getDelta(); },
     project(id: string) { const l = lms.find((x) => x.id === id); if (!l) return null; const v = l.pos.clone().setY(l.height + 2.2).project(camera); const rc = canvas.getBoundingClientRect(); return { x: rc.left + (v.x + 1) / 2 * rc.width, y: rc.top + (1 - v.y) / 2 * rc.height }; },
     hover(id: string | null) { setHover(id); },
-    dispose() { xmas?.dispose(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); parkDead = true; trailerMeshes = []; cancelAnimationFrame(raf); venues.dispose(); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
+    dispose() { xmas?.dispose(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); parkDead = true; trailerMeshes = []; jailDead = true; window.clearInterval(jailPoll); window.clearInterval(jailTick); for (const o of inmateObjs) o.tex.dispose(); cancelAnimationFrame(raf); venues.dispose(); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
   };
 }
 export type World = ReturnType<typeof createWorld>;

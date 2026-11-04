@@ -1,3 +1,4 @@
+import { isJailed } from './jail.js';
 /**
  * Daily wealth tax (pt1397u). At each UTC reset: active players (any ledger row in the last 7 days, QA excluded), net
  * worth = chips + assets (same as the profile/leaderboard), threshold = 2× the median of active players at 10K+ (under 10K never pay). Above it pay 1% of the excess from
@@ -44,7 +45,7 @@ export async function runWealthTax(db: pg.Pool, now = Date.now()): Promise<Summa
   const bank = getBank(); if (!bank.ready) return null;
   const day = utcDay(now);
   if ((await db.query('SELECT 1 FROM wealth_tax_days WHERE day = $1', [day])).rowCount) return null;
-  const plan = planWealthTax(await activeRows(db, now));
+  const plan = planWealthTax(await activeRows(db, now), (n) => isJailed(n)); // jailed players get no share
   const sum = summarize(day, plan);
   const moves = [
     ...plan.taxes.map((t) => ({ name: t.name, amount: -t.amount, key: wealthTaxKey(t.name, day), game: WEALTH_TAX_GAME, memo: 'Wealth tax' })),

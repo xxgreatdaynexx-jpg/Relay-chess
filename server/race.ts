@@ -1,3 +1,4 @@
+import { isJailed } from './jail.js';
 /**
  * Chud Hub Speedway: server-timed laps + the Daily Cup.
  *
@@ -142,7 +143,7 @@ export class Speedway {
       const payouts: Array<{ name: string; rank: number; amount: number }> = [];
       for (const [i, s] of c.standings.slice(0, RACE_SPLIT.length).entries()) {
         const amount = Math.floor(c.pool * RACE_SPLIT[i]!); const k = byName.get(s.name) ?? keyOf(s.name);
-        if (isQa(k) || amount <= 0) continue;
+        if (isQa(k) || amount <= 0 || isJailed(s.name)) continue; // jailed: share not paid
         await bank.transferConfirmed(s.name, amount, { key: `race_prize:${day}:${i + 1}`, game: 'race_prize', memo: `Speedway Daily Cup ${day}: #${i + 1} (${fmtLap(s.ms)})` });
         payouts.push({ name: s.name, rank: i + 1, amount }); n++;
       }

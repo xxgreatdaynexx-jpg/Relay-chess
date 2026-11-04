@@ -3,6 +3,7 @@ import express from 'express';
 import { getAccounts, nameKey } from './accounts.js';
 import { getBank, WALLET_UNAVAILABLE } from './casino-store.js';
 import { getVault } from './skins.js';
+import { getJail } from './jail.js';
 import { getPopups, POPUP_FROM_MAX, POPUP_TEXT_MAX, sendPopup } from './popups.js';
 
 /** Constant-time token check. Rejects everything when ADMIN_GRANT_TOKEN is unset or short. */
@@ -16,6 +17,31 @@ export function adminAuthorized(header: string | undefined, token = process.env.
 /** POST /api/admin/grant {player, amount, memo, key}: credit chips through the bank (memory + ledger + Postgres + live wallet push). */
 export function adminRouter(): express.Router {
   const r = express.Router();
+  /**
+   * POST /api/admin/jail {username, hours, reason}: lock a player in the jail (no trading, no earning). hours: number > 0,
+   * or null / omitted / 0 for no timer (released only by typing the lines or /api/admin/unjail). Never moves chips.
+   */
+  r.post('/api/admin/jail', express.json({ limit: '4kb' }), async (req, res) => {
+    if (!adminAuthorized(req.get('authorization'))) return res.status(401).json({ ok: false, error: 'Unauthorized.' });
+    const { username, hours, reason } = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof username !== 'string' || !username.trim()) return res.status(400).json({ ok: false, error: 'username is required.' });
+    if (hours != null && (typeof hours !== 'number' || !Number.isFinite(hours) || hours < 0 || hours > 24 * 365)) return res.status(400).json({ ok: false, error: 'hours must be a number 0..8760, or null for no timer.' });
+    if (typeof reason !== 'string' || !reason.trim() || reason.length > 200) return res.status(400).json({ ok: false, error: 'reason is required (up to 200 chars).' });
+    let row;
+    try { row = await getAccounts().store.get(nameKey(username)); } catch { return res.status(503).json({ ok: false, error: 'Accounts unavailable.' }); }
+    if (!row) return res.status(404).json({ ok: false, error: 'Unknown player.' });
+    try { const j = await getJail().jail(row.name, hours ? hours : null, reason.trim()); console.log(`[admin] jail ${row.name} from ${req.ip ?? '?'}`); res.json({ ok: true, jail: j }); }
+    catch (e) { res.status(503).json({ ok: false, error: (e as Error).message }); }
+  });
+  /** POST /api/admin/unjail {username}: release now. */
+  r.post('/api/admin/unjail', express.json({ limit: '4kb' }), async (req, res) => {
+    if (!adminAuthorized(req.get('authorization'))) return res.status(401).json({ ok: false, error: 'Unauthorized.' });
+    const { username } = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof username !== 'string' || !username.trim()) return res.status(400).json({ ok: false, error: 'username is required.' });
+    res.json({ ok: true, released: await getJail().release(username.trim(), 'admin unjail') });
+  });
+  /** GET /api/jail: public list of inmates for the map (name, reason, until, typed/needed). */
+  r.get('/api/jail', (_req, res) => { res.json({ ok: true, inmates: getJail().list() }); });
   r.post('/api/admin/grant', express.json({ limit: '4kb' }), async (req, res) => {
     const ip = req.ip ?? '?';
     if (!adminAuthorized(req.get('authorization'))) {
