@@ -22,20 +22,22 @@ function tag(text: string, color = '#ffd27a'): THREE.Sprite { // Chud City label
 const hullGeo = () => sg('shipHull', () => { // top-view outline: pointed bow (+x), square stern, extruded down; bevelled sheer
   const sh = new THREE.Shape(); sh.moveTo(-9, -2.5); sh.lineTo(5.5, -2.5); sh.quadraticCurveTo(8.6, -2.2, 9.6, 0); sh.quadraticCurveTo(8.6, 2.2, 5.5, 2.5); sh.lineTo(-9, 2.5); sh.quadraticCurveTo(-9.5, 0, -9, -2.5);
   const g = new THREE.ExtrudeGeometry(sh, { depth: 1, bevelEnabled: false, curveSegments: 8 }); g.rotateX(Math.PI / 2); return g; });
+/** QA#11: steer axle + tandem rear (was a tri-axle). */
+export const TRUCK_AXLES = [2.5, -1.75, -2.7] as const;
 export function truck(color: number, hired: boolean) {
   const g = new THREE.Group(); const paint = sm(color, 0.45, 0.25), glass = sm(0x1e293b, 0.15, 0.6), chrome = sm(0xd1d5db, 0.25, 0.9), black = sm(0x111111, 0.85), lamp = sm(0xfff7d6, 0.3, 0, 0xfff1b8, 1.4), tail = sm(0x7f1d1d, 0.4, 0, 0xef4444, 1.2);
   part(g, BOX(), sm(0x27272a, 0.7), 6.6, 0.35, 1.3, -0.3, 0.75, 0); // chassis rails
-  part(g, BOX(), paint, 1.5, 1.55, 2.0, 2.0, 1.65, 0); part(g, BOX(), paint, 0.8, 0.85, 1.9, 3.0, 1.25, 0); // cab + hood
-  part(g, BOX(), glass, 0.06, 0.7, 1.7, 2.77, 2.0, 0); for (const z of [-1.0, 1.0]) part(g, BOX(), glass, 0.9, 0.55, 0.04, 2.05, 2.0, z); // windscreen, side windows
+  part(g, BOX(), paint, 1.5, 1.3, 2.0, 2.0, 1.52, 0); part(g, BOX(), paint, 0.8, 0.85, 1.9, 3.0, 1.25, 0); // cab + hood
+  part(g, BOX(), glass, 0.06, 0.6, 1.7, 2.77, 1.8, 0); for (const z of [-1.0, 1.0]) part(g, BOX(), glass, 0.9, 0.48, 0.04, 2.05, 1.82, z); // windscreen, side windows
   part(g, BOX(), chrome, 0.12, 0.55, 1.6, 3.43, 1.15, 0); part(g, BOX(), chrome, 0.2, 0.22, 2.05, 3.45, 0.72, 0); // grille, bumper
-  for (const z of [-0.75, 0.75]) { part(g, BOX(), lamp, 0.05, 0.2, 0.32, 3.47, 1.3, z); part(g, BOX(), black, 0.12, 0.35, 0.06, 2.6, 2.05, z * 1.45); part(g, CYL8(), chrome, 0.12, 1.6, 0.12, 1.2, 2.3, z * 1.15); } // headlights, mirrors, stacks
-  part(g, BOX(), paint, 1.2, 0.35, 1.9, 1.95, 2.6, 0); // roof fairing
+  for (const z of [-0.75, 0.75]) { part(g, BOX(), lamp, 0.05, 0.2, 0.32, 3.47, 1.3, z); part(g, BOX(), black, 0.12, 0.35, 0.06, 2.6, 1.85, z * 1.45); part(g, CYL8(), chrome, 0.12, 1.6, 0.12, 1.2, 2.3, z * 1.15); } // headlights, mirrors, stacks
+  part(g, BOX(), paint, 1.2, 0.5, 1.9, 1.95, 2.42, 0); // roof fairing (QA#11: cab ~10% lower)
   const body = hired ? 0xd1d5db : 0xf3f4f6; part(g, BOX(), sm(body, 0.55), 4.4, 2.2, 2.1, -1.3, 2.05, 0);
   for (let i = 0; i < 6; i++) part(g, BOX(), sm(0xbfc5cc, 0.6), 0.06, 2.1, 2.14, -3.3 + i * 0.8, 2.05, 0); // side ribs
   if (hired) part(g, BOX(), sm(0xf97316, 0.5), 4.42, 0.4, 2.12, -1.3, 2.2, 0);
   for (const z of [-0.8, 0.8]) part(g, BOX(), tail, 0.05, 0.18, 0.3, -3.52, 1.1, z);
   const wheelG = sg('wheel', () => { const w = new THREE.CylinderGeometry(0.45, 0.45, 0.34, 14); w.rotateX(Math.PI / 2); return w; }), hubG = sg('hub', () => { const w = new THREE.CylinderGeometry(0.2, 0.2, 0.36, 8); w.rotateX(Math.PI / 2); return w; });
-  for (const x of [2.5, -0.9, -2.0, -3.0]) for (const z of [-0.95, 0.95]) { const w = new THREE.Mesh(wheelG, black); w.position.set(x, 0.45, z); g.add(w); const h = new THREE.Mesh(hubG, chrome); h.position.set(x, 0.45, z * 1.01); g.add(h); }
+  for (const x of TRUCK_AXLES) for (const z of [-0.95, 0.95]) { const w = new THREE.Mesh(wheelG, black); w.position.set(x, 0.45, z); g.add(w); const h = new THREE.Mesh(hubG, chrome); h.position.set(x, 0.45, z * 1.01); g.add(h); }
   return g;
 }
 export function plane() {
