@@ -1,6 +1,7 @@
 /** Mines: three.js cave scene (lazy-loaded). Map coords are (x, y) on the floor and z up; three.js is y-up, so (x, z, y). */
 import { detectWorldTier } from './worldTier';
 import * as THREE from 'three';
+import { addDepthProps, depthLook } from './mineDepthLook';
 import { cityLabel, fitLabel } from './labelSprite';
 import { applyPickSkin, skinnedPickaxe } from './pickaxeModel';
 import { buildMineTool, animateMineTool, skinMineTool } from './mineToolModels';
@@ -136,8 +137,9 @@ export class Mines3D {
   private swordT = 1;
   readonly floor: number;
   constructor(canvas: HTMLCanvasElement, caveId: CaveId = 'mine', floor = 1) {
-    const cave = levelOf(caveId, floor); const MINE_MAP = cave.map; const MINE_NODES = cave.nodes; const T = cave.theme;
+    const cave = levelOf(caveId, floor); const MINE_MAP = cave.map; const MINE_NODES = cave.nodes;
     this.floor = cave.floor; const classic = caveId === 'mine' && cave.floor < 10;
+    const look = classic ? depthLook(cave.floor) : null; const T = look ? { ...cave.theme, wall: look.wall, floor: look.floor, lamp: look.lamp } : cave.theme; // QA#4 per-floor look
     this.caveNodes = MINE_NODES;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(Math.min(detectWorldTier() === 'low' ? 1 : 2, window.devicePixelRatio || 1));
@@ -173,6 +175,7 @@ export class Mines3D {
     const floorTex = tex.clone(); floorTex.repeat.set(MINE_MAP.w / 3, MINE_MAP.d / 3); floorTex.needsUpdate = true;
     const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(MINE_MAP.w, MINE_MAP.d), new THREE.MeshLambertMaterial({ map: floorTex, color: T.floor }));
     floorMesh.rotation.x = -Math.PI / 2; floorMesh.position.set(MINE_MAP.w / 2, 0, MINE_MAP.d / 2); this.scene.add(floorMesh);
+    if (look) addDepthProps(this.scene, look, this.walls, MINE_NODES);
     // Lanterns along the tunnels (cheap: emissive dots + a few lights).
     let lights = 0;
     for (const s of MINE_MAP.spawns.concat(MINE_NODES.filter((_, i) => i % 9 === 0).map((n) => [n.x, n.y, 0] as [number, number, number]))) {
