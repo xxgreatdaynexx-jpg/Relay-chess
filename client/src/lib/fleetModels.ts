@@ -22,6 +22,11 @@ function hull(g: THREE.Object3D, len: number, beam: number, hgt: number, m: THRE
   for (const sx of [-1, 1]) { const r = add(g, new THREE.CylinderGeometry(0.035, 0.035, len * 0.62, 6), chrome, sx * beam * 0.44, hgt + 0.55, len * 0.02); r.rotation.x = Math.PI / 2;
     for (let i = 0; i < 5; i++) add(g, new THREE.CylinderGeometry(0.03, 0.03, 0.55, 5), chrome, sx * beam * 0.44, hgt + 0.28, -len * 0.29 + i * len * 0.155); }
 }
+/** recheck #3: a thin conformal strip on a z-axis fuselage of radius r, between elevations e0..e1 (radians, + up) on
+ *  side sd (+1 = +x). Open cylinder segment, so it can never stick out of the round body like a box did. */
+function skin(r: number, e0: number, e1: number, len: number, sd: 1 | -1) {
+  const t0 = sd > 0 ? Math.PI / 2 + e0 : 1.5 * Math.PI - e1; const g = new THREE.CylinderGeometry(r, r, len, 6, 1, true, t0, e1 - e0); g.rotateX(Math.PI / 2); return g;
+}
 /** mu-visuals superyacht: a long white hull (navy boot stripe, gold cove line) with stacked, set-back superstructure tiers built from a rounded,
  *  raked plan (no boxes): wraparound tinted glass bands, overhanging white deck lips, a sun deck with a pool and
  *  loungers, a radar arch, a foredeck helipad and a teak swim platform. Geometry cached + shared (userData.shared). */
@@ -106,7 +111,12 @@ export function buildJet(m: FleetModel): THREE.Group {
   const k = m.id === 'citation' ? 0.5 : m.id === 'g700' ? 1 : 1.1; const L = 16 * k, R = 0.9 * k * (m.id === 'chudone' ? 1.55 : 1);
   // mu-visuals nose fix: one coaxial fuselage + rounded blunt nose + tail cone, same radius/segments at each joint (no seam, no step).
   addFuselage(g, { r: R, len: L, nose: R * 1.9, tail: L * 0.25, y: R + 1, body, glass: win });
-  add(g, new THREE.BoxGeometry(R * 2.02, R * 0.2, L * 0.9), trim, 0, R + 1 - R * 0.35, 0); add(g, new THREE.BoxGeometry(R * 2.04, R * 0.22, L * 0.78), win, 0, R + 1 + R * 0.35, 0.02 * L);
+  // recheck #3: the cheat line and the window band were flat boxes 2.02-2.04R wide, so their square edges stuck out of the
+  // round fuselage side (the "wing-root block" above the windows). They are now thin conformal skins hugging the hull.
+  for (const sd of [1, -1] as const) { add(g, skin(R * 1.006, -0.46, -0.24, L * 0.9, sd), trim, 0, R + 1, 0).userData.part = 'cheatline';
+    add(g, skin(R * 1.008, 0.36, 0.5, L * 0.78, sd), win, 0, R + 1, 0.02 * L).userData.part = 'windowBand'; }
+  // wing-root fairing: a flattened belly blister that blends the low wing into the fuselage
+  const fair = add(g, new THREE.SphereGeometry(1, 20, 10), body, 0, R + 1 - R * 0.62, L * 0.0); fair.scale.set(R * 0.92, R * 0.42, L * 0.22); fair.userData.part = 'wingFairing';
   // QA#12: the BBJ's roof box read as a cargo pod; it is now a low, flat SATCOM radome faired into the crown.
   if (m.id === 'chudone') { const dome = add(g, new THREE.SphereGeometry(1, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2), M(0xe8eaec, { roughness: 0.5 }), 0, R * 2 + 1 - 0.04, L * 0.3); dome.scale.set(R * 0.42, R * 0.2, R * 0.95); dome.userData.part = 'satcom'; }
   const wing = new THREE.Shape(); wing.moveTo(0, 0); wing.lineTo(L * 0.55, -L * 0.22); wing.lineTo(L * 0.55, -L * 0.3); wing.lineTo(0, -L * 0.25);
@@ -122,8 +132,13 @@ export function buildJet(m: FleetModel): THREE.Group {
     const n = nacelle({ len: L * 0.17, r: ar, pylon: apy, body }); n.rotation.z = s * Math.PI / 2; n.position.set(s * (R * 0.92 + apy + ar), R + 1 + R * 0.4, -L * 0.33); n.userData.part = 'aftEngine'; g.add(n); }
   for (const z of [L * 0.32, -L * 0.1]) for (const x of z > 0 ? [0] : [-R * 0.8, R * 0.8]) add(g, new THREE.CylinderGeometry(0.18 * k, 0.18 * k, 0.3 * k, 10), M(0x111111), x, 0.2, z).rotation.z = Math.PI / 2;
   // mu-visuals detail: cockpit windshield, cabin window row, winglets, landing-gear struts, nav lights.
-  for (let i = 0; i < Math.round(6 * k + 2); i++) for (const sx of [-1, 1]) { const wn = add(g, new THREE.CircleGeometry(R * 0.16, 10), win, sx * R * 1.01, R + 1 + R * 0.3, L * 0.3 - i * (L * 0.55 / Math.round(6 * k + 2))); wn.rotation.y = sx * Math.PI / 2; }
-  for (const s of [-1, 1]) { const wl = add(g, new THREE.BoxGeometry(0.08 * k, 1.4 * k, 0.9 * k), body, s * L * 0.55, R + 0.6 + 0.7 * k, L * 0.1 - L * 0.26); wl.rotation.z = -s * 0.25;
+  // windows sit on the curved skin (tilted to its normal), not on a flat plane outside it
+  const we = Math.asin(0.3), wx = R * Math.cos(we) * 1.012, wy = R * Math.sin(we);
+  for (let i = 0; i < Math.round(6 * k + 2); i++) for (const sx of [-1, 1]) { const wn = add(g, new THREE.CircleGeometry(R * 0.13, 10), win, sx * wx, R + 1 + wy, L * 0.3 - i * (L * 0.55 / Math.round(6 * k + 2))); wn.rotation.set(0, sx * Math.PI / 2, 0); wn.rotateX(-we); wn.userData.part = 'window'; }
+  // winglets (recheck #3): small swept, tapered blades canted outboard, kept below the window row so they never read as a
+  // block through the fuselage side (was a flat 0.08k x 1.4k x 0.9k slab standing up past the cabin windows)
+  const wh = 0.4 * k; const wlS = new THREE.Shape(); wlS.moveTo(0, 0); wlS.lineTo(-0.9 * k, 0); wlS.lineTo(-1.0 * k, wh); wlS.lineTo(-0.7 * k, wh); wlS.lineTo(0, 0);
+  for (const s of [-1, 1]) { const wl = add(g, new THREE.ExtrudeGeometry(wlS, { depth: 0.05 * k, bevelEnabled: false }), body, s * L * 0.55, R + 0.6, L * 0.1 - L * 0.22); wl.rotation.set(0, -Math.PI / 2, 0); wl.rotateOnWorldAxis(new THREE.Vector3(0, 0, 1), -s * 0.45); wl.userData.part = 'winglet';
     add(g, new THREE.SphereGeometry(0.12 * k, 8, 6), M(s < 0 ? 0xff2020 : 0x20ff40, { emissive: s < 0 ? 0xff2020 : 0x20ff40, emissiveIntensity: 1.5 }), s * L * 0.55, R + 0.62, L * 0.1 - L * 0.27); }
   for (const z of [L * 0.32, -L * 0.1]) for (const x of z > 0 ? [0] : [-R * 0.8, R * 0.8]) add(g, new THREE.CylinderGeometry(0.06 * k, 0.06 * k, 1 - 0.1 + R * 0.1, 6), eng, x, 0.6, z);
   return g;
