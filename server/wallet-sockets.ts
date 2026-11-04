@@ -3,7 +3,7 @@ import { getBank, START_CHIPS, WALLET_UNAVAILABLE } from './casino-store.js';
 import { signedIn } from './auth-sockets.js';
 import type { Ack } from '../shared/types.js';
 
-const roomOf = (name: string) => `w:${name.trim().toLowerCase()}`;
+export const roomOf = (name: string) => `w:${name.trim().toLowerCase()}`;
 let unsubscribe: (() => void) | null = null;
 let attachedTo: Server | null = null;
 

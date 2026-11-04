@@ -64,6 +64,13 @@ export class Travel {
     return { loc: dest as Location, fee, waived: waivedBy ?? undefined, jet: jet ?? undefined, chips: bank.account(name).chips };
   }
 
+  /** Jet seat passenger (server/jetSeats.ts): moved with the owner's jet, no ticket. */
+  async carry(name: string, to: Location) {
+    const k = keyOf(name);
+    if (this.pool) await this.pool.query("INSERT INTO player_location (player_key, name, loc, since) VALUES ($1,$2,$4,$3) ON CONFLICT (player_key) DO UPDATE SET loc = EXCLUDED.loc, name = EXCLUDED.name, since = EXCLUDED.since", [k, name.trim(), this.clock(), to]);
+    if (to === 'city') this.loc.delete(k); else this.loc.set(k, to); return { loc: to };
+  }
+
   /** Free return flight to the city. */
   async home(name: string) {
     const k = keyOf(name);

@@ -24,6 +24,7 @@ import { registerRace } from './race.js';
 import { registerTravel } from './travel.js';
 import { registerFortMc } from './fortmc.js';
 import { registerFleet } from './fleet.js';
+import { registerJetSeats } from './jetSeats.js';
 import { registerFarm } from './farm.js';
 import { registerWarehouse } from './warehouse.js';
 import { registerMineTools } from './mineTools.js';
@@ -264,6 +265,7 @@ export function registerSockets(io: Server): void {
     registerTravel(io, socket);
     registerFortMc(io, socket);
     registerFleet(io, socket);
+    registerJetSeats(io, socket);
     registerFarm(io, socket);
     registerWarehouse(io, socket);
     registerMineTools(io, socket);

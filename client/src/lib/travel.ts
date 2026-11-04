@@ -14,6 +14,8 @@ export async function refreshTrip() { const r = await request('trip_status') as 
 export async function flyTo(dest: Destination) { const r = await request('trip_buy', { dest }) as { ok: boolean; error?: string; fee?: number; jet?: string }; if (r.ok) set({ ...state, loc: dest, arrivedBy: r.jet ?? null }); return r; }
 export const flyToResort = () => flyTo('resort');
 export async function flyHome() { const r = await request('trip_home') as { ok: boolean; error?: string }; if (r.ok) set({ ...state, loc: 'city', arrivedBy: null }); return r; }
+/** Jet seats: you rode on (or flew) a jet with passengers; the server already moved you. */
+export const arriveByJet = (loc: Location, jet: string) => set({ ...state, loc, arrivedBy: loc === 'city' ? null : jet });
 /** The destination map calls this once it has played the jet landing. */
 export const clearArrival = () => { if (state.arrivedBy) set({ ...state, arrivedBy: null }); };
 export const tripNow = () => state;

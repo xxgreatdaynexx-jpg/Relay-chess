@@ -31,6 +31,7 @@ import { WorldMap } from '@/components/WorldMap';
 import { WalletButton } from '@/components/WalletButton';
 import { AdminPopup, PlayTimeBeat } from '@/components/AdminPopup';
 import { LaunchPopup } from '@/components/LaunchPopup';
+import { JetSeatsDock } from '@/components/JetSeatsDock';
 import { SkillsPanel } from '@/components/Skills';
 import { TournamentScreen } from '@/components/TournamentScreen';
 import { NightlyEventBanner } from '@/components/NightlyEventBanner';
@@ -329,6 +330,7 @@ export function App() {
       )}
       <AdminPopup />
       <LaunchPopup />
+      <JetSeatsDock />
       <HomesHost />
       <PlayTimeBeat />
     </>

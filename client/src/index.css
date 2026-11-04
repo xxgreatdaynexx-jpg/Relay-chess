@@ -2425,3 +2425,18 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .house-sell-msg { color: #9be29b; font-size: 12px; } .house-sell-note { font-size: 12px; opacity: .8; }
 .res-tile .res-house { margin-top: 4px; } .res-house-wrap { grid-column: 1 / -1; }
 .res-where { font-size: 12px; opacity: .8; margin: 0 0 6px; } .res-tile { position: relative; }
+
+/* Jet passenger seats dock (JetSeatsDock.tsx) */
+.jet-seats-dock { position: fixed; right: 12px; bottom: 72px; z-index: 60; display: flex; flex-direction: column; gap: 6px; max-width: 320px; font-size: 13px; }
+.jet-seats-dock > div, .jet-seat-msg { background: rgba(16, 20, 30, 0.94); color: #f3ead2; border: 1px solid #c9a24a; border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+.jet-seats-dock header { display: flex; justify-content: space-between; align-items: center; }
+.jet-seats-dock button { background: #c9a24a; color: #1a1406; border: 0; border-radius: 6px; padding: 4px 8px; font-weight: 600; cursor: pointer; }
+.jet-seats-dock button:disabled { opacity: .5; cursor: default; }
+.jet-seats-dock header button, .jet-seat-msg button { background: transparent; color: #f3ead2; padding: 0 4px; }
+.jet-seat-req { flex-direction: row !important; display: flex; align-items: center; gap: 6px; }
+.jet-seat-req span { flex: 1; }
+.jet-seat-actions { display: flex; gap: 6px; }
+.jet-seats-dock input, .jet-seats-dock select { width: 90px; margin-left: 4px; }
+.jet-seat-fab { align-self: flex-end; border-radius: 999px !important; padding: 6px 12px !important; }
+.jet-seat-msg { flex-direction: row !important; }
+.fleet-seats-tag { opacity: .8; }
