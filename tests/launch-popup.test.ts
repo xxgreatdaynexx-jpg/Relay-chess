@@ -12,3 +12,22 @@ describe('Millionaire Update launch popup', () => {
     expect(await s.launchSeen('Ann', LAUNCH.id)).toBe(false);
   });
 });
+
+describe('launch popup covers the whole Millionaire Update, paged', () => {
+  const all = LAUNCH.items.map((i) => `${i.title} ${i.text}`).join('\n');
+  it.each([
+    'Fort McChud', 'Deep Ore Mine', 'Furniture Store', 'decorate', 'Visit', '40 floors', 'Elevator', 'Creatures', 'Weapon Store',
+    'tractor', 'Fertilizer', 'candlestick', 'Marina', 'Deep-sea', 'Grotto', 'Banyan Bay', 'Private Jet', 'Logistics', 'Truck',
+    'rod skins', 'Net worth', 'Farm on mobile', 'grow time', 'full-screen', '10x', 'Dividend', '+20% XP', 'Speedway', 'recipes',
+    'Monument', 'buyout', 'ocean', 'lowgfx', 'price you actually paid',
+  ])('mentions %s', (k) => { expect(all.toLowerCase()).toContain(k.toLowerCase()); });
+  it('groups every item into contiguous pages that fit', async () => {
+    const { launchPages } = await import('../shared/launchPopup');
+    const pages = launchPages(LAUNCH);
+    expect(pages.length).toBeGreaterThanOrEqual(8);
+    expect(new Set(pages.map((p) => p.section)).size).toBe(pages.length);
+    expect(pages.reduce((a, p) => a + p.items.length, 0)).toBe(LAUNCH.items.length);
+    for (const p of pages) expect(p.items.length).toBeLessThanOrEqual(8);
+    expect(new Set(LAUNCH.items.map((i) => i.title)).size).toBe(LAUNCH.items.length);
+  });
+});
