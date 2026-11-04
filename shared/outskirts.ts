@@ -7,6 +7,7 @@
 import { PLATE, MINE_SITES, MINE_APRON, OUTSKIRTS, RESERVED_VENUES, ROADS, type House } from './worldLayout.js';
 import { housingType } from './housing.js';
 import { JAIL_SITE, JAIL_HALF } from './jail.js';
+import { inCivic } from './city.js';
 import { FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W } from './farm.js';
 import { AIRPORT_ROADS, RACETRACK_ROADS } from './venues.js';
 const VENUE_ROADS = [...AIRPORT_ROADS, ...RACETRACK_ROADS];
@@ -52,7 +53,7 @@ const segD = (x: number, z: number, a: P, b: P) => { const dx = b[0] - a[0], dz 
 const inBox = (b: Box2, x: number, z: number, m: number) => Math.abs(x - b.x) < b.w / 2 + m && Math.abs(z - b.z) < b.d / 2 + m;
 /** True where decor must not go (m = clearance). */
 export function keepOut(x: number, z: number, m = 0): boolean {
-  return genKeepOut(x, z, m) || inJail(x, z, m);
+  return genKeepOut(x, z, m) || inJail(x, z, m) || inCivic(x, z, m); // civic district (City Hall buildings): like the jail, never part of the seeded fill
 }
 /** Inside the jail compound (pt1495u) with clearance m. */
 export const inJail = (x: number, z: number, m = 0) => Math.abs(x - JAIL_SITE.x) < JAIL_HALF.x + 2 + m && Math.abs(z - JAIL_SITE.z) < JAIL_HALF.z + 2 + m;
@@ -129,8 +130,8 @@ export function outskirts(): Outskirts {
   // The jail compound (pt1495u) took the south-east corner: drop the field (cf:21), its barn and farmhouse, and any
   // trees / rocks / hills on the yard. Done after the fill so nothing else moves and every other id stays the same.
   const hitsJail = (o: Box2) => Math.abs(o.x - JAIL_SITE.x) < JAIL_HALF.x + 2 + o.w / 2 && Math.abs(o.z - JAIL_SITE.z) < JAIL_HALF.z + 2 + o.d / 2;
-  const pt = <T extends [number, number, ...number[]]>(a: T[]) => a.filter((p) => !inJail(p[0], p[1], 1 + (p.length > 2 ? Number(p[2]) : 0)));
-  cache = { lake, buildings: buildings.filter((b) => !hitsJail(b)), fields: fields.filter((f) => !hitsJail(f)), trees: pt(trees), rocks: pt(rocks), hills: pt(hills), lamps: lamps.filter(([x, z]) => !inJail(x, z, 0.5)), tanks, pumps }; return cache;
+  const pt = <T extends [number, number, ...number[]]>(a: T[]) => a.filter((p) => !inJail(p[0], p[1], 1 + (p.length > 2 ? Number(p[2]) : 0)) && !inCivic(p[0], p[1], 1 + (p.length > 2 ? Number(p[2]) : 0)));
+  cache = { lake, buildings: buildings.filter((b) => !hitsJail(b)), fields: fields.filter((f) => !hitsJail(f)), trees: pt(trees), rocks: pt(rocks), hills: pt(hills), lamps: lamps.filter(([x, z]) => !inJail(x, z, 0.5) && !inCivic(x, z, 0.5)), tanks, pumps }; return cache;
 }
 
 const HOUSE_COLORS = housingType('house').colors;

@@ -1,5 +1,6 @@
 /** Mines: shared first-person cave. Server-authoritative nodes, backpacks (generic item stacks) and house selling. */
 import { sellCapMul } from './coop-perks.js';
+import { cityPolicyMul } from './city-rates.js';
 import pg from 'pg';
 import { px, priceIndex } from './price-index.js';
 import type { Server, Socket } from 'socket.io';
@@ -518,7 +519,7 @@ export class MinesWorld {
     const m = { account };
     this.beforeStorage?.(account);
     const items = this.storage(account).filter((s) => sellable(s) && (typeof only !== 'string' || s.id === only || stackKey(s) === only));
-    const gross = items.reduce((t, s) => t + s.qty * priceOf(s), 0);
+    const gross = items.reduce((t, s) => t + s.qty * priceOf(s), 0) * cityPolicyMul('mining'); // Mining boom policy
     const k = playerKey(m.account); const d = this.daily.get(k); const already = d && d.day === dayKey(now) ? d.gross : 0;
     // Chips lost to sinks today free up room (pt1405u), converted to base chips; may push effAlready below 0.
     const lost = sinkLostToday(account, now); const effAlready = effectiveAlready(already, lost, priceIndex());

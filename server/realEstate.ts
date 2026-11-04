@@ -6,6 +6,8 @@
  *    arrears / repossession update commit in one transaction. Tax is a chip sink (burned, no house account).
  * Buying ('property_buy') and selling back to the city at 70% ('property_sell') use the same atomic wallet path.
  */
+import { cityPerk, treasuryStmtsFor } from './city-rates.js';
+import { treasuryShareOf } from '../shared/city.js';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
 import pg from 'pg';
@@ -199,7 +201,7 @@ export class RealEstate {
     const due = ((await this.pool.query('SELECT * FROM properties WHERE bought_at < $1 ORDER BY owner_key, price', [start])).rows as Row[]).filter((r) => !done.has(r.id));
     const out = { charged: 0, paid: 0, unpaid: 0, repossessed: 0 }; const bank = this.bank();
     for (const r of due) {
-      const amount = Math.max(1, Math.round(taxOf(taxBasisOf(Number(r.price), propertyById(r.id)?.price ?? 0)) * propertyTaxMul(await skillLevelAsync(r.owner_name, 'property')) * cityPropertyTaxMul(now))); // Property perk + mayor's tax rate
+      const amount = Math.max(1, Math.round(taxOf(taxBasisOf(Number(r.price), propertyById(r.id)?.price ?? 0)) * propertyTaxMul(await skillLevelAsync(r.owner_name, 'property')) * cityPropertyTaxMul(now) * (1 - cityPerk('property_upkeep')))); // Property perk + mayor's tax rate + Police Station perk
       try { await bank.refresh(r.owner_name); } catch { continue; }
       const can = bank.account(r.owner_name).chips >= amount;
       const claim = async (cl: pg.PoolClient, paid: boolean, repo: boolean) => {
@@ -215,7 +217,7 @@ export class RealEstate {
       };
       try {
         if (can) {
-          try { await this.atomic(r.owner_name, -amount, 'property_tax', `Property tax ${day}: ${propertyById(r.id)?.label ?? r.id}`, (cl) => claim(cl, true, false)); out.paid++; out.charged += amount; continue; }
+          try { await this.atomic(r.owner_name, -amount, 'property_tax', `Property tax ${day}: ${propertyById(r.id)?.label ?? r.id}`, async (cl) => { await claim(cl, true, false); for (const s of treasuryStmtsFor(r.owner_name, 'property_tax', treasuryShareOf(amount), `25% of property tax ${day}`)) await cl.query(s.sql, s.args); }); out.paid++; out.charged += amount; continue; }
           catch (e) { if ((e as Error).message !== 'Not enough chips.') throw e; }
         }
         const repo = Number(r.arrears) + 1 >= GRACE_DAYS; const cl = await this.pool.connect();

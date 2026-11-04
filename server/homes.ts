@@ -12,6 +12,7 @@
  * moves (home_pos, ~6 Hz, clamped to the room), chat (home_chat) and layout updates (home_layout). The owner's access
  * setting (open / invite list / locked) is checked on enter and re-applied to everyone inside when it changes.
  */
+import { salesTaxFor } from './city-rates.js';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import type { Server, Socket } from 'socket.io';
@@ -88,15 +89,16 @@ export class Homes {
     const k = keyOf(name); const have = await this.inventory(name);
     if (it.once && (have.get(it.key) ?? 0) > 0) throw new HomeError('You already own that style.');
     const price = px(it.price) * n; const bank = this.bank(); await bank.refresh(name).catch(() => 0);
-    if (!bank.canAfford(name, price)) throw new HomeError(`Not enough chips: ${n} × ${it.name} costs ${price.toLocaleString('en-US')}.`);
-    const w = bank.transferAtomic([{ name, amount: -price, key: `furniture_buy:${randomUUID()}`, game: 'furniture_buy', memo: `Bought ${n} × ${it.name} at the Furniture Store` }]);
+    const bid = randomUUID(); const st = salesTaxFor(name, price, `furniture_buy:${bid}`, `${n} × ${it.name}`);
+    if (!bank.canAfford(name, price + st.tax)) throw new HomeError(`Not enough chips: ${n} × ${it.name} costs ${price.toLocaleString('en-US')}${st.tax ? ` + ${st.tax.toLocaleString('en-US')} sales tax` : ''}.`);
+    const w = bank.transferAtomic([{ name, amount: -price, key: `furniture_buy:${bid}`, game: 'furniture_buy', memo: `Bought ${n} × ${it.name} at the Furniture Store` }, ...(st.move ? [st.move] : [])]);
     const run = async () => {
       if (!this.pool) { const m = this.memInv.get(k) ?? new Map(); m.set(it.key, (m.get(it.key) ?? 0) + n); this.memInv.set(k, m); return; }
       await w.after; const cl = await this.pool.connect();
       try {
         await cl.query('BEGIN');
         await cl.query('INSERT INTO home_inventory (player_key, item, qty) VALUES ($1,$2,$3) ON CONFLICT (player_key, item) DO UPDATE SET qty = home_inventory.qty + EXCLUDED.qty', [k, it.key, n]);
-        for (const s of w.stmts) await cl.query(s.sql, s.args);
+        for (const s of [...w.stmts, ...st.stmts]) await cl.query(s.sql, s.args);
         await cl.query('COMMIT');
       } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); }
     };

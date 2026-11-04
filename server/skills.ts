@@ -5,6 +5,7 @@
  * Postgres table player_skills is the source of truth; the upsert adds atomically so several instances never lose XP.
  * XP never moves chips and never touches casino odds or payouts. Levels drive small perks (shared/skillPerks.ts).
  */
+import { cityPerk } from './city-rates.js';
 import pg from 'pg';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
@@ -106,7 +107,7 @@ export class Skills {
   /** Award XP (rounded, capped). Resolves to the event, or null when nothing was awarded. Never throws. */
   async award(name: string | null | undefined, skill: SkillId, amount: number): Promise<XpEvent | null> {
     if (!name || !isSkill(skill) || !Number.isFinite(amount)) return null;
-    const n = boostXp(amount); if (n <= 0) return null; // global +20% XP (shared/skills.ts XP_MULT)
+    const n = Math.round(boostXp(amount) * (1 + cityPerk('xp'))); if (n <= 0) return null; // + City Park perk // global +20% XP (shared/skills.ts XP_MULT)
     const clean = name.replace(/\s+/g, ' ').trim(); const key = keyOf(clean); if (!key) return null;
     const g = this.allowance(key, skill, n); if (!g) return null;
     const ck = `${key}|${skill}`;

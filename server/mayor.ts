@@ -14,6 +14,8 @@ import { databaseUrl } from './leaderboard-store.js';
 import { getBank, type CasinoBank } from './casino-store.js';
 import { adminAuthorized } from './admin.js';
 import { playerKey } from './skins.js';
+import { isJailed } from './jail.js';
+import { politicsExcluded } from './city-rates.js';
 import {
   schedule, clampRate, nextAbMidnight, abDayStart, FILING_FEE, SLOGAN_MAX, MIN_VOTER_AGE_MS, MIN_PLAY_TX, RATE_MIN, RATE_MAX, RATE_STEP,
   BASE_PROPERTY_TAX, BASE_MARKET_FEE, BASE_STOCK_FEE, WEEK_MS,
@@ -61,6 +63,8 @@ export class Mayor {
   /** Anti-alt gate for voting and running: account >= 24 h old and some real play on the ledger. */
   async eligibility(name: string): Promise<string | undefined> {
     const key = playerKey(name); const now = this.clock();
+    if (politicsExcluded(name)) return 'Test, guest and bot accounts can’t take part in city politics.';
+    if (isJailed(name)) return 'You can’t take part in city politics from City Jail.';
     try {
       const r = await this.pool.query('SELECT created_at FROM players WHERE player_key = $1', [key]); const t = r.rows[0]?.created_at;
       const ms = t ? new Date(t).getTime() : NaN; if (!Number.isFinite(ms) || now - ms < MIN_VOTER_AGE_MS) return 'Your account must be at least 24 hours old.';

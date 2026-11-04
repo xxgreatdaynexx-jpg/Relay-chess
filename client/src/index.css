@@ -2059,6 +2059,8 @@ html, body { overflow-x: clip; }
 .cityhall-log li { font-size: 11px; opacity: .85; }
 .cityhall-banner { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 30; padding: 6px 12px; border-radius: 10px; background: rgba(30,32,44,.92); border: 1px solid rgba(217,194,122,.5); color: #f3ead2; font-size: 13px; display: flex; gap: 10px; align-items: center; }
 .cityhall-banner button { opacity: .7; }
+.city-approval, .city-recall { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,.05); } .city-approval button, .city-recall button { margin-right: 6px; padding: 4px 10px; border-radius: 8px; background: #b8975a; color: #111; font-weight: 800; } .city-approval button:disabled, .city-recall button:disabled { opacity: .45; }
+.city-stage { color: #ffd36a; letter-spacing: 2px; font-size: 11px; margin-left: 4px; } .city-ledger { max-height: 150px; overflow: auto; } .city-levers input[type=range] { width: 100%; }
 
 /* 🛠️ Mines Tool Shop (request #16) */
 .mines-tools .mines-tools-now { font-size: 12px; margin: 4px 0 6px; opacity: .9; }

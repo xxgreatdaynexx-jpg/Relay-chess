@@ -1,4 +1,6 @@
 /** Skin market (escrowed listings, 5% fee burned) and player-to-player trade offers. Chips move only through the wallet ledger. */
+import { cityTradeFeeMul, treasuryStmtsFor } from './city-rates.js';
+import { treasuryShareOf } from '../shared/city.js';
 import { royaltyEarn } from './royalty.js';
 import { randomUUID } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
@@ -26,8 +28,9 @@ export const MAX_TRADES = 20;
 export const MAX_TRADE_ITEMS = 20;
 /** `mul` is the seller's Trading perk (0.7..1); never below 1 chip. */
 /** mul = Trading-skill discount (0.7..1); city = the mayor's fee multiplier (0.75..1.25, server/mayor.ts). */
-export const feeOf = (price: number, mul = 1, city = 1) => Math.max(1, Math.ceil(price * MARKET_FEE * Math.max(0.7, Math.min(1, mul)) * Math.max(0.75, Math.min(1.25, city))));
-const sellerFee = (price: number, seller: string) => feeOf(price, tradingFeeMul(skillLevel(seller, 'trading')), cityFeeMul());
+/** civic = Trade week policy x School perk (0.6..1, server/city.ts). */
+export const feeOf = (price: number, mul = 1, city = 1, civic = 1) => Math.max(1, Math.ceil(price * MARKET_FEE * Math.max(0.7, Math.min(1, mul)) * Math.max(0.75, Math.min(1.25, city)) * Math.max(0.6, Math.min(1, civic))));
+const sellerFee = (price: number, seller: string) => feeOf(price, tradingFeeMul(skillLevel(seller, 'trading')), cityFeeMul(), cityTradeFeeMul());
 
 export interface Listing { id: string; seller: string; sellerName: string; itemId: string; price: number; status: 'active' | 'sold' | 'cancelled'; at: number; closedAt?: number; buyer?: string }
 export interface Sale { id: string; listingId: string; itemId: string; what: string; price: number; fee: number; seller: string; buyer: string; at: number }
@@ -172,7 +175,7 @@ export class Market {
     i.owner = k; i.ownerName = name.trim(); i.locked = undefined; i.equipped = false;
     const sale: Sale = { id: randomUUID(), listingId: l.id, itemId: i.id, what: whatOf(i), price: l.price, fee, seller: l.seller, buyer: k, at: now };
     this.sales.push(sale); if (this.sales.length > 5000) this.sales.shift();
-    this.vault.commit([i], [{ item: i.id, kind: 'sale', from: l.seller, to: k, memo: `listing ${l.id} for ${l.price}, fee ${fee} burned`, at: now }], [listingStmt(l), saleStmt(sale)]);
+    this.vault.commit([i], [{ item: i.id, kind: 'sale', from: l.seller, to: k, memo: `listing ${l.id} for ${l.price}, fee ${fee} burned`, at: now }], [listingStmt(l), saleStmt(sale), ...treasuryStmtsFor(l.sellerName, 'market_fee', treasuryShareOf(fee), `25% of a Market fee`)]);
     this.vault.onChange?.(l.seller); for (const f of this.vault.listeners) f(l.seller);
     return { item: this.vault.view(i), price: l.price };
   }
@@ -236,7 +239,7 @@ export class Market {
       l.qty += n; l.sold = seq - 1; if (l.status === 'sold') { l.status = 'active'; delete l.closedAt; } this.stacks.set(l.id, l);
       this.onStacksReverted?.();
     };
-    mines.adjustStack(name, l.type, l.itemId, n, [...chips.stmts, stackStmt(l), saleStmt(sale)], (r) => this.stackRows(r), { after: chips.after, bind: chips.bind, onFail });
+    mines.adjustStack(name, l.type, l.itemId, n, [...chips.stmts, stackStmt(l), saleStmt(sale), ...treasuryStmtsFor(l.sellerName, 'market_fee', treasuryShareOf(fee), `25% of a Market fee`)], (r) => this.stackRows(r), { after: chips.after, bind: chips.bind, onFail });
     royaltyEarn('market', l.sellerName, price - fee);
     return { type: l.type, id: l.itemId, qty: n, price, fee };
   }

@@ -5,6 +5,7 @@
  * Ledger games: 'fortmc' (survey, lease, drilling, builds, upgrades, repairs: asset purchases, like mine/factory builds,
  * NOT a sink-room debit), 'fortmc_upkeep' (repairs: pure spend, counted as a sink like property tax) and 'fortmc_sale' (Commodity Exchange payouts). Actions need you to be AT Fort McChud.
  */
+import { cityTicketPrice } from './city-rates.js';
 import pg from 'pg';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
@@ -88,7 +89,7 @@ export class FortMc {
   haul: { read: (name: string) => Promise<Map<string, number>>; take: (name: string, items: Array<[string, number]>) => Array<{ sql: string; args: unknown[] }> } | null = null;
   async view(name: string | null) {
     const s = name ? await this.load(name) : newFort(this.clock()); const t = name ? await this.today(name) : { gross: 0, paid: 0 };
-    return { fort: s, now: this.clock(), index: priceIndex(), today: { gross: t.gross, paid: t.paid }, ticket: px(FORTMC_TICKET_BASE), cap: tankCap(s), demand: powerDemand(s), value: px(fortBuildValue(s)), haul: name && this.haul ? Object.fromEntries(await this.haul.read(name).catch(() => new Map<string, number>())) : {} };
+    return { fort: s, now: this.clock(), index: priceIndex(), today: { gross: t.gross, paid: t.paid }, ticket: cityTicketPrice(px(FORTMC_TICKET_BASE)), cap: tankCap(s), demand: powerDemand(s), value: px(fortBuildValue(s)), haul: name && this.haul ? Object.fromEntries(await this.haul.read(name).catch(() => new Map<string, number>())) : {} };
   }
 
   /** Every paid / state-changing action. */

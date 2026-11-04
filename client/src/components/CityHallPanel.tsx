@@ -2,6 +2,8 @@ import { useDoing } from '@/lib/doing';
 import { useCallback, useEffect, useState } from 'react';
 import { request } from '@/lib/net';
 import { usePanelDrag } from '@/lib/panelDrag';
+import { CityCivic } from './CityCivic';
+import type { CityView } from '../../../shared/city';
 import { pct, rateLabel, AB_OFFSET_MS, type CityHallView } from '../../../shared/mayor';
 
 export const OPEN_CITYHALL = 'open-cityhall';
@@ -12,7 +14,7 @@ export const abWhen = (t: number) => { const d = new Date(t + AB_OFFSET_MS); con
 const PHASE: Record<string, string> = { filing: 'Candidates filing (Mon–Thu)', voting: 'Voting open (Fri–Sat)', results: 'Results day (Sun)' };
 
 /** City Hall (pt1312u): run for mayor, vote, and — if you're mayor — nudge property tax and trading fees within ±25%. */
-export function CityHallPanel({ onClose, initial }: { onClose: () => void; initial?: CityHallView }) {
+export function CityHallPanel({ onClose, initial, initialCity }: { onClose: () => void; initial?: CityHallView; initialCity?: CityView }) {
   useDoing('cityhall');
   const drag = usePanelDrag('cityhall');
   const [v, setV] = useState<CityHallView | null>(initial ?? null); const [err, setErr] = useState<string | null>(null);
@@ -85,7 +87,8 @@ export function CityHallPanel({ onClose, initial }: { onClose: () => void; initi
           <ul className="cityhall-log" data-testid="cityhall-log">
             {v.log.map((c, i) => <li key={i}><small>{abWhen(c.at)}</small> <b>{c.by === 'admin' ? 'Admin' : `Mayor ${c.by}`}</b>: {c.note ?? `property tax ${rateLabel(c.property)}, fees ${rateLabel(c.fee)} from ${abWhen(c.effectiveAt)}`}</li>)}
           </ul>
-          <p className="cityhall-rules">The mayor can only set these two rates. Casino odds and payouts, chip balances, sell limits and everything else stay out of reach. Mayors get no salary, and taxes and fees still go through the normal wallet.</p>
+          <CityCivic initial={initialCity} />
+          <p className="cityhall-rules">Besides these rates the mayor can only use the city levers, policies and buildings above. Casino odds and payouts, chip balances, sell limits and everything else stay out of reach. Mayors get no salary, and the treasury can never pay out to anyone.</p>
         </>
       )}
       {msg && <small role="status" data-testid="cityhall-msg">{msg}</small>}
@@ -95,7 +98,7 @@ export function CityHallPanel({ onClose, initial }: { onClose: () => void; initi
 
 /** Mounted once in the city: opens City Hall on OPEN_CITYHALL and shows a one-day banner after an election. */
 export function CityHallHost() {
-  const [open, setOpen] = useState(false); const [banner, setBanner] = useState<string | null>(null);
+  const [open, setOpen] = useState(false); const [banner, setBanner] = useState<string | null>(null); const [notice, setNotice] = useState<{ id: string; text: string } | null>(null);
   useEffect(() => { const h = () => setOpen(true); window.addEventListener(OPEN_CITYHALL, h); return () => window.removeEventListener(OPEN_CITYHALL, h); }, []);
   useEffect(() => {
     void fetch('/api/city-hall').then((r) => r.json()).then((j: { view?: CityHallView }) => {
@@ -103,9 +106,16 @@ export function CityHallHost() {
       const t = v.elect ? `🏛️ ${v.elect.name} won the mayor election and takes office ${abWhen(v.elect.startsAt)}.` : v.mayor && now - v.mayor.startsAt < 86_400_000 ? `🏛️ Mayor ${v.mayor.name} is now in office.` : null;
       if (t && localStorage.getItem('cityhall-banner') !== t) setBanner(t);
     }).catch(() => {});
+    // City notices (phase 2): the newest mayor action from the last day (lever, policy, building, recall) as a dismissible banner.
+    void fetch('/api/city').then((r) => r.json()).then((j: { view?: CityView }) => {
+      const a = j.view?.actions?.[0]; if (!a || Date.now() - a.at > 86_400_000) return;
+      const t = `🏛️ City notice — ${a.by === 'recall' || a.by === 'admin' ? 'City Hall' : `Mayor ${a.by}`}: ${a.text}`;
+      if (localStorage.getItem('city-notice') !== a.id) setNotice({ id: a.id, text: t });
+    }).catch(() => {});
   }, []);
   return (<>
     {banner && <div className="cityhall-banner" role="status" data-testid="cityhall-banner">{banner}<button type="button" aria-label="Dismiss" onClick={() => { localStorage.setItem('cityhall-banner', banner); setBanner(null); }}>✕</button></div>}
+    {notice && !banner && <div className="cityhall-banner city-notice" role="status" data-testid="city-notice">{notice.text}<button type="button" aria-label="Dismiss" onClick={() => { localStorage.setItem('city-notice', notice.id); setNotice(null); }}>✕</button></div>}
     {open && <CityHallPanel onClose={() => setOpen(false)} />}
   </>);
 }

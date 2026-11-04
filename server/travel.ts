@@ -4,6 +4,7 @@
  * upsert). Private-jet owners fly their jet instead (no ticket, any destination). The return flight is free. Resort features call requireResort() / isAtResort() before doing anything.
  */
 import { coopPerk } from './coop-perks.js';
+import { cityTicketPrice } from './city-rates.js';
 import pg from 'pg';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
@@ -37,8 +38,8 @@ export class Travel {
   }
   where(name: string | null | undefined): Location { return name ? this.loc.get(keyOf(name)) ?? 'city' : 'city'; }
   status(name: string | null) {
-    const tickets = Object.fromEntries((Object.keys(DESTINATIONS) as Destination[]).map((d) => [d, name && waiver(name, d) ? 0 : ticketPrice(d)])) as Record<Destination, number>;
-    return { loc: this.where(name), ticket: name && waiver(name, 'resort') ? 0 : px(RESORT_TICKET_BASE), tickets };
+    const tickets = Object.fromEntries((Object.keys(DESTINATIONS) as Destination[]).map((d) => [d, name && waiver(name, d) ? 0 : cityTicketPrice(ticketPrice(d))])) as Record<Destination, number>;
+    return { loc: this.where(name), ticket: name && waiver(name, 'resort') ? 0 : cityTicketPrice(px(RESORT_TICKET_BASE)), tickets };
   }
 
   /** Buy a ticket and fly to `dest` (atomic: ledger + location). A waived ticket (private jet etc.) skips the ledger. */
@@ -49,7 +50,7 @@ export class Travel {
     // The jet's normal daily upkeep (server/fleet.ts runUpkeep) still applies; flying it costs nothing extra.
     const jet = await jetHook(name).catch(() => null);
     const waivedBy = waiver(name, dest); const waived = waivedBy || jet;
-    const fee = waived ? 0 : ticketPrice(dest); const bank = getBank();
+    const fee = waived ? 0 : cityTicketPrice(ticketPrice(dest)); const bank = getBank();
     if (fee > 0 && !bank.canAfford(name, fee)) throw new TravelError(`Not enough chips: a ticket costs ${fee.toLocaleString('en-US')}.`);
     const now = this.clock(); this.tickets++;
     const w = fee > 0 ? bank.transferAtomic([{ name, amount: -fee, key: `${D.game}:${k}:${now}:${this.tickets}`, game: D.game, memo: `Plane ticket: Chud Hub International → ${D.name}` }]) : { stmts: [], after: Promise.resolve(), bind: () => {}, revert: () => {} };

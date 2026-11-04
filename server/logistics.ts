@@ -7,6 +7,7 @@
  * Goods are escrowed (out of storage) while in transit and land in the recipient's banked storage on arrival.
  * Every in-transit or loading shipment is broadcast to the 'freight' room so the map can draw the vehicle.
  */
+import { salesTaxFor, cityPerk, cityFreightMul, treasuryStmtsFor } from './city-rates.js';
 import { isJailed } from './jail.js';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
@@ -75,7 +76,7 @@ export class Logistics {
   private today() { return new Date(this.clock()).toISOString().slice(0, 10); }
   firstToday(vehicleId: string) { return this.usedDay.get(vehicleId) !== this.today(); }
   /** Own-vehicle fee (indexed): trips x fuel per trip + today's upkeep if this vehicle has not run yet today. */
-  ownQuote(model: string, vehicleId: string, qty: number) { const f = ownFeeBase(model, qty, this.firstToday(vehicleId)); return f ? px(f) : 0; }
+  ownQuote(model: string, vehicleId: string, qty: number) { const f = ownFeeBase(model, qty, this.firstToday(vehicleId)); return f ? Math.max(1, Math.round(px(f) * (1 - cityPerk('vehicle_upkeep')))) : 0; } // Hospital perk
   markUsed(vehicleId: string) { this.usedDay.set(vehicleId, this.today()); }
   /** Own jets/boats (Fleet) as cargo vehicles: the requested one, or the first idle one. */
   async craftFor(name: string, mode: 'jet' | 'boat', want?: unknown): Promise<{ id: string; model: string }> {
@@ -91,12 +92,13 @@ export class Logistics {
   async buyTruck(name: string, truckId: unknown) {
     const t = typeof truckId === 'string' ? TRUCK_BY_ID.get(truckId) : undefined; if (!t) throw new FreightError('That truck is not in the store.');
     const k = keyOf(name); const mine = this.owned(name); if (mine.length >= MAX_TRUCKS) throw new FreightError(`Fleet full (${MAX_TRUCKS} trucks). Sell one first.`);
-    const price = px(t.price); const bank = getBank(); if (!bank.canAfford(name, price)) throw new FreightError('Not enough chips.');
+    const price = px(t.price); const bank = getBank();
     const id = randomUUID(); const at = this.clock(); const truck: OwnedTruck = { id, truckId: t.id, paid: price, boughtAt: at };
-    const w = bank.transferAtomic([{ name, amount: -price, key: `truck_buy:${id}`, game: 'truck_buy', memo: `Bought a ${t.name}` }]);
+    const st = salesTaxFor(name, price, `truck_buy:${id}`, t.name); if (!bank.canAfford(name, price + st.tax)) throw new FreightError(st.tax ? `Not enough chips: ${price.toLocaleString('en-US')} + ${st.tax.toLocaleString('en-US')} sales tax.` : 'Not enough chips.');
+    const w = bank.transferAtomic([{ name, amount: -price, key: `truck_buy:${id}`, game: 'truck_buy', memo: `Bought a ${t.name}` }, ...(st.move ? [st.move] : [])]);
     const run = async () => {
       if (!this.pool) return; await w.after; const cl = await this.pool.connect();
-      try { await cl.query('BEGIN'); await cl.query('INSERT INTO truck_owned (id, player_key, name, truck_id, paid, bought_at) VALUES ($1,$2,$3,$4,$5,$6)', [id, k, name.trim(), t.id, price, at]); for (const s of w.stmts) await cl.query(s.sql, s.args); await cl.query('COMMIT'); }
+      try { await cl.query('BEGIN'); await cl.query('INSERT INTO truck_owned (id, player_key, name, truck_id, paid, bought_at) VALUES ($1,$2,$3,$4,$5,$6)', [id, k, name.trim(), t.id, price, at]); for (const s of [...w.stmts, ...st.stmts]) await cl.query(s.sql, s.args); await cl.query('COMMIT'); }
       catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); }
     };
     const p = run(); w.bind(p);
@@ -142,7 +144,7 @@ export class Logistics {
       const t = this.idleTruck(name, b.skip);
       if (!this.owned(name).length) throw new FreightError('You do not own a truck. Buy one at the truck store, or hire one for a fee.');
       if (!t) throw new FreightError('All your trucks are out on deliveries. Hire one, or wait.');
-      const m = TRUCK_BY_ID.get(this.owned(name).find((x) => x.id === t.id)!.truckId)!; truck = t.id; cap = m.cap; travel = truckTravelMs(m); model = m.id;
+      const m = TRUCK_BY_ID.get(this.owned(name).find((x) => x.id === t.id)!.truckId)!; truck = t.id; cap = m.cap; travel = Math.round(truckTravelMs(m) * (1 - cityPerk('truck_speed'))); model = m.id;
     } else if (mode === 'jet' || mode === 'boat') throw new FreightError('Building loads go by truck, hired rig, freight plane or cargo ship.');
     if (qty > cap) throw new FreightError(`Too much for one ${MODES[mode].label.toLowerCase()}: max ${cap.toLocaleString('en-US')} units.`);
     const now = this.clock(); const departAt = nextDeparture(mode, now);
@@ -159,7 +161,10 @@ export class Logistics {
   /** Register a committed shipment (it now shows on the map and is delivered by tick()). */
   admit(s: Shipment) { this.ships.set(s.id, s); if (s.truck) this.markUsed(s.truck); }
 
-  quote(mode: Mode, qty: number) { return shipFee(mode, qty, priceIndex()); }
+  /** Public carriers: base fee x the mayor's freight lever x the Street Lights perk. */
+  quote(mode: Mode, qty: number) { const f = shipFee(mode, qty, priceIndex()); return f ? Math.max(1, Math.round(f * cityFreightMul())) : 0; }
+  /** Part of a public-carrier fee above the default rate (lever > 1) goes to the treasury. */
+  freightSurplus(mode: Mode, qty: number, fee: number) { return Math.max(0, fee - shipFee(mode, qty, priceIndex())); }
 
   /** Send goods. Goods leave storage, the fee (if any) is debited and the shipment row is written, all in one transaction. */
   async ship(name: string, b: Record<string, unknown>): Promise<{ trips: number; shipment: Shipment; chips: number | null }> {
@@ -179,7 +184,7 @@ export class Logistics {
       if (!mine.length) throw new FreightError('You do not own a truck. Buy one at the truck store, or hire one for a fee.');
       if (!pick) throw new FreightError('All your trucks are out on deliveries. Hire one, or wait.');
       if (busy.has(pick.id)) throw new FreightError('That truck is already out on a delivery.');
-      const m = TRUCK_BY_ID.get(pick.truckId)!; truck = pick.id; cap = m.cap; travel = truckTravelMs(m); model = m.id;
+      const m = TRUCK_BY_ID.get(pick.truckId)!; truck = pick.id; cap = m.cap; travel = Math.round(truckTravelMs(m) * (1 - cityPerk('truck_speed'))); model = m.id;
     } else if (mode === 'jet' || mode === 'boat') { const c = await this.craftFor(name, mode, b.vehicle); truck = c.id; model = c.model; cap = cargoCap(c.model); }
     // mu-cargo: own vehicles take a big load in several trips (there and back between loads); public carriers take one load.
     const trips = isOwnMode(mode) ? tripsFor(qty, cap) : 1;
@@ -195,7 +200,7 @@ export class Logistics {
     const w = fee ? bank.transferAtomic([{ name, amount: -fee, key: `freight:${s.id}`, game: 'freight', memo: `${MODES[mode].label}: ${qty} ${nameOf({ type, id: itemId })} to ${HUBS[to].label}` }]) : null;
     this.ships.set(s.id, s);
     const onFail = () => { w?.revert(); this.ships.delete(s.id); };
-    const ok = mines.adjustStack(name, type, itemId, -qty, [...(w?.stmts ?? []), shipStmt(s)], (r) => this.rows(r), w ? { after: w.after, bind: w.bind, onFail } : { onFail });
+    const ok = mines.adjustStack(name, type, itemId, -qty, [...(w?.stmts ?? []), shipStmt(s), ...(fee && !truck ? treasuryStmtsFor(name, 'freight', this.freightSurplus(mode, qty, fee), 'Freight lever surplus') : [])], (r) => this.rows(r), w ? { after: w.after, bind: w.bind, onFail } : { onFail });
     if (!ok) { onFail(); throw new FreightError('Not enough items.'); }
     if (truck) this.markUsed(truck);
     return { trips, shipment: s, chips: bank.ready ? bank.account(name).chips : null };

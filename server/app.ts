@@ -8,6 +8,7 @@ import express from 'express';
 import { buildInfo } from './build.js';
 import { requestsRouter } from './requests.js';
 import { mayorRouter } from './mayor.js';
+import { cityRouter } from './city.js';
 import { economyRouter } from './economy.js';
 import { wealthTaxRouter } from './wealth-tax.js';
 import { factoryViewRouter } from './factory.js';
@@ -55,6 +56,7 @@ export async function createApp(): Promise<AppContext> {
   app.use(employmentRouter());
   app.use(requestsRouter());
   app.use(mayorRouter());
+  app.use(cityRouter());
   app.use(economyRouter());
   app.use(wealthTaxRouter());
   app.use(factoryViewRouter());

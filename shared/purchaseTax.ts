@@ -16,13 +16,14 @@ export const PURCHASE_TAX_GAME = 'wealth_tax_buy';
 export const PURCHASE_SHARE_GAME = 'wealth_tax_share';
 
 /** Tax on one purchase (rounded up), or 0 when the buyer is at/below the line or the item is under the minimum. */
-export const purchaseTaxOf = (propertyValue: number, price: number): number =>
-  propertyValue > PURCHASE_TAX_THRESHOLD && price >= PURCHASE_TAX_MIN_PRICE ? Math.ceil(price * PURCHASE_TAX_RATE) : 0;
+/** rate = the mayor's purchase wealth tax lever (3..7%, shared/city.ts), default 5%. */
+export const purchaseTaxOf = (propertyValue: number, price: number, rate = PURCHASE_TAX_RATE): number =>
+  propertyValue > PURCHASE_TAX_THRESHOLD && price >= PURCHASE_TAX_MIN_PRICE ? Math.ceil(price * Math.min(0.07, Math.max(0.03, rate)) - 1e-6) : 0;
 
 /** Equal split over recipients (already sorted and filtered); the remainder goes 1 chip each to the first ones. */
 export const purchaseShares = (total: number, recipients: string[]) => split(total, recipients);
 
-export const purchaseTaxLine = (tax: number, n: number) =>
-  `Wealth tax ${Math.round(PURCHASE_TAX_RATE * 100)}%: ${tax.toLocaleString('en-US')} chips, shared with ${n.toLocaleString('en-US')} player${n === 1 ? '' : 's'}`;
+export const purchaseTaxLine = (tax: number, n: number, rate = PURCHASE_TAX_RATE) =>
+  `Wealth tax ${Math.round(rate * 100)}%: ${tax.toLocaleString('en-US')} chips, shared with ${n.toLocaleString('en-US')} player${n === 1 ? '' : 's'}`;
 
 export type PurchaseTaxQuote = { tax: number; recipients: number; propertyValue: number; line: string };

@@ -6,6 +6,14 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-04T16:00:00-06:00', title: 'City Hall: treasury, levers, buildings and recall', bullets: [
+    'New public city treasury: 25% of property tax and Market / Stock fees go in (the rest is still burned). It can only fund city policies and buildings and never pays out to any player, the mayor included. The full ledger is public in City Hall.',
+    'The mayor gets three levers, each with a cooldown: a 0–5% sales tax on the game\'s own shops (cars, trucks, boats, jets, furniture; never trades between players), the purchase wealth tax (3–7%, still 100% shared with players) and warehouse freight fees (80–120%).',
+    'Mayors can run one 24-hour policy at a time from the treasury: Farming subsidy, Mining boom, Trade week or Tourism push.',
+    'Seven city buildings with 3 stages each now appear in a civic district west of downtown. Each stage adds a city-wide perk: faster trucks, more XP, lower property tax (Police), cheaper tickets, cheaper freight, lower vehicle upkeep and lower trading fees.',
+    'Rate the mayor daily. Low approval lets players open a recall vote; if it passes, the runner-up becomes mayor and the levers reset. Test, guest, bot and jailed accounts can\'t vote, rate, run or recall.',
+    'Casino odds and payouts are not affected by anything in City Hall.',
+  ] },
   { commit: '', at: '2026-11-04T12:30:00-06:00', title: 'Wealth tax threshold now counts property upgrades', bullets: [
     'Wealth tax threshold now counts property upgrades: the 100,000 line for the 5% purchase tax is what you paid for your property plus the farm upgrades you bought for it. Planted crops do not count.',
   ] },

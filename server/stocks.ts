@@ -10,6 +10,8 @@
  * every instance re-reads them. Trades run in one transaction with their chip ledger rows (CasinoBank.transferAtomic),
  * the holdings row, the trade row, and the impact update, re-checking the price and caps under FOR UPDATE.
  */
+import { cityTradeFeeMul, treasuryStmtsFor } from './city-rates.js';
+import { treasuryShareOf } from '../shared/city.js';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { bootAttach, setBootState } from './boot-retry.js';
@@ -358,7 +360,7 @@ export class Exchange {
     const c = typeof t === 'string' ? COMPANY_BY_TICKER.get(t) : undefined; if (!c) throw new StockError('Unknown company.');
     const ps = parseQty(n); if (!ps.ok) throw new StockError(ps.error); const shares = ps.n;
     const bank = getBank(); const k = keyOf(name); const row = this.rows.get(c.ticker)!; const price = priceOf(row);
-    const q = quote(c, price, side, shares, tradingFeeMul(await skillLevelAsync(name, 'trading')), cityFeeMul()); // Trading perk + mayor's fee rate
+    const q = quote(c, price, side, shares, tradingFeeMul(await skillLevelAsync(name, 'trading')), cityFeeMul(), cityTradeFeeMul()); // Trading perk + mayor's fee rate + Trade week / School
     if (q.gross > maxOrderChips(c)) throw new StockError(`Order too large: max ${maxOrderChips(c).toLocaleString()} chips per trade (about ${Math.max(1, Math.floor(maxOrderChips(c) / price))} shares).`);
     if (side === 'sell' && q.total < 1) throw new StockError('Too small to sell after the fee.');
     if (side === 'buy' && await this.callLocked(name, c.ticker)) throw new StockError(`You hold an open call on ${c.ticker}, so you can't buy ${c.ticker} shares until it expires or you sell it. Selling shares is still allowed.`);
@@ -395,7 +397,7 @@ export class Exchange {
         if (side === 'buy') await cl.query('INSERT INTO stock_holdings (player_key, name, ticker, shares, cost) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (player_key, ticker) DO UPDATE SET shares = stock_holdings.shares + $4, cost = stock_holdings.cost + $5, name = $2', [k, name.trim(), c.ticker, shares, costDelta]);
         else if (((await cl.query('UPDATE stock_holdings SET cost = cost - ROUND(cost::numeric * $3 / shares), shares = shares - $3 WHERE player_key = $1 AND ticker = $2 AND shares >= $3', [k, c.ticker, shares])).rowCount ?? 0) === 0) throw new StockError('Not enough shares.');
         await cl.query('INSERT INTO stock_trades (id, player_key, name, ticker, side, shares, price, chips, fee, at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)', [id, k, name.trim(), c.ticker, side, shares, q.fill, q.total, q.fee, at]);
-        for (const s of w.stmts) await cl.query(s.sql, s.args);
+        for (const s of [...w.stmts, ...treasuryStmtsFor(name, 'stock_fee', treasuryShareOf(q.fee), `25% of a Stock Exchange fee`)]) await cl.query(s.sql, s.args);
         await cl.query('COMMIT');
         row.imp = Number(cur.imp) + q.imp; row.tickImp = u + Math.abs(q.imp); row.tickSlot = slot; row.held = Number(cur.held) + dh;
       } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); }

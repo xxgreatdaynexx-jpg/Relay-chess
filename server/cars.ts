@@ -10,6 +10,7 @@
  * of every active driver at 8 Hz to the 'drive' room (anyone on the city map, guests included). Disconnect, 'drive_stop'
  * or 8 s without an update removes the car.
  */
+import { salesTaxFor } from './city-rates.js';
 import { purchaseTaxMoves, quotePurchaseTax } from './purchase-tax.js';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
@@ -67,16 +68,17 @@ export class Garage {
     const mine = await this.owned(name); const price = px(car.price); if (mine.length >= MAX_CARS) throw new CarError(`Garage full (${MAX_CARS} cars). Sell one first.`);
     const bank = getBank(); const id = randomUUID();
     const wt = this.pool ? await purchaseTaxMoves(this.pool as never, name, price, `car_buy:${id}`, car.name, this.clock()) : { tax: 0, recipients: 0, moves: [], line: '' };
-    if (!bank.canAfford(name, price + wt.tax)) throw new CarError(wt.tax ? `Not enough chips: ${car.name} costs ${price.toLocaleString('en-US')} + ${wt.line}.` : 'Not enough chips.');
+    const st = salesTaxFor(name, price, `car_buy:${id}`, car.name);
+    if (!bank.canAfford(name, price + wt.tax + st.tax)) throw new CarError(st.tax && !wt.tax ? `Not enough chips: ${car.name} costs ${price.toLocaleString('en-US')} + ${st.tax.toLocaleString('en-US')} sales tax.` : wt.tax ? `Not enough chips: ${car.name} costs ${price.toLocaleString('en-US')} + ${wt.line}.` : 'Not enough chips.');
     const at = this.clock(); const k = keyOf(name); const first = !mine.some((c) => c.active);
-    const w = bank.transferAtomic([{ name, amount: -price, key: `car_buy:${id}`, game: 'car_buy', memo: `Bought ${car.name}` }, ...wt.moves], { batch: wt.moves.length > 2 });
+    const w = bank.transferAtomic([{ name, amount: -price, key: `car_buy:${id}`, game: 'car_buy', memo: `Bought ${car.name}` }, ...(st.move ? [st.move] : []), ...wt.moves], { batch: wt.moves.length > 2 });
     const run = async () => {
       if (!this.pool) { const l = this.mem.get(k) ?? []; l.push({ id, carId: car.id, color: col, paid: price, boughtAt: at, active: first, mods: { ...STOCK_MODS } }); this.mem.set(k, l); return; }
       await w.after; const cl = await this.pool.connect();
       try {
         await cl.query('BEGIN');
         await cl.query('INSERT INTO car_owned (id, player_key, name, car_id, color, paid, bought_at, active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [id, k, name.trim(), car.id, col, price, at, first]);
-        for (const s of w.stmts) await cl.query(s.sql, s.args);
+        for (const s of [...w.stmts, ...st.stmts]) await cl.query(s.sql, s.args);
         await cl.query('COMMIT');
       } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); }
     };

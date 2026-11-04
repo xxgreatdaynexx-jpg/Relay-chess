@@ -3,6 +3,7 @@
  * a buy is ONE Postgres transaction holding the ledger row (CasinoBank.transferAtomic) and the fleet_owned row; a
  * sell-back pays 70% of today's list price. Chips never move any other way.
  */
+import { salesTaxFor, cityPerk } from './city-rates.js';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import type { Server, Socket } from 'socket.io';
@@ -31,7 +32,8 @@ export function jetUpkeepInfo(c: { model: string; arrears: number; upkeepPaid: n
   return { perDay, nextChargeAt: next, arrears: c.arrears, arrearsChips: c.arrears * perDay, paidTotal: c.upkeepPaid, graceDays: GRACE_DAYS };
 }
 /** Daily jet upkeep at today's price index. */
-export const jetUpkeep = (model: string) => px(fleetModel(model, 'jet')?.upkeep ?? 0);
+/** Hospital perk: healthy crews, lower upkeep (server/city.ts). */
+export const jetUpkeep = (model: string) => Math.round(px(fleetModel(model, 'jet')?.upkeep ?? 0) * (1 - cityPerk('vehicle_upkeep')));
 
 export interface OwnedCraft { id: string; kind: FleetKind; model: string; paid: number; boughtAt: number; arrears: number; upkeepPaid: number }
 type Q = { query: (sql: string, args?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }> };
@@ -62,16 +64,17 @@ export class Fleet {
     const m = fleetModel(modelId, kind); if (!m) throw new FleetError(kind === 'boat' ? 'That boat is not in the Marina.' : 'That jet is not in the Hangar.');
     const mine = await this.owned(name, kind); const cap = kind === 'boat' ? MAX_BOATS : MAX_JETS;
     if (mine.length >= cap) throw new FleetError(`You already own ${cap} ${kind === 'boat' ? 'boats' : 'jets'}. Sell one first.`);
-    const price = px(m.price); const bank = getBank(); if (!bank.canAfford(name, price)) throw new FleetError('Not enough chips.');
+    const price = px(m.price); const bank = getBank();
     const id = randomUUID(); const at = this.clock(); const k = keyOf(name); const game = `${kind}_buy`;
-    const w = bank.transferAtomic([{ name, amount: -price, key: `${game}:${id}`, game, memo: `Bought ${m.name}` }]);
+    const st = salesTaxFor(name, price, `${game}:${id}`, m.name); if (!bank.canAfford(name, price + st.tax)) throw new FleetError(st.tax ? `Not enough chips: ${price.toLocaleString('en-US')} + ${st.tax.toLocaleString('en-US')} sales tax.` : 'Not enough chips.');
+    const w = bank.transferAtomic([{ name, amount: -price, key: `${game}:${id}`, game, memo: `Bought ${m.name}` }, ...(st.move ? [st.move] : [])]);
     const run = async () => {
       if (!this.pool) { const l = this.mem.get(k) ?? []; l.push({ id, kind, model: m.id, paid: price, boughtAt: at, arrears: 0, upkeepPaid: 0 }); this.mem.set(k, l); return; }
       await w.after; const cl = await this.pool.connect();
       try {
         await cl.query('BEGIN');
         await cl.query('INSERT INTO fleet_owned (id, player_key, name, kind, model, paid, bought_at) VALUES ($1,$2,$3,$4,$5,$6,$7)', [id, k, name.trim(), kind, m.id, price, at]);
-        for (const s of w.stmts) await cl.query(s.sql, s.args);
+        for (const s of [...w.stmts, ...st.stmts]) await cl.query(s.sql, s.args);
         await cl.query('COMMIT');
       } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); }
     };

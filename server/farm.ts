@@ -6,6 +6,7 @@
  * plant nonce) must remove every tile we priced, and the daily-tier row is advanced with an optimistic check, or the
  * whole transaction (ledger included) rolls back.
  */
+import { cityPolicyMul } from './city-rates.js';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
 import pg from 'pg';
@@ -354,7 +355,7 @@ export class Farm {
         return { harvested: ready.length, paid: 0, toFactory: items, chips: this.bank().account(name).chips };
       }
       const day = utcDay(now); const t = await this.today(key);
-      const paid = Math.floor((seeds + farmPayout(profit, t.gross)) * priceIndex());
+      const paid = Math.floor((seeds + farmPayout(profit * cityPolicyMul('farming'), t.gross)) * priceIndex()); // Farming subsidy policy
       const memo = `Farm ${pid}: harvested ${[...counts].map(([l, n]) => `${n} ${l}`).join(', ')}`.slice(0, 200);
       await this.atomic(name, paid, 'farm_harvest', memo, async (cl) => {
         await this.mustOwn(cl, pid, name);
@@ -381,7 +382,7 @@ export class Farm {
     return this.lock(`h:${key}`, async () => {
       const now = this.clock(); const day = utcDay(now); const t = await this.today(key);
       const seeds = c.seed * s.qty; const profit = Math.max(0, (cropSellValue(c) - c.seed) * s.qty);
-      const paid = Math.floor((seeds + farmPayout(profit, t.gross)) * priceIndex());
+      const paid = Math.floor((seeds + farmPayout(profit * cityPolicyMul('farming'), t.gross)) * priceIndex()); // Farming subsidy policy
       try {
         await this.atomic(name, paid, 'farm_harvest', `Chud City Warehouse: sold ${s.qty} ${c.label} from the Resort plantation`, async (cl) => {
           await cl.query('INSERT INTO farm_daily (player_key, day, gross, paid) VALUES ($1,$2,0,0) ON CONFLICT (player_key, day) DO NOTHING', [key, day]);
