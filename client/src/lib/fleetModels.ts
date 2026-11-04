@@ -108,7 +108,9 @@ export function buildBoat(m: FleetModel): THREE.Group {
 export function buildJet(m: FleetModel): THREE.Group {
   const g = new THREE.Group(); const body = M(m.color, { metalness: 0.35, roughness: 0.3 }); const trim = M(m.id === 'chudone' ? 0xd8b25a : 0x1a3a6a, { metalness: 0.6, roughness: 0.3 }); const win = M(0x1a2430, { metalness: 0.8, roughness: 0.1 }); const eng = M(0x8a929a, { metalness: 0.8, roughness: 0.3 });
   // QA#2: real lengths CJ4 16 m, G700 33.5 m, BBJ 33.6 m (much fatter) -> G700 2x Citation, BBJ ~G700 length with a 1.5x thicker fuselage.
-  const k = m.id === 'citation' ? 0.5 : m.id === 'g700' ? 1 : 1.1; const L = 16 * k, R = 0.9 * k * (m.id === 'chudone' ? 1.55 : 1);
+  // recheck #4: Chud One is labelled a 747-8 BBJ (76 m vs the G700's 33.5 m): ~2.2x the G700, with a jumbo-width (not
+  // 1.55x-fat) fuselage; the hangar preview normalises by bounding box so it still fits there.
+  const k = m.id === 'citation' ? 0.5 : m.id === 'g700' ? 1 : 2.2; const L = 16 * k, R = 0.9 * k * (m.id === 'chudone' ? 1.15 : 1);
   // mu-visuals nose fix: one coaxial fuselage + rounded blunt nose + tail cone, same radius/segments at each joint (no seam, no step).
   addFuselage(g, { r: R, len: L, nose: R * 1.9, tail: L * 0.25, y: R + 1, body, glass: win });
   // recheck #3: the cheat line and the window band were flat boxes 2.02-2.04R wide, so their square edges stuck out of the
@@ -122,7 +124,7 @@ export function buildJet(m: FleetModel): THREE.Group {
   const wing = new THREE.Shape(); wing.moveTo(0, 0); wing.lineTo(L * 0.55, -L * 0.22); wing.lineTo(L * 0.55, -L * 0.3); wing.lineTo(0, -L * 0.25);
   for (const s of [-1, 1]) { const w = add(g, new THREE.ExtrudeGeometry(wing, { depth: 0.12 * k, bevelEnabled: false }), body, 0, R + 0.6, L * 0.1); w.rotation.set(Math.PI / 2, 0, 0); w.scale.x = s; }
   // mu-visuals tail fins: swept, tapered fin flush on the centreline at the rear; T-tail on the Citation and G700.
-  addTail(g, { r: R, len: L, y: R + 1, fin: trim, stab: body, tTail: m.id !== 'chudone', h: m.id === 'chudone' ? 2.4 : 2.9, c: m.id === 'chudone' ? 2.6 : 2.8 });
+  addTail(g, { r: R, len: L, y: R + 1, fin: trim, stab: body, tTail: m.id !== 'chudone', h: m.id === 'chudone' ? 3.0 : 2.9, c: m.id === 'chudone' ? 3.0 : 2.8 });
   // mu-visuals: rounded turbofan nacelles (intake lip, fan, spinner, nozzle) hung under the wings on pylons, in the plane's colour.
   const wingY = R + 0.6 - 0.12 * k, nr = R * (m.id === 'chudone' ? 0.36 : 0.42), nl = L * 0.2, pyl = 0.28 * k;
   // QA#1: bizjets (Citation, G700) carry two engines on the aft fuselage sides on horizontal pylons; only the BBJ (chudone) keeps underwing pods.
@@ -137,7 +139,7 @@ export function buildJet(m: FleetModel): THREE.Group {
   for (let i = 0; i < Math.round(6 * k + 2); i++) for (const sx of [-1, 1]) { const wn = add(g, new THREE.CircleGeometry(R * 0.13, 10), win, sx * wx, R + 1 + wy, L * 0.3 - i * (L * 0.55 / Math.round(6 * k + 2))); wn.rotation.set(0, sx * Math.PI / 2, 0); wn.rotateX(-we); wn.userData.part = 'window'; }
   // winglets (recheck #3): small swept, tapered blades canted outboard, kept below the window row so they never read as a
   // block through the fuselage side (was a flat 0.08k x 1.4k x 0.9k slab standing up past the cabin windows)
-  const wh = 0.4 * k; const wlS = new THREE.Shape(); wlS.moveTo(0, 0); wlS.lineTo(-0.9 * k, 0); wlS.lineTo(-1.0 * k, wh); wlS.lineTo(-0.7 * k, wh); wlS.lineTo(0, 0);
+  const wh = 0.35 * k; const wlS = new THREE.Shape(); wlS.moveTo(0, 0); wlS.lineTo(-0.9 * k, 0); wlS.lineTo(-1.0 * k, wh); wlS.lineTo(-0.7 * k, wh); wlS.lineTo(0, 0);
   for (const s of [-1, 1]) { const wl = add(g, new THREE.ExtrudeGeometry(wlS, { depth: 0.05 * k, bevelEnabled: false }), body, s * L * 0.55, R + 0.6, L * 0.1 - L * 0.22); wl.rotation.set(0, -Math.PI / 2, 0); wl.rotateOnWorldAxis(new THREE.Vector3(0, 0, 1), -s * 0.45); wl.userData.part = 'winglet';
     add(g, new THREE.SphereGeometry(0.12 * k, 8, 6), M(s < 0 ? 0xff2020 : 0x20ff40, { emissive: s < 0 ? 0xff2020 : 0x20ff40, emissiveIntensity: 1.5 }), s * L * 0.55, R + 0.62, L * 0.1 - L * 0.27); }
   for (const z of [L * 0.32, -L * 0.1]) for (const x of z > 0 ? [0] : [-R * 0.8, R * 0.8]) add(g, new THREE.CylinderGeometry(0.06 * k, 0.06 * k, 1 - 0.1 + R * 0.1, 6), eng, x, 0.6, z);
