@@ -70,7 +70,7 @@ export class Logistics {
 
   owned(name: string) { return [...(this.trucks.get(keyOf(name)) ?? [])]; }
   busyTrucks(name: string) { return this.busyOf(name, 'truck'); }
-  busyOf(name: string, mode: Mode) { const k = keyOf(name); return new Set([...this.ships.values()].filter((s) => s.owner === k && s.mode === mode && s.truck).map((s) => s.truck!)); }
+  busyOf(name: string, mode: Mode) { const k = keyOf(name); const out = new Set([...this.ships.values()].filter((s) => s.owner === k && s.mode === mode && s.truck).map((s) => s.truck!)); if (mode === 'truck') for (const t of extraBusyTrucks(name)) out.add(t); return out; }
   /** mu-cargo: UTC day each own vehicle last ran (its per-day-used upkeep is charged on the first trip of a day). */
   usedDay = new Map<string, string>();
   private today() { return new Date(this.clock()).toISOString().slice(0, 10); }
@@ -270,6 +270,9 @@ export class Logistics {
 
 let logistics: Logistics | null = null;
 export const getLogistics = () => logistics;
+/** mu-coop3: trucks out on a supply-contract delivery are busy for freight too (server/supplyContracts.ts sets this). */
+let extraBusyTrucks: (name: string) => Iterable<string> = () => [];
+export function setExtraBusyTrucks(fn: ((name: string) => Iterable<string>) | null) { extraBusyTrucks = fn ?? (() => []); }
 export function setLogistics(l: Logistics | null) { logistics = l; }
 export async function initLogistics(): Promise<void> {
   const url = databaseUrl();

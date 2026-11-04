@@ -1,0 +1,112 @@
+/**
+ * Co-op 3 (mu-coop3): supply chain contracts, fishing fleets and weekly server events. Rules + sizing live here so
+ * the server and every client preview agree.
+ *
+ * Supply contracts: a seller offers a buyer a recurring truck delivery (item, qty per delivery, unit price, interval,
+ * number of deliveries). The unit price must sit within ±30% of today's house price. The seller posts a bond (20% of
+ * the contract value) when proposing; the buyer escrows the full price when accepting. Each delivery leaves the
+ * seller's Warehouse on one of their trucks, lands in the buyer's Warehouse and releases that delivery's escrow to the
+ * seller. A delivery not dispatched by its due time + grace is MISSED: the buyer gets that delivery's escrow back plus
+ * a share of the bond as a penalty. Two misses (or the seller walking away) is a BREACH: the buyer keeps the rest of
+ * the bond and gets the rest of the escrow back.
+ *
+ * Fishing fleets: a boat owner opens a real-time trip from the Chud Resort Marina; seats by boat tier. Crew fish deep
+ * sea from the owner's boat (its zone) and, with at least one crew aboard, can land crew-only deep-sea species. The
+ * owner sets a captain's cut (0–30%) taken from what crew earn selling trip catches. Every daily ocean cap still applies.
+ *
+ * Weekly events: one event per week (Monday 00:00 MST), rotating mining rush → harvest festival → fishing derby →
+ * trade week → hockey cup. Everyone's contribution fills one server goal shown on the map. After the week ends each
+ * eligible contributor claims a tiered, capped reward (bigger if the goal was reached).
+ */
+import { priceOf, type ItemType } from './mines.js';
+
+const H = 3_600_000; const DAY = 24 * H;
+const round = (x: number) => Math.round(x);
+
+// ------------------------------------------------------------ supply contracts
+export const SC_BAND = 0.3;
+export const SC_INTERVALS_H = [6, 12, 24] as const;
+export const SC_MIN_DELIVERIES = 2;
+export const SC_MAX_DELIVERIES = 14;
+export const SC_MAX_QTY = 5_000;
+export const SC_BOND_RATE = 0.2;
+export const SC_MAX_MISSES = 2;
+export const SC_GRACE_MS = 2 * H;
+export const SC_OFFER_TTL_MS = DAY;
+export const SC_MAX_OPEN = 5;
+/** Buyer walking away from an active contract pays the seller this share of the remaining escrow. */
+export const SC_BUYER_CANCEL_FEE = 0.1;
+export const SC_MIN_VALUE = 1_000;
+export type ScStatus = 'pending' | 'active' | 'done' | 'cancelled' | 'breached' | 'declined' | 'expired' | 'withdrawn';
+/** House reference price for one unit today. */
+export const scRef = (s: { type: ItemType; id: string }, index = 1) => Math.max(0, round(priceOf(s) * index));
+export const scBand = (ref: number) => ({ lo: Math.max(1, Math.ceil(ref * (1 - SC_BAND))), hi: Math.floor(ref * (1 + SC_BAND)) });
+export const scPriceOk = (unit: number, ref: number) => { const b = scBand(ref); return Number.isInteger(unit) && unit >= b.lo && unit <= b.hi; };
+export const scValue = (unit: number, qty: number, n: number) => unit * qty * n;
+export const scBond = (unit: number, qty: number, n: number) => Math.ceil(scValue(unit, qty, n) * SC_BOND_RATE);
+/** Bond share paid to the buyer for ONE missed delivery (the last miss before a breach gets the rest of the bond). */
+export const scPenalty = (bond: number, n: number) => Math.floor(bond / n);
+export const scDueAt = (startAt: number, intervalMs: number, k: number) => startAt + (k + 1) * intervalMs;
+export interface ScView {
+  id: string; seller: string; buyer: string; type: ItemType; itemId: string; name: string; qty: number; unit: number; n: number; intervalMs: number;
+  status: ScStatus; createdAt: number; startAt: number | null; k: number; delivered: number; missed: number; escrow: number; bond: number;
+  nextDue: number | null; transit: { k: number; arriveAt: number; truck: string } | null; cancelReq: 'seller' | 'buyer' | null; role: 'seller' | 'buyer' | null; endedAt: number | null; ref: number;
+}
+
+// ------------------------------------------------------------ fishing fleets
+/** Crew seats (besides the captain) by boat model. Skiffs are too small to crew. */
+export const CREW_SEATS: Record<string, number> = { skiff: 0, sportfisher: 1, yacht: 3, superyacht: 6 };
+export const crewSeats = (model: string | null | undefined) => (model ? CREW_SEATS[model] ?? 0 : 0);
+export const FLEET_TRIP_MS = 30 * 60_000;
+export const FLEET_MAX_CUT = 0.3;
+export const FLEET_REQUEST_TTL_MS = 5 * 60_000;
+export const cutOk = (c: number) => Number.isFinite(c) && c >= 0 && c <= FLEET_MAX_CUT;
+/** Captain's share of a crew member's payout (floored, so the seller never loses a fraction of a chip). */
+export const captainShare = (paid: number, cut: number) => Math.max(0, Math.floor(paid * Math.min(FLEET_MAX_CUT, Math.max(0, cut))));
+export interface FleetTripView {
+  id: string; captain: string; boat: string; boatName: string; zone: number; seats: number; cut: number; startAt: number; endsAt: number;
+  crew: string[]; requests: string[]; mine: 'captain' | 'crew' | 'requested' | null;
+}
+
+// ------------------------------------------------------------ weekly events
+export type EventKind = 'mining' | 'harvest' | 'fishing' | 'trade' | 'hockey';
+export interface EventDef { id: EventKind; name: string; icon: string; unit: string; goal: number; blurb: string; color: string }
+/**
+ * Goals sized for the current server (~44 weekly-active players, read-only prod sizing Nov 4 2026): reachable with a
+ * solid group week, not by one player (each player's counted contribution is capped at EVENT_PLAYER_SHARE of the goal).
+ */
+export const EVENTS: Record<EventKind, EventDef> = {
+  mining: { id: 'mining', name: 'Mining Rush', icon: '⛏️', unit: 'ore mined', goal: 25_000, blurb: 'Break ore veins in any mine.', color: '#f59e0b' },
+  harvest: { id: 'harvest', name: 'Harvest Festival', icon: '🌾', unit: 'crops harvested', goal: 30_000, blurb: 'Harvest crops on any farm.', color: '#84cc16' },
+  fishing: { id: 'fishing', name: 'Fishing Derby', icon: '🎣', unit: 'fish landed', goal: 4_000, blurb: 'Land fish at the pond, reef or deep sea.', color: '#38bdf8' },
+  trade: { id: 'trade', name: 'Trade Week', icon: '🤝', unit: 'chips traded', goal: 3_000_000, blurb: 'Buy and sell goods on the Market with other players.', color: '#a78bfa' },
+  hockey: { id: 'hockey', name: 'Hockey Cup', icon: '🏒', unit: 'hockey wins', goal: 400, blurb: 'Win paid hockey matches.', color: '#ef4444' },
+};
+export const EVENT_ORDER: EventKind[] = ['mining', 'harvest', 'fishing', 'trade', 'hockey'];
+export const WEEK_MS = 7 * DAY;
+/** Monday 2026-01-05 00:00 MST (07:00 UTC). Weeks start every Monday 00:00 MST (01:00 MDT in summer). */
+export const EVENT_EPOCH = Date.UTC(2026, 0, 5, 7);
+export const weekIndex = (ms: number) => Math.floor((ms - EVENT_EPOCH) / WEEK_MS);
+export const weekStart = (w: number) => EVENT_EPOCH + w * WEEK_MS;
+export const eventFor = (w: number): EventDef => EVENTS[EVENT_ORDER[((w % EVENT_ORDER.length) + EVENT_ORDER.length) % EVENT_ORDER.length]!]!;
+export const EVENT_PLAYER_SHARE = 0.1;
+export const playerEventCap = (e: EventDef) => Math.ceil(e.goal * EVENT_PLAYER_SHARE);
+/** Most one trade can count for in Trade Week (so one huge wash trade can't fill the bar). */
+export const TRADE_COUNT_CAP = 50_000;
+export const EVENT_CLAIM_MS = 7 * DAY;
+/** Reward tiers by personal (capped) contribution as a share of the player cap. Chips are price-indexed at claim. */
+export const EVENT_TIERS = [
+  { id: 'bronze', name: 'Bronze', icon: '🥉', at: 0.05, chips: 2_000 },
+  { id: 'silver', name: 'Silver', icon: '🥈', at: 0.25, chips: 6_000 },
+  { id: 'gold', name: 'Gold', icon: '🥇', at: 0.6, chips: 15_000 },
+] as const;
+/** Reward multiplier by server progress: the full tier if the goal was reached, half from 50%, nothing below. */
+export const goalMul = (pct: number) => (pct >= 1 ? 1 : pct >= 0.5 ? 0.5 : 0);
+export function eventTier(e: EventDef, mine: number) { const f = Math.min(mine, playerEventCap(e)) / playerEventCap(e); let t: (typeof EVENT_TIERS)[number] | null = null; for (const x of EVENT_TIERS) if (f >= x.at) t = x; return t; }
+export function eventReward(e: EventDef, mine: number, serverPct: number, index = 1) { const t = eventTier(e, mine); return t ? round(t.chips * goalMul(serverPct) * index) : 0; }
+export interface EventView {
+  week: number; kind: EventKind; name: string; icon: string; unit: string; blurb: string; color: string; goal: number; progress: number; pct: number;
+  startAt: number; endsAt: number; top: Array<{ name: string; amount: number }>; playerCap: number; next: { name: string; icon: string; startAt: number };
+  me?: { amount: number; tier: string | null; excluded?: string };
+  past?: { week: number; name: string; icon: string; pct: number; amount: number; reward: number; claimed: boolean; claimUntil: number } | null;
+}
