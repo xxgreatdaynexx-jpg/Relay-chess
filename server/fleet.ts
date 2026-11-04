@@ -25,6 +25,11 @@ CREATE INDEX IF NOT EXISTS fleet_owned_player ON fleet_owned (player_key);
 CREATE TABLE IF NOT EXISTS fleet_upkeep (day TEXT NOT NULL, craft_id TEXT NOT NULL, owner_key TEXT NOT NULL, amount BIGINT NOT NULL, paid BOOLEAN NOT NULL,
   repossessed BOOLEAN NOT NULL DEFAULT FALSE, at BIGINT NOT NULL, claim TEXT NOT NULL, PRIMARY KEY (day, craft_id));`;
 const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
+/** Tess QA #4: what a jet owner sees about upkeep (Hangar + Daily Report): per day, next charge (next UTC midnight), arrears, paid so far. */
+export function jetUpkeepInfo(c: { model: string; arrears: number; upkeepPaid: number }, now: number) {
+  const perDay = jetUpkeep(c.model); const next = Date.parse(new Date(now).toISOString().slice(0, 10) + 'T00:00:00Z') + 86_400_000;
+  return { perDay, nextChargeAt: next, arrears: c.arrears, arrearsChips: c.arrears * perDay, paidTotal: c.upkeepPaid, graceDays: GRACE_DAYS };
+}
 /** Daily jet upkeep at today's price index. */
 export const jetUpkeep = (model: string) => px(fleetModel(model, 'jet')?.upkeep ?? 0);
 
@@ -47,7 +52,7 @@ export class Fleet {
     return kind ? all.filter((c) => c.kind === kind) : all;
   }
   async view(name: string | null) {
-    const mine = name ? (await this.owned(name)).map((c) => ({ ...c, value: craftValue(c) })) : [];
+    const now = this.clock(); const mine = name ? (await this.owned(name)).map((c) => ({ ...c, value: craftValue(c), ...(c.kind === 'jet' ? { upkeepInfo: jetUpkeepInfo(c, now) } : {}) })) : [];
     return { signedIn: !!name, owned: mine, chips: name && getBank().ready ? getBank().account(name).chips : null, deep: bestBoat(mine.filter((c) => c.kind === 'boat').map((c) => c.model)) };
   }
   /** Deep-sea access for fishing: best zone + bite multiplier of the boats this player owns. */

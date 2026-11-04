@@ -8,7 +8,7 @@ import { BOATS, DEEP_ZONES, JETS, type FleetKind, type FleetModel } from '../../
 import { usePanelDrag } from '@/lib/panelDrag';
 import { GRACE_DAYS } from '../../../shared/realEstate';
 
-type Owned = { id: string; kind: FleetKind; model: string; paid: number; boughtAt: number; arrears: number; upkeepPaid: number; value: number; upkeep?: number };
+type Owned = { id: string; kind: FleetKind; model: string; paid: number; boughtAt: number; arrears: number; upkeepPaid: number; value: number; upkeep?: number; upkeepInfo?: { perDay: number; nextChargeAt: number; arrears: number; arrearsChips: number; paidTotal: number; graceDays: number } };
 type View = { signedIn: boolean; owned: Owned[]; chips: number | null; catalog: Array<FleetModel & { basePrice: number }>; deep?: { zone: number; name: string | null } };
 const fmt = (n: number) => n.toLocaleString('en-US');
 
@@ -53,6 +53,7 @@ export function FleetStore({ kind, onClose, onDeepSea }: { kind: FleetKind; onCl
             <div><h4>{boat ? 'My boats' : 'My jets'}</h4>
               {mine.length ? mine.map((o) => { const om = cat.find((x) => x.id === o.model); return <div key={o.id} className="fleet-owned" data-testid={`fleet-owned-${o.model}`}>
                 <span>{om?.emoji} {om?.name ?? o.model}{o.arrears > 0 && <em className="fleet-arrears"> · {o.arrears} day{o.arrears > 1 ? 's' : ''} unpaid</em>}</span>
+                {o.upkeepInfo && <small className="fleet-upkeep" data-testid={`fleet-upkeep-${o.model}`}>Upkeep {fmt(o.upkeepInfo.perDay)}/day · next charge {new Date(o.upkeepInfo.nextChargeAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })} · paid so far {fmt(o.upkeepInfo.paidTotal)}{o.upkeepInfo.arrears > 0 ? ` · owed ${fmt(o.upkeepInfo.arrearsChips)} (${o.upkeepInfo.arrears}/${o.upkeepInfo.graceDays} days before repossession)` : ''}</small>}
                 <button type="button" disabled={busy} onClick={() => { if (confirm(`Sell the ${om?.name} for ${fmt(o.value)} chips?`)) void act('fleet_sell', { id: o.id }, (a) => `Sold for ${fmt(Number(a.paid))} chips.`); }}>Sell {fmt(o.value)}</button></div>; }) : <small>None yet.</small>}
             </div>
           </aside>
