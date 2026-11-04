@@ -50,7 +50,8 @@ describe('farm district', () => {
     await expect(s.farm.plant('Gus', s.id, 'wheat', [0])).rejects.toThrow(/do not own/);
     await s.re.buy('Gus', s.id);
     await expect(s.farm.plant('Hal', s.id, 'wheat', [0])).rejects.toThrow(/do not own/);
-    await s.farm.plant('Gus', s.id, 'wheat', [0, 1, 2, 3]);
+    await expect(s.farm.plant('Gus', s.id, 'wheat', [0, 1, 2, 3])).rejects.toThrow(/Plough/); expect(s.ledger('gus', 'farm_seed')).toEqual([]);
+    await s.farm.plow('Gus', s.id, [0, 1, 2, 3]); await s.farm.plant('Gus', s.id, 'wheat', [0, 1, 2, 3]);
     expect(s.chips('gus')).toBe(1000 - 40); expect(s.ledger('gus', 'farm_seed')).toEqual([{ amount: -40 }]);
     await expect(s.farm.plant('Gus', s.id, 'carrot', [3, 4])).rejects.toThrow(/already planted/);
     expect(s.chips('gus')).toBe(960);
@@ -66,13 +67,13 @@ describe('farm district', () => {
     const s = await setup(); const plot = propertyById(s.id)!;
     await s.fund('Ida', plot.price + 50); await s.re.buy('Ida', s.id);
     await expect(s.farm.plant('Ida', s.id, 'sunflower', [0])).rejects.toThrow(/Not enough chips/); expect(s.chips('ida')).toBe(50);
-    await s.farm.plant('Ida', s.id, 'strawberry', [0, 1]);
+    await s.farm.plow('Ida', s.id, [0, 1]); await s.farm.plant('Ida', s.id, 'strawberry', [0, 1]);
     s.setNow(T0 + 4 * M + MIN_RIPE_MS);
     await expect(s.farm.harvest('Ida', s.id)).rejects.toThrow(/Nothing is ready/);
     expect((await s.farm.clear('Ida', s.id)).cleared).toBe(2);
     setPriceIndexForTest(1.5);
     try {
-      await s.farm.plant('Ida', s.id, 'strawberry', [5]); expect(s.chips('ida')).toBe(40 - Math.round(5 * 1.5) + 0);
+      await s.farm.plow('Ida', s.id, [5]); await s.farm.plant('Ida', s.id, 'strawberry', [5]); expect(s.chips('ida')).toBe(40 - Math.round(5 * 1.5) + 0);
       s.setNow(T0 + 4 * M + MIN_RIPE_MS + 4 * M); const before = s.chips('ida');
       const r = await s.farm.harvest('Ida', s.id); expect(r.paid).toBe(Math.floor(8 * 1.5)); expect(s.chips('ida')).toBe(before + r.paid);
     } finally { setPriceIndexForTest(1); }
@@ -80,11 +81,11 @@ describe('farm district', () => {
   it('a new owner never inherits the previous owner\'s crops', async () => {
     const s = await setup(); const plot = propertyById(s.id)!;
     await s.fund('Jo', plot.price + 100); await s.fund('Kim', plot.price + 100);
-    await s.re.buy('Jo', s.id); await s.farm.plant('Jo', s.id, 'wheat', [0]); await s.re.sell('Jo', s.id);
+    await s.re.buy('Jo', s.id); await s.farm.plow('Jo', s.id, [0]); await s.farm.plant('Jo', s.id, 'wheat', [0]); await s.re.sell('Jo', s.id);
     await s.re.buy('Kim', s.id); s.setNow(T0 + 5 * M);
     expect((await s.farm.view(s.id, 'Kim')).tiles).toHaveLength(0);
     await expect(s.farm.harvest('Kim', s.id)).rejects.toThrow(/Nothing is ready/);
-    await s.farm.plant('Kim', s.id, 'wheat', [0]); expect((await s.farm.view(s.id, 'Kim')).tiles).toHaveLength(1);
+    await s.farm.plow('Kim', s.id, [0]); await s.farm.plant('Kim', s.id, 'wheat', [0]); expect((await s.farm.view(s.id, 'Kim')).tiles).toHaveLength(1);
   });
 });
 
@@ -93,7 +94,7 @@ describe('countryside fields farm like farmland (pt1250u)', () => {
     const s = await setup(); const id = 'cf:0'; const plot = propertyById(id)!;
     await s.fund('Ida', plot.price + 1000); await s.re.buy('Ida', id);
     const v = await s.farm.view(id, 'Ida'); expect(v.mine).toBe(true); expect(v.cols * v.rows).toBeGreaterThan(20);
-    await s.farm.plant('Ida', id, 'wheat', [0, 1]); s.setNow(T0 + 10 * 60_000); await s.farm.harvest('Ida', id);
+    await s.farm.plow('Ida', id, [0, 1]); await s.farm.plant('Ida', id, 'wheat', [0, 1]); s.setNow(T0 + 10 * 60_000); await s.farm.harvest('Ida', id);
     expect(s.ledger('ida', 'farm_harvest').length).toBe(1);
     const before = s.chips('ida'); await s.re.sell('Ida', id); expect(s.chips('ida') - before).toBe(Math.floor(plot.price * 0.7));
   });

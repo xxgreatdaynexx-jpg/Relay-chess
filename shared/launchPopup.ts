@@ -16,6 +16,7 @@ export const LAUNCH: LaunchPopup = {
     { icon: '🃏', title: 'Poker full-screen', text: 'Hit the full-screen button at the poker table to fill your whole screen. Esc exits.' },
     { icon: '🌾', title: 'Farm profit preview', text: 'The seed shop now shows your real grow time and profit per tile after your Farming level and plot upgrades.' },
     { icon: '🌱', title: 'Farming level = bonus crops', text: 'Your Farming level now gives bonus yield on harvests, up to +25% more crops at level 99.' },
+    { icon: '🚜', title: 'Real farming', text: 'Plough, seed, fertilize and harvest your fields yourself. Buy a tractor, seed drill, front loader or combine to work the whole field in one pass. Fertilizer and your Farming level now add yield (more crops), not a higher price.' },
     { icon: '📱', title: 'Farm on mobile', text: 'Tap “🌾 My farm” on the map to open your farm. On phones it opens full screen.' },
     { icon: '📈', title: 'Net worth charts', text: 'Player profiles now chart net worth over time.' },
     { icon: '🏛', title: 'Monument royalties', text: 'Own a monument? Earn 1% of what other players make there: ore from the mines, factory goods, fish at the dock, Speedway prizes, market sales and the casino\'s house win. Paid on top, nobody loses a chip.' },

@@ -81,8 +81,8 @@ export const plotId = (n: number) => `f:${n}`;
 export const tileXZ = (p: FarmPlot, i: number): [number, number] => [p.x - (p.cols * TILE) / 2 + TILE * ((i % p.cols) + 0.5), p.z - (p.rows * TILE) / 2 + TILE * (Math.floor(i / p.cols) + 0.5)];
 
 /** What the client gets for one plot. `now` is the server clock (clients never send timestamps). */
-export interface FarmTile { tile: number; crop: string; plantedAt: number; stage: Stage; readyAt: number; witherAt: number }
-export interface FarmView { id: string; owner: string | null; mine: boolean; cols: number; rows: number; tiles: FarmTile[]; now: number; today: { gross: number; paid: number }; index: number; upgrades?: import('./farmUpgrades.js').FarmUpgradeLevels; farmingLevel?: number; growMul?: number; profitMul?: number; yieldBonus?: number }
+export interface FarmTile { tile: number; crop: string; plantedAt: number; stage: Stage; readyAt: number; witherAt: number; fert?: string }
+export interface FarmView { id: string; owner: string | null; mine: boolean; cols: number; rows: number; tiles: FarmTile[]; now: number; today: { gross: number; paid: number }; index: number; upgrades?: import('./farmUpgrades.js').FarmUpgradeLevels; farmingLevel?: number; growMul?: number; profitMul?: number; yieldBonus?: number; plowed?: number[]; machines?: import('./farmWork.js').MachineSet }
 /** #33: what one tile of `c` really takes and earns after Farming XP + upgrades (base chips; seed comes back on harvest). */
 /** Expected per-tile outcome; yieldBonus = farming level bonus crops (each extra crop is worth its full sell price). */
 export const cropOutlook = (c: Crop, growMul = 1, profitMul = 1, yieldBonus = 0) => ({ grow: Math.round(c.grow * growMul), profit: Math.floor((c.sell * (1 + yieldBonus) - c.seed) * profitMul) });

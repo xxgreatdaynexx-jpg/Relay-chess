@@ -57,7 +57,7 @@ export function perkText(skill: SkillId | string, level: number): string {
   switch (skill) {
     case 'mining': return `${pct(MINING_MAX_SPEEDUP * t)} faster swings, ${pct(MINING_MAX_BONUS * t)} chance of double ore`;
     case 'engineering': return `Factory machines craft ${pct(ENGINEERING_MAX_SPEEDUP * t)} faster`;
-    case 'farming': return `Crops grow ${pct(FARMING_MAX_SPEEDUP * t)} faster`;
+    case 'farming': return `Crops grow ${pct(FARMING_MAX_SPEEDUP * t)} faster, +${pct(FARMING_MAX_YIELD * t)} yield`;
     case 'racing': return `${pct(RACING_MAX_DISCOUNT * t)} off the Daily Cup entry`;
     case 'combat': return `${pct(COMBAT_MAX_ARMOR * t)} less damage taken in the Arena`;
     case 'trading': return `${pct(TRADING_MAX_DISCOUNT * t)} off Market and stock fees`;
