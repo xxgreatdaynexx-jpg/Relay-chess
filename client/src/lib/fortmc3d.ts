@@ -1,6 +1,7 @@
 // Fort McChud 3D map: a boreal oil-sands boomtown at dusk. Spruce forest, muskeg, tailings ponds, ten lease tracts with
 // wells and nodding pumpjacks, pipelines into a refinery complex (distillation towers, cracker, flare stack, tank farm),
 // the Deep Ore Mine's terraced pit, the Commodity Exchange tower and the airport. Same camera/pan rules as the city.
+import { pipeRoute } from '../../../shared/fortmcPipes';
 import * as THREE from 'three';
 import { asLabel, dimColor, drawLabel, LABEL_LAYER, labelMaterial, renderScene } from './labelSprite';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -196,18 +197,23 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
     if (!broken) jacks.push(beam);
   };
   const horseG = sg('fort-horsehead', () => { const sh = new THREE.Shape(); sh.moveTo(0, 0.3); sh.absarc(0, -0.9, 1.2, Math.PI / 2, -Math.PI / 2 + 0.3, true); sh.lineTo(-0.4, -1.4); sh.lineTo(-0.4, 0.3); const e = new THREE.ExtrudeGeometry(sh, { depth: 0.7, bevelEnabled: false, curveSegments: 8 }); e.translate(0, 0, -0.35); return e; });
+  const pipesG = new THREE.Group(); scene.add(pipesG);
   const setFort = (s: FortState | null) => {
-    jacks.length = 0;
+    jacks.length = 0; while (pipesG.children.length) pipesG.remove(pipesG.children[0]!);
     for (const [n, g] of tractGroups) {
       while (g.children.length) g.remove(g.children[0]!);
       const t = s?.tracts[String(n)]; pads.get(n)!.material = t?.leased ? padOwnM : padM;
       if (!t?.leased) { if (s?.surveyed.includes(n)) box(1.4, 1, 1.4, yellow, 0, 0.8, 0, g); continue; }
       t.wells.forEach((w, i) => pumpjack(g, -9 + (i % 2) * 14, -5 + Math.floor(i / 2) * 9, w.jack, w.cond < 15));
-      if (t.pipe > 0) { // elevated flow line on H-frame sleepers every ~8 m, with a pig launcher at the pad
-        const dx = 10 - tractInfo(n).x, dz = 35 - tractInfo(n).z, L = Math.hypot(dx, dz), rr = t.pipe > 1 ? 0.55 : 0.35, pm = t.pipe > 1 ? yellow : steel;
-        const pipe = cyl(rr, L, pm, dx / 2, 1.2, dz / 2, g); pipe.rotation.order = 'YXZ'; pipe.rotation.set(Math.PI / 2, Math.atan2(dx, dz), 0);
-        for (let d = 6; d < L - 4; d += 8) { const sx = (dx * d) / L, sz = (dz * d) / L; const sp = box(1.8, 0.2, 0.25, dark, sx, 0.75, sz, g); sp.rotation.y = Math.atan2(dx, dz); sp.castShadow = false; for (const o of [-0.8, 0.8]) { const l = box(0.18, 0.8, 0.18, dark, sx + Math.cos(Math.atan2(dx, dz)) * o, 0.4, sz - Math.sin(Math.atan2(dx, dz)) * o, g); l.castShadow = false; } }
-        cyl(rr * 1.8, 2.4, pm, 2, 1.3, 9, g).rotation.z = Math.PI / 2; box(0.8, 1.4, 0.8, red, 3.4, 0.7, 9, g); }
+      if (t.pipe > 0) { // mu-visuals: orthogonal flow line on H-frame sleepers (shared/fortmcPipes.ts), elbows at each 90° corner
+        const rr = t.pipe > 1 ? 0.55 : 0.35, pm = t.pipe > 1 ? yellow : steel, R = pipeRoute(n), H = 1.2;
+        for (let i = 1; i < R.length; i++) { const [ax, az] = R[i - 1]!, [bx, bz] = R[i]!, L = Math.hypot(bx - ax, bz - az); if (L < 0.01) continue; const alongX = Math.abs(bx - ax) > Math.abs(bz - az);
+          const c = cyl(rr, L, pm, (ax + bx) / 2, H, (az + bz) / 2, pipesG); if (alongX) c.rotation.z = Math.PI / 2; else c.rotation.x = Math.PI / 2;
+          for (let d = 4; d < L - 2; d += 8) { const sx = ax + ((bx - ax) * d) / L, sz = az + ((bz - az) * d) / L; const sp = box(alongX ? 0.25 : 1.8, 0.2, alongX ? 1.8 : 0.25, dark, sx, 0.75, sz, pipesG); sp.castShadow = false;
+            for (const o of [-0.8, 0.8]) box(0.18, 0.8, 0.18, dark, sx + (alongX ? 0 : o), 0.4, sz + (alongX ? o : 0), pipesG).castShadow = false; } }
+        for (let i = 1; i < R.length - 1; i++) { const [x, z] = R[i]!; const e = new THREE.Mesh(SPH(), pm); e.scale.setScalar(rr * 2.7); e.position.set(x, H, z); pipesG.add(e);
+          for (const [px, pz] of [R[i - 1]!, R[i + 1]!]) { const ux = Math.sign(px - x), uz = Math.sign(pz - z); const f = cyl(rr * 1.3, 0.2, dark, x + ux * rr * 1.6, H, z + uz * rr * 1.6, pipesG); if (ux) f.rotation.z = Math.PI / 2; else f.rotation.x = Math.PI / 2; } }
+        const [lx, lz] = R[0]!; cyl(rr * 1.8, 2.4, pm, lx - tractInfo(n).x - 1.5, 1.3, lz - tractInfo(n).z, g).rotation.z = Math.PI / 2; box(0.8, 1.4, 0.8, red, lx - tractInfo(n).x - 3.2, 0.7, lz - tractInfo(n).z, g); }
     }
     // tank farm and extra units around the plant
     while (unitsG.children.length) unitsG.remove(unitsG.children[0]!);
