@@ -15,7 +15,7 @@ import { royaltyEarn } from './royalty.js';
 import { CAVE_LANDMARK } from '../shared/royalty.js';
 import { CAVES, caveOf, type CaveId, BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, SWING_MS, dayKey, isOre, payoutFor, houseCapBase, stackKey, priceOf, sellable, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId, inExit, weightOf } from '../shared/mines.js';
 import { isAtFortMc, isAtResort } from './travel.js';
-import { levelOf, hasFloors, inLadder, canRideTo, respawnFloor, elevatorStops, MAX_FLOOR, clampFloor } from '../shared/mineFloors.js';
+import { levelOf, hasFloors, floorKey, inLadder, canRideTo, respawnFloor, elevatorStops, MAX_FLOOR, clampFloor } from '../shared/mineFloors.js';
 import { MOBS, MOB_AGGRO, MOB_REACH, MOB_RESPAWN_MS, SAFE_X, mobCount, mobDmg, mobHp, mobKindFor, lootCount, hitThrough, maxHpOf, weaponDef, lostOnDeath, REGEN_AFTER_MS, REGEN_PER_S, type MobKind, type WeaponId, type ArmorId } from '../shared/mineCombat.js';
 import { oreFor, mineHash } from '../shared/mines.js';
 import { sinkLostToday } from './sink-room.js';
@@ -94,7 +94,7 @@ let toolHook: (account: string | null) => MineToolId = () => DEFAULT_TOOL;
 export const setMineToolHook = (f: (account: string | null) => MineToolId) => { toolHook = f; };
 /** Equipped weapon + armor and deepest floor reached (server/mineGear.ts installs the Postgres-backed versions). */
 let gearHook: (account: string | null) => { weapon: WeaponId; armor: ArmorId } = () => ({ weapon: 'rusty_sword', armor: 'none' });
-let depthHook: { get: (account: string) => number; record: (account: string, floor: number) => void } = { get: () => 1, record: () => {} };
+let depthHook: { get: (account: string, cave?: CaveId) => number; record: (account: string, floor: number, cave?: CaveId) => void } = { get: () => 1, record: () => {} };
 export const setMineGearHooks = (g: typeof gearHook, d: typeof depthHook) => { gearHook = g; depthHook = d; };
 export interface MobState { id: number; kind: MobKind; x: number; y: number; hx: number; hy: number; hp: number; max: number; dmg: number; deadUntil: number; lastAttack: number; a: number }
 /** Debounce for carried-haul saves, and how long a haul restored after a restart waits for its owner. */
@@ -121,32 +121,32 @@ export class MinesWorld {
   caveNodes: Record<CaveId, NodeState[]> = Object.fromEntries(Object.values(CAVES).map((c) => [c.id, c.nodes.map((n) => ({ node: n, hp: ORES[n.ore].hits, downUntil: 0 }))])) as Record<CaveId, NodeState[]>;
   nodes: NodeState[] = this.caveNodes.mine;
   /** Mine floors 2..MAX_FLOOR: rock state per floor, created when someone first goes down there. */
-  floorNodes = new Map<number, NodeState[]>();
+  floorNodes = new Map<number | string, NodeState[]>();
   /** Creatures per floor (floor 3+), created on first visit; they only act while someone is on that floor. */
-  floorMobs = new Map<number, MobState[]>();
+  floorMobs = new Map<number | string, MobState[]>();
   gearOf: (account: string | null) => { weapon: WeaponId; armor: ArmorId } = (a) => gearHook(a);
-  deepestOf(m: Miner) { return Math.max(m.deepest, m.account ? depthHook.get(m.account) : 1); }
+  deepestOf(m: Miner) { return Math.max(m.deepest, m.account ? depthHook.get(m.account, m.cave) : 1); }
   maxHp(m: Miner) { return maxHpOf(this.gearOf(m.account).armor); }
   mapOf(m: Miner) { return levelOf(m.cave, m.floor).map; }
   nodeStates(cave: CaveId, floor = 1): NodeState[] {
     if (!hasFloors(cave) || floor <= 1) return this.caveNodes[cave];
-    let n = this.floorNodes.get(floor);
-    if (!n) { n = levelOf(cave, floor).nodes.map((node) => ({ node, hp: ORES[node.ore].hits, downUntil: 0 })); this.floorNodes.set(floor, n); }
+    const fk = floorKey(cave, floor); let n = this.floorNodes.get(fk);
+    if (!n) { n = levelOf(cave, floor).nodes.map((node) => ({ node, hp: ORES[node.ore].hits, downUntil: 0 })); this.floorNodes.set(fk, n); }
     return n;
   }
-  mobsOn(floor: number): MobState[] {
-    let list = this.floorMobs.get(floor);
+  mobsOn(floor: number, cave: CaveId = 'mine'): MobState[] {
+    const fk = floorKey(cave, floor); let list = this.floorMobs.get(fk);
     if (list) return list;
     list = [];
-    const map = levelOf('mine', floor).map; const n = mobCount(floor);
+    const map = levelOf(cave, floor).map; const n = mobCount(floor); const salt = cave === 'mine' ? 0 : cave.charCodeAt(0) * 101;
     const spots: Array<[number, number]> = [];
     for (let y = 1; y < map.d / 2 - 1; y++) for (let x = 10; x < map.w / 2 - 2; x++) if (canStand(x * 2 + 1, y * 2 + 1, 0, map)) spots.push([x * 2 + 1, y * 2 + 1]);
     for (let i = 0; i < n && spots.length; i++) {
-      const [x, y] = spots[Math.floor(mineHash(floor * 4243 + i * 31) * spots.length)];
+      const [x, y] = spots[Math.floor(mineHash(floor * 4243 + i * 31 + salt) * spots.length)];
       const kind = mobKindFor(floor, mineHash(floor * 977 + i * 13)); const max = mobHp(kind, floor);
       list.push({ id: i, kind, x, y, hx: x, hy: y, hp: max, max, dmg: mobDmg(kind, floor), deadUntil: 0, lastAttack: 0, a: 0 });
     }
-    this.floorMobs.set(floor, list);
+    this.floorMobs.set(fk, list);
     return list;
   }
   /** Put a miner on a floor of The Mine, at the lift. */
@@ -154,7 +154,7 @@ export class MinesWorld {
     const f = clampFloor(floor); const sp = levelOf(m.cave, f).map.spawns; const p = sp[this.miners.size % sp.length];
     Object.assign(m, { floor: f, x: p[0], y: p[1], z: 0, vz: 0, grounded: true, crouch: false, carry: 0, lastMove: now, lastFloorMove: now });
     if (f > m.deepest) m.deepest = f;
-    if (m.account && f > 1) depthHook.record(m.account, f);
+    if (m.account && f > 1) depthHook.record(m.account, f, m.cave);
   }
   /** Ladder at the far end of a floor: go one floor down. */
   descend(id: string, now: number): number {
@@ -181,7 +181,7 @@ export class MinesWorld {
   attack(id: string, mobId: unknown, now: number): { mob: number; hp: number; killed: boolean; dmg: number; loot?: Stack[] } {
     const m = this.miners.get(id); if (!m) throw new MineError('Join the mine first.');
     if (m.restoring) throw new MineError('Loading your backpack...');
-    const list = this.floorMobs.get(m.floor);
+    const list = this.floorMobs.get(floorKey(m.cave, m.floor));
     const mob = hasFloors(m.cave) && list && typeof mobId === 'number' ? list[mobId] : undefined;
     if (!mob || mob.deadUntil) throw new MineError('Nothing to hit.');
     const w = weaponDef(this.gearOf(m.account).weapon);
@@ -219,16 +219,16 @@ export class MinesWorld {
   tickMobs(now: number): { hurt: Array<{ id: string; hp: number; max: number; dmg: number; by: number }>; died: Array<{ id: string; floor: number; lost: Stack[]; room: string }> } {
     const dt = Math.min(0.25, this.lastMobTick ? (now - this.lastMobTick) / 1000 : 0.1); this.lastMobTick = now;
     const hurt: Array<{ id: string; hp: number; max: number; dmg: number; by: number }> = []; const died: Array<{ id: string; floor: number; lost: Stack[]; room: string }> = [];
-    const byFloor = new Map<number, Miner[]>();
+    const byFloor = new Map<number | string, { cave: CaveId; floor: number; miners: Miner[] }>();
     for (const m of this.miners.values()) {
       const max = this.maxHp(m); if (m.hp > max) m.hp = max;
       if (m.hp < max && now - m.lastHurt > REGEN_AFTER_MS) m.hp = Math.min(max, m.hp + REGEN_PER_S * dt);
       if (inExit(m.x, m.y)) m.hp = max; // the lift heals you
-      if (hasFloors(m.cave) && m.floor >= 3) { const l = byFloor.get(m.floor) ?? []; l.push(m); byFloor.set(m.floor, l); }
+      if (hasFloors(m.cave) && m.floor >= 3) { const fk = floorKey(m.cave, m.floor); const l = byFloor.get(fk) ?? { cave: m.cave, floor: m.floor, miners: [] }; l.miners.push(m); byFloor.set(fk, l); }
     }
-    for (const [floor, miners] of byFloor) {
-      const map = levelOf('mine', floor).map;
-      for (const mob of this.mobsOn(floor)) {
+    for (const { cave, floor, miners } of byFloor.values()) {
+      const map = levelOf(cave, floor).map;
+      for (const mob of this.mobsOn(floor, cave)) {
         if (mob.deadUntil) { if (now >= mob.deadUntil) Object.assign(mob, { deadUntil: 0, hp: mob.max, x: mob.hx, y: mob.hy }); else continue; }
         const def = MOBS[mob.kind]; let best: Miner | null = null; let bd = MOB_AGGRO;
         for (const m of miners) {
@@ -254,7 +254,7 @@ export class MinesWorld {
     }
     return { hurt, died };
   }
-  mobsView(floor: number) { return (this.floorMobs.get(floor) ?? []).map((b) => ({ id: b.id, k: b.kind, x: +b.x.toFixed(2), y: +b.y.toFixed(2), a: +b.a.toFixed(2), hp: b.deadUntil ? 0 : b.hp, max: b.max })); }
+  mobsView(floor: number, cave: CaveId = 'mine') { return (this.floorMobs.get(floorKey(cave, floor)) ?? []).map((b) => ({ id: b.id, k: b.kind, x: +b.x.toFixed(2), y: +b.y.toFixed(2), a: +b.a.toFixed(2), hp: b.deadUntil ? 0 : b.hp, max: b.max })); }
   /** signed-in backpacks by player key; guests keep theirs on the miner id (lost on leave) */
   packs = new Map<string, Map<string, Stack>>();
   names = new Map<string, string>();
@@ -678,7 +678,7 @@ function ensureTicker(io: Server) {
     }
     const live = new Map<string, { cave: CaveId; floor: number }>();
     for (const m of world.miners.values()) live.set(roomOfM(m), { cave: m.cave, floor: m.floor });
-    for (const [room, l] of live) io.to(room).emit('mines_state', { t: now, floor: l.floor, players: world.playersView(l.cave, l.floor), nodes: world.nodesView(now, l.cave, l.floor), mobs: world.mobsView(l.floor) });
+    for (const [room, l] of live) io.to(room).emit('mines_state', { t: now, floor: l.floor, players: world.playersView(l.cave, l.floor), nodes: world.nodesView(now, l.cave, l.floor), mobs: world.mobsView(l.floor, l.cave) });
   }, 100);
   ticker.unref?.();
 }
@@ -747,7 +747,7 @@ export function registerMines(io: Server, socket: Socket): void {
   socket.on('mines_attack', (p: unknown, ack?: Ack) => {
     try {
       const r = world.attack(socket.id, body(p).mob, Date.now());
-      if (r.killed) { const m = me(); const f = m?.floor ?? 1; const lst = world.floorMobs.get(f)?.[r.mob]; awardXp(account(), 'mining', lst ? MOBS[lst.kind].xp : 5); }
+      if (r.killed) { const m = me(); const f = m?.floor ?? 1; const lst = world.floorMobs.get(floorKey(m?.cave ?? 'mine', f))?.[r.mob]; awardXp(account(), 'mining', lst ? MOBS[lst.kind].xp : 5); }
       socket.to(roomOfM(me()!)).emit('mines_mobfx', { mob: r.mob, hp: r.hp, killed: r.killed, by: socket.id });
       ack?.({ ok: true, ...r, ...(r.loot?.length ? packMsg() : {}) });
     } catch (e) { ack?.({ ok: false, error: (e as Error).message }); }

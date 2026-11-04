@@ -15,12 +15,14 @@ import { px } from './price-index.js';
 import { setMineGearHooks } from './mines.js';
 import { ARMORS, WEAPONS, armorDef, canBuyGear, isArmor, isWeapon, weaponDef, type ArmorId, type GearView, type WeaponId } from '../shared/mineCombat.js';
 import { MAX_FLOOR } from '../shared/mineFloors.js';
+import type { CaveId } from '../shared/mines.js';
 
 export const MINE_GEAR_MIGRATION = `
 CREATE TABLE IF NOT EXISTS mine_gear (player_key TEXT NOT NULL, item_id TEXT NOT NULL, price BIGINT NOT NULL, bought_at BIGINT NOT NULL, PRIMARY KEY (player_key, item_id));
 CREATE TABLE IF NOT EXISTS mine_gear_equipped (player_key TEXT PRIMARY KEY, weapon TEXT NOT NULL, armor TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS mine_depth (player_key TEXT PRIMARY KEY, deepest INTEGER NOT NULL);
 `;
+export const depthKey = (playerKey: string, cave: CaveId) => (cave === 'mine' ? playerKey : `${playerKey}#${cave}`);
 export class MineGearError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
 type Equip = { weapon: WeaponId; armor: ArmorId };
@@ -51,10 +53,11 @@ export class MineGear {
     if (!e) return STARTER;
     return { weapon: e.weapon === STARTER.weapon || s?.has(e.weapon) ? e.weapon : STARTER.weapon, armor: e.armor === STARTER.armor || s?.has(e.armor) ? e.armor : STARTER.armor };
   }
-  deepestOf(name: string): number { return this.deepest.get(keyOf(name)) ?? 1; }
-  recordDepth(name: string, floor: number) {
-    const k = keyOf(name); const f = Math.min(MAX_FLOOR, Math.floor(floor));
-    if (f <= this.deepestOf(name)) return;
+  /** Deepest floor per cave. The Mine keeps the bare player key (back-compat); other caves store 'key#cave'. */
+  deepestOf(name: string, cave: CaveId = 'mine'): number { return this.deepest.get(depthKey(keyOf(name), cave)) ?? 1; }
+  recordDepth(name: string, floor: number, cave: CaveId = 'mine') {
+    const k = depthKey(keyOf(name), cave); const f = Math.min(MAX_FLOOR, Math.floor(floor));
+    if (f <= this.deepestOf(name, cave)) return;
     this.deepest.set(k, f);
     this.depthChain = this.depthChain.then(() => this.pool.query('INSERT INTO mine_depth (player_key, deepest) VALUES ($1,$2) ON CONFLICT (player_key) DO UPDATE SET deepest = GREATEST(mine_depth.deepest, EXCLUDED.deepest)', [k, f])).catch((e) => console.error('[mine-gear] depth save failed:', (e as Error).message));
   }
@@ -117,7 +120,7 @@ let gear: MineGear | null = null;
 export const getMineGear = () => gear;
 export function setMineGear(g: MineGear | null) {
   gear = g;
-  setMineGearHooks((a) => (gear ? gear.equippedOf(a) : STARTER), { get: (a) => (gear ? gear.deepestOf(a) : 1), record: (a, f) => gear?.recordDepth(a, f) });
+  setMineGearHooks((a) => (gear ? gear.equippedOf(a) : STARTER), { get: (a, c) => (gear ? gear.deepestOf(a, c) : 1), record: (a, f, c) => gear?.recordDepth(a, f, c) });
 }
 export async function initMineGear(): Promise<void> {
   const url = databaseUrl(); if (!url) { setBootState('mine-gear', 'memory'); return; }
