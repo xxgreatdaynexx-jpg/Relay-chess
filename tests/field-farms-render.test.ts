@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { fieldPlots, fieldPlotId } from '../shared/fieldFarms.js';
+import { fieldPlots, allFieldPlots, fieldPlotId } from '../shared/fieldFarms.js';
 import { farmPlots, plotId } from '../shared/farm.js';
 
 const src = readFileSync(new URL('../client/src/lib/world3d.ts', import.meta.url), 'utf8');
@@ -10,9 +10,9 @@ describe('countryside field farms render like the Farm district (snow map stripe
     expect(src).toMatch(/const plots = allFarmPlots\(\); const d/);
     expect(src).toMatch(/new Map\(allFarmPlots\(\)\.map\(\(p\) => \[p\.id, p\]\)\)/);
     const decl = src.match(/export const allFarmPlots = \(\) => (.*);/)![1];
-    expect(decl).toContain('fieldPlots()'); expect(decl).toContain('fieldPlotId');
+    expect(decl).toContain('allFieldPlots()'); // outskirts fields + Big Farms expect(decl).toContain('fieldPlotId');
     expect(fieldPlots().length).toBeGreaterThan(0);
-    const ids = [...farmPlots().map((p) => plotId(p.n)), ...fieldPlots().map((p) => fieldPlotId(p.n))];
+    const ids = [...farmPlots().map((p) => plotId(p.n)), ...allFieldPlots().map((p) => fieldPlotId(p.n))]; expect(allFieldPlots().length).toBe(fieldPlots().length + 8);
     expect(new Set(ids).size).toBe(ids.length);
   });
   it('the old flat green crop-row slabs for O.fields are gone', () => {

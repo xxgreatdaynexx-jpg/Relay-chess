@@ -18,7 +18,7 @@ import { cityFill, landmarks, LANDMARK_IDS, type OBB } from './worldLayout.js';
 import { HOUSING_TYPES } from './housing.js';
 import { farmPlots, farmPrice, plotId } from './farm.js';
 import { propertyPaid } from './netWorth.js';
-import { fieldPlots, fieldPlotId } from './fieldFarms.js';
+import { allFieldPlots, fieldPlotId, fieldPlotPrice, fieldPlotLabel } from './fieldFarms.js';
 import { resortLots, resortPlots, resortPlotId, resortPlotPrice } from './resort.js';
 import { countryHomes, countryBusinesses, businessType, COMMERCIAL_PRICE, COMMERCIAL_LABEL } from './outskirts.js';
 
@@ -93,7 +93,7 @@ export function properties(): Property[] {
   // Farm district (shared/farm.ts): farmland plots, priced by tile count.
   for (const f of farmPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: plotId(f.n), kind: 'farm', type: 'farmland', label: `Farm plot #${f.n} (${f.cols}×${f.rows})`, price: farmPrice(f.cols * f.rows) });
   // Countryside crop fields (shared/fieldFarms.ts): the same farm system, priced by tile count like farmland.
-  for (const f of fieldPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: fieldPlotId(f.n), kind: 'farm', type: 'farmland', label: `Countryside field #${f.n + 1} (${f.cols}×${f.rows})`, price: farmPrice(f.cols * f.rows) });
+  for (const f of allFieldPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: fieldPlotId(f.n), kind: 'farm', type: 'farmland', label: fieldPlotLabel(f), price: fieldPlotPrice(f) });
   // Countryside businesses (shared/outskirts.ts): gas stations and warehouses, fixed prices.
   for (const b of countryBusinesses()) { const t = businessType(b); out.push({ x: b.x, z: b.z, w: b.w, d: b.d, rot: b.rot, h: b.h, id: `b:${t}:${pos(b)}`, kind: 'building', type: t, label: COMMERCIAL_LABEL[t]!, price: COMMERCIAL_PRICE[t]! }); }
   // Chud Resort (shared/resort.ts): its own map, only buyable while you are there (server-enforced).

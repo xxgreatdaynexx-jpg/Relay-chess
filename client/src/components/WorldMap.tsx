@@ -321,6 +321,9 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
               <span className="world-tile-icon">{s.icon}</span><b>{s.label}</b><small>{s.blurb}</small>
             </button>
           ))}
+          <button type="button" className="world-tile" style={{ ['--c' as string]: '#c9a24a' }} onClick={() => setDeeds(true)} data-testid="world-tile-bigfarms">
+            <span className="world-tile-icon">🚜</span><b>Big Farms</b><small>8 big farms east of the east road (20×20 to 30×30)</small>
+          </button>
           <OwnedHomes2D owned={owned} onPick={(id) => setDeed(id)} />
         </div>
       )}

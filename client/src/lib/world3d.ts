@@ -9,10 +9,11 @@ import { lowDetail } from './charLook';
 import { asLabel, cityLabel, dimColor, drawLabel, fitLabel, LABEL_LAYER, LABEL_TEXT, labelMaterial, renderScene } from './labelSprite';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { skyNow, parseTod, mix as mixHex } from '../../../shared/daynight';
-import { fieldPlotId, fieldPlots } from '../../../shared/fieldFarms';
+import { fieldPlotId, allFieldPlots } from '../../../shared/fieldFarms';
+import { bigFarms, BIG_ROADS, BIG_ROAD_W, BIG_FARM_AREA } from '../../../shared/bigFarms';
 
 /** Every farm plot drawn by the farm renderer: Farm-district plots (f:<n>) and the countryside field farms (cf:<n>). */
-export const allFarmPlots = () => [...farmPlots().map((p) => ({ ...p, id: plotId(p.n) })), ...fieldPlots().map((p) => ({ ...p, id: fieldPlotId(p.n) }))];
+export const allFarmPlots = () => [...farmPlots().map((p) => ({ ...p, id: plotId(p.n) })), ...allFieldPlots().map((p) => ({ ...p, id: fieldPlotId(p.n) }))];
 import { FARM_MACHINES, buildMachine } from './farmMachines';
 import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, TILE, clampMapTarget, panInset } from '../../../shared/farm';
 import { buildVenues } from './worldVenues';
@@ -209,7 +210,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const oceanMats: THREE.ShaderMaterial[] = [];
   { const lowT = tier === 'low'; const oc = buildOcean({ x0: OCEAN.x0, x1: OCEAN.x1, z0: OCEAN.shoreZ - 6, z1: OCEAN.z1, coast: coastZ, segX: lowT ? 90 : 160, segZ: lowT ? 36 : 64 }, [COAST_WAVE[0], COAST_WAVE[1], COAST_WAVE[2], COAST_WAVE[3], OCEAN.shoreZ]);
     oc.mesh.position.y = -0.35; scene.add(oc.mesh); disposables.push(oc.geo, oc.mat); oceanMats.push(oc.mat);
-    const beach = buildBeach(OUTSKIRTS.x0 - 40, OUTSKIRTS.x1 + 40, OCEAN.beachZ, coastZ); beach.userData.noShadow = true; disposables.push(beach.geometry, beach.material as THREE.Material); scene.add(beach);
+    const beach = buildBeach(OUTSKIRTS.x0 - 40, Math.max(OUTSKIRTS.x1, BIG_FARM_AREA.x1) + 40, OCEAN.beachZ, coastZ); beach.userData.noShadow = true; disposables.push(beach.geometry, beach.material as THREE.Material); scene.add(beach);
     scene.add(buildBreakwater(BREAKWATER));
     // dune grass tufts + a few palms/umbrellas along the dry sand (instanced)
     const n = lowT ? 50 : 120; const tuft = new THREE.InstancedMesh(geo(new THREE.ConeGeometry(0.5, 1.2, 5)), mat({ color: 0x6b8f3a, roughness: 1 }), n); const m4 = new THREE.Matrix4();
@@ -664,13 +665,13 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       scene.add(im); return im; };
     const { x0, x1, z0, z1 } = OUTSKIRTS; const P = PLATE;
     // ground: same grass as the plate, a hair under it and under the farm/mine aprons (strips around the plate: no overlap)
-    const strips: Array<[number, number, number, number]> = [[x0, x1, z0, -P], [x0, x1, P, z1], [x0, -P, -P, P], [P, x1, -P, P]];
+    const strips: Array<[number, number, number, number]> = [[x0, x1, z0, -P], [x0, x1, P, z1], [x0, -P, -P, P], [P, x1, -P, P], [x1, BIG_FARM_AREA.x1 + 40, z0, z1]]; // + the Big Farms expansion east of the outskirts
     const grass = mat({ color: 0x3f9a45, roughness: 1, emissive: 0x0f3a14, emissiveIntensity: 0.6 }); const dirtSide = mat({ color: 0x4a3322 });
     for (const [a0, b0, e, f] of strips) { const m = new THREE.Mesh(geo(new THREE.BoxGeometry(b0 - a0, 3, f - e)), [dirtSide, dirtSide, XM ? keep(xmasGround(b0 - a0, f - e, tier === 'low')) : grass, dirtSide, dirtSide, dirtSide]); m.position.set((a0 + b0) / 2, -1.53, (e + f) / 2); scene.add(m); }
     // rural roads: city asphalt at the city road height, centre dashes
     // Rural + venue access roads: one asphalt (city roadMat, top flush with city roads), square-cut ends that extend
     // half a width so corners/T's close; an end on the speedway's edge is not extended (no road over the track).
-    const allRoads: Array<[[number, number], [number, number], number]> = [...RURAL_ROADS.map(([a, b]) => [a, b, RURAL_ROAD_W] as [[number, number], [number, number], number]), ...AIRPORT_ROADS, ...RACETRACK_ROADS];
+    const allRoads: Array<[[number, number], [number, number], number]> = [...RURAL_ROADS.map(([a, b]) => [a, b, RURAL_ROAD_W] as [[number, number], [number, number], number]), ...BIG_ROADS.map(([a, b]) => [a, b, BIG_ROAD_W] as [[number, number], [number, number], number]), ...AIRPORT_ROADS, ...RACETRACK_ROADS];
     const onTrackEdge = (p: [number, number]) => Math.abs(Math.hypot(Math.max(0, Math.abs(p[0] - TRACK.cx) - TRACK.L), p[1] - TRACK.cz) - TRACK.R) < TRACK.W / 2 + 0.5;
     inst(unitBox, roadMat, allRoads.length, (i) => { const [a, b, w] = allRoads[i]; const L = Math.hypot(b[0] - a[0], b[1] - a[1]); const ea = onTrackEdge(a) ? 0 : w / 2, eb = onTrackEdge(b) ? 0 : w / 2;
       const ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L; d.position.set((a[0] + b[0]) / 2 + (ux * (eb - ea)) / 2, ROAD_Y - 0.01, (a[1] + b[1]) / 2 + (uz * (eb - ea)) / 2); d.rotation.y = Math.atan2(b[0] - a[0], b[1] - a[1]); d.scale.set(w, 0.02, L + ea + eb); })!.renderOrder = 1;
@@ -767,9 +768,18 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       g.add(box(1.2, 0.8, 0.1, mat({ color: 0xffd08a, emissive: 0xffb050, emissiveIntensity: 0.7 * NEON }), 0, 3.1, -b.d / 2 - 0.05));
       g.position.set(b.x, 0, b.z); scene.add(g); }
     // mu-visuals farming machinery: tractors, a trailer, a seeder and a combine harvester parked in the yards (shared geo/mats).
+    // Big Farms: a barn, a farmhouse, a silo and parked machinery in each farm's yard (shared/bigFarms.ts).
+    for (const f of bigFarms()) { const b = f.barn, h = f.house; const g = new THREE.Group();
+      g.add(box(b.w, 4.6, b.d, mat({ color: 0x8a2a22, roughness: 0.85 }), b.x, 0, b.z));
+      const roof = new THREE.Mesh(roofGeo, mat({ color: 0x3a3a40, roughness: 0.8, flatShading: true })); roof.scale.set(b.w + 0.4, 2.4, b.d + 0.4); roof.position.set(b.x, 4.6, b.z); roof.rotation.y = Math.PI / 2; g.add(roof);
+      g.add(box(h.w, 3.2, h.d, mat({ color: 0xe8dcc4, roughness: 0.85 }), h.x, 0, h.z));
+      const hr = new THREE.Mesh(roofGeo, mat({ color: 0x5a3a2a, roughness: 0.8, flatShading: true })); hr.scale.set(h.w + 0.4, 1.8, h.d + 0.4); hr.position.set(h.x, 3.2, h.z); g.add(hr);
+      g.add(box(1.2, 0.8, 0.1, mat({ color: 0xffd08a, emissive: 0xffb050, emissiveIntensity: 0.7 * NEON }), h.x, 1.6, h.z + h.d / 2 + 0.05));
+      scene.add(g);
+      for (const m of f.machines) { const o = buildMachine(m.kind); o.position.set(m.x, 0, m.z); o.rotation.y = m.yaw; scene.add(o); } }
     for (const m of FARM_MACHINES) { const o = buildMachine(m.kind); o.position.set(m.x, 0, m.z); o.rotation.y = m.yaw; scene.add(o); }
     const siloMat = mat({ color: 0xb8bcc4, roughness: 0.5, metalness: 0.4 });
-    for (const [x, z] of SILOS) { const c = new THREE.Mesh(geo(new THREE.CylinderGeometry(1.5, 1.5, 7, 16)), siloMat); c.position.set(x, 3.5, z); const dome = new THREE.Mesh(geo(new THREE.SphereGeometry(1.5, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2)), siloMat); dome.position.set(x, 7, z); scene.add(c, dome); }
+    for (const [x, z] of [...SILOS, ...bigFarms().map((f) => f.silo)]) { const c = new THREE.Mesh(geo(new THREE.CylinderGeometry(1.5, 1.5, 7, 16)), siloMat); c.position.set(x, 3.5, z); const dome = new THREE.Mesh(geo(new THREE.SphereGeometry(1.5, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2)), siloMat); dome.position.set(x, 7, z); scene.add(c, dome); }
     { const sg = new THREE.Group(); const post = mat({ color: 0x5a4a3a }); const panel = signTexture('FARMLAND', '#9be07a', 'Chud Acres Farms'); disposables.push(panel);
       const pm = mat({ color: 0xffffff, map: panel, emissiveMap: panel, emissive: 0xffffff, emissiveIntensity: 0.45 * NEON });
       sg.add(box(0.3, 4, 0.3, post, -2.6, 0, 0), box(0.3, 4, 0.3, post, 2.6, 0, 0)); const pan = new THREE.Mesh(geo(new THREE.BoxGeometry(6, 1.8, 0.2)), pm); pan.position.set(0, 3.6, 0); sg.add(pan);
