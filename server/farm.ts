@@ -21,12 +21,16 @@ import { getMines } from './mines.js';
 import { awardXp } from './skills.js';
 import { CROPS, cropById, farmPayout, farmPlots, ripeWindow, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
 import { skillLevelAsync } from './skills.js';
+import { fertCost, fertDef, machineDef, MACHINES, passLimit, SEEDER_GROW_MUL, tileYield, type FarmStep, type MachineSet } from '../shared/farmWork.js';
 import { bonusCrops, farmingGrowMul, farmingYieldBonus } from '../shared/skillPerks.js';
-import { combinedGrowMul, fertilizerProfitMul, greenhouseWither, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradeDef, upgradePrice, type FarmUpgradeLevels } from '../shared/farmUpgrades.js';
+import { combinedGrowMul, greenhouseWither, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradeDef, upgradePrice, type FarmUpgradeLevels } from '../shared/farmUpgrades.js';
 
 export const FARM_MIGRATION = `
 CREATE TABLE IF NOT EXISTS farm_tiles (plot_id TEXT NOT NULL, tile INTEGER NOT NULL, owner_key TEXT NOT NULL, crop TEXT NOT NULL, planted_at BIGINT NOT NULL, nonce TEXT NOT NULL, PRIMARY KEY (plot_id, tile));
 CREATE TABLE IF NOT EXISTS farm_upgrades (plot_id TEXT NOT NULL, kind TEXT NOT NULL, owner_key TEXT NOT NULL, level INTEGER NOT NULL, PRIMARY KEY (plot_id, kind));
+CREATE TABLE IF NOT EXISTS farm_soil (plot_id TEXT NOT NULL, tile INTEGER NOT NULL, owner_key TEXT NOT NULL, PRIMARY KEY (plot_id, tile));
+CREATE TABLE IF NOT EXISTS farm_fert (plot_id TEXT NOT NULL, tile INTEGER NOT NULL, nonce TEXT NOT NULL, kind TEXT NOT NULL, PRIMARY KEY (plot_id, tile, nonce));
+CREATE TABLE IF NOT EXISTS farm_machines (owner_key TEXT NOT NULL, kind TEXT NOT NULL, bought_at BIGINT NOT NULL, PRIMARY KEY (owner_key, kind));
 CREATE TABLE IF NOT EXISTS farm_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
 `;
 /** Where a harvest/catch goes instead of the market (server/factory-import.ts): written in the same DB transaction. */
@@ -50,7 +54,8 @@ export class Farm {
     const prev = this.locks.get(id) ?? Promise.resolve(); const p = prev.then(fn, fn); const tail = p.catch(() => {});
     this.locks.set(id, tail); void tail.then(() => { if (this.locks.get(id) === tail) this.locks.delete(id); }); return p;
   }
-  constructor(private readonly pool: pg.Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now(), readonly rand: () => number = Math.random) {}
+  constructor(private readonly pool: pg.Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now(), readonly rand: () => number = Math.random, private readonly level: (name: string) => Promise<number> = (n) => skillLevelAsync(n, 'farming')) {}
+  private lvl = (name: string) => this.level(name).catch(() => 1);
   async init() { await this.pool.query(FARM_MIGRATION); await this.pool.query('CREATE TABLE IF NOT EXISTS kitchen_harvests (tile_key TEXT PRIMARY KEY NOT NULL, at BIGINT NOT NULL)'); }
 
   private async ownerOf(q: { query: pg.Pool['query'] } | pg.PoolClient, id: string): Promise<{ key: string; name: string } | null> {
@@ -81,6 +86,84 @@ export class Farm {
   }
   private withers = (u: FarmUpgradeLevels) => greenhouseWither(WITHER_FACTOR, u.greenhouse);
 
+  /** Machinery this player owns (one of each; works on every plot they own). */
+  async machines(name: string): Promise<MachineSet> {
+    const out: MachineSet = {};
+    for (const r of (await this.pool.query('SELECT kind FROM farm_machines WHERE owner_key = $1', [keyOf(name)])).rows as Array<{ kind: string }>) { const d = machineDef(r.kind); if (d) out[d.id] = true; }
+    return out;
+  }
+  /** Buy a machine. Chips only through the atomic wallet + ledger ('farm_machine'), in the same transaction as the
+   *  ownership row; the primary key makes a double-click buy once (the second one rolls back, ledger included). */
+  async buyMachine(name: string, kind: unknown) {
+    const d = machineDef(kind); if (!d) throw new FarmError('Unknown machine.'); const key = keyOf(name);
+    return this.lock(`m:${key}`, async () => {
+      if ((await this.machines(name))[d.id]) throw new FarmError(`You already own a ${d.label}.`);
+      const cost = px(d.price); const bank = this.bank(); await bank.refresh(name);
+      if (bank.account(name).chips < cost) throw new FarmError(`Not enough chips: a ${d.label} costs ${cost.toLocaleString('en-US')}.`);
+      await this.atomic(name, -cost, 'farm_machine', `Farm machinery: ${d.label}`, async (cl) => {
+        const has = await cl.query('SELECT 1 FROM farm_machines WHERE owner_key = $1 AND kind = $2', [key, d.id]);
+        if (has.rows.length) throw new FarmError(`You already own a ${d.label}. Nothing was charged.`);
+        await cl.query('INSERT INTO farm_machines (owner_key, kind, bought_at) VALUES ($1,$2,$3)', [key, d.id, this.clock()]);
+      });
+      return { kind: d.id, cost, chips: bank.account(name).chips };
+    });
+  }
+  private passCheck(step: FarmStep, m: MachineSet, p: NonNullable<ReturnType<typeof plotOf>>, n: number) {
+    const lim = passLimit(step, m, p.cols * p.rows); if (n <= lim) return;
+    const d = MACHINES.find((x) => x.step === step)!;
+    throw new FarmError(`By hand you can work ${lim} tiles per pass. Buy a ${d.label} to do the whole field at once.`);
+  }
+
+  /** Step 1: plough empty stubble tiles (free; by hand up to HAND_BATCH per pass, the whole field with a tractor). */
+  async plow(name: string, id: unknown, tiles: unknown) {
+    const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const list = this.tileList(p, tiles); const pid = p.pid; const key = keyOf(name);
+    this.passCheck('plow', await this.machines(name), p, list.length);
+    return this.lock(pid, async () => {
+      let plowed = 0;
+      await this.atomic(name, 0, 'farm_plow', '', async (cl) => {
+        await this.mustOwn(cl, pid, name);
+        await cl.query('DELETE FROM farm_soil WHERE plot_id = $1 AND owner_key <> $2', [pid, key]);
+        const busy = new Set((await cl.query('SELECT tile FROM farm_tiles WHERE plot_id = $1 AND owner_key = $2', [pid, key])).rows.map((r) => Number(r.tile)));
+        const done = new Set((await cl.query('SELECT tile FROM farm_soil WHERE plot_id = $1', [pid])).rows.map((r) => Number(r.tile)));
+        const todo = list.filter((t) => !busy.has(t) && !done.has(t));
+        if (!todo.length) throw new FarmError(list.some((t) => busy.has(t)) ? 'Those tiles have crops on them.' : 'Already ploughed.');
+        for (const t of todo) await cl.query('INSERT INTO farm_soil (plot_id, tile, owner_key) VALUES ($1,$2,$3) ON CONFLICT (plot_id, tile) DO NOTHING', [pid, t, key]);
+        plowed = todo.length;
+      });
+      this.onChange?.(pid); return { plowed };
+    });
+  }
+
+  /** Step 3 (optional): spread fertilizer on growing tiles. Raises the YIELD of those tiles at harvest (#27), never the price.
+   *  Paid per tile through the wallet + ledger ('farm_fertilizer'); one dose per planting. */
+  async fertilize(name: string, id: unknown, kind: unknown, tiles: unknown) {
+    const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const f = fertDef(kind); if (!f) throw new FarmError('Unknown fertilizer.');
+    const list = this.tileList(p, tiles); const pid = p.pid; const key = keyOf(name); const m = await this.machines(name);
+    this.passCheck('fertilize', m, p, list.length);
+    return this.lock(pid, async () => {
+      const now = this.clock(); const up = await this.upgrades(this.pool, pid, key);
+      const fed = new Set((await this.pool.query('SELECT tile, nonce FROM farm_fert WHERE plot_id = $1', [pid])).rows.map((r) => `${r.tile}:${r.nonce}`));
+      const rows = (await this.tiles(pid, key)).filter((r) => list.includes(Number(r.tile)) && this.toTile(r, now, this.withers(up))?.stage === 'growing' && !fed.has(`${r.tile}:${r.nonce}`));
+      if (!rows.length) throw new FarmError('Pick growing crops that have not been fertilized yet.');
+      const cost = rows.reduce((a, r) => a + px(fertCost(f, cropById(r.crop)!.sell, !!m.loader)), 0);
+      const bank = this.bank(); await bank.refresh(name);
+      if (bank.account(name).chips < cost) throw new FarmError(`Not enough chips: ${f.label} for ${rows.length} tiles costs ${cost.toLocaleString('en-US')}.`);
+      await this.atomic(name, -cost, 'farm_fertilizer', `Farm ${pid}: ${f.label} on ${rows.length} tiles`, async (cl) => {
+        await this.mustOwn(cl, pid, name);
+        for (const r of rows) {
+          const live = await cl.query('SELECT 1 FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3', [pid, r.tile, r.nonce]);
+          if (!live.rows.length) throw new FarmError('That crop is gone. Nothing was charged.');
+          const ins = await cl.query('INSERT INTO farm_fert (plot_id, tile, nonce, kind) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING', [pid, r.tile, r.nonce, f.id]);
+          if (!ins.rowCount) throw new FarmError('Already fertilized. Nothing was charged.');
+        }
+      });
+      this.onChange?.(pid); return { fertilized: rows.length, cost, chips: bank.account(name).chips };
+    });
+  }
+  private async fertOf(pid: string): Promise<Map<string, string>> {
+    return new Map(((await this.pool.query('SELECT tile, nonce, kind FROM farm_fert WHERE plot_id = $1', [pid])).rows as Array<{ tile: number; nonce: string; kind: string }>).map((r) => [`${r.tile}:${r.nonce}`, String(r.kind)]));
+  }
+
   /** Buy the next level of an upgrade on your plot. Chip sink only: debited via the atomic wallet + ledger ('farm_upgrade')
    *  in the same transaction as the level change, with an optimistic level check so a double-click buys once. */
   async buyUpgrade(name: string, id: unknown, kind: unknown) {
@@ -110,12 +193,17 @@ export class Farm {
     const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.');
     const pid = p.pid; const o = await this.ownerOf(this.pool, pid); const now = this.clock();
     const upgrades = o ? await this.upgrades(this.pool, pid, o.key) : { ...NO_UPGRADES };
-    const tiles = o ? (await this.tiles(pid, o.key)).map((r) => this.toTile(r, now, this.withers(upgrades))).filter((t): t is FarmTile => !!t) : [];
+    const fert = o ? await this.fertOf(pid) : new Map<string, string>();
+    const raw = o ? await this.tiles(pid, o.key) : [];
+    const tiles = raw.flatMap((r) => { const t = this.toTile(r, now, this.withers(upgrades)); if (!t) return []; const k = fert.get(`${r.tile}:${r.nonce}`); return [k ? { ...t, fert: k } : t]; });
     const mine = !!o && !!name && o.key === keyOf(name);
+    const plowed = o ? ((await this.pool.query('SELECT tile FROM farm_soil WHERE plot_id = $1 AND owner_key = $2 ORDER BY tile', [pid, o.key])).rows as Array<{ tile: number }>).map((r) => Number(r.tile)) : [];
+    const machines = name ? await this.machines(name) : {};
     // #33 (Jay): the viewer's real grow time and profit after Farming XP + this plot's upgrades, so the seed shop shows them.
-    const lvl = name ? await skillLevelAsync(name, 'farming').catch(() => 1) : 1;
-    const growMul = combinedGrowMul(farmingGrowMul(lvl), mine ? upgrades.sprinkler : 0), profitMul = fertilizerProfitMul(mine ? upgrades.fertilizer : 0);
-    return { id: pid, owner: o?.name ?? null, mine, cols: p.cols, rows: p.rows, tiles, now, today: mine ? await this.today(o!.key) : { gross: 0, paid: 0 }, index: priceIndex(), upgrades, farmingLevel: lvl, growMul, profitMul, yieldBonus: farmingYieldBonus(lvl) };
+    const lvl = name ? await this.lvl(name) : 1;
+    const growMul = combinedGrowMul(farmingGrowMul(lvl), mine ? upgrades.sprinkler : 0, machines.seeder ? SEEDER_GROW_MUL : 1);
+    // Farming level and the combine raise YIELD only (no price/profit multiplier any more, #27).
+    return { id: pid, owner: o?.name ?? null, mine, cols: p.cols, rows: p.rows, tiles, now, today: mine ? await this.today(o!.key) : { gross: 0, paid: 0 }, index: priceIndex(), upgrades, farmingLevel: lvl, growMul, profitMul: 1, yieldBonus: tileYield(farmingYieldBonus(lvl), null, !!machines.harvester), plowed, machines };
   }
 
   private async atomic(name: string, amount: number, game: string, memo: string, body: (cl: pg.PoolClient) => Promise<void>) {
@@ -142,7 +230,8 @@ export class Farm {
   async plant(name: string, id: unknown, cropId: unknown, tiles: unknown) {
     const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const c = cropById(cropId); if (!c) throw new FarmError('Unknown seed.');
     if (isTropical(c.id) !== p.resort) throw new FarmError(p.resort ? 'Only tropical crops grow at the resort plantation.' : 'Tropical crops only grow at Chud Resort.');
-    const list = this.tileList(p, tiles); const pid = p.pid;
+    const list = this.tileList(p, tiles); const pid = p.pid; const m = await this.machines(name);
+    this.passCheck('seed', m, p, list.length);
     return this.lock(pid, async () => {
       const cost = px(c.seed) * list.length; const bank = this.bank(); await bank.refresh(name);
       if (bank.account(name).chips < cost) throw new FarmError(`Not enough chips: ${list.length} × ${c.label} seeds cost ${cost.toLocaleString('en-US')}.`);
@@ -150,12 +239,16 @@ export class Farm {
       // Farming perk: crops grow up to 25% faster (planted_at is back-dated by the saved share of the grow time).
       // Sprinklers (farm upgrade) stack multiplicatively with it, floored at half the grow time.
       const up = await this.upgrades(this.pool, pid, keyOf(name));
-      const plantedAt = now - Math.round(c.grow * (1 - combinedGrowMul(farmingGrowMul(await skillLevelAsync(name, 'farming')), up.sprinkler)));
+      // Seed drill: even rows grow another 10% faster (same floor).
+      const plantedAt = now - Math.round(c.grow * (1 - combinedGrowMul(farmingGrowMul(await this.lvl(name)), up.sprinkler, m.seeder ? SEEDER_GROW_MUL : 1)));
       await this.atomic(name, -cost, 'farm_seed', `Farm ${pid}: planted ${list.length} ${c.label}`, async (cl) => {
         const o = await this.mustOwn(cl, pid, name);
         await cl.query('DELETE FROM farm_tiles WHERE plot_id = $1 AND owner_key <> $2', [pid, o.key]); // a previous owner's crops
         const busy = (await cl.query('SELECT tile FROM farm_tiles WHERE plot_id = $1', [pid])).rows.map((r) => Number(r.tile));
         if (list.some((t) => busy.includes(t))) throw new FarmError(list.length === 1 ? 'That tile is already planted.' : 'Some of those tiles are already planted.');
+        // Step 2 needs step 1: seeds only go into ploughed soil (the soil row is used up by the planting).
+        let soil = 0; for (const t of list) soil += (await cl.query('DELETE FROM farm_soil WHERE plot_id = $1 AND tile = $2 AND owner_key = $3', [pid, t, o.key])).rowCount ?? 0;
+        if (soil !== list.length) throw new FarmError(list.length === 1 ? 'Plough that tile first.' : 'Plough those tiles first.');
         for (const t of list) await cl.query('INSERT INTO farm_tiles (plot_id, tile, owner_key, crop, planted_at, nonce) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (plot_id, tile) DO NOTHING', [pid, t, o.key, c.id, plantedAt, nonce]);
         const r = await cl.query('SELECT tile FROM farm_tiles WHERE plot_id = $1 AND nonce = $2', [pid, nonce]);
         if (r.rows.length !== list.length) throw new FarmError(list.length === 1 ? 'That tile is already planted.' : 'Some of those tiles are already planted.');
@@ -172,13 +265,19 @@ export class Farm {
     return this.lock(`h:${keyOf(name)}`, () => this.lock(pid, async () => {
       const now = this.clock(); const key = keyOf(name);
       const up = await this.upgrades(this.pool, pid, key);
-      const ready = (await this.tiles(pid, key)).filter((r) => (!only || only.has(Number(r.tile))) && this.toTile(r, now, this.withers(up))?.stage === 'ready');
+      let ready = (await this.tiles(pid, key)).filter((r) => (!only || only.has(Number(r.tile))) && this.toTile(r, now, this.withers(up))?.stage === 'ready');
       if (!ready.length) throw new FarmError('Nothing is ready to harvest.');
+      const m = await this.machines(name);
+      // By hand a pass harvests HAND_BATCH tiles; the combine does the whole field. Factory imports (sink) are conveyor-fed and not limited.
+      if (!sink) { if (only) this.passCheck('harvest', m, p, ready.length); else ready = ready.slice(0, passLimit('harvest', m, p.cols * p.rows)); }
+      const fert = await this.fertOf(pid);
       if (pantry) return this.harvestToPantry(name, pid, key, ready, now);
       let seeds = 0, profit = 0; const counts = new Map<string, number>();
       for (const r of ready) { const c = cropById(r.crop)!; seeds += c.seed; profit += c.sell - c.seed; counts.set(c.label, (counts.get(c.label) ?? 0) + 1); }
       // Farming level bonus yield: extra crops of random harvested kinds (full sell value, no seed). Inside the daily farm tier.
-      const extra = bonusCrops(ready.length, farmingYieldBonus(await skillLevelAsync(name, 'farming').catch(() => 1)), this.rand);
+      // Yield (#27): Farming level + fertilizer on each tile + the combine add extra crops at the normal price. Nothing changes the price.
+      const lb = farmingYieldBonus(await this.lvl(name));
+      const extra = bonusCrops(1, ready.reduce((a, r) => a + tileYield(lb, fert.get(`${r.tile}:${r.nonce}`) as never, !!m.harvester), 0), this.rand);
       const bonus: typeof ready = []; for (let i = 0; i < extra; i++) bonus.push(ready[Math.floor(this.rand() * ready.length)]);
       for (const r of bonus) { const c = cropById(r.crop)!; profit += c.sell; counts.set(c.label, (counts.get(c.label) ?? 0) + 1); }
       if (sink) { // pt1252u: send the crops to your Factory storage instead of selling them (no chips, no farm tier)
@@ -186,21 +285,20 @@ export class Farm {
         await this.atomic(name, 0, 'farm_to_factory', '', async (cl) => {
           await this.mustOwn(cl, pid, name);
           let gone = 0;
-          for (const r of ready) gone += (await cl.query('DELETE FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3 AND owner_key = $4', [pid, r.tile, r.nonce, key])).rowCount ?? 0;
+          for (const r of ready) { gone += (await cl.query('DELETE FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3 AND owner_key = $4', [pid, r.tile, r.nonce, key])).rowCount ?? 0; await cl.query('DELETE FROM farm_fert WHERE plot_id = $1 AND tile = $2 AND nonce = $3', [pid, r.tile, r.nonce]); }
           if (gone !== ready.length) throw new FarmError('Already harvested.');
           await sink.write(cl, items);
         });
         sink.after(items); this.onChange?.(pid);
         return { harvested: ready.length, paid: 0, toFactory: items, chips: this.bank().account(name).chips };
       }
-      profit = Math.floor(profit * fertilizerProfitMul(up.fertilizer)); // Fertilizer: still inside the daily farm tier below
       const day = utcDay(now); const t = await this.today(key);
       const paid = Math.floor((seeds + farmPayout(profit, t.gross)) * priceIndex());
       const memo = `Farm ${pid}: harvested ${[...counts].map(([l, n]) => `${n} ${l}`).join(', ')}`.slice(0, 200);
       await this.atomic(name, paid, 'farm_harvest', memo, async (cl) => {
         await this.mustOwn(cl, pid, name);
         let gone = 0;
-        for (const r of ready) gone += (await cl.query('DELETE FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3 AND owner_key = $4', [pid, r.tile, r.nonce, key])).rowCount ?? 0;
+        for (const r of ready) { gone += (await cl.query('DELETE FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3 AND owner_key = $4', [pid, r.tile, r.nonce, key])).rowCount ?? 0; await cl.query('DELETE FROM farm_fert WHERE plot_id = $1 AND tile = $2 AND nonce = $3', [pid, r.tile, r.nonce]); }
         if (gone !== ready.length) throw new FarmError('Already harvested.');
         await cl.query('INSERT INTO farm_daily (player_key, day, gross, paid) VALUES ($1,$2,0,0) ON CONFLICT (player_key, day) DO NOTHING', [key, day]);
         const u = await cl.query('UPDATE farm_daily SET gross = gross + $3, paid = paid + $4 WHERE player_key = $1 AND day = $2 AND gross = $5', [key, day, profit, paid, t.gross]);
@@ -301,5 +399,8 @@ export function registerFarm(io: Server, socket: Socket): void {
   on('farm_plant', async (b, f) => f.plant(await at(b.id), b.id, b.crop, b.tiles));
   on('farm_harvest', async (b, f) => f.harvest(await at(b.id), b.id, b.tiles, undefined, b.pantry === true));
   on('farm_clear', async (b, f) => f.clear(await at(b.id), b.id));
+  on('farm_plow', async (b, f) => f.plow(await at(b.id), b.id, b.tiles));
+  on('farm_fertilize', async (b, f) => f.fertilize(await at(b.id), b.id, b.kind, b.tiles));
+  on('farm_machine', async (b, f) => f.buyMachine(need(), b.kind));
   on('farm_upgrade', async (b, f) => f.buyUpgrade(await at(b.id), b.id, b.kind));
 }

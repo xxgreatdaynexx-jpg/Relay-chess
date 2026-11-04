@@ -6,7 +6,7 @@
 export const SKILLS = [
   { id: 'mining', label: 'Mining', icon: '⛏️', how: 'Break ore in any mine (deeper ores give more XP). Higher levels swing faster and sometimes get double ore.' },
   { id: 'engineering', label: 'Engineering', icon: '⚙️', how: 'Bars and goods your factory produces. Higher levels craft faster.' },
-  { id: 'farming', label: 'Farming', icon: '🌾', how: 'Harvest crops on your farm. Higher levels grow crops faster.' },
+  { id: 'farming', label: 'Farming', icon: '🌾', how: 'Harvest crops on your farm. Higher levels grow crops faster and yield more crops (never a better price).' },
   { id: 'racing', label: 'Racing', icon: '🏁', how: 'Complete laps at the Speedway (personal bests give a bonus). Higher levels get a Daily Cup entry discount.' },
   { id: 'combat', label: 'Combat', icon: '⚔️', how: 'Arena kills, finishing matches and winning them. Higher levels take a little less damage.' },
   { id: 'trading', label: 'Trading', icon: '📈', how: 'Stock, options and Market trades. Higher levels pay lower stock and Market fees.' },
