@@ -11,28 +11,65 @@ import { MOBS, type MobKind } from '../../../shared/mineCombat';
 
 export interface MobView { id: number; k: MobKind; x: number; y: number; a: number; hp: number; max: number }
 interface MobRig { root: THREE.Group; body: THREE.Object3D; wings?: THREE.Object3D[]; bar: THREE.Sprite; barBg: THREE.Sprite; hurt: number; kind: MobKind; hp: number; t: number }
+const MG = new Map<string, THREE.BufferGeometry>();
+const mg = <T extends THREE.BufferGeometry>(k: string, f: () => T): T => { let g = MG.get(k); if (!g) { g = f(); MG.set(k, g); } return g as T; };
+/** Bat wing: scalloped membrane spanning from the body outwards (+z), finger bones along the leading edge. */
+const batWingG = () => mg('batwing', () => { const s = new THREE.Shape(); s.moveTo(0, 0.08); s.lineTo(0.55, 0.12); s.quadraticCurveTo(0.42, -0.02, 0.5, -0.16); s.quadraticCurveTo(0.33, -0.08, 0.3, -0.2); s.quadraticCurveTo(0.18, -0.1, 0.1, -0.18); s.lineTo(0, -0.08); s.closePath(); const g = new THREE.ShapeGeometry(s); g.rotateX(-Math.PI / 2); g.rotateY(Math.PI / 2); return g; });
 function buildMob(kind: MobKind): MobRig {
   const d = MOBS[kind]; const root = new THREE.Group(); const col = new THREE.Color(d.color);
-  const mat = new THREE.MeshStandardMaterial({ color: col, roughness: 0.6, emissive: kind === 'golem' || kind === 'wraith' ? col : '#000', emissiveIntensity: kind === 'wraith' ? 0.6 : 0.35, transparent: kind === 'slime' || kind === 'wraith', opacity: kind === 'wraith' ? 0.75 : kind === 'slime' ? 0.85 : 1 });
+  const mat = new THREE.MeshStandardMaterial({ color: col, roughness: kind === 'slime' ? 0.15 : 0.6, metalness: kind === 'crab' ? 0.25 : 0, emissive: kind === 'golem' || kind === 'wraith' ? col : '#000', emissiveIntensity: kind === 'wraith' ? 0.6 : 0.35, transparent: kind === 'slime' || kind === 'wraith', opacity: kind === 'wraith' ? 0.75 : kind === 'slime' ? 0.78 : 1, flatShading: kind === 'golem' || kind === 'crab' });
+  const dark = new THREE.MeshStandardMaterial({ color: col.clone().multiplyScalar(0.45), roughness: 0.8, emissive: '#000' });
   const eyeMat = new THREE.MeshBasicMaterial({ color: kind === 'wraith' ? '#ffffff' : kind === 'golem' ? '#ffe070' : '#ff3030' });
   const body = new THREE.Group(); let wings: THREE.Object3D[] | undefined;
-  const eyes = (z: number, y: number, sp: number, r = 0.06) => { for (const s of [-1, 1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), eyeMat); e.position.set(z, y, s * sp); body.add(e); } };
-  if (kind === 'slime') { const b = new THREE.Mesh(new THREE.SphereGeometry(0.45, 16, 12), mat); b.scale.set(1, 0.75, 1); b.position.y = 0.34; body.add(b); eyes(0.36, 0.45, 0.14); }
-  else if (kind === 'bat') {
-    const b = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 10), mat); body.add(b); eyes(0.18, 0.05, 0.08, 0.04);
-    wings = [-1, 1].map((s) => { const w = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.55), new THREE.MeshStandardMaterial({ color: '#2a2030', side: THREE.DoubleSide })); w.rotation.x = Math.PI / 2; w.position.set(0, 0, s * 0.35); body.add(w); return w; });
+  const M = (g: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number, p?: THREE.Object3D) => { const o = new THREE.Mesh(g, m); o.position.set(x, y, z); (p ?? body).add(o); return o; };
+  const eyes = (z: number, y: number, sp: number, r = 0.06) => { for (const s of [-1, 1]) M(mg('eye' + r, () => new THREE.SphereGeometry(r, 8, 6)), eyeMat, z, y, s * sp); };
+  if (kind === 'slime') {
+    const b = M(mg('slime', () => { const g = new THREE.SphereGeometry(0.45, 20, 14); const p = g.attributes.position as THREE.BufferAttribute; for (let i = 0; i < p.count; i++) { const y = p.getY(i); if (y < -0.1) p.setY(i, -0.1 - (y + 0.1) * 0.25); p.setX(i, p.getX(i) * (1 + Math.max(0, -y) * 0.5)); p.setZ(i, p.getZ(i) * (1 + Math.max(0, -y) * 0.5)); } g.computeVertexNormals(); return g; }), mat, 0, 0.36, 0); b.scale.set(1, 0.78, 1);
+    const core = M(mg('core', () => new THREE.IcosahedronGeometry(0.15, 0)), new THREE.MeshStandardMaterial({ color: col.clone().multiplyScalar(0.5), emissive: col, emissiveIntensity: 0.5, flatShading: true }), -0.05, 0.3, 0); core.rotation.set(0.5, 0.3, 0);
+    for (let i = 0; i < 4; i++) M(mg('drip', () => new THREE.SphereGeometry(0.07, 8, 6)), mat, Math.cos(i * 1.7) * 0.42, 0.04, Math.sin(i * 1.7) * 0.42).scale.set(1.4, 0.45, 1.4);
+    M(mg('shine', () => new THREE.SphereGeometry(0.08, 8, 6)), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.6 }), 0.15, 0.58, -0.16).scale.set(1, 0.5, 1.6);
+    eyes(0.36, 0.45, 0.14); const mouth = M(mg('mouth', () => new THREE.TorusGeometry(0.08, 0.018, 6, 12, Math.PI)), new THREE.MeshBasicMaterial({ color: '#103010' }), 0.4, 0.34, 0); mouth.rotation.set(0, Math.PI / 2, Math.PI);
+  } else if (kind === 'bat') {
+    const b = M(mg('batb', () => new THREE.SphereGeometry(0.2, 12, 10)), mat, 0, 0, 0); b.scale.set(1.15, 1, 0.9);
+    const head = M(mg('bath', () => new THREE.SphereGeometry(0.13, 12, 10)), mat, 0.2, 0.08, 0);
+    for (const s of [-1, 1]) { const e = M(mg('ear', () => new THREE.ConeGeometry(0.05, 0.16, 6)), mat, 0.18, 0.24, s * 0.07); e.rotation.x = s * 0.3;
+      const f = M(mg('fang', () => new THREE.ConeGeometry(0.012, 0.05, 4)), new THREE.MeshBasicMaterial({ color: '#f4f0e0' }), 0.31, 0.0, s * 0.03); f.rotation.z = Math.PI; }
+    void head; eyes(0.31, 0.11, 0.05, 0.03);
+    const memb = new THREE.MeshStandardMaterial({ color: '#2a2030', side: THREE.DoubleSide, roughness: 0.9, emissive: '#000' }); const bone = new THREE.MeshStandardMaterial({ color: '#1a1420', emissive: '#000' });
+    wings = [-1, 1].map((s) => { const w = new THREE.Group(); w.position.set(0, 0.04, s * 0.12); const m = new THREE.Mesh(batWingG(), memb); m.scale.z = s; w.add(m);
+      const bn = new THREE.Mesh(mg('bone', () => new THREE.CylinderGeometry(0.012, 0.012, 0.55, 5)), bone); bn.rotation.x = Math.PI / 2; bn.position.set(0.1, 0.01, s * 0.27); w.add(bn); body.add(w); return w; });
+    for (const s of [-1, 1]) M(mg('batleg', () => new THREE.CylinderGeometry(0.01, 0.01, 0.14, 4)), bone, -0.12, -0.2, s * 0.05);
     body.position.y = MOBS.bat.z;
   } else if (kind === 'crab') {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.4, 0.9), mat); b.position.y = 0.35; body.add(b); eyes(0.42, 0.62, 0.15, 0.07);
-    for (const s of [-1, 1]) { const c = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.18, 0.18), mat); c.position.set(0.5, 0.35, s * 0.42); body.add(c); for (let i = 0; i < 3; i++) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.3, 0.06), mat); l.position.set(-0.25 + i * 0.25, 0.12, s * 0.48); body.add(l); } }
+    const shell = M(mg('crabshell', () => { const g = new THREE.SphereGeometry(0.5, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2); g.scale(0.9, 0.55, 1.05); return g; }), mat, 0, 0.3, 0);
+    for (let i = 0; i < 5; i++) { const k = M(mg('knob', () => new THREE.DodecahedronGeometry(0.09, 0)), dark, -0.25 + (i % 3) * 0.2, 0.52 + (i % 2) * 0.03, (i - 2) * 0.16); k.rotation.y = i; void shell; }
+    M(mg('belly', () => new THREE.CylinderGeometry(0.42, 0.36, 0.14, 12)), dark, 0, 0.26, 0).scale.set(1, 1, 1.15);
+    for (const s of [-1, 1]) { const st = M(mg('stalk', () => new THREE.CylinderGeometry(0.025, 0.025, 0.22, 5)), dark, 0.36, 0.5, s * 0.12); st.rotation.z = -0.3; }
+    eyes(0.42, 0.62, 0.12, 0.05);
+    for (const s of [-1, 1]) {
+      const arm = M(mg('carm', () => new THREE.CylinderGeometry(0.06, 0.07, 0.36, 6)), mat, 0.46, 0.32, s * 0.4); arm.rotation.set(s * 0.6, 0, -1.2);
+      const claw = M(mg('claw', () => { const g = new THREE.SphereGeometry(0.17, 10, 8); g.scale(1.4, 0.75, 0.8); return g; }), mat, 0.72, 0.36, s * 0.5);
+      const pin = M(mg('pin', () => new THREE.ConeGeometry(0.06, 0.26, 6)), dark, 0.92, 0.42, s * 0.5); pin.rotation.z = -Math.PI / 2 - 0.3; void claw;
+      for (let i = 0; i < 3; i++) { const up = M(mg('legu', () => new THREE.CylinderGeometry(0.035, 0.03, 0.3, 5)), mat, -0.25 + i * 0.22, 0.3, s * 0.5); up.rotation.x = s * 1.0;
+        const lo = M(mg('legl', () => new THREE.ConeGeometry(0.03, 0.34, 5)), dark, -0.25 + i * 0.22, 0.12, s * 0.68); lo.rotation.x = Math.PI - s * 0.35; }
+    }
   } else if (kind === 'golem') {
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.9, 1.0), mat); torso.position.y = 1.1; body.add(torso);
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.45, 0.5), mat); head.position.y = 1.8; body.add(head);
-    for (const s of [-1, 1]) { const arm = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.9, 0.3), mat); arm.position.set(0, 1.0, s * 0.68); body.add(arm); const leg = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.65, 0.32), mat); leg.position.set(0, 0.33, s * 0.25); body.add(leg); }
-    const e = new THREE.Group(); body.add(e); for (const s of [-1, 1]) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), eyeMat); m.position.set(0.26, 1.85, s * 0.12); body.add(m); }
+    const lava = new THREE.MeshBasicMaterial({ color: '#ffb040' });
+    const rock = (k: string, r: number, x: number, y: number, z: number, sx = 1, sy = 1, sz = 1) => { const o = M(mg('gr' + k, () => new THREE.DodecahedronGeometry(r, 0)), mat, x, y, z); o.scale.set(sx, sy, sz); o.rotation.set(x * 3, y * 2, z * 5); return o; };
+    rock('t', 0.55, 0, 1.15, 0, 1, 1.05, 1.15); M(mg('gcore', () => new THREE.SphereGeometry(0.24, 10, 8)), lava, 0.36, 1.2, 0).scale.set(0.5, 1, 1);
+    for (let i = 0; i < 4; i++) M(mg('crack', () => new THREE.BoxGeometry(0.02, 0.32, 0.05)), lava, 0.5, 0.95 + i * 0.14, -0.3 + i * 0.2).rotation.x = 0.5 * (i - 1.5);
+    rock('h', 0.3, 0.05, 1.85, 0, 1, 0.9, 1); rock('s1', 0.26, 0, 1.55, 0.55); rock('s2', 0.26, 0, 1.55, -0.55);
+    for (const s of [-1, 1]) { rock('a' + s, 0.2, 0.05, 1.15, s * 0.74, 1, 1.6, 1); rock('f' + s, 0.24, 0.12, 0.7, s * 0.78); rock('l' + s, 0.22, 0, 0.4, s * 0.27, 1, 1.6, 1); rock('k' + s, 0.2, 0.06, 0.12, s * 0.27, 1.3, 0.6, 1); }
+    for (const s of [-1, 1]) M(mg('eyeg', () => new THREE.SphereGeometry(0.06, 8, 6)), eyeMat, 0.3, 1.88, s * 0.12);
   } else {
-    const b = new THREE.Mesh(new THREE.ConeGeometry(0.42, 1.5, 12, 1, true), mat); b.rotation.x = Math.PI; b.position.y = 1.15; body.add(b);
-    const h = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 10), mat); h.position.y = 1.95; body.add(h); eyes(0.24, 1.98, 0.1, 0.05);
+    const robe = M(mg('robe', () => { const g = new THREE.ConeGeometry(0.48, 1.55, 16, 4, true); const p = g.attributes.position as THREE.BufferAttribute; for (let i = 0; i < p.count; i++) if (p.getY(i) < -0.7) p.setY(i, p.getY(i) + Math.abs(Math.sin(i * 2.3)) * 0.22); g.computeVertexNormals(); return g; }), mat, 0, 1.15, 0); robe.rotation.x = Math.PI;
+    (mat as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
+    const hood = M(mg('hood', () => new THREE.SphereGeometry(0.33, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.62)), mat, 0, 1.96, 0); hood.rotation.z = -0.25;
+    M(mg('void', () => new THREE.SphereGeometry(0.24, 10, 8)), new THREE.MeshBasicMaterial({ color: '#05020c' }), 0.1, 1.92, 0);
+    eyes(0.3, 1.96, 0.08, 0.045);
+    for (const s of [-1, 1]) { const arm = M(mg('warm', () => new THREE.ConeGeometry(0.1, 0.7, 8, 1, true)), mat, 0.18, 1.45, s * 0.4); arm.rotation.set(s * 0.5, 0, 1.2);
+      for (let f = 0; f < 3; f++) { const c = M(mg('wclaw', () => new THREE.ConeGeometry(0.015, 0.16, 4)), eyeMat, 0.5, 1.32 - f * 0.03, s * (0.52 + f * 0.03)); c.rotation.z = -1.9; } }
+    const glow = new THREE.Mesh(mg('wglow', () => new THREE.SphereGeometry(0.6, 12, 8)), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.12, depthWrite: false, blending: THREE.AdditiveBlending })); glow.position.y = 1.3; glow.scale.set(1, 1.6, 1); body.add(glow);
   }
   root.add(body);
   const bg = new THREE.Sprite(new THREE.SpriteMaterial({ color: '#200a0a', depthWrite: false, fog: false })); const bar = new THREE.Sprite(new THREE.SpriteMaterial({ color: '#ff4040', depthWrite: false, fog: false }));
@@ -337,7 +374,7 @@ export class Mines3D {
     for (const r of this.mobs.values()) {
       r.t += dt;
       if (r.kind === 'slime') { const s = 1 + Math.sin(r.t * 5) * 0.12; r.body.scale.set(1 / s, s, 1 / s); }
-      else if (r.kind === 'bat') { r.body.position.y = MOBS.bat.z + Math.sin(r.t * 3) * 0.2; r.wings?.forEach((w, i) => { w.rotation.x = Math.PI / 2 + (i ? 1 : -1) * Math.sin(now * 18) * 0.7; }); }
+      else if (r.kind === 'bat') { r.body.position.y = MOBS.bat.z + Math.sin(r.t * 3) * 0.2; r.wings?.forEach((w, i) => { w.rotation.x = (i ? 1 : -1) * Math.sin(now * 18) * 0.7; }); }
       else if (r.kind === 'wraith') r.body.position.y = Math.sin(r.t * 2) * 0.15;
       else if (r.kind === 'golem') r.body.rotation.z = Math.sin(r.t * 3) * 0.04;
       r.hurt = Math.max(0, r.hurt - dt);
