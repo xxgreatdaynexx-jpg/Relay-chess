@@ -102,6 +102,10 @@ const ORE_ICONS: Record<string, () => string> = {
   gem: () => crystals('#b04df0'),
   diamond: () => diamond('#7ff3ff'),
   opal: () => rock('#4a3a3a', '#ff6a3a') + C(9, 13, 1.6, '#ffd24a', 0.4) + C(14.5, 11, 1.2, '#3fd0c0', 0.4) + glint(16, 8, 0.7),
+  oilsand: () => rock('#3b2f22', '#120c08') + glint(15, 9, 0.7),
+  shale: () => R(4, 8, 16, 3, '#6a767c', 0.8) + R(5, 12, 14, 3, '#55606a', 0.8) + R(4, 16, 15, 3, '#7a868c', 0.8),
+  tarrock: () => rock('#1c1714', '#3a2c20') + E(12, 19, 2, 1.3, '#0c0806', 0) + glint(10, 9, 0.8),
+  condensate: () => crystals('#b48aff'),
   pearl: () => E(12, 13, 6.4, 6.4, '#e8f0ff') + E(10, 11, 2.4, 2, '#ffffff', 0) + E(14, 15.5, 2, 1.4, '#c8b8e8', 0) + glint(16.5, 8.5, 0.8),
 };
 

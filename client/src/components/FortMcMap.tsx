@@ -1,7 +1,7 @@
 import { useDoing } from '@/lib/doing';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { turbineStatus, FORT_SPOTS, MINE_LEVELS, PIPES, PRODUCTS, PRODUCT_ORDER, PUMPJACK_COST, SELL_TIERS, SURVEY_COST, TRACTS, UNITS, UNIT_ORDER, WELLS_PER_TRACT, WELL_COST, ORE_VALUE_PER_UNIT, tractInfo, whole, type FortState, type Product } from '../../../shared/fortmc';
-import { ORES, type OreId } from '../../../shared/mines';
+import { turbineStatus, FORT_FEED, FORT_SPOTS, MINE_LEVELS, PIPES, PRODUCTS, PRODUCT_ORDER, PUMPJACK_COST, SELL_TIERS, SURVEY_COST, TRACTS, UNITS, UNIT_ORDER, WELLS_PER_TRACT, WELL_COST, ORE_VALUE_PER_UNIT, tractInfo, whole, type FortState, type Product } from '../../../shared/fortmc';
+import { ORES, MINE_CAVE_EVENT, type OreId } from '../../../shared/mines';
 import { indexed } from '../../../shared/priceIndex';
 import type { FortWorld } from '@/lib/fortmc3d';
 import { importWithReload } from '@/lib/chunkReload';
@@ -12,8 +12,8 @@ import { BuildingInventory } from './BuildingInventory';
 import { MODES, MODE_IDS, type Mode } from '../../../shared/logistics';
 
 const chips = (n: number) => Math.floor(n).toLocaleString('en-US');
-type View = { fort: FortState; index: number; today: { gross: number; paid: number }; cap: number; demand: number; value: number };
-type Panel = 'tracts' | 'plant' | 'exchange' | 'mine' | 'airport' | null;
+type View = { fort: FortState; index: number; today: { gross: number; paid: number }; cap: number; demand: number; value: number; haul?: Record<string, number> };
+type Panel = 'tracts' | 'plant' | 'exchange' | 'mine' | 'shaft' | 'airport' | null;
 const pct = (n: number) => `${Math.round(n)}%`;
 const condCls = (c: number) => (c < 15 ? 'bad' : c < 60 ? 'warn' : 'ok');
 
@@ -48,7 +48,7 @@ export function FortMcMap() {
         onHover: (id, x, y) => setTip(id ? { id, x, y } : null),
         onPick: (id) => {
           if (id.startsWith('t:')) { setTract(Number(id.slice(2))); setPanel('tracts'); return; }
-          setPanel(({ 'f-plant': 'plant', 'f-exchange': 'exchange', 'f-mine': 'mine', 'f-airport': 'airport' } as Record<string, Panel>)[id] ?? null);
+          setPanel(({ 'f-plant': 'plant', 'f-exchange': 'exchange', 'f-mine': 'mine', 'f-shaft': 'shaft', 'f-airport': 'airport' } as Record<string, Panel>)[id] ?? null);
         },
       });
       const w = worldRef.current;
@@ -127,6 +127,19 @@ export function FortMcMap() {
             {(s.mine?.level ?? 0) < MINE_LEVELS.length && <button type="button" disabled={busy} onClick={() => void act({ op: 'mine' }, 'Mine construction complete.')} data-testid="fort-mine-build">{s.mine ? `⬆ Expand to level ${s.mine.level + 1}` : '⛏ Build the Deep Ore Mine'} · 🪙 {chips(px(MINE_LEVELS[s.mine?.level ?? 0]!.cost))}</button>}
             {s.mine && <button type="button" disabled={busy} onClick={() => void act({ op: 'mine_toggle' })}>{s.mine.on ? '⏸ Stop' : '▶ Run'}</button>}
             {s.mine && <button type="button" disabled={busy} onClick={() => void act({ op: 'repair', what: 'mine' }, 'Mine repaired.')}>🔧 Repair the mine</button>}
+          </>}
+          {panel === 'shaft' && <>
+            <h3>🪨 Fort McChud Mine</h3>
+            <small>A walk-in oil-sands shaft: 40 floors with an elevator, creatures that get tougher deeper, and a weapon store. Dig Oil Sand, Gas Shale, Tar Rock and Condensate Geodes, bank them at the lift, then unload them here: they feed your plant.</small>
+            <button type="button" onClick={() => window.dispatchEvent(new CustomEvent(MINE_CAVE_EVENT, { detail: 'fortmc' }))} data-testid="fort-shaft-enter">⛏ Walk into the mine</button>
+            {(() => {
+              const rows = Object.entries(view?.haul ?? {}).filter(([, q]) => q > 0).map(([k, q]) => { const id = k.split(':')[1] as OreId; const f = FORT_FEED[id]; return { k, q, name: ORES[id]?.name ?? id, to: f ? `${whole(q * f[1])} ${PRODUCTS[f[0]].name}` : 'ore bin' }; });
+              return rows.length ? <>
+                <small>At the lift: {rows.map((r) => <span key={r.k} className="fort-haul-row"><b>{r.q}</b> {r.name} → {r.to}<br /></span>)}</small>
+                <button type="button" disabled={busy} onClick={() => void act({ op: 'unload' }, 'Haul unloaded into the plant.')} data-testid="fort-shaft-unload">🚛 Unload mine haul into the plant</button>
+              </> : <small>Nothing waiting at the lift.</small>;
+            })()}
+            <small>Oil Sand → Crude oil (refinery) · Gas Shale → 2 Raw gas (gas plant) · Tar Rock → 2 Heavy residue (coker) · Condensate Geode → 2 NGL (steam cracker). Coal, iron, copper and the rest go to the ore bin.</small>
           </>}
           {panel === 'airport' && <>
             <h3>✈️ Fort McChud Airport (YMC)</h3>

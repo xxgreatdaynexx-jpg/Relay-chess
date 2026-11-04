@@ -377,6 +377,8 @@ export class MinesWorld {
   /** Millionaire Update: Coral Grotto (resort) hauls bank into the grotto's own building inventory, not the Chud City
    * Warehouse (server/warehouse.ts sets this; it returns the SQL rows that land in the same transaction). */
   coralBin: ((account: string, stacks: Stack[]) => Array<{ sql: string; args: unknown[] }>) | null = null;
+  /** Fort McChud Mine hauls bank into the fort's mine bin (unloaded into the plant with the fort 'unload' op). */
+  fortBin: ((account: string, stacks: Stack[]) => Array<{ sql: string; args: unknown[] }>) | null = null;
   exit(id: string): { banked: Stack[]; worth: number; bin?: string } {
     const m = this.miners.get(id); if (!m) throw new MineError('Join the mine first.');
     if (m.restoring) throw new MineError('Loading your backpack...');
@@ -385,7 +387,8 @@ export class MinesWorld {
     if (m.account) this.lastCave.set(playerKey(m.account), m.cave); // royalties: ore is credited to the cave it was hauled out of
     const p = this.pack(this.packKey(m));
     m.carried.clear();
-    const bin = m.cave === 'coral' && m.account && this.coralBin ? this.coralBin(m.account, banked) : null;
+    const binHook = m.cave === 'coral' ? this.coralBin : m.cave === 'fortmc' ? this.fortBin : null;
+    const bin = m.account && binHook ? binHook(m.account, banked) : null;
     if (!bin) for (const s of banked) { const k = stackKey(s); const cur = p.get(k); if (cur) cur.qty += s.qty; else p.set(k, { ...s }); }
     if (m.account) { const k = playerKey(m.account); const t = this.carryTimers.get(k); if (t) { clearTimeout(t); this.carryTimers.delete(k); } }
     // Banked stacks and the cleared carry row commit in one transaction: no duplicate or lost haul across a restart.
@@ -396,7 +399,7 @@ export class MinesWorld {
       { sql: 'INSERT INTO mine_banks (player_key, owner_name, ore_qty, worth, at) VALUES ($1,$2,$3,$4,$5)', args: [playerKey(m.account), m.account, ore, worth, Date.now()] },
       ...(bin ?? []),
     ] : undefined);
-    return bin ? { banked, worth, bin: 'coral' } : { banked, worth };
+    return bin ? { banked, worth, bin: m.cave } : { banked, worth };
   }
 
   /** Reuses Arena's movement validator (speed cap with carry, collision). Returns true if the client should be corrected. */
@@ -692,6 +695,7 @@ export function registerMines(io: Server, socket: Socket): void {
     let m = me();
     const want = caveOf(body(p).cave).id;
     if (want === 'coral' && !isAtResort(account())) return ack?.({ ok: false, error: 'The Coral Grotto is at Chud Resort. Fly there from Chud Hub International.' });
+    if (want === 'fortmc' && !isAtFortMc(account())) return ack?.({ ok: false, error: 'The Fort McChud Mine is in Fort McChud. Fly there from Chud Hub International.' });
     if (m && !m.account && account()) { const room = roomOfM(m); world.leave(socket.id); void socket.leave(room); m = undefined; } // signed in after joining as a guest: rejoin as the account so the saved haul loads
     if (m && m.cave !== want) {
       // Switching caves on the same socket (or a join that beat the old leave): move to the new cave's spawn.

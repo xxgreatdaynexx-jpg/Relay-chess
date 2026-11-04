@@ -7,7 +7,7 @@ import { foodInfo } from './cooking.js';
 
 /** 'food' = cooking ingredients (groceries + crops harvested to the pantry): Market-tradeable, never house-sold. */
 export type ItemType = 'ore' | 'bar' | 'good' | 'food';
-export type OreId = 'stone' | 'coal' | 'copper' | 'iron' | 'silver' | 'gold' | 'gem' | 'diamond' | 'opal' | 'pearl';
+export type OreId = 'stone' | 'coal' | 'copper' | 'iron' | 'silver' | 'gold' | 'gem' | 'diamond' | 'opal' | 'pearl' | 'oilsand' | 'shale' | 'tarrock' | 'condensate';
 export interface OreDef { id: OreId; name: string; hits: number; respawnMs: number; /** house price per unit, in chips (fractional: stone is 1 chip per 10) */ price: number; color: string; weight: number; minDepth: number; spawnWeight: number; /** resort-only (#10d): spawns only in caves whose bias lists it */ exclusive?: boolean }
 
 export const ORES: Record<OreId, OreDef> = {
@@ -21,8 +21,13 @@ export const ORES: Record<OreId, OreDef> = {
   diamond: { id: 'diamond', name: 'Diamond',    hits: 12, respawnMs: 4_800_000, price: 150, color: '#7ff3ff', weight: 1, minDepth: 3, spawnWeight: 0.6 },
   opal:    { id: 'opal',    name: 'Fire Opal',     hits: 10, respawnMs: 3_600_000, price: 60, color: '#ff6a3a', weight: 1, minDepth: 1, spawnWeight: 1.6, exclusive: true },
   pearl:   { id: 'pearl',   name: 'Abyssal Pearl', hits: 11, respawnMs: 4_200_000, price: 90, color: '#e8f0ff', weight: 1, minDepth: 2, spawnWeight: 1, exclusive: true },
+  // Fort McChud Mine only (Nov 4): industrial ores. Unloaded at the fort they become plant feedstock (FORT_FEED, shared/fortmc.ts).
+  oilsand:    { id: 'oilsand',    name: 'Oil Sand',       hits: 4, respawnMs: 400_000,   price: 5, color: '#3b2f22', weight: 1, minDepth: 0, spawnWeight: 14, exclusive: true },
+  shale:      { id: 'shale',      name: 'Gas Shale',      hits: 5, respawnMs: 600_000,   price: 3, color: '#5f6b70', weight: 1, minDepth: 0, spawnWeight: 10, exclusive: true },
+  tarrock:    { id: 'tarrock',    name: 'Tar Rock',       hits: 6, respawnMs: 900_000,   price: 4, color: '#1c1714', weight: 1, minDepth: 1, spawnWeight: 6, exclusive: true },
+  condensate: { id: 'condensate', name: 'Condensate Geode', hits: 9, respawnMs: 2_400_000, price: 12, color: '#b48aff', weight: 1, minDepth: 2, spawnWeight: 2, exclusive: true },
 };
-export const ORE_ORDER: OreId[] = ['stone', 'coal', 'copper', 'iron', 'silver', 'gold', 'gem', 'diamond', 'opal', 'pearl'];
+export const ORE_ORDER: OreId[] = ['stone', 'coal', 'copper', 'iron', 'silver', 'gold', 'gem', 'diamond', 'opal', 'pearl', 'oilsand', 'shale', 'tarrock', 'condensate'];
 export const isOre = (v: unknown): v is OreId => typeof v === 'string' && v in ORES;
 
 // ---- mining rules (server-checked)
@@ -96,7 +101,7 @@ export function oreFor(depth: number, r: number, bias: Partial<Record<OreId, num
 
 // ---- caves (pt1201u): three mines on the city outskirts, one engine. Same spawn pocket / EXIT lift in each,
 // different layout, ore mix and look. '~' is a hazard (lava pool / ice pillar): impassable, rendered per theme.
-export type CaveId = 'mine' | 'frost' | 'magma' | 'coral';
+export type CaveId = 'mine' | 'frost' | 'magma' | 'coral' | 'fortmc';
 export interface CaveTheme { sky: string; fog: string; ambient: string; wall: string; floor: string; lamp: string; hazard: 'lava' | 'ice' | null }
 export interface CaveDef { id: CaveId; name: string; blurb: string; rows: string[]; depthX: number[]; bias: Partial<Record<OreId, number>>; /** signature ores allowed from the first section on (ignore minDepth) */ anyDepth?: OreId[]; density: number; theme: CaveTheme }
 export const CAVE_DEFS: CaveDef[] = [
@@ -155,10 +160,29 @@ export const CAVE_DEFS: CaveDef[] = [
       '#####.......~~......~................####...######',
       '##################################################',
     ] },
+  // Fort McChud only (server-gated on location): an oil-sands shaft under the boomtown. Steel-braced drifts, pipe
+  // runs '~' as the hazard. Industrial ores (oil sand, gas shale, tar rock, condensate) feed the fort's plant.
+  { id: 'fortmc', name: 'Fort McChud Mine', blurb: 'An oil-sands shaft under the boomtown. Oil Sand, Gas Shale, Tar Rock and Condensate Geodes (unload them at the fort to feed your refinery, gas plant, coker and steam cracker), plus Coal, Iron and Copper Ore.', depthX: [0, 12, 24, 36], density: 0.44,
+    bias: { stone: 0.8, coal: 1.2, copper: 0.7, iron: 1.1, silver: 0.3, gold: 0.15, gem: 0.2, oilsand: 1.4, shale: 1.3, tarrock: 1.2, condensate: 1.1 },
+    theme: { sky: '#0c0a06', fog: '#17130c', ambient: '#b0a080', wall: '#6a5a44', floor: '#3e3428', lamp: '#ffd040', hazard: 'lava' },
+    rows: [
+      '##################################################',
+      '####......####.............####.......####...#####',
+      '#SS.................~..........................###',
+      '#S......####...........####..............##.....##',
+      '#SS.....####...........####..............##.....##',
+      '####...............##...............####.....~..##',
+      '#####..............##...........................##',
+      '####.....####.............####.......####.......##',
+      '###......####.............####..................##',
+      '###...............####...................####..###',
+      '####..............####.........................###',
+      '##################################################',
+    ] },
 ];
 /** window event (detail = CaveId) the world map fires to open a given mine. */
 export const MINE_CAVE_EVENT = 'relay-mine-cave';
-export const isCave = (v: unknown): v is CaveId => v === 'mine' || v === 'frost' || v === 'magma' || v === 'coral';
+export const isCave = (v: unknown): v is CaveId => v === 'mine' || v === 'frost' || v === 'magma' || v === 'coral' || v === 'fortmc';
 
 /** Exported for the floor generator (shared/mineFloors.ts). `seed` shifts the node hash so generated floors don't repeat. */
 export function buildCave(def: CaveDef, seed0 = 0): { map: ArenaMap; nodes: MineNode[] } {
@@ -195,7 +219,7 @@ export function buildCave(def: CaveDef, seed0 = 0): { map: ArenaMap; nodes: Mine
 }
 
 /** Each cave's main ores, by the names players see (pt1357u): mine picker, map tiles, job list. */
-export const CAVE_MAIN_ORES: Record<CaveId, string> = { mine: 'Iron Ore, Stone & Gold Ore', frost: 'Silver Ore & Crystal', magma: 'Coal & Copper Ore', coral: 'Mixed ores' };
+export const CAVE_MAIN_ORES: Record<CaveId, string> = { mine: 'Iron Ore, Stone & Gold Ore', frost: 'Silver Ore & Crystal', magma: 'Coal & Copper Ore', coral: 'Mixed ores', fortmc: 'Oil Sand, Gas Shale & Tar Rock' };
 
 export interface Cave extends CaveDef { map: ArenaMap; nodes: MineNode[] }
 export const CAVES: Record<CaveId, Cave> = Object.fromEntries(CAVE_DEFS.map((d) => [d.id, { ...d, ...buildCave(d) }])) as Record<CaveId, Cave>;

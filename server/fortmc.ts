@@ -21,6 +21,7 @@ import {
   FORTMC_TICKET_BASE, MINE_LEVELS, PIPES, PRODUCTS, PUMPJACK_COST, SURVEY_COST, UNITS, WELLS_PER_TRACT, WELL_COST,
   isProduct, isTract, isUnitKind, newFort, repairCost, sellPayout, settle, tractInfo, unitCount, whole, powerDemand, tankCap, fortBuildValue,
   type FortState, type Product,
+  unloadHaul,
 } from '../shared/fortmc.js';
 
 export class FortError extends Error {}
@@ -83,9 +84,11 @@ export class FortMc {
     this.forts.set(k, next);
   }
 
+  /** Walk-in Fort McChud Mine bin (server/warehouse.ts wires it): read the banked haul / guarded take statements. */
+  haul: { read: (name: string) => Promise<Map<string, number>>; take: (name: string, items: Array<[string, number]>) => Array<{ sql: string; args: unknown[] }> } | null = null;
   async view(name: string | null) {
     const s = name ? await this.load(name) : newFort(this.clock()); const t = name ? await this.today(name) : { gross: 0, paid: 0 };
-    return { fort: s, now: this.clock(), index: priceIndex(), today: { gross: t.gross, paid: t.paid }, ticket: px(FORTMC_TICKET_BASE), cap: tankCap(s), demand: powerDemand(s), value: px(fortBuildValue(s)) };
+    return { fort: s, now: this.clock(), index: priceIndex(), today: { gross: t.gross, paid: t.paid }, ticket: px(FORTMC_TICKET_BASE), cap: tankCap(s), demand: powerDemand(s), value: px(fortBuildValue(s)), haul: name && this.haul ? Object.fromEntries(await this.haul.read(name).catch(() => new Map<string, number>())) : {} };
   }
 
   /** Every paid / state-changing action. */
@@ -221,6 +224,14 @@ export class FortMc {
         case 'mine': {
           const lv = (s.mine?.level ?? 0) + 1; if (lv > MINE_LEVELS.length) throw new FortError('The mine is fully expanded.');
           s.mine = { level: lv, cond: 100, on: true }; await this.commit(name, s, -px(MINE_LEVELS[lv - 1]!.cost), 'fortmc', lv === 1 ? 'Built the Deep Ore Mine' : `Deep Ore Mine level ${lv}`); break;
+        }
+        case 'unload': {
+          if (!this.haul) throw new FortError('The mine lift is offline right now.');
+          const have = await this.haul.read(name); const took = unloadHaul(s, have);
+          if (!took.length) throw new FortError('Nothing to unload: dig in the Fort McChud Mine and bank your haul at the lift.');
+          const take = this.haul.take(name, took);
+          await this.commit(name, s, 0, 'fortmc', 'Unloaded mine haul', async (cl) => { for (const st of take) { const r = await cl.query(st.sql, st.args); if (!r.rowCount) throw new FortError('Your haul changed. Try again.'); } });
+          break;
         }
         case 'mine_toggle': { if (!s.mine) throw new FortError('Build the mine first.'); s.mine.on = !s.mine.on; await this.commit(name, s, 0, 'fortmc', 'toggle'); break; }
         // Millionaire Update: no selling at the fort. Everything sells at the Chud City Warehouse: ship it there.

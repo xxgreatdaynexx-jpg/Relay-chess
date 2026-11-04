@@ -15,7 +15,7 @@ export const ELEVATOR_EVERY = 5;
 export const LADDER = { x0: 92, y0: 8, x1: 96, y1: 16, cx: 94, cy: 12 };
 export const inLadder = (x: number, y: number) => x >= LADDER.x0 && x <= LADDER.x1 && y >= LADDER.y0 && y <= LADDER.y1;
 export const clampFloor = (f: unknown) => (typeof f === 'number' && Number.isInteger(f) && f >= 1 && f <= MAX_FLOOR ? f : 1);
-export const hasFloors = (cave: CaveId) => cave === 'mine' || cave === 'frost' || cave === 'magma' || cave === 'coral';
+export const hasFloors = (cave: CaveId) => cave === 'mine' || cave === 'frost' || cave === 'magma' || cave === 'coral' || cave === 'fortmc';
 /** Map key for per-floor server state: The Mine keeps the bare floor number (back-compat), other caves are 'cave:floor'. */
 export const floorKey = (cave: CaveId, floor: number): number | string => (cave === 'mine' ? floor : `${cave}:${floor}`);
 
@@ -31,7 +31,7 @@ export const respawnFloor = (floor: number) => Math.max(1, Math.floor(floor / EL
 
 const MINE_BIAS = CAVES.mine.bias as Record<OreId, number>;
 /** Ore bias for floor f: stone thins out, Silver/Gold/Crystal grow, Iron thins slowly, Diamond grows fastest. Floor 1 = the classic mix. */
-const GROW: Partial<Record<OreId, number>> = { silver: 0.05, gold: 0.07, gem: 0.15, opal: 0.08, pearl: 0.06 };
+const GROW: Partial<Record<OreId, number>> = { silver: 0.05, gold: 0.07, gem: 0.15, opal: 0.08, pearl: 0.06, tarrock: 0.04, condensate: 0.08 };
 const THIN: Partial<Record<OreId, [number, number]>> = { stone: [0.02, 0.3], copper: [0.02, 0.3], iron: [0.015, 0.4], coal: [0.01, 0.5] };
 /** Deeper-floor mix for a non-Mine cave: only ores already in that cave's table (never adds one), common ores thin out,
  *  rich ones grow; Diamond grows only where the cave already has some. */
@@ -53,6 +53,7 @@ export function floorBias(f: number): Record<OreId, number> {
     iron: MINE_BIAS.iron * Math.max(0.4, 1 - 0.015 * k), silver: MINE_BIAS.silver * (1 + 0.05 * k), gold: MINE_BIAS.gold * (1 + 0.07 * k),
     gem: MINE_BIAS.gem * (1 + 0.15 * k), diamond: MINE_BIAS.diamond + 0.12 * k,
     opal: 0, pearl: 0, // Coral Grotto exclusives never spawn in the city mine floors
+    oilsand: 0, shale: 0, tarrock: 0, condensate: 0, // nor do the Fort McChud Mine's
   };
 }
 
@@ -65,7 +66,7 @@ const THEMES: Array<{ upTo: number; name: string; theme: CaveTheme }> = [
 export const bandOf = (f: number) => THEMES.find((t) => f <= t.upTo) ?? THEMES[THEMES.length - 1];
 const dim = (hex: string, k: number) => '#' + [1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('');
 const CAVE_BANDS: Record<Exclude<CaveId, 'mine'>, [string, string, string]> = {
-  frost: ['Frost Halls', 'Glacier Deeps', 'Frozen Core'], magma: ['Lava Tubes', 'Ember Vaults', 'Magma Heart'], coral: ['Tide Pools', 'Kelp Trenches', 'The Sunken Deep'],
+  frost: ['Frost Halls', 'Glacier Deeps', 'Frozen Core'], magma: ['Lava Tubes', 'Ember Vaults', 'Magma Heart'], coral: ['Tide Pools', 'Kelp Trenches', 'The Sunken Deep'], fortmc: ['Upper Drifts', 'Tar Galleries', 'The Sour Pit'],
 };
 /** Band (name + look) for floor f of any cave: The Mine uses its own bands; other caves keep their look, darker deeper, Abyss at the bottom. */
 export function caveBandOf(cave: CaveId, f: number): { name: string; theme: CaveTheme } {
@@ -79,7 +80,7 @@ export function caveBandOf(cave: CaveId, f: number): { name: string; theme: Cave
 const W = 50, D = 12;
 /** Generated rows for floor f >= 2. Fully connected from the spawn pocket; the ladder cells are always open. */
 export function floorRows(f: number, cave: CaveId = 'mine'): string[] {
-  const base = CAVES[cave].rows; const seed = cave === 'mine' ? 0 : ({ frost: 1, magma: 2, coral: 3 } as const)[cave] * 1_000_003;
+  const base = CAVES[cave].rows; const seed = cave === 'mine' ? 0 : ({ frost: 1, magma: 2, coral: 3, fortmc: 4 } as const)[cave] * 1_000_003;
   const open0 = cave === 'mine' ? 8 : 3; // other caves' spawn pockets are walled in differently: always cut the corridor out of the pocket
   const g: string[][] = Array.from({ length: D }, () => Array(W).fill('#'));
   const r = (n: number) => mineHash(f * 7919 + n + seed);

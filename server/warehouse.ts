@@ -67,6 +67,8 @@ export class Warehouse {
   /** Hook the producers + freight into the warehouse (idempotent; services may attach after boot retries). */
   wire() {
     const mines = getMines(); if (!mines.coralBin) mines.coralBin = (acct, stacks) => this.binRows(acct, 'coral', stacks.map((s) => [`${s.type}:${s.id}`, s.qty]));
+    if (!mines.fortBin) mines.fortBin = (acct, stacks) => this.binRows(acct, 'fortmc', stacks.map((s) => [`${s.type}:${s.id}`, s.qty]));
+    const fm = getFortMc(); if (!fm.haul) fm.haul = { read: (name) => this.bin(name, 'fortmc'), take: (name, items) => this.binTake(name, 'fortmc', items) };
     const farm = getFarm(); if (farm && !farm.barn) farm.barn = (name, items) => this.binRows(name, 'resort_farm', items.map(([c, n]) => [`crop:${c}`, n]));
     const lg = getLogistics(); if (lg && !lg.onSell) lg.onSell = (s) => this.arrived(s);
     if (lg && !lg.onFactory) lg.onFactory = (s) => getFortMc().factoryDelivered(s);
@@ -76,6 +78,12 @@ export class Warehouse {
     const k = playerKey(name);
     if (!this.pool) { const m = this.binMem(k, b); for (const [i, n] of items) m.set(i, (m.get(i) ?? 0) + n); return []; }
     return items.filter(([, n]) => n > 0).map(([i, n]) => binAddStmt(k, name.trim(), b, i, n));
+  }
+  /** Guarded decrements for a bin (never below 0; the caller checks rowCount), or with no DB, take from memory now. */
+  binTake(name: string, b: BuildingId, items: Array<[string, number]>): Stmt[] {
+    const k = playerKey(name);
+    if (!this.pool) { const m = this.binMem(k, b); for (const [i, n] of items) m.set(i, Math.max(0, (m.get(i) ?? 0) - n)); return []; }
+    return items.map(([i, n]) => ({ sql: 'UPDATE building_inv SET qty = qty - $4 WHERE player_key = $1 AND building = $2 AND item = $3 AND qty >= $4', args: [k, b, i, n] }));
   }
   private binMem(k: string, b: BuildingId) { const key = `${k}|${b}`; let m = this.mem.get(key); if (!m) { m = new Map(); this.mem.set(key, m); } return m; }
   async bin(name: string, b: BuildingId): Promise<Map<string, number>> {

@@ -172,6 +172,17 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
       for (const cx of [-6.8, 6.8]) for (const cz of [-5.8, 5.8]) box(0.5, 26, 0.5, dark, cx, 13, cz, g); // corner mullions
       box(8, 1.2, 0.3, mat({ color: 0x0a1410, emissive: 0x5ad89a, emissiveIntensity: 1.2 }), 0, 24.4, 6.2, g); box(0.3, 4, 0.3, steel, 3, 29, 0, g); box(0.4, 0.4, 0.4, navRed, 3, 31.2, 0, g);
       label('💹 Commodity Exchange', 'Sell · ship to factory', '#5ad89a', s.x, 32, s.z);
+    } else if (s.id === 'f-shaft') {
+      // Walk-in mine: steel headframe with sheave wheels over a braced adit portal, ore carts on rails, work lamps.
+      const rock = mat({ color: 0x5a4a3a, roughness: 1, flatShading: true });
+      box(22, 7, 6, rock, 0, 3.5, -6, g); box(8, 5.4, 1, dark, 0, 2.7, -2.6, g); // hillside + dark portal
+      for (const x of [-4.4, 4.4]) box(0.8, 6, 0.8, yellow, x, 3, -2.2, g); box(9.6, 0.9, 0.9, yellow, 0, 6.2, -2.2, g); // braced portal frame
+      box(6, 0.8, 0.2, mat({ color: 0x1a1a1a, emissive: 0xffc040, emissiveIntensity: 0.9 }), 0, 7.2, -2.1, g); // MINE sign glow
+      for (const [x, z] of [[-7, -3], [7, -3]] as const) { box(0.5, 14, 0.5, red, x - 1.2, 7, z, g); box(0.5, 14, 0.5, red, x + 1.2, 7, z, g); box(3, 0.5, 0.5, red, x, 14, z, g); const w = cyl(1.2, 0.3, steel, x, 14.8, z, g); w.rotation.x = Math.PI / 2; } // headframes + sheaves
+      for (const dx of [-0.8, 0.8]) box(0.15, 0.1, 14, steel, dx, 0.1, 4, g); // rails
+      for (const z of [3, 7]) { box(2.2, 1.2, 1.6, dark, 0, 0.9, z, g); box(2, 0.4, 1.4, mat({ color: 0x1c1714, roughness: 0.2 }), 0, 1.6, z, g); } // carts of oil sand
+      box(0.4, 0.4, 0.4, lampHead, -4.4, 6.9, -1.6, g); box(0.4, 0.4, 0.4, lampHead, 4.4, 6.9, -1.6, g);
+      label('🪨 Fort McChud Mine', 'Walk in · 40 floors', '#ffc040', s.x, 18, s.z);
     } else if (s.id === 'f-mine') {
       const pit = mat({ color: 0x7a5a3a, roughness: 1, flatShading: true });
       for (let i = 0; i < 4; i++) { const ring = new THREE.Mesh(geo(new THREE.CylinderGeometry(16 - i * 3.4, 16 - i * 3.4, 0.8, 18, 1, true)), pit); ring.position.set(0, -i * 1.6 + 0.4, 0); g.add(ring); const fl = new THREE.Mesh(geo(new THREE.CircleGeometry(16 - i * 3.4, 18)), pit); fl.rotation.x = -Math.PI / 2; fl.position.y = -i * 1.6; g.add(fl); }

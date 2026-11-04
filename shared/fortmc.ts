@@ -252,6 +252,26 @@ export function fortBuildValue(s: FortState): number {
   return v;
 }
 
+// ---- Fort McChud Mine (walk-in cave 'fortmc'): its exclusive industrial ores, unloaded at the fort, become feedstock.
+/** ore -> [fort product, units per ore]. Each product is an existing unit input (refinery, gas plant, coker, steam cracker). */
+export const FORT_FEED: Partial<Record<OreId, readonly [Product, number]>> = {
+  oilsand: ['crude', 1],     // -> Refinery
+  shale: ['rawgas', 2],      // -> Gas plant
+  tarrock: ['residue', 2],   // -> Coker
+  condensate: ['ngl', 2],    // -> Steam cracker
+};
+/** Unload a walk-in mine haul (item keys `ore:<id>` / `<type>:<id>`) into a fort state: feed ores -> stock, other ores -> ore bin. Returns what was taken. */
+export function unloadHaul(s: FortState, haul: Map<string, number>): Array<[string, number]> {
+  const took: Array<[string, number]> = [];
+  for (const [key, q] of haul) {
+    const n = Math.floor(q); if (!(n > 0)) continue; const [t, id] = key.split(':') as [string, string];
+    if (t !== 'ore' || !(id in ORES)) continue; const o = id as OreId; const f = FORT_FEED[o];
+    if (f) s.stock[f[0]] = (s.stock[f[0]] ?? 0) + n * f[1]; else s.ore[o] = (s.ore[o] ?? 0) + n;
+    took.push([key, n]);
+  }
+  return took;
+}
+
 // ---- map spots (landmarks on the Fort McChud 3D map; x east, z south)
 export const FORT_X0 = -140, FORT_X1 = 140, FORT_Z0 = -110, FORT_Z1 = 100;
 export interface FortSpot { id: string; label: string; icon: string; blurb: string; x: number; z: number; w: number; d: number; h: number }
@@ -259,5 +279,6 @@ export const FORT_SPOTS: FortSpot[] = [
   { id: 'f-airport', label: 'Fort McChud Airport', icon: '✈️', blurb: 'Fly home to Chud Hub. The return flight is free.', x: -105, z: 70, w: 40, d: 14, h: 6 },
   { id: 'f-plant', label: 'Upgrader & Refinery Complex', icon: '🏭', blurb: 'Build separators, a gas plant, refinery, reformer, coker, steam cracker, polymer plant, turbines and tanks.', x: 10, z: 35, w: 60, d: 36, h: 24 },
   { id: 'f-exchange', label: 'Commodity Exchange', icon: '💹', blurb: 'Sell crude, gas, fuels, sulfur, ethylene, plastics and ore. Ship ore and petcoke to your factory.', x: 80, z: 70, w: 18, d: 14, h: 18 },
+  { id: 'f-shaft', label: 'Fort McChud Mine (walk-in)', icon: '🪨', blurb: 'Walk in and dig: 40 floors of Oil Sand, Gas Shale, Tar Rock and Condensate. Unload your haul here to feed the plant.', x: -70, z: 26, w: 24, d: 18, h: 16 },
   { id: 'f-mine', label: 'Deep Ore Mine', icon: '⛏️', blurb: 'A very expensive open-pit + shaft mine: 400 ore/hour at level 1, power-hungry.', x: 105, z: 20, w: 34, d: 34, h: 20 },
 ];
