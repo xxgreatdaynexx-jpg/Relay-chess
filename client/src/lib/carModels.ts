@@ -69,7 +69,23 @@ export function buildCar(c: CarModel, color: number, lod: 'near' | 'far' = 'near
     const ww = st === 'monster' ? 0.45 : st === 'cart' ? 0.04 : 0.2; const wx = L * (st === 'limo' ? 0.4 : 0.32);
     const rim = RIMS.find((x) => x.id === look.rims && 'color' in x) as { color: number } | undefined;
     const rimM = rim ? m(rim.color, { metalness: 0.9, roughness: 0.2, ...(look.rims === 'neon' ? { emissive: rim.color, emissiveIntensity: 0.8 } : {}) }, 'rim') : null;
-    for (const sx of [wx, -wx]) for (const sz of [W / 2, -W / 2]) { add(tyre, wheelR, wheelR, ww, sx, wheelR, sz, wheelG); if (rimM && st !== 'cart') add(rimM, wheelR * 0.62, wheelR * 0.62, ww + 0.03, sx, wheelR, sz, wheelG); }
+    const hub = rimM ?? m(0x9aa1ab, { metalness: 0.8, roughness: 0.35 }, 'hub'); const spoke = m(0x2a2d33, { roughness: 0.6 }, 'spk');
+    for (const sx of [wx, -wx]) for (const sz of [W / 2, -W / 2]) {
+      // Each wheel is its own pivot (userData.wheel 'f'/'r') so the driving loop can steer the fronts and spin all four.
+      const piv = new THREE.Group(); piv.position.set(sx, wheelR, sz); piv.userData.wheel = sx > 0 ? 'f' : 'r'; g.add(piv);
+      const t = new THREE.Mesh(wheelG, tyre); t.scale.set(wheelR, wheelR, ww); piv.add(t);
+      if (st !== 'cart') { const h = new THREE.Mesh(wheelG, hub); h.scale.set(wheelR * 0.62, wheelR * 0.62, ww + 0.03); piv.add(h);
+        if (lod === 'near') for (const k of [0, 1]) { const sp = new THREE.Mesh(unit, spoke); sp.scale.set(wheelR * 1.15, wheelR * 0.12, ww + 0.05); sp.rotation.z = k * Math.PI / 2; piv.add(sp); } }
+    }
+  }
+  // Racing overhaul detailing (near LOD): bumpers, grille, side skirts, mirrors, exhaust tips, number-plate.
+  if (lod === 'near' && st !== 'cart' && st !== 'monster') {
+    const dark = m(0x1b1d22, { roughness: 0.7, metalness: 0.2 }, 'bmp'), chrome = m(CHROME, { metalness: 1, roughness: 0.2 }, 'chr');
+    add(dark, 0.1, H * 0.16, W * 0.98, L / 2 + 0.02, clear + H * 0.1); add(dark, 0.1, H * 0.16, W * 0.98, -L / 2 - 0.02, clear + H * 0.1);
+    add(m(0x0c0d10, { roughness: 0.4 }, 'grl'), 0.03, H * 0.12, W * 0.42, L / 2 + 0.035, clear + H * 0.24);
+    for (const z of [W / 2 + 0.015, -W / 2 - 0.015]) { add(dark, L * 0.55, H * 0.07, 0.03, 0, clear + H * 0.06, z); add(paint, 0.08, 0.06, 0.1, L * 0.12, clear + H * 0.55, z + Math.sign(z) * 0.05); }
+    add(chrome, 0.14, 0.06, 0.06, -L / 2 - 0.04, clear + 0.06, -W * 0.28); if (st === 'muscle' || st === 'super') add(chrome, 0.14, 0.06, 0.06, -L / 2 - 0.04, clear + 0.06, W * 0.28);
+    add(m(0xf4f1e6, { roughness: 0.6 }, 'plate'), 0.02, 0.07, 0.24, -L / 2 - 0.075, clear + H * 0.12);
   }
   // Mechanic Shop body kits (rear of the car is -x) and underglow.
   if (st !== 'cart' && look.kit && look.kit !== 'none') {

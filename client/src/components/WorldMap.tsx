@@ -177,7 +177,8 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   const dock = panel.k === 'dock'; const setDock = (v: boolean) => setPanel((c) => (v ? { k: 'dock' } : closePanel(c, 'dock')));
   const driveRef = useRef<Drive | null>(null);
   const pendingDrive = useRef<{ carId: string; color: number; from?: string } | null>(null); const startDriveRef = useRef<(carId: string, color: number, from?: string) => void>(() => {});
-  const [driving, setDriving] = useState(false); const [near, setNear] = useState<string | null>(null); const [kmh, setKmh] = useState(0);
+  const [driving, setDriving] = useState(false); const [near, setNear] = useState<string | null>(null); const [drift, setDrift] = useState(false);
+  const [kmh, setKmh] = useState(0);
   useDoing('city'); useDoing('driving', null, driving);
   const meRef = useRef(me); meRef.current = me;
   const venue = panelId(panel, 'venue') as 'airport' | 'racetrack' | null; const setVenue = (id: 'airport' | 'racetrack' | null) => setPanel((c) => (id ? { k: 'venue', id } : closePanel(c, 'venue')));
@@ -202,6 +203,8 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
     startDrive(c.carId, c.color, from); return true;
   };
   startDriveRef.current = startDrive;
+  // Dev-only QA hook (screenshots / manual testing); stripped from production builds.
+  if (import.meta.env.DEV) (window as unknown as { __driveQA?: unknown }).__driveQA = { start: (c: string, col = 0xd8202a) => startDrive(c, col, 'grid'), key: (k: keyof DriveInput, on: boolean) => driveRef.current?.touch(k, on) };
   const stopDrive = () => { driveRef.current?.stop(); setDriving(false); setNear(null); };
   const toggleDrive = async () => {
     if (driving) { stopDrive(); return; }
@@ -253,7 +256,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
         });
         const w = worldRef.current;
         void importWithReload(() => import('@/lib/worldDrive')).then(({ createDrive }) => { if (dead || worldRef.current !== w) return;
-          driveRef.current = createDrive(w, { me: () => meRef.current ?? null, onNear: setNear, onSpeed: setKmh, onRace, onNitro: setNitro });
+          driveRef.current = createDrive(w, { me: () => meRef.current ?? null, onNear: setNear, onSpeed: setKmh, onRace, onNitro: setNitro, onDrift: setDrift });
           const pd = pendingDrive.current; pendingDrive.current = null; if (pd) startDriveRef.current(pd.carId, pd.color, pd.from); });
       } catch { setMode('2d'); }
       setLoading(false);
@@ -324,10 +327,10 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       {farm && <FarmGame id={farm} label={propertyById(farm)?.label ?? 'Farm'} onClose={() => setFarm(null)} />}
       {deeds && <DeedList owned={owned} me={me} onOpen={(id) => setDeed(id)} onClose={() => setDeeds(false)} />}
       {driving && <>
-        <div className="world-speedo" data-testid="world-speedo">{kmh} <small>km/h</small><em>WASD / arrows · E enter · Esc park{nitro ? ' · Shift/N nitro' : ''}</em>{nitro && <span className={`world-nitro${nitro.on ? ' on' : ''}`} data-testid="world-nitro"><i style={{ width: `${Math.round((nitro.have / nitro.full) * 100)}%` }} /></span>}</div>
+        <div className="world-speedo" data-testid="world-speedo">{kmh} <small>km/h</small><em>WASD / arrows · E enter · Esc park · Space handbrake{nitro ? ' · Shift/N nitro' : ''}</em>{drift && <b className="world-drift" data-testid="world-drift">DRIFT</b>}{nitro && <span className={`world-nitro${nitro.on ? ' on' : ''}`} data-testid="world-nitro"><i style={{ width: `${Math.round((nitro.have / nitro.full) * 100)}%` }} /></span>}</div>
         {(lap.t0 != null || lap.text) && <div className="world-lap" data-testid="world-lap">{lap.t0 != null && <b>⏱ {fmtLap(Date.now() - lap.t0)} <small>gate {lap.gate}/3</small></b>}{lap.text && <span>{lap.text}</span>}</div>}
         {nearSpot && <button type="button" className="world-enter" onClick={() => go(nearSpot.id)} data-testid="world-enter">{nearSpot.id === 'airport' ? <>🛫 Fly from the Airport</> : <>{nearSpot.icon} Enter {nearSpot.label}</>} <kbd>E</kbd></button>}
-        <div className="world-pad" data-testid="world-pad"><div>{pad('left', '◀')}{pad('right', '▶')}</div><div>{pad('down', '▼')}{nitro && pad('boost', '🔥')}{pad('up', '▲')}</div></div>
+        <div className="world-pad" data-testid="world-pad"><div>{pad('left', '◀')}{pad('right', '▶')}</div><div>{pad('down', '▼')}{pad('handbrake', 'HB')}{nitro && pad('boost', '🔥')}{pad('up', '▲')}</div></div>
       </>}
       {venue && <Suspense fallback={<div className="world-loading">Opening…</div>}><Venues kind={venue} me={me} driving={driving} onClose={() => setVenue(null)} onFly={async (to) => driveRef.current ? driveRef.current.fly(to) : { ok: false, error: 'Switch to the 3D city to fly.' }} onDriveFrom={driveFrom} /></Suspense>}
       {dock && <Suspense fallback={<div className="world-loading">Opening the dock…</div>}><FishingPanel me={me} onClose={() => setDock(false)} /></Suspense>}

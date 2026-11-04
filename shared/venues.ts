@@ -89,6 +89,8 @@ export const RACE_ENTRY_BASE = 250; // chips, through px()
 export const RACE_SEED_BASE = 2000; // house adds this to every day's pool, through px()
 export const RACE_SPLIT = [0.5, 0.3, 0.2];
 export const MIN_LAP_MS = 4000;
+/** Longest gap between accepted poses (ms) during a timed lap before it is voided (driving sends 8 Hz; generous for mobile jitter, the midpoint check below still catches infield shortcuts). */
+export const LAP_MAX_GAP_MS = 1500;
 
 /** Pure lap timer fed with accepted poses (server-side). */
 export interface LapEvent { kind: 'start' | 'gate' | 'lap' | 'void'; ms?: number; gate?: number; why?: string }
@@ -103,16 +105,20 @@ export class LapTimer {
   private last: { x: number; z: number; t: number } | null = null;
   private next = -1; // -1: not on a lap yet (waiting for the start line); else the gate index expected next
   private lapStart = 0;
+  /** `minMs`: fastest believable lap for this car (server anti-cheat, racePhysics.minLapMs); quicker laps are voided. */
+  constructor(private readonly opts: { minMs?: number } = {}) {}
   feed(x: number, z: number, t: number): LapEvent[] {
     const out: LapEvent[] = []; const prev = this.last; this.last = { x, z, t };
     if (!prev) return out;
     if (this.next >= 0 && trackDist(x, z) > OFF_TRACK) { this.next = -1; out.push({ kind: 'void', why: 'Off the track: lap void. Cross the start line to go again.' }); return out; }
+    // Sparse poses could chord across the infield between two on-track points: void on a long gap or an off-track midpoint.
+    if (this.next >= 0 && (t - prev.t > LAP_MAX_GAP_MS || trackDist((x + prev.x) / 2, (z + prev.z) / 2) > OFF_TRACK)) { this.next = -1; out.push({ kind: 'void', why: 'Lost track of your car (connection hiccup or a shortcut): lap void. Cross the start line to go again.' }); return out; }
     for (let g = 0; g < GATES.length; g++) {
       const f = cross([prev.x, prev.z], [x, z], GATES[g]![0], GATES[g]![1]); if (f == null) continue;
       const d = GATE_DIR[g]!; if ((x - prev.x) * d[0] + (z - prev.z) * d[1] <= 0) continue; // wrong way
       const at = prev.t + (t - prev.t) * f;
       if (g === 0) {
-        if (this.next === 0) { const ms = Math.round(at - this.lapStart); if (ms >= MIN_LAP_MS) out.push({ kind: 'lap', ms }); }
+        if (this.next === 0) { const ms = Math.round(at - this.lapStart); if (ms >= Math.max(MIN_LAP_MS, this.opts.minMs ?? 0)) out.push({ kind: 'lap', ms }); else if (ms >= MIN_LAP_MS) out.push({ kind: 'void', why: 'Lap faster than your car can physically go: not counted.' }); }
         if (trackDist(x, z) <= OFF_TRACK) { this.next = 1; this.lapStart = at; out.push({ kind: 'start' }); }
       } else if (g === this.next) { this.next = g === 3 ? 0 : g + 1; out.push({ kind: 'gate', gate: g }); }
     }

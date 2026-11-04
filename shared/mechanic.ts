@@ -14,8 +14,8 @@ export type PerfPart = 'engine' | 'turbo' | 'tires' | 'handling' | 'nitro';
 export const PERF_PARTS: Array<{ id: PerfPart; label: string; icon: string; tiers: [string, string, string]; what: string }> = [
   { id: 'engine', label: 'Engine', icon: '🔧', tiers: ['Street tune', 'Sport cams', 'Race build'], what: 'Top speed' },
   { id: 'turbo', label: 'Turbo', icon: '🌀', tiers: ['Intake & exhaust', 'Turbo kit', 'Twin turbo'], what: 'Acceleration' },
-  { id: 'tires', label: 'Tires', icon: '🛞', tiers: ['Sport tires', 'Semi-slicks', 'Racing slicks'], what: 'Grip in fast corners, less slowdown off-road' },
-  { id: 'handling', label: 'Suspension', icon: '🏎️', tiers: ['Lowering springs', 'Coilovers', 'Race suspension'], what: 'Steering' },
+  { id: 'tires', label: 'Tires', icon: '🛞', tiers: ['Sport tires', 'Semi-slicks', 'Racing slicks'], what: 'Grip in fast corners (+7% tyre grip per tier on the Speedway), less slowdown off-road' },
+  { id: 'handling', label: 'Suspension', icon: '🏎️', tiers: ['Lowering springs', 'Coilovers', 'Race suspension'], what: 'Steering, less body roll and weight transfer' },
   { id: 'nitro', label: 'Nitro', icon: '🔥', tiers: ['Nitro (1 bottle)', 'Nitro (2 bottles)', 'Nitro (3 bottles)'], what: 'Hold Shift / N for a boost' },
 ];
 export const MAX_TIER = 3;

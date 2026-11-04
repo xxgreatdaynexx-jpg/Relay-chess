@@ -23,6 +23,11 @@ import { CAR_BY_ID } from '../shared/cars.js';
 import { LapTimer, RACE_ENTRY_BASE, RACE_SEED_BASE, RACE_SPLIT, fmtLap, type LapEvent } from '../shared/venues.js';
 import { skillLevelAsync } from './skills.js';
 import { racingEntryMul } from '../shared/skillPerks.js';
+import { minLapMs } from '../shared/racePhysics.js';
+import { MAX_SPEED_FACTOR } from '../shared/mechanic.js';
+
+/** Fastest believable lap (ms) for a car with every engine/nitro upgrade: the server's lap-time sanity floor. */
+export const carMinLapMs = (carId: string) => minLapMs((CAR_BY_ID.get(carId)?.topKmh ?? 35) * MAX_SPEED_FACTOR);
 
 export class RaceError extends Error {}
 export const RACE_MIGRATION = `CREATE TABLE IF NOT EXISTS race_laps (day TEXT NOT NULL, player_key TEXT NOT NULL, name TEXT NOT NULL, car_id TEXT NOT NULL, ms INTEGER NOT NULL, at BIGINT NOT NULL, PRIMARY KEY (day, player_key));
@@ -38,6 +43,7 @@ interface Entry { name: string; fee: number; bestMs: number | null; bestCar: str
 
 export class Speedway {
   private timers = new Map<string, LapTimer>();
+  private timerCar = new Map<string, string>();
   private memLaps = new Map<string, Map<string, BoardRow>>(); // day -> key -> best
   private memEntries = new Map<string, Map<string, Entry>>();
   private memPaid = new Map<string, { pool: number; payouts: Array<{ name: string; rank: number; amount: number }> }>();
@@ -47,7 +53,8 @@ export class Speedway {
 
   /** Feed an accepted pose; returns lap events for that driver. */
   async pose(name: string, carId: string, x: number, z: number, t: number): Promise<Array<LapEvent & { text?: string; best?: boolean }>> {
-    const k = keyOf(name); let lt = this.timers.get(k); if (!lt) { lt = new LapTimer(); this.timers.set(k, lt); }
+    const k = keyOf(name); const minMs = carMinLapMs(carId); let lt = this.timers.get(k);
+    if (!lt || this.timerCar.get(k) !== carId) { lt = new LapTimer({ minMs }); this.timers.set(k, lt); this.timerCar.set(k, carId); }
     const evs = lt.feed(x, z, t); const out: Array<LapEvent & { text?: string; best?: boolean }> = [];
     for (const e of evs) {
       if (e.kind !== 'lap') { out.push(e); continue; }
@@ -67,6 +74,7 @@ export class Speedway {
   /** Store a lap; returns true when it is the player's best of the day. */
   async record(name: string, carId: string, ms: number, t: number): Promise<boolean> {
     const day = dayOf(t); const k = keyOf(name); const car = CAR_BY_ID.has(carId) ? carId : 'cart';
+    if (!Number.isFinite(ms) || ms < carMinLapMs(car)) throw new RaceError('Lap rejected: faster than that car can go.'); // defence in depth
     let best: boolean;
     if (!this.pool) {
       const m = this.memLaps.get(day) ?? new Map<string, BoardRow>(); this.memLaps.set(day, m); const cur = m.get(k);
