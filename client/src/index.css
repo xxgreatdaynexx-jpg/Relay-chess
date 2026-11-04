@@ -1967,6 +1967,8 @@ html, body { overflow-x: clip; }
 .stove-press { padding: 12px; border-radius: 10px; background: rgba(255,179,107,.25); border: 1px solid rgba(255,179,107,.7); font-weight: 900; font-size: 16px; user-select: none; touch-action: none; }
 /* Mechanic Shop */
 .world-nitro { display: block; width: 110px; height: 6px; margin-top: 4px; border-radius: 3px; background: rgba(255,255,255,.12); overflow: hidden; }
+.world-drift { display: block; margin-top: 4px; font: 800 13px/1 system-ui; letter-spacing: .2em; color: #ffb02e; text-shadow: 0 0 8px rgba(255,140,0,.7); animation: world-drift-pulse .4s ease-in-out infinite alternate; }
+@keyframes world-drift-pulse { from { opacity: .65; } to { opacity: 1; } }
 .world-nitro i { display: block; height: 100%; background: linear-gradient(90deg, #00b4ff, #7cf0ff); transition: width .1s linear; }
 .world-nitro.on i { background: linear-gradient(90deg, #ff6a00, #ffd000); }
 .mech-tabs { display: flex; gap: 6px; margin: 8px 0; }

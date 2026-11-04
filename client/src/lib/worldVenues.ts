@@ -6,6 +6,7 @@
 import { xmasOn } from '../../../shared/holiday';
 import { xmasGround } from './worldXmas';
 import * as THREE from 'three';
+import { trackOffset, wallOpen, WALL_OUT, WALL_IN } from '../../../shared/racePhysics';
 import { AIRPORT, AIRPORT_SLOT, RUNWAY, AIRPORT_ROADS, RACETRACK, RACETRACK_ROADS, TRACK, trackPoint, GATES, type Rect } from '../../../shared/venues';
 const NEON = 0.65; // matches world3d's toned-down neon
 
@@ -66,8 +67,24 @@ export function buildVenues(scene: THREE.Scene, { mat, geo }: Mk): { step: (dt: 
     for (const s of [1, -1]) { kerb.push(x + nx * s * (h - 0.2), 0.095, z + nz * s * (h - 0.2), x + nx * s * (h + 0.9), 0.095, z + nz * s * (h + 0.9)); kcol.push(...c, ...c); }
     if (i) { const o = (i - 1) * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); }
   }
-  const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); tg.setIndex(idx); tg.computeVertexNormals();
-  const tm = new THREE.Mesh(geo(tg), tar({ color: 0x34363e, roughness: 0.95, side: THREE.DoubleSide }, 2)); scene.add(tm);
+  const uv: number[] = []; { let run = 0; for (let i = 0; i <= N; i++) { if (i) run += Math.hypot(pos[i * 6] - pos[i * 6 - 6], pos[i * 6 + 2] - pos[i * 6 - 4]); uv.push(0, run / 8, 1, run / 8); } }
+  const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); tg.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); tg.setIndex(idx); tg.computeVertexNormals();
+  const tm = new THREE.Mesh(geo(tg), tar({ color: 0xffffff, map: trackTexture(), roughness: 0.92, side: THREE.DoubleSide }, 2)); scene.add(tm);
+  // Barriers: blue/white armco on the outside, tyre-wall stacks on the infield, both with the access-road and pit-lane gaps
+  // the physics leaves open (shared/racePhysics wallOpen).
+  { const segs: { x: number; z: number; a: number; out: boolean; i: number }[] = []; const M = 360;
+    for (const out of [true, false]) for (let i = 0; i < M; i++) {
+      const [cx0, cz0, a] = trackPoint(i / M); const n = trackOffset(cx0, cz0); const d = out ? WALL_OUT + 0.25 : WALL_IN - 0.25;
+      const x = cx0 + n.nx * d, z = cz0 + n.nz * d; if (wallOpen(out ? 'out' : 'in', x, z)) continue; segs.push({ x, z, a, out, i });
+    }
+    const len = (2 * Math.PI * TRACK.R + 4 * TRACK.L) / M + 0.15; const outs = segs.filter((g) => g.out), ins = segs.filter((g) => !g.out);
+    const rail = new THREE.InstancedMesh(geo(new THREE.BoxGeometry(len * 1.3, 0.75, 0.25)), mat({ color: 0xffffff, metalness: 0.55, roughness: 0.4 }), outs.length);
+    const tyres = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(0.35, 0.35, 0.9, 10)), mat({ color: 0xffffff, roughness: 0.9 }), ins.length * 2);
+    const d = new THREE.Object3D(); const c = new THREE.Color();
+    outs.forEach((g, k) => { d.position.set(g.x, 0.45, g.z); d.rotation.set(0, -g.a, 0); d.updateMatrix(); rail.setMatrixAt(k, d.matrix); rail.setColorAt(k, c.set(Math.floor(g.i / 6) % 2 ? 0x2a5bd7 : 0xf1f3f6)); });
+    ins.forEach((g, k) => { for (const j of [0, 1]) { const off = (j - 0.5) * len * 0.5; d.position.set(g.x + Math.cos(g.a) * off, 0.45, g.z + Math.sin(g.a) * off); d.rotation.set(0, 0, 0); d.updateMatrix(); tyres.setMatrixAt(k * 2 + j, d.matrix); tyres.setColorAt(k * 2 + j, c.set(Math.floor(g.i / 3) % 2 ? 0xd8202a : 0x1a1a1c)); } });
+    scene.add(rail, tyres);
+  }
   const kidx: number[] = []; for (let i = 1; i <= N; i++) for (const s of [0, 1]) { const o = ((i - 1) * 2 + s) * 2; kidx.push(o, o + 1, o + 4, o + 1, o + 5, o + 4); }
   const kg = new THREE.BufferGeometry(); kg.setAttribute('position', new THREE.Float32BufferAttribute(kerb, 3)); kg.setAttribute('color', new THREE.Float32BufferAttribute(kcol, 3)); kg.setIndex(kidx);
   scene.add(new THREE.Mesh(geo(kg), tar({ color: 0xffffff, vertexColors: true, roughness: 0.8, side: THREE.DoubleSide }, 3)));
@@ -106,4 +123,15 @@ export function buildVenues(scene: THREE.Scene, { mat, geo }: Mk): { step: (dt: 
     });
   };
   return { step, dispose: () => { planes.forEach(disposeTree); snowy.forEach((m) => { (m as THREE.MeshStandardMaterial).map?.dispose(); m.dispose(); }); } };
+}
+
+/** Speedway asphalt: grainy tarmac, a darker racing line down the middle, white edge lines (U across, V along). */
+function trackTexture(): THREE.Texture {
+  const cv = document.createElement('canvas'); cv.width = 128; cv.height = 256; const g = cv.getContext('2d')!;
+  g.fillStyle = '#3a3c43'; g.fillRect(0, 0, 128, 256);
+  const grad = g.createLinearGradient(0, 0, 128, 0); grad.addColorStop(0.25, 'rgba(0,0,0,0)'); grad.addColorStop(0.5, 'rgba(10,10,14,.35)'); grad.addColorStop(0.75, 'rgba(0,0,0,0)'); g.fillStyle = grad; g.fillRect(0, 0, 128, 256);
+  let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let k = 0; k < 2600; k++) { const v = 40 + rnd() * 50; g.fillStyle = `rgba(${v},${v},${v + 6},${0.35 + rnd() * 0.4})`; g.fillRect(rnd() * 128, rnd() * 256, 1 + rnd() * 1.5, 1 + rnd() * 1.5); }
+  g.fillStyle = '#e8e8e8'; g.fillRect(3, 0, 3, 256); g.fillRect(122, 0, 3, 256);
+  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
 }
