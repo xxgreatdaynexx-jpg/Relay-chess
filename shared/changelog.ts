@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-04T11:45:00-06:00', title: 'Net worth counts what you spent on property', bullets: [
+    'Property now counts in net worth at what you actually spent on it: the price you paid plus the farm upgrades you bought for it, instead of its list price.',
+    'Crops currently planted now count too, at the cost of the seeds. This applies everywhere net worth shows: your profile, the Bank and economy totals, the Daily Report and the wealth tax.',
+  ] },
   { commit: '', at: '2026-11-04T11:30:00-06:00', title: 'Farming profit -5%', bullets: [
     'Farming profit -5%: harvested crops now sell for 95% of their listed value. Seed prices are unchanged.',
   ] },

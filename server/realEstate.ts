@@ -17,6 +17,11 @@ import { px, priceIndex } from './price-index.js';
 import { requireResort } from './travel.js';
 import { GRACE_DAYS, propertyById as baseProperty, sellBackOf, taxOf, landPrice, landMultiplier, landSurchargePct, landMultiplierNote, type OwnedProperty } from '../shared/realEstate.js';
 import { skillLevelAsync } from './skills.js';
+import { propertyWorth, propertyPaid, upgradeSpendFromLevels } from '../shared/netWorth.js';
+import { cropById, farmPlots } from '../shared/farm.js';
+import { upgradeDef, upgradePrice, type FarmUpgradeKind } from '../shared/farmUpgrades.js';
+import { fieldPlotOf } from '../shared/fieldFarms.js';
+import { resortPlotOf } from '../shared/resort.js';
 import { propertyTaxMul } from '../shared/skillPerks.js';
 import { cityPropertyTaxMul } from './mayor.js';
 
@@ -34,6 +39,10 @@ CREATE TABLE IF NOT EXISTS property_tax (day TEXT NOT NULL, property_id TEXT NOT
 type Pool = pg.Pool;
 interface Row { id: string; owner_key: string; owner_name: string; price: string | number; bought_at: string | number; arrears: number; tax_paid: string | number }
 /** Catalog entry with today's indexed list price (list prices and tax follow the price index). */
+const plotTiles = (id: string): number | null => {
+  if (/^f:\d+$/.test(id)) { const p = farmPlots().find((q) => `f:${q.n}` === id); return p ? p.cols * p.rows : null; }
+  const c = fieldPlotOf(id) ?? resortPlotOf(id); return c ? c.cols * c.rows : null;
+};
 const propertyById = (id: Parameters<typeof baseProperty>[0]) => { const p = baseProperty(id); return p ? { ...p, price: px(p.price) } : undefined; };
 const toOwned = (r: Row): OwnedProperty => ({ id: r.id, owner: r.owner_name, price: Number(r.price), arrears: Number(r.arrears), boughtAt: Number(r.bought_at) });
 
@@ -54,7 +63,8 @@ export class RealEstate {
   }
   async mine(name: string) {
     const rows = ((await this.pool.query('SELECT * FROM properties WHERE owner_key = $1 ORDER BY price DESC', [keyOf(name)])).rows as Row[]);
-    return rows.map((r) => { const p = propertyById(r.id); return { ...toOwned(r), label: p?.label ?? r.id, type: p?.type ?? '', value: p?.price ?? Number(r.price), tax: taxOf(p?.price ?? Number(r.price)), taxPaid: Number(r.tax_paid) }; });
+    const sp = await this.spend(keyOf(name));
+    return rows.map((r) => { const p = propertyById(r.id); return { ...toOwned(r), label: p?.label ?? r.id, type: p?.type ?? '', value: propertyWorth({ paid: Number(r.price), list: p?.price ?? 0, ...(sp.get(r.id) ?? {}) }), paid: propertyPaid(Number(r.price), p?.price ?? 0), upgradeSpend: sp.get(r.id)?.upgrades ?? 0, cropValue: sp.get(r.id)?.crops ?? 0, tax: taxOf(p?.price ?? Number(r.price)), taxPaid: Number(r.tax_paid) }; });
   }
 
   /** Atomic: the ledger rows and the ownership change commit together, or neither does. */
@@ -175,10 +185,43 @@ export class RealEstate {
     ]);
     return { owned: Number(own.rows[0].n), taxBurned: Number(tax.rows[0].burned), taxToday: Number(tax.rows[0].today), repossessed: Number(tax.rows[0].repo) };
   }
-  /** Player-owned property at list value (economy assets; QA excluded). */
+  /** Player-owned property at total spent (shared propertyWorth: price paid + upgrades + planted seed; QA excluded). */
   async playerValue(): Promise<{ n: number; value: number }> {
     const rows = (await this.pool.query("SELECT id, price FROM properties WHERE owner_key NOT LIKE 'qa-%'")).rows as Array<{ id: string; price: string }>;
-    return { n: rows.length, value: rows.reduce((a, r) => a + (propertyById(r.id)?.price ?? Number(r.price)), 0) };
+    const sp = await this.spend(null);
+    return { n: rows.length, value: rows.reduce((a, r) => a + propertyWorth({ paid: Number(r.price), list: propertyById(r.id)?.price ?? 0, ...(sp.get(r.id) ?? {}) }), 0) };
+  }
+  /** Per-property spend on top of the price paid, for one owner (or every non-QA owner): farm upgrade levels it holds now, at what the
+   *  current owner paid for each (ledger farm_upgrade since the deed was bought; today's level price when no ledger row)
+   *  and currently-planted tiles at their seed cost. Missing tables count as 0. */
+  async spend(ownerKey: string | null): Promise<Map<string, { upgrades: number; crops: number }>> {
+    const out = new Map<string, { upgrades: number; crops: number }>();
+    const get = (id: string) => { let v = out.get(id); if (!v) out.set(id, (v = { upgrades: 0, crops: 0 })); return v; };
+    const where = ownerKey ? 'p.owner_key = $1' : "p.owner_key NOT LIKE 'qa-%'"; const args = ownerKey ? [ownerKey] : [];
+    const q = async (sql: string) => { try { return (await this.pool.query(sql, args)).rows as Array<Record<string, unknown>>; } catch { return []; } };
+    // Upgrade levels the current owner holds now (a reset/lost upgrade is not counted).
+    const lv = new Map<string, Record<string, number>>();
+    for (const r of await q(`SELECT u.plot_id, u.kind, u.level FROM farm_upgrades u JOIN properties p ON p.id = u.plot_id AND p.owner_key = u.owner_key WHERE ${where}`)) {
+      const m = lv.get(String(r.plot_id)) ?? {}; m[String(r.kind)] = Number(r.level) || 0; lv.set(String(r.plot_id), m);
+    }
+    // What was actually paid for each held level: the ledger debit "Farm <id>: <Label> level <n>" since the deed was bought
+    // (latest row per level); a level with no ledger row falls back to its price at today's index.
+    const paidFor = new Map<string, number>();
+    if (lv.size) for (const r of await q(`SELECT p.id, t.memo, t.amount FROM properties p JOIN wallet_transactions t ON t.game = 'farm_upgrade' AND t.amount < 0
+        AND t.player_key = p.owner_key AND t.created_at >= to_timestamp(p.bought_at / 1000.0) WHERE ${where} ORDER BY t.id`)) paidFor.set(String(r.memo), -Number(r.amount));
+    for (const [id, levels] of lv) {
+      const tiles = plotTiles(id); if (!tiles) continue;
+      const s = upgradeSpendFromLevels(levels, (k, l) => {
+        const d = upgradeDef(k); if (!d) return null;
+        const led = paidFor.get(`Farm ${id}: ${d.label} level ${l + 1}`); if (led != null) return led;
+        const b = upgradePrice(k as FarmUpgradeKind, l, tiles); return b == null ? null : px(b);
+      });
+      if (s > 0) get(id).upgrades = s;
+    }
+    for (const r of await q(`SELECT t.plot_id, t.crop FROM farm_tiles t JOIN properties p ON p.id = t.plot_id AND p.owner_key = t.owner_key WHERE ${where}`)) {
+      const c = cropById(String(r.crop)); if (c) get(String(r.plot_id)).crops += px(c.seed);
+    }
+    return out;
   }
 
   start() { const run = () => { void this.runTax().catch((e) => console.error('[realestate] tax run failed:', (e as Error).message)); }; this.timer = setInterval(run, 10 * 60_000); this.timer.unref?.(); setTimeout(run, 30_000).unref?.(); }

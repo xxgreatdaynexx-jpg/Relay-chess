@@ -178,7 +178,7 @@ export class Economy {
     const [h, sales] = await Promise.all([this.src.holdingsOf(name.replace(/\s+/g, ' ').trim().toLowerCase()), this.salesCached(now)]);
     const ex = getExchange();
     if (ex) h.stocks = (await ex.holdings(name).catch(() => [])).map((x) => ({ ticker: x.ticker, n: x.shares, price: ex.price(x.ticker) ?? 0 }));
-    // Same categories as the Bank totals: funds at NAV, shorts at equity, options at mark, real estate at list, cars at resale.
+    // Same categories as the Bank totals: funds at NAV, shorts at equity, options at mark, real estate at total spent (shared propertyWorth: price paid + upgrades + planted seed), cars at resale.
     const dv = getDerivs();
     if (dv) { const t = (await dv.portfolio(name).catch(() => null))?.totals; if (t) h.extra = [{ key: 'funds', label: 'Funds', value: t.funds }, { key: 'shorts', label: 'Short equity', value: t.shorts }, { key: 'options', label: 'Options', value: t.options }]; }
     const re = getRealEstate();
