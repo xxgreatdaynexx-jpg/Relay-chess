@@ -174,18 +174,18 @@ export class Economy {
   }
 
   /** One player's non-cash assets, valued exactly like the Bank totals (valueHoldings + market prices + live stock price). */
-  /** `opts.property: 'paid'` values real estate at what the player paid (list price when unknown), like the Real estate
-   *  panel (Tess QA #8); the default stays the Bank's list-price valuation used by net-worth totals and wealth tax. */
-  async playerAssets(name: string, now = this.clock(), opts: { property?: 'list' | 'paid' } = {}) {
+  /** Real estate counts at the price actually paid (shared propertyValue), the same basis for the Bank, profile,
+   *  wealth tax, Daily Report and Real estate panel. */
+  async playerAssets(name: string, now = this.clock()) {
     if (!this.src.holdingsOf) return null;
     const [h, sales] = await Promise.all([this.src.holdingsOf(name.replace(/\s+/g, ' ').trim().toLowerCase()), this.salesCached(now)]);
     const ex = getExchange();
     if (ex) h.stocks = (await ex.holdings(name).catch(() => [])).map((x) => ({ ticker: x.ticker, n: x.shares, price: ex.price(x.ticker) ?? 0 }));
-    // Same categories as the Bank totals: funds at NAV, shorts at equity, options at mark, real estate at list, cars at resale.
+    // Same categories as the Bank totals: funds at NAV, shorts at equity, options at mark, real estate at the price paid (propertyValue), cars at resale.
     const dv = getDerivs();
     if (dv) { const t = (await dv.portfolio(name).catch(() => null))?.totals; if (t) h.extra = [{ key: 'funds', label: 'Funds', value: t.funds }, { key: 'shorts', label: 'Short equity', value: t.shorts }, { key: 'options', label: 'Options', value: t.options }]; }
     const re = getRealEstate();
-    if (re) { const mine = await re.mine(name).catch(() => []); if (mine.length) h.property = { n: mine.length, value: mine.reduce((a, p) => a + (opts.property === 'paid' ? p.paid || p.value : p.value), 0) }; }
+    if (re) { const mine = await re.mine(name).catch(() => []); if (mine.length) h.property = { n: mine.length, value: mine.reduce((a, p) => a + p.value, 0) }; }
     const g = getGarage();
     if (g) h.cars = (await g.garage(name).catch(() => ({ cars: [] as Array<{ carId: string; value: number }> }))).cars.map((c) => ({ carId: c.carId, value: c.value }));
     const fl = getFleet(); if (fl) { const v = await fl.valueOf(name).catch(() => 0); if (v > 0) h.extra = [...(h.extra ?? []), { key: 'fleet', label: 'Boats & jets', value: v }]; }

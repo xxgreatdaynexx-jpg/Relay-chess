@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 // recheck #7: the Daily Report's real-estate line uses what the player actually paid (as the Real estate panel shows),
-// while net-worth totals / wealth tax keep the Bank's list-price valuation.
-vi.mock('../server/realEstate.js', () => ({ getRealEstate: () => ({ mine: async () => [{ id: 'a', value: 500_000, paid: 950_000 }, { id: 'b', value: 253_500, paid: 253_500 }, { id: 'c', value: 0, paid: 0 }] }) }));
+// and (property valuation change) so do net-worth totals / wealth tax: one shared propertyValue basis.
+vi.mock('../server/realEstate.js', () => ({ getRealEstate: () => ({ mine: async () => [{ id: 'a', value: 950_000, list: 500_000, paid: 950_000 }, { id: 'b', value: 253_500, list: 253_500, paid: 253_500 }, { id: 'c', value: 0, paid: 0 }] }) }));
 import { resetBank } from '../server/casino-store';
 import { Economy, setEconomyForTest, type EconSource } from '../server/economy';
 import { MemorySnapshots, buildDailyReport, setSnapshotStore } from '../server/daily-report';
@@ -14,9 +14,8 @@ function src(): EconSource {
 describe('recheck #7 daily report real estate = price paid', () => {
   let econ: Economy;
   beforeEach(() => { resetBank(); setSnapshotStore(new MemorySnapshots()); econ = new Economy(src(), () => T0); setEconomyForTest(econ); });
-  it('playerAssets: list price by default, paid price on request', async () => {
-    const list = await econ.playerAssets('Qa Re', T0); const paid = await econ.playerAssets('Qa Re', T0, { property: 'paid' });
-    expect(JSON.stringify(list)).toContain('753500'); expect(JSON.stringify(paid)).toContain('1203500');
+  it('playerAssets values property at the price paid (no list-price mode left)', async () => {
+    const a = JSON.stringify(await econ.playerAssets('Qa Re', T0)); expect(a).toContain('1203500'); expect(a).not.toContain('753500');
   });
   it('the Daily Report shows the paid total (1,203,500), matching the Real estate panel', async () => {
     const r = JSON.stringify(await buildDailyReport('Qa Re', null, T0)); expect(r).toContain('1203500'); expect(r).not.toContain('753500');

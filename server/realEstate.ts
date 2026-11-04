@@ -18,7 +18,7 @@ import { sendPopup } from './popups.js';
 import { BUYOUT_MUL, BUYOUT_PROTECT_MS, buyoutPrice } from '../shared/royalty.js';
 import { px, priceIndex } from './price-index.js';
 import { requireResort } from './travel.js';
-import { taxBasisOf, GRACE_DAYS, propertyById as baseProperty, sellBackOf, taxOf, landPrice, landMultiplier, landSurchargePct, landMultiplierNote, type OwnedProperty } from '../shared/realEstate.js';
+import { taxBasisOf, propertyValue, GRACE_DAYS, propertyById as baseProperty, sellBackOf, taxOf, landPrice, landMultiplier, landSurchargePct, landMultiplierNote, type OwnedProperty } from '../shared/realEstate.js';
 import { skillLevelAsync } from './skills.js';
 import { propertyTaxMul } from '../shared/skillPerks.js';
 import { cityPropertyTaxMul } from './mayor.js';
@@ -71,7 +71,7 @@ export class RealEstate {
   }
   async mine(name: string) {
     const rows = ((await this.pool.query('SELECT * FROM properties WHERE owner_key = $1 ORDER BY price DESC', [keyOf(name)])).rows as Row[]);
-    return rows.map((r) => { const p = propertyById(r.id); return { ...toOwned(r), label: p?.label ?? r.id, type: p?.type ?? '', value: p?.price ?? Number(r.price), paid: Number(r.price), tax: taxOf(taxBasisOf(Number(r.price), p?.price ?? 0)), taxPaid: Number(r.tax_paid) }; });
+    return rows.map((r) => { const p = propertyById(r.id); return { ...toOwned(r), label: p?.label ?? r.id, type: p?.type ?? '', value: propertyValue(Number(r.price), p?.price ?? 0), list: p?.price ?? Number(r.price), paid: Number(r.price), tax: taxOf(taxBasisOf(Number(r.price), p?.price ?? 0)), taxPaid: Number(r.tax_paid) }; });
   }
 
   /** Atomic: the ledger rows and the ownership change commit together, or neither does. */
@@ -218,10 +218,10 @@ export class RealEstate {
     ]);
     return { owned: Number(own.rows[0].n), taxBurned: Number(tax.rows[0].burned), taxToday: Number(tax.rows[0].today), repossessed: Number(tax.rows[0].repo) };
   }
-  /** Player-owned property at list value (economy assets; QA excluded). */
+  /** Player-owned property at the price paid (propertyValue; economy assets -> daily_economy.total -> house-sell cap; QA excluded). */
   async playerValue(): Promise<{ n: number; value: number }> {
     const rows = (await this.pool.query("SELECT id, price FROM properties WHERE owner_key NOT LIKE 'qa-%'")).rows as Array<{ id: string; price: string }>;
-    return { n: rows.length, value: rows.reduce((a, r) => a + (propertyById(r.id)?.price ?? Number(r.price)), 0) };
+    return { n: rows.length, value: rows.reduce((a, r) => a + propertyValue(Number(r.price), propertyById(r.id)?.price ?? 0), 0) };
   }
 
   start() { const run = () => { void this.runTax().catch((e) => console.error('[realestate] tax run failed:', (e as Error).message)); }; this.timer = setInterval(run, 10 * 60_000); this.timer.unref?.(); setTimeout(run, 30_000).unref?.(); }

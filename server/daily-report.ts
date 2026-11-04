@@ -67,7 +67,7 @@ export async function buildDailyReport(name: string, bonus: number | null, now =
   const econ = getEconomy();
   const [stats, assets, chips] = await Promise.all([
     econ ? (econ.stats() as Promise<Econ>).catch(() => null) : Promise.resolve(null),
-    econ ? econ.playerAssets(name, now, { property: 'paid' }).catch(() => null) : Promise.resolve(null),
+    econ ? econ.playerAssets(name, now).catch(() => null) : Promise.resolve(null),
     getBank().refresh(name),
   ]);
   const ex = getExchange();

@@ -23,7 +23,7 @@ import { socket } from '@/lib/net';
 import { indexed } from '../../../shared/priceIndex';
 import { skyNow, parseTod, fmtClock, hex } from '../../../shared/daynight';
 import { fmtLap } from '../../../shared/venues';
-import { optimisticOwn, taxBasisOf, propertyById as baseProperty, properties as baseProperties, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, workerBonusOf, WORKER_BONUS_MAX, landPrice, landMultiplierNote, landSurchargePct, SURCHARGE_PCT_PER_1K, type OwnedProperty } from '../../../shared/realEstate';
+import { optimisticOwn, taxBasisOf, propertyValue, propertyById as baseProperty, properties as baseProperties, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, workerBonusOf, WORKER_BONUS_MAX, landPrice, landMultiplierNote, landSurchargePct, SURCHARGE_PCT_PER_1K, type OwnedProperty } from '../../../shared/realEstate';
 
 /** Today's price index from /api/real-estate; list prices and tax scale with it. */
 let IDX = 1;
@@ -99,7 +99,7 @@ function DeedList({ owned, me, onOpen, onClose }: { owned: Map<string, OwnedProp
   const dragDeeds = usePanelDrag('deeds');
   const mine = me ? [...owned.values()].filter((o) => o.owner.toLowerCase() === me.toLowerCase()) : [];
   const lms = properties().filter((p) => p.kind === 'landmark').sort((a, b) => b.price - a.price);
-  const value = mine.reduce((a, o) => a + (o.price || (propertyById(o.id)?.price ?? 0)), 0); // Tess QA #8: price paid
+  const value = mine.reduce((a, o) => a + propertyValue(o.price, propertyById(o.id)?.price ?? 0), 0); // price paid, same helper as the server
   return (
     <div className="world-deed world-deeds" data-testid="world-deeds" data-drag-panel="deeds" onPointerDown={dragDeeds.onPointerDown} style={dragDeeds.style()} ref={dragDeeds.ref}>{dragDeeds.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>

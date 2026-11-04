@@ -42,9 +42,15 @@ export interface Property extends OBB { id: string; kind: PropertyKind; type: st
 const clamp = (x: number) => Math.min(1.25, Math.max(0.8, x));
 const round500 = (n: number) => Math.max(500, Math.round(n / 500) * 500);
 const pos = (b: OBB) => `${Math.round(b.x * 10)}:${Math.round(b.z * 10)}`;
+/**
+ * THE value of an owned property everywhere (Bank totals, profile, wealth tax, Daily Report, Real estate panel, property
+ * tax, economy totals -> house-sell cap): the price the owner actually paid (surcharged buy or hostile buyout included);
+ * the current list price only when no paid price is recorded. The land surcharge on NEW buys stays on list prices.
+ */
+export function propertyValue(paid: number | null | undefined, list: number): number { return paid && paid > 0 ? paid : list; }
 export const taxOf = (price: number) => Math.ceil(price * TAX_RATE);
 /** Tess QA #8: property tax is on the price actually paid (buyouts can't dodge it; a surcharged buy pays on what it cost). */
-export const taxBasisOf = (paid: number | null | undefined, list: number) => (paid && paid > 0 ? paid : list);
+export const taxBasisOf = (paid: number | null | undefined, list: number) => propertyValue(paid, list);
 /**
  * Tess QA #7: the client's optimistic ownership after a buy/buyout. A buyout keeps the city's sell-back basis (what the
  * city was originally paid), so the deed's Sell-back matches what the server will refund (was: basis dropped -> 70% of the
