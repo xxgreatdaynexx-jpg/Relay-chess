@@ -86,7 +86,8 @@ export function buildBoat(m: FleetModel): THREE.Group {
 }
 export function buildJet(m: FleetModel): THREE.Group {
   const g = new THREE.Group(); const body = M(m.color, { metalness: 0.35, roughness: 0.3 }); const trim = M(m.id === 'chudone' ? 0xd8b25a : 0x1a3a6a, { metalness: 0.6, roughness: 0.3 }); const win = M(0x1a2430, { metalness: 0.8, roughness: 0.1 }); const eng = M(0x8a929a, { metalness: 0.8, roughness: 0.3 });
-  const k = m.id === 'citation' ? 0.7 : m.id === 'g700' ? 1 : 1.8; const L = 16 * k, R = 0.9 * k * (m.id === 'chudone' ? 1.3 : 1);
+  // QA#2: real lengths CJ4 16 m, G700 33.5 m, BBJ 33.6 m (much fatter) -> G700 2x Citation, BBJ ~G700 length with a 1.5x thicker fuselage.
+  const k = m.id === 'citation' ? 0.5 : m.id === 'g700' ? 1 : 1.1; const L = 16 * k, R = 0.9 * k * (m.id === 'chudone' ? 1.55 : 1);
   // mu-visuals nose fix: one coaxial fuselage + rounded blunt nose + tail cone, same radius/segments at each joint (no seam, no step).
   addFuselage(g, { r: R, len: L, nose: R * 1.9, tail: L * 0.25, y: R + 1, body, glass: win });
   add(g, new THREE.BoxGeometry(R * 2.02, R * 0.2, L * 0.9), trim, 0, R + 1 - R * 0.35, 0); add(g, new THREE.BoxGeometry(R * 2.04, R * 0.22, L * 0.78), win, 0, R + 1 + R * 0.35, 0.02 * L);
