@@ -1,6 +1,7 @@
 import { initRequests } from './requests.js';
 import { initRoyalties } from './royalty.js';
 import { initPopupStorage } from './popups.js';
+import { initPlayTimeStorage } from './playtime.js';
 import { initEconomy } from './economy.js';
 import { startWealthTax } from './wealth-tax.js';
 import { startSinkRoom } from './sink-room.js';
@@ -52,6 +53,7 @@ await initRoomStorage();
 await initChatStorage();
 await initRequests();
 await initPopupStorage();
+await initPlayTimeStorage();
 await initEconomy();
 await initJail();
 setInterval(() => getJail().sweep(), 30_000).unref();

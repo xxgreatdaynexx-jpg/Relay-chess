@@ -10,6 +10,7 @@ import { registerCasino, startCasino, stopCasino } from './casino-sockets.js';
 import { getBank, isChipEvent, WALLET_UNAVAILABLE } from './casino-store.js';
 import { registerWallet, startWallet } from './wallet-sockets.js';
 import { registerPopups, startPopups } from './popups.js';
+import { registerPlayTime } from './playtime.js';
 import { registerSolitro } from './solitro.js';
 import { registerSkins } from './skins.js';
 import { registerMarket } from './market.js';
@@ -247,6 +248,7 @@ export function registerSockets(io: Server): void {
     registerCasino(io, socket);
     registerWallet(io, socket);
     registerPopups(io, socket);
+    registerPlayTime(io, socket);
     registerSolitro(io, socket);
     registerSkins(io, socket);
     registerMarket(io, socket);

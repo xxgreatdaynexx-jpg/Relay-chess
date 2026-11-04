@@ -1,3 +1,4 @@
+import { formatPlayTime } from '../../../shared/playtime';
 import { openFactoryView } from './FactoryViewer';
 import { LANDMARK_LABEL } from '../../../shared/realEstate';
 import { useEffect, useState } from 'react';
@@ -13,7 +14,7 @@ export const openPlayer = (name: string) => window.dispatchEvent(new CustomEvent
 
 interface Spot { x: number | null; z: number | null; map: string }
 export interface PublicProfile {
-  name: string; memberSince: string | null; online: boolean; where?: string | null;
+  name: string; memberSince: string | null; playMs?: number; online: boolean; where?: string | null;
   chips: number | null; assets: number; netWorth: number; history?: NetWorthHistory; dividends?: number; royalties?: Array<{ lm: string; total: number }>; categories: Array<{ key: string; label: string; value: number }>;
   properties: Array<Spot & { id: string; label: string; type: string; value: number }>;
   farms: Array<Spot & { plot: string; label: string; crops: Array<{ crop: string; label: string; emoji: string; n: number; ready: number }> }>;
@@ -57,6 +58,7 @@ export function PlayerProfileView({ p, close }: { p: PublicProfile; close: () =>
         <div className="text-xs opacity-70">
           <span className={p.online ? 'text-emerald-300' : 'opacity-70'} data-testid="player-profile-status">{p.online ? `● Online${p.where ? ` · ${p.where}` : ''}` : '○ Offline'}</span>
           {since && <span> · Member since {since}</span>}
+          <span data-testid="player-profile-playtime"> · ⏱️ Played {formatPlayTime(p.playMs)}</span>
           {p.skills && <span> · 🧭 Total level {p.skills.total}</span>}
         </div>
         <button type="button" className="mt-1 rounded bg-white/10 px-2 py-0.5 text-xs hover:bg-white/20" onClick={() => openFactoryView(p.name)} data-testid="profile-view-factory">🏭 View factory</button>
