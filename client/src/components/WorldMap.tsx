@@ -131,6 +131,7 @@ const Venues = lazyWithReload(() => import('./Venues').then((m) => ({ default: m
 const FishingPanel = lazyWithReload(() => import('./FishingPanel').then((m) => ({ default: m.FishingPanel })));
 const Dealership = lazyWithReload(() => import('./Dealership').then((m) => ({ default: m.Dealership })));
 const MechanicShop = lazyWithReload(() => import('./MechanicShop').then((m) => ({ default: m.MechanicShop })));
+import { WeeklyEventBar } from './WeeklyEventBar';
 const CoopPanel = lazyWithReload(() => import('./CoopPanel').then((m) => ({ default: m.CoopPanel })));
 const FreightYard = lazyWithReload(() => import('./FreightYard').then((m) => ({ default: m.FreightYard })));
 const ResortMap = lazyWithReload(() => import('./ResortMap').then((m) => ({ default: m.ResortMap })));
@@ -381,7 +382,8 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       {venue && <Suspense fallback={<div className="world-loading">Opening…</div>}><Venues kind={venue} me={me} driving={driving} onClose={() => setVenue(null)} onFly={async (to) => driveRef.current ? driveRef.current.fly(to) : { ok: false, error: 'Switch to the 3D city to fly.' }} onDriveFrom={driveFrom} /></Suspense>}
       {dock && <Suspense fallback={<div className="world-loading">Opening the dock…</div>}><FishingPanel me={me} onClose={() => setDock(false)} /></Suspense>}
       {mechanic && <Suspense fallback={<div className="world-loading">Opening the garage…</div>}><MechanicShop onClose={() => setMechanic(false)} onDrive={(carId, color) => { setMechanic(false); startDrive(carId, color, 'mechanic'); }} /></Suspense>}
-      {panel.k === 'coop' && <Suspense fallback={<div className="world-loading">Opening the co-op board…</div>}><CoopPanel me={me} onClose={() => setPanel((c) => closePanel(c, 'coop'))} onChanged={() => stadiumRef.current?.refresh()} onViewSite={() => { setPanel((c) => closePanel(c, 'coop')); worldRef.current?.focusXZ(STADIUM_SITE.x, STADIUM_SITE.z, 46, 38); }} /></Suspense>}
+      {panel.k !== 'coop' && <WeeklyEventBar onOpen={() => setPanel((c) => togglePanel(c, { k: 'coop', tab: 'event' }))} />}
+      {panel.k === 'coop' && <Suspense fallback={<div className="world-loading">Opening the co-op board…</div>}><CoopPanel me={me} tab0={panel.tab} onClose={() => setPanel((c) => closePanel(c, 'coop'))} onChanged={() => stadiumRef.current?.refresh()} onViewSite={() => { setPanel((c) => closePanel(c, 'coop')); worldRef.current?.focusXZ(STADIUM_SITE.x, STADIUM_SITE.z, 46, 38); }} /></Suspense>}
       {freight && <Suspense fallback={<div className="world-loading">Opening the freight yard…</div>}><FreightYard me={me} onClose={() => setFreight(false)} /></Suspense>}
       {dealer && <Suspense fallback={<div className="world-loading">Opening the dealership…</div>}><Dealership onClose={() => setDealer(false)} onDrive={startDrive} /></Suspense>}
       {casino && (

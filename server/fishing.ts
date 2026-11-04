@@ -29,6 +29,7 @@ import { isFishSpot, type FishSpot } from '../shared/fishing.js';
 import { FLEET_MAX_CUT } from '../shared/coop3.js';
 import { isAtResort, awayFromMarket } from './travel.js';
 import { baitLuckRoll, gearDef } from '../shared/fishGear.js';
+import { eventCredit, eventTrade } from './weeklyEvent.js';
 
 /** Equipped bait + fly per account (server/fishGear.ts installs the real lookup once Postgres is attached). */
 let gearHook: (name: string) => { bait: string; fly: string } = () => ({ bait: 'worm', fly: 'no_fly' });
@@ -142,6 +143,7 @@ export class Fishing {
       await this.pool.query('INSERT INTO fish_catches (id, player_key, name, species, weight_g, value, caught_at, crew_trip, captain, cut) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)', [fish.id, key, name, f.id, fish.grams, fish.value, now, c.crew?.trip ?? null, c.crew?.captain ?? null, c.crew?.captain ? c.crew.cut : null]);
       const xp = FISH_XP[f.rarity];
       awardXp(name, 'fishing', xp);
+      eventCredit('fishing', name, 1, fish.id);
       emitActivity({ name, skill: 'fishing', xp, action: 'catch', detail: { fish: f.id, rarity: f.rarity, grams: fish.grams, value: fish.value }, at: now });
       return { caught: true, fish, xp };
     });

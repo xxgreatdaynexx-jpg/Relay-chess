@@ -10,6 +10,7 @@ import { px } from './price-index.js';
 import { dayKey } from '../shared/mines.js';
 import { coopPerk } from './coop-perks.js';
 import { driveBots, HK_DAILY_PAID_WINS, HK_TICK_HZ, HK_WIN_CHIPS, HockeyGame, prizeWinners, type HkEvent, type HkResult, type HkTeam } from '../shared/hockey.js';
+import { eventCredit, eventTrade } from './weeklyEvent.js';
 
 const ROOM = '__hockey_rink';
 /** Dev/QA only: HOCKEY_PERIOD_S shortens periods (ignored in production). */
@@ -58,6 +59,7 @@ export function settleHockey(r: HkResult, now = Date.now()): HkResult {
     if (bank.transfer(name, amount, { key: hockeyCapKey(day, k, n), game: 'hockey', memo: `Hockey win ${r.matchId}` })) paid.push(name);
   }
   if (paid.length) r.prize = { names: paid, amount };
+  for (const n of paid) eventCredit('hockey', n, 1, r.matchId);
   return r;
 }
 

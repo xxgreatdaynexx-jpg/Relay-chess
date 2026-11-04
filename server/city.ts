@@ -127,6 +127,11 @@ export class City {
     });
     await this.reload(); return { building: spec.id, stage: next, cost, doneAt };
   }
+  /** A City notice (weekly events etc.). Idempotent by id: posting the same notice twice is a no-op. */
+  async notice(id: string, text: string, at = this.clock()): Promise<boolean> {
+    const r = await this.pool.query("INSERT INTO mayor_actions (id, at, by_name, kind, text) VALUES ($1,$2,'City','event',$3) ON CONFLICT (id) DO NOTHING", [id, at, text.slice(0, 300)]);
+    if (r.rowCount) await this.reload(); return !!r.rowCount;
+  }
   /** Write back finished construction (idempotent). */
   async finish(now = this.clock()) {
     let n = 0;

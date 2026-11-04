@@ -92,7 +92,7 @@ export const recallPasses = (yes: number, no: number, electionVotes: number) => 
 /** Accounts that never take part in city politics or feed the public treasury. */
 export const isExcludedName = (n: string) => { const t = String(n ?? '').trim(); return /^qa[-_ ]/i.test(t) || /^guest/i.test(t) || /^bot(?![a-z])/i.test(t); };
 
-export type ActionKind = 'lever' | 'policy' | 'build' | 'built' | 'recall_open' | 'recall_result' | 'admin';
+export type ActionKind = 'lever' | 'policy' | 'build' | 'built' | 'recall_open' | 'recall_result' | 'admin' | 'event';
 export interface CityAction { id: string; at: number; by: string; kind: ActionKind; text: string }
 export interface TreasuryRow { id: string; at: number; kind: string; amount: number; balance: number; memo: string }
 export interface CityView {

@@ -25,6 +25,7 @@ import { raidHpMul, raidDmgMul, raidBossHpMul, raidPotSize, lootRoll, type RaidL
 import { sinkLostToday } from './sink-room.js';
 import { effectiveAlready } from '../shared/sinkRoom.js';
 import { houseCapIndex, HOUSE_SELL_BLOCKED } from './house-cap-index.js';
+import { eventCredit, eventTrade } from './weeklyEvent.js';
 
 export const MINES_MIGRATION = [
   // Generic per-player stacks: item_type 'ore' | 'bar' | 'good' (Factory) — also the Market hook for stackables.
@@ -851,7 +852,7 @@ export function registerMines(io: Server, socket: Socket): void {
   socket.on('mines_hit', (p: unknown, ack?: Ack) => {
     try {
       const r = world.hit(socket.id, body(p).node, Date.now());
-      if (r.broke && r.ore) awardXp(account(), 'mining', ORES[r.ore].hits * 5); // XP scales with ore hardness
+      if (r.broke && r.ore) { awardXp(account(), 'mining', ORES[r.ore].hits * 5); eventCredit('mining', me()?.account, 1 + (r.bonus ?? 0)); } // XP scales with ore hardness
       let drop: { kind: string; id: string } | undefined;
       const mm = me();
       if (r.broke && r.ore && mm?.account) {

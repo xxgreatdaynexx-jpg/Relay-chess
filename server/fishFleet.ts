@@ -16,6 +16,7 @@ import { playerKey } from './skins.js';
 import { roomOf } from './wallet-sockets.js';
 import { getLinks, socketSigs } from './linked.js';
 import { Coop3Error, Guard } from './coop3-gate.js';
+import { getWeekly } from './weeklyEvent.js';
 import { fleetModel } from '../shared/fleet.js';
 import { FLEET_MAX_CUT, FLEET_REQUEST_TTL_MS, FLEET_TRIP_MS, crewSeats, cutOk, type FleetTripView } from '../shared/coop3.js';
 
@@ -123,7 +124,8 @@ export function resetFishFleet(f?: FishFleet) { fleetTrips = f ?? new FishFleet(
 type Ack = (r: { ok: boolean; error?: string; [k: string]: unknown }) => void;
 let wiredIo: Server | null = null;
 export function registerFishFleet(io: Server, socket: Socket): void {
-  if (wiredIo !== io) { wiredIo = io; fleetTrips.start(); }
+  if (wiredIo !== io) { wiredIo = io; fleetTrips.start(); let t: ReturnType<typeof setTimeout> | null = null;
+    getWeekly().onChange = () => { if (!t) t = setTimeout(() => { t = null; wiredIo?.emit('wev_changed', {}); }, 3000); }; }
   fleetTrips.onChange = (t, event, who) => { wiredIo?.emit('fleet_trips', { changed: t?.id ?? null }); for (const n of who) wiredIo?.to(roomOf(n)).emit('fleet_event', { event, trip: t ? fleetTrips.view(t, n) : null }); };
   const nameOf_ = () => (socket.data as { account?: { name: string } }).account?.name ?? null;
   const need = () => { const n = nameOf_(); if (!n) throw new Coop3Error('Sign in first.'); const s = socketSigs(socket); getLinks().record(n, s.ip, s.device); return n; };
@@ -137,5 +139,8 @@ export function registerFishFleet(io: Server, socket: Socket): void {
   on('fleet_cut', (b) => { const n = need(); fleetTrips.setCut(n, b.cut); return all(n); });
   on('fleet_request', async (b) => { const n = need(); await fleetTrips.request(n, b.id); return all(n); });
   on('fleet_respond', (b) => { const n = need(); fleetTrips.respond(n, b.name, b.accept); return all(n); });
+  // weekly server event (lives here to keep the co-op3 socket surface in one place)
+  on('wev_view', () => ({ event: getWeekly().view(nameOf_()) }));
+  on('wev_claim', async () => { const n = need(); const r = await getWeekly().claim(n); return { ...r, event: getWeekly().view(n) }; });
   on('fleet_leave', () => { const n = need(); fleetTrips.leave(n); return all(n); });
 }

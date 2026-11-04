@@ -19,6 +19,7 @@ import { CASE_NAME, KEY_NAME, SKINS, SKIN_BY_ID, type SkinItem } from '../shared
 import { skillLevel } from './skills.js';
 import { tradingFeeMul } from '../shared/skillPerks.js';
 import { cityFeeMul } from './mayor.js';
+import { eventCredit, eventTrade } from './weeklyEvent.js';
 
 export const MARKET_FEE = 0.05;
 export const MIN_PRICE = 1;
@@ -241,6 +242,7 @@ export class Market {
     };
     mines.adjustStack(name, l.type, l.itemId, n, [...chips.stmts, stackStmt(l), saleStmt(sale), ...treasuryStmtsFor(l.sellerName, 'market_fee', treasuryShareOf(fee), `25% of a Market fee`)], (r) => this.stackRows(r), { after: chips.after, bind: chips.bind, onFail });
     royaltyEarn('market', l.sellerName, price - fee);
+    eventTrade(name, l.sellerName, price, sale.id);
     return { type: l.type, id: l.itemId, qty: n, price, fee };
   }
   browseStacks(f: { type?: unknown; q?: unknown } = {}) {

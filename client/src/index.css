@@ -2453,3 +2453,18 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .coop-board { list-style: none; padding: 0; margin: 0; display: grid; gap: 2px; } .coop-board li { display: flex; justify-content: space-between; padding: 2px 6px; border-radius: 6px; background: #ffffff08; }
 .coop-perk, .coop-next, .coop-sellbonus { font-size: 12px; opacity: .9; } .coop-sellbonus b { color: #fde047; } .coop-done { color: #86efac; font-size: 13px; }
 .coop-claim { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+
+/* co-op3: weekly event map bar + panels */
+.wev-mapbar { position: absolute; top: 56px; left: 50%; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 10px; font-size: 13px; color: #f8fafc; background: rgba(15, 23, 42, .78); border: 1px solid rgba(148, 163, 184, .35); cursor: pointer; }
+.wev-mapbar .wev-track { width: 160px; height: 8px; border-radius: 4px; background: rgba(148, 163, 184, .25); overflow: hidden; display: inline-block; }
+.wev-mapbar .wev-track > span { display: block; height: 100%; }
+.wev-mapbar .wev-num { opacity: .85; font-variant-numeric: tabular-nums; }
+.coop-sc-list { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 6px; }
+.coop-sc-list li { padding: 6px 8px; border-radius: 8px; background: rgba(148, 163, 184, .08); }
+.coop-sc-list .sc-meta { font-size: 12px; opacity: .8; margin: 2px 0; }
+.coop-sc-list .sc-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.coop-sc-list.old li { opacity: .7; font-size: 12px; }
+.sc-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.sc-form label { display: flex; flex-direction: column; font-size: 12px; gap: 2px; }
+.sc-form small, .sc-form button { grid-column: 1 / -1; }
+.wev-tiers { list-style: none; padding: 0; display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; }

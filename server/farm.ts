@@ -26,6 +26,7 @@ import { skillLevelAsync } from './skills.js';
 import { fertCost, fertDef, machineDef, MACHINES, passLimit, SEEDER_GROW_MUL, tileYield, type FarmStep, type MachineSet } from '../shared/farmWork.js';
 import { bonusCrops, farmingGrowMul, farmingYieldBonus } from '../shared/skillPerks.js';
 import { combinedGrowMul, greenhouseWither, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradeDef, upgradePrice, type FarmUpgradeLevels } from '../shared/farmUpgrades.js';
+import { eventCredit, eventTrade } from './weeklyEvent.js';
 
 export const FARM_MIGRATION = `
 CREATE TABLE IF NOT EXISTS farm_tiles (plot_id TEXT NOT NULL, tile INTEGER NOT NULL, owner_key TEXT NOT NULL, crop TEXT NOT NULL, planted_at BIGINT NOT NULL, nonce TEXT NOT NULL, PRIMARY KEY (plot_id, tile));
@@ -340,6 +341,7 @@ export class Farm {
         });
         awardXp(name, 'farming', Math.min(400, 10 + Math.round((seeds + profit) / 5)));
         this.onChange?.(pid);
+        eventCredit('harvest', name, ready.length);
         return { harvested: ready.length, bonus: extra, paid: 0, toBarn: items, chips: this.bank().account(name).chips };
       }
       if (sink) { // pt1252u: send the crops to your Factory storage instead of selling them (no chips, no farm tier)
@@ -352,6 +354,7 @@ export class Farm {
           await sink.write(cl, items);
         });
         sink.after(items); this.onChange?.(pid);
+        eventCredit('harvest', name, ready.length);
         return { harvested: ready.length, paid: 0, toFactory: items, chips: this.bank().account(name).chips };
       }
       const day = utcDay(now); const t = await this.today(key);
@@ -367,7 +370,8 @@ export class Farm {
         if (!u.rowCount) throw new FarmError('Busy, try again.');
       });
       this.onChange?.(pid);
-      return { harvested: ready.length, bonus: extra, paid, chips: this.bank().account(name).chips };
+      eventCredit('harvest', name, ready.length);
+        return { harvested: ready.length, bonus: extra, paid, chips: this.bank().account(name).chips };
     }));
   }
 
@@ -426,7 +430,8 @@ export class Farm {
     if (failed) { console.error('[farm] pantry harvest failed:', (failed as Error).message); throw new FarmError('Already harvested (or storage hiccup). Nothing was lost.'); }
     awardXp(name, 'farming', Math.min(400, 10 + Math.round(value / 5)));
     this.onChange?.(pid);
-    return { harvested: ready.length, paid: 0, pantry: Object.fromEntries(counts), toFactory: undefined as Array<[string, number]> | undefined, chips: this.bank().account(name).chips };
+    eventCredit('harvest', name, ready.length);
+        return { harvested: ready.length, paid: 0, pantry: Object.fromEntries(counts), toFactory: undefined as Array<[string, number]> | undefined, chips: this.bank().account(name).chips };
   }
 
   /** Clear withered crops (free). */

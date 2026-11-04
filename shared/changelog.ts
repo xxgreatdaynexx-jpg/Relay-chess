@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-04T18:00:00-06:00', title: 'Co-op: supply contracts, fishing fleets and weekly server events', bullets: [
+    'Supply contracts: agree recurring truck deliveries with another player (every 6, 12 or 24 hours, 2–14 deliveries) at a price within ±30% of the house price. The seller posts a 20% bond, the buyer\'s payment sits in escrow and is paid per delivery. A missed delivery refunds that delivery plus a penalty from the bond; two misses breach the contract. See Co-op → Contracts.',
+    'Fishing fleets: sportfishers (1 seat), yachts (3) and superyachts (6) can take crew on 30-minute deep-sea trips from the Resort Marina. Crew fish from the captain\'s boat, crewed boats can land three new species (bigeye tuna, opah, blue marlin), and the captain can take a 0–30% cut of what crew sell. Daily ocean caps still apply.',
+    'Weekly server events: every Monday a new event starts (Mining Rush, Harvest Festival, Fishing Derby, Trade Week, Hockey Cup). Everyone fills one goal bar shown on the map; each player\'s share is capped. When the week ends, helpers claim a bronze, silver or gold reward (half if the server got past 50% but missed the goal). Top contributors are listed in Co-op → Event.',
+    'Test, bot and jailed accounts can\'t take part, and linked accounts can\'t trade contracts, crew for each other or count each other\'s trades.',
+  ] },
   { commit: '', at: '2026-11-04T17:00:00-06:00', title: 'Co-op mine raids', bullets: [
     'Start a raid party from the 🤝 Raid Party box in any mine and share the code; up to 4 friends play the same mine in your own instance.',
     'Creatures scale with party size (more health, a bit more damage), but every member mines their own veins and gets their own ore from every kill.',

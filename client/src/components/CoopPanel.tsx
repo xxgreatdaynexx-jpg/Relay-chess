@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { backdropDismiss } from '@/lib/backdrop';
 import { request, socket } from '@/lib/net';
 import { usePanelDrag } from '@/lib/panelDrag';
+import { EventTab, FleetTab, SupplyTab } from './Coop3Tabs';
 import { useDoing } from '@/lib/doing';
 import { SELL_BONUS_MAX, sellBonusPct, DONOR_REWARD_CAP, DONOR_REWARD_RATE, CONTRACT_BONUS, CONTRACT_UNIT_MUL, partKey, type CoopView, type ContractView, type ProjectView } from '../../../shared/coop';
 
@@ -16,10 +17,10 @@ function Bar({ v, testid }: { v: number; testid?: string }) {
 }
 
 /** Co-op: server megaprojects (Hockey Stadium, then the Fort McChud Bridge) + the Warehouse group-contract board. */
-export function CoopPanel({ onClose, me, tab0 = 'project', onChanged, onViewSite }: { onClose: () => void; me: string | null; tab0?: 'project' | 'contracts'; onChanged?: () => void; onViewSite?: () => void }) {
+export function CoopPanel({ onClose, me, tab0 = 'project', onChanged, onViewSite }: { onClose: () => void; me: string | null; tab0?: 'project' | 'contracts' | 'supply' | 'fleet' | 'event'; onChanged?: () => void; onViewSite?: () => void }) {
   useDoing('city');
   const drag = usePanelDrag('coop');
-  const [v, setV] = useState<View | null>(null); const [tab, setTab] = useState(tab0);
+  const [v, setV] = useState<View | null>(null); const [tab, setTab] = useState<string>(tab0);
   const [part, setPart] = useState('chips'); const [qty, setQty] = useState(1000); const [dq, setDq] = useState(1000);
   const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false);
   const load = () => { void request('coop_view').then((a) => { if (a.ok) setV(a as unknown as View); }); };
@@ -38,9 +39,15 @@ export function CoopPanel({ onClose, me, tab0 = 'project', onChanged, onViewSite
         <nav className="freight-tabs">
           <button type="button" className={tab === 'project' ? 'on' : ''} onClick={() => { setTab('project'); setMsg(null); }} data-testid="coop-tab-project">🏗️ Megaprojects</button>
           <button type="button" className={tab === 'contracts' ? 'on' : ''} onClick={() => { setTab('contracts'); setMsg(null); }} data-testid="coop-tab-contracts">📋 Contract board</button>
+          <button type="button" className={tab === 'supply' ? 'on' : ''} onClick={() => { setTab('supply'); setMsg(null); }} data-testid="coop-tab-supply">🚚 Contracts</button>
+          <button type="button" className={tab === 'fleet' ? 'on' : ''} onClick={() => { setTab('fleet'); setMsg(null); }} data-testid="coop-tab-fleet">🛥️ Fleet</button>
+          <button type="button" className={tab === 'event' ? 'on' : ''} onClick={() => { setTab('event'); setMsg(null); }} data-testid="coop-tab-event">🏁 Event</button>
         </nav>
         <div className="freight-body coop-body">
-          {!v && <p>Loading…</p>}
+          {tab === 'supply' && <SupplyTab me={me} />}
+          {tab === 'fleet' && <FleetTab me={me} />}
+          {tab === 'event' && <EventTab me={me} />}
+          {!v && ['project', 'contracts'].includes(tab) && <p>Loading…</p>}
           {v && tab === 'project' && p && <section data-testid="coop-project">
             <h4>{p.icon} {p.name} {p.state === 'complete' && <span className="coop-done">✅ Built</span>}</h4>
             <Bar v={p.pct} testid="coop-progress" />
