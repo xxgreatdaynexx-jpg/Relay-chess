@@ -4,6 +4,7 @@ import { onBlunderReady } from './blunders.js';
 import { GameError } from './errors.js';
 import { getRoomPersistence } from './room-store.js';
 import { registerFps } from './fps.js';
+import { registerHockey } from './hockey.js';
 import { AuthError, getAccounts } from './accounts.js';
 import { registerAuth, signedIn } from './auth-sockets.js';
 import { registerCasino, startCasino, stopCasino } from './casino-sockets.js';
@@ -246,6 +247,7 @@ export function registerSockets(io: Server): void {
     });
     registerAuth(socket);
     registerFps(io, socket);
+    registerHockey(io, socket);
     registerCasino(io, socket);
     registerWallet(io, socket);
     registerPopups(io, socket);
