@@ -66,6 +66,29 @@ export const WALLET_MIGRATION = `CREATE TABLE IF NOT EXISTS wallet_transactions 
 );
 CREATE INDEX IF NOT EXISTS wallet_tx_player ON wallet_transactions (player_key, id DESC)`;
 
+/**
+ * Batch mode for transferAtomic (wealth-tax purchase shares, pt wtax): credits (amount > 0) to players who appear only
+ * once in the move list are rewritten from 3 statements each into 3 statements TOTAL (unnest arrays), so a purchase that
+ * pays 500 recipients is still 3 round trips + the buyer's own rows. Same tx_key UNIQUE guard, same ledger balance
+ * (the post-credit balance, which equals the per-row value because each batched player has exactly one move).
+ */
+function batchCredits(stmts: Array<{ sql: string; args: unknown[] }>, moves: Array<{ name: string; amount: number; key: string; game: string; memo?: string }>, account: (n: string) => CasinoAccount, start: number) {
+  const count = new Map<string, number>();
+  for (const m of moves) { const k = account(m.name).key; count.set(k, (count.get(k) ?? 0) + 1); }
+  const bulk: number[] = []; moves.forEach((m, i) => { if (m.amount > 0 && count.get(account(m.name).key) === 1) bulk.push(i); });
+  if (bulk.length < 2) return;
+  const drop = new Set(bulk.flatMap((i) => [i * 3, i * 3 + 1, i * 3 + 2]));
+  const keep = stmts.filter((_, i) => !drop.has(i)); stmts.length = 0; stmts.push(...keep);
+  const ms = bulk.map((i) => ({ m: moves[i]!, a: account(moves[i]!.name) }));
+  const pk = ms.map((x) => x.a.key), nm = ms.map((x) => x.a.name);
+  stmts.push({ sql: `INSERT INTO casino_players (player_key, name, chips) SELECT k, n, $3::bigint FROM unnest($1::text[], $2::text[]) AS t(k, n)
+    ON CONFLICT (player_key) DO UPDATE SET name = EXCLUDED.name`, args: [pk, nm, start] });
+  stmts.push({ sql: `UPDATE casino_players c SET chips = c.chips + t.d, updated_at = now() FROM unnest($1::text[], $2::bigint[]) AS t(k, d) WHERE c.player_key = t.k`, args: [pk, ms.map((x) => x.m.amount)] });
+  stmts.push({ sql: `INSERT INTO wallet_transactions (tx_key, player_key, name, game, amount, balance, memo)
+    SELECT t.tk, t.k, t.n, t.g, t.a, c.chips, t.m FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::bigint[], $6::text[]) AS t(tk, k, n, g, a, m)
+    JOIN casino_players c ON c.player_key = t.k`, args: [ms.map((x) => x.m.key), pk, nm, ms.map((x) => x.m.game), ms.map((x) => x.m.amount), ms.map((x) => x.m.memo ?? null)] });
+}
+
 const isUniqueViolation = (e: unknown) => (e as { code?: string }).code === '23505' || /duplicate key|unique/i.test((e as Error).message ?? '');
 
 /** SQL fragments shared by the single-write path and transferAtomic (caller's transaction). */
@@ -306,7 +329,7 @@ export class CasinoBank {
    * the accounts' earlier queued writes, `bind(p)` so later writes queue behind the caller's transaction (the cache is
    * re-read from the DB once it commits), and `revert()` for when it never committed.
    */
-  transferAtomic(moves: Array<{ name: string; amount: number; key: string; game: string; memo?: string }>): { stmts: Array<{ sql: string; args: unknown[] }>; after: Promise<unknown>; bind: (p: Promise<unknown>) => void; revert: () => void } {
+  transferAtomic(moves: Array<{ name: string; amount: number; key: string; game: string; memo?: string }>, opts: { batch?: boolean } = {}): { stmts: Array<{ sql: string; args: unknown[] }>; after: Promise<unknown>; bind: (p: Promise<unknown>) => void; revert: () => void } {
     this.guard();
     const need = new Map<string, number>();
     for (const m of moves) {
@@ -326,6 +349,7 @@ export class CasinoBank {
       stmts.push({ sql: `INSERT INTO wallet_transactions (tx_key, player_key, name, game, amount, balance, memo)
         VALUES ($1,$2,$3,$4,$5,(SELECT CASE WHEN chips >= 0 THEN chips ELSE NULL END FROM casino_players WHERE player_key = $2),$6)`, args: [m.key, a.key, a.name, m.game, m.amount, m.memo ?? null] });
     }
+    if (opts.batch) batchCredits(stmts, moves, (n) => this.account(n), START_CHIPS);
     const keys = [...touched.keys()];
     const after = Promise.all(keys.map((k) => this.pending.get(k) ?? Promise.resolve()));
     let settled = false;

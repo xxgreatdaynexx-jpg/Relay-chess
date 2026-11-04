@@ -9,6 +9,9 @@ export const CHANGELOG: ChangelogEntry[] = [
   { commit: '', at: '2026-11-04T12:00:00-06:00', title: 'Sunflower Oil rebalanced', bullets: [
     'Sunflower Oil rebalanced: its house price is down about 11% (645 → 575). It still takes 1 sunflower and is still one of the best farm-to-factory earners.',
   ] },
+  { commit: '', at: '2026-11-04T11:50:00-06:00', title: 'Wealth tax on big purchases', bullets: [
+    'If you hold more than 100,000 in property (what you paid), property and car purchases cost 5% extra, shared equally with every other player active in the last 7 days. The checkout shows the exact amount and how many players share it; items under 1,000 chips are exempt.',
+  ] },
   { commit: '', at: '2026-11-04T11:45:00-06:00', title: 'Net worth counts what you spent on property', bullets: [
     'Property now counts in net worth at what you actually spent on it: the price you paid plus the farm upgrades you bought for it, instead of its list price.',
     'Crops currently planted now count too, at the cost of the seeds. This applies everywhere net worth shows: your profile, the Bank and economy totals, the Daily Report and the wealth tax.',

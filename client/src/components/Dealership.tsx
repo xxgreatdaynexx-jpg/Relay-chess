@@ -47,6 +47,9 @@ export function Dealership({ onClose, onDrive }: { onClose: () => void; onDrive:
     setMsg(a.ok ? ok(a as unknown as Record<string, unknown>) : a.error ?? 'Something went wrong.'); load();
   };
   const active = g?.cars.find((c) => c.active);
+  const [wtax, setWtax] = useState<{ car: string; tax: number; line: string } | null>(null);
+  useEffect(() => { if (!g?.signedIn) return; void request('car_quote', { car: sel }).then((a) => { const w = (a as unknown as { wealthTax?: { tax: number; line: string } }).wealthTax; if (a.ok && w) setWtax({ car: sel, tax: w.tax, line: w.line }); }); }, [sel, g?.signedIn, g?.chips]);
+  const tax = wtax?.car === car.id ? wtax.tax : 0;
   return (
     <div className="dealer" data-testid="dealership" {...backdropDismiss(() => onClose())}>
       <div className="dealer-box" data-drag-panel="dealer" onPointerDown={dragDealer.onPointerDown} style={dragDealer.style()} ref={dragDealer.ref}>{dragDealer.handle}
@@ -64,9 +67,10 @@ export function Dealership({ onClose, onDrive }: { onClose: () => void; onDrive:
             <div className="dealer-stats"><span>Top <b>{car.topKmh} km/h</b></span><span>0–100 <b>{car.zeroTo100}s</b></span><span>Handling <b>{car.handling}/10</b></span></div>
             <div className="dealer-colors">{car.colors.map((c, i) => <button key={c} type="button" aria-label={`Colour ${i + 1}`} className={i === col ? 'on' : ''} style={{ background: hex(c) }} onClick={() => setCol(i)} data-testid={`dealer-color-${i}`} />)}</div>
             <div className="dealer-buy">
-              <b>{fmt(car.price)} chips</b>
-              <button type="button" disabled={busy || !g?.signedIn} onClick={() => void act('car_buy', { car: car.id, color }, (a) => `Bought the ${car.name} for ${fmt(Number(a.price))} chips.`)} data-testid="dealer-buy">{g?.signedIn ? 'Buy' : 'Sign in to buy'}</button>
+              <b>{fmt(car.price + tax)} chips</b>
+              <button type="button" disabled={busy || !g?.signedIn} onClick={() => void act('car_buy', { car: car.id, color }, (a) => `Bought the ${car.name} for ${fmt(Number(a.price))} chips${Number(a.wealthTax) ? ` + ${fmt(Number(a.wealthTax))} wealth tax` : ''}.`)} data-testid="dealer-buy">{g?.signedIn ? 'Buy' : 'Sign in to buy'}</button>
             </div>
+            {tax > 0 && <div className="dealer-msg" data-testid="dealer-wealth-tax">{wtax!.line}. You hold over 100,000 in property, so 5% is added on top of the {fmt(car.price)} price.</div>}
             <small className="dealer-note">Sell back any time for 60% of today's price (drops 0.5%/day, never under 40%). Owned cars count toward your Bank assets.</small>
             {msg && <div className="dealer-msg" data-testid="dealer-msg">{msg}</div>}
             {!!g?.cars.length && <div className="dealer-garage" data-testid="dealer-garage"><h4>Your garage</h4>
