@@ -1,4 +1,6 @@
 import { useDoing } from '@/lib/doing';
+import { cookSellValue } from '../../../shared/cooking';
+import { fishSellValue } from '../../../shared/fishing';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { request } from '@/lib/net';
 import { fishById, fmtKg, RARITY_COLOR } from '../../../shared/fishing';
@@ -120,16 +122,16 @@ export function FishPanPanel({ me, home, onClose }: { me: string | null; home: s
           <small data-testid="kit-preview">If you plate now: <b>{preview}</b></small>
         </div>}
         {done && !cooking && <div className={`kit-done ${done.outcome}`} data-testid="kit-done"><h4>{done.outcome === 'perfect' ? '⭐ Perfect!' : done.outcome === 'good' ? '✅ Nicely cooked' : done.outcome === 'burnt' ? '🔥 Burnt…' : '🥶 Undercooked'}</h4>
-          <b>{done.dish}</b><span>Worth 🪙 {chips(Math.floor(done.value * idx))} at the fish market (was 🪙 {chips(Math.floor(done.raw * idx))}) · +{boostXp(done.xp)} Cooking XP</span></div>}
+          <b>{done.dish}</b><span>Worth 🪙 {chips(Math.floor(cookSellValue(done.value) * idx))} at the fish market (was 🪙 {chips(Math.floor(fishSellValue(done.raw) * idx))}) · +{boostXp(done.xp)} Cooking XP</span></div>}
         {msg && <small role="status" className="kit-msg" data-testid="kit-msg">{msg}</small>}
         {!cooking && me && <>
           <h4>Your cooler · raw fish</h4>
           {!raw.length && <small>No raw fish. Catch some at the Fishing Dock.</small>}
           <div className="kit-list">{raw.map((it) => { const f = fishById(it.fish); const ok = f && cookable(f.rarity); const need = ok ? COOK_LEVEL[f.rarity as keyof typeof COOK_LEVEL] : 0; const locked = ok && lvl < need;
             return <button type="button" key={it.id} disabled={!ok || locked || !!busy} aria-busy={busy === 'start:' + it.id} onClick={() => void begin(it)} data-testid="kit-cook" title={!ok ? 'Junk can’t be cooked' : locked ? `Needs Cooking ${need}` : 'Cook it'}>
-              <span style={{ color: f ? RARITY_COLOR[f.rarity] : undefined }}>{f?.emoji} {f?.label ?? it.fish}</span><small>{fmtKg(it.grams)} · 🪙 {chips(Math.floor(it.value * idx))} raw{ok && !locked ? ` → up to 🪙 ${chips(Math.floor(Math.floor(it.value * OUTCOME_MULT.perfect) * idx))}` : ''}</small>
+              <span style={{ color: f ? RARITY_COLOR[f.rarity] : undefined }}>{f?.emoji} {f?.label ?? it.fish}</span><small>{fmtKg(it.grams)} · 🪙 {chips(Math.floor(fishSellValue(it.value) * idx))} raw{ok && !locked ? ` → up to 🪙 ${chips(Math.floor(cookSellValue(Math.floor(it.value * OUTCOME_MULT.perfect)) * idx))}` : ''}</small>
               {busy === 'start:' + it.id ? <span className="world-spin" aria-hidden /> : locked ? <em>🔒 Lv {need}</em> : ok ? <em>Cook</em> : <em>—</em>}</button>; })}</div>
-          {!!dishes.length && <><h4>Dishes ready to sell</h4><div className="kit-list">{dishes.map((it) => <div key={it.id} className="kit-dish">{it.dish}<small>🪙 {chips(Math.floor(it.value * idx))}</small></div>)}</div><small>Sell dishes at the Fishing Dock (fish market daily limits apply).</small></>}
+          {!!dishes.length && <><h4>Dishes ready to sell</h4><div className="kit-list">{dishes.map((it) => <div key={it.id} className="kit-dish">{it.dish}<small>🪙 {chips(Math.floor(cookSellValue(it.value) * idx))}</small></div>)}</div><small>Sell dishes at the Fishing Dock (fish market daily limits apply).</small></>}
           <small className="kit-help">Heat 0–3 (keys), Space flips, Enter plates. Higher Cooking level = fewer burns and unlocks rarer fish (uncommon 10, rare 25, epic 45, legendary 65).</small>
         </>}
       </div>

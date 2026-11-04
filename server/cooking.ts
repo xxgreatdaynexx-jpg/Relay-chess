@@ -22,7 +22,7 @@ import { getFishing } from './fishing.js';
 import { databaseUrl } from './leaderboard-store.js';
 import { fishById } from '../shared/fishing.js';
 import {
-  COOK_EXPIRE_MS, DISHES_MAX, FISH_ING, PANTRY_MAX, RECIPES, STAPLES, burnChance, cookPayout, cookSteps, cookXp, dishValue, foodInfo,
+  COOK_EXPIRE_MS, DISHES_MAX, FISH_ING, PANTRY_MAX, RECIPES, STAPLES, burnChance, cookPayout, cookSellValue, cookSteps, cookXp, dishValue, foodInfo,
   filletsFrom, isFishIng, judgeCook, recipeById, stapleById, type Dish, type FishIng, type KitchenView,
 } from '../shared/cooking.js';
 
@@ -231,7 +231,7 @@ export class Cooking {
       if (!rows.length) throw new CookError('Nothing to sell.');
       if (qtyIn !== undefined && qtyIn !== null) { const v = parseSellQty(qtyIn, rows.length); if (!v.ok) throw new CookError(v.error); rows = pickForQty(rows, v.qty); }
       const day = utcDay(this.clock()); const t = await this.today(key);
-      const gross = rows.reduce((a, r) => a + r.value, 0);
+      const gross = cookSellValue(rows.reduce((a, r) => a + r.value, 0)); // +50% cooking buff
       const paid = Math.floor(cookPayout(gross, t.gross) * priceIndex());
       if (paid <= 0) throw new CookError('The diner has bought all the dishes it can from you today. Come back after 00:00 UTC (6 PM CST).');
       const counts = new Map<string, number>(); for (const r of rows) { const l = recipeById(r.recipe)?.label ?? r.recipe; counts.set(l, (counts.get(l) ?? 0) + 1); }

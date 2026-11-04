@@ -74,7 +74,7 @@ describe('kitchen server', () => {
     await expect(c.finish(me, cook.id, presses)).rejects.toThrow(/stove/);
     if (!res.burnt) {
       const chips = bank.account(me).chips; const s = await c.sell(me);
-      expect(s.paid).toBe(dishValue(recipeById('fried_fish')!, 1)); expect(bank.account(me).chips).toBe(chips + s.paid);
+      expect(s.paid).toBe(Math.floor(dishValue(recipeById('fried_fish')!, 1) * 1.5)); // +50% cooking buff expect(bank.account(me).chips).toBe(chips + s.paid);
       await expect(c.sell(me)).rejects.toThrow(/Nothing/);
     }
   });

@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-04T18:50:00-06:00', title: 'Cooking pays 50% more', bullets: [
+    'Every dish now sells for 50% more, for kitchen recipes and pan-fried fish alike.',
+    'The daily cooking cap stays at 100,000. The higher prices count toward it, so you reach the cap in about two thirds of the dishes.',
+  ] },
   { commit: '', at: '2026-11-04T18:40:00-06:00', title: 'Fishing pays 15% more', bullets: [
     'Every fish now sells for 15% more at every spot: the pond, the Resort reef pier and the ocean (skiff through superyacht).',
     'Daily fishing caps rise 15% to match: pond 115,000, resort 230,000, ocean 575,000.',

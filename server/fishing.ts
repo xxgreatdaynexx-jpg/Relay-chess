@@ -24,7 +24,7 @@ import {
   BITE_MAX_MS, BITE_MIN_MS, CAST_COOLDOWN_MS, fishSellValue, fishDailyKey, spotOf, COOLER_MAX, FISH, FISH_XP, fishById, fishDiff, fishPayout, fishValue, HOOK_WINDOW_MS,
   REEL_DT, replayReel, rollFish, rollWeight, anglerAim, type AnglerState, type FishCatch, type FishView,
 } from '../shared/fishing.js';
-import { cookPayout } from '../shared/cooking.js';
+import { cookPayout, cookSellValue } from '../shared/cooking.js';
 import { isFishSpot, type FishSpot } from '../shared/fishing.js';
 import { FLEET_MAX_CUT } from '../shared/coop3.js';
 import { isAtResort, awayFromMarket } from './travel.js';
@@ -169,7 +169,7 @@ export class Fishing {
       // dishes), not the raw-fish tiers. If that cap is used up, dishes stay in the cooler instead of selling for 0.
       const dishIds = await this.dishIds(key); const k = await this.kitchenToday(key);
       let dishRows = rows.filter((r) => dishIds.has(r.id)); const rawRows = rows.filter((r) => !dishIds.has(r.id));
-      let dGross = dishRows.reduce((a, r) => a + r.value, 0); let dPaid = Math.floor(cookPayout(dGross, k.gross) * priceIndex());
+      let dGross = cookSellValue(dishRows.reduce((a, r) => a + r.value, 0)); /* +50% cooking buff (pan-fried dishes) */ let dPaid = Math.floor(cookPayout(dGross, k.gross) * priceIndex());
       if (dPaid <= 0 && dishRows.length) { dishRows = []; dGross = 0; dPaid = 0; }
       rows = [...rawRows, ...dishRows];
       // mu-fishing: each spot (lake / reef / deep) has its own daily cap, tracked in its own fish_daily row.
