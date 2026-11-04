@@ -195,6 +195,7 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
     if (!broken) jacks.push(beam);
   };
   const horseG = sg('fort-horsehead', () => { const sh = new THREE.Shape(); sh.moveTo(0, 0.3); sh.absarc(0, -0.9, 1.2, Math.PI / 2, -Math.PI / 2 + 0.3, true); sh.lineTo(-0.4, -1.4); sh.lineTo(-0.4, 0.3); const e = new THREE.ExtrudeGeometry(sh, { depth: 0.7, bevelEnabled: false, curveSegments: 8 }); e.translate(0, 0, -0.35); return e; });
+  const tPkg = mat({ color: 0xc9cdd1, roughness: 0.6, metalness: 0.1 }), tIntake = mat({ color: 0xd8ccb0, roughness: 0.7 }), tTrim = mat({ color: 0x6b7178, roughness: 0.6 });
   const pipesG = new THREE.Group(); scene.add(pipesG);
   const setFort = (s: FortState | null) => {
     jacks.length = 0; while (pipesG.children.length) pipesG.remove(pipesG.children[0]!);
@@ -217,7 +218,12 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
     while (unitsG.children.length) unitsG.remove(unitsG.children[0]!);
     const count = (k: UnitKind) => s?.units.filter((u) => u.k === k).length ?? 0;
     for (let i = 0; i < count('tank'); i++) { const x = -45 + (i % 5) * 7.5, z = 22 + Math.floor(i / 5) * 7.5; cyl(3, 4.2, white, x, 2.1, z, unitsG); cyl(3.05, 0.25, red, x, 3.2, z, unitsG); cyl(0.15, 0.9, white, x, 4.65, z, unitsG, 3); box(0.4, 4.4, 0.6, dark, x + 3.1, 2.2, z, unitsG); }
-    for (let i = 0; i < count('turbine'); i++) { const x = 45 + (i % 4) * 5, z = 22 + Math.floor(i / 4) * 9; box(4, 3.4, 7, steel, x, 1.7, z, unitsG); box(4.2, 0.4, 7.2, dark, x, 3.5, z, unitsG); box(3, 2.2, 2, green, x, 4.6, z - 2.2, unitsG); cyl(0.7, 6, dark, x, 6.5, z + 2.4, unitsG); box(0.3, 0.3, 0.3, navRed, x, 9.6, z + 2.4, unitsG); }
+    // QA#7: aeroderivative gas-turbine packages (LM6000-style): light-grey enclosure, beige air-intake filter house with louvres,
+    // tall exhaust stack with a lit warning lamp, access doors. Matte (non-metal) paints so they read at night.
+    for (let i = 0; i < count('turbine'); i++) { const x = 45 + (i % 4) * 5, z = 22 + Math.floor(i / 4) * 9; const pk = box(4, 3.4, 7, tPkg, x, 1.7, z, unitsG); pk.userData.part = 'turbinePkg'; box(4.2, 0.3, 7.2, tTrim, x, 3.5, z, unitsG);
+      box(3.4, 2.6, 2.6, tIntake, x, 4.95, z - 2.0, unitsG); for (let k = 0; k < 4; k++) box(3.45, 0.12, 2.65, tTrim, x, 4.0 + k * 0.6, z - 2.0, unitsG);
+      for (const dz of [-1.2, 1.4]) box(0.06, 2.2, 1.1, tTrim, x + 2.02, 1.4, z + dz, unitsG);
+      const st = cyl(0.75, 9, tPkg, x, 7.4, z + 2.4, unitsG); st.userData.part = 'turbineStack'; cyl(0.82, 0.35, tTrim, x, 11.7, z + 2.4, unitsG); box(0.35, 0.35, 0.35, navRed, x + 0.8, 11.4, z + 2.4, unitsG); }
     for (let i = 0; i < count('separator'); i++) { const o = cyl(1.4, 6, steel, -32 + i * 3.6, 2.1, 42, unitsG); o.rotation.x = Math.PI / 2; for (const dz of [-2, 2]) box(1.6, 1.4, 0.5, dark, -32 + i * 3.6, 0.7, 42 + dz, unitsG); cyl(0.25, 1.6, yellow, -32 + i * 3.6, 3.6, 42 - 1, unitsG); }
     // Process units on the row north of the ponds: a slot per kind, up to four copies in a 2x2 grid (mu-visuals).
     const PROC: UnitKind[] = ['gas_plant', 'refinery', 'reformer', 'coker', 'cracker', 'polymer'];
