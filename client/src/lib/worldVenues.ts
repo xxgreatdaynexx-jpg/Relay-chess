@@ -6,17 +6,19 @@
 import { xmasOn } from '../../../shared/holiday';
 import { xmasGround } from './worldXmas';
 import * as THREE from 'three';
+import { addFuselage } from './planeNose';
 import { trackOffset, wallOpen, WALL_OUT, WALL_IN } from '../../../shared/racePhysics';
 import { AIRPORT, AIRPORT_SLOT, RUNWAY, AIRPORT_ROADS, RACETRACK, RACETRACK_ROADS, TRACK, trackPoint, GATES, type Rect } from '../../../shared/venues';
 const NEON = 0.65; // matches world3d's toned-down neon
 
 type Mk = { mat: (o: THREE.MeshStandardMaterialParameters) => THREE.MeshStandardMaterial; geo: <T extends THREE.BufferGeometry>(g: T) => T };
 
-function plane(): THREE.Group {
+export function plane(): THREE.Group {
   const g = new THREE.Group(); const white = new THREE.MeshStandardMaterial({ color: 0xe8ecf2, roughness: 0.5 }); const tail = new THREE.MeshStandardMaterial({ color: 0xff7a1a, roughness: 0.5 });
   const add = (geo: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.rotation.set(rx, ry, rz); g.add(o); return o; };
-  add(new THREE.CylinderGeometry(0.9, 0.7, 12, 10), white, 0, 0, 0, 0, 0, Math.PI / 2); // fuselage along +x
-  add(new THREE.ConeGeometry(0.9, 2, 10), white, 7, 0, 0, 0, 0, -Math.PI / 2);
+  // mu-visuals nose fix: was a 0.9→0.7 tapered tube with a 0.9 cone stuck on the 0.7 end (step + seam, rocket nose).
+  addFuselage(g, { r: 0.85, len: 11, nose: 2, tail: 1.6, axis: 'x', body: white, glass: new THREE.MeshStandardMaterial({ color: 0x1a2430, metalness: 0.7, roughness: 0.15 }) });
+  for (let i = 0; i < 12; i++) for (const s of [-1, 1]) add(new THREE.CircleGeometry(0.12, 8), new THREE.MeshStandardMaterial({ color: 0x1a2430 }), 3.6 - i * 0.62, 0.3, s * 0.862, 0, s < 0 ? Math.PI : 0, 0);
   add(new THREE.BoxGeometry(3, 0.2, 14), white, 0.5, -0.2, 0); // wings
   add(new THREE.BoxGeometry(1.6, 0.15, 5), white, -5.2, 0.3, 0); // tailplane
   add(new THREE.BoxGeometry(1.8, 2.6, 0.2), tail, -5.4, 1.4, 0); // fin
@@ -24,7 +26,7 @@ function plane(): THREE.Group {
   const nav = new THREE.MeshBasicMaterial({ color: 0xff3040 }); add(new THREE.SphereGeometry(0.25, 6, 4), nav, 0.5, -0.1, -7); g.userData.blink = add(new THREE.SphereGeometry(0.3, 6, 4), new THREE.MeshBasicMaterial({ color: 0xffffff }), -5.4, 2.8, 0);
   return g;
 }
-const disposeTree = (o: THREE.Object3D) => o.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh) { m.geometry.dispose(); (Array.isArray(m.material) ? m.material : [m.material]).forEach((x) => x.dispose()); } });
+const disposeTree = (o: THREE.Object3D) => o.traverse((c) => { const m = c as THREE.Mesh; if (m.isMesh) { if (!m.geometry.userData.shared) m.geometry.dispose(); (Array.isArray(m.material) ? m.material : [m.material]).forEach((x) => x.dispose()); } });
 
 /** Builds the venue grounds into `scene`; returns the per-frame animation step and a disposer for the planes. */
 export function buildVenues(scene: THREE.Scene, { mat, geo }: Mk): { step: (dt: number, time: number, cam?: THREE.Vector3) => void; dispose: () => void } {

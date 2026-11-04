@@ -1,4 +1,5 @@
 // Procedural low-poly boats and jets (Marina / Hangar previews and the resort map). Caller owns disposal via `dispose(g)`.
+import { addFuselage } from './planeNose';
 import * as THREE from 'three';
 import { nacelle } from './nacelle';
 import type { FleetModel } from '../../../shared/fleet';
@@ -45,9 +46,8 @@ export function buildBoat(m: FleetModel): THREE.Group {
 export function buildJet(m: FleetModel): THREE.Group {
   const g = new THREE.Group(); const body = M(m.color, { metalness: 0.35, roughness: 0.3 }); const trim = M(m.id === 'chudone' ? 0xd8b25a : 0x1a3a6a, { metalness: 0.6, roughness: 0.3 }); const win = M(0x1a2430, { metalness: 0.8, roughness: 0.1 }); const eng = M(0x8a929a, { metalness: 0.8, roughness: 0.3 });
   const k = m.id === 'citation' ? 0.7 : m.id === 'g700' ? 1 : 1.8; const L = 16 * k, R = 0.9 * k * (m.id === 'chudone' ? 1.3 : 1);
-  const f = add(g, new THREE.CylinderGeometry(R, R, L, 16), body, 0, R + 1, 0); f.rotation.x = Math.PI / 2;
-  const nose = add(g, new THREE.SphereGeometry(R, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), body, 0, R + 1, L / 2); nose.rotation.x = Math.PI / 2; nose.scale.set(1, 1.8, 1);
-  const tail = add(g, new THREE.ConeGeometry(R, L * 0.25, 16), body, 0, R + 1 + R * 0.25, -L / 2 - L * 0.12); tail.rotation.x = -Math.PI / 2;
+  // mu-visuals nose fix: one coaxial fuselage + rounded blunt nose + tail cone, same radius/segments at each joint (no seam, no step).
+  addFuselage(g, { r: R, len: L, nose: R * 1.9, tail: L * 0.25, y: R + 1, body, glass: win });
   add(g, new THREE.BoxGeometry(R * 2.02, R * 0.2, L * 0.9), trim, 0, R + 1 - R * 0.35, 0); add(g, new THREE.BoxGeometry(R * 2.04, R * 0.22, L * 0.78), win, 0, R + 1 + R * 0.35, 0.02 * L);
   if (m.id === 'chudone') add(g, new THREE.BoxGeometry(R * 1.4, R * 0.9, L * 0.28), body, 0, R * 2 + 1, L * 0.3);
   const wing = new THREE.Shape(); wing.moveTo(0, 0); wing.lineTo(L * 0.55, -L * 0.22); wing.lineTo(L * 0.55, -L * 0.3); wing.lineTo(0, -L * 0.25);
@@ -61,7 +61,6 @@ export function buildJet(m: FleetModel): THREE.Group {
     const n = nacelle({ len: nl, r: nr, pylon: pyl, body, lipColor: m.id === 'chudone' ? 0xd8b25a : undefined }); n.position.set(x, wingY - pyl - nr, le + nl * 0.05); g.add(n); }
   for (const z of [L * 0.32, -L * 0.1]) for (const x of z > 0 ? [0] : [-R * 0.8, R * 0.8]) add(g, new THREE.CylinderGeometry(0.18 * k, 0.18 * k, 0.3 * k, 10), M(0x111111), x, 0.2, z).rotation.z = Math.PI / 2;
   // mu-visuals detail: cockpit windshield, cabin window row, winglets, landing-gear struts, nav lights.
-  const ws = add(g, new THREE.SphereGeometry(R * 0.95, 14, 8, -Math.PI / 2, Math.PI, 0, Math.PI / 3), win, 0, R + 1 + R * 0.15, L / 2 - R * 0.2); ws.scale.set(1, 1, 1.6);
   for (let i = 0; i < Math.round(6 * k + 2); i++) for (const sx of [-1, 1]) { const wn = add(g, new THREE.CircleGeometry(R * 0.16, 10), win, sx * R * 1.01, R + 1 + R * 0.3, L * 0.3 - i * (L * 0.55 / Math.round(6 * k + 2))); wn.rotation.y = sx * Math.PI / 2; }
   for (const s of [-1, 1]) { const wl = add(g, new THREE.BoxGeometry(0.08 * k, 1.4 * k, 0.9 * k), body, s * L * 0.55, R + 0.6 + 0.7 * k, L * 0.1 - L * 0.26); wl.rotation.z = -s * 0.25;
     add(g, new THREE.SphereGeometry(0.12 * k, 8, 6), M(s < 0 ? 0xff2020 : 0x20ff40, { emissive: s < 0 ? 0xff2020 : 0x20ff40, emissiveIntensity: 1.5 }), s * L * 0.55, R + 0.62, L * 0.1 - L * 0.27); }
@@ -69,4 +68,4 @@ export function buildJet(m: FleetModel): THREE.Group {
   return g;
 }
 export const buildCraft = (m: FleetModel) => (m.kind === 'boat' ? buildBoat(m) : buildJet(m));
-export function disposeTree(g: THREE.Object3D) { g.traverse((o) => { const x = o as THREE.Mesh; if (x.geometry) x.geometry.dispose(); if (x.material) (Array.isArray(x.material) ? x.material : [x.material]).forEach((mm) => mm.dispose()); }); }
+export function disposeTree(g: THREE.Object3D) { g.traverse((o) => { const x = o as THREE.Mesh; if (x.geometry && !x.geometry.userData.shared) x.geometry.dispose(); if (x.material) (Array.isArray(x.material) ? x.material : [x.material]).forEach((mm) => mm.dispose()); }); }

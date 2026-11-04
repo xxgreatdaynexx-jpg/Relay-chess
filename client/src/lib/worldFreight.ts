@@ -3,6 +3,7 @@
  * (trucks with their owner's name, hired rigs, hourly freight planes, 2-hourly cargo ships). Trucks only exist on the
  * map while they're driving a load; a ship sits at the port while it loads.
  */
+import { addFuselage } from './planeNose';
 import * as THREE from 'three';
 import type { World } from './world3d';
 import { cityLabel } from './labelSprite';
@@ -37,8 +38,8 @@ export function truck(color: number, hired: boolean) {
 }
 export function plane() {
   const g = new THREE.Group(); const white = sm(0xf8fafc, 0.4, 0.2), grey = sm(0x9ca3af, 0.45, 0.5), gold = sm(0xeab308, 0.45, 0.2), win = sm(0x0f172a, 0.2, 0.5);
-  const fus = sg('fus', () => { const c = new THREE.CapsuleGeometry(0.85, 9, 6, 14); c.rotateZ(Math.PI / 2); return c; }); g.add(new THREE.Mesh(fus, white));
-  part(g, BOX(), win, 7.4, 0.18, 1.72, 0.2, 0.25, 0); part(g, BOX(), win, 0.7, 0.3, 1.2, 4.7, 0.25, 0); // window band, cockpit
+  addFuselage(g, { r: 0.85, len: 9, nose: 1.6, tail: 1.1, axis: 'x', body: white, glass: win }); // mu-visuals nose fix: coaxial, flush nose + wrap-round windscreen
+  part(g, BOX(), win, 7.4, 0.18, 1.72, 0.2, 0.25, 0); // window band
   part(g, BOX(), gold, 9, 0.12, 1.74, -0.3, -0.3, 0); // cheatline
   const wing = sg('wing', () => { const s = new THREE.Shape(); s.moveTo(1.5, 0); s.lineTo(-0.6, 7); s.lineTo(-1.8, 7); s.lineTo(-1.6, 0); const w = new THREE.ExtrudeGeometry(s, { depth: 0.18, bevelEnabled: false }); w.rotateX(Math.PI / 2); return w; });
   for (const sgn of [1, -1]) { const w = new THREE.Mesh(wing, white); w.scale.z = sgn; w.position.set(0.4, -0.35, 0); g.add(w);
