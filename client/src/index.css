@@ -1655,6 +1655,8 @@ html, body { overflow-x: clip; }
 .world-clock b { font-size: 13px; } .world-clock small { color: #fff6d8aa; }
 .world-title { position: absolute; left: 18px; top: 12px; font: 900 34px/1 'Outfit Variable', system-ui, sans-serif; letter-spacing: .04em; color: #fff; text-shadow: 0 0 18px #e8c26a99; pointer-events: none; }
 .world-title span { color: #e8c26a; }
+/* recheck #6: the map subtitle sits on its own line under the title (was run on: "FORT McCHUDoil sands") */
+.world-title small { display: block; margin-top: 4px; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; opacity: .8; }
 .world-loading { position: absolute; inset: 0; display: grid; place-items: center; font-size: 18px; color: #fff6d8aa; pointer-events: none; }
 .world-tip { position: fixed; z-index: 41; pointer-events: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border-radius: 12px; background: rgba(8,6,20,.92); border: 1px solid var(--c); box-shadow: 0 0 18px var(--c); font-size: 13px; max-width: 240px; }
 .world-tip b { color: var(--c); font-size: 15px; } .world-tip em { font-size: 11px; opacity: .7; }
