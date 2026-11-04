@@ -3,7 +3,7 @@ import { newDb } from 'pg-mem';
 import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
 import { BUYOUT_PROTECT_MS, buyoutPrice } from '../shared/royalty';
-import { propertyById, sellBackOf } from '../shared/realEstate';
+import { propertyById, sellBackOf, taxOf } from '../shared/realEstate';
 import { LAUNCH } from '../shared/launchPopup';
 
 vi.mock('../server/popups', () => ({ sendPopup: vi.fn(async () => ({ online: false })) }));
@@ -21,6 +21,18 @@ async function setup() {
 const LM = 'lm:mine';
 
 describe('hostile buyouts', () => {
+  it('Tess QA #8: My properties shows the price paid and property tax is on it (buyouts cannot dodge tax)', async () => {
+    const { bank, re, fund, pool, setNow } = await setup();
+    const list = propertyById(LM)!.price;
+    await fund('Alice', 10 * list); const paid = (await re.buy('Alice', LM)).price;
+    expect((await re.mine('Alice')).find((m) => m.id === LM)).toMatchObject({ paid, tax: taxOf(paid) });
+    setNow(T0 + BUYOUT_PROTECT_MS); await fund('Bob', 10 * list); await re.buyout('Bob', LM);
+    expect((await re.mine('Bob')).find((m) => m.id === LM)).toMatchObject({ paid: 2 * paid, tax: taxOf(2 * paid) });
+    setNow(T0 + BUYOUT_PROTECT_MS + 86_400_000); const before = bank.account('Bob').chips;
+    await re.runTax(); await bank.flush();
+    const rows = (await pool.query("SELECT amount FROM wallet_transactions WHERE player_key = 'bob' AND game = 'property_tax'")).rows as Array<{ amount: string }>;
+    expect(rows.map((r) => Number(r.amount))).toEqual([-taxOf(2 * paid)]); expect(bank.account('Bob').chips).toBe(before - taxOf(2 * paid));
+  });
   it('pays the owner 2x what they paid in one transaction, re-prices, and notifies them', async () => {
     const { bank, re, fund, ledger, setNow } = await setup();
     const list = propertyById(LM)!.price;

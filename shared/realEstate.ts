@@ -43,6 +43,8 @@ const clamp = (x: number) => Math.min(1.25, Math.max(0.8, x));
 const round500 = (n: number) => Math.max(500, Math.round(n / 500) * 500);
 const pos = (b: OBB) => `${Math.round(b.x * 10)}:${Math.round(b.z * 10)}`;
 export const taxOf = (price: number) => Math.ceil(price * TAX_RATE);
+/** Tess QA #8: property tax is on the price actually paid (buyouts can't dodge it; a surcharged buy pays on what it cost). */
+export const taxBasisOf = (paid: number | null | undefined, list: number) => (paid && paid > 0 ? paid : list);
 /**
  * Tess QA #7: the client's optimistic ownership after a buy/buyout. A buyout keeps the city's sell-back basis (what the
  * city was originally paid), so the deed's Sell-back matches what the server will refund (was: basis dropped -> 70% of the

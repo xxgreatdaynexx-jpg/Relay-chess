@@ -18,7 +18,7 @@ import { sendPopup } from './popups.js';
 import { BUYOUT_MUL, BUYOUT_PROTECT_MS, buyoutPrice } from '../shared/royalty.js';
 import { px, priceIndex } from './price-index.js';
 import { requireResort } from './travel.js';
-import { GRACE_DAYS, propertyById as baseProperty, sellBackOf, taxOf, landPrice, landMultiplier, landSurchargePct, landMultiplierNote, type OwnedProperty } from '../shared/realEstate.js';
+import { taxBasisOf, GRACE_DAYS, propertyById as baseProperty, sellBackOf, taxOf, landPrice, landMultiplier, landSurchargePct, landMultiplierNote, type OwnedProperty } from '../shared/realEstate.js';
 import { skillLevelAsync } from './skills.js';
 import { propertyTaxMul } from '../shared/skillPerks.js';
 import { cityPropertyTaxMul } from './mayor.js';
@@ -71,7 +71,7 @@ export class RealEstate {
   }
   async mine(name: string) {
     const rows = ((await this.pool.query('SELECT * FROM properties WHERE owner_key = $1 ORDER BY price DESC', [keyOf(name)])).rows as Row[]);
-    return rows.map((r) => { const p = propertyById(r.id); return { ...toOwned(r), label: p?.label ?? r.id, type: p?.type ?? '', value: p?.price ?? Number(r.price), tax: taxOf(p?.price ?? Number(r.price)), taxPaid: Number(r.tax_paid) }; });
+    return rows.map((r) => { const p = propertyById(r.id); return { ...toOwned(r), label: p?.label ?? r.id, type: p?.type ?? '', value: p?.price ?? Number(r.price), paid: Number(r.price), tax: taxOf(taxBasisOf(Number(r.price), p?.price ?? 0)), taxPaid: Number(r.tax_paid) }; });
   }
 
   /** Atomic: the ledger rows and the ownership change commit together, or neither does. */
@@ -183,7 +183,7 @@ export class RealEstate {
     const due = ((await this.pool.query('SELECT * FROM properties WHERE bought_at < $1 ORDER BY owner_key, price', [start])).rows as Row[]).filter((r) => !done.has(r.id));
     const out = { charged: 0, paid: 0, unpaid: 0, repossessed: 0 }; const bank = this.bank();
     for (const r of due) {
-      const amount = Math.max(1, Math.round(taxOf(propertyById(r.id)?.price ?? Number(r.price)) * propertyTaxMul(await skillLevelAsync(r.owner_name, 'property')) * cityPropertyTaxMul(now))); // Property perk + mayor's tax rate
+      const amount = Math.max(1, Math.round(taxOf(taxBasisOf(Number(r.price), propertyById(r.id)?.price ?? 0)) * propertyTaxMul(await skillLevelAsync(r.owner_name, 'property')) * cityPropertyTaxMul(now))); // Property perk + mayor's tax rate
       try { await bank.refresh(r.owner_name); } catch { continue; }
       const can = bank.account(r.owner_name).chips >= amount;
       const claim = async (cl: pg.PoolClient, paid: boolean, repo: boolean) => {

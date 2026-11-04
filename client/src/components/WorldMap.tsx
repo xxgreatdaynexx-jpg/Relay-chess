@@ -23,7 +23,7 @@ import { socket } from '@/lib/net';
 import { indexed } from '../../../shared/priceIndex';
 import { skyNow, parseTod, fmtClock, hex } from '../../../shared/daynight';
 import { fmtLap } from '../../../shared/venues';
-import { optimisticOwn, propertyById as baseProperty, properties as baseProperties, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, workerBonusOf, WORKER_BONUS_MAX, landPrice, landMultiplierNote, landSurchargePct, SURCHARGE_PCT_PER_1K, type OwnedProperty } from '../../../shared/realEstate';
+import { optimisticOwn, taxBasisOf, propertyById as baseProperty, properties as baseProperties, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, workerBonusOf, WORKER_BONUS_MAX, landPrice, landMultiplierNote, landSurchargePct, SURCHARGE_PCT_PER_1K, type OwnedProperty } from '../../../shared/realEstate';
 
 /** Today's price index from /api/real-estate; list prices and tax scale with it. */
 let IDX = 1;
@@ -54,7 +54,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }:
   const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState<null | 're_buy' | 're_sell' | 're_buyout'>(null); const [msg, setMsg] = useState<string | null>(null); const wallet = useWalletChips(); useEffect(() => setMsg(null), [id]); // Tess QA #5: switching deeds clears the last deed's status
   if (!p) return null;
   const mine = !!(o && me && o.owner.toLowerCase() === me.toLowerCase());
-  // pt1388u: you pay list × (1 + 2% per 1,000 of property you own, uncapped); sell-back is 70% of what you paid; tax stays on list.
+  // pt1388u: you pay list × (1 + 2% per 1,000 of property you own, uncapped); sell-back is 70% of what you paid; tax is on what you paid (Tess QA #8).
   const ownedValue = me ? [...owned.entries()].filter(([, x]) => x.owner.toLowerCase() === me.toLowerCase()).reduce((a, [k, x]) => a + (propertyById(k)?.price ?? x.price ?? 0), 0) : 0;
   const surcharge = +landSurchargePct(ownedValue).toFixed(1);
   const cost = o ? (o.price || p.price) : landPrice(p.price, ownedValue); const note = !o ? landMultiplierNote(ownedValue) : '';
@@ -76,7 +76,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }:
         <dt>Sell-back</dt><dd data-testid="deed-sellback">🪙 {chips(sellBackOf(Math.min(cost, o?.basis ?? cost)))} (70% of {o?.basis ? 'what the city was paid' : o ? 'what was paid' : 'your price'})</dd>
         {workerBonusOf(p.id) > 0 && <><dt>Worker cap</dt><dd data-testid="deed-workers">+{workerBonusOf(p.id)} Employment Office worker{workerBonusOf(p.id) > 1 ? 's' : ''} (property bonus max +{WORKER_BONUS_MAX})</dd></>}
         {p.kind === 'landmark' && ROYALTY_VENUE[p.type] && <><dt>Royalty</dt><dd data-testid="deed-royalty">{royaltyPct(p.type)} of {ROYALTY_VENUE[p.type]}, minted to the owner on top (the player keeps 100%). Not paid on the owner's own earnings.{o && <small className="block text-amber-300" data-testid="deed-royalty-income">Royalty income{mine ? '' : ` (${o.owner})`}: 🪙 {chips(ROY[p.id] ?? 0)} since bought</small>}</dd></>}
-        <dt>Property tax</dt><dd data-testid="deed-tax">🪙 {chips(taxOf(p.price))}/day ({(TAX_RATE * 100).toFixed(1)}%)</dd>
+        <dt>Property tax</dt><dd data-testid="deed-tax">🪙 {chips(taxOf(taxBasisOf(cost, p.price)))}/day ({(TAX_RATE * 100).toFixed(1)}%)</dd>
         {o && o.arrears > 0 && <><dt>Arrears</dt><dd className="text-rose-300">{o.arrears} unpaid day{o.arrears > 1 ? 's' : ''} (repossessed at {GRACE_DAYS})</dd></>}
       </dl>
       {!o && (me ? <button type="button" disabled={!!busy} aria-busy={busy === 're_buy'} onClick={() => (short ? setMsg(`Not enough chips: ${p.label} costs 🪙 ${chips(cost)}; you have 🪙 ${chips(wallet ?? 0)} (need 🪙 ${chips(short)} more).`) : act('re_buy'))} aria-describedby={short ? 'deed-short' : undefined} data-testid="deed-buy">{busy === 're_buy' ? <><span className="world-spin" aria-hidden /> Buying…</> : <>Buy for 🪙 {chips(cost)}{me ? ` (+${surcharge}% surcharge)` : ''}</>}</button> : <small>Sign in to buy.</small>)}
@@ -99,14 +99,14 @@ function DeedList({ owned, me, onOpen, onClose }: { owned: Map<string, OwnedProp
   const dragDeeds = usePanelDrag('deeds');
   const mine = me ? [...owned.values()].filter((o) => o.owner.toLowerCase() === me.toLowerCase()) : [];
   const lms = properties().filter((p) => p.kind === 'landmark').sort((a, b) => b.price - a.price);
-  const value = mine.reduce((a, o) => a + (propertyById(o.id)?.price ?? o.price), 0);
+  const value = mine.reduce((a, o) => a + (o.price || (propertyById(o.id)?.price ?? 0)), 0); // Tess QA #8: price paid
   return (
     <div className="world-deed world-deeds" data-testid="world-deeds" data-drag-panel="deeds" onPointerDown={dragDeeds.onPointerDown} style={dragDeeds.style()} ref={dragDeeds.ref}>{dragDeeds.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <h3>🏛 Real estate</h3>
       <small>Click any building, lot, park or plaza on the map to see its deed. The Trailer Park stays free.</small>
-      <h4>My properties{mine.length ? ` · 🪙 ${chips(value)} · tax 🪙 ${chips(mine.reduce((a, o) => a + taxOf(propertyById(o.id)?.price ?? o.price), 0))}/day` : ''}</h4>
-      {mine.length ? mine.map((o) => <button type="button" key={o.id} onClick={() => onOpen(o.id)}>{propertyById(o.id)?.label ?? o.id}<span>🪙 {chips(propertyById(o.id)?.price ?? o.price)}</span></button>) : <small>{me ? 'None yet.' : 'Sign in to buy property.'}</small>}
+      <h4>My properties{mine.length ? ` · 🪙 ${chips(value)} · tax 🪙 ${chips(mine.reduce((a, o) => a + taxOf(taxBasisOf(o.price, propertyById(o.id)?.price ?? 0)), 0))}/day` : ''}</h4>
+      {mine.length ? mine.map((o) => <button type="button" key={o.id} onClick={() => onOpen(o.id)}>{propertyById(o.id)?.label ?? o.id}<span title="What you paid (property tax is on this)" data-testid={`myprop-paid-${o.id}`}>🪙 {chips(o.price || (propertyById(o.id)?.price ?? 0))}</span></button>) : <small>{me ? 'None yet.' : 'Sign in to buy property.'}</small>}
       <h4>🌾 Farmland (east of the city)</h4>
       {properties().filter((p) => p.kind === 'farm' && p.map !== 'resort').map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
       <h4>Landmarks (trophy deeds)</h4>

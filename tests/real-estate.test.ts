@@ -121,7 +121,7 @@ describe('real estate: buy / sell / tax', () => {
 
 describe('real estate: land gets pricier the more you own', () => {
   const cheap = (k: number) => [...properties()].filter((p) => p.kind !== 'landmark').sort((a, b) => a.price - b.price).slice(0, k);
-  it('price = list × (1 + 2% per 1,000 owned, uncapped); sell-back is 70% of what was paid; tax stays on list', async () => {
+  it('price = list × (1 + 2% per 1,000 owned, uncapped); sell-back is 70% of what was paid; tax is on the price paid (Tess QA #8)', async () => {
     const s = await setup(); const ps = cheap(4); const list = ps.map((p) => px(p.price));
     const before = list.map((_, i) => list.slice(0, i).reduce((a, b) => a + b, 0));
     const cost = list.reduce((a, l, i) => a + landPrice(l, before[i]!), 0); await s.fund('Ivy', cost);
@@ -130,7 +130,7 @@ describe('real estate: land gets pricier the more you own', () => {
       const r = await s.re.buy('Ivy', ps[i]!.id, q.price); expect(r.price).toBe(q.price); }
     expect(s.chips('ivy')).toBe(0);
     expect(s.ledger('ivy', 'property_buy').map((x) => -Number(x.amount))).toEqual(list.map((l, i) => landPrice(l, before[i]!)));
-    const mine = await s.re.mine('Ivy'); for (const m of mine) expect(m.tax).toBe(taxOf(px(propertyById(m.id)!.price)));
+    const mine = await s.re.mine('Ivy'); for (const m of mine) { expect(m.tax).toBe(taxOf(m.price)); expect(m.paid).toBe(m.price); }
     await s.re.sell('Ivy', ps[3]!.id); expect(s.chips('ivy')).toBe(sellBackOf(landPrice(list[3]!, before[3]!)));
     // after selling, the next purchase is priced at the new (lower) count
     expect((await s.re.quote('Ivy', ps[3]!.id)).owned).toBe(3);
