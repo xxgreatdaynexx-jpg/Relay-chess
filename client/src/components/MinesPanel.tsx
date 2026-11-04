@@ -1,3 +1,4 @@
+import { gearLockReason } from '@/lib/gearLock';
 import { useDoing } from '@/lib/doing';
 import { restoreOpen } from '@/lib/restoreOpen';
 import { ItemIcon } from './ItemIcon';
@@ -381,14 +382,14 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
                 <span style={{ fontSize: 20, width: 28, textAlign: 'center' }}>{w.icon}</span>
                 <span className="mines-tool-name">{w.name}<small>{w.dmg} dmg · {(w.ms / 1000).toFixed(2)}s · reach {w.reach}</small></span>
                 {on ? <em>Equipped</em> : owned ? <button type="button" onClick={() => gearEmit('mine_gear_equip', { item: w.id })}>Equip</button>
-                  : <button type="button" disabled={!can || (wallet != null && wallet < price)} onClick={() => gearEmit('mine_gear_buy', { item: w.id }, `Bought the ${w.name}. Equipped.`)} title={can ? '' : guest ? 'Sign in to buy' : 'Buy the previous tier first'}>🪙{price.toLocaleString()}</button>}
+                  : <span className="mines-lock" title={gearLockReason(WEAPONS, w, can, guest, wallet, price) || undefined} data-testid={`mines-lock-${w.id}`}><button type="button" disabled={!can || (wallet != null && wallet < price)} onClick={() => gearEmit('mine_gear_buy', { item: w.id }, `Bought the ${w.name}. Equipped.`)}>{gearLockReason(WEAPONS, w, can, guest, wallet, price) ? '🔒 ' : ''}🪙{price.toLocaleString()}</button></span>}
               </div>); })}
             {ARMORS.filter((a) => a.tier > 0).map((a) => { const owned = !!gear?.owned.includes(a.id), on = gear?.armor === a.id, price = gear?.prices[a.id] ?? a.price, can = !!gear && !guest && canBuyGear('armor', a.id, gear.owned);
               return (<div key={a.id} className={`mines-tool ${on ? 'on' : ''}`} data-testid={`mines-gear-${a.id}`}>
                 <span style={{ fontSize: 20, width: 28, textAlign: 'center' }}>{a.icon}</span>
                 <span className="mines-tool-name">{a.name}<small>+{a.hp} HP · -{Math.round(a.def * 100)}% damage</small></span>
                 {on ? <em>Equipped</em> : owned ? <button type="button" onClick={() => gearEmit('mine_gear_equip', { item: a.id })}>Equip</button>
-                  : <button type="button" disabled={!can || (wallet != null && wallet < price)} onClick={() => gearEmit('mine_gear_buy', { item: a.id }, `Bought ${a.name}. Equipped.`)} title={can ? '' : guest ? 'Sign in to buy' : 'Buy the previous tier first'}>🪙{price.toLocaleString()}</button>}
+                  : <span className="mines-lock" title={gearLockReason(ARMORS, a, can, guest, wallet, price) || undefined} data-testid={`mines-lock-${a.id}`}><button type="button" disabled={!can || (wallet != null && wallet < price)} onClick={() => gearEmit('mine_gear_buy', { item: a.id }, `Bought ${a.name}. Equipped.`)}>{gearLockReason(ARMORS, a, can, guest, wallet, price) ? '🔒 ' : ''}🪙{price.toLocaleString()}</button></span>}
               </div>); })}
             <p className="mines-note">Creatures appear from floor 3 and get tougher every floor. Aim at one and click to strike. Fall in battle and you drop half of what you carry, then wake at the last elevator stop. Gear is yours to keep.</p>
             {gearMsg && <p className="mines-note" data-testid="mines-gear-msg">{gearMsg}</p>}
@@ -401,7 +402,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
                   <ItemIcon type="tool" id={t.id} />
                   <span className="mines-tool-name">{t.name}<small>{t.tier ? `${+(1 / t.swingMul).toFixed(2)}× speed` : 'Starter'}{t.bonus ? ` · +${Math.round(t.bonus * 100)}% ore` : ''}</small></span>
                   {on ? <em>Equipped</em> : owned ? <button type="button" onClick={() => equipTool(t.id)}>Equip</button>
-                    : <button type="button" disabled={!can || (wallet != null && wallet < price)} onClick={() => buyTool(t.id)} title={can ? '' : guest ? 'Sign in to buy' : 'Buy the previous tier first'}>🪙{price.toLocaleString()}</button>}
+                    : <span className="mines-lock" title={gearLockReason(MINE_TOOLS, t, can, guest, wallet, price) || undefined} data-testid={`mines-lock-${t.id}`}><button type="button" disabled={!can || (wallet != null && wallet < price)} onClick={() => buyTool(t.id)}>{gearLockReason(MINE_TOOLS, t, can, guest, wallet, price) ? '🔒 ' : ''}🪙{price.toLocaleString()}</button></span>}
                 </div>
               ); })}
             <p className="mines-note">Tools stack with your Mining level (up to {+(1 / combinedSwingMul(0, 'pickaxe')).toFixed(1)}× speed). Key/chest drops are unchanged.</p>
