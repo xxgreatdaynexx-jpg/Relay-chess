@@ -12,14 +12,32 @@ import { levelOf, hasFloors, LADDER, MAX_FLOOR } from '../../../shared/mineFloor
 import { MOBS, mobSkin, type MobKind, type MobModel } from '../../../shared/mineCombat';
 import { animateWeaponModel, buildWeaponModel } from './mineWeaponModels';
 
-export interface MobView { id: number; k: MobKind; x: number; y: number; a: number; hp: number; max: number }
-interface MobRig { root: THREE.Group; body: THREE.Object3D; wings?: THREE.Object3D[]; anim?: THREE.Object3D[]; model: MobModel; scale: number; bar: THREE.Sprite; barBg: THREE.Sprite; hurt: number; kind: MobKind; hp: number; t: number }
+/** st = AI state code (shared/mineAI ST_CODE), tw = attack telegraph, ph = boss phase. */
+export interface MobTel { k: string; x: number; y: number; r: number; dx: number; dy: number; ms: number; n?: string }
+export interface MobView { id: number; k: MobKind; x: number; y: number; a: number; hp: number; max: number; st?: number; mini?: number; ph?: number; tw?: MobTel }
+export interface ShotView { id: number; x: number; y: number; by: number }
+export interface MobFxView { k: 'aoe' | 'phase' | 'split' | 'summon'; x: number; y: number; r?: number; phase?: number; name?: string; by: number }
+interface MobRig { root: THREE.Group; body: THREE.Object3D; wings?: THREE.Object3D[]; anim?: THREE.Object3D[]; model: MobModel; scale: number; bar: THREE.Sprite; barBg: THREE.Sprite; barEdge: THREE.Sprite; hurt: number; kind: MobKind; hp: number; max: number; t: number;
+  /** server target pose (we glide to it), movement speed for walk cycles, AI state, wind-up/attack timers, death dissolve */
+  tx: number; ty: number; ta: number; mv: number; st: number; wind: number; atk: number; dying: number; mini: boolean; ph: number; glow: number; marker: THREE.Mesh; mats: THREE.MeshStandardMaterial[]; base: number }
+/** Glow creatures (fire / crystal / ghost): stronger emissive + additive halo. */
+const GLOW_MODELS = new Set<MobModel>(['imp', 'elemental', 'wraith', 'gaswraith', 'jelly']);
+const glowy = (model: MobModel, cave: CaveId) => GLOW_MODELS.has(model) || (cave === 'magma' && (model === 'golem' || model === 'slug'));
 const MG = new Map<string, THREE.BufferGeometry>();
 const mg = <T extends THREE.BufferGeometry>(k: string, f: () => T): T => { let g = MG.get(k); if (!g) { g = f(); MG.set(k, g); } return g as T; };
 /** Bat wing: scalloped membrane spanning from the body outwards (+z), finger bones along the leading edge. */
 const batWingG = () => mg('batwing', () => { const s = new THREE.Shape(); s.moveTo(0, 0.08); s.lineTo(0.55, 0.12); s.quadraticCurveTo(0.42, -0.02, 0.5, -0.16); s.quadraticCurveTo(0.33, -0.08, 0.3, -0.2); s.quadraticCurveTo(0.18, -0.1, 0.1, -0.18); s.lineTo(0, -0.08); s.closePath(); const g = new THREE.ShapeGeometry(s); g.rotateX(-Math.PI / 2); g.rotateY(Math.PI / 2); return g; });
+const GLINT = new THREE.MeshBasicMaterial({ color: '#ffffff' });
+const HALO = new Map<string, THREE.SpriteMaterial>();
+let haloTex: THREE.Texture | null = null;
+/** Soft radial glow sprite (one shared canvas texture, one material per colour). */
+function haloMat(color: string): THREE.SpriteMaterial {
+  let m = HALO.get(color); if (m) return m;
+  if (!haloTex) { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d')!; const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,0.55)'); g.addColorStop(0.4, 'rgba(255,255,255,0.18)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); haloTex = new THREE.CanvasTexture(c); }
+  m = new THREE.SpriteMaterial({ map: haloTex, color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }); HALO.set(color, m); return m;
+}
 /** Nov 4: rig + colours come from the mine's skin for this stat tier (shared/mineCombat.ts MOB_SKINS). */
-function buildMob(kind: MobKind, cave: CaveId = 'mine'): MobRig {
+function buildMob(kind: MobKind, cave: CaveId = 'mine', low = false): MobRig {
   const sk = mobSkin(cave, kind); const model = sk.model; const root = new THREE.Group(); const col = new THREE.Color(sk.color); const accC = new THREE.Color(sk.accent);
   const glassy = model === 'blob' || model === 'wraith' || model === 'gaswraith' || model === 'jelly' || model === 'elemental';
   const mat = new THREE.MeshStandardMaterial({ color: col, roughness: model === 'blob' || model === 'slug' || model === 'eel' ? 0.15 : 0.6, metalness: model === 'crab' || model === 'drillbot' ? 0.35 : 0, emissive: model === 'golem' || model === 'wraith' || model === 'gaswraith' || model === 'elemental' || model === 'jelly' ? col : '#000', emissiveIntensity: model === 'wraith' || model === 'gaswraith' ? 0.6 : 0.35, transparent: glassy, opacity: model === 'wraith' || model === 'gaswraith' ? 0.75 : model === 'jelly' ? 0.55 : model === 'elemental' ? 0.85 : model === 'blob' ? 0.82 : 1, flatShading: model === 'golem' || model === 'crab' || model === 'elemental' || model === 'yeti' || model === 'drillbot' });
@@ -28,7 +46,11 @@ function buildMob(kind: MobKind, cave: CaveId = 'mine'): MobRig {
   const eyeMat = new THREE.MeshBasicMaterial({ color: model === 'wraith' || model === 'elemental' ? '#ffffff' : model === 'golem' ? sk.accent : model === 'gaswraith' ? '#f0ff60' : '#ff3030' });
   const body = new THREE.Group(); let wings: THREE.Object3D[] | undefined;
   const M = (g: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number, p?: THREE.Object3D) => { const o = new THREE.Mesh(g, m); o.position.set(x, y, z); (p ?? body).add(o); return o; };
-  const eyes = (z: number, y: number, sp: number, r = 0.06) => { for (const s of [-1, 1]) M(mg('eye' + r, () => new THREE.SphereGeometry(r, 8, 6)), eyeMat, z, y, s * sp); };
+  const pupil = new THREE.MeshBasicMaterial({ color: model === 'wraith' || model === 'gaswraith' || model === 'elemental' ? sk.accent : '#100808' });
+  const eyes = (z: number, y: number, sp: number, r = 0.06) => { for (const s of [-1, 1]) { const e = M(mg('eye' + r, () => new THREE.SphereGeometry(r, 10, 8)), eyeMat, z, y, s * sp);
+    const pu = new THREE.Mesh(mg('pupil' + r, () => new THREE.SphereGeometry(r * 0.5, 8, 6)), pupil); pu.position.set(r * 0.62, 0, 0); e.add(pu);
+    const gl = new THREE.Mesh(mg('glint' + r, () => new THREE.SphereGeometry(r * 0.2, 6, 4)), GLINT); gl.position.set(r * 0.8, r * 0.35, -s * r * 0.25); e.add(gl);
+    const lid = new THREE.Mesh(mg('lid' + r, () => new THREE.BoxGeometry(r * 1.6, r * 0.45, r * 2.4)), dark); lid.position.set(r * 0.3, r * 0.85, 0); lid.rotation.x = s * 0.35; e.add(lid); } };
   if (model === 'blob') {
     const b = M(mg('slime', () => { const g = new THREE.SphereGeometry(0.45, 20, 14); const p = g.attributes.position as THREE.BufferAttribute; for (let i = 0; i < p.count; i++) { const y = p.getY(i); if (y < -0.1) p.setY(i, -0.1 - (y + 0.1) * 0.25); p.setX(i, p.getX(i) * (1 + Math.max(0, -y) * 0.5)); p.setZ(i, p.getZ(i) * (1 + Math.max(0, -y) * 0.5)); } g.computeVertexNormals(); return g; }), mat, 0, 0.36, 0); b.scale.set(1, 0.78, 1);
     const core = M(mg('core', () => new THREE.IcosahedronGeometry(0.15, 0)), new THREE.MeshStandardMaterial({ color: col.clone().multiplyScalar(0.5), emissive: col, emissiveIntensity: 0.5, flatShading: true }), -0.05, 0.3, 0); core.rotation.set(0.5, 0.3, 0);
@@ -97,7 +119,8 @@ function buildMob(kind: MobKind, cave: CaveId = 'mine'): MobRig {
     body.position.y = MOBS.bat.z;
   } else if (model === 'jelly') {
     M(mg('jbell', () => new THREE.SphereGeometry(0.4, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2)), mat, 0, 1.4, 0);
-    M(mg('jcore', () => new THREE.SphereGeometry(0.16, 8, 6)), acc, 0, 1.5, 0);
+    M(mg('jcore', () => new THREE.SphereGeometry(0.16, 8, 6)), acc, 0, 1.5, 0); eyes(0.34, 1.58, 0.13, 0.045);
+    M(mg('jrim', () => new THREE.TorusGeometry(0.4, 0.035, 6, 24)), acc, 0, 1.4, 0).rotation.x = Math.PI / 2;
     anim = []; for (let i = 0; i < 8; i++) { const t = M(mg('jtent', () => new THREE.CylinderGeometry(0.015, 0.006, 0.9, 4)), mat, Math.cos(i * 0.785) * 0.28, 0.95, Math.sin(i * 0.785) * 0.28); anim.push(t); }
   } else if (model === 'eel') {
     anim = []; for (let i = 0; i < 7; i++) { const r = 0.16 - i * 0.017; const seg = M(mg('eel' + i, () => new THREE.SphereGeometry(r, 10, 6)), i % 2 ? acc : mat, 0.4 - i * 0.2, 1.0, 0); seg.scale.set(1.4, 1, 1); anim.push(seg); }
@@ -111,6 +134,8 @@ function buildMob(kind: MobKind, cave: CaveId = 'mine'): MobRig {
     M(mg('dbbody', () => new THREE.BoxGeometry(0.7, 0.45, 0.55)), mat, 0, 0.5, 0); M(mg('dbcab', () => new THREE.BoxGeometry(0.3, 0.25, 0.4)), dark, -0.15, 0.85, 0);
     for (const s of [-1, 1]) M(mg('dbtrack', () => new THREE.BoxGeometry(0.8, 0.22, 0.14)), dark, 0, 0.16, s * 0.33);
     M(mg('dblamp', () => new THREE.SphereGeometry(0.06, 6, 4)), new THREE.MeshBasicMaterial({ color: '#ff3020' }), 0.2, 0.82, 0);
+    M(mg('dbvisor', () => new THREE.BoxGeometry(0.04, 0.12, 0.34)), new THREE.MeshBasicMaterial({ color: '#101418' }), 0.01, 0.88, 0); eyes(0.04, 0.88, 0.09, 0.035);
+    for (const s of [-1, 1]) for (let i = 0; i < 3; i++) M(mg('dbwheel', () => { const g = new THREE.CylinderGeometry(0.08, 0.08, 0.16, 10); g.rotateX(Math.PI / 2); return g; }), acc, -0.26 + i * 0.26, 0.16, s * 0.33);
     const drill = M(mg('dbdrill', () => new THREE.ConeGeometry(0.17, 0.55, 8)), acc, 0.62, 0.5, 0); drill.rotation.z = -Math.PI / 2; anim = [drill];
     for (let i = 0; i < 3; i++) M(mg('dbstripe', () => new THREE.BoxGeometry(0.02, 0.4, 0.56)), acc, -0.25 + i * 0.12, 0.5, 0);
   } else {
@@ -125,12 +150,27 @@ function buildMob(kind: MobKind, cave: CaveId = 'mine'): MobRig {
     const glow = new THREE.Mesh(mg('wglow', () => new THREE.SphereGeometry(0.6, 12, 8)), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.12, depthWrite: false, blending: THREE.AdditiveBlending })); glow.position.y = 1.3; glow.scale.set(1, 1.6, 1); body.add(glow);
   }
   root.add(body);
-  const bg = new THREE.Sprite(new THREE.SpriteMaterial({ color: '#200a0a', depthWrite: false, fog: false })); const bar = new THREE.Sprite(new THREE.SpriteMaterial({ color: '#ff4040', depthWrite: false, fog: false }));
+  // Readability (dark close-ups): every creature carries a faint self-light from its own colour so its silhouette and
+  // face read in a dark tunnel without adding lights; glow types (fire / crystal / ghost) get much more plus a halo.
+  const glow = glowy(model, cave); const mats: THREE.MeshStandardMaterial[] = [];
+  body.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined; if (!m || !(m as THREE.MeshStandardMaterial).isMeshStandardMaterial || mats.includes(m)) return; mats.push(m);
+    if (m.emissive.getHex() === 0) { m.emissive.copy(m.color).multiplyScalar(0.5); m.emissiveIntensity = 0.32; } else m.emissiveIntensity = Math.max(m.emissiveIntensity, glow ? 0.9 : 0.4); m.userData.ei = m.emissiveIntensity; });
+  if (glow && !low) { const h = new THREE.Sprite(haloMat(sk.accent)); const hy = MOBS[kind].z + (model === 'imp' || model === 'elemental' ? 0.4 : 0.5); h.position.y = model === 'imp' ? MOBS.bat.z : hy; h.scale.setScalar(1.8); h.renderOrder = 2; body.add(h); }
+  const boss = kind === 'boss';
+  const edge = new THREE.Sprite(new THREE.SpriteMaterial({ color: '#000000', depthWrite: false, depthTest: false, fog: false, transparent: true, opacity: 0.85 }));
+  const bg = new THREE.Sprite(new THREE.SpriteMaterial({ color: '#3a1010', depthWrite: false, depthTest: false, fog: false })); const bar = new THREE.Sprite(new THREE.SpriteMaterial({ color: '#ff4040', depthWrite: false, depthTest: false, fog: false }));
+  edge.renderOrder = 4;
   root.scale.setScalar(sk.scale);
   const top = (model === 'golem' || model === 'yeti' || model === 'kraken' ? 2.35 : model === 'wraith' || model === 'gaswraith' ? 2.5 : model === 'bat' || model === 'imp' || model === 'jelly' || model === 'elemental' ? 2.0 : model === 'eel' ? 1.6 : 1.15);
-  bg.position.y = top; bar.position.y = top; bg.scale.set(0.9, 0.09, 1); bar.scale.set(0.86, 0.06, 1); bar.renderOrder = 6; bg.renderOrder = 5;
-  root.add(bg); root.add(bar);
-  return { root, body, wings, anim, model, scale: sk.scale, bar, barBg: bg, hurt: 0, kind, hp: -1, t: Math.random() * 6 };
+  const bw = (boss ? 1.9 : 1.05) / sk.scale * Math.max(1, sk.scale * 0.8); // bars keep a readable size whatever the creature's scale
+  edge.position.y = top; bg.position.y = top; bar.position.y = top; edge.scale.set(bw + 0.06, (boss ? 0.2 : 0.14) / sk.scale, 1); bg.scale.set(bw, (boss ? 0.14 : 0.09) / sk.scale, 1); bar.scale.set(bw, (boss ? 0.14 : 0.09) / sk.scale, 1); bar.renderOrder = 6; bg.renderOrder = 5;
+  bar.center.set(0, 0.5); bar.position.x = 0; bar.userData.w = bw; bar.position.z = 0; bar.userData.y = top;
+  root.add(edge); root.add(bg); root.add(bar);
+  if (boss) for (const f of [0.33, 0.66]) { const pip = new THREE.Sprite(new THREE.SpriteMaterial({ color: '#ffffff', depthWrite: false, depthTest: false, fog: false })); pip.scale.set(0.025 / sk.scale, 0.16 / sk.scale, 1); pip.renderOrder = 7; pip.userData.f = f; pip.position.y = top; bar.userData.pips = [...(bar.userData.pips ?? []), pip]; root.add(pip); }
+  const marker = new THREE.Mesh(mg('telring', () => { const g = new THREE.RingGeometry(0.82, 1, 40); g.rotateX(-Math.PI / 2); return g; }), new THREE.MeshBasicMaterial({ color: '#ff3020', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false }));
+  const fill = new THREE.Mesh(mg('teldisc', () => { const g = new THREE.CircleGeometry(1, 40); g.rotateX(-Math.PI / 2); return g; }), marker.material); fill.name = 'fill'; marker.add(fill);
+  marker.visible = false; marker.renderOrder = 3;
+  return { root, body, wings, anim, model, scale: sk.scale, bar, barBg: bg, barEdge: edge, hurt: 0, kind, hp: -1, max: 1, t: Math.random() * 6, tx: 0, ty: 0, ta: 0, mv: 0, st: 0, wind: 0, atk: 0, dying: 0, mini: false, ph: 1, glow: glow ? 1 : 0, marker, mats, base: body.position.y };
 }
 function nameTag(name: string): THREE.Sprite { // Chud City label look; the pill grows to fit the whole name
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: cityLabel(name, '#e8c26a'), transparent: true, premultipliedAlpha: true, toneMapped: false, depthWrite: false, fog: false }));
@@ -153,7 +193,9 @@ const rockTex = (() => {
   };
 })();
 
-interface Particle { m: THREE.Mesh; v: THREE.Vector3; life: number; dust?: boolean; spark?: boolean }
+interface Particle { m: THREE.Mesh; v: THREE.Vector3; life: number; dust?: boolean; spark?: boolean; shared?: boolean }
+const SHOTM = new Map<string, THREE.MeshBasicMaterial>();
+const shotMat = (c: string) => { let m = SHOTM.get(c); if (!m) { m = new THREE.MeshBasicMaterial({ color: c }); SHOTM.set(c, m); } return m; };
 
 export class Mines3D {
   readonly renderer: THREE.WebGLRenderer;
@@ -322,31 +364,96 @@ export class Mines3D {
     this.sword = buildWeaponModel(next, detectWorldTier() === 'low'); this.sword.visible = vis; this.sword.position.copy(pos); this.sword.rotation.copy(rot); this.camera.add(this.sword);
   }
   get weapon() { return this.weaponId; }
-  /** Creatures on this floor (server ticks). hp 0 = dead (hidden until it respawns). */
+  private low = detectWorldTier() === 'low';
+  private shots = new Map<number, THREE.Mesh>();
+  private fxRings: Array<{ m: THREE.Mesh; life: number; max: number; r: number }> = [];
+  /** Boss move being called out (HUD reads this). */
+  bossCall: { name: string; until: number } | null = null;
+  /** Creatures on this floor (server ticks). hp 0 = dead: plays its death dissolve, then hides until it respawns. */
   setMobs(list: MobView[]) {
     const seen = new Set<number>();
     for (const b of list) {
       let r = this.mobs.get(b.id);
-      if (r && r.kind !== b.k) { this.scene.remove(r.root); this.mobs.delete(b.id); r = undefined; }
-      if (!r) { r = buildMob(b.k, this.caveId); this.scene.add(r.root); this.mobs.set(b.id, r); }
+      if (r && (r.kind !== b.k || r.mini !== !!b.mini)) { this.dropMob(r); this.mobs.delete(b.id); r = undefined; }
+      const fresh = !r;
+      if (!r) { r = buildMob(b.k, this.caveId, this.low); r.mini = !!b.mini; if (r.mini) r.root.scale.multiplyScalar(0.55); this.scene.add(r.root); this.scene.add(r.marker); this.mobs.set(b.id, r); r.root.position.set(b.x, 0, b.y); r.root.rotation.y = -b.a; }
       seen.add(b.id);
-      if (r.hp >= 0 && b.hp < r.hp) r.hurt = 0.25;
-      r.hp = b.hp; r.root.visible = b.hp > 0;
-      r.root.position.set(b.x, 0, b.y); r.root.rotation.y = -b.a;
-      const f = Math.max(0, Math.min(1, b.hp / b.max)); r.bar.scale.x = 0.86 * f;
-      (r.bar.material as THREE.SpriteMaterial).color.set(f > 0.5 ? '#50e050' : f > 0.25 ? '#ffc030' : '#ff4040');
+      if (r.hp > 0 && b.hp < r.hp) r.hurt = 0.18;
+      if (r.hp > 0 && b.hp <= 0) this.mobDeath(r);
+      if (b.hp > 0) { r.dying = 0; r.root.visible = true; if (r.hp <= 0 && !fresh) { r.root.position.set(b.x, 0, b.y); r.body.scale.setScalar(1); } }
+      else if (r.dying <= 0) r.root.visible = false;
+      r.hp = b.hp; r.max = b.max; r.tx = b.x; r.ty = b.y; r.ta = -b.a;
+      const st = b.st ?? 2; if (st === 5 && r.st === 3) r.atk = 0.35; // wind-up resolved -> lunge
+      if (st === 3 && r.st !== 3) r.wind = 0;
+      r.st = st;
+      if (b.ph && b.ph !== r.ph) { r.ph = b.ph; }
+      const f = Math.max(0, Math.min(1, b.hp / b.max)); const w = r.bar.userData.w as number;
+      r.bar.scale.x = w * f;
+      // keep the fill left-aligned: shift by half the missing width (sprites are camera-facing, so use center)
+      r.bar.center.set(f > 0 ? 0.5 + (1 - f) / (2 * f) : 0.5, 0.5);
+      (r.bar.material as THREE.SpriteMaterial).color.set(f > 0.6 ? '#46e050' : f > 0.3 ? '#ffc630' : '#ff3a30');
+      const show = b.hp > 0 && (b.hp < b.max || st >= 2 && st !== 6 || r.kind === 'boss');
+      r.bar.visible = r.barBg.visible = r.barEdge.visible = show; for (const p of (r.bar.userData.pips ?? []) as THREE.Sprite[]) { p.visible = show; p.center.set(0.5 + (0.5 - p.userData.f) * (w / p.scale.x), 0.5); }
+      const tw = b.hp > 0 ? b.tw : undefined; const mk = r.marker; const mm = mk.material as THREE.MeshBasicMaterial;
+      if (tw) {
+        mk.visible = true; mm.color.set(r.kind === 'boss' ? '#ff6a10' : '#ff2a1a');
+        const fill = mk.getObjectByName('fill')!;
+        if (tw.k === 'charge') { const len = 6; mk.position.set(r.tx + tw.dx * len / 2, 0.04, r.ty + tw.dy * len / 2); mk.scale.set(len / 2, 1, tw.r); mk.rotation.y = -Math.atan2(tw.dy, tw.dx); }
+        else { mk.position.set(tw.x, 0.04, tw.y); mk.scale.set(tw.r, 1, tw.r); mk.rotation.y = 0; }
+        fill.visible = tw.k !== 'shot' && tw.k !== 'barrage' && tw.k !== 'summon';
+        mk.userData.ms = tw.ms; mk.userData.at = performance.now(); mk.userData.k = tw.k;
+        if (tw.n && (!this.bossCall || this.bossCall.name !== tw.n || this.bossCall.until < performance.now())) this.bossCall = { name: tw.n, until: performance.now() + 1800 };
+      } else mk.visible = false;
     }
-    for (const [id, r] of this.mobs) if (!seen.has(id)) { this.scene.remove(r.root); this.mobs.delete(id); }
+    for (const [id, r] of this.mobs) if (!seen.has(id)) { if (r.hp > 0 && r.mini) { this.mobDeath(r); r.hp = 0; } if (r.dying > 0) continue; this.dropMob(r); this.mobs.delete(id); }
   }
-  /** A hit landed on a creature (yours or another miner's): red flash + sparks. */
-  mobHit(id: number, killed: boolean) {
-    const r = this.mobs.get(id); if (!r) return; r.hurt = 0.3;
-    const at = new THREE.Vector3(r.root.position.x, MOBS[r.kind].z + 0.2, r.root.position.z);
-    for (let i = 0; i < (killed ? 26 : 10); i++) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.06), new THREE.MeshBasicMaterial({ color: i % 2 ? MOBS[r.kind].color : '#ff3a2a' }));
-      m.position.copy(at); this.scene.add(m);
-      this.parts.push({ m, v: new THREE.Vector3((Math.random() - 0.5) * 4, Math.random() * 3 + 1, (Math.random() - 0.5) * 4), life: 0.5 + Math.random() * 0.4 });
+  private dropMob(r: MobRig) { this.scene.remove(r.root); this.scene.remove(r.marker); (r.marker.material as THREE.Material).dispose(); }
+  /** Enemy projectiles: glowing orbs the server flies (sidestep them). Shared geometry; colour from this mine's ranged creature. */
+  setShots(list: ShotView[]) {
+    const seen = new Set<number>(); const col = mobSkin(this.caveId, 'wraith').accent;
+    for (const sv of list) {
+      let m = this.shots.get(sv.id);
+      if (!m) { m = new THREE.Mesh(mg('shot', () => new THREE.SphereGeometry(0.16, 10, 8)), shotMat(col)); if (!this.low) { const h = new THREE.Sprite(haloMat(col)); h.scale.setScalar(1.1); m.add(h); } this.scene.add(m); this.shots.set(sv.id, m); m.position.set(sv.x, 1.1, sv.y); }
+      m.userData.tx = sv.x; m.userData.ty = sv.y; seen.add(sv.id);
     }
+    for (const [id, m] of this.shots) if (!seen.has(id)) { this.scene.remove(m); this.shots.delete(id); if (!this.low) this.burst(m.position.clone(), col, 5); }
+  }
+  /** Server combat effects: slam shockwaves, boss phase changes, slime splits, summons. */
+  mobFx(list: MobFxView[]) {
+    for (const f of list) {
+      const at = new THREE.Vector3(f.x, 0.3, f.y);
+      if (f.k === 'aoe') { this.ring(f.x, f.y, f.r ?? 2, '#ffb060'); this.burst(at, '#a08060', this.low ? 4 : 14, true); this.kick = Math.max(this.kick, 0.02); }
+      else if (f.k === 'phase') { this.ring(f.x, f.y, 5, '#ff4020'); this.burst(at.setY(1.5), '#ff6030', this.low ? 6 : 24); this.bossCall = { name: `Phase ${f.phase}!`, until: performance.now() + 2200 }; }
+      else if (f.k === 'split') this.burst(at, mobSkin(this.caveId, 'slime').color, this.low ? 4 : 12);
+      else if (f.k === 'summon') { this.ring(f.x, f.y, 2.5, '#c080ff'); if (f.name) this.bossCall = { name: f.name, until: performance.now() + 1800 }; }
+    }
+  }
+  private ring(x: number, y: number, r: number, color: string) {
+    const m = new THREE.Mesh(mg('fxring', () => { const g = new THREE.RingGeometry(0.85, 1, 40); g.rotateX(-Math.PI / 2); return g; }), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false }));
+    m.position.set(x, 0.06, y); m.scale.setScalar(0.2); this.scene.add(m); this.fxRings.push({ m, life: 0.5, max: 0.5, r });
+  }
+  /** Particle burst with one shared cube geometry (fewer in ?lowgfx). */
+  private burst(at: THREE.Vector3, color: string, n: number, dust = false) {
+    for (let i = 0; i < n; i++) {
+      const m = new THREE.Mesh(mg('part', () => new THREE.BoxGeometry(0.07, 0.07, 0.07)), new THREE.MeshBasicMaterial({ color, transparent: dust, opacity: dust ? 0.6 : 1 }));
+      m.position.copy(at); this.scene.add(m);
+      this.parts.push({ m, v: new THREE.Vector3((Math.random() - 0.5) * 4, Math.random() * 3 + (dust ? 0.3 : 1), (Math.random() - 0.5) * 4), life: 0.45 + Math.random() * 0.4, shared: true });
+    }
+  }
+  /** Death: burst of the creature's colours + a 0.6 s dissolve (sink, shrink, fade). */
+  private mobDeath(r: MobRig) {
+    r.dying = 0.6; r.marker.visible = false; r.bar.visible = r.barBg.visible = r.barEdge.visible = false;
+    const sk = mobSkin(this.caveId, r.kind); const at = new THREE.Vector3(r.root.position.x, MOBS[r.kind].z * r.scale * 0.6 + 0.2, r.root.position.z);
+    const n = this.low ? 6 : r.kind === 'boss' ? 40 : 18; this.burst(at, sk.color, Math.ceil(n / 2)); this.burst(at, sk.accent, Math.floor(n / 2));
+    for (const m of r.mats) { m.transparent = true; m.userData.op = m.opacity; }
+  }
+  /** A hit landed on a creature (yours or another miner's): white-red flash, sparks, a little shove. */
+  mobHit(id: number, killed: boolean) {
+    const r = this.mobs.get(id); if (!r) return; r.hurt = 0.18;
+    const at = new THREE.Vector3(r.root.position.x, MOBS[r.kind].z + 0.2, r.root.position.z);
+    this.burst(at, '#ff3a2a', this.low ? 3 : killed ? 8 : 6); this.burst(at, MOBS[r.kind].color, this.low ? 2 : 4);
+    const dx = r.root.position.x - this.camera.position.x, dz = r.root.position.z - this.camera.position.z, L = Math.hypot(dx, dz) || 1;
+    if (r.kind !== 'boss') { r.root.position.x += (dx / L) * 0.25; r.root.position.z += (dz / L) * 0.25; }
     this.kick = Math.max(this.kick, 0.03);
   }
 
@@ -431,30 +538,47 @@ export class Mines3D {
     this.sword.visible = this.swordT < 1; this.pick.visible = !this.sword.visible;
     if (this.sword.visible) { animateWeaponModel(this.sword, performance.now() / 1000); const k = this.swordT; const arc = Math.sin(k * Math.PI); this.sword.position.set(0.32 - k * 0.5, -0.32 + arc * 0.08, -0.55); this.sword.rotation.set(-0.4 - arc * 0.4, 0.2, -1.2 + k * 2.2); }
     const now = performance.now() / 1000;
-    for (const r of this.mobs.values()) {
-      r.t += dt;
-      const md = r.model;
-      if (md === 'blob') { const s = 1 + Math.sin(r.t * 5) * 0.12; r.body.scale.set(1 / s, s, 1 / s); }
-      else if (md === 'bat' || md === 'imp') { r.body.position.y = MOBS.bat.z + Math.sin(r.t * 3) * 0.2; r.wings?.forEach((w, i) => { w.rotation.x = (i ? 1 : -1) * Math.sin(now * (md === 'imp' ? 12 : 18)) * 0.7; }); }
+    const pnow = performance.now();
+    for (const [id, r] of this.mobs) {
+      // glide to the server pose (10 Hz ticks) and measure speed for the walk cycle
+      const k = Math.min(1, dt * 12), ox = r.root.position.x, oz = r.root.position.z;
+      if (r.dying <= 0) { r.root.position.x += (r.tx - ox) * k; r.root.position.z += (r.ty - oz) * k; }
+      const sp = Math.hypot(r.root.position.x - ox, r.root.position.z - oz) / Math.max(dt, 1e-3); r.mv += (Math.min(1, sp / 2) - r.mv) * Math.min(1, dt * 6);
+      let da = r.ta - r.root.rotation.y; da = Math.atan2(Math.sin(da), Math.cos(da)); r.root.rotation.y += da * Math.min(1, dt * 10);
+      const walk = r.mv, rate = 0.6 + walk * 1.8; r.t += dt * rate; // idle = slow breathing, walking = faster cycle
+      const md = r.model; const winding = r.st === 3; if (winding) r.wind += dt; r.atk = Math.max(0, r.atk - dt);
+      if (md === 'blob') { const hop = Math.abs(Math.sin(r.t * 4)) * walk; const s = 1 + Math.sin(r.t * 5) * (0.06 + walk * 0.1) - (winding ? Math.min(0.25, r.wind * 0.5) : 0); r.body.scale.set(1 / s, s, 1 / s); r.body.position.y = hop * 0.35; }
+      else if (md === 'bat' || md === 'imp') { r.body.position.y = MOBS.bat.z + Math.sin(r.t * 3) * 0.2 + (winding ? 0.3 * Math.min(1, r.wind * 2) : 0) - r.atk * 1.2; r.wings?.forEach((w, i) => { w.rotation.x = (i ? 1 : -1) * Math.sin(now * (md === 'imp' ? 12 : 18) * (winding ? 1.5 : 1)) * 0.7; }); }
       else if (md === 'wraith' || md === 'gaswraith') { r.body.position.y = Math.sin(r.t * 2) * 0.15; r.anim?.forEach((p, i) => { p.position.y = 0.3 + ((r!.t * 0.4 + i * 0.2) % 1) * 1.4; }); }
-      else if (md === 'golem' || md === 'yeti') { r.body.rotation.z = Math.sin(r.t * 3) * 0.04; r.anim?.forEach((a, i) => { a.rotation.z = Math.sin(r!.t * 3 + i * Math.PI) * 0.35; }); }
-      else if (md === 'wolf') { r.anim?.forEach((l, i) => { l.rotation.z = Math.sin(r!.t * 9 + (i % 3 ? Math.PI : 0)) * 0.5; }); }
-      else if (md === 'elemental') { r.body.rotation.y = r.t * 0.8; r.body.position.y = Math.sin(r.t * 2) * 0.12; }
-      else if (md === 'slug') { const s = 1 + Math.sin(r.t * 3) * 0.1; r.anim?.[0]?.scale.set(s, 1 / s, 1); }
-      else if (md === 'jelly') { const s = 1 + Math.sin(r.t * 3) * 0.12; r.body.scale.set(s, 1 / s, s); r.body.position.y = Math.sin(r.t * 1.5) * 0.2; }
-      else if (md === 'eel') { r.anim?.forEach((g, i) => { g.position.z = Math.sin(r!.t * 5 - i * 0.8) * 0.12 * i; }); }
-      else if (md === 'kraken') { r.anim?.forEach((g, i) => { g.rotation.z = Math.sin(r!.t * 2 + i) * 0.35; }); }
-      else if (md === 'drillbot') { r.anim?.forEach((d) => { d.rotation.x += dt * 20; }); }
+      else if (md === 'golem' || md === 'yeti') { r.body.rotation.z = Math.sin(r.t * 3) * 0.04 * (0.5 + walk) + (winding ? Math.min(0.35, r.wind * 0.4) : 0) - r.atk * 1.3; r.body.position.y = Math.abs(Math.sin(r.t * 3)) * 0.05 * walk; r.anim?.forEach((a, i) => { a.rotation.z = winding ? -1.6 * Math.min(1, r!.wind * 1.5) : Math.sin(r!.t * 3 + i * Math.PI) * 0.35 * (0.3 + walk); }); }
+      else if (md === 'wolf') { r.anim?.forEach((l, i) => { l.rotation.z = Math.sin(r!.t * 9 + (i % 3 ? Math.PI : 0)) * 0.5 * walk; }); r.body.rotation.z = winding ? 0.18 : -r.atk * 0.6; }
+      else if (md === 'elemental') { r.body.rotation.y = r.t * (winding ? 3 : 0.8); r.body.position.y = Math.sin(r.t * 2) * 0.12; }
+      else if (md === 'slug') { const s = 1 + Math.sin(r.t * 3) * (0.05 + walk * 0.1); r.anim?.[0]?.scale.set(s, 1 / s, 1); }
+      else if (md === 'jelly') { const s = 1 + Math.sin(r.t * 3) * 0.12 + (winding ? 0.15 : 0); r.body.scale.set(s, 1 / s, s); r.body.position.y = Math.sin(r.t * 1.5) * 0.2; }
+      else if (md === 'eel') { r.anim?.forEach((g, i) => { g.position.z = Math.sin(r!.t * 5 - i * 0.8) * 0.12 * i * (winding ? 1.8 : 1); }); }
+      else if (md === 'kraken') { r.anim?.forEach((g, i) => { g.rotation.z = Math.sin(r!.t * 2 + i) * 0.35 + (winding ? 0.5 : 0) - r.atk; }); }
+      else if (md === 'drillbot') { r.anim?.forEach((d) => { d.rotation.x += dt * (winding || r.st === 4 ? 45 : 8 + walk * 14); }); r.body.position.y = winding ? Math.sin(now * 60) * 0.02 : 0; }
+      if (md !== 'golem' && md !== 'yeti' && md !== 'wolf') r.body.position.x = r.atk * 0.9 - (winding ? Math.min(0.15, r.wind * 0.2) : 0); // lunge forward on strike, lean back while winding up
+      // stagger wobble
+      if (r.st === 7) r.root.rotation.z = Math.sin(now * 40) * 0.08; else r.root.rotation.z = 0;
+      // emissive: hit flash (white-hot then red), wind-up pulse
       r.hurt = Math.max(0, r.hurt - dt);
-      r.body.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined; if (m && 'emissive' in m && m.emissive) { if (m.userData.e0 === undefined) m.userData.e0 = m.emissive.getHex(); m.emissive.setHex(r.hurt > 0 ? 0xff2020 : m.userData.e0); } });
+      const pulse = winding ? 0.6 + 0.6 * Math.abs(Math.sin(r.wind * 12)) : 0;
+      for (const m of r.mats) { if (m.userData.e0 === undefined) m.userData.e0 = m.emissive.getHex(); m.emissive.setHex(r.hurt > 0.12 ? 0xffffff : r.hurt > 0 ? 0xff2020 : winding ? 0xff5020 : m.userData.e0); m.emissiveIntensity = r.hurt > 0 ? 1.2 : (m.userData.ei ?? 0.35) + pulse; }
+      // telegraph marker: fills in as the strike approaches
+      if (r.marker.visible) { const mm = r.marker.material as THREE.MeshBasicMaterial; const left = Math.max(0, (r.marker.userData.ms ?? 0) - (pnow - (r.marker.userData.at ?? pnow))); mm.opacity = 0.35 + 0.45 * Math.abs(Math.sin(pnow / 90)); const f = r.marker.getObjectByName('fill'); if (f) f.scale.setScalar(Math.max(0.05, 1 - left / 900)); }
+      // death dissolve
+      if (r.dying > 0) { r.dying -= dt; const q = Math.max(0, r.dying / 0.6); r.body.scale.setScalar(0.3 + 0.7 * q); r.root.position.y = -(1 - q) * 0.3; for (const m of r.mats) m.opacity = (m.userData.op ?? 1) * q; if (r.dying <= 0) { r.root.visible = false; for (const m of r.mats) { m.opacity = m.userData.op ?? 1; m.transparent = m.userData.op !== undefined && m.userData.op < 1; } r.body.scale.setScalar(1); r.root.position.y = 0; if (!r.hp && r.mini) { this.dropMob(r); this.mobs.delete(id); } } }
     }
+    for (const m of this.shots.values()) { const kk = Math.min(1, dt * 14); m.position.x += ((m.userData.tx as number) - m.position.x) * kk; m.position.z += ((m.userData.ty as number) - m.position.z) * kk; m.rotation.y += dt * 6; }
+    for (let i = this.fxRings.length - 1; i >= 0; i--) { const f = this.fxRings[i]; f.life -= dt; const q = 1 - f.life / f.max; f.m.scale.setScalar(0.2 + q * f.r); (f.m.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - q); if (f.life <= 0) { this.scene.remove(f.m); (f.m.material as THREE.Material).dispose(); this.fxRings.splice(i, 1); } }
     for (let i = this.parts.length - 1; i >= 0; i--) {
       const p = this.parts[i];
       p.life -= dt; p.v.y -= 9 * dt; p.m.position.addScaledVector(p.v, dt);
       if (p.m.position.y < 0.03) { p.m.position.y = 0.03; p.v.multiplyScalar(0.4); }
       if (p.dust) { p.v.y += 8.6 * dt; p.m.scale.multiplyScalar(1 + dt * 1.6); (p.m.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.35 * p.life); }
       if (p.spark) { p.m.lookAt(p.m.position.clone().add(p.v)); (p.m.material as THREE.MeshBasicMaterial).opacity = Math.min(1, p.life * 4); }
-      if (p.life <= 0) { this.scene.remove(p.m); (p.m.material as THREE.Material).dispose(); p.m.geometry.dispose(); this.parts.splice(i, 1); }
+      if (p.life <= 0) { this.scene.remove(p.m); (p.m.material as THREE.Material).dispose(); if (!p.shared) p.m.geometry.dispose(); this.parts.splice(i, 1); }
     }
     this.renderer.render(this.scene, this.camera);
   }

@@ -24,7 +24,7 @@ function WeaponIcon({ id, fallback }: { id: WeaponId; fallback: string }) {
 import { socket } from '@/lib/net';
 import { mouseLook, readLook, LOCK_KEYS, arenaKey, crouchHeld, shouldBlockShortcut } from '@/lib/arenaInput';
 import { playPickaxe, playPickup, unlockSounds } from '@/lib/sounds';
-import type { Mines3D, MinerView, MobView } from '@/lib/mines3d';
+import type { Mines3D, MinerView, MobView, ShotView, MobFxView } from '@/lib/mines3d';
 import { levelOf, hasFloors, inLadder, MAX_FLOOR } from '../../../shared/mineFloors';
 import { MOBS, mobSkin, WEAPONS, ARMORS, weaponDef, canBuyGear, type GearView } from '../../../shared/mineCombat';
 import { MINE_CAVE_EVENT, CAVES, CAVE_DEFS, CAVE_MAIN_ORES, isCave, type CaveId, type MineNode, BACKPACK_CAP, NODE_R, ORES, ORE_ORDER, REACH, SWING_MS, isOre, inExit, priceOf, type Stack } from '../../../shared/mines';
@@ -94,6 +94,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
   const [stops, setStops] = useState<number[]>([]);
   const [php, setPhp] = useState({ hp: 100, max: 100 });
   const [hurtT, setHurtT] = useState(0);
+  const [bossCall, setBossCall] = useState<string | null>(null);
   const mobs = useRef<MobView[]>([]);
   const [mobAim, setMobAim] = useState(-1);
   const [gear, setGear] = useState<GearView | null>(null);
@@ -174,9 +175,9 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
       setStatus(r.guest ? 'Guest: you can mine, sign in to sell.' : 'Click the view to play. Left click swings.');
       (window as unknown as { __minesQA?: unknown }).__minesQA = { me: m, hp, sock: socket, swing: () => three.current?.swing(), floor: () => lvl.current.floor, mobs, descend: () => changeFloor('mines_descend', {}), ride: (f: number) => changeFloor('mines_elevator', { floor: f }), attack: () => attackRef.current(), aim: () => aimNode(NODES_(), m.x, m.y, m.z + eyeHeightOf(m), m.a, m.p, hp.current) };
     });
-    const onState = (s: { floor?: number; players: MinerView[]; nodes: number[]; mobs?: MobView[] }) => { if ((s.floor ?? 1) !== lvl.current.floor) return; mobs.current = s.mobs ?? []; three.current?.setMobs(mobs.current); hp.current = s.nodes; three.current?.setNodes(s.nodes); three.current?.setOthers(s.players, m.id); setOnline(s.players.length); };
+    const onState = (s: { floor?: number; players: MinerView[]; nodes: number[]; mobs?: MobView[]; shots?: ShotView[]; mfx?: MobFxView[] }) => { if ((s.floor ?? 1) !== lvl.current.floor) return; mobs.current = s.mobs ?? []; three.current?.setMobs(mobs.current); three.current?.setShots(s.shots ?? []); if (s.mfx?.length) three.current?.mobFx(s.mfx); { const c = three.current?.bossCall; const n = c && c.until > performance.now() ? c.name : null; setBossCall((o) => (o === n ? o : n)); } hp.current = s.nodes; three.current?.setNodes(s.nodes); three.current?.setOthers(s.players, m.id); setOnline(s.players.length); };
     const onFx = (f: { node: number; broke: boolean }) => { three.current?.burstAt(f.node, f.broke); };
-    const onHurt = (h: { hp: number; max: number; dmg: number }) => { setPhp({ hp: h.hp, max: h.max }); setHurtT(Date.now()); playPickaxe('hit'); };
+    const onHurt = (h: { hp: number; max: number; dmg: number; kx?: number; ky?: number }) => { if (h.kx || h.ky) { m.x += h.kx ?? 0; m.y += h.ky ?? 0; } setPhp({ hp: h.hp, max: h.max }); setHurtT(Date.now()); playPickaxe('hit'); };
     const onDied = (d: FloorMsg & PackMsg & { lost: Stack[] }) => {
       applyFloor(d); setPack({ pack: d.pack, load: d.load, cap: d.cap, quote: null });
       const n = d.lost.reduce((t, s) => t + s.qty, 0);
@@ -358,6 +359,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
             onPointerUp={(e) => { if (e.pointerType === 'touch') holding.current = null; }} onPointerCancel={() => { holding.current = null; }} onContextMenu={(e) => e.preventDefault()} />
           <div className="mines-cross" aria-hidden="true" style={aimedMob ? { color: '#ff5050' } : undefined}>{aimedMob ? '⚔' : aimed ? '⊕' : '+'}</div>
           {aimedMob && <div className="mines-aim" style={{ color: '#ff8080', top: '56%' }} data-testid="mines-mob-aim">{mobSkin(cave, aimedMob.k).name} · {aimedMob.hp}/{aimedMob.max}</div>}
+          {bossCall && <div data-testid="mines-boss-call" style={{ position: 'absolute', left: '50%', top: 64, transform: 'translateX(-50%)', background: 'rgba(60,8,4,0.8)', color: '#ffd8a0', padding: '6px 16px', borderRadius: 10, fontSize: 18, fontWeight: 800, letterSpacing: 1, pointerEvents: 'none', border: '2px solid #ff6a20', textShadow: '0 2px 4px #000' }}>⚠ {bossCall}</div>}
           {floors && <div className="mines-hud" data-testid="mines-hud" style={{ position: 'absolute', left: 10, top: 10, background: 'rgba(10,8,6,0.72)', color: '#fff4dc', padding: '6px 10px', borderRadius: 10, fontSize: 13, minWidth: 170, pointerEvents: 'none', boxShadow: Date.now() - hurtT < 400 ? '0 0 0 3px #ff3030' : undefined }}>
             <div><b>🪜 Floor {floor}</b> · {lvl.current.band}</div>
             <div style={{ marginTop: 4 }}>❤️ {php.hp}/{php.max}<div style={{ height: 7, background: '#3a1010', borderRadius: 4, marginTop: 2 }}><i style={{ display: 'block', height: '100%', borderRadius: 4, width: `${Math.max(0, Math.min(100, (php.hp / php.max) * 100))}%`, background: php.hp / php.max > 0.5 ? '#50d050' : php.hp / php.max > 0.25 ? '#ffc030' : '#ff4040' }} /></div></div>
