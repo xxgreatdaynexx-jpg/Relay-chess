@@ -1,4 +1,5 @@
 /** Skin market (escrowed listings, 5% fee burned) and player-to-player trade offers. Chips move only through the wallet ledger. */
+import { royaltyEarn } from './royalty.js';
 import { randomUUID } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import { getBank } from './casino-store.js';
@@ -164,6 +165,7 @@ export class Market {
     const fee = sellerFee(l.price, l.sellerName);
     bank.transfer(name, -l.price, { key: `mkt:buy:${l.id}`, game: 'market', memo: `Bought ${this.label(i)}` });
     bank.transfer(l.sellerName, l.price - fee, { key: `mkt:sell:${l.id}`, game: 'market', memo: `Sold ${this.label(i)} (${fee} fee)` });
+    royaltyEarn('market', l.sellerName, l.price - fee);
     const now = Date.now();
     l.status = 'sold'; l.closedAt = now; l.buyer = k;
     this.listings.delete(l.id);
@@ -235,6 +237,7 @@ export class Market {
       this.onStacksReverted?.();
     };
     mines.adjustStack(name, l.type, l.itemId, n, [...chips.stmts, stackStmt(l), saleStmt(sale)], (r) => this.stackRows(r), { after: chips.after, bind: chips.bind, onFail });
+    royaltyEarn('market', l.sellerName, price - fee);
     return { type: l.type, id: l.itemId, qty: n, price, fee };
   }
   browseStacks(f: { type?: unknown; q?: unknown } = {}) {

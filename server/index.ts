@@ -1,4 +1,5 @@
 import { initRequests } from './requests.js';
+import { initRoyalties } from './royalty.js';
 import { initPopupStorage } from './popups.js';
 import { initEconomy } from './economy.js';
 import { startWealthTax } from './wealth-tax.js';
@@ -49,6 +50,7 @@ await initPopupStorage();
 await initEconomy();
 await initStocks();
 await initRealEstate();
+initRoyalties();
 await initCars();
 await initHomes();
 await initRace();

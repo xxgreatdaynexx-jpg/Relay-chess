@@ -11,6 +11,8 @@ import { MinesLeaderboard, setMinesBoard } from './mines-board.js';
 import { getVault, playerKey } from './skins.js';
 import { guestName, lineOfSight, moveAllowance, MOVE_CARRY_MAX, normAngle, clampPitch, canStand, validateMove, eyeHeightOf, type Body } from '../shared/fps.js';
 import { parseSellQty } from '../shared/sellQty.js';
+import { royaltyEarn } from './royalty.js';
+import { CAVE_LANDMARK } from '../shared/royalty.js';
 import { CAVES, caveOf, type CaveId, BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, MINE_NODES, NODE_R, ORES, REACH, SWING_MIN_MS, SWING_MS, dayKey, isOre, payoutFor, houseCapBase, stackKey, priceOf, sellable, nameOf, recipeById, FACTORY_LEVELS, type ItemType, type MineNode, type Stack, type Job, type MachineId, type OreId, inExit, weightOf } from '../shared/mines.js';
 import { isAtResort } from './travel.js';
 import { sinkLostToday } from './sink-room.js';
@@ -129,6 +131,7 @@ export class MinesWorld {
   offline = false;
   private chain: Promise<void> = Promise.resolve();
   private saleSeq = 0;
+  private lastCave = new Map<string, CaveId>();
 
   async attach(store: MineStore): Promise<boolean> {
     try {
@@ -232,6 +235,7 @@ export class MinesWorld {
     if (m.restoring) throw new MineError('Loading your backpack...');
     if (!inExit(m.x, m.y)) throw new MineError('Walk to the EXIT lift to bank your haul.');
     const banked = this.carried(id); if (!banked.length) return { banked: [], worth: 0 };
+    if (m.account) this.lastCave.set(playerKey(m.account), m.cave); // royalties: ore is credited to the cave it was hauled out of
     const p = this.pack(this.packKey(m));
     m.carried.clear();
     for (const s of banked) { const k = stackKey(s); const cur = p.get(k); if (cur) cur.qty += s.qty; else p.set(k, { ...s }); }
@@ -345,6 +349,11 @@ export class MinesWorld {
     const ledgerKey = `mine:sell:${k}:${now}:${++this.saleSeq}`;
     const memo = `Mines: sold ${q.items.map((s) => `${s.qty} ${nameOf(s)}`).join(', ')}`.slice(0, 200);
     getBank().transfer(m.account, q.paid, { key: ledgerKey, game: 'mines', memo });
+    { // Monument royalties: ore -> the mine it was last hauled out of, everything else (bars/goods/food) -> the Factory
+      const oreG = q.items.filter((s) => s.type === 'ore').reduce((t, s) => t + s.qty * priceOf(s), 0); const share = q.gross > 0 ? oreG / q.gross : 0;
+      const cave = CAVE_LANDMARK[this.lastCave.get(k) ?? 'mine'];
+      if (cave) royaltyEarn(cave, m.account, q.paid * share); royaltyEarn('factory', m.account, q.paid * (1 - share));
+    }
     const p = this.pack(k);
     if (partial) { const cur = p.get(partial.key)!; const left = cur.qty - partial.qty; if (left > 0) p.set(partial.key, { ...cur, qty: left }); else p.delete(partial.key); }
     else for (const s of q.items) p.delete(stackKey(s));

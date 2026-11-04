@@ -1,4 +1,5 @@
 import { useDoing } from '@/lib/doing';
+import { ROYALTY_VENUE, royaltyPct, buyoutPrice, BUYOUT_PROTECT_MS } from '../../../shared/royalty';
 import { backdropDismiss } from '@/lib/backdrop';
 import { CookingHost, OPEN_GROCERY, openKitchen } from './CookingPanels';
 import { openFurnitureStore, enterHome } from './Homes';
@@ -25,6 +26,8 @@ import { propertyById as baseProperty, properties as baseProperties, taxOf, sell
 
 /** Today's price index from /api/real-estate; list prices and tax scale with it. */
 let IDX = 1;
+/** Monument royalties earned by each landmark's current owner (from /api/real-estate). */
+let ROY: Record<string, number> = {};
 const priced = <T extends { price: number }>(p: T): T => ({ ...p, price: indexed(p.price, IDX) });
 const propertyById = (id: string) => { const p = baseProperty(id); return p ? priced(p) : undefined; };
 const properties = () => baseProperties().map(priced);
@@ -44,10 +47,10 @@ function OwnedHomes2D({ owned, onPick }: { owned: Map<string, OwnedProperty>; on
       {cap < homes.length && <button type="button" className="owner-tag more" onClick={() => setAll(true)}>+{homes.length - cap} more</button>}</div></section>;
 }
 
-export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }: { id: string; owned: Map<string, OwnedProperty>; me: string | null; onClose: () => void; onFarm?: () => void; onKitchen?: () => void; onDone?: (ev: 're_buy' | 're_sell', text: string, paid?: number) => void }) {
+export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }: { id: string; owned: Map<string, OwnedProperty>; me: string | null; onClose: () => void; onFarm?: () => void; onKitchen?: () => void; onDone?: (ev: 're_buy' | 're_sell' | 're_buyout', text: string, paid?: number) => void }) {
   useDoing('realestate', propertyById(id)?.label);
   const dragDeed = usePanelDrag('deed');
-  const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState<null | 're_buy' | 're_sell'>(null); const [msg, setMsg] = useState<string | null>(null); const wallet = useWalletChips();
+  const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState<null | 're_buy' | 're_sell' | 're_buyout'>(null); const [msg, setMsg] = useState<string | null>(null); const wallet = useWalletChips();
   if (!p) return null;
   const mine = !!(o && me && o.owner.toLowerCase() === me.toLowerCase());
   // pt1388u: you pay list × (1 + 2% per 1,000 of property you own, uncapped); sell-back is 70% of what you paid; tax stays on list.
@@ -55,23 +58,29 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }:
   const surcharge = +landSurchargePct(ownedValue).toFixed(1);
   const cost = o ? (o.price || p.price) : landPrice(p.price, ownedValue); const note = !o ? landMultiplierNote(ownedValue) : '';
   const short = wallet != null && wallet < cost ? cost - wallet : 0;
+  // Hostile buyout (monuments): 2x what the owner paid, all to them; protected for 24h after each purchase.
+  const bo = o && !mine && p.kind === 'landmark' ? buyoutPrice(o.price || p.price) : 0;
+  const protLeft = o ? o.boughtAt + BUYOUT_PROTECT_MS - Date.now() : 0;
+  const buyout = () => { if (wallet != null && wallet < bo) { setMsg(`Not enough chips: the buyout costs 🪙 ${chips(bo)}; you have 🪙 ${chips(wallet)}.`); return; } setBusy('re_buyout'); setMsg(null); socket.timeout(15_000).emit('re_buyout', { id, max: bo }, (err: Error | null, r?: Ack & { price?: number }) => { setBusy(null); if (!err && r?.ok) { const text = `🏛 Hostile buyout! ${p.label} is yours. Paid 🪙 ${chips(r.price ?? bo)} to ${o?.owner}.`; setMsg(text); onDone?.('re_buyout', text, r.price ?? bo); return; } setMsg(err ? 'No answer from the server. Try again.' : r?.error ?? 'Something went wrong.'); }); };
   // QA r8: pending state on the button, and on success a toast + immediate (optimistic) ownership update via onDone.
   const act = (ev: 're_buy' | 're_sell') => { setBusy(ev); setMsg(null); socket.timeout(15_000).emit(ev, ev === 're_buy' ? { id, max: cost } : { id }, (err: Error | null, r?: Ack & { price?: number; chips?: number }) => { setBusy(null); if (!err && r?.ok) { const paid = ev === 're_buy' ? (r.price ?? cost) : cost; const text = ev === 're_buy' ? `🏛 ${p.label} is yours! Paid 🪙 ${chips(paid)}.` : `Sold ${p.label} back to the city for 🪙 ${chips(r.chips ?? sellBackOf(cost))}.`; setMsg(text); onDone?.(ev, text, paid); return; } setMsg(err ? 'No answer from the server. Try again.' : (ev === 're_buy' && (r?.error === 'Not enough chips.' || r?.error === 'Something went wrong.') && short ? `Not enough chips: ${p.label} costs 🪙 ${chips(cost)}; you need 🪙 ${chips(short)} more.` : r?.error ?? 'Something went wrong.')); }); };
   return (
     <div className="world-deed" data-testid="world-deed" data-drag-panel="deed" onPointerDown={dragDeed.onPointerDown} style={dragDeed.style()} ref={dragDeed.ref}>{dragDeed.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <h3>{p.kind === 'landmark' ? '🏛' : p.kind === 'patch' ? '🌳' : p.kind === 'farm' ? '🌾' : '🏠'} {p.label}</h3>
-      {p.kind === 'landmark' && <small>Trophy property: stays open to every player. Ownership is prestige only.</small>}
+      {p.kind === 'landmark' && <small>{ROYALTY_VENUE[p.type] ? 'Monument: stays open to every player, and the owner earns a royalty on what others earn here.' : 'Trophy property: stays open to every player. Ownership is prestige only.'}</small>}
       <dl>
         {o ? <><dt>{mine ? 'You paid' : 'Paid'}</dt><dd data-testid="deed-price">🪙 {chips(cost)}</dd></> : <><dt>Your surcharge</dt><dd data-testid="deed-surcharge">+{surcharge}%</dd><dt>Your price</dt><dd data-testid="deed-price">🪙 {chips(cost)}{note && <small className="block text-amber-300" data-testid="deed-multiplier">List 🪙 {chips(p.price)} · {note}</small>}</dd></>}
         <dt>Owner</dt><dd data-testid="deed-owner">{o ? (mine ? 'You' : o.owner) : 'City of Chud Hub (for sale)'}</dd>
-        <dt>Sell-back</dt><dd data-testid="deed-sellback">🪙 {chips(sellBackOf(cost))} (70% of {o ? 'what was paid' : 'your price'})</dd>
+        <dt>Sell-back</dt><dd data-testid="deed-sellback">🪙 {chips(sellBackOf(Math.min(cost, o?.basis ?? cost)))} (70% of {o?.basis ? 'what the city was paid' : o ? 'what was paid' : 'your price'})</dd>
         {workerBonusOf(p.id) > 0 && <><dt>Worker cap</dt><dd data-testid="deed-workers">+{workerBonusOf(p.id)} Employment Office worker{workerBonusOf(p.id) > 1 ? 's' : ''} (property bonus max +{WORKER_BONUS_MAX})</dd></>}
+        {p.kind === 'landmark' && ROYALTY_VENUE[p.type] && <><dt>Royalty</dt><dd data-testid="deed-royalty">{royaltyPct(p.type)} of {ROYALTY_VENUE[p.type]}, minted to the owner on top (the player keeps 100%). Not paid on the owner's own earnings.{o && <small className="block text-amber-300" data-testid="deed-royalty-income">Royalty income{mine ? '' : ` (${o.owner})`}: 🪙 {chips(ROY[p.id] ?? 0)} since bought</small>}</dd></>}
         <dt>Property tax</dt><dd data-testid="deed-tax">🪙 {chips(taxOf(p.price))}/day ({(TAX_RATE * 100).toFixed(1)}%)</dd>
         {o && o.arrears > 0 && <><dt>Arrears</dt><dd className="text-rose-300">{o.arrears} unpaid day{o.arrears > 1 ? 's' : ''} (repossessed at {GRACE_DAYS})</dd></>}
       </dl>
       {!o && (me ? <button type="button" disabled={!!busy} aria-busy={busy === 're_buy'} onClick={() => (short ? setMsg(`Not enough chips: ${p.label} costs 🪙 ${chips(cost)}; you have 🪙 ${chips(wallet ?? 0)} (need 🪙 ${chips(short)} more).`) : act('re_buy'))} aria-describedby={short ? 'deed-short' : undefined} data-testid="deed-buy">{busy === 're_buy' ? <><span className="world-spin" aria-hidden /> Buying…</> : <>Buy for 🪙 {chips(cost)}{me ? ` (+${surcharge}% surcharge)` : ''}</>}</button> : <small>Sign in to buy.</small>)}
-      {mine && <button type="button" disabled={!!busy} aria-busy={busy === 're_sell'} onClick={() => act('re_sell')} data-testid="deed-sell">{busy === 're_sell' ? <><span className="world-spin" aria-hidden /> Selling…</> : <>Sell to the city for 🪙 {chips(sellBackOf(cost))} (70%)</>}</button>}
+      {mine && <button type="button" disabled={!!busy} aria-busy={busy === 're_sell'} onClick={() => act('re_sell')} data-testid="deed-sell">{busy === 're_sell' ? <><span className="world-spin" aria-hidden /> Selling…</> : <>Sell to the city for 🪙 {chips(sellBackOf(Math.min(cost, o?.basis ?? cost)))} (70%)</>}</button>}
+      {bo > 0 && me && <button type="button" disabled={!!busy || protLeft > 0} aria-busy={busy === 're_buyout'} onClick={buyout} data-testid="deed-buyout" title={protLeft > 0 ? 'Protected after a purchase' : `Pays ${o?.owner} 2x what they paid`}>{busy === 're_buyout' ? <><span className="world-spin" aria-hidden /> Buying out…</> : protLeft > 0 ? <>🛡 Hostile buyout: 🪙 {chips(bo)} (protected {Math.ceil(protLeft / 3_600_000)}h)</> : <>⚔️ Hostile buyout: 🪙 {chips(bo)}</>}</button>}
       {mine && onKitchen && p.kind !== 'landmark' && <button type="button" onClick={onKitchen} data-testid="deed-kitchen">🍳 Kitchen</button>}
       {o && isHomeProperty(p) && <button type="button" onClick={() => { enterHome(p.id); onClose(); }} data-testid="deed-enter">{mine ? '🛋️ Enter & decorate' : `🚪 Visit ${o.owner}'s home`}</button>}
       {p.kind === 'farm' && o && onFarm && <button type="button" onClick={onFarm} data-testid="deed-farm">{mine ? '🌾 Open farm' : '👀 Visit farm'}</button>}
@@ -171,7 +180,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   }, [loading]);
   useEffect(() => {
     let dead = false;
-    const load = () => { void fetch('/api/real-estate').then((r) => r.json()).then((d: { owned?: OwnedProperty[]; index?: number }) => { if (typeof d.index === 'number' && d.index > 0) IDX = d.index; if (!dead) setOwned(new Map((d.owned ?? []).map((o) => [o.id, o]))); }).catch(() => {}); };
+    const load = () => { void fetch('/api/real-estate').then((r) => r.json()).then((d: { owned?: OwnedProperty[]; index?: number; royalties?: Record<string, number> }) => { if (typeof d.index === 'number' && d.index > 0) IDX = d.index; ROY = d.royalties ?? {}; if (!dead) setOwned(new Map((d.owned ?? []).map((o) => [o.id, o]))); }).catch(() => {}); };
     load(); socket.on('re_changed', load);
     return () => { dead = true; socket.off('re_changed', load); };
   }, []);
@@ -324,7 +333,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       </div>}
       {deed && <DeedPanel id={deed} owned={owned} me={me} onKitchen={() => { openKitchen(propertyById(deed)?.label ?? deed); setDeed(null); }} onClose={() => setDeed(null)} onFarm={() => setFarm(deed)} onDone={(ev, text, paid) => {
         setToast(text); window.clearTimeout(toastT.current); toastT.current = window.setTimeout(() => setToast(null), 4000);
-        setOwned((m) => { const n = new Map(m); if (ev === 're_buy' && me) n.set(deed, { id: deed, owner: me, price: paid ?? propertyById(deed)?.price ?? 0, arrears: 0, boughtAt: Date.now() }); else n.delete(deed); return n; });
+        setOwned((m) => { const n = new Map(m); if ((ev === 're_buy' || ev === 're_buyout') && me) n.set(deed, { id: deed, owner: me, price: paid ?? propertyById(deed)?.price ?? 0, arrears: 0, boughtAt: Date.now() }); else n.delete(deed); return n; });
       }} />}
       <CookingHost me={me} />
       <EmploymentHost />

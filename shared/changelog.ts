@@ -15,6 +15,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     'Farm on mobile: a new "My farm" button on the map opens your farm, and on phones it opens full screen.',
     'Profiles: a net worth chart shows how your wealth has changed over time.',
     'Stocks: your total dividends earned now show on your portfolio and profile.',
+    'Monument royalties: owning a landmark now pays 1% of what other players earn there (mines, factory goods, fishing dock, Speedway prizes, market sales, casino house win), minted on top. Shown on the deed and your profile.',
+    'Hostile buyouts: force-buy any monument for 2x what its owner paid (all of it goes to them, with a popup). The buyout price becomes the new price, royalties follow the new owner, and each purchase is protected for 24h.',
   ] },
   { commit: '', at: '2026-11-03T16:30:00-06:00', title: 'House-sell cap now follows total player wealth', bullets: [
     'Each day at the reset (6 PM CST) the daily house-sell cap changes by half the percent that total player assets (cash + holdings, the Bank total) changed over the previous day. If total wealth doubles, the cap goes up 50%; if it drops 20%, the cap drops 10%.',
