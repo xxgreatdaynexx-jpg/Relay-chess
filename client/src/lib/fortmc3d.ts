@@ -22,6 +22,7 @@ function signTexture(text: string, color: string, sub?: string) { return cityLab
 export const clampFortTarget = (x: number, z: number): [number, number] => [Math.min(FORT_X1 - 10, Math.max(FORT_X0 + 10, x)), Math.min(FORT_Z1 - 10, Math.max(FORT_Z0 + 10, z))];
 const TW = 30, TD = 26; // tract pad size
 // QA#8: pumpjacks read toy-sized next to fat flowlines — jacks up 1.45x (columns re-spaced to fit the pad), flowlines ~1/3 radius.
+export const RACK_H = 7, BUND_H = 1.1;
 export const JACK_SCALE = 1.45; export const FLOW_R = [0.13, 0.2] as const;
 
 export type FortWorld = ReturnType<typeof createFortMc>;
@@ -135,6 +136,11 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
   // Shared unit geometries scaled per use (the old helpers built a new BufferGeometry for every box/cylinder).
   const box = (w: number, hh: number, dd: number, m: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = scene) => { const o = new THREE.Mesh(BOX(), m); o.scale.set(w, hh, dd); o.position.set(x, y, z); o.castShadow = o.receiveShadow = true; parent.add(o); return o; };
   const cyl = (rt: number, hh: number, m: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = scene, rb = rt) => { const k = Math.round((rb / rt) * 20) / 20; const o = new THREE.Mesh(sg(`fcyl${k}`, () => new THREE.CylinderGeometry(0.5, 0.5 * k, 1, 14)), m); o.scale.set(rt * 2, hh, rt * 2); o.position.set(x, y, z); o.castShadow = true; parent.add(o); return o; };
+  // QA#13: tank bund (low concrete containment wall) and column access (grated platforms every ~6 m + caged ladder).
+  const bund = (parent: THREE.Object3D, x0: number, x1: number, z0: number, z1: number) => { const w = x1 - x0, d = z1 - z0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    for (const [bw, bd, bx, bz] of [[w, 0.4, cx, z0], [w, 0.4, cx, z1], [0.4, d, x0, cz], [0.4, d, x1, cz]] as const) box(bw, BUND_H, bd, conc, bx, BUND_H / 2, bz, parent).userData.part = 'bund'; };
+  const towerAccess = (parent: THREE.Object3D, x: number, z: number, r: number, h: number) => { for (let y = 6; y < h - 1; y += 6) cyl(r + 0.7, 0.12, dark, x, y, z, parent).userData.part = 'platform';
+    cyl(r + 0.7, 0.12, dark, x, h - 0.3, z, parent).userData.part = 'platform'; box(0.4, h - 0.6, 0.08, yellow, x + r + 0.35, (h - 0.6) / 2, z, parent).userData.part = 'ladder'; };
   const flames: THREE.Mesh[] = [];
 
   for (const s of FORT_SPOTS) {
@@ -150,12 +156,13 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
       label('✈ YMC Airport', 'Fly home to Chud Hub', '#5aa8e8', s.x, 16, s.z);
     } else if (s.id === 'f-plant') {
       // Distillation towers, cracker furnace, cooling towers, pipe racks, flare.
-      for (const [x, z, hh, rr] of [[-18, -8, 22, 1.6], [-13, -8, 16, 1.3], [-8, -8, 26, 1.8]] as const) { cyl(rr, hh, steel, x, hh / 2, z, g); for (let y = 3; y < hh; y += 4) cyl(rr + 0.25, 0.3, yellow, x, y, z, g); }
+      for (const [x, z, hh, rr] of [[-18, -8, 22, 1.6], [-13, -8, 16, 1.3], [-8, -8, 26, 1.8]] as const) { cyl(rr, hh, steel, x, hh / 2, z, g); for (let y = 3; y < hh; y += 4) cyl(rr + 0.25, 0.3, yellow, x, y, z, g); towerAccess(g, x, z, rr, hh); }
       box(14, 8, 6, dark, 8, 4, -10, g); for (let i = 0; i < 4; i++) cyl(0.5, 14, dark, 2 + i * 4, 15, -10, g);
       for (const x of [-20, -10]) cyl(4.5, 10, white, x, 5, 10, g, 6);
-      box(50, 0.6, 1.2, yellow, 0, 4, 0, g); for (let x = -24; x <= 24; x += 6) box(0.4, 4, 0.4, yellow, x, 2, 0, g);
-      for (let i = 0; i < 3; i++) cyl(0.35, 50, steel, -24 + i * 0.9, 4.8, 0, g).rotation.z = Math.PI / 2;
-      for (const [x, z] of [[14, 8], [21, 8], [14, 14], [21, 14]] as const) cyl(2.8, 5, white, x, 2.5, z, g);
+      // QA#13: pipe rack lifted to road clearance on portal bents (two legs + cross-beam), two pipe tiers.
+      box(50, 0.5, 2.6, dark, 0, RACK_H, 0, g); for (let x = -24; x <= 24; x += 6) { for (const dz of [-1.2, 1.2]) box(0.4, RACK_H, 0.4, yellow, x, RACK_H / 2, dz, g); box(0.4, 0.4, 2.8, yellow, x, RACK_H - 2.2, 0, g); }
+      for (let i = 0; i < 3; i++) { cyl(0.35, 50, steel, 0, RACK_H + 0.6, -0.9 + i * 0.9, g).rotation.z = Math.PI / 2; } cyl(0.25, 50, white, 0, RACK_H - 1.8, 0.6, g).rotation.z = Math.PI / 2;
+      for (const [x, z] of [[14, 8], [21, 8], [14, 14], [21, 14]] as const) cyl(2.8, 5, white, x, 2.5, z, g); bund(g, 10.4, 24.6, 4.4, 17.6);
       cyl(0.5, 34, dark, 27, 17, -14, g); const fl = new THREE.Mesh(geo(new THREE.ConeGeometry(1.4, 5, 10)), flameM); fl.position.set(27, 36.5, -14); g.add(fl); flames.push(fl);
       for (const [x, z, hh] of [[-18, -8, 22], [-13, -8, 16], [-8, -8, 26]] as const) { box(0.5, 0.5, 0.5, navRed, x, hh + 0.4, z, g); for (let y = 5; y < hh; y += 8) box(0.35, 0.35, 0.35, warmWin, x + 1.9, y, z, g); }
       box(0.6, 0.6, 0.6, navRed, 27, 34.4, -14, g);
@@ -220,6 +227,7 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
     while (unitsG.children.length) unitsG.remove(unitsG.children[0]!);
     const count = (k: UnitKind) => s?.units.filter((u) => u.k === k).length ?? 0;
     for (let i = 0; i < count('tank'); i++) { const x = -45 + (i % 5) * 7.5, z = 22 + Math.floor(i / 5) * 7.5; cyl(3, 4.2, white, x, 2.1, z, unitsG); cyl(3.05, 0.25, red, x, 3.2, z, unitsG); cyl(0.15, 0.9, white, x, 4.65, z, unitsG, 3); box(0.4, 4.4, 0.6, dark, x + 3.1, 2.2, z, unitsG); }
+    { const nt = count('tank'); if (nt) { const cols = Math.min(5, nt), rows = Math.ceil(nt / 5); bund(unitsG, -48.7, -45 + (cols - 1) * 7.5 + 3.7, 22 - 3.7, 22 + (rows - 1) * 7.5 + 3.7); } }
     // QA#7: aeroderivative gas-turbine packages (LM6000-style): light-grey enclosure, beige air-intake filter house with louvres,
     // tall exhaust stack with a lit warning lamp, access doors. Matte (non-metal) paints so they read at night.
     for (let i = 0; i < count('turbine'); i++) { const x = 45 + (i % 4) * 5, z = 22 + Math.floor(i / 4) * 9; const pk = box(4, 3.4, 7, tPkg, x, 1.7, z, unitsG); pk.userData.part = 'turbinePkg'; box(4.2, 0.3, 7.2, tTrim, x, 3.5, z, unitsG);
@@ -235,7 +243,7 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
   const unitsG = new THREE.Group(); scene.add(unitsG);
   function procUnit(k: UnitKind, g: THREE.Group) {
     box(8, 0.3, 7.5, conc, 0, 0.15, 0, g);
-    const col = (x: number, z: number, r0: number, h0: number, m: THREE.Material = steel) => { cyl(r0, h0, m, x, h0 / 2, z, g); for (let y = 2.5; y < h0; y += 3) cyl(r0 + 0.18, 0.18, yellow, x, y, z, g); box(0.3, 0.3, 0.3, navRed, x, h0 + 0.2, z, g); };
+    const col = (x: number, z: number, r0: number, h0: number, m: THREE.Material = steel) => { cyl(r0, h0, m, x, h0 / 2, z, g); for (let y = 2.5; y < h0; y += 3) cyl(r0 + 0.18, 0.18, yellow, x, y, z, g); box(0.3, 0.3, 0.3, navRed, x, h0 + 0.2, z, g); towerAccess(g, x, z, r0, h0); };
     if (k === 'gas_plant') { col(-2.4, -2, 0.8, 9); col(-0.4, -2, 0.7, 7); box(4, 2.6, 3, blue, 1.8, 1.4, 1.6, g); for (let i = 0; i < 3; i++) cyl(0.25, 3, dark, 0.6 + i * 1.2, 3.5, 2.4, g); cyl(0.6, 3, white, -2.6, 1.5, 2, g); }
     else if (k === 'refinery') { col(-2, -1, 1.1, 13); col(0.6, -2, 0.7, 8); box(3, 3.2, 2.6, red, 2.2, 1.6, 1.8, g); cyl(0.3, 4, dark, 2.2, 5.2, 1.8, g); for (const z of [1.2, 2.6]) { const d = cyl(0.5, 3.6, white, -1.8, 0.9, z, g); d.rotation.z = Math.PI / 2; } }
     else if (k === 'reformer') { for (let i = 0; i < 3; i++) { const sp = new THREE.Mesh(SPH(), steel); sp.scale.setScalar(2.6); sp.position.set(-2.6 + i * 2.6, 2.6, -1.4); sp.castShadow = true; g.add(sp); for (const o of [-0.7, 0.7]) box(0.2, 1.4, 0.2, dark, -2.6 + i * 2.6 + o, 0.7, -1.4, g); } box(6, 2.4, 2, red, 0, 1.2, 2, g); for (let i = 0; i < 3; i++) cyl(0.22, 3.4, dark, -2 + i * 2, 4, 2, g); }
