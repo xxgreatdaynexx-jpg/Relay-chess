@@ -4,7 +4,7 @@
  * north of the plant, then south into the inlet header. Each tract gets its own lane so lines run side by side, never
  * crossing diagonally. Gameplay (which tract feeds the plant, pipe tiers) is unaffected: this only draws the line.
  */
-import { tractInfo } from './fortmc';
+import { tractInfo } from './fortmc.js';
 export const PLANT_INLET = { x: 10, z: 35 } as const;
 export const PAD_W = 30, PAD_D = 26;
 export type Pt = [number, number];
