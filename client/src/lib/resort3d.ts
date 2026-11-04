@@ -10,6 +10,8 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { RESORT_SPOTS, resortLots, resortPlots, resortPlotId, rfTileXZ, RF_TILE, clampResortTarget, SHORE_Z, BOARDWALK_Z, RESORT_X0, RESORT_X1, RESORT_Z0 } from '../../../shared/resort';
 import { cropById } from '../../../shared/farm';
+import { buildBoat, disposeTree } from './fleetModels';
+import { BOATS } from '../../../shared/fleet';
 
 type Handlers = { onHover: (id: string | null, x: number, y: number) => void; onPick: (id: string) => void; onProperty?: (id: string) => void };
 function rng(seed: number) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
@@ -191,17 +193,28 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
       label('🎣 Reef Pier', 'Tropical fishing', '#3ad8c8', s.x, 9, s.z);
     } else if (s.id === 'r-marina') {
       box(30, 0.5, 3, wood, 0, 0.3, -6, g); for (const x of [-10, 0, 10]) box(2, 0.5, 12, wood, x, 0.3, 1, g);
+      // mu-visuals marina pass: timber piles, cleats, lamp posts with warm glow, life rings and a harbourmaster hut.
+      const pileG = geo(new THREE.CylinderGeometry(0.22, 0.26, 2.6, 8)), pileM = mat({ color: 0x5a4632, roughness: 0.9 }), cleatG = geo(new THREE.BoxGeometry(0.5, 0.14, 0.16)), cleatM = mat({ color: 0xb8bcc4, metalness: 0.7, roughness: 0.3 });
+      const pile = (x: number, z: number) => { const o = new THREE.Mesh(pileG, pileM); o.position.set(x, 0.4, z); g.add(o); };
+      for (let x = -14; x <= 14; x += 4) { pile(x, -7.6); pile(x, -4.4); }
+      for (const fx of [-10, 0, 10]) for (const z of [-2, 2, 6]) { pile(fx - 1.1, z); pile(fx + 1.1, z); for (const sx of [-0.8, 0.8]) { const c = new THREE.Mesh(cleatG, cleatM); c.position.set(fx + sx, 0.62, z - 1); c.rotation.y = Math.PI / 2; g.add(c); } }
+      const postM = mat({ color: 0x2a2f36, metalness: 0.5, roughness: 0.4 }), lampM = mat({ color: 0xffe0a0, emissive: 0xffb050, emissiveIntensity: 2 }), postG = geo(new THREE.CylinderGeometry(0.07, 0.09, 2.8, 6)), lampG = geo(new THREE.SphereGeometry(0.22, 10, 8));
+      for (const [x, z] of [[-14, -6], [-5, -6], [5, -6], [14, -6], [-10, 6.6], [0, 6.6], [10, 6.6]] as const) { const p = new THREE.Mesh(postG, postM); p.position.set(x, 1.95, z); g.add(p); const l = new THREE.Mesh(lampG, lampM); l.position.set(x, 3.4, z); g.add(l); }
+      const ringG = geo(new THREE.TorusGeometry(0.38, 0.1, 6, 14)), ringM = mat({ color: 0xff5a2a, roughness: 0.6 });
+      for (const x of [-12, 7]) { const r = new THREE.Mesh(ringG, ringM); r.position.set(x, 1.1, -7.45); g.add(r); }
+      box(4, 2.4, 2.6, mat({ color: 0xf4efe4, roughness: 0.7 }), -17.5, 1.75, -6, g); box(4.6, 0.25, 3.2, mat({ color: 0x2f6f8f, roughness: 0.6 }), -17.5, 3.05, -6, g);
+      box(2.6, 0.9, 0.06, mat({ color: 0x1a2a3a, metalness: 0.6, roughness: 0.1, emissive: 0x2a3a4a, emissiveIntensity: 0.4 }), -17.5, 2.1, -4.68, g);
       label('🛥 Marina', 'Boats · yachts · deep sea', '#ffffff', s.x, 12, s.z);
     }
   }
   label('🌺 Banyan Bay', 'Oceanfront estates · plantations', '#3fa86a', -170, 22, -40, 1.3);
   label('💎 Sapphire Heights', 'Clifftop mansions · skyrises', '#5aa8e8', 168, 30, -40, 1.3);
   // Superyachts bobbing at the marina.
-  const yachts: THREE.Group[] = [];
-  for (const [x, z, len] of [[87, 51, 16], [97, 51, 12], [107, 49, 20], [70, 60, 24]] as const) {
+  const yachts: THREE.Group[] = []; const boatModels: THREE.Group[] = [];
+  // mu-visuals marina pass: the real fleet models (yacht, sportfisher, superyacht) instead of stacked boxes, bows to sea.
+  for (const [x, z, id, sc] of [[87, 51, 'yacht', 0.85], [97, 51, 'sportfisher', 1], [107, 50, 'yacht', 1], [70, 60, 'superyacht', 0.8]] as const) {
     const y = new THREE.Group(); y.position.set(x, 0.3, z); scene.add(y); yachts.push(y);
-    const hull = box(3.4, 1.4, len, white, 0, 0.6, 0, y); hull.scale.set(1, 1, 1); box(2.6, 1.2, len * 0.55, white, 0, 1.8, -len * 0.05, y); box(2.65, 0.5, len * 0.5, glass, 0, 1.9, -len * 0.05, y); box(1.8, 0.9, len * 0.3, white, 0, 2.9, -len * 0.08, y);
-    box(3.45, 0.15, len, mat({ color: 0x1a3a6a }), 0, 0.05, 0, y);
+    const b = buildBoat(BOATS.find((f) => f.id === id)!); b.scale.setScalar(sc); b.position.y = -0.5; y.add(b); boatModels.push(b);
   }
   // Resort pool + cabanas between the casino and the boardwalk.
   box(16, 0.3, 8, stone, 0, 0.15, -3.5); const pw = box(14, 0.12, 6, pool, 0, 0.33, -3.5); pw.castShadow = false;
@@ -326,6 +339,6 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
     reset() { camera.position.copy(home); controls.target.copy(homeT); },
     /** Point the camera at (x, z) from an offset (QA screenshots). */
     view(x: number, z: number, dx = 0, dy = 60, dz = 90) { controls.target.set(x, 0, z); camera.position.set(x + dx, dy, z + dz); },
-    dispose() { xmas?.dispose(); cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
+    dispose() { xmas?.dispose(); boatModels.forEach(disposeTree); cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
   };
 }
