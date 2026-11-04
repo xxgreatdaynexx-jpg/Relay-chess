@@ -137,7 +137,7 @@ describe('Postgres', () => {
     const got = (await w.bin('QA-Cole-Visit', 'resort_farm')).get('crop:coconut') ?? 0; expect(got).toBeGreaterThanOrEqual(2);
     const sh = { id: 'ship-1', owner: 'qa-cole-visit', ownerName: 'QA-Cole-Visit', toKey: 'qa-cole-visit', toName: 'QA-Cole-Visit', src: 'resort_farm', from: 'resort', to: 'city', type: 'crop', itemId: 'coconut', qty: 2, fee: 0, mode: 'truck', truck: null, createdAt: t, departAt: t, arriveAt: t, status: 'transit', kind: 'sell', auto: true } as unknown as Shipment;
     const rows = [saleLogStmt(sh, 'sold', 0, null)];
-    const paid = await farm.sellShipped(sh, rows); const c = cropById('coconut')!; expect(paid).toBe(2 * c.sell);
+    const paid = await farm.sellShipped(sh, rows); const c = cropById('coconut')!; expect(paid).toBe(Math.floor(2 * c.sell * 0.95)); // farming -5%
     expect(await farm.sellShipped(sh, rows)).toBe(0); // replay: ledger key whsale:ship-1 already used
     expect(bank.account('QA-Cole-Visit').chips).toBe(before + paid);
     const log = (await pool.query('SELECT paid, status FROM warehouse_sales')).rows; expect(log).toEqual([{ paid, status: 'sold' }]);
