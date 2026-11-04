@@ -59,7 +59,8 @@ export class Farm {
   }
   /** Tiles of the CURRENT owner only (crops left by a previous owner are gone with the deed). */
   private async tiles(id: string, ownerKey: string): Promise<TileRow[]> {
-    return (await this.pool.query('SELECT * FROM farm_tiles WHERE plot_id = $1 AND owner_key = $2 ORDER BY tile', [id, ownerKey])).rows as TileRow[];
+    const p = plotOf(id); const n = p ? p.cols * p.rows : 0; // tiles indexed past the field (e.g. after a layout change) are ignored: not shown, not harvestable
+    return ((await this.pool.query('SELECT * FROM farm_tiles WHERE plot_id = $1 AND owner_key = $2 ORDER BY tile', [id, ownerKey])).rows as TileRow[]).filter((r) => Number(r.tile) >= 0 && Number(r.tile) < n);
   }
   private async today(key: string) {
     const r = await this.pool.query('SELECT gross, paid FROM farm_daily WHERE player_key = $1 AND day = $2', [key, utcDay(this.clock())]);
@@ -252,7 +253,7 @@ export class Farm {
   async mapTiles(): Promise<Array<[string, number, string, Stage]>> {
     const rows = (await this.pool.query('SELECT t.plot_id, t.tile, t.crop, t.planted_at, t.owner_key, p.owner_key AS cur FROM farm_tiles t JOIN properties p ON p.id = t.plot_id')).rows as Array<TileRow & { cur: string }>;
     const now = this.clock(); const gh = new Map((await this.pool.query("SELECT plot_id, owner_key, level FROM farm_upgrades WHERE kind = 'greenhouse'")).rows.map((u: { plot_id: string; owner_key: string; level: number }) => [`${u.plot_id}|${u.owner_key}`, Number(u.level)]));
-    return rows.filter((r) => r.owner_key === r.cur).flatMap((r) => { const t = this.toTile(r, now, greenhouseWither(WITHER_FACTOR, gh.get(`${r.plot_id}|${r.owner_key}`) ?? 0)); return t ? [[r.plot_id, t.tile, t.crop, t.stage] as [string, number, string, Stage]] : []; });
+    return rows.filter((r) => { if (r.owner_key !== r.cur) return false; const p = plotOf(r.plot_id); return !!p && Number(r.tile) >= 0 && Number(r.tile) < p.cols * p.rows; }).flatMap((r) => { const t = this.toTile(r, now, greenhouseWither(WITHER_FACTOR, gh.get(`${r.plot_id}|${r.owner_key}`) ?? 0)); return t ? [[r.plot_id, t.tile, t.crop, t.stage] as [string, number, string, Stage]] : []; });
   }
 }
 type Stage = FarmTile['stage'];
