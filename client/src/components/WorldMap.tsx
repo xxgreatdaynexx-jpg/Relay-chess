@@ -4,6 +4,7 @@ import { backdropDismiss } from '@/lib/backdrop';
 import { CookingHost, OPEN_GROCERY, openKitchen } from './CookingPanels';
 import { openFurnitureStore, enterHome } from './Homes';
 import { isHomeProperty } from '../../../shared/homes';
+import { myHomeRows } from '../lib/myHome';
 import { EmploymentHost, OPEN_EMPLOY } from './EmploymentPanel';
 import { CityHallHost, OPEN_CITYHALL } from './CityHallPanel';
 import { Suspense, useEffect, useRef, useState } from 'react';
@@ -333,10 +334,16 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
         <h3>🏠 My home</h3>
         <small>Your trailer at Chud Acres Trailer Park, plus any property you own. Every home has a kitchen.</small>
         <button type="button" onClick={() => { setPanel(NONE); openKitchen('Your trailer · Chud Acres'); }} data-testid="home-kitchen-trailer">🚐 Your trailer<span>🍳 Kitchen</span></button>
-        {[...owned.values()].filter((o) => o.owner.toLowerCase() === me.toLowerCase() && propertyById(o.id)?.kind !== 'landmark').map((o) => <button type="button" key={o.id} onClick={() => { setPanel(NONE); openKitchen(propertyById(o.id)?.label ?? o.id); }} data-testid={`home-kitchen-${o.id}`}>{propertyById(o.id)?.label ?? o.id}<span>🍳 Kitchen</span></button>)}
-        {[...owned.values()].filter((o) => o.owner.toLowerCase() === me.toLowerCase() && isHomeProperty(propertyById(o.id))).map((o) => <button type="button" key={'in-' + o.id} onClick={() => { setPanel(NONE); enterHome(o.id); }} data-testid={`home-enter-${o.id}`}>{propertyById(o.id)?.label ?? o.id}<span>🛋️ Enter & decorate</span></button>)}
-        <button type="button" onClick={() => { setPanel(NONE); openFurnitureStore(); }} data-testid="home-furniture-store">🛋️ Furniture Store<span>Shop</span></button>
-        {myFarms.map((id) => <button type="button" key={'farm-' + id} onClick={() => setFarm(id)} data-testid={`home-farm-${id}`}>{propertyById(id)?.label ?? id}<span>🌾 Open farm</span></button>)}
+        {(() => { const r = myHomeRows(owned.values(), me, propertyById); const L = (id: string) => propertyById(id)?.label ?? id; return <>
+          {r.homes.map((id) => <button type="button" key={'in-' + id} onClick={() => { setPanel(NONE); enterHome(id); }} data-testid={`home-enter-${id}`}>{L(id)}<span>🛋️ Enter & decorate</span></button>)}
+          {r.homes.map((id) => <button type="button" key={id} onClick={() => { setPanel(NONE); openKitchen(L(id)); }} data-testid={`home-kitchen-${id}`}>{L(id)}<span>🍳 Kitchen</span></button>)}
+          {r.homes.length === 0 && <small data-testid="home-none">You don't own a house yet, so there's nothing to enter. Buy one on the map to enter and decorate it.</small>}
+          {r.kitchens.map((id) => <button type="button" key={id} onClick={() => { setPanel(NONE); openKitchen(L(id)); }} data-testid={`home-kitchen-${id}`}>{L(id)}<span>🍳 Kitchen</span></button>)}
+          {r.farms.map((id) => <button type="button" key={'farm-' + id} onClick={() => setFarm(id)} data-testid={`home-farm-${id}`}>{L(id)}<span>🌾 Open farm</span></button>)}
+          {r.businesses.map((id) => <button type="button" key={'biz-' + id} onClick={() => { setPanel(NONE); setDeed(id); }} data-testid={`home-biz-${id}`}>{L(id)}<span>🏢 Your business</span></button>)}
+          <h4>Shops</h4>
+          <button type="button" onClick={() => { setPanel(NONE); openFurnitureStore(); }} data-testid="home-furniture-store">🛋️ Furniture Store<span>Shop</span></button>
+        </>; })()}
       </div>}
       {deed && <DeedPanel id={deed} owned={owned} me={me} onKitchen={() => { openKitchen(propertyById(deed)?.label ?? deed); setDeed(null); }} onClose={() => setDeed(null)} onFarm={() => setFarm(deed)} onDone={(ev, text, paid) => {
         setToast(text); window.clearTimeout(toastT.current); toastT.current = window.setTimeout(() => setToast(null), 4000);
