@@ -20,7 +20,7 @@ import { px, priceIndex } from './price-index.js';
 import { requireResort } from './travel.js';
 import { taxBasisOf, propertyValue, GRACE_DAYS, propertyById as baseProperty, sellBackOf, taxOf, landPrice, landMultiplier, landSurchargePct, landMultiplierNote, type OwnedProperty } from '../shared/realEstate.js';
 import { skillLevelAsync } from './skills.js';
-import { propertyWorth, propertyPaid, upgradeSpendFromLevels } from '../shared/netWorth.js';
+import { propertyWorth, propertyPaid, propertyPaidPlusUpgrades, upgradeSpendFromLevels } from '../shared/netWorth.js';
 import { cropById, farmPlots } from '../shared/farm.js';
 import { upgradeDef, upgradePrice, type FarmUpgradeKind } from '../shared/farmUpgrades.js';
 import { fieldPlotOf } from '../shared/fieldFarms.js';
@@ -243,40 +243,7 @@ export class RealEstate {
   /** Per-property spend on top of the price paid, for one owner (or every non-QA owner): farm upgrade levels it holds now, at what the
    *  current owner paid for each (ledger farm_upgrade since the deed was bought; today's level price when no ledger row)
    *  and currently-planted tiles at their seed cost. Missing tables count as 0. */
-  async spend(ownerKey: string | null): Promise<Map<string, { upgrades: number; crops: number }>> {
-    const out = new Map<string, { upgrades: number; crops: number }>();
-    const get = (id: string) => { let v = out.get(id); if (!v) out.set(id, (v = { upgrades: 0, crops: 0 })); return v; };
-    const where = ownerKey ? 'p.owner_key = $1' : "p.owner_key NOT LIKE 'qa-%'"; const args = ownerKey ? [ownerKey] : [];
-    const q = async (sql: string) => { try { return (await this.pool.query(sql, args)).rows as Array<Record<string, unknown>>; } catch { return []; } };
-    // Upgrade levels the current owner holds now (a reset/lost upgrade is not counted).
-    const lv = new Map<string, Record<string, number>>();
-    for (const r of await q(`SELECT u.plot_id, u.kind, u.level FROM farm_upgrades u JOIN properties p ON p.id = u.plot_id AND p.owner_key = u.owner_key WHERE ${where}`)) {
-      const m = lv.get(String(r.plot_id)) ?? {}; m[String(r.kind)] = Number(r.level) || 0; lv.set(String(r.plot_id), m);
-    }
-    // What was actually paid for each held level: the ledger debit "Farm <id>: <Label> level <n>" since the deed was bought
-    // (latest row per level); a level with no ledger row falls back to its price at today's index.
-    const paidFor = new Map<string, number>();
-    if (lv.size) for (const r of await q(`SELECT p.id, t.memo, t.amount FROM properties p JOIN wallet_transactions t ON t.game = 'farm_upgrade' AND t.amount < 0
-        AND t.player_key = p.owner_key AND t.created_at >= to_timestamp(p.bought_at / 1000.0) WHERE ${where} ORDER BY t.id`)) paidFor.set(String(r.memo), -Number(r.amount));
-    for (const [id, levels] of lv) {
-      const tiles = plotTiles(id); if (!tiles) continue;
-      const s = upgradeSpendFromLevels(levels, (k, l) => {
-        const d = upgradeDef(k); if (!d) return null;
-        const led = paidFor.get(`Farm ${id}: ${d.label} level ${l + 1}`); if (led != null) return led;
-        const b = upgradePrice(k as FarmUpgradeKind, l, tiles); return b == null ? null : px(b);
-      });
-      if (s > 0) get(id).upgrades = s;
-    }
-    for (const r of await q(`SELECT t.plot_id, t.crop FROM farm_tiles t JOIN properties p ON p.id = t.plot_id AND p.owner_key = t.owner_key WHERE ${where}`)) {
-      const c = cropById(String(r.crop)); if (c) get(String(r.plot_id)).crops += px(c.seed);
-    }
-    // Fertilizer spread on the current planting (farm_fert row for the tile's live nonce), at its per-tile cost.
-    for (const r of await q(`SELECT t.plot_id, t.crop, f.kind FROM farm_fert f JOIN farm_tiles t ON t.plot_id = f.plot_id AND t.tile = f.tile AND t.nonce = f.nonce
-        JOIN properties p ON p.id = t.plot_id AND p.owner_key = t.owner_key WHERE ${where}`)) {
-      const c = cropById(String(r.crop)); const fd = fertDef(r.kind); if (c && fd) get(String(r.plot_id)).crops += px(fertCost(fd, c.sell));
-    }
-    return out;
-  }
+  spend(ownerKey: string | null) { return propertySpend(this.pool, ownerKey); }
 
   start() { const run = () => { void this.runTax().catch((e) => console.error('[realestate] tax run failed:', (e as Error).message)); }; this.timer = setInterval(run, 10 * 60_000); this.timer.unref?.(); setTimeout(run, 30_000).unref?.(); }
   stop() { if (this.timer) clearInterval(this.timer); }
@@ -316,4 +283,46 @@ export function registerRealEstate(io: Server, socket: Socket): void {
   on('re_quote', async (b, e) => e.quote(need(), b.id));
   on('re_sell', (b, e) => e.sell(need(), b.id));
   on('re_buyout', (b, e) => e.buyout(need(), b.id, b.max));
+}
+export async function propertySpend(pool: { query: (sql: string, args?: unknown[]) => Promise<{ rows: any[] }> }, ownerKey: string | null): Promise<Map<string, { upgrades: number; crops: number }>> {
+  const out = new Map<string, { upgrades: number; crops: number }>();
+  const get = (id: string) => { let v = out.get(id); if (!v) out.set(id, (v = { upgrades: 0, crops: 0 })); return v; };
+  const where = ownerKey ? 'p.owner_key = $1' : "p.owner_key NOT LIKE 'qa-%'"; const args = ownerKey ? [ownerKey] : [];
+  const q = async (sql: string) => { try { return (await pool.query(sql, args)).rows as Array<Record<string, unknown>>; } catch { return []; } };
+  // Upgrade levels the current owner holds now (a reset/lost upgrade is not counted).
+  const lv = new Map<string, Record<string, number>>();
+  for (const r of await q(`SELECT u.plot_id, u.kind, u.level FROM farm_upgrades u JOIN properties p ON p.id = u.plot_id AND p.owner_key = u.owner_key WHERE ${where}`)) {
+    const m = lv.get(String(r.plot_id)) ?? {}; m[String(r.kind)] = Number(r.level) || 0; lv.set(String(r.plot_id), m);
+  }
+  // What was actually paid for each held level: the ledger debit "Farm <id>: <Label> level <n>" since the deed was bought
+  // (latest row per level); a level with no ledger row falls back to its price at today's index.
+  const paidFor = new Map<string, number>();
+  if (lv.size) for (const r of await q(`SELECT p.id, t.memo, t.amount FROM properties p JOIN wallet_transactions t ON t.game = 'farm_upgrade' AND t.amount < 0
+      AND t.player_key = p.owner_key AND t.created_at >= to_timestamp(p.bought_at / 1000.0) WHERE ${where} ORDER BY t.id`)) paidFor.set(String(r.memo), -Number(r.amount));
+  for (const [id, levels] of lv) {
+    const tiles = plotTiles(id); if (!tiles) continue;
+    const s = upgradeSpendFromLevels(levels, (k, l) => {
+      const d = upgradeDef(k); if (!d) return null;
+      const led = paidFor.get(`Farm ${id}: ${d.label} level ${l + 1}`); if (led != null) return led;
+      const b = upgradePrice(k as FarmUpgradeKind, l, tiles); return b == null ? null : px(b);
+    });
+    if (s > 0) get(id).upgrades = s;
+  }
+  for (const r of await q(`SELECT t.plot_id, t.crop FROM farm_tiles t JOIN properties p ON p.id = t.plot_id AND p.owner_key = t.owner_key WHERE ${where}`)) {
+    const c = cropById(String(r.crop)); if (c) get(String(r.plot_id)).crops += px(c.seed);
+  }
+  // Fertilizer spread on the current planting (farm_fert row for the tile's live nonce), at its per-tile cost.
+  for (const r of await q(`SELECT t.plot_id, t.crop, f.kind FROM farm_fert f JOIN farm_tiles t ON t.plot_id = f.plot_id AND t.tile = f.tile AND t.nonce = f.nonce
+      JOIN properties p ON p.id = t.plot_id AND p.owner_key = t.owner_key WHERE ${where}`)) {
+    const c = cropById(String(r.crop)); const fd = fertDef(r.kind); if (c && fd) get(String(r.plot_id)).crops += px(fertCost(fd, c.sell));
+  }
+  return out;
+}
+
+/** Wealth-tax threshold value: price paid + upgrades held, per property (shared propertyPaidPlusUpgrades; no planted seed). */
+export async function propertyPaidPlusUpgradesOf(pool: { query: (sql: string, args?: unknown[]) => Promise<{ rows: any[] }> }, name: string): Promise<number> {
+  const k = keyOf(name); let rows: Array<{ id: string; price: unknown }> = [];
+  try { rows = (await pool.query('SELECT id, price FROM properties WHERE owner_key = $1', [k])).rows; } catch { return 0; }
+  if (!rows.length) return 0; const sp = await propertySpend(pool, k);
+  return rows.reduce((a, r) => a + propertyPaidPlusUpgrades({ paid: Number(r.price), list: propertyById(r.id)?.price ?? 0, upgrades: sp.get(r.id)?.upgrades ?? 0 }), 0);
 }
