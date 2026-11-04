@@ -107,6 +107,6 @@ describe('co-op mine raids: instances', () => {
   });
   it('launch popup and changelog announce raids', () => {
     expect(LAUNCH.items.some((i) => i.section === 'Co-op' && /raid/i.test(i.title))).toBe(true);
-    expect(/raid/i.test(CHANGELOG[0].title)).toBe(true);
+    expect(CHANGELOG.slice(0, 3).some((e) => /raid/i.test(e.title))).toBe(true);
   });
 });

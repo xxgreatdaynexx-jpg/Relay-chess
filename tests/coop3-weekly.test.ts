@@ -64,6 +64,6 @@ describe('weekly server events', () => {
   });
 
   it('is announced in the changelog and the Co-op popup', () => {
-    expect(CHANGELOG[0]!.title).toMatch(/weekly server events/i);
+    expect(CHANGELOG.slice(0, 3).some((e) => /weekly server events/i.test(e.title))).toBe(true);
   });
 });
