@@ -9,6 +9,6 @@ import { TILE, type FarmPlot } from './farm.js';
 export const fieldPlotId = (n: number) => `cf:${n}`;
 let cache: FarmPlot[] | null = null;
 export function fieldPlots(): FarmPlot[] {
-  return cache ??= outskirts().fields.map((f, n) => ({ n, x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, cols: Math.max(1, Math.floor(f.w / TILE)), rows: Math.max(1, Math.floor(f.d / TILE)) }));
+  return cache ??= outskirts().fields.map((f) => ({ n: f.n, x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, cols: Math.max(1, Math.floor(f.w / TILE)), rows: Math.max(1, Math.floor(f.d / TILE)) }));
 }
-export const fieldPlotOf = (id: unknown) => (typeof id === 'string' && /^cf:\d+$/.test(id) ? fieldPlots()[Number(id.slice(3))] : undefined);
+export const fieldPlotOf = (id: unknown) => (typeof id === 'string' && /^cf:\d+$/.test(id) ? fieldPlots().find((p) => p.n === Number(id.slice(3))) : undefined);

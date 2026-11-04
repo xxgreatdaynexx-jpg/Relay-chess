@@ -2,8 +2,13 @@
 export const JAIL_PHRASE = "I'm sorry grok.";
 export const JAIL_LINES_NEEDED = 10_000;
 export const JAIL_MIN_GAP_MS = 450; // ~1 submit per 0.5 s
-/** Jail compound: west outskirts between the Speedway and the Airport (well clear of the gold Millionaire sign). */
-export const JAIL_SITE = { x: -162, z: -90, w: 22, d: 16 };
+/** Jail compound (pt1495u): bottom-right (south-east) corner of the map, south of the far-shore road and west of the
+ * east road. w/d are the cell block in model units; the map draws it at JAIL_SCALE and turned (rot) so the bars face the road. */
+export const JAIL_SITE = { x: 174, z: 172, w: 22, d: 16, rot: Math.PI };
+export const JAIL_SCALE = 1.4;
+/** World footprint of the whole compound (yard slab included): half extents on x and z. */
+export const JAIL_HALF = { x: ((JAIL_SITE.w + 4) * JAIL_SCALE) / 2, z: ((JAIL_SITE.d + 4) * JAIL_SCALE) / 2 };
+
 
 export interface JailInfo { name: string; reason: string; until: number | null; typed: number; needed: number; at: number }
 

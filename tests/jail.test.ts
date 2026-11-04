@@ -2,7 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { Jail } from '../server/jail';
 import { isApology, jailAllows, jailMessage, JAIL_PHRASE, JAIL_SITE } from '../shared/jail';
 import { planWealthTax } from '../shared/wealthTax';
-import { keepOut } from '../shared/outskirts';
+import { keepOut, outskirts } from '../shared/outskirts';
+import { JAIL_HALF } from '../shared/jail';
+import { fieldPlots } from '../shared/fieldFarms';
+import { properties } from '../shared/realEstate';
 
 describe('admin jail', () => {
   it('only an exact single line counts', () => {
@@ -45,5 +48,16 @@ describe('admin jail', () => {
   it('the jail site is kept clear of decor and far from the Millionaire sign', () => {
     expect(keepOut(JAIL_SITE.x, JAIL_SITE.z)).toBe(true);
     expect(Math.hypot(JAIL_SITE.x - -156, JAIL_SITE.z - 24)).toBeGreaterThan(60);
+  });
+  it('the jail sits in the bottom-right corner with nothing on its yard, and no other farm moved (pt1495u)', () => {
+    expect(JAIL_SITE.x).toBeGreaterThan(150); expect(JAIL_SITE.z).toBeGreaterThan(150);
+    const O = outskirts(); const hit = (o: { x: number; z: number; w: number; d: number }) => Math.abs(o.x - JAIL_SITE.x) < JAIL_HALF.x + o.w / 2 && Math.abs(o.z - JAIL_SITE.z) < JAIL_HALF.z + o.d / 2;
+    for (const o of [...O.buildings, ...O.fields]) expect(hit(o)).toBe(false);
+    const ids = new Set(properties().map((p) => p.id));
+    expect(ids.has('cf:21')).toBe(false); expect(ids.has('cf:23')).toBe(false); expect(ids.has('b:house:1943:1718')).toBe(false);
+    // pre-jail layout: the bottom-left fields stay exactly where players bought them
+    const at = (n: number) => fieldPlots().find((f) => f.n === n)!;
+    expect([Math.round(at(24).x), Math.round(at(24).z)]).toEqual([-168, 159]); expect([Math.round(at(25).x), Math.round(at(25).z)]).toEqual([-145, 157]); expect([Math.round(at(26).x), Math.round(at(26).z)]).toEqual([-160, 178]);
+    expect(fieldPlots()).toHaveLength(30);
   });
 });
