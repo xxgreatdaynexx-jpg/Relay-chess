@@ -34,6 +34,6 @@ describe('themed mine monsters', () => {
     for (let i = 1; i < ordered.length; i++) expect(MOBS[ordered[i]].dmg).toBeGreaterThan(MOBS[ordered[i - 1]].dmg);
     for (const k of KINDS) expect(mobScale(k, 40)).toBeGreaterThan(mobScale(k, MOBS[k].minFloor));
     // skins carry no stats: HP / damage come only from MOBS[kind]
-    for (const c of CAVES) for (const k of KINDS) { expect((MOB_SKINS[c][k] as Record<string, unknown>).hp).toBeUndefined(); expect((MOB_SKINS[c][k] as Record<string, unknown>).dmg).toBeUndefined(); }
+    for (const c of CAVES) for (const k of KINDS) { expect((MOB_SKINS[c][k] as unknown as Record<string, unknown>).hp).toBeUndefined(); expect((MOB_SKINS[c][k] as unknown as Record<string, unknown>).dmg).toBeUndefined(); }
   });
 });

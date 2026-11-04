@@ -362,7 +362,7 @@ export class Farm {
         for (const r of ready) { gone += (await cl.query('DELETE FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3 AND owner_key = $4', [pid, r.tile, r.nonce, key])).rowCount ?? 0; await cl.query('DELETE FROM farm_fert WHERE plot_id = $1 AND tile = $2 AND nonce = $3', [pid, r.tile, r.nonce]); }
         if (gone !== ready.length) throw new FarmError('Already harvested.');
         await cl.query('INSERT INTO farm_daily (player_key, day, gross, paid) VALUES ($1,$2,0,0) ON CONFLICT (player_key, day) DO NOTHING', [key, day]);
-        const u = await cl.query('UPDATE farm_daily SET gross = gross + $3, paid = paid + $4 WHERE player_key = $1 AND day = $2 AND gross = $5', [key, day, profit, paid, t.gross]);
+        const u = await cl.query('UPDATE farm_daily SET gross = gross + $3, paid = paid + $4 WHERE player_key = $1 AND day = $2 AND gross = $5', [key, day, Math.round(profit), paid, t.gross]);
         if (!u.rowCount) throw new FarmError('Busy, try again.');
       });
       this.onChange?.(pid);
@@ -385,7 +385,7 @@ export class Farm {
       try {
         await this.atomic(name, paid, 'farm_harvest', `Chud City Warehouse: sold ${s.qty} ${c.label} from the Resort plantation`, async (cl) => {
           await cl.query('INSERT INTO farm_daily (player_key, day, gross, paid) VALUES ($1,$2,0,0) ON CONFLICT (player_key, day) DO NOTHING', [key, day]);
-          const u = await cl.query('UPDATE farm_daily SET gross = gross + $3, paid = paid + $4 WHERE player_key = $1 AND day = $2 AND gross = $5', [key, day, profit, paid, t.gross]);
+          const u = await cl.query('UPDATE farm_daily SET gross = gross + $3, paid = paid + $4 WHERE player_key = $1 AND day = $2 AND gross = $5', [key, day, Math.round(profit), paid, t.gross]);
           if (!u.rowCount) throw new FarmError('Busy, try again.');
           for (const q of rows) await cl.query(q.sql, q.sql.includes('warehouse_sales') ? q.args.map((v, i) => (i === 8 ? paid : v)) : q.args); // sale log gets the real payout
         }, `whsale:${s.id}`);
