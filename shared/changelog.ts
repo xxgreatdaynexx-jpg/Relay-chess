@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-03T22:10:00-06:00', title: 'Fixed a stock news exploit', bullets: [
+    'Fixed a stock news exploit.',
+  ] },
   { commit: '', at: '2026-11-03T20:05:00-06:00', title: 'Fixed a stock price manipulation exploit', bullets: [
     'Players can no longer pump a stock far past its market price with a string of small buys. Options are now priced off the market price, not the player-pushed price.',
   ] },

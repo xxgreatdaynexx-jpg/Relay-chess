@@ -19,7 +19,8 @@ import { getBank } from './casino-store.js';
 import { getEconomy } from './economy.js';
 import { Derivatives, getDerivs, setDerivs } from './derivs.js';
 import { divYield } from '../shared/derivs.js';
-import { COMPANIES, COMPANY_BY_TICKER, SECTOR_BY_ID, SECTORS, IMPACT_HALF_LIFE_MS, MAX_TICK_IMPACT, impactAllowed, IMPACT_CAP_MSG, TICK_MS, dailyEvents, maxOrderChips, parseQty, quote, seeded, hash32, type ActivityKey, type Company, type NewsItem } from '../shared/stocks.js';
+import { COMPANIES, COMPANY_BY_TICKER, SECTOR_BY_ID, SECTORS, IMPACT_HALF_LIFE_MS, MAX_TICK_IMPACT, impactAllowed, IMPACT_CAP_MSG, TICK_MS, maxOrderChips, parseQty, quote, seeded, hash32, type ActivityKey, type Company, type NewsItem } from '../shared/stocks.js';
+import { dailyEvents, loadNewsKey, memoryNewsKey, type NewsKey } from './stock-news.js';
 import { skillLevelAsync } from './skills.js';
 import { tradingFeeMul } from '../shared/skillPerks.js';
 import { cityFeeMul } from './mayor.js';
@@ -114,6 +115,7 @@ export class Exchange {
   act: Partial<Record<ActivityKey, number>> = {};
   inflPct: number | null = null;
   news: NewsItem[] = [];
+  private newsKey: NewsKey = memoryNewsKey();
   // memory mode (no DB: tests / dev)
   private memHold = new Map<string, Map<string, Holding>>();
   /** Memory-mode lifetime trade totals per player/ticker (tests / dev): chips paid on buys, chips received on sells. */
@@ -136,6 +138,7 @@ export class Exchange {
   async init() {
     if (!this.pool) return;
     await this.pool.query(MIGRATION);
+    this.newsKey = await loadNewsKey(this.pool, this.clock());
     const vals = COMPANIES.map((c, i) => `($${i * 2 + 1}, $${i * 2 + 2}::float8, $${i * 2 + 2}::float8)`).join(',');
     await this.pool.query(`INSERT INTO stock_prices (ticker, base, anchor) VALUES ${vals} ON CONFLICT DO NOTHING`, COMPANIES.flatMap((c) => [c.ticker, c.start]));
     await this.reload(true);
@@ -226,7 +229,7 @@ export class Exchange {
   /** Today's and yesterday's scheduled events whose time has come and that were not applied yet (persisted, so never re-rolled or skipped). */
   private async dueNews(now: number): Promise<NewsItem[]> {
     const days = [utcDay(now - DAY), utcDay(now)];
-    const cand = COMPANIES.flatMap((c) => days.flatMap((d) => dailyEvents(c, d))).filter((e) => e.at <= now && e.at > now - DAY);
+    const cand = COMPANIES.flatMap((c) => days.flatMap((d) => dailyEvents(c, d, this.newsKey.secret))).filter((e) => e.at <= now && e.at > now - DAY && e.at > this.newsKey.since);
     const have = new Set(this.news.map((n) => n.id)); const fresh = cand.filter((e) => !have.has(e.id));
     if (!fresh.length) return [];
     if (!this.pool) { this.news.unshift(...fresh); return fresh; }
@@ -262,7 +265,7 @@ export class Exchange {
     const c = typeof t === 'string' ? COMPANY_BY_TICKER.get(t) : undefined; if (!c) throw new StockError('Unknown company.');
     const mine = name ? (await this.holdings(name)).find((h) => h.ticker === c.ticker) ?? null : null;
     const callLock = name ? await this.callLocked(name, c.ticker) : false;
-    return { callLock, company: { ...c, ...this.summary(c) }, chart: await this.chart(c.ticker, range), news: this.news.filter((n) => n.ticker === c.ticker).slice(0, 20), upcoming: dailyEvents(c, utcDay(this.clock())).filter((e) => e.at > this.clock()).length, mine, maxOrder: maxOrderChips(c), drift: dailyDrift(c, this.inflPct, this.act) };
+    return { callLock, company: { ...c, ...this.summary(c) }, chart: await this.chart(c.ticker, range), news: this.news.filter((n) => n.ticker === c.ticker).slice(0, 20), mine, maxOrder: maxOrderChips(c), drift: dailyDrift(c, this.inflPct, this.act) };
   }
   /** Dayne t1430u: a player holding an open (unexpired) call on a ticker can't buy that ticker's shares. Read-only check. */
   async callLocked(name: string, ticker: string): Promise<boolean> {

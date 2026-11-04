@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { getBank } from '../server/casino-store';
 import { Exchange, activitySignal, dailyDrift, stepBase } from '../server/stocks';
-import { COMPANIES, COMPANY_BY_TICKER, MAX_TRADE_IMPACT, SECTORS, TICK_MS, dailyEvents, maxOrderChips, quote } from '../shared/stocks';
+import { COMPANIES, COMPANY_BY_TICKER, MAX_TRADE_IMPACT, SECTORS, TICK_MS, maxOrderChips, quote } from '../shared/stocks';
 import { valueHoldings } from '../server/economy';
+import { dailyEvents } from '../server/stock-news';
+const SK = 'test-secret-0123456789abcdef';
 
 const T0 = Date.parse('2026-10-31T12:00:00Z');
 const mk = () => { let now = T0; const e = new Exchange(null, () => now); return { e, adv: (ms: number) => { now += ms; } }; };
@@ -17,7 +19,7 @@ describe('stock exchange data', () => {
   });
   it('schedules at least one deterministic event per company per day', () => {
     for (const c of COMPANIES) {
-      const a = dailyEvents(c, '2026-10-31'); expect(a.length).toBeGreaterThanOrEqual(1); expect(dailyEvents(c, '2026-10-31')).toEqual(a);
+      const a = dailyEvents(c, '2026-10-31', SK); expect(a.length).toBeGreaterThanOrEqual(1); expect(dailyEvents(c, '2026-10-31', SK)).toEqual(a);
       for (const ev of a) { expect(ev.at).toBeGreaterThanOrEqual(T0 - 12 * 3_600_000); expect(Math.abs(ev.move)).toBeLessThanOrEqual(c.vol * 2.5 + 1e-9); expect(ev.move > 0).toBe(ev.good); }
     }
   });

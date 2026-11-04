@@ -128,7 +128,7 @@ function Chart({ pts }: { pts: Array<[number, number]> }) {
   );
 }
 
-interface CompanyResp { company: Row & { blurb: string; vol: number; beta: number; liquidity: number }; chart: Array<[number, number]>; news: NewsItem[]; upcoming: number; mine: { shares: number; cost: number } | null; maxOrder: number; drift: number; callLock?: boolean }
+interface CompanyResp { company: Row & { blurb: string; vol: number; beta: number; liquidity: number }; chart: Array<[number, number]>; news: NewsItem[]; mine: { shares: number; cost: number } | null; maxOrder: number; drift: number; callLock?: boolean }
 function CompanyView({ ticker, onBack, onTraded }: { ticker: string; onBack: () => void; onTraded: () => void }) {
   const account = useAccount();
   const [range, setRange] = useState<'24h' | '7d' | '30d'>('24h');
@@ -177,7 +177,7 @@ function CompanyView({ ticker, onBack, onTraded }: { ticker: string; onBack: () 
         <p className="mt-1 text-[11px] opacity-60">Max 🪙 {n(d.maxOrder)} per order (moves the price ≤ {MAX_TRADE_IMPACT * 100}%; ≤ {MAX_TICK_IMPACT * 100}% per 30s for everyone). Your order moves the price; the effect fades over a few hours. {STOCK_FEE * 100}% fee is burned.</p>
         {msg && <p className={`mt-1 text-xs ${msg.ok ? 'text-emerald-400' : 'text-rose-400'}`} data-testid="stk-msg">{msg.t}</p>}
       </div>
-      <h4 className="mt-3 text-xs uppercase tracking-wide opacity-70">News {d.upcoming ? <span className="normal-case opacity-60">· {d.upcoming} more expected today</span> : null}</h4>
+      <h4 className="mt-3 text-xs uppercase tracking-wide opacity-70">News</h4>
       <NewsFeed news={d.news} />
       <TradeFeed ticker={ticker} title={`Recent ${ticker} trades`} />
     </div>
