@@ -86,7 +86,7 @@ export function KitchenPanel({ me, home, onClose, onGrocery }: { me: string | nu
   useDoing('cooking', home);
   const dragKitchen = usePanelDrag('kitchen');
   const { s, err, load } = useKitchen(); const [cook, setCook] = useState<Cook | null>(null); const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);
-  const [tab, setTab] = useState<'book' | 'fridge' | 'fish'>('book');
+  const [tab, setTab] = useState<'book' | 'fridge' | 'fish'>('book'); useEffect(() => setMsg(null), [tab]); // Tess QA #5
   const v = s?.state; const idx = v?.index ?? 1;
   const start = async (r: Recipe) => {
     if (busy) return; setBusy(r.id); setMsg(null);

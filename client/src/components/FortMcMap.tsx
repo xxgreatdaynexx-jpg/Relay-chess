@@ -22,7 +22,7 @@ export function FortMcMap() {
   const canvasRef = useRef<HTMLCanvasElement>(null); const worldRef = useRef<FortWorld | null>(null);
   const [loading, setLoading] = useState(true); const [tip, setTip] = useState<{ id: string; x: number; y: number } | null>(null);
   const [view, setView] = useState<View | null>(null); const [panel, setPanel] = useState<Panel>(null); const [tract, setTract] = useState(1);
-  const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false); useEffect(() => setMsg(null), [panel, tract]); // Tess QA #5: a status line belongs to the panel that produced it
   const px = (base: number) => indexed(base, view?.index ?? 1);
 
   const apply = useCallback((r: { ok: boolean } & Partial<View>) => { if (r.fort) { setView(r as View); worldRef.current?.setFort(r.fort); } }, []);

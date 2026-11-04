@@ -18,7 +18,7 @@ export function FreightYard({ onClose, me }: { onClose: () => void; me: string |
   const drag = usePanelDrag('freight');
   const [v, setV] = useState<View | null>(null); const [tab, setTab] = useState<'ship' | 'store' | 'live'>('ship');
   const [item, setItem] = useState(''); const [qty, setQty] = useState(1); const [mode, setMode] = useState<Mode>('ship'); const [to, setTo] = useState<HubId>('resort'); const [who, setWho] = useState('');
-  const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [, tick] = useState(0);
+  const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [, tick] = useState(0); useEffect(() => setMsg(null), [tab]); // Tess QA #5
   const load = () => { void request('freight_view').then((a) => { if (a.ok) setV(a as unknown as View); }); };
   useEffect(() => { load(); const t = window.setInterval(() => { tick((n) => n + 1); }, 1000); const r = window.setInterval(load, 15_000);
     const arr = (e: { qty: number; what: string }) => { setMsg(`📦 Delivered: ${e.qty} ${e.what}.`); load(); }; socket.on('freight_arrived', arr);

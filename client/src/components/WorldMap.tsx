@@ -51,7 +51,7 @@ function OwnedHomes2D({ owned, onPick }: { owned: Map<string, OwnedProperty>; on
 export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }: { id: string; owned: Map<string, OwnedProperty>; me: string | null; onClose: () => void; onFarm?: () => void; onKitchen?: () => void; onDone?: (ev: 're_buy' | 're_sell', text: string, paid?: number) => void }) {
   useDoing('realestate', propertyById(id)?.label);
   const dragDeed = usePanelDrag('deed');
-  const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState<null | 're_buy' | 're_sell' | 're_buyout'>(null); const [msg, setMsg] = useState<string | null>(null); const wallet = useWalletChips();
+  const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState<null | 're_buy' | 're_sell' | 're_buyout'>(null); const [msg, setMsg] = useState<string | null>(null); const wallet = useWalletChips(); useEffect(() => setMsg(null), [id]); // Tess QA #5: switching deeds clears the last deed's status
   if (!p) return null;
   const mine = !!(o && me && o.owner.toLowerCase() === me.toLowerCase());
   // pt1388u: you pay list × (1 + 2% per 1,000 of property you own, uncapped); sell-back is 70% of what you paid; tax stays on list.

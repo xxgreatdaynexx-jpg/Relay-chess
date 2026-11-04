@@ -44,7 +44,7 @@ export function MechanicShop({ onClose, onDrive }: { onClose: () => void; onDriv
   useDoing('mechanic');
   const dragMechanic = usePanelDrag('mechanic');
   const [shop, setShop] = useState<Shop | null>(null); const [sel, setSel] = useState<string | null>(null);
-  const [tab, setTab] = useState<'perf' | 'look'>('perf'); const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<'perf' | 'look'>('perf'); const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false); useEffect(() => setMsg(null), [tab, sel]); // Tess QA #5
   const [tryLook, setTryLook] = useState<Partial<CarMods>>({});
   const load = () => request('mech_shop').then((a) => { if (a.ok) { const s = a as unknown as Shop; s.cars = (s.cars ?? []).map((c) => ({ ...c, mods: normMods(c.mods) })); setShop(s); setSel((cur) => cur && s.cars.some((c) => c.id === cur) ? cur : (s.cars.find((c) => c.active) ?? s.cars[0])?.id ?? null); } });
   useEffect(() => { void load(); }, []);

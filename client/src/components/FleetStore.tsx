@@ -34,7 +34,7 @@ export function FleetStore({ kind, onClose, onDeepSea }: { kind: FleetKind; onCl
   const drag = usePanelDrag(boat ? 'marina' : 'hangar');
   const base = boat ? BOATS : JETS;
   const [v, setV] = useState<View | null>(null); const [sel, setSel] = useState(base[0]!.id);
-  const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false); useEffect(() => setMsg(null), [kind]); // Tess QA #5: Marina vs Hangar
   const load = () => { void request(boat ? 'marina_view' : 'hangar_view').then((a) => { if (a.ok) setV(a as unknown as View); }); };
   useEffect(load, [boat]);
   const cat = v?.catalog ?? base.map((m) => ({ ...m, basePrice: m.price }));
