@@ -3,13 +3,15 @@
  * (trucks with their owner's name, hired rigs, hourly freight planes, 2-hourly cargo ships). Trucks only exist on the
  * map while they're driving a load; a ship sits at the port while it loads.
  */
+import { C20, CONTAINER_COLORS, type Box } from './containerYard';
+import { containerMeshes } from './containerModels';
 import { addFuselage } from './planeNose';
 import * as THREE from 'three';
 import type { World } from './world3d';
 import { cityLabel } from './labelSprite';
 import { nacelleX } from './nacelle';
 import { socket } from './net';
-import { sg, sm, part, BOX, CYL, CYL8, SPH, buildHarbour, ribTexture } from './ocean3d';
+import { sg, sm, part, BOX, CYL, CYL8, SPH, buildHarbour } from './ocean3d';
 import { HUBS, HUB_MAPS, onMap, vehiclePose, type HubId, type LiveVehicle } from '../../../shared/logistics';
 
 function tag(text: string, color = '#ffd27a'): THREE.Sprite { // Chud City label look, pill sized to the full text (no truncation)
@@ -62,9 +64,9 @@ export function ship() {
   part(g, CYL(), sm(0xdc2626, 0.5), 1.1, 2.4, 1.1, -8.2, 7.2, 0); part(g, CYL(), sm(0x111827, 0.6), 1.12, 0.5, 1.12, -8.2, 8.5, 0);
   part(g, CYL8(), sm(0x94a3b8, 0.4, 0.6), 0.1, 2.2, 0.1, -6.4, 8.1, 0);
   // containers on deck (one instanced mesh per ship, colours per box)
-  const cols = [0xdc2626, 0x16a34a, 0xf59e0b, 0x2563eb, 0x9333ea, 0x0f766e, 0xf1f5f9]; const im = new THREE.InstancedMesh(BOX(), new THREE.MeshStandardMaterial({ roughness: 0.65, map: ribTexture() }), 5 * 3 * 2); let k = 0; const m4 = new THREE.Matrix4(), c = new THREE.Color();
-  for (let i = 0; i < 5; i++) for (let j = 0; j < 3; j++) for (let y = 0; y < 2; y++) { m4.makeScale(2.5, 1.15, 1.35); m4.setPosition(-3.4 + i * 2.65, 2.9 + y * 1.18, (j - 1) * 1.42); im.setMatrixAt(k, m4); im.setColorAt(k, c.setHex(cols[(i * 3 + j * 2 + y * 5) % cols.length]!)); k++; }
-  g.add(im); part(g, BOX(), sm(0x94a3b8, 0.5, 0.5), 0.3, 3.6, 0.3, 6.4, 4, 0); // foremast
+  // mu-visuals containers: real ISO 20ft boxes on a flush 4×3×2 grid (foremast moved clear of them) (shared instanced geometry)
+  { const deck: Box[] = []; let k = 0; for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) for (let y = 0; y < 2; y++) deck.push({ x: -4.2 + i * (C20.len + 0.1), y: 2.3 + C20.h * (y + 0.5), z: (j - 1) * (C20.w + 0.06), size: 20, color: CONTAINER_COLORS[(i * 3 + j * 2 + y * 5 + k++) % CONTAINER_COLORS.length]!, logo: (i + j + y) % 5 === 0 });
+    g.add(containerMeshes(deck)); } part(g, BOX(), sm(0x94a3b8, 0.5, 0.5), 0.3, 3.6, 0.3, 7.6, 4, 0); // foremast
   return g;
 }
 export function port(hub: HubId) {

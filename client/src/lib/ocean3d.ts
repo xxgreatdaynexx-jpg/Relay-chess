@@ -3,6 +3,8 @@
  * Mobile budget: one big low-poly wave plane (vertex waves, analytic normals), instanced rocks/containers/bollards/lamps,
  * module-level shared geometries + materials. Nothing here moves existing layout; callers place it outside old bounds.
  */
+import { containerYard } from './containerYard';
+import { containerMeshes } from './containerModels';
 import * as THREE from 'three';
 
 const G = new Map<string, THREE.BufferGeometry>();
@@ -96,11 +98,13 @@ export function buildBreakwater(pts: Array<[number, number]>, glow?: THREE.MeshS
 export interface HarbourOpts { x: number; z0: number; z1: number; quayW: number; quayD: number; side?: 1 | -1; cranes?: number; stacks?: number; label?: THREE.Object3D }
 /** Container terminal: concrete quay + pier on piles, fenders and bollards, 2 STS gantry cranes, instanced container stacks,
  * a warehouse, reefer racks and lamp masts. The pier runs z0 → z1 at x (ships berth on the +x side when side=1). */
+/** Top of the quay apron (containers sit exactly here). */
+export const QUAY_TOP = 1.0;
 export function buildHarbour(o: HarbourOpts) {
   const g = new THREE.Group(); const side = o.side ?? 1; const pierW = 9; const len = Math.abs(o.z1 - o.z0); const zc = (o.z0 + o.z1) / 2; const dir = Math.sign(o.z1 - o.z0) || 1;
   const conc = sm(0x9ca3af, 0.92), concD = sm(0x6b7280, 0.95), yel = sm(0xfacc15, 0.6), dark = sm(0x1f2937, 0.6), steel = sm(0x94a3b8, 0.45, 0.5);
   // quay apron along the shore + the pier deck on piles
-  part(g, BOX(), conc, o.quayW, 1.2, o.quayD, o.x, 0.4, o.z0 - dir * o.quayD / 2 + dir * 1);
+  part(g, BOX(), conc, o.quayW, 1.2, o.quayD, o.x, QUAY_TOP - 0.6, o.z0 - dir * o.quayD / 2 + dir * 1);
   part(g, BOX(), conc, pierW, 1.0, len, o.x, 0.9, zc); part(g, BOX(), yel, 0.25, 0.06, len, o.x + side * (pierW / 2 - 0.5), 1.42, zc);
   const piles: THREE.Matrix4[] = []; for (let t = 2; t < len; t += 4) for (const dx of [-pierW / 2 + 0.6, pierW / 2 - 0.6]) piles.push(new THREE.Matrix4().compose(new THREE.Vector3(o.x + dx, -1.2, o.z0 + dir * t), new THREE.Quaternion(), new THREE.Vector3(0.7, 3.4, 0.7)));
   const pm = new THREE.InstancedMesh(CYL8(), concD, piles.length); piles.forEach((m, i) => pm.setMatrixAt(i, m)); g.add(pm);
@@ -119,12 +123,12 @@ export function buildHarbour(o: HarbourOpts) {
     part(cr, BOX(), white, 2, 1.6, 2.2, side * 4, 13.6, 0); part(cr, BOX(), sm(0x93c5fd, 0.2, 0.3, 0x60a5fa, 0.5), 2.05, 0.6, 2.25, side * 4, 13.8, 0);
     part(cr, BOX(), dark, 1.8, 0.8, 4.4, side * 9, 13.9, 0); for (const dz of [-0.6, 0.6]) part(cr, BOX(), steel, 0.05, 2.5, 0.05, side * 9, 12.3, dz);
     for (const dx of [-3.4, 3.4]) part(cr, BOX(), dark, 1.2, 0.7, 5.6, dx, 0.35, 0); }
-  // container yard on the quay
-  const cols = [0xdc2626, 0x2563eb, 0x16a34a, 0xf59e0b, 0x0f766e, 0x9333ea, 0xf1f5f9, 0x7c2d12, 0x64748b]; let seed = Math.abs(Math.round(o.x * 13 + o.z0)) + 3; const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
-  const cm: Array<[THREE.Matrix4, number]> = []; const nStack = o.stacks ?? 6;
-  for (let r = 0; r < nStack; r++) for (let k = 0; k < 6; k++) { const hgt = 1 + Math.floor(rnd() * 3); for (let y = 0; y < hgt; y++) cm.push([new THREE.Matrix4().compose(new THREE.Vector3(o.x - side * (pierW / 2 + 5 + (r % 3) * 3.2), 1.6 + y * 1.3, o.z0 - dir * (o.quayD * 0.25) + (Math.floor(r / 3) ? 1 : -1) * (3 + k * 2.6)), new THREE.Quaternion(), new THREE.Vector3(2.4, 1.25, 6)), cols[Math.floor(rnd() * cols.length)]!]); }
-  const cg = sg('container', () => { const b = new THREE.BoxGeometry(1, 1, 1); return b; });
-  const ci = new THREE.InstancedMesh(cg, new THREE.MeshStandardMaterial({ roughness: 0.65, metalness: 0.15, map: ribTexture() }), cm.length); const cc = new THREE.Color(); cm.forEach(([m, c], i) => { ci.setMatrixAt(i, m); ci.setColorAt(i, cc.setHex(c)); }); g.add(ci);
+  // container yard on the quay (mu-visuals): grid-snapped rows parallel to the quay, identical orientation, flush stacks
+  // (max 3) sitting on the deck, no overlap (was: random 1-3 stacks of 6-deep boxes at 2.6 spacing, overlapping and
+  // spilling off the apron).
+  const zq = o.z0 - dir * o.quayD / 2 + dir * 1; const xa = o.x - side * (pierW / 2 + 1.5), xb = o.x - side * (o.quayW / 2 - 1.5);
+  const yard = containerYard({ x0: Math.min(xa, xb), x1: Math.max(xa, xb), z0: zq - o.quayD / 2 + 1, z1: zq + o.quayD / 2 - 1, deckY: QUAY_TOP, seed: Math.abs(Math.round(o.x * 13 + o.z0)) + 3 });
+  const ym = containerMeshes(yard); ym.userData.yard = yard; g.add(ym);
   // terminal shed + office
   const shedX = o.x + side * (o.quayW / 2 - 9); const shz = o.z0 - dir * (o.quayD / 2 - 0.5);
   part(g, BOX(), sm(0xcbd5e1, 0.7), 14, 5, 8, shedX, 3.5, shz); part(g, BOX(), sm(0x475569, 0.6, 0.3), 14.6, 0.5, 8.6, shedX, 6.2, shz);
