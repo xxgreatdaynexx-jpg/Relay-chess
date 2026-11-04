@@ -32,6 +32,7 @@ import { AdminPopup } from '@/components/AdminPopup';
 import { SkillsPanel } from '@/components/Skills';
 import { TournamentScreen } from '@/components/TournamentScreen';
 import { TournamentPing } from '@/components/TournamentPing';
+import TrailerPopup from '@/components/TrailerPopup';
 import { tournamentFromLocation } from '@/lib/tournament';
 import { clearSession, clearSpectate, codeFromLocation, loadSession, loadSpectate } from '@/lib/session';
 import type { PublicState } from '../../shared/types';
@@ -225,6 +226,7 @@ export function App() {
       <AccountPanel />
       <ChatDrawer />
       <PlayerProfile />
+      <TrailerPopup />
       <FactoryViewer />
       <TopTab id="wallet"><WalletButton /></TopTab>
       <TopTab id="account"><AccountButton /></TopTab>

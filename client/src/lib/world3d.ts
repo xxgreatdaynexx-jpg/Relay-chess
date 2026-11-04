@@ -27,6 +27,7 @@ import { CAR_BY_ID } from '../../../shared/cars';
 import { HOUSING_TYPES, type HousingType } from './housing';
 import { buildingId, patchId } from '../../../shared/realEstate';
 
+export const MILLIONAIRE_SIGN = 'millionaire-sign';
 type Handlers = { onHover: (id: string | null, x: number, y: number) => void; onPick: (id: string) => void; onProperty?: (id: string) => void; onTrailer?: (name: string) => boolean };
 
 let labelRenderer: THREE.WebGLRenderer | null = null;
@@ -115,6 +116,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const S = PLATE; const XM = xmasOn(); const keep = <M extends THREE.Material>(m: M) => { disposables.push(m); if ('map' in m && m.map) disposables.push(m.map as THREE.Texture); return m; };
   const slab = new THREE.Mesh(geo(new THREE.BoxGeometry(S * 2, 3, S * 2)), [mat({ color: 0x4a3322 }), mat({ color: 0x4a3322 }), (XM ? keep(xmasGround(S * 2, S * 2, tier === 'low')) : mat({ color: 0x3f9a45, roughness: 1, emissive: 0x0f3a14, emissiveIntensity: 0.6 })), mat({ color: 0x2a1c12 }), mat({ color: 0x4a3322 }), mat({ color: 0x4a3322 })]);
   slab.position.y = -1.5; scene.add(slab);
+  const signHit: THREE.Object3D[] = []; let signGlow: THREE.MeshStandardMaterial | null = null; // Millionaire sign: click opens the trailer pop-up
   { // Millionaire Update teaser: a gold billboard centred in the open field south of the airport apron, between the taxiway and the terminal.
     const c = document.createElement('canvas'); c.width = 1024; c.height = 400; const g = c.getContext('2d')!;
     const grd = g.createLinearGradient(0, 0, 0, 400); grd.addColorStop(0, '#fff1c4'); grd.addColorStop(0.45, '#f2c766'); grd.addColorStop(1, '#c8923e');
@@ -153,6 +155,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     board.onBeforeRender = (_r, _s, cam) => { ms.rotation.y = Math.atan2(cam.position.x - ms.position.x, cam.position.z - ms.position.z);
       const t = performance.now() / 1000; for (const sp of sparks) { const k = Math.max(0, Math.sin(t * 1.7 + sp.userData.ph)); (sp.material as THREE.SpriteMaterial).opacity = k * k * 0.9; sp.scale.setScalar(0.5 + k * 0.9); } };
     ms.scale.setScalar(3.2); ms.position.set(-156, 0, 24); scene.add(ms);
+    signGlow = goldEdge; ms.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.userData.spot = MILLIONAIRE_SIGN; signHit.push(o); } });
   }
   // Animated water: scrolling ripples + moonlight glints, fogged like the rest of the scene. Each lake gets its own copy
   // with a distance-to-shore texture so shallows are lighter, the middle darker, and a thin foam/ripple line rings the shore.
@@ -228,7 +231,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // Landmarks.
   type LM = { id: string; root: THREE.Group; hit: THREE.Object3D[]; emissive: THREE.MeshStandardMaterial[]; sign: THREE.Sprite; pos: THREE.Vector3; height: number };
   const lms: LM[] = [];
-  const pickables: THREE.Object3D[] = [];
+  const pickables: THREE.Object3D[] = [...signHit];
   const lmIds = [...LANDMARK_IDS, ...WORLD_SPOTS.map((sp) => sp.id).filter((id) => !LANDMARK_IDS.includes(id))];
   const lmBoxes = landmarks(lmIds);
   const box = (w: number, hgt: number, d: number, m: THREE.Material, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(geo(new THREE.BoxGeometry(w, hgt, d)), m); o.position.set(x, y + hgt / 2, z); return o; };
@@ -745,16 +748,18 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const pick = (cx: number, cy: number) => { const rc = canvas.getBoundingClientRect(); ndc.set(((cx - rc.left) / rc.width) * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1); ray.setFromCamera(ndc, camera); const hit = ray.intersectObjects(pickables, false)[0]; const tr = hit?.object.userData.trailers as string[] | undefined; if (tr && hit?.instanceId != null) return `trailer:${tr[hit.instanceId]}`; const pr = hit?.object.userData.props as string[] | undefined; if (pr && hit?.instanceId != null) return pr[hit.instanceId] ?? null; return (hit?.object.userData.spot as string | undefined) ?? null; };
   const setHover = (id: string | null) => {
     if (id === hovered) return; hovered = id; canvas.style.cursor = id ? 'pointer' : 'grab';
+    if (signGlow) signGlow.emissiveIntensity = (id === MILLIONAIRE_SIGN ? 2.2 : 0.9) * NEON;
     for (const l of lms) { const on = l.id === id; l.root.scale.setScalar(on ? 1.06 : 1); l.sign.userData.hover = on; for (const m of l.emissive) { m.userData.ei = on ? (m.map ? 1.6 : 3) * NEON : (m.map ? 0.9 : 1.6) * NEON; m.emissiveIntensity = m.userData.ei * glowK; } }
   };
   const clearTip = () => { setHover(null); h.onHover(null, 0, 0); };
   // Drag-panning: no hover highlight or tooltip while the pointer is held and moving (it used to linger after the pan).
-  const onMove = (e: PointerEvent) => { if (fly || e.pointerType === 'touch') return; if (down && e.buttons) { if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) { down.drag = true; clearTip(); } if (down.drag) return; } const id = pick(e.clientX, e.clientY); setHover(id); h.onHover(id, e.clientX, e.clientY); };
+  const onMove = (e: PointerEvent) => { if (fly || e.pointerType === 'touch') return; if (down && e.buttons) { if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) { down.drag = true; clearTip(); } if (down.drag) return; } const id = pick(e.clientX, e.clientY); setHover(id); h.onHover(id === MILLIONAIRE_SIGN ? null : id, e.clientX, e.clientY); };
   let down: { x: number; y: number; t: number; drag?: boolean } | null = null;
   const onDown = (e: PointerEvent) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; controls.autoRotate = false; h.onHover(null, 0, 0); };
   const onUp = (e: PointerEvent) => {
     if (!down || fly) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y); const dragged = moved > 8 || !!down.drag; down = null; if (dragged) { clearTip(); return; }
     const id = pick(e.clientX, e.clientY); if (!id) { setHover(null); h.onHover(null, 0, 0); return; }
+    if (id === MILLIONAIRE_SIGN) { h.onHover(null, 0, 0); window.dispatchEvent(new CustomEvent('open-millionaire-trailer')); return; }
     if (id.startsWith('trailer:')) { h.onHover(id, e.clientX, e.clientY); if (h.onTrailer?.(id.slice(8))) return; window.dispatchEvent(new CustomEvent('open-player', { detail: id.slice(8) })); return; } // trailers: your own opens your home (kitchen), others the owner's profile
     if (id.startsWith('b:') || id.startsWith('p:') || id.startsWith('f:') || id.startsWith('cf:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel
     flyTo(id);
