@@ -25,7 +25,12 @@ export function buildFurniture(f: Furniture): THREE.Group {
       B(g, w, h * 0.5, d * 0.14, a, 0, h * 0.37, -d * 0.43); for (const sx of [-1, 1]) { B(g, 0.2, h * 0.36, d * 0.92, a, sx * (w / 2 - 0.1), h * 0.37); C(g, 0.1, 0.1, d * 0.92, a, sx * (w / 2 - 0.1), h * 0.73 - d * 0.46, 0, 10).rotation.x = Math.PI / 2; }
       B(g, 0.32, 0.28, 0.1, M(f.accent), -w * 0.3, h * 0.5, -d * 0.2).rotation.z = 0.2; if (f.shape === 'sectional') B(g, w * 0.35, h * 0.14, d * 0.8, c, w * 0.32, h * 0.37, d * 0.5); break; }
     case 'table': case 'desk': case 'lowtable': legs(h - 0.06); B(g, w, 0.06, d, c, 0, h - 0.06); if (f.shape === 'desk') B(g, w * 0.3, h - 0.1, d * 0.9, a, w * 0.33, 0); break;
-    case 'bed': B(g, w, h * 0.45, d, a); B(g, w * 0.96, h * 0.15, d * 0.96, M(0xf4f1ea), 0, h * 0.45); B(g, w, h, 0.12, c, 0, 0, -d / 2 + 0.06); B(g, w * 0.96, h * 0.08, d * 0.55, c, 0, h * 0.6, d * 0.2); for (const sx of [-1, 1]) B(g, w * 0.3, 0.12, 0.3, M(0xffffff), sx * w * 0.22, h * 0.6, -d * 0.35); break;
+    case 'bed': { // QA#16: the solid accent-coloured base read as a bathtub/boat. Now a wooden frame on legs, a white mattress, an
+      // accent duvet folded back from the pillows and draped over the sides, and a padded wooden headboard.
+      const wood = M(0x6b4526); legs(0.14, 0.06); B(g, w, 0.16, d, wood, 0, 0.12); B(g, w * 0.95, h * 0.32, d * 0.95, M(0xf4f1ea), 0, 0.28);
+      const top = 0.28 + h * 0.32; B(g, w * 0.99, 0.06, d * 0.66, a, 0, top - 0.02, d * 0.16).userData.part = 'duvet'; for (const sx of [-1, 1]) B(g, 0.03, h * 0.3, d * 0.66, a, sx * w * 0.495, top - h * 0.3, d * 0.16);
+      B(g, w * 0.99, 0.07, 0.18, M(0xf4f1ea), 0, top - 0.01, -d * 0.19); B(g, w, h * 1.5, 0.1, wood, 0, 0, -d / 2 + 0.05); B(g, w * 0.9, h * 0.6, 0.06, c, 0, top + 0.05, -d / 2 + 0.12);
+      for (const sx of w > 1.2 ? [-1, 1] : [0]) B(g, w > 1.2 ? w * 0.36 : w * 0.7, 0.12, 0.3, M(0xffffff), sx * w * 0.22, top, -d * 0.36); break; }
     case 'shelf': case 'cabinet': { B(g, w, h, d * 0.12, c, 0, 0, -d * 0.44); for (const sx of [-1, 1]) B(g, 0.05, h, d, c, sx * (w / 2 - 0.025)); B(g, w, 0.05, d, c, 0, h - 0.05); B(g, w, 0.08, d, dark);
       for (let i = 1; i < 4; i++) B(g, w * 0.95, 0.04, d, a, 0, (h * i) / 4);
       if (f.shape === 'cabinet') { for (const sx of [-1, 1]) { B(g, w * 0.47, h * 0.94, 0.03, a, sx * w * 0.245, h * 0.03, d / 2); B(g, 0.03, 0.16, 0.04, M(0xd8c080, { metal: 0.8 }), sx * 0.06, h * 0.45, d / 2 + 0.03); } }
