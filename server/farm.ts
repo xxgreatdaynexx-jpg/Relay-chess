@@ -36,6 +36,18 @@ CREATE TABLE IF NOT EXISTS farm_daily (player_key TEXT NOT NULL, day TEXT NOT NU
 `;
 /** Where a harvest/catch goes instead of the market (server/factory-import.ts): written in the same DB transaction. */
 export interface ImportSink { write(cl: pg.PoolClient, items: Array<[string, number]>): Promise<void>; after(items: Array<[string, number]>): void }
+/** Field id of an old Fertilizer charge memo ("Farm cf:28: Fertilizer level 1" -> "cf:28"), or null. */
+export function fertChargeField(memo: string | null): string | null { return /^Farm ([a-z]+:\d+): Fertilizer level /.exec(memo ?? '')?.[1] ?? null; }
+/** Is this ledger credit one of the admin "map layout fix" refunds, and does it name `field`? Matches the field in the
+ *  memo ("Refund cf:28 - map layout fix ...", word-bounded so f:8 never matches cf:8 and cf:2 never matches cf:28) or in
+ *  the tx_key with the colon dropped ("admin_refund:cf28-layout-buy"). */
+export function layoutRefundCovers(r: { memo: string | null; tx_key: string | null }, field: string): boolean {
+  const memo = r.memo ?? '', key = r.tx_key ?? '';
+  if (!/map layout fix/i.test(memo) && !/^admin_refund:.*layout/.test(key)) return false;
+  const esc = field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^a-z0-9:])${esc}([^0-9]|$)`, 'i').test(memo) || key.startsWith(`admin_refund:${field.replace(':', '')}-`);
+}
+
 export class FarmError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
 const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
@@ -65,12 +77,26 @@ export class Farm {
   /** One-time launch migration (Millionaire Update): the old Fertilizer plot upgrade was retired (fertilizer is now a
    *  consumable), so everyone gets back exactly what the ledger says they paid for it. Idempotent per player through the
    *  ledger tx_key; players in City Jail are skipped and refunded on a later boot once released. Returns refunds paid. */
+  /*  Fields already compensated by the Nov 3 admin "map layout fix" refunds (ledger game admin_refund, keys like
+   *  admin_refund:cf28-layout-buy, memos "Refund cf:28 - map layout fix ...") are skipped: any Fertilizer charge on a
+   *  field for which the SAME player got any layout-fix refund is not paid again (e.g. chessguy2's 3,442 on cf:28,
+   *  ledger 11069). Pure ledger SELECT, no prod lookup needed; replay-safe through the unchanged per-player key. */
   async refundOldFertilizer(): Promise<number> {
-    const { rows } = await this.pool.query(`SELECT player_key, MAX(name) AS name, -SUM(amount)::bigint AS paid FROM wallet_transactions
-      WHERE game = 'farm_upgrade' AND amount < 0 AND memo LIKE '%: Fertilizer level %' GROUP BY player_key`) as { rows: Array<{ player_key: string; name: string; paid: string }> };
+    const charges = (await this.pool.query(`SELECT player_key, name, amount, memo FROM wallet_transactions
+      WHERE game = 'farm_upgrade' AND amount < 0 AND memo LIKE '%: Fertilizer level %'`)).rows as Array<{ player_key: string; name: string; amount: string | number; memo: string }>;
+    const layout = (await this.pool.query(`SELECT player_key, memo, tx_key FROM wallet_transactions
+      WHERE amount > 0 AND game IN ('admin', 'admin_refund') AND (memo ILIKE '%map layout fix%' OR tx_key LIKE 'admin_refund:%layout%')`)).rows as Array<{ player_key: string; memo: string | null; tx_key: string | null }>;
+    const byPlayer = new Map<string, { player_key: string; name: string; paid: number }>();
+    for (const c of charges) {
+      const field = fertChargeField(c.memo);
+      if (field && layout.some((l) => l.player_key === c.player_key && layoutRefundCovers(l, field))) continue;
+      const e = byPlayer.get(c.player_key) ?? { player_key: c.player_key, name: c.name, paid: 0 };
+      e.paid += -Number(c.amount); if (c.name > e.name) e.name = c.name; byPlayer.set(c.player_key, e);
+    }
+    const rows = [...byPlayer.values()];
     let n = 0;
     for (const r of rows) {
-      const paid = Number(r.paid); if (!(paid > 0) || isJailed(r.name)) continue;
+      const paid = r.paid; if (!(paid > 0) || isJailed(r.name)) continue;
       try { if (await this.bank().transferConfirmed(r.name, paid, { key: `fert_refund_v1:${r.player_key}`, game: 'farm_fert_refund', memo: `Refund: retired Fertilizer farm upgrade (${paid} chips)` })) n++; }
       catch (e) { console.error('[farm] fertilizer refund', r.name, (e as Error).message); }
     }
