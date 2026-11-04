@@ -50,3 +50,12 @@ export const TITLES: Array<{ min: number; title: string }> = [
 export const titleFor = (total: number) => [...TITLES].reverse().find((t) => total >= t.min)!.title;
 /** Per-skill badge: 🥉 at 30, 🥈 at 60, 🥇 at 90, 👑 at 99. Cosmetic. */
 export const badgeFor = (level: number) => (level >= 99 ? '👑' : level >= 90 ? '🥇' : level >= 60 ? '🥈' : level >= 30 ? '🥉' : '');
+
+/**
+ * Global XP boost (mu-visuals): every skill XP award from every source goes through Skills.award, which multiplies the
+ * base amount by XP_MULT there (the one central award point). Rounding: base is floored to a whole number first (as
+ * before), then the boosted value is Math.round-ed (half up), e.g. 1→1, 3→4, 5→6, 30→36, 50→60. Level thresholds
+ * (levelFor / XP table) are unchanged; per-skill daily allowances still apply to the boosted amount.
+ */
+export const XP_MULT = 1.2;
+export const boostXp = (base: number): number => Math.round(Math.floor(base) * XP_MULT);

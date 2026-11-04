@@ -10,7 +10,7 @@ import type { Server, Socket } from 'socket.io';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
 import { onArenaMatchEnd } from './fps.js';
-import { SKILLS, isSkill, levelFor, totalLevel, titleFor, MAX_XP, type SkillId } from '../shared/skills.js';
+import { SKILLS, isSkill, levelFor, totalLevel, titleFor, MAX_XP, boostXp, type SkillId } from '../shared/skills.js';
 import { isQaName } from '../shared/qa.js';
 import { OBJ_XP, OBJ_XP_CAP } from '../shared/arenaModes.js';
 
@@ -106,7 +106,7 @@ export class Skills {
   /** Award XP (rounded, capped). Resolves to the event, or null when nothing was awarded. Never throws. */
   async award(name: string | null | undefined, skill: SkillId, amount: number): Promise<XpEvent | null> {
     if (!name || !isSkill(skill) || !Number.isFinite(amount)) return null;
-    const n = Math.floor(amount); if (n <= 0) return null;
+    const n = boostXp(amount); if (n <= 0) return null; // global +20% XP (shared/skills.ts XP_MULT)
     const clean = name.replace(/\s+/g, ' ').trim(); const key = keyOf(clean); if (!key) return null;
     const g = this.allowance(key, skill, n); if (!g) return null;
     const ck = `${key}|${skill}`;

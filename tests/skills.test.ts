@@ -20,18 +20,18 @@ describe('Skills awards', () => {
     const s = new Skills(new MemorySkillStore(), () => now);
     const evs: unknown[] = []; s.onXp((e) => evs.push(e));
     const e = await s.award('Alice', 'mining', 100);
-    expect(e).toMatchObject({ skill: 'mining', gained: 100, xp: 100, level: 2, leveledUp: true });
+    expect(e).toMatchObject({ skill: 'mining', gained: 120, xp: 120, level: 2, leveledUp: true });
     const total = (await s.award('alice', 'mining', 10_000_000))!;
-    expect(total.gained).toBe(CAPS.mining.hour - 100);
+    expect(total.gained).toBe(CAPS.mining.hour - 120);
     expect(await s.award('Alice', 'mining', 10)).toBeNull(); // capped this hour
-    now += 3_600_000; expect((await s.award('Alice', 'mining', 10))!.gained).toBe(10);
+    now += 3_600_000; expect((await s.award('Alice', 'mining', 10))!.gained).toBe(12);
     expect(await s.award('Alice', 'mining', 0)).toBeNull(); expect(await s.award(null, 'mining', 5)).toBeNull();
     await s.award('QA-Bot1', 'mining', 2000); await s.award('Bob', 'chess', 60);
     const hi = await s.hiscores('mining'); expect(hi.map((r) => r.name.toLowerCase())).toEqual(['alice']);
     now += 20_000;
     const all = await s.hiscores('overall'); expect(all.map((r) => r.name.toLowerCase())).toEqual(['alice', 'bob']);
     expect(all.some((r) => /qa-/i.test(r.name))).toBe(false);
-    const prof = await s.profile('ALICE'); expect(prof.skills.find((x) => x.id === 'mining')!.xp).toBe(CAPS.mining.hour + 10);
+    const prof = await s.profile('ALICE'); expect(prof.skills.find((x) => x.id === 'mining')!.xp).toBe(CAPS.mining.hour + 12);
     expect(evs.length).toBe(5);
   });
 
@@ -40,9 +40,9 @@ describe('Skills awards', () => {
     const store = new PgSkillStore(new Pool()); await store.init();
     const s = new Skills(store);
     await Promise.all([s.award('Carol', 'farming', 50), s.award('Carol', 'farming', 70)]);
-    expect((await s.profile('carol')).skills.find((x) => x.id === 'farming')!.xp).toBe(120);
+    expect((await s.profile('carol')).skills.find((x) => x.id === 'farming')!.xp).toBe(144); // +20% XP: 60 + 84
     const s2 = new Skills(store); // a restart / another instance sees the same XP
-    expect((await s2.profile('Carol')).total).toBe(SKILLS.length - 1 + levelFor(120));
+    expect((await s2.profile('Carol')).total).toBe(SKILLS.length - 1 + levelFor(144));
   });
 
   it('maps ledger moves and arena results to XP', () => {
