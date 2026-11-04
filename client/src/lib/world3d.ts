@@ -13,6 +13,7 @@ import { fieldPlotId, fieldPlots } from '../../../shared/fieldFarms';
 
 /** Every farm plot drawn by the farm renderer: Farm-district plots (f:<n>) and the countryside field farms (cf:<n>). */
 export const allFarmPlots = () => [...farmPlots().map((p) => ({ ...p, id: plotId(p.n) })), ...fieldPlots().map((p) => ({ ...p, id: fieldPlotId(p.n) }))];
+import { FARM_MACHINES, buildMachine } from './farmMachines';
 import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, TILE, clampMapTarget, panInset } from '../../../shared/farm';
 import { buildVenues } from './worldVenues';
 import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN, MINE_SITES, MINE_APRON, OUTSKIRTS } from './worldLayout';
@@ -765,6 +766,8 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       g.add(box(3, 2.8, 0.1, mat({ color: 0xe8e0d0, emissive: 0xffc070, emissiveIntensity: 0.25 * NEON }), 0, 0, -b.d / 2 - 0.05));
       g.add(box(1.2, 0.8, 0.1, mat({ color: 0xffd08a, emissive: 0xffb050, emissiveIntensity: 0.7 * NEON }), 0, 3.1, -b.d / 2 - 0.05));
       g.position.set(b.x, 0, b.z); scene.add(g); }
+    // mu-visuals farming machinery: tractors, a trailer, a seeder and a combine harvester parked in the yards (shared geo/mats).
+    for (const m of FARM_MACHINES) { const o = buildMachine(m.kind); o.position.set(m.x, 0, m.z); o.rotation.y = m.yaw; scene.add(o); }
     const siloMat = mat({ color: 0xb8bcc4, roughness: 0.5, metalness: 0.4 });
     for (const [x, z] of SILOS) { const c = new THREE.Mesh(geo(new THREE.CylinderGeometry(1.5, 1.5, 7, 16)), siloMat); c.position.set(x, 3.5, z); const dome = new THREE.Mesh(geo(new THREE.SphereGeometry(1.5, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2)), siloMat); dome.position.set(x, 7, z); scene.add(c, dome); }
     { const sg = new THREE.Group(); const post = mat({ color: 0x5a4a3a }); const panel = signTexture('FARMLAND', '#9be07a', 'Chud Acres Farms'); disposables.push(panel);
