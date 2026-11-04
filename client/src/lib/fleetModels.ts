@@ -1,5 +1,5 @@
 // Procedural low-poly boats and jets (Marina / Hangar previews and the resort map). Caller owns disposal via `dispose(g)`.
-import { addFuselage } from './planeNose';
+import { addTail, addFuselage } from './planeNose';
 import * as THREE from 'three';
 import { nacelle } from './nacelle';
 import type { FleetModel } from '../../../shared/fleet';
@@ -51,10 +51,9 @@ export function buildJet(m: FleetModel): THREE.Group {
   add(g, new THREE.BoxGeometry(R * 2.02, R * 0.2, L * 0.9), trim, 0, R + 1 - R * 0.35, 0); add(g, new THREE.BoxGeometry(R * 2.04, R * 0.22, L * 0.78), win, 0, R + 1 + R * 0.35, 0.02 * L);
   if (m.id === 'chudone') add(g, new THREE.BoxGeometry(R * 1.4, R * 0.9, L * 0.28), body, 0, R * 2 + 1, L * 0.3);
   const wing = new THREE.Shape(); wing.moveTo(0, 0); wing.lineTo(L * 0.55, -L * 0.22); wing.lineTo(L * 0.55, -L * 0.3); wing.lineTo(0, -L * 0.25);
-  for (const s of [-1, 1]) { const w = add(g, new THREE.ExtrudeGeometry(wing, { depth: 0.12 * k, bevelEnabled: false }), body, 0, R + 0.6, L * 0.1); w.rotation.set(Math.PI / 2, 0, 0); w.scale.x = s;
-    const st = add(g, new THREE.ExtrudeGeometry(wing, { depth: 0.08 * k, bevelEnabled: false }), body, 0, R * 1.4 + 1, -L * 0.42); st.rotation.set(Math.PI / 2, 0, 0); st.scale.set(s * 0.35, 0.35, 1); }
-  const fin = new THREE.Shape(); fin.moveTo(0, 0); fin.lineTo(-L * 0.18, L * 0.22); fin.lineTo(-L * 0.26, L * 0.22); fin.lineTo(-L * 0.2, 0);
-  const tf = add(g, new THREE.ExtrudeGeometry(fin, { depth: 0.1 * k, bevelEnabled: false }), trim, 0.05 * k, R * 1.6 + 1, -L * 0.4); tf.rotation.y = Math.PI / 2;
+  for (const s of [-1, 1]) { const w = add(g, new THREE.ExtrudeGeometry(wing, { depth: 0.12 * k, bevelEnabled: false }), body, 0, R + 0.6, L * 0.1); w.rotation.set(Math.PI / 2, 0, 0); w.scale.x = s; }
+  // mu-visuals tail fins: swept, tapered fin flush on the centreline at the rear; T-tail on the Citation and G700.
+  addTail(g, { r: R, len: L, y: R + 1, fin: trim, stab: body, tTail: m.id !== 'chudone', h: m.id === 'chudone' ? 2.4 : 2.9, c: m.id === 'chudone' ? 2.6 : 2.8 });
   // mu-visuals: rounded turbofan nacelles (intake lip, fan, spinner, nozzle) hung under the wings on pylons, in the plane's colour.
   const wingY = R + 0.6 - 0.12 * k, nr = R * (m.id === 'chudone' ? 0.36 : 0.42), nl = L * 0.2, pyl = 0.28 * k;
   for (const sx of m.id === 'chudone' ? [0.2, 0.36] : [0.22]) for (const s of [-1, 1]) { const x = s * sx * L, le = L * 0.1 - sx * L * 0.4;

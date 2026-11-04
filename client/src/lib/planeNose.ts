@@ -28,3 +28,33 @@ export function addFuselage(g: THREE.Group, o: { r: number; len: number; nose: n
   if (o.tail) { const t = at(new THREE.Mesh(noseGeo(o.r, o.tail, ax), o.body), -h); if (ax === 'z') t.rotation.y = Math.PI; else t.rotation.y = Math.PI; t.userData.part = 'tail'; }
   return f;
 }
+
+/**
+ * mu-visuals tail fins: a swept, tapered vertical stabiliser standing on the fuselage centreline at the rear (base sunk
+ * a hair into the tube top so it's flush on every facet, never floating), plus a matching pair of swept horizontal
+ * stabilisers: conventional (through the tail at the fuselage centre height) or a T-tail (on top of the fin tip).
+ * Geometry is built in the +Z-forward frame and cached; axis 'x' rotates it to +X-forward like the fuselage.
+ */
+export interface TailOpts { r: number; len: number; y?: number; axis?: 'z' | 'x'; fin: THREE.Material; stab?: THREE.Material; tTail?: boolean;
+  /** fin height / root chord as multiples of r (defaults 2.6 / 2.4). */ h?: number; c?: number; span?: number }
+export const TAIL_TAPER = 0.5, TAIL_SWEEP = 0.85; // tip chord / root chord; LE aft offset / height (≈40° sweep)
+const finGeo = (r: number, hgt: number, c: number, t: number, axis: 'z' | 'x') => memo(`tf${r}|${hgt}|${c}|${axis}`, () => {
+  // Shape in (forward, up): root LE (0,0) → tip LE → tip TE → root TE.
+  const s = new THREE.Shape(); s.moveTo(0, 0); s.lineTo(-hgt * TAIL_SWEEP, hgt); s.lineTo(-hgt * TAIL_SWEEP - c * TAIL_TAPER, hgt); s.lineTo(-c, 0); s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, { depth: t, bevelEnabled: false }); g.translate(0, 0, -t / 2); g.rotateY(-Math.PI / 2); // shape x → +Z, extrude → X (centred)
+  if (axis === 'x') g.rotateY(Math.PI / 2); return g; });
+const stabGeo = (span: number, c: number, t: number, side: number, axis: 'z' | 'x') => memo(`ts${span}|${c}|${side}|${axis}`, () => {
+  const sw = span * 0.6; const s = new THREE.Shape(); // (span, forward)
+  s.moveTo(0, 0); s.lineTo(side * span, -sw); s.lineTo(side * span, -sw - c * TAIL_TAPER); s.lineTo(0, -c); s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, { depth: t, bevelEnabled: false }); g.translate(0, 0, -t / 2); g.rotateX(Math.PI / 2); // shape y (forward) → +Z, extrude → Y (centred)
+  if (axis === 'x') g.rotateY(Math.PI / 2); return g; });
+export function addTail(g: THREE.Group, o: TailOpts) {
+  const ax = o.axis ?? 'z', y = o.y ?? 0, r = o.r, hgt = r * (o.h ?? 2.6), c = r * (o.c ?? 2.4), t = r * 0.16;
+  const at = (m: THREE.Mesh, d: number, yy: number) => { if (ax === 'z') m.position.set(0, yy, d); else m.position.set(d, yy, 0); g.add(m); return m; };
+  const rootLE = -o.len / 2 + c, base = y + r * 0.97;
+  const fin = at(new THREE.Mesh(finGeo(r, hgt, c, t, ax), o.fin), rootLE, base); Object.assign(fin.userData, { part: 'fin', base, rootLE, c, hgt, r });
+  const sc = o.tTail ? c * TAIL_TAPER * 1.05 : c * 0.8, span = r * (o.span ?? (o.tTail ? 2.6 : 3.0)), ts = t * 0.8;
+  const sLE = o.tTail ? rootLE - hgt * TAIL_SWEEP : rootLE - c * 0.1, sy = o.tTail ? base + hgt - ts / 2 : y;
+  for (const side of [1, -1]) { const m = at(new THREE.Mesh(stabGeo(span, sc, ts, side, ax), o.stab ?? o.fin), sLE, sy); Object.assign(m.userData, { part: 'stab', side, tTail: !!o.tTail }); }
+  return fin;
+}
