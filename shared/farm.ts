@@ -34,6 +34,11 @@ export const CROPS: Crop[] = [
   { id: 'grapes', label: 'Grapes', emoji: '🍇', seed: 150, grow: 16 * H, sell: 320, color: 0x8a4ac0 },
   { id: 'sunflower', label: 'Sunflowers', emoji: '🌻', seed: 250, grow: 24 * H, sell: 545, color: 0xf0c830 },
 ];
+/** Farming profit -5% (Dayne, 2026-11-04): a harvest sells each crop at 95% of its listed value. Seed costs are unchanged. */
+export const FARM_SELL_MUL = 0.95;
+export const cropSellValue = (c: Pick<Crop, 'sell'>) => c.sell * FARM_SELL_MUL;
+/** Base profit for one harvested crop (sale value minus seed), never negative. */
+export const cropProfit = (c: Pick<Crop, 'sell' | 'seed'>) => Math.max(0, cropSellValue(c) - c.seed);
 export const cropById = (id: unknown) => CROPS.find((c) => c.id === id) ?? TROPICAL_CROPS.find((c) => c.id === id);
 export type Stage = 'growing' | 'ready' | 'withered';
 export const stageOf = (c: Crop, plantedAt: number, now: number): Stage => {
@@ -86,7 +91,7 @@ export interface FarmTile { tile: number; crop: string; plantedAt: number; stage
 export interface FarmView { id: string; owner: string | null; mine: boolean; cols: number; rows: number; tiles: FarmTile[]; now: number; today: { gross: number; paid: number }; index: number; upgrades?: import('./farmUpgrades.js').FarmUpgradeLevels; farmingLevel?: number; growMul?: number; profitMul?: number; yieldBonus?: number; plowed?: number[]; machines?: import('./farmWork.js').MachineSet }
 /** #33: what one tile of `c` really takes and earns after Farming XP + upgrades (base chips; seed comes back on harvest). */
 /** Expected per-tile outcome; yieldBonus = farming level bonus crops (each extra crop is worth its full sell price). */
-export const cropOutlook = (c: Crop, growMul = 1, profitMul = 1, yieldBonus = 0) => ({ grow: Math.round(c.grow * growMul), profit: Math.floor((c.sell * (1 + yieldBonus) - c.seed) * profitMul) });
+export const cropOutlook = (c: Crop, growMul = 1, profitMul = 1, yieldBonus = 0) => ({ grow: Math.round(c.grow * growMul), profit: Math.floor((cropSellValue(c) * (1 + yieldBonus) - c.seed) * profitMul) });
 
 /** Where the camera may look: the whole plate (incl. the Trailer Park), the farm district on the east edge, the outskirts mines and the Airport / Speedway (shared/venues.ts). */
 const SITES = Object.values(MINE_SITES); const HALF = MINE_APRON / 2;

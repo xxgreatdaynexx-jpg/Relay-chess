@@ -20,7 +20,7 @@ import { requireResort } from './travel.js';
 import { fieldPlotOf } from '../shared/fieldFarms.js';
 import { getMines } from './mines.js';
 import { awardXp } from './skills.js';
-import { CROPS, cropById, farmPayout, farmPlots, ripeWindow, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
+import { CROPS, cropById, cropProfit, cropSellValue, farmPayout, farmPlots, ripeWindow, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
 import { skillLevelAsync } from './skills.js';
 import { fertCost, fertDef, machineDef, MACHINES, passLimit, SEEDER_GROW_MUL, tileYield, type FarmStep, type MachineSet } from '../shared/farmWork.js';
 import { bonusCrops, farmingGrowMul, farmingYieldBonus } from '../shared/skillPerks.js';
@@ -294,13 +294,13 @@ export class Farm {
       const fert = await this.fertOf(pid);
       if (pantry && !(p.resort && this.barn)) return this.harvestToPantry(name, pid, key, ready, now);
       let seeds = 0, profit = 0; const counts = new Map<string, number>();
-      for (const r of ready) { const c = cropById(r.crop)!; seeds += c.seed; profit += c.sell - c.seed; counts.set(c.label, (counts.get(c.label) ?? 0) + 1); }
+      for (const r of ready) { const c = cropById(r.crop)!; seeds += c.seed; profit += cropProfit(c); counts.set(c.label, (counts.get(c.label) ?? 0) + 1); }
       // Farming level bonus yield: extra crops of random harvested kinds (full sell value, no seed). Inside the daily farm tier.
       // Yield (#27): Farming level + fertilizer on each tile + the combine add extra crops at the normal price. Nothing changes the price.
       const lb = farmingYieldBonus(await this.lvl(name));
       const extra = bonusCrops(1, ready.reduce((a, r) => a + tileYield(lb, fert.get(`${r.tile}:${r.nonce}`) as never, !!m.harvester), 0), this.rand);
       const bonus: typeof ready = []; for (let i = 0; i < extra; i++) bonus.push(ready[Math.floor(this.rand() * ready.length)]);
-      for (const r of bonus) { const c = cropById(r.crop)!; profit += c.sell; counts.set(c.label, (counts.get(c.label) ?? 0) + 1); }
+      for (const r of bonus) { const c = cropById(r.crop)!; profit += cropSellValue(c); counts.set(c.label, (counts.get(c.label) ?? 0) + 1); }
       if (p.resort && this.barn && !sink) {
         const items: Array<[string, number]> = []; for (const r of [...ready, ...bonus]) { const at = items.find((x) => x[0] === r.crop); if (at) at[1]++; else items.push([r.crop, 1]); }
         const rows = this.barn(name, items);
@@ -354,7 +354,7 @@ export class Farm {
     const name = s.ownerName; const key = keyOf(name);
     return this.lock(`h:${key}`, async () => {
       const now = this.clock(); const day = utcDay(now); const t = await this.today(key);
-      const seeds = c.seed * s.qty; const profit = Math.max(0, (c.sell - c.seed) * s.qty);
+      const seeds = c.seed * s.qty; const profit = Math.max(0, (cropSellValue(c) - c.seed) * s.qty);
       const paid = Math.floor((seeds + farmPayout(profit, t.gross)) * priceIndex());
       try {
         await this.atomic(name, paid, 'farm_harvest', `Chud City Warehouse: sold ${s.qty} ${c.label} from the Resort plantation`, async (cl) => {
@@ -436,7 +436,7 @@ export async function initFarm(): Promise<void> {
 export function farmRouter() {
   const r = express.Router();
   r.get('/api/farm', async (_req, res) => {
-    const seeds = [...CROPS, ...TROPICAL_CROPS].map((c) => ({ id: c.id, seed: px(c.seed), sell: px(c.sell) }));
+    const seeds = [...CROPS, ...TROPICAL_CROPS].map((c) => ({ id: c.id, seed: px(c.seed), sell: px(cropSellValue(c)) }));
     if (!farm) { res.json({ ok: true, live: false, tiles: [], seeds }); return; }
     try { res.json({ ok: true, live: true, tiles: await farm.mapTiles(), seeds }); } catch { res.status(500).json({ ok: false }); }
   });
