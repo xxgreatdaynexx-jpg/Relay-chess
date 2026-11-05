@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-05T16:45:00-06:00', title: 'Employment Office: workers now bring something in every 3 minutes', bullets: [
+    'Requested by Dayne: every hired miner and fisher now brings in one item every 3 minutes (480 a day, up from every 5 minutes / 288). Wages and hire costs are unchanged.',
+  ] },
   { commit: '', at: '2026-11-05T13:18:00-06:00', title: 'Offline players on the player list', bullets: [
     'Requested by Dayne: players with a net worth of 10,000 chips or more now stay on the player list while offline. Their row shows when they were last online; the online count still counts only people connected now.',
   ] },
