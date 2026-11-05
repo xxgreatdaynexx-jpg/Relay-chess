@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-04T19:05:00-06:00', title: 'Land surcharge and wealth tax explained', bullets: [
+    'Land surcharge: every property buy costs +2% extra for each 1,000 of property you have paid for (price paid plus upgrades). There is no cap.',
+    'Wealth tax: once your property is over 100,000, buys of 1,000 or more also cost 5% extra, shared with active players. Items under 1,000 are exempt.',
+    'Back-tax: if you underpaid on earlier buys, use "Pay back-tax" (shown on your deeds) before you can buy more property or cars.',
+  ] },
   { commit: '', at: '2026-11-04T18:50:00-06:00', title: 'Cooking pays 50% more', bullets: [
     'Every dish now sells for 50% more, for kitchen recipes and pan-fried fish alike.',
     'The daily cooking cap stays at 100,000. The higher prices count toward it, so you reach the cap in about two thirds of the dishes.',
