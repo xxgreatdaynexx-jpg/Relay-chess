@@ -6,8 +6,16 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-04T19:20:00-06:00', title: 'Wine price adjusted', bullets: [
-    'Wine now sells to the house for 700 (was 760). A bottle uses 2 grape seeds (300), so it makes 400 profit per bottle, 200 per seed. No other items changed.',
+  { commit: '', at: '2026-11-04T20:05:00-06:00', title: 'Arena winner prize: fair-play rules', bullets: [
+    'The 300-chip Arena winner prize now pays at most 5 wins per account per day (resets at 6 PM).',
+    'It needs 2 or more signed-in players who each played at least 1 minute of the match, and the winner must have too.',
+    'Each match pays its winner once.',
+  ] },
+  { commit: '', at: '2026-11-04T20:00:00-06:00', title: 'Crop and farm-food prices rebalanced', bullets: [
+    'Selling a crop straight from the field now earns 20% of what its seeds cost (for example Wheat: 10 seed, 2 profit).',
+    'Turning crops into factory food earns 30% of the seeds used, counted from planting to selling (for example Flour: 2 Wheat, 20 seed, sells for 26). Multi-step foods like Bread, Pumpkin Pie and Chocolate Bar follow the same rule across every crop in them; glass, iron sheets and fish count at their own value.',
+    'Wine is the exception: it sells for 700, so 2 Grapes (300 seed) make 400.',
+    'Factory food still gets no factory depth bonus, so these are the prices you get.',
   ] },
   { commit: '', at: '2026-11-04T19:15:00-06:00', title: 'Land surcharge and wealth tax explained', bullets: [
     'Land surcharge: every property buy costs +2% extra for each 1,000 of property you have paid for (price paid plus upgrades). There is no cap.',

@@ -18,6 +18,6 @@ describe('cooking +50% buff', () => {
   });
   it('is in the popup and changelog', () => {
     expect(LAUNCH.items.some((i) => /Cooking pays 50% more/.test(i.title))).toBe(true);
-    expect(CHANGELOG.slice(0, 5).some((e) => /Cooking pays 50%/.test(e.title))).toBe(true);
+    expect(CHANGELOG.slice(0, 6).some((e) => /Cooking pays 50%/.test(e.title))).toBe(true);
   });
 });

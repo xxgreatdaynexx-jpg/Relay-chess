@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ArenaWorld, END_SCREEN_MS, MATCH_MS, SUDDEN_MS, type MatchResult } from '../server/arena-world.js';
-import { claimArenaName, getArenaWorld, MATCH_PRIZE, onArenaMatchEnd, resetArena, armArenaClient, registerArenaClient } from '../server/fps.js';
+import { ARENA_DAILY_PAID_WINS, arenaWinKey, finishMatch, PRIZE_MIN_PLAY_MS, claimArenaName, getArenaWorld, MATCH_PRIZE, onArenaMatchEnd, resetArena, armArenaClient, registerArenaClient } from '../server/fps.js';
 import { resetBank } from '../server/casino-store.js';
 import { RESPAWN_MS } from '../shared/fps.js';
 
@@ -89,6 +89,49 @@ describe('arena timed matches with sudden death', () => {
     expect(bank.account('Hana').chips).toBe(mid);
     off();
     void h1;
+  });
+});
+
+describe('arena winner prize anti-farm', () => {
+  beforeEach(() => { resetArena(); resetBank(); liveClients(); });
+  const row = (id: string, ms: number) => ({ id, name: id, kills: 1, deaths: 0, earned: 0, alive: true, bot: false, participationMs: ms });
+  const result = (id: string, ms: [number, number], endedAt = Date.UTC(2026, 10, 5, 12)): MatchResult => ({ matchId: id, map: 'm', startedAt: endedAt - MATCH_MS, endedAt, winnerId: 'h1', reason: 'cap', players: [row('h1', ms[0]), row('h2', ms[1])] });
+
+  it('pays once per match even if the match end is replayed', () => {
+    const bank = resetBank();
+    claimArenaName('h1', 'Hana'); claimArenaName('h2', 'Ivo');
+    const before = bank.account('Hana').chips;
+    const r = result('m1', [MATCH_MS, MATCH_MS]);
+    finishMatch(r); finishMatch({ ...r, players: r.players.map((p) => ({ ...p })) });
+    expect(bank.account('Hana').chips).toBe(before + MATCH_PRIZE);
+  });
+
+  it('a second account that joined late / barely played does not unlock the prize', () => {
+    const bank = resetBank();
+    claimArenaName('h1', 'Hana'); claimArenaName('h2', 'Ivo');
+    const before = bank.account('Hana').chips;
+    const r = result('m2', [MATCH_MS, PRIZE_MIN_PLAY_MS - 1]);
+    finishMatch(r);
+    expect(r.prize).toBeUndefined();
+    expect(bank.account('Hana').chips).toBe(before);
+    const r2 = result('m2b', [PRIZE_MIN_PLAY_MS - 1, MATCH_MS]);
+    finishMatch(r2);
+    expect(r2.prize).toBeUndefined();
+  });
+
+  it('caps paid wins at 5 per account per UTC day, in the ledger, and resets next day', () => {
+    const bank = resetBank();
+    claimArenaName('h1', 'Hana'); claimArenaName('h2', 'Ivo');
+    const before = bank.account('Hana').chips;
+    for (let i = 0; i < ARENA_DAILY_PAID_WINS + 3; i++) finishMatch(result(`d${i}`, [MATCH_MS, MATCH_MS]));
+    expect(bank.account('Hana').chips).toBe(before + ARENA_DAILY_PAID_WINS * MATCH_PRIZE);
+    expect(bank.hasKey(arenaWinKey('2026-11-05', 'hana', ARENA_DAILY_PAID_WINS))).toBe(true);
+    // restart: in-memory guard gone, ledger keys still hold the cap
+    resetArena(); liveClients(); claimArenaName('h1', 'Hana'); claimArenaName('h2', 'Ivo');
+    finishMatch(result('after-restart', [MATCH_MS, MATCH_MS]));
+    expect(bank.account('Hana').chips).toBe(before + ARENA_DAILY_PAID_WINS * MATCH_PRIZE);
+    finishMatch(result('next-day', [MATCH_MS, MATCH_MS], Date.UTC(2026, 10, 6, 1)));
+    expect(bank.account('Hana').chips).toBe(before + (ARENA_DAILY_PAID_WINS + 1) * MATCH_PRIZE);
   });
 });
 
