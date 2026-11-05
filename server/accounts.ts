@@ -3,6 +3,7 @@ import { NEW_ACCOUNT_TRADE_MS } from '../shared/tradeLock.js';
 import { friendlyPassword } from './friendly-password.js';
 import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
+import { ACCOUNT_DISABLED_MSG, markDisabled, setDisabledKeys } from '../shared/disabled.js';
 import pg from 'pg';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
 
@@ -38,7 +39,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
 
 const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex');
 
-export interface AccountRow { key: string; name: string; passwordHash: string; /** ms epoch; absent = treat as an old account. */ createdAt?: number }
+export interface AccountRow { key: string; name: string; passwordHash: string; /** ms epoch; absent = treat as an old account. */ createdAt?: number; /** ms epoch when soft-disabled (shared/disabled.ts); absent = active. */ disabledAt?: number }
 export interface AccountStore {
   init(): Promise<void>;
   get(key: string): Promise<AccountRow | null>;
@@ -53,6 +54,10 @@ export interface AccountStore {
   setPassword(key: string, passwordHash: string): Promise<void>;
   /** Deletes every session for one player; returns how many were removed. */
   removeSessionsFor?(key: string): Promise<number>;
+  /** Soft-disable (at = ms) or re-enable (at = null). Never touches chips or the ledger. */
+  setDisabled?(key: string, at: number | null, reason: string | null): Promise<boolean>;
+  /** Keys of every disabled account. */
+  disabledKeys?(): Promise<string[]>;
   getSettings(key: string): Promise<unknown | null>;
   setSettings(key: string, data: unknown): Promise<void>;
 }
@@ -76,6 +81,9 @@ export const ACCOUNTS_MIGRATION = [
     data TEXT NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`,
+  // Additive + reversible: soft-disable (abandoned accounts / alts). NULL = active. Rows, wallet and ledger are never deleted.
+  `ALTER TABLE players ADD COLUMN IF NOT EXISTS disabled_at TIMESTAMPTZ`,
+  `ALTER TABLE players ADD COLUMN IF NOT EXISTS disabled_reason TEXT`,
 ];
 
 export class PgAccountStore implements AccountStore {
@@ -87,10 +95,11 @@ export class PgAccountStore implements AccountStore {
     for (const sql of ACCOUNTS_MIGRATION) await this.db.query(sql);
   }
   async get(key: string) {
-    const { rows } = await this.db.query('SELECT player_key, name, password_hash, created_at FROM players WHERE player_key = $1', [key]);
+    const { rows } = await this.db.query('SELECT player_key, name, password_hash, created_at, disabled_at FROM players WHERE player_key = $1', [key]);
     const r = rows[0];
     const at = r?.created_at ? new Date(r.created_at as string | Date).getTime() : NaN;
-    return r ? { key: String(r.player_key), name: String(r.name), passwordHash: String(r.password_hash), ...(Number.isFinite(at) ? { createdAt: at } : {}) } : null;
+    const off = r?.disabled_at ? new Date(r.disabled_at as string | Date).getTime() : NaN;
+    return r ? { key: String(r.player_key), name: String(r.name), passwordHash: String(r.password_hash), ...(Number.isFinite(at) ? { createdAt: at } : {}), ...(Number.isFinite(off) ? { disabledAt: off } : {}) } : null;
   }
   async create(row: AccountRow) {
     const res = await this.db.query('INSERT INTO players (player_key, name, password_hash) VALUES ($1, $2, $3) ON CONFLICT (player_key) DO NOTHING RETURNING player_key', [row.key, row.name, row.passwordHash]);
@@ -122,6 +131,14 @@ export class PgAccountStore implements AccountStore {
   }
   async setPassword(key: string, passwordHash: string) {
     await this.db.query('UPDATE players SET password_hash = $2 WHERE player_key = $1', [key, passwordHash]);
+  }
+  async setDisabled(key: string, at: number | null, reason: string | null) {
+    const res = await this.db.query('UPDATE players SET disabled_at = $2, disabled_reason = $3 WHERE player_key = $1 RETURNING player_key', [key, at == null ? null : new Date(at).toISOString(), reason]);
+    return res.rows.length > 0;
+  }
+  async disabledKeys() {
+    const { rows } = await this.db.query('SELECT player_key FROM players WHERE disabled_at IS NOT NULL');
+    return rows.map((r) => String(r.player_key));
   }
   async getSettings(key: string) {
     const { rows } = await this.db.query('SELECT data FROM player_settings WHERE player_key = $1', [key]);
@@ -163,6 +180,11 @@ export class MemoryAccountStore implements AccountStore {
     const row = this.accounts.get(key);
     if (row) this.accounts.set(key, { ...row, passwordHash });
   }
+  async setDisabled(key: string, at: number | null) {
+    const row = this.accounts.get(key); if (!row) return false;
+    const { disabledAt: _old, ...rest } = row; this.accounts.set(key, at == null ? rest : { ...rest, disabledAt: at }); return true;
+  }
+  async disabledKeys() { return [...this.accounts.values()].filter((r) => r.disabledAt != null).map((r) => r.key); }
   async getSettings(key: string) { const v = this.settings.get(key); return v ? (JSON.parse(v) as unknown) : null; }
   async setSettings(key: string, data: unknown) { this.settings.set(key, JSON.stringify(data)); }
 }
@@ -242,6 +264,7 @@ export class Accounts {
     this.check(ip, key, now);
     const row = await this.store.get(key);
     if (!row) throw new AuthError('No one has claimed that name yet. Set a password to claim it.');
+    if (row.disabledAt != null) throw new AuthError(ACCOUNT_DISABLED_MSG);
     if (typeof password !== 'string' || password.length > MAX_PASSWORD || !(await verifyPassword(password, row.passwordHash))) {
       this.ipLimiter.fail(ip, now);
       this.nameLimiter.fail(key, now);
@@ -261,6 +284,7 @@ export class Accounts {
     }
     const row = await this.store.get(s.key);
     if (!row) return null;
+    if (row.disabledAt != null) { await this.store.removeSession(tokenHash(token)).catch(() => {}); return null; }
     // Sliding window: an active player's session is pushed back out to the full length (at most once a day).
     const full = now + SESSION_DAYS * 86_400_000;
     if (full - s.expiresAt > 86_400_000) await this.store.extendSession?.(tokenHash(token), full).catch(() => {});
@@ -291,6 +315,27 @@ export class Accounts {
     const sessionsRevoked = (await this.store.removeSessionsFor?.(key)) ?? 0;
     this.nameLimiter.clear(key);
     return { name: row.name, password, sessionsRevoked };
+  }
+
+  /**
+   * Admin-only soft-disable / re-enable. Disable signs the player out everywhere; neither ever moves chips or edits
+   * the ledger. Returns null for an unknown key.
+   */
+  async setDisabled(key: string, on: boolean, reason: string | null = null, now = Date.now()): Promise<{ name: string; changed: boolean; sessionsRevoked: number } | null> {
+    const row = await this.store.get(key);
+    if (!row) return null;
+    if (!this.store.setDisabled) throw new Error('Account store cannot disable accounts.');
+    const was = row.disabledAt != null;
+    if (was !== on) await this.store.setDisabled(key, on ? now : null, on ? reason : null);
+    const sessionsRevoked = on ? ((await this.store.removeSessionsFor?.(key)) ?? 0) : 0;
+    markDisabled(row.name, on); markDisabled(key, on);
+    return { name: row.name, changed: was !== on, sessionsRevoked };
+  }
+
+  /** Boot: load every disabled key into the shared set (boards, payouts, trades read it synchronously). */
+  async loadDisabled(): Promise<number> {
+    const keys = (await this.store.disabledKeys?.()) ?? [];
+    setDisabledKeys(keys); return keys.length;
   }
 
   async logout(token: unknown): Promise<void> {
@@ -341,6 +386,7 @@ export async function initAccountStorage(): Promise<void> {
   const store = await connectAccountStore(make);
   if (store) {
     current = new Accounts(store);
+    await current.loadDisabled().catch((e) => console.error('[accounts] disabled list load failed:', (e as Error).message));
     console.log('[accounts] connected to postgres');
     return;
   }
@@ -349,7 +395,7 @@ export async function initAccountStorage(): Promise<void> {
   current = new Accounts(new UnavailableAccountStore());
   const retry = async () => {
     const s = await connectAccountStore(make, 1);
-    if (s) { current = new Accounts(s); console.log('[accounts] connected to postgres (late)'); }
+    if (s) { current = new Accounts(s); await current.loadDisabled().catch(() => {}); console.log('[accounts] connected to postgres (late)'); }
     else setTimeout(retry, 10_000).unref?.();
   };
   setTimeout(retry, 5_000).unref?.();

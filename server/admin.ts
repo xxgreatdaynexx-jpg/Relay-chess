@@ -1,3 +1,4 @@
+import { disabledKeys } from '../shared/disabled.js';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import { getAccounts, nameKey } from './accounts.js';
@@ -39,6 +40,40 @@ export function adminRouter(): express.Router {
     const { username } = (req.body ?? {}) as Record<string, unknown>;
     if (typeof username !== 'string' || !username.trim()) return res.status(400).json({ ok: false, error: 'username is required.' });
     res.json({ ok: true, released: await getJail().release(username.trim(), 'admin unjail') });
+  });
+  /**
+   * POST /api/admin/disable {usernames: string[], reason, dryRun?} and /api/admin/enable {usernames: string[]}: reversible
+   * soft-disable. All-or-nothing: every username must match an existing account exactly (case-insensitive key) or
+   * nothing changes. Never moves chips or edits the ledger; reports each account's chip balance at the time.
+   */
+  const toggle = (on: boolean) => async (req: express.Request, res: express.Response) => {
+    if (!adminAuthorized(req.get('authorization'))) return res.status(401).json({ ok: false, error: 'Unauthorized.' });
+    const { usernames, reason, dryRun } = (req.body ?? {}) as Record<string, unknown>;
+    if (!Array.isArray(usernames) || !usernames.length || usernames.length > 200 || !usernames.every((u) => typeof u === 'string' && u.trim())) return res.status(400).json({ ok: false, error: 'usernames must be a non-empty list of names.' });
+    if (on && (typeof reason !== 'string' || !reason.trim() || reason.length > 200)) return res.status(400).json({ ok: false, error: 'reason is required (up to 200 chars).' });
+    const keys = [...new Set((usernames as string[]).map(nameKey))];
+    if (keys.length !== usernames.length) return res.status(400).json({ ok: false, error: 'Duplicate usernames.' });
+    const accts = getAccounts(); const rows = [];
+    try { for (const k of keys) rows.push({ k, row: await accts.store.get(k) }); } catch { return res.status(503).json({ ok: false, error: 'Accounts unavailable.' }); }
+    const missing = rows.filter((x) => !x.row).map((x) => x.k);
+    if (missing.length) return res.status(404).json({ ok: false, error: 'Unknown players; nothing changed.', missing });
+    const bank = getBank();
+    const balance = async (name: string) => (bank.ready ? await bank.refresh(name).catch(() => null) : null);
+    const out = [];
+    for (const { k, row } of rows) {
+      const chips = await balance(row!.name);
+      if (dryRun === true) { out.push({ player: row!.name, key: k, chips, disabled: row!.disabledAt != null }); continue; }
+      const r = await accts.setDisabled(k, on, on ? String(reason).trim() : null);
+      out.push({ player: row!.name, key: k, chips, changed: r?.changed ?? false, sessionsRevoked: r?.sessionsRevoked ?? 0 });
+      console.log(`[admin] ${on ? 'disable' : 'enable'} ${row!.name} chips=${chips} changed=${r?.changed} from ${req.ip ?? '?'}`);
+    }
+    res.json({ ok: true, action: on ? 'disable' : 'enable', dryRun: dryRun === true, accounts: out });
+  };
+  r.post('/api/admin/disable', express.json({ limit: '16kb' }), toggle(true));
+  r.post('/api/admin/enable', express.json({ limit: '16kb' }), toggle(false));
+  r.get('/api/admin/disabled', (req, res) => {
+    if (!adminAuthorized(req.get('authorization'))) return res.status(401).json({ ok: false, error: 'Unauthorized.' });
+    res.json({ ok: true, keys: disabledKeys() });
   });
   /** GET /api/jail: public list of inmates for the map (name, reason, until, typed/needed). */
   r.get('/api/jail', (_req, res) => { res.json({ ok: true, inmates: getJail().list() }); });

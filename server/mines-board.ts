@@ -1,3 +1,4 @@
+import { isDisabledName } from '../shared/disabled.js';
 /**
  * Mining leaderboard, computed from authoritative persisted events only:
  *  - chips: house payouts in the wallet ledger (wallet_transactions, tx_key 'mine:sell:%', written by bank.transfer())
@@ -38,7 +39,7 @@ export class MinesLeaderboard {
     const banks = await this.db.query(
       `SELECT player_key, max(owner_name) AS name, sum(ore_qty) AS ore, max(worth) AS haul FROM mine_banks WHERE at >= $1 GROUP BY player_key`, [since]);
     for (const r of banks.rows) { const x = row(String(r.player_key), String(r.name)); x.ore = Number(r.ore); x.haul = Math.floor(Number(r.haul)); }
-    const all = [...rows.values()].filter((r) => !isQaName(r.name));
+    const all = [...rows.values()].filter((r) => !isQaName(r.name) && !isDisabledName(r.name));
     const top = (m: MineMetric) => all.filter((r) => r[m] > 0).sort((a, b) => b[m] - a[m] || a.name.localeCompare(b.name)).slice(0, MINE_BOARD_LIMIT);
     return { chips: top('chips'), ore: top('ore'), haul: top('haul') };
   }

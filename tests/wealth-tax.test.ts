@@ -29,8 +29,8 @@ describe('wealth tax', () => {
     const p = planWealthTax([R('a', 10), R('b', 100), R('c', 20_000), R('d', 40_000), R('e', 1_000_000)]);
     expect(p.median).toBe(40_000); expect(p.threshold).toBe(80_000);
     expect(p.taxes).toEqual([{ name: 'e', amount: 9_200, netWorth: 1_000_000 }]);
-    // everyone active below the threshold still shares, including the under-10K players
-    expect(p.shares).toEqual([{ name: 'a', amount: 2_300 }, { name: 'b', amount: 2_300 }, { name: 'c', amount: 2_300 }, { name: 'd', amount: 2_300 }]);
+    // players below the threshold share, but only at net worth >= 5,000 (a=10 and b=100 get nothing)
+    expect(p.shares).toEqual([{ name: 'c', amount: 4_600 }, { name: 'd', amount: 4_600 }]);
   });
   it('nobody at 10K+: no median, no tax', () => {
     const p = planWealthTax([R('a', 10), R('b', 9_999), R('c', 5_000)]);
