@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { COOK_DAILY_MAX, COOK_SELL_MUL, RECIPES, cookPayout, cookSellValue, dishValue } from '../shared/cooking';
 import { LAUNCH } from '../shared/launchPopup';
-import { CHANGELOG } from '../shared/changelog';
+import { expectChangelogEntry, expectChangelogOrder } from './helpers/changelog';
 
 describe('cooking +50% buff', () => {
   it('sells every dish for +50% (floored), stored dish value unchanged', () => {
@@ -18,6 +18,7 @@ describe('cooking +50% buff', () => {
   });
   it('is in the popup and changelog', () => {
     expect(LAUNCH.items.some((i) => /Cooking pays 50% more/.test(i.title))).toBe(true);
-    expect(CHANGELOG.slice(0, 7).some((e) => /Cooking pays 50%/.test(e.title))).toBe(true);
+    expectChangelogEntry(/Cooking pays 50%/);
+    expectChangelogOrder(/One Big Farm/, /Cooking pays 50%/, /Fishing pays 15%/);
   });
 });

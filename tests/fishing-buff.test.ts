@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FISH, FISH_SELL_MUL, FISH_SPOT_CAP, fishPayout, fishSellValue, fishValue, rollWeight } from '../shared/fishing';
 import { LAUNCH } from '../shared/launchPopup';
-import { CHANGELOG } from '../shared/changelog';
+import { expectChangelogEntry, expectChangelogOrder } from './helpers/changelog';
 
 describe('fishing +15% buff', () => {
   it('raises the sell value of every fish at every spot by 15%', () => {
@@ -22,6 +22,7 @@ describe('fishing +15% buff', () => {
   });
   it('is in the popup and changelog', () => {
     expect(LAUNCH.items.some((i) => /Fishing pays 15% more/.test(i.title))).toBe(true);
-    expect(CHANGELOG.slice(0, 7).some((e) => /Fishing pays 15%/.test(e.title))).toBe(true);
+    expectChangelogEntry(/Fishing pays 15%/);
+    expectChangelogOrder(/Cooking pays 50%/, /Fishing pays 15%/, /Factory goods sell/, /The Millionaire Update/);
   });
 });

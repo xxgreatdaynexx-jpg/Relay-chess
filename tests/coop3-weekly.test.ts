@@ -4,7 +4,7 @@ import { getBank, resetBank } from '../server/casino-store';
 import { setPriceIndexForTest } from '../server/price-index';
 import { WeeklyEvents, resetWeekly, eventCredit } from '../server/weeklyEvent';
 import { EVENTS, EVENT_CLAIM_MS, EVENT_ORDER, eventFor, eventReward, playerEventCap, TRADE_COUNT_CAP, weekIndex, weekStart } from '../shared/coop3';
-import { CHANGELOG } from '../shared/changelog';
+import { expectChangelogEntry, expectChangelogOrder } from './helpers/changelog';
 
 const W = weekIndex(Date.parse('2026-11-04T18:00:00Z')); // a mining-or-whatever week; tests pick weeks by kind
 const weekOf = (kind: string) => { for (let w = W; ; w++) if (eventFor(w).id === kind) return w; };
@@ -64,6 +64,7 @@ describe('weekly server events', () => {
   });
 
   it('is announced in the changelog and the Co-op popup', () => {
-    expect(CHANGELOG.slice(0, 10).some((e) => /weekly server events/i.test(e.title))).toBe(true);
+    expectChangelogEntry(/weekly server events/i);
+    expectChangelogOrder(/Factory goods sell/, /weekly server events/i, /Co-op mine raids/, /The Millionaire Update/);
   });
 });

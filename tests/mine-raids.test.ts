@@ -5,7 +5,7 @@ import { raidHpMul, raidDmgMul, raidBossHpMul, raidPotSize, raidBlockReason, loo
 import { mobHp, BOSS_FLOOR } from '../shared/mineCombat';
 import { floorKey } from '../shared/mineFloors';
 import { LAUNCH } from '../shared/launchPopup';
-import { CHANGELOG } from '../shared/changelog';
+import { expectChangelogEntry, expectChangelogOrder } from './helpers/changelog';
 
 type Save = { key: string; extra?: Array<{ sql: string; args: unknown[] }> };
 function world(party: Record<string, string> = {}) {
@@ -107,6 +107,7 @@ describe('co-op mine raids: instances', () => {
   });
   it('launch popup and changelog announce raids', () => {
     expect(LAUNCH.items.some((i) => i.section === 'Co-op' && /raid/i.test(i.title))).toBe(true);
-    expect(CHANGELOG.slice(0, 10).some((e) => /raid/i.test(e.title))).toBe(true);
+    expectChangelogEntry(/Co-op mine raids/);
+    expectChangelogOrder(/weekly server events/i, /Co-op mine raids/, /The Millionaire Update/);
   });
 });

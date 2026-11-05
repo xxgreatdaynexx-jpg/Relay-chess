@@ -4,7 +4,7 @@ import { FRECIPES, recipeIn, recipeOut } from '../shared/factory';
 import { GOODS, priceOf, RECIPES } from '../shared/mines';
 import { PRODUCTS } from '../shared/fortmc';
 import { LAUNCH } from '../shared/launchPopup';
-import { CHANGELOG } from '../shared/changelog';
+import { expectChangelogEntry, expectChangelogOrder } from './helpers/changelog';
 
 describe('factory sell buff', () => {
   it('maps chain depth from the recipe graph', () => {
@@ -46,6 +46,7 @@ describe('factory sell buff', () => {
   });
   it('is in the launch popup and changelog', () => {
     expect(LAUNCH.items.some((i) => /Factory goods sell for more/.test(i.title))).toBe(true);
-    expect(CHANGELOG.slice(0, 9).some((e) => /Factory goods/.test(e.title))).toBe(true);
+    expectChangelogEntry(/Factory goods/);
+    expectChangelogOrder(/Fishing pays 15%/, /Factory goods/, /weekly server events/i);
   });
 });
