@@ -32,6 +32,7 @@ import { farmRouter } from './farm.js';
 import { employmentRouter } from './employment.js';
 import { getMinesBoard } from './mines-board.js';
 import { isMinePeriod } from '../shared/minesBoard.js';
+import { isHubAwake, hubSleepView, HUB_SLEEP_MSG } from '../shared/hubSleep.js';
 
 export interface AppContext {
   httpServer: HttpServer;
@@ -44,6 +45,21 @@ export async function createApp(): Promise<AppContext> {
   app.use((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     next();
+  });
+  // Overnight hub sleep 01:00–09:00 UTC-6: block play/API; keep health (+ build/status) for Render.
+  const HUB_SLEEP_ALLOW = new Set(['/health', '/api/health', '/api/build', '/api/hub-sleep']);
+  app.use((req, res, next) => {
+    if (isHubAwake()) return next();
+    const path = req.path || '';
+    if (HUB_SLEEP_ALLOW.has(path)) return next();
+    // Static assets + SPA shell must load so the client can show the sleep message.
+    if (req.method === 'GET' && !path.startsWith('/api/') && path !== '/health') return next();
+    res.set('Cache-Control', 'no-store');
+    res.status(503).json({ ok: false, sleeping: true, error: HUB_SLEEP_MSG, ...hubSleepView() });
+  });
+  app.get('/api/hub-sleep', (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ ok: true, ...hubSleepView() });
   });
   app.use(adminRouter());
   app.use(trailerRouter());

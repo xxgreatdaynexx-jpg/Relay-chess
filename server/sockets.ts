@@ -32,6 +32,7 @@ import { registerMines } from './mines.js';
 import { registerFactory } from './factory.js';
 import { registerConquest } from './conquest.js';
 import { getJail } from './jail.js';
+import { isHubAwake, hubSleepView, HUB_SLEEP_MSG } from '../shared/hubSleep.js';
 import { jailAllows, jailMessage } from '../shared/jail.js';
 import { analyzePosition, onHintReady } from './hints.js';
 import {
@@ -203,6 +204,15 @@ export function registerSockets(io: Server): void {
   });
 
   io.on('connection', (socket) => {
+    // Overnight hub sleep: refuse every play event; client shows the friendly message.
+    if (!isHubAwake()) socket.emit('hub_sleep', hubSleepView());
+    socket.use((packet, next) => {
+      if (isHubAwake()) return next();
+      const event = String(packet[0]);
+      if (event === 'hub_status') return next();
+      const ack = packet[packet.length - 1];
+      if (typeof ack === 'function') (ack as (r: unknown) => void)({ ok: false, sleeping: true, error: HUB_SLEEP_MSG, ...hubSleepView() });
+    });
     // Fail closed: while the chip DB isn't connected, refuse every chip-moving event before its handler runs.
     socket.use((packet, next) => {
       const event = String(packet[0]);
@@ -227,6 +237,9 @@ export function registerSockets(io: Server): void {
       const ack = packet[packet.length - 1];
       if (typeof ack === 'function') (ack as (r: unknown) => void)({ ok: false, jailed: true, error: jailMessage(j) });
       else socket.emit('jail_blocked', { error: jailMessage(j) });
+    });
+    socket.on('hub_status', (_p: unknown, ack?: (r: unknown) => void) => {
+      ack?.({ ok: true, ...hubSleepView() });
     });
     socket.on('jail_status', (_p: unknown, ack?: (r: unknown) => void) => {
       const name = (socket.data.account as { name?: string } | undefined)?.name; const j = getJail().status(name);

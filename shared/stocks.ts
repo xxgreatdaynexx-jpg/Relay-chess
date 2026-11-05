@@ -60,6 +60,48 @@ export const impactAllowed = (cur: number, d: number) => { const nx = Math.abs(c
 export const IMPACT_CAP_MSG = 'This stock has been pushed as far as players can move it right now. Wait for the price to settle.';
 export const TICK_MS = 30_000;
 export const IMPACT_HALF_LIFE_MS = 2 * 3_600_000;
+
+/** Fixed UTC-6 year-round (America/Edmonton without DST). Open window is half-open [12:00, 22:00). */
+export const MARKET_UTC_OFFSET_HOURS = -6;
+export const MARKET_OPEN_HOUR = 12;
+export const MARKET_CLOSE_HOUR = 22;
+export const MARKET_CLOSED_MSG = 'The stock market is closed. Trading hours are 12:00–22:00 America/Edmonton (UTC-6).';
+
+/** Minutes since local midnight in fixed UTC-6. */
+export function marketLocalMinutes(now = Date.now()): number {
+  const d = new Date(now + MARKET_UTC_OFFSET_HOURS * 3_600_000);
+  return d.getUTCHours() * 60 + d.getUTCMinutes() + d.getUTCSeconds() / 60;
+}
+
+/** True when the stock engine accepts trades and advances prices. */
+export function isMarketOpen(now = Date.now()): boolean {
+  const m = marketLocalMinutes(now);
+  return m >= MARKET_OPEN_HOUR * 60 && m < MARKET_CLOSE_HOUR * 60;
+}
+
+/** Next open or close boundary (epoch ms). */
+export function nextMarketBoundary(now = Date.now()): number {
+  const off = MARKET_UTC_OFFSET_HOURS * 3_600_000;
+  const local = new Date(now + off);
+  const y = local.getUTCFullYear(), mo = local.getUTCMonth(), da = local.getUTCDate();
+  const openMs = Date.UTC(y, mo, da, MARKET_OPEN_HOUR, 0, 0) - off;
+  const closeMs = Date.UTC(y, mo, da, MARKET_CLOSE_HOUR, 0, 0) - off;
+  if (now < openMs) return openMs;
+  if (now < closeMs) return closeMs;
+  return Date.UTC(y, mo, da + 1, MARKET_OPEN_HOUR, 0, 0) - off;
+}
+
+export function marketHoursView(now = Date.now()) {
+  const open = isMarketOpen(now);
+  return {
+    open,
+    openHour: MARKET_OPEN_HOUR,
+    closeHour: MARKET_CLOSE_HOUR,
+    tz: 'UTC-6',
+    label: 'America/Edmonton (UTC-6)',
+    nextChangeAt: nextMarketBoundary(now),
+  };
+}
 /**
  * Strict quantity parser shared by the UI and the server: a positive whole number (or up to `decimals` decimals for fund units).
  * Rejects '-3', '2.5' (for shares), '1e3', '', ' 3x' and anything else, instead of silently stripping characters.

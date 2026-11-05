@@ -6,7 +6,7 @@ import { COMPANY_BY_TICKER, TICK_MS } from '../shared/stocks';
 import { DIV_YIELD, FUNDS, FUND_BY_ID, SHORT_INIT, navOf, needsLiquidation, optionPayout, optionValue, shortEquity, strikeFor } from '../shared/derivs';
 import { valueHoldings } from '../server/economy';
 
-const T0 = Date.parse('2026-11-01T12:00:00Z');
+const T0 = Date.parse('2026-11-01T20:00:00Z'); // 14:00 UTC-6 — market open
 const mk = () => { const clk = { now: T0 }; const e = new Exchange(null, () => clk.now); const d = new Derivatives(e, null, () => clk.now); return { e, d, clk }; };
 const fund = (name: string, n: number) => { const b = getBank(); b.transfer(name, n - b.account(name).chips, { game: 'admin' }); };
 const chips = (n: string) => getBank().account(n).chips;
@@ -107,13 +107,15 @@ describe('options', () => {
 
 describe('daily payout', () => {
   it('pays dividends exactly once per UTC day after 16:00, incl. fund pass-through; expenses and borrow fees burn', async () => {
-    const { d, e, clk } = mk(); const n = 'qa-s2div'; fund(n, 100_000);
+    // Open positions the prior evening (market open), then wait for next day's DIV_HOUR_UTC.
+    const { d, e, clk } = mk(); clk.now = Date.parse('2026-10-31T20:00:00Z'); const n = 'qa-s2div'; fund(n, 100_000);
     const payer = [...DIV_YIELD].find(([, y]) => y >= 0.001)![0]; setPrice(e, payer, 100);
     await e.trade(n, "buy", payer, 5);
     await d.tradeFund(n, 'buy', 'DIVI', 20);
     setPrice(e, 'QRKL', 50); clk.now += TICK_MS; const s = await d.openShort(n, 'QRKL', 10);
+    clk.now = Date.parse('2026-11-01T12:00:00Z');
+    expect(await d.daily()).toBeNull(); // before DIV_HOUR_UTC
     const before = chips(n);
-    expect(await d.daily()).toBeNull(); // 12:00 UTC: not yet
     clk.now = Date.parse('2026-11-01T16:00:05Z');
     const info = await d.daily(); expect(info).not.toBeNull();
     const stockDiv = 5 * e.price(payer)! * DIV_YIELD.get(payer)!;
@@ -127,7 +129,7 @@ describe('daily payout', () => {
   });
   it('afterTick runs all jobs once (exchange postTick hook)', async () => {
     const { d, e, clk } = mk(); e.postTick = (now) => d.afterTick(now); let calls = 0; const orig = d.daily.bind(d); d.daily = async (t?: number) => { calls++; return orig(t); };
-    clk.now = Date.parse('2026-11-01T17:00:00Z'); expect(await e.tick()).toBe(true); expect(await e.tick()).toBe(false); expect(calls).toBe(1);
+    clk.now = Date.parse('2026-11-01T20:00:00Z'); expect(await e.tick()).toBe(true); expect(await e.tick()).toBe(false); expect(calls).toBe(1);
   });
 });
 

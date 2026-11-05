@@ -19,7 +19,7 @@ import { getBank } from './casino-store.js';
 import { getEconomy } from './economy.js';
 import { Derivatives, getDerivs, setDerivs } from './derivs.js';
 import { divYield } from '../shared/derivs.js';
-import { COMPANIES, COMPANY_BY_TICKER, SECTOR_BY_ID, SECTORS, IMPACT_HALF_LIFE_MS, MAX_TICK_IMPACT, impactAllowed, IMPACT_CAP_MSG, TICK_MS, maxOrderChips, parseQty, quote, seeded, hash32, type ActivityKey, type Company, type NewsItem } from '../shared/stocks.js';
+import { COMPANIES, COMPANY_BY_TICKER, SECTOR_BY_ID, SECTORS, IMPACT_HALF_LIFE_MS, MAX_TICK_IMPACT, impactAllowed, IMPACT_CAP_MSG, TICK_MS, maxOrderChips, parseQty, quote, seeded, hash32, isMarketOpen, marketHoursView, MARKET_CLOSED_MSG, type ActivityKey, type Company, type NewsItem } from '../shared/stocks.js';
 import { dailyEvents, loadNewsKey, memoryNewsKey, type NewsKey } from './stock-news.js';
 import { skillLevelAsync } from './skills.js';
 import { tradingFeeMul } from '../shared/skillPerks.js';
@@ -188,6 +188,12 @@ export class Exchange {
   async tick(): Promise<boolean> {
     if (this.ticking) return false; this.ticking = true;
     try {
+      // Outside 12:00–22:00 UTC-6: freeze prices / stock_history, but still run postTick
+      // (dividends at 10:00 local, option expiry, short liquidations — all idempotent).
+      if (!isMarketOpen(this.clock())) {
+        if (this.postTick) await this.postTick(this.clock()).catch((e) => console.error('[stocks] post-tick failed:', (e as Error).message));
+        return false;
+      }
       const slot = this.slotNow();
       let won: boolean;
       if (this.pool) {
@@ -251,7 +257,7 @@ export class Exchange {
   list() {
     const all = COMPANIES.map((c) => this.summary(c));
     const cap = all.reduce((a, s) => a + s.cap, 0), owned = all.reduce((a, s) => a + s.price * s.held, 0);
-    return { companies: all, sectors: SECTORS, news: this.news.slice(0, 40), totals: { cap, playerOwned: Math.round(owned), offshore: Math.round(cap - owned) }, drift: { inflPct: this.inflPct, activity: this.act } };
+    return { companies: all, sectors: SECTORS, news: this.news.slice(0, 40), totals: { cap, playerOwned: Math.round(owned), offshore: Math.round(cap - owned) }, drift: { inflPct: this.inflPct, activity: this.act }, hours: marketHoursView(this.clock()) };
   }
   async chart(t: string, range: unknown) {
     const ms = range === '30d' ? 30 * DAY : range === '7d' ? 7 * DAY : DAY; const step = range === '30d' ? 4 * 3_600_000 : range === '7d' ? 3_600_000 : 600_000;
@@ -305,6 +311,7 @@ export class Exchange {
   // ---------- trading ----------
   async trade(name: string, side: 'buy' | 'sell', t: unknown, n: unknown) {
     if (isMarketBlocked(name)) throw new StockError(MARKET_BLOCKED_MSG);
+    if (!isMarketOpen(this.clock())) throw new StockError(MARKET_CLOSED_MSG);
     const c = typeof t === 'string' ? COMPANY_BY_TICKER.get(t) : undefined; if (!c) throw new StockError('Unknown company.');
     const ps = parseQty(n); if (!ps.ok) throw new StockError(ps.error); const shares = ps.n;
     const bank = getBank(); const k = keyOf(name); const row = this.rows.get(c.ticker)!; const price = priceOf(row);

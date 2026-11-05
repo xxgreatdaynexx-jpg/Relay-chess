@@ -22,6 +22,7 @@ import { MinesPanel } from '@/components/MinesPanel';
 import { FactoryPanel } from '@/components/FactoryPanel';
 import { MarketPage } from '@/components/MarketPage';
 import { StocksPage } from '@/components/StocksPage';
+import { HubSleepOverlay } from '@/components/HubSleepOverlay';
 import { ChatDrawer } from '@/components/ChatDrawer';
 import { ConquestPanel } from '@/components/ConquestPanel';
 import { AccountButton, AccountPanel } from '@/components/AccountPanel';
@@ -205,6 +206,7 @@ export function App() {
 
   return (
     <>
+      <HubSleepOverlay />
       <TopTabs />
       <JailScreen />
       <VolumeControl />
