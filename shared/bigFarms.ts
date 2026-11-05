@@ -13,6 +13,8 @@
 type P = [number, number];
 export const BIG_TILE = 2;
 export const BIG_FARM_N0 = 1000;
+/** An account may own at most this many Big Farms (server-enforced in RealEstate.buy). */
+export const MAX_BIG_FARMS = 1;
 const NZ = -116 - 8, SZ = 150, EX = 196; // north / south / east ring roads (shared/outskirts.ts)
 export const BIG_LANE_X = 275, BIG_EAST_X = 346, BIG_ROAD_W = 4.5;
 export const BIG_FARM_AREA = { x0: 200, x1: BIG_EAST_X + 10, z0: NZ - 8, z1: SZ + 8 };

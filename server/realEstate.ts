@@ -26,6 +26,7 @@ import { propertyWorth, propertyPaid, propertyPaidPlusUpgrades, upgradeSpendFrom
 import { cropById, farmPlots } from '../shared/farm.js';
 import { upgradeDef, upgradePrice, type FarmUpgradeKind } from '../shared/farmUpgrades.js';
 import { fieldPlotOf } from '../shared/fieldFarms.js';
+import { isBigFarmN, MAX_BIG_FARMS } from '../shared/bigFarms.js';
 import { resortPlotOf } from '../shared/resort.js';
 import { fertDef, fertCost } from '../shared/farmWork.js';
 import { propertyTaxMul } from '../shared/skillPerks.js';
@@ -127,8 +128,16 @@ export class RealEstate {
     // per-buyer lock too: two parallel buys by one player can't both be priced at the same n
     return this.lock(`owner:${keyOf(name)}`, () => this.lock(p.id, () => this.buyNow(name, p, typeof max === 'number' && Number.isFinite(max) ? max : undefined)));
   }
+  /** Big Farms (cf:1000+) this player owns: at most MAX_BIG_FARMS per account. */
+  async ownedBigFarms(name: string, cl: { query: pg.Pool['query'] } = this.pool): Promise<string[]> {
+    const rows = (await cl.query('SELECT id FROM properties WHERE owner_key = $1', [keyOf(name)])).rows as { id: string }[];
+    return rows.map((r) => String(r.id)).filter((id) => /^cf:\d+$/.test(id) && isBigFarmN(Number(id.slice(3))));
+  }
   private async buyNow(name: string, p: NonNullable<ReturnType<typeof propertyById>>, max?: number) {
     const bank = this.bank(); await bank.refresh(name);
+    const bigBuy = /^cf:\d+$/.test(p.id) && isBigFarmN(Number(p.id.slice(3)));
+    const bigCapMsg = () => `You already own a Big Farm. Each account can own at most ${MAX_BIG_FARMS} Big Farm.`;
+    if (bigBuy && (await this.ownedBigFarms(name)).length >= MAX_BIG_FARMS) throw new PropertyError(bigCapMsg());
     const owned = await this.ownedCount(name); const value = await this.ownedValue(name); const price = landPrice(p.price, value);
     const note = landMultiplierNote(value);
     if (max !== undefined && price > max) throw new PropertyError(`The price changed: your surcharge is +${+landSurchargePct(value).toFixed(1)}% now, so ${p.label} costs ${price.toLocaleString('en-US')}. Check the deed and try again.`);
@@ -138,6 +147,8 @@ export class RealEstate {
     await this.atomic(name, -price, 'property_buy', `Bought ${p.label} (${p.id})${note ? ` ${note}` : ''}`, async (cl) => {
       // cross-instance: the count must still be what we priced at (a parallel buy elsewhere = refuse, nothing charged)
       if ((await this.ownedValue(name, cl)) !== value) throw new PropertyError('You just bought another property: the price went up. Check the deed and try again.');
+      // Big Farm cap, re-checked inside the transaction (a parallel buy on another instance can't slip a second one in)
+      if (bigBuy && (await this.ownedBigFarms(name, cl)).length >= MAX_BIG_FARMS) throw new PropertyError(bigCapMsg());
       // The insert wins only if the row now carries our deed nonce (a concurrent buyer's row = conflict, DO NOTHING).
       const deed = randomUUID();
       // One round trip (QA r8 speed): RETURNING yields a row only if our insert won. price = what was actually paid.
