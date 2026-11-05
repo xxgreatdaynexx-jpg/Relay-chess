@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
 import { PgCasinoStore, START_CHIPS, getBank, resetBank } from '../server/casino-store';
 import { Garage, DriveRelay } from '../server/cars';
+import { RealEstate } from '../server/realEstate';
 import { setPriceIndexForTest } from '../server/price-index';
 import { CARS, CAR_BY_ID, carValue, validDrive, unitsPerSec, DRIVE_IDLE_MS, DRIVE_MAX_VISIBLE } from '../shared/cars';
 
@@ -71,6 +72,7 @@ describe('Garage', () => {
   it('writes car_owned and a car_buy ledger row in one transaction (Postgres)', async () => {
     const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
     getBank().retryMs = []; await getBank().attach(new PgCasinoStore(pool));
+    await new RealEstate(pool, () => getBank()).init();
     const g = new Garage(pool, () => 0); await g.init();
     await fund('QA-Pg'); const r = await g.buy('QA-Pg', 'commuter', 0);
     expect(db.public.many(`SELECT amount FROM wallet_transactions WHERE game = 'car_buy'`).map((x) => Number(x.amount))).toEqual([-7000]);

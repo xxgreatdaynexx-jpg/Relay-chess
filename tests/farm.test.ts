@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
+import { registerPgAdvisoryFunctions } from './pg-advisory';
 import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
 import { Farm } from '../server/farm';
@@ -10,7 +11,7 @@ import { obbOverlap, PARK_AREA, PLATE } from '../shared/worldLayout';
 
 const T0 = Date.parse('2026-11-01T12:00:00Z'); const M = 60_000;
 async function setup() {
-  const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
+  const db = newDb({ noAstCoverageCheck: true }); registerPgAdvisoryFunctions(db); const { Pool } = db.adapters.createPg(); const pool = new Pool();
   const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
   let now = T0; const clock = () => now;
   const re = new RealEstate(pool, () => bank, clock); await re.init();

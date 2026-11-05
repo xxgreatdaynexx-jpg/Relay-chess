@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { newDb } from 'pg-mem';
+import { registerPgAdvisoryFunctions } from './pg-advisory';
 import { getBank, resetBank, CasinoBank, PgCasinoStore, isChipEvent } from '../server/casino-store';
 import { setPriceIndexForTest } from '../server/price-index';
 import { Travel, setTravel, isAtResort } from '../server/travel';
@@ -86,7 +87,7 @@ describe('resort properties and plantation', () => {
   });
   it('buy a plantation plot and plant tropical crops (city crops refused there, tropical refused in the city)', async () => {
     setPriceIndexForTest(1);
-    const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
+    const db = newDb({ noAstCoverageCheck: true }); registerPgAdvisoryFunctions(db); const { Pool } = db.adapters.createPg(); const pool = new Pool();
     const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
     const re = new RealEstate(pool, () => bank, () => Date.parse('2026-11-01T12:00:00Z')); await re.init();
     const farm = new Farm(pool, () => bank, () => Date.parse('2026-11-01T12:00:00Z')); await farm.init();

@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-04T20:12:00-06:00', title: 'Inactive accounts disabled and tax-sharing floor', bullets: [
+    'Chessguy, carter and Jay’s 27 alternate accounts have been disabled reversibly. Their ledger history is retained; chessguy2, carter2 and Jay’s main account are unaffected.',
+    'Purchase-tax and daily wealth-tax payouts now go only to eligible active players with a net worth of at least 5,000.',
+  ] },
   { commit: '', at: '2026-11-04T20:10:00-06:00', title: 'House price cap moves more gently', bullets: [
     'The daily house cap now follows a quarter of the change in total player wealth, down from half (for example, if wealth rises 10% in a day, the cap rises 2.5%). It never drops below 1.',
   ] },

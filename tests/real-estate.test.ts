@@ -7,13 +7,16 @@ import { px, setPriceIndexForTest } from '../server/price-index';
 import { properties, propertyById, buildingId, patchId, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, landPrice, landMultiplierNote, landSurchargePct } from '../shared/realEstate';
 import { cityFill, LANDMARK_IDS, PARK_AREA, obbOverlap } from '../shared/worldLayout';
 import { WORLD_SPOTS } from '../client/src/lib/worldSpots';
+import { registerPgAdvisoryFunctions } from './pg-advisory';
 
 const DAY = 86_400_000; const T0 = Date.parse('2026-11-01T12:00:00Z');
 async function setup() {
-  const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
+  const db = newDb({ noAstCoverageCheck: true }); registerPgAdvisoryFunctions(db); const { Pool } = db.adapters.createPg(); const pool = new Pool();
   const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
   let now = T0; const clock = () => now;
   const re = new RealEstate(pool, () => bank, clock); await re.init();
+  await pool.query(`CREATE TABLE farm_tiles (plot_id TEXT NOT NULL, tile INTEGER NOT NULL, owner_key TEXT NOT NULL, crop TEXT NOT NULL, planted_at BIGINT NOT NULL, nonce TEXT NOT NULL, PRIMARY KEY (plot_id, tile));
+  CREATE TABLE farm_upgrades (plot_id TEXT NOT NULL, kind TEXT NOT NULL, owner_key TEXT NOT NULL, level INTEGER NOT NULL, PRIMARY KEY (plot_id, kind));`);
   const fund = async (name: string, n: number) => { bank.transfer(name, n - bank.account(name).chips, { game: 'admin' }); await bank.flush(); };
   const chips = (key: string) => Number(db.public.one(`SELECT chips FROM casino_players WHERE player_key = '${key}'`).chips);
   const ledger = (key: string, game: string) => db.public.many(`SELECT amount, balance FROM wallet_transactions WHERE player_key = '${key}' AND game = '${game}' ORDER BY id`) as Array<{ amount: number; balance: number }>;

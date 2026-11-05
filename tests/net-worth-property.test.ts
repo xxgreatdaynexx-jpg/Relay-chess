@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
+import { registerPgAdvisoryFunctions } from './pg-advisory';
 import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
 import { Farm } from '../server/farm';
@@ -17,7 +18,8 @@ describe('net worth: property at total spent (shared propertyWorth)', () => {
     expect(upgradeSpendFromLevels({ sprinkler: 2, fertilizer: 0 }, (k, l) => upgradePrice(k as 'sprinkler', l, 16))).toBe(upgradePrice('sprinkler', 0, 16)! + upgradePrice('sprinkler', 1, 16)!);
   });
   it('mine() and playerValue() count paid + upgrades bought + planted seeds; a list-price change does not move it', async () => {
-    const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
+    const db = newDb({ noAstCoverageCheck: true }); registerPgAdvisoryFunctions(db);
+    db.public.registerFunction({ name: 'to_timestamp', args: ['float' as never], returns: 'timestamptz' as never, implementation: (n: number) => new Date(n * 1000) }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
     const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
     const clock = () => Date.parse('2026-11-01T12:00:00Z');
     const re = new RealEstate(pool, () => bank, clock); await re.init();
@@ -30,6 +32,7 @@ describe('net worth: property at total spent (shared propertyWorth)', () => {
     const up = await farm.buyUpgrade('Gus', id, 'sprinkler');
     await farm.plant('Gus', id, 'wheat', [0, 1, 2]);
     const seeds = cropById('wheat')!.seed * 3; // price index 1 in tests
+    await pool.query("UPDATE wallet_transactions SET created_at = now() WHERE game = 'farm_upgrade'");
     const m = (await re.mine('Gus'))[0]!;
     expect(m.upgradeSpend).toBe(up.cost); expect(m.cropValue).toBe(seeds);
     expect(m.value).toBe(paid + up.cost + seeds);

@@ -33,7 +33,7 @@ async function activePlayers(db: Q, now: number) {
   const chips = new Map<string, number>();
   if (base.length) for (const c of (await db.query('SELECT player_key, chips FROM casino_players WHERE player_key = ANY($1)', [base.map((x) => x.key)])).rows) chips.set(String(c.player_key), Number(c.chips));
   const econ = getEconomy(); const rows: Array<{ key: string; name: string; netWorth: number }> = [];
-  for (const x of base) rows.push({ ...x, netWorth: (chips.get(x.key) ?? 0) + ((await econ?.playerAssets(x.name, now).catch(() => null))?.total ?? 0) });
+  for (const x of base) rows.push({ ...x, netWorth: (chips.get(x.key) ?? 0) + ((await econ?.playerAssets(x.name, now))?.total ?? 0) });
   cache = { at: now, rows }; return rows;
 }
 /** Jail and disabled are checked live (not cached). Recipients need net worth >= TAX_SHARE_MIN_NET_WORTH (5,000). */

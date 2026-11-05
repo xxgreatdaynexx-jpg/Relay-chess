@@ -10,7 +10,7 @@ import { priceIndex } from './price-index.js';
 export const HOUSE_CAP_MIGRATION = `CREATE TABLE IF NOT EXISTS house_cap_index (
   day TEXT PRIMARY KEY, idx DOUBLE PRECISION NOT NULL, ratio DOUBLE PRECISION, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
 export const HOUSE_CAP_FLOOR = 1;
-/** Dayne: half of total-asset inflation moves the cap (+100% wealth -> +50% cap, -20% -> -10%). */
+/** Dayne: a quarter of total-asset inflation moves the cap (+100% wealth -> +25% cap, -20% -> -5%). */
 export const HOUSE_CAP_PASS_THROUGH = 0.25;
 
 const DAY = 86_400_000;

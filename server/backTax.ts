@@ -32,11 +32,15 @@ const ZERO: BackTax = { debt: 0, surcharge: 0, wealthTax: 0, paid: 0, buys: 0 };
 
 export async function backTaxOf(db: Q, name: string): Promise<BackTax> {
   if (junk(name) || keyOf(name).startsWith('qa-')) return ZERO;
-  const k = keyOf(name); let led: any[] = []; let repo: any[] = [];
+  const k = keyOf(name);
+  // A missing read must never look like a clean ledger. Callers use this to gate purchases.
+  let led: any[]; let repo: any[];
   try {
     led = (await db.query(`SELECT id, tx_key, game, amount, memo, created_at FROM wallet_transactions WHERE player_key = $1 AND game IN ('property_buy','property_sell','wealth_tax_buy','${BACKTAX_GAME}') ORDER BY id`, [k])).rows;
-  } catch { return ZERO; }
-  try { repo = (await db.query('SELECT property_id, at FROM property_tax WHERE owner_key = $1 AND repossessed = true', [k])).rows; } catch { repo = []; }
+    repo = (await db.query('SELECT property_id, at FROM property_tax WHERE owner_key = $1 AND repossessed = true', [k])).rows;
+  } catch (e) {
+    throw new BackTaxError('Could not verify property back-tax. Please try again.', { cause: e });
+  }
   const taxByKey = new Map<string, number>(); let paid = 0;
   for (const r of led) { if (r.game === 'wealth_tax_buy') taxByKey.set(String(r.tx_key).replace(/^wealth_tax_buy:/, ''), -Number(r.amount)); if (r.game === BACKTAX_GAME) paid += -Number(r.amount); }
   const repos = repo.map((r) => ({ id: String(r.property_id), at: Number(r.at) })).sort((a, b) => a.at - b.at);
