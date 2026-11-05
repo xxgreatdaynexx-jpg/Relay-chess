@@ -1,3 +1,4 @@
+import { isDisabledName } from '../shared/disabled.js';
 /**
  * Skills (RuneScape-style): XP per skill, levels 1..99, total level, hiscores.
  * XP is only awarded here, server-side, from real completed actions (hooks in mines/farm/race/factory/rooms/fps and the
@@ -143,7 +144,7 @@ export class Skills {
   }
   /** Top players for one skill, or overall (total level, then total XP). QA- accounts are never shown. */
   async hiscores(skill: string = 'overall', limit = 50) {
-    const rows = (await this.rows()).filter((r) => !isQaName(r.name));
+    const rows = (await this.rows()).filter((r) => !isQaName(r.name) && !isDisabledName(r.name));
     if (skill !== 'overall') {
       if (!isSkill(skill)) return [];
       return rows.filter((r) => r.skill === skill && Number(r.xp) > 0).sort((a, b) => Number(b.xp) - Number(a.xp)).slice(0, limit)

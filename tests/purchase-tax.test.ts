@@ -25,7 +25,7 @@ async function setup(others: string[]) {
   const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
   const re = new RealEstate(pool, () => bank); await re.init();
   const fund = async (name: string, n: number) => { bank.transfer(name, n - bank.account(name).chips, { game: 'admin' }); await bank.flush(); };
-  for (const o of others) await fund(o, 1500); // ledger activity = active
+  for (const o of others) await fund(o, 6000); // ledger activity = active; net worth >= 5,000 to receive shares
   const hold = async (name: string, value: number) => { await (pool as any).query('INSERT INTO properties (id, owner_key, owner_name, price, bought_at) VALUES ($1,$2,$3,$4,0)', [`test:${name}:${value}`, name.toLowerCase(), name, value]); };
   const chips = async (k: string) => Number((await db.query<{ chips: string }>('SELECT chips FROM casino_players WHERE player_key = $1', [k])).rows[0]?.chips ?? 0);
   const ledger = async (game: string) => (await db.query<{ player_key: string; amount: string; tx_key: string; memo: string }>('SELECT player_key, amount, tx_key, memo FROM wallet_transactions WHERE game = $1 ORDER BY player_key', [game])).rows;
@@ -70,7 +70,7 @@ describe('purchase wealth tax: property and car purchases', () => {
     expect(Math.max(...shares.map((x) => Number(x.amount))) - Math.min(...shares.map((x) => Number(x.amount)))).toBeLessThanOrEqual(1);
     const buy = (await s.ledger('wealth_tax_buy'))[0]!; expect(Number(buy.amount)).toBe(-tax); expect(buy.memo).toMatch(/Wealth tax 5%: .* chips, shared with 3 players/);
     for (const x of shares) expect(x.tx_key).toBe(`wealth_tax_share:${buy.tx_key.slice('wealth_tax_buy:'.length)}:${x.player_key}`);
-    expect(s.bank.account('Ann').chips).toBe(1500 + Number(shares[0]!.amount));
+    expect(s.bank.account('Ann').chips).toBe(6000 + Number(shares[0]!.amount));
   });
   it('zero recipients: no tax charged (redistributed, never burned)', async () => {
     const s = await setup([]); const p = home(); await s.hold('Rich', 150_000); await s.fund('Rich', 1_000_000);
@@ -88,8 +88,8 @@ describe('purchase wealth tax: property and car purchases', () => {
     await (s.pool as any).query('INSERT INTO properties (id, owner_key, owner_name, price, bought_at) VALUES ($1,$2,$3,$4,0)', [p.id, 'zed', 'Zed', 1]);
     await expect(s.re.buy('Rich', p.id)).rejects.toThrow(/already owns/);
     await s.bank.flush();
-    expect(await s.chips('rich')).toBe(1_000_000); expect(await s.chips('ann')).toBe(1500);
-    expect(s.bank.account('Ann').chips).toBe(1500); expect(s.bank.account('Rich').chips).toBe(1_000_000);
+    expect(await s.chips('rich')).toBe(1_000_000); expect(await s.chips('ann')).toBe(6000);
+    expect(s.bank.account('Ann').chips).toBe(6000); expect(s.bank.account('Rich').chips).toBe(1_000_000);
     expect(await s.ledger('wealth_tax_buy')).toEqual([]); expect(await s.ledger('wealth_tax_share')).toEqual([]);
   });
   it('idempotency: a replayed share key is refused by the ledger and the whole transfer rolls back', async () => {
@@ -98,7 +98,7 @@ describe('purchase wealth tax: property and car purchases', () => {
     const run = async () => { const w = s.bank.transferAtomic(moves, { batch: true }); const p = (async () => { await w.after; const cl = await (s.pool as any).connect(); try { await cl.query('BEGIN'); for (const x of w.stmts) await cl.query(x.sql, x.args); await cl.query('COMMIT'); } catch (e) { await cl.query('ROLLBACK'); throw e; } finally { cl.release(); } })(); w.bind(p); try { await p; } catch (e) { w.revert(); throw e; } };
     await run(); await s.bank.flush();
     expect(() => s.bank.transferAtomic(moves, { batch: true })).toThrow(/Already applied/); // same instance
-    expect((await s.ledger('wealth_tax_share')).length).toBe(2); expect(await s.chips('ann')).toBe(1505);
+    expect((await s.ledger('wealth_tax_share')).length).toBe(2); expect(await s.chips('ann')).toBe(6005);
   });
   it('batches many recipients into a constant number of statements', async () => {
     const names = Array.from({ length: 300 }, (_, i) => `P${String(i).padStart(3, '0')}`);

@@ -6,6 +6,9 @@
  * Recipient credits are batched (CasinoBank.transferAtomic { batch: true }): 3 statements for any number of players.
  */
 import { isJailed } from './jail.js';
+import { getEconomy } from './economy.js';
+import { isDisabledName } from '../shared/disabled.js';
+import { TAX_SHARE_MIN_NET_WORTH } from '../shared/wealthTax.js';
 import { propertyPaidPlusUpgradesOf } from './realEstate.js';
 import { isQaName } from '../shared/qa.js';
 import { PURCHASE_SHARE_GAME, PURCHASE_TAX_GAME, purchaseShares, purchaseTaxLine, purchaseTaxOf, type PurchaseTaxQuote } from '../shared/purchaseTax.js';
@@ -19,19 +22,24 @@ export const junk = (n: string) => isQaName(n) || /^guest/i.test(n.trim()) || /^
 /** Wealth-tax threshold: property at price paid + upgrades held (shared propertyPaidPlusUpgrades; planted seed NOT counted). */
 export async function propertyPaidValue(db: Q, name: string): Promise<number> { return propertyPaidPlusUpgradesOf(db, name); }
 
-let cache: { at: number; rows: Array<{ key: string; name: string }> } | null = null;
+let cache: { at: number; rows: Array<{ key: string; name: string; netWorth: number }> } | null = null;
 export const resetPurchaseTaxCache = () => { cache = null; };
 /** Active players (any ledger row in 7 days), sorted by key, junk excluded. Cached 60 s: the ledger scan is the costly part. */
 async function activePlayers(db: Q, now: number) {
   if (cache && now - cache.at < 60_000 && now >= cache.at) return cache.rows;
   const r = await db.query(`SELECT DISTINCT ON (player_key) player_key, name FROM wallet_transactions WHERE created_at >= to_timestamp($1/1000.0) ORDER BY player_key, id DESC`, [now - 7 * DAY]);
-  const rows = r.rows.map((x) => ({ key: String(x.player_key), name: String(x.name) })).filter((x) => !junk(x.name) && !x.key.startsWith('qa-'));
+  const base = r.rows.map((x) => ({ key: String(x.player_key), name: String(x.name) })).filter((x) => !junk(x.name) && !x.key.startsWith('qa-'));
+  // Net worth = chips + assets, the same definition as the profile / daily wealth tax (economy.playerAssets total).
+  const chips = new Map<string, number>();
+  if (base.length) for (const c of (await db.query('SELECT player_key, chips FROM casino_players WHERE player_key = ANY($1)', [base.map((x) => x.key)])).rows) chips.set(String(c.player_key), Number(c.chips));
+  const econ = getEconomy(); const rows: Array<{ key: string; name: string; netWorth: number }> = [];
+  for (const x of base) rows.push({ ...x, netWorth: (chips.get(x.key) ?? 0) + ((await econ?.playerAssets(x.name, now).catch(() => null))?.total ?? 0) });
   cache = { at: now, rows }; return rows;
 }
-/** Jail is checked live (not cached). */
+/** Jail and disabled are checked live (not cached). Recipients need net worth >= TAX_SHARE_MIN_NET_WORTH (5,000). */
 export async function recipientsFor(db: Q, buyer: string, now: number) {
   const k = keyOf(buyer);
-  return (await activePlayers(db, now)).filter((x) => x.key !== k && keyOf(x.name) !== k && !isJailed(x.name));
+  return (await activePlayers(db, now)).filter((x) => x.key !== k && keyOf(x.name) !== k && !isJailed(x.name) && !isDisabledName(x.name) && !isDisabledName(x.key) && x.netWorth >= TAX_SHARE_MIN_NET_WORTH);
 }
 
 export async function quotePurchaseTax(db: Q, buyer: string, price: number, now = Date.now()): Promise<PurchaseTaxQuote> {

@@ -1,3 +1,4 @@
+import { isDisabledName } from '../shared/disabled.js';
 /** Skin market (escrowed listings, 5% fee burned) and player-to-player trade offers. Chips move only through the wallet ledger. */
 import { randomUUID } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
@@ -443,6 +444,7 @@ export function registerMarket(io: Server, socket: Socket): void {
   /** First-24h rule: blocks both sides of any player-to-player transfer. */
   const gate = async (me: string, other?: string | null) => {
     const a = getAccounts();
+    if (isDisabledName(me) || (other && isDisabledName(other))) throw new RuleError('That account has been disabled.');
     const mine = await a.tradeLockMs(me);
     if (mine > 0) throw new RuleError(selfLockMsg(mine));
     if (other && playerKey(other) !== playerKey(me)) { const o = await a.tradeLockMs(other); if (o > 0) throw new RuleError(otherLockMsg(other.trim(), o)); }

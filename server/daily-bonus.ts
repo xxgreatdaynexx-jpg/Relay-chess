@@ -1,3 +1,4 @@
+import { isDisabledName } from '../shared/disabled.js';
 import { isJailed } from './jail.js';
 /** Daily login bonus: 1,000 chips once per UTC day (same day boundary as daily_economy) per signed-in account. */
 import type { Socket } from 'socket.io';
@@ -21,7 +22,7 @@ export const dailyBonusAmount = () => px(DAILY_BONUS);
  */
 export async function claimDailyBonus(name: string, now = Date.now()): Promise<{ amount: number; chips: number; day: string } | null> {
   const bank = getBank();
-  if (!bank.ready || isJailed(name)) return null; // jailed players don't earn
+  if (!bank.ready || isJailed(name) || isDisabledName(name)) return null; // jailed / disabled players don't earn
   const day = utcDay(now);
   const key = dailyBonusKey(name, day);
   if (bank.hasKey(key)) return null;

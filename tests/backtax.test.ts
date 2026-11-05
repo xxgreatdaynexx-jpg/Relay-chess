@@ -24,7 +24,7 @@ async function setup() {
   const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
   const re = new RealEstate(pool, () => bank); await re.init(); await db.exec(FARM);
   const fund = async (name: string, n: number) => { bank.transfer(name, n - bank.account(name).chips, { game: 'admin' }); await bank.flush(); };
-  await fund('Other', 1500); // an active recipient
+  await fund('Other', 6000); // an active recipient (net worth >= 5,000)
   const hold = (id: string, owner: string, paid: number, at = 0) => (pool as any).query('INSERT INTO properties (id, owner_key, owner_name, price, bought_at) VALUES ($1,$2,$3,$4,$5)', [id, owner.toLowerCase(), owner, paid, at]);
   // a historical buy row exactly as RealEstate wrote it (old list-price base in the memo)
   const pastBuy = async (owner: string, id: string, label: string, paid: number, oldBase: number, iso: string) => {
@@ -79,7 +79,7 @@ describe('property back-tax', () => {
     const [r1, r2] = await Promise.all([s.re.payBackTax('Dayne'), s.re.payBackTax('Dayne')]);
     expect(r1.paid + r2.paid).toBe(bt.debt); await s.bank.flush();
     expect(await s.chips('dayne')).toBe(before - bt.debt);
-    expect(await s.chips('other')).toBe(1500 + bt.wealthTax);
+    expect(await s.chips('other')).toBe(6000 + bt.wealthTax);
     expect((await backTaxOf(s.pool as never, 'Dayne')).debt).toBe(0);
     expect((await s.re.payBackTax('Dayne')).paid).toBe(0);
     expect(((await (s.pool as any).query(`SELECT COUNT(*) n FROM wallet_transactions WHERE game = '${BACKTAX_GAME}'`)).rows[0].n) + '').toBe('1');

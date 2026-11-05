@@ -1,3 +1,4 @@
+import { isDisabledName } from '../shared/disabled.js';
 import { isJailed } from './jail.js';
 /**
  * Daily wealth tax (pt1397u). At each UTC reset: active players (any ledger row in the last 7 days, QA excluded), net
@@ -30,6 +31,7 @@ export async function activeRows(db: pg.Pool, now = Date.now()): Promise<WealthR
   const bank = getBank(); const econ = getEconomy(); const out: WealthRow[] = [];
   for (const row of r.rows) {
     const name = String(row.name);
+    if (isDisabledName(name)) continue; // disabled accounts neither pay nor receive
     const chips = await bank.refresh(name).catch(() => bank.account(name).chips);
     const assets = (await econ?.playerAssets(name, now).catch(() => null))?.total ?? 0;
     out.push({ name, chips, netWorth: chips + assets });

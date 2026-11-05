@@ -1,3 +1,4 @@
+import { isDisabledName } from '../shared/disabled.js';
 /** Trailer Park: a stable lot per eligible player (trailer_lots table). Never touches player accounts. */
 import express from 'express';
 import pg from 'pg';
@@ -23,7 +24,7 @@ export async function previewPark(db: Queryable): Promise<ParkPreview> {
   const lots = new Map(((await db.query('SELECT player_key, lot FROM trailer_lots')).rows as { player_key: string; lot: number }[]).map((r) => [r.player_key, Number(r.lot)]));
   const out: ParkPreview = { eligible: [], excluded: [] };
   for (const p of players) {
-    const reason = trailerExclusion(p.name, flags.get(p.player_key) ?? []);
+    const reason = isDisabledName(p.name) || isDisabledName(p.player_key) ? 'Account disabled' : trailerExclusion(p.name, flags.get(p.player_key) ?? []);
     if (reason) out.excluded.push({ name: p.name, key: p.player_key, reason });
     else out.eligible.push({ name: p.name, key: p.player_key, lot: lots.get(p.player_key) ?? null });
   }

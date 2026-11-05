@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-04T18:05:00-06:00', title: 'Tax shares need 5,000 net worth; abandoned accounts retired', bullets: [
+    'Wealth tax shares (the daily tax and the 5% purchase tax) now go only to active players with a net worth of at least 5,000 (chips plus assets).',
+    'Abandoned and duplicate accounts can now be retired. They can\'t sign in and drop off boards, the map, bonuses, tax shares and trades. Their history is kept.',
+  ] },
   { commit: '', at: '2026-11-04T20:00:00-06:00', title: 'Crop and farm-food prices rebalanced', bullets: [
     'Selling a crop straight from the field now earns 20% of what its seeds cost (for example Wheat: 10 seed, 2 profit).',
     'Turning crops into factory food earns 30% of the seeds used, counted from planting to selling (for example Flour: 2 Wheat, 20 seed, sells for 26). Multi-step foods like Bread, Pumpkin Pie and Chocolate Bar follow the same rule across every crop in them; glass, iron sheets and fish count at their own value.',
