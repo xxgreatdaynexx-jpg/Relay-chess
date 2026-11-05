@@ -79,7 +79,11 @@ export const fishDiff = (f: Fish, grams: number) => Math.min(1, DIFF[f.rarity] +
 export const fmtKg = (g: number) => (g >= 10_000 ? `${(g / 1000).toFixed(1)} kg` : `${(g / 1000).toFixed(2)} kg`);
 
 /** Daily tiers on base sale value (per player, reset 00:00 UTC): full up to 100,000, then zero. */
-export const FISH_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: 100_000, rate: 1 }, { upTo: Infinity, rate: 0 }];
+/** Fishing buff (Millionaire Update): raw fish sell for +15% at every spot (pond and Resort reef pier).
+ *  Applied at the sale (and in the UI), not to the stored catch value, so fillets / factory imports are unchanged. */
+export const FISH_SELL_MUL = 1.15;
+export const fishSellValue = (value: number) => (value * 115) / 100; // = value x FISH_SELL_MUL, exact for integers
+export const FISH_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: 115_000, rate: 1 }, { upTo: Infinity, rate: 0 }];
 export const FISH_DAILY_MAX = FISH_TIERS.reduce((a, t, i) => a + (Number.isFinite(t.upTo) ? (t.upTo - (i ? FISH_TIERS[i - 1]!.upTo : 0)) * t.rate : 0), 0);
 export function fishPayout(gross: number, already: number): number {
   let left = gross, at = already, pay = 0, lo = 0;

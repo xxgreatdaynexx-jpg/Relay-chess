@@ -20,7 +20,7 @@ import { isQaName } from '../shared/qa.js';
 import type { ImportSink } from './farm.js';
 import { fishingLuckRoll, fishingBiteMul } from '../shared/skillPerks.js';
 import {
-  BITE_MAX_MS, BITE_MIN_MS, CAST_COOLDOWN_MS, COOLER_MAX, FISH, FISH_XP, fishById, fishDiff, fishPayout, fishValue, HOOK_WINDOW_MS,
+  BITE_MAX_MS, BITE_MIN_MS, CAST_COOLDOWN_MS, COOLER_MAX, FISH, FISH_XP, fishSellValue, fishById, fishDiff, fishPayout, fishValue, HOOK_WINDOW_MS,
   REEL_DT, replayReel, rollFish, rollWeight, anglerAim, type AnglerState, type FishCatch, type FishView,
 } from '../shared/fishing.js';
 import { cookPayout } from '../shared/cooking.js';
@@ -143,7 +143,7 @@ export class Fishing {
       let dGross = dishRows.reduce((a, r) => a + r.value, 0); let dPaid = Math.floor(cookPayout(dGross, k.gross) * priceIndex());
       if (dPaid <= 0 && dishRows.length) { dishRows = []; dGross = 0; dPaid = 0; }
       rows = [...rawRows, ...dishRows];
-      const gross = rawRows.reduce((a, r) => a + r.value, 0);
+      const gross = Math.floor(fishSellValue(rawRows.reduce((a, r) => a + r.value, 0))); // +15% fishing buff
       const base = fishPayout(gross, t.gross); const fPaid = Math.floor(base * priceIndex()); const paid = fPaid + dPaid;
       if (paid <= 0 || !rows.length) throw new FishError(rawRows.length ? "The fishmonger has bought all they can from you today. Come back after 00:00 UTC (or release your catch)." : 'You have hit today\'s cooking sales cap (shared by every dish you cook). Come back after 00:00 UTC (6 PM CST).');
       const counts = new Map<string, number>(); for (const r of rows) counts.set(fishById(r.fish)?.label ?? r.fish, (counts.get(fishById(r.fish)?.label ?? r.fish) ?? 0) + 1);

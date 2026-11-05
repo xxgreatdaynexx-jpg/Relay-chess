@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-04T18:40:00-06:00', title: 'Fishing pays 15% more', bullets: [
+    'Every fish now sells for 15% more at the pond and the Resort reef pier.',
+    'The daily fishing cap is up 15% to match: full price up to 115,000 a day.',
+  ] },
   { commit: '', at: '2026-11-04T18:30:00-06:00', title: 'Factory goods sell for more', bullets: [
     'Non-farm factory goods now sell to the house for more, scaled by how many production steps they take: +5% for first-step goods (bars, cut gems), rising evenly to +30% for the deepest products (Drill, Generator, Robot).',
     'Covers metal, gem, electronics and machine chains. Food and anything made from crops or fish is unchanged.',
