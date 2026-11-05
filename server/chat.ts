@@ -14,6 +14,7 @@ import {
 } from '../shared/chat.js';
 
 import { isBuildPost } from './build.js';
+import { loadOfflinePlayers, type OfflinePlayer } from './offline-players.js';
 
 export const CHAT_MIGRATION = `CREATE TABLE IF NOT EXISTS chat_messages (
   id BIGINT PRIMARY KEY,
@@ -155,7 +156,7 @@ export async function initChatStorage(): Promise<void> {
 export interface PresenceSource { name: string | null; code?: string; spectating?: boolean; activities: Activity[]; doing?: Doing | null; doingAt?: number }
 
 /** Merge per-socket presence into one entry per signed-in user. Bots never appear; guests are only counted. */
-export function buildSnapshot(sources: Iterable<PresenceSource>, viewerIsQa: boolean, tableType: (code: string) => 'chess' | 'checkers' | null): OnlineSnapshot {
+export function buildSnapshot(sources: Iterable<PresenceSource>, viewerIsQa: boolean, tableType: (code: string) => 'chess' | 'checkers' | null, offline: readonly OfflinePlayer[] = []): OnlineSnapshot {
   const byKey = new Map<string, OnlineUser>();
   let guests = 0;
   const doingAt = new Map<string, number>();
@@ -165,14 +166,19 @@ export function buildSnapshot(sources: Iterable<PresenceSource>, viewerIsQa: boo
     if (!viewerIsQa && isQaName(s.name)) continue;
     const key = s.name.toLowerCase();
     let u = byKey.get(key);
-    if (!u) { u = { name: s.name, table: null, activities: [], where: '' }; if (isQaName(s.name)) u.qa = true; byKey.set(key, u); }
+    if (!u) { u = { name: s.name, table: null, activities: [], where: '', online: true }; if (isQaName(s.name)) u.qa = true; byKey.set(key, u); }
     const gt = s.code ? tableType(s.code) : null;
     if (s.code && gt && (!u.table || (u.table.watching && !s.spectating))) u.table = { code: s.code, gameType: gt, watching: Boolean(s.spectating) };
     for (const a of s.activities) if (!u.activities.includes(a)) u.activities.push(a);
     // Several tabs: the one that reported most recently wins (that's the tab they're actually using).
     if (s.doing && (!u.doing || (s.doingAt ?? 0) >= (doingAt.get(key) ?? 0))) { u.doing = s.doing; doingAt.set(key, s.doingAt ?? 0); }
   }
-  const users = [...byKey.values()].map((u) => ({ ...u, where: whereLabel(u.table, u.activities) }));
+  for (const p of offline) {
+    const key = p.name.toLowerCase();
+    if (byKey.has(key) || isBotName(p.name) || isGuestName(p.name) || (!viewerIsQa && isQaName(p.name))) continue;
+    byKey.set(key, { name: p.name, table: null, activities: [], where: 'Offline', online: false, lastSeen: p.lastSeen, ...(isQaName(p.name) ? { qa: true as const } : {}) });
+  }
+  const users = [...byKey.values()].map((u) => ({ ...u, where: u.online === false ? 'Offline' : whereLabel(u.table, u.activities) }));
   users.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   return { users, guests };
 }
@@ -196,13 +202,29 @@ export function onlineSnapshot(io: Server, viewerIsQa: boolean): OnlineSnapshot 
   return buildSnapshot([...io.sockets.sockets.values()].map(sourceOf), viewerIsQa, roomType);
 }
 
+let offlineCache: { at: number; rows: OfflinePlayer[] } | null = null;
+let offlineLoading: Promise<OfflinePlayer[]> | null = null;
+const OFFLINE_CACHE_MS = 30_000;
+async function cachedOfflinePlayers(): Promise<OfflinePlayer[]> {
+  if (offlineCache && Date.now() - offlineCache.at < OFFLINE_CACHE_MS) return offlineCache.rows;
+  if (!offlineLoading) offlineLoading = loadOfflinePlayers().catch((e) => { console.error('[chat] offline player directory failed:', (e as Error).message); return offlineCache?.rows ?? []; }).finally(() => { offlineLoading = null; });
+  const rows = await offlineLoading;
+  offlineCache = { at: Date.now(), rows };
+  return rows;
+}
+
+/** Full player list: live sockets plus cached read-only rich offline accounts. */
+export async function playerSnapshot(io: Server, viewerIsQa: boolean): Promise<OnlineSnapshot> {
+  return buildSnapshot([...io.sockets.sockets.values()].map(sourceOf), viewerIsQa, roomType, await cachedOfflinePlayers());
+}
+
 let presenceTimer: ReturnType<typeof setInterval> | null = null;
 let lastSent = { pub: '', qa: '' };
 
 /** Push the online list to everyone (QA viewers get the version that includes QA accounts). Only sends on change. */
-export function pushPresence(io: Server, force = false): void {
-  const pub = onlineSnapshot(io, false);
-  const qa = onlineSnapshot(io, true);
+export async function pushPresence(io: Server, force = false): Promise<void> {
+  const pub = await playerSnapshot(io, false);
+  const qa = await playerSnapshot(io, true);
   const pubJson = JSON.stringify(pub);
   const qaJson = JSON.stringify(qa);
   if (!force && pubJson === lastSent.pub && qaJson === lastSent.qa) return;
@@ -213,7 +235,7 @@ export function pushPresence(io: Server, force = false): void {
 export function startPresence(io: Server): void {
   stopPresence();
   lastSent = { pub: '', qa: '' };
-  presenceTimer = setInterval(() => pushPresence(io), 2000);
+  presenceTimer = setInterval(() => { void pushPresence(io); }, 2000);
   (presenceTimer as unknown as { unref?: () => void }).unref?.();
 }
 export function stopPresence(): void { if (presenceTimer) clearInterval(presenceTimer); presenceTimer = null; }
@@ -232,8 +254,8 @@ export function registerChat(io: Server, socket: Socket): void {
       if (JSON.stringify(next) !== JSON.stringify(socket.data.doing ?? null)) { socket.data.doing = next; socket.data.doingAt = now; }
     }
   });
-  socket.on('online_get', (_payload: unknown, ack?: Ack) => {
-    if (typeof ack === 'function') ack({ ok: true, ...onlineSnapshot(io, isQaName(nameOf(socket))) });
+  socket.on('online_get', async (_payload: unknown, ack?: Ack) => {
+    if (typeof ack === 'function') ack({ ok: true, ...await playerSnapshot(io, isQaName(nameOf(socket))) });
   });
   socket.on('chat_history', (_payload: unknown, ack?: Ack) => {
     if (typeof ack !== 'function') return;

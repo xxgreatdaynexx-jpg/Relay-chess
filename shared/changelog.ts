@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-05T13:18:00-06:00', title: 'Offline players on the player list', bullets: [
+    'Requested by Dayne: players with a net worth of 10,000 chips or more now stay on the player list while offline. Their row shows when they were last online; the online count still counts only people connected now.',
+  ] },
   { commit: '', at: '2026-11-05T10:40:00-06:00', title: 'Factory storage prices match the payout', bullets: [
     'Requested by carter2: Factory storage now includes the current price index in each item\'s house sell price, matching the quantity preview, Sell all confirmation and actual payout. For example, Pumpkin Pie showed 175.5 before selling but paid about 196; it now shows about 196 too.',
   ] },
