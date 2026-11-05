@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-05T16:45:00-06:00', title: 'Employment Office: workers now bring something in every 3 minutes', bullets: [
+    'Requested by Dayne: every hired miner and fisher now brings in one item every 3 minutes (480 a day, up from every 5 minutes / 288). Wages and hire costs are unchanged.',
+  ] },
   { commit: '', at: '2026-11-05T15:20:00-06:00', title: "Grandma's Wagon, the cart, Hot Dog Van and Monster Truck get makeovers", bullets: [
     "Requested by Dayne: Grandma's Wagon is a long wood-panelled station wagon with roof rails, the shopping cart gets caster wheels and a front bumper, the Hot Dog Van has a real cab, serving window and awning under a bigger hot dog, and the Monster Truck shows its shocks, roll bar, light bar and exhaust stacks up close.",
   ] },

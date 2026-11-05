@@ -7,7 +7,7 @@
  * fish → cooler), so it sells through the usual daily sell tiers (no cap bypass) and gives the owner no skill XP.
  *   wage  = 45% of a full day's expected output
  *   hire  = 35% of a full day's expected output  (≈ 5%/day over 7 days)
- * pt1378u: every worker now picks every 5 min (miners 2x, fishers 12x); wage/hire are still priced off the old rates below.
+ * pt1378u: every worker now picks every 5 min (miners 2x, fishers 12x); now every 3 min (480/day); wage/hire are still priced off the old rates below.
  * Miners: 1 ore / 10 min, biased toward the mine's signature ores (MINER_BIAS), no key/chest drops.
  * Fishers: 1 fish / hour from the normal catch table minus junk (a fish is ~11x an ore: at 1 / 10 min a fisher would
  * bring in 3x the fish dock's old daily sell cap, so after the sell tiers it could never pay for itself).
@@ -73,12 +73,12 @@ export const WORKER_EV_BEFORE: Record<MinerCave, number> = { mine: 5.606, frost:
 export const unbiasedItemEv = (c: MinerCave) => CAVES[c].nodes.reduce((a, n) => a + ORES[n.ore].price, 0) / CAVES[c].nodes.length;
 export const minerItemEv = (c: MinerCave) => evOf(minerTable(c));
 export interface JobDef { id: string; kind: WorkerKind; cave?: MinerCave; label: string; emoji: string; everyMs: number; /** pt1378u: wage/hire stay priced off the old interval, so the 5-min buff is pure extra output */ priceEveryMs: number; itemEv: number; blurb: string; /** miners: 'Mostly …' gather bias */ bias?: string }
-/** pt1378u: every worker brings in one pick every 5 minutes (288/day). */
-export const WORKER_EVERY_MS = 5 * MIN;
+/** pt1378u: every worker brings in one pick every 3 minutes (480/day; was 5 min / 288). */
+export const WORKER_EVERY_MS = 3 * MIN;
 const r5 = (n: number) => Math.max(5, Math.round(n / 5) * 5);
 export const JOBS: JobDef[] = [
-  ...MINER_CAVES.map((c): JobDef => ({ id: `miner:${c}`, kind: 'miner', cave: c, label: `Miner · ${CAVES[c].name}`, emoji: '⛏️', everyMs: WORKER_EVERY_MS, priceEveryMs: 10 * MIN, itemEv: minerItemEv(c), blurb: `1 ore every 5 min from ${CAVES[c].name}. ${MINER_BIAS[c].label}. No keys or chests.`, bias: MINER_BIAS[c].label })),
-  { id: 'fisher', kind: 'fisher', label: 'Fisher · Lake Dock', emoji: '🎣', everyMs: WORKER_EVERY_MS, priceEveryMs: 60 * MIN, itemEv: FISHER_ITEM_EV, blurb: '1 fish every 5 min from the normal catch table (no junk). Goes in your cooler.' },
+  ...MINER_CAVES.map((c): JobDef => ({ id: `miner:${c}`, kind: 'miner', cave: c, label: `Miner · ${CAVES[c].name}`, emoji: '⛏️', everyMs: WORKER_EVERY_MS, priceEveryMs: 10 * MIN, itemEv: minerItemEv(c), blurb: `1 ore every 3 min from ${CAVES[c].name}. ${MINER_BIAS[c].label}. No keys or chests.`, bias: MINER_BIAS[c].label })),
+  { id: 'fisher', kind: 'fisher', label: 'Fisher · Lake Dock', emoji: '🎣', everyMs: WORKER_EVERY_MS, priceEveryMs: 60 * MIN, itemEv: FISHER_ITEM_EV, blurb: '1 fish every 3 min from the normal catch table (no junk). Goes in your cooler.' },
 ];
 export const jobById = (id: unknown) => JOBS.find((j) => j.id === id);
 /** Items on a full day, expected base value of a full day, and the BASE prices derived from it. */
