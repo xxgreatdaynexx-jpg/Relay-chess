@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-05T14:21:00-06:00', title: 'Sports coupes look different from each other', bullets: [
+    'Requested by Dayne: Zipline GT reads lighter and more compact (Miata/BRZ cues), Neon Fang RS is more aggressive with a long hood and big wing, and Aurelia Coupe has a long-hood luxury stance with gold trim.',
+  ] },
   { commit: '', at: '2026-11-05T14:12:00-06:00', title: 'Sedans look different from each other', bullets: [
     'Requested by Dayne: Commuter LX, Executive 500 and Yellow Cab no longer share one generic sedan shape. Commuter reads more like a midsize daily driver, Exec has a longer hood and upright cabin, and the Cab is boxier with a push bar and roof light.',
   ] },

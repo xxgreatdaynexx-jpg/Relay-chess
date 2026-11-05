@@ -29,3 +29,17 @@ describe('sedan silhouette splits', () => {
     expect(meshCount(wagon)).toBeGreaterThan(20);
   });
 });
+
+describe('coupe silhouette splits', () => {
+  it('gives Zipline, Neon Fang and Aurelia distinct mesh counts', () => {
+    const a = buildCar(CAR_BY_ID.get('zipline')!, 0xf77f00);
+    const b = buildCar(CAR_BY_ID.get('neonfang')!, 0x39ff14);
+    const c = buildCar(CAR_BY_ID.get('aurelia')!, 0xd4af37);
+    const counts = [a, b, c].map((g) => { let n = 0; g.traverse((o) => { if ((o as THREE.Mesh).isMesh) n++; }); return n; });
+    expect(new Set(counts).size).toBe(3);
+    const sizes = [a, b, c].map((g) => new THREE.Box3().setFromObject(g).getSize(new THREE.Vector3()));
+    // Aurelia longest hood → overall longer; Neon Fang taller via wing; Zipline shortest.
+    expect(sizes[2]!.x).toBeGreaterThan(sizes[0]!.x);
+    expect(sizes[1]!.y).toBeGreaterThan(sizes[0]!.y);
+  });
+});

@@ -90,12 +90,42 @@ export function buildCar(c: CarModel, color: number, lod: 'near' | 'far' = 'near
       }
       break; }
     case 'coupe': case 'muscle': case 'super': {
-      const low = st === 'super' ? 0.4 : 0.48; body(L, H * low);
-      cabin(L * (st === 'super' ? 0.36 : 0.4), H * (st === 'super' ? 0.36 : 0.38), -L * (st === 'muscle' ? 0.1 : 0.04), W * 0.8);
-      if (st === 'muscle') { add(m(0xffffff, {}, 'stripe'), L * 1.001, 0.02, W * 0.18, 0, clear + H * low + 0.01); add(m(0x2f2f33, {}, 'scoop'), L * 0.18, 0.12, W * 0.3, L * 0.25, clear + H * low + 0.06); }
-      if (st === 'super' || c.id === 'neonfang') { add(m(0x111418, {}, 'wing'), 0.25, 0.05, W * 1.02, -L * 0.47, clear + H * low + 0.28); add(m(0x111418, {}, 'wing'), 0.06, 0.25, 0.06, -L * 0.45, clear + H * low + 0.12, W * 0.35); add(m(0x111418, {}, 'wing'), 0.06, 0.25, 0.06, -L * 0.45, clear + H * low + 0.12, -W * 0.35); }
-      if (c.id === 'neonfang' || c.id === 'chudmobile') add(m(color, { emissive: color, emissiveIntensity: 0.9 }, 'glow'), L * 0.85, 0.03, W * 0.9, 0, 0.05);
-      if (c.id === 'aurelia') add(m(0xd4af37, { metalness: 1, roughness: 0.2 }, 'gold'), L * 1.002, 0.04, W * 1.002, 0, clear + H * 0.2);
+      if (c.id === 'zipline') {
+        // Miata/BRZ-like light coupe: short overhangs, low cabin, compact roundish stance.
+        body(L * 0.94, H * 0.42, L * 0.02);
+        cabin(L * 0.42, H * 0.34, -L * 0.02, W * 0.76);
+        add(paint, L * 0.16, 0.04, W * 0.86, -L * 0.34, clear + H * 0.42); // short deck
+        add(m(0x0c0d10, { roughness: 0.45 }, 'grille'), 0.035, H * 0.08, W * 0.32, L / 2 + 0.04, clear + H * 0.18);
+        // thin roll-hoop behind cabin (Miata cue)
+        for (const z of [W * 0.22, -W * 0.22]) add(m(0x2a2d33, { metalness: 0.7 }, 'hoop'), 0.05, H * 0.28, 0.05, -L * 0.22, clear + H * 0.55, z);
+        add(m(0x2a2d33, { metalness: 0.7 }, 'hoop'), 0.05, 0.05, W * 0.48, -L * 0.22, clear + H * 0.7);
+      } else if (c.id === 'neonfang') {
+        // Supra/GT-R aggressive: long hood, pinched cabin, big wing, underglow.
+        const low = 0.44; body(L, H * low);
+        cabin(L * 0.34, H * 0.34, -L * 0.08, W * 0.74);
+        add(paint, L * 0.3, 0.05, W * 0.9, L * 0.18, clear + H * low); // long hood plane
+        add(m(0x111418, {}, 'wing'), 0.28, 0.06, W * 1.08, -L * 0.48, clear + H * low + 0.32);
+        for (const z of [W * 0.38, -W * 0.38]) add(m(0x111418, {}, 'wing'), 0.07, 0.3, 0.07, -L * 0.46, clear + H * low + 0.14, z);
+        add(m(color, { emissive: color, emissiveIntensity: 0.9 }, 'glow'), L * 0.85, 0.03, W * 0.95, 0, 0.05);
+        add(m(0x0c0d10, { roughness: 0.4 }, 'grille'), 0.04, H * 0.1, W * 0.5, L / 2 + 0.04, clear + H * 0.2);
+      } else if (c.id === 'aurelia') {
+        // Long-hood luxury GT: cabin well aft, chrome/gold belt, formal proportions.
+        body(L, H * 0.46);
+        cabin(L * 0.36, H * 0.4, -L * 0.16, W * 0.78);
+        add(paint, L * 0.36, 0.05, W * 0.92, L * 0.2, clear + H * 0.46); // long hood
+        add(paint, L * 0.22, 0.05, W * 0.9, -L * 0.32, clear + H * 0.46);
+        add(m(0xd4af37, { metalness: 1, roughness: 0.2 }, 'gold'), L * 1.002, 0.04, W * 1.002, 0, clear + H * 0.22);
+        add(m(0xd4af37, { metalness: 1, roughness: 0.2 }, 'gold'), L * 0.34, 0.03, 0.04, -L * 0.16, clear + H * 0.68, W * 0.4);
+        add(m(0xd4af37, { metalness: 1, roughness: 0.2 }, 'gold'), L * 0.34, 0.03, 0.04, -L * 0.16, clear + H * 0.68, -W * 0.4);
+        add(m(CHROME, { metalness: 1, roughness: 0.2 }, 'grl'), 0.04, H * 0.05, W * 0.44, L / 2 + 0.045, clear + H * 0.26);
+        for (const z of [W * 0.22, -W * 0.22]) add(m(CHROME, { metalness: 1, roughness: 0.25 }, 'exh'), 0.12, 0.05, 0.05, -L / 2 - 0.05, clear + 0.08, z);
+      } else {
+        const low = st === 'super' ? 0.4 : 0.48; body(L, H * low);
+        cabin(L * (st === 'super' ? 0.36 : 0.4), H * (st === 'super' ? 0.36 : 0.38), -L * (st === 'muscle' ? 0.1 : 0.04), W * 0.8);
+        if (st === 'muscle') { add(m(0xffffff, {}, 'stripe'), L * 1.001, 0.02, W * 0.18, 0, clear + H * low + 0.01); add(m(0x2f2f33, {}, 'scoop'), L * 0.18, 0.12, W * 0.3, L * 0.25, clear + H * low + 0.06); }
+        if (st === 'super') { add(m(0x111418, {}, 'wing'), 0.25, 0.05, W * 1.02, -L * 0.47, clear + H * low + 0.28); add(m(0x111418, {}, 'wing'), 0.06, 0.25, 0.06, -L * 0.45, clear + H * low + 0.12, W * 0.35); add(m(0x111418, {}, 'wing'), 0.06, 0.25, 0.06, -L * 0.45, clear + H * low + 0.12, -W * 0.35); }
+        if (c.id === 'chudmobile') add(m(color, { emissive: color, emissiveIntensity: 0.9 }, 'glow'), L * 0.85, 0.03, W * 0.9, 0, 0.05);
+      }
       break; }
     case 'suv': body(L, H * 0.55); cabin(L * 0.72, H * 0.38, -L * 0.08); add(m(0x2f2f33, {}, 'rack'), L * 0.5, 0.05, W * 0.8, -L * 0.1, clear + H * 0.98); break;
     case 'pickup': body(L, H * 0.5); cabin(L * 0.32, H * 0.42, L * 0.08); add(m(0x2f2f33, {}, 'bed'), L * 0.4, 0.04, W * 0.84, -L * 0.28, clear + H * 0.5 + 0.03); break;
