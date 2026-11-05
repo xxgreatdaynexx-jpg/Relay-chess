@@ -17,6 +17,10 @@ export interface OnlineUser {
   where: string;
   /** Live status (mining, farming, stocks…) from their most recently active tab. Status only, never a chat post. */
   doing?: Doing | null;
+  /** False only for rich offline directory rows; live socket rows are online. */
+  online?: boolean;
+  /** Existing durable last-active heartbeat or latest login, for offline rows. */
+  lastSeen?: number | null;
 }
 export interface OnlineSnapshot { users: OnlineUser[]; guests: number }
 
@@ -52,4 +56,16 @@ export function whereLabel(table: OnlineUser['table'], activities: readonly Acti
   if (table) parts.push(`${table.watching ? 'Watching' : table.gameType === 'checkers' ? 'Checkers' : 'Chess'} · ${table.code}`);
   for (const a of activities) parts.push(LABEL[a]);
   return parts.length ? parts.join(' · ') : 'Lobby';
+}
+
+/** Compact relative time for an offline player row. */
+export function lastOnlineLabel(lastSeen: number | null | undefined, now = Date.now()): string {
+  if (lastSeen == null || !Number.isFinite(lastSeen) || lastSeen <= 0) return 'Last online unknown';
+  const mins = Math.max(0, Math.floor((now - lastSeen) / 60_000));
+  if (mins < 1) return 'Last online just now';
+  if (mins < 60) return `Last online ${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `Last online ${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `Last online ${days}d ago`;
 }

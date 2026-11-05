@@ -4,6 +4,9 @@ import { newDb } from 'pg-mem';
 import { io as ioClient, type Socket } from 'socket.io-client';
 import { CHAT_MAX_LEN, cleanActivities, sanitizeChat, validateChat, whereLabel } from '../shared/chat';
 import { buildSnapshot, ChatLog, ChatRateLimiter, PgChatStore, resetChatLog, getChatLog } from '../server/chat';
+import { loadOfflinePlayers, PLAYER_LIST_MIN_NET_WORTH } from '../server/offline-players';
+import { resetBank } from '../server/casino-store';
+import { lastOnlineLabel } from '../shared/chat';
 import { resetAccounts } from '../server/accounts.js';
 import { closeApp, createApp, type AppContext } from '../server/app.js';
 
@@ -82,6 +85,34 @@ describe('presence', () => {
     expect(snap.users.find((u) => u.name === 'Nora')!.where).toBe('Lobby');
     const qa = buildSnapshot([{ name: 'QA-Tess', activities: ['blackjack'] }], true, tt);
     expect(qa.users[0]).toMatchObject({ name: 'QA-Tess', qa: true, where: 'Blackjack' });
+  });
+  it('includes rich offline players with last-online, hides poor offline, and keeps online rows', () => {
+    const lastSeen = Date.now() - 2 * 60 * 60 * 1000;
+    const snap = buildSnapshot([{ name: 'Online', activities: [] }], false, tt, [
+      { name: 'Rich', lastSeen }, { name: 'Online', lastSeen: lastSeen - 1000 },
+    ]);
+    expect(snap.users.map((u) => u.name)).toEqual(['Online', 'Rich']);
+    expect(snap.users[0]).toMatchObject({ online: true, where: 'Lobby' });
+    expect(snap.users[1]).toMatchObject({ online: false, where: 'Offline', lastSeen });
+    expect(lastOnlineLabel(lastSeen, lastSeen + 2 * 60 * 60 * 1000)).toBe('Last online 2h ago');
+  });
+  it('loads only offline-rich accounts and never writes player data', async () => {
+    const { Pool } = newDb({ noAstCoverageCheck: true }).adapters.createPg();
+    const db = new Pool();
+    await db.query(`CREATE TABLE players (player_key TEXT PRIMARY KEY, name TEXT, disabled_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT now());
+      CREATE TABLE player_playtime (player_key TEXT PRIMARY KEY, play_ms BIGINT DEFAULT 0, updated_at BIGINT DEFAULT 0);
+      CREATE TABLE player_sessions (token_hash TEXT PRIMARY KEY, player_key TEXT, expires_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT now());
+      INSERT INTO players (player_key,name) VALUES ('rich','Rich'), ('poor','Poor'), ('online','Online'), ('qa-rich','QA-Rich');
+      INSERT INTO player_playtime VALUES ('rich',1000,12000), ('poor',1000,13000), ('online',1000,14000), ('qa-rich',1000,15000);`);
+    const bank = resetBank();
+    bank.account('Rich').chips = PLAYER_LIST_MIN_NET_WORTH;
+    bank.account('Poor').chips = PLAYER_LIST_MIN_NET_WORTH - 1;
+    bank.account('Online').chips = PLAYER_LIST_MIN_NET_WORTH;
+    bank.account('QA-Rich').chips = PLAYER_LIST_MIN_NET_WORTH;
+    bank.refresh = async (name: string) => bank.account(name).chips;
+    const rows = await loadOfflinePlayers(db, 20_000);
+    expect(rows).toEqual([{ name: 'Online', lastSeen: 14_000 }, { name: 'Rich', lastSeen: 12_000 }]);
+    expect((await db.query('SELECT COUNT(*)::int AS n FROM players')).rows[0].n).toBe(4);
   });
   it('validates reported activities', () => {
     expect(cleanActivities(['arena', 'arena', 'hack', 5, 'slots'])).toEqual(['arena', 'slots']);

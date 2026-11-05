@@ -9,7 +9,7 @@ import { loadAuth, useAccount } from '@/lib/auth';
 import { openAccount } from '@/lib/settings';
 import { TopTab } from '@/components/TopTabs';
 import type { Activity, ChatMessage, OnlineSnapshot, OnlineUser } from '../../../shared/chat';
-import { CHAT_MAX_LEN } from '../../../shared/chat';
+import { CHAT_MAX_LEN, lastOnlineLabel } from '../../../shared/chat';
 import { doingLabel } from '../../../shared/doing';
 import { currentDoing } from '@/lib/doing';
 
@@ -26,7 +26,8 @@ const writeSeen = (id: number) => { try { localStorage.setItem(SEEN_KEY, String(
 interface Profile { skills?: SkillProfile | null; chess?: { wins: number; losses: number; draws: number }; arena?: { kills: number; deaths: number; kd: number } }
 
 /** Table seats/watching beat the generic status; otherwise show the live activity, falling back to the old label. */
-const statusOf = (u: OnlineUser): string => (u.table ? u.where : u.doing ? doingLabel(u.doing) : u.where);
+const statusOf = (u: OnlineUser): string => (u.online === false ? lastOnlineLabel(u.lastSeen) : u.table ? u.where : u.doing ? doingLabel(u.doing) : u.where);
+const onlineCount = (s: OnlineSnapshot): number => s.users.filter((u) => u.online !== false).length;
 
 export function ChatDrawer() {
   const me = useAccount();
@@ -141,27 +142,27 @@ export function ChatDrawer() {
       <TopTab id="chat">
         <button type="button" className="chat-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="chat-tab" aria-label={`Chat and online players${unread ? `, ${unread} unread` : ''}`}>
           <span aria-hidden="true">💬</span><span className="chat-tab-label">Chat</span>
-          <span className="chat-tab-count" data-testid="chat-online-count">{online.users.length + online.guests}</span>
+          <span className="chat-tab-count" data-testid="chat-online-count">{onlineCount(online) + online.guests}</span>
           {unread > 0 && !open && <span className="chat-badge" data-testid="chat-unread">{unread}</span>}
         </button>
       </TopTab>
       {open && (
         <aside className="chat-drawer" data-testid="chat-drawer" aria-label="Online players and chat">
           <div className="chat-head">
-            <b>Online <span className="chat-dim">({online.users.length}{online.guests ? ` + ${online.guests} guest${online.guests === 1 ? '' : 's'}` : ''})</span></b>
+            <b>Players <span className="chat-dim">({onlineCount(online)} online{online.guests ? ` + ${online.guests} guest${online.guests === 1 ? '' : 's'}` : ''})</span></b>
             <RequestsButton />
             <ChangelogButton />
             <button type="button" className="acct-close" aria-label="Close chat" onClick={() => setOpen(false)}>✕</button>
           </div>
           <BuildTag />
           <ul className="chat-online" data-testid="chat-online">
-            {online.users.length === 0 && <li className="chat-dim">No one signed in right now.</li>}
+            {online.users.length === 0 && <li className="chat-dim">No players to show right now.</li>}
             {online.users.map((u) => (
               <li key={u.name}>
                 <button type="button" className="chat-user" onClick={() => { void pick(u); openPlayer(u.name); }} data-testid="chat-user">
-                  <span className="chat-dot" aria-hidden="true" />
+                  <span className={`chat-dot${u.online === false ? ' offline' : ''}`} aria-hidden="true" />
                   <span className="chat-uname">{u.name}{u.name === me && <span className="chat-dim"> (you)</span>}{u.qa && <span className="chat-qa">QA</span>}</span>
-                  <span className="chat-where" data-testid="chat-doing">{statusOf(u)}</span>
+                  <span className="chat-where" data-testid="chat-doing" title={u.online === false && u.lastSeen ? new Date(u.lastSeen).toLocaleString() : undefined}>{statusOf(u)}</span>
                 </button>
               </li>
             ))}

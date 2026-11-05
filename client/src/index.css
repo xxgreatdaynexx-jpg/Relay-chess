@@ -1101,6 +1101,7 @@ html, body { overflow-x: clip; }
 .chat-online { list-style: none; margin: 0; padding: 0 6px 6px; max-height: 32%; overflow-y: auto; flex: none; }
 .chat-user { width: 100%; display: grid; grid-template-columns: 10px 1fr; column-gap: 8px; align-items: center; text-align: left; padding: 5px 6px; border-radius: 8px; }
 .chat-user:hover { background: rgba(255,255,255,.07); }
+.chat-dot.offline { background: #8b8b86; }
 .chat-dot { width: 8px; height: 8px; border-radius: 50%; background: #4fd07a; grid-row: span 2; }
 .chat-uname { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-where { font-size: 11px; color: rgba(244,239,228,.6); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
