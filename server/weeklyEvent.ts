@@ -19,6 +19,7 @@ import { EVENT_CLAIM_MS, EVENTS, TRADE_COUNT_CAP, eventFor, eventReward, eventTi
 const MIGRATION = `
 CREATE TABLE IF NOT EXISTS wev_contrib (week INTEGER NOT NULL, player_key TEXT NOT NULL, name TEXT NOT NULL, amount BIGINT NOT NULL, PRIMARY KEY (week, player_key));
 CREATE TABLE IF NOT EXISTS wev_claims (id TEXT PRIMARY KEY, week INTEGER NOT NULL, player_key TEXT NOT NULL, amount BIGINT NOT NULL, at BIGINT NOT NULL);
+CREATE TABLE IF NOT EXISTS wev_refs (ref TEXT PRIMARY KEY, week INTEGER NOT NULL);
 `;
 interface Week { contrib: Map<string, { name: string; amount: number }>; total: number; claimed: Set<string> }
 
@@ -36,6 +37,8 @@ export class WeeklyEvents {
     for (const r of c.rows as Array<Record<string, unknown>>) { const wk = this.wk(Number(r.week)); const a = Number(r.amount); wk.contrib.set(String(r.player_key), { name: String(r.name), amount: a }); wk.total += a; }
     const k = await this.pool.query('SELECT week, player_key FROM wev_claims WHERE week >= $1', [w - 2]);
     for (const r of k.rows as Array<Record<string, unknown>>) this.wk(Number(r.week)).claimed.add(String(r.player_key));
+    const f = await this.pool.query('SELECT ref FROM wev_refs WHERE week >= $1', [w]); // ref dedup survives a restart
+    for (const r of f.rows as Array<Record<string, unknown>>) this.refs.add(String(r.ref));
   }
   private wk(w: number): Week { let x = this.weeks.get(w); if (!x) { x = { contrib: new Map(), total: 0, claimed: new Set() }; this.weeks.set(w, x); } return x; }
   current() { const w = weekIndex(this.clock()); return { week: w, e: eventFor(w) }; }
@@ -45,11 +48,21 @@ export class WeeklyEvents {
     if (!name || !(amount > 0)) return 0;
     const { week, e } = this.current(); if (e.id !== kind) return 0;
     if (this.guard.excluded(name)) return 0;
-    if (ref) { const r = `${week}:${ref}:${playerKey(name)}`; if (this.refs.has(r)) return 0; this.refs.add(r); if (this.refs.size > 50_000) this.refs.delete(this.refs.values().next().value as string); }
+    const rk = ref ? `${week}:${ref}:${playerKey(name)}` : null;
+    if (rk) { if (this.refs.has(rk)) return 0; this.refs.add(rk); if (this.refs.size > 200_000) this.refs.delete(this.refs.values().next().value as string); }
     const key = playerKey(name); const wk = this.wk(week); const cap = playerEventCap(e);
     const cur = wk.contrib.get(key)?.amount ?? 0; const add = Math.min(Math.floor(amount), cap - cur); if (add <= 0) return 0;
     wk.contrib.set(key, { name: name.trim(), amount: cur + add }); wk.total += add;
-    if (this.pool) { const p = this.pool; this.q = this.q.then(() => p.query('INSERT INTO wev_contrib (week, player_key, name, amount) VALUES ($1,$2,$3,$4) ON CONFLICT (week, player_key) DO UPDATE SET amount = LEAST($5, wev_contrib.amount + $4), name = $3', [week, key, name.trim(), add, cap])).catch((err) => console.error('[weekly] credit write failed:', (err as Error).message)); }
+    if (this.pool) {
+      const p = this.pool;
+      this.q = this.q.then(async () => {
+        // Persisted dedup: the ref row (PK) is claimed first; if another instance / an earlier run already counted it, undo.
+        if (rk && !(await p.query('INSERT INTO wev_refs (ref, week) VALUES ($1,$2) ON CONFLICT DO NOTHING', [rk, week])).rowCount) {
+          const c = wk.contrib.get(key); if (c) c.amount = Math.max(0, c.amount - add); wk.total = Math.max(0, wk.total - add); return;
+        }
+        await p.query('INSERT INTO wev_contrib (week, player_key, name, amount) VALUES ($1,$2,$3,$4) ON CONFLICT (week, player_key) DO UPDATE SET amount = LEAST($5, wev_contrib.amount + $4), name = $3', [week, key, name.trim(), add, cap]);
+      }).catch((err) => console.error('[weekly] credit write failed:', (err as Error).message));
+    }
     this.onChange?.(week); return add;
   }
   /** Trade Week: both sides of a Market trade between two different, unlinked accounts, each capped per trade. */

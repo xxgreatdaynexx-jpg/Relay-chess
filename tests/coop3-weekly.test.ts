@@ -63,6 +63,21 @@ describe('weekly server events', () => {
     const re = new WeeklyEvents(pool as never, () => now); await re.init(); expect(re.view('Ann').me?.amount).toBe(cap);
   });
 
+  it('ref dedup is persisted: a restart or a second instance cannot count the same ref again (pg)', async () => {
+    const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
+    const w = weekOf('fishing'); at(w);
+    const a = new WeeklyEvents(pool as never, () => now); a.guard.excluded = () => null; await a.init();
+    const b = new WeeklyEvents(pool as never, () => now); b.guard.excluded = () => null; await b.init(); // second instance, booted before the credit
+    expect(a.credit('fishing', 'Ann', 1, 'fish-1')).toBe(1); await a.flush();
+    const re = new WeeklyEvents(pool as never, () => now); re.guard.excluded = () => null; await re.init(); // restart
+    expect(re.credit('fishing', 'Ann', 1, 'fish-1')).toBe(0); await re.flush();
+    b.credit('fishing', 'Ann', 1, 'fish-1'); await b.flush(); // stale memory: DB guard undoes it
+    expect(b.view('Ann').me?.amount).toBe(0);
+    expect(Number(db.public.one(`SELECT amount FROM wev_contrib WHERE player_key = 'ann'`).amount)).toBe(1);
+    expect(re.credit('fishing', 'Ann', 1, 'fish-2')).toBe(1); await re.flush();
+    expect(Number(db.public.one(`SELECT amount FROM wev_contrib WHERE player_key = 'ann'`).amount)).toBe(2);
+  });
+
   it('is announced in the changelog and the Co-op popup', () => {
     expectChangelogEntry(/weekly server events/i);
     expectChangelogOrder(/Factory goods sell/, /weekly server events/i, /Co-op mine raids/, /The Millionaire Update/);
