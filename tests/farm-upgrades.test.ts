@@ -61,7 +61,7 @@ describe('farm upgrades (request #6)', () => {
     expect(t.witherAt - t.readyAt).toBe(36 * 60 * 60_000); // ripe window is at least 36 h (greenhouse 4x grow is shorter for wheat)
     s.setNow(t.readyAt);
     const h = await s.farm.harvest('Gus', s.id);
-    expect(h.paid).toBe(Math.floor(w.sell * 0.95)); // farming -5% // #27: no profit multiplier any more
+    expect(h.paid).toBe(Math.floor(w.sell * 0.9025)); // farming -5% // #27: no profit multiplier any more
   });
   it('maxes out at level 3 and a new owner starts from zero', async () => {
     const s = await setup(); await s.fund('Gus', 100_000); await s.re.buy('Gus', s.id);

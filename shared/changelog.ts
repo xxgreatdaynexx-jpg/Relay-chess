@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-04T19:10:00-06:00', title: 'Farming profit -5% again', bullets: [
+    'Farming nerfed another 5%: harvested crops now sell for 90.25% of their listed value (was 95%). Seed prices are unchanged.',
+  ] },
   { commit: '', at: '2026-11-04T19:00:00-06:00', title: 'One Big Farm per account', bullets: [
     'Each account can now own at most one of the eight Big Farms east of town (20×20, 24×24 or 30×30).',
     'Trying to buy a second one is refused with a clear message and nothing is charged. Countryside fields, Resort plots and small farm plots are unchanged.',

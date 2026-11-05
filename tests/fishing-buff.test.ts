@@ -22,6 +22,6 @@ describe('fishing +15% buff', () => {
   });
   it('is in the popup and changelog', () => {
     expect(LAUNCH.items.some((i) => /Fishing pays 15% more/.test(i.title))).toBe(true);
-    expect(CHANGELOG.slice(0, 3).some((e) => /Fishing pays 15%/.test(e.title))).toBe(true);
+    expect(CHANGELOG.slice(0, 6).some((e) => /Fishing pays 15%/.test(e.title))).toBe(true);
   });
 });

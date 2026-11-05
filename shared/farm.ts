@@ -36,7 +36,8 @@ export const CROPS: Crop[] = [
   { id: 'sunflower', label: 'Sunflowers', emoji: '🌻', seed: 250, grow: 24 * H, sell: 545, color: 0xf0c830 },
 ];
 /** Farming profit -5% (Dayne, 2026-11-04): a harvest sells each crop at 95% of its listed value. Seed costs are unchanged. */
-export const FARM_SELL_MUL = 0.95;
+/** Farming -5% again (Dayne, 2026-11-04 evening): 0.95 x 0.95 = 0.9025 of listed value. */
+export const FARM_SELL_MUL = 0.9025;
 export const cropSellValue = (c: Pick<Crop, 'sell'>) => c.sell * FARM_SELL_MUL;
 /** Base profit for one harvested crop (sale value minus seed), never negative. */
 export const cropProfit = (c: Pick<Crop, 'sell' | 'seed'>) => Math.max(0, cropSellValue(c) - c.seed);

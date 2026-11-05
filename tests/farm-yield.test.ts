@@ -11,7 +11,7 @@ describe('farming level bonus yield', () => {
     expect(bonusCrops(5, 0, () => 0)).toBe(0);
   });
   it('profit preview includes the bonus crops', () => {
-    const c = cropById('wheat')!; expect(cropOutlook(c, 1, 1, 0).profit).toBe(Math.floor(c.sell * 0.95 - c.seed));
-    expect(cropOutlook(c, 1, 1, 0.25).profit).toBe(Math.floor(c.sell * 0.95 * 1.25 - c.seed)); // -5% net, bonus yield intact
+    const c = cropById('wheat')!; expect(cropOutlook(c, 1, 1, 0).profit).toBe(Math.floor(c.sell * 0.9025 - c.seed));
+    expect(cropOutlook(c, 1, 1, 0.25).profit).toBe(Math.floor(c.sell * 0.9025 * 1.25 - c.seed)); // -5% net, bonus yield intact
   });
 });
