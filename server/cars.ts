@@ -20,7 +20,7 @@ import { databaseUrl } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
 import { px } from './price-index.js';
 import { FLY_DEST, nearAirport, type FlyDest } from '../shared/venues.js';
-import { normMods, maxKmh, lookCode, perfPriceBase, cosmeticPriceBase, cosmeticOptions, PERF_PARTS, COSMETIC_SLOTS, MAX_TIER, STOCK_MODS, type CarMods, type PerfPart, type CosmeticSlot } from '../shared/mechanic.js';
+import { normMods, legacyModsJson, swapAllowed, swapPriceBase, SWAP_BY_ID, allowedSwaps, maxKmh, lookCode, perfPriceBase, cosmeticPriceBase, cosmeticOptions, PERF_PARTS, COSMETIC_SLOTS, MAX_TIER, STOCK_MODS, type CarMods, type PerfPart, type CosmeticSlot } from '../shared/mechanic.js';
 import { CAR_BY_ID, CARS, DRIVE_BROADCAST_MS, DRIVE_IDLE_MS, DRIVE_MAX_VISIBLE, carValue, validDrive, type DriveState } from '../shared/cars.js';
 
 export class CarError extends Error {}
@@ -35,7 +35,7 @@ ALTER TABLE car_owned ADD COLUMN IF NOT EXISTS mods JSONB;`;
 export interface OwnedCar { id: string; carId: string; color: number; paid: number; boughtAt: number; active: boolean; mods: CarMods }
 type Q = { query: (sql: string, args?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }> };
 type PoolLike = Q & { connect: () => Promise<Q & { release: () => void }> };
-const row = (r: Record<string, unknown>): OwnedCar => ({ id: String(r.id), carId: String(r.car_id), color: Number(r.color), paid: Number(r.paid), boughtAt: Number(r.bought_at), active: !!r.active, mods: normMods(typeof r.mods === 'string' ? safeJson(r.mods) : r.mods) });
+const row = (r: Record<string, unknown>): OwnedCar => ({ id: String(r.id), carId: String(r.car_id), color: Number(r.color), paid: Number(r.paid), boughtAt: Number(r.bought_at), active: !!r.active, mods: normMods(typeof r.mods === 'string' ? safeJson(r.mods) : r.mods, CAR_BY_ID.get(String(r.car_id))) });
 const safeJson = (t: string) => { try { return JSON.parse(t) as unknown; } catch { return null; } };
 
 export class Garage {
@@ -127,7 +127,8 @@ export class Garage {
   quote(c: OwnedCar) {
     const car = CAR_BY_ID.get(c.carId); if (!car) return null;
     const perf = Object.fromEntries(PERF_PARTS.map((p) => { const b = perfPriceBase(car, c.mods[p.id] + 1); return [p.id, b == null ? null : px(b)]; }));
-    return { perf, cosmetic: px(cosmeticPriceBase(car)) };
+    const swaps = Object.fromEntries(allowedSwaps(car).map((s) => [s.id, c.mods.swap === s.id ? null : px(s.price)]));
+    return { perf, swaps, cosmetic: px(cosmeticPriceBase(car)) };
   }
   async shop(name: string | null) {
     const g = await this.garage(name);
@@ -148,6 +149,12 @@ export class Garage {
       const t = c.mods[part.id as PerfPart] + 1; if (t > MAX_TIER) throw new CarError(`${part.label} is already maxed.`);
       if (b.tier !== undefined && b.tier !== t) throw new CarError('That upgrade is already fitted. Refresh the shop.');
       next[part.id as PerfPart] = t; base = perfPriceBase(car, t)!; what = `${part.label}: ${part.tiers[t - 1]}`;
+    } else if (b.kind === 'swap') {
+      // { kind: 'swap', swap: id | null } — null/'stock' puts the stock engine back (free). Fixed price per engine, no refunds.
+      const v = b.swap === null || b.swap === 'stock' ? null : b.swap;
+      if (v !== null && !swapAllowed(car, v)) throw new CarError('That engine does not fit this car.');
+      if (c.mods.swap === v) throw new CarError('Your car already has that engine.');
+      next.swap = v as CarMods['swap']; base = v ? swapPriceBase(v as string)! : 0; what = `engine swap → ${v ? SWAP_BY_ID.get(v as never)!.label : 'stock'}`;
     } else if (b.kind === 'look') {
       const slot = COSMETIC_SLOTS.find((x) => x.id === b.slot)?.id as CosmeticSlot | undefined; if (!slot) throw new CarError('Unknown option.');
       const stock = slot === 'paint' ? null : STOCK_MODS[slot]; const v = b.value === null || b.value === 'stock' && slot === 'paint' ? null : b.value;
@@ -157,9 +164,9 @@ export class Garage {
     } else throw new CarError('Unknown upgrade.');
     const price = base ? px(base) : 0; const bank = getBank();
     if (price && !bank.canAfford(name, price)) throw new CarError('Not enough chips.');
-    const prevJson = JSON.stringify(c.mods);
+    const prevJson = JSON.stringify(c.mods); const prevLegacy = legacyModsJson(c.mods);
     if (!price) { // free: back to stock looks
-      if (!this.pool) c.mods = next; else if (((await this.pool.query('UPDATE car_owned SET mods = $3::jsonb WHERE id = $1 AND player_key = $2', [c.id, k, JSON.stringify(next)])).rowCount ?? 0) === 0) throw new CarError('You do not own that car.');
+      if (!this.pool) { const m = (this.mem.get(k) ?? []).find((x) => x.id === c.id); if (m) m.mods = next; } else if (((await this.pool.query('UPDATE car_owned SET mods = $3::jsonb WHERE id = $1 AND player_key = $2', [c.id, k, JSON.stringify(next)])).rowCount ?? 0) === 0) throw new CarError('You do not own that car.');
       this.activeCache.delete(k); return { mods: next, price: 0, chips: bank.ready ? bank.account(name).chips : null };
     }
     const w = bank.transferAtomic([{ name, amount: -price, key: `car_mod:${c.id}:${randomUUID()}`, game: 'car_mod', memo: `Mechanic: ${car.name} ${what}` }]);
@@ -168,7 +175,7 @@ export class Garage {
       await w.after; const cl = await this.pool.connect();
       try {
         await cl.query('BEGIN');
-        const u = await cl.query("UPDATE car_owned SET mods = $3::jsonb WHERE id = $1 AND player_key = $2 AND (mods = $4::jsonb OR (mods IS NULL AND $4::jsonb = $5::jsonb))", [c.id, k, JSON.stringify(next), prevJson, JSON.stringify(STOCK_MODS)]);
+        const u = await cl.query("UPDATE car_owned SET mods = $3::jsonb WHERE id = $1 AND player_key = $2 AND (mods = $4::jsonb OR mods = $6::jsonb OR (mods IS NULL AND $4::jsonb = $5::jsonb))", [c.id, k, JSON.stringify(next), prevJson, JSON.stringify(STOCK_MODS), prevLegacy]);
         if ((u.rowCount ?? 0) === 0) throw new CarError('Your car changed. Refresh the shop.');
         for (const s of w.stmts) await cl.query(s.sql, s.args);
         await cl.query('COMMIT');

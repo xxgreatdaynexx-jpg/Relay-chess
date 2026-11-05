@@ -5,7 +5,9 @@ import { RealEstate } from '../server/realEstate';
 import { Garage, DriveRelay } from '../server/cars';
 import { setPriceIndexForTest } from '../server/price-index';
 import { CARS, CAR_BY_ID, unitsPerSec, DRIVE_SPEED_CAP } from '../shared/cars';
-import { STOCK_MODS, normMods, perfPriceBase, cosmeticPriceBase, moddedStats, maxKmh, lookCode, parseLook, PAINTS, MAX_SPEED_FACTOR, type CarMods } from '../shared/mechanic';
+import { STOCK_MODS, normMods, perfPriceBase, cosmeticPriceBase, moddedStats, maxKmh, lookCode, parseLook, PAINTS, MAX_SPEED_FACTOR, ENGINE_SWAPS, CAR_SWAPS, allowedSwaps, swappedBase, maxSwapTopKmh, legacyModsJson, type CarMods } from '../shared/mechanic';
+import { carMinLapMs } from '../server/race';
+import { minLapMs } from '../shared/racePhysics';
 
 const fund = (n: string, amt = 50_000) => getBank().transferConfirmed(n, amt, { key: `test_fund:${n}:${Math.random()}`, game: 'admin' });
 const MAXED: CarMods = { ...STOCK_MODS, engine: 3, turbo: 3, tires: 3, handling: 3, nitro: 3 };
@@ -33,6 +35,34 @@ describe('mechanic catalog', () => {
     expect(MAX_SPEED_FACTOR).toBeLessThan(1.35);
     const s = moddedStats(CAR_BY_ID.get('commuter')!, MAXED), b = CAR_BY_ID.get('commuter')!;
     expect(s.topKmh).toBeGreaterThan(b.topKmh); expect(s.zeroTo100).toBeLessThan(b.zeroTo100); expect(s.nitro).toBe(4);
+  });
+});
+
+const FULL = (swap: CarMods['swap']): CarMods => ({ ...MAXED, trans: 3, weight: 3, swap });
+describe('engine swaps', () => {
+  it('pool has 8+ real engines plus joke ones; every car allows 3-5 known swaps', () => {
+    expect(ENGINE_SWAPS.length).toBeGreaterThanOrEqual(10);
+    for (const id of ['i4t', 'rotary', 'flat6', 'hemi', 'scv8', 'ttv6', 'v12', 'ev2', 'ev4', 'mower', 'jet']) expect(ENGINE_SWAPS.some((s) => s.id === id)).toBe(true);
+    for (const c of CARS) { const l = CAR_SWAPS[c.id]!; expect(l.length).toBeGreaterThanOrEqual(3); expect(l.length).toBeLessThanOrEqual(5); expect(allowedSwaps(c)).toHaveLength(l.length); }
+  });
+  it('balance: any car can become worth having, supers still lead, all under the server cap', () => {
+    const best = (id: string) => { const c = CAR_BY_ID.get(id)!; return Math.max(...allowedSwaps(c).map((s) => maxKmh(c, FULL(s.id)))); };
+    const r = best('rustbucket'); expect(r).toBeGreaterThanOrEqual(290); expect(r).toBeLessThanOrEqual(345);
+    for (const id of ['commuter', 'taxi', 'exec', 'trailblazer', 'hauler']) { expect(best(id)).toBeGreaterThanOrEqual(295); expect(best(id)).toBeLessThanOrEqual(365); }
+    const topStock = Math.max(...CARS.map((c) => c.topKmh)); expect(topStock / r).toBeLessThan(1.4);
+    for (const c of CARS) for (const s of allowedSwaps(c)) { expect(unitsPerSec(maxKmh(c, FULL(s.id)))).toBeLessThanOrEqual(DRIVE_SPEED_CAP); expect(maxKmh(c, FULL(s.id))).toBeLessThanOrEqual(maxSwapTopKmh(c) * MAX_SPEED_FACTOR + 1e-6); }
+    // a swap never lowers a real engine's top speed; the mower is the joke exception
+    const rb = CAR_BY_ID.get('rustbucket')!; expect(swappedBase(rb, 'mower').topKmh).toBeLessThan(rb.topKmh); expect(swappedBase(rb, 'hemi').handling).toBeLessThan(rb.handling);
+    expect(swappedBase(rb, 'v12')).toEqual({ topKmh: rb.topKmh, zeroTo100: rb.zeroTo100, handling: rb.handling }); // not allowed → stock
+  });
+  it('lap-time floor covers the fastest allowed swap', () => {
+    const c = CAR_BY_ID.get('rustbucket')!; expect(carMinLapMs('rustbucket')).toBe(minLapMs(maxSwapTopKmh(c) * MAX_SPEED_FACTOR));
+  });
+  it('old saves load and normalize; legacy JSON matches the pre-swap shape', () => {
+    const old = { engine: 2, turbo: 1, tires: 0, handling: 0, nitro: 0, paint: null, rims: 'stock', kit: 'none', glow: 'none' };
+    const m = normMods(old); expect(m).toEqual({ ...STOCK_MODS, engine: 2, turbo: 1 }); expect(legacyModsJson(m)).toBe(JSON.stringify(old));
+    expect(normMods({ swap: 'v12' }, CAR_BY_ID.get('rustbucket')!).swap).toBeNull(); expect(normMods({ swap: 'warp' }).swap).toBeNull();
+    expect(normMods({ swap: 'hemi', trans: 2, weight: 9 }, CAR_BY_ID.get('rustbucket')!)).toMatchObject({ swap: 'hemi', trans: 2, weight: 0 });
   });
 });
 
@@ -76,7 +106,35 @@ describe('mechanic garage', () => {
   });
 });
 
+describe('engine swap purchases', () => {
+  beforeEach(() => { resetBank(); setPriceIndexForTest(1); });
+  it('fixed price swap, rejects disallowed, stock back free (memory)', async () => {
+    const g = new Garage(null, () => 0); await fund('QA-Swap'); const car = await g.buy('QA-Swap', 'rustbucket', CAR_BY_ID.get('rustbucket')!.colors[0]);
+    await expect(g.modify('QA-Swap', car.id, { kind: 'swap', swap: 'v12' })).rejects.toThrow(/does not fit/);
+    const r = await g.modify('QA-Swap', car.id, { kind: 'swap', swap: 'hemi' }); expect(r.price).toBe(ENGINE_SWAPS.find((s) => s.id === 'hemi')!.price);
+    await expect(g.modify('QA-Swap', car.id, { kind: 'swap', swap: 'hemi' })).rejects.toThrow(/already has/);
+    expect((await g.active('QA-Swap'))?.mods.swap).toBe('hemi');
+    expect((await g.modify('QA-Swap', car.id, { kind: 'swap', swap: null })).price).toBe(0);
+    expect(g.quote((await g.owned('QA-Swap'))[0]!)!.swaps).toHaveProperty('hemi');
+  });
+  it('a legacy row (old mods JSON, no swap keys) can still be upgraded without "car changed" (Postgres)', async () => {
+    const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
+    getBank().retryMs = []; await getBank().attach(new PgCasinoStore(pool)); await new RealEstate(pool, () => getBank()).init();
+    const g = new Garage(pool, () => 0); await g.init(); await fund('QA-Legacy'); const c = await g.buy('QA-Legacy', 'rustbucket', CAR_BY_ID.get('rustbucket')!.colors[0]);
+    const old = { engine: 1, turbo: 0, tires: 0, handling: 0, nitro: 0, paint: null, rims: 'stock', kit: 'none', glow: 'none' };
+    await pool.query('UPDATE car_owned SET mods = $2::jsonb WHERE id = $1', [c.id, JSON.stringify(old)]);
+    await g.modify('QA-Legacy', c.id, { kind: 'swap', swap: 'rotary' });
+    await g.modify('QA-Legacy', c.id, { kind: 'perf', part: 'engine', tier: 2 });
+    const m = (await new Garage(pool).owned('QA-Legacy'))[0]!.mods; expect(m.swap).toBe('rotary'); expect(m.engine).toBe(2);
+  });
+});
+
 describe('modded driving', () => {
+  it('relay accepts a swapped car at its swapped speed but rejects that speed stock', () => {
+    const r = new DriveRelay(() => 1000); const c = CAR_BY_ID.get('rustbucket')!; const v = unitsPerSec(260);
+    expect(r.update('s', 'QA-Sw', { carId: c.id, color: 1, mods: FULL('hemi') }, { x: 0, z: 0, a: 0, v })).toBe(true);
+    expect(new DriveRelay(() => 1000).update('s', 'QA-Sw2', { carId: c.id, color: 1, mods: MAXED }, { x: 0, z: 0, a: 0, v })).toBe(false);
+  });
   it('relay allows a modded car its higher top speed and shares the look', () => {
     let now = 1000; const r = new DriveRelay(() => now); const c = CAR_BY_ID.get('commuter')!;
     const mods = { ...MAXED, glow: 'cyan' }; const fast = unitsPerSec(c.topKmh * 1.6);

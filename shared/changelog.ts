@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-05T14:10:00-06:00', title: 'Engine swaps at Chud Customs', bullets: [
+    'Requested by Dayne: every car can now take an engine swap (3-5 choices per car): I4 Turbo, Rotary, Flat-6, Hemi V8, Twin-turbo V6, Supercharged V8, Dual-motor EV, V12, Quad-motor EV, plus a Lawnmower and a Jet engine for the silly ones.',
+    'A swap replaces the stock engine, so any car can become worth having: a fully built Rustbucket 88 with a Hemi V8 reaches about 270 km/h (about 310 with nitro). Heavy engines cost some handling. Swaps have a fixed price and putting the stock engine back is free (no refunds).',
+    'Two new upgrade parts: Transmission and Weight reduction, both for faster acceleration (weight reduction also sharpens steering).',
+  ] },
   { commit: '', at: '2026-11-05T13:18:00-06:00', title: 'Offline players on the player list', bullets: [
     'Requested by Dayne: players with a net worth of 10,000 chips or more now stay on the player list while offline. Their row shows when they were last online; the online count still counts only people connected now.',
   ] },

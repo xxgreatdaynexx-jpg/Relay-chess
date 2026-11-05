@@ -5,10 +5,10 @@ import * as THREE from 'three';
 import { request } from '@/lib/net';
 import { buildCar } from '@/lib/carModels';
 import { CAR_BY_ID, type CarModel } from '../../../shared/cars';
-import { COSMETIC_SLOTS, GLOWS, KITS, MAX_TIER, PAINTS, PERF_PARTS, RIMS, moddedStats, normMods, type CarMods, type CosmeticSlot, type PerfPart } from '../../../shared/mechanic';
+import { COSMETIC_SLOTS, GLOWS, KITS, MAX_TIER, PAINTS, PERF_PARTS, RIMS, allowedSwaps, moddedStats, normMods, type CarMods, type CosmeticSlot, type PerfPart } from '../../../shared/mechanic';
 import { usePanelDrag } from '@/lib/panelDrag';
 
-type Owned = { id: string; carId: string; color: number; active: boolean; value: number; mods: CarMods; prices: { perf: Record<PerfPart, number | null>; cosmetic: number } | null };
+type Owned = { id: string; carId: string; color: number; active: boolean; value: number; mods: CarMods; prices: { perf: Record<PerfPart, number | null>; swaps?: Record<string, number | null>; cosmetic: number } | null };
 type Shop = { signedIn: boolean; cars: Owned[]; chips: number | null };
 const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
 const fmt = (n: number) => n.toLocaleString();
@@ -75,6 +75,14 @@ export function MechanicShop({ onClose, onDrive }: { onClose: () => void; onDriv
               {after.nitro > 0 && <span>Nitro <b className="up">{after.nitro}s</b></span>}
             </div>
             <div className="mech-tabs"><button type="button" className={tab === 'perf' ? 'on' : ''} onClick={() => setTab('perf')} data-testid="mech-tab-perf">⚡ Performance</button><button type="button" className={tab === 'look' ? 'on' : ''} onClick={() => setTab('look')} data-testid="mech-tab-look">🎨 Looks</button></div>
+            {tab === 'perf' && <div data-testid="mech-swaps"><h5>🔩 Engine swap <small>· {o.mods.swap ? allowedSwaps(model).find((x) => x.id === o.mods.swap)?.label ?? 'Stock' : 'Stock engine'}</small></h5>
+              {allowedSwaps(model).map((sw) => { const price = o.prices?.swaps?.[sw.id] ?? null; const on = o.mods.swap === sw.id; const st = moddedStats(model, { ...o.mods, swap: sw.id }); return (
+                <div key={sw.id} className="mech-row" data-testid={`mech-swap-${sw.id}`}>
+                  <div><h5>{sw.icon} {sw.label}</h5><small>{sw.blurb} → {st.topKmh} km/h · 0–100 {st.zeroTo100}s · handling {st.handling}</small></div>
+                  {on || price == null ? <small>Fitted</small> : <button type="button" disabled={busy || (shop!.chips ?? 0) < price} onClick={() => void buy({ kind: 'swap', swap: sw.id }, `Swapped in the ${sw.label}.`)} data-testid={`mech-buy-swap-${sw.id}`}>Swap · {fmt(price)}</button>}
+                </div>); })}
+              {o.mods.swap && <div className="mech-row"><small>Put the stock engine back: free (no refund)</small><button type="button" disabled={busy} onClick={() => void buy({ kind: 'swap', swap: null }, 'Stock engine refitted.')} data-testid="mech-swap-stock">Stock</button></div>}
+            </div>}
             {tab === 'perf' && PERF_PARTS.map((p) => { const t = o.mods[p.id]; const price = o.prices?.perf[p.id] ?? null; return (
               <div key={p.id} className="mech-row" data-testid={`mech-part-${p.id}`}>
                 <div><h5>{p.icon} {p.label} <small>· {t ? p.tiers[t - 1] : 'Stock'}</small></h5><small>{p.what}</small><div className="mech-pips">{Array.from({ length: MAX_TIER }, (_, i) => <i key={i} className={i < t ? 'on' : ''} />)}</div></div>

@@ -26,10 +26,10 @@ import { LapTimer, RACE_ENTRY_BASE, RACE_SEED_BASE, RACE_SPLIT, fmtLap, type Lap
 import { skillLevelAsync } from './skills.js';
 import { racingEntryMul } from '../shared/skillPerks.js';
 import { minLapMs } from '../shared/racePhysics.js';
-import { MAX_SPEED_FACTOR } from '../shared/mechanic.js';
+import { MAX_SPEED_FACTOR, maxSwapTopKmh } from '../shared/mechanic.js';
 
-/** Fastest believable lap (ms) for a car with every engine/nitro upgrade: the server's lap-time sanity floor. */
-export const carMinLapMs = (carId: string) => minLapMs((CAR_BY_ID.get(carId)?.topKmh ?? 35) * MAX_SPEED_FACTOR);
+/** Fastest believable lap (ms) for a car with its fastest allowed engine swap + every engine/nitro upgrade: the lap-time floor. */
+export const carMinLapMs = (carId: string) => { const c = CAR_BY_ID.get(carId); return minLapMs((c ? maxSwapTopKmh(c) : 35) * MAX_SPEED_FACTOR); };
 
 export class RaceError extends Error {}
 export const RACE_MIGRATION = `CREATE TABLE IF NOT EXISTS race_laps (day TEXT NOT NULL, player_key TEXT NOT NULL, name TEXT NOT NULL, car_id TEXT NOT NULL, ms INTEGER NOT NULL, at BIGINT NOT NULL, PRIMARY KEY (day, player_key));
