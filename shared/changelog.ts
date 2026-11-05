@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-05T15:20:00-06:00', title: "Grandma's Wagon, the cart, Hot Dog Van and Monster Truck get makeovers", bullets: [
+    "Requested by Dayne: Grandma's Wagon is a long wood-panelled station wagon with roof rails, the shopping cart gets caster wheels and a front bumper, the Hot Dog Van has a real cab, serving window and awning under a bigger hot dog, and the Monster Truck shows its shocks, roll bar, light bar and exhaust stacks up close.",
+  ] },
   { commit: '', at: '2026-11-05T14:28:00-06:00', title: 'Beaters, trucks and the limo look more themselves', bullets: [
     'Requested by Dayne: Rustbucket 88 is sagging and rusty next to the Pizza Hatch (roof sign stays). Trailblazer and Hauler get clearer fronts, the Regent limo shows stretch B-pillars, and wheel shapes differ a bit by body style.',
   ] },

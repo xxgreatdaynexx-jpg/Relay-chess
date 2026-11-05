@@ -40,11 +40,29 @@ export function buildCar(c: CarModel, color: number, lod: 'near' | 'far' = 'near
       for (const z of [-W * 0.38, W * 0.38]) { add(wire, L * 0.86, 0.035, 0.035, 0, clear + 0.03, z); add(wire, 0.035, b0 - clear, 0.035, bx + bL / 2 - 0.02, (clear + b0) / 2, z); add(wire, 0.035, b0 - clear, 0.035, bx - bL / 2 + 0.02, (clear + b0) / 2, z); }
       add(wire, L * 0.7, t, W * 0.76, 0, clear + 0.1); // lower rack
       const hx = bx - bL / 2 - 0.14, hy = yT + 0.12; for (const z of [-W / 2, W / 2]) add(wire, 0.17, 0.03, 0.03, (hx + bx - bL / 2) / 2, (hy + yT) / 2, z).rotation.z = -0.6; // handle struts
+      const cast = m(0x15161a, { roughness: 0.7 }, 'cast'); for (const x of [L * 0.4, -L * 0.4]) for (const z of [W * 0.38, -W * 0.38]) { add(cast, 0.05, clear - 0.04, 0.05, x, clear / 2 + 0.06, z); add(red, 0.08, 0.04, 0.08, x, clear - 0.02, z); } // caster forks + bumpers
+      add(red, 0.04, bH * 0.25, W * 1.02, bx + bL / 2 + 0.02, b0 + bH * 0.15); // front kick bumper
+      add(m(0xffffff, { emissive: 0xffffff, emissiveIntensity: 0.2 }, 'cartTag'), 0.02, 0.14, 0.3, bx + bL / 2 + 0.02, yT - 0.12); // store logo plate
       add(red, 0.06, 0.06, W * 1.04, hx, hy).userData.part = 'cartHandle'; add(red, 0.12, bH * 0.6, W * 0.7, bx - bL / 2 + 0.07, yT - bH * 0.3); // grip + child-seat flap
       break; }
-    case 'van': { body(L, H * 0.85); add(glass, L * 0.2, H * 0.3, W * 0.9, L * 0.38, clear + H * 0.6);
-      const bun = m(0xd9a35a, {}, 'bun'), dog = m(0xb5532a, {}, 'dog');
-      add(bun, L * 0.6, 0.18, W * 0.5, -L * 0.05, clear + H * 0.95); add(dog, L * 0.7, 0.16, W * 0.22, -L * 0.05, clear + H * 1.05); add(m(0xffe066, { emissive: 0xffd000, emissiveIntensity: 0.4 }, 'mus'), L * 0.6, 0.03, 0.05, -L * 0.05, clear + H * 1.14); break; }
+    case 'van': { // Hot-dog vendor van: low sloped cab nose + tall box, serving hatch w/ awning, bun-and-frank roof with mustard zig-zag.
+      const cabL = L * 0.26, boxL = L - cabL, bx = -cabL / 2, cx = L / 2 - cabL / 2;
+      add(paint, boxL, H * 0.82, W, bx, clear + H * 0.41); // cargo box
+      add(paint, cabL, H * 0.42, W * 0.96, cx, clear + H * 0.21); // cab lower / nose
+      add(glass, cabL * 0.7, H * 0.3, W * 0.9, cx - cabL * 0.12, clear + H * 0.57).rotation.z = 0.35; // raked windshield
+      add(paint, cabL * 0.5, 0.05, W * 0.92, cx - cabL * 0.3, clear + H * 0.73);
+      const stripe = m(0xe63946, {}, 'hdstripe'); for (const z of [W / 2 + 0.01, -W / 2 - 0.01]) add(stripe, boxL * 0.98, H * 0.08, 0.02, bx, clear + H * 0.18, z);
+      add(m(0x2a1a10, { roughness: 0.6 }, 'hatch'), boxL * 0.5, H * 0.26, 0.02, bx + boxL * 0.05, clear + H * 0.55, W / 2 + 0.012); // serving window
+      add(m(0xf4f1e6, {}, 'counter'), boxL * 0.52, 0.03, 0.12, bx + boxL * 0.05, clear + H * 0.42, W / 2 + 0.06);
+      for (let k = 0; k < 6; k++) add(m(k % 2 ? 0xffffff : 0xe63946, {}, k % 2 ? 'awnW' : 'awnR'), boxL * 0.09, 0.03, 0.22, bx - boxL * 0.2 + k * boxL * 0.09 + boxL * 0.025, clear + H * 0.74, W / 2 + 0.1).rotation.x = -0.35;
+      const bun = m(0xd9a35a, { roughness: 0.8, metalness: 0 }, 'bun'), dog = m(0xb5532a, { roughness: 0.6, metalness: 0 }, 'dog');
+      const cyl = new THREE.CylinderGeometry(1, 1, 1, 12); cyl.rotateZ(Math.PI / 2); const sph = new THREE.SphereGeometry(1, 10, 8);
+      const ry = clear + H * 0.82;
+      for (const z of [W * 0.17, -W * 0.17]) { add(bun, boxL * 0.8, 0.13, 0.13, bx, ry + 0.1, z, cyl); for (const e of [1, -1]) add(bun, 0.13, 0.13, 0.13, bx + e * boxL * 0.4, ry + 0.1, z, sph); }
+      add(dog, boxL * 1.0, 0.11, 0.11, bx, ry + 0.2, 0, cyl); for (const e of [1, -1]) add(dog, 0.11, 0.11, 0.11, bx + e * boxL * 0.5, ry + 0.2, 0, sph);
+      const mus = m(0xffe066, { emissive: 0xffd000, emissiveIntensity: 0.4 }, 'mus');
+      for (let k = 0; k < 7; k++) add(mus, boxL * 0.15, 0.025, 0.04, bx - boxL * 0.42 + k * boxL * 0.14, ry + 0.31, (k % 2 ? 1 : -1) * 0.03).rotation.y = k % 2 ? 0.5 : -0.5;
+      break; }
     case 'hatch': case 'wagon': case 'sedan': case 'taxi': {
       // Beaters keep the shared hatch/wagon builders. Sedans split by carId so Commuter / Exec / Cab read as distinct silhouettes.
       if (st === 'hatch') {
@@ -64,9 +82,24 @@ export function buildCar(c: CarModel, color: number, lod: 'near' | 'far' = 'near
           if (c.id === 'pizza') add(m(0xff3b3b, { emissive: 0xff3b3b, emissiveIntensity: 0.5 }, 'pz'), 0.5, 0.25, 0.08, -L * 0.1, clear + H * 1.05);
         }
       } else if (st === 'wagon') {
-        body(L, H * 0.5);
-        cabin(L * 0.68, H * 0.42, -L * 0.12);
-        add(m(0x7a4b2a, {}, 'wood'), L * 0.75, H * 0.12, W + 0.02, -L * 0.05, clear + H * 0.25);
+        // Grandma's Country-Squire wagon: long low body, roof runs flat all the way back, upright D-pillar tailgate,
+        // woodgrain side + tailgate panels framed in cream trim, roof rails. Reads longer/flatter than the hatches.
+        const wood = m(0x7a4b2a, { roughness: 0.85, metalness: 0 }, 'wood'), trimC = m(0xe8dcc0, { roughness: 0.6, metalness: 0.1 }, 'wtrim');
+        body(L, H * 0.46);
+        add(glass, L * 0.72, H * 0.38, W * 0.88, -L * 0.13, clear + H * 0.46 + H * 0.19);
+        add(paint, L * 0.74, 0.06, W * 0.92, -L * 0.13, clear + H * 0.86); // long flat roof
+        for (const x of [L * 0.2, -L * 0.02, -L * 0.25, -L * 0.48]) for (const z of [W * 0.45, -W * 0.45]) add(paint, 0.06, H * 0.38, 0.04, x, clear + H * 0.65, z); // A/B/C/D pillars
+        add(paint, 0.05, H * 0.38, W * 0.88, -L * 0.49, clear + H * 0.65); // upright tailgate frame
+        add(glass, 0.03, H * 0.28, W * 0.7, -L * 0.5, clear + H * 0.66);
+        for (const z of [W / 2 + 0.012, -W / 2 - 0.012]) {
+          add(wood, L * 0.86, H * 0.26, 0.02, -L * 0.04, clear + H * 0.25, z);
+          add(trimC, L * 0.88, 0.025, 0.025, -L * 0.04, clear + H * 0.39, z); add(trimC, L * 0.88, 0.025, 0.025, -L * 0.04, clear + H * 0.11, z);
+          for (const x of [L * 0.39, L * 0.08, -L * 0.2, -L * 0.47]) add(trimC, 0.025, H * 0.3, 0.025, x, clear + H * 0.25, z);
+        }
+        add(wood, 0.02, H * 0.24, W * 0.8, -L / 2 - 0.012, clear + H * 0.26); add(trimC, 0.025, 0.025, W * 0.82, -L / 2 - 0.015, clear + H * 0.39);
+        for (const z of [W * 0.36, -W * 0.36]) add(m(CHROME, { metalness: 1, roughness: 0.25 }, 'rail'), L * 0.66, 0.035, 0.035, -L * 0.13, clear + H * 0.92, z);
+        for (const x of [L * 0.05, -L * 0.33]) add(m(CHROME, { metalness: 1, roughness: 0.25 }, 'rail'), 0.035, 0.035, W * 0.74, x, clear + H * 0.92);
+        add(m(CHROME, { metalness: 1, roughness: 0.2 }, 'wgrl'), 0.04, H * 0.14, W * 0.7, L / 2 + 0.04, clear + H * 0.28); // wide chrome grille
       } else if (c.id === 'commuter') {
         // Camry-like midsize: lower stance, balanced cabin slightly mid-car, soft belt, modest deck.
         body(L * 0.98, H * 0.46, L * 0.01);
@@ -201,7 +234,23 @@ export function buildCar(c: CarModel, color: number, lod: 'near' | 'far' = 'near
       for (const z of [-0.2, -0.1, 0, 0.1, 0.2]) add(m(0x2a2d33, {}, 'grille'), 0.03, H * 0.22, 0.03, L / 2 + 0.07, clear + H * 0.28, W * z);
       add(m(CHROME, { metalness: 1, roughness: 0.25 }, 'bumper'), 0.1, H * 0.12, W * 1.05, L / 2 + 0.1, clear + H * 0.1);
       break; }
-    case 'monster': body(L * 0.9, H * 0.4); cabin(L * 0.35, H * 0.3, 0, W * 0.6); add(m(0x2f2f33, {}, 'ch'), L * 0.6, 0.15, W * 0.4, 0, clear - 0.15); break;
+    case 'monster': { // Monster truck: pickup-style body perched on a tube frame — flared fenders, long-travel shocks, roll cage, light bar, stacks.
+      const frame = m(0x2f2f33, { metalness: 0.6, roughness: 0.4 }, 'ch'), blk = m(0x111317, { roughness: 0.7 }, 'mblk'), chr = m(CHROME, { metalness: 1, roughness: 0.2 }, 'chr');
+      const spring = m(0xff5400, { metalness: 0.4, roughness: 0.4 }, 'mspr'), by = clear + H * 0.2, wx = L * 0.32;
+      body(L * 0.9, H * 0.4);
+      add(glass, L * 0.3, H * 0.28, W * 0.62, L * 0.02, clear + H * 0.54); add(paint, L * 0.32, 0.06, W * 0.64, L * 0.02, clear + H * 0.71);
+      add(m(0x2f2f33, {}, 'bed'), L * 0.3, 0.04, W * 0.86, -L * 0.28, clear + H * 0.41); // truck bed floor
+      add(frame, L * 0.75, 0.1, 0.1, 0, clear - 0.12, W * 0.28); add(frame, L * 0.75, 0.1, 0.1, 0, clear - 0.12, -W * 0.28);
+      for (const x of [wx, -wx]) { add(frame, 0.1, 0.1, W * 0.95, x, wheelR, 0); // axles
+        for (const z of [W * 0.3, -W * 0.3]) { add(spring, 0.09, clear - wheelR + 0.1, 0.09, x + (x > 0 ? -0.18 : 0.18), (wheelR + clear) / 2, z).rotation.z = x > 0 ? -0.3 : 0.3; add(chr, 0.04, clear - wheelR + 0.25, 0.04, x + (x > 0 ? -0.18 : 0.18), (wheelR + clear) / 2, z).rotation.z = x > 0 ? -0.3 : 0.3; } }
+      for (const x of [wx, -wx]) for (const z of [W / 2 + 0.05, -W / 2 - 0.05]) add(blk, wheelR * 1.7, 0.08, 0.3, x, clear + H * 0.38, z); // flares
+      for (const z of [W * 0.3, -W * 0.3]) { add(chr, 0.05, H * 0.36, 0.05, -L * 0.16, clear + H * 0.58, z); add(chr, 0.05, 0.05, 0.05, -L * 0.16, clear + H * 0.76, z); }
+      add(chr, 0.05, 0.05, W * 0.62, -L * 0.16, clear + H * 0.76); // roll bar
+      add(blk, 0.08, 0.08, W * 0.66, L * 0.12, clear + H * 0.76); for (let k = -2; k <= 2; k++) add(head, 0.04, 0.06, 0.09, L * 0.12 + 0.05, clear + H * 0.78, k * W * 0.12); // roof light bar
+      add(blk, 0.06, H * 0.22, W * 0.7, L * 0.45 + 0.03, clear + H * 0.25); for (const z of [-0.2, -0.07, 0.07, 0.2]) add(chr, 0.03, H * 0.18, 0.03, L * 0.45 + 0.07, clear + H * 0.25, W * z); // grille
+      add(chr, 0.12, 0.12, W * 1.0, L * 0.45 + 0.1, clear + H * 0.04); // push bumper
+      for (const z of [W * 0.3, -W * 0.3]) add(chr, 0.07, H * 0.5, 0.07, -L * 0.08, clear + H * 0.65, z); // exhaust stacks
+      break; }
     case 'limo': {
       body(L, H * 0.48); cabin(L * 0.78, H * 0.36, -L * 0.04);
       add(m(CHROME, { metalness: 1, roughness: 0.2 }, 'ch'), L * 1.002, 0.03, W * 1.002, 0, clear + H * 0.3);
