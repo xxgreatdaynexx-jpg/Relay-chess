@@ -120,8 +120,22 @@ export function buildJet(m: FleetModel): THREE.Group {
     add(g, skin(R * 1.008, 0.36, 0.5, L * 0.78, sd), win, 0, R + 1, 0.02 * L).userData.part = 'windowBand'; }
   // wing-root fairing: a flattened belly blister that blends the low wing into the fuselage
   const fair = add(g, new THREE.SphereGeometry(1, 20, 10), body, 0, R + 1 - R * 0.62, L * 0.0); fair.scale.set(R * 0.92, R * 0.42, L * 0.22); fair.userData.part = 'wingFairing';
-  // QA#12: the BBJ's roof box read as a cargo pod; it is now a low, flat SATCOM radome faired into the crown.
-  if (m.id === 'chudone') { const dome = add(g, new THREE.SphereGeometry(1, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2), M(0xe8eaec, { roughness: 0.5 }), 0, R * 2 + 1 - 0.04, L * 0.3); dome.scale.set(R * 0.42, R * 0.2, R * 0.95); dome.userData.part = 'satcom'; }
+  if (m.id === 'chudone') {
+    // 747-8 signature: an extended, tapered forward upper deck, not a straight fuselage crown. Most of the ellipsoid
+    // is buried in the main tube; the visible crown blends into the nose and tapers aft ahead of the wing box.
+    const hump = add(g, new THREE.SphereGeometry(1, 32, 16), body, 0, R * 1.9 + 1, L * 0.255);
+    hump.scale.set(R * 0.88, R * 0.62, L * 0.245); hump.userData.part = 'upperDeck';
+    // Upper-deck windows follow the ellipsoid sides and stop before its tapered ends.
+    for (let i = 0; i < 8; i++) for (const sx of [-1, 1]) {
+      const z = L * (0.085 + i * 0.03), dz = (z - L * 0.255) / (L * 0.245), dy = 0.18;
+      const x = R * 0.88 * Math.sqrt(1 - dz * dz - dy * dy) * 1.006;
+      const wn = add(g, new THREE.CircleGeometry(R * 0.085, 10), win, sx * x, R * 1.9 + 1 + R * dy, z);
+      wn.rotation.set(0, sx * Math.PI / 2, 0); wn.userData.part = 'upperDeckWindow';
+    }
+    // QA#12: keep the low SATCOM radome, now aft of the upper deck rather than sitting on its nose.
+    const dome = add(g, new THREE.SphereGeometry(1, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2), M(0xe8eaec, { roughness: 0.5 }), 0, R * 2 + 1 - 0.04, -L * 0.12);
+    dome.scale.set(R * 0.42, R * 0.2, R * 0.95); dome.userData.part = 'satcom';
+  }
   const wing = new THREE.Shape(); wing.moveTo(0, 0); wing.lineTo(L * 0.55, -L * 0.22); wing.lineTo(L * 0.55, -L * 0.3); wing.lineTo(0, -L * 0.25);
   for (const s of [-1, 1]) { const w = add(g, new THREE.ExtrudeGeometry(wing, { depth: 0.12 * k, bevelEnabled: false }), body, 0, R + 0.6, L * 0.1); w.rotation.set(Math.PI / 2, 0, 0); w.scale.x = s; }
   // mu-visuals tail fins: swept, tapered fin flush on the centreline at the rear; T-tail on the Citation and G700.

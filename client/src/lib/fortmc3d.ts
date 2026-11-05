@@ -26,6 +26,8 @@ const TW = 30, TD = 26; // tract pad size
 // QA#8: pumpjacks read toy-sized next to fat flowlines — jacks up 1.45x (columns re-spaced to fit the pad), flowlines ~1/3 radius.
 export const RACK_H = 7, BUND_H = 1.1;
 export const JACK_SCALE = 1.45; export const FLOW_R = [0.13, 0.2] as const;
+// Reserve the complete 3-package turbine row and access apron (x45–55, z22), including spruce crown radius.
+export const TURBINE_CLEAR = { x0: 40, x1: 67, z0: 14, z1: 36 } as const;
 
 export type FortWorld = ReturnType<typeof createFortMc>;
 export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
@@ -111,6 +113,7 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
     if (Math.abs(z + 4) < 6 || Math.abs(z - 56) < 6) return false;
     for (let n = 1; n <= TRACTS; n++) { const t = tractInfo(n); if (Math.abs(x - t.x) < TW / 2 + 3 && Math.abs(z - t.z) < TD / 2 + 3) return false; }
     for (const s of FORT_SPOTS) if (Math.abs(x - s.x) < s.w / 2 + 5 && Math.abs(z - s.z) < s.d / 2 + 5) return false;
+    if (x > TURBINE_CLEAR.x0 && x < TURBINE_CLEAR.x1 && z > TURBINE_CLEAR.z0 && z < TURBINE_CLEAR.z1) return false;
     if (Math.abs(z - 90) < 14 && x > -90 && x < 64) return false; if (z > 59 && z < 82 && x > -82 && x < 62) return false; // process-unit row
     if (x > 70 && z > 94) return false; if (Math.abs(x - 128) < 7 || Math.abs(x + 128) < 7) return false; return true; // river/bay, haul roads
   };
