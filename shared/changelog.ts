@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-04T20:10:00-06:00', title: 'House price cap moves more gently', bullets: [
+    'The daily house cap now follows a quarter of the change in total player wealth, down from half (for example, if wealth rises 10% in a day, the cap rises 2.5%). It never drops below 1.',
+  ] },
   { commit: '', at: '2026-11-04T20:05:00-06:00', title: 'Arena winner prize: fair-play rules', bullets: [
     'The 300-chip Arena winner prize now pays at most 5 wins per account per day (resets at 6 PM).',
     'It needs 2 or more signed-in players who each played at least 1 minute of the match, and the winner must have too.',
