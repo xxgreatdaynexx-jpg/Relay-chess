@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-05T10:40:00-06:00', title: 'Factory storage prices match the payout', bullets: [
+    'Requested by carter2: Factory storage now includes the current price index in each item\'s house sell price, matching the quantity preview, Sell all confirmation and actual payout. For example, Pumpkin Pie showed 175.5 before selling but paid about 196; it now shows about 196 too.',
+  ] },
   { commit: '', at: '2026-11-04T20:12:00-06:00', title: 'Inactive accounts disabled and tax-sharing floor', bullets: [
     'Chessguy, carter and Jay’s 27 alternate accounts have been disabled reversibly. Their ledger history is retained; chessguy2, carter2 and Jay’s main account are unaffected.',
     'Purchase-tax and daily wealth-tax payouts now go only to eligible active players with a net worth of at least 5,000.',

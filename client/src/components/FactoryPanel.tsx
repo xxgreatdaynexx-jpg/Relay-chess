@@ -56,6 +56,7 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
   }
   const q = st.quote;
   const pxIdx = usePriceIndex();
+  const sellIdx = q?.index ?? pxIdx;
   const capBase = q?.capBase ?? HOUSE_DAILY_BASE; const capIdx = q?.capIndex ?? pxIdx;
   const tier = q && (q.effAlready ?? q.already) >= capBase ? SELL_TIERS[SELL_TIERS.length - 1] : SELL_TIERS[0];
   const canSell = !st.guest && !st.inMine;
@@ -76,9 +77,9 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
           <h3>📦 Storage <button type="button" className="mkt-link" onClick={() => openMarket({ tab: 'resources' })} data-testid="factory-goto-market">Sell on Market →</button></h3>
           <ul className="factory-list">
             {st.storage.map((s) => (
-              <li key={stackKey(s)}><ItemIcon type={s.type} id={s.id} />{nameOf(s)}<b>×{s.qty}</b><small data-testid="sell-unit">🪙{+houseSellPrice(s).toFixed(2)}</small>
+              <li key={stackKey(s)}><ItemIcon type={s.type} id={s.id} />{nameOf(s)}<b>×{s.qty}</b><small data-testid="sell-unit">🪙{+(houseSellPrice(s) * sellIdx).toFixed(2)}</small>
                 {canSell && sellable(s) && <button type="button" aria-expanded={pick === stackKey(s)} onClick={() => setPick((c) => (c === stackKey(s) ? null : stackKey(s)))} data-testid="factory-sell-pick">Sell…</button>}{!sellable(s) && (s.type === 'food' ? <small title="Pantry food: never sold to the house. Cook it, sell it on the Market, or feed it to a factory Input Chest (crops)">pantry</small> : <small title="Imported input: craft it in the factory to sell">craft</small>)}
-                {canSell && sellable(s) && pick === stackKey(s) && <SellQtyPicker owned={s.qty} unit={nameOf(s)} testid="factory-qty" preview={(n) => Math.floor(payoutFor(n * houseSellPrice(s), q?.effAlready ?? q?.already ?? 0, capBase) * (q?.index ?? 1))} onSell={(n) => sell(stackKey(s), n)} />}</li>
+                {canSell && sellable(s) && pick === stackKey(s) && <SellQtyPicker owned={s.qty} unit={nameOf(s)} testid="factory-qty" preview={(n) => Math.floor(payoutFor(n * houseSellPrice(s), q?.effAlready ?? q?.already ?? 0, capBase) * sellIdx)} onSell={(n) => sell(stackKey(s), n)} />}</li>
             ))}
             {!st.storage.length && <li className="opacity-60">Empty. Mine ore and walk out through the EXIT lift to bank it here.</li>}
           </ul>
