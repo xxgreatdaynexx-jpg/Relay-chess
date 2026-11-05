@@ -12,6 +12,7 @@ import { MAPS } from '../shared/arenaMaps.js';
 import { ArenaAntiCheat, perksFor, recordFlag, type ArenaFlag } from './arena-anticheat.js';
 import { skillLevel } from './skills.js';
 import { combatDamageMul } from '../shared/skillPerks.js';
+import { dayKey } from '../shared/mines.js';
 if (process.env.NODE_ENV !== 'test' && !process.env.VITEST) warmNavGraphs(Object.values(MAPS));
 
 /** socket id -> claimed account name; guests are absent and never recorded. */
@@ -138,6 +139,13 @@ export function holdPaidLife(id: string, now = Date.now()): void {
 export const MATCH_PRIZE = 300;
 /** The prize only pays when at least this many signed-in humans took part (no solo farming of bots). */
 export const PRIZE_MIN_HUMANS = 2;
+/** A human only counts toward PRIZE_MIN_HUMANS (and the winner only gets paid) after this much of the match (no late-join / AFK alt). */
+export const PRIZE_MIN_PLAY_MS = 60_000;
+/** Paid Arena wins per account per UTC day (like hockey). */
+export const ARENA_DAILY_PAID_WINS = 5;
+/** Win n of the day uses tx_key arena-win:<day>:<acct>:<n>. Keys are UNIQUE in the ledger and reloaded on boot, so the cap survives restarts/instances. */
+export const arenaWinKey = (day: string, acctKey: string, n: number) => `arena-win:${day}:${acctKey}:${n}`;
+const settledMatches = new Set<string>();
 const matchEndHooks = new Set<(r: MatchResult) => void>();
 /** Subscribe to arena match ends (e.g. case/key drops). Rows carry id, name, kills, deaths, earned, alive, bot, participationMs; `account` is added for signed-in players. Returns an unsubscribe. */
 export function onArenaMatchEnd(fn: (r: MatchResult & { players: Array<MatchResult['players'][number] & { account?: string }> }) => void): () => void {
@@ -145,18 +153,23 @@ export function onArenaMatchEnd(fn: (r: MatchResult & { players: Array<MatchResu
   return () => { matchEndHooks.delete(fn as (r: MatchResult) => void); };
 }
 
-/** Runs once per finished match: winner prize (house -> winner, keyed per match), then the external hooks. */
+/** Runs once per finished match: winner prize (house -> winner, once per match, 2+ humans who each played PRIZE_MIN_PLAY_MS, capped per day), then the external hooks. */
 export function finishMatch(r: MatchResult): void {
+  if (settledMatches.has(r.matchId)) return; // replayed match end: no second prize, no second drops
+  settledMatches.add(r.matchId); if (settledMatches.size > 500) settledMatches.delete(settledMatches.values().next().value as string);
   for (const p of r.players as Array<MatchResult['players'][number] & { account?: string }>) {
     const name = !p.bot && !isBot(p.id) ? claimed.get(p.id) : undefined;
     if (name) p.account = name;
   }
-  const humans = new Set(r.players.flatMap((p) => ((p as { account?: string }).account ? [acct((p as { account?: string }).account!)] : [])));
-  const winner = r.players.find((p) => p.id === r.winnerId) as { account?: string } | undefined;
-  if (winner?.account && humans.size >= PRIZE_MIN_HUMANS) {
+  const played = (p: { participationMs: number }) => p.participationMs >= PRIZE_MIN_PLAY_MS;
+  const humans = new Set(r.players.flatMap((p) => ((p as { account?: string }).account && played(p) ? [acct((p as { account?: string }).account!)] : [])));
+  const winner = r.players.find((p) => p.id === r.winnerId) as (MatchResult['players'][number] & { account?: string }) | undefined;
+  if (winner?.account && played(winner) && humans.size >= PRIZE_MIN_HUMANS) {
+    const bank = getBank(), day = dayKey(r.endedAt || Date.now()), k = acct(winner.account);
+    let n = 1;
+    while (n <= ARENA_DAILY_PAID_WINS && bank.hasKey(arenaWinKey(day, k, n))) n++;
     const prize = px(MATCH_PRIZE);
-    getBank().transfer(winner.account, prize, { key: `arena-win:${r.matchId}`, game: 'arena', memo: 'WINNER' });
-    r.prize = { name: winner.account, amount: prize };
+    if (n <= ARENA_DAILY_PAID_WINS && bank.transfer(winner.account, prize, { key: arenaWinKey(day, k, n), game: 'arena', memo: `WINNER ${r.matchId}` })) r.prize = { name: winner.account, amount: prize };
   }
   for (const fn of matchEndHooks) { try { fn(r); } catch (e) { console.error('arena match-end hook', e); } }
 }
@@ -251,6 +264,7 @@ function dropBotsIfAlone(): void {
 
 export function resetArena(): void {
   world = newWorld();
+  settledMatches.clear();
   resumable.clear();
   liveAt.clear();
   armed.clear();

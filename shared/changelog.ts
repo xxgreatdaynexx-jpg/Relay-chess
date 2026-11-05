@@ -6,9 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-04T18:05:00-06:00', title: 'Tax shares need 5,000 net worth; abandoned accounts retired', bullets: [
-    'Wealth tax shares (the daily tax and the 5% purchase tax) now go only to active players with a net worth of at least 5,000 (chips plus assets).',
-    'Abandoned and duplicate accounts can now be retired. They can\'t sign in and drop off boards, the map, bonuses, tax shares and trades. Their history is kept.',
+  { commit: '', at: '2026-11-04T20:05:00-06:00', title: 'Arena winner prize: fair-play rules', bullets: [
+    'The 300-chip Arena winner prize now pays at most 5 wins per account per day (resets at 6 PM).',
+    'It needs 2 or more signed-in players who each played at least 1 minute of the match, and the winner must have too.',
+    'Each match pays its winner once.',
   ] },
   { commit: '', at: '2026-11-04T20:00:00-06:00', title: 'Crop and farm-food prices rebalanced', bullets: [
     'Selling a crop straight from the field now earns 20% of what its seeds cost (for example Wheat: 10 seed, 2 profit).',
