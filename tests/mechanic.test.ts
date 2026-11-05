@@ -4,7 +4,7 @@ import { PgCasinoStore, START_CHIPS, getBank, resetBank } from '../server/casino
 import { RealEstate } from '../server/realEstate';
 import { Garage, DriveRelay } from '../server/cars';
 import { setPriceIndexForTest } from '../server/price-index';
-import { CARS, CAR_BY_ID, unitsPerSec, DRIVE_SPEED_CAP } from '../shared/cars';
+import { CARS, CAR_BY_ID, unitsPerSec, DRIVE_SPEED_CAP, FASTEST_BASE_KMH } from '../shared/cars';
 import { STOCK_MODS, normMods, perfPriceBase, cosmeticPriceBase, moddedStats, maxKmh, lookCode, parseLook, PAINTS, MAX_SPEED_FACTOR, ENGINE_SWAPS, CAR_SWAPS, allowedSwaps, swappedBase, maxSwapTopKmh, legacyModsJson, type CarMods } from '../shared/mechanic';
 import { carMinLapMs } from '../server/race';
 import { minLapMs } from '../shared/racePhysics';
@@ -54,6 +54,10 @@ describe('engine swaps', () => {
     // a swap never lowers a real engine's top speed; the mower is the joke exception
     const rb = CAR_BY_ID.get('rustbucket')!; expect(swappedBase(rb, 'mower').topKmh).toBeLessThan(rb.topKmh); expect(swappedBase(rb, 'hemi').handling).toBeLessThan(rb.handling);
     expect(swappedBase(rb, 'v12')).toEqual({ topKmh: rb.topKmh, zeroTo100: rb.zeroTo100, handling: rb.handling }); // not allowed → stock
+  });
+  it('super-tier swaps raise top speed, and the cap covers the fastest base', () => {
+    for (const c of CARS.filter((x) => x.tier === 'super')) { expect(Math.max(...allowedSwaps(c).map((s) => swappedBase(c, s.id).topKmh))).toBeGreaterThanOrEqual(c.topKmh * 1.08); expect(maxSwapTopKmh(c)).toBeLessThanOrEqual(FASTEST_BASE_KMH); }
+    expect(Math.max(...CARS.map(maxSwapTopKmh))).toBe(FASTEST_BASE_KMH);
   });
   it('lap-time floor covers the fastest allowed swap', () => {
     const c = CAR_BY_ID.get('rustbucket')!; expect(carMinLapMs('rustbucket')).toBe(minLapMs(maxSwapTopKmh(c) * MAX_SPEED_FACTOR));

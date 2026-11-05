@@ -63,7 +63,9 @@ export const DRIVE_HZ = 8; // client send rate
 export const DRIVE_BROADCAST_MS = 125; // server snapshot rate (8 Hz)
 export const DRIVE_IDLE_MS = 8000; // no update this long = parked/gone
 export const DRIVE_MAX_VISIBLE = 30;
-export const DRIVE_SPEED_CAP = unitsPerSec(420) * 1.35; // fastest car + slack
+/** Fastest base top (km/h) any car reaches incl. engine swaps: Chudmobile 420 + 10% jet swap = 462 (was 420 before super swaps). */
+export const FASTEST_BASE_KMH = 462;
+export const DRIVE_SPEED_CAP = unitsPerSec(FASTEST_BASE_KMH) * 1.35; // fastest swapped car + slack
 
 export interface DriveState { x: number; z: number; a: number; v: number }
 /**

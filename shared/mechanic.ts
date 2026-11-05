@@ -64,6 +64,8 @@ export const ENGINE_SWAPS: EngineSwap[] = [
 export const SWAP_BY_ID = new Map(ENGINE_SWAPS.map((s) => [s.id, s]));
 /** How much of a swap's top speed each body can use (aero, gearing, tyres). */
 export const SWAP_BODY: Record<CarTier, number> = { beater: 0.95, silly: 0.8, sedan: 0.9, suv: 0.88, muscle: 1.0, sports: 1.0, luxury: 0.95, super: 1.0 };
+/** Supercars already out-run every swap's absolute top, so on the super tier a swap adds a % on top of stock instead. */
+export const SUPER_UPLIFT: Partial<Record<SwapId, number>> = { v12: 0.06, ev4: 0.08, jet: 0.1 };
 /** Allowed swaps per car (3-5 each). */
 export const CAR_SWAPS: Record<string, SwapId[]> = {
   cart: ['mower', 'i4t', 'ev2', 'jet'],
@@ -93,6 +95,7 @@ export const swapAllowed = (c: CarModel, id: unknown) => typeof id === 'string' 
 export function swappedBase(c: CarModel, swap: string | null | undefined): { topKmh: number; zeroTo100: number; handling: number } {
   const s = swap && swapAllowed(c, swap) ? SWAP_BY_ID.get(swap as SwapId)! : null;
   if (!s) return { topKmh: c.topKmh, zeroTo100: c.zeroTo100, handling: c.handling };
+  if (c.tier === 'super') { const up = SUPER_UPLIFT[s.id] ?? 0; return { topKmh: Math.round(Math.max(c.topKmh * (1 + up), s.top * SWAP_BODY.super)), zeroTo100: Math.min(c.zeroTo100, s.zero), handling: Math.max(1, Math.min(10, +(c.handling + s.handling).toFixed(1))) }; }
   if (s.id === 'mower') return { topKmh: s.top, zeroTo100: s.zero, handling: Math.min(10, c.handling + s.handling) };
   return { topKmh: Math.round(Math.max(c.topKmh, s.top * SWAP_BODY[c.tier])), zeroTo100: Math.min(c.zeroTo100, s.zero), handling: Math.max(1, Math.min(10, +(c.handling + s.handling).toFixed(1))) };
 }
