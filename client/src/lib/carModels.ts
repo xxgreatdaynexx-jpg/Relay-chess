@@ -46,12 +46,48 @@ export function buildCar(c: CarModel, color: number, lod: 'near' | 'far' = 'near
       const bun = m(0xd9a35a, {}, 'bun'), dog = m(0xb5532a, {}, 'dog');
       add(bun, L * 0.6, 0.18, W * 0.5, -L * 0.05, clear + H * 0.95); add(dog, L * 0.7, 0.16, W * 0.22, -L * 0.05, clear + H * 1.05); add(m(0xffe066, { emissive: 0xffd000, emissiveIntensity: 0.4 }, 'mus'), L * 0.6, 0.03, 0.05, -L * 0.05, clear + H * 1.14); break; }
     case 'hatch': case 'wagon': case 'sedan': case 'taxi': {
-      body(L, H * 0.5);
-      if (st === 'hatch') cabin(L * 0.55, H * 0.42, -L * 0.1);
-      else if (st === 'wagon') { cabin(L * 0.68, H * 0.42, -L * 0.12); add(m(0x7a4b2a, {}, 'wood'), L * 0.75, H * 0.12, W + 0.02, -L * 0.05, clear + H * 0.25); }
-      else cabin(L * 0.48, H * 0.42, -L * 0.04);
-      if (st === 'taxi') add(m(0xffffff, { emissive: 0xffee88, emissiveIntensity: 0.6 }, 'tx'), 0.3, 0.14, 0.5, -L * 0.04, clear + H * 0.98);
-      if (c.id === 'pizza') add(m(0xff3b3b, { emissive: 0xff3b3b, emissiveIntensity: 0.5 }, 'pz'), 0.5, 0.25, 0.08, -L * 0.1, clear + H * 1.05);
+      // Beaters keep the shared hatch/wagon builders. Sedans split by carId so Commuter / Exec / Cab read as distinct silhouettes.
+      if (st === 'hatch') {
+        body(L, H * 0.5);
+        cabin(L * 0.55, H * 0.42, -L * 0.1);
+        if (c.id === 'pizza') add(m(0xff3b3b, { emissive: 0xff3b3b, emissiveIntensity: 0.5 }, 'pz'), 0.5, 0.25, 0.08, -L * 0.1, clear + H * 1.05);
+      } else if (st === 'wagon') {
+        body(L, H * 0.5);
+        cabin(L * 0.68, H * 0.42, -L * 0.12);
+        add(m(0x7a4b2a, {}, 'wood'), L * 0.75, H * 0.12, W + 0.02, -L * 0.05, clear + H * 0.25);
+      } else if (c.id === 'commuter') {
+        // Camry-like midsize: lower stance, balanced cabin slightly mid-car, soft belt, modest deck.
+        body(L * 0.98, H * 0.46, L * 0.01);
+        cabin(L * 0.52, H * 0.36, -L * 0.01, W * 0.82);
+        add(m(CHROME, { metalness: 1, roughness: 0.25 }, 'belt'), L * 0.96, 0.022, W * 1.01, 0, clear + H * 0.46);
+        add(paint, L * 0.22, 0.045, W * 0.88, -L * 0.35, clear + H * 0.46);
+        add(m(0x0c0d10, { roughness: 0.45 }, 'grille'), 0.04, H * 0.09, W * 0.36, L / 2 + 0.04, clear + H * 0.2);
+      } else if (c.id === 'exec') {
+        // E-class-ish executive: long hood, cabin aft, upright greenhouse, chrome belt + twin grille bars.
+        body(L, H * 0.5);
+        cabin(L * 0.38, H * 0.48, -L * 0.18, W * 0.78);
+        add(m(CHROME, { metalness: 1, roughness: 0.2 }, 'belt'), L * 0.98, 0.035, W * 1.02, -L * 0.02, clear + H * 0.5);
+        add(paint, L * 0.28, 0.06, W * 0.9, -L * 0.3, clear + H * 0.5);
+        // Long hood plane in front of cabin
+        add(paint, L * 0.34, 0.04, W * 0.92, L * 0.22, clear + H * 0.5);
+        add(m(CHROME, { metalness: 1, roughness: 0.2 }, 'grl'), 0.045, H * 0.05, W * 0.5, L / 2 + 0.05, clear + H * 0.3);
+        add(m(CHROME, { metalness: 1, roughness: 0.2 }, 'grl'), 0.045, H * 0.05, W * 0.5, L / 2 + 0.05, clear + H * 0.22);
+        add(m(CHROME, { metalness: 1, roughness: 0.2 }, 'trim'), L * 0.36, 0.03, 0.045, -L * 0.18, clear + H * 0.76, W * 0.4);
+        add(m(CHROME, { metalness: 1, roughness: 0.2 }, 'trim'), L * 0.36, 0.03, 0.045, -L * 0.18, clear + H * 0.76, -W * 0.4);
+      } else if (c.id === 'taxi' || st === 'taxi') {
+        // Crown Vic-style cab: boxy upright greenhouse, taller body, roof light, dark chrome push bar.
+        body(L * 1.02, H * 0.56, -L * 0.01);
+        cabin(L * 0.58, H * 0.5, -L * 0.04, W * 0.92);
+        add(m(0xffffff, { emissive: 0xffee88, emissiveIntensity: 0.6 }, 'tx'), 0.34, 0.18, 0.55, -L * 0.04, clear + H * 1.08);
+        const bar = m(0xb0b6c0, { metalness: 0.95, roughness: 0.3 }, 'push');
+        add(bar, 0.1, H * 0.16, W * 1.05, L / 2 + 0.1, clear + H * 0.14);
+        for (const z of [W * 0.32, -W * 0.32, W * 0.1, -W * 0.1]) add(bar, 0.14, H * 0.22, 0.06, L / 2 + 0.16, clear + H * 0.2, z);
+        add(m(0x111418, { roughness: 0.45 }, 'grille'), 0.05, H * 0.18, W * 0.55, L / 2 + 0.055, clear + H * 0.3);
+        add(paint, L * 0.2, 0.06, W * 0.96, -L * 0.42, clear + H * 0.56);
+      } else {
+        body(L, H * 0.5);
+        cabin(L * 0.48, H * 0.42, -L * 0.04);
+      }
       break; }
     case 'coupe': case 'muscle': case 'super': {
       const low = st === 'super' ? 0.4 : 0.48; body(L, H * low);

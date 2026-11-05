@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-05T14:12:00-06:00', title: 'Sedans look different from each other', bullets: [
+    'Requested by Dayne: Commuter LX, Executive 500 and Yellow Cab no longer share one generic sedan shape. Commuter reads more like a midsize daily driver, Exec has a longer hood and upright cabin, and the Cab is boxier with a push bar and roof light.',
+  ] },
   { commit: '', at: '2026-11-05T14:10:00-06:00', title: 'Engine swaps at Chud Customs', bullets: [
     'Requested by Dayne: every car can now take an engine swap (3-5 choices per car): I4 Turbo, Rotary, Flat-6, Hemi V8, Twin-turbo V6, Supercharged V8, Dual-motor EV, V12, Quad-motor EV, plus a Lawnmower and a Jet engine for the silly ones.',
     'A swap replaces the stock engine, so any car can become worth having: a fully built Rustbucket 88 with a Hemi V8 reaches about 270 km/h (about 310 with nitro). Heavy engines cost some handling. Swaps have a fixed price and putting the stock engine back is free (no refunds).',
