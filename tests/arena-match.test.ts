@@ -3,6 +3,8 @@ import { ArenaWorld, END_SCREEN_MS, MATCH_MS, SUDDEN_MS, type MatchResult } from
 import { ARENA_DAILY_PAID_WINS, arenaWinKey, finishMatch, PRIZE_MIN_PLAY_MS, claimArenaName, getArenaWorld, MATCH_PRIZE, onArenaMatchEnd, resetArena, armArenaClient, registerArenaClient } from '../server/fps.js';
 import { resetBank } from '../server/casino-store.js';
 import { RESPAWN_MS } from '../shared/fps.js';
+import { nightlyEvent } from '../shared/nightlyEvent.js';
+import { resetNightly, setNightlyClock } from '../server/nightly-event.js';
 
 const T0 = 1_000_000;
 function world3() {
@@ -132,6 +134,24 @@ describe('arena winner prize anti-farm', () => {
     expect(bank.account('Hana').chips).toBe(before + ARENA_DAILY_PAID_WINS * MATCH_PRIZE);
     finishMatch(result('next-day', [MATCH_MS, MATCH_MS], Date.UTC(2026, 10, 6, 1)));
     expect(bank.account('Hana').chips).toBe(before + (ARENA_DAILY_PAID_WINS + 1) * MATCH_PRIZE);
+  });
+});
+
+describe('arena nightly 10x only on an actual prize pay (3b)', () => {
+  beforeEach(() => { resetArena(); resetBank(); resetNightly(); liveClients(); });
+  const row = (id: string, ms: number) => ({ id, name: id, kills: 1, deaths: 0, earned: 0, alive: true, bot: false, participationMs: ms });
+  it('no nightly bonus for unpaid matches (late alt, over the daily cap); bonus on a paid win', () => {
+    let t = 0; for (let d = 0; d < 400 && !t; d++) { const x = Date.UTC(2026, 10, 7 + d, 2, 30); const e = nightlyEvent(x); if (e.active && e.game === 'arena') t = x; }
+    expect(t).toBeGreaterThan(0); setNightlyClock(() => t);
+    try {
+      const bank = resetBank(); claimArenaName('h1', 'Hana'); claimArenaName('h2', 'Ivo');
+      const res = (id: string, ms: [number, number]): MatchResult => ({ matchId: id, map: 'm', startedAt: t - MATCH_MS, endedAt: t, winnerId: 'h1', reason: 'cap', players: [row('h1', ms[0]), row('h2', ms[1])] });
+      const nightly = () => bank.account('Hana').chips;
+      let before = nightly(); finishMatch(res('late', [MATCH_MS, PRIZE_MIN_PLAY_MS - 1])); expect(nightly()).toBe(before); // unpaid: no 10x
+      before = nightly(); finishMatch(res('paid', [MATCH_MS, MATCH_MS])); expect(nightly() - before).toBeGreaterThan(MATCH_PRIZE); // prize + 10x
+      for (let i = 1; i < ARENA_DAILY_PAID_WINS; i++) finishMatch(res(`p${i}`, [MATCH_MS, MATCH_MS]));
+      before = nightly(); finishMatch(res('over-cap', [MATCH_MS, MATCH_MS])); expect(nightly()).toBe(before); // capped: no prize, no 10x
+    } finally { setNightlyClock(() => Date.now()); }
   });
 });
 
