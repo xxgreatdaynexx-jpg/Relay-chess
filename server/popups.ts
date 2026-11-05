@@ -5,10 +5,10 @@ import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { signedIn } from './auth-sockets.js';
 import { LAUNCH } from '../shared/launchPopup.js';
 
-/** Admin-only direct popups: stored per player (Postgres when available), delivered over socket, cleared on OK. */
-export const POPUP_TEXT_MAX = 500;
+/** Admin-only direct popups: stored per player (Postgres when available), delivered over socket, cleared on OK / typed confirm. */
+export const POPUP_TEXT_MAX = 1000; // room for a full apology-length notice; express.json limit 4kb still bounds the body
 export const POPUP_FROM_MAX = 32;
-export interface Popup { id: string; player: string; from: string; text: string; createdAt: number; ackedAt: number | null; title?: string | null; audio?: string | null }
+export interface Popup { id: string; player: string; from: string; text: string; createdAt: number; ackedAt: number | null; title?: string | null; audio?: string | null; confirmText?: string | null }
 
 const pkey = (n: string) => n.trim().toLowerCase();
 const roomOf = (name: string) => `w:${pkey(name)}`; // same room wallet_sub joins
@@ -21,6 +21,7 @@ export class PopupStore {
     await db.query(`CREATE INDEX IF NOT EXISTS admin_popups_pending ON admin_popups (player_key) WHERE acked_at IS NULL`);
     await db.query(`ALTER TABLE admin_popups ADD COLUMN IF NOT EXISTS title TEXT`);
     await db.query(`ALTER TABLE admin_popups ADD COLUMN IF NOT EXISTS audio TEXT`);
+    await db.query(`ALTER TABLE admin_popups ADD COLUMN IF NOT EXISTS confirm_text TEXT`);
     this.db = db;
   }
   async add(player: string, from: string, text: string): Promise<Popup> {
@@ -31,8 +32,8 @@ export class PopupStore {
   }
   async pending(player: string): Promise<Popup[]> {
     if (this.db) {
-      const r = await this.db.query(`SELECT id, player, sender, body, created_at, title, audio FROM admin_popups WHERE player_key=$1 AND acked_at IS NULL ORDER BY created_at`, [pkey(player)]);
-      return (r.rows as Array<Record<string, unknown>>).map((x) => ({ id: String(x.id), player: String(x.player), from: String(x.sender), text: String(x.body), createdAt: Number(x.created_at), ackedAt: null, title: x.title == null ? null : String(x.title), audio: x.audio == null ? null : String(x.audio) }));
+      const r = await this.db.query(`SELECT id, player, sender, body, created_at, title, audio, confirm_text FROM admin_popups WHERE player_key=$1 AND acked_at IS NULL ORDER BY created_at`, [pkey(player)]);
+      return (r.rows as Array<Record<string, unknown>>).map((x) => ({ id: String(x.id), player: String(x.player), from: String(x.sender), text: String(x.body), createdAt: Number(x.created_at), ackedAt: null, title: x.title == null ? null : String(x.title), audio: x.audio == null ? null : String(x.audio), confirmText: x.confirm_text == null ? null : String(x.confirm_text) }));
     }
     return [...this.mem.values()].filter((p) => pkey(p.player) === pkey(player) && p.ackedAt === null).sort((a, b) => a.createdAt - b.createdAt);
   }
@@ -61,7 +62,7 @@ export class PopupStore {
   /** Idempotent fixed-id insert (system messages seeded at boot); never re-queues an acked one. */
   async seed(p: Popup): Promise<void> {
     if (this.db) {
-      await this.db.query(`INSERT INTO admin_popups (id, player_key, player, sender, body, created_at, title, audio) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (id) DO NOTHING`, [p.id, pkey(p.player), p.player, p.from, p.text, p.createdAt, p.title ?? null, p.audio ?? null]);
+      await this.db.query(`INSERT INTO admin_popups (id, player_key, player, sender, body, created_at, title, audio, confirm_text) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO NOTHING`, [p.id, pkey(p.player), p.player, p.from, p.text, p.createdAt, p.title ?? null, p.audio ?? null, p.confirmText ?? null]);
     } else if (!this.mem.has(p.id)) this.mem.set(p.id, { ...p });
   }
   async status(id: string): Promise<'queued' | 'delivered' | null> {
@@ -91,7 +92,7 @@ export async function initPopupStorage(): Promise<void> {
   } catch (e) { console.error('[popups] postgres attach failed:', (e as Error).message); }
 }
 
-const wire = (p: Popup) => ({ id: p.id, from: p.from, text: p.text, at: p.createdAt, title: p.title ?? null, audio: p.audio ?? null });
+const wire = (p: Popup) => ({ id: p.id, from: p.from, text: p.text, at: p.createdAt, title: p.title ?? null, audio: p.audio ?? null, confirmText: p.confirmText ?? null });
 
 /** One-off voice message from Nora, queued ONLY for these accounts (server-gated by player_key). */
 export const NORA_VOICE_TARGETS = ['jay', 'conner', 'carter2'] as const;
@@ -134,9 +135,16 @@ export function registerPopups(_io: Server, socket: Socket): void {
   });
   socket.on('popup_ack', async (p: unknown, ack?: unknown) => {
     const id = (p as { id?: unknown } | null)?.id;
+    const typed = (p as { typed?: unknown } | null)?.typed;
     let name = ''; try { name = signedIn(socket); } catch { return reply(ack, { ok: false }); }
     if (typeof id !== 'string' || id.length > 64) return reply(ack, { ok: false });
     try {
+      const pending = await store.pending(name);
+      const cur = pending.find((x) => x.id === id);
+      if (!cur) return reply(ack, { ok: false });
+      if (cur.confirmText && typed !== cur.confirmText) {
+        return reply(ack, { ok: false, error: 'Type the apology exactly.' });
+      }
       const done = await store.ack(name, id);
       if (done) console.log(`[popups] delivered ${id} to ${name}`);
       reply(ack, { ok: true }); if (io) io.to(roomOf(name)).emit('admin_popup_done', { id });
