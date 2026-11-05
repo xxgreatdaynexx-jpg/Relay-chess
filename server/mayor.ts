@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS mayor_candidates (week TEXT NOT NULL, player_key TEXT
 CREATE TABLE IF NOT EXISTS mayor_votes (week TEXT NOT NULL, voter_key TEXT NOT NULL, candidate_key TEXT NOT NULL, at BIGINT NOT NULL, PRIMARY KEY (week, voter_key));
 CREATE TABLE IF NOT EXISTS mayor_terms (week TEXT PRIMARY KEY, player_key TEXT NOT NULL, name TEXT NOT NULL, votes INTEGER NOT NULL, starts_at BIGINT NOT NULL, ends_at BIGINT NOT NULL, removed_at BIGINT, note TEXT);
 CREATE TABLE IF NOT EXISTS mayor_rates (id TEXT PRIMARY KEY, at BIGINT NOT NULL, effective_at BIGINT NOT NULL, by_name TEXT NOT NULL, property DOUBLE PRECISION NOT NULL, fee DOUBLE PRECISION NOT NULL, note TEXT);
+CREATE TABLE IF NOT EXISTS mayor_rate_days (day BIGINT PRIMARY KEY, rate_id TEXT NOT NULL, by_name TEXT NOT NULL, at BIGINT NOT NULL);
 `;
 export class MayorError extends Error {}
 const NOT_GAMES = ['daily_bonus', 'admin', 'admin_grant', 'bailout', 'mayor_filing'];
@@ -133,7 +134,15 @@ export class Mayor {
     const why = this.changeBlock(now); if (why) throw new MayorError(why);
     const property = clampRate(body.property), fee = clampRate(body.fee);
     const c: RateChange = { at: now, effectiveAt: nextAbMidnight(now), by: m.name, property, fee };
-    await this.pool.query('INSERT INTO mayor_rates (id, at, effective_at, by_name, property, fee) VALUES ($1,$2,$3,$4,$5,$6)', [randomUUID(), c.at, c.effectiveAt, c.by, property, fee]);
+    const day = abDayStart(now), id = randomUUID(), taken = 'You already changed rates today. Try again after midnight (Alberta time).';
+    // Server-side check against Postgres (the in-memory log can be stale on another instance), then a per-day primary key
+    // claimed in the same transaction as the rate row, so concurrent requests on any instance can't both land.
+    if ((await this.pool.query('SELECT 1 FROM mayor_rate_days WHERE day = $1', [day])).rows.length) throw new MayorError(taken);
+    await this.tx(async (cl) => {
+      const claim = await cl.query('INSERT INTO mayor_rate_days (day, rate_id, by_name, at) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING', [day, id, c.by, now]);
+      if (!claim.rowCount) throw new MayorError(taken);
+      await cl.query('INSERT INTO mayor_rates (id, at, effective_at, by_name, property, fee) VALUES ($1,$2,$3,$4,$5,$6)', [id, c.at, c.effectiveAt, c.by, property, fee]);
+    });
     this.log.push(c); return c;
   }
   /** Admin: remove the sitting mayor (or mayor-elect) and put rates back to default immediately. */

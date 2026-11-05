@@ -112,6 +112,18 @@ describe('mayor powers', () => {
       const m2 = new Mayor(s.pool, () => s.bank, () => next + 2 * DAY_MS); await m2.init(); expect(m2.rates()).toEqual({ property: 0.75, fee: 1.25 });
     } finally { setMayorForTest(null); }
   });
+  it('once-per-day rate change holds across concurrent requests and a second instance (Postgres guard)', async () => {
+    const s = await withMayor();
+    const r = await Promise.allSettled([s.m.setRates('Ann', { property: 1.25, fee: 1 }), s.m.setRates('Ann', { property: 0.75, fee: 1 })]);
+    expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
+    expect((r.find((x) => x.status === 'rejected') as PromiseRejectedResult).reason.message).toMatch(/already changed/);
+    // a second instance whose in-memory log is stale still can't change rates again today
+    const m2 = new Mayor(s.pool, () => s.bank, () => s.now + H); await m2.init(); m2.log = [];
+    await expect(m2.setRates('Ann', { property: 1, fee: 1 })).rejects.toThrow(/already changed/);
+    expect(Number((await s.pool.query('SELECT count(*) AS n FROM mayor_rates')).rows[0].n)).toBe(1);
+    const m3 = new Mayor(s.pool, () => s.bank, () => s.now + DAY_MS); await m3.init(); m3.log = [];
+    await expect(m3.setRates('Ann', { property: 1, fee: 1 })).resolves.toMatchObject({ property: 1 }); // next day: allowed
+  });
   it('fees scale with the city rate but stay clamped and never drop below 1 chip', () => {
     expect(marketFee(1000)).toBe(50); expect(marketFee(1000, 1, 1.25)).toBe(63); expect(marketFee(1000, 1, 0.75)).toBe(38); expect(marketFee(1000, 1, 9)).toBe(63);
     expect(stockFee(10_000, 1, 0.75)).toBe(75); expect(stockFee(10_000, 1, 1.25)).toBe(125); expect(marketFee(1, 1, 0.75)).toBe(1);
