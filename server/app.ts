@@ -59,7 +59,7 @@ export async function createApp(): Promise<AppContext> {
     // Static assets + SPA shell must load so the client can show the sleep message.
     if (req.method === 'GET' && !path.startsWith('/api/') && path !== '/health') return next();
     res.set('Cache-Control', 'no-store');
-    res.status(503).json({ ok: false, sleeping: true, error: HUB_SLEEP_MSG, ...hubSleepView() });
+    res.status(503).json({ ...hubSleepView(), ok: false, error: HUB_SLEEP_MSG });
   });
   app.get('/api/hub-sleep', (_req, res) => {
     res.set('Cache-Control', 'no-store');
