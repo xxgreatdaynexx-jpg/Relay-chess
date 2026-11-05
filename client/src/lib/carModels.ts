@@ -48,9 +48,21 @@ export function buildCar(c: CarModel, color: number, lod: 'near' | 'far' = 'near
     case 'hatch': case 'wagon': case 'sedan': case 'taxi': {
       // Beaters keep the shared hatch/wagon builders. Sedans split by carId so Commuter / Exec / Cab read as distinct silhouettes.
       if (st === 'hatch') {
-        body(L, H * 0.5);
-        cabin(L * 0.55, H * 0.42, -L * 0.1);
-        if (c.id === 'pizza') add(m(0xff3b3b, { emissive: 0xff3b3b, emissiveIntensity: 0.5 }, 'pz'), 0.5, 0.25, 0.08, -L * 0.1, clear + H * 1.05);
+        if (c.id === 'rustbucket') {
+          // Sagging beater: lower rear, rust patches, mismatched door, dented bumper.
+          body(L, H * 0.48, -L * 0.02);
+          cabin(L * 0.55, H * 0.4, -L * 0.12, W * 0.84);
+          add(m(0x6b3a22, { roughness: 0.95, metalness: 0.05 }, 'rust'), L * 0.28, H * 0.35, 0.04, L * 0.05, clear + H * 0.28, W / 2 + 0.01); // mismatched door
+          add(m(0x8a5a3a, { roughness: 0.95 }, 'rust'), L * 0.2, H * 0.2, 0.03, -L * 0.2, clear + H * 0.35, -W / 2 - 0.01);
+          add(m(0x5a4030, { roughness: 0.9 }, 'rust'), 0.14, H * 0.12, W * 0.5, L / 2 + 0.03, clear + H * 0.08); // dented bumper patch
+          // Sag: rear deck lower than front
+          add(paint, L * 0.18, 0.04, W * 0.86, -L * 0.32, clear + H * 0.42);
+        } else {
+          // Pizza Hatch (and any other hatch): tidy short hatch + roof sign for pizza.
+          body(L, H * 0.5);
+          cabin(L * 0.55, H * 0.42, -L * 0.1);
+          if (c.id === 'pizza') add(m(0xff3b3b, { emissive: 0xff3b3b, emissiveIntensity: 0.5 }, 'pz'), 0.5, 0.25, 0.08, -L * 0.1, clear + H * 1.05);
+        }
       } else if (st === 'wagon') {
         body(L, H * 0.5);
         cabin(L * 0.68, H * 0.42, -L * 0.12);
@@ -171,10 +183,33 @@ export function buildCar(c: CarModel, color: number, lod: 'near' | 'far' = 'near
         if (st === 'super') { add(m(0x111418, {}, 'wing'), 0.25, 0.05, W * 1.02, -L * 0.47, clear + H * low + 0.28); add(m(0x111418, {}, 'wing'), 0.06, 0.25, 0.06, -L * 0.45, clear + H * low + 0.12, W * 0.35); add(m(0x111418, {}, 'wing'), 0.06, 0.25, 0.06, -L * 0.45, clear + H * low + 0.12, -W * 0.35); }
       }
       break; }
-    case 'suv': body(L, H * 0.55); cabin(L * 0.72, H * 0.38, -L * 0.08); add(m(0x2f2f33, {}, 'rack'), L * 0.5, 0.05, W * 0.8, -L * 0.1, clear + H * 0.98); break;
-    case 'pickup': body(L, H * 0.5); cabin(L * 0.32, H * 0.42, L * 0.08); add(m(0x2f2f33, {}, 'bed'), L * 0.4, 0.04, W * 0.84, -L * 0.28, clear + H * 0.5 + 0.03); break;
+    case 'suv': {
+      body(L, H * 0.55); cabin(L * 0.72, H * 0.4, -L * 0.08);
+      add(m(0x2f2f33, {}, 'rack'), L * 0.5, 0.05, W * 0.8, -L * 0.1, clear + H * 0.98);
+      // Trailblazer: taller crosshatch grille + light bar brow
+      add(m(0x0c0d10, { roughness: 0.4 }, 'grille'), 0.05, H * 0.22, W * 0.55, L / 2 + 0.045, clear + H * 0.28);
+      for (const zy of [0.08, 0, -0.08]) add(m(0x2a2d33, {}, 'grille'), 0.02, 0.02, W * 0.5, L / 2 + 0.06, clear + H * 0.28 + zy);
+      add(m(CHROME, { metalness: 1, roughness: 0.25 }, 'brow'), 0.04, 0.04, W * 0.7, L / 2 + 0.04, clear + H * 0.42);
+      break; }
+    case 'pickup': {
+      body(L, H * 0.5); cabin(L * 0.32, H * 0.44, L * 0.1, W * 0.88);
+      add(m(0x2f2f33, {}, 'bed'), L * 0.42, 0.05, W * 0.86, -L * 0.28, clear + H * 0.5 + 0.03);
+      add(m(0x1b1d22, {}, 'rail'), L * 0.4, 0.12, 0.04, -L * 0.28, clear + H * 0.56, W * 0.42);
+      add(m(0x1b1d22, {}, 'rail'), L * 0.4, 0.12, 0.04, -L * 0.28, clear + H * 0.56, -W * 0.42);
+      // Hauler: big truck grille + chrome bumper bar
+      add(m(0x0c0d10, { roughness: 0.35 }, 'grille'), 0.06, H * 0.24, W * 0.62, L / 2 + 0.05, clear + H * 0.28);
+      for (const z of [-0.2, -0.1, 0, 0.1, 0.2]) add(m(0x2a2d33, {}, 'grille'), 0.03, H * 0.22, 0.03, L / 2 + 0.07, clear + H * 0.28, W * z);
+      add(m(CHROME, { metalness: 1, roughness: 0.25 }, 'bumper'), 0.1, H * 0.12, W * 1.05, L / 2 + 0.1, clear + H * 0.1);
+      break; }
     case 'monster': body(L * 0.9, H * 0.4); cabin(L * 0.35, H * 0.3, 0, W * 0.6); add(m(0x2f2f33, {}, 'ch'), L * 0.6, 0.15, W * 0.4, 0, clear - 0.15); break;
-    case 'limo': body(L, H * 0.48); cabin(L * 0.78, H * 0.36, -L * 0.04); add(m(CHROME, { metalness: 1, roughness: 0.2 }, 'ch'), L * 1.002, 0.03, W * 1.002, 0, clear + H * 0.3); break;
+    case 'limo': {
+      body(L, H * 0.48); cabin(L * 0.78, H * 0.36, -L * 0.04);
+      add(m(CHROME, { metalness: 1, roughness: 0.2 }, 'ch'), L * 1.002, 0.03, W * 1.002, 0, clear + H * 0.3);
+      // Distinct B-pillars along the stretch greenhouse
+      for (const x of [-L * 0.28, -L * 0.08, L * 0.12]) {
+        for (const z of [W * 0.42, -W * 0.42]) add(m(0x111418, {}, 'pillar'), 0.06, H * 0.34, 0.05, x, clear + H * 0.5 + H * 0.18, z);
+      }
+      break; }
   }
   if (st !== 'cart') {
     const bl = st === 'monster' ? clear + H * 0.2 : clear + H * 0.3;
@@ -182,16 +217,21 @@ export function buildCar(c: CarModel, color: number, lod: 'near' | 'far' = 'near
     add(tail, 0.04, 0.08, 0.2, -L / 2 - 0.01, bl, W * 0.32); add(tail, 0.04, 0.08, 0.2, -L / 2 - 0.01, bl, -W * 0.32);
   }
   if (lod === 'near' || st === 'monster') {
-    const ww = st === 'monster' ? 0.45 : st === 'cart' ? 0.04 : 0.2; const wx = L * (st === 'limo' ? 0.4 : 0.32);
+    // Per-style wheel cues: limo thin chrome, muscle deep dish, super low-profile multi-spoke, truck thicker.
+    let ww = st === 'monster' ? 0.45 : st === 'cart' ? 0.04 : st === 'pickup' || st === 'suv' ? 0.26 : st === 'limo' ? 0.14 : st === 'super' ? 0.18 : 0.2;
+    const wx = L * (st === 'limo' ? 0.4 : st === 'pickup' ? 0.34 : 0.32);
     const rim = RIMS.find((x) => x.id === look.rims && 'color' in x) as { color: number } | undefined;
     const rimM = rim ? m(rim.color, { metalness: 0.9, roughness: 0.2, ...(look.rims === 'neon' ? { emissive: rim.color, emissiveIntensity: 0.8 } : {}) }, 'rim') : null;
-    const hub = rimM ?? m(0x9aa1ab, { metalness: 0.8, roughness: 0.35 }, 'hub'); const spoke = m(0x2a2d33, { roughness: 0.6 }, 'spk');
+    const hub = rimM ?? m(st === 'limo' ? CHROME : 0x9aa1ab, { metalness: 0.8, roughness: 0.35 }, 'hub'); const spoke = m(0x2a2d33, { roughness: 0.6 }, 'spk');
+    const hubScale = st === 'muscle' ? 0.72 : st === 'super' ? 0.55 : st === 'limo' ? 0.7 : 0.62;
+    const spokeN = st === 'super' ? 3 : st === 'limo' ? 1 : 2;
     for (const sx of [wx, -wx]) for (const sz of [W / 2, -W / 2]) {
       // Each wheel is its own pivot (userData.wheel 'f'/'r') so the driving loop can steer the fronts and spin all four.
       const piv = new THREE.Group(); piv.position.set(sx, wheelR, sz); piv.userData.wheel = sx > 0 ? 'f' : 'r'; g.add(piv);
-      const t = new THREE.Mesh(wheelG, tyre); t.scale.set(wheelR, wheelR, ww); piv.add(t);
-      if (st !== 'cart') { const h = new THREE.Mesh(wheelG, hub); h.scale.set(wheelR * 0.62, wheelR * 0.62, ww + 0.03); piv.add(h);
-        if (lod === 'near') for (const k of [0, 1]) { const sp = new THREE.Mesh(unit, spoke); sp.scale.set(wheelR * 1.15, wheelR * 0.12, ww + 0.05); sp.rotation.z = k * Math.PI / 2; piv.add(sp); } }
+      const wr = st === 'super' ? wheelR * 0.92 : st === 'pickup' || st === 'suv' ? wheelR * 1.08 : wheelR;
+      const t = new THREE.Mesh(wheelG, tyre); t.scale.set(wr, wr, ww); piv.add(t);
+      if (st !== 'cart') { const h = new THREE.Mesh(wheelG, hub); h.scale.set(wr * hubScale, wr * hubScale, ww + 0.03); piv.add(h);
+        if (lod === 'near') for (let k = 0; k < spokeN; k++) { const sp = new THREE.Mesh(unit, spoke); sp.scale.set(wr * 1.15, wr * (st === 'limo' ? 0.08 : 0.12), ww + 0.05); sp.rotation.z = (k * Math.PI) / spokeN; piv.add(sp); } }
     }
   }
   // Racing overhaul detailing (near LOD): bumpers, grille, side skirts, mirrors, exhaust tips, number-plate.

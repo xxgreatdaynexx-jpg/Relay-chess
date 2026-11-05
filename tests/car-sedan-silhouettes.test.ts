@@ -62,3 +62,22 @@ describe('super and muscle silhouette splits', () => {
     expect(meshCount(b)).toBeGreaterThan(meshCount(a));
   });
 });
+
+describe('hatch / utility silhouette splits', () => {
+  it('makes Rustbucket richer/messier than Pizza while Pizza keeps its roof sign', () => {
+    const rust = buildCar(CAR_BY_ID.get('rustbucket')!, 0x8a5a3a);
+    const pizza = buildCar(CAR_BY_ID.get('pizza')!, 0xe63946);
+    expect(meshCount(rust)).toBeGreaterThan(meshCount(pizza));
+    let pizzaSign = false;
+    pizza.traverse((o) => { if ((o as THREE.Mesh).isMesh && ((o as THREE.Mesh).material as THREE.MeshStandardMaterial).emissive?.getHex() === 0xff3b3b) pizzaSign = true; });
+    expect(pizzaSign).toBe(true);
+  });
+
+  it('gives Trailblazer, Hauler and Regent limo distinct fronts/pillars', () => {
+    const suv = buildCar(CAR_BY_ID.get('trailblazer')!, 0x2d6a4f);
+    const truck = buildCar(CAR_BY_ID.get('hauler')!, 0xb5171e);
+    const limo = buildCar(CAR_BY_ID.get('regent')!, 0x111418);
+    expect(new Set([meshCount(suv), meshCount(truck), meshCount(limo)]).size).toBe(3);
+    expect(sizeOf(limo).x).toBeGreaterThan(sizeOf(suv).x); // stretch dims
+  });
+});

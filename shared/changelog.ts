@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-05T14:28:00-06:00', title: 'Beaters, trucks and the limo look more themselves', bullets: [
+    'Requested by Dayne: Rustbucket 88 is sagging and rusty next to the Pizza Hatch (roof sign stays). Trailblazer and Hauler get clearer fronts, the Regent limo shows stretch B-pillars, and wheel shapes differ a bit by body style.',
+  ] },
   { commit: '', at: '2026-11-05T14:24:00-06:00', title: 'Supercars and muscle cars get distinct shapes', bullets: [
     'Requested by Dayne: Hypervolt is a smooth closed-front EV, Phantom is a low wedge, and Chudmobile is an ultra-low hypercar with a huge wing. Thunderhorse gets a Mustang-like fastback; Blacktop Hellcharger reads as a longer 4-door widebody.',
   ] },
