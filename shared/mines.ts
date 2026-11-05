@@ -305,7 +305,7 @@ export const GOODS: Record<string, ItemDef> = {
   sunflower_oil:   { type: 'good', id: 'sunflower_oil',   name: 'Sunflower Oil',    price: 575,  color: '#ffe060', food: true },
   cocoa:           { type: 'good', id: 'cocoa',           name: 'Cocoa Powder',     price: 625,  color: '#5a3020', food: true },
   coconut_milk:    { type: 'good', id: 'coconut_milk',    name: 'Coconut Milk',     price: 345,  color: '#f4f0e8', food: true },
-  wine:            { type: 'good', id: 'wine',            name: 'Wine',             price: 760,  color: '#7a1a3a', food: true },
+  wine:            { type: 'good', id: 'wine',            name: 'Wine',             price: 700,  color: '#7a1a3a', food: true },
   bread:           { type: 'good', id: 'bread',           name: 'Bread',            price: 81,   color: '#c8904a', food: true },
   chocolate:       { type: 'good', id: 'chocolate',       name: 'Chocolate Bar',    price: 560,  color: '#4a2416', food: true },
   canned_fish:     { type: 'good', id: 'canned_fish',     name: 'Canned Fish',      price: 48,   color: '#9ab0c0', food: true },
