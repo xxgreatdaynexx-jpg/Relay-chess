@@ -80,11 +80,11 @@ describe('machinery is paid only through the wallet + ledger', () => {
 describe('fertilizer raises yield (#27)', () => {
   it('Super-Gro on 4 wheat tiles = +1.6 crops (1 with a high roll), charged per tile via farm_fertilizer', async () => {
     const plain = await setup(); await plain.own('Gus', 10_000); const p = await growWheat(plain, 'Gus');
-    expect(p.paid).toBe(Math.floor(4 * wheat.sell * 0.9025)); // farming -5% expect(p.bonus).toBe(0);
+    expect(p.paid).toBe(Math.floor(4 * wheat.sell * 0.95)); // farming -5% expect(p.bonus).toBe(0);
     const s = await setup(); await s.own('Gus', 10_000); const f = fertDef('supergro')!;
     const h = await growWheat(s, 'Gus', 'supergro');
     expect(s.ledger('gus', 'farm_fertilizer')).toEqual([{ amount: -4 * fertCost(f, wheat.sell) }]);
-    expect(h.bonus).toBe(1); expect(h.paid).toBe(Math.floor(5 * wheat.sell * 0.9025)); // farming -5%
+    expect(h.bonus).toBe(1); expect(h.paid).toBe(Math.floor(5 * wheat.sell * 0.95)); // farming -5%
   });
   it('only growing, unfertilized tiles; one dose per planting; no chips no dose', async () => {
     const s = await setup(); await s.own('Gus', 200);
@@ -104,7 +104,7 @@ describe('Farming level gives bonus YIELD, not a better price', () => {
     const lo = await setup(1); await lo.own('Gus', 10_000); const a = await growWheat(lo, 'Gus');
     const hi = await setup(99); await hi.own('Gus', 10_000); const b = await growWheat(hi, 'Gus');
     expect(a.bonus).toBe(0); expect(b.bonus).toBe(1); // 4 tiles x 25%
-    expect(a.paid).toBe(Math.floor(4 * wheat.sell * 0.9025)); expect(b.paid).toBe(Math.floor(5 * wheat.sell * 0.9025)); // same 0.95x per-crop price at both levels (farming -5%)
+    expect(a.paid).toBe(Math.floor(4 * wheat.sell * 0.95)); expect(b.paid).toBe(Math.floor(5 * wheat.sell * 0.95)); // same 0.95x per-crop price at both levels (farming -5%)
     const v = await hi.farm.view(hi.id, 'Gus'); expect(v.profitMul).toBe(1); expect(v.yieldBonus).toBeCloseTo(0.25);
     expect(perkText('farming', 99)).toMatch(/yield/i); expect(perkText('farming', 99)).not.toMatch(/price|profit/i);
   });
