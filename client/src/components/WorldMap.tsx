@@ -38,13 +38,13 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }:
   const dragDeed = usePanelDrag('deed');
   const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState<null | 're_buy' | 're_sell'>(null); const [msg, setMsg] = useState<string | null>(null); const wallet = useWalletChips();
   // Purchase wealth tax (5% on top when you hold 100K+ in property): the server's quote, refreshed per deed.
-  const [wtax, setWtax] = useState<{ tax: number; recipients: number; line: string } | null>(null);
+  const [wtax, setWtax] = useState<{ tax: number; recipients: number; line: string } | null>(null); const [srvOwned, setSrvOwned] = useState<number | null>(null); const [bt, setBt] = useState<{ debt: number; surcharge: number; wealthTax: number } | null>(null); const [qn, setQn] = useState(0);
   const forSale = !owned.get(id);
-  useEffect(() => { setWtax(null); if (!me || !forSale) return; socket.timeout(10_000).emit('re_quote', { id }, (err: Error | null, r?: Ack & { wealthTax?: { tax: number; recipients: number; line: string } }) => { if (!err && r?.ok && r.wealthTax) setWtax(r.wealthTax); }); }, [id, me, forSale]);
+  useEffect(() => { setWtax(null); setSrvOwned(null); setBt(null); if (!me || !forSale) return; socket.timeout(10_000).emit('re_quote', { id }, (err: Error | null, r?: Ack & { ownedValue?: number; backTax?: { debt: number; surcharge: number; wealthTax: number }; wealthTax?: { tax: number; recipients: number; line: string } }) => { if (!err && r?.ok && typeof r.ownedValue === 'number') setSrvOwned(r.ownedValue); if (!err && r?.ok && r.backTax) setBt(r.backTax); if (!err && r?.ok && r.wealthTax) setWtax(r.wealthTax); }); }, [id, me, forSale, qn]);
   if (!p) return null;
   const mine = !!(o && me && o.owner.toLowerCase() === me.toLowerCase());
   // pt1388u: you pay list × (1 + 2% per 1,000 of property you own, uncapped); sell-back is 70% of what you paid; tax stays on list.
-  const ownedValue = me ? [...owned.entries()].filter(([, x]) => x.owner.toLowerCase() === me.toLowerCase()).reduce((a, [k, x]) => a + (propertyById(k)?.price ?? x.price ?? 0), 0) : 0;
+  const ownedValue = srvOwned ?? (me ? [...owned.entries()].filter(([, x]) => x.owner.toLowerCase() === me.toLowerCase()).reduce((a, [k, x]) => a + (propertyById(k)?.price ?? x.price ?? 0), 0) : 0);
   const surcharge = +landSurchargePct(ownedValue).toFixed(1);
   const cost = o ? (o.price || p.price) : landPrice(p.price, ownedValue); const note = !o ? landMultiplierNote(ownedValue) : '';
   const tax = !o ? (wtax?.tax ?? 0) : 0; const total = cost + tax;
@@ -65,6 +65,8 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }:
         <dt>Property tax</dt><dd data-testid="deed-tax">🪙 {chips(taxOf(p.price))}/day ({(TAX_RATE * 100).toFixed(1)}%)</dd>
         {o && o.arrears > 0 && <><dt>Arrears</dt><dd className="text-rose-300">{o.arrears} unpaid day{o.arrears > 1 ? 's' : ''} (repossessed at {GRACE_DAYS})</dd></>}
       </dl>
+      {!o && me && bt && bt.debt > 0 && <div data-testid="deed-backtax" className="text-amber-300"><small className="block">Property back-tax owed: 🪙 {chips(bt.debt)} ({chips(bt.surcharge)} surcharge + {chips(bt.wealthTax)} wealth tax). Before Nov 4 the surcharge counted list prices instead of what you paid, so earlier buys were under-charged. Pay it to buy more property or cars.</small>
+        <button type="button" disabled={!!busy} data-testid="deed-backtax-pay" onClick={() => { setBusy('re_buy'); setMsg(null); socket.timeout(15_000).emit('re_backtax_pay', {}, (err: Error | null, r?: Ack & { paid?: number }) => { setBusy(null); setMsg(!err && r?.ok ? `Back-tax paid: 🪙 ${chips(r.paid ?? 0)}.` : (r?.error ?? 'Something went wrong.')); setQn((n) => n + 1); }); }}>Pay back-tax 🪙 {chips(bt.debt)}</button></div>}
       {!o && (me ? <button type="button" disabled={!!busy} aria-busy={busy === 're_buy'} onClick={() => (short ? setMsg(`Not enough chips: ${p.label} costs 🪙 ${chips(total)}; you have 🪙 ${chips(wallet ?? 0)} (need 🪙 ${chips(short)} more).`) : act('re_buy'))} aria-describedby={short ? 'deed-short' : undefined} data-testid="deed-buy">{busy === 're_buy' ? <><span className="world-spin" aria-hidden /> Buying…</> : <>Buy for 🪙 {chips(total)}{me ? ` (+${surcharge}% surcharge${tax ? ' + 5% wealth tax' : ''})` : ''}</>}</button> : <small>Sign in to buy.</small>)}
       {mine && <button type="button" disabled={!!busy} aria-busy={busy === 're_sell'} onClick={() => act('re_sell')} data-testid="deed-sell">{busy === 're_sell' ? <><span className="world-spin" aria-hidden /> Selling…</> : <>Sell to the city for 🪙 {chips(sellBackOf(cost))} (70%)</>}</button>}
       {mine && onKitchen && p.kind !== 'landmark' && <button type="button" onClick={onKitchen} data-testid="deed-kitchen">🍳 Kitchen</button>}
@@ -72,7 +74,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }:
       {p.kind === 'farm' && !o && <small>Farmland: buy it to plant crops (FarmVille-style, real-time).</small>}
       {!o && me && short > 0 && !msg && <small id="deed-short" className="text-amber-300" data-testid="deed-short">You need 🪙 {chips(short)} more chips to buy this.</small>}
       {msg && <small role="status" data-testid="deed-msg">{msg}</small>}
-      <small className="opacity-60">You can sell any property back to the city at any time for 70% of what you paid. Surcharge: +{SURCHARGE_PCT_PER_1K}% on your next purchase for every 🪙 1,000 of property you already own, no cap (Trailer Park lots don't count). Tax is on the list price, charged once per UTC day and burned. {GRACE_DAYS} unpaid days in a row and the city takes it back (no refund).</small>
+      <small className="opacity-60">You can sell any property back to the city at any time for 70% of what you paid. Surcharge: +{SURCHARGE_PCT_PER_1K}% on your next purchase for every 🪙 1,000 of property you already own (what you paid + upgrades), no cap (Trailer Park lots don't count). Tax is on the list price, charged once per UTC day and burned. {GRACE_DAYS} unpaid days in a row and the city takes it back (no refund).</small>
     </div>
   );
 }

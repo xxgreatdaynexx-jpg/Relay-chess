@@ -121,10 +121,11 @@ describe('real estate: buy / sell / tax', () => {
 
 describe('real estate: land gets pricier the more you own', () => {
   const cheap = (k: number) => [...properties()].filter((p) => p.kind !== 'landmark').sort((a, b) => a.price - b.price).slice(0, k);
-  it('price = list × (1 + 2% per 1,000 owned, uncapped); sell-back is 70% of what was paid; tax stays on list', async () => {
+  it('price = list × (1 + 2% per 1,000 owned (price paid + upgrades), uncapped); sell-back is 70% of what was paid; tax stays on list', async () => {
     const s = await setup(); const ps = cheap(4); const list = ps.map((p) => px(p.price));
-    const before = list.map((_, i) => list.slice(0, i).reduce((a, b) => a + b, 0));
-    const cost = list.reduce((a, l, i) => a + landPrice(l, before[i]!), 0); await s.fund('Ivy', cost);
+    // surcharge base = price PAID (+ upgrades), so each surcharged buy compounds into the next quote
+    const before: number[] = []; let paidSoFar = 0; for (const l of list) { before.push(paidSoFar); paidSoFar += landPrice(l, paidSoFar); }
+    const cost = paidSoFar; await s.fund('Ivy', cost);
     for (let i = 0; i < 4; i++) { const q = await s.re.quote('Ivy', ps[i]!.id); expect(q.owned).toBe(i); expect(q.ownedValue).toBe(before[i]); expect(q.surchargePct).toBeCloseTo(before[i]! / 1000 * 2);
       expect(q.price).toBe(Math.round(list[i]! * (1 + before[i]! / 1000 * 2 / 100)));
       const r = await s.re.buy('Ivy', ps[i]!.id, q.price); expect(r.price).toBe(q.price); }

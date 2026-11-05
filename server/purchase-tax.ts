@@ -14,7 +14,7 @@ type Q = { query: (sql: string, args?: unknown[]) => Promise<{ rows: any[] }> };
 type Move = { name: string; amount: number; key: string; game: string; memo?: string };
 const DAY = 86_400_000;
 const keyOf = (n: string) => n.replace(/\s+/g, ' ').trim().toLowerCase();
-const junk = (n: string) => isQaName(n) || /^guest/i.test(n.trim()) || /^bot(?![a-z])/i.test(n.trim());
+export const junk = (n: string) => isQaName(n) || /^guest/i.test(n.trim()) || /^bot(?![a-z])/i.test(n.trim());
 
 /** Wealth-tax threshold: property at price paid + upgrades held (shared propertyPaidPlusUpgrades; planted seed NOT counted). */
 export async function propertyPaidValue(db: Q, name: string): Promise<number> { return propertyPaidPlusUpgradesOf(db, name); }
@@ -29,7 +29,7 @@ async function activePlayers(db: Q, now: number) {
   cache = { at: now, rows }; return rows;
 }
 /** Jail is checked live (not cached). */
-async function recipientsFor(db: Q, buyer: string, now: number) {
+export async function recipientsFor(db: Q, buyer: string, now: number) {
   const k = keyOf(buyer);
   return (await activePlayers(db, now)).filter((x) => x.key !== k && keyOf(x.name) !== k && !isJailed(x.name));
 }

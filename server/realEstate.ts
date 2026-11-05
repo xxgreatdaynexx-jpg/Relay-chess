@@ -25,6 +25,7 @@ import { resortPlotOf } from '../shared/resort.js';
 import { propertyTaxMul } from '../shared/skillPerks.js';
 import { cityPropertyTaxMul } from './mayor.js';
 import { purchaseTaxMoves, quotePurchaseTax } from './purchase-tax.js';
+import { backTaxOf, backTaxMoves, backTaxBlockMsg } from './backTax.js';
 
 export class PropertyError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
@@ -89,17 +90,22 @@ export class RealEstate {
   async ownedCount(name: string, cl: { query: pg.Pool['query'] } = this.pool): Promise<number> {
     return Number((await cl.query('SELECT COUNT(*) n FROM properties WHERE owner_key = $1', [keyOf(name)])).rows[0].n);
   }
-  /** Total value of what this player owns (current list price of each parcel; the paid price if it is no longer listed). Drives the surcharge. */
-  async ownedValue(name: string, cl: { query: pg.Pool['query'] } = this.pool): Promise<number> {
+  /** Property total that drives the surcharge: price paid + upgrades held (no planted seed), the same base as the purchase wealth tax and the deed note. */
+  async ownedValue(name: string): Promise<number> {
+    return propertyPaidPlusUpgradesOf(this.pool, name);
+  }
+  /** Price-paid sum only (one plain query, safe inside a transaction): the cross-instance "did you just buy?" check. */
+  async ownedPaid(name: string, cl: { query: pg.Pool['query'] } = this.pool): Promise<number> {
     const rows = (await cl.query('SELECT id, price FROM properties WHERE owner_key = $1', [keyOf(name)])).rows as { id: string; price: unknown }[];
-    return rows.reduce((a, r) => a + (propertyById(r.id)?.price ?? Number(r.price) ?? 0), 0);
+    return rows.reduce((a, r) => a + propertyPaid(Number(r.price), propertyById(r.id)?.price ?? 0), 0);
   }
   /** What this player would pay for a property right now. */
   async quote(name: string, id: unknown) {
     const p = propertyById(id); if (!p) throw new PropertyError('That property is not for sale.');
     const owned = await this.ownedCount(name); const value = await this.ownedValue(name);
     const price = landPrice(p.price, value); const wealthTax = await quotePurchaseTax(this.pool, name, price, this.clock());
-    return { id: p.id, list: p.price, owned, ownedValue: value, surchargePct: landSurchargePct(value), multiplier: landMultiplier(value), price, wealthTax };
+    const backTax = await backTaxOf(this.pool, name);
+    return { id: p.id, list: p.price, owned, ownedValue: value, surchargePct: landSurchargePct(value), multiplier: landMultiplier(value), price, wealthTax, backTax };
   }
   /** max: the price the player saw; a higher price now (they bought something else meanwhile) refuses instead of surprising them. */
   async buy(name: string, id: unknown, max?: unknown) {
@@ -109,7 +115,8 @@ export class RealEstate {
   }
   private async buyNow(name: string, p: NonNullable<ReturnType<typeof propertyById>>, max?: number) {
     const bank = this.bank(); await bank.refresh(name);
-    const owned = await this.ownedCount(name); const value = await this.ownedValue(name); const price = landPrice(p.price, value);
+    const bt = await backTaxOf(this.pool, name); if (bt.debt > 0) throw new PropertyError(backTaxBlockMsg(bt));
+    const owned = await this.ownedCount(name); const value = await this.ownedValue(name); const paidSnap = await this.ownedPaid(name); const price = landPrice(p.price, value);
     const note = landMultiplierNote(value);
     if (max !== undefined && price > max) throw new PropertyError(`The price changed: your surcharge is +${+landSurchargePct(value).toFixed(1)}% now, so ${p.label} costs ${price.toLocaleString('en-US')}. Check the deed and try again.`);
     const wq = await quotePurchaseTax(this.pool, name, price, this.clock());
@@ -117,7 +124,7 @@ export class RealEstate {
     let wtax = 0, wn = 0;
     await this.atomic(name, -price, 'property_buy', `Bought ${p.label} (${p.id})${note ? ` ${note}` : ''}`, async (cl) => {
       // cross-instance: the count must still be what we priced at (a parallel buy elsewhere = refuse, nothing charged)
-      if ((await this.ownedValue(name, cl)) !== value) throw new PropertyError('You just bought another property: the price went up. Check the deed and try again.');
+      if ((await this.ownedPaid(name, cl)) !== paidSnap) throw new PropertyError('You just bought another property: the price went up. Check the deed and try again.');
       // The insert wins only if the row now carries our deed nonce (a concurrent buyer's row = conflict, DO NOTHING).
       const deed = randomUUID();
       // One round trip (QA r8 speed): RETURNING yields a row only if our insert won. price = what was actually paid.
@@ -126,6 +133,21 @@ export class RealEstate {
     }, async (key) => { const t = await purchaseTaxMoves(this.pool, name, price, key, p.label, this.clock()); wtax = t.tax; wn = t.recipients; return t.moves; });
     this.onChange?.();
     return { id: p.id, price, wealthTax: wtax, wealthTaxRecipients: wn, list: p.price, owned, ownedValue: value, surchargePct: landSurchargePct(value), multiplier: landMultiplier(value), chips: bank.account(name).chips };
+  }
+
+  backTax(name: string) { return backTaxOf(this.pool, name); }
+  /** Pay the whole property back-tax in one atomic, replay-safe ledger write (see server/backTax.ts). */
+  async payBackTax(name: string) {
+    return this.lock(`owner:${keyOf(name)}`, async () => {
+      const bank = this.bank(); await bank.refresh(name);
+      const { b, moves } = await backTaxMoves(this.pool, name, this.clock()); if (!b.debt) return { paid: 0, backTax: b, chips: bank.account(name).chips };
+      if (bank.account(name).chips < b.debt) throw new PropertyError(`Not enough chips: your back-tax is ${b.debt.toLocaleString('en-US')}.`);
+      const w = bank.transferAtomic(moves, { batch: moves.length > 1 });
+      const run = async () => { await w.after; const cl = await this.pool.connect(); try { await cl.query('BEGIN'); for (const st of w.stmts) await cl.query(st.sql, st.args); await cl.query('COMMIT'); } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); } };
+      const p = run(); w.bind(p);
+      try { await p; } catch (e) { w.revert(); console.error('[realestate] backtax failed:', (e as Error).message); throw new PropertyError(/chips|balance/i.test((e as Error).message) ? 'Not enough chips.' : 'Something went wrong. Nothing was charged.'); }
+      return { paid: b.debt, backTax: await backTaxOf(this.pool, name), chips: bank.account(name).chips };
+    });
   }
 
   async sell(name: string, id: unknown) {
@@ -237,6 +259,8 @@ export function registerRealEstate(io: Server, socket: Socket): void {
   on('re_mine', async (_b, e) => ({ properties: await e.mine(need()) }));
   on('re_buy', async (b, e) => { const n = need(); if (typeof b.id === 'string' && /^(r|rf):/.test(b.id)) await requireResort(n, PropertyError); return e.buy(n, b.id, b.max); });
   on('re_quote', async (b, e) => e.quote(need(), b.id));
+  on('re_backtax', async (_b, e) => ({ backTax: await e.backTax(need()) }));
+  on('re_backtax_pay', async (_b, e) => e.payBackTax(need()));
   on('re_sell', (b, e) => e.sell(need(), b.id));
 }
 export async function propertySpend(pool: { query: (sql: string, args?: unknown[]) => Promise<{ rows: any[] }> }, ownerKey: string | null): Promise<Map<string, { upgrades: number; crops: number }>> {
