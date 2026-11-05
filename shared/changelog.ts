@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-04T19:15:00-06:00', title: 'Land surcharge and wealth tax explained', bullets: [
+    'Land surcharge: every property buy costs +2% extra for each 1,000 of property you have paid for (price paid plus upgrades). There is no cap.',
+    'Wealth tax: once your property is over 100,000, buys of 1,000 or more also cost 5% extra, shared with active players. Items under 1,000 are exempt.',
+    'Back-tax: if you underpaid on earlier buys, use "Pay back-tax" (shown on your deeds) before you can buy more property or cars.',
+  ] },
   { commit: '', at: '2026-11-04T19:10:00-06:00', title: 'Farming profit -5% again', bullets: [
     'Farming nerfed another 5%: harvested crops now sell for 90.25% of their listed value (was 95%). Seed prices are unchanged.',
   ] },
