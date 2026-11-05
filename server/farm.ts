@@ -14,6 +14,7 @@ import { bootAttach, setBootState } from './boot-retry.js';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank, type CasinoBank } from './casino-store.js';
+import { checkFarmAction } from './farmGuard.js';
 import { isJailed } from './jail.js';
 import { px, priceIndex } from './price-index.js';
 import { resortPlotOf, isTropical, TROPICAL_CROPS } from '../shared/resort.js';
@@ -281,6 +282,7 @@ export class Farm {
     if (isTropical(c.id) !== p.resort) throw new FarmError(p.resort ? 'Only tropical crops grow at the resort plantation.' : 'Tropical crops only grow at Chud Resort.');
     const list = this.tileList(p, tiles); const pid = p.pid; const m = await this.machines(name);
     this.passCheck('seed', m, p, list.length);
+    const blocked = checkFarmAction('plant', keyOf(name), this.clock()); if (blocked) throw new FarmError(blocked);
     return this.lock(pid, async () => {
       const cost = px(c.seed) * list.length; const bank = this.bank(); await bank.refresh(name);
       if (bank.account(name).chips < cost) throw new FarmError(`Not enough chips: ${list.length} × ${c.label} seeds cost ${cost.toLocaleString('en-US')}.`);
@@ -311,6 +313,7 @@ export class Farm {
   async harvest(name: string, id: unknown, tiles?: unknown, sink?: ImportSink, pantry = false) {
     const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const pid = p.pid;
     const only = tiles === undefined || tiles === null ? null : new Set(this.tileList(p, tiles));
+    const blocked = checkFarmAction('harvest', keyOf(name), this.clock()); if (blocked) throw new FarmError(blocked);
     return this.lock(`h:${keyOf(name)}`, () => this.lock(pid, async () => {
       const now = this.clock(); const key = keyOf(name);
       const up = await this.upgrades(this.pool, pid, key);

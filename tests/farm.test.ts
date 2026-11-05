@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { resetFarmGuardForTest } from '../server/farmGuard';
 import { newDb } from 'pg-mem';
 import { registerPgAdvisoryFunctions } from './pg-advisory';
 import { CasinoBank, PgCasinoStore } from '../server/casino-store';
@@ -22,6 +23,8 @@ async function setup() {
   const small = farmPlots().find((p) => p.cols * p.rows === 16)!; const id = `f:${small.n}`;
   return { db, bank, re, farm, fund, chips, ledger, id, small, setNow: (t: number) => { now = t; } };
 }
+
+beforeEach(() => resetFarmGuardForTest());
 
 describe('farm district', () => {
   it('plots are farmland properties east of the plate, never overlapping each other or the Trailer Park; a small plot is a few days of login bonuses', () => {

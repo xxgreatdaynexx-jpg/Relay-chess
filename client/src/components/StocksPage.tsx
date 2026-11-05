@@ -8,7 +8,7 @@ import { request, socket } from '@/lib/net';
 import { useMoneyAction } from '@/lib/moneyAction';
 import { useAccount } from '@/lib/auth';
 import { DIV_HOUR_UTC, FUND_MAX_ORDER, OPT_EXPIRIES, OPT_STRIKES, SHORT_INIT, SHORT_MAINT, BORROW_FEE, FUND_BY_ID, fundQuote, strikeFor } from '../../../shared/derivs';
-import { MAX_TICK_IMPACT, MAX_TRADE_IMPACT, STOCK_FEE, STOCK_SPREAD, quote, parseQty, COMPANY_BY_TICKER, type NewsItem, type SectorInfo } from '../../../shared/stocks';
+import { MAX_TICK_IMPACT, MAX_TRADE_IMPACT, STOCK_FEE, STOCK_SPREAD, quote, parseQty, COMPANY_BY_TICKER, isMarketOpen, MARKET_CLOSED_MSG, type NewsItem, type SectorInfo } from '../../../shared/stocks';
 import { usePanelDrag } from '@/lib/panelDrag';
 import { InvestChart, KeyStatsGrid, compact } from '@/components/stocks/InvestChart';
 import { defaultInterval, epsOf, INTERVALS, type Candle, type CandleInterval, type KeyStats, type Period } from '../../../shared/stockStats';
@@ -18,7 +18,8 @@ import { Info, LearnView } from '@/components/stocks/Explain';
 import { PeriodToggle } from '@/components/stocks/InvestChart';
 
 interface Row { ticker: string; name: string; sector: string; price: number; chg: number; volume: number; shares: number; held: number; cap: number; playerPct: number; divYield?: number }
-interface ListResp { companies: Row[]; sectors: SectorInfo[]; news: NewsItem[]; totals: { cap: number; playerOwned: number; offshore: number }; drift: { inflPct: number | null; activity: Record<string, number> } }
+interface HoursInfo { open: boolean; openHour: number; closeHour: number; tz: string; label: string; nextChangeAt: number }
+interface ListResp { companies: Row[]; sectors: SectorInfo[]; news: NewsItem[]; totals: { cap: number; playerOwned: number; offshore: number }; drift: { inflPct: number | null; activity: Record<string, number> }; hours?: HoursInfo }
 const EV = 'chud:open-stocks';
 export const openStocks = (ticker?: string) => window.dispatchEvent(new CustomEvent(EV, { detail: { ticker } }));
 const atStocks = () => window.location.pathname === '/stocks' || window.location.hash.startsWith('#stocks');
@@ -78,8 +79,13 @@ export function StocksPage() {
             </header>
             <div className="flex-1 overflow-auto p-3 text-sm">
               {err && <p className="text-rose-400">{err}</p>}
+              {data && !(data.hours?.open ?? isMarketOpen()) && (
+                <p className="mb-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200" data-testid="stk-hours-closed">
+                  💤 {MARKET_CLOSED_MSG} Trading hours are {data.hours?.openHour ?? 12}:00–{data.hours?.closeHour ?? 22}:00 {data.hours?.label ?? 'America/Edmonton (UTC-6)'}.
+                </p>
+              )}
               {!data ? <p className="opacity-60">Loading the exchange…</p>
-                : ticker ? <CompanyView ticker={ticker} onBack={() => setTicker(null)} onTraded={load} onOption={(o) => { setPre(o); setView('options'); setTicker(null); }} />
+                : ticker ? <CompanyView ticker={ticker} onBack={() => setTicker(null)} onTraded={load} onOption={(o) => { setPre(o); setView('options'); setTicker(null); }} marketOpen={data.hours?.open ?? isMarketOpen()} />
                 : view === 'overview' ? <MarketsOverview data={data} onPick={setTicker} onTab={setView} />
                 : view === 'market' ? <MarketList data={data} onPick={setTicker} />
                 : view === 'movers' ? <Movers data={data} onPick={setTicker} />
@@ -87,9 +93,9 @@ export function StocksPage() {
                 : view === 'screener' ? <Screener data={data} onPick={setTicker} />
                 : view === 'orders' ? <Orders onPick={setTicker} />
                 : view === 'learn' ? <LearnView />
-                : view === 'funds' ? <FundsView onTraded={load} />
-                : view === 'shorts' ? <ShortsView data={data} onTraded={load} />
-                : view === 'options' ? <OptionsView key={pre ? `${pre.ticker}${pre.kind}${pre.off}${pre.days}` : 'o'} data={data} init={pre} />
+                : view === 'funds' ? <FundsView onTraded={load} marketOpen={data.hours?.open ?? isMarketOpen()} />
+                : view === 'shorts' ? <ShortsView data={data} onTraded={load} marketOpen={data.hours?.open ?? isMarketOpen()} />
+                : view === 'options' ? <OptionsView key={pre ? `${pre.ticker}${pre.kind}${pre.off}${pre.days}` : 'o'} data={data} init={pre} marketOpen={data.hours?.open ?? isMarketOpen()} />
                 : view === 'portfolio' ? <Portfolio onPick={setTicker} />
                 : <NewsFeed news={data.news} onPick={setTicker} />}
             </div>
@@ -145,7 +151,7 @@ function MarketList({ data, onPick }: { data: ListResp; onPick: (t: string) => v
 interface CompanyResp { dayChg?: number; company: Row & { blurb: string; vol: number; beta: number; liquidity: number }; chart: Array<[number, number]>; stats?: KeyStats; news: NewsItem[]; mine: { shares: number; cost: number } | null; maxOrder: number; drift: number; callLock?: boolean }
 type Sub = 'overview' | 'chart' | 'financials' | 'news' | 'chain' | 'dividends' | 'holders';
 const SUBS: ReadonlyArray<readonly [Sub, string]> = [['overview', 'Overview'], ['chart', 'Chart'], ['financials', 'Key stats'], ['news', 'News'], ['chain', 'Options chain'], ['dividends', 'Dividends'], ['holders', 'Holders & activity']];
-function CompanyView({ ticker, onBack, onTraded, onOption }: { ticker: string; onBack: () => void; onTraded: () => void; onOption: (o: OptPrefill) => void }) {
+function CompanyView({ ticker, onBack, onTraded, onOption, marketOpen = true }: { ticker: string; onBack: () => void; onTraded: () => void; onOption: (o: OptPrefill) => void; marketOpen?: boolean }) {
   const account = useAccount(); const [sub, setSub] = useState<Sub>('overview');
   const [range, setRange] = useState<Period>('1d');
   const [d, setD] = useState<CompanyResp | null>(null);
@@ -194,8 +200,8 @@ function CompanyView({ ticker, onBack, onTraded, onOption }: { ticker: string; o
         {!account ? <p className="text-xs opacity-70">Sign in to trade. Guests can browse.</p> : (
           <div className="flex flex-wrap items-center gap-2">
             <input className="w-24 rounded bg-black/30 px-2 py-1" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value)} aria-label="Shares" aria-invalid={!!qtyErr} data-testid="stk-qty" />
-            <button type="button" disabled={!!busy || !shares || !!d.callLock} title={d.callLock ? `You hold an open call on ${ticker}: no buying shares until it expires or you sell it.` : undefined} className="rounded bg-emerald-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void trade('buy')} data-testid="stk-buy" aria-busy={busy === 'buy'}>{busy === 'buy' && <Spin />}Buy {qb ? `· 🪙 ${n(qb.total)}` : ''}</button>
-            <button type="button" disabled={!!busy || !shares || held < 1 || shares > held} title={held < 1 ? "You don't own any shares to sell." : shares > held ? `You only own ${plural(held, 'share', 'shares')}.` : undefined} className="rounded bg-rose-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void trade('sell')} data-testid="stk-sell" aria-busy={busy === 'sell'}>{busy === 'sell' && <Spin />}Sell {qs && shares <= held ? `· 🪙 ${n(qs.total)}` : ''}</button>
+            <button type="button" disabled={!!busy || !shares || !!d.callLock || !marketOpen} title={!marketOpen ? MARKET_CLOSED_MSG : d.callLock ? `You hold an open call on ${ticker}: no buying shares until it expires or you sell it.` : undefined} className="rounded bg-emerald-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void trade('buy')} data-testid="stk-buy" aria-busy={busy === 'buy'}>{busy === 'buy' && <Spin />}Buy {qb ? `· 🪙 ${n(qb.total)}` : ''}</button>
+            <button type="button" disabled={!!busy || !shares || held < 1 || shares > held || !marketOpen} title={!marketOpen ? MARKET_CLOSED_MSG : held < 1 ? "You don't own any shares to sell." : shares > held ? `You only own ${plural(held, 'share', 'shares')}.` : undefined} className="rounded bg-rose-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void trade('sell')} data-testid="stk-sell" aria-busy={busy === 'sell'}>{busy === 'sell' && <Spin />}Sell {qs && shares <= held ? `· 🪙 ${n(qs.total)}` : ''}</button>
             <QtyErr e={qtyErr} />
             {d.callLock && <p className="w-full text-xs text-amber-300" data-testid="stk-call-lock">📈 You hold an open call on {ticker}, so buying {ticker} shares is locked until it expires or you sell it. You can still sell.</p>}
           </div>)}
@@ -256,7 +262,7 @@ const Msg = ({ m }: { m: { ok: boolean; t: string } | null }) => (m ? <p classNa
 const Card = ({ k, v, title, cls }: { k: string; v: React.ReactNode; title?: string; cls?: string }) => <div className="rounded bg-white/5 p-2" title={title}><div className="opacity-60">{k}</div><b className={cls}>{v}</b></div>;
 
 interface FundRow { id: string; name: string; kind: 'index' | 'mutual'; blurb: string; fee: number; expense: number; nav: number; dayPct?: number; yield: number; holdings: Array<{ ticker: string; weight: number }> }
-export function FundsView({ onTraded }: { onTraded: () => void }) {
+export function FundsView({ onTraded, marketOpen = true }: { onTraded: () => void; marketOpen?: boolean }) {
   const account = useAccount(); const [fs, setFs] = useState<FundRow[] | null>(null); const [sel, setSel] = useState<string | null>(null);
   const [units, setUnits] = useState('1'); const [m, setM] = useState<{ ok: boolean; t: string } | null>(null); const { busy, run } = useMoneyAction(); /* QA r12: lock + spinner set synchronously on click, held for the whole request */ const [mine, setMine] = useState<Record<string, number>>({});
   const load = useCallback(() => { void request('stk2_funds').then((r) => r.ok && setFs((r as unknown as { funds: FundRow[] }).funds)); if (account) void request('stk2_portfolio').then((r) => r.ok && setMine(Object.fromEntries((r as unknown as Port).funds.map((f) => [f.fund, f.units])))); }, [account]);
@@ -281,8 +287,8 @@ export function FundsView({ onTraded }: { onTraded: () => void }) {
           {!account ? <p className="text-xs opacity-70">Sign in to trade.</p> : (
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <input className="w-24 rounded bg-black/30 px-2 py-1" inputMode="numeric" value={units} onChange={(e) => setUnits(e.target.value)} aria-label="Units" aria-invalid={!!uErr} data-testid="stk-fund-units" />
-              <button type="button" disabled={!!busy || !u} className="rounded bg-emerald-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void go('buy', f.id)} data-testid="stk-fund-buy" aria-busy={busy === `buy:${f.id}`}>{busy === `buy:${f.id}` && <Spin />}Buy{u ? ` · 🪙 ${n(fundQuote(FUND_BY_ID.get(f.id)!, f.nav, 'buy', u).total)}` : ''}</button>
-              <button type="button" disabled={!!busy || !u || !mine[f.id]} className="rounded bg-rose-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void go('sell', f.id)} data-testid="stk-fund-sell" aria-busy={busy === `sell:${f.id}`}>{busy === `sell:${f.id}` && <Spin />}Sell{u && mine[f.id] ? ` · 🪙 ${n(fundQuote(FUND_BY_ID.get(f.id)!, f.nav, 'sell', Math.min(u, mine[f.id]!)).total)}` : ''}</button>
+              <button type="button" disabled={!!busy || !u || !marketOpen} title={!marketOpen ? MARKET_CLOSED_MSG : undefined} className="rounded bg-emerald-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void go('buy', f.id)} data-testid="stk-fund-buy" aria-busy={busy === `buy:${f.id}`}>{busy === `buy:${f.id}` && <Spin />}Buy{u ? ` · 🪙 ${n(fundQuote(FUND_BY_ID.get(f.id)!, f.nav, 'buy', u).total)}` : ''}</button>
+              <button type="button" disabled={!!busy || !u || !mine[f.id] || !marketOpen} title={!marketOpen ? MARKET_CLOSED_MSG : undefined} className="rounded bg-rose-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void go('sell', f.id)} data-testid="stk-fund-sell" aria-busy={busy === `sell:${f.id}`}>{busy === `sell:${f.id}` && <Spin />}Sell{u && mine[f.id] ? ` · 🪙 ${n(fundQuote(FUND_BY_ID.get(f.id)!, f.nav, 'sell', Math.min(u, mine[f.id]!)).total)}` : ''}</button>
               <QtyErr e={uErr} />
             </div>)}
           <Msg m={m} />
@@ -311,7 +317,7 @@ function Allocation({ t }: { t: Port['totals'] }) {
     <div className="mt-1 flex flex-wrap gap-3 text-[11px]">{parts.map(([k, v, c]) => <span key={k} className="inline-flex items-center gap-1"><i className="inline-block h-2 w-2 rounded-full" style={{ background: c }} />{k} <b>🪙 {compact(v)}</b> <span className="opacity-60">{sum ? ((Math.max(0, v) / sum) * 100).toFixed(1) : 0}%</span></span>)}</div></div>;
 }
 
-function ShortsView({ data, onTraded }: { data: ListResp; onTraded: () => void }) {
+function ShortsView({ data, onTraded, marketOpen = true }: { data: ListResp; onTraded: () => void; marketOpen?: boolean }) {
   const account = useAccount(); const [t, setT] = useState(data.companies[0]?.ticker ?? ''); const [qty, setQty] = useState('1'); const [p, setP] = useState<Port | null>(null);
   const [m, setM] = useState<{ ok: boolean; t: string } | null>(null); const { busy, run } = useMoneyAction(); /* QA r12: lock + spinner set synchronously on click, held for the whole request */
   const load = useCallback(() => { if (account) void request('stk2_portfolio').then((r) => r.ok && setP(r as unknown as Port)); }, [account]);
@@ -327,11 +333,11 @@ function ShortsView({ data, onTraded }: { data: ListResp; onTraded: () => void }
       <div className="flex flex-wrap items-center gap-2">
         <select className="rounded bg-black/30 px-2 py-1" value={t} onChange={(e) => setT(e.target.value)} data-testid="stk-short-ticker">{[...data.companies].sort((a, b) => a.ticker.localeCompare(b.ticker)).map((x) => <option key={x.ticker} value={x.ticker}>{x.ticker} · {x.price.toFixed(2)}</option>)}</select>
         <input className="w-24 rounded bg-black/30 px-2 py-1" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value)} aria-label="Shares" aria-invalid={!!shErr} data-testid="stk-short-qty" />
-        <button type="button" disabled={!!busy || !sh} className="rounded bg-rose-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void open()} data-testid="stk-short-open" aria-busy={busy === 'open'}>{busy === 'open' && <Spin />}Short · locks ≈🪙 {c ? n(c.price * sh * SHORT_INIT) : '—'}</button>
+        <button type="button" disabled={!!busy || !sh || !marketOpen} title={!marketOpen ? MARKET_CLOSED_MSG : undefined} className="rounded bg-rose-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void open()} data-testid="stk-short-open" aria-busy={busy === 'open'}>{busy === 'open' && <Spin />}Short · locks ≈🪙 {c ? n(c.price * sh * SHORT_INIT) : '—'}</button>
         <QtyErr e={shErr} />
       </div>
       <Msg m={m} />
-      <ShortTable p={p} onClose={close} busy={busy} />
+      <ShortTable p={p} onClose={marketOpen ? close : undefined} busy={busy} />
     </div>
   );
 }
@@ -341,7 +347,7 @@ function ShortTable({ p, onClose, busy }: { p: Port | null; onClose?: (id: strin
     <tbody>{p.shorts.map((s) => <tr key={s.id} className="border-t border-white/5" data-testid="stk-short-row"><td><b>{s.ticker}</b> ×{s.shares}</td><td className="text-right">{s.entry.toFixed(2)} → {s.price.toFixed(2)}</td><td className="text-right">{n(s.collateral)}</td><td className="text-right" title={`Equity ${n(s.equity)}`}>{n(s.closeValue ?? s.equity)}</td><td className={`text-right ${tone(s.pnl)}`}>{s.pnl >= 0 ? '+' : ''}{n(s.pnl)}</td><td className="text-right">{s.liqPrice.toFixed(2)}</td>{onClose && <td className="text-right"><button type="button" disabled={!!busy} className="rounded bg-white/10 px-2 py-0.5" onClick={() => onClose(s.id)} data-testid="stk-short-close" aria-busy={busy === `close:${s.id}`}>{busy === `close:${s.id}` && <Spin />}Close</button></td>}</tr>)}</tbody></table>;
 }
 
-function OptionsView({ data, init }: { data: ListResp; init?: OptPrefill | null }) {
+function OptionsView({ data, init, marketOpen = true }: { data: ListResp; init?: OptPrefill | null; marketOpen?: boolean }) {
   const account = useAccount(); const [t, setT] = useState(init?.ticker ?? data.companies[0]?.ticker ?? ''); const [kind, setKind] = useState<'call' | 'put'>(init?.kind ?? 'call');
   const [off, setOff] = useState<number>(init?.off ?? 0); const [days, setDays] = useState<number>(init?.days ?? 1); const [qty, setQty] = useState('10');
   const [q, setQ] = useState<{ premium: number; breakeven: number; strike: number } | null>(null); const [qe, setQe] = useState<string | null>(null);
@@ -363,12 +369,12 @@ function OptionsView({ data, init }: { data: ListResp; init?: OptPrefill | null 
         <select className="rounded bg-black/30 px-2 py-1" value={days} onChange={(e) => setDays(Number(e.target.value))} data-testid="stk-opt-days">{OPT_EXPIRIES.map((d) => <option key={d} value={d}>{d} day{d > 1 ? 's' : ''}</option>)}</select>
         <input className="w-20 rounded bg-black/30 px-2 py-1" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value)} aria-label="Shares covered" aria-invalid={!!oErr} data-testid="stk-opt-qty" />
         <QtyErr e={oErr} />
-        {account ? <button type="button" disabled={!!busy || !q} className="rounded bg-emerald-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void buy()} data-testid="stk-opt-buy" aria-busy={busy === 'buy'}>{busy === 'buy' && <Spin />}Buy · 🪙 {q ? n(q.premium) : '—'}</button> : <span className="text-xs opacity-70">Sign in to trade.</span>}
+        {account ? <button type="button" disabled={!!busy || !q || !marketOpen} title={!marketOpen ? MARKET_CLOSED_MSG : undefined} className="rounded bg-emerald-600 px-3 py-1 font-semibold disabled:opacity-40" onClick={() => void buy()} data-testid="stk-opt-buy" aria-busy={busy === 'buy'}>{busy === 'buy' && <Spin />}Buy · 🪙 {q ? n(q.premium) : '—'}</button> : <span className="text-xs opacity-70">Sign in to trade.</span>}
       </div>
       {q && <p className="mt-1 text-xs opacity-80">Breakeven at expiry: <b>{q.breakeven.toFixed(2)}</b>. Max loss 🪙 {n(q.premium)}.</p>}
       {qe && <p className="mt-1 text-xs text-rose-400">{qe}</p>}
       <Msg m={m} />
-      <OptTable p={p} onSell={account ? sell : undefined} busy={busy} />
+      <OptTable p={p} onSell={account && marketOpen ? sell : undefined} busy={busy} />
     </div>
   );
 }

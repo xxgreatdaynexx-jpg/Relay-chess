@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { resetFarmGuardForTest } from '../server/farmGuard';
 import { newDb } from 'pg-mem';
 import { registerPgAdvisoryFunctions } from './pg-advisory';
 import { CasinoBank, PgCasinoStore } from '../server/casino-store';
@@ -29,6 +30,8 @@ async function growWheat(s: Awaited<ReturnType<typeof setup>>, name: string, fer
   if (fert) await s.farm.fertilize(name, s.id, fert, [0, 1, 2, 3]);
   s.setNow(T0 + wheat.grow + M); return (await s.farm.harvest(name, s.id)) as { paid: number; bonus: number };
 }
+
+beforeEach(() => resetFarmGuardForTest());
 
 describe('farming rework: steps the player does', () => {
   it('plough -> seed -> harvest; by hand a pass covers HAND_BATCH tiles; harvesting resets the soil', async () => {

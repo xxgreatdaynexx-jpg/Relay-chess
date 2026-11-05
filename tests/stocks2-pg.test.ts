@@ -18,7 +18,7 @@ function shim(db: PGlite) {
 describe('stocks v2 on Postgres', () => {
   it('migrates and runs fund, short, option and daily flows', async () => {
     const db = new PGlite(); const pool = shim(db) as never;
-    const clk = { now: Date.parse('2026-11-01T12:00:00Z') };
+    const clk = { now: Date.parse('2026-11-01T20:00:00Z') };
     const e = new Exchange(pool, () => clk.now); await e.init();
     const d = new Derivatives(e, pool, () => clk.now); await d.init(); await d.init();
     const n = 'QA-S2pg'; const b = getBank(); b.transfer(n, 20_000 - b.account(n).chips, { game: 'admin' });
