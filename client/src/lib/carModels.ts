@@ -119,12 +119,56 @@ export function buildCar(c: CarModel, color: number, lod: 'near' | 'far' = 'near
         add(m(0xd4af37, { metalness: 1, roughness: 0.2 }, 'gold'), L * 0.34, 0.03, 0.04, -L * 0.16, clear + H * 0.68, -W * 0.4);
         add(m(CHROME, { metalness: 1, roughness: 0.2 }, 'grl'), 0.04, H * 0.05, W * 0.44, L / 2 + 0.045, clear + H * 0.26);
         for (const z of [W * 0.22, -W * 0.22]) add(m(CHROME, { metalness: 1, roughness: 0.25 }, 'exh'), 0.12, 0.05, 0.05, -L / 2 - 0.05, clear + 0.08, z);
+      } else if (c.id === 'hypervolt') {
+        // Smooth EV: low seamless cabin, closed front light-bar, no aggressive grille.
+        body(L * 0.98, H * 0.38, 0);
+        cabin(L * 0.4, H * 0.32, -L * 0.02, W * 0.82);
+        add(m(0xe8f4ff, { emissive: 0x88ccee, emissiveIntensity: 0.8 }, 'bar'), 0.04, 0.06, W * 0.7, L / 2 + 0.04, clear + H * 0.22);
+        add(paint, L * 0.2, 0.04, W * 0.88, -L * 0.36, clear + H * 0.38);
+      } else if (c.id === 'phantom') {
+        // Lambo-ish wedge: very low pointed nose, cabin aft, sharp rear.
+        const low = 0.34; body(L, H * low);
+        cabin(L * 0.32, H * 0.3, -L * 0.12, W * 0.72);
+        add(paint, L * 0.38, 0.04, W * 0.7, L * 0.18, clear + H * low * 0.7); // pointed nose plane
+        add(m(0x111418, {}, 'side'), L * 0.5, H * 0.12, 0.04, -L * 0.05, clear + H * 0.2, W / 2 + 0.02);
+        add(m(0x111418, {}, 'side'), L * 0.5, H * 0.12, 0.04, -L * 0.05, clear + H * 0.2, -W / 2 - 0.02);
+        add(m(0x111418, {}, 'wing'), 0.22, 0.04, W * 0.95, -L * 0.46, clear + H * low + 0.2);
+        for (const z of [W * 0.3, -W * 0.3]) add(m(0x111418, {}, 'wing'), 0.05, 0.18, 0.05, -L * 0.44, clear + H * low + 0.1, z);
+      } else if (c.id === 'chudmobile') {
+        // Bugatti/Koenigsegg hyper: ultra-low, long tail, huge wing, diffuser, underglow.
+        const low = 0.32; body(L * 1.02, H * low, -L * 0.02);
+        cabin(L * 0.3, H * 0.28, -L * 0.06, W * 0.7);
+        add(paint, L * 0.42, 0.035, W * 0.68, L * 0.2, clear + H * low * 0.65);
+        add(m(0x111418, {}, 'wing'), 0.32, 0.06, W * 1.12, -L * 0.5, clear + H * low + 0.38);
+        for (const z of [W * 0.4, -W * 0.4]) add(m(0x111418, {}, 'wing'), 0.08, 0.36, 0.08, -L * 0.48, clear + H * low + 0.18, z);
+        add(m(0x1b1d22, {}, 'diff'), 0.2, 0.08, W * 0.9, -L / 2 - 0.02, clear + 0.06);
+        for (const z of [-W * 0.25, -W * 0.1, W * 0.1, W * 0.25]) add(m(0x1b1d22, {}, 'diff'), 0.16, 0.1, 0.04, -L / 2 - 0.04, clear + 0.1, z);
+        add(m(color, { emissive: color, emissiveIntensity: 0.9 }, 'glow'), L * 0.9, 0.03, W * 0.95, 0, 0.04);
+      } else if (c.id === 'thunderhorse') {
+        // Mustang-like fastback: long hood, sloping rear cabin into deck, stripes + scoop.
+        const low = 0.48; body(L, H * low);
+        cabin(L * 0.38, H * 0.36, -L * 0.08, W * 0.78);
+        add(paint, L * 0.28, 0.045, W * 0.9, L * 0.2, clear + H * low); // long hood
+        // Fastback slope: stepped rear roof into deck
+        add(paint, L * 0.22, 0.08, W * 0.76, -L * 0.28, clear + H * low + H * 0.18);
+        add(paint, L * 0.2, 0.04, W * 0.88, -L * 0.36, clear + H * low);
+        add(m(0xffffff, {}, 'stripe'), L * 1.001, 0.02, W * 0.16, 0, clear + H * low + 0.01);
+        add(m(0x2f2f33, {}, 'scoop'), L * 0.18, 0.12, W * 0.28, L * 0.28, clear + H * low + 0.06);
+      } else if (c.id === 'blacktop') {
+        // Charger-like 4-door widebody: longer greenhouse, wide flares, tall scoop.
+        const low = 0.5; body(L, H * low);
+        cabin(L * 0.5, H * 0.4, -L * 0.06, W * 0.84); // longer 4-door cabin
+        add(paint, L * 0.24, 0.05, W * 0.92, L * 0.22, clear + H * low);
+        add(paint, L * 0.18, 0.05, W * 0.9, -L * 0.38, clear + H * low);
+        add(m(0x2f2f33, {}, 'scoop'), L * 0.2, 0.16, W * 0.32, L * 0.22, clear + H * low + 0.08);
+        // Widebody flares over wheels
+        for (const sx of [L * 0.3, -L * 0.3]) for (const z of [W / 2 + 0.05, -W / 2 - 0.05]) add(paint, wheelR * 2.2, 0.12, 0.1, sx, clear + wheelR * 0.9, z);
+        add(m(0xb5171e, {}, 'stripe'), L * 1.001, 0.015, W * 0.12, 0, clear + H * low + 0.01);
       } else {
         const low = st === 'super' ? 0.4 : 0.48; body(L, H * low);
         cabin(L * (st === 'super' ? 0.36 : 0.4), H * (st === 'super' ? 0.36 : 0.38), -L * (st === 'muscle' ? 0.1 : 0.04), W * 0.8);
         if (st === 'muscle') { add(m(0xffffff, {}, 'stripe'), L * 1.001, 0.02, W * 0.18, 0, clear + H * low + 0.01); add(m(0x2f2f33, {}, 'scoop'), L * 0.18, 0.12, W * 0.3, L * 0.25, clear + H * low + 0.06); }
         if (st === 'super') { add(m(0x111418, {}, 'wing'), 0.25, 0.05, W * 1.02, -L * 0.47, clear + H * low + 0.28); add(m(0x111418, {}, 'wing'), 0.06, 0.25, 0.06, -L * 0.45, clear + H * low + 0.12, W * 0.35); add(m(0x111418, {}, 'wing'), 0.06, 0.25, 0.06, -L * 0.45, clear + H * low + 0.12, -W * 0.35); }
-        if (c.id === 'chudmobile') add(m(color, { emissive: color, emissiveIntensity: 0.9 }, 'glow'), L * 0.85, 0.03, W * 0.9, 0, 0.05);
       }
       break; }
     case 'suv': body(L, H * 0.55); cabin(L * 0.72, H * 0.38, -L * 0.08); add(m(0x2f2f33, {}, 'rack'), L * 0.5, 0.05, W * 0.8, -L * 0.1, clear + H * 0.98); break;

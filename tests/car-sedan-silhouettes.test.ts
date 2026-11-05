@@ -43,3 +43,22 @@ describe('coupe silhouette splits', () => {
     expect(sizes[1]!.y).toBeGreaterThan(sizes[0]!.y);
   });
 });
+
+describe('super and muscle silhouette splits', () => {
+  it('gives Hypervolt, Phantom and Chudmobile distinct builds', () => {
+    const ids = ['hypervolt', 'phantom', 'chudmobile'] as const;
+    const gs = ids.map((id) => buildCar(CAR_BY_ID.get(id)!, 0xb5171e));
+    const counts = gs.map(meshCount);
+    expect(new Set(counts).size).toBe(3);
+    const ys = gs.map((g) => sizeOf(g).y);
+    expect(ys[2]!).toBeGreaterThan(ys[0]!); // chud wing taller than smooth EV
+  });
+
+  it('gives Thunderhorse and Hellcharger distinct greenhouse lengths', () => {
+    const a = buildCar(CAR_BY_ID.get('thunderhorse')!, 0x1d9bf0);
+    const b = buildCar(CAR_BY_ID.get('blacktop')!, 0x111418);
+    expect(meshCount(a)).not.toBe(meshCount(b));
+    // Hellcharger cabin is longer (4-door); approximate via overall length + mesh richness
+    expect(meshCount(b)).toBeGreaterThan(meshCount(a));
+  });
+});

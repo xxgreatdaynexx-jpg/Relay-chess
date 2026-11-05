@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-05T14:24:00-06:00', title: 'Supercars and muscle cars get distinct shapes', bullets: [
+    'Requested by Dayne: Hypervolt is a smooth closed-front EV, Phantom is a low wedge, and Chudmobile is an ultra-low hypercar with a huge wing. Thunderhorse gets a Mustang-like fastback; Blacktop Hellcharger reads as a longer 4-door widebody.',
+  ] },
   { commit: '', at: '2026-11-05T14:21:00-06:00', title: 'Sports coupes look different from each other', bullets: [
     'Requested by Dayne: Zipline GT reads lighter and more compact (Miata/BRZ cues), Neon Fang RS is more aggressive with a long hood and big wing, and Aurelia Coupe has a long-hood luxury stance with gold trim.',
   ] },
