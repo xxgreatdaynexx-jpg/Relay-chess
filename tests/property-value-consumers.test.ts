@@ -6,6 +6,7 @@ import { newDb } from 'pg-mem';
 vi.mock('../server/popups', () => ({ sendPopup: vi.fn(async () => ({ online: false })) }));
 const holder = vi.hoisted(() => ({ re: null as unknown }));
 vi.mock('../server/realEstate', async (orig) => ({ ...(await orig<object>()), getRealEstate: () => holder.re }));
+import '../server/economy'; // load economy first so its realEstate import binds to the mock (realEstate -> purchase-tax -> economy is a cycle)
 import { CasinoBank, PgCasinoStore, resetBank } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
 import { Economy, setEconomyForTest, type EconSource } from '../server/economy';
