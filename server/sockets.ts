@@ -211,7 +211,7 @@ export function registerSockets(io: Server): void {
       const event = String(packet[0]);
       if (event === 'hub_status') return next();
       const ack = packet[packet.length - 1];
-      if (typeof ack === 'function') (ack as (r: unknown) => void)({ ok: false, sleeping: true, error: HUB_SLEEP_MSG, ...hubSleepView() });
+      if (typeof ack === 'function') (ack as (r: unknown) => void)({ ...hubSleepView(), ok: false, error: HUB_SLEEP_MSG });
     });
     // Fail closed: while the chip DB isn't connected, refuse every chip-moving event before its handler runs.
     socket.use((packet, next) => {
