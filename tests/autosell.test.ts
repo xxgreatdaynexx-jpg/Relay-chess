@@ -3,6 +3,7 @@ import { fortSellPrice } from '../shared/sellBuff';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { newDb } from 'pg-mem';
+import { registerPgAdvisoryFunctions } from './pg-advisory';
 import { getBank, resetBank, CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { getMines, resetMines } from '../server/mines';
 import { setPriceIndexForTest } from '../server/price-index';
@@ -123,7 +124,7 @@ describe('Postgres', () => {
 
   it('Resort plantation: harvest goes into the barn (no chips at the field); shipped crops pay once via farm_harvest', async () => {
     setPriceIndexForTest(1); resetBank();
-    const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
+    const db = newDb({ noAstCoverageCheck: true }); registerPgAdvisoryFunctions(db); const { Pool } = db.adapters.createPg(); const pool = new Pool();
     const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
     let t = Date.parse('2026-11-01T12:00:00Z');
     const re = new RealEstate(pool, () => bank, () => t); await re.init();

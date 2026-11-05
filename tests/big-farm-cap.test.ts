@@ -1,17 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { newDb, DataType } from 'pg-mem';
+import { registerPgAdvisoryFunctions } from './pg-advisory';
 import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
+import { FARM_MIGRATION } from '../server/farm';
 import { properties } from '../shared/realEstate';
 import { bigFarms, isBigFarmN, MAX_BIG_FARMS } from '../shared/bigFarms';
 
 async function setup() {
-  const db = newDb({ noAstCoverageCheck: true }); db.public.registerFunction({ name: 'to_timestamp', args: [DataType.float], returns: DataType.timestamptz, implementation: (s: number) => new Date(s * 1000) });
+  const db = newDb({ noAstCoverageCheck: true }); registerPgAdvisoryFunctions(db); db.public.registerFunction({ name: 'to_timestamp', args: [DataType.float], returns: DataType.timestamptz, implementation: (s: number) => new Date(s * 1000) });
   const { Pool } = db.adapters.createPg(); const pool = new Pool();
   const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
-  const re = new RealEstate(pool, () => bank, () => Date.parse('2026-11-04T12:00:00Z')); await re.init();
+  const re = new RealEstate(pool, () => bank, () => Date.parse('2026-11-04T12:00:00Z')); await re.init(); await pool.query(FARM_MIGRATION);
   const fund = async (name: string, n: number) => { bank.transfer(name, n - bank.account(name).chips, { game: 'admin' }); await bank.flush(); };
-  return { re, bank, fund };
+  return { db, re, bank, fund };
 }
 const big = () => properties().filter((p) => /^cf:\d+$/.test(p.id) && isBigFarmN(Number(p.id.slice(3))));
 const smallFields = () => properties().filter((p) => /^cf:\d+$/.test(p.id) && !isBigFarmN(Number(p.id.slice(3))));
@@ -38,6 +40,15 @@ describe('Big Farm cap: max 1 per account', () => {
     const [a, b] = big();
     const r = await Promise.allSettled([s.re.buy('Cat', a!.id), s.re.buy('Cat', b!.id)]);
     expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
+    expect(await s.re.ownedBigFarms('Cat')).toHaveLength(1);
+  });
+  it('per-owner advisory lock covers parallel Big Farm buys across instances', async () => {
+    const s = await setup(); await s.fund('Cat', 50_000_000);
+    const second = new RealEstate(new (s.db.adapters.createPg().Pool)() as never, () => s.bank, () => Date.parse('2026-11-04T12:00:00Z'));
+    const [a, b] = big();
+    const r = await Promise.allSettled([s.re.buy('Cat', a!.id), second.buy('Cat', b!.id)]);
+    expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
+    expect((r.find((x) => x.status === 'rejected') as PromiseRejectedResult).reason.message).toMatch(/already own a Big Farm|just bought another property/);
     expect(await s.re.ownedBigFarms('Cat')).toHaveLength(1);
   });
   it('small countryside fields are unchanged: a Big Farm owner can still buy them', async () => {

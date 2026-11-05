@@ -2,13 +2,13 @@
 // normal buy and after a hostile buyout. Covers Real estate mine(), Bank playerAssets (the same total wealth tax adds to chips for net worth),
 // player profile, Daily Report, property tax basis, and the economy total (playerValue -> daily_economy -> house-sell cap).
 import { describe, expect, it, vi } from 'vitest';
-import { newDb } from 'pg-mem';
+import { newDb, DataType } from 'pg-mem';
+import { registerPgAdvisoryFunctions } from './pg-advisory';
+import { FARM_MIGRATION } from '../server/farm';
 vi.mock('../server/popups', () => ({ sendPopup: vi.fn(async () => ({ online: false })) }));
-const holder = vi.hoisted(() => ({ re: null as unknown }));
-vi.mock('../server/realEstate', async (orig) => ({ ...(await orig<object>()), getRealEstate: () => holder.re }));
-import '../server/economy'; // load economy first so its realEstate import binds to the mock (realEstate -> purchase-tax -> economy is a cycle)
+import '../server/economy'; // initialize module cycle before injecting the per-test real-estate singleton
 import { CasinoBank, PgCasinoStore, resetBank } from '../server/casino-store';
-import { RealEstate } from '../server/realEstate';
+import { RealEstate, setRealEstateForTest } from '../server/realEstate';
 import { Economy, setEconomyForTest, type EconSource } from '../server/economy';
 import { MemorySnapshots, buildDailyReport, setSnapshotStore } from '../server/daily-report';
 import { buildPlayerProfile } from '../server/player-profile';
@@ -25,9 +25,9 @@ const src = (): EconSource => {
 
 async function setup() {
   resetBank(); setSnapshotStore(new MemorySnapshots());
-  const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
+  const db = newDb({ noAstCoverageCheck: true }); registerPgAdvisoryFunctions(db); db.public.registerFunction({ name: 'to_timestamp', args: [DataType.float], returns: DataType.timestamptz, implementation: (n: number) => new Date(n * 1000) }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
   const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
-  let now = T0; const re = new RealEstate(pool, () => bank, () => now); await re.init(); holder.re = re;
+  let now = T0; const re = new RealEstate(pool, () => bank, () => now); await re.init(); await pool.query(FARM_MIGRATION); setRealEstateForTest(re);
   const econ = new Economy(src(), () => now); setEconomyForTest(econ);
   const fund = async (name: string, n: number) => { bank.transfer(name, n - bank.account(name).chips, { game: 'admin' }); await bank.flush(); };
   return { re, econ, fund, setNow: (t: number) => { now = t; }, now: () => now };

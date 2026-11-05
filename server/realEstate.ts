@@ -90,30 +90,56 @@ export class RealEstate {
   }
 
   /** Atomic: the ledger rows and the ownership change commit together, or neither does. */
-  private async atomic(name: string, amount: number, game: string, memo: string, body: (cl: pg.PoolClient) => Promise<void>, extra: Array<{ name: string; amount: number; game: string; memo: string }> | ((key: string) => Promise<Array<{ name: string; amount: number; key: string; game: string; memo?: string }>>) = []) {
+  private async atomic(name: string, amount: number, game: string, memo: string, body: (cl: pg.PoolClient) => Promise<void>, extra: Array<{ name: string; amount: number; game: string; memo: string }> | ((key: string, db: pg.PoolClient) => Promise<Array<{ name: string; amount: number; key: string; game: string; memo?: string }>>) = [], db?: pg.PoolClient) {
     const bank = this.bank(); const key = `${game}:${randomUUID()}`;
-    const more = typeof extra === 'function' ? await extra(key) : extra.map((m) => ({ ...m, key: `${m.game}:${randomUUID()}` }));
-    const w = bank.transferAtomic([{ name, amount, key, game, memo }, ...more], { batch: more.length > 1 });
-    const run = async () => {
-      await w.after; const cl = await this.pool.connect();
-      try {
-        await cl.query('BEGIN'); await body(cl);
-        for (const s of w.stmts) await cl.query(s.sql, s.args);
-        await cl.query('COMMIT');
-      } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); }
-    };
-    const p = run(); w.bind(p);
-    try { await p; } catch (e) { w.revert(); if (e instanceof PropertyError) throw e; console.error(`[realestate] ${game} failed:`, (e as Error).message); throw new PropertyError(/chips|balance|null value/i.test((e as Error).message) ? 'Not enough chips.' : 'Something went wrong. Nothing was charged.'); }
+    const cl = db ?? await this.pool.connect(); let transaction = false;
+    try {
+      await cl.query('BEGIN'); transaction = true;
+      const more = typeof extra === 'function' ? await extra(key, cl) : extra.map((m) => ({ ...m, key: `${m.game}:${randomUUID()}` }));
+      const w = bank.transferAtomic([{ name, amount, key, game, memo }, ...more], { batch: more.length > 1 });
+      const run = async () => {
+        try {
+          await w.after; await body(cl);
+          for (const s of w.stmts) await cl.query(s.sql, s.args);
+          await cl.query('COMMIT'); transaction = false;
+        } catch (e) { await cl.query('ROLLBACK').catch(() => {}); transaction = false; throw e; }
+      };
+      const p = run(); w.bind(p);
+      try { await p; } catch (e) { w.revert(); throw e; }
+    } catch (e) {
+      if (transaction) { await cl.query('ROLLBACK').catch(() => {}); transaction = false; }
+      if (e instanceof PropertyError) throw e;
+      console.error(`[realestate] ${game} failed:`, (e as Error).message);
+      throw new PropertyError(/chips|balance|null value/i.test((e as Error).message) ? 'Not enough chips.' : 'Something went wrong. Nothing was charged.');
+    } finally { if (!db) cl.release(); }
+  }
+
+  /** Serialize the complete buy across processes on one client, then commit on that same client. */
+  private async buyNow(name: string, p: NonNullable<ReturnType<typeof propertyById>>, max?: number) {
+    const cl = await this.pool.connect(); const lockKey = `property-buy:${keyOf(name)}`;
+    try {
+      await cl.query('SELECT pg_advisory_lock(hashtext($1))', [lockKey]);
+      return await this.buyLocked(name, p, cl, max);
+    } finally {
+      let failure: unknown;
+      try { await cl.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]); }
+      catch (e) { failure = e; console.error('[realestate] owner unlock failed:', (e as Error).message); }
+      finally { cl.release(failure as Error | undefined); }
+    }
   }
 
   /** Parcels this player owns right now. */
   async ownedCount(name: string, cl: { query: pg.Pool['query'] } = this.pool): Promise<number> {
     return Number((await cl.query('SELECT COUNT(*) n FROM properties WHERE owner_key = $1', [keyOf(name)])).rows[0].n);
   }
-  /** Total value of what this player owns (current list price of each parcel; the paid price if it is no longer listed). Drives the surcharge. */
+  /** Property total that drives the surcharge: price paid + upgrades held (no planted seed). */
   async ownedValue(name: string, cl: { query: pg.Pool['query'] } = this.pool): Promise<number> {
+    return propertyPaidPlusUpgradesOf(cl, name);
+  }
+  /** Price-paid sum for the transaction-local price guard. */
+  async ownedPaid(name: string, cl: { query: pg.Pool['query'] } = this.pool): Promise<number> {
     const rows = (await cl.query('SELECT id, price FROM properties WHERE owner_key = $1', [keyOf(name)])).rows as { id: string; price: unknown }[];
-    return rows.reduce((a, r) => a + (propertyById(r.id)?.price ?? Number(r.price) ?? 0), 0);
+    return rows.reduce((a, r) => a + propertyPaid(Number(r.price), propertyById(r.id)?.price ?? 0), 0);
   }
   /** What this player would pay for a property right now. */
   async quote(name: string, id: unknown) {
@@ -133,20 +159,21 @@ export class RealEstate {
     const rows = (await cl.query('SELECT id FROM properties WHERE owner_key = $1', [keyOf(name)])).rows as { id: string }[];
     return rows.map((r) => String(r.id)).filter((id) => /^cf:\d+$/.test(id) && isBigFarmN(Number(id.slice(3))));
   }
-  private async buyNow(name: string, p: NonNullable<ReturnType<typeof propertyById>>, max?: number) {
+  private async buyLocked(name: string, p: NonNullable<ReturnType<typeof propertyById>>, cl: pg.PoolClient, max?: number) {
     const bank = this.bank(); await bank.refresh(name);
     const bigBuy = /^cf:\d+$/.test(p.id) && isBigFarmN(Number(p.id.slice(3)));
     const bigCapMsg = () => `You already own a Big Farm. Each account can own at most ${MAX_BIG_FARMS} Big Farm.`;
-    if (bigBuy && (await this.ownedBigFarms(name)).length >= MAX_BIG_FARMS) throw new PropertyError(bigCapMsg());
-    const owned = await this.ownedCount(name); const value = await this.ownedValue(name); const price = landPrice(p.price, value);
+    // Both this guard and the transactional recheck below run under the per-owner advisory lock.
+    if (bigBuy && (await this.ownedBigFarms(name, cl)).length >= MAX_BIG_FARMS) throw new PropertyError(bigCapMsg());
+    const owned = await this.ownedCount(name, cl); const value = await propertyPaidPlusUpgradesOf(cl, name); const paidSnap = await this.ownedPaid(name, cl); const price = landPrice(p.price, value);
     const note = landMultiplierNote(value);
     if (max !== undefined && price > max) throw new PropertyError(`The price changed: your surcharge is +${+landSurchargePct(value).toFixed(1)}% now, so ${p.label} costs ${price.toLocaleString('en-US')}. Check the deed and try again.`);
-    const wq = await quotePurchaseTax(this.pool, name, price, this.clock());
+    const wq = await quotePurchaseTax(cl, name, price, this.clock());
     if (bank.account(name).chips < price + wq.tax) throw new PropertyError(`Not enough chips: ${p.label} costs ${price.toLocaleString('en-US')}${note ? ` (${note})` : ''}${wq.tax ? ` + ${wq.line}` : ''}.`);
     let wtax = 0, wn = 0;
     await this.atomic(name, -price, 'property_buy', `Bought ${p.label} (${p.id})${note ? ` ${note}` : ''}`, async (cl) => {
       // cross-instance: the count must still be what we priced at (a parallel buy elsewhere = refuse, nothing charged)
-      if ((await this.ownedValue(name, cl)) !== value) throw new PropertyError('You just bought another property: the price went up. Check the deed and try again.');
+      if ((await propertyPaidPlusUpgradesOf(cl, name)) !== value) throw new PropertyError('You just bought another property: the price went up. Check the deed and try again.');
       // Big Farm cap, re-checked inside the transaction (a parallel buy on another instance can't slip a second one in)
       if (bigBuy && (await this.ownedBigFarms(name, cl)).length >= MAX_BIG_FARMS) throw new PropertyError(bigCapMsg());
       // The insert wins only if the row now carries our deed nonce (a concurrent buyer's row = conflict, DO NOTHING).
@@ -154,7 +181,7 @@ export class RealEstate {
       // One round trip (QA r8 speed): RETURNING yields a row only if our insert won. price = what was actually paid.
       const r = await cl.query('INSERT INTO properties (id, owner_key, owner_name, price, bought_at, deed, city_price) VALUES ($1,$2,$3,$4,$5,$6,$4) ON CONFLICT (id) DO NOTHING RETURNING deed', [p.id, keyOf(name), name.trim(), price, this.clock(), deed]);
       if (r.rows[0]?.deed !== deed) throw new PropertyError('Someone already owns this property.');
-    }, async (key) => { const t = await purchaseTaxMoves(this.pool, name, price, key, p.label, this.clock()); wtax = t.tax; wn = t.recipients; return t.moves; });
+    }, async (key, db) => { const t = await purchaseTaxMoves(db, name, price, key, p.label, this.clock()); wtax = t.tax; wn = t.recipients; return t.moves; }, cl);
     this.onChange?.();
     return { id: p.id, price, wealthTax: wtax, wealthTaxRecipients: wn, list: p.price, owned, ownedValue: value, surchargePct: landSurchargePct(value), multiplier: landMultiplier(value), chips: bank.account(name).chips };
   }
@@ -255,7 +282,7 @@ export class RealEstate {
   }
   /** Per-property spend on top of the price paid, for one owner (or every non-QA owner): farm upgrade levels it holds now, at what the
    *  current owner paid for each (ledger farm_upgrade since the deed was bought; today's level price when no ledger row)
-   *  and currently-planted tiles at their seed cost. Missing tables count as 0. */
+   *  and currently-planted tiles at their seed cost. Read errors propagate: zero would understate net worth. */
   spend(ownerKey: string | null) { return propertySpend(this.pool, ownerKey); }
 
   start() { const run = () => { void this.runTax().catch((e) => console.error('[realestate] tax run failed:', (e as Error).message)); }; this.timer = setInterval(run, 10 * 60_000); this.timer.unref?.(); setTimeout(run, 30_000).unref?.(); }
@@ -264,6 +291,7 @@ export class RealEstate {
 
 let re: RealEstate | null = null;
 export const getRealEstate = () => re;
+export const setRealEstateForTest = (r: RealEstate | null) => { re = r; };
 export async function initRealEstate(): Promise<void> {
   const url = databaseUrl(); if (!url) { setBootState('realestate', 'memory'); return; }
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
@@ -301,7 +329,7 @@ export async function propertySpend(pool: { query: (sql: string, args?: unknown[
   const out = new Map<string, { upgrades: number; crops: number }>();
   const get = (id: string) => { let v = out.get(id); if (!v) out.set(id, (v = { upgrades: 0, crops: 0 })); return v; };
   const where = ownerKey ? 'p.owner_key = $1' : "p.owner_key NOT LIKE 'qa-%'"; const args = ownerKey ? [ownerKey] : [];
-  const q = async (sql: string) => { try { return (await pool.query(sql, args)).rows as Array<Record<string, unknown>>; } catch { return []; } };
+  const q = async (sql: string) => (await pool.query(sql, args)).rows as Array<Record<string, unknown>>;
   // Upgrade levels the current owner holds now (a reset/lost upgrade is not counted).
   const lv = new Map<string, Record<string, number>>();
   for (const r of await q(`SELECT u.plot_id, u.kind, u.level FROM farm_upgrades u JOIN properties p ON p.id = u.plot_id AND p.owner_key = u.owner_key WHERE ${where}`)) {
@@ -334,8 +362,8 @@ export async function propertySpend(pool: { query: (sql: string, args?: unknown[
 
 /** Wealth-tax threshold value: price paid + upgrades held, per property (shared propertyPaidPlusUpgrades; no planted seed). */
 export async function propertyPaidPlusUpgradesOf(pool: { query: (sql: string, args?: unknown[]) => Promise<{ rows: any[] }> }, name: string): Promise<number> {
-  const k = keyOf(name); let rows: Array<{ id: string; price: unknown }> = [];
-  try { rows = (await pool.query('SELECT id, price FROM properties WHERE owner_key = $1', [k])).rows; } catch { return 0; }
+  const k = keyOf(name);
+  const rows = (await pool.query('SELECT id, price FROM properties WHERE owner_key = $1', [k])).rows as Array<{ id: string; price: unknown }>;
   if (!rows.length) return 0; const sp = await propertySpend(pool, k);
   return rows.reduce((a, r) => a + propertyPaidPlusUpgrades({ paid: Number(r.price), list: propertyById(r.id)?.price ?? 0, upgrades: sp.get(r.id)?.upgrades ?? 0 }), 0);
 }

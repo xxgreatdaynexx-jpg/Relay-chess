@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
+import { registerPgAdvisoryFunctions } from './pg-advisory';
 import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
 import { Farm } from '../server/farm';
@@ -65,7 +66,7 @@ describe('Big Farms map expansion', () => {
     expect(JSON.stringify(LAUNCH_POPUP)).toContain('Big Farms east of town');
   });
   it('buy a big farm: debits its price, deed value = price paid (net worth / wealth tax basis), then farm it like any field', async () => {
-    const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
+    const db = newDb({ noAstCoverageCheck: true }); registerPgAdvisoryFunctions(db); const { Pool } = db.adapters.createPg(); const pool = new Pool();
     const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
     const clock = () => Date.parse('2026-11-04T12:00:00Z');
     const re = new RealEstate(pool, () => bank, clock); await re.init();

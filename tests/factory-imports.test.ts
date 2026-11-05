@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
+import { registerPgAdvisoryFunctions } from './pg-advisory';
 import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
 import { Farm, type ImportSink } from '../server/farm';
@@ -53,7 +54,7 @@ describe('factory: more recipes + game resources in (pt1252u)', () => {
 });
 
 async function db() {
-  const d = newDb({ noAstCoverageCheck: true }); const { Pool } = d.adapters.createPg(); const pool = new Pool();
+  const d = newDb({ noAstCoverageCheck: true }); registerPgAdvisoryFunctions(d); const { Pool } = d.adapters.createPg(); const pool = new Pool();
   await pool.query('CREATE TABLE IF NOT EXISTS mine_items (player_key TEXT NOT NULL, owner_name TEXT NOT NULL, item_type TEXT NOT NULL, item_id TEXT NOT NULL, qty INTEGER NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (player_key, item_type, item_id))');
   const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
   const after: Array<Array<[string, number]>> = [];

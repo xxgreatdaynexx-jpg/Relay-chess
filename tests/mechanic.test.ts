@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
 import { PgCasinoStore, START_CHIPS, getBank, resetBank } from '../server/casino-store';
+import { RealEstate } from '../server/realEstate';
 import { Garage, DriveRelay } from '../server/cars';
 import { setPriceIndexForTest } from '../server/price-index';
 import { CARS, CAR_BY_ID, unitsPerSec, DRIVE_SPEED_CAP } from '../shared/cars';
@@ -63,6 +64,7 @@ describe('mechanic garage', () => {
   it('writes mods and a car_mod ledger row atomically; a double buy only charges once (Postgres)', async () => {
     const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
     getBank().retryMs = []; await getBank().attach(new PgCasinoStore(pool));
+    await new RealEstate(pool, () => getBank()).init();
     const g = new Garage(pool, () => 0); await g.init(); await fund('QA-PgMech');
     const c = await g.buy('QA-PgMech', 'commuter', 0);
     const both = await Promise.allSettled([g.modify('QA-PgMech', c.id, { kind: 'perf', part: 'nitro', tier: 1 }), g.modify('QA-PgMech', c.id, { kind: 'perf', part: 'nitro', tier: 1 })]);

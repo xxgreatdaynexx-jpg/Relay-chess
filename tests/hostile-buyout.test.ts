@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { newDb } from 'pg-mem';
+import { registerPgAdvisoryFunctions } from './pg-advisory';
+import { FARM_MIGRATION } from '../server/farm';
 import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
 import { BUYOUT_PROTECT_MS, buyoutPrice } from '../shared/royalty';
@@ -11,9 +13,9 @@ import { sendPopup } from '../server/popups';
 
 const T0 = Date.parse('2026-11-01T12:00:00Z');
 async function setup() {
-  const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
+  const db = newDb({ noAstCoverageCheck: true }); registerPgAdvisoryFunctions(db); const { Pool } = db.adapters.createPg(); const pool = new Pool();
   const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
-  let now = T0; const re = new RealEstate(pool, () => bank, () => now); await re.init();
+  let now = T0; const re = new RealEstate(pool, () => bank, () => now); await re.init(); await pool.query(FARM_MIGRATION);
   const fund = async (name: string, n: number) => { bank.transfer(name, n - bank.account(name).chips, { game: 'admin' }); await bank.flush(); };
   const ledger = (key: string) => db.public.many(`SELECT amount FROM wallet_transactions WHERE player_key = '${key}' AND game = 'property_buyout' ORDER BY id`) as Array<{ amount: number }>;
   return { bank, re, fund, ledger, pool, setNow: (t: number) => { now = t; } };

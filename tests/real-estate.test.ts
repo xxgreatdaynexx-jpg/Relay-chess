@@ -7,13 +7,17 @@ import { px, setPriceIndexForTest } from '../server/price-index';
 import { properties, propertyById, buildingId, patchId, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, landPrice, landMultiplierNote, landSurchargePct } from '../shared/realEstate';
 import { cityFill, LANDMARK_IDS, PARK_AREA, obbOverlap } from '../shared/worldLayout';
 import { WORLD_SPOTS } from '../client/src/lib/worldSpots';
+import { registerPgAdvisoryFunctions } from './pg-advisory';
 
 const DAY = 86_400_000; const T0 = Date.parse('2026-11-01T12:00:00Z');
 async function setup() {
-  const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
+  const db = newDb({ noAstCoverageCheck: true }); registerPgAdvisoryFunctions(db); const { Pool } = db.adapters.createPg(); const pool = new Pool();
   const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
   let now = T0; const clock = () => now;
   const re = new RealEstate(pool, () => bank, clock); await re.init();
+  await pool.query(`CREATE TABLE farm_tiles (plot_id TEXT NOT NULL, tile INTEGER NOT NULL, owner_key TEXT NOT NULL, crop TEXT NOT NULL, planted_at BIGINT NOT NULL, nonce TEXT NOT NULL, PRIMARY KEY (plot_id, tile));
+  CREATE TABLE farm_upgrades (plot_id TEXT NOT NULL, kind TEXT NOT NULL, owner_key TEXT NOT NULL, level INTEGER NOT NULL, PRIMARY KEY (plot_id, kind));
+  CREATE TABLE farm_fert (plot_id TEXT NOT NULL, tile INTEGER NOT NULL, nonce TEXT NOT NULL, kind TEXT NOT NULL, PRIMARY KEY (plot_id, tile, nonce));`);
   const fund = async (name: string, n: number) => { bank.transfer(name, n - bank.account(name).chips, { game: 'admin' }); await bank.flush(); };
   const chips = (key: string) => Number(db.public.one(`SELECT chips FROM casino_players WHERE player_key = '${key}'`).chips);
   const ledger = (key: string, game: string) => db.public.many(`SELECT amount, balance FROM wallet_transactions WHERE player_key = '${key}' AND game = '${game}' ORDER BY id`) as Array<{ amount: number; balance: number }>;
@@ -123,7 +127,7 @@ describe('real estate: land gets pricier the more you own', () => {
   const cheap = (k: number) => [...properties()].filter((p) => p.kind !== 'landmark').sort((a, b) => a.price - b.price).slice(0, k);
   it('price = list × (1 + 2% per 1,000 owned, uncapped); sell-back is 70% of what was paid; tax is on the price paid (Tess QA #8)', async () => {
     const s = await setup(); const ps = cheap(4); const list = ps.map((p) => px(p.price));
-    const before = list.map((_, i) => list.slice(0, i).reduce((a, b) => a + b, 0));
+    const before: number[] = []; for (let i = 0; i < list.length; i++) before.push(list.slice(0, i).reduce((a, b, j) => a + landPrice(b, before[j]!), 0)); // paid price, not list, drives the next surcharge
     const cost = list.reduce((a, l, i) => a + landPrice(l, before[i]!), 0); await s.fund('Ivy', cost);
     for (let i = 0; i < 4; i++) { const q = await s.re.quote('Ivy', ps[i]!.id); expect(q.owned).toBe(i); expect(q.ownedValue).toBe(before[i]); expect(q.surchargePct).toBeCloseTo(before[i]! / 1000 * 2);
       expect(q.price).toBe(Math.round(list[i]! * (1 + before[i]! / 1000 * 2 / 100)));
