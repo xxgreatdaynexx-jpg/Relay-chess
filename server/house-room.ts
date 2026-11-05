@@ -1,3 +1,4 @@
+import { isDisabledName } from '../shared/disabled.js';
 /** House-sell room (pt1411u): each player's daily house-sell cap status. Read-only, never moves chips. */
 import { sellCapMul } from './coop-perks.js';
 import express from 'express';
@@ -24,7 +25,7 @@ export function houseRoom(name: string, now = Date.now()): HouseRoom {
 export function allHouseRooms(now = Date.now()) {
   const day = dayKey(now); const keys = new Set<string>(sinkKeysToday(now));
   for (const [k, d] of getMines().daily) if (d.day === day && d.gross > 0) keys.add(k);
-  return [...keys].map((k) => ({ player: k, ...houseRoom(k, now) })).filter((r) => r.soldToday > 0 || r.refunded > 0).sort((a, b) => b.soldToday - a.soldToday);
+  return [...keys].map((k) => ({ player: k, ...houseRoom(k, now) })).filter((r) => (r.soldToday > 0 || r.refunded > 0) && !isDisabledName(r.player)).sort((a, b) => b.soldToday - a.soldToday);
 }
 
 /** GET /api/house-room — public list (same figures every profile shows). */

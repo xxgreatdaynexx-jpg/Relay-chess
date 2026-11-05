@@ -1,3 +1,4 @@
+import { ACCOUNT_DISABLED_MSG, isDisabledName } from '../shared/disabled.js';
 import type { Server, Socket } from 'socket.io';
 import { registerChat, startPresence, stopPresence } from './chat.js';
 import { onBlunderReady } from './blunders.js';
@@ -222,6 +223,15 @@ export function registerSockets(io: Server): void {
       if (getBank().ready || !isChipEvent(event)) return next();
       const ack = packet[packet.length - 1];
       if (typeof ack === 'function') (ack as (r: unknown) => void)({ ok: false, unavailable: true, error: WALLET_UNAVAILABLE });
+    });
+    // Disabled accounts (soft-delete): a live session is dropped on its next event, before any handler runs.
+    socket.use((packet, next) => {
+      const name = (socket.data.account as { name?: string } | undefined)?.name;
+      if (!name || !isDisabledName(name)) return next();
+      socket.data.account = undefined;
+      const ack = packet[packet.length - 1];
+      if (typeof ack === 'function') (ack as (r: unknown) => void)({ ok: false, error: ACCOUNT_DISABLED_MSG });
+      socket.emit('account_disabled', { error: ACCOUNT_DISABLED_MSG }); socket.disconnect(true);
     });
     // Admin jail (pt1478u): a jailed player can't trade or earn. Every other event gets a plain "you're jailed" reply.
     socket.use((packet, next) => {

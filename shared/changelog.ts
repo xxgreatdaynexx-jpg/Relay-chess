@@ -20,6 +20,10 @@ export const CHANGELOG: ChangelogEntry[] = [
   { commit: '', at: '2026-11-04T19:20:00-06:00', title: 'Wine price adjusted', bullets: [
     'Wine now sells to the house for 700 (was 760). A bottle uses 2 grape seeds (300), so it makes 400 profit per bottle, 200 per seed. No other items changed.',
   ] },
+  { commit: '', at: '2026-11-04T19:20:00-06:00', title: 'Tax shares need 5,000 net worth; abandoned accounts retired', bullets: [
+    'Wealth tax shares (the daily tax and the 5% purchase tax) now go only to active players with a net worth of at least 5,000 (chips plus assets).',
+    'Abandoned and duplicate accounts can now be retired. They can\'t sign in and drop off boards, the map, bonuses, tax shares and trades. Their history is kept.',
+  ] },
   { commit: '', at: '2026-11-04T19:15:00-06:00', title: 'Land surcharge and wealth tax explained', bullets: [
     'Land surcharge: every property buy costs +2% extra for each 1,000 of property you have paid for (price paid plus upgrades). There is no cap.',
     'Wealth tax: once your property is over 100,000, buys of 1,000 or more also cost 5% extra, shared with active players. Items under 1,000 are exempt.',
