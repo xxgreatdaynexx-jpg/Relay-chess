@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-04T20:00:00-06:00', title: 'Crop and farm-food prices rebalanced', bullets: [
+    'Selling a crop straight from the field now earns 20% of what its seeds cost (for example Wheat: 10 seed, 2 profit).',
+    'Turning crops into factory food earns 30% of the seeds used, counted from planting to selling (for example Flour: 2 Wheat, 20 seed, sells for 26). Multi-step foods like Bread, Pumpkin Pie and Chocolate Bar follow the same rule across every crop in them; glass, iron sheets and fish count at their own value.',
+    'Wine is the exception: it sells for 700, so 2 Grapes (300 seed) make 400.',
+    'Factory food still gets no factory depth bonus, so these are the prices you get.',
+  ] },
   { commit: '', at: '2026-11-04T19:05:00-06:00', title: 'Land surcharge and wealth tax explained', bullets: [
     'Land surcharge: every property buy costs +2% extra for each 1,000 of property you have paid for (price paid plus upgrades). There is no cap.',
     'Wealth tax: once your property is over 100,000, buys of 1,000 or more also cost 5% extra, shared with active players. Items under 1,000 are exempt.',
