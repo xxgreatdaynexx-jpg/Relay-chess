@@ -17,6 +17,9 @@ export const CHANGELOG: ChangelogEntry[] = [
     'Wine is the exception: it sells for 700, so 2 Grapes (300 seed) make 400.',
     'Factory food still gets no factory depth bonus, so these are the prices you get.',
   ] },
+  { commit: '', at: '2026-11-04T19:20:00-06:00', title: 'Wine price adjusted', bullets: [
+    'Wine now sells to the house for 700 (was 760). A bottle uses 2 grape seeds (300), so it makes 400 profit per bottle, 200 per seed. No other items changed.',
+  ] },
   { commit: '', at: '2026-11-04T19:15:00-06:00', title: 'Land surcharge and wealth tax explained', bullets: [
     'Land surcharge: every property buy costs +2% extra for each 1,000 of property you have paid for (price paid plus upgrades). There is no cap.',
     'Wealth tax: once your property is over 100,000, buys of 1,000 or more also cost 5% extra, shared with active players. Items under 1,000 are exempt.',

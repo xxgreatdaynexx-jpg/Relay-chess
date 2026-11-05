@@ -8,6 +8,8 @@ const GROTTO = new Set(['j_cut_opal', 'j_pearl_necklace', 'j_tidecrown']); const
 const BASE = 55; const OLD = LIST.slice(0, BASE); const NEW = LIST.slice(BASE);
 const made = new Set(FRECIPES.map((r) => r.out[0]));
 const obtainable = (k: string) => { const [t, id] = k.split(':'); return (t === 'ore' && isOre(id)) || made.has(k) || (GOODS[id]?.type === t && !!GOODS[id]?.raw); };
+// Crop margins (2026-11-04): crop/farm-food goods are priced at seed chain x 1.3, so a higher-tier one only matches its inputs.
+const CROP_GOODS = new Set(['flour',  'cornmeal',  'sugar',  'berry_juice',  'tropical_juice',  'sunflower_oil',  'cocoa',  'coconut_milk',  'wine',  'bread',  'chocolate',  'pumpkin_pie',  'salsa',  'veggie_soup',  'banquet',  'starch',  'carrot_juice',  'mango_puree',  'grape_juice',  'pumpkin_seeds',  'tomato_paste',  'pasta_dinner',  'choc_cake',  'jam_jar',  'cornbread',  'smoothie',  'fish_pie']);
 const gainPerSec = (r: (typeof FRECIPES)[number]) => (recipeOut(r) - recipeIn(r)) / r.secs;
 
 describe('mu-factory: doubled recipes stay balanced', () => {
@@ -29,6 +31,7 @@ describe('mu-factory: doubled recipes stay balanced', () => {
     const bestOld = Math.max(...OLD.map(gainPerSec));
     for (const r of NEW) {
       const k = recipeOut(r) / recipeIn(r);
+      if (CROP_GOODS.has(r.out[0].split(':')[1])) { expect(k, r.id).toBeGreaterThanOrEqual(0.99); expect(k, r.id).toBeLessThanOrEqual(1.8); continue; }
       expect(k, r.id).toBeGreaterThanOrEqual(1.15); expect(k, r.id).toBeLessThanOrEqual(1.8);
       expect(gainPerSec(r), r.id).toBeLessThanOrEqual(bestOld);
     }

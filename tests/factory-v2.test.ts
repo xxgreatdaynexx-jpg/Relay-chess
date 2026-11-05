@@ -30,7 +30,7 @@ function chain(): FState {
 describe('factory v2 sim', () => {
   it('every recipe adds value, outputs are registered goods', () => {
     for (const r of FRECIPES) {
-      expect(recipeOut(r), r.id).toBeGreaterThan(recipeIn(r));
+      expect(recipeOut(r), r.id).toBeGreaterThanOrEqual(recipeIn(r)); // crop margins: second-tier farm goods (bread) = their crop chain, no extra step value
       expect(recipeOut(r) / recipeIn(r), r.id).toBeLessThan(2.6);
       const [t, id] = r.out[0].split(':'); expect(GOODS[id]?.type, r.id).toBe(t);
       expect(KINDS[r.machine].machine).toBe(true);

@@ -23,17 +23,18 @@ export const MIN_RIPE_MS = 36 * 60 * 60_000;
 export const ripeWindow = (grow: number, wither = WITHER_FACTOR) => Math.max(MIN_RIPE_MS, wither * grow);
 export interface Crop { id: string; label: string; emoji: string; seed: number; grow: number; sell: number; color: number }
 const M = 60_000, H = 60 * M;
+/** Crop margins (2026-11-04): sell = seed x 1.2 / FARM_SELL_MUL, so a raw harvest profits 20% of its seed. */
 /** Base chips. Fast crops pay little per hour unless you keep coming back; slow ones are the big money per click. */
 export const CROPS: Crop[] = [
-  { id: 'strawberry', label: 'Strawberries', emoji: '🍓', seed: 5, grow: 4 * M, sell: 8, color: 0xd84a5a },
-  { id: 'wheat', label: 'Wheat', emoji: '🌾', seed: 10, grow: 10 * M, sell: 16, color: 0xd8b860 },
-  { id: 'carrot', label: 'Carrots', emoji: '🥕', seed: 15, grow: 30 * M, sell: 26, color: 0xe08a3a },
-  { id: 'corn', label: 'Corn', emoji: '🌽', seed: 25, grow: 60 * M, sell: 45, color: 0xe8d050 },
-  { id: 'tomato', label: 'Tomatoes', emoji: '🍅', seed: 40, grow: 2 * H, sell: 74, color: 0xd8443a },
-  { id: 'potato', label: 'Potatoes', emoji: '🥔', seed: 60, grow: 4 * H, sell: 115, color: 0xb08a5a },
-  { id: 'pumpkin', label: 'Pumpkins', emoji: '🎃', seed: 90, grow: 8 * H, sell: 185, color: 0xe0782a },
-  { id: 'grapes', label: 'Grapes', emoji: '🍇', seed: 150, grow: 16 * H, sell: 320, color: 0x8a4ac0 },
-  { id: 'sunflower', label: 'Sunflowers', emoji: '🌻', seed: 250, grow: 24 * H, sell: 545, color: 0xf0c830 },
+  { id: 'strawberry', label: 'Strawberries', emoji: '🍓', seed: 5, grow: 4 * M, sell: 6.32, color: 0xd84a5a },
+  { id: 'wheat', label: 'Wheat', emoji: '🌾', seed: 10, grow: 10 * M, sell: 12.64, color: 0xd8b860 },
+  { id: 'carrot', label: 'Carrots', emoji: '🥕', seed: 15, grow: 30 * M, sell: 18.95, color: 0xe08a3a },
+  { id: 'corn', label: 'Corn', emoji: '🌽', seed: 25, grow: 60 * M, sell: 31.58, color: 0xe8d050 },
+  { id: 'tomato', label: 'Tomatoes', emoji: '🍅', seed: 40, grow: 2 * H, sell: 50.53, color: 0xd8443a },
+  { id: 'potato', label: 'Potatoes', emoji: '🥔', seed: 60, grow: 4 * H, sell: 75.79, color: 0xb08a5a },
+  { id: 'pumpkin', label: 'Pumpkins', emoji: '🎃', seed: 90, grow: 8 * H, sell: 113.69, color: 0xe0782a },
+  { id: 'grapes', label: 'Grapes', emoji: '🍇', seed: 150, grow: 16 * H, sell: 189.48, color: 0x8a4ac0 },
+  { id: 'sunflower', label: 'Sunflowers', emoji: '🌻', seed: 250, grow: 24 * H, sell: 315.79, color: 0xf0c830 },
 ];
 /** Farming profit -5% (Dayne, 2026-11-04): a harvest sells each crop at 95% of its listed value. Seed costs are unchanged. */
 export const FARM_SELL_MUL = 0.95;
