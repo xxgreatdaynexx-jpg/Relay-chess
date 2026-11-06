@@ -74,6 +74,16 @@ export class PopupStore {
     }
     const p = this.mem.get(id); return p ? (p.ackedAt === null ? 'queued' : 'delivered') : null;
   }
+  /** Admin cancel: mark delivered by id alone (no player check). Returns true when it flipped. */
+  async forceAck(id: string): Promise<boolean> {
+    if (this.db) {
+      const r = await this.db.query(`UPDATE admin_popups SET acked_at=$1 WHERE id=$2 AND acked_at IS NULL`, [Date.now(), id]);
+      return (r as { rowCount?: number }).rowCount === 1;
+    }
+    const p = this.mem.get(id);
+    if (!p || p.ackedAt !== null) return false;
+    p.ackedAt = Date.now(); return true;
+  }
 }
 
 let store = new PopupStore();
@@ -83,7 +93,14 @@ export function resetPopups(): PopupStore { store = new PopupStore(); return sto
 
 export async function initPopupStorage(): Promise<void> {
   const url = databaseUrl();
-  if (!url) { console.warn('[popups] no DATABASE_URL; popups are in-memory only'); await seedNoraVoice(store); await seedBotApology(store); return; }
+  if (!url) {
+    console.warn('[popups] no DATABASE_URL; popups are in-memory only');
+    await seedNoraVoice(store);
+    await seedBotApology(store);
+    await store.forceAck('nora-bot-apology-1:carter2');
+    await seedCarter2SoftApology(store);
+    return;
+  }
   try {
     const pool = new pg.Pool({ connectionString: url, max: 1, connectionTimeoutMillis: 10_000 });
     pool.on('error', (e) => console.error('[popups] pool error:', e.message));
@@ -91,6 +108,10 @@ export async function initPopupStorage(): Promise<void> {
     console.log('[popups] connected to postgres');
     await seedNoraVoice(store);
     await seedBotApology(store);
+    // Cancel the harsh carter2 type-to-dismiss notice if still queued (shared Neon).
+    const cleared = await store.forceAck('nora-bot-apology-1:carter2');
+    if (cleared) console.log('[popups] force-acked nora-bot-apology-1:carter2');
+    await seedCarter2SoftApology(store);
   } catch (e) { console.error('[popups] postgres attach failed:', (e as Error).message); }
 }
 
@@ -127,6 +148,25 @@ export async function seedBotApology(s: PopupStore = store): Promise<void> {
   } catch (e) { console.error('[popups] bot-apology seed failed:', (e as Error).message); }
 }
 
+/** Genuine soft apology for carter2 after the harsh notice was cancelled. No typed confirm. Idempotent fixed id. */
+export const CARTER2_SOFT_APOLOGY_ID = 'nora-carter2-soft-apology-1';
+export const CARTER2_SOFT_APOLOGY_TEXT =
+  "Hey carter2 — we're sorry. That last notice was way too harsh, and you didn't deserve that tone. You're good with us — no typed apology, no punishment, nothing hanging over you. Thanks for playing Chud Hub, and sorry again for making you feel bad.";
+export async function seedCarter2SoftApology(s: PopupStore = store): Promise<void> {
+  try {
+    await s.seed({
+      id: CARTER2_SOFT_APOLOGY_ID,
+      player: 'carter2',
+      from: 'Nora, Chief of Staff',
+      text: CARTER2_SOFT_APOLOGY_TEXT,
+      createdAt: Date.UTC(2026, 10, 6, 0, 10),
+      ackedAt: null,
+      title: BOT_APOLOGY_TITLE,
+      confirmText: null,
+    });
+  } catch (e) { console.error('[popups] carter2 soft-apology seed failed:', (e as Error).message); }
+}
+
 /** Queue a popup and push it to any open tabs of that player. */
 export async function sendPopup(player: string, from: string, text: string): Promise<{ popup: Popup; online: boolean }> {
   const popup = await store.add(player, from, text);
@@ -135,7 +175,24 @@ export async function sendPopup(player: string, from: string, text: string): Pro
   return { popup, online };
 }
 
-export function startPopups(server: Server): void { io = server; }
+/** Admin cancel: force-ack by id and tell open clients to close the modal. */
+export async function dismissPopup(player: string, id: string): Promise<boolean> {
+  const done = await store.forceAck(id);
+  if (io) io.to(roomOf(player)).emit('admin_popup_done', { id });
+  return done;
+}
+
+export function startPopups(server: Server): void {
+  io = server;
+  // Soft apology seeds at boot before sockets exist — push now if still queued.
+  void (async () => {
+    try {
+      const pending = await store.pending('carter2');
+      const soft = pending.find((p) => p.id === CARTER2_SOFT_APOLOGY_ID);
+      if (soft) io!.to(roomOf('carter2')).emit('admin_popup', wire(soft));
+    } catch (e) { console.error('[popups] soft-apology push failed:', (e as Error).message); }
+  })();
+}
 
 export function registerPopups(_io: Server, socket: Socket): void {
   const reply = (ack: unknown, res: unknown) => { if (typeof ack === 'function') (ack as (r: unknown) => void)(res); };

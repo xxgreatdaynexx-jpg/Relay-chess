@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-05T18:15:00-06:00', title: 'Apology notice for carter2 softened', bullets: [
+    'The harsh type-to-dismiss botting notice for carter2 was cancelled. A short sincere apology from Nora is queued instead — no typed apology required.',
+  ] },
   { commit: '', at: '2026-11-05T16:45:00-06:00', title: 'Employment Office: workers now bring something in every 3 minutes', bullets: [
     'Requested by Dayne: every hired miner and fisher now brings in one item every 3 minutes (480 a day, up from every 5 minutes / 288). Wages and hire costs are unchanged.',
   ] },

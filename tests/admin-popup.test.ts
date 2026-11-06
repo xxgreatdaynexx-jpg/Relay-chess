@@ -7,7 +7,7 @@ import { getAccounts, resetAccounts } from '../server/accounts.js';
 import { closeApp, createApp, type AppContext } from '../server/app.js';
 import { getBank, resetBank } from '../server/casino-store.js';
 import { resetLeaderboard } from '../server/leaderboard.js';
-import { getPopups, PopupStore, resetPopups } from '../server/popups.js';
+import { dismissPopup, getPopups, PopupStore, resetPopups } from '../server/popups.js';
 
 const TOKEN = 'qa-admin-token-0123456789abcdef0123456789';
 
@@ -75,5 +75,34 @@ describe('admin popup', () => {
     expect((await s.pending('jay')).length).toBe(1);
     expect(await s.ack('jay', p.id)).toBe(true);
     expect(await s.status(p.id)).toBe('delivered');
+  });
+
+  it('POST /dismiss force-acks and reports status', async () => {
+    const queued = await post({ name: 'QA-Popper', text: 'Please ignore', from: 'Nora' });
+    const id = (await queued.json() as { id: string }).id;
+    expect(await getPopups().status(id)).toBe('queued');
+    const r = await fetch(`${base}/dismiss`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({ name: 'QA-Popper', id }),
+    });
+    expect(r.status).toBe(200);
+    const j = await r.json() as { cleared: boolean; status: string; player: string };
+    expect(j.cleared).toBe(true);
+    expect(j.status).toBe('delivered');
+    expect(j.player).toBe('QA-Popper');
+    expect(await getPopups().status(id)).toBe('delivered');
+    expect((await fetch(`${base}/dismiss`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({ name: 'Nobody-Here', id }),
+    })).status).toBe(404);
+    const again = await fetch(`${base}/dismiss`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({ name: 'qa-popper', id }),
+    });
+    expect(again.status).toBe(200);
+    expect((await again.json() as { cleared: boolean }).cleared).toBe(false);
   });
 });
