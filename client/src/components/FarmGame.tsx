@@ -28,7 +28,7 @@ export function FarmGame({ id, label, onClose }: { id: string; label: string; on
   const load = useCallback(() => {
     socket.timeout(10_000).emit('farm_view', { id }, (err: Error | null, r?: Ack) => {
       if (err || !r?.ok) { setMsg(err ? 'No answer from the server.' : r?.error ?? 'Could not load the farm.'); return; }
-      const v = r.farm as FarmView; setView(v); setSkew(v.now - Date.now());
+      const v = r.farm as FarmView; setView(v); setSkew(v.now - Date.now()); if (v.auto?.crop && CROPS.some((c) => c.id === v.auto!.crop)) setSeed(v.auto.crop);
     });
   }, [id]);
   useEffect(() => { load(); const h = (e: { id?: string }) => { if (e?.id === id) load(); }; socket.on('farm_changed', h); return () => { socket.off('farm_changed', h); }; }, [id, load]);
@@ -78,13 +78,23 @@ export function FarmGame({ id, label, onClose }: { id: string; label: string; on
         {view.mine && <>
           <h4>Seed shop</h4>
           <div className="farm-seeds" data-testid="farm-seeds">
-            {CROPS.map((c) => <button key={c.id} type="button" className={seed === c.id ? 'on' : ''} onClick={() => setSeed(c.id)} data-testid={`farm-seed-${c.id}`}>
+            {CROPS.map((c) => <button key={c.id} type="button" className={seed === c.id ? 'on' : ''} onClick={() => { setSeed(c.id); if (view.auto?.plant) act('farm_auto', { harvest: view.auto?.harvest ?? false, plant: true, crop: c.id }, () => `Auto-plant seed set to ${c.label}.`); }} data-testid={`farm-seed-${c.id}`}>
               <b>{c.emoji} {c.label}</b><span>🪙{chips(indexed(c.seed, idx))} → {chips(indexed(cropSellValue(c), idx))} · {dur(c.grow)}</span></button>)}
           </div>
           <button type="button" disabled={busy || !sel.size} onClick={() => plant([...sel])} data-testid="farm-plant-sel">Plant {sel.size || ''} selected<span>🪙 {chips(indexed(crop.seed, idx) * sel.size)}</span></button>
           <button type="button" disabled={busy || !empties.length} onClick={() => plant(empties)} data-testid="farm-plant-all">Plant all {empties.length} empty<span>🪙 {chips(indexed(crop.seed, idx) * empties.length)}</span></button>
           <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', {}, (r) => `Harvested ${r.harvested} for 🪙 ${chips(Number(r.paid))}.`)} data-testid="farm-harvest">Harvest {ready.length} ready</button>
           <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', { pantry: true }, (r) => `🧺 ${r.harvested} crop${r.harvested === 1 ? '' : 's'} into your kitchen pantry.`)} title="Keep the crops for cooking instead of selling them" data-testid="farm-harvest-pantry">🧺 To pantry</button>
+          <div className="farm-auto" data-testid="farm-auto">
+            <h4>Auto (while you are online)</h4>
+            <label className="farm-auto-row"><input type="checkbox" checked={!!view.auto?.harvest} disabled={busy}
+              onChange={(e) => act('farm_auto', { harvest: e.target.checked, plant: view.auto?.plant ?? false, crop: view.auto?.crop ?? seed }, () => e.target.checked ? 'Auto-harvest on for this farm.' : 'Auto-harvest off.')}
+              data-testid="farm-auto-harvest" /> Auto-harvest ready crops (sells for chips)</label>
+            <label className="farm-auto-row"><input type="checkbox" checked={!!view.auto?.plant} disabled={busy}
+              onChange={(e) => act('farm_auto', { harvest: view.auto?.harvest ?? false, plant: e.target.checked, crop: seed }, () => e.target.checked ? `Auto-plant on with ${crop.label}.` : 'Auto-plant off.')}
+              data-testid="farm-auto-plant" /> Auto-plant empty tiles with selected seed</label>
+            <small>Runs on the server about every 45s while you are signed in. Respects overnight sleep and farm rate limits. Changing seed updates auto-plant crop when auto-plant is on.</small>
+          </div>
           <h4>Upgrades</h4>
           <div className="farm-upgrades" data-testid="farm-upgrades">
             {FARM_UPGRADES.map((u) => { const lvl = (view.upgrades ?? NO_UPGRADES)[u.id]; const base = upgradePrice(u.id, lvl, n); const cost = base === null ? null : indexed(base, idx);

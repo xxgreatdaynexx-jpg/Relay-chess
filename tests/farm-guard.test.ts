@@ -31,4 +31,15 @@ describe('farm anti-bot guard', () => {
       expect(checkFarmAction('harvest', 'dayne', t)).toBeNull();
     }
   });
+
+  it('skips clockwork for official auto actions but still rate-limits', () => {
+    const t0 = Date.parse('2026-11-05T18:00:00Z');
+    for (let i = 0; i < 8; i++) {
+      expect(checkFarmAction('harvest', 'auto-jay', t0 + i * 60_000, { auto: true })).toBeNull();
+    }
+    // 9th at same cadence would be clockwork for humans, but auto is allowed
+    expect(checkFarmAction('harvest', 'auto-jay', t0 + 8 * 60_000, { auto: true })).toBeNull();
+    // gap rate limit still applies
+    expect(checkFarmAction('harvest', 'auto-jay', t0 + 8 * 60_000 + 200, { auto: true })).toBe(FARM_RATE_MSG);
+  });
 });

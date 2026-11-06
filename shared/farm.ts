@@ -21,18 +21,21 @@ export const MIN_RIPE_MS = 36 * 60 * 60_000;
 export const ripeWindow = (grow: number, wither = WITHER_FACTOR) => Math.max(MIN_RIPE_MS, wither * grow);
 export interface Crop { id: string; label: string; emoji: string; seed: number; grow: number; sell: number; color: number }
 const M = 60_000, H = 60 * M;
+/** Dayne 2026-11-05: crops grow 30% faster (duration ×0.7). Applied at definition so client display + server readyAt stay in sync. */
+const GROW_SCALE = 0.7;
+const growMs = (ms: number) => Math.round(ms * GROW_SCALE);
 /** Crop margins (2026-11-04): sell = seed x 1.2 / FARM_SELL_MUL, so a raw harvest profits 20% of its seed. */
 /** Base chips. Fast crops pay little per hour unless you keep coming back; slow ones are the big money per click. */
 export const CROPS: Crop[] = [
-  { id: 'strawberry', label: 'Strawberries', emoji: '🍓', seed: 5, grow: 4 * M, sell: 6.32, color: 0xd84a5a },
-  { id: 'wheat', label: 'Wheat', emoji: '🌾', seed: 10, grow: 10 * M, sell: 12.64, color: 0xd8b860 },
-  { id: 'carrot', label: 'Carrots', emoji: '🥕', seed: 15, grow: 30 * M, sell: 18.95, color: 0xe08a3a },
-  { id: 'corn', label: 'Corn', emoji: '🌽', seed: 25, grow: 60 * M, sell: 31.58, color: 0xe8d050 },
-  { id: 'tomato', label: 'Tomatoes', emoji: '🍅', seed: 40, grow: 2 * H, sell: 50.53, color: 0xd8443a },
-  { id: 'potato', label: 'Potatoes', emoji: '🥔', seed: 60, grow: 4 * H, sell: 75.79, color: 0xb08a5a },
-  { id: 'pumpkin', label: 'Pumpkins', emoji: '🎃', seed: 90, grow: 8 * H, sell: 113.69, color: 0xe0782a },
-  { id: 'grapes', label: 'Grapes', emoji: '🍇', seed: 150, grow: 16 * H, sell: 189.48, color: 0x8a4ac0 },
-  { id: 'sunflower', label: 'Sunflowers', emoji: '🌻', seed: 250, grow: 24 * H, sell: 315.79, color: 0xf0c830 },
+  { id: 'strawberry', label: 'Strawberries', emoji: '🍓', seed: 5, grow: growMs(4 * M), sell: 6.32, color: 0xd84a5a },
+  { id: 'wheat', label: 'Wheat', emoji: '🌾', seed: 10, grow: growMs(10 * M), sell: 12.64, color: 0xd8b860 },
+  { id: 'carrot', label: 'Carrots', emoji: '🥕', seed: 15, grow: growMs(30 * M), sell: 18.95, color: 0xe08a3a },
+  { id: 'corn', label: 'Corn', emoji: '🌽', seed: 25, grow: growMs(60 * M), sell: 31.58, color: 0xe8d050 },
+  { id: 'tomato', label: 'Tomatoes', emoji: '🍅', seed: 40, grow: growMs(2 * H), sell: 50.53, color: 0xd8443a },
+  { id: 'potato', label: 'Potatoes', emoji: '🥔', seed: 60, grow: growMs(4 * H), sell: 75.79, color: 0xb08a5a },
+  { id: 'pumpkin', label: 'Pumpkins', emoji: '🎃', seed: 90, grow: growMs(8 * H), sell: 113.69, color: 0xe0782a },
+  { id: 'grapes', label: 'Grapes', emoji: '🍇', seed: 150, grow: growMs(16 * H), sell: 189.48, color: 0x8a4ac0 },
+  { id: 'sunflower', label: 'Sunflowers', emoji: '🌻', seed: 250, grow: growMs(24 * H), sell: 315.79, color: 0xf0c830 },
 ];
 /** Farming profit -5% (Dayne, 2026-11-04): a harvest sells each crop at 95% of its listed value. Seed costs are unchanged. */
 export const FARM_SELL_MUL = 0.95;
@@ -88,7 +91,8 @@ export const tileXZ = (p: FarmPlot, i: number): [number, number] => [p.x - (p.co
 
 /** What the client gets for one plot. `now` is the server clock (clients never send timestamps). */
 export interface FarmTile { tile: number; crop: string; plantedAt: number; stage: Stage; readyAt: number; witherAt: number }
-export interface FarmView { id: string; owner: string | null; mine: boolean; cols: number; rows: number; tiles: FarmTile[]; now: number; today: { gross: number; paid: number }; index: number; upgrades?: import('./farmUpgrades.js').FarmUpgradeLevels }
+export interface FarmAuto { harvest: boolean; plant: boolean; crop: string }
+export interface FarmView { id: string; owner: string | null; mine: boolean; cols: number; rows: number; tiles: FarmTile[]; now: number; today: { gross: number; paid: number }; index: number; upgrades?: import('./farmUpgrades.js').FarmUpgradeLevels; auto?: FarmAuto }
 
 /** Where the camera may look: the whole plate (incl. the Trailer Park), the farm district on the east edge, the outskirts mines and the Airport / Speedway (shared/venues.ts). */
 const SITES = Object.values(MINE_SITES); const HALF = MINE_APRON / 2;

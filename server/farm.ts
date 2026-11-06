@@ -24,12 +24,18 @@ import { skillLevelAsync } from './skills.js';
 import { farmingGrowMul } from '../shared/skillPerks.js';
 import { combinedGrowMul, fertilizerProfitMul, greenhouseWither, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradeDef, upgradePrice, type FarmUpgradeLevels } from '../shared/farmUpgrades.js';
 import { checkFarmAction } from './farmGuard.js';
+import { isHubAwake } from '../shared/hubSleep.js';
+import { isAtResort } from './travel.js';
+import type { FarmAuto } from '../shared/farm.js';
 
 export const FARM_MIGRATION = `
 CREATE TABLE IF NOT EXISTS farm_tiles (plot_id TEXT NOT NULL, tile INTEGER NOT NULL, owner_key TEXT NOT NULL, crop TEXT NOT NULL, planted_at BIGINT NOT NULL, nonce TEXT NOT NULL, PRIMARY KEY (plot_id, tile));
 CREATE TABLE IF NOT EXISTS farm_upgrades (plot_id TEXT NOT NULL, kind TEXT NOT NULL, owner_key TEXT NOT NULL, level INTEGER NOT NULL, PRIMARY KEY (plot_id, kind));
 CREATE TABLE IF NOT EXISTS farm_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
+CREATE TABLE IF NOT EXISTS farm_auto (plot_id TEXT NOT NULL, owner_key TEXT NOT NULL, harvest BOOLEAN NOT NULL DEFAULT false, plant BOOLEAN NOT NULL DEFAULT false, crop TEXT NOT NULL DEFAULT 'wheat', PRIMARY KEY (plot_id, owner_key));
 `;
+/** Server auto-farm sweep while the owner is online (Dayne 2026-11-05). */
+export const FARM_AUTO_SWEEP_MS = 45_000;
 /** Where a harvest/catch goes instead of the market (server/factory-import.ts): written in the same DB transaction. */
 export interface ImportSink { write(cl: pg.PoolClient, items: Array<[string, number]>): Promise<void>; after(items: Array<[string, number]>): void }
 export class FarmError extends Error {}
@@ -47,12 +53,25 @@ interface TileRow { plot_id: string; tile: number; owner_key: string; crop: stri
 export class Farm {
   onChange?: (plotId: string) => void;
   private locks = new Map<string, Promise<unknown>>();
+  /** socket.id sets per owner_key — auto-farm only runs while the owner is connected. */
+  private online = new Map<string, Set<string>>();
   private lock<T>(id: string, fn: () => Promise<T>): Promise<T> {
     const prev = this.locks.get(id) ?? Promise.resolve(); const p = prev.then(fn, fn); const tail = p.catch(() => {});
     this.locks.set(id, tail); void tail.then(() => { if (this.locks.get(id) === tail) this.locks.delete(id); }); return p;
   }
   constructor(private readonly pool: pg.Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now()) {}
   async init() { await this.pool.query(FARM_MIGRATION); await this.pool.query('CREATE TABLE IF NOT EXISTS kitchen_harvests (tile_key TEXT PRIMARY KEY NOT NULL, at BIGINT NOT NULL)'); }
+  noteOnline(name: string, socketId: string) {
+    const k = keyOf(name); let s = this.online.get(k); if (!s) { s = new Set(); this.online.set(k, s); } s.add(socketId);
+  }
+  noteOffline(name: string, socketId: string) {
+    const k = keyOf(name); const s = this.online.get(k); if (!s) return; s.delete(socketId); if (!s.size) this.online.delete(k);
+  }
+  isOnline(nameOrKey: string) { return (this.online.get(keyOf(nameOrKey))?.size ?? 0) > 0; }
+  private async autoOf(pid: string, ownerKey: string): Promise<FarmAuto> {
+    const r = (await this.pool.query('SELECT harvest, plant, crop FROM farm_auto WHERE plot_id = $1 AND owner_key = $2', [pid, ownerKey])).rows[0] as { harvest: boolean; plant: boolean; crop: string } | undefined;
+    return { harvest: r?.harvest === true, plant: r?.plant === true, crop: r?.crop ?? 'wheat' };
+  }
 
   private async ownerOf(q: { query: pg.Pool['query'] } | pg.PoolClient, id: string): Promise<{ key: string; name: string } | null> {
     const r = await q.query('SELECT owner_key, owner_name FROM properties WHERE id = $1', [id]);
@@ -113,7 +132,35 @@ export class Farm {
     const upgrades = o ? await this.upgrades(this.pool, pid, o.key) : { ...NO_UPGRADES };
     const tiles = o ? (await this.tiles(pid, o.key)).map((r) => this.toTile(r, now, this.withers(upgrades))).filter((t): t is FarmTile => !!t) : [];
     const mine = !!o && !!name && o.key === keyOf(name);
-    return { id: pid, owner: o?.name ?? null, mine, cols: p.cols, rows: p.rows, tiles, now, today: mine ? await this.today(o!.key) : { gross: 0, paid: 0 }, index: priceIndex(), upgrades };
+    const auto = mine ? await this.autoOf(pid, o!.key) : undefined;
+    return { id: pid, owner: o?.name ?? null, mine, cols: p.cols, rows: p.rows, tiles, now, today: mine ? await this.today(o!.key) : { gross: 0, paid: 0 }, index: priceIndex(), upgrades, auto };
+  }
+
+  /** Per-plot auto plant/harvest toggles (owner only). Crop is the seed used when auto-plant is on. */
+  async setAuto(name: string, id: unknown, patch: { harvest?: unknown; plant?: unknown; crop?: unknown }) {
+    const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.');
+    const cId = patch.crop !== undefined ? String(patch.crop) : undefined;
+    if (cId !== undefined) {
+      const c = cropById(cId); if (!c) throw new FarmError('Unknown seed.');
+      if (isTropical(c.id) !== p.resort) throw new FarmError(p.resort ? 'Only tropical crops grow at the resort plantation.' : 'Tropical crops only grow at Chud Resort.');
+    }
+    return this.lock(p.pid, async () => {
+      const o = await this.ownerOf(this.pool, p.pid); if (!o || o.key !== keyOf(name)) throw new FarmError('You do not own this farm plot.');
+      const cur = await this.autoOf(p.pid, o.key);
+      const next: FarmAuto = {
+        harvest: typeof patch.harvest === 'boolean' ? patch.harvest : cur.harvest,
+        plant: typeof patch.plant === 'boolean' ? patch.plant : cur.plant,
+        crop: cId ?? cur.crop,
+      };
+      if (!cropById(next.crop)) next.crop = p.resort ? 'pineapple' : 'wheat';
+      await this.pool.query(
+        `INSERT INTO farm_auto (plot_id, owner_key, harvest, plant, crop) VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (plot_id, owner_key) DO UPDATE SET harvest = EXCLUDED.harvest, plant = EXCLUDED.plant, crop = EXCLUDED.crop`,
+        [p.pid, o.key, next.harvest, next.plant, next.crop],
+      );
+      this.onChange?.(p.pid);
+      return { auto: next };
+    });
   }
 
   private async atomic(name: string, amount: number, game: string, memo: string, body: (cl: pg.PoolClient) => Promise<void>) {
@@ -137,11 +184,11 @@ export class Farm {
   }
 
   /** Plant `crop` on the given empty tiles; seeds are paid now (px-indexed). */
-  async plant(name: string, id: unknown, cropId: unknown, tiles: unknown) {
+  async plant(name: string, id: unknown, cropId: unknown, tiles: unknown, opts?: { auto?: boolean }) {
     const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const c = cropById(cropId); if (!c) throw new FarmError('Unknown seed.');
     if (isTropical(c.id) !== p.resort) throw new FarmError(p.resort ? 'Only tropical crops grow at the resort plantation.' : 'Tropical crops only grow at Chud Resort.');
     const list = this.tileList(p, tiles); const pid = p.pid;
-    const blocked = checkFarmAction('plant', keyOf(name), this.clock()); if (blocked) throw new FarmError(blocked);
+    const blocked = checkFarmAction('plant', keyOf(name), this.clock(), opts?.auto ? { auto: true } : undefined); if (blocked) throw new FarmError(blocked);
     return this.lock(pid, async () => {
       const cost = px(c.seed) * list.length; const bank = this.bank(); await bank.refresh(name);
       if (bank.account(name).chips < cost) throw new FarmError(`Not enough chips: ${list.length} × ${c.label} seeds cost ${cost.toLocaleString('en-US')}.`);
@@ -165,10 +212,10 @@ export class Farm {
   }
 
   /** Harvest every ready tile (or the given ones). Exactly once: the tiles are deleted in the payout's transaction. */
-  async harvest(name: string, id: unknown, tiles?: unknown, sink?: ImportSink, pantry = false) {
+  async harvest(name: string, id: unknown, tiles?: unknown, sink?: ImportSink, pantry = false, opts?: { auto?: boolean }) {
     const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const pid = p.pid;
     const only = tiles === undefined || tiles === null ? null : new Set(this.tileList(p, tiles));
-    const blocked = checkFarmAction('harvest', keyOf(name), this.clock()); if (blocked) throw new FarmError(blocked);
+    const blocked = checkFarmAction('harvest', keyOf(name), this.clock(), opts?.auto ? { auto: true } : undefined); if (blocked) throw new FarmError(blocked);
     return this.lock(`h:${keyOf(name)}`, () => this.lock(pid, async () => {
       const now = this.clock(); const key = keyOf(name);
       const up = await this.upgrades(this.pool, pid, key);
@@ -252,6 +299,44 @@ export class Farm {
     });
   }
 
+  /**
+   * One auto-farm pass for online owners with toggles on.
+   * Respects hub sleep, resort location, and farmGuard rate limits (clockwork skipped for auto).
+   */
+  async autoSweep(): Promise<number> {
+    if (!isHubAwake(this.clock())) return 0;
+    const rows = (await this.pool.query(
+      `SELECT a.plot_id, a.owner_key, a.harvest, a.plant, a.crop, p.owner_name
+       FROM farm_auto a JOIN properties p ON p.id = a.plot_id AND p.owner_key = a.owner_key
+       WHERE a.harvest = true OR a.plant = true`,
+    )).rows as Array<{ plot_id: string; owner_key: string; harvest: boolean; plant: boolean; crop: string; owner_name: string }>;
+    let n = 0;
+    for (const r of rows) {
+      if (!this.isOnline(r.owner_key)) continue;
+      const name = String(r.owner_name);
+      const pid = String(r.plot_id);
+      const plot = plotOf(pid); if (!plot) continue;
+      if (plot.resort && !isAtResort(name)) continue;
+      try {
+        if (r.harvest) {
+          try { await this.harvest(name, pid, undefined, undefined, false, { auto: true }); n++; }
+          catch (e) { if (!(e instanceof FarmError)) console.warn('[farm-auto] harvest', pid, (e as Error).message); }
+        }
+        if (r.plant) {
+          try { await this.clear(name, pid); } catch { /* nothing withered */ }
+          const busy = new Set((await this.tiles(pid, r.owner_key)).map((t) => Number(t.tile)));
+          const empties: number[] = [];
+          for (let i = 0; i < plot.cols * plot.rows; i++) if (!busy.has(i)) empties.push(i);
+          if (empties.length) {
+            try { await this.plant(name, pid, r.crop, empties, { auto: true }); n++; }
+            catch (e) { if (!(e instanceof FarmError)) console.warn('[farm-auto] plant', pid, (e as Error).message); }
+          }
+        }
+      } catch (e) { console.warn('[farm-auto]', pid, (e as Error).message); }
+    }
+    return n;
+  }
+
   /** Every planted tile on an owned plot (for the map: crops visible from the city view). */
   async mapTiles(): Promise<Array<[string, number, string, Stage]>> {
     const rows = (await this.pool.query('SELECT t.plot_id, t.tile, t.crop, t.planted_at, t.owner_key, p.owner_key AS cur FROM farm_tiles t JOIN properties p ON p.id = t.plot_id')).rows as Array<TileRow & { cur: string }>;
@@ -263,11 +348,21 @@ type Stage = FarmTile['stage'];
 
 let farm: Farm | null = null;
 export const getFarm = () => farm;
+
+let autoTimer: ReturnType<typeof setInterval> | null = null;
+function startFarmAutoSweep() {
+  if (autoTimer) return;
+  const run = () => { void farm?.autoSweep().catch((e) => console.error('[farm-auto] sweep failed:', (e as Error).message)); };
+  setTimeout(run, 15_000).unref?.();
+  autoTimer = setInterval(run, FARM_AUTO_SWEEP_MS);
+  autoTimer.unref?.();
+}
+
 export async function initFarm(): Promise<void> {
   const url = databaseUrl(); if (!url) { setBootState('farm', 'memory'); return; }
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
   pool.on('error', (e) => console.error('[farm] pool error:', e.message));
-  await bootAttach('farm', async () => { try { const f = new Farm(pool); await f.init(); farm = f; console.log('[farm] ready'); return true; } catch (e) { console.error('[farm] init failed:', (e as Error).message); return false; } });
+  await bootAttach('farm', async () => { try { const f = new Farm(pool); await f.init(); farm = f; startFarmAutoSweep(); console.log('[farm] ready'); return true; } catch (e) { console.error('[farm] init failed:', (e as Error).message); return false; } });
 }
 
 /** Public read: crops on every owned plot (for the map) and the seed shop at today's prices. */
@@ -283,11 +378,20 @@ export function farmRouter() {
 
 type Ack = (r: { ok: boolean; error?: string; [k: string]: unknown }) => void;
 let wired: Server | null = null;
+
 export function registerFarm(io: Server, socket: Socket): void {
-  if (wired !== io && farm) { wired = io; farm.onChange = (id) => io.emit('farm_changed', { id }); }
+  if (wired !== io && farm) {
+    wired = io;
+    farm.onChange = (id) => io.emit('farm_changed', { id });
+    startFarmAutoSweep();
+  }
   const nameOf = () => (socket.data as { account?: { name: string } }).account?.name ?? null;
+  const track = () => { const n = nameOf(); if (n && farm) farm.noteOnline(n, socket.id); };
+  track();
+  socket.on('disconnect', () => { const n = nameOf(); if (n && farm) farm.noteOffline(n, socket.id); });
+  // Re-bind when auth lands after connect
   const on = (ev: string, fn: (b: Record<string, unknown>, f: Farm) => unknown) => socket.on(ev, async (payload: unknown, ack?: Ack) => {
-    try { if (!farm) throw new FarmError('The farm is offline right now.'); const b = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}; ack?.({ ok: true, ...((await fn(b, farm)) as object ?? {}) }); }
+    try { if (!farm) throw new FarmError('The farm is offline right now.'); const b = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}; track(); ack?.({ ok: true, ...((await fn(b, farm)) as object ?? {}) }); }
     catch (e) { ack?.({ ok: false, error: e instanceof FarmError || /^(Not enough chips\.|Wallet temporarily unavailable\.)$/.test((e as Error).message) ? (e as Error).message : 'Something went wrong.' }); }
   });
   const need = () => { const n = nameOf(); if (!n) throw new FarmError('Sign in to farm.'); return n; };
@@ -298,4 +402,5 @@ export function registerFarm(io: Server, socket: Socket): void {
   on('farm_harvest', async (b, f) => f.harvest(await at(b.id), b.id, b.tiles, undefined, b.pantry === true));
   on('farm_clear', async (b, f) => f.clear(await at(b.id), b.id));
   on('farm_upgrade', async (b, f) => f.buyUpgrade(await at(b.id), b.id, b.kind));
+  on('farm_auto', async (b, f) => f.setAuto(await at(b.id), b.id, { harvest: b.harvest, plant: b.plant, crop: b.crop }));
 }
