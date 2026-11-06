@@ -6,7 +6,7 @@ import { COMPANIES, COMPANY_BY_TICKER, TICK_MS } from '../shared/stocks';
 import { FUND_BY_ID, navOf } from '../shared/derivs';
 import { epsOf, fundSeries, keyStats, periodSpec, priceStats, seriesChange } from '../shared/stockStats';
 
-const T0 = Date.parse('2026-11-01T12:00:00Z');
+const T0 = Date.parse('2026-11-01T18:00:00Z');
 const mk = () => { const clk = { now: T0 }; const e = new Exchange(null, () => clk.now); const d = new Derivatives(e, null, () => clk.now); e.postTick = (n) => d.afterTick(n); return { e, d, clk }; };
 
 describe('MU #9 stock stats (display only)', () => {

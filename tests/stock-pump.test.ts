@@ -4,7 +4,7 @@ import { Exchange } from '../server/stocks';
 import { Derivatives } from '../server/derivs';
 import { MAX_TOTAL_IMPACT, impactAllowed } from '../shared/stocks';
 
-const T0 = Date.parse('2026-11-01T12:00:00Z');
+const T0 = Date.parse('2026-11-01T18:00:00Z');
 const mk = () => { const clk = { now: T0 }; const e = new Exchange(null, () => clk.now); const d = new Derivatives(e, null, () => clk.now); return { e, d, clk }; };
 const fund = (name: string, n: number) => { const b = getBank(); b.transfer(name, n - b.account(name).chips, { game: 'admin' }); };
 

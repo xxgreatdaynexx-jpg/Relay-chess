@@ -5,7 +5,7 @@ import { Derivatives } from '../server/derivs';
 import { COMPANY_BY_TICKER, quote } from '../shared/stocks';
 import { shortClose } from '../shared/derivs';
 
-const T0 = Date.parse('2026-11-01T12:00:00Z');
+const T0 = Date.parse('2026-11-01T18:00:00Z');
 const fund = (name: string, n: number) => { const b = getBank(); b.transfer(name, n - b.account(name).chips, { game: 'admin' }); };
 const chips = (n: string) => getBank().account(n).chips;
 

@@ -6,7 +6,7 @@ import { Derivatives } from '../server/derivs';
 import { COMPANY_BY_TICKER } from '../shared/stocks';
 import { optionBid, optionPremium, strikeFor } from '../shared/derivs';
 
-const T0 = Date.parse('2026-11-01T12:00:00Z'); const DAY = 86_400_000;
+const T0 = Date.parse('2026-11-01T18:00:00Z'); const DAY = 86_400_000;
 const fund = (name: string, n: number) => { const b = getBank(); b.transfer(name, n - b.account(name).chips, { game: 'admin' }); };
 const chips = (n: string) => getBank().account(n).chips;
 const setPrice = (e: Exchange, t: string, p: number) => { const r = e.rows.get(t)!; r.base = p; r.imp = 0; };

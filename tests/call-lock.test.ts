@@ -3,7 +3,7 @@ import { getBank } from '../server/casino-store';
 import { Exchange } from '../server/stocks';
 import { Derivatives, setDerivs } from '../server/derivs';
 
-const T0 = Date.parse('2026-11-01T12:00:00Z'); const DAY = 86_400_000;
+const T0 = Date.parse('2026-11-01T18:00:00Z'); const DAY = 86_400_000;
 const fund = (name: string, n: number) => { const b = getBank(); b.transfer(name, n - b.account(name).chips, { game: 'admin' }); };
 const setPrice = (e: Exchange, t: string, p: number) => { const r = e.rows.get(t)!; r.base = p; r.imp = 0; };
 const mk = () => { const clk = { now: T0 }; const e = new Exchange(null, () => clk.now); const d = new Derivatives(e, null, () => clk.now); setDerivs(d); return { e, d, clk }; };

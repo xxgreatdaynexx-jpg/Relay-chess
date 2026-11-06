@@ -3,7 +3,7 @@ import { getBank } from '../server/casino-store';
 import { Exchange } from '../server/stocks';
 import { COMPANIES } from '../shared/stocks';
 
-const T0 = Date.parse('2026-10-31T12:00:00Z');
+const T0 = Date.parse('2026-10-31T18:00:00Z');
 const fund = (name: string, n: number) => { const b = getBank(); b.transfer(name, n - b.account(name).chips, { game: 'admin' }); };
 
 describe('portfolio lifetime returns (read-only)', () => {

@@ -3,7 +3,7 @@ import { getBank } from '../server/casino-store';
 import { Exchange } from '../server/stocks';
 import { Derivatives } from '../server/derivs';
 
-const T0 = Date.parse('2026-11-01T12:00:00Z');
+const T0 = Date.parse('2026-11-01T18:00:00Z');
 const fund = (name: string, n: number) => { const b = getBank(); b.transfer(name, n - b.account(name).chips, { game: 'admin' }); };
 
 describe('public trade history', () => {

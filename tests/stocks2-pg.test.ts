@@ -30,7 +30,7 @@ describe('stocks v2 on Postgres', () => {
     const p = e.price('GLTC')!; await d.buyOption(n, 'GLTC', 'call', strikeFor(p, 0), 1, 2);
     await d.openShort(n, 'BYTZ', 2);
     expect(await d.liquidate()).toBe(0);
-    clk.now = Date.parse('2026-11-02T16:10:00Z');
+    clk.now = Date.parse('2026-11-02T20:01:00Z'); // after 1-day option expiry (bought at 20:00Z prior day)
     expect(await d.expire()).toBe(1); expect(await d.expire()).toBe(0);
     expect(await d.daily()).not.toBeNull(); expect(await d.daily()).toBeNull();
     const port = await d.portfolio(n); expect(port.history.options[0]!.status).not.toBe('open');

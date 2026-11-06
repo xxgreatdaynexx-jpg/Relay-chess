@@ -4,7 +4,7 @@ import { Exchange, once } from '../server/stocks';
 import { Derivatives } from '../server/derivs';
 import { backdropDismiss } from '../client/src/lib/backdrop';
 
-const T0 = Date.parse('2026-11-01T12:00:00Z');
+const T0 = Date.parse('2026-11-01T18:00:00Z');
 const fund = (name: string, n: number) => { const b = getBank(); b.transfer(name, n - b.account(name).chips, { game: 'admin' }); };
 
 describe('QA r9: a retried fund buy never charges twice', () => {

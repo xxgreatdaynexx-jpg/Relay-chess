@@ -4,7 +4,7 @@ import { Exchange } from '../server/stocks';
 import { Derivatives } from '../server/derivs';
 import { MARKET_BLOCKED, isMarketBlocked } from '../server/house-cap-index';
 
-const T0 = Date.parse('2026-11-01T12:00:00Z');
+const T0 = Date.parse('2026-11-01T18:00:00Z');
 const mk = () => { const clk = { now: T0 }; const e = new Exchange(null, () => clk.now); const d = new Derivatives(e, null, () => clk.now); return { e, d }; };
 const fund = (name: string, n: number) => { const b = getBank(); b.transfer(name, n - b.account(name).chips, { game: 'admin' }); };
 const MSG = /Market access suspended/;
