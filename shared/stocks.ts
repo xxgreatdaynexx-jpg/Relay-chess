@@ -102,6 +102,44 @@ export function marketHoursView(now = Date.now()) {
     nextChangeAt: nextMarketBoundary(now),
   };
 }
+
+/**
+ * Open-market milliseconds in [a, b). Closed spans (outside 12:00–22:00 UTC-6) contribute 0.
+ * Used to compress overnight flats out of price charts without inventing prices.
+ */
+export function marketOpenElapsed(a: number, b: number): number {
+  if (!(b > a)) return 0;
+  let t = a, sum = 0;
+  while (t < b) {
+    const next = nextMarketBoundary(t);
+    const end = Math.min(b, next);
+    if (!(end > t)) break;
+    if (isMarketOpen(t)) sum += end - t;
+    t = end;
+  }
+  return sum;
+}
+
+export type MarketChartPlotPt = { t: number; p: number; x: number };
+
+/**
+ * Remap chart samples onto an x-axis that only advances during open hours.
+ * Keeps real epoch `t` for labels; `x` is cumulative open-ms from the first point (plot only).
+ * Consecutive samples with the same x keep the latest price (e.g. frozen tip while closed).
+ */
+export function marketChartPlotPts(pts: Array<[number, number]>): MarketChartPlotPt[] {
+  if (!pts.length) return [];
+  const out: MarketChartPlotPt[] = [];
+  let prev = pts[0]![0], acc = 0;
+  for (const [t, p] of pts) {
+    acc += marketOpenElapsed(prev, t);
+    const last = out[out.length - 1];
+    if (last && last.x === acc) last.t = t, last.p = p;
+    else out.push({ t, p, x: acc });
+    prev = t;
+  }
+  return out;
+}
 /**
  * Strict quantity parser shared by the UI and the server: a positive whole number (or up to `decimals` decimals for fund units).
  * Rejects '-3', '2.5' (for shares), '1e3', '', ' 3x' and anything else, instead of silently stripping characters.

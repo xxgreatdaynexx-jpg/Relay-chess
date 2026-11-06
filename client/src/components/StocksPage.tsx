@@ -7,7 +7,7 @@ import { request, socket } from '@/lib/net';
 import { useMoneyAction } from '@/lib/moneyAction';
 import { useAccount } from '@/lib/auth';
 import { DIV_HOUR_UTC, FUND_MAX_ORDER, OPT_EXPIRIES, OPT_STRIKES, SHORT_INIT, SHORT_MAINT, BORROW_FEE, FUND_BY_ID, fundQuote, strikeFor } from '../../../shared/derivs';
-import { MAX_TICK_IMPACT, MAX_TRADE_IMPACT, STOCK_FEE, STOCK_SPREAD, quote, parseQty, COMPANY_BY_TICKER, isMarketOpen, MARKET_CLOSED_MSG, type NewsItem, type SectorInfo } from '../../../shared/stocks';
+import { MAX_TICK_IMPACT, MAX_TRADE_IMPACT, STOCK_FEE, STOCK_SPREAD, quote, parseQty, COMPANY_BY_TICKER, isMarketOpen, MARKET_CLOSED_MSG, marketChartPlotPts, type NewsItem, type SectorInfo } from '../../../shared/stocks';
 import { usePanelDrag } from '@/lib/panelDrag';
 
 interface Row { ticker: string; name: string; sector: string; price: number; chg: number; volume: number; shares: number; held: number; cap: number; playerPct: number; divYield?: number }
@@ -121,10 +121,12 @@ function MarketList({ data, onPick }: { data: ListResp; onPick: (t: string) => v
 }
 
 function Chart({ pts }: { pts: Array<[number, number]> }) {
-  if (pts.length < 2) return <p className="text-xs opacity-60">Not enough history yet: the chart fills in every 10 minutes.</p>;
-  const W = 600, H = 160; const v = pts.map((p) => p[1]); const lo = Math.min(...v), hi = Math.max(...v); const span = hi - lo || 1;
-  const t0 = pts[0]![0], t1 = pts[pts.length - 1]![0] || t0 + 1;
-  const d = pts.map(([t, p]) => `${(((t - t0) / (t1 - t0 || 1)) * W).toFixed(1)},${(H - ((p - lo) / span) * (H - 10) - 5).toFixed(1)}`).join(' ');
+  // Compress overnight / closed-hours spans so 12:00–22:00 UTC-6 trading fills the plot (no long flat closed line).
+  const plot = marketChartPlotPts(pts);
+  if (plot.length < 2) return <p className="text-xs opacity-60">Not enough history yet: the chart fills in every 10 minutes.</p>;
+  const W = 600, H = 160; const v = plot.map((p) => p.p); const lo = Math.min(...v), hi = Math.max(...v); const span = hi - lo || 1;
+  const x0 = plot[0]!.x, x1 = plot[plot.length - 1]!.x;
+  const d = plot.map(({ x, p }) => `${(((x - x0) / (x1 - x0 || 1)) * W).toFixed(1)},${(H - ((p - lo) / span) * (H - 10) - 5).toFixed(1)}`).join(' ');
   const up = v[v.length - 1]! >= v[0]!;
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="h-40 w-full rounded bg-black/20" preserveAspectRatio="none" data-testid="stk-chart">

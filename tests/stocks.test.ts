@@ -103,4 +103,49 @@ describe('stock market hours', () => {
     expect(await e.tick()).toBe(true);
     await e.trade('qa-hrs', 'buy', 'QRKL', 1);
   });
+  it('marketOpenElapsed skips closed overnight hours', async () => {
+    const { marketOpenElapsed, MARKET_OPEN_HOUR, MARKET_CLOSE_HOUR } = await import('../shared/stocks');
+    const open = Date.parse('2026-11-05T20:00:00Z'); // 14:00 local
+    const close = Date.parse('2026-11-06T04:00:00Z'); // 22:00 local
+    const nextOpen = Date.parse('2026-11-06T18:00:00Z'); // 12:00 next day
+    const midday = Date.parse('2026-11-06T20:00:00Z'); // 14:00 next day
+    expect(marketOpenElapsed(open, close)).toBe(close - open);
+    expect(marketOpenElapsed(close, nextOpen)).toBe(0);
+    expect(marketOpenElapsed(open, midday)).toBe((close - open) + (midday - nextOpen));
+    expect(MARKET_OPEN_HOUR).toBe(12); expect(MARKET_CLOSE_HOUR).toBe(22);
+  });
+  it('marketChartPlotPts compresses closed gap so overnight is not a long flat x-span', async () => {
+    const { marketChartPlotPts, marketOpenElapsed } = await import('../shared/stocks');
+    // Session A: 21:00 local → close; then tip while closed at 08:00 local next day; then 13:00 open.
+    const a = Date.parse('2026-11-05T03:00:00Z'); // 21:00 Nov 4 local? Wait Nov 5 03:00Z = Nov 4 21:00 local — use clear stamps
+    const pClose = Date.parse('2026-11-06T03:50:00Z'); // 21:50 local Nov 5 — open
+    const closedTip = Date.parse('2026-11-06T14:00:00Z'); // 08:00 local Nov 6 — closed
+    const afterOpen = Date.parse('2026-11-06T19:00:00Z'); // 13:00 local — open
+    const raw: Array<[number, number]> = [
+      [pClose - 3_600_000, 100],
+      [pClose, 110],
+      [closedTip, 110], // frozen tip while closed (server pushes now)
+      [afterOpen, 120],
+    ];
+    const wall = raw[raw.length - 1]![0] - raw[0]![0];
+    const openMs = marketOpenElapsed(raw[0]![0], raw[raw.length - 1]![0]);
+    expect(openMs).toBeLessThan(wall * 0.6); // overnight dominates wall clock
+    const plot = marketChartPlotPts(raw);
+    expect(plot.length).toBeGreaterThanOrEqual(3);
+    const xSpan = plot[plot.length - 1]!.x - plot[0]!.x;
+    expect(xSpan).toBe(openMs);
+    // From last open sample to a tip while closed, x only advances through remaining open minutes to 22:00 — not the overnight.
+    const atClose = plot.find((p) => p.t === pClose)!;
+    const tip = plot.find((p) => p.t === closedTip)!;
+    expect(tip.x - atClose.x).toBe(marketOpenElapsed(pClose, closedTip));
+    expect(tip.x - atClose.x).toBeLessThan(15 * 60_000); // < 15m (to 22:00), not the 10h wall-clock gap
+    // After the market reopens, x advances again with price action
+    const reopen = plot.find((p) => p.t === afterOpen)!;
+    expect(reopen.x).toBeGreaterThan(tip.x);
+    expect(reopen.p).toBe(120);
+    // Must not merely drop closed points and still use wall-clock x (that would keep a long bridge)
+    const naiveDrop = raw.filter(([t]) => t !== closedTip);
+    const naiveWallSpan = naiveDrop[naiveDrop.length - 1]![0] - naiveDrop[0]![0];
+    expect(xSpan).toBeLessThan(naiveWallSpan * 0.75);
+  });
 });
