@@ -26,6 +26,7 @@ import { buildCar } from './carModels';
 import { CAR_BY_ID } from '../../../shared/cars';
 import { HOUSING_TYPES, type HousingType } from './housing';
 import { buildingId, patchId } from '../../../shared/realEstate';
+import { attachTownHallProtest, type TownHallProtest } from './townHallProtest3d';
 
 export const MILLIONAIRE_SIGN = 'millionaire-sign';
 type Handlers = { onHover: (id: string | null, x: number, y: number) => void; onPick: (id: string) => void; onProperty?: (id: string) => void; onTrailer?: (name: string) => boolean };
@@ -413,6 +414,13 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: spot.color, transparent: true, opacity: 0.24, blending: THREE.AdditiveBlending, depthWrite: false })); halo.scale.set(16, 16, 1); halo.position.y = 0.6; g.add(halo);
     scene.add(g);
     lms.push({ id: spot.id, root: g, hit: [], emissive: ems, sign, pos: g.position.clone(), height });
+  }
+
+  // Town Hall protesters (cosmetic only): milling crowd + placards + speech bubbles on the front plaza.
+  let townHallProtest: TownHallProtest | null = null;
+  {
+    const hall = lms.find((l) => l.id === 'cityhall');
+    if (hall) townHallProtest = attachTownHallProtest(hall.root, { x: hall.pos.x, z: hall.pos.z }, disposables);
   }
 
   // Filler: housing along every street's frontage (turned to face it), plus parks, plazas and lots (worldLayout.cityFill).
@@ -835,6 +843,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     else if (!tick?.(dt)) { panStep(dt); controls.update(); clampPan(); }
     skyT += dt; if (skyT > 1) { skyT = 0; applySky(); }
     xmas?.step(dt);
+    townHallProtest?.step(dt, time, camera.position);
     for (const w of waterMats) w.uniforms.uTime.value = time; venues.step(dt, time, camera.position);
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
     for (const l of lms) { const k = labelScale(camera.position.distanceTo(l.sign.getWorldPosition(tmpV)), portrait) * (l.sign.userData.hover ? 1.2 : 1); l.sign.scale.set(k, k / 4, 1); }
@@ -864,7 +873,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     setRunning(v: boolean) { running = v && !document.hidden; clock.getDelta(); },
     project(id: string) { const l = lms.find((x) => x.id === id); if (!l) return null; const v = l.pos.clone().setY(l.height + 2.2).project(camera); const rc = canvas.getBoundingClientRect(); return { x: rc.left + (v.x + 1) / 2 * rc.width, y: rc.top + (1 - v.y) / 2 * rc.height }; },
     hover(id: string | null) { setHover(id); },
-    dispose() { xmas?.dispose(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); parkDead = true; trailerMeshes = []; jailDead = true; window.clearInterval(jailPoll); window.clearInterval(jailTick); for (const o of inmateObjs) o.tex.dispose(); cancelAnimationFrame(raf); venues.dispose(); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
+    dispose() { townHallProtest?.dispose(); townHallProtest = null; xmas?.dispose(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); parkDead = true; trailerMeshes = []; jailDead = true; window.clearInterval(jailPoll); window.clearInterval(jailTick); for (const o of inmateObjs) o.tex.dispose(); cancelAnimationFrame(raf); venues.dispose(); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
   };
 }
 export type World = ReturnType<typeof createWorld>;
