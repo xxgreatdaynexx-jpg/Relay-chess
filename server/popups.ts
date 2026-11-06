@@ -151,7 +151,7 @@ export async function seedBotApology(s: PopupStore = store): Promise<void> {
 /** Genuine soft apology for carter2 after the harsh notice was cancelled. No typed confirm. Idempotent fixed id. */
 export const CARTER2_SOFT_APOLOGY_ID = 'nora-carter2-soft-apology-1';
 export const CARTER2_SOFT_APOLOGY_TEXT =
-  "Hey carter2 — we're sorry. That last notice was way too harsh, and you didn't deserve that tone. You're good with us — no typed apology, no punishment, nothing hanging over you. Thanks for playing Chud Hub, and sorry again for making you feel bad.";
+  "Hey carter2 — we're sorry. That last notice was way too harsh, and you didn't deserve that tone. You're not banned, soft-disable is off, and the hub sleep window is for everyone — not a personal punishment. No typed apology needed — just hit OK to dismiss. Thanks for playing Chud Hub, and sorry again for making you feel bad.";
 export async function seedCarter2SoftApology(s: PopupStore = store): Promise<void> {
   try {
     await s.seed({
@@ -164,6 +164,21 @@ export async function seedCarter2SoftApology(s: PopupStore = store): Promise<voi
       title: BOT_APOLOGY_TITLE,
       confirmText: null,
     });
+    // Refresh copy if an earlier seed used different wording (still unacked).
+    if (s.db) {
+      await s.db.query(
+        `UPDATE admin_popups SET body=$1, confirm_text=NULL, sender=$2, title=$3 WHERE id=$4 AND acked_at IS NULL`,
+        [CARTER2_SOFT_APOLOGY_TEXT, 'Nora, Chief of Staff', BOT_APOLOGY_TITLE, CARTER2_SOFT_APOLOGY_ID],
+      );
+    } else {
+      const m = (s as unknown as { mem: Map<string, { text: string; confirmText?: string | null; from: string; title?: string | null; ackedAt: number | null }> }).mem.get(CARTER2_SOFT_APOLOGY_ID);
+      if (m && m.ackedAt === null) {
+        m.text = CARTER2_SOFT_APOLOGY_TEXT;
+        m.confirmText = null;
+        m.from = 'Nora, Chief of Staff';
+        m.title = BOT_APOLOGY_TITLE;
+      }
+    }
   } catch (e) { console.error('[popups] carter2 soft-apology seed failed:', (e as Error).message); }
 }
 

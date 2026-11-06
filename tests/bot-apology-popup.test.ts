@@ -61,6 +61,10 @@ describe('bot apology popup', () => {
     expect(soft[0].confirmText).toBeNull();
     expect(soft[0].text).toBe(CARTER2_SOFT_APOLOGY_TEXT);
     expect(soft[0].text).toMatch(/sorry/i);
+    expect(soft[0].text).toMatch(/not banned/i);
+    expect(soft[0].text).toMatch(/soft-disable is off/i);
+    expect(soft[0].text).toMatch(/hub sleep/i);
+    expect(soft[0].text).toMatch(/just hit OK/i);
     expect(soft[0].text).not.toMatch(/type exactly/i);
   });
 });
