@@ -86,14 +86,14 @@ export function FarmGame({ id, label, onClose }: { id: string; label: string; on
           <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', {}, (r) => `Harvested ${r.harvested} for 🪙 ${chips(Number(r.paid))}.`)} data-testid="farm-harvest">Harvest {ready.length} ready</button>
           <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', { pantry: true }, (r) => `🧺 ${r.harvested} crop${r.harvested === 1 ? '' : 's'} into your kitchen pantry.`)} title="Keep the crops for cooking instead of selling them" data-testid="farm-harvest-pantry">🧺 To pantry</button>
           <div className="farm-auto" data-testid="farm-auto">
-            <h4>Auto (while you are online)</h4>
+            <h4>Auto</h4>
             <label className="farm-auto-row"><input type="checkbox" checked={!!view.auto?.harvest} disabled={busy}
               onChange={(e) => act('farm_auto', { harvest: e.target.checked, plant: view.auto?.plant ?? false, crop: view.auto?.crop ?? seed }, () => e.target.checked ? 'Auto-harvest on for this farm.' : 'Auto-harvest off.')}
               data-testid="farm-auto-harvest" /> Auto-harvest ready crops (sells for chips)</label>
             <label className="farm-auto-row"><input type="checkbox" checked={!!view.auto?.plant} disabled={busy}
               onChange={(e) => act('farm_auto', { harvest: view.auto?.harvest ?? false, plant: e.target.checked, crop: seed }, () => e.target.checked ? `Auto-plant on with ${crop.label}.` : 'Auto-plant off.')}
               data-testid="farm-auto-plant" /> Auto-plant empty tiles with selected seed</label>
-            <small>Runs on the server about every 45s while you are signed in. Respects overnight sleep and farm rate limits. Changing seed updates auto-plant crop when auto-plant is on.</small>
+            <small>Runs on the server about every 45s even while you are logged out. Respects overnight sleep and farm rate limits. Changing seed updates auto-plant crop when auto-plant is on.</small>
           </div>
           <h4>Upgrades</h4>
           <div className="farm-upgrades" data-testid="farm-upgrades">

@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS farm_upgrades (plot_id TEXT NOT NULL, kind TEXT NOT N
 CREATE TABLE IF NOT EXISTS farm_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
 CREATE TABLE IF NOT EXISTS farm_auto (plot_id TEXT NOT NULL, owner_key TEXT NOT NULL, harvest BOOLEAN NOT NULL DEFAULT false, plant BOOLEAN NOT NULL DEFAULT false, crop TEXT NOT NULL DEFAULT 'wheat', PRIMARY KEY (plot_id, owner_key));
 `;
-/** Server auto-farm sweep while the owner is online (Dayne 2026-11-05). */
+/** Server auto-farm sweep for every plot with toggles on — online or offline (Dayne 2026-11-05). */
 export const FARM_AUTO_SWEEP_MS = 45_000;
 /** Where a harvest/catch goes instead of the market (server/factory-import.ts): written in the same DB transaction. */
 export interface ImportSink { write(cl: pg.PoolClient, items: Array<[string, number]>): Promise<void>; after(items: Array<[string, number]>): void }
@@ -53,21 +53,12 @@ interface TileRow { plot_id: string; tile: number; owner_key: string; crop: stri
 export class Farm {
   onChange?: (plotId: string) => void;
   private locks = new Map<string, Promise<unknown>>();
-  /** socket.id sets per owner_key — auto-farm only runs while the owner is connected. */
-  private online = new Map<string, Set<string>>();
   private lock<T>(id: string, fn: () => Promise<T>): Promise<T> {
     const prev = this.locks.get(id) ?? Promise.resolve(); const p = prev.then(fn, fn); const tail = p.catch(() => {});
     this.locks.set(id, tail); void tail.then(() => { if (this.locks.get(id) === tail) this.locks.delete(id); }); return p;
   }
   constructor(private readonly pool: pg.Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now()) {}
   async init() { await this.pool.query(FARM_MIGRATION); await this.pool.query('CREATE TABLE IF NOT EXISTS kitchen_harvests (tile_key TEXT PRIMARY KEY NOT NULL, at BIGINT NOT NULL)'); }
-  noteOnline(name: string, socketId: string) {
-    const k = keyOf(name); let s = this.online.get(k); if (!s) { s = new Set(); this.online.set(k, s); } s.add(socketId);
-  }
-  noteOffline(name: string, socketId: string) {
-    const k = keyOf(name); const s = this.online.get(k); if (!s) return; s.delete(socketId); if (!s.size) this.online.delete(k);
-  }
-  isOnline(nameOrKey: string) { return (this.online.get(keyOf(nameOrKey))?.size ?? 0) > 0; }
   private async autoOf(pid: string, ownerKey: string): Promise<FarmAuto> {
     const r = (await this.pool.query('SELECT harvest, plant, crop FROM farm_auto WHERE plot_id = $1 AND owner_key = $2', [pid, ownerKey])).rows[0] as { harvest: boolean; plant: boolean; crop: string } | undefined;
     return { harvest: r?.harvest === true, plant: r?.plant === true, crop: r?.crop ?? 'wheat' };
@@ -300,8 +291,9 @@ export class Farm {
   }
 
   /**
-   * One auto-farm pass for online owners with toggles on.
-   * Respects hub sleep, resort location, and farmGuard rate limits (clockwork skipped for auto).
+   * One auto-farm pass for every owned plot with Auto-harvest / Auto-plant on (online or offline).
+   * Only queries farm_auto rows that are enabled. Respects hub sleep, resort location, and farmGuard
+   * rate limits (clockwork skipped for official auto).
    */
   async autoSweep(): Promise<number> {
     if (!isHubAwake(this.clock())) return 0;
@@ -312,7 +304,6 @@ export class Farm {
     )).rows as Array<{ plot_id: string; owner_key: string; harvest: boolean; plant: boolean; crop: string; owner_name: string }>;
     let n = 0;
     for (const r of rows) {
-      if (!this.isOnline(r.owner_key)) continue;
       const name = String(r.owner_name);
       const pid = String(r.plot_id);
       const plot = plotOf(pid); if (!plot) continue;
@@ -386,12 +377,8 @@ export function registerFarm(io: Server, socket: Socket): void {
     startFarmAutoSweep();
   }
   const nameOf = () => (socket.data as { account?: { name: string } }).account?.name ?? null;
-  const track = () => { const n = nameOf(); if (n && farm) farm.noteOnline(n, socket.id); };
-  track();
-  socket.on('disconnect', () => { const n = nameOf(); if (n && farm) farm.noteOffline(n, socket.id); });
-  // Re-bind when auth lands after connect
   const on = (ev: string, fn: (b: Record<string, unknown>, f: Farm) => unknown) => socket.on(ev, async (payload: unknown, ack?: Ack) => {
-    try { if (!farm) throw new FarmError('The farm is offline right now.'); const b = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}; track(); ack?.({ ok: true, ...((await fn(b, farm)) as object ?? {}) }); }
+    try { if (!farm) throw new FarmError('The farm is offline right now.'); const b = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}; ack?.({ ok: true, ...((await fn(b, farm)) as object ?? {}) }); }
     catch (e) { ack?.({ ok: false, error: e instanceof FarmError || /^(Not enough chips\.|Wallet temporarily unavailable\.)$/.test((e as Error).message) ? (e as Error).message : 'Something went wrong.' }); }
   });
   const need = () => { const n = nameOf(); if (!n) throw new FarmError('Sign in to farm.'); return n; };

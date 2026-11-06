@@ -6,6 +6,16 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-05T21:50:00-06:00', title: 'Farm: auto plant and harvest keep working while you\'re logged out', bullets: [
+    'If Auto-harvest or Auto-plant is on for a farm you own, the server keeps tending that plot about every 45 seconds even when you are offline — not only while you are signed in.',
+    'Still pauses during Chud Hub overnight sleep (1–9 AM Alberta time) and still respects farm rate limits. Resort plantation auto only runs if your character is at Chud Resort.',
+  ] },
+  { commit: '', at: '2026-11-05T21:40:00-06:00', title: 'Farm: Auto-harvest and Auto-plant toggles', bullets: [
+    'On each farm you own, turn on Auto-harvest (sells ready crops for chips) and/or Auto-plant (replants empty tiles with the seed you picked). Settings are per farm.',
+  ] },
+  { commit: '', at: '2026-11-05T21:40:00-06:00', title: 'Farm: crops grow 30% faster', bullets: [
+    'Every city and tropical crop now takes 30% less time to grow (for example wheat 10 to 7 minutes, corn 1 hour to 42 minutes, sunflowers 24 to about 17 hours). Seed costs, sell prices and yields are unchanged.',
+  ] },
   { commit: '', at: '2026-11-05T18:15:00-06:00', title: 'Apology notice for carter2 softened', bullets: [
     'The harsh type-to-dismiss botting notice for carter2 was cancelled. A short sincere apology from Nora is queued instead — no typed apology required.',
   ] },
