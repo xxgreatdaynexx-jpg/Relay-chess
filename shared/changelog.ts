@@ -6,8 +6,8 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-05T21:50:00-06:00', title: 'Farm: auto plant and harvest keep working while you\'re logged out', bullets: [
-    'If Auto-harvest or Auto-plant is on for a farm you own, the server keeps tending that plot about every 45 seconds even when you are offline — not only while you are signed in.',
+  { commit: '', at: '2026-11-05T21:55:00-06:00', title: 'Farm: auto plant and harvest run every 30 minutes', bullets: [
+    'If Auto-harvest or Auto-plant is on for a farm you own, the server tends that plot about every 30 minutes even when you are offline — not only while you are signed in (was about every 45 seconds).',
     'Still pauses during Chud Hub overnight sleep (1–9 AM Alberta time) and still respects farm rate limits. Resort plantation auto only runs if your character is at Chud Resort.',
   ] },
   { commit: '', at: '2026-11-05T21:40:00-06:00', title: 'Farm: Auto-harvest and Auto-plant toggles', bullets: [

@@ -93,7 +93,7 @@ export function FarmGame({ id, label, onClose }: { id: string; label: string; on
             <label className="farm-auto-row"><input type="checkbox" checked={!!view.auto?.plant} disabled={busy}
               onChange={(e) => act('farm_auto', { harvest: view.auto?.harvest ?? false, plant: e.target.checked, crop: seed }, () => e.target.checked ? `Auto-plant on with ${crop.label}.` : 'Auto-plant off.')}
               data-testid="farm-auto-plant" /> Auto-plant empty tiles with selected seed</label>
-            <small>Runs on the server about every 45s even while you are logged out. Respects overnight sleep and farm rate limits. Changing seed updates auto-plant crop when auto-plant is on.</small>
+            <small>Runs on the server about every 30 minutes even while you are logged out. Respects overnight sleep and farm rate limits. Changing seed updates auto-plant crop when auto-plant is on.</small>
           </div>
           <h4>Upgrades</h4>
           <div className="farm-upgrades" data-testid="farm-upgrades">

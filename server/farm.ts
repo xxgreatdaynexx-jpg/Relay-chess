@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS farm_daily (player_key TEXT NOT NULL, day TEXT NOT NU
 CREATE TABLE IF NOT EXISTS farm_auto (plot_id TEXT NOT NULL, owner_key TEXT NOT NULL, harvest BOOLEAN NOT NULL DEFAULT false, plant BOOLEAN NOT NULL DEFAULT false, crop TEXT NOT NULL DEFAULT 'wheat', PRIMARY KEY (plot_id, owner_key));
 `;
 /** Server auto-farm sweep for every plot with toggles on — online or offline (Dayne 2026-11-05). */
-export const FARM_AUTO_SWEEP_MS = 45_000;
+export const FARM_AUTO_SWEEP_MS = 30 * 60_000; // 30 minutes (Dayne 2026-11-05)
 /** Where a harvest/catch goes instead of the market (server/factory-import.ts): written in the same DB transaction. */
 export interface ImportSink { write(cl: pg.PoolClient, items: Array<[string, number]>): Promise<void>; after(items: Array<[string, number]>): void }
 export class FarmError extends Error {}
