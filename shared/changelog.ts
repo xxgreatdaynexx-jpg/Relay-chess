@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-06T15:30:00-06:00', title: 'Short maintenance before Millionaire Update', bullets: [
+    'On Nov 6 from 7:45–8:00 PM Alberta / Regina time (UTC-6), Chud Hub shows a Millionaire Update countdown and pauses play for fifteen minutes. Overnight sleep (1–7 AM) is unchanged.',
+  ] },
   { commit: '', at: '2026-11-06T12:51:00-06:00', title: 'Stock charts skip closed-hours flat lines', bullets: [
     'Requested by Dayne: 24h / 7d / 30d stock price charts no longer stretch a flat line across the overnight close (22:00–12:00 Alberta time). The plot compresses to trading hours so you see price action, not the closed gap. Prices and trading are unchanged.',
   ] },

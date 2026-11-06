@@ -25,6 +25,7 @@ import { farmingGrowMul } from '../shared/skillPerks.js';
 import { combinedGrowMul, fertilizerProfitMul, greenhouseWither, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradeDef, upgradePrice, type FarmUpgradeLevels } from '../shared/farmUpgrades.js';
 import { checkFarmAction } from './farmGuard.js';
 import { isHubAwake } from '../shared/hubSleep.js';
+import { isMillionairePrelaunch } from '../shared/millionairePrelaunch.js';
 import { isAtResort } from './travel.js';
 import type { FarmAuto } from '../shared/farm.js';
 
@@ -296,7 +297,7 @@ export class Farm {
    * rate limits (clockwork skipped for official auto).
    */
   async autoSweep(): Promise<number> {
-    if (!isHubAwake(this.clock())) return 0;
+    if (!isHubAwake(this.clock()) || isMillionairePrelaunch(this.clock())) return 0;
     const rows = (await this.pool.query(
       `SELECT a.plot_id, a.owner_key, a.harvest, a.plant, a.crop, p.owner_name
        FROM farm_auto a JOIN properties p ON p.id = a.plot_id AND p.owner_key = a.owner_key

@@ -33,6 +33,7 @@ import { employmentRouter } from './employment.js';
 import { getMinesBoard } from './mines-board.js';
 import { isMinePeriod } from '../shared/minesBoard.js';
 import { isHubAwake, hubSleepView, HUB_SLEEP_MSG } from '../shared/hubSleep.js';
+import { isMillionairePrelaunch, millionairePrelaunchView, MILLIONAIRE_PRELAUNCH_MSG } from '../shared/millionairePrelaunch.js';
 
 export interface AppContext {
   httpServer: HttpServer;
@@ -47,19 +48,34 @@ export async function createApp(): Promise<AppContext> {
     next();
   });
   // Overnight hub sleep 01:00–07:00 UTC-6: block play/API; keep health (+ build/status) for Render.
-  const HUB_SLEEP_ALLOW = new Set(['/health', '/api/health', '/api/build', '/api/hub-sleep']);
+  // Millionaire prelaunch (19:45–20:00 UTC-6 Nov 6 2026): separate maintenance gate; admin bearer still works.
+  const HUB_SLEEP_ALLOW = new Set(['/health', '/api/health', '/api/build', '/api/hub-sleep', '/api/millionaire-prelaunch']);
+  const PRELAUNCH_ALLOW = new Set(['/health', '/api/health', '/api/build', '/api/hub-sleep', '/api/millionaire-prelaunch']);
   app.use((req, res, next) => {
-    if (isHubAwake()) return next();
     const path = req.path || '';
-    if (HUB_SLEEP_ALLOW.has(path)) return next();
-    // Static assets + SPA shell must load so the client can show the sleep message.
+    // Static assets + SPA shell always load so overlays can render without refresh.
     if (req.method === 'GET' && !path.startsWith('/api/') && path !== '/health') return next();
-    res.set('Cache-Control', 'no-store');
-    res.status(503).json({ ...hubSleepView(), ok: false, error: HUB_SLEEP_MSG });
+    if (isMillionairePrelaunch()) {
+      if (PRELAUNCH_ALLOW.has(path)) return next();
+      // Authenticated admin/deploy only — router still checks bearer; no arbitrary user bypass.
+      if (path.startsWith('/api/admin')) return next();
+      res.set('Cache-Control', 'no-store');
+      return res.status(503).json({ ...millionairePrelaunchView(), ok: false, error: MILLIONAIRE_PRELAUNCH_MSG });
+    }
+    if (!isHubAwake()) {
+      if (HUB_SLEEP_ALLOW.has(path)) return next();
+      res.set('Cache-Control', 'no-store');
+      return res.status(503).json({ ...hubSleepView(), ok: false, error: HUB_SLEEP_MSG });
+    }
+    return next();
   });
   app.get('/api/hub-sleep', (_req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json({ ok: true, ...hubSleepView() });
+  });
+  app.get('/api/millionaire-prelaunch', (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ ok: true, ...millionairePrelaunchView() });
   });
   app.use(adminRouter());
   app.use(trailerRouter());

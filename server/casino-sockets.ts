@@ -10,6 +10,7 @@ import { buyVideoBonus, spinVideoSlot } from './slots.js';
 import { HoldemRoom, type HoldemTable } from './holdem.js';
 import { heStakes, HE_SPECTATE_DELAY_MS, type HEAction } from '../shared/holdem.js';
 import { HoldemSpectators, type Viewer } from './holdem-spectate.js';
+import { isMillionairePrelaunch } from '../shared/millionairePrelaunch.js';
 
 const envDelay = Number(process.env.HOLDEM_SPECTATOR_DELAY_MS);
 let spectators = new HoldemSpectators(Number.isFinite(envDelay) && envDelay >= 0 ? envDelay : HE_SPECTATE_DELAY_MS);
@@ -107,8 +108,30 @@ export function startCasino(io: Server): void {
   spectators = new HoldemSpectators(spectators.delayMs);
   casino = new BlackjackCasino(getBank());
   wheel = new RouletteWheel(getBank(), now);
+  let casinoPauseAt: number | null = null;
   timer = setInterval(() => {
     const t = Date.now();
+    if (isMillionairePrelaunch(t)) {
+      // Extend deadlines so mid-hand bets are not auto-resolved / folded during the lockout.
+      const dt = casinoPauseAt == null ? 0 : Math.max(0, t - casinoPauseAt);
+      casinoPauseAt = t;
+      if (dt > 0) {
+        for (const table of casino!.tables ?? []) {
+          const d = (table as { deadline?: number | null }).deadline;
+          if (typeof d === 'number') (table as { deadline: number }).deadline = d + dt;
+        }
+        const w = wheel as { deadline?: number } | null;
+        if (w && typeof w.deadline === 'number') w.deadline += dt;
+        for (const tb of holdem?.tables ?? []) {
+          const d = (tb as { deadline?: number | null }).deadline;
+          if (typeof d === 'number') (tb as { deadline: number }).deadline = d + dt;
+          const n = (tb as { nextHandAt?: number | null }).nextHandAt;
+          if (typeof n === 'number') (tb as { nextHandAt: number }).nextHandAt = n + dt;
+        }
+      }
+      return;
+    }
+    casinoPauseAt = null;
     const changed = casino!.tick(t);
     for (const table of changed) pushTable(table, t);
     const settledBJ = changed.some((x) => x.phase === 'settled');
