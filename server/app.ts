@@ -50,7 +50,7 @@ export async function createApp(): Promise<AppContext> {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     next();
   });
-  // Overnight hub sleep 01:00–09:00 UTC-6: block play/API; keep health (+ build/status) for Render.
+  // Overnight hub sleep 01:00–07:00 UTC-6: block play/API; keep health (+ build/status) for Render.
   const HUB_SLEEP_ALLOW = new Set(['/health', '/api/health', '/api/build', '/api/hub-sleep']);
   app.use((req, res, next) => {
     if (isHubAwake()) return next();

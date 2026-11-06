@@ -1,10 +1,10 @@
 /**
- * Full Chud Hub overnight lockout: 01:00–09:00 America/Edmonton (fixed UTC-6, no DST).
- * Half-open [01:00, 09:00). Play/API refuse; /health and /api/health stay up for Render.
+ * Full Chud Hub overnight lockout: 01:00–07:00 America/Edmonton (fixed UTC-6, no DST).
+ * Half-open [01:00, 07:00). Play/API refuse; /health and /api/health stay up for Render.
  */
 export const HUB_UTC_OFFSET_HOURS = -6;
 export const HUB_SLEEP_START_HOUR = 1;
-export const HUB_SLEEP_END_HOUR = 9;
+export const HUB_SLEEP_END_HOUR = 7;
 export const HUB_SLEEP_MSG = 'Chud Hub sleeps so should you.';
 
 /** Minutes since local midnight in fixed UTC-6. */

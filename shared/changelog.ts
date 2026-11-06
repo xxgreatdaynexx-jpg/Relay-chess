@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-06T06:55:00-06:00', title: 'Chud Hub sleep ends at 7 AM', bullets: [
+    'Overnight lockout is now 1–7 AM Alberta / Regina time (UTC-6), was 1–9 AM. Same message: “Chud Hub sleeps so should you.” Farm overnight pauses with the hub.',
+  ] },
   { commit: '', at: '2026-11-05T18:15:00-06:00', title: 'Apology notice for carter2 softened', bullets: [
     'The harsh type-to-dismiss botting notice for carter2 was cancelled. A short sincere apology from Nora is queued instead — no typed apology required.',
   ] },
