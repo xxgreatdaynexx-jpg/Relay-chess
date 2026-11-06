@@ -47,6 +47,7 @@ import { registerMines } from './mines.js';
 import { registerFactory } from './factory.js';
 import { registerConquest } from './conquest.js';
 import { getJail } from './jail.js';
+import { isMillionairePrelaunch, millionairePrelaunchView, MILLIONAIRE_PRELAUNCH_MSG, MILLIONAIRE_PRELAUNCH_START_MS } from '../shared/millionairePrelaunch.js';
 import { jailAllows, jailMessage } from '../shared/jail.js';
 import { analyzePosition, onHintReady } from './hints.js';
 import {
@@ -144,11 +145,29 @@ function queueTables(io: Server): void {
   (tablesQueued as unknown as { unref?: () => void }).unref?.();
 }
 
+let prelaunchWasActive = false;
 export function startMaintenance(io: Server): void {
   if (timer) return;
   timer = setInterval(() => {
     const now = Date.now();
+    const pre = isMillionairePrelaunch(now);
+    if (pre && !prelaunchWasActive) {
+      prelaunchWasActive = true;
+      io.emit('millionaire_prelaunch', millionairePrelaunchView(now));
+    } else if (!pre && prelaunchWasActive) {
+      prelaunchWasActive = false;
+      io.emit('millionaire_prelaunch', millionairePrelaunchView(now));
+    } else if (!pre && now < MILLIONAIRE_PRELAUNCH_START_MS && MILLIONAIRE_PRELAUNCH_START_MS - now < 5_000) {
+      // arm: nudge clients shortly before boundary so open tabs flip without refresh
+      io.emit('millionaire_prelaunch', millionairePrelaunchView(now));
+    }
     for (const room of listRooms()) {
+      if (pre) {
+        // Freeze clocks / bots — do not flag, settle, or mint from elapsed maintenance time.
+        room.game.freezeClock(now);
+        clearBot(room.code);
+        continue;
+      }
       if (room.game.status === 'playing') scheduleBot(io, room);
       else clearBot(room.code);
       const hadResult = room.game.hasResult();
@@ -218,12 +237,19 @@ export function registerSockets(io: Server): void {
   });
 
   io.on('connection', (socket) => {
-    // Overnight hub sleep: refuse every play event; client shows the friendly message.
-    if (!isHubAwake()) socket.emit('hub_sleep', hubSleepView());
+    // Millionaire prelaunch + overnight hub sleep: refuse play; client overlays update from these events.
+    if (isMillionairePrelaunch()) socket.emit('millionaire_prelaunch', millionairePrelaunchView());
+    else if (!isHubAwake()) socket.emit('hub_sleep', hubSleepView());
     socket.use((packet, next) => {
-      if (isHubAwake()) return next();
       const event = String(packet[0]);
-      if (event === 'hub_status') return next();
+      if (event === 'hub_status' || event === 'prelaunch_status') return next();
+      if (isMillionairePrelaunch()) {
+        const ack = packet[packet.length - 1];
+        if (typeof ack === 'function') (ack as (r: unknown) => void)({ ...millionairePrelaunchView(), ok: false, error: MILLIONAIRE_PRELAUNCH_MSG });
+        else socket.emit('millionaire_prelaunch', millionairePrelaunchView());
+        return;
+      }
+      if (isHubAwake()) return next();
       const ack = packet[packet.length - 1];
       if (typeof ack === 'function') (ack as (r: unknown) => void)({ ...hubSleepView(), ok: false, error: HUB_SLEEP_MSG });
     });
@@ -253,7 +279,11 @@ export function registerSockets(io: Server): void {
       else socket.emit('jail_blocked', { error: jailMessage(j) });
     });
     socket.on('hub_status', (_p: unknown, ack?: (r: unknown) => void) => {
-      ack?.({ ok: true, ...hubSleepView() });
+      const pre = millionairePrelaunchView();
+      ack?.({ ok: true, ...hubSleepView(), prelaunch: pre });
+    });
+    socket.on('prelaunch_status', (_p: unknown, ack?: (r: unknown) => void) => {
+      ack?.({ ok: true, ...millionairePrelaunchView() });
     });
     socket.on('jail_status', (_p: unknown, ack?: (r: unknown) => void) => {
       const name = (socket.data.account as { name?: string } | undefined)?.name; const j = getJail().status(name);

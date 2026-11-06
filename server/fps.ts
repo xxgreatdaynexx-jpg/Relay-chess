@@ -2,6 +2,7 @@ import type { Server, Socket } from 'socket.io';
 import { payNightlyBonus } from './nightly-event.js';
 import { px, priceIndex } from './price-index.js';
 import { affordableLoadout, isKnifeOnly, killBonus, KILL_BONUS_REPEAT, KILL_BONUS_WINDOW_MS, guestName, MOVE_SPEED, spawnCost, TICK_HZ, WEAPONS } from '../shared/fps.js';
+import { isMillionairePrelaunch } from '../shared/millionairePrelaunch.js';
 import { randomUUID } from 'node:crypto';
 import { getBank } from './casino-store.js';
 import { getAccounts } from './accounts.js';
@@ -346,6 +347,7 @@ function ensureTicker(io: Server): void {
       return;
     }
     const now = Date.now();
+    if (isMillionairePrelaunch(now)) return; // freeze arena — no kills/rewards during lockout
     driveBots(now);
     syncBots(now);
     emit(io, arenaBots.drive(world, now));

@@ -232,7 +232,12 @@ export class RelayGame {
     }
   }
 
-  /** Advance a running clock. Ends the game on flag fall. */
+  /** Hold a running clock without deducting (maintenance / prelaunch). Keeps asOf = now so resume does not jump. */
+  freezeClock(now: number): void {
+    if (this.clock?.running) this.clock.asOf = now;
+  }
+
+    /** Advance a running clock. Ends the game on flag fall. */
   tick(now: number): void {
     const clock = this.clock;
     if (!clock || !clock.running || this.status !== 'playing' || this.result) return;

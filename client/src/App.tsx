@@ -24,6 +24,7 @@ import { FactoryPanel } from '@/components/FactoryPanel';
 import { MarketPage } from '@/components/MarketPage';
 import { StocksPage } from '@/components/StocksPage';
 import { HubSleepOverlay } from '@/components/HubSleepOverlay';
+import { MillionairePrelaunchOverlay } from '@/components/MillionairePrelaunchOverlay';
 import { ChatDrawer } from '@/components/ChatDrawer';
 import { ConquestPanel } from '@/components/ConquestPanel';
 import { AccountButton, AccountPanel } from '@/components/AccountPanel';
@@ -210,6 +211,7 @@ export function App() {
 
   return (
     <>
+      <MillionairePrelaunchOverlay />
       <HubSleepOverlay />
       <TopTabs />
       <NightlyEventBanner />

@@ -1,3 +1,4 @@
+import { isMillionairePrelaunch } from '../shared/millionairePrelaunch.js';
 /**
  * Building inventories, ship-to-sell and auto-sell (rules: shared/autosell.ts).
  *
@@ -224,7 +225,7 @@ export class Warehouse {
     }
     return out;
   }
-  async sweepAll() { for (const n of await this.autoPlayers()) { try { await this.sweep(n); } catch (e) { console.error('[autosell] sweep failed:', (e as Error).message); } } }
+  async sweepAll() { if (isMillionairePrelaunch()) return; for (const n of await this.autoPlayers()) { try { await this.sweep(n); } catch (e) { console.error('[autosell] sweep failed:', (e as Error).message); } } }
 
   async view(name: string) {
     this.wire(); const cfg = await this.cfgs(name);

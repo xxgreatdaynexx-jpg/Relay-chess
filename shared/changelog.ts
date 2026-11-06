@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-06T15:30:00-06:00', title: 'Short maintenance before Millionaire Update', bullets: [
+    'On Nov 6 from 7:45–8:00 PM Alberta / Regina time (UTC-6), Chud Hub shows a Millionaire Update countdown and pauses play for fifteen minutes. Overnight sleep (1–7 AM) is unchanged.',
+  ] },
   { commit: '', at: '2026-11-06T12:58:00-06:00', title: 'Launch prep: back-tax + mayor rate guard on update', bullets: [
     'Property back-tax (pay under-charged land surcharge / wealth tax before more buys) and the City Hall once-per-day mayor rate Postgres guard are on the Millionaire Update branch, matching live. Per-plot farm auto plant/harvest stays off the update — warehouse auto-sell only.',
   ] },
