@@ -60,9 +60,11 @@ describe('Millionaire prelaunch window (UTC constants)', () => {
 });
 
 describe('Millionaire prelaunch — changelog + visible copy', () => {
-  it('maintenance entry present; never mentions protesters; overlay has no coming/buttons', () => {
+  it('no player-facing prelaunch changelog entry; never mentions protesters; overlay has no coming/buttons', () => {
     const raw = readFileSync(resolve('shared/changelog.ts'), 'utf8');
-    expect(raw).toMatch(/Short maintenance before Millionaire Update/);
+    expect(raw).not.toMatch(/Short maintenance before Millionaire Update/);
+    expect(raw).not.toMatch(/7:45–8:00 PM/);
+    expect(raw).not.toMatch(/pauses play for fifteen minutes/);
     expect(raw.toLowerCase()).not.toMatch(/protest/);
     const overlay = readFileSync(resolve('client/src/components/MillionairePrelaunchOverlay.tsx'), 'utf8');
     expect(overlay).toContain('Millionaire Update');
