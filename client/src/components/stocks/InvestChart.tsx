@@ -2,6 +2,7 @@
 import { useId, useMemo, useRef, useState } from 'react';
 import { Info } from './Explain';
 import { PERIODS, seriesChange, type Period, type KeyStats } from '../../../../shared/stockStats';
+import { marketChartPlotPts } from '../../../../shared/stocks';
 
 const fmtTime = (t: number, p: Period) => { const d = new Date(t); const hm = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); return p === '1d' ? hm : `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${hm}`; };
 const LABEL: Record<Period, string> = { '1d': 'Today', '1w': 'Past week', '1m': 'Past month', all: 'All time' };
@@ -17,26 +18,27 @@ export function InvestChart({ pts, period, onPeriod, value, prefix = '🪙 ', de
 }) {
   const gid = useId().replace(/:/g, ''); const ref = useRef<SVGSVGElement>(null); const [hover, setHover] = useState<number | null>(null);
   const W = 600, H = height;
+  const plot = useMemo(() => marketChartPlotPts(pts), [pts]);
   const geo = useMemo(() => {
-    if (pts.length < 2) return null;
-    const v = pts.map((p) => p[1]); const lo = Math.min(...v), hi = Math.max(...v); const pad = (hi - lo) * 0.12 || Math.max(1, hi * 0.01);
-    const y0 = lo - pad, y1 = hi + pad; const t0 = pts[0]![0], t1 = pts[pts.length - 1]![0];
-    const X = (t: number) => ((t - t0) / (t1 - t0 || 1)) * W, Y = (p: number) => H - ((p - y0) / (y1 - y0)) * H;
-    const line = pts.map(([t, p], i) => `${i ? 'L' : 'M'}${X(t).toFixed(1)},${Y(p).toFixed(1)}`).join('');
-    return { X, Y, line, area: `${line}L${W},${H}L0,${H}Z`, base: Y(pts[0]![1]), lo, hi };
-  }, [pts, H]);
+    if (plot.length < 2) return null;
+    const v = plot.map((p) => p.p); const lo = Math.min(...v), hi = Math.max(...v); const pad = (hi - lo) * 0.12 || Math.max(1, hi * 0.01);
+    const y0 = lo - pad, y1 = hi + pad; const x0 = plot[0]!.x, x1 = plot[plot.length - 1]!.x;
+    const X = (x: number) => ((x - x0) / (x1 - x0 || 1)) * W, Y = (p: number) => H - ((p - y0) / (y1 - y0)) * H;
+    const line = plot.map((pt, i) => `${i ? 'L' : 'M'}${X(pt.x).toFixed(1)},${Y(pt.p).toFixed(1)}`).join('');
+    return { X, Y, line, area: `${line}L${W},${H}L0,${H}Z`, base: Y(plot[0]!.p), lo, hi };
+  }, [plot, H]);
   const ch = seriesChange(pts); const up = ch.abs >= 0; const col = up ? '#22c55e' : '#f43f5e';
-  const hp = hover != null ? pts[hover] : null;
-  const shown = hp ? hp[1] : value ?? pts[pts.length - 1]?.[1] ?? 0;
-  const hc = hp && pts.length ? { abs: hp[1] - pts[0]![1], pct: pts[0]![1] ? ((hp[1] - pts[0]![1]) / pts[0]![1]) * 100 : 0 } : ch;
-  const move = (clientX: number) => { const r = ref.current?.getBoundingClientRect(); if (!r || !geo) return; const x = ((clientX - r.left) / r.width) * W; let best = 0, bd = Infinity; pts.forEach(([t], i) => { const d = Math.abs(geo.X(t) - x); if (d < bd) { bd = d; best = i; } }); setHover(best); };
+  const hp = hover != null ? plot[hover] : null;
+  const shown = hp ? hp.p : value ?? pts[pts.length - 1]?.[1] ?? 0;
+  const hc = hp && plot.length ? { abs: hp.p - plot[0]!.p, pct: plot[0]!.p ? ((hp.p - plot[0]!.p) / plot[0]!.p) * 100 : 0 } : ch;
+  const move = (clientX: number) => { const r = ref.current?.getBoundingClientRect(); if (!r || !geo) return; const x = ((clientX - r.left) / r.width) * W; let best = 0, bd = Infinity; plot.forEach((pt, i) => { const d = Math.abs(geo.X(pt.x) - x); if (d < bd) { bd = d; best = i; } }); setHover(best); };
   return (
     <div className="ivx-chart-card" data-testid={testid}>
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <div className="ivx-big tabular-nums" data-testid={`${testid}-value`}>{prefix}{shown.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}</div>
           <div className={`text-xs font-semibold tabular-nums ${hc.abs >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} data-testid={`${testid}-change`}>
-            {hc.abs >= 0 ? '▲' : '▼'} {hc.abs >= 0 ? '+' : '−'}{Math.abs(hc.abs).toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })} ({hc.pct >= 0 ? '+' : ''}{hc.pct.toFixed(2)}%) <span className="font-normal opacity-60">{hp ? fmtTime(hp[0], period) : LABEL[period]}</span>
+            {hc.abs >= 0 ? '▲' : '▼'} {hc.abs >= 0 ? '+' : '−'}{Math.abs(hc.abs).toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })} ({hc.pct >= 0 ? '+' : ''}{hc.pct.toFixed(2)}%) <span className="font-normal opacity-60">{hp ? fmtTime(hp.t, period) : LABEL[period]}</span>
           </div>
         </div>
         <PeriodToggle value={period} onChange={(p) => { setHover(null); onPeriod(p); }} testid={`${testid}-period`} />
@@ -49,10 +51,10 @@ export function InvestChart({ pts, period, onPeriod, value, prefix = '🪙 ', de
           <line x1="0" x2={W} y1={geo.base} y2={geo.base} stroke="#fff3" strokeDasharray="3 4" vectorEffect="non-scaling-stroke" />
           <path d={geo.area} fill={`url(#${gid})`} />
           <path d={geo.line} fill="none" stroke={col} strokeWidth="2.25" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-          {hp && <line x1={geo.X(hp[0])} x2={geo.X(hp[0])} y1="0" y2={H} stroke="#fff6" vectorEffect="non-scaling-stroke" />}
+          {hp && <line x1={geo.X(hp.x)} x2={geo.X(hp.x)} y1="0" y2={H} stroke="#fff6" vectorEffect="non-scaling-stroke" />}
         </svg>
         {/* MU #9 v2: the hover dot is HTML, not an SVG circle, so it stays round when the stretched chart is narrow (mobile) */}
-        {hp && <span className="ivx-dot" style={{ left: `${(geo.X(hp[0]) / W) * 100}%`, top: `${(geo.Y(hp[1]) / H) * 100}%`, background: col }} data-testid={`${testid}-dot`} />}
+        {hp && <span className="ivx-dot" style={{ left: `${(geo.X(hp.x) / W) * 100}%`, top: `${(geo.Y(hp.p) / H) * 100}%`, background: col }} data-testid={`${testid}-dot`} />}
         </div>)}
       {geo && <div className="mt-1 flex justify-between text-[10px] tabular-nums opacity-50"><span>{fmtTime(pts[0]![0], period)}</span><span>Low {geo.lo.toFixed(decimals)} · High {geo.hi.toFixed(decimals)}</span><span>Now</span></div>}
     </div>
