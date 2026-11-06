@@ -38,10 +38,17 @@ export interface ProtesterState {
   side: number;
 }
 
+export interface ProtestZone { lx0: number; lx1: number; lz0: number; lz1: number }
 export interface StepOpts {
   reducedMotion: boolean;
   /** When false, skip bubble scheduling (e.g. camera far). Default true. */
   allowBubbles?: boolean;
+  /** Optional local milling bounds (defaults to City Hall PROTEST_ZONE). */
+  zone?: ProtestZone;
+  /** Soft aisle half-width to keep clear inside zone (0 = none). */
+  aisle?: number;
+  /** Reject local (lx,lz) samples (e.g. keep farm clusters off crop pads). */
+  reject?: (lx: number, lz: number) => boolean;
 }
 
 function mulberry(seed: number): () => number {
@@ -124,7 +131,7 @@ export function spawnProtesters(seed = 42, count = PROTEST_COUNT_DEFAULT): Prote
   return out;
 }
 
-function separate(list: ProtesterState[]): void {
+function separate(list: ProtesterState[], zone: ProtestZone, aisle: number): void {
   for (let i = 0; i < list.length; i++) {
     for (let j = i + 1; j < list.length; j++) {
       const a = list[i]!, b = list[j]!;
@@ -138,9 +145,9 @@ function separate(list: ProtesterState[]): void {
     }
   }
   for (const p of list) {
-    p.lx = clamp(p.lx, PROTEST_ZONE.lx0, PROTEST_ZONE.lx1);
-    p.lz = clamp(p.lz, PROTEST_ZONE.lz0, PROTEST_ZONE.lz1);
-    if (Math.abs(p.lx) < ENTRANCE_AISLE * 0.55) p.lx = Math.sign(p.lx || p.side) * ENTRANCE_AISLE * 0.55;
+    p.lx = clamp(p.lx, zone.lx0, zone.lx1);
+    p.lz = clamp(p.lz, zone.lz0, zone.lz1);
+    if (aisle > 0 && Math.abs(p.lx) < aisle * 0.55) p.lx = Math.sign(p.lx || p.side) * aisle * 0.55;
   }
 }
 
@@ -150,6 +157,8 @@ function separate(list: ProtesterState[]): void {
  */
 export function stepProtesters(list: ProtesterState[], dt: number, t: number, opts: StepOpts): void {
   const allowBubbles = opts.allowBubbles !== false;
+  const zone = opts.zone ?? PROTEST_ZONE;
+  const aisle = opts.aisle ?? (opts.zone ? 0 : ENTRANCE_AISLE);
   if (opts.reducedMotion) {
     for (const p of list) {
       p.wave = 0.55 + Math.sin(t * 0.7 + p.phase) * 0.04;
@@ -158,6 +167,19 @@ export function stepProtesters(list: ProtesterState[], dt: number, t: number, op
     return;
   }
   const rand = mulberry((((t * 1000) | 0) ^ (list.length * 9973)) >>> 0);
+  const pickInZone = (side: number) => {
+    if (!opts.zone) return pickPlazaPoint(rand, side);
+    // farm / custom zone: stay in box, soft bias away from centre aisle if any
+    for (let k = 0; k < 16; k++) {
+      const lx = zone.lx0 + rand() * (zone.lx1 - zone.lx0);
+      const lz = zone.lz0 + rand() * (zone.lz1 - zone.lz0);
+      if (aisle > 0 && Math.abs(lx) < aisle * 0.85) continue;
+      if (opts.reject?.(lx, lz)) continue;
+      return { lx, lz };
+    }
+    // fallback: keep current-ish edge sample
+    return { lx: side * Math.max(aisle, Math.abs(zone.lx0), Math.abs(zone.lx1)) * 0.5, lz: (zone.lz0 + zone.lz1) / 2 };
+  };
   for (const p of list) {
     const dx = p.targetLx - p.lx, dz = p.targetLz - p.lz;
     const dist = Math.hypot(dx, dz);
@@ -171,11 +193,10 @@ export function stepProtesters(list: ProtesterState[], dt: number, t: number, op
       while (dy < -Math.PI) dy += Math.PI * 2;
       p.yaw += clamp(dy, -2.2 * dt, 2.2 * dt);
     }
-    // irregular sign wave (not lockstep — personal phase + speed)
     p.wave = 0.4 + 0.55 * (0.5 + 0.5 * Math.sin(t * (1.1 + p.speed * 0.35) + p.phase));
 
     if (t >= p.nextRetarget || dist < 0.12) {
-      const tgt = pickPlazaPoint(rand, p.side);
+      const tgt = pickInZone(p.side);
       p.targetLx = tgt.lx;
       p.targetLz = tgt.lz;
       p.nextRetarget = t + 1.4 + rand() * 4.2 + (p.id % 5) * 0.13;
@@ -187,7 +208,22 @@ export function stepProtesters(list: ProtesterState[], dt: number, t: number, op
       p.nextBubble = t + BUBBLE_MS + 3.5 + rand() * 8 + (p.id % 7) * 0.37;
     }
   }
-  separate(list);
+  separate(list, zone, aisle);
+  if (opts.reject) {
+    for (const p of list) {
+      if (!opts.reject(p.lx, p.lz)) continue;
+      // nudge outward from zone centre
+      const cx = (zone.lx0 + zone.lx1) / 2, cz = (zone.lz0 + zone.lz1) / 2;
+      let dx = p.lx - cx, dz = p.lz - cz;
+      const d = Math.hypot(dx, dz) || 1;
+      for (let k = 0; k < 6 && opts.reject(p.lx, p.lz); k++) {
+        p.lx += (dx / d) * 0.35;
+        p.lz += (dz / d) * 0.35;
+        p.lx = clamp(p.lx, zone.lx0, zone.lx1);
+        p.lz = clamp(p.lz, zone.lz0, zone.lz1);
+      }
+    }
+  }
 }
 
 /** Cap how many protesters we animate when the camera is mid-range (perf). */
