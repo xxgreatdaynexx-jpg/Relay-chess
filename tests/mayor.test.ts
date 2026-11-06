@@ -89,6 +89,19 @@ describe('mayor election', () => {
     s.set(MON + WEEK_MS + H); v = await s.m.view('Bob'); expect(v.mayor?.name).toBe('Bob'); expect(v.me?.isMayor).toBe(true);
     s.set(MON + 2 * WEEK_MS + H); expect((await s.m.view(null)).mayor).toBeNull(); // term over, nobody ran
   });
+  it('hides per-candidate vote counts during voting; shows them on results day', async () => {
+    const s = await setup(); for (const n of ['Ann', 'Bob', 'Cat']) await s.player(n);
+    await s.m.file('Ann', 'Ann plan'); s.set(s.now + H); await s.m.file('Bob', 'Bob plan');
+    s.set(MON + 5 * DAY_MS); await s.m.vote('Cat', 'Ann');
+    let v = await s.m.view(null);
+    expect(v.schedule.phase).toBe('voting');
+    expect(v.candidates.every((c) => c.votes === undefined)).toBe(true);
+    expect(v.candidates.map((c) => c.name).sort()).toEqual(['Ann', 'Bob']);
+    s.set(MON + 6 * DAY_MS + H); v = await s.m.view(null);
+    expect(v.schedule.phase).toBe('results');
+    const ann = v.candidates.find((c) => c.name === 'Ann'); const bob = v.candidates.find((c) => c.name === 'Bob');
+    expect(ann?.votes).toBe(1); expect(bob?.votes).toBe(0);
+  });
 });
 
 describe('mayor powers', () => {

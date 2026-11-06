@@ -161,7 +161,8 @@ export class Mayor {
     const now = this.clock(); await this.settle(now); const s = schedule(now);
     const [candidates, mayor, elect] = await Promise.all([this.candidates(s.week), this.mayor(now), this.elect(now)]);
     const v: CityHallView = {
-      now, schedule: s, candidates: s.phase === 'filing' ? candidates.map(({ votes: _v, ...c }) => c) : candidates,
+      // Hide live per-candidate tallies while filing/voting; Sunday results (and settle) may show them.
+      now, schedule: s, candidates: s.phase === 'results' ? candidates : candidates.map(({ votes: _v, ...c }) => c),
       mayor: mayor ? { week: mayor.week, name: mayor.name, votes: mayor.votes, startsAt: mayor.startsAt, endsAt: mayor.endsAt, removedAt: null } : null, elect,
       rates: this.rates(now), pending: this.pending(now), log: this.log.slice(-30).reverse(),
       limits: { min: RATE_MIN, max: RATE_MAX, step: RATE_STEP, fee: FILING_FEE, base: { property: BASE_PROPERTY_TAX, market: BASE_MARKET_FEE, stock: BASE_STOCK_FEE } },

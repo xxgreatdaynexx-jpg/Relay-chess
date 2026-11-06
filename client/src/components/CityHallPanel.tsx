@@ -58,7 +58,7 @@ export function CityHallPanel({ onClose, initial }: { onClose: () => void; initi
             {v.candidates.map((c) => (
               <li key={c.name} data-testid="cityhall-candidate">
                 <div><b>{c.name}</b><small>“{c.slogan}”</small></div>
-                {c.votes !== undefined && <span className="cityhall-votes">{c.votes} 🗳️</span>}
+                {s.phase === 'results' && c.votes !== undefined && <span className="cityhall-votes">{c.votes} 🗳️</span>}
                 {s.phase === 'voting' && <button type="button" disabled={busy || !me?.canVote} onClick={() => act('mayor_vote', { candidate: c.name }, () => `You voted for ${c.name}.`)}>Vote</button>}
               </li>))}
           </ul>
