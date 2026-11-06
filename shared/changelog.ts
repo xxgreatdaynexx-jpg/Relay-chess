@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-06T12:58:00-06:00', title: 'Launch prep: back-tax + mayor rate guard on update', bullets: [
+    'Property back-tax (pay under-charged land surcharge / wealth tax before more buys) and the City Hall once-per-day mayor rate Postgres guard are on the Millionaire Update branch, matching live. Per-plot farm auto plant/harvest stays off the update — warehouse auto-sell only.',
+  ] },
   { commit: '', at: '2026-11-06T12:51:00-06:00', title: 'Stock charts skip closed-hours flat lines', bullets: [
     'Requested by Dayne: 24h / 7d / 30d stock price charts no longer stretch a flat line across the overnight close (22:00–12:00 Alberta time). The plot compresses to trading hours so you see price action, not the closed gap. Prices and trading are unchanged.',
   ] },

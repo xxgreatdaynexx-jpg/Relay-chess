@@ -12,6 +12,7 @@
  */
 import { salesTaxFor } from './city-rates.js';
 import { purchaseTaxMoves, quotePurchaseTax } from './purchase-tax.js';
+import { backTaxOf, backTaxBlockMsg } from './backTax.js';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { bootAttach, setBootState } from './boot-retry.js';
@@ -66,6 +67,7 @@ export class Garage {
     const car = typeof carId === 'string' ? CAR_BY_ID.get(carId) : undefined; if (!car) throw new CarError('That car is not on the lot.');
     const col = typeof color === 'number' && car.colors.includes(color) ? color : car.colors[0]!;
     const mine = await this.owned(name); const price = px(car.price); if (mine.length >= MAX_CARS) throw new CarError(`Garage full (${MAX_CARS} cars). Sell one first.`);
+    if (this.pool) { const bt = await backTaxOf(this.pool as never, name); if (bt.debt > 0) throw new CarError(backTaxBlockMsg(bt)); }
     const bank = getBank(); const id = randomUUID();
     const wt = this.pool ? await purchaseTaxMoves(this.pool as never, name, price, `car_buy:${id}`, car.name, this.clock()) : { tax: 0, recipients: 0, moves: [], line: '' };
     const st = salesTaxFor(name, price, `car_buy:${id}`, car.name);

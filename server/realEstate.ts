@@ -32,6 +32,7 @@ import { fertDef, fertCost } from '../shared/farmWork.js';
 import { propertyTaxMul } from '../shared/skillPerks.js';
 import { cityPropertyTaxMul } from './mayor.js';
 import { purchaseTaxMoves, quotePurchaseTax } from './purchase-tax.js';
+import { backTaxOf, backTaxMoves, backTaxBlockMsg } from './backTax.js';
 
 export class PropertyError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
@@ -146,7 +147,8 @@ export class RealEstate {
     const p = propertyById(id); if (!p) throw new PropertyError('That property is not for sale.');
     const owned = await this.ownedCount(name); const value = await this.ownedValue(name);
     const price = landPrice(p.price, value); const wealthTax = await quotePurchaseTax(this.pool, name, price, this.clock());
-    return { id: p.id, list: p.price, owned, ownedValue: value, surchargePct: landSurchargePct(value), multiplier: landMultiplier(value), price, wealthTax };
+    const backTax = await backTaxOf(this.pool, name);
+    return { id: p.id, list: p.price, owned, ownedValue: value, surchargePct: landSurchargePct(value), multiplier: landMultiplier(value), price, wealthTax, backTax };
   }
   /** max: the price the player saw; a higher price now (they bought something else meanwhile) refuses instead of surprising them. */
   async buy(name: string, id: unknown, max?: unknown) {
@@ -161,6 +163,7 @@ export class RealEstate {
   }
   private async buyLocked(name: string, p: NonNullable<ReturnType<typeof propertyById>>, cl: pg.PoolClient, max?: number) {
     const bank = this.bank(); await bank.refresh(name);
+    const bt = await backTaxOf(cl, name); if (bt.debt > 0) throw new PropertyError(backTaxBlockMsg(bt));
     const bigBuy = /^cf:\d+$/.test(p.id) && isBigFarmN(Number(p.id.slice(3)));
     const bigCapMsg = () => `You already own a Big Farm. Each account can own at most ${MAX_BIG_FARMS} Big Farm.`;
     // Both this guard and the transactional recheck below run under the per-owner advisory lock.
@@ -209,6 +212,22 @@ export class RealEstate {
     this.onChange?.();
     void sendPopup(prev, 'City of Chud Hub', `🏛 Hostile buyout! ${name.trim()} bought your ${p.label} for 🪙 ${price.toLocaleString('en-US')} (${BUYOUT_MUL}x what you paid). The chips are in your wallet; its royalties now go to ${name.trim()}.`).catch(() => {});
     return { id: p.id, price, from: prev, chips: bank.account(name).chips };
+  }
+
+
+  backTax(name: string) { return backTaxOf(this.pool, name); }
+  /** Pay the whole property back-tax in one atomic, replay-safe ledger write (see server/backTax.ts). */
+  async payBackTax(name: string) {
+    return this.lock(`owner:${keyOf(name)}`, async () => {
+      const bank = this.bank(); await bank.refresh(name);
+      const { b, moves } = await backTaxMoves(this.pool, name, this.clock()); if (!b.debt) return { paid: 0, backTax: b, chips: bank.account(name).chips };
+      if (bank.account(name).chips < b.debt) throw new PropertyError(`Not enough chips: your back-tax is ${b.debt.toLocaleString('en-US')}.`);
+      const w = bank.transferAtomic(moves, { batch: moves.length > 1 });
+      const run = async () => { await w.after; const cl = await this.pool.connect(); try { await cl.query('BEGIN'); for (const st of w.stmts) await cl.query(st.sql, st.args); await cl.query('COMMIT'); } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); } };
+      const p = run(); w.bind(p);
+      try { await p; } catch (e) { w.revert(); console.error('[realestate] backtax failed:', (e as Error).message); throw new PropertyError(/chips|balance/i.test((e as Error).message) ? 'Not enough chips.' : 'Something went wrong. Nothing was charged.'); }
+      return { paid: b.debt, backTax: await backTaxOf(this.pool, name), chips: bank.account(name).chips };
+    });
   }
 
   async sell(name: string, id: unknown) {
@@ -322,6 +341,8 @@ export function registerRealEstate(io: Server, socket: Socket): void {
   on('re_mine', async (_b, e) => ({ properties: await e.mine(need()) }));
   on('re_buy', async (b, e) => { const n = need(); if (typeof b.id === 'string' && /^(r|rf):/.test(b.id)) await requireResort(n, PropertyError); return e.buy(n, b.id, b.max); });
   on('re_quote', async (b, e) => e.quote(need(), b.id));
+  on('re_backtax', async (_b, e) => ({ backTax: await e.backTax(need()) }));
+  on('re_backtax_pay', async (_b, e) => e.payBackTax(need()));
   on('re_sell', (b, e) => e.sell(need(), b.id));
   on('re_buyout', (b, e) => e.buyout(need(), b.id, b.max));
 }
