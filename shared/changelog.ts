@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-06T08:09:00-06:00', title: 'Mayor election: vote counts hidden while voting', bullets: [
+    'Requested by Dayne: City Hall no longer shows how many votes each candidate has during filing or voting. You still see names and slogans and can cast your vote; tallies appear on results day (Sunday).',
+  ] },
   { commit: '', at: '2026-11-06T06:55:00-06:00', title: 'Chud Hub sleep ends at 7 AM', bullets: [
     'Overnight lockout is now 1–7 AM Alberta / Regina time (UTC-6), was 1–9 AM. Same message: “Chud Hub sleeps so should you.” Farm overnight pauses with the hub.',
   ] },
