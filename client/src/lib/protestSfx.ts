@@ -150,3 +150,15 @@ export function makeProtestSfx(Ctx?: Ctor, now: () => number = () => performance
     get lastGain() { return lastGain; },
   };
 }
+
+
+/** One shared kit for City Hall + all farm sites so voice/cooldown caps apply globally. */
+let shared: ProtestSfx | null = null;
+export function sharedProtestSfx(Ctx?: Ctor, now?: () => number): ProtestSfx {
+  if (!shared) shared = makeProtestSfx(Ctx, now);
+  return shared;
+}
+export function disposeSharedProtestSfx(): void {
+  shared?.dispose();
+  shared = null;
+}

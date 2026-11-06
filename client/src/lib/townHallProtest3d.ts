@@ -15,7 +15,7 @@ import {
   protestUpdateBudget,
   type ProtesterState,
 } from './townHallProtest';
-import { makeProtestSfx, type ProtestSfx } from './protestSfx';
+import { sharedProtestSfx, type ProtestSfx } from './protestSfx';
 
 export interface TownHallProtest {
   root: THREE.Group;
@@ -189,7 +189,7 @@ export function attachTownHallProtest(
     return f;
   });
 
-  const sfx: ProtestSfx = makeProtestSfx();
+  const sfx: ProtestSfx = sharedProtestSfx();
   let dead = false;
   let chantAcc = 0;
 
@@ -245,7 +245,7 @@ export function attachTownHallProtest(
     dispose() {
       if (dead) return;
       dead = true;
-      sfx.dispose();
+      // sharedProtestSfx is scene-owned — disposed from world3d / farmProtest3d teardown
       hallGroup.remove(root);
       for (const f of figs) {
         root.remove(f.root);
