@@ -82,49 +82,61 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 
 function buildFigure(
   p: ProtesterState,
-  shared: { bodyGeo: THREE.BufferGeometry; headGeo: THREE.BufferGeometry; stickGeo: THREE.BufferGeometry; boardGeo: THREE.BufferGeometry; skin: THREE.Material; stick: THREE.Material; board: THREE.Material },
+  shared: { bodyGeo: THREE.BufferGeometry; legGeo: THREE.BufferGeometry; headGeo: THREE.BufferGeometry; hairGeo: THREE.BufferGeometry; stickGeo: THREE.BufferGeometry; boardGeo: THREE.BufferGeometry; skin: THREE.Material; stick: THREE.Material; board: THREE.Material },
 ): Fig {
   const root = new THREE.Group();
   root.position.set(p.lx, 0, p.lz);
   root.rotation.y = p.yaw;
 
   const shirt = new THREE.MeshStandardMaterial({ color: SHIRT_COLORS[p.shirt]!, roughness: 0.85 });
+  const pants = new THREE.MeshStandardMaterial({ color: p.id % 3 === 0 ? 0x2c3340 : p.id % 3 === 1 ? 0x3a2f28 : 0x1e2430, roughness: 0.9 });
   const body = new THREE.Mesh(shared.bodyGeo, shirt);
-  body.position.y = 0.85;
+  body.position.y = 1.05;
   body.castShadow = false;
+  const legL = new THREE.Mesh(shared.legGeo, pants); legL.position.set(-0.12, 0.38, 0);
+  const legR = new THREE.Mesh(shared.legGeo, pants); legR.position.set(0.12, 0.38, 0);
   const head = new THREE.Mesh(shared.headGeo, shared.skin);
-  head.position.y = 1.72;
-  root.add(body, head);
+  head.position.y = 1.88;
+  // simple hair/cap silhouette so aerial salt-and-pepper reads
+  const hair = new THREE.Mesh(shared.hairGeo, new THREE.MeshStandardMaterial({ color: [0x1a1512, 0x3b2a1a, 0x6b4a2b, 0xc4b49a, 0x111111][p.id % 5]!, roughness: 0.95 }));
+  hair.position.y = 2.08;
+  root.add(body, legL, legR, head, hair);
 
   const arm = new THREE.Group();
-  arm.position.set(0.28, 1.35, 0);
+  arm.position.set(0.32, 1.45, 0);
   const stickM = new THREE.Mesh(shared.stickGeo, shared.stick);
-  stickM.position.set(0, 0.55, 0);
+  stickM.position.set(0, 0.65, 0);
   const sign = new THREE.Mesh(shared.boardGeo, shared.board.clone());
   (sign.material as THREE.MeshStandardMaterial).color.setHex(p.id % 2 ? 0xf4f0e4 : 0xffe08a);
-  sign.position.set(0, 1.15, 0.02);
-  // paint slogan on a canvas map once
+  sign.position.set(0, 1.35, 0.02);
+  // paint slogan on a canvas map once (larger for readable placards)
   {
-    const c = document.createElement('canvas'); c.width = 128; c.height = 96;
+    const c = document.createElement('canvas'); c.width = 256; c.height = 192;
     const g = c.getContext('2d')!;
-    g.fillStyle = p.id % 2 ? '#f4f0e4' : '#ffe08a'; g.fillRect(0, 0, 128, 96);
+    g.fillStyle = p.id % 2 ? '#f4f0e4' : '#ffe08a'; g.fillRect(0, 0, 256, 192);
+    g.strokeStyle = '#1a1520'; g.lineWidth = 8; g.strokeRect(6, 6, 244, 180);
     g.fillStyle = '#1a1520';
-    g.font = '800 22px Outfit Variable, system-ui, sans-serif';
+    g.font = '800 44px Outfit Variable, system-ui, sans-serif';
     g.textAlign = 'center'; g.textBaseline = 'middle';
     const lines = wrapSlogan(p.slogan);
-    lines.forEach((ln, i) => g.fillText(ln, 64, 48 + (i - (lines.length - 1) / 2) * 22, 118));
+    lines.forEach((ln, i) => g.fillText(ln, 128, 96 + (i - (lines.length - 1) / 2) * 44, 230));
     const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
     const m = sign.material as THREE.MeshStandardMaterial;
     m.map = tex; m.needsUpdate = true;
   }
   if (p.hasSign) arm.add(stickM, sign);
+  else {
+    // raised empty hand for a few so the crowd isn't all placards
+    const fist = new THREE.Mesh(shared.hairGeo, shared.skin);
+    fist.scale.set(0.55, 0.55, 0.55); fist.position.set(0, 0.55, 0); arm.add(fist);
+  }
   root.add(arm);
 
   const { c, ctx, tex } = bubbleTexture();
   const bubbleMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
   const bubble = new THREE.Sprite(bubbleMat);
   bubble.scale.set(2.4, 0.9, 1);
-  bubble.position.set(0, 2.55, 0);
+  bubble.position.set(0, 2.75, 0);
   bubble.visible = false;
   bubble.renderOrder = 12;
   root.add(bubble);
@@ -154,16 +166,18 @@ export function attachTownHallProtest(
   root.name = 'townhall-protest';
   hallGroup.add(root);
 
-  const bodyGeo = new THREE.CylinderGeometry(0.28, 0.32, 1.35, low ? 6 : 10);
-  const headGeo = new THREE.SphereGeometry(0.26, low ? 8 : 12, low ? 6 : 10);
-  const stickGeo = new THREE.CylinderGeometry(0.03, 0.03, 1.1, 5);
-  const boardGeo = new THREE.BoxGeometry(0.72, 0.55, 0.04);
+  const bodyGeo = new THREE.CylinderGeometry(0.30, 0.34, 1.15, low ? 6 : 10);
+  const legGeo = new THREE.CylinderGeometry(0.11, 0.13, 0.75, low ? 5 : 8);
+  const headGeo = new THREE.SphereGeometry(0.27, low ? 8 : 12, low ? 6 : 10);
+  const hairGeo = new THREE.SphereGeometry(0.29, low ? 6 : 10, low ? 4 : 8, 0, Math.PI * 2, 0, Math.PI * 0.55);
+  const stickGeo = new THREE.CylinderGeometry(0.035, 0.035, 1.3, 5);
+  const boardGeo = new THREE.BoxGeometry(0.95, 0.72, 0.05);
   const skin = new THREE.MeshStandardMaterial({ color: 0xe0b48a, roughness: 0.7 });
   const stick = new THREE.MeshStandardMaterial({ color: 0x5a4028, roughness: 0.9 });
   const board = new THREE.MeshStandardMaterial({ color: 0xf4f0e4, roughness: 0.85 });
-  disposables.push(bodyGeo, headGeo, stickGeo, boardGeo, skin, stick, board);
+  disposables.push(bodyGeo, legGeo, headGeo, hairGeo, stickGeo, boardGeo, skin, stick, board);
 
-  const shared = { bodyGeo, headGeo, stickGeo, boardGeo, skin, stick, board };
+  const shared = { bodyGeo, legGeo, headGeo, hairGeo, stickGeo, boardGeo, skin, stick, board };
   const figs = states.map((p) => {
     const f = buildFigure(p, shared);
     root.add(f.root);
@@ -217,7 +231,7 @@ export function attachTownHallProtest(
 
       if (!reduced && budget.bubbles) {
         chantAcc += dt;
-        // occasional crowd chant when a bubble is up and we're close enough
+        // occasional crowd noise when a bubble is up and we're close enough
         const anyBubble = states.some((p) => p.bubbleUntil > t);
         if (anyBubble && chantAcc > 0.35) {
           chantAcc = 0;

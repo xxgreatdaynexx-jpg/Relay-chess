@@ -1,5 +1,5 @@
 /**
- * Town Hall protest crowd shouts — built-in WebAudio synthesis only (no recorded clips, no external paid audio).
+ * Town Hall protest crowd noise bursts — built-in WebAudio synthesis only (no recorded clips, no external paid audio).
  * Pattern mirrors fishingSfx: one AudioContext + master gain, voice cap, cooldown, dispose on scene unmount.
  * Loudness multiplies shared getVolume()/isMuted(); callers also pass distance attenuation + reduced-motion gate.
  */
@@ -15,7 +15,7 @@ export const PROTEST_AUDIO_MAX_DIST = 48;
 type Ctor = new () => AudioContext;
 
 export interface ProtestSfx {
-  /** Short crowd shout / chant stack. `dist` = camera distance to City Hall. */
+  /** Short synthesized crowd noise burst (not speech / not recorded chant). `dist` = camera distance to City Hall. */
   chant(dist: number, big?: boolean): void;
   shout(dist: number): void;
   stopAll(): void;
