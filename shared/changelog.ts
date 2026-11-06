@@ -6,9 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-06T06:55:00-06:00', title: 'Chud Hub sleep ends at 7 AM', bullets: [
+    'Overnight lockout is now 1–7 AM Alberta / Regina time (UTC-6), was 1–9 AM. Same message: “Chud Hub sleeps so should you.” Farm overnight pauses with the hub.',
+  ] },
   { commit: '', at: '2026-11-05T21:55:00-06:00', title: 'Farm: auto plant and harvest run every 30 minutes', bullets: [
     'If Auto-harvest or Auto-plant is on for a farm you own, the server tends that plot about every 30 minutes even when you are offline — not only while you are signed in (was about every 45 seconds).',
-    'Still pauses during Chud Hub overnight sleep (1–9 AM Alberta time) and still respects farm rate limits. Resort plantation auto only runs if your character is at Chud Resort.',
+    'Still pauses during Chud Hub overnight sleep (1–7 AM Alberta time) and still respects farm rate limits. Resort plantation auto only runs if your character is at Chud Resort.',
   ] },
   { commit: '', at: '2026-11-05T21:40:00-06:00', title: 'Farm: Auto-harvest and Auto-plant toggles', bullets: [
     'On each farm you own, turn on Auto-harvest (sells ready crops for chips) and/or Auto-plant (replants empty tiles with the seed you picked). Settings are per farm.',

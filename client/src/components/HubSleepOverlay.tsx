@@ -1,4 +1,4 @@
-/** Full-screen overnight lockout: 01:00–09:00 America/Edmonton (UTC-6). */
+/** Full-screen overnight lockout: 01:00–07:00 America/Edmonton (UTC-6). */
 import { useEffect, useState } from 'react';
 import { socket } from '@/lib/net';
 import { HUB_SLEEP_MSG, hubSleepView, isHubAwake, nextHubBoundary } from '../../../shared/hubSleep';
@@ -44,7 +44,7 @@ export function HubSleepOverlay() {
       <div className="max-w-md rounded-2xl border border-white/15 bg-zinc-900/95 px-6 py-8 shadow-2xl">
         <div className="mb-3 text-4xl" aria-hidden>😴</div>
         <h1 className="mb-2 text-xl font-bold">{HUB_SLEEP_MSG}</h1>
-        <p className="text-sm opacity-75">Chud Hub is closed from 01:00–09:00 America/Edmonton (UTC-6). Come back around {hh}:{mm}.</p>
+        <p className="text-sm opacity-75">Chud Hub is closed from 01:00–07:00 America/Edmonton (UTC-6). Come back around {hh}:{mm}.</p>
       </div>
     </div>
   );
