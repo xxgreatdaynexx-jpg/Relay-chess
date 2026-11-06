@@ -5,7 +5,7 @@ import { getAccounts, nameKey } from './accounts.js';
 import { getBank, WALLET_UNAVAILABLE } from './casino-store.js';
 import { getVault } from './skins.js';
 import { getJail } from './jail.js';
-import { getPopups, POPUP_FROM_MAX, POPUP_TEXT_MAX, sendPopup } from './popups.js';
+import { dismissPopup, getPopups, POPUP_FROM_MAX, POPUP_TEXT_MAX, sendPopup } from './popups.js';
 
 /** Constant-time token check. Rejects everything when ADMIN_GRANT_TOKEN is unset or short. */
 export function adminAuthorized(header: string | undefined, token = process.env.ADMIN_GRANT_TOKEN): boolean {
@@ -201,6 +201,26 @@ export function adminRouter(): express.Router {
     const status = id ? await getPopups().status(id).catch(() => null) : null;
     if (!status) return res.status(404).json({ ok: false, error: 'Unknown popup.' });
     res.json({ ok: true, id, status });
+  });
+  /** POST /api/admin/popup/dismiss {name, id}: force-ack a queued popup and emit clear to open clients. */
+  r.post('/api/admin/popup/dismiss', express.json({ limit: '4kb' }), async (req, res) => {
+    const ip = req.ip ?? '?';
+    if (!adminAuthorized(req.get('authorization'))) {
+      console.warn(`[admin] popup/dismiss rejected: unauthorized from ${ip}`);
+      return res.status(401).json({ ok: false, error: 'Unauthorized.' });
+    }
+    const { name, id } = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof name !== 'string' || !name.trim()) return res.status(400).json({ ok: false, error: 'name is required.' });
+    if (typeof id !== 'string' || !id.trim() || id.length > 64) return res.status(400).json({ ok: false, error: 'id is required.' });
+    let row;
+    try { row = await getAccounts().store.get(nameKey(name)); } catch { return res.status(503).json({ ok: false, error: 'Accounts unavailable.' }); }
+    if (!row) return res.status(404).json({ ok: false, error: 'Unknown player.' });
+    try {
+      const cleared = await dismissPopup(row.name, id.trim());
+      const status = await getPopups().status(id.trim()).catch(() => null);
+      console.log(`[admin] popup/dismiss ${id.trim()} for ${row.name} cleared=${cleared} status=${status} from ${ip}`);
+      res.json({ ok: true, id: id.trim(), player: row.name, cleared, status });
+    } catch { res.status(503).json({ ok: false, error: 'Popup storage unavailable.' }); }
   });
   return r;
 }
