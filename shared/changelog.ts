@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-06T18:03:00-06:00', title: 'City Hall: pending mayor bills', bullets: [
+    'The sitting mayor can submit one public bill per Regina calendar day. Each gets a global Bill Chud number. Bills remain pending records and do not change gameplay automatically.',
+  ] },
   { commit: '', at: '2026-11-06T12:58:00-06:00', title: 'Launch prep: back-tax + mayor rate guard on update', bullets: [
     'Property back-tax (pay under-charged land surcharge / wealth tax before more buys) and the City Hall once-per-day mayor rate Postgres guard are on the Millionaire Update branch, matching live. Per-plot farm auto plant/harvest stays off the update — warehouse auto-sell only.',
   ] },

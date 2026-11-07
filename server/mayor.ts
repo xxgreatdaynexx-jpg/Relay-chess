@@ -150,9 +150,9 @@ export class Mayor {
     });
     this.log.push(c); return c;
   }
-  async passLaw(name: string, text: unknown) {
+  async submitLaw(name: string, text: unknown) {
     await this.settle(this.clock());
-    try { return await new MayorLaws(this.pool, this.clock).pass(name, text); }
+    try { return await new MayorLaws(this.pool, this.clock).submit(name, text); }
     catch (e) { if (e instanceof MayorLawError) throw new MayorError(e.message); throw e; }
   }
   async lawHistory(before?: unknown) { return new MayorLaws(this.pool, this.clock).history(before); }
@@ -228,7 +228,7 @@ export function registerMayor(_io: Server, socket: Socket): void {
     try { if (!mayorInst) throw new MayorError('City Hall is closed right now.'); const r = await fn(b, mayorInst); ack?.({ ok: true, ...r, view: await mayorInst.view(nameOf()) }); }
     catch (e) { let view: CityHallView | undefined; try { view = mayorInst ? await mayorInst.view(nameOf()) : undefined; } catch { /* */ } ack?.({ ok: false, error: e instanceof MayorError ? e.message : 'Something went wrong.', view }); if (!(e instanceof MayorError)) console.error('[mayor]', e); }
   });
-  on('mayor_law_pass', async (b, m) => m.passLaw(need(), b.text));
+  on('mayor_law_submit', async (b, m) => m.submitLaw(need(), b.text));
   on('mayor_law_history', async (b, m) => ({ laws: await m.lawHistory(b.before) }));
   on('mayor_view', async () => ({}));
   on('mayor_file', async (b, m) => m.file(need(), b.slogan));

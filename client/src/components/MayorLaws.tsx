@@ -10,14 +10,14 @@ export function MayorLaws({ view, isMayor, busy, onPass }: { view: MayorLawView;
   return <section data-testid="mayor-laws">
     <h4>City bills</h4>
     <label htmlFor="mayor-law-text">New bill text</label>
-    <textarea id="mayor-law-text" data-testid="mayor-law-text" rows={5} maxLength={LAW_TEXT_MAX} value={text} disabled={!isMayor || view.passedToday || busy} onChange={(e) => setText(e.target.value)} style={{ width: '100%', whiteSpace: 'pre-wrap' }} />
+    <textarea id="mayor-law-text" data-testid="mayor-law-text" rows={5} maxLength={LAW_TEXT_MAX} value={text} disabled={!isMayor || view.submittedToday || busy} onChange={(e) => setText(e.target.value)} style={{ width: '100%', whiteSpace: 'pre-wrap' }} />
     <div className="cityhall-rules" role="note" data-testid="mayor-law-info" style={{ whiteSpace: 'pre-line' }}>{LAW_RULES}</div>
-    <button type="button" disabled={!isMayor || view.passedToday || busy || !text.trim()} onClick={() => { void onPass(text); }}>Submit bill</button>
-    {view.passedToday && <small>The city has already passed a bill today (America/Regina).</small>}
+    <button type="button" disabled={!isMayor || view.submittedToday || busy || !text.trim()} onClick={() => { void onPass(text); }}>Submit bill</button>
+    {view.submittedToday && <small>The city has already submitted a bill today (America/Regina).</small>}
     <h4>Bill history</h4>
     {!shown.history.length && <small>No bills passed yet.</small>}
     <ol data-testid="mayor-law-history">{shown.history.map((b) => <li key={b.number}>
-      <b>{b.title}</b> <span>{b.status === 'approved' ? 'Approved' : 'Pending'}</span><small> · Mayor {b.by} · {b.day} (America/Regina)</small>
+      <b>{b.title}</b> <span>Pending</span><small> · Mayor {b.by} · {b.day} (America/Regina)</small>
       <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{b.text}</p>
     </li>)}</ol>
     {older && <button type="button" onClick={() => setOlder(null)}>Latest bills</button>}

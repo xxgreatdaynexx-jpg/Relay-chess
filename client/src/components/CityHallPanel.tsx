@@ -88,7 +88,7 @@ export function CityHallPanel({ onClose, initial, initialCity }: { onClose: () =
           <ul className="cityhall-log" data-testid="cityhall-log">
             {v.log.map((c, i) => <li key={i}><small>{abWhen(c.at)}</small> <b>{c.by === 'admin' ? 'Admin' : `Mayor ${c.by}`}</b>: {c.note ?? `property tax ${rateLabel(c.property)}, fees ${rateLabel(c.fee)} from ${abWhen(c.effectiveAt)}`}</li>)}
           </ul>
-          {v.laws && <MayorLaws view={v.laws} isMayor={!!me?.isMayor} busy={busy} onPass={async (text) => { await act('mayor_law_pass', { text }, (r) => `Submitted ${(r.bill as { title: string }).title}.`); }} />}
+          {v.laws && <MayorLaws view={v.laws} isMayor={!!me?.isMayor} busy={busy} onPass={async (text) => { await act('mayor_law_submit', { text }, (r) => `Submitted ${(r.bill as { title: string }).title}.`); }} />}
           <CityCivic initial={initialCity} />
           <p className="cityhall-rules">Besides these rates the mayor can only use the city levers, policies and buildings above. Casino odds and payouts, chip balances, sell limits and everything else stay out of reach. Mayors get no salary, and the treasury can never pay out to anyone.</p>
         </>
