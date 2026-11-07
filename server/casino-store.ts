@@ -1,3 +1,4 @@
+import { ADMIN_CREDIT_FROZEN, adminCreditsOpen, adminCreditAdmission } from './adminCreditGate.js';
 import pg from 'pg';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
 
@@ -21,13 +22,15 @@ export interface WalletTx {
   balance: number;
   memo?: string;
   at: number;
+  /** Internal DB admission epoch, captured before queueing a positive admin credit. Never supplied by HTTP clients. */
+  adminGateGeneration?: string;
 }
 
 /** Per-write stat increments that ride along with a chip delta. */
 export interface StatDelta { hands?: number; spins?: number; netWon?: number; biggestWin?: number }
 
 /** Result of one atomic write: the DB balance after it, or why the DB refused it. */
-export type ApplyResult = { ok: true; chips: number } | { ok: false; reason: 'funds' | 'duplicate'; chips: number };
+export type ApplyResult = { ok: true; chips: number } | { ok: false; reason: 'funds' | 'duplicate' | 'admin_frozen'; chips: number };
 
 export interface CasinoStore {
   init(): Promise<void>;
@@ -37,6 +40,8 @@ export interface CasinoStore {
   /** Current DB balance (null when the player has no row yet). */
   chipsOf(playerKey: string): Promise<number | null>;
   loadKeys?(): Promise<string[]>;
+  adminCreditsOpen?(): Promise<boolean>;
+  adminCreditAdmission?(): Promise<{ open: boolean; generation: string }>;
   recent?(playerKey: string, limit: number): Promise<WalletTx[]>;
 }
 
@@ -122,6 +127,7 @@ export class PgCasinoStore implements CasinoStore {
     try {
       if (opts.existingWalletOnly && !c) throw new Error('Refunds require a transactional wallet pool');
       if (c) await c.query('BEGIN');
+      if (tx.amount > 0 && (tx.game === 'admin' || tx.game === 'admin_refund') && tx.adminGateGeneration) await q("SELECT set_config('chudhub.admin_credit_generation', $1, true)", [tx.adminGateGeneration]);
       if (opts.existingWalletOnly) {
         // Audited refunds may only credit an existing payer, never create a wallet or change its current name.
         // Lock it inside this same transaction so deletion cannot race the check and invent START_CHIPS.
@@ -158,11 +164,14 @@ export class PgCasinoStore implements CasinoStore {
       return { ok: true, chips };
     } catch (error) {
       if (c) await c.query('ROLLBACK').catch(() => {});
+      if ((error as { code?: string }).code === ADMIN_CREDIT_FROZEN) return { ok: false, reason: 'admin_frozen', chips: (await this.chipsOf(playerKey)) ?? START_CHIPS };
       throw error;
     } finally {
       c?.release();
     }
   }
+  adminCreditsOpen(): Promise<boolean> { return adminCreditsOpen(this.db); }
+  adminCreditAdmission(): Promise<{ open: boolean; generation: string }> { return adminCreditAdmission(this.db); }
   async chipsOf(playerKey: string): Promise<number | null> {
     const { rows } = await this.db.query('SELECT chips FROM casino_players WHERE player_key = $1', [playerKey]);
     return rows.length ? Number(rows[0].chips) : null;
@@ -272,17 +281,23 @@ export class CasinoBank {
   }
 
   /** Re-read the balance from Postgres (login / join / wallet read). Returns the fresh cached balance. */
-  async refresh(name: string): Promise<number> {
-    this.guard();
-    const a = this.account(name);
-    if (!this.store) return a.chips;
+  async refresh(name: string): Promise<number> { return (await this.refreshConfirmed(name)).chips; }
+
+  /** Unlike refresh(), exposes whether a persistent read actually succeeded. Never treat a swallowed DB error
+   * as cache confirmation, and never reverse/regrant an already committed refund because this read fails. */
+  async refreshConfirmed(name: string): Promise<{ ok: boolean; chips: number }> {
+    this.guard(); const a = this.account(name);
+    if (!this.store) return { ok: false, chips: a.chips };
     await this.pending.get(a.key);
     try {
       const db = await this.store.chipsOf(a.key);
-      if (db !== null) a.chips = db + (this.inflight.get(a.key) ?? 0);
-    } catch (err) { console.error('[casino] refresh failed:', (err as Error).message); }
-    return a.chips;
+      if (db === null) return { ok: false, chips: a.chips };
+      a.chips = db + (this.inflight.get(a.key) ?? 0);
+      return { ok: true, chips: a.chips };
+    } catch (err) { console.error('[casino] refresh failed:', (err as Error).message); return { ok: false, chips: a.chips }; }
   }
+  async adminCreditsOpen(): Promise<boolean> { return this.store?.adminCreditsOpen ? this.store.adminCreditsOpen() : true; }
+  async adminCreditAdmission(): Promise<{ open: boolean; generation: string }> { return this.store?.adminCreditAdmission ? this.store.adminCreditAdmission() : { open: true, generation: '' }; }
 
   /** Called after every balance change (wallet push). */
   onChange(fn: (a: CasinoAccount, tx: WalletTx) => void): () => void {
@@ -304,7 +319,7 @@ export class CasinoBank {
    * Move chips for a game (wager stake, payout, refund, buy-in). Negative = debit, never below zero.
    * With a key it is idempotent: a repeat (reconnect, retry, restart) is a no-op and returns false.
    */
-  transfer(name: string, amount: number, opts: { key?: string; game: string; memo?: string }): boolean {
+  transfer(name: string, amount: number, opts: { key?: string; game: string; memo?: string; adminGateGeneration?: string }): boolean {
     this.guard();
     if (!Number.isInteger(amount)) throw new Error('Bad amount.');
     if (opts.key && this.keys.has(opts.key)) return false;
@@ -312,7 +327,7 @@ export class CasinoBank {
     if (amount < 0 && a.chips + amount < 0) throw new Error('Not enough chips.');
     a.chips += amount;
     if (opts.key) this.keys.add(opts.key);
-    this.log(a, amount, opts.game, opts.key ?? null, opts.memo);
+    this.log(a, amount, opts.game, opts.key ?? null, opts.memo, false, undefined, opts.adminGateGeneration);
     return true;
   }
 
@@ -321,7 +336,7 @@ export class CasinoBank {
    * already used (this run, another instance, or before a restart) or the write never landed. Use it when the caller
    * must tell the player (e.g. a once-per-day bonus toast).
    */
-  async transferConfirmed(name: string, amount: number, opts: { key: string; game: string; memo?: string }): Promise<boolean> {
+  async transferConfirmed(name: string, amount: number, opts: { key: string; game: string; memo?: string; adminGateGeneration?: string }): Promise<boolean> {
     if (!this.transfer(name, amount, opts)) return false;
     const a = this.account(name);
     const tx = this.recentTx.get(a.key)?.[0];
@@ -449,8 +464,8 @@ export class CasinoBank {
     }
   }
 
-  private log(a: CasinoAccount, amount: number, game: string, key: string | null = null, memo?: string, deferPersist = false, stats?: StatDelta): WalletTx {
-    const tx: WalletTx = { key, name: a.name, game, amount, balance: a.chips, ...(memo ? { memo } : {}), at: Date.now() };
+  private log(a: CasinoAccount, amount: number, game: string, key: string | null = null, memo?: string, deferPersist = false, stats?: StatDelta, adminGateGeneration?: string): WalletTx {
+    const tx: WalletTx = { key, name: a.name, game, amount, balance: a.chips, ...(memo ? { memo } : {}), at: Date.now(), ...(adminGateGeneration ? { adminGateGeneration } : {}) };
     if (amount !== 0 || key) {
       const list = this.recentTx.get(a.key) ?? [];
       list.unshift(tx);
@@ -478,10 +493,11 @@ export class CasinoBank {
       this.inflight.set(a.key, (this.inflight.get(a.key) ?? 0) - tx.amount);
       const rest = this.inflight.get(a.key) ?? 0;
       if (res?.ok) { a.chips = res.chips + rest; tx.balance = res.chips; return; }
+      if (res && !res.ok && res.reason === 'admin_frozen' && tx.key) this.keys.delete(tx.key); // terminal refusal, never retry after thaw
       // Refused by the DB (another instance spent the chips, or used the key) or never landed: drop it from the cache.
       const list = this.recentTx.get(a.key); if (list) { const j = list.indexOf(tx); if (j >= 0) list.splice(j, 1); }
       if (res) a.chips = res.chips + rest; else a.chips -= tx.amount;
-      if (res && !res.ok) console.warn(`[casino] ${res.reason === 'funds' ? 'insufficient funds in DB' : 'duplicate key'}; dropped ${tx.game} ${tx.amount} for ${a.name}${tx.key ? ` key=${tx.key}` : ''}`);
+      if (res && !res.ok) console.warn(`[casino] ${res.reason === 'funds' ? 'insufficient funds in DB' : res.reason === 'admin_frozen' ? 'admin credit gate refused' : 'duplicate key'}; dropped ${tx.game} ${tx.amount} for ${a.name}${tx.key ? ` key=${tx.key}` : ''}`);
       this.emit(a, { key: null, name: a.name, game: tx.game, amount: 0, balance: a.chips, memo: 'reverted', at: Date.now() });
     };
     const prev = this.pending.get(a.key) ?? Promise.resolve();

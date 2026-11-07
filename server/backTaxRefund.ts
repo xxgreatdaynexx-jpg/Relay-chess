@@ -8,6 +8,7 @@ import pg from 'pg';
 import { adminAuthorized } from './admin.js';
 import { databaseUrl } from './leaderboard-store.js';
 import { PgCasinoStore, getBank } from './casino-store.js';
+import { adminCreditGateStatus, setAdminCreditGate } from './adminCreditGate.js';
 
 export const REFUND_GAME = 'property_backtax_refund_v1';
 export const refundKey = (id: string) => `backtax_refund_v1:${id}`;
@@ -49,9 +50,10 @@ export async function auditBackTaxRefunds(pool: Pick<pg.Pool, 'query'>) {
   const pending = payments.filter(p => !p.refunded);
   const totalPending = pending.reduce((n, p) => n + p.amount, 0);
   if (!Number.isSafeInteger(totalPending)) throw new RefundConflict('Unsafe aggregate amount');
-  const manifestHash = createHash('sha256').update(JSON.stringify(rows)).digest('hex');
+  const gate = await adminCreditGateStatus(pool);
+  const manifestHash = createHash('sha256').update(JSON.stringify({ rows, gate })).digest('hex');
   return { policy: 'Full actual property_backtax debits, no recipient clawbacks; unpaid historical debt canceled', manifestHash,
-    payments, priorCredits, unclassifiedAdminCreditIds, blockers, pendingCount: pending.length, totalPending };
+    gate, payments, priorCredits, unclassifiedAdminCreditIds, blockers, pendingCount: pending.length, totalPending };
 }
 
 /** One original debit per explicit reviewed manifest, not a blind bulk/grant loop. Safe to retry after any lost response.
@@ -59,7 +61,7 @@ export async function auditBackTaxRefunds(pool: Pick<pg.Pool, 'query'>) {
  * Wallet write uses PgCasinoStore.apply: no direct/absolute balance SQL in this migration.
  */
 export async function refundOneBackTax(pool: RefundPool, sourceId: unknown, expectedHash: unknown, confirm: unknown,
-  refresh: (name: string) => Promise<unknown> = async () => {}, reviewedUnrelatedCreditIds: unknown = []) {
+  refresh: (name: string) => Promise<boolean> = async () => false, reviewedUnrelatedCreditIds: unknown = []) {
   if (!validId(sourceId) || typeof expectedHash !== 'string' || !/^[a-f0-9]{64}$/.test(expectedHash) || confirm !== REFUND_CONFIRM) throw new RefundConflict('Exact sourceId, reviewed manifestHash and confirmation required');
   const lock = await pool.connect();
   let acquired = false;
@@ -68,6 +70,7 @@ export async function refundOneBackTax(pool: RefundPool, sourceId: unknown, expe
     acquired = claimed.rows[0]?.acquired === true;
     if (!acquired) throw new RefundConflict('Another refund operator is active; obtain a fresh audit and retry later');
     const audit = await auditBackTaxRefunds(pool);
+    if (!audit.gate.frozen || !audit.gate.protected) throw new RefundConflict('Refund credit route locked: activate and verify the DB admin-credit freeze, then obtain a fresh audit');
     if (audit.manifestHash !== expectedHash) throw new RefundConflict('Manifest changed; audit and review again');
     if (audit.blockers.length) throw new RefundConflict(audit.blockers.join('; '));
     if (!Array.isArray(reviewedUnrelatedCreditIds) || reviewedUnrelatedCreditIds.some(id => !validId(id)) ||
@@ -97,7 +100,7 @@ export async function refundOneBackTax(pool: RefundPool, sourceId: unknown, expe
     const verified = await auditBackTaxRefunds(pool);
     if (!verified.payments.find(p => p.sourceId === sourceId)?.refunded || verified.blockers.length) throw new Error('Refund post-write verification failed; audit before retry');
     // Only refresh cached wallet after durable success. A cache refresh failure never reverses a real credit.
-    let cacheRefreshed = true; try { await refresh(source.name); } catch { cacheRefreshed = false; }
+    let cacheRefreshed = false; try { cacheRefreshed = (await refresh(source.name)) === true; } catch { /* durable credit stays committed; never regrant */ }
     return { ok: true, applied, sourceId, key: source.refundKey, amount: source.amount, cacheRefreshed, manifestHash: verified.manifestHash };
   } finally {
     // A failed unlock must not return a still-locked session to the pool.
@@ -108,14 +111,20 @@ export async function refundOneBackTax(pool: RefundPool, sourceId: unknown, expe
 }
 
 let pool: pg.Pool | null = null;
-export function backTaxRefundRouter(): express.Router {
+export function backTaxRefundRouter(injectedPool?: RefundPool): express.Router {
   const router = express.Router();
-  const db = () => { const url = databaseUrl(); if (!url) throw new Error('Persistent wallet database unavailable'); return pool ??= new pg.Pool({ connectionString: url, max: 3, connectionTimeoutMillis: 10_000 }); };
+  const db = () => { if (injectedPool) return injectedPool; const url = databaseUrl(); if (!url) throw new Error('Persistent wallet database unavailable'); return pool ??= new pg.Pool({ connectionString: url, max: 3, connectionTimeoutMillis: 10_000 }); };
   router.get('/api/admin/backtax-refunds/audit', async (req, res) => {
     if (!adminAuthorized(req.get('authorization'))) return res.status(401).json({ ok: false, error: 'Unauthorized.' });
     res.set('Cache-Control', 'no-store');
     try { return res.json({ ok: true, ...await auditBackTaxRefunds(db()) }); }
     catch { return res.status(503).json({ ok: false, error: 'Could not audit persistent ledger; no refunds executed.' }); }
+  });
+  router.post('/api/admin/backtax-refunds/gate', express.json({ limit: '2kb' }), async (req, res) => {
+    if (!adminAuthorized(req.get('authorization'))) return res.status(401).json({ ok: false, error: 'Unauthorized.' });
+    res.set('Cache-Control', 'no-store');
+    try { const { action, confirm } = req.body ?? {}; const gate = await setAdminCreditGate(db(), action, confirm); if (action === 'freeze') await getBank().flush(); return res.json({ ok: true, gate, localQueueDrained: action === 'freeze' }); }
+    catch { return res.status(409).json({ ok: false, error: 'Gate transition not confirmed; read audit before proceeding. Exact action and confirmation required.' }); }
   });
   router.post('/api/admin/backtax-refunds/refund-one', express.json({ limit: '2kb' }), async (req, res) => {
     if (!adminAuthorized(req.get('authorization'))) return res.status(401).json({ ok: false, error: 'Unauthorized.' });
@@ -123,7 +132,7 @@ export function backTaxRefundRouter(): express.Router {
     try {
       if (!getBank().ready) return res.status(503).json({ ok: false, error: 'Wallet unavailable.' });
       const { sourceId, manifestHash, confirm, reviewedUnrelatedCreditIds } = req.body ?? {};
-      return res.json(await refundOneBackTax(db(), sourceId, manifestHash, confirm, name => getBank().refresh(name), reviewedUnrelatedCreditIds));
+      return res.json(await refundOneBackTax(db(), sourceId, manifestHash, confirm, async name => (await getBank().refreshConfirmed(name)).ok, reviewedUnrelatedCreditIds));
     } catch (e) { return res.status(e instanceof RefundConflict ? 409 : 503).json({ ok: false, error: (e as Error).message }); }
   });
   return router;

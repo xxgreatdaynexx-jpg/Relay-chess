@@ -6,6 +6,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { auditBackTaxRefunds, refundOneBackTax, REFUND_CONFIRM, REFUND_GAME, refundKey, type RefundPool } from '../server/backTaxRefund';
 import { PgCasinoStore } from '../server/casino-store';
+import { setAdminCreditGate, FREEZE_CONFIRM, THAW_CONFIRM, adminCreditAdmission } from '../server/adminCreditGate';
 const run = promisify(execFile);
 const url = process.env.BACKTAX_TEST_DATABASE_URL;
 it.skipIf(!url)('real PostgreSQL full back-tax refund: partial payments, durable keys, two processes, restart, prior compensation, lost COMMIT, rollback and stale manifest', async () => {
@@ -30,6 +31,7 @@ it.skipIf(!url)('real PostgreSQL full back-tax refund: partial payments, durable
     await wallet.apply({name:'Recipient',game:'property_backtax_share',amount:5,key:'share:a',balance:0,at:Date.now()},'recipient');
     await pool.query("UPDATE casino_players SET name = 'Current Payer' WHERE player_key = 'payer'");
     const before = await balance();
+    await setAdminCreditGate(pool, 'freeze', FREEZE_CONFIRM);
     let audit = await auditBackTaxRefunds(pool);
     expect(audit.payments.map(p=>p.amount)).toEqual([20_005,17]); expect(audit.totalPending).toBe(20_022);
     expect(audit.payments[0]!.components).toEqual({surcharge:20_000,wealthTax:5}); expect(audit.blockers).toEqual([]);
@@ -87,13 +89,16 @@ it.skipIf(!url)('real PostgreSQL full back-tax refund: partial payments, durable
     expect((await pool.query("SELECT chips::text FROM casino_players WHERE player_key='integer-boundary'")).rows[0].chips).toBe('9007199254740991');
     expect((await pool.query("SELECT 1 FROM wallet_transactions WHERE tx_key='unsafe-refund'")).rows).toHaveLength(0);
     // Generic admin credits require an explicit manifest-bound review, not an assumed absence of prior refunds.
-    await wallet.apply({name:'Payer',game:'admin',amount:7,key:'other-admin-credit',balance:0,at:Date.now(),memo:'Unrelated test grant'},'payer');
-    const genericId=await pay('generic-review',11); audit=await auditBackTaxRefunds(pool);
+    await setAdminCreditGate(pool, 'thaw', THAW_CONFIRM);
+    await wallet.apply({name:'Payer',game:'admin',adminGateGeneration:(await adminCreditAdmission(pool)).generation,amount:7,key:'other-admin-credit',balance:0,at:Date.now(),memo:'Unrelated test grant'},'payer');
+    const genericId=await pay('generic-review',11); await setAdminCreditGate(pool, 'freeze', FREEZE_CONFIRM); audit=await auditBackTaxRefunds(pool);
     await expect(refundOneBackTax(pool,genericId,audit.manifestHash,REFUND_CONFIRM)).rejects.toThrow(/Review all prior admin/);
     expect((await refundOneBackTax(pool,genericId,audit.manifestHash,REFUND_CONFIRM,async()=>{throw new Error('cache unavailable');},audit.unclassifiedAdminCreditIds)).cacheRefreshed).toBe(false);
     // Ambiguous old compensation blocks ALL new execution (no silent double refund).
     const e=await pay('earlier-compensation',29);
-    await wallet.apply({name:'Payer',game:'admin',amount:29,key:'old-refund',balance:0,at:Date.now(),memo:'Back tax refund'},'payer');
+    await setAdminCreditGate(pool, 'thaw', THAW_CONFIRM);
+    await wallet.apply({name:'Payer',game:'admin',adminGateGeneration:(await adminCreditAdmission(pool)).generation,amount:29,key:'old-refund',balance:0,at:Date.now(),memo:'Back tax refund'},'payer');
+    await setAdminCreditGate(pool, 'freeze', FREEZE_CONFIRM);
     audit=await auditBackTaxRefunds(pool); expect(audit.blockers.join(' ')).toMatch(/prior compensation/);
     await expect(refundOneBackTax(pool,e,audit.manifestHash,REFUND_CONFIRM)).rejects.toThrow(/prior compensation/);
   } finally { await dropDrainedTestDatabase(root, pool, name); }

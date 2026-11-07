@@ -1,49 +1,73 @@
-# Historical property back-tax cancellation / full refunds
+# Separate tax release: historical back-tax cancellation and full refunds
 
-Policy approved by Dayne Nov 7, 2026: property surcharge is **1% per 1,000 of owned paid property value**, unpaid historical back-tax is permanently canceled, and actual paid back-tax is refunded **in full** (surcharge plus wealth-tax component). Previously distributed wealth-tax shares are not clawed back. Normal property/daily/purchase wealth taxes and mayor rules remain unchanged.
+Dayne's confirmed policy: surcharge **1% per 1,000 of owned paid property value**; permanently cancel unpaid historical back-tax; refund actual paid back-tax **in full**, including surcharge and wealth-tax components. No clawback from prior tax-share recipients. Ordinary daily/property/purchase wealth taxes and mayor rules remain unchanged.
 
-## Release gates (not an automatic migration)
+## Release and execution are separate gates
 
-1. Review the isolated patch, types, full tests and production build. Integrate alongside restoration without losing either branch's WorldMap/launchPopup/app edits.
-2. Publishing requires the parent/operator's release review. No boot code issues refunds. No production ledger was accessible while preparing this patch.
-3. Once released, verify exact live build, the 1% rate, and zero debt on quotes / cached `re_backtax_pay` (zero paid). Ensure all old replicas are gone; an old server must not keep charging back-tax. Quiesce alternative manual back-tax compensation/grants while executing the reviewed refund manifest. Never roll back to an old version that revives canceled debt.
-4. Authenticate with the existing admin bearer through the normal admin authorization. Do not print secrets. No database connection/token extraction is needed.
+1. Review/publish this as a **separate tax release**, not a farming/logistics/restoration bundle. Revalidate any integration conflicts without importing unrelated gameplay work.
+2. No boot refunds or automatic guard installation. `GET /api/admin/backtax-refunds/audit` is read-only. Without a proved protected, frozen database gate, the credit route refuses execution. No production names/counts/amounts were available during preparation.
+3. Use the existing admin Bearer authorization through these purpose-built routes. Never expose the token or connect around the server to the private database.
+4. Verify exact live build, 1% rate, and zero historical debt / zero paid for cached `re_backtax_pay`. Do not roll back to code reviving canceled debt. No ordinary tax arrears or historical ledger rows are erased.
 
-## Read-only audit
+## Explicit database-enforced freeze
 
-`GET /api/admin/backtax-refunds/audit` (existing admin Bearer authorization).
+`POST /api/admin/backtax-refunds/gate`
 
-No writes. Returns a snapshot/hash, every original negative `property_backtax` row (immutable ID, key, player/name, full amount, memo/date, optional memo component breakdown), per-source refund marker/status, all potentially related prior positive compensation rows, generic admin credits to affected players, blockers, total pending amount and count. Shares to prior recipients are excluded from compensation candidates. Historical debt estimates, unpaid assessments, ordinary property/tax debits are NOT refund inputs.
+```json
+{"action":"freeze","confirm":"FREEZE ADMIN CREDITS FOR BACKTAX REFUNDS"}
+```
 
-Review the exact manifest before any refund. Check original identities, source amounts, duplicate/reversal/prior-compensation history and all `priorCredits`. Null source keys are okay: immutable source ledger ID is the refund identity. Multiple real debit rows (partial/repeated real payments) remain separate; a retried original tx_key cannot create a second original debit because of the existing UNIQUE index. Memo components are explanatory only; never replace the full actual debit amount with a recalculated debt.
+This explicit action transactionally installs/verifies an ALWAYS BEFORE INSERT ledger trigger, drains transactions already writing the ledger during initial activation, closes a durable gate row and rotates its admission generation. Later freeze transitions wait for already-admitted positive admin-credit transactions holding the gate row SHARE lock to finish. The HTTP response also waits for this instance's queued wallet writes to drain/refuse.
 
-Known possible back-tax compensation is a hard blocker, even if the pending amount appears obvious. No override exists. Do not assume this implies zero prior refunds: generic admin credits require explicit human review too. Unlabeled non-admin compensation cannot be identified automatically; stop if relevant external history is unresolved.
+The database trigger covers **positive `admin` and `admin_refund` credits**, including old atomic wallet/ledger writers and direct atomic ledger paths. Closed gate means rollback, not an optimistic credit. Ordinary gameplay credits, ordinary refunds in other game namespaces and negative admin movements remain unaffected.
 
-## Explicit one-source execution
+New admin API requests capture the gate generation **before queueing**; the wallet transaction supplies that internal generation to the trigger. Freeze/thaw rotates it. A queued pre-freeze request cannot become valid after thaw: its stale generation is refused terminally, without automatic retries or a credit. Legacy/untagged positive admin writers also remain refused after activation, including after thaw; updated ordinary `/api/admin/grant` transparently supplies current admission. No client-supplied generation, new grant eligibility rule, amount limit or token permission is introduced.
 
-Only after exact manifest/prior-credit review:
+Check response/audit: `gate.installed=true`, `gate.protected=true`, `gate.frozen=true`, actual generation present. Protection checks exact trigger event/enabled state and function body. If activation reply is lost, read the audit; do not assume rollback or automatically thaw. Gate state persists across process restarts.
+
+## Read-only real manifest
+
+`GET /api/admin/backtax-refunds/audit`
+
+Returns exact original negative `property_backtax` ledger IDs/keys, player/name, full amount, memo/date, optional explanatory component breakdown, per-source refund marker, prior-credit candidates, blockers, pending sum/count, gate proof and manifest hash. It never estimates refunds from assessments, ordinary purchase/daily tax rows, or current balances. Multiple actual debit rows (including partial/repeated real payments) stay separate; immutable ID is the refund identity even when source key is null.
+
+Review/save the real manifest. Known possible earlier back-tax compensation is a **hard blocker**; no exclusion override exists. Generic admin credits require positive proof they are unrelated and exact `reviewedUnrelatedCreditIds`. Unlabeled non-admin compensation cannot be identified automatically: unresolved outside history must stop the operation, not be guessed away.
+
+## One reviewed source per execution
 
 `POST /api/admin/backtax-refunds/refund-one`
 
 ```json
 {
-  "sourceId": "<one original debit ledger ID>",
-  "manifestHash": "<latest reviewed audit hash>",
-  "confirm": "REFUND ONE VERIFIED BACKTAX DEBIT IN FULL",
-  "reviewedUnrelatedCreditIds": ["<every generic admin credit ID proven unrelated>"]
+  "sourceId":"<one original debit ID>",
+  "manifestHash":"<fresh reviewed audit hash>",
+  "confirm":"REFUND ONE VERIFIED BACKTAX DEBIT IN FULL",
+  "reviewedUnrelatedCreditIds":["<each generic admin credit ID proved unrelated>"]
 }
 ```
 
-One actual original debit per call; no blind batch loop, grant chunking or manual SQL credits. `reviewedUnrelatedCreditIds` must exactly match the audit's unclassified IDs; never label a real or ambiguous back-tax refund as unrelated. A changed manifest rejects execution. A known possible compensation blocker requires separate explicit reconciliation work, not guessing/exclusion.
+The gate must still be protected/frozen, and its generation is hash-bound. The same advisory mutex serializes refund execution and freeze/thaw, so reopening cannot slip between final validation and credit. The database gate prevents alternative positive admin compensation from committing in that interval; this is enforced, not an operator warning.
 
-The existing wallet store atomically commits balance increment and UNIQUE ledger key `backtax_refund_v1:<sourceId>` with game `property_backtax_refund_v1`. The marker is the credit itself. Global advisory locking serializes independent operators; the wallet UNIQUE key is the durable race/restart backstop. Original rows remain untouched. Refund memo includes original ID and reviewed manifest hash. A missing payer wallet is blocked transactionally, never silently created/funded. Existing wallet names are preserved even if the historical ledger display name differs.
+The existing atomic wallet writer commits the full immutable debit amount and UNIQUE marker `backtax_refund_v1:<sourceId>` / game `property_backtax_refund_v1` together. Marker owner/amount/game must match exactly. No arbitrary amount/recipient, grant chunking, raw production SQL or blind batch loop. Existing wallet required under transaction lock; current names preserved; unsafe wallet integer balances refused. Originals and previously distributed shares remain untouched.
 
-After each response, GET a fresh audit; verify the marker's owner/amount/game, remaining totals and no blockers. Re-review before the next source. A repeated source using a fresh hash is a verified no-op. Cache refresh failure does not reverse durable credits. Lost COMMIT replies trigger marker checks, not another grant; if readback is unavailable the outcome stays unknown. Recover connection and GET a new audit before retrying. Do not manufacture a compensating debit or claim nothing was credited.
+After **every** credit obtain/review a new audit: each credit changes the global hash. An old hash is refused. Fresh-hash repeat of an already-refunded source is a no-op. Lost COMMIT replies are reconciled with the exact durable marker; unavailable readback leaves outcome unknown. Never compensate manually or regrant because a response/cache refresh failed.
 
-Final acceptance: all verified eligible debits have matching refund markers, no unresolved compensation blockers, exact sums conserved, no new back-tax debits after old instances are gone, no re-assessment after ordinary purchases, and independent live wallet checks. No player counts/amounts are asserted until the real audit is obtained.
+`cacheRefreshed=true` is emitted only for an explicit successful persistent read and cache update (`refreshConfirmed`), not the legacy swallowing refresh API. On actual read failure it is false, while the committed refund/marker stay intact; retry with fresh audit is still a no-op. Verify live wallets independently.
 
-## Local validation
+## Finish / resume ordinary admin credits
 
-`BACKTAX_TEST_DATABASE_URL=postgres://postgres@127.0.0.1:55482/postgres npx vitest run tests/backtax-refund-postgres.test.ts`
+Only after the exact real sources/markers/totals and prior-compensation checks are reconciled:
 
-This creates/drops only its unique disposable database. Never stop/drop the shared instance. Covers two independent processes, restart, >10,000 full credit, multiple actual payments, immutable originals, no recipient clawback, manifest staleness, lost COMMIT with and without readback, rollback after wallet UPDATE, prior-compensation blocks and generic admin review. Additional tests cover rate/base/ordinary taxes, cached pay no-op, property/car access and admin authorization.
+`POST /api/admin/backtax-refunds/gate`
+
+```json
+{"action":"thaw","confirm":"RESUME ORDINARY ADMIN CREDITS"}
+```
+
+Thaw waits for any active refund mutex, rotates admission generation, and permits fresh updated admin API requests again. Stale queued requests remain invalid. If pausing before all sources finish, thaw also disables the refund credit route; resumption needs another explicit freeze and a fresh reviewed manifest. No hidden auto-thaw.
+
+## Local evidence
+
+Actual isolated local PostgreSQL tests cover HTTP admin requests queued before freeze, direct atomic competing ledger inserts, independent OS-process refusal, delayed requests released only after thaw, already-admitted writer drain, thaw vs final validation serialization, preserved prior-review IDs, unchanged ordinary economy/debits, and actual cache-read failure (cache 1090 / persisted 1100 / response false / marker retained / repeat no-op). Other tests cover full payments over 10,000, partial payments, unique keys, restart, unknown COMMIT, rollback and prior-compensation blockers.
+
+Use only disposable local databases on shared port 55482; never stop/drop the shared instance. Fixture teardown closes pools, drains only its own unique database's sessions and drops without FORCE. No blanket exception suppression or skips.
