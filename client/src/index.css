@@ -2491,16 +2491,36 @@ body.he-full-open .he-table.he-full { visibility: visible; }
   .inv-win[aria-label="Inventory"] .inv-head > button[aria-label="Close inventory"] { margin-left: auto; min-width: 40px; min-height: 40px; }
 }
 
-/* Mobile only (Dayne 2026-11-07 t1963/t1964): the car dealership sat at z-index 3 inside the map, under the phone nav row
-   (Real estate / My home / My farms / Drive, z 5) and the Trade Week bar (z 4), which covered its list, title and close X.
-   On phones / short landscape it becomes a full-viewport fixed dialog above the HUD with a sticky header and a 44px close
-   target, only its body scrolls, and the map HUD is hidden (not tappable) while it is open; it returns on close.
-   Desktop rules above are untouched. */
+/* Mobile menus: one viewport sheet, with the map HUD out of the way until close.
+   :has also covers independent hosts and the resort/Fort maps, not only CityMap's panel slot. */
 @media (max-width: 640px), (max-height: 500px) {
-  .dealer:not(.fleet) { position: fixed; inset: 0; z-index: 60; place-items: stretch; background: #12141d; }
-  .dealer:not(.fleet) > .dealer-box { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; transform: none !important; left: auto !important; top: auto !important; translate: none !important; }
-  .dealer:not(.fleet) .dealer-box header { position: sticky; top: 0; z-index: 1; flex: none; background: #12141d; padding-top: max(10px, env(safe-area-inset-top)); }
-  .dealer:not(.fleet) .dealer-box header button { min-width: 44px; min-height: 44px; }
-  .dealer:not(.fleet) .dealer-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
-  .world-modal-open .world-corner, .world-modal-open .wev-mapbar, .world-modal-open .world-clock { visibility: hidden; pointer-events: none; }
+  .world-modal-open :is(.world-corner, .wev-mapbar, .world-clock),
+  body:has(.world-deed, .dealer, .world-casino, .furn-store, .home-int, .inv-backdrop, .sol-panel, [role="dialog"], .chat-drawer) .world :is(.world-corner, .wev-mapbar, .world-clock) { visibility: hidden; pointer-events: none; }
+  .dealer, .world .world-casino { position: fixed; inset: 0; z-index: 60; place-items: stretch; background: #12141d; }
+  .dealer > .dealer-box, .furn-store > .furn-box, .world .world-casino > div {
+    box-sizing: border-box; width: 100%; max-width: 100vw; height: 100dvh; max-height: 100dvh;
+    margin: 0; border-radius: 0; transform: none !important; left: auto !important; top: auto !important; translate: none !important;
+    padding-bottom: env(safe-area-inset-bottom); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right);
+  }
+  .dealer-box > header, .furn-box > header { position: sticky; top: 0; z-index: 3; flex: none; display: flex; flex-wrap: wrap; background: #12141d; padding-top: max(10px, env(safe-area-inset-top)); }
+  .dealer-box > header h3, .furn-box > header h3 { flex: 1 1 50%; min-width: 0; overflow-wrap: anywhere; }
+  .dealer-box > header button, .furn-box > header button { flex: none; min-width: 44px; min-height: 44px; }
+  .dealer .dealer-body { flex: 1 1 auto; min-height: 0; grid-template-columns: minmax(0, 1fr); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .dealer .freight-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .dealer .freight-tabs { flex: none; max-height: 30dvh; overflow-y: auto; }
+  .dealer .dealer-list { max-height: 30dvh; min-height: 0; }
+  .dealer .dealer-main { overflow: visible; min-width: 0; }
+  .world .world-deed {
+    box-sizing: border-box; position: fixed !important; inset: 0 !important; width: 100% !important; max-width: 100vw !important;
+    height: 100dvh !important; max-height: 100dvh !important; transform: none !important; translate: none !important;
+    z-index: 60 !important; border-radius: 0 !important; background: #101418 !important;
+    padding: calc(56px + env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+    overflow-y: auto !important; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y;
+  }
+  .world .world-deed > * { flex-shrink: 0; }
+  .world .world-deed > .world-deed-x, .world .world-casino .world-casino-x { position: fixed; top: max(8px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); z-index: 61; min-width: 44px; min-height: 44px; background: #12141d; }
+  .world .world-casino > div { overflow-y: auto; padding-top: calc(64px + env(safe-area-inset-top)); padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+  .dealer .panel-drag-handle, .world .world-deed > .panel-drag-handle { display: none; }
+  .home-top { top: env(safe-area-inset-top); max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto; }
+  .home-top button { min-width: 44px; min-height: 44px; }
 }
