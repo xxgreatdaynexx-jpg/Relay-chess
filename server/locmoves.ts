@@ -1,5 +1,5 @@
 import { fenceHeld, markMigrating } from './invFence.js';
-import { OutcomeUnknown, isOutcomeUnknown, outcome, ledgerMarker } from './locstock.js';
+import { packed, OutcomeUnknown, isOutcomeUnknown, outcome, ledgerMarker } from './locstock.js';
 import { PANTRY_MAX } from '../shared/cooking.js';
 /**
  * Truck logistics between individual locations (Dayne 2026-11-06; ids in shared/inventoryLocations.ts).
@@ -100,7 +100,7 @@ export class LocMoves {
   async view(name: string) {
     const key = playerKey(name); const out = new Map<string, Array<{ item: string; label: string; qty: number }>>();
     const put = (loc: string, item: string, qty: number) => { if (qty <= 0) return; let a = out.get(loc); if (!a) { a = []; out.set(loc, a); } const x = a.find((r) => r.item === item); if (x) x.qty += qty; else a.push({ item, label: itemLabel(item), qty }); };
-    try { for (const s of getMines().stacks(name)) put(FACTORY, `${s.type}:${s.id}`, s.qty); } catch { /* offline */ }
+    // Map pools: your factory's stock IS the Chud City Warehouse stock (one city inventory, LocStore serves it under 'warehouse').
     for (const [loc, items] of getLocStore().locs(name)) for (const x of items) put(loc, x.item, x.qty);
     for (const b of BIN_BUILDINGS) for (const [item, q] of await getWarehouse().bin(name, b as 'coral').catch(() => new Map<string, number>())) if (BIN_ITEM.test(item)) put(b, item, q);
     const fp = getFishing()?.pool;
@@ -109,7 +109,7 @@ export class LocMoves {
       for (const r of (await fp.query("SELECT loc, recipe, count(*)::int AS n FROM kitchen_dishes WHERE player_key = $1 AND sold_at IS NULL AND loc IS NOT NULL AND loc NOT LIKE 'transit:%' GROUP BY 1,2", [key]).catch(() => ({ rows: [] }))).rows) put(String(r.loc), `dish:${r.recipe}`, Number(r.n));
     }
     const homes = await this.homes(name).catch(() => new Map<string, boolean>());
-    const dests = [...(this.hasFactory(name) ? [FACTORY] : []), WAREHOUSE, RESORT_WAREHOUSE]; void homes; // map pools: one warehouse per map (+ your factory)
+    const dests = [WAREHOUSE, RESORT_WAREHOUSE]; void homes; // map pools: one warehouse per map; your factory works from the city one directly
     const ids = new Set([...out.keys(), ...dests]);
     const locations = await Promise.all([...ids].map(async (id) => { const l = parseLoc(id); return { id, label: id === FACTORY && !this.hasFactory(name) ? 'Banked storage' : locLabel(id), held: id === FACTORY && !this.hasFactory(name), hub: await this.hub(name, l), dest: dests.includes(id), sells: isPool(id), items: (out.get(id) ?? []).sort((a, b) => a.label.localeCompare(b.label)) }; }));
     const lg = getLogistics();
@@ -137,22 +137,21 @@ export class LocMoves {
     const it = parseItem(b.item); const qty = Number(b.qty);
     if (!Number.isSafeInteger(qty) || qty < 1) throw new MoveError('Pick a quantity.');
     if (from.id === to.id) throw new MoveError('Pick a different destination.');
-    if (!isDestKind(to.kind)) throw new MoveError('Goods go to a map warehouse (Chud City or Resort) or your factory.');
-    if (to.kind === 'factory' && !this.hasFactory(name)) throw new MoveError('Build your factory first.');
+    if (to.kind === 'factory' || from.kind === 'factory' && hubOfLoc(to.id) !== 'resort') throw new MoveError('Your factory already uses your Chud City Warehouse stock directly. Nothing to move.');
+    if (!isDestKind(to.kind)) throw new MoveError('Goods go to a map warehouse (Chud City or Resort).');
     // (pre-update banked storage was usable without a factory: moving it out to the city warehouse is allowed)
     const homes = await this.homes(name);
-    if (it.row === 'dish' && to.kind === 'factory') throw new MoveError('Plated dishes go to the Warehouse (to sell) or a kitchen.');
     if (BIN_BUILDINGS.has(from.kind) && it.row !== 'stack') throw new MoveError('Unknown item.');
     const have = await this.qty(name, from.id, it.item);
     if (have < qty) throw new MoveError(`Only ${have.toLocaleString('en-US')} ${itemLabel(it.item)} at ${locLabel(from.id)}.`);
     const lg = getLogistics(); if (!lg) throw new MoveError('Freight is offline right now.');
-    if (from.kind === 'factory' && PACK_TYPES.has(it.type) || to.kind === 'factory') { const m = getMines(); if (!m.store || m.offline) throw new MoveError('Factory storage is reconnecting. Nothing was moved; try again in a minute.'); }
+    if (from.kind === 'factory' && PACK_TYPES.has(it.type) || packed(to.id, it.item)) { const m = getMines(); if (!m.store || m.offline) throw new MoveError('Factory storage is reconnecting. Nothing was moved; try again in a minute.'); }
     // Room at the destination, counting loads already on the way there (no stalled arrivals, nothing dropped).
     if (it.row === 'stack') {
       const key = arrivalKey(it.item, to.kind); const inbound = [...lg.ships.values()].filter((x) => x.kind === 'loc' && x.toKey === playerKey(name) && x.toLoc === to.id && arrivalKey(`${x.type}:${x.itemId}`, to.kind) === key).reduce((a, x) => a + x.qty, 0);
       const [kt, kid] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
-      const at = to.kind === 'factory' && PACK_TYPES.has(kt) ? getMines().stackQty(name, kt as ItemType, kid) : getLocStore().qty(name, to.id, key);
-      const cap = to.kind === 'factory' && PACK_TYPES.has(kt) ? MAX_BANKED_STACK : Infinity;
+      const at = getLocStore().qty(name, to.id, key); void kid; // the city pool's stackables are the banked store (same cap as before)
+      const cap = to.id === WAREHOUSE && PACK_TYPES.has(kt) ? MAX_BANKED_STACK : Infinity;
       if (at + inbound + qty > cap) throw new MoveError(`${locLabel(to.id)} has room for ${Math.max(0, cap - at - inbound).toLocaleString('en-US')} more ${itemLabel(key)}.`);
     }
     const fromHub = from.kind === 'kitchen' ? hubOfLoc(from.id, homes.get(from.ref) === true) : hubOfLoc(from.id);
@@ -389,6 +388,12 @@ export function wireLocMoves() {
 }
 /** Boot step (awaited before the server listens): wire producers + freight, then run the legacy migration until it
  *  succeeds. Until then nothing is served (fail closed); no DB = dev memory mode, nothing to migrate. */
+/** Map pools (mapPools.ts) supersede the legacy->factory migration: once folded it never runs again, so legacy HELD
+ *  entries (NULL-loc fish/dishes, kitchen_fillets, the resort barn) stay exactly where they are; no map is guessed. */
+export async function poolsFolded(): Promise<boolean> {
+  const p = getLocStore().pool; if (!p) return false;
+  return (await p.query("SELECT 1 FROM loc_migrations WHERE id = 'map-pools-v1'")).rows.length > 0;
+}
 export async function initLocMoves(opts: { dbUrl?: string | undefined } = {}) {
   wireLocMoves();
   if (!opts.dbUrl) { lm.ready = true; return; }
@@ -403,7 +408,7 @@ export async function initLocMoves(opts: { dbUrl?: string | undefined } = {}) {
       const hook = process.env.NODE_ENV === 'test' ? process.env.LM_TEST_FAIL : undefined; // test-only failure injection
       if (hook === 'hang') await new Promise(() => {});
       if (hook === 'premigrate') throw new Error('[locmoves] test: boot failed before migrating');
-      try { await markMigrating(); if (hook === 'migrate') throw new Error('test: migration failed midway'); r = await lm.migrateLegacy(); } catch (e) { err = e as Error; console.error('[locmoves] legacy migration attempt failed:', err.message); }
+      try { await markMigrating(); if (hook === 'migrate') throw new Error('test: migration failed midway'); r = (await poolsFolded()) ? { conserved: true, skipped: 'map-pools-v1' } as unknown as typeof r : await lm.migrateLegacy(); } catch (e) { err = e as Error; console.error('[locmoves] legacy migration attempt failed:', err.message); }
       if (r) {
         lm.lastMigration = r; console.log(`[locmoves] migration took ${Date.now() - t0} ms`);
         if (!r.conserved) throw new Error('[locmoves] conservation check failed: see the log; not serving inventory');

@@ -1,4 +1,4 @@
-import { initInventoryFence, refreshFenceTriggers, markReady, invHealth, fenceToken } from '../../server/invFence'; // FIRST, as server/index.ts
+import { initInventoryFence, refreshFenceTriggers, markReady, invHealth, fenceToken, markMapPools } from '../../server/invFence'; // FIRST, as server/index.ts
 /** One "server instance" for tests/locmoves-postgres.test.ts: boots the real stores on DATABASE_URL (a disposable local DB),
  *  runs one step, prints a JSON result line. Each step is a fresh process, so state across steps proves restart safety. */
 import pg from 'pg';
@@ -14,6 +14,8 @@ import { initSkinStorage } from '../../server/skins';
 import { initMarketStorage, getMarket } from '../../server/market';
 import { initRealEstate } from '../../server/realEstate';
 import { initFarm, getFarm } from '../../server/farm';
+import { initMapPools } from '../../server/mapPools';
+import { properties } from '../../shared/realEstate';
 
 const step = process.argv[2]!; const arg = JSON.parse(process.argv[3] ?? '{}') as Record<string, unknown>;
 const off = Number(process.env.LM_CLOCK_OFFSET ?? 0); const clock = () => Date.now() + off;
@@ -21,7 +23,19 @@ const out = (o: unknown) => { process.stdout.write(`RESULT ${JSON.stringify(o)}\
 const settle = (ms = 300) => new Promise((r) => setTimeout(r, ms));
 
 async function boot() {
-  await initCasinoStorage(); await initInventoryFence(); await initSkinStorage(); await initMarketStorage(); await initMinesStorage();
+  // LM_SCHEMA_ONLY (test-only): stand in for the OLD server creating its tables (no fence, no fold, nothing served)
+  const schemaOnly = !!process.env.LM_SCHEMA_ONLY;
+  await initCasinoStorage();
+  if (schemaOnly) {
+    await initSkinStorage(); await initMarketStorage(); await initMinesStorage(); for (let i = 0; i < 100 && (getMines().offline || !getMines().store); i++) await settle(100);
+    await initRealEstate(); await initLocStore(); const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 }); await new Logistics(pool as never, clock).init();
+    await initFarm(); for (let i = 0; i < 100 && !getFarm(); i++) await settle(100); await initWarehouse(); await initFishing(); await initCooking(); return;
+  }
+  await initInventoryFence();
+  if (process.env.NODE_ENV === 'test' && process.env.LM_TEST_FAIL === 'preboundary') throw new Error('test: boot failed before the map-pool boundary');
+  // production boot order (server/index.ts): boundary, then the fold, BEFORE any inventory store loads
+  await markMapPools(); await initMapPools(process.env.DATABASE_URL, properties().filter((p) => p.map === 'resort').map((p) => p.id));
+  await initSkinStorage(); await initMarketStorage(); await initMinesStorage();
   for (let i = 0; i < 100 && (getMines().offline || !getMines().store); i++) await settle(100);
   await initRealEstate(); await initLocStore();
   const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

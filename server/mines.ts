@@ -1,4 +1,4 @@
-import { outcome } from './locstock.js';
+import { outcome , setDefaultCityPack, OutcomeUnknown } from './locstock.js';
 import { randomUUID } from 'node:crypto';
 /** Mines: shared first-person cave. Server-authoritative nodes, backpacks (generic item stacks) and house selling. */
 import { houseSellPrice } from '../shared/sellBuff.js';
@@ -514,10 +514,11 @@ export class MinesWorld {
     const banked = this.carried(id); if (!banked.length) return { banked: [], worth: 0 };
     if (m.account) this.lastCave.set(playerKey(m.account), m.cave); // royalties: ore is credited to the cave it was hauled out of
     const p = this.pack(this.packKey(m));
-    const binHook = m.cave === 'fortmc' ? this.fortBin : this.cityBin; // map pools: city caves -> Chud City Warehouse, Coral Grotto -> Resort Warehouse
+    // Map pools: city caves bank into the one city store (the banked pack, as before Millionaire); Coral Grotto -> Resort Warehouse.
+    const binHook = m.cave === 'fortmc' ? this.fortBin : m.cave === 'coral' ? this.cityBin : null;
     // Truck logistics: a signed-in city haul banks AT that cave (mine:<cave>). Never fall back to the factory store.
-    if (m.account && m.cave !== 'fortmc' && !this.cityBin) { throw new MineError('Cave storage is starting up. Your haul is safe in your pack, try again in a moment.'); }
-    const city = !!(m.account && m.cave !== 'fortmc');
+    if (m.account && m.cave === 'coral' && !this.cityBin) { throw new MineError('Cave storage is starting up. Your haul is safe in your pack, try again in a moment.'); }
+    const city = !!(m.account && m.cave === 'coral');
     const bin = m.account && binHook ? binHook(m.account, banked, m.cave) : null; // may throw (storage starting): haul stays carried
     m.carried.clear();
     if (!bin) for (const s of banked) { const k = stackKey(s); const cur = p.get(k); if (cur) cur.qty += s.qty; else p.set(k, { ...s }); }
@@ -980,7 +981,7 @@ export function registerMines(io: Server, socket: Socket): void {
       const wh = getLocStore().at(a, WAREHOUSE).filter((x) => /^(ore|bar|good|food):/.test(x.item));
       const only = typeof b.ore === 'string' ? b.ore : null;
       const pick = only ? wh.filter((x) => x.item === only || x.item.slice(x.item.indexOf(':') + 1) === only) : wh.filter((x) => { const [t, id] = [x.item.slice(0, x.item.indexOf(':')), x.item.slice(x.item.indexOf(':') + 1)]; return sellable({ type: t as ItemType, id }); });
-      if (!pick.length) throw new MineError(only && world.storage(a).some((s) => stackKey(s) === only || s.id === only) ? 'Move them from your factory to the Chud City Warehouse first (same map: instant and free).' : 'Nothing to sell at the Warehouse.');
+      if (!pick.length) throw new MineError('Nothing to sell here.');
       if (b.qty !== undefined && b.qty !== null && pick.length !== 1) throw new MineError('Pick one item to sell a quantity.');
       let paid = 0, gross = 0; const out: Stack[] = []; let err: Error | null = null;
       for (const x of pick) {
@@ -1008,3 +1009,26 @@ export function registerMines(io: Server, socket: Socket): void {
   socket.on('mines_leave', leave);
   socket.on('disconnect', leave);
 }
+
+// Map pools: the city map's stackables ARE this banked store (LocStore routes loc 'warehouse' ore/bar/good/food here).
+setDefaultCityPack({
+  qty: (n, t, id) => getMines().stackQty(n, t as ItemType, id),
+  stacks: (n) => getMines().stacks(n),
+  adjust(n, deltas, extra, o) {
+    const mines = getMines();
+    if (mines.offline || (getLocStore().pool && !(mines as unknown as { store: unknown }).store)) throw new MineError('Storage is reconnecting. Your goods are safe, try again in a minute.');
+    let failed: Error | null = null, unknown: Error | null = null, settled: Promise<unknown> | null = null;
+    let fb: Array<{ sql: string; args: unknown[] }> | null = null; const ds = deltas.map((d) => ({ type: d.type as ItemType, id: d.id, delta: d.delta }));
+    const ok = mines.adjustStacks(n, ds, extra, (r) => { fb = r; }, {
+      after: o.after, committed: o.committed, onLate: o.onLate,
+      onFail: (e) => { failed = e; }, onUnknown: (e) => { unknown = e; }, bind: (p) => { settled = p; } });
+    if (!ok) return false;
+    const lp = o.pool ?? getLocStore().pool;
+    if (fb && lp) { const rows: Array<{ sql: string; args: unknown[] }> = fb; return (async () => { // memory-only pack (dev/tests): the rows still commit together
+      await o.after; const cl = await lp.connect();
+      try { await cl.query('BEGIN'); for (const q of rows) await cl.query(q.sql, q.args); await cl.query('COMMIT'); }
+      catch (e) { await cl.query('ROLLBACK').catch(() => {}); mines.adjustStacks(n, ds.map((d) => ({ ...d, delta: -d.delta }))); throw e; }
+      finally { cl.release(); } })(); }
+    return (async () => { await settled; if (failed) throw failed; if (unknown) throw new OutcomeUnknown(unknown); })();
+  },
+});

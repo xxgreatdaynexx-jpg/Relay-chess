@@ -123,7 +123,7 @@ export class Warehouse {
       const p = auto ? f.autoShip(name, id, qty, String(mode)) : f.act(name, { op: 'ship_sell', id, qty, mode }) as Promise<{ shipment: string; mode: string; fee: number; arriveAt: number }>;
       return p.catch((e) => { throw new WarehouseError((e as Error).message); });
     }
-    if (!BIN_BUILDINGS.includes(b)) throw new WarehouseError('City goods move by truck: send them to the Warehouse from your Logistics panel.');
+    if (!BIN_BUILDINGS.includes(b)) throw new WarehouseError('City goods are already in your Chud City Warehouse stock: sell or list them there.');
     const k = playerKey(name);
     return this.lock(k, async () => {
       if (!Number.isInteger(qty) || qty < 1) throw new WarehouseError('Pick a quantity.');

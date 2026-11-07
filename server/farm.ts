@@ -17,7 +17,7 @@ import { px, priceIndex } from './price-index.js';
 import { resortPlotOf, isTropical, TROPICAL_CROPS } from '../shared/resort.js';
 import { requireResort } from './travel.js';
 import { fieldPlotOf } from '../shared/fieldFarms.js';
-import { getLocStore } from './locstock.js';
+import { outcome, ledgerMarker, isOutcomeUnknown, getLocStore } from './locstock.js';
 import { farmLoc } from '../shared/inventoryLocations.js';
 import { PANTRY_MAX } from '../shared/cooking.js';
 import { awardXp } from './skills.js';
@@ -174,8 +174,24 @@ export class Farm {
     const u = await cl.query('UPDATE farm_daily SET xp_gross = xp_gross + $3 WHERE player_key = $1 AND day = $2 AND xp_gross = $4', [key, day, Math.round(profit), was]);
     if (!u.rowCount) throw new FarmError('Busy, try again.');
   }
-  private async atomic(name: string, amount: number, game: string, memo: string, body: (cl: pg.PoolClient) => Promise<void>, ledgerKey?: string) {
-    if (amount === 0) { const cl = await this.pool.connect(); try { await cl.query('BEGIN'); await body(cl); await cl.query('COMMIT'); } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); } return; }
+  private async atomic(name: string, amount: number, game: string, memo: string, body: (cl: pg.PoolClient) => Promise<void>, ledgerKey?: string,
+    zero?: { committed: () => Promise<boolean>; late: () => void }) {
+    if (amount === 0) {
+      const cl = await this.pool.connect();
+      try { await cl.query('BEGIN'); await body(cl); await cl.query('COMMIT'); return; }
+      catch (e) {
+        await cl.query('ROLLBACK').catch(() => {});
+        if (e instanceof FarmError || !zero) throw e;
+        // Lost COMMIT reply: ask the database (tiles gone = it committed) before claiming anything.
+        const v = await outcome(zero.committed);
+        if (v === true) return;
+        if (v === null) {
+          void (async () => { for (let i = 0; ; i++) { await new Promise((r) => setTimeout(r, Math.min(60_000, 1000 * 2 ** Math.min(i, 6)))); const x = await outcome(zero.committed, 1); if (x === null) continue; if (x) zero.late(); return; } })();
+          throw new FarmError('Still confirming that harvest with the server. Check again in a minute; nothing will be lost or doubled.');
+        }
+        throw e;
+      } finally { cl.release(); }
+    }
     const w = this.bank().transferAtomic([{ name, amount, key: ledgerKey ?? `${game}:${randomUUID()}`, game, memo }]);
     const run = async () => {
       await w.after; const cl = await this.pool.connect();
@@ -183,7 +199,18 @@ export class Farm {
       catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); }
     };
     const p = run(); w.bind(p);
-    try { await p; } catch (e) { w.revert(); if (e instanceof FarmError) throw e; console.error(`[farm] ${game} failed:`, (e as Error).message); throw new FarmError(/chips|balance|null value/i.test((e as Error).message) ? 'Not enough chips.' : 'Something went wrong. Nothing was charged.'); }
+    try { await p; } catch (e) {
+      // Lost COMMIT reply: the wallet ledger row exists iff the transaction committed. Never claim "nothing charged" unless
+      // the database says so; if it can't be asked, keep the charge in memory and settle in the background.
+      const m = e instanceof FarmError ? undefined : ledgerMarker(w.stmts); const pool = this.pool;
+      const ask = m ? () => pool.query(m.sql, m.args).then((r) => r.rows.length > 0) : null;
+      const v = ask ? await outcome(ask) : false;
+      if (v === true) { w.confirm(); return; }
+      if (v === null) {
+        void (async () => { for (let i = 0; ; i++) { await new Promise((r) => setTimeout(r, Math.min(60_000, 1000 * 2 ** Math.min(i, 6)))); const x = await outcome(ask!, 1); if (x === null) continue; if (x) w.confirm(); else w.revert(); this.onChange?.(''); return; } })();
+        throw new FarmError('Still confirming that with the server. Check again in a minute; nothing will be charged twice.');
+      }
+      w.revert(); if (e instanceof FarmError) throw e; console.error(`[farm] ${game} failed:`, (e as Error).message); throw new FarmError(/chips|balance|null value/i.test((e as Error).message) ? 'Not enough chips.' : 'Something went wrong. Nothing was charged.'); }
   }
   private async mustOwn(cl: pg.PoolClient, pid: string, name: string) {
     const o = await this.ownerOf(cl, pid); if (!o || o.key !== keyOf(name)) throw new FarmError('You do not own this farm plot.'); return o;
@@ -245,7 +272,8 @@ export class Farm {
           for (const r of ready) gone += (await cl.query('DELETE FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3 AND owner_key = $4', [pid, r.tile, r.nonce, key])).rowCount ?? 0;
           if (gone !== ready.length) throw new FarmError('Already harvested.');
           await sink.write(cl, items);
-        });
+        }, undefined, { committed: async () => { const r0 = ready[0]!; return !(await this.pool.query('SELECT 1 FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3', [pid, r0.tile, r0.nonce])).rows.length; },
+          late: () => { sink.after(items); this.onChange?.(pid); } });
         sink.after(items); this.onChange?.(pid);
         return { harvested: ready.length, paid: 0, toFactory: items, chips: this.bank().account(name).chips };
       }
@@ -307,23 +335,30 @@ export class Farm {
     return ((await this.pool.query('SELECT DISTINCT plot_id FROM farm_tiles WHERE owner_key = $1', [keyOf(name)])).rows as Array<{ plot_id: string }>).map((r) => String(r.plot_id));
   }
 
-  /** Harvest into the kitchen pantry instead of selling (pt1312u): no chips, no daily-tier use; Farming XP as usual.
-   *  Map pools: the pantry is the city map inventory (Chud City Warehouse, loc_stock 'warehouse'), which is where cooking
-   *  reads groceries now. Tiles are deleted (nonce-matched) in the SAME transaction as the stock rows: exactly once. */
+  /** Harvest into the pantry instead of selling (pt1312u): no chips, no daily-tier use; Farming XP as usual. Map pools: the
+   *  city pantry is the one city store (food stacks in the banked pack, as before Millionaire). The tile deletes and the
+   *  harvest ledger commit in the SAME transaction as the stock: exactly once (a missing tile aborts it all). */
   private async harvestToPantry(name: string, pid: string, key: string, ready: TileRow[], now: number) {
-    void now; const counts = new Map<string, number>(); let value = 0;
+    const counts = new Map<string, number>(); let value = 0;
     for (const r of ready) { const c = cropById(r.crop)!; counts.set(c.id, (counts.get(c.id) ?? 0) + 1); value += c.sell; }
     const ls = getLocStore(); if (!ls.loaded) throw new FarmError('Storage is reconnecting. Nothing was harvested; try again in a minute.');
     const loc = farmLoc(pid); const deltas = [...counts].map(([id, n]) => ({ loc, item: `food:${id}`, delta: n }));
     for (const d of deltas) if (ls.qty(name, loc, d.item) + d.delta > PANTRY_MAX) throw new FarmError('Your pantry is full for that crop.');
-    await this.atomic(name, 0, 'farm_to_pantry', '', async (cl) => {
-      await this.mustOwn(cl, pid, name);
-      let gone = 0;
-      for (const r of ready) gone += (await cl.query('DELETE FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3 AND owner_key = $4', [pid, r.tile, r.nonce, key])).rowCount ?? 0;
-      if (gone !== ready.length) throw new FarmError('Already harvested.');
-      for (const q of ls.rowsFor(name, deltas)) await cl.query(q.sql, q.args);
-    });
-    ls.applyMem(name, deltas);
+    const extra: Array<{ sql: string; args: unknown[] }> = [];
+    for (const r of ready) {
+      extra.push({ sql: `INSERT INTO kitchen_harvests (tile_key, at) VALUES ((SELECT t.plot_id || ':' || t.tile || ':' || t.nonce FROM farm_tiles t JOIN properties p ON p.id = t.plot_id AND p.owner_key = $4
+        WHERE t.plot_id = $1 AND t.tile = $2 AND t.nonce = $3 AND t.owner_key = $4), $5)`, args: [pid, r.tile, r.nonce, key, now] });
+      extra.push({ sql: 'DELETE FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3', args: [pid, r.tile, r.nonce] });
+    }
+    const first = ready[0]!; const tk = `${pid}:${first.tile}:${first.nonce}`; const pool = this.pool;
+    let r: Promise<void> | false;
+    try { r = ls.adjust(name, deltas, extra, { pool: this.pool as never, committed: async () => ((await pool.query('SELECT 1 FROM kitchen_harvests WHERE tile_key = $1', [tk])).rows.length > 0) }); }
+    catch (e) { throw new FarmError((e as Error).message || 'Storage is offline right now.'); }
+    if (r === false) throw new FarmError('Could not store that.');
+    try { await r; } catch (e) {
+      if (isOutcomeUnknown(e)) throw new FarmError('Storage hiccup: your harvest is being confirmed. Nothing will be lost or doubled.');
+      console.error('[farm] pantry harvest failed:', (e as Error).message); throw new FarmError('Already harvested (or storage hiccup). Nothing was lost.');
+    }
     awardXp(name, 'farming', Math.min(400, 10 + Math.round(value / 5)));
     this.onChange?.(pid);
     return { harvested: ready.length, paid: 0, pantry: Object.fromEntries(counts), toFactory: undefined as Array<[string, number]> | undefined, chips: this.bank().account(name).chips };

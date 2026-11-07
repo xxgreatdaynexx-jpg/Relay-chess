@@ -1,4 +1,4 @@
-import { initInventoryFence, refreshFenceTriggers, markReady } from './invFence.js'; // FIRST: sets PGAPPNAME before any pool exists
+import { initInventoryFence, refreshFenceTriggers, markReady, markMapPools } from './invFence.js'; // FIRST: sets PGAPPNAME before any pool exists
 import { initRequests } from './requests.js';
 import { initRoyalties } from './royalty.js';
 import { initPopupStorage } from './popups.js';
@@ -57,6 +57,7 @@ await initLeaderboardStorage();
 await initCheckersLeaderboardStorage();
 await initCasinoStorage();
 await initInventoryFence(); // truck logistics cutover: newest server is the only inventory writer (throws = fail closed, no boot)
+await markMapPools(); // irreversible boundary FIRST: from here no pre-map-pool server may hold inventory writes
 await initMapPools(cityDbUrl(), properties().filter((p) => p.map === 'resort').map((p) => p.id)); // pre-Millionaire restore: one inventory per owner per map (one transaction, idempotent)
 await initSkinStorage();
 await initMarketStorage();

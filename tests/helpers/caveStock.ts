@@ -1,10 +1,11 @@
 /** Test helper: the production cave-stock hooks (server/locmoves.ts wireLocMoves) on a test MinesWorld, backed by a
  *  LocStore on the same pool (rows commit in the bank transaction; memory mirrors only after commit). */
 import { LocStore, setLocStore, type LocPool } from '../../server/locstock';
+import { mineLoc } from '../../shared/inventoryLocations';
 import type { MinesWorld } from '../../server/mines';
 export async function wireCaves(w: MinesWorld, pool: unknown = null): Promise<LocStore> {
   const ls = new LocStore(pool as LocPool | null); await ls.init(); setLocStore(ls);
-  const d = (st: Array<{ type: string; id: string; qty: number }>, cave: string) => st.filter((x) => x.qty > 0).map((x) => ({ loc: `mine:${cave}`, item: `${x.type}:${x.id}`, delta: x.qty }));
+  const d = (st: Array<{ type: string; id: string; qty: number }>, cave: string) => st.filter((x) => x.qty > 0).map((x) => ({ loc: mineLoc(cave), item: `${x.type}:${x.id}`, delta: x.qty }));
   w.cityBin = (a, st, cave) => ls.rowsFor(a, d(st, cave));
   w.cityBinDone = (a, st, cave) => ls.applyMem(a, d(st, cave));
   return ls;
@@ -15,7 +16,7 @@ export async function sellAtWarehouse(w: MinesWorld, ls: LocStore, name: string,
   await w.flush(); // cave stock shows once the bank committed
   const items: Array<{ type: string; id: string; qty: number }> = [];
   for (const [loc, it] of ls.locs(name)) {
-    if (!loc.startsWith('mine:')) continue;
+    if (loc !== 'resort') continue; // (city caves bank straight into the city store)
     for (const x of it) { const r = ls.adjust(name, [{ loc, item: x.item, delta: -x.qty }, { loc: 'warehouse', item: x.item, delta: x.qty }]); if (r) await r; const i = x.item.indexOf(':'); items.push({ type: x.item.slice(0, i), id: x.item.slice(i + 1), qty: x.qty }); }
   }
   if (!items.length) throw new Error('Nothing to sell.');

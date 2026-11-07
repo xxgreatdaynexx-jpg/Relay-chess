@@ -5,9 +5,10 @@
  *
  *   city    -> loc 'warehouse' (the Chud City Warehouse: loc_stock rows + fish/dish rows with loc 'warehouse')
  *   resort  -> loc 'resort'    (the Resort Warehouse: loc_stock rows + fish/dish rows with loc 'resort')
- *   The owner's factory store ('factory': mine_items banked stacks, factory crops, fish/dishes with loc 'factory') is
- *   NOT folded: it is the factory's input/output store on the city map, as banked storage was pre-update; moves between
- *   it and the city warehouse are instant and free (same map).
+ *   The city pool IS the pre-update banked store: its stackables (ore / bar / good / food incl. fillets) live in
+ *   mine_items (the Mines pack the factory produces from and the Mines store sells from, exactly as at 3c5e4c7), so
+ *   there is ONE city inventory and no factory <-> warehouse move. Other city keys (crop:*) and fish / dish rows sit
+ *   under loc 'warehouse'. The old 'factory' location (crops, fish, dishes) folds into it too.
  *   fortmc  -> the Fort McChud store (already a single per-owner map store; untouched here)
  *
  * foldToMapPools() is the one-time forward migration from the per-location model (7eda887) into those pools:
@@ -21,10 +22,13 @@
  *  - legacy HELD entries (rows the 7eda887 migration left untouched: loc IS NULL fish/dishes, kitchen_fillets > 0,
  *    building_inv 'resort_farm') are NOT touched and are listed in the report.
  */
+import { MAX_BANKED_STACK } from '../shared/mines.js';
 export const CITY_POOL = 'warehouse';
 export const RESORT_POOL = 'resort';
 export const FOLD_ID = 'map-pools-v1';
-const LOCK = 7_420_011; // pg_advisory_xact_lock key for the fold
+const LOCK = 7_420_011;
+const PACKED = new Set(['ore', 'bar', 'good', 'food']);
+const BANK_CAP = MAX_BANKED_STACK; // reported only // pg_advisory_xact_lock key for the fold
 
 type Q = { query: (sql: string, args?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>>; rowCount?: number | null }> };
 export type Client = Q & { release?: () => void };
@@ -47,7 +51,7 @@ export function poolOfLoc(loc: string, resortHomes: ReadonlySet<string>): string
 
 export interface FoldReport {
   id: string; already: boolean; conserved: boolean;
-  stacks: number; units: number; fish: number; dishes: number; coral: number; freightRepointed: number;
+  stacks: number; units: number; toBanked: number; overCap: number; fish: number; dishes: number; coral: number; freightRepointed: number;
   unknownLocs: Array<{ table: string; loc: string; n: number }>;
   heldLegacy: { fishNullLoc: number; dishNullLoc: number; fillets: number; resortBarn: number };
 }
@@ -56,9 +60,9 @@ export interface FoldReport {
 async function totals(cl: Q, resortHomes: string[]) {
   const t = new Map<string, number>(); const add = (k: string, n: number) => t.set(k, (t.get(k) ?? 0) + n);
   const homes = new Set(resortHomes);
-  const hub = (loc: string) => (loc === 'factory' ? 'factory' : loc.startsWith('transit:') ? loc : hubOfLocId(loc, homes) ?? `?${loc}`);
+  const hub = (loc: string) => (loc.startsWith('transit:') ? loc : hubOfLocId(loc, homes) ?? `?${loc}`);
   for (const r of (await cl.query('SELECT player_key k, loc, item, qty FROM loc_stock WHERE qty > 0')).rows) add(`${r.k}|${hub(String(r.loc))}|${r.item}`, Number(r.qty));
-  for (const r of (await cl.query('SELECT player_key k, item_type t, item_id i, qty FROM mine_items WHERE qty > 0')).rows) add(`${r.k}|factory|${r.t}:${r.i}`, Number(r.qty));
+  for (const r of (await cl.query('SELECT player_key k, item_type t, item_id i, qty FROM mine_items WHERE qty > 0')).rows) add(`${r.k}|city|${r.t}:${r.i}`, Number(r.qty));
   for (const r of (await cl.query("SELECT player_key k, item, qty FROM building_inv WHERE building = 'coral' AND qty > 0")).rows) add(`${r.k}|resort|${r.item}`, Number(r.qty));
   for (const r of (await cl.query("SELECT player_key k, coalesce(loc,'<null>') loc, species s, (dish IS NOT NULL) d, count(*)::int n, sum(value)::bigint v FROM fish_catches WHERE sold_at IS NULL GROUP BY 1,2,3,4")).rows) { const h = r.loc === '<null>' ? 'held' : hub(String(r.loc)); add(`${r.k}|${h}|${r.d ? 'fdish' : 'fish'}:${r.s}`, Number(r.n)); add(`${r.k}|${h}|value`, Number(r.v)); }
   for (const r of (await cl.query("SELECT player_key k, coalesce(loc,'<null>') loc, recipe s, count(*)::int n, sum(value)::bigint v FROM kitchen_dishes WHERE sold_at IS NULL GROUP BY 1,2,3")).rows) { const h = r.loc === '<null>' ? 'held' : hub(String(r.loc)); add(`${r.k}|${h}|dish:${r.s}`, Number(r.n)); add(`${r.k}|${h}|dvalue`, Number(r.v)); }
@@ -99,15 +103,23 @@ export async function foldToMapPools(pool: FoldPool, resortHomes: string[], opts
     const done = (await cl.query('SELECT report FROM loc_migrations WHERE id = $1', [FOLD_ID])).rows[0];
     if (done) { await cl.query('COMMIT'); return { ...(done.report as FoldReport), already: true }; }
     const before = await totals(cl, resortHomes);
-    const r: FoldReport = { id: FOLD_ID, already: false, conserved: false, stacks: 0, units: 0, fish: 0, dishes: 0, coral: 0, freightRepointed: 0, unknownLocs: [], heldLegacy: { fishNullLoc: 0, dishNullLoc: 0, fillets: 0, resortBarn: 0 } };
+    const r: FoldReport = { id: FOLD_ID, already: false, conserved: false, stacks: 0, units: 0, toBanked: 0, overCap: 0, fish: 0, dishes: 0, coral: 0, freightRepointed: 0, unknownLocs: [], heldLegacy: { fishNullLoc: 0, dishNullLoc: 0, fillets: 0, resortBarn: 0 } };
 
-    // 1) loc_stock stacks -> their map pool. City pack types go to mine_items (the banked store the factory loc reads).
-    const rows = (await cl.query("SELECT player_key, name, loc, item, qty FROM loc_stock WHERE qty > 0 AND loc NOT IN ($1,$2,'factory') ORDER BY player_key, loc, item", [CITY_POOL, RESORT_POOL])).rows;
+    // 1) loc_stock stacks -> their map pool. City stackables (ore/bar/good/food) go to mine_items: the one city store.
+    const rows = (await cl.query("SELECT player_key, name, loc, item, qty FROM loc_stock WHERE qty > 0 AND loc <> $1 ORDER BY player_key, loc, item", [RESORT_POOL])).rows;
     for (const x of rows) {
       const key = String(x.player_key), name = String(x.name), loc = String(x.loc), item = String(x.item), qty = Number(x.qty);
       const to = poolOfLoc(loc, homes);
       if (!to) { r.unknownLocs.push({ table: 'loc_stock', loc, n: qty }); continue; } // left untouched, reported
-      await cl.query(`INSERT INTO loc_stock (player_key, name, loc, item, qty) VALUES ($1,$2,$3,$4,$5)
+      const i = item.indexOf(':'); const type = item.slice(0, i), id = item.slice(i + 1);
+      const banked = to === CITY_POOL && PACKED.has(type);
+      if (!banked && to === loc) continue; // already in its pool
+      if (banked) {
+        const u = await cl.query(`INSERT INTO mine_items (player_key, owner_name, item_type, item_id, qty) VALUES ($1,$2,$3,$4,$5)
+          ON CONFLICT (player_key, item_type, item_id) DO UPDATE SET qty = mine_items.qty + EXCLUDED.qty RETURNING qty`, [key, name, type, id, qty]);
+        if (Number(u.rows[0]!.qty) > BANK_CAP) r.overCap++; // kept in full (never trimmed); only NEW additions see the cap
+        r.toBanked += qty;
+      } else await cl.query(`INSERT INTO loc_stock (player_key, name, loc, item, qty) VALUES ($1,$2,$3,$4,$5)
         ON CONFLICT (player_key, loc, item) DO UPDATE SET qty = loc_stock.qty + EXCLUDED.qty`, [key, name, to, item, qty]);
       const d = await cl.query('DELETE FROM loc_stock WHERE player_key = $1 AND loc = $2 AND item = $3 AND qty = $4', [key, loc, item, qty]);
       if (d.rowCount !== 1) throw new Error(`fold: loc_stock row changed underneath (${key} ${loc} ${item})`);
@@ -122,7 +134,7 @@ export async function foldToMapPools(pool: FoldPool, resortHomes: string[], opts
     }
     // 3) fish / dish rows: only loc changes (identity, species, weight, value, quality kept). NULL loc = legacy held: untouched.
     for (const [table, field] of [['fish_catches', 'fish'], ['kitchen_dishes', 'dishes']] as const) {
-      for (const x of (await cl.query(`SELECT loc, count(*)::int n FROM ${table} WHERE sold_at IS NULL AND loc IS NOT NULL AND loc NOT IN ($1,$2,'factory') AND loc NOT LIKE 'transit:%' GROUP BY loc` /* in-flight rows land via their (re-pointed) shipment */, [CITY_POOL, RESORT_POOL])).rows) {
+      for (const x of (await cl.query(`SELECT loc, count(*)::int n FROM ${table} WHERE sold_at IS NULL AND loc IS NOT NULL AND loc NOT IN ($1,$2) AND loc NOT LIKE 'transit:%' GROUP BY loc` /* in-flight rows land via their (re-pointed) shipment */, [CITY_POOL, RESORT_POOL])).rows) {
         const loc = String(x.loc); const to = poolOfLoc(loc, homes);
         if (!to) { r.unknownLocs.push({ table, loc, n: Number(x.n) }); continue; }
         const u = await cl.query(`UPDATE ${table} SET loc = $2 WHERE loc = $1 AND sold_at IS NULL`, [loc, to]);
@@ -131,7 +143,7 @@ export async function foldToMapPools(pool: FoldPool, resortHomes: string[], opts
     }
     // 4) in-flight freight: re-point the landing location at the destination map's pool (status / qty untouched).
     for (const x of (await cl.query("SELECT id, to_hub, to_loc FROM freight_shipments WHERE status IN ('transit','moving') AND to_loc IS NOT NULL")).rows) {
-      const to = poolOfHub(String(x.to_hub)); if (!to || to === x.to_loc || x.to_loc === 'factory') continue;
+      const to = poolOfHub(String(x.to_hub)); if (!to || to === x.to_loc) continue; // (factory destinations land in the city pool: it is the factory's store)
       const u = await cl.query("UPDATE freight_shipments SET to_loc = $2 WHERE id = $1 AND status IN ('transit','moving') AND to_loc = $3", [x.id, to, x.to_loc]);
       r.freightRepointed += u.rowCount ?? 0;
     }

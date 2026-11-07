@@ -49,13 +49,13 @@ it.skipIf(!url)('fold: conserved, identity-preserving, idempotent, atomic on fai
 
     const ls = await q("SELECT player_key k, loc, item, qty::int FROM loc_stock WHERE qty > 0 ORDER BY 1,2,3");
     expect(ls).toEqual([
-      { k: 'a', loc: 'factory', item: 'crop:wheat', qty: 1 },
       { k: 'a', loc: 'resort', item: 'crop:mango', qty: 4 }, { k: 'a', loc: 'resort', item: 'food:flour', qty: 3 }, { k: 'a', loc: 'resort', item: 'gem:pearl', qty: 2 },
-      { k: 'a', loc: 'warehouse', item: 'crop:wheat', qty: 7 }, { k: 'a', loc: 'warehouse', item: 'food:flour', qty: 6 }, { k: 'a', loc: 'warehouse', item: 'ore:iron', qty: 7 },
-      { k: 'b', loc: 'mystery:x', item: 'ore:iron', qty: 1 }, { k: 'b', loc: 'warehouse', item: 'good:gear', qty: 9 },
+      { k: 'a', loc: 'warehouse', item: 'crop:wheat', qty: 8 }, // farm 7 + old factory location 1: one city inventory
+      { k: 'b', loc: 'mystery:x', item: 'ore:iron', qty: 1 }, // unknown location: untouched, reported
     ]);
+    // the city pool's stackables ARE the banked store (as before Millionaire): warehouse 5 + Frostbite 2 + banked 10
     expect(await q("SELECT player_key k, item_type t, item_id i, qty FROM mine_items ORDER BY 1,2,3")).toEqual([
-      { k: 'a', t: 'ore', i: 'iron', qty: 10 }]); // factory banked store untouched
+      { k: 'a', t: 'food', i: 'flour', qty: 6 }, { k: 'a', t: 'ore', i: 'iron', qty: 17 }, { k: 'b', t: 'good', i: 'gear', qty: 9 }]);
     expect(await q('SELECT id, loc, species, weight_g, value FROM fish_catches ORDER BY 1')).toEqual([
       { id: 'f1', loc: 'warehouse', species: 'bass', weight_g: 900, value: 40 }, { id: 'f2', loc: 'resort', species: 'tuna', weight_g: 5000, value: 300 },
       { id: 'f3', loc: 'warehouse', species: 'bass', weight_g: 700, value: 30 }, { id: 'f4', loc: null, species: 'bass', weight_g: 100, value: 5 }, { id: 'f5', loc: 'transit:s4', species: 'bass', weight_g: 800, value: 35 }]);

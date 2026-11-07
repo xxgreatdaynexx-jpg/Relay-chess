@@ -203,7 +203,7 @@ export class Market {
     if (active >= MAX_LISTINGS) throw new RuleError(`You can have at most ${MAX_LISTINGS} listings.`);
     // Truck logistics: the Market is the Chud City Warehouse. Listings escrow stock that is AT the Warehouse.
     const ls = getLocStore(); const have = ls.qty(name, WAREHOUSE, `${type}:${sid}`);
-    if (have < n) throw new RuleError(`You only have ${have} ${stackName({ type, id: sid })} at the Chud City Warehouse. Truck goods there to list them.`);
+    if (have < n) throw new RuleError(`You only have ${have} ${stackName({ type, id: sid })} in your Chud City stock.`);
     const l: StackListing = { id: randomUUID(), seller: k, sellerName: name.trim(), type, itemId: sid, qty: n, total: n, unit: u, status: 'active', at: Date.now(), sold: 0, origin: WAREHOUSE };
     const r = ls.adjust(name, [{ loc: WAREHOUSE, item: `${type}:${sid}`, delta: -n }], [stackStmt(l)], {
       marker: { sql: 'SELECT 1 FROM market_stack_listings WHERE id = $1', args: [l.id] }, // the listing row exists iff it committed

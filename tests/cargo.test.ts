@@ -9,6 +9,10 @@ import { CARGO, MIN_PAYBACK_DAYS, OWN_TRUCK_MIN_FUEL, PUBLIC_PER_UNIT, TRUCK_UNI
 import { TRUCKS, MODES, truckTravelMs, feeBase } from '../shared/logistics';
 import { BOATS, JETS } from '../shared/fleet';
 import { LAUNCH } from '../shared/launchPopup';
+// Map pools (2026-11-07): the Freight Yard takes no NEW loads in production (Logistics.freightYardClosed). These tests keep
+// covering the retired path's validation + settlement (loads already on the road must still land exactly once).
+import { beforeAll as _ba, afterAll as _aa } from 'vitest';
+_ba(() => { Logistics.freightYardClosed = false; }); _aa(() => { Logistics.freightYardClosed = true; });
 
 const fund = (n: string, amt: number) => getBank().transferConfirmed(n, amt, { key: `f:${n}:${Math.random()}`, game: 'admin' });
 const chips = (n: string) => getBank().account(n).chips;

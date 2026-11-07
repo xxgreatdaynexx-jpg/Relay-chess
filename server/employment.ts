@@ -57,18 +57,22 @@ const parse = (r: Row): W | null => {
 const boxValue = (b: WorkerBox) => Object.entries(b.ores ?? {}).reduce((a, [id, n]) => a + ORES[id as OreId].price * (n ?? 0), 0) + (b.fish ?? []).reduce((a, f) => a + f.value, 0);
 export const cryptoUnit: Unit = () => randomInt(0, 2 ** 32) / 2 ** 32;
 
-/** Real sink: hired miners' ores land AT the cave they work (loc_stock 'mine:<cave>', truck logistics) in the caller's transaction;
- * the in-memory mirror is applied after it commits. Truck them to your factory / the Warehouse from there. */
+/** Real sink (as before Millionaire): hired miners' ores land in the owner's banked store, which on the city map IS the one
+ * city inventory (map pools). Written in the caller's transaction; the in-memory pack is updated after it commits. */
 export function mineOreSink(account: string, cave: string = 'mine'): OreSink {
-  const ls = getLocStore(); if (!ls.loaded) throw new EmployError(MINES_OFFLINE_MSG);
-  const loc = mineLoc(cave); /* each miner's ore lands AT its own cave (The Mine / Frostbite / Magma) */ const d = (items: Array<[OreId, number]>) => items.map(([id, n]) => ({ loc, item: `ore:${id}`, delta: n }));
+  void cave; const m = getMines(); if (m.offline) throw new EmployError(MINES_OFFLINE_MSG);
+  try { getFactory().get(account, Date.now()); } catch { /* settle the factory sim if it has one */ }
+  const pack = m.packOf(account);
   return {
-    room: (id) => Math.max(0, MAX_BANKED_STACK - ls.qty(account, loc, `ore:${id}`)),
+    room: (id) => Math.max(0, MAX_BANKED_STACK - (pack.get(stackKey({ type: 'ore', id }))?.qty ?? 0)),
     async write(cl, items) {
-      for (const [id, n] of items) if (ls.qty(account, loc, `ore:${id}`) + n > MAX_BANKED_STACK) throw new EmployError('Your mine storage is full for that ore.');
-      for (const st of ls.rowsFor(account, d(items))) await cl.query(st.sql, st.args);
+      for (const [id, n] of items) if ((pack.get(stackKey({ type: 'ore', id }))?.qty ?? 0) + n > MAX_BANKED_STACK) throw new EmployError('Your mine storage is full for that ore.');
+      for (const [id, n] of items) await cl.query('INSERT INTO mine_items (player_key, owner_name, item_type, item_id, qty) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (player_key, item_type, item_id) DO UPDATE SET qty = mine_items.qty + EXCLUDED.qty, updated_at = now()', [playerKey(account), account.trim(), 'ore', id, n]);
     },
-    after(items) { ls.applyMem(account, d(items)); },
+    after(items) {
+      for (const [id, n] of items) { const k = stackKey({ type: 'ore', id }); const s = pack.get(k); if (s) s.qty += n; else pack.set(k, { type: 'ore', id, qty: n }); }
+      void m.savePack(account, []).catch(() => {});
+    },
   };
 }
 

@@ -1,5 +1,3 @@
-import { wireCaves, sellAtWarehouse } from './helpers/caveStock';
-import type { LocStore } from '../server/locstock';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
 import { MinesWorld, PgMineStore } from '../server/mines';
@@ -20,15 +18,15 @@ describe('mining leaderboard (server-side, persisted events only)', () => {
   let pool: ReturnType<typeof setup>; let w: MinesWorld; let board: MinesLeaderboard;
   beforeEach(async () => {
     pool = setup(); resetBank(); await getBank().attach(new PgCasinoStore(pool));
-    w = new MinesWorld(); await w.attach(new PgMineStore(pool)); ls = await wireCaves(w, pool); board = new MinesLeaderboard(pool);
+    w = new MinesWorld(); await w.attach(new PgMineStore(pool)); board = new MinesLeaderboard(pool);
   });
-  let ls: LocStore; const settle = async () => { await w.flush(); await getBank().flush(); };
+  const settle = async () => { await w.flush(); await getBank().flush(); };
 
   it('ranks chips from house sales, ore banked, and best single haul', async () => {
     await trip(w, 'a', 'Digger', [{ type: 'ore', id: 'coal', qty: 10 }]);
     await trip(w, 'a2', 'Digger', [{ type: 'ore', id: 'iron', qty: 5 }]); // worth 20: best haul
     await trip(w, 'b', 'Rocky', [{ type: 'ore', id: 'coal', qty: 30 }]);
-    await sellAtWarehouse(w, ls, 'Digger'); await settle();
+    w.sell('Digger', Date.now()); await settle();
     const b = await board.board('all', Date.now(), true);
     expect(b.chips.map((r) => r.name)).toEqual(['Digger']);
     expect(b.chips[0].chips).toBe(30);
@@ -37,7 +35,7 @@ describe('mining leaderboard (server-side, persisted events only)', () => {
   });
 
   it('chips come from the wallet ledger, not the in-memory bank; factory spending is not counted', async () => {
-    await trip(w, 'a', 'Digger', [{ type: 'ore', id: 'iron', qty: 10 }]); await sellAtWarehouse(w, ls, 'Digger');
+    await trip(w, 'a', 'Digger', [{ type: 'ore', id: 'iron', qty: 10 }]); w.sell('Digger', Date.now());
     getBank().transfer('Digger', 500, { key: 'gift:1', game: 'mines', memo: 'not a sale' });
     await settle();
     const fresh = new MinesLeaderboard(pool); // a restarted server reads the same numbers
@@ -45,7 +43,7 @@ describe('mining leaderboard (server-side, persisted events only)', () => {
   });
 
   it('excludes QA- accounts and guests', async () => {
-    await trip(w, 'q', 'QA-Tester', [{ type: 'ore', id: 'coal', qty: 50 }]); await sellAtWarehouse(w, ls, 'QA-Tester');
+    await trip(w, 'q', 'QA-Tester', [{ type: 'ore', id: 'coal', qty: 50 }]); w.sell('QA-Tester', Date.now());
     await trip(w, 'g', null, [{ type: 'ore', id: 'coal', qty: 50 }]);
     await trip(w, 'a', 'Digger', [{ type: 'ore', id: 'coal', qty: 2 }]);
     await settle();
@@ -69,7 +67,7 @@ describe('mining leaderboard (server-side, persisted events only)', () => {
     await trip(w, 'a', 'Digger', [{ type: 'ore', id: 'coal', qty: 4 }]); await settle();
     const r = (await pool.query('SELECT ore_qty, worth FROM mine_banks')).rows;
     expect(r).toEqual([{ ore_qty: 4, worth: 4 }]);
-    expect(Number((await pool.query("SELECT qty FROM loc_stock WHERE loc = 'mine:mine'")).rows[0].qty)).toBe(4); // banked at the cave, same transaction
+    expect((await pool.query('SELECT qty FROM mine_items')).rows[0].qty).toBe(4);
   });
 
   it('memory mode returns an empty board', async () => {

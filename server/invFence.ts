@@ -25,7 +25,10 @@ import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { databaseUrl } from './leaderboard-store.js';
 
-export const FENCE_TOKEN = `chud-inv-${randomUUID()}`;
+/** 'mp' = map-pools generation (Dayne 2026-11-07 revert). Once the database is in map-pool shape (inv_fence.pools), only
+ *  holders with this prefix may ever hold the fence again: an older server can neither take it nor be handed it back. */
+export const MP_PREFIX = 'chud-inv-mp-';
+export const FENCE_TOKEN = `${MP_PREFIX}${randomUUID()}`;
 if (process.env.PGAPPNAME?.startsWith('chud-inv-')) console.warn('[fence] ignoring an inherited fence token; this process uses its own');
 process.env.PGAPPNAME = FENCE_TOKEN; // never reuse an inherited token (two processes must never share one)
 export const fenceToken = () => FENCE_TOKEN;
@@ -34,11 +37,22 @@ export const fenceToken = () => FENCE_TOKEN;
 export const FENCED_TABLES = ['mine_items', 'mine_carried', 'mine_factories', 'factory_v2', 'fish_catches', 'kitchen_dishes', 'kitchen_fillets', 'kitchen_cooks',
   'building_inv', 'freight_shipments', 'loc_stock', 'market_stack_listings', 'farm_tiles', 'fortmc_state', 'loc_migrations'];
 
-export const FENCE_SQL = `
+export const FENCE_SQL = /* sql */ `
 CREATE TABLE IF NOT EXISTS inv_fence (id INT PRIMARY KEY CHECK (id = 1), holder TEXT, mode TEXT NOT NULL DEFAULT 'fenced', epoch BIGINT NOT NULL DEFAULT 0, at BIGINT NOT NULL DEFAULT 0);
 ALTER TABLE inv_fence ADD COLUMN IF NOT EXISTS migrated BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE inv_fence ADD COLUMN IF NOT EXISTS prev_holder TEXT;
 ALTER TABLE inv_fence ADD COLUMN IF NOT EXISTS prev_mode TEXT;
+ALTER TABLE inv_fence ADD COLUMN IF NOT EXISTS pools BOOLEAN NOT NULL DEFAULT false;
+CREATE OR REPLACE FUNCTION inv_fence_mp_guard() RETURNS trigger LANGUAGE plpgsql AS $g$
+BEGIN
+  IF OLD.pools AND NOT NEW.pools THEN RAISE EXCEPTION 'inventory is in map-pool shape: that cannot be undone' USING ERRCODE = 'P0001'; END IF;
+  IF OLD.pools AND (NEW.mode IS DISTINCT FROM 'fenced' OR NEW.holder IS NULL OR NEW.holder NOT LIKE '${MP_PREFIX}%') THEN
+    RAISE EXCEPTION 'inventory is in map-pool shape: an older server may not hold inventory writes' USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NEW;
+END $g$;
+DO $d$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'inv_fence_mp_guard') THEN
+  CREATE TRIGGER inv_fence_mp_guard BEFORE UPDATE ON inv_fence FOR EACH ROW EXECUTE FUNCTION inv_fence_mp_guard(); END IF; END $d$;
 CREATE OR REPLACE FUNCTION inv_fence_check() RETURNS trigger LANGUAGE plpgsql AS $f$
 DECLARE h TEXT; m TEXT;
 BEGIN
@@ -126,6 +140,14 @@ export async function markMigrating(): Promise<void> {
   const r = await pool.query('UPDATE inv_fence SET migrated = true WHERE id = 1 AND holder = $1 AND epoch = $2', [FENCE_TOKEN, epoch]);
   if (!r.rowCount) { lost = true; throw new Error('[fence] lost the inventory fence before migrating: not migrating (fail closed)'); }
 }
+/** Irreversible compatibility boundary, set (own txn, as the verified holder) BEFORE the map-pool fold writes anything.
+ *  From then on no pre-map-pool server can take or be handed the fence (inv_fence_mp_guard), so a boot failure after the
+ *  fold keeps inventory fenced (fail closed) until a map-pool server finishes booting. */
+export async function markMapPools(): Promise<void> {
+  if (!pool) return;
+  const r = await pool.query('UPDATE inv_fence SET pools = true, migrated = true WHERE id = 1 AND holder = $1 AND epoch = $2', [FENCE_TOKEN, epoch]);
+  if (!r.rowCount) { lost = true; throw new Error('[fence] lost the inventory fence before the map-pool fold: not folding (fail closed)'); }
+}
 let unhook = () => {};
 export function markReady() { ready = true; unhook(); }
 /** Pre-ready failure: hand the fence back only when provably safe (see header). Returns what happened. */
@@ -133,7 +155,8 @@ export async function releaseIfPreReady(why: string): Promise<'released' | 'kept
   if (!pool || !held || ready) return 'not-held';
   try {
     const r = await pool.query(`UPDATE inv_fence SET holder = prev_holder, mode = prev_mode, prev_holder = NULL, prev_mode = NULL, at = $3
-      WHERE id = 1 AND holder = $1 AND epoch = $2 AND prev_mode IS NOT NULL AND (prev_mode = 'fenced' OR NOT migrated) RETURNING mode`, [FENCE_TOKEN, epoch, Date.now()]);
+      WHERE id = 1 AND holder = $1 AND epoch = $2 AND prev_mode IS NOT NULL AND (prev_mode = 'fenced' OR NOT migrated)
+      AND (NOT pools OR (prev_mode = 'fenced' AND prev_holder LIKE '${MP_PREFIX}%')) RETURNING mode`, [FENCE_TOKEN, epoch, Date.now()]);
     held = false;
     if (r.rowCount) { console.error(`[fence] ${why}: fence handed back to the previous server (${String(r.rows[0]!.mode)})`); return 'released'; }
     console.error(`[fence] ${why}: fence KEPT (database already migrated or another boot took it): inventory writes stay refused until a new server finishes booting`);

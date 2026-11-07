@@ -1,10 +1,11 @@
 /**
- * Real PostgreSQL: per-location stock + truck/plane/ship legs. Every step runs in a separate process (a fresh server instance)
+ * Real PostgreSQL: map pools (one inventory per owner per map) + plane/ship cross-map legs. Every step runs in a separate process (a fresh server instance)
  * against one disposable local database, so restarts and two concurrent instances are real. Local DB only.
  * MAYOR_LAWS_TEST_DATABASE_URL=postgres://...@127.0.0.1/postgres
  */
 import { expect, it } from 'vitest';
 import pg from 'pg';
+import { FOLD_PREP } from '../server/mapPools.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 const run = promisify(execFile);
@@ -12,89 +13,82 @@ const url = process.env.MAYOR_LAWS_TEST_DATABASE_URL;
 const A = 'QA-LmA', B = 'QA-LmB', C = 'QA-LmC';
 const RESORT_HOME = 'r:beachhouse:1', CITY_HOME = 'b:house:-691:-188';
 
-it.skipIf(!url)('real PostgreSQL: legacy->factory migration, atomic dispatch, map pools (instant same-map, plane/ship cross-map), sale from either map warehouse, exactly-once arrival across restart + 2 instances', async () => {
+it.skipIf(!url)('real PostgreSQL: production boot (fence -> boundary -> fold -> stores -> no legacy re-migration), one city store (sell without moving), plane/ship only cross-map, atomic dispatch, exactly-once arrival across restart + 2 instances', async () => {
   const u = new URL(url!); if (!['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname)) throw new Error('Only a disposable local test DB is allowed.');
   const dbName = `lm_test_${process.pid}_${Date.now()}`; const root = new pg.Client({ connectionString: url }); await root.connect(); await root.query(`CREATE DATABASE ${dbName}`);
-  const dbu = new URL(url!); dbu.pathname = `/${dbName}`; const DB = dbu.toString(); const db = new pg.Pool({ connectionString: DB });
+  const dbu = new URL(url!); dbu.pathname = `/${dbName}`; const DB = dbu.toString(); const db = new pg.Pool({ connectionString: DB }); db.on('error', () => {});
   const step = async (name: string, arg: unknown = {}, offset = 0) => {
     const { stdout } = await run('npx', ['tsx', 'tests/fixtures/locmoves-pg-step.ts', name, JSON.stringify(arg)], { env: { ...process.env, DATABASE_URL: DB, NODE_ENV: 'test', LM_CLOCK_OFFSET: String(offset) }, maxBuffer: 1 << 24 });
     const line = stdout.split('\n').find((l) => l.startsWith('RESULT ')); if (!line) throw new Error(`step ${name}: no result\n${stdout}`); return JSON.parse(line.slice(7));
   };
-  const owners = (m: { held: Array<{ owner: string }> }) => [...new Set(m.held.map((h) => h.owner))];
   const q = async (sql: string, a: unknown[] = []) => (await db.query(sql, a)).rows;
+  const ok = (r: { res: Array<{ ok: boolean; error?: string }> }) => r.res.map((x) => x.ok || x.error);
   try {
+    // ---- the live cdcea58 shape (per-location, legacy->factory already migrated), written by the old server
+    await q(FOLD_PREP);
+    await q(`INSERT INTO loc_stock VALUES ('qa-lma',$1,'warehouse','ore:copper',20),('qa-lma',$1,'mine:frost','ore:iron',2),('qa-lma',$1,'factory','crop:wheat',3)`, [A]);
+    await q("INSERT INTO mine_items (player_key, owner_name, item_type, item_id, qty) VALUES ('qa-lma',$1,'ore','copper',300)", [A]);
+    await q(`INSERT INTO fish_catches (id,player_key,name,species,weight_g,value,caught_at,loc) VALUES ('fa1','qa-lma',$1,'bass',900,40,1,'factory'),('fa2','qa-lma',$1,'trout',500,20,1,'fishing:lake'),('fb1','qa-lmb',$2,'bass',700,30,1,NULL)`, [A, B]);
+    await q("INSERT INTO kitchen_fillets VALUES ('qa-lmb','fish',2)");
+    await q("INSERT INTO kitchen_dishes (id,player_key,name,recipe,quality,value,cooked_at,loc) VALUES ('da1','qa-lma',$1,'pancakes',0.9,55,1,$2)", [A, `kitchen:${CITY_HOME}`]);
+    // ---- the new server boots: fence, irreversible boundary, fold (one transaction), then every store loads
+    expect(await step('boot')).toEqual({ ok: true });
+    expect(await q("SELECT item_type, item_id, qty FROM mine_items WHERE player_key='qa-lma' ORDER BY 1,2")).toEqual([{ item_type: 'ore', item_id: 'copper', qty: 320 }, { item_type: 'ore', item_id: 'iron', qty: 2 }]);
+    expect(await q("SELECT loc, item, qty::int FROM loc_stock WHERE qty > 0 ORDER BY 1,2")).toEqual([{ loc: 'warehouse', item: 'crop:wheat', qty: 3 }]);
+    expect(await q("SELECT id, loc, weight_g FROM fish_catches ORDER BY 1")).toEqual([{ id: 'fa1', loc: 'warehouse', weight_g: 900 }, { id: 'fa2', loc: 'warehouse', weight_g: 500 }, { id: 'fb1', loc: null, weight_g: 700 }]);
+    expect(await q("SELECT loc FROM kitchen_dishes")).toEqual([{ loc: 'warehouse' }]);
+    // the old writer is refused, and can not take the fence back
+    await expect(q("INSERT INTO loc_stock VALUES ('qa-lma',$1,'mine:frost','ore:iron',1)", [A])).rejects.toThrow(/inventory fenced/);
+    await expect(q("UPDATE inv_fence SET holder = 'chud-inv-0ld', mode = 'fenced', epoch = epoch + 1")).rejects.toThrow(/map-pool shape/);
+    // a reboot changes nothing (no legacy re-migration: held B fish + fillets stay held, no map guessed)
     await step('boot');
-    // the old (14bad00-style) server keeps writing until cutover: the operator rollback switch opens the fence for it
-    await q("UPDATE inv_fence SET mode = 'open'");
-    // ---- legacy stock: A and C own a factory, B does not (held, untouched)
-    await q("INSERT INTO mine_factories VALUES ('qa-lma',$1,1,0),('qa-lmc',$2,1,0)", [A, C]);
-    await q("INSERT INTO fish_catches (id,player_key,name,species,weight_g,value,caught_at) VALUES ('fa1','qa-lma',$1,'bass',900,40,1),('fa2','qa-lma',$1,'trout',500,20,1),('fb1','qa-lmb',$2,'bass',700,30,1)", [A, B]);
-    await q("INSERT INTO kitchen_fillets VALUES ('qa-lma','fish',3),('qa-lmb','fish',2)");
-    await q("INSERT INTO kitchen_dishes (id,player_key,name,recipe,quality,value,cooked_at) VALUES ('da1','qa-lma',$1,'pancakes',0.9,55,1)", [A]);
-    await q("CREATE TABLE IF NOT EXISTS properties (id TEXT PRIMARY KEY, owner_key TEXT NOT NULL, owner_name TEXT NOT NULL, price BIGINT NOT NULL, bought_at BIGINT NOT NULL, arrears INT NOT NULL DEFAULT 0, tax_paid BIGINT NOT NULL DEFAULT 0, deed TEXT)");
-    await q("INSERT INTO properties (id,owner_key,owner_name,price,bought_at) VALUES ($1,'qa-lma',$3,1,1),($2,'qa-lma',$3,1,1)", [RESORT_HOME, CITY_HOME, A]);
-    const m1 = await step('migrate'); // the new server boots: re-fences, then migrates
-    // a stale/old writer (any other connection, e.g. the old instance during deploy overlap) is now refused, fail closed
-    await expect(q("INSERT INTO mine_items (player_key, owner_name, item_type, item_id, qty) VALUES ('qa-lma',$1,'ore','gold',1)", [A])).rejects.toThrow(/inventory fenced/);
-    await expect(q("UPDATE kitchen_fillets SET qty = qty + 1")).rejects.toThrow(/inventory fenced/); expect(m1).toMatchObject({ fish: 2, dishes: 1, fillets: 3, conserved: true }); expect(owners(m1)).toEqual(['qa-lmb']); // B has no factory: held (fish + fillets), reported
-    const m2 = await step('remigrate'); expect(m2).toMatchObject({ fish: 0, dishes: 0, fillets: 0, conserved: true }); expect(owners(m2)).toEqual(['qa-lmb']); // idempotent
-    expect(await q("SELECT id, loc, species, weight_g, value FROM fish_catches ORDER BY id")).toEqual([
-      { id: 'fa1', loc: 'factory', species: 'bass', weight_g: 900, value: 40 }, { id: 'fa2', loc: 'factory', species: 'trout', weight_g: 500, value: 20 }, { id: 'fb1', loc: null, species: 'bass', weight_g: 700, value: 30 }]);
-    expect(await q("SELECT player_key, item_id, qty FROM mine_items WHERE item_type = 'food'")).toEqual([{ player_key: 'qa-lma', item_id: 'fillet_fish', qty: 3 }]);
-    expect(await q("SELECT player_key, qty FROM kitchen_fillets ORDER BY 1")).toEqual([{ player_key: 'qa-lma', qty: 0 }, { player_key: 'qa-lmb', qty: 2 }]); // moved once, held owner untouched
-    // ---- funds, a truck, factory ore
-    const f = await step('fund', { names: [A, B, C], amt: 100_000 }); const c0 = f[A].chips;
-    const t = await step('buyTruck', { name: A, truck: 'pickup' }); expect(t.ok).toBe(true); const truckId = t.r.truck.id; const c1 = c0 - t.r.price;
-    await step('stack', { items: [[A, 'ore', 'copper', 300], [C, 'ore', 'copper', 20]] });
-    // ---- concurrent dispatch: one truck, 300 ore; two 200 truck legs + a 50 hired leg in parallel
+    expect(await q("SELECT loc FROM fish_catches WHERE id = 'fb1'")).toEqual([{ loc: null }]); expect(await q('SELECT qty FROM kitchen_fillets')).toEqual([{ qty: 2 }]);
+    expect(await q("SELECT item_id, qty FROM mine_items WHERE player_key='qa-lma' AND item_id = 'copper'")).toEqual([{ item_id: 'copper', qty: 320 }]);
+    // ---- one city inventory: My places shows the factory's store AS the Chud City Warehouse; only map warehouses are destinations
+    const f = await step('fund', { names: [A, C], amt: 100_000 }); const c0 = f[A].chips;
+    const v = await step('view', { name: A });
+    const wh = v.locations.find((l: { id: string }) => l.id === 'warehouse');
+    expect(Object.fromEntries(wh.items.map((x: { item: string; qty: number }) => [x.item, x.qty]))).toMatchObject({ 'ore:copper': 320, 'ore:iron': 2, 'crop:wheat': 3, 'fish:bass': 1, 'fish:trout': 1, 'dish:pancakes': 1 });
+    expect(v.locations.filter((l: { dest: boolean }) => l.dest).map((l: { id: string }) => l.id).sort()).toEqual(['resort', 'warehouse']);
+    expect(v.locations.some((l: { id: string }) => l.id === 'factory')).toBe(false);
+    // ---- sell straight from the city store: no move first
+    expect((await step('sell', { name: A, item: 'ore:copper', qty: 20 })).ok).toBe(true);
+    expect(await q("SELECT qty FROM mine_items WHERE player_key='qa-lma' AND item_id='copper'")).toEqual([{ qty: 300 }]);
+    // ---- same-map / factory moves have nothing to do; trucks never cross maps; ship / plane do
+    const pre = (await step('snap', { names: [A] }))[A].chips;
+    const deny = await step('move', { names: [A], moves: [
+      { name: A, from: 'factory', to: 'warehouse', item: 'ore:copper', qty: 5, mode: 'hired' },
+      { name: A, from: 'warehouse', to: 'factory', item: 'ore:copper', qty: 5, mode: 'hired' },
+      { name: A, from: 'warehouse', to: 'resort', item: 'ore:copper', qty: 5, mode: 'truck' },
+      { name: A, from: 'warehouse', to: `kitchen:${RESORT_HOME}`, item: 'ore:copper', qty: 5, mode: 'ship' }] });
+    expect(deny.res.map((r: { ok: boolean }) => r.ok)).toEqual([false, false, false, false]); expect(deny.snap[A].chips).toBe(pre); void c0; // refused: nothing charged
     const mv = await step('move', { names: [A], moves: [
-      { name: A, from: 'factory', to: 'warehouse', item: 'ore:copper', qty: 200, mode: 'truck' },
-      { name: A, from: 'factory', to: 'warehouse', item: 'ore:copper', qty: 200, mode: 'truck' },
-      { name: A, from: 'factory', to: 'warehouse', item: 'ore:copper', qty: 50, mode: 'hired' }] });
-    expect(mv.res.filter((r: { ok: boolean }) => r.ok)).toHaveLength(2);
-    const fees = mv.res.filter((r: { ok: boolean }) => r.ok).reduce((s: number, r: { r: { shipment: { fee: number } } }) => s + r.r.shipment.fee, 0);
-    expect(mv.snap[A].chips).toBe(c1 - fees); expect(Object.fromEntries(mv.snap[A].factory)['ore:copper']).toBe(50); // source unavailable while in transit
-    expect(await q("SELECT count(*)::int n FROM freight_shipments WHERE status='moving' AND kind='loc'")).toEqual([{ n: 2 }]);
-    expect(await q("SELECT count(*)::int n FROM freight_shipments WHERE status='transit' AND kind='loc'")).toEqual([{ n: 0 }]); // rollback barrier: 14bad00 loads status='transit' only, never a loc leg
-    // ---- map pools (pre-Millionaire restore): same-map moves are instant + free whatever mode the client sends (no
-    // truck needed, any vehicle id ignored); kitchens are no destination any more; trucks never cross maps; held stock stays held
-    const deny = await step('move', { names: [A, C], moves: [
-      { name: A, from: 'factory', to: 'warehouse', item: 'ore:copper', qty: 5, mode: 'truck' },
-      { name: C, from: 'factory', to: 'warehouse', item: 'ore:copper', qty: 5, mode: 'truck', vehicle: truckId },
-      { name: A, from: 'factory', to: `kitchen:${RESORT_HOME}`, item: 'fish:bass', qty: 1, mode: 'plane' },
-      { name: A, from: 'factory', to: 'resort', item: 'ore:copper', qty: 1, mode: 'truck' },
-      { name: B, from: 'factory', to: 'warehouse', item: 'fish:bass', qty: 1, mode: 'hired' }] });
-    expect(deny.res.map((r: { ok: boolean }) => r.ok)).toEqual([true, true, false, false, false]);
-    expect(deny.snap[A].chips).toBe(mv.snap[A].chips); expect(Object.fromEntries(deny.snap[C].factory)['ore:copper']).toBe(15);
-    // ---- fish keep species/weight: plane to the Resort Warehouse (cross-map), instant to the city warehouse
-    const fm = await step('move', { names: [A], moves: [
-      { name: A, from: 'factory', to: 'resort', item: 'fish:trout', qty: 1, mode: 'plane' },
-      { name: A, from: 'factory', to: 'warehouse', item: 'fish:bass', qty: 1, mode: 'hired' },
-      { name: A, from: 'factory', to: 'warehouse', item: 'dish:pancakes', qty: 1, mode: 'hired' }] });
-    expect(fm.res.map((r: { ok: boolean; error?: string }) => r.ok || r.error)).toEqual([true, true, true]);
-    expect(fm.snap[A].chips).toBeLessThan(deny.snap[A].chips); // only the plane leg charged a fee
-    expect((await q("SELECT loc FROM fish_catches WHERE id IN ('fa1','fa2') ORDER BY id")).every((r) => String(r.loc).startsWith('transit:'))).toBe(true);
-    // ---- nothing has landed yet: nothing to sell
-    expect((await step('sell', { name: A, item: 'ore:copper', qty: 1 })).ok).toBe(false);
+      { name: A, from: 'warehouse', to: 'resort', item: 'ore:copper', qty: 100, mode: 'ship' },
+      { name: A, from: 'warehouse', to: 'resort', item: 'fish:trout', qty: 1, mode: 'plane' }] });
+    expect(ok(mv)).toEqual([true, true]);
+    // concurrent dispatch of the same stock: 200 left, two 150 legs at once -> exactly one
+    const race = await step('move', { names: [A], moves: [
+      { name: A, from: 'warehouse', to: 'resort', item: 'ore:copper', qty: 150, mode: 'ship' },
+      { name: A, from: 'warehouse', to: 'resort', item: 'ore:copper', qty: 150, mode: 'ship' }] });
+    expect(race.res.filter((r: { ok: boolean }) => r.ok)).toHaveLength(1);
+    expect(await q("SELECT qty FROM mine_items WHERE player_key='qa-lma' AND item_id='copper'")).toEqual([{ qty: 50 }]);
+    expect(await q("SELECT count(*)::int n FROM freight_shipments WHERE status='moving' AND kind='loc'")).toEqual([{ n: 3 }]);
+    expect((await step('sell', { name: A, from: 'resort', item: 'ore:copper', qty: 1 })).ok).toBe(false); // nothing landed yet
     // ---- restart + two instances tick at once after arrival time: credited exactly once
-    const late = 6 * 3_600_000; const [t1, t2] = await Promise.all([step('tick', { names: [A] }, late), step('tick', { names: [A] }, late)]);
+    const late = 30 * 3_600_000; const [t1, t2] = await Promise.all([step('tick', { names: [A] }, late), step('tick', { names: [A] }, late)]);
     const live = [t1, t2].filter((t) => !t.bootError); expect(live.length).toBeGreaterThanOrEqual(1);
-    expect(Math.min(...live.map((t) => t.transit))).toBe(0);
-    expect(await q("SELECT loc, item, qty::int AS qty FROM loc_stock WHERE player_key='qa-lma' ORDER BY 1,2")).toEqual([{ loc: 'warehouse', item: 'ore:copper', qty: 255 }]);
-    expect(await q("SELECT id, loc, species, weight_g FROM fish_catches WHERE player_key='qa-lma' ORDER BY id")).toEqual([
-      { id: 'fa1', loc: 'warehouse', species: 'bass', weight_g: 900 }, { id: 'fa2', loc: 'resort', species: 'trout', weight_g: 500 }]);
-    expect(await q("SELECT loc FROM kitchen_dishes WHERE id='da1'")).toEqual([{ loc: 'warehouse' }]);
-    expect(await q("SELECT status, count(*)::int n FROM freight_shipments GROUP BY 1")).toEqual([{ status: 'delivered', n: 7 }]);
-    const again = await step('tick', { names: [A] }, late); expect(again.transit).toBe(0); // a third boot credits nothing more
-    expect(await q("SELECT qty::int AS qty FROM loc_stock WHERE player_key='qa-lma'")).toEqual([{ qty: 255 }]);
-    // ---- sale from either map warehouse: ore, fish, dish in the city; the trout from the Resort Warehouse
-    const s1 = await step('sell', { name: A, item: 'ore:copper', qty: 50 }); expect(s1.ok).toBe(true);
-    expect(await q("SELECT qty::int AS qty FROM loc_stock WHERE player_key='qa-lma'")).toEqual([{ qty: 205 }]);
+    expect(await q("SELECT loc, item, qty::int AS qty FROM loc_stock WHERE player_key='qa-lma' AND qty > 0 ORDER BY 1,2")).toEqual([{ loc: 'resort', item: 'ore:copper', qty: 250 }, { loc: 'warehouse', item: 'crop:wheat', qty: 3 }]);
+    expect(await q("SELECT id, loc, weight_g FROM fish_catches WHERE player_key='qa-lma' ORDER BY id")).toEqual([{ id: 'fa1', loc: 'warehouse', weight_g: 900 }, { id: 'fa2', loc: 'resort', weight_g: 500 }]);
+    expect(await q("SELECT status, count(*)::int n FROM freight_shipments GROUP BY 1")).toEqual([{ status: 'delivered', n: 3 }]);
+    await step('tick', { names: [A] }, late); // a third boot credits nothing more
+    expect(await q("SELECT qty::int AS qty FROM loc_stock WHERE player_key='qa-lma' AND loc='resort'")).toEqual([{ qty: 250 }]);
+    // ---- sales from either map's warehouse, food identity kept
+    expect((await step('sell', { name: A, from: 'resort', item: 'ore:copper', qty: 50 })).ok).toBe(true);
+    expect(await q("SELECT qty::int AS qty FROM loc_stock WHERE player_key='qa-lma' AND loc='resort'")).toEqual([{ qty: 200 }]);
     expect((await step('sell', { name: A, item: 'fish:bass', qty: 1 })).ok).toBe(true);
     expect((await step('sell', { name: A, item: 'dish:pancakes', qty: 1 })).ok).toBe(true);
-    expect((await step('sell', { name: A, item: 'fish:trout', qty: 1 })).ok).toBe(false); // not in the city warehouse
+    expect((await step('sell', { name: A, item: 'fish:trout', qty: 1 })).ok).toBe(false); // it is at the resort now
     expect(await step('sell', { name: A, from: 'resort', item: 'fish:trout', qty: 1 })).toMatchObject({ ok: true });
-    expect((await step('sell', { name: A, from: 'factory', item: 'ore:copper', qty: 1 })).ok).toBe(false); // the factory is no sale point
-    const end = await step('snap', { names: [A] }); expect(end[A].chips).toBeGreaterThan(deny.snap[A].chips);
+    expect((await step('sell', { name: A, from: 'factory', item: 'ore:copper', qty: 1 })).ok).toBe(false); // no second city store
   } finally { await db.end(); await root.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`).catch(() => {}); await root.end(); }
-}, 240_000);
+}, 300_000);

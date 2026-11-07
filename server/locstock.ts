@@ -37,6 +37,25 @@ export const mustOne = (sql: string, args: unknown[]): Stmt => ({ sql: `WITH u A
 
 export interface LocDelta { loc: string; item: string; delta: number }
 
+/** Map pools (Dayne 2026-11-07): the city map has ONE inventory. Its stackable goods (ore / bar / good / food incl.
+ *  fillets) ARE the pre-Millionaire banked store (mine_items, the Mines pack the factory produces from and the Mines
+ *  store sells from), so 'warehouse' stacks of those types are served by that store, not by loc_stock. Crops, other
+ *  keys, fish rows and dishes stay in loc_stock / their rows under 'warehouse'. Wired in locmoves.wireLocMoves(). */
+export interface CityPack {
+  qty(name: string, type: string, id: string): number;
+  stacks(name: string): Array<{ type: string; id: string; qty: number }>;
+  /** All-or-nothing apply + persist with `extra` rows in the pack's own transaction (false = short somewhere). */
+  adjust(name: string, deltas: Array<{ type: string; id: string; delta: number }>, extra: Stmt[], opts: { after?: Promise<unknown>; committed?: () => Promise<boolean>; onLate?: (ok: boolean) => void; pool?: LocPool | null }): Promise<void> | false;
+}
+export const CITY = 'warehouse';
+let defaultCityPack: CityPack | null = null;
+/** Registered by mines.ts at import: the city pack is always the CURRENT Mines world's banked store. */
+export const setDefaultCityPack = (c: CityPack) => { defaultCityPack = c; };
+const PACKED = new Set(['ore', 'bar', 'good', 'food']);
+const split = (item: string) => { const i = item.indexOf(':'); return { type: item.slice(0, i), id: item.slice(i + 1) }; };
+/** Is this (loc, item) held in the city pack? */
+export const packed = (loc: string, item: string) => loc === CITY && PACKED.has(split(item).type);
+
 export class LocStore {
   /** player_key -> loc -> item -> qty */
   mem = new Map<string, Map<string, Map<string, number>>>();
@@ -47,6 +66,10 @@ export class LocStore {
   /** In-memory (dev/tests) is ready at once; a DB-backed store refuses every read/write until it has loaded. */
   loaded: boolean;
   constructor(readonly pool: LocPool | null) { this.loaded = !pool; }
+  /** The city pack (set at wiring). Without it, city stackables are refused (fail closed), never put in loc_stock. */
+  cityPack: CityPack | null = null;
+  private get cp(): CityPack | null { return this.cityPack ?? defaultCityPack; }
+  private pack(): CityPack { const c = this.cp; if (!c) throw new LocError('Storage is reconnecting. Your goods are safe, try again in a minute.'); return c; }
   async init() {
     if (!this.pool) { this.loaded = true; return; }
     await this.pool.query(LOC_MIGRATION);
@@ -56,9 +79,13 @@ export class LocStore {
     this.loaded = true;
   }
   private bucket(k: string, loc: string) { let p = this.mem.get(k); if (!p) { p = new Map(); this.mem.set(k, p); } let b = p.get(loc); if (!b) { b = new Map(); p.set(loc, b); } return b; }
-  qty(name: string, loc: string, item: string) { return this.mem.get(playerKey(name))?.get(loc)?.get(item) ?? 0; }
-  at(name: string, loc: string): Array<{ item: string; qty: number }> { return [...(this.mem.get(playerKey(name))?.get(loc) ?? new Map())].filter(([, q]) => q > 0).map(([item, qty]) => ({ item, qty })); }
-  locs(name: string): Map<string, Array<{ item: string; qty: number }>> { const out = new Map<string, Array<{ item: string; qty: number }>>(); for (const loc of this.mem.get(playerKey(name))?.keys() ?? []) { const a = this.at(name, loc); if (a.length) out.set(loc, a); } return out; }
+  qty(name: string, loc: string, item: string) { if (packed(loc, item)) { const x = split(item); return this.cp ? this.cp.qty(name, x.type, x.id) : 0; } return this.mem.get(playerKey(name))?.get(loc)?.get(item) ?? 0; }
+  at(name: string, loc: string): Array<{ item: string; qty: number }> {
+    const own = [...(this.mem.get(playerKey(name))?.get(loc) ?? new Map())].filter(([item, q]) => q > 0 && !packed(loc, item)).map(([item, qty]) => ({ item, qty }));
+    const cp = this.cp; if (loc !== CITY || !cp) return own;
+    return [...own, ...cp.stacks(name).filter((s) => s.qty > 0 && PACKED.has(s.type)).map((s) => ({ item: `${s.type}:${s.id}`, qty: s.qty }))];
+  }
+  locs(name: string): Map<string, Array<{ item: string; qty: number }>> { const out = new Map<string, Array<{ item: string; qty: number }>>(); for (const loc of new Set([...(this.mem.get(playerKey(name))?.keys() ?? []), CITY])) { const a = this.at(name, loc); if (a.length) out.set(loc, a); } return out; }
   /** All holders of a location kind (e.g. every warehouse stack, for net worth). */
   all(): Array<{ key: string; loc: string; item: string; qty: number }> { const out = []; for (const [key, p] of this.mem) for (const [loc, b] of p) for (const [item, qty] of b) if (qty > 0) out.push({ key, loc, item, qty }); return out; }
   private guard() { if (!this.loaded) throw new LocError('Storage is reconnecting. Your goods are safe, try again in a minute.'); }
@@ -66,15 +93,16 @@ export class LocStore {
   check(name: string, deltas: LocDelta[]): boolean {
     const k = playerKey(name); const sum = new Map<string, number>();
     for (const d of deltas) { if (!Number.isSafeInteger(d.delta)) return false; parseLoc(d.loc); const kk = `${d.loc}\u0000${d.item}`; sum.set(kk, (sum.get(kk) ?? 0) + d.delta); }
-    for (const [kk, d] of sum) { const [loc, item] = kk.split('\u0000') as [string, string]; if ((this.mem.get(k)?.get(loc)?.get(item) ?? 0) + d < 0) return false; }
+    for (const [kk, d] of sum) { const [loc, item] = kk.split('\u0000') as [string, string]; if (this.qty(name, loc, item) + d < 0) return false; void k; }
     return true;
   }
   /** Memory only (after a transaction that already contained rowsFor()). */
   applyMem(name: string, deltas: LocDelta[], sign = 1) {
+    if (deltas.some((d) => packed(d.loc, d.item))) throw new LocError('city stackables go through adjust() (the city pack), never raw rows');
     const k = playerKey(name); this.names.set(k, name.trim());
     for (const d of deltas) { const b = this.bucket(k, d.loc); const n = (b.get(d.item) ?? 0) + sign * d.delta; if (n > 0) b.set(d.item, n); else b.delete(d.item); }
   }
-  rowsFor(name: string, deltas: LocDelta[]): Stmt[] { const k = playerKey(name); return deltas.filter((d) => d.delta !== 0).map((d) => locStmt(k, name.trim(), d.loc, d.item, d.delta)); }
+  rowsFor(name: string, deltas: LocDelta[]): Stmt[] { if (deltas.some((d) => packed(d.loc, d.item))) throw new LocError('city stackables go through adjust() (the city pack), never raw rows'); const k = playerKey(name); return deltas.filter((d) => d.delta !== 0).map((d) => locStmt(k, name.trim(), d.loc, d.item, d.delta)); }
   /**
    * Apply deltas now (all-or-nothing: false = short somewhere, nothing changed) and commit them with `extra` in ONE
    * transaction. The returned promise rejects if the transaction failed (memory is reverted first).
@@ -82,6 +110,8 @@ export class LocStore {
   adjust(name: string, deltas: LocDelta[], extra: Stmt[] = [], opts: AdjustOpts = {}): Promise<void> | false {
     this.guard();
     if (!this.check(name, deltas)) return false;
+    const pk = deltas.filter((d) => packed(d.loc, d.item) && d.delta !== 0);
+    if (pk.length) return this.adjustPacked(name, pk, deltas.filter((d) => !packed(d.loc, d.item)), extra, opts);
     this.applyMem(name, deltas);
     const rows = [...this.rowsFor(name, deltas), ...extra];
     if (!this.pool) return Promise.resolve();
@@ -105,9 +135,22 @@ export class LocStore {
       throw new OutcomeUnknown(e as Error);
     });
   }
+  /** City stackables (+ any loc_stock deltas + extra rows) commit in the city pack's ONE transaction. Memory of the
+   *  loc_stock part is applied first and reverted only when the write provably did not commit. */
+  private adjustPacked(name: string, pk: LocDelta[], rest: LocDelta[], extra: Stmt[], opts: AdjustOpts): Promise<void> | false {
+    const pack = this.pack(); const pool = this.pool;
+    const committed = opts.committed ?? (opts.marker && pool ? markerCheck(pool, opts.marker) : undefined);
+    this.applyMem(name, rest);
+    const rows = [...this.rowsFor(name, rest), ...extra];
+    const r = pack.adjust(name, pk.map((d) => ({ ...split(d.item), delta: d.delta })), rows, { after: opts.after, committed, pool: opts.pool ?? pool,
+      onLate: (ok) => { if (!ok) this.applyMem(name, rest, -1); opts.onLate?.(ok); } });
+    if (r === false) { this.applyMem(name, rest, -1); return false; }
+    return r.catch((e) => { if (!isOutcomeUnknown(e)) this.applyMem(name, rest, -1); throw e; });
+  }
 }
 type Stmt_ = { sql: string; args: unknown[] };
-export type AdjustOpts = { after?: Promise<unknown>; check?: (cl: Q) => Promise<void>;
+export type AdjustOpts = {
+  /** Pool for the rows when the city pack runs memory-only (dev/tests): the caller's own database. */ pool?: LocPool; after?: Promise<unknown>; check?: (cl: Q) => Promise<void>;
   /** Did this write commit? (returns true/false; throws when it can't tell). */ committed?: () => Promise<boolean>;
   /** Or: a SELECT that returns a row iff this write committed. */ marker?: Stmt_;
   /** Late verdict after an OutcomeUnknown (true = it had committed; false = memory was reverted: undo your side too). */ onLate?: (committed: boolean) => void };

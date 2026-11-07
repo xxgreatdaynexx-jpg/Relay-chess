@@ -237,7 +237,7 @@ export class FortMc {
         }
         case 'mine_toggle': { if (!s.mine) throw new FortError('Build the mine first.'); s.mine.on = !s.mine.on; await this.commit(name, s, 0, 'fortmc', 'toggle'); break; }
         // Millionaire Update: no selling at the fort. Everything sells at the Chud City Warehouse: ship it there.
-        case 'sell': throw new FortError('Fort McChud has no market. Use Ship & sell: your goods go by truck to the Chud City Warehouse and sell when they arrive.');
+        case 'sell': throw new FortError('Fort McChud has no market. Use Ship & sell: your goods go by cargo ship or freight plane to the Chud City Warehouse and sell when they arrive.');
         case 'ship_sell': return this.shipSellIn(name, s, b, false);
         case 'ship': return this.shipFactoryIn(name, s, b);
         default: throw new FortError('Unknown action.');

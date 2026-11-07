@@ -18,7 +18,7 @@ import { px, priceIndex } from './price-index.js';
 import { awayFromMarket } from './travel.js';
 import { awardXp, getSkills } from './skills.js';
 import { getMines } from './mines.js';
-import { getLocStore, LOC_MIGRATION } from './locstock.js';
+import { isOutcomeUnknown, getLocStore, LOC_MIGRATION } from './locstock.js';
 import { getLocMoves } from './locmoves.js';
 import { kitchenLoc, WAREHOUSE, FACTORY, isPool } from '../shared/inventoryLocations.js';
 import { getFishing } from './fishing.js';
@@ -67,11 +67,12 @@ export class Cooking {
     const ls = getLocStore(); if (!ls.loaded) { chips?.revert(); throw new CookError('Storage is reconnecting. Your goods are safe, try again in a minute.'); }
     const loc = kitchenLoc(home); const d = deltas.filter((x) => x.delta).map((x) => ({ loc, item: `food:${x.id}`, delta: x.delta }));
     if (!ls.check(name, d)) { chips?.revert(); throw new CookError("You don't have all the ingredients in this kitchen."); }
-    ls.applyMem(name, d);
-    const rows = [...ls.rowsFor(name, d), ...extra]; const pool = this.pool;
-    const run = (async () => { await chips?.after; const cl = await pool.connect(); try { await cl.query('BEGIN'); for (const q of rows) await cl.query(q.sql, q.args); await cl.query('COMMIT'); } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); } })();
-    chips?.bind(run);
-    try { await run; } catch (e) { ls.applyMem(name, d, -1); chips?.revert(); console.error('[cooking] tx failed:', (e as Error).message); throw new CookError('That did not go through. Nothing was used or charged.'); }
+    // Map pools: the city pantry is the one city store (banked food stacks); LocStore routes it and commits `extra` with it.
+    let r: Promise<void> | false;
+    try { r = ls.adjust(name, d, extra, { after: chips?.after, pool: this.pool }); } catch (e) { chips?.revert(); throw new CookError((e as Error).message || 'Storage is reconnecting. Your goods are safe, try again in a minute.'); }
+    if (r === false) { chips?.revert(); throw new CookError("You don't have all the ingredients in this kitchen."); }
+    chips?.bind(r);
+    try { await r; } catch (e) { if (!isOutcomeUnknown(e)) chips?.revert(); console.error('[cooking] tx failed:', (e as Error).message); throw new CookError(isOutcomeUnknown(e) ? 'Storage hiccup: confirming that one. Nothing will be lost or doubled.' : 'That did not go through. Nothing was used or charged.'); }
   }
   /** Which of your homes this kitchen is: the requested one (must be yours), else your first home. */
   async homeOf(name: string, want?: unknown): Promise<string> {

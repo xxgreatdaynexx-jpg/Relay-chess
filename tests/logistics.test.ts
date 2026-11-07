@@ -6,6 +6,10 @@ import { setPriceIndexForTest } from '../server/price-index';
 import { Logistics } from '../server/logistics';
 import { MODES, TRUCKS, feeBase, nextDeparture, vehiclePose, arrivalOf, HUB_MAPS } from '../shared/logistics';
 import { LAUNCH } from '../shared/launchPopup';
+// Map pools (2026-11-07): the Freight Yard takes no NEW loads in production (Logistics.freightYardClosed). These tests keep
+// covering the retired path's validation + settlement (loads already on the road must still land exactly once).
+import { beforeAll as _ba, afterAll as _aa } from 'vitest';
+_ba(() => { Logistics.freightYardClosed = false; }); _aa(() => { Logistics.freightYardClosed = true; });
 
 const HOUR = 3_600_000;
 const fund = (n: string, amt = 100_000) => getBank().transferConfirmed(n, amt, { key: `test_fund:${n}:${Math.random()}`, game: 'admin' });

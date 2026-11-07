@@ -215,7 +215,11 @@ export class Logistics {
   release(id: string) { this.ships.delete(id); }
 
   /** Send goods. Goods leave storage, the fee (if any) is debited and the shipment row is written, all in one transaction. */
+  static freightYardClosed = true;
   async ship(name: string, b: Record<string, unknown>): Promise<{ trips: number; shipment: Shipment; chips: number | null }> {
+    // Map pools revert (Dayne 2026-11-07): the Freight Yard (same-map factory -> factory loads, added by the Millionaire update)
+    // takes no NEW loads. Loads already on the road still arrive exactly once. Cross-map moves: 🏭 My places (ship / plane).
+    if (Logistics.freightYardClosed) throw new FreightError('The Freight Yard takes no new loads. To move goods to another map, use 🏭 My places (ship or plane).');
     const mode = b.mode; if (!isMode(mode)) throw new FreightError('Pick how to ship it.');
     // Freight Yard goods are banked in Chud City: the origin map is the server's, never the client's.
     const from: HubId = 'city'; const to = b.to; if (!isHub(to)) throw new FreightError('Pick a destination.');

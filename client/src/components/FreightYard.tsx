@@ -43,7 +43,7 @@ export function FreightYard({ onClose, me }: { onClose: () => void; me: string |
     <div className="dealer freight" data-testid="freight-yard" {...backdropDismiss(() => onClose())}>
       <div className="dealer-box" data-drag-panel="freight" onPointerDown={drag.onPointerDown} style={drag.style()} ref={drag.ref}>{drag.handle}
         <header><h3>📦 Chud Logistics</h3>{v?.chips != null && <span className="dealer-chips">{fmt(v.chips)} chips</span>}<button type="button" onClick={onClose} aria-label="Close" data-testid="freight-close">✕</button></header>
-        <nav className="freight-tabs">{(['stock', 'ship', 'store', 'live', 'sales'] as const).map((t) => <button key={t} type="button" className={tab === t ? 'on' : ''} onClick={() => setTab(t)} data-testid={`freight-tab-${t}`}>{t === 'stock' ? '🏭 My places' : t === 'ship' ? '📦 Ship goods' : t === 'store' ? '🚚 Truck store' : t === 'sales' ? '💰 Warehouse sales' : `🗺 On the map (${v?.live.length ?? 0})`}</button>)}</nav>
+        <nav className="freight-tabs">{(['stock', 'live', 'sales'] as Array<'stock' | 'ship' | 'store' | 'live' | 'sales'>) /* map pools: no Freight Yard loads or truck store any more; cross-map moves live in My places */.map((t) => <button key={t} type="button" className={tab === t ? 'on' : ''} onClick={() => setTab(t)} data-testid={`freight-tab-${t}`}>{t === 'stock' ? '🏭 My places' : t === 'ship' ? '📦 Ship goods' : t === 'store' ? '🚚 Truck store' : t === 'sales' ? '💰 Warehouse sales' : `🗺 On the map (${v?.live.length ?? 0})`}</button>)}</nav>
         <div className="freight-body">
           {tab === 'stock' && <section><LocationStock me={me} /></section>}
           {tab === 'sales' && <section><WarehouseSales /></section>}
