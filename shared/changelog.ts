@@ -6,7 +6,7 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-07T16:35:00-06:00', title: 'Mining employees work faster', bullets: [
+  { commit: 'a731fa4', at: '2026-11-07T16:35:00-06:00', title: 'Mining employees work faster', bullets: [
     'Employment Office miners (The Mine, Frostbite Caverns, Magma Depths) now bring in 1 ore every 2 minutes instead of 3: 50% more ore a day. Daily wages and hire fees are unchanged, so each miner earns more profit. Miners you already employ get the faster pace automatically.',
     'Fishers, manual mining, storage limits and the 8-hour away limit are unchanged.',
   ] },
