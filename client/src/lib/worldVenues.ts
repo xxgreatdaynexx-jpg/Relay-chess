@@ -1,6 +1,6 @@
 /**
- * Outskirts venues (shared/venues.ts): the Airport grounds (apron, runway with edge lights, taxi/access roads, two
- * airliners flying a take-off / circuit / landing loop) and the Speedway grounds (oval asphalt with kerbs, start/finish
+ * Outskirts venues (shared/venues.ts): the Airport grounds (apron, runway with edge lights, taxi/access roads, no ambient
+ * aircraft: only live player flights/freight are drawn, by worldFreight.ts) and the Speedway grounds (oval asphalt with kerbs, start/finish
  * chequers, timing-gate posts, access road). The terminal and grandstand buildings are landmark cases in world3d.ts.
  */
 import { xmasOn } from '../../../shared/holiday';
@@ -103,27 +103,14 @@ export function buildVenues(scene: THREE.Scene, { mat, geo }: Mk): { step: (dt: 
   let ban: THREE.Mesh;
   { const [[ax, az], [bx, bz]] = GATES[0]; ban = new THREE.Mesh(geo(new THREE.BoxGeometry(Math.hypot(bx - ax, bz - az), 0.8, 0.2)), mat({ color: 0x15171d, emissive: 0xffffff, emissiveIntensity: 0.08 })); ban.position.set((ax + bx) / 2, 5.5, (az + bz) / 2); ban.rotation.y = -Math.atan2(bz - az, bx - ax); scene.add(ban); }
 
-  // ---- Planes: a closed circuit around the runway; they roll along it, rotate, climb out, loop, descend and land ----
-  const gz0 = RUNWAY.z1 - 6, gz1 = RUNWAY.z0 + 6; // take off heading north (-z)
-  const circuit = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(RUNWAY.x, 1.4, gz0), new THREE.Vector3(RUNWAY.x, 1.4, (gz0 + gz1) / 2 + 10), new THREE.Vector3(RUNWAY.x, 8, gz1),
-    new THREE.Vector3(RUNWAY.x - 10, 30, gz1 - 40), new THREE.Vector3(RUNWAY.x - 70, 45, (RUNWAY.z0 + RUNWAY.z1) / 2), new THREE.Vector3(RUNWAY.x - 10, 30, RUNWAY.z1 + 45),
-    new THREE.Vector3(RUNWAY.x, 6, RUNWAY.z1 + 4),
-  ], true, 'centripetal');
-  const planes = [plane(), plane()]; planes.forEach((p) => scene.add(p));
-  const ts = [0, 0.5]; const tmp = new THREE.Vector3(); const ahead = new THREE.Vector3();
+  // Only planes players are actually using are drawn (live freight/jet traffic in worldFreight.ts); no ambient airliners.
   // Start banner: fades/shrinks away when the camera comes close, so it never blocks the chase view on the grid.
   let banK = 1;
   const step = (dt: number, time: number, cam?: THREE.Vector3) => {
     if (cam) { const d = Math.hypot(cam.x - ban.position.x, cam.z - ban.position.z); const want = d < 30 ? 0 : 1; banK += (want - banK) * Math.min(1, dt * 3);
       ban.visible = banK > 0.03; ban.scale.set(1, Math.max(0.03, banK), 1); }
-    planes.forEach((p, i) => {
-      ts[i] = (ts[i] + dt / 46) % 1; const u = ts[i]; circuit.getPointAt(u, tmp); circuit.getPointAt((u + 0.004) % 1, ahead);
-      p.position.copy(tmp); p.lookAt(ahead); p.rotateY(-Math.PI / 2); // model's nose is +x
-      (p.userData.blink as THREE.Object3D).visible = Math.sin(time * 5 + i) > 0.3;
-    });
   };
-  return { step, dispose: () => { planes.forEach(disposeTree); snowy.forEach((m) => { (m as THREE.MeshStandardMaterial).map?.dispose(); m.dispose(); }); } };
+  return { step, dispose: () => { snowy.forEach((m) => { (m as THREE.MeshStandardMaterial).map?.dispose(); m.dispose(); }); } };
 }
 
 /** Speedway asphalt: grainy tarmac, a darker racing line down the middle, white edge lines (U across, V along). */
