@@ -74,12 +74,20 @@ export function mineOreSink(account: string): OreSink {
 
 export class Employment {
   private locks = new Map<string, Promise<unknown>>();
-  private lock<T>(id: string, fn: () => Promise<T>): Promise<T> {
+  private lock<T>(id: string, fn0: () => Promise<T>): Promise<T> {
+    // Cross-server exactly-once (e.g. overlapping instances during a deploy): also hold a per-owner Postgres advisory
+    // lock on a separate small pool, so two processes never settle/deliver the same owner's workers concurrently.
+    const lp = this.lockPool;
+    const fn = !lp ? fn0 : async () => {
+      const cl = await lp.connect();
+      try { await cl.query("SELECT pg_advisory_lock(hashtext('employ:' || $1))", [id]); return await fn0(); }
+      finally { await cl.query("SELECT pg_advisory_unlock(hashtext('employ:' || $1))", [id]).catch(() => {}); cl.release(); }
+    };
     const prev = this.locks.get(id) ?? Promise.resolve(); const p = prev.then(fn, fn); const tail = p.catch(() => {});
     this.locks.set(id, tail); void tail.then(() => { if (this.locks.get(id) === tail) this.locks.delete(id); }); return p;
   }
   constructor(private readonly pool: pg.Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now(),
-    private readonly sink: (account: string) => OreSink = mineOreSink, private readonly unit: Unit = cryptoUnit) {}
+    private readonly sink: (account: string) => OreSink = mineOreSink, private readonly unit: Unit = cryptoUnit, private readonly lockPool: pg.Pool | null = null) {}
   async init() { await this.pool.query(EMPLOY_MIGRATION); }
 
   hirePrice = (j: JobDef) => px(baseHire(j));
@@ -304,7 +312,9 @@ export async function initEmployment(): Promise<void> {
   const url = databaseUrl(); if (!url) { setBootState('employ', 'memory'); return; }
   const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
   pool.on('error', (e) => console.error('[employ] pool error:', e.message));
-  await bootAttach('employ', async () => { try { const e = new Employment(pool); await e.init(); emp = e; console.log('[employ] ready'); startEmploySweep(e); return true; } catch (e) { console.error('[employ] init failed:', (e as Error).message); return false; } });
+  const lockPool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
+  lockPool.on('error', (x) => console.error('[employ] lock pool:', x.message));
+  await bootAttach('employ', async () => { try { const e = new Employment(pool, getBank, () => Date.now(), mineOreSink, cryptoUnit, lockPool); await e.init(); emp = e; console.log('[employ] ready'); startEmploySweep(e); return true; } catch (e) { console.error('[employ] init failed:', (e as Error).message); return false; } });
 }
 /** Public read: today's prices. */
 export function employmentRouter() {

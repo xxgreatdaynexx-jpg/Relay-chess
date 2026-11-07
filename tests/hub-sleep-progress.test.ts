@@ -43,3 +43,19 @@ describe('overnight lockout does not eat away caps (t1899u)', () => {
     expect(one.tick).toBeGreaterThan(0);
   });
 });
+
+describe('factory catch-up window at fixed timestamps', () => {
+  const ticks = (seenS: string, nowS: string) => {
+    const seen = L(seenS), end = awakeDeadline(seen, MAX_CATCHUP_MS), s = newState(1, seen);
+    const st = new Map<string, number>([['ore:copper', 1e6]]);
+    const io = { get: (k: string) => st.get(k) ?? 0, add: (k: string, d: number) => st.set(k, (st.get(k) ?? 0) + d) };
+    advance(s, io, Math.min(L(nowS), end), Math.max(MAX_CATCHUP_MS, end - seen)); return (s.at - seen) / H;
+  };
+  it('window = real elapsed up to 8 awake h; never past it, even after multiple missed nights', () => {
+    expect(ticks('2026-11-06T12:00:00', '2026-11-09T12:00:00')).toBe(8);           // no closure inside: unchanged 8 h
+    expect(ticks('2026-11-07T00:30:00', '2026-11-07T05:00:00')).toBe(4.5);         // inside closure: keeps running
+    expect(ticks('2026-11-07T00:30:00', '2026-11-10T00:00:00')).toBe(14);          // 0.5 + 6 closed + 7.5, then stops
+    expect(ticks('2026-11-07T03:00:00', '2026-11-12T00:00:00')).toBe(12);          // seen during closure: 4 closed + 8
+    expect(ticks('2026-11-07T07:00:00', '2026-11-12T00:00:00')).toBe(8);           // after 7: unchanged
+  });
+});
