@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: 'dfd5cf0', at: '2026-11-07T14:07:45-06:00', title: 'Mobile sheets separate headers from scrolling content', bullets: [
+    'Property, farm, venue, resort and furniture sheets keep the original title and close control together in an opaque header, with only the content below it scrolling. Desktop markup and the site-navigation hide/restore behavior are unchanged.',
+  ] },
   { commit: 'e26f2e2', at: '2026-11-07T13:54:02-06:00', title: 'Mobile menu titles and close buttons stay reachable', bullets: [
     'Map menus now temporarily hide the site Games/Wallet/chat bar as well as the map controls. Property lists keep their title visible while scrolling, and car, logistics and other map menus use the full phone viewport without starting underneath the site bar. Closing the menu restores navigation. Desktop layouts are unchanged.',
   ] },
