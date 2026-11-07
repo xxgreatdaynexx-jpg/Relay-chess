@@ -75,9 +75,12 @@ export const minerItemEv = (c: MinerCave) => evOf(minerTable(c));
 export interface JobDef { id: string; kind: WorkerKind; cave?: MinerCave; label: string; emoji: string; everyMs: number; /** pt1378u: wage/hire stay priced off the old interval, so the 5-min buff is pure extra output */ priceEveryMs: number; itemEv: number; blurb: string; /** miners: 'Mostly …' gather bias */ bias?: string }
 /** pt1378u: every worker brings in one pick every 3 minutes (480/day; was 5 min / 288). */
 export const WORKER_EVERY_MS = 3 * MIN;
+/** pt1966u (Dayne 2026-11-07 "Give mining employees a buff"): miners pick every 2 min (720/day, +50% ore); wage and hire fee
+ *  stay priced off priceEveryMs, so the extra ore is pure profit. Fishers and manual mining are unchanged. */
+export const MINER_EVERY_MS = 2 * MIN;
 const r5 = (n: number) => Math.max(5, Math.round(n / 5) * 5);
 export const JOBS: JobDef[] = [
-  ...MINER_CAVES.map((c): JobDef => ({ id: `miner:${c}`, kind: 'miner', cave: c, label: `Miner · ${CAVES[c].name}`, emoji: '⛏️', everyMs: WORKER_EVERY_MS, priceEveryMs: 10 * MIN, itemEv: minerItemEv(c), blurb: `1 ore every 3 min from ${CAVES[c].name}. ${MINER_BIAS[c].label}. No keys or chests.`, bias: MINER_BIAS[c].label })),
+  ...MINER_CAVES.map((c): JobDef => ({ id: `miner:${c}`, kind: 'miner', cave: c, label: `Miner · ${CAVES[c].name}`, emoji: '⛏️', everyMs: MINER_EVERY_MS, priceEveryMs: 10 * MIN, itemEv: minerItemEv(c), blurb: `1 ore every 2 min from ${CAVES[c].name}. ${MINER_BIAS[c].label}. No keys or chests.`, bias: MINER_BIAS[c].label })),
   { id: 'fisher', kind: 'fisher', label: 'Fisher · Lake Dock', emoji: '🎣', everyMs: WORKER_EVERY_MS, priceEveryMs: 60 * MIN, itemEv: FISHER_ITEM_EV, blurb: '1 fish every 3 min from the normal catch table (no junk). Goes in your cooler.' },
 ];
 export const jobById = (id: unknown) => JOBS.find((j) => j.id === id);

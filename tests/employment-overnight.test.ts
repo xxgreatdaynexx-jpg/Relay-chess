@@ -27,15 +27,15 @@ async function setup(t0: number) {
 describe('workers keep producing through the 01–07 lockout (t1899u)', () => {
   it('last visit 23:00: production runs to 13:00 (8 awake h + the real 6 h closure), not 07:00; no 7h grant', async () => {
     const s = await setup(L('2026-11-06T23:00:00')); await s.e.hire('Gus', 'miner:mine');
-    s.setNow(L('2026-11-07T07:00:00')); await s.e.sweep(); expect(s.total()).toBe(160); // 8 h × 20/h, nothing frozen during closure
-    s.setNow(L('2026-11-07T20:00:00')); await s.e.sweep(); expect(s.total()).toBe(280); // stops at 13:00 = 14 h × 20
+    s.setNow(L('2026-11-07T07:00:00')); await s.e.sweep(); expect(s.total()).toBe(240); // 8 h × 30/h (miners every 2 min, pt1966u), nothing frozen during closure
+    s.setNow(L('2026-11-07T20:00:00')); await s.e.sweep(); expect(s.total()).toBe(420); // stops at 13:00 = 14 h × 30
     // restart + repeated sweeps never double-pay
     const e2 = s.mk(); await e2.init(); await e2.sweep(); await e2.sweep(); await Promise.all([e2.sweep(), s.e.sweep()]);
-    expect(s.total()).toBe(280);
+    expect(s.total()).toBe(420);
   });
   it('awake-only absence keeps the original 8h cap', async () => {
     const s = await setup(L('2026-11-06T08:00:00')); await s.e.hire('Gus', 'miner:mine');
-    s.setNow(L('2026-11-06T23:00:00')); await s.e.sweep(); expect(s.total()).toBe(160);
+    s.setNow(L('2026-11-06T23:00:00')); await s.e.sweep(); expect(s.total()).toBe(240);
     expect(8 * HOUR).toBe(28_800_000);
   });
 });

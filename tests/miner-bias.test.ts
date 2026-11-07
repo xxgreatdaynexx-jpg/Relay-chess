@@ -18,9 +18,9 @@ describe('miner gather bias (pt1350u)', () => {
   it('gold is the lightest of the main Mine bias', () => {
     const b = MINER_BIAS.mine.ores; expect(b.gold!).toBeLessThan(b.iron!); expect(b.gold!).toBeLessThan(b.stone!);
   });
-  it('keeps value per hour within 5% of the old mix (pt1357u), 480 picks a day (3 min cadence)', () => {
+  it('keeps value per hour within 5% of the old mix (pt1357u), 720 picks a day (2 min cadence, pt1966u)', () => {
     for (const c of MINER_CAVES) { expect(Math.abs(minerItemEv(c) - WORKER_EV_BEFORE[c]) / WORKER_EV_BEFORE[c]).toBeLessThan(0.05); expect(unbiasedItemEv(c)).toBeGreaterThan(0); }
-    for (const j of JOBS.filter((x) => x.kind === 'miner')) expect(itemsPerDay(j)).toBe(480);
+    for (const j of JOBS.filter((x) => x.kind === 'miner')) expect(itemsPerDay(j)).toBe(720);
   });
   it('rolls match the table', () => {
     for (const c of MINER_CAVES) { const u = seeded(7); const n: Partial<Record<OreId, number>> = {}; const N = 60_000; let v = 0;
