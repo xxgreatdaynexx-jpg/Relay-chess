@@ -7,6 +7,7 @@ import type { FortWorld } from '@/lib/fortmc3d';
 import { importWithReload } from '@/lib/chunkReload';
 import { request, socket } from '@/lib/net';
 import { clearArrival, flyHome, tripNow, useTrip } from '@/lib/travel';
+import { fortJetIntro } from '@/lib/fortJet';
 import { JETS } from '../../../shared/fleet';
 import { usePanelDrag } from '@/lib/panelDrag';
 import { BuildingInventory } from './BuildingInventory';
@@ -27,14 +28,14 @@ export function FortMcMap() {
   const [view, setView] = useState<View | null>(null); const [panel, setPanel] = useState<Panel>(null); const [tract, setTract] = useState(1);
   const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false); useEffect(() => setMsg(null), [panel, tract]); // Tess QA #5: a status line belongs to the panel that produced it
   const px = (base: number) => indexed(base, view?.index ?? 1);
-  // mu-jet-mcchud: a jet owner's own jet lands at YMC on arrival (parks on the apron otherwise) and takes off on the way home.
+  // mu-jet-mcchud: a jet owner's own jet lands at YMC on arrival (nothing is drawn for ownership alone) and takes off on the way home.
   const trip = useTrip(); const [ready, setReady] = useState(false); const jetShown = useRef(false); const [departing, setDeparting] = useState(false);
   const jetName = trip.arrivedBy ?? trip.jet; const jetModel = jetName ? JETS.find((m) => m.name === jetName) ?? null : null;
   useEffect(() => {
     const w = worldRef.current; if (!ready || !w || !jetModel || jetShown.current) return; jetShown.current = true;
     // Only a plane in actual use is drawn: the landing of the jet that just flew you here, then it's removed. Owning a jet
     // (trip.jet) is not use, so a reload / passenger arrival never materialises a parked jet.
-    if (tripNow().arrivedBy) { w.jetShow(jetModel, 'land', () => w.jetHide()); clearArrival(); }
+    if (fortJetIntro(tripNow().arrivedBy) === 'land') { w.jetShow(jetModel, 'land', () => w.jetHide()); clearArrival(); }
   }, [ready, jetModel]);
 
   const apply = useCallback((r: { ok: boolean } & Partial<View>) => { if (r.fort) { setView(r as View); worldRef.current?.setFort(r.fort); } }, []);
@@ -157,7 +158,7 @@ export function FortMcMap() {
           </>}
           {panel === 'airport' && <>
             <h3>✈️ Fort McChud Airport (YMC)</h3>
-            <small>{trip.jet ? <>Your {trip.jet} is parked on the private-jet apron. Fly it home any time, no ticket (the normal jet upkeep still applies).</> : <>Your ticket included the flight home.</>}</small>
+            <small>{trip.jet ? <>Your {trip.jet} is available for the return flight. Fly it home any time, no ticket (the normal jet upkeep still applies).</> : <>Your ticket included the flight home.</>}</small>
             <button type="button" disabled={departing} onClick={() => void home()} data-testid="fortmc-fly-home-2">{trip.jet ? <>🛩 Fly my jet home to Chud Hub</> : <>🛫 Fly home to Chud Hub</>}</button>
           </>}
           {msg && <small data-testid="fort-msg">{msg}</small>}

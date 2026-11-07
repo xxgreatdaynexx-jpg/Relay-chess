@@ -18,7 +18,7 @@ describe('only planes players are actually using are drawn', () => {
     expect(fort).not.toMatch(/makePlane\(/);
     // the only remaining plane builders are driven by live player data
     expect(src('worldFreight.ts')).toMatch(/socket\.on\('freight_live', onLive\)/);
-    expect(fort).toMatch(/jetShow\(model: FleetModel/);
+    expect(fort).toMatch(/jetShow: jetCtl\.show/);
   });
 
   let l: Logistics; let now = 0;
@@ -39,8 +39,8 @@ describe('Fort McChud jet: drawn only for an actual flight', () => {
     expect(map).not.toMatch(/jetShow\(jetModel, 'park'\)/);
   });
   it('a real own-jet arrival still lands, then the jet is removed; take-off home still animates', () => {
-    expect(map).toMatch(/if \(tripNow\(\)\.arrivedBy\) \{ w\.jetShow\(jetModel, 'land', \(\) => w\.jetHide\(\)\)/);
+    expect(map).toMatch(/w\.jetShow\(jetModel, 'land', \(\) => w\.jetHide\(\)\)/); expect(map).toMatch(/fortJetIntro\(tripNow\(\)\.arrivedBy\)/); expect(map).not.toMatch(/parked on the private-jet apron/);
     expect(map).toMatch(/w\.jetShow\(jetModel, 'takeoff', res\)/);
-    expect(src('fortmc3d.ts')).toMatch(/jetHide\(\) \{ if \(jet\) \{ scene\.remove\(jet\)/);
+    expect(src('fortmc3d.ts')).toMatch(/jetHide: jetCtl\.hide/);
   });
 });

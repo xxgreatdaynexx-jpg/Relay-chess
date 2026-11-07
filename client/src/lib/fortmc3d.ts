@@ -13,6 +13,7 @@ import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { skyNow, parseTod, mix as mixHex } from '../../../shared/daynight';
 import { sg, BOX, SPH, buildOcean, buildBeach } from './ocean3d';
 import { buildJet, disposeTree } from './fleetModels';
+import { createJetController } from './fortJet';
 import type { FleetModel } from '../../../shared/fleet';
 import { FORT_SPOTS, FORT_X0, FORT_X1, FORT_Z0, FORT_Z1, TRACTS, tractInfo, type FortState, type UnitKind } from '../../../shared/fortmc';
 
@@ -302,7 +303,6 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
 
   // Private jet (mu-jet-mcchud): owners' jets land on / take off from the YMC runway. Runway local x -20..36 at z 6, airport group at the f-airport spot.
   const ap = FORT_SPOTS.find((x) => x.id === 'f-airport')!; const AX = ap.x, AZ = ap.z;
-  let jet: THREE.Group | null = null; let jetAnim: { mode: 'land' | 'takeoff'; t: number; dur: number; done?: () => void } | null = null;
   const PARK = { x: 6, z: -1.2 }; const RWY = 6;
   const jetPose = (j: THREE.Group, x: number, y: number, z: number, yaw: number, pitch: number) => { j.position.set(AX + x, y, AZ + z); j.rotation.set(pitch, yaw, 0, 'YXZ'); };
   const ease = (u: number) => u * u * (3 - 2 * u);
@@ -318,22 +318,11 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
     const k = (u - 0.6) / 0.4; return [30 + 90 * k, 26 * k ** 1.3, RWY, E, -0.18]; // climb-out
   };
   const frameAirport = () => { controls.target.set(AX + 4, 0, AZ + 4); camera.position.set(AX + 34, 34, AZ + 62); controls.update(); };
-  const stepJet = (dt: number) => {
-    if (!jet || !jetAnim) return; jetAnim.t += dt; const u = Math.min(1, jetAnim.t / jetAnim.dur); const [x, y, z, yaw, pitch] = poseAt(jetAnim.mode, u); jetPose(jet, x, y, z, yaw, pitch);
-    if (u >= 1) { const a = jetAnim; jetAnim = null; if (a.mode === 'takeoff') jet.visible = false; a.done?.(); }
-  };
-  const jetApi = {
-    /** Show `model` at YMC: 'park' on the apron, 'land' (approach, touchdown, taxi in) or 'takeoff' (taxi out, roll, climb); `done` fires when it finishes. */
-    jetShow(model: FleetModel, mode: 'park' | 'land' | 'takeoff', done?: () => void) {
-      if (jet) { scene.remove(jet); disposeTree(jet); }
-      jet = buildJet(model); jet.userData.part = 'privateJet'; jet.name = 'privateJet'; if (model.id === 'chudone') jet.scale.setScalar(0.55); else if (model.id === 'g700') jet.scale.setScalar(0.8); scene.add(jet);
-      if (mode === 'park') { jetPose(jet, PARK.x, 0, PARK.z, -Math.PI / 2, 0); jetAnim = null; done?.(); return; }
-      frameAirport(); jetAnim = { mode, t: 0, dur: mode === 'land' ? 9 : 7, done }; stepJet(0);
-    },
-    /** Remove the jet once its flight is over (only planes in actual use are drawn). */
-    jetHide() { if (jet) { scene.remove(jet); disposeTree(jet); jet = null; } jetAnim = null; },
-    jetBusy: () => !!jetAnim,
-  };
+  const jetCtl = createJetController<FleetModel>({ scene, dispose: disposeTree, poseAt, onStart: frameAirport,
+    place: (j, x, y, z, yaw, pitch) => jetPose(j, x, y, z, yaw, pitch),
+    build: (model) => { const j = buildJet(model); j.userData.part = 'privateJet'; j.name = 'privateJet'; if (model.id === 'chudone') j.scale.setScalar(0.55); else if (model.id === 'g700') j.scale.setScalar(0.8); return j; } });
+  const stepJet = jetCtl.step;
+  const jetApi = { jetShow: jetCtl.show, jetHide: jetCtl.hide, jetBusy: jetCtl.busy };
   applySky(); let skyT = 0;
   const clock = new THREE.Clock(); let raf = 0; let running = true; let time = 0; const tmp = new THREE.Vector3();
   const frame = () => {
@@ -354,6 +343,6 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
     setFort, ...jetApi,
     setRunning(v: boolean) { running = v; clock.getDelta(); },
     reset() { camera.position.copy(home); controls.target.copy(homeT); },
-    dispose() { cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); if (jet) disposeTree(jet); controls.dispose(); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
+    dispose() { cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); jetCtl.hide(); controls.dispose(); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
   };
 }
