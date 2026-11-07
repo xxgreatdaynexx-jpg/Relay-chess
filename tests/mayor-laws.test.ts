@@ -50,7 +50,16 @@ describe('text-only mayor bills', () => {
     const html = renderToStaticMarkup(createElement(LawsPanel, { view: { history: [{ number:'1', title:'Bill Chud 1', text:'<img src=x onerror=alert(1)>', by:'<script>', status:'pending', at:0, day:'2026-11-06' }], nextBefore:null, submittedToday:false }, isMayor:true, busy:false, onPass: async () => {} }));
     expect(html).toContain('&lt;img'); expect(html).not.toContain('<img'); expect(html).not.toContain('<script>');
     expect(html.indexOf('mayor-law-info')).toBeGreaterThan(html.indexOf('mayor-law-text'));
-    expect(LAW_RULES).toBe('Laws can’t override core game rules.\n\nExamples: ‘Delete all’ or ‘Remove all.’ These are too broad—state exactly what the law would change.');
+    expect(LAW_RULES).toBe([
+      'Only the sitting mayor can pass a bill—one per day, resetting at midnight UTC-6.',
+      'Bills are publicly recorded and numbered forever, even when the mayor changes.',
+      'Laws must be clear, possible to enforce, and limited to Chud Hub.',
+      'No taking someone’s chips, property or items, banning players, or granting yourself rewards.',
+      'Laws can’t override core game rules.\n\nExamples: ‘Delete all’ or ‘Remove all.’ These are too broad—state exactly what the law would change.',
+    ].join('\n\n'));
+    expect(LAW_RULES.toLowerCase()).not.toMatch(/veto|vice|approv/);
+    const order = ['Only the sitting mayor', 'Bills are publicly', 'Laws must be clear', 'No taking someone', 'Laws can’t override', 'Examples: ‘Delete all’'].map((x) => html.indexOf(x.replace(/’/g, '’')));
+    expect(order.every((x, i) => x > 0 && (i === 0 || x > order[i - 1]!))).toBe(true);
     expect(LAW_RULES).not.toContain('approval');
     expect(LAW_RULES).not.toContain('Dayne');
   });

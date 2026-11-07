@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LAW_RULES, LAW_TEXT_MAX, type MayorLawView } from '../../../shared/mayorLaws';
+import { LAW_CORE_RULES, LAW_RULE_LINES, LAW_TEXT_MAX, type MayorLawView } from '../../../shared/mayorLaws';
 import { request } from '@/lib/net';
 
 export function MayorLaws({ view, isMayor, busy, onPass }: { view: MayorLawView; isMayor: boolean; busy: boolean; onPass: (text: string) => Promise<void> }) {
@@ -11,7 +11,10 @@ export function MayorLaws({ view, isMayor, busy, onPass }: { view: MayorLawView;
     <h4>City bills</h4>
     <label htmlFor="mayor-law-text">New bill text</label>
     <textarea id="mayor-law-text" data-testid="mayor-law-text" rows={5} maxLength={LAW_TEXT_MAX} value={text} disabled={!isMayor || view.submittedToday || busy} onChange={(e) => setText(e.target.value)} style={{ width: '100%', whiteSpace: 'pre-wrap' }} />
-    <div className="cityhall-rules" role="note" data-testid="mayor-law-info" style={{ whiteSpace: 'pre-line' }}>{LAW_RULES}</div>
+    <div className="cityhall-rules" role="note" data-testid="mayor-law-info" style={{ maxWidth: '100%', overflowWrap: 'anywhere', lineHeight: 1.45 }}>
+      <ol style={{ margin: '0 0 .6em', paddingLeft: '1.4em', listStyle: 'decimal' }}>{LAW_RULE_LINES.map((r) => <li key={r} style={{ marginBottom: '.35em' }}>{r}</li>)}</ol>
+      <p style={{ whiteSpace: 'pre-line', margin: 0 }}>{LAW_CORE_RULES}</p>
+    </div>
     <button type="button" disabled={!isMayor || view.submittedToday || busy || !text.trim()} onClick={() => { void onPass(text); }}>Submit bill</button>
     {view.submittedToday && <small>The city has already submitted a bill today (America/Regina).</small>}
     <h4>Bill history</h4>
