@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-07T13:43:00-06:00', title: 'City buildings spread around Chud City', bullets: [
+    'The seven City Hall projects (Highway, Park, Police, Transit, Street Lights, Hospital, School) moved out of their row west of the city onto streets that suit them: police by City Hall, hospital in midtown, transit on the north avenue, school among the north-west homes, the park on the east side, the lights depot by the Warehouse and the highway office at the west exit. Build progress and perks are unchanged.',
+    'A few unowned houses and lots under the new sites are no longer for sale. No owned property was moved or removed; an owner of such a lot keeps it.',
+  ] },
   { commit: '1361aec', at: '2026-11-07T13:36:21-06:00', title: 'Mobile menus stay clear of map controls', bullets: [
     'On phones and short landscape screens, open menus hide the map navigation, clock and Trade Week bar until closed. Property, home, farm, fishing, airport, car, mechanic, logistics, co-op, marina and hangar menus fit the screen with reachable close controls and scrolling content. Desktop layouts are unchanged.',
   ] },

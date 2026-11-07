@@ -14,7 +14,8 @@
  * Sell back to the city: 70% of list price.
  * Farmland (Farm district, shared/farm.ts): 180 per tile + 500, rounded to 500 (4x4 = 3,500 ... 12x10 = 22,000).
  */
-import { cityFill, landmarks, LANDMARK_IDS, type OBB } from './worldLayout.js';
+import { cityFill, landmarks, LANDMARK_IDS, obbOverlap, type OBB } from './worldLayout.js';
+import { BUILDING_IDS, civicPad } from './city.js';
 import { HOUSING_TYPES } from './housing.js';
 import { farmPlots, farmPrice, plotId } from './farm.js';
 import { propertyPaid } from './netWorth.js';
@@ -38,7 +39,7 @@ const PATCH_LABEL: Record<string, string> = { lot: 'Empty lot', park: 'Park', pl
 const PATCH_REF: Record<string, number> = { lot: 13 * 13 * 0.95, park: 13 * 13 * 0.95, plaza: 81 * 0.95 };
 
 export type PropertyKind = 'building' | 'patch' | 'landmark' | 'farm';
-export interface Property extends OBB { id: string; kind: PropertyKind; type: string; label: string; price: number; h?: number; map?: 'resort' }
+export interface Property extends OBB { id: string; kind: PropertyKind; type: string; label: string; price: number; h?: number; map?: 'resort'; /** under a civic plot: never for sale again, drawn only while someone still owns it */ retired?: boolean }
 
 const clamp = (x: number) => Math.min(1.25, Math.max(0.8, x));
 const round500 = (n: number) => Math.max(500, Math.round(n / 500) * 500);
@@ -78,6 +79,9 @@ export const landMultiplierNote = (ownedValue: number) => ownedValue > 0 ? `${pc
 
 /** Civic buildings are not for sale (City Hall belongs to the city). */
 export const CIVIC_IDS = new Set(['cityhall']);
+/** City lot under a civic building plot (shared/city.ts CIVIC_PLOTS). Retired, not deleted: it keeps its id and catalog
+ *  entry so an owner (even one who bought it during a rollout) keeps it, its value, tax and sell-back; it just can't be bought. */
+export const civicRetired = (b: OBB) => BUILDING_IDS.some((id) => obbOverlap(civicPad(id), b, 1.5));
 let cache: Property[] | null = null; let byId: Map<string, Property> | null = null;
 /** Every property on the map (deterministic: same layout -> same ids and prices). */
 export function properties(): Property[] {
@@ -88,9 +92,9 @@ export function properties(): Property[] {
     const t = HOUSING_TYPES.find((x) => x.id === h.type); if (!t) continue;
     const ref = ((t.w[0] + t.w[1]) / 2) * ((t.d[0] + t.d[1]) / 2), midH = ((t.floors[0] + t.floors[1]) / 2) * t.floorH;
     const price = round500((BASE_PRICE[t.id] ?? 15_000) * clamp((h.w * h.d) / ref) * clamp(h.h / midH));
-    out.push({ x: h.x, z: h.z, w: h.w, d: h.d, rot: h.rot, h: h.h, id: `b:${t.id}:${pos(h)}`, kind: 'building', type: t.id, label: t.label, price });
+    out.push({ x: h.x, z: h.z, w: h.w, d: h.d, rot: h.rot, h: h.h, id: `b:${t.id}:${pos(h)}`, kind: 'building', type: t.id, label: t.label, price, ...(civicRetired(h) ? { retired: true } : {}) });
   }
-  for (const p of patches) out.push({ x: p.x, z: p.z, w: p.w, d: p.d, rot: p.rot, id: `p:${p.kind}:${pos(p)}`, kind: 'patch', type: p.kind, label: PATCH_LABEL[p.kind] ?? p.kind, price: round500(BASE_PRICE[p.kind]! * clamp((p.w * p.d) / PATCH_REF[p.kind]!)) });
+  for (const p of patches) out.push({ x: p.x, z: p.z, w: p.w, d: p.d, rot: p.rot, id: `p:${p.kind}:${pos(p)}`, kind: 'patch', type: p.kind, label: PATCH_LABEL[p.kind] ?? p.kind, price: round500(BASE_PRICE[p.kind]! * clamp((p.w * p.d) / PATCH_REF[p.kind]!)), ...(civicRetired(p) ? { retired: true } : {}) });
   // Farm district (shared/farm.ts): farmland plots, priced by tile count.
   for (const f of farmPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: plotId(f.n), kind: 'farm', type: 'farmland', label: `Farm plot #${f.n} (${f.cols}×${f.rows})`, price: farmPrice(f.cols * f.rows) });
   // Countryside crop fields (shared/fieldFarms.ts): the same farm system, priced by tile count like farmland.

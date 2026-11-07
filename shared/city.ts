@@ -69,10 +69,27 @@ export const stageAt = (b: BuildingState | undefined, t: number) => !b ? 0 : b.b
 export const underConstruction = (b: BuildingState | undefined, t: number) => !!b?.building && b.building.doneAt > t;
 /** Perk size (0..1) for a building at stage s. */
 export const perkOf = (id: BuildingId, s: number) => (s <= 0 ? 0 : BUILDINGS[id].perkBy[Math.min(MAX_STAGE, s) - 1]!);
-/** The civic district: a free grass strip west of the city (east of the field at x -164..-146). One plot per building, north to south. */
-export const CIVIC_SITE = { x0: -144, x1: -127, z0: -114, z1: -56 };
-export const civicPlot = (i: number) => ({ x: (CIVIC_SITE.x0 + CIVIC_SITE.x1) / 2, z: CIVIC_SITE.z0 + 4.2 + i * ((CIVIC_SITE.z1 - CIVIC_SITE.z0 - 8.4) / 6), w: 12, d: 7 });
-export const inCivic = (x: number, z: number, m = 0) => x > CIVIC_SITE.x0 - m && x < CIVIC_SITE.x1 + m && z > CIVIC_SITE.z0 - m && z < CIVIC_SITE.z1 + m;
+/** Civic buildings around the city (Dayne 2026-11-07 t1962u: they used to stand in one row on a grass strip west of the
+ *  city at x -144..-127). Each plot sits on a street frontage, turned to face it (rot = the same convention as house OBBs).
+ *  Only position changes: ids, build state, stages and perks are keyed by BuildingId as before. Lots under a plot are
+ *  "retired" in shared/realEstate.ts (no longer for sale, hidden unless someone owns them); nothing owned is ever removed. */
+export const CIVIC_PLOTS: Record<BuildingId, { x: number; z: number; rot: number }> = {
+  highway: { x: -101, z: -54, rot: 3.03 }, // west edge, where the west street leaves the city
+  park: { x: 68, z: -13, rot: -1.555 }, // east, on the old pocket park
+  police: { x: 39, z: 10, rot: 0 }, // midtown, the block east of City Hall
+  transit: { x: -13, z: -59, rot: 0 }, // north avenue just outside downtown
+  lights: { x: 100, z: -45, rot: 0.11 }, // east edge near the Warehouse: maintenance depot
+  hospital: { x: 13, z: -35, rot: 0 }, // midtown, beside the Employment Office
+  school: { x: -60, z: -74, rot: 0.434 }, // north-west residential streets
+};
+export const CIVIC_W = 12; export const CIVIC_D = 7;
+export const civicPlotOf = (id: BuildingId) => ({ ...CIVIC_PLOTS[id], w: CIVIC_W, d: CIVIC_D });
+export const civicPlot = (i: number) => civicPlotOf(BUILDING_IDS[i]!);
+/** Footprint that clears/retires lots (the drawn pad is w+1 x d+0.6). */
+export const civicPad = (id: BuildingId) => ({ ...CIVIC_PLOTS[id], w: CIVIC_W + 1, d: CIVIC_D + 0.6 });
+/** True on (or within m of) any civic pad. */
+export const inCivic = (x: number, z: number, m = 0) => BUILDING_IDS.some((id) => { const p = civicPad(id); const c = Math.cos(p.rot), s = Math.sin(p.rot); const dx = x - p.x, dz = z - p.z;
+  return Math.abs(dx * c - dz * s) < p.w / 2 + m && Math.abs(dx * s + dz * c) < p.d / 2 + m; });
 export const PERK_BUILDING: Record<PerkId, BuildingId> = Object.fromEntries(BUILDING_IDS.map((b) => [BUILDINGS[b].perk, b])) as Record<PerkId, BuildingId>;
 
 /** Approval + recall. */

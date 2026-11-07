@@ -1,7 +1,7 @@
 import { inStadiumSite } from '../../../shared/coop';
 import * as THREE from 'three';
 import { JAIL_SITE, JAIL_SCALE, type JailInfo } from '../../../shared/jail';
-import { BUILDINGS, BUILDING_IDS, civicPlot, type CityView } from '../../../shared/city';
+import { BUILDINGS, BUILDING_IDS, civicPlot, inCivic, type CityView } from '../../../shared/city';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -33,7 +33,7 @@ import { buildOcean, buildBeach, buildBreakwater } from './ocean3d';
 import { OCEAN, COAST_WAVE, coastZ, BREAKWATER } from '../../../shared/ocean';
 import { CAR_BY_ID } from '../../../shared/cars';
 import { HOUSING_TYPES, type HousingType } from './housing';
-import { buildingId, patchId } from '../../../shared/realEstate';
+import { buildingId, patchId, civicRetired } from '../../../shared/realEstate';
 import { attachTownHallProtest, type TownHallProtest } from './townHallProtest3d';
 import { attachFarmProtests, type FarmProtestHandle } from './farmProtest3d';
 import { disposeSharedProtestSfx } from './protestSfx';
@@ -496,6 +496,10 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const housingMeshes: Record<string, THREE.InstancedMesh> = {};
   const propTop = new Map<string, [number, number, number]>();
   const xmasRoofs: XmasRoof[] = [];
+  // Lots under a civic plot (shared/city.ts) are retired: hidden (zero scale, so not pickable) unless someone owns one,
+  // which setOwned() reveals again. Instances keep their slots so every other house / tree / id stays put.
+  const retired: Array<{ id: string; slots: Array<[THREE.InstancedMesh, number, THREE.Matrix4]> }> = []; const HIDE = new THREE.Matrix4().makeScale(0, 0, 0);
+  const retire = (id: string, slots: Array<[THREE.InstancedMesh, number]>) => { retired.push({ id, slots: slots.map(([m, i]) => { const k = new THREE.Matrix4(); m.getMatrixAt(i, k); m.setMatrixAt(i, HIDE); return [m, i, k]; }) }); };
   HOUSING_TYPES.forEach((ht, ti) => {
     const list = fillers.filter((f) => f.type === ht.id); if (!list.length) return;
     const [map, em] = housingTextures(200 + ti, ht); disposables.push(map, em);
@@ -510,7 +514,8 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     // Real estate: every building is a property (stable id from type + position, matches shared/realEstate).
     body.userData.props = list.map((f) => buildingId(ht.id, f)); pickables.push(body); if (roof) { roof.userData.props = body.userData.props; pickables.push(roof); }
     list.forEach((f, i) => propTop.set(body.userData.props[i], [f.x, f.h + (roof ? Math.min(1.6, f.d * 0.45) : 0), f.z]));
-    list.forEach((f) => xmasRoofs.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: f.rot, top: f.h + (roof ? Math.min(1.6, f.d * 0.45) : 0), gable: !!roof }));
+    list.forEach((f, i) => { if (civicRetired(f)) retire(body.userData.props[i], roof ? [[body, i], [roof, i]] : [[body, i]]); });
+    list.forEach((f) => { if (!civicRetired(f)) xmasRoofs.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: f.rot, top: f.h + (roof ? Math.min(1.6, f.d * 0.45) : 0), gable: !!roof }); });
   });
   // Christmas theme (request #17): date-gated in shared/holiday.ts (XMAS_END), cosmetic only.
   let xmas: ReturnType<typeof addXmas> | null = null;
@@ -528,6 +533,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     patches.forEach((b, i) => { d.position.set(b.x, 0.04, b.z); d.scale.set(b.w, 0.08, b.d); d.rotation.set(0, b.rot, 0); d.updateMatrix(); gm.setMatrixAt(i, d.matrix); gm.setColorAt(i, c.setHex(XM ? (b.kind === 'plaza' ? 0xb4bccb : b.kind === 'park' ? 0xe6edf8 : 0xd4dbe8) : b.kind === 'park' ? 0x2e7a36 : b.kind === 'plaza' ? 0x77727a : 0x4a3a2c)); });
     scene.add(gm); gm.userData.props = patches.map((b) => patchId(b.kind, b)); pickables.push(gm);
     patches.forEach((b, i) => propTop.set(gm.userData.props[i], [b.x, 0.1, b.z]));
+    patches.forEach((b, i) => { if (civicRetired(b)) retire(gm.userData.props[i], [[gm, i]]); });
     const plazas = patches.filter((b) => b.kind === 'plaza');
     if (plazas.length) { const fm = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(2.2, 2.4, 0.6, 16)), mat({ color: 0x4aa8ff, emissive: 0x2a78ff, emissiveIntensity: 0.8 * NEON }), plazas.length);
       plazas.forEach((b, i) => { d.position.set(b.x, 0.3, b.z); d.scale.set(1, 1, 1); d.rotation.set(0, 0, 0); d.updateMatrix(); fm.setMatrixAt(i, d.matrix); }); scene.add(fm); }
@@ -540,7 +546,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   for (let i = 0; i < 700; i++) { const x = (r() - 0.5) * S * 2 * 0.96, z = (r() - 0.5) * S * 2 * 0.96; if (z > shoreZ(x) - 2) continue; if (roadClearance(x, z) < 1.4) continue; if (blocked(x, z, 1)) continue; treeSpots.push([x, z, 0.7 + r() * 0.6]); }
   // palms along the curving waterfront
   for (let x = -S + 3; x < S - 2; x += 4.4) { const z = shoreZ(x) - 1.4; if (roadClearance(x, z) > 1.4 && !blocked(x, z, 0.8)) treeSpots.push([x, z, -1]); }
-  for (let i = treeSpots.length - 1; i >= 0; i--) if (inStadiumSite(treeSpots[i]![0], treeSpots[i]![1])) treeSpots.splice(i, 1); // co-op Stadium site (after the seeded fill, so nothing else moves)
+  for (let i = treeSpots.length - 1; i >= 0; i--) if (inStadiumSite(treeSpots[i]![0], treeSpots[i]![1]) || inCivic(treeSpots[i]![0], treeSpots[i]![1], 1)) treeSpots.splice(i, 1); // co-op Stadium site (after the seeded fill, so nothing else moves)
   const trunk = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(0.15, 0.22, 1, 5)), mat({ color: 0x5a3a22 }), treeSpots.length);
   const crown = new THREE.InstancedMesh(geo(new THREE.IcosahedronGeometry(1, 0)), mat({ color: 0x2f8a3a, flatShading: true, emissive: 0x0a2a10, emissiveIntensity: 0.4 }), treeSpots.length);
   { const d = new THREE.Object3D(); treeSpots.forEach(([x, z, s], i) => {
@@ -688,14 +694,14 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // Dev-only preview (screenshots): ?civic=N[b] shows every plot at stage N (b = with the next stage under construction).
   const civicDev = import.meta.env.DEV ? /^([0-3])(b?)$/.exec(new URLSearchParams(location.search).get('civic') ?? '') : null;
   const civicCam = civicDev ? new URLSearchParams(location.search).get('civicCam') : null;
-  if (civicCam != null) { const all = civicCam === 'all'; const P = civicPlot(all ? 3 : +civicCam); controls.autoRotate = false; controls.minDistance = 4;
-    controls.target.set(P.x, all ? 0 : 2.4, P.z); camera.position.set(P.x + (all ? 55 : 13), all ? 45 : 9, P.z + (all ? 30 : 13)); controls.update(); }
+  if (civicCam != null) { const all = civicCam === 'all'; const P = all ? { x: BUILDING_IDS.reduce((a, _, i) => a + civicPlot(i).x, 0) / BUILDING_IDS.length, z: BUILDING_IDS.reduce((a, _, i) => a + civicPlot(i).z, 0) / BUILDING_IDS.length } : civicPlot(+civicCam); controls.autoRotate = false; controls.minDistance = 4;
+    controls.target.set(P.x, all ? 0 : 2.4, P.z); camera.position.set(P.x + (all ? 40 : 13), all ? 170 : 9, P.z + (all ? 150 : 13)); controls.update(); } // all: the plots are spread over the city now
   const setCivic = (list0: CityView['buildings']) => {
     const list = civicDev ? BUILDING_IDS.map((id) => ({ id, stage: +civicDev[1]!, building: civicDev[2] && +civicDev[1]! < 3 ? { stage: +civicDev[1]! + 1, doneAt: 0, startedAt: 0 } : null, stageNow: +civicDev[1]!, nextCost: null })) : list0;
     const key = JSON.stringify(list.map((b) => [b.id, b.stage, b.building?.stage ?? 0])); if (key === civicKey) return; civicKey = key;
     for (const c of [...civicG.children]) civicG.remove(c);
     const pad = civicPad, steel = civicSteel, yellow = civicYellow;
-    BUILDING_IDS.forEach((id, i) => { const b = list.find((x) => x.id === id) ?? { id, stage: 0, building: null }; const P = civicPlot(i); const g = new THREE.Group(); g.name = `civic-${id}`; g.position.set(P.x, 0, P.z); civicG.add(g);
+    BUILDING_IDS.forEach((id, i) => { const b = list.find((x) => x.id === id) ?? { id, stage: 0, building: null }; const P = civicPlot(i); const g = new THREE.Group(); g.name = `civic-${id}`; g.position.set(P.x, 0, P.z); g.rotation.y = P.rot; civicG.add(g);
       const B = (w: number, h: number, d: number, m: THREE.Material, x: number, y: number, z: number) => { const o = new THREE.Mesh(civicBox, m); o.scale.set(w, h, d); o.position.set(x, y, z); o.castShadow = tier !== 'low'; g.add(o); return o; };
       B(P.w + 1, 0.12, P.d + 0.6, pad, 0, 0.06, 0); const st = b.stage;
       if (st === 0 && !b.building) { B(0.15, 1.6, 0.15, steel, -P.w / 2 + 1.5, 0.8, 0); B(2.2, 1, 0.1, yellow, -P.w / 2 + 1.5, 1.8, 0); }
@@ -1001,6 +1007,9 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const marks = new THREE.InstancedMesh(geo(new THREE.OctahedronGeometry(0.45, 0)), mat({ color: 0xc9a24a, emissive: 0x2a1e06, roughness: 0.5, metalness: 0.4, flatShading: true }), MAX_MARK);
   marks.count = 0; marks.frustumCulled = false; scene.add(marks);
   const setOwned = (ids: string[]) => {
+    const own = new Set(ids); const dirty = new Set<THREE.InstancedMesh>();
+    for (const r of retired) for (const [m, i, k] of r.slots) { m.setMatrixAt(i, own.has(r.id) ? k : HIDE); dirty.add(m); }
+    for (const m of dirty) { m.instanceMatrix.needsUpdate = true; m.computeBoundingSphere(); }
     const d = new THREE.Object3D(); let n = 0;
     for (const id of ids) {
       const l = id.startsWith('lm:') ? lms.find((x) => x.id === id.slice(3)) : undefined;

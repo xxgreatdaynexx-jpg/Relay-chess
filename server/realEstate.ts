@@ -144,7 +144,7 @@ export class RealEstate {
   }
   /** What this player would pay for a property right now. */
   async quote(name: string, id: unknown) {
-    const p = propertyById(id); if (!p) throw new PropertyError('That property is not for sale.');
+    const p = propertyById(id); if (!p || p.retired) throw new PropertyError('That property is not for sale.');
     const owned = await this.ownedCount(name); const value = await this.ownedValue(name);
     const price = landPrice(p.price, value); const wealthTax = await quotePurchaseTax(this.pool, name, price, this.clock());
     const backTax = await backTaxOf(this.pool, name);
@@ -152,7 +152,7 @@ export class RealEstate {
   }
   /** max: the price the player saw; a higher price now (they bought something else meanwhile) refuses instead of surprising them. */
   async buy(name: string, id: unknown, max?: unknown) {
-    const p = propertyById(id); if (!p) throw new PropertyError('That property is not for sale.');
+    const p = propertyById(id); if (!p || p.retired) throw new PropertyError('That property is not for sale.');
     // per-buyer lock too: two parallel buys by one player can't both be priced at the same n
     return this.lock(`owner:${keyOf(name)}`, () => this.lock(p.id, () => this.buyNow(name, p, typeof max === 'number' && Number.isFinite(max) ? max : undefined)));
   }
@@ -162,6 +162,7 @@ export class RealEstate {
     return rows.map((r) => String(r.id)).filter((id) => /^cf:\d+$/.test(id) && isBigFarmN(Number(id.slice(3))));
   }
   private async buyLocked(name: string, p: NonNullable<ReturnType<typeof propertyById>>, cl: pg.PoolClient, max?: number) {
+    if (p.retired) throw new PropertyError('That property is not for sale.'); // under a civic building (never sold again; owners keep theirs)
     const bank = this.bank(); await bank.refresh(name);
     const bt = await backTaxOf(cl, name); if (bt.debt > 0) throw new PropertyError(backTaxBlockMsg(bt));
     const bigBuy = /^cf:\d+$/.test(p.id) && isBigFarmN(Number(p.id.slice(3)));
