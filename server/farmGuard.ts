@@ -62,8 +62,10 @@ function clockwork(times: number[], lo: number, hi: number): boolean {
   return cv(gaps) < REG_CV_MAX;
 }
 
-/** Returns an error message to throw, or null when allowed. Records the action on success. */
-export function checkFarmAction(kind: 'plant' | 'harvest', accountKey: string, now = Date.now()): string | null {
+/** Returns an error message to throw, or null when allowed. Records the action on success.
+ * `opts.auto`: official server auto-farm — still enforces gap + window rate limits, but skips the
+ * Jay-style clockwork detector (intentional automation is not a bot). */
+export function checkFarmAction(kind: 'plant' | 'harvest', accountKey: string, now = Date.now(), opts?: { auto?: boolean }): string | null {
   const key = accountKey.trim().toLowerCase();
   if (!key) return FARM_RATE_MSG;
   const s = state(key);
@@ -74,7 +76,7 @@ export function checkFarmAction(kind: 'plant' | 'harvest', accountKey: string, n
   const cadLo = kind === 'plant' ? PLANT_CADENCE_LO : HARVEST_CADENCE_LO;
   const cadHi = kind === 'plant' ? PLANT_CADENCE_HI : HARVEST_CADENCE_HI;
 
-  if (clockwork(list, cadLo, cadHi)) return FARM_CLOCKWORK_MSG;
+  if (!opts?.auto && clockwork(list, cadLo, cadHi)) return FARM_CLOCKWORK_MSG;
 
   const kept = prune(list, now, Math.max(windowMs, cadHi * (REG_MIN_GAPS + 1)));
   const last = kept[kept.length - 1];
