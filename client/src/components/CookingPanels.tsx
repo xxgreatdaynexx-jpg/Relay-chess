@@ -19,7 +19,7 @@ const SHELVES: Array<[GroceryKind, string]> = [['staple', '🧺 Pantry staples']
 
 function useKitchen() {
   const [s, setS] = useState<State | null>(null); const [err, setErr] = useState<string | null>(null);
-  const load = useCallback(() => { void request('cook_state').then((r) => { if (r.ok) setS(r as unknown as State); else setErr(r.error ?? 'Kitchen is offline.'); }); }, []);
+  const load = useCallback(() => { void request('cook_state', { home: kitchenHome }).then((r) => { if (r.ok) setS(r as unknown as State); else setErr(r.error ?? 'Kitchen is offline.'); }); }, []);
   useEffect(() => { load(); }, [load]);
   return { s, err, load };
 }
@@ -35,7 +35,7 @@ export function GroceryPanel({ onClose, onKitchen }: { onClose: () => void; onKi
   const buy = async (item: string) => {
     if (busy) return; setBusy(item); setMsg(null);
     const k = `${item}:${qty}`; const n = pending.current.get(k) ?? nonce(); pending.current.set(k, n);
-    const r = await request('grocery_buy', { item, qty, nonce: n }) as { ok: boolean; error?: string; cost?: number; bought?: number };
+    const r = await request('grocery_buy', { item, qty, nonce: n, home: kitchenHome }) as { ok: boolean; error?: string; cost?: number; bought?: number };
     setBusy(null);
     if (r.ok || /Already/.test(r.error ?? '')) pending.current.delete(k);
     if (r.ok) { setMsg(`🛒 Bought ${r.bought}× ${STAPLES.find((x) => x.id === item)?.label} for 🪙 ${chips(r.cost ?? 0)}.`); load(); }
@@ -92,7 +92,7 @@ export function KitchenPanel({ me, home, onClose, onGrocery }: { me: string | nu
   const v = s?.state; const idx = v?.index ?? 1;
   const start = async (r: Recipe) => {
     if (busy) return; setBusy(r.id); setMsg(null);
-    const res = await request('cook_start', { recipe: r.id }) as { ok: boolean; error?: string; cook?: Cook };
+    const res = await request('cook_start', { recipe: r.id, home: kitchenHome }) as { ok: boolean; error?: string; cook?: Cook };
     setBusy(null); if (!res.ok || !res.cook) { setMsg(res.error ?? 'Could not start cooking.'); return; }
     setCook(res.cook); load();
   };
@@ -155,4 +155,6 @@ export function CookingHost({ me }: { me: string | null }) {
   return null;
 }
 /** Open the recipe kitchen (with the fish pan tab) for one of your homes. */
-export const openKitchen = (home: string) => window.dispatchEvent(new CustomEvent(OPEN_KITCHEN, { detail: home }));
+export const openKitchen = (home: string, id?: string) => { if (id) kitchenHome = id; window.dispatchEvent(new CustomEvent(OPEN_KITCHEN, { detail: home })); };
+/** Truck logistics: which of your homes' kitchens the panels act on (each kitchen keeps its own stock). */
+let kitchenHome: string | undefined;

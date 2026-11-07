@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { request, socket } from '@/lib/net';
 import { usePanelDrag } from '@/lib/panelDrag';
 import { WarehouseSales } from './BuildingInventory';
+import { LocationStock } from './LocationStock';
 import { CARGO } from '../../../shared/cargo';
 import { HUBS, HUB_IDS, MODES, shipFee, fmtEta, type HubId, type LiveVehicle, type Mode, type TruckModel, truckAllowed } from '../../../shared/logistics';
 
@@ -19,7 +20,7 @@ const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric
 export function FreightYard({ onClose, me }: { onClose: () => void; me: string | null }) {
   useDoing('logistics');
   const drag = usePanelDrag('freight');
-  const [v, setV] = useState<View | null>(null); const [tab, setTab] = useState<'ship' | 'store' | 'live' | 'sales'>('ship');
+  const [v, setV] = useState<View | null>(null); const [tab, setTab] = useState<'stock' | 'ship' | 'store' | 'live' | 'sales'>('stock');
   const [item, setItem] = useState(''); const [qty, setQty] = useState(1); const [mode, setMode] = useState<Mode>('ship'); const [to, setTo] = useState<HubId>('resort'); const [who, setWho] = useState('');
   const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [, tick] = useState(0); useEffect(() => setMsg(null), [tab]); // Tess QA #5
   const load = () => { void request('freight_view').then((a) => { if (a.ok) setV(a as unknown as View); }); };
@@ -42,8 +43,9 @@ export function FreightYard({ onClose, me }: { onClose: () => void; me: string |
     <div className="dealer freight" data-testid="freight-yard" {...backdropDismiss(() => onClose())}>
       <div className="dealer-box" data-drag-panel="freight" onPointerDown={drag.onPointerDown} style={drag.style()} ref={drag.ref}>{drag.handle}
         <header><h3>📦 Chud Logistics</h3>{v?.chips != null && <span className="dealer-chips">{fmt(v.chips)} chips</span>}<button type="button" onClick={onClose} aria-label="Close" data-testid="freight-close">✕</button></header>
-        <nav className="freight-tabs">{(['ship', 'store', 'live', 'sales'] as const).map((t) => <button key={t} type="button" className={tab === t ? 'on' : ''} onClick={() => setTab(t)} data-testid={`freight-tab-${t}`}>{t === 'ship' ? '📦 Ship goods' : t === 'store' ? '🚚 Truck store' : t === 'sales' ? '💰 Warehouse sales' : `🗺 On the map (${v?.live.length ?? 0})`}</button>)}</nav>
+        <nav className="freight-tabs">{(['stock', 'ship', 'store', 'live', 'sales'] as const).map((t) => <button key={t} type="button" className={tab === t ? 'on' : ''} onClick={() => setTab(t)} data-testid={`freight-tab-${t}`}>{t === 'stock' ? '🏭 My places' : t === 'ship' ? '📦 Ship goods' : t === 'store' ? '🚚 Truck store' : t === 'sales' ? '💰 Warehouse sales' : `🗺 On the map (${v?.live.length ?? 0})`}</button>)}</nav>
         <div className="freight-body">
+          {tab === 'stock' && <section><LocationStock me={me} /></section>}
           {tab === 'sales' && <section><WarehouseSales /></section>}
           {tab === 'ship' && <section>
             <div className="freight-modes">{v?.modes.filter((m) => truckAllowed(m.id, 'city', to)).map((m) => { const dis = (m.id === 'truck' && !freeTruck) || ((m.id === 'jet' || m.id === 'boat') && !freeCraft(m.id)); return (

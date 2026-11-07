@@ -353,19 +353,19 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
         <button type="button" className="world-deed-x" onClick={() => setPanel(NONE)} aria-label="Close">✕</button>
         <h3>🏠 My home</h3>
         <small>Your trailer at Chud Acres Trailer Park, plus any property you own. Every home has a kitchen.</small>
-        <button type="button" onClick={() => { setPanel(NONE); openKitchen('Your trailer · Chud Acres'); }} data-testid="home-kitchen-trailer">🚐 Your trailer<span>🍳 Kitchen</span></button>
+        <button type="button" onClick={() => { setPanel(NONE); openKitchen('Your trailer · Chud Acres', 'trailer'); }} data-testid="home-kitchen-trailer">🚐 Your trailer<span>🍳 Kitchen</span></button>
         {(() => { const r = myHomeRows(owned.values(), me, propertyById); const L = (id: string) => propertyById(id)?.label ?? id; return <>
           {r.homes.map((id) => <button type="button" key={'in-' + id} onClick={() => { setPanel(NONE); enterHome(id); }} data-testid={`home-enter-${id}`}>{L(id)}<span>🛋️ Enter & decorate</span></button>)}
-          {r.homes.map((id) => <button type="button" key={id} onClick={() => { setPanel(NONE); openKitchen(L(id)); }} data-testid={`home-kitchen-${id}`}>{L(id)}<span>🍳 Kitchen</span></button>)}
+          {r.homes.map((id) => <button type="button" key={id} onClick={() => { setPanel(NONE); openKitchen(L(id), id); }} data-testid={`home-kitchen-${id}`}>{L(id)}<span>🍳 Kitchen</span></button>)}
           {r.homes.length === 0 && <small data-testid="home-none">You don't own a house yet, so there's nothing to enter. Buy one on the map to enter and decorate it.</small>}
-          {r.kitchens.map((id) => <button type="button" key={id} onClick={() => { setPanel(NONE); openKitchen(L(id)); }} data-testid={`home-kitchen-${id}`}>{L(id)}<span>🍳 Kitchen</span></button>)}
+          {r.kitchens.map((id) => <button type="button" key={id} onClick={() => { setPanel(NONE); openKitchen(L(id), id); }} data-testid={`home-kitchen-${id}`}>{L(id)}<span>🍳 Kitchen</span></button>)}
           {r.farms.map((id) => <button type="button" key={'farm-' + id} onClick={() => setFarm(id)} data-testid={`home-farm-${id}`}>{L(id)}<span>🌾 Open farm</span></button>)}
           {r.businesses.map((id) => <button type="button" key={'biz-' + id} onClick={() => { setPanel(NONE); setDeed(id); }} data-testid={`home-biz-${id}`}>{L(id)}<span>🏢 Your business</span></button>)}
           <h4>Shops</h4>
           <button type="button" onClick={() => { setPanel(NONE); openFurnitureStore(); }} data-testid="home-furniture-store">🛋️ Furniture Store<span>Shop</span></button>
         </>; })()}
       </div>}
-      {deed && <DeedPanel id={deed} owned={owned} me={me} onKitchen={() => { openKitchen(propertyById(deed)?.label ?? deed); setDeed(null); }} onClose={() => setDeed(null)} onFarm={() => setFarm(deed)} onDone={(ev, text, paid) => {
+      {deed && <DeedPanel id={deed} owned={owned} me={me} onKitchen={() => { openKitchen(propertyById(deed)?.label ?? deed, deed); setDeed(null); }} onClose={() => setDeed(null)} onFarm={() => setFarm(deed)} onDone={(ev, text, paid) => {
         setToast(text); window.clearTimeout(toastT.current); toastT.current = window.setTimeout(() => setToast(null), 4000);
         setOwned((m) => { const n = new Map(m); if ((ev === 're_buy' || ev === 're_buyout') && me) n.set(deed, optimisticOwn(m.get(deed), ev, deed, me, paid ?? propertyById(deed)?.price ?? 0, Date.now())); else n.delete(deed); return n; });
       }} />}

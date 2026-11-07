@@ -91,7 +91,7 @@ export function ResortMap() {
         <button type="button" onClick={() => setCoral(!coral)} data-testid="resort-coral-btn">🐚 Coral Grotto storage</button>
         <button type="button" onClick={() => void home()} data-testid="resort-fly-home">✈️ Fly home (free)</button>
       </div>
-      {deed && <DeedPanel id={deed} owned={owned} me={me} onKitchen={() => { openKitchen(baseProperty(deed)?.label ?? deed); setDeed(null); }} onClose={() => setDeed(null)} onFarm={() => { setFarm(deed); setDeed(null); }} />}
+      {deed && <DeedPanel id={deed} owned={owned} me={me} onKitchen={() => { openKitchen(baseProperty(deed)?.label ?? deed, deed); setDeed(null); }} onClose={() => setDeed(null)} onFarm={() => { setFarm(deed); setDeed(null); }} />}
       {coral && <div className="world-deed" data-testid="resort-coral"><button type="button" className="world-deed-x" onClick={() => setCoral(false)} aria-label="Close">✕</button><BuildingInventory building="coral" /></div>}
       {farm && <FarmGame id={farm} label={baseProperty(farm)?.label ?? 'Plantation'} onClose={() => setFarm(null)} />}
       {list && !deed && (

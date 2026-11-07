@@ -398,36 +398,6 @@ export class Farm {
     return ((await this.pool.query('SELECT DISTINCT plot_id FROM farm_tiles WHERE owner_key = $1', [keyOf(name)])).rows as Array<{ plot_id: string }>).map((r) => String(r.plot_id));
   }
 
-  /** Harvest into the kitchen pantry instead of selling (pt1312u): no chips, no daily-tier use; Farming XP as usual.
-   * Tiles are claimed with a NOT NULL guard row in the SAME transaction as the pantry stacks (Mines' stack table). */
-  private async harvestToPantry(name: string, pid: string, key: string, ready: TileRow[], now: number) {
-    const counts = new Map<string, number>(); let value = 0;
-    for (const r of ready) { const c = cropById(r.crop)!; counts.set(c.id, (counts.get(c.id) ?? 0) + 1); value += c.sell; }
-    const extra: Array<{ sql: string; args: unknown[] }> = [];
-    for (const r of ready) {
-      extra.push({ sql: `INSERT INTO kitchen_harvests (tile_key, at) VALUES ((SELECT t.plot_id || ':' || t.tile || ':' || t.nonce FROM farm_tiles t JOIN properties p ON p.id = t.plot_id AND p.owner_key = $4
-        WHERE t.plot_id = $1 AND t.tile = $2 AND t.nonce = $3 AND t.owner_key = $4), $5)`, args: [pid, r.tile, r.nonce, key, now] });
-      extra.push({ sql: 'DELETE FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3', args: [pid, r.tile, r.nonce] });
-    }
-    const mines = getMines(); let failed: Error | null = null; let done: Promise<unknown> = Promise.resolve(); let rows: Array<{ sql: string; args: unknown[] }> | null = null;
-    const deltas = [...counts].map(([id, n]) => ({ type: 'food' as const, id, delta: n }));
-    let ok = false;
-    try { ok = mines.adjustStacks(name, deltas, extra, (r) => { rows = r; }, { bind: (p) => { done = p; }, onFail: (e) => { failed = e; } }); }
-    catch (e) { throw new FarmError((e as Error).message || 'Storage is offline right now.'); }
-    if (!ok) throw new FarmError('Could not store that.');
-    if (rows) {
-      const cl = await this.pool.connect();
-      try { await cl.query('BEGIN'); for (const s of rows as Array<{ sql: string; args: unknown[] }>) await cl.query(s.sql, s.args); await cl.query('COMMIT'); }
-      catch (e) { await cl.query('ROLLBACK').catch(() => {}); mines.adjustStacks(name, deltas.map((d) => ({ ...d, delta: -d.delta }))); failed = e as Error; }
-      finally { cl.release(); }
-    } else await done;
-    if (failed) { console.error('[farm] pantry harvest failed:', (failed as Error).message); throw new FarmError('Already harvested (or storage hiccup). Nothing was lost.'); }
-    awardXp(name, 'farming', Math.min(400, 10 + Math.round(value / 5)));
-    this.onChange?.(pid);
-    eventCredit('harvest', name, ready.length);
-        return { harvested: ready.length, paid: 0, pantry: Object.fromEntries(counts), toFactory: undefined as Array<[string, number]> | undefined, chips: this.bank().account(name).chips };
-  }
-
   /** Clear withered crops (free). */
   async clear(name: string, id: unknown) {
     const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const pid = p.pid; const key = keyOf(name);

@@ -269,10 +269,8 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
             ))}
           </div>}
           {side === 'import' && <div className="fac-import" data-testid="fac-import">
-            <p className="mines-note">Bring resources in from the rest of the game. They land in your banked storage, where an Input Chest can pull them. Ore from every cave (The Mine, Frostbite, Magma, Coral Grotto) is already there when you bank it.</p>
-            <button type="button" className="fac-btn" onClick={() => call('fac_import_farm', {}, (r) => { const g = (r.result as { toFactory?: Array<[string, number]> } | undefined)?.toFactory ?? []; flash(`Sent to the factory: ${g.map(([id, n]) => `${n} ${nameOfKey(`good:${id}`)}`).join(', ')}`); })} data-testid="fac-import-farm">🌾 Harvest every ready crop into the factory</button>
-            <small className="mines-note">Instead of selling them: no chips now and no farm tier used. Plantation crops only while you're at Chud Resort.</small>
-            <button type="button" className="fac-btn" onClick={() => call('fac_import_fish', {}, (r) => { const g = (r.result as { items?: Array<[string, number]>; moved?: number } | undefined); flash(`Moved ${g?.moved ?? 0} fish: ${(g?.items ?? []).map(([id, n]) => `${n} ${nameOfKey(`good:${id}`)}`).join(', ')}`); })} data-testid="fac-import-fish">🐟 Send my cooler to the factory</button>
+            <p className="mines-note" data-testid="fac-import-truck">Goods stay where they were made. Truck crops, fish and ore here from your farms, fishing spots and mines in 📦 Chud Logistics → 🏭 My places; they land in this factory's storage, where an Input Chest can pull them.</p>
+            <button type="button" className="fac-btn" onClick={() => call('fac_import_fish', {}, (r) => { const g = (r.result as { items?: Array<[string, number]>; moved?: number } | undefined); flash(`Moved ${g?.moved ?? 0} fish: ${(g?.items ?? []).map(([id, n]) => `${n} ${nameOfKey(`good:${id}`)}`).join(', ')}`); })} data-testid="fac-import-fish">🐟 Process the fish at this factory</button>
             <small className="mines-note">Raw fish become Fish Fillets (1 per 8 chips of value), cooked dishes become Cooked Fish Portions (1 per 10). Junk stays. Imported crops and fish can't be sold raw to the house: craft them.</small>
             <h4>Imported stock</h4>
             <ul className="fac-stock">{CHEST_ITEMS.filter((k) => isRawKey(k) && (sim.current.store.get(k) ?? 0) > 0).map((k) => <li key={k}><Dot k={k} />{sim.current.store.get(k)} {nameOfKey(k)}</li>)}</ul>
