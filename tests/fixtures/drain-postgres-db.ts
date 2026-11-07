@@ -3,7 +3,7 @@ import type pg from 'pg';
  * pg may emit a late, unhandled FATAL on a client already removed from the pool. Drain this unique test DB only.
  */
 export async function dropDrainedTestDatabase(root: pg.Client, pool: pg.Pool, database: string) {
-  if (!/^(lm_test_|lmsf_|tax_refund_)[a-z0-9_]+$/.test(database)) throw new Error('Refusing cleanup of an unrecognized disposable database');
+  if (!/^(lm_test_|lmsf_|lmsafe_|tax_refund_)[a-z0-9_]+$/.test(database)) throw new Error('Refusing cleanup of an unrecognized disposable database');
   try {
     await pool.end();
     const deadline = Date.now() + 15_000;
