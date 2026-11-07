@@ -2474,13 +2474,14 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 @media (max-width: 640px), (max-height: 500px) {
   .world-corner { left: 10px; right: 0; top: 46px; overflow-x: auto; scrollbar-width: none; padding-right: 24px; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
   .world-corner::-webkit-scrollbar { display: none; }
-  .world-corner button { white-space: nowrap; flex: none; min-height: 36px; padding: 6px 12px; }
-  .world-clock { top: 90px; left: 10px; }
+  .world-corner button { white-space: nowrap; flex: none; min-height: 44px; padding: 6px 12px; }
+  .world-clock { top: 96px; left: 10px; white-space: nowrap; }
   .world-title { font-size: 24px; }
-  .wev-mapbar { top: 124px; left: 10px; right: auto; transform: none; z-index: 4; max-width: calc(100% - 20px); gap: 6px; padding: 4px 8px; font-size: 11px; white-space: nowrap; }
+  .wev-mapbar { top: 130px; left: 10px; right: auto; transform: none; z-index: 4; max-width: calc(100% - 20px); gap: 6px; padding: 4px 8px; font-size: 11px; white-space: nowrap; }
   .wev-mapbar .wev-name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .wev-mapbar .wev-track { width: 56px; flex: none; }
   .wev-mapbar .wev-num { flex: none; }
+  .world-grid { padding-top: 164px; } /* 2D tiles start below the HUD stack instead of under it */
 }
 /* Backpack (Skin Inventory) window on phones: fit the VISIBLE viewport (Android Chrome's URL bar makes 92vh taller than
    the screen, pushing the header and its ✕ off-screen) and let the header wrap so ✕ is always reachable. */

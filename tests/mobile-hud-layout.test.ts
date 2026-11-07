@@ -26,16 +26,18 @@ describe('phone HUD: nav row, clock and weekly bar never overlap', () => {
   for (const [name, w, h] of VIEWS) it(name, () => {
     const nav = eff('.world-corner', w, h), btn = eff('.world-corner button', w, h), clock = eff('.world-clock', w, h), wev = eff('.wev-mapbar', w, h);
     expect(px(nav.top)).toBe(46); expect(nav['overflow-x']).toBe('auto'); // one scrollable row, not clipped
-    expect(px(btn['min-height'])).toBeGreaterThanOrEqual(36); // finger-sized
+    expect(px(btn['min-height'])).toBeGreaterThanOrEqual(44); // recommended touch target
     const navBottom = px(nav.top) + px(btn['min-height']);
     expect(px(clock.top)).toBeGreaterThanOrEqual(navBottom + 4); // clock below the nav row
     expect(px(wev.top)).toBeGreaterThanOrEqual(px(clock.top) + 28); // weekly bar below the clock (~26px tall)
     expect(wev.transform).toBe('none'); expect(wev['max-width']).toBe('calc(100% - 20px)'); // fits the width
+    expect(clock['white-space']).toBe('nowrap'); expect(wev['white-space']).toBe('nowrap'); // single-line bands (the height assumptions below)
+    expect(px(eff('.world-grid', w, h)['padding-top'])).toBeGreaterThanOrEqual(px(wev.top) + 28); // 2D tiles not under the HUD
     expect(Number(wev['z-index'])).toBeLessThan(Number(eff('.world-corner', w, h)['z-index'] ?? 5)); // nav stays tappable
   });
   it('desktop keeps its original layout', () => {
     const wev = eff('.wev-mapbar', 1440, 900); expect(wev.top).toBe('56px'); expect(wev.transform).toBe('translateX(-50%)');
-    expect(eff('.world-corner', 1440, 900).top).toBe('12px');
+    expect(eff('.world-corner', 1440, 900).top).toBe('12px'); expect(eff('.world-grid', 1440, 900)['padding-top']).toBeUndefined();
   });
   it('backpack inventory fits the visible viewport and its close button stays reachable on phones', () => {
     const win = eff('.inv-win[aria-label="Inventory"]', 390, 700); expect(win.height).toContain('dvh'); expect(win['max-height']).toBe('calc(100dvh - 16px)');
