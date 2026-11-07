@@ -44,7 +44,7 @@ describe('surcharge base = price paid + upgrades', () => {
     const s = await setup(); const [a, b] = cheap(2);
     await s.hold(a!.id, 'Dayne', 136_000);
     const q = await s.re.quote('Dayne', b!.id);
-    expect(q.ownedValue).toBe(136_000); expect(q.surchargePct).toBeCloseTo(272); expect(q.price).toBe(landPrice(px(b!.price), 136_000));
+    expect(q.ownedValue).toBe(136_000); expect(q.surchargePct).toBeCloseTo(136); expect(q.price).toBe(landPrice(px(b!.price), 136_000));
     expect(q.ownedValue).toBe(await propertyPaidPlusUpgradesOf(s.pool as never, 'Dayne'));
     expect(q.ownedValue).toBe((await quotePurchaseTax(s.pool as never, 'Dayne', q.price)).propertyValue);
   });
@@ -59,38 +59,27 @@ describe('surcharge base = price paid + upgrades', () => {
   });
 });
 
-describe('property back-tax', () => {
-  it('debt = should-have-paid on the paid base − paid, plus missed 5% tax; blocks buys until paid; pay clears; no double charge', async () => {
-    const s = await setup(); const [a, b, c, d] = cheap(4); const la = px(a!.price), lb = px(b!.price);
-    // first buy: nothing owned → no surcharge either way
-    await s.pastBuy('Dayne', a!.id, a!.label, la, 0, '2026-11-02T12:00:00Z');
-    // pretend the first deed's paid price is 120K (bought surcharged long ago); old base counted its LIST (la)
-    await (s.pool as any).query('UPDATE properties SET price = 120000 WHERE id = $1', [a!.id]);
-    await (s.pool as any).query("UPDATE wallet_transactions SET amount = -120000, memo = $1 WHERE tx_key = $2", [`Bought ${a!.label} (${a!.id}) +2% surcharge: you own 1,000 in property`, `property_buy:${a!.id}`]);
-    const listA = Math.round(120_000 / (1 + 2 / 100));
-    const paidB = landPrice(lb, la); await s.pastBuy('Dayne', b!.id, b!.label, paidB, la, '2026-11-04T20:00:00Z'); // after the 5% tax went live; no tax charged (old base)
-    const bt = await backTaxOf(s.pool as never, 'Dayne');
-    const shouldB = landPrice(lb, 120_000);
-    expect(bt.surcharge).toBe(shouldB - paidB); expect(bt.wealthTax).toBe(Math.ceil(shouldB * 0.05)); expect(bt.debt).toBe(bt.surcharge + bt.wealthTax);
-    expect(listA).toBeGreaterThan(0);
-    await s.fund('Dayne', bt.debt + 10_000_000);
-    await expect(s.re.buy('Dayne', c!.id)).rejects.toThrow(/back-tax/);
-    const g = new Garage(s.pool as never); await g.init(); await expect(g.buy('Dayne', CARS[0]!.id, undefined)).rejects.toThrow(/back-tax/);
+describe('historical property back-tax permanently canceled', () => {
+  it('old underpaid purchases never block property/cars or charge cached pay requests, including after new buys', async () => {
+    const s = await setup(); const [a, b, c, d] = cheap(4);
+    await s.pastBuy('Dayne', a!.id, a!.label, 120_000, 0, '2026-11-02T12:00:00Z');
+    await s.pastBuy('Dayne', b!.id, b!.label, px(b!.price), 1000, '2026-11-04T20:00:00Z');
+    await s.fund('Dayne', 10_000_000);
+    expect((await backTaxOf(s.pool as never, 'Dayne')).debt).toBe(0);
     const before = await s.chips('dayne');
-    const [r1, r2] = await Promise.all([s.re.payBackTax('Dayne'), s.re.payBackTax('Dayne')]);
-    expect(r1.paid + r2.paid).toBe(bt.debt); await s.bank.flush();
-    expect(await s.chips('dayne')).toBe(before - bt.debt);
-    expect(await s.chips('other')).toBe(6000 + bt.wealthTax);
+    const results = await Promise.all([s.re.payBackTax('Dayne'), s.re.payBackTax('Dayne')]);
+    expect(results.map(r => r.paid)).toEqual([0, 0]);
+    expect(await s.chips('dayne')).toBe(before);
+    expect(await s.chips('other')).toBe(6000);
+    await expect(s.re.buy('Dayne', c!.id)).resolves.toBeTruthy();
+    const g = new Garage(s.pool as never); await g.init(); await expect(g.buy('Dayne', CARS[0]!.id, undefined)).resolves.toBeTruthy();
+    await expect(s.re.buy('Dayne', d!.id)).resolves.toBeTruthy();
     expect((await backTaxOf(s.pool as never, 'Dayne')).debt).toBe(0);
     expect((await s.re.payBackTax('Dayne')).paid).toBe(0);
-    expect(((await (s.pool as any).query(`SELECT COUNT(*) n FROM wallet_transactions WHERE game = '${BACKTAX_GAME}'`)).rows[0].n) + '').toBe('1');
-    await expect(s.re.buy('Dayne', d!.id)).resolves.toBeTruthy();
+    expect(Number((await (s.pool as any).query(`SELECT COUNT(*) n FROM wallet_transactions WHERE game = '${BACKTAX_GAME}'`)).rows[0].n)).toBe(0);
   });
-  it('QA / guest / bot accounts owe nothing; a correctly priced history owes nothing', async () => {
-    const s = await setup(); const [a, b] = cheap(2);
-    await s.pastBuy('qa-bot1', a!.id, a!.label, 120_000, 0, '2026-11-02T12:00:00Z');
-    expect((await backTaxOf(s.pool as never, 'qa-bot1')).debt).toBe(0);
-    await s.pastBuy('Zed', b!.id, b!.label, px(b!.price), 0, '2026-11-02T12:00:00Z');
-    expect((await backTaxOf(s.pool as never, 'Zed')).debt).toBe(0);
+  it('never reconstructs canceled debt or depends on historical DB availability', async () => {
+    const bad = { query: async () => { throw new Error('history offline'); } };
+    expect((await backTaxOf(bad, 'Dayne')).debt).toBe(0);
   });
 });

@@ -125,12 +125,12 @@ describe('real estate: buy / sell / tax', () => {
 
 describe('real estate: land gets pricier the more you own', () => {
   const cheap = (k: number) => [...properties()].filter((p) => p.kind !== 'landmark').sort((a, b) => a.price - b.price).slice(0, k);
-  it('price = list × (1 + 2% per 1,000 owned, uncapped); sell-back is 70% of what was paid; tax is on the price paid (Tess QA #8)', async () => {
+  it('price = list × (1 + 1% per 1,000 owned, uncapped); sell-back is 70% of what was paid; tax is on the price paid (Tess QA #8)', async () => {
     const s = await setup(); const ps = cheap(4); const list = ps.map((p) => px(p.price));
     const before: number[] = []; for (let i = 0; i < list.length; i++) before.push(list.slice(0, i).reduce((a, b, j) => a + landPrice(b, before[j]!), 0)); // paid price, not list, drives the next surcharge
     const cost = list.reduce((a, l, i) => a + landPrice(l, before[i]!), 0); await s.fund('Ivy', cost);
-    for (let i = 0; i < 4; i++) { const q = await s.re.quote('Ivy', ps[i]!.id); expect(q.owned).toBe(i); expect(q.ownedValue).toBe(before[i]); expect(q.surchargePct).toBeCloseTo(before[i]! / 1000 * 2);
-      expect(q.price).toBe(Math.round(list[i]! * (1 + before[i]! / 1000 * 2 / 100)));
+    for (let i = 0; i < 4; i++) { const q = await s.re.quote('Ivy', ps[i]!.id); expect(q.owned).toBe(i); expect(q.ownedValue).toBe(before[i]); expect(q.surchargePct).toBeCloseTo(before[i]! / 1000 * 1);
+      expect(q.price).toBe(Math.round(list[i]! * (1 + before[i]! / 1000 * 1 / 100)));
       const r = await s.re.buy('Ivy', ps[i]!.id, q.price); expect(r.price).toBe(q.price); }
     expect(s.chips('ivy')).toBe(0);
     expect(s.ledger('ivy', 'property_buy').map((x) => -Number(x.amount))).toEqual(list.map((l, i) => landPrice(l, before[i]!)));
@@ -147,9 +147,9 @@ describe('real estate: land gets pricier the more you own', () => {
     expect((r.find((x) => x.status === 'rejected') as PromiseRejectedResult).reason.message).toMatch(/price changed/);
   });
   it('surcharge formula and note text (no cap)', () => {
-    expect(landSurchargePct(0)).toBe(0); expect(landSurchargePct(5000)).toBe(10); expect(landSurchargePct(100_000)).toBe(200); expect(landSurchargePct(500_000)).toBe(1000);
-    expect(landPrice(10_000, 5000)).toBe(11_000); expect(landPrice(10_000, 100_000)).toBe(30_000);
-    expect(landMultiplierNote(0)).toBe(''); expect(landMultiplierNote(5000)).toBe('+10% surcharge: you own 5,000 in property');
+    expect(landSurchargePct(0)).toBe(0); expect(landSurchargePct(5000)).toBe(5); expect(landSurchargePct(100_000)).toBe(100); expect(landSurchargePct(500_000)).toBe(500);
+    expect(landPrice(10_000, 5000)).toBe(10_500); expect(landPrice(10_000, 100_000)).toBe(20_000);
+    expect(landMultiplierNote(0)).toBe(''); expect(landMultiplierNote(5000)).toBe('+5% surcharge: you own 5,000 in property');
   });
 });
 
