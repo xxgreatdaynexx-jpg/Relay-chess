@@ -82,6 +82,10 @@ it.skipIf(!url)('real PostgreSQL full back-tax refund: partial payments, durable
     await expect(wallet.apply({name:'Missing',game:REFUND_GAME,amount:12,key:'orphan-refund',balance:0,at:Date.now()},'missing',{}, {existingWalletOnly:true})).rejects.toThrow(/Existing payer wallet/);
     expect((await pool.query("SELECT 1 FROM casino_players WHERE player_key='missing'")).rows).toHaveLength(0);
     expect((await pool.query("SELECT 1 FROM wallet_transactions WHERE tx_key='orphan-refund'")).rows).toHaveLength(0);
+    await pool.query("INSERT INTO casino_players(player_key,name,chips) VALUES('integer-boundary','Boundary',9007199254740991)");
+    await expect(wallet.apply({name:'Boundary',game:REFUND_GAME,amount:1,key:'unsafe-refund',balance:0,at:Date.now()},'integer-boundary',{}, {existingWalletOnly:true})).rejects.toThrow(/safe wallet integer range/);
+    expect((await pool.query("SELECT chips::text FROM casino_players WHERE player_key='integer-boundary'")).rows[0].chips).toBe('9007199254740991');
+    expect((await pool.query("SELECT 1 FROM wallet_transactions WHERE tx_key='unsafe-refund'")).rows).toHaveLength(0);
     // Generic admin credits require an explicit manifest-bound review, not an assumed absence of prior refunds.
     await wallet.apply({name:'Payer',game:'admin',amount:7,key:'other-admin-credit',balance:0,at:Date.now(),memo:'Unrelated test grant'},'payer');
     const genericId=await pay('generic-review',11); audit=await auditBackTaxRefunds(pool);

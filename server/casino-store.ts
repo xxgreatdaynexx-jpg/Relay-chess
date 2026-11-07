@@ -125,7 +125,10 @@ export class PgCasinoStore implements CasinoStore {
       if (opts.existingWalletOnly) {
         // Audited refunds may only credit an existing payer, never create a wallet or change its current name.
         // Lock it inside this same transaction so deletion cannot race the check and invent START_CHIPS.
-        if (!(await q('SELECT player_key FROM casino_players WHERE player_key = $1 FOR UPDATE', [playerKey])).rows.length) throw new Error('Existing payer wallet required');
+        const existing = (await q('SELECT chips FROM casino_players WHERE player_key = $1 FOR UPDATE', [playerKey])).rows[0];
+        if (!existing) throw new Error('Existing payer wallet required');
+        const current = Number(existing.chips);
+        if (!Number.isSafeInteger(current) || !Number.isSafeInteger(current + tx.amount)) throw new Error('Refund balance exceeds safe wallet integer range');
       } else await q(ENSURE_ROW, [playerKey, tx.name, START_CHIPS]);
       // Key already used (e.g. by another instance)? No-op. The UNIQUE index below is the race-proof backstop.
       if (tx.key && (await q('SELECT 1 FROM wallet_transactions WHERE tx_key = $1', [tx.key])).rows.length) {
