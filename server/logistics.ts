@@ -383,7 +383,8 @@ export function registerLogistics(io: Server, socket: Socket): void {
     return v ? { fee: l.ownQuote(v.model, v.id, qty), trips: tripsFor(qty, cargoCap(v.model)), cap: cargoCap(v.model) } : { fee: 0, trips: 0 };
   });
   on('freight_ship', async (b, l) => { const r = await l.ship(need(), b); io.to('freight').emit('freight_live', l.live()); return r; });
-  on('truck_buy', (b, l) => l.buyTruck(need(), b.truck));
+  // Map pools: same-map moves need no truck, and trucks never cross maps, so no NEW truck sales (owned trucks + sell-back kept).
+  on('truck_buy', async () => { throw new FreightError('Trucks are no longer needed: moves on the same map are instant and free.'); });
   on('truck_sell', (b, l) => l.sellTruck(need(), b.id));
   socket.on('freight_watch', (on: unknown) => { if (on === false) void socket.leave('freight'); else { void socket.join('freight'); if (logistics) socket.emit('freight_live', logistics.live()); } });
 }
