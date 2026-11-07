@@ -39,6 +39,13 @@ describe('auto-sell rules', () => {
     expect(autoCarrier({ idleTruckCap: null, qty: 100, value: 100 * 16, hiredFee, hiredCap: MODES.hired.cap })).toEqual({ mode: 'hired', qty: 100 });
     expect(autoCarrier({ idleTruckCap: null, qty: 100, value: 100 * 2, hiredFee, hiredCap: MODES.hired.cap })).toBeNull(); // natgas at 2/unit: fee 200 > 80
   });
+  it('carrier off-map: never a truck (own idle or hired); cargo ship when the fee is worth it', () => {
+    const hiredFee = (q: number) => feeBase('hired', q); const shipFee = (q: number) => feeBase('ship', q);
+    const o = { hiredFee, hiredCap: MODES.hired.cap, sameMap: false, shipFee, shipCap: MODES.ship.cap };
+    expect(autoCarrier({ ...o, idleTruckCap: 250, qty: 400, value: 400 * 16 })?.mode).toBe('ship');
+    expect(autoCarrier({ ...o, idleTruckCap: null, qty: 100, value: 100 * 16 })?.mode).toBe('ship');
+    expect(autoCarrier({ ...o, idleTruckCap: 250, qty: 100, value: 1 })).toBeNull();
+  });
   it('recipe needs come from the real recipe books', () => {
     expect(recipeNeeds('ore', 'iron')).toBe(true); expect(recipeNeeds('ore', 'coal')).toBe(true);
     expect(recipeNeeds('crop', 'wheat')).toBe(true);
@@ -63,12 +70,14 @@ describe('ship-to-sell + warehouse', () => {
     await expect(f.act(n, { op: 'sell', items: [['crude', 10]] })).rejects.toThrow(/no market/);
     await expect(f.act(n, { op: 'ship_sell', id: 'crude', qty: crude + 5, mode: 'hired' })).rejects.toThrow(/that much/);
     const c0 = chips(n);
-    const r = await f.act(n, { op: 'ship_sell', id: 'crude', qty: 100, mode: 'hired' }) as { fee: number; shipment: string };
-    expect(r.fee).toBe(feeBase('hired', 100)); expect(chips(n)).toBe(c0 - r.fee);
+    for (const mode of ['hired', 'truck']) await expect(f.act(n, { op: 'ship_sell', id: 'crude', qty: 100, mode })).rejects.toThrow(/can’t haul to other maps/);
+    expect(chips(n)).toBe(c0); expect(Math.floor((await f.inventory(n)).stock.crude ?? 0)).toBe(crude);
+    const r = await f.act(n, { op: 'ship_sell', id: 'crude', qty: 100, mode: 'ship' }) as { fee: number; shipment: string };
+    expect(r.fee).toBe(feeBase('ship', 100)); expect(chips(n)).toBe(c0 - r.fee);
     expect(Math.floor((await f.inventory(n)).stock.crude ?? 0)).toBe(crude - 100);
     expect(await games(n)).toContain('freight');
-    const live = l.live(); expect(live).toHaveLength(1); expect(live[0]!.label).toBe(`Hired rig · ${n} · to market`);
-    now += MODES.hired.travelMs + 1; l.tick(); await new Promise((res) => setTimeout(res, 20));
+    const live = l.live(); expect(live).toHaveLength(1); expect(live[0]!.mode).toBe('ship');
+    now += 72 * H; l.tick(); await new Promise((res) => setTimeout(res, 20));
     const pay = sellPayout(Math.floor(100 * fortSellPrice('crude')), 0);
     expect(chips(n)).toBe(c0 - r.fee + pay); expect(await games(n)).toContain('fortmc_sale');
     expect(l.live()).toHaveLength(0);
@@ -83,11 +92,13 @@ describe('ship-to-sell + warehouse', () => {
     expect((await w.inventory(n, 'coral'))[0]).toMatchObject({ key: 'ore:gold', qty: 120 });
     expect(getMines().stackQty(n, 'ore', 'gold')).toBe(0); // not in the global warehouse
     const c0 = chips(n);
-    const r = await w.shipSell(n, 'coral', 'ore:gold', 100, 'hired');
+    for (const mode of ['hired', 'truck']) await expect(w.shipSell(n, 'coral', 'ore:gold', 100, mode)).rejects.toThrow(/can’t haul to other maps/);
+    expect(chips(n)).toBe(c0); expect((await w.bin(n, 'coral')).get('ore:gold')).toBe(120);
+    const r = await w.shipSell(n, 'coral', 'ore:gold', 100, 'ship');
     expect(chips(n)).toBe(c0 - r.fee); expect((await w.bin(n, 'coral')).get('ore:gold')).toBe(20);
-    await expect(w.shipSell(n, 'coral', 'ore:gold', 21, 'hired')).rejects.toThrow(/that much/);
-    expect(l.live()[0]!.label).toMatch(/Hired rig · QA-Cole-Visit · to market/);
-    now += MODES.hired.travelMs + 1; l.tick(); await new Promise((res) => setTimeout(res, 20));
+    await expect(w.shipSell(n, 'coral', 'ore:gold', 21, 'ship')).rejects.toThrow(/that much/);
+    expect(l.live()[0]!.mode).toBe('ship');
+    now += 72 * H; l.tick(); await new Promise((res) => setTimeout(res, 20));
     expect(chips(n)).toBeGreaterThan(c0 - r.fee); expect(await games(n)).toContain('mines');
     const log = await w.log(n); expect(log[0]).toMatchObject({ building: 'coral', item: 'gold', qty: 100, status: 'sold', auto: false });
   });
@@ -100,8 +111,8 @@ describe('ship-to-sell + warehouse', () => {
     await w.setCfg(n, 'coral', 'ore:gold', { reserve: 10 });
     await w.setCfg(n, 'coral', 'ore:iron', { on: true, keepRecipe: true });
     const out = await w.sweep(n);
-    expect(out).toEqual([{ building: 'coral', item: 'ore:gold', qty: 110, mode: 'truck' }]); // iron kept for smelting
-    expect(l.live()[0]!.label).toBe(`${n}'s Chud Pickup · auto-sell`);
+    expect(out).toEqual([{ building: 'coral', item: 'ore:gold', qty: 110, mode: 'ship' }]); // iron kept; coral is off-map, so the owned truck is skipped for the cargo ship
+    expect(l.live()[0]!.mode).toBe('ship');
     expect((await w.bin(n, 'coral')).get('ore:gold')).toBe(10);
     await expect(w.setCfg(n, 'coral', 'ore:gold', { reserve: -1 })).rejects.toThrow(/Reserve/);
     await expect(w.setCfg(n, 'nowhere', 'ore:gold', {})).rejects.toThrow(/building/);

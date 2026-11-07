@@ -80,6 +80,10 @@ export const PORT = HUB_MAPS.city.port;
 export const DEPOT: Pt = HUB_MAPS.city.truck[0]!; // the Warehouse landmark
 export const routeOf = (mode: Mode, hub: HubId = 'city'): Pt[] => { const m = HUB_MAPS[hub]; return mode === 'plane' || mode === 'jet' ? m.plane : mode === 'ship' || mode === 'boat' ? m.ship : m.truck; };
 /** Own-vehicle modes: leave now, fee = trips x trip fee (+ the day's upkeep), capacity from shared/cargo.ts. */
+/** Dayne 2026-11-06: trucks (own or hired) never leave their map. Cross-map loads go by freight plane / cargo ship (or own jet/boat). */
+export const isTruckMode = (m: Mode) => m === 'truck' || m === 'hired';
+export const truckAllowed = (m: Mode, from: HubId, to: HubId) => !isTruckMode(m) || from === to;
+export const NO_CROSS_MAP_TRUCK = 'Trucks can’t haul to other maps. Use the freight plane or cargo ship.';
 export const isOwnMode = (m: Mode) => m === 'truck' || m === 'jet' || m === 'boat';
 /** Does this vehicle appear on `hub`'s map? (it leaves from or arrives at that map) */
 export const onMap = (v: Pick<LiveVehicle, 'from' | 'to'>, hub: HubId) => v.from === hub || v.to === hub;

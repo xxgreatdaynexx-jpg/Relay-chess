@@ -10,7 +10,7 @@ import { clearArrival, flyHome, tripNow, useTrip } from '@/lib/travel';
 import { JETS } from '../../../shared/fleet';
 import { usePanelDrag } from '@/lib/panelDrag';
 import { BuildingInventory } from './BuildingInventory';
-import { MODES, MODE_IDS, type Mode } from '../../../shared/logistics';
+import { MODES, MODE_IDS, truckAllowed, type Mode } from '../../../shared/logistics';
 
 const chips = (n: number) => Math.floor(n).toLocaleString('en-US');
 type View = { fort: FortState; index: number; today: { gross: number; paid: number }; cap: number; demand: number; value: number; haul?: Record<string, number> };
@@ -37,7 +37,7 @@ export function FortMcMap() {
 
   const apply = useCallback((r: { ok: boolean } & Partial<View>) => { if (r.fort) { setView(r as View); worldRef.current?.setFort(r.fort); } }, []);
   const load = useCallback(() => { void request('fort_state').then((r) => apply(r as { ok: boolean } & Partial<View>)); }, [apply]);
-  const [fMode, setFMode] = useState<Mode>('truck');
+  const [fMode, setFMode] = useState<Mode>('ship'); // trucks can't leave Fort McChud's map
   const act = async (body: Record<string, unknown>, ok?: string) => {
     setBusy(true); setMsg(null);
     const r = await request('fort_act', body) as { ok: boolean; error?: string; result?: { paid?: number; shipped?: Array<[string, number]>; loads?: number; fee?: number; arriveAt?: number; partial?: string | null } } & Partial<View>;
@@ -129,7 +129,7 @@ export function FortMcMap() {
             <small>Fort McChud has no market: ship to the Chud City Warehouse and it sells there on arrival.</small>
             <small>Today sold 🪙 {chips(px(view!.today.gross))} gross, paid 🪙 {chips(view!.today.paid)}. Daily tiers: {SELL_TIERS.map((t, i) => `${pct(t.rate * 100)}${t.upTo === Infinity ? ' after' : ` to ${chips(px(t.upTo))}`}`).join(' · ')}.</small>
             <BuildingInventory building="fortmc" />
-            <div className="bldg-modes">To my factory by: {MODE_IDS.map((m) => <button key={m} type="button" className={fMode === m ? 'on' : ''} onClick={() => setFMode(m)} data-testid={`fort-ship-mode-${m}`}>{MODES[m].icon} {MODES[m].label}</button>)}</div>
+            <div className="bldg-modes">To my factory by: {MODE_IDS.filter((m) => truckAllowed(m, 'fortmc', 'city')).map((m) => <button key={m} type="button" className={fMode === m ? 'on' : ''} onClick={() => setFMode(m)} data-testid={`fort-ship-mode-${m}`}>{MODES[m].icon} {MODES[m].label}</button>)}</div>
             <button type="button" disabled={busy} onClick={() => void act({ op: 'ship', mode: fMode })} data-testid="fort-ship">🚚 Ship ore + petcoke (as coal) to my factory{fMode === 'truck' ? ' · your truck, free' : ' · freight fee'}</button>
           </>}
           {panel === 'mine' && <>

@@ -43,7 +43,12 @@ export function autoQty(have: number, cfg: AutoCfg, neededByRecipe: boolean): nu
   return n >= AUTO_MIN_LOAD ? n : 0;
 }
 /** Pick the carrier for an auto load: an idle own truck (free) first, else a hired rig if its fee is worth it; null = wait. */
-export function autoCarrier(opts: { idleTruckCap: number | null; qty: number; value: number; hiredFee: (q: number) => number; hiredCap: number }): { mode: Mode; qty: number } | null {
+export function autoCarrier(opts: { idleTruckCap: number | null; qty: number; value: number; hiredFee: (q: number) => number; hiredCap: number; sameMap?: boolean; shipFee?: (q: number) => number; shipCap?: number }): { mode: Mode; qty: number } | null {
+  if (opts.sameMap === false) { // trucks never leave their map: off-map buildings auto-ship by cargo ship when the fee is worth it
+    const q = Math.min(opts.qty, opts.shipCap ?? 0); if (q < AUTO_MIN_LOAD || !opts.shipFee) return null;
+    const unit = opts.qty > 0 ? opts.value / opts.qty : 0;
+    return opts.shipFee(q) <= AUTO_MAX_FEE_SHARE * unit * q ? { mode: 'ship', qty: q } : null;
+  }
   if (opts.idleTruckCap && opts.idleTruckCap > 0) return { mode: 'truck', qty: Math.min(opts.qty, opts.idleTruckCap) };
   const q = Math.min(opts.qty, opts.hiredCap); if (q < AUTO_MIN_LOAD) return null;
   const unit = opts.qty > 0 ? opts.value / opts.qty : 0;

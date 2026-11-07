@@ -5,7 +5,7 @@ import { request, socket } from '@/lib/net';
 import { usePanelDrag } from '@/lib/panelDrag';
 import { WarehouseSales } from './BuildingInventory';
 import { CARGO } from '../../../shared/cargo';
-import { HUBS, HUB_IDS, MODES, shipFee, fmtEta, type HubId, type LiveVehicle, type Mode, type TruckModel } from '../../../shared/logistics';
+import { HUBS, HUB_IDS, MODES, shipFee, fmtEta, type HubId, type LiveVehicle, type Mode, type TruckModel, truckAllowed } from '../../../shared/logistics';
 
 type Stack = { type: string; id: string; qty: number; name: string };
 type Ship = { id: string; ownerName: string; toName: string; mode: Mode; from: HubId; to: HubId; itemId: string; type: string; qty: number; fee: number; departAt: number; arriveAt: number };
@@ -26,7 +26,8 @@ export function FreightYard({ onClose, me }: { onClose: () => void; me: string |
   useEffect(() => { load(); const t = window.setInterval(() => { tick((n) => n + 1); }, 1000); const r = window.setInterval(load, 15_000);
     const arr = (e: { qty: number; what: string }) => { setMsg(`📦 Delivered: ${e.qty} ${e.what}.`); load(); }; socket.on('freight_arrived', arr);
     return () => { window.clearInterval(t); window.clearInterval(r); socket.off('freight_arrived', arr); }; }, []);
-  useEffect(() => { if (v && !item && v.stacks[0]) setItem(`${v.stacks[0].type}:${v.stacks[0].id}`); if (v && !v.fleet.length && mode === 'truck') setMode('hired'); }, [v]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!truckAllowed(mode, 'city', to)) setMode('ship'); }, [to]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (v && !item && v.stacks[0]) setItem(`${v.stacks[0].type}:${v.stacks[0].id}`); if (v && !v.fleet.length && mode === 'truck') setMode(truckAllowed('hired', 'city', to) ? 'hired' : 'ship'); }, [v]); // eslint-disable-line react-hooks/exhaustive-deps
   const st = v?.stacks.find((s) => `${s.type}:${s.id}` === item); const now = Date.now();
   const idx = v ? (v.modes.find((m) => m.id === 'ship')?.minFeeNow ?? 5) / 5 : 1;
   const own = mode === 'truck' || mode === 'jet' || mode === 'boat';
@@ -45,7 +46,7 @@ export function FreightYard({ onClose, me }: { onClose: () => void; me: string |
         <div className="freight-body">
           {tab === 'sales' && <section><WarehouseSales /></section>}
           {tab === 'ship' && <section>
-            <div className="freight-modes">{v?.modes.map((m) => { const dis = (m.id === 'truck' && !freeTruck) || ((m.id === 'jet' || m.id === 'boat') && !freeCraft(m.id)); return (
+            <div className="freight-modes">{v?.modes.filter((m) => truckAllowed(m.id, 'city', to)).map((m) => { const dis = (m.id === 'truck' && !freeTruck) || ((m.id === 'jet' || m.id === 'boat') && !freeCraft(m.id)); return (
               <button key={m.id} type="button" disabled={dis} className={mode === m.id ? 'on' : ''} onClick={() => setMode(m.id)} data-testid={`freight-mode-${m.id}`}>
                 <b>{m.icon} {m.label}</b><small>{m.id === 'truck' ? (v.fleet.length ? (freeTruck ? `Leaves now · hauls ${fmt(TRUCK_CAP(v, freeTruck.truckId))}` : 'All trucks out') : 'You own no truck') : m.id === 'jet' || m.id === 'boat' ? (freeCraft(m.id) ? `Leaves now · carries ${fmt(freeCraft(m.id)!.cap)}` : v.crafts?.some((c) => c.kind === m.id) ? `All ${m.id}s out` : `You own no ${m.id}`) : m.id === 'hired' ? 'Fee · leaves now' : `Next ${clock(m.next)} · in ${fmtEta(m.next - now)}`}</small>
                 <em>{m.blurb}</em></button>); })}</div>

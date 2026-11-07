@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { request, socket } from '@/lib/net';
 import { BUILDINGS, AUTO_DEFAULT, AUTO_MIN_LOAD, AUTO_MAX_FEE_SHARE, type AutoCfg, type BuildingId, type SaleLogRow } from '../../../shared/autosell';
-import { MODES, MODE_IDS, shipFee, type Mode } from '../../../shared/logistics';
+import { MODES, MODE_IDS, shipFee, truckAllowed, type Mode } from '../../../shared/logistics';
 import { SellAllConfirm } from './SellAllConfirm';
 import { shipSellSummary, shipSellText } from '../../../shared/sellConfirm';
 
@@ -16,7 +16,7 @@ const ago = (t: number) => { const m = Math.max(0, Math.round((Date.now() - t) /
  */
 export function BuildingInventory({ building, compact }: { building: BuildingId; compact?: boolean }) {
   const [v, setV] = useState<View | null>(null); const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState<Mode>('hired'); const [qty, setQty] = useState<Record<string, string>>({});
+  const hub = BUILDINGS[building].hub; const [mode, setMode] = useState<Mode>(hub === 'city' ? 'hired' : 'ship'); const [qty, setQty] = useState<Record<string, string>>({});
   const [ask, setAsk] = useState<Item | null>(null);
   const load = useCallback(() => { void request('wh_view').then((r) => { const x = r as { ok: boolean } & View; if (x.ok) setV(x); }); }, []);
   useEffect(() => { load(); const on = () => load(); socket.on('wh_sold', on); socket.on('freight_arrived', on); const t = setInterval(load, 15_000); return () => { socket.off('wh_sold', on); socket.off('freight_arrived', on); clearInterval(t); }; }, [load]);
@@ -38,7 +38,7 @@ export function BuildingInventory({ building, compact }: { building: BuildingId;
         <input type="checkbox" checked={cfgOf('harvest').on} onChange={(e) => void setCfg('harvest', { on: e.target.checked })} /> Auto-harvest ready crops {building === 'farm' ? '(sold at the Warehouse market: city farms are in Chud City)' : 'into this barn'}
       </label> : null}
       {building !== 'farm' && <>
-        <div className="bldg-modes">Ship by: {MODE_IDS.map((m) => <button key={m} type="button" className={mode === m ? 'on' : ''} disabled={m === 'truck' && !v?.truck} onClick={() => setMode(m)} data-testid={`bldg-mode-${m}`}>{MODES[m].icon} {MODES[m].label}</button>)}</div>
+        <div className="bldg-modes">Ship by: {MODE_IDS.filter((m) => truckAllowed(m, hub, 'city')).map((m) => <button key={m} type="button" className={mode === m ? 'on' : ''} disabled={m === 'truck' && !v?.truck} onClick={() => setMode(m)} data-testid={`bldg-mode-${m}`}>{MODES[m].icon} {MODES[m].label}</button>)}</div>
         {!b?.items.length ? <small className="bldg-empty">Nothing stored here yet.</small> : <table className="bldg-table"><tbody>
           {b.items.map((it) => { const c = cfgOf(it.key); const n = Math.floor(Number(qty[it.key] ?? it.qty)) || 0; return (
             <tr key={it.key} data-testid={`bldg-row-${it.key}`}>

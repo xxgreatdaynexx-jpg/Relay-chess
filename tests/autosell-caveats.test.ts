@@ -21,7 +21,7 @@ const chips = (n: string) => getBank().account(n).chips;
 const games = async (n: string) => (await getBank().recent(n, 100)).map((x: { game: string }) => x.game);
 const flush = () => new Promise((r) => setTimeout(r, 20));
 
-describe('Fort McChud -> factory rides a truck', () => {
+describe('Fort McChud -> factory rides the cargo ship (trucks stay on their map)', () => {
   let now = 10 * H + 60_000; let l: Logistics; let f: FortMc; let store: Map<string, number>; let roomCap = 10_000;
   const seedFort = (ore: Partial<Record<OreId, number>>, petcoke = 0) => { const s = newFort(now); s.ore = ore; s.stock = { petcoke }; (f as unknown as { forts: Map<string, unknown> }).forts.set(playerKey(N), s); };
   beforeEach(() => {
@@ -32,38 +32,36 @@ describe('Fort McChud -> factory rides a truck', () => {
   });
   afterEach(() => { setLogistics(null); setPriceIndexForTest(1); });
 
-  it('hired: fee at the price index, ledgered, owner-labelled truck, lands in factory storage only on arrival, exactly once', async () => {
+  it('ship: fee at the price index, ledgered, owner-labelled, lands in factory storage only on arrival, exactly once', async () => {
     setPriceIndexForTest(1.37); seedFort({ iron: 140, gold: 60 }, 25);
     const c0 = chips(N);
-    const r = await f.act(N, { op: 'ship', mode: 'hired' }) as { shipped: Array<[string, number]>; petcoke: number; loads: number; fee: number; arriveAt: number };
+    const r = await f.act(N, { op: 'ship', mode: 'ship' }) as { shipped: Array<[string, number]>; petcoke: number; loads: number; fee: number; arriveAt: number };
     expect(new Map(r.shipped)).toEqual(new Map([['iron', 140], ['gold', 60], ['coal', 25]])); expect(r.petcoke).toBe(25); expect(r.loads).toBe(3);
-    const fee = [140, 60, 25].reduce((a, q) => a + indexed(feeBase('hired', q), 1.37), 0);
+    const fee = [140, 60, 25].reduce((a, q) => a + indexed(feeBase('ship', q), 1.37), 0);
     expect(r.fee).toBe(fee); expect(chips(N)).toBe(c0 - fee); expect(await games(N)).toContain('freight');
     const inv = await f.inventory(N); expect(Math.floor(inv.ore.iron ?? 0)).toBe(0); expect(Math.floor(inv.stock.petcoke ?? 0)).toBe(0);
     expect(store.size).toBe(0); // nothing is in the factory yet: it is on the road
-    const live = l.live(); expect(live).toHaveLength(3); expect(live.every((v) => v.label === `Hired rig · ${N} · to factory`)).toBe(true);
-    expect(r.arriveAt).toBeGreaterThanOrEqual(now + MODES.hired.travelMs);
+    const live = l.live(); expect(live).toHaveLength(1); expect(live[0]).toMatchObject({ mode: 'ship', loads: 3 });
+    expect(r.arriveAt).toBeGreaterThanOrEqual(now + MODES.ship.travelMs);
     now = r.arriveAt + 1; l.tick(); await flush();
     expect(store.get('iron')).toBe(140); expect(store.get('gold')).toBe(60); expect(store.get('coal')).toBe(25); expect(l.live()).toHaveLength(0);
     const replay = { id: 'x', ownerName: N, itemId: 'iron', qty: 140 } as unknown as Shipment; // replaying a delivered id never doubles
     await f.factoryDelivered(replay); await f.factoryDelivered(replay); expect(store.get('iron')).toBe(280);
   });
 
-  it('own truck: fuel only (mu-cargo), one load per truck, the rest stays at the fort; room counts loads already on the road', async () => {
+  it('own and hired trucks are refused off-map (nothing moves); the default carrier is the ship; room counts loads already on the road', async () => {
     seedFort({ iron: 140, gold: 60 });
-    await expect(f.act(N, { op: 'ship', mode: 'truck' })).rejects.toThrow(/do not own a truck/);
     await l.buyTruck(N, 'pickup'); const c0 = chips(N);
-    const r = await f.act(N, { op: 'ship' }) as { loads: number; fee: number; partial: string | null; shipped: Array<[string, number]> };
-    expect(r.fee).toBeGreaterThan(0); expect(r.fee).toBeLessThan(r.loads * 25); expect(chips(N)).toBe(c0 - r.fee); expect(r.loads).toBe(1); expect(r.partial).toMatch(/trucks are out/);
-    const sent = r.shipped[0]!; const inv = await f.inventory(N);
-    expect(Math.floor((inv.ore as Record<string, number>)[sent[0]] ?? 0) + sent[1]).toBe(sent[0] === 'iron' ? 140 : 60);
-    expect(l.live()[0]!.label).toMatch(new RegExp(`^${N}'s .* · to factory$`));
+    for (const mode of ['truck', 'hired']) await expect(f.act(N, { op: 'ship', mode })).rejects.toThrow(/can’t haul to other maps/);
+    expect(chips(N)).toBe(c0); expect(l.live()).toHaveLength(0); expect(Math.floor((await f.inventory(N)).ore.iron ?? 0)).toBe(140);
+    const r = await f.act(N, { op: 'ship' }) as { loads: number; fee: number };
+    expect(r.loads).toBe(2); expect(chips(N)).toBe(c0 - r.fee); expect(l.live().every((v) => v.mode === 'ship')).toBe(true);
     roomCap = 140; seedFort({ iron: 140 });
-    await expect(f.act(N, { op: 'ship', mode: 'hired' })).rejects.toThrow(/Nothing to ship|storage is full/); // the 140 already on the road fill the room
+    await expect(f.act(N, { op: 'ship', mode: 'ship' })).rejects.toThrow(/Nothing to ship|storage is full/); // the 140 already on the way fill the room
   });
 
   it('a full factory keeps the load on the road and retries; it never lands twice', async () => {
-    seedFort({ iron: 50 }); const r = await f.act(N, { op: 'ship', mode: 'hired' }) as { arriveAt: number };
+    seedFort({ iron: 50 }); const r = await f.act(N, { op: 'ship', mode: 'ship' }) as { arriveAt: number };
     const real = f.factoryDelivered.bind(f); let fails = 1;
     l.onFactory = async (s) => { if (fails-- > 0) throw new Error('Your mine storage is full for that ore.'); return real(s); };
     now = r.arriveAt + 1; l.tick(); await flush(); expect(store.get('iron')).toBeUndefined();
@@ -72,7 +70,7 @@ describe('Fort McChud -> factory rides a truck', () => {
   });
 
   it('full-factory retries back off (30 s doubling to 10 min) and log once per load', async () => {
-    seedFort({ iron: 50 }); const r = await f.act(N, { op: 'ship', mode: 'hired' }) as { arriveAt: number };
+    seedFort({ iron: 50 }); const r = await f.act(N, { op: 'ship', mode: 'ship' }) as { arriveAt: number };
     let calls = 0; l.onFactory = async () => { calls++; throw new Error('Your mine storage is full for that ore.'); };
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     now = r.arriveAt + 1; for (let i = 0; i < 50; i++) { l.tick(); await flush(); now += 1000; } // 50 s of 1 s ticks
@@ -94,7 +92,7 @@ describe('Fort McChud -> factory with a database', () => {
     const w = new Warehouse(null, () => t); setWarehouse(w); w.wire();
     bank.transfer(N, 50_000, { game: 'admin' }); await bank.flush();
     const s = newFort(t); s.ore = { iron: 90 }; (f as unknown as { forts: Map<string, unknown> }).forts.set(playerKey(N), s);
-    const r = await f.act(N, { op: 'ship', mode: 'hired' }) as { fee: number; arriveAt: number };
+    const r = await f.act(N, { op: 'ship', mode: 'ship' }) as { fee: number; arriveAt: number };
     const rows = (await pool.query("SELECT kind, status, qty, fee FROM freight_shipments")).rows; expect(rows).toEqual([{ kind: 'factory', status: 'transit', qty: 90, fee: r.fee }]);
     expect(JSON.parse((await pool.query('SELECT state FROM fortmc_state')).rows[0].state).ore.iron).toBe(0);
     t = r.arriveAt + 1; l.tick(); await flush(); await flush();

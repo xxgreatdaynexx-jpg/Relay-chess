@@ -142,7 +142,8 @@ describe('FortMc server', () => {
     const v = await f2.view(n); expect(v.fort.mine?.level).toBe(1); expect(v.fort.ore.iron ?? 0).toBeGreaterThan(10); // grid 4 MW < 10 MW: throttled but digging
     // Millionaire Update: the ore rides hired rigs (fee, ledger 'freight') and lands in the sink only on arrival.
     await db.exec(LOGISTICS_MIGRATION); const lg = new Logistics(shim(db) as never, () => clk.now); setLogistics(lg); lg.onFactory = (s) => f2.factoryDelivered(s);
-    const r = await f2.act(n, { op: 'ship', mode: 'hired' }) as { fee: number; arriveAt: number; loads: number };
+    await expect(f2.act(n, { op: 'ship', mode: 'hired' })).rejects.toThrow(/can’t haul to other maps/); expect(shipped).toHaveLength(0);
+    const r = await f2.act(n, { op: 'ship', mode: 'ship' }) as { fee: number; arriveAt: number; loads: number };
     expect(r.fee).toBeGreaterThan(0); expect(shipped).toHaveLength(0); expect((await f2.view(n)).fort.ore.iron ?? 0).toBeLessThan(1);
     clk.now = r.arriveAt + 1; lg.tick(); for (let i = 0; i < 20 && shipped.length < r.loads; i++) await new Promise((res) => setTimeout(res, 50));
     expect(shipped.length).toBe(r.loads); expect(shipped.length).toBeGreaterThan(3); setLogistics(null);

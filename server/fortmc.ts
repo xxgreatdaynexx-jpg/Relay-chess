@@ -119,7 +119,7 @@ export class FortMc {
    */
   private async shipFactoryIn(name: string, s: FortState, b: Record<string, unknown>) {
     const lg = getLogistics(); if (!lg) throw new FortError('Freight is offline right now.');
-    const mode = b.mode ?? (lg.idleTruck(name) ? 'truck' : 'hired'); if (!isMode(mode)) throw new FortError('Pick how to ship it.');
+    const mode: unknown = b.mode ?? 'ship'; if (!isMode(mode)) throw new FortError('Pick how to ship it.'); // Fort McChud is another map: trucks can't haul there (planSell refuses truck/hired)
     const sink = this.oreSink(name); const road = lg.pending(name, 'factory');
     const room = (id: OreId) => Math.max(0, (sink.room?.(id) ?? Infinity) - (road.get(id) ?? 0));
     const want: Array<[OreId, number]> = [];

@@ -40,22 +40,22 @@ describe('cargo capacity by tier (mu-cargo)', () => {
 
 describe('Logistics with cargo capacity (mu-cargo)', () => {
   const H = 3_600_000; let now = Date.parse('2026-11-04T10:00:00Z'); let l: Logistics;
-  beforeEach(() => { resetBank(); resetMines(); setPriceIndexForTest(1); now = Date.parse('2026-11-04T10:00:00Z'); l = new Logistics(null, () => now); });
+  beforeEach(() => { resetBank(); resetMines(); setPriceIndexForTest(1); now = Date.parse('2026-11-04T10:00:00Z'); l = new Logistics(null, () => now); l.exists = async (n) => n.toLowerCase() === 'qa-friend'; });
   afterEach(() => { setPriceIndexForTest(1); setFleet(null); });
   it('own truck: multi-trip load, fuel only by the load, on the price index', async () => {
     fund('QA-Cg', 200_000); getMines().adjustStack('QA-Cg', 'ore', 'copper', 20_000); await l.buyTruck('QA-Cg', 'semi'); const c0 = chips('QA-Cg');
-    const r = await l.ship('QA-Cg', { mode: 'truck', to: 'fortmc', type: 'ore', id: 'copper', qty: 7_000 });
+    const r = await l.ship('QA-Cg', { mode: 'truck', to: 'city', recipient: 'QA-Friend', type: 'ore', id: 'copper', qty: 7_000 });
     expect(r.trips).toBe(3); expect(r.shipment.fee).toBe(630); expect(chips('QA-Cg')).toBe(c0 - r.shipment.fee);
     expect(r.shipment.arriveAt - r.shipment.departAt).toBe(truckTravelMs(TRUCKS.find((t) => t.id === 'semi')!) * 5);
     now = r.shipment.arriveAt; l.tick();
-    const r2 = await l.ship('QA-Cg', { mode: 'truck', to: 'resort', type: 'ore', id: 'copper', qty: 3_000 }); expect(r2.shipment.fee).toBe(270); // fuel only, no day upkeep
+    const r2 = await l.ship('QA-Cg', { mode: 'truck', to: 'city', recipient: 'QA-Friend', type: 'ore', id: 'copper', qty: 3_000 }); expect(r2.shipment.fee).toBe(270); // fuel only, no day upkeep
     now = r2.shipment.arriveAt + 24 * H; l.tick(); setPriceIndexForTest(2);
-    const r3 = await l.ship('QA-Cg', { mode: 'truck', to: 'resort', type: 'ore', id: 'copper', qty: 100 }); expect(r3.shipment.fee).toBe(2 * 9); // price index
+    const r3 = await l.ship('QA-Cg', { mode: 'truck', to: 'city', recipient: 'QA-Friend', type: 'ore', id: 'copper', qty: 100 }); expect(r3.shipment.fee).toBe(2 * 9); // price index
   });
   it('the tanker moves the same goods in fewer trips for less than the pickup', async () => {
     fund('QA-Big', 500_000); fund('QA-Small', 500_000); for (const n of ['QA-Big', 'QA-Small']) getMines().adjustStack(n, 'ore', 'copper', 12_000);
     await l.buyTruck('QA-Big', 'tanker'); await l.buyTruck('QA-Small', 'pickup');
-    const big = await l.ship('QA-Big', { mode: 'truck', to: 'fortmc', type: 'ore', id: 'copper', qty: 12_000 }); const small = await l.ship('QA-Small', { mode: 'truck', to: 'fortmc', type: 'ore', id: 'copper', qty: 12_000 });
+    const big = await l.ship('QA-Big', { mode: 'truck', to: 'city', recipient: 'QA-Friend', type: 'ore', id: 'copper', qty: 12_000 }); const small = await l.ship('QA-Small', { mode: 'truck', to: 'city', recipient: 'QA-Friend', type: 'ore', id: 'copper', qty: 12_000 });
     expect(big.trips).toBe(2); expect(small.trips).toBe(12); expect(big.shipment.fee).toBeLessThan(small.shipment.fee);
   });
   it('own jet carries freight: capacity by tier, leaves now, fuel fee only', async () => {
@@ -68,6 +68,6 @@ describe('Logistics with cargo capacity (mu-cargo)', () => {
   });
   it('public carriers keep their single-load cap', async () => {
     fund('QA-Pub', 100_000); getMines().adjustStack('QA-Pub', 'ore', 'copper', 5_000);
-    await expect(l.ship('QA-Pub', { mode: 'hired', to: 'fortmc', type: 'ore', id: 'copper', qty: MODES.hired.cap + 1 })).rejects.toThrow(/max/);
+    await expect(l.ship('QA-Pub', { mode: 'hired', to: 'city', recipient: 'QA-Friend', type: 'ore', id: 'copper', qty: MODES.hired.cap + 1 })).rejects.toThrow(/max/);
   });
 });

@@ -37,32 +37,50 @@ describe('Logistics', () => {
 
   it('hired truck: fee via ledger, goods escrowed, visible while moving with owner label, delivered on arrival', async () => {
     fund('QA-Ship'); getMines().adjustStack('QA-Ship', 'bar', 'iron_bar', 100); const c0 = chips('QA-Ship');
-    const r = await l.ship('QA-Ship', { mode: 'hired', to: 'resort', type: 'bar', id: 'iron_bar', qty: 40 });
+    const r = await l.ship('QA-Ship', { mode: 'hired', to: 'city', type: 'bar', id: 'iron_bar', qty: 40, recipient: 'QA-Friend' });
     expect(r.shipment.fee).toBe(feeBase('hired', 40)); expect(chips('QA-Ship')).toBe(c0 - r.shipment.fee);
     expect(getMines().stackQty('QA-Ship', 'bar', 'iron_bar')).toBe(60);
     const live = l.live(); expect(live).toHaveLength(1); expect(live[0]!.label).toMatch(/Hired rig · QA-Ship/);
     expect(l.tick()).toHaveLength(0);
     now = r.shipment.arriveAt; expect(l.tick()).toHaveLength(1); expect(l.live()).toHaveLength(0);
-    expect(getMines().stackQty('QA-Ship', 'bar', 'iron_bar')).toBe(100);
+    expect(getMines().stackQty('QA-Ship', 'bar', 'iron_bar')).toBe(60); expect(getMines().stackQty('QA-Friend', 'bar', 'iron_bar')).toBe(40);
     expect(chips('QA-Ship')).toBe(c0 - r.shipment.fee); // fee is a sink, nothing refunded or minted
   });
   it('truck store: buy via ledger, owned truck ships for fuel only (mu-cargo), big loads take several trips, shows with owner name, busy truck cannot be sold', async () => {
     fund('QA-Hauler'); const c0 = chips('QA-Hauler'); getMines().adjustStack('QA-Hauler', 'ore', 'copper', 300);
     const b = await l.buyTruck('QA-Hauler', 'pickup'); expect(chips('QA-Hauler')).toBe(c0 - TRUCKS[0]!.price);
-    const r = await l.ship('QA-Hauler', { mode: 'truck', to: 'fortmc', type: 'ore', id: 'copper', qty: 200 });
+    const r = await l.ship('QA-Hauler', { mode: 'truck', to: 'city', type: 'ore', id: 'copper', qty: 200, recipient: 'QA-Friend' });
     expect(r.trips).toBe(1); expect(r.shipment.fee).toBe(24); expect(chips('QA-Hauler')).toBe(c0 - TRUCKS[0]!.price - 24);
     expect(l.live()[0]!.label).toBe("QA-Hauler's Chud Pickup");
-    await expect(l.ship('QA-Hauler', { mode: 'truck', to: 'resort', type: 'ore', id: 'copper', qty: 10 })).rejects.toThrow(/out on deliveries/);
+    await expect(l.ship('QA-Hauler', { mode: 'truck', to: 'city', type: 'ore', id: 'copper', qty: 10, recipient: 'QA-Friend' })).rejects.toThrow(/out on deliveries/);
     await expect(l.sellTruck('QA-Hauler', b.truck.id)).rejects.toThrow(/out on a delivery/);
     now = r.shipment.arriveAt; l.tick(); expect(l.live()).toHaveLength(0); // trucks only show while goods move
     const s = await l.sellTruck('QA-Hauler', b.truck.id); expect(s.paid).toBe(TRUCKS[0]!.price / 2);
   });
   it('no truck: truck mode refuses and points at hiring; no chips no ship', async () => {
     getMines().adjustStack('QA-Poor', 'bar', 'iron_bar', 10);
-    await expect(l.ship('QA-Poor', { mode: 'truck', to: 'resort', type: 'bar', id: 'iron_bar', qty: 5 })).rejects.toThrow(/do not own a truck/);
+    await expect(l.ship('QA-Poor', { mode: 'truck', to: 'city', type: 'bar', id: 'iron_bar', qty: 5, recipient: 'QA-Friend' })).rejects.toThrow(/do not own a truck/);
     getBank().transferConfirmed('QA-Poor', -chips('QA-Poor'), { key: 'drain', game: 'admin' });
-    await expect(l.ship('QA-Poor', { mode: 'hired', to: 'resort', type: 'bar', id: 'iron_bar', qty: 5 })).rejects.toThrow(/Not enough chips/);
+    await expect(l.ship('QA-Poor', { mode: 'hired', to: 'city', type: 'bar', id: 'iron_bar', qty: 5, recipient: 'QA-Friend' })).rejects.toThrow(/Not enough chips/);
     expect(getMines().stackQty('QA-Poor', 'bar', 'iron_bar')).toBe(10);
+  });
+  it('trucks never leave their map (Dayne 2026-11-06): own + hired refused cross-map, client origin ignored, nothing moved; plane/ship unchanged', async () => {
+    fund('QA-Map'); getMines().adjustStack('QA-Map', 'bar', 'iron_bar', 100); await l.buyTruck('QA-Map', 'pickup'); const c0 = chips('QA-Map');
+    for (const mode of ['truck', 'hired'] as const) for (const to of ['resort', 'fortmc'] as const) for (const from of [undefined, 'resort', 'fortmc', 'city'])
+      await expect(l.ship('QA-Map', { mode, from, to, type: 'bar', id: 'iron_bar', qty: 5, recipient: 'QA-Friend' })).rejects.toThrow(/can’t haul to other maps/);
+    expect(chips('QA-Map')).toBe(c0); expect(getMines().stackQty('QA-Map', 'bar', 'iron_bar')).toBe(100); expect(l.live()).toHaveLength(0);
+    for (const mode of ['plane', 'ship'] as const) { const r = await l.ship('QA-Map', { mode, to: 'resort', type: 'bar', id: 'iron_bar', qty: 5 }); expect(r.shipment).toMatchObject({ mode, from: 'city', to: 'resort' }); }
+    const t = await l.ship('QA-Map', { mode: 'truck', from: 'resort', to: 'city', type: 'bar', id: 'iron_bar', qty: 5, recipient: 'QA-Friend' });
+    expect(t.shipment).toMatchObject({ from: 'city', to: 'city' }); // spoofed origin ignored
+    expect(() => l.planSell('QA-Map', { mode: 'hired', from: 'resort', type: 'ore', id: 'gold', qty: 5, src: 'coral' })).toThrow(/can’t haul to other maps/);
+    expect(() => l.planSell('QA-Map', { mode: 'truck', from: 'fortmc', type: 'ore', id: 'gold', qty: 5, src: 'fortmc' })).toThrow(/can’t haul to other maps/);
+    expect(l.planSell('QA-Map', { mode: 'ship', from: 'fortmc', type: 'ore', id: 'gold', qty: 5, src: 'fortmc' }).mode).toBe('ship');
+  });
+  it('in-flight cross-map truck loads from before the rule still deliver (grandfathered)', async () => {
+    fund('QA-Old'); getMines().adjustStack('QA-Old', 'bar', 'iron_bar', 10);
+    const old = { id: 'legacy-1', owner: 'qa-old', ownerName: 'QA-Old', toKey: 'qa-old', toName: 'QA-Old', mode: 'hired', truck: null, from: 'city', to: 'resort', type: 'bar', itemId: 'iron_bar', qty: 7, fee: 25, createdAt: now - 1000, departAt: now - 1000, arriveAt: now + 1000, status: 'transit' } as never;
+    l.admit(old); expect(l.live()).toHaveLength(1); now += 1000; expect(l.tick()).toHaveLength(1);
+    expect(getMines().stackQty('QA-Old', 'bar', 'iron_bar')).toBe(17);
   });
   it('ships/planes wait for their departure, group into one vehicle, and deliver to another player', async () => {
     fund('QA-A'); fund('QA-B'); getMines().adjustStack('QA-A', 'bar', 'iron_bar', 50); getMines().adjustStack('QA-B', 'bar', 'iron_bar', 50);

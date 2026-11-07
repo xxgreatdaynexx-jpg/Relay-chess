@@ -22,7 +22,7 @@ import { nameOf, type ItemType } from '../shared/mines.js';
 import { isStackable } from './market.js';
 import { getFleet } from './fleet.js';
 import { CARGO, cargoCap, multiTripMs, ownFeeBase, tripsFor } from '../shared/cargo.js';
-import { HUBS, isOwnMode, MAX_SHIP_QTY, MAX_TRUCKS, MODES, TRUCKS, TRUCK_BY_ID, TRUCK_SELL_BACK, arrivalOf, feeBase, shipFee, isHub, isMode, nextDeparture, truckTravelMs, type HubId, type LiveVehicle, type Mode } from '../shared/logistics.js';
+import { HUBS, isOwnMode, MAX_SHIP_QTY, MAX_TRUCKS, MODES, TRUCKS, TRUCK_BY_ID, TRUCK_SELL_BACK, arrivalOf, feeBase, shipFee, isHub, isMode, nextDeparture, truckTravelMs, type HubId, type LiveVehicle, type Mode, truckAllowed, NO_CROSS_MAP_TRUCK } from '../shared/logistics.js';
 
 export class FreightError extends Error {}
 const keyOf = (n: string) => n.replace(/\s+/g, ' ').trim().toLowerCase();
@@ -139,6 +139,7 @@ export class Logistics {
   planSell(name: string, b: { mode: unknown; from: HubId; type: string; id: string; qty: number; src: string; auto?: boolean; kind?: 'sell' | 'factory'; skip?: Set<string> }): Shipment {
     const mode = b.mode; if (!isMode(mode)) throw new FreightError('Pick how to ship it.');
     const qty = b.qty; if (!Number.isInteger(qty) || qty < 1 || qty > MAX_SHIP_QTY) throw new FreightError('Pick a quantity.');
+    if (!truckAllowed(mode, b.from, 'city')) throw new FreightError(NO_CROSS_MAP_TRUCK); // building loads always go to Chud City
     let truck: string | null = null; let travel = MODES[mode].travelMs; let cap = MODES[mode].cap; let model = '';
     if (mode === 'truck') {
       const t = this.idleTruck(name, b.skip);
@@ -169,7 +170,9 @@ export class Logistics {
   /** Send goods. Goods leave storage, the fee (if any) is debited and the shipment row is written, all in one transaction. */
   async ship(name: string, b: Record<string, unknown>): Promise<{ trips: number; shipment: Shipment; chips: number | null }> {
     const mode = b.mode; if (!isMode(mode)) throw new FreightError('Pick how to ship it.');
-    const from = isHub(b.from) ? b.from : 'city'; const to = b.to; if (!isHub(to)) throw new FreightError('Pick a destination.');
+    // Freight Yard goods are banked in Chud City: the origin map is the server's, never the client's.
+    const from: HubId = 'city'; const to = b.to; if (!isHub(to)) throw new FreightError('Pick a destination.');
+    if (!truckAllowed(mode, from, to)) throw new FreightError(NO_CROSS_MAP_TRUCK);
     if (from === to && !b.recipient) throw new FreightError('Pick a different map (or send it to another player).');
     if (!stackable(b.type, b.id)) throw new FreightError('That item can not be shipped.');
     const type = b.type as ItemType; const itemId = b.id as string;

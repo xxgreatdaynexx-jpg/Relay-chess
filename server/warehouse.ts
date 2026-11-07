@@ -217,8 +217,8 @@ export class Warehouse {
       if (!lg) continue;
       const inv = await this.inventory(name, b); const row = inv.find((x) => x.key === item); if (!row) continue;
       const q = autoQty(row.qty, c, row.needed); if (!q) continue;
-      const t = lg.idleTruck(name);
-      const pick = autoCarrier({ idleTruckCap: t?.cap ?? null, qty: q, value: q * row.unit, hiredFee: (n) => lg.quote('hired', n), hiredCap: MODES.hired.cap });
+      const sameMap = BUILDINGS[b].hub === 'city'; const t = sameMap ? lg.idleTruck(name) : null;
+      const pick = autoCarrier({ idleTruckCap: t?.cap ?? null, qty: q, value: q * row.unit, hiredFee: (n) => lg.quote('hired', n), hiredCap: MODES.hired.cap, sameMap, shipFee: (n) => lg.quote('ship', n), shipCap: MODES.ship.cap });
       if (!pick) continue;
       try { await this.shipSell(name, b, item, pick.qty, pick.mode, true); out.push({ building: b, item, qty: pick.qty, mode: pick.mode }); }
       catch (e) { console.warn('[autosell]', name, b, item, (e as Error).message); }
