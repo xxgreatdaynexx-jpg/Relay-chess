@@ -80,8 +80,11 @@ export class Employment {
     const lp = this.lockPool;
     const fn = !lp ? fn0 : async () => {
       const cl = await lp.connect();
-      try { await cl.query("SELECT pg_advisory_lock(hashtext('employ:' || $1))", [id]); return await fn0(); }
-      finally { await cl.query("SELECT pg_advisory_unlock(hashtext('employ:' || $1))", [id]).catch(() => {}); cl.release(); }
+      // Transaction-scoped (not session) lock: safe behind Neon's PgBouncer transaction pooler, which pins one backend
+      // per open transaction; COMMIT/ROLLBACK (or a dropped connection) always releases it, so errors can't leak a lock.
+      let ok = false;
+      try { await cl.query('BEGIN'); await cl.query("SELECT pg_advisory_xact_lock(hashtext('employ:' || $1))", [id]); const r = await fn0(); ok = true; return r; }
+      finally { await cl.query(ok ? 'COMMIT' : 'ROLLBACK').then(() => cl.release(), (e: Error) => cl.release(e)); }
     };
     const prev = this.locks.get(id) ?? Promise.resolve(); const p = prev.then(fn, fn); const tail = p.catch(() => {});
     this.locks.set(id, tail); void tail.then(() => { if (this.locks.get(id) === tail) this.locks.delete(id); }); return p;
