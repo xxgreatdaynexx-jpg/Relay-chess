@@ -40,3 +40,37 @@ for (const mode of ['deposit', 'withdraw', 'cross'] as const) {
     const reboot = resetMines(); await reboot.attach(ms); expect(reboot.stackQty('A', 'ore', 'iron')).toBe(want);
   }, 30_000);
 }
+
+/** Tentative credits are never spendable: an unknown-outcome deposit stays OUT of every consumer's view (transfer,
+ *  sale, storage/qty reads) until its own marker confirms it; rolled back => nothing ever funded; committed => usable. */
+for (const outcomeKind of ['rolledback', 'committed'] as const) {
+  it.skipIf(!url)(`unknown deposit (${outcomeKind}) cannot fund a transfer or sale; restart conserves`, async () => {
+    const pool = await freshDb(); let armed = false, down = true;
+    const wrap = { query: (s: string, a?: unknown[]) => pool.query(s, a), connect: async () => { const c = await pool.connect(); return { release: () => c.release(), query: async (s: string, a?: unknown[]) => {
+      let r; try { r = await c.query(s, a); } catch (e) { if (s === 'COMMIT' && outcomeKind === 'rolledback') throw new Error('COMMIT ack unavailable'); throw e; }
+      if (s === 'COMMIT' && armed) { armed = false; throw new Error('lost COMMIT ack'); } return r; } }; } };
+    const ms = new PgMineStore(wrap as never); await ms.init();
+    await pool.query('CREATE TABLE review_ops(id text PRIMARY KEY)');
+    if (outcomeKind === 'rolledback') await pool.query("CREATE FUNCTION reject_a() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id='A' THEN RAISE EXCEPTION 'reject A'; END IF; RETURN NEW; END $$; CREATE CONSTRAINT TRIGGER reject_a AFTER INSERT ON review_ops DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_a();");
+    const world = resetMines(); await world.attach(ms);
+    const ls = new LocStore(pool as never); setLocStore(ls); await ls.init();
+    armed = outcomeKind === 'committed';
+    const a = ls.adjust('A', [{ loc: 'warehouse', item: 'ore:iron', delta: 10 }], [{ sql: "INSERT INTO review_ops VALUES('A')", args: [] }],
+      { committed: async () => { if (down) throw new Error('evidence unavailable'); return (await pool.query("SELECT 1 FROM review_ops WHERE id='A'")).rows.length > 0; } });
+    await expect(a).rejects.toThrow();
+    // while uncertain: not visible, not spendable by any consumer
+    expect(world.stackQty('A', 'ore', 'iron')).toBe(0);
+    expect(world.storage('A').length).toBe(0);
+    expect(ls.adjust('A', [{ loc: 'warehouse', item: 'ore:iron', delta: -5 }, { loc: 'resort', item: 'ore:iron', delta: 5 }], [{ sql: "INSERT INTO review_ops VALUES('B')", args: [] }])).toBe(false);
+    expect(() => world.sell('A', Date.now())).toThrow();
+    down = false; await new Promise((r) => setTimeout(r, 2500));
+    const want = outcomeKind === 'committed' ? 10 : 0;
+    expect(world.stackQty('A', 'ore', 'iron')).toBe(want);
+    if (want) { // confirmed => now spendable once
+      await ls.adjust('A', [{ loc: 'warehouse', item: 'ore:iron', delta: -5 }, { loc: 'resort', item: 'ore:iron', delta: 5 }], [{ sql: "INSERT INTO review_ops VALUES('B')", args: [] }], { marker: { sql: "SELECT 1 FROM review_ops WHERE id='B'", args: [] } });
+    }
+    const reboot = resetMines(); await reboot.attach(new PgMineStore(pool)); const ls2 = new LocStore(pool as never); setLocStore(ls2); await ls2.init();
+    expect(reboot.stackQty('A', 'ore', 'iron') + ls2.qty('A', 'resort', 'ore:iron')).toBe(want);
+    expect(ls2.qty('A', 'resort', 'ore:iron')).toBe(want ? 5 : 0);
+  }, 30_000);
+}

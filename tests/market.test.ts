@@ -142,6 +142,7 @@ describe('stackable (Mines) listings', () => {
     const vv = resetVault(); await vv.attach(new PgItemStore(pool)); const mm = resetMarket(vv); await mm.load();
     const w = resetMines(); await w.attach(new PgMineStore(pool));
     w.adjustStack('QA-Miner', 'bar', 'gold_bar', 5);
+    await w.flush(); // a credit is spendable only once its own commit is confirmed (never a tentative credit)
     const l = mm.listStack('QA-Miner', 'bar', 'gold_bar', 4, 100);
     mm.buyStack('QA-Buyer', l.id, 1);
     await w.flush();
@@ -158,6 +159,7 @@ describe('stackable (Mines) listings', () => {
     const vv = resetVault(); await vv.attach(new PgItemStore(pool)); const mm = resetMarket(vv); await mm.load();
     const w = resetMines(); const store = new PgMineStore(pool); await w.attach(store);
     w.adjustStack('QA-Miner', 'bar', 'gold_bar', 5);
+    await w.flush(); // a credit is spendable only once its own commit is confirmed (never a tentative credit)
     const l = mm.listStack('QA-Miner', 'bar', 'gold_bar', 4, 100);
     mm.buyStack('QA-Buyer', l.id, 1); await w.flush(); await bank.flush();
     const q = async (sql: string) => (await pool.query(sql)).rows;

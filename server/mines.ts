@@ -766,7 +766,10 @@ export class MinesWorld {
   /** Pack snapshot at save time: memory minus every pending (not yet saved) delta, except `own`. */
   private snapNow(k: string, own?: Map<string, { type: ItemType; id: string; delta: number }>): Stack[] {
     const out = new Map<string, Stack>(); for (const [key, st] of this.pack(k)) out.set(key, { ...st });
-    for (const rec of this.pendingD.get(k) ?? []) { if (rec === own) continue; for (const [key, d] of rec) { const n = (out.get(key)?.qty ?? 0) - d.delta; if (n <= 0) out.delete(key); else out.set(key, { type: d.type, id: d.id, qty: n } as Stack); } }
+    // Memory holds pending DEBITS (reserved at call time) but NOT pending CREDITS (applied only once confirmed). So: a
+    // snapshot gives back every other pending debit, and adds its own pending credits.
+    const add = (key: string, d: { type: ItemType; id: string }, by: number) => { const n = (out.get(key)?.qty ?? 0) + by; if (n <= 0) out.delete(key); else out.set(key, { type: d.type, id: d.id, qty: n } as Stack); };
+    for (const rec of this.pendingD.get(k) ?? []) for (const [key, d] of rec) { if (rec === own) { if (d.delta > 0) add(key, d, d.delta); } else if (d.delta < 0) add(key, d, -d.delta); }
     return [...out.values()];
   }
   adjustStack(account: string, type: ItemType, id: string, delta: number, extra: Array<{ sql: string; args: unknown[] }> = [], fallback?: (rows: Array<{ sql: string; args: unknown[] }>) => void, opts: { onUnknown?: (e: Error) => void; onLate?: (committed: boolean) => void; committed?: () => Promise<boolean>; after?: Promise<unknown>; bind?: (p: Promise<unknown>) => void; onFail?: (e: Error) => void } = {}): boolean {
@@ -779,31 +782,34 @@ export class MinesWorld {
     const sum = new Map<string, { type: ItemType; id: string; delta: number }>();
     for (const d of deltas) { if (!Number.isInteger(d.delta)) return false; const key = stackKey(d); const c = sum.get(key); if (c) c.delta += d.delta; else sum.set(key, { ...d }); }
     for (const [key, d] of sum) if ((p.get(key)?.qty ?? 0) + d.delta < 0) return false;
-    const apply = (sign: number) => { for (const [key, d] of sum) { const n = (p.get(key)?.qty ?? 0) + sign * d.delta; if (n <= 0) p.delete(key); else p.set(key, { type: d.type, id: d.id, qty: n }); } };
-    apply(1);
+    // Debits are reserved in memory now (nobody can spend them twice); credits stay OUT of memory until their commit is
+    // confirmed, so no consumer (sale, craft, transfer, factory, payroll...) can ever spend a tentative credit.
+    const apply = (sign: number, which: 'all' | 'credit' | 'debit') => { for (const [key, d] of sum) { if (which === 'credit' && d.delta <= 0) continue; if (which === 'debit' && d.delta >= 0) continue; const n = (p.get(key)?.qty ?? 0) + sign * d.delta; if (n <= 0) p.delete(key); else p.set(key, { type: d.type, id: d.id, qty: n }); } };
     this.names.set(k, account.trim());
-    if (!this.store) { fallback?.(extra); return true; }
+    if (!this.store) { apply(1, 'all'); fallback?.(extra); return true; }
+    apply(1, 'debit');
     const rec = sum; let set = this.pendingD.get(k); if (!set) { set = new Set(); this.pendingD.set(k, set); } set.add(rec);
     const settle = () => { const st = this.pendingD.get(k); st?.delete(rec); if (st && !st.size) this.pendingD.delete(k); };
     const store = this.store;
     // Retried (every row is idempotent: absolute snapshots + ON CONFLICT ledger keys) so a blip can't lose a paid-for delivery.
     // The snapshot is taken when the save RUNS (after any earlier failed delta was undone), never at call time.
-    const run = async () => { await opts.after; for (let i = 0; ; i++) { const snap = this.snapNow(k, rec); try { const r = await store.save(k, account.trim(), snap, undefined, undefined, extra); settle(); return r; } catch (e) { if (i >= 3) throw e; await new Promise((r) => setTimeout(r, 250 * 2 ** i)); } } };
+    const run = async () => { await opts.after; for (let i = 0; ; i++) { const snap = this.snapNow(k, rec); try { const r = await store.save(k, account.trim(), snap, undefined, undefined, extra); apply(1, 'credit'); settle(); return r; } catch (e) { if (i >= 3) throw e; await new Promise((r) => setTimeout(r, 250 * 2 ** i)); } } };
     const job = this.chain.then(run);
     this.chain = job.catch(async (e) => {
       console.error('[mines] save failed:', (e as Error).message);
-      settle(); // decided below (committed / undone / unknown = kept): later snapshots must not subtract it any more
-      // The commit may have landed with its reply lost (a retry then fails its exactly-once guard): ask the caller.
+      // The record stays pending (credits out of memory, debits reserved) until the outcome is KNOWN; the chain is blocked
+      // meanwhile, so no snapshot runs. The commit may have landed with its reply lost: ask the caller.
+      const keep = () => { apply(1, 'credit'); settle(); };
+      const undo = () => { apply(-1, 'debit'); settle(); try { opts.onFail?.(e as Error); } catch (err) { console.error('[mines] rollback failed:', (err as Error).message); } };
       const v = opts.committed ? await outcome(opts.committed) : false;
-      if (v === true) return;
-      const undo = () => { apply(-1); try { opts.onFail?.(e as Error); } catch (err) { console.error('[mines] rollback failed:', (err as Error).message); } };
-      if (v === false) { if (opts.onFail) undo(); return; }
+      if (v === true) { keep(); return; }
+      if (v === false) { if (opts.onFail) undo(); else keep() /* legacy fire-and-forget: kept for the next snapshot */; return; }
       // Unknown (database unreachable): tell the caller now, but SERIALIZE the uncertainty: the save queue does not advance
       // until this write's own marker answers. No later whole-pack snapshot can persist (or erase) a delta whose commit is
       // unknown; once known, memory is made exact (kept or undone) and only then do queued saves run. A restart meanwhile
       // simply reloads the database (queued saves are not durable promises).
       opts.onUnknown?.(e as Error);
-      for (let i = 0; ; i++) { await new Promise((r) => setTimeout(r, Math.min(60_000, 1000 * 2 ** Math.min(i, 6)))); const late = await outcome(opts.committed!, 1); if (late === null) continue; if (!late) undo(); opts.onLate?.(late); return; }
+      for (let i = 0; ; i++) { await new Promise((r) => setTimeout(r, Math.min(60_000, 1000 * 2 ** Math.min(i, 6)))); const late = await outcome(opts.committed!, 1); if (late === null) continue; if (late) keep(); else undo(); opts.onLate?.(late); return; }
     });
     opts.bind?.(this.chain);
     return true;

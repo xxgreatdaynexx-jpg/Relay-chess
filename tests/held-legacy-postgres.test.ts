@@ -14,6 +14,7 @@ it.skipIf(!url)('barn -> resort pool once; NULL fish/dish/fillets held and revie
   await pool.query("INSERT INTO building_inv VALUES('a','A','resort_farm','crop:wheat',7),('a','A','resort_farm','harvest',2)");
   await pool.query("INSERT INTO loc_stock VALUES('a','A','resort','crop:wheat',3)");
   await pool.query("INSERT INTO kitchen_fillets VALUES('a','cod',4)");
+  await pool.query("INSERT INTO fish_catches (id, player_key, name, species, weight_g, value, caught_at, loc, dish) VALUES ('f1','a','A','bass',500,50,1,NULL,NULL),('f2','a','A','bass',600,90,1,NULL,'fillet')");
   const a = restoreResortBarn(pool); const b = restoreResortBarn(pool); // concurrent instances
   const [ra, rb] = await Promise.all([a, b]);
   expect([ra.already, rb.already].sort()).toEqual([false, true]);
@@ -21,5 +22,7 @@ it.skipIf(!url)('barn -> resort pool once; NULL fish/dish/fillets held and revie
   expect(Number((await pool.query("SELECT qty FROM loc_stock WHERE loc='resort' AND item='crop:wheat'")).rows[0].qty)).toBe(10);
   expect(Number((await pool.query("SELECT qty FROM building_inv WHERE item='crop:wheat'")).rows[0].qty)).toBe(0);
   const held = await heldLegacyReview(pool, 'a');
-  expect(held.map((h) => [h.kind, h.what, h.n])).toEqual([['fillet', 'fillet_cod', 4], ['barn', 'harvest', 2]]);
+  expect(held.map((h) => [h.kind, h.what, h.n])).toEqual([['fish', 'bass', 1], ['prepared', 'bass (fillet)', 1], ['fillet', 'fillet_cod', 4], ['barn', 'harvest', 2]]);
+  expect(held.filter((h) => h.value !== undefined).map((h) => h.value)).toEqual([50, 90]);
+  expect(Number((await pool.query("SELECT count(*)::int n FROM fish_catches WHERE loc IS NULL")).rows[0].n)).toBe(2); // never moved
 }, 30_000);

@@ -206,11 +206,12 @@ export async function restoreResortBarn(pool: FoldPool, opts: { now?: number } =
 }
 
 /** Held legacy stock with NO durable map provenance (never assigned by guess): owner-scoped review list, read-only. */
-export interface HeldItem { kind: 'fish' | 'dish' | 'fillet' | 'barn'; what: string; n: number; value?: number; why: string }
+export interface HeldItem { kind: 'fish' | 'prepared' | 'dish' | 'fillet' | 'barn'; what: string; n: number; value?: number; why: string }
 export async function heldLegacyReview(pool: unknown, key: string): Promise<HeldItem[]> {
   const q = (sql: string) => (pool as { query: (s: string, a: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }> }).query(sql, [key]).then((r) => r.rows).catch(() => [] as Array<Record<string, unknown>>);
   const out: HeldItem[] = [];
   for (const r of await q('SELECT species s, count(*)::int n, coalesce(sum(value),0)::bigint v FROM fish_catches WHERE player_key = $1 AND loc IS NULL AND sold_at IS NULL AND dish IS NULL GROUP BY species ORDER BY species')) out.push({ kind: 'fish', what: String(r.s), n: Number(r.n), value: Number(r.v), why: 'caught before map tracking: no recorded map' });
+  for (const r of await q('SELECT species s, dish d, count(*)::int n, coalesce(sum(value),0)::bigint v FROM fish_catches WHERE player_key = $1 AND loc IS NULL AND sold_at IS NULL AND dish IS NOT NULL GROUP BY species, dish ORDER BY species, dish')) out.push({ kind: 'prepared', what: `${String(r.s)} (${String(r.d)})`, n: Number(r.n), value: Number(r.v), why: 'prepared before map tracking: no recorded map' });
   for (const r of await q('SELECT recipe s, count(*)::int n, coalesce(sum(value),0)::bigint v FROM kitchen_dishes WHERE player_key = $1 AND loc IS NULL AND sold_at IS NULL GROUP BY recipe ORDER BY recipe')) out.push({ kind: 'dish', what: String(r.s), n: Number(r.n), value: Number(r.v), why: 'cooked before map tracking: no recorded kitchen' });
   for (const r of await q('SELECT kind s, qty n FROM kitchen_fillets WHERE player_key = $1 AND qty > 0 ORDER BY kind')) out.push({ kind: 'fillet', what: `fillet_${r.s}`, n: Number(r.n), why: 'shared cutting board: no map' });
   for (const r of await q("SELECT item s, qty n FROM building_inv WHERE player_key = $1 AND building = 'resort_farm' AND qty > 0 AND item NOT LIKE 'crop:%' ORDER BY item")) out.push({ kind: 'barn', what: String(r.s), n: Number(r.n), why: 'resort barn, not a crop' });
