@@ -44,3 +44,20 @@ export function hubSleepView(now = Date.now()) {
     nextChangeAt: nextHubBoundary(now),
   };
 }
+
+/**
+ * Away-cap deadline that does not count the overnight lockout (Dayne t1899u: closure must not stop farms/workers).
+ * Returns the instant at which `awakeMs` of hub-AWAKE time has elapsed since `from`. Closure time is real elapsed
+ * time for production, but players cannot check in while locked out, so it never eats into "away" caps.
+ * Extends a cap by at most the actual overlapping closure (≤ 6 h per night); never grants extra production.
+ */
+export function awakeDeadline(from: number, awakeMs: number): number {
+  let t = from, left = Math.max(0, awakeMs);
+  for (let i = 0; i < 64; i++) {
+    const b = nextHubBoundary(t);
+    if (!isHubAwake(t)) { t = b; continue; }
+    if (b - t >= left) return t + left;
+    left -= b - t; t = b;
+  }
+  return t + left;
+}

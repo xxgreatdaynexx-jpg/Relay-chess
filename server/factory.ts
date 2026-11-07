@@ -12,6 +12,7 @@ import { requireResort } from './travel.js';
 import { playerKey } from './skins.js';
 import { MAX_BANKED_STACK, stackKey, isFood, recipeById, type Stack, type ItemType } from '../shared/mines.js';
 import { MAX_CATCHUP_MS, TICK_MS, advance, canPlace, contents, FLOOR_LEVELS, frecipe, gridOf, isItemKey, isKind, isSplitWeights, MAX_SPLIT_W, KINDS, MAX_ENTS, newState, type Dir, type Ent, type FState, type Kind, type Storage } from '../shared/factory.js';
+import { awakeDeadline } from '../shared/hubSleep.js';
 
 const SAVE_MS = 4000;
 const upsert = (k: string, name: string, s: FState) => ({ sql: `INSERT INTO factory_v2 (player_key, owner_name, data, updated_at) VALUES ($1,$2,$3,now()) ON CONFLICT (player_key) DO UPDATE SET owner_name = EXCLUDED.owner_name, data = EXCLUDED.data, updated_at = now()`, args: [k, name, JSON.stringify(s)] });
@@ -56,12 +57,12 @@ export class FactoryWorld {
     }
     s.floor = Math.max(1, lv);
     s.spd = engineeringTimeMul(skillLevel(account, 'engineering')); // Engineering perk: faster crafts
-    const seen = s.seen ?? s.at; const until = Math.min(now, seen + MAX_CATCHUP_MS);
+    const seen = s.seen ?? s.at; const capEnd = awakeDeadline(seen, MAX_CATCHUP_MS); const until = Math.min(now, capEnd); // overnight lockout doesn't count toward the 8h away cap
     const before = s.at;
     if (until > s.at) {
       // Engineering XP: 2 per bar/good the factory adds to storage while catching up (capped per hour/day in skills.ts)
       const st = this.storage(account); let made = 0, food = 0;
-      advance(s, { get: st.get, add: (key, d) => { if (d > 0 && !key.startsWith('ore:')) { if (isFoodKey(key)) food += d; else made += d; } st.add(key, d); } }, until, MAX_CATCHUP_MS);
+      advance(s, { get: st.get, add: (key, d) => { if (d > 0 && !key.startsWith('ore:')) { if (isFoodKey(key)) food += d; else made += d; } st.add(key, d); } }, until, Math.max(MAX_CATCHUP_MS, capEnd - seen));
       if (made > 0) awardXp(account, 'engineering', made * 2);
       if (food > 0) awardXp(account, 'cooking', food * 2);
     }
