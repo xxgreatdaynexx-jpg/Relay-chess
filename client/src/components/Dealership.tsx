@@ -52,8 +52,8 @@ export function Dealership({ onClose, onDrive }: { onClose: () => void; onDrive:
   const tax = wtax?.car === car.id ? wtax.tax : 0;
   return (
     <div className="dealer" data-testid="dealership" {...backdropDismiss(() => onClose())}>
-      <div className="dealer-box" data-drag-panel="dealer" onPointerDown={dragDealer.onPointerDown} style={dragDealer.style()} ref={dragDealer.ref}>{dragDealer.handle}
-        <header><h3>🚗 Chud Motors</h3>{g?.chips != null && <span className="dealer-chips">{fmt(g.chips)} chips</span>}<button type="button" onClick={onClose} aria-label="Close" data-testid="dealer-close">✕</button></header>
+      <div className="dealer-box" role="dialog" aria-modal="true" aria-labelledby="dealer-title" data-drag-panel="dealer" onPointerDown={dragDealer.onPointerDown} style={dragDealer.style()} ref={dragDealer.ref}>{dragDealer.handle}
+        <header><h3 id="dealer-title">🚗 Chud Motors</h3>{g?.chips != null && <span className="dealer-chips">{fmt(g.chips)} chips</span>}<button type="button" onClick={onClose} aria-label="Close" data-testid="dealer-close">✕</button></header>
         <div className="dealer-body">
           <aside className="dealer-list">
             {tiers.map((t) => <div key={t}><h4>{TIER_LABEL[t]}</h4>

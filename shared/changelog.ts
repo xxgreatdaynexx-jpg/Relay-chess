@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-07T13:45:00-06:00', title: 'Car dealership readable on phones', bullets: [
+    'On phones, the map buttons (Real estate, My home, My farms, Drive) and the Trade Week bar no longer cover the car dealership. It opens full screen with its title and close button visible, and the map buttons come back when you close it. Desktop is unchanged.',
+  ] },
   { commit: "d4c8f89", at: "2026-11-07T12:49:50-06:00", title: "Farming restored; one warehouse inventory per map", bullets: [
     "Farming is back to its pre-Millionaire behavior. Each player shares one inventory per map, with the Chud City Warehouse and Resort Warehouse.",
     "Same-map hauling is no longer required to use your goods. Ships and planes handle cross-map transport.",

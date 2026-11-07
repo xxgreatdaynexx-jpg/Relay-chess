@@ -315,7 +315,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   const tipOwner = tipProp ? owned.get(tipProp.id)?.owner : undefined;
   const ownerLine = tipProp ? (tipOwner ? `Owned by ${tipOwner}` : `For sale · 🪙 ${chips(tipProp.price)}`) : null;
   return (
-    <div className="world" data-testid="world-map" data-tod={sky.phase} style={{ background: `radial-gradient(120% 90% at 50% 0%, ${hex(sky.horizon)}, ${hex(sky.sky)} 70%)`, ['--glow' as string]: String(0.25 + 0.75 * sky.lights) }}>
+    <div className={dealer ? 'world world-modal-open' : 'world'} data-testid="world-map" data-tod={sky.phase} style={{ background: `radial-gradient(120% 90% at 50% 0%, ${hex(sky.horizon)}, ${hex(sky.sky)} 70%)`, ['--glow' as string]: String(0.25 + 0.75 * sky.lights) }}>
       {mode === '3d' ? <canvas ref={canvasRef} className="world-canvas" data-testid="world-canvas" /> : (
         <div className="world-grid" data-testid="world-grid">
           {WORLD_SPOTS.map((s) => (
