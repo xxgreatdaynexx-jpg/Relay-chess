@@ -3,7 +3,7 @@
  * Visible copy ONLY: exact headline “Millionaire Update” + live countdown timer.
  * No “coming”, no explanation, no buttons. Extra wording stays in aria (non-visible).
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { socket } from '@/lib/net';
 import {
   MILLIONAIRE_PRELAUNCH_HEADLINE,
@@ -27,8 +27,11 @@ function previewNow(): number | null {
 }
 
 export function MillionairePrelaunchOverlay() {
-  const preview = previewNow();
-  const [skew, setSkew] = useState(0);
+  // Read once: without prelaunchNow the preview base is Date.now(), which must not change on every render.
+  const [preview] = useState(previewNow);
+  // Server clock skew lives in a ref: as state in the effect deps, every answer (new skew) re-ran the effect, which
+  // asked again at once — an endless request loop (Dayne 2026-11-07: ~400 requests per app open).
+  const skew = useRef(0);
   const [endAt, setEndAt] = useState(MILLIONAIRE_PRELAUNCH_END_MS);
   const [now, setNow] = useState(() => preview ?? Date.now());
   const [active, setActive] = useState(() => (preview != null ? isMillionairePrelaunch(preview) : isMillionairePrelaunch()));
@@ -48,32 +51,43 @@ export function MillionairePrelaunchOverlay() {
     }
 
     const apply = (v: Partial<View>) => {
-      if (typeof v.serverNow === 'number') setSkew(v.serverNow - Date.now());
+      if (typeof v.serverNow === 'number') skew.current = v.serverNow - Date.now();
       if (typeof v.endAt === 'number') setEndAt(v.endAt);
       if (typeof v.active === 'boolean') setActive(v.active);
       else if (typeof v.serverNow === 'number') setActive(isMillionairePrelaunch(v.serverNow));
     };
-    const wall = () => Date.now() + skew;
+    const wall = () => Date.now() + skew.current;
     const sync = () => {
       const n = wall();
       setNow(n);
       setActive(isMillionairePrelaunch(n));
     };
+    // The window is fixed (shared constants): once it has ended there is nothing to ask the server, ever.
+    if (Date.now() >= MILLIONAIRE_PRELAUNCH_END_MS) { setActive(false); return; }
+    let iv = 0;
     const ask = () => {
+      if (wall() >= MILLIONAIRE_PRELAUNCH_END_MS) { stop(); return; }
       socket.emit('prelaunch_status', {}, (r: View) => { if (r) apply(r); });
       void fetch('/api/millionaire-prelaunch').then((res) => res.json()).then((r: View) => apply(r)).catch(() => {});
     };
-    ask();
+    let to = 0;
     const onPre = (v: View) => apply(v);
+    const stop = () => {
+      window.clearInterval(iv);
+      window.clearTimeout(to);
+      socket.off('millionaire_prelaunch', onPre);
+      socket.off('connect', ask);
+      setActive(false);
+    };
+    ask();
     socket.on('millionaire_prelaunch', onPre);
     socket.on('connect', ask);
-    const iv = window.setInterval(sync, 250);
-    let to = 0;
+    iv = window.setInterval(() => { sync(); if (wall() >= MILLIONAIRE_PRELAUNCH_END_MS) stop(); }, 250);
     const arm = () => {
       const n = wall();
       let target = MILLIONAIRE_PRELAUNCH_START_MS;
       if (n >= MILLIONAIRE_PRELAUNCH_START_MS) target = MILLIONAIRE_PRELAUNCH_END_MS;
-      if (n >= MILLIONAIRE_PRELAUNCH_END_MS) return;
+      if (n >= MILLIONAIRE_PRELAUNCH_END_MS) { stop(); return; }
       window.clearTimeout(to);
       to = window.setTimeout(() => { ask(); sync(); arm(); }, Math.min(Math.max(200, target - n + 30), 30_000));
     };
@@ -84,7 +98,7 @@ export function MillionairePrelaunchOverlay() {
       socket.off('millionaire_prelaunch', onPre);
       socket.off('connect', ask);
     };
-  }, [preview, skew]);
+  }, [preview]);
 
   if (!active) return null;
   const timer = formatCountdown(Math.max(0, endAt - now));
