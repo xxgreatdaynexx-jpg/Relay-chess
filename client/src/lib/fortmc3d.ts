@@ -12,7 +12,6 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { skyNow, parseTod, mix as mixHex } from '../../../shared/daynight';
 import { sg, BOX, SPH, buildOcean, buildBeach } from './ocean3d';
-import { plane as makePlane } from './worldFreight';
 import { buildJet, disposeTree } from './fleetModels';
 import type { FleetModel } from '../../../shared/fleet';
 import { FORT_SPOTS, FORT_X0, FORT_X1, FORT_Z0, FORT_Z1, TRACTS, tractInfo, type FortState, type UnitKind } from '../../../shared/fortmc';
@@ -157,7 +156,7 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
       { const hg = new THREE.Mesh(sg('fort-hangar', () => new THREE.CylinderGeometry(1, 1, 1, 16, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).rotateY(Math.PI / 2)), mat({ color: 0x8c96a0, metalness: 0.6, roughness: 0.45 })); hg.scale.set(9, 6, 7); hg.rotation.y = Math.PI / 2; hg.position.set(-26, 0, -4); hg.castShadow = true; g.add(hg); box(0.3, 5, 9, dark, -26, 2.5, -0.6, g); }
       cyl(0.9, 11, conc, 2, 5.5, -6, g); cyl(2.2, 2.4, towerWin, 2, 12, -6, g, 1.6); cyl(2.4, 0.5, dark, 2, 13.4, -6, g); box(0.2, 2, 0.2, steel, 2, 14.6, -6, g); box(0.5, 0.5, 0.5, navRed, 2, 15.7, -6, g); // control tower + beacon
       for (let i = 0; i < 15; i++) for (const ez of [1.6, 10.4]) box(0.35, 0.35, 0.35, i % 7 === 0 ? navRed : lampHead, -20 + i * 4, 0.25, ez, g); // runway edge lights
-      const plane = new THREE.Group(); plane.position.set(24, 0, -2); g.add(plane); { const pm = makePlane(); pm.scale.setScalar(0.9); pm.position.y = 1.6; plane.add(pm); } // airliner parked off the runway so private jets can use it
+      // No parked decorative airliner: only planes players are actually using are drawn.
       label('✈ YMC Airport', 'Fly home to Chud Hub', '#5aa8e8', s.x, 16, s.z);
       // Private-jet apron (mu-jet-mcchud): painted stand + windsock beside the terminal, where an owner's jet parks.
       box(12, 0.16, 7, mat({ color: 0x4a4a50, roughness: 1 }), 6, 0.09, -1.2, g); for (const [lx, lz, lw, ld] of [[0.2, -4.6, 11.6, 0.2], [0.2, 2.2, 11.6, 0.2], [0.2, -1.2, 0.2, 6.6]] as const) box(lw, 0.18, ld, yellow, 6 + lx - 0.2, 0.1, lz, g);

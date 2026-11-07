@@ -171,8 +171,7 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
     } else if (s.id === 'r-airstrip') {
       box(70, 0.15, 10, mat({ color: 0x3a3a3e, roughness: 1 }), 10, 0.08, 6, g); for (let i = 0; i < 9; i++) box(4, 0.17, 0.5, white, -22 + i * 8, 0.1, 6, g);
       box(16, 6, 8, white, -6, 3, -4, g); box(16, 2, 8.2, glass, -6, 5, -4, g);
-      const plane = new THREE.Group(); plane.position.set(18, 1.6, 6); g.add(plane); plane.userData.plane = true;
-      box(14, 1.6, 1.6, white, 0, 0, 0, plane); box(3, 0.25, 14, white, 0.5, 0, 0, plane); box(2, 2.4, 0.25, mat({ color: 0xd8b25a, metalness: 0.6 }), -6.4, 1.4, 0, plane);
+      // No parked decorative plane: only planes players are actually using are drawn (live traffic, worldFreight.ts).
       label('✈ Airfield', 'Fly home to Chud Hub', '#5aa8e8', s.x, 14, s.z);
     } else if (s.id === 'r-mine') {
       const rock = mat({ color: 0x7a5a4a, roughness: 1, flatShading: true });
@@ -222,7 +221,7 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
 
 
   // #10a: resort visual overhaul (on par with Chud City): volcanic ridge, avenues + street lamps, live traffic,
-  // sailboats and jet skis, a private jet circling, a lighthouse, flower hedges and district signs.
+  // sailboats and jet skis, a lighthouse, flower hedges and district signs.
   const anims: Array<(t: number, dt: number) => void> = [];
   { // Volcanic ridge behind the town (fog-softened silhouette).
     const ridgeM = mat({ color: 0x4a5a3a, roughness: 1, flatShading: true }); const ridgeTop = mat({ color: 0x6a5040, roughness: 1, flatShading: true });
@@ -260,11 +259,7 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
     else { box(0.9, 0.6, 2.4, mat({ color: 0xf6c445, metalness: 0.4 }), 0, 0.3, 0, b); box(0.4, 0.8, 0.3, mat({ color: 0x1a1a1a }), 0, 0.9, -0.2, b); }
     anims.push((t) => { const a = ph + t * w * (i < 6 ? 1 : 3.5); b.position.set(cx + Math.cos(a) * R, 0.1 + Math.sin(t * 1.3 + i) * 0.1, cz + Math.sin(a) * R * 0.35); b.rotation.y = -a + (w > 0 ? 0 : Math.PI); b.rotation.z = Math.sin(t + i) * 0.05; });
   }
-  // A private jet (feature #11) on a slow circuit over the island.
-  { const jet = new THREE.Group(); scene.add(jet);
-    box(1.6, 1.6, 14, white, 0, 0, 0, jet); box(15, 0.2, 2.6, white, 0, -0.2, 0.5, jet); box(0.2, 3, 2, gold, 0, 1.6, -6.2, jet); box(5, 0.15, 1.4, white, 0, 2.8, -6.4, jet); box(1.65, 0.4, 3, glass, 0, 0.4, 5.4, jet);
-    for (const x of [-1.6, 1.6]) box(0.9, 0.9, 2.6, gold, x, 0.5, -4, jet);
-    anims.push((t) => { const a = t * 0.07; jet.position.set(Math.cos(a) * 170, 70 + Math.sin(t * 0.3) * 4, -30 + Math.sin(a) * 110); jet.rotation.set(0, -a + Math.PI, 0.25); }); }
+  // No ambient circling jet: only planes players are actually using are drawn.
   // Lighthouse on the east point with a sweeping beam.
   { const lh = new THREE.Group(); lh.position.set(192, 0, SHORE_Z + 2); scene.add(lh);
     for (let i = 0; i < 6; i++) { const c = new THREE.Mesh(geo(new THREE.CylinderGeometry(2.4 - i * 0.22, 2.6 - i * 0.22, 3, 14)), i % 2 ? white : mat({ color: 0xd84a3a, roughness: 0.6 })); c.position.y = 1.5 + i * 3; c.castShadow = true; lh.add(c); }
