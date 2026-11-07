@@ -12,7 +12,7 @@ const url = process.env.MAYOR_LAWS_TEST_DATABASE_URL;
 const A = 'QA-LmA', B = 'QA-LmB', C = 'QA-LmC';
 const RESORT_HOME = 'r:beachhouse:1', CITY_HOME = 'b:house:-691:-188';
 
-it.skipIf(!url)('real PostgreSQL: legacy->factory migration, atomic dispatch, ownership, same-map trucks, warehouse-only sale, exactly-once arrival across restart + 2 instances', async () => {
+it.skipIf(!url)('real PostgreSQL: legacy->factory migration, atomic dispatch, map pools (instant same-map, plane/ship cross-map), sale from either map warehouse, exactly-once arrival across restart + 2 instances', async () => {
   const u = new URL(url!); if (!['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname)) throw new Error('Only a disposable local test DB is allowed.');
   const dbName = `lm_test_${process.pid}_${Date.now()}`; const root = new pg.Client({ connectionString: url }); await root.connect(); await root.query(`CREATE DATABASE ${dbName}`);
   const dbu = new URL(url!); dbu.pathname = `/${dbName}`; const DB = dbu.toString(); const db = new pg.Pool({ connectionString: DB });
@@ -56,44 +56,45 @@ it.skipIf(!url)('real PostgreSQL: legacy->factory migration, atomic dispatch, ow
     expect(mv.snap[A].chips).toBe(c1 - fees); expect(Object.fromEntries(mv.snap[A].factory)['ore:copper']).toBe(50); // source unavailable while in transit
     expect(await q("SELECT count(*)::int n FROM freight_shipments WHERE status='moving' AND kind='loc'")).toEqual([{ n: 2 }]);
     expect(await q("SELECT count(*)::int n FROM freight_shipments WHERE status='transit' AND kind='loc'")).toEqual([{ n: 0 }]); // rollback barrier: 14bad00 loads status='transit' only, never a loc leg
-    // ---- busy truck is global; another player's truck id is refused; same-map plane/ship and cross-map truck refused
+    // ---- map pools (pre-Millionaire restore): same-map moves are instant + free whatever mode the client sends (no
+    // truck needed, any vehicle id ignored); kitchens are no destination any more; trucks never cross maps; held stock stays held
     const deny = await step('move', { names: [A, C], moves: [
       { name: A, from: 'factory', to: 'warehouse', item: 'ore:copper', qty: 5, mode: 'truck' },
       { name: C, from: 'factory', to: 'warehouse', item: 'ore:copper', qty: 5, mode: 'truck', vehicle: truckId },
-      { name: A, from: 'factory', to: `kitchen:${RESORT_HOME}`, item: 'fish:bass', qty: 1, mode: 'truck' },
-      { name: A, from: 'factory', to: `kitchen:${RESORT_HOME}`, item: 'fish:bass', qty: 1, mode: 'hired' },
-      { name: A, from: 'factory', to: 'kitchen:not-mine', item: 'fish:bass', qty: 1, mode: 'hired' },
+      { name: A, from: 'factory', to: `kitchen:${RESORT_HOME}`, item: 'fish:bass', qty: 1, mode: 'plane' },
+      { name: A, from: 'factory', to: 'resort', item: 'ore:copper', qty: 1, mode: 'truck' },
       { name: B, from: 'factory', to: 'warehouse', item: 'fish:bass', qty: 1, mode: 'hired' }] });
-    expect(deny.res.map((r: { ok: boolean }) => r.ok)).toEqual([false, false, false, false, false, false]);
-    expect(deny.snap[A].chips).toBe(mv.snap[A].chips); expect(Object.fromEntries(deny.snap[C].factory)['ore:copper']).toBe(20);
-    // ---- fish keep species/weight: plane to the resort kitchen, hired truck to the city kitchen + warehouse
+    expect(deny.res.map((r: { ok: boolean }) => r.ok)).toEqual([true, true, false, false, false]);
+    expect(deny.snap[A].chips).toBe(mv.snap[A].chips); expect(Object.fromEntries(deny.snap[C].factory)['ore:copper']).toBe(15);
+    // ---- fish keep species/weight: plane to the Resort Warehouse (cross-map), instant to the city warehouse
     const fm = await step('move', { names: [A], moves: [
-      { name: A, from: 'factory', to: `kitchen:${RESORT_HOME}`, item: 'fish:trout', qty: 1, mode: 'plane' },
+      { name: A, from: 'factory', to: 'resort', item: 'fish:trout', qty: 1, mode: 'plane' },
       { name: A, from: 'factory', to: 'warehouse', item: 'fish:bass', qty: 1, mode: 'hired' },
       { name: A, from: 'factory', to: 'warehouse', item: 'dish:pancakes', qty: 1, mode: 'hired' }] });
     expect(fm.res.map((r: { ok: boolean; error?: string }) => r.ok || r.error)).toEqual([true, true, true]);
+    expect(fm.snap[A].chips).toBeLessThan(deny.snap[A].chips); // only the plane leg charged a fee
     expect((await q("SELECT loc FROM fish_catches WHERE id IN ('fa1','fa2') ORDER BY id")).every((r) => String(r.loc).startsWith('transit:'))).toBe(true);
-    // ---- only the warehouse sells; nothing there yet
+    // ---- nothing has landed yet: nothing to sell
     expect((await step('sell', { name: A, item: 'ore:copper', qty: 1 })).ok).toBe(false);
     // ---- restart + two instances tick at once after arrival time: credited exactly once
     const late = 6 * 3_600_000; const [t1, t2] = await Promise.all([step('tick', { names: [A] }, late), step('tick', { names: [A] }, late)]);
-    // deploy overlap: two servers up at once. Exactly one holds the fence; the other fails closed (boot error or
-    // rejected writes) and can never double-credit. The ledger/stock rows below are the truth.
     const live = [t1, t2].filter((t) => !t.bootError); expect(live.length).toBeGreaterThanOrEqual(1);
     expect(Math.min(...live.map((t) => t.transit))).toBe(0);
-    expect(await q("SELECT loc, item, qty::int AS qty FROM loc_stock WHERE player_key='qa-lma' ORDER BY 1,2")).toEqual([{ loc: 'warehouse', item: 'ore:copper', qty: 250 }]);
+    expect(await q("SELECT loc, item, qty::int AS qty FROM loc_stock WHERE player_key='qa-lma' ORDER BY 1,2")).toEqual([{ loc: 'warehouse', item: 'ore:copper', qty: 255 }]);
     expect(await q("SELECT id, loc, species, weight_g FROM fish_catches WHERE player_key='qa-lma' ORDER BY id")).toEqual([
-      { id: 'fa1', loc: 'warehouse', species: 'bass', weight_g: 900 }, { id: 'fa2', loc: `kitchen:${RESORT_HOME}`, species: 'trout', weight_g: 500 }]);
+      { id: 'fa1', loc: 'warehouse', species: 'bass', weight_g: 900 }, { id: 'fa2', loc: 'resort', species: 'trout', weight_g: 500 }]);
     expect(await q("SELECT loc FROM kitchen_dishes WHERE id='da1'")).toEqual([{ loc: 'warehouse' }]);
-    expect(await q("SELECT status, count(*)::int n FROM freight_shipments GROUP BY 1")).toEqual([{ status: 'delivered', n: 5 }]);
+    expect(await q("SELECT status, count(*)::int n FROM freight_shipments GROUP BY 1")).toEqual([{ status: 'delivered', n: 7 }]);
     const again = await step('tick', { names: [A] }, late); expect(again.transit).toBe(0); // a third boot credits nothing more
-    expect(await q("SELECT qty::int AS qty FROM loc_stock WHERE player_key='qa-lma'")).toEqual([{ qty: 250 }]);
-    // ---- warehouse sale: ore, fish, dish
+    expect(await q("SELECT qty::int AS qty FROM loc_stock WHERE player_key='qa-lma'")).toEqual([{ qty: 255 }]);
+    // ---- sale from either map warehouse: ore, fish, dish in the city; the trout from the Resort Warehouse
     const s1 = await step('sell', { name: A, item: 'ore:copper', qty: 50 }); expect(s1.ok).toBe(true);
-    expect(await q("SELECT qty::int AS qty FROM loc_stock WHERE player_key='qa-lma'")).toEqual([{ qty: 200 }]);
+    expect(await q("SELECT qty::int AS qty FROM loc_stock WHERE player_key='qa-lma'")).toEqual([{ qty: 205 }]);
     expect((await step('sell', { name: A, item: 'fish:bass', qty: 1 })).ok).toBe(true);
     expect((await step('sell', { name: A, item: 'dish:pancakes', qty: 1 })).ok).toBe(true);
-    expect((await step('sell', { name: A, item: 'fish:trout', qty: 1 })).ok).toBe(false); // trout is in a kitchen, not the warehouse
+    expect((await step('sell', { name: A, item: 'fish:trout', qty: 1 })).ok).toBe(false); // not in the city warehouse
+    expect(await step('sell', { name: A, from: 'resort', item: 'fish:trout', qty: 1 })).toMatchObject({ ok: true });
+    expect((await step('sell', { name: A, from: 'factory', item: 'ore:copper', qty: 1 })).ok).toBe(false); // the factory is no sale point
     const end = await step('snap', { names: [A] }); expect(end[A].chips).toBeGreaterThan(deny.snap[A].chips);
   } finally { await db.end(); await root.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`).catch(() => {}); await root.end(); }
 }, 240_000);

@@ -194,7 +194,7 @@ export class Fishing {
       const memo = `Fish market: sold ${[...counts].map(([l, n]) => `${n} ${l}`).join(', ')}`.slice(0, 200);
       const body = async (cl: pg.PoolClient) => {
         const ph = rows.map((_, i) => `$${i + 3}`).join(',');
-        const u = await cl.query(`UPDATE fish_catches SET sold_at = $1 WHERE player_key = $2 AND sold_at IS NULL AND loc = 'warehouse' AND id IN (${ph})`, [this.clock(), key, ...rows.map((r) => r.id)]);
+        const u = await cl.query(`UPDATE fish_catches SET sold_at = $1 WHERE player_key = $2 AND sold_at IS NULL AND loc IN ('warehouse', 'resort') AND id IN (${ph})`, [this.clock(), key, ...rows.map((r) => r.id)]);
         if (u.rowCount !== rows.length) throw new FishError('Already sold.');
         for (const b of live) {
           const dk = fishDailyKey(key, b.spot);

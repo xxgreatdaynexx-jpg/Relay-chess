@@ -273,7 +273,7 @@ export class Cooking {
         try {
           await cl.query('BEGIN');
           const ph = rows.map((_, i) => `$${i + 3}`).join(',');
-          const u = await cl.query(`UPDATE kitchen_dishes SET sold_at = $1 WHERE player_key = $2 AND sold_at IS NULL AND loc = 'warehouse' AND id IN (${ph})`, [this.clock(), key, ...rows.map((r) => r.id)]);
+          const u = await cl.query(`UPDATE kitchen_dishes SET sold_at = $1 WHERE player_key = $2 AND sold_at IS NULL AND loc IN ('warehouse', 'resort') AND id IN (${ph})`, [this.clock(), key, ...rows.map((r) => r.id)]);
           if (u.rowCount !== rows.length) throw new CookError('Already sold.');
           await cl.query('INSERT INTO kitchen_daily (player_key, day, gross, paid) VALUES ($1,$2,0,0) ON CONFLICT (player_key, day) DO NOTHING', [key, day]);
           const d = await cl.query('UPDATE kitchen_daily SET gross = gross + $3, paid = paid + $4 WHERE player_key = $1 AND day = $2 AND gross = $5', [key, day, gross, paid, t.gross]);
