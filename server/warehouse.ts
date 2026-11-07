@@ -233,7 +233,10 @@ export class Warehouse {
     }
     return out;
   }
-  async sweepAll() { if (isMillionairePrelaunch()) return; for (const n of await this.autoPlayers()) { try { await this.sweep(n); } catch (e) { console.error('[autosell] sweep failed:', (e as Error).message); } } }
+  /** Auto-sell is paused (pre-Millionaire restore, Dayne 2026-11-07): settings rows are kept, nothing new is shipped to sell.
+   *  Ship-to-sell loads already in flight still settle on arrival (Logistics.onSell). */
+  static autoSellPaused = true;
+  async sweepAll() { if (Warehouse.autoSellPaused || isMillionairePrelaunch()) return; for (const n of await this.autoPlayers()) { try { await this.sweep(n); } catch (e) { console.error('[autosell] sweep failed:', (e as Error).message); } } }
 
   async view(name: string) {
     this.wire(); const cfg = await this.cfgs(name);

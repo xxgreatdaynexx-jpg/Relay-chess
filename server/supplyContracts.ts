@@ -287,8 +287,10 @@ export function registerSupply(io: Server, socket: Socket): void {
   const stock = (n: string) => getLocStore().at(n, WAREHOUSE).flatMap((x) => { const i = x.item.indexOf(':'); const type = x.item.slice(0, i) as ItemType; const id = x.item.slice(i + 1); return isStackable(type, id) ? [{ type, id, qty: x.qty, name: nameOf({ type, id }), ref: sc.ref(type, id) }] : []; }).filter((s) => s.ref > 0);
   const full = (n: string) => ({ contracts: sc.list(n), trucks: trucks(n), stock: stock(n), me: n });
   on('sc_list', () => { const n = need(); return full(n); });
-  on('sc_propose', async (b) => { const n = need(); const r = await sc.propose(n, b); return { result: r, ...full(n) }; });
-  on('sc_accept', async (b) => { const n = need(); const r = await sc.accept(n, b.id); return { result: r, ...full(n) }; });
+  // Pre-Millionaire logistics restore (Dayne 2026-11-07): no NEW supply contracts. Contracts already proposed/active keep
+  // their bonds and deliveries (decline / dispatch / cancel and the tick still settle them); records are kept.
+  on('sc_propose', async () => { throw new Coop3Error('New supply contracts are paused. Existing contracts still deliver and can be cancelled.'); });
+  on('sc_accept', async () => { throw new Coop3Error('New supply contracts are paused. You can decline this one; your bond was never taken.'); });
   on('sc_decline', async (b) => { const n = need(); const r = await sc.decline(n, b.id); return { result: r, ...full(n) }; });
   on('sc_dispatch', async (b) => { const n = need(); const r = await sc.dispatch(n, b.id, b.truck); return { result: r, ...full(n) }; });
   on('sc_cancel', async (b) => { const n = need(); const r = await sc.cancel(n, b.id, b.mutual); return { result: r, ...full(n) }; });

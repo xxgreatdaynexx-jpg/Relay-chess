@@ -22,6 +22,8 @@ import { initCars } from './cars.js';
 import { initLogistics } from './logistics.js';
 import { initLocStore } from './locstock.js';
 import { initLocMoves } from './locmoves.js';
+import { initMapPools } from './mapPools.js';
+import { properties } from '../shared/realEstate.js';
 import { initHomes } from './homes.js';
 import { initRace } from './race.js';
 import { initTravel } from './travel.js';
@@ -55,6 +57,7 @@ await initLeaderboardStorage();
 await initCheckersLeaderboardStorage();
 await initCasinoStorage();
 await initInventoryFence(); // truck logistics cutover: newest server is the only inventory writer (throws = fail closed, no boot)
+await initMapPools(cityDbUrl(), properties().filter((p) => p.map === 'resort').map((p) => p.id)); // pre-Millionaire restore: one inventory per owner per map (one transaction, idempotent)
 await initSkinStorage();
 await initMarketStorage();
 await initMinesStorage();

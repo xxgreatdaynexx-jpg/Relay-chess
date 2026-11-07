@@ -153,3 +153,17 @@ export async function foldToMapPools(pool: FoldPool, resortHomes: string[], opts
   } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; }
   finally { cl.release?.(); }
 }
+
+/** Boot step (index.ts): right after this process takes the inventory fence and BEFORE any inventory store loads, so
+ *  every store reads the folded state. No DB = dev memory mode, nothing to fold. A failure throws: boot fails closed
+ *  (the fence keeps every other writer out; nothing was committed because the fold is one transaction). */
+export async function initMapPools(dbUrl: string | undefined, resortHomes: string[]): Promise<FoldReport | null> {
+  if (!dbUrl) return null;
+  const pg = (await import('pg')).default;
+  const pool = new pg.Pool({ connectionString: dbUrl, max: 1, connectionTimeoutMillis: 10_000 });
+  try {
+    const t0 = Date.now(); const r = await foldToMapPools(pool, resortHomes);
+    console.log(`[mapPools] ${r.already ? 'already folded' : 'folded'} in ${Date.now() - t0} ms:`, JSON.stringify({ stacks: r.stacks, units: r.units, fish: r.fish, dishes: r.dishes, coral: r.coral, freight: r.freightRepointed, unknown: r.unknownLocs.length, held: r.heldLegacy, conserved: r.conserved }));
+    return r;
+  } finally { await pool.end().catch(() => {}); }
+}
