@@ -31,9 +31,8 @@ describe('net worth: property at total spent (shared propertyWorth)', () => {
     const paid = (await re.mine('Gus'))[0]!.paid;
     expect((await re.mine('Gus'))[0]!.value).toBe(paid);
     const up = await farm.buyUpgrade('Gus', id, 'sprinkler');
-    await farm.plow('Gus', id, [0, 1, 2]); await farm.plant('Gus', id, 'wheat', [0, 1, 2]);
-    await farm.fertilize('Gus', id, 'compost', [0]); // fertilizer on the current planting counts too
-    const seeds = cropById('wheat')!.seed * 3 + fertCost(fertDef('compost')!, cropById('wheat')!.sell); // price index 1 in tests
+    await farm.plant('Gus', id, 'wheat', [0, 1, 2]);
+    const seeds = cropById('wheat')!.seed * 3; // price index 1 in tests (consumable fertilizer retired: pre-Millionaire farm)
     await pool.query("UPDATE wallet_transactions SET created_at = now() WHERE game = 'farm_upgrade'");
     const m = (await re.mine('Gus'))[0]!;
     expect(m.upgradeSpend).toBe(up.cost); expect(m.cropValue).toBe(seeds);

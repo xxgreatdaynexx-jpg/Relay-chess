@@ -140,7 +140,7 @@ describe('purchase wealth tax: threshold = price paid + upgrades held (no plante
     await (s.pool as any).query('INSERT INTO properties (id, owner_key, owner_name, price, bought_at) VALUES ($1,$2,$3,$4,0)', [id, 'rich', 'Rich', PURCHASE_TAX_THRESHOLD]);
     await s.fund('Rich', 1_000_000);
     // Exactly at the line: planting seed does NOT push it over.
-    await farm.plow('Rich', id, [0, 1, 2]); await farm.plant('Rich', id, 'wheat', [0, 1, 2]); expect(cropById('wheat')!.seed).toBeGreaterThan(0);
+    await farm.plant('Rich', id, 'wheat', [0, 1, 2]); expect(cropById('wheat')!.seed).toBeGreaterThan(0);
     expect(await propertyPaidValue(s.pool as never, 'Rich')).toBe(PURCHASE_TAX_THRESHOLD);
     expect((await quotePurchaseTax(s.pool as never, 'Rich', 50_000)).tax).toBe(0);
     // An upgrade bought for it does.

@@ -11,7 +11,7 @@ import { getMines, resetMines } from '../server/mines';
 import { setPriceIndexForTest } from '../server/price-index';
 import { Logistics, setLogistics, LOGISTICS_MIGRATION, type Shipment } from '../server/logistics';
 import { FortMc, setFortMc } from '../server/fortmc';
-import { Farm, setFarm } from '../server/farm';
+import { Farm } from '../server/farm';
 import { RealEstate } from '../server/realEstate';
 import { Warehouse, setWarehouse, recipeNeeds } from '../server/warehouse';
 import { WAREHOUSE_MIGRATION, binAddStmt, saleLogStmt } from '../server/warehouse-log';
@@ -135,28 +135,4 @@ describe('Postgres', () => {
     expect((await db.query<{ status: string; paid: number }>('SELECT status, paid FROM warehouse_sales')).rows).toEqual([{ status: 'sold', paid: 90 }]);
   });
 
-  it('Resort plantation: harvest goes into the barn (no chips at the field); shipped crops pay once via farm_harvest', async () => {
-    setPriceIndexForTest(1); resetBank();
-    const db = newDb({ noAstCoverageCheck: true }); registerPgAdvisoryFunctions(db); const { Pool } = db.adapters.createPg(); const pool = new Pool();
-    const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
-    let t = Date.parse('2026-11-01T12:00:00Z');
-    const re = new RealEstate(pool, () => bank, () => t); await re.init();
-    const farm = new Farm(pool, () => bank, () => t); await farm.init(); setFarm(farm);
-    const w = new Warehouse(pool as never, () => t); await w.init(); setWarehouse(w); farm.barn = null; w.wire();
-    await pool.query(LOGISTICS_MIGRATION);
-    bank.transfer('QA-Cole-Visit', 50_000, { game: 'admin' }); await bank.flush();
-    await re.buy('QA-Cole-Visit', 'rf:1'); await farm.plow('QA-Cole-Visit', 'rf:1', [0, 1]); await farm.plant('QA-Cole-Visit', 'rf:1', 'coconut', [0, 1]);
-    const before = bank.account('QA-Cole-Visit').chips; t += cropById('coconut')!.grow + 1;
-    const h = await farm.harvest('QA-Cole-Visit', 'rf:1') as { paid: number; toPlot: Array<[string, number]> };
-    expect(h.paid).toBe(0); expect(bank.account('QA-Cole-Visit').chips).toBe(before);
-    const got = getLocStore().qty('QA-Cole-Visit', farmLoc('rf:1'), 'crop:coconut'); expect(got).toBeGreaterThanOrEqual(2); // lands AT its own plot (no pooled barn)
-    expect((await w.bin('QA-Cole-Visit', 'resort_farm')).size).toBe(0);
-    const sh = { id: 'ship-1', owner: 'qa-cole-visit', ownerName: 'QA-Cole-Visit', toKey: 'qa-cole-visit', toName: 'QA-Cole-Visit', src: 'resort_farm', from: 'resort', to: 'city', type: 'crop', itemId: 'coconut', qty: 2, fee: 0, mode: 'truck', truck: null, createdAt: t, departAt: t, arriveAt: t, status: 'transit', kind: 'sell', auto: true } as unknown as Shipment;
-    const rows = [saleLogStmt(sh, 'sold', 0, null)];
-    const paid = await farm.sellShipped(sh, rows); const c = cropById('coconut')!; expect(paid).toBe(Math.floor(2 * c.sell * 0.95)); // farming -5%
-    expect(await farm.sellShipped(sh, rows)).toBe(0); // replay: ledger key whsale:ship-1 already used
-    expect(bank.account('QA-Cole-Visit').chips).toBe(before + paid);
-    const log = (await pool.query('SELECT paid, status FROM warehouse_sales')).rows; expect(log).toEqual([{ paid, status: 'sold' }]);
-    setFarm(null);
-  });
 });

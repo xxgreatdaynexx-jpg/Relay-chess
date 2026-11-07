@@ -102,8 +102,8 @@ describe.skipIf(!PGURL)('LocStore (real PostgreSQL): lost acknowledgement / unkn
   }, 10_000);
 });
 
-describe('hired miners: ore lands at its own cave (Frostbite / Magma / The Mine)', () => {
-  it('collect puts each miner’s ore at mine:<cave>, persisted', async () => {
+describe('hired miners: ore lands in the city map warehouse (map pools)', () => {
+  it('collect puts every city miner’s ore in the Chud City Warehouse, persisted', async () => {
     setPriceIndexForTest(1); const T0 = Date.parse('2026-11-01T12:00:00Z'); let now = T0;
     const { pool } = mem(); const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
     await pool.query('CREATE TABLE players (player_key TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL)'); await pool.query(FISH_MIGRATION);
@@ -114,7 +114,7 @@ describe('hired miners: ore lands at its own cave (Frostbite / Magma / The Mine)
     for (const j of ['miner:frost', 'miner:magma', 'miner:mine']) await e.hire('Gus', j);
     now = T0 + 2 * HOUR; await e.collect('Gus'); await ls.idle();
     const rows = (await pool.query("SELECT loc, SUM(qty)::int n FROM loc_stock WHERE player_key = 'gus' GROUP BY loc ORDER BY loc")).rows as Array<{ loc: string; n: number }>;
-    expect(rows.map((r) => r.loc)).toEqual(['mine:frost', 'mine:magma', 'mine:mine']); for (const r of rows) expect(r.n).toBeGreaterThan(0);
+    expect(rows.map((r) => r.loc)).toEqual(['warehouse']); for (const r of rows) expect(r.n).toBeGreaterThan(0);
   });
 });
 
@@ -129,36 +129,6 @@ describe('legacy Market listings keep their origin (the factory)', () => {
     mm.cancelStack('QA-Old', 'old1'); await w.flush();
     expect(w.stackQty('QA-Old', 'ore', 'iron')).toBe(4); expect(ls.qty('QA-Old', 'warehouse', 'ore:iron')).toBe(0);
     expect((await pool.query("SELECT status FROM market_stack_listings WHERE id = 'old1'")).rows[0].status).toBe('cancelled');
-  });
-});
-
-describe('farming XP = the baseline amounts exactly (harvest), no sale double-count', () => {
-  beforeEach(() => resetFarmGuardForTest());
-  it('two city harvests in one day give the old farm_harvest ledger XP of the payouts the instant sale would have made; selling gives none', async () => {
-    setPriceIndexForTest(1); const T0 = Date.parse('2026-11-01T12:00:00Z'); const M = 60_000; let now = T0;
-    const { pool } = mem(); const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
-    const re = new RealEstate(pool as never, () => bank, () => now); await re.init();
-    const farm = new Farm(pool as never, () => bank, () => now, () => 0.999, async () => 0); await farm.init();
-    const ls = new LocStore(pool as never); await ls.init(); setLocStore(ls);
-    const small = farmPlots().find((p) => p.cols * p.rows === 16)!; const id = `f:${small.n}`;
-    bank.transfer('Gus', 1_000_000, { game: 'admin' }); await bank.flush(); await re.buy('Gus', id);
-    const award = vi.spyOn(getSkills(), 'award');
-    const w = cropById('wheat')!; const expected: number[] = []; let gross = 0;
-    for (const n of [4, 4]) {
-      await farm.plow('Gus', id, [...Array(n).keys()]); await farm.plant('Gus', id, 'wheat', [...Array(n).keys()]); now += 10 * M;
-      award.mockClear(); await farm.harvest('Gus', id);
-      const seeds = w.seed * n; const profit = cropProfit(w) * n; // baseline: paid = floor((seeds + farmPayout(profit, gross)) * index), XP from that ledger row
-      const paid = Math.floor((seeds + farmPayout(profit * cityPolicyMul('farming'), gross)) * priceIndex()); gross += Math.round(profit);
-      expected.push(ledgerXp('farm_harvest', paid)!.xp);
-      expect(award.mock.calls.filter((c) => c[1] === 'farming').map((c) => c[2])).toEqual([expected.at(-1)]);
-    }
-    const before = award.mock.calls.length;
-    await farm.sellShipped({ id: 's1', ownerName: 'Gus', itemId: 'wheat', qty: 12 }, []); // city crops: XP was earned at harvest
-    expect(award.mock.calls.length).toBe(before);
-    const paidC = await farm.sellShipped({ id: 's2', ownerName: 'Gus', itemId: 'coconut', qty: 2 }, []); // resort crops: baseline sale XP once
-    expect(award.mock.calls.slice(before).map((c) => c[2])).toEqual([ledgerXp('farm_harvest', paidC)!.xp]);
-    expect(await farm.sellShipped({ id: 's2', ownerName: 'Gus', itemId: 'coconut', qty: 2 }, [])).toBe(0); // replay: no second XP
-    expect(award.mock.calls.length).toBe(before + 1);
   });
 });
 

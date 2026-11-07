@@ -94,7 +94,7 @@ describe('resort properties and plantation', () => {
     bank.transfer('QA-Isle', 50_000, { game: 'admin' }); await bank.flush();
     await re.buy('QA-Isle', 'rf:1');
     await expect(farm.plant('QA-Isle', 'rf:1', 'wheat', [0])).rejects.toThrow(/tropical/i);
-    await farm.plow('QA-Isle', 'rf:1', [0, 1]); const r = await farm.plant('QA-Isle', 'rf:1', 'coconut', [0, 1]) as { cost?: number }; expect(r).toBeTruthy();
+    const r = await farm.plant('QA-Isle', 'rf:1', 'coconut', [0, 1]) as { cost?: number }; expect(r).toBeTruthy();
     const v = await farm.view('rf:1', 'QA-Isle'); expect(v.tiles.length).toBe(2); expect(v.cols).toBe(resortPlots()[0]!.cols);
     await re.buy('QA-Isle', 'f:1'); await expect(farm.plant('QA-Isle', 'f:1', 'mango', [0])).rejects.toThrow(/Chud Resort/);
   });
