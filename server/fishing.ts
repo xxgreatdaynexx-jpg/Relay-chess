@@ -245,8 +245,8 @@ export class Fishing {
       try {
         await cl.query('BEGIN');
         const ph = rows.map((_, i) => `$${i + 3}`).join(',');
-        const u = await cl.query(`UPDATE fish_catches SET sold_at = $1 WHERE player_key = $2 AND sold_at IS NULL AND loc = '${FACTORY}' AND id IN (${ph})`, [this.clock(), key, ...rows.map((r) => r.id)]);
-        if (u.rowCount !== rows.length) throw new FishError('Your factory fish changed — try again.');
+        const u = await cl.query(`UPDATE fish_catches SET sold_at = $1 WHERE player_key = $2 AND sold_at IS NULL AND loc IN ('${FACTORY}', '${WAREHOUSE}') AND id IN (${ph})`, [this.clock(), key, ...rows.map((r) => r.id)]);
+        if (u.rowCount !== rows.length) throw new FishError('Your fish changed — try again.');
         await sink.write(cl, items);
         await cl.query('COMMIT');
       } catch (e) { await cl.query('ROLLBACK').catch(() => {}); if (e instanceof FishError) throw e; console.error('[fishing] toFactory failed:', (e as Error).message); throw new FishError('Something went wrong. Nothing was moved.'); }

@@ -980,7 +980,7 @@ export function registerMines(io: Server, socket: Socket): void {
       const wh = getLocStore().at(a, WAREHOUSE).filter((x) => /^(ore|bar|good|food):/.test(x.item));
       const only = typeof b.ore === 'string' ? b.ore : null;
       const pick = only ? wh.filter((x) => x.item === only || x.item.slice(x.item.indexOf(':') + 1) === only) : wh.filter((x) => { const [t, id] = [x.item.slice(0, x.item.indexOf(':')), x.item.slice(x.item.indexOf(':') + 1)]; return sellable({ type: t as ItemType, id }); });
-      if (!pick.length) throw new MineError(only && world.storage(a).some((s) => stackKey(s) === only || s.id === only) ? 'Goods only sell at the Chud City Warehouse. Truck them there from your factory first.' : 'Nothing to sell at the Warehouse.');
+      if (!pick.length) throw new MineError(only && world.storage(a).some((s) => stackKey(s) === only || s.id === only) ? 'Move them from your factory to the Chud City Warehouse first (same map: instant and free).' : 'Nothing to sell at the Warehouse.');
       if (b.qty !== undefined && b.qty !== null && pick.length !== 1) throw new MineError('Pick one item to sell a quantity.');
       let paid = 0, gross = 0; const out: Stack[] = []; let err: Error | null = null;
       for (const x of pick) {

@@ -209,7 +209,7 @@ export class Cooking {
           // pt1299u: use fillets on the cutting board first; cut the cheapest matching fish into fillets as needed.
           const ok = FISH_ING[ing].rarities as readonly string[]; let stock = board[ing], cutN = 0;
           while (stock + cutN < q) {
-            const f = pool.find((x) => ok.includes(x.rarity)); if (!f) throw new CookError(`You need ${FISH_ING[ing].label.toLowerCase()} in this kitchen. Truck fish here first.`);
+            const f = pool.find((x) => ok.includes(x.rarity)); if (!f) throw new CookError(`You need ${FISH_ING[ing].label.toLowerCase()} on this map. Ship resort fish here first if they are at the resort.`);
             pool = pool.filter((x) => x !== f); cutN += filletsFrom(ing, f.value);
             extra.push({ sql: 'INSERT INTO kitchen_fish_used (fish_id, cook_id) VALUES ((SELECT id FROM fish_catches WHERE id = $1 AND player_key = $2 AND sold_at IS NULL AND dish IS NULL AND loc = $4), $3)', args: [f.id, key, id, loc] });
             extra.push({ sql: 'UPDATE fish_catches SET sold_at = $2 WHERE id = $1', args: [f.id, now] });

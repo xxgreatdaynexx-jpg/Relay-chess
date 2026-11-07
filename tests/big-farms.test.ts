@@ -80,7 +80,7 @@ describe('Big Farms map expansion', () => {
     const m = (await re.mine('Gus')).find((o) => o.id === id)!;
     expect(m.paid).toBe(bought.price); expect(m.value).toBe(bought.price);
     expect((await re.playerValue()).value).toBe(bought.price);
-    await farm.plow('Gus', id, [0, 1, 399]); await farm.plant('Gus', id, 'wheat', [0, 1, 399]);
+    await farm.plant('Gus', id, 'wheat', [0, 1, 399]);
     const m2 = (await re.mine('Gus')).find((o) => o.id === id)!;
     expect(m2.cropValue).toBe(cropById('wheat')!.seed * 3); expect(m2.value).toBe(bought.price + cropById('wheat')!.seed * 3);
   });

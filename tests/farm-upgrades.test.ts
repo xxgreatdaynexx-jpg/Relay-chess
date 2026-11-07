@@ -1,4 +1,3 @@
-import { harvestSells } from './helpers/farmHaul';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { resetFarmGuardForTest } from '../server/farmGuard';
 import { newDb } from 'pg-mem';
@@ -8,7 +7,7 @@ import { RealEstate } from '../server/realEstate';
 import { Farm } from '../server/farm';
 import { farmPlots, cropById } from './farm-helpers';
 import { propertyById } from '../shared/realEstate';
-import { combinedGrowMul, FARM_UPGRADES, greenhouseWither, MAX_UPGRADE_LEVEL, upgradePrice } from '../shared/farmUpgrades';
+import { combinedGrowMul, FARM_UPGRADES, fertilizerProfitMul, greenhouseWither, MAX_UPGRADE_LEVEL, upgradePrice } from '../shared/farmUpgrades';
 import { timerColor, timerFraction } from '../shared/turnTimer';
 
 const T0 = Date.parse('2026-11-01T12:00:00Z'); const M = 60_000;
@@ -17,7 +16,7 @@ async function setup() {
   const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
   let now = T0; const clock = () => now;
   const re = new RealEstate(pool, () => bank, clock); await re.init();
-  const farm = harvestSells(new Farm(pool, () => bank, clock), pool, () => bank); await farm.init();
+  const farm = new Farm(pool, () => bank, clock); await farm.init();
   const fund = async (name: string, n: number) => { bank.transfer(name, n - bank.account(name).chips, { game: 'admin' }); await bank.flush(); };
   const chips = (key: string) => Number(db.public.one(`SELECT chips FROM casino_players WHERE player_key = '${key}'`).chips);
   const ledger = (key: string, game: string) => db.public.many(`SELECT amount FROM wallet_transactions WHERE player_key = '${key}' AND game = '${game}' ORDER BY id`) as Array<{ amount: number }>;
@@ -40,7 +39,7 @@ describe('farm upgrades (request #6)', () => {
   it('sprinklers stack with the Farming perk but never below half the grow time; fertilizer/greenhouse effects', () => {
     expect(combinedGrowMul(1, 0)).toBe(1); expect(combinedGrowMul(1, 3)).toBeCloseTo(0.7); expect(combinedGrowMul(0.75, 3)).toBeCloseTo(0.525);
     expect(combinedGrowMul(0.5, 3)).toBe(0.5); expect(combinedGrowMul(0.75, 99)).toBeCloseTo(0.525);
-    expect(FARM_UPGRADES.map((u) => u.id)).toEqual(['sprinkler', 'greenhouse']); expect(greenhouseWither(2, 2)).toBe(4);
+    expect(fertilizerProfitMul(3)).toBeCloseTo(1.3); expect(greenhouseWither(2, 2)).toBe(4);
   });
   it('buying is owner-only, debits via farm_upgrade ledger exactly once, persists, and applies to growth, profit and wither', async () => {
     const s = await setup(); const plot = propertyById(s.id)!;
@@ -56,28 +55,28 @@ describe('farm upgrades (request #6)', () => {
     expect(lv).toEqual([1, 2]);
     expect(s.chips('gus')).toBe(before - 650 - 1450);
     expect(s.ledger('gus', 'farm_upgrade')).toEqual([{ amount: -650 }, { amount: -1450 }]);
-    await expect(s.farm.buyUpgrade('Gus', s.id, 'fertilizer')).rejects.toThrow(/Unknown upgrade/); await s.farm.buyUpgrade('Gus', s.id, 'greenhouse');
-    const v = await s.farm.view(s.id, 'Gus'); expect(v.upgrades).toEqual({ sprinkler: 2, greenhouse: 1 });
+    await s.farm.buyUpgrade('Gus', s.id, 'fertilizer'); await s.farm.buyUpgrade('Gus', s.id, 'greenhouse');
+    const v = await s.farm.view(s.id, 'Gus'); expect(v.upgrades).toEqual({ sprinkler: 2, fertilizer: 1, greenhouse: 1 });
     // A fresh Farm on the same DB still sees them (Postgres is the source of truth).
     expect((await new Farm((s.farm as unknown as { pool: never }).pool, () => s.bank, () => T0).view(s.id, 'Gus')).upgrades).toEqual(v.upgrades);
-    await s.farm.plow('Gus', s.id, [0]); await s.farm.plant('Gus', s.id, 'wheat', [0]);
+    await s.farm.plant('Gus', s.id, 'wheat', [0]);
     const w = cropById('wheat')!; const t = (await s.farm.view(s.id, 'Gus')).tiles[0]!;
     expect(t.readyAt - T0).toBe(Math.round(w.grow * 0.8)); // sprinklers lvl 2 = 20% faster
     expect(t.witherAt - t.readyAt).toBe(36 * 60 * 60_000); // ripe window is at least 36 h (greenhouse 4x grow is shorter for wheat)
     s.setNow(t.readyAt);
     const h = await s.farm.harvest('Gus', s.id);
-    expect(h.paid).toBe(Math.floor(w.sell * 0.95)); // farming -5% // #27: no profit multiplier any more
+    expect(h.paid).toBe(w.seed + Math.floor((w.sell * 0.95 - w.seed) * 1.1));
   });
   it('maxes out at level 3 and a new owner starts from zero', async () => {
     const s = await setup(); await s.fund('Gus', 100_000); await s.re.buy('Gus', s.id);
     for (let i = 0; i < 3; i++) await s.farm.buyUpgrade('Gus', s.id, 'greenhouse');
     await expect(s.farm.buyUpgrade('Gus', s.id, 'greenhouse')).rejects.toThrow(/maxed/);
     s.db.public.none(`UPDATE properties SET owner_key = 'hal', owner_name = 'Hal' WHERE id = '${s.id}'`);
-    expect((await s.farm.view(s.id, 'Hal')).upgrades).toEqual({ sprinkler: 0, greenhouse: 0 });
+    expect((await s.farm.view(s.id, 'Hal')).upgrades).toEqual({ sprinkler: 0, fertilizer: 0, greenhouse: 0 });
   });
   it('not enough chips charges nothing', async () => {
     const s = await setup(); const plot = propertyById(s.id)!; await s.fund('Gus', plot.price + 100); await s.re.buy('Gus', s.id);
-    await expect(s.farm.buyUpgrade('Gus', s.id, 'sprinkler')).rejects.toThrow(/Not enough chips/);
+    await expect(s.farm.buyUpgrade('Gus', s.id, 'fertilizer')).rejects.toThrow(/Not enough chips/);
     expect(s.ledger('gus', 'farm_upgrade')).toEqual([]);
   });
 });
