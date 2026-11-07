@@ -146,7 +146,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     g.font = 'italic 700 92px Fraunces Variable, Georgia, serif'; g.fillStyle = 'rgba(90,55,10,0.45)'; g.fillText('Millionaire Update', 514, 168);
     g.fillStyle = '#3a2508'; g.fillText('Millionaire Update', 512, 164);
     g.fillStyle = '#5a3b12'; g.fillRect(330, 232, 364, 3);
-    g.font = '700 40px Outfit Variable, system-ui, sans-serif'; g.fillStyle = '#4a300c'; g.fillText('C O M I N G   S O O N', 512, 285);
+    g.font = '700 40px Outfit Variable, system-ui, sans-serif'; g.fillStyle = '#4a300c'; g.fillText('O U T   N O W', 512, 285);
     const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8; disposables.push(tex);
     const face = new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.6, roughness: 0.45 }); disposables.push(face);
     const goldEdge = mat({ color: 0xe8b54e, emissive: 0xffc860, emissiveIntensity: 0.9 * NEON, metalness: 0.6, roughness: 0.35 });
