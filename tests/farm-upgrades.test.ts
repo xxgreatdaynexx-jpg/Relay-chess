@@ -1,3 +1,4 @@
+import { harvestSells } from './helpers/farmHaul';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { resetFarmGuardForTest } from '../server/farmGuard';
 import { newDb } from 'pg-mem';
@@ -16,7 +17,7 @@ async function setup() {
   const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
   let now = T0; const clock = () => now;
   const re = new RealEstate(pool, () => bank, clock); await re.init();
-  const farm = new Farm(pool, () => bank, clock); await farm.init();
+  const farm = harvestSells(new Farm(pool, () => bank, clock), pool, () => bank); await farm.init();
   const fund = async (name: string, n: number) => { bank.transfer(name, n - bank.account(name).chips, { game: 'admin' }); await bank.flush(); };
   const chips = (key: string) => Number(db.public.one(`SELECT chips FROM casino_players WHERE player_key = '${key}'`).chips);
   const ledger = (key: string, game: string) => db.public.many(`SELECT amount FROM wallet_transactions WHERE player_key = '${key}' AND game = '${game}' ORDER BY id`) as Array<{ amount: number }>;

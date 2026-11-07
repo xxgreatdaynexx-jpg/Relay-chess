@@ -1,3 +1,4 @@
+import { whAdd, whQty } from './helpers/warehouseStock';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getBank, resetBank } from '../server/casino-store';
 import { getMines, resetMines } from '../server/mines';
@@ -24,7 +25,7 @@ describe('supply contracts', () => {
     resetBank(); resetMines(); setPriceIndexForTest(1); now = 1000 * DAY; s = resetSupply(new SupplyContracts(null, () => now));
     s.guard.accountInfo = OLD; s.guard.allowQa = false; s.guard.linked = () => false;
     s.trucksOf = (x) => (x === 'Sally' ? [{ id: 't1', truckId: 'pickup' }, { id: 't2', truckId: 'semi' }] : []); s.freightBusy = () => new Set();
-    fund('Sally', 1_000_000); fund('Bob', 1_000_000); getMines().adjustStack('Sally', 'ore', 'iron', 10_000);
+    fund('Sally', 1_000_000); fund('Bob', 1_000_000); whAdd('Sally', 'ore', 'iron', 10_000);
   });
   afterEach(() => { resetSupply(); setJail(new Jail(null)); });
 
@@ -51,14 +52,14 @@ describe('supply contracts', () => {
       now += HOUR; await s.tick(); now += 11 * HOUR;
     }
     const v = s.list('Bob')[0]!; expect(v.status).toBe('done'); expect(v.delivered).toBe(4); expect(v.escrow).toBe(0);
-    expect(getMines().stackQty('Bob', 'ore', 'iron')).toBe(400); expect(getMines().stackQty('Sally', 'ore', 'iron')).toBe(9_600);
+    expect(whQty('Bob', 'ore', 'iron')).toBe(400); expect(whQty('Sally', 'ore', 'iron')).toBe(9_600);
     expect(chips('Sally')).toBe(s0 + value); expect(chips('Bob')).toBe(b0 - value);
     expect(await s.tick()).toBe(0);
   });
 
   it('dispatch with no stock takes nothing', async () => {
     const c = await offer(); await s.accept('Bob', c.id);
-    getMines().adjustStack('Sally', 'ore', 'iron', -10_000);
+    whAdd('Sally', 'ore', 'iron', -10_000);
     await expect(s.dispatch('Sally', c.id)).rejects.toThrow(/don’t have/); expect(s.list('Sally')[0]!.transit).toBeNull();
   });
 

@@ -73,8 +73,8 @@ export class LocMoves {
   }
 
   /** Homes (kitchens) this player owns: property id -> on the resort map? plus 'trailer' for a Trailer Park lot. */
-  async homes(name: string): Promise<Map<string, boolean>> {
-    const out = new Map<string, boolean>(); const key = playerKey(name); const pool = this.fishPool(); const list = properties();
+  async homes(name: string, via?: { query: (sql: string, args?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }> }): Promise<Map<string, boolean>> {
+    const out = new Map<string, boolean>(); const key = playerKey(name); const pool = via ?? this.fishPool(); const list = properties();
     try { for (const r of (await pool.query('SELECT id FROM properties WHERE owner_key = $1', [key])).rows) out.set(String(r.id), list.find((p) => p.id === String(r.id))?.map === 'resort'); } catch { /* no table */ }
     try { if ((await pool.query('SELECT 1 FROM trailer_lots WHERE player_key = $1', [key])).rows.length) out.set('trailer', false); } catch { /* no table */ }
     return out;

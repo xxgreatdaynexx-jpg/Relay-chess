@@ -22,7 +22,7 @@ import { requireResort } from './travel.js';
 import { fieldPlotOf } from '../shared/fieldFarms.js';
 import { getMines } from './mines.js';
 import { awardXp } from './skills.js';
-import { getLocStore } from './locstock.js';
+import { getLocStore, LOC_MIGRATION } from './locstock.js';
 import { farmLoc } from '../shared/inventoryLocations.js';
 import { CROPS, cropById, cropProfit, cropSellValue, farmPayout, farmPlots, ripeWindow, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
 import { skillLevelAsync } from './skills.js';
@@ -77,7 +77,7 @@ export class Farm {
   }
   constructor(private readonly pool: pg.Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now(), readonly rand: () => number = Math.random, private readonly level: (name: string) => Promise<number> = (n) => skillLevelAsync(n, 'farming')) {}
   private lvl = (name: string) => this.level(name).catch(() => 1);
-  async init() { await this.pool.query(FARM_MIGRATION); await this.pool.query('CREATE TABLE IF NOT EXISTS kitchen_harvests (tile_key TEXT PRIMARY KEY NOT NULL, at BIGINT NOT NULL)'); await this.refundOldFertilizer().catch((e) => console.error('[farm] fertilizer refund failed:', (e as Error).message)); }
+  async init() { await this.pool.query(FARM_MIGRATION); await this.pool.query(LOC_MIGRATION); await this.pool.query('CREATE TABLE IF NOT EXISTS kitchen_harvests (tile_key TEXT PRIMARY KEY NOT NULL, at BIGINT NOT NULL)'); await this.refundOldFertilizer().catch((e) => console.error('[farm] fertilizer refund failed:', (e as Error).message)); }
 
   /** One-time launch migration (Millionaire Update): the old Fertilizer plot upgrade was retired (fertilizer is now a
    *  consumable), so everyone gets back exactly what the ledger says they paid for it. Idempotent per player through the

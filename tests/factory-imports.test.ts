@@ -1,3 +1,4 @@
+import { getLocStore } from '../server/locstock';
 import { describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
 import { registerPgAdvisoryFunctions } from './pg-advisory';
@@ -64,25 +65,29 @@ async function db() {
 }
 
 describe('imports are atomic and server-side', () => {
-  it('farm: ready crops move to factory storage with no chips paid; exactly once', async () => {
-    const { pool, bank, sink, qty, after } = await db(); let now = T0;
+  it('farm: the old instant import refuses; harvest stays at the plot (no chips, no factory stock) until trucked', async () => {
+    const { pool, bank, sink, qty } = await db(); let now = T0;
     const re = new RealEstate(pool, () => bank, () => now); await re.init();
     const farm = new Farm(pool, () => bank, () => now); await farm.init();
     bank.transfer('Gus', 100_000, { game: 'admin' }); await bank.flush();
     const p = farmPlots().find((x) => x.cols * x.rows === 16)!; const id = `f:${p.n}`;
     await re.buy('Gus', id); await farm.plow('Gus', id, [0, 1, 2]); await farm.plant('Gus', id, 'wheat', [0, 1, 2]);
     now += 11 * 60_000; const chips = bank.account('Gus').chips;
-    expect(await farm.myPlots('Gus')).toEqual([id]);
-    const r = await farm.harvest('Gus', id, undefined, sink('Gus'));
-    expect(r.harvested).toBe(3); expect(r.paid).toBe(0); expect(qty('crop_wheat')).toBe(3); expect(after.at(-1)).toEqual([['crop_wheat', 3]]);
+    await expect(farm.harvest('Gus', id, undefined, sink('Gus'))).rejects.toThrow(/by truck/);
+    const r = await farm.harvest('Gus', id);
+    expect(r.harvested).toBe(3); expect(r.paid).toBe(0); expect(qty('crop_wheat')).toBe(0);
+    expect(getLocStore().qty('Gus', `farm:${id}`, 'crop:wheat')).toBe(3);
+    expect(Number((await pool.query("SELECT qty FROM loc_stock WHERE player_key = 'gus' AND loc = $1", [`farm:${id}`])).rows[0].qty)).toBe(3);
     expect(bank.account('Gus').chips).toBe(chips);
-    await expect(farm.harvest('Gus', id, undefined, sink('Gus'))).rejects.toThrow(/Nothing is ready/);
+    await expect(farm.harvest('Gus', id)).rejects.toThrow(/Nothing is ready/);
   });
   it('fish: cooler fish leave the cooler exactly once; junk stays', async () => {
     const { pool, bank, sink, qty } = await db();
     const f = new Fishing(pool, () => bank, () => T0); await f.init();
     const ins = (id: string, sp: string, v: number, dish: string | null = null) => pool.query('INSERT INTO fish_catches (id, player_key, name, species, weight_g, value, caught_at, dish) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [id, 'gus', 'Gus', sp, 1000, v, T0, dish]);
     await ins('a', 'bass', 24); await ins('b', 'salmon', 60, 'Seared Salmon'); await ins('c', 'boot', 2);
+    await expect(f.toFactory('Gus', undefined, sink('Gus'))).rejects.toThrow(/No fish/); // still at the lake
+    await pool.query("UPDATE fish_catches SET loc = 'factory'"); // trucked to the factory
     const r = await f.toFactory('Gus', undefined, sink('Gus'));
     expect(r.moved).toBe(2); expect(qty('fish_fillet')).toBe(3); expect(qty('fish_portion')).toBe(6);
     await expect(f.toFactory('Gus', undefined, sink('Gus'))).rejects.toThrow(/No fish/);

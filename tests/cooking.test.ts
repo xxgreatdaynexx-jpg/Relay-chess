@@ -1,3 +1,4 @@
+import { getLocStore } from '../server/locstock';
 import { describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
 import { CasinoBank, PgCasinoStore } from '../server/casino-store';
@@ -40,11 +41,12 @@ describe('cooking rules', () => {
   it('food is Market-stackable but never house-sold', () => { expect(isStackable('food', 'flour')).toBe(true); expect(isStackable('food', 'nope')).toBe(false); expect(priceOf({ type: 'food', id: 'beef' })).toBe(0); });
 });
 
+const kq = (me: string, id: string) => [...getLocStore().locs(me)].filter(([l]) => l.startsWith('kitchen:')).reduce((a, [, it]) => a + (it.find((x) => x.item === `food:${id}`)?.qty ?? 0), 0);
 describe('kitchen server', () => {
   async function setup() {
     const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
     const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool)); setPriceIndexForTest(1);
-    await pool.query('CREATE TABLE fish_catches (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, name TEXT NOT NULL, species TEXT NOT NULL, weight_g INTEGER NOT NULL, value INTEGER NOT NULL, caught_at BIGINT NOT NULL, sold_at BIGINT, dish TEXT, raw_value INTEGER)');
+    await pool.query('CREATE TABLE fish_catches (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, name TEXT NOT NULL, species TEXT NOT NULL, weight_g INTEGER NOT NULL, value INTEGER NOT NULL, caught_at BIGINT NOT NULL, sold_at BIGINT, dish TEXT, raw_value INTEGER, loc TEXT)');
     await pool.query('CREATE TABLE properties (id TEXT PRIMARY KEY, owner_key TEXT NOT NULL)');
     let now = T0; const c = new Cooking(pool, () => bank, () => now); await c.init();
     const ledger = (game: string) => db.public.many(`SELECT amount FROM wallet_transactions WHERE game = '${game}'`) as Array<{ amount: number }>;
@@ -61,10 +63,10 @@ describe('kitchen server', () => {
     expect(bank.account(me).chips).toBe(before - (2 + 1 + 2) * 2);
     expect(ledger('grocery').length).toBe(3);
     await expect(c.start(me, 'fried_fish')).rejects.toThrow(/fish/i);
-    await pool.query("INSERT INTO fish_catches VALUES ('f1','qa-cook1','QA-Cook1','perch',300,8,1,NULL), ('f2','qa-cook1','QA-Cook1','boot',300,2,1,NULL)");
+    await pool.query("INSERT INTO fish_catches VALUES ('f1','qa-cook1','QA-Cook1','perch',300,8,1,NULL), ('f2','qa-cook1','QA-Cook1','boot',300,2,1,NULL)"); await pool.query("UPDATE fish_catches SET loc = 'kitchen:h:1' WHERE player_key = 'qa-cook1' AND loc IS NULL");
     await expect(c.start(me, 'grape_tart')).rejects.toThrow(/level/);
     const { cook } = await c.start(me, 'fried_fish');
-    expect(getMines().stackQty(me, 'food', 'oil')).toBe(1);
+    expect(kq(me, 'oil')).toBe(1);
     expect((await pool.query("SELECT sold_at FROM fish_catches WHERE id = 'f1'")).rows[0].sold_at).not.toBeNull();
     expect((await pool.query("SELECT sold_at FROM fish_catches WHERE id = 'f2'")).rows[0].sold_at).toBeNull(); // junk is never cooked
     await expect(c.start(me, 'fried_fish')).rejects.toThrow(/stove/);
@@ -73,6 +75,8 @@ describe('kitchen server', () => {
     expect(res.quality).toBe(1); expect(res.xp).toBeGreaterThan(0);
     await expect(c.finish(me, cook.id, presses)).rejects.toThrow(/stove/);
     if (!res.burnt) {
+      await expect(c.sell(me)).rejects.toThrow(/Warehouse/); // still in the kitchen: truck it first
+      await pool.query("UPDATE kitchen_dishes SET loc = 'warehouse' WHERE player_key = 'qa-cook1'");
       const chips = bank.account(me).chips; const s = await c.sell(me);
       expect(s.paid).toBe(Math.floor(dishValue(recipeById('fried_fish')!, 1) * 1.5)); // +50% cooking buff expect(bank.account(me).chips).toBe(chips + s.paid);
       await expect(c.sell(me)).rejects.toThrow(/Nothing/);
@@ -80,13 +84,13 @@ describe('kitchen server', () => {
   });
   it('walking away mid-cook refunds the ingredients and the fish fillets (never burns)', async () => {
     const { pool, c, bank, adv } = await setup(); const me = 'QA-Cook3'; bank.account(me);
-    await pool.query("INSERT INTO properties VALUES ('h:3', 'qa-cook3')"); await pool.query("INSERT INTO fish_catches VALUES ('k1','qa-cook3','QA-Cook3','perch',300,8,1,NULL)");
+    await pool.query("INSERT INTO properties VALUES ('h:3', 'qa-cook3')"); await pool.query("INSERT INTO fish_catches VALUES ('k1','qa-cook3','QA-Cook3','perch',300,8,1,NULL)"); await pool.query("UPDATE fish_catches SET loc = 'kitchen:h:3' WHERE player_key = 'qa-cook3' AND loc IS NULL");
     for (const item of ['oil', 'salt', 'lemon']) await c.buy(me, item, 1, `nonce3-${item}-01`);
     const { cook } = await c.start(me, 'fried_fish');
-    expect(getMines().stackQty(me, 'food', 'oil')).toBe(0);
+    expect(kq(me, 'oil')).toBe(0);
     adv(10 * 60_000);
     await expect(c.finish(me, cook.id, perfect(cook.seed, cook.diff))).rejects.toThrow(/pantry/);
-    for (const item of ['oil', 'salt', 'lemon']) expect(getMines().stackQty(me, 'food', item)).toBe(1);
+    for (const item of ['oil', 'salt', 'lemon']) expect(kq(me, item)).toBe(1);
     expect((await c.view(me)).fillets).toEqual({ fish: 1, fish_fine: 0 }); // the perch was cut; its fillet is back on the board
     await expect(c.finish(me, cook.id, perfect(cook.seed, cook.diff))).rejects.toThrow(/stove/);
     expect(await c.refundStale(me)).toBe(0); // only once
@@ -94,7 +98,7 @@ describe('kitchen server', () => {
   });
   it('pt1299u: a valuable fish is cut into several fillets (1 per 8 value, capped); leftovers feed later cooks', async () => {
     const { pool, c, bank } = await setup(); const me = 'QA-Cook4'; bank.account(me);
-    await pool.query("INSERT INTO properties VALUES ('h:4', 'qa-cook4')"); await pool.query("INSERT INTO fish_catches VALUES ('b1','qa-cook4','QA-Cook4','catfish',5000,99,1,NULL)");
+    await pool.query("INSERT INTO properties VALUES ('h:4', 'qa-cook4')"); await pool.query("INSERT INTO fish_catches VALUES ('b1','qa-cook4','QA-Cook4','catfish',5000,99,1,NULL)"); await pool.query("UPDATE fish_catches SET loc = 'kitchen:h:4' WHERE player_key = 'qa-cook4' AND loc IS NULL");
     expect((await c.view(me)).fish.fish).toBe(12);
     for (const item of ['oil', 'salt', 'lemon']) await c.buy(me, item, 3, `nonce4-${item}-01`);
     const a = await c.start(me, 'fried_fish'); await c.finish(me, a.cook.id, [250, 250, 250, 250]);
@@ -105,7 +109,7 @@ describe('kitchen server', () => {
   });
   it('a speed-hacked cook burns', async () => {
     const { pool, c, bank } = await setup(); const me = 'QA-Cook2'; bank.account(me);
-    await pool.query("INSERT INTO properties VALUES ('h:2', 'qa-cook2')"); await pool.query("INSERT INTO fish_catches VALUES ('g1','qa-cook2','QA-Cook2','perch',300,8,1,NULL)");
+    await pool.query("INSERT INTO properties VALUES ('h:2', 'qa-cook2')"); await pool.query("INSERT INTO fish_catches VALUES ('g1','qa-cook2','QA-Cook2','perch',300,8,1,NULL)"); await pool.query("UPDATE fish_catches SET loc = 'kitchen:h:2' WHERE player_key = 'qa-cook2' AND loc IS NULL");
     for (const item of ['oil', 'salt', 'lemon']) await c.buy(me, item, 1, `nonce2-${item}-01`);
     const { cook } = await c.start(me, 'fried_fish');
     const r = await c.finish(me, cook.id, perfect(cook.seed, cook.diff)); // no wall time passed

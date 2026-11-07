@@ -1,3 +1,5 @@
+import { LocStore, setLocStore } from '../server/locstock';
+import { whAdd, whQty } from './helpers/warehouseStock';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
 import { getVault, ItemVault, PgItemStore, resetVault, type StoredItem } from '../server/skins';
@@ -109,45 +111,45 @@ describe('stackable (Mines) listings', () => {
   beforeEach(() => { resetMines(); });
   it('escrows qty, partial buys at unit price, 5% fee burned, cancel returns the rest', () => {
     const w = getMines();
-    w.adjustStack('QA-Miner', 'bar', 'iron_bar', 10);
+    whAdd('QA-Miner', 'bar', 'iron_bar', 10);
     expect(() => m.listStack('QA-Miner', 'bar', 'iron_bar', 11, 30)).toThrow(/only have 10/);
     expect(() => m.listStack('QA-Miner', 'bar', 'nope', 1, 30)).toThrow(/cannot be listed/);
     expect(() => m.listStack('QA-Miner', 'good', 'iron_bar', 1, 30)).toThrow(/cannot be listed/);
     const l = m.listStack('QA-Miner', 'bar', 'iron_bar', 8, 30);
-    expect(w.stackQty('QA-Miner', 'bar', 'iron_bar')).toBe(2);
+    expect(whQty('QA-Miner', 'bar', 'iron_bar')).toBe(2);
     expect(() => m.buyStack('QA-Miner', l.id, 1)).toThrow(/own/);
     expect(() => m.buyStack('QA-Buyer', l.id, 9)).toThrow(/Quantity/);
     const total0 = chips('QA-Miner') + chips('QA-Buyer');
     const r = m.buyStack('QA-Buyer', l.id, 3);
     expect(r).toMatchObject({ qty: 3, price: 90, fee: feeOf(90) });
-    expect(w.stackQty('QA-Buyer', 'bar', 'iron_bar')).toBe(3);
+    expect(whQty('QA-Buyer', 'bar', 'iron_bar')).toBe(3);
     expect(chips('QA-Miner') + chips('QA-Buyer')).toBe(total0 - feeOf(90));
     expect(m.browseStacks()[0]).toMatchObject({ qty: 5, unit: 30, name: 'Iron Bar' });
     expect(m.history('stack:bar:iron_bar')).toMatchObject({ count: 1, last: 30 });
     m.cancelStack('QA-Miner', l.id);
-    expect(w.stackQty('QA-Miner', 'bar', 'iron_bar')).toBe(7);
+    expect(whQty('QA-Miner', 'bar', 'iron_bar')).toBe(7);
     expect(() => m.buyStack('QA-Buyer', l.id, 1)).toThrow(/gone/);
   });
   it('buying the last unit closes the listing; no double-spend of escrow', () => {
-    const w = getMines(); w.adjustStack('QA-Miner', 'good', 'gear', 2);
+    const w = getMines(); whAdd('QA-Miner', 'good', 'gear', 2);
     const l = m.listStack('QA-Miner', 'good', 'gear', 2, 85);
     expect(() => m.listStack('QA-Miner', 'good', 'gear', 1, 85)).toThrow(/only have 0/);
     m.buyStack('QA-Buyer', l.id, 2);
     expect(m.stacks.has(l.id)).toBe(false);
     expect(() => m.buyStack('QA-Other', l.id, 1)).toThrow(/gone/);
-    expect(w.stackQty('QA-Buyer', 'good', 'gear')).toBe(2);
+    expect(whQty('QA-Buyer', 'good', 'gear')).toBe(2);
   });
   it('pack + listing rows persist in one Mines transaction (pg-mem)', async () => {
     const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
     const vv = resetVault(); await vv.attach(new PgItemStore(pool)); const mm = resetMarket(vv); await mm.load();
-    const w = resetMines(); await w.attach(new PgMineStore(pool));
-    w.adjustStack('QA-Miner', 'bar', 'gold_bar', 5);
+    const w = resetMines(); await w.attach(new PgMineStore(pool)); const ls = new LocStore(pool as never); await ls.init(); setLocStore(ls);
+    await ls.adjust('QA-Miner', [{ loc: 'warehouse', item: 'bar:gold_bar', delta: 5 }]);
     const l = mm.listStack('QA-Miner', 'bar', 'gold_bar', 4, 100);
     mm.buyStack('QA-Buyer', l.id, 1);
     await w.flush();
-    const w2 = new MinesWorld(); await w2.attach(new PgMineStore(pool));
-    expect(w2.stackQty('QA-Miner', 'bar', 'gold_bar')).toBe(1);
-    expect(w2.stackQty('QA-Buyer', 'bar', 'gold_bar')).toBe(1);
+    await ls.idle(); const ls2 = new LocStore(pool as never); await ls2.init(); setLocStore(ls2);
+    expect(whQty('QA-Miner', 'bar', 'gold_bar')).toBe(1);
+    expect(whQty('QA-Buyer', 'bar', 'gold_bar')).toBe(1);
     const m2 = resetMarket(vv); await m2.load();
     expect(m2.stacks.get(l.id)).toMatchObject({ qty: 3, unit: 100, sold: 1 });
     expect(m2.history('stack:bar:gold_bar').count).toBe(1);
@@ -156,37 +158,37 @@ describe('stackable (Mines) listings', () => {
     const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
     const bank = resetBank(); await bank.attach(new PgCasinoStore(pool));
     const vv = resetVault(); await vv.attach(new PgItemStore(pool)); const mm = resetMarket(vv); await mm.load();
-    const w = resetMines(); const store = new PgMineStore(pool); await w.attach(store);
-    w.adjustStack('QA-Miner', 'bar', 'gold_bar', 5);
+    const w = resetMines(); const store = new PgMineStore(pool); await w.attach(store); let down = false; const ls = new LocStore({ query: (a: string, b?: unknown[]) => pool.query(a, b), connect: () => (down ? Promise.reject(new Error('db down')) : pool.connect()) } as never); await ls.init(); setLocStore(ls);
+    await ls.adjust('QA-Miner', [{ loc: 'warehouse', item: 'bar:gold_bar', delta: 5 }]);
     const l = mm.listStack('QA-Miner', 'bar', 'gold_bar', 4, 100);
-    mm.buyStack('QA-Buyer', l.id, 1); await w.flush(); await bank.flush();
+    mm.buyStack('QA-Buyer', l.id, 1); await ls.idle(); await w.flush(); await bank.flush();
     const q = async (sql: string) => (await pool.query(sql)).rows;
     expect((await q("SELECT tx_key FROM wallet_transactions WHERE tx_key LIKE 'mkt:%' ORDER BY tx_key")).map((r: { tx_key: string }) => r.tx_key)).toEqual([`mkt:buy:${l.id}:1`, `mkt:sell:${l.id}:1`]);
     expect(Number((await q("SELECT chips FROM casino_players WHERE player_key = 'qa-buyer'"))[0].chips)).toBe(chips('QA-Buyer'));
     // Now make the item transaction fail every time: no ledger row, no balance change, no sale may land.
-    const orig = store.save.bind(store); store.save = async () => { throw new Error('db down'); };
+    down = true; // the Warehouse stock transaction (items + listing + chips) fails
     const before = Number((await q("SELECT chips FROM casino_players WHERE player_key = 'qa-buyer'"))[0].chips);
-    const mem = { buyer: chips('QA-Buyer'), seller: chips('QA-Miner'), qty: w.stackQty('QA-Buyer', 'bar', 'gold_bar'), left: mm.stacks.get(l.id)!.qty, sold: mm.stacks.get(l.id)!.sold, sales: mm.sales.length };
+    const mem = { buyer: chips('QA-Buyer'), seller: chips('QA-Miner'), qty: whQty('QA-Buyer', 'bar', 'gold_bar'), left: mm.stacks.get(l.id)!.qty, sold: mm.stacks.get(l.id)!.sold, sales: mm.sales.length };
     mm.buyStack('QA-Buyer', l.id, 3); // buys the rest: the listing would close
     expect(mm.stacks.has(l.id)).toBe(false);
-    await w.flush(); await bank.flush(); await new Promise((r) => setTimeout(r, 0));
+    await ls.idle(); await w.flush(); await bank.flush(); await new Promise((r) => setTimeout(r, 0));
     // ...and memory rolls back to match the DB exactly.
-    expect({ buyer: chips('QA-Buyer'), seller: chips('QA-Miner'), qty: w.stackQty('QA-Buyer', 'bar', 'gold_bar'), left: mm.stacks.get(l.id)?.qty, sold: mm.stacks.get(l.id)?.sold, sales: mm.sales.length }).toEqual(mem);
+    expect({ buyer: chips('QA-Buyer'), seller: chips('QA-Miner'), qty: whQty('QA-Buyer', 'bar', 'gold_bar'), left: mm.stacks.get(l.id)?.qty, sold: mm.stacks.get(l.id)?.sold, sales: mm.sales.length }).toEqual(mem);
     expect(mm.stacks.get(l.id)?.status).toBe('active');
     expect((await q("SELECT tx_key FROM wallet_transactions WHERE tx_key LIKE 'mkt:%:2'")).length).toBe(0);
     expect(Number((await q("SELECT chips FROM casino_players WHERE player_key = 'qa-buyer'"))[0].chips)).toBe(before);
     expect((await q('SELECT * FROM market_sales')).length).toBe(1);
-    store.save = orig;
+    down = false;
     // A retry after recovery succeeds with the same keys (they were released).
-    mm.buyStack('QA-Buyer', l.id, 1); await w.flush(); await bank.flush();
+    mm.buyStack('QA-Buyer', l.id, 1); await ls.idle(); await w.flush(); await bank.flush();
     expect((await q("SELECT tx_key FROM wallet_transactions WHERE tx_key LIKE 'mkt:%:2'")).length).toBe(2);
   }, 30000);
   it('buys land in uncapped banked storage (big stashes are not blocked by the 120 carry cap), with a per-stack sanity limit', () => {
-    const w = getMines(); w.adjustStack('QA-Miner', 'bar', 'iron_bar', 50); w.adjustStack('QA-Buyer', 'ore', 'stone', 5000);
+    const w = getMines(); whAdd('QA-Miner', 'bar', 'iron_bar', 50); whAdd('QA-Buyer', 'ore', 'stone', 5000);
     const l = m.listStack('QA-Miner', 'bar', 'iron_bar', 50, 1);
     m.buyStack('QA-Buyer', l.id, 30);
-    expect(w.stackQty('QA-Buyer', 'bar', 'iron_bar')).toBe(30);
-    w.adjustStack('QA-Buyer', 'bar', 'iron_bar', MAX_BANKED_STACK - 30);
+    expect(whQty('QA-Buyer', 'bar', 'iron_bar')).toBe(30);
+    whAdd('QA-Buyer', 'bar', 'iron_bar', MAX_BANKED_STACK - 30);
     expect(() => m.buyStack('QA-Buyer', l.id, 1)).toThrow(/can't hold/);
   });
 });
@@ -213,7 +215,7 @@ describe('market history + charts', () => {
     expect(m.myHistory('QA-X').rows).toHaveLength(1);
   });
   it('real buys appear in history with qty', () => {
-    getMines().adjustStack('Seller', 'bar', 'iron_bar', 10);
+    whAdd('Seller', 'bar', 'iron_bar', 10);
     const l = m.listStack('Seller', 'bar', 'iron_bar', 10, 7); m.buyStack('Buyer', l.id, 4);
     expect(m.myHistory('Buyer').rows[0]).toMatchObject({ side: 'buy', qty: 4, unit: 7, total: 28, net: -28 });
     expect(m.chart('stack:bar:iron_bar', '24h').volume).toBe(4);

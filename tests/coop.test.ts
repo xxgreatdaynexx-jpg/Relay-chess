@@ -1,3 +1,4 @@
+import { whAdd, whQty } from './helpers/warehouseStock';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getBank, resetBank } from '../server/casino-store';
 import { getMines, resetMines } from '../server/mines';
@@ -25,7 +26,7 @@ const OLD = async () => ({ ageMs: 30 * DAY, playMs: 50 * HOUR });
 async function fillStage(c: Coop, who: string) {
   const id = c.activeProject()!; const st = projectStages(COOP_PLAN[id])[c.stagesDone(id)]!; const row = c.projectView(id).stages[c.stagesDone(id)]!.done;
   const left = st.chips - (row.chips ?? 0); if (left > 0) { fund(who, left); await c.donate(who, { project: id, part: 'chips', qty: left, nonce: nonce() }); }
-  for (const g of st.goods) { const q = g.qty - (row[partKey(g)] ?? 0); if (q <= 0) continue; getMines().adjustStack(who, g.type, g.id, q); await c.donate(who, { project: id, part: partKey(g), qty: q, nonce: nonce() }); }
+  for (const g of st.goods) { const q = g.qty - (row[partKey(g)] ?? 0); if (q <= 0) continue; whAdd(who, g.type, g.id, q); await c.donate(who, { project: id, part: partKey(g), qty: q, nonce: nonce() }); }
 }
 
 describe('co-op sizing + rules', () => {
@@ -117,10 +118,10 @@ describe('Coop server', () => {
     expect(chips('Alice')).toBe(c0 - 45_000); expect(c.projectView('stadium').top[0]).toEqual({ name: 'Alice', value: 50_000 });
   });
   it('goods donation takes warehouse stock; refuses what you lack; reward cap holds', async () => {
-    const g = projectStages(COOP_PLAN.stadium)[0]!.goods[0]!; const q = Math.min(g.qty, Math.ceil(1000 / g.price)); getMines().adjustStack('Bob', g.type, g.id, q);
+    const g = projectStages(COOP_PLAN.stadium)[0]!.goods[0]!; const q = Math.min(g.qty, Math.ceil(1000 / g.price)); whAdd('Bob', g.type, g.id, q);
     await expect(c.donate('Bob', { project: 'stadium', part: partKey(g), qty: q + 1, nonce: nonce() })).rejects.toThrow(/don’t have/);
-    expect(getMines().stackQty('Bob', g.type, g.id)).toBe(q);
-    const r = await c.donate('Bob', { project: 'stadium', part: partKey(g), qty: q, nonce: nonce() }); expect(getMines().stackQty('Bob', g.type, g.id)).toBe(0);
+    expect(whQty('Bob', g.type, g.id)).toBe(q);
+    const r = await c.donate('Bob', { project: 'stadium', part: partKey(g), qty: q, nonce: nonce() }); expect(whQty('Bob', g.type, g.id)).toBe(0);
     expect(r.value).toBe(q * g.price); expect(c.projectView('stadium').stages[0]!.done[partKey(g)]).toBe(q); expect(r.reward).toBeLessThan(r.value);
     fund('Big', 10_000_000); await c.donate('Big', { project: 'stadium', part: 'chips', qty: 3_000_000, nonce: nonce() }); await c.donate('Big', { project: 'stadium', part: 'chips', qty: 500_000, nonce: nonce() });
     expect(c.view('Big').me!.rewarded).toBe(DONOR_REWARD_CAP);
@@ -157,17 +158,17 @@ describe('Coop server', () => {
     const cur = c.current(); const it0 = contractAt(contractIndex(now)); expect(cur.id).toBe(`c${contractIndex(now)}`);
     const g = (await import('../shared/mines')).GOODS[it0.item]!; const cap = playerCap(cur);
     c.accountInfo = async (x) => (x === 'Newbie' ? { ageMs: DAY, playMs: 10 * HOUR } : x === 'Idle' ? { ageMs: 10 * DAY, playMs: HOUR } : OLD());
-    getMines().adjustStack('Newbie', g.type, g.id, 10); getMines().adjustStack('Idle', g.type, g.id, 10);
+    whAdd('Newbie', g.type, g.id, 10); whAdd('Idle', g.type, g.id, 10);
     await expect(c.deliver('Newbie', { contract: cur.id, qty: 5, nonce: nonce() })).rejects.toThrow(/3 days/);
     await expect(c.deliver('Idle', { contract: cur.id, qty: 5, nonce: nonce() })).rejects.toThrow(/2 hours/);
-    const ppl = ['H1', 'H2', 'H3', 'H4', 'H5']; for (const p of ppl) getMines().adjustStack(p, g.type, g.id, cur.qty);
+    const ppl = ['H1', 'H2', 'H3', 'H4', 'H5']; for (const p of ppl) whAdd(p, g.type, g.id, cur.qty);
     const n1 = nonce(); const d1 = await c.deliver('H1', { contract: cur.id, qty: cur.qty, nonce: n1 }); expect(d1.qty).toBe(cap);
     expect((await c.deliver('H1', { contract: cur.id, qty: 5, nonce: n1 })).replay).toBe(true);
     await expect(c.deliver('H1', { contract: cur.id, qty: 5, nonce: nonce() })).rejects.toThrow(/share/);
     await expect(c.claim('H1', cur.id)).rejects.toThrow(/Pay opens/);
     await Promise.all(ppl.slice(1).map((p) => c.deliver(p, { contract: cur.id, qty: cap, nonce: nonce() }).catch(() => null)));
     const v = c.contractView(cur, 'H1'); expect(v.delivered).toBe(cur.qty); expect(v.filled).toBe(true);
-    expect(getMines().stackQty('H1', g.type, g.id)).toBe(cur.qty - cap);
+    expect(whQty('H1', g.type, g.id)).toBe(cur.qty - cap);
     const c0 = chips('H1'); const pay = await c.claim('H1', cur.id); const exp = contractPay(cur, cap, true);
     expect(pay.total).toBe(exp.total); expect(pay.bonus).toBeGreaterThan(0); expect(chips('H1')).toBe(c0 + exp.total);
     await expect(c.claim('H1', cur.id)).rejects.toThrow(/Already/);

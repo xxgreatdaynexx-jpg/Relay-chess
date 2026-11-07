@@ -1,3 +1,4 @@
+import { sellsAfterHaul } from './helpers/fishHaul';
 import { describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
 import { CasinoBank, PgCasinoStore } from '../server/casino-store';
@@ -14,7 +15,7 @@ function play(seed: number, diff: number): string { const r = new Reel(seed, dif
 async function setup() {
   const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
   const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
-  let now = T0; const f = new Fishing(pool, () => bank, () => now); await f.init();
+  let now = T0; const f = sellsAfterHaul(new Fishing(pool, () => bank, () => now), pool); await f.init();
   const ledger = (key: string) => db.public.many(`SELECT amount FROM wallet_transactions WHERE player_key = '${key}' AND game = 'fish_sell' ORDER BY id`) as Array<{ amount: number }>;
   return { db, pool, bank, f, ledger, adv: (ms: number) => { now += ms; } };
 }

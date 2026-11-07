@@ -18,7 +18,7 @@ import { px, priceIndex } from './price-index.js';
 import { awayFromMarket } from './travel.js';
 import { awardXp, getSkills } from './skills.js';
 import { getMines } from './mines.js';
-import { getLocStore } from './locstock.js';
+import { getLocStore, LOC_MIGRATION } from './locstock.js';
 import { getLocMoves } from './locmoves.js';
 import { kitchenLoc, WAREHOUSE, FACTORY } from '../shared/inventoryLocations.js';
 import { getFishing } from './fishing.js';
@@ -55,21 +55,27 @@ export class Cooking {
     this.locks.set(id, tail); void tail.then(() => { if (this.locks.get(id) === tail) this.locks.delete(id); }); return p;
   }
   constructor(readonly pool: pg.Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now(), private readonly devHome = false) {}
-  async init() { await this.pool.query(COOK_MIGRATION); }
+  async init() { await this.pool.query(COOK_MIGRATION); await this.pool.query(LOC_MIGRATION); }
 
   /**
    * Truck logistics: every kitchen (home) has its own pantry, fish and cutting board (loc_stock 'kitchen:<home>',
    * items 'food:<id>' incl. 'food:fillet_<kind>'). Deltas + extra rows commit in ONE transaction.
    */
+  /** Kitchen stock (loc_stock kitchen:<home>) + `extra` rows (wallet, fish, cooks) in ONE transaction on our pool. Memory is
+   *  checked and applied first (no oversell), DB rows are guarded (never negative); a failed commit reverts memory and chips. */
   private async kitchenTx(name: string, home: string, deltas: Array<{ id: string; delta: number }>, extra: Stmt[], chips?: { after: Promise<unknown>; bind: (p: Promise<unknown>) => void; revert: () => void }) {
-    const loc = kitchenLoc(home); const r = getLocStore().adjust(name, deltas.filter((d) => d.delta).map((d) => ({ loc, item: `food:${d.id}`, delta: d.delta })), extra, { after: chips?.after });
-    if (r === false) { chips?.revert(); throw new CookError("You don't have all the ingredients in this kitchen."); }
-    chips?.bind(r);
-    try { await r; } catch (e) { chips?.revert(); console.error('[cooking] tx failed:', (e as Error).message); throw new CookError('That did not go through. Nothing was used or charged.'); }
+    const ls = getLocStore(); if (!ls.loaded) { chips?.revert(); throw new CookError('Storage is reconnecting. Your goods are safe, try again in a minute.'); }
+    const loc = kitchenLoc(home); const d = deltas.filter((x) => x.delta).map((x) => ({ loc, item: `food:${x.id}`, delta: x.delta }));
+    if (!ls.check(name, d)) { chips?.revert(); throw new CookError("You don't have all the ingredients in this kitchen."); }
+    ls.applyMem(name, d);
+    const rows = [...ls.rowsFor(name, d), ...extra]; const pool = this.pool;
+    const run = (async () => { await chips?.after; const cl = await pool.connect(); try { await cl.query('BEGIN'); for (const q of rows) await cl.query(q.sql, q.args); await cl.query('COMMIT'); } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); } })();
+    chips?.bind(run);
+    try { await run; } catch (e) { ls.applyMem(name, d, -1); chips?.revert(); console.error('[cooking] tx failed:', (e as Error).message); throw new CookError('That did not go through. Nothing was used or charged.'); }
   }
   /** Which of your homes this kitchen is: the requested one (must be yours), else your first home. */
   async homeOf(name: string, want?: unknown): Promise<string> {
-    const homes = this.devHome ? new Map([['dev', false]]) : await getLocMoves().homes(name);
+    const homes = this.devHome ? new Map([['dev', false]]) : await getLocMoves().homes(name, this.pool);
     if (typeof want === 'string' && want) { if (!homes.has(want)) throw new CookError('That kitchen is not in a home you own.'); return want; }
     const first = [...homes.keys()].sort()[0]; if (!first) throw new CookError('You need a home with a kitchen: buy a property or a farm plot, or get a Trailer Park trailer.'); return first;
   }
@@ -155,7 +161,7 @@ export class Cooking {
     const key = keyOf(name);
     await this.lock(`c:${key}`, () => this.refundStale(name)).catch(() => 0);
     let home = ''; try { home = await this.homeOf(name, want); } catch { home = ''; }
-    const homes = this.devHome ? ['dev'] : [...(await getLocMoves().homes(name).catch(() => new Map())).keys()].sort();
+    const homes = this.devHome ? ['dev'] : [...(await getLocMoves().homes(name, this.pool).catch(() => new Map())).keys()].sort();
     const fish = home ? await this.fishRows(key, home) : []; const lv = await this.level(name);
     const fine = (FISH_ING.fish_fine.rarities as readonly string[]); const board = home ? this.fillets(name, home) : { fish: 0, fish_fine: 0 };
     const cut = (ing: FishIng) => fish.filter((f) => (FISH_ING[ing].rarities as readonly string[]).includes(f.rarity)).reduce((a, f) => a + filletsFrom(ing, f.value), 0);

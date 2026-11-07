@@ -1,3 +1,4 @@
+import { sellsAfterHaul } from './helpers/fishHaul';
 import { afterEach, describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
 import { CasinoBank, PgCasinoStore } from '../server/casino-store';
@@ -56,7 +57,7 @@ describe('fishing fleets', () => {
     const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
     // u ≈ 0.999 → legendary; in a crewed boat the legendary pool includes blue marlin
     let k = 0; const us = [0.9995, 0.999]; const rng: FishRng = { unit: () => us[k++ % us.length]!, int: (lo) => (lo === 1 ? 42 : 2000) };
-    const fi = new Fishing(pool, () => bank, () => now, rng); await fi.init();
+    const fi = sellsAfterHaul(new Fishing(pool, () => bank, () => now, rng), pool); await fi.init();
     setFishBoatHook(async () => bestBoat([])); // Ann owns no boat
     const f = fleet(); await expect(fi.cast('Ann', 'deep', () => true)).rejects.toThrow(/need a boat/);
     const t = await f.open('Cap', 0.25); await f.request('Ann', t.id); f.respond('Cap', 'Ann', true);
@@ -77,7 +78,7 @@ describe('fishing fleets', () => {
     setPriceIndexForTest(1);
     const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
     const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
-    const fi = new Fishing(pool, () => bank, () => now); await fi.init();
+    const fi = sellsAfterHaul(new Fishing(pool, () => bank, () => now), pool); await fi.init();
     await pool.query("INSERT INTO fish_catches (id, player_key, name, species, weight_g, value, caught_at, crew_trip, captain, cut) VALUES ('a','ann','Ann','bluemarlin',300000,9000000,$1,'t','Cap',0.3),('b','cap','Cap','bluemarlin',300000,9000000,$1,'t',NULL,NULL)", [now]);
     const a = await fi.sell('Ann'); const b = await fi.sell('Cap');
     expect(b.captainCut).toBeUndefined(); expect(a.captainCut).toBeGreaterThan(0);

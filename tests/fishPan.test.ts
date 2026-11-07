@@ -1,3 +1,4 @@
+import { sellsAfterHaul } from './helpers/fishHaul';
 import { describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
 import { CasinoBank, PgCasinoStore } from '../server/casino-store';
@@ -22,7 +23,7 @@ async function setup(level = 1) {
   const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
   const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
   let now = T0; const rng: FishRng = { unit: () => 0.5, int: (lo) => (lo === 1 ? 42 : 2000) }; // u=0.5 → common
-  const f = new Fishing(pool, () => bank, () => now, rng); await f.init();
+  const f = sellsAfterHaul(new Fishing(pool, () => bank, () => now, rng), pool); await f.init();
   let lvl = level; const c = new FishPan(pool, async () => lvl, () => now, () => 7);
   const adv = (ms: number) => { now += ms; };
   const catchOne = async (name: string) => { const { biteIn } = await f.cast(name); adv(biteIn + 100); const h = f.hook(name); const inp = playReel(h.seed, h.diff); adv(inp.length * 50 + 1300); const r = await f.land(name, inp); return r.fish!; };

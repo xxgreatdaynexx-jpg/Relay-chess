@@ -42,10 +42,12 @@ describe('Sell to house (mines_sell with a request id)', () => {
 describe('wiring', () => {
   it('the socket uses sellOnce with the rid and keeps the Chud City market gate', () => {
     const m = src('server/mines.ts');
-    expect(m).toMatch(/socket\.on\('mines_sell'[\s\S]{0,400}isAtResort\(account\(\)\) \|\| isAtFortMc\(account\(\)\)[\s\S]{0,300}world\.sellOnce\(account\(\), Date\.now\(\), body\(p\)\.ore, body\(p\)\.qty, body\(p\)\.rid\)/);
+    // truck logistics: the house buys only what is AT the Warehouse (per-location stock), through the one sale path
+    expect(m).toMatch(/socket\.on\('mines_sell'[\s\S]{0,400}isAtResort\(account\(\)\) \|\| isAtFortMc\(account\(\)\)[\s\S]{0,1200}getLocStore\(\)\.at\(a, WAREHOUSE\)[\s\S]{0,1500}getLocMoves\(\)\.sell\(a, /);
+    expect(m).toMatch(/selling\.has\(rid\)/);
   });
   it('auto-sell / ship & sell arrivals of ore, gems and bars land in the Warehouse and sell to the house', () => {
-    expect(src('server/warehouse.ts')).toMatch(/async arrived[\s\S]*mines\.sell\(s\.ownerName, now, `\$\{s\.type\}:\$\{s\.itemId\}`, s\.qty\)/);
+    expect(src('server/warehouse.ts')).toMatch(/async arrived[\s\S]*ls\.adjust\(s\.ownerName, \[\{ loc: WAREHOUSE, item, delta: s\.qty \}\][\s\S]*getLocMoves\(\)\.sell\(s\.ownerName, \{ item, qty: s\.qty \}\)/);
   });
   it('the Warehouse shows a Sell to house action for every stored item, next to Sell on Market, and the map opens it', () => {
     const r = src('client/src/components/ResourceSell.tsx'); const h = src('client/src/components/HouseSell.tsx');

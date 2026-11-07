@@ -27,7 +27,7 @@ import { sinkLostToday } from './sink-room.js';
 import { effectiveAlready } from '../shared/sinkRoom.js';
 import { houseCapIndex, HOUSE_SELL_BLOCKED } from './house-cap-index.js';
 import { eventCredit, eventTrade } from './weeklyEvent.js';
-import { getLocStore } from './locstock.js';
+import { getLocStore, setLocStore, LocStore } from './locstock.js';
 import { getLocMoves } from './locmoves.js';
 import { WAREHOUSE } from '../shared/inventoryLocations.js';
 
@@ -784,7 +784,7 @@ export class MinesWorld {
 
 let world = new MinesWorld();
 export const getMines = () => world;
-export function resetMines() { world = new MinesWorld(); return world; }
+export function resetMines() { world = new MinesWorld(); setLocStore(new LocStore(null)); return world; } // tests: fresh per-location stock too
 
 export async function initMinesStorage(): Promise<void> {
   const url = databaseUrl(); if (!url) { console.warn('[mines] no DATABASE_URL; mines in memory only'); return; }
@@ -940,7 +940,7 @@ export function registerMines(io: Server, socket: Socket): void {
   socket.on('mines_storage', safe(() => storeMsg()));
   // Truck logistics: the house only buys goods that are AT the Chud City Warehouse (loc_stock 'warehouse'). Factory /
   // mine stock has to be trucked there first (server/locmoves.ts); this handler never sells from the factory store.
-  const sold = new Map<string, { at: number; res: Record<string, unknown> }>();
+  const sold = new Map<string, { at: number; res: Record<string, unknown> }>(); const selling = new Set<string>();
   socket.on('mines_sell', async (p: unknown, ack?: Ack) => {
     try {
       if (isAtResort(account()) || isAtFortMc(account())) throw new MineError('The market is the Chud City Warehouse. Travel back to Chud City to sell here, or use Ship & sell from your building.');
@@ -949,6 +949,9 @@ export function registerMines(io: Server, socket: Socket): void {
       const b = body(p); const rid = typeof b.rid === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(b.rid) ? `${playerKey(a)}|${b.rid}` : null;
       const now = Date.now(); for (const [k, v] of sold) if (now - v.at > 15 * 60_000) sold.delete(k);
       if (rid && sold.has(rid)) return ack?.({ ok: true, ...sold.get(rid)!.res, replay: true, ...storeMsg() });
+      if (rid && selling.has(rid)) throw new MineError('Already selling, one moment.');
+      if (rid) selling.add(rid);
+      try {
       const wh = getLocStore().at(a, WAREHOUSE).filter((x) => /^(ore|bar|good|food):/.test(x.item));
       const only = typeof b.ore === 'string' ? b.ore : null;
       const pick = only ? wh.filter((x) => x.item === only || x.item.slice(x.item.indexOf(':') + 1) === only) : wh.filter((x) => { const [t, id] = [x.item.slice(0, x.item.indexOf(':')), x.item.slice(x.item.indexOf(':') + 1)]; return sellable({ type: t as ItemType, id }); });
@@ -962,6 +965,7 @@ export function registerMines(io: Server, socket: Socket): void {
       if (!out.length && err) throw err;
       const res = { paid, gross, sold: out }; if (rid) sold.set(rid, { at: now, res });
       ack?.({ ok: true, ...res, ...storeMsg() });
+      } finally { if (rid) selling.delete(rid); }
     } catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
   });
   const fact = () => ({ factory: world.factoryView(account(), Date.now()) });

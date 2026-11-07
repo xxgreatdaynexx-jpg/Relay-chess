@@ -1,3 +1,4 @@
+import { sellsAfterHaul } from './helpers/fishHaul';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
 import { CasinoBank, PgCasinoStore, resetBank } from '../server/casino-store';
@@ -63,7 +64,7 @@ describe('fishing partial sell', () => {
     setPriceIndexForTest(1);
     const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
     const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
-    const f = new Fishing(pool, () => bank, () => T0); await f.init();
+    const f = sellsAfterHaul(new Fishing(pool, () => bank, () => T0), pool); await f.init();
     for (const [id, v] of [['x1', 10], ['x2', 30], ['x3', 20], ['x4', 5]] as const) await pool.query("INSERT INTO fish_catches (id, player_key, name, species, weight_g, value, caught_at) VALUES ($1,'pat','Pat','perch',300,$2,0)", [id, v]);
     await expect(f.sell('Pat', undefined, 0)).rejects.toThrow(/1 to 4/);
     await expect(f.sell('Pat', undefined, 9)).rejects.toThrow(/1 to 4/);

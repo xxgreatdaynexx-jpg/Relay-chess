@@ -41,8 +41,11 @@ export class LocStore {
   mem = new Map<string, Map<string, Map<string, number>>>();
   names = new Map<string, string>();
   private chain: Promise<unknown> = Promise.resolve();
-  loaded = false;
-  constructor(readonly pool: LocPool | null) {}
+  /** Resolves once every queued write has settled (tests / shutdown). */
+  idle() { return this.chain; }
+  /** In-memory (dev/tests) is ready at once; a DB-backed store refuses every read/write until it has loaded. */
+  loaded: boolean;
+  constructor(readonly pool: LocPool | null) { this.loaded = !pool; }
   async init() {
     if (!this.pool) { this.loaded = true; return; }
     await this.pool.query(LOC_MIGRATION);
@@ -100,8 +103,8 @@ export async function initLocStore(): Promise<void> {
   const url = databaseUrl(); if (!url) { store = new LocStore(null); await store.init(); return; }
   const pool = new pg.Pool({ connectionString: url, max: 3, connectionTimeoutMillis: 10_000 });
   pool.on('error', (e) => console.error('[locstock] pool error:', e.message));
-  for (let i = 0; ; i++) {
-    try { const s = new LocStore(pool as unknown as LocPool); await s.init(); store = s; console.log('[locstock] ready'); return; }
-    catch (e) { console.error('[locstock] init failed (retrying):', (e as Error).message); if (i > 40) return; await new Promise((r) => setTimeout(r, Math.min(30_000, 1000 * 2 ** Math.min(i, 5)))); }
-  }
+  const s = new LocStore(pool as unknown as LocPool); store = s; // fails closed (not loaded) until the load below succeeds
+  const attempt = async () => { try { await s.init(); console.log('[locstock] ready'); return true; } catch (e) { console.error('[locstock] init failed (retrying):', (e as Error).message); return false; } };
+  if (await attempt()) return;
+  void (async () => { for (let i = 0; ; i++) { await new Promise((r) => setTimeout(r, Math.min(30_000, 1000 * 2 ** Math.min(i, 5)))); if (await attempt()) return; } })();
 }
