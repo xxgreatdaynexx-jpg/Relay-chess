@@ -25,7 +25,14 @@ async function makeDb(tag: string) {
     const lines = stdout.split('\n').filter((l) => l.startsWith('RESULT ')); if (!lines.length) throw new Error(`step ${s}: no result\n${stdout}`);
     return lines.length === 1 ? JSON.parse(lines[0]!.slice(7)) : lines.map((l) => JSON.parse(l.slice(7)));
   };
-  const failBoot = async (extra: Record<string, string>) => { try { await run('npx', ['tsx', 'tests/fixtures/locmoves-pg-step.ts', 'failBoot', '{}'], { env: env(0, extra) }); return 0; } catch (e) { return (e as { code?: number }).code ?? -1; } };
+  const failBoot = async (extra: Record<string, string>) => {
+    try { await run('npx', ['tsx', 'tests/fixtures/inventory-failure-pg-step.ts', 'failBoot', '{}'], { env: env(0, extra) }); return 0; }
+    catch (e) {
+      const failure = e as { code?: number | string; signal?: string; stderr?: string };
+      if (typeof failure.code !== 'number') throw new Error(`Failure fixture terminated without an exit code (signal ${failure.signal ?? 'none'}, code ${failure.code ?? 'none'}): ${failure.stderr ?? ''}`);
+      return failure.code;
+    }
+  };
   const q = async (sql: string, a: unknown[] = []) => (await db.query(sql, a)).rows;
   const close = async () => { await dropDrainedTestDatabase(root, db, name); };
   return { DB, env, step, failBoot, q, close, db };
@@ -141,7 +148,7 @@ it.skipIf(!url)('real PostgreSQL: a boot that fails before ready hands the fence
     expect(await q('SELECT holder, mode, migrated FROM inv_fence')).toEqual([{ holder: null, mode: 'open', migrated: false }]);
     await oldWrite(); // the old server keeps working
     // SIGTERM before ready (Render stopping a deploy that never got healthy)
-    const c = spawn('npx', ['tsx', 'tests/fixtures/locmoves-pg-step.ts', 'failBoot', '{}'], { env: d.env(0, { LM_TEST_FAIL: 'hang' }), detached: true });
+    const c = spawn('npx', ['tsx', 'tests/fixtures/inventory-failure-pg-step.ts', 'failBoot', '{}'], { env: d.env(0, { LM_TEST_FAIL: 'hang' }), detached: true });
     let log = ''; c.stdout.on('data', (b) => { log += String(b); }); c.stderr.on('data', (b) => { log += String(b); });
     for (let i = 0; i < 200 && !log.includes('fence taken'); i++) await new Promise((r) => setTimeout(r, 200));
     expect(await q('SELECT mode FROM inv_fence')).toEqual([{ mode: 'fenced' }]);
