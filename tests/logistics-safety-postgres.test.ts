@@ -70,40 +70,34 @@ it.skipIf(!url)('real PostgreSQL: trigger install vs an old writer, migration (b
     expect((await step('cancelListing', { name: A, id: 'legacy-l' })).ok).toBe(true);
     expect(n(await q("SELECT qty FROM mine_items WHERE player_key = 'qa-sfa' AND item_id = 'iron'"))).toEqual([{ qty: 4 }]);
 
-    // ---- real harvests: crops stay AT their own plot
+    // ---- real harvests: pre-Millionaire instant sale at the field (city and resort plantation), farm_harvest ledger; no crop stock
     await step('fund', { names: [A, B], amt: 200_000 });
-    expect((await step('harvest', { name: A, plot: PLOT })).ok).toBe(true);
-    expect((await step('harvest', { name: A, plot: 'rf:1' })).ok).toBe(true);
-    const at = Object.fromEntries((await q("SELECT loc || '|' || item k, qty::int n FROM loc_stock WHERE player_key = 'qa-sfa'")).map((r) => [r.k, r.n]));
-    expect(at[`farm:${PLOT}|crop:wheat`]).toBeGreaterThanOrEqual(4); expect(at['farm:rf:1|crop:coconut']).toBeGreaterThanOrEqual(2);
-    const wheat = at[`farm:${PLOT}|crop:wheat`]; const coco = at['farm:rf:1|crop:coconut'];
+    const h1 = await step('harvest', { name: A, plot: PLOT }); expect(h1).toMatchObject({ ok: true }); expect(h1.r.paid).toBeGreaterThan(0);
+    const h2 = await step('harvest', { name: A, plot: 'rf:1' }); expect(h2).toMatchObject({ ok: true }); expect(h2.r.paid).toBeGreaterThan(0);
+    expect(await q("SELECT count(*)::int n FROM wallet_transactions WHERE player_key = 'qa-sfa' AND game = 'farm_harvest'")).toEqual([{ n: 2 }]);
+    expect(await q("SELECT count(*)::int n FROM loc_stock WHERE player_key = 'qa-sfa' AND item LIKE 'crop:%' AND loc <> 'factory'")).toEqual([{ n: 0 }]);
 
-    // ---- route rules: same map = road only, other maps = plane/ship only
+    // ---- route rules (map pools): same map = instant + free whatever the mode; other maps = plane/ship only; kitchens are no destination
     const deny = await step('move', { names: [A], moves: [
-      { name: A, from: `farm:${PLOT}`, to: 'warehouse', item: 'crop:wheat', qty: 1, mode: 'plane' },
-      { name: A, from: 'farm:rf:1', to: 'warehouse', item: 'crop:coconut', qty: 1, mode: 'hired' }] });
-    expect(deny.res.map((r: { ok: boolean; error?: string }) => r.error)).toEqual([expect.stringMatching(/by truck/), expect.stringMatching(/other maps/)]);
-    // ---- dispatch: crops by hired truck / cargo ship, factory coconuts by truck, fillets to the city kitchen (capacity incl. inbound)
+      { name: A, from: 'factory', to: 'resort', item: 'crop:coconut', qty: 1, mode: 'hired' },
+      { name: A, from: 'factory', to: `kitchen:${CITY_HOME}`, item: 'food:fillet_fish', qty: 1, mode: 'hired' }] });
+    expect(deny.res.map((r: { ok: boolean; error?: string }) => r.error)).toEqual([expect.stringMatching(/other maps/), expect.stringMatching(/map warehouse/)]);
+    const c0 = (await step('snap', { names: [A] }))[A].chips;
     const mv = await step('move', { names: [A], moves: [
-      { name: A, from: `farm:${PLOT}`, to: 'warehouse', item: 'crop:wheat', qty: wheat, mode: 'hired' },
-      { name: A, from: 'farm:rf:1', to: 'warehouse', item: 'crop:coconut', qty: coco, mode: 'ship' },
-      { name: A, from: 'factory', to: 'warehouse', item: 'crop:coconut', qty: 5, mode: 'hired' },
-      { name: A, from: 'factory', to: `kitchen:${CITY_HOME}`, item: 'food:fillet_fish', qty: 600, mode: 'hired' }] });
-    expect(mv.res.map((r: { ok: boolean; error?: string }) => r.ok || r.error)).toEqual([true, true, true, true]);
-    const cap = await step('move', { names: [A], moves: [{ name: A, from: 'factory', to: `kitchen:${CITY_HOME}`, item: 'food:fillet_fish', qty: 500, mode: 'hired' }] });
-    expect(cap.res[0]).toMatchObject({ ok: false, error: expect.stringMatching(/room for 399/) }); // 999 max, 600 already on the way
-    expect((await step('move', { names: [A], moves: [{ name: A, from: 'factory', to: `kitchen:${CITY_HOME}`, item: 'food:fillet_fish', qty: 399, mode: 'hired' }] })).res[0].ok).toBe(true);
+      { name: A, from: 'factory', to: 'warehouse', item: 'crop:coconut', qty: 5, mode: 'plane' },
+      { name: A, from: 'factory', to: 'warehouse', item: 'food:fillet_fish', qty: 600, mode: 'truck' }] });
+    expect(mv.res.map((r: { ok: boolean; error?: string }) => r.ok || r.error)).toEqual([true, true]);
+    expect(mv.snap[A].chips).toBe(c0); // same-map moves are free
     // ---- arrival (restart, later clock): everything lands exactly once; the legacy load to B (no factory) waits at the dock
     const t1 = await step('tick', { names: [A, B] }, 8 * H); expect(t1.transit).toBe(0);
     const wh = Object.fromEntries((await q("SELECT loc || '|' || item k, qty::int n FROM loc_stock WHERE player_key = 'qa-sfa' AND qty > 0")).map((r) => [r.k, r.n]));
-    expect(wh).toEqual({ 'warehouse|crop:wheat': wheat, 'warehouse|crop:coconut': coco + 5, [`kitchen:${CITY_HOME}|food:fillet_fish`]: 999 });
+    expect(wh).toEqual({ 'warehouse|crop:coconut': 5, 'warehouse|food:fillet_fish': 600 });
     expect(await q("SELECT status FROM freight_shipments WHERE id = 'legacy-b'")).toEqual([{ status: 'transit' }]);
     expect(await q("SELECT count(*)::int n FROM mine_items WHERE player_key = 'qa-sfb'")).toEqual([{ n: 0 }]);
-    // ---- only the Warehouse sells; crops pay via farm_sale
-    expect((await step('sell', { name: A, item: 'crop:wheat', qty: wheat }, 8 * H)).ok).toBe(true);
-    expect((await step('sell', { name: A, item: 'crop:coconut', qty: coco + 5 }, 8 * H)).ok).toBe(true);
-    expect(await q("SELECT count(*)::int n FROM wallet_transactions WHERE player_key = 'qa-sfa' AND game = 'farm_sale'")).toEqual([{ n: 2 }]);
-    expect(await q("SELECT count(*)::int n FROM loc_stock WHERE player_key = 'qa-sfa' AND loc = 'warehouse' AND qty > 0")).toEqual([{ n: 0 }]);
+    // ---- legacy crop stock sells from the map warehouse once (farm_sale)
+    expect((await step('sell', { name: A, item: 'crop:coconut', qty: 5 }, 8 * H)).ok).toBe(true);
+    expect((await step('sell', { name: A, item: 'crop:coconut', qty: 5 }, 8 * H)).ok).toBe(false);
+    expect(await q("SELECT count(*)::int n FROM wallet_transactions WHERE player_key = 'qa-sfa' AND game = 'farm_sale'")).toEqual([{ n: 1 }]);
 
     // ---- factory arrival while factory storage is offline: refused (no "delivered" marker), credited once when back
     await step('stack', { items: [[A, 'ore', 'copper', 30]] });
