@@ -141,9 +141,9 @@ describe('mayor powers', () => {
     expect(marketFee(1000)).toBe(50); expect(marketFee(1000, 1, 1.25)).toBe(63); expect(marketFee(1000, 1, 0.75)).toBe(38); expect(marketFee(1000, 1, 9)).toBe(63);
     expect(stockFee(10_000, 1, 0.75)).toBe(75); expect(stockFee(10_000, 1, 1.25)).toBe(125); expect(marketFee(1, 1, 0.75)).toBe(1);
   });
-  it('mayor has no other powers: the API is just file / vote / set two rates', () => {
+  it('mayor API includes text-only bill records, not arbitrary economy powers', () => {
     const own = Object.getOwnPropertyNames(Mayor.prototype).filter((k) => k !== 'constructor').sort();
-    expect(own).toEqual(['candidates', 'tallied', 'changeBlock', 'elect', 'eligibility', 'file', 'init', 'mayor', 'pending', 'rates', 'reload', 'remove', 'setRates', 'settle', 'term', 'tx', 'view', 'vote'].sort());
+    expect(own).toEqual(['candidates', 'tallied', 'changeBlock', 'elect', 'eligibility', 'file', 'init', 'lawHistory', 'mayor', 'passLaw', 'pending', 'rates', 'reload', 'remove', 'setRates', 'settle', 'term', 'tx', 'view', 'vote'].sort());
   });
   it('admin removal ends the term and resets rates to default immediately', async () => {
     const s = await withMayor(); await s.m.setRates('Ann', { property: 1.25, fee: 1.25 });

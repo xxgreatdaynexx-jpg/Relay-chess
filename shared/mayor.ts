@@ -56,6 +56,7 @@ export interface RateChange { at: number; effectiveAt: number; by: string; prope
 export interface Candidate { name: string; slogan: string; filedAt: number; votes?: number }
 export interface Term { week: string; name: string; votes: number; startsAt: number; endsAt: number; removedAt: number | null; note?: string | null }
 export interface CityHallView {
+  laws?: import('./mayorLaws.js').MayorLawView;
   now: number; schedule: ReturnType<typeof schedule>; candidates: Candidate[]; mayor: Term | null; elect: Term | null;
   rates: CityRates; pending: RateChange | null; log: RateChange[]; me?: { name: string; filed: boolean; votedFor: string | null; canVote: boolean; reason?: string; isMayor: boolean; canChange: boolean; changeReason?: string };
   limits: { min: number; max: number; step: number; fee: number; base: { property: number; market: number; stock: number } };

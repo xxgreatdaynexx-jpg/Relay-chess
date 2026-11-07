@@ -1,3 +1,4 @@
+import { MayorLaws, MayorLawError } from './mayorLaws.js';
 /**
  * City Hall / mayor election server (shared/mayor.ts has the schedule and limits). Postgres is the source of truth:
  * mayor_candidates, mayor_votes, mayor_terms, mayor_rates. Results are tallied lazily (first read after voting closes)
@@ -35,7 +36,7 @@ const NOT_GAMES = ['daily_bonus', 'admin', 'admin_grant', 'bailout', 'mayor_fili
 export class Mayor {
   log: RateChange[] = []; // oldest first, every change ever (small)
   constructor(private readonly pool: pg.Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now()) {}
-  async init() { await this.pool.query(MAYOR_MIGRATION); await this.reload(); }
+  async init() { await this.pool.query(MAYOR_MIGRATION); await this.reload(); await new MayorLaws(this.pool, this.clock).init(); }
   async reload() {
     const r = await this.pool.query('SELECT * FROM mayor_rates ORDER BY at ASC, id ASC');
     this.log = r.rows.map((x: any) => ({ at: Number(x.at), effectiveAt: Number(x.effective_at), by: String(x.by_name), property: Number(x.property), fee: Number(x.fee), note: x.note ?? undefined }));
@@ -149,6 +150,13 @@ export class Mayor {
     });
     this.log.push(c); return c;
   }
+  async passLaw(name: string, text: unknown) {
+    await this.settle(this.clock());
+    try { return await new MayorLaws(this.pool, this.clock).pass(name, text); }
+    catch (e) { if (e instanceof MayorLawError) throw new MayorError(e.message); throw e; }
+  }
+  async lawHistory(before?: unknown) { return new MayorLaws(this.pool, this.clock).history(before); }
+
   /** Admin: remove the sitting mayor (or mayor-elect) and put rates back to default immediately. */
   async remove(note: unknown) {
     const now = this.clock(); await this.settle(now); const m = (await this.mayor(now)) ?? (await this.elect(now));
@@ -166,7 +174,7 @@ export class Mayor {
     const [candidates, mayor, elect] = await Promise.all([this.candidates(s.week), this.mayor(now), this.elect(now)]);
     const v: CityHallView = {
       // Hide live per-candidate tallies while filing/voting; Sunday results (and settle) may show them.
-      now, schedule: s, candidates: s.phase === 'results' ? candidates : candidates.map(({ votes: _v, ...c }) => c),
+      laws: await this.lawHistory(), now, schedule: s, candidates: s.phase === 'results' ? candidates : candidates.map(({ votes: _v, ...c }) => c),
       mayor: mayor ? { week: mayor.week, name: mayor.name, votes: mayor.votes, startsAt: mayor.startsAt, endsAt: mayor.endsAt, removedAt: null } : null, elect,
       rates: this.rates(now), pending: this.pending(now), log: this.log.slice(-30).reverse(),
       limits: { min: RATE_MIN, max: RATE_MAX, step: RATE_STEP, fee: FILING_FEE, base: { property: BASE_PROPERTY_TAX, market: BASE_MARKET_FEE, stock: BASE_STOCK_FEE } },
@@ -220,6 +228,8 @@ export function registerMayor(_io: Server, socket: Socket): void {
     try { if (!mayorInst) throw new MayorError('City Hall is closed right now.'); const r = await fn(b, mayorInst); ack?.({ ok: true, ...r, view: await mayorInst.view(nameOf()) }); }
     catch (e) { let view: CityHallView | undefined; try { view = mayorInst ? await mayorInst.view(nameOf()) : undefined; } catch { /* */ } ack?.({ ok: false, error: e instanceof MayorError ? e.message : 'Something went wrong.', view }); if (!(e instanceof MayorError)) console.error('[mayor]', e); }
   });
+  on('mayor_law_pass', async (b, m) => m.passLaw(need(), b.text));
+  on('mayor_law_history', async (b, m) => ({ laws: await m.lawHistory(b.before) }));
   on('mayor_view', async () => ({}));
   on('mayor_file', async (b, m) => m.file(need(), b.slogan));
   on('mayor_vote', async (b, m) => m.vote(need(), b.candidate));
