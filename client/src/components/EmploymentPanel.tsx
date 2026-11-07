@@ -1,3 +1,4 @@
+import { MapSheet } from './MapSheet';
 import { useDoing } from '@/lib/doing';
 import { useCallback, useEffect, useState } from 'react';
 import { ItemIcon } from './ItemIcon';
@@ -49,7 +50,7 @@ export function EmploymentPanel({ onClose }: { onClose: () => void }) {
   };
   const jobs = v?.jobs ?? [];
   return (
-    <div className="world-deed world-venue employ-panel" data-testid="venue-employ" data-drag-panel="employ" onPointerDown={dragEmploy.onPointerDown} style={dragEmploy.style()} ref={dragEmploy.ref}>{dragEmploy.handle}
+    <MapSheet className="world-deed world-venue employ-panel" data-testid="venue-employ" data-drag-panel="employ" onPointerDown={dragEmploy.onPointerDown} style={dragEmploy.style()} ref={dragEmploy.ref}>{dragEmploy.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <div className="employ-front"><span>🧑‍🏭 EMPLOYMENT OFFICE</span><small data-testid="employ-cap">Hire AI workers · Worker cap: {v?.max ?? 3} (base {v?.base ?? 3} + {v?.bonus ?? 0} from property)</small></div>
       <p className="employ-rules">A worker costs about half of what they bring in. Their haul is deposited automatically as they work (ores to your mine/factory storage, fish to your cooler) and sells under the usual daily limits. If storage is full they hold the rest until there's room. They stop working {dur(OFFLINE_CAP_MS)} after you last opened this office, so pop in to keep them busy. Wages are charged once a day; if you can't pay, they stop (no debt). Firing is free but refunds nothing. Workers don't give you skill XP.</p>
@@ -86,7 +87,7 @@ export function EmploymentPanel({ onClose }: { onClose: () => void }) {
         </>
       )}
       {msg && <small role="status" data-testid="employ-msg">{msg}</small>}
-    </div>
+    </MapSheet>
   );
 }
 

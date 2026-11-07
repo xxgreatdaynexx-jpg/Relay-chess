@@ -1,3 +1,4 @@
+import { MapSheet } from './MapSheet';
 import { useDoing } from '@/lib/doing';
 import { useCallback, useEffect, useState } from 'react';
 import { socket } from '@/lib/net';
@@ -61,7 +62,7 @@ export function FarmGame({ id, label, onClose }: { id: string; label: string; on
   };
   const cap = FARM_TIERS.reduce((a, x, i) => a + (Math.min(x.upTo, 1e12) - (i ? FARM_TIERS[i - 1].upTo : 0)) * x.rate, 0);
   return (
-    <div className="world-deed world-farm" data-testid="farm-game" data-drag-panel="farm" onPointerDown={dragFarm.onPointerDown} style={dragFarm.style()} ref={dragFarm.ref}>{dragFarm.handle}
+    <MapSheet className="world-deed world-farm" data-testid="farm-game" data-drag-panel="farm" onPointerDown={dragFarm.onPointerDown} style={dragFarm.style()} ref={dragFarm.ref}>{dragFarm.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <h3>🌾 {label}</h3>
       {!view ? <small>{msg ?? 'Loading the farm…'}</small> : <>
@@ -110,6 +111,6 @@ export function FarmGame({ id, label, onClose }: { id: string; label: string; on
         </>}
         {msg && <small data-testid="farm-msg">{msg}</small>}
       </>}
-    </div>
+    </MapSheet>
   );
 }

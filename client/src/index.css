@@ -2537,4 +2537,16 @@ body.he-full-open .he-table.he-full { visibility: visible; }
   .dealer .panel-drag-handle, .world .world-deed > .panel-drag-handle { display: none; }
   .home-top { top: env(safe-area-inset-top); max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto; }
   .home-top button { min-width: 44px; min-height: 44px; }
+  /* Real shared header is outside the ONLY scrolling element. No viewport-fixed close dependency. */
+  .map-sheet, .world .world-deed.map-sheet { overflow: hidden !important; display: flex; flex-direction: column; }
+  .map-sheet > .map-sheet-header { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; position: relative; z-index: 4; background: #101418; padding: 0; min-height: 44px; }
+  .map-sheet > .map-sheet-header > :is(h3, .grocery-front, .cityhall-front) { flex: 1 1 auto; min-width: 0; margin: 0; padding: 0; overflow-wrap: anywhere; }
+  .map-sheet > .map-sheet-header > :is(.world-deed-x, .world-casino-x) { position: static !important; inset: auto !important; flex: 0 0 auto; min-width: 44px; min-height: 44px; opacity: 1; }
+  .map-sheet > .map-sheet-body, .world .world-deed > .map-sheet-body { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-height: 0; min-width: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .map-sheet .panel-drag-handle { display: none; }
+  .world-deed .map-sheet-body > * { flex-shrink: 0; min-width: 0; max-width: 100%; }
+  .world-deed .map-sheet-body > button { padding: 8px 10px; border-radius: 10px; background: rgba(201,162,74,.16); border: 1px solid rgba(201,162,74,.4); font-weight: 700; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; text-align: left; }
+  .world-deeds .map-sheet-body > button { padding: 5px 9px; font-weight: 600; background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.1); }
+  .world-deeds .map-sheet-body > button span { opacity: .75; }
+
 }

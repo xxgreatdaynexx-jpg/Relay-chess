@@ -1,3 +1,4 @@
+import { MapSheet } from './MapSheet';
 import { useDoing } from '@/lib/doing';
 import { cookSellValue } from '../../../shared/cooking';
 import { SellQtyPicker } from './SellQtyPicker';
@@ -42,7 +43,7 @@ export function GroceryPanel({ onClose, onKitchen }: { onClose: () => void; onKi
     else setMsg(r.error ?? 'Could not buy that.');
   };
   return (
-    <div className="world-deed world-venue grocery-panel" data-testid="venue-grocery" data-drag-panel="grocery" onPointerDown={dragGrocery.onPointerDown} style={dragGrocery.style()} ref={dragGrocery.ref}>{dragGrocery.handle}
+    <MapSheet className="world-deed world-venue grocery-panel" data-testid="venue-grocery" data-drag-panel="grocery" onPointerDown={dragGrocery.onPointerDown} style={dragGrocery.style()} ref={dragGrocery.ref}>{dragGrocery.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <div className="grocery-front"><span>🛒 CHUD FRESH</span><small>Grocery Store · open daily</small></div>
       <div className="grocery-qty">Buy <select value={qty} onChange={(e) => setQty(+e.target.value)} data-testid="grocery-qty">{[1, 5, 10, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}</select> at a time
@@ -57,7 +58,7 @@ export function GroceryPanel({ onClose, onKitchen }: { onClose: () => void; onKi
       </div>
       {msg && <small role="status" data-testid="grocery-msg">{msg}</small>}
       <small className="opacity-60">Groceries also trade player-to-player on the Market. Cooked dishes sell from your kitchen fridge.</small>
-    </div>
+    </MapSheet>
   );
 }
 
@@ -114,7 +115,7 @@ export function KitchenPanel({ me, home, onClose, onGrocery }: { me: string | nu
   const left = v ? Math.max(0, Math.floor(COOK_DAILY_MAX * idx) - v.today.paid) : 0;
   if (tab === 'fish') return <FishPanPanel me={me} home={home} onClose={() => { setTab('book'); load(); }} />;
   return (
-    <div className="world-deed world-venue kitchen-panel" data-testid="venue-kitchen" data-drag-panel="kitchen" onPointerDown={dragKitchen.onPointerDown} style={dragKitchen.style()} ref={dragKitchen.ref}>{dragKitchen.handle}
+    <MapSheet className="world-deed world-venue kitchen-panel" data-testid="venue-kitchen" data-drag-panel="kitchen" onPointerDown={dragKitchen.onPointerDown} style={dragKitchen.style()} ref={dragKitchen.ref}>{dragKitchen.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <div className="kitchen-scene" aria-hidden>
         <div className="k-window"><span>🌙</span></div><div className="k-shelf">🫙🧂🍯🌿</div><div className="k-fridge">🧊</div>
@@ -139,7 +140,7 @@ export function KitchenPanel({ me, home, onClose, onGrocery }: { me: string | nu
       </>}
       {msg && <small role="status" data-testid="kitchen-msg">{msg}</small>}
       <small className="opacity-60">Fish come from your cooler, crops from your farm (harvest “to pantry”), staples from the Grocery Store. Low Cooking level = more burnt dishes.</small>
-    </div>
+    </MapSheet>
   );
 }
 

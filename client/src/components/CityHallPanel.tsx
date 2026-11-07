@@ -1,3 +1,4 @@
+import { MapSheet } from './MapSheet';
 import { abDate } from '../../../shared/mayor';
 import { MayorLaws } from './MayorLaws';
 import { useDoing } from '@/lib/doing';
@@ -38,7 +39,7 @@ export function CityHallPanel({ onClose, initial, initialCity }: { onClose: () =
     </label>
   );
   return (
-    <div className="world-deed world-venue cityhall-panel" data-testid="venue-cityhall" data-drag-panel="cityhall" onPointerDown={drag.onPointerDown} style={drag.style()} ref={drag.ref}>{drag.handle}
+    <MapSheet className="world-deed world-venue cityhall-panel" data-testid="venue-cityhall" data-drag-panel="cityhall" onPointerDown={drag.onPointerDown} style={drag.style()} ref={drag.ref}>{drag.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <div className="cityhall-front"><span>🏛️ CITY HALL</span><small>Weekly mayor election · Alberta time</small></div>
       {err && !v && <small className="text-amber-300">{err}</small>}
@@ -96,7 +97,7 @@ export function CityHallPanel({ onClose, initial, initialCity }: { onClose: () =
         </>
       )}
       {msg && <small role="status" data-testid="cityhall-msg">{msg}</small>}
-    </div>
+    </MapSheet>
   );
 }
 

@@ -1,3 +1,4 @@
+import { MapSheet } from './MapSheet';
 /**
  * Homes (Millionaire Update, pt1459u): the Furniture Store, the enterable home interior with Sims-style build mode, live
  * visitors (avatars + chat over the existing socket), owner access controls, and the profile "Visit home" button.
@@ -70,7 +71,7 @@ export function FurnitureStore({ onClose }: { onClose: () => void }) {
   const styles = cat === 'walls' ? cg?.walls ?? [] : cat === 'floors' ? cg?.floors ?? [] : [];
   return (
     <div className="furn-store" data-testid="furniture-store" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="furn-box">
+      <MapSheet className="furn-box">
         <header><h3>🛋️ Chud Home Furnishings</h3>{lk?.chips != null && <span className="dealer-chips">🪙 {chips(lk.chips)}</span>}<button type="button" onClick={onClose} aria-label="Close" data-testid="furn-close">✕</button></header>
         <nav className="furn-cats">{FURN_CATS.map((c) => <button key={c.id} type="button" className={cat === c.id ? 'on' : ''} onClick={() => { setCat(c.id); const first = cg?.furniture.find((x) => x.cat === c.id); if (first) setSel(first.id); }} data-testid={`furn-cat-${c.id}`}>{c.icon} {c.label}</button>)}
           <button type="button" className={cat === 'walls' ? 'on' : ''} onClick={() => setCat('walls')} data-testid="furn-cat-walls">🧱 Walls</button><button type="button" className={cat === 'floors' ? 'on' : ''} onClick={() => setCat('floors')} data-testid="furn-cat-floors">🟫 Floors</button></nav>
@@ -85,7 +86,7 @@ export function FurnitureStore({ onClose }: { onClose: () => void }) {
           </div>}
         {msg && <small role="status" className="furn-msg" data-testid="furn-msg">{msg}</small>}
         <small className="opacity-60">Furniture is final sale (no buy-back). Selling a house returns its furniture to your inventory.</small>
-      </div>
+      </MapSheet>
     </div>
   );
 }

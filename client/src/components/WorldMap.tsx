@@ -1,3 +1,4 @@
+import { MapSheet } from './MapSheet';
 import { STADIUM_SITE } from '../../../shared/coop';
 import { useDoing } from '@/lib/doing';
 import { ROYALTY_VENUE, royaltyPct, buyoutPrice, BUYOUT_PROTECT_MS } from '../../../shared/royalty';
@@ -72,7 +73,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }:
   // QA r8: pending state on the button, and on success a toast + immediate (optimistic) ownership update via onDone.
   const act = (ev: 're_buy' | 're_sell') => { setBusy(ev); setMsg(null); socket.timeout(15_000).emit(ev, ev === 're_buy' ? { id, max: cost } : { id }, (err: Error | null, r?: Ack & { price?: number; chips?: number }) => { setBusy(null); if (!err && r?.ok) { const paid = ev === 're_buy' ? (r.price ?? cost) : cost; const wt = Number((r as { wealthTax?: number }).wealthTax ?? 0); const text = ev === 're_buy' ? `🏛 ${p.label} is yours! Paid 🪙 ${chips(paid)}${wt ? ` + 🪙 ${chips(wt)} wealth tax` : ''}.` : `Sold ${p.label} back to the city for 🪙 ${chips(r.chips ?? sellBackOf(cost))}.`; setMsg(text); onDone?.(ev, text, paid); return; } setMsg(err ? 'No answer from the server. Try again.' : (ev === 're_buy' && (r?.error === 'Not enough chips.' || r?.error === 'Something went wrong.') && short ? `Not enough chips: ${p.label} costs 🪙 ${chips(cost)}; you need 🪙 ${chips(short)} more.` : r?.error ?? 'Something went wrong.')); }); };
   return (
-    <div className="world-deed" data-testid="world-deed" data-drag-panel="deed" onPointerDown={dragDeed.onPointerDown} style={dragDeed.style()} ref={dragDeed.ref}>{dragDeed.handle}
+    <MapSheet className="world-deed" data-testid="world-deed" data-drag-panel="deed" onPointerDown={dragDeed.onPointerDown} style={dragDeed.style()} ref={dragDeed.ref}>{dragDeed.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <h3>{p.kind === 'landmark' ? '🏛' : p.kind === 'patch' ? '🌳' : p.kind === 'farm' ? '🌾' : '🏠'} {p.label}</h3>
       {p.kind === 'landmark' && <small>{ROYALTY_VENUE[p.type] ? 'Monument: stays open to every player, and the owner earns a royalty on what others earn here.' : 'Trophy property: stays open to every player. Ownership is prestige only.'}</small>}
@@ -97,7 +98,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }:
       {!o && me && short > 0 && !msg && <small id="deed-short" className="text-amber-300" data-testid="deed-short">You need 🪙 {chips(short)} more chips to buy this.</small>}
       {msg && <small role="status" data-testid="deed-msg">{msg}</small>}
       <small className="opacity-60">You can sell any property back to the city at any time for 70% of what you paid. Surcharge: +{SURCHARGE_PCT_PER_1K}% on your next purchase for every 🪙 1,000 of property you already own, no cap (Trailer Park lots don't count). Tax is on the list price, charged once per UTC day and burned. {GRACE_DAYS} unpaid days in a row and the city takes it back (no refund).</small>
-    </div>
+    </MapSheet>
   );
 }
 
@@ -109,7 +110,7 @@ function DeedList({ owned, me, onOpen, onClose }: { owned: Map<string, OwnedProp
   const lms = properties().filter((p) => p.kind === 'landmark').sort((a, b) => b.price - a.price);
   const value = mine.reduce((a, o) => a + propertyValue(o.price, propertyById(o.id)?.price ?? 0), 0); // price paid, same helper as the server
   return (
-    <div className="world-deed world-deeds" data-testid="world-deeds" data-drag-panel="deeds" onPointerDown={dragDeeds.onPointerDown} style={dragDeeds.style()} ref={dragDeeds.ref}>{dragDeeds.handle}
+    <MapSheet className="world-deed world-deeds" data-testid="world-deeds" data-drag-panel="deeds" onPointerDown={dragDeeds.onPointerDown} style={dragDeeds.style()} ref={dragDeeds.ref}>{dragDeeds.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <h3>🏛 Real estate</h3>
       <small>Click any building, lot, park or plaza on the map to see its deed. The Trailer Park stays free.</small>
@@ -119,7 +120,7 @@ function DeedList({ owned, me, onOpen, onClose }: { owned: Map<string, OwnedProp
       {properties().filter((p) => p.kind === 'farm' && p.map !== 'resort').map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
       <h4>Landmarks (trophy deeds)</h4>
       {lms.map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
-    </div>
+    </MapSheet>
   );
 }
 
@@ -345,7 +346,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
         <button type="button" onClick={() => setPanel((c) => togglePanel(c, { k: 'coop' }))} data-testid="world-coop-btn">🏟️ Co-op</button>
         <button type="button" onClick={() => setMode(mode === '3d' ? '2d' : '3d')} data-testid="world-mode">{mode === '3d' ? '▦ 2D map' : '🌃 3D city'}</button>
       </div>
-      {home && me && <div className="world-deed world-deeds" data-testid="world-home" data-drag-panel="home" onPointerDown={dragHome.onPointerDown} style={dragHome.style()} ref={dragHome.ref}>{dragHome.handle}
+      {home && me && <MapSheet className="world-deed world-deeds" data-testid="world-home" data-drag-panel="home" onPointerDown={dragHome.onPointerDown} style={dragHome.style()} ref={dragHome.ref}>{dragHome.handle}
         <button type="button" className="world-deed-x" onClick={() => setPanel(NONE)} aria-label="Close">✕</button>
         <h3>🏠 My home</h3>
         <small>Your trailer at Chud Acres Trailer Park, plus any property you own. Every home has a kitchen.</small>
@@ -360,7 +361,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
           <h4>Shops</h4>
           <button type="button" onClick={() => { setPanel(NONE); openFurnitureStore(); }} data-testid="home-furniture-store">🛋️ Furniture Store<span>Shop</span></button>
         </>; })()}
-      </div>}
+      </MapSheet>}
       {deed && <DeedPanel id={deed} owned={owned} me={me} onKitchen={() => { openKitchen(propertyById(deed)?.label ?? deed, deed); setDeed(null); }} onClose={() => setDeed(null)} onFarm={() => setFarm(deed)} onDone={(ev, text, paid) => {
         setToast(text); window.clearTimeout(toastT.current); toastT.current = window.setTimeout(() => setToast(null), 4000);
         setOwned((m) => { const n = new Map(m); if ((ev === 're_buy' || ev === 're_buyout') && me) n.set(deed, optimisticOwn(m.get(deed), ev, deed, me, paid ?? propertyById(deed)?.price ?? 0, Date.now())); else n.delete(deed); return n; });
@@ -386,10 +387,10 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       {dealer && <Suspense fallback={<div className="world-loading">Opening the dealership…</div>}><Dealership onClose={() => setDealer(false)} onDrive={startDrive} /></Suspense>}
       {casino && (
         <div className="world-casino" {...backdropDismiss(() => setCasino(false))} data-testid="world-casino">
-          <div><h3>🎰 Chud Casino</h3>
+          <MapSheet><h3>🎰 Chud Casino</h3>
             {CASINO_GAMES.map((g) => <button key={g.tab} type="button" onClick={() => { setCasino(false); openTab(g.tab); }} data-testid={`world-casino-${g.tab}`}>{g.label}</button>)}
             <button type="button" className="world-casino-x" onClick={() => setCasino(false)}>Back to the city</button>
-          </div>
+          </MapSheet>
         </div>
       )}
     </div>

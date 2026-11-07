@@ -1,3 +1,4 @@
+import { MapSheet } from './MapSheet';
 import { useDoing } from '@/lib/doing';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { turbineStatus, FORT_FEED, FORT_SPOTS, MINE_LEVELS, PIPES, PRODUCTS, PRODUCT_ORDER, PUMPJACK_COST, SELL_TIERS, SURVEY_COST, TRACTS, UNITS, UNIT_ORDER, WELLS_PER_TRACT, WELL_COST, ORE_VALUE_PER_UNIT, tractInfo, whole, type FortState, type Product } from '../../../shared/fortmc';
@@ -99,7 +100,7 @@ export function FortMcMap() {
         <button type="button" disabled={departing} onClick={() => void home()} data-testid="fortmc-fly-home">{trip.jet ? <>🛩 Fly my jet home (free)</> : <>✈️ Fly home (free)</>}</button>
       </div>
       {panel && s && (
-        <div className="world-deed world-venue fort-panel" data-testid={`fort-${panel}`} data-drag-panel="fortmc" onPointerDown={drag.onPointerDown} style={drag.style()} ref={drag.ref}>{drag.handle}
+        <MapSheet className="world-deed world-venue fort-panel" data-testid={`fort-${panel}`} data-drag-panel="fortmc" onPointerDown={drag.onPointerDown} style={drag.style()} ref={drag.ref}>{drag.handle}
           <button type="button" className="world-deed-x" onClick={() => setPanel(null)} aria-label="Close">✕</button>
           {panel === 'tracts' && <>
             <h3>🛢 Lease tracts</h3>
@@ -162,7 +163,7 @@ export function FortMcMap() {
             <button type="button" disabled={departing} onClick={() => void home()} data-testid="fortmc-fly-home-2">{trip.jet ? <>🛩 Fly my jet home to Chud Hub</> : <>🛫 Fly home to Chud Hub</>}</button>
           </>}
           {msg && <small data-testid="fort-msg">{msg}</small>}
-        </div>
+        </MapSheet>
       )}
     </div>
   );

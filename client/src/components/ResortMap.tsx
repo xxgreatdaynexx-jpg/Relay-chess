@@ -1,3 +1,4 @@
+import { MapSheet } from './MapSheet';
 import { useDoing } from '@/lib/doing';
 import { backdropDismiss } from '@/lib/backdrop';
 import { Suspense, useEffect, useRef, useState } from 'react';
@@ -92,10 +93,10 @@ export function ResortMap() {
         <button type="button" onClick={() => void home()} data-testid="resort-fly-home">✈️ Fly home (free)</button>
       </div>
       {deed && <DeedPanel id={deed} owned={owned} me={me} onKitchen={() => { openKitchen(baseProperty(deed)?.label ?? deed, deed); setDeed(null); }} onClose={() => setDeed(null)} onFarm={() => { setFarm(deed); setDeed(null); }} />}
-      {coral && <div className="world-deed" data-testid="resort-coral"><button type="button" className="world-deed-x" onClick={() => setCoral(false)} aria-label="Close">✕</button><BuildingInventory building="coral" /></div>}
+      {coral && <MapSheet heading="🐚 Coral Grotto storage" className="world-deed" data-testid="resort-coral"><button type="button" className="world-deed-x" onClick={() => setCoral(false)} aria-label="Close">✕</button><BuildingInventory building="coral" /></MapSheet>}
       {farm && <FarmGame id={farm} label={baseProperty(farm)?.label ?? 'Plantation'} onClose={() => setFarm(null)} />}
       {list && !deed && (
-        <div className="world-deed world-deeds" data-testid="resort-deeds" data-drag-panel="resortDeeds" onPointerDown={dragResortDeeds.onPointerDown} style={dragResortDeeds.style()} ref={dragResortDeeds.ref}>{dragResortDeeds.handle}
+        <MapSheet className="world-deed world-deeds" data-testid="resort-deeds" data-drag-panel="resortDeeds" onPointerDown={dragResortDeeds.onPointerDown} style={dragResortDeeds.style()} ref={dragResortDeeds.ref}>{dragResortDeeds.handle}
           <button type="button" className="world-deed-x" onClick={() => setList(false)} aria-label="Close">✕</button>
           <h3>🏝 Chud Resort real estate</h3>
           <small>Premium beachfront. Same rules as the city: 0.5%/day tax, sell back for 70%, repossessed after 3 unpaid days.</small>
@@ -105,21 +106,21 @@ export function ResortMap() {
             {[...Array(30).keys()].flatMap((i) => [baseProperty(`r:${k === 'Beach house' ? 'beachhouse' : k === 'Beachfront hotel' ? 'hotel' : k === 'Oceanview condo' ? 'condo' : 'villa'}:${i}`), k === 'Plantation' ? baseProperty(`rf:${i}`) : undefined])
               .filter((p) => p && (k === 'Plantation' ? p.id.startsWith('rf:') : p.id.startsWith('r:'))).map((p) => <button type="button" key={p!.id} onClick={() => setDeed(p!.id)} data-testid={`deed-${p!.id}`}>{p!.label}<span>{owned.get(p!.id) ? owned.get(p!.id)!.owner : `🪙 ${chips(indexed(p!.price, IDX))}`}</span></button>)}
           </div>)}
-        </div>
+        </MapSheet>
       )}
       {marina && <Suspense fallback={null}><FleetStore kind="boat" onClose={() => setMarina(false)} onDeepSea={() => { setMarina(false); setDeepSea(true); }} /></Suspense>}
       {hangar && <Suspense fallback={null}><FleetStore kind="jet" onClose={() => setHangar(false)} /></Suspense>}
       {deepSea && <Suspense fallback={null}><FishingPanel me={me} spot="deep" onClose={() => setDeepSea(false)} /></Suspense>}
       {pier && <Suspense fallback={null}><FishingPanel me={me} spot="reef" onClose={() => setPier(false)} /></Suspense>}
       {air && (
-        <div className="world-deed world-venue" data-testid="venue-resort-airfield" data-drag-panel="resortAir" onPointerDown={dragResortAir.onPointerDown} style={dragResortAir.style()} ref={dragResortAir.ref}>{dragResortAir.handle}
+        <MapSheet className="world-deed world-venue" data-testid="venue-resort-airfield" data-drag-panel="resortAir" onPointerDown={dragResortAir.onPointerDown} style={dragResortAir.style()} ref={dragResortAir.ref}>{dragResortAir.handle}
           <button type="button" className="world-deed-x" onClick={() => setAir(false)} aria-label="Close">✕</button>
           <h3>✈️ Chud Resort Airfield</h3>
           <small>The flight home is always free.</small>
           <button type="button" onClick={() => { setAir(false); setHangar(true); }} data-testid="resort-open-hangar">🛩 Private Jet Hangar</button>
           <button type="button" onClick={() => void home()} data-testid="resort-fly-home-2">🛫 Fly home to Chud Hub</button>
           {msg && <small>{msg}</small>}
-        </div>
+        </MapSheet>
       )}
       {floor && !casino && (
         // Playing a resort game: the table/slot panel opens over the casino interior instead of the beach map.
@@ -131,10 +132,10 @@ export function ResortMap() {
       )}
       {casino && (
         <div className="world-casino resort-casino" {...backdropDismiss(() => setCasino(false))} data-testid="resort-casino">
-          <div><h3>🌴 Palms Resort Casino</h3>
+          <MapSheet><h3>🌴 Palms Resort Casino</h3>
             {RESORT_GAMES.map((g) => <button key={g.tab} type="button" onClick={() => { setCasino(false); setFloor(g.label); openTab(g.tab); }} data-testid={`resort-casino-${g.tab}`}>{g.label}</button>)}
             <button type="button" className="world-casino-x" onClick={() => setCasino(false)}>Back to the beach</button>
-          </div>
+          </MapSheet>
         </div>
       )}
     </div>
