@@ -2496,6 +2496,11 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 @media (max-width: 640px), (max-height: 500px) {
   .world-modal-open :is(.world-corner, .wev-mapbar, .world-clock),
   body:has(.world-deed, .dealer, .world-casino, .furn-store, .home-int, .inv-backdrop, .sol-panel, [role="dialog"], .chat-drawer) .world :is(.world-corner, .wev-mapbar, .world-clock) { visibility: hidden; pointer-events: none; }
+  /* .world (z40) is a stacking context below TopTabs (z48): a child at z60 cannot escape it.
+     Suspend the SITE bar (including its Games/More flyouts) for map menus, not for Wallet's own dialog.
+     Also remove the world's 40px top clipping strip while a viewport sheet is open. */
+  body:has(.world :is(.world-deed, .dealer, .world-casino), .furn-store, .home-int) .top-tabs { visibility: hidden; pointer-events: none; }
+  .world:has(.world-deed, .dealer, .world-casino) { inset: 0; }
   .dealer, .world .world-casino { position: fixed; inset: 0; z-index: 60; place-items: stretch; background: #12141d; }
   .dealer > .dealer-box, .furn-store > .furn-box, .world .world-casino > div {
     box-sizing: border-box; width: 100%; max-width: 100vw; height: 100dvh; max-height: 100dvh;
@@ -2514,10 +2519,19 @@ body.he-full-open .he-table.he-full { visibility: visible; }
     box-sizing: border-box; position: fixed !important; inset: 0 !important; width: 100% !important; max-width: 100vw !important;
     height: 100dvh !important; max-height: 100dvh !important; transform: none !important; translate: none !important;
     z-index: 60 !important; border-radius: 0 !important; background: #101418 !important;
-    padding: calc(56px + env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+    padding: max(10px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
     overflow-y: auto !important; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y;
   }
   .world .world-deed > * { flex-shrink: 0; }
+  /* The sheet itself scrolls: keep its actual title sticky, not just its fixed close button.
+     Grocery/City Hall use a branded front instead of h3; Coral storage has a nested inventory h4. */
+  .world .world-deed > :is(h3, .grocery-front, .cityhall-front),
+  .world .world-deed:not(:has(> h3)) > .bldg-inv > h4 {
+    position: sticky; top: 0; z-index: 4; flex: none; min-height: 44px; margin: 0;
+    padding: max(8px, env(safe-area-inset-top)) 56px 8px 0; background: #101418; overflow-wrap: anywhere;
+  }
+  .world .world-casino > div > h3 { position: sticky; top: 0; z-index: 4; margin: 0; padding-right: 170px; background: #1b1d2e; }
+
   .world .world-deed > .world-deed-x, .world .world-casino .world-casino-x { position: fixed; top: max(8px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); z-index: 61; min-width: 44px; min-height: 44px; background: #12141d; }
   .world .world-casino > div { overflow-y: auto; padding-top: calc(64px + env(safe-area-inset-top)); padding-bottom: max(14px, env(safe-area-inset-bottom)); }
   .dealer .panel-drag-handle, .world .world-deed > .panel-drag-handle { display: none; }
