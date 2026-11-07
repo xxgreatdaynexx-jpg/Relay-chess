@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { LAW_CORE_RULES, LAW_RULE_LINES, LAW_TEXT_MAX, type MayorLawView } from '../../../shared/mayorLaws';
 import { request } from '@/lib/net';
 
-export function MayorLaws({ view, isMayor, busy, onPass }: { view: MayorLawView; isMayor: boolean; busy: boolean; onPass: (text: string) => Promise<void> }) {
+export function MayorLaws({ view, isMayor, isVice = false, today, busy, onPass, onVeto }: { view: MayorLawView; isMayor: boolean; isVice?: boolean; today?: string; busy: boolean; onPass: (text: string) => Promise<void>; onVeto?: (number: string) => Promise<void> }) {
   const [text, setText] = useState('');
   const [older, setOlder] = useState<MayorLawView | null>(null);
   const [error, setError] = useState('');
@@ -20,8 +20,10 @@ export function MayorLaws({ view, isMayor, busy, onPass }: { view: MayorLawView;
     <h4>Bill history</h4>
     {!shown.history.length && <small>No bills passed yet.</small>}
     <ol data-testid="mayor-law-history">{shown.history.map((b) => <li key={b.number}>
-      <b>{b.title}</b> <span>Pending</span><small> · Mayor {b.by} · {b.day} (America/Regina)</small>
+      <b>{b.title}</b> <span data-testid="mayor-law-status">{b.status === 'vetoed' ? 'Vetoed' : 'Pending'}</span><small> · Mayor {b.by} · {b.day} (America/Regina)</small>
+      {b.status === 'vetoed' && b.vetoedBy && <small> · Vetoed by {b.vetoedRole === 'vice' ? 'Vice Mayor' : 'Mayor'} {b.vetoedBy}</small>}
       <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{b.text}</p>
+      {onVeto && today && b.status === 'pending' && (b.day === today ? isVice : isMayor) && <button type="button" disabled={busy} data-testid="mayor-law-veto" onClick={() => { if (window.confirm(`Veto ${b.title}? It stays in the record marked Vetoed and cannot be undone.`)) void onVeto(b.number).then(() => setOlder(null)); }}>Veto</button>}
     </li>)}</ol>
     {older && <button type="button" onClick={() => setOlder(null)}>Latest bills</button>}
     {shown.nextBefore && <button type="button" disabled={busy} onClick={() => {

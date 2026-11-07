@@ -1,3 +1,4 @@
+import { abDate } from '../../../shared/mayor';
 import { MayorLaws } from './MayorLaws';
 import { useDoing } from '@/lib/doing';
 import { useCallback, useEffect, useState } from 'react';
@@ -45,6 +46,7 @@ export function CityHallPanel({ onClose, initial, initialCity }: { onClose: () =
         <>
           <div className="cityhall-mayor" data-testid="cityhall-mayor">
             {v.mayor ? <><b>🎖️ Mayor {v.mayor.name}</b><small>Elected with {v.mayor.votes} vote{v.mayor.votes === 1 ? '' : 's'} · term ends {abWhen(v.mayor.endsAt)}</small></> : <b>No sitting mayor</b>}
+            {v.vice && <small data-testid="vice-mayor">Vice Mayor {v.vice.name} (runner-up, {v.vice.votes} vote{v.vice.votes === 1 ? '' : 's'})</small>}
             {v.elect && <small>Mayor-elect: <b>{v.elect.name}</b> takes office {abWhen(v.elect.startsAt)}</small>}
           </div>
           <div className="cityhall-rates">
@@ -88,7 +90,7 @@ export function CityHallPanel({ onClose, initial, initialCity }: { onClose: () =
           <ul className="cityhall-log" data-testid="cityhall-log">
             {v.log.map((c, i) => <li key={i}><small>{abWhen(c.at)}</small> <b>{c.by === 'admin' ? 'Admin' : `Mayor ${c.by}`}</b>: {c.note ?? `property tax ${rateLabel(c.property)}, fees ${rateLabel(c.fee)} from ${abWhen(c.effectiveAt)}`}</li>)}
           </ul>
-          {v.laws && <MayorLaws view={v.laws} isMayor={!!me?.isMayor} busy={busy} onPass={async (text) => { await act('mayor_law_submit', { text }, (r) => `Submitted ${(r.bill as { title: string }).title}.`); }} />}
+          {v.laws && <MayorLaws view={v.laws} isMayor={!!me?.isMayor} isVice={!!me?.isVice} today={abDate(v.now)} busy={busy} onPass={async (text) => { await act('mayor_law_submit', { text }, (r) => `Submitted ${(r.bill as { title: string }).title}.`); }} onVeto={async (number) => { await act('mayor_law_veto', { number }, (r) => `${(r.bill as { title: string }).title} is marked Vetoed.`); }} />}
           <CityCivic initial={initialCity} />
           <p className="cityhall-rules">Besides these rates the mayor can only use the city levers, policies and buildings above. Casino odds and payouts, chip balances, sell limits and everything else stay out of reach. Mayors get no salary, and the treasury can never pay out to anyone.</p>
         </>

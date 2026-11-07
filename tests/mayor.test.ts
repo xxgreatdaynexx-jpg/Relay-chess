@@ -143,7 +143,7 @@ describe('mayor powers', () => {
   });
   it('mayor API includes text-only bill records, not arbitrary economy powers', () => {
     const own = Object.getOwnPropertyNames(Mayor.prototype).filter((k) => k !== 'constructor').sort();
-    expect(own).toEqual(['candidates', 'tallied', 'changeBlock', 'elect', 'eligibility', 'file', 'init', 'lawHistory', 'mayor', 'submitLaw', 'pending', 'rates', 'reload', 'remove', 'setRates', 'settle', 'term', 'tx', 'view', 'vote'].sort());
+    expect(own).toEqual(['candidates', 'tallied', 'changeBlock', 'elect', 'eligibility', 'file', 'init', 'lawHistory', 'mayor', 'submitLaw', 'pending', 'rates', 'reload', 'remove', 'setRates', 'settle', 'term', 'tx', 'vetoLaw', 'vice', 'view', 'vote'].sort());
   });
   it('admin removal ends the term and resets rates to default immediately', async () => {
     const s = await withMayor(); await s.m.setRates('Ann', { property: 1.25, fee: 1.25 });
@@ -152,5 +152,39 @@ describe('mayor powers', () => {
     expect(s.m.rates()).toEqual({ property: 1, fee: 1 }); expect((await s.m.view(null)).mayor).toBeNull();
     await expect(s.m.setRates('Ann', { property: 1.25, fee: 1 })).rejects.toThrow(/sitting mayor/);
     await expect(s.m.remove('again')).rejects.toThrow(/no mayor/);
+  });
+});
+
+describe('vice mayor = election runner-up (existing tie order, no minimum, no promotion)', () => {
+  const cand = (pool: any, week: string, key: string, filedAt: number) => pool.query('INSERT INTO mayor_candidates VALUES ($1,$2,$3,$4,$5)', [week, key, key.toUpperCase(), 'slogan', filedAt]);
+  const vote = (pool: any, week: string, voter: string, key: string) => pool.query('INSERT INTO mayor_votes VALUES ($1,$2,$3,$4)', [week, voter, key, 0]);
+  it('runner-up by votes then earliest filer becomes vice for the term; zero-vote runner-up counts', async () => {
+    const s = await setup(); const w = schedule(MON).week;
+    await cand(s.pool, w, 'a', 1); await cand(s.pool, w, 'b', 2); await cand(s.pool, w, 'c', 3);
+    await vote(s.pool, w, 'v1', 'c'); await vote(s.pool, w, 'v2', 'c'); await vote(s.pool, w, 'v3', 'b');
+    s.set(schedule(MON).resultsAt + H); await s.m.settle();
+    s.set(MON + WEEK_MS + H);
+    expect((await s.m.mayor())?.key).toBe('c'); expect(await s.m.vice()).toMatchObject({ key: 'b', votes: 1 });
+    const v = await s.m.view('B'); expect(v.vice?.name).toBe('B'); expect(v.me?.isVice).toBe(true); expect(v.me?.isMayor).toBe(false);
+    s.set(MON + 2 * WEEK_MS + H); expect(await s.m.vice()).toBeNull(); // role ends with the term
+  });
+  it('tie for second -> earliest filer; zero votes still ranked; single candidate -> no vice; removal does not promote', async () => {
+    const s = await setup(); const w = schedule(MON).week;
+    await cand(s.pool, w, 'a', 1); await cand(s.pool, w, 'b', 2); await cand(s.pool, w, 'c', 3);
+    await vote(s.pool, w, 'v1', 'a');
+    s.set(schedule(MON).resultsAt + H); await s.m.settle(); s.set(MON + WEEK_MS + H);
+    expect(await s.m.vice()).toMatchObject({ key: 'b', votes: 0 });
+    await s.m.remove('test'); expect(await s.m.mayor()).toBeNull(); expect((await s.m.vice())?.key).toBe('b');
+    const s2 = await setup(); const w2 = schedule(MON).week; await cand(s2.pool, w2, 'solo', 1);
+    s2.set(schedule(MON).resultsAt + H); await s2.m.settle(); s2.set(MON + WEEK_MS + H);
+    expect((await s2.m.mayor())?.key).toBe('solo'); expect(await s2.m.vice()).toBeNull();
+  });
+  it('backfills runner-up once for a term tallied before vice mayors existed', async () => {
+    const s = await setup(); const w = schedule(MON).week;
+    await cand(s.pool, w, 'a', 1); await cand(s.pool, w, 'b', 2); await vote(s.pool, w, 'v1', 'a');
+    const sc = schedule(MON);
+    await s.pool.query('INSERT INTO mayor_terms (week, player_key, name, votes, starts_at, ends_at) VALUES ($1,$2,$3,$4,$5,$6)', [w, 'a', 'A', 1, sc.termStart, sc.termEnd]);
+    s.set(MON + WEEK_MS + H); await s.m.settle(); await s.m.settle();
+    expect(await s.m.vice()).toMatchObject({ key: 'b' }); expect((await s.m.mayor())?.key).toBe('a');
   });
 });

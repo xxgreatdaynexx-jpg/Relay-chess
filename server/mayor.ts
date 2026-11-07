@@ -27,6 +27,10 @@ export const MAYOR_MIGRATION = `
 CREATE TABLE IF NOT EXISTS mayor_candidates (week TEXT NOT NULL, player_key TEXT NOT NULL, name TEXT NOT NULL, slogan TEXT NOT NULL, filed_at BIGINT NOT NULL, PRIMARY KEY (week, player_key));
 CREATE TABLE IF NOT EXISTS mayor_votes (week TEXT NOT NULL, voter_key TEXT NOT NULL, candidate_key TEXT NOT NULL, at BIGINT NOT NULL, PRIMARY KEY (week, voter_key));
 CREATE TABLE IF NOT EXISTS mayor_terms (week TEXT PRIMARY KEY, player_key TEXT NOT NULL, name TEXT NOT NULL, votes INTEGER NOT NULL, starts_at BIGINT NOT NULL, ends_at BIGINT NOT NULL, removed_at BIGINT, note TEXT);
+ALTER TABLE mayor_terms ADD COLUMN IF NOT EXISTS vice_key TEXT;
+ALTER TABLE mayor_terms ADD COLUMN IF NOT EXISTS vice_name TEXT;
+ALTER TABLE mayor_terms ADD COLUMN IF NOT EXISTS vice_votes INTEGER;
+ALTER TABLE mayor_terms ADD COLUMN IF NOT EXISTS vice_settled BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE TABLE IF NOT EXISTS mayor_rates (id TEXT PRIMARY KEY, at BIGINT NOT NULL, effective_at BIGINT NOT NULL, by_name TEXT NOT NULL, property DOUBLE PRECISION NOT NULL, fee DOUBLE PRECISION NOT NULL, note TEXT);
 CREATE TABLE IF NOT EXISTS mayor_rate_days (day BIGINT PRIMARY KEY, rate_id TEXT NOT NULL, by_name TEXT NOT NULL, at BIGINT NOT NULL);
 `;
@@ -90,9 +94,15 @@ export class Mayor {
   async settle(t = this.clock()) {
     for (const back of [WEEK_MS, 0]) {
       const s = schedule(t - back); if (t < s.resultsAt) continue;
-      const have = await this.pool.query('SELECT 1 FROM mayor_terms WHERE week = $1', [s.week]); if (have.rows.length) continue;
-      const win = pickWinner(await this.tallied(s.week)); if (!win) continue;
-      await this.pool.query('INSERT INTO mayor_terms (week, player_key, name, votes, starts_at, ends_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING', [s.week, win.key, win.name, win.votes, s.termStart, s.termEnd]);
+      const have = await this.pool.query('SELECT vice_settled FROM mayor_terms WHERE week = $1', [s.week]);
+      if (have.rows.length && have.rows[0].vice_settled) continue;
+      const [win, vice] = rankCandidates(await this.tallied(s.week)); if (!win) continue;
+      if (have.rows.length) {
+        // Terms tallied before vice mayors existed: record runner-up once from the same final tally.
+        await this.pool.query('UPDATE mayor_terms SET vice_key = $2, vice_name = $3, vice_votes = $4, vice_settled = TRUE WHERE week = $1 AND vice_settled = FALSE', [s.week, vice?.key ?? null, vice?.name ?? null, vice?.votes ?? null]);
+        continue;
+      }
+      await this.pool.query('INSERT INTO mayor_terms (week, player_key, name, votes, starts_at, ends_at, vice_key, vice_name, vice_votes, vice_settled) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE) ON CONFLICT DO NOTHING', [s.week, win.key, win.name, win.votes, s.termStart, s.termEnd, vice?.key ?? null, vice?.name ?? null, vice?.votes ?? null]);
       console.log(`[mayor] ${s.week}: ${win.name} elected with ${win.votes} votes`);
     }
   }
@@ -100,6 +110,11 @@ export class Mayor {
   async mayor(t = this.clock()): Promise<(Term & { key: string }) | null> {
     const r = await this.pool.query('SELECT * FROM mayor_terms WHERE starts_at <= $1 AND ends_at > $1 AND removed_at IS NULL ORDER BY starts_at DESC LIMIT 1', [t]);
     return r.rows[0] ? { ...this.term(r.rows[0]), key: String(r.rows[0].player_key) } : null;
+  }
+  /** Election runner-up for the term whose dates cover t (separate role; never promoted to mayor). */
+  async vice(t = this.clock()): Promise<{ key: string; name: string; votes: number; startsAt: number; endsAt: number } | null> {
+    const r = await this.pool.query('SELECT * FROM mayor_terms WHERE starts_at <= $1 AND ends_at > $1 AND vice_key IS NOT NULL ORDER BY starts_at DESC LIMIT 1', [t]);
+    const x = r.rows[0]; return x ? { key: String(x.vice_key), name: String(x.vice_name), votes: Number(x.vice_votes), startsAt: Number(x.starts_at), endsAt: Number(x.ends_at) } : null;
   }
   async elect(t = this.clock()): Promise<Term | null> {
     const r = await this.pool.query('SELECT * FROM mayor_terms WHERE starts_at > $1 AND removed_at IS NULL ORDER BY starts_at ASC LIMIT 1', [t]);
@@ -155,6 +170,11 @@ export class Mayor {
     try { return await new MayorLaws(this.pool, this.clock).submit(name, text); }
     catch (e) { if (e instanceof MayorLawError) throw new MayorError(e.message); throw e; }
   }
+  async vetoLaw(name: string, number: unknown) {
+    await this.settle(this.clock());
+    try { return await new MayorLaws(this.pool, this.clock).veto(name, number); }
+    catch (e) { if (e instanceof MayorLawError) throw new MayorError(e.message); throw e; }
+  }
   async lawHistory(before?: unknown) { return new MayorLaws(this.pool, this.clock).history(before); }
 
   /** Admin: remove the sitting mayor (or mayor-elect) and put rates back to default immediately. */
@@ -171,11 +191,12 @@ export class Mayor {
 
   async view(name: string | null): Promise<CityHallView> {
     const now = this.clock(); await this.settle(now); const s = schedule(now);
-    const [candidates, mayor, elect] = await Promise.all([this.candidates(s.week), this.mayor(now), this.elect(now)]);
+    const [candidates, mayor, elect, vice] = await Promise.all([this.candidates(s.week), this.mayor(now), this.elect(now), this.vice(now)]);
     const v: CityHallView = {
       // Hide live per-candidate tallies while filing/voting; Sunday results (and settle) may show them.
       laws: await this.lawHistory(), now, schedule: s, candidates: s.phase === 'results' ? candidates : candidates.map(({ votes: _v, ...c }) => c),
       mayor: mayor ? { week: mayor.week, name: mayor.name, votes: mayor.votes, startsAt: mayor.startsAt, endsAt: mayor.endsAt, removedAt: null } : null, elect,
+      vice: vice ? { name: vice.name, votes: vice.votes, startsAt: vice.startsAt, endsAt: vice.endsAt } : null,
       rates: this.rates(now), pending: this.pending(now), log: this.log.slice(-30).reverse(),
       limits: { min: RATE_MIN, max: RATE_MAX, step: RATE_STEP, fee: FILING_FEE, base: { property: BASE_PROPERTY_TAX, market: BASE_MARKET_FEE, stock: BASE_STOCK_FEE } },
     };
@@ -183,13 +204,17 @@ export class Mayor {
       const key = playerKey(name);
       const voted = await this.pool.query('SELECT c.name FROM mayor_votes v JOIN mayor_candidates c ON c.week = v.week AND c.player_key = v.candidate_key WHERE v.week = $1 AND v.voter_key = $2', [s.week, key]);
       const reason = await this.eligibility(name); const isMayor = !!mayor && mayor.key === key; const changeReason = isMayor ? this.changeBlock(now) : 'Only the sitting mayor can set city rates.';
-      v.me = { name, filed: candidates.some((c) => playerKey(c.name) === key), votedFor: voted.rows[0]?.name ?? null, canVote: s.phase === 'voting' && !reason && !voted.rows.length, reason, isMayor, canChange: isMayor && !changeReason, changeReason };
+      v.me = { isVice: !!vice && vice.key === key, name, filed: candidates.some((c) => playerKey(c.name) === key), votedFor: voted.rows[0]?.name ?? null, canVote: s.phase === 'voting' && !reason && !voted.rows.length, reason, isMayor, canChange: isMayor && !changeReason, changeReason };
     }
     return v;
   }
 }
+/** Existing deterministic election order: most votes, then earliest filer, then key. [0] = mayor, [1] = vice mayor. */
+export function rankCandidates<T extends { key: string; filedAt: number; votes: number }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => b.votes - a.votes || a.filedAt - b.filedAt || a.key.localeCompare(b.key));
+}
 export function pickWinner<T extends { key: string; filedAt: number; votes: number }>(rows: T[]): T | null {
-  return [...rows].sort((a, b) => b.votes - a.votes || a.filedAt - b.filedAt || a.key.localeCompare(b.key))[0] ?? null;
+  return rankCandidates(rows)[0] ?? null;
 }
 
 let mayorInst: Mayor | null = null;
@@ -229,6 +254,7 @@ export function registerMayor(_io: Server, socket: Socket): void {
     catch (e) { let view: CityHallView | undefined; try { view = mayorInst ? await mayorInst.view(nameOf()) : undefined; } catch { /* */ } ack?.({ ok: false, error: e instanceof MayorError ? e.message : 'Something went wrong.', view }); if (!(e instanceof MayorError)) console.error('[mayor]', e); }
   });
   on('mayor_law_submit', async (b, m) => m.submitLaw(need(), b.text));
+  on('mayor_law_veto', async (b, m) => m.vetoLaw(need(), b.number));
   on('mayor_law_history', async (b, m) => ({ laws: await m.lawHistory(b.before) }));
   on('mayor_view', async () => ({}));
   on('mayor_file', async (b, m) => m.file(need(), b.slogan));
