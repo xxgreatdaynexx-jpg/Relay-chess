@@ -17,7 +17,9 @@ import { px, priceIndex } from './price-index.js';
 import { resortPlotOf, isTropical, TROPICAL_CROPS } from '../shared/resort.js';
 import { requireResort } from './travel.js';
 import { fieldPlotOf } from '../shared/fieldFarms.js';
-import { getMines } from './mines.js';
+import { getLocStore } from './locstock.js';
+import { farmLoc } from '../shared/inventoryLocations.js';
+import { PANTRY_MAX } from '../shared/cooking.js';
 import { awardXp } from './skills.js';
 import { CROPS, cropById, cropProfit, cropSellValue, farmPayout, farmPlots, ripeWindow, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
 import { skillLevelAsync } from './skills.js';
@@ -306,29 +308,22 @@ export class Farm {
   }
 
   /** Harvest into the kitchen pantry instead of selling (pt1312u): no chips, no daily-tier use; Farming XP as usual.
-   * Tiles are claimed with a NOT NULL guard row in the SAME transaction as the pantry stacks (Mines' stack table). */
+   *  Map pools: the pantry is the city map inventory (Chud City Warehouse, loc_stock 'warehouse'), which is where cooking
+   *  reads groceries now. Tiles are deleted (nonce-matched) in the SAME transaction as the stock rows: exactly once. */
   private async harvestToPantry(name: string, pid: string, key: string, ready: TileRow[], now: number) {
-    const counts = new Map<string, number>(); let value = 0;
+    void now; const counts = new Map<string, number>(); let value = 0;
     for (const r of ready) { const c = cropById(r.crop)!; counts.set(c.id, (counts.get(c.id) ?? 0) + 1); value += c.sell; }
-    const extra: Array<{ sql: string; args: unknown[] }> = [];
-    for (const r of ready) {
-      extra.push({ sql: `INSERT INTO kitchen_harvests (tile_key, at) VALUES ((SELECT t.plot_id || ':' || t.tile || ':' || t.nonce FROM farm_tiles t JOIN properties p ON p.id = t.plot_id AND p.owner_key = $4
-        WHERE t.plot_id = $1 AND t.tile = $2 AND t.nonce = $3 AND t.owner_key = $4), $5)`, args: [pid, r.tile, r.nonce, key, now] });
-      extra.push({ sql: 'DELETE FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3', args: [pid, r.tile, r.nonce] });
-    }
-    const mines = getMines(); let failed: Error | null = null; let done: Promise<unknown> = Promise.resolve(); let rows: Array<{ sql: string; args: unknown[] }> | null = null;
-    const deltas = [...counts].map(([id, n]) => ({ type: 'food' as const, id, delta: n }));
-    let ok = false;
-    try { ok = mines.adjustStacks(name, deltas, extra, (r) => { rows = r; }, { bind: (p) => { done = p; }, onFail: (e) => { failed = e; } }); }
-    catch (e) { throw new FarmError((e as Error).message || 'Storage is offline right now.'); }
-    if (!ok) throw new FarmError('Could not store that.');
-    if (rows) {
-      const cl = await this.pool.connect();
-      try { await cl.query('BEGIN'); for (const s of rows as Array<{ sql: string; args: unknown[] }>) await cl.query(s.sql, s.args); await cl.query('COMMIT'); }
-      catch (e) { await cl.query('ROLLBACK').catch(() => {}); mines.adjustStacks(name, deltas.map((d) => ({ ...d, delta: -d.delta }))); failed = e as Error; }
-      finally { cl.release(); }
-    } else await done;
-    if (failed) { console.error('[farm] pantry harvest failed:', (failed as Error).message); throw new FarmError('Already harvested (or storage hiccup). Nothing was lost.'); }
+    const ls = getLocStore(); if (!ls.loaded) throw new FarmError('Storage is reconnecting. Nothing was harvested; try again in a minute.');
+    const loc = farmLoc(pid); const deltas = [...counts].map(([id, n]) => ({ loc, item: `food:${id}`, delta: n }));
+    for (const d of deltas) if (ls.qty(name, loc, d.item) + d.delta > PANTRY_MAX) throw new FarmError('Your pantry is full for that crop.');
+    await this.atomic(name, 0, 'farm_to_pantry', '', async (cl) => {
+      await this.mustOwn(cl, pid, name);
+      let gone = 0;
+      for (const r of ready) gone += (await cl.query('DELETE FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3 AND owner_key = $4', [pid, r.tile, r.nonce, key])).rowCount ?? 0;
+      if (gone !== ready.length) throw new FarmError('Already harvested.');
+      for (const q of ls.rowsFor(name, deltas)) await cl.query(q.sql, q.args);
+    });
+    ls.applyMem(name, deltas);
     awardXp(name, 'farming', Math.min(400, 10 + Math.round(value / 5)));
     this.onChange?.(pid);
     return { harvested: ready.length, paid: 0, pantry: Object.fromEntries(counts), toFactory: undefined as Array<[string, number]> | undefined, chips: this.bank().account(name).chips };

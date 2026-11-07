@@ -56,7 +56,7 @@ export interface FoldReport {
 async function totals(cl: Q, resortHomes: string[]) {
   const t = new Map<string, number>(); const add = (k: string, n: number) => t.set(k, (t.get(k) ?? 0) + n);
   const homes = new Set(resortHomes);
-  const hub = (loc: string) => (loc === 'factory' ? 'factory' : hubOfLocId(loc, homes) ?? `?${loc}`);
+  const hub = (loc: string) => (loc === 'factory' ? 'factory' : loc.startsWith('transit:') ? loc : hubOfLocId(loc, homes) ?? `?${loc}`);
   for (const r of (await cl.query('SELECT player_key k, loc, item, qty FROM loc_stock WHERE qty > 0')).rows) add(`${r.k}|${hub(String(r.loc))}|${r.item}`, Number(r.qty));
   for (const r of (await cl.query('SELECT player_key k, item_type t, item_id i, qty FROM mine_items WHERE qty > 0')).rows) add(`${r.k}|factory|${r.t}:${r.i}`, Number(r.qty));
   for (const r of (await cl.query("SELECT player_key k, item, qty FROM building_inv WHERE building = 'coral' AND qty > 0")).rows) add(`${r.k}|resort|${r.item}`, Number(r.qty));
@@ -64,7 +64,7 @@ async function totals(cl: Q, resortHomes: string[]) {
   for (const r of (await cl.query("SELECT player_key k, coalesce(loc,'<null>') loc, recipe s, count(*)::int n, sum(value)::bigint v FROM kitchen_dishes WHERE sold_at IS NULL GROUP BY 1,2,3")).rows) { const h = r.loc === '<null>' ? 'held' : hub(String(r.loc)); add(`${r.k}|${h}|dish:${r.s}`, Number(r.n)); add(`${r.k}|${h}|dvalue`, Number(r.v)); }
   for (const r of (await cl.query('SELECT player_key k, kind, qty FROM kitchen_fillets WHERE qty > 0')).rows) add(`${r.k}|held|fillet:${r.kind}`, Number(r.qty));
   for (const r of (await cl.query("SELECT player_key k, item, qty FROM building_inv WHERE building = 'resort_farm' AND qty > 0")).rows) add(`${r.k}|held|barn:${r.item}`, Number(r.qty));
-  for (const r of (await cl.query("SELECT player_key k, to_hub h, item_type t, item_id i, sum(qty)::bigint q FROM freight_shipments WHERE status = 'transit' GROUP BY 1,2,3,4")).rows) add(`${r.k}|freight>${r.h}|${r.t}:${r.i}`, Number(r.q));
+  for (const r of (await cl.query("SELECT player_key k, to_hub h, item_type t, item_id i, sum(qty)::bigint q FROM freight_shipments WHERE status IN ('transit','moving') GROUP BY 1,2,3,4")).rows) add(`${r.k}|freight>${r.h}|${r.t}:${r.i}`, Number(r.q));
   return t;
 }
 const same = (a: Map<string, number>, b: Map<string, number>) => { const bad: string[] = []; for (const k of new Set([...a.keys(), ...b.keys()])) if ((a.get(k) ?? 0) !== (b.get(k) ?? 0)) bad.push(`${k}: ${a.get(k) ?? 0} -> ${b.get(k) ?? 0}`); return bad; };
@@ -122,7 +122,7 @@ export async function foldToMapPools(pool: FoldPool, resortHomes: string[], opts
     }
     // 3) fish / dish rows: only loc changes (identity, species, weight, value, quality kept). NULL loc = legacy held: untouched.
     for (const [table, field] of [['fish_catches', 'fish'], ['kitchen_dishes', 'dishes']] as const) {
-      for (const x of (await cl.query(`SELECT loc, count(*)::int n FROM ${table} WHERE sold_at IS NULL AND loc IS NOT NULL AND loc NOT IN ($1,$2,'factory') GROUP BY loc`, [CITY_POOL, RESORT_POOL])).rows) {
+      for (const x of (await cl.query(`SELECT loc, count(*)::int n FROM ${table} WHERE sold_at IS NULL AND loc IS NOT NULL AND loc NOT IN ($1,$2,'factory') AND loc NOT LIKE 'transit:%' GROUP BY loc` /* in-flight rows land via their (re-pointed) shipment */, [CITY_POOL, RESORT_POOL])).rows) {
         const loc = String(x.loc); const to = poolOfLoc(loc, homes);
         if (!to) { r.unknownLocs.push({ table, loc, n: Number(x.n) }); continue; }
         const u = await cl.query(`UPDATE ${table} SET loc = $2 WHERE loc = $1 AND sold_at IS NULL`, [loc, to]);
@@ -130,9 +130,9 @@ export async function foldToMapPools(pool: FoldPool, resortHomes: string[], opts
       }
     }
     // 4) in-flight freight: re-point the landing location at the destination map's pool (status / qty untouched).
-    for (const x of (await cl.query("SELECT id, to_hub, to_loc FROM freight_shipments WHERE status = 'transit' AND to_loc IS NOT NULL")).rows) {
+    for (const x of (await cl.query("SELECT id, to_hub, to_loc FROM freight_shipments WHERE status IN ('transit','moving') AND to_loc IS NOT NULL")).rows) {
       const to = poolOfHub(String(x.to_hub)); if (!to || to === x.to_loc || x.to_loc === 'factory') continue;
-      const u = await cl.query("UPDATE freight_shipments SET to_loc = $2 WHERE id = $1 AND status = 'transit' AND to_loc = $3", [x.id, to, x.to_loc]);
+      const u = await cl.query("UPDATE freight_shipments SET to_loc = $2 WHERE id = $1 AND status IN ('transit','moving') AND to_loc = $3", [x.id, to, x.to_loc]);
       r.freightRepointed += u.rowCount ?? 0;
     }
     // 5) held legacy (reported, untouched)

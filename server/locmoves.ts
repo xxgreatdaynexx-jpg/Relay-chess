@@ -27,7 +27,7 @@ import { playerKey } from './skins.js';
 import { awayFromMarket } from './travel.js';
 import { cityFreightMul } from './city-rates.js';
 import { properties } from '../shared/realEstate.js';
-import { BIN_ITEM, FACTORY, WAREHOUSE, arrivalKey, hubOfLoc, isDestKind, locLabel, parseLoc, type HubId, type Loc } from '../shared/inventoryLocations.js';
+import { mineLoc, isPool, BIN_ITEM, FACTORY, WAREHOUSE, arrivalKey, hubOfLoc, isDestKind, locLabel, parseLoc, type HubId, type Loc } from '../shared/inventoryLocations.js';
 import { MAX_BANKED_STACK, nameOf, sellable, type ItemType } from '../shared/mines.js';
 import { cropById } from '../shared/farm.js';
 import { fishById } from '../shared/fishing.js';
@@ -137,12 +137,10 @@ export class LocMoves {
     const it = parseItem(b.item); const qty = Number(b.qty);
     if (!Number.isSafeInteger(qty) || qty < 1) throw new MoveError('Pick a quantity.');
     if (from.id === to.id) throw new MoveError('Pick a different destination.');
-    if (!isDestKind(to.kind)) throw new MoveError('Trucks deliver to your factory, the Chud City Warehouse or one of your kitchens.');
+    if (!isDestKind(to.kind)) throw new MoveError('Goods go to a map warehouse (Chud City or Resort) or your factory.');
     if (to.kind === 'factory' && !this.hasFactory(name)) throw new MoveError('Build your factory first.');
     if (from.kind === 'factory' && !this.hasFactory(name)) throw new MoveError('You do not have a factory.');
     const homes = await this.homes(name);
-    if (to.kind === 'kitchen' && !homes.has(to.ref)) throw new MoveError('You can only deliver to a kitchen in a home you own.');
-    if (to.kind === 'kitchen' && !(it.type === 'food' || it.type === 'crop' || it.row === 'fish' || it.row === 'dish' || it.row === 'fdish')) throw new MoveError('Kitchens take food, crops, fish and dishes.');
     if (it.row === 'dish' && to.kind === 'factory') throw new MoveError('Plated dishes go to the Warehouse (to sell) or a kitchen.');
     if (BIN_BUILDINGS.has(from.kind) && it.row !== 'stack') throw new MoveError('Unknown item.');
     const have = await this.qty(name, from.id, it.item);
@@ -154,11 +152,11 @@ export class LocMoves {
       const key = arrivalKey(it.item, to.kind); const inbound = [...lg.ships.values()].filter((x) => x.kind === 'loc' && x.toKey === playerKey(name) && x.toLoc === to.id && arrivalKey(`${x.type}:${x.itemId}`, to.kind) === key).reduce((a, x) => a + x.qty, 0);
       const [kt, kid] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
       const at = to.kind === 'factory' && PACK_TYPES.has(kt) ? getMines().stackQty(name, kt as ItemType, kid) : getLocStore().qty(name, to.id, key);
-      const cap = to.kind === 'kitchen' ? PANTRY_MAX : to.kind === 'factory' && PACK_TYPES.has(kt) ? MAX_BANKED_STACK : Infinity;
+      const cap = to.kind === 'factory' && PACK_TYPES.has(kt) ? MAX_BANKED_STACK : Infinity;
       if (at + inbound + qty > cap) throw new MoveError(`${locLabel(to.id)} has room for ${Math.max(0, cap - at - inbound).toLocaleString('en-US')} more ${itemLabel(key)}.`);
     }
     const fromHub = from.kind === 'kitchen' ? hubOfLoc(from.id, homes.get(from.ref) === true) : hubOfLoc(from.id);
-    const toHub = to.kind === 'kitchen' ? hubOfLoc(to.id, homes.get(to.ref) === true) : hubOfLoc(to.id);
+    const toHub = hubOfLoc(to.id);
     let plan: Awaited<ReturnType<typeof lg.planLeg>>;
     try { plan = await lg.planLeg(name, { mode: b.mode, vehicle: b.vehicle, fromHub, toHub, type: it.type, itemId: it.id, qty, fromLoc: from.id, toLoc: to.id }); }
     catch (e) { if (e instanceof FreightError) throw new MoveError(e.message); throw e; }
@@ -260,28 +258,29 @@ export class LocMoves {
     return this.lock(playerKey(name), () => this.sell0(name, b));
   }
   private async sell0(name: string, b: Record<string, unknown>) {
+    // Map pools: sell from either map's warehouse (your city or resort inventory), no hauling first.
     const at = b.from === undefined ? WAREHOUSE : String(b.from);
-    if (at !== WAREHOUSE) throw new MoveError('Goods only sell at the Chud City Warehouse. Send them there by truck first.');
-    const it = parseItem(b.item); const have = await this.qty(name, WAREHOUSE, it.item);
+    if (!isPool(at)) throw new MoveError('Goods sell from your map warehouse (Chud City or Resort).');
+    const it = parseItem(b.item); const have = await this.qty(name, at, it.item);
     const qty = b.qty === undefined || b.qty === null || b.qty === 'all' ? have : Math.floor(Number(b.qty));
-    if (!Number.isSafeInteger(qty) || qty < 1) throw new MoveError(have ? 'Pick a quantity.' : 'Nothing of that at the Warehouse. Send it there by truck first.');
+    if (!Number.isSafeInteger(qty) || qty < 1) throw new MoveError(have ? 'Pick a quantity.' : 'Nothing of that at this warehouse.');
     if (qty > have) throw new MoveError(`Only ${have.toLocaleString('en-US')} ${itemLabel(it.item)} at the Warehouse.`);
     const key = playerKey(name);
     if (it.row === 'fish' || it.row === 'fdish') {
-      const ids = (await this.fishPool().query(`SELECT id FROM fish_catches WHERE player_key = $1 AND loc = $2 AND species = $3 AND sold_at IS NULL AND ${fishWhere(it.row)} ORDER BY caught_at, id LIMIT $4`, [key, WAREHOUSE, it.id, qty])).rows.map((r) => String(r.id));
+      const ids = (await this.fishPool().query(`SELECT id FROM fish_catches WHERE player_key = $1 AND loc = $2 AND species = $3 AND sold_at IS NULL AND ${fishWhere(it.row)} ORDER BY caught_at, id LIMIT $4`, [key, at, it.id, qty])).rows.map((r) => String(r.id));
       const f = getFishing(); if (!f) throw new MoveError('Fishing is offline right now.');
       return f.sell(name, ids);
     }
     if (it.row === 'dish') {
-      const ids = (await this.fishPool().query('SELECT id FROM kitchen_dishes WHERE player_key = $1 AND loc = $2 AND recipe = $3 AND sold_at IS NULL ORDER BY cooked_at, id LIMIT $4', [key, WAREHOUSE, it.id, qty])).rows.map((r) => String(r.id));
+      const ids = (await this.fishPool().query('SELECT id FROM kitchen_dishes WHERE player_key = $1 AND loc = $2 AND recipe = $3 AND sold_at IS NULL ORDER BY cooked_at, id LIMIT $4', [key, at, it.id, qty])).rows.map((r) => String(r.id));
       const c = getCooking(); if (!c) throw new MoveError('The kitchen is offline right now.');
       return c.sell(name, ids);
     }
     const ls = getLocStore();
     if (it.type === 'crop') {
       const farm = getFarm(); if (!farm) throw new MoveError('The farm is offline right now.');
-      if (!ls.check(name, [{ loc: WAREHOUSE, item: it.item, delta: -qty }])) throw new MoveError('Not enough at the Warehouse.');
-      const sid = `wh:${randomUUID()}`; const d = [{ loc: WAREHOUSE, item: it.item, delta: -qty }];
+      if (!ls.check(name, [{ loc: at, item: it.item, delta: -qty }])) throw new MoveError('Not enough at the Warehouse.');
+      const sid = `wh:${randomUUID()}`; const d = [{ loc: at, item: it.item, delta: -qty }];
       let paid: number;
       try { paid = await farm.sellShipped({ id: sid, ownerName: name.trim(), itemId: it.id, qty }, ls.rowsFor(name, d), 'your Warehouse stock'); }
       catch (e) {
@@ -298,7 +297,7 @@ export class LocMoves {
     const mines = getMines(); const now = this.clock();
     let sale: ReturnType<typeof mines.houseSale>;
     try { sale = mines.houseSale(name, now, [{ type: it.type as ItemType, id: it.id, qty }]); } catch (e) { if (e instanceof MineError) throw new MoveError(e.message); throw e; }
-    const r = ls.adjust(name, [{ loc: WAREHOUSE, item: it.item, delta: -qty }], sale.stmts, { after: sale.w.after, marker: ledgerMarker(sale.stmts),
+    const r = ls.adjust(name, [{ loc: at, item: it.item, delta: -qty }], sale.stmts, { after: sale.w.after, marker: ledgerMarker(sale.stmts),
       onLate: (ok) => { if (ok) { sale.w.confirm(); sale.apply(); } else sale.w.revert(); } }); // an unknown outcome settles later: apply or undo then
     if (r === false) { sale.w.revert(); throw new MoveError('Not enough at the Warehouse.'); }
     sale.w.bind(r);
@@ -382,7 +381,7 @@ export const setLocMoves = (x: LocMoves) => { lm = x; };
 /** Hook producers + freight into per-location stock (idempotent). */
 export function wireLocMoves() {
   const mines = getMines();
-  const caveDeltas = (stacks: Array<{ type: string; id: string; qty: number }>, cave: string) => stacks.filter((x) => x.qty > 0).map((x) => ({ loc: `mine:${cave}`, item: `${x.type}:${x.id}`, delta: x.qty }));
+  const caveDeltas = (stacks: Array<{ type: string; id: string; qty: number }>, cave: string) => stacks.filter((x) => x.qty > 0).map((x) => ({ loc: mineLoc(cave), item: `${x.type}:${x.id}`, delta: x.qty }));
   if (!mines.cityBin) mines.cityBin = (acct, stacks, cave) => { if (!getLocStore().loaded) throw new MineError('Cave storage is starting up. Try again in a moment.'); return getLocStore().rowsFor(acct, caveDeltas(stacks, cave)); };
   if (!mines.cityBinDone) mines.cityBinDone = (acct, stacks, cave) => getLocStore().applyMem(acct, caveDeltas(stacks, cave));
   const lg = getLogistics(); if (lg && !lg.onLoc) lg.onLoc = (s) => lm.arrive(s);

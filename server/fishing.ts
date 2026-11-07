@@ -26,7 +26,7 @@ import {
 } from '../shared/fishing.js';
 import { cookPayout, cookSellValue } from '../shared/cooking.js';
 import { isFishSpot, type FishSpot } from '../shared/fishing.js';
-import { fishingLoc, WAREHOUSE, FACTORY } from '../shared/inventoryLocations.js';
+import { fishingLoc, WAREHOUSE, FACTORY, isPool } from '../shared/inventoryLocations.js';
 import { FLEET_MAX_CUT } from '../shared/coop3.js';
 import { isAtResort, awayFromMarket } from './travel.js';
 import { baitLuckRoll, gearDef } from '../shared/fishGear.js';
@@ -165,9 +165,9 @@ export class Fishing {
     const key = keyOf(name);
     return this.lock(`c:${key}`, async () => {
       const all = await this.cooler(key);
-      let rows = all.filter((r) => r.loc === WAREHOUSE); // only the Chud City Warehouse buys fish
+      let rows = all.filter((r) => !!r.loc && isPool(r.loc)); // map pools: either map's warehouse sells
       if (Array.isArray(ids)) { const want = new Set(ids.filter((x): x is string => typeof x === 'string').slice(0, COOLER_MAX)); rows = rows.filter((r) => want.has(r.id)); }
-      if (!rows.length) throw new FishError(all.length ? 'Fish only sell at the Chud City Warehouse. Send them there by truck first.' : 'Nothing to sell.');
+      if (!rows.length) throw new FishError(all.length ? 'Move those fish from your factory to a map warehouse to sell them.' : 'Nothing to sell.');
       if (qtyIn !== undefined && qtyIn !== null) { const v = parseSellQty(qtyIn, rows.length); if (!v.ok) throw new FishError(v.error); rows = pickForQty(rows, v.qty); }
       const day = utcDay(this.clock());
       // Pan-fried dishes (fishPan) count toward the ONE daily cooking-sales cap (kitchen_daily, shared with recipe
@@ -235,10 +235,10 @@ export class Fishing {
   async toFactory(name: string, ids: unknown, sink: ImportSink): Promise<{ moved: number; items: Array<[string, number]> }> {
     const key = keyOf(name);
     return this.lock(`c:${key}`, async () => {
-      const all = (await this.pool.query("SELECT id, species, value, dish FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL AND loc = 'factory'", [key])).rows as Array<{ id: string; species: string; value: number; dish: string | null }>;
+      const all = (await this.pool.query("SELECT id, species, value, dish FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL AND loc IN ('factory', 'warehouse')", [key]) /* map pools: any city-map fish, no hauling */).rows as Array<{ id: string; species: string; value: number; dish: string | null }>;
       const want = Array.isArray(ids) ? new Set(ids.filter((x): x is string => typeof x === 'string').slice(0, COOLER_MAX)) : null;
       const rows = all.filter((r) => (!want || want.has(r.id)) && fishById(r.species)?.rarity !== 'junk' && fishImportQty(Number(r.value), !!r.dish) > 0);
-      if (!rows.length) throw new FishError(want ? 'Only fish already at your factory can go in (truck them there first; junk and tiny fish can\'t).' : 'No fish at your factory big enough to process. Truck fish there first.');
+      if (!rows.length) throw new FishError(want ? 'Only fish on the city map can go in (ship resort fish to the city first; junk and tiny fish can\'t).' : 'No fish on the city map big enough to process. Ship resort fish to the city first.');
       let fillet = 0, portion = 0; for (const r of rows) { const n = fishImportQty(Number(r.value), !!r.dish); if (r.dish) portion += n; else fillet += n; }
       const items: Array<[string, number]> = []; if (fillet) items.push(['fish_fillet', fillet]); if (portion) items.push(['fish_portion', portion]);
       const cl = await this.pool.connect();

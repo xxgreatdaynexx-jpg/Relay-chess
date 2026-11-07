@@ -20,7 +20,7 @@ import { awardXp, getSkills } from './skills.js';
 import { getMines } from './mines.js';
 import { getLocStore, LOC_MIGRATION } from './locstock.js';
 import { getLocMoves } from './locmoves.js';
-import { kitchenLoc, WAREHOUSE, FACTORY } from '../shared/inventoryLocations.js';
+import { kitchenLoc, WAREHOUSE, FACTORY, isPool } from '../shared/inventoryLocations.js';
 import { getFishing } from './fishing.js';
 import { databaseUrl } from './leaderboard-store.js';
 import { fishById } from '../shared/fishing.js';
@@ -257,9 +257,9 @@ export class Cooking {
   async sell(name: string, ids?: unknown, qtyIn?: unknown) {
     const key = keyOf(name);
     return this.lock(`c:${key}`, async () => {
-      const any = await this.dishes(key); let rows = any.filter((d) => d.loc === WAREHOUSE); // only the Warehouse buys dishes
+      const any = await this.dishes(key); let rows = any.filter((d) => !!d.loc && isPool(d.loc)); // map pools: either map's warehouse sells
       if (Array.isArray(ids)) { const want = new Set(ids.filter((x): x is string => typeof x === 'string').slice(0, DISHES_MAX)); rows = rows.filter((r) => want.has(r.id)); }
-      if (!rows.length) throw new CookError(any.length ? 'Dishes only sell at the Chud City Warehouse. Send them there by truck first.' : 'Nothing to sell.');
+      if (!rows.length) throw new CookError(any.length ? 'Move those dishes from your factory to a map warehouse to sell them.' : 'Nothing to sell.');
       if (qtyIn !== undefined && qtyIn !== null) { const v = parseSellQty(qtyIn, rows.length); if (!v.ok) throw new CookError(v.error); rows = pickForQty(rows, v.qty); }
       const day = utcDay(this.clock()); const t = await this.today(key);
       const gross = cookSellValue(rows.reduce((a, r) => a + r.value, 0)); // +50% cooking buff

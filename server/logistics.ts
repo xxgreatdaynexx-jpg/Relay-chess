@@ -190,25 +190,24 @@ export class Logistics {
   async planLeg(name: string, b: { mode: unknown; vehicle?: unknown; fromHub: HubId; toHub: HubId; type: string; itemId: string; qty: number; fromLoc: string; toLoc: string }): Promise<{ shipment: Shipment; trips: number; surplus: number }> {
     const mode = b.mode; if (!isMode(mode)) throw new FreightError('Pick how to ship it.');
     const qty = b.qty; if (!Number.isInteger(qty) || qty < 1 || qty > MAX_SHIP_QTY) throw new FreightError('Pick a quantity.');
-    if (!truckAllowed(mode, b.fromHub, b.toHub)) throw new FreightError(NO_CROSS_MAP_TRUCK);
-    if (!legModeAllowed(mode, b.fromHub, b.toHub)) throw new FreightError(SAME_MAP_TRUCK_ONLY); // same-map legs: road only
+    // Map pools (Dayne 2026-11-07, pre-Millionaire restore): places on ONE map share an inventory, so a same-map move
+    // is free and instant (no truck, no fee). It still goes through the shipment row + exactly-once arrival.
+    if (b.fromHub === b.toHub) {
+      const now = this.clock();
+      const s: Shipment = { id: randomUUID(), owner: keyOf(name), ownerName: name.trim(), toKey: keyOf(name), toName: name.trim(), mode: 'hired', truck: null, from: b.fromHub, to: b.toHub, type: b.type as ItemType, itemId: b.itemId, qty, fee: 0,
+        createdAt: now, departAt: now, arriveAt: now, status: 'transit', kind: 'loc', src: b.fromLoc, fromLoc: b.fromLoc, toLoc: b.toLoc };
+      this.ships.set(s.id, s); return { shipment: s, trips: 1, surplus: 0 };
+    }
+    if (isTruckMode(mode)) throw new FreightError(NO_CROSS_MAP_TRUCK); // between maps: plane / ship (own jet / boat) only
     let truck: string | null = null; let travel = MODES[mode].travelMs; let cap = MODES[mode].cap; let model = '';
-    if (mode === 'truck') {
-      const busy = this.busyTrucks(name); const mine = this.owned(name);
-      if (!mine.length) throw new FreightError('You do not own a truck. Buy one at the truck store, or hire one for a fee.');
-      const pick = typeof b.vehicle === 'string' && b.vehicle ? mine.find((t) => t.id === b.vehicle) : mine.find((t) => !busy.has(t.id));
-      if (typeof b.vehicle === 'string' && b.vehicle && !pick) throw new FreightError('You do not own that truck.');
-      if (!pick) throw new FreightError('All your trucks are out on deliveries. Hire one, or wait.');
-      if (busy.has(pick.id)) throw new FreightError('That truck is already out on a delivery.');
-      const m = TRUCK_BY_ID.get(pick.truckId)!; truck = pick.id; cap = m.cap; travel = Math.round(truckTravelMs(m) * (1 - cityPerk('truck_speed'))); model = m.id;
-    } else if (mode === 'jet' || mode === 'boat') { const c = await this.craftFor(name, mode, b.vehicle); truck = c.id; model = c.model; cap = cargoCap(c.model); }
+    if (mode === 'jet' || mode === 'boat') { const c = await this.craftFor(name, mode, b.vehicle); truck = c.id; model = c.model; cap = cargoCap(c.model); }
     const trips = isOwnMode(mode) ? tripsFor(qty, cap) : 1;
     if (!isOwnMode(mode) && qty > cap) throw new FreightError(`Too much for one ${MODES[mode].label.toLowerCase()}: max ${cap.toLocaleString('en-US')} units.`);
     if (isOwnMode(mode)) travel = multiTripMs(travel, trips);
     const fee = truck ? this.ownQuote(model, truck, qty) : this.quote(mode, qty);
     const now = this.clock(); const departAt = nextDeparture(mode, now);
     const s: Shipment = { id: randomUUID(), owner: keyOf(name), ownerName: name.trim(), toKey: keyOf(name), toName: name.trim(), mode, truck, from: b.fromHub, to: b.toHub, type: b.type as ItemType, itemId: b.itemId, qty, fee,
-      createdAt: now, departAt, arriveAt: isOwnMode(mode) || mode === 'hired' ? departAt + travel : arrivalOf(mode, departAt), status: 'transit', kind: 'loc', src: b.fromLoc, fromLoc: b.fromLoc, toLoc: b.toLoc };
+      createdAt: now, departAt, arriveAt: isOwnMode(mode) ? departAt + travel : arrivalOf(mode, departAt), status: 'transit', kind: 'loc', src: b.fromLoc, fromLoc: b.fromLoc, toLoc: b.toLoc };
     this.ships.set(s.id, s); // reserve the vehicle now (busy for every other dispatch); the caller admit()s or release()s it
     return { shipment: s, trips, surplus: fee && !truck ? this.freightSurplus(mode, qty, fee) : 0 };
   }

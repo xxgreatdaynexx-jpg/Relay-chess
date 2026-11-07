@@ -254,8 +254,20 @@ export function registerFactory(_io: Server, socket: Socket): void {
       ack?.({ ok: false, error: known ? (e as Error).message : 'Factory error.', ...view() }); if (!known) console.error('[factory import]', e);
     }
   };
-  // Truck logistics: no instant farm -> factory import. Harvest (crops stay at the plot), then truck them to the factory.
-  socket.on('fac_import_farm', aop(async () => { throw new MineError('Crops reach your factory by truck now: harvest them, then send them from the plot in your Logistics panel.'); }));
+  // Pre-Millionaire behaviour restored (map pools): ready city crops go straight into your factory. Resort plantation
+  // crops are on another map, so they are never imported here (sell them at the plantation or ship them).
+  socket.on('fac_import_farm', aop(async (a, b) => {
+    const f = getFarm(); if (!f) throw new MineError('The farm is offline right now.');
+    if (typeof b.plot === 'string') { if (b.plot.startsWith('rf:')) throw new MineError('Plantation crops are on the resort map: sell them there or ship them.'); return f.harvest(a, b.plot, b.tiles, factorySink(a)); }
+    const got: Array<[string, number]> = []; let harvested = 0; let skippedResort = false;
+    for (const pid of await f.myPlots(a)) {
+      if (pid.startsWith('rf:')) { skippedResort = true; continue; }
+      try { const r = await f.harvest(a, pid, undefined, factorySink(a)); harvested += r.harvested; for (const [id, n] of r.toFactory ?? []) { const x = got.find((g) => g[0] === id); if (x) x[1] += n; else got.push([id, n]); } }
+      catch (e) { if (!(e instanceof FarmError)) throw e; }
+    }
+    if (!harvested) throw new MineError(skippedResort ? 'No ready crops on your city plots. (Plantation crops stay on the resort map.)' : 'No ready crops on your farm plots.');
+    return { harvested, toFactory: got, skippedResort };
+  }));
   socket.on('fac_import_fish', aop(async (a, b) => {
     const f = getFishing(); if (!f) throw new MineError('Fishing is offline right now.');
     return f.toFactory(a, b.ids, factorySink(a));

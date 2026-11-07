@@ -514,10 +514,10 @@ export class MinesWorld {
     const banked = this.carried(id); if (!banked.length) return { banked: [], worth: 0 };
     if (m.account) this.lastCave.set(playerKey(m.account), m.cave); // royalties: ore is credited to the cave it was hauled out of
     const p = this.pack(this.packKey(m));
-    const binHook = m.cave === 'coral' ? this.coralBin : m.cave === 'fortmc' ? this.fortBin : this.cityBin;
+    const binHook = m.cave === 'fortmc' ? this.fortBin : this.cityBin; // map pools: city caves -> Chud City Warehouse, Coral Grotto -> Resort Warehouse
     // Truck logistics: a signed-in city haul banks AT that cave (mine:<cave>). Never fall back to the factory store.
-    if (m.account && m.cave !== 'coral' && m.cave !== 'fortmc' && !this.cityBin) { throw new MineError('Cave storage is starting up. Your haul is safe in your pack, try again in a moment.'); }
-    const city = !!(m.account && m.cave !== 'coral' && m.cave !== 'fortmc');
+    if (m.account && m.cave !== 'fortmc' && !this.cityBin) { throw new MineError('Cave storage is starting up. Your haul is safe in your pack, try again in a moment.'); }
+    const city = !!(m.account && m.cave !== 'fortmc');
     const bin = m.account && binHook ? binHook(m.account, banked, m.cave) : null; // may throw (storage starting): haul stays carried
     m.carried.clear();
     if (!bin) for (const s of banked) { const k = stackKey(s); const cur = p.get(k); if (cur) cur.qty += s.qty; else p.set(k, { ...s }); }

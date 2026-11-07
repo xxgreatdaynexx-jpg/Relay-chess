@@ -28,7 +28,9 @@ it.skipIf(!url)('fold: conserved, identity-preserving, idempotent, atomic on fai
     await q(`INSERT INTO freight_shipments (id,player_key,name,to_key,to_name,mode,from_hub,to_hub,item_type,item_id,qty,fee,created_at,depart_at,arrive_at,status,from_loc,to_loc) VALUES
       ('s1','a','A','a','A','ship','city','resort','ore','iron',3,0,1,1,9,'transit','warehouse','kitchen:${RESORT_HOME}'),
       ('s2','a','A','a','A','truck','city','city','crop','wheat',2,0,1,1,9,'transit','farm:cf:3','warehouse'),
-      ('s3','a','A','a','A','ship','city','resort','ore','iron',1,0,1,1,9,'delivered','warehouse','farm:rf:2')`);
+      ('s3','a','A','a','A','ship','city','resort','ore','iron',1,0,1,1,9,'delivered','warehouse','farm:rf:2'),
+      ('s4','a','A','a','A','plane','city','resort','fish','bass',1,0,1,1,9,'moving','fishing:lake','fishing:reef')`);
+    await q("INSERT INTO fish_catches (id,player_key,name,species,weight_g,value,caught_at,loc) VALUES ('f5','a','A','bass',800,35,1,'transit:s4')");
 
     // atomic: a failure before COMMIT changes nothing
     const snap = async () => JSON.stringify([await q('SELECT * FROM loc_stock ORDER BY 1,3,4'), await q('SELECT player_key,item_type,item_id,qty FROM mine_items ORDER BY 1,2,3'), await q('SELECT id,loc FROM fish_catches ORDER BY 1'), await q('SELECT id,to_loc FROM freight_shipments ORDER BY 1')]);
@@ -41,7 +43,7 @@ it.skipIf(!url)('fold: conserved, identity-preserving, idempotent, atomic on fai
     const db2 = new pg.Pool({ connectionString: dbu.toString(), max: 2 });
     const [r1, r2] = await Promise.all([foldToMapPools(db, [RESORT_HOME]), foldToMapPools(db2, [RESORT_HOME])]); await db2.end();
     const r = r1.already ? r2 : r1; expect([r1.already, r2.already].sort()).toEqual([false, true]);
-    expect(r).toMatchObject({ conserved: true, fish: 2, dishes: 1, coral: 2, freightRepointed: 1 });
+    expect(r).toMatchObject({ conserved: true, fish: 2, dishes: 1, coral: 2, freightRepointed: 2 });
     expect(r.unknownLocs).toEqual([{ table: 'loc_stock', loc: 'mystery:x', n: 1 }]);
     expect(r.heldLegacy).toEqual({ fishNullLoc: 1, dishNullLoc: 1, fillets: 2, resortBarn: 5 });
 
@@ -56,10 +58,10 @@ it.skipIf(!url)('fold: conserved, identity-preserving, idempotent, atomic on fai
       { k: 'a', t: 'ore', i: 'iron', qty: 10 }]); // factory banked store untouched
     expect(await q('SELECT id, loc, species, weight_g, value FROM fish_catches ORDER BY 1')).toEqual([
       { id: 'f1', loc: 'warehouse', species: 'bass', weight_g: 900, value: 40 }, { id: 'f2', loc: 'resort', species: 'tuna', weight_g: 5000, value: 300 },
-      { id: 'f3', loc: 'warehouse', species: 'bass', weight_g: 700, value: 30 }, { id: 'f4', loc: null, species: 'bass', weight_g: 100, value: 5 }]);
+      { id: 'f3', loc: 'warehouse', species: 'bass', weight_g: 700, value: 30 }, { id: 'f4', loc: null, species: 'bass', weight_g: 100, value: 5 }, { id: 'f5', loc: 'transit:s4', species: 'bass', weight_g: 800, value: 35 }]);
     expect(await q('SELECT id, loc, quality FROM kitchen_dishes ORDER BY 1')).toEqual([{ id: 'd1', loc: 'resort', quality: 0.9 }, { id: 'd2', loc: null, quality: 0.5 }]);
     expect(await q('SELECT id, status, qty, to_loc FROM freight_shipments ORDER BY 1')).toEqual([
-      { id: 's1', status: 'transit', qty: 3, to_loc: 'resort' }, { id: 's2', status: 'transit', qty: 2, to_loc: 'warehouse' }, { id: 's3', status: 'delivered', qty: 1, to_loc: 'farm:rf:2' }]);
+      { id: 's1', status: 'transit', qty: 3, to_loc: 'resort' }, { id: 's2', status: 'transit', qty: 2, to_loc: 'warehouse' }, { id: 's3', status: 'delivered', qty: 1, to_loc: 'farm:rf:2' }, { id: 's4', status: 'moving', qty: 1, to_loc: 'resort' }]);
     expect(await q("SELECT qty::int FROM building_inv WHERE building = 'resort_farm'")).toEqual([{ qty: 5 }]);
 
     // idempotent re-run / lost-COMMIT replay: no change
