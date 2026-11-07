@@ -5,6 +5,7 @@
  */
 import { expect, it } from 'vitest';
 import pg from 'pg';
+import { dropDrainedTestDatabase } from './fixtures/drain-postgres-db';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 const run = promisify(execFile);
@@ -95,5 +96,5 @@ it.skipIf(!url)('real PostgreSQL: legacy->factory migration, atomic dispatch, ow
     expect((await step('sell', { name: A, item: 'dish:pancakes', qty: 1 })).ok).toBe(true);
     expect((await step('sell', { name: A, item: 'fish:trout', qty: 1 })).ok).toBe(false); // trout is in a kitchen, not the warehouse
     const end = await step('snap', { names: [A] }); expect(end[A].chips).toBeGreaterThan(deny.snap[A].chips);
-  } finally { await db.end(); await root.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`).catch(() => {}); await root.end(); }
+  } finally { await dropDrainedTestDatabase(root, db, dbName); }
 }, 240_000);

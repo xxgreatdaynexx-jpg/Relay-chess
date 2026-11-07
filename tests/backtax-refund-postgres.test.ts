@@ -1,6 +1,7 @@
 /** Real local Postgres only; private disposable DB, never touches shared instance data. */
 import { expect, it } from 'vitest';
 import pg from 'pg';
+import { dropDrainedTestDatabase } from './fixtures/drain-postgres-db';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { auditBackTaxRefunds, refundOneBackTax, REFUND_CONFIRM, REFUND_GAME, refundKey, type RefundPool } from '../server/backTaxRefund';
@@ -27,6 +28,7 @@ it.skipIf(!url)('real PostgreSQL full back-tax refund: partial payments, durable
     await wallet.apply({ name:'Payer',game:'test_fund',amount:100_000,key:'seed',balance:0,at:Date.now() },'payer');
     const a = await pay('partial:a',20_005), b = await pay('partial:b',17); // actual partial debits, not assessments
     await wallet.apply({name:'Recipient',game:'property_backtax_share',amount:5,key:'share:a',balance:0,at:Date.now()},'recipient');
+    await pool.query("UPDATE casino_players SET name = 'Current Payer' WHERE player_key = 'payer'");
     const before = await balance();
     let audit = await auditBackTaxRefunds(pool);
     expect(audit.payments.map(p=>p.amount)).toEqual([20_005,17]); expect(audit.totalPending).toBe(20_022);
@@ -37,6 +39,7 @@ it.skipIf(!url)('real PostgreSQL full back-tax refund: partial payments, durable
     // Independent processes use same reviewed manifest. One credits, the other refuses stale review.
     const results = await Promise.all([step(a,audit.manifestHash),step(a,audit.manifestHash)]);
     expect(results.filter(r=>r.ok && r.applied)).toHaveLength(1); expect(await balance()).toBe(before+20_005);
+    expect((await pool.query("SELECT name FROM casino_players WHERE player_key='payer'")).rows[0].name).toBe('Current Payer');
     expect((await step(a)).applied).toBe(false); // fresh process/restart
     await expect(refundOneBackTax(pool,b,audit.manifestHash,REFUND_CONFIRM)).rejects.toThrow(/Manifest changed/);
     audit = await auditBackTaxRefunds(pool); await refundOneBackTax(pool,b,audit.manifestHash,REFUND_CONFIRM);
@@ -74,6 +77,11 @@ it.skipIf(!url)('real PostgreSQL full back-tax refund: partial payments, durable
     expect(await balance()).toBe(preFail); expect((await pool.query('SELECT 1 FROM wallet_transactions WHERE tx_key=$1',[refundKey(d)])).rows).toHaveLength(0);
     await pool.query('DROP TRIGGER reject_refund ON wallet_transactions; DROP FUNCTION reject_refund()');
     expect((await step(d)).applied).toBe(true); expect(await balance()).toBe(preFail+41);
+    // Even if a payer disappears after the service's initial existence read, the atomic wallet credit must not
+    // recreate it with default starting chips. The existing-only mode also preserves current wallet names.
+    await expect(wallet.apply({name:'Missing',game:REFUND_GAME,amount:12,key:'orphan-refund',balance:0,at:Date.now()},'missing',{}, {existingWalletOnly:true})).rejects.toThrow(/Existing payer wallet/);
+    expect((await pool.query("SELECT 1 FROM casino_players WHERE player_key='missing'")).rows).toHaveLength(0);
+    expect((await pool.query("SELECT 1 FROM wallet_transactions WHERE tx_key='orphan-refund'")).rows).toHaveLength(0);
     // Generic admin credits require an explicit manifest-bound review, not an assumed absence of prior refunds.
     await wallet.apply({name:'Payer',game:'admin',amount:7,key:'other-admin-credit',balance:0,at:Date.now(),memo:'Unrelated test grant'},'payer');
     const genericId=await pay('generic-review',11); audit=await auditBackTaxRefunds(pool);
@@ -84,5 +92,5 @@ it.skipIf(!url)('real PostgreSQL full back-tax refund: partial payments, durable
     await wallet.apply({name:'Payer',game:'admin',amount:29,key:'old-refund',balance:0,at:Date.now(),memo:'Back tax refund'},'payer');
     audit=await auditBackTaxRefunds(pool); expect(audit.blockers.join(' ')).toMatch(/prior compensation/);
     await expect(refundOneBackTax(pool,e,audit.manifestHash,REFUND_CONFIRM)).rejects.toThrow(/prior compensation/);
-  } finally { await pool.end(); await root.query(`DROP DATABASE ${name}`); await root.end(); }
+  } finally { await dropDrainedTestDatabase(root, pool, name); }
 },60_000);

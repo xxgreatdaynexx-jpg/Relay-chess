@@ -4,6 +4,7 @@
  */
 import { expect, it } from 'vitest';
 import pg from 'pg';
+import { dropDrainedTestDatabase } from './fixtures/drain-postgres-db';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { farmPlots } from '../shared/farm';
@@ -26,7 +27,7 @@ async function makeDb(tag: string) {
   };
   const failBoot = async (extra: Record<string, string>) => { try { await run('npx', ['tsx', 'tests/fixtures/locmoves-pg-step.ts', 'failBoot', '{}'], { env: env(0, extra) }); return 0; } catch (e) { return (e as { code?: number }).code ?? -1; } };
   const q = async (sql: string, a: unknown[] = []) => (await db.query(sql, a)).rows;
-  const close = async () => { await db.end(); await root.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`).catch(() => {}); await root.end(); };
+  const close = async () => { await dropDrainedTestDatabase(root, db, name); };
   return { DB, env, step, failBoot, q, close, db };
 }
 const n = (rows: Array<Record<string, unknown>>) => rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : v])));

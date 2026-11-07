@@ -6,7 +6,7 @@ Policy approved by Dayne Nov 7, 2026: property surcharge is **1% per 1,000 of ow
 
 1. Review the isolated patch, types, full tests and production build. Integrate alongside restoration without losing either branch's WorldMap/launchPopup/app edits.
 2. Publishing requires the parent/operator's release review. No boot code issues refunds. No production ledger was accessible while preparing this patch.
-3. Once released, verify exact live build, the 1% rate, and zero debt on quotes / cached `re_backtax_pay` (zero paid). Ensure all old replicas are gone; an old server must not keep charging back-tax. Never roll back to an old version that revives canceled debt.
+3. Once released, verify exact live build, the 1% rate, and zero debt on quotes / cached `re_backtax_pay` (zero paid). Ensure all old replicas are gone; an old server must not keep charging back-tax. Quiesce alternative manual back-tax compensation/grants while executing the reviewed refund manifest. Never roll back to an old version that revives canceled debt.
 4. Authenticate with the existing admin bearer through the normal admin authorization. Do not print secrets. No database connection/token extraction is needed.
 
 ## Read-only audit
@@ -36,7 +36,7 @@ Only after exact manifest/prior-credit review:
 
 One actual original debit per call; no blind batch loop, grant chunking or manual SQL credits. `reviewedUnrelatedCreditIds` must exactly match the audit's unclassified IDs; never label a real or ambiguous back-tax refund as unrelated. A changed manifest rejects execution. A known possible compensation blocker requires separate explicit reconciliation work, not guessing/exclusion.
 
-The existing wallet store atomically commits balance increment and UNIQUE ledger key `backtax_refund_v1:<sourceId>` with game `property_backtax_refund_v1`. The marker is the credit itself. Global advisory locking serializes independent operators; the wallet UNIQUE key is the durable race/restart backstop. Original rows remain untouched. Refund memo includes original ID and reviewed manifest hash. A missing payer wallet is blocked, never silently created/funded.
+The existing wallet store atomically commits balance increment and UNIQUE ledger key `backtax_refund_v1:<sourceId>` with game `property_backtax_refund_v1`. The marker is the credit itself. Global advisory locking serializes independent operators; the wallet UNIQUE key is the durable race/restart backstop. Original rows remain untouched. Refund memo includes original ID and reviewed manifest hash. A missing payer wallet is blocked transactionally, never silently created/funded. Existing wallet names are preserved even if the historical ledger display name differs.
 
 After each response, GET a fresh audit; verify the marker's owner/amount/game, remaining totals and no blockers. Re-review before the next source. A repeated source using a fresh hash is a verified no-op. Cache refresh failure does not reverse durable credits. Lost COMMIT replies trigger marker checks, not another grant; if readback is unavailable the outcome stays unknown. Recover connection and GET a new audit before retrying. Do not manufacture a compensating debit or claim nothing was credited.
 

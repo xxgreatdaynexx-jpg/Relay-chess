@@ -82,7 +82,7 @@ export async function refundOneBackTax(pool: RefundPool, sourceId: unknown, expe
     let applied = false;
     try {
       const result = await store.apply({ name: source.name, amount: source.amount, game: REFUND_GAME, key: source.refundKey,
-        memo: `Full back-tax refund; source ${sourceId}; reviewed manifest ${expectedHash}`, balance: 0, at: Date.now() }, source.playerKey);
+        memo: `Full back-tax refund; source ${sourceId}; reviewed manifest ${expectedHash}`, balance: 0, at: Date.now() }, source.playerKey, {}, { existingWalletOnly: true });
       applied = result.ok;
       if (!result.ok && result.reason !== 'duplicate') throw new Error('Wallet refused refund');
     } catch {

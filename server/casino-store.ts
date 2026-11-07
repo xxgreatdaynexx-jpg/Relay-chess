@@ -115,13 +115,18 @@ export class PgCasinoStore implements CasinoStore {
    * One chip movement, all in ONE transaction: ensure the row, `chips = chips + delta` guarded by `chips + delta >= 0`,
    * then the ledger row with balance = the RETURNING value. Never writes an absolute balance from memory.
    */
-  async apply(tx: WalletTx, playerKey: string, stats: StatDelta = {}): Promise<ApplyResult> {
+  async apply(tx: WalletTx, playerKey: string, stats: StatDelta = {}, opts: { existingWalletOnly?: boolean } = {}): Promise<ApplyResult> {
     const pool = this.db as Queryable & { connect?: () => Promise<Queryable & { release: () => void }> };
     const c = pool.connect ? await pool.connect() : null;
     const q = (sql: string, args: unknown[]) => (c ?? this.db).query(sql, args);
     try {
+      if (opts.existingWalletOnly && !c) throw new Error('Refunds require a transactional wallet pool');
       if (c) await c.query('BEGIN');
-      await q(ENSURE_ROW, [playerKey, tx.name, START_CHIPS]);
+      if (opts.existingWalletOnly) {
+        // Audited refunds may only credit an existing payer, never create a wallet or change its current name.
+        // Lock it inside this same transaction so deletion cannot race the check and invent START_CHIPS.
+        if (!(await q('SELECT player_key FROM casino_players WHERE player_key = $1 FOR UPDATE', [playerKey])).rows.length) throw new Error('Existing payer wallet required');
+      } else await q(ENSURE_ROW, [playerKey, tx.name, START_CHIPS]);
       // Key already used (e.g. by another instance)? No-op. The UNIQUE index below is the race-proof backstop.
       if (tx.key && (await q('SELECT 1 FROM wallet_transactions WHERE tx_key = $1', [tx.key])).rows.length) {
         if (c) await c.query('ROLLBACK');
