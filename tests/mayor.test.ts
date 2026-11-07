@@ -148,7 +148,7 @@ describe('mayor powers', () => {
   it('admin removal ends the term and resets rates to default immediately', async () => {
     const s = await withMayor(); await s.m.setRates('Ann', { property: 1.25, fee: 1.25 });
     s.set(s.now + DAY_MS); expect(s.m.rates()).toEqual({ property: 1.25, fee: 1.25 });
-    expect(await s.m.remove('abuse')).toEqual({ removed: 'Ann' });
+    expect(await s.m.remove('abuse')).toEqual({ removed: 'Ann', successor: null });
     expect(s.m.rates()).toEqual({ property: 1, fee: 1 }); expect((await s.m.view(null)).mayor).toBeNull();
     await expect(s.m.setRates('Ann', { property: 1.25, fee: 1 })).rejects.toThrow(/sitting mayor/);
     await expect(s.m.remove('again')).rejects.toThrow(/no mayor/);
@@ -168,13 +168,18 @@ describe('vice mayor = election runner-up (existing tie order, no minimum, no pr
     const v = await s.m.view('B'); expect(v.vice?.name).toBe('B'); expect(v.me?.isVice).toBe(true); expect(v.me?.isMayor).toBe(false);
     s.set(MON + 2 * WEEK_MS + H); expect(await s.m.vice()).toBeNull(); // role ends with the term
   });
-  it('tie for second -> earliest filer; zero votes still ranked; single candidate -> no vice; removal does not promote', async () => {
+  it('tie for second -> earliest filer; zero votes still ranked; single candidate -> no vice; removal promotes vice, vacates slot', async () => {
     const s = await setup(); const w = schedule(MON).week;
     await cand(s.pool, w, 'a', 1); await cand(s.pool, w, 'b', 2); await cand(s.pool, w, 'c', 3);
     await vote(s.pool, w, 'v1', 'a');
     s.set(schedule(MON).resultsAt + H); await s.m.settle(); s.set(MON + WEEK_MS + H);
     expect(await s.m.vice()).toMatchObject({ key: 'b', votes: 0 });
-    await s.m.remove('test'); expect(await s.m.mayor()).toBeNull(); expect((await s.m.vice())?.key).toBe('b');
+    expect(await s.m.remove('test')).toEqual({ removed: 'A', successor: 'B' });
+    const term = await s.m.mayor(); expect(term?.key).toBe('b'); expect(term?.startsAt).toBe(schedule(MON).termStart); expect(term?.endsAt).toBe(schedule(MON).termEnd);
+    expect(await s.m.vice()).toBeNull(); // slot vacated; 'c' (third) is NOT promoted
+    expect((await s.m.view('A')).me?.isMayor).toBe(false); expect((await s.m.view('B')).me?.isMayor).toBe(true);
+    expect((await s.pool.query('SELECT from_key, to_key FROM mayor_successions')).rows).toEqual([{ from_key: 'a', to_key: 'b' }]);
+    expect(await s.m.remove('again')).toEqual({ removed: 'B', successor: null }); expect(await s.m.mayor()).toBeNull();
     const s2 = await setup(); const w2 = schedule(MON).week; await cand(s2.pool, w2, 'solo', 1);
     s2.set(schedule(MON).resultsAt + H); await s2.m.settle(); s2.set(MON + WEEK_MS + H);
     expect((await s2.m.mayor())?.key).toBe('solo'); expect(await s2.m.vice()).toBeNull();

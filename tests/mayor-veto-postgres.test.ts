@@ -60,3 +60,57 @@ it.skipIf(!url)('real PostgreSQL: upgrade old pending-only schema; strict day sp
     await pool.end(); await root.query(`DROP SCHEMA ${schema} CASCADE`); await root.end();
   }
 }, 60000);
+
+it.skipIf(!url)('real PostgreSQL: vice succession on removal is atomic with submit/veto; daily slot kept; durable', async () => {
+  const { Mayor } = await import('../server/mayor');
+  const u = new URL(url!);
+  if (!['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname)) throw new Error('Only a disposable local test DB is allowed.');
+  const schema = `mayor_succ_test_${process.pid}_${Date.now()}`;
+  const root = new pg.Pool({ connectionString: url });
+  await root.query(`CREATE SCHEMA ${schema}`);
+  const pool = new pg.Pool({ connectionString: url, max: 24, options: `-c search_path=${schema}` });
+  let now = Date.parse('2026-11-07T00:00:00.000Z'); // Nov 6 18:00 Regina
+  const clock = () => now;
+  try {
+    const m = new Mayor(pool, (() => ({})) as never, clock); await m.init();
+    const start = now - 86400000, end = now + 3 * 86400000;
+    await pool.query("INSERT INTO mayor_terms (week, player_key, name, votes, starts_at, ends_at, vice_key, vice_name, vice_votes, vice_settled) VALUES ('2026-11-02','alice','Alice',3,$1,$2,'vic','Vic',1,TRUE)", [start, end]);
+    await pool.query("INSERT INTO mayor_bill_counter (id, value) VALUES (1, 0) ON CONFLICT (id) DO UPDATE SET value = 1");
+    await pool.query("INSERT INTO mayor_bills (number, day, text, by_name, mayor_key, term_week, at) VALUES (1, '2026-11-05', 'yesterday', 'Alice', 'alice', '2026-11-02', $1)", [now - 86400000]);
+    const laws = new MayorLaws(pool, clock);
+    // Race: removal vs Alice submitting vs Alice vetoing an earlier bill vs Vic vetoing.
+    const race = await Promise.allSettled([m.remove('abuse'), laws.submit('Alice', 'race bill'), laws.veto('Alice', '1'), laws.veto('Vic', '1')]);
+    expect(race[0].status).toBe('fulfilled');
+    const term = (await pool.query('SELECT * FROM mayor_terms')).rows[0];
+    expect(term).toMatchObject({ player_key: 'vic', name: 'Vic', vice_key: null, removed_at: null, starts_at: String(start), ends_at: String(end) });
+    // Every successful bill action was taken by whoever held the role at that serialized moment.
+    const bills = (await pool.query('SELECT * FROM mayor_bills ORDER BY number')).rows;
+    const ev = (await pool.query('SELECT * FROM mayor_bill_events')).rows;
+    expect(ev.length).toBeLessThanOrEqual(1);
+    if (ev[0]) expect(['alice', 'vic']).toContain(ev[0].by_key);
+    expect(bills.filter((b) => b.day === '2026-11-06').length).toBeLessThanOrEqual(1);
+    // Former mayor has no rights; new mayor (ex-vice) has mayor rights; vice slot vacant.
+    await expect(laws.submit('Alice', 'x')).rejects.toThrow('Only the sitting mayor');
+    const today = bills.find((b) => b.day === '2026-11-06');
+    if (today) await expect(laws.submit('Vic', 'second today')).rejects.toThrow('already submitted'); // slot not reset by promotion
+    else expect((await laws.submit('Vic', 'after promotion')).bill.by).toBe('Vic');
+    await expect(laws.submit('Vic', 'again')).rejects.toThrow('already submitted');
+    const todayNum = String((await pool.query("SELECT number FROM mayor_bills WHERE day = '2026-11-06'")).rows[0].number);
+    await expect(laws.veto('Vic', todayNum)).rejects.toThrow('vice mayor'); // nobody is vice now
+    await expect(laws.veto('Alice', '1')).rejects.toThrow(/Only the sitting mayor or vice mayor|already/);
+    const v1 = await laws.veto('Vic', '1'); expect(v1.bill.status).toBe('vetoed');
+    // Durable after restart; no third-place promotion; second removal empties the office.
+    const m2 = new Mayor(pool, (() => ({})) as never, clock); await m2.init();
+    expect((await m2.mayor())?.key).toBe('vic'); expect(await m2.vice()).toBeNull();
+    expect((await pool.query('SELECT from_key, to_key FROM mayor_successions')).rows).toEqual([{ from_key: 'alice', to_key: 'vic' }]);
+    expect(await m2.remove('again')).toEqual({ removed: 'Vic', successor: null }); expect(await m2.mayor()).toBeNull();
+    // Concurrent double removal with a fresh vice: exactly one succession.
+    await pool.query("UPDATE mayor_terms SET removed_at = NULL, player_key='p', name='P', vice_key='q', vice_name='Q', vice_votes=0");
+    const dbl = await Promise.allSettled([m.remove('a'), m2.remove('b')]);
+    expect(dbl.map((r) => r.status === 'fulfilled' ? r.value : (r.reason as Error).message)).toEqual(expect.arrayContaining([{ removed: 'P', successor: 'Q' }, { removed: 'Q', successor: null }]));
+    expect((await pool.query('SELECT count(*)::int AS n FROM mayor_successions')).rows[0].n).toBe(2);
+    now += 86400000; await expect(laws.submit('Q', 'x')).rejects.toThrow('Only the sitting mayor');
+  } finally {
+    await pool.end(); await root.query(`DROP SCHEMA ${schema} CASCADE`); await root.end();
+  }
+}, 60000);

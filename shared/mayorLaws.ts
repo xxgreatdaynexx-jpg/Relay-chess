@@ -15,7 +15,7 @@ export const LAW_RULE_LINES = [
   'Bills are publicly recorded and numbered forever, even when the mayor changes.',
   'Laws must be clear, possible to enforce, and limited to Chud Hub.',
   'No taking someone’s chips, property or items, banning players, or granting yourself rewards.',
-  'The vice mayor (election runner-up) can veto a bill submitted today. The sitting mayor can veto bills from earlier days. Days reset at midnight UTC-6. Vetoed bills stay in the record marked ‘Vetoed.’',
+  'The vice mayor (election runner-up) can veto a bill submitted today. The sitting mayor can veto bills from earlier days. Days reset at midnight UTC-6. Vetoed bills stay in the record marked ‘Vetoed.’ If the mayor is removed, the vice mayor becomes mayor.',
 ] as const;
 export const LAW_CORE_RULES = 'Laws can’t override core game rules.\n\nExamples: ‘Delete all’ or ‘Remove all.’ These are too broad—state exactly what the law would change.';
 export const LAW_RULES = [...LAW_RULE_LINES, LAW_CORE_RULES].join('\n\n');

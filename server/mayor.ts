@@ -31,6 +31,7 @@ ALTER TABLE mayor_terms ADD COLUMN IF NOT EXISTS vice_key TEXT;
 ALTER TABLE mayor_terms ADD COLUMN IF NOT EXISTS vice_name TEXT;
 ALTER TABLE mayor_terms ADD COLUMN IF NOT EXISTS vice_votes INTEGER;
 ALTER TABLE mayor_terms ADD COLUMN IF NOT EXISTS vice_settled BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE TABLE IF NOT EXISTS mayor_successions (id BIGSERIAL PRIMARY KEY, week TEXT NOT NULL, from_key TEXT NOT NULL, from_name TEXT NOT NULL, to_key TEXT NOT NULL, to_name TEXT NOT NULL, at BIGINT NOT NULL, note TEXT);
 CREATE TABLE IF NOT EXISTS mayor_rates (id TEXT PRIMARY KEY, at BIGINT NOT NULL, effective_at BIGINT NOT NULL, by_name TEXT NOT NULL, property DOUBLE PRECISION NOT NULL, fee DOUBLE PRECISION NOT NULL, note TEXT);
 CREATE TABLE IF NOT EXISTS mayor_rate_days (day BIGINT PRIMARY KEY, rate_id TEXT NOT NULL, by_name TEXT NOT NULL, at BIGINT NOT NULL);
 `;
@@ -179,15 +180,32 @@ export class Mayor {
 
   /** Admin: remove the sitting mayor (or mayor-elect) and put rates back to default immediately. */
   async remove(note: unknown) {
-    const now = this.clock(); await this.settle(now); const m = (await this.mayor(now)) ?? (await this.elect(now));
-    if (!m) throw new MayorError('There is no mayor to remove.');
+    const now = this.clock(); await this.settle(now);
     const n = String(note ?? '').slice(0, 200) || 'Removed by admin';
-    await this.pool.query('UPDATE mayor_terms SET removed_at = $2, note = $3 WHERE week = $1', [m.week, now, n]);
-    const c: RateChange = { at: now, effectiveAt: now, by: 'admin', property: 1, fee: 1, note: `Rates reset: ${m.name} removed (${n})` };
+    const cl = await this.pool.connect(); let out: { removed: string; successor: string | null };
+    try {
+      await cl.query('BEGIN');
+      // Lock the current (else upcoming) term row; bill submit/veto hold FOR SHARE on it, so succession is atomic w.r.t. them.
+      let r = await cl.query('SELECT * FROM mayor_terms WHERE starts_at <= $1 AND ends_at > $1 AND removed_at IS NULL ORDER BY starts_at DESC LIMIT 1 FOR UPDATE', [now]);
+      if (!r.rows[0]) r = await cl.query('SELECT * FROM mayor_terms WHERE starts_at > $1 AND removed_at IS NULL ORDER BY starts_at ASC LIMIT 1 FOR UPDATE', [now]);
+      const x = r.rows[0]; if (!x) throw new MayorError('There is no mayor to remove.');
+      if (x.vice_key) {
+        // Vice mayor becomes mayor for the rest of the same term; vice slot is vacated (no third-place successor).
+        await cl.query('UPDATE mayor_terms SET player_key = vice_key, name = vice_name, votes = vice_votes, vice_key = NULL, vice_name = NULL, vice_votes = NULL, note = $2 WHERE week = $1', [x.week, `${n} (${x.name} removed; vice mayor ${x.vice_name} succeeded)`]);
+        await cl.query('INSERT INTO mayor_successions (week, from_key, from_name, to_key, to_name, at, note) VALUES ($1,$2,$3,$4,$5,$6,$7)', [x.week, x.player_key, x.name, x.vice_key, x.vice_name, now, n]);
+        out = { removed: String(x.name), successor: String(x.vice_name) };
+      } else {
+        await cl.query('UPDATE mayor_terms SET removed_at = $2, note = $3 WHERE week = $1', [x.week, now, n]);
+        out = { removed: String(x.name), successor: null };
+      }
+      await cl.query('COMMIT');
+    } catch (e) { await cl.query('ROLLBACK'); throw e; } finally { cl.release(); }
+    const c: RateChange = { at: now, effectiveAt: now, by: 'admin', property: 1, fee: 1, note: `Rates reset: ${out.removed} removed (${n})${out.successor ? `; ${out.successor} is now mayor` : ''}` };
     await this.pool.query('INSERT INTO mayor_rates (id, at, effective_at, by_name, property, fee, note) VALUES ($1,$2,$3,$4,$5,$6,$7)', [randomUUID(), c.at, c.effectiveAt, c.by, 1, 1, c.note]);
-    this.log.push(c); console.log(`[mayor] admin removed ${m.name}`);
-    return { removed: m.name };
+    this.log.push(c); console.log(`[mayor] admin removed ${out.removed}${out.successor ? `; vice ${out.successor} succeeded` : ''}`);
+    return out;
   }
+
 
   async view(name: string | null): Promise<CityHallView> {
     const now = this.clock(); await this.settle(now); const s = schedule(now);
