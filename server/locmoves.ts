@@ -27,7 +27,7 @@ import { playerKey } from './skins.js';
 import { awayFromMarket } from './travel.js';
 import { cityFreightMul } from './city-rates.js';
 import { properties } from '../shared/realEstate.js';
-import { mineLoc, isPool, BIN_ITEM, FACTORY, WAREHOUSE, arrivalKey, hubOfLoc, isDestKind, locLabel, parseLoc, type HubId, type Loc } from '../shared/inventoryLocations.js';
+import { mineLoc, isPool, RESORT_WAREHOUSE, BIN_ITEM, FACTORY, WAREHOUSE, arrivalKey, hubOfLoc, isDestKind, locLabel, parseLoc, type HubId, type Loc } from '../shared/inventoryLocations.js';
 import { MAX_BANKED_STACK, nameOf, sellable, type ItemType } from '../shared/mines.js';
 import { cropById } from '../shared/farm.js';
 import { fishById } from '../shared/fishing.js';
@@ -109,9 +109,9 @@ export class LocMoves {
       for (const r of (await fp.query("SELECT loc, recipe, count(*)::int AS n FROM kitchen_dishes WHERE player_key = $1 AND sold_at IS NULL AND loc IS NOT NULL AND loc NOT LIKE 'transit:%' GROUP BY 1,2", [key]).catch(() => ({ rows: [] }))).rows) put(String(r.loc), `dish:${r.recipe}`, Number(r.n));
     }
     const homes = await this.homes(name).catch(() => new Map<string, boolean>());
-    const dests = [...(this.hasFactory(name) ? [FACTORY] : []), WAREHOUSE, ...[...homes.keys()].map((h) => `kitchen:${h}`)];
+    const dests = [...(this.hasFactory(name) ? [FACTORY] : []), WAREHOUSE, RESORT_WAREHOUSE]; void homes; // map pools: one warehouse per map (+ your factory)
     const ids = new Set([...out.keys(), ...dests]);
-    const locations = await Promise.all([...ids].map(async (id) => { const l = parseLoc(id); return { id, label: id === FACTORY && !this.hasFactory(name) ? 'Banked storage (held until you build a factory)' : locLabel(id), held: id === FACTORY && !this.hasFactory(name), hub: await this.hub(name, l), dest: dests.includes(id), sells: id === WAREHOUSE, items: (out.get(id) ?? []).sort((a, b) => a.label.localeCompare(b.label)) }; }));
+    const locations = await Promise.all([...ids].map(async (id) => { const l = parseLoc(id); return { id, label: id === FACTORY && !this.hasFactory(name) ? 'Banked storage' : locLabel(id), held: id === FACTORY && !this.hasFactory(name), hub: await this.hub(name, l), dest: dests.includes(id), sells: isPool(id), items: (out.get(id) ?? []).sort((a, b) => a.label.localeCompare(b.label)) }; }));
     const lg = getLogistics();
     const shipments = lg ? [...lg.ships.values()].filter((s) => s.kind === 'loc' && s.owner === key).map((s) => ({ id: s.id, from: s.fromLoc, to: s.toLoc, fromLabel: locLabel(s.fromLoc ?? ''), toLabel: locLabel(s.toLoc ?? ''), item: `${s.type}:${s.itemId}`, label: itemLabel(`${s.type}:${s.itemId}`), qty: s.qty, mode: s.mode, fee: s.fee, departAt: s.departAt, arriveAt: s.arriveAt })) : [];
     const busy = lg ? lg.busyTrucks(name) : new Set<string>();
@@ -139,7 +139,7 @@ export class LocMoves {
     if (from.id === to.id) throw new MoveError('Pick a different destination.');
     if (!isDestKind(to.kind)) throw new MoveError('Goods go to a map warehouse (Chud City or Resort) or your factory.');
     if (to.kind === 'factory' && !this.hasFactory(name)) throw new MoveError('Build your factory first.');
-    if (from.kind === 'factory' && !this.hasFactory(name)) throw new MoveError('You do not have a factory.');
+    // (pre-update banked storage was usable without a factory: moving it out to the city warehouse is allowed)
     const homes = await this.homes(name);
     if (it.row === 'dish' && to.kind === 'factory') throw new MoveError('Plated dishes go to the Warehouse (to sell) or a kitchen.');
     if (BIN_BUILDINGS.has(from.kind) && it.row !== 'stack') throw new MoveError('Unknown item.');
