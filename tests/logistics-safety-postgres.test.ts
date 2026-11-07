@@ -140,14 +140,15 @@ it.skipIf(!url)('real PostgreSQL: a boot that fails before ready hands the fence
     expect(await q('SELECT holder, mode, migrated FROM inv_fence')).toEqual([{ holder: null, mode: 'open', migrated: false }]);
     await oldWrite(); // the old server keeps working
     // SIGTERM before ready (Render stopping a deploy that never got healthy)
-    const c = spawn('npx', ['tsx', 'tests/fixtures/locmoves-pg-step.ts', 'failBoot', '{}'], { env: d.env(0, { LM_TEST_FAIL: 'hang' }), detached: false });
+    const c = spawn('npx', ['tsx', 'tests/fixtures/locmoves-pg-step.ts', 'failBoot', '{}'], { env: d.env(0, { LM_TEST_FAIL: 'hang' }), detached: true });
     let log = ''; c.stdout.on('data', (b) => { log += String(b); }); c.stderr.on('data', (b) => { log += String(b); });
     for (let i = 0; i < 200 && !log.includes('fence taken'); i++) await new Promise((r) => setTimeout(r, 200));
     expect(await q('SELECT mode FROM inv_fence')).toEqual([{ mode: 'fenced' }]);
     await expect(oldWrite()).rejects.toThrow(/inventory fenced/);
     const killed = new Promise((r) => c.on('exit', r));
-    // signal the tsx child (the node process) via the process group of npx
-    for (const pid of (await run('pgrep', ['-f', 'locmoves-pg-step.ts failBoot'])).stdout.trim().split('\n').filter(Boolean)) process.kill(Number(pid), 'SIGTERM');
+    // Signal only this fixture's dedicated process group, never another worktree's matching test.
+    if (!c.pid) throw new Error('Fixture process did not start');
+    process.kill(-c.pid, 'SIGTERM');
     await killed; await new Promise((r) => setTimeout(r, 500));
     expect(await q('SELECT holder, mode FROM inv_fence')).toEqual([{ holder: null, mode: 'open' }]);
     await oldWrite();
