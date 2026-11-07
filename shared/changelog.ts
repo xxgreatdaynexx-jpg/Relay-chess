@@ -6,6 +6,22 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: "d4c8f89", at: "2026-11-07T12:49:50-06:00", title: "Farming restored; one warehouse inventory per map", bullets: [
+    "Farming is back to its pre-Millionaire behavior. Each player shares one inventory per map, with the Chud City Warehouse and Resort Warehouse.",
+    "Same-map hauling is no longer required to use your goods. Ships and planes handle cross-map transport.",
+    "Items with uncertain old locations remain safely held for review; no held-stock cashout or compensation has been paid.",
+  ] },
+  { commit: "1ed0d39", at: "2026-11-07T10:35:37-06:00", title: "Lower property surcharge; historical back-tax canceled and refunded", bullets: [
+    "The property surcharge is now 1% per 1,000 chips of property already owned, down from 2%.",
+    "Unpaid historical back-tax is permanently canceled. Actual paid back-tax has been refunded in full, including its surcharge and wealth-tax portions: 220,145 chips across three original payments.",
+    "Ordinary taxes and previously distributed tax shares are unchanged.",
+  ] },
+  { commit: "cdcea58", at: "2026-11-07T08:39:25-06:00", title: "Larger mobile navigation targets", bullets: [
+    "Mobile navigation has larger touch targets, a single-line clock and weekly-event bar, and map tiles begin below the HUD. This does not claim every mobile farm issue is fixed.",
+  ] },
+  { commit: "f5815ee", at: "2026-11-07T07:43:21-06:00", title: "Map launch notice cleanup", bullets: [
+    "Removed the outdated Millionaire Update: soon map badge and stopped repeated prelaunch-notice requests.",
+  ] },
   { commit: '', at: '2026-11-06T18:03:00-06:00', title: 'City Hall: pending mayor bills', bullets: [
     'The sitting mayor can submit one public bill per Regina calendar day. Each gets a global Bill Chud number. Bills remain public records and do not change gameplay automatically. The election runner-up serves as vice mayor and can veto a bill submitted today; the sitting mayor can veto bills from earlier days. Vetoed bills stay in the record marked Vetoed. If the mayor is removed, the vice mayor becomes mayor.',
   ] },
