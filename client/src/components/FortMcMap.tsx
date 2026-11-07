@@ -32,7 +32,9 @@ export function FortMcMap() {
   const jetName = trip.arrivedBy ?? trip.jet; const jetModel = jetName ? JETS.find((m) => m.name === jetName) ?? null : null;
   useEffect(() => {
     const w = worldRef.current; if (!ready || !w || !jetModel || jetShown.current) return; jetShown.current = true;
-    if (tripNow().arrivedBy) { w.jetShow(jetModel, 'land'); clearArrival(); } else w.jetShow(jetModel, 'park');
+    // Only a plane in actual use is drawn: the landing of the jet that just flew you here, then it's removed. Owning a jet
+    // (trip.jet) is not use, so a reload / passenger arrival never materialises a parked jet.
+    if (tripNow().arrivedBy) { w.jetShow(jetModel, 'land', () => w.jetHide()); clearArrival(); }
   }, [ready, jetModel]);
 
   const apply = useCallback((r: { ok: boolean } & Partial<View>) => { if (r.fort) { setView(r as View); worldRef.current?.setFort(r.fort); } }, []);

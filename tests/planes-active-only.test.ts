@@ -32,3 +32,15 @@ describe('only planes players are actually using are drawn', () => {
     expect(getMines().stackQty('QA-Pilot', 'bar', 'iron_bar')).toBe(30); // cargo delivered, not lost
   });
 });
+
+describe('Fort McChud jet: drawn only for an actual flight', () => {
+  const map = readFileSync(new URL('../client/src/components/FortMcMap.tsx', import.meta.url), 'utf8');
+  it('owning a jet (reload / arrived as a passenger) never materialises a parked jet', () => {
+    expect(map).not.toMatch(/jetShow\(jetModel, 'park'\)/);
+  });
+  it('a real own-jet arrival still lands, then the jet is removed; take-off home still animates', () => {
+    expect(map).toMatch(/if \(tripNow\(\)\.arrivedBy\) \{ w\.jetShow\(jetModel, 'land', \(\) => w\.jetHide\(\)\)/);
+    expect(map).toMatch(/w\.jetShow\(jetModel, 'takeoff', res\)/);
+    expect(src('fortmc3d.ts')).toMatch(/jetHide\(\) \{ if \(jet\) \{ scene\.remove\(jet\)/);
+  });
+});

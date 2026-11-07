@@ -330,6 +330,8 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
       if (mode === 'park') { jetPose(jet, PARK.x, 0, PARK.z, -Math.PI / 2, 0); jetAnim = null; done?.(); return; }
       frameAirport(); jetAnim = { mode, t: 0, dur: mode === 'land' ? 9 : 7, done }; stepJet(0);
     },
+    /** Remove the jet once its flight is over (only planes in actual use are drawn). */
+    jetHide() { if (jet) { scene.remove(jet); disposeTree(jet); jet = null; } jetAnim = null; },
     jetBusy: () => !!jetAnim,
   };
   applySky(); let skyT = 0;
