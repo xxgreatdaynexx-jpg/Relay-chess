@@ -1,3 +1,5 @@
+import { fenceHeld } from './invFence.js';
+import { PANTRY_MAX } from '../shared/cooking.js';
 /**
  * Truck logistics between individual locations (Dayne 2026-11-06; ids in shared/inventoryLocations.ts).
  *
@@ -25,7 +27,7 @@ import { awayFromMarket } from './travel.js';
 import { cityFreightMul } from './city-rates.js';
 import { properties } from '../shared/realEstate.js';
 import { BIN_ITEM, FACTORY, WAREHOUSE, arrivalKey, hubOfLoc, isDestKind, locLabel, parseLoc, type HubId, type Loc } from '../shared/inventoryLocations.js';
-import { nameOf, sellable, type ItemType } from '../shared/mines.js';
+import { MAX_BANKED_STACK, nameOf, sellable, type ItemType } from '../shared/mines.js';
 import { cropById } from '../shared/farm.js';
 import { fishById } from '../shared/fishing.js';
 import { recipeById } from '../shared/cooking.js';
@@ -36,7 +38,7 @@ export class MoveError extends Error {}
 type Stmt = { sql: string; args: unknown[] };
 type Q = { query: (sql: string, args?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }> };
 const PACK_TYPES = new Set(['ore', 'bar', 'good', 'food']);
-const BIN_BUILDINGS = new Set(['coral', 'resort_farm']);
+const BIN_BUILDINGS = new Set(['coral']); // the Coral Grotto haul bin (building_inv). The pooled resort barn is legacy-only (migrated).
 /** What moves: a stack ('ore:iron', 'crop:wheat'), raw fish of a species ('fish:trout'), cooler dishes ('fdish:trout'), kitchen dishes ('dish:<recipe>'). */
 export function parseItem(v: unknown): { row: 'stack' | 'fish' | 'fdish' | 'dish'; item: string; type: string; id: string } {
   if (typeof v !== 'string') throw new MoveError('Unknown item.');
@@ -89,7 +91,7 @@ export class LocMoves {
     const l = parseLoc(loc); const it = parseItem(item); const key = playerKey(name);
     if (it.row === 'fish' || it.row === 'fdish') return Number((await this.fishPool().query(`SELECT count(*)::int AS n FROM fish_catches WHERE player_key = $1 AND loc = $2 AND species = $3 AND sold_at IS NULL AND ${fishWhere(it.row)}`, [key, l.id, it.id])).rows[0]?.n ?? 0);
     if (it.row === 'dish') return Number((await this.fishPool().query('SELECT count(*)::int AS n FROM kitchen_dishes WHERE player_key = $1 AND loc = $2 AND recipe = $3 AND sold_at IS NULL', [key, l.id, it.id])).rows[0]?.n ?? 0);
-    if (l.kind === 'factory') return PACK_TYPES.has(it.type) ? getMines().stackQty(name, it.type as ItemType, it.id) : 0;
+    if (l.kind === 'factory' && PACK_TYPES.has(it.type)) return getMines().stackQty(name, it.type as ItemType, it.id); // crops kept as crops (legacy barn) live in loc_stock 'factory'
     if (BIN_BUILDINGS.has(l.kind)) return (await getWarehouse().bin(name, l.kind as 'coral')).get(item) ?? 0;
     return getLocStore().qty(name, l.id, item);
   }
@@ -108,7 +110,7 @@ export class LocMoves {
     const homes = await this.homes(name).catch(() => new Map<string, boolean>());
     const dests = [...(this.hasFactory(name) ? [FACTORY] : []), WAREHOUSE, ...[...homes.keys()].map((h) => `kitchen:${h}`)];
     const ids = new Set([...out.keys(), ...dests]);
-    const locations = await Promise.all([...ids].map(async (id) => { const l = parseLoc(id); return { id, label: locLabel(id), hub: await this.hub(name, l), dest: dests.includes(id), sells: id === WAREHOUSE, items: (out.get(id) ?? []).sort((a, b) => a.label.localeCompare(b.label)) }; }));
+    const locations = await Promise.all([...ids].map(async (id) => { const l = parseLoc(id); return { id, label: id === FACTORY && !this.hasFactory(name) ? 'Banked storage (held until you build a factory)' : locLabel(id), held: id === FACTORY && !this.hasFactory(name), hub: await this.hub(name, l), dest: dests.includes(id), sells: id === WAREHOUSE, items: (out.get(id) ?? []).sort((a, b) => a.label.localeCompare(b.label)) }; }));
     const lg = getLogistics();
     const shipments = lg ? [...lg.ships.values()].filter((s) => s.kind === 'loc' && s.owner === key).map((s) => ({ id: s.id, from: s.fromLoc, to: s.toLoc, fromLabel: locLabel(s.fromLoc ?? ''), toLabel: locLabel(s.toLoc ?? ''), item: `${s.type}:${s.itemId}`, label: itemLabel(`${s.type}:${s.itemId}`), qty: s.qty, mode: s.mode, fee: s.fee, departAt: s.departAt, arriveAt: s.arriveAt })) : [];
     const busy = lg ? lg.busyTrucks(name) : new Set<string>();
@@ -141,11 +143,19 @@ export class LocMoves {
     if (to.kind === 'kitchen' && !homes.has(to.ref)) throw new MoveError('You can only deliver to a kitchen in a home you own.');
     if (to.kind === 'kitchen' && !(it.type === 'food' || it.type === 'crop' || it.row === 'fish' || it.row === 'dish' || it.row === 'fdish')) throw new MoveError('Kitchens take food, crops, fish and dishes.');
     if (it.row === 'dish' && to.kind === 'factory') throw new MoveError('Plated dishes go to the Warehouse (to sell) or a kitchen.');
-    if (it.row === 'stack' && from.kind === 'factory' && !PACK_TYPES.has(it.type)) throw new MoveError('Unknown item.');
     if (BIN_BUILDINGS.has(from.kind) && it.row !== 'stack') throw new MoveError('Unknown item.');
     const have = await this.qty(name, from.id, it.item);
     if (have < qty) throw new MoveError(`Only ${have.toLocaleString('en-US')} ${itemLabel(it.item)} at ${locLabel(from.id)}.`);
     const lg = getLogistics(); if (!lg) throw new MoveError('Freight is offline right now.');
+    if (from.kind === 'factory' && PACK_TYPES.has(it.type) || to.kind === 'factory') { const m = getMines(); if (!m.store || m.offline) throw new MoveError('Factory storage is reconnecting. Nothing was moved; try again in a minute.'); }
+    // Room at the destination, counting loads already on the way there (no stalled arrivals, nothing dropped).
+    if (it.row === 'stack') {
+      const key = arrivalKey(it.item, to.kind); const inbound = [...lg.ships.values()].filter((x) => x.kind === 'loc' && x.toKey === playerKey(name) && x.toLoc === to.id && arrivalKey(`${x.type}:${x.itemId}`, to.kind) === key).reduce((a, x) => a + x.qty, 0);
+      const [kt, kid] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+      const at = to.kind === 'factory' && PACK_TYPES.has(kt) ? getMines().stackQty(name, kt as ItemType, kid) : getLocStore().qty(name, to.id, key);
+      const cap = to.kind === 'kitchen' ? PANTRY_MAX : to.kind === 'factory' && PACK_TYPES.has(kt) ? MAX_BANKED_STACK : Infinity;
+      if (at + inbound + qty > cap) throw new MoveError(`${locLabel(to.id)} has room for ${Math.max(0, cap - at - inbound).toLocaleString('en-US')} more ${itemLabel(key)}.`);
+    }
     const fromHub = from.kind === 'kitchen' ? hubOfLoc(from.id, homes.get(from.ref) === true) : hubOfLoc(from.id);
     const toHub = to.kind === 'kitchen' ? hubOfLoc(to.id, homes.get(to.ref) === true) : hubOfLoc(to.id);
     let plan: Awaited<ReturnType<typeof lg.planLeg>>;
@@ -167,9 +177,9 @@ export class LocMoves {
           const r = await cl.query('UPDATE kitchen_dishes SET loc = $5 WHERE id IN (SELECT id FROM kitchen_dishes WHERE player_key = $1 AND loc = $2 AND recipe = $3 AND sold_at IS NULL ORDER BY cooked_at, id LIMIT $4 FOR UPDATE)', [playerKey(name), from.id, it.id, qty, `transit:${s.id}`]);
           if (r.rowCount !== qty) throw new MoveError('Those dishes just moved. Try again.');
         }, w?.after);
-      } else if (from.kind === 'factory') {
+      } else if (from.kind === 'factory' && PACK_TYPES.has(it.type)) {
         const mines = getMines(); let fail: Error | null = null; let done: Promise<unknown> = Promise.resolve(); let fb: Stmt[] | null = null;
-        const ok = mines.adjustStack(name, it.type as ItemType, it.id, -qty, rows, (r) => { fb = r; }, { after: w?.after, bind: (x) => { done = x; }, onFail: (e) => { fail = e; } });
+        const ok = mines.adjustStack(name, it.type as ItemType, it.id, -qty, rows, (r) => { fb = r; }, { after: w?.after, bind: (x) => { done = x; }, onFail: (e) => { fail = e; }, committed: () => this.shipExists(s.id) });
         if (!ok) { w?.revert(); throw new MoveError(`Only ${mines.stackQty(name, it.type as ItemType, it.id)} ${itemLabel(it.item)} at your factory.`); }
         p = (async () => { if (fb) { const wp = (getWarehouse() as unknown as { pool: LocPool | null }).pool; if (wp) await this.tx(wp, fb); } else await done; if (fail) throw fail; })();
       } else if (BIN_BUILDINGS.has(from.kind)) {
@@ -191,7 +201,7 @@ export class LocMoves {
   /** Credit a delivered load at its destination exactly once (called by Logistics.tick; rejection = retried). */
   async arrive(s: Shipment): Promise<void> {
     const to = parseLoc(s.toLoc); const item = `${s.type}:${s.itemId}`; const it = parseItem(item);
-    const flip = mustOne("UPDATE freight_shipments SET status = 'delivered' WHERE id = $1 AND status = 'transit'", [s.id]);
+    const flip = mustOne("UPDATE freight_shipments SET status = 'delivered' WHERE id = $1 AND status = 'moving'", [s.id]);
     try {
       if (it.row === 'fish' || it.row === 'fdish') {
         await this.tx(this.fishPool(), [{ sql: 'UPDATE fish_catches SET loc = $2 WHERE loc = $1', args: [`transit:${s.id}`, to.id] }, flip]);
@@ -201,11 +211,12 @@ export class LocMoves {
         const key = arrivalKey(item, to.kind); const [t, id] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
         if (to.kind === 'factory') {
           if (!PACK_TYPES.has(t)) throw new Error(`factory can't store ${key}`);
-          const mines = getMines(); let fail: Error | null = null; let done: Promise<unknown> = Promise.resolve(); let fb: Stmt[] | null = null;
-          if (!mines.adjustStack(s.ownerName, t as ItemType, id, s.qty, [flip], (r) => { fb = r; }, { bind: (x) => { done = x; }, onFail: (e) => { fail = e; } })) throw new Error('could not store');
+          const mines = getMines(); if (!mines.store || mines.offline) throw new Error('factory storage offline (arrival retried)');
+          let fail: Error | null = null; let done: Promise<unknown> = Promise.resolve(); let fb: Stmt[] | null = null;
+          if (!mines.adjustStack(s.ownerName, t as ItemType, id, s.qty, [flip], (r) => { fb = r; }, { bind: (x) => { done = x; }, onFail: (e) => { fail = e; }, committed: () => this.delivered(s.id) })) throw new Error('could not store');
           if (fb) { const wp = (getWarehouse() as unknown as { pool: LocPool | null }).pool; if (wp) await this.tx(wp, fb); } else await done; if (fail) throw fail;
         } else {
-          const r = getLocStore().adjust(s.ownerName, [{ loc: to.id, item: key, delta: s.qty }], [flip]); if (r === false) throw new Error('could not store');
+          const r = getLocStore().adjust(s.ownerName, [{ loc: to.id, item: key, delta: s.qty }], [flip], { committed: () => this.delivered(s.id) }); if (r === false) throw new Error('could not store');
           await r;
         }
       }
@@ -218,6 +229,20 @@ export class LocMoves {
     this.onArrive?.(s);
   }
   onArrive: ((s: Shipment) => void) | null = null;
+  private async delivered(id: string): Promise<boolean> { return String((await this.fishPool().query('SELECT status FROM freight_shipments WHERE id = $1', [id])).rows[0]?.status ?? '') === 'delivered'; }
+  private async shipExists(id: string): Promise<boolean> { return !!(await this.fishPool().query('SELECT 1 FROM freight_shipments WHERE id = $1', [id])).rows.length; }
+
+  /** Factory-to-factory loads (Freight Yard) and every legacy in-flight 'move' load: credited exactly once at the
+   *  recipient's factory store. A recipient without a factory: the load waits at the dock (stays in transit, retried
+   *  with backoff, reported by the migration) until they build one - never credited elsewhere, never lost. */
+  async arriveLegacy(s: Shipment): Promise<void> {
+    if (!this.hasFactory(s.toName)) throw new Error(`held at the dock: ${s.toName} has no factory (shipment ${s.id})`);
+    const mines = getMines(); if (!mines.store || mines.offline) throw new Error('factory storage offline (arrival retried)');
+    const flip = mustOne("UPDATE freight_shipments SET status = 'delivered' WHERE id = $1 AND status = 'transit'", [s.id]);
+    let fail: Error | null = null; let done: Promise<unknown> = Promise.resolve();
+    if (!mines.adjustStack(s.toName, s.type, s.itemId, s.qty, [flip], undefined, { bind: (x) => { done = x; }, onFail: (e) => { fail = e; }, committed: () => this.delivered(s.id) })) throw new Error('could not store');
+    await done; if (fail) { if (await this.delivered(s.id).catch(() => false)) return; throw fail; }
+  }
 
   // ------------------------------------------------------------------ selling (Chud City Warehouse only)
   async sell(name: string, b: Record<string, unknown>) {
@@ -263,35 +288,71 @@ export class LocMoves {
 
   // ------------------------------------------------------------------ legacy migration (Dayne: existing stock -> each owner's factory)
   /**
-   * Banked stock (mine_items) already IS factory stock. This moves the rest: unsold cooler fish (and cooler dishes) and
-   * kitchen dishes get loc 'factory'; cutting-board fillets become factory food stacks ('food:fillet_<kind>').
-   * Only owners with a factory are moved; anyone else is held (left untouched, reported) - nothing is created or guessed.
-   * Idempotent: rows already located are skipped; fillets move with a guarded decrement in the factory store transaction.
+   * Runs at boot AFTER this server took the inventory writer fence (server/invFence.ts) and BEFORE it serves, so no
+   * old-code writer can add or consume legacy rows meanwhile. Banked stock (mine_items) already IS factory stock. Moves:
+   *  - unsold located-nowhere cooler fish / cooler dishes / kitchen dishes -> loc 'factory' (rows keep species/weight/value);
+   *  - shared cutting-board fillets (kitchen_fillets) -> factory food:fillet_<kind> (guarded zeroing, one transaction);
+   *  - the pooled resort plantation barn (building_inv 'resort_farm') -> loc_stock 'factory' crop:<id> (still crops).
+   * Owners with no factory are HELD: their legacy rows stay exactly as they are (unusable), and are reported.
+   * Every step is idempotent; a step that fails for one owner is reported as held with its reason, never skipped silently.
+   * The report has per-owner/item totals before and after (conservation check).
    */
-  async migrateLegacy(): Promise<{ fish: number; dishes: number; fillets: number; held: string[] }> {
-    const pool = this.fishPool(); const mines = getMines();
+  async migrateLegacy(): Promise<{ fish: number; dishes: number; fillets: number; barn: number; held: Array<{ owner: string; what: string; why: string }>; freightHeld: Array<{ id: string; to: string; item: string; qty: number }>; conserved: boolean }> {
+    const pool = this.fishPool(); const mines = getMines(); const ls = getLocStore(); const lg = getLogistics();
+    if (!mines.store || mines.offline || !ls.loaded) throw new Error('storage not ready');
     const owners = new Set<string>([...mines.factories].filter(([, f]) => f.level > 0).map(([k]) => k)); for (const k of mines.fv2.keys()) owners.add(k);
-    const list = [...owners];
+    const list = [...owners]; const held: Array<{ owner: string; what: string; why: string }> = [];
+    const totals = async () => {
+      const t = new Map<string, number>(); const add = (k: string, n: number) => t.set(k, (t.get(k) ?? 0) + n);
+      for (const r of (await pool.query("SELECT player_key k, species s, (dish IS NOT NULL) d, count(*)::int n FROM fish_catches WHERE sold_at IS NULL GROUP BY 1,2,3")).rows) add(`${r.k}|${r.d ? 'fdish' : 'fish'}:${r.s}`, Number(r.n));
+      for (const r of (await pool.query('SELECT player_key k, recipe s, count(*)::int n FROM kitchen_dishes WHERE sold_at IS NULL GROUP BY 1,2')).rows) add(`${r.k}|dish:${r.s}`, Number(r.n));
+      for (const r of (await pool.query('SELECT player_key k, kind s, qty n FROM kitchen_fillets WHERE qty > 0')).rows) add(`${r.k}|food:fillet_${r.s}`, Number(r.n));
+      for (const r of (await pool.query("SELECT player_key k, item_type t, item_id s, qty n FROM mine_items WHERE item_type = 'food' AND item_id LIKE 'fillet\\_%'")).rows) add(`${r.k}|${r.t}:${r.s}`, Number(r.n));
+      for (const r of (await pool.query("SELECT player_key k, item s, qty n FROM building_inv WHERE building = 'resort_farm' AND qty > 0").catch(() => ({ rows: [] as Array<Record<string, unknown>> }))).rows) add(`${r.k}|${r.s}`, Number(r.n));
+      for (const r of (await pool.query("SELECT player_key k, item s, qty n FROM loc_stock WHERE loc = 'factory' AND item LIKE 'crop:%'")).rows) add(`${r.k}|${r.s}`, Number(r.n));
+      return t;
+    };
+    const before = await totals();
     const fish = (await pool.query("UPDATE fish_catches SET loc = 'factory' WHERE loc IS NULL AND sold_at IS NULL AND player_key = ANY($1::text[])", [list])).rowCount ?? 0;
     const dishes = (await pool.query("UPDATE kitchen_dishes SET loc = 'factory' WHERE loc IS NULL AND sold_at IS NULL AND player_key = ANY($1::text[])", [list])).rowCount ?? 0;
-    let fillets = 0;
+    let fillets = 0, barn = 0;
     for (const r of (await pool.query('SELECT player_key, kind, qty FROM kitchen_fillets WHERE qty > 0')).rows) {
-      const k = String(r.player_key); if (!owners.has(k)) continue; const q = Number(r.qty); const kind = String(r.kind);
+      const k = String(r.player_key); const q = Number(r.qty); const kind = String(r.kind);
+      if (!owners.has(k)) { held.push({ owner: k, what: `${q} fillet_${kind}`, why: 'no factory' }); continue; }
       const nm = mines.names.get(k) ?? mines.fv2Names.get(k) ?? k;
-      let fail: Error | null = null; let done: Promise<unknown> = Promise.resolve(); let fb: Stmt[] | null = null;
-      const ok = mines.adjustStack(nm, 'food', `fillet_${kind}`, q, [mustOne('UPDATE kitchen_fillets SET qty = 0 WHERE player_key = $1 AND kind = $2 AND qty = $3', [k, kind, q])], (x) => { fb = x; }, { bind: (x) => { done = x; }, onFail: (e) => { fail = e; } });
-      if (!ok) continue; if (fb) await this.tx(pool, fb); else await done; if (!fail) fillets += q;
+      let fail: Error | null = null; let done: Promise<unknown> = Promise.resolve();
+      const guard = mustOne('UPDATE kitchen_fillets SET qty = 0 WHERE player_key = $1 AND kind = $2 AND qty = $3', [k, kind, q]);
+      const gone = async () => Number((await pool.query('SELECT qty FROM kitchen_fillets WHERE player_key = $1 AND kind = $2', [k, kind])).rows[0]?.qty ?? -1) === 0;
+      if (mines.stackQty(nm, 'food', `fillet_${kind}`) + q > MAX_BANKED_STACK) { held.push({ owner: k, what: `${q} fillet_${kind}`, why: 'factory stack full' }); continue; }
+      if (!mines.adjustStack(nm, 'food', `fillet_${kind}`, q, [guard], undefined, { bind: (x) => { done = x; }, onFail: (e) => { fail = e; }, committed: gone })) { held.push({ owner: k, what: `${q} fillet_${kind}`, why: 'could not apply' }); continue; }
+      await done; if (fail) held.push({ owner: k, what: `${q} fillet_${kind}`, why: (fail as Error).message.slice(0, 80) }); else fillets += q;
     }
-    const held = [...new Set([
-      ...(await pool.query('SELECT DISTINCT player_key FROM fish_catches WHERE loc IS NULL AND sold_at IS NULL')).rows.map((r) => String(r.player_key)),
-      ...(await pool.query('SELECT DISTINCT player_key FROM kitchen_dishes WHERE loc IS NULL AND sold_at IS NULL')).rows.map((r) => String(r.player_key)),
-      ...(await pool.query('SELECT DISTINCT player_key FROM kitchen_fillets WHERE qty > 0')).rows.map((r) => String(r.player_key)),
-    ])];
-    const report = { fish, dishes, fillets, held, at: this.clock() };
-    await pool.query("INSERT INTO loc_migrations (id, at, report) VALUES ('legacy-to-factory-v1', $1, $2) ON CONFLICT (id) DO UPDATE SET report = loc_migrations.report || jsonb_build_object('last', EXCLUDED.report)", [this.clock(), JSON.stringify(report)]).catch((e) => console.error('[locmoves] report write failed:', (e as Error).message));
-    if (fish || dishes || fillets || held.length) console.log('[locmoves] legacy -> factory:', JSON.stringify({ fish, dishes, fillets, held: held.length }));
+    for (const r of (await pool.query("SELECT player_key, name, item, qty FROM building_inv WHERE building = 'resort_farm' AND qty > 0").catch(() => ({ rows: [] as Array<Record<string, unknown>> }))).rows) {
+      const k = String(r.player_key); const q = Number(r.qty); const item = String(r.item);
+      if (!owners.has(k)) { held.push({ owner: k, what: `${q} ${item} (resort barn)`, why: 'no factory' }); continue; }
+      if (!item.startsWith('crop:')) { held.push({ owner: k, what: `${q} ${item} (resort barn)`, why: 'not a crop' }); continue; }
+      const nm = String(r.name || k);
+      const guard = mustOne("UPDATE building_inv SET qty = 0 WHERE player_key = $1 AND building = 'resort_farm' AND item = $2 AND qty = $3", [k, item, q]);
+      const gone = async () => Number((await pool.query("SELECT qty FROM building_inv WHERE player_key = $1 AND building = 'resort_farm' AND item = $2", [k, item])).rows[0]?.qty ?? -1) === 0;
+      const p = ls.adjust(nm, [{ loc: FACTORY, item, delta: q }], [guard], { committed: gone });
+      try { if (p === false) throw new Error('could not apply'); await p; barn += q; } catch (e) { held.push({ owner: k, what: `${q} ${item} (resort barn)`, why: (e as Error).message.slice(0, 80) }); }
+    }
+    for (const r of (await pool.query('SELECT DISTINCT player_key FROM fish_catches WHERE loc IS NULL AND sold_at IS NULL')).rows) held.push({ owner: String(r.player_key), what: 'cooler fish', why: 'no factory' });
+    for (const r of (await pool.query('SELECT DISTINCT player_key FROM kitchen_dishes WHERE loc IS NULL AND sold_at IS NULL')).rows) held.push({ owner: String(r.player_key), what: 'kitchen dishes', why: 'no factory' });
+    // In-flight legacy freight to a player with no factory: it waits at the dock (see arriveLegacy) - reported, not guessed.
+    const freightHeld = lg ? [...lg.ships.values()].filter((x) => (x.kind ?? 'move') === 'move' && !this.hasFactory(x.toName)).map((x) => ({ id: x.id, to: x.toKey, item: `${x.type}:${x.itemId}`, qty: x.qty })) : [];
+    // Conservation: every owner/item total (fillets counted on the board + in the factory; barn crops in the barn + factory crops).
+    const after = await totals(); const keys = new Set([...before.keys(), ...after.keys()]);
+    const norm = (t: Map<string, number>) => { const o = new Map<string, number>(); for (const [k, n] of t) o.set(k, (o.get(k) ?? 0) + n); return o; };
+    const b0 = norm(before), a0 = norm(after); let conserved = true; for (const k of keys) if ((b0.get(k) ?? 0) !== (a0.get(k) ?? 0)) { conserved = false; console.error('[locmoves] CONSERVATION MISMATCH', k, b0.get(k), a0.get(k)); }
+    const report = { fish, dishes, fillets, barn, held, freightHeld, conserved, at: this.clock() };
+    await pool.query("INSERT INTO loc_migrations (id, at, report) VALUES ('legacy-to-factory-v1', $1, $2) ON CONFLICT (id) DO UPDATE SET report = loc_migrations.report || jsonb_build_object('last', EXCLUDED.report)", [this.clock(), JSON.stringify(report)]);
+    console.log('[locmoves] legacy -> factory:', JSON.stringify({ fish, dishes, fillets, barn, held: held.length, freightHeld: freightHeld.length, conserved }));
     return report;
   }
+  ready = false;
+  /** The boot migration's report (moved counts, held owners, held freight, conservation) for the operator log / tests. */
+  lastMigration: Awaited<ReturnType<LocMoves['migrateLegacy']>> | null = null;
 }
 
 let lm = new LocMoves();
@@ -300,16 +361,23 @@ export const setLocMoves = (x: LocMoves) => { lm = x; };
 /** Hook producers + freight into per-location stock (idempotent). */
 export function wireLocMoves() {
   const mines = getMines();
-  if (!mines.cityBin) mines.cityBin = (acct, stacks, cave) => { const d = stacks.filter((x) => x.qty > 0).map((x) => ({ loc: `mine:${cave}`, item: `${x.type}:${x.id}`, delta: x.qty })); getLocStore().applyMem(acct, d); return getLocStore().rowsFor(acct, d); };
+  const caveDeltas = (stacks: Array<{ type: string; id: string; qty: number }>, cave: string) => stacks.filter((x) => x.qty > 0).map((x) => ({ loc: `mine:${cave}`, item: `${x.type}:${x.id}`, delta: x.qty }));
+  if (!mines.cityBin) mines.cityBin = (acct, stacks, cave) => { if (!getLocStore().loaded) throw new MineError('Cave storage is starting up. Try again in a moment.'); return getLocStore().rowsFor(acct, caveDeltas(stacks, cave)); };
+  if (!mines.cityBinDone) mines.cityBinDone = (acct, stacks, cave) => getLocStore().applyMem(acct, caveDeltas(stacks, cave));
   const lg = getLogistics(); if (lg && !lg.onLoc) lg.onLoc = (s) => lm.arrive(s);
+  if (lg && !lg.onLegacy) lg.onLegacy = (s) => lm.arriveLegacy(s);
 }
-export async function initLocMoves() {
+/** Boot step (awaited before the server listens): wire producers + freight, then run the legacy migration until it
+ *  succeeds. Until then nothing is served (fail closed); no DB = dev memory mode, nothing to migrate. */
+export async function initLocMoves(opts: { dbUrl?: string | undefined } = {}) {
   wireLocMoves();
-  for (let i = 0; i < 60; i++) {
+  if (!opts.dbUrl) { lm.ready = true; return; }
+  for (let i = 0; ; i++) {
+    if (!fenceHeld()) throw new Error('[locmoves] a newer server holds the inventory fence: not serving inventory (fail closed)');
     const m = getMines(); if (getFishing() && getCooking() && m.store && !m.offline && getLocStore().loaded) {
-      try { await lm.migrateLegacy(); return; } catch (e) { console.error('[locmoves] legacy migration failed (will retry):', (e as Error).message); }
+      try { const r = await lm.migrateLegacy(); lm.lastMigration = r; if (!r.conserved) throw new Error('conservation check failed: see the log; not serving inventory'); lm.ready = true; return; } catch (e) { console.error('[locmoves] legacy migration failed (will retry):', (e as Error).message); }
     }
-    await new Promise((r) => setTimeout(r, 10_000));
+    await new Promise((r) => setTimeout(r, Math.min(30_000, 2000 * 2 ** Math.min(i, 4))));
   }
 }
 
@@ -321,7 +389,7 @@ export function registerLocMoves(io: Server, socket: Socket): void {
   const need = () => { const n = nameOf_(); if (!n) throw new MoveError('Sign in to move goods.'); return n; };
   const known = (e: unknown) => e instanceof MoveError || e instanceof LocError || e instanceof FreightError || e instanceof MineError || e instanceof FishError || e instanceof CookError || e instanceof FarmError || /^(Not enough chips\.|Wallet temporarily unavailable\.|Unknown location\.|Unknown item\.)$/.test((e as Error).message);
   const on = (ev: string, fn: (b: Record<string, unknown>, n: string) => Promise<unknown>) => socket.on(ev, async (payload: unknown, ack?: Ack) => {
-    try { const n = need(); const b = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}; const r = await fn(b, n); ack?.({ ok: true, ...(r as object), view: await lm.view(n) }); }
+    try { if (!lm.ready) throw new MoveError('Inventory is starting up. Nothing changed; try again in a moment.'); const n = need(); const b = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}; const r = await fn(b, n); ack?.({ ok: true, ...(r as object), view: await lm.view(n) }); }
     catch (e) { ack?.({ ok: false, error: known(e) ? (e as Error).message : 'Something went wrong.' }); if (!known(e)) console.error('[locmoves]', e); }
   });
   on('loc_view', async (_b, n) => { void socket.join(`freight:${playerKey(n)}`); return {}; });

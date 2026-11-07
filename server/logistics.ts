@@ -48,13 +48,17 @@ export interface Shipment { id: string; owner: string; ownerName: string; toKey:
   /** 'sell' = a ship-to-sell load: it sells at the Chud City Warehouse on arrival instead of landing in storage. */ kind?: 'move' | 'sell' | 'factory' | 'loc'; /** building inventory it left (autosell) */ src?: string | null; auto?: boolean;
   /** kind 'loc' (truck logistics): the individual location it left and the one it is delivered to (server/locmoves.ts). */ fromLoc?: string | null; toLoc?: string | null }
 
+/** Rollback barrier: per-location legs ('loc') are stored as status 'moving', which pre-logistics code (status =
+ *  'transit' only) never loads, so a rollback can't mis-deliver them; they resume when this code runs again. */
+export const MOVING = 'moving';
+const dbStatus = (s: Shipment) => (s.kind === 'loc' && s.status === 'transit' ? MOVING : s.status);
 export const shipStmt = (s: Shipment): Stmt => ({
   sql: `INSERT INTO freight_shipments (id, player_key, name, to_key, to_name, mode, truck, from_hub, to_hub, item_type, item_id, qty, fee, created_at, depart_at, arrive_at, status, kind, src, auto, from_loc, to_loc)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status`,
-  args: [s.id, s.owner, s.ownerName, s.toKey, s.toName, s.mode, s.truck, s.from, s.to, s.type, s.itemId, s.qty, s.fee, s.createdAt, s.departAt, s.arriveAt, s.status, s.kind ?? 'move', s.src ?? null, !!s.auto, s.fromLoc ?? null, s.toLoc ?? null],
+  args: [s.id, s.owner, s.ownerName, s.toKey, s.toName, s.mode, s.truck, s.from, s.to, s.type, s.itemId, s.qty, s.fee, s.createdAt, s.departAt, s.arriveAt, dbStatus(s), s.kind ?? 'move', s.src ?? null, !!s.auto, s.fromLoc ?? null, s.toLoc ?? null],
 });
 const rowShip = (r: Record<string, unknown>): Shipment => ({ id: String(r.id), owner: String(r.player_key), ownerName: String(r.name), toKey: String(r.to_key), toName: String(r.to_name), mode: String(r.mode) as Mode, truck: r.truck == null ? null : String(r.truck),
-  from: String(r.from_hub) as HubId, to: String(r.to_hub) as HubId, type: String(r.item_type) as ItemType, itemId: String(r.item_id), qty: Number(r.qty), fee: Number(r.fee), createdAt: Number(r.created_at), departAt: Number(r.depart_at), arriveAt: Number(r.arrive_at), status: String(r.status) as Shipment['status'],
+  from: String(r.from_hub) as HubId, to: String(r.to_hub) as HubId, type: String(r.item_type) as ItemType, itemId: String(r.item_id), qty: Number(r.qty), fee: Number(r.fee), createdAt: Number(r.created_at), departAt: Number(r.depart_at), arriveAt: Number(r.arrive_at), status: (String(r.status) === MOVING ? 'transit' : String(r.status)) as Shipment['status'],
   kind: r.kind === 'sell' || r.kind === 'factory' || r.kind === 'loc' ? r.kind : 'move', src: r.src == null ? null : String(r.src), auto: r.auto === true,
   fromLoc: r.from_loc == null ? null : String(r.from_loc), toLoc: r.to_loc == null ? null : String(r.to_loc) });
 const stackable = isStackable;
@@ -69,7 +73,7 @@ export class Logistics {
     if (!this.pool) return;
     await this.pool.query(LOGISTICS_MIGRATION);
     for (const r of (await this.pool.query('SELECT * FROM truck_owned ORDER BY bought_at')).rows) { const k = String(r.player_key); const l = this.trucks.get(k) ?? []; l.push({ id: String(r.id), truckId: String(r.truck_id), paid: Number(r.paid), boughtAt: Number(r.bought_at) }); this.trucks.set(k, l); }
-    for (const r of (await this.pool.query("SELECT * FROM freight_shipments WHERE status = 'transit'")).rows) { const s = rowShip(r); this.ships.set(s.id, s); }
+    for (const r of (await this.pool.query("SELECT * FROM freight_shipments WHERE status IN ('transit', 'moving')")).rows) { const s = rowShip(r); this.ships.set(s.id, s); }
   }
   private rows(rows: Stmt[]) { if (!rows.length || !this.pool) return; const pool = this.pool; void (async () => { const cl = await pool.connect(); try { await cl.query('BEGIN'); for (const s of rows) await cl.query(s.sql, s.args); await cl.query('COMMIT'); } catch (e) { await cl.query('ROLLBACK').catch(() => {}); console.error('[logistics] write failed:', (e as Error).message); } finally { cl.release(); } })(); }
 
@@ -134,6 +138,7 @@ export class Logistics {
   onFactory: ((s: Shipment) => Promise<void>) | null = null;
   /** Truck logistics loads (kind 'loc') call this on arrival (server/locmoves.ts). Rejects = retried with backoff. */
   onLoc: ((s: Shipment) => Promise<void>) | null = null;
+  onLegacy: ((s: Shipment) => Promise<void>) | null = null;
   /** Failed factory deliveries (factory full): next retry time, doubling 30 s → 10 min; the failure is logged once per load. */
   factoryBackoff = new Map<string, { wait: number; next: number }>();
   idleTruck(name: string, skip?: Set<string>): { id: string; cap: number } | null {
@@ -185,7 +190,6 @@ export class Logistics {
     const mode = b.mode; if (!isMode(mode)) throw new FreightError('Pick how to ship it.');
     const qty = b.qty; if (!Number.isInteger(qty) || qty < 1 || qty > MAX_SHIP_QTY) throw new FreightError('Pick a quantity.');
     if (!truckAllowed(mode, b.fromHub, b.toHub)) throw new FreightError(NO_CROSS_MAP_TRUCK);
-    if (b.fromHub === b.toHub && !isTruckMode(mode)) throw new FreightError('Goods move around a map by truck. Use your truck or hire one.');
     let truck: string | null = null; let travel = MODES[mode].travelMs; let cap = MODES[mode].cap; let model = '';
     if (mode === 'truck') {
       const busy = this.busyTrucks(name); const mine = this.owned(name);
@@ -222,6 +226,12 @@ export class Logistics {
     const recipient = typeof b.recipient === 'string' && b.recipient.trim() ? b.recipient.trim().slice(0, 40) : name.trim();
     if (keyOf(recipient) !== keyOf(name) && !(await this.exists(recipient))) throw new FreightError(`No player called ${recipient}.`);
     if (keyOf(recipient) !== keyOf(name) && isJailed(recipient)) throw new FreightError(`${recipient} is in City Jail and can't receive shipments.`);
+    // Truck logistics: a Freight Yard load leaves YOUR factory and lands at the recipient's factory (an explicit, existing
+    // destination in Chud City). Anything else goes from a specific place to a specific place in 🏭 My places.
+    const hasFactory = (n: string) => { const m = getMines(); const k = keyOf(n); return (m.factories.get(k)?.level ?? 0) > 0 || m.fv2.has(k); };
+    if (!hasFactory(name)) throw new FreightError('Your banked goods are held until you build a factory.');
+    if (to !== 'city') throw new FreightError('Freight Yard loads go factory to factory in Chud City. To send goods to a place on another map, use 🏭 My places.');
+    if (!hasFactory(recipient)) throw new FreightError(`${recipient} has no factory to receive goods.`);
     let truck: string | null = null; let travel = MODES[mode].travelMs; let cap = MODES[mode].cap; let model = '';
     if (mode === 'truck') {
       const busy = this.busyTrucks(name); const mine = this.owned(name);
@@ -274,6 +284,15 @@ export class Logistics {
         if (this.selling.has(s.id) || !this.onSell) continue;
         this.selling.add(s.id);
         void this.onSell(s).then(() => { s.status = 'delivered'; this.ships.delete(s.id); }, (e) => console.error('[logistics] warehouse sale failed (will retry):', (e as Error).message)).finally(() => this.selling.delete(s.id));
+        out.push(s); continue;
+      }
+      // Factory-to-factory (and legacy in-flight) loads: credited exactly once at the recipient's factory, or held if the
+      // recipient has none (truck logistics; see LocMoves.arriveLegacy). Retried with backoff until it commits.
+      if (this.onLegacy) {
+        if (this.selling.has(s.id)) continue;
+        const bo = this.factoryBackoff.get(s.id); if (bo && now < bo.next) continue;
+        this.selling.add(s.id);
+        void this.onLegacy(s).then(() => { s.status = 'delivered'; this.ships.delete(s.id); this.factoryBackoff.delete(s.id); }, (e) => { const prev = this.factoryBackoff.get(s.id); const wait = Math.min(prev ? prev.wait * 2 : 15_000, 10 * 60_000); if (!prev) console.error('[logistics] delivery failed (will retry):', (e as Error).message); this.factoryBackoff.set(s.id, { next: now + wait, wait }); }).finally(() => this.selling.delete(s.id));
         out.push(s); continue;
       }
       s.status = 'delivered'; this.ships.delete(s.id);

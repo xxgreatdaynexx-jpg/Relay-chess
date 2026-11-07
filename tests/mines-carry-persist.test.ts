@@ -1,3 +1,4 @@
+import { wireCaves } from './helpers/caveStock';
 import { describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
 import { MinesWorld, PgMineStore } from '../server/mines';
@@ -23,21 +24,21 @@ describe('mines carried haul survives restarts', () => {
     const pool = setup();
     const w = new MinesWorld(); await w.attach(new PgMineStore(pool));
     const m = w.join('a', 'QA-Carrier', 0); await w.ready('a'); carry(w, 'a', 4); await w.flush();
-    m.x = 4; m.y = 7; w.exit('a'); await w.flush();
-    const w2 = new MinesWorld(); await w2.attach(new PgMineStore(pool));
+    await wireCaves(w, pool); m.x = 4; m.y = 7; w.exit('a'); await w.flush();
+    const w2 = new MinesWorld(); await w2.attach(new PgMineStore(pool)); const ls2 = await wireCaves(w2, pool); // restart
     w2.join('b', 'QA-Carrier', Date.now()); await w2.ready('b');
     expect(w2.carried('b')).toEqual([]);
-    expect(w2.backpack('b')).toEqual([{ type: 'ore', id: 'coal', qty: 4 }]);
-    expect(total(w2, 'b')).toBe(4);
+    expect(w2.backpack('b')).toEqual([]); // banked AT the cave (loc_stock), committed with the cleared carry row
+    expect(total(w2, 'b') + ls2.qty('QA-Carrier', 'mine:mine', 'ore:coal')).toBe(4);
   });
   it('exit while a carry save is pending still lands exactly once', async () => {
     const pool = setup();
     const w = new MinesWorld(); await w.attach(new PgMineStore(pool));
     const m = w.join('a', 'QA-Carrier', 0); await w.ready('a'); carry(w, 'a', 3);
-    m.x = 4; m.y = 7; w.exit('a'); await w.flush();
-    const w2 = new MinesWorld(); await w2.attach(new PgMineStore(pool));
+    await wireCaves(w, pool); m.x = 4; m.y = 7; w.exit('a'); await w.flush();
+    const w2 = new MinesWorld(); await w2.attach(new PgMineStore(pool)); const ls2 = await wireCaves(w2, pool);
     w2.join('b', 'QA-Carrier', Date.now()); await w2.ready('b');
-    expect(total(w2, 'b')).toBe(3);
+    expect(total(w2, 'b') + ls2.qty('QA-Carrier', 'mine:mine', 'ore:coal')).toBe(3);
   });
   it('guests stay in memory only', async () => {
     const pool = setup();

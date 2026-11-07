@@ -1,6 +1,6 @@
 /** Test helper: city harvests land at the plot (farm:<plotId>). Old pay-on-harvest tests now truck the crops to the
  *  Warehouse and sell them there, the only way crops earn chips; the payout must equal the old instant price. */
-import { getLocStore, locStmt } from '../../server/locstock';
+import { getLocStore } from '../../server/locstock';
 import { farmLoc, WAREHOUSE } from '../../shared/inventoryLocations';
 import type { Farm } from '../../server/farm';
 type Q = { query: (sql: string, args?: unknown[]) => Promise<unknown> };
@@ -11,10 +11,11 @@ export async function haulAndSell(farm: Farm, pool: Q, name: string, pid: string
     if (loc !== at) continue;
     for (const x of items) {
       if (!x.item.startsWith('crop:') || x.qty <= 0) continue;
-      for (const s of [locStmt(key(name), name, at, x.item, -x.qty), locStmt(key(name), name, WAREHOUSE, x.item, x.qty)]) await pool.query(s.sql, s.args);
-      ls.applyMem(name, [{ loc: at, item: x.item, delta: -x.qty }, { loc: WAREHOUSE, item: x.item, delta: x.qty }]);
-      const d = [{ loc: WAREHOUSE, item: x.item, delta: -x.qty }]; ls.applyMem(name, d);
+      // the move commits first, memory mirrors after (as a delivered truck leg); the sale debits in its own transaction
+      const mv = ls.adjust(name, [{ loc: at, item: x.item, delta: -x.qty }, { loc: WAREHOUSE, item: x.item, delta: x.qty }]); if (mv) await mv;
+      const d = [{ loc: WAREHOUSE, item: x.item, delta: -x.qty }];
       paid += await farm.sellShipped({ id: `t-${Math.random()}`, ownerName: name, itemId: x.item.slice(5), qty: x.qty }, ls.rowsFor(name, d), 'test');
+      ls.applyMem(name, d);
     }
   }
   return paid;

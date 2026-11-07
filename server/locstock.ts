@@ -4,7 +4,8 @@
  * Storage
  *  - factory            the existing banked store (mine_items / Mines packs): legacy banked stock IS factory stock, no copy.
  *  - warehouse, mine:city, farm:<plot>, kitchen:<home>   `loc_stock` rows (this file), mirrored in memory like Mines packs.
- *  - coral, resort_farm the existing building bins (`building_inv`, server/warehouse.ts), unchanged.
+ *  - coral              the Coral Grotto haul bin (`building_inv`, server/warehouse.ts), unchanged. Every farm plot (city and
+ *                       resort) is its own loc_stock location; the old pooled resort barn is migrated to the factory.
  *  - fish / dishes      rows (`fish_catches.loc`, `kitchen_dishes.loc`) so species, weight and quality stay with each one.
  *
  * Every change is one Postgres transaction: withdrawals are guarded statements (`qty + delta >= 0`, otherwise the
@@ -78,7 +79,7 @@ export class LocStore {
    * Apply deltas now (all-or-nothing: false = short somewhere, nothing changed) and commit them with `extra` in ONE
    * transaction. The returned promise rejects if the transaction failed (memory is reverted first).
    */
-  adjust(name: string, deltas: LocDelta[], extra: Stmt[] = [], opts: { after?: Promise<unknown>; check?: (cl: Q) => Promise<void> } = {}): Promise<void> | false {
+  adjust(name: string, deltas: LocDelta[], extra: Stmt[] = [], opts: { after?: Promise<unknown>; check?: (cl: Q) => Promise<void>; committed?: () => Promise<boolean> } = {}): Promise<void> | false {
     this.guard();
     if (!this.check(name, deltas)) return false;
     this.applyMem(name, deltas);
@@ -92,7 +93,8 @@ export class LocStore {
     };
     const p = this.chain.then(run, run);
     this.chain = p.catch(() => {});
-    return p.catch((e) => { this.applyMem(name, deltas, -1); throw e; });
+    // A commit whose reply was lost (the retry then trips its exactly-once guard) must not be reverted in memory.
+    return p.catch(async (e) => { if (opts.committed && await opts.committed().catch(() => false)) return; this.applyMem(name, deltas, -1); throw e; });
   }
 }
 

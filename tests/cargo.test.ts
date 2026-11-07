@@ -1,3 +1,4 @@
+import { withFactories, QA_SHIPPERS } from './helpers/factories';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getBank, resetBank } from '../server/casino-store';
 import { getMines, resetMines } from '../server/mines';
@@ -40,7 +41,7 @@ describe('cargo capacity by tier (mu-cargo)', () => {
 
 describe('Logistics with cargo capacity (mu-cargo)', () => {
   const H = 3_600_000; let now = Date.parse('2026-11-04T10:00:00Z'); let l: Logistics;
-  beforeEach(() => { resetBank(); resetMines(); setPriceIndexForTest(1); now = Date.parse('2026-11-04T10:00:00Z'); l = new Logistics(null, () => now); l.exists = async (n) => n.toLowerCase() === 'qa-friend'; });
+  beforeEach(() => { resetBank(); withFactories(resetMines(), ...QA_SHIPPERS); setPriceIndexForTest(1); now = Date.parse('2026-11-04T10:00:00Z'); l = new Logistics(null, () => now); l.exists = async (n) => n.toLowerCase() === 'qa-friend'; });
   afterEach(() => { setPriceIndexForTest(1); setFleet(null); });
   it('own truck: multi-trip load, fuel only by the load, on the price index', async () => {
     fund('QA-Cg', 200_000); getMines().adjustStack('QA-Cg', 'ore', 'copper', 20_000); await l.buyTruck('QA-Cg', 'semi'); const c0 = chips('QA-Cg');
@@ -60,11 +61,11 @@ describe('Logistics with cargo capacity (mu-cargo)', () => {
   });
   it('own jet carries freight: capacity by tier, leaves now, fuel fee only', async () => {
     const f = new Fleet(null, () => now); setFleet(f); fund('QA-JetCg', 500_000); await f.buy('QA-JetCg', 'jet', 'citation'); getMines().adjustStack('QA-JetCg', 'ore', 'copper', 5_000); const c0 = chips('QA-JetCg');
-    const r = await l.ship('QA-JetCg', { mode: 'jet', to: 'resort', type: 'ore', id: 'copper', qty: 5_000 });
+    const r = await l.ship('QA-JetCg', { mode: 'jet', to: 'city', type: 'ore', id: 'copper', qty: 5_000, recipient: 'QA-Friend' });
     expect(r.trips).toBe(2); expect(r.shipment.fee).toBe(2 * 900); expect(r.shipment.departAt).toBe(now); expect(r.shipment.arriveAt - now).toBe(MODES.jet.travelMs * 3); expect(chips('QA-JetCg')).toBe(c0 - 1_800);
     expect(l.live()[0]!.label).toMatch(/QA-JetCg's jet/);
-    await expect(l.ship('QA-JetCg', { mode: 'jet', to: 'fortmc', type: 'ore', id: 'copper', qty: 1 })).rejects.toThrow(/out on deliveries|only have/);
-    await expect(l.ship('QA-JetCg', { mode: 'boat', to: 'fortmc', type: 'ore', id: 'copper', qty: 1 })).rejects.toThrow(/do not own a boat/);
+    await expect(l.ship('QA-JetCg', { mode: 'jet', to: 'city', type: 'ore', id: 'copper', qty: 1, recipient: 'QA-Friend' })).rejects.toThrow(/out on deliveries|only have/);
+    await expect(l.ship('QA-JetCg', { mode: 'boat', to: 'city', type: 'ore', id: 'copper', qty: 1, recipient: 'QA-Friend' })).rejects.toThrow(/do not own a boat/);
   });
   it('public carriers keep their single-load cap', async () => {
     fund('QA-Pub', 100_000); getMines().adjustStack('QA-Pub', 'ore', 'copper', 5_000);

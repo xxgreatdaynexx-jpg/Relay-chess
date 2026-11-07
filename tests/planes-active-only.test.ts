@@ -1,3 +1,4 @@
+import { withFactories, QA_SHIPPERS } from './helpers/factories';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { getBank, resetBank } from '../server/casino-store';
@@ -22,14 +23,14 @@ describe('only planes players are actually using are drawn', () => {
   });
 
   let l: Logistics; let now = 0;
-  beforeEach(() => { resetBank(); resetMines(); setPriceIndexForTest(1); now = 10 * HOUR + 60_000; l = new Logistics(null, () => now); });
+  beforeEach(() => { resetBank(); withFactories(resetMines(), ...QA_SHIPPERS); setPriceIndexForTest(1); now = 10 * HOUR + 60_000; l = new Logistics(null, () => now); l.exists = async (n) => n.toLowerCase() === 'qa-friend'; });
   it('live traffic is empty with no shipments, shows a genuine player freight plane, and drops it on arrival', async () => {
     expect(l.live()).toEqual([]);
     getBank().transferConfirmed('QA-Pilot', 100_000, { key: 'fund:QA-Pilot', game: 'admin' }); getMines().adjustStack('QA-Pilot', 'bar', 'iron_bar', 30);
-    const r = await l.ship('QA-Pilot', { mode: 'plane', to: 'resort', type: 'bar', id: 'iron_bar', qty: 30 });
+    const r = await l.ship('QA-Pilot', { mode: 'plane', to: 'city', type: 'bar', id: 'iron_bar', qty: 30, recipient: 'QA-Friend' });
     const v = l.live(); expect(v).toHaveLength(1); expect(v[0]).toMatchObject({ mode: 'plane', owner: 'QA-Pilot', units: 30 });
     now = r.shipment.arriveAt; l.tick(); expect(l.live()).toEqual([]);
-    expect(getMines().stackQty('QA-Pilot', 'bar', 'iron_bar')).toBe(30); // cargo delivered, not lost
+    expect(getMines().stackQty('QA-Friend', 'bar', 'iron_bar')).toBe(30); // cargo delivered, not lost
   });
 });
 

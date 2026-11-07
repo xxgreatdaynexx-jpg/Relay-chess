@@ -333,28 +333,19 @@ export class Farm {
       const extra = bonusCrops(1, ready.reduce((a, r) => a + tileYield(lb, fert.get(`${r.tile}:${r.nonce}`) as never, !!m.harvester), 0), this.rand);
       const bonus: typeof ready = []; for (let i = 0; i < extra; i++) bonus.push(ready[Math.floor(this.rand() * ready.length)]);
       for (const r of bonus) { const c = cropById(r.crop)!; profit += cropSellValue(c); counts.set(c.label, (counts.get(c.label) ?? 0) + 1); }
-      if (p.resort && this.barn && !sink) {
-        const items: Array<[string, number]> = []; for (const r of [...ready, ...bonus]) { const at = items.find((x) => x[0] === r.crop); if (at) at[1]++; else items.push([r.crop, 1]); }
-        const rows = this.barn(name, items);
-        await this.atomic(name, 0, 'farm_to_barn', '', async (cl) => {
-          await this.mustOwn(cl, pid, name);
-          let gone = 0;
-          for (const r of ready) { gone += (await cl.query('DELETE FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3 AND owner_key = $4', [pid, r.tile, r.nonce, key])).rowCount ?? 0; await cl.query('DELETE FROM farm_fert WHERE plot_id = $1 AND tile = $2 AND nonce = $3', [pid, r.tile, r.nonce]); }
-          if (gone !== ready.length) throw new FarmError('Already harvested.');
-          for (const q of rows) await cl.query(q.sql, q.args);
-        });
-        awardXp(name, 'farming', Math.min(400, 10 + Math.round((seeds + profit) / 5)));
-        this.onChange?.(pid);
-        eventCredit('harvest', name, ready.length);
-        return { harvested: ready.length, bonus: extra, paid: 0, toBarn: items, chips: this.bank().account(name).chips };
-      }
       if (sink) throw new FarmError('Crops reach the factory by truck now: harvest them (they stay at this plot), then send them from your Logistics panel.');
-      // Truck logistics (Dayne 2026-11-06): a city harvest stays AT this plot (its own bin). Nothing is paid here; the crops
-      // sell at the Chud City Warehouse (same seed-back + daily farm tier, Farm.sellShipped) after a truck takes them there.
+      // Truck logistics (Dayne 2026-11-06): every harvest stays AT its own plot (farm:<plotId>, city and resort alike).
+      // Nothing is paid here; crops sell at the Chud City Warehouse after a truck/ship takes them there.
+      // Farming XP stays a HARVEST event with its baseline amount, granted once per harvest (the tile delete commits once):
+      //  - city plots: the XP the old instant sale's farm_harvest ledger row gave (same payout formula, nothing paid);
+      //  - resort plots: the old barn-harvest award. Selling crops later gives no XP (no double).
       const items: Array<[string, number]> = []; for (const r of [...ready, ...bonus]) { const at = items.find((x) => x[0] === r.crop); if (at) at[1]++; else items.push([r.crop, 1]); }
       const ls = getLocStore(); if (!ls.loaded) throw new FarmError('Storage is reconnecting. Nothing was harvested; try again in a minute.');
       const deltas = items.map(([c, n]) => ({ loc: farmLoc(pid), item: `crop:${c}`, delta: n }));
-      await this.atomic(name, 0, 'farm_to_plot', '', async (cl) => {
+      const t = p.resort ? null : await this.today(key);
+      const xp = p.resort ? Math.min(400, 10 + Math.round((seeds + profit) / 5))
+        : Math.min(400, 10 + Math.round(Math.floor((seeds + farmPayout(profit * cityPolicyMul('farming'), t!.gross)) * priceIndex()) / 5));
+      await this.atomic(name, 0, p.resort ? 'farm_to_barn' : 'farm_to_plot', '', async (cl) => {
         await this.mustOwn(cl, pid, name);
         let gone = 0;
         for (const r of ready) { gone += (await cl.query('DELETE FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3 AND owner_key = $4', [pid, r.tile, r.nonce, key])).rowCount ?? 0; await cl.query('DELETE FROM farm_fert WHERE plot_id = $1 AND tile = $2 AND nonce = $3', [pid, r.tile, r.nonce]); }
@@ -362,7 +353,8 @@ export class Farm {
         for (const q of ls.rowsFor(name, deltas)) await cl.query(q.sql, q.args);
       });
       ls.applyMem(name, deltas);
-      void seeds; void profit; void counts; void pantry;
+      awardXp(name, 'farming', xp);
+      void counts; void pantry;
       this.onChange?.(pid);
       eventCredit('harvest', name, ready.length);
       return { harvested: ready.length, bonus: extra, paid: 0, toPlot: items, at: farmLoc(pid), chips: this.bank().account(name).chips };
@@ -374,7 +366,9 @@ export class Farm {
    * same daily farm tier, price-indexed), ledger 'farm_harvest' keyed by the shipment id (exactly once), with the sale
    * log + delivered shipment rows in the same transaction.
    */
-  async sellShipped(s: { id: string; ownerName: string; itemId: string; qty: number }, rows: Array<{ sql: string; args: unknown[] }>, from = 'the Resort plantation'): Promise<number> {
+  /** `xp`: 'all' only for legacy in-flight barn loads dispatched before the cutover (their baseline sale XP event);
+   *  every other crop already got its XP at harvest. */
+  async sellShipped(s: { id: string; ownerName: string; itemId: string; qty: number }, rows: Array<{ sql: string; args: unknown[] }>, from = 'the Resort plantation', xp: 'all' | 'none' = 'none'): Promise<number> {
     const c = cropById(s.itemId); if (!c) throw new FarmError('Unknown crop.');
     const name = s.ownerName; const key = keyOf(name);
     return this.lock(`h:${key}`, async () => {
@@ -382,12 +376,14 @@ export class Farm {
       const seeds = c.seed * s.qty; const profit = Math.max(0, (cropSellValue(c) - c.seed) * s.qty);
       const paid = Math.floor((seeds + farmPayout(profit * cityPolicyMul('farming'), t.gross)) * priceIndex()); // Farming subsidy policy
       try {
-        await this.atomic(name, paid, 'farm_harvest', `Chud City Warehouse: sold ${s.qty} ${c.label} from ${from}`, async (cl) => {
+        let xpQty = xp === 'all' ? s.qty : 0;
+        await this.atomic(name, paid, 'farm_sale', `Chud City Warehouse: sold ${s.qty} ${c.label} from ${from}`, async (cl) => {
           await cl.query('INSERT INTO farm_daily (player_key, day, gross, paid) VALUES ($1,$2,0,0) ON CONFLICT (player_key, day) DO NOTHING', [key, day]);
           const u = await cl.query('UPDATE farm_daily SET gross = gross + $3, paid = paid + $4 WHERE player_key = $1 AND day = $2 AND gross = $5', [key, day, Math.round(profit), paid, t.gross]);
           if (!u.rowCount) throw new FarmError('Busy, try again.');
           for (const q of rows) await cl.query(q.sql, q.sql.includes('warehouse_sales') ? q.args.map((v, i) => (i === 8 ? paid : v)) : q.args); // sale log gets the real payout
         }, `whsale:${s.id}`);
+        if (xpQty > 0 && paid > 0) awardXp(name, 'farming', Math.min(400, 10 + Math.round((paid * xpQty) / s.qty / 5))); // = the old farm_harvest ledger XP
       } catch (e) { if ((e as Error).message === 'Already applied.') return 0; throw e; }
       return paid;
     });

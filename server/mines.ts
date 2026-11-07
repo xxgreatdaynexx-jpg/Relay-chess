@@ -500,6 +500,8 @@ export class MinesWorld {
   fortBin: ((account: string, stacks: Stack[], cave?: CaveId) => Array<{ sql: string; args: unknown[] }>) | null = null;
   /** Truck logistics: Chud City cave hauls bank AT that mine (mine:<cave>, server/locmoves.ts), not in the factory store. */
   cityBin: ((account: string, stacks: Stack[], cave: CaveId) => Array<{ sql: string; args: unknown[] }>) | null = null;
+  /** Called after the cave-stock rows committed (memory mirror update). */
+  cityBinDone: ((account: string, stacks: Stack[], cave: CaveId) => void) | null = null;
   exit(id: string): { banked: Stack[]; worth: number; bin?: string } {
     const m = this.miners.get(id); if (!m) throw new MineError('Join the mine first.');
     if (m.restoring) throw new MineError('Loading your backpack...');
@@ -507,9 +509,12 @@ export class MinesWorld {
     const banked = this.carried(id); if (!banked.length) return { banked: [], worth: 0 };
     if (m.account) this.lastCave.set(playerKey(m.account), m.cave); // royalties: ore is credited to the cave it was hauled out of
     const p = this.pack(this.packKey(m));
-    m.carried.clear();
     const binHook = m.cave === 'coral' ? this.coralBin : m.cave === 'fortmc' ? this.fortBin : this.cityBin;
-    const bin = m.account && binHook ? binHook(m.account, banked, m.cave) : null;
+    // Truck logistics: a signed-in city haul banks AT that cave (mine:<cave>). Never fall back to the factory store.
+    if (m.account && m.cave !== 'coral' && m.cave !== 'fortmc' && !this.cityBin) { throw new MineError('Cave storage is starting up. Your haul is safe in your pack, try again in a moment.'); }
+    const city = !!(m.account && m.cave !== 'coral' && m.cave !== 'fortmc');
+    const bin = m.account && binHook ? binHook(m.account, banked, m.cave) : null; // may throw (storage starting): haul stays carried
+    m.carried.clear();
     if (!bin) for (const s of banked) { const k = stackKey(s); const cur = p.get(k); if (cur) cur.qty += s.qty; else p.set(k, { ...s }); }
     if (m.account) { const k = playerKey(m.account); const t = this.carryTimers.get(k); if (t) { clearTimeout(t); this.carryTimers.delete(k); } }
     // Banked stacks and the cleared carry row commit in one transaction: no duplicate or lost haul across a restart.
@@ -519,7 +524,10 @@ export class MinesWorld {
       { sql: 'DELETE FROM mine_carried WHERE player_key = $1', args: [playerKey(m.account)] },
       { sql: 'INSERT INTO mine_banks (player_key, owner_name, ore_qty, worth, at) VALUES ($1,$2,$3,$4,$5)', args: [playerKey(m.account), m.account, ore, worth, Date.now()] },
       ...(bin ?? []),
-    ] : undefined);
+    ] : undefined, city ? (ok) => { // cave stock shows only once its rows committed; a failed bank puts the haul back in the pack
+      if (ok) this.cityBinDone?.(m.account!, banked, m.cave);
+      else for (const s of banked) { const k = stackKey(s); const c = m.carried.get(k); if (c) c.qty += s.qty; else m.carried.set(k, { ...s }); }
+    } : undefined);
     return bin ? { banked, worth, bin: m.cave } : { banked, worth };
   }
 
@@ -581,11 +589,11 @@ export class MinesWorld {
     this.persist(m);
   }
 
-  private persist(m: { account: string | null }, sale?: Parameters<MineStore['save']>[3], withFactory = false, extra?: Array<{ sql: string; args: unknown[] }>) {
-    if (!m.account || !this.store) return;
+  private persist(m: { account: string | null }, sale?: Parameters<MineStore['save']>[3], withFactory = false, extra?: Array<{ sql: string; args: unknown[] }>, done?: (ok: boolean) => void) {
+    if (!m.account || !this.store) { done?.(true); return; }
     const k = playerKey(m.account); const snap = [...this.pack(k).values()].map((s) => ({ ...s })); const store = this.store;
     const f = withFactory ? this.factories.get(k) : undefined; const fs = f ? { level: f.level, builtAt: f.builtAt, jobs: f.jobs.map((j) => ({ ...j })) } : undefined;
-    this.chain = this.chain.then(() => store.save(k, m.account!, snap, sale, fs, extra)).catch((e) => console.error('[mines] save failed:', (e as Error).message));
+    this.chain = this.chain.then(() => store.save(k, m.account!, snap, sale, fs, extra)).then(() => done?.(true), (e) => { console.error('[mines] save failed:', (e as Error).message); done?.(false); });
   }
 
   quote(account: string, now: number, only?: unknown): { gross: number; paid: number; already: number; lost: number; effAlready: number; capBase: number; capIndex: number; items: Stack[] } {
@@ -739,11 +747,11 @@ export class MinesWorld {
    * Returns false (no change) if a withdrawal would go negative. Without a store, `fallback` gets the rows instead. */
   /** Weight of an account's stored pack (same units as BACKPACK_CAP). */
   packLoad(account: string): number { let t = 0; for (const s of this.pack(playerKey(account)).values()) t += s.qty * (s.type === 'ore' && isOre(s.id) ? ORES[s.id].weight : 1); return t; }
-  adjustStack(account: string, type: ItemType, id: string, delta: number, extra: Array<{ sql: string; args: unknown[] }> = [], fallback?: (rows: Array<{ sql: string; args: unknown[] }>) => void, opts: { after?: Promise<unknown>; bind?: (p: Promise<unknown>) => void; onFail?: (e: Error) => void } = {}): boolean {
+  adjustStack(account: string, type: ItemType, id: string, delta: number, extra: Array<{ sql: string; args: unknown[] }> = [], fallback?: (rows: Array<{ sql: string; args: unknown[] }>) => void, opts: { committed?: () => Promise<boolean>; after?: Promise<unknown>; bind?: (p: Promise<unknown>) => void; onFail?: (e: Error) => void } = {}): boolean {
     return this.adjustStacks(account, [{ type, id, delta }], extra, fallback, opts);
   }
   /** Several stack deltas, all-or-nothing (false and no change if any withdrawal would go negative), one transaction. */
-  adjustStacks(account: string, deltas: Array<{ type: ItemType; id: string; delta: number }>, extra: Array<{ sql: string; args: unknown[] }> = [], fallback?: (rows: Array<{ sql: string; args: unknown[] }>) => void, opts: { after?: Promise<unknown>; bind?: (p: Promise<unknown>) => void; onFail?: (e: Error) => void } = {}): boolean {
+  adjustStacks(account: string, deltas: Array<{ type: ItemType; id: string; delta: number }>, extra: Array<{ sql: string; args: unknown[] }> = [], fallback?: (rows: Array<{ sql: string; args: unknown[] }>) => void, opts: { committed?: () => Promise<boolean>; after?: Promise<unknown>; bind?: (p: Promise<unknown>) => void; onFail?: (e: Error) => void } = {}): boolean {
     this.beforeStorage?.(account);
     const k = playerKey(account); const p = this.pack(k);
     const sum = new Map<string, { type: ItemType; id: string; delta: number }>();
@@ -757,8 +765,10 @@ export class MinesWorld {
     // Retried (every row is idempotent: absolute snapshots + ON CONFLICT ledger keys) so a blip can't lose a paid-for delivery.
     const run = async () => { await opts.after; for (let i = 0; ; i++) { try { return await store.save(k, account.trim(), snap, undefined, undefined, extra); } catch (e) { if (i >= 3) throw e; await new Promise((r) => setTimeout(r, 250 * 2 ** i)); } } };
     const job = this.chain.then(run);
-    this.chain = job.catch((e) => {
+    this.chain = job.catch(async (e) => {
       console.error('[mines] save failed:', (e as Error).message);
+      // The commit may have landed with its reply lost (a retry then fails its exactly-once guard): ask the caller.
+      if (opts.committed && await opts.committed().catch(() => false)) return;
       if (!opts.onFail) return;
       // Nothing committed: undo the in-memory deltas so memory matches the DB, then let the caller undo its side.
       apply(-1);

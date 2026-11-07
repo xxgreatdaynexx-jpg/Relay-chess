@@ -64,7 +64,7 @@ describe('farm district', () => {
     s.setNow(T0 + 10 * M);
     const [a, b] = await Promise.allSettled([s.farm.harvest('Gus', s.id), s.farm.harvest('Gus', s.id)]);
     expect([a, b].filter((r) => r.status === 'fulfilled')).toHaveLength(1);
-    expect(s.chips('gus')).toBe(960 + 48); expect(s.ledger('gus', 'farm_harvest')).toEqual([{ amount: 48 }]); // 4 wheat: 40 seeds back + floor(4 × (12.64 × 0.95 − 10)) = 8 profit (crop margins: 20% of seed)
+    expect(s.chips('gus')).toBe(960 + 48); expect(s.ledger('gus', 'farm_harvest')).toEqual([]); expect(s.ledger('gus', 'farm_sale')).toEqual([{ amount: 48 }]); // harvest pays nothing; the Warehouse sale pays the old price // 4 wheat: 40 seeds back + floor(4 × (12.64 × 0.95 − 10)) = 8 profit (crop margins: 20% of seed)
     const v = await s.farm.view(s.id, 'Gus'); expect(v.tiles).toHaveLength(0); expect(v.today.gross).toBe(8); expect(v.mine).toBe(true);
     expect((await s.farm.view(s.id, 'Hal')).mine).toBe(false); // neighbours can look, not touch
   });
@@ -100,7 +100,7 @@ describe('countryside fields farm like farmland (pt1250u)', () => {
     await s.fund('Ida', plot.price + 1000); await s.re.buy('Ida', id);
     const v = await s.farm.view(id, 'Ida'); expect(v.mine).toBe(true); expect(v.cols * v.rows).toBeGreaterThan(20);
     await s.farm.plow('Ida', id, [0, 1]); await s.farm.plant('Ida', id, 'wheat', [0, 1]); s.setNow(T0 + 10 * 60_000); await s.farm.harvest('Ida', id);
-    expect(s.ledger('ida', 'farm_harvest').length).toBe(1);
+    expect(s.ledger('ida', 'farm_sale').length).toBe(1);
     const before = s.chips('ida'); await s.re.sell('Ida', id); expect(s.chips('ida') - before).toBe(Math.floor(plot.price * 0.7));
   });
   it('ripe crops last at least 36 hours (or 3x grow) before withering; long crops keep their longer window (request #19)', () => {

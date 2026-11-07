@@ -1,3 +1,4 @@
+import { withFactories, QA_SHIPPERS } from './helpers/factories';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getBank, resetBank } from '../server/casino-store';
 import { getMines, resetMines } from '../server/mines';
@@ -32,7 +33,7 @@ describe('logistics rules', () => {
 
 describe('Logistics', () => {
   let now = 10 * HOUR + 60_000; let l: Logistics;
-  beforeEach(() => { resetBank(); resetMines(); setPriceIndexForTest(1); now = 10 * HOUR + 60_000; l = new Logistics(null, () => now); l.exists = async (n) => n.toLowerCase() === 'qa-friend'; });
+  beforeEach(() => { resetBank(); withFactories(resetMines(), ...QA_SHIPPERS); setPriceIndexForTest(1); now = 10 * HOUR + 60_000; l = new Logistics(null, () => now); l.exists = async (n) => n.toLowerCase() === 'qa-friend'; });
   afterEach(() => setPriceIndexForTest(1));
 
   it('hired truck: fee via ledger, goods escrowed, visible while moving with owner label, delivered on arrival', async () => {
@@ -69,7 +70,11 @@ describe('Logistics', () => {
     for (const mode of ['truck', 'hired'] as const) for (const to of ['resort', 'fortmc'] as const) for (const from of [undefined, 'resort', 'fortmc', 'city'])
       await expect(l.ship('QA-Map', { mode, from, to, type: 'bar', id: 'iron_bar', qty: 5, recipient: 'QA-Friend' })).rejects.toThrow(/can’t haul to other maps/);
     expect(chips('QA-Map')).toBe(c0); expect(getMines().stackQty('QA-Map', 'bar', 'iron_bar')).toBe(100); expect(l.live()).toHaveLength(0);
-    for (const mode of ['plane', 'ship'] as const) { const r = await l.ship('QA-Map', { mode, to: 'resort', type: 'bar', id: 'iron_bar', qty: 5 }); expect(r.shipment).toMatchObject({ mode, from: 'city', to: 'resort' }); }
+    for (const mode of ['plane', 'ship'] as const) {
+      // factory→factory freight is Chud City only (the factory is there); cross-map stock moves via 🏭 My places
+      await expect(l.ship('QA-Map', { mode, to: 'resort', type: 'bar', id: 'iron_bar', qty: 5 })).rejects.toThrow(/My places/);
+      const r = await l.ship('QA-Map', { mode, to: 'city', type: 'bar', id: 'iron_bar', qty: 5, recipient: 'QA-Friend' }); expect(r.shipment).toMatchObject({ mode, from: 'city', to: 'city' }); // same-map plane/ship allowed (original rule never denied it)
+    }
     const t = await l.ship('QA-Map', { mode: 'truck', from: 'resort', to: 'city', type: 'bar', id: 'iron_bar', qty: 5, recipient: 'QA-Friend' });
     expect(t.shipment).toMatchObject({ from: 'city', to: 'city' }); // spoofed origin ignored
     expect(() => l.planSell('QA-Map', { mode: 'hired', from: 'resort', type: 'ore', id: 'gold', qty: 5, src: 'coral' })).toThrow(/can’t haul to other maps/);
@@ -84,13 +89,13 @@ describe('Logistics', () => {
   });
   it('ships/planes wait for their departure, group into one vehicle, and deliver to another player', async () => {
     fund('QA-A'); fund('QA-B'); getMines().adjustStack('QA-A', 'bar', 'iron_bar', 50); getMines().adjustStack('QA-B', 'bar', 'iron_bar', 50);
-    const a = await l.ship('QA-A', { mode: 'ship', to: 'resort', type: 'bar', id: 'iron_bar', qty: 50, recipient: 'QA-Friend' });
-    await l.ship('QA-B', { mode: 'ship', to: 'resort', type: 'bar', id: 'iron_bar', qty: 20 });
+    const a = await l.ship('QA-A', { mode: 'ship', to: 'city', type: 'bar', id: 'iron_bar', qty: 50, recipient: 'QA-Friend' });
+    await l.ship('QA-B', { mode: 'ship', to: 'city', type: 'bar', id: 'iron_bar', qty: 20, recipient: 'QA-Friend' });
     expect(a.shipment.departAt).toBe(12 * HOUR);
-    await expect(l.ship('QA-B', { mode: 'ship', to: 'resort', type: 'bar', id: 'iron_bar', qty: 1, recipient: 'Nobody' })).rejects.toThrow(/No player/);
+    await expect(l.ship('QA-B', { mode: 'ship', to: 'city', type: 'bar', id: 'iron_bar', qty: 1, recipient: 'Nobody' })).rejects.toThrow(/No player/);
     const v = l.live(); expect(v).toHaveLength(1); expect(v[0]).toMatchObject({ mode: 'ship', loads: 2, units: 70, label: 'Cargo ship · 2 shippers' });
     now = a.shipment.arriveAt; l.tick();
-    expect(getMines().stackQty('QA-Friend', 'bar', 'iron_bar')).toBe(50); expect(getMines().stackQty('QA-A', 'bar', 'iron_bar')).toBe(0);
+    expect(getMines().stackQty('QA-Friend', 'bar', 'iron_bar')).toBe(70); expect(getMines().stackQty('QA-A', 'bar', 'iron_bar')).toBe(0);
   });
   it('rejects junk input', async () => {
     await expect(l.ship('QA-X', { mode: 'teleport', to: 'resort' })).rejects.toThrow(/how to ship/);

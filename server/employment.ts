@@ -56,11 +56,11 @@ const parse = (r: Row): W | null => {
 const boxValue = (b: WorkerBox) => Object.entries(b.ores ?? {}).reduce((a, [id, n]) => a + ORES[id as OreId].price * (n ?? 0), 0) + (b.fish ?? []).reduce((a, f) => a + f.value, 0);
 export const cryptoUnit: Unit = () => randomInt(0, 2 ** 32) / 2 ** 32;
 
-/** Real sink: hired miners' ores land AT The Mine (loc_stock 'mine:mine', truck logistics) in the caller's transaction;
+/** Real sink: hired miners' ores land AT the cave they work (loc_stock 'mine:<cave>', truck logistics) in the caller's transaction;
  * the in-memory mirror is applied after it commits. Truck them to your factory / the Warehouse from there. */
-export function mineOreSink(account: string): OreSink {
+export function mineOreSink(account: string, cave: string = 'mine'): OreSink {
   const ls = getLocStore(); if (!ls.loaded) throw new EmployError(MINES_OFFLINE_MSG);
-  const loc = mineLoc('mine'); const d = (items: Array<[OreId, number]>) => items.map(([id, n]) => ({ loc, item: `ore:${id}`, delta: n }));
+  const loc = mineLoc(cave); /* each miner's ore lands AT its own cave (The Mine / Frostbite / Magma) */ const d = (items: Array<[OreId, number]>) => items.map(([id, n]) => ({ loc, item: `ore:${id}`, delta: n }));
   return {
     room: (id) => Math.max(0, MAX_BANKED_STACK - ls.qty(account, loc, `ore:${id}`)),
     async write(cl, items) {
@@ -89,7 +89,7 @@ export class Employment {
     this.locks.set(id, tail); void tail.then(() => { if (this.locks.get(id) === tail) this.locks.delete(id); }); return p;
   }
   constructor(private readonly pool: pg.Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now(),
-    private readonly sink: (account: string) => OreSink = mineOreSink, private readonly unit: Unit = cryptoUnit, private readonly lockPool: pg.Pool | null = null) {}
+    private readonly sink: (account: string, cave?: string) => OreSink = mineOreSink, private readonly unit: Unit = cryptoUnit, private readonly lockPool: pg.Pool | null = null) {}
   async init() { await this.pool.query(EMPLOY_MIGRATION); }
 
   hirePrice = (j: JobDef) => px(baseHire(j));
@@ -228,20 +228,23 @@ export class Employment {
   private async deliver(name: string, key: string, ws: W[], now: number) {
     let ores = 0, fish = 0; const notes: string[] = [];
       // Ores → mine storage (one transaction for all miners).
+      const caves = [...new Set(ws.filter((w) => w.job.kind === 'miner').map((w) => w.job.cave ?? 'mine'))];
+      for (const cave of caves) { const cw = ws.filter((w) => w.job.kind === 'miner' && (w.job.cave ?? 'mine') === cave);
       const oreItems = new Map<OreId, number>();
-      for (const w of ws) for (const [o, q] of Object.entries(w.box.ores ?? {})) if (q) oreItems.set(o as OreId, (oreItems.get(o as OreId) ?? 0) + q);
+      for (const w of cw) for (const [o, q] of Object.entries(w.box.ores ?? {})) if (q) oreItems.set(o as OreId, (oreItems.get(o as OreId) ?? 0) + q);
       if (oreItems.size) {
-        const sink = this.sink(name);
+        const sink = this.sink(name, cave);
         // Only what fits: the rest stays with the miner and goes in on a later pass (never lost).
         const fit = new Map<OreId, number>(); for (const [o, q] of oreItems) { const n = Math.min(q, Math.max(0, Math.floor(sink.room?.(o) ?? Infinity))); if (n > 0) fit.set(o, n); }
         const items = [...fit];
         if (items.length) {
           const left = new Map(fit);
-          const after = ws.map((w) => { const box = { ...w.box, ores: { ...(w.box.ores ?? {}) } }; for (const [o, q] of Object.entries(box.ores)) { const take = Math.min(q ?? 0, left.get(o as OreId) ?? 0); if (take) { left.set(o as OreId, (left.get(o as OreId) ?? 0) - take); const rest = (q ?? 0) - take; if (rest > 0) box.ores[o as OreId] = rest; else delete box.ores[o as OreId]; } } return { ...w, box }; });
+          const after = cw.map((w) => { const box = { ...w.box, ores: { ...(w.box.ores ?? {}) } }; for (const [o, q] of Object.entries(box.ores)) { const take = Math.min(q ?? 0, left.get(o as OreId) ?? 0); if (take) { left.set(o as OreId, (left.get(o as OreId) ?? 0) - take); const rest = (q ?? 0) - take; if (rest > 0) box.ores[o as OreId] = rest; else delete box.ores[o as OreId]; } } return { ...w, box }; });
           await this.tx(async (cl) => { await sink.write(cl, items); for (const a of after) await this.save(cl, a); });
-          sink.after(items); ws.forEach((w, i) => { w.box.ores = after[i]!.box.ores; }); ores = items.reduce((a, [, q]) => a + q, 0);
+          sink.after(items); cw.forEach((w, i) => { w.box.ores = after[i]!.box.ores; }); ores += items.reduce((a, [, q]) => a + q, 0);
         }
-        if (ws.some((w) => Object.values(w.box.ores ?? {}).some((q) => q))) notes.push('Your storage is full for some ores — your miners are holding the rest until there is room.');
+        if (cw.some((w) => Object.values(w.box.ores ?? {}).some((q) => q)) && !notes.length) notes.push('Your storage is full for some ores — your miners are holding the rest until there is room.');
+      }
       }
       // Fish → cooler, as far as it has room (the rest waits in the box).
       if (ws.some((w) => w.box.fish?.length)) {
@@ -286,7 +289,7 @@ export class Employment {
       if (w.status === 'working') this.produce(w, Math.min(now, w.paidUntil, awayEnd(w.seenAt)), key);
       await this.flushLog(key);
       let ores = 0, fish = 0;
-      const sink = this.sink(name);
+      const sink = this.sink(name, w.job.cave ?? 'mine');
       const items = (Object.entries(w.box.ores ?? {}).filter(([, q]) => q) as Array<[OreId, number]>).map(([o, q]): [OreId, number] => [o, Math.min(q, Math.max(0, Math.floor(sink.room?.(o) ?? Infinity)))]).filter(([, q]) => q > 0);
       if (items.length) { await this.tx(async (cl) => { await sink.write(cl, items); await this.save(cl, { ...w, box: { ...w.box, ores: {} } }); }); sink.after(items); w.box.ores = {}; ores = items.reduce((a, [, q]) => a + q, 0); }
       if (w.box.fish?.length) await this.tx(async (cl) => {

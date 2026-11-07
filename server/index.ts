@@ -1,3 +1,4 @@
+import { initInventoryFence, refreshFenceTriggers } from './invFence.js'; // FIRST: sets PGAPPNAME before any pool exists
 import { initRequests } from './requests.js';
 import { initRoyalties } from './royalty.js';
 import { initPopupStorage } from './popups.js';
@@ -53,6 +54,7 @@ import { getRoomPersistence, initRoomStorage } from './room-store.js';
 await initLeaderboardStorage();
 await initCheckersLeaderboardStorage();
 await initCasinoStorage();
+await initInventoryFence(); // truck logistics cutover: newest server is the only inventory writer (throws = fail closed, no boot)
 await initSkinStorage();
 await initMarketStorage();
 await initMinesStorage();
@@ -98,7 +100,8 @@ startWealthTax();
 startNetWorthSnapshots();
 startSinkRoom();
 await initCooking();
-void initLocMoves(); // truck logistics: wires producers + freight; moves legacy cooler/kitchen stock to each owner's factory (idempotent, background)
+await initLocMoves({ dbUrl: cityDbUrl() }); // truck logistics: wires producers + freight, then moves legacy stock to each owner's factory BEFORE serving (idempotent)
+await refreshFenceTriggers();
 await initConquestStorage();
 await initSolitroStorage();
 

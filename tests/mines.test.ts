@@ -1,3 +1,5 @@
+import { wireCaves } from './helpers/caveStock';
+import { getLocStore } from '../server/locstock';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
 import { MinesWorld, PgMineStore, resetMines } from '../server/mines';
@@ -6,7 +8,7 @@ import { BACKPACK_CAP, MINE_MAP, MINE_NODES, ORES, REACH, SWING_MIN_MS, payoutFo
 import { canStand, eyeHeightOf } from '../shared/fps';
 
 let w: MinesWorld;
-beforeEach(() => { resetBank(); w = resetMines(); });
+beforeEach(async () => { resetBank(); w = resetMines(); await wireCaves(w); });
 
 /** Put the miner on a standable spot within reach of node n, facing it. */
 function stand(id: string, nodeIdx: number) {
@@ -177,7 +179,8 @@ describe('extraction', () => {
     const r = w.exit('a');
     expect(r.banked).toEqual([{ type: 'ore', id: ore, qty: 1 }]);
     expect(w.carried('a')).toEqual([]);
-    expect(w.storage('QA-Haul')).toEqual([{ type: 'ore', id: ore, qty: 1 }]);
+    expect(w.storage('QA-Haul')).toEqual([]); // truck logistics: a city haul banks AT its cave, not the factory store
+    expect(getLocStore().qty('QA-Haul', 'mine:mine', `ore:${ore}`)).toBe(1);
   });
   it('selling is blocked while in the mine, works after leaving', () => {
     w.join('a', 'QA-Haul', 0);

@@ -144,14 +144,11 @@ export class Cooking {
           { sql: 'DELETE FROM kitchen_fish_used WHERE fish_id = $1 AND cook_id = $2', args: [f, c.id] },
           { sql: 'UPDATE fish_catches SET sold_at = NULL WHERE id = $1 AND player_key = $2', args: [f.replace(/^\((.*)\)$/, '$1'), key] } // pg-mem stores the scalar subquery as '(id)',
         ]),
-        ...(c.fillet_kind && Number(c.fillets) > 0 && !c.home ? [ // legacy cook (before kitchens had their own stock): fillets back to the old board
-          { sql: 'INSERT INTO kitchen_fillets (player_key, kind, qty) VALUES ($1,$2,0) ON CONFLICT (player_key, kind) DO NOTHING', args: [key, c.fillet_kind] },
-          { sql: 'UPDATE kitchen_fillets SET qty = qty + $3 WHERE player_key = $1 AND kind = $2', args: [key, c.fillet_kind, Number(c.fillets)] },
-        ] : []),
         { sql: 'UPDATE kitchen_cooks SET done = true, quality = NULL, burnt = NULL WHERE id = $1', args: [c.id] },
       ];
       // Refund to the kitchen the cook used (fillets back on its board); legacy cooks refund to the factory store as before.
-      if (c.home && c.fillet_kind && Number(c.fillets) > 0) deltas.push({ id: `fillet_${c.fillet_kind}`, delta: Number(c.fillets) });
+      // Legacy cooks (started before the cutover) refund into the factory store, never the retired shared fillet board.
+      if (c.fillet_kind && Number(c.fillets) > 0) deltas.push({ id: `fillet_${c.fillet_kind}`, delta: Number(c.fillets) });
       try { if (c.home) await this.kitchenTx(name, c.home, deltas, extra); else await this.packTx(name, deltas, extra); n++; } catch (e) { console.error('[cooking] refund failed:', (e as Error).message); }
     }
     return n;

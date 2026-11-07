@@ -3,7 +3,7 @@ import { request, socket } from '@/lib/net';
 import { MODES, fmtEta, type Mode } from '../../../shared/logistics';
 
 type Item = { item: string; label: string; qty: number };
-type Loc = { id: string; label: string; hub: string; dest: boolean; sells: boolean; items: Item[] };
+type Loc = { id: string; label: string; hub: string; dest: boolean; sells: boolean; held?: boolean; items: Item[] };
 type Ship = { id: string; fromLabel: string; toLabel: string; label: string; qty: number; mode: Mode; fee: number; departAt: number; arriveAt: number };
 export type LocView = { now: number; locations: Loc[]; shipments: Ship[]; trucks: Array<{ id: string; model: string; busy: boolean }> };
 const fmt = (n: number) => n.toLocaleString('en-US');
@@ -24,7 +24,7 @@ export function LocationStock({ me }: { me: string | null }) {
   const src = v?.locations.find((l) => l.id === sel?.from); const it = src?.items.find((i) => i.item === sel?.item);
   const dests = v?.locations.filter((l) => l.dest && l.id !== sel?.from) ?? [];
   const toLoc = v?.locations.find((l) => l.id === to); const same = !!(src && toLoc && src.hub === toLoc.hub);
-  const modes = LEG_MODES.filter((m) => (same ? m === 'truck' || m === 'hired' : m !== 'truck' && m !== 'hired'));
+  const modes = LEG_MODES.filter((m) => same || (m !== 'truck' && m !== 'hired')); // trucks stay on their map; planes/ships run as before
   useEffect(() => { if (!modes.includes(mode) && modes[0]) setMode(modes[0]); }, [same, to]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setQ(null); setQErr(null); if (!sel || !to || !it) return; const t = window.setTimeout(() => {
     void request('loc_quote', { from: sel.from, to, item: sel.item, qty, mode }).then((a) => { if (a.ok) setQ((a as unknown as { quote: { fee: number; trips: number; arriveAt: number } }).quote); else setQErr(a.error ?? null); }); }, 200);
@@ -35,12 +35,12 @@ export function LocationStock({ me }: { me: string | null }) {
   const now = Date.now();
   return (
     <div className="loc-stock" data-testid="loc-stock">
-      <p className="loc-hint">Goods stay where they were made. Truck them between places on the same map; use the plane or ship between maps. Only the Warehouse sells, and the co-op takes Warehouse stock.</p>
+      <p className="loc-hint">Goods stay where they were made. Trucks move goods between places on the same map; between maps use the plane or ship. Only the Warehouse sells, and the co-op takes Warehouse stock.</p>
       {v.locations.map((l) => <div key={l.id} className="loc-card" data-testid={`loc-${l.id}`}>
         <h4>{l.label}{l.sells && ' · sells here'}</h4>
         {!l.items.length ? <small>Empty</small> : <ul>{l.items.map((i) => <li key={i.item}>
           <span>{i.label} × {fmt(i.qty)}</span>
-          <button type="button" onClick={() => { setSel({ from: l.id, item: i.item }); setQty(i.qty); setTo(''); setMsg(null); }} data-testid={`loc-move-${l.id}-${i.item}`}>🚚 Move</button>
+          {!l.held && <button type="button" onClick={() => { setSel({ from: l.id, item: i.item }); setQty(i.qty); setTo(''); setMsg(null); }} data-testid={`loc-move-${l.id}-${i.item}`}>🚚 Move</button>}
           {l.sells && <button type="button" disabled={busy} onClick={() => void act('loc_sell', { item: i.item, qty: i.qty }, (a) => { const r = a.result as { sold: number; paid: number }; return `💰 Sold ${fmt(r.sold)} ${i.label} for 🪙 ${fmt(r.paid)}.`; })} data-testid={`loc-sell-${i.item}`}>💰 Sell all</button>}
         </li>)}</ul>}
       </div>)}

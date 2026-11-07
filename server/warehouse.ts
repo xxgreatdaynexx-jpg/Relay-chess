@@ -41,7 +41,7 @@ export class WarehouseError extends Error {}
 type Stmt = { sql: string; args: unknown[] };
 type Q = { query: (sql: string, args?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }> };
 type PoolLike = Q & { connect: () => Promise<Q & { release: () => void }> };
-const BIN_BUILDINGS: BuildingId[] = ['coral', 'resort_farm'];
+const BIN_BUILDINGS: BuildingId[] = ['coral']; // truck logistics: resort plots keep their own stock (farm:rf:<n>); the old pooled barn is migrated
 
 /** Is `type:id` an input of any recipe a player can run (mines furnace/workbench, Factory v2 machines, the kitchen)? */
 export function recipeNeeds(type: string, id: string): boolean {
@@ -74,7 +74,6 @@ export class Warehouse {
     const mines = getMines(); if (!mines.coralBin) mines.coralBin = (acct, stacks) => this.binRows(acct, 'coral', stacks.map((s) => [`${s.type}:${s.id}`, s.qty]));
     if (!mines.fortBin) mines.fortBin = (acct, stacks) => this.binRows(acct, 'fortmc', stacks.map((s) => [`${s.type}:${s.id}`, s.qty]));
     const fm = getFortMc(); if (!fm.haul) fm.haul = { read: (name) => this.bin(name, 'fortmc'), take: (name, items) => this.binTake(name, 'fortmc', items) };
-    const farm = getFarm(); if (farm && !farm.barn) farm.barn = (name, items) => this.binRows(name, 'resort_farm', items.map(([c, n]) => [`crop:${c}`, n]));
     const lg = getLogistics(); if (lg && !lg.onSell) lg.onSell = (s) => this.arrived(s);
     if (lg && !lg.onFactory) lg.onFactory = (s) => getFortMc().factoryDelivered(s);
   }
@@ -150,7 +149,7 @@ export class Warehouse {
       const paid = await getFortMc().sellDelivered(s); row = this.row(s, 'sold', paid, null, now);
     } else if (s.type === ('crop' as ItemType)) {
       const farm = getFarm(); if (!farm) throw new Error('farm offline');
-      const paid = await farm.sellShipped(s, [saleLogStmt(s, 'sold', 0, null, now), delivered]); row = this.row(s, 'sold', paid, null, now);
+      const paid = await farm.sellShipped(s, [saleLogStmt(s, 'sold', 0, null, now), delivered], 'the Resort plantation', 'all'); /* legacy in-flight barn load: keeps its baseline sale XP */ row = this.row(s, 'sold', paid, null, now);
     } else {
       // Ore / gems / bars land AT the Chud City Warehouse (loc_stock 'warehouse', exactly once with the delivered flip)
       // and sell there at the house price; whatever the daily tier can't take stays in your Warehouse stock.
@@ -214,7 +213,7 @@ export class Warehouse {
     const cfgs = await this.cfgs(name); const lg = getLogistics(); const farm = getFarm();
     for (const [key, c] of cfgs) {
       if (!c.on) continue; const [b, item] = key.split('|') as [BuildingId, string];
-      if (item === 'harvest') { // City farms: straight to market (already in Chud City). Resort: into the barn.
+      if (item === 'harvest') { // every plot harvests into its own stock (city f:/cf: and resort rf: plots alike)
         if (!farm) continue;
         for (const pid of await farm.myPlots(name)) {
           if (pid.startsWith('rf:') !== (b === 'resort_farm')) continue;

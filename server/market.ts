@@ -1,3 +1,4 @@
+import { getMines } from './mines.js';
 import { isDisabledName } from '../shared/disabled.js';
 /** Skin market (escrowed listings, 5% fee burned) and player-to-player trade offers. Chips move only through the wallet ledger. */
 import { cityTradeFeeMul, treasuryStmtsFor } from './city-rates.js';
@@ -42,7 +43,7 @@ export interface Trade { id: string; from: string; fromName: string; to: string;
 export { MAX_BANKED_STACK } from '../shared/mines.js';
 export const MAX_STACK_QTY = 100_000;
 /** Stackable listing (Mines ore / bars / goods from mine_items): unit price, partial buys. Escrowed qty leaves the seller's pack. */
-export interface StackListing { id: string; seller: string; sellerName: string; type: ItemType; itemId: string; qty: number; total: number; unit: number; status: 'active' | 'sold' | 'cancelled'; at: number; closedAt?: number; sold: number }
+export interface StackListing { id: string; seller: string; sellerName: string; type: ItemType; itemId: string; qty: number; total: number; unit: number; status: 'active' | 'sold' | 'cancelled'; at: number; closedAt?: number; sold: number; /** truck logistics: 'warehouse' = escrowed from Warehouse stock; null = a legacy listing escrowed from banked (= factory) storage */ origin?: string | null }
 export const stackWhat = (type: string, id: string) => `stack:${type}:${id}`;
 export const isStackable = (type: unknown, id: unknown): type is ItemType => typeof id === 'string' && ((type === 'food' && isFood(id)) || (type === 'ore' && isOre(id)) || ((type === 'bar' || type === 'good') && GOODS[id]?.type === type));
 export const MARKET_MIGRATION = [
@@ -50,11 +51,12 @@ export const MARKET_MIGRATION = [
   `CREATE TABLE IF NOT EXISTS market_sales (id TEXT PRIMARY KEY, listing_id TEXT NOT NULL UNIQUE, item_id TEXT NOT NULL, what TEXT NOT NULL, price INTEGER NOT NULL, fee INTEGER NOT NULL, seller_key TEXT NOT NULL, buyer_key TEXT NOT NULL, at BIGINT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS trade_offers (id TEXT PRIMARY KEY, from_key TEXT NOT NULL, from_name TEXT NOT NULL, to_key TEXT NOT NULL, to_name TEXT NOT NULL, give_items TEXT NOT NULL, want_items TEXT NOT NULL, give_chips INTEGER NOT NULL, want_chips INTEGER NOT NULL, status TEXT NOT NULL, created_at BIGINT NOT NULL, closed_at BIGINT)`,
   `CREATE TABLE IF NOT EXISTS market_stack_listings (id TEXT PRIMARY KEY, seller_key TEXT NOT NULL, seller_name TEXT NOT NULL, item_type TEXT NOT NULL, item_id TEXT NOT NULL, qty_left INTEGER NOT NULL, qty_total INTEGER NOT NULL, unit_price INTEGER NOT NULL, sold INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, created_at BIGINT NOT NULL, closed_at BIGINT)`,
+  `ALTER TABLE market_stack_listings ADD COLUMN IF NOT EXISTS origin TEXT`,
 ];
 const stackStmt = (l: StackListing): Stmt => ({
-  sql: `INSERT INTO market_stack_listings (id, seller_key, seller_name, item_type, item_id, qty_left, qty_total, unit_price, sold, status, created_at, closed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+  sql: `INSERT INTO market_stack_listings (id, seller_key, seller_name, item_type, item_id, qty_left, qty_total, unit_price, sold, status, created_at, closed_at, origin) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
         ON CONFLICT (id) DO UPDATE SET qty_left = EXCLUDED.qty_left, sold = EXCLUDED.sold, status = EXCLUDED.status, closed_at = EXCLUDED.closed_at`,
-  args: [l.id, l.seller, l.sellerName, l.type, l.itemId, l.qty, l.total, l.unit, l.sold, l.status, l.at, l.closedAt ?? null],
+  args: [l.id, l.seller, l.sellerName, l.type, l.itemId, l.qty, l.total, l.unit, l.sold, l.status, l.at, l.closedAt ?? null, l.origin ?? null],
 });
 
 /** What a listing/sale is, for price history: skin id, or 'case' / 'key'. */
@@ -99,7 +101,7 @@ export class Market {
       this.listings.set(String(r.id), { id: String(r.id), seller: String(r.seller_key), sellerName: String(r.seller_name), itemId: String(r.item_id), price: Number(r.price), status: 'active', at: Number(r.created_at) });
     }
     for (const r of (await st.query("SELECT * FROM market_stack_listings WHERE status = 'active'")).rows) {
-      this.stacks.set(String(r.id), { id: String(r.id), seller: String(r.seller_key), sellerName: String(r.seller_name), type: r.item_type as ItemType, itemId: String(r.item_id), qty: Number(r.qty_left), total: Number(r.qty_total), unit: Number(r.unit_price), sold: Number(r.sold), status: 'active', at: Number(r.created_at) });
+      this.stacks.set(String(r.id), { id: String(r.id), seller: String(r.seller_key), sellerName: String(r.seller_name), type: r.item_type as ItemType, itemId: String(r.item_id), qty: Number(r.qty_left), total: Number(r.qty_total), unit: Number(r.unit_price), sold: Number(r.sold), status: 'active', at: Number(r.created_at), origin: r.origin == null ? null : String(r.origin) });
     }
     for (const r of (await st.query('SELECT * FROM market_sales ORDER BY at DESC LIMIT 5000')).rows) {
       this.sales.push({ id: String(r.id), listingId: String(r.listing_id), itemId: String(r.item_id), what: String(r.what), price: Number(r.price), fee: Number(r.fee), seller: String(r.seller_key), buyer: String(r.buyer_key), at: Number(r.at) });
@@ -198,7 +200,7 @@ export class Market {
     // Truck logistics: the Market is the Chud City Warehouse. Listings escrow stock that is AT the Warehouse.
     const ls = getLocStore(); const have = ls.qty(name, WAREHOUSE, `${type}:${sid}`);
     if (have < n) throw new RuleError(`You only have ${have} ${stackName({ type, id: sid })} at the Chud City Warehouse. Truck goods there to list them.`);
-    const l: StackListing = { id: randomUUID(), seller: k, sellerName: name.trim(), type, itemId: sid, qty: n, total: n, unit: u, status: 'active', at: Date.now(), sold: 0 };
+    const l: StackListing = { id: randomUUID(), seller: k, sellerName: name.trim(), type, itemId: sid, qty: n, total: n, unit: u, status: 'active', at: Date.now(), sold: 0, origin: WAREHOUSE };
     const r = ls.adjust(name, [{ loc: WAREHOUSE, item: `${type}:${sid}`, delta: -n }], [stackStmt(l)]);
     if (r === false) throw new RuleError('Not enough items.');
     this.stacks.set(l.id, l);
@@ -209,8 +211,13 @@ export class Market {
     const l = typeof id === 'string' ? this.stacks.get(id) : undefined;
     if (!l || l.status !== 'active' || l.seller !== playerKey(name)) throw new RuleError('That listing is not active.');
     l.status = 'cancelled'; l.closedAt = Date.now(); this.stacks.delete(l.id);
+    const undo = (e: Error) => { console.error('[market] cancel failed:', (e as Error).message); l.status = 'active'; delete l.closedAt; this.stacks.set(l.id, l); this.onStacksReverted?.(); };
+    if (l.origin !== WAREHOUSE) { // legacy listing: escrowed from banked storage (= the factory) before the cutover, so it goes back there
+      if (!getMines().adjustStack(l.sellerName, l.type, l.itemId, l.qty, [stackStmt(l)], undefined, { onFail: undo })) undo(new Error('could not return'));
+      return;
+    }
     const back = getLocStore().adjust(l.sellerName, [{ loc: WAREHOUSE, item: `${l.type}:${l.itemId}`, delta: l.qty }], [stackStmt(l)]);
-    if (back) back.catch((e) => { console.error('[market] cancel failed:', (e as Error).message); l.status = 'active'; delete l.closedAt; this.stacks.set(l.id, l); this.onStacksReverted?.(); });
+    if (back) back.catch(undo);
   }
   /** Buy qty units (partial OK). Checks first, then one synchronous step; buyer pack + listing row + sale row in one transaction. */
   buyStack(name: string, id: unknown, qty: unknown): { type: ItemType; id: string; qty: number; price: number; fee: number } {
