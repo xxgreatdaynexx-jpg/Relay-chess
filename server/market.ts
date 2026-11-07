@@ -9,7 +9,8 @@ import { getBank } from './casino-store.js';
 import { getAccounts } from './accounts.js';
 import { otherLockMsg, selfLockMsg } from '../shared/tradeLock.js';
 import { getVault, playerKey, RuleError, type ItemVault, type Stmt, type StoredItem } from './skins.js';
-import { getMines } from './mines.js';
+import { getLocStore } from './locstock.js';
+import { WAREHOUSE } from '../shared/inventoryLocations.js';
 import { bootAttach, reconnectMsg, setBootState } from './boot-retry.js';
 import { databaseUrl } from './leaderboard-store.js';
 import { isFood, STAPLES } from '../shared/cooking.js';
@@ -194,18 +195,22 @@ export class Market {
     const k = playerKey(name);
     const active = [...this.listings.values()].filter((l) => l.seller === k).length + [...this.stacks.values()].filter((l) => l.seller === k).length;
     if (active >= MAX_LISTINGS) throw new RuleError(`You can have at most ${MAX_LISTINGS} listings.`);
-    const mines = getMines();
-    if (mines.stackQty(name, type, sid) < n) throw new RuleError(`You only have ${mines.stackQty(name, type, sid)} ${stackName({ type, id: sid })}.`);
+    // Truck logistics: the Market is the Chud City Warehouse. Listings escrow stock that is AT the Warehouse.
+    const ls = getLocStore(); const have = ls.qty(name, WAREHOUSE, `${type}:${sid}`);
+    if (have < n) throw new RuleError(`You only have ${have} ${stackName({ type, id: sid })} at the Chud City Warehouse. Truck goods there to list them.`);
     const l: StackListing = { id: randomUUID(), seller: k, sellerName: name.trim(), type, itemId: sid, qty: n, total: n, unit: u, status: 'active', at: Date.now(), sold: 0 };
-    if (!mines.adjustStack(name, type, sid, -n, [stackStmt(l)], (r) => this.stackRows(r))) throw new RuleError('Not enough items.');
+    const r = ls.adjust(name, [{ loc: WAREHOUSE, item: `${type}:${sid}`, delta: -n }], [stackStmt(l)]);
+    if (r === false) throw new RuleError('Not enough items.');
     this.stacks.set(l.id, l);
+    r.catch((e) => { console.error('[market] listing failed:', (e as Error).message); if (this.stacks.get(l.id) === l) { this.stacks.delete(l.id); this.onStacksReverted?.(); } });
     return l;
   }
   cancelStack(name: string, id: unknown): void {
     const l = typeof id === 'string' ? this.stacks.get(id) : undefined;
     if (!l || l.status !== 'active' || l.seller !== playerKey(name)) throw new RuleError('That listing is not active.');
     l.status = 'cancelled'; l.closedAt = Date.now(); this.stacks.delete(l.id);
-    getMines().adjustStack(l.sellerName, l.type, l.itemId, l.qty, [stackStmt(l)], (r) => this.stackRows(r));
+    const back = getLocStore().adjust(l.sellerName, [{ loc: WAREHOUSE, item: `${l.type}:${l.itemId}`, delta: l.qty }], [stackStmt(l)]);
+    if (back) back.catch((e) => { console.error('[market] cancel failed:', (e as Error).message); l.status = 'active'; delete l.closedAt; this.stacks.set(l.id, l); this.onStacksReverted?.(); });
   }
   /** Buy qty units (partial OK). Checks first, then one synchronous step; buyer pack + listing row + sale row in one transaction. */
   buyStack(name: string, id: unknown, qty: unknown): { type: ItemType; id: string; qty: number; price: number; fee: number } {
@@ -215,10 +220,10 @@ export class Market {
     if (l.seller === k) throw new RuleError("You can't buy your own listing. Cancel it instead.");
     const n = intIn(qty, 1, l.qty, 'Quantity');
     const price = n * l.unit; const fee = sellerFee(price, l.sellerName);
-    const bank = this.bank(); const mines = getMines();
+    const bank = this.bank(); const ls = getLocStore();
     if (!bank.canAfford(name, price)) throw new RuleError('Not enough chips.');
-    // Purchases land in BANKED storage (uncapped; the 120 cap is the carried in-mine pack). Only a sanity limit per stack.
-    const room = MAX_BANKED_STACK - mines.stackQty(name, l.type, l.itemId);
+    // Purchases land AT the Chud City Warehouse (the Market). Only a sanity limit per stack.
+    const room = MAX_BANKED_STACK - ls.qty(name, WAREHOUSE, `${l.type}:${l.itemId}`);
     if (n > room) throw new RuleError(room > 0 ? `You can only store ${room} more of that.` : "Your storage can't hold any more of that.");
     const seq = l.sold + 1; const what = stackName({ type: l.type, id: l.itemId });
     // Chips (ledger + balances) and items (buyer pack, listing, sale) commit in ONE Postgres transaction.
@@ -241,7 +246,9 @@ export class Market {
       l.qty += n; l.sold = seq - 1; if (l.status === 'sold') { l.status = 'active'; delete l.closedAt; } this.stacks.set(l.id, l);
       this.onStacksReverted?.();
     };
-    mines.adjustStack(name, l.type, l.itemId, n, [...chips.stmts, stackStmt(l), saleStmt(sale), ...treasuryStmtsFor(l.sellerName, 'market_fee', treasuryShareOf(fee), `25% of a Market fee`)], (r) => this.stackRows(r), { after: chips.after, bind: chips.bind, onFail });
+    const got = ls.adjust(name, [{ loc: WAREHOUSE, item: `${l.type}:${l.itemId}`, delta: n }], [...chips.stmts, stackStmt(l), saleStmt(sale), ...treasuryStmtsFor(l.sellerName, 'market_fee', treasuryShareOf(fee), `25% of a Market fee`)], { after: chips.after });
+    if (got === false) { onFail(); throw new RuleError('Something went wrong. Nothing was charged.'); }
+    chips.bind(got); got.catch((e) => { console.error('[market] stack buy failed:', (e as Error).message); onFail(); });
     royaltyEarn('market', l.sellerName, price - fee);
     eventTrade(name, l.sellerName, price, sale.id);
     return { type: l.type, id: l.itemId, qty: n, price, fee };
@@ -470,7 +477,7 @@ export function registerMarket(io: Server, socket: Socket): void {
   on('mkt_cancel', (b) => { market.cancel(need(), b.id); });
   on('mkt_buy', async (b) => { const me = need(); await gate(me, market.listings.get(str(b.id))?.sellerName); return market.buy(me, b.id); });
   on('mkt_stacks', (b) => { const me = nameOf() ? playerKey(nameOf()!) : null; return { listings: market.browseStacks(b).map((l) => ({ ...l, mine: !!me && market.stacks.get(l.id)?.seller === me })) }; });
-  on('mkt_my_stacks', () => { const n = nameOf(); const p = n ? getMines().packs.get(playerKey(n)) : undefined; return { stacks: p ? [...p.values()].filter((x) => x.qty > 0 && isStackable(x.type, x.id)).map((x) => ({ ...x, name: stackName(x) })) : [] }; });
+  on('mkt_my_stacks', () => { const n = nameOf(); return { stacks: n ? getLocStore().at(n, WAREHOUSE).flatMap((x) => { const i = x.item.indexOf(':'); const type = x.item.slice(0, i) as ItemType; const id = x.item.slice(i + 1); return isStackable(type, id) ? [{ type, id, qty: x.qty, name: stackName({ type, id }) }] : []; }) : [] }; }); // Warehouse stock only
   on('mkt_list_stack', async (b) => { const me = need(); await gate(me); return { listing: market.listStack(me, b.type, b.id, b.qty, b.unit) }; });
   on('mkt_cancel_stack', (b) => { market.cancelStack(need(), b.id); });
   on('mkt_buy_stack', async (b) => { const me = need(); await gate(me, market.stacks.get(str(b.id))?.sellerName); return market.buyStack(me, b.id, b.qty); });

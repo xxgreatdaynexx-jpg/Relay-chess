@@ -29,6 +29,7 @@ import { registerFleet } from './fleet.js';
 import { registerJetSeats } from './jetSeats.js';
 import { registerFarm } from './farm.js';
 import { registerWarehouse } from './warehouse.js';
+import { registerLocMoves } from './locmoves.js';
 import { registerCoop } from './coop.js';
 import { registerRaids } from './mineRaids.js';
 import { registerSupply } from './supplyContracts.js';
@@ -326,6 +327,7 @@ export function registerSockets(io: Server): void {
     registerJetSeats(io, socket);
     registerFarm(io, socket);
     registerWarehouse(io, socket);
+    registerLocMoves(io, socket);
     registerCoop(io, socket);
     registerRaids(io, socket);
     registerSupply(io, socket);

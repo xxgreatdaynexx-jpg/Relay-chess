@@ -14,7 +14,8 @@
  */
 import type { Server, Socket } from 'socket.io';
 import { getBank } from './casino-store.js';
-import { getMines } from './mines.js';
+import { getLocStore } from './locstock.js';
+import { WAREHOUSE } from '../shared/inventoryLocations.js';
 import { px } from './price-index.js';
 import { isStackable } from './market.js';
 import { getLogistics, setExtraBusyTrucks } from './logistics.js';
@@ -83,11 +84,11 @@ export class SupplyContracts {
     const bank = getBank(); const live = moves.filter((m) => m.amount !== 0);
     let w: ReturnType<typeof bank.transferAtomic> | null;
     try { w = live.length ? bank.transferAtomic(live) : null; } catch (e) { throw new Coop3Error(/Already/.test((e as Error).message) ? 'Already applied.' : 'Not enough chips.'); }
-    let saved: Promise<unknown> | null = null; let fail: Error | null = null;
-    const ok = getMines().adjustStack(owner, next.type, next.itemId, delta, [this.ev(next, kind), this.row(next), ...(w?.stmts ?? [])], undefined,
-      { after: w?.after, bind: (p) => { w?.bind(p); saved = p; }, onFail: (e) => { fail = e; w?.revert(); } });
-    if (!ok) { w?.revert(); throw new Coop3Error(short); }
-    if (saved) await saved; if (fail) throw new Coop3Error(friendly(fail));
+    // Truck logistics: supply-contract goods leave from / land at the Chud City Warehouse (loc_stock 'warehouse').
+    const r = getLocStore().adjust(owner, [{ loc: WAREHOUSE, item: `${next.type}:${next.itemId}`, delta }], [this.ev(next, kind), this.row(next), ...(w?.stmts ?? [])], { after: w?.after });
+    if (r === false) { w?.revert(); throw new Coop3Error(short); }
+    w?.bind(r);
+    try { await r; } catch (e) { w?.revert(); throw new Coop3Error(friendly(e)); }
     this.all.set(next.id, next); this.onChange?.(next, event);
   }
   private openCount(name: string) { const k = playerKey(name); return [...this.all.values()].filter((c) => LIVE.includes(c.status) && (playerKey(c.seller) === k || playerKey(c.buyer) === k)).length; }
@@ -279,7 +280,7 @@ export function registerSupply(io: Server, socket: Socket): void {
     catch (e) { ack?.({ ok: false, error: e instanceof Coop3Error || /^Not enough chips\./.test((e as Error).message) ? (e as Error).message : 'Something went wrong.' }); if (!(e instanceof Coop3Error)) console.error(`[supply] ${ev} failed:`, (e as Error).message); }
   });
   const trucks = (n: string) => sc.trucksOf(n).map((t) => ({ id: t.id, name: TRUCK_BY_ID.get(t.truckId)?.name ?? t.truckId, cap: TRUCK_BY_ID.get(t.truckId)?.cap ?? 0 }));
-  const stock = (n: string) => getMines().stacks(n).map((s) => ({ type: s.type, id: s.id, qty: s.qty, name: nameOf(s), ref: sc.ref(s.type, s.id) })).filter((s) => s.ref > 0);
+  const stock = (n: string) => getLocStore().at(n, WAREHOUSE).flatMap((x) => { const i = x.item.indexOf(':'); const type = x.item.slice(0, i) as ItemType; const id = x.item.slice(i + 1); return isStackable(type, id) ? [{ type, id, qty: x.qty, name: nameOf({ type, id }), ref: sc.ref(type, id) }] : []; }).filter((s) => s.ref > 0);
   const full = (n: string) => ({ contracts: sc.list(n), trucks: trucks(n), stock: stock(n), me: n });
   on('sc_list', () => { const n = need(); return full(n); });
   on('sc_propose', async (b) => { const n = need(); const r = await sc.propose(n, b); return { result: r, ...full(n) }; });

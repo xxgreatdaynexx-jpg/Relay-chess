@@ -252,19 +252,8 @@ export function registerFactory(_io: Server, socket: Socket): void {
       ack?.({ ok: false, error: known ? (e as Error).message : 'Factory error.', ...view() }); if (!known) console.error('[factory import]', e);
     }
   };
-  socket.on('fac_import_farm', aop(async (a, b) => {
-    const f = getFarm(); if (!f) throw new MineError('The farm is offline right now.');
-    if (typeof b.plot === 'string') { if (b.plot.startsWith('rf:')) await requireResort(a, FarmError); return f.harvest(a, b.plot, b.tiles, factorySink(a)); }
-    // every plot with ready crops (resort plantation only while you're at the resort)
-    const got: Array<[string, number]> = []; let harvested = 0; let skippedResort = false;
-    for (const pid of await f.myPlots(a)) {
-      if (pid.startsWith('rf:')) { try { await requireResort(a, FarmError); } catch { skippedResort = true; continue; } }
-      try { const r = await f.harvest(a, pid, undefined, factorySink(a)); harvested += r.harvested; for (const [id, n] of r.toFactory ?? []) { const x = got.find((g) => g[0] === id); if (x) x[1] += n; else got.push([id, n]); } }
-      catch (e) { if (!(e instanceof FarmError)) throw e; }
-    }
-    if (!harvested) throw new MineError(skippedResort ? 'Nothing ready here. (Plantation crops can only be sent while you\'re at Chud Resort.)' : 'No ready crops on your farm plots.');
-    return { harvested, toFactory: got, skippedResort };
-  }));
+  // Truck logistics: no instant farm -> factory import. Harvest (crops stay at the plot), then truck them to the factory.
+  socket.on('fac_import_farm', aop(async () => { throw new MineError('Crops reach your factory by truck now: harvest them, then send them from the plot in your Logistics panel.'); }));
   socket.on('fac_import_fish', aop(async (a, b) => {
     const f = getFishing(); if (!f) throw new MineError('Fishing is offline right now.');
     return f.toFactory(a, b.ids, factorySink(a));

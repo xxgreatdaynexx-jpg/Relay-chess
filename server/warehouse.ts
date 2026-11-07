@@ -19,6 +19,9 @@ import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
 import { getMines } from './mines.js';
+import { getLocStore, mustOne } from './locstock.js';
+import { getLocMoves } from './locmoves.js';
+import { WAREHOUSE } from '../shared/inventoryLocations.js';
 import { getFarm } from './farm.js';
 import { getFortMc } from './fortmc.js';
 import { priceIndex } from './price-index.js';
@@ -120,7 +123,7 @@ export class Warehouse {
       const p = auto ? f.autoShip(name, id, qty, String(mode)) : f.act(name, { op: 'ship_sell', id, qty, mode }) as Promise<{ shipment: string; mode: string; fee: number; arriveAt: number }>;
       return p.catch((e) => { throw new WarehouseError((e as Error).message); });
     }
-    if (!BIN_BUILDINGS.includes(b)) throw new WarehouseError('City production is already at the Warehouse.');
+    if (!BIN_BUILDINGS.includes(b)) throw new WarehouseError('City goods move by truck: send them to the Warehouse from your Logistics panel.');
     const k = playerKey(name);
     return this.lock(k, async () => {
       if (!Number.isInteger(qty) || qty < 1) throw new WarehouseError('Pick a quantity.');
@@ -149,13 +152,18 @@ export class Warehouse {
       const farm = getFarm(); if (!farm) throw new Error('farm offline');
       const paid = await farm.sellShipped(s, [saleLogStmt(s, 'sold', 0, null, now), delivered]); row = this.row(s, 'sold', paid, null, now);
     } else {
-      // Ore / gems / bars land in the Warehouse (your Chud City storage) and sell there at the house price.
-      const mines = getMines(); let fail: Error | null = null; let done: Promise<unknown> = Promise.resolve(); let fb: Stmt[] | null = null;
-      const ok = mines.adjustStack(s.ownerName, s.type, s.itemId, s.qty, [saleLogStmt(s, 'stored', 0, 'Landed in the Warehouse', now), delivered], (r) => { fb = r; }, { bind: (p) => { done = p; }, onFail: (e) => { fail = e; } });
-      if (!ok) throw new Error('could not store');
-      if (fb) await this.tx(fb); else await done; if (fail) throw fail;
+      // Ore / gems / bars land AT the Chud City Warehouse (loc_stock 'warehouse', exactly once with the delivered flip)
+      // and sell there at the house price; whatever the daily tier can't take stays in your Warehouse stock.
+      const ls = getLocStore(); const item = `${s.type}:${s.itemId}`;
+      const flip = mustOne("UPDATE freight_shipments SET status = 'delivered' WHERE id = $1 AND status = 'transit'", [s.id]);
+      const r = ls.adjust(s.ownerName, [{ loc: WAREHOUSE, item, delta: s.qty }], [saleLogStmt(s, 'stored', 0, 'Landed in the Warehouse', now), flip]);
+      if (r === false) throw new Error('could not store');
+      try { await r; } catch (e) {
+        const st = this.pool ? (await this.pool.query('SELECT status FROM freight_shipments WHERE id = $1', [s.id])).rows[0]?.status : null;
+        if (st === 'delivered') return; throw e;
+      }
       let paid = 0; let note: string | null = null;
-      try { paid = mines.sell(s.ownerName, now, `${s.type}:${s.itemId}`, s.qty).paid; }
+      try { paid = Number((await getLocMoves().sell(s.ownerName, { item, qty: s.qty }) as { paid?: number }).paid ?? 0); }
       catch (e) { note = `Kept in your Warehouse: ${(e as Error).message}`; }
       row = this.row(s, paid > 0 ? 'sold' : 'stored', paid, note, now);
       if (paid > 0 || note) await this.tx([saleLogStmt(s, row.status, paid, note, now)]).catch((e) => console.error('[warehouse] log failed:', (e as Error).message));

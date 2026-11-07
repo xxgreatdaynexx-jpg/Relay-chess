@@ -26,6 +26,7 @@ import {
 } from '../shared/fishing.js';
 import { cookPayout, cookSellValue } from '../shared/cooking.js';
 import { isFishSpot, type FishSpot } from '../shared/fishing.js';
+import { fishingLoc, WAREHOUSE, FACTORY } from '../shared/inventoryLocations.js';
 import { FLEET_MAX_CUT } from '../shared/coop3.js';
 import { isAtResort, awayFromMarket } from './travel.js';
 import { baitLuckRoll, gearDef } from '../shared/fishGear.js';
@@ -55,6 +56,8 @@ ALTER TABLE fish_catches ADD COLUMN IF NOT EXISTS hired BOOLEAN;
 ALTER TABLE fish_catches ADD COLUMN IF NOT EXISTS crew_trip TEXT;
 ALTER TABLE fish_catches ADD COLUMN IF NOT EXISTS captain TEXT;
 ALTER TABLE fish_catches ADD COLUMN IF NOT EXISTS cut REAL;
+ALTER TABLE fish_catches ADD COLUMN IF NOT EXISTS loc TEXT;
+CREATE INDEX IF NOT EXISTS fish_catches_loc ON fish_catches (player_key, loc) WHERE sold_at IS NULL;
 CREATE TABLE IF NOT EXISTS kitchen_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
 CREATE TABLE IF NOT EXISTS fish_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
 `;
@@ -63,7 +66,7 @@ export const fishImportQty = (value: number, cooked: boolean) => Math.floor(valu
 export class FishError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
 const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
-interface Cast { castAt: number; biteAt: number; fish: string; grams: number; seed: number; hookedAt: number | null; diffAdd: number; crew?: { trip: string; captain: string | null; cut: number } | null }
+interface Cast { castAt: number; biteAt: number; fish: string; grams: number; seed: number; hookedAt: number | null; diffAdd: number; spot?: FishSpot; crew?: { trip: string; captain: string | null; cut: number } | null }
 interface Row { id: string; species: string; weight_g: number | string; value: number | string; caught_at: number | string }
 export interface FishRng { int(lo: number, hi: number): number; unit(): number }
 const cryptoRng: FishRng = { int: (lo, hi) => randomInt(lo, hi), unit: () => randomInt(0, 2 ** 32) / 2 ** 32 };
@@ -80,8 +83,8 @@ export class Fishing {
   async init() { await this.pool.query(FISH_MIGRATION); }
 
   private async cooler(key: string): Promise<FishCatch[]> {
-    const r = await this.pool.query('SELECT id, species, weight_g, value, caught_at FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL ORDER BY caught_at DESC', [key]);
-    return (r.rows as Row[]).map((x) => ({ id: x.id, fish: x.species, grams: Number(x.weight_g), value: Number(x.value), at: Number(x.caught_at) }));
+    const r = await this.pool.query('SELECT id, species, weight_g, value, caught_at, loc FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL ORDER BY caught_at DESC', [key]);
+    return (r.rows as Row[]).map((x) => ({ id: x.id, fish: x.species, grams: Number(x.weight_g), value: Number(x.value), at: Number(x.caught_at), loc: (x as { loc?: string | null }).loc ?? null }));
   }
   private async dishIds(key: string): Promise<Set<string>> {
     const r = await this.pool.query('SELECT id FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL AND dish IS NOT NULL', [key]);
@@ -119,7 +122,7 @@ export class Fishing {
     const gear = gearHook(name); const fly = gearDef(gear.fly); // Fishing upgrades (#28): bait luck + fly speed/fight
     const u = this.rng.unit(); const f = rollFish(baitLuckRoll(u, fishingLuckRoll(u, lvl), gear.bait), this.rng.unit(), spot, boat.zone, !!crew?.crewed); const grams = rollWeight(f, this.rng.unit());
     const biteIn = Math.max(BITE_MIN_MS * (fly?.biteMul ?? 1) * boat.biteMul, Math.round(this.rng.int(BITE_MIN_MS, BITE_MAX_MS + 1) * fishingBiteMul(lvl) * (fly?.biteMul ?? 1) * boat.biteMul));
-    this.casts.set(key, { castAt: now, biteAt: now + biteIn, fish: f.id, grams, seed: this.rng.int(1, 2 ** 31), hookedAt: null, diffAdd: fly?.diffAdd ?? 0, crew: crew ? { trip: crew.tripId, captain: crew.captain, cut: crew.cut } : null });
+    this.casts.set(key, { castAt: now, biteAt: now + biteIn, fish: f.id, grams, seed: this.rng.int(1, 2 ** 31), hookedAt: null, diffAdd: fly?.diffAdd ?? 0, spot, crew: crew ? { trip: crew.tripId, captain: crew.captain, cut: crew.cut } : null });
     return { biteIn };
   }
   /** Strike when it bites: too early spooks it, too late it is gone. Returns the reel game's seed + difficulty. */
@@ -144,7 +147,8 @@ export class Fishing {
       const n = Number((await this.pool.query('SELECT count(*) AS n FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL', [key])).rows[0]?.n ?? 0);
       if (n >= COOLER_MAX) throw new FishError('Your cooler is full.');
       const fish: FishCatch = { id: randomUUID(), fish: f.id, grams: c.grams, value: fishValue(f, c.grams), at: now };
-      await this.pool.query('INSERT INTO fish_catches (id, player_key, name, species, weight_g, value, caught_at, crew_trip, captain, cut) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)', [fish.id, key, name, f.id, fish.grams, fish.value, now, c.crew?.trip ?? null, c.crew?.captain ?? null, c.crew?.captain ? c.crew.cut : null]);
+      // Truck logistics: a catch stays AT its fishing spot until it is shipped (sold only at the Chud City Warehouse).
+      await this.pool.query('INSERT INTO fish_catches (id, player_key, name, species, weight_g, value, caught_at, crew_trip, captain, cut, loc) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)', [fish.id, key, name, f.id, fish.grams, fish.value, now, c.crew?.trip ?? null, c.crew?.captain ?? null, c.crew?.captain ? c.crew.cut : null, fishingLoc(c.spot ?? 'lake')]);
       const xp = FISH_XP[f.rarity];
       awardXp(name, 'fishing', xp);
       eventCredit('fishing', name, 1, fish.id);
@@ -160,9 +164,10 @@ export class Fishing {
   async sell(name: string, ids?: unknown, qtyIn?: unknown): Promise<{ sold: number; gross: number; paid: number; chips: number; captainCut?: number }> {
     const key = keyOf(name);
     return this.lock(`c:${key}`, async () => {
-      let rows = await this.cooler(key);
+      const all = await this.cooler(key);
+      let rows = all.filter((r) => r.loc === WAREHOUSE); // only the Chud City Warehouse buys fish
       if (Array.isArray(ids)) { const want = new Set(ids.filter((x): x is string => typeof x === 'string').slice(0, COOLER_MAX)); rows = rows.filter((r) => want.has(r.id)); }
-      if (!rows.length) throw new FishError('Nothing to sell.');
+      if (!rows.length) throw new FishError(all.length ? 'Fish only sell at the Chud City Warehouse. Send them there by truck first.' : 'Nothing to sell.');
       if (qtyIn !== undefined && qtyIn !== null) { const v = parseSellQty(qtyIn, rows.length); if (!v.ok) throw new FishError(v.error); rows = pickForQty(rows, v.qty); }
       const day = utcDay(this.clock());
       // Pan-fried dishes (fishPan) count toward the ONE daily cooking-sales cap (kitchen_daily, shared with recipe
@@ -189,7 +194,7 @@ export class Fishing {
       const memo = `Fish market: sold ${[...counts].map(([l, n]) => `${n} ${l}`).join(', ')}`.slice(0, 200);
       const body = async (cl: pg.PoolClient) => {
         const ph = rows.map((_, i) => `$${i + 3}`).join(',');
-        const u = await cl.query(`UPDATE fish_catches SET sold_at = $1 WHERE player_key = $2 AND sold_at IS NULL AND id IN (${ph})`, [this.clock(), key, ...rows.map((r) => r.id)]);
+        const u = await cl.query(`UPDATE fish_catches SET sold_at = $1 WHERE player_key = $2 AND sold_at IS NULL AND loc = 'warehouse' AND id IN (${ph})`, [this.clock(), key, ...rows.map((r) => r.id)]);
         if (u.rowCount !== rows.length) throw new FishError('Already sold.');
         for (const b of live) {
           const dk = fishDailyKey(key, b.spot);
@@ -230,18 +235,18 @@ export class Fishing {
   async toFactory(name: string, ids: unknown, sink: ImportSink): Promise<{ moved: number; items: Array<[string, number]> }> {
     const key = keyOf(name);
     return this.lock(`c:${key}`, async () => {
-      const all = (await this.pool.query('SELECT id, species, value, dish FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL', [key])).rows as Array<{ id: string; species: string; value: number; dish: string | null }>;
+      const all = (await this.pool.query("SELECT id, species, value, dish FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL AND loc = 'factory'", [key])).rows as Array<{ id: string; species: string; value: number; dish: string | null }>;
       const want = Array.isArray(ids) ? new Set(ids.filter((x): x is string => typeof x === 'string').slice(0, COOLER_MAX)) : null;
       const rows = all.filter((r) => (!want || want.has(r.id)) && fishById(r.species)?.rarity !== 'junk' && fishImportQty(Number(r.value), !!r.dish) > 0);
-      if (!rows.length) throw new FishError(want ? 'Those fish can\'t go to the factory (junk or too small).' : 'No fish in your cooler big enough for the factory.');
+      if (!rows.length) throw new FishError(want ? 'Only fish already at your factory can go in (truck them there first; junk and tiny fish can\'t).' : 'No fish at your factory big enough to process. Truck fish there first.');
       let fillet = 0, portion = 0; for (const r of rows) { const n = fishImportQty(Number(r.value), !!r.dish); if (r.dish) portion += n; else fillet += n; }
       const items: Array<[string, number]> = []; if (fillet) items.push(['fish_fillet', fillet]); if (portion) items.push(['fish_portion', portion]);
       const cl = await this.pool.connect();
       try {
         await cl.query('BEGIN');
         const ph = rows.map((_, i) => `$${i + 3}`).join(',');
-        const u = await cl.query(`UPDATE fish_catches SET sold_at = $1 WHERE player_key = $2 AND sold_at IS NULL AND id IN (${ph})`, [this.clock(), key, ...rows.map((r) => r.id)]);
-        if (u.rowCount !== rows.length) throw new FishError('Your cooler changed — try again.');
+        const u = await cl.query(`UPDATE fish_catches SET sold_at = $1 WHERE player_key = $2 AND sold_at IS NULL AND loc = '${FACTORY}' AND id IN (${ph})`, [this.clock(), key, ...rows.map((r) => r.id)]);
+        if (u.rowCount !== rows.length) throw new FishError('Your factory fish changed — try again.');
         await sink.write(cl, items);
         await cl.query('COMMIT');
       } catch (e) { await cl.query('ROLLBACK').catch(() => {}); if (e instanceof FishError) throw e; console.error('[fishing] toFactory failed:', (e as Error).message); throw new FishError('Something went wrong. Nothing was moved.'); }
@@ -255,7 +260,7 @@ export class Fishing {
     const list = ids.filter((x): x is string => typeof x === 'string').slice(0, COOLER_MAX);
     return this.lock(`c:${key}`, async () => {
       const ph = list.map((_, i) => `$${i + 2}`).join(',');
-      const r = await this.pool.query(`DELETE FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL AND id IN (${ph})`, [key, ...list]);
+      const r = await this.pool.query(`DELETE FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL AND (loc IS NULL OR loc NOT LIKE 'transit:%') AND id IN (${ph})`, [key, ...list]);
       return { released: r.rowCount ?? 0 };
     });
   }

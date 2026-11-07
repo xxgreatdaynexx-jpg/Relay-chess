@@ -27,6 +27,9 @@ import { sinkLostToday } from './sink-room.js';
 import { effectiveAlready } from '../shared/sinkRoom.js';
 import { houseCapIndex, HOUSE_SELL_BLOCKED } from './house-cap-index.js';
 import { eventCredit, eventTrade } from './weeklyEvent.js';
+import { getLocStore } from './locstock.js';
+import { getLocMoves } from './locmoves.js';
+import { WAREHOUSE } from '../shared/inventoryLocations.js';
 
 export const MINES_MIGRATION = [
   // Generic per-player stacks: item_type 'ore' | 'bar' | 'good' (Factory) — also the Market hook for stackables.
@@ -492,9 +495,11 @@ export class MinesWorld {
   /** Walk into the lift: everything carried moves into banked storage. Position is the server-validated one. */
   /** Millionaire Update: Coral Grotto (resort) hauls bank into the grotto's own building inventory, not the Chud City
    * Warehouse (server/warehouse.ts sets this; it returns the SQL rows that land in the same transaction). */
-  coralBin: ((account: string, stacks: Stack[]) => Array<{ sql: string; args: unknown[] }>) | null = null;
+  coralBin: ((account: string, stacks: Stack[], cave?: CaveId) => Array<{ sql: string; args: unknown[] }>) | null = null;
   /** Fort McChud Mine hauls bank into the fort's mine bin (unloaded into the plant with the fort 'unload' op). */
-  fortBin: ((account: string, stacks: Stack[]) => Array<{ sql: string; args: unknown[] }>) | null = null;
+  fortBin: ((account: string, stacks: Stack[], cave?: CaveId) => Array<{ sql: string; args: unknown[] }>) | null = null;
+  /** Truck logistics: Chud City cave hauls bank AT that mine (mine:<cave>, server/locmoves.ts), not in the factory store. */
+  cityBin: ((account: string, stacks: Stack[], cave: CaveId) => Array<{ sql: string; args: unknown[] }>) | null = null;
   exit(id: string): { banked: Stack[]; worth: number; bin?: string } {
     const m = this.miners.get(id); if (!m) throw new MineError('Join the mine first.');
     if (m.restoring) throw new MineError('Loading your backpack...');
@@ -503,8 +508,8 @@ export class MinesWorld {
     if (m.account) this.lastCave.set(playerKey(m.account), m.cave); // royalties: ore is credited to the cave it was hauled out of
     const p = this.pack(this.packKey(m));
     m.carried.clear();
-    const binHook = m.cave === 'coral' ? this.coralBin : m.cave === 'fortmc' ? this.fortBin : null;
-    const bin = m.account && binHook ? binHook(m.account, banked) : null;
+    const binHook = m.cave === 'coral' ? this.coralBin : m.cave === 'fortmc' ? this.fortBin : this.cityBin;
+    const bin = m.account && binHook ? binHook(m.account, banked, m.cave) : null;
     if (!bin) for (const s of banked) { const k = stackKey(s); const cur = p.get(k); if (cur) cur.qty += s.qty; else p.set(k, { ...s }); }
     if (m.account) { const k = playerKey(m.account); const t = this.carryTimers.get(k); if (t) { clearTimeout(t); this.carryTimers.delete(k); } }
     // Banked stacks and the cleared carry row commit in one transaction: no duplicate or lost haul across a restart.
@@ -584,9 +589,13 @@ export class MinesWorld {
   }
 
   quote(account: string, now: number, only?: unknown): { gross: number; paid: number; already: number; lost: number; effAlready: number; capBase: number; capIndex: number; items: Stack[] } {
-    const m = { account };
     this.beforeStorage?.(account);
     const items = this.storage(account).filter((s) => sellable(s) && (typeof only !== 'string' || s.id === only || stackKey(s) === only));
+    return this.quoteItems(account, now, items);
+  }
+  /** House quote for an explicit list of stacks (Chud City Warehouse stock, server/locmoves.ts). Same tiers and caps. */
+  quoteItems(account: string, now: number, items: Stack[]): { gross: number; paid: number; already: number; lost: number; effAlready: number; capBase: number; capIndex: number; items: Stack[] } {
+    const m = { account };
     const gross = items.reduce((t, s) => t + s.qty * houseSellPrice(s), 0) * cityPolicyMul('mining'); // Mining boom policy
     const k = playerKey(m.account); const d = this.daily.get(k); const already = d && d.day === dayKey(now) ? d.gross : 0;
     // Chips lost to sinks today free up room (pt1405u), converted to base chips; may push effAlready below 0.
@@ -640,6 +649,34 @@ export class MinesWorld {
     const nd = { day, gross: base.gross + q.gross, paid: base.paid + q.paid }; this.daily.set(k, nd);
     this.persist(m, { day, gross: q.gross, paid: q.paid, items: JSON.stringify(q.items), ledgerKey, at: now, dayGross: nd.gross, dayPaid: nd.paid });
     return { paid: q.paid, gross: q.gross, sold: q.items };
+  }
+
+  /**
+   * Truck logistics: a house sale of goods held at the Chud City Warehouse. The caller debits the warehouse stock in the
+   * same transaction as `stmts` (wallet credit + mine_daily + mine_sales) and calls apply() once it commits.
+   */
+  houseSale(account: string, now: number, items: Stack[]) {
+    if (HOUSE_SELL_BLOCKED.has(playerKey(account))) throw new MineError('House selling is disabled on this account.');
+    const q = this.quoteItems(account, now, items.filter((s) => sellable(s) && s.qty > 0));
+    if (!q.items.length) throw new MineError('Nothing to sell.');
+    if (q.paid < 1) throw new MineError('Not worth a chip yet. Sell a bigger stack (stone is 1 chip per 10).');
+    const k = playerKey(account); const day = dayKey(now);
+    const ledgerKey = `mine:sell:${k}:${now}:${++this.saleSeq}`;
+    const memo = `Chud City Warehouse: sold ${q.items.map((s) => `${s.qty} ${nameOf(s)}`).join(', ')}`.slice(0, 200);
+    const prev = this.daily.get(k); const base = prev && prev.day === day ? prev : { day, gross: 0, paid: 0 };
+    const nd = { day, gross: base.gross + q.gross, paid: base.paid + q.paid };
+    const w = getBank().transferAtomic([{ name: account, amount: q.paid, key: ledgerKey, game: 'mines', memo }]);
+    const stmts = [...w.stmts,
+      { sql: `INSERT INTO mine_daily (player_key, day, gross, paid) VALUES ($1,$2,$3,$4) ON CONFLICT (player_key, day) DO UPDATE SET gross = mine_daily.gross + $5, paid = mine_daily.paid + $6`, args: [k, day, nd.gross, nd.paid, q.gross, q.paid] },
+      { sql: 'INSERT INTO mine_sales (player_key, items, gross, paid, ledger_key, at) VALUES ($1,$2,$3,$4,$5,$6)', args: [k, JSON.stringify(q.items), q.gross, q.paid, ledgerKey, now] }];
+    const apply = () => {
+      const cur = this.daily.get(k); const b2 = cur && cur.day === day ? cur : { day, gross: 0, paid: 0 };
+      this.daily.set(k, { day, gross: b2.gross + q.gross, paid: b2.paid + q.paid });
+      const oreG = q.items.filter((s) => s.type === 'ore').reduce((t, s) => t + s.qty * houseSellPrice(s), 0); const share = q.gross > 0 ? oreG / q.gross : 0;
+      const cave = CAVE_LANDMARK[this.lastCave.get(k) ?? 'mine'];
+      if (cave) royaltyEarn(cave, account, q.paid * share); royaltyEarn('factory', account, q.paid * (1 - share));
+    };
+    return { q, w, stmts, apply };
   }
 
   // ------------------------------------------------------------ Factory
@@ -822,7 +859,8 @@ export function registerMines(io: Server, socket: Socket): void {
   const account = () => (socket.data.account as { name?: string } | undefined)?.name ?? null;
   const me = () => world.miners.get(socket.id);
   const packMsg = () => ({ pack: world.carried(socket.id), load: world.load(socket.id), cap: BACKPACK_CAP });
-  const storeMsg = () => { const a = account(); if (a) world.beforeStorage?.(a); const q = a ? world.quote(a, Date.now()) : null; return { storage: a ? world.storage(a) : [], quote: q ? { gross: q.gross, paid: q.paid, already: q.already, lost: q.lost, effAlready: q.effAlready, index: priceIndex(), capBase: q.capBase, capIndex: q.capIndex, sellBonus: sellCapMul(a) - 1 } : null, inMine: a ? world.inMine(a) : false, guest: !a }; };
+  const storeMsg = () => { const a = account(); if (a) world.beforeStorage?.(a); const q = a ? world.quoteItems(a, Date.now(), getLocStore().at(a, WAREHOUSE).flatMap((x) => { const i = x.item.indexOf(':'); const t = x.item.slice(0, i) as ItemType; const st = { type: t, id: x.item.slice(i + 1), qty: x.qty }; return (t === 'ore' || t === 'bar' || t === 'good' || t === 'food') && sellable(st) ? [st] : []; })) : null; const wh = a ? getLocStore().at(a, WAREHOUSE).flatMap((x) => { const i = x.item.indexOf(':'); const t = x.item.slice(0, i); return t === 'ore' || t === 'bar' || t === 'good' || t === 'food' ? [{ type: t as ItemType, id: x.item.slice(i + 1), qty: x.qty }] : []; }) : [];
+    return { storage: a ? world.storage(a) : [], warehouse: wh, quote: q ? { gross: q.gross, paid: q.paid, already: q.already, lost: q.lost, effAlready: q.effAlready, index: priceIndex(), capBase: q.capBase, capIndex: q.capIndex, sellBonus: sellCapMul(a) - 1 } : null, inMine: a ? world.inMine(a) : false, guest: !a }; };
   socket.on('mines_join', async (p: unknown, ack?: Ack) => {
     let m = me();
     const want = caveOf(body(p).cave).id;
@@ -900,11 +938,31 @@ export function registerMines(io: Server, socket: Socket): void {
   });
   const safe = (fn: () => Record<string, unknown>) => (_p: unknown, ack?: Ack) => { try { ack?.({ ok: true, ...fn() }); } catch (e) { ack?.({ ok: false, offline: world.offline, error: (e as Error).message }); } };
   socket.on('mines_storage', safe(() => storeMsg()));
-  socket.on('mines_sell', (p: unknown, ack?: Ack) => {
+  // Truck logistics: the house only buys goods that are AT the Chud City Warehouse (loc_stock 'warehouse'). Factory /
+  // mine stock has to be trucked there first (server/locmoves.ts); this handler never sells from the factory store.
+  const sold = new Map<string, { at: number; res: Record<string, unknown> }>();
+  socket.on('mines_sell', async (p: unknown, ack?: Ack) => {
     try {
-      // Millionaire Update: the Warehouse market is in Chud City. Away at the resort / Fort McChud you ship goods there instead.
-      if (isAtResort(account()) || isAtFortMc(account())) throw new MineError('The market is the Chud City Warehouse. Travel back to Chud City to sell here, or use Ship & sell from your building.'); const r = world.sellOnce(account(), Date.now(), body(p).ore, body(p).qty, body(p).rid); ack?.({ ok: true, ...r, ...storeMsg() }); }
-    catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
+      if (isAtResort(account()) || isAtFortMc(account())) throw new MineError('The market is the Chud City Warehouse. Travel back to Chud City to sell here, or use Ship & sell from your building.');
+      const a = account(); if (!a) throw new MineError('Sign in to sell ore. Guests can mine but not sell.');
+      if (world.inMine(a)) throw new MineError('Leave the mine to sell.');
+      const b = body(p); const rid = typeof b.rid === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(b.rid) ? `${playerKey(a)}|${b.rid}` : null;
+      const now = Date.now(); for (const [k, v] of sold) if (now - v.at > 15 * 60_000) sold.delete(k);
+      if (rid && sold.has(rid)) return ack?.({ ok: true, ...sold.get(rid)!.res, replay: true, ...storeMsg() });
+      const wh = getLocStore().at(a, WAREHOUSE).filter((x) => /^(ore|bar|good|food):/.test(x.item));
+      const only = typeof b.ore === 'string' ? b.ore : null;
+      const pick = only ? wh.filter((x) => x.item === only || x.item.slice(x.item.indexOf(':') + 1) === only) : wh.filter((x) => { const [t, id] = [x.item.slice(0, x.item.indexOf(':')), x.item.slice(x.item.indexOf(':') + 1)]; return sellable({ type: t as ItemType, id }); });
+      if (!pick.length) throw new MineError(only && world.storage(a).some((s) => stackKey(s) === only || s.id === only) ? 'Goods only sell at the Chud City Warehouse. Truck them there from your factory first.' : 'Nothing to sell at the Warehouse.');
+      if (b.qty !== undefined && b.qty !== null && pick.length !== 1) throw new MineError('Pick one item to sell a quantity.');
+      let paid = 0, gross = 0; const out: Stack[] = []; let err: Error | null = null;
+      for (const x of pick) {
+        try { const r = await getLocMoves().sell(a, { item: x.item, qty: b.qty ?? x.qty }) as { paid?: number; gross?: number }; paid += r.paid ?? 0; gross += r.gross ?? 0; const i = x.item.indexOf(':'); out.push({ type: x.item.slice(0, i) as ItemType, id: x.item.slice(i + 1), qty: Number(b.qty ?? x.qty) }); }
+        catch (e) { err = e as Error; if (pick.length === 1) throw e; }
+      }
+      if (!out.length && err) throw err;
+      const res = { paid, gross, sold: out }; if (rid) sold.set(rid, { at: now, res });
+      ack?.({ ok: true, ...res, ...storeMsg() });
+    } catch (e) { ack?.({ ok: false, error: (e as Error).message }); }
   });
   const fact = () => ({ factory: world.factoryView(account(), Date.now()) });
   const fx = (fn: () => unknown) => (_p: unknown, ack?: Ack) => {

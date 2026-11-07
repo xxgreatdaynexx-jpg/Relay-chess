@@ -43,7 +43,7 @@ export class FishPan {
   async start(name: string, fishId: unknown): Promise<{ seed: number; thick: number; level: number; fish: string; grams: number }> {
     const key = keyOf(name); if (typeof fishId !== 'string' || fishId.length > 64) throw new PanError('Pick a fish from your cooler.');
     return this.excl(key, async () => {
-      const r = await this.pool.query('SELECT species, weight_g, value, dish FROM fish_catches WHERE id = $1 AND player_key = $2 AND sold_at IS NULL', [fishId, key]);
+      const r = await this.pool.query("SELECT species, weight_g, value, dish FROM fish_catches WHERE id = $1 AND player_key = $2 AND sold_at IS NULL AND loc IS NOT NULL AND loc NOT LIKE 'transit:%'", [fishId, key]);
       const row = r.rows[0] as { species: string; weight_g: number; value: number; dish: string | null } | undefined;
       if (!row) throw new PanError("That fish isn't in your cooler.");
       if (row.dish) throw new PanError("That one's already cooked.");
@@ -70,7 +70,7 @@ export class FishPan {
       if (now - s.at < (inputs as string).length * COOK_DT * 1000 - 800) throw new PanError('The pan slipped. Try again.'); // faster than real time
       if (!cookable(f.rarity)) throw new PanError("You can't cook that.");
       const value = cookedValue(s.value, res); const dish = dishName(f.label, f.rarity, res);
-      const u = await this.pool.query('UPDATE fish_catches SET value = $1, dish = $2, raw_value = value WHERE id = $3 AND player_key = $4 AND sold_at IS NULL AND dish IS NULL AND value = $5', [value, dish, s.fishId, key, s.value]);
+      const u = await this.pool.query("UPDATE fish_catches SET value = $1, dish = $2, raw_value = value WHERE id = $3 AND player_key = $4 AND sold_at IS NULL AND dish IS NULL AND value = $5 AND loc IS NOT NULL AND loc NOT LIKE 'transit:%'", [value, dish, s.fishId, key, s.value]);
       if (u.rowCount !== 1) throw new PanError('That fish is gone from your cooler.');
       const xp = Math.round(COOK_XP[f.rarity] * OUTCOME_XP[res]);
       awardXp(name, 'cooking', xp);

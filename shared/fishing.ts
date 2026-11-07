@@ -158,7 +158,7 @@ export function replayReel(seed: number, diff: number, inputs: string): 'caught'
   return 'invalid'; // timeline stopped before the game ended
 }
 
-export interface FishCatch { id: string; fish: string; grams: number; value: number; at: number }
+export interface FishCatch { id: string; fish: string; grams: number; value: number; at: number; /** truck logistics: where this fish is (fishing:<spot>, factory, warehouse, kitchen:<home>, transit:<id>) */ loc?: string | null }
 export interface FishView { cooler: FishCatch[]; today: { gross: number; paid: number }; /** per-spot sold today (base gross) */ todayBySpot?: Record<FishSpot, { gross: number; paid: number }>; index: number; best: { fish: string; grams: number } | null; totals: { caught: number } }
 
 /** What other players see of an angler at the dock (pt242u). Derived on the server from fish_* actions only:

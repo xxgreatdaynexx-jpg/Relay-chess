@@ -19,6 +19,8 @@ import { initJail, getJail } from './jail.js';
 import { initRealEstate } from './realEstate.js';
 import { initCars } from './cars.js';
 import { initLogistics } from './logistics.js';
+import { initLocStore } from './locstock.js';
+import { initLocMoves } from './locmoves.js';
 import { initHomes } from './homes.js';
 import { initRace } from './race.js';
 import { initTravel } from './travel.js';
@@ -70,6 +72,7 @@ await initStocks();
 await initRealEstate();
 initRoyalties();
 await initCars();
+await initLocStore();
 await initLogistics();
 await initHomes();
 await initRace();
@@ -95,6 +98,7 @@ startWealthTax();
 startNetWorthSnapshots();
 startSinkRoom();
 await initCooking();
+void initLocMoves(); // truck logistics: wires producers + freight; moves legacy cooler/kitchen stock to each owner's factory (idempotent, background)
 await initConquestStorage();
 await initSolitroStorage();
 

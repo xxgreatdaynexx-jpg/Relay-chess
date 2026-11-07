@@ -10,6 +10,8 @@
  * day. Firing is free and refunds nothing. Output goes to normal storage (ores → mine storage, fish → cooler), so the
  * usual daily sell tiers apply; workers give the owner no skill XP.
  */
+import { getLocStore } from './locstock.js';
+import { mineLoc, fishingLoc } from '../shared/inventoryLocations.js';
 import { randomUUID, randomInt } from 'node:crypto';
 import express from 'express';
 import pg from 'pg';
@@ -51,21 +53,18 @@ const parse = (r: Row): W | null => {
 const boxValue = (b: WorkerBox) => Object.entries(b.ores ?? {}).reduce((a, [id, n]) => a + ORES[id as OreId].price * (n ?? 0), 0) + (b.fish ?? []).reduce((a, f) => a + f.value, 0);
 export const cryptoUnit: Unit = () => randomInt(0, 2 ** 32) / 2 ** 32;
 
-/** Real sink: mine_items row + in-memory pack mirror (same pattern as factorySink, but for ores). */
+/** Real sink: hired miners' ores land AT The Mine (loc_stock 'mine:mine', truck logistics) in the caller's transaction;
+ * the in-memory mirror is applied after it commits. Truck them to your factory / the Warehouse from there. */
 export function mineOreSink(account: string): OreSink {
-  const m = getMines(); if (m.offline) throw new EmployError(MINES_OFFLINE_MSG);
-  try { getFactory().get(account, Date.now()); } catch { /* settle the factory sim if it has one */ }
-  const pack = m.packOf(account);
+  const ls = getLocStore(); if (!ls.loaded) throw new EmployError(MINES_OFFLINE_MSG);
+  const loc = mineLoc('mine'); const d = (items: Array<[OreId, number]>) => items.map(([id, n]) => ({ loc, item: `ore:${id}`, delta: n }));
   return {
-    room: (id) => Math.max(0, MAX_BANKED_STACK - (pack.get(stackKey({ type: 'ore', id }))?.qty ?? 0)),
+    room: (id) => Math.max(0, MAX_BANKED_STACK - ls.qty(account, loc, `ore:${id}`)),
     async write(cl, items) {
-      for (const [id, n] of items) if ((pack.get(stackKey({ type: 'ore', id }))?.qty ?? 0) + n > MAX_BANKED_STACK) throw new EmployError('Your mine storage is full for that ore.');
-      for (const [id, n] of items) await cl.query('INSERT INTO mine_items (player_key, owner_name, item_type, item_id, qty) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (player_key, item_type, item_id) DO UPDATE SET qty = mine_items.qty + EXCLUDED.qty, updated_at = now()', [playerKey(account), account.trim(), 'ore', id, n]);
+      for (const [id, n] of items) if (ls.qty(account, loc, `ore:${id}`) + n > MAX_BANKED_STACK) throw new EmployError('Your mine storage is full for that ore.');
+      for (const st of ls.rowsFor(account, d(items))) await cl.query(st.sql, st.args);
     },
-    after(items) {
-      for (const [id, n] of items) { const k = stackKey({ type: 'ore', id }); const s = pack.get(k); if (s) s.qty += n; else pack.set(k, { type: 'ore', id, qty: n }); }
-      void m.savePack(account, []).catch(() => {});
-    },
+    after(items) { ls.applyMem(account, d(items)); },
   };
 }
 
@@ -239,7 +238,7 @@ export class Employment {
             const keep: NonNullable<WorkerBox['fish']> = [];
             for (const f of w.box.fish ?? []) {
               if (free <= 0) { keep.push(f); continue; }
-              await cl.query('INSERT INTO fish_catches (id, player_key, name, species, weight_g, value, caught_at, hired) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [randomUUID(), key, name.trim(), f.species, f.grams, f.value, now, true]);
+              await cl.query('INSERT INTO fish_catches (id, player_key, name, species, weight_g, value, caught_at, hired, loc) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [randomUUID(), key, name.trim(), f.species, f.grams, f.value, now, true, fishingLoc('lake')]);
               free--; fish++;
             }
             w.box.fish = keep; await this.save(cl, w);
@@ -278,7 +277,7 @@ export class Employment {
       if (items.length) { await this.tx(async (cl) => { await sink.write(cl, items); await this.save(cl, { ...w, box: { ...w.box, ores: {} } }); }); sink.after(items); w.box.ores = {}; ores = items.reduce((a, [, q]) => a + q, 0); }
       if (w.box.fish?.length) await this.tx(async (cl) => {
         let free = COOLER_MAX - Number((await cl.query('SELECT count(*) AS n FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL', [key])).rows[0]?.n ?? 0);
-        for (const f of w.box.fish ?? []) { if (free-- <= 0) break; await cl.query('INSERT INTO fish_catches (id, player_key, name, species, weight_g, value, caught_at, hired) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [randomUUID(), key, name.trim(), f.species, f.grams, f.value, now, true]); fish++; }
+        for (const f of w.box.fish ?? []) { if (free-- <= 0) break; await cl.query('INSERT INTO fish_catches (id, player_key, name, species, weight_g, value, caught_at, hired, loc) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [randomUUID(), key, name.trim(), f.species, f.grams, f.value, now, true, fishingLoc('lake')]); fish++; }
       });
       return { ores, fish };
     });

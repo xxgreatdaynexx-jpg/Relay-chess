@@ -147,5 +147,5 @@ export function judgeCook(seed: number, diff: number, presses: unknown): number 
 }
 export const qualityLabel = (q: number) => (q >= 0.95 ? 'Perfect' : q >= 0.8 ? 'Great' : q >= 0.6 ? 'Good' : q >= 0.35 ? 'OK' : 'Sloppy');
 
-export interface Dish { id: string; recipe: string; quality: number; value: number; at: number }
-export interface KitchenView { pantry: Record<string, number>; fish: { fish: number; fish_fine: number }; fillets?: { fish: number; fish_fine: number }; dishes: Dish[]; today: { gross: number; paid: number }; index: number; level: number; xp: number; hasHome: boolean }
+export interface Dish { id: string; recipe: string; quality: number; value: number; at: number; loc?: string | null }
+export interface KitchenView { pantry: Record<string, number>; fish: { fish: number; fish_fine: number }; fillets?: { fish: number; fish_fine: number }; dishes: Dish[]; today: { gross: number; paid: number }; index: number; level: number; xp: number; hasHome: boolean; /** truck logistics: the kitchen shown + every home you own */ home?: string | null; homes?: string[]; loc?: string | null }

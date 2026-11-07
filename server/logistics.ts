@@ -20,9 +20,10 @@ import { getAccounts } from './accounts.js';
 import { px, priceIndex } from './price-index.js';
 import { nameOf, type ItemType } from '../shared/mines.js';
 import { isStackable } from './market.js';
+import { locLabel } from '../shared/inventoryLocations.js';
 import { getFleet } from './fleet.js';
 import { CARGO, cargoCap, multiTripMs, ownFeeBase, tripsFor } from '../shared/cargo.js';
-import { HUBS, isOwnMode, MAX_SHIP_QTY, MAX_TRUCKS, MODES, TRUCKS, TRUCK_BY_ID, TRUCK_SELL_BACK, arrivalOf, feeBase, shipFee, isHub, isMode, nextDeparture, truckTravelMs, type HubId, type LiveVehicle, type Mode, truckAllowed, NO_CROSS_MAP_TRUCK } from '../shared/logistics.js';
+import { HUBS, isOwnMode, MAX_SHIP_QTY, MAX_TRUCKS, MODES, TRUCKS, TRUCK_BY_ID, TRUCK_SELL_BACK, arrivalOf, feeBase, shipFee, isHub, isMode, nextDeparture, truckTravelMs, type HubId, type LiveVehicle, type Mode, truckAllowed, NO_CROSS_MAP_TRUCK, isTruckMode } from '../shared/logistics.js';
 
 export class FreightError extends Error {}
 const keyOf = (n: string) => n.replace(/\s+/g, ' ').trim().toLowerCase();
@@ -38,20 +39,24 @@ CREATE TABLE IF NOT EXISTS freight_shipments (id TEXT PRIMARY KEY, player_key TE
 CREATE INDEX IF NOT EXISTS freight_shipments_status ON freight_shipments (status);
 ALTER TABLE freight_shipments ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'move';
 ALTER TABLE freight_shipments ADD COLUMN IF NOT EXISTS src TEXT;
-ALTER TABLE freight_shipments ADD COLUMN IF NOT EXISTS auto BOOLEAN NOT NULL DEFAULT false;`;
+ALTER TABLE freight_shipments ADD COLUMN IF NOT EXISTS auto BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE freight_shipments ADD COLUMN IF NOT EXISTS from_loc TEXT;
+ALTER TABLE freight_shipments ADD COLUMN IF NOT EXISTS to_loc TEXT;`;
 
 export interface OwnedTruck { id: string; truckId: string; paid: number; boughtAt: number }
 export interface Shipment { id: string; owner: string; ownerName: string; toKey: string; toName: string; mode: Mode; truck: string | null; from: HubId; to: HubId; type: ItemType; itemId: string; qty: number; fee: number; createdAt: number; departAt: number; arriveAt: number; status: 'transit' | 'delivered';
-  /** 'sell' = a ship-to-sell load: it sells at the Chud City Warehouse on arrival instead of landing in storage. */ kind?: 'move' | 'sell' | 'factory'; /** building inventory it left (autosell) */ src?: string | null; auto?: boolean }
+  /** 'sell' = a ship-to-sell load: it sells at the Chud City Warehouse on arrival instead of landing in storage. */ kind?: 'move' | 'sell' | 'factory' | 'loc'; /** building inventory it left (autosell) */ src?: string | null; auto?: boolean;
+  /** kind 'loc' (truck logistics): the individual location it left and the one it is delivered to (server/locmoves.ts). */ fromLoc?: string | null; toLoc?: string | null }
 
 export const shipStmt = (s: Shipment): Stmt => ({
-  sql: `INSERT INTO freight_shipments (id, player_key, name, to_key, to_name, mode, truck, from_hub, to_hub, item_type, item_id, qty, fee, created_at, depart_at, arrive_at, status, kind, src, auto)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status`,
-  args: [s.id, s.owner, s.ownerName, s.toKey, s.toName, s.mode, s.truck, s.from, s.to, s.type, s.itemId, s.qty, s.fee, s.createdAt, s.departAt, s.arriveAt, s.status, s.kind ?? 'move', s.src ?? null, !!s.auto],
+  sql: `INSERT INTO freight_shipments (id, player_key, name, to_key, to_name, mode, truck, from_hub, to_hub, item_type, item_id, qty, fee, created_at, depart_at, arrive_at, status, kind, src, auto, from_loc, to_loc)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status`,
+  args: [s.id, s.owner, s.ownerName, s.toKey, s.toName, s.mode, s.truck, s.from, s.to, s.type, s.itemId, s.qty, s.fee, s.createdAt, s.departAt, s.arriveAt, s.status, s.kind ?? 'move', s.src ?? null, !!s.auto, s.fromLoc ?? null, s.toLoc ?? null],
 });
 const rowShip = (r: Record<string, unknown>): Shipment => ({ id: String(r.id), owner: String(r.player_key), ownerName: String(r.name), toKey: String(r.to_key), toName: String(r.to_name), mode: String(r.mode) as Mode, truck: r.truck == null ? null : String(r.truck),
   from: String(r.from_hub) as HubId, to: String(r.to_hub) as HubId, type: String(r.item_type) as ItemType, itemId: String(r.item_id), qty: Number(r.qty), fee: Number(r.fee), createdAt: Number(r.created_at), departAt: Number(r.depart_at), arriveAt: Number(r.arrive_at), status: String(r.status) as Shipment['status'],
-  kind: r.kind === 'sell' || r.kind === 'factory' ? r.kind : 'move', src: r.src == null ? null : String(r.src), auto: r.auto === true });
+  kind: r.kind === 'sell' || r.kind === 'factory' || r.kind === 'loc' ? r.kind : 'move', src: r.src == null ? null : String(r.src), auto: r.auto === true,
+  fromLoc: r.from_loc == null ? null : String(r.from_loc), toLoc: r.to_loc == null ? null : String(r.to_loc) });
 const stackable = isStackable;
 
 export class Logistics {
@@ -127,6 +132,8 @@ export class Logistics {
   private selling = new Set<string>();
   /** Fort McChud → your factory loads call this on arrival (server/fortmc.ts factoryDelivered). Rejects = retried. */
   onFactory: ((s: Shipment) => Promise<void>) | null = null;
+  /** Truck logistics loads (kind 'loc') call this on arrival (server/locmoves.ts). Rejects = retried with backoff. */
+  onLoc: ((s: Shipment) => Promise<void>) | null = null;
   /** Failed factory deliveries (factory full): next retry time, doubling 30 s → 10 min; the failure is logged once per load. */
   factoryBackoff = new Map<string, { wait: number; next: number }>();
   idleTruck(name: string, skip?: Set<string>): { id: string; cap: number } | null {
@@ -166,6 +173,41 @@ export class Logistics {
   quote(mode: Mode, qty: number) { const f = shipFee(mode, qty, priceIndex()); return f ? Math.max(1, Math.round(f * cityFreightMul())) : 0; }
   /** Part of a public-carrier fee above the default rate (lever > 1) goes to the treasury. */
   freightSurplus(mode: Mode, qty: number, fee: number) { return Math.max(0, fee - shipFee(mode, qty, priceIndex())); }
+
+  /**
+   * Truck logistics leg between two individual locations (server/locmoves.ts). Same rules and prices as the Freight Yard:
+   * own truck / jet / boat = fuel per trip (+ the day's upkeep), several trips for a big load; hired / plane / ship = the
+   * public fee, one load. Trucks (own or hired) only drive within one map. The truck is picked or validated here from the
+   * player's real fleet and global busy set; nothing about the vehicle comes from the client except which one.
+   * No side effects: the caller commits goods + fee + shipStmt(s) in one transaction, then calls admit(s).
+   */
+  async planLeg(name: string, b: { mode: unknown; vehicle?: unknown; fromHub: HubId; toHub: HubId; type: string; itemId: string; qty: number; fromLoc: string; toLoc: string }): Promise<{ shipment: Shipment; trips: number; surplus: number }> {
+    const mode = b.mode; if (!isMode(mode)) throw new FreightError('Pick how to ship it.');
+    const qty = b.qty; if (!Number.isInteger(qty) || qty < 1 || qty > MAX_SHIP_QTY) throw new FreightError('Pick a quantity.');
+    if (!truckAllowed(mode, b.fromHub, b.toHub)) throw new FreightError(NO_CROSS_MAP_TRUCK);
+    if (b.fromHub === b.toHub && !isTruckMode(mode)) throw new FreightError('Goods move around a map by truck. Use your truck or hire one.');
+    let truck: string | null = null; let travel = MODES[mode].travelMs; let cap = MODES[mode].cap; let model = '';
+    if (mode === 'truck') {
+      const busy = this.busyTrucks(name); const mine = this.owned(name);
+      if (!mine.length) throw new FreightError('You do not own a truck. Buy one at the truck store, or hire one for a fee.');
+      const pick = typeof b.vehicle === 'string' && b.vehicle ? mine.find((t) => t.id === b.vehicle) : mine.find((t) => !busy.has(t.id));
+      if (typeof b.vehicle === 'string' && b.vehicle && !pick) throw new FreightError('You do not own that truck.');
+      if (!pick) throw new FreightError('All your trucks are out on deliveries. Hire one, or wait.');
+      if (busy.has(pick.id)) throw new FreightError('That truck is already out on a delivery.');
+      const m = TRUCK_BY_ID.get(pick.truckId)!; truck = pick.id; cap = m.cap; travel = Math.round(truckTravelMs(m) * (1 - cityPerk('truck_speed'))); model = m.id;
+    } else if (mode === 'jet' || mode === 'boat') { const c = await this.craftFor(name, mode, b.vehicle); truck = c.id; model = c.model; cap = cargoCap(c.model); }
+    const trips = isOwnMode(mode) ? tripsFor(qty, cap) : 1;
+    if (!isOwnMode(mode) && qty > cap) throw new FreightError(`Too much for one ${MODES[mode].label.toLowerCase()}: max ${cap.toLocaleString('en-US')} units.`);
+    if (isOwnMode(mode)) travel = multiTripMs(travel, trips);
+    const fee = truck ? this.ownQuote(model, truck, qty) : this.quote(mode, qty);
+    const now = this.clock(); const departAt = nextDeparture(mode, now);
+    const s: Shipment = { id: randomUUID(), owner: keyOf(name), ownerName: name.trim(), toKey: keyOf(name), toName: name.trim(), mode, truck, from: b.fromHub, to: b.toHub, type: b.type as ItemType, itemId: b.itemId, qty, fee,
+      createdAt: now, departAt, arriveAt: isOwnMode(mode) || mode === 'hired' ? departAt + travel : arrivalOf(mode, departAt), status: 'transit', kind: 'loc', src: b.fromLoc, fromLoc: b.fromLoc, toLoc: b.toLoc };
+    this.ships.set(s.id, s); // reserve the vehicle now (busy for every other dispatch); the caller admit()s or release()s it
+    return { shipment: s, trips, surplus: fee && !truck ? this.freightSurplus(mode, qty, fee) : 0 };
+  }
+  /** Undo a planLeg reservation whose transaction failed. */
+  release(id: string) { this.ships.delete(id); }
 
   /** Send goods. Goods leave storage, the fee (if any) is debited and the shipment row is written, all in one transaction. */
   async ship(name: string, b: Record<string, unknown>): Promise<{ trips: number; shipment: Shipment; chips: number | null }> {
@@ -214,6 +256,13 @@ export class Logistics {
     const now = this.clock(); const out: Shipment[] = [];
     for (const s of [...this.ships.values()]) {
       if (s.arriveAt > now) continue;
+      if (s.kind === 'loc') { // truck logistics: credited at the destination location exactly once (retried with backoff)
+        if (this.selling.has(s.id) || !this.onLoc) continue;
+        const bo = this.factoryBackoff.get(s.id); if (bo && now < bo.next) continue;
+        this.selling.add(s.id);
+        void this.onLoc(s).then(() => { s.status = 'delivered'; this.ships.delete(s.id); this.factoryBackoff.delete(s.id); }, (e) => { const prev = this.factoryBackoff.get(s.id); const wait = Math.min(prev ? prev.wait * 2 : 15_000, 10 * 60_000); if (!prev) console.error(`[logistics] location delivery ${s.id} failed (will retry with backoff, logged once):`, (e as Error).message); this.factoryBackoff.set(s.id, { wait, next: this.clock() + wait }); }).finally(() => this.selling.delete(s.id));
+        out.push(s); continue;
+      }
       if (s.kind === 'factory') { // Fort McChud ore/petcoke for your factory: lands in factory storage on arrival (retried until it fits)
         if (this.selling.has(s.id) || !this.onFactory) continue;
         const bo = this.factoryBackoff.get(s.id); if (bo && now < bo.next) continue;
@@ -239,7 +288,7 @@ export class Logistics {
     const now = this.clock(); const out = new Map<string, LiveVehicle>();
     for (const s of this.ships.values()) {
       if (s.arriveAt <= now || this.selling.has(s.id)) continue;
-      const tag = s.kind === 'sell' ? (s.auto ? ' · auto-sell' : ' · to market') : s.kind === 'factory' ? ' · to factory' : '';
+      const tag = s.kind === 'sell' ? (s.auto ? ' · auto-sell' : ' · to market') : s.kind === 'factory' ? ' · to factory' : s.kind === 'loc' ? ` · to ${locLabel(s.toLoc ?? '')}` : '';
       if (s.mode === 'truck' || s.mode === 'hired') {
         const m = s.truck ? TRUCK_BY_ID.get(this.owned(s.ownerName).find((t) => t.id === s.truck)?.truckId ?? '') : undefined;
         if (now < s.departAt) continue;

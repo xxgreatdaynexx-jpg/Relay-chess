@@ -13,7 +13,8 @@ import pg from 'pg';
 import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
-import { getMines } from './mines.js';
+import { getLocStore } from './locstock.js';
+import { WAREHOUSE } from '../shared/inventoryLocations.js';
 import { isJailed } from './jail.js';
 import { houseCapIndex } from './house-cap-index.js';
 import { getPlayTime } from './playtime.js';
@@ -134,11 +135,11 @@ export class Coop {
         try { await p; } catch (e) { w?.revert(); throw new CoopError(/duplicate|unique|Already/i.test((e as Error).message) ? 'Already applied.' : /chips|balance|null value/i.test((e as Error).message) ? 'Not enough chips.' : 'That didn’t go through. Nothing was taken.'); }
       } else {
         // Goods leave your Warehouse storage; the donation row (+ reward credit) commit in the same pack transaction.
-        let saved: Promise<unknown> | null = null; let fail: Error | null = null;
-        const ok = getMines().adjustStack(name, g.type, g.id, -qty, [{ sql: rowStmt.sql.replace(/\)$/, ') ON CONFLICT (id) DO NOTHING'), args: rowStmt.args }, ...(w?.stmts ?? [])], undefined,
-          { after: w?.after, bind: (p) => { w?.bind(p); saved = p; }, onFail: (e) => { fail = e; w?.revert(); } });
-        if (!ok) { w?.revert(); throw new CoopError(`You don’t have ${qty.toLocaleString('en-US')} ${g.name} in your Warehouse.`); }
-        if (saved) await saved; if (fail) throw new CoopError('That didn’t go through. Nothing was taken.');
+        // Truck logistics: co-op goods come only from stock AT the Chud City Warehouse (loc_stock 'warehouse').
+        const r = getLocStore().adjust(name, [{ loc: WAREHOUSE, item: `${g.type}:${g.id}`, delta: -qty }], [{ sql: rowStmt.sql.replace(/\)$/, ') ON CONFLICT (id) DO NOTHING'), args: rowStmt.args }, ...(w?.stmts ?? [])], { after: w?.after });
+        if (r === false) { w?.revert(); throw new CoopError(`You don’t have ${qty.toLocaleString('en-US')} ${g.name} at the Chud City Warehouse. Truck it there first.`); }
+        w?.bind(r);
+        try { await r; } catch { w?.revert(); throw new CoopError('That didn’t go through. Nothing was taken.'); }
       }
       this.applyDonation(res, k, name.trim(), this.clock()); this.onChange?.();
       return res;
@@ -201,10 +202,9 @@ export class Coop {
       const left = c.qty - c.delivered; if (left <= 0) throw new CoopError('This order is already filled.');
       const qty = Math.min(q, capLeft, left); const g = GOODS[c.item]!;
       const rowStmt: Stmt = { sql: 'INSERT INTO coop_deliveries (id, contract, player_key, name, item, qty, at) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO NOTHING', args: [id, c.id, k, name.trim(), c.item, qty, now] };
-      let saved: Promise<unknown> | null = null; let fail: Error | null = null;
-      const ok = getMines().adjustStack(name, g.type, g.id, -qty, [rowStmt], undefined, { bind: (p) => { saved = p; }, onFail: (e) => { fail = e; } });
-      if (!ok) throw new CoopError(`You don’t have ${qty.toLocaleString('en-US')} ${nameOf(g)} in your Warehouse.`);
-      if (saved) await saved; if (fail) throw new CoopError('That didn’t go through. Nothing was taken.');
+      const r = getLocStore().adjust(name, [{ loc: WAREHOUSE, item: `${g.type}:${g.id}`, delta: -qty }], [rowStmt]);
+      if (r === false) throw new CoopError(`You don’t have ${qty.toLocaleString('en-US')} ${nameOf(g)} at the Chud City Warehouse. Truck it there first.`);
+      try { await r; } catch { throw new CoopError('That didn’t go through. Nothing was taken.'); }
       this.applyDelivery(id, c.id, k, name.trim(), qty, now); this.onChange?.();
       return { id, contract: c.id, qty };
     });
@@ -279,17 +279,17 @@ export function registerCoop(io: Server, socket: Socket): void {
     try { const b = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}; ack?.({ ok: true, ...((await fn(b)) as object ?? {}) }); }
     catch (e) { ack?.({ ok: false, error: e instanceof CoopError || /^Not enough chips\./.test((e as Error).message) ? (e as Error).message : 'Something went wrong.' }); if (!(e instanceof CoopError)) console.error(`[coop] ${ev} failed:`, (e as Error).message); }
   });
-  const have = (n: string | null) => { if (!n) return {}; const out: Record<string, number> = {}; const m = getMines();
-    for (const id of PROJECT_ORDER) for (const s of projectStages(COOP_PLAN[id])) for (const g of s.goods) out[partKey(g)] = m.stackQty(n, g.type, g.id);
-    const c = coop.current(); out[`${c.type}:${c.item}`] = m.stackQty(n, c.type as never, c.item); return out; };
+  const have = (n: string | null) => { if (!n) return {}; const out: Record<string, number> = {}; const ls = getLocStore(); // Warehouse stock only (co-op source)
+    for (const id of PROJECT_ORDER) for (const s of projectStages(COOP_PLAN[id])) for (const g of s.goods) out[partKey(g)] = ls.qty(n, WAREHOUSE, `${g.type}:${g.id}`);
+    const c = coop.current(); out[`${c.type}:${c.item}`] = ls.qty(n, WAREHOUSE, `${c.type}:${c.item}`); return out; };
   const chips = (n: string | null) => (n && getBank().ready ? getBank().account(n).chips : null);
   on('coop_view', async () => ({ ...coop.view(nameOf_()), contracts: coop.contractsView(nameOf_()), have: have(nameOf_()), chips: chips(nameOf_()) }));
   on('coop_donate', async (b) => { const n = need(); const r = await coop.donate(n, b); return { result: r, ...coop.view(n), contracts: coop.contractsView(n), have: have(n), chips: chips(n) }; });
   on('coop_deliver', async (b) => { const n = need(); const r = await coop.deliver(n, b); return { result: r, ...coop.view(n), contracts: coop.contractsView(n), have: have(n), chips: chips(n) }; });
   if (coop.allowQa && !databaseUrl()) { // local screenshots only; never registered with a database
     on('coop_dev_fill', async (b) => { coop.devFill(b.project === 'bridge' ? 'bridge' : 'stadium', Number(b.pct) || 0, Array.isArray(b.donors) ? (b.donors as Array<[string, number]>) : []); return {}; });
-    on('coop_dev_stock', async (b) => { const n = need(); const c = coop.current(); getMines().adjustStack(n, c.type as never, c.item, Math.min(100_000, Number(b.qty) || 0)); return {}; });
-    on('coop_dev_deliver', async (b) => { const c = coop.current(); const ppl = Array.isArray(b.names) ? (b.names as string[]) : []; for (const x of ppl) { getMines().adjustStack(x, c.type as never, c.item, playerCap(c)); await coop.deliver(x, { contract: c.id, qty: Math.floor(playerCap(c) * (Number(b.frac) || 0.5)), nonce: `devdeliver${Math.random().toString(36).slice(2, 10)}` }); } return {}; });
+    on('coop_dev_stock', async (b) => { const n = need(); const c = coop.current(); await getLocStore().adjust(n, [{ loc: WAREHOUSE, item: `${c.type}:${c.item}`, delta: Math.min(100_000, Number(b.qty) || 0) }]); return {}; });
+    on('coop_dev_deliver', async (b) => { const c = coop.current(); const ppl = Array.isArray(b.names) ? (b.names as string[]) : []; for (const x of ppl) { await getLocStore().adjust(x, [{ loc: WAREHOUSE, item: `${c.type}:${c.item}`, delta: playerCap(c) }]); await coop.deliver(x, { contract: c.id, qty: Math.floor(playerCap(c) * (Number(b.frac) || 0.5)), nonce: `devdeliver${Math.random().toString(36).slice(2, 10)}` }); } return {}; });
   }
   on('coop_claim', async (b) => { const n = need(); const r = await coop.claim(n, b.contract); return { result: r, ...coop.view(n), contracts: coop.contractsView(n), have: have(n), chips: chips(n) }; });
 }
