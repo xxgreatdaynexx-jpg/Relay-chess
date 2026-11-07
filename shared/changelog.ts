@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: 'e26f2e2', at: '2026-11-07T13:54:02-06:00', title: 'Mobile menu titles and close buttons stay reachable', bullets: [
+    'Map menus now temporarily hide the site Games/Wallet/chat bar as well as the map controls. Property lists keep their title visible while scrolling, and car, logistics and other map menus use the full phone viewport without starting underneath the site bar. Closing the menu restores navigation. Desktop layouts are unchanged.',
+  ] },
   { commit: '258d641', at: '2026-11-07T13:43:00-06:00', title: 'City buildings spread around Chud City', bullets: [
     'The seven City Hall projects (Highway, Park, Police, Transit, Street Lights, Hospital, School) moved out of their row west of the city onto streets that suit them: police by City Hall, hospital in midtown, transit on the north avenue, school among the north-west homes, the park on the east side, the lights depot by the Warehouse and the highway office at the west exit. Build progress and perks are unchanged.',
     'A few unowned houses and lots under the new sites are no longer for sale. No owned property was moved or removed; an owner of such a lot keeps it.',
