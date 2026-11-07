@@ -124,3 +124,42 @@ it.skipIf(!url)('farm: a lost COMMIT reply on a paid seed purchase is reconciled
   expect((await db.query('SELECT count(*)::int n FROM farm_tiles')).rows[0].n).toBe(1);
   expect((await db.query("SELECT count(*)::int n FROM wallet_transactions WHERE game = 'farm_seed'")).rows[0].n).toBe(1);
 }, 30_000);
+
+it.skipIf(!url)('city store: overlapping withdrawals, the first commits and the second rolls back -> memory = DB, nothing lost (queued snapshots never carry an uncommitted delta)', async () => {
+  const { pool } = await freshDb('queue'); const db = pool({ max: 6 });
+  const ms = new PgMineStore(db as never); await ms.init(); await db.query("INSERT INTO mine_items (player_key, owner_name, item_type, item_id, qty) VALUES ('a','A','ore','iron',20)"); await db.query('CREATE TABLE ops (id text PRIMARY KEY)');
+  const w = resetMines(); await w.attach(ms); const ls = new LocStore(db as never); setLocStore(ls); await ls.init();
+  const a = ls.adjust('A', [{ loc: 'warehouse', item: 'ore:iron', delta: -10 }], [{ sql: "INSERT INTO ops VALUES ('A')", args: [] }], { marker: { sql: "SELECT 1 FROM ops WHERE id = 'A'", args: [] } });
+  const b = ls.adjust('A', [{ loc: 'warehouse', item: 'ore:iron', delta: -10 }], [{ sql: 'SELECT 1/0', args: [] }], { marker: { sql: "SELECT 1 FROM ops WHERE id = 'B'", args: [] } });
+  const [ra, rb] = await Promise.allSettled([a, b]); expect(ra.status).toBe('fulfilled'); expect(rb.status).toBe('rejected');
+  expect(w.stackQty('A', 'ore', 'iron')).toBe(10);
+  expect((await db.query("SELECT qty FROM mine_items WHERE player_key = 'a' AND item_id = 'iron'")).rows).toEqual([{ qty: 10 }]);
+  expect((await db.query('SELECT id FROM ops')).rows).toEqual([{ id: 'A' }]);
+  // and the reverse order: the first rolls back, the second commits
+  const c = ls.adjust('A', [{ loc: 'warehouse', item: 'ore:iron', delta: -4 }], [{ sql: 'SELECT 1/0', args: [] }]);
+  const d = ls.adjust('A', [{ loc: 'warehouse', item: 'ore:iron', delta: -3 }], [{ sql: "INSERT INTO ops VALUES ('D')", args: [] }]);
+  await Promise.allSettled([c, d]); await w.flush();
+  expect(w.stackQty('A', 'ore', 'iron')).toBe(7); expect((await db.query("SELECT qty FROM mine_items WHERE player_key = 'a' AND item_id = 'iron'")).rows).toEqual([{ qty: 7 }]);
+}, 30_000);
+
+it.skipIf(!url)('committed crop load to a factory keeps its promised conversion through the fold (crop:wheat x3 -> good:crop_wheat x3, once); unknown places are quarantined, never break My places; unverified kitchens fail closed', async () => {
+  const { hubOfLocId } = await import('../server/mapPools.js');
+  expect(hubOfLocId('kitchen:b:house:nope', new Set())).toBeNull(); expect(hubOfLocId('kitchen:b:house:-691:-188', new Set())).toBe('city');
+  const { pool } = await freshDb('crop'); const db = pool(); await db.query(FOLD_PREP);
+  await db.query(`INSERT INTO freight_shipments (id,player_key,name,to_key,to_name,mode,from_hub,to_hub,item_type,item_id,qty,fee,created_at,depart_at,arrive_at,status,from_loc,to_loc)
+    VALUES ('crop-load','a','A','a','A','ship','resort','city','crop','wheat',3,10,1,1,2,'moving','farm:rf:1','factory')`);
+  await db.query("INSERT INTO loc_stock VALUES ('a','A','mystery:x','ore:iron',1),('a','A','kitchen:b:house:nope','food:flour',2)");
+  const r = await foldToMapPools(db, []);
+  expect(r.unknownLocs).toEqual(expect.arrayContaining([{ table: 'loc_stock', loc: 'mystery:x', n: 1 }, { table: 'loc_stock', loc: 'kitchen:b:house:nope', n: 2 }]));
+  expect((await db.query("SELECT to_loc, item_type FROM freight_shipments WHERE id = 'crop-load'")).rows).toEqual([{ to_loc: 'factory', item_type: 'crop' }]);
+  const w = resetMines(); await w.attach(new PgMineStore(db as never)); const ls = new LocStore(db as never); setLocStore(ls); await ls.init();
+  const { LocMoves } = await import('../server/locmoves.js'); const lm = new LocMoves(); (lm as unknown as { fishPool: () => unknown }).fishPool = () => db; // freight rows live on this test DB
+  const s = { id: 'crop-load', toLoc: 'factory', type: 'crop', itemId: 'wheat', qty: 3, ownerName: 'A' } as never;
+  await lm.arrive(s); await w.flush(); await lm.arrive(s).catch(() => {}); await w.flush(); // a second attempt credits nothing
+  expect((await db.query("SELECT item_type, item_id, qty FROM mine_items WHERE player_key = 'a'")).rows).toEqual([{ item_type: 'good', item_id: 'crop_wheat', qty: 3 }]);
+  expect((await db.query("SELECT status FROM freight_shipments WHERE id = 'crop-load'")).rows).toEqual([{ status: 'delivered' }]);
+  expect((await db.query("SELECT count(*)::int n FROM loc_stock WHERE item LIKE 'crop:%'")).rows[0].n).toBe(0);
+  const v = await lm.view('A') as { locations: Array<{ id: string; items: Array<{ item: string; qty: number }> }>; quarantined: Array<{ id: string }> };
+  expect(v.quarantined.map((x) => x.id).sort()).toEqual(['kitchen:b:house:nope', 'mystery:x'].sort());
+  expect(v.locations.find((l) => l.id === 'warehouse')?.items).toEqual(expect.arrayContaining([expect.objectContaining({ item: 'good:crop_wheat', qty: 3 })]));
+}, 30_000);

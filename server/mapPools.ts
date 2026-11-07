@@ -23,6 +23,10 @@
  *    building_inv 'resort_farm') are NOT touched and are listed in the report.
  */
 import { MAX_BANKED_STACK } from '../shared/mines.js';
+import { properties } from '../shared/realEstate.js';
+let cityHomesCache: Set<string> | null = null;
+/** Verified city-map property ids (properties without a map tag); anything else is not guessed. */
+const CITY_HOMES = () => (cityHomesCache ??= new Set(properties().filter((p) => !p.map).map((p) => p.id)));
 export const CITY_POOL = 'warehouse';
 export const RESORT_POOL = 'resort';
 export const FOLD_ID = 'map-pools-v1';
@@ -35,14 +39,14 @@ export type Client = Q & { release?: () => void };
 export type FoldPool = { connect: () => Promise<Client> };
 
 /** Map of a per-location id (see shared/inventoryLocations.ts). Kitchens need the home's map. */
-export function hubOfLocId(loc: string, resortHomes: ReadonlySet<string>): 'city' | 'resort' | 'fortmc' | null {
+export function hubOfLocId(loc: string, resortHomes: ReadonlySet<string>, cityHomes: ReadonlySet<string> = CITY_HOMES()): 'city' | 'resort' | 'fortmc' | null {
   if (loc === 'factory' || loc === 'warehouse') return 'city';
   if (loc === 'resort' || loc === 'coral') return 'resort';
   const i = loc.indexOf(':'); if (i < 1) return null; const kind = loc.slice(0, i), ref = loc.slice(i + 1);
   if (kind === 'mine') return 'city';
   if (kind === 'farm') return ref.startsWith('rf:') ? 'resort' : 'city';
   if (kind === 'fishing') return ref === 'lake' ? 'city' : (ref === 'reef' || ref === 'deep') ? 'resort' : null;
-  if (kind === 'kitchen') return resortHomes.has(ref) ? 'resort' : 'city';
+  if (kind === 'kitchen') return resortHomes.has(ref) ? 'resort' : cityHomes.has(ref) ? 'city' : null; // unverified home: fail closed (untouched, reported)
   return null;
 }
 export const poolOfHub = (h: string): string | null => (h === 'city' ? CITY_POOL : h === 'resort' ? RESORT_POOL : null);
@@ -68,9 +72,11 @@ async function totals(cl: Q, resortHomes: string[]) {
   for (const r of (await cl.query("SELECT player_key k, coalesce(loc,'<null>') loc, recipe s, count(*)::int n, sum(value)::bigint v FROM kitchen_dishes WHERE sold_at IS NULL GROUP BY 1,2,3")).rows) { const h = r.loc === '<null>' ? 'held' : hub(String(r.loc)); add(`${r.k}|${h}|dish:${r.s}`, Number(r.n)); add(`${r.k}|${h}|dvalue`, Number(r.v)); }
   for (const r of (await cl.query('SELECT player_key k, kind, qty FROM kitchen_fillets WHERE qty > 0')).rows) add(`${r.k}|held|fillet:${r.kind}`, Number(r.qty));
   for (const r of (await cl.query("SELECT player_key k, item, qty FROM building_inv WHERE building = 'resort_farm' AND qty > 0")).rows) add(`${r.k}|held|barn:${r.item}`, Number(r.qty));
-  for (const r of (await cl.query("SELECT player_key k, to_hub h, item_type t, item_id i, sum(qty)::bigint q FROM freight_shipments WHERE status IN ('transit','moving') GROUP BY 1,2,3,4")).rows) add(`${r.k}|freight>${r.h}|${r.t}:${r.i}`, Number(r.q));
+  // in-flight loads, counted as what they PROMISE to deliver (a crop load to a factory lands as good:crop_*, to a kitchen as food:*)
+  for (const r of (await cl.query("SELECT player_key k, to_hub h, item_type t, item_id i, coalesce(to_loc,'') l, sum(qty)::bigint q FROM freight_shipments WHERE status IN ('transit','moving') GROUP BY 1,2,3,4,5")).rows) add(`${r.k}|freight>${r.h}|${promised(String(r.t), String(r.i), String(r.l))}`, Number(r.q));
   return t;
 }
+const promised = (t: string, i: string, toLoc: string) => (t !== 'crop' ? `${t}:${i}` : toLoc === 'factory' ? `good:crop_${i}` : toLoc.startsWith('kitchen:') ? `food:${i}` : `crop:${i}`);
 const same = (a: Map<string, number>, b: Map<string, number>) => { const bad: string[] = []; for (const k of new Set([...a.keys(), ...b.keys()])) if ((a.get(k) ?? 0) !== (b.get(k) ?? 0)) bad.push(`${k}: ${a.get(k) ?? 0} -> ${b.get(k) ?? 0}`); return bad; };
 
 /** Tables the fold reads must exist (fresh/dev DBs). Never drops anything. */
@@ -142,9 +148,13 @@ export async function foldToMapPools(pool: FoldPool, resortHomes: string[], opts
       }
     }
     // 4) in-flight freight: re-point the landing location at the destination map's pool (status / qty untouched).
-    for (const x of (await cl.query("SELECT id, to_hub, to_loc FROM freight_shipments WHERE status IN ('transit','moving') AND to_loc IS NOT NULL")).rows) {
-      const to = poolOfHub(String(x.to_hub)); if (!to || to === x.to_loc) continue; // (factory destinations land in the city pool: it is the factory's store)
-      const u = await cl.query("UPDATE freight_shipments SET to_loc = $2 WHERE id = $1 AND status IN ('transit','moving') AND to_loc = $3", [x.id, to, x.to_loc]);
+    //    Factory destinations are KEPT: the factory arrival credits the city store with the promised conversion
+    //    (crop -> good:crop_*). A crop load promised to a kitchen keeps its promised food:* identity (1:1 units).
+    for (const x of (await cl.query("SELECT id, to_hub, to_loc, item_type, item_id FROM freight_shipments WHERE status IN ('transit','moving') AND to_loc IS NOT NULL")).rows) {
+      const to = poolOfHub(String(x.to_hub)); if (!to || to === x.to_loc || x.to_loc === 'factory') continue;
+      const food = x.item_type === 'crop' && String(x.to_loc).startsWith('kitchen:');
+      const u = await cl.query("UPDATE freight_shipments SET to_loc = $2, item_type = $4, item_id = $5 WHERE id = $1 AND status IN ('transit','moving') AND to_loc = $3",
+        [x.id, to, x.to_loc, food ? 'food' : x.item_type, x.item_id]);
       r.freightRepointed += u.rowCount ?? 0;
     }
     // 5) held legacy (reported, untouched)

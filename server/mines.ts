@@ -298,8 +298,8 @@ export class MinesWorld {
       const k = playerKey(o.account!); const t = this.carryTimers.get(k); if (t) { clearTimeout(t); this.carryTimers.delete(k); }
       rows.push({ sql: `INSERT INTO mine_carried (player_key, owner_name, items, updated_at) VALUES ($1,$2,$3,now()) ON CONFLICT (player_key) DO UPDATE SET owner_name = EXCLUDED.owner_name, items = EXCLUDED.items, updated_at = now()`, args: [k, o.account, JSON.stringify(this.carriedOf(k))] });
     }
-    const k = playerKey(by.account); let snap: Stack[]; try { snap = [...this.pack(k).values()].map((s) => ({ ...s })); } catch { return; }
-    this.chain = this.chain.then(() => store.save(k, by.account!, snap, undefined, undefined, rows)).catch((e) => console.error('[mines] raid save failed:', (e as Error).message));
+    const k = playerKey(by.account); try { this.pack(k); } catch { return; }
+    this.chain = this.chain.then(() => store.save(k, by.account!, this.snapNow(k), undefined, undefined, rows)).catch((e) => console.error('[mines] raid save failed:', (e as Error).message));
   }
   /** Dying: drop half (rounded up) of each carried stack, wake at the nearest elevator stop at or above, full HP. */
   die(m: Miner, now: number): { floor: number; lost: Stack[] } {
@@ -604,9 +604,9 @@ export class MinesWorld {
 
   private persist(m: { account: string | null }, sale?: Parameters<MineStore['save']>[3], withFactory = false, extra?: Array<{ sql: string; args: unknown[] }>, done?: (ok: boolean) => void) {
     if (!m.account || !this.store) { done?.(true); return; }
-    const k = playerKey(m.account); const snap = [...this.pack(k).values()].map((s) => ({ ...s })); const store = this.store;
+    const k = playerKey(m.account); const store = this.store;
     const f = withFactory ? this.factories.get(k) : undefined; const fs = f ? { level: f.level, builtAt: f.builtAt, jobs: f.jobs.map((j) => ({ ...j })) } : undefined;
-    this.chain = this.chain.then(() => store.save(k, m.account!, snap, sale, fs, extra)).then(() => done?.(true), (e) => { console.error('[mines] save failed:', (e as Error).message); done?.(false); });
+    this.chain = this.chain.then(() => store.save(k, m.account!, this.snapNow(k), sale, fs, extra)).then(() => done?.(true), (e) => { console.error('[mines] save failed:', (e as Error).message); done?.(false); });
   }
 
   quote(account: string, now: number, only?: unknown): { gross: number; paid: number; already: number; lost: number; effAlready: number; capBase: number; capIndex: number; items: Stack[] } {
@@ -760,6 +760,15 @@ export class MinesWorld {
    * Returns false (no change) if a withdrawal would go negative. Without a store, `fallback` gets the rows instead. */
   /** Weight of an account's stored pack (same units as BACKPACK_CAP). */
   packLoad(account: string): number { let t = 0; for (const s of this.pack(playerKey(account)).values()) t += s.qty * (s.type === 'ore' && isOre(s.id) ? ORES[s.id].weight : 1); return t; }
+  /** Deltas applied to memory whose own save has NOT run yet (per account). Every queued snapshot subtracts them, so a
+   *  save never persists another, still-uncommitted withdrawal/deposit (which could later roll back and be lost/doubled). */
+  private pendingD = new Map<string, Set<Map<string, { type: ItemType; id: string; delta: number }>>>();
+  /** Pack snapshot at save time: memory minus every pending (not yet saved) delta, except `own`. */
+  private snapNow(k: string, own?: Map<string, { type: ItemType; id: string; delta: number }>): Stack[] {
+    const out = new Map<string, Stack>(); for (const [key, st] of this.pack(k)) out.set(key, { ...st });
+    for (const rec of this.pendingD.get(k) ?? []) { if (rec === own) continue; for (const [key, d] of rec) { const n = (out.get(key)?.qty ?? 0) - d.delta; if (n <= 0) out.delete(key); else out.set(key, { type: d.type, id: d.id, qty: n } as Stack); } }
+    return [...out.values()];
+  }
   adjustStack(account: string, type: ItemType, id: string, delta: number, extra: Array<{ sql: string; args: unknown[] }> = [], fallback?: (rows: Array<{ sql: string; args: unknown[] }>) => void, opts: { onUnknown?: (e: Error) => void; onLate?: (committed: boolean) => void; committed?: () => Promise<boolean>; after?: Promise<unknown>; bind?: (p: Promise<unknown>) => void; onFail?: (e: Error) => void } = {}): boolean {
     return this.adjustStacks(account, [{ type, id, delta }], extra, fallback, opts);
   }
@@ -774,13 +783,16 @@ export class MinesWorld {
     apply(1);
     this.names.set(k, account.trim());
     if (!this.store) { fallback?.(extra); return true; }
+    const rec = sum; let set = this.pendingD.get(k); if (!set) { set = new Set(); this.pendingD.set(k, set); } set.add(rec);
+    const settle = () => { const st = this.pendingD.get(k); st?.delete(rec); if (st && !st.size) this.pendingD.delete(k); };
     const store = this.store;
     // Retried (every row is idempotent: absolute snapshots + ON CONFLICT ledger keys) so a blip can't lose a paid-for delivery.
     // The snapshot is taken when the save RUNS (after any earlier failed delta was undone), never at call time.
-    const run = async () => { await opts.after; for (let i = 0; ; i++) { const snap = [...p.values()].map((s) => ({ ...s })); try { return await store.save(k, account.trim(), snap, undefined, undefined, extra); } catch (e) { if (i >= 3) throw e; await new Promise((r) => setTimeout(r, 250 * 2 ** i)); } } };
+    const run = async () => { await opts.after; for (let i = 0; ; i++) { const snap = this.snapNow(k, rec); try { const r = await store.save(k, account.trim(), snap, undefined, undefined, extra); settle(); return r; } catch (e) { if (i >= 3) throw e; await new Promise((r) => setTimeout(r, 250 * 2 ** i)); } } };
     const job = this.chain.then(run);
     this.chain = job.catch(async (e) => {
       console.error('[mines] save failed:', (e as Error).message);
+      settle(); // decided below (committed / undone / unknown = kept): later snapshots must not subtract it any more
       // The commit may have landed with its reply lost (a retry then fails its exactly-once guard): ask the caller.
       const v = opts.committed ? await outcome(opts.committed) : false;
       if (v === true) return;

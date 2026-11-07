@@ -266,13 +266,15 @@ export class Farm {
       for (const r of ready) { const c = cropById(r.crop)!; seeds += c.seed; profit += cropProfit(c); counts.set(c.label, (counts.get(c.label) ?? 0) + 1); }
       if (sink) { // pt1252u: send the crops to your Factory storage instead of selling them (no chips, no farm tier)
         const items: Array<[string, number]> = []; for (const r of ready) { const id = `crop_${r.crop}`; const at = items.find((x) => x[0] === id); if (at) at[1]++; else items.push([id, 1]); }
+        const impKey = `import:${randomUUID()}`;
         await this.atomic(name, 0, 'farm_to_factory', '', async (cl) => {
           await this.mustOwn(cl, pid, name);
           let gone = 0;
           for (const r of ready) gone += (await cl.query('DELETE FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3 AND owner_key = $4', [pid, r.tile, r.nonce, key])).rowCount ?? 0;
           if (gone !== ready.length) throw new FarmError('Already harvested.');
           await sink.write(cl, items);
-        }, undefined, { committed: async () => { const r0 = ready[0]!; return !(await this.pool.query('SELECT 1 FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3', [pid, r0.tile, r0.nonce])).rows.length; },
+          await cl.query('INSERT INTO kitchen_harvests (tile_key, at) VALUES ($1, $2)', [impKey, now]); // durable marker: exists iff THIS import committed
+        }, undefined, { committed: async () => (await this.pool.query('SELECT 1 FROM kitchen_harvests WHERE tile_key = $1', [impKey])).rows.length > 0,
           late: () => { sink.after(items); this.onChange?.(pid); } });
         sink.after(items); this.onChange?.(pid);
         return { harvested: ready.length, paid: 0, toFactory: items, chips: this.bank().account(name).chips };

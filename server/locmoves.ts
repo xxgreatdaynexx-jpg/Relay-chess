@@ -111,11 +111,14 @@ export class LocMoves {
     const homes = await this.homes(name).catch(() => new Map<string, boolean>());
     const dests = [WAREHOUSE, RESORT_WAREHOUSE]; void homes; // map pools: one warehouse per map; your factory works from the city one directly
     const ids = new Set([...out.keys(), ...dests]);
+    // Unknown / unmapped locations (fold left them untouched): quarantined, listed apart, never guessed onto a map.
+    const quarantined: Array<{ id: string; items: Array<{ item: string; label: string; qty: number }> }> = [];
+    for (const id of [...ids]) { let ok = false; try { const k = parseLoc(id).kind; ok = isPool(id) || k === 'factory' || BIN_BUILDINGS.has(k); } catch { ok = false; } if (!ok) { ids.delete(id); quarantined.push({ id, items: out.get(id) ?? [] }); } }
     const locations = await Promise.all([...ids].map(async (id) => { const l = parseLoc(id); return { id, label: id === FACTORY && !this.hasFactory(name) ? 'Banked storage' : locLabel(id), held: id === FACTORY && !this.hasFactory(name), hub: await this.hub(name, l), dest: dests.includes(id), sells: isPool(id), items: (out.get(id) ?? []).sort((a, b) => a.label.localeCompare(b.label)) }; }));
     const lg = getLogistics();
     const shipments = lg ? [...lg.ships.values()].filter((s) => s.kind === 'loc' && s.owner === key).map((s) => ({ id: s.id, from: s.fromLoc, to: s.toLoc, fromLabel: locLabel(s.fromLoc ?? ''), toLabel: locLabel(s.toLoc ?? ''), item: `${s.type}:${s.itemId}`, label: itemLabel(`${s.type}:${s.itemId}`), qty: s.qty, mode: s.mode, fee: s.fee, departAt: s.departAt, arriveAt: s.arriveAt })) : [];
     const busy = lg ? lg.busyTrucks(name) : new Set<string>();
-    return { now: this.clock(), locations: locations.sort((a, b) => (a.id === WAREHOUSE ? -1 : b.id === WAREHOUSE ? 1 : a.label.localeCompare(b.label))), shipments,
+    return { now: this.clock(), quarantined, locations: locations.sort((a, b) => (a.id === WAREHOUSE ? -1 : b.id === WAREHOUSE ? 1 : a.label.localeCompare(b.label))), shipments,
       trucks: lg ? lg.owned(name).map((t) => ({ id: t.id, model: t.truckId, busy: busy.has(t.id) })) : [], hired: { perUnit: MODES.hired.perUnit, minFee: MODES.hired.minFee, cap: MODES.hired.cap } };
   }
 
@@ -210,6 +213,9 @@ export class LocMoves {
   async arrive(s: Shipment): Promise<void> {
     const to = parseLoc(s.toLoc); const item = `${s.type}:${s.itemId}`; const it = parseItem(item);
     const flip = mustOne("UPDATE freight_shipments SET status = 'delivered' WHERE id = $1 AND status = 'moving'", [s.id]);
+    // Already delivered (an earlier attempt / another instance): never credit again. The commit-check below can not tell
+    // a duplicate attempt from a lost acknowledgement, so a delivered leg is refused up front.
+    if (await this.delivered(s.id)) return;
     try {
       if (it.row === 'fish' || it.row === 'fdish') {
         await this.tx(this.fishPool(), [{ sql: 'UPDATE fish_catches SET loc = $2 WHERE loc = $1', args: [`transit:${s.id}`, to.id] }, flip]);

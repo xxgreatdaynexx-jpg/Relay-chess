@@ -5,7 +5,7 @@ import { MODES, fmtEta, type Mode } from '../../../shared/logistics';
 type Item = { item: string; label: string; qty: number };
 type Loc = { id: string; label: string; hub: string; dest: boolean; sells: boolean; held?: boolean; items: Item[] };
 type Ship = { id: string; fromLabel: string; toLabel: string; label: string; qty: number; mode: Mode; fee: number; departAt: number; arriveAt: number };
-export type LocView = { now: number; locations: Loc[]; shipments: Ship[]; trucks: Array<{ id: string; model: string; busy: boolean }> };
+export type LocView = { now: number; quarantined?: Array<{ id: string; items: Item[] }>; locations: Loc[]; shipments: Ship[]; trucks: Array<{ id: string; model: string; busy: boolean }> };
 const fmt = (n: number) => n.toLocaleString('en-US');
 const CROSS_MODES: Mode[] = ['plane', 'ship', 'jet', 'boat']; // map pools: the only moves left are between maps
 
@@ -54,6 +54,7 @@ export function LocationStock({ me }: { me: string | null }) {
         <button type="button" className="dealer-drive" disabled={busy || !to || !q} onClick={() => void act('loc_move', { from: sel.from, to, item: sel.item, qty, mode }, () => { setSel(null); return `${MODES[mode].icon} ${fmt(qty)} ${it.label} on the way to ${toLoc?.label ?? to}.`; })} data-testid="loc-send">Send</button>
         <button type="button" onClick={() => setSel(null)}>Cancel</button>
       </div>}
+      {!!v.quarantined?.length && <div className="loc-card" data-testid="loc-quarantined"><h4>Held for review</h4><small>These goods are kept safe exactly as they were. Their old place could not be matched to a map, so they can't be used or moved yet.</small><ul>{v.quarantined.flatMap((qz) => qz.items.map((i) => <li key={`${qz.id}|${i.item}`}>{i.label} × {fmt(i.qty)}</li>))}</ul></div>}
       {msg && <p className="freight-msg" data-testid="loc-msg">{msg}</p>}
       {!!v.shipments.length && <div className="loc-card"><h4>On the way (plane / ship)</h4><ul>{v.shipments.map((s) => <li key={s.id} data-testid="loc-shipment">{MODES[s.mode].icon} {fmt(s.qty)} {s.label}: {s.fromLabel} → {s.toLabel} · {s.arriveAt > now ? `arrives in ${fmtEta(s.arriveAt - now)}` : 'unloading'}</li>)}</ul></div>}
     </div>
