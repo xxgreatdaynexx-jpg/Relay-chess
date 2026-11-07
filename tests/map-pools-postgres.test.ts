@@ -41,24 +41,25 @@ it.skipIf(!url)('fold: conserved, identity-preserving, idempotent, atomic on fai
     const db2 = new pg.Pool({ connectionString: dbu.toString(), max: 2 });
     const [r1, r2] = await Promise.all([foldToMapPools(db, [RESORT_HOME]), foldToMapPools(db2, [RESORT_HOME])]); await db2.end();
     const r = r1.already ? r2 : r1; expect([r1.already, r2.already].sort()).toEqual([false, true]);
-    expect(r).toMatchObject({ conserved: true, fish: 3, dishes: 1, coral: 2, freightRepointed: 2 });
+    expect(r).toMatchObject({ conserved: true, fish: 2, dishes: 1, coral: 2, freightRepointed: 1 });
     expect(r.unknownLocs).toEqual([{ table: 'loc_stock', loc: 'mystery:x', n: 1 }]);
     expect(r.heldLegacy).toEqual({ fishNullLoc: 1, dishNullLoc: 1, fillets: 2, resortBarn: 5 });
 
     const ls = await q("SELECT player_key k, loc, item, qty::int FROM loc_stock WHERE qty > 0 ORDER BY 1,2,3");
     expect(ls).toEqual([
-      { k: 'a', loc: 'factory', item: 'crop:wheat', qty: 8 },
+      { k: 'a', loc: 'factory', item: 'crop:wheat', qty: 1 },
       { k: 'a', loc: 'resort', item: 'crop:mango', qty: 4 }, { k: 'a', loc: 'resort', item: 'food:flour', qty: 3 }, { k: 'a', loc: 'resort', item: 'gem:pearl', qty: 2 },
-      { k: 'b', loc: 'mystery:x', item: 'ore:iron', qty: 1 },
+      { k: 'a', loc: 'warehouse', item: 'crop:wheat', qty: 7 }, { k: 'a', loc: 'warehouse', item: 'food:flour', qty: 6 }, { k: 'a', loc: 'warehouse', item: 'ore:iron', qty: 7 },
+      { k: 'b', loc: 'mystery:x', item: 'ore:iron', qty: 1 }, { k: 'b', loc: 'warehouse', item: 'good:gear', qty: 9 },
     ]);
     expect(await q("SELECT player_key k, item_type t, item_id i, qty FROM mine_items ORDER BY 1,2,3")).toEqual([
-      { k: 'a', t: 'food', i: 'flour', qty: 6 }, { k: 'a', t: 'ore', i: 'iron', qty: 17 }, { k: 'b', t: 'good', i: 'gear', qty: 9 }]);
+      { k: 'a', t: 'ore', i: 'iron', qty: 10 }]); // factory banked store untouched
     expect(await q('SELECT id, loc, species, weight_g, value FROM fish_catches ORDER BY 1')).toEqual([
-      { id: 'f1', loc: 'factory', species: 'bass', weight_g: 900, value: 40 }, { id: 'f2', loc: 'resort', species: 'tuna', weight_g: 5000, value: 300 },
-      { id: 'f3', loc: 'factory', species: 'bass', weight_g: 700, value: 30 }, { id: 'f4', loc: null, species: 'bass', weight_g: 100, value: 5 }]);
+      { id: 'f1', loc: 'warehouse', species: 'bass', weight_g: 900, value: 40 }, { id: 'f2', loc: 'resort', species: 'tuna', weight_g: 5000, value: 300 },
+      { id: 'f3', loc: 'warehouse', species: 'bass', weight_g: 700, value: 30 }, { id: 'f4', loc: null, species: 'bass', weight_g: 100, value: 5 }]);
     expect(await q('SELECT id, loc, quality FROM kitchen_dishes ORDER BY 1')).toEqual([{ id: 'd1', loc: 'resort', quality: 0.9 }, { id: 'd2', loc: null, quality: 0.5 }]);
     expect(await q('SELECT id, status, qty, to_loc FROM freight_shipments ORDER BY 1')).toEqual([
-      { id: 's1', status: 'transit', qty: 3, to_loc: 'resort' }, { id: 's2', status: 'transit', qty: 2, to_loc: 'factory' }, { id: 's3', status: 'delivered', qty: 1, to_loc: 'farm:rf:2' }]);
+      { id: 's1', status: 'transit', qty: 3, to_loc: 'resort' }, { id: 's2', status: 'transit', qty: 2, to_loc: 'warehouse' }, { id: 's3', status: 'delivered', qty: 1, to_loc: 'farm:rf:2' }]);
     expect(await q("SELECT qty::int FROM building_inv WHERE building = 'resort_farm'")).toEqual([{ qty: 5 }]);
 
     // idempotent re-run / lost-COMMIT replay: no change
