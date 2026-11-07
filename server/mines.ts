@@ -798,9 +798,12 @@ export class MinesWorld {
       if (v === true) return;
       const undo = () => { apply(-1); try { opts.onFail?.(e as Error); } catch (err) { console.error('[mines] rollback failed:', (err as Error).message); } };
       if (v === false) { if (opts.onFail) undo(); return; }
-      // Unknown (database unreachable): keep memory (never duplicate), tell the caller, settle in the background.
+      // Unknown (database unreachable): tell the caller now, but SERIALIZE the uncertainty: the save queue does not advance
+      // until this write's own marker answers. No later whole-pack snapshot can persist (or erase) a delta whose commit is
+      // unknown; once known, memory is made exact (kept or undone) and only then do queued saves run. A restart meanwhile
+      // simply reloads the database (queued saves are not durable promises).
       opts.onUnknown?.(e as Error);
-      void (async () => { for (let i = 0; ; i++) { await new Promise((r) => setTimeout(r, Math.min(60_000, 1000 * 2 ** Math.min(i, 6)))); const late = await outcome(opts.committed!, 1); if (late === null) continue; if (!late) undo(); opts.onLate?.(late); return; } })();
+      for (let i = 0; ; i++) { await new Promise((r) => setTimeout(r, Math.min(60_000, 1000 * 2 ** Math.min(i, 6)))); const late = await outcome(opts.committed!, 1); if (late === null) continue; if (!late) undo(); opts.onLate?.(late); return; }
     });
     opts.bind?.(this.chain);
     return true;
@@ -1029,11 +1032,12 @@ setDefaultCityPack({
   adjust(n, deltas, extra, o) {
     const mines = getMines();
     if (mines.offline || (getLocStore().pool && !(mines as unknown as { store: unknown }).store)) throw new MineError('Storage is reconnecting. Your goods are safe, try again in a minute.');
-    let failed: Error | null = null, unknown: Error | null = null, settled: Promise<unknown> | null = null;
+    let failed: Error | null = null, unknown: Error | null = null, settled: Promise<unknown> | null = null; let sawUnknown: (() => void) | null = null;
+    const early = new Promise<void>((r) => { sawUnknown = r; });
     let fb: Array<{ sql: string; args: unknown[] }> | null = null; const ds = deltas.map((d) => ({ type: d.type as ItemType, id: d.id, delta: d.delta }));
     const ok = mines.adjustStacks(n, ds, extra, (r) => { fb = r; }, {
       after: o.after, committed: o.committed, onLate: o.onLate,
-      onFail: (e) => { failed = e; }, onUnknown: (e) => { unknown = e; }, bind: (p) => { settled = p; } });
+      onFail: (e) => { failed = e; }, onUnknown: (e) => { unknown = e; sawUnknown?.(); }, bind: (p) => { settled = p; } });
     if (!ok) return false;
     const lp = o.pool ?? getLocStore().pool;
     if (fb && lp) { const rows: Array<{ sql: string; args: unknown[] }> = fb; return (async () => { // memory-only pack (dev/tests): the rows still commit together
@@ -1041,6 +1045,6 @@ setDefaultCityPack({
       try { await cl.query('BEGIN'); for (const q of rows) await cl.query(q.sql, q.args); await cl.query('COMMIT'); }
       catch (e) { await cl.query('ROLLBACK').catch(() => {}); mines.adjustStacks(n, ds.map((d) => ({ ...d, delta: -d.delta }))); throw e; }
       finally { cl.release(); } })(); }
-    return (async () => { await settled; if (failed) throw failed; if (unknown) throw new OutcomeUnknown(unknown); })();
+    return (async () => { await Promise.race([settled, early]); if (failed) throw failed; if (unknown) throw new OutcomeUnknown(unknown); })();
   },
 });

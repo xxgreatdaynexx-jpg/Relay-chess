@@ -90,6 +90,7 @@ ALTER TABLE fish_catches ADD COLUMN IF NOT EXISTS loc TEXT; ALTER TABLE fish_cat
 CREATE TABLE IF NOT EXISTS kitchen_dishes (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, name TEXT NOT NULL, recipe TEXT NOT NULL, quality REAL NOT NULL, value INTEGER NOT NULL, cooked_at BIGINT NOT NULL, sold_at BIGINT);
 ALTER TABLE kitchen_dishes ADD COLUMN IF NOT EXISTS loc TEXT;
 CREATE TABLE IF NOT EXISTS kitchen_fillets (player_key TEXT NOT NULL, kind TEXT NOT NULL, qty INTEGER NOT NULL DEFAULT 0 CHECK (qty >= 0), PRIMARY KEY (player_key, kind));
+CREATE TABLE IF NOT EXISTS freight_arrivals (ship_id TEXT PRIMARY KEY, attempt TEXT NOT NULL, at BIGINT NOT NULL);
 CREATE TABLE IF NOT EXISTS freight_shipments (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, name TEXT NOT NULL, to_key TEXT NOT NULL, to_name TEXT NOT NULL,
   mode TEXT NOT NULL, truck TEXT, from_hub TEXT NOT NULL, to_hub TEXT NOT NULL, item_type TEXT NOT NULL, item_id TEXT NOT NULL, qty INTEGER NOT NULL, fee BIGINT NOT NULL,
   created_at BIGINT NOT NULL, depart_at BIGINT NOT NULL, arrive_at BIGINT NOT NULL, status TEXT NOT NULL);
@@ -176,6 +177,46 @@ export async function foldToMapPools(pool: FoldPool, resortHomes: string[], opts
   finally { cl.release?.(); }
 }
 
+
+export const BARN_ID = 'resort-barn-v1';
+/**
+ * Provenance-certain restore of the pooled resort plantation barn (building_inv 'resort_farm' is by construction resort
+ * stock): crop:* rows move 1:1 into the same owner's resort pool. One transaction, advisory lock, own marker = exactly
+ * once (a lost COMMIT reply re-runs as a no-op). Non-crop rows stay held and are reported.
+ */
+export async function restoreResortBarn(pool: FoldPool, opts: { now?: number } = {}): Promise<{ already: boolean; moved: number; rows: number; held: number }> {
+  const cl = await pool.connect();
+  try {
+    await cl.query(FOLD_PREP); await cl.query('BEGIN'); await cl.query('SELECT pg_advisory_xact_lock($1)', [LOCK]);
+    const done = (await cl.query('SELECT report FROM loc_migrations WHERE id = $1', [BARN_ID])).rows[0];
+    if (done) { await cl.query('COMMIT'); return { ...(done.report as { moved: number; rows: number; held: number }), already: true }; }
+    const r = { moved: 0, rows: 0, held: 0 };
+    for (const x of (await cl.query("SELECT player_key, name, item, qty FROM building_inv WHERE building = 'resort_farm' AND qty > 0 ORDER BY player_key, item FOR UPDATE")).rows) {
+      const item = String(x.item), q = Number(x.qty);
+      if (!item.startsWith('crop:')) { r.held += q; continue; }
+      await cl.query(`INSERT INTO loc_stock (player_key, name, loc, item, qty) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (player_key, loc, item) DO UPDATE SET qty = loc_stock.qty + EXCLUDED.qty`, [x.player_key, x.name || x.player_key, RESORT_POOL, item, q]);
+      const d = await cl.query("UPDATE building_inv SET qty = 0 WHERE player_key = $1 AND building = 'resort_farm' AND item = $2 AND qty = $3", [x.player_key, item, q]);
+      if (d.rowCount !== 1) throw new Error('barn: row changed underneath');
+      r.moved += q; r.rows++;
+    }
+    await cl.query('INSERT INTO loc_migrations (id, at, report) VALUES ($1,$2,$3)', [BARN_ID, opts.now ?? Date.now(), JSON.stringify(r)]);
+    await cl.query('COMMIT'); return { ...r, already: false };
+  } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; }
+  finally { cl.release?.(); }
+}
+
+/** Held legacy stock with NO durable map provenance (never assigned by guess): owner-scoped review list, read-only. */
+export interface HeldItem { kind: 'fish' | 'dish' | 'fillet' | 'barn'; what: string; n: number; value?: number; why: string }
+export async function heldLegacyReview(pool: unknown, key: string): Promise<HeldItem[]> {
+  const q = (sql: string) => (pool as { query: (s: string, a: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }> }).query(sql, [key]).then((r) => r.rows).catch(() => [] as Array<Record<string, unknown>>);
+  const out: HeldItem[] = [];
+  for (const r of await q('SELECT species s, count(*)::int n, coalesce(sum(value),0)::bigint v FROM fish_catches WHERE player_key = $1 AND loc IS NULL AND sold_at IS NULL AND dish IS NULL GROUP BY species ORDER BY species')) out.push({ kind: 'fish', what: String(r.s), n: Number(r.n), value: Number(r.v), why: 'caught before map tracking: no recorded map' });
+  for (const r of await q('SELECT recipe s, count(*)::int n, coalesce(sum(value),0)::bigint v FROM kitchen_dishes WHERE player_key = $1 AND loc IS NULL AND sold_at IS NULL GROUP BY recipe ORDER BY recipe')) out.push({ kind: 'dish', what: String(r.s), n: Number(r.n), value: Number(r.v), why: 'cooked before map tracking: no recorded kitchen' });
+  for (const r of await q('SELECT kind s, qty n FROM kitchen_fillets WHERE player_key = $1 AND qty > 0 ORDER BY kind')) out.push({ kind: 'fillet', what: `fillet_${r.s}`, n: Number(r.n), why: 'shared cutting board: no map' });
+  for (const r of await q("SELECT item s, qty n FROM building_inv WHERE player_key = $1 AND building = 'resort_farm' AND qty > 0 AND item NOT LIKE 'crop:%' ORDER BY item")) out.push({ kind: 'barn', what: String(r.s), n: Number(r.n), why: 'resort barn, not a crop' });
+  return out;
+}
+
 /** Boot step (index.ts): right after this process takes the inventory fence and BEFORE any inventory store loads, so
  *  every store reads the folded state. No DB = dev memory mode, nothing to fold. A failure throws: boot fails closed
  *  (the fence keeps every other writer out; nothing was committed because the fold is one transaction). */
@@ -186,6 +227,7 @@ export async function initMapPools(dbUrl: string | undefined, resortHomes: strin
   try {
     const t0 = Date.now(); const r = await foldToMapPools(pool, resortHomes);
     console.log(`[mapPools] ${r.already ? 'already folded' : 'folded'} in ${Date.now() - t0} ms:`, JSON.stringify({ stacks: r.stacks, units: r.units, fish: r.fish, dishes: r.dishes, coral: r.coral, freight: r.freightRepointed, unknown: r.unknownLocs.length, held: r.heldLegacy, conserved: r.conserved }));
+    const b = await restoreResortBarn(pool); console.log('[mapPools] resort barn', JSON.stringify(b));
     return r;
   } finally { await pool.end().catch(() => {}); }
 }

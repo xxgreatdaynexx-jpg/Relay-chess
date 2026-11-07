@@ -118,7 +118,9 @@ export class LocMoves {
     const lg = getLogistics();
     const shipments = lg ? [...lg.ships.values()].filter((s) => s.kind === 'loc' && s.owner === key).map((s) => ({ id: s.id, from: s.fromLoc, to: s.toLoc, fromLabel: locLabel(s.fromLoc ?? ''), toLabel: locLabel(s.toLoc ?? ''), item: `${s.type}:${s.itemId}`, label: itemLabel(`${s.type}:${s.itemId}`), qty: s.qty, mode: s.mode, fee: s.fee, departAt: s.departAt, arriveAt: s.arriveAt })) : [];
     const busy = lg ? lg.busyTrucks(name) : new Set<string>();
-    return { now: this.clock(), quarantined, locations: locations.sort((a, b) => (a.id === WAREHOUSE ? -1 : b.id === WAREHOUSE ? 1 : a.label.localeCompare(b.label))), shipments,
+    // Held legacy stock with no recorded map: listed for review (read-only), never usable or movable by guess.
+    const hp = getLocStore().pool ?? fp; const held = hp ? await (await import('./mapPools.js')).heldLegacyReview(hp as never, key).catch(() => []) : [];
+    return { now: this.clock(), quarantined, held, locations: locations.sort((a, b) => (a.id === WAREHOUSE ? -1 : b.id === WAREHOUSE ? 1 : a.label.localeCompare(b.label))), shipments,
       trucks: lg ? lg.owned(name).map((t) => ({ id: t.id, model: t.truckId, busy: busy.has(t.id) })) : [], hired: { perUnit: MODES.hired.perUnit, minFee: MODES.hired.minFee, cap: MODES.hired.cap } };
   }
 
@@ -216,6 +218,8 @@ export class LocMoves {
     // Already delivered (an earlier attempt / another instance): never credit again. The commit-check below can not tell
     // a duplicate attempt from a lost acknowledgement, so a delivered leg is refused up front.
     if (await this.delivered(s.id)) return;
+    // Durable per-attempt identity: this row commits with the credit iff THIS attempt landed (PK = shipment: at most once).
+    const att = randomUUID(); const mark = arrivalMark(s.id, att, this.clock()); const mine = () => this.arrivalIs(s.id, att);
     try {
       if (it.row === 'fish' || it.row === 'fdish') {
         await this.tx(this.fishPool(), [{ sql: 'UPDATE fish_catches SET loc = $2 WHERE loc = $1', args: [`transit:${s.id}`, to.id] }, flip]);
@@ -227,10 +231,10 @@ export class LocMoves {
           if (!PACK_TYPES.has(t)) throw new Error(`factory can't store ${key}`);
           const mines = getMines(); if (!mines.store || mines.offline) throw new Error('factory storage offline (arrival retried)');
           let fail: Error | null = null; let done: Promise<unknown> = Promise.resolve(); let fb: Stmt[] | null = null;
-          if (!mines.adjustStack(s.ownerName, t as ItemType, id, s.qty, [flip], (r) => { fb = r; }, { bind: (x) => { done = x; }, onFail: (e) => { fail = e; }, committed: () => this.delivered(s.id) })) throw new Error('could not store');
+          if (!mines.adjustStack(s.ownerName, t as ItemType, id, s.qty, [flip, mark], (r) => { fb = r; }, { bind: (x) => { done = x; }, onFail: (e) => { fail = e; }, committed: mine })) throw new Error('could not store');
           if (fb) { const wp = (getWarehouse() as unknown as { pool: LocPool | null }).pool; if (wp) await this.tx(wp, fb); } else await done; if (fail) throw fail;
         } else {
-          const r = getLocStore().adjust(s.ownerName, [{ loc: to.id, item: key, delta: s.qty }], [flip], { committed: () => this.delivered(s.id) }); if (r === false) throw new Error('could not store');
+          const r = getLocStore().adjust(s.ownerName, [{ loc: to.id, item: key, delta: s.qty }], [flip, mark], { committed: mine }); if (r === false) throw new Error('could not store');
           await r;
         }
       }
@@ -243,6 +247,8 @@ export class LocMoves {
     this.onArrive?.(s);
   }
   onArrive: ((s: Shipment) => void) | null = null;
+  /** Did THIS arrival attempt commit? (its own durable marker, never the shipment status) */
+  private async arrivalIs(id: string, att: string): Promise<boolean> { return (await (getLocStore().pool ?? this.fishPool()).query('SELECT 1 FROM freight_arrivals WHERE ship_id = $1 AND attempt = $2', [id, att])).rows.length > 0; }
   private async delivered(id: string): Promise<boolean> { return String((await this.fishPool().query('SELECT status FROM freight_shipments WHERE id = $1', [id])).rows[0]?.status ?? '') === 'delivered'; }
   private async shipExists(id: string): Promise<boolean> { return !!(await this.fishPool().query('SELECT 1 FROM freight_shipments WHERE id = $1', [id])).rows.length; }
 
@@ -252,9 +258,11 @@ export class LocMoves {
   async arriveLegacy(s: Shipment): Promise<void> {
     if (!this.hasFactory(s.toName)) throw new Error(`held at the dock: ${s.toName} has no factory (shipment ${s.id})`);
     const mines = getMines(); if (!mines.store || mines.offline) throw new Error('factory storage offline (arrival retried)');
+    if (await this.delivered(s.id)) return; // landed earlier (this or another instance): never credit again
     const flip = mustOne("UPDATE freight_shipments SET status = 'delivered' WHERE id = $1 AND status = 'transit'", [s.id]);
+    const att = randomUUID(); const mark = arrivalMark(s.id, att, this.clock());
     let fail: Error | null = null; let done: Promise<unknown> = Promise.resolve();
-    if (!mines.adjustStack(s.toName, s.type, s.itemId, s.qty, [flip], undefined, { bind: (x) => { done = x; }, onFail: (e) => { fail = e; }, committed: () => this.delivered(s.id) })) throw new Error('could not store');
+    if (!mines.adjustStack(s.toName, s.type, s.itemId, s.qty, [flip, mark], undefined, { bind: (x) => { done = x; }, onFail: (e) => { fail = e; }, committed: () => this.arrivalIs(s.id, att) })) throw new Error('could not store');
     await done; if (fail) { if (await this.delivered(s.id).catch(() => false)) return; throw fail; }
   }
 
@@ -384,6 +392,7 @@ let lm = new LocMoves();
 export const getLocMoves = () => lm;
 export const setLocMoves = (x: LocMoves) => { lm = x; };
 /** Hook producers + freight into per-location stock (idempotent). */
+const arrivalMark = (id: string, att: string, at: number): Stmt => ({ sql: 'INSERT INTO freight_arrivals (ship_id, attempt, at) VALUES ($1,$2,$3)', args: [id, att, at] });
 export function wireLocMoves() {
   const mines = getMines();
   const caveDeltas = (stacks: Array<{ type: string; id: string; qty: number }>, cave: string) => stacks.filter((x) => x.qty > 0).map((x) => ({ loc: mineLoc(cave), item: `${x.type}:${x.id}`, delta: x.qty }));

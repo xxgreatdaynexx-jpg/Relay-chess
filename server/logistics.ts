@@ -34,6 +34,7 @@ type PoolLike = Q & { connect: () => Promise<Q & { release: () => void }> };
 
 export const LOGISTICS_MIGRATION = `CREATE TABLE IF NOT EXISTS truck_owned (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, name TEXT NOT NULL, truck_id TEXT NOT NULL, paid BIGINT NOT NULL, bought_at BIGINT NOT NULL);
 CREATE INDEX IF NOT EXISTS truck_owned_player ON truck_owned (player_key);
+CREATE TABLE IF NOT EXISTS freight_arrivals (ship_id TEXT PRIMARY KEY, attempt TEXT NOT NULL, at BIGINT NOT NULL);
 CREATE TABLE IF NOT EXISTS freight_shipments (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, name TEXT NOT NULL, to_key TEXT NOT NULL, to_name TEXT NOT NULL,
   mode TEXT NOT NULL, truck TEXT, from_hub TEXT NOT NULL, to_hub TEXT NOT NULL, item_type TEXT NOT NULL, item_id TEXT NOT NULL, qty INTEGER NOT NULL, fee BIGINT NOT NULL,
   created_at BIGINT NOT NULL, depart_at BIGINT NOT NULL, arrive_at BIGINT NOT NULL, status TEXT NOT NULL);

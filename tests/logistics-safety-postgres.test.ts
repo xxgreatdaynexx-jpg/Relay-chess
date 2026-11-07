@@ -64,8 +64,10 @@ it.skipIf(!url)('real PostgreSQL: first map-pool boot vs an old writer (no deadl
     expect(await q("SELECT count(*)::int n FROM pg_trigger WHERE tgname = 'inv_fence_mine_items'")).toEqual([{ n: 1 }]);
     expect(await q("SELECT count(*)::int n FROM mine_items WHERE player_key = 'qa-old'")).toEqual([{ n: 1 }]); // the old txn committed whole, kept
     expect(await q("SELECT pools FROM inv_fence")).toEqual([{ pools: true }]);
-    // pre-update shape kept: barn / NULL-loc fish are HELD (never guessed onto a map); legacy listings keep their origin
-    expect(n(await q("SELECT player_key, qty FROM building_inv WHERE building = 'resort_farm' ORDER BY 1"))).toEqual([{ player_key: 'qa-sfa', qty: 5 }, { player_key: 'qa-sfb', qty: 2 }]);
+    // the resort barn is resort stock by provenance: moved 1:1 into each owner's resort pool (exactly once);
+    // NULL-loc fish stay HELD (no recorded map: never guessed); legacy listings keep their origin
+    expect(n(await q("SELECT player_key, qty FROM building_inv WHERE building = 'resort_farm' ORDER BY 1"))).toEqual([{ player_key: 'qa-sfa', qty: 0 }, { player_key: 'qa-sfb', qty: 0 }]);
+    expect(n(await q("SELECT player_key, sum(qty)::int qty FROM loc_stock WHERE loc = 'resort' AND item LIKE 'crop:%' GROUP BY 1 ORDER BY 1"))).toEqual([{ player_key: 'qa-sfa', qty: 5 }, { player_key: 'qa-sfb', qty: 2 }]);
     expect(await q("SELECT loc FROM fish_catches WHERE id = 'old1'")).toEqual([{ loc: null }]);
     expect(await q("SELECT origin FROM market_stack_listings WHERE id = 'legacy-l'")).toEqual([{ origin: 'factory' }]);
     expect((await step('cancelListing', { name: A, id: 'legacy-l' })).ok).toBe(true); // back to the factory store = the city store
@@ -75,7 +77,8 @@ it.skipIf(!url)('real PostgreSQL: first map-pool boot vs an old writer (no deadl
     const h1 = await step('harvest', { name: A, plot: PLOT }); expect(h1).toMatchObject({ ok: true }); expect(h1.r.paid).toBeGreaterThan(0);
     const h2 = await step('harvest', { name: A, plot: 'rf:1' }); expect(h2).toMatchObject({ ok: true }); expect(h2.r.paid).toBeGreaterThan(0);
     expect(await q("SELECT count(*)::int n FROM wallet_transactions WHERE player_key = 'qa-sfa' AND game = 'farm_harvest'")).toEqual([{ n: 2 }]);
-    expect(await q("SELECT count(*)::int n FROM loc_stock WHERE player_key = 'qa-sfa' AND item LIKE 'crop:%'")).toEqual([{ n: 0 }]);
+    // instant sale: harvesting adds no crop stock (the only crop row is the restored barn, unchanged at 5)
+    expect(await q("SELECT loc, qty::int FROM loc_stock WHERE player_key = 'qa-sfa' AND item LIKE 'crop:%'")).toEqual([{ loc: 'resort', qty: 5 }]);
     // ---- route rules: no same-map moves (one city store), trucks never cross maps, kitchens are no destination
     const deny = await step('move', { names: [A], moves: [
       { name: A, from: 'warehouse', to: 'resort', item: 'food:fillet_fish', qty: 1, mode: 'hired' },
@@ -85,7 +88,7 @@ it.skipIf(!url)('real PostgreSQL: first map-pool boot vs an old writer (no deadl
     // ---- 600 fillets cross by ship; arrival (restart, later clock) lands exactly once; the legacy load to B (no factory) stays held
     expect((await step('move', { names: [A], moves: [{ name: A, from: 'warehouse', to: 'resort', item: 'food:fillet_fish', qty: 600, mode: 'ship' }] })).res[0].ok).toBe(true);
     const t1 = await step('tick', { names: [A, B] }, 30 * H); expect(t1.transit).toBe(0);
-    expect(n(await q("SELECT loc, item, qty FROM loc_stock WHERE player_key = 'qa-sfa' AND qty > 0"))).toEqual([{ loc: 'resort', item: 'food:fillet_fish', qty: 600 }]);
+    expect(n(await q("SELECT loc, item, qty FROM loc_stock WHERE player_key = 'qa-sfa' AND qty > 0 ORDER BY item"))).toEqual([{ loc: 'resort', item: 'crop:coconut', qty: 5 }, { loc: 'resort', item: 'food:fillet_fish', qty: 600 }]);
     expect(n(await q("SELECT qty FROM mine_items WHERE player_key = 'qa-sfa' AND item_id = 'fillet_fish'"))).toEqual([{ qty: 600 }]);
     expect(await q("SELECT status FROM freight_shipments WHERE id = 'legacy-b'")).toEqual([{ status: 'transit' }]);
     expect(await q("SELECT count(*)::int n FROM mine_items WHERE player_key = 'qa-sfb'")).toEqual([{ n: 0 }]);

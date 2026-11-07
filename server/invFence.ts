@@ -35,7 +35,7 @@ export const fenceToken = () => FENCE_TOKEN;
 
 /** Inventory tables (only those that exist get a trigger; call again after every module created its tables). */
 export const FENCED_TABLES = ['mine_items', 'mine_carried', 'mine_factories', 'factory_v2', 'fish_catches', 'kitchen_dishes', 'kitchen_fillets', 'kitchen_cooks',
-  'building_inv', 'freight_shipments', 'loc_stock', 'market_stack_listings', 'farm_tiles', 'fortmc_state', 'loc_migrations'];
+  'building_inv', 'freight_shipments', 'loc_stock', 'market_stack_listings', 'farm_tiles', 'fortmc_state', 'loc_migrations', 'freight_arrivals'];
 
 export const FENCE_SQL = /* sql */ `
 CREATE TABLE IF NOT EXISTS inv_fence (id INT PRIMARY KEY CHECK (id = 1), holder TEXT, mode TEXT NOT NULL DEFAULT 'fenced', epoch BIGINT NOT NULL DEFAULT 0, at BIGINT NOT NULL DEFAULT 0);
