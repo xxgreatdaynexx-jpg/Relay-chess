@@ -27,7 +27,9 @@ describe('only planes players are actually using are drawn', () => {
   it('live traffic is empty with no shipments, shows a genuine player freight plane, and drops it on arrival', async () => {
     expect(l.live()).toEqual([]);
     getBank().transferConfirmed('QA-Pilot', 100_000, { key: 'fund:QA-Pilot', game: 'admin' }); getMines().adjustStack('QA-Pilot', 'bar', 'iron_bar', 30);
-    const r = await l.ship('QA-Pilot', { mode: 'plane', to: 'city', type: 'bar', id: 'iron_bar', qty: 30, recipient: 'QA-Friend' });
+    await expect(l.ship('QA-Pilot', { mode: 'plane', to: 'city', type: 'bar', id: 'iron_bar', qty: 30, recipient: 'QA-Friend' })).rejects.toThrow(/same map/); // same-map: road only
+    getMines().adjustStack('QA-Pilot', 'bar', 'iron_bar', -30); // an in-flight plane load (from before the rule) still draws and delivers
+    const r = { shipment: { id: 'p1', owner: 'qa-pilot', ownerName: 'QA-Pilot', toKey: 'qa-friend', toName: 'QA-Friend', mode: 'plane', truck: null, from: 'city', to: 'city', type: 'bar', itemId: 'iron_bar', qty: 30, fee: 0, createdAt: now, departAt: now, arriveAt: now + 3_600_000, status: 'transit' } as never as { arriveAt: number } }; l.admit(r.shipment as never);
     const v = l.live(); expect(v).toHaveLength(1); expect(v[0]).toMatchObject({ mode: 'plane', owner: 'QA-Pilot', units: 30 });
     now = r.shipment.arriveAt; l.tick(); expect(l.live()).toEqual([]);
     expect(getMines().stackQty('QA-Friend', 'bar', 'iron_bar')).toBe(30); // cargo delivered, not lost

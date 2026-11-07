@@ -61,11 +61,10 @@ describe('Logistics with cargo capacity (mu-cargo)', () => {
   });
   it('own jet carries freight: capacity by tier, leaves now, fuel fee only', async () => {
     const f = new Fleet(null, () => now); setFleet(f); fund('QA-JetCg', 500_000); await f.buy('QA-JetCg', 'jet', 'citation'); getMines().adjustStack('QA-JetCg', 'ore', 'copper', 5_000); const c0 = chips('QA-JetCg');
-    const r = await l.ship('QA-JetCg', { mode: 'jet', to: 'city', type: 'ore', id: 'copper', qty: 5_000, recipient: 'QA-Friend' });
-    expect(r.trips).toBe(2); expect(r.shipment.fee).toBe(2 * 900); expect(r.shipment.departAt).toBe(now); expect(r.shipment.arriveAt - now).toBe(MODES.jet.travelMs * 3); expect(chips('QA-JetCg')).toBe(c0 - 1_800);
-    expect(l.live()[0]!.label).toMatch(/QA-JetCg's jet/);
-    await expect(l.ship('QA-JetCg', { mode: 'jet', to: 'city', type: 'ore', id: 'copper', qty: 1, recipient: 'QA-Friend' })).rejects.toThrow(/out on deliveries|only have/);
-    await expect(l.ship('QA-JetCg', { mode: 'boat', to: 'city', type: 'ore', id: 'copper', qty: 1, recipient: 'QA-Friend' })).rejects.toThrow(/do not own a boat/);
+    // reviewer 4c448c8: Freight Yard factory→factory is same-map (Chud City), so road only: own jet/boat refused, nothing moves
+    await expect(l.ship('QA-JetCg', { mode: 'jet', to: 'city', type: 'ore', id: 'copper', qty: 5_000, recipient: 'QA-Friend' })).rejects.toThrow(/same map are reached by truck/);
+    expect(chips('QA-JetCg')).toBe(c0); expect(getMines().stackQty('QA-JetCg', 'ore', 'copper')).toBe(5_000); expect(l.live()).toHaveLength(0);
+    await expect(l.ship('QA-JetCg', { mode: 'boat', to: 'city', type: 'ore', id: 'copper', qty: 1, recipient: 'QA-Friend' })).rejects.toThrow(/do not own a boat|same map/);
   });
   it('public carriers keep their single-load cap', async () => {
     fund('QA-Pub', 100_000); getMines().adjustStack('QA-Pub', 'ore', 'copper', 5_000);

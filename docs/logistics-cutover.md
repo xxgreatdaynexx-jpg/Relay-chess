@@ -9,7 +9,7 @@ Production topology already matches: ONE Render instance, no autoscaling.
    `BEGIN; SHOW application_name; COMMIT;` and gets `chud-inv-probe` back. (If not, the new server refuses to boot:
    fail closed, fence untouched, old server keeps running.)
 2. Players are told about the short inventory pause (the parent relays this before cutover).
-3. Render health check path is `/health` (render.yaml): it returns 503 until the inventory boot is complete and
+3. Render health check path is `/api/health` (live Render setting; render.yaml lists `/health`, which serves the same inventory check): it returns 503 until the inventory boot is complete and
    whenever this process does not hold the fence.
 
 ## 1. Deploy (forward)
@@ -20,7 +20,7 @@ Render starts the new instance while the old one still serves. The new instance:
    ("inventory fenced"): players on it see errors, nothing is lost or doubled. Chips-only actions keep working;
 3. marks `inv_fence.migrated = true` (sticky), migrates legacy shared stock into each owner's factory (conservation
    checked; owners without a unique factory are HELD untouched and reported), bounded to LM_MIGRATE_TRIES attempts;
-4. marks ready, listens; `/health` turns 200; Render switches traffic and stops the old instance.
+4. marks ready, listens; `/api/health` (and `/health`) turns 200; Render switches traffic and stops the old instance.
 
 **Measured outage** (inventory writes refused, from fence-take to ready), local Postgres 16:
 - migration of 1,000 owners (50,000 fish, 5,000 fillet stacks, 1,000 dishes, 3,000 barn crops): **1.9 s**; 100 owners: 0.2 s.

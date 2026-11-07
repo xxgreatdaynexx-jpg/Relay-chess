@@ -112,7 +112,8 @@ export async function createApp(): Promise<AppContext> {
     const bank = getBank();
     res.set('Cache-Control', 'no-store');
     const chipDb = bank.status === 'ok' ? 'ok' : bank.status === 'memory' ? 'memory' : bank.status;
-    res.status(bank.ready ? 200 : 503).json({ ok: bank.ready, chipDb, ...(bank.ready ? {} : { error: bank.lastError ?? 'connecting' }), subsystems: bootStates(), build: buildInfo() });
+    const inv = invHealth(); const ok = bank.ready && inv.ok;
+    res.status(ok ? 200 : 503).json({ ok, chipDb, inventory: inv, ...(bank.ready ? {} : { error: bank.lastError ?? 'connecting' }), ...(bank.ready && !inv.ok ? { error: 'inventory writer not ready (fence ' + inv.fence + ')' } : {}), subsystems: bootStates(), build: buildInfo() });
   });
   app.get('/api/weekly-event', (_req, res) => { res.set('Cache-Control', 'no-store'); const v = getWeekly().view(null); res.json({ ok: true, ...v, top: v.top.slice(0, 5) }); });
   app.get('/api/nightly-event', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(nightlyView()); });

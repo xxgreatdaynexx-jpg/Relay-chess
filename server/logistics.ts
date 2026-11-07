@@ -234,6 +234,7 @@ export class Logistics {
     if (!hasFactory(name)) throw new FreightError('Your banked goods are held until you build a factory.');
     if (to !== 'city') throw new FreightError('Freight Yard loads go factory to factory in Chud City. To send goods to a place on another map, use 🏭 My places.');
     if (!hasFactory(recipient)) throw new FreightError(`${recipient} has no factory to receive goods.`);
+    if (!legModeAllowed(mode, from, to)) throw new FreightError(SAME_MAP_TRUCK_ONLY); // factory->factory in the city: road only
     let truck: string | null = null; let travel = MODES[mode].travelMs; let cap = MODES[mode].cap; let model = '';
     if (mode === 'truck') {
       const busy = this.busyTrucks(name); const mine = this.owned(name);
