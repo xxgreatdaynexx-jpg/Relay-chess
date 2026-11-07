@@ -63,11 +63,12 @@ export function optimisticOwn(prev: OwnedProperty | undefined, ev: 're_buy' | 'r
 }
 export const sellBackOf = (price: number) => Math.floor(price * SELL_BACK);
 /** Land surcharge (pt1388u, replaces the old ×1.5-per-parcel growth): the next purchase costs list × (1 + surcharge),
- * surcharge % = SURCHARGE_PCT_PER_1K × (total list value of the properties the buyer already owns ÷ 1,000). No cap.
- * Owning nothing = 0%. A 5,000 farm owned = +10%; 100,000 owned = +200%. Tax stays on the list price; sell-back is 70% of
+ * surcharge % = SURCHARGE_PCT_PER_1K × (total paid value plus upgrades of the properties the buyer already owns ÷ 1,000). No cap.
+ * Owning nothing = 0%. A 5,000 farm owned = +5%; 100,000 owned = +100%. Tax policy is unchanged; sell-back is 70% of
  * what was actually paid. Trailer Park lots are separate and free. Tune here. */
-export const SURCHARGE_PCT_PER_1K = 2;
-/** Surcharge percent for a buyer whose owned properties are worth ownedValue (list prices). */
+// Dayne Nov 7: halve the surcharge rate, without changing the base or other taxes.
+export const SURCHARGE_PCT_PER_1K = 1;
+/** Surcharge percent for a buyer whose owned properties have paid value plus upgrades ownedValue. */
 export const landSurchargePct = (ownedValue: number) => Math.max(0, ownedValue) / 1000 * SURCHARGE_PCT_PER_1K;
 export const landMultiplier = (ownedValue: number) => 1 + landSurchargePct(ownedValue) / 100;
 export const landPrice = (listPrice: number, ownedValue: number) => Math.round(listPrice * landMultiplier(ownedValue));

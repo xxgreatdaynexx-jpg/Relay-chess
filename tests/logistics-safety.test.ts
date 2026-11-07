@@ -4,6 +4,7 @@
  */
 import { describe, expect, it, vi, beforeEach, afterAll } from 'vitest';
 import pg from 'pg';
+import { dropDrainedTestDatabase } from './fixtures/drain-postgres-db';
 import { newDb } from 'pg-mem';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -67,7 +68,7 @@ describe.skipIf(!PGURL)('LocStore (real PostgreSQL): lost acknowledgement / unkn
     const u = new URL(PGURL!); if (!['127.0.0.1', 'localhost'].includes(u.hostname)) throw new Error('local test DB only');
     const name = `lmsafe_${process.pid}_${Date.now()}_${Math.floor(Math.random() * 1e6)}`; const root = new pg.Client({ connectionString: PGURL }); await root.connect(); await root.query(`CREATE DATABASE ${name}`);
     u.pathname = `/${name}`; const pool = new pg.Pool({ connectionString: u.toString(), max: 3 });
-    dbs.push(async () => { await pool.end(); await root.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`); await root.end(); });
+    dbs.push(async () => { await dropDrainedTestDatabase(root, pool, name); });
     await pool.query('CREATE TABLE mark (id TEXT PRIMARY KEY)');
     const ctl = { lose: false, failBefore: false, markerDown: false };
     const wrap = {

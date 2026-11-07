@@ -93,9 +93,17 @@ export function adminRouter(): express.Router {
     if (!row) return res.status(404).json({ ok: false, error: 'Unknown player.' });
     const bank = getBank();
     if (!bank.ready) return res.status(503).json({ ok: false, error: WALLET_UNAVAILABLE });
+    let admission: { open: boolean; generation: string };
+    try { admission = await bank.adminCreditAdmission(); if (!admission.open) return res.status(423).json({ ok: false, error: 'Admin credits temporarily frozen for audited back-tax refunds.' }); }
+    catch { return res.status(503).json({ ok: false, error: 'Could not verify admin credit gate.' }); }
     const before = await bank.refresh(row.name); // DB is the source of truth
-    const applied = bank.transfer(row.name, amount, { key, game: 'admin', memo: typeof memo === 'string' && memo ? memo : 'admin_grant' });
+    const applied = await bank.transferConfirmed(row.name, amount, { key, game: 'admin', adminGateGeneration: admission.generation, memo: typeof memo === 'string' && memo ? memo : 'admin_grant' });
     await bank.flush();
+    if (!applied) {
+      try { if (!await bank.adminCreditsOpen()) return res.status(423).json({ ok: false, error: 'Admin credit refused by the database refund gate; no newly confirmed grant.' }); }
+      catch { return res.status(503).json({ ok: false, error: 'Grant not newly confirmed; audit ledger before retry.' }); }
+      if (!bank.hasKey(key)) return res.status(409).json({ ok: false, error: 'Queued admin credit invalidated by the refund gate; no new grant confirmed.' });
+    }
     const after = await bank.refresh(row.name);
     console.log(`[admin] grant ${applied ? 'applied' : 'replay ignored'}: ${row.name} +${amount} key=${key} memo=${JSON.stringify(memo ?? '')} ${before}->${after} from ${ip}`);
     res.json({ ok: true, applied, player: row.name, amount, before, after, key });

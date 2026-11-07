@@ -27,6 +27,7 @@ import { getConquest } from './conquest.js';
 import { getSolitro, solitroBoard } from './solitro.js';
 import { bootStates, reconnectMsg } from './boot-retry.js';
 import { adminRouter } from './admin.js';
+import { backTaxRefundRouter } from './backTaxRefund.js';
 import { trailerRouter } from './trailers.js';
 import { coopMapSummary } from './coop.js';
 import { realEstateRouter } from './realEstate.js';
@@ -83,6 +84,7 @@ export async function createApp(): Promise<AppContext> {
     res.json({ ok: true, ...millionairePrelaunchView() });
   });
   app.use(adminRouter());
+  app.use(backTaxRefundRouter());
   app.use(trailerRouter());
   app.get('/api/coop', (_req, res) => { res.json({ ok: true, projects: coopMapSummary() }); });
   app.use(realEstateRouter());

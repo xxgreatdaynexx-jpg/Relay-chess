@@ -4,6 +4,7 @@
  */
 import { expect, it } from 'vitest';
 import pg from 'pg';
+import { dropDrainedTestDatabase } from './fixtures/drain-postgres-db';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { farmPlots } from '../shared/farm';
@@ -24,9 +25,16 @@ async function makeDb(tag: string) {
     const lines = stdout.split('\n').filter((l) => l.startsWith('RESULT ')); if (!lines.length) throw new Error(`step ${s}: no result\n${stdout}`);
     return lines.length === 1 ? JSON.parse(lines[0]!.slice(7)) : lines.map((l) => JSON.parse(l.slice(7)));
   };
-  const failBoot = async (extra: Record<string, string>) => { try { await run('npx', ['tsx', 'tests/fixtures/locmoves-pg-step.ts', 'failBoot', '{}'], { env: env(0, extra) }); return 0; } catch (e) { return (e as { code?: number }).code ?? -1; } };
+  const failBoot = async (extra: Record<string, string>) => {
+    try { await run('npx', ['tsx', 'tests/fixtures/inventory-failure-pg-step.ts', 'failBoot', '{}'], { env: env(0, extra) }); return 0; }
+    catch (e) {
+      const failure = e as { code?: number | string; signal?: string; stderr?: string };
+      if (typeof failure.code !== 'number') throw new Error(`Failure fixture terminated without an exit code (signal ${failure.signal ?? 'none'}, code ${failure.code ?? 'none'}): ${failure.stderr ?? ''}`);
+      return failure.code;
+    }
+  };
   const q = async (sql: string, a: unknown[] = []) => (await db.query(sql, a)).rows;
-  const close = async () => { await db.end(); await root.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`).catch(() => {}); await root.end(); };
+  const close = async () => { await dropDrainedTestDatabase(root, db, name); };
   return { DB, env, step, failBoot, q, close, db };
 }
 const n = (rows: Array<Record<string, unknown>>) => rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : v])));
@@ -119,12 +127,14 @@ it.skipIf(!url)('real PostgreSQL: a boot failing BEFORE the map-pool boundary ha
     // the old server re-booting can not take the fence back
     await expect(q("UPDATE inv_fence SET prev_holder = holder, prev_mode = mode, holder = 'chud-inv-0ld', mode = 'fenced', epoch = epoch + 1 WHERE id = 1")).rejects.toThrow(/map-pool shape/);
     // SIGTERM before ready after the boundary: still kept
-    const c = spawn('npx', ['tsx', 'tests/fixtures/locmoves-pg-step.ts', 'failBoot', '{}'], { env: d.env(0, { LM_TEST_FAIL: 'hang' }), detached: false });
+    const c = spawn('npx', ['tsx', 'tests/fixtures/inventory-failure-pg-step.ts', 'failBoot', '{}'], { env: d.env(0, { LM_TEST_FAIL: 'hang' }), detached: true });
     let log = ''; c.stdout.on('data', (b) => { log += String(b); }); c.stderr.on('data', (b) => { log += String(b); });
     for (let i = 0; i < 200 && !log.includes('fence taken'); i++) await new Promise((r) => setTimeout(r, 200));
     await new Promise((r) => setTimeout(r, 1500));
     const killed = new Promise((r) => c.on('exit', r));
-    for (const pid of (await run('pgrep', ['-f', 'locmoves-pg-step.ts failBoot'])).stdout.trim().split('\n').filter(Boolean)) process.kill(Number(pid), 'SIGTERM');
+    // Signal only this fixture's dedicated process group, never another worktree's matching test.
+    if (!c.pid) throw new Error('Fixture process did not start');
+    process.kill(-c.pid, 'SIGTERM');
     await killed; await new Promise((r) => setTimeout(r, 500));
     expect(await q('SELECT mode, pools FROM inv_fence')).toEqual([{ mode: 'fenced', pools: true }]);
     await expect(oldWrite()).rejects.toThrow(/inventory fenced/);

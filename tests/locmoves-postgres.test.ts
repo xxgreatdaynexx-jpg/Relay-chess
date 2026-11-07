@@ -5,6 +5,7 @@
  */
 import { expect, it } from 'vitest';
 import pg from 'pg';
+import { dropDrainedTestDatabase } from './fixtures/drain-postgres-db';
 import { FOLD_PREP } from '../server/mapPools.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -90,5 +91,5 @@ it.skipIf(!url)('real PostgreSQL: production boot (fence -> boundary -> fold -> 
     expect((await step('sell', { name: A, item: 'fish:trout', qty: 1 })).ok).toBe(false); // it is at the resort now
     expect(await step('sell', { name: A, from: 'resort', item: 'fish:trout', qty: 1 })).toMatchObject({ ok: true });
     expect((await step('sell', { name: A, from: 'factory', item: 'ore:copper', qty: 1 })).ok).toBe(false); // no second city store
-  } finally { await db.end(); await root.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`).catch(() => {}); await root.end(); }
+  } finally { await dropDrainedTestDatabase(root, db, dbName); }
 }, 300_000);
