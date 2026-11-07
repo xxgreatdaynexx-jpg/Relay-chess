@@ -79,7 +79,7 @@ export class LocStore {
    * Apply deltas now (all-or-nothing: false = short somewhere, nothing changed) and commit them with `extra` in ONE
    * transaction. The returned promise rejects if the transaction failed (memory is reverted first).
    */
-  adjust(name: string, deltas: LocDelta[], extra: Stmt[] = [], opts: { after?: Promise<unknown>; check?: (cl: Q) => Promise<void>; committed?: () => Promise<boolean> } = {}): Promise<void> | false {
+  adjust(name: string, deltas: LocDelta[], extra: Stmt[] = [], opts: AdjustOpts = {}): Promise<void> | false {
     this.guard();
     if (!this.check(name, deltas)) return false;
     this.applyMem(name, deltas);
@@ -93,9 +93,40 @@ export class LocStore {
     };
     const p = this.chain.then(run, run);
     this.chain = p.catch(() => {});
-    // A commit whose reply was lost (the retry then trips its exactly-once guard) must not be reverted in memory.
-    return p.catch(async (e) => { if (opts.committed && await opts.committed().catch(() => false)) return; this.applyMem(name, deltas, -1); throw e; });
+    const committed = opts.committed ?? (opts.marker ? markerCheck(pool, opts.marker) : null);
+    return p.catch(async (e) => {
+      // An error does not prove the transaction rolled back (a lost COMMIT acknowledgement). Ask the database by this
+      // write's own marker (shipment id / ledger key / row id) before undoing anything in memory.
+      const v = committed ? await outcome(committed) : false;
+      if (v === true) return; // it DID commit: keep memory, report success
+      if (v === false) { this.applyMem(name, deltas, -1); throw e; }
+      // Still unknown (database unreachable): memory keeps the change (never duplicated); a background reconcile settles it.
+      void settle(committed!).then((late) => { if (!late) this.applyMem(name, deltas, -1); opts.onLate?.(late); });
+      throw new OutcomeUnknown(e as Error);
+    });
   }
+}
+type Stmt_ = { sql: string; args: unknown[] };
+export type AdjustOpts = { after?: Promise<unknown>; check?: (cl: Q) => Promise<void>;
+  /** Did this write commit? (returns true/false; throws when it can't tell). */ committed?: () => Promise<boolean>;
+  /** Or: a SELECT that returns a row iff this write committed. */ marker?: Stmt_;
+  /** Late verdict after an OutcomeUnknown (true = it had committed; false = memory was reverted: undo your side too). */ onLate?: (committed: boolean) => void };
+/** The write's outcome could not be determined yet; memory keeps it until a background check settles it. */
+export class OutcomeUnknown extends Error { constructor(readonly cause_: Error) { super(`outcome unknown: ${cause_.message}`); } }
+export const isOutcomeUnknown = (e: unknown): e is OutcomeUnknown => e instanceof OutcomeUnknown;
+const markerCheck = (pool: LocPool, m: Stmt_) => async () => ((await pool.query(m.sql, m.args)).rows.length > 0);
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** A few quick tries: true / false, or null if the database can't be asked. */
+export async function outcome(f: () => Promise<boolean>, tries = 3): Promise<boolean | null> {
+  for (let i = 0; i < tries; i++) { try { return await f(); } catch { if (i + 1 < tries) await wait(200 * (i + 1)); } }
+  return null;
+}
+async function settle(f: () => Promise<boolean>): Promise<boolean> {
+  for (let i = 0; ; i++) { const v = await outcome(f, 1); if (v !== null) return v; await wait(Math.min(60_000, 1000 * 2 ** Math.min(i, 6))); }
+}
+/** Marker for a transaction that writes a wallet ledger row: its tx_key exists iff it committed. */
+export function ledgerMarker(stmts: Stmt_[]): Stmt_ | undefined {
+  const s = stmts.find((x) => /INSERT INTO wallet_transactions/i.test(x.sql)); return s ? { sql: 'SELECT 1 FROM wallet_transactions WHERE tx_key = $1', args: [s.args[0]] } : undefined;
 }
 
 let store = new LocStore(null);

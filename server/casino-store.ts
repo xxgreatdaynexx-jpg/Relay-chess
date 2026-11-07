@@ -329,7 +329,7 @@ export class CasinoBank {
    * the accounts' earlier queued writes, `bind(p)` so later writes queue behind the caller's transaction (the cache is
    * re-read from the DB once it commits), and `revert()` for when it never committed.
    */
-  transferAtomic(moves: Array<{ name: string; amount: number; key: string; game: string; memo?: string }>, opts: { batch?: boolean } = {}): { stmts: Array<{ sql: string; args: unknown[] }>; after: Promise<unknown>; bind: (p: Promise<unknown>) => void; revert: () => void } {
+  transferAtomic(moves: Array<{ name: string; amount: number; key: string; game: string; memo?: string }>, opts: { batch?: boolean } = {}): { stmts: Array<{ sql: string; args: unknown[] }>; after: Promise<unknown>; bind: (p: Promise<unknown>) => void; revert: () => void; confirm: () => void } {
     this.guard();
     const need = new Map<string, number>();
     for (const m of moves) {
@@ -375,7 +375,9 @@ export class CasinoBank {
       }
     };
     if (!this.store) release();
-    return { stmts: this.store ? stmts : [], after, bind, revert };
+    /** The caller's transaction was confirmed committed after an unknown outcome: settle the in-flight bookkeeping. */
+    const confirm = () => { release(); };
+    return { stmts: this.store ? stmts : [], after, bind, revert, confirm };
   }
 
   /** Take a stake. Throws when short. */

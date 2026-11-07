@@ -1,3 +1,4 @@
+import { invReady } from './invFence.js';
 /**
  * Employment Office (pt1274u): hired AI workers (shared/employment.ts has the rules and prices).
  * Postgres is the source of truth (employ_workers); production is computed lazily from server timestamps, so it
@@ -309,7 +310,7 @@ let sweepTimer: ReturnType<typeof setInterval> | null = null;
 /** Auto-deposit loop. The first pass (30 s after boot) also deposits any haul left over from the old Collect button. */
 function startEmploySweep(e: Employment) {
   if (sweepTimer) clearInterval(sweepTimer);
-  const run = () => { void e.sweep().catch((x) => console.error('[employ] sweep failed:', (x as Error).message)); };
+  const run = () => { if (!invReady()) return; /* inventory boot (migration) not finished / fence lost */ void e.sweep().catch((x) => console.error('[employ] sweep failed:', (x as Error).message)); };
   setTimeout(run, 30_000).unref?.(); sweepTimer = setInterval(run, SWEEP_MS); sweepTimer.unref?.();
 }
 export const setEmploymentForTest = (e: Employment | null) => { emp = e; };

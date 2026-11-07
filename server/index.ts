@@ -1,4 +1,4 @@
-import { initInventoryFence, refreshFenceTriggers } from './invFence.js'; // FIRST: sets PGAPPNAME before any pool exists
+import { initInventoryFence, refreshFenceTriggers, markReady } from './invFence.js'; // FIRST: sets PGAPPNAME before any pool exists
 import { initRequests } from './requests.js';
 import { initRoyalties } from './royalty.js';
 import { initPopupStorage } from './popups.js';
@@ -108,6 +108,7 @@ await initSolitroStorage();
 const port = Number(process.env.PORT) || 4317;
 
 const { httpServer } = await createApp();
+markReady(); // inventory boot done: from here a failure no longer hands the fence back (see server/invFence.ts)
 httpServer.listen(port, '0.0.0.0', () => {
   console.log(`Chud Hub listening on http://0.0.0.0:${port}`);
 });

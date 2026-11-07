@@ -1,4 +1,5 @@
-import { fenceHeld } from './invFence.js';
+import { fenceHeld, markMigrating } from './invFence.js';
+import { OutcomeUnknown, isOutcomeUnknown, outcome, ledgerMarker } from './locstock.js';
 import { PANTRY_MAX } from '../shared/cooking.js';
 /**
  * Truck logistics between individual locations (Dayne 2026-11-06; ids in shared/inventoryLocations.ts).
@@ -161,12 +162,14 @@ export class LocMoves {
     let plan: Awaited<ReturnType<typeof lg.planLeg>>;
     try { plan = await lg.planLeg(name, { mode: b.mode, vehicle: b.vehicle, fromHub, toHub, type: it.type, itemId: it.id, qty, fromLoc: from.id, toLoc: to.id }); }
     catch (e) { if (e instanceof FreightError) throw new MoveError(e.message); throw e; }
-    const s = plan.shipment; const bank = getBank();
+    const s = plan.shipment; const bank = getBank(); let pending = false;
     try {
       if (s.fee && !bank.canAfford(name, s.fee)) throw new MoveError(`Not enough chips for the 🪙 ${s.fee.toLocaleString('en-US')} fee.`);
       const w = s.fee ? bank.transferAtomic([{ name, amount: -s.fee, key: `freight:${s.id}`, game: 'freight', memo: `${MODES[s.mode].label}: ${qty} ${itemLabel(it.item)} ${locLabel(from.id)} → ${locLabel(to.id)}` }]) : null;
       const rows: Stmt[] = [shipStmt(s), ...(w?.stmts ?? []), ...(plan.surplus ? treasuryStmtsFor(name, 'freight', plan.surplus, 'Freight lever surplus') : [])];
       let p: Promise<void>;
+      // Late verdict for a dispatch whose outcome was unknown: if it had NOT committed, undo the fee and free the vehicle.
+      const late = (ok: boolean) => { if (ok) w?.confirm(); if (!ok) { w?.revert(); lg.release(s.id); console.error(`[locmoves] dispatch ${s.id} did not commit (settled late): fee returned`); } };
       if (it.row === 'fish' || it.row === 'fdish') {
         p = this.tx(this.fishPool(), rows, async (cl) => {
           const r = await cl.query(`UPDATE fish_catches SET loc = $5 WHERE id IN (SELECT id FROM fish_catches WHERE player_key = $1 AND loc = $2 AND species = $3 AND sold_at IS NULL AND ${fishWhere(it.row as 'fish')} ORDER BY caught_at, id LIMIT $4 FOR UPDATE)`, [playerKey(name), from.id, it.id, qty, `transit:${s.id}`]);
@@ -179,20 +182,28 @@ export class LocMoves {
         }, w?.after);
       } else if (from.kind === 'factory' && PACK_TYPES.has(it.type)) {
         const mines = getMines(); let fail: Error | null = null; let done: Promise<unknown> = Promise.resolve(); let fb: Stmt[] | null = null;
-        const ok = mines.adjustStack(name, it.type as ItemType, it.id, -qty, rows, (r) => { fb = r; }, { after: w?.after, bind: (x) => { done = x; }, onFail: (e) => { fail = e; }, committed: () => this.shipExists(s.id) });
+        const ok = mines.adjustStack(name, it.type as ItemType, it.id, -qty, rows, (r) => { fb = r; }, { after: w?.after, bind: (x) => { done = x; }, onFail: (e) => { fail = e; }, committed: () => this.shipExists(s.id), onUnknown: (e) => { fail = new OutcomeUnknown(e); }, onLate: late });
         if (!ok) { w?.revert(); throw new MoveError(`Only ${mines.stackQty(name, it.type as ItemType, it.id)} ${itemLabel(it.item)} at your factory.`); }
         p = (async () => { if (fb) { const wp = (getWarehouse() as unknown as { pool: LocPool | null }).pool; if (wp) await this.tx(wp, fb); } else await done; if (fail) throw fail; })();
       } else if (BIN_BUILDINGS.has(from.kind)) {
         const wp = (getWarehouse() as unknown as { pool: LocPool | null }).pool; if (!wp) throw new MoveError('Storage is offline right now.');
         p = this.tx(wp, [mustOne('UPDATE building_inv SET qty = qty - $4 WHERE player_key = $1 AND building = $2 AND item = $3 AND qty >= $4', [playerKey(name), from.kind, it.item, qty]), ...rows], undefined, w?.after);
       } else {
-        const r = getLocStore().adjust(name, [{ loc: from.id, item: it.item, delta: -qty }], rows, { after: w?.after });
+        const r = getLocStore().adjust(name, [{ loc: from.id, item: it.item, delta: -qty }], rows, { after: w?.after, committed: () => this.shipExists(s.id), onLate: late });
         if (r === false) { w?.revert(); throw new MoveError(`Not enough ${itemLabel(it.item)} at ${locLabel(from.id)}.`); }
         p = r;
       }
       w?.bind(p);
-      try { await p; } catch (e) { w?.revert(); if (e instanceof MoveError) throw e; console.error('[locmoves] dispatch failed:', (e as Error).message); throw new MoveError(/division by zero/.test((e as Error).message) ? 'Those goods just moved. Nothing was charged.' : 'That didn’t go through. Nothing was moved or charged.'); }
-    } catch (e) { lg.release(s.id); throw e; }
+      try { await p; } catch (e) {
+        // Every dispatch transaction writes its shipment row: that row exists iff it committed (lost-ack reconcile).
+        const v = e instanceof MoveError ? false : isOutcomeUnknown(e) ? null : await outcome(() => this.shipExists(s.id));
+        if (v === null) { // unknown: keep fee + goods as moved and the leg admitted (its arrival only credits if the row exists)
+          if (!isOutcomeUnknown(e)) void (async () => { for (let i = 0; ; i++) { await new Promise((r) => setTimeout(r, Math.min(60_000, 1000 * 2 ** Math.min(i, 6)))); const x = await outcome(() => this.shipExists(s.id), 1); if (x !== null) return late(x); } })();
+          lg.admit(s); pending = true; throw new MoveError('Your move is still being confirmed. Check My places in a minute; nothing will be charged twice.');
+        }
+        if (v === false) { w?.revert(); if (e instanceof MoveError) throw e; console.error('[locmoves] dispatch failed:', (e as Error).message); throw new MoveError(/division by zero/.test((e as Error).message) ? 'Those goods just moved. Nothing was charged.' : 'That didn’t go through. Nothing was moved or charged.'); }
+      }
+    } catch (e) { if (!pending) lg.release(s.id); throw e; }
     lg.admit(s);
     return { shipment: { id: s.id, mode: s.mode, fee: s.fee, departAt: s.departAt, arriveAt: s.arriveAt, trips: plan.trips, from: from.id, to: to.id, item: it.item, qty } };
   }
@@ -270,18 +281,28 @@ export class LocMoves {
     if (it.type === 'crop') {
       const farm = getFarm(); if (!farm) throw new MoveError('The farm is offline right now.');
       if (!ls.check(name, [{ loc: WAREHOUSE, item: it.item, delta: -qty }])) throw new MoveError('Not enough at the Warehouse.');
-      const paid = await farm.sellShipped({ id: `wh:${randomUUID()}`, ownerName: name.trim(), itemId: it.id, qty }, ls.rowsFor(name, [{ loc: WAREHOUSE, item: it.item, delta: -qty }]), 'your Warehouse stock');
-      ls.applyMem(name, [{ loc: WAREHOUSE, item: it.item, delta: -qty }]);
+      const sid = `wh:${randomUUID()}`; const d = [{ loc: WAREHOUSE, item: it.item, delta: -qty }];
+      let paid: number;
+      try { paid = await farm.sellShipped({ id: sid, ownerName: name.trim(), itemId: it.id, qty }, ls.rowsFor(name, d), 'your Warehouse stock'); }
+      catch (e) {
+        // Lost acknowledgement? The sale's ledger key (whsale:<id>) exists iff it committed.
+        const v = await outcome(async () => ((await this.fishPool().query('SELECT 1 FROM wallet_transactions WHERE tx_key = $1', [`whsale:${sid}`])).rows.length > 0));
+        if (v === true) { ls.applyMem(name, d); throw new MoveError('That sale went through; your chips will show shortly.'); }
+        if (v === null) throw new MoveError('That sale is still being confirmed. Nothing will be sold twice; check again in a minute.');
+        throw e;
+      }
+      ls.applyMem(name, d);
       return { sold: qty, paid, chips: getBank().account(name).chips };
     }
     if (!PACK_TYPES.has(it.type) || !sellable({ type: it.type as ItemType, id: it.id })) throw new MoveError('The Warehouse does not buy that.');
     const mines = getMines(); const now = this.clock();
     let sale: ReturnType<typeof mines.houseSale>;
     try { sale = mines.houseSale(name, now, [{ type: it.type as ItemType, id: it.id, qty }]); } catch (e) { if (e instanceof MineError) throw new MoveError(e.message); throw e; }
-    const r = ls.adjust(name, [{ loc: WAREHOUSE, item: it.item, delta: -qty }], sale.stmts, { after: sale.w.after });
+    const r = ls.adjust(name, [{ loc: WAREHOUSE, item: it.item, delta: -qty }], sale.stmts, { after: sale.w.after, marker: ledgerMarker(sale.stmts),
+      onLate: (ok) => { if (ok) { sale.w.confirm(); sale.apply(); } else sale.w.revert(); } }); // an unknown outcome settles later: apply or undo then
     if (r === false) { sale.w.revert(); throw new MoveError('Not enough at the Warehouse.'); }
     sale.w.bind(r);
-    try { await r; } catch (e) { sale.w.revert(); console.error('[locmoves] sale failed:', (e as Error).message); throw new MoveError('That sale didn’t go through. Nothing was sold.'); }
+    try { await r; } catch (e) { if (isOutcomeUnknown(e)) throw new MoveError('That sale is still being confirmed. Nothing will be sold twice; check again in a minute.'); sale.w.revert(); console.error('[locmoves] sale failed:', (e as Error).message); throw new MoveError('That sale didn’t go through. Nothing was sold.'); }
     sale.apply();
     return { sold: qty, gross: sale.q.gross, paid: sale.q.paid, chips: getBank().account(name).chips };
   }
@@ -372,11 +393,25 @@ export function wireLocMoves() {
 export async function initLocMoves(opts: { dbUrl?: string | undefined } = {}) {
   wireLocMoves();
   if (!opts.dbUrl) { lm.ready = true; return; }
+  // Bounded: a few attempts (storage still connecting / transient errors), then FAIL the boot (invFence releases the fence
+  // only if that is provably safe). A failed conservation check is never retried: it stops the boot at once.
+  const tries = Number(process.env.LM_MIGRATE_TRIES ?? 6);
   for (let i = 0; ; i++) {
     if (!fenceHeld()) throw new Error('[locmoves] a newer server holds the inventory fence: not serving inventory (fail closed)');
-    const m = getMines(); if (getFishing() && getCooking() && m.store && !m.offline && getLocStore().loaded) {
-      try { const r = await lm.migrateLegacy(); lm.lastMigration = r; if (!r.conserved) throw new Error('conservation check failed: see the log; not serving inventory'); lm.ready = true; return; } catch (e) { console.error('[locmoves] legacy migration failed (will retry):', (e as Error).message); }
-    }
+    const m = getMines(); let err: Error | null = null;
+    if (getFishing() && getCooking() && m.store && !m.offline && getLocStore().loaded) {
+      const t0 = Date.now(); let r: Awaited<ReturnType<LocMoves['migrateLegacy']>> | null = null;
+      const hook = process.env.NODE_ENV === 'test' ? process.env.LM_TEST_FAIL : undefined; // test-only failure injection
+      if (hook === 'hang') await new Promise(() => {});
+      if (hook === 'premigrate') throw new Error('[locmoves] test: boot failed before migrating');
+      try { await markMigrating(); if (hook === 'migrate') throw new Error('test: migration failed midway'); r = await lm.migrateLegacy(); } catch (e) { err = e as Error; console.error('[locmoves] legacy migration attempt failed:', err.message); }
+      if (r) {
+        lm.lastMigration = r; console.log(`[locmoves] migration took ${Date.now() - t0} ms`);
+        if (!r.conserved) throw new Error('[locmoves] conservation check failed: see the log; not serving inventory');
+        lm.ready = true; return; // the caller marks the process ready (invFence.markReady) right before it serves
+      }
+    } else err = new Error('storage not ready');
+    if (i + 1 >= tries) throw new Error(`[locmoves] legacy migration did not complete after ${tries} attempts: ${err?.message ?? ''}`);
     await new Promise((r) => setTimeout(r, Math.min(30_000, 2000 * 2 ** Math.min(i, 4))));
   }
 }

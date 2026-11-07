@@ -1,3 +1,4 @@
+import { isOutcomeUnknown } from './locstock.js';
 /**
  * Co-op economy server (rules + sizing: shared/coop.ts).
  *
@@ -136,10 +137,12 @@ export class Coop {
       } else {
         // Goods leave your Warehouse storage; the donation row (+ reward credit) commit in the same pack transaction.
         // Truck logistics: co-op goods come only from stock AT the Chud City Warehouse (loc_stock 'warehouse').
-        const r = getLocStore().adjust(name, [{ loc: WAREHOUSE, item: `${g.type}:${g.id}`, delta: -qty }], [{ sql: rowStmt.sql.replace(/\)$/, ') ON CONFLICT (id) DO NOTHING'), args: rowStmt.args }, ...(w?.stmts ?? [])], { after: w?.after });
+        const r = getLocStore().adjust(name, [{ loc: WAREHOUSE, item: `${g.type}:${g.id}`, delta: -qty }], [{ sql: rowStmt.sql.replace(/\)$/, ') ON CONFLICT (id) DO NOTHING'), args: rowStmt.args }, ...(w?.stmts ?? [])], { after: w?.after,
+          marker: { sql: 'SELECT 1 FROM coop_donations WHERE id = $1', args: [id] }, // lost-ack reconcile: the donation row exists iff it committed
+          onLate: (ok) => { if (ok) { w?.confirm(); this.applyDonation(res, k, name.trim(), this.clock()); this.onChange?.(); } else w?.revert(); } });
         if (r === false) { w?.revert(); throw new CoopError(`You don’t have ${qty.toLocaleString('en-US')} ${g.name} at the Chud City Warehouse. Truck it there first.`); }
         w?.bind(r);
-        try { await r; } catch { w?.revert(); throw new CoopError('That didn’t go through. Nothing was taken.'); }
+        try { await r; } catch (e) { if (isOutcomeUnknown(e)) throw new CoopError('Still confirming that donation. Nothing will be taken twice; check again in a minute.'); w?.revert(); throw new CoopError('That didn’t go through. Nothing was taken.'); }
       }
       this.applyDonation(res, k, name.trim(), this.clock()); this.onChange?.();
       return res;
@@ -202,9 +205,10 @@ export class Coop {
       const left = c.qty - c.delivered; if (left <= 0) throw new CoopError('This order is already filled.');
       const qty = Math.min(q, capLeft, left); const g = GOODS[c.item]!;
       const rowStmt: Stmt = { sql: 'INSERT INTO coop_deliveries (id, contract, player_key, name, item, qty, at) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO NOTHING', args: [id, c.id, k, name.trim(), c.item, qty, now] };
-      const r = getLocStore().adjust(name, [{ loc: WAREHOUSE, item: `${g.type}:${g.id}`, delta: -qty }], [rowStmt]);
+      const r = getLocStore().adjust(name, [{ loc: WAREHOUSE, item: `${g.type}:${g.id}`, delta: -qty }], [rowStmt], {
+        marker: { sql: 'SELECT 1 FROM coop_deliveries WHERE id = $1', args: [id] }, onLate: (ok) => { if (ok) { this.applyDelivery(id, c.id, k, name.trim(), qty, now); this.onChange?.(); } } });
       if (r === false) throw new CoopError(`You don’t have ${qty.toLocaleString('en-US')} ${nameOf(g)} at the Chud City Warehouse. Truck it there first.`);
-      try { await r; } catch { throw new CoopError('That didn’t go through. Nothing was taken.'); }
+      try { await r; } catch (e) { if (isOutcomeUnknown(e)) throw new CoopError('Still confirming that delivery. Nothing will be taken twice; check again in a minute.'); throw new CoopError('That didn’t go through. Nothing was taken.'); }
       this.applyDelivery(id, c.id, k, name.trim(), qty, now); this.onChange?.();
       return { id, contract: c.id, qty };
     });

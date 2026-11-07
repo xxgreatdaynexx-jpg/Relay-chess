@@ -1,3 +1,5 @@
+import { outcome } from './locstock.js';
+import { randomUUID } from 'node:crypto';
 /** Mines: shared first-person cave. Server-authoritative nodes, backpacks (generic item stacks) and house selling. */
 import { houseSellPrice } from '../shared/sellBuff.js';
 import { sellCapMul } from './coop-perks.js';
@@ -45,6 +47,7 @@ export const MINES_MIGRATION = [
   // One row per haul banked at the EXIT lift (Mining leaderboard: ore mined, best haul). Same transaction as the banked stacks.
   `CREATE TABLE IF NOT EXISTS mine_banks (id SERIAL PRIMARY KEY, player_key TEXT NOT NULL, owner_name TEXT NOT NULL, ore_qty INTEGER NOT NULL, worth REAL NOT NULL, at BIGINT NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS mine_banks_at ON mine_banks (at)`,
+  `ALTER TABLE mine_banks ADD COLUMN IF NOT EXISTS bank_id TEXT`, // idempotent bank marker: reconciles a lost commit acknowledgement
   // Co-op raids: one row per party-boss group loot roll (PK = the kill), written in the same transaction as every member's carried haul.
   `CREATE TABLE IF NOT EXISTS mine_raid_rolls (id TEXT PRIMARY KEY, party TEXT NOT NULL, cave TEXT NOT NULL, floor INTEGER NOT NULL, winner TEXT, rolls JSONB NOT NULL, pot JSONB NOT NULL, at BIGINT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS mine_jobs (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, machine TEXT NOT NULL, recipe TEXT NOT NULL, qty INTEGER NOT NULL, start_at BIGINT NOT NULL, done_at BIGINT NOT NULL)`,
@@ -56,6 +59,8 @@ export interface MineStore { init(): Promise<void>; load(): Promise<{ items: Arr
 export class PgMineStore implements MineStore {
   constructor(private readonly db: Queryable & { connect?: () => Promise<pg.PoolClient> }) { db.on?.('error', (e) => console.error('[mines] pool error:', e.message)); }
   async init() { for (const q of MINES_MIGRATION) await this.db.query(q); }
+  /** Did a bank with this marker commit? (unknown-outcome reconcile). Throws if the database can't be asked. */
+  async banked(id: string) { return (await this.db.query('SELECT 1 FROM mine_banks WHERE bank_id = $1', [id])).rows.length > 0; }
   async load() {
     const items = (await this.db.query('SELECT * FROM mine_items')).rows.filter((r) => Number(r.qty) > 0).map((r) => ({ key: String(r.player_key), name: String(r.owner_name), type: r.item_type as ItemType, id: String(r.item_id), qty: Number(r.qty) }));
     const daily = (await this.db.query('SELECT * FROM mine_daily')).rows.map((r) => ({ key: String(r.player_key), day: String(r.day), gross: Number(r.gross), paid: Number(r.paid) }));
@@ -518,15 +523,22 @@ export class MinesWorld {
     if (!bin) for (const s of banked) { const k = stackKey(s); const cur = p.get(k); if (cur) cur.qty += s.qty; else p.set(k, { ...s }); }
     if (m.account) { const k = playerKey(m.account); const t = this.carryTimers.get(k); if (t) { clearTimeout(t); this.carryTimers.delete(k); } }
     // Banked stacks and the cleared carry row commit in one transaction: no duplicate or lost haul across a restart.
-    const worth = banked.reduce((t, s) => t + s.qty * priceOf(s), 0);
+    const worth = banked.reduce((t, s) => t + s.qty * priceOf(s), 0); const bankId = randomUUID();
     const ore = banked.filter((s) => s.type === 'ore').reduce((t, s) => t + s.qty, 0);
     this.persist(m, undefined, false, m.account ? [
       { sql: 'DELETE FROM mine_carried WHERE player_key = $1', args: [playerKey(m.account)] },
-      { sql: 'INSERT INTO mine_banks (player_key, owner_name, ore_qty, worth, at) VALUES ($1,$2,$3,$4,$5)', args: [playerKey(m.account), m.account, ore, worth, Date.now()] },
+      { sql: 'INSERT INTO mine_banks (player_key, owner_name, ore_qty, worth, at, bank_id) VALUES ($1,$2,$3,$4,$5,$6)', args: [playerKey(m.account), m.account, ore, worth, Date.now(), bankId] },
       ...(bin ?? []),
-    ] : undefined, city ? (ok) => { // cave stock shows only once its rows committed; a failed bank puts the haul back in the pack
-      if (ok) this.cityBinDone?.(m.account!, banked, m.cave);
-      else for (const s of banked) { const k = stackKey(s); const c = m.carried.get(k); if (c) c.qty += s.qty; else m.carried.set(k, { ...s }); }
+    ] : undefined, city ? (ok) => { // cave stock shows only once its rows committed; a bank that did NOT commit puts the haul back
+      const applied = () => this.cityBinDone?.(m.account!, banked, m.cave);
+      const restore = () => { for (const s of banked) { const k = stackKey(s); const c = m.carried.get(k); if (c) c.qty += s.qty; else m.carried.set(k, { ...s }); } };
+      if (ok) return applied();
+      // The error may be a lost acknowledgement of a commit: ask the database (bank marker) before restoring anything.
+      // While it can't be asked, the haul is in neither place in memory (never duplicated); retried until known.
+      const store = this.store as (MineStore & { banked?: (id: string) => Promise<boolean> }) | null;
+      if (!store?.banked) return restore();
+      const check = (n: number) => { void store.banked!(bankId).then((done) => (done ? applied() : restore()), () => { if (n < 120) setTimeout(() => check(n + 1), Math.min(30_000, 1000 * 2 ** Math.min(n, 5))).unref?.(); else console.error(`[mines] bank ${bankId} outcome unknown after retries: haul held for reconcile`); }); };
+      check(0);
     } : undefined);
     return bin ? { banked, worth, bin: m.cave } : { banked, worth };
   }
@@ -747,11 +759,11 @@ export class MinesWorld {
    * Returns false (no change) if a withdrawal would go negative. Without a store, `fallback` gets the rows instead. */
   /** Weight of an account's stored pack (same units as BACKPACK_CAP). */
   packLoad(account: string): number { let t = 0; for (const s of this.pack(playerKey(account)).values()) t += s.qty * (s.type === 'ore' && isOre(s.id) ? ORES[s.id].weight : 1); return t; }
-  adjustStack(account: string, type: ItemType, id: string, delta: number, extra: Array<{ sql: string; args: unknown[] }> = [], fallback?: (rows: Array<{ sql: string; args: unknown[] }>) => void, opts: { committed?: () => Promise<boolean>; after?: Promise<unknown>; bind?: (p: Promise<unknown>) => void; onFail?: (e: Error) => void } = {}): boolean {
+  adjustStack(account: string, type: ItemType, id: string, delta: number, extra: Array<{ sql: string; args: unknown[] }> = [], fallback?: (rows: Array<{ sql: string; args: unknown[] }>) => void, opts: { onUnknown?: (e: Error) => void; onLate?: (committed: boolean) => void; committed?: () => Promise<boolean>; after?: Promise<unknown>; bind?: (p: Promise<unknown>) => void; onFail?: (e: Error) => void } = {}): boolean {
     return this.adjustStacks(account, [{ type, id, delta }], extra, fallback, opts);
   }
   /** Several stack deltas, all-or-nothing (false and no change if any withdrawal would go negative), one transaction. */
-  adjustStacks(account: string, deltas: Array<{ type: ItemType; id: string; delta: number }>, extra: Array<{ sql: string; args: unknown[] }> = [], fallback?: (rows: Array<{ sql: string; args: unknown[] }>) => void, opts: { committed?: () => Promise<boolean>; after?: Promise<unknown>; bind?: (p: Promise<unknown>) => void; onFail?: (e: Error) => void } = {}): boolean {
+  adjustStacks(account: string, deltas: Array<{ type: ItemType; id: string; delta: number }>, extra: Array<{ sql: string; args: unknown[] }> = [], fallback?: (rows: Array<{ sql: string; args: unknown[] }>) => void, opts: { onUnknown?: (e: Error) => void; onLate?: (committed: boolean) => void; committed?: () => Promise<boolean>; after?: Promise<unknown>; bind?: (p: Promise<unknown>) => void; onFail?: (e: Error) => void } = {}): boolean {
     this.beforeStorage?.(account);
     const k = playerKey(account); const p = this.pack(k);
     const sum = new Map<string, { type: ItemType; id: string; delta: number }>();
@@ -761,18 +773,21 @@ export class MinesWorld {
     apply(1);
     this.names.set(k, account.trim());
     if (!this.store) { fallback?.(extra); return true; }
-    const snap = [...p.values()].map((s) => ({ ...s })); const store = this.store;
+    const store = this.store;
     // Retried (every row is idempotent: absolute snapshots + ON CONFLICT ledger keys) so a blip can't lose a paid-for delivery.
-    const run = async () => { await opts.after; for (let i = 0; ; i++) { try { return await store.save(k, account.trim(), snap, undefined, undefined, extra); } catch (e) { if (i >= 3) throw e; await new Promise((r) => setTimeout(r, 250 * 2 ** i)); } } };
+    // The snapshot is taken when the save RUNS (after any earlier failed delta was undone), never at call time.
+    const run = async () => { await opts.after; for (let i = 0; ; i++) { const snap = [...p.values()].map((s) => ({ ...s })); try { return await store.save(k, account.trim(), snap, undefined, undefined, extra); } catch (e) { if (i >= 3) throw e; await new Promise((r) => setTimeout(r, 250 * 2 ** i)); } } };
     const job = this.chain.then(run);
     this.chain = job.catch(async (e) => {
       console.error('[mines] save failed:', (e as Error).message);
       // The commit may have landed with its reply lost (a retry then fails its exactly-once guard): ask the caller.
-      if (opts.committed && await opts.committed().catch(() => false)) return;
-      if (!opts.onFail) return;
-      // Nothing committed: undo the in-memory deltas so memory matches the DB, then let the caller undo its side.
-      apply(-1);
-      try { opts.onFail(e as Error); } catch (err) { console.error('[mines] rollback failed:', (err as Error).message); }
+      const v = opts.committed ? await outcome(opts.committed) : false;
+      if (v === true) return;
+      const undo = () => { apply(-1); try { opts.onFail?.(e as Error); } catch (err) { console.error('[mines] rollback failed:', (err as Error).message); } };
+      if (v === false) { if (opts.onFail) undo(); return; }
+      // Unknown (database unreachable): keep memory (never duplicate), tell the caller, settle in the background.
+      opts.onUnknown?.(e as Error);
+      void (async () => { for (let i = 0; ; i++) { await new Promise((r) => setTimeout(r, Math.min(60_000, 1000 * 2 ** Math.min(i, 6)))); const late = await outcome(opts.committed!, 1); if (late === null) continue; if (!late) undo(); opts.onLate?.(late); return; } })();
     });
     opts.bind?.(this.chain);
     return true;

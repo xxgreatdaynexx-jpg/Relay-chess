@@ -1,3 +1,4 @@
+import { invReady } from './invFence.js';
 import { isMillionairePrelaunch } from '../shared/millionairePrelaunch.js';
 /**
  * Building inventories, ship-to-sell and auto-sell (rules: shared/autosell.ts).
@@ -252,7 +253,7 @@ export async function initWarehouse(): Promise<void> {
     pool.on('error', (e) => console.error('[warehouse] pool error:', e.message));
     try { const w = new Warehouse(pool as unknown as PoolLike); await w.init(); wh = w; console.log('[warehouse] ready'); } catch (e) { console.error('[warehouse] init failed:', (e as Error).message); }
   } else wh.wire();
-  if (!sweepTimer) { sweepTimer = setInterval(() => { void wh.sweepAll(); }, AUTO_SWEEP_MS); sweepTimer.unref?.(); }
+  if (!sweepTimer) { sweepTimer = setInterval(() => { if (invReady()) void wh.sweepAll(); }, AUTO_SWEEP_MS); sweepTimer.unref?.(); }
 }
 
 type Ack = (r: { ok: boolean; error?: string; [k: string]: unknown }) => void;

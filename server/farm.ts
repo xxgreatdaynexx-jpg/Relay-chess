@@ -6,6 +6,7 @@
  * plant nonce) must remove every tile we priced, and the daily-tier row is advanced with an optimistic check, or the
  * whole transaction (ledger included) rolls back.
  */
+import { ledgerXp } from './skills.js';
 import { cityPolicyMul } from './city-rates.js';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
@@ -38,6 +39,7 @@ CREATE TABLE IF NOT EXISTS farm_soil (plot_id TEXT NOT NULL, tile INTEGER NOT NU
 CREATE TABLE IF NOT EXISTS farm_fert (plot_id TEXT NOT NULL, tile INTEGER NOT NULL, nonce TEXT NOT NULL, kind TEXT NOT NULL, PRIMARY KEY (plot_id, tile, nonce));
 CREATE TABLE IF NOT EXISTS farm_machines (owner_key TEXT NOT NULL, kind TEXT NOT NULL, bought_at BIGINT NOT NULL, PRIMARY KEY (owner_key, kind));
 CREATE TABLE IF NOT EXISTS farm_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
+ALTER TABLE farm_daily ADD COLUMN IF NOT EXISTS xp_gross BIGINT NOT NULL DEFAULT 0;
 `;
 /** Where a harvest/catch goes instead of the market (server/factory-import.ts): written in the same DB transaction. */
 export interface ImportSink { write(cl: pg.PoolClient, items: Array<[string, number]>): Promise<void>; after(items: Array<[string, number]>): void }
@@ -118,6 +120,15 @@ export class Farm {
   private async tiles(id: string, ownerKey: string): Promise<TileRow[]> {
     const p = plotOf(id); const n = p ? p.cols * p.rows : 0; // tiles indexed past the field (e.g. after a layout change) are ignored: not shown, not harvestable
     return ((await this.pool.query('SELECT * FROM farm_tiles WHERE plot_id = $1 AND owner_key = $2 ORDER BY tile', [id, ownerKey])).rows as TileRow[]).filter((r) => Number(r.tile) >= 0 && Number(r.tile) < n);
+  }
+  private async xpGross(key: string, day: string): Promise<number> {
+    return Number((await this.pool.query('SELECT xp_gross FROM farm_daily WHERE player_key = $1 AND day = $2', [key, day])).rows[0]?.xp_gross ?? 0);
+  }
+  /** Guarded (compare-and-set) so two harvests can't both read the same counter. */
+  private async bumpXpGross(cl: { query: (q: string, a?: unknown[]) => Promise<{ rowCount?: number | null }> }, key: string, day: string, profit: number, was: number) {
+    await cl.query('INSERT INTO farm_daily (player_key, day, gross, paid) VALUES ($1,$2,0,0) ON CONFLICT (player_key, day) DO NOTHING', [key, day]);
+    const u = await cl.query('UPDATE farm_daily SET xp_gross = xp_gross + $3 WHERE player_key = $1 AND day = $2 AND xp_gross = $4', [key, day, Math.round(profit), was]);
+    if (!u.rowCount) throw new FarmError('Busy, try again.');
   }
   private async today(key: string) {
     const r = await this.pool.query('SELECT gross, paid FROM farm_daily WHERE player_key = $1 AND day = $2', [key, utcDay(this.clock())]);
@@ -342,18 +353,21 @@ export class Farm {
       const items: Array<[string, number]> = []; for (const r of [...ready, ...bonus]) { const at = items.find((x) => x[0] === r.crop); if (at) at[1]++; else items.push([r.crop, 1]); }
       const ls = getLocStore(); if (!ls.loaded) throw new FarmError('Storage is reconnecting. Nothing was harvested; try again in a minute.');
       const deltas = items.map(([c, n]) => ({ loc: farmLoc(pid), item: `crop:${c}`, delta: n }));
-      const t = p.resort ? null : await this.today(key);
+      // City XP = exactly the baseline: the farm_harvest ledger XP of the payout the old instant sale would have made, on a
+      // separate non-cash daily counter (farm_daily.xp_gross) that advances at harvest like the old gross did. No chips.
+      const day = utcDay(now); const xg = p.resort ? 0 : await this.xpGross(key, day);
       const xp = p.resort ? Math.min(400, 10 + Math.round((seeds + profit) / 5))
-        : Math.min(400, 10 + Math.round(Math.floor((seeds + farmPayout(profit * cityPolicyMul('farming'), t!.gross)) * priceIndex()) / 5));
+        : (ledgerXp('farm_harvest', Math.floor((seeds + farmPayout(profit * cityPolicyMul('farming'), xg)) * priceIndex()))?.xp ?? 0);
       await this.atomic(name, 0, p.resort ? 'farm_to_barn' : 'farm_to_plot', '', async (cl) => {
         await this.mustOwn(cl, pid, name);
         let gone = 0;
         for (const r of ready) { gone += (await cl.query('DELETE FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3 AND owner_key = $4', [pid, r.tile, r.nonce, key])).rowCount ?? 0; await cl.query('DELETE FROM farm_fert WHERE plot_id = $1 AND tile = $2 AND nonce = $3', [pid, r.tile, r.nonce]); }
         if (gone !== ready.length) throw new FarmError('Already harvested.');
         for (const q of ls.rowsFor(name, deltas)) await cl.query(q.sql, q.args);
+        if (!p.resort) await this.bumpXpGross(cl, key, day, profit, xg);
       });
       ls.applyMem(name, deltas);
-      awardXp(name, 'farming', xp);
+      if (xp > 0) awardXp(name, 'farming', xp);
       void counts; void pantry;
       this.onChange?.(pid);
       eventCredit('harvest', name, ready.length);
@@ -376,14 +390,17 @@ export class Farm {
       const seeds = c.seed * s.qty; const profit = Math.max(0, (cropSellValue(c) - c.seed) * s.qty);
       const paid = Math.floor((seeds + farmPayout(profit * cityPolicyMul('farming'), t.gross)) * priceIndex()); // Farming subsidy policy
       try {
-        let xpQty = xp === 'all' ? s.qty : 0;
+        // XP: only crops from the Resort plantation (tropical) earned sale XP in the baseline (their barn harvest XP + the
+        // farm_harvest ledger XP when sold); city crops earned theirs at harvest (above), so their sale gives none.
+        const xpQty = xp === 'all' || isTropical(c.id) ? s.qty : 0; const xg = xpQty ? await this.xpGross(key, day) : 0;
         await this.atomic(name, paid, 'farm_sale', `Chud City Warehouse: sold ${s.qty} ${c.label} from ${from}`, async (cl) => {
           await cl.query('INSERT INTO farm_daily (player_key, day, gross, paid) VALUES ($1,$2,0,0) ON CONFLICT (player_key, day) DO NOTHING', [key, day]);
           const u = await cl.query('UPDATE farm_daily SET gross = gross + $3, paid = paid + $4 WHERE player_key = $1 AND day = $2 AND gross = $5', [key, day, Math.round(profit), paid, t.gross]);
           if (!u.rowCount) throw new FarmError('Busy, try again.');
           for (const q of rows) await cl.query(q.sql, q.sql.includes('warehouse_sales') ? q.args.map((v, i) => (i === 8 ? paid : v)) : q.args); // sale log gets the real payout
+          if (xpQty) await this.bumpXpGross(cl, key, day, profit, xg); // the baseline daily counter included resort sales
         }, `whsale:${s.id}`);
-        if (xpQty > 0 && paid > 0) awardXp(name, 'farming', Math.min(400, 10 + Math.round((paid * xpQty) / s.qty / 5))); // = the old farm_harvest ledger XP
+        const lx = xpQty > 0 ? ledgerXp('farm_harvest', paid) : null; if (lx) awardXp(name, 'farming', lx.xp); // = the old farm_harvest ledger XP, once (ledger key)
       } catch (e) { if ((e as Error).message === 'Already applied.') return 0; throw e; }
       return paid;
     });

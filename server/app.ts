@@ -1,3 +1,4 @@
+import { invHealth } from './invFence.js';
 import { getBank } from './casino-store.js';
 import { nightlyView } from './nightly-event.js';
 import { getAccounts } from './accounts.js';
@@ -95,7 +96,9 @@ export async function createApp(): Promise<AppContext> {
   app.use(factoryViewRouter());
   app.use(priceIndexRouter());
   app.get('/health', (_req, res) => {
-    res.json({ ok: true });
+    // Truck logistics: not healthy while this process does not hold the inventory writer fence or has not finished its
+    // boot migration (writes would be refused): never "silently healthy" with inventory down.
+    const inv = invHealth(); res.status(inv.ok ? 200 : 503).json({ ok: inv.ok, inventory: inv });
   });
   /** True only for a valid signed-in session whose account name starts with QA-. */
   const viewerIsQa = async (req: express.Request): Promise<boolean> => {

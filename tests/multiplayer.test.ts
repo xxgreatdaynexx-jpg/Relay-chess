@@ -70,7 +70,7 @@ async function ask(socket: Socket, event: string, data?: unknown): Promise<Ack> 
 
 it('serves a health check', async () => {
   const response = await fetch(`http://127.0.0.1:${port}/health`);
-  expect(await response.json()).toEqual({ ok: true });
+  expect(response.status).toBe(200); expect(await response.json()).toMatchObject({ ok: true, inventory: { ok: true } }); // no DB here: inventory needs no fence
 });
 
 it('runs a four-player game, enforces turns, reconnects a seat, and rematches', async () => {

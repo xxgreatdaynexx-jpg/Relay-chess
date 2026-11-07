@@ -24,7 +24,7 @@ export function LocationStock({ me }: { me: string | null }) {
   const src = v?.locations.find((l) => l.id === sel?.from); const it = src?.items.find((i) => i.item === sel?.item);
   const dests = v?.locations.filter((l) => l.dest && l.id !== sel?.from) ?? [];
   const toLoc = v?.locations.find((l) => l.id === to); const same = !!(src && toLoc && src.hub === toLoc.hub);
-  const modes = LEG_MODES.filter((m) => same || (m !== 'truck' && m !== 'hired')); // trucks stay on their map; planes/ships run as before
+  const modes = LEG_MODES.filter((m) => (same ? m === 'truck' || m === 'hired' : m !== 'truck' && m !== 'hired')); // same map: by truck only; other maps: plane/ship (server enforces both)
   useEffect(() => { if (!modes.includes(mode) && modes[0]) setMode(modes[0]); }, [same, to]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setQ(null); setQErr(null); if (!sel || !to || !it) return; const t = window.setTimeout(() => {
     void request('loc_quote', { from: sel.from, to, item: sel.item, qty, mode }).then((a) => { if (a.ok) setQ((a as unknown as { quote: { fee: number; trips: number; arriveAt: number } }).quote); else setQErr(a.error ?? null); }); }, 200);

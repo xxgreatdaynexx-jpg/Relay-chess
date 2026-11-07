@@ -1,3 +1,4 @@
+import { invReady } from './invFence.js';
 /**
  * Fishing fleets (rules: shared/coop3.ts). A boat owner opens a real-time trip at the Chud Resort Marina and crews it.
  * Crew fish the deep sea from the captain's boat (its zone and bite speed) and a crewed boat can land the crew-only
@@ -30,7 +31,7 @@ export class FishFleet {
   onChange?: (t: Trip | null, event: string, who: string[]) => void;
   private timer: ReturnType<typeof setInterval> | null = null;
   constructor(private readonly clock = () => Date.now()) {}
-  start(ms = 10_000) { if (!this.timer) { this.timer = setInterval(() => this.tick(), ms); this.timer.unref?.(); } }
+  start(ms = 10_000) { if (!this.timer) { this.timer = setInterval(() => { if (invReady()) this.tick(); }, ms); this.timer.unref?.(); } }
   stop() { if (this.timer) clearInterval(this.timer); this.timer = null; }
 
   private live(t: Trip | undefined) { return t && this.clock() < t.endsAt ? t : undefined; }

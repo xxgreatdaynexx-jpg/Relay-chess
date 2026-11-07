@@ -1,4 +1,4 @@
-import { initInventoryFence, refreshFenceTriggers } from '../../server/invFence'; // FIRST, as server/index.ts
+import { initInventoryFence, refreshFenceTriggers, markReady, invHealth, fenceToken } from '../../server/invFence'; // FIRST, as server/index.ts
 /** One "server instance" for tests/locmoves-postgres.test.ts: boots the real stores on DATABASE_URL (a disposable local DB),
  *  runs one step, prints a JSON result line. Each step is a fresh process, so state across steps proves restart safety. */
 import pg from 'pg';
@@ -10,6 +10,10 @@ import { initWarehouse } from '../../server/warehouse';
 import { initFishing } from '../../server/fishing';
 import { initCooking } from '../../server/cooking';
 import { getLocMoves, initLocMoves } from '../../server/locmoves';
+import { initSkinStorage } from '../../server/skins';
+import { initMarketStorage, getMarket } from '../../server/market';
+import { initRealEstate } from '../../server/realEstate';
+import { initFarm, getFarm } from '../../server/farm';
 
 const step = process.argv[2]!; const arg = JSON.parse(process.argv[3] ?? '{}') as Record<string, unknown>;
 const off = Number(process.env.LM_CLOCK_OFFSET ?? 0); const clock = () => Date.now() + off;
@@ -17,12 +21,13 @@ const out = (o: unknown) => { process.stdout.write(`RESULT ${JSON.stringify(o)}\
 const settle = (ms = 300) => new Promise((r) => setTimeout(r, ms));
 
 async function boot() {
-  await initCasinoStorage(); await initInventoryFence(); await initMinesStorage();
+  await initCasinoStorage(); await initInventoryFence(); await initSkinStorage(); await initMarketStorage(); await initMinesStorage();
   for (let i = 0; i < 100 && (getMines().offline || !getMines().store); i++) await settle(100);
-  await initLocStore();
+  await initRealEstate(); await initLocStore();
   const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
   const l = new Logistics(pool as never, clock); await l.init(); setLogistics(l);
-  await initWarehouse(); await initFishing(); await initCooking(); await initLocMoves({ dbUrl: process.env.DATABASE_URL }); await refreshFenceTriggers();
+  await initFarm(); for (let i = 0; i < 100 && !getFarm(); i++) await settle(100);
+  await initWarehouse(); await initFishing(); await initCooking(); await initLocMoves({ dbUrl: process.env.DATABASE_URL }); await refreshFenceTriggers(); markReady();
 }
 const snap = async (names: string[]) => {
   const m = getMines(); const ls = getLocStore(); const r: Record<string, unknown> = {};
@@ -31,7 +36,7 @@ const snap = async (names: string[]) => {
 };
 const tryIt = async (f: () => Promise<unknown>) => { try { return { ok: true, r: await f() }; } catch (e) { return { ok: false, error: (e as Error).message }; } };
 
-try { await boot(); } catch (e) { out({ bootError: (e as Error).message }); await settle(100); process.exit(0); }
+try { await boot(); } catch (e) { if (step === 'failBoot') throw e; /* real path: the fatal handler decides the fence */ out({ bootError: (e as Error).message }); await settle(100); process.exit(0); }
 const lm = getLocMoves(); const lg = getLogistics()!;
 if (step === 'boot') out({ ok: true });
 else if (step === 'migrate') { out(lm.lastMigration); } // what THIS boot's migration (run before serving) did
@@ -44,5 +49,15 @@ else if (step === 'sell') { out(await tryIt(() => lm.sell(String(arg.name), arg)
 else if (step === 'quote') { out(await tryIt(() => lm.quote(String(arg.name), arg))); }
 else if (step === 'tick') { lg.tick(); await settle(2500); lg.tick(); await settle(1500); out({ transit: [...lg.ships.values()].filter((s) => s.kind === 'loc').length, snap: await snap(arg.names as string[]) }); }
 else if (step === 'snap') out(await snap(arg.names as string[]));
+else if (step === 'harvest') out(await tryIt(() => getFarm()!.harvest(String(arg.name), String(arg.plot))));
+else if (step === 'cancelListing') { out(await tryIt(async () => getMarket().cancelStack(String(arg.name), arg.id))); await getMines().flush(); await settle(500); }
+else if (step === 'offlineTick') { const m = getMines(); m.offline = true; lg.tick(); await settle(2500); lg.tick(); await settle(1000); out({ moving: [...lg.ships.values()].filter((s) => s.kind === 'loc').length }); }
+else if (step === 'health') out({ ...invHealth(), token: fenceToken() });
+else if (step === 'holdWrite') { // an instance that loses the fence to a newer boot, then tries to write factory stock
+  out({ before: invHealth() }); await settle(Number(arg.waitMs));
+  const m = getMines(); let err: string | null = null; m.adjustStack(String(arg.name), 'ore', 'gold', 7, [], undefined, { onFail: (e) => { err = e.message; } });
+  try { await m.flush(); } catch (e) { err = (e as Error).message; } await settle(1500);
+  out({ after: invHealth(), err });
+}
 else if (step === 'view') out(await lm.view(String(arg.name)));
 await settle(300); process.exit(0);

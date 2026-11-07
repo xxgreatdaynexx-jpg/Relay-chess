@@ -1,3 +1,4 @@
+import { isOutcomeUnknown } from './locstock.js';
 import { getMines } from './mines.js';
 import { isDisabledName } from '../shared/disabled.js';
 /** Skin market (escrowed listings, 5% fee burned) and player-to-player trade offers. Chips move only through the wallet ledger. */
@@ -96,6 +97,9 @@ export class Market {
     const st = this.vault.storage;
     if (!st?.query) return;
     for (const q of MARKET_MIGRATION) await st.query(q);
+    // Truck logistics: listings made before the cutover escrowed banked storage (= the owner's factory); record that origin
+    // explicitly so a cancel always returns them there (idempotent; new listings carry 'warehouse').
+    await st.query("UPDATE market_stack_listings SET origin = 'factory' WHERE origin IS NULL");
     this.listings.clear(); this.stacks.clear(); this.trades.clear(); this.sales.length = 0;
     for (const r of (await st.query("SELECT * FROM market_listings WHERE status = 'active'")).rows) {
       this.listings.set(String(r.id), { id: String(r.id), seller: String(r.seller_key), sellerName: String(r.seller_name), itemId: String(r.item_id), price: Number(r.price), status: 'active', at: Number(r.created_at) });
@@ -201,23 +205,32 @@ export class Market {
     const ls = getLocStore(); const have = ls.qty(name, WAREHOUSE, `${type}:${sid}`);
     if (have < n) throw new RuleError(`You only have ${have} ${stackName({ type, id: sid })} at the Chud City Warehouse. Truck goods there to list them.`);
     const l: StackListing = { id: randomUUID(), seller: k, sellerName: name.trim(), type, itemId: sid, qty: n, total: n, unit: u, status: 'active', at: Date.now(), sold: 0, origin: WAREHOUSE };
-    const r = ls.adjust(name, [{ loc: WAREHOUSE, item: `${type}:${sid}`, delta: -n }], [stackStmt(l)]);
+    const r = ls.adjust(name, [{ loc: WAREHOUSE, item: `${type}:${sid}`, delta: -n }], [stackStmt(l)], {
+      marker: { sql: 'SELECT 1 FROM market_stack_listings WHERE id = $1', args: [l.id] }, // the listing row exists iff it committed
+      onLate: (ok) => { if (!ok && this.stacks.get(l.id) === l) { this.stacks.delete(l.id); this.onStacksReverted?.(); } } });
     if (r === false) throw new RuleError('Not enough items.');
     this.stacks.set(l.id, l);
-    r.catch((e) => { console.error('[market] listing failed:', (e as Error).message); if (this.stacks.get(l.id) === l) { this.stacks.delete(l.id); this.onStacksReverted?.(); } });
+    r.catch((e) => { if (isOutcomeUnknown(e)) return; /* kept listed until the late verdict */ console.error('[market] listing failed:', (e as Error).message); if (this.stacks.get(l.id) === l) { this.stacks.delete(l.id); this.onStacksReverted?.(); } });
     return l;
+  }
+  /** Lost-ack reconcile for a legacy cancel: is the listing row cancelled in the database? (throws if it can't tell) */
+  private async cancelledRow(id: string): Promise<boolean> {
+    const st = this.vault.storage as { query?: (q: string, a?: unknown[]) => Promise<{ rows: unknown[] }> } | null;
+    if (!st?.query) return false; return (await st.query("SELECT 1 FROM market_stack_listings WHERE id = $1 AND status = 'cancelled'", [id])).rows.length > 0;
   }
   cancelStack(name: string, id: unknown): void {
     const l = typeof id === 'string' ? this.stacks.get(id) : undefined;
     if (!l || l.status !== 'active' || l.seller !== playerKey(name)) throw new RuleError('That listing is not active.');
     l.status = 'cancelled'; l.closedAt = Date.now(); this.stacks.delete(l.id);
     const undo = (e: Error) => { console.error('[market] cancel failed:', (e as Error).message); l.status = 'active'; delete l.closedAt; this.stacks.set(l.id, l); this.onStacksReverted?.(); };
-    if (l.origin !== WAREHOUSE) { // legacy listing: escrowed from banked storage (= the factory) before the cutover, so it goes back there
-      if (!getMines().adjustStack(l.sellerName, l.type, l.itemId, l.qty, [stackStmt(l)], undefined, { onFail: undo })) undo(new Error('could not return'));
+    if (l.origin !== WAREHOUSE) { // legacy listing (origin 'factory', or null before load stamped it): escrowed from banked storage (= the factory) before the cutover, so it goes back there
+      if (!getMines().adjustStack(l.sellerName, l.type, l.itemId, l.qty, [stackStmt(l)], undefined, { onFail: undo,
+        committed: async () => ((await this.cancelledRow(l.id)) === true) })) undo(new Error('could not return'));
       return;
     }
-    const back = getLocStore().adjust(l.sellerName, [{ loc: WAREHOUSE, item: `${l.type}:${l.itemId}`, delta: l.qty }], [stackStmt(l)]);
-    if (back) back.catch(undo);
+    const back = getLocStore().adjust(l.sellerName, [{ loc: WAREHOUSE, item: `${l.type}:${l.itemId}`, delta: l.qty }], [stackStmt(l)], {
+      marker: { sql: "SELECT 1 FROM market_stack_listings WHERE id = $1 AND status = 'cancelled'", args: [l.id] }, onLate: (ok) => { if (!ok) undo(new Error('cancel did not commit')); } });
+    if (back) back.catch((e) => { if (!isOutcomeUnknown(e)) undo(e as Error); });
   }
   /** Buy qty units (partial OK). Checks first, then one synchronous step; buyer pack + listing row + sale row in one transaction. */
   buyStack(name: string, id: unknown, qty: unknown): { type: ItemType; id: string; qty: number; price: number; fee: number } {
@@ -253,9 +266,10 @@ export class Market {
       l.qty += n; l.sold = seq - 1; if (l.status === 'sold') { l.status = 'active'; delete l.closedAt; } this.stacks.set(l.id, l);
       this.onStacksReverted?.();
     };
-    const got = ls.adjust(name, [{ loc: WAREHOUSE, item: `${l.type}:${l.itemId}`, delta: n }], [...chips.stmts, stackStmt(l), saleStmt(sale), ...treasuryStmtsFor(l.sellerName, 'market_fee', treasuryShareOf(fee), `25% of a Market fee`)], { after: chips.after });
+    const got = ls.adjust(name, [{ loc: WAREHOUSE, item: `${l.type}:${l.itemId}`, delta: n }], [...chips.stmts, stackStmt(l), saleStmt(sale), ...treasuryStmtsFor(l.sellerName, 'market_fee', treasuryShareOf(fee), `25% of a Market fee`)], { after: chips.after,
+      marker: { sql: 'SELECT 1 FROM wallet_transactions WHERE tx_key = $1', args: [`mkt:buy:${l.id}:${seq}`] }, onLate: (ok) => { if (ok) chips.confirm(); else onFail(); } });
     if (got === false) { onFail(); throw new RuleError('Something went wrong. Nothing was charged.'); }
-    chips.bind(got); got.catch((e) => { console.error('[market] stack buy failed:', (e as Error).message); onFail(); });
+    chips.bind(got); got.catch((e) => { if (isOutcomeUnknown(e)) return; console.error('[market] stack buy failed:', (e as Error).message); onFail(); });
     royaltyEarn('market', l.sellerName, price - fee);
     eventTrade(name, l.sellerName, price, sale.id);
     return { type: l.type, id: l.itemId, qty: n, price, fee };

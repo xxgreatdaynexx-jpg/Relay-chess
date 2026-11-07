@@ -83,6 +83,9 @@ export const routeOf = (mode: Mode, hub: HubId = 'city'): Pt[] => { const m = HU
 /** Dayne 2026-11-06: trucks (own or hired) never leave their map. Cross-map loads go by freight plane / cargo ship (or own jet/boat). */
 export const isTruckMode = (m: Mode) => m === 'truck' || m === 'hired';
 export const truckAllowed = (m: Mode, from: HubId, to: HubId) => !isTruckMode(m) || from === to;
+/** Moves between two of your own places on the same map go by road (own or hired truck), never a plane/ship shortcut. */
+export const legModeAllowed = (m: Mode, from: HubId, to: HubId) => (from === to ? isTruckMode(m) : !isTruckMode(m));
+export const SAME_MAP_TRUCK_ONLY = 'Places on the same map are reached by truck. Use your truck or hire one.';
 export const NO_CROSS_MAP_TRUCK = 'Trucks can’t haul to other maps. Use the freight plane or cargo ship.';
 export const isOwnMode = (m: Mode) => m === 'truck' || m === 'jet' || m === 'boat';
 /** Does this vehicle appear on `hub`'s map? (it leaves from or arrives at that map) */

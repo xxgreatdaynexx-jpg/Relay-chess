@@ -1,3 +1,4 @@
+import { invReady } from './invFence.js';
 /** Factory v2 (grid builder): server-authoritative sim per player, catch-up on load, persisted with the banked pack. */
 import { Router as expressRouter } from 'express';
 import { px } from './price-index.js';
@@ -100,7 +101,7 @@ export class FactoryWorld {
     return n;
   }
   private sweeper: ReturnType<typeof setInterval> | null = null;
-  startSweep(ms = 120_000) { if (this.sweeper) return; this.sweeper = setInterval(() => { try { this.sweep(Date.now()); } catch (e) { console.error('[factory] sweep failed:', (e as Error).message); } }, ms); this.sweeper.unref?.(); }
+  startSweep(ms = 120_000) { if (this.sweeper) return; this.sweeper = setInterval(() => { if (!invReady()) return; try { this.sweep(Date.now()); } catch (e) { console.error('[factory] sweep failed:', (e as Error).message); } }, ms); this.sweeper.unref?.(); }
   stopSweep() { if (this.sweeper) { clearInterval(this.sweeper); this.sweeper = null; } }
   async flush() { if (this.timer) { clearTimeout(this.timer); this.timer = null; } await this.saveDirty(); }
 

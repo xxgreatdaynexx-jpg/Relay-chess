@@ -1,3 +1,4 @@
+import { invReady } from './invFence.js';
 /**
  * Logistics (Millionaire Update): truck store + shipments between maps.
  *
@@ -23,7 +24,7 @@ import { isStackable } from './market.js';
 import { locLabel } from '../shared/inventoryLocations.js';
 import { getFleet } from './fleet.js';
 import { CARGO, cargoCap, multiTripMs, ownFeeBase, tripsFor } from '../shared/cargo.js';
-import { HUBS, isOwnMode, MAX_SHIP_QTY, MAX_TRUCKS, MODES, TRUCKS, TRUCK_BY_ID, TRUCK_SELL_BACK, arrivalOf, feeBase, shipFee, isHub, isMode, nextDeparture, truckTravelMs, type HubId, type LiveVehicle, type Mode, truckAllowed, NO_CROSS_MAP_TRUCK, isTruckMode } from '../shared/logistics.js';
+import { HUBS, isOwnMode, MAX_SHIP_QTY, MAX_TRUCKS, MODES, TRUCKS, TRUCK_BY_ID, TRUCK_SELL_BACK, arrivalOf, feeBase, shipFee, isHub, isMode, nextDeparture, truckTravelMs, type HubId, type LiveVehicle, type Mode, truckAllowed, NO_CROSS_MAP_TRUCK, isTruckMode, legModeAllowed, SAME_MAP_TRUCK_ONLY } from '../shared/logistics.js';
 
 export class FreightError extends Error {}
 const keyOf = (n: string) => n.replace(/\s+/g, ' ').trim().toLowerCase();
@@ -190,6 +191,7 @@ export class Logistics {
     const mode = b.mode; if (!isMode(mode)) throw new FreightError('Pick how to ship it.');
     const qty = b.qty; if (!Number.isInteger(qty) || qty < 1 || qty > MAX_SHIP_QTY) throw new FreightError('Pick a quantity.');
     if (!truckAllowed(mode, b.fromHub, b.toHub)) throw new FreightError(NO_CROSS_MAP_TRUCK);
+    if (!legModeAllowed(mode, b.fromHub, b.toHub)) throw new FreightError(SAME_MAP_TRUCK_ONLY); // same-map legs: road only
     let truck: string | null = null; let travel = MODES[mode].travelMs; let cap = MODES[mode].cap; let model = '';
     if (mode === 'truck') {
       const busy = this.busyTrucks(name); const mine = this.owned(name);
@@ -359,7 +361,7 @@ export function registerLogistics(io: Server, socket: Socket): void {
   if (!timer) {
     let last = '';
     timer = setInterval(() => {
-      if (!logistics) return; const done = logistics.tick();
+      if (!logistics || !invReady()) return; const done = logistics.tick();
       for (const s of done) io.to(`freight:${s.toKey}`).emit('freight_arrived', { qty: s.qty, what: nameOf({ type: s.type, id: s.itemId }), from: s.ownerName, mode: s.mode });
       const j = JSON.stringify(logistics.live()); if (j !== last || done.length) { last = j; io.to('freight').emit('freight_live', JSON.parse(j)); }
     }, 3000); timer.unref?.();

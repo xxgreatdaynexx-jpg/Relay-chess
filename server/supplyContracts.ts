@@ -1,3 +1,5 @@
+import { isOutcomeUnknown } from './locstock.js';
+import { invReady } from './invFence.js';
 /**
  * Supply chain contracts (rules + sizing: shared/coop3.ts). A seller delivers goods to a buyer by truck on a schedule.
  *
@@ -60,7 +62,7 @@ export class SupplyContracts {
       const d = (typeof r.data === 'string' ? JSON.parse(r.data) : r.data) as Sc; this.all.set(d.id, d);
     }
   }
-  start(ms = 15_000) { if (!this.timer) { this.timer = setInterval(() => { void this.tick().catch((e) => console.error('[supply] tick failed:', (e as Error).message)); }, ms); this.timer.unref?.(); } }
+  start(ms = 15_000) { if (!this.timer) { this.timer = setInterval(() => { if (!invReady()) return; void this.tick().catch((e) => console.error('[supply] tick failed:', (e as Error).message)); }, ms); this.timer.unref?.(); } }
   stop() { if (this.timer) clearInterval(this.timer); this.timer = null; }
   private serial<T>(fn: () => Promise<T>): Promise<T> { const p = this.chain.then(fn, fn); this.chain = p.catch(() => {}); return p; }
 
@@ -85,10 +87,12 @@ export class SupplyContracts {
     let w: ReturnType<typeof bank.transferAtomic> | null;
     try { w = live.length ? bank.transferAtomic(live) : null; } catch (e) { throw new Coop3Error(/Already/.test((e as Error).message) ? 'Already applied.' : 'Not enough chips.'); }
     // Truck logistics: supply-contract goods leave from / land at the Chud City Warehouse (loc_stock 'warehouse').
-    const r = getLocStore().adjust(owner, [{ loc: WAREHOUSE, item: `${next.type}:${next.itemId}`, delta }], [this.ev(next, kind), this.row(next), ...(w?.stmts ?? [])], { after: w?.after });
+    const r = getLocStore().adjust(owner, [{ loc: WAREHOUSE, item: `${next.type}:${next.itemId}`, delta }], [this.ev(next, kind), this.row(next), ...(w?.stmts ?? [])], { after: w?.after,
+      marker: { sql: 'SELECT 1 FROM sc_events WHERE id = $1', args: [`${next.id}#${kind}`] }, // the step's event row exists iff it committed
+      onLate: (ok) => { if (ok) { w?.confirm(); this.all.set(next.id, next); this.onChange?.(next, event); } else w?.revert(); } });
     if (r === false) { w?.revert(); throw new Coop3Error(short); }
     w?.bind(r);
-    try { await r; } catch (e) { w?.revert(); throw new Coop3Error(friendly(e)); }
+    try { await r; } catch (e) { if (isOutcomeUnknown(e)) throw new Coop3Error('Still confirming that step. Nothing will happen twice; check again in a minute.'); w?.revert(); throw new Coop3Error(friendly(e)); }
     this.all.set(next.id, next); this.onChange?.(next, event);
   }
   private openCount(name: string) { const k = playerKey(name); return [...this.all.values()].filter((c) => LIVE.includes(c.status) && (playerKey(c.seller) === k || playerKey(c.buyer) === k)).length; }

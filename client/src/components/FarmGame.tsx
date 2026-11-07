@@ -70,7 +70,7 @@ export function FarmGame({ id, label, onClose }: { id: string; label: string; on
     if (step === 'plow') act('farm_plow', { tiles }, (r) => `🚜 Ploughed ${r.plowed} tile${r.plowed === 1 ? '' : 's'}.`);
     else if (step === 'seed') act('farm_plant', { crop: seed, tiles }, (r) => `🌱 Seeded ${r.planted} × ${crop.label} for 🪙 ${chips(Number(r.cost))}.`);
     else if (step === 'fertilize') act('farm_fertilize', { kind: fert, tiles }, (r) => `${fd.emoji} ${fd.label} on ${r.fertilized} tiles for 🪙 ${chips(Number(r.cost))}.`);
-    else act('farm_harvest', { tiles }, (r) => `Harvested ${r.harvested}${Number(r.bonus) ? ` (+${r.bonus} bonus crops)` : ''} for 🪙 ${chips(Number(r.paid))}.`);
+    else act('farm_harvest', { tiles }, (r) => `Harvested ${r.harvested}${Number(r.bonus) ? ` (+${r.bonus} bonus crops)` : ''}: stored at this plot. Truck them to the Warehouse to sell (🏭 My places in the Freight Yard).`);
   };
   const click = (i: number) => {
     if (!view?.mine || busy) return;
@@ -126,8 +126,7 @@ export function FarmGame({ id, label, onClose }: { id: string; label: string; on
               <button type="button" disabled={busy || !selList.length} onClick={() => run(tool, selList)} data-testid="farm-do-sel">{verb} {selList.length || ''} selected<span>{cost(selList)}</span></button>
               <button type="button" disabled={busy || !pass.length} onClick={() => run(tool, pass)} data-testid="farm-do-pass">{hasMachine ? `${machineFor.emoji} Whole field (${pass.length})` : `✋ Next ${pass.length} by hand`}<span>{cost(pass)}</span></button>
             </>; })()}
-          {tool === 'harvest' && <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', { pantry: true, tiles: ready.slice(0, limit('harvest')) }, (r) => `🧺 ${r.harvested} crop${r.harvested === 1 ? '' : 's'} into your kitchen pantry.`)} title="Keep the crops for cooking instead of selling them" data-testid="farm-harvest-pantry">🧺 To pantry</button>}
-          <BuildingInventory building={id.startsWith('rf:') ? 'resort_farm' : 'farm'} compact />
+          <p className="muted" data-testid="farm-stock-note">Harvests stay at this plot. Move them by truck from 🏭 My places (Freight Yard); only the Warehouse buys crops.</p>
           <h4>Machinery</h4>
           <div className="farm-upgrades farm-machines" data-testid="farm-machines">
             {MACHINES.map((m) => { const own = !!machines[m.id]; const cost = indexed(m.price, idx);
