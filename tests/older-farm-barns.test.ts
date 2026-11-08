@@ -1,54 +1,48 @@
+import * as THREE from 'three';
+import { JAIL_SITE, JAIL_HALF } from '../shared/jail';
 import { describe, expect, it } from 'vitest';
-import { farmBarns } from '../shared/farmBarns';
+import { farmBarns, barnPrice } from '../shared/farmBarns';
 import { barnFarms, isBarnProperty } from '../shared/barnFarms';
-import { outskirts } from '../shared/outskirts';
+import { properties, propertyById, workerBonusOf } from '../shared/realEstate';
+import { isHomeProperty } from '../shared/homes';
 import { BARNS } from '../shared/farm';
-import { properties, propertyById } from '../shared/realEstate';
-import { createHash } from 'node:crypto';
+import { outskirts } from '../shared/outskirts';
 import { readFileSync } from 'node:fs';
-describe('older barns use existing farm deeds, never independent free grants', () => {
-  it('both small farm-district barnyards map exactly to plot 10 and plot 20', () => {
-    const d = farmBarns().filter((b) => b.family === 'district');
-    expect(d.map((b) => b.farmId)).toEqual(['f:10', 'f:20']);
-    expect(d.map(({ x, z, w, d, rot }) => ({ x, z, w, d, rot }))).toEqual(BARNS);
-    expect(d.map((b) => propertyById(b.farmId)!.price)).toEqual([8000, 9000]);
+const row = (id: string, owner='Jay') => ({ id, owner, price: 10000, arrears: 0, boughtAt: 1 });
+describe('all physical barns have separate paid deeds; no farm-derived ownership', () => {
+  it('dedicated transparent barn volumes are raycastable; unlisted sheds do not intercept clicks', () => {
+    const hit = new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshBasicMaterial({transparent:true,opacity:0,depthWrite:false,colorWrite:false}), 1);
+    hit.setMatrixAt(0,new THREE.Matrix4().makeScale(6,3.4,4.5)); hit.updateMatrixWorld(true);
+    const ray=new THREE.Raycaster(new THREE.Vector3(0,10,0),new THREE.Vector3(0,-1,0));expect(ray.intersectObjects([hit],false).length).toBeGreaterThan(0);
+    ray.set(new THREE.Vector3(20,10,0),new THREE.Vector3(0,-1,0));expect(ray.intersectObjects([hit],false)).toHaveLength(0);
+    hit.geometry.dispose();(hit.material as THREE.Material).dispose();
   });
-  it('all 19 surviving countryside barns carry their exact generated field association, no nearest-neighbor guesses', () => {
-    const raw = outskirts().buildings.filter((b) => b.kind === 'barn');
-    expect(raw).toHaveLength(20);
-    const bs = raw.filter((b) => outskirts().fields.some((f) => `cf:${f.n}` === b.farmId));
-    expect(bs).toHaveLength(19);
-    for (const b of bs) {
-      const f = outskirts().fields.find((f) => `cf:${f.n}` === b.farmId)!;
-      expect(f).toBeTruthy(); expect(b.z).toBe(f.z - 3);
-      expect(Math.abs(b.x - f.x)).toBeCloseTo(f.w / 2 + 4.5);
-      expect(farmBarns().find((x) => x.family === 'country' && x.farmId === b.farmId)).toMatchObject({ x: b.x, z: b.z, w: b.w, d: b.d });
-    }
-    expect(farmBarns().some((b) => b.farmId === 'cf:23')).toBe(false); // jail removed this orphan barn's field; never invent a deed
-    expect(raw.filter((b) => !bs.includes(b)).map((b) => b.farmId)).toEqual(['cf:23']);
-    expect(propertyById('cf:23')).toBeUndefined();
+  it('30 stable barn ids cover 2 district, 20 country and all 8 Big Farm barns', () => {
+    const bs=farmBarns(); expect(bs).toHaveLength(30); expect(new Set(bs.map(b=>b.id)).size).toBe(30);
+    expect(bs.filter(b=>b.family==='district')).toHaveLength(2);expect(bs.filter(b=>b.family==='country')).toHaveLength(20);expect(bs.filter(b=>b.family==='big')).toHaveLength(8);
+    expect(bs.every(b=>b.id.startsWith('barn:'))).toBe(true); expect(properties()).toHaveLength(539);
+    for(const b of bs) { const p=propertyById(b.id)!;expect(p).toMatchObject({kind:'building',type:'barn',x:b.x,z:b.z,w:b.w,d:b.d,price:barnPrice(b)}); expect(isHomeProperty(p)).toBe(false);expect(workerBonusOf(b.id)).toBe(0); }
   });
-  it('all 29 barn deeds, including the existing eight Big Farms, unlock for existing owners only', () => {
-    const bs = farmBarns(); expect(bs).toHaveLength(29); expect(new Set(bs.map((b) => b.id)).size).toBe(29);
-    expect(bs.filter((b) => b.family === 'big')).toHaveLength(8);
-    for (const b of bs) {
-      expect(propertyById(b.farmId)?.kind).toBe('farm'); expect(isBarnProperty(b.farmId)).toBe(true);
-      const row = { id: b.farmId, owner: 'Owner', price: 1, arrears: 0, boughtAt: 1 };
-      expect(barnFarms('owner', [row]).unlocked).toBe(true);
-      expect(barnFarms('Other', [row]).unlocked).toBe(false);
-    }
+  it('farm 10/20 and every Big Farm owner gets no barn ownership or unlock', () => {
+    const ids=['f:10','f:20',...Array.from({length:8},(_,i)=>`cf:${1000+i}`)];
+    for(const id of ids){expect(isBarnProperty(id)).toBe(false);expect(barnFarms('Jay',[row(id)]).unlocked).toBe(false);}
+    for(const b of farmBarns()){expect(barnFarms('Jay',[row(b.id)]).unlocked).toBe(true);expect(barnFarms('Other',[row(b.id)]).unlocked).toBe(false);}
   });
-  it('catalog keeps all 509 ids, prices and geometry byte-equivalent to pre-extension baseline', () => {
-    expect(properties()).toHaveLength(509);
-    // Full catalog hash captured from clean 4d6e6ac-equivalent catalog before the metadata-only association.
-    expect(createHash('sha256').update(JSON.stringify(properties())).digest('hex')).toBe('f356b36ad9902199b6fec8591fc2ec77f6fc6eb6e6cb23d8c026d4343f0bf756');
+  it('district deeds preserve physical barn geometry; prices are explicit new barn prices, not farm prices', () => {
+    const d=farmBarns().filter(b=>b.family==='district');expect(d.map(({x,z,w,d,rot})=>({x,z,w,d,rot}))).toEqual(BARNS);
+    expect(d.map(b=>barnPrice(b))).toEqual([17500,24000]);expect(propertyById('f:10')!.price).toBe(8000);expect(propertyById('f:20')!.price).toBe(9000);
+    expect(farmBarns().filter(b=>b.family==='country').every(b=>barnPrice(b)===7000)).toBe(true);
+    expect(farmBarns().filter(b=>b.family==='big').every(b=>barnPrice(b)===17500)).toBe(true);
   });
-  it('old barn body/roof and countryside instances route to the same ownership-preserving barn callback', () => {
-    const s = readFileSync('client/src/lib/world3d.ts', 'utf8');
-    expect(s).toContain("oldBarnMeshes.userData.barns = outb.map((b) => farmBarns().some((f) => f.family === 'country' && f.farmId === b.farmId) ? b.farmId : null)");
-    expect(s).toContain("f.family === 'district'"); expect(s).toContain('o.userData.spot = `barn:${deed}`');
-    expect(s).toContain('return `barn:${barnIds[hit.instanceId]}`'); expect(s).toContain('h.onBarn?.(id.slice(5))');
-    const city = readFileSync('client/src/components/WorldMap.tsx', 'utf8');
-    expect(city).toContain("o.owner.toLowerCase() === m.toLowerCase()) setPanel({ k: 'farms' }); else setDeed(id)");
+  it('orphan barn is a separate safe footprint, never restores protected former cf:23 land', () => {
+    expect(propertyById('cf:23')).toBeUndefined();const b=propertyById('barn:country:23')!;expect(b).toBeTruthy();
+    expect(outskirts().buildings.find(x=>x.kind==='barn'&&x.x===b.x&&x.z===b.z)).toBeTruthy(); // passed existing !hitsJail building filter
+    expect(b.w*b.d).toBe(27);
+    for(const f of farmBarns()) expect(Math.abs(f.x-JAIL_SITE.x)<JAIL_HALF.x+2+f.w/2 && Math.abs(f.z-JAIL_SITE.z)<JAIL_HALF.z+2+f.d/2).toBe(false);
+  });
+  it('all renderer families pass exact independent barn ids, never neighboring farm ids', () => {
+    const s=readFileSync('client/src/lib/world3d.ts','utf8');expect(s).toContain('o.userData.spot = deed');expect(s).toContain('`barn:big:${f.n}`');expect(s).toContain('return barnIds[hit.instanceId]');expect(s).toContain('h.onBarn?.(id)');
+    expect(s).toContain("const clickBarns = outb.filter((b) => b.kind === 'barn')");expect(s).toContain('pickables.push(barnHits)');expect(s).not.toContain('pickables.push(oldBarnMeshes)');
+    expect(s).not.toContain('`barn:cf:${f.n}`');expect(s).not.toContain('id.slice(5)');
   });
 });

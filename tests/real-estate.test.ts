@@ -1,3 +1,4 @@
+import { farmBarns } from '../shared/farmBarns';
 import { countryHomes, countryBusinesses } from '../shared/outskirts';
 import { describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
@@ -29,7 +30,7 @@ describe('real estate catalog', () => {
   it('every building, lot, park, plaza and landmark has a unique id and a price; the Trailer Park is not for sale', () => {
     const ps = properties(); expect(new Set(ps.map((p) => p.id)).size).toBe(ps.length);
     const { houses, patches } = cityFill(7);
-    expect(ps.filter((p) => p.kind === 'building' && p.map !== 'resort')).toHaveLength(houses.length + countryHomes().length + countryBusinesses().length);
+    expect(ps.filter((p) => p.kind === 'building' && p.map !== 'resort')).toHaveLength(houses.length + countryHomes().length + countryBusinesses().length + farmBarns().length);
     expect(ps.filter((p) => p.kind === 'patch')).toHaveLength(patches.length);
     expect(ps.filter((p) => p.kind === 'landmark').map((p) => p.type).sort()).toEqual([...LANDMARK_IDS].filter((id) => id !== 'cityhall').sort());
     for (const p of ps) { expect(p.price).toBeGreaterThan(0); if (p.kind !== 'landmark') expect(obbOverlap(PARK_AREA, p)).toBe(false); }

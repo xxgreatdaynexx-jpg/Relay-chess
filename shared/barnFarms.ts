@@ -1,7 +1,7 @@
-/** All physical farm barns are bundled with their existing field deed; no separate barn purchase or price. */
+/** All-farms access requires its own independently purchased barn deed. Farm deeds NEVER grant barn ownership. */
 import { farmBarns } from './farmBarns.js';
 import { propertyById, type OwnedProperty } from './realEstate.js';
-export const isBarnProperty = (id: string) => farmBarns().some((b) => id === b.farmId);
+export const isBarnProperty = (id: string) => farmBarns().some((b) => id === b.id);
 export function barnFarms(me: string | null, owned: Iterable<OwnedProperty>) {
   const key = me?.trim().toLowerCase();
   const mine = key ? [...owned].filter((o) => o.owner.trim().toLowerCase() === key) : [];

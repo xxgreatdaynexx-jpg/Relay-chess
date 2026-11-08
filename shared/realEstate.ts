@@ -1,3 +1,4 @@
+import { farmBarns, barnPrice } from './farmBarns.js';
 /**
  * City real estate: every building, lot, park and plaza on the World Map is a property with a stable id, a list price
  * and a daily property tax. Landmarks are trophy properties: buying one is prestige only (the building stays open to
@@ -95,6 +96,8 @@ export function properties(): Property[] {
     out.push({ x: h.x, z: h.z, w: h.w, d: h.d, rot: h.rot, h: h.h, id: `b:${t.id}:${pos(h)}`, kind: 'building', type: t.id, label: t.label, price, ...(civicRetired(h) ? { retired: true } : {}) });
   }
   for (const p of patches) out.push({ x: p.x, z: p.z, w: p.w, d: p.d, rot: p.rot, id: `p:${p.kind}:${pos(p)}`, kind: 'patch', type: p.kind, label: PATCH_LABEL[p.kind] ?? p.kind, price: round500(BASE_PRICE[p.kind]! * clamp((p.w * p.d) / PATCH_REF[p.kind]!)), ...(civicRetired(p) ? { retired: true } : {}) });
+  // Separate barn deeds: never modify or confer ownership of the neighboring farm.
+  for (const b of farmBarns()) out.push({ x: b.x, z: b.z, w: b.w, d: b.d, rot: b.rot, id: b.id, kind: 'building', type: 'barn', label: b.label, price: barnPrice(b) });
   // Farm district (shared/farm.ts): farmland plots, priced by tile count.
   for (const f of farmPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: plotId(f.n), kind: 'farm', type: 'farmland', label: `Farm plot #${f.n} (${f.cols}×${f.rows})`, price: farmPrice(f.cols * f.rows) });
   // Countryside crop fields (shared/fieldFarms.ts): the same farm system, priced by tile count like farmland.
@@ -122,7 +125,7 @@ export interface OwnedProperty { id: string; owner: string; price: number; arrea
  * Bonuses from all owned properties add up, capped at +WORKER_BONUS_MAX. */
 export const WORKER_BONUS_MAX = 7;
 export const workerBonusOf = (id: unknown): number => {
-  const p = propertyById(id); if (!p || (p.kind !== 'building' && p.kind !== 'landmark')) return 0;
+  const p = propertyById(id); if (!p || p.type === 'barn' || (p.kind !== 'building' && p.kind !== 'landmark')) return 0;
   return p.price < 25_000 ? 1 : p.price < 75_000 ? 2 : p.price < 250_000 ? 3 : 4;
 };
 export const workerBonusTotal = (ids: Iterable<unknown>): number => { let n = 0; for (const id of ids) n += workerBonusOf(id); return Math.min(WORKER_BONUS_MAX, n); };

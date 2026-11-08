@@ -755,8 +755,11 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     // Countryside field farms (cf:<n>) are drawn by the farm renderer below (soil, furrows, fence, crops), like the Farm district.
     // barns + sheds (farm-district barn red, dark roofs), warehouses + gas stations (buyable)
     const outb = O.buildings.filter((b) => b.kind === 'barn' || b.kind === 'shed'); const biz = countryBusinesses();
-    const oldBarnMeshes = inst(unitBox, mat({ color: 0xffffff, roughness: 0.85 }), outb.length, (i) => { const b = outb[i]; d.position.set(b.x, b.h / 2, b.z); d.rotation.y = b.rot; d.scale.set(b.w, b.h, b.d); }, (i) => (outb[i].kind === 'barn' ? 0x8a2a22 : 0x6a5a48));
-    if (oldBarnMeshes) { oldBarnMeshes.userData.barns = outb.map((b) => farmBarns().some((f) => f.family === 'country' && f.farmId === b.farmId) ? b.farmId : null); pickables.push(oldBarnMeshes); }
+    inst(unitBox, mat({ color: 0xffffff, roughness: 0.85 }), outb.length, (i) => { const b = outb[i]; d.position.set(b.x, b.h / 2, b.z); d.rotation.y = b.rot; d.scale.set(b.w, b.h, b.d); }, (i) => (outb[i].kind === 'barn' ? 0x8a2a22 : 0x6a5a48));
+    // Dedicated barn-only pick volumes: never make decorative sheds/farmhouses intercept other property clicks.
+    const clickBarns = outb.filter((b) => b.kind === 'barn');
+    const barnHits = inst(unitBox, mat({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false }), clickBarns.length, (i) => { const b = clickBarns[i]; d.position.set(b.x, b.h / 2, b.z); d.rotation.y = b.rot; d.scale.set(b.w, b.h, b.d); });
+    if (barnHits) { barnHits.userData.barns = clickBarns.map((b) => farmBarns().find((f) => f.family === 'country' && f.x === b.x && f.z === b.z)!.id); pickables.push(barnHits); }
     inst(roofGeo, mat({ color: 0x3a3a40, roughness: 0.8, flatShading: true }), outb.length, (i) => { const b = outb[i]; d.position.set(b.x, b.h, b.z); d.rotation.y = b.rot; d.scale.set(b.w + 0.3, 1.8, b.d + 0.3); });
     const bizM = inst(unitBox, mat({ color: 0xffffff, roughness: 0.8 }), biz.length, (i) => { const b = biz[i]; d.position.set(b.x, b.h / 2, b.z); d.rotation.y = b.rot; d.scale.set(b.w, b.h, b.d); }, (i) => (biz[i].kind === 'gas' ? 0xd8d4cc : 0x5a6270));
     if (bizM) { bizM.userData.props = biz.map((b) => buildingId(businessType(b), b)); pickables.push(bizM); biz.forEach((b, i) => propTop.set(bizM.userData.props[i], [b.x, b.h, b.z])); }
@@ -837,14 +840,14 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       const roof = new THREE.Mesh(roofGeo, mat({ color: 0x3a3a40, roughness: 0.8, flatShading: true })); roof.scale.set(b.w + 0.4, 2.2, b.d + 0.4); roof.position.y = 4.2; roof.rotation.y = Math.PI / 2; g.add(roof);
       g.add(box(3, 2.8, 0.1, mat({ color: 0xe8e0d0, emissive: 0xffc070, emissiveIntensity: 0.25 * NEON }), 0, 0, -b.d / 2 - 0.05));
       g.add(box(1.2, 0.8, 0.1, mat({ color: 0xffd08a, emissive: 0xffb050, emissiveIntensity: 0.7 * NEON }), 0, 3.1, -b.d / 2 - 0.05));
-      const deed = farmBarns().find((f) => f.family === 'district' && f.x === b.x && f.z === b.z)!.farmId;
-      g.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.userData.spot = `barn:${deed}`; pickables.push(o); } });
+      const deed = farmBarns().find((f) => f.family === 'district' && f.x === b.x && f.z === b.z)!.id;
+      g.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.userData.spot = deed; pickables.push(o); } });
       g.position.set(b.x, 0, b.z); scene.add(g); }
     // mu-visuals farming machinery: tractors, a trailer, a seeder and a combine harvester parked in the yards (shared geo/mats).
     // Big Farms: a barn, a farmhouse, a silo and parked machinery in each farm's yard (shared/bigFarms.ts).
     for (const f of bigFarms()) { const b = f.barn, h = f.house; const g = new THREE.Group();
       const barn = box(b.w, 4.6, b.d, mat({ color: 0x8a2a22, roughness: 0.85 }), b.x, 0, b.z);
-      barn.userData.spot = `barn:cf:${f.n}`; pickables.push(barn); g.add(barn);
+      barn.userData.spot = `barn:big:${f.n}`; pickables.push(barn); g.add(barn);
       const roof = new THREE.Mesh(roofGeo, mat({ color: 0x3a3a40, roughness: 0.8, flatShading: true })); roof.scale.set(b.w + 0.4, 2.4, b.d + 0.4); roof.position.set(b.x, 4.6, b.z); roof.rotation.y = Math.PI / 2; g.add(roof); roof.userData.spot = barn.userData.spot; pickables.push(roof);
       g.add(box(h.w, 3.2, h.d, mat({ color: 0xe8dcc4, roughness: 0.85 }), h.x, 0, h.z));
       const hr = new THREE.Mesh(roofGeo, mat({ color: 0x5a3a2a, roughness: 0.8, flatShading: true })); hr.scale.set(h.w + 0.4, 1.8, h.d + 0.4); hr.position.set(h.x, 3.2, h.z); g.add(hr);
@@ -882,7 +885,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // Interaction.
   const ray = new THREE.Raycaster(); ray.layers.enable(LABEL_LAYER); const ndc = new THREE.Vector2();
   let hovered: string | null = null; let fly: { from: THREE.Vector3; to: THREE.Vector3; tf: THREE.Vector3; tt: THREE.Vector3; t: number; id: string } | null = null;
-  const pick = (cx: number, cy: number) => { const rc = canvas.getBoundingClientRect(); ndc.set(((cx - rc.left) / rc.width) * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1); ray.setFromCamera(ndc, camera); const hit = ray.intersectObjects(pickables, false)[0]; const tr = hit?.object.userData.trailers as string[] | undefined; if (tr && hit?.instanceId != null) return `trailer:${tr[hit.instanceId]}`; const barnIds = hit?.object.userData.barns as Array<string | null> | undefined; if (barnIds && hit?.instanceId != null && barnIds[hit.instanceId]) return `barn:${barnIds[hit.instanceId]}`; const pr = hit?.object.userData.props as string[] | undefined; if (pr && hit?.instanceId != null) return pr[hit.instanceId] ?? null; return (hit?.object.userData.spot as string | undefined) ?? null; };
+  const pick = (cx: number, cy: number) => { const rc = canvas.getBoundingClientRect(); ndc.set(((cx - rc.left) / rc.width) * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1); ray.setFromCamera(ndc, camera); const hit = ray.intersectObjects(pickables, false)[0]; const tr = hit?.object.userData.trailers as string[] | undefined; if (tr && hit?.instanceId != null) return `trailer:${tr[hit.instanceId]}`; const barnIds = hit?.object.userData.barns as Array<string | null> | undefined; if (barnIds && hit?.instanceId != null && barnIds[hit.instanceId]) return barnIds[hit.instanceId]; const pr = hit?.object.userData.props as string[] | undefined; if (pr && hit?.instanceId != null) return pr[hit.instanceId] ?? null; return (hit?.object.userData.spot as string | undefined) ?? null; };
   const setHover = (id: string | null) => {
     if (id === hovered) return; hovered = id; canvas.style.cursor = id ? 'pointer' : 'grab';
     if (signGlow) signGlow.emissiveIntensity = (id === MILLIONAIRE_SIGN ? 2.2 : 0.9) * NEON;
@@ -897,7 +900,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     if (!down || fly) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y); const dragged = moved > (e.pointerType === "touch" ? 16 : 8) || !!down.drag; down = null; if (dragged) { clearTip(); return; }
     const id = pick(e.clientX, e.clientY); if (!id) { setHover(null); h.onHover(null, 0, 0); return; }
     if (id === MILLIONAIRE_SIGN) { h.onHover(null, 0, 0); window.dispatchEvent(new CustomEvent('open-launch-popup')); return; }
-    if (id.startsWith('barn:')) { h.onHover(null, 0, 0); h.onBarn?.(id.slice(5)); return; }
+    if (id.startsWith('barn:')) { h.onHover(null, 0, 0); h.onBarn?.(id); return; }
     if (id.startsWith('trailer:')) { h.onHover(id, e.clientX, e.clientY); if (h.onTrailer?.(id.slice(8))) return; window.dispatchEvent(new CustomEvent('open-player', { detail: id.slice(8) })); return; } // trailers: your own opens your home (kitchen), others the owner's profile
     if (id.startsWith('b:') || id.startsWith('p:') || id.startsWith('f:') || id.startsWith('cf:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel
     flyTo(id);

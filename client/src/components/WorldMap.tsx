@@ -93,10 +93,10 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
       {!o && !p.retired && (me ? <button type="button" disabled={!!busy} aria-busy={busy === 're_buy'} onClick={() => (short ? setMsg(`Not enough chips: ${p.label} costs 🪙 ${chips(total)}; you have 🪙 ${chips(wallet ?? 0)} (need 🪙 ${chips(short)} more).`) : act('re_buy'))} aria-describedby={short ? 'deed-short' : undefined} data-testid="deed-buy">{busy === 're_buy' ? <><span className="world-spin" aria-hidden /> Buying…</> : <>Buy for 🪙 {chips(total)}{me ? ` (+${surcharge}% surcharge${tax ? ' + 5% wealth tax' : ''})` : ''}</>}</button> : <small>Sign in to buy.</small>)}
       {mine && <button type="button" disabled={!!busy} aria-busy={busy === 're_sell'} onClick={() => act('re_sell')} data-testid="deed-sell">{busy === 're_sell' ? <><span className="world-spin" aria-hidden /> Selling…</> : <>Sell to the city for 🪙 {chips(sellBackOf(Math.min(cost, o?.basis ?? cost)))} (70%)</>}</button>}
       {bo > 0 && me && <button type="button" disabled={!!busy || protLeft > 0} aria-busy={busy === 're_buyout'} onClick={buyout} data-testid="deed-buyout" title={protLeft > 0 ? 'Protected after a purchase' : `Pays ${o?.owner} 2x what they paid`}>{busy === 're_buyout' ? <><span className="world-spin" aria-hidden /> Buying out…</> : protLeft > 0 ? <>🛡 Hostile buyout: 🪙 {chips(bo)} (protected {Math.ceil(protLeft / 3_600_000)}h)</> : <>⚔️ Hostile buyout: 🪙 {chips(bo)}</>}</button>}
-      {mine && onKitchen && p.kind !== 'landmark' && <button type="button" onClick={onKitchen} data-testid="deed-kitchen">🍳 Kitchen</button>}
+      {mine && onKitchen && p.kind !== 'landmark' && p.type !== 'barn' && <button type="button" onClick={onKitchen} data-testid="deed-kitchen">🍳 Kitchen</button>}
       {o && isHomeProperty(p) && <button type="button" onClick={() => { enterHome(p.id); onClose(); }} data-testid="deed-enter">{mine ? '🛋️ Enter & decorate' : `🚪 Visit ${o.owner}'s home`}</button>}
       {p.kind === 'farm' && o && onFarm && <button type="button" onClick={onFarm} data-testid="deed-farm">{mine ? '🌾 Open farm' : '👀 Visit farm'}</button>}
-      {isBarnProperty(id) && <small>This farm includes a barn: owning it unlocks one overview of all your farms, grouped by map.</small>}
+      {isBarnProperty(id) && <small>This barn is sold separately from every farm. Owning this barn unlocks All my farms; it does not buy or transfer nearby farmland.</small>}
       {mine && isBarnProperty(id) && onAllFarms && <button type="button" onClick={onAllFarms} data-testid="deed-barn">🏡 Barn · All my farms</button>}
       {p.kind === 'farm' && !o && <small>Farmland: buy it to plant crops (FarmVille-style, real-time).</small>}
       {!o && me && short > 0 && !msg && <small id="deed-short" className="text-amber-300" data-testid="deed-short">You need 🪙 {chips(short)} more chips to buy this.</small>}
@@ -120,6 +120,8 @@ function DeedList({ owned, me, onOpen, onClose }: { owned: Map<string, OwnedProp
       <small>Click any building, lot, park or plaza on the map to see its deed. The Trailer Park stays free.</small>
       <h4>My properties{mine.length ? ` · 🪙 ${chips(value)} · tax 🪙 ${chips(mine.reduce((a, o) => a + taxOf(taxBasisOf(o.price, propertyById(o.id)?.price ?? 0)), 0))}/day` : ''}</h4>
       {mine.length ? mine.map((o) => <button type="button" key={o.id} onClick={() => onOpen(o.id)}>{propertyById(o.id)?.label ?? o.id}<span title="What you paid (property tax is on this)" data-testid={`myprop-paid-${o.id}`}>🪙 {chips(o.price || (propertyById(o.id)?.price ?? 0))}</span></button>) : <small>{me ? 'None yet.' : 'Sign in to buy property.'}</small>}
+      <h4>🏡 Barns (sold separately from farms)</h4>
+      {properties().filter((p) => p.type === 'barn').map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
       <h4>🌾 Farmland (east of the city)</h4>
       {properties().filter((p) => p.kind === 'farm' && p.map !== 'resort').map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
       <h4>Landmarks (trophy deeds)</h4>

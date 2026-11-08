@@ -19,14 +19,14 @@ const owned = () => new Map([own(barn.id), own(city.id), own(field.id), own(reso
 beforeEach(() => { vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('barn-owned unified farm navigation (no stock or gameplay operations)', () => {
-  it('recognizes catalog farm deeds bundled with barns, not arbitrary cf ids or unrelated buildings', () => {
+  it('recognizes independent barn deeds, not arbitrary cf ids or unrelated buildings', () => {
     expect(isBarnProperty(barn.id)).toBe(true); expect(isBarnProperty(field.id)).toBe(false);
     expect(isBarnProperty('cf:999999')).toBe(false); expect(isBarnProperty('barn')).toBe(false);
   });
-  it('existing barn owner unlocks own district/countryside/big farm/resort farms grouped by map', () => {
+  it('separate barn owner unlocks own district/countryside/resort farms grouped by map', () => {
     const rows = [...owned().values(), own(properties().filter((p) => p.kind === 'farm')[2].id, 'Other')];
     const x = barnFarms('dAyNe', rows); expect(x.unlocked).toBe(true);
-    expect(x.groups[0].farms.map((p) => p!.id).sort()).toEqual([barn.id, city.id, field.id].sort());
+    expect(x.groups[0].farms.map((p) => p!.id).sort()).toEqual([city.id, field.id].sort());
     expect(x.groups[1].farms.map((p) => p!.id)).toEqual([resort.id]);
   });
   it('guest, another owner’s barn and regular farm ownership do not unlock or expose another player’s farms', () => {
@@ -38,7 +38,7 @@ describe('barn-owned unified farm navigation (no stock or gameplay operations)',
     const m = new Map([[city.id, own(city.id)]]); const open = vi.fn();
     const ui = render(<FarmOverviewButton me="Dayne" owned={m} onOpen={open} />);
     expect(screen.queryByTestId('all-farms-open')).toBeNull();
-    const bought = new Map(m); bought.set(barn.id, optimisticOwn(undefined, 're_buy', barn.id, 'Dayne', 145000, Date.now()));
+    const bought = new Map(m); bought.set(barn.id, optimisticOwn(undefined, 're_buy', barn.id, 'Dayne', barn.price, Date.now()));
     ui.rerender(<FarmOverviewButton me="Dayne" owned={bought} onOpen={open} />);
     fireEvent.click(screen.getByTestId('all-farms-open')); expect(open).toHaveBeenCalledTimes(1);
     ui.rerender(<FarmOverviewButton me="Dayne" owned={m} onOpen={open} />);
