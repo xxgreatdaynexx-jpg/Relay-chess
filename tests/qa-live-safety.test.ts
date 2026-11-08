@@ -73,7 +73,7 @@ describe('QA live safety: per-owner Postgres lock', () => {
   it('uses one connection from lock acquisition through commit and releases it on refusal', async () => {
     const queries: string[] = []; let released = false;
     const client = { query: vi.fn(async (sql: string) => { queries.push(sql); if (/pg_advisory_lock/.test(sql)) return { rows: [] }; throw new Error('read refused'); }), release: vi.fn(() => { released = true; }) };
-    const pool = { connect: vi.fn(async () => client) };
+    const pool = { connect: vi.fn(async () => client), query: vi.fn(async () => ({ rows: [] })) }; // pt2041u: tax preparation reads (pool.query) before the pinned connection
     const re = new RealEstate(pool as never, () => ({ refresh: vi.fn() }) as never);
     const p = [...properties()][0]!;
     await expect(re.buy('Dayne', p.id)).rejects.toThrow();

@@ -39,33 +39,41 @@ async function activePlayers(db: Q, now: number) {
   cache = { at: now, rows }; return rows;
 }
 /** Jail and disabled are checked live (not cached). Recipients need net worth >= TAX_SHARE_MIN_NET_WORTH (5,000). */
-export async function recipientsFor(db: Q, buyer: string, now: number) {
+export async function recipientsFor(db: Q, buyer: string, now: number, prep?: PurchaseTaxPrep) {
   const k = keyOf(buyer);
-  return (await activePlayers(db, now)).filter((x) => x.key !== k && keyOf(x.name) !== k && !isJailed(x.name) && !isDisabledName(x.name) && !isDisabledName(x.key) && x.netWorth >= TAX_SHARE_MIN_NET_WORTH);
+  let rows: PurchaseTaxRoster;
+  if (prep) { if (!prep.roster) throw new PurchaseTaxUnprepared('purchase tax roster was not prepared'); rows = prep.roster; } else rows = await activePlayers(db, now);
+  return rows.filter((x) => x.key !== k && keyOf(x.name) !== k && !isJailed(x.name) && !isDisabledName(x.name) && !isDisabledName(x.key) && x.netWorth >= TAX_SHARE_MIN_NET_WORTH);
 }
 
+/** Immutable active-player roster prepared BEFORE a locked purchase pins its connection (pt2041u). */
+export type PurchaseTaxRoster = ReadonlyArray<Readonly<{ key: string; name: string; netWorth: number }>>;
+/** Prepared mode: null roster = "buyer was not taxable at preparation"; tax applying anyway fails closed (nothing charged). */
+export type PurchaseTaxPrep = { roster: PurchaseTaxRoster | null };
+export class PurchaseTaxUnprepared extends Error {}
 /**
- * pt2041u: warm the (60 s) active-player cache BEFORE a caller pins a pool connection for a locked purchase. The cold scan
- * reads every active player's assets (economy.playerAssets -> RealEstate.mine on the same small pool); doing it while the
- * buy holds one of RealEstate's 2 connections starves concurrent buys until the pool timeout ("No answer from the server").
- * Only scans when the buyer is actually over the threshold. Tax amounts and recipients are still computed in the buy itself.
+ * pt2041u: the roster scan (economy.playerAssets -> RealEstate.mine on RealEstate's 2-connection pool, per active player) must
+ * never run while a purchase holds one of those connections. Call this BEFORE connecting; pass the result into the locked buy,
+ * which then uses ONLY this snapshot (no cache reads, so cache expiry cannot reintroduce the nested pool wait). Errors propagate
+ * (fail closed before any lock or mutation). Live checks (jail, disabled, buyer property value, rate) still run under the lock.
  */
-export async function prewarmPurchaseTax(db: Q, buyer: string, now = Date.now()): Promise<void> {
-  if ((await propertyPaidValue(db, buyer)) > PURCHASE_TAX_THRESHOLD) await activePlayers(db, now);
+export async function preparePurchaseTax(db: Q, buyer: string, now = Date.now()): Promise<PurchaseTaxPrep> {
+  if ((await propertyPaidValue(db, buyer)) <= PURCHASE_TAX_THRESHOLD) return { roster: null };
+  return { roster: Object.freeze((await activePlayers(db, now)).map((x) => Object.freeze({ ...x }))) };
 }
 
-export async function quotePurchaseTax(db: Q, buyer: string, price: number, now = Date.now()): Promise<PurchaseTaxQuote> {
+export async function quotePurchaseTax(db: Q, buyer: string, price: number, now = Date.now(), prep?: PurchaseTaxPrep): Promise<PurchaseTaxQuote> {
   const propertyValue = await propertyPaidValue(db, buyer); const rate = cityWealthTaxRate(); let tax = purchaseTaxOf(propertyValue, price, rate); let n = 0;
-  if (tax > 0) { n = (await recipientsFor(db, buyer, now)).length; if (!n) tax = 0; }
+  if (tax > 0) { n = (await recipientsFor(db, buyer, now, prep)).length; if (!n) tax = 0; }
   const treasury = tax && treasuryOpenFor(buyer) ? taxShareSplit(tax).treasury : 0; // pt2032u: same bill, 25% to the city
   return { tax, recipients: n, propertyValue, line: tax ? purchaseTaxLine(tax, n, rate, treasury) : '', treasury };
 }
 
 /** Extra moves for one purchase. Empty when untaxed. what = short item label for the memos. */
 /** stmts = the treasury credit (25%, keyed by the purchase so a replay aborts the transaction); callers run them in the SAME transaction. */
-export async function purchaseTaxMoves(db: Q, buyer: string, price: number, purchaseKey: string, what: string, now = Date.now()): Promise<{ tax: number; recipients: number; moves: Move[]; line: string; treasury: number; stmts: Array<{ sql: string; args: unknown[] }> }> {
-  const q = await quotePurchaseTax(db, buyer, price, now); if (!q.tax) return { tax: 0, recipients: 0, moves: [], line: '', treasury: 0, stmts: [] };
-  const rec = await recipientsFor(db, buyer, now);
+export async function purchaseTaxMoves(db: Q, buyer: string, price: number, purchaseKey: string, what: string, now = Date.now(), prep?: PurchaseTaxPrep): Promise<{ tax: number; recipients: number; moves: Move[]; line: string; treasury: number; stmts: Array<{ sql: string; args: unknown[] }> }> {
+  const q = await quotePurchaseTax(db, buyer, price, now, prep); if (!q.tax) return { tax: 0, recipients: 0, moves: [], line: '', treasury: 0, stmts: [] };
+  const rec = await recipientsFor(db, buyer, now, prep);
   if (!rec.length) return { tax: 0, recipients: 0, moves: [], line: '', treasury: 0, stmts: [] }; // recipients vanished since the quote (jail/disable): no tax rather than an unshared debit
   const treasury = q.treasury ?? 0; const pool = q.tax - treasury;
   const shares = purchaseShares(pool, rec.map((x) => x.key)); const byKey = new Map(rec.map((x) => [x.key, x.name]));

@@ -33,7 +33,7 @@ import { resortPlotOf } from '../shared/resort.js';
 import { fertDef, fertCost } from '../shared/farmWork.js';
 import { propertyTaxMul } from '../shared/skillPerks.js';
 import { cityPropertyTaxMul } from './mayor.js';
-import { prewarmPurchaseTax, purchaseTaxMoves, quotePurchaseTax } from './purchase-tax.js';
+import { preparePurchaseTax, purchaseTaxMoves, quotePurchaseTax, PurchaseTaxUnprepared, type PurchaseTaxPrep } from './purchase-tax.js';
 import { backTaxOf, backTaxMoves, backTaxBlockMsg } from './backTax.js';
 
 export class PropertyError extends Error {}
@@ -55,6 +55,8 @@ const plotTiles = (id: string): number | null => {
   if (/^f:\d+$/.test(id)) { const p = farmPlots().find((q) => `f:${q.n}` === id); return p ? p.cols * p.rows : null; }
   const c = fieldPlotOf(id) ?? resortPlotOf(id); return c ? c.cols * c.rows : null;
 };
+/** Became taxable after preparation (e.g. another instance's buy landed first): refuse, nothing charged. */
+const unprepared = (e: unknown): never => { if (e instanceof PurchaseTaxUnprepared) throw new PropertyError('Your property total just changed, so the purchase wealth tax needs a fresh price. Nothing was charged. Try again.'); throw e; };
 const propertyById = (id: Parameters<typeof baseProperty>[0]) => { const p = baseProperty(id); return p ? { ...p, price: px(p.price) } : undefined; };
 const toOwned = (r: Row): OwnedProperty => ({ id: r.id, owner: r.owner_name, price: Number(r.price), arrears: Number(r.arrears), boughtAt: Number(r.bought_at), ...(r.city_price != null && Number(r.city_price) !== Number(r.price) ? { basis: Number(r.city_price) } : {}) });
 
@@ -122,11 +124,14 @@ export class RealEstate {
 
   /** Serialize the complete buy across processes on one client, then commit on that same client. */
   private async buyNow(name: string, p: NonNullable<ReturnType<typeof propertyById>>, max?: number) {
-    await prewarmPurchaseTax(this.pool, name, this.clock()).catch(() => {}); // pt2041u: best-effort; never run the cold recipient scan while pinning a connection
+    // pt2041u: prepare the purchase-tax roster BEFORE pinning a connection; the locked buy uses only this snapshot.
+    let prep: PurchaseTaxPrep;
+    try { prep = await preparePurchaseTax(this.pool, name, this.clock()); }
+    catch (e) { console.error('[realestate] purchase tax prep failed:', (e as Error).message); throw new PropertyError('Could not price the purchase wealth tax right now. Nothing was charged. Try again.'); }
     const cl = await this.pool.connect(); const lockKey = `property-buy:${keyOf(name)}`;
     try {
       await cl.query('SELECT pg_advisory_lock(hashtext($1))', [lockKey]);
-      return await this.buyLocked(name, p, cl, max);
+      return await this.buyLocked(name, p, cl, max, prep);
     } finally {
       let failure: unknown;
       try { await cl.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]); }
@@ -167,7 +172,7 @@ export class RealEstate {
     const rows = (await cl.query('SELECT id FROM properties WHERE owner_key = $1', [keyOf(name)])).rows as { id: string }[];
     return rows.map((r) => String(r.id)).filter((id) => /^cf:\d+$/.test(id) && isBigFarmN(Number(id.slice(3))));
   }
-  private async buyLocked(name: string, p: NonNullable<ReturnType<typeof propertyById>>, cl: pg.PoolClient, max?: number) {
+  private async buyLocked(name: string, p: NonNullable<ReturnType<typeof propertyById>>, cl: pg.PoolClient, max?: number, prep: PurchaseTaxPrep = { roster: null }) {
     if (p.retired) throw new PropertyError('That property is not for sale.'); // under a civic building (never sold again; owners keep theirs)
     const bank = this.bank(); await bank.refresh(name);
     const bt = await backTaxOf(cl, name); if (bt.debt > 0) throw new PropertyError(backTaxBlockMsg(bt));
@@ -178,7 +183,7 @@ export class RealEstate {
     const owned = await this.ownedCount(name, cl); const value = await propertyPaidPlusUpgradesOf(cl, name); const paidSnap = await this.ownedPaid(name, cl); const per1k = citySurchargePctPer1k(); const price = landPrice(p.price, value, per1k);
     const note = landMultiplierNote(value, per1k);
     if (max !== undefined && price > max) throw new PropertyError(`The price changed: your surcharge is +${+landSurchargePct(value, per1k).toFixed(1)}% now, so ${p.label} costs ${price.toLocaleString('en-US')}. Check the deed and try again.`);
-    const wq = await quotePurchaseTax(cl, name, price, this.clock());
+    const wq = await quotePurchaseTax(cl, name, price, this.clock(), prep).catch(unprepared);
     if (bank.account(name).chips < price + wq.tax) throw new PropertyError(`Not enough chips: ${p.label} costs ${price.toLocaleString('en-US')}${note ? ` (${note})` : ''}${wq.tax ? ` + ${wq.line}` : ''}.`);
     let wtax = 0, wn = 0; let taxStmts: Array<{ sql: string; args: unknown[] }> = [];
     // pt2032u: 25% of the land surcharge actually charged (price above list) goes to the treasury. Same price; the rest stays burned as before.
@@ -194,7 +199,7 @@ export class RealEstate {
       const r = await cl.query('INSERT INTO properties (id, owner_key, owner_name, price, bought_at, deed, city_price) VALUES ($1,$2,$3,$4,$5,$6,$4) ON CONFLICT (id) DO NOTHING RETURNING deed', [p.id, keyOf(name), name.trim(), price, this.clock(), deed]);
       if (r.rows[0]?.deed !== deed) throw new PropertyError('Someone already owns this property.');
       for (const s of [...taxStmts, ...(surShare ? treasuryCreditStmts('property_surcharge', surShare, `25% of a property surcharge (${p.label})`, this.clock(), `property_surcharge:${deed}`) : [])]) await cl.query(s.sql, s.args);
-    }, async (key, db) => { const t = await purchaseTaxMoves(db, name, price, key, p.label, this.clock()); wtax = t.tax; wn = t.recipients; taxStmts = t.stmts; return t.moves; }, cl);
+    }, async (key, db) => { const t = await purchaseTaxMoves(db, name, price, key, p.label, this.clock(), prep).catch(unprepared); wtax = t.tax; wn = t.recipients; taxStmts = t.stmts; return t.moves; }, cl);
     this.onChange?.();
     return { id: p.id, price, wealthTax: wtax, wealthTaxRecipients: wn, list: p.price, owned, ownedValue: value, surchargePct: landSurchargePct(value, per1k), surchargePer1k: per1k, multiplier: landMultiplier(value, per1k), chips: bank.account(name).chips };
   }
