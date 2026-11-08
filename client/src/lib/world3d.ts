@@ -452,7 +452,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // Housing is data-driven (housing.ts): one instanced body (+ instanced gable roof) per type, tinted per instance.
   const r = rng(7);
   const { houses: cityHouses, patches } = cityFill(7, lmIds); const fillers = [...cityHouses, ...countryHomes()];
-  const cityJoke = attachCityProtestJoke(scene, { map: 'city', tier, sites: patches.filter(b => !civicRetired(b)), buildings: cityHouses.filter(b => !civicRetired(b)), enabled: false });
+  const cityJoke = attachCityProtestJoke(scene, { map: 'city', tier, sites: patches.filter(b => !civicRetired(b)), crowdObstacles: [...cityHouses, ...Object.values(lmBoxes)], buildings: cityHouses.filter(b => !civicRetired(b)), enabled: false });
   // pt2037u: hidden until /api/city confirms the riot is still on; a mayor ending it (any server) turns it off for good.
   const riotGate = cityRiotGate({ setEnabled: (on) => cityJoke.setEnabled(on && CITY_PROTEST_JOKE_ENABLED) });
   const roofGeo = (() => { const sh = new THREE.Shape(); sh.moveTo(-0.5, 0); sh.lineTo(0.5, 0); sh.lineTo(0, 1); sh.closePath();
