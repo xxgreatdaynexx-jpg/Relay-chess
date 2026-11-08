@@ -1,3 +1,4 @@
+import { attachCityShieldWalls } from './cityShieldWalls';
 /** Decorative CITY-only gag. EASY OFF: set CITY_PROTEST_JOKE_ENABLED=false, rebuild/redeploy, reopen city.
  * Does not read players/ownership or call gameplay, audio, network, collision, timers or event APIs.
  * Existing civic/farm protest systems are unrelated and are not changed by this switch.
@@ -8,7 +9,7 @@ import { HOUSING_TYPES } from '../../../shared/housing';
 import { PLATE, type Patch } from '../../../shared/worldLayout';
 import type { WorldTier } from './worldTier';
 
-export const CITY_PROTEST_JOKE_ENABLED = true; // THE ONLY feature switch. No changelog entry, by request.
+export const CITY_PROTEST_JOKE_ENABLED = true; // Entire-joke feature switch. No changelog entry, by request.
 export const JOKE_SIGNS = ['WE DEMAND SNACKS', 'MORE NAPS', 'HONK FOR SOUP', 'THIS IS FINE', 'RETURN THE REMOTE', 'TOO MANY MEETINGS'];
 export const JOKE_BUDGET = { low: { sites: 8, people: 3, smoke: 2 }, mid: { sites: 12, people: 4, smoke: 3 }, high: { sites: 16, people: 4, smoke: 4 } } as const;
 /** Geometry budgets only, never based on ownership, prices or gameplay state. */
@@ -40,7 +41,7 @@ export function buildingFireAnchors(buildings:readonly FireBuilding[],tier:World
 }
 type Site = Pick<Patch, 'x'|'z'|'w'|'d'|'rot'>;
 export interface JokeOptions {
-  map: string; tier: WorldTier; sites: readonly Site[]; buildings?: readonly FireBuilding[]; enabled?: boolean;
+  map: string; tier: WorldTier; sites: readonly Site[]; policeEnabled?: boolean; buildings?: readonly FireBuilding[]; enabled?: boolean;
   reducedMotion?: () => boolean;
   /** Injectable texture factory keeps lifecycle tests independent of WebGL/canvas. */
   label?: (words: string) => THREE.Texture;
@@ -63,9 +64,10 @@ const noHit: THREE.Object3D['raycast'] = () => {};
 /** Owns every resource it creates. Off/dispose removes the root BEFORE freeing shared GPU resources, once each. */
 export function attachCityProtestJoke(scene: THREE.Scene, options: JokeOptions): CityProtestJoke {
   let root: THREE.Group|null=null, closed=false;
+  let police:ReturnType<typeof attachCityShieldWalls>|null=null;
   let animate: ((time:number)=>void)|null=null;
   const geometries=new Set<THREE.BufferGeometry>(),materials=new Set<THREE.Material>(),textures=new Set<THREE.Texture>(),instances=new Set<THREE.InstancedMesh>();
-  const clear=()=>{animate=null;if(root){root.removeFromParent();root.clear();root=null;}for(const m of instances)m.dispose();instances.clear();for(const g of geometries)g.dispose();geometries.clear();for(const m of materials)m.dispose();materials.clear();for(const t of textures)t.dispose();textures.clear();};
+  const clear=()=>{police?.dispose();police=null;animate=null;if(root){root.removeFromParent();root.clear();root=null;}for(const m of instances)m.dispose();instances.clear();for(const g of geometries)g.dispose();geometries.clear();for(const m of materials)m.dispose();materials.clear();for(const t of textures)t.dispose();textures.clear();};
   const setEnabled=(enabled:boolean)=>{
     if(closed)return;
     if(!enabled||options.map!=='city'){clear();return;}
@@ -119,7 +121,8 @@ export function attachCityProtestJoke(scene: THREE.Scene, options: JokeOptions):
     };
     // All descendants are deliberately absent from city pickables and cannot intercept even recursive raycasts.
     root.traverse(o=>{o.raycast=noHit;});scene.add(root);animate(0);
+    police=attachCityShieldWalls(root,{map:options.map,tier:options.tier,enabled:options.policeEnabled,reducedMotion:options.reducedMotion,label:options.label});
   };
   setEnabled(options.enabled??CITY_PROTEST_JOKE_ENABLED);
-  return {setEnabled,step(time){if(!closed&&animate)animate(Number.isFinite(time)?time:0);},dispose(){if(closed)return;clear();closed=true;}};
+  return {setEnabled,step(time){if(!closed&&animate){animate(Number.isFinite(time)?time:0);police?.step(time);}},dispose(){if(closed)return;clear();closed=true;}};
 }
