@@ -11,6 +11,16 @@ export const CHANGELOG: ChangelogEntry[] = [
     'New base barn prices are 7,000 chips for a countryside barn, 17,500 for the first farm-district barn or a Big Farm barn, and 24,000 for the second farm-district barn. Normal property surcharge, purchase wealth tax where applicable, daily property tax and 70% sell-back rules apply.',
     'A separately purchased barn unlocks All my farms, showing only your farms grouped by map. Existing farm deeds, owners, prices, crops and stock are untouched. The surviving barn beside former jail-area farmland has only its own safe footprint for sale; the removed field is not restored.',
   ] },
+  { commit: 'dc2127e', at: '2026-11-07T19:44:44-06:00', title: 'Smoother winter snow across the expanded maps', bullets: [
+    'Falling snow now follows your view everywhere on the map, so it no longer stops at a visible edge over the countryside, Big Farms, airport or speedway. The amount of snow on screen is the same as before.',
+    'The slushy snow on Chud City roads now also covers the countryside, Big Farms, airport and speedway roads.',
+    'The snowy ground lines up across every map section, removing the hard lines where newer sections meet.',
+    'The Millionaire Update sign by the airport has been removed.',
+  ] },
+  { commit: 'fc4aa61', at: '2026-11-07T19:44:41-06:00', title: 'Sell unplaced machines from the Machinist', bullets: [
+    'Machines you bought but have not placed can now be sold straight from the 🛒 Machinist menu: press 💰 Sell 1 on that machine\'s row and confirm in the full-page dialog. You do not need to place it first.',
+    'Same price as selling a placed machine: half the base Machinist price (for example 200 chips for a Press). Only unplaced machines you hold count; placed machines, belts, chests and storage are untouched.',
+  ] },
   { commit: '099b2b3', at: '2026-11-07T19:38:04-06:00', title: 'Factory machine sale confirmation is no longer cut off', bullets: [
     'The "Sell this machine?" confirmation now opens as a full-screen dialog, like Sell all, instead of squeezing into the narrow scrolling Factory side menu where it was clipped. The price, Confirm and Cancel are fully visible on desktop and phones, and Esc or tapping outside cancels.',
     'The sale itself is unchanged: same server price (half the base Machinist price) and the same checks.',

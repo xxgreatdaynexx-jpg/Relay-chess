@@ -256,7 +256,8 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
             <div className="fac-buyn">Buy {[1, 5, 10, 25].map((n) => <button type="button" key={n} className={buyN === n ? 'on' : ''} onClick={() => setBuyN(n)}>×{n}</button>)}</div>
             {KIND_ORDER.map((k) => { const d = KINDS[k]; const locked = fs.floor < d.minFloor; return (
               <div key={k} className="fac-shoprow"><span className="fac-ic">{ICON[k]}</span><span><b>{d.name}</b><small>{locked ? `Unlocks at building level ${d.minFloor}` : d.desc}</small></span>
-                <button type="button" disabled={locked} onClick={() => call('fac_buy', { kind: k, n: buyN }, () => flash(`Bought ${buyN}× ${d.name}`))} data-testid={`fac-buy-${k}`}>🪙 {(ix(d.cost, pidx) * buyN).toLocaleString()}</button></div>
+                <button type="button" disabled={locked} onClick={() => call('fac_buy', { kind: k, n: buyN }, () => flash(`Bought ${buyN}× ${d.name}`))} data-testid={`fac-buy-${k}`}>🪙 {(ix(d.cost, pidx) * buyN).toLocaleString()}</button>
+                {d.machine && kitN(k) > 0 && <FactoryMachineSell kind={k} name={d.name} ask={ask} flash={flash} onSold={() => {}} unplaced={{ have: kitN(k) }} />}</div>
             ); })}
           </div>}
           {side === 'recipes' && <div className="fac-recipes" data-testid="fac-recipes">

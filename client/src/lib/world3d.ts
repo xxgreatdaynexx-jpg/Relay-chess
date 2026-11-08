@@ -40,7 +40,6 @@ import { attachFarmProtests, type FarmProtestHandle } from './farmProtest3d';
 import { disposeSharedProtestSfx } from './protestSfx';
 import type { OwnedProp } from './farmProtest';
 
-export const MILLIONAIRE_SIGN = 'millionaire-sign';
 type Handlers = { onHover: (id: string | null, x: number, y: number) => void; onPick: (id: string) => void; onProperty?: (id: string) => void; onBarn?: (id: string) => void; onTrailer?: (name: string) => boolean };
 
 let labelRenderer: THREE.WebGLRenderer | null = null;
@@ -127,49 +126,9 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
 
   // Plate: grass slab with dirt edge, water strip along the front. Layout lives in worldLayout.ts.
   const S = PLATE; const XM = xmasOn(); const keep = <M extends THREE.Material>(m: M) => { disposables.push(m); if ('map' in m && m.map) disposables.push(m.map as THREE.Texture); return m; };
-  const slab = new THREE.Mesh(geo(new THREE.BoxGeometry(S * 2, 3, S * 2)), [mat({ color: 0x4a3322 }), mat({ color: 0x4a3322 }), (XM ? keep(xmasGround(S * 2, S * 2, tier === 'low')) : mat({ color: 0x3f9a45, roughness: 1, emissive: 0x0f3a14, emissiveIntensity: 0.6 })), mat({ color: 0x2a1c12 }), mat({ color: 0x4a3322 }), mat({ color: 0x4a3322 })]);
+  const slab = new THREE.Mesh(geo(new THREE.BoxGeometry(S * 2, 3, S * 2)), [mat({ color: 0x4a3322 }), mat({ color: 0x4a3322 }), (XM ? keep(xmasGround(S * 2, S * 2, tier === 'low', -S, S)) : mat({ color: 0x3f9a45, roughness: 1, emissive: 0x0f3a14, emissiveIntensity: 0.6 })), mat({ color: 0x2a1c12 }), mat({ color: 0x4a3322 }), mat({ color: 0x4a3322 })]);
   slab.position.y = -1.5; scene.add(slab);
-  const signHit: THREE.Object3D[] = []; let signGlow: THREE.MeshStandardMaterial | null = null; // Millionaire sign: click opens the trailer pop-up
-  { // Millionaire Update teaser: a gold billboard centred in the open field south of the airport apron, between the taxiway and the terminal.
-    const c = document.createElement('canvas'); c.width = 1024; c.height = 400; const g = c.getContext('2d')!;
-    const grd = g.createLinearGradient(0, 0, 0, 400); grd.addColorStop(0, '#fff1c4'); grd.addColorStop(0.45, '#f2c766'); grd.addColorStop(1, '#c8923e');
-    g.fillStyle = grd; g.fillRect(0, 0, 1024, 400);
-    const sheen = g.createLinearGradient(0, 0, 1024, 400); sheen.addColorStop(0.3, 'rgba(255,255,255,0)'); sheen.addColorStop(0.42, 'rgba(255,255,255,0.35)'); sheen.addColorStop(0.5, 'rgba(255,255,255,0)');
-    g.fillStyle = sheen; g.fillRect(0, 0, 1024, 400);
-    g.strokeStyle = '#7a5520'; g.lineWidth = 6; g.strokeRect(26, 26, 972, 348); g.strokeStyle = '#fff3cf'; g.lineWidth = 2; g.strokeRect(38, 38, 948, 324);
-    const coin = (x: number, y: number) => { const r = 54; const cg = g.createRadialGradient(x - 16, y - 18, 6, x, y, r); cg.addColorStop(0, '#fff6d8'); cg.addColorStop(0.6, '#e8b54e'); cg.addColorStop(1, '#8a5f22');
-      g.fillStyle = cg; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); g.strokeStyle = '#6b4818'; g.lineWidth = 5; g.stroke(); g.beginPath(); g.arc(x, y, r - 11, 0, Math.PI * 2); g.lineWidth = 2; g.stroke();
-      g.fillStyle = '#5a3b12'; g.font = '800 64px Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('$', x, y + 3); };
-    coin(110, 200); coin(914, 200);
-    const star = (x: number, y: number, r: number) => { g.fillStyle = '#ffffff'; g.beginPath(); g.moveTo(x, y - r); g.quadraticCurveTo(x, y, x + r, y); g.quadraticCurveTo(x, y, x, y + r); g.quadraticCurveTo(x, y, x - r, y); g.quadraticCurveTo(x, y, x, y - r); g.fill(); };
-    star(205, 92, 16); star(830, 300, 18); star(760, 78, 10); star(260, 318, 10);
-    g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.font = 'italic 700 92px Fraunces Variable, Georgia, serif'; g.fillStyle = 'rgba(90,55,10,0.45)'; g.fillText('Millionaire Update', 514, 168);
-    g.fillStyle = '#3a2508'; g.fillText('Millionaire Update', 512, 164);
-    g.fillStyle = '#5a3b12'; g.fillRect(330, 232, 364, 3);
-    g.font = '700 40px Outfit Variable, system-ui, sans-serif'; g.fillStyle = '#4a300c'; g.fillText('O U T   N O W', 512, 285);
-    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8; disposables.push(tex);
-    const face = new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.6, roughness: 0.45 }); disposables.push(face);
-    const goldEdge = mat({ color: 0xe8b54e, emissive: 0xffc860, emissiveIntensity: 0.9 * NEON, metalness: 0.6, roughness: 0.35 });
-    const backing = mat({ color: 0x3a2a14, roughness: 0.8 }), post = mat({ color: 0x2b1e10, roughness: 0.7, metalness: 0.2 }), stone = mat({ color: 0x8d8579, roughness: 0.95 }), stoneTop = mat({ color: 0xb3a994, roughness: 0.9 });
-    const B = (w: number, h: number, d: number, m: THREE.Material | THREE.Material[], x: number, y: number, z: number) => { const bg = new THREE.BoxGeometry(w, h, d); disposables.push(bg); const o = new THREE.Mesh(bg, m); o.position.set(x, y, z); return o; };
-    const ms = new THREE.Group(); ms.name = 'millionaire-sign';
-    const W = 10, H = 3.9, BY = 4.6;
-    const panel = new THREE.Group(); panel.position.y = BY; panel.rotation.x = -0.22; ms.add(panel); // lean back a touch toward the elevated city camera
-    const board = B(W, H, 0.3, [backing, backing, backing, backing, face, backing], 0, 0, 0); panel.add(board);
-    const f = 0.22; panel.add(B(W + 2 * f, f, 0.42, goldEdge, 0, H / 2 + f / 2, 0), B(W + 2 * f, f, 0.42, goldEdge, 0, -H / 2 - f / 2, 0), B(f, H, 0.42, goldEdge, -W / 2 - f / 2, 0, 0), B(f, H, 0.42, goldEdge, W / 2 + f / 2, 0, 0));
-    for (const x of [-W / 2 + 1.3, W / 2 - 1.3]) { ms.add(B(0.6, BY, 0.6, post, x, 0.5 + BY / 2 - 0.5, -0.35)); ms.add(B(0.8, 0.25, 0.8, goldEdge, x, 0.62, -0.35)); }
-    ms.add(B(W + 1.2, 0.5, 2.2, stone, 0, 0.25, -0.35), B(W + 0.6, 0.12, 1.8, stoneTop, 0, 0.56, -0.35)); // plinth
-    const sparks: THREE.Sprite[] = [];
-    for (const [x, y] of [[-4.6, 2.1], [4.3, -1.7], [2.8, 2.15], [-3.2, -2.0], [5.15, 1.4]] as const) {
-      const sm = new THREE.SpriteMaterial({ map: glowTex, color: 0xfff0b0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }); disposables.push(sm);
-      const sp = new THREE.Sprite(sm); sp.position.set(x, y, 0.3); sp.scale.setScalar(0.9); sp.userData.ph = Math.random() * 6.28; panel.add(sp); sparks.push(sp); }
-    // Yaw-only billboard: always turns its face toward the camera, stays planted on its plinth; sparkles twinkle.
-    board.onBeforeRender = (_r, _s, cam) => { ms.rotation.y = Math.atan2(cam.position.x - ms.position.x, cam.position.z - ms.position.z);
-      const t = performance.now() / 1000; for (const sp of sparks) { const k = Math.max(0, Math.sin(t * 1.7 + sp.userData.ph)); (sp.material as THREE.SpriteMaterial).opacity = k * k * 0.9; sp.scale.setScalar(0.5 + k * 0.9); } };
-    ms.scale.setScalar(3.2); ms.position.set(-156, 0, 24); scene.add(ms);
-    signGlow = goldEdge; ms.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.userData.spot = MILLIONAIRE_SIGN; signHit.push(o); } });
-  }
+  // (Dayne 2026-11-07 19:39 UTC-6) the 'Millionaire Update' billboard south of the airport apron was removed.
   // Animated water: scrolling ripples + moonlight glints, fogged like the rest of the scene. Each lake gets its own copy
   // with a distance-to-shore texture so shallows are lighter, the middle darker, and a thin foam/ripple line rings the shore.
   const waterMats: THREE.ShaderMaterial[] = [];
@@ -259,7 +218,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // Landmarks.
   type LM = { id: string; root: THREE.Group; hit: THREE.Object3D[]; emissive: THREE.MeshStandardMaterial[]; sign: THREE.Sprite; pos: THREE.Vector3; height: number };
   const lms: LM[] = [];
-  const pickables: THREE.Object3D[] = [...signHit];
+  const pickables: THREE.Object3D[] = [];
   const lmIds = [...LANDMARK_IDS, ...WORLD_SPOTS.map((sp) => sp.id).filter((id) => !LANDMARK_IDS.includes(id))];
   const lmBoxes = landmarks(lmIds);
   const box = (w: number, hgt: number, d: number, m: THREE.Material, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(geo(new THREE.BoxGeometry(w, hgt, d)), m); o.position.set(x, y + hgt / 2, z); return o; };
@@ -736,7 +695,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     // ground: same grass as the plate, a hair under it and under the farm/mine aprons (strips around the plate: no overlap)
     const strips: Array<[number, number, number, number]> = [[x0, x1, z0, -P], [x0, x1, P, z1], [x0, -P, -P, P], [P, x1, -P, P], [x1, BIG_FARM_AREA.x1 + 40, z0, z1]]; // + the Big Farms expansion east of the outskirts
     const grass = mat({ color: 0x3f9a45, roughness: 1, emissive: 0x0f3a14, emissiveIntensity: 0.6 }); const dirtSide = mat({ color: 0x4a3322 });
-    for (const [a0, b0, e, f] of strips) { const m = new THREE.Mesh(geo(new THREE.BoxGeometry(b0 - a0, 3, f - e)), [dirtSide, dirtSide, XM ? keep(xmasGround(b0 - a0, f - e, tier === 'low')) : grass, dirtSide, dirtSide, dirtSide]); m.position.set((a0 + b0) / 2, -1.53, (e + f) / 2); scene.add(m); }
+    for (const [a0, b0, e, f] of strips) { const m = new THREE.Mesh(geo(new THREE.BoxGeometry(b0 - a0, 3, f - e)), [dirtSide, dirtSide, XM ? keep(xmasGround(b0 - a0, f - e, tier === 'low', a0, f)) : grass, dirtSide, dirtSide, dirtSide]); m.position.set((a0 + b0) / 2, -1.53, (e + f) / 2); scene.add(m); }
     // rural roads: city asphalt at the city road height, centre dashes
     // Rural + venue access roads: one asphalt (city roadMat, top flush with city roads), square-cut ends that extend
     // half a width so corners/T's close; an end on the speedway's edge is not extended (no road over the track).
@@ -744,6 +703,11 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const onTrackEdge = (p: [number, number]) => Math.abs(Math.hypot(Math.max(0, Math.abs(p[0] - TRACK.cx) - TRACK.L), p[1] - TRACK.cz) - TRACK.R) < TRACK.W / 2 + 0.5;
     inst(unitBox, roadMat, allRoads.length, (i) => { const [a, b, w] = allRoads[i]; const L = Math.hypot(b[0] - a[0], b[1] - a[1]); const ea = onTrackEdge(a) ? 0 : w / 2, eb = onTrackEdge(b) ? 0 : w / 2;
       const ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L; d.position.set((a[0] + b[0]) / 2 + (ux * (eb - ea)) / 2, ROAD_Y - 0.01, (a[1] + b[1]) / 2 + (uz * (eb - ea)) / 2); d.rotation.y = Math.atan2(b[0] - a[0], b[1] - a[1]); d.scale.set(w, 0.02, L + ea + eb); })!.renderOrder = 1;
+    // Christmas slush on these newer road sets too (same decal as city roads): one merged quad per road, same extents.
+    if (xmas) { const pos: number[] = []; const idx: number[] = []; allRoads.forEach(([a, b, w], i) => { const L = Math.hypot(b[0] - a[0], b[1] - a[1]); const ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L;
+        const ea = onTrackEdge(a) ? 0 : w / 2, eb = onTrackEdge(b) ? 0 : w / 2; const nx = -uz * w / 2, nz = ux * w / 2; const sx = a[0] - ux * ea, sz = a[1] - uz * ea, ex = b[0] + ux * eb, ez = b[1] + uz * eb;
+        pos.push(sx + nx, ROAD_Y, sz + nz, sx - nx, ROAD_Y, sz - nz, ex + nx, ROAD_Y, ez + nz, ex - nx, ROAD_Y, ez - nz); const o = i * 4; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); });
+      const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); rg.setIndex(idx); rg.computeVertexNormals(); xmas.addRoads([rg]); rg.dispose(); }
     // no centre dashes through junctions: skip within a road width of any road end (T's, corners, city joins) or crossing
     const nodes: Array<[number, number]> = allRoads.flatMap(([a, b]) => [a, b]);
     for (const [a, b] of allRoads) for (const [c2, e2] of allRoads) { const den = (b[0] - a[0]) * (e2[1] - c2[1]) - (b[1] - a[1]) * (e2[0] - c2[0]); if (Math.abs(den) < 1e-9) continue;
@@ -812,7 +776,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // barns and silos. Crops on owned plots come from /api/farm (setFarm). Toned-down night palette, a little warm glow.
   const farmTiles = new Map<string, number>(); // plot id -> first index into the crop instanced mesh
   const crops = (() => {
-    const apron = new THREE.Mesh(geo(new THREE.BoxGeometry(FARM_X1 - FARM_X0, 3, FARM_Z1 - FARM_Z0)), [mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c }), (XM ? keep(xmasGround(FARM_X1 - FARM_X0, FARM_Z1 - FARM_Z0, tier === 'low')) : mat({ color: 0x3a8a40, roughness: 1, emissive: 0x0d3412, emissiveIntensity: 0.6 })), mat({ color: 0x2a1c12 }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c })]);
+    const apron = new THREE.Mesh(geo(new THREE.BoxGeometry(FARM_X1 - FARM_X0, 3, FARM_Z1 - FARM_Z0)), [mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c }), (XM ? keep(xmasGround(FARM_X1 - FARM_X0, FARM_Z1 - FARM_Z0, tier === 'low', FARM_X0, FARM_Z1)) : mat({ color: 0x3a8a40, roughness: 1, emissive: 0x0d3412, emissiveIntensity: 0.6 })), mat({ color: 0x2a1c12 }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c })]);
     // Bug 12:28 AM: the grass top used a negative polygonOffset, which at the low camera angle pulled it in front of
     // the 0.14-high soil plots and furrows (only fence rails showed: wireframe-looking, z-fighting fields). The top now
     // sits a hair below y=0 with no offset, so the solid soil/furrows/crops always win the depth test.
@@ -888,18 +852,16 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const pick = (cx: number, cy: number) => { const rc = canvas.getBoundingClientRect(); ndc.set(((cx - rc.left) / rc.width) * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1); ray.setFromCamera(ndc, camera); const hit = ray.intersectObjects(pickables, false)[0]; const tr = hit?.object.userData.trailers as string[] | undefined; if (tr && hit?.instanceId != null) return `trailer:${tr[hit.instanceId]}`; const barnIds = hit?.object.userData.barns as Array<string | null> | undefined; if (barnIds && hit?.instanceId != null && barnIds[hit.instanceId]) return barnIds[hit.instanceId]; const pr = hit?.object.userData.props as string[] | undefined; if (pr && hit?.instanceId != null) return pr[hit.instanceId] ?? null; return (hit?.object.userData.spot as string | undefined) ?? null; };
   const setHover = (id: string | null) => {
     if (id === hovered) return; hovered = id; canvas.style.cursor = id ? 'pointer' : 'grab';
-    if (signGlow) signGlow.emissiveIntensity = (id === MILLIONAIRE_SIGN ? 2.2 : 0.9) * NEON;
     for (const l of lms) { const on = l.id === id; l.root.scale.setScalar(on ? 1.06 : 1); l.sign.userData.hover = on; for (const m of l.emissive) { m.userData.ei = on ? (m.map ? 1.6 : 3) * NEON : (m.map ? 0.9 : 1.6) * NEON; m.emissiveIntensity = m.userData.ei * glowK; } }
   };
   const clearTip = () => { setHover(null); h.onHover(null, 0, 0); };
   // Drag-panning: no hover highlight or tooltip while the pointer is held and moving (it used to linger after the pan).
-  const onMove = (e: PointerEvent) => { if (fly || e.pointerType === 'touch') return; if (down && e.buttons) { if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) { down.drag = true; clearTip(); } if (down.drag) return; } const id = pick(e.clientX, e.clientY); setHover(id); h.onHover(id === MILLIONAIRE_SIGN ? null : id, e.clientX, e.clientY); };
+  const onMove = (e: PointerEvent) => { if (fly || e.pointerType === 'touch') return; if (down && e.buttons) { if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) { down.drag = true; clearTip(); } if (down.drag) return; } const id = pick(e.clientX, e.clientY); setHover(id); h.onHover(id, e.clientX, e.clientY); };
   let down: { x: number; y: number; t: number; drag?: boolean } | null = null;
   const onDown = (e: PointerEvent) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; controls.autoRotate = false; h.onHover(null, 0, 0); };
   const onUp = (e: PointerEvent) => {
     if (!down || fly) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y); const dragged = moved > (e.pointerType === "touch" ? 16 : 8) || !!down.drag; down = null; if (dragged) { clearTip(); return; }
     const id = pick(e.clientX, e.clientY); if (!id) { setHover(null); h.onHover(null, 0, 0); return; }
-    if (id === MILLIONAIRE_SIGN) { h.onHover(null, 0, 0); window.dispatchEvent(new CustomEvent('open-launch-popup')); return; }
     if (id.startsWith('barn:')) { h.onHover(null, 0, 0); h.onBarn?.(id); return; }
     if (id.startsWith('trailer:')) { h.onHover(id, e.clientX, e.clientY); if (h.onTrailer?.(id.slice(8))) return; window.dispatchEvent(new CustomEvent('open-player', { detail: id.slice(8) })); return; } // trailers: your own opens your home (kitchen), others the owner's profile
     if (id.startsWith('b:') || id.startsWith('p:') || id.startsWith('f:') || id.startsWith('cf:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel
@@ -978,7 +940,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     else if (!tick?.(dt)) { panStep(dt); controls.update(); clampPan(); }
     skyT += dt; if (skyT > 1) { skyT = 0; applySky(); }
     stepTags?.(dt);
-    xmas?.step(dt);
+    xmas?.step(dt, camera.position, controls.target);
     townHallProtest?.step(dt, time, camera.position);
     farmProtest?.step(dt, time, camera.position);
     for (const w of waterMats) w.uniforms.uTime.value = time; for (const w of oceanMats) w.uniforms.uTime.value = time; venues.step(dt, time, camera.position);

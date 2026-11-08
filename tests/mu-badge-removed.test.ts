@@ -1,5 +1,5 @@
 // Dayne 2026-11-07 07:23 UTC-6: the gold rounded 2D map badge "💰 Millionaire Update: soon" is gone entirely (not
-// replaced), on desktop and mobile; the 3D OUT NOW billboard and the weekly event label stay.
+// replaced), on desktop and mobile; the weekly event label stays. The 3D billboard was removed later (19:39).
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 const src = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
@@ -9,8 +9,9 @@ describe('map: outdated Millionaire badge removed', () => {
     expect(map).not.toMatch(/mu-countdown|world-mu-count|MuCountdown|mapCountdownLabel/);
     expect(css).not.toMatch(/world-mu-count/);
   });
-  it('keeps the 3D OUT NOW billboard and the weekly event bar', () => {
-    expect(src('client/src/lib/world3d.ts')).toContain("fillText('O U T   N O W'");
+  it('the 3D Millionaire Update billboard and its click target are gone (Dayne 2026-11-07 19:39); weekly event bar stays', () => {
+    const w = src('client/src/lib/world3d.ts');
+    expect(w).not.toMatch(/O U T   N O W|MILLIONAIRE_SIGN|millionaire-sign|signHit|fillText\('Millionaire Update'/);
     expect(src('client/src/components/WorldMap.tsx')).toMatch(/<WeeklyEventBar /);
   });
 });
