@@ -18,6 +18,7 @@ import {
 } from '../../../shared/homes';
 
 export const OPEN_FURNITURE = 'open-furniture-store';
+export const FURNITURE_CHANGED = 'furniture-inventory-changed';
 export const ENTER_HOME = 'enter-home';
 export const openFurnitureStore = () => window.dispatchEvent(new Event(OPEN_FURNITURE));
 export const enterHome = (id: string) => window.dispatchEvent(new CustomEvent(ENTER_HOME, { detail: id }));
@@ -67,7 +68,7 @@ export function FurnitureStore({ onClose }: { onClose: () => void }) {
   useEffect(() => { void request('furn_catalog').then((a) => { if (a.ok) setCg(a as unknown as Catalog); }); load(); }, [load]);
   const have = (k: string) => lk?.items.find((x) => x.item === k);
   const f = cg?.furniture.find((x) => x.id === sel) ?? (FURN_BY_ID.get(sel) as Priced | undefined);
-  const buy = async (item: string, n: number) => { setBusy(true); setMsg(null); const a = await request('furn_buy', { item, qty: n }); setBusy(false); setMsg(a.ok ? `🛋️ Bought for 🪙 ${chips(Number((a as unknown as { price: number }).price))}. It's in your furniture inventory: enter a home and press Build to place it.` : a.error ?? 'Could not buy that.'); load(); };
+  const buy = async (item: string, n: number) => { setBusy(true); setMsg(null); const a = await request('furn_buy', { item, qty: n }); setBusy(false); setMsg(a.ok ? `🛋️ Bought for 🪙 ${chips(Number((a as unknown as { price: number }).price))}. It's in your furniture inventory: enter a home and press Build to place it.` : a.error ?? 'Could not buy that.'); if (a.ok) window.dispatchEvent(new Event(FURNITURE_CHANGED)); load(); };
   const styles = cat === 'walls' ? cg?.walls ?? [] : cat === 'floors' ? cg?.floors ?? [] : [];
   return (
     <div className="furn-store" data-testid="furniture-store" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -109,9 +110,19 @@ export function HomeInterior({ me, enter, onClose }: { me: string; enter: { home
   const st = useRef({ me: enter.me, layout: home.layout, peers: new Map<string, Peer>(enter.peers.map((p) => [p.sid, p])), hold: null as Placed | null, pick: null as string | null, build: false, ghostOk: true, target: null as THREE.Vector3 | null, dirty: 0 });
   st.current.layout = home.layout; st.current.hold = hold; st.current.pick = pick; st.current.build = build;
   const free = useMemo(() => { const m = new Map<string, number>(); for (const it of locker?.items ?? []) if (FURN_BY_ID.has(it.item)) m.set(it.item, it.qty - it.placed); for (const p of home.layout.items) m.set(p.f, (m.get(p.f) ?? 0)); return m; }, [locker, home.layout]);
+  const saving = useRef(false);
+  useEffect(() => {
+    if (!owner) return;
+    let alive = true, generation = 0;
+    const refresh = () => { const n = ++generation; void request('furn_locker').then(a => { if (alive && n === generation && a.ok) setLocker(a as unknown as Locker); }); };
+    window.addEventListener(FURNITURE_CHANGED, refresh);
+    return () => { alive = false; window.removeEventListener(FURNITURE_CHANGED, refresh); };
+  }, [owner]);
   const save = useCallback(async (layout: HomeLayout) => {
-    const prev = st.current.layout; setHome((h) => ({ ...h, layout }));
-    const a = await request('home_save', { id: home.id, layout }); if (!a.ok) { setHome((h) => ({ ...h, layout: prev })); setMsg(a.error ?? 'Could not save.'); return false; }
+    if (saving.current) { setMsg('Please wait for the current placement to save.'); return false; }
+    saving.current = true;
+    const prev = st.current.layout; st.current.layout = layout; setHome((h) => ({ ...h, layout }));
+    let a; try { a = await request('home_save', { id: home.id, layout }); } catch { a = { ok: false, error: 'Could not save. Please try again.' }; } finally { saving.current = false; } if (!a.ok) { st.current.layout = prev; setHome((h) => ({ ...h, layout: prev })); setMsg(a.error ?? 'Could not save.'); return false; }
     setLocker((a as unknown as { locker: Locker }).locker); setMsg(null); return true;
   }, [home.id]);
   const saveRef = useRef(save); saveRef.current = save;
@@ -206,16 +217,16 @@ export function HomeInterior({ me, enter, onClose }: { me: string; enter: { home
 
   // build-mode actions (events from the canvas + buttons)
   useEffect(() => {
-    const drop = (e: Event) => { const h = st.current.hold; if (!h) return; const { x, z } = (e as CustomEvent<{ x: number; z: number }>).detail; const p = { ...h, x, z };
+    const drop = (e: Event) => { if (!owner || !st.current.build || saving.current) return; const h = st.current.hold; if (!h) return; const { x, z } = (e as CustomEvent<{ x: number; z: number }>).detail; const p = { ...h, x, z };
       if (!fits(st.current.layout.items, p, h.uid)) { setMsg("That doesn't fit there."); return; }
       const items = [...st.current.layout.items.filter((i) => i.uid !== h.uid), p]; setHold(null); setPick(p.uid); void saveRef.current({ ...st.current.layout, items }); };
     const pk = (e: Event) => setPick((e as CustomEvent<string | null>).detail);
-    const rot = () => { const h = st.current.hold; if (h) { setHold({ ...h, r: (h.r + 1) % 4 }); return; } const id = st.current.pick; const p = st.current.layout.items.find((i) => i.uid === id); if (!p) return; const q = { ...p, r: (p.r + 1) % 4 };
+    const rot = () => { if (!owner || !st.current.build || saving.current) return; const h = st.current.hold; if (h) { setHold({ ...h, r: (h.r + 1) % 4 }); return; } const id = st.current.pick; const p = st.current.layout.items.find((i) => i.uid === id); if (!p) return; const q = { ...p, r: (p.r + 1) % 4 };
       if (!fits(st.current.layout.items, q, p.uid)) { setMsg('No room to rotate it here.'); return; } void saveRef.current({ ...st.current.layout, items: st.current.layout.items.map((i) => (i.uid === p.uid ? q : i)) }); };
-    const del = () => { const id = st.current.pick; if (!id || !st.current.build) return; setPick(null); void saveRef.current({ ...st.current.layout, items: st.current.layout.items.filter((i) => i.uid !== id) }); };
+    const del = () => { if (!owner || saving.current) return; const id = st.current.pick; if (!id || !st.current.build) return; setPick(null); void saveRef.current({ ...st.current.layout, items: st.current.layout.items.filter((i) => i.uid !== id) }); };
     window.addEventListener('home-drop', drop); window.addEventListener('home-pick', pk); window.addEventListener('home-rotate', rot); window.addEventListener('home-delete', del);
     return () => { window.removeEventListener('home-drop', drop); window.removeEventListener('home-pick', pk); window.removeEventListener('home-rotate', rot); window.removeEventListener('home-delete', del); };
-  }, []);
+  }, [owner]);
 
   const send = () => { const t = say.trim(); if (!t) return; socket.emit('home_chat', t); setSay(''); };
   const setAccess = async (access: HomeAccess) => { const a = await request('home_access', { id: home.id, access, invites: inv.split(/[,\s]+/).filter(Boolean) }); if (a.ok) { const h = (a as unknown as { home: HomeView }).home; setHome((x) => ({ ...x, access: h.access, invites: h.invites })); setMsg(`🔐 ${ACCESS_LABEL[h.access]}${h.access === 'invite' ? ` · ${h.invites.length} invited` : ''}`); } else setMsg(a.error ?? 'Could not change access.'); };
@@ -226,7 +237,7 @@ export function HomeInterior({ me, enter, onClose }: { me: string; enter: { home
       <canvas ref={cv} className="home-canvas" data-testid="home-canvas" />
       <header className="home-top"><b data-testid="home-title">🏠 {owner ? 'Your home' : `${home.owner}'s home`} · {label}</b>
         <span className="home-peers" data-testid="home-peers">👥 {peers.map((p) => p.name).join(', ')}</span>
-        {owner && <button type="button" className={build ? 'on' : ''} onClick={() => { setBuild(!build); setHold(null); setPick(null); }} data-testid="home-build">{build ? '✓ Done building' : '🔨 Build'}</button>}
+        {owner && <button type="button" className={build ? 'on' : ''} onClick={() => { if (!build) window.dispatchEvent(new Event(FURNITURE_CHANGED)); setBuild(!build); setHold(null); setPick(null); }} data-testid="home-build">{build ? '✓ Done building' : '🔨 Build'}</button>}
         {owner && <button type="button" onClick={() => setShowAccess(!showAccess)} data-testid="home-access-btn">🔐 {ACCESS_LABEL[home.access]}</button>}
         <button type="button" onClick={() => onClose()} data-testid="home-exit">🚪 Leave</button></header>
       {owner && showAccess && <div className="home-access" data-testid="home-access">

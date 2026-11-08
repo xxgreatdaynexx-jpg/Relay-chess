@@ -1,3 +1,4 @@
+import { refillCooler } from './coolerRefill.js';
 /**
  * Fishing at the lake dock (rules in shared/fishing.ts). The server rolls every catch when you cast (crypto RNG),
  * keeps it secret until it is landed, and replays the reel minigame from the client's input timeline with the same
@@ -99,6 +100,7 @@ export class Fishing {
     return { gross: Number(r.rows[0]?.gross ?? 0), paid: Number(r.rows[0]?.paid ?? 0) };
   }
   async view(name: string): Promise<FishView> {
+    await refillCooler(name);
     const key = keyOf(name);
     const best = (await this.pool.query("SELECT species, weight_g FROM fish_catches WHERE player_key = $1 AND COALESCE(hired, FALSE) = FALSE ORDER BY weight_g DESC, caught_at ASC, id ASC LIMIT 1", [key])).rows[0];
     const n = (await this.pool.query('SELECT count(*) AS n FROM fish_catches WHERE player_key = $1', [key])).rows[0];
@@ -228,7 +230,7 @@ export class Fishing {
       royaltyEarn('dock', name, paid);
       for (const [cap, amt] of cuts) { try { fleetNote({ captain: cap, name, kind: 'cut', chips: amt }); } catch { /* log only */ } }
       return { sold: rows.length, gross: gross + dGross, paid: paid - cutTotal, chips: this.bank().account(name).chips, ...(cutTotal ? { captainCut: cutTotal } : {}) };
-    });
+    }).then(async result => { await refillCooler(name); return result; });
   }
   /** pt1252u: move fish from the cooler into Factory storage. Raw fish -> fillets (1 per 8 base value), cooked dishes ->
    * portions (1 per 10). Junk can't go. One UPDATE (still yours, unsold) + the storage write in the same transaction. */
@@ -253,7 +255,7 @@ export class Fishing {
       finally { cl.release(); }
       sink.after(items);
       return { moved: rows.length, items };
-    });
+    }).then(async result => { await refillCooler(name); return result; });
   }
   async release(name: string, ids: unknown): Promise<{ released: number }> {
     const key = keyOf(name); if (!Array.isArray(ids) || !ids.length) throw new FishError('Pick fish to release.');
@@ -262,7 +264,7 @@ export class Fishing {
       const ph = list.map((_, i) => `$${i + 2}`).join(',');
       const r = await this.pool.query(`DELETE FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL AND (loc IS NULL OR loc NOT LIKE 'transit:%') AND id IN (${ph})`, [key, ...list]);
       return { released: r.rowCount ?? 0 };
-    });
+    }).then(async result => { await refillCooler(name); return result; });
   }
   /** Biggest catch by weight (heaviest first, ties to the earliest catch; (one entry per player, junk excluded, QA accounts hidden). */
   async board(limit = 10): Promise<Array<{ name: string; fish: string; grams: number; value: number; at: number }>> {

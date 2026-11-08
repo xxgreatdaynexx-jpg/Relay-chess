@@ -1,3 +1,4 @@
+import { setCoolerRefill } from './coolerRefill.js';
 import { invReady } from './invFence.js';
 /**
  * Employment Office (pt1274u): hired AI workers (shared/employment.ts has the rules and prices).
@@ -270,6 +271,14 @@ export class Employment {
       }
     return { ores, fish, notes };
   }
+  /** Reuse the normal capacity-checked durable deposit, without settlement, attendance or new wages. */
+  async refillFish(name: string) {
+    const key = playerKey(name);
+    return this.lock(key, async () => {
+      const ws = (await this.rows(key)).filter(w => w.job.kind === 'fisher');
+      return this.deliver(name, key, ws, this.clock());
+    });
+  }
   /** Background pass (every few minutes + once at boot): settle and auto-deposit for every employer. No check-in. */
   async sweep() {
     const r = await this.pool.query('SELECT DISTINCT owner_name, owner_key FROM employ_workers');
@@ -324,7 +333,7 @@ export async function initEmployment(): Promise<void> {
   pool.on('error', (e) => console.error('[employ] pool error:', e.message));
   const lockPool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 10_000 });
   lockPool.on('error', (x) => console.error('[employ] lock pool:', x.message));
-  await bootAttach('employ', async () => { try { const e = new Employment(pool, getBank, () => Date.now(), mineOreSink, cryptoUnit, lockPool); await e.init(); emp = e; console.log('[employ] ready'); startEmploySweep(e); return true; } catch (e) { console.error('[employ] init failed:', (e as Error).message); return false; } });
+  await bootAttach('employ', async () => { try { const e = new Employment(pool, getBank, () => Date.now(), mineOreSink, cryptoUnit, lockPool); await e.init(); emp = e; setCoolerRefill(async name => { if (invReady()) await e.refillFish(name); }); console.log('[employ] ready'); startEmploySweep(e); return true; } catch (e) { console.error('[employ] init failed:', (e as Error).message); return false; } });
 }
 /** Public read: today's prices. */
 export function employmentRouter() {
