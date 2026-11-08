@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { implementationOf } from './billImplementations.js';
 import { abDate } from '../shared/mayor.js';
 import { lawText, lawTitle, parseBillNumber, type MayorLaw, type MayorLawView } from '../shared/mayorLaws.js';
 import { playerKey } from './skins.js';
@@ -41,7 +42,7 @@ DROP TRIGGER IF EXISTS mayor_bill_events_no_truncate ON mayor_bill_events;
 CREATE TRIGGER mayor_bill_events_no_truncate BEFORE TRUNCATE ON mayor_bill_events FOR EACH STATEMENT EXECUTE FUNCTION mayor_bill_events_guard();
 `;
 const rowLaw = (r: Record<string, unknown>): MayorLaw => ({ number: String(r.number), title: lawTitle(String(r.number)), text: String(r.text), by: String(r.by_name), at: Number(r.at), day: String(r.day),
-  status: r.status === 'vetoed' ? 'vetoed' : 'pending', vetoedBy: r.vetoed_by_name == null ? null : String(r.vetoed_by_name), vetoedAt: r.vetoed_at == null ? null : Number(r.vetoed_at), vetoedRole: r.vetoed_role === 'vice' ? 'vice' : r.vetoed_role === 'mayor' ? 'mayor' : null });
+  status: r.status === 'vetoed' ? 'vetoed' : 'pending', vetoedBy: r.vetoed_by_name == null ? null : String(r.vetoed_by_name), vetoedAt: r.vetoed_at == null ? null : Number(r.vetoed_at), vetoedRole: r.vetoed_role === 'vice' ? 'vice' : r.vetoed_role === 'mayor' ? 'mayor' : null, ...(implementationOf(r) ? { implementation: implementationOf(r) } : {}) });
 export class MayorLaws {
   constructor(private readonly pool: pg.Pool, private readonly clock = () => Date.now()) {}
   async init() {
@@ -99,6 +100,7 @@ export class MayorLaws {
       const isVice = !!v.rows[0] && v.rows[0].vice_key === key;
       if (!isMayor && !isVice) throw new MayorLawError('Only the sitting mayor or vice mayor may veto a bill.');
       if (!b.rows[0]) throw new MayorLawError('No such bill.');
+      if (implementationOf(b.rows[0])) throw new MayorLawError('This bill has been implemented with revised wording. It is not a pending bill; changing the active rules requires a new implementation.');
       const fromToday = String(b.rows[0].day) === today;
       let role: 'mayor' | 'vice'; let term: Record<string, unknown>; let byName: string;
       if (fromToday) { if (!isVice) throw new MayorLawError('Bills submitted today can only be vetoed by the vice mayor.'); role = 'vice'; term = v.rows[0]; byName = String(v.rows[0].vice_name); }

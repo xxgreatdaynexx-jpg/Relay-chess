@@ -1,7 +1,8 @@
 /** Text-only public mayor bills. No economy/admin effects are interpreted from text. */
 export const LAW_TEXT_MAX = 2000;
 export type MayorLawStatus = 'pending' | 'vetoed';
-export interface MayorLaw { number: string; title: string; text: string; by: string; at: number; day: string; status: MayorLawStatus; vetoedBy: string | null; vetoedAt: number | null; vetoedRole: 'mayor' | 'vice' | null }
+export interface BillImplementation { status: 'enacted'; revision: 1; implementedAt: number; release: string; text: string }
+export interface MayorLaw { number: string; title: string; text: string; by: string; at: number; day: string; status: MayorLawStatus; vetoedBy: string | null; vetoedAt: number | null; vetoedRole: 'mayor' | 'vice' | null; /** Separate release-backed implementation; original fields remain archival. */ implementation?: BillImplementation }
 export interface MayorLawView { history: MayorLaw[]; nextBefore: string | null; submittedToday: boolean }
 export const lawTitle = (number: string) => `Bill Chud ${number}`;
 export function lawText(value: unknown): string {

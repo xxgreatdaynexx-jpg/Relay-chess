@@ -20,10 +20,14 @@ export function MayorLaws({ view, isMayor, isVice = false, today, busy, onPass, 
     <h4>Bill history</h4>
     {!shown.history.length && <small>No bills passed yet.</small>}
     <ol data-testid="mayor-law-history">{shown.history.map((b) => <li key={b.number}>
-      <b>{b.title}</b> <span data-testid="mayor-law-status">{b.status === 'vetoed' ? 'Vetoed' : 'Pending'}</span><small> · Mayor {b.by} · {b.day} (America/Regina)</small>
+      <b>{b.title}</b> <span data-testid="mayor-law-status">{b.implementation ? 'Enacted — revised wording' : b.status === 'vetoed' ? 'Vetoed' : 'Pending'}</span><small> · {b.implementation ? 'Submitted by Mayor' : 'Mayor'} {b.by} · {b.day} (America/Regina)</small>
       {b.status === 'vetoed' && b.vetoedBy && <small> · Vetoed by {b.vetoedRole === 'vice' ? 'Vice Mayor' : 'Mayor'} {b.vetoedBy}</small>}
-      <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{b.text}</p>
-      {onVeto && today && b.status === 'pending' && (b.day === today ? isVice : isMayor) && <button type="button" disabled={busy} data-testid="mayor-law-veto" onClick={() => { if (window.confirm(`Veto ${b.title}? It stays in the record marked Vetoed and cannot be undone.`)) void onVeto(b.number).then(() => setOlder(null)); }}>Veto</button>}
+      <p data-testid={b.implementation ? 'mayor-law-active-wording' : undefined} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{b.implementation?.text ?? b.text}</p>
+      {b.implementation && <>
+        <small data-testid="mayor-law-implementation">Implemented {new Date(b.implementation.implementedAt).toLocaleString('en-CA', { timeZone: 'America/Regina' })} (America/Regina) · release <code>{b.implementation.release.slice(0, 7)}</code>. This implementation record is separate from the original submission, not an approval vote.</small>
+        <details data-testid="mayor-law-original"><summary>Original submission (archived)</summary><small>Original recorded status: {b.status === 'vetoed' ? 'Vetoed' : 'Pending'}.</small><p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{b.text}</p></details>
+      </>}
+      {onVeto && today && !b.implementation && b.status === 'pending' && (b.day === today ? isVice : isMayor) && <button type="button" disabled={busy} data-testid="mayor-law-veto" onClick={() => { if (window.confirm(`Veto ${b.title}? It stays in the record marked Vetoed and cannot be undone.`)) void onVeto(b.number).then(() => setOlder(null)); }}>Veto</button>}
     </li>)}</ol>
     {older && <button type="button" onClick={() => setOlder(null)}>Latest bills</button>}
     {shown.nextBefore && <button type="button" disabled={busy} onClick={() => {
