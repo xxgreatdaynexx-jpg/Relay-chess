@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { request } from '@/lib/net';
 import { usePanelDrag } from '@/lib/panelDrag';
 import { CityCivic } from './CityCivic';
+import { MayorBillReviewHost, OPEN_BILL_REVIEW } from './MayorBillReview';
 import type { CityView } from '../../../shared/city';
 import { pct, rateLabel, AB_OFFSET_MS, type CityHallView } from '../../../shared/mayor';
 
@@ -79,6 +80,7 @@ export function CityHallPanel({ onClose, initial, initialCity }: { onClose: () =
           {me?.isMayor && (
             <div className="cityhall-powers" data-testid="cityhall-powers">
               <h4>Mayor’s desk</h4>
+              <button type="button" data-testid="open-bill-review" onClick={() => window.dispatchEvent(new Event(OPEN_BILL_REVIEW))}>📝 Bill clarification questions</button>
               <small>Each rate moves up to ±25% of the default. Changes start at the next midnight (Alberta time), once per day, and are logged publicly.</small>
               {slider('Property tax', prop, setProp, pct(L.base.property), `${pct(L.base.property * prop)}/day`, 'cityhall-prop')}
               {slider('Market & stock fees', fee, setFee, `${pct(L.base.market)} / ${pct(L.base.stock)}`, `${pct(L.base.market * fee, 2)} / ${pct(L.base.stock * fee, 3)}`, 'cityhall-fee')}
@@ -122,5 +124,6 @@ export function CityHallHost() {
     {banner && <div className="cityhall-banner" role="status" data-testid="cityhall-banner">{banner}<button type="button" aria-label="Dismiss" onClick={() => { localStorage.setItem('cityhall-banner', banner); setBanner(null); }}>✕</button></div>}
     {notice && !banner && <div className="cityhall-banner city-notice" role="status" data-testid="city-notice">{notice.text}<button type="button" aria-label="Dismiss" onClick={() => { localStorage.setItem('city-notice', notice.id); setNotice(null); }}>✕</button></div>}
     {open && <CityHallPanel onClose={() => setOpen(false)} />}
+    <MayorBillReviewHost />
   </>);
 }

@@ -2604,3 +2604,13 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 }
 
 @media (max-height: 520px) and (min-width: 700px) { .world.fortmc .fort-map-controls { grid-template-columns: repeat(6, minmax(0, 1fr)); } .world.fortmc .fort-flat-map { top: 112px; bottom: 60px; } }
+
+/* pt2050u: mayor bill-review questionnaire (mobile-safe: scrolls inside, backdrop/✕/Esc close) */
+.bill-review-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 12px; }
+.bill-review { position: relative; width: min(560px, 100%); max-height: calc(100dvh - 24px); overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; background: #1b1f2a; color: #eef; border-radius: 12px; padding: 16px 16px 20px; }
+.bill-review-message { white-space: pre-wrap; margin: 8px 0 12px; line-height: 1.4; }
+.bill-review-qs { padding-left: 18px; display: grid; gap: 10px; }
+.bill-review-qs fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 4px; }
+.bill-review-qs legend { font-weight: 600; margin-bottom: 4px; }
+.bill-review-qs label { display: flex; gap: 6px; align-items: flex-start; min-height: 28px; }
+.bill-review-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; position: sticky; bottom: -20px; background: #1b1f2a; padding: 8px 0; }
