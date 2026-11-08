@@ -104,6 +104,20 @@ describe('machine sell', () => {
     expect(css).toMatch(/\.sellall-backdrop \{ position: fixed; inset: 0; z-index: 9500;[^}]*env\(safe-area-inset-bottom\)/);
     expect(css).toMatch(/\.sellall-card \{[^}]*max-height: 100%; overflow-y: auto;/);
   });
+  it('Machinist: sell 1 unplaced machine via the full-page dialog (server quote, n=1), cancel sends nothing', async () => {
+    const ask = vi.fn((ev: string) => ev === 'fac_sellkit_quote' ? ok({ pay: 200 }) : ok({ paid: 200, left: 1 })); const flash = vi.fn();
+    render(h(FactoryMachineSell, { kind: 'press', name: 'Press', ask, flash, onSold: vi.fn(), unplaced: { have: 2 } }));
+    expect(screen.getByTestId('fac-sellkit-press').textContent).toBe('💰 Sell 1 (×2)');
+    await act(async () => { fireEvent.click(screen.getByTestId('fac-sellkit-press')); });
+    expect(ask).toHaveBeenCalledWith('fac_sellkit_quote', { kind: 'press', n: 1 });
+    const dlg = screen.getByTestId('fac-sellkit-press-confirm'); expect(dlg.parentElement).toBe(document.body);
+    expect(dlg.textContent).toMatch(/Sell 1 unplaced Press\?.*You get 200 chips.*2 unplaced; placed machines stay/);
+    fireEvent.click(screen.getByTestId('fac-sellkit-press-cancel')); expect(ask).toHaveBeenCalledTimes(1);
+    await act(async () => { fireEvent.click(screen.getByTestId('fac-sellkit-press')); });
+    await act(async () => { fireEvent.click(screen.getByTestId('fac-sellkit-press-ok')); fireEvent.click(screen.getByTestId('fac-sellkit-press-ok')); });
+    expect(ask.mock.calls.filter((c) => c[0] === 'fac_sellkit')).toEqual([['fac_sellkit', { kind: 'press', n: 1, quote: 200 }]]);
+    expect(flash).toHaveBeenCalledWith('Sold an unplaced Press for 200 chips.');
+  });
   it('Sell only shows on machines', () => {
     inspect({ id: 1, k: 'belt', x: 0, y: 0, d: 0 }, vi.fn(), h('button', { 'data-testid': 'fac-sell' }));
     expect(screen.queryByTestId('fac-sell')).toBeNull();

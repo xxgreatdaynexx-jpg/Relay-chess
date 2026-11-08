@@ -185,12 +185,42 @@ export class FactoryWorld {
     const { s, e, def, pay } = this.sellQuote(account, b.id, now);
     if (b.kind !== undefined && b.kind !== e.k) throw new MineError('Your selection changed. Pick the machine again.');
     if (b.quote !== pay) throw new MineError(`The price is ${pay} chips. Check it and confirm again.`);
-    const a = account!; const k = playerKey(a); const mines = getMines();
+    const a = account!; const k = playerKey(a);
     const idx = s.ents.indexOf(e); s.ents.splice(idx, 1);
     const restore = () => { if (!s.ents.some((x) => x.id === e.id)) s.ents.splice(Math.min(idx, s.ents.length), 0, e); };
     const key = `factory:sell:${k}:${e.id}:${now}:${++this.saleSeq}`;
+    await this.commitSale(a, s, pay, key, `Machinist: sold a ${def.name} back (${pay} chips)`, restore, 'Your machine is still there and nothing was paid.');
+    return { sold: e.id, kind: e.k, paid: pay };
+  }
+  /** Server quote for selling unplaced machines from your kit (Machinist menu). Only machines you hold unplaced count. */
+  kitSellQuote(account: string | null, kindIn: unknown, nIn: unknown, now: number) {
+    const { s } = this.need(account, now);
+    if (!isKind(kindIn)) throw new MineError('Unknown part.');
+    const def = KINDS[kindIn]; if (!def.machine) throw new MineError(`A ${def.name} is not a machine.`);
+    const n = nIn === undefined ? 1 : nIn; if (typeof n !== 'number' || !Number.isInteger(n) || n < 1 || n > 100) throw new MineError('Pick how many to sell.');
+    const have = s.kit[kindIn] ?? 0; if (have < n) throw new MineError(have ? `You only have ${have} unplaced ${def.name}${have === 1 ? '' : 's'}.` : `You have no unplaced ${def.name}. Placed machines are sold from the factory floor.`);
+    return { s, kind: kindIn, def, n, pay: machineSalePrice(kindIn) * n };
+  }
+  /** Sell unplaced machine(s) from the kit: same price rule and the same one-transaction kit+chips commit as sell(). */
+  async sellKit(account: string | null, b: Record<string, unknown>, now: number) {
+    const { s, kind, def, n, pay } = this.kitSellQuote(account, b.kind, b.n, now);
+    if (b.quote !== pay) throw new MineError(`The price is ${pay} chips. Check it and confirm again.`);
+    const a = account!; const k = playerKey(a);
+    s.kit[kind] = (s.kit[kind] ?? 0) - n;
+    const restore = () => { s.kit[kind] = (s.kit[kind] ?? 0) + n; };
+    const key = `factory:sellkit:${k}:${kind}:${now}:${++this.saleSeq}`;
+    await this.commitSale(a, s, pay, key, `Machinist: sold ${n}x unplaced ${def.name} back (${pay} chips)`, restore, 'Your machine is still in your kit and nothing was paid.');
+    return { kind, n, paid: pay, left: s.kit[kind] ?? 0 };
+  }
+  /**
+   * The state change (already applied in memory by the caller, undone by `restore`) and the chip credit commit in ONE
+   * Mines store transaction. Definite failure: restored + credit reverted. Unknown outcome: the account stays locked
+   * until the ledger key answers, then kept or restored. Never both, never neither.
+   */
+  private async commitSale(a: string, s: FState, pay: number, key: string, memo: string, restore: () => void, keptMsg: string) {
+    const k = playerKey(a); const mines = getMines();
     let w: ReturnType<ReturnType<typeof getBank>['transferAtomic']>;
-    try { w = getBank().transferAtomic([{ name: a, amount: pay, key, game: 'mines', memo: `Machinist: sold a ${def.name} back (${pay} chips)` }]); }
+    try { w = getBank().transferAtomic([{ name: a, amount: pay, key, game: 'mines', memo }]); }
     catch (err) { restore(); throw new MineError((err as Error).message || 'The bank is busy. Try again.'); }
     this.selling.add(k); this.dirty.delete(k);
     const store = mines.store as (MinesStoreLike | null);
@@ -205,12 +235,11 @@ export class FactoryWorld {
       committed: store?.txCommitted ? () => store.txCommitted!(key) : undefined,
     });
     if (!ok) { restore(); w.revert(); this.selling.delete(k); throw new MineError('That sale did not go through. Nothing changed.'); }
-    if (rows) { w.bind(Promise.resolve()); unlock(); return { sold: e.id, kind: e.k, paid: pay }; } // no Mines store (dev/tests): memory only
+    if (rows) { w.bind(Promise.resolve()); unlock(); return; } // no Mines store (dev/tests): memory only
     await done;
-    if (unknown) { if (late) return { sold: e.id, kind: e.k, paid: pay }; throw new MineError('That sale did not go through. Your machine is still there and nothing was paid.'); }
+    if (unknown) { if (late) return; throw new MineError(`That sale did not go through. ${keptMsg}`); }
     unlock();
-    if (failed) throw new MineError('That sale did not go through. Your machine is still there and nothing was paid.');
-    return { sold: e.id, kind: e.k, paid: pay };
+    if (failed) throw new MineError(`That sale did not go through. ${keptMsg}`);
   }
   remove(account: string | null, ids: unknown, now: number) {
     const { s } = this.need(account, now);
@@ -333,6 +362,8 @@ export function registerFactory(_io: Server, socket: Socket): void {
   socket.on('fac_buy', op((b) => world.buy(account(), b.kind, b.n, Date.now())));
   socket.on('fac_place', op((b) => world.place(account(), b.items, Date.now())));
   socket.on('fac_sell_quote', op((b) => { const q = world.sellQuote(account(), b.id, Date.now()); return { id: q.e.id, kind: q.e.k, name: q.def.name, pay: q.pay }; }));
+  socket.on('fac_sellkit_quote', op((b) => { const q = world.kitSellQuote(account(), b.kind, b.n, Date.now()); return { kind: q.kind, n: q.n, name: q.def.name, pay: q.pay }; }));
+  socket.on('fac_sellkit', aop((a, b) => world.sellKit(a, b, Date.now())));
   socket.on('fac_sell', aop((a, b) => world.sell(a, b, Date.now())));
   socket.on('fac_remove', op((b) => world.remove(account(), b.ids, Date.now())));
   socket.on('fac_edit', op((b) => world.edit(account(), b, Date.now())));

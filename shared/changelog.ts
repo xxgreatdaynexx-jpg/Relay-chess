@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-07T19:44:41-06:00', title: 'Sell unplaced machines from the Machinist', bullets: [
+    'Machines you bought but have not placed can now be sold straight from the 🛒 Machinist menu: press 💰 Sell 1 on that machine\'s row and confirm in the full-page dialog. You do not need to place it first.',
+    'Same price as selling a placed machine: half the base Machinist price (for example 200 chips for a Press). Only unplaced machines you hold count; placed machines, belts, chests and storage are untouched.',
+  ] },
   { commit: 'dc2127e', at: '2026-11-07T19:44:44-06:00', title: 'Smoother winter snow across the expanded maps', bullets: [
     'Falling snow now follows your view everywhere on the map, so it no longer stops at a visible edge over the countryside, Big Farms, airport or speedway. The amount of snow on screen is the same as before.',
     'The slushy snow on Chud City roads now also covers the countryside, Big Farms, airport and speedway roads.',

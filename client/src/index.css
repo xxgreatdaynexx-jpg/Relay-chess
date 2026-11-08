@@ -2562,3 +2562,4 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .farm-overview section button { width: 100%; min-height: 44px; text-align: left; white-space: normal; overflow-wrap: anywhere; padding: 8px; border: 1px solid #c9a24a66; border-radius: 8px; }
 .farm-overview section p { margin: 6px 0; }
 .farm-overview section button:disabled { opacity: .65; }
+.fac-shoprow { flex-wrap: wrap; } /* Machinist: Buy + Sell-unplaced buttons wrap in the narrow side menu */

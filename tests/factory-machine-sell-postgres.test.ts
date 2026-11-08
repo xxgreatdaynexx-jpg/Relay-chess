@@ -168,4 +168,54 @@ describe.skipIf(!url)('factory machine sale (real Postgres)', () => {
     expect(await sales(A)).toHaveLength(1);
   });
 
+  describe('unplaced machines from the Machinist menu (kit)', () => {
+    const kitSales = async (a: string) => (await pool.query("SELECT tx_key, amount FROM wallet_transactions WHERE player_key = $1 AND tx_key LIKE 'factory:sellkit:%'", [a.toLowerCase()])).rows;
+    it('sells one unplaced machine: kit -1, credited 100/200 once, placed machines/ids/stock untouched, durable', async () => {
+      const { A } = await setup(); f.buy(A, 'press', 2, T0); await f.flush(); const before = snap(A); const c0 = bal(A);
+      expect(before.kit.press).toBe(2);
+      expect(f.kitSellQuote(A, 'press', 1, T0).pay).toBe(200);
+      expect(await f.sellKit(A, { kind: 'press', n: 1, quote: 200 }, T0)).toEqual({ kind: 'press', n: 1, paid: 200, left: 1 });
+      const after = snap(A); expect(after.ents).toEqual(before.ents); expect(after.pack).toEqual(before.pack);
+      expect(after.kit).toEqual({ ...before.kit, press: 1 });
+      expect(bal(A)).toBe(c0 + 200); expect(await dbChips(A)).toBe(c0 + 200); expect(await kitSales(A)).toHaveLength(1);
+      await boot(); expect(f.get(A, T0)!.kit.press).toBe(1); expect(bal(A)).toBe(c0 + 200);
+    });
+    it('refuses: no auth, none unplaced (placed ones do not count), more than held, non-machine, unknown, wrong quote', async () => {
+      const { A } = await setup(); const before = snap(A); const c0 = bal(A);
+      expect(before.kit.smelter ?? 0).toBe(0); // the starter smelter is placed
+      await expect(f.sellKit(null, { kind: 'press', n: 1, quote: 200 }, T0)).rejects.toThrow(/Sign in/);
+      await expect(f.sellKit(A, { kind: 'smelter', n: 1, quote: 100 }, T0)).rejects.toThrow(/no unplaced Smelter/);
+      f.buy(A, 'press', 1, T0); const mid = snap(A); const c1 = bal(A);
+      await expect(f.sellKit(A, { kind: 'press', n: 2, quote: 400 }, T0)).rejects.toThrow(/only have 1/);
+      await expect(f.sellKit(A, { kind: 'belt', n: 1, quote: 1 }, T0)).rejects.toThrow(/not a machine/);
+      await expect(f.sellKit(A, { kind: 'nope', n: 1, quote: 1 }, T0)).rejects.toThrow(/Unknown part/);
+      await expect(f.sellKit(A, { kind: 'press', n: 0, quote: 0 }, T0)).rejects.toThrow(/how many/);
+      await expect(f.sellKit(A, { kind: 'press', n: 1, quote: 999 }, T0)).rejects.toThrow(/price is 200/);
+      expect(snap(A)).toEqual(mid); expect(bal(A)).toBe(c1); expect(await kitSales(A)).toHaveLength(0); expect(c1).toBeLessThan(c0);
+    });
+    it('double click / concurrent / retry with one unplaced: paid once; place/buy refused while it commits', async () => {
+      const { A } = await setup(); f.buy(A, 'press', 1, T0); const c0 = bal(A); const b = { kind: 'press', n: 1, quote: 200 };
+      const p = f.sellKit(A, b, T0);
+      expect(() => f.place(A, [{ k: 'press', x: 2, y: 4, d: 0 }], T0)).toThrow(/Finishing your machine sale/);
+      expect(() => f.buy(A, 'press', 1, T0)).toThrow(/Finishing your machine sale/);
+      const r = await Promise.allSettled([p, f.sellKit(A, b, T0), f.sellKit(A, b, T0 + 1)]);
+      expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
+      await expect(f.sellKit(A, b, T0 + 5)).rejects.toThrow(/no unplaced Press/);
+      expect(bal(A)).toBe(c0 + 200); expect(await kitSales(A)).toHaveLength(1); expect(f.get(A, T0)!.kit.press).toBe(0);
+    });
+    it('a failed commit puts the machine back in the kit and reverts the credit', async () => {
+      const { A } = await setup(); f.buy(A, 'press', 1, T0); await f.flush(); const before = snap(A); const c0 = bal(A);
+      const st = w.store as PgMineStore; vi.spyOn(st, 'save').mockRejectedValue(new Error('boom')); vi.spyOn(st, 'txCommitted').mockResolvedValue(false);
+      await expect(f.sellKit(A, { kind: 'press', n: 1, quote: 200 }, T0)).rejects.toThrow(/still in your kit/);
+      vi.restoreAllMocks();
+      expect(snap(A)).toEqual(before); expect(bal(A)).toBe(c0); expect(await kitSales(A)).toHaveLength(0);
+    });
+    it('a sold free starter machine is not regenerated (restart keeps the kit at 0)', async () => {
+      const A = `qa-starter-${++n}`; getBank().transfer(A, 1000 - bal(A), { game: 'test', key: `seed:${A}` }); f.expand(A, T0);
+      expect(f.get(A, T0)!.kit.smelter).toBe(1);
+      await f.sellKit(A, { kind: 'smelter', n: 1, quote: 100 }, T0);
+      await f.flush(); await boot(); expect(f.get(A, T0 + 1000)!.kit.smelter ?? 0).toBe(0);
+      await expect(f.sellKit(A, { kind: 'smelter', n: 1, quote: 100 }, T0)).rejects.toThrow(/no unplaced/);
+    });
+  });
 });
