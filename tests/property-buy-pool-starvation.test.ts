@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
 import { setEconomyForTest } from '../server/economy';
-import { resetPurchaseTaxCache, purchaseTaxMoves, PurchaseTaxUnprepared } from '../server/purchase-tax';
+import { resetPurchaseTaxCache, preparePurchaseTax, purchaseTaxMoves, PurchaseTaxUnprepared } from '../server/purchase-tax';
 import { setJail, type Jail } from '../server/jail';
 import { properties } from '../shared/realEstate';
 
@@ -86,6 +86,29 @@ describe.skipIf(!url)('taxed property buy with the production pool size (max 2)'
     const p = farm(); const r = await w.re.buy('Rich', p.id); const after = w.bank.account('Rich').chips;
     await expect(w.re.buy('Rich', p.id)).rejects.toThrow(); expect(w.bank.account('Rich').chips).toBe(after);
     expect(await w.n("SELECT count(*) n FROM wallet_transactions WHERE game='wealth_tax_buy'")).toBe(1); expect(r.wealthTax).toBeGreaterThan(0);
+  }, 30_000);
+  it('a buyer becoming taxable after preparation refuses through the public buy path without a charge or nested scan', async () => {
+    const w = await world(); await w.setupPool.query("UPDATE properties SET price=100000 WHERE id='test:rich'");
+    let reads = 0; setEconomyForTest({ playerAssets: async () => { reads++; return { total: 0 }; } } as never); resetPurchaseTaxCache();
+    const refresh = w.bank.refresh.bind(w.bank);
+    // Simulate another committed property-value change between preparation and the locked value recheck.
+    w.bank.refresh = async (name: string) => { await w.setupPool.query("UPDATE properties SET price=158884 WHERE id='test:rich'"); return refresh(name); };
+    const before = w.bank.account('Rich').chips;
+    await expect(w.re.buy('Rich', farm().id)).rejects.toThrow(/property total just changed.*Nothing was charged/);
+    expect(w.bank.account('Rich').chips).toBe(before); expect(reads).toBe(0); expect(w.checkedOut()).toBe(0);
+    expect(await w.n("SELECT count(*) n FROM properties WHERE owner_key='rich'")).toBe(1);
+    expect(await w.n("SELECT count(*) n FROM wallet_transactions WHERE game IN ('property_buy','wealth_tax_buy','wealth_tax_share')")).toBe(0);
+  }, 30_000);
+  it('the prepared roster is frozen but recipient jail eligibility is still checked live without rescanning', async () => {
+    const w = await world(); let reads = 0; setEconomyForTest({ playerAssets: async () => { reads++; return { total: 0 }; } } as never); resetPurchaseTaxCache();
+    const prep = await preparePurchaseTax(w.setupPool as never, 'Rich');
+    expect(Object.isFrozen(prep.roster)).toBe(true); expect(prep.roster!.every(Object.isFrozen)).toBe(true);
+    const before = await purchaseTaxMoves(w.setupPool as never, 'Rich', 10000, 'before', 'x', Date.now(), prep); const scanned = reads;
+    setJail({ isJailed: (name: string) => name === 'P0', status: () => null } as unknown as Jail);
+    try {
+      const after = await purchaseTaxMoves(w.setupPool as never, 'Rich', 10000, 'after', 'x', Date.now(), prep);
+      expect(after.recipients).toBe(before.recipients - 1); expect(after.moves.some(m => m.name === 'P0')).toBe(false); expect(reads).toBe(scanned);
+    } finally { setJail({ isJailed: () => false, status: () => null } as unknown as Jail); }
   }, 30_000);
   it('prepared mode never falls back to a live roster scan: taxable without a prepared roster throws (mapped to a no-charge refusal)', async () => {
     const w = await world(); let reads = 0; setEconomyForTest({ playerAssets: async () => { reads++; return { total: 0 }; } } as never); resetPurchaseTaxCache();
