@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '7e5e0d9', at: '2026-11-07T18:47:01-06:00', title: 'Barn owners can see all their farms in one menu', bullets: [
+    'The barn included with a Big Farm now unlocks All my farms, including for existing owners. Open it from your barn in Chud City, the Big Farm deed, the map menu, or any of your farm screens. A newly purchased Big Farm unlocks the menu without reloading.',
+    'Only your farms appear, grouped into Chud City (including countryside) and Chud Resort. Open a farm on your current map; travel first to open one on another map. Each map keeps its own inventory: this menu does not move crops or combine stock.',
+    'Normal individual farm access, crops, equipment, planting and harvesting are unchanged. You do not need a barn to keep using your existing farms.',
+  ] },
   { commit: 'ee0cb41', at: '2026-11-07T18:45:38-06:00', title: 'Contract Board orders sized for our player base', bullets: [
     'Daily Contract Board orders are now sized for a small group: 250 Steel (was 50,000), 100 Concrete (was 300,000), 250 Steel Plate (was 30,000), 150 Glass (was 500,000), 120 Steel Beams (was 12,000), 250 Bricks (was 600,000), 500 Steel Cable (was 40,000). Each order is about a day of three hired miners\' ore through the factory.',
     'One player can now deliver up to half of an order (was a quarter), so two players can fill one. Pay per unit and the 20% completion bonus are unchanged.',
