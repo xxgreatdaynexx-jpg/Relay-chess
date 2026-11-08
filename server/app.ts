@@ -5,6 +5,7 @@ import { getAccounts } from './accounts.js';
 import { validateSettings } from '../shared/settings.js';
 import { getChessStats } from './chess-stats.js';
 import { getArenaLedger } from './arena-store.js';
+import { mountClientErrors } from './client-error.js';
 import express from 'express';
 import { buildInfo } from './build.js';
 import { requestsRouter } from './requests.js';
@@ -75,6 +76,7 @@ export async function createApp(): Promise<AppContext> {
     }
     return next();
   });
+  mountClientErrors(app); // t2051: classified client crash reports
   app.get('/api/hub-sleep', (_req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json({ ok: true, ...hubSleepView() });

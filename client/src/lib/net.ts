@@ -51,16 +51,19 @@ socket.on('connect', () => resumeStoredSession());
 
 type AuthAck = { ok: boolean; error?: string; name?: string; session?: string; claimed?: boolean; reserved?: boolean };
 
-function ensureConnected(): Promise<void> {
-  if (socket.connected) return Promise.resolve();
+/** Resolves true once connected, false after `ms` (t2051: sign-in used to wait forever with the button stuck on a bad mobile connection). */
+export function ensureConnected(ms = 10_000): Promise<boolean> {
+  if (socket.connected) return Promise.resolve(true);
   return new Promise((resolve) => {
-    socket.once('connect', () => resolve());
+    const ok = () => { clearTimeout(t); resolve(true); };
+    const t = setTimeout(() => { socket.off('connect', ok); resolve(false); }, ms);
+    socket.once('connect', ok);
     socket.connect();
   });
 }
 
 export async function authCall(event: 'auth_status' | 'auth_claim' | 'auth_login', data: Record<string, unknown>): Promise<AuthAck> {
-  await ensureConnected();
+  if (!(await ensureConnected())) return { ok: false, error: 'Can’t reach the server. Check your connection and try again.' };
   return new Promise((resolve) => {
     socket.timeout(10000).emit(event, data, (err: Error | null, res?: AuthAck) => {
       const out = err || !res ? { ok: false, error: 'No response from the server.' } : res;

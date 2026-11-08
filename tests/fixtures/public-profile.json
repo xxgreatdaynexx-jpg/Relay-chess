@@ -1,0 +1,9 @@
+{"profile":{"name":"Example Player","memberSince":"2026-01-01T00:00:00.000Z","playMs":3600000,"online":true,"where":"Lobby",
+"chips":1000,"assets":2000,"netWorth":3000,"dividends":10,"royalties":[],
+"categories":[{"key":"property","label":"Real estate","value":1500},{"key":"goods","label":"Goods","value":500}],
+"properties":[{"id":"f:1","label":"Example plot (2×2)","type":"farmland","value":1500,"x":1,"z":2,"map":"city"},{"id":"r:1","label":"Example resort lot","type":"house","value":0,"x":null,"z":null,"map":"resort"}],
+"farms":[{"plot":"f:1","label":"Example plot (2×2)","x":1,"z":2,"map":"city","crops":[{"crop":"wheat","label":"Wheat","emoji":"🌾","n":2,"ready":1}]}],
+"cars":[],"trailer":null,"stocks":[{"ticker":"EXA","shares":1,"price":1.5,"value":2}],"funds":[],"options":[],"shorts":[],
+"skins":{"total":1,"cases":0,"keys":0,"highlights":[{"name":"Example Skin","weapon":"Knife","rarity":"common","color":"#888888","equipped":false}]},
+"skills":null,"houseRoom":null,"biggestFish":null,
+"history":{"points":[{"t":1000,"net":100},{"t":2000,"net":200}],"chips":[{"t":1000,"chips":50}]}}}

@@ -29,7 +29,30 @@ export interface PublicProfile {
   biggestFish: { label: string; emoji: string; grams: number; value: number; at: number } | null;
 }
 
-const n = (v: number) => Math.round(v).toLocaleString();
+const n = (v: number) => (Number.isFinite(v) ? Math.round(v) : 0).toLocaleString();
+const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? v.filter((x) => x && typeof x === 'object') as T[] : []);
+const num = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+const obj = (v: unknown) => (v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : null);
+/** t2051: tolerate partial/older server payloads (fields added across deploys, cached responses) instead of crashing the view. */
+export function normalizeProfile(raw: unknown, fallbackName: string): PublicProfile | null {
+  const p = obj(raw); if (!p) return null;
+  const sk = obj(p.skins); const hist = obj(p.history); const skills = obj(p.skills);
+  return {
+    ...(p as unknown as PublicProfile),
+    name: typeof p.name === 'string' && p.name ? p.name : fallbackName,
+    memberSince: typeof p.memberSince === 'string' ? p.memberSince : null, online: p.online === true, where: typeof p.where === 'string' ? p.where : null,
+    chips: typeof p.chips === 'number' && Number.isFinite(p.chips) ? p.chips : null, assets: num(p.assets), netWorth: num(p.netWorth),
+    history: hist && Array.isArray(hist.points) ? { points: arr(hist.points), chips: arr(hist.chips) } : undefined,
+    royalties: arr(p.royalties), categories: arr(p.categories), properties: arr(p.properties),
+    farms: arr<PublicProfile['farms'][number]>(p.farms).map((f) => ({ ...f, crops: arr(f.crops) })),
+    cars: arr(p.cars), trailer: obj(p.trailer) ? p.trailer as PublicProfile['trailer'] : null,
+    stocks: arr(p.stocks), funds: arr(p.funds), options: arr(p.options), shorts: arr(p.shorts),
+    skins: { total: num(sk?.total), cases: num(sk?.cases), keys: num(sk?.keys), highlights: arr(sk?.highlights) },
+    skills: skills && typeof skills.total === 'number' && Array.isArray(skills.skills) ? skills as unknown as SkillProfile : null,
+    houseRoom: obj(p.houseRoom) ? p.houseRoom as PublicProfile['houseRoom'] : null,
+    biggestFish: obj(p.biggestFish) ? p.biggestFish as PublicProfile['biggestFish'] : null,
+  };
+}
 const RARITY: Record<string, string> = { ultra: '#e8c26a', rare: '#7fb2ff', common: '#9aa0b4' };
 
 function Section({ title, children, testid }: { title: string; children: React.ReactNode; testid?: string }) {
@@ -90,8 +113,8 @@ export function PlayerProfileView({ p, close }: { p: PublicProfile; close: () =>
     </Section>
     <Section title="📈 Market holdings" testid="profile-holdings">
       {holdings ? <>
-        {p.stocks.map((s) => <Line key={s.ticker} left={<><b>{s.ticker}</b> <span className="opacity-60">{n(s.shares)} sh @ {s.price.toFixed(2)}</span></>} right={n(s.value)} />)}
-        {p.funds.map((f) => <Line key={f.fund} left={<>{f.name} <span className="opacity-60">{f.units.toFixed(2)} units</span></>} right={n(f.value)} />)}
+        {p.stocks.map((s) => <Line key={s.ticker} left={<><b>{s.ticker}</b> <span className="opacity-60">{n(s.shares)} sh @ {num(s.price).toFixed(2)}</span></>} right={n(s.value)} />)}
+        {p.funds.map((f) => <Line key={f.fund} left={<>{f.name} <span className="opacity-60">{num(f.units).toFixed(2)} units</span></>} right={n(f.value)} />)}
         {p.options.map((o, i) => <Line key={`o${i}`} left={<>{o.ticker} {o.kind} {o.strike} <span className="opacity-60">×{o.qty}</span></>} right={n(o.value)} />)}
         {p.shorts.map((s, i) => <Line key={`s${i}`} left={<>Short {s.ticker} <span className="opacity-60">{n(s.shares)} sh</span></>} right={n(s.value)} />)}
       </> : <None t="No stocks, funds or options." />}
@@ -100,7 +123,7 @@ export function PlayerProfileView({ p, close }: { p: PublicProfile; close: () =>
       {p.skins.highlights.length ? <div className="flex flex-wrap gap-1">{p.skins.highlights.map((s, i) => <span key={i} className="rounded-lg border px-2 py-0.5 text-xs" style={{ borderColor: RARITY[s.rarity] ?? '#666', background: `${s.color}22` }} title={`${s.rarity}${s.equipped ? ' · equipped' : ''}`}>{s.name} <span className="opacity-60">{s.weapon}</span></span>)}</div> : <None t="No skins yet." />}
     </Section>
     <Section title="🎣 Biggest fish" testid="profile-fish">
-      {p.biggestFish ? <Line left={`${p.biggestFish.emoji} ${p.biggestFish.label}`} right={`${(p.biggestFish.grams / 1000).toFixed(2)} kg`} /> : <None t="No catches yet." />}
+      {p.biggestFish ? <Line left={`${p.biggestFish.emoji} ${p.biggestFish.label}`} right={`${(num(p.biggestFish.grams) / 1000).toFixed(2)} kg`} /> : <None t="No catches yet." />}
     </Section>
     {p.skills && <Section title={`🧭 Skills · total level ${p.skills.total} · ${p.skills.title}`} testid="profile-skills-grid"><SkillGrid profile={p.skills} compact /></Section>}
   </>;
@@ -123,7 +146,7 @@ export default function PlayerProfile() {
     let dead = false; setP(null); setErr(null);
     let session: string | undefined; try { session = (JSON.parse(localStorage.getItem('relay-auth-v1') ?? 'null') as { token?: string } | null)?.token; } catch { /* none */ }
     fetch(`/api/player/${encodeURIComponent(name)}`, { headers: session ? { 'x-relay-session': session } : {} })
-      .then(async (r) => { const j = await r.json().catch(() => ({})) as { profile?: PublicProfile; error?: string }; if (dead) return; if (r.ok && j.profile) setP(j.profile); else setErr(j.error ?? `Couldn't load ${name}.`); })
+      .then(async (r) => { const j = await r.json().catch(() => ({})) as { profile?: unknown; error?: unknown }; if (dead) return; const prof = r.ok ? normalizeProfile(j.profile, name) : null; if (prof) setP(prof); else setErr(typeof j.error === 'string' ? j.error : `Couldn't load ${name}.`); })
       .catch(() => { if (!dead) setErr('Network error — try again.'); });
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setName(null); } };
     window.addEventListener('keydown', key, true);

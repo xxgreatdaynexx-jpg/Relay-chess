@@ -28,6 +28,7 @@ import { MillionairePrelaunchOverlay } from '@/components/MillionairePrelaunchOv
 import { ChatDrawer } from '@/components/ChatDrawer';
 import { ConquestPanel } from '@/components/ConquestPanel';
 import { AccountButton, AccountPanel } from '@/components/AccountPanel';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { socket } from '@/lib/net';
 import { WorldMap } from '@/components/WorldMap';
 import { WalletButton } from '@/components/WalletButton';
@@ -234,9 +235,9 @@ export function App() {
         <ResourceInventory />
         <ConquestPanel />
       </div>
-      <AccountPanel />
+      <ErrorBoundary where="account-panel" kind="panel"><AccountPanel /></ErrorBoundary>
       <ChatDrawer />
-      <PlayerProfile />
+      <ErrorBoundary where="player-profile" kind="panel"><PlayerProfile /></ErrorBoundary>
       <TrailerPopup />
       <FactoryViewer />
       <TopTab id="wallet"><WalletButton /></TopTab>

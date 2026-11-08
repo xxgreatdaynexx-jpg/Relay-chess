@@ -46,8 +46,9 @@ export function AccountBox({ compact = false }: { compact?: boolean }) {
       if (pw !== pw2) return setError('The two passwords don’t match.');
     } else if (!pw) return setError('Enter the password for this name.');
     setBusy(true);
-    const r = await authCall(claiming ? 'auth_claim' : 'auth_login', { name: name.trim(), password: pw });
-    setBusy(false);
+    let r: Awaited<ReturnType<typeof authCall>>;
+    try { r = await authCall(claiming ? 'auth_claim' : 'auth_login', { name: name.trim(), password: pw }); }
+    catch { r = { ok: false, error: 'Sign-in failed. Try again.' }; } finally { setBusy(false); }
     if (!r.ok) return setError(r.error ?? 'Sign-in failed.');
     setPw('');
     setPw2('');
