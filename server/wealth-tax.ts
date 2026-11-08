@@ -70,11 +70,12 @@ export async function runWealthTax(db: pg.Pool, now = Date.now()): Promise<Summa
   return sum;
 }
 
-let cache: { at: number; v: { median: number; threshold: number; rows: WealthRow[]; plan: WealthPlan } } | null = null;
+let cache: { at: number; rate: number; v: { rate: number; median: number; threshold: number; rows: WealthRow[]; plan: WealthPlan } } | null = null;
 async function estimate(db: pg.Pool) {
-  if (cache && Date.now() - cache.at < 5 * 60_000) return cache.v;
-  const rows = await activeRows(db); const plan = planWealthTax(rows, () => false, cityDailyWealthTaxRate());
-  cache = { at: Date.now(), v: { median: plan.median, threshold: plan.threshold, rows, plan } };
+  const rate = cityDailyWealthTaxRate();
+  if (cache && cache.rate === rate && Date.now() - cache.at < 5 * 60_000) return cache.v;
+  const rows = await activeRows(db); const plan = planWealthTax(rows, () => false, rate);
+  cache = { at: Date.now(), rate, v: { rate, median: plan.median, threshold: plan.threshold, rows, plan } };
   return cache.v;
 }
 
@@ -101,7 +102,7 @@ export function wealthTaxRouter(): express.Router {
       const raw = (await db.query('SELECT data FROM wealth_tax_days ORDER BY day DESC LIMIT 1')).rows[0]?.data as Summary | undefined;
       const last = raw ? { day: raw.day, threshold: raw.threshold, payers: raw.payers, recipients: raw.recipients, total: raw.total, share: raw.share } : null; // no names in public output
       res.set('Cache-Control', 'private, max-age=60');
-      res.json({ ok: true, rate: cityDailyWealthTaxRate(), mult: WEALTH_TAX_MULT, activeDays: WEALTH_TAX_ACTIVE_DAYS, active: e.rows.length, median: Math.round(e.median), threshold: e.threshold,
+      res.json({ ok: true, rate: e.rate, mult: WEALTH_TAX_MULT, activeDays: WEALTH_TAX_ACTIVE_DAYS, active: e.rows.length, median: Math.round(e.median), threshold: e.threshold,
         payers: e.plan.taxes.length, total: e.plan.total, recipients: e.plan.shares.length,
         me: me ? { netWorth: me.netWorth, tax: myTax, share: myShare } : null, last });
     } catch (err) { console.error('[wealth-tax] estimate failed:', (err as Error).message); res.status(500).json({ ok: false, error: 'Could not compute the wealth tax.' }); }
