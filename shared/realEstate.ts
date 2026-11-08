@@ -8,7 +8,8 @@ import { farmBarns, barnPrice } from './farmBarns.js';
  *
  * Price table (chips, before the size factor):
  *   Empty lot 8,000 · Park 20,000 · Plaza 25,000
- *   Detached home 15,000 · Row houses 30,000 · Apartment block 60,000 · Residential tower 150,000
+ *   Housing with 1/2/3 employee slots: 10,000 / 20,000 / 30,000 base, independent of footprint.
+ *   Four-slot housing keeps its existing price. Legacy size-based references below preserve existing slot counts.
  *   Landmarks: Casino / Bank 2,000,000 · Stock Exchange 1,500,000 · Arena / Chess Club / Market 1,000,000
  *              Factory / Mine 750,000 · Warehouse / Leaderboard / Chat 500,000
  * Size factor (buildings, lots, parks, plazas): footprint area vs the type's mid-size footprint, and floors vs the mid
@@ -23,12 +24,13 @@ import { HOUSING_TYPES } from './housing.js';
 import { farmPlots, farmPrice, plotId } from './farm.js';
 import { propertyPaid } from './netWorth.js';
 import { allFieldPlots, fieldPlotId, fieldPlotPrice, fieldPlotLabel } from './fieldFarms.js';
-import { resortLots, resortPlots, resortPlotId, resortPlotPrice } from './resort.js';
+import { RESORT_TYPES, resortLots, resortPlots, resortPlotId, resortPlotPrice } from './resort.js';
 import { countryHomes, countryBusinesses, businessType, COMMERCIAL_PRICE, COMMERCIAL_LABEL } from './outskirts.js';
 
 export const TAX_RATE = 0.005;
 export const SELL_BACK = 0.7;
 export const GRACE_DAYS = 3;
+/** Legacy size-based reference values: used to preserve canonical housing employee capacities before repricing. */
 export const BASE_PRICE: Record<string, number> = { lot: 8_000, park: 20_000, plaza: 25_000, house: 15_000, rowhouse: 30_000, apartment: 60_000, tower: 150_000 };
 export const LANDMARK_PRICE: Record<string, number> = {
   casino: 2_000_000, bank: 2_000_000, stocks: 1_500_000, arena: 1_000_000, chess: 1_000_000, market: 1_000_000,
@@ -47,7 +49,7 @@ const PATCH_LABEL: Record<string, string> = { lot: 'Empty lot', park: 'Park', pl
 const PATCH_REF: Record<string, number> = { lot: 13 * 13 * 0.95, park: 13 * 13 * 0.95, plaza: 81 * 0.95 };
 
 export type PropertyKind = 'building' | 'patch' | 'landmark' | 'farm';
-export interface Property extends OBB { id: string; kind: PropertyKind; type: string; label: string; price: number; h?: number; map?: 'resort'; /** under a civic plot: never for sale again, drawn only while someone still owns it */ retired?: boolean }
+export interface Property extends OBB { id: string; kind: PropertyKind; type: string; label: string; price: number; h?: number; map?: 'resort'; /** under a civic plot: never for sale again, drawn only while someone still owns it */ retired?: boolean; /** Housing capacity captured from its original canonical price band, never from its new price. */ housingEmployees?: number }
 
 const clamp = (x: number) => Math.min(1.25, Math.max(0.8, x));
 const round500 = (n: number) => Math.max(500, Math.round(n / 500) * 500);
@@ -90,6 +92,11 @@ export const CIVIC_IDS = new Set(['cityhall']);
 /** City lot under a civic building plot (shared/city.ts CIVIC_PLOTS). Retired, not deleted: it keeps its id and catalog
  *  entry so an owner (even one who bought it during a rollout) keeps it, its value, tax and sell-back; it just can't be bought. */
 export const civicRetired = (b: OBB) => BUILDING_IDS.some((id) => obbOverlap(civicPad(id), b, 1.5));
+/** Original Employment Office price bands; non-housing property bonuses keep this exact rule. */
+const employeesForPrice = (price: number) => price < 25_000 ? 1 : price < 75_000 ? 2 : price < 250_000 ? 3 : 4;
+export const HOUSING_BASE_PER_EMPLOYEE = 10_000;
+const housingTypes = new Set([...HOUSING_TYPES.map((t) => t.id), ...Object.keys(RESORT_TYPES)]);
+export const isEmployeeHousing = (p: Pick<Property, 'kind' | 'type'>) => p.kind === 'building' && housingTypes.has(p.type);
 let cache: Property[] | null = null; let byId: Map<string, Property> | null = null;
 /** Every property on the map (deterministic: same layout -> same ids and prices). */
 export function properties(): Property[] {
@@ -114,6 +121,13 @@ export function properties(): Property[] {
   // Chud Resort (shared/resort.ts): its own map, only buyable while you are there (server-enforced).
   for (const l of resortLots()) out.push({ x: l.x, z: l.z, w: l.w, d: l.d, rot: l.rot, h: l.h, id: l.id, kind: 'building', type: l.type, label: l.label, price: l.price, map: 'resort' });
   for (const f of resortPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: resortPlotId(f.n), kind: 'farm', type: 'plantation', label: `${f.estate ? 'Estate plantation' : 'Plantation plot'} #${f.n} (${f.cols}×${f.rows})`, price: resortPlotPrice(f), map: 'resort' });
+  // Reprice only housing. Capture the actual old employment bonus BEFORE lowering its base price: otherwise
+  // a two-slot home priced at 20k would silently lose a slot, and a three-slot home at 30k would become two-slot.
+  // No owned rows, paid prices, IDs, geometry or equipment are changed. Slots outside 1–3 keep their old price.
+  for (const p of out) if (isEmployeeHousing(p)) {
+    p.housingEmployees = employeesForPrice(p.price);
+    if (p.housingEmployees >= 1 && p.housingEmployees <= 3) p.price = p.housingEmployees * HOUSING_BASE_PER_EMPLOYEE;
+  }
   cache = out; byId = new Map(out.map((p) => [p.id, p])); return out;
 }
 export const propertyById = (id: unknown): Property | undefined => { properties(); return typeof id === 'string' ? byId!.get(id) : undefined; };
@@ -123,7 +137,7 @@ export const patchId = (kind: string, b: OBB) => `p:${kind}:${pos(b)}`;
 
 export interface OwnedProperty { id: string; owner: string; price: number; arrears: number; boughtAt: number; /** what the city was paid, when a buyout raised price above it (sell-back basis) */ basis?: number }
 
-/** Worker cap from property (pt1344u): each owned building or landmark adds Employment Office hire slots, by its base
+/** Worker cap from property (pt1344u): housing keeps its canonical pre-reprice slots; other buildings/landmarks use base
  * (un-indexed) list price. Empty lots, parks, plazas, farmland and plantation plots add none (they are land, not housing).
  *   under 25,000 (detached home)                       +1
  *   25,000 – 74,999 (row houses, apartment, gas station, beach house) +2
@@ -133,6 +147,6 @@ export interface OwnedProperty { id: string; owner: string; price: number; arrea
 export const WORKER_BONUS_MAX = 7;
 export const workerBonusOf = (id: unknown): number => {
   const p = propertyById(id); if (!p || p.type === 'barn' || (p.kind !== 'building' && p.kind !== 'landmark')) return 0;
-  return p.price < 25_000 ? 1 : p.price < 75_000 ? 2 : p.price < 250_000 ? 3 : 4;
+  return p.housingEmployees ?? employeesForPrice(p.price);
 };
 export const workerBonusTotal = (ids: Iterable<unknown>): number => { let n = 0; for (const id of ids) n += workerBonusOf(id); return Math.min(WORKER_BONUS_MAX, n); };

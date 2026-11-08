@@ -43,10 +43,10 @@ describe('real estate catalog', () => {
     for (const h of houses) expect(propertyById(buildingId(h.type, h))).toBeTruthy();
     for (const p of patches) expect(propertyById(patchId(p.kind, p))).toBeTruthy();
   });
-  it('prices are expensive and ordered: lot < home < row houses < apartments < towers < landmarks', () => {
+  it('housing prices follow employee capacity: apartments and row houses may share a base', () => {
     const med = (t: string) => { const v = properties().filter((p) => p.type === t).map((p) => p.price).sort((a, b) => a - b); return v[v.length >> 1]!; };
     expect(med('house')).toBeGreaterThanOrEqual(10_000);
-    expect(med('house')).toBeLessThan(med('rowhouse')); expect(med('rowhouse')).toBeLessThan(med('apartment')); expect(med('apartment')).toBeLessThan(med('tower'));
+    expect(med('house')).toBeLessThan(med('rowhouse')); expect(med('rowhouse')).toBeLessThanOrEqual(med('apartment')); expect(med('apartment')).toBeLessThan(med('tower'));
     expect(Math.min(...properties().filter((p) => p.kind === 'landmark').map((p) => p.price))).toBeGreaterThanOrEqual(500_000);
     expect(TAX_RATE).toBeGreaterThanOrEqual(0.005); expect(TAX_RATE).toBeLessThanOrEqual(0.01);
   });
