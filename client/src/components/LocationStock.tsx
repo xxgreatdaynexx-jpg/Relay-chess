@@ -1,10 +1,12 @@
+import { ShipmentComposer } from './ShipmentComposer';
+import { isPool } from '../../../shared/inventoryLocations';
 import { useEffect, useState } from 'react';
 import { request, socket } from '@/lib/net';
 import { MODES, fmtEta, type Mode } from '../../../shared/logistics';
 
 type Item = { item: string; label: string; qty: number };
 type Loc = { id: string; label: string; hub: string; dest: boolean; sells: boolean; held?: boolean; items: Item[] };
-type Ship = { id: string; fromLabel: string; toLabel: string; label: string; qty: number; mode: Mode; fee: number; departAt: number; arriveAt: number };
+type Ship = { manifest?:Array<{item:string;label:string;qty:number}>; id: string; fromLabel: string; toLabel: string; label: string; qty: number; mode: Mode; fee: number; departAt: number; arriveAt: number };
 export type HeldItem = { kind: 'fish' | 'prepared' | 'dish' | 'fillet' | 'barn'; what: string; n: number; value?: number; why: string };
 export type LocView = { now: number; held?: HeldItem[]; quarantined?: Array<{ id: string; items: Item[] }>; locations: Loc[]; shipments: Ship[]; trucks: Array<{ id: string; model: string; busy: boolean }> };
 const fmt = (n: number) => n.toLocaleString('en-US');
@@ -14,6 +16,7 @@ const CROSS_MODES: Mode[] = ['plane', 'ship', 'jet', 'boat']; // map pools: the 
  *  your factory, kitchen, the Mines store, co-op, market) uses the Chud City Warehouse stock directly; the Resort has
  *  its own warehouse. The only moves are between maps, by plane or ship. No trucks, nothing to move on the same map. */
 export function LocationStock({ me }: { me: string | null }) {
+  const [batch,setBatch]=useState<string|null>(null);
   const [v, setV] = useState<LocView | null>(null);
   const [sel, setSel] = useState<{ from: string; item: string } | null>(null);
   const [to, setTo] = useState(''); const [qty, setQty] = useState(1); const [mode, setMode] = useState<Mode>('ship');
@@ -40,12 +43,14 @@ export function LocationStock({ me }: { me: string | null }) {
       <p className="loc-hint">One inventory per map. On the city map your mines, farms, fishing, factory, kitchen, the Mines store, the co-op and the market all use your Chud City Warehouse stock directly, with nothing to move. The Resort has its own warehouse. To take goods to the other map, send them by plane or ship.</p>
       {v.locations.map((l) => <div key={l.id} className="loc-card" data-testid={`loc-${l.id}`}>
         <h4>{l.label}{l.sells && ' · sells here'}</h4>
+        {!l.held && isPool(l.id) && !!l.items.length && <button type="button" data-testid={`loc-transfer-${l.id}`} onClick={()=>{setSel(null);setBatch(l.id);}}>🚢 Transfer to ship</button>}
         {!l.items.length ? <small>Empty</small> : <ul>{l.items.map((i) => <li key={i.item}>
           <span>{i.label} × {fmt(i.qty)}</span>
-          {!l.held && v.locations.some((d) => otherMap(d)(l)) && <button type="button" onClick={() => { setSel({ from: l.id, item: i.item }); setQty(i.qty); setTo(''); setMsg(null); }} data-testid={`loc-move-${l.id}-${i.item}`}>🚢 Send to the other map</button>}
+          {!l.held && v.locations.some((d) => otherMap(d)(l)) && <button type="button" onClick={() => { setBatch(null); setSel({ from: l.id, item: i.item }); setQty(i.qty); setTo(''); setMsg(null); }} data-testid={`loc-move-${l.id}-${i.item}`}>🚢 Send to the other map</button>}
           {l.sells && <button type="button" disabled={busy} onClick={() => void act('loc_sell', { from: l.id, item: i.item, qty: i.qty }, (a) => { const r = a.result as { sold: number; paid: number }; return `💰 Sold ${fmt(r.sold)} ${i.label} for 🪙 ${fmt(r.paid)}.`; })} data-testid={`loc-sell-${i.item}`}>💰 Sell all</button>}
         </li>)}</ul>}
       </div>)}
+      {batch && v.locations.filter(l=>l.id===batch&&!l.held&&isPool(l.id)).map(source=><ShipmentComposer key={source.id} source={source} destinations={v.locations.filter(d=>d.dest&&isPool(d.id)&&d.hub!==source.hub)} onCancel={()=>setBatch(null)} onDone={()=>{setBatch(null);load();setMsg('Your complete shipment is on the way.');}}/>)}
       {sel && it && src && <div className="freight-form loc-form" data-testid="loc-form">
         <b>Send {it.label} from {src.label} to the other map</b>
         <label>Quantity<input type="number" min={1} max={it.qty} value={qty} onChange={(e) => setQty(Math.max(1, Math.min(it.qty, Math.floor(+e.target.value || 1))))} data-testid="loc-qty" /></label>
@@ -58,7 +63,7 @@ export function LocationStock({ me }: { me: string | null }) {
       {!!v.held?.length && <div className="loc-card" data-testid="loc-held-legacy"><h4>Older items, no map yet</h4><small>These are from before each map had its own warehouse and have no recorded map. They are kept exactly as they are and can't be used or moved until a map is decided.</small><ul>{v.held.map((h) => <li key={`${h.kind}:${h.what}`} data-testid="loc-held-item">{h.kind === 'fish' ? 'Fish' : h.kind === 'prepared' ? 'Prepared fish' : h.kind === 'dish' ? 'Dish' : h.kind === 'fillet' ? 'Fillets' : 'Resort barn'}: {h.what} × {fmt(h.n)}{h.value !== undefined ? ` (value ${fmt(h.value)})` : ''} <small>{h.why}</small></li>)}</ul></div>}
       {!!v.quarantined?.length && <div className="loc-card" data-testid="loc-quarantined"><h4>Held for review</h4><small>These goods are kept safe exactly as they were. Their old place could not be matched to a map, so they can't be used or moved yet.</small><ul>{v.quarantined.flatMap((qz) => qz.items.map((i) => <li key={`${qz.id}|${i.item}`}>{i.label} × {fmt(i.qty)}</li>))}</ul></div>}
       {msg && <p className="freight-msg" data-testid="loc-msg">{msg}</p>}
-      {!!v.shipments.length && <div className="loc-card"><h4>On the way (plane / ship)</h4><ul>{v.shipments.map((s) => <li key={s.id} data-testid="loc-shipment">{MODES[s.mode].icon} {fmt(s.qty)} {s.label}: {s.fromLabel} → {s.toLabel} · {s.arriveAt > now ? `arrives in ${fmtEta(s.arriveAt - now)}` : 'unloading'}</li>)}</ul></div>}
+      {!!v.shipments.length && <div className="loc-card"><h4>On the way (plane / ship)</h4><ul>{v.shipments.map((s) => <li key={s.id} data-testid="loc-shipment">{MODES[s.mode].icon} {fmt(s.qty)} {s.label}: {s.fromLabel} → {s.toLabel} · {s.arriveAt > now ? `arrives in ${fmtEta(s.arriveAt - now)}` : 'unloading'}{s.manifest&&<ul>{s.manifest.map(l=><li key={l.item}>{l.label} × {fmt(l.qty)}</li>)}</ul>}</li>)}</ul></div>}
     </div>
   );
 }

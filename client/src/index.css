@@ -2566,3 +2566,24 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 
 .barn-farm-status { display: flex; flex-direction: column; gap: 3px; padding: 4px 8px 8px; line-height: 1.45; overflow-wrap: anywhere; }
 @media (max-width: 640px), (max-height: 500px) { .world-deed .barn-farm-status { font-size: 13px; } }
+
+/* Scoped hangar expansion: fixed header is a sibling of the only scrolling body. */
+.private-hangar > .dealer-box { width: min(1120px, 98vw); height: min(850px, 94dvh); max-height: 94dvh; overflow: hidden; }
+.private-hangar > .dealer-box > header { flex: none; position: relative; background: #12141d; z-index: 3; }
+.private-hangar > .dealer-box > header button { flex: none; min-width: 44px; min-height: 44px; }
+.private-hangar .dealer-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.private-hangar .fleet-stats, .private-hangar .fleet-owned { font-size: 15px; }
+.private-hangar .dealer-list button, .private-hangar .fleet-owned button, .private-hangar .fleet-buy { font-size: 14px; min-height: 44px; }
+.manifest-form fieldset { min-width: 0; border: 1px solid #ffffff22; margin: 8px 0; padding: 8px; }
+.manifest-form .manifest-line { display: grid; grid-template-columns: 28px minmax(0, 1fr) 90px; gap: 8px; align-items: center; margin: 7px 0; }
+.manifest-line span { overflow-wrap: anywhere; }
+.manifest-form input[type="number"] { width: 100%; min-height: 44px; font-size: 16px; }
+.manifest-form input[type="checkbox"] { width: 24px; height: 24px; }
+.manifest-form button, .manifest-form select { min-height: 44px; }
+@media (max-width: 700px), (max-height: 500px) {
+  .private-hangar > .dealer-box { width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+  .private-hangar .dealer-body { display: block; }
+  .private-hangar .dealer-list { max-height: none; overflow: visible; }
+  .private-hangar .dealer-main { overflow: visible; }
+  .private-hangar .dealer-preview { height: 160px; }
+}

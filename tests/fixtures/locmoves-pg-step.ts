@@ -52,6 +52,16 @@ const tryIt = async (f: () => Promise<unknown>) => { try { return { ok: true, r:
 
 try { await boot(); } catch (e) { if (step === 'failBoot') throw e; /* real path: the fatal handler decides the fence */ out({ bootError: (e as Error).message }); await settle(100); process.exit(0); }
 const lm = getLocMoves(); const lg = getLogistics()!;
+if(step==='batchLostAck') {
+  // Test-only fault: real COMMIT reaches PostgreSQL, then the client loses its acknowledgement.
+  const pool=(getMines().store as unknown as {db:pg.Pool}).db;
+  const connect=pool.connect.bind(pool);let lose=true;
+  (pool as unknown as {connect:()=>Promise<unknown>}).connect=async()=>{
+    const client=await connect();return {release:()=>client.release(),query:async(sql:string,args?:unknown[])=>{
+      const result=await client.query(sql,args);if(sql==='COMMIT'&&lose){lose=false;throw Error('Connection terminated after committed manifest');}return result;
+    }};
+  };
+}
 if (step === 'boot') out({ ok: true });
 else if (step === 'migrate') { out(lm.lastMigration); } // what THIS boot's migration (run before serving) did
 else if (step === 'remigrate') { out(await lm.migrateLegacy()); }
@@ -59,6 +69,8 @@ else if (step === 'fund') { for (const n of arg.names as string[]) getBank().tra
 else if (step === 'stack') { for (const [n, t, id, q] of arg.items as Array<[string, string, string, number]>) getMines().adjustStack(n, t as 'ore', id, q); await settle(800); out({ ok: true }); }
 else if (step === 'buyTruck') { out(await tryIt(() => lg.buyTruck(String(arg.name), arg.truck))); await settle(800); }
 else if (step === 'move') { const res = await Promise.all((arg.moves as Array<Record<string, unknown>>).map((m) => tryIt(() => lm.move(String(m.name), m)))); await settle(800); out({ res, snap: await snap(arg.names as string[]) }); }
+else if(step==='batch'||step==='batchLostAck') {const res=await Promise.all((arg.moves as Array<Record<string,unknown>>).map(m=>tryIt(()=>lm.batchMove(String(m.name),m))));await settle(800);out({res,snap:await snap(arg.names as string[])});}
+else if(step==='batchQuote')out(await tryIt(()=>lm.batchQuote(String(arg.name),arg)));
 else if (step === 'sell') { out(await tryIt(() => lm.sell(String(arg.name), arg))); await settle(800); }
 else if (step === 'quote') { out(await tryIt(() => lm.quote(String(arg.name), arg))); }
 else if (step === 'tick') { lg.tick(); await settle(2500); lg.tick(); await settle(1500); out({ transit: [...lg.ships.values()].filter((s) => s.kind === 'loc').length, snap: await snap(arg.names as string[]) }); }

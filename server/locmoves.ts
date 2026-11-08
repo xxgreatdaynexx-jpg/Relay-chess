@@ -1,3 +1,4 @@
+import { shipmentManifest, manifestUnits, type ManifestLine } from '../shared/shipmentManifest.js';
 import { fenceHeld, markMigrating } from './invFence.js';
 import { packed, OutcomeUnknown, isOutcomeUnknown, outcome, ledgerMarker } from './locstock.js';
 import { PANTRY_MAX } from '../shared/cooking.js';
@@ -13,10 +14,10 @@ import { PANTRY_MAX } from '../shared/cooking.js';
  *  - Only the Chud City Warehouse sells (sellAt). Destinations: your factory, the Warehouse, a kitchen in a home you own.
  */
 import type { Server, Socket } from 'socket.io';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { getMines, MineError } from './mines.js';
 import { getLocStore, mustOne, LocError, type LocPool } from './locstock.js';
-import { getLogistics, shipStmt, FreightError, type Shipment } from './logistics.js';
+import { getLogistics, shipStmt, rowShip, MANIFEST_MOVING, FreightError, type Shipment } from './logistics.js';
 import { getBank } from './casino-store.js';
 import { treasuryStmtsFor } from './city-rates.js';
 import { getWarehouse } from './warehouse.js';
@@ -62,6 +63,7 @@ export function itemLabel(item: string): string {
 const fishWhere = (row: 'fish' | 'fdish') => (row === 'fish' ? 'dish IS NULL' : 'dish IS NOT NULL');
 
 export class LocMoves {
+  private pendingManifests = new Set<string>();
   private locks = new Map<string, Promise<unknown>>();
   constructor(private readonly clock = () => Date.now()) {}
   private lock<T>(id: string, fn: () => Promise<T>): Promise<T> {
@@ -116,7 +118,7 @@ export class LocMoves {
     for (const id of [...ids]) { let ok = false; try { const k = parseLoc(id).kind; ok = isPool(id) || k === 'factory' || BIN_BUILDINGS.has(k); } catch { ok = false; } if (!ok) { ids.delete(id); quarantined.push({ id, items: out.get(id) ?? [] }); } }
     const locations = await Promise.all([...ids].map(async (id) => { const l = parseLoc(id); return { id, label: id === FACTORY && !this.hasFactory(name) ? 'Banked storage' : locLabel(id), held: id === FACTORY && !this.hasFactory(name), hub: await this.hub(name, l), dest: dests.includes(id), sells: isPool(id), items: (out.get(id) ?? []).sort((a, b) => a.label.localeCompare(b.label)) }; }));
     const lg = getLogistics();
-    const shipments = lg ? [...lg.ships.values()].filter((s) => s.kind === 'loc' && s.owner === key).map((s) => ({ id: s.id, from: s.fromLoc, to: s.toLoc, fromLabel: locLabel(s.fromLoc ?? ''), toLabel: locLabel(s.toLoc ?? ''), item: `${s.type}:${s.itemId}`, label: itemLabel(`${s.type}:${s.itemId}`), qty: s.qty, mode: s.mode, fee: s.fee, departAt: s.departAt, arriveAt: s.arriveAt })) : [];
+    const shipments = lg ? [...lg.ships.values()].filter((s) => (s.kind === 'loc' || s.kind === 'batch') && s.owner === key).map((s) => ({ id: s.id, from: s.fromLoc, to: s.toLoc, fromLabel: locLabel(s.fromLoc ?? ''), toLabel: locLabel(s.toLoc ?? ''), item: `${s.type}:${s.itemId}`, label: s.manifest ? `${s.manifest.length} item types` : itemLabel(`${s.type}:${s.itemId}`), manifest: s.manifest?.map(l => ({ ...l, label: itemLabel(l.item) })), qty: s.qty, mode: s.mode, fee: s.fee, departAt: s.departAt, arriveAt: s.arriveAt })) : [];
     const busy = lg ? lg.busyTrucks(name) : new Set<string>();
     // Held legacy stock with no recorded map: listed for review (read-only), never usable or movable by guess.
     const hp = getLocStore().pool ?? fp; const held = hp ? await (await import('./mapPools.js')).heldLegacyReview(hp as never, key).catch(() => []) : [];
@@ -153,7 +155,7 @@ export class LocMoves {
     if (from.kind === 'factory' && PACK_TYPES.has(it.type) || packed(to.id, it.item)) { const m = getMines(); if (!m.store || m.offline) throw new MoveError('Factory storage is reconnecting. Nothing was moved; try again in a minute.'); }
     // Room at the destination, counting loads already on the way there (no stalled arrivals, nothing dropped).
     if (it.row === 'stack') {
-      const key = arrivalKey(it.item, to.kind); const inbound = [...lg.ships.values()].filter((x) => x.kind === 'loc' && x.toKey === playerKey(name) && x.toLoc === to.id && arrivalKey(`${x.type}:${x.itemId}`, to.kind) === key).reduce((a, x) => a + x.qty, 0);
+      const key = arrivalKey(it.item, to.kind); const inbound = this.inbound(name, to.id, key);
       const [kt, kid] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
       const at = getLocStore().qty(name, to.id, key); void kid; // the city pool's stackables are the banked store (same cap as before)
       const cap = to.id === WAREHOUSE && PACK_TYPES.has(kt) ? MAX_BANKED_STACK : Infinity;
@@ -210,9 +212,94 @@ export class LocMoves {
     return { shipment: { id: s.id, mode: s.mode, fee: s.fee, departAt: s.departAt, arriveAt: s.arriveAt, trips: plan.trips, from: from.id, to: to.id, item: it.item, qty } };
   }
 
+  /** Inbound quantities include every manifest line, never parent total attributed to its first SKU. */
+  private inbound(name: string, to: string, item: string) {
+    return [...(getLogistics()?.ships.values() ?? [])].filter(s => (s.kind === 'loc' || s.kind === 'batch') && s.toKey === playerKey(name) && s.toLoc === to)
+      .flatMap(s => s.manifest ?? [{ item: `${s.type}:${s.itemId}`, qty: s.qty }]).filter(l => l.item === item).reduce((n,l)=>n+l.qty,0);
+  }
+  private batchInput(b: Record<string, unknown>) {
+    let lines: ManifestLine[]; try { lines=shipmentManifest(b.items); } catch(e) { throw new MoveError((e as Error).message); }
+    if(typeof b.from!=='string'||typeof b.to!=='string'||!isPool(b.from)||!isPool(b.to)||b.from===b.to) throw new MoveError('Select two different map warehouses. Same-map stock is already shared.');
+    if(!['ship','plane','jet','boat'].includes(String(b.mode)))throw new MoveError('Cross-map goods go by ship or plane, not truck.');
+    for(const l of lines)parseItem(l.item);
+    return {lines,from:b.from,to:b.to,qty:manifestUnits(lines)};
+  }
+  async batchQuote(name: string,b: Record<string,unknown>) {
+    const x=this.batchInput(b);const lg=getLogistics();if(!lg)throw new MoveError('Freight is offline right now.');
+    const first=parseItem(x.lines[0].item);const p=await lg.planLeg(name,{mode:b.mode,vehicle:b.vehicle,fromHub:hubOfLoc(x.from),toHub:hubOfLoc(x.to),type:first.type,itemId:first.id,qty:x.qty,fromLoc:x.from,toLoc:x.to});
+    lg.release(p.shipment.id);
+    return {fee:p.shipment.fee,trips:p.trips,arriveAt:p.shipment.arriveAt,departAt:p.shipment.departAt,total:x.qty,types:x.lines.length,capacity:p.capacity,maxTotal:100000};
+  }
+  async batchMove(name: string,b: Record<string,unknown>) {
+    return this.lock(playerKey(name),async()=>{
+      const x=this.batchInput(b);if(typeof b.requestId!=='string'||!/^[a-zA-Z0-9_-]{16,80}$/.test(b.requestId))throw new MoveError('A shipment retry key is required.');
+      if(!Number.isSafeInteger(b.maxFee)||Number(b.maxFee)<0)throw new MoveError('Review the shipment quote first.');
+      const id='manifest:'+createHash('sha256').update(playerKey(name)+'\0'+b.requestId).digest('hex');
+      const hash=createHash('sha256').update(JSON.stringify([x.from,x.to,b.mode,b.vehicle??null,x.lines])).digest('hex');
+      const lg=getLogistics();if(!lg)throw new MoveError('Freight is offline right now.');
+      // Separate fishing pool owns only the mutex connection. Transaction writes use LocStore/city-pack pools:
+      // waiting requests cannot exhaust the very pool needed to commit the current dispatch.
+      const cl=await this.fishPool().connect();const lock='manifest-dispatch:'+playerKey(name);let locked=false;
+      try {
+        await cl.query('SELECT pg_advisory_lock(hashtext($1))',[lock]);locked=true;
+        const prior=(await cl.query('SELECT * FROM freight_shipments WHERE id=$1',[id])).rows[0];
+        if(prior){const done=rowShip(prior);if(done.owner!==playerKey(name)||done.requestHash!==hash)throw new MoveError('That retry key belongs to a different shipment.');if(done.status==='transit')lg.admit(done);return {shipment:done,replayed:true};}
+        if(this.pendingManifests.has(id))throw new MoveError('This shipment is still being confirmed. Retry the same shipment shortly.');
+        for(const line of x.lines){const it=parseItem(line.item);let have:number;
+          if(it.row==='fish'||it.row==='fdish')have=Number((await cl.query(`SELECT count(*)::int n FROM fish_catches WHERE player_key=$1 AND loc=$2 AND species=$3 AND sold_at IS NULL AND ${fishWhere(it.row)}`,[playerKey(name),x.from,it.id])).rows[0].n);
+          else if(it.row==='dish')have=Number((await cl.query('SELECT count(*)::int n FROM kitchen_dishes WHERE player_key=$1 AND loc=$2 AND recipe=$3 AND sold_at IS NULL',[playerKey(name),x.from,it.id])).rows[0].n);
+          else have=getLocStore().qty(name,x.from,line.item);
+          if(have<line.qty)throw new MoveError(`Only ${have} ${itemLabel(line.item)} at ${locLabel(x.from)}.`);
+          if(it.row==='stack'&&packed(x.to,line.item)&&getLocStore().qty(name,x.to,line.item)+this.inbound(name,x.to,line.item)+line.qty>MAX_BANKED_STACK)throw new MoveError(`Destination storage is full for ${itemLabel(line.item)}.`);
+        }
+        const first=parseItem(x.lines[0].item);const plan=await lg.planLeg(name,{mode:b.mode,vehicle:b.vehicle,fromHub:hubOfLoc(x.from),toHub:hubOfLoc(x.to),type:first.type,itemId:first.id,qty:x.qty,fromLoc:x.from,toLoc:x.to});
+        const ship=plan.shipment;lg.release(ship.id);ship.id=id;ship.kind='batch';ship.manifest=x.lines;ship.requestHash=hash;lg.ships.set(id,ship);
+        const bank=getBank();let unknown=false;this.pendingManifests.add(id);
+        try {
+          if(ship.fee>Number(b.maxFee))throw new MoveError('The shipping fee changed. Review a new quote before dispatch.');
+          const w=ship.fee?bank.transferAtomic([{name,amount:-ship.fee,key:`freight:${id}`,game:'freight',memo:`${x.lines.length} item types / ${x.qty} units ${locLabel(x.from)} → ${locLabel(x.to)}`} ]):null;
+          const late=(ok:boolean)=>{this.pendingManifests.delete(id);if(ok){w?.confirm();lg.admit(ship);}else{w?.revert();lg.release(id);}};
+          const rows:Stmt[]=[...this.manifestRows(name,x.lines,`transit:${id}`,x.from),shipStmt(ship),...(w?.stmts??[]),...(plan.surplus?treasuryStmtsFor(name,'freight',plan.surplus,'Freight lever surplus'):[])];
+          const deltas=x.lines.filter(l=>parseItem(l.item).row==='stack').map(l=>({loc:x.from,item:l.item,delta:-l.qty}));
+          let promise:Promise<void>;
+          try {const p=getLocStore().adjust(name,deltas,rows,{after:w?.after,committed:()=>this.manifestExists(id),onLate:late});if(p===false)throw new MoveError('Some selected stock just moved. Nothing was sent.');promise=p;}
+          catch(e){w?.revert();throw e;}
+          w?.bind(promise);
+          try{await promise;}catch(e){const verdict=isOutcomeUnknown(e)?null:await outcome(()=>this.manifestExists(id));
+            if(verdict===false){w?.revert();throw new MoveError('The whole shipment failed. Nothing was moved or charged.');}
+            if(verdict===null){unknown=true;if(!isOutcomeUnknown(e))void this.reconcileManifest(id,late);throw new MoveError('Shipment confirmation is pending. Retry this same shipment, not a new one.');}
+            w?.confirm();
+          }
+          this.pendingManifests.delete(id);lg.admit(ship);return {shipment:ship,replayed:false};
+        }catch(e){if(!unknown){this.pendingManifests.delete(id);lg.release(id);}throw e;}
+      }finally{let failed:Error|undefined;try{if(locked)await cl.query('SELECT pg_advisory_unlock(hashtext($1))',[lock]);}catch(e){failed=e as Error;}(cl as {release:(error?:Error)=>void}).release(failed);}
+    });
+  }
+  private async manifestExists(id:string){return !!(await (getLocStore().pool??this.fishPool()).query('SELECT 1 FROM freight_shipments WHERE id=$1',[id])).rows.length;}
+  private async reconcileManifest(id:string,late:(ok:boolean)=>void){for(let i=0;;i++){await new Promise(r=>setTimeout(r,Math.min(60000,1000*2**Math.min(i,6))));const v=await outcome(()=>this.manifestExists(id),1);if(v!==null){late(v);return;}}}
+  /** Move original fish/cooked rows, preserving IDs, quality, weight and every other metadata column. */
+  private manifestRows(name:string,lines:ManifestLine[],to:string,from:string):Stmt[]{
+    return lines.flatMap(line=>{const it=parseItem(line.item);if(it.row==='stack')return [];
+      const table=it.row==='dish'?'kitchen_dishes':'fish_catches';const field=it.row==='dish'?'recipe':'species';const time=it.row==='dish'?'cooked_at':'caught_at';const extra=it.row==='dish'?'':` AND ${fishWhere(it.row)}`;
+      return [{sql:`WITH moved AS (UPDATE ${table} SET loc=$5 WHERE id IN (SELECT id FROM ${table} WHERE player_key=$1 AND loc=$2 AND ${field}=$3 AND sold_at IS NULL${extra} ORDER BY ${time},id LIMIT $4 FOR UPDATE) RETURNING 1) SELECT 1 / CASE WHEN (SELECT count(*) FROM moved)=$4 THEN 1 ELSE 0 END AS ok`,args:[playerKey(name),from,it.id,line.qty,to]}];
+    });
+  }
+  private async batchArrive(s:Shipment){
+    if(!s.manifest||!isPool(s.toLoc??''))throw new MoveError('Invalid manifest destination.');const lines=shipmentManifest(s.manifest);const to=s.toLoc!;
+    if(await this.delivered(s.id))return;
+    const att=randomUUID();const mine=()=>this.arrivalIs(s.id,att);
+    for(const l of lines)if(packed(to,l.item)&&getLocStore().qty(s.ownerName,to,l.item)+l.qty>MAX_BANKED_STACK)throw new MoveError('Destination full; the complete shipment is held safely for retry.');
+    const rows=[...this.manifestRows(s.ownerName,lines,to,`transit:${s.id}`),mustOne("UPDATE freight_shipments SET status='delivered' WHERE id=$1 AND status=$2",[s.id,MANIFEST_MOVING]),arrivalMark(s.id,att,this.clock())];
+    const deltas=lines.filter(l=>parseItem(l.item).row==='stack').map(l=>({loc:to,item:l.item,delta:l.qty}));
+    const p=getLocStore().adjust(s.ownerName,deltas,rows,{committed:mine});if(p===false)throw new MoveError('Destination storage unavailable.');
+    try{await p;}catch(e){if(await this.delivered(s.id))return;throw e;}
+    this.onArrive?.(s);
+  }
+
   // ------------------------------------------------------------------ arrival
   /** Credit a delivered load at its destination exactly once (called by Logistics.tick; rejection = retried). */
   async arrive(s: Shipment): Promise<void> {
+    if(s.kind==='batch')return this.batchArrive(s);
     const to = parseLoc(s.toLoc); const item = `${s.type}:${s.itemId}`; const it = parseItem(item);
     const flip = mustOne("UPDATE freight_shipments SET status = 'delivered' WHERE id = $1 AND status = 'moving'", [s.id]);
     // Already delivered (an earlier attempt / another instance): never credit again. The commit-check below can not tell
@@ -448,6 +535,8 @@ export function registerLocMoves(io: Server, socket: Socket): void {
   });
   on('loc_view', async (_b, n) => { void socket.join(`freight:${playerKey(n)}`); return {}; });
   on('loc_quote', async (b, n) => ({ quote: await lm.quote(n, b) }));
+  on('loc_batch_quote', async(b,n)=>({quote:await lm.batchQuote(n,b)}));
+  on('loc_batch_move', async(b,n)=>{const r=await lm.batchMove(n,b);const lg=getLogistics();if(lg)io.to('freight').emit('freight_live',lg.live());return r;});
   on('loc_move', async (b, n) => { const r = await lm.move(n, b); const lg = getLogistics(); if (lg) io.to('freight').emit('freight_live', lg.live()); return r; });
   on('loc_sell', async (b, n) => { awayFromMarket(n, MoveError); return { result: await lm.sell(n, b) }; });
 }

@@ -273,6 +273,8 @@ export class PgEconSource implements EconSource {
     // Truck logistics: goods at the Warehouse / mines / farm plots / kitchens (loc_stock) and loads on the road between them.
     for (const r of await q(`SELECT split_part(item, ':', 1) t, substr(item, strpos(item, ':') + 1) i, SUM(qty) q FROM loc_stock WHERE ${NOT_QA('player_key')} GROUP BY 1,2`)) put(String(r.t), String(r.i), Number(r.q));
     for (const r of await q(`SELECT item_type, item_id, SUM(qty) q FROM freight_shipments WHERE status = 'moving' AND kind = 'loc' AND item_type NOT IN ('fish', 'fdish', 'dish') AND ${NOT_QA('player_key')} GROUP BY 1,2`)) put(String(r.item_type), String(r.item_id), Number(r.q));
+    // Manifest stacks still belong to the sender in transit; fish/dishes remain their original rows below.
+    for (const r of await q(`SELECT split_part(l->>'item', ':', 1) t, split_part(l->>'item', ':', 2) i, SUM((l->>'qty')::bigint) q FROM freight_shipments CROSS JOIN LATERAL jsonb_array_elements(manifest) l WHERE status = 'manifest_moving' AND kind = 'batch' AND split_part(l->>'item', ':', 1) NOT IN ('fish','fdish','dish') AND ${NOT_QA('player_key')} GROUP BY 1,2`)) put(String(r.t),String(r.i),Number(r.q));
     for (const r of await q(`SELECT item_type, item_id, SUM(qty_left) q FROM market_stack_listings WHERE status = 'active' AND ${NOT_QA('seller_key')} GROUP BY 1,2`)) put(String(r.item_type), String(r.item_id), Number(r.q));
     for (const r of await q(`SELECT items FROM mine_carried WHERE ${NOT_QA('player_key')}`)) { const a = (typeof r.items === 'string' ? JSON.parse(r.items) : r.items) as Array<{ type: string; id: string; qty: number }>; for (const s of a ?? []) put(s.type, s.id, Number(s.qty)); }
     const mc = new Map<string, number>();

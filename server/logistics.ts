@@ -1,3 +1,4 @@
+import type { ManifestLine } from '../shared/shipmentManifest.js';
 import { invReady } from './invFence.js';
 /**
  * Logistics (Millionaire Update): truck store + shipments between maps.
@@ -43,26 +44,29 @@ ALTER TABLE freight_shipments ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAUL
 ALTER TABLE freight_shipments ADD COLUMN IF NOT EXISTS src TEXT;
 ALTER TABLE freight_shipments ADD COLUMN IF NOT EXISTS auto BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE freight_shipments ADD COLUMN IF NOT EXISTS from_loc TEXT;
-ALTER TABLE freight_shipments ADD COLUMN IF NOT EXISTS to_loc TEXT;`;
+ALTER TABLE freight_shipments ADD COLUMN IF NOT EXISTS to_loc TEXT;
+ALTER TABLE freight_shipments ADD COLUMN IF NOT EXISTS manifest JSONB;
+ALTER TABLE freight_shipments ADD COLUMN IF NOT EXISTS request_hash TEXT;`;
 
 export interface OwnedTruck { id: string; truckId: string; paid: number; boughtAt: number }
 export interface Shipment { id: string; owner: string; ownerName: string; toKey: string; toName: string; mode: Mode; truck: string | null; from: HubId; to: HubId; type: ItemType; itemId: string; qty: number; fee: number; createdAt: number; departAt: number; arriveAt: number; status: 'transit' | 'delivered';
-  /** 'sell' = a ship-to-sell load: it sells at the Chud City Warehouse on arrival instead of landing in storage. */ kind?: 'move' | 'sell' | 'factory' | 'loc'; /** building inventory it left (autosell) */ src?: string | null; auto?: boolean;
+  /** 'sell' = a ship-to-sell load: it sells at the Chud City Warehouse on arrival instead of landing in storage. */ kind?: 'move' | 'sell' | 'factory' | 'loc' | 'batch'; manifest?: ManifestLine[]; requestHash?: string; /** building inventory it left (autosell) */ src?: string | null; auto?: boolean;
   /** kind 'loc' (truck logistics): the individual location it left and the one it is delivered to (server/locmoves.ts). */ fromLoc?: string | null; toLoc?: string | null }
 
 /** Rollback barrier: per-location legs ('loc') are stored as status 'moving', which pre-logistics code (status =
  *  'transit' only) never loads, so a rollback can't mis-deliver them; they resume when this code runs again. */
 export const MOVING = 'moving';
-const dbStatus = (s: Shipment) => (s.kind === 'loc' && s.status === 'transit' ? MOVING : s.status);
+export const MANIFEST_MOVING = 'manifest_moving'; // older readers never load multi-item rows as a single SKU
+const dbStatus = (s: Shipment) => s.kind === 'batch' && s.status === 'transit' ? MANIFEST_MOVING : (s.kind === 'loc' && s.status === 'transit' ? MOVING : s.status);
 export const shipStmt = (s: Shipment): Stmt => ({
-  sql: `INSERT INTO freight_shipments (id, player_key, name, to_key, to_name, mode, truck, from_hub, to_hub, item_type, item_id, qty, fee, created_at, depart_at, arrive_at, status, kind, src, auto, from_loc, to_loc)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status`,
-  args: [s.id, s.owner, s.ownerName, s.toKey, s.toName, s.mode, s.truck, s.from, s.to, s.type, s.itemId, s.qty, s.fee, s.createdAt, s.departAt, s.arriveAt, dbStatus(s), s.kind ?? 'move', s.src ?? null, !!s.auto, s.fromLoc ?? null, s.toLoc ?? null],
+  sql: `INSERT INTO freight_shipments (id, player_key, name, to_key, to_name, mode, truck, from_hub, to_hub, item_type, item_id, qty, fee, created_at, depart_at, arrive_at, status, kind, src, auto, from_loc, to_loc, manifest, request_hash)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) ${s.kind === 'batch' ? '' : 'ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status'}`,
+  args: [s.id, s.owner, s.ownerName, s.toKey, s.toName, s.mode, s.truck, s.from, s.to, s.type, s.itemId, s.qty, s.fee, s.createdAt, s.departAt, s.arriveAt, dbStatus(s), s.kind ?? 'move', s.src ?? null, !!s.auto, s.fromLoc ?? null, s.toLoc ?? null, s.manifest ? JSON.stringify(s.manifest) : null, s.requestHash ?? null],
 });
-const rowShip = (r: Record<string, unknown>): Shipment => ({ id: String(r.id), owner: String(r.player_key), ownerName: String(r.name), toKey: String(r.to_key), toName: String(r.to_name), mode: String(r.mode) as Mode, truck: r.truck == null ? null : String(r.truck),
-  from: String(r.from_hub) as HubId, to: String(r.to_hub) as HubId, type: String(r.item_type) as ItemType, itemId: String(r.item_id), qty: Number(r.qty), fee: Number(r.fee), createdAt: Number(r.created_at), departAt: Number(r.depart_at), arriveAt: Number(r.arrive_at), status: (String(r.status) === MOVING ? 'transit' : String(r.status)) as Shipment['status'],
-  kind: r.kind === 'sell' || r.kind === 'factory' || r.kind === 'loc' ? r.kind : 'move', src: r.src == null ? null : String(r.src), auto: r.auto === true,
-  fromLoc: r.from_loc == null ? null : String(r.from_loc), toLoc: r.to_loc == null ? null : String(r.to_loc) });
+export const rowShip = (r: Record<string, unknown>): Shipment => ({ id: String(r.id), owner: String(r.player_key), ownerName: String(r.name), toKey: String(r.to_key), toName: String(r.to_name), mode: String(r.mode) as Mode, truck: r.truck == null ? null : String(r.truck),
+  from: String(r.from_hub) as HubId, to: String(r.to_hub) as HubId, type: String(r.item_type) as ItemType, itemId: String(r.item_id), qty: Number(r.qty), fee: Number(r.fee), createdAt: Number(r.created_at), departAt: Number(r.depart_at), arriveAt: Number(r.arrive_at), status: ([MOVING, MANIFEST_MOVING].includes(String(r.status)) ? 'transit' : String(r.status)) as Shipment['status'],
+  kind: r.kind === 'sell' || r.kind === 'factory' || r.kind === 'loc' || r.kind === 'batch' ? r.kind : 'move', src: r.src == null ? null : String(r.src), auto: r.auto === true,
+  fromLoc: r.from_loc == null ? null : String(r.from_loc), toLoc: r.to_loc == null ? null : String(r.to_loc), ...(r.manifest ? { manifest: typeof r.manifest === 'string' ? JSON.parse(r.manifest) : r.manifest as ManifestLine[] } : {}), ...(r.request_hash ? { requestHash: String(r.request_hash) } : {}) });
 const stackable = isStackable;
 
 export class Logistics {
@@ -75,7 +79,7 @@ export class Logistics {
     if (!this.pool) return;
     await this.pool.query(LOGISTICS_MIGRATION);
     for (const r of (await this.pool.query('SELECT * FROM truck_owned ORDER BY bought_at')).rows) { const k = String(r.player_key); const l = this.trucks.get(k) ?? []; l.push({ id: String(r.id), truckId: String(r.truck_id), paid: Number(r.paid), boughtAt: Number(r.bought_at) }); this.trucks.set(k, l); }
-    for (const r of (await this.pool.query("SELECT * FROM freight_shipments WHERE status IN ('transit', 'moving')")).rows) { const s = rowShip(r); this.ships.set(s.id, s); }
+    for (const r of (await this.pool.query("SELECT * FROM freight_shipments WHERE status IN ('transit', 'moving', 'manifest_moving')")).rows) { const s = rowShip(r); this.ships.set(s.id, s); }
   }
   private rows(rows: Stmt[]) { if (!rows.length || !this.pool) return; const pool = this.pool; void (async () => { const cl = await pool.connect(); try { await cl.query('BEGIN'); for (const s of rows) await cl.query(s.sql, s.args); await cl.query('COMMIT'); } catch (e) { await cl.query('ROLLBACK').catch(() => {}); console.error('[logistics] write failed:', (e as Error).message); } finally { cl.release(); } })(); }
 
@@ -188,7 +192,7 @@ export class Logistics {
    * player's real fleet and global busy set; nothing about the vehicle comes from the client except which one.
    * No side effects: the caller commits goods + fee + shipStmt(s) in one transaction, then calls admit(s).
    */
-  async planLeg(name: string, b: { mode: unknown; vehicle?: unknown; fromHub: HubId; toHub: HubId; type: string; itemId: string; qty: number; fromLoc: string; toLoc: string }): Promise<{ shipment: Shipment; trips: number; surplus: number }> {
+  async planLeg(name: string, b: { mode: unknown; vehicle?: unknown; fromHub: HubId; toHub: HubId; type: string; itemId: string; qty: number; fromLoc: string; toLoc: string }): Promise<{ shipment: Shipment; trips: number; surplus: number; capacity:number }> {
     const mode = b.mode; if (!isMode(mode)) throw new FreightError('Pick how to ship it.');
     const qty = b.qty; if (!Number.isInteger(qty) || qty < 1 || qty > MAX_SHIP_QTY) throw new FreightError('Pick a quantity.');
     // Map pools (Dayne 2026-11-07, pre-Millionaire restore): places on ONE map share an inventory, so a same-map move
@@ -197,7 +201,7 @@ export class Logistics {
       const now = this.clock();
       const s: Shipment = { id: randomUUID(), owner: keyOf(name), ownerName: name.trim(), toKey: keyOf(name), toName: name.trim(), mode: 'hired', truck: null, from: b.fromHub, to: b.toHub, type: b.type as ItemType, itemId: b.itemId, qty, fee: 0,
         createdAt: now, departAt: now, arriveAt: now, status: 'transit', kind: 'loc', src: b.fromLoc, fromLoc: b.fromLoc, toLoc: b.toLoc };
-      this.ships.set(s.id, s); return { shipment: s, trips: 1, surplus: 0 };
+      this.ships.set(s.id, s); return { shipment: s, trips: 1, surplus: 0, capacity:MAX_SHIP_QTY };
     }
     if (isTruckMode(mode)) throw new FreightError(NO_CROSS_MAP_TRUCK); // between maps: plane / ship (own jet / boat) only
     let truck: string | null = null; let travel = MODES[mode].travelMs; let cap = MODES[mode].cap; let model = '';
@@ -210,7 +214,7 @@ export class Logistics {
     const s: Shipment = { id: randomUUID(), owner: keyOf(name), ownerName: name.trim(), toKey: keyOf(name), toName: name.trim(), mode, truck, from: b.fromHub, to: b.toHub, type: b.type as ItemType, itemId: b.itemId, qty, fee,
       createdAt: now, departAt, arriveAt: isOwnMode(mode) ? departAt + travel : arrivalOf(mode, departAt), status: 'transit', kind: 'loc', src: b.fromLoc, fromLoc: b.fromLoc, toLoc: b.toLoc };
     this.ships.set(s.id, s); // reserve the vehicle now (busy for every other dispatch); the caller admit()s or release()s it
-    return { shipment: s, trips, surplus: fee && !truck ? this.freightSurplus(mode, qty, fee) : 0 };
+    return { shipment: s, trips, capacity:cap, surplus: fee && !truck ? this.freightSurplus(mode, qty, fee) : 0 };
   }
   /** Undo a planLeg reservation whose transaction failed. */
   release(id: string) { this.ships.delete(id); }
@@ -273,7 +277,7 @@ export class Logistics {
     const now = this.clock(); const out: Shipment[] = [];
     for (const s of [...this.ships.values()]) {
       if (s.arriveAt > now) continue;
-      if (s.kind === 'loc') { // truck logistics: credited at the destination location exactly once (retried with backoff)
+      if (s.kind === 'loc' || s.kind === 'batch') { // truck logistics: credited at the destination location exactly once (retried with backoff)
         if (this.selling.has(s.id) || !this.onLoc) continue;
         const bo = this.factoryBackoff.get(s.id); if (bo && now < bo.next) continue;
         this.selling.add(s.id);
@@ -314,7 +318,7 @@ export class Logistics {
     const now = this.clock(); const out = new Map<string, LiveVehicle>();
     for (const s of this.ships.values()) {
       if (s.arriveAt <= now || this.selling.has(s.id)) continue;
-      const tag = s.kind === 'sell' ? (s.auto ? ' · auto-sell' : ' · to market') : s.kind === 'factory' ? ' · to factory' : s.kind === 'loc' ? ` · to ${locLabel(s.toLoc ?? '')}` : '';
+      const tag = s.kind === 'sell' ? (s.auto ? ' · auto-sell' : ' · to market') : s.kind === 'factory' ? ' · to factory' : (s.kind === 'loc' || s.kind === 'batch') ? ` · to ${locLabel(s.toLoc ?? '')}` : '';
       if (s.mode === 'truck' || s.mode === 'hired') {
         const m = s.truck ? TRUCK_BY_ID.get(this.owned(s.ownerName).find((t) => t.id === s.truck)?.truckId ?? '') : undefined;
         if (now < s.departAt) continue;

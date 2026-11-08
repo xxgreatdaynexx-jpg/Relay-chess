@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { jetSeats } from '../../../shared/jetSeats';
 import { CARGO, perUnitBase } from '../../../shared/cargo';
 import { useDoing } from '@/lib/doing';
@@ -41,8 +42,8 @@ export function FleetStore({ kind, onClose, onDeepSea }: { kind: FleetKind; onCl
   const m = cat.find((x) => x.id === sel) ?? cat[0]!;
   const mine = (v?.owned ?? []).filter((o) => o.kind === kind);
   const act = async (ev: string, data: unknown, ok: (a: Record<string, unknown>) => string) => { setBusy(true); const a = await request(ev, data); setBusy(false); setMsg(a.ok ? ok(a as unknown as Record<string, unknown>) : a.error ?? 'Something went wrong.'); load(); };
-  return (
-    <div className="dealer fleet" data-testid={boat ? 'marina' : 'hangar'} {...backdropDismiss(() => onClose())}>
+  const panel = (
+    <div className={`dealer fleet${boat ? '' : ' private-hangar'}`} data-testid={boat ? 'marina' : 'hangar'} {...backdropDismiss(() => onClose())}>
       <div className="dealer-box" data-drag-panel={boat ? 'marina' : 'hangar'} onPointerDown={drag.onPointerDown} style={drag.style()} ref={drag.ref}>{drag.handle}
         <header><h3>{boat ? '🛥 Chud Resort Marina' : '🛩 Chud Hub Private Hangar'}</h3>{v?.chips != null && <span className="dealer-chips">{fmt(v.chips)} chips</span>}<button type="button" onClick={onClose} aria-label="Close" data-testid="fleet-close">✕</button></header>
         <div className="dealer-body">
@@ -78,4 +79,6 @@ export function FleetStore({ kind, onClose, onDeepSea }: { kind: FleetKind; onCl
       </div>
     </div>
   );
+  // The hangar opens inside an airport MapSheet: escape its scrolling/transformed ancestors.
+  return boat ? panel : createPortal(panel, document.body);
 }
