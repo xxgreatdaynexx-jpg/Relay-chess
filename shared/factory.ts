@@ -419,3 +419,14 @@ export function tierOf(key: string, seen = new Set<string>()): number {
 }
 export const recipeIn = (r: FRecipe) => r.in.reduce((t, [k, q]) => t + q * priceOfKey(k), 0);
 export const recipeOut = (r: FRecipe) => r.out[1] * priceOfKey(r.out[0]);
+
+/**
+ * Selling a placed machine back (t1967u). Pays half the BASE Machinist price, never indexed: the price index has a floor
+ * of 1.0 (shared/priceIndex.ts PI_FLOOR), so every Machinist purchase ever paid at least round(cost). Half the base is
+ * therefore at most half of anything a player could have paid, at any index, and a buy-then-sell always loses >= 50%.
+ * Per-machine paid prices are not recorded (kit purchases are pooled), so this is a fixed resale value, not a refund.
+ */
+export const MACHINE_RESALE_RATE = 0.5;
+export function machineSalePrice(k: Kind): number { const d = KINDS[k]; return d?.machine ? Math.floor(d.cost * MACHINE_RESALE_RATE) : 0; }
+/** A machine still mid-craft or holding inputs/output/a carried item. Selling waits until it is idle and empty. */
+export function machineBusy(e: Ent): boolean { return (e.p ?? 0) > 0 || contents(e).length > 0; }

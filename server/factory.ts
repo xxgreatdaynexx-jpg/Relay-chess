@@ -12,7 +12,7 @@ import { getFishing, FishError } from './fishing.js';
 import { requireResort } from './travel.js';
 import { playerKey } from './skins.js';
 import { MAX_BANKED_STACK, stackKey, isFood, recipeById, type Stack, type ItemType } from '../shared/mines.js';
-import { MAX_CATCHUP_MS, TICK_MS, advance, canPlace, contents, FLOOR_LEVELS, frecipe, gridOf, isItemKey, isKind, isSplitWeights, MAX_SPLIT_W, KINDS, MAX_ENTS, newState, type Dir, type Ent, type FState, type Kind, type Storage } from '../shared/factory.js';
+import { MAX_CATCHUP_MS, TICK_MS, advance, canPlace, contents, FLOOR_LEVELS, frecipe, gridOf, machineBusy, machineSalePrice, isItemKey, isKind, isSplitWeights, MAX_SPLIT_W, KINDS, MAX_ENTS, newState, type Dir, type Ent, type FState, type Kind, type Storage } from '../shared/factory.js';
 import { awakeDeadline } from '../shared/hubSleep.js';
 
 const SAVE_MS = 4000;
@@ -88,7 +88,7 @@ export class FactoryWorld {
   markNow(account: string, s: FState, withFactory = false) { this.dirty.delete(playerKey(account)); void getMines().savePack(account, [upsert(playerKey(account), account.trim(), s)], withFactory); }
   async saveDirty() {
     const jobs: Promise<void>[] = [];
-    for (const [k, name] of [...this.dirty]) { const s = this.states.get(k); this.dirty.delete(k); if (s) jobs.push(getMines().savePack(name, [upsert(k, name, s)])); }
+    for (const [k, name] of [...this.dirty]) { if (this.selling.has(k)) continue; /* the sale's own transaction carries this state; saved after */ const s = this.states.get(k); this.dirty.delete(k); if (s) jobs.push(getMines().savePack(name, [upsert(k, name, s)])); }
     await Promise.all(jobs);
   }
   /** Background catch-up for every built factory (loaded or not). Low frequency; cheap when quiescent. */
@@ -105,12 +105,13 @@ export class FactoryWorld {
   stopSweep() { if (this.sweeper) { clearInterval(this.sweeper); this.sweeper = null; } }
   async flush() { if (this.timer) { clearTimeout(this.timer); this.timer = null; } await this.saveDirty(); }
 
-  private need(account: string | null, now: number) { if (!account) throw new MineError('Sign in to build a factory.'); const s = this.get(account, now); if (!s) throw new MineError('Build your factory first.'); return { account, s }; }
+  private need(account: string | null, now: number) { if (!account) throw new MineError('Sign in to build a factory.'); if (this.selling.has(playerKey(account))) throw new MineError('Finishing your machine sale. Try again in a moment.'); const s = this.get(account, now); if (!s) throw new MineError('Build your factory first.'); return { account, s }; }
 
   /** Build (level 1) or expand the building. Same chips as old levels 1..3. */
   expand(account: string | null, now: number) {
     if (!account) throw new MineError('Sign in to build a factory.');
     if (getMines().offline) throw new MineError(MINES_OFFLINE_MSG);
+    if (this.selling.has(playerKey(account))) throw new MineError('Finishing your machine sale. Try again in a moment.');
     const k = playerKey(account); const mines = getMines(); const f = mines.factories.get(k);
     const next = FLOOR_LEVELS[f ? f.level : 0]; if (!next) throw new MineError('Your building is already as big as it gets.');
     const cost = px(next.cost);
@@ -157,6 +158,56 @@ export class FactoryWorld {
     return { placed, error: err || undefined };
   }
   /** Pick up: part back to your kit, anything inside back to banked storage. */
+  /** Accounts with a machine sale in flight: every other factory op and background save for them waits (one writer). */
+  readonly selling = new Set<string>();
+  private saleSeq = 0;
+  /** Server quote for selling one placed machine (t1967u). Refuses non-machines, busy machines and other people's ids. */
+  sellQuote(account: string | null, idIn: unknown, now: number) {
+    const { s } = this.need(account, now);
+    const e = typeof idIn === 'number' ? s.ents.find((x) => x.id === idIn) : undefined;
+    if (!e) throw new MineError('That machine is not in your factory any more (already sold or picked up).');
+    const def = KINDS[e.k];
+    if (!def.machine) throw new MineError(`A ${def.name} is not a machine. Pick it up instead; it goes back to your kit.`);
+    if (machineBusy(e)) throw new MineError(`That ${def.name} is still working or holding items. Wait until it is idle and empty (stop feeding it), or change its recipe to send its items to storage, then sell.`);
+    return { s, e, def, pay: machineSalePrice(e.k) };
+  }
+  /**
+   * Sell one idle, empty, placed machine for machineSalePrice(). The machine leaves the in-memory state first (so a
+   * double click, a retry, a start or an edit all see it gone), and the factory_v2 row + wallet credit commit in ONE
+   * Mines store transaction (adjustStacks with no item deltas). Definite failure: machine restored, credit reverted.
+   * Unknown outcome: the account stays locked until the ledger key answers, then kept or restored. Never both, never neither.
+   */
+  async sell(account: string | null, b: Record<string, unknown>, now: number) {
+    const { s, e, def, pay } = this.sellQuote(account, b.id, now);
+    if (b.kind !== undefined && b.kind !== e.k) throw new MineError('Your selection changed. Pick the machine again.');
+    if (b.quote !== pay) throw new MineError(`The price is ${pay} chips. Check it and confirm again.`);
+    const a = account!; const k = playerKey(a); const mines = getMines();
+    const idx = s.ents.indexOf(e); s.ents.splice(idx, 1);
+    const restore = () => { if (!s.ents.some((x) => x.id === e.id)) s.ents.splice(Math.min(idx, s.ents.length), 0, e); };
+    const key = `factory:sell:${k}:${e.id}:${now}:${++this.saleSeq}`;
+    let w: ReturnType<ReturnType<typeof getBank>['transferAtomic']>;
+    try { w = getBank().transferAtomic([{ name: a, amount: pay, key, game: 'mines', memo: `Machinist: sold a ${def.name} back (${pay} chips)` }]); }
+    catch (err) { restore(); throw new MineError((err as Error).message || 'The bank is busy. Try again.'); }
+    this.selling.add(k); this.dirty.delete(k);
+    const store = mines.store as (MinesStoreLike | null);
+    const unlock = () => { this.selling.delete(k); this.mark(a); };
+    let done: Promise<unknown> = Promise.resolve(); let failed: Error | null = null; let unknown = false; let late: boolean | null = null; let rows: unknown[] | null = null;
+    const ok = mines.adjustStacks(a, [], [upsert(k, a, s), ...w.stmts], (r) => { rows = r; }, {
+      after: w.after,
+      bind: (p) => { done = p; w.bind(p); },
+      onFail: (err) => { failed = err; restore(); w.revert(); },
+      onUnknown: () => { unknown = true; },
+      onLate: (committed) => { late = committed; if (!committed) restore(); unlock(); },
+      committed: store?.txCommitted ? () => store.txCommitted!(key) : undefined,
+    });
+    if (!ok) { restore(); w.revert(); this.selling.delete(k); throw new MineError('That sale did not go through. Nothing changed.'); }
+    if (rows) { w.bind(Promise.resolve()); unlock(); return { sold: e.id, kind: e.k, paid: pay }; } // no Mines store (dev/tests): memory only
+    await done;
+    if (unknown) { if (late) return { sold: e.id, kind: e.k, paid: pay }; throw new MineError('That sale did not go through. Your machine is still there and nothing was paid.'); }
+    unlock();
+    if (failed) throw new MineError('That sale did not go through. Your machine is still there and nothing was paid.');
+    return { sold: e.id, kind: e.k, paid: pay };
+  }
   remove(account: string | null, ids: unknown, now: number) {
     const { s } = this.need(account, now);
     const want = new Set((Array.isArray(ids) ? ids : [ids]).filter((v) => typeof v === 'number').slice(0, 200) as number[]);
@@ -222,6 +273,7 @@ export function factorySink(account: string): ImportSink {
   };
 }
 
+type MinesStoreLike = { txCommitted?: (key: string) => Promise<boolean> };
 let world = new FactoryWorld();
 export const getFactory = () => world;
 let busy = false;
@@ -276,6 +328,8 @@ export function registerFactory(_io: Server, socket: Socket): void {
   socket.on('fac_expand', op(() => world.expand(account(), Date.now())));
   socket.on('fac_buy', op((b) => world.buy(account(), b.kind, b.n, Date.now())));
   socket.on('fac_place', op((b) => world.place(account(), b.items, Date.now())));
+  socket.on('fac_sell_quote', op((b) => { const q = world.sellQuote(account(), b.id, Date.now()); return { id: q.e.id, kind: q.e.k, name: q.def.name, pay: q.pay }; }));
+  socket.on('fac_sell', aop((a, b) => world.sell(a, b, Date.now())));
   socket.on('fac_remove', op((b) => world.remove(account(), b.ids, Date.now())));
   socket.on('fac_edit', op((b) => world.edit(account(), b, Date.now())));
 }

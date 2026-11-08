@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-07T18:35:24-06:00', title: 'Sell factory machines; search factory pickers', bullets: [
+    'Select a placed machine in your factory and press 💰 Sell. The server shows the price first: half the machine\'s base Machinist price (for example 100 chips for a Smelter). Confirm sale or Cancel. The price is a fixed resale value, not a refund of what you paid, and it never exceeds half of any price the Machinist has charged.',
+    'A machine that is still working or holding items cannot be sold until it is idle and empty, so nothing inside is lost. Selling one machine never touches your other machines, belts, chests, kit or banked storage, and the rest keep their places.',
+    'The machine recipe picker, the chest and inserter item filters and the Recipes tab product picker now have a search box. Type to filter by name or ingredient, clear with ✕ or Esc. Searching never changes the current pick or production; only choosing from the list does.',
+  ] },
   { commit: 'a731fa4', at: '2026-11-07T16:35:00-06:00', title: 'Mining employees work faster', bullets: [
     'Employment Office miners (The Mine, Frostbite Caverns, Magma Depths) now bring in 1 ore every 2 minutes instead of 3: 50% more ore a day. Daily wages and hire fees are unchanged, so each miner earns more profit. Miners you already employ get the faster pace automatically.',
     'Fishers, manual mining, storage limits and the 8-hour away limit are unchanged.',

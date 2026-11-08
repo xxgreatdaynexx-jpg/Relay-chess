@@ -1,6 +1,8 @@
 import type React from 'react';
 import { ItemIcon } from './ItemIcon';
 import { FactoryRecipeSearch } from './FactoryRecipeSearch';
+import { FactorySearchSelect } from './FactorySearchSelect';
+import { FactoryMachineSell, type SellAsk } from './FactoryMachineSell';
 import { itemIconUriKey } from '../../../shared/itemIcons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ix, usePriceIndex } from '../lib/priceIndex';
@@ -47,6 +49,7 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
     if (err || !r) return flash('Factory busy, try again.');
     apply(r); if (!r.ok) return flash(r.error ?? 'Failed.'); ok?.(r);
   });
+  const ask: SellAsk = (ev, body) => new Promise((res) => socket.timeout(15000).emit(ev, body, (err: Error | null, r?: FAck) => { if (err || !r) return res({ ok: false, error: 'Factory busy, try again.' }); apply(r); res(r); }));
   useEffect(() => { if (guest) return; call('fac_state', {}); const t = window.setInterval(() => call('fac_state', {}), 3000); return () => window.clearInterval(t); }, [guest]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- render loop
@@ -239,7 +242,7 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
           <div className="fac-tabs">
             {(['build', 'shop', 'recipes', 'import'] as const).map((t) => <button type="button" key={t} className={side === t ? 'on' : ''} onClick={() => setSide(t)} data-testid={`fac-tab-${t}`}>{t === 'build' ? '🧰 Build' : t === 'shop' ? '🛒 Machinist' : t === 'recipes' ? '📜 Recipes' : '🚚 Bring in'}</button>)}
           </div>
-          {selEnt && <Inspect e={selEnt} storage={storageList} store={sim.current.store} onEdit={(b) => call('fac_edit', { id: selEnt.id, ...b })} onRemove={() => { call('fac_remove', { ids: [selEnt.id] }); setSel(null); }} onMove={() => { setMoving(selEnt.id); setDir(selEnt.d); }} onClose={() => setSel(null)} />}
+          {selEnt && <Inspect e={selEnt} storage={storageList} store={sim.current.store} onEdit={(b) => call('fac_edit', { id: selEnt.id, ...b })} onRemove={() => { call('fac_remove', { ids: [selEnt.id] }); setSel(null); }} sell={<FactoryMachineSell key={selEnt.id} id={selEnt.id} kind={selEnt.k} name={KINDS[selEnt.k].name} ask={ask} flash={flash} onSold={() => setSel(null)} />} onMove={() => { setMoving(selEnt.id); setDir(selEnt.d); }} onClose={() => setSel(null)} />}
           {side === 'build' && <div className="fac-palette">
             {KIND_ORDER.map((k) => (
               <button type="button" key={k} disabled={!kitN(k)} className={tool === k ? 'on' : ''} onClick={() => { setTool(k); setSel(null); }} title={KINDS[k].desc} data-testid={`fac-pal-${k}`}>
@@ -257,10 +260,8 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
           </div>}
           {side === 'recipes' && <div className="fac-recipes" data-testid="fac-recipes">
             <FactoryRecipeSearch icons={ICON} pick={(k) => { setChain(k); window.setTimeout(() => document.querySelector('[data-testid=fac-chain]')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 0); }} />
-            <label className="fac-chainpick">Show chain for <select value={chain} onChange={(ev) => setChain(ev.target.value)} data-testid="fac-chain-pick">
-              <option value="">— pick a product —</option>
-              {FRECIPES.map((r) => r.out[0]).filter((k, i, a) => a.indexOf(k) === i).sort((a, b) => tierOf(a) - tierOf(b) || nameOfKey(a).localeCompare(nameOfKey(b))).map((k) => <option key={k} value={k}>T{tierOf(k)} · {nameOfKey(k)}</option>)}
-            </select></label>
+            <div className="fac-chainpick"><FactorySearchSelect label="Show chain for" value={chain} testid="fac-chain-pick" placeholder={{ value: '', label: '— pick a product —' }} onPick={setChain}
+              opts={FRECIPES.map((r) => r.out[0]).filter((k, i, a) => a.indexOf(k) === i).sort((a, b) => tierOf(a) - tierOf(b) || nameOfKey(a).localeCompare(nameOfKey(b))).map((k) => ({ value: k, label: `T${tierOf(k)} · ${nameOfKey(k)}`, search: madeBy(k)?.in.map(([ik]) => nameOfKey(ik)).join(' ') }))} /></div>
             {chain && <Chain k={chain} pick={setChain} />}
             {KIND_ORDER.filter((k) => KINDS[k].machine).map((k) => (
               <div key={k}><h4>{ICON[k]} {KINDS[k].name}{KINDS[k].minFloor > 1 ? <small> · level {KINDS[k].minFloor}+</small> : null}</h4>
@@ -300,38 +301,28 @@ function Chain({ k, pick }: { k: string; pick: (k: string) => void }) {
 
 function Dot({ k }: { k: string }) { return <ItemIcon k={k} size={16} />; }
 
-function Inspect({ e, storage, store, onEdit, onRemove, onMove, onClose }: { e: Ent; storage: string[]; store: Map<string, number>; onEdit: (b: object) => void; onRemove: () => void; onMove: () => void; onClose: () => void }) {
+export function Inspect({ e, storage, store, onEdit, onRemove, onMove, onClose, sell }: { e: Ent; storage: string[]; store: Map<string, number>; onEdit: (b: object) => void; onRemove: () => void; onMove: () => void; onClose: () => void; sell?: React.ReactNode }) {
   const d = KINDS[e.k]; const r = frecipe(e.r);
   return (
     <div className="fac-inspect" data-testid="fac-inspect">
       <div className="fac-ihead"><b>{ICON[e.k]} {d.name}</b><button type="button" onClick={onClose} aria-label="Close">✕</button></div>
-      {d.machine && <label>Recipe <select value={e.r ?? ''} onChange={(ev) => onEdit({ r: ev.target.value })} data-testid="fac-recipe">
-        {!e.r && <option value="">— pick —</option>}
-        {recipesFor(e.k).map((x) => <option key={x.id} value={x.id}>{x.out[1]}× {nameOfKey(x.out[0])} ← {x.in.map(([k, q]) => `${q} ${nameOfKey(k)}`).join(' + ')}</option>)}
-      </select></label>}
+      {d.machine && <FactorySearchSelect label="Recipe" value={e.r ?? ''} testid="fac-recipe" placeholder={e.r ? undefined : { value: '', label: '— pick —' }} onPick={(v) => { if (v && v !== e.r) onEdit({ r: v }); }}
+        opts={recipesFor(e.k).map((x) => ({ value: x.id, label: `${x.out[1]}× ${nameOfKey(x.out[0])} ← ${x.in.map(([k, q]) => `${q} ${nameOfKey(k)}`).join(' + ')}` }))} />}
       {d.machine && r && <div className="fac-buf">
         {r.in.map(([k, q]) => <span key={k}><Dot k={k} />{e.ib?.[k] ?? 0}/{q}</span>)}
         <span>→ <Dot k={r.out[0]} />{e.ob ?? 0}/{r.out[1]} ready{(e.ob ?? 0) > 0 && <b className="fac-backed" data-testid="fac-backed"> · backed up — waiting for pickup</b>}</span>
         <div className="mines-bar"><i style={{ width: `${((e.p ?? 0) / recipeTicks(r)) * 100}%` }} /></div>
       </div>}
-      {e.k === 'inserter' && <label>Only grab <select value={e.f ?? ''} onChange={(ev) => onEdit({ f: ev.target.value || null })} data-testid="fac-ins-filter">
-        <option value="">— anything —</option>
-        {storage.map((k) => <option key={k} value={k}>{nameOfKey(k)}</option>)}
-      </select></label>}
+      {e.k === 'inserter' && <FactorySearchSelect label="Only grab" value={e.f ?? ''} testid="fac-ins-filter" placeholder={{ value: '', label: '— anything —' }} onPick={(v) => onEdit({ f: v || null })} opts={storage.map((k) => ({ value: k, label: nameOfKey(k) }))} />}
       {e.k === 'splitter' && <SplitRatio e={e} onEdit={onEdit} />}
       {e.k === 'underground' && <p className="mines-note">Pairs with the next underground ahead facing the same way (2–6 tiles). Items skip everything in between.</p>}
-      {e.k === 'chest_out' && <label>Only accept <select value={e.f ?? ''} onChange={(ev) => onEdit({ f: ev.target.value || null })} data-testid="fac-out-filter">
-        <option value="">— anything —</option>
-        {storage.map((k) => <option key={k} value={k}>{nameOfKey(k)}</option>)}
-      </select></label>}
-      {e.k === 'chest_in' && <label>Pulls <select value={e.f ?? ''} onChange={(ev) => onEdit({ f: ev.target.value || null })} data-testid="fac-filter">
-        <option value="">— nothing —</option>
-        {storage.map((k) => <option key={k} value={k}>{nameOfKey(k)} ({store.get(k) ?? 0} banked)</option>)}
-      </select></label>}
+      {e.k === 'chest_out' && <FactorySearchSelect label="Only accept" value={e.f ?? ''} testid="fac-out-filter" placeholder={{ value: '', label: '— anything —' }} onPick={(v) => onEdit({ f: v || null })} opts={storage.map((k) => ({ value: k, label: nameOfKey(k) }))} />}
+      {e.k === 'chest_in' && <FactorySearchSelect label="Pulls" value={e.f ?? ''} testid="fac-filter" placeholder={{ value: '', label: '— nothing —' }} onPick={(v) => onEdit({ f: v || null })} opts={storage.map((k) => ({ value: k, label: `${nameOfKey(k)} (${store.get(k) ?? 0} banked)`, search: nameOfKey(k) }))} />}
       <div className="fac-iact">
         <button type="button" onClick={() => onEdit({ d: (e.d + 1) % 4 })}>⟳ Rotate</button>
         <button type="button" onClick={onMove}>✥ Move</button>
         <button type="button" onClick={onRemove}>🧲 Pick up</button>
+        {d.machine && sell}
       </div>
     </div>
   );

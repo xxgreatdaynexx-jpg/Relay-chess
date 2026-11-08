@@ -60,6 +60,8 @@ export class PgMineStore implements MineStore {
   constructor(private readonly db: Queryable & { connect?: () => Promise<pg.PoolClient> }) { db.on?.('error', (e) => console.error('[mines] pool error:', e.message)); }
   async init() { for (const q of MINES_MIGRATION) await this.db.query(q); }
   /** Did a bank with this marker commit? (unknown-outcome reconcile). Throws if the database can't be asked. */
+  /** Did a wallet move with this key commit? (unknown-outcome reconcile for factory machine sales). */
+  async txCommitted(key: string) { return (await this.db.query('SELECT 1 FROM wallet_transactions WHERE tx_key = $1', [key])).rows.length > 0; }
   async banked(id: string) { return (await this.db.query('SELECT 1 FROM mine_banks WHERE bank_id = $1', [id])).rows.length > 0; }
   async load() {
     const items = (await this.db.query('SELECT * FROM mine_items')).rows.filter((r) => Number(r.qty) > 0).map((r) => ({ key: String(r.player_key), name: String(r.owner_name), type: r.item_type as ItemType, id: String(r.item_id), qty: Number(r.qty) }));

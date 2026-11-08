@@ -2550,3 +2550,12 @@ body.he-full-open .he-table.he-full { visibility: visible; }
   .world-deeds .map-sheet-body > button span { opacity: .75; }
 
 }
+/* t1968u searchable factory pickers + t1967u machine sale confirm */
+.fac-ssel { display: flex; flex-direction: column; gap: 3px; font-size: 11px; }
+.fac-ssel select { width: 100%; background: #1d1f22; border-radius: 5px; padding: 2px; font-size: 11px; }
+.fac-ssearch { display: flex; gap: 4px; }
+.fac-ssearch input { flex: 1; min-width: 0; background: #15171a; color: inherit; border: 1px solid rgba(201,162,39,.35); border-radius: 5px; padding: 4px 6px; font-size: 12px; }
+.fac-ssearch button { min-width: 32px; min-height: 28px; }
+.fac-sellconfirm { border: 1px solid rgba(226,90,58,.6); border-radius: 6px; padding: 6px; background: rgba(60,24,20,.5); font-size: 12px; }
+.fac-sellconfirm p { margin: 0 0 6px; }
+@media (pointer: coarse) { .fac-ssearch input { font-size: 16px; min-height: 36px; } .fac-ssearch button, .fac-sellconfirm button { min-height: 40px; min-width: 44px; } }
