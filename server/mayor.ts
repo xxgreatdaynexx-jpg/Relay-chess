@@ -210,9 +210,12 @@ export class Mayor {
   async view(name: string | null): Promise<CityHallView> {
     const now = this.clock(); await this.settle(now); const s = schedule(now);
     const [candidates, mayor, elect, vice] = await Promise.all([this.candidates(s.week), this.mayor(now), this.elect(now), this.vice(now)]);
+    // A reviewed term-date correction is authoritative for both office eligibility and the UI schedule.
+    // Keep filing/voting boundaries and every other election week on the normal fixed-UTC-6 cadence.
+    const announcedTerm = [mayor, elect].find((term) => term?.week === s.week);
     const v: CityHallView = {
       // Hide live per-candidate tallies while filing/voting; Sunday results (and settle) may show them.
-      laws: await this.lawHistory(), now, schedule: s, candidates: s.phase === 'results' ? candidates : candidates.map(({ votes: _v, ...c }) => c),
+      laws: await this.lawHistory(), now, schedule: announcedTerm ? { ...s, termStart: announcedTerm.startsAt, termEnd: announcedTerm.endsAt } : s, candidates: s.phase === 'results' ? candidates : candidates.map(({ votes: _v, ...c }) => c),
       mayor: mayor ? { week: mayor.week, name: mayor.name, votes: mayor.votes, startsAt: mayor.startsAt, endsAt: mayor.endsAt, removedAt: null } : null, elect,
       vice: vice ? { name: vice.name, votes: vice.votes, startsAt: vice.startsAt, endsAt: vice.endsAt } : null,
       rates: this.rates(now), pending: this.pending(now), log: this.log.slice(-30).reverse(),
