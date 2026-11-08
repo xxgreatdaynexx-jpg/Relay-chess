@@ -44,7 +44,11 @@ export class FactoryWorld {
     if (!account) return null;
     // Never build a fresh state (and later save it over the real row) while the stored rows are not loaded.
     if (getMines().offline) throw new MineError(MINES_OFFLINE_MSG);
-    const k = playerKey(account); const lv = this.level(account);
+    const k = playerKey(account);
+    // The sale serializes factory_v2 before adjustStacks snapshots the city pack. Its storage hook,
+    // sweep and views must not advance production between those two halves of the same commit.
+    if (this.selling.has(k)) return this.states.get(k) ?? null;
+    const lv = this.level(account);
     let s = this.states.get(k);
     if (!s) {
       const row = getMines().fv2.get(k) as FState | undefined;

@@ -1,5 +1,5 @@
 /** t1967u: selling a placed factory machine, against REAL PostgreSQL (own throwaway database on the local test server). */
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import pg from 'pg';
 import { PgMineStore, resetMines, type MinesWorld } from '../server/mines';
 import { resetFactory, type FactoryWorld } from '../server/factory';
@@ -17,8 +17,9 @@ beforeAll(async () => {
   u.pathname = `/${dbName}`; pool = new pg.Pool({ connectionString: u.toString(), max: 6 });
 });
 afterAll(async () => { if (!url) return; await pool.end(); await root.query(`DROP DATABASE ${dbName}`); await root.end(); }); // only our own throwaway DB
-async function boot() { const b = resetBank(); b.retryMs = []; await b.attach(new PgCasinoStore(pool)); w = resetMines(); await w.attach(new PgMineStore(pool)); f = resetFactory(); }
+async function boot() { if (f) { await f.flush(); await w.flush(); await getBank().flush?.(); } const b = resetBank(); b.retryMs = []; await b.attach(new PgCasinoStore(pool)); w = resetMines(); await w.attach(new PgMineStore(pool)); f = resetFactory(); }
 beforeEach(async () => { if (url) await boot(); });
+afterEach(async () => { vi.restoreAllMocks(); if (url) { await f.flush(); await w.flush(); await getBank().flush?.(); } });
 const bal = (a: string) => getBank().account(a).chips;
 const dbChips = async (a: string) => Number((await pool.query('SELECT chips FROM casino_players WHERE player_key = $1', [a.toLowerCase()])).rows[0]?.chips);
 const sales = async (a: string) => (await pool.query("SELECT tx_key, amount FROM wallet_transactions WHERE player_key = $1 AND tx_key LIKE 'factory:sell:%'", [a.toLowerCase()])).rows;
@@ -109,4 +110,62 @@ describe.skipIf(!url)('factory machine sale (real Postgres)', () => {
     expect(await f.sell(A, { id: sm, kind: 'smelter', quote: 100 }, T0 + 10)).toMatchObject({ paid: 100 }); // sellable again
     expect(await sales(A)).toHaveLength(1);
   });
+  it('freezes production, views and the storage hook until the sale snapshot commits, then resumes', async () => {
+    const { A, s, id } = await setup(); const sm = id('smelter');
+    s.at = T0; s.seen = T0;
+    const press = s.ents.find((e) => e.id === id('press'))!;
+    press.r = 'p_iron_plate'; press.ib = { 'bar:iron_bar': 1 }; press.p = 0;
+    const p = f.sell(A, { id: sm, kind: 'smelter', quote: 100 }, T0);
+    // Even adjustStacks' synchronous beforeStorage hook must not move the clock/input buffer.
+    expect(s.at).toBe(T0); expect(press.p).toBe(0);
+    expect(f.get(A, T0 + 120_000)).toBe(s);
+    expect(s.at).toBe(T0); expect(press.ib).toEqual({ 'bar:iron_bar': 1 });
+    await p;
+    const row = (await pool.query('SELECT data FROM factory_v2 WHERE player_key=$1', [A])).rows[0].data;
+    expect(row.at).toBe(T0);
+    expect(row.ents.find((e: { id: number }) => e.id === press.id).ib).toEqual({ 'bar:iron_bar': 1 });
+    f.get(A, T0 + 120_000); expect(s.at).toBe(T0 + 120_000); // no lost catch-up, only delayed
+  });
+  it('lost commit ACK + initially unknown ledger outcome: credit once, retain lock, reconcile and survive restart', async () => {
+    const { A, id } = await setup(); const sm = id('smelter'); const c0 = bal(A);
+    const st = w.store as PgMineStore; const save = st.save.bind(st); const marker = st.txCommitted.bind(st);
+    vi.spyOn(st, 'save').mockImplementation(async (...args) => { await save(...args); throw new Error('lost ACK'); });
+    let checked = 0;
+    vi.spyOn(st, 'txCommitted').mockImplementation(async (key) => {
+      if (++checked <= 3) { expect(() => f.expand(A, T0)).toThrow(/Finishing your machine sale/); throw new Error('temporarily cannot reconcile'); }
+      return marker(key);
+    });
+    expect(await f.sell(A, { id: sm, kind: 'smelter', quote: 100 }, T0)).toMatchObject({ paid: 100 });
+    vi.restoreAllMocks();
+    expect(checked).toBeGreaterThanOrEqual(4); expect(bal(A)).toBe(c0 + 100);
+    expect(await sales(A)).toHaveLength(1); expect(await dbChips(A)).toBe(c0 + 100);
+    await boot(); expect(f.get(A, T0)!.ents.some((e) => e.id === sm)).toBe(false);
+    expect(bal(A)).toBe(c0 + 100);
+  }, 15_000);
+
+  it('initially unknown non-commit restores exactly once, releases lock and remains sellable', async () => {
+    const { A, id } = await setup(); const sm = id('smelter'); const c0 = bal(A);
+    const st = w.store as PgMineStore;
+    vi.spyOn(st, 'save').mockRejectedValue(new Error('did not commit'));
+    let checked = 0;
+    vi.spyOn(st, 'txCommitted').mockImplementation(async () => { if (++checked <= 3) throw new Error('offline'); return false; });
+    await expect(f.sell(A, { id: sm, kind: 'smelter', quote: 100 }, T0)).rejects.toThrow(/still there and nothing was paid/);
+    vi.restoreAllMocks(); expect(bal(A)).toBe(c0); expect(await sales(A)).toHaveLength(0);
+    expect(f.sellQuote(A, sm, T0).pay).toBe(100);
+    expect(await f.sell(A, { id: sm, kind: 'smelter', quote: 100 }, T0 + 1)).toMatchObject({ paid: 100 });
+    expect(await sales(A)).toHaveLength(1);
+  }, 15_000);
+  it('pickup/reinstall, sale, restart and expansion never regenerate the free starter machine', async () => {
+    const { A, id } = await setup(); const sm = id('smelter');
+    f.remove(A, [sm], T0); expect(f.get(A, T0)!.kit.smelter).toBe(1);
+    f.place(A, [{ k: 'smelter', x: 2, y: 0, d: 0 }], T0);
+    const reinstalled = f.get(A, T0)!.ents.find((e) => e.k === 'smelter')!;
+    expect(reinstalled.id).not.toBe(sm);
+    await f.sell(A, { id: reinstalled.id, kind: 'smelter', quote: 100 }, T0);
+    await boot(); expect(f.get(A, T0)!.kit.smelter ?? 0).toBe(0);
+    f.expand(A, T0); expect(f.get(A, T0)!.kit.smelter ?? 0).toBe(0);
+    expect(() => f.place(A, [{ k: 'smelter', x: 2, y: 0, d: 0 }], T0)).toThrow(/Buy a Smelter/);
+    expect(await sales(A)).toHaveLength(1);
+  });
+
 });
