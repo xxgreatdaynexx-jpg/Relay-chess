@@ -92,17 +92,30 @@ export const buildStage = (stagesDone: number) => Math.max(0, Math.min(4, stages
 // ---------------------------------------------------------------- group contracts
 export const CONTRACT_MS = 24 * 3_600_000;
 export interface ContractSpec { id: string; type: ItemType; item: string; qty: number }
-/** Rotating board: one big order per 24 h window (UTC days). */
-export const CONTRACT_ROTATION: Array<{ item: string; qty: number }> = [
+/** Rotating board: one big order per 24 h window (UTC days). Pre-rebalance sizes: kept so contracts that closed before
+ *  CONTRACT_REBALANCE_FROM keep exactly the targets (and filled/bonus status) they ran with. */
+export const CONTRACT_ROTATION_V1: Array<{ item: string; qty: number }> = [
   { item: 'steel', qty: 50_000 }, { item: 'concrete', qty: 300_000 }, { item: 'steel_plate', qty: 30_000 },
   { item: 'glass', qty: 500_000 }, { item: 'steel_beam', qty: 12_000 }, { item: 'brick', qty: 600_000 }, { item: 'steel_cable', qty: 40_000 },
 ];
+/**
+ * pt1969u (Dayne 2026-11-07 "contract board is impossible to complete with the player base we have"): sized for a small
+ * community. Each order needs about 2,400-3,150 raw ore through the factory chain (e.g. 250 steel = 1,500 iron + 1,000 coal),
+ * about one day of a player's 3 hired miners (3 x 720 ore) plus some mining, so two or three regulars can fill it in a day.
+ * Same items, order and per-unit pay. Applies from the contract running when this shipped (CONTRACT_REBALANCE_FROM).
+ */
+export const CONTRACT_ROTATION: Array<{ item: string; qty: number }> = [
+  { item: 'steel', qty: 250 }, { item: 'concrete', qty: 100 }, { item: 'steel_plate', qty: 250 },
+  { item: 'glass', qty: 150 }, { item: 'steel_beam', qty: 120 }, { item: 'brick', qty: 250 }, { item: 'steel_cable', qty: 500 },
+];
+/** First contract index (UTC day 2026-11-08, the one live at 2026-11-07 18:xx UTC-6) on the small-community sizes. */
+export const CONTRACT_REBALANCE_FROM = 20_765;
 /** Pay per unit delivered = house price x this (a hauling premium; goods are consumed). */
 export const CONTRACT_UNIT_MUL = 1.15;
 /** Completion bonus (filled before the deadline) = this share of the player's base pay. */
 export const CONTRACT_BONUS = 0.2;
-/** One player may deliver at most this share of an order. */
-export const CONTRACT_PLAYER_SHARE = 0.25;
+/** One player may deliver at most this share of an order: two players can fill it (was 0.25, i.e. at least four). */
+export const CONTRACT_PLAYER_SHARE = 0.5;
 /** And claim at most this many chips from one contract. */
 export const CONTRACT_CLAIM_CAP = 1_000_000;
 /** Anti-alt: account age and play time to take part. */
@@ -113,7 +126,8 @@ export const CONTRACT_CLAIM_MS = 7 * 24 * 3_600_000;
 
 export const contractIndex = (now: number) => Math.floor(now / CONTRACT_MS);
 export function contractAt(index: number): ContractSpec & { start: number; deadline: number } {
-  const r = CONTRACT_ROTATION[((index % CONTRACT_ROTATION.length) + CONTRACT_ROTATION.length) % CONTRACT_ROTATION.length]!;
+  const rot = index >= CONTRACT_REBALANCE_FROM ? CONTRACT_ROTATION : CONTRACT_ROTATION_V1;
+  const r = rot[((index % rot.length) + rot.length) % rot.length]!;
   const g = GOODS[r.item]!;
   return { id: `c${index}`, type: g.type, item: r.item, qty: r.qty, start: index * CONTRACT_MS, deadline: (index + 1) * CONTRACT_MS };
 }

@@ -90,7 +90,7 @@ export function CoopPanel({ onClose, me, tab0 = 'project', onChanged, onViewSite
             </div>)}
             <h4>🚚 Top haulers</h4>
             <ol className="coop-board" data-testid="coop-haulers">{c.top.length ? c.top.map((d, i) => <li key={d.name}><span>{i + 1}. {d.name}</span><b>{fmt(d.qty)}</b></li>) : <li>Nobody has delivered yet.</li>}</ol>
-            <small>Each player can deliver up to 25% of an order. Accounts need to be 3+ days old with 2+ hours played. QA, bot and jailed accounts can’t take part.</small>
+            <small>Each player can deliver up to half of an order. Accounts need to be 3+ days old with 2+ hours played. QA, bot and jailed accounts can’t take part.</small>
           </section>}
           {msg && <p className="freight-msg" data-testid="coop-msg">{msg}</p>}
         </div>

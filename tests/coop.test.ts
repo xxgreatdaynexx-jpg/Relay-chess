@@ -43,7 +43,7 @@ describe('co-op sizing + rules', () => {
   it('contracts rotate daily; pay is proportional + completion bonus, capped per claim', () => {
     const a = contractAt(100), b = contractAt(101); expect(b.start - a.start).toBe(DAY); expect(a.deadline).toBe(b.start);
     const p1 = contractPay(a, 10, true), p2 = contractPay(a, 20, true); expect(p2.base).toBeCloseTo(p1.base * 2, -1); expect(p1.bonus).toBe(Math.floor(p1.base * CONTRACT_BONUS));
-    expect(contractPay(a, 10, false).bonus).toBe(0); expect(contractPay(a, 1e9, true).total).toBe(CONTRACT_CLAIM_CAP); expect(playerCap(a)).toBe(Math.floor(a.qty / 4));
+    expect(contractPay(a, 10, false).bonus).toBe(0); expect(contractPay(a, 1e9, true).total).toBe(CONTRACT_CLAIM_CAP); expect(playerCap(a)).toBe(Math.floor(a.qty / 2));
   });
   it('stadium site keeps trees/rocks out', () => { expect(inStadiumSite(STADIUM_SITE.x, STADIUM_SITE.z)).toBe(true); expect(inStadiumSite(0, 0)).toBe(false);
     expect(inStadiumSite(STADIUM_SITE.x + STADIUM_SITE.w / 2 + 10, STADIUM_SITE.z + STADIUM_SITE.d / 2 + 10)).toBe(true); expect(inStadiumSite(STADIUM_SITE.x + STADIUM_SITE.w / 2 + 13, STADIUM_SITE.z)).toBe(false); });
