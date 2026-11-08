@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-07T19:38:04-06:00', title: 'Factory machine sale confirmation is no longer cut off', bullets: [
+    'The "Sell this machine?" confirmation now opens as a full-screen dialog, like Sell all, instead of squeezing into the narrow scrolling Factory side menu where it was clipped. The price, Confirm and Cancel are fully visible on desktop and phones, and Esc or tapping outside cancels.',
+    'The sale itself is unchanged: same server price (half the base Machinist price) and the same checks.',
+  ] },
   { commit: '7e5e0d9', at: '2026-11-07T18:47:01-06:00', title: 'Barn owners can see all their farms in one menu', bullets: [
     'The barn included with a Big Farm now unlocks All my farms, including for existing owners. Open it from your barn in Chud City, the Big Farm deed, the map menu, or any of your farm screens. A newly purchased Big Farm unlocks the menu without reloading.',
     'Only your farms appear, grouped into Chud City (including countryside) and Chud Resort. Open a farm on your current map; travel first to open one on another map. Each map keeps its own inventory: this menu does not move crops or combine stock.',

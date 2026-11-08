@@ -78,6 +78,7 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
   // ---- keys
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (document.querySelector('.sellall-backdrop')) return; // a confirm dialog is open: no build hotkeys behind it
       const tg = e.target as HTMLElement | null; if (tg && (tg.tagName === 'INPUT' || tg.tagName === 'SELECT' || tg.tagName === 'TEXTAREA')) return;
       if (!sim.current.s) return;
       if (e.key === ' ') { e.preventDefault(); ui.current.space = true; return; }

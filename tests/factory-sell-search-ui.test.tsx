@@ -59,11 +59,16 @@ describe('machine sell', () => {
     inspect(smelter(), vi.fn(), h(FactoryMachineSell, { id: 7, kind: 'smelter', name: 'Smelter', ask, onSold: sold, flash }));
     await act(async () => { fireEvent.touchStart(screen.getByTestId('fac-sell')); fireEvent.click(screen.getByTestId('fac-sell')); });
     expect(ask).toHaveBeenCalledWith('fac_sell_quote', { id: 7 });
-    expect(screen.getByTestId('fac-sell-confirm').textContent).toMatch(/Sell this Smelter for 100 chips/);
-    fireEvent.click(screen.getByTestId('fac-sell-no')); expect(screen.queryByTestId('fac-sell-confirm')).toBeNull();
+    const dlg = screen.getByTestId('fac-sell-confirm'); expect(dlg.textContent).toMatch(/Sell this Smelter\?.*You get 100 chips/);
+    expect(dlg.parentElement).toBe(document.body); // portaled out of the scrolling sidebar / inspect panel
+    expect(screen.getByTestId('fac-inspect').contains(dlg)).toBe(false);
+    expect(dlg.querySelector('[role=alertdialog]')?.getAttribute('aria-modal')).toBe('true');
+    expect(document.activeElement).toBe(screen.getByTestId('fac-sell-ok'));
+    expect((screen.getByTestId('fac-sell') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByTestId('fac-sell-cancel')); expect(screen.queryByTestId('fac-sell-confirm')).toBeNull();
     expect(ask).toHaveBeenCalledTimes(1); expect(sold).not.toHaveBeenCalled();
     await act(async () => { fireEvent.click(screen.getByTestId('fac-sell')); });
-    await act(async () => { fireEvent.click(screen.getByTestId('fac-sell-yes')); });
+    await act(async () => { fireEvent.click(screen.getByTestId('fac-sell-ok')); });
     expect(ask).toHaveBeenLastCalledWith('fac_sell', { id: 7, kind: 'smelter', quote: 100 }); expect(sold).toHaveBeenCalledTimes(1);
     expect(flash).toHaveBeenCalledWith('Sold the Smelter for 100 chips.');
   });
@@ -73,10 +78,31 @@ describe('machine sell', () => {
     const flash = vi.fn(); const sold = vi.fn();
     render(h(FactoryMachineSell, { id: 7, kind: 'smelter', name: 'Smelter', ask: ask as never, onSold: sold, flash }));
     await act(async () => { fireEvent.click(screen.getByTestId('fac-sell')); });
-    await act(async () => { fireEvent.click(screen.getByTestId('fac-sell-yes')); fireEvent.click(screen.getByTestId('fac-sell-yes')); });
+    await act(async () => { fireEvent.click(screen.getByTestId('fac-sell-ok')); fireEvent.click(screen.getByTestId('fac-sell-ok')); });
     expect(ask.mock.calls.filter((c) => c[0] === 'fac_sell')).toHaveLength(1);
     await act(async () => { resolve({ ok: false, error: 'That Smelter is still working or holding items.' }); });
     expect(flash).toHaveBeenCalledWith('That Smelter is still working or holding items.'); expect(sold).not.toHaveBeenCalled();
+  });
+  it('Escape and backdrop cancel; both are ignored while the sale is in flight', async () => {
+    let resolve!: (v: unknown) => void;
+    const ask = vi.fn((ev: string) => ev === 'fac_sell_quote' ? ok({ pay: 100 }) : new Promise((r) => { resolve = r; }));
+    render(h(FactoryMachineSell, { id: 7, kind: 'smelter', name: 'Smelter', ask: ask as never, onSold: vi.fn(), flash: vi.fn() }));
+    await act(async () => { fireEvent.click(screen.getByTestId('fac-sell')); });
+    fireEvent.keyDown(window, { key: 'Escape' }); expect(screen.queryByTestId('fac-sell-confirm')).toBeNull();
+    await act(async () => { fireEvent.click(screen.getByTestId('fac-sell')); });
+    fireEvent.click(screen.getByTestId('fac-sell-confirm')); expect(screen.queryByTestId('fac-sell-confirm')).toBeNull(); // backdrop
+    await act(async () => { fireEvent.click(screen.getByTestId('fac-sell')); });
+    await act(async () => { fireEvent.click(screen.getByTestId('fac-sell-ok')); });
+    expect((screen.getByTestId('fac-sell-ok') as HTMLButtonElement).disabled).toBe(true); expect((screen.getByTestId('fac-sell-cancel') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.keyDown(window, { key: 'Escape' }); fireEvent.click(screen.getByTestId('fac-sell-confirm'));
+    expect(screen.getByTestId('fac-sell-confirm')).toBeTruthy();
+    await act(async () => { resolve({ ok: true, result: { paid: 100 } }); });
+    expect(screen.queryByTestId('fac-sell-confirm')).toBeNull();
+  });
+  it('CSS: the dialog is a fixed full-viewport layer with safe-area padding and a scrollable card', async () => {
+    const css = (await import('node:fs')).readFileSync('client/src/index.css', 'utf8');
+    expect(css).toMatch(/\.sellall-backdrop \{ position: fixed; inset: 0; z-index: 9500;[^}]*env\(safe-area-inset-bottom\)/);
+    expect(css).toMatch(/\.sellall-card \{[^}]*max-height: 100%; overflow-y: auto;/);
   });
   it('Sell only shows on machines', () => {
     inspect({ id: 1, k: 'belt', x: 0, y: 0, d: 0 }, vi.fn(), h('button', { 'data-testid': 'fac-sell' }));

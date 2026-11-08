@@ -2414,11 +2414,11 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .hk-btn.shoot { grid-row: span 2; width: 84px; height: 84px; background: #d8202acc; font-size: 15px; } .hk-btn.pass { background: #1f6fd1cc; } .hk-btn.poke { background: #444c66cc; }
 @media (max-width: 560px) { .hk-panel { inset: 40px 0 0 0; border-radius: 0; } .hk-score { top: 6px; font-size: 14px; gap: 5px; } .hk-score > b { font-size: 19px; } .hk-team { font-size: 9px; padding: 4px 5px; } .hk-me { top: auto; bottom: 150px; max-width: 60%; font-size: 11px; } .hk-teams { grid-template-columns: 1fr; } .hk-close { top: auto; bottom: 150px; right: 10px; } }
 /* #39 Sell all confirmation */
-.sellall-backdrop { position: fixed; inset: 0; z-index: 9500; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; padding: 14px; }
-.sellall-card { width: 100%; max-width: 380px; background: #15171d; border: 1px solid #e8c26a77; border-radius: 14px; padding: 16px 18px; color: #f4efe2; box-shadow: 0 16px 40px rgba(0,0,0,.6); }
+.sellall-backdrop { position: fixed; inset: 0; z-index: 9500; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); }
+.sellall-card { width: 100%; max-width: 380px; max-height: 100%; overflow-y: auto; overscroll-behavior: contain; background: #15171d; border: 1px solid #e8c26a77; border-radius: 14px; padding: 16px 18px; color: #f4efe2; box-shadow: 0 16px 40px rgba(0,0,0,.6); }
 .sellall-card h3 { margin: 0 0 8px; font-size: 17px; font-weight: 800; color: #ffe3a0; }
 .sellall-card p { margin: 0 0 14px; font-size: 14px; line-height: 1.4; }
-.sellall-btns { display: flex; justify-content: flex-end; gap: 10px; }
+.sellall-btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
 .sellall-btns button { padding: 8px 16px; border-radius: 999px; border: 1px solid rgba(255,255,255,.25); background: transparent; color: #f4efe2; font-weight: 700; cursor: pointer; }
 .sellall-btns button.ok { border: 0; color: #1a1406; background: linear-gradient(180deg, #ffe08a, #d9a83a); }
 .house-sell { margin: 8px 0; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(232,194,106,.45); background: rgba(232,194,106,.08); display: grid; gap: 6px; }
@@ -2556,9 +2556,7 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .fac-ssearch { display: flex; gap: 4px; }
 .fac-ssearch input { flex: 1; min-width: 0; background: #15171a; color: inherit; border: 1px solid rgba(201,162,39,.35); border-radius: 5px; padding: 4px 6px; font-size: 12px; }
 .fac-ssearch button { min-width: 32px; min-height: 28px; }
-.fac-sellconfirm { border: 1px solid rgba(226,90,58,.6); border-radius: 6px; padding: 6px; background: rgba(60,24,20,.5); font-size: 12px; }
-.fac-sellconfirm p { margin: 0 0 6px; }
-@media (pointer: coarse) { .fac-ssearch input { font-size: 16px; min-height: 36px; } .fac-ssearch button, .fac-sellconfirm button { min-height: 40px; min-width: 44px; } }
+@media (pointer: coarse) { .fac-ssearch input { font-size: 16px; min-height: 36px; } .fac-ssearch button { min-height: 40px; min-width: 44px; } }
 
 /* Barn overview uses the same mobile MapSheet header/body as individual farms. */
 .farm-overview section button { width: 100%; min-height: 44px; text-align: left; white-space: normal; overflow-wrap: anywhere; padding: 8px; border: 1px solid #c9a24a66; border-radius: 8px; }
