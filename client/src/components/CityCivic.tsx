@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { request } from '@/lib/net';
-import { LEVERS, LEVER_IDS, POLICIES, POLICY_IDS, BUILDINGS, MAX_STAGE, leverText, perkOf, stageAt, underConstruction, RECALL_FEE, type LeverId, type CityView } from '../../../shared/city';
+import { PROJECTS, LEVERS, LEVER_IDS, POLICIES, POLICY_IDS, BUILDINGS, MAX_STAGE, leverText, perkOf, stageAt, underConstruction, RECALL_FEE, type LeverId, type CityView } from '../../../shared/city';
 import { abWhen } from './CityHallPanel';
 
 const chips = (n: number) => Math.round(n).toLocaleString('en-US');
@@ -26,13 +26,13 @@ export function CityCivic({ initial }: { initial?: CityView }) {
       <div className="cityhall-rates" data-testid="city-treasury">
         <div><small>Balance</small><b>🪙 {chips(v.treasury.balance)}</b><small>public funds</small></div>
         <div><small>In (7 days)</small><b>+{chips(v.treasury.in7d)}</b><small>25% of taxes & fees</small></div>
-        <div><small>Spent (7 days)</small><b>−{chips(v.treasury.out7d)}</b><small>policies & buildings</small></div>
+        <div><small>Spent (7 days)</small><b>−{chips(v.treasury.out7d)}</b><small>policies, projects & buildings</small></div>
       </div>
       <ul className="cityhall-log city-ledger" data-testid="city-ledger">
         {!v.treasury.ledger.length && <li><small>No treasury activity yet.</small></li>}
         {v.treasury.ledger.slice(0, 12).map((t) => <li key={t.id}><small>{abWhen(t.at)}</small> <b className={t.amount > 0 ? 'text-emerald-300' : 'text-amber-300'}>{t.amount > 0 ? '+' : '−'}{chips(Math.abs(t.amount))}</b> {t.memo} <small>(→ {chips(t.balance)})</small></li>)}
       </ul>
-      <small className="cityhall-rules">Treasury money can only fund city policies and buildings. It can never be paid out to a player, the mayor included.</small>
+      <small className="cityhall-rules">Treasury money can only fund city policies, projects and buildings. It can never be paid out to a player, the mayor included.</small>
 
       <h4>🎚️ City levers</h4>
       <ul className="cityhall-list city-levers">
@@ -54,6 +54,19 @@ export function CityCivic({ initial }: { initial?: CityView }) {
         {POLICY_IDS.map((id) => { const p = POLICIES[id]; const cost = Math.round(p.cost * v.index);
           return (<li key={id}><div><b>{p.icon} {p.label}</b><small>{p.blurb} · 🪙 {chips(cost)} from the treasury</small></div>
             {mayor && <button type="button" disabled={busy || !!v.policy || v.nextPolicyAt > now || v.treasury.balance < cost} onClick={() => act('city_policy', { policy: id }, `${p.label} is on for 24 h.`)}>Start</button>}</li>); })}
+      </ul>
+
+      <h4>🧰 Treasury projects</h4>
+      <small>Short city-wide boosts paid from the treasury. Everyone gets the same effect; nothing is paid to any player, the mayor included.</small>
+      <ul className="cityhall-list city-projects" data-testid="city-projects">
+        {(v.projects ?? []).map((pr) => { const sp = PROJECTS[pr.id]; const cd = Math.round(sp.cooldownMs / 3_600_000); const wait = !pr.active && pr.nextAt > now;
+          return (<li key={pr.id} data-testid={`city-project-${pr.id}`}><div><b>{sp.icon} {sp.label}</b>
+            <small>{sp.blurb} · Cost 🪙 {chips(pr.cost)} · {Math.round(sp.durationMs / 3_600_000)} h · then {cd} h cooldown{pr.headroom < sp.boost ? ` · adds +${pctOf(pr.headroom)} now` : ''}</small>
+            {pr.active && <small className="text-emerald-300">On until {abWhen(pr.active.endsAt)} ({left(pr.active.endsAt - now)} left) · started by {pr.active.by}</small>}
+            {wait && <small>Can run again {abWhen(pr.nextAt)}</small>}</div>
+            {mayor && <button type="button" data-testid={`city-project-start-${pr.id}`} disabled={busy || !!pr.active || wait || pr.headroom <= 0 || v.treasury.balance < pr.cost}
+              onClick={() => { if (window.confirm(`Start ${sp.label}?\n\nCost: 🪙 ${chips(pr.cost)} from the city treasury\nEffect: +${pctOf(pr.headroom)} ${sp.perk === 'xp' ? 'skill XP' : 'truck speed'} for everyone\nDuration: ${Math.round(sp.durationMs / 3_600_000)} h, then ${cd} h cooldown\n\nThis is shown in the public treasury ledger.`)) void act('city_project', { project: pr.id, requestId: crypto.randomUUID() }, `${sp.label} started.`); }}>Start 🪙 {chips(pr.cost)}</button>}
+          </li>); })}
       </ul>
 
       <h4>🏗️ City buildings</h4>

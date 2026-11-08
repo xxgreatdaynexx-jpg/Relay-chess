@@ -95,6 +95,31 @@ export const inCivic = (x: number, z: number, m = 0) => BUILDING_IDS.some((id) =
   return Math.abs(dx * c - dz * s) < p.w / 2 + m && Math.abs(dx * s + dz * c) < p.d / 2 + m; });
 export const PERK_BUILDING: Record<PerkId, BuildingId> = Object.fromEntries(BUILDING_IDS.map((b) => [BUILDINGS[b].perk, b])) as Record<PerkId, BuildingId>;
 
+/**
+ * Treasury projects (pt2027u, Nov 8 2026): short, public, treasury-funded boosts on top of an EXISTING civic perk.
+ * They never pay a wallet: the effect is a city-wide rate (everyone, the mayor included, gets the same). The combined
+ * perk (building stage + project) is capped at that building's fully-built perk, so a project can never exceed what the
+ * city could already build permanently. One run of each project at a time, then a cooldown after it ends.
+ * Public-building upgrades = BUILDINGS above; temporary production bonuses = POLICIES above (both already treasury-funded).
+ */
+export type ProjectId = 'road_repair' | 'community_festival';
+export interface ProjectSpec { id: ProjectId; label: string; icon: string; perk: PerkId; boost: number; cost: number; durationMs: number; cooldownMs: number; blurb: string }
+export const PROJECTS: Record<ProjectId, ProjectSpec> = {
+  road_repair: { id: 'road_repair', label: 'Road repairs', icon: '🚧', perk: 'truck_speed', boost: 0.1, cost: 120_000, durationMs: 72 * H_MS, cooldownMs: 72 * H_MS, blurb: 'Crews resurface the roads: hired and own trucks travel 10% faster for 72 h, on top of the Highway (combined max 30%).' },
+  community_festival: { id: 'community_festival', label: 'Community festival', icon: '🎪', perk: 'xp', boost: 0.05, cost: 75_000, durationMs: 48 * H_MS, cooldownMs: 72 * H_MS, blurb: 'A city-wide festival: everyone earns 5% more skill XP for 48 h, on top of the City Park (combined max 10%).' },
+};
+export const PROJECT_IDS = Object.keys(PROJECTS) as ProjectId[];
+export interface ProjectRun { id: string; project: ProjectId; startsAt: number; endsAt: number; cost: number; by: string }
+/** Perk cap for a project: the fully built perk of the building that owns it. */
+export const projectCap = (p: ProjectId) => BUILDINGS[PERK_BUILDING[PROJECTS[p].perk]].perkBy[MAX_STAGE - 1]!;
+/** Combined perk = building perk + active project boosts on that perk, capped at the fully-built perk. */
+export function combinedPerk(perk: PerkId, buildingPerk: number, runs: ProjectRun[], t: number): number {
+  let add = 0; for (const r of runs) if (PROJECTS[r.project]?.perk === perk && r.startsAt <= t && r.endsAt > t) add = Math.max(add, PROJECTS[r.project].boost); // non-stacking
+  const cap = BUILDINGS[PERK_BUILDING[perk]].perkBy[MAX_STAGE - 1]!;
+  return Math.min(Math.max(buildingPerk, cap), buildingPerk + add);
+}
+export const isRequestId = (x: unknown): x is string => typeof x === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(x);
+
 /** Approval + recall. */
 export const APPROVAL_WINDOW_MS = 7 * DAY_MS;
 export const APPROVAL_MIN_VOTES = 10;
@@ -112,13 +137,15 @@ export const recallPasses = (yes: number, no: number, electionVotes: number) => 
 /** Accounts that never take part in city politics or feed the public treasury. */
 export const isExcludedName = (n: string) => { const t = String(n ?? '').trim(); return /^qa[-_ ]/i.test(t) || /^guest/i.test(t) || /^bot(?![a-z])/i.test(t); };
 
-export type ActionKind = 'lever' | 'policy' | 'build' | 'built' | 'recall_open' | 'recall_result' | 'admin' | 'event';
+export type ActionKind = 'lever' | 'policy' | 'project' | 'build' | 'built' | 'recall_open' | 'recall_result' | 'admin' | 'event';
 export interface CityAction { id: string; at: number; by: string; kind: ActionKind; text: string }
 export interface TreasuryRow { id: string; at: number; kind: string; amount: number; balance: number; memo: string }
 export interface CityView {
   now: number; index: number;
   levers: Record<LeverId, { value: number; pending: { value: number; effectiveAt: number } | null; nextChangeAt: number }>;
   policy: { id: PolicyId; startsAt: number; endsAt: number; by: string } | null; nextPolicyAt: number;
+  projects?: Array<{ id: ProjectId; cost: number; active: ProjectRun | null; nextAt: number; headroom: number }>;
+  projectLog?: ProjectRun[];
   treasury: { balance: number; in7d: number; out7d: number; ledger: TreasuryRow[] };
   buildings: Array<BuildingState & { stageNow: number; nextCost: number | null }>;
   approval: { up: number; down: number; rating: number | null };
