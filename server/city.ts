@@ -104,8 +104,10 @@ export class City {
   private async billTx<T>(name: string, fn: (cl: pg.PoolClient, now: number) => Promise<T>): Promise<T> {
     const cl = await this.pool.connect();
     try {
-      await cl.query('BEGIN'); const now = this.clock();
-      if (!this.billTermOk((await cl.query(`${City.TERM_NOW} FOR SHARE`, [now])).rows[0], name, now)) throw new CityError('Only the sitting mayor this was sent to can answer it.');
+      await cl.query('BEGIN');
+      const term = (await cl.query(`${City.TERM_NOW} FOR SHARE`, [this.clock()])).rows[0];
+      const now = this.clock(); // the row lock may have waited across term expiry
+      if (!this.billTermOk(term, name, now)) throw new CityError('Only the sitting mayor this was sent to can answer it.');
       const out = await fn(cl, now); await cl.query('COMMIT'); return out;
     } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); }
   }

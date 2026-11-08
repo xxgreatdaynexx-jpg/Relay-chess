@@ -67,6 +67,14 @@ describe.skipIf(!url)('pt2050u bill review: server (real Postgres)', () => {
     await cl.query('COMMIT'); cl.release();
     await expect(p).rejects.toThrow(/sitting mayor/); expect(await w.count()).toBe(0);
   });
+  it('a term that expires while the write waits for its row lock cannot record an answer', async () => {
+    const w = await world(); const blocker = await w.pool.connect();
+    await blocker.query('BEGIN'); await blocker.query("SELECT * FROM mayor_terms WHERE week='w1' FOR UPDATE");
+    const pending = w.c.billReviewSave('carter2', { grandfather: 'confirm' }, false);
+    await new Promise((r) => setTimeout(r, 200)); w.at(T1 + H);
+    await blocker.query('COMMIT'); blocker.release();
+    await expect(pending).rejects.toThrow(/sitting mayor/); expect(await w.count()).toBe(0);
+  });
   it('auto-opens once; drafts persist across restarts; submit needs all; final + idempotent; advisory only; admin read', async () => {
     const w = await world(); const before = await w.snapshot();
     expect((await w.c.billReviewSeen('carter2')).review!.autoOpen).toBe(false); await w.c.billReviewSeen('carter2'); expect(await w.count()).toBe(1);
