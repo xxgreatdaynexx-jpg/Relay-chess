@@ -34,7 +34,7 @@ describe('wealth tax', () => {
   });
   it('nobody at 10K+: no median, no tax', () => {
     const p = planWealthTax([R('a', 10), R('b', 9_999), R('c', 5_000)]);
-    expect(p).toEqual({ median: 0, threshold: 0, taxes: [], shares: [], total: 0 });
+    expect(p).toEqual({ median: 0, threshold: 0, taxes: [], shares: [], total: 0, treasury: 0 });
   });
   it('players under 10K never pay', () => {
     for (let seed = 1; seed < 30; seed++) {

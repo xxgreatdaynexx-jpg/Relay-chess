@@ -8,8 +8,8 @@
  */
 import { PROPERTY_INCOME_EVERY_MS, incomeEligible } from '../shared/propertyIncome.js';
 import { PropertyIncome, PropertyIncomeFailure } from './propertyIncome.js';
-import { cityPerk, citySurchargePctPer1k, treasuryStmtsFor } from './city-rates.js';
-import { treasuryShareOf } from '../shared/city.js';
+import { cityPerk, citySurchargePctPer1k, treasuryStmtsFor, treasuryCreditStmts, treasuryOpenFor } from './city-rates.js';
+import { treasuryShareOf, taxShareSplit } from '../shared/city.js';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
 import pg from 'pg';
@@ -179,7 +179,9 @@ export class RealEstate {
     if (max !== undefined && price > max) throw new PropertyError(`The price changed: your surcharge is +${+landSurchargePct(value, per1k).toFixed(1)}% now, so ${p.label} costs ${price.toLocaleString('en-US')}. Check the deed and try again.`);
     const wq = await quotePurchaseTax(cl, name, price, this.clock());
     if (bank.account(name).chips < price + wq.tax) throw new PropertyError(`Not enough chips: ${p.label} costs ${price.toLocaleString('en-US')}${note ? ` (${note})` : ''}${wq.tax ? ` + ${wq.line}` : ''}.`);
-    let wtax = 0, wn = 0;
+    let wtax = 0, wn = 0; let taxStmts: Array<{ sql: string; args: unknown[] }> = [];
+    // pt2032u: 25% of the land surcharge actually charged (price above list) goes to the treasury. Same price; the rest stays burned as before.
+    const surcharge = Math.max(0, price - p.price); const surShare = surcharge > 0 && treasuryOpenFor(name) ? taxShareSplit(surcharge).treasury : 0;
     await this.atomic(name, -price, 'property_buy', `Bought ${p.label} (${p.id})${note ? ` ${note}` : ''}`, async (cl) => {
       // cross-instance: the count must still be what we priced at (a parallel buy elsewhere = refuse, nothing charged)
       if ((await propertyPaidPlusUpgradesOf(cl, name)) !== value) throw new PropertyError('You just bought another property: the price went up. Check the deed and try again.');
@@ -190,7 +192,8 @@ export class RealEstate {
       // One round trip (QA r8 speed): RETURNING yields a row only if our insert won. price = what was actually paid.
       const r = await cl.query('INSERT INTO properties (id, owner_key, owner_name, price, bought_at, deed, city_price) VALUES ($1,$2,$3,$4,$5,$6,$4) ON CONFLICT (id) DO NOTHING RETURNING deed', [p.id, keyOf(name), name.trim(), price, this.clock(), deed]);
       if (r.rows[0]?.deed !== deed) throw new PropertyError('Someone already owns this property.');
-    }, async (key, db) => { const t = await purchaseTaxMoves(db, name, price, key, p.label, this.clock()); wtax = t.tax; wn = t.recipients; return t.moves; }, cl);
+      for (const s of [...taxStmts, ...(surShare ? treasuryCreditStmts('property_surcharge', surShare, `25% of a property surcharge (${p.label})`, this.clock(), `property_surcharge:${deed}`) : [])]) await cl.query(s.sql, s.args);
+    }, async (key, db) => { const t = await purchaseTaxMoves(db, name, price, key, p.label, this.clock()); wtax = t.tax; wn = t.recipients; taxStmts = t.stmts; return t.moves; }, cl);
     this.onChange?.();
     return { id: p.id, price, wealthTax: wtax, wealthTaxRecipients: wn, list: p.price, owned, ownedValue: value, surchargePct: landSurchargePct(value, per1k), surchargePer1k: per1k, multiplier: landMultiplier(value, per1k), chips: bank.account(name).chips };
   }

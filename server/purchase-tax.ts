@@ -5,7 +5,8 @@
  * (`wealth_tax_buy:<purchaseKey>`, `wealth_tax_share:<purchaseKey>:<player>`), so a replayed purchase can never pay twice.
  * Recipient credits are batched (CasinoBank.transferAtomic { batch: true }): 3 statements for any number of players.
  */
-import { cityWealthTaxRate } from './city-rates.js';
+import { cityWealthTaxRate, treasuryCreditStmts, treasuryOpenFor } from './city-rates.js';
+import { taxShareSplit } from '../shared/city.js';
 import { isJailed } from './jail.js';
 import { getEconomy } from './economy.js';
 import { isDisabledName } from '../shared/disabled.js';
@@ -46,15 +47,19 @@ export async function recipientsFor(db: Q, buyer: string, now: number) {
 export async function quotePurchaseTax(db: Q, buyer: string, price: number, now = Date.now()): Promise<PurchaseTaxQuote> {
   const propertyValue = await propertyPaidValue(db, buyer); const rate = cityWealthTaxRate(); let tax = purchaseTaxOf(propertyValue, price, rate); let n = 0;
   if (tax > 0) { n = (await recipientsFor(db, buyer, now)).length; if (!n) tax = 0; }
-  return { tax, recipients: n, propertyValue, line: tax ? purchaseTaxLine(tax, n, rate) : '' };
+  const treasury = tax && treasuryOpenFor(buyer) ? taxShareSplit(tax).treasury : 0; // pt2032u: same bill, 25% to the city
+  return { tax, recipients: n, propertyValue, line: tax ? purchaseTaxLine(tax, n, rate, treasury) : '', treasury };
 }
 
 /** Extra moves for one purchase. Empty when untaxed. what = short item label for the memos. */
-export async function purchaseTaxMoves(db: Q, buyer: string, price: number, purchaseKey: string, what: string, now = Date.now()): Promise<{ tax: number; recipients: number; moves: Move[]; line: string }> {
-  const q = await quotePurchaseTax(db, buyer, price, now); if (!q.tax) return { tax: 0, recipients: 0, moves: [], line: '' };
+/** stmts = the treasury credit (25%, keyed by the purchase so a replay aborts the transaction); callers run them in the SAME transaction. */
+export async function purchaseTaxMoves(db: Q, buyer: string, price: number, purchaseKey: string, what: string, now = Date.now()): Promise<{ tax: number; recipients: number; moves: Move[]; line: string; treasury: number; stmts: Array<{ sql: string; args: unknown[] }> }> {
+  const q = await quotePurchaseTax(db, buyer, price, now); if (!q.tax) return { tax: 0, recipients: 0, moves: [], line: '', treasury: 0, stmts: [] };
   const rec = await recipientsFor(db, buyer, now);
-  const shares = purchaseShares(q.tax, rec.map((x) => x.key)); const byKey = new Map(rec.map((x) => [x.key, x.name]));
-  const moves: Move[] = [{ name: buyer, amount: -q.tax, key: `${PURCHASE_TAX_GAME}:${purchaseKey}`, game: PURCHASE_TAX_GAME, memo: `${purchaseTaxLine(q.tax, rec.length, cityWealthTaxRate())} (on ${what})` }];
+  const treasury = q.treasury ?? 0; const pool = q.tax - treasury;
+  const shares = purchaseShares(pool, rec.map((x) => x.key)); const byKey = new Map(rec.map((x) => [x.key, x.name]));
+  const moves: Move[] = [{ name: buyer, amount: -q.tax, key: `${PURCHASE_TAX_GAME}:${purchaseKey}`, game: PURCHASE_TAX_GAME, memo: `${purchaseTaxLine(q.tax, rec.length, cityWealthTaxRate(), treasury)} (on ${what})` }];
   for (const s of shares) moves.push({ name: byKey.get(s.name)!, amount: s.amount, key: `${PURCHASE_SHARE_GAME}:${purchaseKey}:${s.name}`, game: PURCHASE_SHARE_GAME, memo: `Wealth tax share: a player holding 100K+ in property paid the purchase wealth tax` });
-  return { tax: q.tax, recipients: rec.length, moves, line: q.line };
+  const stmts = treasury > 0 ? treasuryCreditStmts(PURCHASE_TAX_GAME, treasury, `25% of a purchase wealth tax (on ${what})`, now, `${PURCHASE_TAX_GAME}:${purchaseKey}`) : [];
+  return { tax: q.tax, recipients: rec.length, moves, line: q.line, treasury, stmts };
 }

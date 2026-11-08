@@ -69,7 +69,7 @@ export class Garage {
     const mine = await this.owned(name); const price = px(car.price); if (mine.length >= MAX_CARS) throw new CarError(`Garage full (${MAX_CARS} cars). Sell one first.`);
     if (this.pool) { const bt = await backTaxOf(this.pool as never, name); if (bt.debt > 0) throw new CarError(backTaxBlockMsg(bt)); }
     const bank = getBank(); const id = randomUUID();
-    const wt = this.pool ? await purchaseTaxMoves(this.pool as never, name, price, `car_buy:${id}`, car.name, this.clock()) : { tax: 0, recipients: 0, moves: [], line: '' };
+    const wt = this.pool ? await purchaseTaxMoves(this.pool as never, name, price, `car_buy:${id}`, car.name, this.clock()) : { tax: 0, recipients: 0, moves: [], line: '', treasury: 0, stmts: [] as Array<{ sql: string; args: unknown[] }> };
     const st = salesTaxFor(name, price, `car_buy:${id}`, car.name);
     if (!bank.canAfford(name, price + wt.tax + st.tax)) throw new CarError(st.tax && !wt.tax ? `Not enough chips: ${car.name} costs ${price.toLocaleString('en-US')} + ${st.tax.toLocaleString('en-US')} sales tax.` : wt.tax ? `Not enough chips: ${car.name} costs ${price.toLocaleString('en-US')} + ${wt.line}.` : 'Not enough chips.');
     const at = this.clock(); const k = keyOf(name); const first = !mine.some((c) => c.active);
@@ -80,7 +80,7 @@ export class Garage {
       try {
         await cl.query('BEGIN');
         await cl.query('INSERT INTO car_owned (id, player_key, name, car_id, color, paid, bought_at, active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [id, k, name.trim(), car.id, col, price, at, first]);
-        for (const s of [...w.stmts, ...st.stmts]) await cl.query(s.sql, s.args);
+        for (const s of [...w.stmts, ...st.stmts, ...wt.stmts]) await cl.query(s.sql, s.args);
         await cl.query('COMMIT');
       } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); }
     };

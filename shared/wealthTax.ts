@@ -14,6 +14,8 @@ export type WealthPlan = {
   taxes: Array<{ name: string; amount: number; netWorth: number }>;
   shares: Array<{ name: string; amount: number }>;
   total: number;
+  /** pt2032u: part of total credited to the city treasury (floor 25%); shares split total - treasury. */
+  treasury: number;
 };
 
 export function median(xs: number[]): number {
@@ -36,16 +38,18 @@ export function split(total: number, names: string[]): Array<{ name: string; amo
 }
 
 /** Full plan for one day. Recipients are active players below the threshold, in a stable (name) order. */
-export function planWealthTax(rows: WealthRow[], noShare: (name: string) => boolean = () => false, rate?: number): WealthPlan {
+/** toTreasury: route 25% of the collected total to the city treasury (only when City Hall can record it); default off = old 100% split. */
+export function planWealthTax(rows: WealthRow[], noShare: (name: string) => boolean = () => false, rate?: number, toTreasury = false): WealthPlan {
   const base = rows.filter((r) => r.netWorth >= WEALTH_TAX_MEDIAN_MIN);
   // Nobody at 10K+: no median, no tax.
-  if (!base.length) return { median: 0, threshold: 0, taxes: [], shares: [], total: 0 };
+  if (!base.length) return { median: 0, threshold: 0, taxes: [], shares: [], total: 0, treasury: 0 };
   const med = median(base.map((r) => r.netWorth)); const threshold = Math.floor(med * WEALTH_TAX_MULT);
   const sorted = [...rows].sort((a, b) => a.name.localeCompare(b.name));
   const taxes = sorted.filter((r) => r.netWorth >= WEALTH_TAX_MEDIAN_MIN).map((r) => ({ name: r.name, amount: taxFor(r, threshold, rate), netWorth: r.netWorth })).filter((t) => t.amount > 0);
   const total = taxes.reduce((a, t) => a + t.amount, 0);
-  const shares = split(total, sorted.filter((r) => r.netWorth < threshold && r.netWorth >= TAX_SHARE_MIN_NET_WORTH && !noShare(r.name)).map((r) => r.name));
+  const treasury = toTreasury ? Math.floor(total * 0.25) : 0;
+  const shares = split(total - treasury, sorted.filter((r) => r.netWorth < threshold && r.netWorth >= TAX_SHARE_MIN_NET_WORTH && !noShare(r.name)).map((r) => r.name));
   // No one below the threshold to receive it: collect nothing (redistributed, never burned).
-  if (!shares.length) return { median: med, threshold, taxes: [], shares: [], total: 0 };
-  return { median: med, threshold, taxes, shares, total };
+  if (!shares.length) return { median: med, threshold, taxes: [], shares: [], total: 0, treasury: 0 };
+  return { median: med, threshold, taxes, shares, total, treasury };
 }

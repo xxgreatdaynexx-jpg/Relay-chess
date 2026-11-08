@@ -3,7 +3,7 @@ import { isJailed } from './jail.js';
 /**
  * Daily wealth tax (pt1397u). At each UTC reset: active players (any ledger row in the last 7 days, QA excluded), net
  * worth = chips + assets (same as the profile/leaderboard), threshold = 2× the median of active players at 10K+ (under 10K never pay). Above it pay 1% of the excess from
- * chips only; the total is split evenly among active players below it. All debits and credits land in ONE Postgres
+ * chips only; 25% of the total goes to the city treasury (pt2032u) and the rest is split evenly among active players below it. All debits and credits land in ONE Postgres
  * transaction (atomic wallet + ledger) with per-player-per-day keys, plus a wealth_tax_days row (PK = day) so a day can
  * never run twice, even across instances or restarts.
  */
@@ -13,7 +13,7 @@ import { databaseUrl } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
 import { getEconomy } from './economy.js';
 import { utcDay } from './daily-bonus.js';
-import { cityDailyWealthTaxRate } from './city-rates.js';
+import { cityDailyWealthTaxRate, treasuryCreditStmts, treasuryOpen } from './city-rates.js';
 import { planWealthTax, WEALTH_TAX_ACTIVE_DAYS, WEALTH_TAX_GAME, WEALTH_TAX_MULT, WEALTH_TAX_RATE, type WealthPlan, type WealthRow } from '../shared/wealthTax.js';
 
 const DAY = 86_400_000;
@@ -40,15 +40,15 @@ export async function activeRows(db: pg.Pool, now = Date.now()): Promise<WealthR
   return out;
 }
 
-type Summary = { day: string; median: number; threshold: number; payers: number; recipients: number; total: number; share: number; taxes: Array<{ name: string; amount: number }> };
-const summarize = (day: string, p: WealthPlan): Summary => ({ day, median: Math.round(p.median), threshold: p.threshold, payers: p.taxes.length, recipients: p.shares.length, total: p.total, share: p.shares.length ? Math.floor(p.total / p.shares.length) : 0, taxes: p.taxes.map((t) => ({ name: t.name, amount: t.amount })) });
+type Summary = { day: string; median: number; threshold: number; payers: number; recipients: number; total: number; treasury?: number; share: number; taxes: Array<{ name: string; amount: number }> };
+const summarize = (day: string, p: WealthPlan): Summary => ({ day, median: Math.round(p.median), threshold: p.threshold, payers: p.taxes.length, recipients: p.shares.length, total: p.total, treasury: p.treasury, share: p.shares.length ? Math.floor((p.total - p.treasury) / p.shares.length) : 0, taxes: p.taxes.map((t) => ({ name: t.name, amount: t.amount })) });
 
 /** Run one day's tax. Returns the summary, or null when that day already ran (or the wallet is down). */
 export async function runWealthTax(db: pg.Pool, now = Date.now()): Promise<Summary | null> {
   const bank = getBank(); if (!bank.ready) return null;
   const day = utcDay(now);
   if ((await db.query('SELECT 1 FROM wealth_tax_days WHERE day = $1', [day])).rowCount) return null;
-  const plan = planWealthTax(await activeRows(db, now), (n) => isJailed(n), cityDailyWealthTaxRate()); // jailed players get no share
+  const plan = planWealthTax(await activeRows(db, now), (n) => isJailed(n), cityDailyWealthTaxRate(), treasuryOpen()); // jailed players get no share
   const sum = summarize(day, plan);
   const moves = [
     ...plan.taxes.map((t) => ({ name: t.name, amount: -t.amount, key: wealthTaxKey(t.name, day), game: WEALTH_TAX_GAME, memo: 'Wealth tax' })),
@@ -61,6 +61,8 @@ export async function runWealthTax(db: pg.Pool, now = Date.now()): Promise<Summa
       await cl.query('BEGIN');
       await cl.query('INSERT INTO wealth_tax_days (day, data) VALUES ($1, $2)', [day, JSON.stringify(sum)]);
       if (w) for (const s of w.stmts) await cl.query(s.sql, s.args);
+      // pt2032u: 25% of the day's collected tax to the treasury, keyed by day (a second run of the same day aborts on the PK, like wealth_tax_days).
+      if (plan.treasury > 0) for (const s of treasuryCreditStmts(WEALTH_TAX_GAME, plan.treasury, `25% of the daily wealth tax ${day}`, now, `wealth_tax_day:${day}`)) await cl.query(s.sql, s.args);
       await cl.query('COMMIT');
     } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); }
   };
@@ -74,7 +76,7 @@ let cache: { at: number; rate: number; v: { rate: number; median: number; thresh
 async function estimate(db: pg.Pool) {
   const rate = cityDailyWealthTaxRate();
   if (cache && cache.rate === rate && Date.now() - cache.at < 5 * 60_000) return cache.v;
-  const rows = await activeRows(db); const plan = planWealthTax(rows, () => false, rate);
+  const rows = await activeRows(db); const plan = planWealthTax(rows, () => false, rate, treasuryOpen());
   cache = { at: Date.now(), rate, v: { rate, median: plan.median, threshold: plan.threshold, rows, plan } };
   return cache.v;
 }
@@ -100,10 +102,10 @@ export function wealthTaxRouter(): express.Router {
       const myTax = me ? (e.plan.taxes.find((t) => norm(t.name) === name)?.amount ?? 0) : null;
       const myShare = me ? (e.plan.shares.find((s) => norm(s.name) === name)?.amount ?? 0) : null;
       const raw = (await db.query('SELECT data FROM wealth_tax_days ORDER BY day DESC LIMIT 1')).rows[0]?.data as Summary | undefined;
-      const last = raw ? { day: raw.day, threshold: raw.threshold, payers: raw.payers, recipients: raw.recipients, total: raw.total, share: raw.share } : null; // no names in public output
+      const last = raw ? { day: raw.day, threshold: raw.threshold, payers: raw.payers, recipients: raw.recipients, total: raw.total, treasury: raw.treasury ?? 0, share: raw.share } : null; // no names in public output
       res.set('Cache-Control', 'private, max-age=60');
       res.json({ ok: true, rate: e.rate, mult: WEALTH_TAX_MULT, activeDays: WEALTH_TAX_ACTIVE_DAYS, active: e.rows.length, median: Math.round(e.median), threshold: e.threshold,
-        payers: e.plan.taxes.length, total: e.plan.total, recipients: e.plan.shares.length,
+        payers: e.plan.taxes.length, total: e.plan.total, treasury: e.plan.treasury, recipients: e.plan.shares.length,
         me: me ? { netWorth: me.netWorth, tax: myTax, share: myShare } : null, last });
     } catch (err) { console.error('[wealth-tax] estimate failed:', (err as Error).message); res.status(500).json({ ok: false, error: 'Could not compute the wealth tax.' }); }
   });

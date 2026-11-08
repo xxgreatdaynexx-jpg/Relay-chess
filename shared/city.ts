@@ -13,11 +13,11 @@ export type LeverId = 'sales_tax' | 'wealth_tax' | 'freight' | 'property_surchar
 export interface LeverSpec { id: LeverId; label: string; min: number; max: number; step: number; base: number; cooldownMs: number; unit: 'pct' | 'mul'; blurb: string }
 export const LEVERS: Record<LeverId, LeverSpec> = {
   sales_tax: { id: 'sales_tax', label: 'Sales tax', min: 0, max: 0.05, step: 0.005, base: 0, cooldownMs: 48 * H_MS, unit: 'pct', blurb: 'On top of purchases at the game\'s own shops (cars, trucks, boats, jets, furniture). Never on trades between players. Goes to the treasury.' },
-  wealth_tax: { id: 'wealth_tax', label: 'Purchase wealth tax', min: 0.03, max: 0.07, step: 0.01, base: 0.05, cooldownMs: 72 * H_MS, unit: 'pct', blurb: 'Rate paid by buyers holding 100K+ in property. Still 100% shared with players. The daily net-worth wealth tax is its own lever below.' },
+  wealth_tax: { id: 'wealth_tax', label: 'Purchase wealth tax', min: 0.03, max: 0.07, step: 0.01, base: 0.05, cooldownMs: 72 * H_MS, unit: 'pct', blurb: 'Rate paid by buyers holding 100K+ in property. 25% of what is collected goes to the city treasury; the other 75% is shared with players. The daily net-worth wealth tax is its own lever below.' },
   freight: { id: 'freight', label: 'Warehouse freight fees', min: 0.8, max: 1.2, step: 0.05, base: 1, cooldownMs: 48 * H_MS, unit: 'mul', blurb: 'Hired trucks, freight planes and cargo ships. Your own truck stays fuel-only. Anything above the default goes to the treasury.' },
   // pt2020u (Nov 8 2026): defaults = the live rules (SURCHARGE_PCT_PER_1K = 1, WEALTH_TAX_RATE = 0.01), so nothing changes until a mayor moves them.
-  property_surcharge: { id: 'property_surcharge', label: 'Property surcharge (per 1,000 owned)', min: 0.005, max: 0.02, step: 0.0025, base: 0.01, cooldownMs: 72 * H_MS, unit: 'pct', blurb: 'Added to the price of your next property for every 1,000 chips of property you already own (price paid + upgrades). Applies to new purchases only; existing deeds, sell-back and property tax are unchanged.' },
-  daily_wealth_tax: { id: 'daily_wealth_tax', label: 'Daily wealth tax', min: 0.005, max: 0.015, step: 0.0025, base: 0.01, cooldownMs: 72 * H_MS, unit: 'pct', blurb: 'Charged once per UTC day on net worth above 2× the median of active players (10K+), from chips only, and shared with active players below the line. Never burned, never to the treasury.' },
+  property_surcharge: { id: 'property_surcharge', label: 'Property surcharge (per 1,000 owned)', min: 0.005, max: 0.02, step: 0.0025, base: 0.01, cooldownMs: 72 * H_MS, unit: 'pct', blurb: 'Added to the price of your next property for every 1,000 chips of property you already own (price paid + upgrades). Applies to new purchases only; existing deeds, sell-back and property tax are unchanged. 25% of the surcharge collected goes to the city treasury.' },
+  daily_wealth_tax: { id: 'daily_wealth_tax', label: 'Daily wealth tax', min: 0.005, max: 0.015, step: 0.0025, base: 0.01, cooldownMs: 72 * H_MS, unit: 'pct', blurb: 'Charged once per UTC day on net worth above 2× the median of active players (10K+), from chips only, and 25% of what is collected goes to the city treasury and 75% is shared with active players below the line.' },
 };
 export const LEVER_IDS = Object.keys(LEVERS) as LeverId[];
 const snap = (n: number, step: number) => Math.round(Math.round(n / step) * step * 10_000) / 10_000;
@@ -35,6 +35,8 @@ export const SALES_TAX_MIN_PRICE = 100;
 export const SALES_TAX_GAME = 'sales_tax';
 export const salesTaxOf = (price: number, rate: number) => (price >= SALES_TAX_MIN_PRICE && rate > 0 ? Math.ceil(price * Math.min(LEVERS.sales_tax.max, rate)) : 0);
 export const treasuryShareOf = (amount: number) => Math.floor(Math.max(0, amount) * TREASURY_SHARE);
+/** pt2032u: split one collected tax into the treasury share (floor 25%) and the remainder; parts always sum to the whole. */
+export const taxShareSplit = (collected: number) => { const total = Math.max(0, Math.floor(collected)); const treasury = treasuryShareOf(total); return { total, treasury, rest: total - treasury }; };
 
 /** Economic policies: one at a time, 24 h, a small multiplier on ONE sector, paid from the treasury. */
 export type Sector = 'farming' | 'mining' | 'trading' | 'tourism';

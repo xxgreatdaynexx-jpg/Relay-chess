@@ -26,6 +26,9 @@ export function treasuryCreditStmts(kind: string, amount: number, memo: string, 
   ];
 }
 
+/** True when a treasury credit for this payer would be written (City Hall live, payer not QA / guest / bot). */
+export const treasuryOpenFor = (payer: string) => !!cityInst && !isExcludedName(payer) && !playerKey(payer).startsWith('qa-');
+export const treasuryOpen = () => !!cityInst;
 /** Hot-path readers. All default to "no effect" when City Hall is offline. */
 export const citySalesTaxRate = () => cityInst?.lever('sales_tax') ?? 0;
 export const cityWealthTaxRate = () => cityInst?.lever('wealth_tax') ?? LEVERS.wealth_tax.base;

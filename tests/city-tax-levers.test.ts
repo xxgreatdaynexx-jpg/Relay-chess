@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
 import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { Mayor } from '../server/mayor';
-import { City, setCityForTest } from '../server/city';
+import { City, setCityForTest, CITY_MIGRATION } from '../server/city';
 import { setCityRates, citySurchargePctPer1k, cityDailyWealthTaxRate, cityWealthTaxRate, type CityRates } from '../server/city-rates';
 import { RealEstate } from '../server/realEstate';
 import { LEVERS, clampLever, leverText } from '../shared/city';
@@ -73,6 +73,7 @@ describe('pt2020u: property surcharge + daily wealth tax city levers', () => {
     await pool.query(`CREATE TABLE farm_tiles (plot_id TEXT NOT NULL, tile INTEGER NOT NULL, owner_key TEXT NOT NULL, crop TEXT NOT NULL, planted_at BIGINT NOT NULL, nonce TEXT NOT NULL, PRIMARY KEY (plot_id, tile));
     CREATE TABLE farm_upgrades (plot_id TEXT NOT NULL, kind TEXT NOT NULL, owner_key TEXT NOT NULL, level INTEGER NOT NULL, PRIMARY KEY (plot_id, kind));
     CREATE TABLE farm_fert (plot_id TEXT NOT NULL, tile INTEGER NOT NULL, nonce TEXT NOT NULL, kind TEXT NOT NULL, PRIMARY KEY (plot_id, tile, nonce));`);
+    await pool.query(CITY_MIGRATION); // the fake City Hall is live, so the 25% treasury share (pt2032u) needs its tables
     bank.transfer('Ivy', 500_000, { game: 'admin' }); await bank.flush();
     const [a, b] = [...properties()].filter((p) => p.kind !== 'landmark' && p.price < 20_000).sort((x, y) => x.price - y.price);
     try {
