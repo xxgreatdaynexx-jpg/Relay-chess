@@ -4,15 +4,43 @@
  */
 import * as THREE from 'three';
 import { prefersReducedMotion } from './motion';
-import type { Patch } from '../../../shared/worldLayout';
+import { HOUSING_TYPES } from '../../../shared/housing';
+import { PLATE, type Patch } from '../../../shared/worldLayout';
 import type { WorldTier } from './worldTier';
 
 export const CITY_PROTEST_JOKE_ENABLED = true; // THE ONLY feature switch. No changelog entry, by request.
 export const JOKE_SIGNS = ['WE DEMAND SNACKS', 'MORE NAPS', 'HONK FOR SOUP', 'THIS IS FINE', 'RETURN THE REMOTE', 'TOO MANY MEETINGS'];
 export const JOKE_BUDGET = { low: { sites: 8, people: 3, smoke: 2 }, mid: { sites: 12, people: 4, smoke: 3 }, high: { sites: 16, people: 4, smoke: 4 } } as const;
+/** Geometry budgets only, never based on ownership, prices or gameplay state. */
+export const BUILDING_FIRE_BUDGET = { low: 16, mid: 32, high: 48 } as const;
+export interface FireBuilding { x:number; z:number; w:number; d:number; rot:number; h:number; type:string }
+export interface BuildingFireAnchor { kind:'roof'|'facade'; x:number; y:number; z:number; scale:number; localX:number; localZ:number; building:Readonly<FireBuilding> }
+/** Roof geometry exactly matches world3d's housing body and optional gable (ridge runs along local X). */
+export function buildingFireAnchors(buildings:readonly FireBuilding[],tier:WorldTier):BuildingFireAnchor[] {
+  const valid=buildings.filter(b=>[b.x,b.z,b.w,b.d,b.h,b.rot].every(Number.isFinite)&&b.w>1&&b.d>1&&b.h>0&&HOUSING_TYPES.some(t=>t.id===b.type));
+  const selected:FireBuilding[]=[];const take=(b:FireBuilding|undefined)=>{if(b&&!selected.includes(b))selected.push(b);};
+  const byCentre=[...valid].sort((a,b)=>a.x*a.x+a.z*a.z-b.x*b.x-b.z*b.z);
+  // Start visibly in the centre, include each actual style, then spread across the city by farthest-point sampling.
+  take(byCentre[0]);for(const type of HOUSING_TYPES)take(byCentre.find(b=>b.type===type.id));
+  while(selected.length<Math.min(BUILDING_FIRE_BUDGET[tier],valid.length)){
+    let best:FireBuilding|undefined,score=-1;for(const b of valid){if(selected.includes(b))continue;const distance=Math.min(...selected.map(s=>(s.x-b.x)**2+(s.z-b.z)**2));if(distance>score){score=distance;best=b;}}if(!best)break;take(best);
+  }
+  const anchors:BuildingFireAnchor[]=[];
+  for(const b of selected.slice(0,BUILDING_FIRE_BUDGET[tier])){
+    const roof=HOUSING_TYPES.find(t=>t.id===b.type)!.roof;const scale=Math.max(.8,Math.min(2.5,Math.min(b.w,b.d)*.4));
+    const add=(kind:'roof'|'facade',x:number,y:number,z:number)=>anchors.push({kind,localX:x,localZ:z,x:b.x+Math.cos(b.rot)*x+Math.sin(b.rot)*z,y,z:b.z-Math.sin(b.rot)*x+Math.cos(b.rot)*z,scale,building:b});
+    add('roof',0,b.h+(roof==='gable'?Math.min(1.6,b.d*.45):0),0);
+    // Upper windows on the face toward the normal City camera. Small one-storey homes get roofs only, keeping doors clear.
+    if(b.h>=3.3){const dx=132*(PLATE/96)-b.x,dz=156*(PLATE/96)-b.z,c=Math.cos(b.rot),sn=Math.sin(b.rot),lx=c*dx-sn*dz,lz=sn*dx+c*dz;
+      if(Math.abs(lx)>Math.abs(lz))add('facade',Math.sign(lx)*(b.w/2+.07),b.h*.72,b.d*.2);
+      else add('facade',b.w*.2,b.h*.72,Math.sign(lz)*(b.d/2+.07));
+    }
+  }
+  return anchors;
+}
 type Site = Pick<Patch, 'x'|'z'|'w'|'d'|'rot'>;
 export interface JokeOptions {
-  map: string; tier: WorldTier; sites: readonly Site[]; enabled?: boolean;
+  map: string; tier: WorldTier; sites: readonly Site[]; buildings?: readonly FireBuilding[]; enabled?: boolean;
   reducedMotion?: () => boolean;
   /** Injectable texture factory keeps lifecycle tests independent of WebGL/canvas. */
   label?: (words: string) => THREE.Texture;
@@ -42,16 +70,18 @@ export function attachCityProtestJoke(scene: THREE.Scene, options: JokeOptions):
     if(closed)return;
     if(!enabled||options.map!=='city'){clear();return;}
     if(root)return;
-    const sites=jokeSites(options.sites,options.tier);if(!sites.length)return;
+    const sites=jokeSites(options.sites,options.tier),buildingAnchors=buildingFireAnchors(options.buildings??[],options.tier);if(!sites.length&&!buildingAnchors.length)return;
     root=new THREE.Group();root.name='city-protest-joke';root.userData.decorativeOnly=true;
     const geo=<T extends THREE.BufferGeometry>(g:T)=>{geometries.add(g);return g;};
     const mat=(color:number)=>{const m=new THREE.MeshBasicMaterial({color});materials.add(m);return m;};
     const cube=geo(new THREE.BoxGeometry(1,1,1)),head=geo(new THREE.IcosahedronGeometry(.27,0)),cone=geo(new THREE.ConeGeometry(.55,1.3,5)),puff=geo(new THREE.IcosahedronGeometry(.58,0));
-    const clothes=mat(0xffffff),skin=mat(0xe6b687),dark=mat(0x3b3347),cardboard=mat(0xc79458),flame=mat(0xff9f2b);
+    const clothes=mat(0xffffff),skin=mat(0xe6b687),dark=mat(0x3b3347),cardboard=mat(0xc79458),flame=mat(0xffffff);
     const smoke=new THREE.MeshBasicMaterial({color:0x777682,transparent:true,opacity:.24,depthWrite:false});materials.add(smoke);
     const budget=JOKE_BUDGET[options.tier],count=sites.length*budget.people;
     const inst=(g:THREE.BufferGeometry,m:THREE.Material,n:number)=>{const mesh=new THREE.InstancedMesh(g,m,n);mesh.raycast=noHit;mesh.castShadow=false;mesh.receiveShadow=false;mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);instances.add(mesh);root!.add(mesh);return mesh;};
-    const bodies=inst(cube,clothes,count),heads=inst(head,skin,count),legs=inst(cube,dark,count*2),arms=inst(cube,clothes,count*2),boxes=inst(cube,cardboard,sites.length),fires=inst(cone,flame,sites.length*3),clouds=inst(puff,smoke,sites.length*budget.smoke),poles=inst(cube,dark,sites.length*2);
+    const bodies=inst(cube,clothes,count),heads=inst(head,skin,count),legs=inst(cube,dark,count*2),arms=inst(cube,clothes,count*2),boxes=inst(cube,cardboard,sites.length),fires=inst(cone,flame,sites.length*3+buildingAnchors.length*6),clouds=inst(puff,smoke,(sites.length+buildingAnchors.length)*budget.smoke),poles=inst(cube,dark,sites.length*2);
+    fires.name='city-joke-flames';clouds.name='city-joke-smoke';
+    for(let i=0;i<fires.count;i++)fires.setColorAt(i,new THREE.Color(i<sites.length*3?0xff9f2b:(i-sites.length*3)%2?0xffe27a:0xff6224));
     const object=new THREE.Object3D(),color=new THREE.Color(),palette=[0x41b8b0,0xd85e87,0x8c7ada,0xe2bb47];
     for(let i=0;i<count;i++){bodies.setColorAt(i,color.setHex(palette[i%palette.length]));arms.setColorAt(i*2,color);arms.setColorAt(i*2+1,color);}
     const labelMaterials=new Map<string,THREE.SpriteMaterial>();
@@ -72,8 +102,18 @@ export function attachCityProtestJoke(scene: THREE.Scene, options: JokeOptions):
       }
       const carrier=offsets[budget.people-1];const [bx,bz]=point(site,carrier[0]+Math.sin(t*.65+i)*.45,carrier[1]+.45);pose(boxes,i,bx,1.05,bz,.9,.7,.7,site.rot);lootLabels[i].position.set(bx,1.2,bz+.42);
       for(let k=0;k<2;k++){const [px,pz]=point(site,(k?1.3:-1.3)+.35,-1);pose(poles,i*2+k,px,2.1,pz,.08,1.8,.08,site.rot);}
-      for(let f=0;f<3;f++){const [x,z]=point(site,1.8+(f-1)*.27,1.7);pose(fires,i*3+f,x,.8+f*.12,z,.55,.75+(t?Math.sin(t*1.1+i+f)*.09:0),.55);}
-      for(let j=0;j<budget.smoke;j++){const age=t?((t*.18+j/budget.smoke)%1):j/budget.smoke;const [x,z]=point(site,1.8+age*.25,1.7);pose(clouds,i*budget.smoke+j,x,2+age*3,z,1+age,1+age,1+age);}
+      for(let f=0;f<3;f++){const [x,z]=point(site,1.8+(f-1)*.27,1.7);const height=1.5+(t?Math.sin(t*1.1+i+f)*.09:0);pose(fires,i*3+f,x,.15+.65*height,z,.75,height,.75);}
+      for(let j=0;j<budget.smoke;j++){const age=t?((t*.18+j/budget.smoke)%1):j/budget.smoke;const [x,z]=point(site,1.8+age*.25,1.7);pose(clouds,i*budget.smoke+j,x,3+age*4,z,1+age,1+age,1+age);}
+      });
+      buildingAnchors.forEach((a,i)=>{
+        for(let f=0;f<3;f++){const drift=(f-1)*a.scale*.22,onXFace=a.kind==='facade'&&Math.abs(a.localX)>a.building.w/2,lx=onXFace?0:drift,lz=onXFace?drift:0,dx=Math.cos(a.building.rot)*lx+Math.sin(a.building.rot)*lz,dz=-Math.sin(a.building.rot)*lx+Math.cos(a.building.rot)*lz;
+          const height=(2.4+a.scale*.6)*(f===1?1:.8)*(1+(t?Math.sin(t*.9+i+f)*.035:0));
+          for(let core=0;core<2;core++){const sy=height*(core ? .7 : 1),sx=a.scale*(core ? .48 : .9),c=Math.cos(a.building.rot),sn=Math.sin(a.building.rot),vx=132*(PLATE/96)-a.x,vz=156*(PLATE/96)-a.z;
+            // A smaller opaque cone buried inside another is invisible: offset gold along the SAME roof ridge/wall plane.
+            const shift=core?a.scale*.42*(Math.sign(onXFace?sn*vx+c*vz:c*vx-sn*vz)||1):0,tx=(onXFace?sn:c)*shift,tz=(onXFace?c:-sn)*shift;
+            pose(fires,sites.length*3+i*6+f*2+core,a.x+dx+tx,a.y+.65*sy,a.z+dz+tz,sx,sy,sx,a.building.rot);}
+        }
+        for(let j=0;j<budget.smoke;j++){const age=t?((t*.12+j/budget.smoke)%1):j/budget.smoke,size=Math.min(a.scale,1.8)*(1+age*1.4);pose(clouds,sites.length*budget.smoke+i*budget.smoke+j,a.x+age*.6,a.y+3+age*4.5,a.z,size,size,size);}
       });
       for(const mesh of instances)mesh.instanceMatrix.needsUpdate=true;
     };

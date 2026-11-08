@@ -451,7 +451,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // Housing is data-driven (housing.ts): one instanced body (+ instanced gable roof) per type, tinted per instance.
   const r = rng(7);
   const { houses: cityHouses, patches } = cityFill(7, lmIds); const fillers = [...cityHouses, ...countryHomes()];
-  const cityJoke = attachCityProtestJoke(scene, { map: 'city', tier, sites: patches.filter(b => !civicRetired(b)) });
+  const cityJoke = attachCityProtestJoke(scene, { map: 'city', tier, sites: patches.filter(b => !civicRetired(b)), buildings: cityHouses.filter(b => !civicRetired(b)) });
   const roofGeo = (() => { const sh = new THREE.Shape(); sh.moveTo(-0.5, 0); sh.lineTo(0.5, 0); sh.lineTo(0, 1); sh.closePath();
     const g = new THREE.ExtrudeGeometry(sh, { depth: 1, bevelEnabled: false }); g.translate(0, 0, -0.5); g.rotateY(Math.PI / 2); return geo(g); })();
   const unitBox = geo(new THREE.BoxGeometry(1, 1, 1));
