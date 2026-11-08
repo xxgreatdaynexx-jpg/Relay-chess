@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '0a3cc85', at: '2026-11-07T20:13:30-06:00', title: 'Barn menu shows farm status and harvest countdowns', bullets: [
+    'All my farms now shows each owned plot’s empty, growing, ready and withered tile counts, plus crop names and quantities. Mixed fields show their separate counts rather than claiming the whole field is ready.',
+    'Growing fields show the time until the next crop is ready and, when different, the last growing crop. Countdowns update while the menu is open and switch to ready automatically, using the same server deadlines as the farm screen. Planting and harvest changes refresh the overview without reopening it.',
+    'A separately owned barn is still required. Only your own farms are included, grouped by map; inventories, travel restrictions, ordinary farm access and farm actions are unchanged.',
+  ] },
   { commit: 'fbb4b2e', at: '2026-11-07T19:45:00-06:00', title: 'Every barn is sold separately from farms', bullets: [
     'All 30 barns now have their own purchase deed: 2 farm-district barns, 20 countryside barns and 8 beside Big Farms. Tap a barn or find it under Real estate → Barns. Barns are never included with any farm: owning the field beside a barn does not own or unlock that barn.',
     'New base barn prices are 7,000 chips for a countryside barn, 17,500 for the first farm-district barn or a Big Farm barn, and 24,000 for the second farm-district barn. Normal property surcharge, purchase wealth tax where applicable, daily property tax and 70% sell-back rules apply.',
