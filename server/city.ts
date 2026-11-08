@@ -26,7 +26,7 @@ import {
   type LeverId, type PolicyId, type BuildingId, type BuildingState, type PerkId, type Sector, type CityView, type CityAction, type TreasuryRow, type ActionKind,
 } from '../shared/city.js';
 import { abDayStart } from '../shared/mayor.js';
-import { BILL_REVIEW_ID, BILL_REVIEW_MESSAGE, BILL_REVIEW_QUESTIONS, cleanBillAnswers, billAnswersComplete, type BillAnswers, type BillReviewView } from '../shared/mayorQuestionnaire.js';
+import { BILL_REVIEW_ID, BILL_REVIEW_ISSUED_AT, BILL_REVIEW_RECIPIENT_KEY, BILL_REVIEW_MESSAGE, BILL_REVIEW_QUESTIONS, cleanBillAnswers, billAnswersComplete, type BillAnswers, type BillReviewView } from '../shared/mayorQuestionnaire.js';
 
 export const CITY_MIGRATION = `
 CREATE TABLE IF NOT EXISTS city_treasury (id TEXT PRIMARY KEY, balance BIGINT NOT NULL CHECK (balance >= 0));
@@ -81,32 +81,54 @@ export class City {
   projectHeadroom(id: ProjectId, t = this.clock()) { const sp = PROJECTS[id]; return Math.max(0, Math.min(sp.boost, projectCap(id) - this.buildingPerk(sp.perk, t))); }
 
   // ---------- helpers ----------
-  // pt2050u: mayor-only advisory questionnaire on the zoning/cap bill draft. Writes ONLY mayor_bill_review; no economy/law effects.
-  private async billRow(key: string) { return (await this.pool.query('SELECT * FROM mayor_bill_review WHERE review_id = $1 AND player_key = $2', [BILL_REVIEW_ID, key])).rows[0] as { answers: string; seen_at: string | null; submitted_at: string | null } | undefined; }
-  /** null for anyone who is not the sitting mayor (identity = the signed-in socket account, checked against the persisted term). */
-  async billReview(name: string | null): Promise<BillReviewView | null> {
-    if (!name) return null; let t; try { t = await this.isMayor(name); } catch (e) { if (e instanceof CityError) return null; throw e; }
-    const r = await this.billRow(t.key);
+  // Bill clarifications: advisory questionnaire for ONE recipient: the persisted mayor term in office at BILL_REVIEW_ISSUED_AT, held by
+  // BILL_REVIEW_RECIPIENT_KEY, and only while that same term is still current (not removed/ended). Future mayors, a vice who
+  // succeeds into the term, and everyone else never see it. Writes ONLY mayor_bill_review; no economy/law effects.
+  private billTermOk(t: Record<string, unknown> | undefined, name: string, now: number) {
+    return !!t && String(t.player_key) === BILL_REVIEW_RECIPIENT_KEY && playerKey(name) === BILL_REVIEW_RECIPIENT_KEY
+      && Number(t.starts_at) <= BILL_REVIEW_ISSUED_AT && Number(t.ends_at) > BILL_REVIEW_ISSUED_AT && Number(t.starts_at) <= now && Number(t.ends_at) > now && t.removed_at == null;
+  }
+  private static readonly TERM_NOW = 'SELECT * FROM mayor_terms WHERE starts_at <= $1 AND ends_at > $1 AND removed_at IS NULL ORDER BY starts_at DESC LIMIT 1';
+  private async billRow(db: { query: pg.Pool['query'] }, key: string) { return (await db.query('SELECT * FROM mayor_bill_review WHERE review_id = $1 AND player_key = $2', [BILL_REVIEW_ID, key])).rows[0] as { answers: string; seen_at: string | null; submitted_at: string | null } | undefined; }
+  private billViewOf(r: { answers: string; seen_at: string | null; submitted_at: string | null } | undefined): BillReviewView {
     return { id: BILL_REVIEW_ID, message: BILL_REVIEW_MESSAGE, questions: BILL_REVIEW_QUESTIONS, answers: r ? cleanBillAnswers(JSON.parse(r.answers)) : {}, submittedAt: r?.submitted_at != null ? Number(r.submitted_at) : null, autoOpen: !r || (r.seen_at == null && r.submitted_at == null) };
   }
+  /** null for anyone but the bound recipient (identity = the signed-in socket account, checked against the persisted term). */
+  async billReview(name: string | null): Promise<BillReviewView | null> {
+    if (!name) return null; const now = this.clock();
+    if (!this.billTermOk((await this.pool.query(City.TERM_NOW, [now])).rows[0], name, now)) return null;
+    return this.billViewOf(await this.billRow(this.pool, BILL_REVIEW_RECIPIENT_KEY));
+  }
+  /** Authority re-checked inside the write transaction: the term row is read FOR SHARE at the clock time after locking, so a
+   *  concurrent recall/succession waits (or is seen), and an ended term is refused. */
+  private async billTx<T>(name: string, fn: (cl: pg.PoolClient, now: number) => Promise<T>): Promise<T> {
+    const cl = await this.pool.connect();
+    try {
+      await cl.query('BEGIN'); const now = this.clock();
+      if (!this.billTermOk((await cl.query(`${City.TERM_NOW} FOR SHARE`, [now])).rows[0], name, now)) throw new CityError('Only the sitting mayor this was sent to can answer it.');
+      const out = await fn(cl, now); await cl.query('COMMIT'); return out;
+    } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); }
+  }
   async billReviewSeen(name: string) {
-    const t = await this.isMayor(name);
-    await this.pool.query(`INSERT INTO mayor_bill_review (review_id, player_key, name, answers, seen_at) VALUES ($1,$2,$3,'{}',$4) ON CONFLICT (review_id, player_key) DO UPDATE SET seen_at = COALESCE(mayor_bill_review.seen_at, EXCLUDED.seen_at)`, [BILL_REVIEW_ID, t.key, t.name, this.clock()]);
+    await this.billTx(name, (cl, now) => cl.query(`INSERT INTO mayor_bill_review (review_id, player_key, name, answers, seen_at) VALUES ($1,$2,$3,'{}',$4) ON CONFLICT (review_id, player_key) DO UPDATE SET seen_at = COALESCE(mayor_bill_review.seen_at, EXCLUDED.seen_at)`, [BILL_REVIEW_ID, BILL_REVIEW_RECIPIENT_KEY, name, now]));
     return { review: await this.billReview(name) };
   }
   /** Save a draft (any subset) or submit (all answered). Submitted answers are final; re-submitting the same answers is a no-op. */
   async billReviewSave(name: string, answers: unknown, submit: unknown) {
-    const t = await this.isMayor(name); let a: BillAnswers;
-    try { a = cleanBillAnswers(answers); } catch (e) { throw new CityError((e as Error).message); }
+    let a: BillAnswers; try { a = cleanBillAnswers(answers); } catch (e) { throw new CityError((e as Error).message); }
     const fin = submit === true; if (fin && !billAnswersComplete(a)) throw new CityError('Answer every question before submitting.');
     const ordered: BillAnswers = {}; for (const q of BILL_REVIEW_QUESTIONS) if (a[q.id]) ordered[q.id] = a[q.id]!;
-    const json = JSON.stringify(ordered); const now = this.clock();
-    const r = await this.pool.query(`INSERT INTO mayor_bill_review (review_id, player_key, name, answers, seen_at, updated_at, submitted_at) VALUES ($1,$2,$3,$4,$5,$5,$6)
-      ON CONFLICT (review_id, player_key) DO UPDATE SET answers = EXCLUDED.answers, name = EXCLUDED.name, updated_at = EXCLUDED.updated_at, submitted_at = EXCLUDED.submitted_at, seen_at = COALESCE(mayor_bill_review.seen_at, EXCLUDED.seen_at)
-      WHERE mayor_bill_review.submitted_at IS NULL RETURNING submitted_at`, [BILL_REVIEW_ID, t.key, t.name, json, now, fin ? now : null]);
-    if (!r.rows.length) { const cur = await this.billRow(t.key); if (!(fin && cur?.answers === json)) throw new CityError('Your answers were already submitted.'); }
+    const json = JSON.stringify(ordered);
+    await this.billTx(name, async (cl, now) => {
+      const r = await cl.query(`INSERT INTO mayor_bill_review (review_id, player_key, name, answers, seen_at, updated_at, submitted_at) VALUES ($1,$2,$3,$4,$5,$5,$6)
+        ON CONFLICT (review_id, player_key) DO UPDATE SET answers = EXCLUDED.answers, name = EXCLUDED.name, updated_at = EXCLUDED.updated_at, submitted_at = EXCLUDED.submitted_at, seen_at = COALESCE(mayor_bill_review.seen_at, EXCLUDED.seen_at)
+        WHERE mayor_bill_review.submitted_at IS NULL RETURNING submitted_at`, [BILL_REVIEW_ID, BILL_REVIEW_RECIPIENT_KEY, name, json, now, fin ? now : null]);
+      if (!r.rows.length) { const cur = await this.billRow(cl as never, BILL_REVIEW_RECIPIENT_KEY); if (!(fin && cur?.answers === json)) throw new CityError('Your answers were already submitted.'); }
+    });
     return { review: await this.billReview(name) };
   }
+  /** Admin read-only: the stored answers (no other player data). */
+  async billReviewAdmin() { return (await this.pool.query('SELECT player_key, name, answers, seen_at, updated_at, submitted_at FROM mayor_bill_review WHERE review_id = $1', [BILL_REVIEW_ID])).rows.map((r) => ({ key: String(r.player_key), name: String(r.name), answers: JSON.parse(String(r.answers)) as BillAnswers, seenAt: r.seen_at == null ? null : Number(r.seen_at), updatedAt: r.updated_at == null ? null : Number(r.updated_at), submittedAt: r.submitted_at == null ? null : Number(r.submitted_at) })); }
   private async isMayor(name: string) { const m = this.mayorOf(); if (!m) throw new CityError('City Hall is closed right now.'); await m.settle(this.clock()); const t = await m.mayor(this.clock()); if (!t || t.key !== playerKey(name)) throw new CityError('Only the sitting mayor can do that.'); return t; }
   /** QA / guest / bot / jailed accounts never take part. Then the same anti-alt gate as voting. */
   async excluded(name: string): Promise<string | undefined> {
@@ -388,6 +410,11 @@ export function cityRouter() {
     res.set('Cache-Control', 'no-store'); if (!cityInst) return res.json({ ok: true, live: false });
     try { res.json({ ok: true, live: true, view: await cityInst.view(null) }); } catch { res.status(503).json({ ok: false, error: 'City Hall is closed right now.' }); }
   });
+  r.get('/api/admin/city/bill-review', async (req, res) => { // bill clarifications: admin-token read of the stored advisory answers
+    const { adminAuthorized } = await import('./admin.js'); res.set('Cache-Control', 'no-store');
+    if (!adminAuthorized(req.get('authorization'))) return res.status(401).json({ ok: false, error: 'Unauthorized.' });
+    if (!cityInst) return res.status(503).json({ ok: false }); res.json({ ok: true, id: BILL_REVIEW_ID, recipient: BILL_REVIEW_RECIPIENT_KEY, rows: await cityInst.billReviewAdmin() });
+  });
   r.get('/api/admin/city/treasury', async (req, res) => {
     const { adminAuthorized } = await import('./admin.js');
     if (!adminAuthorized(req.get('authorization'))) return res.status(401).json({ ok: false, error: 'Unauthorized.' });
@@ -407,7 +434,7 @@ export function registerCity(_io: Server, socket: Socket): void {
     catch (e) { let city: CityView | undefined; try { city = cityInst ? await cityInst.view(nameOf()) : undefined; } catch { /* */ } ack?.({ ok: false, error: e instanceof CityError ? e.message : 'Something went wrong.', city }); if (!(e instanceof CityError)) console.error('[city]', e); }
   });
   on('city_view', async () => ({}));
-  on('city_bill_review', async (_b, c) => ({ review: await c.billReview(nameOf()) }));
+  on('city_bill_review', async (_b, c) => ({ account: nameOf(), review: await c.billReview(nameOf()) })); // account lets the client ignore answers for a different/unauthenticated socket
   on('city_bill_review_seen', async (_b, c) => c.billReviewSeen(need()));
   on('city_bill_review_save', async (b, c) => c.billReviewSave(need(), b.answers, b.submit));
   on('city_lever', async (b, c) => c.setLever(need(), b.lever, b.value));

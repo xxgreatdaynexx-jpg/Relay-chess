@@ -1,9 +1,12 @@
 /**
- * pt2050u (Nov 8 2026): one mayor-only multiple-choice questionnaire about the zoning/property-cap bill draft (t2045u).
+ * Bill clarifications: one mayor-only multiple-choice advisory review of the zoning/property-cap bill draft.
  * Advisory answers only: saving or submitting changes NO economy, ownership, tax, treasury or law state.
- * BILL_REVIEW_MESSAGE is the owner's exact text and must never be edited (tests compare it byte for byte).
+ * BILL_REVIEW_MESSAGE is fixed text and must never be edited (tests compare it byte for byte).
  */
 export const BILL_REVIEW_ID = 'bill-zoning-caps-2026-11-08';
+/** Bound recipient: the persisted mayor term in office at this instant (Nov 8 2026 1:13 PM UTC-6), held by this player key. */
+export const BILL_REVIEW_ISSUED_AT = Date.UTC(2026, 10, 8, 19, 13);
+export const BILL_REVIEW_RECIPIENT_KEY = 'carter2';
 export const BILL_REVIEW_MESSAGE = `Mayor, the proposal needs these clarifications before it can move forward:
 
 - Existing owners keep all their properties, even if already above a cap. Limits block additional purchases, not force sales or confiscation.

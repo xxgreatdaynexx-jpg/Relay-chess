@@ -2605,12 +2605,19 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 
 @media (max-height: 520px) and (min-width: 700px) { .world.fortmc .fort-map-controls { grid-template-columns: repeat(6, minmax(0, 1fr)); } .world.fortmc .fort-flat-map { top: 112px; bottom: 60px; } }
 
-/* pt2050u: mayor bill-review questionnaire (mobile-safe: scrolls inside, backdrop/✕/Esc close) */
-.bill-review-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 12px; }
-.bill-review { position: relative; width: min(560px, 100%); max-height: calc(100dvh - 24px); overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; background: #1b1f2a; color: #eef; border-radius: 12px; padding: 16px 16px 20px; }
-.bill-review-message { white-space: pre-wrap; margin: 8px 0 12px; line-height: 1.4; }
+/* Bill clarifications questionnaire. Fixed, not draggable: header/close always on screen, body scrolls, footer pinned. */
+.bill-review-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
+.bill-review { width: min(560px, 100%); max-height: 100%; display: flex; flex-direction: column; overflow: hidden; background: #1b1f2a; color: #eef; border-radius: 12px; }
+.bill-review-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 4px 16px; border-bottom: 1px solid #2c3242; }
+.bill-review-head h3 { margin: 0; font-size: 1rem; }
+.bill-review-x { min-width: 44px; min-height: 44px; font-size: 1.1rem; }
+.bill-review-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 12px 16px; }
+.bill-review-message { white-space: pre-wrap; margin: 0 0 12px; line-height: 1.4; }
 .bill-review-qs { padding-left: 18px; display: grid; gap: 10px; }
-.bill-review-qs fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 4px; }
+.bill-review-qs fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 2px; }
 .bill-review-qs legend { font-weight: 600; margin-bottom: 4px; }
-.bill-review-qs label { display: flex; gap: 6px; align-items: flex-start; min-height: 28px; }
-.bill-review-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; position: sticky; bottom: -20px; background: #1b1f2a; padding: 8px 0; }
+.bill-review-qs label { display: flex; gap: 8px; align-items: center; min-height: 44px; }
+.bill-review-qs input[type="radio"] { width: 20px; height: 20px; flex: none; }
+.bill-review-foot { flex: none; border-top: 1px solid #2c3242; padding: 8px 16px; display: grid; gap: 6px; }
+.bill-review-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.bill-review-actions button { min-height: 44px; padding: 0 14px; }
