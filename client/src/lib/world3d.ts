@@ -1,3 +1,4 @@
+import { attachCityProtestJoke } from './cityProtestJoke';
 import { farmBarns } from '../../../shared/farmBarns';
 import { inStadiumSite } from '../../../shared/coop';
 import * as THREE from 'three';
@@ -450,6 +451,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // Housing is data-driven (housing.ts): one instanced body (+ instanced gable roof) per type, tinted per instance.
   const r = rng(7);
   const { houses: cityHouses, patches } = cityFill(7, lmIds); const fillers = [...cityHouses, ...countryHomes()];
+  const cityJoke = attachCityProtestJoke(scene, { map: 'city', tier, sites: patches.filter(b => !civicRetired(b)) });
   const roofGeo = (() => { const sh = new THREE.Shape(); sh.moveTo(-0.5, 0); sh.lineTo(0.5, 0); sh.lineTo(0, 1); sh.closePath();
     const g = new THREE.ExtrudeGeometry(sh, { depth: 1, bevelEnabled: false }); g.translate(0, 0, -0.5); g.rotateY(Math.PI / 2); return geo(g); })();
   const unitBox = geo(new THREE.BoxGeometry(1, 1, 1));
@@ -949,6 +951,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     xmas?.step(dt, camera.position, controls.target);
     townHallProtest?.step(dt, time, camera.position);
     farmProtest?.step(dt, time, camera.position);
+    cityJoke.step(time);
     for (const w of waterMats) w.uniforms.uTime.value = time; for (const w of oceanMats) w.uniforms.uTime.value = time; venues.step(dt, time, camera.position);
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
     for (const l of lms) { const k = labelScale(camera.position.distanceTo(l.sign.getWorldPosition(tmpV)), portrait) * (l.sign.userData.hover ? 1.2 : 1); fitLabel(l.sign, k); }
@@ -1003,7 +1006,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     setRunning(v: boolean) { running = v && !document.hidden; clock.getDelta(); },
     project(id: string) { const l = lms.find((x) => x.id === id); if (!l) return null; const v = l.pos.clone().setY(l.height + 2.2).project(camera); const rc = canvas.getBoundingClientRect(); return { x: rc.left + (v.x + 1) / 2 * rc.width, y: rc.top + (1 - v.y) / 2 * rc.height }; },
     hover(id: string | null) { setHover(id); },
-    dispose() { townHallProtest?.dispose(); townHallProtest = null; farmProtest?.dispose(); farmProtest = null; disposeSharedProtestSfx(); xmas?.dispose(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); parkDead = true; trailerMeshes = []; jailDead = true; civicDead = true; civicKit.dispose(); window.clearInterval(civicPoll); window.removeEventListener('city-changed', loadCivic); window.clearInterval(jailPoll); window.clearInterval(jailTick); for (const o of inmateObjs) o.tex.dispose(); cancelAnimationFrame(raf); venues.dispose(); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
+    dispose() { cityJoke.dispose(); townHallProtest?.dispose(); townHallProtest = null; farmProtest?.dispose(); farmProtest = null; disposeSharedProtestSfx(); xmas?.dispose(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); parkDead = true; trailerMeshes = []; jailDead = true; civicDead = true; civicKit.dispose(); window.clearInterval(civicPoll); window.removeEventListener('city-changed', loadCivic); window.clearInterval(jailPoll); window.clearInterval(jailTick); for (const o of inmateObjs) o.tex.dispose(); cancelAnimationFrame(raf); venues.dispose(); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
   };
 }
 export type World = ReturnType<typeof createWorld>;
