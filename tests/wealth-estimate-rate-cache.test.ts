@@ -8,8 +8,8 @@ vi.mock('pg',async(original)=>{const old=await original<{default:object}>();retu
 import { wealthTaxRouter } from '../server/wealth-tax';
 describe('daily wealth estimate uses its actual lever rate',()=>{
  it('reuses cache only for same rate and immediately recomputes after a rate change',async()=>{
-  const route=wealthTaxRouter().stack.find((x:any)=>x.route?.path==='/api/wealth-tax')!.route.stack[0].handle;
-  const get=async()=>{let body:any;const res:any={set:()=>res,status:()=>res,json:(x:unknown)=>{body=x;return res;}};await route({query:{}},res,()=>{});return body;};
+  const route=wealthTaxRouter().stack.find((x:any)=>x.route?.path==='/api/wealth-tax')!.route!.stack[0]!.handle;
+  const get=async()=>{let body:any;const res:any={set:()=>res,status:()=>res,json:(x:unknown)=>{body=x;return res;}};await route({query:{}} as never,res,()=>{});return body;};
   expect(await get()).toMatchObject({ok:true,rate:0.01,total:2600});expect(fixture.reads).toBe(1);
   expect(await get()).toMatchObject({rate:0.01,total:2600});expect(fixture.reads).toBe(1);
   fixture.rate=0.015;expect(await get()).toMatchObject({ok:true,rate:0.015,total:3900});expect(fixture.reads).toBe(2);
