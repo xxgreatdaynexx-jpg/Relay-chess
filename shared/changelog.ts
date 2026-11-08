@@ -6,7 +6,7 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-07T19:42:00-06:00', title: 'Smoother winter snow across the expanded maps', bullets: [
+  { commit: 'dc2127e', at: '2026-11-07T19:44:44-06:00', title: 'Smoother winter snow across the expanded maps', bullets: [
     'Falling snow now follows your view everywhere on the map, so it no longer stops at a visible edge over the countryside, Big Farms, airport or speedway. The amount of snow on screen is the same as before.',
     'The slushy snow on Chud City roads now also covers the countryside, Big Farms, airport and speedway roads.',
     'The snowy ground lines up across every map section, removing the hard lines where newer sections meet.',
