@@ -1,0 +1,28 @@
+// @vitest-environment jsdom
+import React from 'react';
+import { render, screen, act, cleanup } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { barnFarmStatus, barnTimeLeft, type BarnFarmPlot, type BarnFarmOverview } from '../shared/barnFarmStatus';
+import { FarmStatusSummary, useBarnFarmStatus } from '../client/src/components/BarnFarmStatus';
+const net=vi.hoisted(()=>({ handlers:new Map<string,Function>(), callbacks:[] as Function[], emit:vi.fn(), off:vi.fn() }));
+vi.mock('../client/src/lib/net',()=>({socket:{timeout:()=>({emit:(ev:string,b:unknown,cb:Function)=>{net.emit(ev,b);net.callbacks.push(cb);}}),on:(ev:string,fn:Function)=>net.handlers.set(ev,fn),off:(ev:string)=>{net.handlers.delete(ev);net.off(ev);}}}));
+const T=100000;
+const tile=(n:number,crop='wheat',readyAt=T+2000,witherAt=T+10000)=>({tile:n,crop,plantedAt:T-5000,stage:'growing' as const,readyAt,witherAt});
+const plot=(tiles:BarnFarmPlot['tiles']=[]):BarnFarmPlot=>({id:'f:1',cols:2,rows:2,tiles});
+let mono=0;
+beforeEach(()=>{vi.useFakeTimers();mono=0;vi.spyOn(performance,'now').mockImplementation(()=>mono);net.emit.mockClear();net.off.mockClear();net.callbacks.length=0;net.handlers.clear();});
+afterEach(()=>{cleanup();vi.restoreAllMocks();vi.useRealTimers();});
+function Harness({me='Owner',unlocked=true,ids=['f:1']}:{me?:string;unlocked?:boolean;ids?:string[]}){const x=useBarnFarmStatus(me,unlocked,ids);return <>{x.error&&<span>{x.error}</span>}{x.plots.get('f:1')&&<FarmStatusSummary plot={x.plots.get('f:1')!} now={x.now}/>}</>;}
+const answer=(view:BarnFarmOverview={now:T,plots:[plot([tile(0)])]})=>net.callbacks.shift()!(null,{ok:true,overview:view});
+describe('canonical farm deadline summaries',()=>{
+ it('empty farm reports empty capacity, not ready or a fabricated countdown',()=>{const s=barnFarmStatus(plot(),T);expect(s.count).toEqual({empty:4,growing:0,ready:0,withered:0});expect(s.nextReady).toBeNull();});
+ it('mixed crops show separate counts and next/last growing deadlines, never whole-plot ready',()=>{const p=plot([tile(0,'wheat',T-1),tile(1,'corn',T+2000),tile(2,'wheat',T+7000)]);const s=barnFarmStatus(p,T);expect(s.count).toEqual({empty:1,growing:2,ready:1,withered:0});expect(s.nextReady).toBe(T+2000);expect(s.lastReady).toBe(T+7000);expect(s.crops).toContain('2 Wheat');render(<FarmStatusSummary plot={p} now={T}/>);expect(screen.getByText(/1 empty · 2 growing · 1 ready/)).toBeTruthy();expect(screen.getByText(/Next ready in 2s/).textContent).toContain('Last growing crop in 7s');});
+ it('readiness and withering boundaries use exact server timestamps regardless of stale stage strings',()=>{const p=plot([tile(0)]);expect(barnFarmStatus(p,T+1999).count.growing).toBe(1);expect(barnFarmStatus(p,T+2000).count.ready).toBe(1);expect(barnFarmStatus(p,T+10000).count.withered).toBe(1);});
+ it('uses supplied accelerated deadline, labels tropical crops, and formats long waits without early rounding',()=>{const p=plot([tile(0,'pineapple',T+1234)]);expect(barnFarmStatus(p,T).nextReady).toBe(T+1234);expect(barnFarmStatus(p,T).crops).toContain('Pineapple');expect(barnTimeLeft(1234)).toBe('2s');expect(barnTimeLeft(3661000)).toBe('1h 1m 1s');});
+});
+describe('open-menu live updates are event-driven, private and cleaned up',()=>{
+ it('one initial read; monotonic display crosses ready without reopen or network polling, even if wall clock changes',()=>{render(<Harness/>);expect(net.emit).toHaveBeenCalledTimes(1);act(()=>answer());expect(screen.getByText(/Next ready in 2s/)).toBeTruthy();vi.setSystemTime(new Date('2099-01-01'));act(()=>{mono=2000;vi.advanceTimersByTime(2000);});expect(screen.getByText(/3 empty · 0 growing · 1 ready/)).toBeTruthy();expect(screen.queryByText(/Next ready/)).toBeNull();expect(net.emit).toHaveBeenCalledTimes(1);});
+ it('ignores unrelated farm changes, coalesces own change bursts, and refreshes on reconnect/visibility',()=>{render(<Harness/>);act(()=>answer());act(()=>{net.handlers.get('farm_changed')!({id:'f:other'});vi.advanceTimersByTime(100);});expect(net.emit).toHaveBeenCalledTimes(1);act(()=>{net.handlers.get('farm_changed')!({id:'f:1'});net.handlers.get('farm_changed')!({id:'f:1'});vi.advanceTimersByTime(80);});expect(net.emit).toHaveBeenCalledTimes(2);act(()=>answer());act(()=>{net.handlers.get('connect')!();vi.advanceTimersByTime(80);});expect(net.emit).toHaveBeenCalledTimes(3);act(()=>answer());Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});act(()=>{document.dispatchEvent(new Event('visibilitychange'));vi.advanceTimersByTime(80);});expect(net.emit).toHaveBeenCalledTimes(4);});
+ it('drops an in-flight snapshot invalidated by ownership change; no stale private rows rendered',()=>{const ui=render(<Harness/>);act(()=>{net.handlers.get('re_changed')!();vi.advanceTimersByTime(80);answer();});expect(screen.queryByTestId('farm-status-f:1')).toBeNull();expect(net.emit).toHaveBeenCalledTimes(2);act(()=>net.callbacks.shift()!(null,{ok:false,error:'Own a separately purchased barn'}));expect(screen.queryByTestId('farm-status-f:1')).toBeNull();ui.rerender(<Harness me="Other" unlocked={false}/>);expect(net.emit).toHaveBeenCalledTimes(2);});
+ it('cleans listeners/timers and ignores late callbacks after closing; farm ownership alone sends no request',()=>{const ui=render(<Harness unlocked={false}/>);expect(net.emit).not.toHaveBeenCalled();ui.rerender(<Harness/>);expect(net.emit).toHaveBeenCalledOnce();ui.unmount();act(()=>{answer();vi.runOnlyPendingTimers();});expect(net.handlers.size).toBe(0);expect(net.emit).toHaveBeenCalledOnce();});
+});

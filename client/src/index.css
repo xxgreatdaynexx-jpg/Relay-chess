@@ -2563,3 +2563,6 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .farm-overview section p { margin: 6px 0; }
 .farm-overview section button:disabled { opacity: .65; }
 .fac-shoprow { flex-wrap: wrap; } /* Machinist: Buy + Sell-unplaced buttons wrap in the narrow side menu */
+
+.barn-farm-status { display: flex; flex-direction: column; gap: 3px; padding: 4px 8px 8px; line-height: 1.45; overflow-wrap: anywhere; }
+@media (max-width: 640px), (max-height: 500px) { .world-deed .barn-farm-status { font-size: 13px; } }

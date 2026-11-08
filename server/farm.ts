@@ -1,3 +1,5 @@
+import { isBarnProperty } from '../shared/barnFarms.js';
+import type { BarnFarmOverview } from '../shared/barnFarmStatus.js';
 /**
  * Farm game (see shared/farm.ts for crops, tiers and layout). Postgres is the source of truth and the server clock is
  * the only clock: planting stores planted_at = server now; stages are derived from it. Chips only move through the
@@ -219,6 +221,33 @@ export class Farm {
     const n = p.cols * p.rows; const arr = Array.isArray(tiles) ? tiles : [tiles];
     const out = [...new Set(arr.filter((t): t is number => Number.isInteger(t) && (t as number) >= 0 && (t as number) < n))];
     if (!out.length) throw new FarmError('Pick a tile.'); return out;
+  }
+
+  /** Private read-only snapshot: the caller owns a separate barn AND every returned field. No client ids accepted. */
+  async overview(name: string | null): Promise<BarnFarmOverview> {
+    if (!name) throw new FarmError('Sign in to view your farms.');
+    const key = keyOf(name); const cl = await this.pool.connect();
+    try {
+      await cl.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      const owned = (await cl.query('SELECT id FROM properties WHERE owner_key = $1 ORDER BY id', [key])).rows as Array<{ id: string }>;
+      if (!owned.some((r) => isBarnProperty(r.id))) throw new FarmError('Own a separately purchased barn to view all your farms.');
+      const targets = owned.flatMap((r) => { const p = plotOf(r.id); return p ? [p] : []; });
+      const ids = targets.map((p) => p.pid);
+      // One batch each, not one request/query per field; snapshots never include a different owner's rows.
+      const rows = ids.length ? (await cl.query('SELECT * FROM farm_tiles WHERE plot_id = ANY($1) AND owner_key = $2 ORDER BY plot_id, tile', [ids, key])).rows as TileRow[] : [];
+      const levels = ids.length ? (await cl.query('SELECT plot_id, kind, level FROM farm_upgrades WHERE plot_id = ANY($1) AND owner_key = $2', [ids, key])).rows as Array<{ plot_id: string; kind: string; level: number }> : [];
+      const raw = targets.map((p) => {
+        const upgrades: FarmUpgradeLevels = { ...NO_UPGRADES };
+        for (const row of levels) if (row.plot_id === p.pid && upgradeDef(row.kind)) upgrades[row.kind as keyof FarmUpgradeLevels] = Math.max(0, Math.min(MAX_UPGRADE_LEVEL, Number(row.level)));
+        return { p, upgrades, rows: rows.filter((r) => r.plot_id === p.pid) };
+      });
+      const now = this.clock();
+      const plots = raw.map(({ p, upgrades, rows }) => ({ id: p.pid, cols: p.cols, rows: p.rows,
+        tiles: rows.filter((r) => Number(r.tile) >= 0 && Number(r.tile) < p.cols * p.rows)
+          .map((r) => this.toTile(r, now, this.withers(upgrades))).filter((t): t is FarmTile => !!t) }));
+      await cl.query('COMMIT'); return { now, plots };
+    } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; }
+    finally { cl.release(); }
   }
 
   /** Plant `crop` on the given empty tiles; seeds are paid now (px-indexed). */
@@ -470,6 +499,7 @@ export function registerFarm(io: Server, socket: Socket): void {
   });
   const need = () => { const n = nameOf(); if (!n) throw new FarmError('Sign in to farm.'); return n; };
   on('farm_view', async (b, f) => ({ farm: await f.view(b.id, nameOf()) }));
+  on('farm_overview', async (_b, f) => ({ overview: await f.overview(need()) }));
   // Resort plots can only be worked while you are at Chud Resort.
   const at = async (id: unknown) => { const n = need(); if (typeof id === 'string' && id.startsWith('rf:')) await requireResort(n, FarmError); return n; };
   on('farm_plant', async (b, f) => f.plant(await at(b.id), b.id, b.crop, b.tiles));
