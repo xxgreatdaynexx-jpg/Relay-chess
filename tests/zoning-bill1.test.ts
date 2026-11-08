@@ -42,6 +42,12 @@ describe('classification (every catalog deed)', () => {
     expect(zoneRefusal({ residential: 0, commercial: 0, farmlandTiles: 1400 }, f(101))).toMatch(/1,500 tiles/);
     expect(zoneRefusal({ residential: 99, commercial: 99, farmlandTiles: 9999 }, patch)).toBeNull(); expect(zoneRefusal({ residential: 99, commercial: 99, farmlandTiles: 9999 }, resort)).toBeNull();
     expect(zoneUse([houses[0]!, commercial[0]!, patch, resort, byId('cf:1000')])).toEqual({ residential: 1, commercial: 1, farmlandTiles: 900 });
+    for (const tiles of [undefined,0,-1,NaN,Infinity,1.5]) {
+      const unknown={kind:'farm' as const,type:'farmland',tiles,label:'Unknown plot'};
+      expect(tilesOf(unknown)).toBe(Infinity);
+      expect(zoneRefusal({residential:0,commercial:0,farmlandTiles:0},unknown)).toMatch(/verify farmland/);
+      expect(zoneRefusal(zoneUse([unknown]),f(1))).toMatch(/verify farmland/);
+    }
     expect(ZONE_DEED_CAP).toBe(5);
   });
   it('surcharge lever abolished: hidden, no effect (history rows still parse)', () => {
@@ -52,13 +58,13 @@ describe('classification (every catalog deed)', () => {
 const url = process.env.MAYOR_LAWS_TEST_DATABASE_URL;
 const drops: Array<() => Promise<void>> = []; afterAll(async () => { setEconomyForTest(null); for (const d of drops) await d(); });
 describe.skipIf(!url)('enforcement on real Postgres', () => {
-  async function world(instances = 1) {
+  async function world(instances = 1, sharedBankPool = false) {
     const u = new URL(url!); if (!['127.0.0.1', 'localhost'].includes(u.hostname)) throw new Error('local DB only');
     const name = `zb_${process.pid}_${Date.now()}_${Math.floor(Math.random() * 1e6)}`; const root = new pg.Client({ connectionString: url }); await root.connect(); await root.query(`CREATE DATABASE ${name}`);
-    u.pathname = `/${name}`; const conn = u.toString(); const setup = new pg.Pool({ connectionString: conn, max: 3 });
+    u.pathname = `/${name}`; const conn = u.toString(); const setup = new pg.Pool({ connectionString: conn, max: sharedBankPool ? 2 : 3, connectionTimeoutMillis: 1500 });
     const pools: pg.Pool[] = []; drops.push(async () => { for (const p of pools) await p.end(); await setup.end(); await root.query(`DROP DATABASE ${name}`); await root.end(); });
     const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(setup as never));
-    const res: RealEstate[] = []; for (let i = 0; i < instances; i++) { const p = new pg.Pool({ connectionString: conn, max: 2, connectionTimeoutMillis: 5_000 }); pools.push(p); const re = new RealEstate(p as never, () => bank); await re.init(); res.push(re); }
+    const res: RealEstate[] = []; for (let i = 0; i < instances; i++) { const p = sharedBankPool ? setup : new pg.Pool({ connectionString: conn, max: 2, connectionTimeoutMillis: 5_000 }); if (!sharedBankPool) pools.push(p); const re = new RealEstate(p as never, () => bank); await re.init(); res.push(re); }
     await setup.query(`CREATE TABLE IF NOT EXISTS farm_tiles (plot_id TEXT NOT NULL, tile INTEGER NOT NULL, owner_key TEXT NOT NULL, crop TEXT NOT NULL, planted_at BIGINT NOT NULL, nonce TEXT NOT NULL, PRIMARY KEY (plot_id, tile));
       CREATE TABLE IF NOT EXISTS farm_upgrades (plot_id TEXT NOT NULL, kind TEXT NOT NULL, owner_key TEXT NOT NULL, level INTEGER NOT NULL, PRIMARY KEY (plot_id, kind));
       CREATE TABLE IF NOT EXISTS farm_fert (plot_id TEXT NOT NULL, tile INTEGER NOT NULL, nonce TEXT NOT NULL, kind TEXT NOT NULL, PRIMARY KEY (plot_id, tile, nonce));`);
@@ -106,6 +112,23 @@ describe.skipIf(!url)('enforcement on real Postgres', () => {
     const w = await world(); await w.fund('Bo', 50_000_000); await w.own('Bo', commercial.slice(0, 5).map((p) => p.id)); await w.own('Old', ['lm:casino'], 1000);
     await expect(w.re.buyout('Bo', 'lm:casino')).rejects.toThrow(/already own 5 commercial/);
     expect((await w.q("SELECT owner_key FROM properties WHERE id='lm:casino'"))[0].owner_key).toBe('old'); expect(await w.ledger('Bo')).toBe(0);
+  }, 30_000);
+  it('two-connection shared bank/property pool: concurrent buyouts and buy-vs-buyout complete without starvation; cross-instance caps hold', async () => {
+    const w = await world(2, true); for (const n of ['One','Two','Mixed']) await w.fund(n, 50_000_000);
+    await w.own('Old', ['lm:casino','lm:bank','lm:jail'], 1000);
+    await w.q('UPDATE properties SET bought_at=$1', [Date.now()-25*3600000]);
+    const r = await Promise.allSettled([w.res[0]!.buyout('One','lm:casino'),w.res[1]!.buyout('Two','lm:bank')]);
+    expect(r.map(x=>x.status)).toEqual(['fulfilled','fulfilled']);
+    await w.own('Mixed', commercial.slice(0,4).map(p=>p.id)); const before=w.bank.account('Mixed').chips;
+    const both=await Promise.allSettled([w.res[0]!.buyout('Mixed','lm:jail'),w.res[1]!.buy('Mixed',commercial[4]!.id)]);
+    expect(both.filter(x=>x.status==='fulfilled')).toHaveLength(1);
+    expect(String((both.find(x=>x.status==='rejected') as PromiseRejectedResult).reason.message)).toMatch(/commercial/);
+    expect((await w.re.zoneUse('Mixed')).commercial).toBe(5);
+    await w.bank.refresh('Mixed'); const won=(both.find(x=>x.status==='fulfilled') as PromiseFulfilledResult<{price:number;wealthTax?:number}>).value;
+    expect(w.bank.account('Mixed').chips).toBe(before-won.price-(won.wealthTax??0));
+    // Also exercise two different ordinary buyers with the same two-connection bank/property pool.
+    const buys=await Promise.allSettled([w.res[0]!.buy('One',houses[30]!.id),w.res[1]!.buy('Two',houses[31]!.id)]);
+    expect(buys.map(x=>x.status)).toEqual(['fulfilled','fulfilled']);
   }, 30_000);
   it('no surcharge and no surcharge treasury share; purchase wealth tax unchanged; no refunds written for past surcharges', async () => {
     const w = await world(); await w.fund('Wes', 5_000_000); await w.own('Wes', ['lm:bank'], 200_000); // 200K property -> taxed buyer, big old surcharge basis

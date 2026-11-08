@@ -24,8 +24,8 @@ export function zoneOf(p: Pick<Property, 'kind' | 'type' | 'map'>): Zone {
   if (COMMERCIAL.has(p.type)) return 'commercial';
   return 'commercial';                                      // fail closed: an unclassified future building is capped, never free
 }
-/** Full plot dimensions (cols × rows) for farmland; 0 for everything else. */
-export const tilesOf = (p: Pick<Property, 'kind' | 'tiles'>) => (p.kind === 'farm' ? Math.max(0, p.tiles ?? 0) : 0);
+/** Full plot dimensions. Unknown/invalid farmland fails closed, never contributes zero capacity. */
+export const tilesOf = (p: Pick<Property, 'kind' | 'tiles'>) => p.kind !== 'farm' ? 0 : Number.isSafeInteger(p.tiles) && p.tiles! > 0 ? p.tiles! : Number.POSITIVE_INFINITY;
 
 export interface ZoneUse { residential: number; commercial: number; farmlandTiles: number }
 export function zoneUse(owned: ReadonlyArray<Pick<Property, 'kind' | 'type' | 'map' | 'tiles'>>): ZoneUse {
@@ -39,13 +39,14 @@ export function zoneRefusal(use: ZoneUse, p: Pick<Property, 'kind' | 'type' | 'm
   if (z === 'residential' || z === 'commercial') {
     const n = use[z]; if (n + 1 > ZONE_DEED_CAP) return `Zoning cap: you already own ${n} ${ZONE_LABEL[z].toLowerCase()} propert${n === 1 ? 'y' : 'ies'} (max ${ZONE_DEED_CAP}). You keep what you own; you can't buy more ${ZONE_LABEL[z].toLowerCase()} property. Nothing was charged.`;
   } else if (z === 'farmland') {
-    const t = tilesOf(p); if (use.farmlandTiles + t > FARMLAND_TILE_CAP) return `Zoning cap: farmland is limited to ${FARMLAND_TILE_CAP.toLocaleString('en-US')} tiles. You own ${use.farmlandTiles.toLocaleString('en-US')}; ${p.label} adds ${t.toLocaleString('en-US')}. Nothing was charged.`;
+    const t = tilesOf(p); if (!Number.isFinite(t) || !Number.isFinite(use.farmlandTiles)) return 'Could not verify farmland tile counts. Nothing was charged.'; if (use.farmlandTiles + t > FARMLAND_TILE_CAP) return `Zoning cap: farmland is limited to ${FARMLAND_TILE_CAP.toLocaleString('en-US')} tiles. You own ${use.farmlandTiles.toLocaleString('en-US')}; ${p.label} adds ${t.toLocaleString('en-US')}. Nothing was charged.`;
   }
   return null;
 }
 export function zoneLine(use: ZoneUse, p: Pick<Property, 'kind' | 'type' | 'map' | 'tiles'>): string {
   const z = zoneOf(p);
   if (z === 'exempt') return 'Exempt from zoning caps.';
+  if (z === 'farmland' && (!Number.isFinite(tilesOf(p)) || !Number.isFinite(use.farmlandTiles))) return 'Farmland tile count unavailable.';
   if (z === 'farmland') return `Farmland: ${tilesOf(p).toLocaleString('en-US')} tiles · you own ${use.farmlandTiles.toLocaleString('en-US')} of ${FARMLAND_TILE_CAP.toLocaleString('en-US')}.`;
   return `${ZONE_LABEL[z]}: you own ${use[z]} of ${ZONE_DEED_CAP}.`;
 }

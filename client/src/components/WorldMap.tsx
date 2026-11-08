@@ -30,7 +30,7 @@ import { indexed } from '../../../shared/priceIndex';
 import { skyNow, parseTod, fmtClock, hex } from '../../../shared/daynight';
 import { fmtLap } from '../../../shared/venues';
 import { zoneOf } from '../../../shared/zoning';
-import { optimisticOwn, taxBasisOf, propertyValue, propertyById as baseProperty, properties as baseProperties, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, workerBonusOf, WORKER_BONUS_MAX, landPrice, landMultiplierNote, landSurchargePct, SURCHARGE_PCT_PER_1K, type OwnedProperty } from '../../../shared/realEstate';
+import { optimisticOwn, taxBasisOf, propertyValue, propertyById as baseProperty, properties as baseProperties, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, workerBonusOf, WORKER_BONUS_MAX, type OwnedProperty } from '../../../shared/realEstate';
 
 /** Today's price index from /api/real-estate; list prices and tax scale with it. */
 let IDX = 1;
@@ -60,16 +60,13 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
   const dragDeed = usePanelDrag('deed');
   const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState<null | 're_buy' | 're_sell' | 're_buyout'>(null); const [msg, setMsg] = useState<string | null>(null); const wallet = useWalletChips(); useEffect(() => setMsg(null), [id]); // Tess QA #5: switching deeds clears the last deed's status
   // Purchase wealth tax: server quote, refreshed per deed. Historical back-tax is canceled.
-  const [wtax, setWtax] = useState<{ tax: number; recipients: number; line: string } | null>(null); const [srvOwned, setSrvOwned] = useState<number | null>(null); const [srvPer1k, setSrvPer1k] = useState<number | undefined>(undefined); void srvPer1k;
+  const [wtax, setWtax] = useState<{ tax: number; recipients: number; line: string } | null>(null);
   const [zone, setZone] = useState<{ line: string; refusal: string | null } | null>(null);
   const forSale = !owned.get(id);
-  useEffect(() => { setWtax(null); setSrvOwned(null); setSrvPer1k(undefined); setZone(null); if (!me || !forSale) return; socket.timeout(10_000).emit('re_quote', { id }, (err: Error | null, r?: Ack & { ownedValue?: number; surchargePer1k?: number; wealthTax?: { tax: number; recipients: number; line: string }; zoneLine?: string; zoneRefusal?: string | null }) => { if (!err && r?.ok) setZone({ line: typeof r.zoneLine === 'string' ? r.zoneLine : '', refusal: typeof r.zoneRefusal === 'string' ? r.zoneRefusal : null }); if (!err && r?.ok && typeof r.ownedValue === 'number') setSrvOwned(r.ownedValue); if (!err && r?.ok && typeof r.surchargePer1k === 'number') setSrvPer1k(r.surchargePer1k); if (!err && r?.ok && r.wealthTax) setWtax(r.wealthTax); }); }, [id, me, forSale]);
+  useEffect(() => { setWtax(null); setZone(null); if (!me || !forSale) return; socket.timeout(10_000).emit('re_quote', { id }, (err: Error | null, r?: Ack & { ownedValue?: number; surchargePer1k?: number; wealthTax?: { tax: number; recipients: number; line: string }; zoneLine?: string; zoneRefusal?: string | null }) => { if (!err && r?.ok) setZone({ line: typeof r.zoneLine === 'string' ? r.zoneLine : '', refusal: typeof r.zoneRefusal === 'string' ? r.zoneRefusal : null }); if (!err && r?.ok && r.wealthTax) setWtax(r.wealthTax); }); }, [id, me, forSale]);
   if (!p) return null;
   const mine = !!(o && me && o.owner.toLowerCase() === me.toLowerCase());
-  // pt1388u: you pay list × (1 + 1% per 1,000 of property you own, uncapped); sell-back is 70% of what you paid; tax is on what you paid (Tess QA #8).
-  const ownedValue = srvOwned ?? (me ? [...owned.entries()].filter(([, x]) => x.owner.toLowerCase() === me.toLowerCase()).reduce((a, [k, x]) => a + (propertyById(k)?.price ?? x.price ?? 0), 0) : 0);
-  // pt2020u: the mayor's Property surcharge lever, from the server quote (falls back to the built-in rate until it answers).
-  void ownedValue; // Bill Chud 1: no purchase surcharge; a new buy costs the list price
+  // Bill Chud 1: list price plus the unchanged purchase wealth tax; no purchase surcharge.
   const cost = o ? (o.price || p.price) : p.price; const zoneText = !o ? (zone?.line ?? zoneOf(p)[0]!.toUpperCase() + zoneOf(p).slice(1)) : '';
   const tax = !o ? (wtax?.tax ?? 0) : 0; const total = cost + tax;
   const short = wallet != null && wallet < total ? total - wallet : 0;
@@ -86,7 +83,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
       {p.kind === 'landmark' && !incomeEligible(p.id) && <small>{ROYALTY_VENUE[p.type] ? 'Monument: stays open to every player, and the owner earns a royalty on what others earn here.' : 'Trophy property: stays open to every player. Ownership is prestige only.'}</small>}
       <dl>
         {o ? <><dt>{mine ? 'You paid' : 'Paid'}</dt><dd data-testid="deed-price">🪙 {chips(cost)}</dd></> : <><dt>Price</dt><dd data-testid="deed-price">🪙 {chips(cost)}</dd><dt>Zoning</dt><dd data-testid="deed-zone">{zoneText}{zone?.refusal && <small className="block text-amber-300" data-testid="deed-zone-cap">{zone.refusal.replace(' Nothing was charged.', '')}</small>}</dd></>}
-        {!o && tax > 0 && <><dt>Wealth tax</dt><dd data-testid="deed-wealth-tax" className="text-amber-300">{wtax!.line}<small className="block">You hold over 🪙 100,000 in property, so 5% is added on top. Total 🪙 {chips(total)}.</small></dd></>}
+        {!o && tax > 0 && <><dt>Wealth tax</dt><dd data-testid="deed-wealth-tax" className="text-amber-300">{wtax!.line}<small className="block">Your purchase wealth tax is added at the current city rate. Total 🪙 {chips(total)}.</small></dd></>}
         <dt>Owner</dt><dd data-testid="deed-owner">{o ? (mine ? 'You' : o.owner) : 'City of Chud Hub (for sale)'}</dd>
         <dt>Sell-back</dt><dd data-testid="deed-sellback">🪙 {chips(sellBackOf(Math.min(cost, o?.basis ?? cost)))} (70% of {o?.basis ? 'what the city was paid' : o ? 'what was paid' : 'your price'})</dd>
         {workerBonusOf(p.id) > 0 && <><dt>Worker cap</dt><dd data-testid="deed-workers">+{workerBonusOf(p.id)} Employment Office worker{workerBonusOf(p.id) > 1 ? 's' : ''} (property bonus max +{WORKER_BONUS_MAX})</dd></>}
@@ -97,7 +94,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
         {o && o.arrears > 0 && <><dt>Arrears</dt><dd className="text-rose-300">{o.arrears} unpaid day{o.arrears > 1 ? 's' : ''} (repossessed at {GRACE_DAYS})</dd></>}
       </dl>
       {!o && p.retired && <small data-testid="deed-retired">Not for sale: a civic building stands here.</small>}
-      {!o && !p.retired && (me ? <button type="button" disabled={!!busy} aria-busy={busy === 're_buy'} onClick={() => (zone?.refusal ? setMsg(zone.refusal) : short ? setMsg(`Not enough chips: ${p.label} costs 🪙 ${chips(total)}; you have 🪙 ${chips(wallet ?? 0)} (need 🪙 ${chips(short)} more).`) : act('re_buy'))} aria-describedby={short ? 'deed-short' : undefined} data-testid="deed-buy">{busy === 're_buy' ? <><span className="world-spin" aria-hidden /> Buying…</> : <>Buy for 🪙 {chips(total)}{me && tax ? ' (incl. 5% wealth tax)' : ''}</>}</button> : <small>Sign in to buy.</small>)}
+      {!o && !p.retired && (me ? <button type="button" disabled={!!busy} aria-busy={busy === 're_buy'} onClick={() => (zone?.refusal ? setMsg(zone.refusal) : short ? setMsg(`Not enough chips: ${p.label} costs 🪙 ${chips(total)}; you have 🪙 ${chips(wallet ?? 0)} (need 🪙 ${chips(short)} more).`) : act('re_buy'))} aria-describedby={short ? 'deed-short' : undefined} data-testid="deed-buy">{busy === 're_buy' ? <><span className="world-spin" aria-hidden /> Buying…</> : <>Buy for 🪙 {chips(total)}{me && tax ? ' (incl. wealth tax)' : ''}</>}</button> : <small>Sign in to buy.</small>)}
       {mine && <button type="button" disabled={!!busy} aria-busy={busy === 're_sell'} onClick={() => act('re_sell')} data-testid="deed-sell">{busy === 're_sell' ? <><span className="world-spin" aria-hidden /> Selling…</> : <>Sell to the city for 🪙 {chips(sellBackOf(Math.min(cost, o?.basis ?? cost)))} (70%)</>}</button>}
       {bo > 0 && me && <button type="button" disabled={!!busy || protLeft > 0} aria-busy={busy === 're_buyout'} onClick={buyout} data-testid="deed-buyout" title={protLeft > 0 ? 'Protected after a purchase' : `Pays ${o?.owner} 2x what they paid`}>{busy === 're_buyout' ? <><span className="world-spin" aria-hidden /> Buying out…</> : protLeft > 0 ? <>🛡 Hostile buyout: 🪙 {chips(bo)} (protected {Math.ceil(protLeft / 3_600_000)}h)</> : <>⚔️ Hostile buyout: 🪙 {chips(bo)}</>}</button>}
       {mine && onKitchen && p.kind !== 'landmark' && p.type !== 'barn' && <button type="button" onClick={onKitchen} data-testid="deed-kitchen">🍳 Kitchen</button>}
@@ -108,7 +105,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
       {p.kind === 'farm' && !o && <small>Farmland: buy it to plant crops (FarmVille-style, real-time).</small>}
       {!o && me && short > 0 && !msg && <small id="deed-short" className="text-amber-300" data-testid="deed-short">You need 🪙 {chips(short)} more chips to buy this.</small>}
       {msg && <small role="status" data-testid="deed-msg">{msg}</small>}
-      <small className="opacity-60">You can sell any property back to the city at any time for 70% of what you paid. No purchase surcharge. Zoning caps on new purchases: 5 residential, 5 commercial (incl. barns and monuments), 1,500 farmland tiles; resort lots and parks/empty lots are exempt. Property you already own is never taken. Tax is on the list price, charged once per UTC day and burned. {GRACE_DAYS} unpaid days in a row and the city takes it back (no refund).</small>
+      <small className="opacity-60">You can sell any property back to the city at any time for 70% of what you paid. No purchase surcharge. Zoning caps on new purchases: 5 residential, 5 commercial (incl. barns and monuments), 1,500 farmland tiles; resort lots and parks/empty lots are exempt. Zoning caps do not force sales or confiscate existing property. Tax is on the list price, charged once per UTC day and burned. {GRACE_DAYS} unpaid days in a row and the city takes it back (no refund).</small>
     </MapSheet>
   );
 }

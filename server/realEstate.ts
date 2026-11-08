@@ -23,7 +23,7 @@ import { sendPopup } from './popups.js';
 import { BUYOUT_MUL, BUYOUT_PROTECT_MS, buyoutPrice } from '../shared/royalty.js';
 import { px, priceIndex } from './price-index.js';
 import { requireResort } from './travel.js';
-import { taxBasisOf, propertyValue, GRACE_DAYS, propertyById as baseProperty, sellBackOf, taxOf, landPrice, landMultiplier, landSurchargePct, landMultiplierNote, type OwnedProperty } from '../shared/realEstate.js';
+import { taxBasisOf, propertyValue, GRACE_DAYS, propertyById as baseProperty, sellBackOf, taxOf, landMultiplier, type OwnedProperty } from '../shared/realEstate.js';
 import { skillLevelAsync } from './skills.js';
 import { propertyWorth, propertyPaid, propertyPaidPlusUpgrades, upgradeSpendFromLevels } from '../shared/netWorth.js';
 import { cropById, farmPlots } from '../shared/farm.js';
@@ -129,6 +129,8 @@ export class RealEstate {
     let prep: PurchaseTaxPrep;
     try { prep = await preparePurchaseTax(this.pool, name, this.clock()); }
     catch (e) { console.error('[realestate] purchase tax prep failed:', (e as Error).message); throw new PropertyError('Could not price the purchase wealth tax right now. Nothing was charged. Try again.'); }
+    // Bank refresh may use this same pool: finish it before reserving the lock connection.
+    await this.bank().refresh(name);
     const cl = await this.pool.connect(); const lockKey = `property-buy:${keyOf(name)}`;
     try {
       await cl.query('SELECT pg_advisory_lock(hashtext($1))', [lockKey]);
@@ -181,7 +183,7 @@ export class RealEstate {
   }
   private async buyLocked(name: string, p: NonNullable<ReturnType<typeof propertyById>>, cl: pg.PoolClient, max?: number, prep: PurchaseTaxPrep = { roster: null }) {
     if (p.retired) throw new PropertyError('That property is not for sale.'); // under a civic building (never sold again; owners keep theirs)
-    const bank = this.bank(); await bank.refresh(name);
+    const bank = this.bank();
     const bt = await backTaxOf(cl, name); if (bt.debt > 0) throw new PropertyError(backTaxBlockMsg(bt));
     const bigBuy = /^cf:\d+$/.test(p.id) && isBigFarmN(Number(p.id.slice(3)));
     const bigCapMsg = () => `You already own a Big Farm. Each account can own at most ${MAX_BIG_FARMS} Big Farm.`;
@@ -219,26 +221,32 @@ export class RealEstate {
   }
   /** Bill Chud 1: hold the same per-owner session lock as normal buys so the zoning cap can't be raced across instances. */
   private async buyoutPinned(name: string, p: NonNullable<ReturnType<typeof propertyById>>, max?: number) {
+    // Bank refresh may use this same pool: finish it before reserving the lock connection.
+    await this.bank().refresh(name);
     const cl = await this.pool.connect(); const lockKey = `property-buy:${keyOf(name)}`;
+    let result: Awaited<ReturnType<RealEstate['buyoutNow']>>;
     try {
       await cl.query('SELECT pg_advisory_lock(hashtext($1))', [lockKey]);
-      return await this.buyoutNow(name, p, max, cl);
+      result = await this.buyoutNow(name, p, max, cl);
     } finally {
       let failure: unknown;
       try { await cl.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]); }
       catch (e) { failure = e; console.error('[realestate] owner unlock failed:', (e as Error).message); }
       finally { cl.release(failure as Error | undefined); }
     }
+    // This read uses the bank pool; never wait for it while retaining a pinned client.
+    await this.bank().notifyDurableBalance(result.from).catch(() => {});
+    return result;
   }
   private async buyoutNow(name: string, p: NonNullable<ReturnType<typeof propertyById>>, max: number | undefined, pin: pg.PoolClient) {
-    const row = (await this.pool.query('SELECT owner_key, owner_name, price, bought_at FROM properties WHERE id = $1', [p.id])).rows[0] as { owner_key: string; owner_name: string; price: unknown; bought_at: unknown } | undefined;
+    const row = (await pin.query('SELECT owner_key, owner_name, price, bought_at FROM properties WHERE id = $1', [p.id])).rows[0] as { owner_key: string; owner_name: string; price: unknown; bought_at: unknown } | undefined;
     if (!row) throw new PropertyError(`${p.label} belongs to the city: buy it normally.`);
     if (row.owner_key === keyOf(name)) throw new PropertyError('You already own this monument.');
     const paid = Number(row.price); const price = buyoutPrice(paid); const now = this.clock();
     const until = Number(row.bought_at) + BUYOUT_PROTECT_MS;
     if (now < until) throw new PropertyError(`${p.label} is protected from buyouts for ${Math.ceil((until - now) / 3_600_000)} more hour(s).`);
     if (max !== undefined && price > max) throw new PropertyError(`The buyout price changed to ${price.toLocaleString('en-US')}. Check the deed and try again.`);
-    const bank = this.bank(); await bank.refresh(name);
+    const bank = this.bank();
     if (bank.account(name).chips < price) throw new PropertyError(`Not enough chips: the buyout costs ${price.toLocaleString('en-US')}.`);
     const prev = String(row.owner_name);
     { const z = zoneRefusal(await this.zoneUse(name, pin), p); if (z) throw new PropertyError(z); } // monuments are Commercial (Bill Chud 1)
@@ -249,7 +257,6 @@ export class RealEstate {
       const r = await cl.query('UPDATE properties SET owner_key = $1, owner_name = $2, city_price = COALESCE(city_price, price), price = $3, bought_at = $4, arrears = 0 WHERE id = $5 AND owner_key = $6 AND price = $7 RETURNING id', [keyOf(name), name.trim(), price, now, p.id, row.owner_key, paid]);
       if (!r.rowCount) throw new PropertyError('The owner changed: check the deed and try again.');
     }, [{ name: prev, amount: price, game: 'property_buyout', memo: `${name.trim()} bought out your ${p.label} (${p.id})` }], pin);
-    await bank.notifyDurableBalance(prev).catch(() => {});
     this.onChange?.();
     void sendPopup(prev, 'City of Chud Hub', `🏛 Hostile buyout! ${name.trim()} bought your ${p.label} for 🪙 ${price.toLocaleString('en-US')} (${BUYOUT_MUL}x what you paid). The chips are in your wallet; its royalties now go to ${name.trim()}.`).catch(() => {});
     return { id: p.id, price, from: prev, chips: bank.account(name).chips };
