@@ -6,7 +6,7 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '', at: '2026-11-07T18:45:38-06:00', title: 'Contract Board orders sized for our player base', bullets: [
+  { commit: 'ee0cb41', at: '2026-11-07T18:45:38-06:00', title: 'Contract Board orders sized for our player base', bullets: [
     'Daily Contract Board orders are now sized for a small group: 250 Steel (was 50,000), 100 Concrete (was 300,000), 250 Steel Plate (was 30,000), 150 Glass (was 500,000), 120 Steel Beams (was 12,000), 250 Bricks (was 600,000), 500 Steel Cable (was 40,000). Each order is about a day of three hired miners\' ore through the factory.',
     'One player can now deliver up to half of an order (was a quarter), so two players can fill one. Pay per unit and the 20% completion bonus are unchanged.',
     'Today\'s order (Glass) uses the new size, and everything already delivered to it still counts and is paid in full. Earlier orders keep the targets they ran with.',
