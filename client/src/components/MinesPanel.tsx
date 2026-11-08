@@ -14,6 +14,7 @@ const BG_FRAME_MS = 250;
 import { useEffect, useRef, useState } from 'react';
 import { MineRaidBox, RaidRollBanner } from './MineRaidBox';
 import type { RaidLootMsg } from '../../../shared/mineRaids';
+import { handForKey, swingAction, type MineHand } from '../../../shared/mineHand';
 import type { WeaponId } from '../../../shared/mineCombat';
 
 /** Weapon Store icon: a small render of the same 3D model the player holds (lazy, so three.js stays out of the main chunk). */
@@ -161,6 +162,10 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
   const hp = useRef<number[]>(NODES_().map((n) => ORES[n.ore].hits));
   const me = useRef({ id: '', x: MINE_MAP_().spawns[0][0], y: MINE_MAP_().spawns[0][1], z: 0, vz: 0, grounded: true, crouch: false, sprint: false, a: 0, p: 0, walk: 0, lastSwing: 0, joined: false });
   const three = useRef<Mines3D | null>(null);
+  // Hand selector (pt2017u): survives floor changes (the 3D scene is rebuilt per floor) without leaving the mine.
+  const [hand, setHandS] = useState<MineHand>('tool');
+  const handRef = useRef<MineHand>('tool');
+  const setHand = (h: MineHand) => { handRef.current = h; setHandS(h); if (three.current) three.current.hand = h; };
   const [loot, setLoot] = useState('');
   const flash = (t: string) => { setToast(t); window.setTimeout(() => setToast((c) => (c === t ? '' : c)), 2200); };
 
@@ -221,7 +226,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
         { const il = inExit(m.x, m.y); setInLift((o) => (o === il ? o : il)); }
         if (inExit(m.x, m.y) && packRef.current.pack.length && performance.now() - exiting.current > 1500) { exiting.current = performance.now(); bankHaul(); }
         // Hold left click / long-press: keep swinging at the normal (Mining-perk) cadence; swing() gates the rate, the server stays authoritative.
-        if (three.current) three.current.working = !!holding.current;
+        if (three.current) three.current.working = !!holding.current && handRef.current === 'tool';
         if (holding.current) { if (document.hidden || !document.hasFocus()) holding.current = null; else swingRef.current(); }
         const ai = aimNode(NODES_(), m.x, m.y, m.z + eyeHeightOf(m), m.a, m.p, hp.current);
         setAim((o) => (o === ai ? o : ai));
@@ -264,7 +269,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
       if (dead || !glRef.current) return;
       try {
         const t = new Mines3D(glRef.current, cave, floor); three.current = t;
-        t.resize(glRef.current.clientWidth, glRef.current.clientHeight); t.setNodes(hp.current); t.setMobs(mobs.current); t.setWeapon(gearRef.current?.weapon);
+        t.resize(glRef.current.clientWidth, glRef.current.clientHeight); t.setNodes(hp.current); t.setMobs(mobs.current); t.setWeapon(gearRef.current?.weapon); t.hand = handRef.current;
         socket.timeout(3000).emit('inv_loadout', {}, (err: Error | null, r?: { ok: boolean; loadout?: Record<string, string | null> }) => { if (!err && r?.ok) three.current?.setPickSkin(r.loadout?.pickaxe ?? null); });
         toolEmit('mine_tools_view', {});
       } catch (e) { setGlError('3D is unavailable here: ' + (e as Error).message); }
@@ -302,11 +307,16 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
     const m = me.current, now = performance.now();
     if (!m.joined) return;
     if (attack()) return;
+    const node = aimNode(NODES_(), m.x, m.y, m.z + eyeHeightOf(m), m.a, m.p, hp.current);
+    const act = swingAction(handRef.current, false, node >= 0);
+    if (handRef.current === 'sword') { // sword out: a miss is a sword swing at the weapon's own cadence; never mines rock
+      const w = weaponDef(gearRef.current?.weapon); if (now - m.lastSwing < w.ms) return;
+      m.lastSwing = now; three.current?.swingSword(); playPickaxe('swing'); return;
+    }
     if (now - m.lastSwing < swingMs.current) return;
     m.lastSwing = now;
     three.current?.swing();
-    const node = aimNode(NODES_(), m.x, m.y, m.z + eyeHeightOf(m), m.a, m.p, hp.current);
-    if (node < 0) { playPickaxe('swing'); return; }
+    if (act !== 'mine') { playPickaxe('swing'); return; }
     socket.timeout(3000).emit('mines_hit', { node }, (err: Error | null, r?: { ok: boolean; error?: string; hp: number; broke: boolean; full?: boolean; ore?: string; bonus?: number; swingMs?: number; drop?: { kind: string; id: string } } & Partial<PackMsg>) => {
       if (err || !r) return;
       if (typeof r.swingMs === 'number' && r.swingMs > 0) swingMs.current = r.swingMs;
@@ -329,6 +339,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
   function onKey(e: React.KeyboardEvent, down: boolean) {
     const k = arenaKey(e);
     if (shouldBlockShortcut(e, true)) e.preventDefault();
+    if (down && !e.repeat) { const h = handForKey(k, handRef.current); if (h) { e.preventDefault(); if (h !== handRef.current) setHand(h); return; } }
     if (['w', 'a', 's', 'd', ' ', 'shift', 'c'].includes(k)) { e.preventDefault(); if (down) keys.current.add(k); else keys.current.delete(k); }
   }
   const lock = () => { unlockSounds?.(); const c = glRef.current; if (c && document.pointerLockElement !== c) { try { (c.requestPointerLock as unknown as (o?: object) => unknown)?.call(c, { unadjustedMovement: false }); } catch { /* ignore */ } (navigator as unknown as { keyboard?: { lock?: (k: string[]) => Promise<void> } }).keyboard?.lock?.(LOCK_KEYS).catch?.(() => {}); } };
@@ -382,11 +393,18 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{stops.map((f) => <button type="button" key={f} disabled={f === floor} data-testid={`mines-elev-${f}`} onClick={() => changeFloor('mines_elevator', { floor: f })} style={{ padding: '2px 8px', borderRadius: 6, background: f === floor ? '#2a6a3a' : '#0f4a26', color: '#fff', border: '1px solid #3dff8a', opacity: f === floor ? 0.6 : 1 }}>{f}</button>)}</div>
           </div>}
           {aimed && <div className="mines-aim" style={{ color: ORES[aimed.ore].color }}>{ORES[aimed.ore].name} · {Math.max(0, hp.current[aim])}/{ORES[aimed.ore].hits}</div>}
+          <div className="mines-hand" role="group" aria-label="Held item" data-testid="mines-hand" style={{ position: 'absolute', right: 10, bottom: 44, display: 'flex', gap: 6, zIndex: 3 }}>
+            {(['tool', 'sword'] as const).map((h) => { const on = hand === h; const label = h === 'tool' ? `⛏️ ${tools ? MINE_TOOLS.find((t) => t.id === tools.equipped)?.name ?? 'Pickaxe' : 'Pickaxe'}` : `${wNow.icon} ${wNow.name}`; return (
+              <button type="button" key={h} aria-pressed={on} data-testid={`mines-hand-${h}`} title={h === 'tool' ? 'Mining tool (1 / Q)' : 'Sword (2 / Q)'}
+                onMouseDown={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setHand(h); glRef.current?.focus?.(); }}
+                style={{ minHeight: 40, minWidth: 44, padding: '6px 10px', borderRadius: 10, fontSize: 13, fontWeight: 700, touchAction: 'manipulation', color: '#fff4dc', background: on ? 'rgba(42,106,58,0.92)' : 'rgba(10,8,6,0.72)', border: on ? '2px solid #3dff8a' : '1px solid #806040' }}>{label}</button>
+            ); })}
+          </div>
           {toast && <div className="mines-toast" data-testid="mines-toast">{toast}</div>}
           {loot && <div className="mines-toast mines-loot" data-testid="mines-loot">{loot}</div>}
           {glError && <div className="mines-toast">{glError}</div>}
           {!floors && <div className="mines-haul" data-testid="mines-haul">🎒 {pack.pack.reduce((t, s) => t + s.qty, 0)} carried · ~🪙{carriedWorth}{inExit(me.current.x, me.current.y) ? ' · at EXIT' : ''}</div>}
-          <div className="mines-hint">{floors ? `Deepest: floor ${deepest} · ` : ''}{status} · WASD move · Shift sprint · C crouch · Space jump · Esc release</div>
+          <div className="mines-hint">{floors ? `Deepest: floor ${deepest} · ` : ''}{status} · WASD move · 1/2/Q tool or sword · Shift sprint · C crouch · Space jump · Esc release</div>
         </div>
         <aside className="mines-side" data-testid="mines-pack">
           <div className="mines-load">⛏️ Carried {pack.load}/{pack.cap}<div className="mines-bar"><i style={{ width: `${Math.min(100, (pack.load / pack.cap) * 100)}%` }} /></div></div>

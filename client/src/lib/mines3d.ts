@@ -222,6 +222,8 @@ export class Mines3D {
   private sword: THREE.Group;
   private swordT = 1;
   private weaponId = 'rusty_sword';
+  /** Explicit hand selector (pt2017u): 'sword' keeps the equipped sword in view instead of the mining tool. */
+  hand: 'tool' | 'sword' = 'tool';
   readonly floor: number;
   constructor(canvas: HTMLCanvasElement, private readonly caveId: CaveId = 'mine', floor = 1) {
     const cave = levelOf(caveId, floor); const MINE_MAP = cave.map; const MINE_NODES = cave.nodes;
@@ -536,8 +538,9 @@ export class Mines3D {
       const k = Math.max(1, Math.min(2.2, d / 7)); fitLabel(g.tag, 1.6 * k);
     }
     this.swordT = Math.min(1, this.swordT + dt / 0.35);
-    this.sword.visible = this.swordT < 1; this.pick.visible = !this.sword.visible;
-    if (this.sword.visible) { animateWeaponModel(this.sword, performance.now() / 1000); const k = this.swordT; const arc = Math.sin(k * Math.PI); this.sword.position.set(0.32 - k * 0.5, -0.32 + arc * 0.08, -0.55); this.sword.rotation.set(-0.4 - arc * 0.4, 0.2, -1.2 + k * 2.2); }
+    this.sword.visible = this.swordT < 1 || this.hand === 'sword'; this.pick.visible = !this.sword.visible;
+    if (this.sword.visible && this.swordT >= 1) { animateWeaponModel(this.sword, performance.now() / 1000); this.sword.position.set(0.32, -0.32, -0.55); this.sword.rotation.set(-0.4, 0.2, -1.2); }
+    else if (this.sword.visible) { animateWeaponModel(this.sword, performance.now() / 1000); const k = this.swordT; const arc = Math.sin(k * Math.PI); this.sword.position.set(0.32 - k * 0.5, -0.32 + arc * 0.08, -0.55); this.sword.rotation.set(-0.4 - arc * 0.4, 0.2, -1.2 + k * 2.2); }
     const now = performance.now() / 1000;
     const pnow = performance.now();
     for (const [id, r] of this.mobs) {
