@@ -170,6 +170,7 @@ export class City {
   // ---------- mayor actions ----------
   async setLever(name: string, id: unknown, value: unknown) {
     if (typeof id !== 'string' || !LEVERS[id as LeverId]) throw new CityError('Unknown lever.'); const lv = id as LeverId;
+    if (LEVERS[lv].abolished) throw new CityError(`${LEVERS[lv].label} was abolished by law and can't be set.`);
     const m = await this.isMayor(name); const now = this.clock();
     if (this.nextLeverAt(lv) > now) throw new CityError(`${LEVERS[lv].label} can change again ${abTime(this.nextLeverAt(lv))}.`);
     if (value === null || value === undefined || value === '' || !Number.isFinite(Number(value))) throw new CityError('Pick a value.');

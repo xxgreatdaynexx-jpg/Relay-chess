@@ -51,7 +51,7 @@ function pglitePool(db: PGlite) {
 }
 
 describe('QA live safety: per-owner Postgres lock', () => {
-  it('serializes two RealEstate instances, reprices sequentially and preserves the stale max-price guard', async () => {
+  it('serializes two RealEstate instances at list price (Bill Chud 1) and preserves the stale max-price guard', async () => {
     const db = new PGlite(); const pool = pglitePool(db);
     const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
     const a = new RealEstate(pool, () => bank); const b = new RealEstate(pool, () => bank); await a.init();
@@ -60,14 +60,13 @@ describe('QA live safety: per-owner Postgres lock', () => {
     const ps = [...properties()].filter((p) => p.kind !== 'landmark' && p.kind !== 'farm').sort((x, y) => x.price - y.price).slice(0, 2);
     const [q1, q2] = await Promise.all([a.quote('Dayne', ps[0]!.id), b.quote('Dayne', ps[1]!.id)]);
     const r = await Promise.allSettled([a.buy('Dayne', ps[0]!.id, q1.price), b.buy('Dayne', ps[1]!.id, q2.price)]);
-    expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
-    expect((r.find((x) => x.status === 'rejected') as PromiseRejectedResult).reason.message).toMatch(/price changed/);
-    expect((await db.query('SELECT * FROM properties')).rows).toHaveLength(1);
-    await b.buy('Dayne', ps.find((p) => p.id !== (r.find((x) => x.status === 'fulfilled') as PromiseFulfilledResult<{id: string}>).value.id)!.id);
-    const bought = (await db.query<{ price: string }>('SELECT price FROM properties ORDER BY bought_at')).rows.map((x) => Number(x.price));
-    expect(bought[0]).toBe(ps.find((p) => landPrice(p.price, 0) === bought[0])!.price);
-    expect(bought[1]).toBe(landPrice(ps.find((p) => landPrice(p.price, 0) !== bought[0])!.price, bought[0]!));
-    // The second buy above also proves the first buy released its advisory lock.
+    expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(2); // no surcharge: the second buy no longer reprices
+    const bought = (await db.query<{ id: string; price: string }>('SELECT id, price FROM properties')).rows;
+    expect(bought).toHaveLength(2); for (const x of bought) expect(Number(x.price)).toBe(ps.find((p) => p.id === x.id)!.price);
+    expect(bank.account('Dayne').chips).toBe(10_000_000 - ps[0]!.price - ps[1]!.price - (r as PromiseFulfilledResult<{ wealthTax: number }>[]).reduce((s, x) => s + x.value.wealthTax, 0));
+    const p3 = [...properties()].filter((p) => p.kind !== 'landmark' && p.kind !== 'farm' && !ps.includes(p)).sort((x, y) => x.price - y.price)[0]!;
+    await expect(b.buy('Dayne', p3.id, p3.price - 1)).rejects.toThrow(/price changed/); // stale max guard kept
+    await b.buy('Dayne', p3.id, p3.price); // also proves the earlier buys released the advisory lock
   });
 
   it('uses one connection from lock acquisition through commit and releases it on refusal', async () => {

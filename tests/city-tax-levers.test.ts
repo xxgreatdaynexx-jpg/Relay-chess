@@ -29,11 +29,12 @@ describe('pt2020u: property surcharge + daily wealth tax city levers', () => {
   it('defaults are exactly the live rules (nothing changes until a mayor acts)', () => {
     expect(LEVERS.property_surcharge.base * 100).toBe(SURCHARGE_PCT_PER_1K);
     expect(LEVERS.daily_wealth_tax.base).toBe(WEALTH_TAX_RATE);
-    setCityRates(null); expect(citySurchargePctPer1k()).toBe(1); expect(cityDailyWealthTaxRate()).toBe(0.01);
-    setCityRates(fake({})); expect(citySurchargePctPer1k()).toBe(1); expect(cityDailyWealthTaxRate()).toBe(0.01); expect(cityWealthTaxRate()).toBe(0.05);
+    setCityRates(null); expect(citySurchargePctPer1k()).toBe(0); expect(cityDailyWealthTaxRate()).toBe(0.01); // Bill Chud 1: surcharge abolished
+    setCityRates(fake({ property_surcharge: 0.02 })); expect(citySurchargePctPer1k()).toBe(0); // a stored lever value can't re-enable it
+    setCityRates(fake({})); expect(citySurchargePctPer1k()).toBe(0); expect(cityDailyWealthTaxRate()).toBe(0.01); expect(cityWealthTaxRate()).toBe(0.05);
     setCityRates(null);
     for (const v of [0, 999, 5000, 136_000, 1_234_567]) for (const l of [1000, 7_250, 250_000]) {
-      expect(landPrice(l, v, citySurchargePctPer1k())).toBe(landPrice(l, v));
+      expect(landPrice(l, v, citySurchargePctPer1k())).toBe(l); // abolished: list price at any holding size
       expect(landMultiplierNote(v, 1)).toBe(landMultiplierNote(v));
     }
     const rows = [{ name: 'a', netWorth: 10_000, chips: 10_000 }, { name: 'b', netWorth: 20_000, chips: 5_000 }, { name: 'c', netWorth: 900_000, chips: 400_000 }, { name: 'd', netWorth: 6_000, chips: 6_000 }];
@@ -51,22 +52,23 @@ describe('pt2020u: property surcharge + daily wealth tax city levers', () => {
   it('mayor-only, NaN rejected, cooldown, audited, persisted across restart, hot readers follow', async () => {
     const s = await withMayor(); setCityForTest(s.c);
     try {
-      await expect(s.c.setLever('Bob', 'property_surcharge', 0.02)).rejects.toThrow(/sitting mayor/);
+      await expect(s.c.setLever('Bob', 'daily_wealth_tax', 0.015)).rejects.toThrow(/sitting mayor/);
       await expect(s.c.setLever('Ann', 'daily_wealth_tax', NaN)).rejects.toThrow(/Pick a value/);
-      await expect(s.c.setLever('Ann', 'property_surcharge', 0.01)).rejects.toThrow(/already the current value/);
-      expect(citySurchargePctPer1k()).toBe(1); expect(cityDailyWealthTaxRate()).toBe(0.01);
-      await s.c.setLever('Ann', 'property_surcharge', 0.015); await s.c.setLever('Ann', 'daily_wealth_tax', 99);
-      expect(citySurchargePctPer1k()).toBe(1.5); expect(cityDailyWealthTaxRate()).toBe(0.015);
-      await expect(s.c.setLever('Ann', 'property_surcharge', 0.005)).rejects.toThrow(/can change again/);
+      await expect(s.c.setLever('Ann', 'daily_wealth_tax', 0.01)).rejects.toThrow(/already the current value/);
+      // Bill Chud 1: the surcharge lever is abolished; even the sitting mayor can't re-enable it
+      await expect(s.c.setLever('Ann', 'property_surcharge', 0.015)).rejects.toThrow(/abolished/);
+      expect(citySurchargePctPer1k()).toBe(0); expect(cityDailyWealthTaxRate()).toBe(0.01);
+      await s.c.setLever('Ann', 'daily_wealth_tax', 99);
+      expect(citySurchargePctPer1k()).toBe(0); expect(cityDailyWealthTaxRate()).toBe(0.015);
+      await expect(s.c.setLever('Ann', 'daily_wealth_tax', 0.005)).rejects.toThrow(/can change again/);
       const v = await s.c.view(null); const t = v.actions.filter((a) => a.kind === 'lever').map((a) => a.text);
-      expect(t).toEqual(expect.arrayContaining(['Property surcharge (per 1,000 owned): 1% → 1.5%', 'Daily wealth tax: 1% → 1.5%']));
-      expect(v.levers.property_surcharge.value).toBe(0.015);
+      expect(t).toEqual(expect.arrayContaining(['Daily wealth tax: 1% → 1.5%']));
       const c2 = new City(s.pool as never, () => s.m, s.clock); await c2.init(); // restart: same values, no duplicate rows
-      expect(c2.lever('property_surcharge')).toBe(0.015); expect(c2.lever('daily_wealth_tax')).toBe(0.015);
-      expect(Number((await s.pool.query("SELECT COUNT(*) AS n FROM city_levers WHERE lever IN ('property_surcharge','daily_wealth_tax')")).rows[0].n)).toBe(2);
+      expect(c2.lever('daily_wealth_tax')).toBe(0.015);
+      expect(Number((await s.pool.query("SELECT COUNT(*) AS n FROM city_levers WHERE lever IN ('property_surcharge','daily_wealth_tax')")).rows[0].n)).toBe(1);
     } finally { setCityForTest(null); }
   });
-  it('real estate quote and purchase charge the lever surcharge; a stale max is refused (no bypass)', async () => {
+  it('Bill Chud 1: real estate quote and purchase charge list price even with a stored surcharge lever; a stale max still refuses', async () => {
     const db = newDb({ noAstCoverageCheck: true }); registerPgAdvisoryFunctions(db); const { Pool } = db.adapters.createPg(); const pool = new Pool();
     const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
     const re = new RealEstate(pool, () => bank, () => Date.parse('2026-11-08T12:00:00Z')); await re.init();
@@ -79,11 +81,14 @@ describe('pt2020u: property surcharge + daily wealth tax city levers', () => {
     try {
       setCityRates(fake({}));
       const first = await re.buy('Ivy', a!.id); const owned = first.price;
-      const q0 = await re.quote('Ivy', b!.id); expect(q0.surchargePer1k).toBe(1); expect(q0.price).toBe(landPrice(b!.price, owned));
+      expect(owned).toBe(a!.price);
+      const q0 = await re.quote('Ivy', b!.id); expect(q0.surchargePer1k).toBe(0); expect(q0.price).toBe(b!.price);
       setCityRates(fake({ property_surcharge: 0.02 }));
-      const q = await re.quote('Ivy', b!.id); expect(q.surchargePer1k).toBe(2); expect(q.price).toBe(landPrice(b!.price, owned, 2)); expect(q.price).toBeGreaterThan(q0.price);
-      await expect(re.buy('Ivy', b!.id, q0.price)).rejects.toThrow(/price changed/); // quoted at the old rate: refused, nothing charged
-      const r = await re.buy('Ivy', b!.id, q.price); expect(r.price).toBe(q.price);
+      const q = await re.quote('Ivy', b!.id); expect(q.surchargePer1k).toBe(0); expect(q.price).toBe(b!.price);
+      const before = bank.account('Ivy').chips;
+      await expect(re.buy('Ivy', b!.id, b!.price - 1)).rejects.toThrow(/price changed/); // stale max guard kept: refused, nothing charged
+      expect(bank.account('Ivy').chips).toBe(before);
+      const r = await re.buy('Ivy', b!.id, q.price); expect(r.price).toBe(b!.price);
     } finally { setCityRates(null); }
   });
 });

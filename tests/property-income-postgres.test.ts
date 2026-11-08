@@ -84,9 +84,9 @@ describe.skipIf(!url)('business income real PostgreSQL atomic durability',()=>{
   await re.runIncome();expect(Number((await pool.query('SELECT basis FROM property_income WHERE property_id=$1',[warehouse])).rows[0].basis)).toBe(500000);
   const before=await earnings('B');now+=WEEK;await re.runIncome();expect((await earnings('B'))-before).toBe(500000);
  });
- it('new normal purchases use canonical surcharged acquisition price, not tax or guessed base price',async()=>{
-  await own('f:10','A',10000);now+=12345;const q=await re.quote('A',gas);const bought=await re.buy('A',gas,q.price);expect(bought.price).toBe(66000);
-  await re.runIncome();expect(await earnings()).toBe(0);now+=WEEK;await re.runIncome();expect(await earnings()).toBe(66000);
+ it('new normal purchases use canonical acquisition price (list: surcharge abolished), not tax or guessed base price',async()=>{
+  await own('f:10','A',10000);now+=12345;const q=await re.quote('A',gas);const bought=await re.buy('A',gas,q.price);expect(bought.price).toBe(60000);
+  await re.runIncome();expect(await earnings()).toBe(0);now+=WEEK;await re.runIncome();expect(await earnings()).toBe(60000);
  });
  it('normal property tax stays exactly once and unchanged; income has no separate deductions; repossession ends ownership clock',async()=>{
   await own(gas,'A',60000,T-86400000);now=T+WEEK;await re.runTax();await re.runTax();expect(await earnings()).toBe(60000);

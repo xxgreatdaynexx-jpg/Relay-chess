@@ -44,7 +44,7 @@ describe('surcharge base = price paid + upgrades', () => {
     const s = await setup(); const [a, b] = cheap(2);
     await s.hold(a!.id, 'Dayne', 136_000);
     const q = await s.re.quote('Dayne', b!.id);
-    expect(q.ownedValue).toBe(136_000); expect(q.surchargePct).toBeCloseTo(136); expect(q.price).toBe(landPrice(px(b!.price), 136_000));
+    expect(q.ownedValue).toBe(136_000); expect(q.surchargePct).toBe(0); expect(q.price).toBe(px(b!.price)); // Bill Chud 1: surcharge abolished, list price
     expect(q.ownedValue).toBe(await propertyPaidPlusUpgradesOf(s.pool as never, 'Dayne'));
     expect(q.ownedValue).toBe((await quotePurchaseTax(s.pool as never, 'Dayne', q.price)).propertyValue);
   });

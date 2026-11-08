@@ -8,7 +8,8 @@
  */
 import { PROPERTY_INCOME_EVERY_MS, incomeEligible } from '../shared/propertyIncome.js';
 import { PropertyIncome, PropertyIncomeFailure } from './propertyIncome.js';
-import { cityPerk, citySurchargePctPer1k, treasuryStmtsFor, treasuryCreditStmts, treasuryOpenFor } from './city-rates.js';
+import { zoneRefusal, zoneUse, zoneLine, zoneOf, type ZoneUse } from '../shared/zoning.js';
+import { cityPerk, treasuryStmtsFor, treasuryCreditStmts, treasuryOpenFor } from './city-rates.js';
 import { treasuryShareOf, taxShareSplit } from '../shared/city.js';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
@@ -153,13 +154,19 @@ export class RealEstate {
     const rows = (await cl.query('SELECT id, price FROM properties WHERE owner_key = $1', [keyOf(name)])).rows as { id: string; price: unknown }[];
     return rows.reduce((a, r) => a + propertyPaid(Number(r.price), propertyById(r.id)?.price ?? 0), 0);
   }
+  /** Bill Chud 1 zoning: what this owner already holds per zone (grandfathered deeds included). Unknown/removed ids count 0. */
+  async zoneUse(name: string, cl: { query: pg.Pool['query'] } = this.pool): Promise<ZoneUse> {
+    const rows = (await cl.query('SELECT id FROM properties WHERE owner_key = $1', [keyOf(name)])).rows as { id: string }[];
+    return zoneUse(rows.map((r) => propertyById(String(r.id))).filter((x): x is NonNullable<typeof x> => !!x));
+  }
   /** What this player would pay for a property right now. */
   async quote(name: string, id: unknown) {
     const p = propertyById(id); if (!p || p.retired) throw new PropertyError('That property is not for sale.');
     const owned = await this.ownedCount(name); const value = await this.ownedValue(name);
-    const per1k = citySurchargePctPer1k(); const price = landPrice(p.price, value, per1k); const wealthTax = await quotePurchaseTax(this.pool, name, price, this.clock());
-    const backTax = await backTaxOf(this.pool, name);
-    return { id: p.id, list: p.price, owned, ownedValue: value, surchargePct: landSurchargePct(value, per1k), surchargePer1k: per1k, multiplier: landMultiplier(value, per1k), price, wealthTax, backTax };
+    // Bill Chud 1: the purchase surcharge is abolished; new buys pay the list price (plus the unchanged purchase wealth tax).
+    const price = p.price; const wealthTax = await quotePurchaseTax(this.pool, name, price, this.clock());
+    const backTax = await backTaxOf(this.pool, name); const use = await this.zoneUse(name);
+    return { id: p.id, list: p.price, owned, ownedValue: value, surchargePct: 0, surchargePer1k: 0, multiplier: 1, price, wealthTax, backTax, zone: zoneOf(p), zoneLine: zoneLine(use, p), zoneRefusal: zoneRefusal(use, p) };
   }
   /** max: the price the player saw; a higher price now (they bought something else meanwhile) refuses instead of surprising them. */
   async buy(name: string, id: unknown, max?: unknown) {
@@ -180,19 +187,20 @@ export class RealEstate {
     const bigCapMsg = () => `You already own a Big Farm. Each account can own at most ${MAX_BIG_FARMS} Big Farm.`;
     // Both this guard and the transactional recheck below run under the per-owner advisory lock.
     if (bigBuy && (await this.ownedBigFarms(name, cl)).length >= MAX_BIG_FARMS) throw new PropertyError(bigCapMsg());
-    const owned = await this.ownedCount(name, cl); const value = await propertyPaidPlusUpgradesOf(cl, name); const paidSnap = await this.ownedPaid(name, cl); const per1k = citySurchargePctPer1k(); const price = landPrice(p.price, value, per1k);
-    const note = landMultiplierNote(value, per1k);
-    if (max !== undefined && price > max) throw new PropertyError(`The price changed: your surcharge is +${+landSurchargePct(value, per1k).toFixed(1)}% now, so ${p.label} costs ${price.toLocaleString('en-US')}. Check the deed and try again.`);
+    const owned = await this.ownedCount(name, cl); const value = await propertyPaidPlusUpgradesOf(cl, name); const paidSnap = await this.ownedPaid(name, cl); const price = p.price; // Bill Chud 1: no purchase surcharge
+    const note = '';
+    { const z = zoneRefusal(await this.zoneUse(name, cl), p); if (z) throw new PropertyError(z); } // zoning cap (grandfathered deeds count; no charge)
+    if (max !== undefined && price > max) throw new PropertyError(`The price changed: ${p.label} costs ${price.toLocaleString('en-US')}. Check the deed and try again.`);
     const wq = await quotePurchaseTax(cl, name, price, this.clock(), prep).catch(unprepared);
     if (bank.account(name).chips < price + wq.tax) throw new PropertyError(`Not enough chips: ${p.label} costs ${price.toLocaleString('en-US')}${note ? ` (${note})` : ''}${wq.tax ? ` + ${wq.line}` : ''}.`);
     let wtax = 0, wn = 0; let taxStmts: Array<{ sql: string; args: unknown[] }> = [];
-    // pt2032u: 25% of the land surcharge actually charged (price above list) goes to the treasury. Same price; the rest stays burned as before.
-    const surcharge = Math.max(0, price - p.price); const surShare = surcharge > 0 && treasuryOpenFor(name) ? taxShareSplit(surcharge).treasury : 0;
+    const surShare = 0; // Bill Chud 1: no surcharge is charged, so there is no surcharge treasury share (past shares/refunds untouched)
     await this.atomic(name, -price, 'property_buy', `Bought ${p.label} (${p.id})${note ? ` ${note}` : ''}`, async (cl) => {
       // cross-instance: the count must still be what we priced at (a parallel buy elsewhere = refuse, nothing charged)
       if ((await propertyPaidPlusUpgradesOf(cl, name)) !== value) throw new PropertyError('You just bought another property: the price went up. Check the deed and try again.');
       // Big Farm cap, re-checked inside the transaction (a parallel buy on another instance can't slip a second one in)
       if (bigBuy && (await this.ownedBigFarms(name, cl)).length >= MAX_BIG_FARMS) throw new PropertyError(bigCapMsg());
+      { const z = zoneRefusal(await this.zoneUse(name, cl), p); if (z) throw new PropertyError(z); } // zoning cap, re-checked in the transaction
       // The insert wins only if the row now carries our deed nonce (a concurrent buyer's row = conflict, DO NOTHING).
       const deed = randomUUID();
       // One round trip (QA r8 speed): RETURNING yields a row only if our insert won. price = what was actually paid.
@@ -201,15 +209,28 @@ export class RealEstate {
       for (const s of [...taxStmts, ...(surShare ? treasuryCreditStmts('property_surcharge', surShare, `25% of a property surcharge (${p.label})`, this.clock(), `property_surcharge:${deed}`) : [])]) await cl.query(s.sql, s.args);
     }, async (key, db) => { const t = await purchaseTaxMoves(db, name, price, key, p.label, this.clock(), prep).catch(unprepared); wtax = t.tax; wn = t.recipients; taxStmts = t.stmts; return t.moves; }, cl);
     this.onChange?.();
-    return { id: p.id, price, wealthTax: wtax, wealthTaxRecipients: wn, list: p.price, owned, ownedValue: value, surchargePct: landSurchargePct(value, per1k), surchargePer1k: per1k, multiplier: landMultiplier(value, per1k), chips: bank.account(name).chips };
+    return { id: p.id, price, wealthTax: wtax, wealthTaxRecipients: wn, list: p.price, owned, ownedValue: value, surchargePct: 0, surchargePer1k: 0, multiplier: 1, chips: bank.account(name).chips };
   }
 
   /** Hostile buyout (monuments only): pay the current owner BUYOUT_MUL x what they paid, in one transaction. */
   async buyout(name: string, id: unknown, max?: unknown) {
     const p = propertyById(id); if (!p || p.kind !== 'landmark') throw new PropertyError('Only monuments can be bought out.');
-    return this.lock(`owner:${keyOf(name)}`, () => this.lock(p.id, () => this.buyoutNow(name, p, typeof max === 'number' && Number.isFinite(max) ? max : undefined)));
+    return this.lock(`owner:${keyOf(name)}`, () => this.lock(p.id, () => this.buyoutPinned(name, p, typeof max === 'number' && Number.isFinite(max) ? max : undefined)));
   }
-  private async buyoutNow(name: string, p: NonNullable<ReturnType<typeof propertyById>>, max?: number) {
+  /** Bill Chud 1: hold the same per-owner session lock as normal buys so the zoning cap can't be raced across instances. */
+  private async buyoutPinned(name: string, p: NonNullable<ReturnType<typeof propertyById>>, max?: number) {
+    const cl = await this.pool.connect(); const lockKey = `property-buy:${keyOf(name)}`;
+    try {
+      await cl.query('SELECT pg_advisory_lock(hashtext($1))', [lockKey]);
+      return await this.buyoutNow(name, p, max, cl);
+    } finally {
+      let failure: unknown;
+      try { await cl.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]); }
+      catch (e) { failure = e; console.error('[realestate] owner unlock failed:', (e as Error).message); }
+      finally { cl.release(failure as Error | undefined); }
+    }
+  }
+  private async buyoutNow(name: string, p: NonNullable<ReturnType<typeof propertyById>>, max: number | undefined, pin: pg.PoolClient) {
     const row = (await this.pool.query('SELECT owner_key, owner_name, price, bought_at FROM properties WHERE id = $1', [p.id])).rows[0] as { owner_key: string; owner_name: string; price: unknown; bought_at: unknown } | undefined;
     if (!row) throw new PropertyError(`${p.label} belongs to the city: buy it normally.`);
     if (row.owner_key === keyOf(name)) throw new PropertyError('You already own this monument.');
@@ -220,11 +241,14 @@ export class RealEstate {
     const bank = this.bank(); await bank.refresh(name);
     if (bank.account(name).chips < price) throw new PropertyError(`Not enough chips: the buyout costs ${price.toLocaleString('en-US')}.`);
     const prev = String(row.owner_name);
+    { const z = zoneRefusal(await this.zoneUse(name, pin), p); if (z) throw new PropertyError(z); } // monuments are Commercial (Bill Chud 1)
     await this.atomic(name, -price, 'property_buyout', `Hostile buyout of ${p.label} (${p.id}) from ${prev}`, async (cl) => {
+      // Under the per-owner session lock (same key as buyNow): re-check the zoning cap in-transaction.
+      { const z = zoneRefusal(await this.zoneUse(name, cl), p); if (z) throw new PropertyError(z); }
       await this.income.settle(cl, p.id, now, { key: row.owner_key, boughtAt: Number(row.bought_at), price: paid });
       const r = await cl.query('UPDATE properties SET owner_key = $1, owner_name = $2, city_price = COALESCE(city_price, price), price = $3, bought_at = $4, arrears = 0 WHERE id = $5 AND owner_key = $6 AND price = $7 RETURNING id', [keyOf(name), name.trim(), price, now, p.id, row.owner_key, paid]);
       if (!r.rowCount) throw new PropertyError('The owner changed: check the deed and try again.');
-    }, [{ name: prev, amount: price, game: 'property_buyout', memo: `${name.trim()} bought out your ${p.label} (${p.id})` }]);
+    }, [{ name: prev, amount: price, game: 'property_buyout', memo: `${name.trim()} bought out your ${p.label} (${p.id})` }], pin);
     await bank.notifyDurableBalance(prev).catch(() => {});
     this.onChange?.();
     void sendPopup(prev, 'City of Chud Hub', `🏛 Hostile buyout! ${name.trim()} bought your ${p.label} for 🪙 ${price.toLocaleString('en-US')} (${BUYOUT_MUL}x what you paid). The chips are in your wallet; its royalties now go to ${name.trim()}.`).catch(() => {});

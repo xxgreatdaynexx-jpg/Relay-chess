@@ -49,7 +49,7 @@ const PATCH_LABEL: Record<string, string> = { lot: 'Empty lot', park: 'Park', pl
 const PATCH_REF: Record<string, number> = { lot: 13 * 13 * 0.95, park: 13 * 13 * 0.95, plaza: 81 * 0.95 };
 
 export type PropertyKind = 'building' | 'patch' | 'landmark' | 'farm';
-export interface Property extends OBB { id: string; kind: PropertyKind; type: string; label: string; price: number; h?: number; map?: 'resort'; /** under a civic plot: never for sale again, drawn only while someone still owns it */ retired?: boolean; /** Housing capacity captured from its original canonical price band, never from its new price. */ housingEmployees?: number }
+export interface Property extends OBB { id: string; kind: PropertyKind; type: string; label: string; price: number; /** farmland: full plot cols × rows (zoning) */ tiles?: number; h?: number; map?: 'resort'; /** under a civic plot: never for sale again, drawn only while someone still owns it */ retired?: boolean; /** Housing capacity captured from its original canonical price band, never from its new price. */ housingEmployees?: number }
 
 const clamp = (x: number) => Math.min(1.25, Math.max(0.8, x));
 const round500 = (n: number) => Math.max(500, Math.round(n / 500) * 500);
@@ -115,14 +115,14 @@ export function properties(): Property[] {
   // Separate barn deeds: never modify or confer ownership of the neighboring farm.
   for (const b of farmBarns()) out.push({ x: b.x, z: b.z, w: b.w, d: b.d, rot: b.rot, id: b.id, kind: 'building', type: 'barn', label: b.label, price: barnPrice(b) });
   // Farm district (shared/farm.ts): farmland plots, priced by tile count.
-  for (const f of farmPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: plotId(f.n), kind: 'farm', type: 'farmland', label: `Farm plot #${f.n} (${f.cols}×${f.rows})`, price: farmPrice(f.cols * f.rows) });
+  for (const f of farmPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: plotId(f.n), kind: 'farm', type: 'farmland', label: `Farm plot #${f.n} (${f.cols}×${f.rows})`, price: farmPrice(f.cols * f.rows), tiles: f.cols * f.rows });
   // Countryside crop fields (shared/fieldFarms.ts): the same farm system, priced by tile count like farmland.
-  for (const f of allFieldPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: fieldPlotId(f.n), kind: 'farm', type: 'farmland', label: fieldPlotLabel(f), price: fieldPlotPrice(f) });
+  for (const f of allFieldPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: fieldPlotId(f.n), kind: 'farm', type: 'farmland', label: fieldPlotLabel(f), price: fieldPlotPrice(f), tiles: f.cols * f.rows });
   // Countryside businesses (shared/outskirts.ts): gas stations and warehouses, fixed prices.
   for (const b of countryBusinesses()) { const t = businessType(b); out.push({ x: b.x, z: b.z, w: b.w, d: b.d, rot: b.rot, h: b.h, id: `b:${t}:${pos(b)}`, kind: 'building', type: t, label: COMMERCIAL_LABEL[t]!, price: COMMERCIAL_PRICE[t]! }); }
   // Chud Resort (shared/resort.ts): its own map, only buyable while you are there (server-enforced).
   for (const l of resortLots()) out.push({ x: l.x, z: l.z, w: l.w, d: l.d, rot: l.rot, h: l.h, id: l.id, kind: 'building', type: l.type, label: l.label, price: l.price, map: 'resort' });
-  for (const f of resortPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: resortPlotId(f.n), kind: 'farm', type: 'plantation', label: `${f.estate ? 'Estate plantation' : 'Plantation plot'} #${f.n} (${f.cols}×${f.rows})`, price: resortPlotPrice(f), map: 'resort' });
+  for (const f of resortPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: resortPlotId(f.n), kind: 'farm', type: 'plantation', label: `${f.estate ? 'Estate plantation' : 'Plantation plot'} #${f.n} (${f.cols}×${f.rows})`, price: resortPlotPrice(f), map: 'resort', tiles: f.cols * f.rows });
   // Reprice only housing. Capture the actual old employment bonus BEFORE lowering its base price: otherwise
   // a two-slot home priced at 20k would silently lose a slot, and a three-slot home at 30k would become two-slot.
   // No owned rows, paid prices, IDs, geometry or equipment are changed. Slots outside 1–3 keep their old price.

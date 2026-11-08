@@ -33,12 +33,12 @@ describe('housing price per actual employee capacity',()=>{
   expect(hs.some(p=>p.type==='apartment'&&workerBonusOf(p.id)===3&&p.price===30000)).toBe(true);
  });
  it('nonhousing catalog is byte-for-byte unchanged; same complete housing identity set',()=>{
-  expect(hash(properties().filter(p=>!isEmployeeHousing(p)))).toBe(baseline.nonHousingHash);
+  expect(hash(properties().filter(p=>!isEmployeeHousing(p)).map(({tiles:_tiles,...p})=>p))).toBe(baseline.nonHousingHash); // Bill Chud 1 adds only derived plot tile counts (cols×rows)
   expect(properties().filter(isEmployeeHousing).map(p=>p.id)).toEqual(baseline.housing.map(p=>p.id));
   for(const p of properties().filter(p=>!isEmployeeHousing(p))){const expected=p.type==='barn'||!['building','landmark'].includes(p.kind)?0:p.price<25000?1:p.price<75000?2:p.price<250000?3:4;expect(workerBonusOf(p.id)).toBe(expected);}
   expect(workerBonusTotal(baseline.housing.slice(0,20).map(p=>p.id))).toBe(7);
  });
- it('quote and new purchase apply unchanged price index and paid-value surcharge to each slot-priced base (isolated Postgres)',async()=>{
+ it('quote and new purchase apply unchanged price index and no surcharge (Bill Chud 1) to each slot-priced base (isolated Postgres)',async()=>{
   const db=new PGlite(),pool=shim(db);try{
    const bank=new CasinoBank();bank.retryMs=[];await bank.attach(new PgCasinoStore(pool as never));const re=new RealEstate(pool as never,()=>bank,()=>T);await re.init();
    await db.exec('CREATE TABLE farm_tiles(plot_id TEXT,tile INT,owner_key TEXT,crop TEXT,planted_at BIGINT,nonce TEXT); CREATE TABLE farm_upgrades(plot_id TEXT,kind TEXT,owner_key TEXT,level INT); CREATE TABLE farm_fert(plot_id TEXT,tile INT,nonce TEXT,kind TEXT);');
@@ -47,8 +47,8 @@ describe('housing price per actual employee capacity',()=>{
     const name=`Buyer${slots}`,key=name.toLowerCase(),p=properties().find(p=>isEmployeeHousing(p)&&!p.retired&&!p.map&&workerBonusOf(p.id)===slots)!;
     bank.transfer(name,100000-bank.account(name).chips,{game:'test'});await bank.flush();
     await db.query('INSERT INTO properties(id,owner_key,owner_name,price,bought_at,deed,city_price) VALUES($1,$2,$3,7000,$4,$5,7000)',[`baseline-deed-${slots}`,key,name,T,'old']);
-    const q=await re.quote(name,p.id),expected=landPrice(px(slots*10000),7000);
-    expect(q.list).toBe(px(slots*10000));expect(q.ownedValue).toBe(7000);expect(q.surchargePct).toBe(7);expect(q.price).toBe(expected);
+    const q=await re.quote(name,p.id),expected=px(slots*10000);
+    expect(q.list).toBe(px(slots*10000));expect(q.ownedValue).toBe(7000);expect(q.surchargePct).toBe(0);expect(q.price).toBe(expected);
     const bought=await re.buy(name,p.id,q.price);expect(bought.price).toBe(expected);
     const row=(await db.query<{price:string;city_price:string}>('SELECT price,city_price FROM properties WHERE id=$1',[p.id])).rows[0];expect(Number(row.price)).toBe(expected);expect(Number(row.city_price)).toBe(expected);
    }

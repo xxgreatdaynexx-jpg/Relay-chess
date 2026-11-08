@@ -33,7 +33,7 @@ export const treasuryOpen = () => !!cityInst;
 export const citySalesTaxRate = () => cityInst?.lever('sales_tax') ?? 0;
 export const cityWealthTaxRate = () => cityInst?.lever('wealth_tax') ?? LEVERS.wealth_tax.base;
 /** Property surcharge in percent per 1,000 owned (lever stored as a fraction: 0.01 -> 1). Offline -> the built-in rule. */
-export const citySurchargePctPer1k = () => Math.round((cityInst?.lever('property_surcharge') ?? LEVERS.property_surcharge.base) * 10_000) / 100;
+export const citySurchargePctPer1k = () => 0; // Bill Chud 1: purchase surcharge abolished (the old lever value is ignored)
 /** Daily net-worth wealth tax rate (fraction). Offline -> the built-in 1%. */
 export const cityDailyWealthTaxRate = () => cityInst?.lever('daily_wealth_tax') ?? LEVERS.daily_wealth_tax.base;
 export const cityFreightMul = () => Math.max(1, cityInst?.lever('freight') ?? 1) * /* t2043: lever never discounts; Street Lights perk below is separate */ (1 - (cityInst?.perk('freight_fee') ?? 0));

@@ -63,17 +63,17 @@ const home = () => [...properties()].filter((p) => p.kind === 'building' && p.pr
 
 describe.skipIf(!url)('real PostgreSQL', () => {
   beforeEach(() => resetPurchaseTaxCache());
-  it('property buy: identical bill; treasury gets 25% of purchase wealth tax + 25% of surcharge; recipients get the rest', async () => {
+  it('property buy: identical bill; treasury gets 25% of purchase wealth tax (no surcharge: Bill Chud 1); recipients get the rest', async () => {
     const closed = await setup(false); const c = await closed.re.buy('Rich', home().id);
     const open = await setup(true); const o = await open.re.buy('Rich', home().id);
     expect(o.price).toBe(c.price); expect(o.wealthTax).toBe(c.wealthTax); expect(open.bank.account('Rich').chips).toBe(closed.bank.account('Rich').chips); // same bill
-    const surcharge = o.price - px(home().price); expect(surcharge).toBeGreaterThan(0);
-    const wt = taxShareSplit(o.wealthTax); const sur = taxShareSplit(surcharge).treasury;
-    expect(await open.bal()).toBe(wt.treasury + sur);
+    expect(o.price).toBe(px(home().price)); // list price: no surcharge
+    const wt = taxShareSplit(o.wealthTax);
+    expect(await open.bal()).toBe(wt.treasury);
     expect(await open.sum('wealth_tax_share', true)).toBe(wt.rest); expect(await closed.sum('wealth_tax_share', true)).toBe(c.wealthTax);
     expect(-(await open.sum('wealth_tax_buy', false))).toBe(o.wealthTax);
     const led = (await open.pool.query('SELECT id, kind, amount FROM city_treasury_ledger ORDER BY kind')).rows;
-    expect(led.map((r) => [r.kind, Number(r.amount)])).toEqual([['property_surcharge', sur], ['wealth_tax_buy', wt.treasury]]);
+    expect(led.map((r) => [r.kind, Number(r.amount)])).toEqual([['wealth_tax_buy', wt.treasury]]);
     expect(led.every((r) => /^(property_surcharge|wealth_tax_buy):/.test(r.id))).toBe(true);
     expect(await closed.bal()).toBe(0);
   });

@@ -126,26 +126,27 @@ describe('real estate: buy / sell / tax', () => {
 
 describe('real estate: land gets pricier the more you own', () => {
   const cheap = (k: number) => [...properties()].filter((p) => p.kind !== 'landmark').sort((a, b) => a.price - b.price).slice(0, k);
-  it('price = list × (1 + 1% per 1,000 owned, uncapped); sell-back is 70% of what was paid; tax is on the price paid (Tess QA #8)', async () => {
+  it('Bill Chud 1: price = list (surcharge abolished); sell-back is 70% of what was paid; tax is on the price paid (Tess QA #8)', async () => {
     const s = await setup(); const ps = cheap(4); const list = ps.map((p) => px(p.price));
-    const before: number[] = []; for (let i = 0; i < list.length; i++) before.push(list.slice(0, i).reduce((a, b, j) => a + landPrice(b, before[j]!), 0)); // paid price, not list, drives the next surcharge
-    const cost = list.reduce((a, l, i) => a + landPrice(l, before[i]!), 0); await s.fund('Ivy', cost);
-    for (let i = 0; i < 4; i++) { const q = await s.re.quote('Ivy', ps[i]!.id); expect(q.owned).toBe(i); expect(q.ownedValue).toBe(before[i]); expect(q.surchargePct).toBeCloseTo(before[i]! / 1000 * 1);
-      expect(q.price).toBe(Math.round(list[i]! * (1 + before[i]! / 1000 * 1 / 100)));
+    const before: number[] = []; for (let i = 0; i < list.length; i++) before.push(list.slice(0, i).reduce((a, b) => a + b, 0));
+    const cost = list.reduce((a, l) => a + l, 0); await s.fund('Ivy', cost);
+    for (let i = 0; i < 4; i++) { const q = await s.re.quote('Ivy', ps[i]!.id); expect(q.owned).toBe(i); expect(q.ownedValue).toBe(before[i]); expect(q.surchargePct).toBe(0);
+      expect(q.price).toBe(list[i]);
       const r = await s.re.buy('Ivy', ps[i]!.id, q.price); expect(r.price).toBe(q.price); }
     expect(s.chips('ivy')).toBe(0);
-    expect(s.ledger('ivy', 'property_buy').map((x) => -Number(x.amount))).toEqual(list.map((l, i) => landPrice(l, before[i]!)));
+    expect(s.ledger('ivy', 'property_buy').map((x) => -Number(x.amount))).toEqual(list);
     const mine = await s.re.mine('Ivy'); for (const m of mine) { expect(m.tax).toBe(taxOf(m.price)); expect(m.paid).toBe(m.price); }
-    await s.re.sell('Ivy', ps[3]!.id); expect(s.chips('ivy')).toBe(sellBackOf(landPrice(list[3]!, before[3]!)));
+    await s.re.sell('Ivy', ps[3]!.id); expect(s.chips('ivy')).toBe(sellBackOf(list[3]!));
     // after selling, the next purchase is priced at the new (lower) count
     expect((await s.re.quote('Ivy', ps[3]!.id)).owned).toBe(3);
   });
-  it('refuses when the price rose past what the player saw, and parallel buys by one player cannot share a count', async () => {
+  it('refuses when the price is above what the player saw; parallel buys by one player serialize at list price', async () => {
     const s = await setup(); const [a, b] = cheap(2); await s.fund('Jo', 10_000_000);
+    await expect(s.re.buy('Jo', a!.id, px(a!.price) - 1)).rejects.toThrow(/price changed/);
     const qa = await s.re.quote('Jo', a!.id), qb = await s.re.quote('Jo', b!.id);
     const r = await Promise.allSettled([s.re.buy('Jo', a!.id, qa.price), s.re.buy('Jo', b!.id, qb.price)]);
-    expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
-    expect((r.find((x) => x.status === 'rejected') as PromiseRejectedResult).reason.message).toMatch(/price changed/);
+    expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(2);
+    expect(s.ledger('jo', 'property_buy').map((x) => -Number(x.amount)).sort((x, y) => x - y)).toEqual([px(a!.price), px(b!.price)].sort((x, y) => x - y));
   });
   it('surcharge formula and note text (no cap)', () => {
     expect(landSurchargePct(0)).toBe(0); expect(landSurchargePct(5000)).toBe(5); expect(landSurchargePct(100_000)).toBe(100); expect(landSurchargePct(500_000)).toBe(500);
