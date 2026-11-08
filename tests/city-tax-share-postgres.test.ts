@@ -4,6 +4,7 @@
  */
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import pg from 'pg';
+import { readFileSync } from 'node:fs';
 import { CasinoBank, PgCasinoStore, getBank } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
 import { Garage } from '../server/cars';
@@ -90,6 +91,16 @@ describe.skipIf(!url)('real PostgreSQL', () => {
       await cl.query('BEGIN'); await expect((async () => { for (const x of treasuryCreditStmts('wealth_tax', 100, 'm', 1, 'wealth_tax_day:2026-11-08')) await cl.query(x.sql, x.args); })()).rejects.toThrow(/duplicate/); await cl.query('ROLLBACK');
     } finally { cl.release(); }
     expect(await s.bal()).toBe(100);
+  });
+  it('no eligible recipients: no tax at all, nothing to the treasury (guard also covers recipients vanishing after the quote)', async () => {
+    const s = await setup(true); await s.pool.query("DELETE FROM wallet_transactions WHERE player_key IN ('ann','bob','cat')"); resetPurchaseTaxCache();
+    const before = s.bank.account('Rich').chips; const r = await s.re.buy('Rich', home().id);
+    expect(r.wealthTax).toBe(0); expect(before - s.bank.account('Rich').chips).toBe(r.price); expect(await s.sum('wealth_tax_buy', false)).toBe(0);
+  });
+  it('wealth tax card copy is accurate about the cap and shows the treasury part of the last run', () => {
+    const src = readFileSync('client/src/components/WealthTaxCard.tsx', 'utf8');
+    expect(src).toMatch(/capped at 🪙 10,000,000; any part above the cap is burned/); expect(src).toMatch(/w\.last\.treasury/);
+    expect(src).not.toMatch(/75% is split evenly among active players below the line\. Nothing is burned/);
   });
   it('treasury cap: credits stop at the cap (existing rule), nothing minted to players', async () => {
     const s = await setup(true); await s.pool.query("UPDATE city_treasury SET balance = 9999990 WHERE id='main'");

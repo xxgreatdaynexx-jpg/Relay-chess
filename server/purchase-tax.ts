@@ -56,6 +56,7 @@ export async function quotePurchaseTax(db: Q, buyer: string, price: number, now 
 export async function purchaseTaxMoves(db: Q, buyer: string, price: number, purchaseKey: string, what: string, now = Date.now()): Promise<{ tax: number; recipients: number; moves: Move[]; line: string; treasury: number; stmts: Array<{ sql: string; args: unknown[] }> }> {
   const q = await quotePurchaseTax(db, buyer, price, now); if (!q.tax) return { tax: 0, recipients: 0, moves: [], line: '', treasury: 0, stmts: [] };
   const rec = await recipientsFor(db, buyer, now);
+  if (!rec.length) return { tax: 0, recipients: 0, moves: [], line: '', treasury: 0, stmts: [] }; // recipients vanished since the quote (jail/disable): no tax rather than an unshared debit
   const treasury = q.treasury ?? 0; const pool = q.tax - treasury;
   const shares = purchaseShares(pool, rec.map((x) => x.key)); const byKey = new Map(rec.map((x) => [x.key, x.name]));
   const moves: Move[] = [{ name: buyer, amount: -q.tax, key: `${PURCHASE_TAX_GAME}:${purchaseKey}`, game: PURCHASE_TAX_GAME, memo: `${purchaseTaxLine(q.tax, rec.length, cityWealthTaxRate(), treasury)} (on ${what})` }];
