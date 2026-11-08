@@ -1,0 +1,46 @@
+/**
+ * pt2041u: "Buying... / No answer from the server" on a taxed property buy. RealEstate's pool has 2 connections; buyNow holds
+ * one for the whole locked buy, and a cold purchase-tax recipient scan (economy.playerAssets -> RealEstate.mine on the SAME
+ * pool, once per active player) needs another. Two taxed buys at once (or any other holder of the 2nd connection) starve
+ * each other until the pool's connection timeout. Real PostgreSQL, local only.
+ */
+import { afterAll, describe, expect, it } from 'vitest';
+import pg from 'pg';
+import { CasinoBank, PgCasinoStore } from '../server/casino-store';
+import { RealEstate } from '../server/realEstate';
+import { setEconomyForTest } from '../server/economy';
+import { resetPurchaseTaxCache } from '../server/purchase-tax';
+import { setJail, type Jail } from '../server/jail';
+import { properties } from '../shared/realEstate';
+
+setJail({ isJailed: () => false, status: () => null } as unknown as Jail);
+const url = process.env.MAYOR_LAWS_TEST_DATABASE_URL;
+const drops: Array<() => Promise<void>> = []; afterAll(async () => { setEconomyForTest(null); for (const d of drops) await d(); });
+describe.skipIf(!url)('taxed property buy with the production pool size (max 2)', () => {
+  it('two concurrent taxed buys with a cold recipient cache both complete promptly', async () => {
+    const u = new URL(url!); if (!['127.0.0.1', 'localhost'].includes(u.hostname)) throw new Error('local DB only');
+    const name = `pb_${process.pid}_${Date.now()}`; const root = new pg.Client({ connectionString: url }); await root.connect(); await root.query(`CREATE DATABASE ${name}`);
+    u.pathname = `/${name}`; const conn = u.toString();
+    const pool = new pg.Pool({ connectionString: conn, max: 2, connectionTimeoutMillis: 3_000 }); // same shape as initRealEstate (10 s there)
+    const setupPool = new pg.Pool({ connectionString: conn, max: 2 });
+    drops.push(async () => { await pool.end(); await setupPool.end(); await root.query(`DROP DATABASE ${name}`); await root.end(); });
+    const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(setupPool as never));
+    const re = new RealEstate(pool as never, () => bank); await re.init();
+    await setupPool.query(`CREATE TABLE farm_tiles (plot_id TEXT NOT NULL, tile INTEGER NOT NULL, owner_key TEXT NOT NULL, crop TEXT NOT NULL, planted_at BIGINT NOT NULL, nonce TEXT NOT NULL, PRIMARY KEY (plot_id, tile));
+      CREATE TABLE farm_upgrades (plot_id TEXT NOT NULL, kind TEXT NOT NULL, owner_key TEXT NOT NULL, level INTEGER NOT NULL, PRIMARY KEY (plot_id, kind));
+      CREATE TABLE farm_fert (plot_id TEXT NOT NULL, tile INTEGER NOT NULL, nonce TEXT NOT NULL, kind TEXT NOT NULL, PRIMARY KEY (plot_id, tile, nonce));`);
+    const fund = async (n: string, c: number) => { bank.transfer(n, c - bank.account(n).chips, { game: 'admin' }); await bank.flush(); };
+    for (let i = 0; i < 10; i++) await fund(`P${i}`, 6000);
+    for (const r of ['Rich', 'Rose']) { await setupPool.query('INSERT INTO properties (id, owner_key, owner_name, price, bought_at) VALUES ($1,$2,$3,158884,0)', [`test:${r}`, r.toLowerCase(), r]); await fund(r, 1_000_000); }
+    // Production economy.playerAssets reads RealEstate.mine (same 2-connection pool) for every active player.
+    setEconomyForTest({ playerAssets: async (n: string) => { await re.mine(n); return { total: 0 }; } } as never);
+    resetPurchaseTaxCache();
+    const [a, b] = [...properties()].filter((p) => p.kind !== 'landmark' && p.price >= 5_000 && p.price < 20_000).sort((x, y) => x.price - y.price);
+    const t0 = Date.now();
+    const res = await Promise.allSettled([re.buy('Rich', a!.id), re.buy('Rose', b!.id)]);
+    const ms = Date.now() - t0;
+    expect(res.map((r) => r.status === 'rejected' ? String((r as PromiseRejectedResult).reason?.message) : 'ok')).toEqual(['ok', 'ok']);
+    expect(ms).toBeLessThan(2_500); // well under the pool timeout and the client's 15 s ack
+    for (const r of res) expect((r as PromiseFulfilledResult<{ wealthTax: number }>).value.wealthTax).toBeGreaterThan(0);
+  }, 30_000);
+});

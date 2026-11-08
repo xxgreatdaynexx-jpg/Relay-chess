@@ -33,7 +33,7 @@ import { resortPlotOf } from '../shared/resort.js';
 import { fertDef, fertCost } from '../shared/farmWork.js';
 import { propertyTaxMul } from '../shared/skillPerks.js';
 import { cityPropertyTaxMul } from './mayor.js';
-import { purchaseTaxMoves, quotePurchaseTax } from './purchase-tax.js';
+import { prewarmPurchaseTax, purchaseTaxMoves, quotePurchaseTax } from './purchase-tax.js';
 import { backTaxOf, backTaxMoves, backTaxBlockMsg } from './backTax.js';
 
 export class PropertyError extends Error {}
@@ -122,6 +122,7 @@ export class RealEstate {
 
   /** Serialize the complete buy across processes on one client, then commit on that same client. */
   private async buyNow(name: string, p: NonNullable<ReturnType<typeof propertyById>>, max?: number) {
+    await prewarmPurchaseTax(this.pool, name, this.clock()).catch(() => {}); // pt2041u: best-effort; never run the cold recipient scan while pinning a connection
     const cl = await this.pool.connect(); const lockKey = `property-buy:${keyOf(name)}`;
     try {
       await cl.query('SELECT pg_advisory_lock(hashtext($1))', [lockKey]);

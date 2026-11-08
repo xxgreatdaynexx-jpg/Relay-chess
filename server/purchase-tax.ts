@@ -13,7 +13,7 @@ import { isDisabledName } from '../shared/disabled.js';
 import { TAX_SHARE_MIN_NET_WORTH } from '../shared/wealthTax.js';
 import { propertyPaidPlusUpgradesOf } from './realEstate.js';
 import { isQaName } from '../shared/qa.js';
-import { PURCHASE_SHARE_GAME, PURCHASE_TAX_GAME, purchaseShares, purchaseTaxLine, purchaseTaxOf, type PurchaseTaxQuote } from '../shared/purchaseTax.js';
+import { PURCHASE_TAX_THRESHOLD, PURCHASE_SHARE_GAME, PURCHASE_TAX_GAME, purchaseShares, purchaseTaxLine, purchaseTaxOf, type PurchaseTaxQuote } from '../shared/purchaseTax.js';
 
 type Q = { query: (sql: string, args?: unknown[]) => Promise<{ rows: any[] }> };
 type Move = { name: string; amount: number; key: string; game: string; memo?: string };
@@ -42,6 +42,16 @@ async function activePlayers(db: Q, now: number) {
 export async function recipientsFor(db: Q, buyer: string, now: number) {
   const k = keyOf(buyer);
   return (await activePlayers(db, now)).filter((x) => x.key !== k && keyOf(x.name) !== k && !isJailed(x.name) && !isDisabledName(x.name) && !isDisabledName(x.key) && x.netWorth >= TAX_SHARE_MIN_NET_WORTH);
+}
+
+/**
+ * pt2041u: warm the (60 s) active-player cache BEFORE a caller pins a pool connection for a locked purchase. The cold scan
+ * reads every active player's assets (economy.playerAssets -> RealEstate.mine on the same small pool); doing it while the
+ * buy holds one of RealEstate's 2 connections starves concurrent buys until the pool timeout ("No answer from the server").
+ * Only scans when the buyer is actually over the threshold. Tax amounts and recipients are still computed in the buy itself.
+ */
+export async function prewarmPurchaseTax(db: Q, buyer: string, now = Date.now()): Promise<void> {
+  if ((await propertyPaidValue(db, buyer)) > PURCHASE_TAX_THRESHOLD) await activePlayers(db, now);
 }
 
 export async function quotePurchaseTax(db: Q, buyer: string, price: number, now = Date.now()): Promise<PurchaseTaxQuote> {
