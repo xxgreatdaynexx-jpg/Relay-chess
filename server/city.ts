@@ -92,6 +92,18 @@ export class City {
     try { await cl.query('BEGIN'); if (body) await body(cl); for (const s of stmts) await cl.query(s.sql, s.args); await cl.query('COMMIT'); }
     catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); }
   }
+  /**
+   * Authoritative mayor check for treasury spending: lock the treasury row (queues every instance), then read the
+   * persisted term at the clock time AFTER the lock is held, FOR SHARE so a concurrent recall/handover waits for us
+   * (or, if it committed first, we see it). A term that ended or was recalled while we queued is refused.
+   */
+  private async lockedMayor(cl: pg.PoolClient, name: string): Promise<{ now: number; mayor: string }> {
+    await cl.query("SELECT balance FROM city_treasury WHERE id = 'main' FOR UPDATE");
+    const now = this.clock();
+    const t = (await cl.query('SELECT player_key, name FROM mayor_terms WHERE starts_at <= $1 AND ends_at > $1 AND removed_at IS NULL ORDER BY starts_at DESC LIMIT 1 FOR SHARE', [now])).rows[0];
+    if (!t || String(t.player_key) !== playerKey(name)) throw new CityError('Only the sitting mayor can do that.');
+    return { now, mayor: String(t.name) };
+  }
   /** Debit the treasury inside cl; throws when short. */
   private async spend(cl: pg.PoolClient, cost: number, kind: string, memo: string, at: number) {
     const u = await cl.query('UPDATE city_treasury SET balance = balance - $1::bigint WHERE id = \'main\' AND balance >= $1::bigint', [cost]);
@@ -120,7 +132,11 @@ export class City {
     if (this.nextPolicyAt() > now) throw new CityError(`The next policy can start ${abTime(this.nextPolicyAt())}.`);
     const cost = Math.round(p.cost * this.index()); const pid = randomUUID();
     await this.run([{ sql: 'INSERT INTO city_policies (id, policy, starts_at, ends_at, cost, by_name) VALUES ($1,$2,$3,$4,$5,$6)', args: [pid, p.id, now, now + POLICY_MS, cost, m.name] }, this.actionStmt(m.name, 'policy', `${p.icon} ${p.label} for 24 h (🪙 ${cost.toLocaleString('en-US')} from the treasury)`, now)],
-      (cl) => this.spend(cl, cost, 'policy', `${p.label} (policy ${pid.slice(0, 8)})`, now));
+      async (cl) => { const at = (await this.lockedMayor(cl, name)).now;
+        const last = (await cl.query('SELECT ends_at FROM city_policies ORDER BY ends_at DESC LIMIT 1')).rows[0]; // re-check under the lock (another instance)
+        if (last && Number(last.ends_at) > at) throw new CityError('A policy is already running.');
+        if (last && Number(last.ends_at) + POLICY_COOLDOWN_MS > at) throw new CityError(`The next policy can start ${abTime(Number(last.ends_at) + POLICY_COOLDOWN_MS)}.`);
+        await this.spend(cl, cost, 'policy', `${p.label} (policy ${pid.slice(0, 8)})`, now); });
     await this.reload(); return { policy: p.id, cost };
   }
   /**
@@ -133,25 +149,28 @@ export class City {
     const rid = requestId === undefined ? randomUUID() : isRequestId(requestId) ? requestId : null; if (!rid) throw new CityError('Bad request id.');
     const prior = (await this.pool.query('SELECT * FROM city_projects WHERE id = $1', [rid])).rows[0];
     if (prior) { if (prior.project !== sp.id || playerKey(String(prior.by_name)) !== playerKey(name)) throw new CityError('That request was already used.'); return { project: sp.id, cost: Number(prior.cost), endsAt: Number(prior.ends_at), replay: true }; }
-    const m = await this.isMayor(name); const now = this.clock();
-    if (this.projectHeadroom(sp.id, now) <= 0) throw new CityError(`${sp.label} would add nothing: the city already has the maximum ${Math.round(projectCap(sp.id) * 100)}%.`);
-    const cost = Math.round(sp.cost * this.index()); const endsAt = now + sp.durationMs;
-    const text = `${sp.icon} ${sp.label}: +${Math.round(this.projectHeadroom(sp.id, now) * 100)}% ${sp.perk === 'xp' ? 'skill XP' : 'truck speed'} for everyone, ${abTime(now)} → ${abTime(endsAt)} (🪙 ${cost.toLocaleString('en-US')} from the treasury)`;
+    const m0 = await this.isMayor(name); // fast fail; authoritative re-check below, inside the locked transaction
+    if (this.projectHeadroom(sp.id, this.clock()) <= 0) throw new CityError(`${sp.label} would add nothing: the city already has the maximum ${Math.round(projectCap(sp.id) * 100)}%.`);
+    const cost = Math.round(sp.cost * this.index()); let endsAt = 0;
     try {
-      await this.run([this.actionStmt(m.name, 'project', text, now)], async (cl) => {
-        await cl.query("SELECT balance FROM city_treasury WHERE id = 'main' FOR UPDATE");
+      await this.run([], async (cl) => {
+        // Treasury row lock first (serialises every instance), then the persisted mayor status at the time we hold it.
+        const { now, mayor } = await this.lockedMayor(cl, name);
         if ((await cl.query('SELECT 1 FROM city_projects WHERE id = $1', [rid])).rows.length) throw new ReplayProject(); // same request committed elsewhere
         const last = (await cl.query('SELECT ends_at FROM city_projects WHERE project = $1 ORDER BY ends_at DESC LIMIT 1', [sp.id])).rows[0];
         if (last && Number(last.ends_at) > now) throw new CityError(`${sp.label} is already running.`);
         if (last && Number(last.ends_at) + sp.cooldownMs > now) throw new CityError(`${sp.label} can run again ${abTime(Number(last.ends_at) + sp.cooldownMs)}.`);
-        await this.spend(cl, cost, 'project', `${sp.label} by Mayor ${m.name}: ${abTime(now)} → ${abTime(endsAt)} (project ${rid.slice(0, 8)})`, now);
-        await cl.query('INSERT INTO city_projects (id, project, starts_at, ends_at, cost, by_name) VALUES ($1,$2,$3,$4,$5,$6)', [rid, sp.id, now, endsAt, cost, m.name]);
+        endsAt = now + sp.durationMs; const add = this.projectHeadroom(sp.id, now);
+        await this.spend(cl, cost, 'project', `${sp.label} by Mayor ${mayor}: ${abTime(now)} → ${abTime(endsAt)} (project ${rid.slice(0, 8)})`, now);
+        await cl.query('INSERT INTO city_projects (id, project, starts_at, ends_at, cost, by_name) VALUES ($1,$2,$3,$4,$5,$6)', [rid, sp.id, now, endsAt, cost, mayor]);
+        const a = this.actionStmt(mayor, 'project', `${sp.icon} ${sp.label}: +${Math.round(add * 100)}% ${sp.perk === 'xp' ? 'skill XP' : 'truck speed'} for everyone, ${abTime(now)} → ${abTime(endsAt)} (🪙 ${cost.toLocaleString('en-US')} from the treasury)`, now);
+        await cl.query(a.sql, a.args);
       });
     } catch (e) {
       if (e instanceof ReplayProject || (!(e instanceof CityError) && /duplicate|unique/i.test((e as Error).message))) { await this.reload(); return this.startProject(name, id, rid); }
       throw e;
     }
-    await this.reload(); return { project: sp.id, cost, endsAt };
+    void m0; await this.reload(); return { project: sp.id, cost, endsAt };
   }
   async build(name: string, id: unknown) {
     if (typeof id !== 'string' || !BUILDINGS[id as BuildingId]) throw new CityError('Unknown building.'); const spec = BUILDINGS[id as BuildingId];
@@ -160,6 +179,8 @@ export class City {
     const cur = this.snap.buildings.get(spec.id)!; const s = stageAt(cur, now); if (s >= MAX_STAGE) throw new CityError(`${spec.label} is fully built.`);
     const next = s + 1; const cost = Math.round(spec.stages[s]! * this.index()); const doneAt = now + spec.buildMs[s]!;
     await this.run([this.actionStmt(m.name, 'build', `${spec.icon} Started ${spec.label} stage ${next} (🪙 ${cost.toLocaleString('en-US')}, ready ${abTime(doneAt)})`, now)], async (cl) => {
+      const at = (await this.lockedMayor(cl, name)).now;
+      if ((await cl.query('SELECT 1 FROM city_buildings WHERE build_stage IS NOT NULL AND done_at > $1', [at])).rows.length) throw new CityError('Another building is still under construction. One project at a time.');
       await this.spend(cl, cost, 'build', `${spec.label} stage ${next}`, now);
       await cl.query('INSERT INTO city_buildings (id, stage, build_stage, started_at, done_at) VALUES ($1,$2,NULL,NULL,NULL) ON CONFLICT (id) DO NOTHING', [spec.id, 0]);
       const u = await cl.query('UPDATE city_buildings SET build_stage = $2, started_at = $3, done_at = $4 WHERE id = $1 AND stage = $5 AND build_stage IS NULL', [spec.id, next, now, doneAt, s]);

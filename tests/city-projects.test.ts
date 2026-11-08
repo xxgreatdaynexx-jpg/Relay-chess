@@ -92,4 +92,35 @@ describe.skipIf(!url)('treasury projects: real PostgreSQL', () => {
     const both = await Promise.allSettled([s.c.startProject('Ann', 'community_festival', 'retry-1234-x'), c2.startProject('Ann', 'community_festival', 'retry-1234-x')]);
     expect(both.every((r) => r.status === 'fulfilled')).toBe(true); expect(await s.bal()).toBe(305_000);
   });
+  const db = async () => { const u = new URL(url!); const name = `tq_${process.pid}_${Date.now()}_${Math.floor(Math.random() * 1e6)}`; const root = new pg.Client({ connectionString: url }); await root.connect(); await root.query(`CREATE DATABASE ${name}`);
+    u.pathname = `/${name}`; const pool = new pg.Pool({ connectionString: u.toString(), max: 6 }); drops.push(async () => { await pool.end(); await root.query(`DROP DATABASE ${name}`); await root.end(); }); return pool; };
+  /** Hold the treasury row lock on another connection so the spend queues behind it. */
+  const holdLock = async (pool: pg.Pool) => { const cl = await pool.connect(); await cl.query('BEGIN'); await cl.query("SELECT 1 FROM city_treasury WHERE id='main' FOR UPDATE"); return async () => { await cl.query('COMMIT'); cl.release(); }; };
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  it('authority: a term that ENDS while the spend is queued on the lock is refused, nothing debited', async () => {
+    const pool = await db(); const s = await setup(pool); await s.fund(500_000);
+    await s.m.settle(s.now); const term = { ends_at: (await s.m.mayor(s.now))!.endsAt };
+    const release = await holdLock(pool); const p = s.c.startProject('Ann', 'road_repair').then(() => 'ok', (e) => String(e.message));
+    await wait(300); s.set(Number(term.ends_at) + 1); await release();
+    expect(await p).toMatch(/sitting mayor/); expect(await s.bal()).toBe(500_000);
+    expect(Number((await pool.query('SELECT count(*) n FROM city_projects')).rows[0].n)).toBe(0);
+  });
+  it('authority: a recall committed while the spend is queued is refused; policy and building too', async () => {
+    const pool = await db(); const s = await setup(pool); await s.fund(5_000_000); await s.m.settle(s.now);
+    const release = await holdLock(pool);
+    const ps = [s.c.startProject('Ann', 'road_repair'), s.c.startPolicy('Ann', 'trade_week'), s.c.build('Ann', 'park')].map((x) => x.then(() => 'ok', (e) => String(e.message)));
+    await wait(300); await pool.query('UPDATE mayor_terms SET removed_at = $1 WHERE removed_at IS NULL', [s.now]); await release();
+    for (const r of await Promise.all(ps)) expect(r).toMatch(/sitting mayor/);
+    expect(await s.bal()).toBe(5_000_000);
+  });
+  it('a paid project keeps running after its mayor is recalled; racing policies debit once', async () => {
+    const pool = await db(); const s = await setup(pool); await s.fund(5_000_000); setCityForTest(s.c);
+    try {
+      await s.c.startProject('Ann', 'road_repair'); await s.m.settle(s.now); await pool.query('UPDATE mayor_terms SET removed_at = $1 WHERE removed_at IS NULL', [s.now]); await s.c.reload();
+      expect(cityPerk('truck_speed')).toBeCloseTo(0.1);
+    } finally { setCityForTest(null); }
+    const pool2 = await db(); const t = await setup(pool2); await t.fund(5_000_000); const c2 = new City(pool2 as never, () => t.m, t.clock, () => t.bank, () => 1); await c2.init();
+    const r = await Promise.allSettled([t.c.startPolicy('Ann', 'trade_week'), c2.startPolicy('Ann', 'trade_week')]);
+    expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1); expect(await t.bal()).toBe(5_000_000 - 75_000);
+  });
 });
