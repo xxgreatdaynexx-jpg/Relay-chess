@@ -88,7 +88,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
         <dt>Sell-back</dt><dd data-testid="deed-sellback">🪙 {chips(sellBackOf(Math.min(cost, o?.basis ?? cost)))} (70% of {o?.basis ? 'what the city was paid' : o ? 'what was paid' : 'your price'})</dd>
         {workerBonusOf(p.id) > 0 && <><dt>Worker cap</dt><dd data-testid="deed-workers">+{workerBonusOf(p.id)} Employment Office worker{workerBonusOf(p.id) > 1 ? 's' : ''} (property bonus max +{WORKER_BONUS_MAX})</dd></>}
         {p.kind === 'landmark' && ROYALTY_VENUE[p.type] && <><dt>Royalty</dt><dd data-testid="deed-royalty">{royaltyPct(p.type)} of {ROYALTY_VENUE[p.type]}, minted to the owner on top (the player keeps 100%). Not paid on the owner's own earnings.{o && <small className="block text-amber-300" data-testid="deed-royalty-income">Royalty income{mine ? '' : ` (${o.owner})`}: 🪙 {chips(ROY[p.id] ?? 0)} since bought</small>}</dd></>}
-        <PropertyIncomeDetails id={p.id} cost={cost} />
+        <PropertyIncomeDetails id={p.id} cost={cost} cityBasis={o?.basis} />
         {(p.type === 'jail' || p.type === 'harbour') && <><dt>Public service</dt><dd data-testid="deed-public-service">Ownership never restricts jail/law enforcement, harbour travel, shipping or public access. No owner-controlled fees and no passive income.</dd></>}
         <dt>Property tax</dt><dd data-testid="deed-tax">🪙 {chips(taxOf(taxBasisOf(cost, p.price)))}/day ({(TAX_RATE * 100).toFixed(1)}%)</dd>
         {o && o.arrears > 0 && <><dt>Arrears</dt><dd className="text-rose-300">{o.arrears} unpaid day{o.arrears > 1 ? 's' : ''} (repossessed at {GRACE_DAYS})</dd></>}

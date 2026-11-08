@@ -4,7 +4,7 @@
  */
 import type pg from 'pg';
 import { createHash } from 'node:crypto';
-import { incomeEligible, incomeEntitlement } from '../shared/propertyIncome.js';
+import { incomeEligible, incomeEntitlement, incomeBasisOf } from '../shared/propertyIncome.js';
 export const PROPERTY_INCOME_MIGRATION = `
 CREATE TABLE IF NOT EXISTS property_income_activation (id INT PRIMARY KEY CHECK (id = 1), started_at BIGINT NOT NULL);
 CREATE TABLE IF NOT EXISTS property_income (property_id TEXT PRIMARY KEY, ownership TEXT NOT NULL, started_at BIGINT NOT NULL,
@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS property_income (property_id TEXT PRIMARY KEY, owners
 export class PropertyIncomeFailure extends Error {
  constructor(readonly failedIds: string[], detail: string) { super(detail); }
 }
-export interface IncomeOwner { owner_key: string; owner_name: string; price: string | number; bought_at: string | number; deed: string | null; }
+export interface IncomeOwner { owner_key: string; owner_name: string; price: string | number; bought_at: string | number; deed: string | null; city_price: string | number | null; }
 export class PropertyIncome {
  constructor(private pool: pg.Pool, private clock = () => Date.now()) {}
  async init() {
@@ -22,10 +22,12 @@ export class PropertyIncome {
  }
  async settle(cl: pg.PoolClient, id: string, now: number, expected?: { key: string; boughtAt?: number; price?: number }) {
    if (!incomeEligible(id)) return { amount: 0, owner: '' };
-   const r = (await cl.query('SELECT owner_key, owner_name, price, bought_at, deed FROM properties WHERE id = $1 FOR UPDATE', [id])).rows[0] as IncomeOwner | undefined;
+   const r = (await cl.query('SELECT owner_key, owner_name, price, city_price, bought_at, deed FROM properties WHERE id = $1 FOR UPDATE', [id])).rows[0] as IncomeOwner | undefined;
    if (!r) return { amount: 0, owner: '' };
    if (expected && (r.owner_key !== expected.key || (expected.boughtAt != null && Number(r.bought_at) !== expected.boughtAt) || (expected.price != null && Number(r.price) !== expected.price))) throw Error('Property income owner changed');
-   const basis = Number(r.price); // authoritative actual deed price, NOT today's index/list price or an invented paid value
+   // Existing durable anti-arbitrage convention: normal purchases use their actual city-paid price;
+   // player-to-player buyout premiums never increase the minting basis (same cap as city sell-back).
+   const basis = incomeBasisOf(Number(r.price), r.city_price == null ? null : Number(r.city_price));
    const activation = Number((await cl.query('SELECT started_at FROM property_income_activation WHERE id = 1')).rows[0].started_at);
    const start = Math.max(activation, Number(r.bought_at));
    const ownership = createHash('sha256').update(JSON.stringify([r.owner_key, r.bought_at.toString(), r.deed, basis])).digest('hex');
@@ -42,7 +44,7 @@ export class PropertyIncome {
    const w = await cl.query('UPDATE casino_players SET chips = chips + $2, updated_at = now() WHERE player_key = $1 AND chips + $2 <= 9007199254740991 RETURNING chips', [r.owner_key, amount.toString()]);
    if (!w.rowCount) throw Error('Existing safe-range owner wallet required for property income');
    await cl.query(`INSERT INTO wallet_transactions(tx_key,player_key,name,game,amount,balance,memo) VALUES($1,$2,$3,'property_income',$4,$5,$6)`,
-     [`property-income:${id}:${ownership}:${total}`, r.owner_key, r.owner_name, amount.toString(), w.rows[0].chips, `Automatic business income (${id}); recorded deed cost / 7 days`]);
+     [`property-income:${id}:${ownership}:${total}`, r.owner_key, r.owner_name, amount.toString(), w.rows[0].chips, `Automatic business income (${id}); city-paid deed basis / 7 days`]);
    await cl.query('UPDATE property_income SET paid = $2 WHERE property_id = $1', [id, total.toString()]);
    return { amount: Number(amount), owner: r.owner_name };
  }

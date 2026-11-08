@@ -71,9 +71,18 @@ describe.skipIf(!url)('business income real PostgreSQL atomic durability',()=>{
   await own();await fund('Other');now+=WEEK;await expect(re.sell('Other',gas)).rejects.toThrow(/do not own/);
   await Promise.all([re.runIncome(),re.sell('A',gas)]);expect(await earnings()).toBe(60000);expect(await earnings('Other')).toBe(0);
  });
- it('warehouse hostile buyout settles prior owner; new owner rate uses actual buyout cost from new ownership time',async()=>{
+ it('warehouse hostile buyout settles prior owner; new owner starts fresh at the durable city-paid income basis',async()=>{
   await own(warehouse,'A',500000);await fund('B');now+=WEEK;await re.buyout('B',warehouse);expect(await earnings()).toBe(500000);await re.runIncome();expect(await earnings('B')).toBe(0);
-  now+=WEEK;await re.runIncome();expect(await earnings('B')).toBe(1000000);expect(await earnings()).toBe(500000);
+  now+=WEEK;await re.runIncome();expect(await earnings('B')).toBe(500000);expect(await earnings()).toBe(500000);
+ });
+ it('reciprocal warehouse buyouts cannot multiply passive income without new money paid to the city',async()=>{
+  await own(warehouse,'A',500000);await fund('B');
+  for(const buyer of ['B','A','B']) {now+=86400000;await re.buyout(buyer,warehouse);}
+  const deed=(await pool.query('SELECT price,city_price FROM properties WHERE id=$1',[warehouse])).rows[0];
+  expect(Number(deed.price)).toBe(4000000);expect(Number(deed.city_price)).toBe(500000);
+  expect(Number((await pool.query("SELECT SUM(amount) n FROM wallet_transactions WHERE game='property_buyout'")).rows[0].n)).toBe(0); // transfers stay inside the pair
+  await re.runIncome();expect(Number((await pool.query('SELECT basis FROM property_income WHERE property_id=$1',[warehouse])).rows[0].basis)).toBe(500000);
+  const before=await earnings('B');now+=WEEK;await re.runIncome();expect((await earnings('B'))-before).toBe(500000);
  });
  it('new normal purchases use canonical surcharged acquisition price, not tax or guessed base price',async()=>{
   await own('f:10','A',10000);now+=12345;const q=await re.quote('A',gas);const bought=await re.buy('A',gas,q.price);expect(bought.price).toBe(66000);

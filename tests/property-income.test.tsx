@@ -3,7 +3,7 @@ import React from 'react';
 import { describe, expect, it, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import { properties, PUBLIC_SERVICE_DEEDS, taxOf, sellBackOf } from '../shared/realEstate';
-import { incomeEligible, incomeEntitlement, PROPERTY_PAYBACK_MS } from '../shared/propertyIncome';
+import { incomeEligible, incomeEntitlement, incomeBasisOf, PROPERTY_PAYBACK_MS } from '../shared/propertyIncome';
 import { PropertyIncomeDetails } from '../client/src/components/PropertyIncomeDetails';
 import { readFileSync } from 'node:fs';
 afterEach(cleanup);
@@ -27,6 +27,11 @@ describe('automatic business income and public service deeds',()=>{
   const {container,rerender}=render(<dl><PropertyIncomeDetails id="b:gas:600:1600" cost={70000}/></dl>);expect(screen.getByTestId('deed-passive-income').textContent).toContain('10,000/day');
   expect(container.textContent).toContain('while offline');expect(container.textContent).toContain('every 10 minutes');expect(container.textContent).toContain('same rate forever');expect(container.textContent).toContain('Separate property and purchase taxes still apply');expect(container.querySelector('button')).toBeNull();
   rerender(<dl><PropertyIncomeDetails id="lm:jail" cost={750000}/></dl>);expect(screen.queryByTestId('deed-passive-income')).toBeNull();
+ });
+ it('buyout disclosure uses the original city-paid basis, not the reciprocal premium, while normal purchases keep actual cost',()=>{
+  expect(incomeBasisOf(66000,66000)).toBe(66000);expect(incomeBasisOf(4000000,500000)).toBe(500000);expect(incomeBasisOf(60000,null)).toBe(60000);
+  render(<dl><PropertyIncomeDetails id="lm:warehouse" cost={4000000} cityBasis={500000}/></dl>);
+  expect(screen.getByTestId('deed-passive-income').textContent).toContain('71,428.57/day');expect(screen.getByTestId('deed-income-buyout-cap').textContent).toContain('premium is not repaid in seven days');expect(screen.getByTestId('deed-income-buyout-cap').textContent).toContain('500,000');
  });
  it('jail models and harbour terminal route to deeds without changing public service/travel/shipping handlers or mobile sheet structure',()=>{
   const src=readFileSync('client/src/lib/world3d.ts','utf8');expect(src).toContain("o.userData.spot = 'lm:jail'");expect(src).toContain("id.startsWith('lm:')");expect(src).toContain('new THREE.BoxGeometry(14.6, 6, 8.6)');
