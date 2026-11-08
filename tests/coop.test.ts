@@ -30,9 +30,9 @@ async function fillStage(c: Coop, who: string) {
 }
 
 describe('co-op sizing + rules', () => {
-  it('stadium totals 25M over 4 stages; bridge follows', () => {
-    expect(COOP_PLAN.stadium.total).toBe(25_000_000); expect(COOP_PLAN.stadium.stages.map((s) => s.id)).toEqual(['foundation', 'frame', 'stands', 'roof']);
-    expect(Math.abs(projectValue(COOP_PLAN.stadium) - 25_000_000) / 25_000_000).toBeLessThan(0.01);
+  it('stadium totals about 693k over 4 stages; bridge follows', () => {
+    expect(COOP_PLAN.stadium.total).toBe(693_000); expect(COOP_PLAN.stadium.stages.map((s) => s.id)).toEqual(['foundation', 'frame', 'stands', 'roof']);
+    expect(Math.abs(projectValue(COOP_PLAN.stadium) - 693_000) / 693_000).toBeLessThan(0.01);
     expect(COOP_PLAN.bridge.stages).toHaveLength(4);
   });
   it('donor reward is 10%, capped, and always below the donation', () => {
@@ -85,22 +85,22 @@ describe('stadium sell-cap bonus', () => {
     expect(recentDonated(log, t0 + DAY)).toBe(1_000_000); expect(recentDonated(log, t0 + 59 * DAY)).toBe(1_500_000);
     expect(recentDonated(log, t0 + 60 * DAY)).toBe(500_000); expect(recentDonated(log, t0 + 91 * DAY)).toBe(0);
     resetBank(); resetMines(); setPriceIndexForTest(1); let now = t0; const c = resetCoop(new Coop(null, () => now));
-    fund('Roller', 2_000_000); await c.donate('Roller', { project: 'stadium', part: 'chips', qty: 1_000_000, nonce: nonce() });
-    expect(c.sellBonus('Roller')).toBeCloseTo(sellCapBonus(1_000_000), 10);
-    now = t0 + 61 * DAY; expect(c.sellBonus('Roller')).toBe(0); expect(c.stadiumDonated('Roller')).toBe(1_000_000);
+    fund('Roller', 2_000_000); await c.donate('Roller', { project: 'stadium', part: 'chips', qty: 20_000, nonce: nonce() });
+    expect(c.sellBonus('Roller')).toBeCloseTo(sellCapBonus(20_000), 10);
+    now = t0 + 61 * DAY; expect(c.sellBonus('Roller')).toBe(0); expect(c.stadiumDonated('Roller')).toBe(20_000);
     expect(c.view('Roller').stadiumRecent).toBe(0);
   });
   it('stacks across donations (by total given), boosts mines.quote + house room cap', async () => {
     resetBank(); resetMines(); setPriceIndexForTest(1); const c = resetCoop(new Coop(null));
     expect(sellCapMul('Stacker')).toBe(1); const q0 = getMines().quote('Stacker', Date.now()).capBase;
     fund('Stacker', 2_000_000);
-    await c.donate('Stacker', { project: 'stadium', part: 'chips', qty: 500_000, nonce: nonce() });
+    await c.donate('Stacker', { project: 'stadium', part: 'chips', qty: 20_000, nonce: nonce() });
     const b1 = c.sellBonus('Stacker');
-    await c.donate('Stacker', { project: 'stadium', part: 'chips', qty: 500_000, nonce: nonce() });
-    expect(c.stadiumDonated('Stacker')).toBe(1_000_000); expect(c.sellBonus('Stacker')).toBeCloseTo(sellCapBonus(1_000_000), 10); expect(c.sellBonus('Stacker')).toBeGreaterThan(b1);
-    expect(getMines().quote('Stacker', Date.now()).capBase).toBeCloseTo(q0 * (1 + sellCapBonus(1_000_000)), 3);
-    const r = houseRoom('Stacker'); expect(r.bonus).toBeCloseTo(sellCapBonus(1_000_000), 6); expect(r.cap).toBe(Math.floor(HOUSE_DAILY_BASE * (1 + sellCapBonus(1_000_000))));
-    expect(c.view('Stacker').sellBonus).toBeCloseTo(sellCapBonus(1_000_000), 10);
+    await c.donate('Stacker', { project: 'stadium', part: 'chips', qty: 20_000, nonce: nonce() });
+    expect(c.stadiumDonated('Stacker')).toBe(40_000); expect(c.sellBonus('Stacker')).toBeCloseTo(sellCapBonus(40_000), 10); expect(c.sellBonus('Stacker')).toBeGreaterThan(b1);
+    expect(getMines().quote('Stacker', Date.now()).capBase).toBeCloseTo(q0 * (1 + sellCapBonus(40_000)), 3);
+    const r = houseRoom('Stacker'); expect(r.bonus).toBeCloseTo(sellCapBonus(40_000), 6); expect(r.cap).toBe(Math.floor(HOUSE_DAILY_BASE * (1 + sellCapBonus(40_000))));
+    expect(c.view('Stacker').sellBonus).toBeCloseTo(sellCapBonus(40_000), 10);
     resetCoop();
   });
 });
@@ -112,10 +112,10 @@ describe('Coop server', () => {
 
   it('chip donation: debit + reward through the wallet; replay is a no-op', async () => {
     fund('Alice', 100_000); const c0 = chips('Alice'); const nn = nonce();
-    const r = await c.donate('Alice', { project: 'stadium', part: 'chips', qty: 50_000, nonce: nn });
-    expect(r.reward).toBe(5_000); expect(chips("Alice")).toBe(c0 - 50_000 + 5_000);
-    const again = await c.donate('Alice', { project: 'stadium', part: 'chips', qty: 50_000, nonce: nn }); expect(again.replay).toBe(true);
-    expect(chips('Alice')).toBe(c0 - 45_000); expect(c.projectView('stadium').top[0]).toEqual({ name: 'Alice', value: 50_000 });
+    const r = await c.donate('Alice', { project: 'stadium', part: 'chips', qty: 10_000, nonce: nn });
+    expect(r.reward).toBe(1_000); expect(chips("Alice")).toBe(c0 - 10_000 + 1_000);
+    const again = await c.donate('Alice', { project: 'stadium', part: 'chips', qty: 10_000, nonce: nn }); expect(again.replay).toBe(true);
+    expect(chips('Alice')).toBe(c0 - 9_000); expect(c.projectView('stadium').top[0]).toEqual({ name: 'Alice', value: 10_000 });
   });
   it('goods donation takes warehouse stock; refuses what you lack; reward cap holds', async () => {
     const g = projectStages(COOP_PLAN.stadium)[0]!.goods[0]!; const q = Math.min(g.qty, Math.ceil(1000 / g.price)); whAdd('Bob', g.type, g.id, q);
@@ -123,7 +123,9 @@ describe('Coop server', () => {
     expect(whQty('Bob', g.type, g.id)).toBe(q);
     const r = await c.donate('Bob', { project: 'stadium', part: partKey(g), qty: q, nonce: nonce() }); expect(whQty('Bob', g.type, g.id)).toBe(0);
     expect(r.value).toBe(q * g.price); expect(c.projectView('stadium').stages[0]!.done[partKey(g)]).toBe(q); expect(r.reward).toBeLessThan(r.value);
-    fund('Big', 10_000_000); await c.donate('Big', { project: 'stadium', part: 'chips', qty: 3_000_000, nonce: nonce() }); await c.donate('Big', { project: 'stadium', part: 'chips', qty: 500_000, nonce: nonce() });
+    // The reduced stadium is too small to hit the 50k reward ceiling; exercise it on the unchanged bridge.
+    for (let i = 0; i < 4; i++) await fillStage(c, 'Builder');
+    fund('Big', 10_000_000); await c.donate('Big', { project: 'bridge', part: 'chips', qty: 600_000, nonce: nonce() });
     expect(c.view('Big').me!.rewarded).toBe(DONOR_REWARD_CAP);
   });
   it('concurrency: parallel donations never over-fill a stage, never double-spend', async () => {

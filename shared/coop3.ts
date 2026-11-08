@@ -74,27 +74,38 @@ export const FLEET_LOG_MAX = 8;
 
 // ------------------------------------------------------------ weekly events
 export type EventKind = 'mining' | 'harvest' | 'fishing' | 'trade' | 'hockey';
-export interface EventDef { id: EventKind; name: string; icon: string; unit: string; goal: number; blurb: string; color: string }
+export interface EventDef { id: EventKind; name: string; icon: string; unit: string; goal: number; playerShare?: number; blurb: string; color: string }
 /**
- * Goals sized for the current server (~44 weekly-active players, read-only prod sizing Nov 4 2026): reachable with a
- * solid group week, not by one player (each player's counted contribution is capped at EVENT_PLAYER_SHARE of the goal).
+ * Historical goals and 10% player caps, retained for weeks that closed before the rebalance.
  */
-export const EVENTS: Record<EventKind, EventDef> = {
+export const LEGACY_EVENTS: Record<EventKind, EventDef> = {
   mining: { id: 'mining', name: 'Mining Rush', icon: '⛏️', unit: 'ore mined', goal: 25_000, blurb: 'Break ore veins in any mine.', color: '#f59e0b' },
   harvest: { id: 'harvest', name: 'Harvest Festival', icon: '🌾', unit: 'crops harvested', goal: 30_000, blurb: 'Harvest crops on any farm.', color: '#84cc16' },
   fishing: { id: 'fishing', name: 'Fishing Derby', icon: '🎣', unit: 'fish landed', goal: 4_000, blurb: 'Land fish at the pond, reef or deep sea.', color: '#38bdf8' },
   trade: { id: 'trade', name: 'Trade Week', icon: '🤝', unit: 'chips traded', goal: 3_000_000, blurb: 'Buy and sell goods on the Market with other players.', color: '#a78bfa' },
   hockey: { id: 'hockey', name: 'Hockey Cup', icon: '🏒', unit: 'hockey wins', goal: 400, blurb: 'Win paid hockey matches.', color: '#ef4444' },
 };
+/** Small-community targets from the live Trade Week onward. Closed weeks retain their exact old goals/caps.
+ * Read-only Nov 7 sizing: 17 ledger-active real accounts in seven days, 532 manual fish, 78,895 crops;
+ * only 600 chips of goods Market buys (counted on both sides), zero recorded paid hockey wins.
+ * Mining has no durable raw mined-unit time series; its target is a conservative small-group design choice.
+ * These are WEEKLY events, distinct from the daily Warehouse Contract Board. No schedule change.
+ */
+export const EVENT_REBALANCE_FROM = 43; // Nov 2 2026 00:00 MST; current week when requested
+export const EVENT_PLAYER_SHARE = 0.5;
+const NEW_EVENT_GOALS: Record<EventKind, number> = { mining: 4_000, harvest: 6_000, fishing: 300, trade: 1_000, hockey: 20 };
+export const EVENTS = Object.fromEntries(Object.entries(LEGACY_EVENTS).map(([kind, e]) => [kind, {
+  ...e, goal: NEW_EVENT_GOALS[kind as EventKind], playerShare: EVENT_PLAYER_SHARE,
+  ...(kind === 'trade' ? { blurb: 'Trade goods on the Market with other players. Chips spent count for both sides, not trips.' } : {}),
+}])) as Record<EventKind, EventDef>;
 export const EVENT_ORDER: EventKind[] = ['mining', 'harvest', 'fishing', 'trade', 'hockey'];
 export const WEEK_MS = 7 * DAY;
 /** Monday 2026-01-05 00:00 MST (07:00 UTC). Weeks start every Monday 00:00 MST (01:00 MDT in summer). */
 export const EVENT_EPOCH = Date.UTC(2026, 0, 5, 7);
 export const weekIndex = (ms: number) => Math.floor((ms - EVENT_EPOCH) / WEEK_MS);
 export const weekStart = (w: number) => EVENT_EPOCH + w * WEEK_MS;
-export const eventFor = (w: number): EventDef => EVENTS[EVENT_ORDER[((w % EVENT_ORDER.length) + EVENT_ORDER.length) % EVENT_ORDER.length]!]!;
-export const EVENT_PLAYER_SHARE = 0.1;
-export const playerEventCap = (e: EventDef) => Math.ceil(e.goal * EVENT_PLAYER_SHARE);
+export const eventFor = (w: number): EventDef => (w >= EVENT_REBALANCE_FROM ? EVENTS : LEGACY_EVENTS)[EVENT_ORDER[((w % EVENT_ORDER.length) + EVENT_ORDER.length) % EVENT_ORDER.length]!]!;
+export const playerEventCap = (e: EventDef) => Math.ceil(e.goal * (e.playerShare ?? 0.1));
 /** Most one trade can count for in Trade Week (so one huge wash trade can't fill the bar). */
 export const TRADE_COUNT_CAP = 50_000;
 export const EVENT_CLAIM_MS = 7 * DAY;

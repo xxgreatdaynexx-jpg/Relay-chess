@@ -60,7 +60,7 @@ export class WeeklyEvents {
         if (rk && !(await p.query('INSERT INTO wev_refs (ref, week) VALUES ($1,$2) ON CONFLICT DO NOTHING', [rk, week])).rowCount) {
           const c = wk.contrib.get(key); if (c) c.amount = Math.max(0, c.amount - add); wk.total = Math.max(0, wk.total - add); return;
         }
-        await p.query('INSERT INTO wev_contrib (week, player_key, name, amount) VALUES ($1,$2,$3,$4) ON CONFLICT (week, player_key) DO UPDATE SET amount = LEAST($5, wev_contrib.amount + $4), name = $3', [week, key, name.trim(), add, cap]);
+        await p.query('INSERT INTO wev_contrib (week, player_key, name, amount) VALUES ($1,$2,$3,$4) ON CONFLICT (week, player_key) DO UPDATE SET amount = GREATEST(wev_contrib.amount, LEAST($5, wev_contrib.amount + $4)), name = $3', [week, key, name.trim(), add, cap]);
       }).catch((err) => console.error('[weekly] credit write failed:', (err as Error).message));
     }
     this.onChange?.(week); return add;

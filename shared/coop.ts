@@ -18,14 +18,13 @@ export interface StagePlan { id: string; name: string; /** goods for this stage:
 export interface ProjectPlan { id: ProjectId; name: string; icon: string; /** total chips-equivalent cost (chips + goods at house price) */ total: number; /** share of each stage paid in chips; the rest is goods */ chipShare: number; stages: StagePlan[]; perk: string }
 
 /**
- * THE sizing constant. Retune a project by changing `total` (and, if wanted, chipShare / the goods split); every stage's
- * chips and goods quantities are derived from it by projectStages(). Stadium sizing (Nov 4 2026, read-only prod
- * SELECTs): ~44 weekly-active players, ~400k chips/day of new server income -> 25M is ~9 weeks of the whole server's
- * income, or ~5-7 weeks of serious group effort as income grows.
+ * Stadium sizing (Dayne, Nov 7 2026): about seven days at 25% of observed combined operating cashflow
+ * (~98,974 chips/day). Keep the 60/40 chips/goods split and all four stages. Goods round up at house prices;
+ * actual rounded value is projectValue(), not exactly the nominal total. Existing donation rows are never rewritten.
  */
 export const COOP_PLAN: Record<ProjectId, ProjectPlan> = {
   stadium: {
-    id: 'stadium', name: 'Chud Hub Hockey Stadium', icon: '🏟️', total: 25_000_000, chipShare: 0.6,
+    id: 'stadium', name: 'Chud Hub Hockey Stadium', icon: '🏟️', total: 693_000, chipShare: 0.6,
     stages: [
       { id: 'foundation', name: 'Foundation', goods: [['concrete', 0.6], ['brick', 0.4]] },
       { id: 'frame', name: 'Steel frame', goods: [['steel_beam', 0.76], ['steel', 0.24]] },
