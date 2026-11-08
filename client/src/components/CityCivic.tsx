@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { request } from '@/lib/net';
-import { PROJECTS, LEVERS, LEVER_IDS, POLICIES, POLICY_IDS, BUILDINGS, MAX_STAGE, leverText, perkOf, stageAt, underConstruction, RECALL_FEE, type LeverId, type CityView } from '../../../shared/city';
+import { RIOT_STOP_COST, PROJECTS, LEVERS, LEVER_IDS, POLICIES, POLICY_IDS, BUILDINGS, MAX_STAGE, leverText, perkOf, stageAt, underConstruction, RECALL_FEE, type LeverId, type CityView } from '../../../shared/city';
 import { abWhen } from './CityHallPanel';
 
 const chips = (n: number) => Math.round(n).toLocaleString('en-US');
@@ -55,6 +55,14 @@ export function CityCivic({ initial }: { initial?: CityView }) {
           return (<li key={id}><div><b>{p.icon} {p.label}</b><small>{p.blurb} · 🪙 {chips(cost)} from the treasury</small></div>
             {mayor && <button type="button" disabled={busy || !!v.policy || v.nextPolicyAt > now || v.treasury.balance < cost} onClick={() => act('city_policy', { policy: id }, `${p.label} is on for 24 h.`)}>Start</button>}</li>); })}
       </ul>
+
+      {v.riot && <div data-testid="city-riot">
+        <h4>🔥 City riot</h4>
+        {v.riot.active ? <small>Protesters, signs, fires and riot police are out in the city (just for show). The mayor can end it for good for 🪙 {chips(RIOT_STOP_COST)} from the treasury.</small>
+          : <small data-testid="city-riot-ended">The riot is over{v.riot.by ? `: Mayor ${v.riot.by} paid 🪙 ${chips(v.riot.cost)}` : ''}{v.riot.resolvedAt ? ` (${abWhen(v.riot.resolvedAt)})` : ''}. It stays over.</small>}
+        {mayor && v.riot.active && <button type="button" data-testid="city-riot-stop" disabled={busy || v.treasury.balance < RIOT_STOP_COST}
+          onClick={() => { if (window.confirm(`End the city riot?\n\nCost: 🪙 ${chips(RIOT_STOP_COST)} from the city treasury (no player is paid).\nProtesters, signs, fires and riot police leave for good.\n\nThis is shown in the public treasury ledger.`)) void act('city_riot_stop', { requestId: crypto.randomUUID() }, 'The riot is over.'); }}>Stop the riot 🪙 {chips(RIOT_STOP_COST)}</button>}
+      </div>}
 
       <h4>🧰 Treasury projects</h4>
       <small>Short city-wide boosts paid from the treasury. Everyone gets the same effect; nothing is paid to any player, the mayor included.</small>

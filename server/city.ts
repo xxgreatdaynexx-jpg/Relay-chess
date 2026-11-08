@@ -22,7 +22,7 @@ export * from './city-rates.js';
 import {
   LEVERS, LEVER_IDS, clampLever, POLICIES, POLICY_IDS, POLICY_MS, POLICY_COOLDOWN_MS, BUILDINGS, BUILDING_IDS, MAX_STAGE, stageAt, underConstruction, perkOf,
   PERK_BUILDING, TREASURY_CAP, APPROVAL_WINDOW_MS, APPROVAL_MIN_VOTES, RECALL_MAX_APPROVAL, RECALL_MIN_RATERS, RECALL_FEE, RECALL_GRACE_MS, RECALL_VOTE_MS,
-  recallNeeded, recallPasses, isExcludedName, leverText, DAY_MS, PROJECTS, PROJECT_IDS, combinedPerk, isRequestId, projectCap, type ProjectId, type ProjectRun,
+  recallNeeded, recallPasses, isExcludedName, leverText, DAY_MS, PROJECTS, PROJECT_IDS, combinedPerk, isRequestId, projectCap, RIOT_STOP_COST, type ProjectId, type ProjectRun,
   type LeverId, type PolicyId, type BuildingId, type BuildingState, type PerkId, type Sector, type CityView, type CityAction, type TreasuryRow, type ActionKind,
 } from '../shared/city.js';
 import { abDayStart } from '../shared/mayor.js';
@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS city_buildings (id TEXT PRIMARY KEY, stage INTEGER NO
 CREATE TABLE IF NOT EXISTS city_approval (voter_key TEXT NOT NULL, day BIGINT NOT NULL, week TEXT NOT NULL, up BOOLEAN NOT NULL, at BIGINT NOT NULL, PRIMARY KEY (voter_key, day));
 CREATE TABLE IF NOT EXISTS city_recalls (id TEXT PRIMARY KEY, week TEXT NOT NULL UNIQUE, opened_by TEXT NOT NULL, opened_at BIGINT NOT NULL, ends_at BIGINT NOT NULL, result TEXT, yes INTEGER, no INTEGER);
 CREATE TABLE IF NOT EXISTS city_recall_votes (recall_id TEXT NOT NULL, voter_key TEXT NOT NULL, yes BOOLEAN NOT NULL, at BIGINT NOT NULL, PRIMARY KEY (recall_id, voter_key));
+CREATE TABLE IF NOT EXISTS city_riot (id TEXT PRIMARY KEY, resolved_at BIGINT NOT NULL, by_name TEXT NOT NULL, request_id TEXT NOT NULL, cost BIGINT NOT NULL);
 CREATE TABLE IF NOT EXISTS city_projects (id TEXT PRIMARY KEY, project TEXT NOT NULL, starts_at BIGINT NOT NULL, ends_at BIGINT NOT NULL, cost BIGINT NOT NULL, by_name TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS mayor_actions (id TEXT PRIMARY KEY, at BIGINT NOT NULL, by_name TEXT NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL);
 `;
@@ -172,6 +173,37 @@ export class City {
     }
     void m0; await this.reload(); return { project: sp.id, cost, endsAt };
   }
+  /** Persisted riot state (read straight from the DB so every instance agrees immediately). */
+  async riotState(): Promise<NonNullable<CityView['riot']>> {
+    const r = (await this.pool.query("SELECT resolved_at, by_name FROM city_riot WHERE id = 'main'")).rows[0];
+    return r ? { active: false, resolvedAt: Number(r.resolved_at), by: String(r.by_name), cost: RIOT_STOP_COST } : { active: true, resolvedAt: null, by: null, cost: RIOT_STOP_COST };
+  }
+  /**
+   * pt2037u: the sitting mayor pays exactly RIOT_STOP_COST from the treasury to end the decorative riot joke for good.
+   * One transaction under the treasury lock: authoritative mayor check (after the lock and clock) -> still active? -> debit + ledger
+   * -> city_riot row (PK 'main') -> public log. requestId makes a lost-ack retry return the original result without a second charge.
+   */
+  async stopRiot(name: string, requestId?: unknown): Promise<{ stopped: true; cost: number; replay?: boolean }> {
+    const rid = requestId === undefined ? randomUUID() : isRequestId(requestId) ? requestId : null; if (!rid) throw new CityError('Bad request id.');
+    const prior = (await this.pool.query("SELECT request_id, by_name FROM city_riot WHERE id = 'main'")).rows[0];
+    if (prior) { if (String(prior.request_id) === rid && playerKey(String(prior.by_name)) === playerKey(name)) return { stopped: true, cost: RIOT_STOP_COST, replay: true }; throw new CityError('The riot is already over.'); }
+    await this.isMayor(name); // fast fail; authoritative re-check below
+    try {
+      await this.run([], async (cl) => {
+        const { now, mayor } = await this.lockedMayor(cl, name);
+        const done = (await cl.query("SELECT request_id FROM city_riot WHERE id = 'main'")).rows[0];
+        if (done) { if (String(done.request_id) === rid) throw new ReplayProject(); throw new CityError('The riot is already over.'); }
+        await this.spend(cl, RIOT_STOP_COST, 'riot', `Mayor ${mayor} ended the city riot`, now);
+        await cl.query("INSERT INTO city_riot (id, resolved_at, by_name, request_id, cost) VALUES ('main',$1,$2,$3,$4)", [now, mayor, rid, RIOT_STOP_COST]);
+        const a = this.actionStmt(mayor, 'event', `🕊️ Mayor ${mayor} paid 🪙 ${RIOT_STOP_COST.toLocaleString('en-US')} from the treasury to end the city riot`, now); await cl.query(a.sql, a.args);
+      });
+    } catch (e) {
+      if (e instanceof ReplayProject) return { stopped: true, cost: RIOT_STOP_COST, replay: true };
+      if (!(e instanceof CityError) && /duplicate|unique/i.test((e as Error).message)) return this.stopRiot(name, rid);
+      throw e;
+    }
+    await this.reload(); return { stopped: true, cost: RIOT_STOP_COST };
+  }
   async build(name: string, id: unknown) {
     if (typeof id !== 'string' || !BUILDINGS[id as BuildingId]) throw new CityError('Unknown building.'); const spec = BUILDINGS[id as BuildingId];
     const m = await this.isMayor(name); const now = this.clock(); await this.finish(now);
@@ -294,6 +326,7 @@ export class City {
       now, index: idx,
       levers: Object.fromEntries(LEVER_IDS.map((id) => [id, { value: this.lever(id, now), pending: null, nextChangeAt: this.nextLeverAt(id) }])) as CityView['levers'],
       policy: p ? { id: p.policy, startsAt: p.startsAt, endsAt: p.endsAt, by: p.by } : null, nextPolicyAt: this.nextPolicyAt(),
+      riot: await this.riotState(),
       projects: PROJECT_IDS.map((id) => ({ id, cost: Math.round(PROJECTS[id].cost * idx), active: this.activeProject(id, now), nextAt: this.nextProjectAt(id), headroom: this.projectHeadroom(id, now) })),
       projectLog: [...(this.snap.projects ?? [])].reverse().slice(0, 20),
       treasury: { balance: bal, in7d: (flows.rows as any[]).reduce((s, x) => s + Math.max(0, Number(x.amount)), 0), out7d: (flows.rows as any[]).reduce((s, x) => s + Math.max(0, -Number(x.amount)), 0),
@@ -349,6 +382,7 @@ export function registerCity(_io: Server, socket: Socket): void {
   on('city_policy', async (b, c) => c.startPolicy(need(), b.policy));
   on('city_build', async (b, c) => c.build(need(), b.building));
   on('city_project', async (b, c) => c.startProject(need(), b.project, b.requestId));
+  on('city_riot_stop', async (b, c) => c.stopRiot(need(), b.requestId));
   on('city_rate', async (b, c) => c.rate(need(), b.up));
   on('city_recall', async (_b, c) => c.openRecall(need()));
   on('city_recall_vote', async (b, c) => c.voteRecall(need(), b.yes));

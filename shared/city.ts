@@ -120,6 +120,8 @@ export function combinedPerk(perk: PerkId, buildingPerk: number, runs: ProjectRu
   const cap = BUILDINGS[PERK_BUILDING[perk]].perkBy[MAX_STAGE - 1]!;
   return Math.min(Math.max(buildingPerk, cap), buildingPerk + add);
 }
+/** pt2037u: the mayor can end the decorative city riot joke for EXACTLY this many treasury chips (not price-indexed). Once ended it stays ended. */
+export const RIOT_STOP_COST = 3_000;
 export const isRequestId = (x: unknown): x is string => typeof x === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(x);
 
 /** Approval + recall. */
@@ -148,6 +150,8 @@ export interface CityView {
   policy: { id: PolicyId; startsAt: number; endsAt: number; by: string } | null; nextPolicyAt: number;
   projects?: Array<{ id: ProjectId; cost: number; active: ProjectRun | null; nextAt: number; headroom: number }>;
   projectLog?: ProjectRun[];
+  /** Decorative riot joke: active until a mayor pays to end it (persisted, shared by every server). */
+  riot?: { active: boolean; resolvedAt: number | null; by: string | null; cost: number };
   treasury: { balance: number; in7d: number; out7d: number; ledger: TreasuryRow[] };
   buildings: Array<BuildingState & { stageNow: number; nextCost: number | null }>;
   approval: { up: number; down: number; rating: number | null };

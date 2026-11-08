@@ -1,4 +1,5 @@
-import { attachCityProtestJoke } from './cityProtestJoke';
+import { attachCityProtestJoke, CITY_PROTEST_JOKE_ENABLED } from './cityProtestJoke';
+import { cityRiotGate } from './cityRiotGate';
 import { farmBarns } from '../../../shared/farmBarns';
 import { inStadiumSite } from '../../../shared/coop';
 import * as THREE from 'three';
@@ -451,7 +452,9 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // Housing is data-driven (housing.ts): one instanced body (+ instanced gable roof) per type, tinted per instance.
   const r = rng(7);
   const { houses: cityHouses, patches } = cityFill(7, lmIds); const fillers = [...cityHouses, ...countryHomes()];
-  const cityJoke = attachCityProtestJoke(scene, { map: 'city', tier, sites: patches.filter(b => !civicRetired(b)), buildings: cityHouses.filter(b => !civicRetired(b)) });
+  const cityJoke = attachCityProtestJoke(scene, { map: 'city', tier, sites: patches.filter(b => !civicRetired(b)), buildings: cityHouses.filter(b => !civicRetired(b)), enabled: false });
+  // pt2037u: hidden until /api/city confirms the riot is still on; a mayor ending it (any server) turns it off for good.
+  const riotGate = cityRiotGate({ setEnabled: (on) => cityJoke.setEnabled(on && CITY_PROTEST_JOKE_ENABLED) });
   const roofGeo = (() => { const sh = new THREE.Shape(); sh.moveTo(-0.5, 0); sh.lineTo(0.5, 0); sh.lineTo(0, 1); sh.closePath();
     const g = new THREE.ExtrudeGeometry(sh, { depth: 1, bevelEnabled: false }); g.translate(0, 0, -0.5); g.rotateY(Math.PI / 2); return geo(g); })();
   const unitBox = geo(new THREE.BoxGeometry(1, 1, 1));
@@ -677,7 +680,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       const sp = BUILDINGS[id]; civicLabel(`${sp.icon} ${sp.label}`, b.building ? `🚧 Building stage ${b.building.stage}` : st ? `Stage ${st} / 3` : 'Planned · empty lot', 10.5, g); });
   };
   setCivic([]);
-  const loadCivic = () => { void fetch('/api/city').then((r) => r.json()).then((x: { view?: CityView }) => { if (!civicDead && Array.isArray(x?.view?.buildings)) setCivic(x.view.buildings); }).catch(() => {}); };
+  const loadCivic = () => { void fetch('/api/city').then((r) => r.json()).then((x: { view?: CityView }) => { if (civicDead) return; riotGate.apply(x?.view); if (Array.isArray(x?.view?.buildings)) setCivic(x.view.buildings); }).catch(() => {}); };
   loadCivic(); const civicPoll = window.setInterval(loadCivic, 30_000); window.addEventListener('city-changed', loadCivic);
   // Outskirts mines (MINE_SITES): a rocky apron under each one and a dirt haul track back to the city's road end.
   for (const site of Object.values(MINE_SITES)) {

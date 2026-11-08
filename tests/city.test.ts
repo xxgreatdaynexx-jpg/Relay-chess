@@ -93,10 +93,10 @@ describe('treasury', () => {
     expect(src.match(/transferAtomic\(/g)).toHaveLength(1); expect(src).toMatch(/amount: -RECALL_FEE/);
     expect(src).not.toMatch(/\.transfer\(|transferConfirmed|credit\(/);
     // every treasury debit is a policy, a treasury project or a building (sinks)
-    expect([...src.matchAll(/this\.spend\(cl, \w+, '(\w+)'/g)].map((m) => m[1]).sort()).toEqual(['build', 'policy', 'project']);
+    expect([...src.matchAll(/this\.spend\(cl, \w+, '(\w+)'/g)].map((m) => m[1]).sort()).toEqual(['build', 'policy', 'project', 'riot']);
     // and a full mayor term moves no chips into any wallet from city games
     const s = await withMayor(); await s.fund(5_000_000); await s.c.startPolicy('Ann', 'trade_week'); await s.c.build('Ann', 'park');
-    const pos = await s.pool.query("SELECT COUNT(*) AS n FROM wallet_transactions WHERE amount > 0 AND game IN ('sales_tax','recall_fee','policy','build','project','treasury')");
+    const pos = await s.pool.query("SELECT COUNT(*) AS n FROM wallet_transactions WHERE amount > 0 AND game IN ('sales_tax','recall_fee','policy','build','project','riot','treasury')");
     expect(Number(pos.rows[0].n)).toBe(0);
   });
   it('casino odds and payouts are untouched: no casino module reads the city, and no lever / sector / perk targets them', () => {
