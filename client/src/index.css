@@ -2587,3 +2587,20 @@ body.he-full-open .he-table.he-full { visibility: visible; }
   .private-hangar .dealer-main { overflow: visible; }
   .private-hangar .dealer-preview { height: 160px; }
 }
+
+/* Fort-only non-WebGL map: readable geometry-backed fallback, touch-scrolls on narrow displays. */
+.fort-flat-map { position: absolute; inset: 130px 0 66px; overflow: auto; touch-action: pan-x pan-y; background: #384632; }
+.fort-flat-board { position: relative; width: 100%; min-width: 640px; height: max(480px, 100%); }
+.fort-flat-board > svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.fort-flat-board button { position: absolute; transform: translate(-50%,-50%); min-height: 44px; width: 90px; padding: 5px; border: 1px solid #f2b630; border-radius: 8px; background: #202a26; color: #fff3d3; font: 600 12px/1.2 system-ui; }
+.fort-flat-board .fort-flat-tract { width: 72px; background: #655740; }
+.fort-flat-board .owned { border: 2px solid #8bdf87; }
+.fort-flat-board small { display: block; font-size: 10px; }
+.fort-map-notice { position: absolute; left: 12px; top: 96px; right: 12px; font-size: 12px; pointer-events: none; }
+@media (max-width: 700px), (max-height: 520px) {
+ .world.fortmc .fort-map-controls { top: auto; bottom: 8px; left: 8px; right: 8px; flex-wrap: wrap; justify-content: center; gap: 4px; }
+ .world.fortmc .fort-map-controls button { min-height: 44px; padding: 5px 8px; font-size: 12px; }
+ .world.fortmc .fort-flat-map { bottom: 108px; }
+}
+
+@media (max-height: 520px) and (min-width: 520px) { .world.fortmc .fort-flat-map { top: 112px; bottom: 60px; } }

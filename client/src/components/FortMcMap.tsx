@@ -1,3 +1,4 @@
+import { FortFlatMap } from './FortFlatMap';
 import { MapSheet } from './MapSheet';
 import { useDoing } from '@/lib/doing';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -25,7 +26,9 @@ export function FortMcMap() {
   useDoing('fortmc');
   const drag = usePanelDrag('fortmc');
   const canvasRef = useRef<HTMLCanvasElement>(null); const worldRef = useRef<FortWorld | null>(null);
-  const [loading, setLoading] = useState(true); const [tip, setTip] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [mode,setMode]=useState<'3d'|'2d'>(()=>{try{return localStorage.getItem('chud-world-mode')==='2d'?'2d':'3d';}catch{return '3d';}});
+  const [mapError,setMapError]=useState(false);
+  const [loading, setLoading] = useState(mode==='3d'); const [tip, setTip] = useState<{ id: string; x: number; y: number } | null>(null);
   const [view, setView] = useState<View | null>(null); const [panel, setPanel] = useState<Panel>(null); const [tract, setTract] = useState(1);
   const [msg, setMsg] = useState<string | null>(null); const [busy, setBusy] = useState(false); useEffect(() => setMsg(null), [panel, tract]); // Tess QA #5: a status line belongs to the panel that produced it
   const px = (base: number) => indexed(base, view?.index ?? 1);
@@ -39,7 +42,9 @@ export function FortMcMap() {
     if (fortJetIntro(tripNow().arrivedBy) === 'land') { w.jetShow(jetModel, 'land', () => w.jetHide()); clearArrival(); }
   }, [ready, jetModel]);
 
-  const apply = useCallback((r: { ok: boolean } & Partial<View>) => { if (r.fort) { setView(r as View); worldRef.current?.setFort(r.fort); } }, []);
+  const latestView=useRef<View|null>(null);
+  const pickSite=useCallback((id:string)=>{if(id.startsWith('t:')){setTract(Number(id.slice(2)));setPanel('tracts');return;}setPanel(({'f-plant':'plant','f-exchange':'exchange','f-mine':'mine','f-shaft':'shaft','f-airport':'airport'} as Record<string,Panel>)[id]??null);},[]);
+  const apply = useCallback((r: { ok: boolean } & Partial<View>) => { if (r.fort) { latestView.current=r as View; setView(r as View); worldRef.current?.setFort(r.fort); } }, []);
   const load = useCallback(() => { void request('fort_state').then((r) => apply(r as { ok: boolean } & Partial<View>)); }, [apply]);
   const [fMode, setFMode] = useState<Mode>('ship'); // trucks can't leave Fort McChud's map
   const act = async (body: Record<string, unknown>, ok?: string) => {
@@ -53,23 +58,21 @@ export function FortMcMap() {
   };
 
   useEffect(() => {
-    let dead = false; let freight: { dispose: () => void } | null = null;
-    void importWithReload(() => import('@/lib/fortmc3d')).then(({ createFortMc }) => {
-      if (dead || !canvasRef.current) return;
-      worldRef.current = createFortMc(canvasRef.current, {
-        onHover: (id, x, y) => setTip(id ? { id, x, y } : null),
-        onPick: (id) => {
-          if (id.startsWith('t:')) { setTract(Number(id.slice(2))); setPanel('tracts'); return; }
-          setPanel(({ 'f-plant': 'plant', 'f-exchange': 'exchange', 'f-mine': 'mine', 'f-shaft': 'shaft', 'f-airport': 'airport' } as Record<string, Panel>)[id] ?? null);
-        },
-      });
-      const w = worldRef.current;
-      void importWithReload(() => import('@/lib/worldFreight')).then(({ createFreight }) => { if (dead || worldRef.current !== w || !w) return; freight = createFreight(w, 'fortmc'); });
-      setLoading(false); setReady(true); load();
-    });
-    return () => { dead = true; freight?.dispose(); worldRef.current?.dispose(); worldRef.current = null; };
-  }, [load]);
-  useEffect(() => { const t = window.setInterval(load, 30_000); socket.on('connect', load); return () => { window.clearInterval(t); socket.off('connect', load); }; }, [load]);
+    if(mode!=='3d'){setLoading(false);setReady(false);return;}
+    let dead=false;let freight:{dispose:()=>void}|null=null;setLoading(true);setReady(false);
+    const canvas=canvasRef.current;
+    const fallback=()=>{if(dead)return;setMapError(true);setLoading(false);setReady(false);setTip(null);setMode('2d');};
+    const lost=(event:Event)=>{event.preventDefault();fallback();};canvas?.addEventListener('webglcontextlost',lost);
+    void importWithReload(()=>import('@/lib/fortmc3d')).then(({createFortMc})=>{
+      if(dead||!canvas)return;
+      const w=createFortMc(canvas,{onHover:(id,x,y)=>setTip(id?{id,x,y}:null),onPick:pickSite});worldRef.current=w;
+      if(latestView.current)w.setFort(latestView.current.fort);
+      void importWithReload(()=>import('@/lib/worldFreight')).then(({createFreight})=>{if(!dead&&worldRef.current===w)freight=createFreight(w,'fortmc');}).catch(()=>{});
+      setLoading(false);setReady(true);
+    }).catch(fallback);
+    return ()=>{dead=true;canvas?.removeEventListener('webglcontextlost',lost);freight?.dispose();worldRef.current?.dispose();worldRef.current=null;};
+  },[mode,pickSite]);
+  useEffect(() => { load(); const t = window.setInterval(load, 30_000); socket.on('connect', load); return () => { window.clearInterval(t); socket.off('connect', load); }; }, [load]);
 
   const s = view?.fort; const home = async () => {
     const w = worldRef.current;
@@ -82,8 +85,9 @@ export function FortMcMap() {
 
   return (
     <div className="world fortmc" data-testid="fortmc-map">
-      <canvas ref={canvasRef} className="world-canvas" data-testid="fortmc-canvas" />
+      {mode==='3d'?<canvas ref={canvasRef} className="world-canvas" data-testid="fortmc-canvas" />:<FortFlatMap fort={view?.fort??null} onPick={pickSite}/>}
       <div className="world-title"><span>FORT</span> McCHUD<small>oil sands · tap a site</small></div>
+      {mode==='2d'&&<div className="fort-map-notice" role="status">{mapError?'3D graphics unavailable. Showing the 2D map.':'2D map'} · Swipe to explore.</div>}
       {loading && <div className="world-loading">Landing at Fort McChud…</div>}
       {spot && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#f2b630' }} data-testid="world-tip"><b>{spot.icon} {spot.label}</b><span>{spot.blurb}</span><em>Click to open</em></div>}
       {tipTract && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#c8a060' }} data-testid="world-tip"><b>🛢 {tipTract.name}</b><span>{s?.tracts[String(tipTract.n)]?.leased ? `Your lease · ${s.tracts[String(tipTract.n)]!.wells.length} wells` : s?.surveyed.includes(tipTract.n) ? `Lease 🪙 ${chips(px(tipTract.lease))}` : 'Unsurveyed'}</span><em>Click for the tract</em></div>}
@@ -92,7 +96,8 @@ export function FortMcMap() {
         <span>🛢 {chips(whole(s.stock.crude))} crude</span><span>⛽ {chips(whole(s.stock.diesel) + whole(s.stock.gasoline))} fuel</span>
         <span>📦 tank {chips(view!.cap)}</span><span>🏗 {chips(view!.value)} built</span>
       </div>}
-      <div className="world-corner">
+      <div className="world-corner fort-map-controls">
+        <button type="button" data-testid="fort-map-mode" onClick={()=>{setTip(null);setMapError(false);setMode(mode==='3d'?'2d':'3d');}}>{mode==='3d'?'▦ 2D map':'🌲 Try 3D map'}</button>
         <button type="button" onClick={() => setPanel('tracts')} data-testid="fort-tracts-btn">🛢 Tracts</button>
         <button type="button" onClick={() => setPanel('plant')} data-testid="fort-plant-btn">🏭 Plant</button>
         <button type="button" onClick={() => setPanel('exchange')} data-testid="fort-exchange-btn">💹 Exchange</button>
