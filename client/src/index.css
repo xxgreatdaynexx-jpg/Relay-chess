@@ -2559,3 +2559,8 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .fac-sellconfirm { border: 1px solid rgba(226,90,58,.6); border-radius: 6px; padding: 6px; background: rgba(60,24,20,.5); font-size: 12px; }
 .fac-sellconfirm p { margin: 0 0 6px; }
 @media (pointer: coarse) { .fac-ssearch input { font-size: 16px; min-height: 36px; } .fac-ssearch button, .fac-sellconfirm button { min-height: 40px; min-width: 44px; } }
+
+/* Barn overview uses the same mobile MapSheet header/body as individual farms. */
+.farm-overview section button { width: 100%; min-height: 44px; text-align: left; white-space: normal; overflow-wrap: anywhere; padding: 8px; border: 1px solid #c9a24a66; border-radius: 8px; }
+.farm-overview section p { margin: 6px 0; }
+.farm-overview section button:disabled { opacity: .65; }

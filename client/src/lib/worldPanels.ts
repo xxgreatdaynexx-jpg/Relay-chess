@@ -3,7 +3,7 @@
  * re-opens a list underneath (the old `deeds && !deed` rule made the Real estate list pop back over the farm's seed buttons).
  */
 export type WorldPanel =
-  | { k: 'none' } | { k: 'deeds' } | { k: 'deed'; id: string } | { k: 'farm'; id: string }
+  | { k: 'none' } | { k: 'farms' } | { k: 'deeds' } | { k: 'deed'; id: string } | { k: 'farm'; id: string }
   | { k: 'venue'; id: 'airport' | 'racetrack' } | { k: 'dealer' } | { k: 'freight' } | { k: 'coop'; tab?: 'project' | 'contracts' | 'supply' | 'fleet' | 'event' } | { k: 'mechanic' } | { k: 'dock' } | { k: 'casino' } | { k: 'home' } | { k: 'kitchen'; id: string };
 export const NONE: WorldPanel = { k: 'none' };
 export const openPanel = (_cur: WorldPanel, next: WorldPanel): WorldPanel => next;

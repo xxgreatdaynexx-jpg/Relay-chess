@@ -15,7 +15,7 @@ const dur = (ms: number) => { const s = Math.max(0, Math.ceil(ms / 1000)); const
 type Ack = { ok: boolean; error?: string; [k: string]: unknown };
 
 /** FarmVille-style plot: a tile grid sized to the plot, a seed shop and real-time (server-clocked) crops. */
-export function FarmGame({ id, label, onClose }: { id: string; label: string; onClose: () => void }) {
+export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label: string; onClose: () => void; onAllFarms?: () => void }) {
   useDoing('farming', label);
   const dragFarm = usePanelDrag('farm');
   const [view, setView] = useState<FarmView | null>(null);
@@ -65,6 +65,7 @@ export function FarmGame({ id, label, onClose }: { id: string; label: string; on
     <MapSheet className="world-deed world-farm" data-testid="farm-game" data-drag-panel="farm" onPointerDown={dragFarm.onPointerDown} style={dragFarm.style()} ref={dragFarm.ref}>{dragFarm.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <h3>🌾 {label}</h3>
+      {onAllFarms && <button type="button" onClick={onAllFarms} data-testid="farm-all-farms">🏡 Barn · All my farms</button>}
       {!view ? <small>{msg ?? 'Loading the farm…'}</small> : <>
         <small>{view.mine ? 'Your farm. Pick a seed, select empty tiles (or plant them all), come back when it’s ready. Ripe crops wait at least 12 hours before they wither.' : `${view.owner ?? 'Nobody'}'s farm (visiting, read-only).`}</small>
         <div className="farm-grid" style={{ gridTemplateColumns: `repeat(${view.cols}, 1fr)` }} data-testid="farm-grid">

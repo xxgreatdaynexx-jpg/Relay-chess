@@ -40,7 +40,7 @@ import { disposeSharedProtestSfx } from './protestSfx';
 import type { OwnedProp } from './farmProtest';
 
 export const MILLIONAIRE_SIGN = 'millionaire-sign';
-type Handlers = { onHover: (id: string | null, x: number, y: number) => void; onPick: (id: string) => void; onProperty?: (id: string) => void; onTrailer?: (name: string) => boolean };
+type Handlers = { onHover: (id: string | null, x: number, y: number) => void; onPick: (id: string) => void; onProperty?: (id: string) => void; onBarn?: (id: string) => void; onTrailer?: (name: string) => boolean };
 
 let labelRenderer: THREE.WebGLRenderer | null = null;
 function rng(seed: number) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
@@ -839,8 +839,9 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     // mu-visuals farming machinery: tractors, a trailer, a seeder and a combine harvester parked in the yards (shared geo/mats).
     // Big Farms: a barn, a farmhouse, a silo and parked machinery in each farm's yard (shared/bigFarms.ts).
     for (const f of bigFarms()) { const b = f.barn, h = f.house; const g = new THREE.Group();
-      g.add(box(b.w, 4.6, b.d, mat({ color: 0x8a2a22, roughness: 0.85 }), b.x, 0, b.z));
-      const roof = new THREE.Mesh(roofGeo, mat({ color: 0x3a3a40, roughness: 0.8, flatShading: true })); roof.scale.set(b.w + 0.4, 2.4, b.d + 0.4); roof.position.set(b.x, 4.6, b.z); roof.rotation.y = Math.PI / 2; g.add(roof);
+      const barn = box(b.w, 4.6, b.d, mat({ color: 0x8a2a22, roughness: 0.85 }), b.x, 0, b.z);
+      barn.userData.spot = `barn:cf:${f.n}`; pickables.push(barn); g.add(barn);
+      const roof = new THREE.Mesh(roofGeo, mat({ color: 0x3a3a40, roughness: 0.8, flatShading: true })); roof.scale.set(b.w + 0.4, 2.4, b.d + 0.4); roof.position.set(b.x, 4.6, b.z); roof.rotation.y = Math.PI / 2; g.add(roof); roof.userData.spot = barn.userData.spot; pickables.push(roof);
       g.add(box(h.w, 3.2, h.d, mat({ color: 0xe8dcc4, roughness: 0.85 }), h.x, 0, h.z));
       const hr = new THREE.Mesh(roofGeo, mat({ color: 0x5a3a2a, roughness: 0.8, flatShading: true })); hr.scale.set(h.w + 0.4, 1.8, h.d + 0.4); hr.position.set(h.x, 3.2, h.z); g.add(hr);
       g.add(box(1.2, 0.8, 0.1, mat({ color: 0xffd08a, emissive: 0xffb050, emissiveIntensity: 0.7 * NEON }), h.x, 1.6, h.z + h.d / 2 + 0.05));
@@ -892,6 +893,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     if (!down || fly) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y); const dragged = moved > (e.pointerType === "touch" ? 16 : 8) || !!down.drag; down = null; if (dragged) { clearTip(); return; }
     const id = pick(e.clientX, e.clientY); if (!id) { setHover(null); h.onHover(null, 0, 0); return; }
     if (id === MILLIONAIRE_SIGN) { h.onHover(null, 0, 0); window.dispatchEvent(new CustomEvent('open-launch-popup')); return; }
+    if (id.startsWith('barn:')) { h.onHover(null, 0, 0); h.onBarn?.(id.slice(5)); return; }
     if (id.startsWith('trailer:')) { h.onHover(id, e.clientX, e.clientY); if (h.onTrailer?.(id.slice(8))) return; window.dispatchEvent(new CustomEvent('open-player', { detail: id.slice(8) })); return; } // trailers: your own opens your home (kitchen), others the owner's profile
     if (id.startsWith('b:') || id.startsWith('p:') || id.startsWith('f:') || id.startsWith('cf:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel
     flyTo(id);

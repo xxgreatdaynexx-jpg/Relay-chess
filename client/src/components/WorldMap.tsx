@@ -19,6 +19,8 @@ import { MINE_CAVE_EVENT } from '../../../shared/mines';
 import { MINE_SITES } from '@/lib/worldLayout';
 import type { World } from '@/lib/world3d';
 import { FarmGame } from './FarmGame';
+import { FarmOverview, FarmOverviewButton } from './FarmOverview';
+import { barnFarms, isBarnProperty } from '../../../shared/barnFarms';
 import { useAccount } from '@/lib/auth';
 import { useTrip } from '@/lib/travel';
 import { socket } from '@/lib/net';
@@ -50,7 +52,7 @@ function OwnedHomes2D({ owned, onPick }: { owned: Map<string, OwnedProperty>; on
       {cap < homes.length && <button type="button" className="owner-tag more" onClick={() => setAll(true)}>+{homes.length - cap} more</button>}</div></section>;
 }
 
-export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }: { id: string; owned: Map<string, OwnedProperty>; me: string | null; onClose: () => void; onFarm?: () => void; onKitchen?: () => void; onDone?: (ev: 're_buy' | 're_sell' | 're_buyout', text: string, paid?: number) => void }) {
+export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, onAllFarms }: { id: string; owned: Map<string, OwnedProperty>; me: string | null; onClose: () => void; onFarm?: () => void; onAllFarms?: () => void; onKitchen?: () => void; onDone?: (ev: 're_buy' | 're_sell' | 're_buyout', text: string, paid?: number) => void }) {
   useDoing('realestate', propertyById(id)?.label);
   const dragDeed = usePanelDrag('deed');
   const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState<null | 're_buy' | 're_sell' | 're_buyout'>(null); const [msg, setMsg] = useState<string | null>(null); const wallet = useWalletChips(); useEffect(() => setMsg(null), [id]); // Tess QA #5: switching deeds clears the last deed's status
@@ -94,6 +96,8 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen }:
       {mine && onKitchen && p.kind !== 'landmark' && <button type="button" onClick={onKitchen} data-testid="deed-kitchen">🍳 Kitchen</button>}
       {o && isHomeProperty(p) && <button type="button" onClick={() => { enterHome(p.id); onClose(); }} data-testid="deed-enter">{mine ? '🛋️ Enter & decorate' : `🚪 Visit ${o.owner}'s home`}</button>}
       {p.kind === 'farm' && o && onFarm && <button type="button" onClick={onFarm} data-testid="deed-farm">{mine ? '🌾 Open farm' : '👀 Visit farm'}</button>}
+      {isBarnProperty(id) && <small>This Big Farm includes a barn: owning it unlocks one overview of all your farms, grouped by map.</small>}
+      {mine && isBarnProperty(id) && onAllFarms && <button type="button" onClick={onAllFarms} data-testid="deed-barn">🏡 Barn · All my farms</button>}
       {p.kind === 'farm' && !o && <small>Farmland: buy it to plant crops (FarmVille-style, real-time).</small>}
       {!o && me && short > 0 && !msg && <small id="deed-short" className="text-amber-300" data-testid="deed-short">You need 🪙 {chips(short)} more chips to buy this.</small>}
       {msg && <small role="status" data-testid="deed-msg">{msg}</small>}
@@ -184,6 +188,8 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   const deeds = panel.k === 'deeds'; const setDeeds = (v: boolean) => setPanel((c) => (v ? { k: 'deeds' } : closePanel(c, 'deeds')));
   // #32: farm plots are tiny 3D tiles and don't exist on the 2D map, so on phones there was no reliable way in. Owned farms get a direct button.
   const myFarms = me ? [...owned.values()].filter((o) => (o.id.startsWith('f:') || o.id.startsWith('cf:')) && o.owner.toLowerCase() === me.toLowerCase()).map((o) => o.id) : [];
+  const hasBarn = barnFarms(me, owned.values()).unlocked;
+  const openAllFarms = () => setPanel({ k: 'farms' });
   const farm = panelId(panel, 'farm'); const setFarm = (id: string | null) => setPanel((c) => (id ? { k: 'farm', id } : closePanel(c, 'farm')));
   const ownedRef = useRef(owned); ownedRef.current = owned;
   useEffect(() => {
@@ -280,6 +286,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
         worldRef.current = createWorld(canvasRef.current, {
           onHover: (id, x, y) => setTip(id ? { id, x, y } : null),
           onPick: (id) => { if (id) goRef.current(id); }, // '' = a profile "Show on map" glide, not a building
+          onBarn: (id) => { const o = ownedRef.current.get(id); const m = meRef.current; if (o && m && o.owner.toLowerCase() === m.toLowerCase()) setPanel({ k: 'farms' }); else setDeed(id); },
           onProperty: (id) => { const o = ownedRef.current.get(id); const m = meRef.current;
             if ((id.startsWith('f:') || id.startsWith('cf:')) && o && m && o.owner.toLowerCase() === m.toLowerCase()) setFarm(id); else setDeed(id); },
           onTrailer: (n) => { const m = meRef.current; if (m && n.toLowerCase() === m.toLowerCase()) { setPanel({ k: 'home' }); return true; } return false; },
@@ -340,6 +347,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       <div className="world-corner">
         <button type="button" onClick={() => setPanel((c) => togglePanel(c, { k: 'deeds' }))} data-testid="world-deeds-btn">🏛 Real estate</button>
         {me && <button type="button" onClick={() => setPanel((c) => togglePanel(c, { k: 'home' }))} data-testid="world-home-btn">🏠 My home</button>}
+        <FarmOverviewButton me={me} owned={owned} onOpen={openAllFarms} />
         {myFarms.length > 0 && <button type="button" onClick={() => setFarm(myFarms[0])} data-testid="world-farm-btn">🌾 My farm{myFarms.length > 1 ? 's' : ''}</button>}
         {mode === '3d' && !loading && <button type="button" onClick={() => void toggleDrive()} data-testid="world-drive">{driving ? '🅿 Park' : '🚗 Drive'}</button>}
         <button type="button" onClick={() => setPanel((c) => togglePanel(c, { k: 'freight' }))} data-testid="world-freight-btn">📦 Logistics</button>
@@ -362,7 +370,8 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
           <button type="button" onClick={() => { setPanel(NONE); openFurnitureStore(); }} data-testid="home-furniture-store">🛋️ Furniture Store<span>Shop</span></button>
         </>; })()}
       </MapSheet>}
-      {deed && <DeedPanel id={deed} owned={owned} me={me} onKitchen={() => { openKitchen(propertyById(deed)?.label ?? deed, deed); setDeed(null); }} onClose={() => setDeed(null)} onFarm={() => setFarm(deed)} onDone={(ev, text, paid) => {
+      {panel.k === 'farms' && <FarmOverview me={me} owned={owned} map="city" onOpenFarm={setFarm} onClose={() => setPanel((c) => closePanel(c, 'farms'))} />}
+      {deed && <DeedPanel onAllFarms={hasBarn ? openAllFarms : undefined} id={deed} owned={owned} me={me} onKitchen={() => { openKitchen(propertyById(deed)?.label ?? deed, deed); setDeed(null); }} onClose={() => setDeed(null)} onFarm={() => setFarm(deed)} onDone={(ev, text, paid) => {
         setToast(text); window.clearTimeout(toastT.current); toastT.current = window.setTimeout(() => setToast(null), 4000);
         setOwned((m) => { const n = new Map(m); if ((ev === 're_buy' || ev === 're_buyout') && me) n.set(deed, optimisticOwn(m.get(deed), ev, deed, me, paid ?? propertyById(deed)?.price ?? 0, Date.now())); else n.delete(deed); return n; });
       }} />}
@@ -370,7 +379,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       <EmploymentHost />
       <CityHallHost />
       {toast && <div className="world-toast" role="status" data-testid="world-toast">{toast}</div>}
-      {farm && <FarmGame id={farm} label={propertyById(farm)?.label ?? 'Farm'} onClose={() => setFarm(null)} />}
+      {farm && <FarmGame onAllFarms={hasBarn ? openAllFarms : undefined} id={farm} label={propertyById(farm)?.label ?? 'Farm'} onClose={() => setFarm(null)} />}
       {deeds && <DeedList owned={owned} me={me} onOpen={(id) => setDeed(id)} onClose={() => setDeeds(false)} />}
       {driving && <>
         <div className="world-speedo" data-testid="world-speedo">{kmh} <small>km/h</small><em>WASD / arrows · E enter · Esc park · Space handbrake{nitro ? ' · Shift/N nitro' : ''}</em>{drift && <b className="world-drift" data-testid="world-drift">DRIFT</b>}{nitro && <span className={`world-nitro${nitro.on ? ' on' : ''}`} data-testid="world-nitro"><i style={{ width: `${Math.round((nitro.have / nitro.full) * 100)}%` }} /></span>}</div>

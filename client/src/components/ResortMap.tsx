@@ -13,6 +13,8 @@ import { socket } from '@/lib/net';
 import { flyHome } from '@/lib/travel';
 import { DeedPanel } from './WorldMap';
 import { FarmGame } from './FarmGame';
+import { FarmOverview, FarmOverviewButton } from './FarmOverview';
+import { barnFarms } from '../../../shared/barnFarms';
 import { BuildingInventory } from './BuildingInventory';
 import { CookingHost, openKitchen } from './CookingPanels';
 import { lazyWithReload } from '@/lib/lazyWithReload';
@@ -37,6 +39,9 @@ export function ResortMap() {
   const [loading, setLoading] = useState(true); const [tip, setTip] = useState<{ id: string; x: number; y: number } | null>(null);
   const [owned, setOwned] = useState<Map<string, OwnedProperty>>(new Map()); const ownedRef = useRef(owned); ownedRef.current = owned;
   const meRef = useRef(me); meRef.current = me;
+  const [allFarms, setAllFarms] = useState(false);
+  const hasBarn = barnFarms(me, owned.values()).unlocked;
+  const openAllFarms = () => { setFarm(null); setDeed(null); setList(false); setCoral(false); setAir(false); setCasino(false); setFloor(null); setPier(false); setMarina(false); setDeepSea(false); setHangar(false); setAllFarms(true); };
   const [deed, setDeed] = useState<string | null>(null); const [farm, setFarm] = useState<string | null>(null); const [coral, setCoral] = useState(false);
   const [casino, setCasino] = useState(false); const [floor, setFloor] = useState<string | null>(null); const [air, setAir] = useState(false); const [msg, setMsg] = useState<string | null>(null); const [list, setList] = useState(false); const [pier, setPier] = useState(false); const [marina, setMarina] = useState(false); const [deepSea, setDeepSea] = useState(false); const [hangar, setHangar] = useState(false);
 
@@ -63,6 +68,7 @@ export function ResortMap() {
     return () => { dead = true; socket.off('re_changed', load); socket.off('farm_changed', loadFarm); window.clearInterval(t); };
   }, [loading]);
   useEffect(() => { worldRef.current?.setRunning(!casino && !floor); }, [casino, floor]);
+  useEffect(() => { if (allFarms && (farm || deed || list || coral || air || casino || floor || pier || marina || deepSea || hangar)) setAllFarms(false); }, [allFarms, farm, deed, list, coral, air, casino, floor, pier, marina, deepSea, hangar]);
 
   function go(id: string) {
     switch (id) {
@@ -88,13 +94,15 @@ export function ResortMap() {
       {spot && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#' + spot.color.toString(16).padStart(6, '0') }} data-testid="world-tip"><b>{spot.icon} {spot.label}</b><span>{spot.blurb}</span><em>Click to enter</em></div>}
       {tipProp && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#d8b25a' }} data-testid="world-tip"><b>{tipProp.label}</b><span>{tipOwner ? `Owned by ${tipOwner}` : `For sale · 🪙 ${chips(indexed(tipProp.price, IDX))}`}</span><em>Click for the deed</em></div>}
       <div className="world-corner">
+        <FarmOverviewButton me={me} owned={owned} onOpen={openAllFarms} />
         <button type="button" onClick={() => { setDeed(null); setFarm(null); setList(!list); }} data-testid="resort-deeds-btn">🏝 Resort real estate</button>
         <button type="button" onClick={() => setCoral(!coral)} data-testid="resort-coral-btn">🐚 Coral Grotto storage</button>
         <button type="button" onClick={() => void home()} data-testid="resort-fly-home">✈️ Fly home (free)</button>
       </div>
       {deed && <DeedPanel id={deed} owned={owned} me={me} onKitchen={() => { openKitchen(baseProperty(deed)?.label ?? deed, deed); setDeed(null); }} onClose={() => setDeed(null)} onFarm={() => { setFarm(deed); setDeed(null); }} />}
       {coral && <MapSheet heading="🐚 Coral Grotto storage" className="world-deed" data-testid="resort-coral"><button type="button" className="world-deed-x" onClick={() => setCoral(false)} aria-label="Close">✕</button><BuildingInventory building="coral" /></MapSheet>}
-      {farm && <FarmGame id={farm} label={baseProperty(farm)?.label ?? 'Plantation'} onClose={() => setFarm(null)} />}
+      {allFarms && <FarmOverview me={me} owned={owned} map="resort" onClose={() => setAllFarms(false)} onOpenFarm={(id) => { setAllFarms(false); setFarm(id); }} />}
+      {farm && <FarmGame onAllFarms={hasBarn ? openAllFarms : undefined} id={farm} label={baseProperty(farm)?.label ?? 'Plantation'} onClose={() => setFarm(null)} />}
       {list && !deed && (
         <MapSheet className="world-deed world-deeds" data-testid="resort-deeds" data-drag-panel="resortDeeds" onPointerDown={dragResortDeeds.onPointerDown} style={dragResortDeeds.style()} ref={dragResortDeeds.ref}>{dragResortDeeds.handle}
           <button type="button" className="world-deed-x" onClick={() => setList(false)} aria-label="Close">✕</button>
