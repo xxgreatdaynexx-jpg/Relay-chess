@@ -11,7 +11,7 @@ export function FarmOverview({ me, owned, map, onOpenFarm, onClose }: Ownership 
   return <MapSheet className="world-deed world-deeds farm-overview" data-testid="all-farms">
     <button type="button" className="world-deed-x" aria-label="Close" onClick={onClose}>✕</button>
     <h3>🏡 Barn · All my farms</h3>
-    {!unlocked ? <small>Own a Big Farm with a barn to unlock this overview. Your usual individual farm access is unchanged.</small> : <>
+    {!unlocked ? <small>Own a farm with a barn to unlock this overview. Your usual individual farm access is unchanged.</small> : <>
       <small>Your barn brings your own farms into one menu. Inventories stay separate by map. Travel before opening a farm on another map.</small>
       {groups.map((g) => <section key={g.map} data-testid={`all-farms-${g.map}`}><h4>{g.label}</h4>
         {!g.farms.length && <small>No farms owned here.</small>}

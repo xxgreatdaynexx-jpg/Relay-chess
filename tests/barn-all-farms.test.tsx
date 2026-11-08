@@ -19,7 +19,7 @@ const owned = () => new Map([own(barn.id), own(city.id), own(field.id), own(reso
 beforeEach(() => { vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('barn-owned unified farm navigation (no stock or gameplay operations)', () => {
-  it('recognizes only actual catalog Big Farm barns, not arbitrary cf ids or decorative buildings', () => {
+  it('recognizes catalog farm deeds bundled with barns, not arbitrary cf ids or unrelated buildings', () => {
     expect(isBarnProperty(barn.id)).toBe(true); expect(isBarnProperty(field.id)).toBe(false);
     expect(isBarnProperty('cf:999999')).toBe(false); expect(isBarnProperty('barn')).toBe(false);
   });

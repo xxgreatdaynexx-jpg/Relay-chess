@@ -1,7 +1,7 @@
-/** Big Farms are the catalog's purchasable barn bundle (cf:1000+); decorative barns confer no ownership. */
-import { bigFarms } from './bigFarms.js';
+/** All physical farm barns are bundled with their existing field deed; no separate barn purchase or price. */
+import { farmBarns } from './farmBarns.js';
 import { propertyById, type OwnedProperty } from './realEstate.js';
-export const isBarnProperty = (id: string) => bigFarms().some((f) => id === `cf:${f.n}`);
+export const isBarnProperty = (id: string) => farmBarns().some((b) => id === b.farmId);
 export function barnFarms(me: string | null, owned: Iterable<OwnedProperty>) {
   const key = me?.trim().toLowerCase();
   const mine = key ? [...owned].filter((o) => o.owner.trim().toLowerCase() === key) : [];

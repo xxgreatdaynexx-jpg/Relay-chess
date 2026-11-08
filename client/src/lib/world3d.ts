@@ -1,3 +1,4 @@
+import { farmBarns } from '../../../shared/farmBarns';
 import { inStadiumSite } from '../../../shared/coop';
 import * as THREE from 'three';
 import { JAIL_SITE, JAIL_SCALE, type JailInfo } from '../../../shared/jail';
@@ -754,7 +755,8 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     // Countryside field farms (cf:<n>) are drawn by the farm renderer below (soil, furrows, fence, crops), like the Farm district.
     // barns + sheds (farm-district barn red, dark roofs), warehouses + gas stations (buyable)
     const outb = O.buildings.filter((b) => b.kind === 'barn' || b.kind === 'shed'); const biz = countryBusinesses();
-    inst(unitBox, mat({ color: 0xffffff, roughness: 0.85 }), outb.length, (i) => { const b = outb[i]; d.position.set(b.x, b.h / 2, b.z); d.rotation.y = b.rot; d.scale.set(b.w, b.h, b.d); }, (i) => (outb[i].kind === 'barn' ? 0x8a2a22 : 0x6a5a48));
+    const oldBarnMeshes = inst(unitBox, mat({ color: 0xffffff, roughness: 0.85 }), outb.length, (i) => { const b = outb[i]; d.position.set(b.x, b.h / 2, b.z); d.rotation.y = b.rot; d.scale.set(b.w, b.h, b.d); }, (i) => (outb[i].kind === 'barn' ? 0x8a2a22 : 0x6a5a48));
+    if (oldBarnMeshes) { oldBarnMeshes.userData.barns = outb.map((b) => farmBarns().some((f) => f.family === 'country' && f.farmId === b.farmId) ? b.farmId : null); pickables.push(oldBarnMeshes); }
     inst(roofGeo, mat({ color: 0x3a3a40, roughness: 0.8, flatShading: true }), outb.length, (i) => { const b = outb[i]; d.position.set(b.x, b.h, b.z); d.rotation.y = b.rot; d.scale.set(b.w + 0.3, 1.8, b.d + 0.3); });
     const bizM = inst(unitBox, mat({ color: 0xffffff, roughness: 0.8 }), biz.length, (i) => { const b = biz[i]; d.position.set(b.x, b.h / 2, b.z); d.rotation.y = b.rot; d.scale.set(b.w, b.h, b.d); }, (i) => (biz[i].kind === 'gas' ? 0xd8d4cc : 0x5a6270));
     if (bizM) { bizM.userData.props = biz.map((b) => buildingId(businessType(b), b)); pickables.push(bizM); biz.forEach((b, i) => propTop.set(bizM.userData.props[i], [b.x, b.h, b.z])); }
@@ -835,6 +837,8 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       const roof = new THREE.Mesh(roofGeo, mat({ color: 0x3a3a40, roughness: 0.8, flatShading: true })); roof.scale.set(b.w + 0.4, 2.2, b.d + 0.4); roof.position.y = 4.2; roof.rotation.y = Math.PI / 2; g.add(roof);
       g.add(box(3, 2.8, 0.1, mat({ color: 0xe8e0d0, emissive: 0xffc070, emissiveIntensity: 0.25 * NEON }), 0, 0, -b.d / 2 - 0.05));
       g.add(box(1.2, 0.8, 0.1, mat({ color: 0xffd08a, emissive: 0xffb050, emissiveIntensity: 0.7 * NEON }), 0, 3.1, -b.d / 2 - 0.05));
+      const deed = farmBarns().find((f) => f.family === 'district' && f.x === b.x && f.z === b.z)!.farmId;
+      g.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.userData.spot = `barn:${deed}`; pickables.push(o); } });
       g.position.set(b.x, 0, b.z); scene.add(g); }
     // mu-visuals farming machinery: tractors, a trailer, a seeder and a combine harvester parked in the yards (shared geo/mats).
     // Big Farms: a barn, a farmhouse, a silo and parked machinery in each farm's yard (shared/bigFarms.ts).
@@ -878,7 +882,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // Interaction.
   const ray = new THREE.Raycaster(); ray.layers.enable(LABEL_LAYER); const ndc = new THREE.Vector2();
   let hovered: string | null = null; let fly: { from: THREE.Vector3; to: THREE.Vector3; tf: THREE.Vector3; tt: THREE.Vector3; t: number; id: string } | null = null;
-  const pick = (cx: number, cy: number) => { const rc = canvas.getBoundingClientRect(); ndc.set(((cx - rc.left) / rc.width) * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1); ray.setFromCamera(ndc, camera); const hit = ray.intersectObjects(pickables, false)[0]; const tr = hit?.object.userData.trailers as string[] | undefined; if (tr && hit?.instanceId != null) return `trailer:${tr[hit.instanceId]}`; const pr = hit?.object.userData.props as string[] | undefined; if (pr && hit?.instanceId != null) return pr[hit.instanceId] ?? null; return (hit?.object.userData.spot as string | undefined) ?? null; };
+  const pick = (cx: number, cy: number) => { const rc = canvas.getBoundingClientRect(); ndc.set(((cx - rc.left) / rc.width) * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1); ray.setFromCamera(ndc, camera); const hit = ray.intersectObjects(pickables, false)[0]; const tr = hit?.object.userData.trailers as string[] | undefined; if (tr && hit?.instanceId != null) return `trailer:${tr[hit.instanceId]}`; const barnIds = hit?.object.userData.barns as Array<string | null> | undefined; if (barnIds && hit?.instanceId != null && barnIds[hit.instanceId]) return `barn:${barnIds[hit.instanceId]}`; const pr = hit?.object.userData.props as string[] | undefined; if (pr && hit?.instanceId != null) return pr[hit.instanceId] ?? null; return (hit?.object.userData.spot as string | undefined) ?? null; };
   const setHover = (id: string | null) => {
     if (id === hovered) return; hovered = id; canvas.style.cursor = id ? 'pointer' : 'grab';
     if (signGlow) signGlow.emissiveIntensity = (id === MILLIONAIRE_SIGN ? 2.2 : 0.9) * NEON;

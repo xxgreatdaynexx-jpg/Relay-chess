@@ -14,7 +14,7 @@ const VENUE_ROADS = [...AIRPORT_ROADS, ...RACETRACK_ROADS];
 
 type P = [number, number];
 export interface Box2 { x: number; z: number; w: number; d: number }
-export interface OutBuilding extends Box2 { h: number; kind: 'farmhouse' | 'barn' | 'warehouse' | 'gas' | 'shed'; rot: number }
+export interface OutBuilding extends Box2 { h: number; kind: 'farmhouse' | 'barn' | 'warehouse' | 'gas' | 'shed'; rot: number; /** Existing field bundled with this barn; metadata only. */ farmId?: string }
 export interface OutField extends Box2 { crop: number; /** generation index (stable cf:<n> id) */ n: number }
 export const RURAL_ROAD_W = 4.5;
 const NZ = -PLATE - 8, WX = -PLATE - 5, EX = 196, SZ = 150; // the ring of rural roads around the plate + farm
@@ -99,7 +99,7 @@ export function outskirts(): Outskirts {
   const fieldIn = (x0: number, x1: number, z0: number, z1: number, n: number) => { for (let k = 0, tries = 0; k < n && tries < n * 30; tries++) {
     const w = 14 + Math.floor(r() * 4) * 4, d = 10 + Math.floor(r() * 3) * 4; const f: OutField = { x: x0 + w / 2 + r() * Math.max(0, x1 - x0 - w), z: z0 + d / 2 + r() * Math.max(0, z1 - z0 - d), w, d, crop: Math.floor(r() * 4), n: fields.length };
     if (!free(f, 2)) continue; fields.push(f); k++;
-    if (r() < 0.7) { const sd = r() < 0.5 ? -1 : 1; const bx = f.x + (f.w / 2 + 4.5) * sd; if (put({ x: bx, z: f.z - 3, w: 6, d: 4.5, h: 3.4, kind: 'barn', rot: 0 })) home(bx, f.z + 3.5, sd > 0 ? -Math.PI / 2 : Math.PI / 2); } } };
+    if (r() < 0.7) { const sd = r() < 0.5 ? -1 : 1; const bx = f.x + (f.w / 2 + 4.5) * sd; if (put({ x: bx, z: f.z - 3, w: 6, d: 4.5, h: 3.4, kind: 'barn', rot: 0, farmId: `cf:${f.n}` })) home(bx, f.z + 3.5, sd > 0 ? -Math.PI / 2 : Math.PI / 2); } } };
   fieldIn(-115, 140, 162, 190, 9); fieldIn(-115, 140, 122, 140, 6); fieldIn(70, 194, -144, -120, 4); fieldIn(-218, -126, -122, -64, 4);
   fieldIn(150, 206, 120, 190, 3); fieldIn(-218, -126, 150, 190, 3); fieldIn(-26, 190, -214, -154, 5);
   // Hills along the far edges, rocks near the mines.
