@@ -68,6 +68,18 @@ describe('pt2020u: property surcharge + daily wealth tax city levers', () => {
       expect(Number((await s.pool.query("SELECT COUNT(*) AS n FROM city_levers WHERE lever IN ('property_surcharge','daily_wealth_tax')")).rows[0].n)).toBe(1);
     } finally { setCityForTest(null); }
   });
+  it('rolling deploy keeps the abolished lever readable as zero for old clients without altering saved history', async () => {
+    const s=await withMayor();
+    await s.pool.query('INSERT INTO city_levers(id,lever,value,at,by_name) VALUES($1,$2,$3,$4,$5)', ['legacy','property_surcharge',0.02,s.now-1000,'Ann']);
+    const c=new City(s.pool as never,()=>s.m,s.clock);await c.init();
+    const before=(await s.pool.query('SELECT * FROM city_levers')).rows;
+    const v=await c.view(null);
+    for(const id of Object.keys(LEVERS) as Array<keyof typeof LEVERS>) expect(v.levers[id]).toBeDefined();
+    expect(v.levers.property_surcharge.value).toBe(0);
+    expect(v.levers.property_surcharge.nextChangeAt).toBeGreaterThan(s.now);
+    await expect(c.setLever('Ann','property_surcharge',0.01)).rejects.toThrow(/abolished/);
+    expect((await s.pool.query('SELECT * FROM city_levers')).rows).toEqual(before);
+  });
   it('Bill Chud 1: real estate quote and purchase charge list price even with a stored surcharge lever; a stale max still refuses', async () => {
     const db = newDb({ noAstCoverageCheck: true }); registerPgAdvisoryFunctions(db); const { Pool } = db.adapters.createPg(); const pool = new Pool();
     const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));

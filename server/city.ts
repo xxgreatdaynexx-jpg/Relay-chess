@@ -378,7 +378,8 @@ export class City {
     const p = this.policy(now);
     const v: CityView = {
       now, index: idx,
-      levers: Object.fromEntries(LEVER_IDS.map((id) => [id, { value: this.lever(id, now), pending: null, nextChangeAt: this.nextLeverAt(id) }])) as CityView['levers'],
+      // Keep abolished entries as zero-valued read-only tombstones for already-loaded older clients. New UI filters LEVER_IDS.
+      levers: Object.fromEntries((Object.keys(LEVERS) as LeverId[]).map((id) => [id, { value: LEVERS[id].abolished ? 0 : this.lever(id, now), pending: null, nextChangeAt: this.nextLeverAt(id) }])) as CityView['levers'],
       policy: p ? { id: p.policy, startsAt: p.startsAt, endsAt: p.endsAt, by: p.by } : null, nextPolicyAt: this.nextPolicyAt(),
       riot: await this.riotState(),
       projects: PROJECT_IDS.map((id) => ({ id, cost: Math.round(PROJECTS[id].cost * idx), active: this.activeProject(id, now), nextAt: this.nextProjectAt(id), headroom: this.projectHeadroom(id, now) })),
