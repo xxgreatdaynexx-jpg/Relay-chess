@@ -6,7 +6,7 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  { commit: '757a571', at: '2026-11-07T19:49:10-06:00', title: 'Co-op goals sized for a small group; a one-week stadium budget', bullets: [
+  { commit: 'f8872da', at: '2026-11-07T20:35:00-06:00', title: 'Co-op goals sized for a small group; a one-week stadium budget', bullets: [
     'The Hockey Stadium is now about 693,000 chips including its materials (was 25 million), keeping four stages and the same chip/material split. Existing donations, donor credit and rewards stay intact; the Bridge and completion perks are unchanged.',
     'The rotating server events are weekly, not daily. From the current Trade Week onward: 4,000 ore, 6,000 crops, 300 fish, 1,000 chips traded, or 20 paid hockey wins. One player can fill half the goal, so two players can finish; closed weeks keep their original goals and rewards.',
     'Trade Week counts chips spent on goods trades between eligible players, once for each side—not trips or a number of trades. Reward amounts, the half/full completion bonus, claim windows and already recorded contributions are unchanged. Daily Warehouse Contract Board sizes are unchanged.',
