@@ -36,7 +36,7 @@ export const cityWealthTaxRate = () => cityInst?.lever('wealth_tax') ?? LEVERS.w
 export const citySurchargePctPer1k = () => Math.round((cityInst?.lever('property_surcharge') ?? LEVERS.property_surcharge.base) * 10_000) / 100;
 /** Daily net-worth wealth tax rate (fraction). Offline -> the built-in 1%. */
 export const cityDailyWealthTaxRate = () => cityInst?.lever('daily_wealth_tax') ?? LEVERS.daily_wealth_tax.base;
-export const cityFreightMul = () => (cityInst?.lever('freight') ?? 1) * (1 - (cityInst?.perk('freight_fee') ?? 0));
+export const cityFreightMul = () => Math.max(1, cityInst?.lever('freight') ?? 1) * /* t2043: lever never discounts; Street Lights perk below is separate */ (1 - (cityInst?.perk('freight_fee') ?? 0));
 export const cityPolicyMul = (s: Sector) => cityInst?.policyMul(s) ?? 1;
 export const cityPerk = (p: PerkId) => cityInst?.perk(p) ?? 0;
 /** Tourism push policy x Transit Hub perk on a travel ticket (indexed chips in, chips out). */

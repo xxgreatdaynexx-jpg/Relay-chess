@@ -121,6 +121,7 @@ export class City {
     const m = await this.isMayor(name); const now = this.clock();
     if (this.nextLeverAt(lv) > now) throw new CityError(`${LEVERS[lv].label} can change again ${abTime(this.nextLeverAt(lv))}.`);
     if (value === null || value === undefined || value === '' || !Number.isFinite(Number(value))) throw new CityError('Pick a value.');
+    if (Number(value) < LEVERS[lv].min - 1e-9 && lv === 'freight') throw new CityError('Freight fees can’t go below the default (0%). No freight discounts.'); // t2043
     const v = clampLever(lv, value); const before = this.lever(lv, now); if (Math.abs(v - before) < 1e-9) throw new CityError('That is already the current value.');
     const text = `${LEVERS[lv].label}: ${leverText(lv, before)} → ${leverText(lv, v)}`;
     await this.run([{ sql: 'INSERT INTO city_levers (id, lever, value, at, by_name) VALUES ($1,$2,$3,$4,$5)', args: [randomUUID(), lv, v, now, m.name] }, this.actionStmt(m.name, 'lever', text, now)]);

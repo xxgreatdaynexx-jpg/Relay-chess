@@ -37,7 +37,7 @@ describe('levers: bounds and cooldowns', () => {
   it('clamps and snaps every lever to its hard bounds', () => {
     expect(clampLever('sales_tax', 0.5)).toBe(0.05); expect(clampLever('sales_tax', -1)).toBe(0); expect(clampLever('sales_tax', 0.0123)).toBe(0.01);
     expect(clampLever('wealth_tax', 0.2)).toBe(0.07); expect(clampLever('wealth_tax', 0)).toBe(0.03); expect(clampLever('wealth_tax', 'x')).toBe(0.05);
-    expect(clampLever('freight', 3)).toBe(1.2); expect(clampLever('freight', 0.1)).toBe(0.8);
+    expect(clampLever('freight', 3)).toBe(1.2); expect(clampLever('freight', 0.1)).toBe(1); expect(clampLever('freight', 0.8)).toBe(1); expect(clampLever('freight', null)).toBe(1); expect(clampLever('freight', 1.05)).toBe(1.05);
     expect(purchaseTaxOf(200_000, 10_000, 0.5)).toBe(700); expect(purchaseTaxOf(200_000, 10_000, 0)).toBe(300); expect(purchaseTaxOf(200_000, 10_000)).toBe(500);
   });
   it('only the sitting mayor; cooldown per lever; changes logged; hot readers follow', async () => {
@@ -53,6 +53,25 @@ describe('levers: bounds and cooldowns', () => {
       await expect(s.c.setLever('Ann', 'wealth_tax', 0.03)).rejects.toThrow(/can change again/); // 72 h
       const v = await s.c.view(null); expect(v.actions.filter((a) => a.kind === 'lever')).toHaveLength(4);
       expect(v.actions[0]!.text).toMatch(/Sales tax: 5% → 1%/);
+    } finally { setCityForTest(null); }
+  });
+});
+
+describe('t2043: freight lever never discounts (0% is the lowest)', () => {
+  it('legacy persisted -20% reads as 0%, new negatives are rejected, +20% max, authority first, Street Lights perk separate', async () => {
+    const s = await withMayor(); setCityForTest(s.c);
+    try {
+      expect(LEVERS.freight.min).toBe(1); expect(LEVERS.freight.max).toBe(1.2); expect(LEVERS.freight.step).toBe(0.05); expect(LEVERS.freight.cooldownMs).toBe(48 * H);
+      await (s.c as any).pool.query("INSERT INTO city_levers (id, lever, value, at, by_name) VALUES ('legacy-neg','freight',0.8,$1,'Ann')", [s.now - H]); await s.c.reload();
+      expect(cityFreightMul()).toBe(1); expect((await s.c.view(null)).levers.freight.value).toBe(1);
+      expect(Number((await (s.c as any).pool.query("SELECT value FROM city_levers WHERE id='legacy-neg'")).rows[0].value)).toBeCloseTo(0.8); // history untouched
+      await expect(s.c.setLever('Bob', 'freight', 0.8)).rejects.toThrow(/sitting mayor/);
+      await expect(s.c.setLever('Ann', 'freight', 0.8)).rejects.toThrow(/can change again|below the default/); // legacy row's cooldown preserved
+      s.set(s.now + 48 * H);
+      await expect(s.c.setLever('Ann', 'freight', 0.95)).rejects.toThrow(/below the default \(0%\)/);
+      await expect(s.c.setLever('Ann', 'freight', 1)).rejects.toThrow(/already the current value/);
+      await s.c.setLever('Ann', 'freight', 1.2); expect(cityFreightMul()).toBeCloseTo(1.2);
+      expect(readFileSync('server/city-rates.ts', 'utf8')).toMatch(/Math\.max\(1, cityInst\?\.lever\('freight'\) \?\? 1\) \* .*\(1 - \(cityInst\?\.perk\('freight_fee'\)/);
     } finally { setCityForTest(null); }
   });
 });
