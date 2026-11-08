@@ -6,6 +6,8 @@
  *    arrears / repossession update commit in one transaction. Tax is a chip sink (burned, no house account).
  * Buying ('property_buy') and selling back to the city at 70% ('property_sell') use the same atomic wallet path.
  */
+import { PROPERTY_INCOME_EVERY_MS, incomeEligible } from '../shared/propertyIncome.js';
+import { PropertyIncome, PropertyIncomeFailure } from './propertyIncome.js';
 import { cityPerk, treasuryStmtsFor } from './city-rates.js';
 import { treasuryShareOf } from '../shared/city.js';
 import { randomUUID } from 'node:crypto';
@@ -65,8 +67,11 @@ export class RealEstate {
     const prev = this.locks.get(id) ?? Promise.resolve(); const p = prev.then(fn, fn); const tail = p.catch(() => {});
     this.locks.set(id, tail); void tail.then(() => { if (this.locks.get(id) === tail) this.locks.delete(id); }); return p;
   }
-  constructor(private readonly pool: Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now()) {}
-  async init() { await this.pool.query(PROPERTY_MIGRATION); }
+  constructor(private readonly pool: Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now()) { this.income = new PropertyIncome(pool, clock); }
+  private readonly income: PropertyIncome;
+  async init() { await this.pool.query(PROPERTY_MIGRATION); await this.income.init(); }
+  /** Automatic/offline catch-up; no client claim or per-owner activity required. */
+  runIncome(now = this.clock()) { return this.income.run(now, (name) => this.bank().notifyDurableBalance(name)); }
 
   async owned(): Promise<OwnedProperty[]> {
     return ((await this.pool.query('SELECT * FROM properties ORDER BY id')).rows as Row[]).map(toOwned);
@@ -207,9 +212,11 @@ export class RealEstate {
     if (bank.account(name).chips < price) throw new PropertyError(`Not enough chips: the buyout costs ${price.toLocaleString('en-US')}.`);
     const prev = String(row.owner_name);
     await this.atomic(name, -price, 'property_buyout', `Hostile buyout of ${p.label} (${p.id}) from ${prev}`, async (cl) => {
+      await this.income.settle(cl, p.id, now, { key: row.owner_key, boughtAt: Number(row.bought_at), price: paid });
       const r = await cl.query('UPDATE properties SET owner_key = $1, owner_name = $2, city_price = COALESCE(city_price, price), price = $3, bought_at = $4, arrears = 0 WHERE id = $5 AND owner_key = $6 AND price = $7 RETURNING id', [keyOf(name), name.trim(), price, now, p.id, row.owner_key, paid]);
       if (!r.rowCount) throw new PropertyError('The owner changed: check the deed and try again.');
     }, [{ name: prev, amount: price, game: 'property_buyout', memo: `${name.trim()} bought out your ${p.label} (${p.id})` }]);
+    await bank.notifyDurableBalance(prev).catch(() => {});
     this.onChange?.();
     void sendPopup(prev, 'City of Chud Hub', `🏛 Hostile buyout! ${name.trim()} bought your ${p.label} for 🪙 ${price.toLocaleString('en-US')} (${BUYOUT_MUL}x what you paid). The chips are in your wallet; its royalties now go to ${name.trim()}.`).catch(() => {});
     return { id: p.id, price, from: prev, chips: bank.account(name).chips };
@@ -237,11 +244,12 @@ export class RealEstate {
   }
   private async sellNow(name: string, p: NonNullable<ReturnType<typeof propertyById>>) {
     // 70% of what this owner actually paid (no buy-cheap/sell-at-list arbitrage either way)
-    const row = (await this.pool.query('SELECT price, city_price FROM properties WHERE id = $1 AND owner_key = $2', [p.id, keyOf(name)])).rows[0] as { price: string; city_price: string | null } | undefined;
+    const row = (await this.pool.query('SELECT price, city_price, bought_at FROM properties WHERE id = $1 AND owner_key = $2', [p.id, keyOf(name)])).rows[0] as { price: string; city_price: string | null; bought_at: string } | undefined;
     if (!row) throw new PropertyError('You do not own this property.');
     // After a hostile buyout the city still only refunds 70% of what IT was paid (no buyout -> sell-back loop between alts).
     const paid = Number(row.price); const back = sellBackOf(Math.min(paid, Number(row.city_price ?? paid))); const bank = this.bank();
     await this.atomic(name, back, 'property_sell', `Sold ${p.label} (${p.id}) to the city`, async (cl) => {
+      await this.income.settle(cl, p.id, this.clock(), { key: keyOf(name), boughtAt: Number(row.bought_at), price: paid });
       const r = await cl.query('DELETE FROM properties WHERE id = $1 AND owner_key = $2 AND price = $3 RETURNING id', [p.id, keyOf(name), paid]);
       if (!r.rowCount) throw new PropertyError('You do not own this property.');
     });
@@ -254,9 +262,12 @@ export class RealEstate {
    * commits with the debit. Unpaid -> arrears+1; GRACE_DAYS unpaid in a row -> repossessed (row deleted, no refund).
    */
   async runTax(): Promise<{ charged: number; paid: number; unpaid: number; repossessed: number }> {
-    const now = this.clock(); const day = utcDay(now); const start = Date.parse(`${day}T00:00:00Z`);
+    const now = this.clock(); let incomeReady = true; let incomeDeferred = new Set<string>();
+    try { await this.runIncome(now); }
+    catch (e) { if (e instanceof PropertyIncomeFailure) incomeDeferred = new Set(e.failedIds); else incomeReady = false; console.error('[realestate] income deferred; affected tax waits for settlement:', (e as Error).message); }
+    const day = utcDay(now); const start = Date.parse(`${day}T00:00:00Z`);
     const done = new Set(((await this.pool.query('SELECT property_id FROM property_tax WHERE day = $1', [day])).rows as Array<{ property_id: string }>).map((x) => x.property_id));
-    const due = ((await this.pool.query('SELECT * FROM properties WHERE bought_at < $1 ORDER BY owner_key, price', [start])).rows as Row[]).filter((r) => !done.has(r.id));
+    const due = ((await this.pool.query('SELECT * FROM properties WHERE bought_at < $1 ORDER BY owner_key, price', [start])).rows as Row[]).filter((r) => !done.has(r.id) && ((incomeReady && !incomeDeferred.has(r.id)) || !incomeEligible(r.id)));
     const out = { charged: 0, paid: 0, unpaid: 0, repossessed: 0 }; const bank = this.bank();
     for (const r of due) {
       const amount = Math.max(1, Math.round(taxOf(taxBasisOf(Number(r.price), propertyById(r.id)?.price ?? 0)) * propertyTaxMul(await skillLevelAsync(r.owner_name, 'property')) * cityPropertyTaxMul(now) * (1 - cityPerk('property_upkeep')))); // Property perk + mayor's tax rate + Police Station perk
@@ -305,7 +316,7 @@ export class RealEstate {
    *  and currently-planted tiles at their seed cost. Read errors propagate: zero would understate net worth. */
   spend(ownerKey: string | null) { return propertySpend(this.pool, ownerKey); }
 
-  start() { const run = () => { void this.runTax().catch((e) => console.error('[realestate] tax run failed:', (e as Error).message)); }; this.timer = setInterval(run, 10 * 60_000); this.timer.unref?.(); setTimeout(run, 30_000).unref?.(); }
+  start() { const run = () => { void this.runTax().catch((e) => console.error('[realestate] tax run failed:', (e as Error).message)); }; this.timer = setInterval(run, PROPERTY_INCOME_EVERY_MS); this.timer.unref?.(); setTimeout(run, 30_000).unref?.(); }
   stop() { if (this.timer) clearInterval(this.timer); }
 }
 

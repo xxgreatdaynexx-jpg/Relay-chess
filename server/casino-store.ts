@@ -296,6 +296,12 @@ export class CasinoBank {
       return { ok: true, chips: a.chips };
     } catch (err) { console.error('[casino] refresh failed:', (err as Error).message); return { ok: false, chips: a.chips }; }
   }
+  /** After an external, transactionally-ledgered credit: refresh only, then push the real durable balance.
+   * No optimistic credit, no extra ledger write; even a lost COMMIT reply cannot duplicate income. */
+  async notifyDurableBalance(name: string): Promise<void> {
+    const r = await this.refreshConfirmed(name);
+    if (r.ok) this.emit(this.account(name), { key: null, name, game: 'property_income', amount: 0, balance: r.chips, memo: 'Business income balance refresh', at: Date.now() });
+  }
   async adminCreditsOpen(): Promise<boolean> { return this.store?.adminCreditsOpen ? this.store.adminCreditsOpen() : true; }
   async adminCreditAdmission(): Promise<{ open: boolean; generation: string }> { return this.store?.adminCreditAdmission ? this.store.adminCreditAdmission() : { open: true, generation: '' }; }
 

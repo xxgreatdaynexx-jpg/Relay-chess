@@ -34,7 +34,7 @@ import { buildOcean, buildBeach, buildBreakwater } from './ocean3d';
 import { OCEAN, COAST_WAVE, coastZ, BREAKWATER } from '../../../shared/ocean';
 import { CAR_BY_ID } from '../../../shared/cars';
 import { HOUSING_TYPES, type HousingType } from './housing';
-import { buildingId, patchId, civicRetired } from '../../../shared/realEstate';
+import { buildingId, patchId, civicRetired, PUBLIC_SERVICE_DEEDS } from '../../../shared/realEstate';
 import { attachTownHallProtest, type TownHallProtest } from './townHallProtest3d';
 import { attachFarmProtests, type FarmProtestHandle } from './farmProtest3d';
 import { disposeSharedProtestSfx } from './protestSfx';
@@ -593,6 +593,11 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   let parkDead = false;
   void fetch('/api/trailer-park').then((r) => r.json()).then((j: { lots?: { lot: number; name: string }[] }) => { if (!parkDead && Array.isArray(j?.lots)) addTrailers(j.lots); }).catch(() => {});
 
+  // Harbour terminal deed hit target: just the existing public terminal shed, not ships or the whole coast.
+  { const p = PUBLIC_SERVICE_DEEDS.find((p) => p.id === 'lm:harbour')!;
+    const hit = new THREE.Mesh(geo(new THREE.BoxGeometry(14.6, 6, 8.6)), mat({ transparent: true, opacity: 0, depthWrite: false }));
+    hit.position.set(p.x + p.w / 2 - 9, 3.5, p.z - 0.5); hit.userData.spot = p.id; scene.add(hit); pickables.push(hit);
+  }
   // Admin jail (pt1478u): stone yard + cell block with bars in the south-east corner, bars facing the far-shore road. Inmates come from /api/jail and stand
   // behind the bars with a floating tag: name, countdown (or "no timer") and their lines typed.
   const jailG = new THREE.Group(); jailG.name = 'jail'; jailG.position.set(JAIL_SITE.x, 0, JAIL_SITE.z); jailG.rotation.y = JAIL_SITE.rot; scene.add(jailG);
@@ -622,6 +627,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const sign = new THREE.Mesh(geo(new THREE.BoxGeometry(9, 2.4, 0.2)), sm); sign.position.set(0, 7.2, D / 2 - 0.3); jailG.add(sign);
     const lamp = new THREE.PointLight(0xffd8a0, 40, 30, 1.4); lamp.position.set(0, 9, D / 2 + 3); jailG.add(lamp);
     jailG.scale.setScalar(JAIL_SCALE);
+    jailG.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.userData.spot = 'lm:jail'; pickables.push(o); } });
   }
   const fmtLeft = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return h ? `${h}h ${m}m` : `${m}m ${String(x).padStart(2, '0')}s`; };
   const drawTag = (o: (typeof inmateObjs)[number]) => { const g = o.c.getContext('2d')!; g.clearRect(0, 0, 512, 192); g.fillStyle = 'rgba(20,8,8,0.82)'; g.beginPath(); g.roundRect(4, 4, 504, 184, 26); g.fill();
@@ -864,7 +870,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const id = pick(e.clientX, e.clientY); if (!id) { setHover(null); h.onHover(null, 0, 0); return; }
     if (id.startsWith('barn:')) { h.onHover(null, 0, 0); h.onBarn?.(id); return; }
     if (id.startsWith('trailer:')) { h.onHover(id, e.clientX, e.clientY); if (h.onTrailer?.(id.slice(8))) return; window.dispatchEvent(new CustomEvent('open-player', { detail: id.slice(8) })); return; } // trailers: your own opens your home (kitchen), others the owner's profile
-    if (id.startsWith('b:') || id.startsWith('p:') || id.startsWith('f:') || id.startsWith('cf:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel
+    if (id.startsWith('lm:') || id.startsWith('b:') || id.startsWith('p:') || id.startsWith('f:') || id.startsWith('cf:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel
     flyTo(id);
   };
   /** Glide the camera to a world point (player-profile "show on map" for land and farms). */

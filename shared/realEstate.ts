@@ -1,3 +1,5 @@
+import { JAIL_SITE, JAIL_HALF } from './jail.js';
+import { HUB_MAPS } from './logistics.js';
 import { farmBarns, barnPrice } from './farmBarns.js';
 /**
  * City real estate: every building, lot, park and plaza on the World Map is a property with a stable id, a list price
@@ -36,6 +38,11 @@ export const LANDMARK_LABEL: Record<string, string> = {
   casino: 'Casino', bank: 'Bank', stocks: 'Stock Exchange', arena: 'Arena', chess: 'Chess Club', market: 'Market',
   factory: 'Factory', mine: 'Mine', 'mine-frost': 'Frostbite Caverns', 'mine-magma': 'Magma Depths', warehouse: 'Warehouse', leaderboard: 'Leaderboard', chat: 'Chat Hall', dealer: 'Car Dealership', mechanic: 'Mechanic Shop', airport: 'Chud Hub International Airport', racetrack: 'Chud Hub Speedway', dock: 'Fishing Dock', employ: 'Employment Office', furniture: 'Furniture Store',
 };
+/** Chosen design prices: jail matches Factory/Mine; harbour matches Speedway (below Airport). Public services stay public. */
+export const PUBLIC_SERVICE_DEEDS: Property[] = [
+  { ...JAIL_SITE, w: JAIL_HALF.x * 2, d: JAIL_HALF.z * 2, id: 'lm:jail', kind: 'landmark', type: 'jail', label: 'City Jail', price: 750_000 },
+  { x: HUB_MAPS.city.port.pier[0]![0] - 7, z: HUB_MAPS.city.port.pier[0]![1] - 7, w: 76, d: 16, rot: 0, id: 'lm:harbour', kind: 'landmark', type: 'harbour', label: 'Chud Hub Harbour', price: 1_500_000 },
+];
 const PATCH_LABEL: Record<string, string> = { lot: 'Empty lot', park: 'Park', plaza: 'Plaza' };
 const PATCH_REF: Record<string, number> = { lot: 13 * 13 * 0.95, park: 13 * 13 * 0.95, plaza: 81 * 0.95 };
 
@@ -87,7 +94,7 @@ let cache: Property[] | null = null; let byId: Map<string, Property> | null = nu
 /** Every property on the map (deterministic: same layout -> same ids and prices). */
 export function properties(): Property[] {
   if (cache) return cache;
-  const { houses, patches } = cityFill(7); const out: Property[] = [];
+  const { houses, patches } = cityFill(7); const out: Property[] = PUBLIC_SERVICE_DEEDS.map((p) => ({ ...p }));
   for (const [id, b] of Object.entries(landmarks())) if (LANDMARK_IDS.includes(id) && !CIVIC_IDS.has(id)) out.push({ ...b, id: `lm:${id}`, kind: 'landmark', type: id, label: LANDMARK_LABEL[id] ?? id, price: LANDMARK_PRICE[id] ?? 500_000 });
   for (const h of [...houses, ...countryHomes()]) {
     const t = HOUSING_TYPES.find((x) => x.id === h.type); if (!t) continue;
