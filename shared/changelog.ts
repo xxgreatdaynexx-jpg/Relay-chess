@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: 'fbb4b2e', at: '2026-11-07T19:45:00-06:00', title: 'Every barn is sold separately from farms', bullets: [
+    'All 30 barns now have their own purchase deed: 2 farm-district barns, 20 countryside barns and 8 beside Big Farms. Tap a barn or find it under Real estate → Barns. Barns are never included with any farm: owning the field beside a barn does not own or unlock that barn.',
+    'New base barn prices are 7,000 chips for a countryside barn, 17,500 for the first farm-district barn or a Big Farm barn, and 24,000 for the second farm-district barn. Normal property surcharge, purchase wealth tax where applicable, daily property tax and 70% sell-back rules apply.',
+    'A separately purchased barn unlocks All my farms, showing only your farms grouped by map. Existing farm deeds, owners, prices, crops and stock are untouched. The surviving barn beside former jail-area farmland has only its own safe footprint for sale; the removed field is not restored.',
+  ] },
   { commit: '099b2b3', at: '2026-11-07T19:38:04-06:00', title: 'Factory machine sale confirmation is no longer cut off', bullets: [
     'The "Sell this machine?" confirmation now opens as a full-screen dialog, like Sell all, instead of squeezing into the narrow scrolling Factory side menu where it was clipped. The price, Confirm and Cancel are fully visible on desktop and phones, and Esc or tapping outside cancels.',
     'The sale itself is unchanged: same server price (half the base Machinist price) and the same checks.',
