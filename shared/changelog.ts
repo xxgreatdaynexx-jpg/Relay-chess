@@ -6,6 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  { commit: '', at: '2026-11-07T19:42:00-06:00', title: 'Smoother winter snow across the expanded maps', bullets: [
+    'Falling snow now follows your view everywhere on the map, so it no longer stops at a visible edge over the countryside, Big Farms, airport or speedway. The amount of snow on screen is the same as before.',
+    'The slushy snow on Chud City roads now also covers the countryside, Big Farms, airport and speedway roads.',
+    'The snowy ground lines up across every map section, removing the hard lines where newer sections meet.',
+    'The Millionaire Update sign by the airport has been removed.',
+  ] },
   { commit: '099b2b3', at: '2026-11-07T19:38:04-06:00', title: 'Factory machine sale confirmation is no longer cut off', bullets: [
     'The "Sell this machine?" confirmation now opens as a full-screen dialog, like Sell all, instead of squeezing into the narrow scrolling Factory side menu where it was clipped. The price, Confirm and Cancel are fully visible on desktop and phones, and Esc or tapping outside cancels.',
     'The sale itself is unchanged: same server price (half the base Machinist price) and the same checks.',

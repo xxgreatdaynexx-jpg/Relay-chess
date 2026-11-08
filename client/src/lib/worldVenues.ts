@@ -31,7 +31,7 @@ const disposeTree = (o: THREE.Object3D) => o.traverse((c) => { const m = c as TH
 export function buildVenues(scene: THREE.Scene, { mat, geo }: Mk): { step: (dt: number, time: number, cam?: THREE.Vector3) => void; dispose: () => void } {
   const grass = [mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c }), mat({ color: 0x3f9040, roughness: 1, emissive: 0x0d3412, emissiveIntensity: 0.6 }), mat({ color: 0x2a1c12 }), mat({ color: 0x3a2a1c }), mat({ color: 0x3a2a1c })];
   const snowy: THREE.Material[] = []; // Christmas: the venue grounds are snow too (world3d swaps the rest of the map)
-  const slab = (r: Rect) => { let top = grass; if (xmasOn()) { const sm = xmasGround(r.x1 - r.x0, r.z1 - r.z0, false); snowy.push(sm); top = [grass[0], grass[1], sm, grass[3], grass[4], grass[5]]; }
+  const slab = (r: Rect) => { let top = grass; if (xmasOn()) { const sm = xmasGround(r.x1 - r.x0, r.z1 - r.z0, false, r.x0, r.z1); snowy.push(sm); top = [grass[0], grass[1], sm, grass[3], grass[4], grass[5]]; }
     const m = new THREE.Mesh(geo(new THREE.BoxGeometry(r.x1 - r.x0, 3, r.z1 - r.z0)), top); m.position.set((r.x0 + r.x1) / 2, -1.51, (r.z0 + r.z1) / 2); scene.add(m); };
   slab(AIRPORT); slab(RACETRACK);
   // Tarmac layers (pt1243u fix: the grass used to carry a polygon offset that pulled it over every surface here, so the

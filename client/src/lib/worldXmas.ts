@@ -19,17 +19,20 @@ export function addXmas(scene: THREE.Scene, o: XmasOpts) {
   const low = o.tier === 'low';
   const uTime = { value: 0 };
 
-  // Snowfall: positions wrap in the vertex shader.
+  // Snowfall: positions wrap in the vertex shader. The volume (see snowVolume) is re-centred on the view every frame and
+  // sized with zoom; flakes stay world-anchored while it moves (wrap is toroidal) and its outer quarter fades out, so the
+  // snow never ends in a visible box edge on the expanded maps. Particle count is fixed per tier.
+  const uCenter = { value: new THREE.Vector2(0, 0) }; const uHalf = { value: o.half };
   { const n = SNOW_COUNT[o.tier]; const H = 90; const p = new Float32Array(n * 3); const sd = new Float32Array(n);
-    for (let i = 0; i < n; i++) { p[i * 3] = (Math.random() * 2 - 1) * o.half; p[i * 3 + 1] = Math.random() * H; p[i * 3 + 2] = (Math.random() * 2 - 1) * o.half; sd[i] = Math.random(); }
+    for (let i = 0; i < n; i++) { p[i * 3] = Math.random(); p[i * 3 + 1] = Math.random() * H; p[i * 3 + 2] = Math.random(); sd[i] = Math.random(); } // x/z normalised 0..1, placed around the view in the shader
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('seed', new THREE.BufferAttribute(sd, 1));
-    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, H / 2, 0), o.half * 1.5);
-    const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: { uTime, uH: { value: H }, uSize: { value: low ? 2.2 : 2.8 } },
-      vertexShader: `attribute float seed; uniform float uTime, uH, uSize; varying float vA;
-        void main() { vec3 q = position; float sp = 3.0 + seed * 3.0; q.y = mod(q.y - uTime * sp, uH);
+    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, H / 2, 0), 1e5); // shader places flakes around the view; never culled (frustumCulled = false)
+    const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: { uTime, uCenter, uHalf, uH: { value: H }, uSize: { value: low ? 2.2 : 2.8 } },
+      vertexShader: `attribute float seed; uniform float uTime, uH, uSize, uHalf; uniform vec2 uCenter; varying float vA;
+        void main() { vec3 q = position; vec2 r = fract(position.xz - uCenter / (2.0 * uHalf)) * 2.0 - 1.0; q.xz = uCenter + r * uHalf; float sp = 3.0 + seed * 3.0; q.y = mod(q.y - uTime * sp, uH);
           q.x += sin(uTime * 0.6 + seed * 40.0) * 1.6; q.z += cos(uTime * 0.5 + seed * 25.0) * 1.2;
           vec4 mv = modelViewMatrix * vec4(q, 1.0); gl_Position = projectionMatrix * mv;
-          gl_PointSize = clamp(uSize * (0.6 + seed) * 160.0 / -mv.z, 1.0, 7.0); vA = smoothstep(0.0, 6.0, q.y); }`,
+          gl_PointSize = clamp(uSize * (0.6 + seed) * 160.0 / -mv.z, 1.0, 7.0); vA = smoothstep(0.0, 6.0, q.y) * (1.0 - smoothstep(0.75, 1.0, max(abs(r.x), abs(r.y)))); }`,
       fragmentShader: `varying float vA; void main() { float d = length(gl_PointCoord - 0.5); if (d > 0.5) discard; gl_FragColor = vec4(1.0, 1.0, 1.0, (1.0 - d * 2.0) * 0.9 * vA); }` });
     disposables.push(g, m); const pts = new THREE.Points(g, m); pts.frustumCulled = false; pts.renderOrder = 5; root.add(pts); }
 
@@ -51,10 +54,12 @@ export function addXmas(scene: THREE.Scene, o: XmasOpts) {
       const pm = new THREE.InstancedMesh(pg, snowMat, o.pads.length); const d = new THREE.Object3D();
       o.pads.forEach((r, i) => { d.position.set(r.x, 0.092, r.z); d.rotation.set(0, r.rot, 0); d.scale.set(r.w - 0.2, 1, r.d - 0.2); d.updateMatrix(); pm.setMatrixAt(i, d.matrix); }); root.add(pm); } }
   // slushy, partly cleared roads: the road surface again, streaked with grey-white slush that thins toward the middle
-  for (const src of o.roads ?? []) { const rg = src.clone(); const pa = rg.attributes.position as THREE.BufferAttribute; const uv = new Float32Array(pa.count * 2);
+  const slushMat = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, color: 0xc9d2e0, alphaMap: tex.slush, transparent: true, opacity: 0.7, roughness: 0.35, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  disposables.push(slushMat);
+  const addRoads = (srcs: THREE.BufferGeometry[]) => { for (const src of srcs) { const rg = src.clone(); const pa = rg.attributes.position as THREE.BufferAttribute; const uv = new Float32Array(pa.count * 2);
     for (let i = 0; i < pa.count; i++) { uv[i * 2] = pa.getX(i) / 9; uv[i * 2 + 1] = pa.getZ(i) / 9; } rg.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); disposables.push(rg);
-    const m = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, color: 0xc9d2e0, alphaMap: tex.slush, transparent: true, opacity: 0.7, roughness: 0.35, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-    disposables.push(m); const me = new THREE.Mesh(rg, m); me.renderOrder = 1; root.add(me); }
+    const me = new THREE.Mesh(rg, slushMat); me.renderOrder = 1; root.add(me); } };
+  addRoads(o.roads ?? []);
   // drifts: flattened lumpy mounds hugging building edges (city houses + landmark/resort footprints) and tree bases
   { const spots: [number, number, number, number, number][] = []; const rnd = mulberry(1225);
     const maxD = low ? 350 : o.tier === 'mid' ? 1400 : 2600;
@@ -127,21 +132,37 @@ export function addXmas(scene: THREE.Scene, o: XmasOpts) {
 
   return {
     root,
-    step(dt: number) { uTime.value += dt; },
+    /** Advance snow; with camera + target, the bounded snowfall volume follows the view across the whole map. */
+    step(dt: number, cam?: { x: number; z: number }, target?: { x: number; y: number; z: number }) { uTime.value += dt;
+      if (cam && target) { const v = snowVolume(cam, target, o.half); uCenter.value.set(v.cx, v.cz); uHalf.value = v.half; } },
+    /** Slush decals for road sets built after addXmas (rural, Big Farms, airport, racetrack), same material as city roads. */
+    addRoads,
     dispose() { scene.remove(root); disposables.forEach((x) => x.dispose()); },
   };
 }
 export type Xmas = ReturnType<typeof addXmas>;
+/** Snowfall volume for the current view: centred between the camera target and the camera's ground point, sized with zoom
+ *  (base half at close range, 0.85 × camera distance when zoomed out) so it reaches past the camera and the visible field.
+ *  The particle count never changes; the outer 25% fades out so there is no hard edge. */
+export function snowVolume(cam: { x: number; z: number }, t: { x: number; y?: number; z: number }, base: number) {
+  const dist = Math.hypot(cam.x - t.x, ((cam as { y?: number }).y ?? 0) - (t.y ?? 0), cam.z - t.z);
+  return { cx: t.x + (cam.x - t.x) * 0.35, cz: t.z + (cam.z - t.z) * 0.35, half: Math.max(base, dist * 0.85) };
+}
 /** Snow-covered ground material for a w×d ground top (UV 0..1): the city swaps its grass tops for this while Christmas is
  *  on, so snow IS the ground (no overlay sheet to z-fight with lanes, water, plots or patches). One shared canvas texture. */
 let groundTex: THREE.Texture | null = null;
-export function xmasGround(w: number, d: number, low: boolean): THREE.MeshStandardMaterial {
+/** `x0`/`z1` = world min-x / max-z of the box top: the texture is phased to world space so adjacent ground pieces
+ *  (plate, outskirts strips, Big Farms, farm apron, venue slabs) continue the same pattern instead of restarting at
+ *  each seam (which drew hard lines along every new-section edge). */
+export function xmasGround(w: number, d: number, low: boolean, x0 = 0, z1 = 0): THREE.MeshStandardMaterial {
   if (typeof document === 'undefined') return new THREE.MeshStandardMaterial({ color: 0xf2f6ff, roughness: 0.95 });
   if (!groundTex) groundTex = snowTextures(low ? 128 : 256).map;
-  const t = groundTex.clone(); t.repeat.set(w / 44, d / 44); t.needsUpdate = true;
+  const t = groundTex.clone(); t.repeat.set(w / 44, d / 44); t.offset.copy(xmasGroundOffset(x0, z1)); t.needsUpdate = true;
   return new THREE.MeshStandardMaterial({ color: 0xf2f6ff, map: t, roughness: 0.95, metalness: 0, emissive: 0x1a2238, emissiveIntensity: 0.6 });
 }
 
+/** BoxGeometry top face: u = (x - x0)/w, v = (z1 - z)/d, so uv·repeat + offset = world/44 when offset = (x0, -z1)/44. */
+export function xmasGroundOffset(x0: number, z1: number): THREE.Vector2 { const f = (a: number) => a - Math.floor(a); return new THREE.Vector2(f(x0 / 44), f(-z1 / 44)); }
 function mulberry(a: number) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 /** Tileable snow textures drawn once on a canvas: colour (white with blue-grey hollows), and a streaky slush alpha. */
 function snowTextures(size: number) {
