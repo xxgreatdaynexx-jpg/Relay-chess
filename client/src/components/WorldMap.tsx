@@ -59,15 +59,16 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
   const dragDeed = usePanelDrag('deed');
   const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState<null | 're_buy' | 're_sell' | 're_buyout'>(null); const [msg, setMsg] = useState<string | null>(null); const wallet = useWalletChips(); useEffect(() => setMsg(null), [id]); // Tess QA #5: switching deeds clears the last deed's status
   // Purchase wealth tax: server quote, refreshed per deed. Historical back-tax is canceled.
-  const [wtax, setWtax] = useState<{ tax: number; recipients: number; line: string } | null>(null); const [srvOwned, setSrvOwned] = useState<number | null>(null);
+  const [wtax, setWtax] = useState<{ tax: number; recipients: number; line: string } | null>(null); const [srvOwned, setSrvOwned] = useState<number | null>(null); const [srvPer1k, setSrvPer1k] = useState<number | undefined>(undefined);
   const forSale = !owned.get(id);
-  useEffect(() => { setWtax(null); setSrvOwned(null); if (!me || !forSale) return; socket.timeout(10_000).emit('re_quote', { id }, (err: Error | null, r?: Ack & { ownedValue?: number; wealthTax?: { tax: number; recipients: number; line: string } }) => { if (!err && r?.ok && typeof r.ownedValue === 'number') setSrvOwned(r.ownedValue); if (!err && r?.ok && r.wealthTax) setWtax(r.wealthTax); }); }, [id, me, forSale]);
+  useEffect(() => { setWtax(null); setSrvOwned(null); setSrvPer1k(undefined); if (!me || !forSale) return; socket.timeout(10_000).emit('re_quote', { id }, (err: Error | null, r?: Ack & { ownedValue?: number; surchargePer1k?: number; wealthTax?: { tax: number; recipients: number; line: string } }) => { if (!err && r?.ok && typeof r.ownedValue === 'number') setSrvOwned(r.ownedValue); if (!err && r?.ok && typeof r.surchargePer1k === 'number') setSrvPer1k(r.surchargePer1k); if (!err && r?.ok && r.wealthTax) setWtax(r.wealthTax); }); }, [id, me, forSale]);
   if (!p) return null;
   const mine = !!(o && me && o.owner.toLowerCase() === me.toLowerCase());
   // pt1388u: you pay list × (1 + 1% per 1,000 of property you own, uncapped); sell-back is 70% of what you paid; tax is on what you paid (Tess QA #8).
   const ownedValue = srvOwned ?? (me ? [...owned.entries()].filter(([, x]) => x.owner.toLowerCase() === me.toLowerCase()).reduce((a, [k, x]) => a + (propertyById(k)?.price ?? x.price ?? 0), 0) : 0);
-  const surcharge = +landSurchargePct(ownedValue).toFixed(1);
-  const cost = o ? (o.price || p.price) : landPrice(p.price, ownedValue); const note = !o ? landMultiplierNote(ownedValue) : '';
+  // pt2020u: the mayor's Property surcharge lever, from the server quote (falls back to the built-in rate until it answers).
+  const surcharge = +landSurchargePct(ownedValue, srvPer1k).toFixed(1);
+  const cost = o ? (o.price || p.price) : landPrice(p.price, ownedValue, srvPer1k); const note = !o ? landMultiplierNote(ownedValue, srvPer1k) : '';
   const tax = !o ? (wtax?.tax ?? 0) : 0; const total = cost + tax;
   const short = wallet != null && wallet < total ? total - wallet : 0;
   // Hostile buyout (monuments): 2x what the owner paid, all to them; protected for 24h after each purchase.
@@ -105,7 +106,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
       {p.kind === 'farm' && !o && <small>Farmland: buy it to plant crops (FarmVille-style, real-time).</small>}
       {!o && me && short > 0 && !msg && <small id="deed-short" className="text-amber-300" data-testid="deed-short">You need 🪙 {chips(short)} more chips to buy this.</small>}
       {msg && <small role="status" data-testid="deed-msg">{msg}</small>}
-      <small className="opacity-60">You can sell any property back to the city at any time for 70% of what you paid. Surcharge: +{SURCHARGE_PCT_PER_1K}% on your next purchase for every 🪙 1,000 of property you already own, no cap (Trailer Park lots don't count). Tax is on the list price, charged once per UTC day and burned. {GRACE_DAYS} unpaid days in a row and the city takes it back (no refund).</small>
+      <small className="opacity-60">You can sell any property back to the city at any time for 70% of what you paid. Surcharge: +{srvPer1k ?? SURCHARGE_PCT_PER_1K}% on your next purchase (set by the mayor's city lever) for every 🪙 1,000 of property you already own, no cap (Trailer Park lots don't count). Tax is on the list price, charged once per UTC day and burned. {GRACE_DAYS} unpaid days in a row and the city takes it back (no refund).</small>
     </MapSheet>
   );
 }

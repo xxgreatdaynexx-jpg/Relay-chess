@@ -8,7 +8,7 @@
  */
 import { PROPERTY_INCOME_EVERY_MS, incomeEligible } from '../shared/propertyIncome.js';
 import { PropertyIncome, PropertyIncomeFailure } from './propertyIncome.js';
-import { cityPerk, treasuryStmtsFor } from './city-rates.js';
+import { cityPerk, citySurchargePctPer1k, treasuryStmtsFor } from './city-rates.js';
 import { treasuryShareOf } from '../shared/city.js';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
@@ -151,9 +151,9 @@ export class RealEstate {
   async quote(name: string, id: unknown) {
     const p = propertyById(id); if (!p || p.retired) throw new PropertyError('That property is not for sale.');
     const owned = await this.ownedCount(name); const value = await this.ownedValue(name);
-    const price = landPrice(p.price, value); const wealthTax = await quotePurchaseTax(this.pool, name, price, this.clock());
+    const per1k = citySurchargePctPer1k(); const price = landPrice(p.price, value, per1k); const wealthTax = await quotePurchaseTax(this.pool, name, price, this.clock());
     const backTax = await backTaxOf(this.pool, name);
-    return { id: p.id, list: p.price, owned, ownedValue: value, surchargePct: landSurchargePct(value), multiplier: landMultiplier(value), price, wealthTax, backTax };
+    return { id: p.id, list: p.price, owned, ownedValue: value, surchargePct: landSurchargePct(value, per1k), surchargePer1k: per1k, multiplier: landMultiplier(value, per1k), price, wealthTax, backTax };
   }
   /** max: the price the player saw; a higher price now (they bought something else meanwhile) refuses instead of surprising them. */
   async buy(name: string, id: unknown, max?: unknown) {
@@ -174,9 +174,9 @@ export class RealEstate {
     const bigCapMsg = () => `You already own a Big Farm. Each account can own at most ${MAX_BIG_FARMS} Big Farm.`;
     // Both this guard and the transactional recheck below run under the per-owner advisory lock.
     if (bigBuy && (await this.ownedBigFarms(name, cl)).length >= MAX_BIG_FARMS) throw new PropertyError(bigCapMsg());
-    const owned = await this.ownedCount(name, cl); const value = await propertyPaidPlusUpgradesOf(cl, name); const paidSnap = await this.ownedPaid(name, cl); const price = landPrice(p.price, value);
-    const note = landMultiplierNote(value);
-    if (max !== undefined && price > max) throw new PropertyError(`The price changed: your surcharge is +${+landSurchargePct(value).toFixed(1)}% now, so ${p.label} costs ${price.toLocaleString('en-US')}. Check the deed and try again.`);
+    const owned = await this.ownedCount(name, cl); const value = await propertyPaidPlusUpgradesOf(cl, name); const paidSnap = await this.ownedPaid(name, cl); const per1k = citySurchargePctPer1k(); const price = landPrice(p.price, value, per1k);
+    const note = landMultiplierNote(value, per1k);
+    if (max !== undefined && price > max) throw new PropertyError(`The price changed: your surcharge is +${+landSurchargePct(value, per1k).toFixed(1)}% now, so ${p.label} costs ${price.toLocaleString('en-US')}. Check the deed and try again.`);
     const wq = await quotePurchaseTax(cl, name, price, this.clock());
     if (bank.account(name).chips < price + wq.tax) throw new PropertyError(`Not enough chips: ${p.label} costs ${price.toLocaleString('en-US')}${note ? ` (${note})` : ''}${wq.tax ? ` + ${wq.line}` : ''}.`);
     let wtax = 0, wn = 0;
@@ -192,7 +192,7 @@ export class RealEstate {
       if (r.rows[0]?.deed !== deed) throw new PropertyError('Someone already owns this property.');
     }, async (key, db) => { const t = await purchaseTaxMoves(db, name, price, key, p.label, this.clock()); wtax = t.tax; wn = t.recipients; return t.moves; }, cl);
     this.onChange?.();
-    return { id: p.id, price, wealthTax: wtax, wealthTaxRecipients: wn, list: p.price, owned, ownedValue: value, surchargePct: landSurchargePct(value), multiplier: landMultiplier(value), chips: bank.account(name).chips };
+    return { id: p.id, price, wealthTax: wtax, wealthTaxRecipients: wn, list: p.price, owned, ownedValue: value, surchargePct: landSurchargePct(value, per1k), surchargePer1k: per1k, multiplier: landMultiplier(value, per1k), chips: bank.account(name).chips };
   }
 
   /** Hostile buyout (monuments only): pay the current owner BUYOUT_MUL x what they paid, in one transaction. */

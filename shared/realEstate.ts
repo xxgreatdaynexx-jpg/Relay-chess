@@ -80,12 +80,14 @@ export const sellBackOf = (price: number) => Math.floor(price * SELL_BACK);
 // Dayne Nov 7: halve the surcharge rate, without changing the base or other taxes.
 export const SURCHARGE_PCT_PER_1K = 1;
 /** Surcharge percent for a buyer whose owned properties have paid value plus upgrades ownedValue. */
-export const landSurchargePct = (ownedValue: number) => Math.max(0, ownedValue) / 1000 * SURCHARGE_PCT_PER_1K;
-export const landMultiplier = (ownedValue: number) => 1 + landSurchargePct(ownedValue) / 100;
-export const landPrice = (listPrice: number, ownedValue: number) => Math.round(listPrice * landMultiplier(ownedValue));
-const pctText = (ownedValue: number) => `+${+landSurchargePct(ownedValue).toFixed(1)}%`;
+/** per1k = surcharge percent per 1,000 owned: the mayor's Property surcharge lever (pt2020u), default SURCHARGE_PCT_PER_1K. */
+const per1kOf = (p?: number) => (typeof p === 'number' && Number.isFinite(p) && p >= 0 ? p : SURCHARGE_PCT_PER_1K);
+export const landSurchargePct = (ownedValue: number, per1k?: number) => Math.max(0, ownedValue) / 1000 * per1kOf(per1k);
+export const landMultiplier = (ownedValue: number, per1k?: number) => 1 + landSurchargePct(ownedValue, per1k) / 100;
+export const landPrice = (listPrice: number, ownedValue: number, per1k?: number) => Math.round(listPrice * landMultiplier(ownedValue, per1k));
+const pctText = (ownedValue: number, per1k?: number) => `+${+landSurchargePct(ownedValue, per1k).toFixed(1)}%`;
 /** "+10% surcharge: you own 5,000 in property" (empty when you own none). */
-export const landMultiplierNote = (ownedValue: number) => ownedValue > 0 ? `${pctText(ownedValue)} surcharge: you own ${Math.round(ownedValue).toLocaleString('en-US')} in property` : '';
+export const landMultiplierNote = (ownedValue: number, per1k?: number) => ownedValue > 0 ? `${pctText(ownedValue, per1k)} surcharge: you own ${Math.round(ownedValue).toLocaleString('en-US')} in property` : '';
 
 /** Civic buildings are not for sale (City Hall belongs to the city). */
 export const CIVIC_IDS = new Set(['cityhall']);

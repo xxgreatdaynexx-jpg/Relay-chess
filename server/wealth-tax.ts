@@ -13,6 +13,7 @@ import { databaseUrl } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
 import { getEconomy } from './economy.js';
 import { utcDay } from './daily-bonus.js';
+import { cityDailyWealthTaxRate } from './city-rates.js';
 import { planWealthTax, WEALTH_TAX_ACTIVE_DAYS, WEALTH_TAX_GAME, WEALTH_TAX_MULT, WEALTH_TAX_RATE, type WealthPlan, type WealthRow } from '../shared/wealthTax.js';
 
 const DAY = 86_400_000;
@@ -47,7 +48,7 @@ export async function runWealthTax(db: pg.Pool, now = Date.now()): Promise<Summa
   const bank = getBank(); if (!bank.ready) return null;
   const day = utcDay(now);
   if ((await db.query('SELECT 1 FROM wealth_tax_days WHERE day = $1', [day])).rowCount) return null;
-  const plan = planWealthTax(await activeRows(db, now), (n) => isJailed(n)); // jailed players get no share
+  const plan = planWealthTax(await activeRows(db, now), (n) => isJailed(n), cityDailyWealthTaxRate()); // jailed players get no share
   const sum = summarize(day, plan);
   const moves = [
     ...plan.taxes.map((t) => ({ name: t.name, amount: -t.amount, key: wealthTaxKey(t.name, day), game: WEALTH_TAX_GAME, memo: 'Wealth tax' })),
@@ -72,7 +73,7 @@ export async function runWealthTax(db: pg.Pool, now = Date.now()): Promise<Summa
 let cache: { at: number; v: { median: number; threshold: number; rows: WealthRow[]; plan: WealthPlan } } | null = null;
 async function estimate(db: pg.Pool) {
   if (cache && Date.now() - cache.at < 5 * 60_000) return cache.v;
-  const rows = await activeRows(db); const plan = planWealthTax(rows);
+  const rows = await activeRows(db); const plan = planWealthTax(rows, () => false, cityDailyWealthTaxRate());
   cache = { at: Date.now(), v: { median: plan.median, threshold: plan.threshold, rows, plan } };
   return cache.v;
 }
@@ -100,7 +101,7 @@ export function wealthTaxRouter(): express.Router {
       const raw = (await db.query('SELECT data FROM wealth_tax_days ORDER BY day DESC LIMIT 1')).rows[0]?.data as Summary | undefined;
       const last = raw ? { day: raw.day, threshold: raw.threshold, payers: raw.payers, recipients: raw.recipients, total: raw.total, share: raw.share } : null; // no names in public output
       res.set('Cache-Control', 'private, max-age=60');
-      res.json({ ok: true, rate: WEALTH_TAX_RATE, mult: WEALTH_TAX_MULT, activeDays: WEALTH_TAX_ACTIVE_DAYS, active: e.rows.length, median: Math.round(e.median), threshold: e.threshold,
+      res.json({ ok: true, rate: cityDailyWealthTaxRate(), mult: WEALTH_TAX_MULT, activeDays: WEALTH_TAX_ACTIVE_DAYS, active: e.rows.length, median: Math.round(e.median), threshold: e.threshold,
         payers: e.plan.taxes.length, total: e.plan.total, recipients: e.plan.shares.length,
         me: me ? { netWorth: me.netWorth, tax: myTax, share: myShare } : null, last });
     } catch (err) { console.error('[wealth-tax] estimate failed:', (err as Error).message); res.status(500).json({ ok: false, error: 'Could not compute the wealth tax.' }); }
