@@ -2499,7 +2499,7 @@ body.he-full-open .he-table.he-full { visibility: visible; }
   /* .world (z40) is a stacking context below TopTabs (z48): a child at z60 cannot escape it.
      Suspend the SITE bar (including its Games/More flyouts) for map menus, not for Wallet's own dialog.
      Also remove the world's 40px top clipping strip while a viewport sheet is open. */
-  body:has(.world :is(.world-deed, .dealer, .world-casino), .furn-store, .home-int) .top-tabs { visibility: hidden; pointer-events: none; }
+  body:has(.world :is(.world-deed, .dealer, .world-casino), .private-hangar, .furn-store, .home-int) .top-tabs { visibility: hidden; pointer-events: none; }
   .world:has(.world-deed, .dealer, .world-casino) { inset: 0; }
   .dealer, .world .world-casino { position: fixed; inset: 0; z-index: 60; place-items: stretch; background: #12141d; }
   .dealer > .dealer-box, .furn-store > .furn-box, .world .world-casino > div {
