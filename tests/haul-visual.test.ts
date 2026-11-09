@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  HAUL_MAX_VISIBLE, HAUL_OFF_KEY, buildHaul, farmHaulSite, haulDurationMs, haulPose, haulSiteXZ, pathLength, roadPath,
+  HAUL_MAX_VISIBLE, HAUL_MIN_MS, HAUL_MAX_MS, HAUL_SPEED, HAUL_OFF_KEY, buildHaul, farmHaulSite, haulDurationMs, haulPose, haulSiteXZ, pathLength, roadPath,
 } from '../shared/haulVisual';
 import { emitHaul, haulLive } from '../server/haulVisual';
 
@@ -29,7 +29,10 @@ describe('haul visual (pt2101u queue #6)', () => {
     expect(path.length).toBeGreaterThanOrEqual(2);
     expect(pathLength(path)).toBeGreaterThan(10);
     const dur = haulDurationMs(path);
-    expect(dur).toBeGreaterThanOrEqual(4000);
+    expect(HAUL_SPEED).toBe(14);
+    expect(HAUL_MAX_MS).toBe(90_000);
+    expect(dur).toBeGreaterThanOrEqual(HAUL_MIN_MS);
+    expect(dur).toBeLessThanOrEqual(HAUL_MAX_MS);
     const e = buildHaul('Amber', 'factory', 'market', 'factory-sell', 10_000)!;
     const mid = haulPose(e, e.departAt + (e.arriveAt - e.departAt) / 2);
     expect(mid.done).toBe(false);

@@ -6,13 +6,13 @@
 import { ROADS, LANDMARK_SLOTS, MINE_SITES, SPOT_POS, PLATE } from './worldLayout.js';
 import { farmPlots, plotId } from './farm.js';
 
-export const HAUL_MAX_VISIBLE = 30;
+export const HAUL_MAX_VISIBLE = 50; // was 30; raised so longer trips (half speed) don't cull more aggressively
 export const HAUL_MERGE_MS = 2_500;
 export const HAUL_PER_PLAYER_PER_MIN = 12;
 export const HAUL_BG_GAP_MS = 20_000; // throttle offline/background sweeps
-export const HAUL_SPEED = 28; // world units / second along path
-export const HAUL_MIN_MS = 4_000;
-export const HAUL_MAX_MS = 45_000;
+export const HAUL_SPEED = 14; // world units / second along path (was 28; t2105u ~50% slower)
+export const HAUL_MIN_MS = 8_000; // was 4_000 — short hops also take ~2×
+export const HAUL_MAX_MS = 90_000; // was 45_000 — headroom so longest routes still finish at half speed
 /** localStorage: set to '1' to hide cosmetic haul trucks. */
 export const HAUL_OFF_KEY = 'chud-haul-trucks-off';
 
