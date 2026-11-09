@@ -1,6 +1,7 @@
 import { BuildTag, ChangelogButton } from './Changelog';
 import { chatTimeLabel, chatTimeFull } from '../../../shared/chatTime';
 import { RequestsButton } from './Requests';
+import { WikiButton } from './Wiki';
 import { useEffect, useRef, useState } from 'react';
 import { request, socket } from '@/lib/net';
 import { openPlayer } from './PlayerProfile';
@@ -150,6 +151,7 @@ export function ChatDrawer() {
         <aside className="chat-drawer" data-testid="chat-drawer" aria-label="Online players and chat">
           <div className="chat-head">
             <b>Players <span className="chat-dim">({onlineCount(online)} online{online.guests ? ` + ${online.guests} guest${online.guests === 1 ? '' : 's'}` : ''})</span></b>
+            <WikiButton />
             <RequestsButton />
             <ChangelogButton />
             <button type="button" className="acct-close" aria-label="Close chat" onClick={() => setOpen(false)}>✕</button>

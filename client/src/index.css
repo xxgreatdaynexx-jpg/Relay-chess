@@ -2629,3 +2629,18 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .bill-review-foot { flex: none; border-top: 1px solid #2c3242; padding: 8px 16px; display: grid; gap: 6px; }
 .bill-review-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .bill-review-actions button { min-height: 44px; padding: 0 14px; }
+
+/* Wiki (pt2100u) — reuses chat-clog shell; tables scroll on mobile */
+.chat-head .chat-wiki-btn { margin-left: auto; }
+.chat-head .chat-wiki-btn + .chat-req-btn { margin-left: 6px; }
+.wiki-search { display: flex; gap: 8px; align-items: center; padding: 0 12px 8px; }
+.wiki-search input { flex: 1; min-width: 0; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.18); color: inherit; border-radius: 8px; padding: 8px 10px; font-size: 14px; }
+.wiki-intro { margin: 4px 0 6px; font-size: 13px; opacity: .9; }
+.wiki-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 6px 0 4px; }
+.wiki-table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.wiki-table th, .wiki-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,.08); vertical-align: top; }
+.wiki-table th { opacity: .7; font-weight: 600; white-space: nowrap; }
+@media (max-width: 520px) {
+  .wiki-table { font-size: 11px; }
+  .chat-clog.chat-wiki { font-size: 14px; }
+}

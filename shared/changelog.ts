@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T16:20:00-06:00", "title": "In-game Wiki guide in chat", "bullets": [
+    "A new 📘 Wiki button sits next to Requests and Changelog in chat. It opens a searchable, phone-friendly guide to crops, factory and kitchen recipes, ores and mines, employees, fishing, Fort McChud oil, properties, city levers and tax funding, weekly event payouts, and mayor powers.",
+    "Tables are generated from the same live game constants the server uses, so wages, sell prices, event Gold (200k), and the no-8-hour worker rule stay in sync when the game changes. Short intros explain the rules in plain language.",
+  ]},
   {"commit": "", "at": "2026-11-09T16:10:00-06:00", "title": "Low taxes thin city services; higher taxes strengthen them", "bullets": [
     "City Hall now shows a City funding score from the tax levers vs each default. Below the defaults, policies and treasury projects cost more, civic builds take longer, and festival / road-repair boosts are weaker. Above the defaults, the same things get a modest break — gradual, no cliff.",
     "Freight still can’t go below the default (no discounts). The 25% treasury share, lever cooldowns, and Bill Chud 1 (abolished property surcharge) are unchanged. Nothing is charged retroactively: only new policies, projects and builds, plus live festival/road-repair strength, follow the score.",
