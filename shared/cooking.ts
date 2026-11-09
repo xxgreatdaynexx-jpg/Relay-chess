@@ -98,6 +98,9 @@ export const RECIPES: Recipe[] = [
   { id: 'cacao_souffle', label: 'Chocolate Soufflé', emoji: '🍫', level: 92, ings: { cacao: 1, eggs: 1, sugar: 1, butter: 1, milk: 1 }, diff: 0.9 },
 ];
 export const recipeById = (id: unknown) => RECIPES.find((r) => r.id === id);
+/** Kitchen recipes that used a cooler fish (fish / fish_fine). Factory Bring-in turns these fridge dishes into Cooked Fish Portions. */
+export const isFishDishRecipe = (id: string) => { const r = recipeById(id); return !!r && Object.keys(r.ings).some(isFishIng); };
+export const FISH_DISH_RECIPES = RECIPES.filter((r) => Object.keys(r.ings).some(isFishIng)).map((r) => r.id);
 export const rawValue = (r: Recipe) => Object.entries(r.ings).reduce((a, [id, n]) => a + (ingInfo(id)?.base ?? 0) * n, 0);
 export const DISH_MARKUP = 1.35;
 /** Base value of a dish at quality q (0..1): 0.8x..1.2x of markup x raw. */

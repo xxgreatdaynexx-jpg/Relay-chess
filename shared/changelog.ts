@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T10:15:00-06:00", "title": "Factory Bring-in takes kitchen fridge fish dishes", "bullets": [
+    "Bring in → Process city fish now also turns kitchen fridge fish recipes (Pan-Fried Fish, Fish Tacos, Fish & Chips, Mango-Glazed Fine Fish, Coconut Fish Curry) at your city warehouse into Cooked Fish Portions (1 per 10 chips of dish value), same as pan-fried cooler dishes. Raw cooler fish still become Fish Fillets.",
+    "Non-fish fridge meals stay in the fridge to sell from the Kitchen. Resort stock still needs shipping to the city first. If nothing qualifies, the factory says so clearly instead of quietly doing nothing.",
+  ]},
   {"commit": "", "at": "2026-11-09T10:00:00-06:00", "title": "Tell each miner what ore to prioritize", "bullets": [
     "In the Employment Office, each hired miner has a Mine priority menu: Balanced (the usual mix) or any ore that mine actually produces. Quarry miners stay stone-only. Changing priority is free and applies to new picks going forward; existing haul is unchanged.",
     "Prioritizing shifts the mix toward that ore without increasing how much value they bring in per hour versus Balanced. Online and offline catch-up use the same rule.",

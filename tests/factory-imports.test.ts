@@ -85,7 +85,27 @@ describe('imports are atomic and server-side', () => {
     await ins('a', 'bass', 24); await ins('b', 'salmon', 60, 'Seared Salmon'); await ins('c', 'boot', 2);
     const r = await f.toFactory('Gus', undefined, sink('Gus'));
     expect(r.moved).toBe(2); expect(qty('fish_fillet')).toBe(3); expect(qty('fish_portion')).toBe(6);
-    await expect(f.toFactory('Gus', undefined, sink('Gus'))).rejects.toThrow(/No fish/);
+    await expect(f.toFactory('Gus', undefined, sink('Gus'))).rejects.toThrow(/Nothing to process|No fish/);
     expect((await pool.query("SELECT id FROM fish_catches WHERE sold_at IS NULL")).rows.map((x: { id: string }) => x.id)).toEqual(['c']);
+  });
+  it('fish: kitchen fridge fish dishes become portions; non-fish fridge meals stay; atomic once', async () => {
+    const { pool, bank, sink, qty } = await db();
+    const f = new Fishing(pool, () => bank, () => T0); await f.init();
+    const dish = (id: string, recipe: string, value: number, loc = 'warehouse') =>
+      pool.query('INSERT INTO kitchen_dishes (id, player_key, name, recipe, quality, value, cooked_at, loc) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [id, 'gus', 'Gus', recipe, 0.9, value, T0, loc]);
+    await dish('d1', 'fried_fish', 20);
+    await dish('d2', 'fried_fish', 20);
+    await dish('d3', 'scrambled_eggs', 40); // non-fish fridge meal
+    await dish('d4', 'fish_tacos', 30, 'resort'); // resort — not city
+    await dish('d5', 'fish_chips', 9); // too small for a portion (<10)
+    await pool.query('INSERT INTO fish_catches (id, player_key, name, species, weight_g, value, caught_at, dish, loc) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', ['tiny', 'gus', 'Gus', 'bass', 100, 1, T0, null, 'warehouse']);
+    const r = await f.toFactory('Gus', undefined, sink('Gus'));
+    expect(r.moved).toBe(2);
+    expect(qty('fish_portion')).toBe(4); // 20/10 + 20/10
+    expect(qty('fish_fillet') || 0).toBe(0);
+    const left = (await pool.query('SELECT id, recipe FROM kitchen_dishes WHERE sold_at IS NULL ORDER BY id')).rows as Array<{ id: string; recipe: string }>;
+    expect(left.map((x) => x.id)).toEqual(['d3', 'd4', 'd5']);
+    await expect(f.toFactory('Gus', undefined, sink('Gus'))).rejects.toThrow(/Nothing to process/);
+    expect(qty('fish_portion')).toBe(4); // no duplication
   });
 });

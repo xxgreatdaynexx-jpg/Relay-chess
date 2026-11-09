@@ -25,7 +25,7 @@ import {
   BITE_MAX_MS, BITE_MIN_MS, CAST_COOLDOWN_MS, fishSellValue, fishDailyKey, spotOf, COOLER_MAX, FISH, FISH_XP, fishById, fishDiff, fishPayout, fishValue, HOOK_WINDOW_MS,
   REEL_DT, replayReel, rollFish, rollWeight, anglerAim, type AnglerState, type FishCatch, type FishView,
 } from '../shared/fishing.js';
-import { cookPayout, cookSellValue } from '../shared/cooking.js';
+import { cookPayout, cookSellValue, FISH_DISH_RECIPES } from '../shared/cooking.js';
 import { isFishSpot, type FishSpot } from '../shared/fishing.js';
 import { fishingLoc, WAREHOUSE, FACTORY, isPool } from '../shared/inventoryLocations.js';
 import { FLEET_MAX_CUT } from '../shared/coop3.js';
@@ -61,6 +61,8 @@ ALTER TABLE fish_catches ADD COLUMN IF NOT EXISTS loc TEXT;
 CREATE INDEX IF NOT EXISTS fish_catches_loc ON fish_catches (player_key, loc) WHERE sold_at IS NULL;
 CREATE TABLE IF NOT EXISTS kitchen_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
 CREATE TABLE IF NOT EXISTS fish_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
+CREATE TABLE IF NOT EXISTS kitchen_dishes (id TEXT PRIMARY KEY, player_key TEXT NOT NULL, name TEXT NOT NULL, recipe TEXT NOT NULL, quality REAL NOT NULL, value INTEGER NOT NULL, cooked_at BIGINT NOT NULL, sold_at BIGINT, loc TEXT);
+CREATE INDEX IF NOT EXISTS kitchen_dishes_player ON kitchen_dishes (player_key, sold_at);
 `;
 /** Factory units for one cooler fish (base value): raw -> fillets (8 each), cooked -> portions (10 each). */
 export const fishImportQty = (value: number, cooked: boolean) => Math.floor(value / (cooked ? 10 : 8));
@@ -232,29 +234,49 @@ export class Fishing {
       return { sold: rows.length, gross: gross + dGross, paid: paid - cutTotal, chips: this.bank().account(name).chips, ...(cutTotal ? { captainCut: cutTotal } : {}) };
     }).then(async result => { await refillCooler(name); return result; });
   }
-  /** pt1252u: move fish from the cooler into Factory storage. Raw fish -> fillets (1 per 8 base value), cooked dishes ->
-   * portions (1 per 10). Junk can't go. One UPDATE (still yours, unsold) + the storage write in the same transaction. */
+  /** pt1252u / fridge Bring-in: cooler fish + kitchen fridge fish dishes -> factory goods.
+   * Raw cooler fish -> fillets (1 per 8 base value); pan-fried cooler dishes and kitchen fish recipes
+   * (fried_fish, fish_tacos, …) -> Cooked Fish Portions (1 per 10). Same transaction: claim source rows
+   * (sold_at) + storage write. Junk / tiny fish and non-fish fridge meals stay put. */
   async toFactory(name: string, ids: unknown, sink: ImportSink): Promise<{ moved: number; items: Array<[string, number]> }> {
     const key = keyOf(name);
     return this.lock(`c:${key}`, async () => {
       const all = (await this.pool.query("SELECT id, species, value, dish FROM fish_catches WHERE player_key = $1 AND sold_at IS NULL AND loc IN ('factory', 'warehouse')", [key]) /* map pools: any city-map fish, no hauling */).rows as Array<{ id: string; species: string; value: number; dish: string | null }>;
       const want = Array.isArray(ids) ? new Set(ids.filter((x): x is string => typeof x === 'string').slice(0, COOLER_MAX)) : null;
       const rows = all.filter((r) => (!want || want.has(r.id)) && fishById(r.species)?.rarity !== 'junk' && fishImportQty(Number(r.value), !!r.dish) > 0);
-      if (!rows.length) throw new FishError(want ? 'Only fish on the city map can go in (ship resort fish to the city first; junk and tiny fish can\'t).' : 'No fish on the city map big enough to process. Ship resort fish to the city first.');
-      let fillet = 0, portion = 0; for (const r of rows) { const n = fishImportQty(Number(r.value), !!r.dish); if (r.dish) portion += n; else fillet += n; }
+      // Kitchen fridge fish dishes (recipe table) — only on a full Bring-in (no id filter); city map only.
+      const dishRows = want ? [] : ((await this.pool.query(
+        "SELECT id, recipe, value FROM kitchen_dishes WHERE player_key = $1 AND sold_at IS NULL AND loc IN ('factory', 'warehouse') AND recipe = ANY($2::text[])",
+        [key, FISH_DISH_RECIPES],
+      )).rows as Array<{ id: string; recipe: string; value: number }>).filter((r) => fishImportQty(Number(r.value), true) > 0);
+      if (!rows.length && !dishRows.length) {
+        throw new FishError(want
+          ? "Only fish on the city map can go in (ship resort fish to the city first; junk and tiny fish can't)."
+          : 'Nothing to process: need city-warehouse cooler fish (raw or pan-fried) or kitchen fridge fish dishes (Pan-Fried Fish, Fish Tacos, Fish & Chips, …). Other fridge meals sell from the Kitchen. Ship resort stock to the city first.');
+      }
+      let fillet = 0, portion = 0;
+      for (const r of rows) { const n = fishImportQty(Number(r.value), !!r.dish); if (r.dish) portion += n; else fillet += n; }
+      for (const r of dishRows) portion += fishImportQty(Number(r.value), true);
       const items: Array<[string, number]> = []; if (fillet) items.push(['fish_fillet', fillet]); if (portion) items.push(['fish_portion', portion]);
       const cl = await this.pool.connect();
       try {
         await cl.query('BEGIN');
-        const ph = rows.map((_, i) => `$${i + 3}`).join(',');
-        const u = await cl.query(`UPDATE fish_catches SET sold_at = $1 WHERE player_key = $2 AND sold_at IS NULL AND loc IN ('${FACTORY}', '${WAREHOUSE}') AND id IN (${ph})`, [this.clock(), key, ...rows.map((r) => r.id)]);
-        if (u.rowCount !== rows.length) throw new FishError('Your fish changed — try again.');
+        if (rows.length) {
+          const ph = rows.map((_, i) => `$${i + 3}`).join(',');
+          const u = await cl.query(`UPDATE fish_catches SET sold_at = $1 WHERE player_key = $2 AND sold_at IS NULL AND loc IN ('${FACTORY}', '${WAREHOUSE}') AND id IN (${ph})`, [this.clock(), key, ...rows.map((r) => r.id)]);
+          if (u.rowCount !== rows.length) throw new FishError('Your fish changed — try again.');
+        }
+        if (dishRows.length) {
+          const ph = dishRows.map((_, i) => `$${i + 3}`).join(',');
+          const u = await cl.query(`UPDATE kitchen_dishes SET sold_at = $1 WHERE player_key = $2 AND sold_at IS NULL AND loc IN ('${FACTORY}', '${WAREHOUSE}') AND id IN (${ph})`, [this.clock(), key, ...dishRows.map((r) => r.id)]);
+          if (u.rowCount !== dishRows.length) throw new FishError('Your fridge dishes changed — try again.');
+        }
         await sink.write(cl, items);
         await cl.query('COMMIT');
       } catch (e) { await cl.query('ROLLBACK').catch(() => {}); if (e instanceof FishError) throw e; console.error('[fishing] toFactory failed:', (e as Error).message); throw new FishError('Something went wrong. Nothing was moved.'); }
       finally { cl.release(); }
       sink.after(items);
-      return { moved: rows.length, items };
+      return { moved: rows.length + dishRows.length, items };
     }).then(async result => { await refillCooler(name); return result; });
   }
   async release(name: string, ids: unknown): Promise<{ released: number }> {
