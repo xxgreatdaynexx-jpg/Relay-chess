@@ -59,7 +59,7 @@ describe('three caves (pt1201u)', () => {
       expect(obbOverlap(apron, { x: (FARM_X0 + FARM_X1) / 2, z: (FARM_Z0 + FARM_Z1) / 2, w: FARM_X1 - FARM_X0, d: FARM_Z1 - FARM_Z0, rot: 0 }, 2), id).toBe(false);
       expect(s.x - MINE_APRON / 2).toBeGreaterThanOrEqual(MAP_BOUNDS.x0); expect(s.x + MINE_APRON / 2).toBeLessThanOrEqual(MAP_BOUNDS.x1);
       expect(s.z - MINE_APRON / 2).toBeGreaterThanOrEqual(MAP_BOUNDS.z0); expect(s.z + MINE_APRON / 2).toBeLessThanOrEqual(MAP_BOUNDS.z1);
-      expect(propertyById(`lm:${id}`), id).toBeTruthy();
+      if (id === 'mine-quarry') expect(propertyById(`lm:${id}`), id).toBeUndefined(); else expect(propertyById(`lm:${id}`), id).toBeTruthy();
     }
     for (const [a, s] of sites) for (const [b, t] of sites) if (a < b) expect(Math.hypot(s.x - t.x, s.z - t.z)).toBeGreaterThan(120);
   });

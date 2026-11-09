@@ -34,11 +34,11 @@ export const GRACE_DAYS = 3;
 export const BASE_PRICE: Record<string, number> = { lot: 8_000, park: 20_000, plaza: 25_000, house: 15_000, rowhouse: 30_000, apartment: 60_000, tower: 150_000 };
 export const LANDMARK_PRICE: Record<string, number> = {
   casino: 2_000_000, bank: 2_000_000, stocks: 1_500_000, arena: 1_000_000, chess: 1_000_000, market: 1_000_000,
-  factory: 750_000, mine: 750_000, 'mine-frost': 750_000, 'mine-magma': 750_000, 'mine-quarry': 750_000, warehouse: 500_000, leaderboard: 500_000, chat: 500_000, dealer: 750_000, mechanic: 600_000, airport: 3_000_000, racetrack: 1_500_000, dock: 600_000, employ: 600_000, furniture: 600_000,
+  factory: 750_000, mine: 750_000, 'mine-frost': 750_000, 'mine-magma': 750_000, warehouse: 500_000, leaderboard: 500_000, chat: 500_000, dealer: 750_000, mechanic: 600_000, airport: 3_000_000, racetrack: 1_500_000, dock: 600_000, employ: 600_000, furniture: 600_000,
 };
 export const LANDMARK_LABEL: Record<string, string> = {
   casino: 'Casino', bank: 'Bank', stocks: 'Stock Exchange', arena: 'Arena', chess: 'Chess Club', market: 'Market',
-  factory: 'Factory', mine: 'Mine', 'mine-frost': 'Frostbite Caverns', 'mine-magma': 'Magma Depths', 'mine-quarry': 'Stone Quarry', warehouse: 'Warehouse', leaderboard: 'Leaderboard', chat: 'Chat Hall', dealer: 'Car Dealership', mechanic: 'Mechanic Shop', airport: 'Chud Hub International Airport', racetrack: 'Chud Hub Speedway', dock: 'Fishing Dock', employ: 'Employment Office', furniture: 'Furniture Store',
+  factory: 'Factory', mine: 'Mine', 'mine-frost': 'Frostbite Caverns', 'mine-magma': 'Magma Depths', warehouse: 'Warehouse', leaderboard: 'Leaderboard', chat: 'Chat Hall', dealer: 'Car Dealership', mechanic: 'Mechanic Shop', airport: 'Chud Hub International Airport', racetrack: 'Chud Hub Speedway', dock: 'Fishing Dock', employ: 'Employment Office', furniture: 'Furniture Store',
 };
 /** Chosen design prices: jail matches Factory/Mine; harbour matches Speedway (below Airport). Public services stay public. */
 export const PUBLIC_SERVICE_DEEDS: Property[] = [
@@ -104,7 +104,8 @@ let cache: Property[] | null = null; let byId: Map<string, Property> | null = nu
 export function properties(): Property[] {
   if (cache) return cache;
   const { houses, patches } = cityFill(7); const out: Property[] = PUBLIC_SERVICE_DEEDS.map((p) => ({ ...p }));
-  for (const [id, b] of Object.entries(landmarks())) if (LANDMARK_IDS.includes(id) && !CIVIC_IDS.has(id)) out.push({ ...b, id: `lm:${id}`, kind: 'landmark', type: id, label: LANDMARK_LABEL[id] ?? id, price: LANDMARK_PRICE[id] ?? 500_000 });
+  const NON_DEED_LANDMARKS = new Set(['mine-quarry']); // Stone Quarry: public manual mine only (chessguy2)
+  for (const [id, b] of Object.entries(landmarks())) if (LANDMARK_IDS.includes(id) && !CIVIC_IDS.has(id) && !NON_DEED_LANDMARKS.has(id)) out.push({ ...b, id: `lm:${id}`, kind: 'landmark', type: id, label: LANDMARK_LABEL[id] ?? id, price: LANDMARK_PRICE[id] ?? 500_000 });
   for (const h of [...houses, ...countryHomes()]) {
     const t = HOUSING_TYPES.find((x) => x.id === h.type); if (!t) continue;
     const ref = ((t.w[0] + t.w[1]) / 2) * ((t.d[0] + t.d[1]) / 2), midH = ((t.floors[0] + t.floors[1]) / 2) * t.floorH;

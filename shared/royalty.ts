@@ -12,7 +12,6 @@ export const ROYALTY_VENUE: Record<string, string> = {
   mine: 'ore sold after hauling it out of the Mine',
   'mine-frost': 'ore sold after hauling it out of Frostbite Caverns',
   'mine-magma': 'ore sold after hauling it out of Magma Depths',
-  'mine-quarry': 'ore sold after hauling it out of the Stone Quarry',
   factory: 'factory goods (bars, goods, food) sold to the house',
   dock: 'fish and dishes sold at the Fishing Dock',
   racetrack: 'Speedway Daily Cup prizes',
@@ -22,7 +21,7 @@ export const ROYALTY_VENUE: Record<string, string> = {
 /** Casino games whose chips count toward the house net win (Hold'em is player vs player: no house). */
 export const HOUSE_GAMES = new Set(['blackjack', 'roulette', 'slots', 'video-poker', 'solitro']);
 /** Mine cave id -> landmark id. Coral (resort reef) has no landmark. */
-export const CAVE_LANDMARK: Record<string, string> = { mine: 'mine', frost: 'mine-frost', magma: 'mine-magma', quarry: 'mine-quarry' };
+export const CAVE_LANDMARK: Record<string, string> = { mine: 'mine', frost: 'mine-frost', magma: 'mine-magma' };
 export const royaltyPct = (lm: string) => `${+(royaltyRate(lm) * 100).toFixed(2)}%`;
 
 /** Hostile buyouts: any player can force-buy a monument for BUYOUT_MUL x what its owner paid (that becomes the new price). */

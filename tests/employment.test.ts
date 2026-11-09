@@ -56,6 +56,15 @@ describe('employment economics', () => {
 });
 
 describe('employment office', () => {
+  it('forged miner:quarry hire is refused; existing miner caves unchanged', async () => {
+    const s = await setup(); await s.addPlayer('Gus'); await s.fund('Gus', 100_000);
+    await expect(s.e.hire('Gus', 'miner:quarry')).rejects.toThrow(/Stone Quarry/);
+    expect((await s.e.view('Gus')).workers).toHaveLength(0);
+    expect(s.chips('gus')).toBe(100_000);
+    expect(jobById('miner:quarry')).toBeUndefined();
+    await s.e.hire('Gus', 'miner:mine');
+    const after = await s.e.view('Gus'); expect(after.workers).toHaveLength(1); expect(after.workers[0]!.job).toBe('miner:mine');
+  });
   it('hiring charges fee + first day atomically; new accounts and a 4th worker are refused', async () => {
     const s = await setup(); await s.addPlayer('Gus'); await s.addPlayer('Kid', 2 * HOUR);
     await s.fund('Gus', 100_000); await s.fund('Kid', 100_000);

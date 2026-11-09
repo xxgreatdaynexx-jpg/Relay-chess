@@ -32,7 +32,7 @@ describe('real estate catalog', () => {
     const { houses, patches } = cityFill(7);
     expect(ps.filter((p) => p.kind === 'building' && p.map !== 'resort')).toHaveLength(houses.length + countryHomes().length + countryBusinesses().length + farmBarns().length);
     expect(ps.filter((p) => p.kind === 'patch')).toHaveLength(patches.length);
-    expect(ps.filter((p) => p.kind === 'landmark').map((p) => p.type).sort()).toEqual([...LANDMARK_IDS, 'jail', 'harbour'].filter((id) => id !== 'cityhall').sort());
+    expect(ps.filter((p) => p.kind === 'landmark').map((p) => p.type).sort()).toEqual([...LANDMARK_IDS, 'jail', 'harbour'].filter((id) => id !== 'cityhall' && id !== 'mine-quarry').sort()); // Stone Quarry is public/manual, not a buyable deed
     for (const p of ps) { expect(p.price).toBeGreaterThan(0); if (p.kind !== 'landmark') expect(obbOverlap(PARK_AREA, p)).toBe(false); }
     expect(ps.some((p) => /trailer/i.test(p.id))).toBe(false);
     expect(ps.some((p) => p.type === 'cityhall')).toBe(false); // City Hall is civic, never for sale

@@ -3,15 +3,15 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { CAVES, CAVE_DEFS, isCave, inExit, type OreId } from '../shared/mines';
-import { levelOf, floorRows, hasFloors, caveFloorBias, MAX_FLOOR } from '../shared/mineFloors';
+import { levelOf, floorRows, hasFloors, caveFloorBias, MAX_FLOOR, LADDER } from '../shared/mineFloors';
 import { mobCount, MOB_SKINS } from '../shared/mineCombat';
 import { JOBS, isMinerCave, MINER_CAVES, jobById } from '../shared/employment';
 import { CITY_CAVES, parseLoc, mineLoc, WAREHOUSE } from '../shared/inventoryLocations';
 import { MinesWorld } from '../server/mines';
 import { canStand } from '../shared/fps';
-import { LADDER } from '../shared/mineFloors';
-import { MINE_SITES } from '../shared/worldLayout';
-import { CAVE_LANDMARK } from '../shared/royalty';
+import { LANDMARK_IDS, MINE_SITES } from '../shared/worldLayout';
+import { CAVE_LANDMARK, ROYALTY_VENUE } from '../shared/royalty';
+import { LANDMARK_PRICE, properties } from '../shared/realEstate';
 
 const root = dirname(fileURLToPath(import.meta.url));
 
@@ -22,7 +22,12 @@ describe('Stone Quarry (chessguy2)', () => {
     expect(CAVE_DEFS.map((c) => c.id)).toContain('quarry');
     expect(CAVES.quarry.name).toMatch(/Stone Quarry/i);
     expect(MINE_SITES['mine-quarry']?.cave).toBe('quarry');
-    expect(CAVE_LANDMARK.quarry).toBe('mine-quarry');
+    expect(MINE_SITES['mine-quarry']?.z).toBeGreaterThan(146); // south of airport keep-out
+    expect(CAVE_LANDMARK.quarry).toBeUndefined();
+    expect(ROYALTY_VENUE['mine-quarry']).toBeUndefined();
+    expect(LANDMARK_IDS).toContain('mine-quarry'); // map/apron placement only
+    expect(LANDMARK_PRICE['mine-quarry']).toBeUndefined();
+    expect(properties().some((p) => p.id === 'lm:mine-quarry')).toBe(false);
     for (const f of [1, 5, 20, 40]) {
       const bias = caveFloorBias('quarry', f);
       for (const [ore, w] of Object.entries(bias)) {
@@ -81,7 +86,6 @@ describe('Stone Quarry (chessguy2)', () => {
     const given = w.giveOre(m, 5, () => 'stone' as OreId);
     expect(given).toEqual([{ type: 'ore', id: 'stone', qty: 5 }]);
     expect(w.load(m.id)).toBe(before + 5);
-    // Rejoin same account memory world: carried haul still present on miner until exit/bank.
     expect([...m.carried.values()].some((s) => s.id === 'stone' && s.qty === 5)).toBe(true);
   });
 
