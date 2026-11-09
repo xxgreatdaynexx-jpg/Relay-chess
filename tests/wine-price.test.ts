@@ -1,14 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { GOODS as ITEMS } from '../shared/mines';
-import { CROPS } from '../shared/farm';
+import { CROPS, CROP_SEED_MUL } from '../shared/farm';
+import { FOOD_STEP_MARKUP } from '../shared/factory';
 import { houseSellPrice } from '../shared/sellBuff';
 describe('wine price', () => {
-  it('wine sells for 700; 2 grape seeds (300) give 400 profit', () => {
-    expect(ITEMS.wine.price).toBe(700);
-    const seed = CROPS.find((c: any) => c.id === 'grapes')!.seed;
-    expect(seed * 2).toBe(300);
-    expect(ITEMS.wine.price - seed * 2).toBe(400);
-    expect(houseSellPrice({ type: 'good', id: 'wine' })).toBe(700);
-    expect(houseSellPrice({ type: 'good', id: 'wine' }) - seed * 2).toBe(400);
+  it('wine is 2 grapes at seed x 1.5 x 1.10 (no special case)', () => {
+    const seed = CROPS.find((c) => c.id === 'grapes')!.seed;
+    const expectP = 2 * seed * CROP_SEED_MUL * FOOD_STEP_MARKUP;
+    expect(ITEMS.wine.price).toBeCloseTo(expectP, 6);
+    expect(houseSellPrice({ type: 'good', id: 'wine' })).toBeCloseTo(expectP, 6);
   });
 });

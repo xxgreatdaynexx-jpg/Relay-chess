@@ -297,22 +297,23 @@ export const GOODS: Record<string, ItemDef> = {
   computer:     { type: 'good', id: 'computer',     name: 'Computer',      price: 1030, color: '#4a7fd0' },
   drill:        { type: 'good', id: 'drill',        name: 'Mining Drill',  price: 2140, color: '#e0a030' },
   // Factory inputs brought in from the rest of the game (pt1252u). raw = can't be sold to the house as-is: craft it.
-  // Prices are the reference value (crops: seed x 1.2 = what the raw harvest pays, crop margins 2026-11-04; fish fillets ~ base chips per fillet).
-  // Farm-chain products below are priced so planting -> selling the product profits 30% of the seed consumed (Wine fixed at 700).
-  crop_strawberry: { type: 'good', id: 'crop_strawberry', name: 'Strawberries', price: 6,   color: '#d84a5a', raw: true },
-  crop_wheat:      { type: 'good', id: 'crop_wheat',      name: 'Wheat',        price: 12,  color: '#d8b860', raw: true },
-  crop_carrot:     { type: 'good', id: 'crop_carrot',     name: 'Carrots',      price: 18,  color: '#e08a3a', raw: true },
-  crop_corn:       { type: 'good', id: 'crop_corn',       name: 'Corn',         price: 30,  color: '#e8d050', raw: true },
-  crop_tomato:     { type: 'good', id: 'crop_tomato',     name: 'Tomatoes',     price: 48,  color: '#d8443a', raw: true },
-  crop_potato:     { type: 'good', id: 'crop_potato',     name: 'Potatoes',     price: 72, color: '#b08a5a', raw: true },
-  crop_pumpkin:    { type: 'good', id: 'crop_pumpkin',    name: 'Pumpkins',     price: 108, color: '#e0782a', raw: true },
-  crop_grapes:     { type: 'good', id: 'crop_grapes',     name: 'Grapes',       price: 180, color: '#8a4ac0', raw: true },
-  crop_sunflower:  { type: 'good', id: 'crop_sunflower',  name: 'Sunflowers',   price: 300, color: '#f0c830', raw: true },
-  crop_pineapple:  { type: 'good', id: 'crop_pineapple',  name: 'Pineapples',   price: 36,  color: '#f2c230', raw: true },
-  crop_banana:     { type: 'good', id: 'crop_banana',     name: 'Bananas',      price: 60,  color: '#f6dc4a', raw: true },
-  crop_mango:      { type: 'good', id: 'crop_mango',      name: 'Mangoes',      price: 96, color: '#f28a2a', raw: true },
-  crop_coconut:    { type: 'good', id: 'crop_coconut',    name: 'Coconuts',     price: 168, color: '#8a5a32', raw: true },
-  crop_cacao:      { type: 'good', id: 'crop_cacao',      name: 'Cacao Pods',   price: 288, color: '#6a3a22', raw: true },
+  // Crops: seed x 1.5 (= raw harvest value after FARM_SELL_MUL). Fish fillets/portions: base chips per unit.
+  // Farm/fish food products below are placeholders; shared/factory.ts applyFarmFishFoodPrices() sets each to
+  // (sum of input bases / out qty) x 1.10 in topological order when the factory module loads.
+  crop_strawberry: { type: 'good', id: 'crop_strawberry', name: 'Strawberries', price: 7.5,  color: '#d84a5a', raw: true },
+  crop_wheat:      { type: 'good', id: 'crop_wheat',      name: 'Wheat',        price: 15,   color: '#d8b860', raw: true },
+  crop_carrot:     { type: 'good', id: 'crop_carrot',     name: 'Carrots',      price: 22.5, color: '#e08a3a', raw: true },
+  crop_corn:       { type: 'good', id: 'crop_corn',       name: 'Corn',         price: 37.5, color: '#e8d050', raw: true },
+  crop_tomato:     { type: 'good', id: 'crop_tomato',     name: 'Tomatoes',     price: 60,   color: '#d8443a', raw: true },
+  crop_potato:     { type: 'good', id: 'crop_potato',     name: 'Potatoes',     price: 90,   color: '#b08a5a', raw: true },
+  crop_pumpkin:    { type: 'good', id: 'crop_pumpkin',    name: 'Pumpkins',     price: 135,  color: '#e0782a', raw: true },
+  crop_grapes:     { type: 'good', id: 'crop_grapes',     name: 'Grapes',       price: 225,  color: '#8a4ac0', raw: true },
+  crop_sunflower:  { type: 'good', id: 'crop_sunflower',  name: 'Sunflowers',   price: 375,  color: '#f0c830', raw: true },
+  crop_pineapple:  { type: 'good', id: 'crop_pineapple',  name: 'Pineapples',   price: 45,   color: '#f2c230', raw: true },
+  crop_banana:     { type: 'good', id: 'crop_banana',     name: 'Bananas',      price: 75,   color: '#f6dc4a', raw: true },
+  crop_mango:      { type: 'good', id: 'crop_mango',      name: 'Mangoes',      price: 120,  color: '#f28a2a', raw: true },
+  crop_coconut:    { type: 'good', id: 'crop_coconut',    name: 'Coconuts',     price: 210,  color: '#8a5a32', raw: true },
+  crop_cacao:      { type: 'good', id: 'crop_cacao',      name: 'Cacao Pods',   price: 360,  color: '#6a3a22', raw: true },
   fish_fillet:     { type: 'good', id: 'fish_fillet',     name: 'Fish Fillet',  price: 8,   color: '#f0a090', raw: true },
   fish_portion:    { type: 'good', id: 'fish_portion',    name: 'Cooked Fish Portion', price: 10, color: '#d88a50', raw: true },
   // Factory products made from them

@@ -420,6 +420,42 @@ export function tierOf(key: string, seen = new Set<string>()): number {
 export const recipeIn = (r: FRecipe) => r.in.reduce((t, [k, q]) => t + q * priceOfKey(k), 0);
 export const recipeOut = (r: FRecipe) => r.out[1] * priceOfKey(r.out[0]);
 
+/** Dayne 2026-11-09: each farm/fish factory craft step pays 10% over the sum of its input bases (per output unit). */
+export const FOOD_STEP_MARKUP = 1.10;
+const isFarmOrFishKey = (k: string, seen = new Set<string>()): boolean => {
+  if (seen.has(k)) return false; seen.add(k);
+  const id = k.split(':')[1] ?? '';
+  if (id.startsWith('crop_') || id.startsWith('fish_')) return true;
+  const r = madeBy(k); return !!r && r.in.some(([ik]) => isFarmOrFishKey(ik, seen));
+};
+/** Recipes whose tree touches a farm crop or fish input (Mill & Press + Food Line chains). */
+export const farmFishFoodRecipes = () => FRECIPES.filter((r) => isFarmOrFishKey(r.out[0]) || r.in.some(([k]) => isFarmOrFishKey(k)));
+/** Set GOODS prices for every farm/fish food craft output: (Σ input bases / out qty) × FOOD_STEP_MARKUP, topo order. Returns ids touched. */
+export function applyFarmFishFoodPrices(markup = FOOD_STEP_MARKUP): string[] {
+  const recs = farmFishFoodRecipes();
+  const byOut = new Map<string, FRecipe>();
+  for (const r of recs) byOut.set(r.out[0], r);
+  const outs = [...byOut.keys()];
+  const deps = new Map(outs.map((k) => [k, new Set(byOut.get(k)!.in.map(([ik]) => ik).filter((ik) => byOut.has(ik) && ik !== k))]));
+  const ready = outs.filter((k) => deps.get(k)!.size === 0);
+  const order: string[] = []; const seen = new Set(ready);
+  while (ready.length) {
+    const k = ready.shift()!; order.push(k);
+    for (const [oid, d] of deps) if (d.delete(k) && d.size === 0 && !seen.has(oid)) { seen.add(oid); ready.push(oid); }
+  }
+  if (order.length !== outs.length) throw new Error(`farm/fish food price cycle: missing ${outs.filter((k) => !order.includes(k)).join(',')}`);
+  const touched: string[] = [];
+  for (const key of order) {
+    const r = byOut.get(key)!;
+    const id = key.split(':')[1]!;
+    const g = GOODS[id]; if (!g) throw new Error(`GOODS missing for ${key}`);
+    g.price = (recipeIn(r) / r.out[1]) * markup;
+    touched.push(id);
+  }
+  return touched;
+}
+applyFarmFishFoodPrices();
+
 /**
  * Selling a placed machine back (t1967u). Pays half the BASE Machinist price, never indexed: the price index has a floor
  * of 1.0 (shared/priceIndex.ts PI_FLOOR), so every Machinist purchase ever paid at least round(cost). Half the base is

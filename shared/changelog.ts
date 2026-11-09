@@ -6,6 +6,11 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T12:05:00-06:00", "title": "Farm crops pay 50% over seed; each factory food step adds 10%", "bullets": [
+    "Harvesting a crop (or its factory raw value) now pays about 50% over the seed cost (was 20%). Example: grapes seed 150 → about 225 chips of value (was 180).",
+    "Every Mill & Press / Food Line craft that uses farm or fish inputs is priced at its ingredients plus 10% (no more special wine price). Examples (base chips): wine 495 (was 700), bread 72.6, Banquet Platter 690, Chocolate Cake 568.",
+    "Ore, bars, jewelry and machine recipes are unchanged. Kitchen fridge recipe values move only where they use the crop sell list (same 50% crop bases). Existing inventories and daily farm/sale caps are untouched.",
+  ]},
   {"commit": "", "at": "2026-11-09T10:15:00-06:00", "title": "Factory Bring-in takes kitchen fridge fish dishes", "bullets": [
     "Bring in → Process city fish now also turns kitchen fridge fish recipes (Pan-Fried Fish, Fish Tacos, Fish & Chips, Mango-Glazed Fine Fish, Coconut Fish Curry) at your city warehouse into Cooked Fish Portions (1 per 10 chips of dish value), same as pan-fried cooler dishes. Raw cooler fish still become Fish Fillets.",
     "Non-fish fridge meals stay in the fridge to sell from the Kitchen. Resort stock still needs shipping to the city first. If nothing qualifies, the factory says so clearly instead of quietly doing nothing.",

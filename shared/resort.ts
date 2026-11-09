@@ -115,12 +115,12 @@ const M = 60_000, H = 60 * M;
 /** Dayne 2026-11-05: same ×0.7 grow scale as shared/farm.ts (keep in sync; avoid circular import of growMs). */
 const GROW_SCALE = 0.7;
 const growMs = (ms: number) => Math.round(ms * GROW_SCALE);
-/** Tropical crops (base chips). Margins match the city's slow crops (~2.1-2.2x), so the daily cap does the limiting. */
+/** Tropical crops (base chips). Listed sell matches city crops: seed x 1.5 / FARM_SELL_MUL (50% over seed after the 0.95 mul). */
 export const TROPICAL_CROPS: Crop[] = [
-  { id: 'pineapple', label: 'Pineapples', emoji: '🍍', seed: 30, grow: growMs(40 * M), sell: 37.9, color: 0xf2c230 },
-  { id: 'banana', label: 'Bananas', emoji: '🍌', seed: 50, grow: growMs(2 * H), sell: 63.16, color: 0xf6dc4a },
-  { id: 'mango', label: 'Mangoes', emoji: '🥭', seed: 80, grow: growMs(6 * H), sell: 101.06, color: 0xf28a2a },
-  { id: 'coconut', label: 'Coconuts', emoji: '🥥', seed: 140, grow: growMs(12 * H), sell: 176.85, color: 0x8a5a32 },
-  { id: 'cacao', label: 'Cacao', emoji: '🍫', seed: 240, grow: growMs(24 * H), sell: 303.16, color: 0x6a3a22 },
+  { id: 'pineapple', label: 'Pineapples', emoji: '🍍', seed: 30, grow: growMs(40 * M), sell: 47.37, color: 0xf2c230 },
+  { id: 'banana', label: 'Bananas', emoji: '🍌', seed: 50, grow: growMs(2 * H), sell: 78.95, color: 0xf6dc4a },
+  { id: 'mango', label: 'Mangoes', emoji: '🥭', seed: 80, grow: growMs(6 * H), sell: 126.32, color: 0xf28a2a },
+  { id: 'coconut', label: 'Coconuts', emoji: '🥥', seed: 140, grow: growMs(12 * H), sell: 221.05, color: 0x8a5a32 },
+  { id: 'cacao', label: 'Cacao', emoji: '🍫', seed: 240, grow: growMs(24 * H), sell: 378.95, color: 0x6a3a22 },
 ];
 export const isTropical = (id: unknown) => TROPICAL_CROPS.some((c) => c.id === id);
