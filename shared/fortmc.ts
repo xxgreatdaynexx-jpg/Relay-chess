@@ -29,18 +29,18 @@ export type Product = 'wellstream' | 'crude' | 'rawgas' | 'natgas' | 'ngl' | 'na
 export interface ProductDef { id: Product; name: string; icon: string; price: number; color: string; sellable: boolean }
 export const PRODUCTS: Record<Product, ProductDef> = {
   wellstream: { id: 'wellstream', name: 'Wellstream', icon: '🛢️', price: 0, color: '#3a2f25', sellable: false },
-  crude:      { id: 'crude',      name: 'Crude oil',  icon: '🛢️', price: 7, color: '#1d1a16', sellable: true },
+  crude:      { id: 'crude',      name: 'Crude oil',  icon: '🛢️', price: 8.75, color: '#1d1a16', sellable: true },
   rawgas:     { id: 'rawgas',     name: 'Raw gas',    icon: '💨', price: 0, color: '#9aa4a8', sellable: false },
-  natgas:     { id: 'natgas',     name: 'Natural gas', icon: '🔥', price: 2, color: '#6ab0ff', sellable: true },
-  ngl:        { id: 'ngl',        name: 'NGL (ethane/propane)', icon: '🧪', price: 6, color: '#b48aff', sellable: true },
-  naphtha:    { id: 'naphtha',    name: 'Naphtha',    icon: '⚗️', price: 8, color: '#e8d27a', sellable: true },
-  diesel:     { id: 'diesel',     name: 'Diesel',     icon: '⛽', price: 17, color: '#d89a3a', sellable: true },
-  gasoline:   { id: 'gasoline',   name: 'Gasoline',   icon: '⛽', price: 19, color: '#f2c84a', sellable: true },
-  residue:    { id: 'residue',    name: 'Heavy residue', icon: '🟫', price: 2, color: '#4a3424', sellable: true },
-  petcoke:    { id: 'petcoke',    name: 'Petroleum coke', icon: '⚫', price: 3, color: '#2b2b2e', sellable: true },
-  sulfur:     { id: 'sulfur',     name: 'Sulfur',     icon: '🟨', price: 4, color: '#f0e040', sellable: true },
-  ethylene:   { id: 'ethylene',   name: 'Ethylene',   icon: '🧪', price: 15, color: '#8ae0d0', sellable: true },
-  plastic:    { id: 'plastic',    name: 'Plastics',   icon: '🧴', price: 28, color: '#f4f4f4', sellable: true },
+  natgas:     { id: 'natgas',     name: 'Natural gas', icon: '🔥', price: 2.5, color: '#6ab0ff', sellable: true },
+  ngl:        { id: 'ngl',        name: 'NGL (ethane/propane)', icon: '🧪', price: 7.5, color: '#b48aff', sellable: true },
+  naphtha:    { id: 'naphtha',    name: 'Naphtha',    icon: '⚗️', price: 10, color: '#e8d27a', sellable: true },
+  diesel:     { id: 'diesel',     name: 'Diesel',     icon: '⛽', price: 21.25, color: '#d89a3a', sellable: true },
+  gasoline:   { id: 'gasoline',   name: 'Gasoline',   icon: '⛽', price: 23.75, color: '#f2c84a', sellable: true },
+  residue:    { id: 'residue',    name: 'Heavy residue', icon: '🟫', price: 2.5, color: '#4a3424', sellable: true },
+  petcoke:    { id: 'petcoke',    name: 'Petroleum coke', icon: '⚫', price: 3.75, color: '#2b2b2e', sellable: true },
+  sulfur:     { id: 'sulfur',     name: 'Sulfur',     icon: '🟨', price: 5, color: '#f0e040', sellable: true },
+  ethylene:   { id: 'ethylene',   name: 'Ethylene',   icon: '🧪', price: 18.75, color: '#8ae0d0', sellable: true },
+  plastic:    { id: 'plastic',    name: 'Plastics',   icon: '🧴', price: 35, color: '#f4f4f4', sellable: true },
 };
 export const PRODUCT_ORDER = Object.keys(PRODUCTS) as Product[];
 export const isProduct = (v: unknown): v is Product => typeof v === 'string' && v in PRODUCTS;

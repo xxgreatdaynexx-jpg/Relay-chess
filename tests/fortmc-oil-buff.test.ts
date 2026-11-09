@@ -1,5 +1,5 @@
 /**
- * Fort McChud oil buff (pt2076u): starter crude payback ~2–3 weeks on a good tract, ~5–6 weeks worst;
+ * Fort McChud oil buff (pt2076u): starter crude payback ~2–2.5 weeks on a good tract, ~4–5 weeks worst;
  * pumpjack remains the best early upgrade; starter refinery fits free grid and pays back under 2× crude-only.
  */
 import { describe, expect, it } from 'vitest';
@@ -54,10 +54,12 @@ describe('Fort McChud oil buff payback', () => {
     expect(WELL_RATE).toBe(60);
     expect(WATER_CUT).toBe(0.1);
     expect(GRID_MW).toBe(8);
-    expect(PRODUCTS.crude.price).toBe(7);
-    expect(PRODUCTS.naphtha.price).toBe(8);
-    expect(PRODUCTS.diesel.price).toBe(17);
-    expect(PRODUCTS.gasoline.price).toBe(19);
+    expect(PRODUCTS.crude.price).toBe(8.75);
+    expect(PRODUCTS.naphtha.price).toBe(10);
+    expect(PRODUCTS.diesel.price).toBe(21.25);
+    expect(PRODUCTS.gasoline.price).toBe(23.75);
+    expect(PRODUCTS.natgas.price).toBe(2.5);
+    expect(PRODUCTS.plastic.price).toBe(35);
     expect(UNITS.refinery.cost).toBe(280_000);
     expect(UNITS.refinery.mw).toBe(3.5);
     expect(WEAR_PER_H).toBe(0.25);
@@ -69,10 +71,10 @@ describe('Fort McChud oil buff payback', () => {
     const best = ranked[0]!, worst = ranked[ranked.length - 1]!;
     const bestPb = starterCapex(best) / shipNetCrudeDay(best);
     const worstPb = starterCapex(worst) / shipNetCrudeDay(worst);
-    expect(bestPb).toBeGreaterThanOrEqual(14);
-    expect(bestPb).toBeLessThanOrEqual(21);
-    expect(worstPb).toBeGreaterThanOrEqual(28);
-    expect(worstPb).toBeLessThanOrEqual(42);
+    expect(bestPb).toBeGreaterThanOrEqual(12);
+    expect(bestPb).toBeLessThanOrEqual(18);
+    expect(worstPb).toBeGreaterThanOrEqual(22);
+    expect(worstPb).toBeLessThanOrEqual(36);
   });
 
   it('keeps pumpjack as the best early upgrade vs bare starter on the best tract', () => {
@@ -81,7 +83,7 @@ describe('Fort McChud oil buff payback', () => {
     const bare = starterCapex(best) / shipNetCrudeDay(best);
     const jack = starterCapex(best, { jack: true }) / shipNetCrudeDay(best, true);
     expect(jack).toBeLessThan(bare);
-    expect(jack).toBeLessThan(14);
+    expect(jack).toBeLessThan(12);
   });
 
   it('makes a starter refinery unthrottled on free grid and faster than 2× crude-only payback', () => {
@@ -91,6 +93,6 @@ describe('Fort McChud oil buff payback', () => {
     const refPb = starterCapex(best, { refinery: true }) / shipNetRefineryDay(best);
     expect(WELL_MW + UNITS.separator.mw + UNITS.refinery.mw).toBeLessThanOrEqual(GRID_MW);
     expect(refPb).toBeLessThan(2 * crudePb);
-    expect(refPb).toBeLessThan(40);
+    expect(refPb).toBeLessThan(34);
   });
 });

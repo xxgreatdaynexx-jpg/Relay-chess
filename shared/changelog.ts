@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T08:35:00-06:00", "title": "Fort McChud oil products sell for about 25% more", "bullets": [
+    "Crude, fuels, gas, NGL, sulfur, ethylene and plastics all sell for about 25% more at the warehouse. Well rates, free grid power, build costs and daily sale tiers are unchanged — this is a price-only buff so pipelines are not capped harder.",
+    "Existing wells, leases, tanks, inventories and already-paid sales stay as they are; only new sales use the higher prices.",
+  ]},
   {"commit": "", "at": "2026-11-09T08:30:00-06:00", "title": "Fort McChud oil pays back faster; starter refinery fits free power", "bullets": [
     "Wells produce twice the wellstream, separators discard 10% water instead of 15%, and crude sells for more. Free grid power is 8 MW and the refinery draws less, so a first well, separator and refinery run without power throttling. Refined fuels also pay a bit more and the refinery costs less to build.",
     "Equipment wears slower and full repairs cost 10% of the build price (was 15%). Existing wells, leases, tanks, inventories and paid history are unchanged — this is forward-looking only. Daily sale tiers and freight fees are the same.",
