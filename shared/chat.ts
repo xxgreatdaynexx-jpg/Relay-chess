@@ -58,6 +58,17 @@ export function whereLabel(table: OnlineUser['table'], activities: readonly Acti
   return parts.length ? parts.join(' · ') : 'Lobby';
 }
 
+/** Players list order: online first, then offline by last-online (most recent first), name as stable tiebreak. */
+export function comparePlayersList(a: Pick<OnlineUser, 'name' | 'online' | 'lastSeen'>, b: Pick<OnlineUser, 'name' | 'online' | 'lastSeen'>): number {
+  const ao = a.online !== false, bo = b.online !== false;
+  if (ao !== bo) return ao ? -1 : 1;
+  if (!ao && !bo) {
+    const as = a.lastSeen ?? 0, bs = b.lastSeen ?? 0;
+    if (as !== bs) return bs - as; // most recent first; unknown (0) sinks
+  }
+  return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+}
+
 /** Compact relative time for an offline player row. */
 export function lastOnlineLabel(lastSeen: number | null | undefined, now = Date.now()): string {
   if (lastSeen == null || !Number.isFinite(lastSeen) || lastSeen <= 0) return 'Last online unknown';

@@ -86,6 +86,22 @@ describe('presence', () => {
     const qa = buildSnapshot([{ name: 'QA-Tess', activities: ['blackjack'] }], true, tt);
     expect(qa.users[0]).toMatchObject({ name: 'QA-Tess', qa: true, where: 'Blackjack' });
   });
+
+  it('online first, then offline by last-online (most recent first), name tiebreak', () => {
+    const now = 1_000_000;
+    const snap = buildSnapshot(
+      [{ name: 'Zoe', activities: [] }, { name: 'Amy', activities: ['slots'] }],
+      false, tt,
+      [
+        { name: 'Old', lastSeen: now - 10_000 },
+        { name: 'Recent', lastSeen: now - 100 },
+        { name: 'AlsoRecent', lastSeen: now - 100 },
+        { name: 'Unknown', lastSeen: null },
+      ],
+    );
+    expect(snap.users.map((u) => u.name)).toEqual(['Amy', 'Zoe', 'AlsoRecent', 'Recent', 'Old', 'Unknown']);
+  });
+
   it('includes rich offline players with last-online, hides poor offline, and keeps online rows', () => {
     const lastSeen = Date.now() - 2 * 60 * 60 * 1000;
     const snap = buildSnapshot([{ name: 'Online', activities: [] }], false, tt, [

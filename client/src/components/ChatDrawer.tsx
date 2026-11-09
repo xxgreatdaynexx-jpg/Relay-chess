@@ -10,7 +10,7 @@ import { loadAuth, useAccount } from '@/lib/auth';
 import { openAccount } from '@/lib/settings';
 import { TopTab } from '@/components/TopTabs';
 import type { Activity, ChatMessage, OnlineSnapshot, OnlineUser } from '../../../shared/chat';
-import { CHAT_MAX_LEN, lastOnlineLabel } from '../../../shared/chat';
+import { CHAT_MAX_LEN, lastOnlineLabel, comparePlayersList } from '../../../shared/chat';
 import { doingLabel } from '../../../shared/doing';
 import { currentDoing } from '@/lib/doing';
 
@@ -159,7 +159,7 @@ export function ChatDrawer() {
           <BuildTag />
           <ul className="chat-online" data-testid="chat-online">
             {online.users.length === 0 && <li className="chat-dim">No players to show right now.</li>}
-            {online.users.map((u) => (
+            {[...online.users].sort(comparePlayersList).map((u) => (
               <li key={u.name}>
                 <button type="button" className="chat-user" onClick={() => { void pick(u); openPlayer(u.name); }} data-testid="chat-user">
                   <span className={`chat-dot${u.online === false ? ' offline' : ''}`} aria-hidden="true" />

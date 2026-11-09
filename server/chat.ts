@@ -10,7 +10,7 @@ import { getRoom } from './rooms.js';
 import { cleanDoing, type Doing } from '../shared/doing.js';
 import {
   CHAT_HISTORY, cleanActivities, validateChat, whereLabel,
-  type Activity, type ChatMessage, type OnlineSnapshot, type OnlineUser,
+  comparePlayersList, type Activity, type ChatMessage, type OnlineSnapshot, type OnlineUser,
 } from '../shared/chat.js';
 
 import { isBuildPost } from './build.js';
@@ -179,7 +179,7 @@ export function buildSnapshot(sources: Iterable<PresenceSource>, viewerIsQa: boo
     byKey.set(key, { name: p.name, table: null, activities: [], where: 'Offline', online: false, lastSeen: p.lastSeen, ...(isQaName(p.name) ? { qa: true as const } : {}) });
   }
   const users = [...byKey.values()].map((u) => ({ ...u, where: u.online === false ? 'Offline' : whereLabel(u.table, u.activities) }));
-  users.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  users.sort(comparePlayersList);
   return { users, guests };
 }
 

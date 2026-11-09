@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T16:25:00-06:00", "title": "Players list shows online first", "bullets": [
+    "The Players list in chat now lists everyone who’s online at the top, then offline players by who was last online most recently. Names break ties. Same order on desktop and mobile.",
+  ]},
   {"commit": "", "at": "2026-11-09T16:20:00-06:00", "title": "In-game Wiki guide in chat", "bullets": [
     "A new 📘 Wiki button sits next to Requests and Changelog in chat. It opens a searchable, phone-friendly guide to crops, factory and kitchen recipes, ores and mines, employees, fishing, Fort McChud oil, properties, city levers and tax funding, weekly event payouts, and mayor powers.",
     "Tables are generated from the same live game constants the server uses, so wages, sell prices, event Gold (200k), and the no-8-hour worker rule stay in sync when the game changes. Short intros explain the rules in plain language.",
