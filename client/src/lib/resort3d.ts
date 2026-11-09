@@ -329,7 +329,7 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   };
   const vis = () => { running = !document.hidden; clock.getDelta(); }; document.addEventListener('visibilitychange', vis); frame();
   return {
-    scene, setFarm, setOwned, lotIds,
+    scene, camera, setFarm, setOwned, lotIds,
     setRunning(v: boolean) { running = v; clock.getDelta(); },
     reset() { camera.position.copy(home); controls.target.copy(homeT); },
     /** Point the camera at (x, z) from an offset (QA screenshots). */

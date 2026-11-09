@@ -16,11 +16,28 @@ describe('haul visual (pt2101u queue #6)', () => {
     expect(h).toBeTruthy();
     expect(h!.from[0]).not.toBeCloseTo(employ![0], 0);
     expect(h!.from[1]).not.toBeCloseTo(employ![1], 0);
-    // Pantry harvests go to warehouse (map pool), not factory
+    expect(h!.hub).toBe('city');
+    // Pantry harvests go to warehouse (map pool), not factory — from the specific city plot
     expect(farmHaulSite('f:3')).toBe('farm:f:3');
     const pantry = buildHaul('Dayne', 'farm:f:1', 'warehouse', 'farm-pantry', 2_000);
     expect(pantry).toBeTruthy();
     expect(haulSiteXZ('factory')).not.toEqual(pantry!.to);
+    expect(pantry!.from).toEqual(haulSiteXZ('farm:f:1'));
+    // Countryside / Big Farm plots use their real field coords (not a shared east-district proxy)
+    const cf5 = haulSiteXZ('farm:cf:5')!; const cf1000 = haulSiteXZ('farm:cf:1000')!;
+    expect(cf5).not.toEqual(cf1000);
+    const country = buildHaul('Dayne', 'farm:cf:5', 'warehouse', 'farm-pantry', 3_000)!;
+    expect(country.from).toEqual(cf5); expect(country.hub).toBe('city');
+    // Resort plantation → Resort Warehouse on the resort hub
+    const rf = buildHaul('Dayne', 'farm:rf:1', 'resort', 'farm-pantry', 4_000)!;
+    expect(rf.from).toEqual(haulSiteXZ('farm:rf:1'));
+    expect(rf.to).toEqual(haulSiteXZ('resort'));
+    expect(rf.hub).toBe('resort');
+    const factory = buildHaul('Dayne', 'farm:f:7', 'factory', 'farm-factory', 5_000)!;
+    expect(factory.from).toEqual(haulSiteXZ('farm:f:7'));
+    const sell = buildHaul('Dayne', 'farm:cf:1000', 'market', 'farm-sell', 6_000)!;
+    expect(sell.from).toEqual(haulSiteXZ('farm:cf:1000'));
+    expect(buildHaul('X', 'farm:rf:1', 'warehouse', 'farm-pantry')).toBeNull();
   });
 
   it('builds a road path with positive length and pose interpolation', () => {
@@ -41,7 +58,7 @@ describe('haul visual (pt2101u queue #6)', () => {
   });
 
   it('rate-limits and caps concurrent cosmetic hauls; skips unknown/cross-map', () => {
-    expect(buildHaul('X', 'farm:rf:1', 'warehouse', 'farm-pantry')).toBeNull();
+    expect(buildHaul('X', 'farm:rf:99', 'resort', 'farm-pantry')).toBeNull();
     const now0 = Date.now() + 50_000; // far from other tests' clocks
     // Same route within merge window → one live truck
     for (let i = 0; i < 8; i++) emitHaul({ name: 'BurstPlayer', from: 'factory', to: 'market', kind: 'factory-sell', now: now0 + i });

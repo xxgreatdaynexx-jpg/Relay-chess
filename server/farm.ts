@@ -345,7 +345,7 @@ export class Farm {
       });
       this.onChange?.(pid);
       eventCredit('harvest', name, cropUnits); // weekly server event (kept); count bonus yield crops
-      try { emitHaul({ name, from: farmHaulSite(pid), to: sink ? 'factory' : 'market', kind: sink ? 'farm-factory' : 'farm-sell', background: !!opts?.auto }); } catch { /* visual only */ }
+      try { emitHaul({ name, from: farmHaulSite(pid), to: sink ? 'factory' : (p.resort ? 'resort' : 'market'), kind: sink ? 'farm-factory' : 'farm-sell', background: !!opts?.auto }); } catch { /* visual only */ }
       return { harvested: cropUnits, paid, chips: this.bank().account(name).chips };
     }));
   }
@@ -419,7 +419,7 @@ export class Farm {
     }
     awardXp(name, 'farming', Math.min(400, 10 + Math.round(value / 5)));
     this.onChange?.(pid);
-    try { emitHaul({ name, from: farmHaulSite(pid), to: 'warehouse', kind: 'farm-pantry', background }); } catch { /* visual only */ }
+    try { emitHaul({ name, from: farmHaulSite(pid), to: farmLoc(pid), kind: 'farm-pantry', background }); } catch { /* visual only */ }
     return { harvested: cropUnits, paid: 0, pantry: Object.fromEntries(counts), toFactory: undefined as Array<[string, number]> | undefined, chips: this.bank().account(name).chips };
   }
 

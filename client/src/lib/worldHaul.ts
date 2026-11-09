@@ -8,6 +8,7 @@ import type { World } from './world3d';
 import { socket } from './net';
 import { truck } from './worldFreight';
 import { HAUL_MAX_VISIBLE, HAUL_OFF_KEY, haulPose, type HaulEvent } from '../../../shared/haulVisual';
+import type { HubId } from '../../../shared/logistics';
 
 function tag(text: string): THREE.Sprite {
   const t = cityLabel(text, '#ffd27a'); const d = t.userData as { w: number; h: number };
@@ -21,14 +22,14 @@ const isMobile = () => typeof window !== 'undefined' && (window.matchMedia?.('(m
 
 type Live = { e: HaulEvent; obj: THREE.Group; tag: THREE.Sprite; lod: 'near' | 'far' };
 
-export function createHaul(world: Pick<World, 'scene' | 'camera'>) {
+export function createHaul(world: Pick<World, 'scene' | 'camera'>, hub: HubId = 'city') {
   const { scene, camera } = world;
   const live = new Map<string, Live>();
   let list: HaulEvent[] = [];
 
   const onLive = (rows: HaulEvent[]) => {
     if (!Array.isArray(rows)) return;
-    list = rows.slice(0, HAUL_MAX_VISIBLE);
+    list = rows.filter((e) => (e.hub ?? 'city') === hub).slice(0, HAUL_MAX_VISIBLE);
   };
 
   const sync = (now: number) => {

@@ -5,6 +5,9 @@
  */
 import { ROADS, LANDMARK_SLOTS, MINE_SITES, SPOT_POS, PLATE } from './worldLayout.js';
 import { farmPlots, plotId } from './farm.js';
+import { fieldPlotOf } from './fieldFarms.js';
+import { resortPlotOf } from './resort.js';
+import { HUB_MAPS, type HubId } from './logistics.js';
 
 export const HAUL_MAX_VISIBLE = 50; // was 30; raised so longer trips (half speed) don't cull more aggressively
 export const HAUL_MERGE_MS = 2_500;
@@ -31,6 +34,8 @@ export interface HaulEvent {
   departAt: number;
   arriveAt: number;
   kind: HaulKind;
+  /** Which map the cosmetic truck is drawn on. */
+  hub: HubId;
 }
 
 const lm = (id: string): [number, number] | null => {
@@ -39,10 +44,15 @@ const lm = (id: string): [number, number] | null => {
 };
 
 /** Resolve a logical site id to a city-map xz. Cross-map / unknown → null (caller skips). */
+/** Resort Warehouse visual dock: first truck point on the resort hub (inventory loc is virtual). */
+export const RESORT_WAREHOUSE_XZ: [number, number] = [HUB_MAPS.resort.truck[0]![0], HUB_MAPS.resort.truck[0]![1]];
+
+/** Resolve a logical site id to xz on its map. Unknown → null (caller skips). */
 export function haulSiteXZ(site: string): [number, number] | null {
   if (!site) return null;
   if (site === 'factory') return lm('factory');
-  if (site === 'warehouse' || site === 'resort') return lm('warehouse');
+  if (site === 'warehouse') return lm('warehouse');
+  if (site === 'resort') return RESORT_WAREHOUSE_XZ;
   if (site === 'market') return lm('market');
   if (site === 'grocery') return lm('grocery');
   if (site === 'dock' || site === 'cooler' || site === 'fishing:lake') return lm('dock');
@@ -56,22 +66,34 @@ export function haulSiteXZ(site: string): [number, number] | null {
     const m = MINE_SITES[key] ?? MINE_SITES[cave];
     return m ? [m.x, m.z] : null;
   }
-  if (site.startsWith('farm:') || site.startsWith('f:') || site.startsWith('cf:')) {
+  if (site.startsWith('farm:') || site.startsWith('f:') || site.startsWith('cf:') || site.startsWith('rf:')) {
     const id = site.startsWith('farm:') ? site.slice(5) : site;
-    if (id.startsWith('rf:')) return null; // resort map — skip (boats/planes cover cross-map)
     if (id.startsWith('f:')) {
       const n = Number(id.slice(2)); const p = farmPlots().find((x) => x.n === n);
       return p ? [p.x, p.z] : null;
     }
     if (id.startsWith('cf:')) {
-      // Country / Big Farms: approximate east farm district centre (exact field varies by seed).
-      return [PLATE + 40, -40];
+      const p = fieldPlotOf(id);
+      return p ? [p.x, p.z] : null;
+    }
+    if (id.startsWith('rf:')) {
+      const p = resortPlotOf(id);
+      return p ? [p.x, p.z] : null;
     }
   }
   // Direct "x,z"
   const m = /^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(site);
   if (m) return [Number(m[1]), Number(m[2])];
   return lm(site);
+}
+
+/** Which map a haul site belongs on (for filtering city vs resort cosmetic trucks). */
+export function haulSiteHub(site: string): HubId {
+  if (!site) return 'city';
+  if (site === 'resort') return 'resort';
+  const id = site.startsWith('farm:') ? site.slice(5) : site;
+  if (id.startsWith('rf:') || site.startsWith('rf:')) return 'resort';
+  return 'city';
 }
 
 /** Sample road network into a coarse graph and BFS a path. Falls back to a bent polyline if disconnected. */
@@ -171,10 +193,16 @@ export function haulPose(e: Pick<HaulEvent, 'path' | 'departAt' | 'arriveAt'>, n
 export function buildHaul(name: string, fromSite: string, toSite: string, kind: HaulKind, now = Date.now(), id?: string): HaulEvent | null {
   const from = haulSiteXZ(fromSite); const to = haulSiteXZ(toSite);
   if (!from || !to) return null;
+  const fromHub = haulSiteHub(fromSite); const toHub = haulSiteHub(toSite);
+  if (fromHub !== toHub) return null; // never mix city and resort coords on one truck
   if (Math.hypot(from[0] - to[0], from[1] - to[1]) < 4) return null;
-  const path = roadPath(from, to);
+  const hub = fromHub;
+  // Resort has no city road graph — use a short bent polyline. City/countryside use the road network.
+  const path = hub === 'resort'
+    ? [from, [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2] as [number, number], to]
+    : roadPath(from, to);
   const dur = haulDurationMs(path);
-  return { id: id ?? `h-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`, name, from, to, path, departAt: now, arriveAt: now + dur, kind };
+  return { id: id ?? `h-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`, name, from, to, path, departAt: now, arriveAt: now + dur, kind, hub };
 }
 
 /** Stable farm site key from a plot id like f:3 / cf:12 / farm:f:3. */
