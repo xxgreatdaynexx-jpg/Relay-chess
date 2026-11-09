@@ -3,7 +3,7 @@ import { newDb } from 'pg-mem';
 import { getBank, resetBank } from '../server/casino-store';
 import { setPriceIndexForTest } from '../server/price-index';
 import { WeeklyEvents, resetWeekly, eventCredit } from '../server/weeklyEvent';
-import { EVENTS, EVENT_CLAIM_MS, EVENT_ORDER, eventFor, eventReward, playerEventCap, TRADE_COUNT_CAP, weekIndex, weekStart } from '../shared/coop3';
+import { EVENTS, EVENT_CLAIM_MS, EVENT_ORDER, EVENT_PAYOUT_FROM, EVENT_TIERS, LEGACY_EVENT_TIERS, eventFor, eventReward, eventTiersFor, playerEventCap, TRADE_COUNT_CAP, weekIndex, weekStart } from '../shared/coop3';
 import { expectChangelogEntry, expectChangelogOrder } from './helpers/changelog';
 
 const W = weekIndex(Date.parse('2026-11-04T18:00:00Z')); // a mining-or-whatever week; tests pick weeks by kind
@@ -43,12 +43,15 @@ describe('weekly server events', () => {
     await expect(ev.claim('P0')).rejects.toThrow(/didn’t take part/); // still this week
     at(w + 1);
     const before = getBank().account('P0').chips; const r = await ev.claim('P0');
-    expect(r.amount).toBe(eventReward(e, cap, 0.62)); expect(r.amount).toBe(7_500);
-    expect(getBank().account('P0').chips - before).toBe(7_500);
+    // Week w is hockey; claims use that week's tier table (EVENT_PAYOUT_FROM → 200k gold / half under goal).
+    const halfGold = eventReward(e, cap, 0.62, 1, w); expect(r.amount).toBe(halfGold);
+    expect(halfGold).toBe(w >= EVENT_PAYOUT_FROM ? 100_000 : 7_500);
+    expect(getBank().account('P0').chips - before).toBe(halfGold);
     await expect(ev.claim('P0')).rejects.toThrow(/Already/);
     const [a, b] = await Promise.allSettled([ev.claim('P1'), ev.claim('P1')]); expect([a.status, b.status].sort()).toEqual(['fulfilled', 'rejected']);
-    expect((await ev.claim('Low')).amount).toBe(1_000);
-    expect(ev.view('P1').past).toMatchObject({ claimed: true, reward: 7_500 });
+    const halfBronze = eventReward(e, Math.ceil(cap * 0.05), 0.62, 1, w);
+    expect((await ev.claim('Low')).amount).toBe(halfBronze);
+    expect(ev.view('P1').past).toMatchObject({ claimed: true, reward: halfGold });
     now = weekStart(w + 1) + EVENT_CLAIM_MS + 1; await expect(ev.claim('P1')).rejects.toThrow(/closed|didn’t take part/) // next week's claim is for the week after;
     // under 50%: nothing
     const w2 = weekOf('mining'); at(w2); eventCredit('mining', 'Solo', playerEventCap(EVENTS.mining) - 1); at(w2 + 1); await expect(ev.claim('Solo')).rejects.toThrow(/50%/);
@@ -82,4 +85,22 @@ describe('weekly server events', () => {
     expectChangelogEntry(/weekly server events/i);
     expectChangelogOrder(/Factory goods sell/, /weekly server events/i, /Co-op mine raids/, /The Millionaire Update/);
   });
+
+  it('event payout bump: gold 200k with silver/bronze scaled; legacy weeks keep 15k/6k/2k', () => {
+    expect(EVENT_TIERS.map((x) => x.chips)).toEqual([26_667, 80_000, 200_000]);
+    expect(LEGACY_EVENT_TIERS.map((x) => x.chips)).toEqual([2_000, 6_000, 15_000]);
+    expect(eventTiersFor(EVENT_PAYOUT_FROM - 1)).toBe(LEGACY_EVENT_TIERS);
+    expect(eventTiersFor(EVENT_PAYOUT_FROM)).toBe(EVENT_TIERS);
+    const e = EVENTS.hockey; const cap = playerEventCap(e);
+    expect(eventReward(e, cap, 1, 1, EVENT_PAYOUT_FROM)).toBe(200_000);
+    expect(eventReward(e, cap, 0.5, 1, EVENT_PAYOUT_FROM)).toBe(100_000);
+    expect(eventReward(e, Math.ceil(cap * 0.25), 1, 1, EVENT_PAYOUT_FROM)).toBe(80_000);
+    expect(eventReward(e, Math.ceil(cap * 0.05), 1, 1, EVENT_PAYOUT_FROM)).toBe(26_667);
+    expect(eventReward(e, cap, 1, 1, EVENT_PAYOUT_FROM - 1)).toBe(15_000);
+    expect(eventReward(e, cap, 0.5, 1, EVENT_PAYOUT_FROM - 1)).toBe(7_500);
+    // ratios preserved vs gold
+    expect(80_000 / 200_000).toBeCloseTo(6_000 / 15_000, 10);
+    expect(26_667 / 200_000).toBeCloseTo(2_000 / 15_000, 3);
+  });
+
 });

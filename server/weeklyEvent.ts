@@ -81,10 +81,10 @@ export class WeeklyEvents {
       startAt: weekStart(week), endsAt: weekStart(week + 1), top, playerCap: playerEventCap(e), next: { name: nx.name, icon: nx.icon, startAt: weekStart(week + 1) } };
     if (viewer) {
       const k = playerKey(viewer); const mine = wk.contrib.get(k)?.amount ?? 0; const ex = this.guard.excluded(viewer);
-      v.me = { amount: mine, tier: eventTier(e, mine)?.id ?? null, ...(ex ? { excluded: ex } : {}) };
+      v.me = { amount: mine, tier: eventTier(e, mine, week)?.id ?? null, ...(ex ? { excluded: ex } : {}) };
       const pw = week - 1, pe = eventFor(pw), pk = this.weeks.get(pw);
       if (pk) { const amt = pk.contrib.get(k)?.amount ?? 0; const pct = Math.min(1, pk.total / pe.goal);
-        if (amt > 0) v.past = { week: pw, name: pe.name, icon: pe.icon, pct, amount: amt, reward: eventReward(pe, amt, pct, priceIndex()), claimed: pk.claimed.has(k), claimUntil: weekStart(week) + EVENT_CLAIM_MS }; }
+        if (amt > 0) v.past = { week: pw, name: pe.name, icon: pe.icon, pct, amount: amt, reward: eventReward(pe, amt, pct, priceIndex(), pw), claimed: pk.claimed.has(k), claimUntil: weekStart(week) + EVENT_CLAIM_MS }; }
     }
     return v;
   }
@@ -96,7 +96,7 @@ export class WeeklyEvents {
     if (this.clock() > weekStart(week) + EVENT_CLAIM_MS) throw new Coop3Error('That claim window has closed.');
     const amt = pk?.contrib.get(k)?.amount ?? 0; if (!pk || amt <= 0) throw new Coop3Error('You didn’t take part in last week’s event.');
     if (pk.claimed.has(k)) throw new Coop3Error('Already claimed.');
-    const reward = eventReward(pe, amt, Math.min(1, pk.total / pe.goal), priceIndex());
+    const reward = eventReward(pe, amt, Math.min(1, pk.total / pe.goal), priceIndex(), pw);
     if (reward <= 0) throw new Coop3Error(pk.total / pe.goal < 0.5 ? 'The server didn’t reach 50% of the goal, so there’s no reward this time.' : 'You didn’t reach the bronze tier.');
     const bank = getBank(); let w: ReturnType<typeof bank.transferAtomic>;
     pk.claimed.add(k); // reserve synchronously so a double click can't race

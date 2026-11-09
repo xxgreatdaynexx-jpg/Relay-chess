@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T15:55:00-06:00", "title": "Weekly event gold reward is now 200,000 chips", "bullets": [
+    "When a weekly server event (Mining Rush, Harvest Festival, Fishing Derby, Trade Week, or Hockey Cup) finishes and the goal was reached, the Gold claim is 200,000 chips (was 15,000). Silver is 80,000 and Bronze is 26,667 — the same ratios as before. Half rewards still apply if the server hit 50% but missed the goal; nothing under 50%.",
+    "Only weeks from this one onward use the new amounts. Earlier weeks keep the old 15,000 / 6,000 / 2,000 Gold / Silver / Bronze payouts. Claim rules are unchanged: one claim per account after the week ends.",
+  ]},
   {"commit": "", "at": "2026-11-09T14:50:00-06:00", "title": "Hired workers keep working overnight and while you’re away", "bullets": [
     "Employment Office workers no longer stop after 8 hours without a visit. As long as their daily wage is paid, they keep mining or fishing around the clock — including during the hub’s overnight sleep (01:00–07:00 America/Edmonton) and after a server restart or deploy.",
     "Opening the office is optional for production. Unpaid workers still stop when you can’t cover wages (no debt). If storage or the cooler is full they hold the haul until there’s room. Workers who were already idle from the old away-cap resume from now without backfilling the gap. Wages and Expected per day are unchanged.",

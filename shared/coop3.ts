@@ -109,16 +109,34 @@ export const playerEventCap = (e: EventDef) => Math.ceil(e.goal * (e.playerShare
 /** Most one trade can count for in Trade Week (so one huge wash trade can't fill the bar). */
 export const TRADE_COUNT_CAP = 50_000;
 export const EVENT_CLAIM_MS = 7 * DAY;
-/** Reward tiers by personal (capped) contribution as a share of the player cap. Chips are price-indexed at claim. */
-export const EVENT_TIERS = [
+/** Reward tiers by personal (capped) contribution as a share of the player cap. Chips are price-indexed at claim.
+ * Gold = "first place" payout when the week completed the goal; silver/bronze keep the same ratios to gold.
+ * Closed weeks before EVENT_PAYOUT_FROM keep the legacy chip amounts (no retroactive bump). */
+export const LEGACY_EVENT_TIERS = [
   { id: 'bronze', name: 'Bronze', icon: '🥉', at: 0.05, chips: 2_000 },
   { id: 'silver', name: 'Silver', icon: '🥈', at: 0.25, chips: 6_000 },
   { id: 'gold', name: 'Gold', icon: '🥇', at: 0.6, chips: 15_000 },
 ] as const;
+/** pt2098u (chessguy2 #55): gold / first place → 200,000; silver & bronze scale by prior ratios (6/15, 2/15). */
+export const EVENT_TIERS = [
+  { id: 'bronze', name: 'Bronze', icon: '🥉', at: 0.05, chips: 26_667 },
+  { id: 'silver', name: 'Silver', icon: '🥈', at: 0.25, chips: 80_000 },
+  { id: 'gold', name: 'Gold', icon: '🥇', at: 0.6, chips: 200_000 },
+] as const;
+export type EventTier = { id: 'bronze' | 'silver' | 'gold'; name: string; icon: string; at: number; chips: number };
+/** Weeks ≥ this index use EVENT_TIERS; earlier closed weeks keep LEGACY_EVENT_TIERS. Current week 44 when shipped. */
+export const EVENT_PAYOUT_FROM = 44;
+export const eventTiersFor = (week: number): readonly EventTier[] => (week >= EVENT_PAYOUT_FROM ? EVENT_TIERS : LEGACY_EVENT_TIERS);
 /** Reward multiplier by server progress: the full tier if the goal was reached, half from 50%, nothing below. */
 export const goalMul = (pct: number) => (pct >= 1 ? 1 : pct >= 0.5 ? 0.5 : 0);
-export function eventTier(e: EventDef, mine: number) { const f = Math.min(mine, playerEventCap(e)) / playerEventCap(e); let t: (typeof EVENT_TIERS)[number] | null = null; for (const x of EVENT_TIERS) if (f >= x.at) t = x; return t; }
-export function eventReward(e: EventDef, mine: number, serverPct: number, index = 1) { const t = eventTier(e, mine); return t ? round(t.chips * goalMul(serverPct) * index) : 0; }
+export function eventTier(e: EventDef, mine: number, week = EVENT_PAYOUT_FROM) {
+  const tiers = eventTiersFor(week);
+  const f = Math.min(mine, playerEventCap(e)) / playerEventCap(e);
+  let t: EventTier | null = null; for (const x of tiers) if (f >= x.at) t = x; return t;
+}
+export function eventReward(e: EventDef, mine: number, serverPct: number, index = 1, week = EVENT_PAYOUT_FROM) {
+  const t = eventTier(e, mine, week); return t ? round(t.chips * goalMul(serverPct) * index) : 0;
+}
 export interface EventView {
   week: number; kind: EventKind; name: string; icon: string; unit: string; blurb: string; color: string; goal: number; progress: number; pct: number;
   startAt: number; endsAt: number; top: Array<{ name: string; amount: number }>; playerCap: number; next: { name: string; icon: string; startAt: number };

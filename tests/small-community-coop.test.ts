@@ -6,7 +6,7 @@ import { PgMineStore, resetMines } from '../server/mines';
 import { LocStore, setLocStore } from '../server/locstock';
 import { WeeklyEvents } from '../server/weeklyEvent';
 import { COOP_PLAN, projectStages, projectValue, partKey, floorStageNeed, stageFull, stagePct } from '../shared/coop';
-import { EVENTS, LEGACY_EVENTS, EVENT_REBALANCE_FROM, eventFor, playerEventCap, eventReward, weekStart, weekIndex } from '../shared/coop3';
+import { EVENTS, LEGACY_EVENTS, EVENT_REBALANCE_FROM, EVENT_PAYOUT_FROM, eventFor, playerEventCap, eventReward, weekStart, weekIndex } from '../shared/coop3';
 
 function shim(db: PGlite) {
   const query = async (sql: string, args?: unknown[]) => {
@@ -29,8 +29,11 @@ describe('small-community goals', () => {
     expect(eventFor(EVENT_REBALANCE_FROM)).toBe(EVENTS.trade);
     const boundary=weekStart(EVENT_REBALANCE_FROM); expect(weekIndex(boundary-1)).toBe(EVENT_REBALANCE_FROM-1); expect(weekIndex(boundary)).toBe(EVENT_REBALANCE_FROM);
     for(const e of Object.values(EVENTS)) {
-      // Independently verify reward formula unchanged: full gold 15k / half gold 7.5k.
-      expect(eventReward(e,playerEventCap(e),1)).toBe(15000); expect(eventReward(e,playerEventCap(e),.5)).toBe(7500);
+      // Legacy closed weeks keep 15k gold; current payout table is 200k gold (pt2098u).
+      expect(eventReward(e,playerEventCap(e),1,1,EVENT_PAYOUT_FROM-1)).toBe(15000);
+      expect(eventReward(e,playerEventCap(e),.5,1,EVENT_PAYOUT_FROM-1)).toBe(7500);
+      expect(eventReward(e,playerEventCap(e),1,1,EVENT_PAYOUT_FROM)).toBe(200_000);
+      expect(eventReward(e,playerEventCap(e),.5,1,EVENT_PAYOUT_FROM)).toBe(100_000);
     }
   });
 
