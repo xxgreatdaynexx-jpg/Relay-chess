@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T14:08:00-06:00", "title": "Resort plantations can auto-harvest to the resort pantry", "bullets": [
+    "Plantation plots at Chud Resort now support To pantry and Auto-harvest to pantry. Crops go into the Resort Warehouse as kitchen ingredients (the same stock resort kitchens cook from), not the city pantry. Auto-sell and auto-pantry stay alternatives on each plot.",
+    "If the Resort Warehouse pantry is full, ripe crops stay on the field. Fertilizer still adds yield the same way as in the city. Resort autos now run offline like city farms; you still need to be at the resort to plant or harvest by hand. Sending plantation crops straight to the city factory is still blocked — ship them instead.",
+  ]},
   {"commit": "", "at": "2026-11-09T13:25:00-06:00", "title": "Fertilizer now boosts harvest yield instead of sell price", "bullets": [
     "The Fertilizer farm upgrade (+10% / +20% / +30% at levels 1–3) now grows extra crops on harvest instead of raising the profit on each crop. Manual harvest, auto-sell, and auto-harvest to pantry all use the same yield bonus; crop sell prices stay at the usual seed × 1.5 rule.",
     "Existing Fertilizer levels on your plots keep working — they just pay out as more crops. If the pantry is full, crops still wait on the field. Sprinklers and Greenhouse are unchanged.",

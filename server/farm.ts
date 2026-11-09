@@ -30,7 +30,6 @@ import { combinedGrowMul, fertilizerYieldBonus, greenhouseWither, MAX_UPGRADE_LE
 import { checkFarmAction } from './farmGuard.js';
 import { isHubAwake } from '../shared/hubSleep.js';
 import { isMillionairePrelaunch } from '../shared/millionairePrelaunch.js';
-import { isAtResort } from './travel.js';
 import type { FarmAuto } from '../shared/farm.js';
 import { cityPolicyMul } from './city-rates.js';
 import { eventCredit } from './weeklyEvent.js';
@@ -296,8 +295,8 @@ export class Farm {
       const up = await this.upgrades(this.pool, pid, key);
       const ready = (await this.tiles(pid, key)).filter((r) => (!only || only.has(Number(r.tile))) && this.toTile(r, now, this.withers(up))?.stage === 'ready');
       if (!ready.length) throw new FarmError('Nothing is ready to harvest.');
-      // Map pools: the factory and the pantry are city-map stock; resort crops may not jump maps (ship them instead).
-      if ((sink || pantry) && p.resort) throw new FarmError('Resort crops sell here at the plantation. To use them in the city, ship them by boat or plane.');
+      // Map pools: factory is city-only — resort crops must ship. Pantry stays on-map (city → warehouse, resort → Resort Warehouse).
+      if (sink && p.resort) throw new FarmError('Resort crops sell here at the plantation. To use them in the city, ship them by boat or plane.');
       const fertB = fertilizerYieldBonus(up.fertilizer);
       if (pantry) return this.harvestToPantry(name, pid, key, ready, now, fertB);
       // pt2093u: Fertilizer boosts crop COUNT (yield), not sell-price/profit. Same % as the old profit buff.
@@ -386,9 +385,9 @@ export class Farm {
     return ((await this.pool.query('SELECT DISTINCT plot_id FROM farm_tiles WHERE owner_key = $1', [keyOf(name)])).rows as Array<{ plot_id: string }>).map((r) => String(r.plot_id));
   }
 
-  /** Harvest into the pantry instead of selling (pt1312u): no chips, no daily-tier use; Farming XP as usual. Map pools: the
-   *  city pantry is the one city store (food stacks in the banked pack, as before Millionaire). The tile deletes and the
-   *  harvest ledger commit in the SAME transaction as the stock: exactly once (a missing tile aborts it all). */
+  /** Harvest into the map pantry instead of selling (pt1312u / pt2094u): no chips, no daily-tier use; Farming XP as usual.
+   *  Map pools: city plots → warehouse food stacks; resort plantation → Resort Warehouse food (same pool resort kitchens use).
+   *  Tile deletes and the stock commit in the SAME transaction: exactly once (a missing tile aborts it all). */
   private async harvestToPantry(name: string, pid: string, key: string, ready: TileRow[], now: number, fertB = 0) {
     const counts = new Map<string, number>(); let value = 0; let cropUnits = 0;
     for (const r of ready) {
@@ -401,7 +400,7 @@ export class Farm {
     for (const d of deltas) if (ls.qty(name, loc, d.item) + d.delta > PANTRY_MAX) throw new FarmError('Your pantry is full for that crop.');
     const extra: Array<{ sql: string; args: unknown[] }> = [];
     for (const r of ready) {
-      extra.push({ sql: `INSERT INTO kitchen_harvests (tile_key, at) VALUES ((SELECT t.plot_id || ':' || t.tile || ':' || t.nonce FROM farm_tiles t JOIN properties p ON p.id = t.plot_id AND p.owner_key = $4
+      extra.push({ sql: `INSERT INTO kitchen_harvests (tile_key, at) VALUES ((SELECT t.plot_id || ':' || t.tile::text || ':' || t.nonce FROM farm_tiles t JOIN properties p ON p.id = t.plot_id AND p.owner_key = $4
         WHERE t.plot_id = $1 AND t.tile = $2 AND t.nonce = $3 AND t.owner_key = $4), $5)`, args: [pid, r.tile, r.nonce, key, now] });
       extra.push({ sql: 'DELETE FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3', args: [pid, r.tile, r.nonce] });
     }
@@ -432,8 +431,9 @@ export class Farm {
 
   /**
    * One auto-farm pass for every owned plot with Auto-harvest / Auto-plant on (online or offline).
-   * Only queries farm_auto rows that are enabled. Respects hub sleep, resort location, and farmGuard
-   * rate limits (clockwork skipped for official auto).
+   * Only queries farm_auto rows that are enabled. Respects hub sleep and farmGuard rate limits
+   * (clockwork skipped for official auto). Resort plots run offline like city plots (pt2094u); manual
+   * rf: actions still require being at the resort via the socket gate.
    */
   async autoSweep(): Promise<number> {
     if (!isHubAwake(this.clock()) || isMillionairePrelaunch(this.clock())) return 0;
@@ -447,10 +447,9 @@ export class Farm {
       const name = String(r.owner_name);
       const pid = String(r.plot_id);
       const plot = plotOf(pid); if (!plot) continue;
-      if (plot.resort && !isAtResort(name)) continue;
       try {
         if (r.harvest) {
-          // pantry destination: crops stay on the field if pantry is full / resort-blocked (FarmError); never sold by surprise.
+          // pantry destination: crops stay on the field if that map's pantry is full (FarmError); never sold by surprise.
           const toPantry = r.pantry === true;
           try { await this.harvest(name, pid, undefined, undefined, toPantry, { auto: true }); n++; }
           catch (e) { if (!(e instanceof FarmError)) console.warn('[farm-auto] harvest', pid, (e as Error).message); }

@@ -22,6 +22,8 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
   const [skew, setSkew] = useState(0); // server now - client now
   const [now, setNow] = useState(Date.now());
   const CROPS = id.startsWith('rf:') ? TROPICAL_CROPS : CITY_CROPS; // resort plantation plots grow tropical crops only
+  const resortPlot = id.startsWith('rf:');
+  const pantryWhere = resortPlot ? 'resort pantry (Resort Warehouse)' : 'kitchen pantry';
   const [seed, setSeed] = useState(CROPS[0]!.id);
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [msg, setMsg] = useState<string | null>(null);
@@ -86,19 +88,19 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
           <button type="button" disabled={busy || !sel.size} onClick={() => plant([...sel])} data-testid="farm-plant-sel">Plant {sel.size || ''} selected<span>🪙 {chips(indexed(crop.seed, idx) * sel.size)}</span></button>
           <button type="button" disabled={busy || !empties.length} onClick={() => plant(empties)} data-testid="farm-plant-all">Plant all {empties.length} empty<span>🪙 {chips(indexed(crop.seed, idx) * empties.length)}</span></button>
           <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', {}, (r) => `Harvested ${r.harvested} for 🪙 ${chips(Number(r.paid))}.`)} data-testid="farm-harvest">Harvest {ready.length} ready</button>
-          <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', { pantry: true }, (r) => `🧺 ${r.harvested} crop${r.harvested === 1 ? '' : 's'} into your kitchen pantry.`)} title="Keep the crops for cooking instead of selling them" data-testid="farm-harvest-pantry">🧺 To pantry</button>
+          <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', { pantry: true }, (r) => `🧺 ${r.harvested} crop${r.harvested === 1 ? '' : 's'} into your ${pantryWhere}.`)} title={resortPlot ? 'Keep the crops in the Resort Warehouse for resort kitchen cooking' : 'Keep the crops for cooking instead of selling them'} data-testid="farm-harvest-pantry">🧺 To pantry</button>
           <div className="farm-auto" data-testid="farm-auto">
             <h4>Auto</h4>
             <label className="farm-auto-row"><input type="checkbox" checked={!!view.auto?.harvest && !view.auto?.pantry} disabled={busy}
               onChange={(e) => act('farm_auto', { harvest: e.target.checked, pantry: false, plant: view.auto?.plant ?? false, crop: view.auto?.crop ?? seed }, () => e.target.checked ? 'Auto-harvest on (sells for chips).' : 'Auto-harvest off.')}
               data-testid="farm-auto-harvest" /> Auto-harvest ready crops (sells for chips)</label>
             <label className="farm-auto-row"><input type="checkbox" checked={!!view.auto?.pantry} disabled={busy}
-              onChange={(e) => act('farm_auto', { harvest: e.target.checked, pantry: e.target.checked, plant: view.auto?.plant ?? false, crop: view.auto?.crop ?? seed }, () => e.target.checked ? 'Auto-harvest to pantry on for this farm.' : 'Auto-harvest to pantry off.')}
-              data-testid="farm-auto-pantry" /> Auto-harvest to pantry (kitchen ingredients)</label>
+              onChange={(e) => act('farm_auto', { harvest: e.target.checked, pantry: e.target.checked, plant: view.auto?.plant ?? false, crop: view.auto?.crop ?? seed }, () => e.target.checked ? (resortPlot ? 'Auto-harvest to resort pantry on for this plantation.' : 'Auto-harvest to pantry on for this farm.') : 'Auto-harvest to pantry off.')}
+              data-testid="farm-auto-pantry" /> Auto-harvest to {resortPlot ? 'resort pantry (Resort Warehouse)' : 'pantry (kitchen ingredients)'}</label>
             <label className="farm-auto-row"><input type="checkbox" checked={!!view.auto?.plant} disabled={busy}
               onChange={(e) => act('farm_auto', { harvest: view.auto?.harvest ?? false, pantry: view.auto?.pantry ?? false, plant: e.target.checked, crop: seed }, () => e.target.checked ? `Auto-plant on with ${crop.label}.` : 'Auto-plant off.')}
               data-testid="farm-auto-plant" /> Auto-plant empty tiles with selected seed</label>
-            <small>Runs on the server about every 30 minutes even while you are logged out. Respects overnight sleep and farm rate limits. If the pantry is full (or resort crops can't go to the city pantry), ripe crops stay on the field — never lost. Sell and pantry auto are alternatives; turning one on clears the other. Changing seed updates auto-plant crop when auto-plant is on.</small>
+            <small>Runs on the server about every 30 minutes even while you are logged out. Respects overnight sleep and farm rate limits. If the {resortPlot ? 'Resort Warehouse pantry' : 'pantry'} is full, ripe crops stay on the field — never lost. Sell and pantry auto are alternatives; turning one on clears the other. Changing seed updates auto-plant crop when auto-plant is on.</small>
           </div>
           <h4>Upgrades</h4>
           <div className="farm-upgrades" data-testid="farm-upgrades">
