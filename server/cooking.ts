@@ -9,6 +9,7 @@
  *    stores the dish (exactly once: UPDATE ... WHERE NOT done). Wall time must cover the presses (no speed-ups).
  *  - Selling dishes credits chips through the atomic wallet (ledger 'cook_sell') with the daily tier, like fishing.
  */
+import { emitHaul } from './haulVisual.js';
 import { randomInt, randomUUID } from 'node:crypto';
 import { parseSellQty, pickForQty } from '../shared/sellQty.js';
 import pg from 'pg';
@@ -185,6 +186,7 @@ export class Cooking {
       try { w = this.bank().transferAtomic([{ name, amount: -cost, key: `grocery:${key}:${nonce}`, game: 'grocery', memo: `Grocery Store: ${n} ${s.label}` }]); }
       catch (e) { const m = (e as Error).message; throw new CookError(m === 'Already applied.' ? 'Already bought.' : m); }
       await this.kitchenTx(name, home, [{ id: s.id, delta: n }], w.stmts, w);
+      try { emitHaul({ name, from: 'grocery', to: 'warehouse', kind: 'grocery' }); } catch { /* visual */ }
       return { bought: n, item: s.id, cost, chips: this.bank().account(name).chips, pantry: this.pantry(name, home), home };
     });
   }

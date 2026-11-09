@@ -1,3 +1,4 @@
+import { emitHaul } from './haulVisual.js';
 import { outcome , setDefaultCityPack, OutcomeUnknown } from './locstock.js';
 import { randomUUID } from 'node:crypto';
 /** Mines: shared first-person cave. Server-authoritative nodes, backpacks (generic item stacks) and house selling. */
@@ -671,6 +672,7 @@ export class MinesWorld {
     const prev = this.daily.get(k); const base = prev && prev.day === day ? prev : { day, gross: 0, paid: 0 };
     const nd = { day, gross: base.gross + q.gross, paid: base.paid + q.paid }; this.daily.set(k, nd);
     this.persist(m, { day, gross: q.gross, paid: q.paid, items: JSON.stringify(q.items), ledgerKey, at: now, dayGross: nd.gross, dayPaid: nd.paid });
+    try { emitHaul({ name: account!, from: 'factory', to: 'market', kind: 'mine-sell' }); } catch { /* visual */ }
     return { paid: q.paid, gross: q.gross, sold: q.items };
   }
 

@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T16:45:00-06:00", "title": "Delivery trucks on the city map", "bullets": [
+    "When goods move around Chud Hub — farm harvests to the Warehouse pantry pool, factory/mine sales to market, grocery runs, Market buys, and worker hauls — a small delivery truck drives the city roads from the source to the destination with the player’s name floating above it, then despawns. Purely cosmetic: inventory, timing and chips are unchanged.",
+    "Worker trucks start at the job site (mine entrance, Stone Quarry, or the fishing dock), not the Employment Office, and head to Warehouse storage. Pantry harvests go to the Chud City Warehouse (where pantry food actually lands), not the factory. Cross-map boat/plane legs are skipped (they already have visuals). Caps ~30 trucks, merges bursts, throttles background sweeps; toggle 🚚 Trucks on the city toolbar (or localStorage chud-haul-trucks-off) to hide them.",
+  ]},
   {"commit": "", "at": "2026-11-09T16:30:00-06:00", "title": "Loot Match — original hub-themed match-3", "bullets": [
     "A new 💎 Loot Match game is in the top Games bar (and the city casino games list). Swap chips, ores, crops, fish and gems to match 3+. Four-of-a-kind makes a rocket, five makes a prism; cascades keep the score going. Each round has 30 moves.",
     "Built for touch: swipe to swap on phones. Personal best is saved, and signed-in players appear on a Loot Match leaderboard. No chip rewards (same as classic Solitaire) — scores only, with server-side validation so the board can’t be farmed.",

@@ -1,3 +1,4 @@
+import { emitHaul } from './haulVisual.js';
 import { isOutcomeUnknown } from './locstock.js';
 import { getMines } from './mines.js';
 import { isDisabledName } from '../shared/disabled.js';
@@ -272,6 +273,7 @@ export class Market {
     chips.bind(got); got.catch((e) => { if (isOutcomeUnknown(e)) return; console.error('[market] stack buy failed:', (e as Error).message); onFail(); });
     royaltyEarn('market', l.sellerName, price - fee);
     eventTrade(name, l.sellerName, price, sale.id);
+    try { emitHaul({ name: l.sellerName, from: 'warehouse', to: 'market', kind: 'market' }); emitHaul({ name, from: 'market', to: 'warehouse', kind: 'market' }); } catch { /* visual */ }
     return { type: l.type, id: l.itemId, qty: n, price, fee };
   }
   browseStacks(f: { type?: unknown; q?: unknown } = {}) {

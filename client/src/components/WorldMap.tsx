@@ -216,9 +216,9 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   const mechanic = panel.k === 'mechanic'; const setMechanic = (v: boolean) => setPanel((c) => (v ? { k: 'mechanic' } : closePanel(c, 'mechanic')));
   const [nitro, setNitro] = useState<{ have: number; full: number; on: boolean } | null>(null);
   const dock = panel.k === 'dock'; const setDock = (v: boolean) => setPanel((c) => (v ? { k: 'dock' } : closePanel(c, 'dock')));
-  const driveRef = useRef<Drive | null>(null); const freightRef = useRef<{ dispose: () => void } | null>(null); const stadiumRef = useRef<{ dispose: () => void; refresh: () => void } | null>(null);
+  const driveRef = useRef<Drive | null>(null); const freightRef = useRef<{ dispose: () => void } | null>(null); const haulRef = useRef<{ dispose: () => void } | null>(null); const stadiumRef = useRef<{ dispose: () => void; refresh: () => void } | null>(null);
   const pendingDrive = useRef<{ carId: string; color: number; from?: string } | null>(null); const startDriveRef = useRef<(carId: string, color: number, from?: string) => void>(() => {});
-  const [driving, setDriving] = useState(false); const [near, setNear] = useState<string | null>(null); const [drift, setDrift] = useState(false);
+  const [driving, setDriving] = useState(false); const [haulOff, setHaulOff] = useState(() => { try { return localStorage.getItem('chud-haul-trucks-off') === '1'; } catch { return false; } }); const [near, setNear] = useState<string | null>(null); const [drift, setDrift] = useState(false);
   const [kmh, setKmh] = useState(0);
   useDoing('city'); useDoing('driving', null, driving);
   const meRef = useRef(me); meRef.current = me;
@@ -299,6 +299,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
         });
         const w = worldRef.current;
         void importWithReload(() => import('@/lib/worldFreight')).then(({ createFreight }) => { if (dead || worldRef.current !== w) return; freightRef.current = createFreight(w); });
+        void importWithReload(() => import('@/lib/worldHaul')).then(({ createHaul }) => { if (dead || worldRef.current !== w) return; haulRef.current = createHaul(w); });
         void importWithReload(() => import('@/lib/worldStadium')).then(({ createStadium }) => { if (dead || worldRef.current !== w) return; stadiumRef.current = createStadium(w); });
         void importWithReload(() => import('@/lib/worldDrive')).then(({ createDrive }) => { if (dead || worldRef.current !== w) return;
           driveRef.current = createDrive(w, { me: () => meRef.current ?? null, onNear: setNear, onSpeed: setKmh, onRace, onNitro: setNitro, onDrift: setDrift });
@@ -306,7 +307,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       } catch { setMode('2d'); }
       setLoading(false);
     }).catch(() => setMode('2d'));
-    return () => { dead = true; stadiumRef.current?.dispose(); stadiumRef.current = null; freightRef.current?.dispose(); freightRef.current = null; driveRef.current?.dispose(); driveRef.current = null; setDriving(false); worldRef.current?.dispose(); worldRef.current = null; };
+    return () => { dead = true; stadiumRef.current?.dispose(); stadiumRef.current = null; haulRef.current?.dispose(); haulRef.current = null; freightRef.current?.dispose(); freightRef.current = null; driveRef.current?.dispose(); driveRef.current = null; setDriving(false); worldRef.current?.dispose(); worldRef.current = null; };
   }, [mode]);
   // Pause the city while a building's panel is open over it (saves GPU for Arena/Mines).
   useEffect(() => {
@@ -357,6 +358,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
         {myFarms.length > 0 && <button type="button" onClick={() => setFarm(myFarms[0])} data-testid="world-farm-btn">🌾 My farm{myFarms.length > 1 ? 's' : ''}</button>}
         {mode === '3d' && !loading && <button type="button" onClick={() => void toggleDrive()} data-testid="world-drive">{driving ? '🅿 Park' : '🚗 Drive'}</button>}
         <button type="button" onClick={() => setPanel((c) => togglePanel(c, { k: 'freight' }))} data-testid="world-freight-btn">📦 Logistics</button>
+        {mode === '3d' && <button type="button" aria-pressed={!haulOff} title="Show or hide cosmetic delivery trucks on the map" onClick={() => { const next = !haulOff; setHaulOff(next); try { localStorage.setItem('chud-haul-trucks-off', next ? '1' : '0'); } catch {} }} data-testid="world-haul-toggle">{haulOff ? '🚚 Trucks off' : '🚚 Trucks'}</button>}
         <button type="button" onClick={() => setPanel((c) => togglePanel(c, { k: 'coop' }))} data-testid="world-coop-btn">🏟️ Co-op</button>
         <button type="button" onClick={() => setMode(mode === '3d' ? '2d' : '3d')} data-testid="world-mode">{mode === '3d' ? '▦ 2D map' : '🌃 3D city'}</button>
       </div>

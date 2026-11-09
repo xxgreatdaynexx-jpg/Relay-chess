@@ -33,6 +33,7 @@ import {
   minerPriorityOptions, parseMinerPriority,
   DAY, MAX_WORKERS, MIN_ACCOUNT_AGE_MS, type JobDef, type EmployLogItem, type Unit, type WorkerBox, type WorkerStatus, type WorkerView, type EmployView, type MinerPriority,
 } from '../shared/employment.js';
+import { emitHaul } from './haulVisual.js';
 
 export const EMPLOY_MIGRATION = `
 CREATE TABLE IF NOT EXISTS employ_workers (id TEXT PRIMARY KEY, owner_key TEXT NOT NULL, owner_name TEXT NOT NULL, job TEXT NOT NULL, hired_at BIGINT NOT NULL, last_at BIGINT NOT NULL, seen_at BIGINT NOT NULL, paid_until BIGINT NOT NULL, status TEXT NOT NULL, box TEXT NOT NULL DEFAULT '{}');
@@ -259,6 +260,7 @@ export class Employment {
           const after = cw.map((w) => { const box = { ...w.box, ores: { ...(w.box.ores ?? {}) } }; for (const [o, q] of Object.entries(box.ores)) { const take = Math.min(q ?? 0, left.get(o as OreId) ?? 0); if (take) { left.set(o as OreId, (left.get(o as OreId) ?? 0) - take); const rest = (q ?? 0) - take; if (rest > 0) box.ores[o as OreId] = rest; else delete box.ores[o as OreId]; } } return { ...w, box }; });
           await this.tx(async (cl) => { await sink.write(cl, items); for (const a of after) await this.save(cl, a); });
           sink.after(items); cw.forEach((w, i) => { w.box.ores = after[i]!.box.ores; }); ores += items.reduce((a, [, q]) => a + q, 0);
+          try { emitHaul({ name, from: `mine:${cave}`, to: 'warehouse', kind: 'worker-ore', background: true }); } catch { /* visual */ }
         }
         if (cw.some((w) => Object.values(w.box.ores ?? {}).some((q) => q)) && !notes.length) notes.push('Your storage is full for some ores — your miners are holding the rest until there is room.');
       }
@@ -279,6 +281,7 @@ export class Employment {
           }
         });
         if (ws.some((w) => w.box.fish?.length)) notes.push('Your cooler is full — the rest of the fish are waiting with your fisher.');
+        if (fish > 0) { try { emitHaul({ name, from: 'dock', to: 'warehouse', kind: 'worker-fish', background: true }); } catch { /* visual */ } }
       }
     return { ores, fish, notes };
   }

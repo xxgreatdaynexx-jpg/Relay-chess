@@ -25,6 +25,7 @@ import { isStackable } from './market.js';
 import { locLabel } from '../shared/inventoryLocations.js';
 import { getFleet } from './fleet.js';
 import { CARGO, cargoCap, multiTripMs, ownFeeBase, tripsFor } from '../shared/cargo.js';
+import { haulLive } from './haulVisual.js';
 import { HUBS, isOwnMode, MAX_SHIP_QTY, MAX_TRUCKS, MODES, TRUCKS, TRUCK_BY_ID, TRUCK_SELL_BACK, arrivalOf, feeBase, shipFee, isHub, isMode, nextDeparture, truckTravelMs, type HubId, type LiveVehicle, type Mode, truckAllowed, NO_CROSS_MAP_TRUCK, isTruckMode, legModeAllowed, SAME_MAP_TRUCK_ONLY } from '../shared/logistics.js';
 
 export class FreightError extends Error {}
@@ -395,5 +396,5 @@ export function registerLogistics(io: Server, socket: Socket): void {
   // Map pools: same-map moves need no truck, and trucks never cross maps, so no NEW truck sales (owned trucks + sell-back kept).
   on('truck_buy', async () => { throw new FreightError('Trucks are no longer needed: moves on the same map are instant and free.'); });
   on('truck_sell', (b, l) => l.sellTruck(need(), b.id));
-  socket.on('freight_watch', (on: unknown) => { if (on === false) void socket.leave('freight'); else { void socket.join('freight'); if (logistics) socket.emit('freight_live', logistics.live()); } });
+  socket.on('freight_watch', (on: unknown) => { if (on === false) void socket.leave('freight'); else { void socket.join('freight'); if (logistics) socket.emit('freight_live', logistics.live()); socket.emit('haul_visual', haulLive()); } });
 }

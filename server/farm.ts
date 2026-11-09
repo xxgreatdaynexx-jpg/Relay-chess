@@ -21,6 +21,8 @@ import { requireResort } from './travel.js';
 import { fieldPlotOf } from '../shared/fieldFarms.js';
 import { outcome, ledgerMarker, isOutcomeUnknown, getLocStore } from './locstock.js';
 import { farmLoc } from '../shared/inventoryLocations.js';
+import { emitHaul } from './haulVisual.js';
+import { farmHaulSite } from '../shared/haulVisual.js';
 import { PANTRY_MAX } from '../shared/cooking.js';
 import { awardXp } from './skills.js';
 import { CROPS, cropById, cropSellValue, farmPayout, farmPlots, ripeWindow, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
@@ -298,7 +300,7 @@ export class Farm {
       // Map pools: factory is city-only — resort crops must ship. Pantry stays on-map (city → warehouse, resort → Resort Warehouse).
       if (sink && p.resort) throw new FarmError('Resort crops sell here at the plantation. To use them in the city, ship them by boat or plane.');
       const fertB = fertilizerYieldBonus(up.fertilizer);
-      if (pantry) return this.harvestToPantry(name, pid, key, ready, now, fertB);
+      if (pantry) return this.harvestToPantry(name, pid, key, ready, now, fertB, !!opts?.auto);
       // pt2093u: Fertilizer boosts crop COUNT (yield), not sell-price/profit. Same % as the old profit buff.
       let seeds = 0, profit = 0, cropUnits = 0; const counts = new Map<string, number>();
       for (const r of ready) {
@@ -326,6 +328,7 @@ export class Farm {
         }, undefined, { committed: async () => (await this.pool.query('SELECT 1 FROM kitchen_harvests WHERE tile_key = $1', [impKey])).rows.length > 0,
           late: () => { sink.after(items); this.onChange?.(pid); } });
         sink.after(items); this.onChange?.(pid);
+        try { emitHaul({ name, from: farmHaulSite(pid), to: 'factory', kind: 'farm-factory', background: !!opts?.auto }); } catch { /* visual only */ }
         return { harvested: cropUnits, paid: 0, toFactory: items, chips: this.bank().account(name).chips };
       }
       const day = utcDay(now); const t = await this.today(key);
@@ -342,6 +345,7 @@ export class Farm {
       });
       this.onChange?.(pid);
       eventCredit('harvest', name, cropUnits); // weekly server event (kept); count bonus yield crops
+      try { emitHaul({ name, from: farmHaulSite(pid), to: sink ? 'factory' : 'market', kind: sink ? 'farm-factory' : 'farm-sell', background: !!opts?.auto }); } catch { /* visual only */ }
       return { harvested: cropUnits, paid, chips: this.bank().account(name).chips };
     }));
   }
@@ -388,7 +392,7 @@ export class Farm {
   /** Harvest into the map pantry instead of selling (pt1312u / pt2094u): no chips, no daily-tier use; Farming XP as usual.
    *  Map pools: city plots → warehouse food stacks; resort plantation → Resort Warehouse food (same pool resort kitchens use).
    *  Tile deletes and the stock commit in the SAME transaction: exactly once (a missing tile aborts it all). */
-  private async harvestToPantry(name: string, pid: string, key: string, ready: TileRow[], now: number, fertB = 0) {
+  private async harvestToPantry(name: string, pid: string, key: string, ready: TileRow[], now: number, fertB = 0, background = false) {
     const counts = new Map<string, number>(); let value = 0; let cropUnits = 0;
     for (const r of ready) {
       const c = cropById(r.crop)!;
@@ -415,6 +419,7 @@ export class Farm {
     }
     awardXp(name, 'farming', Math.min(400, 10 + Math.round(value / 5)));
     this.onChange?.(pid);
+    try { emitHaul({ name, from: farmHaulSite(pid), to: 'warehouse', kind: 'farm-pantry', background }); } catch { /* visual only */ }
     return { harvested: cropUnits, paid: 0, pantry: Object.fromEntries(counts), toFactory: undefined as Array<[string, number]> | undefined, chips: this.bank().account(name).chips };
   }
 
