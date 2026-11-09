@@ -3,7 +3,7 @@ import { useDoing } from '@/lib/doing';
 import { useCallback, useEffect, useState } from 'react';
 import { ItemIcon } from './ItemIcon';
 import { request } from '@/lib/net';
-import { boxCount, JOBS, jobById, OFFLINE_CAP_MS, type EmployLogItem, type EmployView } from '../../../shared/employment';
+import { boxCount, JOBS, jobById, OFFLINE_CAP_MS, dayValue, expectedDayHaul, formatExpectedDay, type EmployLogItem, type EmployView } from '../../../shared/employment';
 import { ORES, type OreId } from '../../../shared/mines';
 import { fishById } from '../../../shared/fishing';
 import { usePanelDrag } from '@/lib/panelDrag';
@@ -65,6 +65,19 @@ export function EmploymentPanel({ onClose }: { onClose: () => void }) {
                 <b>{j?.emoji} {j?.label}</b>
                 <small>{w.status === 'working' ? (w.nextAt && w.nextAt > v.now ? `Working · next item in ${dur(w.nextAt - v.now)} · paid for ${dur(left)}` : 'Waiting for you to check in') : w.status === 'idle' ? 'Off duty (you were away). Re-hire to start a new paid day.' : 'Unpaid. Re-hire to pay a new day when you have the chips.'}</small>
                 <small>Wage 🪙 {chips(w.wage)}/day</small>
+                {j && (() => {
+                  const haul = expectedDayHaul(j, j.kind === 'miner' ? (w.priority ?? null) : null);
+                  const priced = jobs.find((x) => x.id === j.id);
+                  // Scale base EV by today's price index using the hire card's indexed dayValue (Balanced anchor).
+                  const pxMul = priced && dayValue(j) > 0 ? priced.dayValue / Math.max(1, Math.round(dayValue(j))) : 1;
+                  const chipApprox = Math.round(haul.value * pxMul);
+                  return (
+                    <small className="employ-expected" data-testid="employ-expected">
+                      Expected per day: {formatExpectedDay(haul)}
+                      {chipApprox > 0 ? <> · ≈ 🪙 {chips(chipApprox)} at today’s prices</> : null}
+                    </small>
+                  );
+                })()}
                 {j?.kind === 'miner' && w.priorityOptions && w.priorityOptions.length > 0 && (
                   <label className="employ-priority" data-testid="employ-priority">
                     <span>Mine priority</span>

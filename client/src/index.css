@@ -2007,6 +2007,7 @@ html, body { overflow-x: clip; }
 .employ-list li button { align-self: flex-start; font-size: 12px; padding: 4px 10px; border-radius: 7px; background: rgba(224,162,58,.2); border: 1px solid rgba(224,162,58,.5); }
 .employ-list li button:disabled { opacity: .5; }
 .employ-btns { display: flex; gap: 6px; } .employ-list li .employ-fire { background: rgba(255,80,80,.12); border-color: rgba(255,80,80,.4); }
+.employ-expected { display: block; font-size: 11px; opacity: .85; line-height: 1.35; }
 .employ-priority { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; font-size: 11px; }
 .employ-priority span { opacity: .85; font-weight: 600; }
 .employ-priority select {

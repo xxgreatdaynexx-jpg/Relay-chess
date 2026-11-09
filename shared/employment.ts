@@ -159,6 +159,85 @@ export function rollWorkerFish(u: Unit): { fish: Fish; grams: number; value: num
   return { fish: f, grams, value: fishValue(f, grams) };
 }
 
+/**
+ * Expected haul over a full paid day of continuous work (pt2088u). Same pick tables / fish odds the server uses
+ * (minerPickTable + priority, rollWorkerFish). Does not model offline 8 h idle, storage-full holding, or unpaid
+ * downtime — those cut real output below this. Workers ignore player skill/gear. Quantities are means, not guarantees.
+ */
+export interface ExpectedDayItem { type: 'ore' | 'fish'; id: string; label: string; qty: number }
+export interface ExpectedDayHaul { picks: number; items: ExpectedDayItem[]; /** expected base chip value (pre price-index) */ value: number }
+
+/** Species probabilities for one worker fish catch (junk removed; lake dock; mirrors rollWorkerFish → rollFish). */
+export function fisherCatchTable(): Array<{ id: string; label: string; p: number }> {
+  const tot = (Object.entries(RARITY_ODDS) as Array<[keyof typeof RARITY_ODDS, number]>).filter(([r]) => r !== 'junk').reduce((a, [, n]) => a + n, 0);
+  const out: Array<{ id: string; label: string; p: number }> = [];
+  for (const r of Object.keys(RARITY_ODDS) as Array<keyof typeof RARITY_ODDS>) {
+    if (r === 'junk') continue;
+    const pool = fishPool('lake').filter((f) => f.rarity === r && (f.zone ?? 1) <= 3 && !f.crew);
+    if (!pool.length) continue;
+    const share = RARITY_ODDS[r] / tot / pool.length;
+    for (const f of pool) out.push({ id: f.id, label: f.label, p: share });
+  }
+  return out;
+}
+
+/** Approximate per-day item counts + base value for a job (miners honor priority). */
+export function expectedDayHaul(job: JobDef, priority: MinerPriority = null): ExpectedDayHaul {
+  const picks = itemsPerDay(job);
+  if (job.kind === 'miner' && job.cave) {
+    const table = minerPickTable(job.cave, priority);
+    const items: ExpectedDayItem[] = table
+      .map(([o, p]) => ({ type: 'ore' as const, id: o, label: ORES[o].name, qty: picks * p }))
+      .filter((x) => x.qty > 1e-9)
+      .sort((a, b) => b.qty - a.qty || a.id.localeCompare(b.id));
+    const value = items.reduce((a, x) => a + x.qty * ORES[x.id as OreId].price, 0);
+    return { picks, items, value };
+  }
+  if (job.kind === 'fisher') {
+    // Rarity buckets (species within a rarity are equal); keeps the Employment line readable.
+    const byR: Record<string, number> = {};
+    for (const f of fisherCatchTable()) {
+      const fish = fishPool('lake').find((x) => x.id === f.id);
+      const r = fish?.rarity ?? f.id;
+      byR[r] = (byR[r] ?? 0) + picks * f.p;
+    }
+    const order = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
+    const items: ExpectedDayItem[] = order.filter((r) => (byR[r] ?? 0) > 1e-9)
+      .map((r) => ({ type: 'fish' as const, id: r, label: r, qty: byR[r]! }));
+    // Match wage/EV math: average-size fish → 1.0x base (FISHER_ITEM_EV), not weight-roll EV.
+    return { picks, items, value: picks * job.itemEv };
+  }
+  return { picks: 0, items: [], value: 0 };
+}
+
+/** Compact "~12 iron" style quantity (means, so fractional rare ores stay visible). */
+export function approxQty(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0';
+  if (n >= 100) return String(Math.round(n));
+  if (n >= 10) return String(Math.round(n));
+  if (n >= 1) {
+    const t = Math.round(n * 10) / 10;
+    return Number.isInteger(t) ? String(t) : t.toFixed(1);
+  }
+  if (n >= 0.05) {
+    const t = Math.round(n * 10) / 10;
+    return t.toFixed(1);
+  }
+  return '<0.1';
+}
+
+/** Short display name: ore id ("iron") or fish label. */
+export function expectedItemShort(item: ExpectedDayItem): string {
+  if (item.type === 'ore') return item.id;
+  return item.label;
+}
+
+/** Player-facing one-liner, e.g. "~346 iron, ~177 stone, ~66 gold/day". */
+export function formatExpectedDay(haul: ExpectedDayHaul): string {
+  if (!haul.items.length) return 'no deterministic estimate';
+  return haul.items.map((x) => `~${approxQty(x.qty)} ${expectedItemShort(x)}`).join(', ') + '/day';
+}
+
 /** Pending output in a worker's box. */
 export interface WorkerBox { ores?: Partial<Record<OreId, number>>; fish?: Array<{ species: string; grams: number; value: number }> }
 export const boxCount = (b: WorkerBox) => Object.values(b.ores ?? {}).reduce((a, n) => a + (n ?? 0), 0) + (b.fish?.length ?? 0);

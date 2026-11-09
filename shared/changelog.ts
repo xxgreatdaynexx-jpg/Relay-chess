@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T13:10:00-06:00", "title": "Employment Office shows each worker’s expected daily haul", "bullets": [
+    "Under every hired miner and fisher you’ll see Expected per day: approximate counts of each ore or fish they’d bring in over a full paid day (for example ~346 iron, ~177 stone, ~66 gold/day), plus an approximate chip value at today’s prices.",
+    "Numbers use the same pick tables and catch odds the server already uses — including your miner’s Mine priority — so the display can’t drift from real output. They assume you keep checking in within the usual offline window; unpaid or idle time and full storage still cut what you actually get. Workers still don’t use your skill or gear.",
+  ]},
   {"commit": "", "at": "2026-11-09T12:15:00-06:00", "title": "Auto-harvest farm crops straight into your pantry", "bullets": [
     "Each farm plot’s Auto section now has Auto-harvest to pantry: ripe crops go into your kitchen ingredient pantry (the same city food stock as 🧺 To pantry) instead of selling for chips. It runs on the same ~30-minute server sweep while you are online or offline.",
     "Sell auto and pantry auto are alternatives — turning one on clears the other. If the pantry is full for that crop, or resort crops can’t move to the city pantry, they stay on the field and are never lost or sold by surprise. Auto-plant is unchanged.",
