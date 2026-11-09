@@ -149,7 +149,7 @@ const FortMcMap = lazyWithReload(() => import('./FortMcMap').then((m) => ({ defa
 
 const CASINO_GAMES = [
   { tab: 'blackjack-tab', label: '🂡 Blackjack' }, { tab: 'roulette-tab', label: '🎡 Roulette' }, { tab: 'poker-tab', label: '🃏 Poker' },
-  { tab: 'slots-tab', label: '🎰 Slots' }, { tab: 'solitaire-tab', label: '♠ Solitaire' },
+  { tab: 'slots-tab', label: '🎰 Slots' }, { tab: 'solitaire-tab', label: '♠ Solitaire' }, { tab: 'lootmatch-tab', label: '💎 Loot Match' },
 ];
 const MODE_KEY = 'chud-world-mode';
 

@@ -12,6 +12,7 @@ import { CheckersAnalysisScreen } from '@/components/CheckersAnalysisScreen';
 import { loadLastGame, saveLastGame, snapshotGame, type FinishedGame } from '@/lib/lastGame';
 import { VolumeControl } from '@/components/VolumeControl';
 import { SolitairePanel } from '@/components/SolitairePanel';
+import { LootMatchPanel } from '@/components/LootMatchPanel';
 import { BlackjackPanel } from '@/components/BlackjackPanel';
 import { RoulettePanel } from '@/components/RoulettePanel';
 import { TopTab, TopTabs } from '@/components/TopTabs';
@@ -224,6 +225,7 @@ export function App() {
         <PokerPanel />
         <SlotsPanel />
         <SolitairePanel />
+        <LootMatchPanel />
         <ArenaPanel />
         <HockeyPanel />
         <MinesPanel />

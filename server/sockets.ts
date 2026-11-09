@@ -38,6 +38,7 @@ import { registerMineTools } from './mineTools.js';
 import { registerMineGear } from './mineGear.js';
 import { registerFishGear } from './fishGear.js';
 import { registerEmployment } from './employment.js';
+import { registerLootMatch } from './lootMatch.js';
 import { registerMayor } from './mayor.js';
 import { registerCity } from './city.js';
 import { registerSkills, startSkills } from './skills.js';
@@ -336,6 +337,7 @@ export function registerSockets(io: Server): void {
     registerMineGear(io, socket);
     registerFishGear(io, socket);
     registerEmployment(io, socket);
+    registerLootMatch(io, socket);
     registerMayor(io, socket);
     registerCity(io, socket);
     registerSkills(io, socket);

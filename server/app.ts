@@ -35,6 +35,7 @@ import { realEstateRouter } from './realEstate.js';
 import { playerProfileRouter } from './player-profile.js';
 import { houseRoomRouter } from './house-room.js';
 import { farmRouter } from './farm.js';
+import { lootMatchRouter } from './lootMatch.js';
 import { employmentRouter } from './employment.js';
 import { getMinesBoard } from './mines-board.js';
 import { isMinePeriod } from '../shared/minesBoard.js';
@@ -92,6 +93,7 @@ export async function createApp(): Promise<AppContext> {
   app.use(realEstateRouter());
   app.use(farmRouter());
   app.use(employmentRouter());
+  app.use(lootMatchRouter());
   app.use(requestsRouter());
   app.use(mayorRouter());
   app.use(cityRouter());

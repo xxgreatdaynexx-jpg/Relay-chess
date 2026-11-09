@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { createPortal } from 'react-dom';
 
 /** Slot order in the top bar. */
-export const TOP_TAB_ORDER = ['blackjack', 'roulette', 'poker', 'slots', 'solitaire', 'arena', 'hockey', 'mines', 'factory', 'market', 'stocks', 'skills'] as const;
+export const TOP_TAB_ORDER = ['blackjack', 'roulette', 'poker', 'slots', 'solitaire', 'lootmatch', 'arena', 'hockey', 'mines', 'factory', 'market', 'stocks', 'skills'] as const;
 export type TopTabId = (typeof TOP_TAB_ORDER)[number] | 'account' | 'chat' | 'wallet' | 'inventory' | 'resinv';
 
 /**

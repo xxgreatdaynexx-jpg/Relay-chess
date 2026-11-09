@@ -2,7 +2,7 @@
 import type { Doing } from './doing.js';
 export const CHAT_MAX_LEN = 300;
 export const CHAT_HISTORY = 200;
-export const ACTIVITIES = ['blackjack', 'roulette', 'poker', 'slots', 'solitaire', 'arena'] as const;
+export const ACTIVITIES = ['blackjack', 'roulette', 'poker', 'slots', 'solitaire', 'lootmatch', 'arena'] as const;
 export type Activity = (typeof ACTIVITIES)[number];
 
 export interface ChatMessage { id: number; name: string; text: string; at: number; qa?: true }
@@ -50,7 +50,7 @@ export function cleanActivities(input: unknown): Activity[] {
   return out;
 }
 
-const LABEL: Record<Activity, string> = { blackjack: 'Blackjack', roulette: 'Roulette', poker: 'Poker', slots: 'Slots', solitaire: 'Solitaire', arena: 'Arena' };
+const LABEL: Record<Activity, string> = { blackjack: 'Blackjack', roulette: 'Roulette', poker: 'Poker', slots: 'Slots', solitaire: 'Solitaire', lootmatch: 'Loot Match', arena: 'Arena' };
 export function whereLabel(table: OnlineUser['table'], activities: readonly Activity[]): string {
   const parts: string[] = [];
   if (table) parts.push(`${table.watching ? 'Watching' : table.gameType === 'checkers' ? 'Checkers' : 'Chess'} · ${table.code}`);

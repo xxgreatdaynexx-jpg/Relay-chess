@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T16:30:00-06:00", "title": "Loot Match — original hub-themed match-3", "bullets": [
+    "A new 💎 Loot Match game is in the top Games bar (and the city casino games list). Swap chips, ores, crops, fish and gems to match 3+. Four-of-a-kind makes a rocket, five makes a prism; cascades keep the score going. Each round has 30 moves.",
+    "Built for touch: swipe to swap on phones. Personal best is saved, and signed-in players appear on a Loot Match leaderboard. No chip rewards (same as classic Solitaire) — scores only, with server-side validation so the board can’t be farmed.",
+  ]},
   {"commit": "", "at": "2026-11-09T16:25:00-06:00", "title": "Players list shows online first", "bullets": [
     "The Players list in chat now lists everyone who’s online at the top, then offline players by who was last online most recently. Names break ties. Same order on desktop and mobile.",
   ]},
