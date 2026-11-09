@@ -22,12 +22,19 @@ describe('Stone Quarry (chessguy2)', () => {
     expect(CAVE_DEFS.map((c) => c.id)).toContain('quarry');
     expect(CAVES.quarry.name).toMatch(/Stone Quarry/i);
     expect(MINE_SITES['mine-quarry']?.cave).toBe('quarry');
-    expect(MINE_SITES['mine-quarry']?.z).toBeGreaterThan(146); // south of airport keep-out
+    expect(MINE_SITES['mine-quarry']?.x).toBeGreaterThan(116); // east of plate
+    expect(MINE_SITES['mine-quarry']?.z).toBeLessThan(-150); // north / top of north-up map
     expect(CAVE_LANDMARK.quarry).toBeUndefined();
     expect(ROYALTY_VENUE['mine-quarry']).toBeUndefined();
     expect(LANDMARK_IDS).toContain('mine-quarry'); // map/apron placement only
     expect(LANDMARK_PRICE['mine-quarry']).toBeUndefined();
     expect(properties().some((p) => p.id === 'lm:mine-quarry')).toBe(false);
+    // Quarry must not reshuffle countryside cf:* / barn catalogs (bottom-left farms restored to pre-quarry geometry).
+    const cf24 = properties().find((p) => p.id === 'cf:24')!;
+    expect(cf24.x).toBeCloseTo(-167.5098, 3);
+    expect(cf24.z).toBeCloseTo(159.4744, 3);
+    expect(properties().some((p) => p.id === 'cf:31')).toBe(true);
+    expect(properties().some((p) => p.id === 'barn:country:30')).toBe(true);
     for (const f of [1, 5, 20, 40]) {
       const bias = caveFloorBias('quarry', f);
       for (const [ore, w] of Object.entries(bias)) {

@@ -31,7 +31,6 @@ export const RURAL_ROADS: Array<[P, P]> = [
   [[128, NZ], [128, -150.5]], // north road down to the Fishing Dock's gravel path (DOCK.path)
   [[WX, -54], [-181, -54]], // industrial yard west of The Mine (between its warehouses)
   [[EX, 96], [MINE_SITES['mine-magma'].x + MINE_APRON / 2, 96]], // paved spur from the east road to Magma Depths' apron
-  [[-PLATE - 5, 170], [MINE_SITES['mine-quarry'].x + MINE_APRON / 2, 170]], // spur toward Stone Quarry apron (south of airport keep-out)
   // city roads that run off the plate's east / west edge continue to the farm's west lane / the west road
   ...ROADS.flatMap((r) => (r.closed || !r.ends ? [] : r.ends.flatMap((e, i): Array<[P, P]> => {
     const p = i === 0 ? r.pts[0] : r.pts[r.pts.length - 1]; if (e !== 'edge' || Math.abs(Math.abs(p[0]) - PLATE) > 0.5) return [];
@@ -65,7 +64,10 @@ function genKeepOut(x: number, z: number, m = 0): boolean {
   if (Math.abs(x) < PLATE + 3 + m && Math.abs(z) < PLATE + 3 + m) return true;
   if (inR({ x0: FARM_X0, x1: FARM_X1, z0: FARM_Z0, z1: FARM_Z1 }, x, z, 3 + m)) return true;
   for (const r of Object.values(RESERVED_VENUES)) if (inR(r, x, z, 2 + m)) return true;
-  for (const s of Object.values(MINE_SITES)) {
+  for (const [id, s] of Object.entries(MINE_SITES)) {
+    // Quarry is placed after the seeded countryside fill (owner: restore bottom-left farms). Skipping it here keeps
+    // cf:<n> / country barn ids on the pre-quarry catalog; apron decor is cleared post-fill below.
+    if (id === 'mine-quarry' || s.cave === 'quarry') continue;
     if (Math.abs(x - s.x) < MINE_APRON / 2 + 2 + m && Math.abs(z - s.z) < MINE_APRON / 2 + 2 + m) return true;
     const pts: P[] = [...s.track, [s.x, s.z]]; for (let i = 1; i < pts.length; i++) if (segD(x, z, pts[i - 1], pts[i]) < 3.5 + m) return true;
   }
@@ -132,7 +134,10 @@ export function outskirts(): Outskirts {
   // trees / rocks / hills on the yard. Done after the fill so nothing else moves and every other id stays the same.
   const hitsJail = (o: Box2) => Math.abs(o.x - JAIL_SITE.x) < JAIL_HALF.x + 2 + o.w / 2 && Math.abs(o.z - JAIL_SITE.z) < JAIL_HALF.z + 2 + o.d / 2;
   const pt = <T extends [number, number, ...number[]]>(a: T[]) => a.filter((p) => !inJail(p[0], p[1], 1 + (p.length > 2 ? Number(p[2]) : 0)) && !inCivic(p[0], p[1], 1 + (p.length > 2 ? Number(p[2]) : 0)));
-  cache = { lake, buildings: buildings.filter((b) => !hitsJail(b)), fields: fields.filter((f) => !hitsJail(f)), trees: pt(trees), rocks: pt(rocks), hills: pt(hills), lamps: lamps.filter(([x, z]) => !inJail(x, z, 0.5) && !inCivic(x, z, 0.5)), tanks, pumps }; return cache;
+  const q = MINE_SITES['mine-quarry'];
+  const inQuarry = (x: number, z: number, m = 0) => !!q && Math.abs(x - q.x) < MINE_APRON / 2 + 2 + m && Math.abs(z - q.z) < MINE_APRON / 2 + 2 + m;
+  // Clear only decor from the quarry pad — never drop/renumber fields or barns (farm catalog must match pre-quarry).
+  cache = { lake, buildings: buildings.filter((b) => !hitsJail(b)), fields: fields.filter((f) => !hitsJail(f)), trees: pt(trees).filter((p) => !inQuarry(p[0], p[1], 1)), rocks: pt(rocks).filter((p) => !inQuarry(p[0], p[1], 1)), hills: pt(hills).filter((p) => !inQuarry(p[0], p[1], Number(p[2]) || 0)), lamps: lamps.filter(([x, z]) => !inJail(x, z, 0.5) && !inCivic(x, z, 0.5) && !inQuarry(x, z, 0.5)), tanks, pumps }; return cache;
 }
 
 const HOUSE_COLORS = housingType('house').colors;

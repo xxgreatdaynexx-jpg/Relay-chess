@@ -61,6 +61,10 @@ describe('three caves (pt1201u)', () => {
       expect(s.z - MINE_APRON / 2).toBeGreaterThanOrEqual(MAP_BOUNDS.z0); expect(s.z + MINE_APRON / 2).toBeLessThanOrEqual(MAP_BOUNDS.z1);
       if (id === 'mine-quarry') expect(propertyById(`lm:${id}`), id).toBeUndefined(); else expect(propertyById(`lm:${id}`), id).toBeTruthy();
     }
-    for (const [a, s] of sites) for (const [b, t] of sites) if (a < b) expect(Math.hypot(s.x - t.x, s.z - t.z)).toBeGreaterThan(120);
+    for (const [a, s] of sites) for (const [b, t] of sites) if (a < b) {
+      // Stone Quarry sits in the packed NE countryside; keep >100 from other mines (apron-clear) without shoving cf:* farms.
+      const min = a === 'mine-quarry' || b === 'mine-quarry' ? 100 : 120;
+      expect(Math.hypot(s.x - t.x, s.z - t.z), `${a}-${b}`).toBeGreaterThan(min);
+    }
   });
 });
