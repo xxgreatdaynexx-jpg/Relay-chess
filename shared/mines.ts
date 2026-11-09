@@ -101,7 +101,7 @@ export function oreFor(depth: number, r: number, bias: Partial<Record<OreId, num
 
 // ---- caves (pt1201u): three mines on the city outskirts, one engine. Same spawn pocket / EXIT lift in each,
 // different layout, ore mix and look. '~' is a hazard (lava pool / ice pillar): impassable, rendered per theme.
-export type CaveId = 'mine' | 'frost' | 'magma' | 'coral' | 'fortmc';
+export type CaveId = 'mine' | 'frost' | 'magma' | 'coral' | 'fortmc' | 'quarry';
 export interface CaveTheme { sky: string; fog: string; ambient: string; wall: string; floor: string; lamp: string; hazard: 'lava' | 'ice' | null }
 export interface CaveDef { id: CaveId; name: string; blurb: string; rows: string[]; depthX: number[]; bias: Partial<Record<OreId, number>>; /** signature ores allowed from the first section on (ignore minDepth) */ anyDepth?: OreId[]; density: number; theme: CaveTheme }
 export const CAVE_DEFS: CaveDef[] = [
@@ -139,6 +139,24 @@ export const CAVE_DEFS: CaveDef[] = [
       '####..#####..###.###########..##.######...##.#.###',
       '####..#####......###.......................#.#..##',
       '####........~###.....######.###....~~###.....#.~##',
+      '##################################################',
+    ] },
+  // Stone Quarry (chessguy2): city outskirts, stone only, manual mining — hired workers cannot work here.
+  { id: 'quarry', name: 'Stone Quarry', blurb: 'A cut-stone pit on the south-west outskirts. Only Stone — steady supply for community projects. Players only: hired workers cannot be sent here.', depthX: DEPTH_X, density: 0.55,
+    bias: { stone: 1, coal: 0, copper: 0, iron: 0, silver: 0, gold: 0, gem: 0, diamond: 0 },
+    theme: { sky: '#0a0a0c', fog: '#121214', ambient: '#a8a098', wall: '#8a8580', floor: '#6e6a64', lamp: '#d8c8a0', hazard: null },
+    rows: [
+      '##################################################',
+      '#######............######............######.######',
+      '#SS......................##......................##',
+      '#S.........####.................####..............#',
+      '#SS........####.................####..............#',
+      '####..............####.................####.......#',
+      '#####.............####.................####.......#',
+      '####.......####..............####.................#',
+      '###........####..............####..........####...#',
+      '###.................####...................####...#',
+      '####...............####..........................##',
       '##################################################',
     ] },
   // Chud Resort only (server-gated on location): a sea cave under the volcano. Wide open grottos (no single-tile
@@ -182,7 +200,7 @@ export const CAVE_DEFS: CaveDef[] = [
 ];
 /** window event (detail = CaveId) the world map fires to open a given mine. */
 export const MINE_CAVE_EVENT = 'relay-mine-cave';
-export const isCave = (v: unknown): v is CaveId => v === 'mine' || v === 'frost' || v === 'magma' || v === 'coral' || v === 'fortmc';
+export const isCave = (v: unknown): v is CaveId => v === 'mine' || v === 'frost' || v === 'magma' || v === 'coral' || v === 'fortmc' || v === 'quarry';
 
 /** Exported for the floor generator (shared/mineFloors.ts). `seed` shifts the node hash so generated floors don't repeat. */
 export function buildCave(def: CaveDef, seed0 = 0): { map: ArenaMap; nodes: MineNode[] } {
@@ -219,7 +237,7 @@ export function buildCave(def: CaveDef, seed0 = 0): { map: ArenaMap; nodes: Mine
 }
 
 /** Each cave's main ores, by the names players see (pt1357u): mine picker, map tiles, job list. */
-export const CAVE_MAIN_ORES: Record<CaveId, string> = { mine: 'Iron Ore, Stone & Gold Ore', frost: 'Silver Ore & Crystal', magma: 'Coal & Copper Ore', coral: 'Mixed ores', fortmc: 'Oil Sand, Gas Shale & Tar Rock' };
+export const CAVE_MAIN_ORES: Record<CaveId, string> = { mine: 'Iron Ore, Stone & Gold Ore', frost: 'Silver Ore & Crystal', magma: 'Coal & Copper Ore', coral: 'Mixed ores', fortmc: 'Oil Sand, Gas Shale & Tar Rock', quarry: 'Stone only · players only (no workers)' };
 
 export interface Cave extends CaveDef { map: ArenaMap; nodes: MineNode[] }
 export const CAVES: Record<CaveId, Cave> = Object.fromEntries(CAVE_DEFS.map((d) => [d.id, { ...d, ...buildCave(d) }])) as Record<CaveId, Cave>;

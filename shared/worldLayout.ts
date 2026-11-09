@@ -256,13 +256,15 @@ export const SPARE_SLOTS: [number, number][] = [[13, 42], [-13, -39], [-39, -13]
  * The three mines sit out in the outskirts, off the city plate (pt1201u): The Mine to the west, Frostbite Caverns to
  * the north, Magma Depths to the south-east past the farm. Each is reached by a dirt haul track off a road end.
  */
-export interface MineSite { cave: 'mine' | 'frost' | 'magma'; x: number; z: number; track: [number, number][] }
+export interface MineSite { cave: 'mine' | 'frost' | 'magma' | 'quarry'; x: number; z: number; track: [number, number][] }
 export const MINE_SITES: Record<string, MineSite> = {
   // Haul tracks start ON the paved/farm network (a T junction) and run square to the pad: The Mine off the west road,
   // Frostbite off the north road, Magma Depths off the farm's west lane (the east road also has a paved spur to its apron).
   mine: { cave: 'mine', x: -PLATE - 32, z: -30, track: [[-PLATE - 5, -30]] },
   'mine-frost': { cave: 'frost', x: 46, z: -PLATE - 32, track: [[46, -PLATE - 8]] },
   'mine-magma': { cave: 'magma', x: PLATE + 34, z: 96, track: [[PLATE + 5, 60], [PLATE + 5, 96]] },
+  // Stone Quarry: south-west outskirts, haul track off the west road (no new ownership rules beyond the same landmark deed as the other city mines).
+  'mine-quarry': { cave: 'quarry', x: -PLATE - 40, z: 130, track: [[-PLATE - 5, 130]] },
 };
 /** Outer edge of the countryside around the plate (decor fills it; the pan clamp covers it). */
 export const OUTSKIRTS = { x0: -222, x1: 208, z0: -218, z1: 192 };
@@ -290,7 +292,7 @@ function placeLandmarks(ids: string[]): Record<string, OBB> {
   }
   return out;
 }
-export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'mine-frost', 'mine-magma', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer', 'airport', 'racetrack', 'dock', 'grocery', 'mechanic', 'employ', 'cityhall', 'furniture'];
+export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'mine-frost', 'mine-magma', 'mine-quarry', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer', 'airport', 'racetrack', 'dock', 'grocery', 'mechanic', 'employ', 'cityhall', 'furniture'];
 /** Landmarks added after launch: they clear the fill under them instead of reshuffling it. */
 const LATE_LM = new Set(['grocery', 'mechanic', 'employ', 'cityhall', 'furniture']);
 let lmCache: { key: string; v: Record<string, OBB> } | null = null;

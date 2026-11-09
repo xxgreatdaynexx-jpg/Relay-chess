@@ -90,7 +90,10 @@ describe('co-op mine raids: instances', () => {
     boss.deadUntil = 0; boss.hp = 1; boss.lives = (boss.lives ?? 1) - 1; Object.assign(a, { x: boss.x - 1.2, y: boss.y, z: 0 });
     const r2 = w.attack('a', boss.id, 20000); expect(r2.raid!.roll).toBeUndefined(); await flush();
     expect(saves.filter((s) => s.extra?.some((e) => /mine_raid_rolls/.test(e.sql)))).toHaveLength(1);
-    expect(ore(winner)).toBeLessThan(before + roll.pot.reduce((t, s) => t + s.qty, 0) + 1);
+    // Replay still grants ordinary kill loot (depth-scaled), but must not add another pot.
+    const gained = ore(winner) - before;
+    expect(gained).toBeGreaterThan(0);
+    expect(gained).toBeLessThanOrEqual(12); // boss kill-loot soft cap; a second pot would be larger / separate
   });
   it('solo players and the public mine never roll', async () => {
     const { w } = world(); const a = w.join('a', 'Ann', 1000, 'fortmc'); await flush(); w.setFloor(a, BOSS_FLOOR, 1000);

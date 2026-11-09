@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { MOBS, MOB_SKINS, mobSkin, mobKindAt, mobScale, BOSS_FLOOR, type MobKind } from '../shared/mineCombat';
 import type { CaveId } from '../shared/mines';
 
-const CAVES: CaveId[] = ['mine', 'frost', 'magma', 'coral', 'fortmc'];
+const CAVES: CaveId[] = ['mine', 'frost', 'magma', 'coral', 'fortmc', 'quarry'];
 const KINDS = Object.keys(MOBS) as MobKind[];
 
 describe('themed mine monsters', () => {

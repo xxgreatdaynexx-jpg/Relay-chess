@@ -31,7 +31,7 @@ describe('Fort McChud walk-in mine (Nov 4)', () => {
     for (const o of FORT_ORES) { expect(isOre(o)).toBe(true); expect(ORE_ORDER).toContain(o); expect(ORES[o].exclusive).toBe(true); }
     const seen = new Set<string>(); for (const f of [1, 5, 20, 40]) for (const n of levelOf('fortmc', f).nodes) seen.add(n.ore);
     for (const o of FORT_ORES) expect(seen.has(o), o).toBe(true);
-    for (const c of ['mine', 'frost', 'magma', 'coral'] as CaveId[]) for (const f of [1, 2, 20, 40]) for (const n of levelOf(c, f).nodes) expect(FORT_ORES).not.toContain(n.ore);
+    for (const c of ['mine', 'frost', 'magma', 'coral', 'quarry'] as CaveId[]) for (const f of [1, 2, 20, 40]) for (const n of levelOf(c, f).nodes) expect(FORT_ORES).not.toContain(n.ore);
   });
   it('each industrial ore feeds an existing Fort McChud unit recipe', () => {
     const inputs = new Set(Object.values(UNITS).flatMap((u) => [u.input, (u as { alt?: string }).alt].filter(Boolean)));

@@ -4,7 +4,7 @@
  *   factory            the player's factory (exactly one per account). Backed by the existing banked store (mine_items /
  *                      Mines packs), so legacy banked stock is factory stock with no copy.
  *   warehouse          the Chud City Warehouse: the ONLY place goods sell, the Co-op / supply-contract / Market source.
- *   mine:<cave>        one Chud City cave: mine:mine, mine:frost, mine:magma (hauls banked there; hired miners -> mine:mine).
+ *   mine:<cave>        one Chud City cave: mine:mine, mine:frost, mine:magma, mine:quarry (hauls banked there; hired miners -> mine:mine).
  *   farm:<plotId>      one farm plot, city (f:/cf:...) or Chud Resort plantation (rf:...): each plot has its own stock.
  *   fishing:<spot>     one fishing spot (lake = city; reef / deep = resort). Fish are rows (species/weight kept).
  *   kitchen:<homeId>   the kitchen in one specific home you own (property, farm plot or trailer).
@@ -22,8 +22,8 @@ export const WAREHOUSE_LOC = WAREHOUSE;
 export const RESORT_WAREHOUSE = 'resort';
 export const poolOfHub = (h: HubId): string | null => (h === 'city' ? WAREHOUSE : h === 'resort' ? RESORT_WAREHOUSE : null);
 export const isPool = (loc: string) => loc === WAREHOUSE || loc === RESORT_WAREHOUSE;
-/** City caves (each its own mine): The Mine, Frostbite Caverns, Magma Depths. Coral / Fort McChud keep their own bins. */
-export const CITY_CAVES = ['mine', 'frost', 'magma'] as const;
+/** City caves (each its own mine): The Mine, Frostbite, Magma, Stone Quarry. Coral / Fort McChud keep their own bins. */
+export const CITY_CAVES = ['mine', 'frost', 'magma', 'quarry'] as const;
 /** Where NEW goods land (map pools): every producer writes to its map's warehouse. The per-place ids below
  *  ('mine:<cave>', 'farm:<plot>', 'fishing:<spot>', 'kitchen:<home>') are still parsed so legacy rows / in-flight legs
  *  stay readable; server/mapPools.ts folds them once. */
@@ -68,7 +68,7 @@ export function locLabel(loc: string): string {
       case 'factory': return 'My Factory';
       case 'warehouse': return 'Chud City Warehouse';
       case 'resort': return 'Resort Warehouse';
-      case 'mine': return l.ref === 'frost' ? 'Frostbite Caverns' : l.ref === 'magma' ? 'Magma Depths' : 'The Mine';
+      case 'mine': return l.ref === 'frost' ? 'Frostbite Caverns' : l.ref === 'magma' ? 'Magma Depths' : l.ref === 'quarry' ? 'Stone Quarry' : 'The Mine';
       case 'farm': return l.ref.startsWith('rf:') ? `Plantation plot ${l.ref.slice(3)}` : `Farm plot ${l.ref}`;
       case 'fishing': return l.ref === 'lake' ? 'Lake dock' : l.ref === 'reef' ? 'Reef Pier' : 'Resort Marina (deep sea)';
       case 'kitchen': return `Kitchen · ${l.ref}`;

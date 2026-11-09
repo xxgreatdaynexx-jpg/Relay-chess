@@ -22,7 +22,7 @@ import { CAVES, caveOf, type CaveId, BACKPACK_CAP, MAX_HITS_PER_10S, MINE_MAP, M
 import { isAtFortMc, isAtResort } from './travel.js';
 import { levelOf, hasFloors, floorKey, inLadder, canRideTo, respawnFloor, elevatorStops, MAX_FLOOR, clampFloor } from '../shared/mineFloors.js';
 import { newAI, stepAI, onHurt, ST_CODE, SHOT_HIT_R, SHOT_LIFE_MS, MINI_HP, MINI_DMG, SPLIT_N, BOSS_MOVE_NAMES, type AIMob, type AIEvent } from '../shared/mineAI.js';
-import { MOBS, MOB_RESPAWN_MS, mobSkin, SAFE_X, mobCount, mobDmg, mobHp, mobKindAt, lootCount, hitThrough, maxHpOf, weaponDef, lostOnDeath, REGEN_AFTER_MS, REGEN_PER_S, type MobKind, type WeaponId, type ArmorId } from '../shared/mineCombat.js';
+import { MOBS, MOB_RESPAWN_MS, mobSkin, SAFE_X, mobCount, mobDmg, mobHp, mobKindAt, lootCountFor, lootOreDepth, hitThrough, maxHpOf, weaponDef, lostOnDeath, REGEN_AFTER_MS, REGEN_PER_S, type MobKind, type WeaponId, type ArmorId } from '../shared/mineCombat.js';
 import { oreFor, mineHash } from '../shared/mines.js';
 import { raidHpMul, raidDmgMul, raidBossHpMul, raidPotSize, lootRoll, type RaidLootMsg } from '../shared/mineRaids.js';
 import { sinkLostToday } from './sink-room.js';
@@ -194,7 +194,7 @@ export class MinesWorld {
     const n0 = inst ? this.raidSize(inst) : 1;
     if (list) return list;
     list = [];
-    const map = levelOf(cave, floor).map; const n = mobCount(floor); const salt = cave === 'mine' ? 0 : cave.charCodeAt(0) * 101;
+    const map = levelOf(cave, floor).map; const n = mobCount(floor, cave); const salt = cave === 'mine' ? 0 : cave.charCodeAt(0) * 101;
     const spots: Array<[number, number]> = [];
     for (let y = 1; y < map.d / 2 - 1; y++) for (let x = 10; x < map.w / 2 - 2; x++) if (canStand(x * 2 + 1, y * 2 + 1, 0, map)) spots.push([x * 2 + 1, y * 2 + 1]);
     for (let i = 0; i < n && spots.length; i++) {
@@ -259,12 +259,12 @@ export class MinesWorld {
     }
     // loot: ore rolled from this floor's mix, only what fits in the backpack
     const lvl = levelOf(m.cave, m.floor);
-    const loot = this.giveOre(m, lootCount(m.floor), () => oreFor(3, this.bonusRng(), lvl.bias, lvl.anyDepth));
+    const loot = this.giveOre(m, lootCountFor(mob.kind, m.floor), () => oreFor(lootOreDepth(m.floor), this.bonusRng(), lvl.bias, lvl.anyDepth));
     mob.lives = (mob.lives ?? 0) + 1;
     if (!m.inst) return { mob: mob.id, hp: 0, killed: true, dmg: w.dmg, loot };
     // Raid: every member on the floor gets their own loot (nobody's drop is taken from anyone else), all in this one synchronous step.
     const here = this.partyHere(m); const raid: RaidKill = { mob: mob.id, shared: [] };
-    for (const o of here) if (o !== m && !o.restoring) raid.shared.push({ id: o.id, loot: this.giveOre(o, lootCount(m.floor), () => oreFor(3, this.bonusRng(), lvl.bias, lvl.anyDepth)) });
+    for (const o of here) if (o !== m && !o.restoring) raid.shared.push({ id: o.id, loot: this.giveOre(o, lootCountFor(mob.kind, m.floor), () => oreFor(lootOreDepth(m.floor), this.bonusRng(), lvl.bias, lvl.anyDepth)) });
     // Party boss: group loot roll for the bonus pot, once per kill (replay-safe id), committed with every member's haul in one transaction.
     if (mob.kind === 'boss' && !mob.mini && (mob.party ?? 1) > 1) {
       const rid = `raid:${m.inst}:${m.cave}:${m.floor}:${mob.id}:${mob.lives}`;

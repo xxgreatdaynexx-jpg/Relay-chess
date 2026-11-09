@@ -23,6 +23,7 @@ export const OFFLINE_CAP_MS = 8 * HOUR;
 export const MIN_ACCOUNT_AGE_MS = DAY;
 export const WAGE_SHARE = 0.45, HIRE_SHARE = 0.35, AMORTISE_DAYS = 7;
 export type WorkerKind = 'miner' | 'fisher';
+/** City mines workers may run. Stone Quarry is deliberately excluded (manual-only). */
 export type MinerCave = 'mine' | 'frost' | 'magma';
 export const MINER_CAVES: MinerCave[] = ['mine', 'frost', 'magma'];
 export const isMinerCave = (v: unknown): v is MinerCave => v === 'mine' || v === 'frost' || v === 'magma';

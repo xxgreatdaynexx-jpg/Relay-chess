@@ -54,6 +54,7 @@ export const BOSS_MOVE_NAMES: Record<CaveId, Record<BossMove, string>> = {
   magma:  { slam: 'Eruption', summon: 'Spawn Cinders', charge: 'Molten Rush', barrage: 'Fireball Rain' },
   coral:  { slam: 'Tidal Slam', summon: 'Brood Release', charge: 'Riptide Lunge', barrage: 'Ink Torpedoes' },
   fortmc: { slam: 'Pile Driver', summon: 'Deploy Drones', charge: 'Full Throttle', barrage: 'Rivet Spray' },
+  quarry: { slam: 'Bench Collapse', summon: 'Loose Screes', charge: 'Hauler Rush', barrage: 'Chip Spray' },
 };
 
 export interface AIMob {

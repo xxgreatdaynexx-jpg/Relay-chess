@@ -54,6 +54,12 @@ export const MOB_SKINS: Record<CaveId, Record<MobKind, MobSkin>> = {
     crab: K('Rogue Drill Bot', 'drillbot', '#e8a020', '#3a3a40'), golem: K('Sludge Hulk', 'blob', '#2a2016', '#c0a040', 1.7),
     wraith: K('Gas Wraith', 'gaswraith', '#9ad050', '#e8ff80'), boss: K('The Mega Driller', 'drillbot', '#c03020', '#ffd040', 1.9),
   },
+  // Stone Quarry has no hostiles (mobCount 0); skins exist so CaveId records stay exhaustive.
+  quarry: {
+    slime: K('Dust Mite', 'blob', '#b0a090', '#6a6050'), bat: K('Pebble Bat', 'bat', '#8a8070', '#4a4030'),
+    crab: K('Gravel Crab', 'crab', '#a09888', '#5a5040'), golem: K('Quarry Golem', 'golem', '#9a948c', '#c9b48a'),
+    wraith: K('Silica Wisp', 'elemental', '#d8d0c0', '#ffffff'), boss: K('Bedrock Titan', 'golem', '#7a746c', '#d0c8b0', 1.8),
+  },
 };
 export const mobSkin = (cave: CaveId, kind: MobKind): MobSkin => MOB_SKINS[cave]?.[kind] ?? MOB_SKINS.mine[kind];
 export const MOB_ORDER: MobKind[] = ['slime', 'bat', 'crab', 'golem', 'wraith'];
@@ -67,7 +73,6 @@ export const SAFE_X = 8.5;
 export const mobScale = (kind: MobKind, floor: number) => 1 + 0.06 * Math.max(0, floor - MOBS[kind].minFloor);
 export const mobHp = (kind: MobKind, floor: number) => Math.round(MOBS[kind].hp * mobScale(kind, floor));
 export const mobDmg = (kind: MobKind, floor: number) => Math.round(MOBS[kind].dmg * mobScale(kind, floor));
-export const mobCount = (floor: number) => (floor < MOB_FLOOR_MIN ? 0 : Math.min(12, 2 + Math.floor(floor / 3)));
 /** Kind for spawn slot i on a floor: weighted toward the newest creature unlocked there. r in [0,1). */
 export function mobKindFor(floor: number, r: number): MobKind {
   const open = MOB_ORDER.filter((k) => MOBS[k].minFloor <= floor);
@@ -75,8 +80,27 @@ export function mobKindFor(floor: number, r: number): MobKind {
   let t = r * tot; for (let i = 0; i < open.length; i++) { t -= w[i]; if (t <= 0) return open[i]; }
   return open[open.length - 1];
 }
-/** Ore pieces a kill drops (rolled from the floor's ore mix): 1 + 1 per 10 floors. */
-export const lootCount = (floor: number) => 1 + Math.floor(Math.min(MAX_FLOOR, floor) / 10);
+/** Ore pieces a kill drops (rolled from the floor's ore mix).
+ *  Depth-scaled enemy drops (Conner): 1 on floors 1–5, then +1 every 5 floors (floor 40 → 8).
+ *  Early floors are unchanged vs the old 1-per-10 curve through floor 10; deeper floors scale up.
+ *  Soft cap 12. Kind bonus: golem/wraith +25% (ceil), boss +50% (ceil). */
+export const lootCount = (floor: number) => {
+  const f = Math.min(MAX_FLOOR, Math.max(1, Math.floor(Number(floor) || 1)));
+  return 1 + Math.floor((f - 1) / 5);
+};
+export const lootCountFor = (kind: MobKind, floor: number) => {
+  const n = lootCount(floor);
+  if (kind === 'boss') return Math.min(12, n + Math.ceil(n / 2));
+  if (kind === 'golem' || kind === 'wraith') return Math.min(12, n + Math.ceil(n / 4));
+  return n;
+};
+/** Depth fed to oreFor for kill loot: starts at the historic 3, then +1 per 10 floors (richer deep rolls, no early nerf). */
+export const lootOreDepth = (floor: number) => 3 + Math.floor((Math.min(MAX_FLOOR, Math.max(1, Math.floor(Number(floor) || 1))) - 1) / 10);
+/** No creatures in the Stone Quarry (manual stone only). */
+export const mobCount = (floor: number, cave?: CaveId) => {
+  if (cave === 'quarry') return 0;
+  return floor < MOB_FLOOR_MIN ? 0 : Math.min(12, 2 + Math.floor(floor / 3));
+};
 
 // ---- player
 export const PLAYER_BASE_HP = 100;

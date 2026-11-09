@@ -29,7 +29,7 @@ describe('three caves (pt1201u)', () => {
   it('average value per placed node stays within 5% of before the pt1354u spawn bias (pt1357u: ~85% signature) (Coral untouched)', () => {
     // pt1354u: the theoretical caveValueRate() no longer tracks the hashed node layout once biases are this strong,
     // so balance is held on the real nodes players mine (house value per node).
-    const BEFORE: Record<string, number> = { mine: 5.606, frost: 6.665, magma: 2.674, coral: 9.894, fortmc: 3.704 }; // coral: #10d premium Grotto (Fire Opal + Abyssal Pearl, more gold/crystal), ~1.36x The Mine // fortmc: Nov 4 walk-in Fort McChud Mine (industrial ores; their plant-feed value comes on top)
+    const BEFORE: Record<string, number> = { mine: 5.606, frost: 6.665, magma: 2.674, coral: 9.894, fortmc: 3.704, quarry: 0.1 }; // quarry: stone-only (0.1 chips/unit); coral/fortmc notes unchanged
     for (const id of ids) { const n = CAVES[id].nodes; const v = n.reduce((a, x) => a + ORES[x.ore].price, 0) / n.length;
       expect(Math.abs(v / BEFORE[id]! - 1), id).toBeLessThan(id === 'coral' ? 0.001 : 0.05); expect(caveValueRate(CAVES[id]), id).toBeGreaterThan(0); }
   });
@@ -50,7 +50,7 @@ describe('three caves (pt1201u)', () => {
   });
   it('mines sit on the outskirts: off the plate, apart, clear of farm and Trailer Park, inside the pan bounds', () => {
     const lms = landmarks(); const sites = Object.entries(MINE_SITES);
-    expect(sites.length).toBe(3);
+    expect(sites.length).toBe(4);
     for (const [id, s] of sites) {
       const b = lms[id]; expect(b, id).toBeTruthy();
       expect(Math.max(Math.abs(b.x), Math.abs(b.z)), id).toBeGreaterThan(PLATE + 10);

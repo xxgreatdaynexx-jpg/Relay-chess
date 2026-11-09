@@ -31,6 +31,7 @@ export const RURAL_ROADS: Array<[P, P]> = [
   [[128, NZ], [128, -150.5]], // north road down to the Fishing Dock's gravel path (DOCK.path)
   [[WX, -54], [-181, -54]], // industrial yard west of The Mine (between its warehouses)
   [[EX, 96], [MINE_SITES['mine-magma'].x + MINE_APRON / 2, 96]], // paved spur from the east road to Magma Depths' apron
+  [[-PLATE - 5, 130], [MINE_SITES['mine-quarry'].x + MINE_APRON / 2, 130]], // spur toward Stone Quarry apron
   // city roads that run off the plate's east / west edge continue to the farm's west lane / the west road
   ...ROADS.flatMap((r) => (r.closed || !r.ends ? [] : r.ends.flatMap((e, i): Array<[P, P]> => {
     const p = i === 0 ? r.pts[0] : r.pts[r.pts.length - 1]; if (e !== 'edge' || Math.abs(Math.abs(p[0]) - PLATE) > 0.5) return [];

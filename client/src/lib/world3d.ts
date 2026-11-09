@@ -250,8 +250,8 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
         for (let i = 0; i < 4; i++) { const t = cyl(0.9, 1.1, 8, dark, i % 2 ? 4 : -4, 0, i < 2 ? 4 : -4, 8); g.add(t); g.add(cyl(1.3, 0.2, 1.4, neon, t.position.x, 8, t.position.z, 8)); }
         const ivory = mat({ color: 0xf1ead6, emissive: 0xf1ead6, emissiveIntensity: 0.25 * NEON }); ems.push(ivory);
         g.add(cyl(2.4, 2.8, 0.8, ivory, 0, 5, 0, 16), cyl(1.2, 2, 4.2, ivory, 0, 5.8, 0, 16), cyl(1.7, 1.2, 0.7, ivory, 0, 10, 0, 16), box(0.6, 2.4, 0.6, neon, 0, 10.7, 0), box(1.8, 0.6, 0.6, neon, 0, 11.6, 0)); height = 14; break; }
-      case 'mine': case 'mine-frost': case 'mine-magma': {
-        const hillC = spot.id === 'mine-frost' ? 0xd8ecf8 : spot.id === 'mine-magma' ? 0x3a2622 : 0x6b5a48;
+      case 'mine': case 'mine-frost': case 'mine-magma': case 'mine-quarry': {
+        const hillC = spot.id === 'mine-frost' ? 0xd8ecf8 : spot.id === 'mine-magma' ? 0x3a2622 : spot.id === 'mine-quarry' ? 0x9a948c : 0x6b5a48;
         const hill = new THREE.Mesh(geo(new THREE.ConeGeometry(6.5, 7, 7)), mat({ color: hillC, flatShading: true, ...(spot.id === 'mine-magma' ? { emissive: 0xff4a00, emissiveIntensity: 0.12 } : {}) }));
         if (spot.id === 'mine-magma') { const lava = cyl(1.2, 0.6, 0.6, mat({ color: 0xff6a20, emissive: 0xff4a00, emissiveIntensity: 1.4 * NEON }), 0, 6.6, 0, 8); g.add(lava); }
         if (spot.id === 'mine-frost') for (let i = 0; i < 5; i++) { const a = i * 1.3; const ic = new THREE.Mesh(geo(new THREE.ConeGeometry(0.5, 2.6, 5)), mat({ color: 0xbfe8ff, emissive: 0x5ab8ff, emissiveIntensity: 0.6 * NEON })); ic.position.set(Math.cos(a) * 4.2, 1.3, Math.sin(a) * 4.2 - 1); g.add(ic); } hill.position.y = 3.5; g.add(hill);
