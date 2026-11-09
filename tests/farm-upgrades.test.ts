@@ -7,7 +7,7 @@ import { RealEstate } from '../server/realEstate';
 import { Farm } from '../server/farm';
 import { farmPlots, cropById } from './farm-helpers';
 import { propertyById } from '../shared/realEstate';
-import { combinedGrowMul, FARM_UPGRADES, fertilizerProfitMul, greenhouseWither, MAX_UPGRADE_LEVEL, upgradePrice } from '../shared/farmUpgrades';
+import { combinedGrowMul, FARM_UPGRADES, fertilizerYieldBonus, greenhouseWither, MAX_UPGRADE_LEVEL, upgradePrice, yieldQty } from '../shared/farmUpgrades';
 import { timerColor, timerFraction } from '../shared/turnTimer';
 
 const T0 = Date.parse('2026-11-01T12:00:00Z'); const M = 60_000;
@@ -39,9 +39,14 @@ describe('farm upgrades (request #6)', () => {
   it('sprinklers stack with the Farming perk but never below half the grow time; fertilizer/greenhouse effects', () => {
     expect(combinedGrowMul(1, 0)).toBe(1); expect(combinedGrowMul(1, 3)).toBeCloseTo(0.7); expect(combinedGrowMul(0.75, 3)).toBeCloseTo(0.525);
     expect(combinedGrowMul(0.5, 3)).toBe(0.5); expect(combinedGrowMul(0.75, 99)).toBeCloseTo(0.525);
-    expect(fertilizerProfitMul(3)).toBeCloseTo(1.3); expect(greenhouseWither(2, 2)).toBe(4);
+    expect(fertilizerYieldBonus(3)).toBeCloseTo(0.3); expect(greenhouseWither(2, 2)).toBe(4);
+    // yieldQty: floor + stable fractional chance (same salt → same qty; ~10% of salts give +1 at bonus 0.1)
+    expect(yieldQty(0, 'a')).toBe(1); expect(yieldQty(1, 'a')).toBe(2);
+    let hits = 0; for (let i = 0; i < 10_000; i++) if (yieldQty(0.1, `n${i}`) === 2) hits++;
+    expect(hits / 10_000).toBeGreaterThan(0.07); expect(hits / 10_000).toBeLessThan(0.13);
+    expect(yieldQty(0.1, 'same')).toBe(yieldQty(0.1, 'same'));
   });
-  it('buying is owner-only, debits via farm_upgrade ledger exactly once, persists, and applies to growth, profit and wither', async () => {
+  it('buying is owner-only, debits via farm_upgrade ledger exactly once, persists, and applies to growth, yield and wither', async () => {
     const s = await setup(); const plot = propertyById(s.id)!;
     await s.fund('Gus', plot.price + 20_000); await s.fund('Hal', 5000);
     await expect(s.farm.buyUpgrade('Gus', s.id, 'sprinkler')).rejects.toThrow(/do not own/);
@@ -64,8 +69,13 @@ describe('farm upgrades (request #6)', () => {
     expect(t.readyAt - T0).toBe(Math.round(w.grow * 0.8)); // sprinklers lvl 2 = 20% faster
     expect(t.witherAt - t.readyAt).toBe(36 * 60 * 60_000); // ripe window is at least 36 h (greenhouse 4x grow is shorter for wheat)
     s.setNow(t.readyAt);
+    // Fertilizer L1 = +10% yield (not profit). Qty is 1 or 2 from the tile nonce; payout = seed refund + (qty*sellValue - seed).
+    const row = (s.db.public.many(`SELECT tile, crop, nonce FROM farm_tiles WHERE plot_id = '${s.id}'`) as Array<{ tile: number; crop: string; nonce: string }>)[0]!;
+    const qty = yieldQty(0.1, `${row.nonce}:${row.tile}:${row.crop}`);
+    const sellV = w.sell * 0.95;
     const h = await s.farm.harvest('Gus', s.id);
-    expect(h.paid).toBe(w.seed + Math.floor((w.sell * 0.95 - w.seed) * 1.1));
+    expect(h.harvested).toBe(qty);
+    expect(h.paid).toBe(w.seed + Math.floor(qty * sellV - w.seed));
   });
   it('maxes out at level 3 and a new owner starts from zero', async () => {
     const s = await setup(); await s.fund('Gus', 100_000); await s.re.buy('Gus', s.id);

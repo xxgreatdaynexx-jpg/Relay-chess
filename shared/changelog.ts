@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T13:25:00-06:00", "title": "Fertilizer now boosts harvest yield instead of sell price", "bullets": [
+    "The Fertilizer farm upgrade (+10% / +20% / +30% at levels 1–3) now grows extra crops on harvest instead of raising the profit on each crop. Manual harvest, auto-sell, and auto-harvest to pantry all use the same yield bonus; crop sell prices stay at the usual seed × 1.5 rule.",
+    "Existing Fertilizer levels on your plots keep working — they just pay out as more crops. If the pantry is full, crops still wait on the field. Sprinklers and Greenhouse are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-09T13:10:00-06:00", "title": "Employment Office shows each worker’s expected daily haul", "bullets": [
     "Under every hired miner and fisher you’ll see Expected per day: approximate counts of each ore or fish they’d bring in over a full paid day (for example ~346 iron, ~177 stone, ~66 gold/day), plus an approximate chip value at today’s prices.",
     "Numbers use the same pick tables and catch odds the server already uses — including your miner’s Mine priority — so the display can’t drift from real output. They assume you keep checking in within the usual offline window; unpaid or idle time and full storage still cut what you actually get. Workers still don’t use your skill or gear.",

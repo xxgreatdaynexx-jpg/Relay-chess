@@ -23,10 +23,10 @@ import { outcome, ledgerMarker, isOutcomeUnknown, getLocStore } from './locstock
 import { farmLoc } from '../shared/inventoryLocations.js';
 import { PANTRY_MAX } from '../shared/cooking.js';
 import { awardXp } from './skills.js';
-import { CROPS, cropById, cropProfit, cropSellValue, farmPayout, farmPlots, ripeWindow, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
+import { CROPS, cropById, cropSellValue, farmPayout, farmPlots, ripeWindow, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
 import { skillLevelAsync } from './skills.js';
 import { farmingGrowMul } from '../shared/skillPerks.js';
-import { combinedGrowMul, fertilizerProfitMul, greenhouseWither, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradeDef, upgradePrice, type FarmUpgradeLevels } from '../shared/farmUpgrades.js';
+import { combinedGrowMul, fertilizerYieldBonus, greenhouseWither, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradeDef, upgradePrice, yieldQty, type FarmUpgradeLevels } from '../shared/farmUpgrades.js';
 import { checkFarmAction } from './farmGuard.js';
 import { isHubAwake } from '../shared/hubSleep.js';
 import { isMillionairePrelaunch } from '../shared/millionairePrelaunch.js';
@@ -298,11 +298,24 @@ export class Farm {
       if (!ready.length) throw new FarmError('Nothing is ready to harvest.');
       // Map pools: the factory and the pantry are city-map stock; resort crops may not jump maps (ship them instead).
       if ((sink || pantry) && p.resort) throw new FarmError('Resort crops sell here at the plantation. To use them in the city, ship them by boat or plane.');
-      if (pantry) return this.harvestToPantry(name, pid, key, ready, now);
-      let seeds = 0, profit = 0; const counts = new Map<string, number>();
-      for (const r of ready) { const c = cropById(r.crop)!; seeds += c.seed; profit += cropProfit(c); counts.set(c.label, (counts.get(c.label) ?? 0) + 1); }
+      const fertB = fertilizerYieldBonus(up.fertilizer);
+      if (pantry) return this.harvestToPantry(name, pid, key, ready, now, fertB);
+      // pt2093u: Fertilizer boosts crop COUNT (yield), not sell-price/profit. Same % as the old profit buff.
+      let seeds = 0, profit = 0, cropUnits = 0; const counts = new Map<string, number>();
+      for (const r of ready) {
+        const c = cropById(r.crop)!;
+        const qty = yieldQty(fertB, `${r.nonce}:${r.tile}:${r.crop}`);
+        seeds += c.seed; profit += qty * cropSellValue(c) - c.seed; cropUnits += qty;
+        counts.set(c.label, (counts.get(c.label) ?? 0) + qty);
+      }
+      profit = Math.floor(profit);
       if (sink) { // pt1252u: send the crops to your Factory storage instead of selling them (no chips, no farm tier)
-        const items: Array<[string, number]> = []; for (const r of ready) { const id = `crop_${r.crop}`; const at = items.find((x) => x[0] === id); if (at) at[1]++; else items.push([id, 1]); }
+        const items: Array<[string, number]> = [];
+        for (const r of ready) {
+          const c = cropById(r.crop)!;
+          const qty = yieldQty(fertB, `${r.nonce}:${r.tile}:${r.crop}`);
+          const id = `crop_${c.id}`; const at = items.find((x) => x[0] === id); if (at) at[1] += qty; else items.push([id, qty]);
+        }
         const impKey = `import:${randomUUID()}`;
         await this.atomic(name, 0, 'farm_to_factory', '', async (cl) => {
           await this.mustOwn(cl, pid, name);
@@ -314,9 +327,8 @@ export class Farm {
         }, undefined, { committed: async () => (await this.pool.query('SELECT 1 FROM kitchen_harvests WHERE tile_key = $1', [impKey])).rows.length > 0,
           late: () => { sink.after(items); this.onChange?.(pid); } });
         sink.after(items); this.onChange?.(pid);
-        return { harvested: ready.length, paid: 0, toFactory: items, chips: this.bank().account(name).chips };
+        return { harvested: cropUnits, paid: 0, toFactory: items, chips: this.bank().account(name).chips };
       }
-      profit = Math.floor(profit * fertilizerProfitMul(up.fertilizer)); // Fertilizer: still inside the daily farm tier below
       const day = utcDay(now); const t = await this.today(key);
       const paid = Math.floor((seeds + farmPayout(profit * cityPolicyMul('farming'), t.gross)) * priceIndex()); // Farming subsidy policy (City Hall, kept)
       const memo = `Farm ${pid}: harvested ${[...counts].map(([l, n]) => `${n} ${l}`).join(', ')}`.slice(0, 200);
@@ -330,8 +342,8 @@ export class Farm {
         if (!u.rowCount) throw new FarmError('Busy, try again.');
       });
       this.onChange?.(pid);
-      eventCredit('harvest', name, ready.length); // weekly server event (kept)
-      return { harvested: ready.length, paid, chips: this.bank().account(name).chips };
+      eventCredit('harvest', name, cropUnits); // weekly server event (kept); count bonus yield crops
+      return { harvested: cropUnits, paid, chips: this.bank().account(name).chips };
     }));
   }
 
@@ -377,9 +389,13 @@ export class Farm {
   /** Harvest into the pantry instead of selling (pt1312u): no chips, no daily-tier use; Farming XP as usual. Map pools: the
    *  city pantry is the one city store (food stacks in the banked pack, as before Millionaire). The tile deletes and the
    *  harvest ledger commit in the SAME transaction as the stock: exactly once (a missing tile aborts it all). */
-  private async harvestToPantry(name: string, pid: string, key: string, ready: TileRow[], now: number) {
-    const counts = new Map<string, number>(); let value = 0;
-    for (const r of ready) { const c = cropById(r.crop)!; counts.set(c.id, (counts.get(c.id) ?? 0) + 1); value += c.sell; }
+  private async harvestToPantry(name: string, pid: string, key: string, ready: TileRow[], now: number, fertB = 0) {
+    const counts = new Map<string, number>(); let value = 0; let cropUnits = 0;
+    for (const r of ready) {
+      const c = cropById(r.crop)!;
+      const qty = yieldQty(fertB, `${r.nonce}:${r.tile}:${r.crop}`);
+      counts.set(c.id, (counts.get(c.id) ?? 0) + qty); value += c.sell * qty; cropUnits += qty;
+    }
     const ls = getLocStore(); if (!ls.loaded) throw new FarmError('Storage is reconnecting. Nothing was harvested; try again in a minute.');
     const loc = farmLoc(pid); const deltas = [...counts].map(([id, n]) => ({ loc, item: `food:${id}`, delta: n }));
     for (const d of deltas) if (ls.qty(name, loc, d.item) + d.delta > PANTRY_MAX) throw new FarmError('Your pantry is full for that crop.');
@@ -400,7 +416,7 @@ export class Farm {
     }
     awardXp(name, 'farming', Math.min(400, 10 + Math.round(value / 5)));
     this.onChange?.(pid);
-    return { harvested: ready.length, paid: 0, pantry: Object.fromEntries(counts), toFactory: undefined as Array<[string, number]> | undefined, chips: this.bank().account(name).chips };
+    return { harvested: cropUnits, paid: 0, pantry: Object.fromEntries(counts), toFactory: undefined as Array<[string, number]> | undefined, chips: this.bank().account(name).chips };
   }
 
   /** Clear withered crops (free). */

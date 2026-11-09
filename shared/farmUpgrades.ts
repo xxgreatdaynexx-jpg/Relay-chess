@@ -1,7 +1,7 @@
 /**
  * Farm upgrades (request #6): per-plot, owner-bound improvements bought with chips. Pure chip sinks: paid through the
  * atomic wallet + ledger ('farm_upgrade'), priced per tile (base chips, scaled by the price index on the server), and
- * they never bypass the daily farm cap: extra profit from Fertilizer still counts against the 100,000/day farm tier.
+ * they never bypass the daily farm cap: extra crops from Fertilizer still count against the 100,000/day farm tier.
  * Upgrades belong to the owner who bought them; a new owner of the plot starts from scratch.
  */
 export type FarmUpgradeKind = 'sprinkler' | 'fertilizer' | 'greenhouse';
@@ -9,7 +9,7 @@ export interface FarmUpgradeDef { id: FarmUpgradeKind; label: string; emoji: str
 export const MAX_UPGRADE_LEVEL = 3;
 export const FARM_UPGRADES: FarmUpgradeDef[] = [
   { id: 'sprinkler', label: 'Sprinklers', emoji: '💦', blurb: 'Crops grow faster', perTile: [40, 90, 200], effect: (l) => `${l * 10}% faster growth` },
-  { id: 'fertilizer', label: 'Fertilizer', emoji: '🧪', blurb: 'Bigger harvest profit', perTile: [50, 120, 260], effect: (l) => `+${l * 10}% crop profit` },
+  { id: 'fertilizer', label: 'Fertilizer', emoji: '🧪', blurb: 'Bigger harvest yield', perTile: [50, 120, 260], effect: (l) => `+${l * 10}% crop yield` },
   { id: 'greenhouse', label: 'Greenhouse', emoji: '🏡', blurb: 'Ripe crops last longer', perTile: [25, 60, 140], effect: (l) => `Crops stay ripe ${2 + l}× their grow time` },
 ];
 export const upgradeDef = (k: unknown) => FARM_UPGRADES.find((u) => u.id === k);
@@ -25,7 +25,23 @@ export function upgradePrice(kind: FarmUpgradeKind, cur: number, tiles: number):
 export const sprinklerGrowMul = (l: number) => 1 - 0.1 * lv(l);
 export const MIN_GROW_MUL = 0.5;
 export const combinedGrowMul = (skillMul: number, sprinkler: number) => Math.max(MIN_GROW_MUL, skillMul * sprinklerGrowMul(sprinkler));
-/** Profit multiplier from Fertilizer (applied to sell - seed; the daily farm tier still caps it). */
-export const fertilizerProfitMul = (l: number) => 1 + 0.1 * lv(l);
+/** Fractional yield bonus from Fertilizer: +10% / +20% / +30% more crops at levels 1–3 (pt2093u). Same strength as the old profit %). */
+export const fertilizerYieldBonus = (l: number) => 0.1 * lv(l);
+/**
+ * Crops harvested from one planted tile given a fractional yield bonus.
+ * Floor + a stable fractional chance derived from `salt` (tile nonce) so a failed/retried harvest cannot re-roll the bonus.
+ */
+export function yieldQty(bonus: number, salt: string): number {
+  const y = 1 + Math.max(0, Number.isFinite(bonus) ? bonus : 0);
+  const whole = Math.floor(y + 1e-12);
+  const frac = y - whole;
+  if (frac <= 1e-12) return Math.max(1, whole);
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < salt.length; i++) { h ^= salt.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  const u = (h % 10_000) / 10_000;
+  return whole + (u < frac ? 1 : 0);
+}
+/** @deprecated Use fertilizerYieldBonus; kept only so old imports fail loudly in review — prefer yield. */
+export const fertilizerProfitMul = (l: number) => 1 + fertilizerYieldBonus(l);
 /** Wither factor with a Greenhouse (base 2). */
 export const greenhouseWither = (base: number, l: number) => base + lv(l);
