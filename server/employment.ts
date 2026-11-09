@@ -31,7 +31,8 @@ import { ORES, MAX_BANKED_STACK, stackKey, type OreId } from '../shared/mines.js
 import { COOLER_MAX } from '../shared/fishing.js';
 import {
   JOBS, jobById, baseHire, baseWage, itemsPerDay, dayValue, rollOre, rollWorkerFish, boxCount,
-  DAY, MAX_WORKERS, OFFLINE_CAP_MS, MIN_ACCOUNT_AGE_MS, type JobDef, type EmployLogItem, type Unit, type WorkerBox, type WorkerStatus, type WorkerView, type EmployView,
+  minerPriorityOptions, parseMinerPriority,
+  DAY, MAX_WORKERS, OFFLINE_CAP_MS, MIN_ACCOUNT_AGE_MS, type JobDef, type EmployLogItem, type Unit, type WorkerBox, type WorkerStatus, type WorkerView, type EmployView, type MinerPriority,
 } from '../shared/employment.js';
 
 export const EMPLOY_MIGRATION = `
@@ -39,6 +40,7 @@ CREATE TABLE IF NOT EXISTS employ_workers (id TEXT PRIMARY KEY, owner_key TEXT N
 CREATE INDEX IF NOT EXISTS employ_workers_owner ON employ_workers (owner_key);
 CREATE TABLE IF NOT EXISTS employ_log (owner_key TEXT NOT NULL, item_type TEXT NOT NULL, item_id TEXT NOT NULL, qty INTEGER NOT NULL, at BIGINT NOT NULL);
 CREATE INDEX IF NOT EXISTS employ_log_owner ON employ_log (owner_key, at);
+ALTER TABLE employ_workers ADD COLUMN IF NOT EXISTS priority TEXT;
 `;
 export class EmployError extends Error {}
 const HOUR_MS = 3_600_000;
@@ -48,12 +50,13 @@ type Q = { query: (sql: string, args?: unknown[]) => Promise<{ rows: any[]; rowC
 export interface OreSink { write(cl: Q, items: Array<[OreId, number]>): Promise<void>; after(items: Array<[OreId, number]>): void; /** Free space for this ore (default: unlimited). */ room?(id: OreId): number }
 /** Owner-away cap end: 8 h of hub-awake time after the last check-in (overnight lockout doesn't count). */
 const awayEnd = (seenAt: number) => awakeDeadline(seenAt, OFFLINE_CAP_MS);
-interface Row { id: string; owner_key: string; owner_name: string; job: string; hired_at: string | number; last_at: string | number; seen_at: string | number; paid_until: string | number; status: string; box: string }
-interface W { id: string; job: JobDef; hiredAt: number; lastAt: number; seenAt: number; paidUntil: number; status: WorkerStatus; box: WorkerBox }
+interface Row { id: string; owner_key: string; owner_name: string; job: string; hired_at: string | number; last_at: string | number; seen_at: string | number; paid_until: string | number; status: string; box: string; priority?: string | null }
+interface W { id: string; job: JobDef; hiredAt: number; lastAt: number; seenAt: number; paidUntil: number; status: WorkerStatus; box: WorkerBox; priority: MinerPriority }
 const parse = (r: Row): W | null => {
   const job = jobById(r.job); if (!job) return null;
   let box: WorkerBox = {}; try { box = JSON.parse(r.box || '{}'); } catch { box = {}; }
-  return { id: r.id, job, hiredAt: Number(r.hired_at), lastAt: Number(r.last_at), seenAt: Number(r.seen_at), paidUntil: Number(r.paid_until), status: (r.status as WorkerStatus), box };
+  const priority = job.kind === 'miner' && job.cave ? parseMinerPriority(job.cave, r.priority) : null;
+  return { id: r.id, job, hiredAt: Number(r.hired_at), lastAt: Number(r.last_at), seenAt: Number(r.seen_at), paidUntil: Number(r.paid_until), status: (r.status as WorkerStatus), box, priority };
 };
 const boxValue = (b: WorkerBox) => Object.entries(b.ores ?? {}).reduce((a, [id, n]) => a + ORES[id as OreId].price * (n ?? 0), 0) + (b.fish ?? []).reduce((a, f) => a + f.value, 0);
 export const cryptoUnit: Unit = () => randomInt(0, 2 ** 32) / 2 ** 32;
@@ -118,7 +121,7 @@ export class Employment {
     return (r.rows as Row[]).map(parse).filter((w): w is W => !!w);
   }
   private save(cl: Q, w: W) {
-    return cl.query('UPDATE employ_workers SET last_at = $2, seen_at = $3, paid_until = $4, status = $5, box = $6 WHERE id = $1', [w.id, w.lastAt, w.seenAt, w.paidUntil, w.status, JSON.stringify(w.box)]);
+    return cl.query('UPDATE employ_workers SET last_at = $2, seen_at = $3, paid_until = $4, status = $5, box = $6, priority = $7 WHERE id = $1', [w.id, w.lastAt, w.seenAt, w.paidUntil, w.status, JSON.stringify(w.box), w.priority]);
   }
   /** Pick-up log rows waiting to be written (owner key → rows), filled by produce(). */
   private pendingLog = new Map<string, LogRow[]>();
@@ -127,7 +130,7 @@ export class Employment {
     const log = key ? (this.pendingLog.get(key) ?? []) : null; if (log && key) this.pendingLog.set(key, log);
     for (let i = 0; i < n; i++) {
       const at = w.lastAt + (i + 1) * every; let type: 'ore' | 'fish', id: string;
-      if (w.job.kind === 'miner') { const o = rollOre(w.job.cave!, this.unit); (w.box.ores ??= {})[o] = (w.box.ores[o] ?? 0) + 1; type = 'ore'; id = o; }
+      if (w.job.kind === 'miner') { const o = rollOre(w.job.cave!, this.unit, w.priority); (w.box.ores ??= {})[o] = (w.box.ores[o] ?? 0) + 1; type = 'ore'; id = o; }
       else { const f = rollWorkerFish(this.unit); (w.box.fish ??= []).push({ species: f.fish.id, grams: f.grams, value: f.value }); type = 'fish'; id = f.fish.id; }
       if (log) { const b = Math.floor(at / HOUR_MS); const last = log.find((r) => r.type === type && r.id === id && Math.floor(r.at / HOUR_MS) === b); if (last) { last.qty++; last.at = at; } else log.push({ type, id, qty: 1, at }); }
     }
@@ -166,7 +169,7 @@ export class Employment {
   }
   private toView(w: W): WorkerView {
     const nextAt = w.status === 'working' ? Math.min(w.lastAt + w.job.everyMs, w.paidUntil, awayEnd(w.seenAt)) : null;
-    return { id: w.id, job: w.job.id, status: w.status, hiredAt: w.hiredAt, paidUntil: w.paidUntil, seenAt: w.seenAt, nextAt, box: w.box, boxValue: px(boxValue(w.box)), wage: this.wagePrice(w.job) };
+    return { id: w.id, job: w.job.id, status: w.status, hiredAt: w.hiredAt, paidUntil: w.paidUntil, seenAt: w.seenAt, nextAt, box: w.box, boxValue: px(boxValue(w.box)), wage: this.wagePrice(w.job), ...(w.job.kind === 'miner' && w.job.cave ? { priority: w.priority, priorityOptions: minerPriorityOptions(w.job.cave) } : {}) };
   }
   /** Base cap + property bonus (owned buildings/landmarks; see shared/realEstate workerBonusOf). Fails to base if the table is missing. */
   async capOf(key: string, name?: string): Promise<{ max: number; base: number; bonus: number }> {
@@ -289,6 +292,18 @@ export class Employment {
     }
     await this.pool.query('DELETE FROM employ_log WHERE at < $1', [this.clock() - 2 * DAY]).catch(() => {});
   }
+  /** Free: set a miner's ore priority (Balanced or a cave ore). Takes effect on future picks only. */
+  async setPriority(name: string, id: unknown, priorityRaw: unknown) {
+    const key = playerKey(name);
+    return this.lock(key, async () => {
+      const w = (await this.rows(key)).find((x) => x.id === id); if (!w) throw new EmployError('No such worker.');
+      if (w.job.kind !== 'miner' || !w.job.cave) throw new EmployError('Only miners can prioritize an ore.');
+      const next = parseMinerPriority(w.job.cave, priorityRaw);
+      if (priorityRaw != null && priorityRaw !== '' && priorityRaw !== 'balanced' && next == null) throw new EmployError('That ore isn’t available at this mine.');
+      w.priority = next; await this.save(this.pool, w);
+      return { priority: next };
+    });
+  }
   /** Fire: collects what it can first; no refund of fees or wages. */
   async fire(name: string, id: unknown) {
     const key = playerKey(name);
@@ -356,4 +371,5 @@ export function registerEmployment(_io: Server, socket: Socket): void {
   on('employ_hire', async (b, e) => e.hire(need(), b.job));
   on('employ_collect', async (b, e) => e.collect(need(), typeof b.id === 'string' ? b.id : undefined));
   on('employ_fire', async (b, e) => e.fire(need(), b.id));
+  on('employ_priority', async (b, e) => e.setPriority(need(), b.id, b.priority));
 }

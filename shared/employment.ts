@@ -102,11 +102,57 @@ export const costShare = (j: JobDef, days = AMORTISE_DAYS) => (baseHire(j) + bas
 
 /** Uniform [0,1) source (crypto on the server, seeded in tests). */
 export type Unit = () => number;
-export function rollOre(cave: MinerCave, u: Unit): OreId {
-  const t = minerTable(cave); let x = u();
+export function rollOre(cave: MinerCave, u: Unit, priority: OreId | null = null): OreId {
+  const t = minerPickTable(cave, priority); let x = u();
   for (const [o, w] of t) { if (x < w) return o; x -= w; }
   return t[t.length - 1]![0];
 }
+
+/** Ores a miner at this cave can prioritize (those with positive weight in the balanced table). Quarry → stone only. */
+export function minerPriorityOptions(cave: MinerCave): OreId[] {
+  return minerTable(cave).filter(([, w]) => w > 1e-12).map(([o]) => o);
+}
+/** Balanced (null) or one of the cave's ores. */
+export type MinerPriority = OreId | null;
+export const PRIORITY_FOCUS = 3; // soft focus before EV clamp
+const mixTables = (a: Array<[OreId, number]>, b: Array<[OreId, number]>, m: number): Array<[OreId, number]> => {
+  const keys = new Set([...a.map(([o]) => o), ...b.map(([o]) => o)]);
+  const wa = Object.fromEntries(a) as Partial<Record<OreId, number>>;
+  const wb = Object.fromEntries(b) as Partial<Record<OreId, number>>;
+  const out: Array<[OreId, number]> = [];
+  for (const o of keys) { const w = (1 - m) * (wa[o] ?? 0) + m * (wb[o] ?? 0); if (w > 1e-15) out.push([o, w]); }
+  const s = out.reduce((x, [, w]) => x + w, 0);
+  return out.map(([o, w]) => [o, w / s]);
+};
+/**
+ * Player priority table: Balanced = minerTable. Prioritizing ore X multiplies X's weight by PRIORITY_FOCUS then
+ * renormalizes; if that would raise expected value above Balanced, blend back toward Balanced until EV matches.
+ * So volume/hour is unchanged and prioritizing a rare/pricey ore cannot beat Balanced on EV — you get more of it
+ * by trading other ores value-neutrally. Prioritizing a cheap ore (e.g. stone) can lower EV (player choice).
+ */
+export function minerPickTable(cave: MinerCave, priority: MinerPriority): Array<[OreId, number]> {
+  const base = minerTable(cave);
+  if (!priority) return base;
+  if (!base.some(([o]) => o === priority)) return base; // unknown / not in cave → Balanced
+  if (base.length === 1) return base; // quarry stone-only
+  const baseEv = evOf(base);
+  const boosted = base.map(([o, w]): [OreId, number] => [o, o === priority ? w * PRIORITY_FOCUS : w]);
+  const sum = boosted.reduce((a, [, w]) => a + w, 0);
+  const focused = boosted.map(([o, w]): [OreId, number] => [o, w / sum]);
+  if (evOf(focused) <= baseEv + 1e-12) return focused;
+  // EV would rise: find largest blend m in [0,1] with EV(mix) <= baseEv
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    if (evOf(mixTables(base, focused, mid)) > baseEv) hi = mid; else lo = mid;
+  }
+  return mixTables(base, focused, lo);
+}
+export const parseMinerPriority = (cave: MinerCave, v: unknown): MinerPriority => {
+  if (v == null || v === '' || v === 'balanced') return null;
+  if (typeof v !== 'string' || !minerPriorityOptions(cave).includes(v as OreId)) return null;
+  return v as OreId;
+};
 /** Normal catch table with junk taken out (junk is the first 10% of the rarity roll). */
 export function rollWorkerFish(u: Unit): { fish: Fish; grams: number; value: number } {
   const junk = RARITY_ODDS.junk / 100; const f = rollFish(junk + u() * (1 - junk), u()); const grams = rollWeight(f, u());
@@ -117,7 +163,7 @@ export function rollWorkerFish(u: Unit): { fish: Fish; grams: number; value: num
 export interface WorkerBox { ores?: Partial<Record<OreId, number>>; fish?: Array<{ species: string; grams: number; value: number }> }
 export const boxCount = (b: WorkerBox) => Object.values(b.ores ?? {}).reduce((a, n) => a + (n ?? 0), 0) + (b.fish?.length ?? 0);
 export type WorkerStatus = 'working' | 'idle' | 'unpaid';
-export interface WorkerView { id: string; job: string; status: WorkerStatus; hiredAt: number; paidUntil: number; seenAt: number; nextAt: number | null; box: WorkerBox; boxValue: number; wage: number }
+export interface WorkerView { id: string; job: string; status: WorkerStatus; hiredAt: number; paidUntil: number; seenAt: number; nextAt: number | null; box: WorkerBox; boxValue: number; wage: number; /** miners only: null = Balanced */ priority?: MinerPriority; priorityOptions?: OreId[] }
 /** Last-24 h pick-up log, totalled per item. */
 export interface EmployLogItem { type: 'ore' | 'fish'; id: string; qty: number; lastAt: number }
 export interface EmployView { log?: EmployLogItem[]; notes?: string[]; workers: WorkerView[]; jobs: Array<{ id: string; hire: number; wage: number; perDay: number; dayValue: number }>; now: number; canHire: boolean; reason?: string; max: number; base?: number; bonus?: number }

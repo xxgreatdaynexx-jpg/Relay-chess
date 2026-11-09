@@ -2007,6 +2007,13 @@ html, body { overflow-x: clip; }
 .employ-list li button { align-self: flex-start; font-size: 12px; padding: 4px 10px; border-radius: 7px; background: rgba(224,162,58,.2); border: 1px solid rgba(224,162,58,.5); }
 .employ-list li button:disabled { opacity: .5; }
 .employ-btns { display: flex; gap: 6px; } .employ-list li .employ-fire { background: rgba(255,80,80,.12); border-color: rgba(255,80,80,.4); }
+.employ-priority { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; font-size: 11px; }
+.employ-priority span { opacity: .85; font-weight: 600; }
+.employ-priority select {
+  width: 100%; min-height: 44px; font-size: 14px; border-radius: 8px;
+  background: rgba(0,0,0,.35); color: inherit; border: 1px solid rgba(255,255,255,.18); padding: 6px 10px;
+}
+
 .employ-box { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; } .employ-box span { display: inline-flex; align-items: center; gap: 2px; }
 /* Casino turn-timer bar (request #7) */
 .turn-timer { position: relative; height: 10px; border-radius: 5px; background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.15); overflow: hidden; margin: 4px 0; min-width: 120px; }

@@ -65,6 +65,26 @@ export function EmploymentPanel({ onClose }: { onClose: () => void }) {
                 <b>{j?.emoji} {j?.label}</b>
                 <small>{w.status === 'working' ? (w.nextAt && w.nextAt > v.now ? `Working · next item in ${dur(w.nextAt - v.now)} · paid for ${dur(left)}` : 'Waiting for you to check in') : w.status === 'idle' ? 'Off duty (you were away). Re-hire to start a new paid day.' : 'Unpaid. Re-hire to pay a new day when you have the chips.'}</small>
                 <small>Wage 🪙 {chips(w.wage)}/day</small>
+                {j?.kind === 'miner' && w.priorityOptions && w.priorityOptions.length > 0 && (
+                  <label className="employ-priority" data-testid="employ-priority">
+                    <span>Mine priority</span>
+                    <select
+                      value={w.priority ?? 'balanced'}
+                      disabled={!!busy || (w.priorityOptions.length === 1 && w.priorityOptions[0] === 'stone')}
+                      aria-label={`Mining priority for ${j.label}`}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        void act(`p:${w.id}`, 'employ_priority', { id: w.id, priority: v === 'balanced' ? null : v }, () =>
+                          v === 'balanced' ? 'Priority set to Balanced.' : `Now prioritizing ${ORES[v as OreId]?.name ?? v}.`);
+                      }}
+                    >
+                      <option value="balanced">Balanced (default)</option>
+                      {w.priorityOptions.map((o) => (
+                        <option key={o} value={o}>{ORES[o]?.name ?? o}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 {boxCount(w.box) > 0 && <small className="text-amber-300" data-testid="employ-held">Holding {boxCount(w.box)} until your storage has room.</small>}
                 <div className="employ-btns">
                   {w.status !== 'working' && <button type="button" disabled={!!busy} aria-busy={busy === `c:${w.id}`} data-testid="employ-rehire" onClick={() => act(`c:${w.id}`, 'employ_collect', { id: w.id }, (r) => [r.charged ? `Back to work. Paid 🪙 ${chips(r.charged as number)} wage.` : '', ...((r.notes as string[]) ?? [])].filter(Boolean).join(' ') || 'Checked in.')}>Re-hire</button>}

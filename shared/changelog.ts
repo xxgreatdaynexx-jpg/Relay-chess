@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T10:00:00-06:00", "title": "Tell each miner what ore to prioritize", "bullets": [
+    "In the Employment Office, each hired miner has a Mine priority menu: Balanced (the usual mix) or any ore that mine actually produces. Quarry miners stay stone-only. Changing priority is free and applies to new picks going forward; existing haul is unchanged.",
+    "Prioritizing shifts the mix toward that ore without increasing how much value they bring in per hour versus Balanced. Online and offline catch-up use the same rule.",
+  ]},
   {"commit": "", "at": "2026-11-09T08:35:00-06:00", "title": "Fort McChud oil products sell for about 25% more", "bullets": [
     "Crude, fuels, gas, NGL, sulfur, ethylene and plastics all sell for about 25% more at the warehouse. Well rates, free grid power, build costs and daily sale tiers are unchanged — this is a price-only buff so pipelines are not capped harder.",
     "Existing wells, leases, tanks, inventories and already-paid sales stay as they are; only new sales use the higher prices.",
