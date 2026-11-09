@@ -28,6 +28,6 @@ describe('pantry crops feed the factory', () => {
   });
   it('price 0 on pantry food is intended (never house-sold); the factory import key is priced', () => {
     expect(priceOf({ type: 'food', id: 'sunflower' })).toBe(0); expect(sellable({ type: 'food', id: 'sunflower' })).toBe(false);
-    expect(priceOf({ type: 'good', id: 'crop_sunflower' })).toBe(300); // seed 250 x 1.2 (crop margins)
+    expect(priceOf({ type: 'good', id: 'crop_sunflower' })).toBe(375); // live GOODS price (seed 250 × crop margins)
   });
 });

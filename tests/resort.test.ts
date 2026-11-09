@@ -76,7 +76,14 @@ describe('resort properties and plantation', () => {
     const all = [...lots, ...resortPlots(), ...RESORT_SPOTS.filter((s) => s.id !== 'r-marina').map((s) => ({ ...s, rot: 0 }))];
     for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) expect(obbOverlap(all[i]!, all[j]!, 0.5), `${i}/${j}`).toBe(false);
     expect(RESORT_TYPES.beachhouse!.price).toBeGreaterThan(BASE_PRICE.house!); expect(RESORT_TYPES.condo!.price).toBeGreaterThan(BASE_PRICE.apartment!); expect(RESORT_TYPES.villa!.price).toBeGreaterThan(BASE_PRICE.tower! * 0.9); expect(RESORT_TYPES.hotel!.price).toBeGreaterThan(BASE_PRICE.tower!);
-    for (const l of lots) { const p = propertyById(l.id)!; expect(p.map).toBe('resort'); expect(p.price).toBe(l.price); expect(taxOf(p.price)).toBe(Math.ceil(p.price * 0.005)); expect(sellBackOf(p.price)).toBe(Math.floor(p.price * 0.7)); }
+    for (const l of lots) {
+      const p = propertyById(l.id)!; expect(p.map).toBe('resort');
+      // Millionaire housing reprice: catalog price is slots×10k (captured from pre-reprice band), not raw RESORT_TYPES list.
+      expect(p.housingEmployees).toBeGreaterThanOrEqual(1);
+      expect(p.price).toBe((p.housingEmployees! <= 3 ? p.housingEmployees! : 0) * 10_000 || l.price);
+      if ((p.housingEmployees ?? 0) > 3) expect(p.price).toBe(l.price);
+      expect(taxOf(p.price)).toBe(Math.ceil(p.price * 0.005)); expect(sellBackOf(p.price)).toBe(Math.floor(p.price * 0.7));
+    }
     const rp = properties().filter((p) => p.map === 'resort').map((p) => p.price); console.log('[resort-prices]', Math.min(...rp), Math.max(...rp));
     for (const f of resortPlots()) expect(propertyById(`rf:${f.n}`)!.price).toBe(f.estate ? resortEstateFarmPrice(f.cols * f.rows) : resortFarmPrice(f.cols * f.rows));
   });

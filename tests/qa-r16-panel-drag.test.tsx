@@ -11,7 +11,7 @@ const files = readdirSync(dir).filter((f) => f.endsWith('.tsx'));
 const src = (f: string) => readFileSync(join(dir, f), 'utf8');
 
 /** Full-screen overlays (nothing to move). */
-const EXEMPT = new Set(['Requests.tsx', 'Changelog.tsx', 'ConquestPanel.tsx:cq-overlay', 'MayorBillReview.tsx' /* fixed modal dialog: header/close must stay on screen on mobile */]);
+const EXEMPT = new Set(['Requests.tsx', 'Changelog.tsx', 'Wiki.tsx' /* chat-clog overlay like Changelog */, 'ConquestPanel.tsx:cq-overlay', 'MayorBillReview.tsx' /* fixed modal dialog: header/close must stay on screen on mobile */]);
 const PANEL_ROOT = /<div[^>]*(className="[^"]*\b(world-deed|inv-win|dealer-box|acct-panel|wallet-panel|cq-rules|cq-rules-card|sol-panel)[" ]|role="dialog")/g;
 
 describe('every floating panel uses the shared drag behaviour', () => {

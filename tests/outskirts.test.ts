@@ -35,7 +35,7 @@ describe('countryside real estate', () => {
   it('country homes and businesses are buyable with unique, stable ids', () => {
     const ps = properties(); expect(new Set(ps.map((p) => p.id)).size).toBe(ps.length);
     const homes = countryHomes(); expect(homes.length).toBeGreaterThan(30);
-    for (const h of homes) { const p = propertyById(`b:house:${Math.round(h.x * 10)}:${Math.round(h.z * 10)}`)!; expect(p.label).toBe('Detached home'); expect(p.price).toBeGreaterThanOrEqual(12_000); expect(p.price).toBeLessThanOrEqual(25_000); expect(sellBackOf(p.price)).toBe(Math.floor(p.price * 0.7)); expect(taxOf(p.price)).toBeGreaterThan(0); }
+    for (const h of homes) { const p = propertyById(`b:house:${Math.round(h.x * 10)}:${Math.round(h.z * 10)}`)!; expect(p.label).toBe('Detached home'); expect(p.price).toBeGreaterThanOrEqual(10_000); expect(p.price).toBeLessThanOrEqual(30_000); /* housing reprice: 10k per employee slot */ expect(sellBackOf(p.price)).toBe(Math.floor(p.price * 0.7)); expect(taxOf(p.price)).toBeGreaterThan(0); }
     const biz = ps.filter((p) => p.type === 'gas' || p.type === 'depot'); expect(biz.length).toBe(countryBusinesses().length); expect(biz.length).toBeGreaterThanOrEqual(5);
   });
   it('lake outline stays inside its keep-out ellipse', () => {
