@@ -1,7 +1,7 @@
 /**
  * Loot Match (pt2101u): original Chud Hub match-3. Tiles are hub loot (chips, ores, crops, fish) —
- * original design — not a clone of any commercial puzzle title. Pure rules for client + tests; scores are local /
- * leaderboard only (no chip payouts — classic Solitaire also pays nothing).
+ * original design — not a clone of any commercial puzzle title. Pure rules for client + tests.
+ * Small chip payouts on completed rounds (server-authoritative; daily cap).
  */
 export const LM_SIZE = 8;
 export const LM_MOVES = 30;
@@ -24,6 +24,25 @@ export const LM_LABEL: Record<LmKind, { emoji: string; name: string }> = {
 };
 /** Conservative hard cap for a 30-move round (used by server validation). */
 export const LM_SCORE_CAP = 250_000;
+/** 1 chip per this many points (floor). Soft max score ~29k for 30 moves → ~58 chips before round cap. */
+export const LM_CHIP_PER = 500;
+export const LM_CHIP_ROUND_MAX = 300;
+export const LM_CHIP_DAILY_CAP = 1_500;
+/** Minimum wall-clock duration of a paid round (anti-bot). */
+export const LM_MIN_ROUND_MS = 45_000;
+/** Min gap between start-round calls per player. */
+export const LM_START_GAP_MS = 8_000;
+
+/** America/Regina day key (UTC-6 fixed, no DST) for the daily chip cap. */
+export function lmReginaDay(now = Date.now()): string {
+  return new Date(now - 6 * 3600_000).toISOString().slice(0, 10);
+}
+
+/** Gross chips for a validated score before the daily remaining cap. */
+export function lootMatchPayout(score: number): number {
+  if (!Number.isFinite(score) || score <= 0) return 0;
+  return Math.min(LM_CHIP_ROUND_MAX, Math.floor(score / LM_CHIP_PER));
+}
 
 type Rng = () => number;
 export function mulberry(seed: number): Rng {

@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T16:50:00-06:00", "title": "Loot Match payouts — small chips with a daily cap", "bullets": [
+    "Finished 30-move Loot Match rounds now pay a little: 🪙 1 chip per 500 points, max 300 chips per round, and 1,500 chips per player per America/Regina day. Only completed rounds pay; the server issues a start-round token, requires ~45 seconds of play, and rejects implausible scores.",
+    "The game shows Today: X / 1,500. No payouts for rounds played before this update. Personal best and the leaderboard are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-09T16:45:00-06:00", "title": "Delivery trucks on the city map", "bullets": [
     "When goods move around Chud Hub — farm harvests to the Warehouse pantry pool, factory/mine sales to market, grocery runs, Market buys, and worker hauls — a small delivery truck drives the city roads from the source to the destination with the player’s name floating above it, then despawns. Purely cosmetic: inventory, timing and chips are unchanged.",
     "Worker trucks start at the job site (mine entrance, Stone Quarry, or the fishing dock), not the Employment Office, and head to Warehouse storage. Pantry harvests go to the Chud City Warehouse (where pantry food actually lands), not the factory. Cross-map boat/plane legs are skipped (they already have visuals). Caps ~30 trucks, merges bursts, throttles background sweeps; toggle 🚚 Trucks on the city toolbar (or localStorage chud-haul-trucks-off) to hide them.",

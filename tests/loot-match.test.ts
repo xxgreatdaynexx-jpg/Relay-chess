@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findGroups, newLootMatch, trySwap, plausibleScore, LM_MOVES, LM_SCORE_CAP, LM_SIZE, LM_KINDS } from '../shared/lootMatch';
+import { findGroups, newLootMatch, trySwap, plausibleScore, lootMatchPayout, lmReginaDay, LM_MOVES, LM_SCORE_CAP, LM_SIZE, LM_KINDS, LM_CHIP_PER, LM_CHIP_ROUND_MAX, LM_CHIP_DAILY_CAP, LM_MIN_ROUND_MS } from '../shared/lootMatch';
 import { readFileSync } from 'node:fs';
 import { expectChangelogEntry } from './helpers/changelog';
 
@@ -37,13 +37,31 @@ describe('Loot Match (pt2101u)', () => {
     expect(plausibleScore(-1, 1)).toBe(false);
     expect(plausibleScore(500, 1)).toBe(true);
   });
+  it('payout scales with score, caps per round, and uses Regina day', () => {
+    expect(lootMatchPayout(0)).toBe(0);
+    expect(lootMatchPayout(499)).toBe(0);
+    expect(lootMatchPayout(500)).toBe(1);
+    expect(lootMatchPayout(25_000)).toBe(50); // 25000/500
+    expect(lootMatchPayout(200_000)).toBe(LM_CHIP_ROUND_MAX);
+    expect(LM_CHIP_PER).toBe(500);
+    expect(LM_CHIP_ROUND_MAX).toBe(300);
+    expect(LM_CHIP_DAILY_CAP).toBe(1_500);
+    expect(LM_MIN_ROUND_MS).toBe(45_000);
+    // Regina = UTC-6 fixed: 05:00 UTC on Nov 10 is still Nov 9 in Regina
+    expect(lmReginaDay(Date.parse('2026-11-10T05:00:00Z'))).toBe('2026-11-09');
+    expect(lmReginaDay(Date.parse('2026-11-10T06:00:00Z'))).toBe('2026-11-10');
+  });
   it('is wired into the games bar and announced without copying HuniePop', () => {
     const panel = readFileSync('client/src/components/LootMatchPanel.tsx', 'utf8');
     const logic = readFileSync('shared/lootMatch.ts', 'utf8');
     expect(panel).toMatch(/Loot Match/);
+    expect(panel).toMatch(/lootmatch-today|Today:/);
+    expect(panel).toMatch(/loot_match_start/);
+    expect(readFileSync('server/lootMatch.ts', 'utf8')).toMatch(/lootmatch:pay:|transferConfirmed/);
+    expectChangelogEntry(/Loot Match.*chip|chip.*Loot Match|Loot Match payouts/i, { from: '2026-11-09T00:00:00-06:00', to: '2026-11-10T00:00:00-06:00' });
     expect(panel + logic).not.toMatch(/hunie|HuniePop|dating|romance/i);
     expect(readFileSync('client/src/components/TopTabs.tsx', 'utf8')).toMatch(/lootmatch/);
     expect(readFileSync('client/src/App.tsx', 'utf8')).toMatch(/LootMatchPanel/);
-    expectChangelogEntry(/Loot Match/i, { from: '2026-11-09T00:00:00-06:00', to: '2026-11-10T00:00:00-06:00' });
+    expectChangelogEntry(/Loot Match — original hub-themed match-3/i, { from: '2026-11-09T00:00:00-06:00', to: '2026-11-10T00:00:00-06:00' });
   });
 });

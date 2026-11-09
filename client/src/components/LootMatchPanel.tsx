@@ -4,7 +4,8 @@ import { useWindowDrag } from '@/lib/windowDrag';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { socket } from '@/lib/net';
 import {
-  LM_LABEL, LM_MOVES, LM_SIZE, canSwap, newLootMatch, trySwap, type LmState, type LmTile,
+  LM_CHIP_DAILY_CAP, LM_CHIP_PER, LM_CHIP_ROUND_MAX, LM_LABEL, LM_MOVES, LM_SIZE,
+  canSwap, lootMatchPayout, newLootMatch, trySwap, type LmState, type LmTile,
 } from '../../../shared/lootMatch';
 
 const OPEN_KEY = 'chud-lootmatch-open';
@@ -26,25 +27,66 @@ export function LootMatchPanel() {
   const [pb, setPb] = useState(loadPb);
   const [board, setBoard] = useState<BoardRow[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
+  const [todayPaid, setTodayPaid] = useState(0);
+  const [dailyCap, setDailyCap] = useState(LM_CHIP_DAILY_CAP);
+  const [token, setToken] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
   const touch = useRef<{ r: number; c: number; x: number; y: number } | null>(null);
   const submittedRef = useRef(false);
+  const tokenRef = useRef<string | null>(null);
+  tokenRef.current = token;
 
   const refreshBoard = useCallback(() => {
-    socket.emit('loot_match_board', {}, (r?: { ok?: boolean; board?: BoardRow[]; me?: { best: number } }) => {
+    socket.emit('loot_match_board', {}, (r?: { ok?: boolean; board?: BoardRow[]; me?: { best: number; todayPaid?: number; dailyCap?: number } }) => {
       if (r?.ok && r.board) setBoard(r.board);
       if (r?.me?.best != null && r.me.best > pb) { setPb(r.me.best); savePb(r.me.best); }
+      if (typeof r?.me?.todayPaid === 'number') setTodayPaid(r.me.todayPaid);
+      if (typeof r?.me?.dailyCap === 'number') setDailyCap(r.me.dailyCap);
     });
   }, [pb]);
   useEffect(() => { if (open) refreshBoard(); }, [open, refreshBoard]);
 
+  const beginRound = useCallback(() => {
+    if (starting) return;
+    setStarting(true); setMsg(null); setSel(null); submittedRef.current = false;
+    socket.emit('loot_match_start', {}, (r?: {
+      ok?: boolean; error?: string; token?: string; todayPaid?: number; dailyCap?: number;
+    }) => {
+      setStarting(false);
+      if (!r?.ok || !r.token) {
+        // Guests / unsigned: play locally without payout
+        setToken(null); setGame(newLootMatch());
+        if (r?.error && !/Sign in/i.test(r.error)) setMsg(r.error);
+        else if (r?.error) setMsg('Playing for score only — sign in for chips.');
+        return;
+      }
+      setToken(r.token);
+      if (typeof r.todayPaid === 'number') setTodayPaid(r.todayPaid);
+      if (typeof r.dailyCap === 'number') setDailyCap(r.dailyCap);
+      setGame(newLootMatch());
+    });
+  }, [starting]);
+
+  // Auto-start a token when the panel opens (signed-in players)
+  useEffect(() => { if (open && !token) beginRound(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const finish = useCallback((g: LmState) => {
     if (g.score > pb) { setPb(g.score); savePb(g.score); }
     const movesUsed = LM_MOVES - g.movesLeft;
-    socket.emit('loot_match_submit', { score: g.score, movesUsed }, (r?: { ok?: boolean; error?: string; best?: number; improved?: boolean; board?: BoardRow[] }) => {
+    const tok = tokenRef.current;
+    socket.emit('loot_match_submit', { score: g.score, movesUsed, token: tok }, (r?: {
+      ok?: boolean; error?: string; best?: number; improved?: boolean; board?: BoardRow[];
+      paid?: number; todayPaid?: number; dailyCap?: number;
+    }) => {
       if (!r?.ok) { setMsg(r?.error ?? null); return; }
       if (r.board) setBoard(r.board);
       if (typeof r.best === 'number' && r.best > pb) { setPb(r.best); savePb(r.best); }
-      setMsg(r.improved ? `New personal best: ${g.score.toLocaleString('en-US')}!` : `Score ${g.score.toLocaleString('en-US')} saved.`);
+      if (typeof r.todayPaid === 'number') setTodayPaid(r.todayPaid);
+      if (typeof r.dailyCap === 'number') setDailyCap(r.dailyCap);
+      const pay = typeof r.paid === 'number' ? r.paid : 0;
+      const base = r.improved ? `New personal best: ${g.score.toLocaleString('en-US')}!` : `Score ${g.score.toLocaleString('en-US')} saved.`;
+      setMsg(pay > 0 ? `${base} +🪙 ${pay.toLocaleString('en-US')}` : base);
+      setToken(null); // consume; next New round will start again
     });
   }, [pb]);
 
@@ -92,6 +134,8 @@ export function LootMatchPanel() {
     return `lm-tile lm-${t?.kind ?? 'empty'}${t?.special ? ` lm-sp-${t.special}` : ''}${on ? ' lm-sel' : ''}`;
   };
 
+  const est = lootMatchPayout(game.score);
+
   return (
     <div className={`lm-wrap ${open ? 'lm-open' : ''}`} data-testid="lootmatch">
       <TopTab id="lootmatch"><button type="button" className="lm-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="lootmatch-tab">
@@ -106,7 +150,11 @@ export function LootMatchPanel() {
             {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" onClick={win.reset}>⟲</button>}
             <button type="button" aria-label="Minimize" onClick={() => setOpen(false)}>✕</button>
           </div>
-          <p className="lm-help">Swap neighboring tiles to make lines of 3+. Four makes a rocket, five a prism. Cascades keep scoring. {LM_MOVES} moves, no chip rewards — just the board.</p>
+          <p className="lm-help">
+            Swap neighboring tiles to make lines of 3+. Four makes a rocket, five a prism. Cascades keep scoring.
+            Finish all {LM_MOVES} moves for chips: 🪙 1 per {LM_CHIP_PER} pts (max {LM_CHIP_ROUND_MAX}/round).
+            {' '}<span data-testid="lootmatch-today">Today: {todayPaid.toLocaleString('en-US')} / {dailyCap.toLocaleString('en-US')}</span>
+          </p>
           <div className="lm-grid" style={{ gridTemplateColumns: `repeat(${LM_SIZE}, 1fr)` }} data-testid="lootmatch-grid">
             {game.board.map((row, r) => row.map((t, c) => (
               <button
@@ -122,7 +170,10 @@ export function LootMatchPanel() {
             )))}
           </div>
           <div className="lm-actions">
-            <button type="button" data-testid="lootmatch-new" onClick={() => { submittedRef.current = false; setGame(newLootMatch()); setSel(null); setMsg(null); }}>New round</button>
+            <button type="button" data-testid="lootmatch-new" disabled={starting} onClick={() => beginRound()}>
+              {starting ? 'Starting…' : 'New round'}
+            </button>
+            {game.status === 'playing' && est > 0 && <small>Est. 🪙 {est} this round</small>}
             {game.status !== 'playing' && <small role="status">Round over — {game.score.toLocaleString('en-US')} pts</small>}
             {msg && <small role="status" data-testid="lootmatch-msg">{msg}</small>}
           </div>
