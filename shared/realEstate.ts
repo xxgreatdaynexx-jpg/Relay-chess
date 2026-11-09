@@ -140,16 +140,15 @@ export const patchId = (kind: string, b: OBB) => `p:${kind}:${pos(b)}`;
 
 export interface OwnedProperty { id: string; owner: string; price: number; arrears: number; boughtAt: number; /** what the city was paid, when a buyout raised price above it (sell-back basis) */ basis?: number }
 
-/** Worker cap from property (pt1344u): housing keeps its canonical pre-reprice slots; other buildings/landmarks use base
- * (un-indexed) list price. Empty lots, parks, plazas, farmland and plantation plots add none (they are land, not housing).
+/** Worker cap from property (pt1344u / t2104u): housing keeps its canonical pre-reprice slots; other buildings/landmarks use base
+ * (un-indexed) list price. Empty lots, parks, plazas, farmland, barns and plantation plots add none (they are land, not housing).
  *   under 25,000 (detached home)                       +1
  *   25,000 – 74,999 (row houses, apartment, gas station, beach house) +2
  *   75,000 – 249,999 (tower, depot, condo, villa)      +3
  *   250,000+ (hotel, landmarks)                        +4
- * Bonuses from all owned properties add up, capped at +WORKER_BONUS_MAX. */
-export const WORKER_BONUS_MAX = 7;
+ * Bonuses from all owned properties add up with no hard max (office cap = MAX_WORKERS + sum). */
 export const workerBonusOf = (id: unknown): number => {
   const p = propertyById(id); if (!p || p.type === 'barn' || (p.kind !== 'building' && p.kind !== 'landmark')) return 0;
   return p.housingEmployees ?? employeesForPrice(p.price);
 };
-export const workerBonusTotal = (ids: Iterable<unknown>): number => { let n = 0; for (const id of ids) n += workerBonusOf(id); return Math.min(WORKER_BONUS_MAX, n); };
+export const workerBonusTotal = (ids: Iterable<unknown>): number => { let n = 0; for (const id of ids) n += workerBonusOf(id); return n; };

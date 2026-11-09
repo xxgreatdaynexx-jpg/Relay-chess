@@ -148,7 +148,7 @@ export function buildWiki(): WikiSection[] {
     }),
     section({
       id: 'employees', title: 'Employment Office', icon: '🧑‍🏭',
-      intro: `Hire up to ${MAX_WORKERS} AI workers (more with property bonuses). Miners pick every ${MINER_EVERY_MS / 60_000} min; fishers every ${WORKER_EVERY_MS / 60_000} min.`,
+      intro: `Hire AI workers — base cap ${MAX_WORKERS}, plus uncapped bonuses from owned buildings and landmarks. Miners pick every ${MINER_EVERY_MS / 60_000} min; fishers every ${WORKER_EVERY_MS / 60_000} min.`,
       bullets: [
         OFFLINE_CAP_MS === 0
           ? 'Workers keep working around the clock — including overnight hub sleep — as long as wages are paid. No 8-hour away stop.'
@@ -180,7 +180,7 @@ export function buildWiki(): WikiSection[] {
     }),
     section({
       id: 'property', title: 'Properties & worker cap', icon: '🏠',
-      intro: `Base property tax (upkeep) ${pct(TAX_RATE)} of list price. Owning landmarks and buildings can raise your Employment worker cap above ${MAX_WORKERS}.`,
+      intro: `Base property tax (upkeep) ${pct(TAX_RATE)} of list price. Owning landmarks and buildings raises your Employment worker cap above ${MAX_WORKERS} with no hard max — bonuses from every counted property add up.`,
       bullets: [
         'Bill Chud 1 abolished the purchase surcharge. Purchase wealth tax and daily wealth tax are mayor levers (see City levers).',
         'Sample of deeded properties (live list is longer on the map):',

@@ -36,7 +36,7 @@ describe('housing price per actual employee capacity',()=>{
   expect(hash(properties().filter(p=>!isEmployeeHousing(p)).map(({tiles:_tiles,...p})=>p))).toBe(baseline.nonHousingHash); // Bill Chud 1 adds only derived plot tile counts (cols×rows)
   expect(properties().filter(isEmployeeHousing).map(p=>p.id)).toEqual(baseline.housing.map(p=>p.id));
   for(const p of properties().filter(p=>!isEmployeeHousing(p))){const expected=p.type==='barn'||!['building','landmark'].includes(p.kind)?0:p.price<25000?1:p.price<75000?2:p.price<250000?3:4;expect(workerBonusOf(p.id)).toBe(expected);}
-  expect(workerBonusTotal(baseline.housing.slice(0,20).map(p=>p.id))).toBe(7);
+  expect(workerBonusTotal(baseline.housing.slice(0,20).map(p=>p.id))).toBe(22); // uncapped sum of first 20 housing slots
  });
  it('quote and new purchase apply unchanged price index and no surcharge (Bill Chud 1) to each slot-priced base (isolated Postgres)',async()=>{
   const db=new PGlite(),pool=shim(db);try{

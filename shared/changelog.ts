@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T17:35:00-06:00", "title": "Worker cap from property is now unlimited", "bullets": [
+    "Requested by Special Characters: owning more buildings and landmarks keeps adding Employment Office hire slots with no +7 ceiling. Your cap is still base 3 plus the sum of each property’s bonus (same tiers as before: +1 / +2 / +3 / +4 by price band). Empty lots, parks, plazas, farmland, barns and plantation plots still add none.",
+    "Deed cards no longer say “property bonus max +7”. Wages, hire fees and which property kinds count are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-09T16:50:00-06:00", "title": "Loot Match payouts — small chips with a daily cap", "bullets": [
     "Finished 30-move Loot Match rounds now pay a little: 🪙 1 chip per 500 points, max 300 chips per round, and 1,500 chips per player per America/Regina day. Only completed rounds pay; the server issues a start-round token, requires ~45 seconds of play, and rejects implausible scores.",
     "The game shows Today: X / 1,500. No payouts for rounds played before this update. Personal best and the leaderboard are unchanged.",

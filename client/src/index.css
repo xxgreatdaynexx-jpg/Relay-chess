@@ -2002,6 +2002,7 @@ html, body { overflow-x: clip; }
 .employ-rules { font-size: 11px; opacity: .8; margin: 0; }
 .employ-panel h4 { font-size: 13px; font-weight: 800; margin: 4px 0 0; }
 .employ-list { display: flex; flex-direction: column; gap: 6px; }
+.employ-panel > .employ-list:first-of-type { max-height: min(50vh, 420px); overflow-y: auto; overscroll-behavior: contain; }
 .employ-list li { display: flex; flex-direction: column; gap: 3px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 7px 9px; }
 .employ-list li small { font-size: 11px; opacity: .8; }
 .employ-list li button { align-self: flex-start; font-size: 12px; padding: 4px 10px; border-radius: 7px; background: rgba(224,162,58,.2); border: 1px solid rgba(224,162,58,.5); }

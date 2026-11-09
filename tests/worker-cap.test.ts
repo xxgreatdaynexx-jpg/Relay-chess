@@ -4,7 +4,7 @@ import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { Employment } from '../server/employment';
 import { FISH_MIGRATION } from '../server/fishing';
 import { PROPERTY_MIGRATION } from '../server/realEstate';
-import { properties, workerBonusOf, workerBonusTotal, WORKER_BONUS_MAX } from '../shared/realEstate';
+import { properties, workerBonusOf, workerBonusTotal } from '../shared/realEstate';
 import { MAX_WORKERS, DAY } from '../shared/employment';
 
 const T0 = Date.parse('2026-11-02T12:00:00Z');
@@ -31,7 +31,13 @@ describe('worker cap from property', () => {
     expect(workerBonusOf(byType('lot').id)).toBe(0);
     expect(workerBonusOf(byType('farmland').id)).toBe(0);
     expect(workerBonusOf('nope')).toBe(0);
-    expect(workerBonusTotal(['lm:casino', 'lm:bank', 'lm:arena'])).toBe(WORKER_BONUS_MAX);
+    expect(workerBonusTotal(['lm:casino', 'lm:bank', 'lm:arena'])).toBe(12); // uncapped: 4+4+4
+  });
+  it('property bonus is uncapped: three +4 landmarks → office max 15', async () => {
+    const s = await setup();
+    for (const id of ['lm:casino', 'lm:bank', 'lm:arena']) await s.own(id);
+    const v = await s.e.view('Gus');
+    expect([v.max, v.base, v.bonus]).toEqual([MAX_WORKERS + 12, MAX_WORKERS, 12]);
   });
   it('raises the cap, and losing property blocks hires without firing anyone', async () => {
     const s = await setup();
