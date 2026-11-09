@@ -3,7 +3,7 @@
  * and the client (display). All chip amounts are BASE units; the server scales them by the price index (px).
  *
  * Balance: a worker's daily wage + its hire fee amortised over a week ≈ 50% of the expected house value of what it
- * brings in on a full day (collected at least every 8 h). Output lands in your normal storage (ores → mine storage,
+ * brings in on a full day. Output lands in your normal storage (ores → mine storage,
  * fish → cooler), so it sells through the usual daily sell tiers (no cap bypass) and gives the owner no skill XP.
  *   wage  = 45% of a full day's expected output
  *   hire  = 35% of a full day's expected output  (≈ 5%/day over 7 days)
@@ -17,8 +17,8 @@ import { fishPool, RARITY_ODDS, rollFish, rollWeight, fishValue, type Fish } fro
 
 export const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 export const MAX_WORKERS = 3;
-/** Uncollected work stops piling up 8 h after your last visit (idle accounts / alts can't farm it). */
-export const OFFLINE_CAP_MS = 8 * HOUR;
+/** @deprecated Removed pt2096u — workers no longer stop after an away window. Kept as 0 so old imports don't imply a cap. */
+export const OFFLINE_CAP_MS = 0;
 /** Accounts younger than this can't hire. */
 export const MIN_ACCOUNT_AGE_MS = DAY;
 export const WAGE_SHARE = 0.45, HIRE_SHARE = 0.35, AMORTISE_DAYS = 7;
@@ -161,8 +161,8 @@ export function rollWorkerFish(u: Unit): { fish: Fish; grams: number; value: num
 
 /**
  * Expected haul over a full paid day of continuous work (pt2088u). Same pick tables / fish odds the server uses
- * (minerPickTable + priority, rollWorkerFish). Does not model offline 8 h idle, storage-full holding, or unpaid
- * downtime — those cut real output below this. Workers ignore player skill/gear. Quantities are means, not guarantees.
+ * (minerPickTable + priority, rollWorkerFish). Does not model storage-full holding or unpaid downtime — those cut
+ * real output below this. Workers ignore player skill/gear. Quantities are means, not guarantees.
  */
 export interface ExpectedDayItem { type: 'ore' | 'fish'; id: string; label: string; qty: number }
 export interface ExpectedDayHaul { picks: number; items: ExpectedDayItem[]; /** expected base chip value (pre price-index) */ value: number }

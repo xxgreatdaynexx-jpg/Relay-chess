@@ -87,23 +87,35 @@ describe('employment office', () => {
     await expect(s.e.hire('Poor', 'miner:mine')).rejects.toThrow(/Not enough chips/);
     expect((await s.e.view('Poor')).workers).toHaveLength(0);
   });
-  it('1 ore / 2 min (pt1966u), auto-deposited (no collect); the log lists the last 24 h; nothing accrues 8 h after the last visit', async () => {
+  it('1 ore / 2 min (pt1966u), auto-deposited; keeps working past 8 h without a visit; wages renew on settle', async () => {
     const s = await setup(); await s.addPlayer('Gus'); await s.fund('Gus', 100_000);
     await s.e.hire('Gus', 'miner:mine');
     const total = () => [...s.stored.values()].reduce((a, b) => a + b, 0);
     s.setNow(T0 + 65 * MIN); let v = await s.e.view('Gus');
     expect(total()).toBe(32); expect(Object.keys(v.workers[0]!.box.ores ?? {})).toHaveLength(0);
     expect(v.log!.reduce((a, x) => a + x.qty, 0)).toBe(32); expect(v.log!.every((x) => x.type === 'ore' && x.lastAt <= T0 + 65 * MIN)).toBe(true);
-    // away 20 h: the background sweep keeps depositing, but only 8 h past the visit count (240 more)
-    s.setNow(T0 + 65 * MIN + 20 * HOUR); await s.e.sweep(); expect(total()).toBe(272);
+    // away 20 h with no office visit: sweep keeps depositing past the old 8 h away-cap (still within first paid day)
+    s.setNow(T0 + 65 * MIN + 20 * HOUR); await s.e.sweep();
+    expect(total()).toBeGreaterThan(272); // more than the old 8 h away-cap (32+240)
+    // past the first paid day: wage renews, status stays working (no idle)
     s.setNow(T0 + 30 * HOUR); await s.e.sweep(); v = await s.e.view('Gus');
-    expect(v.workers[0]!.status).toBe('idle'); expect(s.ledger('gus', 'employ_wage')).toEqual([]);
-    // the 24 h log only counts what was picked up after T0+6h
-    { const n = v.log!.reduce((a, x) => a + x.qty, 0); expect(n).toBeGreaterThanOrEqual(92); expect(n).toBeLessThanOrEqual(122); } // 92 items at T0+6h02m … T0+9h04m, plus up to one hour-bucket (≤30) straddling T0+6h (rows are per item per hour; which items share it depends on the rolls)
-    // re-hire brings them back for a new paid day
-    const before = s.chips('gus'); const c2 = await s.e.collect('Gus');
-    expect(c2.ores).toBe(0); expect(c2.charged).toBe(baseWage(miner)); expect(s.chips('gus')).toBe(before - baseWage(miner));
+    expect(s.ledger('gus', 'employ_wage').length).toBeGreaterThanOrEqual(1);
+    expect(v.workers[0]!.status).toBe('working');
+    expect(v.workers[0]!.status).not.toBe('idle');
+  });
+  it('legacy idle (old away-cap) resumes without backfilling the idle gap', async () => {
+    const s = await setup(); await s.addPlayer('Gus'); await s.fund('Gus', 100_000);
+    await s.e.hire('Gus', 'miner:mine');
+    const total = () => [...s.stored.values()].reduce((a, b) => a + b, 0);
+    // Force legacy idle mid-day after some production
+    s.setNow(T0 + 2 * HOUR); await s.e.sweep(); expect(total()).toBe(60);
+    await s.pool.query(`UPDATE employ_workers SET status = 'idle', last_at = $1, paid_until = $2`, [T0 + 2 * HOUR, T0 + DAY]);
+    s.setNow(T0 + 10 * HOUR); await s.e.sweep();
     expect((await s.e.view('Gus')).workers[0]!.status).toBe('working');
+    // No backfill for the 8 h idle gap: only picks after resume
+    expect(total()).toBe(60); // nothing new until time advances past resume
+    s.setNow(T0 + 10 * HOUR + 10 * MIN); await s.e.sweep();
+    expect(total()).toBe(65);
   });
   it('full storage: the overflow is held by the worker and deposited when room frees up (never lost)', async () => {
     const s = await setup(); await s.addPlayer('Gus'); await s.fund('Gus', 100_000);

@@ -6,11 +6,11 @@ import { invReady } from './invFence.js';
  * survives restarts and needs no ticking. Chips only move through the atomic wallet (CasinoBank.transferAtomic) with
  * ledger reasons 'employ_hire' and 'employ_wage', committed in the same transaction as the worker row.
  *
- * Lifecycle: hire = hire fee + the first day's wage. Work runs from last_at to min(now, paid_until, seen_at + 8 h).
- * When a paid day ends the next day's wage is charged, unless the owner has been away 8 h by then (worker goes idle,
- * nothing charged) or can't pay (worker stops unpaid; no debt). Collecting re-hires an idle/unpaid worker for a new
- * day. Firing is free and refunds nothing. Output goes to normal storage (ores → mine storage, fish → cooler), so the
- * usual daily sell tiers apply; workers give the owner no skill XP.
+ * Lifecycle: hire = hire fee + the first day's wage. Work runs from last_at to min(now, paid_until) on wall-clock
+ * time (including overnight hub sleep and catch-up after restarts/deploys). When a paid day ends the next day's wage
+ * is charged, or the worker stops unpaid if chips are short (no debt). Idle workers (legacy away-cap) auto-resume
+ * without backfilling the idle gap. Settle advances at most a few paid days per pass so long absences stay bounded.
+ * Firing is free and refunds nothing. Output goes to normal storage; usual daily sell tiers apply; no skill XP.
  */
 import { getLocStore } from './locstock.js';
 import { mineLoc, fishingLoc } from '../shared/inventoryLocations.js';
@@ -25,14 +25,13 @@ import { px } from './price-index.js';
 import { getMines, MINES_OFFLINE_MSG } from './mines.js';
 import { getFactory } from './factory.js';
 import { playerKey } from './skins.js';
-import { awakeDeadline } from '../shared/hubSleep.js';
 import { workerBonusTotal } from '../shared/realEstate.js';
 import { ORES, MAX_BANKED_STACK, stackKey, type OreId } from '../shared/mines.js';
 import { COOLER_MAX } from '../shared/fishing.js';
 import {
   JOBS, jobById, baseHire, baseWage, itemsPerDay, dayValue, rollOre, rollWorkerFish, boxCount,
   minerPriorityOptions, parseMinerPriority,
-  DAY, MAX_WORKERS, OFFLINE_CAP_MS, MIN_ACCOUNT_AGE_MS, type JobDef, type EmployLogItem, type Unit, type WorkerBox, type WorkerStatus, type WorkerView, type EmployView, type MinerPriority,
+  DAY, MAX_WORKERS, MIN_ACCOUNT_AGE_MS, type JobDef, type EmployLogItem, type Unit, type WorkerBox, type WorkerStatus, type WorkerView, type EmployView, type MinerPriority,
 } from '../shared/employment.js';
 
 export const EMPLOY_MIGRATION = `
@@ -48,8 +47,8 @@ interface LogRow { type: 'ore' | 'fish'; id: string; qty: number; at: number }
 type Q = { query: (sql: string, args?: unknown[]) => Promise<{ rows: any[]; rowCount?: number | null }> };
 /** Where a miner's ores land (banked mine storage), inside the caller's transaction. */
 export interface OreSink { write(cl: Q, items: Array<[OreId, number]>): Promise<void>; after(items: Array<[OreId, number]>): void; /** Free space for this ore (default: unlimited). */ room?(id: OreId): number }
-/** Owner-away cap end: 8 h of hub-awake time after the last check-in (overnight lockout doesn't count). */
-const awayEnd = (seenAt: number) => awakeDeadline(seenAt, OFFLINE_CAP_MS);
+/** Max paid-day renewals (and thus catch-up) in one settle pass — bounds long offline/redeploy gaps. */
+const SETTLE_DAY_GUARD = 4;
 interface Row { id: string; owner_key: string; owner_name: string; job: string; hired_at: string | number; last_at: string | number; seen_at: string | number; paid_until: string | number; status: string; box: string; priority?: string | null }
 interface W { id: string; job: JobDef; hiredAt: number; lastAt: number; seenAt: number; paidUntil: number; status: WorkerStatus; box: WorkerBox; priority: MinerPriority }
 const parse = (r: Row): W | null => {
@@ -151,24 +150,33 @@ export class Employment {
     }
     return [...m.values()].sort((a, b) => b.qty - a.qty || b.lastAt - a.lastAt);
   }
-  /** Bring one worker up to `now`: produce, then charge each new day's wage (or stop). */
+  /** Bring one worker up to `now`: produce, then charge each new day's wage (or stop unpaid). Bounded catch-up. */
   private async settle(name: string, w: W, now: number) {
-    for (let guard = 0; guard < 4; guard++) {
+    // Legacy idle (old 8 h away-cap): resume from now with no backfill for the idle gap.
+    if (w.status === 'idle') {
+      w.status = 'working'; w.lastAt = now; w.seenAt = now;
+      if (now >= w.paidUntil) {
+        const next = { ...w, paidUntil: now + DAY };
+        try { await this.tx((cl) => this.save(cl, next).then(() => {}), { name, amount: -this.wagePrice(w.job), game: 'employ_wage', memo: `${w.job.label} daily wage` }); Object.assign(w, next); }
+        catch (e) { if (!(e instanceof EmployError) || e.message !== 'Not enough chips.') throw e; w.status = 'unpaid'; await this.save(this.pool, w); return; }
+      } else { await this.save(this.pool, w); }
+    }
+    for (let guard = 0; guard < SETTLE_DAY_GUARD; guard++) {
       if (w.status !== 'working') return;
-      this.produce(w, Math.min(now, w.paidUntil, awayEnd(w.seenAt)), playerKey(name));
+      this.produce(w, Math.min(now, w.paidUntil), playerKey(name));
       if (now < w.paidUntil) { await this.save(this.pool, w); return; }
-      if (awayEnd(w.seenAt) <= w.paidUntil) { w.status = 'idle'; await this.save(this.pool, w); return; }
       const next = { ...w, paidUntil: w.paidUntil + DAY };
       try { await this.tx((cl) => this.save(cl, next).then(() => {}), { name, amount: -this.wagePrice(w.job), game: 'employ_wage', memo: `${w.job.label} daily wage` }); w.paidUntil = next.paidUntil; }
       catch (e) { if (!(e instanceof EmployError) || e.message !== 'Not enough chips.') throw e; w.status = 'unpaid'; await this.save(this.pool, w); return; }
     }
+    await this.save(this.pool, w);
   }
   private async accountAge(key: string): Promise<number | null> {
     try { const r = await this.pool.query('SELECT created_at FROM players WHERE player_key = $1', [key]); const t = r.rows[0]?.created_at; if (!t) return null; const ms = new Date(t).getTime(); return Number.isFinite(ms) ? this.clock() - ms : null; }
     catch { return null; } // fail closed
   }
   private toView(w: W): WorkerView {
-    const nextAt = w.status === 'working' ? Math.min(w.lastAt + w.job.everyMs, w.paidUntil, awayEnd(w.seenAt)) : null;
+    const nextAt = w.status === 'working' ? Math.min(w.lastAt + w.job.everyMs, w.paidUntil) : null;
     return { id: w.id, job: w.job.id, status: w.status, hiredAt: w.hiredAt, paidUntil: w.paidUntil, seenAt: w.seenAt, nextAt, box: w.box, boxValue: px(boxValue(w.box)), wage: this.wagePrice(w.job), ...(w.job.kind === 'miner' && w.job.cave ? { priority: w.priority, priorityOptions: minerPriorityOptions(w.job.cave) } : {}) };
   }
   /** Base cap + property bonus (owned buildings/landmarks; see shared/realEstate workerBonusOf). Fails to base if the table is missing. */
@@ -189,8 +197,8 @@ export class Employment {
     const key = playerKey(name);
     return this.lock(key, async () => {
       const ws = await this.rows(key); for (const w of ws) await this.settle(name, w, now);
-      // Opening the office is a check-in: working workers keep going for another 8 h (same rule the old Collect had).
-      for (const w of ws) if (w.status === 'working' && w.seenAt !== now) { if (now > awayEnd(w.seenAt)) w.lastAt = now; w.seenAt = now; await this.save(this.pool, w); }
+      // Opening the office records a visit (seenAt); production no longer depends on it.
+      for (const w of ws) if (w.status === 'working' && w.seenAt !== now) { w.seenAt = now; await this.save(this.pool, w); }
       let notes: string[] = []; try { notes = (await this.deliver(name, key, ws, now)).notes; } catch (e) { notes = [e instanceof EmployError ? e.message : 'Storage is offline — your workers are holding their haul until it is back.']; }
       await this.flushLog(key);
       const cap = await this.capOf(key, name); const reason = await this.canHire(key, ws.length, cap.max);
@@ -212,7 +220,7 @@ export class Employment {
       return { id, charged: cost };
     });
   }
-  /** Move the box into storage / cooler, reset the 8 h clock, and re-hire a stopped worker for a new day. */
+  /** Move the box into storage / cooler, and re-hire a stopped (unpaid) worker for a new day. */
   async collect(name: string, id?: unknown) {
     const key = playerKey(name);
     return this.lock(key, async () => {
@@ -222,8 +230,8 @@ export class Employment {
       for (const w of ws) await this.settle(name, w, now);
       const d = await this.deliver(name, key, ws, now); ores = d.ores; fish = d.fish; notes.push(...d.notes);
       for (const w of ws) {
-        if (w.status === 'working') { if (now > awayEnd(w.seenAt)) w.lastAt = now; w.seenAt = now; await this.save(this.pool, w); continue; }
-        // Stopped (idle / unpaid): start a fresh paid day now.
+        if (w.status === 'working') { w.seenAt = now; await this.save(this.pool, w); continue; }
+        // Stopped (unpaid / rare idle): start a fresh paid day now.
         const next: W = { ...w, status: 'working', lastAt: now, seenAt: now, paidUntil: now + DAY };
         try { await this.tx((cl) => this.save(cl, next).then(() => {}), { name, amount: -this.wagePrice(w.job), game: 'employ_wage', memo: `${w.job.label} daily wage` }); Object.assign(w, next); charged += this.wagePrice(w.job); }
         catch (e) { if (!(e instanceof EmployError) || e.message !== 'Not enough chips.') throw e; w.seenAt = now; await this.save(this.pool, w); notes.push(`Not enough chips to pay ${w.job.label}'s wage — they stay off until you can.`); }
@@ -315,7 +323,7 @@ export class Employment {
   private async collect0(name: string, key: string, id: string) {
     return this.lock(key, async () => {
       const now = this.clock(); const w = (await this.rows(key)).find((x) => x.id === id); if (!w) return { ores: 0, fish: 0 };
-      if (w.status === 'working') this.produce(w, Math.min(now, w.paidUntil, awayEnd(w.seenAt)), key);
+      if (w.status === 'working') this.produce(w, Math.min(now, w.paidUntil), key);
       await this.flushLog(key);
       let ores = 0, fish = 0;
       const sink = this.sink(name, w.job.cave ?? 'mine');

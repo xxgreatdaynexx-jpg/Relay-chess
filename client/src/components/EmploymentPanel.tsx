@@ -3,7 +3,7 @@ import { useDoing } from '@/lib/doing';
 import { useCallback, useEffect, useState } from 'react';
 import { ItemIcon } from './ItemIcon';
 import { request } from '@/lib/net';
-import { boxCount, JOBS, jobById, OFFLINE_CAP_MS, dayValue, expectedDayHaul, formatExpectedDay, type EmployLogItem, type EmployView } from '../../../shared/employment';
+import { boxCount, JOBS, jobById, dayValue, expectedDayHaul, formatExpectedDay, type EmployLogItem, type EmployView } from '../../../shared/employment';
 import { ORES, type OreId } from '../../../shared/mines';
 import { fishById } from '../../../shared/fishing';
 import { usePanelDrag } from '@/lib/panelDrag';
@@ -53,7 +53,7 @@ export function EmploymentPanel({ onClose }: { onClose: () => void }) {
     <MapSheet className="world-deed world-venue employ-panel" data-testid="venue-employ" data-drag-panel="employ" onPointerDown={dragEmploy.onPointerDown} style={dragEmploy.style()} ref={dragEmploy.ref}>{dragEmploy.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <div className="employ-front"><span>🧑‍🏭 EMPLOYMENT OFFICE</span><small data-testid="employ-cap">Hire AI workers · Worker cap: {v?.max ?? 3} (base {v?.base ?? 3} + {v?.bonus ?? 0} from property)</small></div>
-      <p className="employ-rules">A worker costs about half of what they bring in. Their haul is deposited automatically as they work (ores to your mine/factory storage, fish to your cooler) and sells under the usual daily limits. If storage is full they hold the rest until there's room. They stop working {dur(OFFLINE_CAP_MS)} after you last opened this office, so pop in to keep them busy. Wages are charged once a day; if you can't pay, they stop (no debt). Firing is free but refunds nothing. Workers don't give you skill XP.</p>
+      <p className="employ-rules">A worker costs about half of what they bring in. Their haul is deposited automatically as they work (ores to your mine/factory storage, fish to your cooler) and sells under the usual daily limits. If storage is full they hold the rest until there's room. They keep working around the clock — including overnight when the hub is closed — as long as their wage is paid. Wages are charged once a day; if you can't pay, they stop (no debt). Firing is free but refunds nothing. Workers don't give you skill XP.</p>
       {err && !v && <small className="text-amber-300">{err}</small>}
       {v && (
         <>
@@ -63,7 +63,7 @@ export function EmploymentPanel({ onClose }: { onClose: () => void }) {
             {v.workers.map((w) => { const j = jobById(w.job); const left = w.paidUntil - v.now; return (
               <li key={w.id} data-testid="employ-worker">
                 <b>{j?.emoji} {j?.label}</b>
-                <small>{w.status === 'working' ? (w.nextAt && w.nextAt > v.now ? `Working · next item in ${dur(w.nextAt - v.now)} · paid for ${dur(left)}` : 'Waiting for you to check in') : w.status === 'idle' ? 'Off duty (you were away). Re-hire to start a new paid day.' : 'Unpaid. Re-hire to pay a new day when you have the chips.'}</small>
+                <small>{w.status === 'working' ? (w.nextAt && w.nextAt > v.now ? `Working · next item in ${dur(w.nextAt - v.now)} · paid for ${dur(left)}` : (left > 0 ? `Working · paid for ${dur(left)}` : 'Working')) : w.status === 'idle' ? 'Resuming…' : 'Unpaid. Re-hire to pay a new day when you have the chips.'}</small>
                 <small>Wage 🪙 {chips(w.wage)}/day</small>
                 {j && (() => {
                   const haul = expectedDayHaul(j, j.kind === 'miner' ? (w.priority ?? null) : null);

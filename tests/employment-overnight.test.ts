@@ -4,7 +4,8 @@ import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { Employment, type OreSink } from '../server/employment';
 import { FISH_MIGRATION } from '../server/fishing';
 import { setPriceIndexForTest } from '../server/price-index';
-import { DAY, HOUR } from '../shared/employment';
+import { DAY, HOUR, MIN } from '../shared/employment';
+import { isHubAwake } from '../shared/hubSleep';
 
 const L = (s: string) => Date.parse(`${s}-06:00`);
 async function setup(t0: number) {
@@ -24,18 +25,30 @@ async function setup(t0: number) {
   return { e, mk, total, setNow: (t: number) => { now = t; } };
 }
 
-describe('workers keep producing through the 01–07 lockout (t1899u)', () => {
-  it('last visit 23:00: production runs to 13:00 (8 awake h + the real 6 h closure), not 07:00; no 7h grant', async () => {
-    const s = await setup(L('2026-11-06T23:00:00')); await s.e.hire('Gus', 'miner:mine');
-    s.setNow(L('2026-11-07T07:00:00')); await s.e.sweep(); expect(s.total()).toBe(240); // 8 h × 30/h (miners every 2 min, pt1966u), nothing frozen during closure
-    s.setNow(L('2026-11-07T20:00:00')); await s.e.sweep(); expect(s.total()).toBe(420); // stops at 13:00 = 14 h × 30
+describe('workers keep producing through the 01–07 hub closure (pt2097u)', () => {
+  it('wall-clock production continues across overnight sleep (no freeze, no 8 h away-cap)', async () => {
+    // 23:00 local → through 01–07 sleep → 08:00 = 9 wall hours × 30 picks/h = 270
+    const t0 = L('2026-11-06T23:00:00');
+    expect(isHubAwake(t0)).toBe(true);
+    expect(isHubAwake(L('2026-11-07T03:00:00'))).toBe(false);
+    const s = await setup(t0); await s.e.hire('Gus', 'miner:mine');
+    s.setNow(L('2026-11-07T08:00:00')); await s.e.sweep();
+    expect(s.total()).toBe(270); // 9 h × 30/h, including the 6 h sleep
+    expect((await s.e.view('Gus')).workers[0]!.status).toBe('working');
     // restart + repeated sweeps never double-pay
     const e2 = s.mk(); await e2.init(); await e2.sweep(); await e2.sweep(); await Promise.all([e2.sweep(), s.e.sweep()]);
-    expect(s.total()).toBe(420);
+    expect(s.total()).toBe(270);
   });
-  it('awake-only absence keeps the original 8h cap', async () => {
-    const s = await setup(L('2026-11-06T08:00:00')); await s.e.hire('Gus', 'miner:mine');
-    s.setNow(L('2026-11-06T23:00:00')); await s.e.sweep(); expect(s.total()).toBe(240);
-    expect(8 * HOUR).toBe(28_800_000);
+  it('catch-up after a long server downtime is bounded per settle but keeps going on later sweeps', async () => {
+    const t0 = L('2026-11-06T08:00:00');
+    const s = await setup(t0); await s.e.hire('Gus', 'miner:mine');
+    // Jump 5 days (simulates deploy/downtime); one settle pass renews at most 4 paid days
+    s.setNow(t0 + 5 * DAY); await s.e.sweep();
+    const afterOne = s.total();
+    expect(afterOne).toBeGreaterThan(0);
+    expect(afterOne).toBeLessThanOrEqual(4 * 720 + 60); // ≤4 full days of miner picks (+slack)
+    await s.e.sweep(); await s.e.sweep();
+    expect(s.total()).toBeGreaterThanOrEqual(afterOne);
+    expect((await s.e.view('Gus')).workers[0]!.status).toBe('working');
   });
 });

@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T14:50:00-06:00", "title": "Hired workers keep working overnight and while you’re away", "bullets": [
+    "Employment Office workers no longer stop after 8 hours without a visit. As long as their daily wage is paid, they keep mining or fishing around the clock — including during the hub’s overnight sleep (01:00–07:00 America/Edmonton) and after a server restart or deploy.",
+    "Opening the office is optional for production. Unpaid workers still stop when you can’t cover wages (no debt). If storage or the cooler is full they hold the haul until there’s room. Workers who were already idle from the old away-cap resume from now without backfilling the gap. Wages and Expected per day are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-09T14:08:00-06:00", "title": "Resort plantations can auto-harvest to the resort pantry", "bullets": [
     "Plantation plots at Chud Resort now support To pantry and Auto-harvest to pantry. Crops go into the Resort Warehouse as kitchen ingredients (the same stock resort kitchens cook from), not the city pantry. Auto-sell and auto-pantry stay alternatives on each plot.",
     "If the Resort Warehouse pantry is full, ripe crops stay on the field. Fertilizer still adds yield the same way as in the city. Resort autos now run offline like city farms; you still need to be at the resort to plant or harvest by hand. Sending plantation crops straight to the city factory is still blocked — ship them instead.",
@@ -16,7 +20,7 @@ export const CHANGELOG: ChangelogEntry[] = [
   ]},
   {"commit": "", "at": "2026-11-09T13:10:00-06:00", "title": "Employment Office shows each worker’s expected daily haul", "bullets": [
     "Under every hired miner and fisher you’ll see Expected per day: approximate counts of each ore or fish they’d bring in over a full paid day (for example ~346 iron, ~177 stone, ~66 gold/day), plus an approximate chip value at today’s prices.",
-    "Numbers use the same pick tables and catch odds the server already uses — including your miner’s Mine priority — so the display can’t drift from real output. They assume you keep checking in within the usual offline window; unpaid or idle time and full storage still cut what you actually get. Workers still don’t use your skill or gear.",
+    "Numbers use the same pick tables and catch odds the server already uses — including your miner’s Mine priority — so the display can’t drift from real output. Figures assume a full paid day of work; unpaid time and full storage still cut what you actually get. Workers still don’t use your skill or gear.",
   ]},
   {"commit": "", "at": "2026-11-09T12:15:00-06:00", "title": "Auto-harvest farm crops straight into your pantry", "bullets": [
     "Each farm plot’s Auto section now has Auto-harvest to pantry: ripe crops go into your kitchen ingredient pantry (the same city food stock as 🧺 To pantry) instead of selling for chips. It runs on the same ~30-minute server sweep while you are online or offline.",
