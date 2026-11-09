@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T16:10:00-06:00", "title": "Low taxes thin city services; higher taxes strengthen them", "bullets": [
+    "City Hall now shows a City funding score from the tax levers vs each default. Below the defaults, policies and treasury projects cost more, civic builds take longer, and festival / road-repair boosts are weaker. Above the defaults, the same things get a modest break — gradual, no cliff.",
+    "Freight still can’t go below the default (no discounts). The 25% treasury share, lever cooldowns, and Bill Chud 1 (abolished property surcharge) are unchanged. Nothing is charged retroactively: only new policies, projects and builds, plus live festival/road-repair strength, follow the score.",
+  ]},
   {"commit": "", "at": "2026-11-09T15:55:00-06:00", "title": "Weekly event gold reward is now 200,000 chips", "bullets": [
     "When a weekly server event (Mining Rush, Harvest Festival, Fishing Derby, Trade Week, or Hockey Cup) finishes and the goal was reached, the Gold claim is 200,000 chips (was 15,000). Silver is 80,000 and Bronze is 26,667 — the same ratios as before. Half rewards still apply if the server hit 50% but missed the goal; nothing under 50%.",
     "Only weeks from this one onward use the new amounts. Earlier weeks keep the old 15,000 / 6,000 / 2,000 Gold / Silver / Bronze payouts. Claim rules are unchanged: one claim per account after the week ends.",

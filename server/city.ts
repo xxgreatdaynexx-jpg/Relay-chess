@@ -22,8 +22,8 @@ export * from './city-rates.js';
 import {
   LEVERS, LEVER_IDS, clampLever, POLICIES, POLICY_IDS, POLICY_MS, POLICY_COOLDOWN_MS, BUILDINGS, BUILDING_IDS, MAX_STAGE, stageAt, underConstruction, perkOf,
   PERK_BUILDING, TREASURY_CAP, APPROVAL_WINDOW_MS, APPROVAL_MIN_VOTES, RECALL_MAX_APPROVAL, RECALL_MIN_RATERS, RECALL_FEE, RECALL_GRACE_MS, RECALL_VOTE_MS,
-  recallNeeded, recallPasses, isExcludedName, leverText, DAY_MS, PROJECTS, PROJECT_IDS, combinedPerk, isRequestId, projectCap, RIOT_STOP_COST, type ProjectId, type ProjectRun,
-  type LeverId, type PolicyId, type BuildingId, type BuildingState, type PerkId, type Sector, type CityView, type CityAction, type TreasuryRow, type ActionKind,
+  recallNeeded, recallPasses, isExcludedName, leverText, DAY_MS, PROJECTS, PROJECT_IDS, combinedPerk, isRequestId, projectCap, RIOT_STOP_COST, fundingView, type ProjectId, type ProjectRun,
+  type LeverId, type PolicyId, type BuildingId, type BuildingState, type PerkId, type Sector, type CityView, type CityAction, type TreasuryRow, type ActionKind, type FundingView,
 } from '../shared/city.js';
 import { abDayStart } from '../shared/mayor.js';
 import { BILL_REVIEW_ID, BILL_REVIEW_ISSUED_AT, BILL_REVIEW_RECIPIENT_KEY, BILL_REVIEW_MESSAGE, BILL_REVIEW_QUESTIONS, cleanBillAnswers, billAnswersComplete, type BillAnswers, type BillReviewView } from '../shared/mayorQuestionnaire.js';
@@ -70,15 +70,20 @@ export class City {
   }
   // ---------- hot readers ----------
   lever(id: LeverId, t = this.clock()) { let v = LEVERS[id].base; for (const c of this.snap.levers) if (c.lever === id && c.at <= t) v = c.value; return v; }
+  /** Live tax-funding tradeoff from current lever values (pt2099u). */
+  funding(t = this.clock()): FundingView {
+    const levers = Object.fromEntries((Object.keys(LEVERS) as LeverId[]).map((id) => [id, this.lever(id, t)])) as Record<LeverId, number>;
+    return fundingView(levers);
+  }
   policy(t = this.clock()) { return this.snap.policies.find((p) => p.startsAt <= t && p.endsAt > t) ?? null; }
   policyMul(sector: Sector, t = this.clock()) { const p = this.policy(t); return p && POLICIES[p.policy].sector === sector ? POLICIES[p.policy].mul : 1; }
-  /** Building perk plus any active treasury project on it (capped at the fully built perk, non-stacking). */
-  perk(perk: PerkId, t = this.clock()) { const id = PERK_BUILDING[perk]; return combinedPerk(perk, perkOf(id, stageAt(this.snap.buildings.get(id), t)), this.snap.projects ?? [], t); }
+  /** Building perk plus any active treasury project on it (capped at the fully built perk, non-stacking). Project boosts scale with funding. */
+  perk(perk: PerkId, t = this.clock()) { const id = PERK_BUILDING[perk]; return combinedPerk(perk, perkOf(id, stageAt(this.snap.buildings.get(id), t)), this.snap.projects ?? [], t, this.funding(t).boostMul); }
   buildingPerk(perk: PerkId, t = this.clock()) { const id = PERK_BUILDING[perk]; return perkOf(id, stageAt(this.snap.buildings.get(id), t)); }
   activeProject(id: ProjectId, t = this.clock()) { return (this.snap.projects ?? []).find((r) => r.project === id && r.startsAt <= t && r.endsAt > t) ?? null; }
   nextProjectAt(id: ProjectId) { const last = [...(this.snap.projects ?? [])].reverse().find((r) => r.project === id); return last ? last.endsAt + PROJECTS[id].cooldownMs : 0; }
-  /** Extra perk a new run would actually add right now (0 = the building already gives the max). */
-  projectHeadroom(id: ProjectId, t = this.clock()) { const sp = PROJECTS[id]; return Math.max(0, Math.min(sp.boost, projectCap(id) - this.buildingPerk(sp.perk, t))); }
+  /** Extra perk a new run would actually add right now (0 = the building already gives the max). Scaled by funding boost mul. */
+  projectHeadroom(id: ProjectId, t = this.clock()) { const sp = PROJECTS[id]; const boost = sp.boost * this.funding(t).boostMul; return Math.max(0, Math.min(boost, projectCap(id) - this.buildingPerk(sp.perk, t))); }
 
   // ---------- helpers ----------
   // Bill clarifications: advisory questionnaire for ONE recipient: the persisted mayor term in office at BILL_REVIEW_ISSUED_AT, held by
@@ -185,7 +190,7 @@ export class City {
     const m = await this.isMayor(name); const now = this.clock();
     if (this.policy(now)) throw new CityError('A policy is already running.');
     if (this.nextPolicyAt() > now) throw new CityError(`The next policy can start ${abTime(this.nextPolicyAt())}.`);
-    const cost = Math.round(p.cost * this.index()); const pid = randomUUID();
+    const fund = this.funding(now); const cost = Math.round(p.cost * this.index() * fund.costMul); const pid = randomUUID();
     await this.run([{ sql: 'INSERT INTO city_policies (id, policy, starts_at, ends_at, cost, by_name) VALUES ($1,$2,$3,$4,$5,$6)', args: [pid, p.id, now, now + POLICY_MS, cost, m.name] }, this.actionStmt(m.name, 'policy', `${p.icon} ${p.label} for 24 h (🪙 ${cost.toLocaleString('en-US')} from the treasury)`, now)],
       async (cl) => { const at = (await this.lockedMayor(cl, name)).now;
         const last = (await cl.query('SELECT ends_at FROM city_policies ORDER BY ends_at DESC LIMIT 1')).rows[0]; // re-check under the lock (another instance)
@@ -206,7 +211,7 @@ export class City {
     if (prior) { if (prior.project !== sp.id || playerKey(String(prior.by_name)) !== playerKey(name)) throw new CityError('That request was already used.'); return { project: sp.id, cost: Number(prior.cost), endsAt: Number(prior.ends_at), replay: true }; }
     const m0 = await this.isMayor(name); // fast fail; authoritative re-check below, inside the locked transaction
     if (this.projectHeadroom(sp.id, this.clock()) <= 0) throw new CityError(`${sp.label} would add nothing: the city already has the maximum ${Math.round(projectCap(sp.id) * 100)}%.`);
-    const cost = Math.round(sp.cost * this.index()); let endsAt = 0;
+    const fund0 = this.funding(); const cost = Math.round(sp.cost * this.index() * fund0.costMul); let endsAt = 0;
     try {
       await this.run([], async (cl) => {
         // Treasury row lock first (serialises every instance), then the persisted mayor status at the time we hold it.
@@ -263,7 +268,7 @@ export class City {
     const m = await this.isMayor(name); const now = this.clock(); await this.finish(now);
     for (const b of this.snap.buildings.values()) if (underConstruction(b, now)) throw new CityError(`${BUILDINGS[b.id].label} is still under construction. One project at a time.`);
     const cur = this.snap.buildings.get(spec.id)!; const s = stageAt(cur, now); if (s >= MAX_STAGE) throw new CityError(`${spec.label} is fully built.`);
-    const next = s + 1; const cost = Math.round(spec.stages[s]! * this.index()); const doneAt = now + spec.buildMs[s]!;
+    const next = s + 1; const fund = this.funding(now); const cost = Math.round(spec.stages[s]! * this.index() * fund.costMul); const doneAt = now + Math.round(spec.buildMs[s]! * fund.buildMul);
     await this.run([this.actionStmt(m.name, 'build', `${spec.icon} Started ${spec.label} stage ${next} (🪙 ${cost.toLocaleString('en-US')}, ready ${abTime(doneAt)})`, now)], async (cl) => {
       const at = (await this.lockedMayor(cl, name)).now;
       if ((await cl.query('SELECT 1 FROM city_buildings WHERE build_stage IS NOT NULL AND done_at > $1', [at])).rows.length) throw new CityError('Another building is still under construction. One project at a time.');
@@ -382,11 +387,12 @@ export class City {
       levers: Object.fromEntries((Object.keys(LEVERS) as LeverId[]).map((id) => [id, { value: LEVERS[id].abolished ? 0 : this.lever(id, now), pending: null, nextChangeAt: this.nextLeverAt(id) }])) as CityView['levers'],
       policy: p ? { id: p.policy, startsAt: p.startsAt, endsAt: p.endsAt, by: p.by } : null, nextPolicyAt: this.nextPolicyAt(),
       riot: await this.riotState(),
-      projects: PROJECT_IDS.map((id) => ({ id, cost: Math.round(PROJECTS[id].cost * idx), active: this.activeProject(id, now), nextAt: this.nextProjectAt(id), headroom: this.projectHeadroom(id, now) })),
+      funding: this.funding(now),
+      projects: PROJECT_IDS.map((id) => ({ id, cost: Math.round(PROJECTS[id].cost * idx * this.funding(now).costMul), active: this.activeProject(id, now), nextAt: this.nextProjectAt(id), headroom: this.projectHeadroom(id, now) })),
       projectLog: [...(this.snap.projects ?? [])].reverse().slice(0, 20),
       treasury: { balance: bal, in7d: (flows.rows as any[]).reduce((s, x) => s + Math.max(0, Number(x.amount)), 0), out7d: (flows.rows as any[]).reduce((s, x) => s + Math.max(0, -Number(x.amount)), 0),
         ledger: (led.rows as any[]).map((x): TreasuryRow => ({ id: String(x.id), at: Number(x.at), kind: String(x.kind), amount: Number(x.amount), balance: Number(x.balance), memo: String(x.memo) })) },
-      buildings: BUILDING_IDS.map((id) => { const b = this.snap.buildings.get(id)!; const s = stageAt(b, now); return { ...b, building: underConstruction(b, now) ? b.building : null, stage: s, stageNow: s, nextCost: s >= MAX_STAGE ? null : Math.round(BUILDINGS[id].stages[s]! * idx) }; }),
+      buildings: BUILDING_IDS.map((id) => { const b = this.snap.buildings.get(id)!; const s = stageAt(b, now); return { ...b, building: underConstruction(b, now) ? b.building : null, stage: s, stageNow: s, nextCost: s >= MAX_STAGE ? null : Math.round(BUILDINGS[id].stages[s]! * idx * this.funding(now).costMul) }; }),
       approval: { up: ap.up, down: ap.down, rating: ap.rating }, recall, actions: this.actions.slice(0, 40),
     };
     if (name) {

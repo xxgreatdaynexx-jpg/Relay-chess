@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { request } from '@/lib/net';
 import { RIOT_STOP_COST, PROJECTS, LEVERS, LEVER_IDS, POLICIES, POLICY_IDS, BUILDINGS, MAX_STAGE, leverText, perkOf, stageAt, underConstruction, RECALL_FEE, type LeverId, type CityView } from '../../../shared/city';
+
 import { abWhen } from './CityHallPanel';
 
 const chips = (n: number) => Math.round(n).toLocaleString('en-US');
@@ -46,12 +47,22 @@ export function CityCivic({ initial }: { initial?: CityView }) {
             {mayor && <button type="button" disabled={busy || wait || val === cur.value} onClick={() => act('city_lever', { lever: id, value: val }, `${L.label} set to ${leverText(id, val)}.`)}>Set</button>}
           </li>); })}
       </ul>
+      {v.funding && <div className="city-funding" data-testid="city-funding">
+        <h4>📊 City funding · {v.funding.label}</h4>
+        <small>{v.funding.blurb}</small>
+        <div className="cityhall-rates" data-testid="city-funding-muls">
+          <div><small>Policy / project cost</small><b>{v.funding.costMul === 1 ? 'normal' : `${v.funding.costMul > 1 ? '+' : ''}${Math.round((v.funding.costMul - 1) * 100)}%`}</b></div>
+          <div><small>Civic build time</small><b>{v.funding.buildMul === 1 ? 'normal' : `${v.funding.buildMul > 1 ? '+' : ''}${Math.round((v.funding.buildMul - 1) * 100)}%`}</b></div>
+          <div><small>Festival / road repair</small><b>{v.funding.boostMul === 1 ? 'normal' : `${v.funding.boostMul > 1 ? '+' : ''}${Math.round((v.funding.boostMul - 1) * 100)}%`}</b></div>
+        </div>
+        <small className="cityhall-rules">Moves with the levers above (vs each default). Low taxes → thinner services; higher taxes → cheaper projects and stronger festivals. No retroactive charges. Freight still can’t go below the default.</small>
+      </div>}
 
       <h4>📣 Policies</h4>
       {v.policy ? <small data-testid="city-policy-live">{POLICIES[v.policy.id].icon} <b>{POLICIES[v.policy.id].label}</b> is on until {abWhen(v.policy.endsAt)} ({left(v.policy.endsAt - now)} left)</small>
         : v.nextPolicyAt > now ? <small>Next policy possible {abWhen(v.nextPolicyAt)}</small> : <small>No policy running.</small>}
       <ul className="cityhall-list">
-        {POLICY_IDS.map((id) => { const p = POLICIES[id]; const cost = Math.round(p.cost * v.index);
+        {POLICY_IDS.map((id) => { const p = POLICIES[id]; const cost = Math.round(p.cost * v.index * (v.funding?.costMul ?? 1));
           return (<li key={id}><div><b>{p.icon} {p.label}</b><small>{p.blurb} · 🪙 {chips(cost)} from the treasury</small></div>
             {mayor && <button type="button" disabled={busy || !!v.policy || v.nextPolicyAt > now || v.treasury.balance < cost} onClick={() => act('city_policy', { policy: id }, `${p.label} is on for 24 h.`)}>Start</button>}</li>); })}
       </ul>

@@ -5,6 +5,9 @@
  *  - Treasury: funded ONLY by sales tax, 25% of property tax + trading fees, the freight modifier's surplus and recall
  *    fees. It pays ONLY for policies and civic building stages (both pure sinks). Nothing ever pays a wallet from it.
  *  - Casino odds / payouts are not a lever, a policy sector or a perk, by construction (see SECTORS / PERKS).
+ *  - Tax funding (pt2099u): levers vs each default set a continuous City funding score (−1…+1). Below default
+ *    makes policies/projects cost more, civic builds take longer, and festival/road-repair boosts weaker; above
+ *    default does the reverse. Gradual (no cliff). 25% treasury share, freight floor, 72 h cooldowns and Bill Chud 1 stay.
  */
 export const H_MS = 3_600_000;
 export const DAY_MS = 86_400_000;
@@ -116,8 +119,9 @@ export interface ProjectRun { id: string; project: ProjectId; startsAt: number; 
 /** Perk cap for a project: the fully built perk of the building that owns it. */
 export const projectCap = (p: ProjectId) => BUILDINGS[PERK_BUILDING[PROJECTS[p].perk]].perkBy[MAX_STAGE - 1]!;
 /** Combined perk = building perk + active project boosts on that perk, capped at the fully-built perk. */
-export function combinedPerk(perk: PerkId, buildingPerk: number, runs: ProjectRun[], t: number): number {
-  let add = 0; for (const r of runs) if (PROJECTS[r.project]?.perk === perk && r.startsAt <= t && r.endsAt > t) add = Math.max(add, PROJECTS[r.project].boost); // non-stacking
+export function combinedPerk(perk: PerkId, buildingPerk: number, runs: ProjectRun[], t: number, boostMul = 1): number {
+  const bm = Number.isFinite(boostMul) && boostMul > 0 ? boostMul : 1;
+  let add = 0; for (const r of runs) if (PROJECTS[r.project]?.perk === perk && r.startsAt <= t && r.endsAt > t) add = Math.max(add, PROJECTS[r.project].boost * bm); // non-stacking; funding scales live project strength
   const cap = BUILDINGS[PERK_BUILDING[perk]].perkBy[MAX_STAGE - 1]!;
   return Math.min(Math.max(buildingPerk, cap), buildingPerk + add);
 }
@@ -145,6 +149,57 @@ export const isExcludedName = (n: string) => { const t = String(n ?? '').trim();
 export type ActionKind = 'lever' | 'policy' | 'project' | 'build' | 'built' | 'recall_open' | 'recall_result' | 'admin' | 'event';
 export interface CityAction { id: string; at: number; by: string; kind: ActionKind; text: string }
 export interface TreasuryRow { id: string; at: number; kind: string; amount: number; balance: number; memo: string }
+
+/** Levers that feed City funding (abolished surcharge excluded; freight floor = default so it only buffs when raised). */
+export const FUNDING_LEVER_IDS: LeverId[] = ['sales_tax', 'wealth_tax', 'daily_wealth_tax', 'freight'];
+/**
+ * One lever's contribution to funding (−1…+1): 0 at that lever's default, −1 at min (when min < base), +1 at max (when max > base).
+ * Smooth and linear — no cliffs. Freight and sales tax have min === base, so they only contribute ≥ 0.
+ */
+export function leverFunding(id: LeverId, value: number): number {
+  const s = LEVERS[id]; if (s.abolished) return 0;
+  const v = clampLever(id, value);
+  if (v >= s.base) {
+    const span = s.max - s.base; return span <= 1e-12 ? 0 : Math.min(1, (v - s.base) / span);
+  }
+  const span = s.base - s.min; return span <= 1e-12 ? 0 : Math.max(-1, (v - s.base) / span);
+}
+/** Average of FUNDING_LEVER_IDS contributions (−1…+1). All defaults → 0. */
+export function cityFundingScore(levers: Partial<Record<LeverId, number>>): number {
+  let sum = 0;
+  for (const id of FUNDING_LEVER_IDS) sum += leverFunding(id, levers[id] ?? LEVERS[id].base);
+  return Math.round((sum / FUNDING_LEVER_IDS.length) * 1e6) / 1e6;
+}
+const clampMul = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(x * 1e4) / 1e4));
+/** Policy / project / civic-stage treasury cost multiplier: low taxes cost more to run (up to +20%), high taxes up to −15%. */
+export const fundingCostMul = (score: number) => clampMul(1 - 0.2 * score, 0.85, 1.2);
+/** Civic construction duration multiplier: underfunded builds take longer (up to +25%), well-funded up to −20% faster. */
+export const fundingBuildTimeMul = (score: number) => clampMul(1 - 0.25 * score, 0.8, 1.25);
+/** Festival / road-repair boost strength: underfunded → weaker (down to 70%), well-funded → stronger (up to 130%), still capped by building max. */
+export const fundingBoostMul = (score: number) => clampMul(1 + 0.3 * score, 0.7, 1.3);
+export function fundingLabel(score: number): string {
+  if (score <= -0.35) return 'Strained';
+  if (score < -0.05) return 'Thin';
+  if (score <= 0.05) return 'Balanced';
+  if (score < 0.35) return 'Solid';
+  return 'Strong';
+}
+export interface FundingView {
+  score: number; label: string; costMul: number; buildMul: number; boostMul: number;
+  blurb: string; /** short per-lever notes for the UI */
+  levers: Array<{ id: LeverId; contrib: number }>;
+}
+export function fundingView(levers: Partial<Record<LeverId, number>>): FundingView {
+  const score = cityFundingScore(levers);
+  const costMul = fundingCostMul(score), buildMul = fundingBuildTimeMul(score), boostMul = fundingBoostMul(score);
+  const label = fundingLabel(score);
+  const pct = (m: number) => `${m >= 1 ? '+' : ''}${Math.round((m - 1) * 100)}%`;
+  const blurb = score === 0
+    ? 'Levers are at their defaults. City funding is Balanced — policy/project costs, build times and festival/road-repair strength are normal.'
+    : `City funding is ${label}. Policy & project costs ${pct(costMul)}, civic build times ${pct(buildMul)}, festival & road-repair boosts ${pct(boostMul)}. Gradual with the levers — no cliff. Freight still can’t go below the default; the 25% treasury share and lever cooldowns are unchanged.`;
+  return { score, label, costMul, buildMul, boostMul, blurb, levers: FUNDING_LEVER_IDS.map((id) => ({ id, contrib: leverFunding(id, levers[id] ?? LEVERS[id].base) })) };
+}
+
 export interface CityView {
   now: number; index: number;
   levers: Record<LeverId, { value: number; pending: { value: number; effectiveAt: number } | null; nextChangeAt: number }>;
@@ -159,5 +214,7 @@ export interface CityView {
   recall: { id: string; endsAt: number; yes: number; no: number; needed: number; result: string | null } | null;
   actions: CityAction[];
   me?: { excluded: boolean; isMayor: boolean; ratedToday: boolean | null; canRecall: boolean; recallReason?: string; votedRecall: boolean };
+  /** pt2099u: live tax-funding tradeoff from current levers (display + applied to new costs/times and live project boosts). */
+  funding?: FundingView;
 }
 export const leverText = (id: LeverId, v: number) => LEVERS[id].unit === 'pct' ? `${+(v * 100).toFixed(2)}%` : `${v >= 1 ? '+' : ''}${Math.round((v - 1) * 100)}%`;
