@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T12:15:00-06:00", "title": "Auto-harvest farm crops straight into your pantry", "bullets": [
+    "Each farm plot’s Auto section now has Auto-harvest to pantry: ripe crops go into your kitchen ingredient pantry (the same city food stock as 🧺 To pantry) instead of selling for chips. It runs on the same ~30-minute server sweep while you are online or offline.",
+    "Sell auto and pantry auto are alternatives — turning one on clears the other. If the pantry is full for that crop, or resort crops can’t move to the city pantry, they stay on the field and are never lost or sold by surprise. Auto-plant is unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-09T12:05:00-06:00", "title": "Farm crops pay 50% over seed; each factory food step adds 10%", "bullets": [
     "Harvesting a crop (or its factory raw value) now pays about 50% over the seed cost (was 20%). Example: grapes seed 150 → about 225 chips of value (was 180).",
     "Every Mill & Press / Food Line craft that uses farm or fish inputs is priced at its ingredients plus 10% (no more special wine price). Examples (base chips): wine 495 (was 700), bread 72.6, Banquet Platter 690, Chocolate Cake 568.",

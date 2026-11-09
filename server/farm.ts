@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS farm_fert (plot_id TEXT NOT NULL, tile INTEGER NOT NU
 CREATE TABLE IF NOT EXISTS farm_machines (owner_key TEXT NOT NULL, kind TEXT NOT NULL, bought_at BIGINT NOT NULL, PRIMARY KEY (owner_key, kind));
 ALTER TABLE farm_daily ADD COLUMN IF NOT EXISTS xp_gross BIGINT NOT NULL DEFAULT 0;
 CREATE TABLE IF NOT EXISTS farm_auto (plot_id TEXT NOT NULL, owner_key TEXT NOT NULL, harvest BOOLEAN NOT NULL DEFAULT false, plant BOOLEAN NOT NULL DEFAULT false, crop TEXT NOT NULL DEFAULT 'wheat', PRIMARY KEY (plot_id, owner_key));
+ALTER TABLE farm_auto ADD COLUMN IF NOT EXISTS pantry BOOLEAN NOT NULL DEFAULT false;
 `;
 /** Server auto-farm sweep for every plot with toggles on — online or offline (Dayne 2026-11-05). */
 export const FARM_AUTO_SWEEP_MS = 30 * 60_000; // 30 minutes (Dayne 2026-11-05)
@@ -73,8 +74,8 @@ export class Farm {
   constructor(private readonly pool: pg.Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now()) {}
   async init() { await this.pool.query(FARM_MIGRATION); await this.pool.query('CREATE TABLE IF NOT EXISTS kitchen_harvests (tile_key TEXT PRIMARY KEY NOT NULL, at BIGINT NOT NULL)'); }
   private async autoOf(pid: string, ownerKey: string): Promise<FarmAuto> {
-    const r = (await this.pool.query('SELECT harvest, plant, crop FROM farm_auto WHERE plot_id = $1 AND owner_key = $2', [pid, ownerKey])).rows[0] as { harvest: boolean; plant: boolean; crop: string } | undefined;
-    return { harvest: r?.harvest === true, plant: r?.plant === true, crop: r?.crop ?? 'wheat' };
+    const r = (await this.pool.query('SELECT harvest, plant, crop, pantry FROM farm_auto WHERE plot_id = $1 AND owner_key = $2', [pid, ownerKey])).rows[0] as { harvest: boolean; plant: boolean; crop: string; pantry?: boolean } | undefined;
+    return { harvest: r?.harvest === true, pantry: r?.pantry === true, plant: r?.plant === true, crop: r?.crop ?? 'wheat' };
   }
 
   private async ownerOf(q: { query: pg.Pool['query'] } | pg.PoolClient, id: string): Promise<{ key: string; name: string } | null> {
@@ -141,7 +142,7 @@ export class Farm {
   }
 
   /** Per-plot auto plant/harvest toggles (owner only). Crop is the seed used when auto-plant is on. */
-  async setAuto(name: string, id: unknown, patch: { harvest?: unknown; plant?: unknown; crop?: unknown }) {
+  async setAuto(name: string, id: unknown, patch: { harvest?: unknown; plant?: unknown; crop?: unknown; pantry?: unknown }) {
     const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.');
     const cId = patch.crop !== undefined ? String(patch.crop) : undefined;
     if (cId !== undefined) {
@@ -151,16 +152,23 @@ export class Farm {
     return this.lock(p.pid, async () => {
       const o = await this.ownerOf(this.pool, p.pid); if (!o || o.key !== keyOf(name)) throw new FarmError('You do not own this farm plot.');
       const cur = await this.autoOf(p.pid, o.key);
+      let harvest = typeof patch.harvest === 'boolean' ? patch.harvest : cur.harvest;
+      let pantry = typeof patch.pantry === 'boolean' ? patch.pantry : cur.pantry;
+      // Mutual exclusion: turning on sell-harvest clears pantry destination; pantry-on implies harvest-on.
+      if (typeof patch.pantry === 'boolean' && patch.pantry) { harvest = true; pantry = true; }
+      if (typeof patch.harvest === 'boolean' && patch.harvest && patch.pantry !== true) { pantry = false; }
+      if (!harvest) pantry = false;
       const next: FarmAuto = {
-        harvest: typeof patch.harvest === 'boolean' ? patch.harvest : cur.harvest,
+        harvest,
+        pantry,
         plant: typeof patch.plant === 'boolean' ? patch.plant : cur.plant,
         crop: cId ?? cur.crop,
       };
       if (!cropById(next.crop)) next.crop = p.resort ? 'pineapple' : 'wheat';
       await this.pool.query(
-        `INSERT INTO farm_auto (plot_id, owner_key, harvest, plant, crop) VALUES ($1,$2,$3,$4,$5)
-         ON CONFLICT (plot_id, owner_key) DO UPDATE SET harvest = EXCLUDED.harvest, plant = EXCLUDED.plant, crop = EXCLUDED.crop`,
-        [p.pid, o.key, next.harvest, next.plant, next.crop],
+        `INSERT INTO farm_auto (plot_id, owner_key, harvest, plant, crop, pantry) VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (plot_id, owner_key) DO UPDATE SET harvest = EXCLUDED.harvest, plant = EXCLUDED.plant, crop = EXCLUDED.crop, pantry = EXCLUDED.pantry`,
+        [p.pid, o.key, next.harvest, next.plant, next.crop, next.pantry],
       );
       this.onChange?.(p.pid);
       return { auto: next };
@@ -414,10 +422,10 @@ export class Farm {
   async autoSweep(): Promise<number> {
     if (!isHubAwake(this.clock()) || isMillionairePrelaunch(this.clock())) return 0;
     const rows = (await this.pool.query(
-      `SELECT a.plot_id, a.owner_key, a.harvest, a.plant, a.crop, p.owner_name
+      `SELECT a.plot_id, a.owner_key, a.harvest, a.plant, a.crop, a.pantry, p.owner_name
        FROM farm_auto a JOIN properties p ON p.id = a.plot_id AND p.owner_key = a.owner_key
        WHERE a.harvest = true OR a.plant = true`,
-    )).rows as Array<{ plot_id: string; owner_key: string; harvest: boolean; plant: boolean; crop: string; owner_name: string }>;
+    )).rows as Array<{ plot_id: string; owner_key: string; harvest: boolean; plant: boolean; crop: string; pantry: boolean; owner_name: string }>;
     let n = 0;
     for (const r of rows) {
       const name = String(r.owner_name);
@@ -426,7 +434,9 @@ export class Farm {
       if (plot.resort && !isAtResort(name)) continue;
       try {
         if (r.harvest) {
-          try { await this.harvest(name, pid, undefined, undefined, false, { auto: true }); n++; }
+          // pantry destination: crops stay on the field if pantry is full / resort-blocked (FarmError); never sold by surprise.
+          const toPantry = r.pantry === true;
+          try { await this.harvest(name, pid, undefined, undefined, toPantry, { auto: true }); n++; }
           catch (e) { if (!(e instanceof FarmError)) console.warn('[farm-auto] harvest', pid, (e as Error).message); }
         }
         if (r.plant) {
@@ -506,5 +516,5 @@ export function registerFarm(io: Server, socket: Socket): void {
   on('farm_harvest', async (b, f) => f.harvest(await at(b.id), b.id, b.tiles, undefined, b.pantry === true));
   on('farm_clear', async (b, f) => f.clear(await at(b.id), b.id));
   on('farm_upgrade', async (b, f) => f.buyUpgrade(await at(b.id), b.id, b.kind));
-  on('farm_auto', async (b, f) => f.setAuto(await at(b.id), b.id, { harvest: b.harvest, plant: b.plant, crop: b.crop }));
+  on('farm_auto', async (b, f) => f.setAuto(await at(b.id), b.id, { harvest: b.harvest, plant: b.plant, crop: b.crop, pantry: b.pantry }));
 }

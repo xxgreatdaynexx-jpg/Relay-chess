@@ -6,7 +6,7 @@ import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
 import { Farm } from '../server/farm';
 import { setPriceIndexForTest } from '../server/price-index';
-import { CROPS, cropById, farmPayout, farmPlots, FARM_TIERS, FARM_X0, MIN_RIPE_MS, PARK_SAFE, ripeWindow, stageOf, WITHER_FACTOR } from './farm-helpers';
+import { CROPS, cropById, cropProfit, farmPayout, farmPlots, FARM_TIERS, FARM_X0, MIN_RIPE_MS, PARK_SAFE, ripeWindow, stageOf, WITHER_FACTOR } from './farm-helpers';
 import { properties, propertyById } from '../shared/realEstate';
 import { obbOverlap, PARK_AREA, PLATE } from '../shared/worldLayout';
 
@@ -62,8 +62,8 @@ describe('farm district', () => {
     s.setNow(T0 + 10 * M);
     const [a, b] = await Promise.allSettled([s.farm.harvest('Gus', s.id), s.farm.harvest('Gus', s.id)]);
     expect([a, b].filter((r) => r.status === 'fulfilled')).toHaveLength(1);
-    expect(s.chips('gus')).toBe(960 + 48); expect(s.ledger('gus', 'farm_harvest')).toEqual([{ amount: 48 }]); // 4 wheat: 40 seeds back + floor(4 × (12.64 × 0.95 − 10)) = 8 profit (crop margins: 20% of seed)
-    const v = await s.farm.view(s.id, 'Gus'); expect(v.tiles).toHaveLength(0); expect(v.today.gross).toBe(8); expect(v.mine).toBe(true);
+    expect(s.chips('gus')).toBe(960 + 60); expect(s.ledger('gus', 'farm_harvest')).toEqual([{ amount: 60 }]); // 4 wheat: 40 seeds back + 4 × (15 − 10) = 20 profit (crop margins: 50% of seed)
+    const v = await s.farm.view(s.id, 'Gus'); expect(v.tiles).toHaveLength(0); expect(v.today.gross).toBe(20); expect(v.mine).toBe(true);
     expect((await s.farm.view(s.id, 'Hal')).mine).toBe(false); // neighbours can look, not touch
   });
   it('withered crops pay nothing and can be cleared; harvest payouts follow the price index; a wallet never goes negative', async () => {
@@ -78,7 +78,7 @@ describe('farm district', () => {
     try {
       await s.farm.plant('Ida', s.id, 'strawberry', [5]); expect(s.chips('ida')).toBe(40 - Math.round(5 * 1.5) + 0);
       s.setNow(T0 + 4 * M + MIN_RIPE_MS + 4 * M); const before = s.chips('ida');
-      const r = await s.farm.harvest('Ida', s.id); expect(r.paid).toBe(Math.floor((5 + 6.32 * 0.95 - 5) * 1.5)); expect(s.chips('ida')).toBe(before + r.paid);
+      const r = await s.farm.harvest('Ida', s.id); const berry = CROPS.find((c) => c.id === 'strawberry')!; expect(r.paid).toBe(Math.floor((5 + farmPayout(cropProfit(berry), 0)) * 1.5)); expect(s.chips('ida')).toBe(before + r.paid);
     } finally { setPriceIndexForTest(1); }
   });
   it('a new owner never inherits the previous owner\'s crops', async () => {
