@@ -29,13 +29,13 @@ export type Product = 'wellstream' | 'crude' | 'rawgas' | 'natgas' | 'ngl' | 'na
 export interface ProductDef { id: Product; name: string; icon: string; price: number; color: string; sellable: boolean }
 export const PRODUCTS: Record<Product, ProductDef> = {
   wellstream: { id: 'wellstream', name: 'Wellstream', icon: '🛢️', price: 0, color: '#3a2f25', sellable: false },
-  crude:      { id: 'crude',      name: 'Crude oil',  icon: '🛢️', price: 5, color: '#1d1a16', sellable: true },
+  crude:      { id: 'crude',      name: 'Crude oil',  icon: '🛢️', price: 7, color: '#1d1a16', sellable: true },
   rawgas:     { id: 'rawgas',     name: 'Raw gas',    icon: '💨', price: 0, color: '#9aa4a8', sellable: false },
   natgas:     { id: 'natgas',     name: 'Natural gas', icon: '🔥', price: 2, color: '#6ab0ff', sellable: true },
   ngl:        { id: 'ngl',        name: 'NGL (ethane/propane)', icon: '🧪', price: 6, color: '#b48aff', sellable: true },
-  naphtha:    { id: 'naphtha',    name: 'Naphtha',    icon: '⚗️', price: 7, color: '#e8d27a', sellable: true },
-  diesel:     { id: 'diesel',     name: 'Diesel',     icon: '⛽', price: 14, color: '#d89a3a', sellable: true },
-  gasoline:   { id: 'gasoline',   name: 'Gasoline',   icon: '⛽', price: 16, color: '#f2c84a', sellable: true },
+  naphtha:    { id: 'naphtha',    name: 'Naphtha',    icon: '⚗️', price: 8, color: '#e8d27a', sellable: true },
+  diesel:     { id: 'diesel',     name: 'Diesel',     icon: '⛽', price: 17, color: '#d89a3a', sellable: true },
+  gasoline:   { id: 'gasoline',   name: 'Gasoline',   icon: '⛽', price: 19, color: '#f2c84a', sellable: true },
   residue:    { id: 'residue',    name: 'Heavy residue', icon: '🟫', price: 2, color: '#4a3424', sellable: true },
   petcoke:    { id: 'petcoke',    name: 'Petroleum coke', icon: '⚫', price: 3, color: '#2b2b2e', sellable: true },
   sulfur:     { id: 'sulfur',     name: 'Sulfur',     icon: '🟨', price: 4, color: '#f0e040', sellable: true },
@@ -51,11 +51,11 @@ export const SURVEY_COST = 2_500;
 export const LEASE_BASE = 30_000;
 export const WELLS_PER_TRACT = 4;
 export const WELL_COST = 45_000, PUMPJACK_COST = 20_000;
-export const WELL_RATE = 30;         // wellstream / hour at richness 1, full condition, no pumpjack
+export const WELL_RATE = 60;         // wellstream / hour at richness 1, full condition, no pumpjack (buffed Nov 9 2026)
 export const PUMPJACK_MULT = 1.8;
 export const WELL_MW = 0.3, PUMPJACK_MW = 0.5;
 export const PIPES = [{ cap: 0, cost: 0 }, { cap: 120, cost: 15_000 }, { cap: 360, cost: 40_000 }] as const; // tier 1, tier 2 upgrade
-export const WATER_CUT = 0.15;
+export const WATER_CUT = 0.10;
 export interface TractInfo { n: number; name: string; richness: number; gas: number; sour: number; lease: number; x: number; z: number }
 const rnd = (i: number) => { const x = Math.sin(i * 91.7 + 17.3) * 43758.5453; return x - Math.floor(x); };
 const TRACT_NAMES = ['Athabasca Flats', 'Muskeg Ridge', 'Clearwater Bend', 'Firebag North', 'Christina Lake', 'Steepbank', 'Horizon Sands', 'Kearl Muskeg', 'Birch Mountain', 'Peace Point'];
@@ -72,9 +72,9 @@ export interface UnitDef { id: UnitKind; name: string; icon: string; cost: numbe
 /** Sulfur yield per input unit is `sulfurK x sourness` (gas plant: sour gas; refinery: sour crude). */
 export const SULFUR_K: Partial<Record<UnitKind, number>> = { gas_plant: 0.4, refinery: 0.3 };
 export const UNITS: Record<UnitKind, UnitDef> = {
-  separator: { id: 'separator', name: 'Separator', icon: '⚙️', cost: 60_000, mw: 1.5, cap: 240, input: 'wellstream', out: [], desc: 'Splits wellstream into crude and raw gas by each tract’s gas ratio; 15% produced water is discarded.', max: 6 },
+  separator: { id: 'separator', name: 'Separator', icon: '⚙️', cost: 60_000, mw: 1.5, cap: 240, input: 'wellstream', out: [], desc: 'Splits wellstream into crude and raw gas by each tract’s gas ratio; 10% produced water is discarded.', max: 6 },
   gas_plant: { id: 'gas_plant', name: 'Gas plant', icon: '🏭', cost: 180_000, mw: 3, cap: 150, input: 'rawgas', out: [['natgas', 0.65], ['ngl', 0.25]], desc: 'Raw gas -> 65% natural gas + 25% NGL, plus sulfur from sour gas.', max: 4 },
-  refinery:  { id: 'refinery',  name: 'Refinery',  icon: '🏗️', cost: 350_000, mw: 4, cap: 120, input: 'crude', out: [['naphtha', 0.3], ['diesel', 0.28], ['gasoline', 0.12], ['residue', 0.25]], desc: 'Crude -> naphtha, diesel, gasoline and heavy residue; the hydrotreater pulls sulfur from sour crude.', max: 4 },
+  refinery:  { id: 'refinery',  name: 'Refinery',  icon: '🏗️', cost: 280_000, mw: 3.5, cap: 120, input: 'crude', out: [['naphtha', 0.3], ['diesel', 0.28], ['gasoline', 0.12], ['residue', 0.25]], desc: 'Crude -> naphtha, diesel, gasoline and heavy residue; the hydrotreater pulls sulfur from sour crude.', max: 4 },
   reformer:  { id: 'reformer',  name: 'Catalytic reformer', icon: '⚗️', cost: 140_000, mw: 2, cap: 60, input: 'naphtha', out: [['gasoline', 0.85]], desc: 'Naphtha -> 85% gasoline.', max: 4 },
   coker:     { id: 'coker',     name: 'Delayed coker', icon: '🔥', cost: 160_000, mw: 2.5, cap: 50, input: 'residue', out: [['diesel', 0.45], ['petcoke', 0.45]], desc: 'Heavy residue -> 45% diesel + 45% petroleum coke (ships to your factory as coal).', max: 4 },
   cracker:   { id: 'cracker',   name: 'Steam cracker', icon: '🧪', cost: 450_000, mw: 6, cap: 50, input: 'ngl', alt: 'naphtha', out: [['ethylene', 0.75]], desc: 'NGL (or naphtha when NGL runs out) -> 75% ethylene.', max: 3 },
@@ -86,13 +86,13 @@ export const UNIT_ORDER: UnitKind[] = ['separator', 'gas_plant', 'refinery', 're
 export const PROCESS_ORDER: UnitKind[] = ['separator', 'gas_plant', 'refinery', 'reformer', 'coker', 'cracker', 'polymer'];
 export const isUnitKind = (v: unknown): v is UnitKind => typeof v === 'string' && v in UNITS;
 export const TURBINE_MW = 15;
-export const GRID_MW = 4; // free utility tie-in: enough to start a couple of wells and a separator
+export const GRID_MW = 8; // free utility tie-in: enough for wells + separator + a starter refinery without throttling
 export const TANK_BASE = 400, TANK_PER = 1_500;
 
 // ---- maintenance
-export const WEAR_PER_H = 0.4;           // condition points / hour at full load
+export const WEAR_PER_H = 0.25;          // condition points / hour at full load
 export const SLOW_BELOW = 60, BROKEN_BELOW = 15;
-export const REPAIR_K = 0.15;            // full repair 0 -> 100 costs 15% of the build price
+export const REPAIR_K = 0.10;            // full repair 0 -> 100 costs 10% of the build price
 export const efficiency = (cond: number) => (cond < BROKEN_BELOW ? 0 : cond >= SLOW_BELOW ? 1 : cond / SLOW_BELOW);
 export const repairCost = (build: number, cond: number) => Math.ceil(build * REPAIR_K * Math.max(0, 100 - cond) / 100);
 

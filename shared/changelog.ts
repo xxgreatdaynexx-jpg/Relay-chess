@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T08:30:00-06:00", "title": "Fort McChud oil pays back faster; starter refinery fits free power", "bullets": [
+    "Wells produce twice the wellstream, separators discard 10% water instead of 15%, and crude sells for more. Free grid power is 8 MW and the refinery draws less, so a first well, separator and refinery run without power throttling. Refined fuels also pay a bit more and the refinery costs less to build.",
+    "Equipment wears slower and full repairs cost 10% of the build price (was 15%). Existing wells, leases, tanks, inventories and paid history are unchanged — this is forward-looking only. Daily sale tiers and freight fees are the same.",
+  ]},
   {"commit": "", "at": "2026-11-08T20:15:00-06:00", "title": "Hockey Stadium materials cut to a week of quarry stone", "bullets": [
     "Stadium foundation brick and concrete, stands concrete, and roof glass targets are much smaller so the stone craft chain is about 45,400 stone (~7 days with 9 quarry workers). Steel beams, steel, steel plate and steel cable stay the same. Removed material value moved into stage chip goals so the whole Stadium still totals 693,211 chips.",
     "Anything already donated still counts in full: stage needs never drop below what players have already given, donor credit and rewards stay, and completed stages stay completed. Requested by chessguy2.",

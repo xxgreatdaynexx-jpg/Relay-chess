@@ -9,7 +9,7 @@ import { Logistics, setLogistics, LOGISTICS_MIGRATION } from '../server/logistic
 import { SINK_DEBIT_GAMES } from '../shared/sinkRoom';
 import {
   newFort, settle, step, tractInfo, sellPayout, efficiency, repairCost, powerDemand, MINE_LEVELS, UNITS, STEP_MS, MAX_CATCHUP_MS,
-  GRID_MW, TRACTS, ORE_VALUE_PER_UNIT, PRODUCTS, type FortState,
+  GRID_MW, TRACTS, ORE_VALUE_PER_UNIT, PRODUCTS, WATER_CUT, REPAIR_K, WELL_RATE, type FortState,
 } from '../shared/fortmc';
 import { DESTINATIONS } from '../shared/resort';
 
@@ -59,7 +59,7 @@ function bigFort(): FortState {
 
 describe('oil & gas sim', () => {
   it('tracts are deterministic and in range', () => {
-    for (let n = 1; n <= TRACTS; n++) { const t = tractInfo(n); expect(t).toEqual(tractInfo(n)); expect(t.richness).toBeGreaterThanOrEqual(0.6); expect(t.richness).toBeLessThanOrEqual(1.4); expect(t.gas + 0.15).toBeLessThan(1); }
+    for (let n = 1; n <= TRACTS; n++) { const t = tractInfo(n); expect(t).toEqual(tractInfo(n)); expect(t.richness).toBeGreaterThanOrEqual(0.6); expect(t.richness).toBeLessThanOrEqual(1.4); expect(t.gas + WATER_CUT).toBeLessThan(1); }
   });
   it('nothing flows without a pipeline; power limits throttle; grid alone runs a starter site', () => {
     const s = newFort(0); s.tracts['1'] = { leased: true, pipe: 0, wells: [{ jack: false, cond: 100 }] }; settle(s, 2 * H);
@@ -90,7 +90,7 @@ describe('oil & gas sim', () => {
   });
   it('wear slows then stops units; repairs cost a share of the build', () => {
     expect(efficiency(100)).toBe(1); expect(efficiency(30)).toBe(0.5); expect(efficiency(10)).toBe(0);
-    expect(repairCost(100_000, 0)).toBe(15_000); expect(repairCost(100_000, 100)).toBe(0);
+    expect(repairCost(100_000, 0)).toBe(Math.ceil(100_000 * REPAIR_K)); expect(repairCost(100_000, 100)).toBe(0);
     const s = bigFort(); for (let d = 0; d < 6; d++) settle(s, (d + 1) * 24 * H);
     expect(Math.min(...s.units.filter((u) => u.k === 'refinery').map((u) => u.cond))).toBeLessThan(100);
   });
