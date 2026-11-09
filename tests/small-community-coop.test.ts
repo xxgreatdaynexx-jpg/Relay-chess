@@ -5,7 +5,7 @@ import { PgCasinoStore, resetBank } from '../server/casino-store';
 import { PgMineStore, resetMines } from '../server/mines';
 import { LocStore, setLocStore } from '../server/locstock';
 import { WeeklyEvents } from '../server/weeklyEvent';
-import { COOP_PLAN, projectStages, projectValue, partKey } from '../shared/coop';
+import { COOP_PLAN, projectStages, projectValue, partKey, floorStageNeed, stageFull, stagePct } from '../shared/coop';
 import { EVENTS, LEGACY_EVENTS, EVENT_REBALANCE_FROM, eventFor, playerEventCap, eventReward, weekStart, weekIndex } from '../shared/coop3';
 
 function shim(db: PGlite) {
@@ -57,10 +57,28 @@ describe('stadium proportional cost transition', () => {
   it('preserves four stages and the unchanged bridge; exact rounded cost stays near seven days at 25% cashflow', () => {
     expect(COOP_PLAN.stadium.total).toBe(693000); expect(COOP_PLAN.stadium.chipShare).toBe(.6);
     const stages=projectStages(COOP_PLAN.stadium); expect(stages).toHaveLength(4);
-    expect(stages.every(s=>s.chips===103950)).toBe(true);
-    expect(projectValue(COOP_PLAN.stadium)).toBeGreaterThanOrEqual(693000);
-    expect(projectValue(COOP_PLAN.stadium)).toBeLessThan(693300);
+    expect(stages.map(s=>s.id)).toEqual(['foundation','frame','stands','roof']);
+    expect(stages[0].chips).toBe(168279); expect(stages[1].chips).toBe(103950);
+    expect(stages[2].chips).toBe(134826); expect(stages[3].chips).toBe(134830);
+    expect(stages[0].goods.map(g=>[g.id,g.qty])).toEqual([['concrete',497],['brick',663]]);
+    expect(stages[1].goods.map(g=>[g.id,g.qty])).toEqual([['steel_beam',332],['steel',273]]);
+    expect(stages[2].goods.map(g=>[g.id,g.qty])).toEqual([['concrete',398],['steel_plate',457]]);
+    expect(stages[3].goods.map(g=>[g.id,g.qty])).toEqual([['glass',596],['steel_cable',879]]);
+    expect(projectValue(COOP_PLAN.stadium)).toBe(693211);
     expect(COOP_PLAN.bridge.total).toBe(10000000);
+  });
+
+  it('floors stage need at already-donated qty so prior donations never shrink the goal below progress', () => {
+    const st=projectStages(COOP_PLAN.stadium)[0];
+    const done={chips:200_000,'bar:brick':2_000,'bar:concrete':100};
+    const f=floorStageNeed(st,done);
+    expect(f.chips).toBe(200_000);
+    expect(f.goods.find(g=>g.id==='brick')!.qty).toBe(2_000);
+    expect(f.goods.find(g=>g.id==='concrete')!.qty).toBe(497);
+    expect(stageFull(f,done)).toBe(false);
+    const full={chips:168279,'bar:concrete':497,'bar:brick':663};
+    expect(stageFull(floorStageNeed(st,full),full)).toBe(true);
+    expect(stagePct(st,full)).toBe(1);
   });
 
   it('never moves excess legacy donations between stages or regresses completed projects', async () => {
@@ -115,4 +133,43 @@ describe('stadium proportional cost transition', () => {
       expect((await db.query("SELECT * FROM wallet_transactions WHERE game='coop'")).rows).toHaveLength(1); // goods rebate only, no legacy re-award
     } finally { await db.close(); }
   },30000);
+
+  it('keeps donated qty when live progress exceeds the new absolute target; reload and nonce stay idempotent', async () => {
+    const db=new PGlite(), pool=shim(db); const now=Date.parse('2026-11-09T02:00:00Z');
+    try {
+      await db.exec(COOP_MIGRATION);
+      await db.query('INSERT INTO coop_donations VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+        ['coop:ann:overbrick','stadium',0,'ann','Ann','bar:brick',2000,6000,600,now-5000]);
+      await db.query('INSERT INTO coop_donations VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+        ['coop:ann:prechips','stadium',0,'ann','Ann','chips',50000,50000,5000,now-4000]);
+      const bank=resetBank(); bank.retryMs=[]; await bank.attach(new PgCasinoStore(pool as never));
+      const mines=resetMines(); await mines.attach(new PgMineStore(pool as never));
+      const ls=new LocStore(pool as never); await ls.init(); setLocStore(ls);
+      let c=new Coop(pool as never,()=>now); await c.init();
+      const view=c.projectView('stadium');
+      expect(view.stages[0].done['bar:brick']).toBe(2000);
+      expect(view.stages[0].goods.find(g=>g.id==='brick')!.qty).toBe(2000);
+      expect(view.stages[0].chips).toBe(168279);
+      expect(view.stages[0].done.chips).toBe(50000);
+      expect(c.view('Ann').me).toMatchObject({value:56000,rewarded:5600});
+      expect((await c.donate('Ann',{project:'stadium',part:'bar:brick',qty:2000,nonce:'overbrick'})).replay).toBe(true);
+      expect(c.view('Ann').me!.value).toBe(56000);
+      await bank.transferConfirmed('Ann', 200000, { key: 'test_fund:ann:stadium', game: 'admin' });
+      await c.donate('Ann',{project:'stadium',part:'chips',qty:168279-50000,nonce:'fillchips'});
+      for (const g of projectStages(COOP_PLAN.stadium)[0].goods) {
+        const have=c.projectView('stadium').stages[0].done[partKey(g)]??0;
+        const miss=Math.max(0, g.qty - have);
+        if (!miss) continue;
+        mines.adjustStack('Ann',g.type,g.id,miss); await mines.flush();
+        await c.donate('Ann',{project:'stadium',part:partKey(g),qty:miss,nonce:`fill-${g.id}`});
+      }
+      expect(c.stagesDone('stadium')).toBe(1);
+      c=new Coop(pool as never,()=>now); await c.init();
+      expect(c.stagesDone('stadium')).toBe(1);
+      expect(c.projectView('stadium').stages[0].done['bar:brick']).toBe(2000);
+      expect(c.view('Ann').me!.value).toBeGreaterThanOrEqual(56000);
+      expect(Number((await db.query<{n:number}>('SELECT count(*)::int n FROM coop_donations')).rows[0].n)).toBeGreaterThanOrEqual(3);
+    } finally { await db.close(); }
+  },30000);
+
 });

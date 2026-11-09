@@ -14,22 +14,30 @@
 import { GOODS, type ItemType } from './mines.js';
 
 export type ProjectId = 'stadium' | 'bridge';
-export interface StagePlan { id: string; name: string; /** goods for this stage: item id (shared/mines GOODS) + share of the stage's goods value */ goods: Array<[string, number]> }
+export interface StagePlan {
+  id: string; name: string;
+  /** goods: [id, shareOfGoodsBudget] normally; when `chips` is set, the second number is an absolute qty */
+  goods: Array<[string, number]>;
+  /** Absolute chip need. When set, goods entries use absolute quantities (not value shares). */
+  chips?: number;
+}
 export interface ProjectPlan { id: ProjectId; name: string; icon: string; /** total chips-equivalent cost (chips + goods at house price) */ total: number; /** share of each stage paid in chips; the rest is goods */ chipShare: number; stages: StagePlan[]; perk: string }
 
 /**
  * Stadium sizing (Dayne, Nov 7 2026): about seven days at 25% of observed combined operating cashflow
- * (~98,974 chips/day). Keep the 60/40 chips/goods split and all four stages. Goods round up at house prices;
- * actual rounded value is projectValue(), not exactly the nominal total. Existing donation rows are never rewritten.
+ * (~98,974 chips/day). Nov 8 (chessguy2): stone-heavy goods cut to ~45k craft-input stone (~1 week at 9 quarry
+ * workers); removed goods value moved into stage chips so projectValue stays 693,211. Absolute chips/qtys below.
+ * Existing donation rows are never rewritten; needs floor at already-donated qty at runtime.
  */
 export const COOP_PLAN: Record<ProjectId, ProjectPlan> = {
   stadium: {
     id: 'stadium', name: 'Chud Hub Hockey Stadium', icon: '🏟️', total: 693_000, chipShare: 0.6,
     stages: [
-      { id: 'foundation', name: 'Foundation', goods: [['concrete', 0.6], ['brick', 0.4]] },
-      { id: 'frame', name: 'Steel frame', goods: [['steel_beam', 0.76], ['steel', 0.24]] },
-      { id: 'stands', name: 'Stands', goods: [['concrete', 0.48], ['steel_plate', 0.52]] },
-      { id: 'roof', name: 'Roof', goods: [['glass', 0.48], ['steel_cable', 0.52]] },
+      // brick 3, concrete 6, glass 4, steel_beam 159, steel 61, steel_plate 79, steel_cable 41 (GOODS house prices)
+      { id: 'foundation', name: 'Foundation', chips: 168_279, goods: [['concrete', 497], ['brick', 663]] },
+      { id: 'frame', name: 'Steel frame', chips: 103_950, goods: [['steel_beam', 332], ['steel', 273]] },
+      { id: 'stands', name: 'Stands', chips: 134_826, goods: [['concrete', 398], ['steel_plate', 457]] },
+      { id: 'roof', name: 'Roof', chips: 134_830, goods: [['glass', 596], ['steel_cable', 879]] },
     ],
     perk: 'Live spectating at the Stadium, and every player gets a 6th paid hockey win a day (was 5).',
   },
@@ -47,13 +55,21 @@ export const COOP_PLAN: Record<ProjectId, ProjectPlan> = {
 export const PROJECT_ORDER: ProjectId[] = ['stadium', 'bridge'];
 
 export interface StageNeed { id: string; name: string; chips: number; goods: Array<{ type: ItemType; id: string; name: string; qty: number; price: number }> }
-/** Chips and goods quantities per stage, derived from the plan (goods qty = value share / house price, rounded up). */
+/** Chips and goods quantities per stage. Absolute `chips` on a StagePlan → absolute goods qtys; else share-derived (ceil). */
 export function projectStages(p: ProjectPlan): StageNeed[] {
   const per = p.total / p.stages.length;
-  return p.stages.map((s) => ({
-    id: s.id, name: s.name, chips: Math.round(per * p.chipShare),
-    goods: s.goods.map(([id, share]) => { const g = GOODS[id]!; return { type: g.type, id, name: g.name, price: g.price, qty: Math.ceil((per * (1 - p.chipShare) * share) / g.price) }; }),
-  }));
+  return p.stages.map((s) => {
+    if (s.chips != null) {
+      return {
+        id: s.id, name: s.name, chips: s.chips,
+        goods: s.goods.map(([id, qty]) => { const g = GOODS[id]!; return { type: g.type, id, name: g.name, price: g.price, qty }; }),
+      };
+    }
+    return {
+      id: s.id, name: s.name, chips: Math.round(per * p.chipShare),
+      goods: s.goods.map(([id, share]) => { const g = GOODS[id]!; return { type: g.type, id, name: g.name, price: g.price, qty: Math.ceil((per * (1 - p.chipShare) * share) / g.price) }; }),
+    };
+  });
 }
 /** Chips-equivalent value of a stage / a project at house prices. */
 export const stageValue = (s: StageNeed) => s.chips + s.goods.reduce((a, g) => a + g.qty * g.price, 0);
@@ -72,6 +88,16 @@ export function donorReward(value: number, alreadyRewarded: number): number {
 /** Map key for a donation part: 'chips' or 'type:id'. */
 export type PartKey = string;
 export const partKey = (g: { type: ItemType; id: string } | 'chips'): PartKey => (g === 'chips' ? 'chips' : `${g.type}:${g.id}`);
+
+/** Raise each part's need to at least what was already donated (never shrink below live progress). */
+export function floorStageNeed(s: StageNeed, done: Record<string, number> | undefined): StageNeed {
+  const d = done ?? {};
+  return {
+    ...s,
+    chips: Math.max(s.chips, Math.max(0, Math.floor(Number(d.chips) || 0))),
+    goods: s.goods.map((g) => ({ ...g, qty: Math.max(g.qty, Math.max(0, Math.floor(Number(d[partKey(g)]) || 0))) })),
+  };
+}
 
 export interface StageView extends StageNeed { done: Record<PartKey, number>; pct: number }
 export interface ProjectView { id: ProjectId; name: string; icon: string; total: number; perk: string; state: 'locked' | 'active' | 'complete'; stage: number; pct: number; stages: StageView[]; top: Array<{ name: string; value: number }> }

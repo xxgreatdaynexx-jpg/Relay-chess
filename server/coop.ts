@@ -24,7 +24,7 @@ import { setCoopPerkHooks } from './coop-perks.js';
 import { isQaName } from '../shared/qa.js';
 import { GOODS, nameOf } from '../shared/mines.js';
 import {
-  COOP_PLAN, PROJECT_ORDER, projectStages, stageFull, stagePct, stageValue, partKey, donorReward, DONOR_REWARD_CAP, MIN_DONATION_VALUE,
+  COOP_PLAN, PROJECT_ORDER, projectStages, floorStageNeed, stageFull, stagePct, stageValue, partKey, donorReward, DONOR_REWARD_CAP, MIN_DONATION_VALUE,
   sellCapBonus, recentDonated, contractAt, contractIndex, contractPay, playerCap, CONTRACT_MIN_AGE_MS, CONTRACT_MIN_PLAY_MS, CONTRACT_CLAIM_MS,
   type ProjectId, type StageNeed, type CoopView, type ProjectView, type ContractView,
 } from '../shared/coop.js';
@@ -83,7 +83,7 @@ export class Coop {
   // ------------------------------------------------------------ projects
   /** Index of the first project that isn't complete (null = all done). */
   activeProject(): ProjectId | null { for (const id of PROJECT_ORDER) if (this.stagesDone(id) < COOP_PLAN[id].stages.length) return id; return null; }
-  stagesDone(id: ProjectId): number { const st = projectStages(COOP_PLAN[id]); let n = 0; while (n < st.length && stageFull(st[n]!, this.done[id][n]!)) n++; return n; }
+  stagesDone(id: ProjectId): number { const st = projectStages(COOP_PLAN[id]); let n = 0; while (n < st.length && stageFull(floorStageNeed(st[n]!, this.done[id][n]), this.done[id][n]!)) n++; return n; }
   /** Total chips-equivalent this player has given the Hockey Stadium (drives their sell-cap bonus). */
   stadiumDonated(name: string): number { return this.donors.stadium.get(playerKey(name))?.value ?? 0; }
   /** Stadium value donated in the last SELL_BONUS_WINDOW_DAYS (only this drives the sell-cap bonus; older gifts roll off). */
@@ -111,7 +111,7 @@ export class Coop {
       const k = playerKey(name); const id = `coop:${k}:${input.nonce}`;
       const prev = this.seen.get(id); if (prev) { if ('project' in prev) return { ...prev, replay: true as const }; throw new CoopError('Already applied.'); }
       const project = this.activeProject(); if (!project || input.project !== project) throw new CoopError('That project isn’t taking donations.');
-      const stage = this.stagesDone(project); const need = projectStages(COOP_PLAN[project])[stage]!; const row = this.done[project][stage]!;
+      const stage = this.stagesDone(project); const row = this.done[project][stage]!; const need = floorStageNeed(projectStages(COOP_PLAN[project])[stage]!, row);
       const part = String(input.part ?? ''); const q = Number(input.qty);
       if (!Number.isInteger(q) || q < 1) throw new CoopError('Pick an amount.');
       const g = part === 'chips' ? null : need.goods.find((x) => partKey(x) === part);
@@ -156,7 +156,8 @@ export class Coop {
   }
 
   projectView(id: ProjectId, viewer?: string | null): ProjectView {
-    const P = COOP_PLAN[id]; const st = projectStages(P); const doneN = this.stagesDone(id); const active = this.activeProject();
+    const P = COOP_PLAN[id]; const planned = projectStages(P); const doneN = this.stagesDone(id); const active = this.activeProject();
+    const st = planned.map((s, i) => floorStageNeed(s, this.done[id][i]));
     const total = st.reduce((a, s) => a + stageValue(s), 0);
     const got = st.reduce((a, s, i) => a + stagePct(s, this.done[id][i]!) * stageValue(s), 0);
     void viewer;

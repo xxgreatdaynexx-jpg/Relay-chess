@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-08T20:15:00-06:00", "title": "Hockey Stadium materials cut to a week of quarry stone", "bullets": [
+    "Stadium foundation brick and concrete, stands concrete, and roof glass targets are much smaller so the stone craft chain is about 45,400 stone (~7 days with 9 quarry workers). Steel beams, steel, steel plate and steel cable stay the same. Removed material value moved into stage chip goals so the whole Stadium still totals 693,211 chips.",
+    "Anything already donated still counts in full: stage needs never drop below what players have already given, donor credit and rewards stay, and completed stages stay completed. Requested by chessguy2.",
+  ]},
   {"commit": "", "at": "2026-11-08T18:30:00-06:00", "title": "Deeper mine creature drops; Stone Quarry with miners", "bullets": [
     "Creatures in every mine drop more ore the deeper you go: about the same on floors 1–10, then rising to 8 pieces by floor 40 (was 5). Magma Golems and Abyss Wraiths drop a bit more; Deep Bosses drop about half again as much. Drops stay server-checked with the same anti-replay rules. Requested by Conner.",
     "New Stone Quarry north of the Big Farms (top-right on the map, also in the Mines picker): only Stone, denser deeper, no creatures, not a buyable monument. Countryside farm plots keep their original ids and layouts. Hire Miner · Stone Quarry at the Employment Office — same wage/offline rules as other miners, stone-only haul. Requested by chessguy2.",
