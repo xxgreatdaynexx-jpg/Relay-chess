@@ -13,7 +13,9 @@ describe('miner gather bias (pt1350u)', () => {
     expect(Object.keys(MINER_BIAS.magma.ores).sort()).toEqual(['coal', 'copper']);
     expect(Object.keys(MINER_BIAS.frost.ores).sort()).toEqual(['gem', 'silver']);
     expect(Object.keys(MINER_BIAS.mine.ores).sort()).toEqual(['gold', 'iron', 'stone']);
-    for (const c of MINER_CAVES) { expect(share(c)).toBeGreaterThanOrEqual(0.75); expect(share(c)).toBeLessThanOrEqual(0.9); }
+    expect(Object.keys(MINER_BIAS.quarry.ores)).toEqual(['stone']);
+    expect(share('quarry')).toBeCloseTo(1, 9);
+    for (const c of MINER_CAVES.filter((x) => x !== 'quarry')) { expect(share(c)).toBeGreaterThanOrEqual(0.75); expect(share(c)).toBeLessThanOrEqual(0.9); }
   });
   it('gold is the lightest of the main Mine bias', () => {
     const b = MINER_BIAS.mine.ores; expect(b.gold!).toBeLessThan(b.iron!); expect(b.gold!).toBeLessThan(b.stone!);
@@ -33,5 +35,6 @@ describe('miner gather bias (pt1350u)', () => {
     expect(JOBS.find((j) => j.id === 'miner:frost')!.bias).toBe('Mostly Silver Ore & Crystal');
     expect(JOBS.find((j) => j.id === 'miner:mine')!.bias).toBe('Mostly Iron Ore, Stone & Gold Ore');
     expect(isMinerCave('coral')).toBe(false);
+    expect(isMinerCave('quarry')).toBe(true);
   });
 });

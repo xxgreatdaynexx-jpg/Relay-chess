@@ -5,11 +5,13 @@ import { dirname, join } from 'node:path';
 import { CAVES, CAVE_DEFS, isCave, inExit, type OreId } from '../shared/mines';
 import { levelOf, floorRows, hasFloors, caveFloorBias, MAX_FLOOR, LADDER } from '../shared/mineFloors';
 import { mobCount, MOB_SKINS } from '../shared/mineCombat';
-import { JOBS, isMinerCave, MINER_CAVES, jobById } from '../shared/employment';
+import { JOBS, isMinerCave, MINER_CAVES, jobById, rollOre, minerItemEv, MINER_BIAS } from '../shared/employment';
 import { CITY_CAVES, parseLoc, mineLoc, WAREHOUSE } from '../shared/inventoryLocations';
 import { MinesWorld } from '../server/mines';
 import { canStand } from '../shared/fps';
-import { LANDMARK_IDS, MINE_SITES } from '../shared/worldLayout';
+import { LANDMARK_IDS, MINE_SITES, MINE_APRON } from '../shared/worldLayout';
+import { inLake } from '../shared/outskirts';
+import { bigFarms } from '../shared/bigFarms';
 import { CAVE_LANDMARK, ROYALTY_VENUE } from '../shared/royalty';
 import { LANDMARK_PRICE, properties } from '../shared/realEstate';
 
@@ -22,8 +24,22 @@ describe('Stone Quarry (chessguy2)', () => {
     expect(CAVE_DEFS.map((c) => c.id)).toContain('quarry');
     expect(CAVES.quarry.name).toMatch(/Stone Quarry/i);
     expect(MINE_SITES['mine-quarry']?.cave).toBe('quarry');
-    expect(MINE_SITES['mine-quarry']?.x).toBeGreaterThan(116); // east of plate
-    expect(MINE_SITES['mine-quarry']?.z).toBeLessThan(-150); // north / top of north-up map
+    expect(MINE_SITES['mine-quarry']?.x).toBeGreaterThan(300); // east / top-right above Big Farms
+    expect(MINE_SITES['mine-quarry']?.z).toBeLessThan(-130); // north of Big Farm lots
+    const q = MINE_SITES['mine-quarry']!;
+    expect(q.x).toBe(328); expect(q.z).toBe(-158);
+    expect(inLake(q.x, q.z, MINE_APRON / 2 + 4)).toBe(false);
+    for (let a = 0; a < 32; a++) {
+      const ang = (a * Math.PI) / 16, r = MINE_APRON / 2;
+      expect(inLake(q.x + Math.cos(ang) * r, q.z + Math.sin(ang) * r, 2), `apron lake ${a}`).toBe(false);
+    }
+    for (const f of bigFarms()) {
+      const onLot = q.x > f.lot.x0 - MINE_APRON / 2 && q.x < f.lot.x1 + MINE_APRON / 2 && q.z > f.lot.z0 - MINE_APRON / 2 && q.z < f.lot.z1 + MINE_APRON / 2;
+      expect(onLot, `lot ${f.n}`).toBe(false);
+      const onCrop = Math.abs(q.x - f.x) < f.w / 2 + MINE_APRON / 2 && Math.abs(q.z - f.z) < f.d / 2 + MINE_APRON / 2;
+      expect(onCrop, `crop ${f.n}`).toBe(false);
+    }
+    expect(q.z + MINE_APRON / 2).toBeLessThan(Math.min(...bigFarms().map((f) => f.lot.z0)));
     expect(CAVE_LANDMARK.quarry).toBeUndefined();
     expect(ROYALTY_VENUE['mine-quarry']).toBeUndefined();
     expect(LANDMARK_IDS).toContain('mine-quarry'); // map/apron placement only
@@ -73,14 +89,19 @@ describe('Stone Quarry (chessguy2)', () => {
     expect(w.mobsOn(40, 'quarry')).toHaveLength(0);
   });
 
-  it('rejects hired workers and keeps the existing three miner jobs', () => {
-    expect(MINER_CAVES).toEqual(['mine', 'frost', 'magma']);
-    expect(isMinerCave('quarry')).toBe(false);
-    expect(jobById('miner:quarry')).toBeUndefined();
-    expect(JOBS.filter((j) => j.kind === 'miner').map((j) => j.cave).sort()).toEqual(['frost', 'magma', 'mine']);
+  it('offers Miner · Stone Quarry (stone-only) alongside the other three miner jobs', () => {
+    expect(MINER_CAVES).toEqual(['mine', 'frost', 'magma', 'quarry']);
+    expect(isMinerCave('quarry')).toBe(true);
+    const job = jobById('miner:quarry');
+    expect(job?.cave).toBe('quarry');
+    expect(job?.label).toMatch(/Stone Quarry/i);
+    expect(MINER_BIAS.quarry.label).toMatch(/Only Stone/i);
+    expect(minerItemEv('quarry')).toBeCloseTo(0.1, 9);
+    const u = (() => { let s = 3; return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; })();
+    for (let i = 0; i < 200; i++) expect(rollOre('quarry', u)).toBe('stone');
+    expect(JOBS.filter((j) => j.kind === 'miner').map((j) => j.cave).sort()).toEqual(['frost', 'magma', 'mine', 'quarry']);
     const src = readFileSync(join(root, '../server/employment.ts'), 'utf8');
-    expect(src).toMatch(/Workers can't be sent to the Stone Quarry/);
-    expect(src).toMatch(/miner:quarry/);
+    expect(src).not.toMatch(/Workers can't be sent to the Stone Quarry/);
   });
 
   it('manual gather of stone works and banks toward the city warehouse pool', () => {

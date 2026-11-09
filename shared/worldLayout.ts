@@ -263,9 +263,9 @@ export const MINE_SITES: Record<string, MineSite> = {
   mine: { cave: 'mine', x: -PLATE - 32, z: -30, track: [[-PLATE - 5, -30]] },
   'mine-frost': { cave: 'frost', x: 46, z: -PLATE - 32, track: [[46, -PLATE - 8]] },
   'mine-magma': { cave: 'magma', x: PLATE + 34, z: 96, track: [[PLATE + 5, 60], [PLATE + 5, 96]] },
-  // Stone Quarry: north-east outskirts (top-right on the north-up map); dirt haul off the north road. Public manual access — not a buyable deed/royalty venue.
-  // Kept out of countryside seeded keepOut (shared/outskirts.ts) so cf:* farm ids stay on the pre-quarry catalog.
-  'mine-quarry': { cave: 'quarry', x: 145, z: -195, track: [[145, -PLATE - 8]] },
+  // Stone Quarry: extreme top-right, north of the Big Farms (east of the east ring). Dirt haul off the Big Farms north road.
+  // Kept out of countryside seeded keepOut (shared/outskirts.ts) so cf:* farm ids stay on the pre-quarry catalog. Not on the lake.
+  'mine-quarry': { cave: 'quarry', x: 328, z: -158, track: [[196, -PLATE - 8], [328, -PLATE - 8]] },
 };
 /** Outer edge of the countryside around the plate (decor fills it; the pan clamp covers it). */
 export const OUTSKIRTS = { x0: -222, x1: 208, z0: -218, z1: 192 };

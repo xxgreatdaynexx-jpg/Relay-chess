@@ -23,10 +23,10 @@ export const OFFLINE_CAP_MS = 8 * HOUR;
 export const MIN_ACCOUNT_AGE_MS = DAY;
 export const WAGE_SHARE = 0.45, HIRE_SHARE = 0.35, AMORTISE_DAYS = 7;
 export type WorkerKind = 'miner' | 'fisher';
-/** City mines workers may run. Stone Quarry is deliberately excluded (manual-only). */
-export type MinerCave = 'mine' | 'frost' | 'magma';
-export const MINER_CAVES: MinerCave[] = ['mine', 'frost', 'magma'];
-export const isMinerCave = (v: unknown): v is MinerCave => v === 'mine' || v === 'frost' || v === 'magma';
+/** City mines workers may run (incl. Stone Quarry — stone-only output). */
+export type MinerCave = 'mine' | 'frost' | 'magma' | 'quarry';
+export const MINER_CAVES: MinerCave[] = ['mine', 'frost', 'magma', 'quarry'];
+export const isMinerCave = (v: unknown): v is MinerCave => v === 'mine' || v === 'frost' || v === 'magma' || v === 'quarry';
 
 /** Expected base value of one fish from the worker's table (junk removed, average size → 1.0x base). */
 export const FISHER_ITEM_EV = (() => {
@@ -52,6 +52,8 @@ export const MINER_BIAS: Record<MinerCave, MinerBias> = {
   // crystal is 5x silver's price, so it stays a rare pick; the rest is mostly stone
   frost: { share: 0.768, ores: { silver: 62, gem: 1 }, label: 'Mostly Silver Ore & Crystal' },
   magma: { share: 0.854, ores: { coal: 1, copper: 1 }, label: 'Mostly Coal & Copper Ore' },
+  // Stone Quarry: only Stone (matches cave nodes); share 1 so the empty remainder is unused.
+  quarry: { share: 1, ores: { stone: 1 }, label: 'Only Stone' },
 };
 /** The normal (unbiased) node mix: ore -> fraction of nodes. */
 export function caveMix(c: MinerCave): Partial<Record<OreId, number>> {
@@ -63,13 +65,16 @@ const evOf = (t: Array<[OreId, number]>) => t.reduce((a, [o, w]) => a + ORES[o].
 /** Final worker pick table for a mine: [ore, probability], probabilities sum to 1. */
 export function minerTable(c: MinerCave): Array<[OreId, number]> {
   const b = MINER_BIAS[c]; const bt = Object.values(b.ores).reduce((a, w) => a + (w ?? 0), 0);
+  const biased = Object.entries(b.ores).map(([o, w]): [OreId, number] => [o as OreId, b.share * (w ?? 0) / bt]);
+  if (b.share >= 1) return biased;
   const rest = Object.entries(caveMix(c)).filter(([o]) => !(o in b.ores)).map(([o, w]): [OreId, number] => [o as OreId, (w ?? 0) * (b.restScale?.[o as OreId] ?? 1)]).filter(([, w]) => w > 0);
   const rt = rest.reduce((a, [, w]) => a + w, 0);
-  return [...Object.entries(b.ores).map(([o, w]): [OreId, number] => [o as OreId, b.share * (w ?? 0) / bt]), ...rest.map(([o, w]): [OreId, number] => [o, (1 - b.share) * w / rt])];
+  if (rt <= 0) return biased;
+  return [...biased, ...rest.map(([o, w]): [OreId, number] => [o, (1 - b.share) * w / rt])];
 }
 /** Worker value per ore before any bias (pt1350u baseline, from the old node mix): the economy anchor the tests hold to. */
 /** pt1379u: The Mine re-anchored to its iron-heavy mix (more iron, less gold, request #25). */
-export const WORKER_EV_BEFORE: Record<MinerCave, number> = { mine: 5.606, frost: 6.665, magma: 2.674 };
+export const WORKER_EV_BEFORE: Record<MinerCave, number> = { mine: 5.606, frost: 6.665, magma: 2.674, quarry: 0.1 };
 /** Per-ore value of the cave's current node mix. */
 export const unbiasedItemEv = (c: MinerCave) => CAVES[c].nodes.reduce((a, n) => a + ORES[n.ore].price, 0) / CAVES[c].nodes.length;
 export const minerItemEv = (c: MinerCave) => evOf(minerTable(c));

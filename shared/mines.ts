@@ -141,8 +141,8 @@ export const CAVE_DEFS: CaveDef[] = [
       '####........~###.....######.###....~~###.....#.~##',
       '##################################################',
     ] },
-  // Stone Quarry (chessguy2): city outskirts, stone only, manual mining — hired workers cannot work here.
-  { id: 'quarry', name: 'Stone Quarry', blurb: 'A cut-stone pit on the south-west outskirts. Only Stone — steady supply for community projects. Players only: hired workers cannot be sent here.', depthX: DEPTH_X, density: 0.55,
+  // Stone Quarry (chessguy2): north of the Big Farms, stone only; workers allowed (ordinary miner job).
+  { id: 'quarry', name: 'Stone Quarry', blurb: 'A cut-stone pit north of the Big Farms (top-right). Only Stone — steady supply for community projects. Hire a Miner · Stone Quarry at the Employment Office.', depthX: DEPTH_X, density: 0.55,
     bias: { stone: 1, coal: 0, copper: 0, iron: 0, silver: 0, gold: 0, gem: 0, diamond: 0 },
     theme: { sky: '#0a0a0c', fog: '#121214', ambient: '#a8a098', wall: '#8a8580', floor: '#6e6a64', lamp: '#d8c8a0', hazard: null },
     rows: [
@@ -237,7 +237,7 @@ export function buildCave(def: CaveDef, seed0 = 0): { map: ArenaMap; nodes: Mine
 }
 
 /** Each cave's main ores, by the names players see (pt1357u): mine picker, map tiles, job list. */
-export const CAVE_MAIN_ORES: Record<CaveId, string> = { mine: 'Iron Ore, Stone & Gold Ore', frost: 'Silver Ore & Crystal', magma: 'Coal & Copper Ore', coral: 'Mixed ores', fortmc: 'Oil Sand, Gas Shale & Tar Rock', quarry: 'Stone only · players only (no workers)' };
+export const CAVE_MAIN_ORES: Record<CaveId, string> = { mine: 'Iron Ore, Stone & Gold Ore', frost: 'Silver Ore & Crystal', magma: 'Coal & Copper Ore', coral: 'Mixed ores', fortmc: 'Oil Sand, Gas Shale & Tar Rock', quarry: 'Stone only' };
 
 export interface Cave extends CaveDef { map: ArenaMap; nodes: MineNode[] }
 export const CAVES: Record<CaveId, Cave> = Object.fromEntries(CAVE_DEFS.map((d) => [d.id, { ...d, ...buildCave(d) }])) as Record<CaveId, Cave>;

@@ -6,9 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
-  {"commit": "", "at": "2026-11-08T18:30:00-06:00", "title": "Deeper mine creature drops; Stone Quarry (players only)", "bullets": [
+  {"commit": "", "at": "2026-11-08T18:30:00-06:00", "title": "Deeper mine creature drops; Stone Quarry with miners", "bullets": [
     "Creatures in every mine drop more ore the deeper you go: about the same on floors 1–10, then rising to 8 pieces by floor 40 (was 5). Magma Golems and Abyss Wraiths drop a bit more; Deep Bosses drop about half again as much. Drops stay server-checked with the same anti-replay rules. Requested by Conner.",
-    "New Stone Quarry on the north-east outskirts (also in the Mines mine picker): only Stone, denser deeper, no creatures. Public player access only — hired workers cannot be assigned there, and it is not a buyable monument. Countryside farm plots keep their original ids and layouts. Employment Office jobs stay The Mine, Frostbite and Magma only. Requested by chessguy2.",
+    "New Stone Quarry north of the Big Farms (top-right on the map, also in the Mines picker): only Stone, denser deeper, no creatures, not a buyable monument. Countryside farm plots keep their original ids and layouts. Hire Miner · Stone Quarry at the Employment Office — same wage/offline rules as other miners, stone-only haul. Requested by chessguy2.",
     "Existing ore mixes, combat difficulty, mining tools, employee wages/buffs and the other three city mines are unchanged.",
   ]},
   {"commit": "", "at": "2026-11-08T14:00:35-06:00", "title": "Recover from profile errors and stalled sign-in connections", "bullets": ["Profile and account render errors now show a recoverable window instead of taking down the whole hub. Partial profile responses are handled more safely, and recovery does not clear saved sign-in details.", "If a sign-in attempt cannot connect to the server within 10 seconds, it now reports the connection problem and makes the button usable again. Wrong-password errors remain visible.", "This contains profile crashes and fixes a reproduced connection-wait bug; the exact cause of the reported phone green screen is not yet confirmed. Crash reports send only classified technical fields, not raw error messages or profile/session data."]},

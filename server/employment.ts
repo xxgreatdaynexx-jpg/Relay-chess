@@ -195,7 +195,6 @@ export class Employment {
     });
   }
   async hire(name: string, jobId: unknown) {
-    if (typeof jobId === 'string' && /^miner:quarry$/i.test(jobId)) throw new EmployError("Workers can't be sent to the Stone Quarry. Mine it yourself.");
     const j = jobById(jobId); if (!j) throw new EmployError('Unknown job.');
     const key = playerKey(name);
     return this.lock(key, async () => {
