@@ -57,6 +57,7 @@ export function EmploymentPanel({ onClose }: { onClose: () => void }) {
       {err && !v && <small className="text-amber-300">{err}</small>}
       {v && (
         <>
+          <div className="employ-roster" data-testid="employ-roster">
           <h4>Your workers</h4>
           {!v.workers.length && <small>No one on the payroll yet.</small>}
           <ul className="employ-list">
@@ -107,6 +108,8 @@ export function EmploymentPanel({ onClose }: { onClose: () => void }) {
           </ul>
           {v.workers.length > 0 && <HaulLog log={v.log ?? []} />}
           {!!v.notes?.length && <small className="text-amber-300" data-testid="employ-notes">{v.notes.join(' ')}</small>}
+          </div>
+          <div className="employ-hire" data-testid="employ-hire">
           <h4>Hire</h4>
           {!v.canHire && v.reason && <small className="text-amber-300" data-testid="employ-reason">{v.reason}</small>}
           <ul className="employ-list">
@@ -117,6 +120,7 @@ export function EmploymentPanel({ onClose }: { onClose: () => void }) {
                 <button type="button" disabled={!!busy || !v.canHire || !p} data-testid={`employ-hire-${j.id}`} onClick={() => act(`h:${j.id}`, 'employ_hire', { job: j.id }, (r) => `Hired ${j.label} for 🪙 ${chips((r.charged as number) ?? 0)} (fee + first day).`)}>{busy === `h:${j.id}` ? 'Hiring…' : p ? `Hire for 🪙 ${chips(p.hire + p.wage)}` : 'Hire'}</button>
               </li>); })}
           </ul>
+          </div>
         </>
       )}
       {msg && <small role="status" data-testid="employ-msg">{msg}</small>}

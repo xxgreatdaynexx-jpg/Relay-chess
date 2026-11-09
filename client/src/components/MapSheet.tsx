@@ -21,7 +21,7 @@ export const MapSheet = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement
   const all = nodes(children);
   const existing = all.find((n) => isValidElement(n) && n.type === 'header');
   const close = all.find((n) => isValidElement<{ className?: string }>(n) && /(?:world-deed-x|world-casino-x)/.test(n.props.className ?? ''));
-  const title = all.find((n) => isValidElement<{ className?: string }>(n) && (n.type === 'h3' || /(?:grocery-front|cityhall-front)/.test(n.props.className ?? '')));
+  const title = all.find((n) => isValidElement<{ className?: string }>(n) && (n.type === 'h3' || /(?:grocery-front|cityhall-front|employ-front)/.test(n.props.className ?? '')));
   const body = all.filter((n) => n !== existing && n !== close && n !== title);
   const headerProps = { className: 'map-sheet-header', onPointerDown: (e: React.PointerEvent) => e.stopPropagation() };
   return <div {...props} className={`${className ?? ''} map-sheet`} ref={ref}>

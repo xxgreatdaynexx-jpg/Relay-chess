@@ -1996,17 +1996,23 @@ html, body { overflow-x: clip; }
 .mech-cars { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
 .mech-cars button { padding: 5px 9px; border-radius: 8px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); color: inherit; cursor: pointer; }
 .mech-cars button.on { border-color: #ffa62b; }
-.employ-panel { width: min(480px, calc(100% - 24px)); max-height: calc(100% - 24px); overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-.employ-front { border-radius: 12px; padding: 10px 12px; background: linear-gradient(135deg, #2c4a7a, #e0a23a); color: #fff; display: flex; flex-direction: column; }
+.employ-panel { width: min(560px, calc(100% - 16px)); height: 90dvh; max-height: calc(100% - 16px); overflow: hidden; display: flex; flex-direction: column; gap: 8px; }
+.employ-front { flex: 0 0 auto; border-radius: 12px; padding: 10px 12px; background: linear-gradient(135deg, #2c4a7a, #e0a23a); color: #fff; display: flex; flex-direction: column; }
 .employ-front span { font-weight: 900; letter-spacing: .1em; font-size: 17px; } .employ-front small { opacity: .85; }
-.employ-rules { font-size: 11px; opacity: .8; margin: 0; }
+.employ-rules { flex: 0 0 auto; font-size: 11px; opacity: .8; margin: 0; }
 .employ-panel h4 { font-size: 13px; font-weight: 800; margin: 4px 0 0; }
+.employ-roster { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 6px; }
+.employ-hire { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; }
 .employ-list { display: flex; flex-direction: column; gap: 6px; }
-.employ-panel > .employ-list:first-of-type { max-height: min(50vh, 420px); overflow-y: auto; overscroll-behavior: contain; }
 .employ-list li { display: flex; flex-direction: column; gap: 3px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 7px 9px; }
 .employ-list li small { font-size: 11px; opacity: .8; }
 .employ-list li button { align-self: flex-start; font-size: 12px; padding: 4px 10px; border-radius: 7px; background: rgba(224,162,58,.2); border: 1px solid rgba(224,162,58,.5); }
 .employ-list li button:disabled { opacity: .5; }
+/* Mobile MapSheet already scrolls the body — avoid a second tiny nested scroller. */
+@media (max-width: 640px), (max-height: 500px) {
+  .employ-panel { width: 100%; height: auto; max-height: none; overflow: visible; }
+  .employ-roster { flex: none; overflow: visible; min-height: 0; }
+}
 .employ-btns { display: flex; gap: 6px; } .employ-list li .employ-fire { background: rgba(255,80,80,.12); border-color: rgba(255,80,80,.4); }
 .employ-expected { display: block; font-size: 11px; opacity: .85; line-height: 1.35; }
 .employ-priority { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; font-size: 11px; }
@@ -2534,7 +2540,7 @@ body.he-full-open .he-table.he-full { visibility: visible; }
   .world .world-deed > * { flex-shrink: 0; }
   /* The sheet itself scrolls: keep its actual title sticky, not just its fixed close button.
      Grocery/City Hall use a branded front instead of h3; Coral storage has a nested inventory h4. */
-  .world .world-deed > :is(h3, .grocery-front, .cityhall-front),
+  .world .world-deed > :is(h3, .grocery-front, .cityhall-front, .employ-front),
   .world .world-deed:not(:has(> h3)) > .bldg-inv > h4 {
     position: sticky; top: 0; z-index: 4; flex: none; min-height: 44px; margin: 0;
     padding: max(8px, env(safe-area-inset-top)) 56px 8px 0; background: #101418; overflow-wrap: anywhere;
@@ -2549,7 +2555,7 @@ body.he-full-open .he-table.he-full { visibility: visible; }
   /* Real shared header is outside the ONLY scrolling element. No viewport-fixed close dependency. */
   .map-sheet, .world .world-deed.map-sheet { overflow: hidden !important; display: flex; flex-direction: column; }
   .map-sheet > .map-sheet-header { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; position: relative; z-index: 4; background: #101418; padding: 0; min-height: 44px; }
-  .map-sheet > .map-sheet-header > :is(h3, .grocery-front, .cityhall-front) { flex: 1 1 auto; min-width: 0; margin: 0; padding: 0; overflow-wrap: anywhere; }
+  .map-sheet > .map-sheet-header > :is(h3, .grocery-front, .cityhall-front, .employ-front) { flex: 1 1 auto; min-width: 0; margin: 0; padding: 0; overflow-wrap: anywhere; }
   .map-sheet > .map-sheet-header > :is(.world-deed-x, .world-casino-x) { position: static !important; inset: auto !important; flex: 0 0 auto; min-width: 44px; min-height: 44px; opacity: 1; }
   .map-sheet > .map-sheet-body, .world .world-deed > .map-sheet-body { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-height: 0; min-width: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
   .map-sheet .panel-drag-handle { display: none; }

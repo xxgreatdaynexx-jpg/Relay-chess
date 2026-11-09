@@ -43,18 +43,26 @@ describe('haul visual (pt2101u queue #6)', () => {
   it('builds a road path with positive length and pose interpolation', () => {
     const from = haulSiteXZ('factory')!; const to = haulSiteXZ('market')!;
     const path = roadPath(from, to);
-    expect(path.length).toBeGreaterThanOrEqual(2);
-    expect(pathLength(path)).toBeGreaterThan(10);
+    expect(path.length).toBeGreaterThan(3); // follows city roads, not a 2-point straight line
+    expect(pathLength(path)).toBeGreaterThan(Math.hypot(from[0] - to[0], from[1] - to[1]) * 1.15);
     const dur = haulDurationMs(path);
     expect(HAUL_SPEED).toBe(14);
     expect(HAUL_MAX_MS).toBe(90_000);
     expect(dur).toBeGreaterThanOrEqual(HAUL_MIN_MS);
     expect(dur).toBeLessThanOrEqual(HAUL_MAX_MS);
+    // Mine → warehouse uses roads (was previously a near-straight 3-pt fallback)
+    const mine = haulSiteXZ('mine:mine')!; const wh = haulSiteXZ('warehouse')!;
+    const minePath = roadPath(mine, wh);
+    expect(minePath.length).toBeGreaterThan(5);
+    expect(pathLength(minePath)).toBeGreaterThan(Math.hypot(mine[0] - wh[0], mine[1] - wh[1]) * 1.1);
     const e = buildHaul('Amber', 'factory', 'market', 'factory-sell', 10_000)!;
     const mid = haulPose(e, e.departAt + (e.arriveAt - e.departAt) / 2);
     expect(mid.done).toBe(false);
     expect(Number.isFinite(mid.x + mid.z + mid.a)).toBe(true);
     expect(haulPose(e, e.arriveAt + 1).done).toBe(true);
+    // Facing follows the current segment
+    const early = haulPose(e, e.departAt + 1);
+    expect(Math.abs(early.a)).toBeGreaterThan(0);
   });
 
   it('rate-limits and caps concurrent cosmetic hauls; skips unknown/cross-map', () => {
