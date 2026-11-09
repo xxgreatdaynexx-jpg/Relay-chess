@@ -12,7 +12,7 @@ import { cityLabel } from './labelSprite';
 import { nacelleX } from './nacelle';
 import { socket } from './net';
 import { sg, sm, part, BOX, CYL, CYL8, SPH, buildHarbour } from './ocean3d';
-import { HUBS, HUB_MAPS, onMap, vehiclePose, type HubId, type LiveVehicle } from '../../../shared/logistics';
+import { HUBS, HUB_MAPS, onMap, vehiclePose, type HubId, type LiveVehicle, type Mode } from '../../../shared/logistics';
 
 function tag(text: string, color = '#ffd27a'): THREE.Sprite { // Chud City label look, pill sized to the full text (no truncation)
   const t = cityLabel(text, color); const d = t.userData as { w: number; h: number };
@@ -82,6 +82,33 @@ export function port(hub: HubId) {
   return buildHarbour({ x: x0 - 7, z0, z1, quayW: hub === 'city' ? 76 : 48, quayD: hub === 'city' ? 16 : 10, side: 1, cranes: hub === 'city' ? 2 : 1, stacks: hub === 'city' ? 6 : 3, label: sign });
 }
 
+
+/** Runway / airstrip top surface on each map. City uses a flat asphalt plane; resort and Fort McChud use a 0.15-tall
+ *  runway box centred at y=0.08 (top 0.155). Used so a parked aircraft sits on the tarmac, not at world y=0. */
+export const RUNWAY_SURFACE_Y: Record<HubId, number> = { city: 0.085, resort: 0.155, fortmc: 0.155 };
+
+/** Lowest Y of a vehicle mesh in local space (group origin, typically the fuselage centre). Ignores the object's own
+ *  translation so the same number works before and after it is placed in the scene. */
+export function modelMinY(obj: THREE.Object3D): number {
+  const py = obj.position.y; obj.position.y = 0; obj.updateMatrixWorld(true);
+  const y = new THREE.Box3().setFromObject(obj).min.y; obj.position.y = py; obj.updateMatrixWorld(true); return y;
+}
+
+/** Add this to vehiclePose.y so an aircraft's lowest point (nacelles, fuselage, wing) sits on that hub's runway when
+ *  pose.y is 0 (loading / taxi / takeoff roll / landing roll). Cruise altitude is raised by the same constant, so the
+ *  plane does not pop up as it leaves the ground. */
+export function aircraftGroundOffset(obj: THREE.Object3D, hub: HubId = 'city'): number {
+  return RUNWAY_SURFACE_Y[hub] - modelMinY(obj);
+}
+
+/** World Y used by the live-traffic loop for a vehicle at a given pose altitude. Ships sit slightly in the water;
+ *  aircraft are lifted by their cached (or computed) ground offset; trucks already have wheels on y=0. */
+export function freightAltitude(mode: Mode, poseY: number, obj: THREE.Object3D, hub: HubId = 'city'): number {
+  if (mode === 'ship' || mode === 'boat') return poseY - 0.2;
+  if (mode === 'plane' || mode === 'jet') return poseY + (typeof obj.userData.groundOffset === 'number' ? obj.userData.groundOffset : aircraftGroundOffset(obj, hub));
+  return poseY;
+}
+
 /** recheck #2: where a loading ship sits at a hub's berth: the first leg of its route, heading = rotation.y the live
  *  traffic loop applies (-pose.a, bow +x), so the hull lies parallel to the pier, off the fender line. Shared by the
  *  map and the visual harness (which used to drop the ship at the berth unrotated, across the pier end). */
@@ -90,7 +117,8 @@ type V = { v: LiveVehicle; obj: THREE.Group; tag: THREE.Sprite };
 /** Draw the port + traffic on one map's scene (city, resort or Fort McChud). */
 export function createFreight(world: Pick<World, 'scene'>, hub: HubId = 'city') {
   const { scene } = world; const p = port(hub); scene.add(p); const live = new Map<string, V>();
-  const build = (v: LiveVehicle) => ((v.mode === 'plane' || v.mode === 'jet') ? plane() : (v.mode === 'ship' || v.mode === 'boat') ? ship() : truck(v.color, v.mode === 'hired'));
+  const build = (v: LiveVehicle) => { const o = (v.mode === 'plane' || v.mode === 'jet') ? plane() : (v.mode === 'ship' || v.mode === 'boat') ? ship() : truck(v.color, v.mode === 'hired');
+    if (v.mode === 'plane' || v.mode === 'jet') o.userData.groundOffset = aircraftGroundOffset(o, hub); return o; };
   const onLive = (list: LiveVehicle[]) => {
     const seen = new Set<string>();
     for (const v of list) { if (!onMap(v, hub)) continue; seen.add(v.id); const cur = live.get(v.id);
@@ -103,7 +131,7 @@ export function createFreight(world: Pick<World, 'scene'>, hub: HubId = 'city') 
     const now = Date.now();
     for (const [k, o] of live) { const ps = vehiclePose(o.v, now, hub);
       if (ps.phase === 'arrived' || (ps.phase === 'loading' && o.v.mode !== 'ship' && o.v.mode !== 'plane')) { o.obj.visible = o.tag.visible = false; if (ps.phase === 'arrived') { scene.remove(o.obj, o.tag); live.delete(k); } continue; }
-      o.obj.visible = o.tag.visible = true; o.obj.position.set(ps.x, ps.y + ((o.v.mode === 'ship' || o.v.mode === 'boat') ? -0.2 : 0), ps.z); o.obj.rotation.y = -ps.a; o.tag.position.set(ps.x, ps.y + ((o.v.mode === 'ship' || o.v.mode === 'boat') ? 7 : (o.v.mode === 'plane' || o.v.mode === 'jet') ? 3 : 3.4), ps.z); }
+      o.obj.visible = o.tag.visible = true; const y = freightAltitude(o.v.mode, ps.y, o.obj, hub); o.obj.position.set(ps.x, y, ps.z); o.obj.rotation.y = -ps.a; o.tag.position.set(ps.x, y + ((o.v.mode === 'ship' || o.v.mode === 'boat') ? 7.2 : (o.v.mode === 'plane' || o.v.mode === 'jet') ? 3 : 3.4), ps.z); }
   };
   const watch = () => socket.emit('freight_watch', true);
   socket.on('freight_live', onLive); socket.on('connect', watch); if (socket.connected) watch();
