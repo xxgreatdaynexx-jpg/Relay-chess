@@ -8,8 +8,8 @@ import { FLOOR_LEVELS, TICK_MS, floorSize, frecipe, gridOf, nameOfKey, step, typ
 export const openFactoryView = (name: string) => window.dispatchEvent(new CustomEvent('open-factory-view', { detail: name }));
 
 type View = { ok: boolean; error?: string; name?: string; level?: number; state?: FState; machines?: number; now?: number };
-const LOGISTICS = new Set<Kind>(['belt', 'underground', 'splitter', 'inserter', 'chest_in', 'chest_out']);
-const KIND_NAME: Record<Kind, string> = { belt: 'Belt', underground: 'Underground belt', splitter: 'Splitter', inserter: 'Inserter', chest_in: 'Input chest', chest_out: 'Output chest', smelter: 'Smelter', press: 'Press', roller: 'Roller', drawer: 'Wire drawer', assembler: 'Assembler', jeweler: 'Jeweler', fabricator: 'Fabricator', mill: 'Mill', cannery: 'Cannery' };
+const LOGISTICS = new Set<Kind>(['belt', 'underground', 'splitter', 'inserter', 'chest_in', 'chest_out', 'chest_sell']);
+const KIND_NAME: Record<Kind, string> = { belt: 'Belt', underground: 'Underground belt', splitter: 'Splitter', inserter: 'Inserter', chest_in: 'Input chest', chest_out: 'Output chest', chest_sell: 'Auto-sell chest', smelter: 'Smelter', press: 'Press', roller: 'Roller', drawer: 'Wire drawer', assembler: 'Assembler', jeweler: 'Jeweler', fabricator: 'Fabricator', mill: 'Mill', cannery: 'Cannery' };
 
 /** Read-only view of another player's factory: no socket ops, no pointer tools, nothing to collect, move, build or edit. */
 export function FactoryViewer() {
@@ -77,7 +77,7 @@ export function FactoryViewer() {
                 {!machines.length && <li className="opacity-60">No machines placed.</li>}
               </ul>
               <h3 className="mb-1 mt-3 font-semibold">🛤 Logistics</h3>
-              <p className="opacity-80">Belts {count('belt')} · Undergrounds {count('underground')} · Splitters {count('splitter')} · Inserters {count('inserter')} · Input chests {count('chest_in')} · Output chests {count('chest_out')}</p>
+              <p className="opacity-80">Belts {count('belt')} · Undergrounds {count('underground')} · Splitters {count('splitter')} · Inserters {count('inserter')} · Input chests {count('chest_in')} · Output chests {count('chest_out')} · Auto-sell chests {count('chest_sell')}</p>
               {s.ents.some((e) => e.k === 'chest_in' && e.f) && <p className="mt-1 opacity-70">Input chest filters: {[...new Set(s.ents.filter((e) => e.k === 'chest_in' && e.f).map((e) => nameOfKey(e.f!)))].join(', ')}</p>}
               {made.length > 0 && <><h3 className="mb-1 mt-3 font-semibold">📈 Made (lifetime)</h3><ul>{made.map(([k, q]) => <li key={k} className="flex justify-between"><span>{nameOfKey(k)}</span><b>{q.toLocaleString('en-US')}</b></li>)}</ul></>}
               <p className="mt-3 text-xs opacity-60">Read-only. You can't collect, move, build or edit anything here.</p>

@@ -14,7 +14,7 @@ import { clipKitMissing, clipToPlaceItems, entsToClip, type FactoryClip } from '
 
 export type FAck = { ok: boolean; error?: string; state?: FState | null; level?: number; storage?: Stack[]; guest?: boolean; now?: number; result?: unknown };
 type Tool = 'select' | 'remove' | Kind;
-const ICON: Record<Kind, string> = { belt: '➡', underground: '⤵', splitter: '⑂', inserter: '🦾', chest_in: '📥', chest_out: '📤', smelter: '🔥', press: '🔨', roller: '⚙', drawer: '🧵', assembler: '🏗', jeweler: '💎', fabricator: '🏭', mill: '🌾', cannery: '🥫' };
+const ICON: Record<Kind, string> = { belt: '➡', underground: '⤵', splitter: '⑂', inserter: '🦾', chest_in: '📥', chest_out: '📤', chest_sell: '💰', smelter: '🔥', press: '🔨', roller: '⚙', drawer: '🧵', assembler: '🏗', jeweler: '💎', fabricator: '🏭', mill: '🌾', cannery: '🥫' };
 const hash = (x: number, y: number) => { let h = Math.imul(x * 374761393 + y * 668265263, 1274126177) >>> 0; h ^= h >>> 13; return (h % 1000) / 1000; };
 
 /** Factorio-ish grid factory: server-authoritative sim, predicted locally between syncs. */
@@ -372,6 +372,11 @@ export function Inspect({ e, storage, store, onEdit, onRemove, onMove, onClose, 
       {e.k === 'splitter' && <SplitRatio e={e} onEdit={onEdit} />}
       {e.k === 'underground' && <p className="mines-note">Pairs with the next underground ahead facing the same way (2–6 tiles). Items skip everything in between.</p>}
       {e.k === 'chest_out' && <FactorySearchSelect label="Only accept" value={e.f ?? ''} testid="fac-out-filter" placeholder={{ value: '', label: '— anything —' }} onPick={(v) => onEdit({ f: v || null })} opts={storage.map((k) => ({ value: k, label: nameOfKey(k) }))} />}
+      {e.k === 'chest_sell' && <>
+        <p className="mines-note">Sells delivered items to the house at the normal price. When the daily house cap is reached, items wait here.</p>
+        <FactorySearchSelect label="Only accept" value={e.f ?? ''} testid="fac-sell-filter" placeholder={{ value: '', label: '— anything sellable —' }} onPick={(v) => onEdit({ f: v || null })} opts={[...new Set([...storage, ...Object.keys(e.ib ?? {})])].map((k) => ({ value: k, label: nameOfKey(k) }))} />
+        {!!Object.values(e.ib ?? {}).some((q) => q > 0) && <p className="mines-note" data-testid="fac-sell-waiting">Waiting: {Object.entries(e.ib ?? {}).filter(([, q]) => q > 0).map(([k, q]) => `${q}× ${nameOfKey(k)}`).join(', ')}</p>}
+      </>}
       {e.k === 'chest_in' && <FactorySearchSelect label="Pulls" value={e.f ?? ''} testid="fac-filter" placeholder={{ value: '', label: '— nothing —' }} onPick={(v) => onEdit({ f: v || null })} opts={storage.map((k) => ({ value: k, label: `${nameOfKey(k)} (${store.get(k) ?? 0} banked)`, search: nameOfKey(k) }))} />}
       <div className="fac-iact">
         <button type="button" onClick={() => onEdit({ d: (e.d + 1) % 4 })}>⟳ Rotate</button>
@@ -453,7 +458,7 @@ export function render(cv: HTMLCanvasElement, c: SimRef, frac: number, t: number
     if (off(e)) continue;
     const px = X(e.x), py = Y(e.y);
     if (e.k === 'inserter') drawInserter(ctx, e, px, py, ts, frac);
-    else if (e.k === 'chest_in' || e.k === 'chest_out') drawChest(ctx, e, px, py, ts);
+    else if (e.k === 'chest_in' || e.k === 'chest_out' || e.k === 'chest_sell') drawChest(ctx, e, px, py, ts);
     else if (KINDS[e.k].machine) drawMachine(ctx, e, px, py, ts, t);
     if (u.sel === e.id || u.sels.includes(e.id) || u.removing.has(e.id)) { const sz = KINDS[e.k].size * ts; ctx.strokeStyle = u.removing.has(e.id) ? '#ff5050' : '#ffe066'; ctx.lineWidth = 2; ctx.strokeRect(px + 1, py + 1, sz - 2, sz - 2); }
   }
@@ -481,7 +486,7 @@ export function render(cv: HTMLCanvasElement, c: SimRef, frac: number, t: number
     const mw = Math.round(Math.min(W, H) * 0.24); const ms = mw / size; const mx = W - mw - 10, my = H - mw - 10;
     ctx.fillStyle = 'rgba(10,11,13,.85)'; ctx.fillRect(mx - 3, my - 3, mw + 6, mw + 6);
     ctx.fillStyle = '#2b2d31'; ctx.fillRect(mx, my, mw, mw);
-    for (const e of s.ents) { const n = KINDS[e.k].size; ctx.fillStyle = e.k === 'belt' || e.k === 'splitter' || e.k === 'underground' ? '#c9a227' : e.k === 'inserter' ? '#e0c040' : e.k === 'chest_in' ? '#3f7fbf' : e.k === 'chest_out' ? '#3fa060' : KINDS[e.k].color; ctx.fillRect(mx + e.x * ms, my + e.y * ms, Math.max(1, n * ms), Math.max(1, n * ms)); }
+    for (const e of s.ents) { const n = KINDS[e.k].size; ctx.fillStyle = e.k === 'belt' || e.k === 'splitter' || e.k === 'underground' ? '#c9a227' : e.k === 'inserter' ? '#e0c040' : e.k === 'chest_in' ? '#3f7fbf' : e.k === 'chest_out' ? '#3fa060' : e.k === 'chest_sell' ? '#c9a04a' : KINDS[e.k].color; ctx.fillRect(mx + e.x * ms, my + e.y * ms, Math.max(1, n * ms), Math.max(1, n * ms)); }
     const vx = (-L.ox / ts) * ms, vy = (-L.oy / ts) * ms, vw = (W / ts) * ms, vh = (H / ts) * ms;
     ctx.save(); ctx.beginPath(); ctx.rect(mx, my, mw, mw); ctx.clip(); ctx.strokeStyle = '#ffe066'; ctx.lineWidth = 2; ctx.strokeRect(mx + vx, my + vy, vw, vh); ctx.restore();
     ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1; ctx.strokeRect(mx - 0.5, my - 0.5, mw + 1, mw + 1);
@@ -568,14 +573,23 @@ function drawItem(ctx: CanvasRenderingContext2D, key: string, cx: number, cy: nu
 }
 /** Steel crate: corner brackets, coloured band (blue in / green out), bolts. */
 function drawChest(ctx: CanvasRenderingContext2D, e: Ent, x: number, y: number, ts: number) {
-  const p = ts * 0.1, w = ts - 2 * p; const col = e.k === 'chest_in' ? '#3f7fbf' : '#3fa060';
+  const p = ts * 0.1, w = ts - 2 * p; const col = e.k === 'chest_in' ? '#3f7fbf' : e.k === 'chest_sell' ? '#c9a04a' : '#3fa060';
   dropShadow(ctx, x + p, y + p, w, w, ts * 0.08, ts * 0.6);
   ctx.fillStyle = steel(ctx, x + p, y + p, w, w, '#5d636b', 0.3); rrect(ctx, x + p, y + p, w, w, ts * 0.08); ctx.fill();
   ctx.fillStyle = steel(ctx, x + p, y + ts * 0.42, w, ts * 0.16, col, 0.3); ctx.fillRect(x + p, y + ts * 0.42, w, ts * 0.16);
   ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.lineWidth = Math.max(1, ts * 0.05); rrect(ctx, x + p, y + p, w, w, ts * 0.08); ctx.stroke();
   ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 1; ctx.strokeRect(x + p * 2, y + p * 2, w - p * 2, w - p * 2);
   if (ts >= 14) for (const [bx, by] of [[0.2, 0.2], [0.8, 0.2], [0.2, 0.8], [0.8, 0.8]]) bolt(ctx, x + ts * bx, y + ts * by, Math.max(0.8, ts * 0.04));
-  if ((e.k === 'chest_in' || e.k === 'chest_out') && e.f) drawItem(ctx, e.f, x + ts / 2, y + ts * 0.28, ts * 0.16);
+  if ((e.k === 'chest_in' || e.k === 'chest_out' || e.k === 'chest_sell') && e.f) drawItem(ctx, e.f, x + ts / 2, y + ts * 0.28, ts * 0.16);
+  if (e.k === 'chest_sell') {
+    let held = 0; for (const q of Object.values(e.ib ?? {})) if (q > 0) held += q;
+    if (held > 0 && ts >= 16) {
+      ctx.fillStyle = 'rgba(0,0,0,.65)'; const label = held > 999 ? '999+' : String(held);
+      ctx.font = `bold ${Math.max(8, Math.round(ts * 0.22))}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(x + ts * 0.2, y + ts * 0.62, ts * 0.6, ts * 0.22);
+      ctx.fillStyle = '#ffe9a0'; ctx.fillText(label, x + ts / 2, y + ts * 0.73);
+    }
+  }
   ctx.fillStyle = 'rgba(255,255,255,.85)'; arrow(ctx, x + ts / 2 + DX[e.d] * ts * 0.3, y + ts / 2 + DY[e.d] * ts * 0.3, e.d, ts * 0.12);
 }
 function drawInserter(ctx: CanvasRenderingContext2D, e: Ent, x: number, y: number, ts: number, frac: number) {

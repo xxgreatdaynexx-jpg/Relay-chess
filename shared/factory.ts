@@ -2,14 +2,14 @@
  * Factory v2: a Factorio-ish grid builder. Pure, deterministic tick sim shared by server (authoritative) and client (prediction).
  * Items are stack keys `type:id` (same as mine_items / stackKey), so input/output chests read and write banked storage directly.
  */
-import { GOODS, ORES, MAX_BANKED_STACK, isOre, priceOf, nameOf, type ItemType } from './mines.js';
+import { GOODS, ORES, MAX_BANKED_STACK, isOre, priceOf, nameOf, sellable, type ItemType, type Stack } from './mines.js';
 
 export const TICK_MS = 500;
 export const MAX_CATCHUP_MS = 8 * 3600_000;
 export type Dir = 0 | 1 | 2 | 3; // E S W N
 export const DX = [1, 0, -1, 0] as const;
 export const DY = [0, 1, 0, -1] as const;
-export type Kind = 'belt' | 'underground' | 'splitter' | 'inserter' | 'chest_in' | 'chest_out' | 'smelter' | 'press' | 'roller' | 'drawer' | 'assembler' | 'jeweler' | 'fabricator' | 'mill' | 'cannery';
+export type Kind = 'belt' | 'underground' | 'splitter' | 'inserter' | 'chest_in' | 'chest_out' | 'chest_sell' | 'smelter' | 'press' | 'roller' | 'drawer' | 'assembler' | 'jeweler' | 'fabricator' | 'mill' | 'cannery';
 export interface KindDef { id: Kind; name: string; size: 1 | 2; cost: number; minFloor: number; color: string; desc: string; machine?: boolean }
 export const KINDS: Record<Kind, KindDef> = {
   belt:       { id: 'belt',       name: 'Conveyor Belt', size: 1, cost: 3,    minFloor: 1, color: '#c9a227', desc: 'Moves items 2 tiles/s. Drag to lay a line.' },
@@ -18,6 +18,7 @@ export const KINDS: Record<Kind, KindDef> = {
   inserter:   { id: 'inserter',   name: 'Inserter',      size: 1, cost: 15,   minFloor: 1, color: '#e0c040', desc: 'Grabs from behind, drops in front (1 item/s).' },
   chest_in:   { id: 'chest_in',   name: 'Input Chest',   size: 1, cost: 50,   minFloor: 1, color: '#3f7fbf', desc: 'Pulls one item type from your banked storage onto the line.' },
   chest_out:  { id: 'chest_out',  name: 'Output Chest',  size: 1, cost: 50,   minFloor: 1, color: '#3fa060', desc: 'Anything delivered here goes into banked storage.' },
+  chest_sell: { id: 'chest_sell', name: 'Auto-Sell Chest', size: 1, cost: 50, minFloor: 1, color: '#c9a04a', desc: 'Sells delivered items to the house at the normal price. When the daily house cap is reached, items wait in the chest.' },
   smelter:    { id: 'smelter',    name: 'Smelter',       size: 2, cost: 200,  minFloor: 1, color: '#b0502a', desc: 'Ore + coal -> ingots, bricks, glass.', machine: true },
   press:      { id: 'press',      name: 'Press',         size: 2, cost: 400,  minFloor: 1, color: '#5a6a80', desc: 'Ingots -> plates and coins.', machine: true },
   roller:     { id: 'roller',     name: 'Roller',        size: 2, cost: 400,  minFloor: 1, color: '#6a5a80', desc: 'Ingots -> rods, sheet, gold leaf.', machine: true },
@@ -28,7 +29,7 @@ export const KINDS: Record<Kind, KindDef> = {
   mill:       { id: 'mill',       name: 'Mill & Press',  size: 2, cost: 350,  minFloor: 1, color: '#9a7a3a', desc: 'Crops -> flour, sugar, juice, oil, cocoa, coconut milk.', machine: true },
   cannery:    { id: 'cannery',    name: 'Food Line',     size: 2, cost: 900,  minFloor: 2, color: '#a04a5a', desc: 'Flour, fish and produce -> bread, chocolate, canned fish, pies, banquets.', machine: true },
 };
-export const KIND_ORDER: Kind[] = ['belt', 'underground', 'splitter', 'inserter', 'chest_in', 'chest_out', 'smelter', 'press', 'roller', 'drawer', 'assembler', 'jeweler', 'fabricator', 'mill', 'cannery'];
+export const KIND_ORDER: Kind[] = ['belt', 'underground', 'splitter', 'inserter', 'chest_in', 'chest_out', 'chest_sell', 'smelter', 'press', 'roller', 'drawer', 'assembler', 'jeweler', 'fabricator', 'mill', 'cannery'];
 export const UG_MAX = 5;
 /** Belt-like: holds one item and moves it on. */
 export const isBeltish = (k: Kind) => k === 'belt' || k === 'splitter' || k === 'underground';
@@ -232,6 +233,63 @@ export function stockKey(st: Storage, f: string): string | null {
 export const OUT_CAP_CRAFTS = 1;
 export const backedUp = (e: { ob?: number }) => (e.ob ?? 0) > 0;
 export const INSERTER_TICKS = 2;
+/** Auto-sell chest buffer cap (same as a banked stack). Extra deliveries back up on the line. */
+export const CHEST_SELL_CAP = MAX_BANKED_STACK;
+export function sellableKey(key: string): boolean {
+  const [type, id] = key.split(':');
+  return !!type && !!id && sellable({ type: type as ItemType, id });
+}
+export function chestHeld(e: Pick<Ent, 'ib'>): number {
+  let n = 0; for (const q of Object.values(e.ib ?? {})) if (q > 0) n += q; return n;
+}
+export function stacksInChest(e: Pick<Ent, 'ib'>): Stack[] {
+  const out: Stack[] = [];
+  for (const [key, qty] of Object.entries(e.ib ?? {})) {
+    if (qty <= 0 || !sellableKey(key)) continue;
+    const [type, id] = key.split(':');
+    out.push({ type: type as ItemType, id, qty });
+  }
+  return out;
+}
+/** Take a prefix of stacks that still pays (fits under the remaining house-cap room). */
+export function takeToHouseCap(items: Stack[], already: number, capBase: number): Stack[] {
+  let at = already;
+  const out: Stack[] = [];
+  for (const s of items) {
+    if (!sellable(s) || s.qty <= 0) continue;
+    const price = priceOf(s);
+    if (!(price > 0)) continue;
+    const room = capBase - at;
+    if (room <= 0) break;
+    const qty = Math.min(s.qty, Math.floor(room / price + 1e-9));
+    if (qty < 1) continue;
+    out.push({ ...s, qty });
+    at += qty * price;
+  }
+  return out;
+}
+
+/** Keep only the prefix of stacks that still raise house-sale paid (respects cap, index, and buffs via `quotePaid`). */
+export function takePayableHouseSale(items: Stack[], quotePaid: (items: Stack[]) => number): Stack[] {
+  const out: Stack[] = [];
+  let paid = quotePaid([]);
+  for (const s of items) {
+    if (!sellable(s) || s.qty <= 0) continue;
+    if (quotePaid([...out, { ...s, qty: 1 }]) <= paid) continue;
+    let lo = 1, hi = s.qty;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi + 1) / 2);
+      const qPrev = mid === 1 ? paid : quotePaid([...out, { ...s, qty: mid - 1 }]);
+      const qMid = quotePaid([...out, { ...s, qty: mid }]);
+      if (qMid > qPrev) lo = mid; else hi = mid - 1;
+    }
+    out.push({ ...s, qty: lo });
+    paid = quotePaid(out);
+  }
+  return out;
+}
+
+
 
 export function newState(floor: number, now: number): FState {
   return { v: 1, floor, tick: 0, at: now, seen: now, ents: [], kit: { belt: 24, chest_in: 2, chest_out: 1, smelter: 1, inserter: 2 }, seq: 0, made: {}, stored: {} };
@@ -276,7 +334,10 @@ function accepts(e: Ent, key: string, st?: Storage): boolean {
     return (e.ib?.[key] ?? 0) < need[1] * 2;
   }
   // output chests back up (instead of overflowing) once that banked stack hits the storage limit; "Only accept" filter
-  return e.k === 'chest_out' && (!e.f || e.f === key) && (!st || st.get(key) < MAX_BANKED_STACK);
+  if (e.k === 'chest_out') return (!e.f || e.f === key) && (!st || st.get(key) < MAX_BANKED_STACK);
+  // auto-sell chests hold items until they can be sold; they back up when full or when the item isn't sellable
+  if (e.k === 'chest_sell') return sellableKey(key) && (!e.f || e.f === key) && chestHeld(e) < CHEST_SELL_CAP;
+  return false;
 }
 function give(s: FState, st: Storage, e: Ent, key: string) {
   if (e.k === 'chest_out') { st.add(key, 1); s.stored[key] = (s.stored[key] ?? 0) + 1; return; }

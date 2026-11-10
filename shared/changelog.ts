@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T08:25:00-06:00", "title": "Factory Auto-Sell Chest", "bullets": [
+    "Requested by Special Characters: the Machinist now sells an Auto-Sell Chest (same cost as an Output Chest). Anything delivered to it is sold to the house at the normal price, and the chips go to your wallet.",
+    "When you hit the daily house-sell cap, leftover items wait in the chest and sell automatically as soon as there is room again. Picking the chest up sends waiting items back to factory storage. Existing output chests, the house cap itself, and other factory parts are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T08:10:00-06:00", "title": "Buying a farm no longer sits on Buying…", "bullets": [
     "Requested by carter2: buying a farm (or any city property) no longer hangs on Buying… while the purchase wealth tax is figured out. If that price can’t be built in time, the buy is refused with a clear error and nothing is charged or granted.",
     "The daily house-sell cap and the farmland zoning tile limit are unchanged.",

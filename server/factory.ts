@@ -12,7 +12,7 @@ import { getFishing, FishError } from './fishing.js';
 import { requireResort } from './travel.js';
 import { playerKey } from './skins.js';
 import { MAX_BANKED_STACK, stackKey, isFood, recipeById, type Stack, type ItemType } from '../shared/mines.js';
-import { MAX_CATCHUP_MS, TICK_MS, advance, canPlace, cells, contents, FLOOR_LEVELS, frecipe, gridOf, machineBusy, machineSalePrice, isItemKey, isKind, isSplitWeights, MAX_SPLIT_W, KINDS, MAX_ENTS, newState, type Dir, type Ent, type FState, type Kind, type Storage } from '../shared/factory.js';
+import { MAX_CATCHUP_MS, TICK_MS, advance, canPlace, cells, contents, FLOOR_LEVELS, frecipe, gridOf, machineBusy, machineSalePrice, isItemKey, isKind, isSplitWeights, MAX_SPLIT_W, KINDS, MAX_ENTS, newState, stacksInChest, takePayableHouseSale, sellableKey, type Dir, type Ent, type FState, type Kind, type Storage } from '../shared/factory.js';
 import { awakeDeadline } from '../shared/hubSleep.js';
 
 const SAVE_MS = 4000;
@@ -74,6 +74,7 @@ export class FactoryWorld {
     if (now - s.at >= TICK_MS) s.at = now - ((now - s.at) % TICK_MS); // idle past the 8h window: skip, no production
     if (owner) s.seen = now;
     if (s.at !== before || owner) this.mark(account);
+    this.scheduleAutoSell(account, s, now);
     return s;
   }
   /** Old timed jobs: every job (finished or not) is paid out as finished output, so nobody loses a batch. */
@@ -153,7 +154,7 @@ export class FactoryWorld {
       const bad = canPlace(s, g, k, x, y, d); if (bad) { err = bad; continue; }
       const e: Ent = { id: ++s.seq, k, x, y, d: d as Dir };
       if (KINDS[k].machine) { const r = typeof b.r === 'string' && frecipe(b.r)?.machine === k ? b.r : undefined; if (r) e.r = r; }
-      if ((k === 'chest_in' || k === 'inserter' || k === 'chest_out') && isItemKey(b.f)) e.f = b.f;
+      if ((k === 'chest_in' || k === 'inserter' || k === 'chest_out' || k === 'chest_sell') && isItemKey(b.f)) e.f = b.f;
       s.ents.push(e); for (const [cx, cy] of [[x, y], ...(KINDS[k].size === 2 ? [[x + 1, y], [x, y + 1], [x + 1, y + 1]] : [])]) g.set(cy * 1000 + cx, e);
       s.kit[k] = (s.kit[k] ?? 0) - 1; placed++;
     }
@@ -162,7 +163,102 @@ export class FactoryWorld {
     return { placed, error: err || undefined };
   }
   /** Pick up: part back to your kit, anything inside back to banked storage. */
-  /** Accounts with a machine sale in flight: every other factory op and background save for them waits (one writer). */
+  /** In-flight auto-sell (separate from machine resale) so two get()s never sell the same chest twice. */
+  private autoSelling = new Set<string>();
+  private autoSellTail = new Map<string, Promise<unknown>>();
+  /** Test hook: wait until a scheduled auto-sell for this account finishes (or is already idle). */
+  async waitAutoSell(account: string) { const p = this.autoSellTail.get(playerKey(account)); if (p) await p; }
+
+  private scheduleAutoSell(account: string, s: FState, now: number) {
+    const k = playerKey(account);
+    if (this.autoSelling.has(k) || this.selling.has(k)) return;
+    if (!s.ents.some((e) => e.k === 'chest_sell' && stacksInChest(e).length)) return;
+    const p = this.flushAutoSell(account, s, now).catch((err) => { console.error('[factory] auto-sell failed:', (err as Error).message); });
+    this.autoSellTail.set(k, p);
+    void p.finally(() => { if (this.autoSellTail.get(k) === p) this.autoSellTail.delete(k); });
+  }
+
+  /**
+   * Sell whatever auto-sell chests currently hold, up to the remaining daily house cap. Leftovers stay in the chest.
+   * Chips, the daily cap, and the factory_v2 row commit in one transaction (same fail-closed pattern as machine sales).
+   */
+  private async flushAutoSell(account: string, s: FState, now: number): Promise<{ paid: number; sold: Stack[] } | null> {
+    const k = playerKey(account);
+    if (this.autoSelling.has(k) || this.selling.has(k)) return null;
+    const chests = s.ents.filter((e) => e.k === 'chest_sell');
+    if (!chests.length) return null;
+    const items = chests.flatMap((e) => stacksInChest(e));
+    if (!items.length) return null;
+    const mines = getMines();
+    if (mines.offline) return null;
+    let slice: Stack[] = [];
+    try { slice = takePayableHouseSale(items, (xs) => mines.quoteItems(account, now, xs).paid); }
+    catch { return null; }
+    if (!slice.length) return null;
+
+    this.autoSelling.add(k);
+    const snap = chests.map((e) => ({ e, ib: { ...(e.ib ?? {}) } }));
+    const restore = () => { for (const { e, ib } of snap) e.ib = { ...ib }; };
+    // Pull sold qty out of the chests (any chest holding that item).
+    for (const st of slice) {
+      let left = st.qty;
+      const key = stackKey(st);
+      for (const e of chests) {
+        if (left < 1) break;
+        const have = e.ib?.[key] ?? 0;
+        const q = Math.min(left, have);
+        if (q < 1) continue;
+        e.ib = e.ib ?? {};
+        e.ib[key] = have - q;
+        if (e.ib[key] <= 0) delete e.ib[key];
+        left -= q;
+      }
+    }
+
+    let sale: ReturnType<ReturnType<typeof getMines>['houseSale']>;
+    try { sale = mines.houseSale(account, now, slice, 'Factory auto-sell'); }
+    catch {
+      restore();
+      this.autoSelling.delete(k);
+      return null;
+    }
+
+    this.selling.add(k); this.dirty.delete(k);
+    const store = mines.store as (MinesStoreLike | null);
+    let applied = false;
+    const applyOnce = () => {
+      if (applied) return;
+      applied = true;
+      sale.apply();
+      let made = 0, food = 0;
+      for (const st of sale.q.items) {
+        if (st.type === 'ore') continue;
+        if (isFood(st) || st.type === 'food') food += st.qty; else made += st.qty;
+      }
+      if (made > 0) awardXp(account, 'engineering', made * 2);
+      if (food > 0) awardXp(account, 'cooking', food * 2);
+    };
+    const unlock = () => { this.selling.delete(k); this.autoSelling.delete(k); this.mark(account); };
+    let done: Promise<unknown> = Promise.resolve(); let failed: Error | null = null; let unknown = false; let late: boolean | null = null; let rows: unknown[] | null = null;
+    const ok = mines.adjustStacks(account, [], [upsert(k, account.trim(), s), ...sale.stmts], (r) => { rows = r; }, {
+      after: sale.w.after,
+      bind: (p) => { done = p; sale.w.bind(p); },
+      onFail: (err) => { failed = err; restore(); sale.w.revert(); },
+      onUnknown: () => { unknown = true; },
+      onLate: (committed) => { late = committed; if (committed) applyOnce(); else restore(); unlock(); },
+      committed: store?.txCommitted ? () => store.txCommitted!(sale.ledgerKey) : undefined,
+    });
+    if (!ok) { restore(); sale.w.revert(); this.selling.delete(k); this.autoSelling.delete(k); return null; }
+    if (rows) { sale.w.bind(Promise.resolve()); applyOnce(); unlock(); return { paid: sale.q.paid, sold: sale.q.items }; }
+    await done;
+    if (unknown) { if (late) return { paid: sale.q.paid, sold: sale.q.items }; return null; }
+    if (!failed) applyOnce();
+    unlock();
+    if (failed) return null;
+    return { paid: sale.q.paid, sold: sale.q.items };
+  }
+
+    /** Accounts with a machine sale in flight: every other factory op and background save for them waits (one writer). */
   readonly selling = new Set<string>();
   private saleSeq = 0;
   /** Server quote for selling one placed machine (t1967u). Refuses non-machines, busy machines and other people's ids. */
@@ -292,8 +388,9 @@ export class FactoryWorld {
       if (e.r !== r.id) { for (const [k, q] of contents({ ...e, it: null })) st.add(k, q); e.ib = {}; e.ob = 0; e.p = 0; e.r = r.id; }
     }
     if ('f' in b) {
-      if (e.k !== 'chest_in' && e.k !== 'inserter' && e.k !== 'chest_out') throw new MineError('Only chests and inserters take a filter.');
+      if (e.k !== 'chest_in' && e.k !== 'inserter' && e.k !== 'chest_out' && e.k !== 'chest_sell') throw new MineError('Only chests and inserters take a filter.');
       if (b.f !== null && !isItemKey(b.f)) throw new MineError('Unknown item.');
+      if (e.k === 'chest_sell' && b.f !== null && !sellableKey(String(b.f))) throw new MineError('That item cannot be sold to the house.');
       e.f = (b.f as string | null) ?? undefined;
     }
     if ('w' in b) {
@@ -407,7 +504,7 @@ export function publicFactoryView(name: string, now = Date.now()) {
   const level = getMines().factories.get(playerKey(clean))?.level ?? 0;
   const s = world.get(clean, now, false); if (!s) return null;
   const state = JSON.parse(JSON.stringify({ v: s.v, floor: s.floor, tick: s.tick, at: s.at, ents: s.ents, seq: s.seq, made: s.made, spd: s.spd, kit: {}, stored: {} })) as FState;
-  return { name: clean, level, state, machines: s.ents.filter((e) => KINDS[e.k] && !['belt', 'underground', 'splitter', 'inserter', 'chest_in', 'chest_out'].includes(e.k)).length, now };
+  return { name: clean, level, state, machines: s.ents.filter((e) => KINDS[e.k] && !['belt', 'underground', 'splitter', 'inserter', 'chest_in', 'chest_out', 'chest_sell'].includes(e.k)).length, now };
 }
 export function factoryViewRouter(): ReturnType<typeof expressRouter> {
   const r = expressRouter();

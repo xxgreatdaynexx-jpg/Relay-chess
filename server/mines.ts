@@ -714,14 +714,14 @@ export class MinesWorld {
    * Truck logistics: a house sale of goods held at the Chud City Warehouse. The caller debits the warehouse stock in the
    * same transaction as `stmts` (wallet credit + mine_daily + mine_sales) and calls apply() once it commits.
    */
-  houseSale(account: string, now: number, items: Stack[]) {
+  houseSale(account: string, now: number, items: Stack[], label = 'Chud City Warehouse') {
     if (HOUSE_SELL_BLOCKED.has(playerKey(account))) throw new MineError('House selling is disabled on this account.');
     const q = this.quoteItems(account, now, items.filter((s) => sellable(s) && s.qty > 0));
     if (!q.items.length) throw new MineError('Nothing to sell.');
     if (q.paid < 1) throw new MineError('Not worth a chip yet. Sell a bigger stack (stone is 1 chip per 10).');
     const k = playerKey(account); const day = dayKey(now);
     const ledgerKey = `mine:sell:${k}:${now}:${++this.saleSeq}`;
-    const memo = `Chud City Warehouse: sold ${q.items.map((s) => `${s.qty} ${nameOf(s)}`).join(', ')}`.slice(0, 200);
+    const memo = `${label}: sold ${q.items.map((s) => `${s.qty} ${nameOf(s)}`).join(', ')}`.slice(0, 200);
     const prev = this.daily.get(k); const base = prev && prev.day === day ? prev : { day, gross: 0, paid: 0 };
     const nd = { day, gross: base.gross + q.gross, paid: base.paid + q.paid };
     const w = getBank().transferAtomic([{ name: account, amount: q.paid, key: ledgerKey, game: 'mines', memo }]);
@@ -735,7 +735,7 @@ export class MinesWorld {
       const cave = CAVE_LANDMARK[this.lastCave.get(k) ?? 'mine'];
       if (cave) royaltyEarn(cave, account, q.paid * share); royaltyEarn('factory', account, q.paid * (1 - share));
     };
-    return { q, w, stmts, apply };
+    return { q, w, stmts, apply, ledgerKey };
   }
 
   // ------------------------------------------------------------ Factory
