@@ -126,6 +126,15 @@ export function ChatDrawer() {
     e.preventDefault();
     const text = draft.trim();
     if (!text) return;
+    if (/^\/(stuck|unstick)\s*$/i.test(text)) {
+      socket.timeout(5000).emit('mines_unstick', { reason: 'cmd' }, (err: Error | null, r?: { ok: boolean; error?: string }) => {
+        if (err || !r) return setError('Could not unstick. Open the mine first?');
+        if (!r.ok) return setError(r.error || 'Could not unstick.');
+        setError('');
+        setDraft('');
+      });
+      return;
+    }
     socket.timeout(8000).emit('chat_send', { text }, (err: Error | null, r?: { ok: boolean; error?: string }) => {
       if (err || !r) return setError('No response from the server.');
       if (!r.ok) return setError(r.error || 'Could not send.');

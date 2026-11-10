@@ -30,9 +30,9 @@ import { playPickaxe, playPickup, unlockSounds } from '@/lib/sounds';
 import type { Mines3D, MinerView, MobView, ShotView, MobFxView } from '@/lib/mines3d';
 import { levelOf, hasFloors, inLadder, MAX_FLOOR } from '../../../shared/mineFloors';
 import { MOBS, mobSkin, WEAPONS, ARMORS, weaponDef, canBuyGear, type GearView } from '../../../shared/mineCombat';
-import { MINE_CAVE_EVENT, CAVES, CAVE_DEFS, CAVE_MAIN_ORES, isCave, type CaveId, type MineNode, BACKPACK_CAP, NODE_R, ORES, ORE_ORDER, REACH, SWING_MS, isOre, inExit, priceOf, type Stack } from '../../../shared/mines';
+import { MINE_CAVE_EVENT, CAVES, CAVE_DEFS, CAVE_MAIN_ORES, isCave, type CaveId, type MineNode, BACKPACK_CAP, NODE_R, ORES, ORE_ORDER, REACH, SWING_MS, isOre, inExit, priceOf, UNSTICK_AUTO_MS, type Stack } from '../../../shared/mines';
 import { MINE_TOOLS, canBuyTool, combinedSwingMul, type MineToolId, type MineToolsView } from '../../../shared/mineTools';
-import { canStand, clampPitch, eyeHeightOf, moveHorizontal, speedOf, stepVertical, tryJump, type Body } from '../../../shared/fps';
+import { canStand, clampPitch, eyeHeightOf, moveHorizontal, speedOf, stepVertical, tryJump, depenetrate, applyKnockback, type Body } from '../../../shared/fps';
 
 const OPEN_KEY = 'relay-mines-open';
 const CAVE_KEY = 'relay-mines-cave';
@@ -115,7 +115,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
   const applyFloor = (r: FloorMsg) => {
     const m = me.current;
     lvl.current = levelOf(cave, r.floor);
-    hp.current = r.nodes; Object.assign(m, { x: r.x, y: r.y, z: r.z, vz: 0 }); mobs.current = [];
+    hp.current = r.nodes; Object.assign(m, { x: r.x, y: r.y, z: r.z, vz: 0 }); depenetrate(m as Body, MINE_MAP_()); mobs.current = [];
     setDeepest(r.deepest); setStops(r.stops); setPhp({ hp: r.hp, max: r.maxHp }); if (typeof r.raid === 'number') setRaidN(r.raid);
     setFloorS(r.floor);
   };
@@ -156,6 +156,9 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
   const [focused, setFocused] = useState(false);
   const [glError, setGlError] = useState('');
   const exiting = useRef(0);
+  const stuckSince = useRef(0);
+  const unstickBusy = useRef(0);
+  const unstickRef = useRef<(auto?: boolean) => void>(() => {});
   const packRef = useRef(pack); packRef.current = pack;
   const keys = useRef(new Set<string>());
   const look = useRef(readLook());
@@ -179,6 +182,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
       if (typeof r.floor === 'number') { lvl.current = levelOf(cave, r.floor); setFloorS(r.floor); setRaidN(r.raid ?? 0); setDeepest(r.deepest ?? 1); setStops(r.stops ?? []); setPhp({ hp: r.hp ?? 100, max: r.maxHp ?? 100 }); }
       const ok = canStand(r.x, r.y, r.z, MINE_MAP_()); const sp = MINE_MAP_().spawns[0]; // never start inside this cave's rock
       Object.assign(m, { id: r.id, x: ok ? r.x : sp[0], y: ok ? r.y : sp[1], z: ok ? r.z : 0, a: r.a, joined: true });
+      depenetrate(m as Body, MINE_MAP_());
       hp.current = r.nodes; three.current?.setNodes(r.nodes); gearEmit('mine_gear_view', {});
       setGuest(r.guest); setPack({ pack: r.pack, load: r.load, cap: r.cap, quote: r.quote });
       setStatus(r.guest ? 'Guest: you can mine, sign in to sell.' : 'Click the view to play. Left click swings.');
@@ -186,7 +190,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
     });
     const onState = (s: { raid?: number; floor?: number; players: MinerView[]; nodes: number[]; mobs?: MobView[]; shots?: ShotView[]; mfx?: MobFxView[] }) => { if ((s.floor ?? 1) !== lvl.current.floor) return; { const n = s.raid ?? 0; setRaidN((o) => (o === n ? o : n)); } mobs.current = s.mobs ?? []; three.current?.setMobs(mobs.current); three.current?.setShots(s.shots ?? []); if (s.mfx?.length) three.current?.mobFx(s.mfx); { const c = three.current?.bossCall; const n = c && c.until > performance.now() ? c.name : null; setBossCall((o) => (o === n ? o : n)); } hp.current = s.nodes; three.current?.setNodes(s.nodes); three.current?.setOthers(s.players, m.id); setOnline(s.players.length); };
     const onFx = (f: { node: number; broke: boolean }) => { three.current?.burstAt(f.node, f.broke); };
-    const onHurt = (h: { hp: number; max: number; dmg: number; kx?: number; ky?: number }) => { if (h.kx || h.ky) { m.x += h.kx ?? 0; m.y += h.ky ?? 0; } setPhp({ hp: h.hp, max: h.max }); setHurtT(Date.now()); playPickaxe('hit'); };
+    const onHurt = (h: { hp: number; max: number; dmg: number; kx?: number; ky?: number }) => { if (h.kx || h.ky) applyKnockback(m as Body, h.kx ?? 0, h.ky ?? 0, MINE_MAP_()); setPhp({ hp: h.hp, max: h.max }); setHurtT(Date.now()); playPickaxe('hit'); };
     const onDied = (d: FloorMsg & PackMsg & { lost: Stack[] }) => {
       applyFloor(d); setPack({ pack: d.pack, load: d.load, cap: d.cap, quote: null });
       const n = d.lost.reduce((t, s) => t + s.qty, 0);
@@ -199,8 +203,9 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
     const onRaidRoll = (d: RaidLootMsg) => { setRaidRoll(d); playPickup(); window.setTimeout(() => setRaidRoll((c) => (c === d ? null : c)), 9000); };
     socket.on('mines_raid_moved', onRaidMoved); socket.on('mines_raid_loot', onRaidLoot); socket.on('mines_raid_roll', onRaidRoll);
     socket.on('mines_hurt', onHurt); socket.on('mines_died', onDied); socket.on('mines_mobfx', onMobFx);
-    const onCorrect = (c: { x: number; y: number; z: number }) => { Object.assign(m, c); m.vz = 0; };
-    socket.on('mines_state', onState); socket.on('mines_fx', onFx); socket.on('mines_correct', onCorrect); socket.on('connect', join);
+    const onCorrect = (c: { x: number; y: number; z: number }) => { Object.assign(m, c); m.vz = 0; depenetrate(m as Body, MINE_MAP_()); };
+    const onUnstuck = (c: { x: number; y: number; z: number; via?: string }) => { Object.assign(m, { x: c.x, y: c.y, z: c.z, vz: 0, grounded: true }); stuckSince.current = 0; };
+    socket.on('mines_state', onState); socket.on('mines_fx', onFx); socket.on('mines_correct', onCorrect); socket.on('mines_unstuck', onUnstuck); socket.on('connect', join);
     if (socket.connected) join(); else socket.connect();
     let raf = 0, last = performance.now(), sendAcc = 0, lastDraw = 0;
     const frame = (t: number) => {
@@ -220,6 +225,15 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
         }
         if (k.has(' ')) tryJump(m as Body);
         stepVertical(m as Body, dt, MINE_MAP_());
+        { const map = MINE_MAP_();
+          if (!canStand(m.x, m.y, m.z, map)) {
+            depenetrate(m as Body, map);
+            if (!canStand(m.x, m.y, m.z, map)) {
+              if (!stuckSince.current) stuckSince.current = t;
+              else if (t - stuckSince.current >= UNSTICK_AUTO_MS) { stuckSince.current = t; unstickRef.current(true); }
+            } else stuckSince.current = 0;
+          } else stuckSince.current = 0;
+        }
         sendAcc += dt;
         if (sendAcc >= 1 / 15) { sendAcc = 0; socket.volatile.emit('mines_move', { x: m.x, y: m.y, z: m.z, a: m.a, p: m.p, c: m.crouch, s: m.sprint }); }
         if (hasFloors(cave) && lvl.current.floor < MAX_FLOOR && inLadder(m.x, m.y)) changeFloorRef.current('mines_descend', {});
@@ -245,7 +259,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
     const resizeT = window.setInterval(() => { const c = glRef.current; if (c && three.current && (c.width !== Math.round(c.clientWidth * three.current.renderer.getPixelRatio()))) three.current.resize(c.clientWidth, c.clientHeight); }, 500);
     return () => {
       dead = true; cancelAnimationFrame(raf); ro.disconnect(); window.clearInterval(resizeT);
-      socket.off('mines_state', onState); socket.off('mines_fx', onFx); socket.off('mines_correct', onCorrect); socket.off('connect', join); socket.off('mines_hurt', onHurt); socket.off('mines_died', onDied); socket.off('mines_mobfx', onMobFx); socket.off('mines_raid_moved', onRaidMoved); socket.off('mines_raid_loot', onRaidLoot); socket.off('mines_raid_roll', onRaidRoll);
+      socket.off('mines_state', onState); socket.off('mines_fx', onFx); socket.off('mines_correct', onCorrect); socket.off('mines_unstuck', onUnstuck); socket.off('connect', join); socket.off('mines_hurt', onHurt); socket.off('mines_died', onDied); socket.off('mines_mobfx', onMobFx); socket.off('mines_raid_moved', onRaidMoved); socket.off('mines_raid_loot', onRaidLoot); socket.off('mines_raid_roll', onRaidRoll);
       socket.emit('mines_leave');
       if (document.pointerLockElement) document.exitPointerLock?.();
     };
@@ -277,6 +291,16 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
     return () => { dead = true; const t = three.current; three.current = null; if (t) { t.renderer.forceContextLoss?.(); t.dispose(); } };
   }, [floor]);
   const changeFloorRef = useRef(changeFloor); changeFloorRef.current = changeFloor;
+  const requestUnstick = (auto = false) => {
+    const now = performance.now(); if (now - unstickBusy.current < 400) return; unstickBusy.current = now;
+    socket.timeout(5000).emit('mines_unstick', auto ? { auto: true } : {}, (err: Error | null, r?: { ok: boolean; error?: string; x: number; y: number; z: number }) => {
+      if (err || !r) { if (!auto) flash('Could not unstick.'); return; }
+      if (!r.ok) { flash(r.error ?? 'Could not unstick.'); return; }
+      Object.assign(me.current, { x: r.x, y: r.y, z: r.z, vz: 0, grounded: true }); stuckSince.current = 0;
+      if (!auto) flash('Back at the floor entrance.');
+    });
+  };
+  unstickRef.current = requestUnstick;
   const attackRef = useRef<() => boolean>(() => false);
   attackRef.current = attack;
   function attack(): boolean {
@@ -404,7 +428,11 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
           {loot && <div className="mines-toast mines-loot" data-testid="mines-loot">{loot}</div>}
           {glError && <div className="mines-toast">{glError}</div>}
           {!floors && <div className="mines-haul" data-testid="mines-haul">🎒 {pack.pack.reduce((t, s) => t + s.qty, 0)} carried · ~🪙{carriedWorth}{inExit(me.current.x, me.current.y) ? ' · at EXIT' : ''}</div>}
-          <div className="mines-hint">{floors ? `Deepest: floor ${deepest} · ` : ''}{status} · WASD move · 1/2/Q tool or sword · Shift sprint · C crouch · Space jump · Esc release</div>
+          <button type="button" className="mines-unstick" data-testid="mines-unstick" title="Teleport to this floor's entrance. Also /stuck in chat. Short cooldown; no ore, no deeper floor."
+            onMouseDown={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); requestUnstick(false); }}
+            style={{ position: 'absolute', left: 10, bottom: 28, zIndex: 3, minHeight: 36, padding: '6px 10px', borderRadius: 10, fontSize: 13, fontWeight: 700, touchAction: 'manipulation', color: '#fff4dc', background: 'rgba(10,8,6,0.82)', border: '1px solid #806040', pointerEvents: 'auto' }}>Unstick</button>
+          <div className="mines-hint">{floors ? `Deepest: floor ${deepest} · ` : ''}{status} · WASD move · 1/2/Q tool or sword · Shift sprint · C crouch · Space jump · Esc release · Unstick or /stuck if you clip a wall</div>
         </div>
         <aside className="mines-side" data-testid="mines-pack">
           <div className="mines-load">⛏️ Carried {pack.load}/{pack.cap}<div className="mines-bar"><i style={{ width: `${Math.min(100, (pack.load / pack.cap) * 100)}%` }} /></div></div>

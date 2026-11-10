@@ -187,10 +187,77 @@ function nudge(b: Body, axis: 'x' | 'y', push: number, map: ArenaMap, step: numb
   else if (!blockedAt(b.x + o, b.y, b.z, map, step, h)) b.x += o;
 }
 
+/**
+ * Nearest standable point to (x,y,z), or null if the map has no free space nearby.
+ * Spiral first (short pushes out of a wall), then a coarser grid, then map spawns.
+ */
+export function nearestStand(x: number, y: number, z: number, map: ArenaMap = MAP, height = PLAYER_HEIGHT): { x: number; y: number; z: number } | null {
+  if (canStand(x, y, z, map, height)) return { x, y, z };
+  const tryAt = (nx: number, ny: number) => canStand(nx, ny, z, map, height);
+  for (let rad = 0.15; rad <= 12 + 1e-9; rad += 0.15) {
+    const steps = Math.max(8, Math.ceil((2 * Math.PI * rad) / 0.15));
+    for (let i = 0; i < steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      const nx = x + Math.cos(a) * rad, ny = y + Math.sin(a) * rad;
+      if (tryAt(nx, ny)) return { x: nx, y: ny, z: groundAt(nx, ny, z + STEP_HEIGHT, map) };
+    }
+  }
+  let best: { x: number; y: number; z: number } | null = null, bestD = Infinity;
+  const x0 = Math.max(PLAYER_RADIUS + 0.05, x - 24), x1 = Math.min(map.w - PLAYER_RADIUS - 0.05, x + 24);
+  const y0 = Math.max(PLAYER_RADIUS + 0.05, y - 24), y1 = Math.min(map.d - PLAYER_RADIUS - 0.05, y + 24);
+  for (let ny = y0; ny <= y1; ny += 0.5) for (let nx = x0; nx <= x1; nx += 0.5) {
+    if (!tryAt(nx, ny)) continue;
+    const d = Math.hypot(nx - x, ny - y);
+    if (d < bestD) { bestD = d; best = { x: nx, y: ny, z: groundAt(nx, ny, z + STEP_HEIGHT, map) }; }
+  }
+  if (best) return best;
+  for (const s of map.spawns) if (canStand(s[0], s[1], s[2] ?? 0, map, height)) return { x: s[0], y: s[1], z: s[2] ?? 0 };
+  return null;
+}
+
+/** If the body overlaps solid, push it to the nearest free spot. No-op when already standable. */
+export function depenetrate(b: Body, map: ArenaMap = MAP): Body {
+  const h = heightOf(b);
+  if (canStand(b.x, b.y, b.z, map, h)) return b;
+  const p = nearestStand(b.x, b.y, b.z, map, h);
+  if (p) { b.x = p.x; b.y = p.y; b.z = p.z; b.vz = 0; b.grounded = true; }
+  return b;
+}
+
+/** Stepped, collision-aware knockback. Mutates the body and returns the applied delta (may be shorter than asked). */
+export function applyKnockback(b: Body, kx: number, ky: number, map: ArenaMap = MAP, opts?: { minX?: number }): { kx: number; ky: number } {
+  const k = Math.hypot(kx, ky);
+  if (k < 1e-8) return { kx: 0, ky: 0 };
+  if (!canStand(b.x, b.y, b.z, map, heightOf(b))) depenetrate(b, map);
+  const n = Math.max(1, Math.ceil(k / 0.2));
+  let ax = 0, ay = 0;
+  const minX = opts?.minX;
+  const h = heightOf(b);
+  for (let j = 1; j <= n; j++) {
+    const nx = b.x + (kx * j) / n, ny = b.y + (ky * j) / n;
+    if ((minX !== undefined && nx < minX) || !canStand(nx, ny, b.z, map, h)) break;
+    ax = (kx * j) / n; ay = (ky * j) / n;
+  }
+  b.x += ax; b.y += ay;
+  return { kx: ax, ky: ay };
+}
+
+/** A standable entrance/spawn on this map (first valid spawn, then a nearby search). */
+export function entranceStand(map: ArenaMap = MAP): { x: number; y: number; z: number } {
+  for (const s of map.spawns) if (canStand(s[0], s[1], s[2] ?? 0, map)) return { x: s[0], y: s[1], z: s[2] ?? 0 };
+  const seed = map.spawns[0];
+  const p = nearestStand(seed?.[0] ?? Math.min(4, map.w / 2), seed?.[1] ?? Math.min(7, map.d / 2), seed?.[2] ?? 0, map);
+  if (p) return p;
+  return { x: Math.min(4, map.w / 2), y: Math.min(7, map.d / 2), z: 0 };
+}
+
 /** Horizontal move with wall sliding and stair stepping. Mutates and returns the body. */
 export function moveHorizontal(b: Body, dx: number, dy: number, map: ArenaMap = MAP): Body {
   const step = b.grounded ? STEP_HEIGHT : 0.05;
   const h = heightOf(b);
+  // Already overlapping solid (knockback, a lag snap, or float error): push out before stepping, or the
+  // "undo if we *started* free" guard below would leave the body trapped and unable to walk.
+  if (!canStand(b.x, b.y, b.z, map, h)) depenetrate(b, map);
   // Sub-step long moves so nobody tunnels through thin geometry (railings, pillars).
   const n = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 0.2));
   for (let i = 0; i < n; i++) {
