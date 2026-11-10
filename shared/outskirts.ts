@@ -8,8 +8,10 @@ import { PLATE, MINE_SITES, MINE_APRON, OUTSKIRTS, RESERVED_VENUES, ROADS, type 
 import { housingType } from './housing.js';
 import { JAIL_SITE, JAIL_HALF } from './jail.js';
 import { inCivic } from './city.js';
-import { FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W } from './farm.js';
+import { FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, farmPlots } from './farm.js';
 import { AIRPORT_ROADS, RACETRACK_ROADS } from './venues.js';
+import { BIG_ROADS, BIG_ROAD_W, BIG_GROUND_X0, BIG_GROUND_X1, BIG_GROUND_Z0, BIG_FARM_AREA, bigFarms } from './bigFarms.js';
+import { RESORT_ROADS } from './resort.js';
 const VENUE_ROADS = [...AIRPORT_ROADS, ...RACETRACK_ROADS];
 
 type P = [number, number];
@@ -78,6 +80,86 @@ function genKeepOut(x: number, z: number, m = 0): boolean {
   if (inR(DOCK_BOX, x, z, 1 + m)) return true;
   return false;
 }
+/** Footprint radius plus this margin must stay clear of every road centreline. */
+export const HILL_ROAD_MARGIN = 1.5;
+export type Hill = [number, number, number, number]; // x, z, radius, height
+
+/** Every driveable polyline on the city or resort map: city streets, the rural ring, Big Farm roads, farm lanes, venue access, resort avenues. */
+export function mapRoadSegments(): Array<[P, P, number]> {
+  const out: Array<[P, P, number]> = [];
+  for (const r of ROADS) {
+    const pts = (r.closed ? [...r.pts, r.pts[0]!] : r.pts) as P[];
+    for (let i = 1; i < pts.length; i++) out.push([pts[i - 1]!, pts[i]!, r.width]);
+  }
+  for (const [a, b] of RURAL_ROADS) out.push([a, b, RURAL_ROAD_W]);
+  for (const [a, b] of BIG_ROADS) out.push([a, b, BIG_ROAD_W]);
+  for (const ln of FARM_LANES) out.push([ln[0], ln[ln.length - 1], FARM_LANE_W]);
+  for (const [a, b, w] of VENUE_ROADS) out.push([a as P, b as P, w]);
+  for (const r of RESORT_ROADS) {
+    if (r.w >= r.d) out.push([[r.x - r.w / 2, r.z], [r.x + r.w / 2, r.z], r.d]);
+    else out.push([[r.x, r.z - r.d / 2], [r.x, r.z + r.d / 2], r.w]);
+  }
+  return out;
+}
+export function hillOverlapsRoad(x: number, z: number, rad: number, margin = HILL_ROAD_MARGIN): boolean {
+  return mapRoadSegments().some(([a, b, w]) => segD(x, z, a, b) < w / 2 + margin + rad);
+}
+function hillOnGround(x: number, z: number, m: number): boolean {
+  if (Math.abs(x) < PLATE + 3 + m && Math.abs(z) < PLATE + 3 + m) return false;
+  const o = OUTSKIRTS;
+  const inOut = x >= o.x0 + m && x <= o.x1 - m && z >= o.z0 + m && z <= o.z1 - m;
+  const inEast = x >= o.x1 && x <= BIG_GROUND_X1 - m && z >= BIG_GROUND_Z0 + m && z <= Math.max(o.z1, BIG_FARM_AREA.z1) - m;
+  const inNorth = x >= BIG_GROUND_X0 + m && x <= o.x1 && z >= BIG_GROUND_Z0 + m && z < o.z0;
+  return inOut || inEast || inNorth;
+}
+function inQuarryPad(x: number, z: number, m = 0) {
+  const q = MINE_SITES['mine-quarry']; return !!q && Math.abs(x - q.x) < MINE_APRON / 2 + 2 + m && Math.abs(z - q.z) < MINE_APRON / 2 + 2 + m;
+}
+function hillHitsPlot(x: number, z: number, rad: number) {
+  for (const p of farmPlots()) { const x0 = p.x - p.w / 2, x1 = p.x + p.w / 2, z0 = p.z - p.d / 2, z1 = p.z + p.d / 2; const cx = Math.max(x0, Math.min(x, x1)), cz = Math.max(z0, Math.min(z, z1)); if (Math.hypot(x - cx, z - cz) < rad) return true; }
+  for (const p of bigFarms()) { const cx = Math.max(p.lot.x0, Math.min(x, p.lot.x1)), cz = Math.max(p.lot.z0, Math.min(z, p.lot.z1)); if (Math.hypot(x - cx, z - cz) < rad) return true; }
+  return false;
+}
+function hillSiteClear(x: number, z: number, rad: number, others: Hill[], fields: Box2[], buildings: Box2[]): boolean {
+  if (!hillOnGround(x, z, rad)) return false;
+  if (hillOverlapsRoad(x, z, rad)) return false;
+  if (inJail(x, z, rad) || inCivic(x, z, rad) || inQuarryPad(x, z, rad) || inLake(x, z, 4 + rad) || inR(DOCK_BOX, x, z, 1 + rad)) return false;
+  if (inR({ x0: FARM_X0, x1: FARM_X1, z0: FARM_Z0, z1: FARM_Z1 }, x, z, 3 + rad)) return false;
+  for (const r of Object.values(RESERVED_VENUES)) if (inR(r, x, z, 2 + rad)) return false;
+  for (const s of Object.values(MINE_SITES)) {
+    if (Math.abs(x - s.x) < MINE_APRON / 2 + 2 + rad && Math.abs(z - s.z) < MINE_APRON / 2 + 2 + rad) return false;
+    const pts: P[] = [...s.track, [s.x, s.z]]; for (let i = 1; i < pts.length; i++) if (segD(x, z, pts[i - 1]!, pts[i]!) < 3.5 + rad) return false;
+  }
+  if (hillHitsPlot(x, z, rad)) return false;
+  for (const o of [...fields, ...buildings]) if (inBox(o, x, z, rad)) return false;
+  for (const [ox, oz, orad] of others) if (Math.hypot(x - ox, z - oz) < (rad + orad) * 0.8) return false;
+  return true;
+}
+/** Move any hill that sits on a road to the nearest clear ground; drop it if no nearby spot is free. Does not re-roll the countryside fill. */
+export function placeHillsOffRoads(hills: Hill[], fields: Box2[] = [], buildings: Box2[] = []): Hill[] {
+  const kept: Hill[] = [];
+  const blocked: Hill[] = [];
+  for (const h of hills) (hillOverlapsRoad(h[0], h[1], h[2]) ? blocked : kept).push(h);
+  const out: Hill[] = [];
+  const othersOf = () => [...kept, ...out];
+  for (const h of hills) {
+    if (!blocked.includes(h)) { out.push(h); continue; }
+    const [x0, z0, rad, ht] = h;
+    const ok = (x: number, z: number) => hillSiteClear(x, z, rad, othersOf(), fields, buildings);
+    let found: P | null = ok(x0, z0) ? [x0, z0] : null;
+    const STEP = 1, MAX = 56;
+    for (let dist = STEP; !found && dist <= MAX; dist += STEP) {
+      const n = Math.max(8, Math.round((2 * Math.PI * dist) / STEP));
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2; const x = x0 + Math.cos(a) * dist, z = z0 + Math.sin(a) * dist;
+        if (ok(x, z)) { found = [x, z]; break; }
+      }
+    }
+    if (found) out.push([found[0], found[1], rad, ht]);
+  }
+  return out;
+}
+
 function rng(seed: number) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
 export interface LakeDecor { reeds: Array<[number, number, number]>; lilies: Array<[number, number, number]>; rocks: Array<[number, number, number]> }
 export interface Outskirts { lake: LakeDecor; buildings: OutBuilding[]; fields: OutField[]; trees: Array<[number, number, number]>; rocks: Array<[number, number, number]>; hills: Array<[number, number, number, number]>; lamps: P[]; tanks: P[]; pumps: P[] }
@@ -137,7 +219,8 @@ export function outskirts(): Outskirts {
   const q = MINE_SITES['mine-quarry'];
   const inQuarry = (x: number, z: number, m = 0) => !!q && Math.abs(x - q.x) < MINE_APRON / 2 + 2 + m && Math.abs(z - q.z) < MINE_APRON / 2 + 2 + m;
   // Clear only decor from the quarry pad — never drop/renumber fields or barns (farm catalog must match pre-quarry).
-  cache = { lake, buildings: buildings.filter((b) => !hitsJail(b)), fields: fields.filter((f) => !hitsJail(f)), trees: pt(trees).filter((p) => !inQuarry(p[0], p[1], 1)), rocks: pt(rocks).filter((p) => !inQuarry(p[0], p[1], 1)), hills: pt(hills).filter((p) => !inQuarry(p[0], p[1], Number(p[2]) || 0)), lamps: lamps.filter(([x, z]) => !inJail(x, z, 0.5) && !inCivic(x, z, 0.5) && !inQuarry(x, z, 0.5)), tanks, pumps }; return cache;
+  const keptBuildings = buildings.filter((b) => !hitsJail(b)); const keptFields = fields.filter((f) => !hitsJail(f)); const clearedHills = placeHillsOffRoads(pt(hills).filter((p) => !inQuarry(p[0], p[1], Number(p[2]) || 0)), keptFields, keptBuildings);
+  cache = { lake, buildings: keptBuildings, fields: keptFields, trees: pt(trees).filter((p) => !inQuarry(p[0], p[1], 1)), rocks: pt(rocks).filter((p) => !inQuarry(p[0], p[1], 1)), hills: clearedHills, lamps: lamps.filter(([x, z]) => !inJail(x, z, 0.5) && !inCivic(x, z, 0.5) && !inQuarry(x, z, 0.5)), tanks, pumps }; return cache;
 }
 
 const HOUSE_COLORS = housingType('house').colors;
