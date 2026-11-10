@@ -1,8 +1,8 @@
-/** Co-op tabs for co-op3: supply contracts, fishing fleets and the weekly server event. */
+/** Co-op tabs for co-op3: supply contracts, fishing fleets and the rotating server event. */
 import { useEffect, useState } from 'react';
 import { request, socket } from '@/lib/net';
 import { fishById, fmtKg, RARITY_COLOR } from '../../../shared/fishing';
-import { FLEET_MAX_CUT, SC_INTERVALS_H, SC_MAX_DELIVERIES, SC_MIN_DELIVERIES, EVENT_TIERS, scBand, scBond, type EventView, type FleetTripView, type ScView } from '../../../shared/coop3';
+import { FLEET_MAX_CUT, SC_INTERVALS_H, SC_MAX_DELIVERIES, SC_MIN_DELIVERIES, eventTiersFor, scBand, scBond, type EventView, type FleetTripView, type ScView } from '../../../shared/coop3';
 
 const fmt = (n: number) => Math.floor(n).toLocaleString('en-US');
 const left = (t: number) => { const s = Math.max(0, Math.floor((t - Date.now()) / 1000)); const d = Math.floor(s / 86400); return d ? `${d}d ${Math.floor((s % 86400) / 3600)}h` : `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`; };
@@ -95,7 +95,7 @@ export function FleetTab({ me }: { me: string | null }) {
   </section>;
 }
 
-// ------------------------------------------------------------ weekly event
+// ------------------------------------------------------------ server event
 export function EventTab({ me }: { me: string | null }) {
   const [v, setV] = useState<EventView | null>(null);
   const load = () => { void request('wev_view').then((a) => { if (a.ok) setV((a as unknown as { event: EventView }).event); }); };
@@ -106,14 +106,14 @@ export function EventTab({ me }: { me: string | null }) {
     <h4>{v.icon} {v.name} <small>ends in {left(v.endsAt)}</small></h4>
     <p>{v.blurb}</p>
     <div className="coop-bar" data-testid="wev-progress" style={{ ['--bar' as string]: v.color }}><div style={{ width: `${v.pct * 100}%`, background: v.color }} /><span>{fmt(v.progress)} / {fmt(v.goal)} {v.unit}</span></div>
-    {v.me && <p data-testid="wev-me">{v.me.excluded ? `🚫 ${v.me.excluded}` : <>You: <b>{fmt(v.me.amount)}</b> / {fmt(v.playerCap)} (your cap){v.me.tier ? ` · ${EVENT_TIERS.find((t) => t.id === v.me!.tier)?.icon} ${v.me.tier}` : ''}</>}</p>}
-    <ul className="wev-tiers">{EVENT_TIERS.map((t) => <li key={t.id}>{t.icon} {t.name}: {fmt(Math.ceil(t.at * v.playerCap))} {v.unit} → {fmt(t.chips)} 🪙</li>)}</ul>
-    <small>Full rewards if the server reaches the goal, half from 50%, none below. Claim next week.</small>
+    {v.me && <p data-testid="wev-me">{v.me.excluded ? `🚫 ${v.me.excluded}` : <>You: <b>{fmt(v.me.amount)}</b> / {fmt(v.playerCap)} (your cap){v.me.tier ? ` · ${eventTiersFor(v.week).find((t) => t.id === v.me!.tier)?.icon} ${v.me.tier}` : ''}</>}</p>}
+    <ul className="wev-tiers">{eventTiersFor(v.week).map((t) => <li key={t.id}>{t.icon} {t.name}: {fmt(Math.ceil(t.at * v.playerCap))} {v.unit} → {fmt(t.chips)} 🪙</li>)}</ul>
+    <small>Full rewards if the server reaches the goal, half from 50%, none below. Claim after this event ends.</small>
     {v.past && <div className="coop-claim" data-testid="wev-claim">{v.past.icon} {v.past.name}: you gave {fmt(v.past.amount)} · server {Math.round(v.past.pct * 100)}% · reward {fmt(v.past.reward)} 🪙
       {me && <button type="button" disabled={busy || v.past.claimed || !v.past.reward} onClick={() => void act('wev_claim', {}, (a) => `🎉 +${fmt(Number(a.amount))} chips.`)}>{v.past.claimed ? 'Claimed' : 'Claim'}</button>}</div>}
     <h4>🏆 Top contributors</h4>
     <ol className="coop-board" data-testid="wev-top">{v.top.length ? v.top.map((d, i) => <li key={d.name}><span>{i + 1}. {d.name}</span><b>{fmt(d.amount)}</b></li>) : <li>Nobody yet. Be the first!</li>}</ol>
-    <p className="coop-next">Next week: {v.next.icon} {v.next.name}</p>
+    <p className="coop-next">Next: {v.next.icon} {v.next.name}</p>
     <Msg m={msg} />
   </section>;
 }

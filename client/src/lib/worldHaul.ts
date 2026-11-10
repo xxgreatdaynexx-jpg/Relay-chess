@@ -13,7 +13,8 @@ import type { HubId } from '../../../shared/logistics';
 function tag(text: string): THREE.Sprite {
   const t = cityLabel(text, '#ffd27a'); const d = t.userData as { w: number; h: number };
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true, premultipliedAlpha: true, toneMapped: false, sizeAttenuation: false }));
-  s.scale.set(0.09 * d.w, 0.0225 * d.h, 1); s.center.set(0.5, 0); s.renderOrder = 11; return s;
+  // t2115u: ~half prior plate; sizeAttenuation:false keeps mobile readable.
+  s.scale.set(0.045 * d.w, 0.01125 * d.h, 1); s.center.set(0.5, 0); s.renderOrder = 11; return s;
 }
 const disposeSprite = (s: THREE.Sprite) => { s.material.map?.dispose(); s.material.dispose(); };
 
@@ -82,7 +83,7 @@ export function createHaul(world: Pick<World, 'scene' | 'camera'>, hub: HubId = 
       o.obj.visible = o.tag.visible = true;
       o.obj.position.set(ps.x, 0, ps.z);
       o.obj.rotation.y = -ps.a;
-      o.tag.position.set(ps.x, 3.2, ps.z);
+      o.tag.position.set(ps.x, 1.85, ps.z);
     }
   };
 

@@ -3,13 +3,13 @@ import { newDb } from 'pg-mem';
 import { getBank, resetBank } from '../server/casino-store';
 import { setPriceIndexForTest } from '../server/price-index';
 import { WeeklyEvents, resetWeekly, eventCredit } from '../server/weeklyEvent';
-import { EVENTS, EVENT_CLAIM_MS, EVENT_ORDER, EVENT_PAYOUT_FROM, EVENT_TIERS, LEGACY_EVENT_TIERS, eventFor, eventReward, eventTiersFor, playerEventCap, TRADE_COUNT_CAP, weekIndex, weekStart } from '../shared/coop3';
+import { DAILY_EVENT_GOALS, DAILY_EVENT_TIERS, DAILY_EVENTS, EVENT_CLAIM_MS, EVENT_DAILY_FROM, EVENT_ORDER, EVENT_PAYOUT_FROM, EVENT_TIERS, EVENTS, LEGACY_EVENT_TIERS, WEEKLY_EVENT_GOALS, eventDailyEpoch, eventFor, eventReward, eventTiersFor, periodIndex, periodStart, playerEventCap, TRADE_COUNT_CAP, weekIndex, weekStart } from '../shared/coop3';
 import { expectChangelogEntry, expectChangelogOrder } from './helpers/changelog';
 
 const W = weekIndex(Date.parse('2026-11-04T18:00:00Z')); // a mining-or-whatever week; tests pick weeks by kind
 const weekOf = (kind: string) => { for (let w = W; ; w++) if (eventFor(w).id === kind) return w; };
 let now = 0; let ev: WeeklyEvents;
-const at = (w: number, off = 3_600_000) => { now = weekStart(w) + off; };
+const at = (w: number, off = 3_600_000) => { now = periodStart(w) + off; };
 
 describe('weekly server events', () => {
   beforeEach(() => { resetBank(); setPriceIndexForTest(1); ev = resetWeekly(new WeeklyEvents(null, () => now)); ev.guard.excluded = (n) => (/^(qa-|bot)/i.test(n) || n === 'Jailbird' ? 'nope' : null); });
@@ -21,7 +21,7 @@ describe('weekly server events', () => {
   });
 
   it('only the running event counts; per-player cap; excluded accounts and duplicates ignored', () => {
-    const w = weekOf('fishing'); at(w); const e = EVENTS.fishing; const cap = playerEventCap(e);
+    const w = weekOf('fishing'); at(w); const e = eventFor(w); const cap = playerEventCap(e);
     expect(eventCredit('mining', 'Ann', 5)).toBe(0);
     expect(eventCredit('fishing', 'Ann', 1, 'f1')).toBe(1); expect(eventCredit('fishing', 'Ann', 1, 'f1')).toBe(0);
     expect(eventCredit('fishing', 'QA-Cole-Visit', 1)).toBe(0); expect(eventCredit('fishing', 'Jailbird', 1)).toBe(0); expect(eventCredit('fishing', 'Bot7', 1)).toBe(0);
@@ -33,11 +33,11 @@ describe('weekly server events', () => {
   it('trade week: both sides count, capped per trade, self and linked trades ignored', () => {
     const w = weekOf('trade'); at(w);
     ev.creditTrade('Ann', 'Bob', TRADE_COUNT_CAP * 10, 's1'); ev.creditTrade('Ann', 'Bob', 1000, 's1'); ev.creditTrade('Ann', 'ann', 5000, 's2');
-    const v = ev.view(null); expect(v.progress).toBe(EVENTS.trade.goal);
+    const v = ev.view(null); expect(v.progress).toBe(eventFor(w).goal);
   });
 
   it('claim: tiered, halved under goal, nothing under 50%; atomic and once only; window closes', async () => {
-    const w = weekOf('hockey'); at(w); const e = EVENTS.hockey; const cap = playerEventCap(e);
+    const w = weekOf('hockey'); at(w); const e = eventFor(w); const cap = playerEventCap(e);
     // Two players each at 60% of their half-goal cap → 60% of the goal; one bronze-ish player
     for (let i = 0; i < 2; i++) eventCredit('hockey', `P${i}`, cap * 0.6); eventCredit('hockey', 'Low', Math.ceil(cap * 0.05));
     await expect(ev.claim('P0')).rejects.toThrow(/didn’t take part/); // still this week
@@ -52,15 +52,16 @@ describe('weekly server events', () => {
     const halfBronze = eventReward(e, Math.ceil(cap * 0.05), 0.62, 1, w);
     expect((await ev.claim('Low')).amount).toBe(halfBronze);
     expect(ev.view('P1').past).toMatchObject({ claimed: true, reward: halfGold });
-    now = weekStart(w + 1) + EVENT_CLAIM_MS + 1; await expect(ev.claim('P1')).rejects.toThrow(/closed|didn’t take part/) // next week's claim is for the week after;
-    // under 50%: nothing
-    const w2 = weekOf('mining'); at(w2); eventCredit('mining', 'Solo', playerEventCap(EVENTS.mining) - 1); at(w2 + 1); await expect(ev.claim('Solo')).rejects.toThrow(/50%/);
+    now = periodStart(w + 1) + EVENT_CLAIM_MS + 1; await expect(ev.claim('P1')).rejects.toThrow(/closed|didn’t take part/) // next period's claim window;
+    // under 50%: nothing (use a known mining period; contribute under half the server goal)
+    const w2 = weekOf('mining'); at(w2); const e2 = eventFor(w2);
+    eventCredit('mining', 'Solo', Math.floor(e2.goal * 0.4)); at(w2 + 1); await expect(ev.claim('Solo')).rejects.toThrow(/50%/);
   });
 
   it('persists counts with a capped UPSERT and claims with a guard row (pg)', async () => {
     const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
     const w = weekOf('harvest'); at(w); ev = resetWeekly(new WeeklyEvents(pool as never, () => now)); ev.guard.excluded = () => null; await ev.init();
-    const cap = playerEventCap(EVENTS.harvest);
+    const cap = playerEventCap(eventFor(w));
     eventCredit('harvest', 'Ann', 10); eventCredit('harvest', 'Ann', cap * 2); await ev.flush();
     expect(Number(db.public.one(`SELECT amount FROM wev_contrib WHERE player_key = 'ann'`).amount)).toBe(cap);
     const re = new WeeklyEvents(pool as never, () => now); await re.init(); expect(re.view('Ann').me?.amount).toBe(cap);
@@ -102,5 +103,43 @@ describe('weekly server events', () => {
     expect(80_000 / 200_000).toBeCloseTo(6_000 / 15_000, 10);
     expect(26_667 / 200_000).toBeCloseTo(2_000 / 15_000, 3);
   });
+
+
+  it('daily from EVENT_DAILY_FROM: Regina midnight periods, day goals, half payouts; week 44 stays weekly', () => {
+    expect(EVENT_DAILY_FROM).toBe(45);
+    expect(DAILY_EVENT_GOALS).toEqual({ mining: 600, harvest: 850, fishing: 45, trade: 150, hockey: 3 });
+    expect(WEEKLY_EVENT_GOALS).toEqual({ mining: 4_000, harvest: 6_000, fishing: 300, trade: 1_000, hockey: 20 });
+    expect(DAILY_EVENT_TIERS.map((x) => x.chips)).toEqual([13_333, 40_000, 100_000]);
+    expect(eventTiersFor(EVENT_DAILY_FROM)).toBe(DAILY_EVENT_TIERS);
+    expect(eventTiersFor(EVENT_DAILY_FROM - 1)).toBe(EVENT_TIERS);
+    expect(eventFor(EVENT_DAILY_FROM - 1).goal).toBe(EVENTS[eventFor(EVENT_DAILY_FROM - 1).id].goal);
+    expect(eventFor(EVENT_DAILY_FROM).goal).toBe(DAILY_EVENTS[eventFor(EVENT_DAILY_FROM).id].goal);
+    const d0 = eventDailyEpoch();
+    expect(periodIndex(d0 - 1)).toBe(EVENT_DAILY_FROM - 1);
+    expect(periodIndex(d0)).toBe(EVENT_DAILY_FROM);
+    expect(periodIndex(d0 + 86_400_000)).toBe(EVENT_DAILY_FROM + 1);
+    expect(periodStart(EVENT_DAILY_FROM)).toBe(d0);
+    expect(periodStart(EVENT_DAILY_FROM + 1) - periodStart(EVENT_DAILY_FROM)).toBe(86_400_000);
+    // Regina midnight = 06:00 UTC
+    expect(new Date(d0).getUTCHours()).toBe(6);
+    const e = DAILY_EVENTS.hockey; const cap = playerEventCap(e);
+    expect(eventReward(e, cap, 1, 1, EVENT_DAILY_FROM)).toBe(100_000);
+    expect(eventReward(e, cap, 0.5, 1, EVENT_DAILY_FROM)).toBe(50_000);
+  });
+
+  it('lets the current weekly Hockey Cup finish: credits on week 44 still use weekly goals/payouts', async () => {
+    const w = 44; at(w);
+    expect(eventFor(w).id).toBe('hockey');
+    expect(eventFor(w).goal).toBe(20);
+    expect(eventTiersFor(w)).toBe(EVENT_TIERS);
+    const cap = playerEventCap(eventFor(w));
+    eventCredit('hockey', 'Ann', cap);
+    expect(ev.view('Ann').goal).toBe(20);
+    at(w + 1); // first daily period
+    expect(periodIndex(now)).toBe(EVENT_DAILY_FROM);
+    expect(eventFor(periodIndex(now)).goal).toBe(DAILY_EVENT_GOALS[eventFor(periodIndex(now)).id]);
+    // week 44 claim still pays weekly gold table (half if under goal — here server may be under 50% with one player)
+  });
+
 
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildWiki, filterWiki } from '../shared/wiki';
-import { EVENT_TIERS as WEV_TIERS } from '../shared/coop3';
+import { DAILY_EVENT_TIERS as WEV_TIERS } from '../shared/coop3';
 import { OFFLINE_CAP_MS as EMP_OFF, JOBS } from '../shared/employment';
 import { CROPS } from '../shared/farm';
 import { ORES } from '../shared/mines';

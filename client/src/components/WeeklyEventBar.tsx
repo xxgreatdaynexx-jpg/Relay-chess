@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { EventView } from '../../../shared/coop3';
 
-/** Weekly server event goal bar on the map (co-op3). Click opens Co-op → Event. */
+/** Server event goal bar on the map (co-op3). Click opens Co-op → Event. */
 export function WeeklyEventBar({ onOpen }: { onOpen?: () => void }) {
   const [v, setV] = useState<EventView | null>(null);
   useEffect(() => {
