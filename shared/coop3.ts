@@ -57,7 +57,7 @@ export interface ScView {
 
 // ------------------------------------------------------------ fishing fleets
 /** Crew seats (besides the captain) by boat model. Skiffs are too small to crew. */
-export const CREW_SEATS: Record<string, number> = { skiff: 0, sportfisher: 1, yacht: 3, superyacht: 6 };
+export const CREW_SEATS: Record<string, number> = { skiff: 0, sportfisher: 1, yacht: 3, superyacht: 6, megayacht: 10 };
 export const crewSeats = (model: string | null | undefined) => (model ? CREW_SEATS[model] ?? 0 : 0);
 export const FLEET_TRIP_MS = 30 * 60_000;
 export const FLEET_MAX_CUT = 0.3;

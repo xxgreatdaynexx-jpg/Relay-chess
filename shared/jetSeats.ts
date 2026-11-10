@@ -3,7 +3,7 @@
  * destination, or home to Chud City); nearby/online players request a seat; the owner accepts or declines each one.
  * Seats scale with the jet tier. Passengers fly free or pay the owner a capped seat price (wallet + ledger).
  */
-export const JET_SEATS: Record<string, number> = { citation: 2, g700: 6, chudone: 12 };
+export const JET_SEATS: Record<string, number> = { citation: 2, g700: 6, global: 8, chudone: 12 };
 export const jetSeats = (model: string) => JET_SEATS[model] ?? 0;
 /** Max seat price, BASE chips (the server caps at px(MAX_SEAT_PRICE)). */
 export const MAX_SEAT_PRICE = 2_000;

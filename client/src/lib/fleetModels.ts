@@ -93,8 +93,9 @@ export function buildBoat(m: FleetModel): THREE.Group {
     for (const s of [-1, 1]) { const h = 7, d = new THREE.Vector3(s * 0.48, 0.78, -0.42).normalize(); const r = add(g, new THREE.CylinderGeometry(0.04, 0.06, h), chrome, s * 1.25 + d.x * h / 2, 3.4 + d.y * h / 2, 0.2 + d.z * h / 2); r.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d); r.userData.part = 'outrigger';
       add(g, new THREE.CylinderGeometry(0.1, 0.1, 0.35, 8), chrome, s * 1.3, 3.4, 0.2); }
     add(g, new THREE.BoxGeometry(3.4, 0.08, 4), teak, 0, 1.62, -3.6);
-  } else if (m.id === 'superyacht') {
+  } else if (m.id === 'superyacht' || m.id === 'megayacht') {
     superyacht(g, m, glass, teak, chrome);
+    if (m.id === 'megayacht') g.scale.setScalar(1.35);
   } else {
     const big = false; const len = big ? 30 : 18, beam = big ? 6 : 4.6;
     hull(g, len, beam, big ? 2.6 : 1.8, white, big ? M(0xd8b25a, { metalness: 0.8, roughness: 0.3 }) : navy);
@@ -111,7 +112,7 @@ export function buildJet(m: FleetModel): THREE.Group {
   // QA#2: real lengths CJ4 16 m, G700 33.5 m, BBJ 33.6 m (much fatter) -> G700 2x Citation, BBJ ~G700 length with a 1.5x thicker fuselage.
   // recheck #4: Chud One is labelled a 747-8 BBJ (76 m vs the G700's 33.5 m): ~2.2x the G700, with a jumbo-width (not
   // 1.55x-fat) fuselage; the hangar preview normalises by bounding box so it still fits there.
-  const k = m.id === 'citation' ? 0.5 : m.id === 'g700' ? 1 : 2.2; const L = 16 * k, R = 0.9 * k * (m.id === 'chudone' ? 1.15 : 1);
+  const k = m.id === 'citation' ? 0.5 : m.id === 'g700' ? 1 : m.id === 'global' ? 1.45 : 2.2; const L = 16 * k, R = 0.9 * k * (m.id === 'chudone' ? 1.15 : 1);
   // mu-visuals nose fix: one coaxial fuselage + rounded blunt nose + tail cone, same radius/segments at each joint (no seam, no step).
   addFuselage(g, { r: R, len: L, nose: R * 1.9, tail: L * 0.25, y: R + 1, body, glass: win });
   // recheck #3: the cheat line and the window band were flat boxes 2.02-2.04R wide, so their square edges stuck out of the

@@ -14,9 +14,9 @@ const DAY = 86_400_000; const T0 = Date.parse('2026-11-01T12:00:00Z');
 
 describe('Private jets (#11)', () => {
   beforeEach(() => { resetBank(); setPriceIndexForTest(1); resetPopups(); });
-  it('catalog: three jets, upkeep high and rising; upkeep is a sink, buys are not', () => {
-    expect(JETS.map((j) => j.id)).toEqual(['citation', 'g700', 'chudone']);
-    expect(JETS.map((j) => j.upkeep)).toEqual([6_000, 18_000, 60_000]);
+  it('catalog: four jets, upkeep high and rising; upkeep is a sink, buys are not', () => {
+    expect(JETS.map((j) => j.id)).toEqual(['citation', 'g700', 'global', 'chudone']);
+    expect(JETS.map((j) => j.upkeep)).toEqual([6_000, 18_000, 36_000, 60_000]);
     expect(SINK_DEBIT_GAMES.has('jet_upkeep')).toBe(true); expect(SINK_DEBIT_GAMES.has('jet_buy')).toBe(false); expect(SINK_DEBIT_GAMES.has('boat_buy')).toBe(false);
     expect(sinkLoss([{ game: 'jet_upkeep', amount: -6_000 }, { game: 'jet_buy', amount: -1_000_000 }])).toBe(6_000);
     setPriceIndexForTest(2); expect(jetUpkeep('g700')).toBe(36_000);

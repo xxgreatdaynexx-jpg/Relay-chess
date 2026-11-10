@@ -2,12 +2,12 @@
  * Chud Resort fleet (Millionaire Update #10b / #11): boats from the Marina and private jets from the Hangar.
  * Prices are BASE chips (the server charges px(price)). Boats unlock deep-sea fishing zones; jets skip resort tickets
  * and cost a daily upkeep (a chip sink, charged like property tax: unpaid days pile up as arrears, GRACE_DAYS -> repossessed).
- * Yachts and superyachts also pay a daily luxury upkeep (boat_upkeep sink) on the same terms; skiffs and sportfishers do not.
+ * Yachts, superyachts and the megayacht also pay a daily luxury upkeep (boat_upkeep sink) on the same terms; skiffs and sportfishers do not.
  */
 export type FleetKind = 'boat' | 'jet';
 export interface FleetModel { id: string; kind: FleetKind; name: string; emoji: string; price: number; blurb: string;
   /** boats: deepest deep-sea zone this hull can reach (1..3) */ zone?: 1 | 2 | 3;
-  /** jets and luxury boats (yacht / superyacht): base chips charged every UTC day after the purchase day */ upkeep?: number;
+  /** jets and luxury boats (yacht / superyacht / megayacht): base chips charged every UTC day after the purchase day */ upkeep?: number;
   /** boats: multiplier on the time to a bite at deep sea (<1 = faster) */ biteMul?: number;
   color: number }
 
@@ -16,10 +16,12 @@ export const BOATS: FleetModel[] = [
   { id: 'sportfisher', kind: 'boat', name: 'Marlin Sportfisher', emoji: '🛥️', price: 120_000, zone: 2, biteMul: 0.95, color: 0xe8eef6, blurb: 'Fighting chair and outriggers. Reaches the Blue Water for swordfish and mako.' },
   { id: 'yacht', kind: 'boat', name: 'Azure 60 Yacht', emoji: '🛳️', price: 450_000, zone: 3, biteMul: 0.9, upkeep: 3_000, color: 0xffffff, blurb: 'Three cabins, a sonar rig and the range for the Abyss.' },
   { id: 'superyacht', kind: 'boat', name: 'Chud Royale Superyacht', emoji: '🚢', price: 2_500_000, zone: 3, biteMul: 0.8, upkeep: 15_000, color: 0x1a2a4a, blurb: 'Helipad, crew of twelve, a pool on the sun deck. Every zone, fastest bites, maximum status.' },
+  { id: 'megayacht', kind: 'boat', name: 'Sovereign Megayacht', emoji: '🛥️', price: 8_000_000, zone: 3, biteMul: 0.7, upkeep: 40_000, color: 0x0b1a2a, blurb: 'A private island in its shadow: helipads, a beach club on the aft deck, and the range to sail yourself there. Daily upkeep covers crew and dock; no extra cargo use fee.' },
 ];
 export const JETS: FleetModel[] = [
   { id: 'citation', kind: 'jet', name: 'Citation Light Jet', emoji: '🛩️', price: 400_000, upkeep: 6_000, color: 0xf4f4f4, blurb: 'Two passenger seats and a short-field takeoff. Fly to Chud Resort or Fort McChud whenever you like, no ticket.' },
   { id: 'g700', kind: 'jet', name: 'Gulfstream G700', emoji: '✈️', price: 1_500_000, upkeep: 18_000, color: 0xdfe6ee, blurb: 'Intercontinental range, six passenger seats and a bedroom suite. The tycoon standard.' },
+  { id: 'global', kind: 'jet', name: 'Chud Global Express', emoji: '🌐', price: 3_000_000, upkeep: 36_000, color: 0xc9a84c, blurb: 'Eight passenger seats, a dining cabin and intercontinental legs. The step between a Gulfstream and a jumbo.' },
   { id: 'chudone', kind: 'jet', name: 'Chud One (747-8 BBJ)', emoji: '🛫', price: 6_000_000, upkeep: 60_000, color: 0x1f3f8a, blurb: 'A private jumbo with twelve passenger seats and a gold-trimmed boardroom. The loudest flex in Chud Hub.' },
 ];
 export const FLEET: FleetModel[] = [...BOATS, ...JETS];

@@ -19,8 +19,10 @@ export const CARGO: Record<string, CargoSpec> = {
   sportfisher: { kind: 'boat', cap: 10_000, trip: 400, useUpkeep: 1_200 },
   yacht: { kind: 'boat', cap: 25_000, trip: 800, useUpkeep: 0 }, // daily luxury upkeep (shared/fleet.ts) replaces first-trip cargo useUpkeep
   superyacht: { kind: 'boat', cap: 60_000, trip: 1_600, useUpkeep: 0 },
+  megayacht: { kind: 'boat', cap: 120_000, trip: 2_800, useUpkeep: 0 },
   citation: { kind: 'jet', cap: 3_000, trip: 900, useUpkeep: 0 },
   g700: { kind: 'jet', cap: 8_000, trip: 2_000, useUpkeep: 0 },
+  global: { kind: 'jet', cap: 15_000, trip: 3_200, useUpkeep: 0 },
   chudone: { kind: 'jet', cap: 25_000, trip: 5_000, useUpkeep: 0 },
 };
 export const cargoOf = (id: unknown): CargoSpec | undefined => (typeof id === 'string' ? CARGO[id] : undefined);

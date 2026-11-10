@@ -44,3 +44,17 @@ Title: Liveries show on your yacht or jet
 
 - A livery applied at the Prestige Desk now paints that yacht or jet in the Marina and Hangar 3D previews.
 
+
+## Hypercars and a fourth jet
+
+Title: Nightshade, Apex One, and the Chud Global Express
+
+- Chud Motors adds two hypercars above the Chudmobile: the Nightshade (400,000) and the Apex One (850,000). Prices follow the daily price index.
+- The Hangar adds the Chud Global Express (3,000,000, 8 seats, 36,000 a day upkeep), sitting between the Gulfstream G700 and Chud One.
+
+## Megayacht
+
+Title: The Sovereign Megayacht
+
+- The Marina now sells the Sovereign Megayacht (8,000,000, 40,000 a day upkeep, 120,000 cargo units). Daily luxury upkeep replaces any cargo use fee. It reaches every deep-sea zone, takes 10 crew, and is the boat that sails to the private island.
+

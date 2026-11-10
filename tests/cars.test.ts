@@ -9,9 +9,12 @@ import { CARS, CAR_BY_ID, carValue, validDrive, unitsPerSec, DRIVE_IDLE_MS, DRIV
 const DAY = 86_400_000;
 const fund = (n: string, amt = 20_000) => getBank().transferConfirmed(n, amt, { key: `test_fund:${n}:${Math.random()}`, game: 'admin' });
 describe('car catalog', () => {
-  it('has 20 unique cars with prices, colours and stats', () => {
-    expect(CARS).toHaveLength(20);
-    expect(new Set(CARS.map((c) => c.id)).size).toBe(20);
+  it('has unique cars with prices, colours and stats', () => {
+    expect(CARS.length).toBeGreaterThanOrEqual(22);
+    expect(new Set(CARS.map((c) => c.id)).size).toBe(CARS.length);
+    expect(CARS.map((c) => c.id)).toEqual(expect.arrayContaining(['chudmobile', 'nightshade', 'apex']));
+    expect(CAR_BY_ID.get('apex')!.price).toBeGreaterThan(CAR_BY_ID.get('nightshade')!.price);
+    expect(CAR_BY_ID.get('nightshade')!.price).toBeGreaterThan(CAR_BY_ID.get('chudmobile')!.price);
     for (const c of CARS) { expect(c.price).toBeGreaterThan(0); expect(c.colors.length).toBeGreaterThan(c.id === 'taxi' ? 0 : 1); expect(c.topKmh).toBeGreaterThan(0); }
   });
   it('depreciates 60% → -0.5%/day → 40% floor', () => {

@@ -40,6 +40,8 @@ export const CARS: CarModel[] = [
   C('hypervolt', 'Hypervolt EV', 'super', 'super', 90000, 340, 2.5, 9, [0xf1faee, 0x00b4d8, 0x111418], [2.15, 1.05, 0.55], 'Silent, instant, and smug about it.'),
   C('phantom', 'Phantom X', 'super', 'super', 140000, 370, 2.3, 9, [0xb5171e, 0x111418, 0xffd60a, 0x7b2cbf], [2.25, 1.08, 0.52], 'Scissor doors. The neighbours hate you.'),
   C('chudmobile', 'Chudmobile Hypercar', 'super', 'super', 250000, 420, 2.0, 10, [0xe8c26a, 0x111418, 0xff3cac], [2.35, 1.1, 0.5], 'The richest chud in town drives this. Be that chud.'),
+  C('nightshade', 'Nightshade Hypercar', 'super', 'super', 400000, 428, 1.8, 10, [0x1a0a24, 0x5a189a, 0x39ff14], [2.4, 1.12, 0.48], 'Matte violet, a green stripe, and a scream you can hear from the Speedway.'),
+  C('apex', 'Apex One', 'super', 'super', 850000, 435, 1.55, 10, [0xf4f1ea, 0xd4af37, 0x00e5ff], [2.45, 1.14, 0.46], 'The top of the dealer wall. Pearl body, gold belly, and a straight-line that eats the ring road.'),
 ];
 export const CAR_BY_ID = new Map(CARS.map((c) => [c.id, c]));
 
@@ -63,8 +65,8 @@ export const DRIVE_HZ = 8; // client send rate
 export const DRIVE_BROADCAST_MS = 125; // server snapshot rate (8 Hz)
 export const DRIVE_IDLE_MS = 8000; // no update this long = parked/gone
 export const DRIVE_MAX_VISIBLE = 30;
-/** Fastest base top (km/h) any car reaches incl. engine swaps: Chudmobile 420 + 10% jet swap = 462 (was 420 before super swaps). */
-export const FASTEST_BASE_KMH = 462;
+/** Fastest base top (km/h) any car reaches incl. engine swaps: Apex One 435 + 10% jet swap = 479. */
+export const FASTEST_BASE_KMH = 479;
 export const DRIVE_SPEED_CAP = unitsPerSec(FASTEST_BASE_KMH) * 1.35; // fastest swapped car + slack
 
 export interface DriveState { x: number; z: number; a: number; v: number }

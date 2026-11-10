@@ -13,7 +13,7 @@ export const WORLD_SPOTS: WorldSpot[] = [
   { id: 'bank', label: 'Bank', icon: '🏦', color: 0x4dffb5, blurb: 'Wallet & chip history' },
   { id: 'market', label: 'Market', icon: '🏪', color: 0xb388ff, blurb: 'Skins, materials & trades' },
   { id: 'stocks', label: 'Stock Exchange', icon: '📈', color: 0x34d399, blurb: '100 companies, live prices & news' },
-  { id: 'dealer', label: 'Car Dealership', icon: '🚗', color: 0xff7a1a, blurb: '20 cars to buy, then drive the town' },
+  { id: 'dealer', label: 'Car Dealership', icon: '🚗', color: 0xff7a1a, blurb: 'Cars and hypercars to buy, then drive the town' },
   { id: 'mechanic', label: 'Mechanic Shop', icon: '🔧', color: 0xffa62b, blurb: 'Upgrade & customise your cars' },
   { id: 'airport', label: 'Airport', icon: '✈️', color: 0x7ab8ff, blurb: 'Fly between the airport, downtown & the Speedway' },
   { id: 'dock', label: 'Fishing Dock', icon: '🎣', color: 0x4fc3d9, blurb: 'Cast, reel & sell your catch at the lake' },

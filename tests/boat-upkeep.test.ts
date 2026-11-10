@@ -17,6 +17,7 @@ describe('Luxury boat upkeep', () => {
   it('yachts and superyachts have daily luxury upkeep; skiffs and sportfishers do not', () => {
     expect(BOATS.find((b) => b.id === 'yacht')?.upkeep).toBe(3_000);
     expect(BOATS.find((b) => b.id === 'superyacht')?.upkeep).toBe(15_000);
+    expect(BOATS.find((b) => b.id === 'megayacht')?.upkeep).toBe(40_000);
     expect(BOATS.find((b) => b.id === 'skiff')?.upkeep ?? 0).toBe(0);
     expect(BOATS.find((b) => b.id === 'sportfisher')?.upkeep ?? 0).toBe(0);
     expect(SINK_DEBIT_GAMES.has('boat_upkeep')).toBe(true);

@@ -25,7 +25,7 @@ describe('jet passenger seats (mu-jet-seats)', () => {
   afterEach(() => { setSeatExclusion(null); setJail(realJail); setFleet(null); setPriceIndexForTest(1); });
 
   it('seats scale with the jet tier and show in the store data', () => {
-    expect(JET_SEATS).toEqual({ citation: 2, g700: 6, chudone: 12 });
+    expect(JET_SEATS).toEqual({ citation: 2, g700: 6, global: 8, chudone: 12 });
     for (let i = 1; i < JETS.length; i++) expect(jetSeats(JETS[i]!.id)).toBeGreaterThan(jetSeats(JETS[i - 1]!.id));
     expect(fleetModel('citation')!.blurb).toMatch(/Two passenger seats/);
   });

@@ -88,6 +88,8 @@ export const CAR_SWAPS: Record<string, SwapId[]> = {
   hypervolt: ['ev4', 'v12', 'jet'],
   phantom: ['v12', 'ev4', 'jet'],
   chudmobile: ['v12', 'ev4', 'jet'],
+  nightshade: ['v12', 'ev4', 'jet'],
+  apex: ['v12', 'ev4', 'jet'],
 };
 export const allowedSwaps = (c: CarModel): EngineSwap[] => (CAR_SWAPS[c.id] ?? []).map((id) => SWAP_BY_ID.get(id)!).filter(Boolean);
 export const swapAllowed = (c: CarModel, id: unknown) => typeof id === 'string' && (CAR_SWAPS[c.id] ?? []).includes(id as SwapId);

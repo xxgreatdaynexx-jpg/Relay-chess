@@ -11,7 +11,7 @@ const planes: Array<[string, THREE.Group, 'x' | 'z']> = [...JETS.map((j) => [j.i
 const parts = (g: THREE.Group, p: string) => g.children.filter((c) => c.userData.part === p) as THREE.Mesh[];
 const box = (m: THREE.Mesh) => new THREE.Box3().setFromObject(m);
 describe('plane tail fins', () => {
-  it('covers every jet', () => expect(JETS.map((j) => j.id).sort()).toEqual(['chudone', 'citation', 'g700']));
+  it('covers every jet', () => expect(JETS.map((j) => j.id).sort()).toEqual(['chudone', 'citation', 'g700', 'global']));
   for (const [id, g, ax] of planes) it(id, () => {
     g.updateMatrixWorld(true);
     const [f] = parts(g, 'fuselage'), fins = parts(g, 'fin'), stabs = parts(g, 'stab'); expect(fins).toHaveLength(1); expect(stabs).toHaveLength(2);
@@ -34,7 +34,7 @@ describe('plane tail fins', () => {
     const [a, b] = stabs.map(box) as [THREE.Box3, THREE.Box3];
     expect(side(a.max)).toBeCloseTo(-side(b.min), 6); expect(side(a.min)).toBeCloseTo(-side(b.max), 6);
     expect(a.min.y).toBeCloseTo(b.min.y, 6); expect(along(a.max)).toBeCloseTo(along(b.max), 6);
-    const tT = id === 'citation' || id === 'g700';
+    const tT = id === 'citation' || id === 'g700' || id === 'global';
     expect(stabs[0]!.userData.tTail).toBe(tT);
     if (tT) { expect(a.max.y).toBeCloseTo(fb.max.y, 3); expect(along(a.max)).toBeLessThanOrEqual(tLE + 1e-6); }
     else { expect(a.min.y).toBeLessThan(fy + r); expect(a.max.y).toBeGreaterThan(fy - r); }

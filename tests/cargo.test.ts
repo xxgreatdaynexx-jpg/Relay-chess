@@ -41,7 +41,7 @@ describe('cargo capacity by tier (mu-cargo)', () => {
       for (const v of list) { const p = payback(v.id, v.price, v.up); expect(p.saving).toBeGreaterThan(0); expect(p.days).toBeGreaterThanOrEqual(MIN_PAYBACK_DAYS); expect(p.days).toBeGreaterThanOrEqual(last); last = p.days; } }
   });
   it('yacht and superyacht cargo useUpkeep is zero so daily luxury upkeep is not double-charged', () => {
-    expect(CARGO.yacht!.useUpkeep).toBe(0); expect(CARGO.superyacht!.useUpkeep).toBe(0);
+    expect(CARGO.yacht!.useUpkeep).toBe(0); expect(CARGO.superyacht!.useUpkeep).toBe(0); expect(CARGO.megayacht!.useUpkeep).toBe(0);
     expect(CARGO.skiff!.useUpkeep).toBeGreaterThan(0); expect(CARGO.sportfisher!.useUpkeep).toBeGreaterThan(0);
     expect(ownFeeBase('yacht', 1, true)).toBe(CARGO.yacht!.trip);
     expect(ownFeeBase('skiff', 1, true)).toBe(CARGO.skiff!.trip + CARGO.skiff!.useUpkeep);
