@@ -26,6 +26,33 @@ export async function propertyPaidValue(db: Q, name: string): Promise<number> { 
 
 let cache: { at: number; rows: Array<{ key: string; name: string; netWorth: number }> } | null = null;
 export const resetPurchaseTaxCache = () => { cache = null; };
+/** Hard cap for building the purchase-tax roster (must stay under the client's 15 s buy ack). */
+export const PURCHASE_TAX_PREP_MS = 8_000;
+const ASSET_CONCURRENCY = 3;
+
+export function withTimeout<T>(ms: number, work: () => Promise<T>, label: string): Promise<T> {
+  let t: ReturnType<typeof setTimeout> | undefined;
+  return new Promise<T>((resolve, reject) => {
+    t = setTimeout(() => reject(new Error(`${label} timed out`)), ms);
+    work().then(resolve, reject);
+  }).finally(() => { if (t !== undefined) clearTimeout(t); });
+}
+
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i]!, i);
+    }
+  };
+  const n = Math.max(1, Math.min(limit, items.length || 1));
+  await Promise.all(Array.from({ length: items.length ? n : 0 }, () => worker()));
+  return out;
+}
+
 /** Active players (any ledger row in 7 days), sorted by key, junk excluded. Cached 60 s: the ledger scan is the costly part. */
 async function activePlayers(db: Q, now: number) {
   if (cache && now - cache.at < 60_000 && now >= cache.at) return cache.rows;
@@ -34,8 +61,8 @@ async function activePlayers(db: Q, now: number) {
   // Net worth = chips + assets, the same definition as the profile / daily wealth tax (economy.playerAssets total).
   const chips = new Map<string, number>();
   if (base.length) for (const c of (await db.query('SELECT player_key, chips FROM casino_players WHERE player_key = ANY($1)', [base.map((x) => x.key)])).rows) chips.set(String(c.player_key), Number(c.chips));
-  const econ = getEconomy(); const rows: Array<{ key: string; name: string; netWorth: number }> = [];
-  for (const x of base) rows.push({ ...x, netWorth: (chips.get(x.key) ?? 0) + ((await econ?.playerAssets(x.name, now))?.total ?? 0) });
+  const econ = getEconomy();
+  const rows = await mapLimit(base, ASSET_CONCURRENCY, async (x) => ({ ...x, netWorth: (chips.get(x.key) ?? 0) + ((await econ?.playerAssets(x.name, now))?.total ?? 0) }));
   cache = { at: now, rows }; return rows;
 }
 /** Jail and disabled are checked live (not cached). Recipients need net worth >= TAX_SHARE_MIN_NET_WORTH (5,000). */
@@ -58,8 +85,11 @@ export class PurchaseTaxUnprepared extends Error {}
  * (fail closed before any lock or mutation). Live checks (jail, disabled, buyer property value, rate) still run under the lock.
  */
 export async function preparePurchaseTax(db: Q, buyer: string, now = Date.now()): Promise<PurchaseTaxPrep> {
-  if ((await propertyPaidValue(db, buyer)) <= PURCHASE_TAX_THRESHOLD) return { roster: null };
-  return { roster: Object.freeze((await activePlayers(db, now)).map((x) => Object.freeze({ ...x }))) };
+  // Bound the whole prep (buyer value + roster) so a taxed buy cannot outlive the client ack.
+  return await withTimeout(PURCHASE_TAX_PREP_MS, async () => {
+    if ((await propertyPaidValue(db, buyer)) <= PURCHASE_TAX_THRESHOLD) return { roster: null };
+    return { roster: Object.freeze((await activePlayers(db, now)).map((x) => Object.freeze({ ...x }))) };
+  }, 'purchase-tax-prep');
 }
 
 export async function quotePurchaseTax(db: Q, buyer: string, price: number, now = Date.now(), prep?: PurchaseTaxPrep): Promise<PurchaseTaxQuote> {

@@ -124,11 +124,7 @@ export class RealEstate {
   }
 
   /** Serialize the complete buy across processes on one client, then commit on that same client. */
-  private async buyNow(name: string, p: NonNullable<ReturnType<typeof propertyById>>, max?: number) {
-    // pt2041u: prepare the purchase-tax roster BEFORE pinning a connection; the locked buy uses only this snapshot.
-    let prep: PurchaseTaxPrep;
-    try { prep = await preparePurchaseTax(this.pool, name, this.clock()); }
-    catch (e) { console.error('[realestate] purchase tax prep failed:', (e as Error).message); throw new PropertyError('Could not price the purchase wealth tax right now. Nothing was charged. Try again.'); }
+  private async buyNow(name: string, p: NonNullable<ReturnType<typeof propertyById>>, max: number | undefined, prep: PurchaseTaxPrep) {
     // Bank refresh may use this same pool: finish it before reserving the lock connection.
     await this.bank().refresh(name);
     const cl = await this.pool.connect(); const lockKey = `property-buy:${keyOf(name)}`;
@@ -173,8 +169,13 @@ export class RealEstate {
   /** max: the price the player saw; a higher price now (they bought something else meanwhile) refuses instead of surprising them. */
   async buy(name: string, id: unknown, max?: unknown) {
     const p = propertyById(id); if (!p || p.retired) throw new PropertyError('That property is not for sale.');
+    // Price the tax roster before taking the in-process owner/plot locks or pinning a pool client.
+    // A slow roster used to hold those locks so a later click sat on Buying… and a failed attempt never released promptly.
+    let prep: PurchaseTaxPrep;
+    try { prep = await preparePurchaseTax(this.pool, name, this.clock()); }
+    catch (e) { console.error('[realestate] purchase tax prep failed:', (e as Error).message); throw new PropertyError('Could not price the purchase wealth tax right now. Nothing was charged. Try again.'); }
     // per-buyer lock too: two parallel buys by one player can't both be priced at the same n
-    return this.lock(`owner:${keyOf(name)}`, () => this.lock(p.id, () => this.buyNow(name, p, typeof max === 'number' && Number.isFinite(max) ? max : undefined)));
+    return this.lock(`owner:${keyOf(name)}`, () => this.lock(p.id, () => this.buyNow(name, p, typeof max === 'number' && Number.isFinite(max) ? max : undefined, prep)));
   }
   /** Big Farms (cf:1000+) this player owns: at most MAX_BIG_FARMS per account. */
   async ownedBigFarms(name: string, cl: { query: pg.Pool['query'] } = this.pool): Promise<string[]> {

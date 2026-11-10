@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T08:10:00-06:00", "title": "Buying a farm no longer sits on Buying…", "bullets": [
+    "Requested by carter2: buying a farm (or any city property) no longer hangs on Buying… while the purchase wealth tax is figured out. If that price can’t be built in time, the buy is refused with a clear error and nothing is charged or granted.",
+    "The daily house-sell cap and the farmland zoning tile limit are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-09T19:57:00-06:00", "title": "Vice mayor can draft bills for the mayor to approve", "bullets": [
     "Requested by Dayne: the sitting vice mayor can submit a bill with the same form the mayor uses. It is marked Pending mayor approval and does not count as the day’s bill, open a veto, or spend from the treasury.",
     "The sitting mayor can Approve (it then goes through the normal one-a-day bill flow, recorded as drafted by the vice mayor and approved by the mayor) or Reject with an optional reason. Only the mayor can approve, and a vice mayor cannot approve their own draft even if they later become mayor. At most three drafts can wait at once; leftovers expire at the end of the term. Bill history shows pending, rejected, approved and expired drafts with the drafter. Existing bills, including enacted Bill 1, are unchanged.",

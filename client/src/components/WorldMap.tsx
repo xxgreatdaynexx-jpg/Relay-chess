@@ -76,7 +76,25 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
   const protLeft = o ? o.boughtAt + BUYOUT_PROTECT_MS - Date.now() : 0;
   const buyout = () => { if (wallet != null && wallet < bo) { setMsg(`Not enough chips: the buyout costs 🪙 ${chips(bo)}; you have 🪙 ${chips(wallet)}.`); return; } setBusy('re_buyout'); setMsg(null); socket.timeout(15_000).emit('re_buyout', { id, max: bo }, (err: Error | null, r?: Ack & { price?: number }) => { setBusy(null); if (!err && r?.ok) { const text = `🏛 Hostile buyout! ${p.label} is yours. Paid 🪙 ${chips(r.price ?? bo)} to ${o?.owner}.`; setMsg(text); onDone?.('re_buyout', text, r.price ?? bo); return; } setMsg(err ? 'No answer from the server. Try again.' : r?.error ?? 'Something went wrong.'); }); };
   // QA r8: pending state on the button, and on success a toast + immediate (optimistic) ownership update via onDone.
-  const act = (ev: 're_buy' | 're_sell') => { setBusy(ev); setMsg(null); socket.timeout(15_000).emit(ev, ev === 're_buy' ? { id, max: cost } : { id }, (err: Error | null, r?: Ack & { price?: number; chips?: number }) => { setBusy(null); if (!err && r?.ok) { const paid = ev === 're_buy' ? (r.price ?? cost) : cost; const wt = Number((r as { wealthTax?: number }).wealthTax ?? 0); const text = ev === 're_buy' ? `🏛 ${p.label} is yours! Paid 🪙 ${chips(paid)}${wt ? ` + 🪙 ${chips(wt)} wealth tax` : ''}.` : `Sold ${p.label} back to the city for 🪙 ${chips(r.chips ?? sellBackOf(cost))}.`; setMsg(text); onDone?.(ev, text, paid); return; } setMsg(err ? 'No answer from the server. Try again.' : (ev === 're_buy' && (r?.error === 'Not enough chips.' || r?.error === 'Something went wrong.') && short ? `Not enough chips: ${p.label} costs 🪙 ${chips(cost)}; you need 🪙 ${chips(short)} more.` : r?.error ?? 'Something went wrong.')); }); };
+  const act = (ev: 're_buy' | 're_sell') => {
+    setBusy(ev); setMsg(null);
+    let finished = false;
+    const finish = (err: Error | null, r?: Ack & { price?: number; chips?: number }) => {
+      // A late success still applies: the server may have granted the deed after the watchdog fired.
+      if (!err && r?.ok) {
+        finished = true; setBusy(null);
+        const paid = ev === 're_buy' ? (r.price ?? cost) : cost;
+        const wt = Number((r as { wealthTax?: number }).wealthTax ?? 0);
+        const text = ev === 're_buy' ? `🏛 ${p.label} is yours! Paid 🪙 ${chips(paid)}${wt ? ` + 🪙 ${chips(wt)} wealth tax` : ''}.` : `Sold ${p.label} back to the city for 🪙 ${chips(r.chips ?? sellBackOf(cost))}.`;
+        setMsg(text); onDone?.(ev, text, paid); return;
+      }
+      if (finished) return;
+      finished = true; setBusy(null);
+      setMsg(err ? 'No answer from the server. Try again.' : (ev === 're_buy' && (r?.error === 'Not enough chips.' || r?.error === 'Something went wrong.') && short ? `Not enough chips: ${p.label} costs 🪙 ${chips(cost)}; you need 🪙 ${chips(short)} more.` : r?.error ?? 'Something went wrong.'));
+    };
+    const watchdog = window.setTimeout(() => finish(new Error('timeout'), undefined), 16_000);
+    socket.timeout(15_000).emit(ev, ev === 're_buy' ? { id, max: cost } : { id }, (err: Error | null, r?: Ack & { price?: number; chips?: number }) => { window.clearTimeout(watchdog); finish(err, r); });
+  };
   return (
     <MapSheet className="world-deed" data-testid="world-deed" data-drag-panel="deed" onPointerDown={dragDeed.onPointerDown} style={dragDeed.style()} ref={dragDeed.ref}>{dragDeed.handle}
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
