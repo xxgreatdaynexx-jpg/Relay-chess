@@ -3,6 +3,7 @@ import { incomeEligible } from '../../../shared/propertyIncome';
 import { MapSheet } from './MapSheet';
 import { STADIUM_SITE } from '../../../shared/coop';
 import { useDoing } from '@/lib/doing';
+import { fullScreenGameOpen } from '@/lib/pauseWorld';
 import { ROYALTY_VENUE, royaltyPct, buyoutPrice, BUYOUT_PROTECT_MS } from '../../../shared/royalty';
 import { backdropDismiss } from '@/lib/backdrop';
 import { CookingHost, OPEN_GROCERY, openKitchen } from './CookingPanels';
@@ -216,7 +217,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   const mechanic = panel.k === 'mechanic'; const setMechanic = (v: boolean) => setPanel((c) => (v ? { k: 'mechanic' } : closePanel(c, 'mechanic')));
   const [nitro, setNitro] = useState<{ have: number; full: number; on: boolean } | null>(null);
   const dock = panel.k === 'dock'; const setDock = (v: boolean) => setPanel((c) => (v ? { k: 'dock' } : closePanel(c, 'dock')));
-  const driveRef = useRef<Drive | null>(null); const freightRef = useRef<{ dispose: () => void } | null>(null); const haulRef = useRef<{ dispose: () => void } | null>(null); const stadiumRef = useRef<{ dispose: () => void; refresh: () => void } | null>(null);
+  const driveRef = useRef<Drive | null>(null); const freightRef = useRef<{ dispose: () => void; setRunning: (v: boolean) => void } | null>(null); const haulRef = useRef<{ dispose: () => void; setRunning: (v: boolean) => void } | null>(null); const stadiumRef = useRef<{ dispose: () => void; refresh: () => void } | null>(null);
   const pendingDrive = useRef<{ carId: string; color: number; from?: string } | null>(null); const startDriveRef = useRef<(carId: string, color: number, from?: string) => void>(() => {});
   const [driving, setDriving] = useState(false); const [haulOff, setHaulOff] = useState(() => { try { return localStorage.getItem('chud-haul-trucks-off') === '1'; } catch { return false; } }); const [near, setNear] = useState<string | null>(null); const [drift, setDrift] = useState(false);
   const [kmh, setKmh] = useState(0);
@@ -315,12 +316,14 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
     const t = window.setInterval(() => {
       // Only full-screen 3D games pause the city. Side drawers (chat, wallet, inventory) keep it live — pausing for
       // them froze the map whenever chat was open.
-      const run = !casino && !document.querySelector('[aria-expanded="true"]:is([data-testid="arena-tab"],[data-testid="mines-tab"],[data-testid="factory-tab"])');
-      if (run !== last) { last = run; worldRef.current?.setRunning(run); }
+      // Hockey (and other data-pause-city tabs) must pause the city: the map stays mounted under the top tab,
+      // and today's trucks / protests would otherwise keep rendering underneath the rink.
+      const run = !casino && !fullScreenGameOpen();
+      if (run !== last) { last = run; worldRef.current?.setRunning(run); haulRef.current?.setRunning(run); freightRef.current?.setRunning(run); }
     }, 400);
     return () => window.clearInterval(t);
   }, [casino]);
-  useEffect(() => { worldRef.current?.setRunning(!casino); if (!casino && !driveRef.current?.driving) worldRef.current?.reset(); }, [casino]);
+  useEffect(() => { worldRef.current?.setRunning(!casino && !fullScreenGameOpen()); if (!casino && !driveRef.current?.driving) worldRef.current?.reset(); }, [casino]);
   useEffect(() => { if (!driving) return; const k = (e: KeyboardEvent) => { if ((e.target as HTMLElement)?.closest?.('input,textarea')) return; if (e.code === 'KeyE' && near) goRef.current(near); if (e.code === 'Escape') stopDrive(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [driving, near]);
   const pad = (k: keyof DriveInput, label: string) => <button type="button" className={`world-pad-${k}`} onPointerDown={(e) => { e.preventDefault(); driveRef.current?.touch(k, true); }} onPointerUp={() => driveRef.current?.touch(k, false)} onPointerLeave={() => driveRef.current?.touch(k, false)} onPointerCancel={() => driveRef.current?.touch(k, false)} data-testid={`world-pad-${k}`}>{label}</button>;
   const nearSpot = near && WORLD_SPOTS.find((s) => s.id === near);

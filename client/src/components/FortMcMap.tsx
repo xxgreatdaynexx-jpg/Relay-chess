@@ -7,6 +7,7 @@ import { ORES, MINE_CAVE_EVENT, type OreId } from '../../../shared/mines';
 import { indexed } from '../../../shared/priceIndex';
 import type { FortWorld } from '@/lib/fortmc3d';
 import { importWithReload } from '@/lib/chunkReload';
+import { fullScreenGameOpen } from '@/lib/pauseWorld';
 import { request, socket } from '@/lib/net';
 import { clearArrival, flyHome, tripNow, useTrip } from '@/lib/travel';
 import { fortJetIntro } from '@/lib/fortJet';
@@ -25,7 +26,7 @@ const condCls = (c: number) => (c < 15 ? 'bad' : c < 60 ? 'warn' : 'ok');
 export function FortMcMap() {
   useDoing('fortmc');
   const drag = usePanelDrag('fortmc');
-  const canvasRef = useRef<HTMLCanvasElement>(null); const worldRef = useRef<FortWorld | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null); const worldRef = useRef<FortWorld | null>(null); const freightRef = useRef<{dispose:()=>void;setRunning?:(v:boolean)=>void}|null>(null);
   const [mode,setMode]=useState<'3d'|'2d'>(()=>{try{return localStorage.getItem('chud-world-mode')==='2d'?'2d':'3d';}catch{return '3d';}});
   const [mapError,setMapError]=useState(false);
   const [loading, setLoading] = useState(mode==='3d'); const [tip, setTip] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -59,7 +60,7 @@ export function FortMcMap() {
 
   useEffect(() => {
     if(mode!=='3d'){setLoading(false);setReady(false);return;}
-    let dead=false;let freight:{dispose:()=>void}|null=null;setLoading(true);setReady(false);
+    let dead=false;let freight:{dispose:()=>void;setRunning?:(v:boolean)=>void}|null=null;setLoading(true);setReady(false);
     const canvas=canvasRef.current;
     const fallback=()=>{if(dead)return;setMapError(true);setLoading(false);setReady(false);setTip(null);setMode('2d');};
     const lost=(event:Event)=>{event.preventDefault();fallback();};canvas?.addEventListener('webglcontextlost',lost);
@@ -67,12 +68,25 @@ export function FortMcMap() {
       if(dead||!canvas)return;
       const w=createFortMc(canvas,{onHover:(id,x,y)=>setTip(id?{id,x,y}:null),onPick:pickSite});worldRef.current=w;
       if(latestView.current)w.setFort(latestView.current.fort);
-      void importWithReload(()=>import('@/lib/worldFreight')).then(({createFreight})=>{if(!dead&&worldRef.current===w)freight=createFreight(w,'fortmc');}).catch(()=>{});
+      void importWithReload(()=>import('@/lib/worldFreight')).then(({createFreight})=>{if(!dead&&worldRef.current===w){freight=createFreight(w,'fortmc');freightRef.current=freight;}}).catch(()=>{});
       setLoading(false);setReady(true);
     }).catch(fallback);
-    return ()=>{dead=true;canvas?.removeEventListener('webglcontextlost',lost);freight?.dispose();worldRef.current?.dispose();worldRef.current=null;};
+    return ()=>{dead=true;canvas?.removeEventListener('webglcontextlost',lost);freight?.dispose();freightRef.current=null;worldRef.current?.dispose();worldRef.current=null;};
   },[mode,pickSite]);
   useEffect(() => { load(); const t = window.setInterval(load, 30_000); socket.on('connect', load); return () => { window.clearInterval(t); socket.off('connect', load); }; }, [load]);
+  useEffect(() => {
+    let last: boolean | null = null;
+    const tick = () => {
+      const run = !fullScreenGameOpen();
+      if (run === last) return; last = run;
+      worldRef.current?.setRunning(run);
+      freightRef.current?.setRunning?.(run);
+    };
+    tick();
+    const t = window.setInterval(tick, 400);
+    return () => window.clearInterval(t);
+  }, []);
+
 
   const s = view?.fort; const home = async () => {
     const w = worldRef.current;

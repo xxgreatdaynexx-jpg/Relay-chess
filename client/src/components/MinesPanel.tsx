@@ -50,7 +50,7 @@ export function MinesPanel() {
   useEffect(() => { const on = (e: Event) => { const c = (e as CustomEvent).detail; if (isCave(c)) { setCave(c); setOpen(true); } }; window.addEventListener(MINE_CAVE_EVENT, on); return () => window.removeEventListener(MINE_CAVE_EVENT, on); }, []);
   return (
     <div className={`mines-wrap ${open ? 'mines-open' : ''}`} data-testid="mines">
-      <TopTab id="mines"><button type="button" className="sol-tab fps-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="mines-tab">
+      <TopTab id="mines"><button type="button" className="sol-tab fps-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="mines-tab" data-pause-city="">
         {open ? '▴ Mines' : '⛏️ Mines'}
       </button></TopTab>
       {open && <MinesGame key={cave} cave={cave} onCave={setCave} onClose={() => setOpen(false)} />}

@@ -10,15 +10,19 @@ export const CHANGELOG: ChangelogEntry[] = [
     "Requested by Dayne: the sitting vice mayor can submit a bill with the same form the mayor uses. It is marked Pending mayor approval and does not count as the day’s bill, open a veto, or spend from the treasury.",
     "The sitting mayor can Approve (it then goes through the normal one-a-day bill flow, recorded as drafted by the vice mayor and approved by the mayor) or Reject with an optional reason. Only the mayor can approve, and a vice mayor cannot approve their own draft even if they later become mayor. At most three drafts can wait at once; leftovers expire at the end of the term. Bill history shows pending, rejected, approved and expired drafts with the drafter. Existing bills, including enacted Bill 1, are unchanged.",
   ]},
+  {"commit": "", "at": "2026-11-09T19:50:00-06:00", "title": "Hockey: smoother play", "bullets": [
+    "Requested by Dayne: the city map, delivery trucks and other city-map motion now pause while Hockey (and Arena, Mines or the Factory) is open, so they no longer slow the rink down.",
+    "The puck and players interpolate with a short 100 ms buffer and a little velocity prediction, so movement stays smooth between server ticks.",
+  ]},
   {"commit": "", "at": "2026-11-09T19:40:00-06:00", "title": "Factory: area select, copy/paste and move", "bullets": [
     "Requested by Liam: in the Factory builder, drag a box with the select tool to grab many parts (Shift+click to add). Copy / Cut / Paste (Ctrl+C/X/V) use your Machinist kit for paste; Move slides the selection without picking it up; Delete picks the selection back into the kit. Server-validated. Existing single-piece place, rotate, and pick-up still work.",
-  ]},
-  {"commit": "", "at": "2026-11-09T19:28:00-06:00", "title": "Sort and filter Factory Storage", "bullets": [
-    "Requested by Dayne: the Factory Storage list has a compact Sort control (Name A–Z, Quantity, Unit price, Total value) and All / Sellable / Pantry filters. Your choice is saved on this device. Craft / pantry labels, Sell… and Sell all to the house are unchanged.",
   ]},
   {"commit": "", "at": "2026-11-09T19:30:00-06:00", "title": "Mines: no more getting stuck in the walls", "bullets": [
     "Requested by Dayne: knockback, laggy frames and floor changes no longer push you inside the rock, and if you do clip a wall you're pushed to the nearest open tile after about half a second.",
     "An Unstick button in the mine (or type /stuck in chat) teleports you back to that floor's entrance, with a short cooldown. It doesn't give ore or let you skip to a deeper floor.",
+  ]},
+  {"commit": "", "at": "2026-11-09T19:28:00-06:00", "title": "Sort and filter Factory Storage", "bullets": [
+    "Requested by Dayne: the Factory Storage list has a compact Sort control (Name A–Z, Quantity, Unit price, Total value) and All / Sellable / Pantry filters. Your choice is saved on this device. Craft / pantry labels, Sell… and Sell all to the house are unchanged.",
   ]},
   {"commit": "", "at": "2026-11-09T19:25:00-06:00", "title": "More Chud Resort plantation plots on empty grass", "bullets": [
     "Requested by Dayne: eight new regular plantation plots (rf:13–20) fill empty grass on the east side of Chud Resort. Same buy prices and tropical crop rules as the original plots, including the double harvest yield. Existing plot ids and ownership are unchanged.",

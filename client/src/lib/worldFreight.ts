@@ -127,7 +127,9 @@ export function createFreight(world: Pick<World, 'scene'>, hub: HubId = 'city') 
       const o = { v, obj: build(v), tag: tag(v.label, v.mode === 'ship' ? '#38bdf8' : v.mode === 'plane' ? '#e5e7eb' : v.mode === 'hired' ? '#f97316' : '#ffd27a') }; scene.add(o.obj, o.tag); live.set(v.id, o); }
     for (const [k, o] of live) if (!seen.has(k)) { scene.remove(o.obj, o.tag); live.delete(k); }
   };
+  let running = true;
   const frame = () => {
+    if (!running) return;
     const now = Date.now();
     for (const [k, o] of live) { const ps = vehiclePose(o.v, now, hub);
       if (ps.phase === 'arrived' || (ps.phase === 'loading' && o.v.mode !== 'ship' && o.v.mode !== 'plane')) { o.obj.visible = o.tag.visible = false; if (ps.phase === 'arrived') { scene.remove(o.obj, o.tag); live.delete(k); } continue; }
@@ -136,5 +138,5 @@ export function createFreight(world: Pick<World, 'scene'>, hub: HubId = 'city') 
   const watch = () => socket.emit('freight_watch', true);
   socket.on('freight_live', onLive); socket.on('connect', watch); if (socket.connected) watch();
   const t = window.setInterval(frame, 50);
-  return { live, dispose() { window.clearInterval(t); socket.off('freight_live', onLive); socket.off('connect', watch); socket.emit('freight_watch', false); scene.remove(p); for (const o of live.values()) scene.remove(o.obj, o.tag); live.clear(); } };
+  return { live, setRunning(v: boolean) { running = v; }, dispose() { window.clearInterval(t); socket.off('freight_live', onLive); socket.off('connect', watch); socket.emit('freight_watch', false); scene.remove(p); for (const o of live.values()) scene.remove(o.obj, o.tag); live.clear(); } };
 }

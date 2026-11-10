@@ -658,3 +658,44 @@ export function prizeWinners(r: HkPrizeInput): string[] {
   for (const p of eligible) if (p.team !== r.winner) out.delete(p.account!.toLowerCase());
   return [...out.values()];
 }
+
+/** Client interpolation delay: ~3 ticks at 30 Hz, absorbs jitter without feeling sluggish. */
+export const HK_INTERP_MS = 100;
+/** Cap on velocity extrapolation past the latest snapshot (seconds-equivalent, in ms). */
+export const HK_EXTRAP_MS = 80;
+
+export interface HkViewPlayer {
+  id: string; n: string; t: HkTeam; r: HkRole; x: number; y: number; vx: number; vy: number; a: number; me: boolean; carry: boolean;
+}
+export interface HkView { players: HkViewPlayer[]; puck: { x: number; y: number; vx: number; vy: number; c: string | null } }
+export type HkSnapSample = { t: number; s: HkSnapshot };
+
+const lerp = (x: number, y: number, k: number) => x + (y - x) * k;
+const lerpA = (x: number, y: number, k: number) => {
+  let d = y - x; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return x + d * k;
+};
+
+/**
+ * Interpolate (and, if the render time is past the latest snapshot, velocity-extrapolate) puck and
+ * players around `now - HK_INTERP_MS`. Faceoff resets do not smear across the ice.
+ */
+export function interpolateHockey(buf: HkSnapSample[], me: string | null, now: number): HkView | null {
+  if (!buf.length) return null;
+  const rt = now - HK_INTERP_MS;
+  let a = buf[0]!, b = buf[buf.length - 1]!;
+  for (let i = buf.length - 1; i > 0; i--) if (buf[i - 1]!.t <= rt) { a = buf[i - 1]!; b = buf[i]!; break; }
+  const span = b.t - a.t;
+  const k = span > 0 ? Math.min(1, Math.max(0, (rt - a.t) / span)) : 1;
+  const late = rt > b.t ? Math.min(HK_EXTRAP_MS, rt - b.t) / 1000 : 0;
+  const pa = new Map(a.s.p.map((p) => [p.id, p]));
+  const players = b.s.p.map((q) => {
+    const p = pa.get(q.id) ?? q;
+    const x = lerp(p.x, q.x, k) + q.vx * late, y = lerp(p.y, q.y, k) + q.vy * late;
+    return { id: q.id, n: q.n, t: q.t, r: q.r, x, y, vx: q.vx, vy: q.vy, a: lerpA(p.a, q.a, k), me: q.id === me, carry: b.s.pk.c === q.id };
+  });
+  const jump = Math.hypot(b.s.pk.x - a.s.pk.x, b.s.pk.y - a.s.pk.y) > 6; // faceoff reset: don't smear
+  const puck = jump
+    ? { x: b.s.pk.x, y: b.s.pk.y, vx: b.s.pk.vx, vy: b.s.pk.vy, c: b.s.pk.c }
+    : { x: lerp(a.s.pk.x, b.s.pk.x, k) + b.s.pk.vx * late, y: lerp(a.s.pk.y, b.s.pk.y, k) + b.s.pk.vy * late, vx: b.s.pk.vx, vy: b.s.pk.vy, c: b.s.pk.c };
+  return { players, puck };
+}

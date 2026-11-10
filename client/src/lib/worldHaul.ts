@@ -74,7 +74,9 @@ export function createHaul(world: Pick<World, 'scene' | 'camera'>, hub: HubId = 
     }
   };
 
+  let running = true;
   const frame = () => {
+    if (!running) return;
     const now = Date.now();
     sync(now);
     for (const o of live.values()) {
@@ -93,6 +95,7 @@ export function createHaul(world: Pick<World, 'scene' | 'camera'>, hub: HubId = 
   if (socket.connected) watch();
   const t = window.setInterval(frame, 50);
   return {
+    setRunning(v: boolean) { running = v; },
     dispose() {
       window.clearInterval(t);
       socket.off('haul_visual', onLive);

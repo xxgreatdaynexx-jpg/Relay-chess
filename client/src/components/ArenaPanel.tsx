@@ -63,7 +63,7 @@ export function ArenaPanel() {
   
   return (
     <div className={`fps-wrap ${open ? 'fps-open' : ''}`} data-testid="arena">
-      <TopTab id="arena"><button type="button" className="sol-tab fps-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="arena-tab">
+      <TopTab id="arena"><button type="button" className="sol-tab fps-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="arena-tab" data-pause-city="">
         {open ? '▴ Arena' : '🎯 Arena'}
       </button></TopTab>
       {open && <ArenaGame onClose={() => setOpen(false)} />}

@@ -1,5 +1,6 @@
 import { MapSheet } from './MapSheet';
 import { useDoing } from '@/lib/doing';
+import { fullScreenGameOpen } from '@/lib/pauseWorld';
 import { backdropDismiss } from '@/lib/backdrop';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { RESORT_SPOTS } from '../../../shared/resort';
@@ -36,6 +37,8 @@ export function ResortMap() {
   const dragResortAir = usePanelDrag('resortAir');
   const dragResortDeeds = usePanelDrag('resortDeeds');
   const me = useAccount(); const canvasRef = useRef<HTMLCanvasElement>(null); const worldRef = useRef<Resort | null>(null);
+  const haulRef = useRef<{ dispose: () => void; setRunning: (v: boolean) => void } | null>(null);
+  const freightRef = useRef<{ dispose: () => void; setRunning: (v: boolean) => void } | null>(null);
   const [loading, setLoading] = useState(true); const [tip, setTip] = useState<{ id: string; x: number; y: number } | null>(null);
   const [owned, setOwned] = useState<Map<string, OwnedProperty>>(new Map()); const ownedRef = useRef(owned); ownedRef.current = owned;
   const meRef = useRef(me); meRef.current = me;
@@ -46,7 +49,7 @@ export function ResortMap() {
   const [casino, setCasino] = useState(false); const [floor, setFloor] = useState<string | null>(null); const [air, setAir] = useState(false); const [msg, setMsg] = useState<string | null>(null); const [list, setList] = useState(false); const [pier, setPier] = useState(false); const [marina, setMarina] = useState(false); const [deepSea, setDeepSea] = useState(false); const [hangar, setHangar] = useState(false);
 
   useEffect(() => {
-    let dead = false; let freight: { dispose: () => void } | null = null; let haul: { dispose: () => void } | null = null;
+    let dead = false; let freight: { dispose: () => void; setRunning?: (v: boolean) => void } | null = null; let haul: { dispose: () => void; setRunning?: (v: boolean) => void } | null = null;
     void importWithReload(() => import('@/lib/resort3d')).then(({ createResort }) => {
       if (dead || !canvasRef.current) return;
       worldRef.current = createResort(canvasRef.current, {
@@ -55,11 +58,11 @@ export function ResortMap() {
         onProperty: (id) => { const o = ownedRef.current.get(id); const m = meRef.current; if (id.startsWith('rf:') && o && m && o.owner.toLowerCase() === m.toLowerCase()) { setDeed(null); setFarm(id); } else { setFarm(null); setDeed(id); } },
       });
       const w = worldRef.current;
-      void importWithReload(() => import('@/lib/worldFreight')).then(({ createFreight }) => { if (dead || worldRef.current !== w || !w) return; freight = createFreight(w, 'resort'); });
-      void importWithReload(() => import('@/lib/worldHaul')).then(({ createHaul }) => { if (dead || worldRef.current !== w || !w) return; haul = createHaul(w, 'resort'); });
+      void importWithReload(() => import('@/lib/worldFreight')).then(({ createFreight }) => { if (dead || worldRef.current !== w || !w) return; freight = freightRef.current = createFreight(w, 'resort'); });
+      void importWithReload(() => import('@/lib/worldHaul')).then(({ createHaul }) => { if (dead || worldRef.current !== w || !w) return; haul = haulRef.current = createHaul(w, 'resort'); });
       setLoading(false);
     });
-    return () => { dead = true; freight?.dispose(); haul?.dispose(); worldRef.current?.dispose(); worldRef.current = null; };
+    return () => { dead = true; freight?.dispose(); haul?.dispose(); haulRef.current = null; freightRef.current = null; worldRef.current?.dispose(); worldRef.current = null; };
   }, []);
   useEffect(() => {
     let dead = false;
@@ -68,7 +71,19 @@ export function ResortMap() {
     load(); loadFarm(); socket.on('re_changed', load); socket.on('farm_changed', loadFarm); const t = window.setInterval(loadFarm, 60_000);
     return () => { dead = true; socket.off('re_changed', load); socket.off('farm_changed', loadFarm); window.clearInterval(t); };
   }, [loading]);
-  useEffect(() => { worldRef.current?.setRunning(!casino && !floor); }, [casino, floor]);
+  useEffect(() => {
+    let last: boolean | null = null;
+    const tick = () => {
+      const run = !casino && !floor && !fullScreenGameOpen();
+      if (run === last) return; last = run;
+      worldRef.current?.setRunning(run);
+      haulRef.current?.setRunning(run);
+      freightRef.current?.setRunning(run);
+    };
+    tick();
+    const t = window.setInterval(tick, 400);
+    return () => window.clearInterval(t);
+  }, [casino, floor]);
   useEffect(() => { if (allFarms && (farm || deed || list || coral || air || casino || floor || pier || marina || deepSea || hangar)) setAllFarms(false); }, [allFarms, farm, deed, list, coral, air, casino, floor, pier, marina, deepSea, hangar]);
 
   function go(id: string) {

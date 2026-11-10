@@ -27,7 +27,7 @@ export function FactoryPanel() {
   useEffect(() => localStorage.setItem(OPEN_KEY, open ? '1' : '0'), [open]);
   return (
     <div className={`mines-wrap factory-wrap ${open ? 'mines-open' : ''}`} data-testid="factory">
-      <TopTab id="factory"><button type="button" className="sol-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="factory-tab">{open ? '▴ Factory' : '🏭 Factory'}</button></TopTab>
+      <TopTab id="factory"><button type="button" className="sol-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="factory-tab" data-pause-city="">{open ? '▴ Factory' : '🏭 Factory'}</button></TopTab>
       {open && <FactoryWindow onClose={() => setOpen(false)} />}
     </div>
   );

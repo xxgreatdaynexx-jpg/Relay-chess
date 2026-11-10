@@ -4,14 +4,14 @@ import { socket } from '@/lib/net';
 import { importWithReload, reloadOnceForChunkError } from '@/lib/chunkReload';
 import { ix, usePriceIndex } from '@/lib/priceIndex';
 import type { Hockey3D, HkFrame } from '@/lib/hockey3d';
-import { HK_DAILY_PAID_WINS, HK_TEAM_COLORS, HK_TEAM_NAMES, HK_WIN_CHIPS, PERIODS, TEAM_SIZE, hkClock, periodLabel, type HkInput, type HkResult, type HkSnapshot, type HkTeam } from '../../../shared/hockey';
+import { HK_DAILY_PAID_WINS, HK_TEAM_COLORS, HK_TEAM_NAMES, HK_WIN_CHIPS, PERIODS, TEAM_SIZE, hkClock, periodLabel, type HkInput, type HkResult, type HkSnapshot, type HkTeam, interpolateHockey } from '../../../shared/hockey';
 
 /** PvP Hockey: a shared 4 v 4 rink. Humans each run one skater (or the net), bots fill the rest. Server-authoritative. */
 export function HockeyPanel() {
   const [open, setOpen] = useState(false);
   return (
     <div className="hk-wrap">
-      <TopTab id="hockey"><button type="button" className="sol-tab hk-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="hockey-tab">
+      <TopTab id="hockey"><button type="button" className="sol-tab hk-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)} data-testid="hockey-tab" data-pause-city="">
         {open ? '▴ Hockey' : '🏒 Hockey'}
       </button></TopTab>
       {open && <HockeyGameView onClose={() => setOpen(false)} />}
@@ -39,20 +39,8 @@ function useSnapshots() {
   return { buf, snap };
 }
 
-/** Interpolate the two snapshots around (now - 90 ms). */
 function frameAt(buf: Array<{ t: number; s: HkSnapshot }>, me: string | null): HkFrame | null {
-  if (!buf.length) return null;
-  const rt = performance.now() - 90;
-  let a = buf[0], b = buf[buf.length - 1];
-  for (let i = buf.length - 1; i > 0; i--) if (buf[i - 1].t <= rt) { a = buf[i - 1]; b = buf[i]; break; }
-  const k = b.t > a.t ? Math.min(1, Math.max(0, (rt - a.t) / (b.t - a.t))) : 1;
-  const L = (x: number, y: number) => x + (y - x) * k;
-  const A = (x: number, y: number) => { let d = y - x; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return x + d * k; };
-  const pa = new Map(a.s.p.map((p) => [p.id, p]));
-  const players = b.s.p.map((q) => { const p = pa.get(q.id) ?? q; return { id: q.id, n: q.n, t: q.t, r: q.r, x: L(p.x, q.x), y: L(p.y, q.y), vx: q.vx, vy: q.vy, a: A(p.a, q.a), me: q.id === me, carry: b.s.pk.c === q.id }; });
-  const jump = Math.hypot(b.s.pk.x - a.s.pk.x, b.s.pk.y - a.s.pk.y) > 6; // faceoff reset: don't smear
-  const puck = { x: jump ? b.s.pk.x : L(a.s.pk.x, b.s.pk.x), y: jump ? b.s.pk.y : L(a.s.pk.y, b.s.pk.y), vx: b.s.pk.vx, vy: b.s.pk.vy, c: b.s.pk.c };
-  return { players, puck };
+  return interpolateHockey(buf, me, performance.now());
 }
 
 function HockeyGameView({ onClose }: { onClose: () => void }) {
@@ -120,12 +108,13 @@ function HockeyGameView({ onClose }: { onClose: () => void }) {
       size(); const ro = new ResizeObserver(size); ro.observe(c.parentElement!);
       const loop = () => {
         if (!alive) { ro.disconnect(); return; }
+        raf = requestAnimationFrame(loop);
+        if (document.hidden) return;
         const now = performance.now(), dt = Math.min(0.05, (now - last) / 1000); last = now;
         const hk = dbg ? (window as unknown as { __hk: { hold: boolean } }).__hk : null;
         const f = hk?.hold && lastF ? lastF : frameAt(buf.current, joinedRef.current?.id ?? null);
         lastF = f; nFrames++;
         if (f) { const me = f.players.find((p) => p.me); if (me) f.focus = { x: (me.x * 2 + f.puck.x) / 3, y: (me.y + f.puck.y) / 2 }; r.render(f, dt); }
-        raf = requestAnimationFrame(loop);
       };
       loop();
     }).catch((e) => { if (!reloadOnceForChunkError(e)) setErr('3D failed to load.'); });

@@ -22,9 +22,23 @@ describe('city is home', () => {
 describe('city never freezes behind drawers', () => {
   it('pauses only for full-screen game panels, not chat/wallet', () => {
     const pause = wm.slice(wm.indexOf('const run = '), wm.indexOf('if (run !== last)'));
+    expect(pause).toContain('fullScreenGameOpen');
     expect(pause).not.toMatch(/\$="-tab"/);
     expect(pause).not.toContain('chat-tab');
     expect(pause).not.toContain('wallet-button');
+    expect(wm).toMatch(/haulRef\.current\?\.setRunning\(run\)/);
+    expect(wm).toMatch(/freightRef\.current\?\.setRunning\(run\)/);
+  });
+  it('hockey, arena, mines and factory tabs pause the city', () => {
+    for (const [file, id] of [
+      ['client/src/components/HockeyPanel.tsx', 'hockey-tab'],
+      ['client/src/components/ArenaPanel.tsx', 'arena-tab'],
+      ['client/src/components/MinesPanel.tsx', 'mines-tab'],
+      ['client/src/components/FactoryPanel.tsx', 'factory-tab'],
+    ] as const) {
+      const src = readFileSync(file, 'utf8');
+      expect(src, id).toMatch(new RegExp(`data-testid="${id}"[^>]*data-pause-city`));
+    }
   });
 });
 
