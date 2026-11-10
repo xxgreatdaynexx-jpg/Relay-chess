@@ -33,7 +33,8 @@ describe('housing price per actual employee capacity',()=>{
   expect(hs.some(p=>p.type==='apartment'&&workerBonusOf(p.id)===3&&p.price===30000)).toBe(true);
  });
  it('nonhousing catalog is byte-for-byte unchanged; same complete housing identity set',()=>{
-  expect(hash(properties().filter(p=>!isEmployeeHousing(p)).map(({tiles:_tiles,...p})=>p))).toBe(baseline.nonHousingHash); // Bill Chud 1 adds only derived plot tile counts (cols×rows)
+  const added=new Set(['cf:1008','cf:1009','cf:1010','cf:1011','barn:big:1008','barn:big:1009','barn:big:1010','barn:big:1011']);
+  expect(hash(properties().filter(p=>!isEmployeeHousing(p)&&!added.has(p.id)).map(({tiles:_tiles,...p})=>p))).toBe(baseline.nonHousingHash); // Bill Chud 1 adds only derived plot tile counts (cols×rows); new northern Big Farms and their barns are additive
   expect(properties().filter(isEmployeeHousing).map(p=>p.id)).toEqual(baseline.housing.map(p=>p.id));
   for(const p of properties().filter(p=>!isEmployeeHousing(p))){const expected=p.type==='barn'||!['building','landmark'].includes(p.kind)?0:p.price<25000?1:p.price<75000?2:p.price<250000?3:4;expect(workerBonusOf(p.id)).toBe(expected);}
   expect(workerBonusTotal(baseline.housing.slice(0,20).map(p=>p.id))).toBe(22); // uncapped sum of first 20 housing slots

@@ -25,7 +25,7 @@ describe('Stone Quarry (chessguy2)', () => {
     expect(CAVES.quarry.name).toMatch(/Stone Quarry/i);
     expect(MINE_SITES['mine-quarry']?.cave).toBe('quarry');
     expect(MINE_SITES['mine-quarry']?.x).toBeGreaterThan(300); // east / top-right above Big Farms
-    expect(MINE_SITES['mine-quarry']?.z).toBeLessThan(-130); // north of Big Farm lots
+    expect(MINE_SITES['mine-quarry']?.z).toBeLessThan(-130); // north of the original Big Farm lots, on the east road
     const q = MINE_SITES['mine-quarry']!;
     expect(q.x).toBe(328); expect(q.z).toBe(-158);
     expect(inLake(q.x, q.z, MINE_APRON / 2 + 4)).toBe(false);
@@ -39,7 +39,11 @@ describe('Stone Quarry (chessguy2)', () => {
       const onCrop = Math.abs(q.x - f.x) < f.w / 2 + MINE_APRON / 2 && Math.abs(q.z - f.z) < f.d / 2 + MINE_APRON / 2;
       expect(onCrop, `crop ${f.n}`).toBe(false);
     }
-    expect(q.z + MINE_APRON / 2).toBeLessThan(Math.min(...bigFarms().map((f) => f.lot.z0)));
+    const keep = MINE_APRON / 2 + 4;
+    for (const f of bigFarms()) {
+      const overlap = !(f.lot.x1 <= q.x - keep || f.lot.x0 >= q.x + keep || f.lot.z1 <= q.z - keep || f.lot.z0 >= q.z + keep);
+      expect(overlap, `quarry keep-out vs lot ${f.n}`).toBe(false);
+    }
     expect(CAVE_LANDMARK.quarry).toBeUndefined();
     expect(ROYALTY_VENUE['mine-quarry']).toBeUndefined();
     expect(LANDMARK_IDS).toContain('mine-quarry'); // map/apron placement only

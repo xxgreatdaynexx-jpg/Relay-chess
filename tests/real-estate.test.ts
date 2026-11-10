@@ -160,7 +160,7 @@ describe('countryside crop fields are buyable farms (pt1250u)', () => {
     const { outskirts } = await import('../shared/outskirts'); const { farmPrice } = await import('../shared/farm');
     const isBig = (id: string) => /^cf:1\d{3}$/.test(id); // Big Farms (shared/bigFarms.ts) have their own premium price
     const cf = properties().filter((p) => p.id.startsWith('cf:') && !isBig(p.id)); const big = properties().filter((p) => isBig(p.id));
-    expect(cf).toHaveLength(outskirts().fields.length); expect(big).toHaveLength(8);
+    expect(cf).toHaveLength(outskirts().fields.length); expect(big).toHaveLength(12);
     for (const b of big) { for (const o of properties().filter((p) => p !== b && p.map !== 'resort')) expect(obbOverlap(b, o), `${b.id} vs ${o.id}`).toBe(false); } expect(cf.length).toBeGreaterThan(20);
     const others = properties().filter((p) => !p.id.startsWith('cf:') && p.map !== 'resort');
     for (const p of cf) { expect(p.kind).toBe('farm'); expect(p.price).toBe(farmPrice(Math.floor(p.w / 2) * Math.floor(p.d / 2)));

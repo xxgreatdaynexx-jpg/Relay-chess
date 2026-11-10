@@ -40,9 +40,12 @@ describe('civic plots', () => {
 describe('ownership and stable ids', () => {
   const ps = properties();
   it('catalog ids, geometry and prices are byte-identical to the base; countryside unchanged', () => {
-    expect(ps.length).toBe(BASE.n); expect(ps.filter((p) => /^rf:(1[3-9]|20)$/.test(p.id)).map((p) => p.id).sort()).toEqual(['rf:13','rf:14','rf:15','rf:16','rf:17','rf:18','rf:19','rf:20']);
-    expect(h(ps.map((p) => p.id).sort())).toBe(BASE.ids);
-    expect(h(ps.map((p) => [p.id, p.x, p.z, p.w, p.d, p.rot, p.price]))).toBe(BASE.geo);
+    const added = ['cf:1008', 'cf:1009', 'cf:1010', 'cf:1011', 'barn:big:1008', 'barn:big:1009', 'barn:big:1010', 'barn:big:1011'];
+    const prior = ps.filter((p) => !added.includes(p.id));
+    expect(ps.filter((p) => added.includes(p.id)).map((p) => p.id).sort()).toEqual([...added].sort());
+    expect(prior.length).toBe(BASE.n); expect(ps.filter((p) => /^rf:(1[3-9]|20)$/.test(p.id)).map((p) => p.id).sort()).toEqual(['rf:13','rf:14','rf:15','rf:16','rf:17','rf:18','rf:19','rf:20']);
+    expect(h(prior.map((p) => p.id).sort())).toBe(BASE.ids);
+    expect(h(prior.map((p) => [p.id, p.x, p.z, p.w, p.d, p.rot, p.price]))).toBe(BASE.geo);
     expect(h(outskirts().buildings)).toBe(BASE.buildings); expect(h(outskirts().fields)).toBe(BASE.fields);
   });
   it('exactly the 19 lots under plots are retired (still resolvable), and none of the owned city lots', () => {

@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T09:40:00-06:00", "title": "More Big Farms north of town", "bullets": [
+    "Requested by carter2: the one-Big-Farm-per-account limit is gone. You can buy as many of the large east-of-town farms as you want, as long as your total farmland stays within the 1,500-tile zoning cap.",
+    "Four new large plots are for sale north of the existing Big Farms, on clear land that stays off the Stone Quarry, roads, lakes and buildings. They use the same sizes and prices as the original farms: a 20×20 is 145,000, a 24×24 is 235,000, and a 30×30 is 450,000. Existing farm deeds and locations are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T09:40:00-06:00", "title": "Higher Factory royalties", "bullets": [
     "Requested by Jay: the Factory monument now earns 10% of what other players get when they sell factory goods to the house (was 1%). The owner is paid on top, so the seller still keeps 100%.",
     "Royalties on the mines, Fishing Dock, Speedway, market, and casino stay at 1%. Other property income is unchanged.",

@@ -5,7 +5,8 @@ import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
 import { FARM_MIGRATION } from '../server/farm';
 import { properties } from '../shared/realEstate';
-import { bigFarms, isBigFarmN, MAX_BIG_FARMS } from '../shared/bigFarms';
+import { bigFarms, isBigFarmN } from '../shared/bigFarms';
+import { FARMLAND_TILE_CAP } from '../shared/zoning';
 
 async function setup() {
   const db = newDb({ noAstCoverageCheck: true }); registerPgAdvisoryFunctions(db); db.public.registerFunction({ name: 'to_timestamp', args: [DataType.float], returns: DataType.timestamptz, implementation: (s: number) => new Date(s * 1000) });
@@ -17,43 +18,46 @@ async function setup() {
 }
 const big = () => properties().filter((p) => /^cf:\d+$/.test(p.id) && isBigFarmN(Number(p.id.slice(3))));
 const smallFields = () => properties().filter((p) => /^cf:\d+$/.test(p.id) && !isBigFarmN(Number(p.id.slice(3))));
+const sized = (n: number) => big().filter((p) => p.tiles === n * n);
 
-describe('Big Farm cap: max 1 per account', () => {
-  it('the cap is 1 and all eight Big Farms (20/24/30) are covered', () => {
-    expect(MAX_BIG_FARMS).toBe(1);
-    expect(big()).toHaveLength(8);
+describe('Big Farms: no per-account cap, 1,500-tile zoning still applies', () => {
+  it('lists all twelve Big Farms (20/24/30), including the four northern plots, and has no per-player cap export', () => {
+    expect(FARMLAND_TILE_CAP).toBe(1500);
+    expect(big()).toHaveLength(12);
+    expect(bigFarms()).toHaveLength(12);
     expect(new Set(bigFarms().map((f) => f.size))).toEqual(new Set([20, 24, 30]));
+    expect(bigFarms().filter((f) => f.n >= 1008).map((f) => f.n)).toEqual([1008, 1009, 1010, 1011]);
+    expect(isBigFarmN(1007)).toBe(true);
+    expect(isBigFarmN(1011)).toBe(true);
+    expect(isBigFarmN(1012)).toBe(false);
   });
-  it('a second Big Farm purchase fails with a clear error and charges nothing', async () => {
+  it('two 20×20 Big Farms (800 tiles) can both be bought by one account', async () => {
     const s = await setup(); await s.fund('Ann', 50_000_000);
-    const [a, b] = big();
+    const [a, b] = sized(20);
     await s.re.buy('Ann', a!.id);
     const before = s.bank.account('Ann').chips;
-    await expect(s.re.buy('Ann', b!.id)).rejects.toThrow(/already own a Big Farm/);
-    expect(s.bank.account('Ann').chips).toBe(before);
-    expect(await s.re.ownedBigFarms('Ann')).toEqual([a!.id]);
-    // another player can still buy one
-    await s.fund('Bob', 50_000_000); await s.re.buy('Bob', b!.id);
+    await s.re.buy('Ann', b!.id);
+    expect(s.bank.account('Ann').chips).toBe(before - b!.price);
+    expect((await s.re.ownedBigFarms('Ann')).sort()).toEqual([a!.id, b!.id].sort());
+    await s.fund('Bob', 50_000_000); await s.re.buy('Bob', sized(20)[2]!.id);
+    expect(await s.re.ownedBigFarms('Bob')).toEqual([sized(20)[2]!.id]);
   });
-  it('parallel Big Farm buys by one account: only one wins', async () => {
+  it('a further Big Farm is refused once the 1,500-tile farmland cap would be exceeded, and nothing is charged', async () => {
     const s = await setup(); await s.fund('Cat', 50_000_000);
-    const [a, b] = big();
-    const r = await Promise.allSettled([s.re.buy('Cat', a!.id), s.re.buy('Cat', b!.id)]);
-    expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
-    expect(await s.re.ownedBigFarms('Cat')).toHaveLength(1);
+    const thirty = sized(30)[0]!;
+    const twentyFour = sized(24)[0]!;
+    const extra = sized(20).find((p) => p.id !== thirty.id && p.id !== twentyFour.id)!;
+    await s.re.buy('Cat', thirty.id);
+    await s.re.buy('Cat', twentyFour.id);
+    expect((await s.re.ownedBigFarms('Cat')).sort()).toEqual([thirty.id, twentyFour.id].sort());
+    const before = s.bank.account('Cat').chips;
+    await expect(s.re.buy('Cat', extra.id)).rejects.toThrow(/Zoning cap: farmland is limited to 1,500 tiles/);
+    expect(s.bank.account('Cat').chips).toBe(before);
+    expect(await s.re.ownedBigFarms('Cat')).toHaveLength(2);
   });
-  it('per-owner advisory lock covers parallel Big Farm buys across instances', async () => {
-    const s = await setup(); await s.fund('Cat', 50_000_000);
-    const second = new RealEstate(new (s.db.adapters.createPg().Pool)() as never, () => s.bank, () => Date.parse('2026-11-04T12:00:00Z'));
-    const [a, b] = big();
-    const r = await Promise.allSettled([s.re.buy('Cat', a!.id), second.buy('Cat', b!.id)]);
-    expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
-    expect((r.find((x) => x.status === 'rejected') as PromiseRejectedResult).reason.message).toMatch(/already own a Big Farm|just bought another property/);
-    expect(await s.re.ownedBigFarms('Cat')).toHaveLength(1);
-  });
-  it('small countryside fields are unchanged: a Big Farm owner can still buy them', async () => {
+  it('small countryside fields are unchanged: a Big Farm owner can still buy them under the tile cap', async () => {
     const s = await setup(); await s.fund('Dee', 50_000_000);
-    await s.re.buy('Dee', big()[0]!.id);
+    await s.re.buy('Dee', sized(20)[0]!.id);
     const [f1, f2] = smallFields(); await s.re.buy('Dee', f1!.id); await s.re.buy('Dee', f2!.id);
     expect(await s.re.ownedCount('Dee')).toBe(3);
   });

@@ -29,7 +29,7 @@ import { propertyWorth, propertyPaid, propertyPaidPlusUpgrades, upgradeSpendFrom
 import { cropById, farmPlots } from '../shared/farm.js';
 import { upgradeDef, upgradePrice, type FarmUpgradeKind } from '../shared/farmUpgrades.js';
 import { fieldPlotOf } from '../shared/fieldFarms.js';
-import { isBigFarmN, MAX_BIG_FARMS } from '../shared/bigFarms.js';
+import { isBigFarmN } from '../shared/bigFarms.js';
 import { resortPlotOf } from '../shared/resort.js';
 import { fertDef, fertCost } from '../shared/farmWork.js';
 import { propertyTaxMul } from '../shared/skillPerks.js';
@@ -177,7 +177,7 @@ export class RealEstate {
     // per-buyer lock too: two parallel buys by one player can't both be priced at the same n
     return this.lock(`owner:${keyOf(name)}`, () => this.lock(p.id, () => this.buyNow(name, p, typeof max === 'number' && Number.isFinite(max) ? max : undefined, prep)));
   }
-  /** Big Farms (cf:1000+) this player owns: at most MAX_BIG_FARMS per account. */
+  /** Big Farms (cf:1000+) this player owns. The farmland tile cap, not a per-account count, is the limit. */
   async ownedBigFarms(name: string, cl: { query: pg.Pool['query'] } = this.pool): Promise<string[]> {
     const rows = (await cl.query('SELECT id FROM properties WHERE owner_key = $1', [keyOf(name)])).rows as { id: string }[];
     return rows.map((r) => String(r.id)).filter((id) => /^cf:\d+$/.test(id) && isBigFarmN(Number(id.slice(3))));
@@ -186,10 +186,6 @@ export class RealEstate {
     if (p.retired) throw new PropertyError('That property is not for sale.'); // under a civic building (never sold again; owners keep theirs)
     const bank = this.bank();
     const bt = await backTaxOf(cl, name); if (bt.debt > 0) throw new PropertyError(backTaxBlockMsg(bt));
-    const bigBuy = /^cf:\d+$/.test(p.id) && isBigFarmN(Number(p.id.slice(3)));
-    const bigCapMsg = () => `You already own a Big Farm. Each account can own at most ${MAX_BIG_FARMS} Big Farm.`;
-    // Both this guard and the transactional recheck below run under the per-owner advisory lock.
-    if (bigBuy && (await this.ownedBigFarms(name, cl)).length >= MAX_BIG_FARMS) throw new PropertyError(bigCapMsg());
     const owned = await this.ownedCount(name, cl); const value = await propertyPaidPlusUpgradesOf(cl, name); const paidSnap = await this.ownedPaid(name, cl); const price = p.price; // Bill Chud 1: no purchase surcharge
     const note = '';
     { const z = zoneRefusal(await this.zoneUse(name, cl), p); if (z) throw new PropertyError(z); } // zoning cap (grandfathered deeds count; no charge)
@@ -201,8 +197,6 @@ export class RealEstate {
     await this.atomic(name, -price, 'property_buy', `Bought ${p.label} (${p.id})${note ? ` ${note}` : ''}`, async (cl) => {
       // cross-instance: the count must still be what we priced at (a parallel buy elsewhere = refuse, nothing charged)
       if ((await propertyPaidPlusUpgradesOf(cl, name)) !== value) throw new PropertyError('You just bought another property: the price went up. Check the deed and try again.');
-      // Big Farm cap, re-checked inside the transaction (a parallel buy on another instance can't slip a second one in)
-      if (bigBuy && (await this.ownedBigFarms(name, cl)).length >= MAX_BIG_FARMS) throw new PropertyError(bigCapMsg());
       { const z = zoneRefusal(await this.zoneUse(name, cl), p); if (z) throw new PropertyError(z); } // zoning cap, re-checked in the transaction
       // The insert wins only if the row now carries our deed nonce (a concurrent buyer's row = conflict, DO NOTHING).
       const deed = randomUUID();
