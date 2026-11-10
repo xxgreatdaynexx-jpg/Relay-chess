@@ -77,7 +77,7 @@ export function FleetTab({ me }: { me: string | null }) {
         return <li key={`${e.at}-${i}`}>{e.kind === 'catch' ? <span>🎣 {e.name} landed <b style={{ color: f ? RARITY_COLOR[f.rarity] : undefined }}>{f ? `${f.emoji} ${f.label}` : e.fish}</b>{e.grams ? ` · ${fmtKg(e.grams)}` : ''}</span>
           : <span>💰 {e.name} sold the catch · captain’s cut <b>🪙 {fmt(e.chips ?? 0)}</b> to {m.captain}</span>}</li>; })}</ul>}
       {m.mine === 'requested' && <p>⏳ Waiting for {m.captain} to answer…</p>}
-      {m.mine === 'crew' && <p>🎣 Cast at the deep sea. You fish from {m.captain}’s boat; crewed boats can hook 🐟 bigeye tuna, 🌕 opah and 🐋 blue marlin.</p>}
+      {(m.mine === 'crew' || m.mine === 'captain') && m.crew.length > 0 && <p>🎣 Cast at the deep sea from this shared boat — you’ll see your crew fishing beside you. Crewed trips get a +50% Fishing XP co-op bonus on each catch; sale prices stay the normal value. Crewed boats can hook 🐟 bigeye tuna, 🌕 opah and 🐋 blue marlin.</p>}
       {m.mine === 'captain' && m.requests.map((r) => <div key={r} className="coop-claim">🙋 {r} wants to join
         <button type="button" disabled={busy} data-testid={`fleet-accept-${r}`} onClick={() => void act('fleet_respond', { name: r, accept: true }, () => `${r} is aboard.`)}>Accept</button>
         <button type="button" disabled={busy} onClick={() => void act('fleet_respond', { name: r, accept: false }, () => 'Declined.')}>Decline</button></div>)}

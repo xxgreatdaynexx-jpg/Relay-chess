@@ -24,7 +24,7 @@ import type { ImportSink } from './farm.js';
 import { fishingLuckRoll, fishingBiteMul } from '../shared/skillPerks.js';
 import {
   BITE_MAX_MS, BITE_MIN_MS, CAST_COOLDOWN_MS, fishSellValue, fishDailyKey, spotOf, COOLER_MAX, FISH, FISH_XP, fishById, fishDiff, fishPayout, fishValue, HOOK_WINDOW_MS,
-  REEL_DT, replayReel, rollFish, rollWeight, anglerAim, type AnglerState, type FishCatch, type FishView,
+  REEL_DT, replayReel, rollFish, rollWeight, anglerAim, coopXpBonus, type AnglerState, type FishCatch, type FishView,
 } from '../shared/fishing.js';
 import { cookPayout, cookSellValue, FISH_DISH_RECIPES } from '../shared/cooking.js';
 import { isFishSpot, type FishSpot } from '../shared/fishing.js';
@@ -70,7 +70,7 @@ export const fishImportQty = (value: number, cooked: boolean) => Math.floor(valu
 export class FishError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
 const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
-interface Cast { castAt: number; biteAt: number; fish: string; grams: number; seed: number; hookedAt: number | null; diffAdd: number; spot?: FishSpot; crew?: { trip: string; captain: string | null; cut: number } | null }
+interface Cast { castAt: number; biteAt: number; fish: string; grams: number; seed: number; hookedAt: number | null; diffAdd: number; spot?: FishSpot; crew?: { trip: string; captain: string | null; cut: number } | null; coop?: boolean }
 interface Row { id: string; species: string; weight_g: number | string; value: number | string; caught_at: number | string }
 export interface FishRng { int(lo: number, hi: number): number; unit(): number }
 const cryptoRng: FishRng = { int: (lo, hi) => randomInt(lo, hi), unit: () => randomInt(0, 2 ** 32) / 2 ** 32 };
@@ -111,7 +111,7 @@ export class Fishing {
   }
 
   /** Throw a line. The fish (and when it bites) is decided now and stays server-side. */
-  async cast(name: string, spotIn: unknown = 'lake', atResort: (n: string) => boolean = isAtResort): Promise<{ biteIn: number }> {
+  async cast(name: string, spotIn: unknown = 'lake', atResort: (n: string) => boolean = isAtResort): Promise<{ biteIn: number; coop?: boolean }> {
     const key = keyOf(name); const now = this.clock();
     const spot: FishSpot = isFishSpot(spotIn) ? spotIn : 'lake';
     if (spot === 'reef' && !atResort(name)) throw new FishError('The Reef Pier is at Chud Resort. Fly there first.');
@@ -127,8 +127,9 @@ export class Fishing {
     const gear = gearHook(name); const fly = gearDef(gear.fly); // Fishing upgrades (#28): bait luck + fly speed/fight
     const u = this.rng.unit(); const f = rollFish(baitLuckRoll(u, fishingLuckRoll(u, lvl), gear.bait), this.rng.unit(), spot, boat.zone, !!crew?.crewed); const grams = rollWeight(f, this.rng.unit());
     const biteIn = Math.max(BITE_MIN_MS * (fly?.biteMul ?? 1) * boat.biteMul, Math.round(this.rng.int(BITE_MIN_MS, BITE_MAX_MS + 1) * fishingBiteMul(lvl) * (fly?.biteMul ?? 1) * boat.biteMul));
-    this.casts.set(key, { castAt: now, biteAt: now + biteIn, fish: f.id, grams, seed: this.rng.int(1, 2 ** 31), hookedAt: null, diffAdd: fly?.diffAdd ?? 0, spot, crew: crew ? { trip: crew.tripId, captain: crew.captain, cut: crew.cut } : null });
-    return { biteIn };
+    const coop = !!crew?.crewed;
+    this.casts.set(key, { castAt: now, biteAt: now + biteIn, fish: f.id, grams, seed: this.rng.int(1, 2 ** 31), hookedAt: null, diffAdd: fly?.diffAdd ?? 0, spot, crew: crew ? { trip: crew.tripId, captain: crew.captain, cut: crew.cut } : null, coop });
+    return { biteIn, ...(coop ? { coop: true } : {}) };
   }
   /** Strike when it bites: too early spooks it, too late it is gone. Returns the reel game's seed + difficulty. */
   hook(name: string): { seed: number; diff: number } {
@@ -139,7 +140,7 @@ export class Fishing {
     c.hookedAt = now; return { seed: c.seed, diff: Math.min(1, fishDiff(fishById(c.fish)!, c.grams) + c.diffAdd) };
   }
   /** Land (or lose) the fish: the server replays the reel timeline. */
-  async land(name: string, inputs: unknown): Promise<{ caught: boolean; fish?: FishCatch; xp?: number }> {
+  async land(name: string, inputs: unknown): Promise<{ caught: boolean; fish?: FishCatch; xp?: number; coopXp?: number }> {
     const key = keyOf(name); const c = this.casts.get(key); const now = this.clock();
     if (!c || c.hookedAt === null) throw new FishError('Nothing on the line.');
     this.casts.delete(key);
@@ -155,11 +156,12 @@ export class Fishing {
       // Truck logistics: a catch stays AT its fishing spot until it is shipped (sold only at the Chud City Warehouse).
       await this.pool.query('INSERT INTO fish_catches (id, player_key, name, species, weight_g, value, caught_at, crew_trip, captain, cut, loc) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)', [fish.id, key, name, f.id, fish.grams, fish.value, now, c.crew?.trip ?? null, c.crew?.captain ?? null, c.crew?.captain ? c.crew.cut : null, fishingLoc(c.spot ?? 'lake')]);
       const xp = FISH_XP[f.rarity];
-      awardXp(name, 'fishing', xp);
+      const coopXp = coopXpBonus(xp, !!c.coop);
+      awardXp(name, 'fishing', xp + coopXp);
       eventCredit('fishing', name, 1, fish.id);
       if (c.crew) { try { fleetNote({ trip: c.crew.trip, name, kind: 'catch', fish: f.id, grams: fish.grams }); } catch { /* log only */ } }
-      emitActivity({ name, skill: 'fishing', xp, action: 'catch', detail: { fish: f.id, rarity: f.rarity, grams: fish.grams, value: fish.value }, at: now });
-      return { caught: true, fish, xp };
+      emitActivity({ name, skill: 'fishing', xp: xp + coopXp, action: 'catch', detail: { fish: f.id, rarity: f.rarity, grams: fish.grams, value: fish.value, ...(coopXp ? { coopXp } : {}) }, at: now });
+      return { caught: true, fish, xp: xp + coopXp, ...(coopXp ? { coopXp } : {}) };
     });
   }
   /** Give up on the current cast (no penalty). */
@@ -318,26 +320,35 @@ export async function initFishing(): Promise<void> {
   } catch (e) { console.error('[fishing] init failed:', (e as Error).message); }
 }
 
-/** Who is fishing at the dock right now (any fish_* action in the last 20 s), and what they are doing, so other players
- *  see their cast, line, reel and catch (pt242u). Changes are pushed to the 'fish-dock' room as 'fish_anglers'. */
+/** Who is fishing right now (any fish_* action in the last 20 s), and what they are doing, so other players
+ *  see their cast, line, reel and catch (pt242u). Dock / reef / solo deep crowds stay in a spot room; a crewed
+ *  fleet trip gets its own room so crew see each other on the shared boat, not the people back at the dock. */
 const HERE = new Map<string, AnglerState>();
 export const HERE_MS = 20_000;
 export const DOCK_ROOM = 'fish-dock';
+export const fishRoom = (spot?: FishSpot, trip?: string | null) => (trip ? `fish-trip:${trip}` : `fish-spot:${spot ?? 'lake'}`);
+export type AnglerFilter = { spot?: FishSpot; trip?: string | null };
+const visible = (a: AnglerState, filter?: AnglerFilter) => {
+  if (!filter) return true;
+  if (filter.trip) return a.trip === filter.trip;
+  return (a.spot ?? 'lake') === (filter.spot ?? 'lake') && !a.trip;
+};
 export function markHere(name: string, now = Date.now(), patch?: Partial<Omit<AnglerState, 'name' | 'since'>>) {
   const prev = HERE.get(name);
   const next: AnglerState = { name, pose: 'idle', yaw: 0, power: 0.5, ...prev, ...(patch ?? {}), since: patch?.pose ? now : prev?.since ?? now } as AnglerState;
   if (patch?.pose && patch.pose !== 'catch') delete next.fish;
+  if (patch && 'trip' in patch && !patch.trip) delete next.trip;
   (next as AnglerState & { seen?: number }).seen = now; HERE.set(name, next);
   if (HERE.size > 500) for (const [k, a] of HERE) if (now - ((a as AnglerState & { seen?: number }).seen ?? 0) > HERE_MS) HERE.delete(k);
 }
 export function leaveDock(name: string) { return HERE.delete(name); }
-export function anglerStates(except: string | null, now = Date.now()): AnglerState[] {
+export function anglerStates(except: string | null, now = Date.now(), filter?: AnglerFilter): AnglerState[] {
   const out: AnglerState[] = [];
   for (const [k, a] of HERE) { const seen = (a as AnglerState & { seen?: number }).seen ?? 0; if (now - seen > HERE_MS) { HERE.delete(k); continue; }
-    if (k !== except && out.length < 8) out.push({ name: a.name, pose: a.pose, since: a.since, yaw: a.yaw, power: a.power, ...(a.fish ? { fish: a.fish } : {}) }); }
+    if (k !== except && visible(a, filter) && out.length < 8) out.push({ name: a.name, pose: a.pose, since: a.since, yaw: a.yaw, power: a.power, ...(a.fish ? { fish: a.fish } : {}), ...(a.spot ? { spot: a.spot } : {}), ...(a.trip ? { trip: a.trip } : {}) }); }
   return out;
 }
-export function anglersHere(except: string | null, now = Date.now()): string[] { return anglerStates(except, now).map((a) => a.name); }
+export function anglersHere(except: string | null, now = Date.now(), filter?: AnglerFilter): string[] { return anglerStates(except, now, filter).map((a) => a.name); }
 /** Per-socket token bucket: 8 actions, refills 4/s. */
 function bucket(cap = 8, perSec = 4) { let tok = cap, at = Date.now(); return () => { const n = Date.now(); tok = Math.min(cap, tok + ((n - at) / 1000) * perSec); at = n; if (tok < 1) return false; tok -= 1; return true; }; }
 type Ack = (r: Record<string, unknown>) => void;
@@ -355,17 +366,39 @@ export function registerFishing(io: Server, socket: Socket): void {
     } catch (e) { ack?.({ ok: false, error: e instanceof FishError ? e.message : 'Something went wrong.' }); if (!(e instanceof FishError)) console.error(`[fishing] ${ev}:`, (e as Error).message); }
   });
   on('fish_state', async (_b, f, n) => ({ state: await f.view(n), prices: Object.fromEntries(FISH.map((x) => [x.id, px(fishSellValue(x.base))])) }));
-  const pushDock = () => { try { io.to(DOCK_ROOM).emit('fish_anglers', { anglers: anglerStates(null) }); } catch { /* best effort */ } };
-  const pose = (n: string, patch: Partial<Omit<AnglerState, 'name' | 'since'>>) => { markHere(n, Date.now(), patch); pushDock(); };
-  on('fish_cast', async (b, f, n) => { const r = await f.cast(n, b.spot); pose(n, { pose: 'cast', ...anglerAim(b.yaw, b.power) }); return r; });
+  const rooms = () => [...socket.rooms].filter((r) => r === DOCK_ROOM || r.startsWith('fish-spot:') || r.startsWith('fish-trip:'));
+  const pushHere = (n: string) => {
+    const a = HERE.get(n); const filter: AnglerFilter = a?.trip ? { trip: a.trip } : { spot: a?.spot ?? 'lake' };
+    const room = fishRoom(filter.spot, filter.trip);
+    try { io.to(room).emit('fish_anglers', { anglers: anglerStates(null, Date.now(), filter) }); } catch { /* best effort */ }
+  };
+  const pose = (n: string, patch: Partial<Omit<AnglerState, 'name' | 'since'>>) => { markHere(n, Date.now(), patch); pushHere(n); };
+  const sceneOf = (n: string, spotIn: unknown): { spot: FishSpot; trip?: string } => {
+    const spot: FishSpot = isFishSpot(spotIn) ? spotIn : (HERE.get(n)?.spot ?? 'lake');
+    const trip = spot === 'deep' ? crewHook(n)?.tripId : undefined;
+    return { spot, ...(trip ? { trip } : { trip: undefined }) };
+  };
+  on('fish_cast', async (b, f, n) => { const r = await f.cast(n, b.spot); pose(n, { pose: 'cast', ...anglerAim(b.yaw, b.power), ...sceneOf(n, b.spot) }); return r; });
   on('fish_hook', async (_b, f, n) => { const r = await f.hook(n); pose(n, { pose: 'reel' }); return r; });
   on('fish_land', async (b, f, n) => { const r = await f.land(n, b.inputs); pose(n, r.caught && r.fish ? { pose: 'catch', fish: r.fish.fish } : { pose: 'idle' }); return r; });
   on('fish_reel_in', (_b, f, n) => { f.reelIn(n); pose(n, { pose: 'idle' }); return {}; });
   on('fish_sell', (b, f, n) => { awayFromMarket(n, FishError); return f.sell(n, b.ids, b.qty); });
   on('fish_release', (b, f, n) => f.release(n, b.ids));
-  on('fish_here', () => { void socket.join(DOCK_ROOM); return { anglers: anglersHere(nameOf()), states: anglerStates(nameOf()) }; });
-  const leave = () => { void socket.leave(DOCK_ROOM); const n = nameOf(); if (n && leaveDock(n)) pushDock(); };
+  on('fish_here', (b, _f, n) => {
+    const scene = sceneOf(n, b.spot);
+    const room = fishRoom(scene.spot, scene.trip);
+    for (const r of rooms()) if (r !== room) void socket.leave(r);
+    void socket.join(room);
+    if (n) markHere(n, Date.now(), { ...scene, pose: HERE.get(n)?.pose ?? 'idle' });
+    const filter: AnglerFilter = scene.trip ? { trip: scene.trip } : { spot: scene.spot };
+    return { anglers: anglersHere(n || null, Date.now(), filter), states: anglerStates(n || null, Date.now(), filter) };
+  });
+  const leave = () => {
+    const n = nameOf(); const room = n && HERE.get(n) ? fishRoom(HERE.get(n)!.spot, HERE.get(n)!.trip) : DOCK_ROOM;
+    for (const r of rooms()) void socket.leave(r);
+    if (n && leaveDock(n)) { try { io.to(room).emit('fish_anglers', { anglers: anglerStates(null, Date.now(), room.startsWith('fish-trip:') ? { trip: room.slice('fish-trip:'.length) } : { spot: (room.split(':')[1] as FishSpot) ?? 'lake' }) }); } catch { /* best effort */ } }
+  };
   socket.on('fish_leave', (_p: unknown, ack?: Ack) => { leave(); ack?.({ ok: true }); });
-  socket.on('disconnect', () => { const n = nameOf(); if (n && leaveDock(n)) pushDock(); });
+  socket.on('disconnect', () => { leave(); });
   on('fish_board', async (_b, f) => ({ board: await f.board() }), false);
 }

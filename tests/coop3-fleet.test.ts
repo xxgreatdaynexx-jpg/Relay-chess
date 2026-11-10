@@ -6,7 +6,7 @@ import { Fishing, setFishBoatHook, type FishRng } from '../server/fishing';
 import { FishFleet, resetFishFleet } from '../server/fishFleet';
 import { setPriceIndexForTest } from '../server/price-index';
 import { setJail, Jail } from '../server/jail';
-import { fishById, fishPool, Reel, rollFish } from '../shared/fishing';
+import { fishById, fishPool, Reel, rollFish, FISH_XP, coopXpBonus } from '../shared/fishing';
 import { bestBoat } from '../shared/fleet';
 import { captainShare, crewSeats, FLEET_REQUEST_TTL_MS, FLEET_TRIP_MS } from '../shared/coop3';
 import { ICON_FISH_IDS } from '../shared/itemIcons';
@@ -65,6 +65,9 @@ describe('fishing fleets', () => {
     expect(fishById(c.fish)!.zone).toBeLessThanOrEqual(3); expect(fishById(c.fish)!.crew).toBe(true);
     now += biteIn + 100; const h = fi.hook('Ann'); const inp = play(h.seed, h.diff); now += inp.length * 50; const r = await fi.land('Ann', inp);
     expect(r.caught).toBe(true);
+    const baseXp = FISH_XP[fishById(c.fish)!.rarity];
+    expect(r.coopXp).toBe(coopXpBonus(baseXp, true));
+    expect(r.xp).toBe(baseXp + r.coopXp!);
     const capBefore = bank.account('Cap').chips;
     const sold = await fi.sell('Ann');
     expect(sold.captainCut).toBeGreaterThan(0);     expect(sold.captainCut).toBeLessThanOrEqual(captainShare(sold.paid + sold.captainCut!, 0.25) + 1);
@@ -84,5 +87,23 @@ describe('fishing fleets', () => {
     expect(b.captainCut).toBeUndefined(); expect(a.captainCut).toBeGreaterThan(0);
     expect(a.paid + a.captainCut!).toBe(b.paid); // same capped deep payout, split
     expect(Math.abs(a.captainCut! - (a.paid + a.captainCut!) * 0.3)).toBeLessThan(1);
+  });
+
+  it('solo deep-sea fishing has no co-op bonus, and a crewed bonus never changes the sale value', async () => {
+    setPriceIndexForTest(1);
+    const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
+    const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
+    let k = 0; const us = [0.2, 0.2]; const rng: FishRng = { unit: () => us[k++ % us.length]!, int: (lo, hi) => (lo === 1 ? 42 : 2000) };
+    const fi = sellsAfterHaul(new Fishing(pool, () => bank, () => now, rng), pool); await fi.init();
+    const { bestBoat } = await import('../shared/fleet');
+    setFishBoatHook(async () => bestBoat(['yacht']));
+    const solo = await fi.cast('Zed', 'deep', () => true);
+    expect(solo.coop).toBeUndefined();
+    now += solo.biteIn + 100; const hs = fi.hook('Zed'); const inps = play(hs.seed, hs.diff); now += inps.length * 50;
+    const landed = await fi.land('Zed', inps);
+    expect(landed.caught).toBe(true); expect(landed.coopXp).toBeUndefined();
+    expect(landed.xp).toBe(FISH_XP[fishById(landed.fish!.fish)!.rarity]);
+    const sold = await fi.sell('Zed');
+    expect(sold.paid).toBeGreaterThan(0); expect(sold.captainCut).toBeUndefined();
   });
 });

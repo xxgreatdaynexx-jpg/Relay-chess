@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T09:55:00-06:00", "title": "Crew on the boat, co-op fishing bonus", "bullets": [
+    "Requested by Special Characters: when you join a marina fleet trip, you and your crew now see each other live on the shared boat while deep-sea fishing. Solo trips still use your own boat as before.",
+    "A crewed trip grants a clear co-op bonus: +50% Fishing XP on each catch you land. Fish still sell at their normal prices, the daily ocean cap is unchanged, and no extra chips are minted.",
+  ]},
   {"commit": "", "at": "2026-11-10T09:40:00-06:00", "title": "More Big Farms north of town", "bullets": [
     "Requested by carter2: the one-Big-Farm-per-account limit is gone. You can buy as many of the large east-of-town farms as you want, as long as your total farmland stays within the 1,500-tile zoning cap.",
     "Four new large plots are for sale north of the existing Big Farms, on clear land that stays off the Stone Quarry, roads, lakes and buildings. They use the same sizes and prices as the original farms: a 20×20 is 145,000, a 24×24 is 235,000, and a 30×30 is 450,000. Existing farm deeds and locations are unchanged.",

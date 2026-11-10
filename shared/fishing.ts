@@ -164,7 +164,10 @@ export interface FishView { cooler: FishCatch[]; today: { gross: number; paid: n
 /** What other players see of an angler at the dock (pt242u). Derived on the server from fish_* actions only:
  *  'cast' = line out (bobber floats; the bite time stays secret), 'reel' = fighting a fish, 'catch' = just landed one. */
 export type AnglerPose = 'idle' | 'cast' | 'reel' | 'catch';
-export interface AnglerState { name: string; pose: AnglerPose; since: number; yaw: number; power: number; fish?: string }
+export interface AnglerState { name: string; pose: AnglerPose; since: number; yaw: number; power: number; fish?: string; /** Lake / reef / deep — used so dock and boat crowds stay separate. */ spot?: FishSpot; /** Fleet trip id, when this angler is on a crewed boat. */ trip?: string }
+/** Extra Fishing XP (not chips) on a landed catch while a fleet trip has crew aboard. Sale values stay the normal fish prices. */
+export const COOP_XP_BONUS = 0.5;
+export const coopXpBonus = (xp: number, coop: boolean) => (coop ? Math.round(xp * COOP_XP_BONUS) : 0);
 /** Clamp a client-sent aim/power pair (cosmetic only) into the ranges the 3D scene uses. */
 export function anglerAim(yaw: unknown, power: unknown): { yaw: number; power: number } {
   const n = (v: unknown, lo: number, hi: number, d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);

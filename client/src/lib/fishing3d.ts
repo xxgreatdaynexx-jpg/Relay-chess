@@ -230,25 +230,43 @@ export class Fishing3D {
     const lilyG = new THREE.CircleGeometry(0.45, 10, 0.3, Math.PI * 1.8); lilyG.rotateX(-Math.PI / 2); const lilyM = new THREE.MeshLambertMaterial({ color: 0x2f7d3a }); const lilies = new THREE.InstancedMesh(lilyG, lilyM, 40); n = 0;
     for (let i = 0; i < 300 && n < 40; i++) { const a = rnd() * Math.PI * 2, r = 0.55 + rnd() * 0.35; const x = LAKE.x + Math.cos(a) * LAKE.rx * r, z = LAKE.z + Math.sin(a) * LAKE.rz * r; if (!inLake(x, z, -1) || Math.abs(x - DOCK.x) < 6) continue; m4.compose(v.set(x, 0.08, z), q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * 6), sc.set(1, 1, 1)); lilies.setMatrixAt(n++, m4); }
     lilies.count = n; if (!this.reef) s.add(lilies); this.track(lilyG, lilyM);
-    // pier + boathouse
+    // pier + boathouse (hidden on deep-sea trips: crew stand on the shared boat instead)
     const wood = woodTex(); const wood2 = wood.clone(); wood2.needsUpdate = true; wood2.repeat.set(1, 2.4); this.track(wood, wood2);
+    const dockage = new THREE.Group(); dockage.name = 'dockage';
     const plankM = new THREE.MeshStandardMaterial({ map: wood2, color: 0xc9a27a, roughness: 0.85, metalness: 0 }); const postM = new THREE.MeshStandardMaterial({ color: 0x3b2a1c, roughness: 0.9 });
     const platM = new THREE.MeshStandardMaterial({ map: wood, color: 0xc9a27a, roughness: 0.85 }); this.track(platM);
-    const pierLen = DOCK.pierZ1 - DOCK.pierZ0; const pier = new THREE.Mesh(new THREE.BoxGeometry(DOCK.pierW, 0.2, pierLen + 6), plankM); pier.position.set(DOCK.x, 0.55, (DOCK.pierZ0 + DOCK.pierZ1) / 2 + 3); s.add(pier);
-    const plat = new THREE.Mesh(new THREE.BoxGeometry(7, 0.2, 4), platM); plat.position.set(DOCK.x, 0.55, DOCK.pierZ0 + 1.6); s.add(plat); this.track(plankM, postM, pier.geometry, plat.geometry);
+    const pierLen = DOCK.pierZ1 - DOCK.pierZ0; const pier = new THREE.Mesh(new THREE.BoxGeometry(DOCK.pierW, 0.2, pierLen + 6), plankM); pier.position.set(DOCK.x, 0.55, (DOCK.pierZ0 + DOCK.pierZ1) / 2 + 3); dockage.add(pier);
+    const plat = new THREE.Mesh(new THREE.BoxGeometry(7, 0.2, 4), platM); plat.position.set(DOCK.x, 0.55, DOCK.pierZ0 + 1.6); dockage.add(plat); this.track(plankM, postM, pier.geometry, plat.geometry);
     const postG = new THREE.CylinderGeometry(0.14, 0.14, 1.8, 6); this.track(postG);
-    for (let z = DOCK.pierZ0; z <= DOCK.pierZ1 + 4; z += 2.5) for (const sx of [-1, 1]) { const p = new THREE.Mesh(postG, postM); p.position.set(DOCK.x + sx * (DOCK.pierW / 2), -0.2, z); s.add(p); }
-    for (const sx of [-1, 1]) for (const sz of [0, 1]) { const p = new THREE.Mesh(postG, postM); p.position.set(DOCK.x + sx * 3.4, -0.2, DOCK.pierZ0 + sz * 3.2); s.add(p); }
-    const lampPole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 3, 6), postM); lampPole.position.set(DOCK.x - 3.2, 2, DOCK.pierZ0 + 0.4); s.add(lampPole); this.track(lampPole.geometry);
-    this.bulbM = new THREE.MeshBasicMaterial({ color: 0xffd9a0 }); const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), this.bulbM); bulb.position.copy(lampPos); s.add(bulb); this.lamp.position.copy(bulb.position); this.track(this.bulbM, bulb.geometry);
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.dropTex, color: 0xffc477, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.6 })); halo.scale.setScalar(2.2); halo.position.copy(lampPos); halo.userData.lampHalo = true; s.add(halo); this.track(halo.material); this.lampHalo = halo;
+    for (let z = DOCK.pierZ0; z <= DOCK.pierZ1 + 4; z += 2.5) for (const sx of [-1, 1]) { const p = new THREE.Mesh(postG, postM); p.position.set(DOCK.x + sx * (DOCK.pierW / 2), -0.2, z); dockage.add(p); }
+    for (const sx of [-1, 1]) for (const sz of [0, 1]) { const p = new THREE.Mesh(postG, postM); p.position.set(DOCK.x + sx * 3.4, -0.2, DOCK.pierZ0 + sz * 3.2); dockage.add(p); }
+    const lampPole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 3, 6), postM); lampPole.position.set(DOCK.x - 3.2, 2, DOCK.pierZ0 + 0.4); dockage.add(lampPole); this.track(lampPole.geometry);
+    this.bulbM = new THREE.MeshBasicMaterial({ color: 0xffd9a0 }); const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), this.bulbM); bulb.position.copy(lampPos); dockage.add(bulb); this.lamp.position.copy(bulb.position); this.track(this.bulbM, bulb.geometry);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.dropTex, color: 0xffc477, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.6 })); halo.scale.setScalar(2.2); halo.position.copy(lampPos); halo.userData.lampHalo = true; dockage.add(halo); this.track(halo.material); this.lampHalo = halo;
     const wallM = new THREE.MeshLambertMaterial({ color: this.reef ? 0xf2e6cc : 0x2a2730 }), roofM = new THREE.MeshLambertMaterial({ color: this.reef ? 0x2aa8a0 : 0x5a1f2c }); this.track(wallM, roofM);
-    const house = new THREE.Mesh(new THREE.BoxGeometry(7, 3.6, 6), wallM); house.position.set(DOCK.x, 1.8, DOCK.z - 1); s.add(house); this.track(house.geometry);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(5.6, 2.2, 4), roofM); roof.rotation.y = Math.PI / 4; roof.position.set(DOCK.x, 4.7, DOCK.z - 1); s.add(roof); this.track(roof.geometry);
-    this.signM = new THREE.MeshBasicMaterial({ color: 0x4fc3d9 }); const signM = this.signM; const sign = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.35, 0.1), signM); sign.position.set(DOCK.x, 3.0, DOCK.z - 4.05); s.add(sign); this.track(signM, sign.geometry);
+    const house = new THREE.Mesh(new THREE.BoxGeometry(7, 3.6, 6), wallM); house.position.set(DOCK.x, 1.8, DOCK.z - 1); dockage.add(house); this.track(house.geometry);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(5.6, 2.2, 4), roofM); roof.rotation.y = Math.PI / 4; roof.position.set(DOCK.x, 4.7, DOCK.z - 1); dockage.add(roof); this.track(roof.geometry);
+    this.signM = new THREE.MeshBasicMaterial({ color: 0x4fc3d9 }); const signM = this.signM; const sign = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.35, 0.1), signM); sign.position.set(DOCK.x, 3.0, DOCK.z - 4.05); dockage.add(sign); this.track(signM, sign.geometry);
     // rowboat
-    const boatM = new THREE.MeshLambertMaterial({ color: 0x8a3b2b }); const boat = new THREE.Mesh(new THREE.CapsuleGeometry(0.7, 2.4, 3, 8), boatM); boat.rotation.z = Math.PI / 2; boat.scale.set(1, 1, 0.5); boat.rotation.y = 0.3; boat.position.set(DOCK.x - 3.6, 0.15, DOCK.pierZ0 + 6); s.add(boat); this.track(boatM, boat.geometry);
-    { const a = buildAngler(); this.track(...a.disposables); this.angler.add(a.root); this.anglerRig = a; } this.angler.position.set(STAND.x, 0.65, STAND.z); s.add(this.angler);
+    const boatM = new THREE.MeshLambertMaterial({ color: 0x8a3b2b }); const boat = new THREE.Mesh(new THREE.CapsuleGeometry(0.7, 2.4, 3, 8), boatM); boat.rotation.z = Math.PI / 2; boat.scale.set(1, 1, 0.5); boat.rotation.y = 0.3; boat.position.set(DOCK.x - 3.6, 0.15, DOCK.pierZ0 + 6); dockage.add(boat); this.track(boatM, boat.geometry);
+    if (!this.deep) s.add(dockage);
+    else {
+      // Shared fishing boat under the angler. Crew stand on this deck instead of the pier.
+      const hullM = new THREE.MeshStandardMaterial({ color: 0x2a3340, roughness: 0.7, metalness: 0.15 });
+      const deckM = new THREE.MeshStandardMaterial({ color: 0x8a6a4a, roughness: 0.85 });
+      const cabinM = new THREE.MeshStandardMaterial({ color: 0xd8dee8, roughness: 0.5 });
+      const hull = new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.1, 11.5), hullM); hull.position.set(STAND.x, -0.15, STAND.z - 2.2);
+      const bow = new THREE.Mesh(new THREE.ConeGeometry(2.4, 3.2, 4), hullM); bow.rotation.set(0, Math.PI / 4, -Math.PI / 2); bow.position.set(STAND.x, 0.1, STAND.z - 8.2);
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.16, 10.2), deckM); deck.position.set(STAND.x, 0.48, STAND.z - 2.0);
+      const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.6, 2.6), cabinM); cabin.position.set(STAND.x, 1.3, STAND.z + 2.0);
+      const railG = new THREE.BoxGeometry(0.08, 0.45, 10.2); const railM = new THREE.MeshStandardMaterial({ color: 0xc5ced8, roughness: 0.4, metalness: 0.4 });
+      const railL = new THREE.Mesh(railG, railM); railL.position.set(STAND.x - 2.05, 0.85, STAND.z - 2.0);
+      const railR = new THREE.Mesh(railG, railM); railR.position.set(STAND.x + 2.05, 0.85, STAND.z - 2.0);
+      s.add(hull, bow, deck, cabin, railL, railR);
+      this.track(hullM, deckM, cabinM, railM, hull.geometry, bow.geometry, deck.geometry, cabin.geometry, railG);
+      this.lamp.position.set(STAND.x, 3.2, STAND.z + 2.0);
+    }
+        { const a = buildAngler(); this.track(...a.disposables); this.angler.add(a.root); this.anglerRig = a; } this.angler.position.set(STAND.x, 0.65, STAND.z); s.add(this.angler);
     const rodM = new THREE.MeshStandardMaterial({ color: 0x1d2633, roughness: 0.3, metalness: 0.4 }); this.rod = new THREE.Mesh(new THREE.BufferGeometry(), rodM); s.add(this.rod); this.track(rodM);
     // reel + cork handle at the grip (follows the rod butt every frame)
     { const cork = new THREE.MeshStandardMaterial({ color: 0xb08a5a, roughness: 0.95 }), metal = new THREE.MeshStandardMaterial({ color: 0xc9ced6, roughness: 0.25, metalness: 0.9 }), dark = new THREE.MeshStandardMaterial({ color: 0x20252c, roughness: 0.4, metalness: 0.6 }); this.track(cork, metal, dark);
@@ -360,11 +378,14 @@ export class Fishing3D {
         const line = new THREE.Line(lineGeo, kit.lineM); line.frustumCulled = false; line.visible = false;
         const bob = new THREE.Mesh(kit.bobGeo, kit.bobM); bob.visible = false;
         this.scene.add(g, line, bob); e = { g, tag, rod, line, bob, pose: 'idle', at: this.t, yaw: 0, power: 0.5, fish: null, fishModel: null, target: new THREE.Vector3(), splashed: false }; this.others.set(o.name, e); }
-      const side = i % 2 ? 1 : -1, row = Math.floor(i / 2); e.g.position.set(DOCK.x + side * (2.2 + (row % 2) * 0.6), 0.65, DOCK.pierZ0 + 1.2 + row * 2.6);
+      const side = i % 2 ? 1 : -1, row = Math.floor(i / 2);
+      if (this.deep) e.g.position.set(STAND.x + side * (1.35 + (row % 2) * 0.15), 0.85, STAND.z - 0.4 - row * 1.55);
+      else e.g.position.set(DOCK.x + side * (2.2 + (row % 2) * 0.6), 0.65, DOCK.pierZ0 + 1.2 + row * 2.6);
       const pose = o.pose ?? 'idle'; const fish = pose === 'catch' ? o.fish ?? null : null;
-      if (pose !== e.pose || fish !== e.fish) { e.pose = pose; e.at = this.t; e.splashed = false; e.yaw = side * -0.4 + (o.yaw ?? 0) * 0.5; e.power = o.power ?? 0.5;
+      if (pose !== e.pose || fish !== e.fish) { e.pose = pose; e.at = this.t; e.splashed = false; e.yaw = (this.deep ? 0 : side * -0.4) + (o.yaw ?? 0) * 0.5; e.power = o.power ?? 0.5;
         const dir = new THREE.Vector3(Math.sin(e.yaw), 0, -Math.cos(e.yaw)); let d = 3 + e.power * 9; const p = new THREE.Vector3();
-        for (; d > 2; d -= 0.5) { p.set(e.g.position.x + dir.x * d, 0.1, e.g.position.z + dir.z * d); if (inLake(p.x, p.z, -1)) break; } e.target.copy(p);
+        if (this.deep) { p.set(e.g.position.x + dir.x * (4 + e.power * 8), 0.1, e.g.position.z + dir.z * (4 + e.power * 8)); e.target.copy(p); }
+        else { for (; d > 2; d -= 0.5) { p.set(e.g.position.x + dir.x * d, 0.1, e.g.position.z + dir.z * d); if (inLake(p.x, p.z, -1)) break; } e.target.copy(p); }
         if (e.fishModel) { e.g.remove(e.fishModel); disposeTree(e.fishModel); e.fishModel = null; } e.fish = fish;
         if (fish) { e.fishModel = buildFish(fish, 900, 'low'); e.fishModel.scale.multiplyScalar(0.6); e.fishModel.position.set(0.5, 1.9, -0.6); e.g.add(e.fishModel); } }
       e.g.rotation.y = -e.yaw; });

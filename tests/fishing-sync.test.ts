@@ -26,6 +26,22 @@ describe('other anglers see your fishing (pt242u)', () => {
     expect(anglerAim(9, -2)).toEqual({ yaw: 0.75, power: 0 });
     expect(anglerAim('x', NaN)).toEqual({ yaw: 0, power: 0.5 });
   });
+
+  it('fleet crew share a boat room, and dock anglers stay at the dock', () => {
+    const t = 9_000_000;
+    markHere('Dock', t, { pose: 'cast', spot: 'lake' });
+    markHere('Cap', t, { pose: 'reel', spot: 'deep', trip: 'trip-a' });
+    markHere('Ann', t, { pose: 'cast', spot: 'deep', trip: 'trip-a' });
+    markHere('Other', t, { pose: 'idle', spot: 'deep', trip: 'trip-b' });
+    markHere('Solo', t, { pose: 'cast', spot: 'deep' });
+    expect(anglerStates('Cap', t, { trip: 'trip-a' }).map((a) => a.name).sort()).toEqual(['Ann']);
+    expect(anglerStates('Ann', t, { trip: 'trip-a' }).map((a) => a.name).sort()).toEqual(['Cap']);
+    expect(anglerStates(null, t, { trip: 'trip-a' }).every((a) => a.trip === 'trip-a')).toBe(true);
+    expect(anglerStates(null, t, { spot: 'lake' }).map((a) => a.name)).toEqual(['Dock']);
+    expect(anglerStates(null, t, { spot: 'deep' }).map((a) => a.name)).toEqual(['Solo']);
+    for (const n of ['Dock', 'Cap', 'Ann', 'Other', 'Solo']) leaveDock(n);
+  });
+
 });
 
 /** Minimal fake WebAudio that counts live (connected) nodes. */

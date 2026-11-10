@@ -11,7 +11,7 @@ import { boostXp } from '../../../shared/skills'; // recheck #8: show the +20% X
 
 const chips = (n: number) => n.toLocaleString('en-US');
 type Phase = 'idle' | 'charge' | 'flying' | 'wait' | 'bite' | 'hooking' | 'reel' | 'landing' | 'show';
-type Card = { fish: string; grams: number; value: number; xp: number } | null;
+type Card = { fish: string; grams: number; value: number; xp: number; coopXp?: number } | null;
 
 /** Real 3D fishing at the dock (pt1220u). Same server flow as the panel: fish_cast → (bite) → fish_hook → reel sim → fish_land
  *  with the input timeline, which the server replays. Cast power/aim only place the bobber (cosmetic, no effect on the roll). */
@@ -36,7 +36,7 @@ export function Fishing3DGame({ me, onClose, onChange, spot = 'lake' }: { me: st
     // other anglers at the dock
     // other anglers at the dock: live 'fish_anglers' pushes (cast / reel / catch), with a slow poll as a fallback
     const show = (list: AnglerState[]) => { const others = list.filter((a) => a.name !== me); pending.current = others; three.current?.setOthers(others); };
-    const here = () => { void request('fish_here').then((r) => { if (r.ok) { const x = r as unknown as { anglers?: string[]; states?: AnglerState[] };
+    const here = () => { void request('fish_here', { spot }).then((r) => { if (r.ok) { const x = r as unknown as { anglers?: string[]; states?: AnglerState[] };
       show(x.states ?? (x.anglers ?? []).map((name) => ({ name, pose: 'idle', since: Date.now(), yaw: 0, power: 0.5 }))); } }); };
     const onPush = (p: { anglers?: AnglerState[] }) => show(p?.anglers ?? []);
     socket.on('fish_anglers', onPush);
@@ -82,11 +82,11 @@ export function Fishing3DGame({ me, onClose, onChange, spot = 'lake' }: { me: st
   };
   const finish = async (inputs: string) => {
     if (ph.current !== 'reel') return; setPhase('landing'); hold.current = false;
-    const r = await request('fish_land', { inputs }) as { ok: boolean; error?: string; caught?: boolean; fish?: FishCatch; xp?: number };
+    const r = await request('fish_land', { inputs }) as { ok: boolean; error?: string; caught?: boolean; fish?: FishCatch; xp?: number; coopXp?: number };
     g.current.reel = null; setReelUi(null);
     if (r.ok && r.caught && r.fish) {
       three.current?.showCatch(r.fish.fish, r.fish.grams); sfx.current?.win();
-      setCard({ fish: r.fish.fish, grams: r.fish.grams, value: Math.floor(fishSellValue(r.fish.value) * (view?.index ?? 1)), xp: r.xp ?? 0 }); setMsg(null); setPhase('show');
+      setCard({ fish: r.fish.fish, grams: r.fish.grams, value: Math.floor(fishSellValue(r.fish.value) * (view?.index ?? 1)), xp: r.xp ?? 0, ...(r.coopXp ? { coopXp: r.coopXp } : {}) }); setMsg(null); setPhase('show');
     } else { setMsg(r.ok ? 'It got away… cast again!' : r.error ?? 'The line snapped.'); reset(); }
     load(); onChange?.();
   };
@@ -127,7 +127,7 @@ export function Fishing3DGame({ me, onClose, onChange, spot = 'lake' }: { me: st
       {glError && <div className="fish3d-msg">{glError}</div>}
       {msg && <div className="fish3d-msg" data-testid="fish3d-msg">{msg}</div>}
       {phase === 'charge' && <div className="fish3d-power" data-testid="fish3d-power"><div style={{ width: `${power * 100}%` }} /><span>Power</span></div>}
-      {phase === 'idle' && !card && <div className="fish3d-hint">🖱️ Aim · hold <kbd>Space</kbd> / click / touch to charge · release to cast</div>}
+      {phase === 'idle' && !card && <div className="fish3d-hint">🖱️ Aim · hold <kbd>Space</kbd> / click / touch to charge · release to cast{spot === 'deep' ? ' · Crew on a fleet trip appear on this boat; a crewed trip grants a co-op Fishing XP bonus (sale prices stay normal).' : ''}</div>}
       {(phase === 'wait' || phase === 'flying') && <div className="fish3d-hint">The bobber twitches… wait for it to go under</div>}
       {phase === 'bite' && <div className="fish3d-bite" data-testid="fish3d-bite">❗ BITE! Strike now</div>}
       {phase === 'reel' && reelUi && <div className="fish3d-reel" data-testid="fish3d-reel">
@@ -138,7 +138,8 @@ export function Fishing3DGame({ me, onClose, onChange, spot = 'lake' }: { me: st
       </div>}
       {card && f && <div className="fish3d-card" data-testid="fish3d-catch" style={{ borderColor: RARITY_COLOR[f.rarity] }}>
         <div className="fish3d-rar" style={{ color: RARITY_COLOR[f.rarity] }}>{f.rarity.toUpperCase()}</div>
-        <h3><FishGlyph id={card.fish} size={26} /> {f.label}</h3><div>{fmtKg(card.grams)} · worth ~🪙 {chips(card.value)} · +{boostXp(card.xp)} Fishing XP</div>
+        <h3><FishGlyph id={card.fish} size={26} /> {f.label}</h3><div>{fmtKg(card.grams)} · worth ~🪙 {chips(card.value)} · +{boostXp(card.xp)} Fishing XP{card.coopXp ? ` (includes +${boostXp(card.coopXp)} co-op bonus)` : ''}</div>
+        {card.coopXp ? <div data-testid="fish3d-coop">🤝 Co-op bonus — sale price is the normal value for this fish.</div> : null}
         <small>Kept in your cooler. Click or press Space to cast again.</small>
       </div>}
     </div>
