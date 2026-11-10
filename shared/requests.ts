@@ -15,7 +15,9 @@ export interface PublicRequest {
   votes: number; voted?: boolean; createdAt: number; updatedAt: number; note?: string; changelog?: string; qa?: boolean; scheduledFor?: string;
 }
 
-const BAD = /\b(f+u+c+k+\w*|sh[i1]t+\w*|c+u+n+t+s?|n+[i1]+gg+(a|ah|er|uh)s?|f+a+g+(s|got+s?)?|b+[i1]+t+c+h+\w*|r+e+t+a+r+d+\w*|wh[o0]re|sl+u+t+s?|d[i1]ck(head)?s?|puss(y|ies)|cock(s|sucker)?)\b/i;
+/** Swearing is allowed. This only blocks slurs and hate speech. */
+const HATE = /\b(n+[i1]+gg+(a|ah|er|uh)s?|f+a+g+(s|got+s?)?|r+e+t+a+r+d+\w*)\b/i;
+
 export function validateRequest(b: { title?: unknown; details?: unknown; category?: unknown }): { ok: true; title: string; details: string; category: RequestCategory } | { ok: false; error: string } {
   const title = typeof b.title === 'string' ? b.title.replace(/\s+/g, ' ').trim() : '';
   const details = typeof b.details === 'string' ? b.details.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim() : '';
@@ -25,7 +27,7 @@ export function validateRequest(b: { title?: unknown; details?: unknown; categor
   if (details.length > DETAILS_MAX) return { ok: false, error: `Details are limited to ${DETAILS_MAX} characters.` };
   if (!category) return { ok: false, error: 'Pick a category.' };
   const all = `${title} ${details}`;
-  if (BAD.test(all)) return { ok: false, error: 'Please keep it clean.' };
+  if (HATE.test(all)) return { ok: false, error: "That language isn't allowed." };
   if (/https?:\/\/|www\.|\.(com|net|gg|xyz|ru)\b/i.test(all)) return { ok: false, error: 'No links, please.' };
   if (/(.)\1{6,}/.test(all) || (title.length > 12 && title === title.toUpperCase() && /[A-Z]/.test(title))) return { ok: false, error: 'That looks like spam.' };
   return { ok: true, title, details, category };

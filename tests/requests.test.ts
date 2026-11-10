@@ -6,12 +6,14 @@ import { CHANGELOG } from '../shared/changelog';
 const body = (title: string, category = 'Arena', details = '') => ({ title, details, category });
 
 describe('change requests', () => {
-  it('validates title/details/category, profanity, links and spam', () => {
+  it('validates title/details/category, links and spam, and allows swearing but not slurs', () => {
     expect(validateRequest(body('Add a sniper scope zoom')).ok).toBe(true);
     expect(validateRequest(body('x'.repeat(81))).ok).toBe(false);
     expect(validateRequest(body('Valid title here', 'Arena', 'd'.repeat(501))).ok).toBe(false);
     expect(validateRequest(body('Valid title here', 'Nope')).ok).toBe(false);
-    expect(validateRequest(body('this is shit fix it')).ok).toBe(false);
+    expect(validateRequest(body('this is shit fix it')).ok).toBe(true);
+    expect(validateRequest(body('fuck this farm cap')).ok).toBe(true);
+    expect(validateRequest(body('remove the retard cap')).ok).toBe(false);
     expect(validateRequest(body('check out www.spam.com')).ok).toBe(false);
     expect(validateRequest(body('aaaaaaaaaaaa please')).ok).toBe(false);
     expect(validateRequest(body('Night map for the arena')).ok).toBe(true);

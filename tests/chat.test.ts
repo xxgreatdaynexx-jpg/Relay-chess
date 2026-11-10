@@ -24,6 +24,7 @@ describe('chat sanitizing and limits', () => {
     expect(validateChat('x'.repeat(CHAT_MAX_LEN))).toEqual({ ok: true, text: 'x'.repeat(CHAT_MAX_LEN) });
     expect(validateChat('x'.repeat(CHAT_MAX_LEN + 1)).ok).toBe(false);
     expect(validateChat(`<i>${'x'.repeat(CHAT_MAX_LEN)}</i>`).ok).toBe(true);
+    expect(validateChat('this is shit, holy fuck')).toEqual({ ok: true, text: 'this is shit, holy fuck' });
   });
   it('rate limits per user: min gap and burst window', () => {
     const rl = new ChatRateLimiter(5, 10_000, 600);

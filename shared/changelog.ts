@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T09:35:00-06:00", "title": "Swearing is allowed in chat and feature requests", "bullets": [
+    "Requested by carter2: ordinary swearing is allowed in chat and on the feature board. Chat was already unfiltered. Feature requests no longer reject posts just for swearing.",
+    "Slurs and hate speech are still blocked on the feature board.",
+  ]},
   {"commit": "", "at": "2026-11-10T09:25:00-06:00", "title": "Larger stock orders", "bullets": [
     "Requested by carter2: a single stock order can now be at least 10,000 shares (or the shares still available offshore, if fewer). Shorts use the same size cap, and a short that size can still be closed in one go.",
     "A trade still moves the price by at most 2%, and all trading in a stock still moves it by at most 5% per 30 seconds. The cap on how far players can push a price overall is unchanged.",
