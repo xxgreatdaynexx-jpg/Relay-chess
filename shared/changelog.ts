@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T19:25:00-06:00", "title": "More Chud Resort plantation plots on empty grass", "bullets": [
+    "Requested by Dayne: eight new regular plantation plots (rf:13–20) fill empty grass on the east side of Chud Resort. Same buy prices and tropical crop rules as the original plots, including the double harvest yield. Existing plot ids and ownership are unchanged.",
+    "Resort buildings, the plantation barn, Coral Grotto and decor were swept off the asphalt avenues and cross streets so roofs, palms and lamps no longer sit in the road. Owned property only moved in place — ids and owners stay the same.",
+  ]},
   {"commit": "", "at": "2026-11-09T19:15:00-06:00", "title": "Chud Resort farms now produce double", "bullets": [
     "Requested by Dayne: every ripe tile on a Chud Resort plantation plot (rf:) yields twice as many crops as before. Fertilizer still adds its usual bonus on top. Seed costs, sell prices and city farms are unchanged.",
   ]},

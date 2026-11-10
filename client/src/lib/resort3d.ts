@@ -8,7 +8,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
-import { RESORT_SPOTS, resortLots, resortPlots, resortPlotId, rfTileXZ, RF_TILE, clampResortTarget, SHORE_Z, BOARDWALK_Z, RESORT_X0, RESORT_X1, RESORT_Z0 } from '../../../shared/resort';
+import { RESORT_SPOTS, resortLots, resortPlots, resortPlotId, rfTileXZ, RF_TILE, clampResortTarget, SHORE_Z, BOARDWALK_Z, RESORT_X0, RESORT_X1, RESORT_Z0, overlapsResortRoad } from '../../../shared/resort';
 import { cropById } from '../../../shared/farm';
 import { buildBoat, disposeTree } from './fleetModels';
 import { BOATS } from '../../../shared/fleet';
@@ -120,9 +120,10 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
 
   // Palms (instanced, curved trunks + fronds).
   const palmSpots: [number, number][] = [];
-  for (let x = RESORT_X0 + 14; x < RESORT_X1 - 10; x += 7 + r() * 4) { palmSpots.push([x, BOARDWALK_Z + 3 + r() * 1.5]); if (r() > 0.45) palmSpots.push([x + 2, SHORE_Z - 3 - r() * 3]); }
-  for (let z = -20; z <= 12; z += 6) palmSpots.push([-7, z], [7, z]);
-  for (let i = 0; i < 40; i++) palmSpots.push([RESORT_X0 + 10 + r() * (RESORT_X1 - RESORT_X0 - 20), -62 - r() * 30]);
+  const addPalm = (x: number, z: number) => { if (!overlapsResortRoad({ x, z, w: 1.2, d: 1.2 }, 0.8)) palmSpots.push([x, z]); };
+  for (let x = RESORT_X0 + 14; x < RESORT_X1 - 10; x += 7 + r() * 4) { addPalm(x, BOARDWALK_Z + 3 + r() * 1.5); if (r() > 0.45) addPalm(x + 2, SHORE_Z - 3 - r() * 3); }
+  for (let z = -20; z <= 12; z += 6) { addPalm(-7, z); addPalm(7, z); }
+  for (let i = 0; i < 40; i++) addPalm(RESORT_X0 + 10 + r() * (RESORT_X1 - RESORT_X0 - 20), -62 - r() * 30);
   const SEG = 5; const trunk = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(0.28, 0.36, 1.6, 7)), mat({ color: 0x8a6a48, roughness: 1 }), palmSpots.length * SEG);
   const FR = 7; const frond = new THREE.InstancedMesh(geo(new THREE.ConeGeometry(0.7, 4.6, 4, 1)), mat({ color: 0x2f8a3a, roughness: 0.8, flatShading: true }), palmSpots.length * FR);
   trunk.castShadow = frond.castShadow = true;
@@ -236,7 +237,9 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   for (let i = 0; i < dashN; i++) { d.position.set(RESORT_X0 + 14 + (i % 40) * 9.4, 0.15, i < 40 ? -32 : -64); d.rotation.set(0, 0, 0); d.scale.set(1, 1, 1); d.updateMatrix(); dashes.setMatrixAt(i, d.matrix); }
   scene.add(dashes);
   const stN = 34; const sPost = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(0.14, 0.18, 6, 6)), mat({ color: 0x24221f, metalness: 0.6, roughness: 0.4 }), stN); const sGlobe = new THREE.InstancedMesh(geo(new THREE.SphereGeometry(0.5, 10, 8)), glowMat, stN);
-  for (let i = 0; i < stN; i++) { const x = RESORT_X0 + 18 + (i % 17) * 22.5, z = i < 17 ? -35.6 : -67.6; d.position.set(x, 3, z); d.rotation.set(0, 0, 0); d.updateMatrix(); sPost.setMatrixAt(i, d.matrix); d.position.y = 6.2; d.updateMatrix(); sGlobe.setMatrixAt(i, d.matrix); }
+  for (let i = 0; i < stN; i++) { const x = RESORT_X0 + 18 + (i % 17) * 22.5, z = i < 17 ? -35.6 : -67.6;
+    if (overlapsResortRoad({ x, z, w: 1, d: 1 }, 0.5)) { d.scale.set(0, 0, 0); } else d.scale.set(1, 1, 1);
+    d.position.set(x, 3, z); d.rotation.set(0, 0, 0); d.updateMatrix(); sPost.setMatrixAt(i, d.matrix); d.position.y = 6.2; d.updateMatrix(); sGlobe.setMatrixAt(i, d.matrix); d.scale.set(1, 1, 1); }
   scene.add(sPost, sGlobe);
   // Traffic: convertibles and shuttles looping both avenues.
   const carCols = [0xf26b5b, 0xffffff, 0x2fb5b0, 0xf6c445, 0x1a1a1a, 0xd8b25a, 0x3a6ab0];
@@ -268,7 +271,9 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
     beam.rotation.z = Math.PI / 2; beam.position.x = 25; const piv = new THREE.Group(); piv.position.y = 19.5; piv.add(beam); lh.add(piv); anims.push((t) => { piv.rotation.y = t * 0.6; }); }
   // Flowering hedges along the avenues.
   { const hN = 120; const hedge = new THREE.InstancedMesh(geo(new THREE.IcosahedronGeometry(1, 0)), mat({ roughness: 0.9, flatShading: true }), hN); const fc = [0x2f7a3a, 0x3a8a40, 0xe0508a, 0xf6a040, 0xd84aa0];
-    for (let i = 0; i < hN; i++) { d.position.set(RESORT_X0 + 12 + (i % 60) * 6.4 + r() * 2, 0.6, i < 60 ? -28.5 : -60.5); d.rotation.set(r(), r(), r()); const k = 0.7 + r() * 0.5; d.scale.set(k * 1.3, k, k); d.updateMatrix(); hedge.setMatrixAt(i, d.matrix); hedge.setColorAt(i, cc.setHex(fc[i % 5 === 0 ? 2 + (i % 3) : i % 2]!)); }
+    for (let i = 0; i < hN; i++) { const x = RESORT_X0 + 12 + (i % 60) * 6.4 + r() * 2, z = i < 60 ? -28.5 : -60.5;
+      if (overlapsResortRoad({ x, z, w: 1.5, d: 1.5 }, 0.5)) { d.scale.set(0, 0, 0); } else { const k = 0.7 + r() * 0.5; d.scale.set(k * 1.3, k, k); }
+      d.position.set(x, 0.6, z); d.rotation.set(r(), r(), r()); d.updateMatrix(); hedge.setMatrixAt(i, d.matrix); hedge.setColorAt(i, cc.setHex(fc[i % 5 === 0 ? 2 + (i % 3) : i % 2]!)); }
     hedge.castShadow = true; scene.add(hedge); }
 
   // Properties.
