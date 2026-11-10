@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T09:40:00-06:00", "title": "Higher Factory royalties", "bullets": [
+    "Requested by Jay: the Factory monument now earns 10% of what other players get when they sell factory goods to the house (was 1%). The owner is paid on top, so the seller still keeps 100%.",
+    "Royalties on the mines, Fishing Dock, Speedway, market, and casino stay at 1%. Other property income is unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T09:35:00-06:00", "title": "Swearing is allowed in chat and feature requests", "bullets": [
     "Requested by carter2: ordinary swearing is allowed in chat and on the feature board. Chat was already unfiltered. Feature requests no longer reject posts just for swearing.",
     "Slurs and hate speech are still blocked on the feature board.",

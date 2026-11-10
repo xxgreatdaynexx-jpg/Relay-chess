@@ -15,6 +15,8 @@ const mk = (owners: Record<string, string>) => {
 describe('monument royalties', () => {
   it('default 1%, every royalty venue is a buyable landmark', () => {
     expect(royaltyRate('mine')).toBe(0.01);
+    expect(royaltyRate('factory')).toBe(0.10);
+    expect(royaltyRate('dock')).toBe(0.01);
     for (const lm of Object.keys(ROYALTY_VENUE)) expect(LANDMARK_PRICE[lm]).toBeGreaterThan(0);
     expect(Object.values(CAVE_LANDMARK)).toEqual(['mine', 'mine-frost', 'mine-magma']);
     expect(HOUSE_GAMES.has('holdem')).toBe(false);
@@ -24,6 +26,12 @@ describe('monument royalties', () => {
     expect(await r.earn('mine', 'Miner', 100)).toBe(1);
     expect(txs).toHaveLength(1); expect(txs[0]).toMatchObject({ name: 'Owner', amount: 1, opts: { game: 'monument_royalty' } });
     expect(txs[0].opts.key).toMatch(/^royalty:mine:/);
+  });
+  it('factory goods sold to the house pay the owner 10% (other monuments stay at 1%)', async () => {
+    const { r, txs } = mk({ 'lm:factory': 'Owner' });
+    expect(await r.earn('factory', 'Maker', 100)).toBe(10);
+    expect(txs[0]).toMatchObject({ name: 'Owner', amount: 10, opts: { game: 'monument_royalty' } });
+    expect(txs[0].opts.key).toMatch(/^royalty:factory:/);
   });
   it('fractions carry over; no owner or own earnings pay nothing', async () => {
     const { r, txs } = mk({ 'lm:dock': 'Owner' });
