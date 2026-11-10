@@ -2693,3 +2693,12 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 @media (max-width: 520px) {
   .lm-panel { right: 8px; left: 8px; width: auto; bottom: 52px; }
 }
+
+.mayor-law-drafts ol { margin: 0 0 1em; padding-left: 1.2em; }
+.mayor-law-draft-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0 8px; }
+.mayor-law-draft-actions button { min-height: 32px; min-width: 44px; padding: 4px 10px; }
+.mayor-law-draft-actions input { min-height: 32px; flex: 1 1 140px; max-width: 100%; padding: 4px 8px; }
+@media (max-width: 720px) {
+  .mayor-law-draft-actions button, .mayor-law-draft-actions input { min-height: 40px; font-size: 13px; }
+  .mayor-law-draft-actions button { flex: 1; }
+}

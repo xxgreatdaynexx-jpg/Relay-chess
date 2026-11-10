@@ -52,16 +52,16 @@ describe('text-only mayor bills', () => {
     expect(html.indexOf('mayor-law-info')).toBeGreaterThan(html.indexOf('mayor-law-text'));
     expect(LAW_RULES).toBe([
       'Only the sitting mayor can pass a bill—one per day, resetting at midnight UTC-6.',
+      'The sitting vice mayor can draft a bill with the same form. A draft is marked Pending mayor approval: it is not the day’s bill, does not open a veto, and has no effect until the sitting mayor approves it (or rejects it, with an optional reason). At most three drafts can wait at once. Drafts expire at the end of the term. The record shows who drafted it and who approved or rejected it.',
       'Bills are publicly recorded and numbered forever, even when the mayor changes.',
       'Laws must be clear, possible to enforce, and limited to Chud Hub.',
       'No taking someone’s chips, property or items, banning players, or granting yourself rewards.',
       'The vice mayor (election runner-up) can veto a bill submitted today. The sitting mayor can veto bills from earlier days. Days reset at midnight UTC-6. Vetoed bills stay in the record marked ‘Vetoed.’ If the mayor is removed, the vice mayor becomes mayor.',
       'Laws can’t override core game rules.\n\nExamples: ‘Delete all’ or ‘Remove all.’ These are too broad—state exactly what the law would change.',
     ].join('\n\n'));
-    expect(LAW_RULES.toLowerCase()).not.toMatch(/approv|dayne/);
-    const order = ['Only the sitting mayor', 'Bills are publicly', 'Laws must be clear', 'No taking someone', 'Laws can’t override', 'Examples: ‘Delete all’'].map((x) => html.indexOf(x.replace(/’/g, '’')));
+    expect(LAW_RULES.toLowerCase()).not.toMatch(/dayne/);
+    const order = ['Only the sitting mayor', 'The sitting vice mayor', 'Bills are publicly', 'Laws must be clear', 'No taking someone', 'Laws can’t override', 'Examples: ‘Delete all’'].map((x) => html.indexOf(x.replace(/’/g, '’')));
     expect(order.every((x, i) => x > 0 && (i === 0 || x > order[i - 1]!))).toBe(true);
-    expect(LAW_RULES).not.toContain('approval');
     expect(LAW_RULES).not.toContain('Dayne');
   });
 });
@@ -69,9 +69,9 @@ describe('text-only mayor bills', () => {
 describe('pending-only submission surface', () => {
   it('has no activation/approval operation or credentials', () => {
     const own = Object.getOwnPropertyNames(MayorLaws.prototype).sort();
-    expect(own).toEqual(['constructor','history','init','submit','veto']);
+    expect(own).toEqual(['approveDraft','constructor','history','init','rejectDraft','submit','submitDraft','veto']);
     const source = readFileSync('server/mayor.ts', 'utf8');
-    expect(source).not.toMatch(/(?:on|post)\(['"][^'"]*law[^'"]*(?:approv|activat)/i);
+    expect(source).not.toMatch(/(?:on|post)\(['"]mayor_law_approve['"]/);
     expect(readFileSync('server/mayorLaws.ts','utf8')).not.toContain('adminAuthorized');
   });
   it('uses authenticated socket identity, never payload mayor/admin/approval claims', async () => {
@@ -88,7 +88,7 @@ describe('pending-only submission surface', () => {
       expect(submitLaw).toHaveBeenCalledWith('Alice', 'hello');
       expect(r.bill).toEqual({status:'pending'});
       expect(handlers.has('mayor_law_approve')).toBe(false);
-      expect([...handlers.keys()].filter((k) => /law/.test(k)).sort()).toEqual(['mayor_law_history','mayor_law_submit','mayor_law_veto']);
+      expect([...handlers.keys()].filter((k) => /law/.test(k)).sort()).toEqual(['mayor_law_draft_approve','mayor_law_draft_reject','mayor_law_history','mayor_law_submit','mayor_law_veto']);
     } finally { setMayorForTest(null); }
   });
 });

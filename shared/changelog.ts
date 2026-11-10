@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T19:57:00-06:00", "title": "Vice mayor can draft bills for the mayor to approve", "bullets": [
+    "Requested by Dayne: the sitting vice mayor can submit a bill with the same form the mayor uses. It is marked Pending mayor approval and does not count as the day’s bill, open a veto, or spend from the treasury.",
+    "The sitting mayor can Approve (it then goes through the normal one-a-day bill flow, recorded as drafted by the vice mayor and approved by the mayor) or Reject with an optional reason. Only the mayor can approve, and a vice mayor cannot approve their own draft even if they later become mayor. At most three drafts can wait at once; leftovers expire at the end of the term. Bill history shows pending, rejected, approved and expired drafts with the drafter. Existing bills, including enacted Bill 1, are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-09T19:40:00-06:00", "title": "Factory: area select, copy/paste and move", "bullets": [
     "Requested by Liam: in the Factory builder, drag a box with the select tool to grab many parts (Shift+click to add). Copy / Cut / Paste (Ctrl+C/X/V) use your Machinist kit for paste; Move slides the selection without picking it up; Delete picks the selection back into the kit. Server-validated. Existing single-piece place, rotate, and pick-up still work.",
   ]},

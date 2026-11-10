@@ -168,12 +168,28 @@ export class Mayor {
   }
   async submitLaw(name: string, text: unknown) {
     await this.settle(this.clock());
-    try { return await new MayorLaws(this.pool, this.clock).submit(name, text); }
-    catch (e) { if (e instanceof MayorLawError) throw new MayorError(e.message); throw e; }
+    const now = this.clock(); const key = playerKey(name);
+    try {
+      const laws = new MayorLaws(this.pool, this.clock);
+      const [mayor, vice] = await Promise.all([this.mayor(now), this.vice(now)]);
+      if (mayor && mayor.key === key) return await laws.submit(name, text);
+      if (vice && vice.key === key) return await laws.submitDraft(name, text);
+      throw new MayorLawError('Only the sitting mayor may pass a bill.');
+    } catch (e) { if (e instanceof MayorLawError) throw new MayorError(e.message); throw e; }
   }
   async vetoLaw(name: string, number: unknown) {
     await this.settle(this.clock());
     try { return await new MayorLaws(this.pool, this.clock).veto(name, number); }
+    catch (e) { if (e instanceof MayorLawError) throw new MayorError(e.message); throw e; }
+  }
+  async approveLawDraft(name: string, id: unknown) {
+    await this.settle(this.clock());
+    try { return await new MayorLaws(this.pool, this.clock).approveDraft(name, id); }
+    catch (e) { if (e instanceof MayorLawError) throw new MayorError(e.message); throw e; }
+  }
+  async rejectLawDraft(name: string, id: unknown, reason?: unknown) {
+    await this.settle(this.clock());
+    try { return await new MayorLaws(this.pool, this.clock).rejectDraft(name, id, reason); }
     catch (e) { if (e instanceof MayorLawError) throw new MayorError(e.message); throw e; }
   }
   async lawHistory(before?: unknown) { return new MayorLaws(this.pool, this.clock).history(before); }
@@ -276,6 +292,8 @@ export function registerMayor(_io: Server, socket: Socket): void {
   });
   on('mayor_law_submit', async (b, m) => m.submitLaw(need(), b.text));
   on('mayor_law_veto', async (b, m) => m.vetoLaw(need(), b.number));
+  on('mayor_law_draft_approve', async (b, m) => m.approveLawDraft(need(), b.id));
+  on('mayor_law_draft_reject', async (b, m) => m.rejectLawDraft(need(), b.id, b.reason));
   on('mayor_law_history', async (b, m) => ({ laws: await m.lawHistory(b.before) }));
   on('mayor_view', async () => ({}));
   on('mayor_file', async (b, m) => m.file(need(), b.slogan));
