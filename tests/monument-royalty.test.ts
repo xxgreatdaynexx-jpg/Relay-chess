@@ -15,7 +15,7 @@ const mk = (owners: Record<string, string>) => {
 describe('monument royalties', () => {
   it('default 1%, every royalty venue is a buyable landmark', () => {
     expect(royaltyRate('mine')).toBe(0.01);
-    expect(royaltyRate('factory')).toBe(0.10);
+    expect(royaltyRate('factory')).toBe(0.05);
     expect(royaltyRate('dock')).toBe(0.01);
     for (const lm of Object.keys(ROYALTY_VENUE)) expect(LANDMARK_PRICE[lm]).toBeGreaterThan(0);
     expect(Object.values(CAVE_LANDMARK)).toEqual(['mine', 'mine-frost', 'mine-magma']);
@@ -27,10 +27,10 @@ describe('monument royalties', () => {
     expect(txs).toHaveLength(1); expect(txs[0]).toMatchObject({ name: 'Owner', amount: 1, opts: { game: 'monument_royalty' } });
     expect(txs[0].opts.key).toMatch(/^royalty:mine:/);
   });
-  it('factory goods sold to the house pay the owner 10% (other monuments stay at 1%)', async () => {
+  it('factory goods sold to the house pay the owner 5% (other monuments stay at 1%)', async () => {
     const { r, txs } = mk({ 'lm:factory': 'Owner' });
-    expect(await r.earn('factory', 'Maker', 100)).toBe(10);
-    expect(txs[0]).toMatchObject({ name: 'Owner', amount: 10, opts: { game: 'monument_royalty' } });
+    expect(await r.earn('factory', 'Maker', 100)).toBe(5);
+    expect(txs[0]).toMatchObject({ name: 'Owner', amount: 5, opts: { game: 'monument_royalty' } });
     expect(txs[0].opts.key).toMatch(/^royalty:factory:/);
   });
   it('fractions carry over; no owner or own earnings pay nothing', async () => {
@@ -51,5 +51,11 @@ describe('monument royalties', () => {
     await r.house('P', -50); expect(txs.map((t) => t.amount)).toEqual([1, 1]);
     await r.house('Owner', -10000); expect(txs).toHaveLength(2); // owner's own play doesn't count
   });
-  it('popup lists it', () => { expect(LAUNCH.items.some((i) => /royalt/i.test(i.title))).toBe(true); });
+  it('popup lists it', () => {
+    const item = LAUNCH.items.find((i) => /royalt/i.test(i.title));
+    expect(item).toBeTruthy();
+    expect(item!.text).toMatch(/5% of factory goods/);
+    expect(item!.text).not.toMatch(/10% of factory/);
+    expect(item!.text).toMatch(/1% of ore/);
+  });
 });

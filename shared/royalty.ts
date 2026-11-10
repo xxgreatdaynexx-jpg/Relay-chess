@@ -5,7 +5,7 @@
  */
 export const ROYALTY_DEFAULT = 0.01;
 /** Per-landmark overrides (fraction, e.g. 0.02 = 2%). Unlisted landmarks use ROYALTY_DEFAULT. */
-export const ROYALTY_RATE: Record<string, number> = { factory: 0.10 };
+export const ROYALTY_RATE: Record<string, number> = { factory: 0.05 };
 export const royaltyRate = (lm: string) => ROYALTY_RATE[lm] ?? ROYALTY_DEFAULT;
 /** Landmark id -> what the royalty is a cut of (shown on the deed). */
 export const ROYALTY_VENUE: Record<string, string> = {

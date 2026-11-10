@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T14:25:00-06:00", "title": "Factory monument royalty reduced from 10% to 5% (requested by chessguy2)", "bullets": [
+    "The Factory monument now earns 5% of what other players get when they sell factory goods to the house (was 10%). The owner is still paid on top, so the seller keeps 100%. Royalties already paid are unchanged.",
+    "Royalties on the mines, Fishing Dock, Speedway, market, and casino stay at 1%. Other property income is unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T13:50:00-06:00", "title": "Fixed hills sitting on top of roads", "bullets": [
     "A few decorative hills that had ended up on top of a road have been moved onto clear ground. Farms, deeds and the roads themselves are unchanged.",
   ]},
