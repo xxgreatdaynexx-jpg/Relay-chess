@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T16:55:00-06:00", "title": "More house plants, pink furniture, and mid-century pieces (requested by Amber)", "bullets": [
+    "The Furniture Store has a new batch of house plants (monstera, fiddle leaf fig, snake plant, hanging pothos, cactus trio, and a potted parlor palm), pink pieces (sofa, armchair, bed, rug, lamp, and dresser), and mid-century modern furniture (Eames-style lounge, teak sideboard, tulip table, walnut credenza, sunburst wall clock, arc floor lamp, and a low-profile sofa).",
+    "They use the same shop, placement, rotation, and save rules as the existing catalog. Prices follow the daily price index. Furniture you already own is unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T16:50:00-06:00", "title": "Removed the daily farm profit cap", "bullets": [
     "The 100,000-chip daily farm profit cap is gone. Every harvest — manual, auto-harvest, and crop shipments sold like a harvest, including resort plots — now pays the full seed refund plus the normal crop profit, with no daily limit.",
     "Selling goods to the house (including the Auto-Sell Chest and factory products) still uses the daily house-sell cap. Crop prices, grow times, and existing plantings are unchanged.",

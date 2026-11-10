@@ -41,6 +41,49 @@ export function buildFurniture(f: Furniture): THREE.Group {
     case 'rug': B(g, w, 0.02, d, c); B(g, w * 0.8, 0.021, d * 0.8, a); break;
     case 'painting': B(g, w, h * 0.7, 0.06, a, 0, h * 0.3, -d / 2 + 0.05); B(g, w * 0.85, h * 0.55, 0.07, c, 0, h * 0.37, -d / 2 + 0.06); break;
     case 'plant': case 'palm': C(g, 0.2, 0.15, 0.35, a); if (f.shape === 'palm') { C(g, 0.05, 0.07, h * 0.7, M(0x8a6440), 0, 0.35); for (let i = 0; i < 5; i++) { const l = B(g, 0.12, 0.04, 0.7, c, Math.cos(i * 1.26) * 0.3, h * 0.95, Math.sin(i * 1.26) * 0.3); l.rotation.y = -i * 1.26 + Math.PI / 2; l.rotation.x = 0.35; } } else S(g, 0.32, c, 0, 0.35 + h * 0.4); break;
+    case 'monstera': { C(g, 0.18, 0.14, 0.32, a); C(g, 0.16, 0.16, 0.04, M(0x3a2a18), 0, 0.32); C(g, 0.03, 0.04, 0.28, M(0x4a6a30), 0, 0.32);
+      for (let i = 0; i < 6; i++) { const ang = i * 1.05, y = 0.62 + (i % 3) * 0.16; const l = B(g, 0.36, 0.02, 0.26, c, Math.cos(ang) * 0.16, y, Math.sin(ang) * 0.16); l.rotation.y = -ang + Math.PI / 2; l.rotation.x = 0.45; } break; }
+    case 'fiddlefig': { C(g, 0.16, 0.13, 0.3, a); C(g, 0.14, 0.14, 0.04, M(0x3a2a18), 0, 0.3); C(g, 0.035, 0.045, h * 0.62, M(0x6b4a28), 0, 0.3);
+      for (let i = 0; i < 5; i++) { const ang = i * 1.2, y = 0.58 + i * 0.2; const l = B(g, 0.2, 0.02, 0.3, c, Math.cos(ang) * 0.12, y, Math.sin(ang) * 0.12); l.rotation.y = -ang; l.rotation.x = 0.5; } break; }
+    case 'snakeplant': { C(g, 0.2, 0.16, 0.22, a); C(g, 0.18, 0.18, 0.04, M(0x3a2a18), 0, 0.22);
+      for (let i = 0; i < 7; i++) { const ang = i * 0.9, hh = 0.55 + (i % 3) * 0.18; const l = B(g, 0.07, hh, 0.02, c, Math.cos(ang) * 0.08, 0.26, Math.sin(ang) * 0.08); l.rotation.y = ang; l.rotation.z = i % 2 ? 0.08 : -0.08; } break; }
+    case 'pothos': { C(g, 0.14, 0.16, 0.05, dark); C(g, 0.02, 0.02, h * 0.72, dark); C(g, 0.16, 0.16, 0.02, dark, 0, h * 0.72);
+      C(g, 0.01, 0.01, 0.16, M(0xc9a87c), 0, h * 0.58); C(g, 0.12, 0.1, 0.14, a, 0, h * 0.44);
+      for (let i = 0; i < 8; i++) { const y = h * 0.44 - i * 0.1; const l = B(g, 0.12, 0.02, 0.08, c, Math.sin(i) * 0.1, y, Math.cos(i) * 0.08); l.rotation.z = 0.35; l.rotation.y = i * 0.7; } break; }
+    case 'cacti': { B(g, w * 0.9, 0.04, d * 0.7, a);
+      const pots: [number, number][] = [[-0.24, 0.28], [0.02, 0.42], [0.24, 0.2]];
+      for (const [x, hh] of pots) { C(g, 0.08, 0.07, 0.12, a, x, 0.04); C(g, 0.055, 0.065, hh, c, x, 0.16, 0, 8); }
+      B(g, 0.04, 0.12, 0.04, c, 0.02, 0.5, 0.08); B(g, 0.04, 0.1, 0.04, c, 0.02, 0.5, -0.08); break; }
+    case 'parlorpalm': { C(g, 0.16, 0.13, 0.28, a); C(g, 0.14, 0.14, 0.04, M(0x3a2a18), 0, 0.28);
+      for (let s = 0; s < 3; s++) { const ox = (s - 1) * 0.08; C(g, 0.02, 0.03, h * 0.5, M(0x8a6440), ox, 0.28);
+        for (let i = 0; i < 4; i++) { const l = B(g, 0.06, 0.02, 0.38, c, ox + Math.cos(i * 1.5) * 0.14, h * 0.72, Math.sin(i * 1.5) * 0.14); l.rotation.y = -i * 1.5 + Math.PI / 2; l.rotation.x = 0.5; } }
+      break; }
+    case 'eames': { const wood = a, leather = c, cz = d > 1.2 ? -d * 0.2 : 0;
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) { const leg = C(g, 0.025, 0.03, 0.28, wood, sx * 0.22, 0, cz + sz * 0.18, 6); leg.rotation.z = sx * 0.18; leg.rotation.x = -sz * 0.12; }
+      B(g, 0.7, 0.08, 0.62, leather, 0, 0.28, cz); const back = B(g, 0.68, 0.55, 0.08, leather, 0, 0.38, cz - 0.28); back.rotation.x = -0.35;
+      B(g, 0.62, 0.05, 0.5, M(0x2a2a2a), 0, 0.36, cz + 0.02);
+      if (d > 1.2) { for (const sx of [-1, 1]) for (const sz of [-1, 1]) C(g, 0.02, 0.025, 0.18, wood, sx * 0.16, 0, d * 0.28 + sz * 0.12, 6);
+        B(g, 0.48, 0.08, 0.4, leather, 0, 0.18, d * 0.28); }
+      break; }
+    case 'sideboard': { for (const sx of [-1, 1]) for (const sz of [-1, 1]) { const leg = C(g, 0.02, 0.03, 0.22, a, sx * (w / 2 - 0.08), 0, sz * (d / 2 - 0.08), 6); leg.rotation.z = sx * 0.12; }
+      B(g, w, h - 0.22, d, c, 0, 0.22); B(g, w * 0.98, 0.03, d * 0.98, a, 0, h - 0.03);
+      const n = Math.max(2, Math.round(w)); const dw = w / n;
+      for (let i = 0; i < n; i++) { const x = -w / 2 + dw * (i + 0.5); B(g, 0.01, h - 0.32, d * 0.02, a, x - dw / 2, 0.28, d / 2); B(g, 0.08, 0.02, 0.03, M(0xd8c080, { metal: 0.8 }), x, h * 0.55, d / 2); }
+      break; }
+    case 'tulip': { C(g, 0.18, 0.26, 0.05, a); C(g, 0.05, 0.16, h * 0.28, a, 0, 0.05); C(g, 0.04, 0.04, h * 0.5, a, 0, h * 0.28); C(g, 0.1, 0.04, 0.06, a, 0, h - 0.11);
+      C(g, Math.min(w, d) * 0.46, Math.min(w, d) * 0.46, 0.05, c, 0, h - 0.05, 0, 24); break; }
+    case 'sunburst': { const z = -d / 2 + 0.04, cy = h * 0.72;
+      for (let i = 0; i < 12; i++) { const ang = (i * Math.PI) / 6; const ray = B(g, 0.04, 0.55, 0.03, c, 0, cy, z); ray.rotation.z = ang; ray.position.set(Math.cos(ang) * 0.18, cy + Math.sin(ang) * 0.18, z); }
+      const face = C(g, 0.16, 0.16, 0.05, a, 0, cy - 0.025, z, 16); face.rotation.x = Math.PI / 2;
+      C(g, 0.02, 0.02, 0.04, c, 0, cy - 0.02, z + 0.03); B(g, 0.02, 0.1, 0.01, c, 0, cy + 0.04, z + 0.03); B(g, 0.07, 0.015, 0.01, c, 0.03, cy, z + 0.03); break; }
+    case 'arclamp': { C(g, 0.2, 0.24, 0.05, c); C(g, 0.025, 0.025, h * 0.5, c);
+      const span = Math.max(w, d) * 0.7, mid = h * 0.72; const arm = C(g, 0.02, 0.02, span, c, 0, mid, span * 0.15, 8); arm.rotation.x = Math.PI / 2.6;
+      C(g, 0.01, 0.01, 0.18, c, 0, mid - 0.05, span * 0.55); C(g, 0.14, 0.18, 0.16, M(f.accent, { emissive: f.accent }), 0, mid - 0.28, span * 0.55); break; }
+    case 'lowsofa': { for (const sx of [-1, 1]) for (const sz of [-1, 1]) { const leg = C(g, 0.02, 0.03, 0.16, a, sx * (w / 2 - 0.1), 0, sz * (d / 2 - 0.08), 6); leg.rotation.z = sx * 0.14; }
+      B(g, w, h * 0.28, d * 0.92, a, 0, 0.16); const n = Math.max(2, Math.round(w / 0.9)); const cw = (w - 0.16) / n;
+      for (let i = 0; i < n; i++) { const x = -w / 2 + 0.08 + cw * (i + 0.5); B(g, cw * 0.94, h * 0.16, d * 0.7, c, x, 0.16 + h * 0.28, d * 0.04); }
+      B(g, w * 0.98, h * 0.42, d * 0.1, a, 0, 0.16 + h * 0.28, -d * 0.4); B(g, w * 0.94, h * 0.32, 0.08, c, 0, 0.2 + h * 0.3, -d * 0.36);
+      for (const sx of [-1, 1]) B(g, 0.1, h * 0.28, d * 0.7, a, sx * (w / 2 - 0.05), 0.16 + h * 0.28); break; }
     case 'tv': B(g, w, 0.35, d * 0.6, a); B(g, w * 0.9, 0.02, d * 0.5, dark, 0, 0.35); C(g, 0.03, 0.03, 0.12, dark, 0, 0.36); B(g, w * 0.97, h * 0.56, 0.05, M(0x111111, { metal: 0.6 }), 0, 0.46); B(g, w * 0.93, h * 0.52, 0.02, M(0x0a0c12, { emissive: 0x2a3a6a }), 0, 0.48, 0.03); break;
     case 'pc': B(g, w, h * 0.55, d, a); B(g, w * 0.6, h * 0.35, 0.05, M(0x0a0c12, { emissive: 0x3aa0ff }), 0, h * 0.6, -d * 0.2); B(g, 0.2, h * 0.4, 0.4, M(f.color, { emissive: f.color }), w * 0.38, h * 0.55); break;
     case 'arcade': B(g, w, h, d, c); B(g, w * 0.8, h * 0.3, 0.05, M(0x0a0c12, { emissive: f.accent }), 0, h * 0.55, d / 2 + 0.01); B(g, w, 0.15, d * 0.4, a, 0, h * 0.45, d * 0.35); break;
