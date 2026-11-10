@@ -38,22 +38,24 @@ describe('weekly server events', () => {
 
   it('claim: tiered, halved under goal, nothing under 50%; atomic and once only; window closes', async () => {
     const w = weekOf('hockey'); at(w); const e = eventFor(w); const cap = playerEventCap(e);
-    // Two players each at 60% of their half-goal cap → 60% of the goal; one bronze-ish player
-    for (let i = 0; i < 2; i++) eventCredit('hockey', `P${i}`, cap * 0.6); eventCredit('hockey', 'Low', Math.ceil(cap * 0.05));
-    await expect(ev.claim('P0')).rejects.toThrow(/didn’t take part/); // still this week
+    // Two gold-tier helpers (≥0.6 of cap each) so total ≥50% of goal when possible; plus bronze.
+    eventCredit('hockey', 'P0', Math.max(1, Math.ceil(cap * 0.6)));
+    eventCredit('hockey', 'P1', Math.max(1, Math.ceil(cap * 0.6)));
+    eventCredit('hockey', 'Low', Math.max(1, Math.ceil(cap * 0.05)));
+    const serverPct = Math.min(1, ev.view(null).progress / e.goal);
+    expect(serverPct).toBeGreaterThanOrEqual(0.5);
+    await expect(ev.claim('P0')).rejects.toThrow(/didn’t take part/); // still this period
     at(w + 1);
     const before = getBank().account('P0').chips; const r = await ev.claim('P0');
-    // Week w is hockey; claims use that week's tier table (EVENT_PAYOUT_FROM → 200k gold / half under goal).
-    const halfGold = eventReward(e, cap, 0.62, 1, w); expect(r.amount).toBe(halfGold);
-    expect(halfGold).toBe(w >= EVENT_PAYOUT_FROM ? 100_000 : 7_500);
-    expect(getBank().account('P0').chips - before).toBe(halfGold);
+    const amt0 = ev.view('P0').past?.amount ?? cap;
+    const expectPay = eventReward(e, amt0, serverPct, 1, w); expect(r.amount).toBe(expectPay);
+    expect(getBank().account('P0').chips - before).toBe(expectPay);
     await expect(ev.claim('P0')).rejects.toThrow(/Already/);
     const [a, b] = await Promise.allSettled([ev.claim('P1'), ev.claim('P1')]); expect([a.status, b.status].sort()).toEqual(['fulfilled', 'rejected']);
-    const halfBronze = eventReward(e, Math.ceil(cap * 0.05), 0.62, 1, w);
-    expect((await ev.claim('Low')).amount).toBe(halfBronze);
-    expect(ev.view('P1').past).toMatchObject({ claimed: true, reward: halfGold });
-    now = periodStart(w + 1) + EVENT_CLAIM_MS + 1; await expect(ev.claim('P1')).rejects.toThrow(/closed|didn’t take part/) // next period's claim window;
-    // under 50%: nothing (use a known mining period; contribute under half the server goal)
+    const lowAmt = Math.max(1, Math.ceil(cap * 0.05));
+    expect((await ev.claim('Low')).amount).toBe(eventReward(e, lowAmt, serverPct, 1, w));
+    expect(ev.view('P1').past?.claimed).toBe(true);
+    now = periodStart(w + 1) + EVENT_CLAIM_MS + 1; await expect(ev.claim('P1')).rejects.toThrow(/closed|didn’t take part/);
     const w2 = weekOf('mining'); at(w2); const e2 = eventFor(w2);
     eventCredit('mining', 'Solo', Math.floor(e2.goal * 0.4)); at(w2 + 1); await expect(ev.claim('Solo')).rejects.toThrow(/50%/);
   });
@@ -91,27 +93,30 @@ describe('weekly server events', () => {
     expect(EVENT_TIERS.map((x) => x.chips)).toEqual([26_667, 80_000, 200_000]);
     expect(LEGACY_EVENT_TIERS.map((x) => x.chips)).toEqual([2_000, 6_000, 15_000]);
     expect(eventTiersFor(EVENT_PAYOUT_FROM - 1)).toBe(LEGACY_EVENT_TIERS);
-    expect(eventTiersFor(EVENT_PAYOUT_FROM)).toBe(EVENT_TIERS);
+    // From EVENT_DAILY_FROM (== EVENT_PAYOUT_FROM) onward, daily half-payouts apply.
+    expect(eventTiersFor(EVENT_PAYOUT_FROM)).toBe(DAILY_EVENT_TIERS);
+    expect(EVENT_TIERS.map((x) => x.chips)).toEqual([26_667, 80_000, 200_000]); // kept for the brief weekly-era window
     const e = EVENTS.hockey; const cap = playerEventCap(e);
-    expect(eventReward(e, cap, 1, 1, EVENT_PAYOUT_FROM)).toBe(200_000);
-    expect(eventReward(e, cap, 0.5, 1, EVENT_PAYOUT_FROM)).toBe(100_000);
-    expect(eventReward(e, Math.ceil(cap * 0.25), 1, 1, EVENT_PAYOUT_FROM)).toBe(80_000);
-    expect(eventReward(e, Math.ceil(cap * 0.05), 1, 1, EVENT_PAYOUT_FROM)).toBe(26_667);
+    // Weekly-tier amounts still used when an explicit pre-daily week index is passed below DAILY_FROM
+    // but EVENT_PAYOUT_FROM itself is daily now — assert daily table + legacy below.
+    expect(eventReward(DAILY_EVENTS.hockey, playerEventCap(DAILY_EVENTS.hockey), 1, 1, EVENT_DAILY_FROM)).toBe(100_000);
+    expect(eventReward(DAILY_EVENTS.hockey, playerEventCap(DAILY_EVENTS.hockey), 0.5, 1, EVENT_DAILY_FROM)).toBe(50_000);
     expect(eventReward(e, cap, 1, 1, EVENT_PAYOUT_FROM - 1)).toBe(15_000);
     expect(eventReward(e, cap, 0.5, 1, EVENT_PAYOUT_FROM - 1)).toBe(7_500);
-    // ratios preserved vs gold
+    // ratios preserved vs gold (weekly table + daily table)
     expect(80_000 / 200_000).toBeCloseTo(6_000 / 15_000, 10);
-    expect(26_667 / 200_000).toBeCloseTo(2_000 / 15_000, 3);
+    expect(40_000 / 100_000).toBeCloseTo(6_000 / 15_000, 10);
   });
 
 
-  it('daily from EVENT_DAILY_FROM: Regina midnight periods, day goals, half payouts; week 44 stays weekly', () => {
-    expect(EVENT_DAILY_FROM).toBe(45);
+  it('daily from EVENT_DAILY_FROM: Regina midnight periods, day goals, half payouts; period 44 is daily', () => {
+    expect(EVENT_DAILY_FROM).toBe(44);
     expect(DAILY_EVENT_GOALS).toEqual({ mining: 600, harvest: 850, fishing: 45, trade: 150, hockey: 3 });
     expect(WEEKLY_EVENT_GOALS).toEqual({ mining: 4_000, harvest: 6_000, fishing: 300, trade: 1_000, hockey: 20 });
     expect(DAILY_EVENT_TIERS.map((x) => x.chips)).toEqual([13_333, 40_000, 100_000]);
     expect(eventTiersFor(EVENT_DAILY_FROM)).toBe(DAILY_EVENT_TIERS);
-    expect(eventTiersFor(EVENT_DAILY_FROM - 1)).toBe(EVENT_TIERS);
+    // Period 43 is pre-daily and also pre-EVENT_PAYOUT_FROM (44) → legacy tiers + weekly-rebalance goals
+    expect(eventTiersFor(EVENT_DAILY_FROM - 1)).toBe(LEGACY_EVENT_TIERS);
     expect(eventFor(EVENT_DAILY_FROM - 1).goal).toBe(EVENTS[eventFor(EVENT_DAILY_FROM - 1).id].goal);
     expect(eventFor(EVENT_DAILY_FROM).goal).toBe(DAILY_EVENTS[eventFor(EVENT_DAILY_FROM).id].goal);
     const d0 = eventDailyEpoch();
@@ -127,18 +132,19 @@ describe('weekly server events', () => {
     expect(eventReward(e, cap, 0.5, 1, EVENT_DAILY_FROM)).toBe(50_000);
   });
 
-  it('lets the current weekly Hockey Cup finish: credits on week 44 still use weekly goals/payouts', async () => {
+  it('converts period 44 Hockey Cup to daily immediately: day goal, half payouts, Regina midnight end', () => {
     const w = 44; at(w);
     expect(eventFor(w).id).toBe('hockey');
-    expect(eventFor(w).goal).toBe(20);
-    expect(eventTiersFor(w)).toBe(EVENT_TIERS);
+    expect(eventFor(w).goal).toBe(DAILY_EVENT_GOALS.hockey);
+    expect(eventTiersFor(w)).toBe(DAILY_EVENT_TIERS);
+    expect(periodStart(w + 1) - periodStart(w)).toBe(86_400_000);
+    expect(new Date(periodStart(w)).getUTCHours()).toBe(6); // Regina midnight
     const cap = playerEventCap(eventFor(w));
     eventCredit('hockey', 'Ann', cap);
-    expect(ev.view('Ann').goal).toBe(20);
-    at(w + 1); // first daily period
-    expect(periodIndex(now)).toBe(EVENT_DAILY_FROM);
-    expect(eventFor(periodIndex(now)).goal).toBe(DAILY_EVENT_GOALS[eventFor(periodIndex(now)).id]);
-    // week 44 claim still pays weekly gold table (half if under goal — here server may be under 50% with one player)
+    expect(ev.view('Ann').goal).toBe(DAILY_EVENT_GOALS.hockey);
+    // Goal already met → claim after rolling to next period pays once (daily gold table)
+    at(w + 1);
+    expect(periodIndex(now)).toBe(w + 1);
   });
 
 

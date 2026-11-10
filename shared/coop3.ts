@@ -15,9 +15,9 @@
  * owner sets a captain's cut (0–30%) taken from what crew earn selling trip catches. Every daily ocean cap still applies.
  *
  * Server events: one rotating event (mining rush → harvest festival → fishing derby → trade → hockey cup). Through
- * week 44 they were weekly (Monday 00:00 MST). From period 45 onward they are daily at America/Regina midnight
- * (UTC-6), with day-sized goals and half the prior payouts. Everyone fills one server goal; after the period ends
- * contributors claim a tiered, capped reward (bigger if the goal was reached).
+ * week 43 they were weekly (Monday 00:00 MST). From period 44 onward they are daily at America/Regina midnight
+ * (UTC-6), with day-sized goals and half the prior payouts. The in-progress Hockey Cup converted immediately
+ * (contributions kept). Everyone fills one server goal; after the period ends contributors claim a tiered reward.
  */
 import { priceOf, type ItemType } from './mines.js';
 import { abDayStart, DAY_MS as AB_DAY_MS } from './mayor.js';
@@ -87,7 +87,7 @@ export const LEGACY_EVENTS: Record<EventKind, EventDef> = {
   trade: { id: 'trade', name: 'Trade Week', icon: '🤝', unit: 'chips traded', goal: 3_000_000, blurb: 'Buy and sell goods on the Market with other players.', color: '#a78bfa' },
   hockey: { id: 'hockey', name: 'Hockey Cup', icon: '🏒', unit: 'hockey wins', goal: 400, blurb: 'Win paid hockey matches.', color: '#ef4444' },
 };
-/** Small-community WEEKLY targets from the live Trade Week onward (through week 44). Closed weeks retain
+/** Small-community WEEKLY targets from the live Trade Week onward (through week 43). Closed weeks retain
  * their exact old goals/caps. Daily targets live in DAILY_EVENT_GOALS (pt2113u / #63).
  */
 export const EVENT_REBALANCE_FROM = 43; // Nov 2 2026 00:00 MST; current week when requested
@@ -112,11 +112,11 @@ export const EVENT_EPOCH = Date.UTC(2026, 0, 5, 7);
 export const weekIndex = (ms: number) => Math.floor((ms - EVENT_EPOCH) / WEEK_MS);
 export const weekStart = (w: number) => EVENT_EPOCH + w * WEEK_MS;
 /**
- * First daily period id (pt2113u / #63). Week 44 (Hockey Cup) finishes under weekly rules/goals/payouts;
- * period 45+ are daily at America/Regina midnight with day goals and half payouts. No wipe of week-44 contrib.
+ * First daily period id (pt2113u / #63, pt2117u). Period 44 (Hockey Cup) converts immediately to daily
+ * goals/payouts and ends at the next America/Regina midnight. Contributions kept; no wipe.
  */
-export const EVENT_DAILY_FROM = 45;
-/** Regina (UTC-6) midnight of the Monday week 45 would have started — first daily boundary. */
+export const EVENT_DAILY_FROM = 44;
+/** Regina (UTC-6) midnight of the Monday period 44 started — daily grid origin. */
 export const eventDailyEpoch = () => abDayStart(weekStart(EVENT_DAILY_FROM));
 /** Period id: weekly index until EVENT_DAILY_FROM, then one id per Regina day. */
 export const periodIndex = (ms: number) => {

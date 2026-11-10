@@ -29,6 +29,8 @@ export class WeeklyEvents {
   private weeks = new Map<number, Week>();
   private refs = new Set<string>();
   private q: Promise<unknown> = Promise.resolve();
+  /** When a daily period already hit its goal at convert/boot, advance current so claims open (no wipe). */
+  private advanceTo = 0;
   onChange?: (week: number) => void; // throttled 'wev_changed' broadcast (wired in registerFishFleet)
   constructor(private readonly pool: PoolLike | null, private readonly clock = () => Date.now()) {}
   async init() {
@@ -41,9 +43,17 @@ export class WeeklyEvents {
     for (const r of k.rows as Array<Record<string, unknown>>) this.wk(Number(r.week)).claimed.add(String(r.player_key));
     const f = await this.pool.query('SELECT ref FROM wev_refs WHERE week >= $1', [w - 1]); // ref dedup survives a restart
     for (const r of f.rows as Array<Record<string, unknown>>) this.refs.add(String(r.ref));
+    this.maybeAdvanceCompleted();
+  }
+  /** If the calendar period already reached its (daily) goal, roll current forward so contributors claim via the normal past-period path once. */
+  private maybeAdvanceCompleted() {
+    const cal = periodIndex(this.clock());
+    if (cal < EVENT_DAILY_FROM) return;
+    const e = eventFor(cal); const wk = this.weeks.get(cal);
+    if (wk && wk.total >= e.goal) this.advanceTo = Math.max(this.advanceTo, cal + 1);
   }
   private wk(w: number): Week { let x = this.weeks.get(w); if (!x) { x = { contrib: new Map(), total: 0, claimed: new Set() }; this.weeks.set(w, x); } return x; }
-  current() { const w = periodIndex(this.clock()); return { week: w, e: eventFor(w) }; }
+  current() { const w = Math.max(periodIndex(this.clock()), this.advanceTo); return { week: w, e: eventFor(w) }; }
 
   /** Count `amount` toward this period's event if it is `kind`. `ref` (optional) makes a credit count once. Returns what counted. */
   credit(kind: EventKind, name: string | null | undefined, amount: number, ref?: string): number {

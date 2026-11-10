@@ -6,9 +6,12 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T18:55:00-06:00", "title": "Hockey Cup switched to daily rules now", "bullets": [
+    "The in-progress Hockey Cup no longer waits out the week: it uses the new daily goal (3 paid wins), daily payouts (Gold 100,000), and ends at the next America/Regina midnight. Existing contributions stay. If a period already meets its daily goal at convert time, it closes and pays through the normal claim path once — no double pay.",
+  ]},
   {"commit": "", "at": "2026-11-09T18:45:00-06:00", "title": "Server events are daily — goals and payouts halved", "bullets": [
     "Requested by chessguy2: the rotating co-op event (Mining Rush, Harvest Festival, Fishing Derby, Trade Week, Hockey Cup) now runs one day at a time, resetting at America/Regina midnight (UTC-6), instead of one week. Goals are sized for a day (about one-seventh of the old weekly targets). Gold / Silver / Bronze claims are 100,000 / 40,000 / 13,333 chips — half of the recent weekly amounts.",
-    "The current Hockey Cup week keeps its weekly goal and 200k-tier payouts until it ends on schedule; nothing is wiped and nobody is paid twice. From the next period onward, events are daily. Claim window, personal caps and the 50% server-progress rule are unchanged.",
+    "Claim window, personal caps and the 50% server-progress rule are unchanged. Contributions from the weekly era are kept.",
   ]},
   {"commit": "", "at": "2026-11-09T17:35:00-06:00", "title": "Worker cap from property is now unlimited", "bullets": [
     "Requested by Special Characters: owning more buildings and landmarks keeps adding Employment Office hire slots with no +7 ceiling. Your cap is still base 3 plus the sum of each property’s bonus (same tiers as before: +1 / +2 / +3 / +4 by price band). Empty lots, parks, plazas, farmland, barns and plantation plots still add none.",

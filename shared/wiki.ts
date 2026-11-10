@@ -201,7 +201,7 @@ export function buildWiki(): WikiSection[] {
     }),
     section({
       id: 'events', title: 'Daily server events', icon: '🏆',
-      intro: 'One rotating event per America/Regina day (UTC-6 midnight): Mining Rush → Harvest Festival → Fishing Derby → Trade Week → Hockey Cup. (The current Hockey Cup week finishes weekly first.)',
+      intro: 'One rotating event per America/Regina day (UTC-6 midnight): Mining Rush → Harvest Festival → Fishing Derby → Trade Week → Hockey Cup.',
       bullets: [
         `After the day ends, claim Bronze / Silver / Gold from your personal share of the goal (full reward if the server hit 100%, half from 50%, nothing under 50%). Claim window ${hrs(EVENT_CLAIM_MS)}.`,
         `Current Gold payout ${chips(DAILY_EVENT_TIERS.find((t) => t.id === 'gold')!.chips)} (daily periods ≥ ${EVENT_DAILY_FROM}). Weekly eras kept Gold ${chips(EVENT_TIERS.find((t) => t.id === 'gold')!.chips)} from week ${EVENT_PAYOUT_FROM}; earlier weeks keep Gold ${chips(LEGACY_EVENT_TIERS.find((t) => t.id === 'gold')!.chips)}.`,
