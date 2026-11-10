@@ -29,6 +29,8 @@ import { raidHpMul, raidDmgMul, raidBossHpMul, raidPotSize, lootRoll, type RaidL
 import { sinkLostToday } from './sink-room.js';
 import { effectiveAlready } from '../shared/sinkRoom.js';
 import { houseCapIndex, HOUSE_SELL_BLOCKED } from './house-cap-index.js';
+import { plantCapBonus } from './plant-cap.js';
+import { plantCapToBase } from '../shared/plantCap.js';
 import { eventCredit, eventTrade } from './weeklyEvent.js';
 import { getLocStore, setLocStore, LocStore } from './locstock.js';
 import { getLocMoves } from './locmoves.js';
@@ -652,15 +654,17 @@ export class MinesWorld {
     return this.quoteItems(account, now, items);
   }
   /** House quote for an explicit list of stacks (Chud City Warehouse stock, server/locmoves.ts). Same tiers and caps. */
-  quoteItems(account: string, now: number, items: Stack[]): { gross: number; paid: number; already: number; lost: number; effAlready: number; capBase: number; capIndex: number; items: Stack[] } {
+  quoteItems(account: string, now: number, items: Stack[]): { gross: number; paid: number; already: number; lost: number; effAlready: number; capBase: number; capIndex: number; plantBonus: number; items: Stack[] } {
     const m = { account };
     const gross = items.reduce((t, s) => t + s.qty * houseSellPrice(s), 0) * cityPolicyMul('mining'); // Mining boom policy
     const k = playerKey(m.account); const d = this.daily.get(k); const already = d && d.day === dayKey(now) ? d.gross : 0;
     // Chips lost to sinks today free up room (pt1405u), converted to base chips; may push effAlready below 0.
     const lost = sinkLostToday(account, now); const effAlready = effectiveAlready(already, lost, priceIndex());
     // House ore/goods prices follow the price index (tiers stay in base units so the daily caps scale too).
-    const capIndex = houseCapIndex(); const capBase = HOUSE_SELL_BLOCKED.has(k) ? 0 : houseCapBase(capIndex, priceIndex()) * sellCapMul(account); // cap follows total assets (pt1442u)
-    return { gross, paid: Math.floor(payoutFor(gross, effAlready, capBase) * priceIndex()), already, lost, effAlready, capBase, capIndex, items };
+    const capIndex = houseCapIndex(); const idx = priceIndex();
+    const plantBonus = HOUSE_SELL_BLOCKED.has(k) ? 0 : plantCapBonus(account, now);
+    const capBase = HOUSE_SELL_BLOCKED.has(k) ? 0 : houseCapBase(capIndex, idx) * sellCapMul(account) + plantCapToBase(plantBonus, idx); // cap follows total assets (pt1442u); planting bonus is half of today's paid seeds
+    return { gross, paid: Math.floor(payoutFor(gross, effAlready, capBase) * idx), already, lost, effAlready, capBase, capIndex, plantBonus, items };
   }
 
   /** Sell ore to the house. Signed-in only. Stone etc. pay fractional chips: the whole sale is floored once. */
@@ -945,7 +949,7 @@ export function registerMines(io: Server, socket: Socket): void {
   const me = () => world.miners.get(socket.id);
   const packMsg = () => ({ pack: world.carried(socket.id), load: world.load(socket.id), cap: BACKPACK_CAP });
   const storeMsg = () => { const a = account(); if (a) world.beforeStorage?.(a); const q = a ? world.quoteItems(a, Date.now(), getLocStore().at(a, WAREHOUSE).flatMap((x) => { const i = x.item.indexOf(':'); const t = x.item.slice(0, i) as ItemType; const st = { type: t, id: x.item.slice(i + 1), qty: x.qty }; return (t === 'ore' || t === 'bar' || t === 'good' || t === 'food') && sellable(st) ? [st] : []; })) : null; const wh = a ? getLocStore().at(a, WAREHOUSE).flatMap((x) => { const i = x.item.indexOf(':'); const t = x.item.slice(0, i); return t === 'ore' || t === 'bar' || t === 'good' || t === 'food' ? [{ type: t as ItemType, id: x.item.slice(i + 1), qty: x.qty }] : []; }) : [];
-    return { storage: a ? world.storage(a) : [], warehouse: wh, quote: q ? { gross: q.gross, paid: q.paid, already: q.already, lost: q.lost, effAlready: q.effAlready, index: priceIndex(), capBase: q.capBase, capIndex: q.capIndex, sellBonus: sellCapMul(a) - 1 } : null, inMine: a ? world.inMine(a) : false, guest: !a }; };
+    return { storage: a ? world.storage(a) : [], warehouse: wh, quote: q ? { gross: q.gross, paid: q.paid, already: q.already, lost: q.lost, effAlready: q.effAlready, index: priceIndex(), capBase: q.capBase, capIndex: q.capIndex, sellBonus: sellCapMul(a) - 1, plantBonus: q.plantBonus } : null, inMine: a ? world.inMine(a) : false, guest: !a }; };
   socket.on('mines_join', async (p: unknown, ack?: Ack) => {
     let m = me();
     const want = caveOf(body(p).cave).id;

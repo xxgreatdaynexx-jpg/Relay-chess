@@ -7,6 +7,7 @@ import { initEconomy } from './economy.js';
 import { startWealthTax } from './wealth-tax.js';
 import { startNetWorthSnapshots } from './networth-snapshots.js';
 import { startSinkRoom } from './sink-room.js';
+import { startPlantCap } from './plant-cap.js';
 import { getChatLog, initChatStorage } from './chat.js';
 import { initArenaStorage } from './arena-store.js';
 import { initChessStatsStorage } from './chess-stats.js';
@@ -105,6 +106,7 @@ initFishPan();
 startWealthTax();
 startNetWorthSnapshots();
 startSinkRoom();
+startPlantCap();
 await initCooking();
 await initLocMoves({ dbUrl: cityDbUrl() }); // truck logistics: wires producers + freight, then moves legacy stock to each owner's factory BEFORE serving (idempotent)
 await refreshFenceTriggers();

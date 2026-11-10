@@ -30,6 +30,7 @@ import { skillLevelAsync } from './skills.js';
 import { farmingGrowMul } from '../shared/skillPerks.js';
 import { combinedGrowMul, fertilizerYieldBonus, greenhouseWither, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradeDef, upgradePrice, yieldQty, type FarmUpgradeLevels } from '../shared/farmUpgrades.js';
 import { checkFarmAction } from './farmGuard.js';
+import { recordPlantSeed } from './plant-cap.js';
 import { isHubAwake } from '../shared/hubSleep.js';
 import { isMillionairePrelaunch } from '../shared/millionairePrelaunch.js';
 import type { FarmAuto } from '../shared/farm.js';
@@ -273,6 +274,7 @@ export class Farm {
       // Sprinklers (farm upgrade) stack multiplicatively with it, floored at half the grow time.
       const up = await this.upgrades(this.pool, pid, keyOf(name));
       const plantedAt = now - Math.round(c.grow * (1 - combinedGrowMul(farmingGrowMul(await skillLevelAsync(name, 'farming')), up.sprinkler)));
+      const seedKey = `farm_seed:${keyOf(name)}:${now}:${nonce}`;
       await this.atomic(name, -cost, 'farm_seed', `Farm ${pid}: planted ${list.length} ${c.label}`, async (cl) => {
         const o = await this.mustOwn(cl, pid, name);
         await cl.query('DELETE FROM farm_tiles WHERE plot_id = $1 AND owner_key <> $2', [pid, o.key]); // a previous owner's crops
@@ -281,7 +283,8 @@ export class Farm {
         for (const t of list) await cl.query('INSERT INTO farm_tiles (plot_id, tile, owner_key, crop, planted_at, nonce) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (plot_id, tile) DO NOTHING', [pid, t, o.key, c.id, plantedAt, nonce]);
         const r = await cl.query('SELECT tile FROM farm_tiles WHERE plot_id = $1 AND nonce = $2', [pid, nonce]);
         if (r.rows.length !== list.length) throw new FarmError(list.length === 1 ? 'That tile is already planted.' : 'Some of those tiles are already planted.');
-      });
+      }, seedKey);
+      recordPlantSeed(name, { game: 'farm_seed', amount: -cost, key: seedKey }, now);
       this.onChange?.(pid);
       return { planted: list.length, cost, chips: bank.account(name).chips };
     });

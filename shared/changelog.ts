@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T08:53:00-06:00", "title": "Planting seeds adds to today’s house cap", "bullets": [
+    "50% of the seed chips you actually pay when planting (including replant-all, auto-plant, and resort plots) is added to your house-sell cap for the current cap day. A failed plant does not count. The bonus resets with the cap at 6 PM CST (00:00 UTC).",
+    "This cap day’s plantings already count — the bonus is taken from the day’s seed-charge records, so it stays correct after a restart. Earlier cap days are not included. The house-cap display now shows Base cap + planting bonus.",
+  ]},
   {"commit": "", "at": "2026-11-10T08:42:00-06:00", "title": "All my farms is now a real farm dashboard", "bullets": [
     "Requested by carter2: All my farms lists every plot you own with its crops, empty / growing / ready / withered counts, grow timers, and when the next ripe crop will wither.",
     "On the map you are on, you can harvest all ready crops (or send them to the pantry), clear withered plants, and replant every empty tile with a chosen seed — one farm or every farm on that map. Seeds cost the same as planting on the field, and growing crops are left alone. Travel first to work farms on the other map. Ownership, auto-farm, and the daily farm profit cap are unchanged.",
