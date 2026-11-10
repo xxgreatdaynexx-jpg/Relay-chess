@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T10:40:00-06:00", "title": "Sold property leaves your books right away", "bullets": [
+    "Selling a property — back to the city, through a monument buyout, or to a tax repossession — now clears it from your net worth, farm and crop records, and property perks immediately. Leftover plantings, upgrades, and auto-farm settings no longer stay attached to you after the deed is gone.",
+    "The same check runs whenever those records are rebuilt from current ownership, so an old crop list cannot keep referring to a farm you no longer own. Chip balances are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T10:15:00-06:00", "title": "Ground under the northern Big Farms", "bullets": [
     "The four new Big Farms north of town, their barns, and the new north road now sit on the same grass as the rest of the city, instead of floating past the edge of the map.",
     "The north road now joins the east ring so it no longer dead-ends in open space. Existing farm locations and deeds are unchanged.",

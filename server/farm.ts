@@ -38,6 +38,7 @@ import type { FarmAuto } from '../shared/farm.js';
 import { cityPolicyMul } from './city-rates.js';
 import { eventCredit } from './weeklyEvent.js';
 import { ledgerXp } from './skills.js';
+import { healStalePropertyDerived } from './propertyDerived.js';
 
 export const FARM_MIGRATION = `
 CREATE TABLE IF NOT EXISTS farm_tiles (plot_id TEXT NOT NULL, tile INTEGER NOT NULL, owner_key TEXT NOT NULL, crop TEXT NOT NULL, planted_at BIGINT NOT NULL, nonce TEXT NOT NULL, PRIMARY KEY (plot_id, tile));
@@ -85,7 +86,7 @@ export class Farm {
     this.locks.set(id, tail); void tail.then(() => { if (this.locks.get(id) === tail) this.locks.delete(id); }); return p;
   }
   constructor(private readonly pool: pg.Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now()) {}
-  async init() { await this.pool.query(FARM_MIGRATION); await this.pool.query('CREATE TABLE IF NOT EXISTS kitchen_harvests (tile_key TEXT PRIMARY KEY NOT NULL, at BIGINT NOT NULL)'); }
+  async init() { await this.pool.query(FARM_MIGRATION); await this.pool.query('CREATE TABLE IF NOT EXISTS kitchen_harvests (tile_key TEXT PRIMARY KEY NOT NULL, at BIGINT NOT NULL)'); await healStalePropertyDerived(this.pool); }
   private async autoOf(pid: string, ownerKey: string): Promise<FarmAuto> {
     const r = (await this.pool.query('SELECT harvest, plant, crop, pantry FROM farm_auto WHERE plot_id = $1 AND owner_key = $2', [pid, ownerKey])).rows[0] as { harvest: boolean; plant: boolean; crop: string; pantry?: boolean } | undefined;
     return { harvest: r?.harvest === true, pantry: r?.pantry === true, plant: r?.plant === true, crop: r?.crop ?? 'wheat' };
@@ -493,7 +494,7 @@ export class Farm {
 
   /** Plots where this player has planted tiles (for "send every ready crop to the factory"). */
   async myPlots(name: string): Promise<string[]> {
-    return ((await this.pool.query('SELECT DISTINCT plot_id FROM farm_tiles WHERE owner_key = $1', [keyOf(name)])).rows as Array<{ plot_id: string }>).map((r) => String(r.plot_id));
+    return ((await this.pool.query('SELECT DISTINCT t.plot_id FROM farm_tiles t JOIN properties p ON p.id = t.plot_id AND p.owner_key = t.owner_key WHERE t.owner_key = $1', [keyOf(name)])).rows as Array<{ plot_id: string }>).map((r) => String(r.plot_id));
   }
 
   /** Harvest into the map pantry instead of selling (pt1312u / pt2094u): no chips, no daily-tier use; Farming XP as usual.

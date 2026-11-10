@@ -60,7 +60,7 @@ export async function buildPlayerProfile(raw: string, deps: ProfileDeps) {
     return { id: p.id, label: p.label, type: p.type, value: p.value, x: def?.x ?? null, z: def?.z ?? null, map: def?.map ?? 'city' };
   });
 
-  const tiles = await row1('SELECT plot_id, crop, planted_at FROM farm_tiles WHERE owner_key = $1');
+  const tiles = await row1('SELECT t.plot_id, t.crop, t.planted_at FROM farm_tiles t JOIN properties p ON p.id = t.plot_id AND p.owner_key = t.owner_key WHERE t.owner_key = $1');
   const farmMap = new Map<string, { plot: string; label: string; x: number | null; z: number | null; map: string; crops: Map<string, { crop: string; label: string; emoji: string; n: number; ready: number }> }>();
   for (const t of tiles) {
     const plot = String(t.plot_id); const def = propertyById(plot); const c = cropById(t.crop);

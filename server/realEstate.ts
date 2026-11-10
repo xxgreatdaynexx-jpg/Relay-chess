@@ -36,6 +36,7 @@ import { propertyTaxMul } from '../shared/skillPerks.js';
 import { cityPropertyTaxMul } from './mayor.js';
 import { preparePurchaseTax, purchaseTaxMoves, quotePurchaseTax, PurchaseTaxUnprepared, type PurchaseTaxPrep } from './purchase-tax.js';
 import { backTaxOf, backTaxMoves, backTaxBlockMsg } from './backTax.js';
+import { releasePropertyDerived, healStalePropertyDerived } from './propertyDerived.js';
 
 export class PropertyError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
@@ -72,7 +73,7 @@ export class RealEstate {
   }
   constructor(private readonly pool: Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now()) { this.income = new PropertyIncome(pool, clock); }
   private readonly income: PropertyIncome;
-  async init() { await this.pool.query(PROPERTY_MIGRATION); await this.income.init(); }
+  async init() { await this.pool.query(PROPERTY_MIGRATION); await this.income.init(); await healStalePropertyDerived(this.pool); }
   /** Automatic/offline catch-up; no client claim or per-owner activity required. */
   runIncome(now = this.clock()) { return this.income.run(now, (name) => this.bank().notifyDurableBalance(name)); }
 
@@ -251,6 +252,7 @@ export class RealEstate {
       await this.income.settle(cl, p.id, now, { key: row.owner_key, boughtAt: Number(row.bought_at), price: paid });
       const r = await cl.query('UPDATE properties SET owner_key = $1, owner_name = $2, city_price = COALESCE(city_price, price), price = $3, bought_at = $4, arrears = 0 WHERE id = $5 AND owner_key = $6 AND price = $7 RETURNING id', [keyOf(name), name.trim(), price, now, p.id, row.owner_key, paid]);
       if (!r.rowCount) throw new PropertyError('The owner changed: check the deed and try again.');
+      await releasePropertyDerived(cl, p.id, row.owner_key);
     }, [{ name: prev, amount: price, game: 'property_buyout', memo: `${name.trim()} bought out your ${p.label} (${p.id})` }], pin);
     this.onChange?.();
     void sendPopup(prev, 'City of Chud Hub', `🏛 Hostile buyout! ${name.trim()} bought your ${p.label} for 🪙 ${price.toLocaleString('en-US')} (${BUYOUT_MUL}x what you paid). The chips are in your wallet; its royalties now go to ${name.trim()}.`).catch(() => {});
@@ -287,6 +289,7 @@ export class RealEstate {
       await this.income.settle(cl, p.id, this.clock(), { key: keyOf(name), boughtAt: Number(row.bought_at), price: paid });
       const r = await cl.query('DELETE FROM properties WHERE id = $1 AND owner_key = $2 AND price = $3 RETURNING id', [p.id, keyOf(name), paid]);
       if (!r.rowCount) throw new PropertyError('You do not own this property.');
+      await releasePropertyDerived(cl, p.id, keyOf(name));
     });
     this.onChange?.();
     return { id: p.id, chips: back, paid, balance: bank.account(name).chips };
@@ -314,9 +317,13 @@ export class RealEstate {
         const c = await cl.query('SELECT claim FROM property_tax WHERE day = $1 AND property_id = $2', [day, r.id]);
         if (c.rows[0]?.claim !== nonce) throw new PropertyError('claimed');
         // Only touch the row if the same owner still holds it (sold/re-bought in between = new ownership, skip).
-        const u = paid ? await cl.query('UPDATE properties SET arrears = 0, tax_paid = tax_paid + $3 WHERE id = $1 AND owner_key = $2', [r.id, r.owner_key, amount])
-          : repo ? await cl.query('DELETE FROM properties WHERE id = $1 AND owner_key = $2', [r.id, r.owner_key])
-          : await cl.query('UPDATE properties SET arrears = arrears + 1 WHERE id = $1 AND owner_key = $2', [r.id, r.owner_key]);
+        let u: { rowCount?: number | null };
+        if (paid) u = await cl.query('UPDATE properties SET arrears = 0, tax_paid = tax_paid + $3 WHERE id = $1 AND owner_key = $2', [r.id, r.owner_key, amount]);
+        else if (repo) {
+          await this.income.settle(cl, r.id, now, { key: r.owner_key, boughtAt: Number(r.bought_at), price: Number(r.price) });
+          u = await cl.query('DELETE FROM properties WHERE id = $1 AND owner_key = $2', [r.id, r.owner_key]);
+          if (u.rowCount) await releasePropertyDerived(cl, r.id, r.owner_key);
+        } else u = await cl.query('UPDATE properties SET arrears = arrears + 1 WHERE id = $1 AND owner_key = $2', [r.id, r.owner_key]);
         if (!u.rowCount) throw new PropertyError('changed');
       };
       try {
