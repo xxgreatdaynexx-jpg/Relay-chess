@@ -92,7 +92,8 @@ export function resortLots(): ResortLot[] {
   // Off the x=±40 cross streets (was -40/40 — sat on asphalt). IDs unchanged (same add order).
   for (const x of [-60, -28, 28, 60]) add('condo', x, -14, 12, 10);
   // Hillside villas.
-  for (const x of [-60, -28, -20, 20, 28, 60, 80]) add('villa', x, -48 - (Math.abs(x) % 3) * 2, 13, 11);
+  // ±40 cross streets: place those two villas south of both avenues (ids keep add order).
+  for (const [x, z] of [[-60, -48], [-28, -78], [-20, -52], [20, -52], [28, -78], [60, -48], [80, -52]] as const) add('villa', x, z, 13, 11);
   // #10e (appended so existing ids never shift): Banyan Bay (west) and Sapphire Heights (east).
   for (const x of [-176, -152, 152, 176]) add('oceanestate', x, 28, 14, 9);
   for (const x of [-176, -152, 152, 176]) add('clifftop', x, -46, 16, 14);
