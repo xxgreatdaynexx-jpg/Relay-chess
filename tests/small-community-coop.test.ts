@@ -29,11 +29,11 @@ describe('small-community goals', () => {
     expect(eventFor(EVENT_REBALANCE_FROM)).toBe(EVENTS.trade);
     const boundary=weekStart(EVENT_REBALANCE_FROM); expect(weekIndex(boundary-1)).toBe(EVENT_REBALANCE_FROM-1); expect(weekIndex(boundary)).toBe(EVENT_REBALANCE_FROM);
     for(const e of Object.values(EVENTS)) {
-      // Legacy closed weeks keep 15k gold; current payout table is 200k gold (pt2098u).
+      // Legacy closed weeks keep 15k gold; from EVENT_PAYOUT_FROM (= EVENT_DAILY_FROM) daily tiers pay 100k gold (pt2113u / #63).
       expect(eventReward(e,playerEventCap(e),1,1,EVENT_PAYOUT_FROM-1)).toBe(15000);
       expect(eventReward(e,playerEventCap(e),.5,1,EVENT_PAYOUT_FROM-1)).toBe(7500);
-      expect(eventReward(e,playerEventCap(e),1,1,EVENT_PAYOUT_FROM)).toBe(200_000);
-      expect(eventReward(e,playerEventCap(e),.5,1,EVENT_PAYOUT_FROM)).toBe(100_000);
+      expect(eventReward(e,playerEventCap(e),1,1,EVENT_PAYOUT_FROM)).toBe(100_000);
+      expect(eventReward(e,playerEventCap(e),.5,1,EVENT_PAYOUT_FROM)).toBe(50_000);
     }
   });
 

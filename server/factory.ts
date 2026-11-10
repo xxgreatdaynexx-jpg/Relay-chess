@@ -12,7 +12,7 @@ import { getFishing, FishError } from './fishing.js';
 import { requireResort } from './travel.js';
 import { playerKey } from './skins.js';
 import { MAX_BANKED_STACK, stackKey, isFood, recipeById, type Stack, type ItemType } from '../shared/mines.js';
-import { MAX_CATCHUP_MS, TICK_MS, advance, canPlace, contents, FLOOR_LEVELS, frecipe, gridOf, machineBusy, machineSalePrice, isItemKey, isKind, isSplitWeights, MAX_SPLIT_W, KINDS, MAX_ENTS, newState, type Dir, type Ent, type FState, type Kind, type Storage } from '../shared/factory.js';
+import { MAX_CATCHUP_MS, TICK_MS, advance, canPlace, cells, contents, FLOOR_LEVELS, frecipe, gridOf, machineBusy, machineSalePrice, isItemKey, isKind, isSplitWeights, MAX_SPLIT_W, KINDS, MAX_ENTS, newState, type Dir, type Ent, type FState, type Kind, type Storage } from '../shared/factory.js';
 import { awakeDeadline } from '../shared/hubSleep.js';
 
 const SAVE_MS = 4000;
@@ -250,6 +250,32 @@ export class FactoryWorld {
     this.markNow(account!, s);
     return { removed: n };
   }
+  /**
+   * Move many placed parts by the same dx/dy (area-select move). Validates every new footprint first
+   * against a grid with the movers removed, so the group can slide into its own old cells.
+   */
+  moveMany(account: string | null, b: Record<string, unknown>, now: number) {
+    const { s } = this.need(account, now);
+    const ids = (Array.isArray(b.ids) ? b.ids : []).filter((v): v is number => typeof v === 'number').slice(0, 200);
+    const dx = b.dx, dy = b.dy;
+    if (!Number.isInteger(dx) || !Number.isInteger(dy)) throw new MineError('Bad move.');
+    if (!ids.length) throw new MineError('Nothing selected.');
+    if (dx === 0 && dy === 0) return { moved: 0 };
+    const want = new Set(ids);
+    const moving = s.ents.filter((e) => want.has(e.id));
+    if (moving.length !== ids.length) throw new MineError('Selection changed — try again.');
+    const g = gridOf(s);
+    for (const e of moving) for (const [cx, cy] of cells(e)) g.delete(cy * 1000 + cx);
+    for (const e of moving) {
+      const nx = e.x + (dx as number), ny = e.y + (dy as number);
+      const bad = canPlace(s, g, e.k, nx, ny, e.d, e.id);
+      if (bad) throw new MineError(bad);
+      for (const [cx, cy] of cells({ k: e.k, x: nx, y: ny })) g.set(cy * 1000 + cx, e);
+    }
+    for (const e of moving) { e.x += dx as number; e.y += dy as number; }
+    this.markNow(account!, s);
+    return { moved: moving.length };
+  }
   /** Rotate, move, set recipe, set chest filter. */
   edit(account: string | null, b: Record<string, unknown>, now: number) {
     const { s } = this.need(account, now);
@@ -367,6 +393,7 @@ export function registerFactory(_io: Server, socket: Socket): void {
   socket.on('fac_sell', aop((a, b) => world.sell(a, b, Date.now())));
   socket.on('fac_remove', op((b) => world.remove(account(), b.ids, Date.now())));
   socket.on('fac_edit', op((b) => world.edit(account(), b, Date.now())));
+  socket.on('fac_move', op((b) => world.moveMany(account(), b, Date.now())));
 }
 export type { Kind };
 

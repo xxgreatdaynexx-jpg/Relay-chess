@@ -10,6 +10,7 @@ import { socket } from '@/lib/net';
 import { LOW, bolt, dropShadow, floorTiles, glow, hazard, lighting, metal, rrect, shade, sparks, steam, steel, vent } from '@/lib/factoryLook';
 import { GOODS, type Stack } from '../../../shared/mines';
 import { madeBy, tierOf, usedIn, CHEST_ITEMS, DX, DY, FLOOR_LEVELS, FRECIPES, KINDS, KIND_ORDER, TICK_MS, colorOfKey, floorSize, frecipe, gridOf, cellId, nameOfKey, priceOfKey, recipeTicks, recipesFor, step, canPlace, splitWeights, splitLabel, MAX_SPLIT_W, type Dir, type Ent, type FState, type Grid, type Kind, undergroundPairs } from '../../../shared/factory';
+import { clipKitMissing, clipToPlaceItems, entsToClip, type FactoryClip } from '../../../shared/factoryClipboard';
 
 export type FAck = { ok: boolean; error?: string; state?: FState | null; level?: number; storage?: Stack[]; guest?: boolean; now?: number; result?: unknown };
 type Tool = 'select' | 'remove' | Kind;
@@ -28,12 +29,15 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
   const [dir, setDir] = useState<Dir>(0);
   const [sel, setSel] = useState<number | null>(null);
   const [moving, setMoving] = useState<number | null>(null);
+  const [sels, setSels] = useState<number[]>([]);
+  const [clip, setClip] = useState<FactoryClip | null>(null);
+  const [movingGroup, setMovingGroup] = useState(false);
   const [side, setSide] = useState<'build' | 'shop' | 'recipes' | 'import'>('build');
   const [chain, setChain] = useState<string>('');
   const [buyN, setBuyN] = useState(1);
-  const ui = useRef({ tool, dir, sel, moving, hover: null as null | [number, number], drag: [] as Array<{ x: number; y: number; d: Dir }>, dragging: false, removing: new Set<number>(), z: 1, px: 0, py: 0, pan: null as null | { x: number; y: number; px: number; py: number; moved: boolean; btn: number }, pts: new Map<number, { x: number; y: number }>(), pinch: null as null | { d: number; z: number; cx: number; cy: number; px: number; py: number }, space: false, mini: null as null | { x: number; y: number; w: number; s: number } });
+  const ui = useRef({ tool, dir, sel, moving, sels: [] as number[], hover: null as null | [number, number], drag: [] as Array<{ x: number; y: number; d: Dir }>, dragging: false, removing: new Set<number>(), marquee: null as null | { x0: number; y0: number; x1: number; y1: number }, z: 1, px: 0, py: 0, pan: null as null | { x: number; y: number; px: number; py: number; moved: boolean; btn: number }, pts: new Map<number, { x: number; y: number }>(), pinch: null as null | { d: number; z: number; cx: number; cy: number; px: number; py: number }, space: false, mini: null as null | { x: number; y: number; w: number; s: number } });
   const [zoomed, setZoomed] = useState(false);
-  ui.current.tool = tool; ui.current.dir = dir; ui.current.sel = sel; ui.current.moving = moving;
+  ui.current.tool = tool; ui.current.dir = dir; ui.current.sel = sel; ui.current.moving = moving; ui.current.sels = sels;
 
   const apply = (r?: FAck) => {
     if (!r) return;
@@ -75,6 +79,15 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
     ro.observe(wrap); return () => ro.disconnect();
   }, [fs !== null]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const clearSel = () => { setSel(null); setSels([]); setMoving(null); setMovingGroup(false); };
+  const selectIds = (ids: number[], primary?: number | null) => { setSels(ids); setSel(primary ?? (ids.length ? ids[0]! : null)); };
+  const entsOf = (ids: number[]) => (sim.current.s?.ents ?? []).filter((e) => ids.includes(e.id));
+  const doCopy = () => { const ids = sels.length ? sels : (sel != null ? [sel] : []); if (!ids.length) return flash('Select something first.'); const c0 = entsToClip(entsOf(ids)); setClip(c0); flash(`Copied ${c0.items.length} part${c0.items.length === 1 ? '' : 's'}.`); };
+  const doCut = () => { const ids = sels.length ? sels : (sel != null ? [sel] : []); if (!ids.length) return flash('Select something first.'); const c0 = entsToClip(entsOf(ids)); setClip(c0); call('fac_remove', { ids }, () => { clearSel(); flash(`Cut ${c0.items.length}. Paste with Ctrl+V.`); }); };
+  const doPaste = () => { if (!clip?.items.length) return flash('Clipboard empty.'); const h = ui.current.hover; if (!h) return flash('Point at a tile, then paste.'); const miss = clipKitMissing(clip, sim.current.s?.kit ?? {}); if (miss) return flash(miss); const items = clipToPlaceItems(clip, h[0], h[1]); call('fac_place', { items }, () => flash(`Pasted ${items.length}.`)); };
+  const doDeleteSel = () => { const ids = sels.length ? sels : (sel != null ? [sel] : []); if (!ids.length) return; call('fac_remove', { ids }, () => { clearSel(); flash(`Picked up ${ids.length}.`); }); };
+  const startMoveGroup = () => { const ids = sels.length ? sels : (sel != null ? [sel] : []); if (!ids.length) return flash('Select something first.'); if (ids.length === 1) { setMoving(ids[0]!); setMovingGroup(false); return; } setMovingGroup(true); setMoving(null); flash('Click the new top-left for the selection.'); };
+
   // ---- keys
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -86,7 +99,11 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
       if (k === '0') { resetView(); return; }
       if (k === '=' || k === '+' || k === '-') { zoomAt(null, k === '-' ? 1 / 1.25 : 1.25); return; }
       if (k === 'r') { e.preventDefault(); const u = ui.current; if (u.tool === 'select' && u.hover) { const ent = sim.current.g.get(cellId(u.hover[0], u.hover[1])); if (ent) { call('fac_edit', { id: ent.id, d: (ent.d + (e.shiftKey ? 3 : 1)) % 4 }); return; } } setDir((d) => ((d + (e.shiftKey ? 3 : 1)) % 4) as Dir); }
-      else if (k === 'escape' || k === 'q') { setTool('select'); setMoving(null); }
+      else if (k === 'escape' || k === 'q') { setTool('select'); setMoving(null); setMovingGroup(false); }
+      else if ((e.ctrlKey || e.metaKey) && k === 'c') { e.preventDefault(); doCopy(); }
+      else if ((e.ctrlKey || e.metaKey) && k === 'x') { e.preventDefault(); doCut(); }
+      else if ((e.ctrlKey || e.metaKey) && k === 'v') { e.preventDefault(); doPaste(); }
+      else if (k === 'delete' || k === 'backspace') { e.preventDefault(); doDeleteSel(); }
       else if (k === 'x') setTool('remove');
       else if (k === 'b') setTool('belt');
       else if (k === 'i') setTool('inserter');
@@ -144,6 +161,7 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
     if (ev.button === 0 && miniHit(mx, my)) { u.pan = { x: mx, y: my, px: u.px, py: u.py, moved: true, btn: -1 }; return; }
     if (ev.button === 1 || ev.button === 2 || (ev.button === 0 && u.space)) { ev.preventDefault(); u.pan = { x: mx, y: my, px: u.px, py: u.py, moved: false, btn: ev.button }; return; }
     if (u.tool === 'remove') { u.dragging = true; u.removing = new Set(); const e = sim.current.g.get(cellId(c[0], c[1])); if (e) u.removing.add(e.id); return; }
+    if (u.tool === 'select') { const hit = sim.current.g.get(cellId(c[0], c[1])); if (!hit) { u.dragging = true; u.marquee = { x0: c[0], y0: c[1], x1: c[0], y1: c[1] }; } return; }
     if (u.tool === 'belt') { u.dragging = true; u.drag = [{ x: c[0], y: c[1], d: u.dir }]; return; }
   };
   const onMove = (ev: React.PointerEvent) => {
@@ -165,6 +183,7 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
       return;
     }
     const c = cellAt(ev); u.hover = c; if (!c || !u.dragging) return;
+    if (u.marquee) { u.marquee = { ...u.marquee, x1: c[0], y1: c[1] }; return; }
     if (u.removing.size || u.tool === 'remove') { const e = sim.current.g.get(cellId(c[0], c[1])); if (e) u.removing.add(e.id); return; }
     if (u.tool === 'belt') {
       const lastC = u.drag[u.drag.length - 1]; if (lastC.x === c[0] && lastC.y === c[1]) return;
@@ -192,12 +211,37 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
     }
     if (u.dragging) {
       u.dragging = false;
-      if (u.removing.size) { const ids = [...u.removing]; u.removing = new Set(); call('fac_remove', { ids }); if (ids.includes(sel ?? -1)) setSel(null); return; }
+      if (u.marquee) {
+        const m = u.marquee; u.marquee = null;
+        const x0 = Math.min(m.x0, m.x1), x1 = Math.max(m.x0, m.x1), y0 = Math.min(m.y0, m.y1), y1 = Math.max(m.y0, m.y1);
+        const hit: number[] = [];
+        for (const e of (s?.ents ?? [])) {
+          const sz = KINDS[e.k].size;
+          if (e.x + sz - 1 < x0 || e.y + sz - 1 < y0 || e.x > x1 || e.y > y1) continue;
+          hit.push(e.id);
+        }
+        if (ev.shiftKey && sels.length) selectIds([...new Set([...sels, ...hit])], hit[0] ?? sel);
+        else selectIds(hit, hit[0] ?? null);
+        return;
+      }
+      if (u.removing.size) { const ids = [...u.removing]; u.removing = new Set(); call('fac_remove', { ids }); clearSel(); return; }
       if (u.tool === 'belt' && u.drag.length) { const items = u.drag.filter((p) => !sim.current.g.get(cellId(p.x, p.y))).map((p) => ({ k: 'belt', x: p.x, y: p.y, d: p.d })); u.drag = []; if (items.length) call('fac_place', { items }); return; }
     }
     if (!c || !s) return;
-    if (moving !== null) { const e = s.ents.find((x) => x.id === moving); if (e) { const off = KINDS[e.k].size === 2 ? 0 : 0; call('fac_edit', { id: e.id, x: c[0] - off, y: c[1] - off, d: dir }, () => setMoving(null)); } return; }
-    if (u.tool === 'select') { const e = sim.current.g.get(cellId(c[0], c[1])); setSel(e ? e.id : null); return; }
+    if (movingGroup) {
+      const ids = sels.length ? sels : (sel != null ? [sel] : []);
+      const group = entsOf(ids); if (!group.length) { setMovingGroup(false); return; }
+      const ax = Math.min(...group.map((e) => e.x)), ay = Math.min(...group.map((e) => e.y));
+      call('fac_move', { ids, dx: c[0] - ax, dy: c[1] - ay }, () => { setMovingGroup(false); flash(`Moved ${ids.length}.`); });
+      return;
+    }
+    if (moving !== null) { const e = s.ents.find((x) => x.id === moving); if (e) { call('fac_edit', { id: e.id, x: c[0], y: c[1], d: dir }, () => setMoving(null)); } return; }
+    if (u.tool === 'select') {
+      const e = sim.current.g.get(cellId(c[0], c[1]));
+      if (!e) { if (!ev.shiftKey) clearSel(); return; }
+      if (ev.shiftKey) { const next = sels.includes(e.id) ? sels.filter((id) => id !== e.id) : [...sels, e.id]; selectIds(next, e.id); return; }
+      selectIds([e.id], e.id); return;
+    }
     if (u.tool !== 'remove') {
       const k = u.tool; const extra: Record<string, unknown> = {};
       if (KINDS[k].machine) extra.r = recipesFor(k)[0]?.id;
@@ -224,9 +268,16 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
         <span className="fac-chip">🏭 {floorSize(fs.floor)}×{floorSize(fs.floor)}</span>
         {next && <button type="button" className="fac-btn" onClick={() => call('fac_expand', {}, () => flash(`Walls pushed out to ${next.size}×${next.size}!`))} data-testid="fac-expand">Expand to {next.size}×{next.size} · 🪙 {ix(next.cost, pidx).toLocaleString()}</button>}
         <span className="fac-tools">
-          <button type="button" className={tool === 'select' ? 'on' : ''} onClick={() => { setTool('select'); setMoving(null); }} title="Select (Esc)">👆</button>
+          <button type="button" className={tool === 'select' ? 'on' : ''} onClick={() => { setTool('select'); setMoving(null); setMovingGroup(false); }} title="Select / drag area (Esc)">👆</button>
           <button type="button" className={tool === 'remove' ? 'on' : ''} onClick={() => setTool('remove')} title="Pick up (X / right-click, drag for many)" data-testid="fac-remove">🧲</button>
           <button type="button" onClick={() => setDir((d) => ((d + 1) % 4) as Dir)} title="Rotate (R)" data-testid="fac-rotate">⟳ {['→', '↓', '←', '↑'][dir]}</button>
+          <button type="button" disabled={!(sels.length || sel != null)} onClick={doCopy} title="Copy (Ctrl+C)" data-testid="fac-copy">📋</button>
+          <button type="button" disabled={!(sels.length || sel != null)} onClick={doCut} title="Cut (Ctrl+X)" data-testid="fac-cut">✂</button>
+          <button type="button" disabled={!clip?.items.length} onClick={doPaste} title="Paste at cursor (Ctrl+V)" data-testid="fac-paste">📄</button>
+          <button type="button" disabled={!(sels.length || sel != null)} onClick={startMoveGroup} title="Move selection" data-testid="fac-move-sel">↔️</button>
+          <button type="button" disabled={!(sels.length || sel != null)} onClick={doDeleteSel} title="Pick up selection (Del)" data-testid="fac-del-sel">🗑</button>
+          {sels.length > 1 && <span className="fac-chip" data-testid="fac-sel-count">{sels.length} selected</span>}
+          {!!clip?.items.length && <span className="fac-chip" data-testid="fac-clip-count">clip {clip.items.length}</span>}
         </span>
       </div>
       <div className="fac-main">
@@ -238,19 +289,21 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
             {zoomed && <button type="button" onClick={resetView} title="Fit whole floor (0)" data-testid="fac-zoom-fit">⤢</button>}
           </div>
           {moving !== null && <div className="fac-hint">Click where to move it (R rotates) · Esc cancels</div>}
+          {movingGroup && <div className="fac-hint">Click the new top-left corner for the selection · Esc cancels</div>}
+          {tool === 'select' && !moving && !movingGroup && <div className="fac-hint fac-hint-soft">Drag to area-select · Shift+click to add · Ctrl+C/X/V copy/cut/paste</div>}
         </div>
         <aside className="fac-side">
           <div className="fac-tabs">
             {(['build', 'shop', 'recipes', 'import'] as const).map((t) => <button type="button" key={t} className={side === t ? 'on' : ''} onClick={() => setSide(t)} data-testid={`fac-tab-${t}`}>{t === 'build' ? '🧰 Build' : t === 'shop' ? '🛒 Machinist' : t === 'recipes' ? '📜 Recipes' : '🚚 Bring in'}</button>)}
           </div>
-          {selEnt && <Inspect e={selEnt} storage={storageList} store={sim.current.store} onEdit={(b) => call('fac_edit', { id: selEnt.id, ...b })} onRemove={() => { call('fac_remove', { ids: [selEnt.id] }); setSel(null); }} sell={<FactoryMachineSell key={selEnt.id} id={selEnt.id} kind={selEnt.k} name={KINDS[selEnt.k].name} ask={ask} flash={flash} onSold={() => setSel(null)} />} onMove={() => { setMoving(selEnt.id); setDir(selEnt.d); }} onClose={() => setSel(null)} />}
+          {selEnt && <Inspect e={selEnt} storage={storageList} store={sim.current.store} onEdit={(b) => call('fac_edit', { id: selEnt.id, ...b })} onRemove={() => { call('fac_remove', { ids: [selEnt.id] }); clearSel(); }} sell={<FactoryMachineSell key={selEnt.id} id={selEnt.id} kind={selEnt.k} name={KINDS[selEnt.k].name} ask={ask} flash={flash} onSold={() => clearSel()} />} onMove={() => { setMoving(selEnt.id); setMovingGroup(false); setDir(selEnt.d); }} onClose={() => clearSel()} />}
           {side === 'build' && <div className="fac-palette">
             {KIND_ORDER.map((k) => (
-              <button type="button" key={k} disabled={!kitN(k)} className={tool === k ? 'on' : ''} onClick={() => { setTool(k); setSel(null); }} title={KINDS[k].desc} data-testid={`fac-pal-${k}`}>
+              <button type="button" key={k} disabled={!kitN(k)} className={tool === k ? 'on' : ''} onClick={() => { setTool(k); clearSel(); }} title={KINDS[k].desc} data-testid={`fac-pal-${k}`}>
                 <span className="fac-ic">{ICON[k]}</span><span>{KINDS[k].name}</span><b>×{kitN(k)}</b>
               </button>
             ))}
-            <p className="mines-note">Click to place, R rotates, drag belts. Inserters grab from behind and drop in front (set a filter to grab one item only). Undergrounds pair with the next one ahead facing the same way, up to 5 tiles, so belts can cross. Machines push output out the side their arrow faces. Wheel or pinch to zoom; right/middle-drag, Space-drag or two fingers to pan.</p>
+            <p className="mines-note">Click to place, R rotates, drag belts. Select tool: drag a box to multi-select; Ctrl+C/X/V copy/cut/paste (paste needs kit parts); Move or Del for the selection. Inserters grab from behind and drop in front (set a filter to grab one item only). Undergrounds pair with the next one ahead facing the same way, up to 5 tiles, so belts can cross. Machines push output out the side their arrow faces. Wheel or pinch to zoom; right/middle-drag, Space-drag or two fingers to pan.</p>
           </div>}
           {side === 'shop' && <div className="fac-shop" data-testid="fac-shop">
             <div className="fac-buyn">Buy {[1, 5, 10, 25].map((n) => <button type="button" key={n} className={buyN === n ? 'on' : ''} onClick={() => setBuyN(n)}>×{n}</button>)}</div>
@@ -349,7 +402,7 @@ const ZMAX = 5;
 function view(w: number, h: number, size: number, u: { z: number; px: number; py: number }) { const L = layout(w, h, size); const ts = Math.max(6, Math.round(L.ts * u.z)); return { ts, ox: Math.floor((w - ts * size) / 2 + u.px), oy: Math.floor((h - ts * size) / 2 + u.py) }; }
 function layout(w: number, h: number, size: number) { const pad = Math.min(w, h) * 0.05 + 14; const ts = Math.max(6, Math.floor(Math.min((w - pad * 2) / size, (h - pad * 2) / size))); return { ts, ox: Math.floor((w - ts * size) / 2), oy: Math.floor((h - ts * size) / 2) }; }
 export type SimRef = { s: FState | null; g: Grid; store: Map<string, number>; shown: number; shownFrom: number; shownAt: number };
-export type UiRef = { tool: Tool; dir: Dir; sel: number | null; moving: number | null; hover: null | [number, number]; drag: Array<{ x: number; y: number; d: Dir }>; removing: Set<number>; z: number; px: number; py: number; mini: null | { x: number; y: number; w: number; s: number } };
+export type UiRef = { tool: Tool; dir: Dir; sel: number | null; moving: number | null; sels: number[]; hover: null | [number, number]; drag: Array<{ x: number; y: number; d: Dir }>; removing: Set<number>; marquee: null | { x0: number; y0: number; x1: number; y1: number }; z: number; px: number; py: number; mini: null | { x: number; y: number; w: number; s: number } };
 
 export function render(cv: HTMLCanvasElement, c: SimRef, frac: number, t: number, u: UiRef) {
   const ctx = cv.getContext('2d'); const s = c.s; if (!ctx || !s) return;
@@ -402,11 +455,17 @@ export function render(cv: HTMLCanvasElement, c: SimRef, frac: number, t: number
     if (e.k === 'inserter') drawInserter(ctx, e, px, py, ts, frac);
     else if (e.k === 'chest_in' || e.k === 'chest_out') drawChest(ctx, e, px, py, ts);
     else if (KINDS[e.k].machine) drawMachine(ctx, e, px, py, ts, t);
-    if (u.sel === e.id || u.removing.has(e.id)) { const sz = KINDS[e.k].size * ts; ctx.strokeStyle = u.removing.has(e.id) ? '#ff5050' : '#ffe066'; ctx.lineWidth = 2; ctx.strokeRect(px + 1, py + 1, sz - 2, sz - 2); }
+    if (u.sel === e.id || u.sels.includes(e.id) || u.removing.has(e.id)) { const sz = KINDS[e.k].size * ts; ctx.strokeStyle = u.removing.has(e.id) ? '#ff5050' : '#ffe066'; ctx.lineWidth = 2; ctx.strokeRect(px + 1, py + 1, sz - 2, sz - 2); }
   }
   lighting(ctx, L.ox, L.oy, ts, vis, W, H);
   // ghost
   const h = u.hover; const g = c.g;
+  if (u.marquee) {
+    const m = u.marquee; const x0 = Math.min(m.x0, m.x1), x1 = Math.max(m.x0, m.x1), y0 = Math.min(m.y0, m.y1), y1 = Math.max(m.y0, m.y1);
+    ctx.save(); ctx.strokeStyle = 'rgba(255,224,102,.95)'; ctx.fillStyle = 'rgba(255,224,102,.15)'; ctx.lineWidth = 1.5;
+    ctx.fillRect(L.ox + x0 * ts, L.oy + y0 * ts, (x1 - x0 + 1) * ts, (y1 - y0 + 1) * ts);
+    ctx.strokeRect(L.ox + x0 * ts, L.oy + y0 * ts, (x1 - x0 + 1) * ts, (y1 - y0 + 1) * ts); ctx.restore();
+  }
   if (u.drag.length) for (const p of u.drag) { ctx.globalAlpha = 0.6; drawBelt(ctx, { id: -1, k: 'belt', x: p.x, y: p.y, d: p.d }, X(p.x), Y(p.y), ts, anim); ctx.globalAlpha = 1; if (g.get(cellId(p.x, p.y)) || p.x < 0 || p.y < 0 || p.x >= size || p.y >= size) { ctx.fillStyle = 'rgba(255,60,60,.35)'; ctx.fillRect(X(p.x), Y(p.y), ts, ts); } }
   else if (h && (u.moving !== null || (u.tool !== 'select' && u.tool !== 'remove'))) {
     const me = u.moving !== null ? s.ents.find((e) => e.id === u.moving) : null; const kind = (me ? me.k : u.tool) as Kind;

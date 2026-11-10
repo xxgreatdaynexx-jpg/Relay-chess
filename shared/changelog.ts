@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T19:40:00-06:00", "title": "Factory: area select, copy/paste and move", "bullets": [
+    "Requested by Liam: in the Factory builder, drag a box with the select tool to grab many parts (Shift+click to add). Copy / Cut / Paste (Ctrl+C/X/V) use your Machinist kit for paste; Move slides the selection without picking it up; Delete picks the selection back into the kit. Server-validated. Existing single-piece place, rotate, and pick-up still work.",
+  ]},
   {"commit": "", "at": "2026-11-09T19:28:00-06:00", "title": "Sort and filter Factory Storage", "bullets": [
     "Requested by Dayne: the Factory Storage list has a compact Sort control (Name A–Z, Quantity, Unit price, Total value) and All / Sellable / Pantry filters. Your choice is saved on this device. Craft / pantry labels, Sell… and Sell all to the house are unchanged.",
   ]},

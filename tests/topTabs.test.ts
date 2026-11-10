@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { TOP_TAB_ORDER } from '../client/src/components/TopTabs';
 
 describe('top tab bar', () => {
-  it('orders the game tabs Blackjack, Roulette, Poker, Slots, Solitaire, Arena, Mines, Factory, Market (no Conquest); Inventory sits on the right', () => {
-    expect([...TOP_TAB_ORDER]).toEqual(['blackjack', 'roulette', 'poker', 'slots', 'solitaire', 'arena', 'hockey', 'mines', 'factory', 'market', 'stocks', 'skills']);
+  it('orders the game tabs Blackjack, Roulette, Poker, Slots, Solitaire, Loot Match, Arena, Hockey, Mines, Factory, Market, Stocks, Skills (no Conquest); Inventory sits on the right', () => {
+    expect([...TOP_TAB_ORDER]).toEqual(['blackjack', 'roulette', 'poker', 'slots', 'solitaire', 'lootmatch', 'arena', 'hockey', 'mines', 'factory', 'market', 'stocks', 'skills']);
   });
 });
 
