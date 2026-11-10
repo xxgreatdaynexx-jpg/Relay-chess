@@ -3,7 +3,7 @@ import { newDb } from 'pg-mem';
 import { getBank, resetBank } from '../server/casino-store';
 import { setPriceIndexForTest } from '../server/price-index';
 import { WeeklyEvents, resetWeekly, eventCredit } from '../server/weeklyEvent';
-import { DAILY_EVENT_GOALS, DAILY_EVENT_TIERS, DAILY_EVENTS, EVENT_CLAIM_MS, EVENT_DAILY_FROM, EVENT_ORDER, EVENT_PAYOUT_FROM, EVENT_TIERS, EVENTS, LEGACY_EVENT_TIERS, WEEKLY_EVENT_GOALS, eventDailyEpoch, eventFor, eventReward, eventTiersFor, periodIndex, periodStart, playerEventCap, TRADE_COUNT_CAP, weekIndex, weekStart } from '../shared/coop3';
+import { DAILY_EVENT_GOALS, DAILY_EVENT_GOALS_RETUNE, DAILY_EVENT_TIERS, DAILY_EVENT_TIERS_RETUNE, DAILY_EVENTS, DAILY_EVENTS_RETUNE, EVENT_CLAIM_MS, EVENT_DAILY_FROM, EVENT_ORDER, EVENT_PAYOUT_FROM, EVENT_RETUNE_FROM, EVENT_TIERS, EVENTS, LEGACY_EVENT_TIERS, WEEKLY_EVENT_GOALS, eventDailyEpoch, eventFor, eventReward, eventTiersFor, periodIndex, periodStart, playerEventCap, TRADE_COUNT_CAP, weekIndex, weekStart } from '../shared/coop3';
 import { expectChangelogEntry, expectChangelogOrder } from './helpers/changelog';
 
 const W = weekIndex(Date.parse('2026-11-04T18:00:00Z')); // a mining-or-whatever week; tests pick weeks by kind
@@ -145,6 +145,25 @@ describe('weekly server events', () => {
     // Goal already met → claim after rolling to next period pays once (daily gold table)
     at(w + 1);
     expect(periodIndex(now)).toBe(w + 1);
+  });
+
+  it('retune from EVENT_RETUNE_FROM: 5× goals and 25% lower payouts; prior daily periods keep old numbers', () => {
+    expect(EVENT_RETUNE_FROM).toBe(46);
+    expect(DAILY_EVENT_GOALS_RETUNE).toEqual({ mining: 3_000, harvest: 4_250, fishing: 225, trade: 750, hockey: 15 });
+    expect(DAILY_EVENT_TIERS_RETUNE.map((x) => x.chips)).toEqual([10_000, 30_000, 75_000]);
+    // In-progress day (period 45) and earlier daily periods keep the pre-retune table.
+    expect(eventFor(EVENT_RETUNE_FROM - 1).goal).toBe(DAILY_EVENTS[eventFor(EVENT_RETUNE_FROM - 1).id].goal);
+    expect(eventTiersFor(EVENT_RETUNE_FROM - 1)).toBe(DAILY_EVENT_TIERS);
+    expect(eventReward(DAILY_EVENTS.hockey, playerEventCap(DAILY_EVENTS.hockey), 1, 1, EVENT_RETUNE_FROM - 1)).toBe(100_000);
+    // New day uses quintupled goals and cut payouts.
+    expect(eventFor(EVENT_RETUNE_FROM).goal).toBe(DAILY_EVENTS_RETUNE[eventFor(EVENT_RETUNE_FROM).id].goal);
+    expect(eventTiersFor(EVENT_RETUNE_FROM)).toBe(DAILY_EVENT_TIERS_RETUNE);
+    const e = DAILY_EVENTS_RETUNE.hockey; const cap = playerEventCap(e);
+    expect(e.goal).toBe(15);
+    expect(eventReward(e, cap, 1, 1, EVENT_RETUNE_FROM)).toBe(75_000);
+    expect(eventReward(e, cap, 0.5, 1, EVENT_RETUNE_FROM)).toBe(37_500);
+    // period 46 starts at the next Regina midnight after this ship (2026-11-11 00:00)
+    expect(new Date(periodStart(EVENT_RETUNE_FROM)).toISOString()).toBe('2026-11-11T06:00:00.000Z');
   });
 
 

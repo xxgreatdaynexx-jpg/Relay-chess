@@ -6,6 +6,18 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T16:30:00-06:00", "title": "Wallet history can scroll and load more (requested by carter2)", "bullets": [
+    "The wallet log now has its own scroll area, an Expand logs button for a taller full-height view, and a Load more button that fetches older ledger pages from the server instead of stopping after the first 25 lines.",
+    "New chip moves still appear at the top as they happen. Your balance and earlier ledger entries are unchanged.",
+  ]},
+  {"commit": "", "at": "2026-11-10T16:30:00-06:00", "title": "Auto-harvest no longer loses chips after the daily farm cap (reported by carter2)", "bullets": [
+    "After you reach today's 100,000-chip farm profit cap, a harvest still only refunds the seeds — that cap itself is unchanged, and crop prices are unchanged. A rounding mismatch meant the refund could be a few chips short of what auto-replant charged, so carrot cycles could show a small loss even though raw crops are worth seed plus 50% before the cap.",
+    "A harvest now never pays less than the same indexed seed price you paid to plant those tiles, so auto-harvest plus auto-replant at least breaks even after the cap. Earlier harvests and wallet entries are unchanged.",
+  ]},
+  {"commit": "", "at": "2026-11-10T16:30:00-06:00", "title": "Daily co-op events: higher goals, lower payouts (requested by chessguy2)", "bullets": [
+    "Starting at midnight tonight (November 11, 12:00 AM CST), daily co-op event goals are five times higher and claim payouts are 25% lower: Gold 75,000, Silver 30,000, Bronze 10,000 when the server goal is finished.",
+    "Today's in-progress event keeps its current goal and payouts. Contributions already earned and rewards already claimed (or still waiting to be claimed from an earlier period) are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T15:50:00-06:00", "title": "Billionaire Update coming soon", "bullets": [
     "A Billionaire Update sign is up on the city map, in the field south of the airport. No date yet — just coming soon.",
   ]},

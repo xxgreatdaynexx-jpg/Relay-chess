@@ -14,7 +14,7 @@ import { FISH, RARITY_ODDS, FISH_SPOT_CAP, FISH_SELL_MUL, COOLER_MAX, type FishS
 import { PRODUCTS, PRODUCT_ORDER, WELL_RATE, PUMPJACK_MULT, TRACTS, LEASE_BASE, WELL_COST, PUMPJACK_COST, FORTMC_TICKET_BASE } from './fortmc.js';
 import { properties, TAX_RATE } from './realEstate.js';
 import { LEVERS, LEVER_IDS, POLICIES, POLICY_IDS, BUILDINGS, BUILDING_IDS, PROJECTS, PROJECT_IDS, TREASURY_SHARE, fundingView, FUNDING_LEVER_IDS, leverText, RIOT_STOP_COST } from './city.js';
-import { DAILY_EVENTS, DAILY_EVENT_TIERS, EVENT_ORDER, LEGACY_EVENT_TIERS, EVENT_PAYOUT_FROM, EVENT_DAILY_FROM, EVENT_TIERS, goalMul, EVENT_CLAIM_MS } from './coop3.js';
+import { DAILY_EVENTS, DAILY_EVENT_TIERS, DAILY_EVENT_TIERS_RETUNE, EVENT_ORDER, LEGACY_EVENT_TIERS, EVENT_PAYOUT_FROM, EVENT_DAILY_FROM, EVENT_RETUNE_FROM, EVENT_TIERS, goalMul, EVENT_CLAIM_MS } from './coop3.js';
 
 export interface WikiRow { cells: string[] }
 export interface WikiSection {
@@ -88,7 +88,7 @@ export function buildWiki(): WikiSection[] {
     const e = DAILY_EVENTS[id];
     return { cells: [`${e.icon} ${e.name}`, chips(e.goal) + ' ' + e.unit, e.blurb] };
   });
-  const tierRows = DAILY_EVENT_TIERS.map((t) => ({ cells: [`${t.icon} ${t.name}`, pct(t.at) + ' of your cap', chips(t.chips)] }));
+  const tierRows = DAILY_EVENT_TIERS_RETUNE.map((t) => ({ cells: [`${t.icon} ${t.name}`, pct(t.at) + ' of your cap', chips(t.chips)] }));
 
   const policyRows = POLICY_IDS.map((id) => { const p = POLICIES[id]; return { cells: [`${p.icon} ${p.label}`, chips(p.cost), p.blurb] }; });
   const buildingRows = BUILDING_IDS.map((id) => { const b = BUILDINGS[id]; return { cells: [`${b.icon} ${b.label}`, b.stages.map(chips).join(' / '), b.perkText] }; });
@@ -204,7 +204,7 @@ export function buildWiki(): WikiSection[] {
       intro: 'One rotating event per America/Regina day (UTC-6 midnight): Mining Rush → Harvest Festival → Fishing Derby → Trade Week → Hockey Cup.',
       bullets: [
         `After the day ends, claim Bronze / Silver / Gold from your personal share of the goal (full reward if the server hit 100%, half from 50%, nothing under 50%). Claim window ${hrs(EVENT_CLAIM_MS)}.`,
-        `Current Gold payout ${chips(DAILY_EVENT_TIERS.find((t) => t.id === 'gold')!.chips)} (daily periods ≥ ${EVENT_DAILY_FROM}). Weekly eras kept Gold ${chips(EVENT_TIERS.find((t) => t.id === 'gold')!.chips)} from week ${EVENT_PAYOUT_FROM}; earlier weeks keep Gold ${chips(LEGACY_EVENT_TIERS.find((t) => t.id === 'gold')!.chips)}.`,
+        `Current Gold payout ${chips(DAILY_EVENT_TIERS_RETUNE.find((t) => t.id === 'gold')!.chips)} (daily periods ≥ ${EVENT_RETUNE_FROM}). Periods ${EVENT_DAILY_FROM}–${EVENT_RETUNE_FROM - 1} kept Gold ${chips(DAILY_EVENT_TIERS.find((t) => t.id === 'gold')!.chips)}. Weekly eras kept Gold ${chips(EVENT_TIERS.find((t) => t.id === 'gold')!.chips)} from week ${EVENT_PAYOUT_FROM}; earlier weeks keep Gold ${chips(LEGACY_EVENT_TIERS.find((t) => t.id === 'gold')!.chips)}.`,
         `At 50% server progress, rewards are ×${goalMul(0.5)}.`,
       ],
       headers: ['Event', 'Goal', 'How'],

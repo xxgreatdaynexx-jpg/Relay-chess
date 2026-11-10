@@ -70,6 +70,13 @@ export function farmPayout(gross: number, already: number): number {
   return Math.floor(pay + 1e-9);
 }
 
+/** Chips paid for a harvest (or a crop shipment sold like a harvest). Profit is floor(payout × index),
+ *  but the total is never below the same per-seed indexed price (`px`) charged when those seeds were planted. */
+export function farmHarvestChips(seedsBase: number, profitPayout: number, index: number, seedIndexed: number): number {
+  const idx = Number.isFinite(index) && index > 0 ? index : 1;
+  return Math.max(seedIndexed, Math.floor((seedsBase + profitPayout) * idx));
+}
+
 // ---- layout: a grass apron east of the plate; two columns of fenced fields along dirt lanes.
 export const FARM_X0 = PLATE, FARM_X1 = PLATE + 70, FARM_Z0 = -PLATE, FARM_Z1 = 62;
 /** Dirt lanes: both run north out of the farm to a T on the outskirts' north road (z = -PLATE - 8); the west lane meets

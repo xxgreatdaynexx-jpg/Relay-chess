@@ -31,8 +31,9 @@ describe('Billionaire Update coming-soon sign', () => {
     expect(w).toContain(`ms.name = ${'BILLIONAIRE_SIGN'}`);
     expect(w).not.toMatch(/fillText\('Billionaire Update'.*\d{1,2} [A-Z][a-z]{2}/s);
     expect(w).not.toMatch(/BILLIONAIRE_SIGN.*open-launch-popup|open-launch-popup.*BILLIONAIRE_SIGN/s);
-    expect(CHANGELOG[0]!.title).toBe('Billionaire Update coming soon');
-    expect(CHANGELOG[0]!.bullets.join(' ')).not.toMatch(/yacht|voyage|landmark|sink|boarding|combat/i);
+    const entry = CHANGELOG.find((e) => e.title === 'Billionaire Update coming soon');
+    expect(entry).toBeTruthy();
+    expect(entry!.bullets.join(' ')).not.toMatch(/yacht|voyage|landmark|sink|boarding|combat/i);
     expect(src('client/src/components/WorldMap.tsx')).toMatch(/Coming soon/);
     expect(BILLIONAIRE_SIGN).toBe('billionaire-sign');
   });

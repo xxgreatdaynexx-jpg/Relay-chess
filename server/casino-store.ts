@@ -15,6 +15,8 @@ export interface CasinoAccount {
 
 /** One chip movement in the unified wallet. `key` makes game payouts idempotent (null for casino hands/spins). */
 export interface WalletTx {
+  /** Postgres wallet_transactions.id (or a local fallback id). Used as a pagination cursor. */
+  id?: number;
   key: string | null;
   name: string;
   game: string;
@@ -42,7 +44,7 @@ export interface CasinoStore {
   loadKeys?(): Promise<string[]>;
   adminCreditsOpen?(): Promise<boolean>;
   adminCreditAdmission?(): Promise<{ open: boolean; generation: string }>;
-  recent?(playerKey: string, limit: number): Promise<WalletTx[]>;
+  recent?(playerKey: string, limit: number, beforeId?: number): Promise<WalletTx[]>;
 }
 
 /** Separate table; the chess `leaderboard` table is never touched. */
@@ -180,12 +182,13 @@ export class PgCasinoStore implements CasinoStore {
     const { rows } = await this.db.query('SELECT tx_key FROM wallet_transactions WHERE tx_key IS NOT NULL');
     return rows.map((r) => String(r.tx_key));
   }
-  async recent(playerKey: string, limit: number): Promise<WalletTx[]> {
+  async recent(playerKey: string, limit: number, beforeId?: number): Promise<WalletTx[]> {
     const { rows } = await this.db.query(
-      'SELECT tx_key, name, game, amount, balance, memo, created_at FROM wallet_transactions WHERE player_key = $1 ORDER BY id DESC LIMIT $2',
-      [playerKey, limit],
+      `SELECT id, tx_key, name, game, amount, balance, memo, created_at FROM wallet_transactions
+        WHERE player_key = $1 AND ($3::bigint IS NULL OR id < $3) ORDER BY id DESC LIMIT $2`,
+      [playerKey, limit, beforeId ?? null],
     );
-    return rows.map((r) => ({ key: r.tx_key ?? null, name: String(r.name), game: String(r.game), amount: Number(r.amount), balance: Number(r.balance), ...(r.memo ? { memo: String(r.memo) } : {}), at: new Date(r.created_at).getTime() }));
+    return rows.map((r) => ({ id: Number(r.id), key: r.tx_key ?? null, name: String(r.name), game: String(r.game), amount: Number(r.amount), balance: Number(r.balance), ...(r.memo ? { memo: String(r.memo) } : {}), at: new Date(r.created_at).getTime() }));
   }
   /** Read-only snapshot for the in-memory cache (leaderboard). Nothing is ever written back from it. */
   async loadAll(): Promise<CasinoAccount[]> {
@@ -225,6 +228,7 @@ export class CasinoBank {
   private inflight = new Map<string, number>();
   private keys = new Set<string>();
   private recentTx = new Map<string, WalletTx[]>();
+  private nextTxId = 1;
   private listeners = new Set<(a: CasinoAccount, tx: WalletTx) => void>();
   /** Backoff between retries of a write that failed for infrastructure reasons (tests shorten it). */
   retryMs = [250, 500, 1000, 2000];
@@ -440,14 +444,16 @@ export class CasinoBank {
   }
 
   /** Newest first. Memory for this run, else the Postgres ledger. */
-  async recent(name: string, limit = 25): Promise<WalletTx[]> {
+  async recent(name: string, limit = 25, beforeId?: number): Promise<WalletTx[]> {
     this.guard();
     const key = keyOf(name);
     if (this.store?.recent) {
       await this.pending.get(key);
-      try { return await this.store.recent(key, limit); } catch { /* fall back */ }
+      try { return await this.store.recent(key, limit, beforeId); } catch { /* fall back */ }
     }
-    return (this.recentTx.get(key) ?? []).slice(0, limit);
+    const all = this.recentTx.get(key) ?? [];
+    const rest = beforeId != null ? all.filter((t) => (t.id ?? 0) < beforeId) : all;
+    return rest.slice(0, limit);
   }
 
   standings(limit = 50): CasinoAccount[] {
@@ -471,7 +477,7 @@ export class CasinoBank {
   }
 
   private log(a: CasinoAccount, amount: number, game: string, key: string | null = null, memo?: string, deferPersist = false, stats?: StatDelta, adminGateGeneration?: string): WalletTx {
-    const tx: WalletTx = { key, name: a.name, game, amount, balance: a.chips, ...(memo ? { memo } : {}), at: Date.now(), ...(adminGateGeneration ? { adminGateGeneration } : {}) };
+    const tx: WalletTx = { id: this.nextTxId++, key, name: a.name, game, amount, balance: a.chips, ...(memo ? { memo } : {}), at: Date.now(), ...(adminGateGeneration ? { adminGateGeneration } : {}) };
     if (amount !== 0 || key) {
       const list = this.recentTx.get(a.key) ?? [];
       list.unshift(tx);
@@ -541,5 +547,5 @@ export async function initCasinoStorage(): Promise<void> {
 }
 
 /** Socket events that can move chips (stakes, buys, payouts, seats with buy-ins). Refused while the chip DB is down. */
-const CHIP_EVENT = /^(bj_|he_sit|he_action|roulette_bet|roulette_rebet|vp_deal|vp_draw|vslots_|mines_(hit|collect|craft|sell|pack|factory|factory_upgrade|join)|fac_(buy|expand|place)|stk_(buy|sell)|trip_buy|fort_act|casino_me|wallet_sub|furn_buy|freight_ship|truck_(buy|sell)|marina_buy|hangar_buy|fleet_sell|farm_(machine|fertilize))|^(sit|pay_bailout|create_room|quick_join|tournament_create|tournament_join|vote_rematch)$/;
+const CHIP_EVENT = /^(bj_|he_sit|he_action|roulette_bet|roulette_rebet|vp_deal|vp_draw|vslots_|mines_(hit|collect|craft|sell|pack|factory|factory_upgrade|join)|fac_(buy|expand|place)|stk_(buy|sell)|trip_buy|fort_act|casino_me|wallet_sub|wallet_history|furn_buy|freight_ship|truck_(buy|sell)|marina_buy|hangar_buy|fleet_sell|farm_(machine|fertilize))|^(sit|pay_bailout|create_room|quick_join|tournament_create|tournament_join|vote_rematch)$/;
 export const isChipEvent = (event: string): boolean => CHIP_EVENT.test(event);

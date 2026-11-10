@@ -101,9 +101,21 @@ export const EVENTS = Object.fromEntries(Object.entries(LEGACY_EVENTS).map(([kin
   ...e, goal: WEEKLY_EVENT_GOALS[kind as EventKind], playerShare: EVENT_PLAYER_SHARE,
   ...(kind === 'trade' ? tradeBlurb : {}),
 }])) as Record<EventKind, EventDef>;
-/** Current (daily) defs — same names/icons, day-sized goals. */
+/** Current (daily) defs — same names/icons, day-sized goals. Used for periods EVENT_DAILY_FROM .. EVENT_RETUNE_FROM-1. */
 export const DAILY_EVENTS = Object.fromEntries(Object.entries(EVENTS).map(([kind, e]) => [kind, {
   ...e, goal: DAILY_EVENT_GOALS[kind as EventKind],
+}])) as Record<EventKind, EventDef>;
+/** chessguy2 #77: 5× daily goals and a further 25% payout cut, starting at EVENT_RETUNE_FROM.
+ *  The in-progress day (period EVENT_RETUNE_FROM-1) keeps the prior goals and payouts. */
+export const EVENT_RETUNE_FROM = 46; // 2026-11-11 00:00 America/Regina
+export const DAILY_EVENT_GOALS_RETUNE: Record<EventKind, number> = { mining: 3_000, harvest: 4_250, fishing: 225, trade: 750, hockey: 15 };
+export const DAILY_EVENT_TIERS_RETUNE = [
+  { id: 'bronze', name: 'Bronze', icon: '🥉', at: 0.05, chips: 10_000 },
+  { id: 'silver', name: 'Silver', icon: '🥈', at: 0.25, chips: 30_000 },
+  { id: 'gold', name: 'Gold', icon: '🥇', at: 0.6, chips: 75_000 },
+] as const;
+export const DAILY_EVENTS_RETUNE = Object.fromEntries(Object.entries(EVENTS).map(([kind, e]) => [kind, {
+  ...e, goal: DAILY_EVENT_GOALS_RETUNE[kind as EventKind],
 }])) as Record<EventKind, EventDef>;
 export const EVENT_ORDER: EventKind[] = ['mining', 'harvest', 'fishing', 'trade', 'hockey'];
 export const WEEK_MS = 7 * DAY;
@@ -132,6 +144,7 @@ export const eventKindAt = (w: number): EventKind => EVENT_ORDER[((w % EVENT_ORD
 export const eventFor = (w: number): EventDef => {
   const kind = eventKindAt(w);
   if (w < EVENT_REBALANCE_FROM) return LEGACY_EVENTS[kind]!;
+  if (w >= EVENT_RETUNE_FROM) return DAILY_EVENTS_RETUNE[kind]!;
   if (w >= EVENT_DAILY_FROM) return DAILY_EVENTS[kind]!;
   return EVENTS[kind]!;
 };
@@ -164,7 +177,10 @@ export type EventTier = { id: 'bronze' | 'silver' | 'gold'; name: string; icon: 
 /** Weeks ≥ this index use EVENT_TIERS; earlier closed weeks keep LEGACY_EVENT_TIERS. */
 export const EVENT_PAYOUT_FROM = 44;
 export const eventTiersFor = (week: number): readonly EventTier[] => (
-  week >= EVENT_DAILY_FROM ? DAILY_EVENT_TIERS : week >= EVENT_PAYOUT_FROM ? EVENT_TIERS : LEGACY_EVENT_TIERS
+  week >= EVENT_RETUNE_FROM ? DAILY_EVENT_TIERS_RETUNE
+    : week >= EVENT_DAILY_FROM ? DAILY_EVENT_TIERS
+    : week >= EVENT_PAYOUT_FROM ? EVENT_TIERS
+    : LEGACY_EVENT_TIERS
 );
 /** Reward multiplier by server progress: the full tier if the goal was reached, half from 50%, nothing below. */
 export const goalMul = (pct: number) => (pct >= 1 ? 1 : pct >= 0.5 ? 0.5 : 0);

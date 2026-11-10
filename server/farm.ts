@@ -25,7 +25,7 @@ import { emitHaul } from './haulVisual.js';
 import { farmHaulSite } from '../shared/haulVisual.js';
 import { PANTRY_MAX } from '../shared/cooking.js';
 import { awardXp } from './skills.js';
-import { CROPS, cropById, cropSellValue, farmPayout, farmPlots, ripeWindow, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
+import { CROPS, cropById, cropSellValue, farmHarvestChips, farmPayout, farmPlots, ripeWindow, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
 import { skillLevelAsync } from './skills.js';
 import { farmingGrowMul } from '../shared/skillPerks.js';
 import { combinedGrowMul, fertilizerYieldBonus, greenhouseWither, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradeDef, upgradePrice, yieldQty, type FarmUpgradeLevels } from '../shared/farmUpgrades.js';
@@ -440,7 +440,9 @@ export class Farm {
         return { harvested: cropUnits, paid: 0, toFactory: items, chips: this.bank().account(name).chips };
       }
       const day = utcDay(now); const t = await this.today(key);
-      const paid = Math.floor((seeds + farmPayout(profit * cityPolicyMul('farming'), t.gross)) * priceIndex()); // Farming subsidy policy (City Hall, kept)
+      let seedIndexed = 0;
+      for (const r of ready) seedIndexed += px(cropById(r.crop)!.seed);
+      const paid = farmHarvestChips(seeds, farmPayout(profit * cityPolicyMul('farming'), t.gross), priceIndex(), seedIndexed); // Farming subsidy policy (City Hall, kept)
       const memo = `Farm ${pid}: harvested ${[...counts].map(([l, n]) => `${n} ${l}`).join(', ')}`.slice(0, 200);
       await this.atomic(name, paid, 'farm_harvest', memo, async (cl) => {
         await this.mustOwn(cl, pid, name);
@@ -474,7 +476,7 @@ export class Farm {
     return this.lock(`h:${key}`, async () => {
       const now = this.clock(); const day = utcDay(now); const t = await this.today(key);
       const seeds = c.seed * s.qty; const profit = Math.max(0, (cropSellValue(c) - c.seed) * s.qty);
-      const paid = Math.floor((seeds + farmPayout(profit * cityPolicyMul('farming'), t.gross)) * priceIndex()); // Farming subsidy policy
+      const paid = farmHarvestChips(seeds, farmPayout(profit * cityPolicyMul('farming'), t.gross), priceIndex(), px(c.seed) * s.qty); // Farming subsidy policy
       try {
         // XP: only crops from the Resort plantation (tropical) earned sale XP in the baseline (their barn harvest XP + the
         // farm_harvest ledger XP when sold); city crops earned theirs at harvest (above), so their sale gives none.
