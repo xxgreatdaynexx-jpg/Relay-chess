@@ -1583,6 +1583,19 @@ html, body { overflow-x: clip; }
 .factory-list li b { margin-left: auto; }
 .factory-list li small { opacity: .6; width: 44px; text-align: right; }
 .factory-list li button { padding: 1px 6px; border-radius: 5px; background: rgba(255,255,255,.12); font-size: 11px; }
+
+.factory-storage-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 6px; }
+.factory-storage-sort { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; opacity: .9; }
+.factory-storage-sort select { min-height: 32px; border-radius: 6px; background: rgba(0,0,0,.35); color: inherit; border: 1px solid rgba(255,255,255,.15); padding: 2px 6px; font-size: 11px; max-width: 100%; }
+.factory-storage-filters { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.factory-storage-filters button { min-height: 32px; min-width: 44px; padding: 2px 8px; border-radius: 6px; background: rgba(255,255,255,.08); font-size: 11px; }
+.factory-storage-filters button.on { background: rgba(232,194,106,.28); color: #e8c26a; }
+@media (max-width: 720px) {
+  .factory-storage-tools { gap: 8px; }
+  .factory-storage-sort, .factory-storage-filters { width: 100%; }
+  .factory-storage-sort select { flex: 1; min-height: 40px; font-size: 13px; }
+  .factory-storage-filters button { flex: 1; min-height: 40px; font-size: 13px; }
+}
 .factory-toast { position: absolute; top: 44px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.75); padding: 4px 10px; border-radius: 8px; font-size: 12px; z-index: 2; }
 .mines-haul { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,.55); padding: 3px 8px; border-radius: 7px; font-size: 12px; font-weight: 600; color: #f3d48a; }
 @media (max-width: 720px) { .factory-body { flex-direction: column; overflow-y: auto; } .factory-col.factory-storage { flex: none; max-height: 30vh; order: 2; } .factory-col.factory-machines { min-height: 70vh; } }

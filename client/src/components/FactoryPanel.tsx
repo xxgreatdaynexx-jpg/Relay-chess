@@ -1,7 +1,7 @@
 import { sellBonusPct } from '../../../shared/coop';
 import { houseSellPrice } from '../../../shared/sellBuff';
 import { useDoing } from '@/lib/doing';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ItemIcon } from './ItemIcon';
 import { TopTab } from '@/components/TopTabs';
 import { useWalletChips } from '@/lib/wallet';
@@ -16,6 +16,7 @@ import { SellAllConfirm } from './SellAllConfirm';
 import { sellAllSummary, sellAllText } from '../../../shared/sellConfirm';
 import { usePriceIndex } from '@/lib/priceIndex';
 import { ORES, SELL_TIERS, houseCapChips, HOUSE_DAILY_BASE, payoutFor, isOre, nameOf, priceOf, sellable, stackKey, type Stack } from '../../../shared/mines';
+import { STORAGE_FILTER_KEY, STORAGE_FILTERS, STORAGE_SORT_KEY, STORAGE_SORTS, arrangeStorageStacks, isStorageFilter, isStorageSort, type StorageFilter, type StorageSort } from '../../../shared/storageList';
 
 const OPEN_KEY = 'relay-factory-open';
 type Quote = { gross: number; paid: number; already: number; lost?: number; effAlready?: number; index?: number; capBase?: number; capIndex?: number; sellBonus?: number } | null;
@@ -47,6 +48,10 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
   useEffect(() => { refresh(); const t = window.setInterval(refresh, 4000); socket.on('connect', refresh); return () => { window.clearInterval(t); socket.off('connect', refresh); }; }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [pick, setPick] = useState<string | null>(null);
   const [confirmAll, setConfirmAll] = useState(false);
+  const [sort, setSort] = useState<StorageSort>(() => { try { const v = localStorage.getItem(STORAGE_SORT_KEY); return isStorageSort(v) ? v : 'name'; } catch { return 'name'; } });
+  const [filter, setFilter] = useState<StorageFilter>(() => { try { const v = localStorage.getItem(STORAGE_FILTER_KEY); return isStorageFilter(v) ? v : 'all'; } catch { return 'all'; } });
+  useEffect(() => { try { localStorage.setItem(STORAGE_SORT_KEY, sort); } catch { /* ignore */ } }, [sort]);
+  useEffect(() => { try { localStorage.setItem(STORAGE_FILTER_KEY, filter); } catch { /* ignore */ } }, [filter]);
   function sell(only?: string, qty?: number) {
     return new Promise<void>((done) => socket.timeout(5000).emit('mines_sell', only ? { ore: only, ...(qty ? { qty } : {}) } : {}, (err: Error | null, r?: Ack & { paid: number }) => {
       done();
@@ -61,6 +66,10 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
   const capBase = q?.capBase ?? HOUSE_DAILY_BASE; const capIdx = q?.capIndex ?? pxIdx;
   const tier = q && (q.effAlready ?? q.already) >= capBase ? SELL_TIERS[SELL_TIERS.length - 1] : SELL_TIERS[0];
   const canSell = !st.guest && !st.inMine;
+  const shown = useMemo(
+    () => arrangeStorageStacks(st.storage, sort, filter, (s) => houseSellPrice(s) * sellIdx),
+    [st.storage, sort, filter, sellIdx],
+  );
   return (
     <div ref={wrapRef} className={`sol-panel factory-panel${win.className}`} style={win.style} onPointerDownCapture={win.front} onPointerMove={win.onPanelMove} role="dialog" aria-label="Factory">
       {win.grips}
@@ -76,13 +85,26 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
       <div className="factory-body">
         <section className="factory-col factory-storage" data-testid="factory-storage">
           <h3>📦 Storage <button type="button" className="mkt-link" onClick={() => openMarket({ tab: 'resources' })} data-testid="factory-goto-market">Sell on Market →</button></h3>
+          <div className="factory-storage-tools" data-testid="factory-storage-tools">
+            <label className="factory-storage-sort">Sort
+              <select value={sort} onChange={(e) => setSort(e.target.value as StorageSort)} data-testid="factory-storage-sort" aria-label="Sort storage">
+                {STORAGE_SORTS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+            </label>
+            <div className="factory-storage-filters" role="group" aria-label="Filter storage">
+              {STORAGE_FILTERS.map((o) => (
+                <button key={o.id} type="button" className={filter === o.id ? 'on' : ''} aria-pressed={filter === o.id} onClick={() => setFilter(o.id)} data-testid={`factory-storage-filter-${o.id}`}>{o.label}</button>
+              ))}
+            </div>
+          </div>
           <ul className="factory-list">
-            {st.storage.map((s) => (
+            {shown.map((s) => (
               <li key={stackKey(s)}><ItemIcon type={s.type} id={s.id} />{nameOf(s)}<b>×{s.qty}</b><small data-testid="sell-unit">🪙{+(houseSellPrice(s) * sellIdx).toFixed(2)}</small>
                 {canSell && sellable(s) && <button type="button" aria-expanded={pick === stackKey(s)} onClick={() => setPick((c) => (c === stackKey(s) ? null : stackKey(s)))} data-testid="factory-sell-pick">Sell…</button>}{!sellable(s) && (s.type === 'food' ? <small title="Pantry food: never sold to the house. Cook it, sell it on the Market, or feed it to a factory Input Chest (crops)">pantry</small> : <small title="Imported input: craft it in the factory to sell">craft</small>)}
                 {canSell && sellable(s) && pick === stackKey(s) && <SellQtyPicker owned={s.qty} unit={nameOf(s)} testid="factory-qty" preview={(n) => Math.floor(payoutFor(n * houseSellPrice(s), q?.effAlready ?? q?.already ?? 0, capBase) * sellIdx)} onSell={(n) => sell(stackKey(s), n)} />}</li>
             ))}
             {!st.storage.length && <li className="opacity-60">Empty. Mine ore and walk out through the EXIT lift to bank it here.</li>}
+            {!!st.storage.length && !shown.length && <li className="opacity-60">Nothing in this filter.</li>}
           </ul>
           <h3>🏦 Sell to the house</h3>
           {st.guest ? <p className="mines-note">Sign in to sell for chips.</p> : st.inMine ? <p className="mines-note" data-testid="factory-inmine">You're still in the mine. Leave the mine to sell.</p> : (

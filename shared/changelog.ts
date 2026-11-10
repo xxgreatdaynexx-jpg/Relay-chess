@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T19:28:00-06:00", "title": "Sort and filter Factory Storage", "bullets": [
+    "Requested by Dayne: the Factory Storage list has a compact Sort control (Name A–Z, Quantity, Unit price, Total value) and All / Sellable / Pantry filters. Your choice is saved on this device. Craft / pantry labels, Sell… and Sell all to the house are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-09T19:30:00-06:00", "title": "Mines: no more getting stuck in the walls", "bullets": [
     "Requested by Dayne: knockback, laggy frames and floor changes no longer push you inside the rock, and if you do clip a wall you're pushed to the nearest open tile after about half a second.",
     "An Unstick button in the mine (or type /stuck in chat) teleports you back to that floor's entrance, with a short cooldown. It doesn't give ore or let you skip to a deeper floor.",
