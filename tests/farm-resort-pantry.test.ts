@@ -11,6 +11,7 @@ import { cropById } from '../shared/farm';
 import { PANTRY_MAX } from '../shared/cooking';
 import { RESORT_WAREHOUSE } from '../shared/inventoryLocations';
 import { fertilizerYieldBonus, yieldQty } from '../shared/farmUpgrades';
+import { RESORT_HARVEST_MUL } from '../shared/resort';
 
 const T0 = Date.parse('2026-11-01T12:00:00Z');
 const M = 60_000;
@@ -94,7 +95,7 @@ describe('resort plantation pantry (pt2094u)', () => {
     const pine = cropById('pineapple')!;
     await s.farm.plant('Isle', s.id, 'pineapple', [0]);
     const row = (await s.pool.query('SELECT tile, crop, nonce FROM farm_tiles WHERE plot_id = $1', [s.id])).rows[0] as { tile: number; crop: string; nonce: string };
-    const expectQty = yieldQty(0.3, `${row.nonce}:${row.tile}:${row.crop}`);
+    const expectQty = yieldQty(0.3, `${row.nonce}:${row.tile}:${row.crop}`) * RESORT_HARVEST_MUL;
     s.setNow(T0 + pine.grow + M);
     const h = await s.farm.harvest('Isle', s.id, undefined, undefined, true);
     expect(h.harvested).toBe(expectQty);

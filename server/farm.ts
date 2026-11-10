@@ -16,7 +16,7 @@ import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank, type CasinoBank } from './casino-store.js';
 import { px, priceIndex } from './price-index.js';
-import { resortPlotOf, isTropical, TROPICAL_CROPS } from '../shared/resort.js';
+import { resortPlotOf, isTropical, TROPICAL_CROPS, RESORT_HARVEST_MUL } from '../shared/resort.js';
 import { requireResort } from './travel.js';
 import { fieldPlotOf } from '../shared/fieldFarms.js';
 import { outcome, ledgerMarker, isOutcomeUnknown, getLocStore } from './locstock.js';
@@ -305,7 +305,7 @@ export class Farm {
       let seeds = 0, profit = 0, cropUnits = 0; const counts = new Map<string, number>();
       for (const r of ready) {
         const c = cropById(r.crop)!;
-        const qty = yieldQty(fertB, `${r.nonce}:${r.tile}:${r.crop}`);
+        const qty = yieldQty(fertB, `${r.nonce}:${r.tile}:${r.crop}`) * (p.resort ? RESORT_HARVEST_MUL : 1);
         seeds += c.seed; profit += qty * cropSellValue(c) - c.seed; cropUnits += qty;
         counts.set(c.label, (counts.get(c.label) ?? 0) + qty);
       }
@@ -314,7 +314,7 @@ export class Farm {
         const items: Array<[string, number]> = [];
         for (const r of ready) {
           const c = cropById(r.crop)!;
-          const qty = yieldQty(fertB, `${r.nonce}:${r.tile}:${r.crop}`);
+          const qty = yieldQty(fertB, `${r.nonce}:${r.tile}:${r.crop}`) * (p.resort ? RESORT_HARVEST_MUL : 1);
           const id = `crop_${c.id}`; const at = items.find((x) => x[0] === id); if (at) at[1] += qty; else items.push([id, qty]);
         }
         const impKey = `import:${randomUUID()}`;
@@ -396,7 +396,7 @@ export class Farm {
     const counts = new Map<string, number>(); let value = 0; let cropUnits = 0;
     for (const r of ready) {
       const c = cropById(r.crop)!;
-      const qty = yieldQty(fertB, `${r.nonce}:${r.tile}:${r.crop}`);
+      const qty = yieldQty(fertB, `${r.nonce}:${r.tile}:${r.crop}`) * (pid.startsWith('rf:') ? RESORT_HARVEST_MUL : 1);
       counts.set(c.id, (counts.get(c.id) ?? 0) + qty); value += c.sell * qty; cropUnits += qty;
     }
     const ls = getLocStore(); if (!ls.loaded) throw new FarmError('Storage is reconnecting. Nothing was harvested; try again in a minute.');

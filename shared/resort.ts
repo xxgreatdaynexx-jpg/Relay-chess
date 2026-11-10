@@ -14,6 +14,7 @@
  *   #10e estate plots rf:7..12: 900 per tile + 25,000. Estates 650K, clifftop mansions 1.1M, penthouse skyrises 1.8M.
  * Tropical crops (coconut, pineapple, mango, banana, cacao) grow only on resort plots and share the city farm's
  * daily profit tiers (shared/farm.ts FARM_TIERS) — the cap is per player across both maps.
+ * Harvest yield is ×RESORT_HARVEST_MUL (2) vs city farms; fertilizer still adds on top.
  */
 import type { OBB } from './worldLayout.js';
 import type { Crop } from './farm.js';
@@ -86,6 +87,8 @@ export function resortLots(): ResortLot[] {
 }
 
 // ---- plantation (farm plots)
+/** Resort plantation harvest yield multiplier (stacks with fertilizer; seed/sell prices unchanged). */
+export const RESORT_HARVEST_MUL = 2;
 export const RF_TILE = 2;
 export interface ResortPlot extends OBB { n: number; cols: number; rows: number; /** #10e estate plots: bigger, pricier */ estate?: true }
 const RF_SIZES: [number, number][] = [[5, 4], [6, 5], [4, 4], [8, 6], [6, 6], [7, 5]];
