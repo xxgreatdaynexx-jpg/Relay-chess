@@ -48,7 +48,7 @@ export const SECTORS: Sector[] = ['farming', 'mining', 'trading', 'tourism'];
 export type PolicyId = 'farm_subsidy' | 'mining_boom' | 'trade_week' | 'tourism_push';
 export interface PolicySpec { id: PolicyId; label: string; icon: string; sector: Sector; mul: number; cost: number; blurb: string }
 export const POLICIES: Record<PolicyId, PolicySpec> = {
-  farm_subsidy: { id: 'farm_subsidy', label: 'Farming subsidy', icon: '🌾', sector: 'farming', mul: 1.1, cost: 50_000, blurb: 'Crops sell for +10% for 24 h (daily farm caps still apply).' },
+  farm_subsidy: { id: 'farm_subsidy', label: 'Farming subsidy', icon: '🌾', sector: 'farming', mul: 1.1, cost: 50_000, blurb: 'Crops sell for +10% for 24 h.' },
   mining_boom: { id: 'mining_boom', label: 'Mining boom', icon: '⛏️', sector: 'mining', mul: 1.1, cost: 50_000, blurb: 'Ore and goods sold to the house pay +10% for 24 h (daily caps still apply).' },
   trade_week: { id: 'trade_week', label: 'Trade week', icon: '📈', sector: 'trading', mul: 0.8, cost: 75_000, blurb: 'Market and Stock Exchange fees −20% for 24 h.' },
   tourism_push: { id: 'tourism_push', label: 'Tourism push', icon: '🏝️', sector: 'tourism', mul: 0.75, cost: 50_000, blurb: 'Resort and Fort McChud tickets −25% for 24 h.' },

@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T16:50:00-06:00", "title": "Removed the daily farm profit cap", "bullets": [
+    "The 100,000-chip daily farm profit cap is gone. Every harvest — manual, auto-harvest, and crop shipments sold like a harvest, including resort plots — now pays the full seed refund plus the normal crop profit, with no daily limit.",
+    "Selling goods to the house (including the Auto-Sell Chest and factory products) still uses the daily house-sell cap. Crop prices, grow times, and existing plantings are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T16:30:00-06:00", "title": "Wallet history can scroll and load more (requested by carter2)", "bullets": [
     "The wallet log now has its own scroll area, an Expand logs button for a taller full-height view, and a Load more button that fetches older ledger pages from the server instead of stopping after the first 25 lines.",
     "New chip moves still appear at the top as they happen. Your balance and earlier ledger entries are unchanged.",

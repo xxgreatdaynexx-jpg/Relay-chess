@@ -3,7 +3,7 @@
  * stays in sync with crops, recipes, ores, employees, fishing, Fort McChud, levers, events, etc.
  * Short hand-written intros only; numbers always come from the same modules the server uses.
  */
-import { CROPS, CROP_SEED_MUL, FARM_TIERS, cropSellValue } from './farm.js';
+import { CROPS, CROP_SEED_MUL, cropSellValue } from './farm.js';
 import { TROPICAL_CROPS } from './resort.js';
 import { fertilizerYieldBonus, MAX_UPGRADE_LEVEL } from './farmUpgrades.js';
 import { ORES, CAVES, RECIPES as MINE_RECIPES, type CaveId } from './mines.js';
@@ -108,7 +108,7 @@ export function buildWiki(): WikiSection[] {
       intro: `City and resort crops. Sell value is about ${CROP_SEED_MUL}× seed (list price before the small house fee). Fertilizer boosts harvest yield, not sell price.`,
       bullets: [
         ...fertNotes,
-        `Daily farm sell cap (base): full price up to ${chips(FARM_TIERS[0]!.upTo)} chips/day, then nothing.`,
+        'Raw crop harvests have no daily profit cap. Selling goods to the house (including the Auto-Sell Chest and factory products) still uses the daily house-sell cap.',
         'Auto-harvest to pantry sends ripe crops to kitchen ingredients (city pantry or Resort Warehouse on plantations).',
       ],
       headers: ['', 'Crop', 'Seed', 'Sell', 'Grow', 'Where'],

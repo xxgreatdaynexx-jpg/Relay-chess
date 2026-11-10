@@ -8,7 +8,7 @@
  *
  * #27: fertilizer is no longer a per-plot "+% profit" upgrade. It is a consumable you spread on growing tiles. It raises
  * the YIELD (extra crops at the normal sell price). The Farming level also raises yield only; nothing raises the sell
- * price per crop. Bonus crops still count toward the daily farm cap.
+ * price per crop. Bonus crops pay the normal sell price.
  */
 export const HAND_BATCH = 4;
 export type FarmStep = 'plow' | 'seed' | 'fertilize' | 'harvest';

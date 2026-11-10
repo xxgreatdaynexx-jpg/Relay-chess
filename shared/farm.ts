@@ -5,9 +5,8 @@
  * costs and harvest payouts by the price index (px / priceIndex).
  *
  * Crops grow on the server clock. A crop is ready at plantedAt + grow, and withers at ready + ripeWindow (max of 36 h and WITHER_FACTOR x grow).
- * Harvest pays back the seed cost in full plus the crop's profit (sell - seed) through a per-player daily
- * daily tier (like the Mines): full up to 100,000, then nothing, so farming can never flood the
- * economy (at most 100,000 base chips of profit per player per day) and never pays less than the seeds cost.
+ * Harvest pays back the seed cost in full plus the crop's profit (sell - seed), with no daily farm profit cap,
+ * and never pays less than the seeds cost.
  */
 import { VIEW_Z1 } from './ocean.js';
 import { BIG_FARM_AREA } from './bigFarms.js';
@@ -61,13 +60,11 @@ export const growProgressPct = (plantedAt: number, readyAt: number, now: number)
   return Math.min(99, Math.max(0, Math.floor((100 * (now - plantedAt)) / span)));
 };
 
-/** Daily profit tiers (base chips of profit, per player, reset at 00:00 UTC): full up to 100,000, then zero. */
-export const FARM_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: 100_000, rate: 1 }, { upTo: Infinity, rate: 0 }];
-/** Profit paid for `gross` base profit when `already` base profit was harvested today (floored once). */
-export function farmPayout(gross: number, already: number): number {
-  let left = gross, at = already, pay = 0, lo = 0;
-  for (const t of FARM_TIERS) { if (left <= 0) break; const take = Math.min(left, Math.max(0, t.upTo - Math.max(at, lo))); pay += take * t.rate; left -= take; at += take; lo = t.upTo; }
-  return Math.floor(pay + 1e-9);
+/** Profit paid for `gross` base profit. There is no daily farm profit cap: the full (floored) amount is paid.
+ *  `already` is ignored and kept so existing harvest call sites stay unchanged. */
+export function farmPayout(gross: number, _already = 0): number {
+  void _already;
+  return Math.max(0, Math.floor(gross + 1e-9));
 }
 
 /** Chips paid for a harvest (or a crop shipment sold like a harvest). Profit is floor(payout × index),

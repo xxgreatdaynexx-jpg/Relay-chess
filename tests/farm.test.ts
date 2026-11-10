@@ -6,7 +6,7 @@ import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
 import { Farm } from '../server/farm';
 import { setPriceIndexForTest } from '../server/price-index';
-import { CROPS, cropById, cropProfit, farmPayout, farmPlots, FARM_TIERS, FARM_X0, MIN_RIPE_MS, PARK_SAFE, ripeWindow, stageOf, WITHER_FACTOR } from './farm-helpers';
+import { CROPS, cropById, cropProfit, farmPayout, farmPlots, FARM_X0, MIN_RIPE_MS, PARK_SAFE, ripeWindow, stageOf, WITHER_FACTOR } from './farm-helpers';
 import { properties, propertyById } from '../shared/realEstate';
 import { obbOverlap, PARK_AREA, PLATE } from '../shared/worldLayout';
 
@@ -44,9 +44,11 @@ describe('farm district', () => {
     const c = cropById('corn')!;
     expect(stageOf(c, 0, c.grow - 1)).toBe('growing'); expect(stageOf(c, 0, c.grow)).toBe('ready'); expect(stageOf(c, 0, c.grow + ripeWindow(c.grow) - 1)).toBe('ready'); expect(stageOf(c, 0, c.grow + ripeWindow(c.grow))).toBe('withered');
   });
-  it('daily tiers: full, half, a tenth, then nothing (bounded profit per day)', () => {
-    expect(farmPayout(500, 0)).toBe(500); expect(farmPayout(1000, 0)).toBe(1000); expect(farmPayout(200, 99_900)).toBe(100); expect(farmPayout(1000, 100_000)).toBe(0);
-    expect(farmPayout(1e9, 0)).toBe(100_000); expect(FARM_TIERS.at(-1)!.rate).toBe(0);
+  it('pays the full farm profit with no daily cap', () => {
+    expect(farmPayout(500, 0)).toBe(500); expect(farmPayout(1000, 0)).toBe(1000);
+    expect(farmPayout(200, 99_900)).toBe(200); expect(farmPayout(1000, 100_000)).toBe(1000);
+    expect(farmPayout(1e9, 0)).toBe(1e9); expect(farmPayout(1e9, 100_000)).toBe(1e9);
+    expect(farmPayout(-5, 0)).toBe(0);
   });
   it('only the owner can plant; seeds are paid via farm_seed; harvest pays exactly once via farm_harvest on the server clock', async () => {
     const s = await setup(); const plot = propertyById(s.id)!;

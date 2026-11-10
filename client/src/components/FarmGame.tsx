@@ -5,7 +5,7 @@ import { socket } from '@/lib/net';
 import { indexed } from '../../../shared/priceIndex';
 import { TROPICAL_CROPS } from '../../../shared/resort';
 import { FARM_UPGRADES, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradePrice } from '../../../shared/farmUpgrades';
-import { CROPS as CITY_CROPS, cropById, cropSellValue, FARM_TIERS, growProgressPct, type FarmView } from '../../../shared/farm';
+import { CROPS as CITY_CROPS, cropById, cropSellValue, growProgressPct, type FarmView } from '../../../shared/farm';
 import { boxOrigin, boxTiles, FARM_TEMPLATE_NAME_MAX, packSelection, stampLayout, tileAtPoint, type FarmTemplate } from '../../../shared/farmTemplates';
 import { usePanelDrag } from '@/lib/panelDrag';
 
@@ -162,7 +162,6 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
       .filter((c) => stage(c.tile) === 'empty')
       .reduce((sum, c) => sum + indexed(cropById(c.crop)?.seed ?? 0, idx), 0);
   };
-  const cap = FARM_TIERS.reduce((a, x, i) => a + (Math.min(x.upTo, 1e12) - (i ? FARM_TIERS[i - 1].upTo : 0)) * x.rate, 0);
   const canSaveField = !!view && view.tiles.length > 0;
   return (
     <MapSheet className="world-deed world-farm" data-testid="farm-game" data-drag-panel="farm" onPointerDown={dragFarm.onPointerDown} style={dragFarm.style()} ref={dragFarm.ref}>{dragFarm.handle}
@@ -241,7 +240,7 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
               </button>; })}
           </div>
           {withered.length > 0 && <button type="button" disabled={busy} onClick={() => act('farm_clear', {}, (r) => `Cleared ${r.cleared} withered.`)} data-testid="farm-clear">Clear {withered.length} withered</button>}
-          <small data-testid="farm-today">Today’s farm profit: 🪙 {chips(view.today.gross)} (paid 🪙 {chips(view.today.paid)}). Profit pays in full up to {chips(indexed(FARM_TIERS[0].upTo, idx))}/day; daily cap ≈ 🪙 {chips(indexed(cap, idx))}. Seeds are always refunded on harvest.</small>
+          <small data-testid="farm-today">Today’s farm profit: 🪙 {chips(view.today.gross)} (paid 🪙 {chips(view.today.paid)}). There is no daily farm profit cap — every harvest pays its full value.</small>
         </>}
         {msg && <small data-testid="farm-msg">{msg}</small>}
       </>}

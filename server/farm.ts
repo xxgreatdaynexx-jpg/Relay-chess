@@ -69,7 +69,7 @@ export interface ImportSink { write(cl: pg.PoolClient, items: Array<[string, num
 export class FarmError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
 const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
-/** City plots `f:<n>` and Chud Resort plantation plots `rf:<n>` (shared/resort.ts) share the farm engine and daily cap. */
+/** City plots `f:<n>` and Chud Resort plantation plots `rf:<n>` (shared/resort.ts) share the farm engine. */
 const plotOf = (id: unknown): { pid: string; cols: number; rows: number; resort: boolean } | undefined => {
   if (typeof id !== 'string') return undefined;
   if (/^f:\d+$/.test(id)) { const p = farmPlots().find((q) => `f:${q.n}` === id); return p && { pid: id, cols: p.cols, rows: p.rows, resort: false }; }
@@ -465,7 +465,7 @@ export class Farm {
   barn: null = null;
   /**
    * A ship-&-sell load of crops reached the Chud City Warehouse: pay it like a harvest (seed back + profit through the
-   * same daily farm tier, price-indexed), ledger 'farm_harvest' keyed by the shipment id (exactly once), with the sale
+   * price-indexed), ledger 'farm_harvest' keyed by the shipment id (exactly once), with the sale
    * log + delivered shipment rows in the same transaction.
    */
   /** `xp`: 'all' only for legacy in-flight barn loads dispatched before the cutover (their baseline sale XP event);

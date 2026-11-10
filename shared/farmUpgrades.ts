@@ -1,7 +1,7 @@
 /**
  * Farm upgrades (request #6): per-plot, owner-bound improvements bought with chips. Pure chip sinks: paid through the
  * atomic wallet + ledger ('farm_upgrade'), priced per tile (base chips, scaled by the price index on the server), and
- * they never bypass the daily farm cap: extra crops from Fertilizer still count against the 100,000/day farm tier.
+ * extra crops from Fertilizer pay the normal sell price (no extra markup).
  * Upgrades belong to the owner who bought them; a new owner of the plot starts from scratch.
  */
 export type FarmUpgradeKind = 'sprinkler' | 'fertilizer' | 'greenhouse';
