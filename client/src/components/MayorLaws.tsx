@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { draftApprovedNote, LAW_CORE_RULES, LAW_REJECT_REASON_MAX, LAW_RULE_LINES, LAW_TEXT_MAX, MAX_PENDING_LAW_DRAFTS, type MayorLaw, type MayorLawView } from '../../../shared/mayorLaws';
+import { draftApprovedNote, LAW_CORE_RULES, LAW_REJECT_REASON_MAX, LAW_RULE_LINES, LAW_RULE_NOTE_HEADING, LAW_TEXT_MAX, MAX_PENDING_LAW_DRAFTS, type MayorLaw, type MayorLawView } from '../../../shared/mayorLaws';
 import { request } from '@/lib/net';
 
 function statusLabel(b: MayorLaw): string {
@@ -68,6 +68,7 @@ export function MayorLaws({ view, isMayor, isVice = false, today, busy, onPass, 
       {b.status === 'vetoed' && b.vetoedBy && <small> · Vetoed by {b.vetoedRole === 'vice' ? 'Vice Mayor' : 'Mayor'} {b.vetoedBy}</small>}
       {b.status === 'rejected' && b.rejectReason && <small> · Reason: {b.rejectReason}</small>}
       {b.status === 'denied' && b.denyReason && <p data-testid="mayor-law-deny-reason" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{b.denyReason}</p>}
+      {b.ruleNote && <div data-testid="mayor-law-rule-note"><p data-testid="mayor-law-rule-note-heading">{LAW_RULE_NOTE_HEADING}</p><p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{b.ruleNote}</p></div>}
       <p data-testid={b.implementation ? 'mayor-law-active-wording' : undefined} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{b.implementation?.text ?? b.text}</p>
       {b.implementation && <>
         <small data-testid="mayor-law-implementation">Implemented {new Date(b.implementation.implementedAt).toLocaleString('en-CA', { timeZone: 'America/Regina' })} (America/Regina) · release <code>{b.implementation.release.slice(0, 7)}</code>. This implementation record is separate from the original submission, not an approval vote.</small>

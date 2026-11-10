@@ -4,8 +4,10 @@ export type MayorLawStatus = 'pending' | 'vetoed' | 'denied' | 'pending_approval
 export const MAX_PENDING_LAW_DRAFTS = 3;
 export const LAW_REJECT_REASON_MAX = 200;
 export const LAW_DENY_REASON_MAX = 2000;
+export const LAW_RULE_NOTE_MAX = 2000;
+export const LAW_RULE_NOTE_HEADING = 'Rules review: this bill would not be allowed because:';
 export interface BillImplementation { status: 'enacted'; revision: 1; implementedAt: number; release: string; text: string }
-export interface MayorLaw { number: string; title: string; text: string; by: string; at: number; day: string; status: MayorLawStatus; vetoedBy: string | null; vetoedAt: number | null; vetoedRole: 'mayor' | 'vice' | null; /** Public admin denial reason; official bills only. */ denyReason?: string | null; deniedAt?: number | null; /** Separate release-backed implementation; original fields remain archival. */ implementation?: BillImplementation; /** Set when this official bill was a vice-mayor draft the mayor approved. */ draftedBy?: string | null; approvedBy?: string | null; draftId?: string; rejectReason?: string | null }
+export interface MayorLaw { number: string; title: string; text: string; by: string; at: number; day: string; status: MayorLawStatus; vetoedBy: string | null; vetoedAt: number | null; vetoedRole: 'mayor' | 'vice' | null; /** Public admin denial reason; official bills only. */ denyReason?: string | null; deniedAt?: number | null; /** Public note on a vetoed or denied official bill; does not change status. */ ruleNote?: string | null; ruleNotedAt?: number | null; /** Separate release-backed implementation; original fields remain archival. */ implementation?: BillImplementation; /** Set when this official bill was a vice-mayor draft the mayor approved. */ draftedBy?: string | null; approvedBy?: string | null; draftId?: string; rejectReason?: string | null }
 export interface MayorLawView { history: MayorLaw[]; nextBefore: string | null; submittedToday: boolean; pendingDrafts?: MayorLaw[]; pendingDraftCount?: number }
 export const lawTitle = (number: string) => `Bill Chud ${number}`;
 export function lawText(value: unknown): string {
@@ -23,6 +25,12 @@ export function lawDenyReason(value: unknown): string {
   if (typeof value !== 'string' || !value.trim()) throw new Error('A public denial reason is required.');
   const s = value.trim();
   if (s.length > LAW_DENY_REASON_MAX) throw new Error(`Denial reason must be at most ${LAW_DENY_REASON_MAX} characters.`);
+  return s;
+}
+export function lawRuleNote(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) throw new Error('A public note is required.');
+  const s = value.trim();
+  if (s.length > LAW_RULE_NOTE_MAX) throw new Error(`Public note must be at most ${LAW_RULE_NOTE_MAX} characters.`);
   return s;
 }
 export const parseDraftId = (v: unknown): string => {

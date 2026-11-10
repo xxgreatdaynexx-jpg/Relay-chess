@@ -1,7 +1,7 @@
 import type pg from 'pg';
 import { implementationOf } from './billImplementations.js';
 import { abDate } from '../shared/mayor.js';
-import { lawDenyReason, lawRejectReason, lawText, lawTitle, MAX_PENDING_LAW_DRAFTS, parseBillNumber, parseDraftId, type MayorLaw, type MayorLawView } from '../shared/mayorLaws.js';
+import { lawDenyReason, lawRejectReason, lawRuleNote, lawText, lawTitle, MAX_PENDING_LAW_DRAFTS, parseBillNumber, parseDraftId, type MayorLaw, type MayorLawView } from '../shared/mayorLaws.js';
 import { playerKey } from './skins.js';
 
 export class MayorLawError extends Error {}
@@ -12,14 +12,17 @@ INSERT INTO mayor_bill_counter (id, value) VALUES (1, 0) ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS mayor_bills (number BIGINT PRIMARY KEY, day TEXT NOT NULL UNIQUE, text TEXT NOT NULL, by_name TEXT NOT NULL, mayor_key TEXT NOT NULL, term_week TEXT NOT NULL, at BIGINT NOT NULL, status TEXT NOT NULL DEFAULT 'pending');
 ALTER TABLE mayor_bills ADD COLUMN IF NOT EXISTS vetoed_at BIGINT, ADD COLUMN IF NOT EXISTS vetoed_by_name TEXT, ADD COLUMN IF NOT EXISTS vetoed_by_key TEXT, ADD COLUMN IF NOT EXISTS vetoed_term_week TEXT, ADD COLUMN IF NOT EXISTS vetoed_role TEXT;
 ALTER TABLE mayor_bills ADD COLUMN IF NOT EXISTS denied_at BIGINT, ADD COLUMN IF NOT EXISTS deny_reason TEXT;
+ALTER TABLE mayor_bills ADD COLUMN IF NOT EXISTS rule_note TEXT, ADD COLUMN IF NOT EXISTS rule_noted_at BIGINT;
 ALTER TABLE mayor_bills DROP CONSTRAINT IF EXISTS mayor_bills_status_check;
 ALTER TABLE mayor_bills ADD CONSTRAINT mayor_bills_status_check CHECK (
-  (status = 'pending' AND vetoed_at IS NULL AND vetoed_by_name IS NULL AND vetoed_by_key IS NULL AND vetoed_term_week IS NULL AND vetoed_role IS NULL AND denied_at IS NULL AND deny_reason IS NULL)
-  OR (status = 'vetoed' AND vetoed_at IS NOT NULL AND vetoed_by_name IS NOT NULL AND vetoed_by_key IS NOT NULL AND vetoed_term_week IS NOT NULL AND vetoed_role IN ('mayor', 'vice') AND denied_at IS NULL AND deny_reason IS NULL)
-  OR (status = 'denied' AND denied_at IS NOT NULL AND deny_reason IS NOT NULL AND vetoed_at IS NULL AND vetoed_by_name IS NULL AND vetoed_by_key IS NULL AND vetoed_term_week IS NULL AND vetoed_role IS NULL));
-CREATE TABLE IF NOT EXISTS mayor_bill_events (id BIGSERIAL PRIMARY KEY, number BIGINT NOT NULL REFERENCES mayor_bills(number), kind TEXT NOT NULL CHECK (kind IN ('vetoed', 'denied')), role TEXT NOT NULL CHECK (role IN ('mayor', 'vice', 'admin')), by_name TEXT NOT NULL, by_key TEXT NOT NULL, term_week TEXT NOT NULL, at BIGINT NOT NULL, UNIQUE (number, kind));
+  (status = 'pending' AND vetoed_at IS NULL AND vetoed_by_name IS NULL AND vetoed_by_key IS NULL AND vetoed_term_week IS NULL AND vetoed_role IS NULL AND denied_at IS NULL AND deny_reason IS NULL AND rule_note IS NULL AND rule_noted_at IS NULL)
+  OR (status = 'vetoed' AND vetoed_at IS NOT NULL AND vetoed_by_name IS NOT NULL AND vetoed_by_key IS NOT NULL AND vetoed_term_week IS NOT NULL AND vetoed_role IN ('mayor', 'vice') AND denied_at IS NULL AND deny_reason IS NULL
+      AND ((rule_note IS NULL AND rule_noted_at IS NULL) OR (rule_note IS NOT NULL AND rule_noted_at IS NOT NULL)))
+  OR (status = 'denied' AND denied_at IS NOT NULL AND deny_reason IS NOT NULL AND vetoed_at IS NULL AND vetoed_by_name IS NULL AND vetoed_by_key IS NULL AND vetoed_term_week IS NULL AND vetoed_role IS NULL
+      AND ((rule_note IS NULL AND rule_noted_at IS NULL) OR (rule_note IS NOT NULL AND rule_noted_at IS NOT NULL))));
+CREATE TABLE IF NOT EXISTS mayor_bill_events (id BIGSERIAL PRIMARY KEY, number BIGINT NOT NULL REFERENCES mayor_bills(number), kind TEXT NOT NULL CHECK (kind IN ('vetoed', 'denied', 'noted')), role TEXT NOT NULL CHECK (role IN ('mayor', 'vice', 'admin')), by_name TEXT NOT NULL, by_key TEXT NOT NULL, term_week TEXT NOT NULL, at BIGINT NOT NULL, UNIQUE (number, kind));
 ALTER TABLE mayor_bill_events DROP CONSTRAINT IF EXISTS mayor_bill_events_kind_check;
-ALTER TABLE mayor_bill_events ADD CONSTRAINT mayor_bill_events_kind_check CHECK (kind IN ('vetoed', 'denied'));
+ALTER TABLE mayor_bill_events ADD CONSTRAINT mayor_bill_events_kind_check CHECK (kind IN ('vetoed', 'denied', 'noted'));
 ALTER TABLE mayor_bill_events DROP CONSTRAINT IF EXISTS mayor_bill_events_role_check;
 ALTER TABLE mayor_bill_events ADD CONSTRAINT mayor_bill_events_role_check CHECK (role IN ('mayor', 'vice', 'admin'));
 `;
@@ -30,11 +33,21 @@ BEGIN
   IF TG_OP <> 'UPDATE' THEN RAISE EXCEPTION 'mayor bills are permanent records'; END IF;
   IF NEW.number IS DISTINCT FROM OLD.number OR NEW.day IS DISTINCT FROM OLD.day OR NEW.text IS DISTINCT FROM OLD.text
      OR NEW.by_name IS DISTINCT FROM OLD.by_name OR NEW.mayor_key IS DISTINCT FROM OLD.mayor_key
-     OR NEW.term_week IS DISTINCT FROM OLD.term_week OR NEW.at IS DISTINCT FROM OLD.at
-     OR NOT (OLD.status = 'pending' AND NEW.status IN ('vetoed', 'denied')) THEN
-    RAISE EXCEPTION 'mayor bill records are immutable except pending -> vetoed or denied';
+     OR NEW.term_week IS DISTINCT FROM OLD.term_week OR NEW.at IS DISTINCT FROM OLD.at THEN
+    RAISE EXCEPTION 'mayor bill records are immutable except pending -> vetoed or denied, or adding a public note to a vetoed or denied bill';
   END IF;
-  RETURN NEW;
+  IF OLD.status = 'pending' AND NEW.status IN ('vetoed', 'denied') AND NEW.rule_note IS NULL AND NEW.rule_noted_at IS NULL THEN
+    RETURN NEW;
+  END IF;
+  IF OLD.status = NEW.status AND OLD.status IN ('vetoed', 'denied')
+     AND NEW.vetoed_at IS NOT DISTINCT FROM OLD.vetoed_at AND NEW.vetoed_by_name IS NOT DISTINCT FROM OLD.vetoed_by_name
+     AND NEW.vetoed_by_key IS NOT DISTINCT FROM OLD.vetoed_by_key AND NEW.vetoed_term_week IS NOT DISTINCT FROM OLD.vetoed_term_week
+     AND NEW.vetoed_role IS NOT DISTINCT FROM OLD.vetoed_role AND NEW.denied_at IS NOT DISTINCT FROM OLD.denied_at
+     AND NEW.deny_reason IS NOT DISTINCT FROM OLD.deny_reason AND OLD.rule_note IS NULL AND OLD.rule_noted_at IS NULL
+     AND NEW.rule_note IS NOT NULL AND NEW.rule_noted_at IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'mayor bill records are immutable except pending -> vetoed or denied, or adding a public note to a vetoed or denied bill';
 END $g$;
 CREATE OR REPLACE FUNCTION mayor_bill_events_guard() RETURNS trigger LANGUAGE plpgsql AS $g$
 BEGIN RAISE EXCEPTION 'mayor bill events are append-only'; END $g$;
@@ -102,6 +115,7 @@ CREATE TRIGGER mayor_bill_drafts_no_truncate BEFORE TRUNCATE ON mayor_bill_draft
 const rowLaw = (r: Record<string, unknown>): MayorLaw => ({ number: String(r.number), title: lawTitle(String(r.number)), text: String(r.text), by: String(r.by_name), at: Number(r.at), day: String(r.day),
   status: r.status === 'vetoed' ? 'vetoed' : r.status === 'denied' ? 'denied' : 'pending', vetoedBy: r.vetoed_by_name == null ? null : String(r.vetoed_by_name), vetoedAt: r.vetoed_at == null ? null : Number(r.vetoed_at), vetoedRole: r.vetoed_role === 'vice' ? 'vice' : r.vetoed_role === 'mayor' ? 'mayor' : null,
   denyReason: r.deny_reason == null ? null : String(r.deny_reason), deniedAt: r.denied_at == null ? null : Number(r.denied_at),
+  ruleNote: r.rule_note == null ? null : String(r.rule_note), ruleNotedAt: r.rule_noted_at == null ? null : Number(r.rule_noted_at),
   ...(r.drafted_by_name ? { draftedBy: String(r.drafted_by_name), approvedBy: r.approved_by_name == null ? null : String(r.approved_by_name) } : {}),
   ...(implementationOf(r) ? { implementation: implementationOf(r) } : {}) });
 const rowDraft = (r: Record<string, unknown>): MayorLaw => {
@@ -281,6 +295,30 @@ export class MayorLaws {
       if (b.rows[0].status === 'denied') { await cl.query('COMMIT'); return { bill: rowLaw(b.rows[0]), already: true }; }
       const r = await cl.query("UPDATE mayor_bills SET status = 'denied', denied_at = $2, deny_reason = $3 WHERE number = $1 AND status = 'pending' RETURNING *", [number, now, why]);
       await cl.query("INSERT INTO mayor_bill_events (number, kind, role, by_name, by_key, term_week, at) VALUES ($1, 'denied', 'admin', 'admin', 'admin', $2, $3)", [number, b.rows[0].term_week, now]);
+      await cl.query('COMMIT'); return { bill: rowLaw(r.rows[0]), already: false };
+    } catch (e) { await cl.query('ROLLBACK'); throw e; }
+    finally { cl.release(); }
+  }
+
+  /** Admin-only: attach a public note to a vetoed or denied official bill. Status, veto, original text, and prior denial stay unchanged. No economy effect. */
+  async note(value: unknown, text: unknown): Promise<{ bill: MayorLaw; already: boolean }> {
+    let number: string; let why: string;
+    try { number = parseBillNumber(value); why = lawRuleNote(text); } catch (e) { throw new MayorLawError((e as Error).message); }
+    const cl = await this.pool.connect();
+    try {
+      await cl.query('BEGIN');
+      const b = await cl.query('SELECT * FROM mayor_bills WHERE number = $1 FOR UPDATE', [number]);
+      const now = this.clock();
+      if (!b.rows[0]) throw new MayorLawError('No such bill.');
+      if (implementationOf(b.rows[0])) throw new MayorLawError('This bill has been implemented with revised wording. It is not a pending bill; changing the active rules requires a new implementation.');
+      if (b.rows[0].status !== 'vetoed' && b.rows[0].status !== 'denied') throw new MayorLawError('A public note can only be added to a vetoed or denied bill.');
+      if (b.rows[0].rule_note != null) {
+        if (String(b.rows[0].rule_note) === why) { await cl.query('COMMIT'); return { bill: rowLaw(b.rows[0]), already: true }; }
+        throw new MayorLawError('This bill already has a public note.');
+      }
+      const r = await cl.query("UPDATE mayor_bills SET rule_note = $2, rule_noted_at = $3 WHERE number = $1 AND status IN ('vetoed', 'denied') AND rule_note IS NULL RETURNING *", [number, why, now]);
+      if (!r.rows[0]) throw new MayorLawError('This bill already has a public note.');
+      await cl.query("INSERT INTO mayor_bill_events (number, kind, role, by_name, by_key, term_week, at) VALUES ($1, 'noted', 'admin', 'admin', 'admin', $2, $3)", [number, b.rows[0].term_week, now]);
       await cl.query('COMMIT'); return { bill: rowLaw(r.rows[0]), already: false };
     } catch (e) { await cl.query('ROLLBACK'); throw e; }
     finally { cl.release(); }

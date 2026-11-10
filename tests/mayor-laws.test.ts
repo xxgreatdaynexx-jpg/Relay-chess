@@ -69,7 +69,7 @@ describe('text-only mayor bills', () => {
 describe('pending-only submission surface', () => {
   it('has no activation/approval operation or credentials', () => {
     const own = Object.getOwnPropertyNames(MayorLaws.prototype).sort();
-    expect(own).toEqual(['approveDraft','constructor','deny','history','init','rejectDraft','submit','submitDraft','veto']);
+    expect(own).toEqual(['approveDraft','constructor','deny','history','init','note','rejectDraft','submit','submitDraft','veto']);
     const source = readFileSync('server/mayor.ts', 'utf8');
     expect(source).not.toMatch(/(?:on|post)\(['"]mayor_law_approve['"]/);
     expect(readFileSync('server/mayorLaws.ts','utf8')).not.toContain('adminAuthorized');
@@ -139,6 +139,25 @@ describe('vetoes (status only; strict Regina day split)', () => {
     expect(html).toContain('Denied'); expect(html).toContain('mayor-law-deny-reason'); expect(html).toContain(reason.split('\n')[0]!);
     expect(html).toContain('original text stays'); expect(html).not.toMatch(/mayor-law-veto/);
     expect(html.toLowerCase()).not.toMatch(/dayne|conner/);
+  });
+
+  it('renders a public rule note under a vetoed bill without changing the veto line', () => {
+    const note = '1. It benefits a single player. The cap applies to everyone, but only someone stockpiling at very large scale can actually use it, so the real winner is basically one player.\n2. It is a remove-all bill.\n3. The house cap is core gameplay, not a mayor lever.';
+    const view = { nextBefore:null, submittedToday:true, history: [
+      { number:'2', title:'Bill Chud 2', text:'Henceforth and heremore there shall be no house sell cap. Freedom to the workers!', by:'MayorName', at:0, day:'2026-11-09', status:'vetoed' as const, vetoedBy:'Vic', vetoedAt:1, vetoedRole:'vice' as const, ruleNote: note, ruleNotedAt: 2 } ] };
+    const html = renderToStaticMarkup(createElement(LawsPanel, { view, isMayor:true, isVice:true, today:'2026-11-09', busy:false, onPass: async () => {}, onVeto: async () => {} }));
+    expect(html).toContain('Vetoed');
+    expect(html).toContain('Vetoed by Vice Mayor Vic');
+    expect(html).toContain('Rules review: this bill would not be allowed because:');
+    expect(html).toContain('mayor-law-rule-note');
+    expect(html).toContain(note.split('\n')[0]!);
+    expect(html).toContain('Henceforth and heremore there shall be no house sell cap. Freedom to the workers!');
+    expect(html.indexOf('Vetoed by Vice Mayor Vic')).toBeLessThan(html.indexOf('Rules review: this bill would not be allowed because:'));
+    expect(html).not.toMatch(/mayor-law-veto/);
+    expect(html).not.toContain('Denied');
+    expect(html.toLowerCase()).not.toMatch(/dayne|conner/);
+    const noteBlock = html.slice(html.indexOf('mayor-law-rule-note'));
+    expect(noteBlock.toLowerCase()).not.toMatch(/dayne|conner|requested by|\bper\b|\badmin\b/);
   });
 });
 
