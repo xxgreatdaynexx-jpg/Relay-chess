@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T10:15:00-06:00", "title": "Ground under the northern Big Farms", "bullets": [
+    "The four new Big Farms north of town, their barns, and the new north road now sit on the same grass as the rest of the city, instead of floating past the edge of the map.",
+    "The north road now joins the east ring so it no longer dead-ends in open space. Existing farm locations and deeds are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T09:55:00-06:00", "title": "Crew on the boat, co-op fishing bonus", "bullets": [
     "Requested by Special Characters: when you join a marina fleet trip, you and your crew now see each other live on the shared boat while deep-sea fishing. Solo trips still use your own boat as before.",
     "A crewed trip grants a clear co-op bonus: +50% Fishing XP on each catch you land. Fish still sell at their normal prices, the daily ocean cap is unchanged, and no extra chips are minted.",

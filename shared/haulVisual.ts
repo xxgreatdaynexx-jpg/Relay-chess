@@ -9,6 +9,7 @@ import { fieldPlotOf } from './fieldFarms.js';
 import { resortPlotOf } from './resort.js';
 import { HUB_MAPS, type HubId } from './logistics.js';
 import { RURAL_ROADS, DOCK } from './outskirts.js';
+import { BIG_ROADS } from './bigFarms.js';
 import { AIRPORT_ROADS, RACETRACK_ROADS } from './venues.js';
 
 export const HAUL_MAX_VISIBLE = 50; // was 30; raised so longer trips (half speed) don't cull more aggressively
@@ -157,6 +158,7 @@ function buildHaulRoadGraph(): HaulGraph {
     addPoly(pts);
   }
   for (const [a, b] of RURAL_ROADS) addPoly(densifySeg(a, b));
+  for (const [a, b] of BIG_ROADS) addPoly(densifySeg(a, b));
   for (const [a, b] of AIRPORT_ROADS) addPoly(densifySeg(a as HaulPt, b as HaulPt));
   for (const [a, b] of RACETRACK_ROADS) addPoly(densifySeg(a as HaulPt, b as HaulPt));
   for (const s of Object.values(MINE_SITES)) {

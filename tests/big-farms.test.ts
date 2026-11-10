@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
 import { registerPgAdvisoryFunctions } from './pg-advisory';
@@ -5,13 +6,13 @@ import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
 import { Farm } from '../server/farm';
 import { cropById } from './farm-helpers';
-import { bigFarms, bigFarmPrice, BIG_ROADS, BIG_FARM_AREA, BIG_TILE, BIG_LANE_X, BIG_ROAD_W, BIG_FARM_N0 } from '../shared/bigFarms';
+import { bigFarms, bigFarmPrice, BIG_ROADS, BIG_FARM_AREA, BIG_TILE, BIG_LANE_X, BIG_ROAD_W, BIG_FARM_N0, BIG_NORTH_ROAD_Z, BIG_EAST_X, BIG_GROUND_X0, BIG_GROUND_X1, BIG_GROUND_Z0 } from '../shared/bigFarms';
 import { allFieldPlots, fieldPlotOf } from '../shared/fieldFarms';
 import { outskirts, RURAL_ROADS, RURAL_ROAD_W, inLake } from '../shared/outskirts';
 import { TILE, MAP_BOUNDS, MAP_VIEW, clampMapTarget, farmPlots } from '../shared/farm';
 import { propertyById, properties } from '../shared/realEstate';
 import { LAUNCH as LAUNCH_POPUP } from '../shared/launchPopup';
-import { MINE_SITES, MINE_APRON } from '../shared/worldLayout';
+import { MINE_SITES, MINE_APRON, OUTSKIRTS, PLATE } from '../shared/worldLayout';
 
 const inside = (o: { x: number; z: number; w: number; d: number }, b: { x0: number; x1: number; z0: number; z1: number }) => o.x - o.w / 2 >= b.x0 && o.x + o.w / 2 <= b.x1 && o.z - o.d / 2 >= b.z0 && o.z + o.d / 2 <= b.z1;
 const overlap = (a: { x: number; z: number; w: number; d: number }, b: { x: number; z: number; w: number; d: number }) => Math.abs(a.x - b.x) < (a.w + b.w) / 2 && Math.abs(a.z - b.z) < (a.d + b.d) / 2;
@@ -138,5 +139,34 @@ describe('Big Farms map expansion', () => {
       expect(p.lot.x0).toBeGreaterThan(BIG_FARM_AREA.x0);
       expect(p.lot.x1).toBeLessThan(BIG_FARM_AREA.x1);
     }
+  });
+  it('the new north road joins the east ring, and city grass covers the northern lots with a margin', () => {
+    // first four roads stay put (original loop); a new north–south segment closes the west end of the north road
+    expect(BIG_ROADS.slice(0, 4)).toEqual([
+      [[196, -124], [BIG_EAST_X, -124]], [[196, 150], [BIG_EAST_X, 150]], [[BIG_EAST_X, -124], [BIG_EAST_X, 150]], [[BIG_LANE_X, -124], [BIG_LANE_X, 150]],
+    ]);
+    const onSeg = (x: number, z: number, a: [number, number], b: [number, number]) => segD(x, z, a, b) < 0.01;
+    expect(BIG_ROADS.some(([a, b]) => onSeg(196, BIG_NORTH_ROAD_Z, a, b) && onSeg(196, -124, a, b))).toBe(true);
+    const src = readFileSync(new URL('../client/src/lib/world3d.ts', import.meta.url), 'utf8');
+    expect(src).toMatch(/BIG_GROUND_X1, gz0, z1/);
+    expect(src).toMatch(/BIG_GROUND_X0, x1, gz0, z0/);
+    expect(src).toContain('xmasGround(b0 - a0, f - e');
+    const { x0, x1, z0, z1 } = OUTSKIRTS; const P = PLATE;
+    const gz0 = Math.min(z0, BIG_GROUND_Z0);
+    const strips: Array<[number, number, number, number]> = [[x0, x1, z0, -P], [x0, x1, P, z1], [x0, -P, -P, P], [P, x1, -P, P], [x1, BIG_GROUND_X1, gz0, z1], [BIG_GROUND_X0, x1, gz0, z0]];
+    const onGround = (x: number, z: number) => strips.some(([a, b, e, f]) => x >= a && x <= b && z >= Math.min(e, f) && z <= Math.max(e, f));
+    for (const p of bigFarms()) {
+      for (const [x, z] of [[p.lot.x0, p.lot.z0], [p.lot.x1, p.lot.z0], [p.lot.x0, p.lot.z1], [p.lot.x1, p.lot.z1], [p.barn.x, p.barn.z]] as const) {
+        expect(onGround(x, z), `cf:${p.n} at ${x},${z}`).toBe(true);
+      }
+    }
+    // north road, including its west end at the east ring, plus a margin past the road
+    for (const x of [196, BIG_LANE_X, BIG_EAST_X]) {
+      expect(onGround(x, BIG_NORTH_ROAD_Z)).toBe(true);
+      expect(onGround(x, BIG_NORTH_ROAD_Z - 6)).toBe(true);
+    }
+    expect(BIG_GROUND_X0).toBeLessThan(196 - 8);
+    expect(BIG_GROUND_X1).toBeGreaterThan(BIG_FARM_AREA.x1);
+    expect(BIG_GROUND_Z0).toBe(BIG_FARM_AREA.z0);
   });
 });

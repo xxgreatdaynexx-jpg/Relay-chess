@@ -15,7 +15,7 @@ import { asLabel, cityLabel, dimColor, drawLabel, fitLabel, LABEL_LAYER, LABEL_T
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { skyNow, parseTod, mix as mixHex } from '../../../shared/daynight';
 import { fieldPlotId, allFieldPlots } from '../../../shared/fieldFarms';
-import { bigFarms, BIG_ROADS, BIG_ROAD_W, BIG_FARM_AREA } from '../../../shared/bigFarms';
+import { bigFarms, BIG_ROADS, BIG_ROAD_W, BIG_FARM_AREA, BIG_GROUND_X0, BIG_GROUND_X1, BIG_GROUND_Z0 } from '../../../shared/bigFarms';
 
 /** Every farm plot drawn by the farm renderer: Farm-district plots (f:<n>) and the countryside field farms (cf:<n>). */
 export const allFarmPlots = () => [...farmPlots().map((p) => ({ ...p, id: plotId(p.n) })), ...allFieldPlots().map((p) => ({ ...p, id: fieldPlotId(p.n) }))];
@@ -703,8 +703,11 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       const im = new THREE.InstancedMesh(g, m, n); for (let i = 0; i < n; i++) { d.position.set(0, 0, 0); d.rotation.set(0, 0, 0); d.scale.set(1, 1, 1); f(i); d.updateMatrix(); im.setMatrixAt(i, d.matrix); if (colors) im.setColorAt(i, c.setHex(colors(i))); }
       scene.add(im); return im; };
     const { x0, x1, z0, z1 } = OUTSKIRTS; const P = PLATE;
-    // ground: same grass as the plate, a hair under it and under the farm/mine aprons (strips around the plate: no overlap)
-    const strips: Array<[number, number, number, number]> = [[x0, x1, z0, -P], [x0, x1, P, z1], [x0, -P, -P, P], [P, x1, -P, P], [x1, BIG_FARM_AREA.x1 + 40, z0, z1]]; // + the Big Farms expansion east of the outskirts
+    // ground: same grass as the plate, a hair under it and under the farm/mine aprons (strips around the plate: no overlap).
+    // Big Farms sit east of the outskirts and, for the northern plots, north of OUTSKIRTS.z0 — extend those strips (and a
+    // fringe under the east-ring connector) so the lots, barns and new north road sit on the same ground, not in the void.
+    const gz0 = Math.min(z0, BIG_GROUND_Z0);
+    const strips: Array<[number, number, number, number]> = [[x0, x1, z0, -P], [x0, x1, P, z1], [x0, -P, -P, P], [P, x1, -P, P], [x1, BIG_GROUND_X1, gz0, z1], [BIG_GROUND_X0, x1, gz0, z0]];
     const grass = mat({ color: 0x3f9a45, roughness: 1, emissive: 0x0f3a14, emissiveIntensity: 0.6 }); const dirtSide = mat({ color: 0x4a3322 });
     for (const [a0, b0, e, f] of strips) { const m = new THREE.Mesh(geo(new THREE.BoxGeometry(b0 - a0, 3, f - e)), [dirtSide, dirtSide, XM ? keep(xmasGround(b0 - a0, f - e, tier === 'low', a0, f)) : grass, dirtSide, dirtSide, dirtSide]); m.position.set((a0 + b0) / 2, -1.53, (e + f) / 2); scene.add(m); }
     // rural roads: city asphalt at the city road height, centre dashes

@@ -69,6 +69,14 @@ describe('haul visual (pt2101u queue #6)', () => {
     // Facing follows the current segment
     const early = haulPose(e, e.departAt + 1);
     expect(Math.abs(early.a)).toBeGreaterThan(0);
+    // Northern Big Farms (and the original eight) ride the Big Farm roads, not a straight-line fallback
+    for (const id of ['farm:cf:1000', 'farm:cf:1008', 'farm:cf:1011']) {
+      const from = haulSiteXZ(id)!; const dest = haulSiteXZ('warehouse')!;
+      const p = roadPath(from, dest);
+      expect(p.length, id).toBeGreaterThan(5);
+      expect(pathLength(p)).toBeGreaterThan(Math.hypot(from[0] - dest[0], from[1] - dest[1]) * 1.1);
+      expect((pathLength(p) / HAUL_SPEED) * 1000).toBeLessThan(HAUL_MAX_MS);
+    }
   });
 
   it('rate-limits and caps concurrent cosmetic hauls; skips unknown/cross-map', () => {

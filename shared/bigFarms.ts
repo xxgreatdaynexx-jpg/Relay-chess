@@ -23,6 +23,10 @@ export const BIG_LANE_X = 275, BIG_EAST_X = 346, BIG_ROAD_W = 4.5;
 /** New east-west road at the north end of the northern lots (south of the area bound). */
 export const BIG_NORTH_ROAD_Z = -304;
 export const BIG_FARM_AREA = { x0: 200, x1: BIG_EAST_X + 10, z0: BIG_NORTH_ROAD_Z - 8, z1: SZ + 8 };
+/** Grass (and Christmas ground texture) continues this far past the farm block and west of the east-ring connector. */
+export const BIG_GROUND_X0 = EX - 24;
+export const BIG_GROUND_X1 = BIG_FARM_AREA.x1 + 40;
+export const BIG_GROUND_Z0 = BIG_FARM_AREA.z0;
 const YARD = 12, GAP = 3, Z_START = NZ + 6;
 /** South edge of the first northern lots: 4 units north of the existing north road. */
 const NORTH_SETBACK = 4;
@@ -82,12 +86,13 @@ export function bigFarms(): BigFarm[] {
   northLot(east, 24, eastZ0a - GAP);
   cache = out; return out;
 }
-/** Roads: north + south ring extensions, the new east road, the farm lane, the northern extension, and one driveway per farm. */
+/** Roads: north + south ring extensions, the new east road, the farm lane, the northern extension, the east-ring connector up to the new north road, and one driveway per farm. */
 export const BIG_ROADS: Array<[P, P]> = [
   [[EX, NZ], [BIG_EAST_X, NZ]], [[EX, SZ], [BIG_EAST_X, SZ]], [[BIG_EAST_X, NZ], [BIG_EAST_X, SZ]], [[BIG_LANE_X, NZ], [BIG_LANE_X, SZ]],
   [[BIG_LANE_X, BIG_NORTH_ROAD_Z], [BIG_LANE_X, NZ]],
   [[EX, BIG_NORTH_ROAD_Z], [BIG_EAST_X, BIG_NORTH_ROAD_Z]],
   [[BIG_EAST_X, BIG_NORTH_ROAD_Z], [BIG_EAST_X, NZ]],
+  [[EX, BIG_NORTH_ROAD_Z], [EX, NZ]],
   ...bigFarms().map((f) => f.drive),
 ];
 /** Premium price (base chips) for a big farm: 250 per tile scaled up by (1 + tiles / 900), rounded to 5,000.
