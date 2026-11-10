@@ -66,7 +66,7 @@ export function FleetStore({ kind, onClose, onDeepSea }: { kind: FleetKind; onCl
               <li>Price <b>{fmt(m.price)}</b> chips</li>
               {m.kind === 'jet' && <li data-testid={`fleet-seats-${m.id}`}>💺 Passenger seats <b>{jetSeats(m.id)}</b> · open boarding when you fly and friends ride along (free or a capped fare)</li>}
               {CARGO[m.id] && <li data-testid={`fleet-cap-${m.id}`}>📦 Cargo capacity <b>{fmt(CARGO[m.id]!.cap)}</b> units a trip · fuel <b>{fmt(CARGO[m.id]!.trip)}</b>/trip (~{perUnitBase(m.id).toFixed(3)}/unit){CARGO[m.id]!.useUpkeep ? <> · upkeep <b>{fmt(CARGO[m.id]!.useUpkeep)}</b> per day used</> : null}</li>}
-              {boat ? <><li>Deep-sea range <b>{DEEP_ZONES.slice(0, m.zone ?? 0).map((z) => z.name).join(' · ')}</b></li>{m.biteMul && m.biteMul < 1 && <li>Bites <b>{Math.round((1 - m.biteMul) * 100)}% faster</b> at sea</li>}</>
+              {boat ? <><li>Deep-sea range <b>{DEEP_ZONES.slice(0, m.zone ?? 0).map((z) => z.name).join(' · ')}</b></li>{m.biteMul && m.biteMul < 1 && <li>Bites <b>{Math.round((1 - m.biteMul) * 100)}% faster</b> at sea</li>}{!!m.upkeep && <><li data-testid={`fleet-daily-upkeep-${m.id}`}>Daily upkeep <b>{fmt(m.upkeep)}</b> chips (crew and dock)</li><li>{GRACE_DAYS} unpaid days in a row → repossessed. Missed bills send you a private warning first; the wallet is never pushed negative.</li></>}</>
                 : <><li>Daily upkeep <b>{fmt(m.upkeep ?? 0)}</b> chips (crew, fuel, hangar)</li><li>Free flights to Chud Resort, no ticket</li><li>{GRACE_DAYS} unpaid days in a row → repossessed</li></>}
               <li>Sell back <b>70%</b> of list · counts toward net worth</li>
             </ul>

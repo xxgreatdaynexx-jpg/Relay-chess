@@ -9,6 +9,7 @@ export interface DailyReportData {
   bonus: number | null;
   history?: Array<{ day: string; cash: number; assets: number; total: number }>;
   jets?: Array<{ name: string; perDay: number; nextChargeAt: number; arrears: number; arrearsChips: number; paidTotal: number; graceDays: number }>;
+  boats?: Array<{ name: string; perDay: number; nextChargeAt: number; arrears: number; arrearsChips: number; paidTotal: number; graceDays: number }>;
   economy: { cash: number; assets: number; total: number; inflation: InflationView; priceIndex?: number; priceIndexPct?: number | null; movers: { up: Mover[]; down: Mover[] } | null } | null;
   me: { cash: number; assets: number; total: number; categories: Array<{ key: string; label: string; value: number; units: number }>; since: { day: string; total: number; totalPct: number | null; cash: number; assets: number } | null };
 }
@@ -44,6 +45,10 @@ export function DailyReport({ report, onClose }: { report: DailyReportData; onCl
         {report.jets && report.jets.length > 0 && <div data-testid="daily-report-jets">
           <h3 className="mt-4 text-xs uppercase tracking-wide opacity-70">Private jet upkeep</h3>
           {report.jets.map((j, i) => <Row key={i} label={`${j.name} · next ${new Date(j.nextChargeAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`} value={`🪙 ${n(j.perDay)}/day${j.arrears ? ` · owed ${n(j.arrearsChips)} (${j.arrears}/${j.graceDays})` : ''}`} cls={j.arrears ? 'text-red-400' : undefined} />)}
+        </div>}
+        {report.boats && report.boats.length > 0 && <div data-testid="daily-report-boats">
+          <h3 className="mt-4 text-xs uppercase tracking-wide opacity-70">Yacht upkeep</h3>
+          {report.boats.map((j, i) => <Row key={i} label={`${j.name} · next ${new Date(j.nextChargeAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`} value={`🪙 ${n(j.perDay)}/day${j.arrears ? ` · owed ${n(j.arrearsChips)} (${j.arrears}/${j.graceDays})` : ''}`} cls={j.arrears ? 'text-red-400' : undefined} />)}
         </div>}
         {e && <>
           <h3 className="mt-4 text-xs uppercase tracking-wide opacity-70">Economy</h3>

@@ -15,6 +15,7 @@ import { requireResort } from './travel.js';
 import { setFishBoatHook } from './fishing.js';
 import { setTravelJetHook } from './travel.js';
 import { GRACE_DAYS } from '../shared/realEstate.js';
+import { sendPopup } from './popups.js';
 import { BOATS, JETS, MAX_JETS, MAX_BOATS, bestBoat, fleetModel, fleetResale, type FleetKind } from '../shared/fleet.js';
 
 export class FleetError extends Error {}
@@ -26,14 +27,28 @@ CREATE INDEX IF NOT EXISTS fleet_owned_player ON fleet_owned (player_key);
 CREATE TABLE IF NOT EXISTS fleet_upkeep (day TEXT NOT NULL, craft_id TEXT NOT NULL, owner_key TEXT NOT NULL, amount BIGINT NOT NULL, paid BOOLEAN NOT NULL,
   repossessed BOOLEAN NOT NULL DEFAULT FALSE, at BIGINT NOT NULL, claim TEXT NOT NULL, PRIMARY KEY (day, craft_id));`;
 const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
-/** Tess QA #4: what a jet owner sees about upkeep (Hangar + Daily Report): per day, next charge (next UTC midnight), arrears, paid so far. */
-export function jetUpkeepInfo(c: { model: string; arrears: number; upkeepPaid: number }, now: number) {
-  const perDay = jetUpkeep(c.model); const next = Date.parse(new Date(now).toISOString().slice(0, 10) + 'T00:00:00Z') + 86_400_000;
+/** What an owner sees about daily luxury upkeep (Marina / Hangar + Daily Report): per day, next charge (next UTC midnight), arrears, paid so far. */
+export function craftUpkeepInfo(c: { model: string; arrears: number; upkeepPaid: number }, now: number) {
+  const perDay = craftUpkeep(c.model); const next = Date.parse(new Date(now).toISOString().slice(0, 10) + 'T00:00:00Z') + 86_400_000;
   return { perDay, nextChargeAt: next, arrears: c.arrears, arrearsChips: c.arrears * perDay, paidTotal: c.upkeepPaid, graceDays: GRACE_DAYS };
 }
-/** Daily jet upkeep at today's price index. */
-/** Hospital perk: healthy crews, lower upkeep (server/city.ts). */
-export const jetUpkeep = (model: string) => Math.round(px(fleetModel(model, 'jet')?.upkeep ?? 0) * (1 - cityPerk('vehicle_upkeep')));
+export const jetUpkeepInfo = craftUpkeepInfo;
+/** Daily luxury upkeep at today's price index. Hospital perk: healthy crews, lower upkeep (server/city.ts). */
+export const craftUpkeep = (model: string) => Math.round(px(fleetModel(model)?.upkeep ?? 0) * (1 - cityPerk('vehicle_upkeep')));
+export const jetUpkeep = (model: string) => craftUpkeep(model);
+export const boatUpkeep = (model: string) => craftUpkeep(model);
+
+const fmtChips = (n: number) => n.toLocaleString('en-US');
+/** Private missed-bill / repossession notices for luxury boats. Never posted to public chat. */
+function warnBoatUpkeep(owner: string, label: string, amount: number, arrearsAfter: number, repo: boolean) {
+  const from = 'Chud Resort Marina';
+  const text = repo
+    ? `Your ${label} was repossessed after ${GRACE_DAYS} unpaid upkeep days in a row. Today's bill was 🪙 ${fmtChips(amount)}. There is no refund.`
+    : arrearsAfter >= GRACE_DAYS - 1
+      ? `Today's upkeep of 🪙 ${fmtChips(amount)} for your ${label} could not be paid. This is your last warning: ${arrearsAfter} of ${GRACE_DAYS} unpaid days used. If tomorrow's bill is also unpaid, the boat will be repossessed with no refund.`
+      : `Today's upkeep of 🪙 ${fmtChips(amount)} for your ${label} could not be paid. ${arrearsAfter} of ${GRACE_DAYS} unpaid days used. After ${GRACE_DAYS} unpaid days in a row the boat is repossessed with no refund.`;
+  void sendPopup(owner, from, text).catch((e) => console.error('[fleet] upkeep notice failed:', (e as Error).message));
+}
 
 export interface OwnedCraft { id: string; kind: FleetKind; model: string; paid: number; boughtAt: number; arrears: number; upkeepPaid: number }
 type Q = { query: (sql: string, args?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }> };
@@ -54,7 +69,7 @@ export class Fleet {
     return kind ? all.filter((c) => c.kind === kind) : all;
   }
   async view(name: string | null) {
-    const now = this.clock(); const mine = name ? (await this.owned(name)).map((c) => ({ ...c, value: craftValue(c), ...(c.kind === 'jet' ? { upkeepInfo: jetUpkeepInfo(c, now) } : {}) })) : [];
+    const now = this.clock(); const mine = name ? (await this.owned(name)).map((c) => ({ ...c, value: craftValue(c), ...(craftUpkeep(c.model) > 0 ? { upkeepInfo: craftUpkeepInfo(c, now) } : {}) })) : [];
     return { signedIn: !!name, owned: mine, chips: name && getBank().ready ? getBank().account(name).chips : null, deep: bestBoat(mine.filter((c) => c.kind === 'boat').map((c) => c.model)) };
   }
   /** Deep-sea access for fishing: best zone + bite multiplier of the boats this player owns. */
@@ -112,20 +127,23 @@ export class Fleet {
   }
   private memUpkeep = new Set<string>();
   /**
-   * Daily jet upkeep (#11), same pattern as property tax: once per UTC day per jet owned since before today.
-   * Paid -> ONE transaction (ledger 'jet_upkeep' + claim row + arrears = 0). Unpaid -> arrears+1;
-   * GRACE_DAYS unpaid days in a row -> repossessed (row deleted, no refund). Claim nonce makes reruns no-ops.
+   * Daily luxury upkeep (jets + yacht/superyacht), same pattern as property tax: once per UTC day per craft owned since before today.
+   * Paid -> ONE transaction (ledger 'jet_upkeep' / 'boat_upkeep' + claim row + arrears = 0). Never charges more than the wallet
+   * holds (no negative balances). Unpaid -> arrears+1; GRACE_DAYS unpaid days in a row -> repossessed (row deleted, no refund).
+   * Luxury-boat misses send a private popup to the owner only. Claim nonce makes reruns no-ops.
    */
   async runUpkeep(): Promise<{ charged: number; paid: number; unpaid: number; repossessed: number }> {
     const now = this.clock(); const day = utcDay(now); const start = Date.parse(`${day}T00:00:00Z`); const bank = getBank();
     const out = { charged: 0, paid: 0, unpaid: 0, repossessed: 0 };
-    const jets: Array<OwnedCraft & { owner: string; key: string }> = this.pool
-      ? (await this.pool.query("SELECT * FROM fleet_owned WHERE kind = 'jet' AND bought_at < $1 AND id NOT IN (SELECT craft_id FROM fleet_upkeep WHERE day = $2) ORDER BY player_key, bought_at", [start, day])).rows.map((r) => ({ ...row(r), owner: String(r.name), key: String(r.player_key) }))
-      : [...this.mem.entries()].flatMap(([key, l]) => l.filter((c) => c.kind === 'jet' && c.boughtAt < start && !this.memUpkeep.has(`${day}:${c.id}`)).map((c) => ({ ...c, owner: key, key })));
-    for (const j of jets) {
-      const amount = jetUpkeep(j.model); if (amount <= 0) continue;
+    const due: Array<OwnedCraft & { owner: string; key: string }> = this.pool
+      ? (await this.pool.query("SELECT * FROM fleet_owned WHERE bought_at < $1 AND id NOT IN (SELECT craft_id FROM fleet_upkeep WHERE day = $2) ORDER BY player_key, bought_at", [start, day])).rows.map((r) => ({ ...row(r), owner: String(r.name), key: String(r.player_key) }))
+      : [...this.mem.entries()].flatMap(([key, l]) => l.filter((c) => c.boughtAt < start && !this.memUpkeep.has(`${day}:${c.id}`)).map((c) => ({ ...c, owner: key, key })));
+    for (const j of due) {
+      const amount = craftUpkeep(j.model); if (amount <= 0) continue;
       try { await bank.refresh(j.owner); } catch { continue; }
       const repo = j.arrears + 1 >= GRACE_DAYS; const label = fleetModel(j.model)?.name ?? j.model;
+      const game = j.kind === 'boat' ? 'boat_upkeep' : 'jet_upkeep';
+      const memo = j.kind === 'boat' ? `Yacht upkeep ${day}: ${label} (crew and dock)` : `Jet upkeep ${day}: ${label} (crew, fuel, hangar)`;
       const claim = async (cl: Q, paid: boolean) => {
         const nonce = randomUUID();
         await cl.query('INSERT INTO fleet_upkeep (day, craft_id, owner_key, amount, paid, repossessed, at, claim) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING', [day, j.id, j.key, amount, paid, !paid && repo, now, nonce]);
@@ -137,7 +155,7 @@ export class Fleet {
       };
       try {
         if (bank.account(j.owner).chips >= amount) {
-          const w = bank.transferAtomic([{ name: j.owner, amount: -amount, key: `jet_upkeep:${day}:${j.id}`, game: 'jet_upkeep', memo: `Jet upkeep ${day}: ${label} (crew, fuel, hangar)` }]);
+          const w = bank.transferAtomic([{ name: j.owner, amount: -amount, key: `${game}:${day}:${j.id}`, game, memo }]);
           const run = async () => {
             if (!this.pool) { this.memUpkeep.add(`${day}:${j.id}`); const c = this.mem.get(j.key)?.find((x) => x.id === j.id); if (c) { c.arrears = 0; c.upkeepPaid += amount; } return; }
             await w.after; const cl = await this.pool.connect();
@@ -150,9 +168,10 @@ export class Fleet {
         if (!this.pool) { this.memUpkeep.add(`${day}:${j.id}`); const l = this.mem.get(j.key) ?? []; const i = l.findIndex((x) => x.id === j.id); if (i >= 0) { if (repo) l.splice(i, 1); else l[i]!.arrears++; } }
         else { const cl = await this.pool.connect(); try { await cl.query('BEGIN'); await claim(cl, false); await cl.query('COMMIT'); } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); } }
         out.unpaid++; if (repo) out.repossessed++;
+        if (j.kind === 'boat') warnBoatUpkeep(j.owner, label, amount, j.arrears + 1, repo);
       } catch (e) { if (!(e instanceof FleetError)) console.error('[fleet] upkeep failed:', (e as Error).message); }
     }
-    if (out.paid + out.unpaid) { console.log(`[fleet] jet upkeep ${day}: paid ${out.paid} (${out.charged} chips), unpaid ${out.unpaid}, repossessed ${out.repossessed}`); this.onChange?.(); }
+    if (out.paid + out.unpaid) { console.log(`[fleet] upkeep ${day}: paid ${out.paid} (${out.charged} chips), unpaid ${out.unpaid}, repossessed ${out.repossessed}`); this.onChange?.(); }
     return out;
   }
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -189,7 +208,7 @@ export function registerFleet(_io: Server, socket: Socket): void {
     try { if (!fleet) throw new FleetError('Opening up. Try again in a moment.'); const b = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}; ack?.({ ok: true, ...((await fn(b, fleet)) as object ?? {}) }); }
     catch (e) { ack?.({ ok: false, error: e instanceof FleetError || /^(Not enough chips\.|Wallet temporarily unavailable\.)$|Chud Resort/.test((e as Error).message) ? (e as Error).message : 'Something went wrong.' }); }
   });
-  on('marina_view', async (_b, f) => ({ ...(await f.view(nameOf())), catalog: BOATS.map((m) => ({ ...m, basePrice: m.price, price: px(m.price) })) }));
+  on('marina_view', async (_b, f) => ({ ...(await f.view(nameOf())), catalog: BOATS.map((m) => ({ ...m, basePrice: m.price, price: px(m.price), upkeep: boatUpkeep(m.id) })) }));
   on('marina_buy', async (b, f) => { const n = need(); await requireResort(n, FleetError); return f.buy(n, 'boat', b.model); });
   on('hangar_view', async (_b, f) => ({ ...(await f.view(nameOf())), catalog: JETS.map((m) => ({ ...m, basePrice: m.price, price: px(m.price), upkeep: jetUpkeep(m.id) })) }));
   on('hangar_buy', async (b, f) => f.buy(need(), 'jet', b.model)); // the Hangar is at Chud Hub International (and the resort airfield): no location gate

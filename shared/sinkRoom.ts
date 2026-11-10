@@ -5,8 +5,8 @@
 /** House casino games: count today's NET loss per game (wins offset losses). */
 export const SINK_NET_GAMES = new Set(['blackjack', 'roulette', 'slots', 'video-poker', 'solitro', 'casino']);
 /** House purchases, fees, taxes and removals: every debit counts (credits in the same game, e.g. house sales, don't offset). */
-/** House debits that free room (Dayne, Nov 2): admin, wealth tax, cars, car mods, property tax, resort tickets, race entries, mayor filing, private-jet upkeep (#11; NOT jet/boat purchases, which sell back at 70%), furniture (Millionaire Update: no resale, so it is a pure burn). NOT: property purchases, farm seeds/upgrades, mine tools, factory builds, groceries, wages, hiring. */
-export const SINK_DEBIT_GAMES = new Set(['car_buy', 'car_mod', 'property_tax', 'resort_ticket', 'fortmc_ticket', 'fortmc_upkeep', 'race_entry', 'mayor_filing', 'admin', 'wealth_tax', 'jet_upkeep', 'furniture_buy']);
+/** House debits that free room (Dayne, Nov 2): admin, wealth tax, cars, car mods, property tax, resort tickets, race entries, mayor filing, private-jet upkeep (#11) and yacht/superyacht upkeep (NOT jet/boat purchases, which sell back at 70%), furniture (Millionaire Update: no resale, so it is a pure burn). NOT: property purchases, farm seeds/upgrades, mine tools, factory builds, groceries, wages, hiring. */
+export const SINK_DEBIT_GAMES = new Set(['car_buy', 'car_mod', 'property_tax', 'resort_ticket', 'fortmc_ticket', 'fortmc_upkeep', 'race_entry', 'mayor_filing', 'admin', 'wealth_tax', 'jet_upkeep', 'boat_upkeep', 'furniture_buy']);
 /** Player-to-player market: only the burned fee (in the seller's "Sold … (N fee)" memo) counts. */
 export const MARKET_GAME = 'market';
 

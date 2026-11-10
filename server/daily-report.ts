@@ -76,8 +76,10 @@ export async function buildDailyReport(name: string, bonus: number | null, now =
     const cs = ex.list().companies.map((c) => ({ ticker: c.ticker, name: c.name, price: c.price, chg: c.chg })).sort((a, b) => b.chg - a.chg);
     movers = { up: cs.slice(0, 3), down: cs.slice(-3).reverse() };
   }
-  // Tess QA #4: private-jet upkeep (per day, next charge, arrears) on the report.
-  const jets = await (getFleet()?.owned(name, 'jet') ?? Promise.resolve([])).then((l) => l.map((c) => ({ name: fleetModel(c.model)?.name ?? c.model, ...jetUpkeepInfo(c, now) }))).catch(() => []);
+  // Tess QA #4: private-jet upkeep (per day, next charge, arrears) on the report. Luxury boats use the same shape.
+  const fleetOwned = await (getFleet()?.owned(name) ?? Promise.resolve([])).catch(() => []);
+  const jets = fleetOwned.filter((c) => c.kind === 'jet').map((c) => ({ name: fleetModel(c.model)?.name ?? c.model, ...jetUpkeepInfo(c, now) }));
+  const boats = fleetOwned.filter((c) => c.kind === 'boat' && (fleetModel(c.model)?.upkeep ?? 0) > 0).map((c) => ({ name: fleetModel(c.model)?.name ?? c.model, ...jetUpkeepInfo(c, now) }));
   const assetTotal = assets?.total ?? 0;
   const me = { cash: chips, assets: assetTotal, total: chips + assetTotal };
   const snaps = snapshots();
@@ -86,7 +88,7 @@ export async function buildDailyReport(name: string, bonus: number | null, now =
   // Read-only: the last 7 daily snapshots (newest first) for the "Past 7 days" list when the report is reopened.
   const history = snaps.history ? await snaps.history(key, 7).catch(() => []) : [];
   return {
-    day, bonus, history, jets,
+    day, bonus, history, jets, boats,
     // Inflation comes from the same Economy.stats() object the Bank's Economy tab renders, through the same inflationView().
     economy: stats ? { cash: stats.cash, assets: stats.assets, total: stats.total,
       inflation: inflationView({ at: stats.at ?? now, change: stats.change ?? { cash: null, total: null }, inflation: stats.inflation ?? { cash7: null, total7: null }, priceIndex: stats.priceIndex ?? priceIndexView() }),
