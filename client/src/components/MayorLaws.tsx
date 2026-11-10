@@ -5,6 +5,7 @@ import { request } from '@/lib/net';
 function statusLabel(b: MayorLaw): string {
   if (b.implementation) return 'Enacted — revised wording';
   if (b.status === 'vetoed') return 'Vetoed';
+  if (b.status === 'denied') return 'Denied';
   if (b.status === 'pending_approval') return 'Pending mayor approval';
   if (b.status === 'rejected') return 'Rejected';
   if (b.status === 'expired') return 'Expired';
@@ -66,10 +67,11 @@ export function MayorLaws({ view, isMayor, isVice = false, today, busy, onPass, 
       <b>{b.title}</b> <span data-testid="mayor-law-status">{statusLabel(b)}</span><small> · {byline(b)} · {b.day} (America/Regina)</small>
       {b.status === 'vetoed' && b.vetoedBy && <small> · Vetoed by {b.vetoedRole === 'vice' ? 'Vice Mayor' : 'Mayor'} {b.vetoedBy}</small>}
       {b.status === 'rejected' && b.rejectReason && <small> · Reason: {b.rejectReason}</small>}
+      {b.status === 'denied' && b.denyReason && <p data-testid="mayor-law-deny-reason" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{b.denyReason}</p>}
       <p data-testid={b.implementation ? 'mayor-law-active-wording' : undefined} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{b.implementation?.text ?? b.text}</p>
       {b.implementation && <>
         <small data-testid="mayor-law-implementation">Implemented {new Date(b.implementation.implementedAt).toLocaleString('en-CA', { timeZone: 'America/Regina' })} (America/Regina) · release <code>{b.implementation.release.slice(0, 7)}</code>. This implementation record is separate from the original submission, not an approval vote.</small>
-        <details data-testid="mayor-law-original"><summary>Original submission (archived)</summary><small>Original recorded status: {b.status === 'vetoed' ? 'Vetoed' : 'Pending'}{b.draftedBy && b.approvedBy ? ` · ${draftApprovedNote(b.draftedBy, b.approvedBy)}` : ''}.</small><p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{b.text}</p></details>
+        <details data-testid="mayor-law-original"><summary>Original submission (archived)</summary><small>Original recorded status: {b.status === 'vetoed' ? 'Vetoed' : b.status === 'denied' ? 'Denied' : 'Pending'}{b.draftedBy && b.approvedBy ? ` · ${draftApprovedNote(b.draftedBy, b.approvedBy)}` : ''}.</small><p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{b.text}</p></details>
       </>}
       {onVeto && today && !b.implementation && b.status === 'pending' && (b.day === today ? isVice : isMayor) && <button type="button" disabled={busy} data-testid="mayor-law-veto" onClick={() => { if (window.confirm(`Veto ${b.title}? It stays in the record marked Vetoed and cannot be undone.`)) void onVeto(b.number).then(() => setOlder(null)); }}>Veto</button>}
     </li>)}</ol>

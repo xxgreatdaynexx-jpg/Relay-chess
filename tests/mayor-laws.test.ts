@@ -69,7 +69,7 @@ describe('text-only mayor bills', () => {
 describe('pending-only submission surface', () => {
   it('has no activation/approval operation or credentials', () => {
     const own = Object.getOwnPropertyNames(MayorLaws.prototype).sort();
-    expect(own).toEqual(['approveDraft','constructor','history','init','rejectDraft','submit','submitDraft','veto']);
+    expect(own).toEqual(['approveDraft','constructor','deny','history','init','rejectDraft','submit','submitDraft','veto']);
     const source = readFileSync('server/mayor.ts', 'utf8');
     expect(source).not.toMatch(/(?:on|post)\(['"]mayor_law_approve['"]/);
     expect(readFileSync('server/mayorLaws.ts','utf8')).not.toContain('adminAuthorized');
@@ -129,6 +129,16 @@ describe('vetoes (status only; strict Regina day split)', () => {
     const count = (h: string) => (h.match(/mayor-law-veto/g) ?? []).length;
     expect(count(r(true,false))).toBe(1); expect(count(r(false,true))).toBe(1); expect(count(r(false,false))).toBe(0);
     expect(r(false,false)).toContain('Vetoed by Vice Mayor Vic');
+  });
+
+  it('renders Denied status and the public denial reason, with no veto button', () => {
+    const reason = '1. Only someone stockpiling at very large scale can actually use it.\n2. It wipes the cap out completely.';
+    const view = { nextBefore:null, submittedToday:true, history: [
+      { number:'2', title:'Bill Chud 2', text:'original text stays', by:'MayorName', at:0, day:'2026-11-09', status:'denied' as const, vetoedBy:null, vetoedAt:null, vetoedRole:null, denyReason: reason, deniedAt: 1 } ] };
+    const html = renderToStaticMarkup(createElement(LawsPanel, { view, isMayor:true, isVice:true, today:'2026-11-09', busy:false, onPass: async () => {}, onVeto: async () => {} }));
+    expect(html).toContain('Denied'); expect(html).toContain('mayor-law-deny-reason'); expect(html).toContain(reason.split('\n')[0]!);
+    expect(html).toContain('original text stays'); expect(html).not.toMatch(/mayor-law-veto/);
+    expect(html.toLowerCase()).not.toMatch(/dayne|conner/);
   });
 });
 

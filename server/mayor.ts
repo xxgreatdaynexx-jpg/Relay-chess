@@ -192,6 +192,12 @@ export class Mayor {
     try { return await new MayorLaws(this.pool, this.clock).rejectDraft(name, id, reason); }
     catch (e) { if (e instanceof MayorLawError) throw new MayorError(e.message); throw e; }
   }
+  /** Admin route only: Denied status + public reason. Does not change the economy. */
+  async denyLaw(number: unknown, reason: unknown) {
+    await this.settle(this.clock());
+    try { return await new MayorLaws(this.pool, this.clock).deny(number, reason); }
+    catch (e) { if (e instanceof MayorLawError) throw new MayorError(e.message); throw e; }
+  }
   async lawHistory(before?: unknown) { return new MayorLaws(this.pool, this.clock).history(before); }
 
   /** Admin: remove the sitting mayor (or mayor-elect) and put rates back to default immediately. */
@@ -278,6 +284,16 @@ export function mayorRouter() {
     if (!adminAuthorized(req.get('authorization'))) return res.status(401).json({ ok: false, error: 'Unauthorized.' });
     if (!mayorInst) return res.status(503).json({ ok: false, error: 'City Hall is offline.' });
     try { res.json({ ok: true, ...(await mayorInst.remove((req.body ?? {}).note)) }); } catch (e) { res.status(400).json({ ok: false, error: (e as Error).message }); }
+  });
+  r.post('/api/admin/mayor/deny-bill', express.json({ limit: '8kb' }), async (req, res) => {
+    if (!adminAuthorized(req.get('authorization'))) return res.status(401).json({ ok: false, error: 'Unauthorized.' });
+    if (!mayorInst) return res.status(503).json({ ok: false, error: 'City Hall is offline.' });
+    try {
+      const body = (req.body ?? {}) as { number?: unknown; reason?: unknown };
+      const r0 = await mayorInst.denyLaw(body.number, body.reason);
+      if (!r0.already) console.log(`[mayor] admin denied bill ${r0.bill.number}`);
+      res.json({ ok: true, ...r0 });
+    } catch (e) { res.status(400).json({ ok: false, error: (e as Error).message }); }
   });
   return r;
 }
