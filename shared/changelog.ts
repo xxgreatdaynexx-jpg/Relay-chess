@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T08:42:00-06:00", "title": "All my farms is now a real farm dashboard", "bullets": [
+    "Requested by carter2: All my farms lists every plot you own with its crops, empty / growing / ready / withered counts, grow timers, and when the next ripe crop will wither.",
+    "On the map you are on, you can harvest all ready crops (or send them to the pantry), clear withered plants, and replant every empty tile with a chosen seed — one farm or every farm on that map. Seeds cost the same as planting on the field, and growing crops are left alone. Travel first to work farms on the other map. Ownership, auto-farm, and the daily farm profit cap are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T08:25:00-06:00", "title": "Factory Auto-Sell Chest", "bullets": [
     "Requested by Special Characters: the Machinist now sells an Auto-Sell Chest (same cost as an Output Chest). Anything delivered to it is sold to the house at the normal price, and the chips go to your wallet.",
     "When you hit the daily house-sell cap, leftover items wait in the chest and sell automatically as soon as there is room again. Picking the chest up sends waiting items back to factory storage. Existing output chests, the house cap itself, and other factory parts are unchanged.",

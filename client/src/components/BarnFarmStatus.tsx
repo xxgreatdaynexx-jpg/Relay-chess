@@ -7,6 +7,7 @@ export function FarmStatusSummary({ plot, now }: { plot: BarnFarmPlot; now: numb
     <span>{c.empty} empty · {c.growing} growing · {c.ready} ready · {c.withered} withered</span>
     {s.crops && <span>{s.crops}</span>}
     {s.nextReady !== null && <span>Next ready in {barnTimeLeft(s.nextReady - now)}{s.lastReady !== s.nextReady && <> · Last growing crop in {barnTimeLeft(s.lastReady! - now)}</>}</span>}
+    {s.nextWither !== null && <span>Next ripe crop withers in {barnTimeLeft(s.nextWither - now)}</span>}
   </small>;
 }
 /** Event-driven snapshot refresh; the one-second timer only advances the display, never polls the server. */
@@ -37,5 +38,5 @@ export function useBarnFarmStatus(me: string | null, unlocked: boolean, ids: str
     return () => { dead = true; if (pending) clearTimeout(pending); clearInterval(timer); socket.off('farm_changed', changed); socket.off('re_changed', refresh); socket.off('connect', refresh); document.removeEventListener('visibilitychange', visible); };
   }, [me, unlocked, key]);
   const valid = data?.owner === me && unlocked ? data : null;
-  return { plots: new Map(valid?.view.plots.map((p) => [p.id, p]) ?? []), now: valid ? valid.view.now + Math.max(0, clock - valid.received) : 0, error };
+  return { plots: new Map(valid?.view.plots.map((p) => [p.id, p]) ?? []), now: valid ? valid.view.now + Math.max(0, clock - valid.received) : 0, error, index: valid?.view.index && valid.view.index > 0 ? valid.view.index : 1 };
 }

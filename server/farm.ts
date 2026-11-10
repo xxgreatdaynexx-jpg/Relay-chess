@@ -254,17 +254,17 @@ export class Farm {
       const plots = raw.map(({ p, upgrades, rows }) => ({ id: p.pid, cols: p.cols, rows: p.rows,
         tiles: rows.filter((r) => Number(r.tile) >= 0 && Number(r.tile) < p.cols * p.rows)
           .map((r) => this.toTile(r, now, this.withers(upgrades))).filter((t): t is FarmTile => !!t) }));
-      await cl.query('COMMIT'); return { now, plots };
+      await cl.query('COMMIT'); return { now, plots, index: priceIndex() };
     } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; }
     finally { cl.release(); }
   }
 
   /** Plant `crop` on the given empty tiles; seeds are paid now (px-indexed). */
-  async plant(name: string, id: unknown, cropId: unknown, tiles: unknown, opts?: { auto?: boolean }) {
+  async plant(name: string, id: unknown, cropId: unknown, tiles: unknown, opts?: { auto?: boolean; skipGuard?: boolean }) {
     const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const c = cropById(cropId); if (!c) throw new FarmError('Unknown seed.');
     if (isTropical(c.id) !== p.resort) throw new FarmError(p.resort ? 'Only tropical crops grow at the resort plantation.' : 'Tropical crops only grow at Chud Resort.');
     const list = this.tileList(p, tiles); const pid = p.pid;
-    const blocked = checkFarmAction('plant', keyOf(name), this.clock(), opts?.auto ? { auto: true } : undefined); if (blocked) throw new FarmError(blocked);
+    if (!opts?.skipGuard) { const blocked = checkFarmAction('plant', keyOf(name), this.clock(), opts?.auto ? { auto: true } : undefined); if (blocked) throw new FarmError(blocked); }
     return this.lock(pid, async () => {
       const cost = px(c.seed) * list.length; const bank = this.bank(); await bank.refresh(name);
       if (bank.account(name).chips < cost) throw new FarmError(`Not enough chips: ${list.length} × ${c.label} seeds cost ${cost.toLocaleString('en-US')}.`);
@@ -288,10 +288,10 @@ export class Farm {
   }
 
   /** Harvest every ready tile (or the given ones). Exactly once: the tiles are deleted in the payout's transaction. */
-  async harvest(name: string, id: unknown, tiles?: unknown, sink?: ImportSink, pantry = false, opts?: { auto?: boolean }) {
+  async harvest(name: string, id: unknown, tiles?: unknown, sink?: ImportSink, pantry = false, opts?: { auto?: boolean; skipGuard?: boolean }) {
     const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const pid = p.pid;
     const only = tiles === undefined || tiles === null ? null : new Set(this.tileList(p, tiles));
-    const blocked = checkFarmAction('harvest', keyOf(name), this.clock(), opts?.auto ? { auto: true } : undefined); if (blocked) throw new FarmError(blocked);
+    if (!opts?.skipGuard) { const blocked = checkFarmAction('harvest', keyOf(name), this.clock(), opts?.auto ? { auto: true } : undefined); if (blocked) throw new FarmError(blocked); }
     return this.lock(`h:${keyOf(name)}`, () => this.lock(pid, async () => {
       const now = this.clock(); const key = keyOf(name);
       const up = await this.upgrades(this.pool, pid, key);
@@ -423,7 +423,112 @@ export class Farm {
     return { harvested: cropUnits, paid: 0, pantry: Object.fromEntries(counts), toFactory: undefined as Array<[string, number]> | undefined, chips: this.bank().account(name).chips };
   }
 
-  /** Clear withered crops (free). */
+  /**
+   * Barn dashboard actions: harvest, pantry-harvest, plant empty tiles, clear withered, or harvest-then-replant
+   * across the caller's own plots on a single map. Seeds and harvest payouts use the normal per-plot methods.
+   * One rate-limit token is spent for the harvest half and one for the plant half (not one per plot).
+   */
+  async dash(name: string, b: Record<string, unknown>) {
+    if (!name) throw new FarmError('Sign in to farm.');
+    const action = b.action;
+    if (action !== 'harvest' && action !== 'pantry' && action !== 'plant' && action !== 'clear' && action !== 'harvest_replant') {
+      throw new FarmError('Unknown farm action.');
+    }
+    const raw = Array.isArray(b.ids) ? b.ids : [];
+    const ids = [...new Set(raw.filter((id): id is string => typeof id === 'string' && !!plotOf(id)))].slice(0, 64);
+    if (!ids.length) throw new FarmError('Pick a farm.');
+    const maps = new Set(ids.map((id) => (id.startsWith('rf:') ? 'resort' : 'city')));
+    if (maps.size > 1) throw new FarmError('Work one map at a time. Travel first to use farms on the other map.');
+    const key = keyOf(name);
+    const owned = (await this.pool.query('SELECT id FROM properties WHERE owner_key = $1', [key])).rows as Array<{ id: string }>;
+    if (!owned.some((r) => isBarnProperty(r.id))) throw new FarmError('Own a separately purchased barn to use the farm dashboard.');
+    const mine = new Set(owned.map((r) => r.id));
+    for (const id of ids) if (!mine.has(id)) throw new FarmError('You do not own this farm plot.');
+
+    const doHarvest = action === 'harvest' || action === 'pantry' || action === 'harvest_replant';
+    const doPlant = action === 'plant' || action === 'harvest_replant';
+    const doClear = action === 'clear';
+    const pantry = action === 'pantry';
+    const now = this.clock();
+
+    if (doPlant) {
+      const cropId = typeof b.crop === 'string' ? b.crop : '';
+      const c = cropById(cropId); if (!c) throw new FarmError('Pick a seed.');
+      const resort = ids[0]!.startsWith('rf:');
+      if (isTropical(c.id) !== resort) throw new FarmError(resort ? 'Only tropical crops grow at the resort plantation.' : 'Tropical crops only grow at Chud Resort.');
+    }
+    if (doHarvest) {
+      const blocked = checkFarmAction('harvest', key, now); if (blocked) throw new FarmError(blocked);
+    }
+    if (doPlant) {
+      const blocked = checkFarmAction('plant', key, now); if (blocked) throw new FarmError(blocked);
+    }
+
+    if (doPlant) {
+      // Pre-check seed cost for every empty tile (and ready tiles that harvest_replant will free) so a mid-batch chip shortage does not plant only some plots.
+      const c = cropById(String(b.crop))!;
+      let need = 0;
+      for (const id of ids) {
+        const view = await this.view(id, name);
+        const occupied = new Set(view.tiles.map((t) => t.tile));
+        let empty = view.cols * view.rows - occupied.size;
+        if (action === 'harvest_replant') empty += view.tiles.filter((t) => t.stage === 'ready').length;
+        need += empty;
+      }
+      const cost = px(c.seed) * need;
+      const bank = this.bank(); await bank.refresh(name);
+      if (need > 0 && bank.account(name).chips < cost) throw new FarmError(`Not enough chips: ${need} × ${c.label} seeds cost ${cost.toLocaleString('en-US')}.`);
+    }
+
+    let harvested = 0, paid = 0, planted = 0, cost = 0, cleared = 0;
+    const errors: Array<{ id: string; error: string }> = [];
+    const skip = { skipGuard: true as const };
+
+    for (const id of ids) {
+      if (doHarvest) {
+        try {
+          const r = await this.harvest(name, id, undefined, undefined, pantry, skip);
+          harvested += Number(r.harvested ?? 0); paid += Number(r.paid ?? 0);
+        } catch (e) {
+          if (e instanceof FarmError && /Nothing is ready/.test(e.message)) { /* ok */ }
+          else if (e instanceof FarmError) errors.push({ id, error: e.message });
+          else throw e;
+        }
+      }
+      if (doClear) {
+        try {
+          const r = await this.clear(name, id);
+          cleared += Number(r.cleared ?? 0);
+        } catch (e) {
+          if (e instanceof FarmError && /Nothing has withered/.test(e.message)) { /* ok */ }
+          else if (e instanceof FarmError) errors.push({ id, error: e.message });
+          else throw e;
+        }
+      }
+      if (doPlant) {
+        try {
+          const view = await this.view(id, name);
+          const occ = new Set(view.tiles.map((t) => t.tile));
+          const empties = Array.from({ length: view.cols * view.rows }, (_, i) => i).filter((i) => !occ.has(i));
+          if (!empties.length) continue;
+          const r = await this.plant(name, id, b.crop, empties, skip);
+          planted += Number(r.planted ?? 0); cost += Number(r.cost ?? 0);
+        } catch (e) {
+          if (e instanceof FarmError) errors.push({ id, error: e.message });
+          else throw e;
+        }
+      }
+    }
+
+    if (!harvested && !planted && !cleared && !errors.length) {
+      if (doHarvest && !doPlant) throw new FarmError('Nothing is ready to harvest.');
+      if (doClear) throw new FarmError('Nothing has withered.');
+      if (doPlant && !doHarvest) throw new FarmError('No empty tiles to plant.');
+    }
+    return { harvested, paid, planted, cost, cleared, errors, chips: this.bank().account(name).chips };
+  }
+
+    /** Clear withered crops (free). */
   async clear(name: string, id: unknown) {
     const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const pid = p.pid; const key = keyOf(name);
     return this.lock(pid, async () => {
@@ -537,4 +642,10 @@ export function registerFarm(io: Server, socket: Socket): void {
   on('farm_clear', async (b, f) => f.clear(await at(b.id), b.id));
   on('farm_upgrade', async (b, f) => f.buyUpgrade(await at(b.id), b.id, b.kind));
   on('farm_auto', async (b, f) => f.setAuto(await at(b.id), b.id, { harvest: b.harvest, plant: b.plant, crop: b.crop, pantry: b.pantry }));
+  on('farm_dash', async (b, f) => {
+    const ids = Array.isArray(b.ids) ? b.ids : [];
+    if (ids.some((id) => typeof id === 'string' && id.startsWith('rf:'))) await requireResort(need(), FarmError);
+    return f.dash(need(), b);
+  });
 }
+

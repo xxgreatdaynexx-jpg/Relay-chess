@@ -2594,6 +2594,13 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .fac-shoprow { flex-wrap: wrap; } /* Machinist: Buy + Sell-unplaced buttons wrap in the narrow side menu */
 
 .barn-farm-status { display: flex; flex-direction: column; gap: 3px; padding: 4px 8px 8px; line-height: 1.45; overflow-wrap: anywhere; }
+.farm-dash-card { margin: 8px 0; padding: 8px; border: 1px solid #c9a24a44; border-radius: 10px; background: rgba(255,255,255,.03); }
+.farm-dash-tools { margin: 8px 0 12px; padding: 8px; border: 1px solid #c9a24a66; border-radius: 10px; }
+.farm-dash-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.farm-dash-actions button { width: auto !important; min-height: 40px; flex: 1 1 140px; }
+.farm-overview .farm-seeds { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.farm-overview .farm-seeds button { width: auto; min-height: 40px; }
+
 @media (max-width: 640px), (max-height: 500px) { .world-deed .barn-farm-status { font-size: 13px; } }
 
 /* Scoped hangar expansion: fixed header is a sibling of the only scrolling body. */
