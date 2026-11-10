@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T09:20:00-06:00", "title": "Farm templates and area select", "bullets": [
+    "Requested by carter2: on a farm you can drag a box to select empty tiles (Shift-drag adds to the selection) and plant them in one go, the same way the Factory select tool grabs a region.",
+    "Save a named crop layout from the whole field or from your selection, then apply it later to plant the same pattern on empty tiles. Mixed crops are planted in one seed charge at the normal price, and that spend counts toward today’s house-cap planting bonus. Existing click-to-select, plant-all, auto-plant, and ownership rules are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T08:53:00-06:00", "title": "Planting seeds adds to today’s house cap", "bullets": [
     "50% of the seed chips you actually pay when planting (including replant-all, auto-plant, and resort plots) is added to your house-sell cap for the current cap day. A failed plant does not count. The bonus resets with the cap at 6 PM CST (00:00 UTC).",
     "This cap day’s plantings already count — the bonus is taken from the day’s seed-charge records, so it stays correct after a restart. Earlier cap days are not included. The house-cap display now shows Base cap + planting bonus.",

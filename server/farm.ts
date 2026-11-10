@@ -31,6 +31,7 @@ import { farmingGrowMul } from '../shared/skillPerks.js';
 import { combinedGrowMul, fertilizerYieldBonus, greenhouseWither, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradeDef, upgradePrice, yieldQty, type FarmUpgradeLevels } from '../shared/farmUpgrades.js';
 import { checkFarmAction } from './farmGuard.js';
 import { recordPlantSeed } from './plant-cap.js';
+import { FARM_TEMPLATE_MAX, normalizeLayout, normalizeTemplateName, stampLayout, type FarmTemplate, type FarmTemplateCell } from '../shared/farmTemplates.js';
 import { isHubAwake } from '../shared/hubSleep.js';
 import { isMillionairePrelaunch } from '../shared/millionairePrelaunch.js';
 import type { FarmAuto } from '../shared/farm.js';
@@ -49,6 +50,16 @@ CREATE TABLE IF NOT EXISTS farm_machines (owner_key TEXT NOT NULL, kind TEXT NOT
 ALTER TABLE farm_daily ADD COLUMN IF NOT EXISTS xp_gross BIGINT NOT NULL DEFAULT 0;
 CREATE TABLE IF NOT EXISTS farm_auto (plot_id TEXT NOT NULL, owner_key TEXT NOT NULL, harvest BOOLEAN NOT NULL DEFAULT false, plant BOOLEAN NOT NULL DEFAULT false, crop TEXT NOT NULL DEFAULT 'wheat', PRIMARY KEY (plot_id, owner_key));
 ALTER TABLE farm_auto ADD COLUMN IF NOT EXISTS pantry BOOLEAN NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS farm_templates (
+  owner_key TEXT NOT NULL,
+  id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  cols INTEGER NOT NULL,
+  rows INTEGER NOT NULL,
+  cells TEXT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  PRIMARY KEY (owner_key, id)
+);
 `;
 /** Server auto-farm sweep for every plot with toggles on — online or offline (Dayne 2026-11-05). */
 export const FARM_AUTO_SWEEP_MS = 30 * 60_000; // 30 minutes (Dayne 2026-11-05)
@@ -288,6 +299,99 @@ export class Farm {
       this.onChange?.(pid);
       return { planted: list.length, cost, chips: bank.account(name).chips };
     });
+  }
+
+
+  private parseTemplateRow(r: { id: string; name: string; cols: number; rows: number; cells: string; updated_at: string | number }): FarmTemplate | null {
+    try {
+      const layout = normalizeLayout({ cols: Number(r.cols), rows: Number(r.rows), cells: JSON.parse(r.cells) as unknown });
+      if (typeof layout === 'string') return null;
+      return { id: String(r.id), name: String(r.name), cols: layout.cols, rows: layout.rows, cells: layout.cells, updatedAt: Number(r.updated_at) };
+    } catch { return null; }
+  }
+  async listTemplates(name: string): Promise<{ templates: FarmTemplate[] }> {
+    const rows = (await this.pool.query('SELECT id, name, cols, rows, cells, updated_at FROM farm_templates WHERE owner_key = $1 ORDER BY updated_at DESC', [keyOf(name)])).rows as Array<{ id: string; name: string; cols: number; rows: number; cells: string; updated_at: string | number }>;
+    return { templates: rows.map((r) => this.parseTemplateRow(r)).filter((t): t is FarmTemplate => !!t) };
+  }
+  async saveTemplate(name: string, body: { id?: unknown; name?: unknown; cols?: unknown; rows?: unknown; cells?: unknown }) {
+    const label = normalizeTemplateName(body.name); if (!label) throw new FarmError('Pick a template name (up to 32 characters).');
+    const layout = normalizeLayout(body); if (typeof layout === 'string') throw new FarmError(layout);
+    const key = keyOf(name);
+    const id = typeof body.id === 'string' && /^[0-9a-f-]{8,64}$/i.test(body.id) ? body.id : randomUUID();
+    const now = this.clock();
+    const existing = await this.listTemplates(name);
+    if (!existing.templates.some((t) => t.id === id) && existing.templates.length >= FARM_TEMPLATE_MAX) {
+      throw new FarmError(`You already have ${FARM_TEMPLATE_MAX} farm templates. Delete one first.`);
+    }
+    await this.pool.query(
+      `INSERT INTO farm_templates (owner_key, id, name, cols, rows, cells, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (owner_key, id) DO UPDATE SET name = EXCLUDED.name, cols = EXCLUDED.cols, rows = EXCLUDED.rows, cells = EXCLUDED.cells, updated_at = EXCLUDED.updated_at`,
+      [key, id, label, layout.cols, layout.rows, JSON.stringify(layout.cells), now],
+    );
+    const templates = (await this.listTemplates(name)).templates;
+    return { template: templates.find((t) => t.id === id)!, templates };
+  }
+  async deleteTemplate(name: string, id: unknown) {
+    if (typeof id !== 'string' || !id) throw new FarmError('Unknown template.');
+    const r = await this.pool.query('DELETE FROM farm_templates WHERE owner_key = $1 AND id = $2', [keyOf(name), id]);
+    if (!r.rowCount) throw new FarmError('Unknown template.');
+    return this.listTemplates(name);
+  }
+
+  /**
+   * Plant a mixed-crop layout in one seed charge. Occupied tiles are skipped (and not charged).
+   * Seeds are paid the same way as plant() (`farm_seed`), so the house-cap planting bonus applies.
+   */
+  async plantLayout(name: string, id: unknown, cellsRaw: unknown, opts?: { skipGuard?: boolean }) {
+    const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.');
+    const parsed = normalizeLayout({ cols: p.cols, rows: p.rows, cells: cellsRaw });
+    if (typeof parsed === 'string') throw new FarmError(parsed);
+    const pid = p.pid;
+    const wrong = parsed.cells.find((c) => isTropical(c.crop) !== p.resort);
+    if (wrong) throw new FarmError(p.resort ? 'Only tropical crops grow at the resort plantation.' : 'Tropical crops only grow at Chud Resort.');
+    if (!opts?.skipGuard) { const blocked = checkFarmAction('plant', keyOf(name), this.clock()); if (blocked) throw new FarmError(blocked); }
+    return this.lock(pid, async () => {
+      const bank = this.bank(); await bank.refresh(name);
+      const now = this.clock(); const nonce = randomUUID();
+      const up = await this.upgrades(this.pool, pid, keyOf(name));
+      const growMul = combinedGrowMul(farmingGrowMul(await skillLevelAsync(name, 'farming')), up.sprinkler);
+      const plantedAtOf = (cropId: string) => { const c = cropById(cropId)!; return now - Math.round(c.grow * (1 - growMul)); };
+      // Pre-check cost against current empty tiles so we fail cheaply when the wallet is short; the transaction re-checks.
+      const own = await this.ownerOf(this.pool, pid); if (!own || own.key !== keyOf(name)) throw new FarmError('You do not own this farm plot.');
+      const busyNow = new Set((await this.tiles(pid, own.key)).map((r) => Number(r.tile)));
+      const planned = parsed.cells.filter((c) => !busyNow.has(c.tile));
+      if (!planned.length) throw new FarmError('Every tile in that template is already planted.');
+      let cost = 0; for (const c of planned) cost += px(cropById(c.crop)!.seed);
+      if (bank.account(name).chips < cost) throw new FarmError(`Not enough chips: that layout costs ${cost.toLocaleString('en-US')}.`);
+      const seedKey = `farm_seed:${keyOf(name)}:${now}:${nonce}`;
+      let planted: FarmTemplateCell[] = [];
+      await this.atomic(name, -cost, 'farm_seed', `Farm ${pid}: planted layout (${planned.length} tiles)`, async (cl) => {
+        const o = await this.mustOwn(cl, pid, name);
+        await cl.query('DELETE FROM farm_tiles WHERE plot_id = $1 AND owner_key <> $2', [pid, o.key]);
+        const busy = new Set((await cl.query('SELECT tile FROM farm_tiles WHERE plot_id = $1', [pid])).rows.map((r) => Number(r.tile)));
+        planted = parsed.cells.filter((c) => !busy.has(c.tile));
+        if (!planted.length) throw new FarmError('Every tile in that template is already planted.');
+        let inner = 0; for (const c of planted) inner += px(cropById(c.crop)!.seed);
+        if (inner !== cost) throw new FarmError('The field changed while that layout was being planted. Try again.');
+        for (const c of planted) await cl.query('INSERT INTO farm_tiles (plot_id, tile, owner_key, crop, planted_at, nonce) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (plot_id, tile) DO NOTHING', [pid, c.tile, o.key, c.crop, plantedAtOf(c.crop), nonce]);
+        const r = await cl.query('SELECT tile FROM farm_tiles WHERE plot_id = $1 AND nonce = $2', [pid, nonce]);
+        if (r.rows.length !== planted.length) throw new FarmError('Some of those tiles are already planted.');
+      }, seedKey);
+      recordPlantSeed(name, { game: 'farm_seed', amount: -cost, key: seedKey }, now);
+      this.onChange?.(pid);
+      return { planted: planted.length, skipped: parsed.cells.length - planted.length, cost, chips: bank.account(name).chips };
+    });
+  }
+  async applyTemplate(name: string, id: unknown, templateId: unknown, originTile: unknown) {
+    if (typeof templateId !== 'string' || !templateId) throw new FarmError('Unknown template.');
+    const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.');
+    const row = (await this.pool.query('SELECT id, name, cols, rows, cells, updated_at FROM farm_templates WHERE owner_key = $1 AND id = $2', [keyOf(name), templateId])).rows[0] as { id: string; name: string; cols: number; rows: number; cells: string; updated_at: string | number } | undefined;
+    const tmpl = row ? this.parseTemplateRow(row) : null;
+    if (!tmpl) throw new FarmError('Unknown template.');
+    const origin = Number.isInteger(originTile) ? (originTile as number) : 0;
+    const cells = stampLayout(tmpl, p.cols, p.rows, origin);
+    if (!cells.length) throw new FarmError('That template does not fit this field.');
+    return this.plantLayout(name, id, cells);
   }
 
   /** Harvest every ready tile (or the given ones). Exactly once: the tiles are deleted in the payout's transaction. */
@@ -650,5 +754,10 @@ export function registerFarm(io: Server, socket: Socket): void {
     if (ids.some((id) => typeof id === 'string' && id.startsWith('rf:'))) await requireResort(need(), FarmError);
     return f.dash(need(), b);
   });
+  on('farm_templates', async (_b, f) => f.listTemplates(need()));
+  on('farm_template_save', async (b, f) => f.saveTemplate(need(), b));
+  on('farm_template_delete', async (b, f) => f.deleteTemplate(need(), b.id));
+  on('farm_plant_layout', async (b, f) => f.plantLayout(await at(b.plot ?? b.id), b.plot ?? b.id, b.cells));
+  on('farm_template_apply', async (b, f) => f.applyTemplate(await at(b.plot ?? b.id), b.plot ?? b.id, b.templateId ?? b.template, b.origin));
 }
 
