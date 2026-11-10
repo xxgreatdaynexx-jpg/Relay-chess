@@ -1,4 +1,5 @@
 import { refillCooler } from './coolerRefill.js';
+import { emitHaul } from './haulVisual.js';
 /**
  * Fishing at the lake dock (rules in shared/fishing.ts). The server rolls every catch when you cast (crypto RNG),
  * keeps it secret until it is landed, and replays the reel minigame from the client's input timeline with the same
@@ -231,6 +232,7 @@ export class Fishing {
       try { await p; } catch (e) { w.revert(); if (e instanceof FishError) throw e; console.error('[fishing] sell failed:', (e as Error).message); throw new FishError('Something went wrong. Nothing was sold.'); }
       royaltyEarn('dock', name, paid);
       for (const [cap, amt] of cuts) { try { fleetNote({ captain: cap, name, kind: 'cut', chips: amt }); } catch { /* log only */ } }
+      try { emitHaul({ name, from: 'warehouse', to: 'market', kind: 'warehouse' }); } catch { /* visual */ }
       return { sold: rows.length, gross: gross + dGross, paid: paid - cutTotal, chips: this.bank().account(name).chips, ...(cutTotal ? { captainCut: cutTotal } : {}) };
     }).then(async result => { await refillCooler(name); return result; });
   }

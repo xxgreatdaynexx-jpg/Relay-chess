@@ -287,6 +287,7 @@ export class Cooking {
       };
       const p = run(); w.bind(p);
       try { await p; } catch (e) { w.revert(); if (e instanceof CookError) throw e; console.error('[cooking] sell failed:', (e as Error).message); throw new CookError('Something went wrong. Nothing was sold.'); }
+      try { emitHaul({ name, from: 'warehouse', to: 'market', kind: 'warehouse' }); } catch { /* visual */ }
       return { sold: rows.length, gross, paid, chips: this.bank().account(name).chips };
     });
   }

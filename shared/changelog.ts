@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-09T19:05:00-06:00", "title": "Fort McChud holdings count toward net worth", "bullets": [
+    "Requested by Dayne: your Fort McChud site now adds to net worth — leased tracts, gathering pipes, wells, pumpjacks, plant units (separators, refinery, tanks, …) and the Deep Ore Mine at their list/build cost, plus sellable crude and products sitting in your tanks at house list sell prices.",
+    "Same total feeds the player profile, Bank assets, wealth-tax roster and net-worth snapshots. Condition/wear is not marked down (repairs stay separate upkeep, like property). Ore still in the fort mine bin is not double-counted here. Survey fees stay a sunk cost.",
+  ]},
   {"commit": "", "at": "2026-11-09T18:55:00-06:00", "title": "Hockey Cup switched to daily rules now", "bullets": [
     "The in-progress Hockey Cup no longer waits out the week: it uses the new daily goal (3 paid wins), daily payouts (Gold 100,000), and ends at the next America/Regina midnight. Existing contributions stay. If a period already meets its daily goal at convert time, it closes and pays through the normal claim path once — no double pay.",
   ]},

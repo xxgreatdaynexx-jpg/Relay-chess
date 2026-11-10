@@ -21,7 +21,7 @@ import { saleLogStmt } from './warehouse-log.js';
 import { ORES, isOre, type OreId } from '../shared/mines.js';
 import {
   FORTMC_TICKET_BASE, MINE_LEVELS, PIPES, PRODUCTS, PUMPJACK_COST, SURVEY_COST, UNITS, WELLS_PER_TRACT, WELL_COST,
-  isProduct, isTract, isUnitKind, newFort, repairCost, sellPayout, settle, tractInfo, unitCount, whole, powerDemand, tankCap, fortBuildValue,
+  isProduct, isTract, isUnitKind, newFort, repairCost, sellPayout, settle, tractInfo, unitCount, whole, powerDemand, tankCap, fortBuildValue, fortWorth,
   type FortState, type Product,
   unloadHaul,
 } from '../shared/fortmc.js';
@@ -90,7 +90,7 @@ export class FortMc {
   haul: { read: (name: string) => Promise<Map<string, number>>; take: (name: string, items: Array<[string, number]>) => Array<{ sql: string; args: unknown[] }> } | null = null;
   async view(name: string | null) {
     const s = name ? await this.load(name) : newFort(this.clock()); const t = name ? await this.today(name) : { gross: 0, paid: 0 };
-    return { fort: s, now: this.clock(), index: priceIndex(), today: { gross: t.gross, paid: t.paid }, ticket: cityTicketPrice(px(FORTMC_TICKET_BASE)), cap: tankCap(s), demand: powerDemand(s), value: px(fortBuildValue(s)), haul: name && this.haul ? Object.fromEntries(await this.haul.read(name).catch(() => new Map<string, number>())) : {} };
+    return { fort: s, now: this.clock(), index: priceIndex(), today: { gross: t.gross, paid: t.paid }, ticket: cityTicketPrice(px(FORTMC_TICKET_BASE)), cap: tankCap(s), demand: powerDemand(s), value: px(fortWorth(s)), haul: name && this.haul ? Object.fromEntries(await this.haul.read(name).catch(() => new Map<string, number>())) : {} };
   }
 
   /** Every paid / state-changing action. */
@@ -174,6 +174,27 @@ export class FortMc {
   }
   /** Fort inventory snapshot (whole units) for the warehouse / auto-sell. */
   async inventory(name: string) { const s = await this.load(name); return { stock: s.stock, ore: s.ore, units: s.units }; }
+  /** One player's Fort McChud holdings at list/build basis + sellable tank stock (price-indexed). */
+  async valueOf(name: string): Promise<number> {
+    const s = await this.load(name); return Math.round(px(fortWorth(s)));
+  }
+  /** All non-QA players' fort holdings (economy Bank totals). */
+  async values(): Promise<number> {
+    const now = this.clock();
+    if (!this.pool) {
+      let tot = 0;
+      for (const [k, s] of this.forts) { if (k.startsWith('qa-')) continue; settle(s, now); tot += px(fortWorth(s)); }
+      return Math.round(tot);
+    }
+    const rows = (await this.pool.query("SELECT player_key, state FROM fortmc_state WHERE player_key NOT LIKE 'qa-%'")).rows as Array<{ player_key: string; state: string }>;
+    let tot = 0;
+    for (const r of rows) {
+      const s = JSON.parse(String(r.state)) as FortState; settle(s, now);
+      this.forts.set(String(r.player_key), s);
+      tot += px(fortWorth(s));
+    }
+    return Math.round(tot);
+  }
   /**
    * A ship-&-sell load of fort products reached the Chud City Warehouse: pay it at the Commodity Exchange tiers
    * (fortmc_daily), ledger 'fortmc_sale' keyed by the shipment id (idempotent), log it and mark the shipment delivered.

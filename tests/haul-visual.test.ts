@@ -95,4 +95,21 @@ describe('haul visual (pt2101u queue #6)', () => {
     expect(haul).toMatch(/haul_visual/);
     expect(clog).toMatch(/delivery trucks|haul trucks|cosmetic/i);
   });
+
+  it('sell paths emit haul trucks to market (source wiring)', () => {
+    const fs = require('node:fs') as typeof import('node:fs');
+    const fishing = fs.readFileSync('server/fishing.ts', 'utf8');
+    const cooking = fs.readFileSync('server/cooking.ts', 'utf8');
+    const loc = fs.readFileSync('server/locmoves.ts', 'utf8');
+    const wh = fs.readFileSync('server/warehouse.ts', 'utf8');
+    const mines = fs.readFileSync('server/mines.ts', 'utf8');
+    const farm = fs.readFileSync('server/farm.ts', 'utf8');
+    expect(fishing).toMatch(/emitHaul\(\{ name, from: 'warehouse', to: 'market'/);
+    expect(cooking).toMatch(/emitHaul\(\{ name, from: 'warehouse', to: 'market'/);
+    expect(loc).toMatch(/emitHaul\(\{ name, from: 'warehouse', to: 'market'/);
+    expect(wh).toMatch(/emitHaul\(\{ name: s\.ownerName, from: 'warehouse', to: 'market'/);
+    expect(mines).toMatch(/emitHaul\(\{ name: account!, from: 'factory', to: 'market', kind: 'mine-sell'/);
+    expect(farm).toMatch(/kind: sink \? 'farm-factory' : 'farm-sell'/);
+  });
+
 });

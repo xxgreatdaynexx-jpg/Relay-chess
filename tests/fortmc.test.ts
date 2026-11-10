@@ -9,7 +9,7 @@ import { Logistics, setLogistics, LOGISTICS_MIGRATION } from '../server/logistic
 import { SINK_DEBIT_GAMES } from '../shared/sinkRoom';
 import {
   newFort, settle, step, tractInfo, sellPayout, efficiency, repairCost, powerDemand, MINE_LEVELS, UNITS, STEP_MS, MAX_CATCHUP_MS,
-  GRID_MW, TRACTS, ORE_VALUE_PER_UNIT, PRODUCTS, WATER_CUT, REPAIR_K, WELL_RATE, type FortState,
+  GRID_MW, TRACTS, ORE_VALUE_PER_UNIT, PRODUCTS, WATER_CUT, REPAIR_K, WELL_RATE, fortBuildValue, fortStockValue, fortWorth, WELL_COST, PUMPJACK_COST, type FortState,
 } from '../shared/fortmc';
 import { DESTINATIONS } from '../shared/resort';
 
@@ -156,5 +156,23 @@ describe('turbine idle header (Tess QA #6)', () => {
     const s = _nf(0); s.units.push({ k: 'turbine', on: true, cond: 100 } as never);
     expect(_ts(s)).toEqual({ built: 1, running: 0, idle: true });
     s.stock.natgas = 50; expect(_ts(s)).toEqual({ built: 1, running: 1, idle: false });
+  });
+});
+
+describe('fortWorth (net worth)', () => {
+  it('fortWorth counts build + sellable stock; skips unsellable intermediates; no wear markdown', () => {
+    const s = newFort(0);
+    s.tracts['1'] = { leased: true, pipe: 1, wells: [{ jack: false, cond: 40 }, { jack: true, cond: 10 }] };
+    s.units.push({ id: 1, k: 'separator', cond: 50, on: true }, { id: 2, k: 'refinery', cond: 100, on: true });
+    s.stock.crude = 100.7; s.stock.gasoline = 20; s.stock.wellstream = 999; s.stock.rawgas = 50;
+    const lease = tractInfo(1).lease;
+    const pipes = 15_000; // PIPES[1].cost
+    const wells = WELL_COST + WELL_COST + PUMPJACK_COST;
+    const units = UNITS.separator.cost + UNITS.refinery.cost;
+    expect(fortBuildValue(s)).toBe(lease + pipes + wells + units);
+    expect(fortStockValue(s)).toBe(PRODUCTS.crude.price * 100 + PRODUCTS.gasoline.price * 20);
+    expect(fortWorth(s)).toBe(fortBuildValue(s) + fortStockValue(s));
+    // empty fort is zero
+    expect(fortWorth(newFort(0))).toBe(0);
   });
 });

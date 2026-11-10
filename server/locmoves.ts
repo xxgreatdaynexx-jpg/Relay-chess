@@ -1,4 +1,5 @@
 import { shipmentManifest, manifestUnits, type ManifestLine } from '../shared/shipmentManifest.js';
+import { emitHaul } from './haulVisual.js';
 import { fenceHeld, markMigrating } from './invFence.js';
 import { packed, OutcomeUnknown, isOutcomeUnknown, outcome, ledgerMarker } from './locstock.js';
 import { PANTRY_MAX } from '../shared/cooking.js';
@@ -391,6 +392,7 @@ export class LocMoves {
         throw e;
       }
       ls.applyMem(name, d);
+      try { if (at !== 'resort') emitHaul({ name, from: 'warehouse', to: 'market', kind: 'warehouse' }); } catch { /* visual */ }
       return { sold: qty, paid, chips: getBank().account(name).chips };
     }
     if (!PACK_TYPES.has(it.type) || !sellable({ type: it.type as ItemType, id: it.id })) throw new MoveError('The Warehouse does not buy that.');
@@ -403,6 +405,7 @@ export class LocMoves {
     sale.w.bind(r);
     try { await r; } catch (e) { if (isOutcomeUnknown(e)) throw new MoveError('That sale is still being confirmed. Nothing will be sold twice; check again in a minute.'); sale.w.revert(); console.error('[locmoves] sale failed:', (e as Error).message); throw new MoveError('That sale didn’t go through. Nothing was sold.'); }
     sale.apply();
+    try { if (at !== 'resort') emitHaul({ name, from: 'warehouse', to: 'market', kind: 'warehouse' }); } catch { /* visual */ }
     return { sold: qty, gross: sale.q.gross, paid: sale.q.paid, chips: getBank().account(name).chips };
   }
 

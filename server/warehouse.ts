@@ -25,6 +25,7 @@ import { getLocMoves } from './locmoves.js';
 import { WAREHOUSE } from '../shared/inventoryLocations.js';
 import { getFarm } from './farm.js';
 import { getFortMc } from './fortmc.js';
+import { emitHaul } from './haulVisual.js';
 import { priceIndex } from './price-index.js';
 import { getLogistics, shipStmt, FreightError, type Shipment } from './logistics.js';
 import { isAtFortMc, isAtResort, requireResort } from './travel.js';
@@ -148,9 +149,11 @@ export class Warehouse {
     let row: SaleLogRow;
     if (s.type === ('fort' as ItemType)) {
       const paid = await getFortMc().sellDelivered(s); row = this.row(s, 'sold', paid, null, now);
+      if (paid > 0) { try { emitHaul({ name: s.ownerName, from: 'warehouse', to: 'market', kind: 'warehouse', background: !!s.auto }); } catch { /* visual */ } }
     } else if (s.type === ('crop' as ItemType)) {
       const farm = getFarm(); if (!farm) throw new Error('farm offline');
       const paid = await farm.sellShipped(s, [saleLogStmt(s, 'sold', 0, null, now), delivered], 'the Resort plantation', 'all'); /* legacy in-flight barn load: keeps its baseline sale XP */ row = this.row(s, 'sold', paid, null, now);
+      if (paid > 0) { try { emitHaul({ name: s.ownerName, from: 'warehouse', to: 'market', kind: 'warehouse', background: !!s.auto }); } catch { /* visual */ } }
     } else {
       // Ore / gems / bars land AT the Chud City Warehouse (loc_stock 'warehouse', exactly once with the delivered flip)
       // and sell there at the house price; whatever the daily tier can't take stays in your Warehouse stock.

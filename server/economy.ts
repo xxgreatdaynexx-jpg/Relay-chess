@@ -25,6 +25,7 @@ import { getDerivs } from './derivs.js';
 import { getRealEstate } from './realEstate.js';
 import { getGarage } from './cars.js';
 import { getFleet } from './fleet.js';
+import { getFortMc } from './fortmc.js';
 
 export const ECON_MIGRATION = `CREATE TABLE IF NOT EXISTS daily_economy (
   day TEXT PRIMARY KEY, cash BIGINT NOT NULL, assets BIGINT, total BIGINT, est_pct REAL, flows JSONB, source TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
@@ -189,6 +190,7 @@ export class Economy {
     const g = getGarage();
     if (g) h.cars = (await g.garage(name).catch(() => ({ cars: [] as Array<{ carId: string; value: number }> }))).cars.map((c) => ({ carId: c.carId, value: c.value }));
     const fl = getFleet(); if (fl) { const v = await fl.valueOf(name).catch(() => 0); if (v > 0) h.extra = [...(h.extra ?? []), { key: 'fleet', label: 'Boats & jets', value: v }]; }
+    const fm = getFortMc(); if (fm) { const v = await fm.valueOf(name).catch(() => 0); if (v > 0) h.extra = [...(h.extra ?? []), { key: 'fortmc', label: 'Fort McChud', value: v }]; }
     return valueHoldings(h, marketPrices(sales, now));
   }
 
@@ -206,6 +208,7 @@ export class Economy {
     if (re) { h.property = await re.playerValue().catch(() => undefined); realEstate = await re.stats().catch(() => null); }
     const g = getGarage(); if (g) h.cars = await g.values().catch(() => []);
     const fl = getFleet(); if (fl) { const v = await fl.values().catch(() => 0); if (v > 0) h.extra = [...(h.extra ?? []), { key: 'fleet', label: 'Boats & jets', value: v }]; }
+    const fm = getFortMc(); if (fm) { const v = await fm.values().catch(() => 0); if (v > 0) h.extra = [...(h.extra ?? []), { key: 'fortmc', label: 'Fort McChud', value: v }]; }
     const v = valueHoldings(h, marketPrices(sales, now));
     return { realEstate, cash, assets: v.total, total: cash + v.total, estPct: v.estPct, categories: v.categories, offshore, totalWithOffshore: cash + v.total + offshore };
   }
@@ -226,7 +229,7 @@ export class Economy {
       houseCap: houseCapView(),
       flows, net: flows.faucets.reduce((a, f) => a + f.amount, 0) - flows.sinks.reduce((a, f) => a + f.amount, 0),
       history: hist.slice(-60).map((d) => ({ day: d.day, cash: d.cash, assets: d.assets, total: d.total, source: d.source })),
-      method: 'Prices: median of the last 20 sales in 30 days. No sales: same rarity + weapon, then same rarity, then a base value (est.). Ore/goods without sales use the house price (est.). Factory machines at 50% of Machinist cost (est.). Cars: depreciated dealer resale value. Stocks: player-owned shares at the live exchange price; shares no player owns are offshore assets (shown separately, not in net worth). Funds at NAV, shorts at equity (collateral + unrealized P&L), options at model value. QA accounts excluded.',
+      method: 'Prices: median of the last 20 sales in 30 days. No sales: same rarity + weapon, then same rarity, then a base value (est.). Ore/goods without sales use the house price (est.). Factory machines at 50% of Machinist cost (est.). Cars: depreciated dealer resale value. Stocks: player-owned shares at the live exchange price; shares no player owns are offshore assets (shown separately, not in net worth). Funds at NAV, shorts at equity (collateral + unrealized P&L), options at model value. Fort McChud: leased tracts, pipes, wells, pumpjacks, plant units and Deep Ore Mine at list/build cost plus sellable tank crude/products at house list sell prices (wear not marked down; same paid/list idea as real estate). QA accounts excluded.',
     };
   }
 

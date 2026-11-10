@@ -243,7 +243,7 @@ export function settle(s: FortState, now: number): number {
 
 /** Whole units available (stocks are fractional internally). */
 export const whole = (n: number | undefined) => Math.floor((n ?? 0) + 1e-9);
-/** Total base build cost of a fort (for the report card / net worth hints). */
+/** Total base build cost of a fort (tracts, pipes, wells/jacks, plant units, Deep Ore Mine) at list prices. */
 export function fortBuildValue(s: FortState): number {
   let v = 0;
   for (const [k, t] of Object.entries(s.tracts)) { if (t.leased) v += tractInfo(Number(k)).lease; v += PIPES.slice(1, t.pipe + 1).reduce((a, p) => a + p.cost, 0); for (const w of t.wells) v += WELL_COST + (w.jack ? PUMPJACK_COST : 0); }
@@ -251,6 +251,17 @@ export function fortBuildValue(s: FortState): number {
   if (s.mine) v += mineBuildCost(s.mine.level);
   return v;
 }
+/** Sellable tank-farm crude & products at house list sell prices (no sell-buff; same spirit as priceOf for ore NW). Wear is not marked down — property-style paid/list basis, repairs are separate upkeep. */
+export function fortStockValue(s: FortState): number {
+  let v = 0;
+  for (const [id, qty] of Object.entries(s.stock ?? {})) {
+    if (!isProduct(id)) continue; const p = PRODUCTS[id]; if (!p.sellable || !(p.price > 0)) continue;
+    v += p.price * whole(qty);
+  }
+  return v;
+}
+/** Net-worth value of a fort: build basis + sellable stock. Does not include ore-bin feedstock (already valued when mined elsewhere) or survey sunk costs. */
+export function fortWorth(s: FortState): number { return fortBuildValue(s) + fortStockValue(s); }
 
 // ---- Fort McChud Mine (walk-in cave 'fortmc'): its exclusive industrial ores, unloaded at the fort, become feedstock.
 /** ore -> [fort product, units per ore]. Each product is an existing unit input (refinery, gas plant, coker, steam cracker). */
