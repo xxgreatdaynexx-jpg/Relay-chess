@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getBank } from '../server/casino-store';
 import { Exchange, activitySignal, dailyDrift, stepBase } from '../server/stocks';
-import { COMPANIES, COMPANY_BY_TICKER, MAX_TRADE_IMPACT, SECTORS, TICK_MS, maxOrderChips, quote } from '../shared/stocks';
+import { COMPANIES, COMPANY_BY_TICKER, MAX_TRADE_IMPACT, MIN_ORDER_SHARES, SECTORS, TICK_MS, maxOrderChips, maxOrderShares, quote } from '../shared/stocks';
 import { valueHoldings } from '../server/economy';
 import { dailyEvents } from '../server/stock-news';
 const SK = 'test-secret-0123456789abcdef';
@@ -64,7 +64,9 @@ describe('trading (memory wallet)', () => {
     const { e } = mk(); const name = 'QA-Stocks2'; fund(name, 3);
     await expect(e.trade(name, 'buy', 'QRKL', 1)).rejects.toThrow(/Not enough chips/);
     fund(name, 10_000_000); const c = COMPANY_BY_TICKER.get('QRKL')!;
-    await expect(e.trade(name, 'buy', 'QRKL', Math.ceil(maxOrderChips(c) / e.price('QRKL')!) + 50)).rejects.toThrow(/too large/);
+    const cap = maxOrderShares(c, e.price('QRKL')!);
+    expect(cap).toBeGreaterThanOrEqual(MIN_ORDER_SHARES);
+    await expect(e.trade(name, 'buy', 'QRKL', cap + 1)).rejects.toThrow(/too large/);
     await expect(e.trade(name, 'buy', 'NOPE', 1)).rejects.toThrow(/Unknown/);
     await expect(e.trade(name, 'buy', 'QRKL', 1.5)).rejects.toThrow(/whole/);
   });
@@ -147,5 +149,27 @@ describe('stock market hours', () => {
     const naiveDrop = raw.filter(([t]) => t !== closedTip);
     const naiveWallSpan = naiveDrop[naiveDrop.length - 1]![0] - naiveDrop[0]![0];
     expect(xSpan).toBeLessThan(naiveWallSpan * 0.75);
+  });
+});
+
+describe('stock order size (request #68)', () => {
+  it('allows at least 10,000 shares in one order, still caps price impact at 2%, and still respects remaining float', async () => {
+    const { e } = mk(); const name = 'QA-StocksBig';
+    fund(name, 50_000_000);
+    const cheap = [...COMPANIES].filter((c) => c.shares > MIN_ORDER_SHARES).sort((a, b) => a.start - b.start)[0]!;
+    const p = e.price(cheap.ticker)!;
+    expect(maxOrderShares(cheap, p)).toBeGreaterThanOrEqual(MIN_ORDER_SHARES);
+    // Old chip window was only a few hundred shares on even the cheapest names.
+    expect(Math.floor(maxOrderChips(cheap) / p)).toBeLessThan(MIN_ORDER_SHARES);
+    const r = await e.trade(name, 'buy', cheap.ticker, MIN_ORDER_SHARES);
+    expect(r.shares).toBe(MIN_ORDER_SHARES);
+    expect(quote(cheap, p, 'buy', MIN_ORDER_SHARES).imp).toBe(MAX_TRADE_IMPACT);
+    const tight = COMPANIES.find((c) => c.shares < MIN_ORDER_SHARES)!;
+    await expect(e.trade(name, 'buy', tight.ticker, tight.shares + 1)).rejects.toThrow(/left offshore|too large/);
+    await expect(e.trade(name, 'buy', tight.ticker, MIN_ORDER_SHARES)).rejects.toThrow(/left offshore|too large/);
+  });
+
+  it('every listed company has a per-order share cap of at least 10,000 at its start price', () => {
+    for (const c of COMPANIES) expect(maxOrderShares(c, c.start)).toBeGreaterThanOrEqual(MIN_ORDER_SHARES);
   });
 });

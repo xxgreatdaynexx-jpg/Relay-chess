@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T09:25:00-06:00", "title": "Larger stock orders", "bullets": [
+    "Requested by carter2: a single stock order can now be at least 10,000 shares (or the shares still available offshore, if fewer). Shorts use the same size cap, and a short that size can still be closed in one go.",
+    "A trade still moves the price by at most 2%, and all trading in a stock still moves it by at most 5% per 30 seconds. The cap on how far players can push a price overall is unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T09:20:00-06:00", "title": "Farm templates and area select", "bullets": [
     "Requested by carter2: on a farm you can drag a box to select empty tiles (Shift-drag adds to the selection) and plant them in one go, the same way the Factory select tool grabs a region.",
     "Save a named crop layout from the whole field or from your selection, then apply it later to plant the same pattern on empty tiles. Mixed crops are planted in one seed charge at the normal price, and that spend counts toward today’s house-cap planting bonus. Existing click-to-select, plant-all, auto-plant, and ownership rules are unchanged.",

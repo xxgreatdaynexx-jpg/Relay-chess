@@ -21,7 +21,7 @@ import { getBank } from './casino-store.js';
 import { getEconomy } from './economy.js';
 import { Derivatives, getDerivs, setDerivs } from './derivs.js';
 import { divYield } from '../shared/derivs.js';
-import { COMPANIES, COMPANY_BY_TICKER, SECTOR_BY_ID, SECTORS, IMPACT_HALF_LIFE_MS, MAX_TICK_IMPACT, impactAllowed, IMPACT_CAP_MSG, TICK_MS, maxOrderChips, parseQty, quote, seeded, hash32, isMarketOpen, marketHoursView, MARKET_CLOSED_MSG, type ActivityKey, type Company, type NewsItem } from '../shared/stocks.js';
+import { COMPANIES, COMPANY_BY_TICKER, SECTOR_BY_ID, SECTORS, IMPACT_HALF_LIFE_MS, MAX_TICK_IMPACT, impactAllowed, IMPACT_CAP_MSG, TICK_MS, maxOrderChips, maxOrderShares, parseQty, quote, seeded, hash32, isMarketOpen, marketHoursView, MARKET_CLOSED_MSG, type ActivityKey, type Company, type NewsItem } from '../shared/stocks.js';
 import { dailyEvents, loadNewsKey, memoryNewsKey, type NewsKey } from './stock-news.js';
 import { skillLevelAsync } from './skills.js';
 import { tradingFeeMul } from '../shared/skillPerks.js';
@@ -277,7 +277,7 @@ export class Exchange {
     const chart = await this.chart(c.ticker, range);
     // MU #9 v2: the header badge uses the exact figure the 1D chart shows (first 1D point → live price)
     const dayChg = seriesChange(periodSpec(range).ms === periodSpec('1d').ms && periodSpec(range).step === periodSpec('1d').step ? chart : await this.chart(c.ticker, '1d')).pct;
-    return { dayChg, callLock, company: { ...c, ...this.summary(c) }, chart, stats: await this.keyStats(c), period: range, news: this.news.filter((n) => n.ticker === c.ticker).slice(0, 20), mine, maxOrder: maxOrderChips(c), drift: dailyDrift(c, this.inflPct, this.act) };
+    return { dayChg, callLock, company: { ...c, ...this.summary(c) }, chart, stats: await this.keyStats(c), period: range, news: this.news.filter((n) => n.ticker === c.ticker).slice(0, 20), mine, maxOrder: maxOrderChips(c), maxShares: maxOrderShares(c, this.price(c.ticker)!), drift: dailyDrift(c, this.inflPct, this.act) };
   }
   /** MU #9: display-only key stats (P/E, EPS, ranges, realized volatility, avg volume). Reads history; changes nothing. */
   async keyStats(c: Company) {
@@ -368,7 +368,8 @@ export class Exchange {
     const ps = parseQty(n); if (!ps.ok) throw new StockError(ps.error); const shares = ps.n;
     const bank = getBank(); const k = keyOf(name); const row = this.rows.get(c.ticker)!; const price = priceOf(row);
     const q = quote(c, price, side, shares, tradingFeeMul(await skillLevelAsync(name, 'trading')), cityFeeMul(), cityTradeFeeMul()); // Trading perk + mayor's fee rate + Trade week / School
-    if (q.gross > maxOrderChips(c)) throw new StockError(`Order too large: max ${maxOrderChips(c).toLocaleString()} chips per trade (about ${Math.max(1, Math.floor(maxOrderChips(c) / price))} shares).`);
+    const cap = maxOrderShares(c, price);
+    if (shares > cap) throw new StockError(`Order too large: at most ${cap.toLocaleString()} shares per trade.`);
     if (side === 'sell' && q.total < 1) throw new StockError('Too small to sell after the fee.');
     if (side === 'buy' && await this.callLocked(name, c.ticker)) throw new StockError(`You hold an open call on ${c.ticker}, so you can't buy ${c.ticker} shares until it expires or you sell it. Selling shares is still allowed.`);
     if (side === 'buy' && row.held + shares > c.shares) throw new StockError(`Only ${c.shares - row.held} shares are left offshore.`);

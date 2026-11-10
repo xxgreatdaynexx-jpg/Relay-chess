@@ -17,7 +17,7 @@ import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import { getBank } from './casino-store.js';
 import { StockError, keyOf, priceOf, type Exchange } from './stocks.js';
-import { COMPANIES, COMPANY_BY_TICKER, MAX_TICK_IMPACT, impactAllowed, IMPACT_CAP_MSG, maxOrderChips, parseQty, quote, isMarketOpen, MARKET_CLOSED_MSG, type Company } from '../shared/stocks.js';
+import { COMPANIES, COMPANY_BY_TICKER, MAX_TICK_IMPACT, impactAllowed, IMPACT_CAP_MSG, maxOrderShares, parseQty, quote, isMarketOpen, MARKET_CLOSED_MSG, type Company } from '../shared/stocks.js';
 import {
   optionBid,
   BORROW_FEE, DIV_HOUR_UTC, FUNDS, FUND_BY_ID, FUND_MAX_ORDER, MAX_OPEN_OPTIONS, MAX_OPEN_SHORTS, OPT_EXPIRIES, OPT_MAX_PREMIUM, OPT_MAX_QTY,
@@ -231,7 +231,8 @@ export class Derivatives {
     if (!isMarketOpen(this.clock())) throw new StockError(MARKET_CLOSED_MSG);
     const c = this.comp(t); const ps = parseQty(n); if (!ps.ok) throw new StockError(ps.error); const shares = ps.n;
     const price = this.price(c.ticker)!; const q = quote(c, price, 'sell', shares); // you sell borrowed shares: bid side, pushes the price down
-    if (q.gross > maxOrderChips(c)) throw new StockError(`Order too large: max ${maxOrderChips(c).toLocaleString()} chips per trade (about ${Math.max(1, Math.floor(maxOrderChips(c) / price))} shares).`);
+    const cap = maxOrderShares(c, price);
+    if (shares > cap) throw new StockError(`Order too large: at most ${cap.toLocaleString()} shares per trade.`);
     if ((await this.shorts(name)).length >= MAX_OPEN_SHORTS) throw new StockError(`You can have at most ${MAX_OPEN_SHORTS} open shorts.`);
     const collateral = Math.ceil(SHORT_INIT * q.gross); const cost = collateral + q.fee;
     this.debitCheck(name, cost);
@@ -266,7 +267,7 @@ export class Derivatives {
     if (!isMarketOpen(this.clock())) throw new StockError(MARKET_CLOSED_MSG);
     const s = (await this.shorts(name)).find((x) => x.id === id); if (!s) throw new StockError('That short is already closed.');
     const c = COMPANY_BY_TICKER.get(s.ticker)!; const price = this.price(c.ticker)!; const { q, payout: exact } = shortClose(c, s, price); // buy back: ask side, pushes the price up (same math the UI shows)
-    if (q.gross > maxOrderChips(c) * 2) throw new StockError('This short is too big to close in one go right now. Wait for the price to settle.');
+    if (s.shares > maxOrderShares(c, price) * 2) throw new StockError('This short is too big to close in one go right now. Wait for the price to settle.');
     const fees0 = s.fees; // (memory mode mutates `s` in settle; P&L must use the fees paid before this close)
     try { const payout = await this.settleShort(s, 'closed', q.fill, q.gross, q.fee, Math.min(q.imp, MAX_TICK_IMPACT), c, exact); return { id: s.id, ticker: s.ticker, shares: s.shares, fill: r2(q.fill), payout, pnl: payout - s.collateral - fees0, balance: getBank().account(name).chips }; }
     catch (e) { if (e instanceof Skip) throw new StockError('That short was just updated. Refresh and try again.'); throw e; }

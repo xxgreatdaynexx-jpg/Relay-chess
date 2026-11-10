@@ -8,7 +8,7 @@ import { request, socket } from '@/lib/net';
 import { useMoneyAction } from '@/lib/moneyAction';
 import { useAccount } from '@/lib/auth';
 import { DIV_HOUR_UTC, FUND_MAX_ORDER, OPT_EXPIRIES, OPT_STRIKES, SHORT_INIT, SHORT_MAINT, BORROW_FEE, FUND_BY_ID, fundQuote, strikeFor } from '../../../shared/derivs';
-import { MAX_TICK_IMPACT, MAX_TRADE_IMPACT, STOCK_FEE, STOCK_SPREAD, quote, parseQty, COMPANY_BY_TICKER, isMarketOpen, MARKET_CLOSED_MSG, type NewsItem, type SectorInfo } from '../../../shared/stocks';
+import { MAX_TICK_IMPACT, MAX_TRADE_IMPACT, MIN_ORDER_SHARES, STOCK_FEE, STOCK_SPREAD, quote, parseQty, COMPANY_BY_TICKER, isMarketOpen, MARKET_CLOSED_MSG, type NewsItem, type SectorInfo } from '../../../shared/stocks';
 import { usePanelDrag } from '@/lib/panelDrag';
 import { InvestChart, KeyStatsGrid, compact } from '@/components/stocks/InvestChart';
 import { defaultInterval, epsOf, INTERVALS, type Candle, type CandleInterval, type KeyStats, type Period } from '../../../shared/stockStats';
@@ -148,7 +148,7 @@ function MarketList({ data, onPick }: { data: ListResp; onPick: (t: string) => v
 }
 
 
-interface CompanyResp { dayChg?: number; company: Row & { blurb: string; vol: number; beta: number; liquidity: number }; chart: Array<[number, number]>; stats?: KeyStats; news: NewsItem[]; mine: { shares: number; cost: number } | null; maxOrder: number; drift: number; callLock?: boolean }
+interface CompanyResp { dayChg?: number; company: Row & { blurb: string; vol: number; beta: number; liquidity: number }; chart: Array<[number, number]>; stats?: KeyStats; news: NewsItem[]; mine: { shares: number; cost: number } | null; maxOrder: number; maxShares?: number; drift: number; callLock?: boolean }
 type Sub = 'overview' | 'chart' | 'financials' | 'news' | 'chain' | 'dividends' | 'holders';
 const SUBS: ReadonlyArray<readonly [Sub, string]> = [['overview', 'Overview'], ['chart', 'Chart'], ['financials', 'Key stats'], ['news', 'News'], ['chain', 'Options chain'], ['dividends', 'Dividends'], ['holders', 'Holders & activity']];
 function CompanyView({ ticker, onBack, onTraded, onOption, marketOpen = true }: { ticker: string; onBack: () => void; onTraded: () => void; onOption: (o: OptPrefill) => void; marketOpen?: boolean }) {
@@ -205,7 +205,7 @@ function CompanyView({ ticker, onBack, onTraded, onOption, marketOpen = true }: 
             <QtyErr e={qtyErr} />
             {d.callLock && <p className="w-full text-xs text-amber-300" data-testid="stk-call-lock">📈 You hold an open call on {ticker}, so buying {ticker} shares is locked until it expires or you sell it. You can still sell.</p>}
           </div>)}
-        <p className="mt-1 text-[11px] opacity-60">Max 🪙 {n(d.maxOrder)} per order (moves the price ≤ {MAX_TRADE_IMPACT * 100}%; ≤ {MAX_TICK_IMPACT * 100}% per 30s for everyone). Your order moves the price; the effect fades over a few hours. {STOCK_FEE * 100}% fee is burned.</p>
+        <p className="mt-1 text-[11px] opacity-60">At most {(d.maxShares ?? MIN_ORDER_SHARES).toLocaleString()} shares per order (about 🪙 {n((d.maxShares ?? MIN_ORDER_SHARES) * c.price)}; price moves ≤ {MAX_TRADE_IMPACT * 100}% per trade, ≤ {MAX_TICK_IMPACT * 100}% per 30s for everyone). Your order moves the price; the effect fades over a few hours. {STOCK_FEE * 100}% fee is burned. Buys also can't exceed the shares still offshore.</p>
         {msg && <p className={`mt-1 text-xs ${msg.ok ? 'text-emerald-400' : 'text-rose-400'}`} data-testid="stk-msg">{msg.t}</p>}
       </div>
       {sub === 'overview' && <>

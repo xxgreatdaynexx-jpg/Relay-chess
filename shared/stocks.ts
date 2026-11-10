@@ -162,8 +162,16 @@ export function parseQty(raw: unknown, opts: { decimals?: number; max?: number }
 export const feeOf = (chips: number, mul = 1, city = 1, civic = 1) => Math.max(1, Math.ceil(chips * STOCK_FEE * Math.max(0.7, Math.min(1, mul)) * Math.max(0.75, Math.min(1.25, city)) * Math.max(0.6, Math.min(1, civic))));
 /** Price impact (log-fraction) of an order worth `value` chips, capped per trade. */
 export const impactOf = (c: Company, value: number) => Math.min(MAX_TRADE_IMPACT, value / c.liquidity);
-/** Largest order (chips) a single trade can be. */
+/** Largest order (chips) implied by the 2% impact window — kept for quotes and historical comparison. */
 export const maxOrderChips = (c: Company) => Math.floor(MAX_TRADE_IMPACT * c.liquidity);
+/** Floor for a single stock or short order, in shares. Remaining offshore float is a separate cap. */
+export const MIN_ORDER_SHARES = 10_000;
+/** Largest number of shares one stock order may be at this price. At least MIN_ORDER_SHARES, or more when the 2%-of-liquidity chip window would already allow a bigger order (very cheap names). */
+export function maxOrderShares(c: Company, price: number): number {
+  const p = Math.max(price, 0.01);
+  const byImpact = Math.max(1, Math.floor(maxOrderChips(c) / p));
+  return Math.max(MIN_ORDER_SHARES, byImpact);
+}
 /** Quote: average fill price over the impact, plus half the spread. */
 export function quote(c: Company, price: number, side: 'buy' | 'sell', shares: number, feeMul = 1, cityMul = 1, civicMul = 1) {
   const value = price * shares; const imp = impactOf(c, value) * (side === 'buy' ? 1 : -1);
