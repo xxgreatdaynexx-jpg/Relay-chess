@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T15:50:00-06:00", "title": "Billionaire Update coming soon", "bullets": [
+    "A Billionaire Update sign is up on the city map, in the field south of the airport. No date yet — just coming soon.",
+  ]},
   {"commit": "", "at": "2026-11-10T14:45:00-06:00", "title": "Fixed crops stuck at 100% that couldn't be harvested (reported by Liam)", "bullets": [
     "A crop that was almost finished growing could fill the green bar all the way to 100% while Harvest stayed off, and the time left only appeared in a hover tooltip that is easy to miss on a phone.",
     "The bar now stays just shy of full until the crop is actually ripe, and each growing tile shows the time left on the tile itself. Existing plantings are unchanged — they can be harvested as soon as they ripen, and nothing is deleted or paid out automatically.",

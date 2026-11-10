@@ -39,6 +39,7 @@ import { HOUSING_TYPES, type HousingType } from './housing';
 import { buildingId, patchId, civicRetired, PUBLIC_SERVICE_DEEDS } from '../../../shared/realEstate';
 import { attachTownHallProtest, type TownHallProtest } from './townHallProtest3d';
 import { attachFarmProtests, type FarmProtestHandle } from './farmProtest3d';
+import { BILLIONAIRE_SIGN, BILLIONAIRE_SIGN_POS } from '../../../shared/billionaireUpdate';
 import { disposeSharedProtestSfx } from './protestSfx';
 import type { OwnedProp } from './farmProtest';
 
@@ -130,7 +131,47 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const S = PLATE; const XM = xmasOn(); const keep = <M extends THREE.Material>(m: M) => { disposables.push(m); if ('map' in m && m.map) disposables.push(m.map as THREE.Texture); return m; };
   const slab = new THREE.Mesh(geo(new THREE.BoxGeometry(S * 2, 3, S * 2)), [mat({ color: 0x4a3322 }), mat({ color: 0x4a3322 }), (XM ? keep(xmasGround(S * 2, S * 2, tier === 'low', -S, S)) : mat({ color: 0x3f9a45, roughness: 1, emissive: 0x0f3a14, emissiveIntensity: 0.6 })), mat({ color: 0x2a1c12 }), mat({ color: 0x4a3322 }), mat({ color: 0x4a3322 })]);
   slab.position.y = -1.5; scene.add(slab);
-  // (Dayne 2026-11-07 19:39 UTC-6) the 'Millionaire Update' billboard south of the airport apron was removed.
+  const buPick: THREE.Object3D[] = []; let buGlow: THREE.MeshStandardMaterial | null = null;
+  { // Billionaire Update teaser: a gold billboard in the open field south of the airport apron, between the taxiway and the terminal. Same style as the earlier update sign; no date on the face.
+    const c = document.createElement('canvas'); c.width = 1024; c.height = 400; const g = c.getContext('2d')!;
+    const grd = g.createLinearGradient(0, 0, 0, 400); grd.addColorStop(0, '#fff1c4'); grd.addColorStop(0.45, '#f2c766'); grd.addColorStop(1, '#c8923e');
+    g.fillStyle = grd; g.fillRect(0, 0, 1024, 400);
+    const sheen = g.createLinearGradient(0, 0, 1024, 400); sheen.addColorStop(0.3, 'rgba(255,255,255,0)'); sheen.addColorStop(0.42, 'rgba(255,255,255,0.35)'); sheen.addColorStop(0.5, 'rgba(255,255,255,0)');
+    g.fillStyle = sheen; g.fillRect(0, 0, 1024, 400);
+    g.strokeStyle = '#7a5520'; g.lineWidth = 6; g.strokeRect(26, 26, 972, 348); g.strokeStyle = '#fff3cf'; g.lineWidth = 2; g.strokeRect(38, 38, 948, 324);
+    const coin = (x: number, y: number) => { const r = 54; const cg = g.createRadialGradient(x - 16, y - 18, 6, x, y, r); cg.addColorStop(0, '#fff6d8'); cg.addColorStop(0.6, '#e8b54e'); cg.addColorStop(1, '#8a5f22');
+      g.fillStyle = cg; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); g.strokeStyle = '#6b4818'; g.lineWidth = 5; g.stroke(); g.beginPath(); g.arc(x, y, r - 11, 0, Math.PI * 2); g.lineWidth = 2; g.stroke();
+      g.fillStyle = '#5a3b12'; g.font = '800 64px Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('$', x, y + 3); };
+    coin(110, 200); coin(914, 200);
+    const star = (x: number, y: number, r: number) => { g.fillStyle = '#ffffff'; g.beginPath(); g.moveTo(x, y - r); g.quadraticCurveTo(x, y, x + r, y); g.quadraticCurveTo(x, y, x, y + r); g.quadraticCurveTo(x, y, x - r, y); g.quadraticCurveTo(x, y, x, y - r); g.fill(); };
+    star(205, 92, 16); star(830, 300, 18); star(760, 78, 10); star(260, 318, 10);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = 'italic 700 92px Fraunces Variable, Georgia, serif'; g.fillStyle = 'rgba(90,55,10,0.45)'; g.fillText('Billionaire Update', 514, 168);
+    g.fillStyle = '#3a2508'; g.fillText('Billionaire Update', 512, 164);
+    g.fillStyle = '#5a3b12'; g.fillRect(330, 232, 364, 3);
+    g.font = '700 40px Outfit Variable, system-ui, sans-serif'; g.fillStyle = '#4a300c'; g.fillText('C O M I N G   S O O N', 512, 285);
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8; disposables.push(tex);
+    const face = new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.6, roughness: 0.45 }); disposables.push(face);
+    const goldEdge = mat({ color: 0xe8b54e, emissive: 0xffc860, emissiveIntensity: 0.9 * NEON, metalness: 0.6, roughness: 0.35 });
+    const backing = mat({ color: 0x3a2a14, roughness: 0.8 }), post = mat({ color: 0x2b1e10, roughness: 0.7, metalness: 0.2 }), stone = mat({ color: 0x8d8579, roughness: 0.95 }), stoneTop = mat({ color: 0xb3a994, roughness: 0.9 });
+    const B = (w: number, h: number, d: number, m: THREE.Material | THREE.Material[], x: number, y: number, z: number) => { const bg = new THREE.BoxGeometry(w, h, d); disposables.push(bg); const o = new THREE.Mesh(bg, m); o.position.set(x, y, z); return o; };
+    const ms = new THREE.Group(); ms.name = BILLIONAIRE_SIGN;
+    const W = 10, H = 3.9, BY = 4.6;
+    const panel = new THREE.Group(); panel.position.y = BY; panel.rotation.x = -0.22; ms.add(panel); // lean back a touch toward the elevated city camera
+    const board = B(W, H, 0.3, [backing, backing, backing, backing, face, backing], 0, 0, 0); panel.add(board);
+    const f = 0.22; panel.add(B(W + 2 * f, f, 0.42, goldEdge, 0, H / 2 + f / 2, 0), B(W + 2 * f, f, 0.42, goldEdge, 0, -H / 2 - f / 2, 0), B(f, H, 0.42, goldEdge, -W / 2 - f / 2, 0, 0), B(f, H, 0.42, goldEdge, W / 2 + f / 2, 0, 0));
+    for (const x of [-W / 2 + 1.3, W / 2 - 1.3]) { ms.add(B(0.6, BY, 0.6, post, x, 0.5 + BY / 2 - 0.5, -0.35)); ms.add(B(0.8, 0.25, 0.8, goldEdge, x, 0.62, -0.35)); }
+    ms.add(B(W + 1.2, 0.5, 2.2, stone, 0, 0.25, -0.35), B(W + 0.6, 0.12, 1.8, stoneTop, 0, 0.56, -0.35)); // plinth
+    const sparks: THREE.Sprite[] = [];
+    for (const [x, y] of [[-4.6, 2.1], [4.3, -1.7], [2.8, 2.15], [-3.2, -2.0], [5.15, 1.4]] as const) {
+      const sm = new THREE.SpriteMaterial({ map: glowTex, color: 0xfff0b0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }); disposables.push(sm);
+      const sp = new THREE.Sprite(sm); sp.position.set(x, y, 0.3); sp.scale.setScalar(0.9); sp.userData.ph = Math.random() * 6.28; panel.add(sp); sparks.push(sp); }
+    // Yaw-only billboard: always turns its face toward the camera, stays planted on its plinth; sparkles twinkle.
+    board.onBeforeRender = (_r, _s, cam) => { ms.rotation.y = Math.atan2(cam.position.x - ms.position.x, cam.position.z - ms.position.z);
+      const t = performance.now() / 1000; for (const sp of sparks) { const k = Math.max(0, Math.sin(t * 1.7 + sp.userData.ph)); (sp.material as THREE.SpriteMaterial).opacity = k * k * 0.9; sp.scale.setScalar(0.5 + k * 0.9); } };
+    ms.scale.setScalar(3.2); ms.position.set(BILLIONAIRE_SIGN_POS[0], 0, BILLIONAIRE_SIGN_POS[1]); scene.add(ms);
+    buGlow = goldEdge; ms.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.userData.spot = BILLIONAIRE_SIGN; buPick.push(o); } });
+  }
   // Animated water: scrolling ripples + moonlight glints, fogged like the rest of the scene. Each lake gets its own copy
   // with a distance-to-shore texture so shallows are lighter, the middle darker, and a thin foam/ripple line rings the shore.
   const waterMats: THREE.ShaderMaterial[] = [];
@@ -220,7 +261,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // Landmarks.
   type LM = { id: string; root: THREE.Group; hit: THREE.Object3D[]; emissive: THREE.MeshStandardMaterial[]; sign: THREE.Sprite; pos: THREE.Vector3; height: number };
   const lms: LM[] = [];
-  const pickables: THREE.Object3D[] = [];
+  const pickables: THREE.Object3D[] = [...buPick];
   const lmIds = [...LANDMARK_IDS, ...WORLD_SPOTS.map((sp) => sp.id).filter((id) => !LANDMARK_IDS.includes(id))];
   const lmBoxes = landmarks(lmIds);
   const box = (w: number, hgt: number, d: number, m: THREE.Material, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(geo(new THREE.BoxGeometry(w, hgt, d)), m); o.position.set(x, y + hgt / 2, z); return o; };
@@ -867,6 +908,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const setHover = (id: string | null) => {
     if (id === hovered) return; hovered = id; canvas.style.cursor = id ? 'pointer' : 'grab';
     for (const l of lms) { const on = l.id === id; l.root.scale.setScalar(on ? 1.06 : 1); l.sign.userData.hover = on; for (const m of l.emissive) { m.userData.ei = on ? (m.map ? 1.6 : 3) * NEON : (m.map ? 0.9 : 1.6) * NEON; m.emissiveIntensity = m.userData.ei * glowK; } }
+    if (buGlow) buGlow.emissiveIntensity = (id === BILLIONAIRE_SIGN ? 2.2 : 0.9) * NEON;
   };
   const clearTip = () => { setHover(null); h.onHover(null, 0, 0); };
   // Drag-panning: no hover highlight or tooltip while the pointer is held and moving (it used to linger after the pan).
@@ -879,6 +921,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     if (id.startsWith('barn:')) { h.onHover(null, 0, 0); h.onBarn?.(id); return; }
     if (id.startsWith('trailer:')) { h.onHover(id, e.clientX, e.clientY); if (h.onTrailer?.(id.slice(8))) return; window.dispatchEvent(new CustomEvent('open-player', { detail: id.slice(8) })); return; } // trailers: your own opens your home (kitchen), others the owner's profile
     if (id.startsWith('lm:') || id.startsWith('b:') || id.startsWith('p:') || id.startsWith('f:') || id.startsWith('cf:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel
+    if (id === BILLIONAIRE_SIGN) { setHover(id); return; } // teaser only — no date, no feature list
     flyTo(id);
   };
   /** Glide the camera to a world point (player-profile "show on map" for land and farms). */

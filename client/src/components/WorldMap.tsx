@@ -16,6 +16,7 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { lazyWithReload } from '@/lib/lazyWithReload';
 import { importWithReload } from '@/lib/chunkReload';
 import { WORLD_SPOTS } from '@/lib/worldSpots';
+import { BILLIONAIRE_SIGN } from '../../../shared/billionaireUpdate';
 import { useWalletChips } from '@/lib/wallet';
 import { CLOSE_WORLD_PANELS, WALLET_CLOSE, NONE, closePanel, panelId, togglePanel, type WorldPanel } from '@/lib/worldPanels';
 import { MINE_CAVE_EVENT } from '../../../shared/mines';
@@ -372,6 +373,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       {spot && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#' + spot.color.toString(16).padStart(6, '0') }} data-testid="world-tip"><b>{spot.icon} {spot.label}</b><span>{spot.blurb}</span>{ownerLine && <span className="world-tip-owner">🏛 {ownerLine}</span>}<em>Click to enter</em></div>}
       {!spot && tipProp && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#c9a24a' }} data-testid="world-tip"><b>{tipProp.label}</b><span>{ownerLine}</span><em>Click for the deed</em></div>}
       {trailer && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#ffb36b' }} data-testid="world-tip">{me && trailer.toLowerCase() === me.toLowerCase() ? <b>🏠 Your trailer</b> : <><b>🏠 {trailer}'s trailer</b><span>Chud Acres Trailer Park</span></>}</div>}
+      {tip?.id === BILLIONAIRE_SIGN && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#e8b54e' }} data-testid="world-tip"><b>Billionaire Update</b><span>Coming soon</span></div>}
       <div className="world-corner">
         <button type="button" onClick={() => setPanel((c) => togglePanel(c, { k: 'deeds' }))} data-testid="world-deeds-btn">🏛 Real estate</button>
         {me && <button type="button" onClick={() => setPanel((c) => togglePanel(c, { k: 'home' }))} data-testid="world-home-btn">🏠 My home</button>}
