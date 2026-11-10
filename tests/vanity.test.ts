@@ -6,7 +6,7 @@ import { Vanity, setVanity } from '../server/vanity';
 import { setPriceIndexForTest } from '../server/price-index';
 import { SINK_DEBIT_GAMES, sinkLoss } from '../shared/sinkRoom';
 import { SHOUT_COOLDOWN_MS, SHOUT_PRICE, VANITY_FIREWORKS, VANITY_LIVERIES, VANITY_TITLES } from '../shared/vanity';
-import { fleetModel } from '../shared/fleet';
+import { fleetModel, paintFleetModel } from '../shared/fleet';
 
 const fund = (n: string, amt: number) => getBank().transferConfirmed(n, amt, { key: `test_fund:${n}:${Math.random()}`, game: 'admin' });
 
@@ -65,6 +65,9 @@ describe('Vanity Desk', () => {
     expect(liv.price).toBe(40_000);
     await v.applyLivery('QA-V', liv.id, boat.id);
     expect((await v.ownedLiveries('QA-V'))[0]).toMatchObject({ liveryId: 'goldleaf', craftId: boat.id });
+    const gold = VANITY_LIVERIES.find((x) => x.id === 'goldleaf')!.color;
+    expect(paintFleetModel(fleetModel('yacht')!, gold).color).toBe(gold);
+    expect((await f.view('QA-V')).owned.find((c: { id: string }) => c.id === boat.id)).toMatchObject({ liveryColor: gold });
     await expect(v.applyLivery('QA-V', liv.id, 'nope')).rejects.toThrow(/yacht or jet/);
   });
 

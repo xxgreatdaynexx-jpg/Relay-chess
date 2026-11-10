@@ -8,11 +8,11 @@ import * as THREE from 'three';
 import { previewScene } from '../lib/fleetPreview';
 import { request } from '@/lib/net';
 import { buildCraft, disposeTree } from '@/lib/fleetModels';
-import { BOATS, DEEP_ZONES, JETS, type FleetKind, type FleetModel } from '../../../shared/fleet';
+import { BOATS, DEEP_ZONES, JETS, paintFleetModel, type FleetKind, type FleetModel } from '../../../shared/fleet';
 import { usePanelDrag } from '@/lib/panelDrag';
 import { GRACE_DAYS } from '../../../shared/realEstate';
 
-type Owned = { id: string; kind: FleetKind; model: string; paid: number; boughtAt: number; arrears: number; upkeepPaid: number; value: number; upkeep?: number; upkeepInfo?: { perDay: number; nextChargeAt: number; arrears: number; arrearsChips: number; paidTotal: number; graceDays: number } };
+type Owned = { id: string; kind: FleetKind; model: string; paid: number; boughtAt: number; arrears: number; upkeepPaid: number; value: number; upkeep?: number; liveryColor?: number; upkeepInfo?: { perDay: number; nextChargeAt: number; arrears: number; arrearsChips: number; paidTotal: number; graceDays: number } };
 type View = { signedIn: boolean; owned: Owned[]; chips: number | null; catalog: Array<FleetModel & { basePrice: number }>; deep?: { zone: number; name: string | null } };
 const fmt = (n: number) => n.toLocaleString('en-US');
 
@@ -41,6 +41,7 @@ export function FleetStore({ kind, onClose, onDeepSea }: { kind: FleetKind; onCl
   const cat = v?.catalog ?? base.map((m) => ({ ...m, basePrice: m.price }));
   const m = cat.find((x) => x.id === sel) ?? cat[0]!;
   const mine = (v?.owned ?? []).filter((o) => o.kind === kind);
+  const painted = paintFleetModel(m, mine.find((o) => o.model === m.id && o.liveryColor != null)?.liveryColor);
   const act = async (ev: string, data: unknown, ok: (a: Record<string, unknown>) => string) => { setBusy(true); const a = await request(ev, data); setBusy(false); setMsg(a.ok ? ok(a as unknown as Record<string, unknown>) : a.error ?? 'Something went wrong.'); load(); };
   const panel = (
     <div className={`dealer fleet${boat ? '' : ' private-hangar'}`} data-testid={boat ? 'marina' : 'hangar'} {...backdropDismiss(() => onClose())}>
@@ -59,7 +60,7 @@ export function FleetStore({ kind, onClose, onDeepSea }: { kind: FleetKind; onCl
             </div>
           </aside>
           <section className="dealer-main">
-            <Preview m={m} />
+            <Preview m={painted} />
             <h4>{m.emoji} {m.name}</h4>
             <p>{m.blurb}</p>
             <ul className="fleet-stats">
@@ -67,7 +68,7 @@ export function FleetStore({ kind, onClose, onDeepSea }: { kind: FleetKind; onCl
               {m.kind === 'jet' && <li data-testid={`fleet-seats-${m.id}`}>💺 Passenger seats <b>{jetSeats(m.id)}</b> · open boarding when you fly and friends ride along (free or a capped fare)</li>}
               {CARGO[m.id] && <li data-testid={`fleet-cap-${m.id}`}>📦 Cargo capacity <b>{fmt(CARGO[m.id]!.cap)}</b> units a trip · fuel <b>{fmt(CARGO[m.id]!.trip)}</b>/trip (~{perUnitBase(m.id).toFixed(3)}/unit){CARGO[m.id]!.useUpkeep ? <> · upkeep <b>{fmt(CARGO[m.id]!.useUpkeep)}</b> per day used</> : null}</li>}
               {boat ? <><li>Deep-sea range <b>{DEEP_ZONES.slice(0, m.zone ?? 0).map((z) => z.name).join(' · ')}</b></li>{m.biteMul && m.biteMul < 1 && <li>Bites <b>{Math.round((1 - m.biteMul) * 100)}% faster</b> at sea</li>}{!!m.upkeep && <><li data-testid={`fleet-daily-upkeep-${m.id}`}>Daily upkeep <b>{fmt(m.upkeep)}</b> chips (crew and dock)</li><li>{GRACE_DAYS} unpaid days in a row → repossessed. Missed bills send you a private warning first; the wallet is never pushed negative.</li></>}</>
-                : <><li>Daily upkeep <b>{fmt(m.upkeep ?? 0)}</b> chips (crew, fuel, hangar)</li><li>Free flights to Chud Resort, no ticket</li><li>{GRACE_DAYS} unpaid days in a row → repossessed</li></>}
+                : <><li>Daily upkeep <b>{fmt(m.upkeep ?? 0)}</b> chips (crew, fuel, hangar)</li><li>Free flights to Chud Resort, no ticket</li><li>{GRACE_DAYS} unpaid days in a row → repossessed. Missed bills send you a private warning first; the wallet is never pushed negative.</li></>}
               <li>Sell back <b>70%</b> of list · counts toward net worth</li>
             </ul>
             {boat && v?.deep && <small data-testid="fleet-deep">{v.deep.zone ? `Your best boat (${v.deep.name}) reaches ${DEEP_ZONES[v.deep.zone - 1]!.name}.` : 'Buy any boat to unlock deep-sea fishing from the Marina.'}</small>}

@@ -8,7 +8,7 @@
  * must still be worth owning (saving > 0) and none may pay back in under MIN_PAYBACK_DAYS.
  */
 export type CargoKind = 'truck' | 'boat' | 'jet';
-export interface CargoSpec { kind: CargoKind; cap: number; trip: number; /** trucks/boats: base chips the first day a vehicle is used; jets pay the hangar's daily upkeep instead */ useUpkeep: number }
+export interface CargoSpec { kind: CargoKind; cap: number; trip: number; /** trucks/skiff/sportfisher: base chips the first day a vehicle is used; jets and luxury yachts pay daily marina/hangar upkeep instead */ useUpkeep: number }
 export const TRUCK_UNIT = 1_000;
 export const CARGO: Record<string, CargoSpec> = {
   pickup: { kind: 'truck', cap: 1 * TRUCK_UNIT, trip: 120, useUpkeep: 0 }, // small 1x
@@ -17,8 +17,8 @@ export const CARGO: Record<string, CargoSpec> = {
   tanker: { kind: 'truck', cap: 6 * TRUCK_UNIT, trip: 420, useUpkeep: 0 }, // tanker / road train 6x
   skiff: { kind: 'boat', cap: 4_000, trip: 200, useUpkeep: 300 },
   sportfisher: { kind: 'boat', cap: 10_000, trip: 400, useUpkeep: 1_200 },
-  yacht: { kind: 'boat', cap: 25_000, trip: 800, useUpkeep: 4_500 },
-  superyacht: { kind: 'boat', cap: 60_000, trip: 1_600, useUpkeep: 12_000 },
+  yacht: { kind: 'boat', cap: 25_000, trip: 800, useUpkeep: 0 }, // daily luxury upkeep (shared/fleet.ts) replaces first-trip cargo useUpkeep
+  superyacht: { kind: 'boat', cap: 60_000, trip: 1_600, useUpkeep: 0 },
   citation: { kind: 'jet', cap: 3_000, trip: 900, useUpkeep: 0 },
   g700: { kind: 'jet', cap: 8_000, trip: 2_000, useUpkeep: 0 },
   chudone: { kind: 'jet', cap: 25_000, trip: 5_000, useUpkeep: 0 },

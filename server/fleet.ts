@@ -32,6 +32,10 @@ export function craftUpkeepInfo(c: { model: string; arrears: number; upkeepPaid:
   const perDay = craftUpkeep(c.model); const next = Date.parse(new Date(now).toISOString().slice(0, 10) + 'T00:00:00Z') + 86_400_000;
   return { perDay, nextChargeAt: next, arrears: c.arrears, arrearsChips: c.arrears * perDay, paidTotal: c.upkeepPaid, graceDays: GRACE_DAYS };
 }
+
+/** Optional vanity-livery colours keyed by owned craft id (set from server/vanity.ts to avoid a circular import). */
+let craftPaintHook: ((name: string) => Promise<Record<string, number>>) | null = null;
+export function setCraftPaintHook(fn: ((name: string) => Promise<Record<string, number>>) | null) { craftPaintHook = fn; }
 export const jetUpkeepInfo = craftUpkeepInfo;
 /** Daily luxury upkeep at today's price index. Hospital perk: healthy crews, lower upkeep (server/city.ts). */
 export const craftUpkeep = (model: string) => Math.round(px(fleetModel(model)?.upkeep ?? 0) * (1 - cityPerk('vehicle_upkeep')));
@@ -39,14 +43,15 @@ export const jetUpkeep = (model: string) => craftUpkeep(model);
 export const boatUpkeep = (model: string) => craftUpkeep(model);
 
 const fmtChips = (n: number) => n.toLocaleString('en-US');
-/** Private missed-bill / repossession notices for luxury boats. Never posted to public chat. */
-function warnBoatUpkeep(owner: string, label: string, amount: number, arrearsAfter: number, repo: boolean) {
-  const from = 'Chud Resort Marina';
+/** Private missed-bill / repossession notices for luxury boats and jets. Never posted to public chat. */
+function warnCraftUpkeep(kind: FleetKind, owner: string, label: string, amount: number, arrearsAfter: number, repo: boolean) {
+  const from = kind === 'boat' ? 'Chud Resort Marina' : 'Chud Hub Private Hangar';
+  const craft = kind === 'boat' ? 'boat' : 'jet';
   const text = repo
     ? `Your ${label} was repossessed after ${GRACE_DAYS} unpaid upkeep days in a row. Today's bill was 🪙 ${fmtChips(amount)}. There is no refund.`
     : arrearsAfter >= GRACE_DAYS - 1
-      ? `Today's upkeep of 🪙 ${fmtChips(amount)} for your ${label} could not be paid. This is your last warning: ${arrearsAfter} of ${GRACE_DAYS} unpaid days used. If tomorrow's bill is also unpaid, the boat will be repossessed with no refund.`
-      : `Today's upkeep of 🪙 ${fmtChips(amount)} for your ${label} could not be paid. ${arrearsAfter} of ${GRACE_DAYS} unpaid days used. After ${GRACE_DAYS} unpaid days in a row the boat is repossessed with no refund.`;
+      ? `Today's upkeep of 🪙 ${fmtChips(amount)} for your ${label} could not be paid. This is your last warning: ${arrearsAfter} of ${GRACE_DAYS} unpaid days used. If tomorrow's bill is also unpaid, the ${craft} will be repossessed with no refund.`
+      : `Today's upkeep of 🪙 ${fmtChips(amount)} for your ${label} could not be paid. ${arrearsAfter} of ${GRACE_DAYS} unpaid days used. After ${GRACE_DAYS} unpaid days in a row the ${craft} is repossessed with no refund.`;
   void sendPopup(owner, from, text).catch((e) => console.error('[fleet] upkeep notice failed:', (e as Error).message));
 }
 
@@ -69,7 +74,9 @@ export class Fleet {
     return kind ? all.filter((c) => c.kind === kind) : all;
   }
   async view(name: string | null) {
-    const now = this.clock(); const mine = name ? (await this.owned(name)).map((c) => ({ ...c, value: craftValue(c), ...(craftUpkeep(c.model) > 0 ? { upkeepInfo: craftUpkeepInfo(c, now) } : {}) })) : [];
+    const now = this.clock();
+    const paint = name && craftPaintHook ? await craftPaintHook(name).catch(() => ({} as Record<string, number>)) : {};
+    const mine = name ? (await this.owned(name)).map((c) => ({ ...c, value: craftValue(c), ...(craftUpkeep(c.model) > 0 ? { upkeepInfo: craftUpkeepInfo(c, now) } : {}), ...(paint?.[c.id] != null ? { liveryColor: paint[c.id] } : {}) })) : [];
     return { signedIn: !!name, owned: mine, chips: name && getBank().ready ? getBank().account(name).chips : null, deep: bestBoat(mine.filter((c) => c.kind === 'boat').map((c) => c.model)) };
   }
   /** Deep-sea access for fishing: best zone + bite multiplier of the boats this player owns. */
@@ -130,7 +137,7 @@ export class Fleet {
    * Daily luxury upkeep (jets + yacht/superyacht), same pattern as property tax: once per UTC day per craft owned since before today.
    * Paid -> ONE transaction (ledger 'jet_upkeep' / 'boat_upkeep' + claim row + arrears = 0). Never charges more than the wallet
    * holds (no negative balances). Unpaid -> arrears+1; GRACE_DAYS unpaid days in a row -> repossessed (row deleted, no refund).
-   * Luxury-boat misses send a private popup to the owner only. Claim nonce makes reruns no-ops.
+   * Missed bills send a private popup to the owner only (Marina or Hangar). Claim nonce makes reruns no-ops.
    */
   async runUpkeep(): Promise<{ charged: number; paid: number; unpaid: number; repossessed: number }> {
     const now = this.clock(); const day = utcDay(now); const start = Date.parse(`${day}T00:00:00Z`); const bank = getBank();
@@ -168,7 +175,7 @@ export class Fleet {
         if (!this.pool) { this.memUpkeep.add(`${day}:${j.id}`); const l = this.mem.get(j.key) ?? []; const i = l.findIndex((x) => x.id === j.id); if (i >= 0) { if (repo) l.splice(i, 1); else l[i]!.arrears++; } }
         else { const cl = await this.pool.connect(); try { await cl.query('BEGIN'); await claim(cl, false); await cl.query('COMMIT'); } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; } finally { cl.release(); } }
         out.unpaid++; if (repo) out.repossessed++;
-        if (j.kind === 'boat') warnBoatUpkeep(j.owner, label, amount, j.arrears + 1, repo);
+        warnCraftUpkeep(j.kind, j.owner, label, amount, j.arrears + 1, repo);
       } catch (e) { if (!(e instanceof FleetError)) console.error('[fleet] upkeep failed:', (e as Error).message); }
     }
     if (out.paid + out.unpaid) { console.log(`[fleet] upkeep ${day}: paid ${out.paid} (${out.charged} chips), unpaid ${out.unpaid}, repossessed ${out.repossessed}`); this.onChange?.(); }

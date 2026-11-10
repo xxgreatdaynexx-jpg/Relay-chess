@@ -9,7 +9,7 @@ import { bootAttach, setBootState } from './boot-retry.js';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank } from './casino-store.js';
 import { px } from './price-index.js';
-import { getFleet } from './fleet.js';
+import { getFleet, setCraftPaintHook } from './fleet.js';
 import { getChatLog } from './chat.js';
 import { setChatTitleHook } from './chat.js';
 import { validateChat } from '../shared/chat.js';
@@ -74,6 +74,15 @@ export class Vanity {
     return this.shouts.get(k) ?? 0;
   }
 
+  async paintMap(name: string): Promise<Record<string, number>> {
+    const out: Record<string, number> = {};
+    for (const row of await this.ownedLiveries(name)) {
+      if (!row.craftId) continue;
+      const color = liveryById(row.liveryId)?.color;
+      if (color != null) out[row.craftId] = color;
+    }
+    return out;
+  }
   async view(name: string | null) {
     const now = this.clock();
     const catalog = {
@@ -244,7 +253,7 @@ export class Vanity {
 let vanity: Vanity | null = null;
 let io: Server | null = null;
 export const getVanity = () => vanity;
-export function setVanity(v: Vanity | null) { vanity = v; setChatTitleHook(v ? (n) => v.liveTitle(n) : null); }
+export function setVanity(v: Vanity | null) { vanity = v; setChatTitleHook(v ? (n) => v.liveTitle(n) : null); setCraftPaintHook(v ? (n) => v.paintMap(n) : null); }
 export async function initVanity(): Promise<void> {
   const url = databaseUrl();
   if (!url) { const v = new Vanity(null); setVanity(v); setBootState('vanity', 'memory'); return; }

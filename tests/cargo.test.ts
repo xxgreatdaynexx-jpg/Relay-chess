@@ -16,7 +16,7 @@ _ba(() => { Logistics.freightYardClosed = false; }); _aa(() => { Logistics.freig
 
 const fund = (n: string, amt: number) => getBank().transferConfirmed(n, amt, { key: `f:${n}:${Math.random()}`, game: 'admin' });
 const chips = (n: string) => getBank().account(n).chips;
-const tiers = { truck: TRUCKS.map((t) => ({ id: t.id, price: t.price, up: 0 })), boat: BOATS.map((b) => ({ id: b.id, price: b.price, up: 0 })), jet: JETS.map((j) => ({ id: j.id, price: j.price, up: j.upkeep ?? 0 })) };
+const tiers = { truck: TRUCKS.map((t) => ({ id: t.id, price: t.price, up: 0 })), boat: BOATS.map((b) => ({ id: b.id, price: b.price, up: b.upkeep ?? 0 })), jet: JETS.map((j) => ({ id: j.id, price: j.price, up: j.upkeep ?? 0 })) };
 
 describe('cargo capacity by tier (mu-cargo)', () => {
   it('capacity rises with size and price in every kind; trucks are 1x / ~3x / ~6x', () => {
@@ -39,6 +39,12 @@ describe('cargo capacity by tier (mu-cargo)', () => {
   it('payback guard: no tier is free money; big tiers never pay back faster than small ones', () => {
     for (const list of Object.values(tiers)) { let last = 0;
       for (const v of list) { const p = payback(v.id, v.price, v.up); expect(p.saving).toBeGreaterThan(0); expect(p.days).toBeGreaterThanOrEqual(MIN_PAYBACK_DAYS); expect(p.days).toBeGreaterThanOrEqual(last); last = p.days; } }
+  });
+  it('yacht and superyacht cargo useUpkeep is zero so daily luxury upkeep is not double-charged', () => {
+    expect(CARGO.yacht!.useUpkeep).toBe(0); expect(CARGO.superyacht!.useUpkeep).toBe(0);
+    expect(CARGO.skiff!.useUpkeep).toBeGreaterThan(0); expect(CARGO.sportfisher!.useUpkeep).toBeGreaterThan(0);
+    expect(ownFeeBase('yacht', 1, true)).toBe(CARGO.yacht!.trip);
+    expect(ownFeeBase('skiff', 1, true)).toBe(CARGO.skiff!.trip + CARGO.skiff!.useUpkeep);
   });
   it('is in the launch popup', () => { expect(LAUNCH.items.some((i) => /Cargo capacity/.test(i.title) && /fewer trips/.test(i.text))).toBe(true); });
 });

@@ -25,6 +25,8 @@ export const JETS: FleetModel[] = [
 export const FLEET: FleetModel[] = [...BOATS, ...JETS];
 export const FLEET_BY_ID = new Map(FLEET.map((m) => [m.id, m]));
 export const fleetModel = (id: unknown, kind?: FleetKind) => { const m = typeof id === 'string' ? FLEET_BY_ID.get(id) : undefined; return m && (!kind || m.kind === kind) ? m : undefined; };
+/** Apply a vanity livery colour to a catalog model for 3D previews. */
+export const paintFleetModel = (m: FleetModel, color?: number | null): FleetModel => (color != null && Number.isFinite(color) ? { ...m, color } : m);
 /** Sell back (and net worth) at 70% of today's list price, like property. */
 export const FLEET_RESALE = 0.7;
 export const fleetResale = (listPx: number) => Math.round(listPx * FLEET_RESALE);

@@ -7,12 +7,13 @@ import { setPriceIndexForTest } from '../server/price-index';
 import { JETS, MAX_JETS, fleetModel } from '../shared/fleet';
 import { GRACE_DAYS } from '../shared/realEstate';
 import { SINK_DEBIT_GAMES, sinkLoss } from '../shared/sinkRoom';
+import { resetPopups } from '../server/popups';
 
 const fund = (n: string, amt: number) => getBank().transferConfirmed(n, amt, { key: `test_fund:${n}:${Math.random()}`, game: 'admin' });
 const DAY = 86_400_000; const T0 = Date.parse('2026-11-01T12:00:00Z');
 
 describe('Private jets (#11)', () => {
-  beforeEach(() => { resetBank(); setPriceIndexForTest(1); });
+  beforeEach(() => { resetBank(); setPriceIndexForTest(1); resetPopups(); });
   it('catalog: three jets, upkeep high and rising; upkeep is a sink, buys are not', () => {
     expect(JETS.map((j) => j.id)).toEqual(['citation', 'g700', 'chudone']);
     expect(JETS.map((j) => j.upkeep)).toEqual([6_000, 18_000, 60_000]);
@@ -39,6 +40,7 @@ describe('Private jets (#11)', () => {
     const db = newDb({ noAstCoverageCheck: true }); const { Pool } = db.adapters.createPg(); const pool = new Pool();
     getBank().retryMs = []; await getBank().attach(new PgCasinoStore(pool));
     let now = T0; const f = new Fleet(pool, () => now); await f.init();
+    const popups = resetPopups();
     const price = fleetModel('citation', 'jet')!.price; await fund('QA-Up', price + 6_000 - START_CHIPS + 0);
     await f.buy('QA-Up', 'jet', 'citation'); expect(getBank().account('QA-Up').chips).toBe(6_000);
     expect((await f.runUpkeep()).paid).toBe(0); // bought today: first bill is tomorrow
@@ -46,10 +48,20 @@ describe('Private jets (#11)', () => {
     expect(await f.runUpkeep()).toMatchObject({ paid: 0, unpaid: 0 }); // rerun same day is a no-op
     expect(getBank().account('QA-Up').chips).toBe(0);
     expect(db.public.many(`SELECT amount FROM wallet_transactions WHERE game = 'jet_upkeep'`).map((x) => Number(x.amount))).toEqual([-6_000]);
+    expect(await popups.pending('QA-Up')).toHaveLength(0);
     for (let d = 1; d < GRACE_DAYS; d++) { now += DAY; expect(await f.runUpkeep()).toMatchObject({ unpaid: 1, repossessed: 0 }); }
     expect((await f.owned('QA-Up', 'jet'))[0]!.arrears).toBe(GRACE_DAYS - 1);
+    const mid = await popups.pending('QA-Up');
+    expect(mid[0]!.from).toBe('Chud Hub Private Hangar');
+    expect(mid[0]!.text).toMatch(/1 of 3 unpaid days/);
+    expect(mid.at(-1)!.text).toMatch(/last warning/i);
+    expect(mid.at(-1)!.text).toMatch(/jet will be repossessed/);
     now += DAY; expect(await f.runUpkeep()).toMatchObject({ unpaid: 1, repossessed: 1 });
     expect(await f.owned('QA-Up', 'jet')).toHaveLength(0);
+    const last = await popups.pending('QA-Up');
+    expect(last.at(-1)!.from).toBe('Chud Hub Private Hangar');
+    expect(last.at(-1)!.text).toMatch(/repossessed/);
+    expect(last.at(-1)!.text).toMatch(/no refund/i);
   });
   it('paying clears arrears', async () => {
     let now = T0; const f = new Fleet(null, () => now); const price = fleetModel('citation', 'jet')!.price;
