@@ -18,7 +18,7 @@ export function FactoryViewer() {
   const dragView = usePanelDrag('factory-view');
   const cvRef = useRef<HTMLCanvasElement>(null); const wrapRef = useRef<HTMLDivElement>(null);
   const sim = useRef<SimRef & { skew: number }>({ s: null, g: new Map(), store: new Map(), shown: 0, shownFrom: 0, shownAt: 0, skew: 0 });
-  const ui = useRef<UiRef>({ tool: 'select', dir: 0, sel: null, moving: null, hover: null, drag: [], removing: new Set(), z: 1, px: 0, py: 0, mini: null });
+  const ui = useRef<UiRef>({ tool: 'select', dir: 0, sel: null, moving: null, sels: [], hover: null, drag: [], removing: new Set(), marquee: null, z: 1, px: 0, py: 0, mini: null });
   useEffect(() => {
     const on = (e: Event) => { const d = (e as CustomEvent<string>).detail; if (typeof d === 'string' && d.trim()) { setV(null); setName(d.trim()); } };
     window.addEventListener('open-factory-view', on); return () => window.removeEventListener('open-factory-view', on);

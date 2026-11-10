@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { bestHand, HE_TURN_MS } from '../shared/holdem.js';
 import type { CasinoCard, Suit } from '../shared/casino.js';
 import { CasinoBank } from '../server/casino-store.js';
 import { HoldemRoom, HoldemTable } from '../server/holdem.js';
+import { setNightlyClock } from '../server/nightly-event.js';
 
 const card = (s: string): CasinoCard => {
   const r = s.slice(0, -1);
@@ -18,6 +19,11 @@ function table(deck: string, names: string[], stacks: number[]) {
   names.forEach((n, i) => t.sit(n, stacks[i]!, 0));
   return { bank, t };
 }
+
+// Chip-conservation assertions must not depend on wall-clock time: the nightly 10x
+// poker bonus (8–9 PM America/Regina) would otherwise credit winners mid-suite.
+beforeEach(() => setNightlyClock(() => Date.UTC(2026, 10, 9, 4)));
+afterEach(() => setNightlyClock(() => Date.now()));
 
 describe('hold\'em hand ranking', () => {
   it('orders categories and kickers', () => {

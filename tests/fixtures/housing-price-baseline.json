@@ -1,7 +1,7 @@
 {
   "base": "274ea368",
-  "nonHousingHash": "3f02c7f5fe279753ebcf432b2394991bc77c160ad37d72db91953e3c52044291",
-  "housingGeometryHash": "8e61fa9f6fd623e4e6776fb4665ca92d10809c1e8ba0699ddfd5ba656e40734e",
+  "nonHousingHash": "8bb44b2db2993a363893d7fa12081dbfaa9922992d98f541ac3ffd11d3920333",
+  "housingGeometryHash": "04693aff85355e409219762ce4e9ff9a265ada7fcfd3dccd03e23441f063e94f",
   "housing": [
     {"id":"b:house:-691:-188","slots":1,"price":17500},
     {"id":"b:rowhouse:-687:-332","slots":2,"price":37000},

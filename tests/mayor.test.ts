@@ -143,7 +143,7 @@ describe('mayor powers', () => {
   });
   it('mayor API includes text-only bill records, not arbitrary economy powers', () => {
     const own = Object.getOwnPropertyNames(Mayor.prototype).filter((k) => k !== 'constructor').sort();
-    expect(own).toEqual(['candidates', 'tallied', 'changeBlock', 'elect', 'eligibility', 'file', 'init', 'lawHistory', 'mayor', 'submitLaw', 'pending', 'rates', 'reload', 'remove', 'setRates', 'settle', 'term', 'tx', 'vetoLaw', 'vice', 'view', 'vote'].sort());
+    expect(own).toEqual(['approveLawDraft', 'candidates', 'tallied', 'changeBlock', 'elect', 'eligibility', 'file', 'init', 'lawHistory', 'mayor', 'submitLaw', 'pending', 'rates', 'rejectLawDraft', 'reload', 'remove', 'setRates', 'settle', 'term', 'tx', 'vetoLaw', 'vice', 'view', 'vote'].sort());
   });
   it('admin removal ends the term and resets rates to default immediately', async () => {
     const s = await withMayor(); await s.m.setRates('Ann', { property: 1.25, fee: 1.25 });

@@ -9,8 +9,8 @@ import { outskirts } from '../shared/outskirts';
 import { clearOfRoads, landmarks, nearestTangent, obbOverlap, PARK_AREA, PLATE, roadClearance } from '../shared/worldLayout';
 import { RealEstate, PropertyError } from '../server/realEstate';
 const h = (o: unknown) => createHash('sha256').update(JSON.stringify(o)).digest('hex').slice(0, 16);
-// Base 6c9544d (pre-change) fingerprints: same 541 ids, same geometry + prices, same countryside buildings/fields.
-const BASE = { n: 541, ids: 'acb4ca4b4b94c9ca', geo: 'ffbb4e9810a3d1aa', buildings: '3ddcb810ef6cda9a', fields: 'd7ab945b01921d8a' };
+// Catalog after rf:13–20 (e74f9fa) plus in-place resort road clearance (owned ids unchanged). Countryside buildings/fields unchanged since 6c9544d.
+const BASE = { n: 549, ids: '13f008cdee337fa0', geo: '8f76dea92770cd85', buildings: '3ddcb810ef6cda9a', fields: 'd7ab945b01921d8a' };
 const RETIRED = ['b:apartment:-90:-585', 'b:apartment:131:-380', 'b:house:-1042:-487', 'b:house:-106:-644', 'b:house:-165:-629', 'b:house:-570:-747', 'b:house:-639:-701', 'b:house:-982:-483',
   'b:house:1010:-460', 'b:house:1065:-459', 'b:house:947:-486', 'b:rowhouse:-174:-579', 'b:rowhouse:-628:-789', 'b:rowhouse:186:-350', 'b:rowhouse:68:-360', 'b:tower:110:-315',
   'p:lot:-948:-583', 'p:park:388:145', 'p:park:666:-134'];
@@ -40,7 +40,8 @@ describe('civic plots', () => {
 describe('ownership and stable ids', () => {
   const ps = properties();
   it('catalog ids, geometry and prices are byte-identical to the base; countryside unchanged', () => {
-    expect(ps.length).toBe(BASE.n); expect(h(ps.map((p) => p.id).sort())).toBe(BASE.ids);
+    expect(ps.length).toBe(BASE.n); expect(ps.filter((p) => /^rf:(1[3-9]|20)$/.test(p.id)).map((p) => p.id).sort()).toEqual(['rf:13','rf:14','rf:15','rf:16','rf:17','rf:18','rf:19','rf:20']);
+    expect(h(ps.map((p) => p.id).sort())).toBe(BASE.ids);
     expect(h(ps.map((p) => [p.id, p.x, p.z, p.w, p.d, p.rot, p.price]))).toBe(BASE.geo);
     expect(h(outskirts().buildings)).toBe(BASE.buildings); expect(h(outskirts().fields)).toBe(BASE.fields);
   });
