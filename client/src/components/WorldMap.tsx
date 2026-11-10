@@ -12,6 +12,7 @@ import { isHomeProperty } from '../../../shared/homes';
 import { myHomeRows } from '../lib/myHome';
 import { EmploymentHost, OPEN_EMPLOY } from './EmploymentPanel';
 import { CityHallHost, OPEN_CITYHALL } from './CityHallPanel';
+import { FireworksHost, PrestigeDeskHost } from './PrestigeDesk';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { lazyWithReload } from '@/lib/lazyWithReload';
 import { importWithReload } from '@/lib/chunkReload';
@@ -409,6 +410,8 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       <CookingHost me={me} />
       <EmploymentHost />
       <CityHallHost />
+      <PrestigeDeskHost />
+      <FireworksHost />
       {toast && <div className="world-toast" role="status" data-testid="world-toast">{toast}</div>}
       {farm && <FarmGame onAllFarms={hasBarn ? openAllFarms : undefined} id={farm} label={propertyById(farm)?.label ?? 'Farm'} onClose={() => setFarm(null)} />}
       {deeds && <DeedList owned={owned} me={me} onOpen={(id) => setDeed(id)} onClose={() => setDeeds(false)} />}

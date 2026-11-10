@@ -16,6 +16,13 @@ import {
 import { isBuildPost } from './build.js';
 import { loadOfflinePlayers, type OfflinePlayer } from './offline-players.js';
 
+
+/** Optional live title lookup (Vanity Desk). Sync only — chat posts must stay synchronous. */
+type TitleHook = (name: string) => string | null | undefined;
+let titleHook: TitleHook | null = null;
+export function setChatTitleHook(fn: TitleHook | null) { titleHook = fn; }
+const titleOf = (name: string) => titleHook?.(name) || undefined;
+
 export const CHAT_MIGRATION = `CREATE TABLE IF NOT EXISTS chat_messages (
   id BIGINT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -102,7 +109,8 @@ export class ChatLog {
     // Ids are time-based so they stay unique and ordered across restarts.
     const id = Math.max(this.lastId + 1, now);
     this.lastId = id;
-    const message: ChatMessage = { id, name, text: check.text, at: now };
+    const title = titleOf(name);
+    const message: ChatMessage = { id, name, text: check.text, at: now, ...(title ? { title } : {}) };
     this.messages.push(message);
     if (this.messages.length > this.cap) this.messages.splice(0, this.messages.length - this.cap);
     this.persist(message);
@@ -114,6 +122,17 @@ export class ChatLog {
     const id = Math.max(this.lastId + 1, now);
     this.lastId = id;
     const message: ChatMessage = { id, name, text, at: now };
+    this.messages.push(message);
+    if (this.messages.length > this.cap) this.messages.splice(0, this.messages.length - this.cap);
+    this.persist(message);
+    return message;
+  }
+
+  /** Paid city shout-out: already validated and paid by Vanity Desk. No chat rate limit. */
+  postShout(name: string, text: string, now = Date.now(), title?: string | null): ChatMessage {
+    const id = Math.max(this.lastId + 1, now);
+    this.lastId = id;
+    const message: ChatMessage = { id, name, text, at: now, shout: true, ...(title ? { title } : {}) };
     this.messages.push(message);
     if (this.messages.length > this.cap) this.messages.splice(0, this.messages.length - this.cap);
     this.persist(message);

@@ -5,7 +5,7 @@ export const CHAT_HISTORY = 200;
 export const ACTIVITIES = ['blackjack', 'roulette', 'poker', 'slots', 'solitaire', 'lootmatch', 'arena'] as const;
 export type Activity = (typeof ACTIVITIES)[number];
 
-export interface ChatMessage { id: number; name: string; text: string; at: number; qa?: true }
+export interface ChatMessage { id: number; name: string; text: string; at: number; qa?: true; title?: string; shout?: true }
 export interface OnlineUser {
   name: string;
   qa?: true;

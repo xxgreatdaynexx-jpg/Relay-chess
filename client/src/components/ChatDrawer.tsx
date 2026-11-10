@@ -202,7 +202,8 @@ export function ChatDrawer() {
             {messages.length === 0 && <div className="chat-dim">No messages yet. Say hi!</div>}
             {messages.map((m) => (
               <div key={m.id} className={`chat-msg${m.name === me ? ' mine' : ''}`}>
-                <button type="button" className="chat-from" onClick={() => { void pick({ name: m.name }); openPlayer(m.name); }}>{m.name}</button>
+                <button type="button" className="chat-from" onClick={() => { void pick({ name: m.name }); openPlayer(m.name); }}>{m.title ? <span className="chat-title">{m.title} </span> : null}{m.name}</button>
+                {m.shout && <span className="chat-shout" data-testid="chat-shout">Shout-out</span>}
                 {m.qa && <span className="chat-qa">QA</span>}
                 {doingOf(m.name) && <span className="chat-doing-tag" data-testid="chat-msg-doing" title="What they're doing right now">{doingOf(m.name)}</span>}
                 <time className="chat-time" dateTime={new Date(m.at).toISOString()} title={chatTimeFull(m.at)} data-testid="chat-time">{chatTimeLabel(m.at)}</time>

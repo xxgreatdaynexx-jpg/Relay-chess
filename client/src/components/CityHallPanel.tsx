@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { request } from '@/lib/net';
 import { usePanelDrag } from '@/lib/panelDrag';
 import { CityCivic } from './CityCivic';
+import { OPEN_PRESTIGE } from './PrestigeDesk';
 import { MayorBillReviewHost, OPEN_BILL_REVIEW } from './MayorBillReview';
 import type { CityView } from '../../../shared/city';
 import { pct, rateLabel, AB_OFFSET_MS, type CityHallView } from '../../../shared/mayor';
@@ -94,6 +95,11 @@ export function CityHallPanel({ onClose, initial, initialCity }: { onClose: () =
             {v.log.map((c, i) => <li key={i}><small>{abWhen(c.at)}</small> <b>{c.by === 'admin' ? 'Admin' : `Mayor ${c.by}`}</b>: {c.note ?? `property tax ${rateLabel(c.property)}, fees ${rateLabel(c.fee)} from ${abWhen(c.effectiveAt)}`}</li>)}
           </ul>
           {v.laws && <MayorLaws view={v.laws} isMayor={!!me?.isMayor} isVice={!!me?.isVice} today={abDate(v.now)} busy={busy} onPass={async (text) => { await act('mayor_law_submit', { text }, (r) => { const b = r.bill as { title: string; status?: string }; return b.status === 'pending_approval' ? 'Submitted for mayor approval.' : `Submitted ${b.title}.`; }); }} onVeto={async (number) => { await act('mayor_law_veto', { number }, (r) => `${(r.bill as { title: string }).title} is marked Vetoed.`); }} onApproveDraft={async (id) => { await act('mayor_law_draft_approve', { id }, (r) => `Approved ${(r.bill as { title: string }).title}.`); }} onRejectDraft={async (id, reason) => { await act('mayor_law_draft_reject', { id, reason }, (r) => `${(r.bill as { title: string }).title} was rejected.`); }} />}
+          <div className="prestige-entry">
+            <h4>Prestige desk</h4>
+            <small>Titles, fireworks, liveries, shout-outs, and city patronage naming rights.</small>
+            <button type="button" data-testid="open-prestige-desk" onClick={() => window.dispatchEvent(new CustomEvent(OPEN_PRESTIGE, { detail: 'vanity' }))}>✨ Open the Prestige Desk</button>
+          </div>
           <CityCivic initial={initialCity} />
           <p className="cityhall-rules">Besides these rates the mayor can only use the city levers, policies and buildings above. Casino odds and payouts, chip balances, sell limits and everything else stay out of reach. Mayors get no salary, and the treasury can never pay out to anyone.</p>
         </>

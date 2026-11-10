@@ -26,6 +26,8 @@ import { registerRace } from './race.js';
 import { registerTravel } from './travel.js';
 import { registerFortMc } from './fortmc.js';
 import { registerFleet } from './fleet.js';
+import { registerVanity } from './vanity.js';
+import { registerPatronage } from './patronage.js';
 import { registerJetSeats } from './jetSeats.js';
 import { registerFarm } from './farm.js';
 import { registerWarehouse } from './warehouse.js';
@@ -326,6 +328,8 @@ export function registerSockets(io: Server): void {
     registerTravel(io, socket);
     registerFortMc(io, socket);
     registerFleet(io, socket);
+    registerVanity(io, socket);
+    registerPatronage(io, socket);
     registerJetSeats(io, socket);
     registerFarm(io, socket);
     registerWarehouse(io, socket);

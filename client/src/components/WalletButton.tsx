@@ -16,7 +16,7 @@ interface HistoryPage { ok: boolean; history?: Tx[]; hasMore?: boolean; nextCurs
 
 const GAME_LABEL: Record<string, string> = {
   chess: '♞ Chess', checkers: '⛀ Checkers', conquest: '⚔ Conquest', blackjack: '🂡 Blackjack', roulette: '🎡 Roulette',
-  slots: '🎰 Slots', holdem: "♠ Hold'em", 'video-poker': '🃏 Video poker', solitro: '🃏 Solitro', refill: '♻ Refill', casino: '🎲 Casino', daily_bonus: '🎁 Daily bonus',
+  slots: '🎰 Slots', holdem: "♠ Hold'em", 'video-poker': '🃏 Video poker', solitro: '🃏 Solitro', refill: '♻ Refill', casino: '🎲 Casino', daily_bonus: '🎁 Daily bonus', boat_upkeep: '🛥 Yacht upkeep', jet_upkeep: '🛩 Jet upkeep', vanity: '✨ Vanity Desk', patronage: '🏛️ City patronage',
 };
 
 function when(at: number): string {
