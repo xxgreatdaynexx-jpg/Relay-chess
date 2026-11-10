@@ -15,9 +15,9 @@ export const HAUL_MAX_VISIBLE = 50; // was 30; raised so longer trips (half spee
 export const HAUL_MERGE_MS = 2_500;
 export const HAUL_PER_PLAYER_PER_MIN = 12;
 export const HAUL_BG_GAP_MS = 20_000; // throttle offline/background sweeps
-export const HAUL_SPEED = 14; // world units / second along path (was 28; t2105u ~50% slower)
-export const HAUL_MIN_MS = 8_000; // was 4_000 — short hops also take ~2×
-export const HAUL_MAX_MS = 90_000; // was 45_000 — headroom so longest routes still finish at half speed
+export const HAUL_SPEED = 7; // world units / second along path (was 14; t2111u ~50% slower again)
+export const HAUL_MIN_MS = 16_000; // was 8_000 — short hops also take ~2×
+export const HAUL_MAX_MS = 180_000; // was 90_000 — headroom so longest road routes aren't squeezed above HAUL_SPEED
 /** localStorage: set to '1' to hide cosmetic haul trucks. */
 export const HAUL_OFF_KEY = 'chud-haul-trucks-off';
 

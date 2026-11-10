@@ -46,10 +46,16 @@ describe('haul visual (pt2101u queue #6)', () => {
     expect(path.length).toBeGreaterThan(3); // follows city roads, not a 2-point straight line
     expect(pathLength(path)).toBeGreaterThan(Math.hypot(from[0] - to[0], from[1] - to[1]) * 1.15);
     const dur = haulDurationMs(path);
-    expect(HAUL_SPEED).toBe(14);
-    expect(HAUL_MAX_MS).toBe(90_000);
+    expect(HAUL_SPEED).toBe(7);
+    expect(HAUL_MAX_MS).toBe(180_000);
     expect(dur).toBeGreaterThanOrEqual(HAUL_MIN_MS);
     expect(dur).toBeLessThanOrEqual(HAUL_MAX_MS);
+    // Long road routes must not hit the max-ms clamp (would look faster than HAUL_SPEED).
+    const quarry = haulSiteXZ('quarry')!; const whClamp = haulSiteXZ('warehouse')!;
+    const qPath = roadPath(quarry, whClamp);
+    const qRaw = (pathLength(qPath) / HAUL_SPEED) * 1000;
+    expect(qRaw).toBeLessThan(HAUL_MAX_MS);
+    expect(haulDurationMs(qPath)).toBe(Math.round(qRaw));
     // Mine → warehouse uses roads (was previously a near-straight 3-pt fallback)
     const mine = haulSiteXZ('mine:mine')!; const wh = haulSiteXZ('warehouse')!;
     const minePath = roadPath(mine, wh);
