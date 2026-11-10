@@ -116,3 +116,21 @@ describe('farm area select and templates UI', () => {
     expect(save?.[1]).toMatchObject({ name: 'Corner', cols: 1, rows: 2, cells: [{ tile: 0, crop: 'carrot' }, { tile: 1, crop: 'carrot' }] });
   });
 });
+
+describe('almost-ripe farm tiles', () => {
+  it('keeps the grow bar under 100% and shows time left until the crop is actually ripe', () => {
+    const almost = view({
+      tiles: [{ tile: 0, crop: 'sunflower', plantedAt: T - 99_500, readyAt: T + 500, witherAt: T + 36 * 3_600_000, stage: 'growing' }],
+    });
+    render(<FarmGame id={city.id} label={city.label} onClose={() => {}} />);
+    act(() => { answerFarm(almost); answerTpl(); });
+    const tile = screen.getByTestId('farm-tile-0');
+    expect(tile.className).toMatch(/farm-growing/);
+    expect(tile.textContent).toMatch(/1m/);
+    expect(screen.getByTestId('farm-ready-in-0').textContent).toBe('1m');
+    expect((screen.getByTestId('farm-grow-bar-0') as HTMLElement).style.width).toBe('99%');
+    const harvest = screen.getByTestId('farm-harvest') as HTMLButtonElement;
+    expect(harvest.disabled).toBe(true);
+    expect(harvest.textContent).toMatch(/first in 1m/);
+  });
+});

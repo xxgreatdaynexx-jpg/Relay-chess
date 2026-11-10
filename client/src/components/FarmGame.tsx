@@ -5,7 +5,7 @@ import { socket } from '@/lib/net';
 import { indexed } from '../../../shared/priceIndex';
 import { TROPICAL_CROPS } from '../../../shared/resort';
 import { FARM_UPGRADES, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradePrice } from '../../../shared/farmUpgrades';
-import { CROPS as CITY_CROPS, cropById, cropSellValue, FARM_TIERS, type FarmView } from '../../../shared/farm';
+import { CROPS as CITY_CROPS, cropById, cropSellValue, FARM_TIERS, growProgressPct, type FarmView } from '../../../shared/farm';
 import { boxOrigin, boxTiles, FARM_TEMPLATE_NAME_MAX, packSelection, stampLayout, tileAtPoint, type FarmTemplate } from '../../../shared/farmTemplates';
 import { usePanelDrag } from '@/lib/panelDrag';
 
@@ -73,6 +73,7 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
   const empties = Array.from({ length: n }, (_, i) => i).filter((i) => stage(i) === 'empty');
   const ready = Array.from({ length: n }, (_, i) => i).filter((i) => stage(i) === 'ready');
   const withered = Array.from({ length: n }, (_, i) => i).filter((i) => stage(i) === 'withered');
+  const nextReadyIn = view ? Math.min(...view.tiles.map((x) => x.readyAt).filter((at) => at > t), Infinity) : Infinity;
   const boxed = view && box ? new Set(boxTiles(view.cols, view.rows, box[0], box[1])) : null;
   const act = (ev: string, body: Record<string, unknown>, ok: (r: Ack) => string) => {
     setBusy(true); setMsg(null);
@@ -186,7 +187,8 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
             return <button key={i} type="button" title={title} className={`farm-tile farm-${s}${sel.has(i) ? ' farm-sel' : ''}${boxed?.has(i) ? ' farm-box' : ''}`} onClick={() => click(i)} data-testid={`farm-tile-${i}`}>
               {s === 'empty' ? '' : s === 'withered' ? '🥀' : s === 'ready' ? c?.emoji : x && (t - x.plantedAt) / (x.readyAt - x.plantedAt) >= 0.5 ? '🌿' : '🌱'}
               {s === 'ready' && x && <b className="farm-wither" data-testid={`farm-wither-${i}`}>{witherHint(x.witherAt - t)}</b>}
-              {s === 'growing' && x && <i style={{ width: `${Math.min(100, (100 * (t - x.plantedAt)) / (x.readyAt - x.plantedAt))}%` }} />}
+              {s === 'growing' && x && <b className="farm-wither" data-testid={`farm-ready-in-${i}`}>{witherHint(x.readyAt - t)}</b>}
+              {s === 'growing' && x && <i data-testid={`farm-grow-bar-${i}`} style={{ width: `${growProgressPct(x.plantedAt, x.readyAt, t)}%` }} />}
             </button>; })}
         </div>
         {view.mine && <>
@@ -197,7 +199,7 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
           </div>
           <button type="button" disabled={busy || !sel.size} onClick={() => plant([...sel])} data-testid="farm-plant-sel">Plant {sel.size || ''} selected<span>🪙 {chips(indexed(crop.seed, idx) * sel.size)}</span></button>
           <button type="button" disabled={busy || !empties.length} onClick={() => plant(empties)} data-testid="farm-plant-all">Plant all {empties.length} empty<span>🪙 {chips(indexed(crop.seed, idx) * empties.length)}</span></button>
-          <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', {}, (r) => `Harvested ${r.harvested} for 🪙 ${chips(Number(r.paid))}.`)} data-testid="farm-harvest">Harvest {ready.length} ready</button>
+          <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', {}, (r) => `Harvested ${r.harvested} for 🪙 ${chips(Number(r.paid))}.`)} data-testid="farm-harvest">Harvest {ready.length} ready{!ready.length && Number.isFinite(nextReadyIn) ? ` · first in ${witherHint(nextReadyIn - t)}` : ''}</button>
           <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', { pantry: true }, (r) => `🧺 ${r.harvested} crop${r.harvested === 1 ? '' : 's'} into your ${pantryWhere}.`)} title={resortPlot ? 'Keep the crops in the Resort Warehouse for resort kitchen cooking' : 'Keep the crops for cooking instead of selling them'} data-testid="farm-harvest-pantry">🧺 To pantry</button>
           <div className="farm-templates" data-testid="farm-templates">
             <h4>Crop templates</h4>

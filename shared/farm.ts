@@ -53,6 +53,13 @@ export type Stage = 'growing' | 'ready' | 'withered';
 export const stageOf = (c: Crop, plantedAt: number, now: number): Stage => {
   const ready = plantedAt + c.grow; return now < ready ? 'growing' : now < ready + ripeWindow(c.grow) ? 'ready' : 'withered';
 };
+/** 0–99 while still growing so a nearly-ripe bar never looks finished; 100 only once `now` reaches readyAt. */
+export const growProgressPct = (plantedAt: number, readyAt: number, now: number): number => {
+  if (now >= readyAt) return 100;
+  const span = readyAt - plantedAt;
+  if (!(span > 0)) return 0;
+  return Math.min(99, Math.max(0, Math.floor((100 * (now - plantedAt)) / span)));
+};
 
 /** Daily profit tiers (base chips of profit, per player, reset at 00:00 UTC): full up to 100,000, then zero. */
 export const FARM_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: 100_000, rate: 1 }, { upTo: Infinity, rate: 0 }];

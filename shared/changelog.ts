@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T14:45:00-06:00", "title": "Fixed crops stuck at 100% that couldn't be harvested (reported by Liam)", "bullets": [
+    "A crop that was almost finished growing could fill the green bar all the way to 100% while Harvest stayed off, and the time left only appeared in a hover tooltip that is easy to miss on a phone.",
+    "The bar now stays just shy of full until the crop is actually ripe, and each growing tile shows the time left on the tile itself. Existing plantings are unchanged — they can be harvested as soon as they ripen, and nothing is deleted or paid out automatically.",
+  ]},
   {"commit": "", "at": "2026-11-10T14:25:00-06:00", "title": "Factory monument royalty reduced from 10% to 5% (requested by chessguy2)", "bullets": [
     "The Factory monument now earns 5% of what other players get when they sell factory goods to the house (was 10%). The owner is still paid on top, so the seller keeps 100%. Royalties already paid are unchanged.",
     "Royalties on the mines, Fishing Dock, Speedway, market, and casino stay at 1%. Other property income is unchanged.",
