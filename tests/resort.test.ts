@@ -1,4 +1,3 @@
-import { setCropFailChanceForTest } from '../shared/farm';
 // Chud Resort: travel ticket, location gates, resort slots (RTP), properties, plantation and the Coral Grotto.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
@@ -23,7 +22,7 @@ function shim(db: PGlite) {
 }
 
 describe('resort travel', () => {
-  beforeEach(() => { resetBank(); setPriceIndexForTest(1); setTravel(new Travel(null)); setCropFailChanceForTest(0); });
+  beforeEach(() => { resetBank(); setPriceIndexForTest(1); setTravel(new Travel(null)); });
   it('ticket costs px(500), return is free, can’t double-fly, broke players are refused', async () => {
     const t = new Travel(null); setTravel(t); const b = getBank(); b.transferConfirmed('QA-Fly', 2000 - b.account('QA-Fly').chips, { key: 'seed', game: 'admin' });
     expect(t.status('QA-Fly')).toMatchObject({ loc: 'city', ticket: RESORT_TICKET_BASE });

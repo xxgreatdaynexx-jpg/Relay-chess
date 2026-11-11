@@ -1,4 +1,3 @@
-import { setCropFailChanceForTest } from '../shared/farm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { resetFarmGuardForTest } from '../server/farmGuard';
 import { newDb } from 'pg-mem';
@@ -27,7 +26,7 @@ async function setup() {
   return { db, bank, re, farm, fund, chips, ledger, id, small, setNow: (t: number) => { now = t; } };
 }
 
-beforeEach(() => { setCropFailChanceForTest(0); resetFarmGuardForTest(); setPriceIndexForTest(1); });
+beforeEach(() => { resetFarmGuardForTest(); setPriceIndexForTest(1); });
 
 describe('farm box select and template layouts', () => {
   it('boxTiles is an inclusive rectangle in row-major order', () => {

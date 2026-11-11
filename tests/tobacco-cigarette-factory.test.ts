@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CIGARETTE_BUFF_RATE, CIGARETTE_DAILY_CAP, CIGARETTE_DROP_RATE, CIGARETTE_ITEM, CIGARETTE_PRICE } from '../shared/cigarettes';
-import { CROP_FAIL_CHANCE, CROP_SEED_MUL, CROPS, cropSellValue } from '../shared/farm';
+import { CROP_SEED_MUL, CROPS, cropSellValue } from '../shared/farm';
 import { FRECIPES, FOOD_STEP_MARKUP } from '../shared/factory';
 import { GOODS, priceOf, sellable } from '../shared/mines';
 import { hasItemIcon } from '../shared/itemIcons';
@@ -23,7 +23,6 @@ describe('tobacco crop and cigarette factory line', () => {
     expect(GOODS.crop_tobacco?.raw).toBe(true);
     expect(GOODS.crop_tobacco?.price).toBeCloseTo(30 * CROP_SEED_MUL, 8);
     expect(cropSellValue(tobacco)).toBeCloseTo(30 * CROP_SEED_MUL, 2);
-    expect(CROP_FAIL_CHANCE).toBe(0.01);
     expect(hasItemIcon('good', 'crop_tobacco')).toBe(true);
     expect(sellable({ type: 'good', id: 'crop_tobacco' })).toBe(false);
   });

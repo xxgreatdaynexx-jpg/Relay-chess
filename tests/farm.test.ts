@@ -7,7 +7,6 @@ import { RealEstate } from '../server/realEstate';
 import { Farm } from '../server/farm';
 import { setPriceIndexForTest } from '../server/price-index';
 import { CROPS, cropById, cropProfit, farmPayout, farmPlots, FARM_X0, MIN_RIPE_MS, PARK_SAFE, ripeWindow, stageOf, WITHER_FACTOR } from './farm-helpers';
-import { setCropFailChanceForTest } from '../shared/farm';
 import { properties, propertyById } from '../shared/realEstate';
 import { obbOverlap, PARK_AREA, PLATE } from '../shared/worldLayout';
 
@@ -25,7 +24,7 @@ async function setup() {
   return { db, bank, re, farm, fund, chips, ledger, id, small, setNow: (t: number) => { now = t; } };
 }
 
-beforeEach(() => { resetFarmGuardForTest(); setCropFailChanceForTest(0); });
+beforeEach(() => { resetFarmGuardForTest(); });
 
 describe('farm district', () => {
   it('plots are farmland properties east of the plate, never overlapping each other or the Trailer Park; a small plot is a few days of login bonuses', () => {

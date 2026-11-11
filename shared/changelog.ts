@@ -7,7 +7,7 @@ export interface ChangelogEntry { commit: string; at: string; title: string; bul
 
 export const CHANGELOG: ChangelogEntry[] = [
   {"commit": "", "at": "2026-11-10T21:18:00-06:00", "title": "Tobacco crop and a cigarette factory line (requested by carter2)", "bullets": [
-    "Tobacco is a new plantable city crop: seeds cost 30 chips and take about 63 minutes to grow (the same 30% faster growth as every other crop). A harvested plant is worth 40.5 chips (seed plus 35%). The usual 1% tile-fail chance and 50% planting house-cap bonus apply, just like other crops.",
+    "Tobacco is a new plantable city crop: seeds cost 30 chips and take about 63 minutes to grow (the same 30% faster growth as every other crop). A harvested plant is worth 40.5 chips (seed plus 35%). The usual 50% planting house-cap bonus applies, just like other crops.",
     "A new mill recipe turns 1 tobacco into 1 Cigarette. That factory step adds 8% over the tobacco value, so a cigarette's house price is now 43.74 chips (it was 40, which did not fit the +8% rule). Cigarettes still drop rarely from fishing and still give the same casino buff; the extra from smoking is still capped at 25,000 chips per day, so factory-made cigarettes cannot print money through the casino. Existing inventory is unchanged; the new house price applies going forward.",
   ]},
   {"commit": "", "at": "2026-11-10T21:18:00-06:00", "title": "Fishing daily caps now scale with the house-sell cap index (requested by chessguy2)", "bullets": [
@@ -19,7 +19,6 @@ export const CHANGELOG: ChangelogEntry[] = [
   ]},
   {"commit": "", "at": "2026-11-10T20:05:00-06:00", "title": "Farm crop margins lowered to +35%, food production steps +8%", "bullets": [
     "Raw farm crops are now worth seed cost plus 35% (was plus 50%). Each factory food production step adds 8% over its input value (was 10%), still derived up the chain. Ore and metal chains are unchanged. Resort harvest yield (2×) and fertilizer yield are unchanged, and the house-sell planting bonus is still 50% of the seed chips you actually pay.",
-    "Each newly planted tile has a 1% chance to fail, decided when you plant it and stored so a refresh cannot reroll it. A failed tile looks withered; harvesting it yields no crop and no seed refund, and the harvest result notes the count (for example, “2 tiles failed”). That applies to manual harvest, auto-harvest, pantry, and resort plots. Crops already in the ground are not rolled. Prices and the fail chance apply going forward; existing inventory is unchanged.",
   ]},
   {"commit": "", "at": "2026-11-10T20:05:00-06:00", "title": "House sell cap now follows 35% of total-asset growth (was 25%)", "bullets": [
     "Each day at the reset (6 PM), the daily house-sell cap now changes by 35% of the percent that total player assets changed over the previous day (it was 25%). If total wealth doubles, the cap goes up 35%; if it drops 20%, the cap drops 7%.",

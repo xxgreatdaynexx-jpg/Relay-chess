@@ -32,25 +32,6 @@ export const FARM_SELL_MUL = 0.95;
 /** Listed sell so cropSellValue (= sell x FARM_SELL_MUL) ≈ seed x CROP_SEED_MUL. */
 export const cropListSell = (seed: number) => Math.round((seed * CROP_SEED_MUL) / FARM_SELL_MUL * 100) / 100;
 
-/** Chance a newly planted tile fails (no crop and no seed refund at harvest). Rolled once at plant and stored. */
-export const CROP_FAIL_CHANCE = 0.01;
-let cropFailChance = CROP_FAIL_CHANCE;
-export const cropFailChanceNow = () => cropFailChance;
-export const setCropFailChanceForTest = (n: number | null) => { cropFailChance = n == null ? CROP_FAIL_CHANCE : n; };
-/** Deterministic 1% (or `chance`) fail roll from a plant-time salt; refresh/re-harvest cannot reroll it. */
-export function cropTileFailed(salt: string, chance = cropFailChance): boolean {
-  if (!(chance > 0)) return false;
-  if (chance >= 1) return true;
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < salt.length; i++) { h ^= salt.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
-  return (h % 10_000) / 10_000 < chance;
-}
-export const cropFailSalt = (nonce: string, tile: number, crop: string) => `${nonce}:${tile}:${crop}`;
-/** e.g. " 2 tiles failed" (leading space) for harvest result strings. */
-export function harvestFailedNote(failed: number): string {
-  if (!(failed > 0)) return '';
-  return ` ${failed} tile${failed === 1 ? '' : 's'} failed.`;
-}
 /** Crop margins: raw harvest profits 35% of seed (after FARM_SELL_MUL). Factory food steps add +8% on inputs separately. */
 /** Base chips. Fast crops pay little per hour unless you keep coming back; slow ones are the big money per click. */
 export const CROPS: Crop[] = [
@@ -70,7 +51,7 @@ export const cropSellValue = (c: Pick<Crop, 'sell'>) => c.sell * FARM_SELL_MUL;
 export const cropProfit = (c: Pick<Crop, 'sell' | 'seed'>) => Math.max(0, cropSellValue(c) - c.seed);
 export const cropById = (id: unknown) => CROPS.find((c) => c.id === id) ?? TROPICAL_CROPS.find((c) => c.id === id);
 for (const c of TROPICAL_CROPS) c.sell = cropListSell(c.seed);
-export type Stage = 'growing' | 'ready' | 'withered' | 'failed';
+export type Stage = 'growing' | 'ready' | 'withered';
 export const stageOf = (c: Crop, plantedAt: number, now: number): Stage => {
   const ready = plantedAt + c.grow; return now < ready ? 'growing' : now < ready + ripeWindow(c.grow) ? 'ready' : 'withered';
 };
@@ -129,7 +110,7 @@ export const plotId = (n: number) => `f:${n}`;
 export const tileXZ = (p: FarmPlot, i: number): [number, number] => [p.x - (p.cols * TILE) / 2 + TILE * ((i % p.cols) + 0.5), p.z - (p.rows * TILE) / 2 + TILE * (Math.floor(i / p.cols) + 0.5)];
 
 /** What the client gets for one plot. `now` is the server clock (clients never send timestamps). */
-export interface FarmTile { tile: number; crop: string; plantedAt: number; stage: Stage; readyAt: number; witherAt: number; fert?: string; /** Set at plant time; missing/false = grandfathered or healthy. */ failed?: boolean }
+export interface FarmTile { tile: number; crop: string; plantedAt: number; stage: Stage; readyAt: number; witherAt: number; fert?: string }
 export interface FarmAuto { harvest: boolean; /** When harvest is on: send ripe crops to the kitchen pantry instead of selling. */ pantry: boolean; plant: boolean; crop: string }
 export interface FarmView { id: string; owner: string | null; mine: boolean; cols: number; rows: number; tiles: FarmTile[]; now: number; today: { gross: number; paid: number }; index: number; upgrades?: import('./farmUpgrades.js').FarmUpgradeLevels; farmingLevel?: number; growMul?: number; profitMul?: number; yieldBonus?: number; plowed?: number[]; machines?: import('./farmWork.js').MachineSet; auto?: FarmAuto }
 /** #33: what one tile of `c` really takes and earns after Farming XP + upgrades (base chips; seed comes back on harvest). */

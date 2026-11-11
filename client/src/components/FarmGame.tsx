@@ -5,7 +5,7 @@ import { socket } from '@/lib/net';
 import { indexed } from '../../../shared/priceIndex';
 import { TROPICAL_CROPS } from '../../../shared/resort';
 import { FARM_UPGRADES, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradePrice } from '../../../shared/farmUpgrades';
-import { CROPS as CITY_CROPS, cropById, cropSellValue, growProgressPct, harvestFailedNote, type FarmView } from '../../../shared/farm';
+import { CROPS as CITY_CROPS, cropById, cropSellValue, growProgressPct, type FarmView } from '../../../shared/farm';
 import { boxOrigin, boxTiles, FARM_TEMPLATE_NAME_MAX, packSelection, stampLayout, tileAtPoint, type FarmTemplate } from '../../../shared/farmTemplates';
 import { usePanelDrag } from '@/lib/panelDrag';
 
@@ -63,18 +63,15 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
   }, [view, skew, load]);
   const t = now + skew; const idx = view?.index ?? 1;
   const byTile = new Map((view?.tiles ?? []).map((x) => [x.tile, x]));
-  const isFailed = (x: { failed?: boolean; stage?: string } | undefined) => x?.failed === true || x?.stage === 'failed';
   const stage = (tile: number) => {
     const x = byTile.get(tile); if (!x) return 'empty';
     if (t >= x.witherAt) return 'withered';
-    if (isFailed(x)) return 'failed';
     return t >= x.readyAt ? 'ready' : 'growing';
   };
   const stageLive = (v: FarmView, tile: number) => {
     const x = v.tiles.find((row) => row.tile === tile); if (!x) return 'empty';
     const at = nowRef.current + skewRef.current;
     if (at >= x.witherAt) return 'withered';
-    if (isFailed(x)) return 'failed';
     return at >= x.readyAt ? 'ready' : 'growing';
   };
   const n = view ? view.cols * view.rows : 0;
@@ -103,7 +100,7 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
   const click = (i: number) => {
     if (skipClick.current) { skipClick.current = false; return; }
     if (!view?.mine || busy) return; const s = stage(i);
-    if (ready.includes(i)) act('farm_harvest', { tiles: [i] }, (r) => `Harvested for 🪙 ${chips(Number(r.paid))}.${harvestFailedNote(Number(r.failed) || 0)}`);
+    if (ready.includes(i)) act('farm_harvest', { tiles: [i] }, (r) => `Harvested for 🪙 ${chips(Number(r.paid))}.`);
     else if (s === 'empty') setSel((p) => { const q = new Set(p); if (q.has(i)) q.delete(i); else q.add(i); return q; });
   };
   const tileFromPtr = (e: { clientX: number; clientY: number }) => {
@@ -190,9 +187,9 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
           onPointerCancel={() => { dragSel.current = null; setBox(null); }}
         >
           {Array.from({ length: n }, (_, i) => { const x = byTile.get(i); const s = stage(i); const c = x && cropById(x.crop);
-            const title = !x ? 'Empty' : s === 'growing' ? `${c?.label}: ready in ${dur(x.readyAt - t)}` : s === 'ready' ? `${c?.label}: ready! withers in ${dur(x.witherAt - t)}` : s === 'failed' ? `${c?.label}: failed` : `${c?.label}: withered`;
+            const title = !x ? 'Empty' : s === 'growing' ? `${c?.label}: ready in ${dur(x.readyAt - t)}` : s === 'ready' ? `${c?.label}: ready! withers in ${dur(x.witherAt - t)}` : `${c?.label}: withered`;
             return <button key={i} type="button" title={title} className={`farm-tile farm-${s}${sel.has(i) ? ' farm-sel' : ''}${boxed?.has(i) ? ' farm-box' : ''}`} onClick={() => click(i)} data-testid={`farm-tile-${i}`}>
-              {s === 'empty' ? '' : s === 'withered' || s === 'failed' ? '🥀' : s === 'ready' ? c?.emoji : x && (t - x.plantedAt) / (x.readyAt - x.plantedAt) >= 0.5 ? '🌿' : '🌱'}
+              {s === 'empty' ? '' : s === 'withered' ? '🥀' : s === 'ready' ? c?.emoji : x && (t - x.plantedAt) / (x.readyAt - x.plantedAt) >= 0.5 ? '🌿' : '🌱'}
               {s === 'ready' && x && <b className="farm-wither" data-testid={`farm-wither-${i}`}>{witherHint(x.witherAt - t)}</b>}
               {s === 'growing' && x && <b className="farm-wither" data-testid={`farm-ready-in-${i}`}>{witherHint(x.readyAt - t)}</b>}
               {s === 'growing' && x && <i data-testid={`farm-grow-bar-${i}`} style={{ width: `${growProgressPct(x.plantedAt, x.readyAt, t)}%` }} />}
@@ -206,8 +203,8 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
           </div>
           <button type="button" disabled={busy || !sel.size} onClick={() => plant([...sel])} data-testid="farm-plant-sel">Plant {sel.size || ''} selected<span>🪙 {chips(indexed(crop.seed, idx) * sel.size)}</span></button>
           <button type="button" disabled={busy || !empties.length} onClick={() => plant(empties)} data-testid="farm-plant-all">Plant all {empties.length} empty<span>🪙 {chips(indexed(crop.seed, idx) * empties.length)}</span></button>
-          <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', {}, (r) => `Harvested ${r.harvested} for 🪙 ${chips(Number(r.paid))}.${harvestFailedNote(Number(r.failed) || 0)}`)} data-testid="farm-harvest">Harvest {ready.length} ready{!ready.length && Number.isFinite(nextReadyIn) ? ` · first in ${witherHint(nextReadyIn - t)}` : ''}</button>
-          <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', { pantry: true }, (r) => `🧺 ${r.harvested} crop${r.harvested === 1 ? '' : 's'} into your ${pantryWhere}.${harvestFailedNote(Number(r.failed) || 0)}`)} title={resortPlot ? 'Keep the crops in the Resort Warehouse for resort kitchen cooking' : 'Keep the crops for cooking instead of selling them'} data-testid="farm-harvest-pantry">🧺 To pantry</button>
+          <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', {}, (r) => `Harvested ${r.harvested} for 🪙 ${chips(Number(r.paid))}.`)} data-testid="farm-harvest">Harvest {ready.length} ready{!ready.length && Number.isFinite(nextReadyIn) ? ` · first in ${witherHint(nextReadyIn - t)}` : ''}</button>
+          <button type="button" disabled={busy || !ready.length} onClick={() => act('farm_harvest', { pantry: true }, (r) => `🧺 ${r.harvested} crop${r.harvested === 1 ? '' : 's'} into your ${pantryWhere}.`)} title={resortPlot ? 'Keep the crops in the Resort Warehouse for resort kitchen cooking' : 'Keep the crops for cooking instead of selling them'} data-testid="farm-harvest-pantry">🧺 To pantry</button>
           <div className="farm-templates" data-testid="farm-templates">
             <h4>Crop templates</h4>
             <small>Save the field as it is, or save the current selection (empty selected tiles use the seed you have picked). Apply stamps from the top-left of the field, or from the top-left of your selection. Only empty tiles are planted, and seeds cost the same as planting by hand.</small>

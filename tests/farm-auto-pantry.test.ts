@@ -6,7 +6,6 @@ import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
 import { Farm } from '../server/farm';
 import { farmPlots } from '../shared/farm';
-import { setCropFailChanceForTest } from '../shared/farm';
 import { propertyById } from '../shared/realEstate';
 
 const T0 = Date.parse('2026-11-01T12:00:00Z');
@@ -23,7 +22,7 @@ async function setup() {
   return { pool, bank, re, farm, fund, id, setNow: (t: number) => { now = t; }, db };
 }
 
-beforeEach(() => { setCropFailChanceForTest(0); resetFarmGuardForTest(); });
+beforeEach(() => { resetFarmGuardForTest(); });
 
 describe('farm auto-harvest to pantry', () => {
   it('persists pantry destination; sell-harvest and pantry are mutually exclusive', async () => {

@@ -6,7 +6,7 @@ import { RealEstate } from '../server/realEstate';
 import { Farm, type ImportSink } from '../server/farm';
 import { Fishing, fishImportQty } from '../server/fishing';
 import { writeImport } from '../server/factory';
-import { CROPS, CROP_SEED_MUL, farmPlots , setCropFailChanceForTest} from '../shared/farm';
+import { CROPS, CROP_SEED_MUL, farmPlots } from '../shared/farm';
 import { TROPICAL_CROPS } from '../shared/resort';
 import { GOODS, ORES, sellable, isFood } from '../shared/mines';
 import { FRECIPES, KINDS, advance, madeBy, newState, recipeIn, recipeOut, tierOf, usedIn, type Storage } from '../shared/factory';
@@ -67,7 +67,6 @@ describe('imports are atomic and server-side', () => {
   it('farm: ready crops move to factory storage with no chips paid; exactly once', async () => {
     const { pool, bank, sink, qty, after } = await db(); let now = T0;
     const re = new RealEstate(pool, () => bank, () => now); await re.init();
-    setCropFailChanceForTest(0);
     const farm = new Farm(pool, () => bank, () => now); await farm.init();
     bank.transfer('Gus', 100_000, { game: 'admin' }); await bank.flush();
     const p = farmPlots().find((x) => x.cols * x.rows === 16)!; const id = `f:${p.n}`;
