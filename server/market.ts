@@ -19,12 +19,14 @@ import { databaseUrl } from './leaderboard-store.js';
 import { isFood, STAPLES } from '../shared/cooking.js';
 import { CROPS } from '../shared/farm.js';
 import { TROPICAL_CROPS } from '../shared/resort.js';
-import { GOODS, MAX_BANKED_STACK, ORES, ORE_ORDER, isOre, nameOf as stackName, type ItemType } from '../shared/mines.js';
+import { GOODS, MAX_BANKED_STACK, ORES, ORE_ORDER, isOre, nameOf as stackName, sellable, type ItemType } from '../shared/mines.js';
 import { CASE_NAME, KEY_NAME, SKINS, SKIN_BY_ID, type SkinItem } from '../shared/skins.js';
 import { skillLevel } from './skills.js';
 import { tradingFeeMul } from '../shared/skillPerks.js';
 import { cityFeeMul } from './mayor.js';
 import { eventCredit, eventTrade } from './weeklyEvent.js';
+import { houseSellPrice } from '../shared/sellBuff.js';
+import { priceIndex } from './price-index.js';
 
 export const MARKET_FEE = 0.05;
 export const MIN_PRICE = 1;
@@ -46,6 +48,11 @@ export { MAX_BANKED_STACK } from '../shared/mines.js';
 export const MAX_STACK_QTY = 100_000;
 /** Open buy requests a player may have at once (same cap as sell listings). */
 export const MAX_REQUESTS = 50;
+/** Indexed unit price the house desk pays (same figure Factory / Warehouse show per unit). 0 if the house does not buy it. */
+export const houseDeskUnit = (type: ItemType, id: string): number => {
+  const s = { type, id };
+  return sellable(s) ? houseSellPrice(s) * priceIndex() : 0;
+};
 /** Stackable listing (Mines ore / bars / goods from mine_items): unit price, partial buys. Escrowed qty leaves the seller's pack. */
 export interface StackListing { id: string; seller: string; sellerName: string; type: ItemType; itemId: string; qty: number; total: number; unit: number; status: 'active' | 'sold' | 'cancelled'; at: number; closedAt?: number; sold: number; /** truck logistics: 'warehouse' = escrowed from Warehouse stock; null = a legacy listing escrowed from banked (= factory) storage */ origin?: string | null }
 export const stackWhat = (type: string, id: string) => `stack:${type}:${id}`;
@@ -490,7 +497,9 @@ export class Market {
       for (const l of this.stacks.values()) { const a = get(stackWhat(l.type, l.itemId)); a.listings++; if (a.lowest == null || l.unit < a.lowest) a.lowest = l.unit; }
       const defs = [...ORE_ORDER.map((id) => ({ type: 'ore' as ItemType, id, color: ORES[id].color })), ...Object.values(GOODS).map((g) => ({ type: g.type, id: g.id, color: g.color })),
         ...[...STAPLES.map((s) => s.id), ...CROPS.map((c) => c.id), ...TROPICAL_CROPS.map((c) => c.id)].filter((id) => isFood(id)).map((id) => ({ type: 'food' as ItemType, id, color: '#6ad66a' }))];
-      return { items: defs.map((d) => ({ what: stackWhat(d.type, d.id), type: d.type, id: d.id, name: stackName(d), color: d.color, ...get(stackWhat(d.type, d.id)) })) };
+      const items = defs.map((d) => ({ what: stackWhat(d.type, d.id), type: d.type, id: d.id, name: stackName(d), color: d.color, house: houseDeskUnit(d.type, d.id), ...get(stackWhat(d.type, d.id)) }));
+      const housePrices = Object.fromEntries(items.map((e) => [`${e.type}:${e.id}`, e.house]));
+      return { items, housePrices };
     }
     for (const l of this.listings.values()) { const i = this.vault.items.get(l.itemId); if (!i) continue; const a = get(i.kind === 'skin' ? i.skin : i.kind); a.listings++; if (a.lowest == null || l.price < a.lowest) a.lowest = l.price; }
     return { items: [
@@ -684,7 +693,8 @@ export function registerMarket(io: Server, socket: Socket): void {
   on('mkt_buy_stack', async (b) => { const me = need(); await gate(me, market.stacks.get(str(b.id))?.sellerName); return market.buyStack(me, b.id, b.qty); });
   on('mkt_requests', (b) => {
     const me = nameOf(); const mk = me ? playerKey(me) : null;
-    return { requests: market.browseRequests(b).map((r) => ({ ...r, mine: !!mk && market.requests.get(r.id)?.buyer === mk })), mine: me ? market.myRequests(me) : [], fee: MARKET_FEE, min: MIN_PRICE, max: MAX_PRICE };
+    const cat = market.catalog('resources') as { items: Array<{ type: ItemType; id: string; house: number }>; housePrices: Record<string, number> };
+    return { requests: market.browseRequests(b).map((r) => ({ ...r, mine: !!mk && market.requests.get(r.id)?.buyer === mk, house: cat.housePrices[`${r.type}:${r.itemId}`] ?? 0 })), mine: me ? market.myRequests(me) : [], fee: MARKET_FEE, min: MIN_PRICE, max: MAX_PRICE, housePrices: cat.housePrices };
   });
   on('mkt_request', async (b) => { const me = need(); await gate(me); return { request: market.postRequest(me, b.type, b.id, b.qty, b.unit) }; });
   on('mkt_cancel_request', (b) => { market.cancelRequest(need(), b.id); });

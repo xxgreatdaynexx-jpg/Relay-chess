@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T19:00:00-06:00", "title": "House prices and request search on the Market", "bullets": [
+    "The Market Resources list now shows the current house price next to every item — the same indexed per-unit figure the house desk pays today.",
+    "When you post a buy request, that house price is shown beside the item so you can see what to offer. A search box filters open requests and the item picker by name as you type (case-insensitive). Food the house does not buy is left blank. Your chips, stock, and existing listings are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T18:50:00-06:00", "title": "Market buy requests", "bullets": [
     "On the Market Resources tab you can post a buy request for ore, bars, goods, or food: pick the item, how many you want, and the price per unit. The full amount is held from your chips up front. Cancel a request any time to get the leftover chips back.",
     "Other players can fill a request in whole or in part at the posted price. In the Factory and the Warehouse, a Sell to market request button appears only when you have stock that matches an open request. Sellers pay the usual 5% Market fee; the house-sell cap does not apply. Your existing chips, items, and listings are unchanged.",

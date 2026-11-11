@@ -3,10 +3,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { ItemIcon } from './ItemIcon';
 import { request } from '@/lib/net';
 import { useAccount } from '@/lib/auth';
-import type { CatEntry } from '@/lib/marketCatalog';
+import { matchesItemSearch, type CatEntry } from '@/lib/marketCatalog';
 import { listFee, receiveFor } from '../../../shared/marketSell';
 
 export type PackItem = { type: string; id: string; qty: number; name: string };
+const houseFmt = (n: number | undefined) => (n != null && n > 0 ? `${(+n.toFixed(2)).toLocaleString()} 🪙` : '—');
 
 export type RequestRow = { id: string; type: string; itemId: string; name: string; qty: number; total: number; unit: number; escrow: number; buyer: string; at: number; mine: boolean };
 export type MatchItem = { type: string; id: string; qty: number; name: string; requests: RequestRow[] };
@@ -84,8 +85,8 @@ export function BuyRequestsBoard({ pack, cat, onChanged }: { pack: PackItem[]; c
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const load = useCallback(() => {
-    void request('mkt_requests', { q }).then((r) => { const a = r as Ack; if (a.ok) setRows((a.requests as RequestRow[]) ?? []); });
-  }, [q]);
+    void request('mkt_requests', {}).then((r) => { const a = r as Ack; if (a.ok) setRows((a.requests as RequestRow[]) ?? []); });
+  }, []);
   useEffect(() => { load(); }, [load, account]);
   const act = async (ev: string, body: object, ok: string) => {
     setErr(''); setMsg(''); setBusy(true);
@@ -93,27 +94,30 @@ export function BuyRequestsBoard({ pack, cat, onChanged }: { pack: PackItem[]; c
     if (!r.ok) { setErr(r.error ?? 'Failed'); return; }
     setMsg(ok); load(); onChanged?.();
   };
-  const options = cat.map((e) => { const parts = e.what.startsWith('stack:') ? e.what.slice(6).split(':') : []; return { key: e.what, type: parts[0] ?? e.type, id: parts[1] ?? e.what, name: e.name }; }).filter((o) => o.type && o.id);
+  const options = cat.map((e) => { const parts = e.what.startsWith('stack:') ? e.what.slice(6).split(':') : []; return { key: e.what, type: parts[0] ?? e.type, id: parts[1] ?? e.what, name: e.name, house: e.house ?? 0 }; }).filter((o) => o.type && o.id && matchesItemSearch(o.name, q));
   const sel = options.find((o) => o.key === item) ?? options[0];
+  const shown = rows.filter((r) => matchesItemSearch(r.name, q));
   const n = Math.max(1, Math.floor(qty) || 1); const u = Math.max(1, Math.floor(unit) || 1); const escrow = n * u;
   const have = (type: string, id: string) => pack.find((p) => p.type === type && p.id === id)?.qty ?? 0;
   return (
     <div className="mreq" data-testid="mkt-requests">
       <h3 className="msell-h">📋 Buy requests <small>post a want; chips are held until it fills or you cancel</small></h3>
+      <div className="inv-filters"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search items" data-testid="mkt-request-search" aria-label="Search buy requests and items" /></div>
       {account && sel && (
         <form className="mreq-post" data-testid="mkt-request-post" onSubmit={(e) => { e.preventDefault(); void act('mkt_request', { type: sel.type, id: sel.id, qty: n, unit: u }, `Posted a request for ${n} ${sel.name} at ${u} each. ${escrow.toLocaleString()} chips held.`); }}>
-          <label>Item <select value={sel.key} onChange={(e) => setItem(e.target.value)} data-testid="mkt-request-item">{options.map((o) => <option key={o.key} value={o.key}>{o.name}</option>)}</select></label>
+          <label>Item <select value={sel.key} onChange={(e) => setItem(e.target.value)} data-testid="mkt-request-item">{options.map((o) => <option key={o.key} value={o.key}>{o.name}{o.house > 0 ? ` · house ${houseFmt(o.house)}` : ''}</option>)}</select></label>
           <label>Quantity <input type="number" min={1} value={qty} onChange={(e) => setQty(Number(e.target.value))} data-testid="mkt-request-qty" /></label>
           <label>Price each <input type="number" min={1} value={unit} onChange={(e) => setUnit(Number(e.target.value))} data-testid="mkt-request-unit" /></label>
+          {sel.house > 0 && <p className="inv-note" data-testid="mkt-request-house">House pays {houseFmt(sel.house)} each for {sel.name}.</p>}
           <button type="submit" disabled={busy} data-testid="mkt-request-go">Post · hold {fmt(escrow)}</button>
         </form>
       )}
       {!account && <p className="inv-note">Sign in to post a buy request.</p>}
-      <div className="inv-filters"><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search requests" data-testid="mkt-request-search" /></div>
+      {account && q.trim() && !options.length && <p className="inv-note">No items match that search.</p>}
       <table className="mkt-table" data-testid="mkt-request-table">
         <thead><tr><th>Item</th><th>Unit</th><th>Wanted</th><th>Buyer</th><th /></tr></thead>
         <tbody>
-          {rows.map((r) => {
+          {shown.map((r) => {
             const own = have(r.type, r.itemId);
             const k = Math.max(1, Math.min(r.qty, own));
             return (
@@ -130,7 +134,7 @@ export function BuyRequestsBoard({ pack, cat, onChanged }: { pack: PackItem[]; c
               </tr>
             );
           })}
-          {!rows.length && <tr><td colSpan={5} className="inv-note">No open buy requests.</td></tr>}
+          {!shown.length && <tr><td colSpan={5} className="inv-note">{rows.length ? 'No open requests match that search.' : 'No open buy requests.'}</td></tr>}
         </tbody>
       </table>
       {msg && <p className="mkt-ok">{msg}</p>}{err && <p className="inv-err">{err}</p>}
