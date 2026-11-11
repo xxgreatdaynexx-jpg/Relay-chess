@@ -14,7 +14,7 @@ import { FISH, RARITY_ODDS, FISH_SPOT_CAP, FISH_SELL_MUL, COOLER_MAX, type FishS
 import { PRODUCTS, PRODUCT_ORDER, WELL_RATE, PUMPJACK_MULT, TRACTS, LEASE_BASE, WELL_COST, PUMPJACK_COST, FORTMC_TICKET_BASE } from './fortmc.js';
 import { properties, TAX_RATE } from './realEstate.js';
 import { LEVERS, LEVER_IDS, POLICIES, POLICY_IDS, BUILDINGS, BUILDING_IDS, PROJECTS, PROJECT_IDS, TREASURY_SHARE, fundingView, FUNDING_LEVER_IDS, leverText, RIOT_STOP_COST } from './city.js';
-import { DAILY_EVENTS, DAILY_EVENT_TIERS, DAILY_EVENT_TIERS_RETUNE, EVENT_ORDER, LEGACY_EVENT_TIERS, EVENT_PAYOUT_FROM, EVENT_DAILY_FROM, EVENT_RETUNE_FROM, EVENT_TIERS, goalMul, EVENT_CLAIM_MS } from './coop3.js';
+import { DAILY_EVENTS_X3, DAILY_EVENT_TIERS, DAILY_EVENT_TIERS_RETUNE, EVENT_ORDER, LEGACY_EVENT_TIERS, EVENT_PAYOUT_FROM, EVENT_DAILY_FROM, EVENT_RETUNE_FROM, EVENT_TIERS, goalMul, EVENT_CLAIM_MS } from './coop3.js';
 
 export interface WikiRow { cells: string[] }
 export interface WikiSection {
@@ -85,7 +85,7 @@ export function buildWiki(): WikiSection[] {
   const fund = fundingView(Object.fromEntries(FUNDING_LEVER_IDS.map((id) => [id, LEVERS[id].base])));
 
   const eventRows = EVENT_ORDER.map((id) => {
-    const e = DAILY_EVENTS[id];
+    const e = DAILY_EVENTS_X3[id];
     return { cells: [`${e.icon} ${e.name}`, chips(e.goal) + ' ' + e.unit, e.blurb] };
   });
   const tierRows = DAILY_EVENT_TIERS_RETUNE.map((t) => ({ cells: [`${t.icon} ${t.name}`, pct(t.at) + ' of your cap', chips(t.chips)] }));

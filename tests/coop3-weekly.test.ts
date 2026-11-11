@@ -3,7 +3,7 @@ import { newDb } from 'pg-mem';
 import { getBank, resetBank } from '../server/casino-store';
 import { setPriceIndexForTest } from '../server/price-index';
 import { WeeklyEvents, resetWeekly, eventCredit } from '../server/weeklyEvent';
-import { DAILY_EVENT_GOALS, DAILY_EVENT_GOALS_RETUNE, DAILY_EVENT_TIERS, DAILY_EVENT_TIERS_RETUNE, DAILY_EVENTS, DAILY_EVENTS_RETUNE, EVENT_CLAIM_MS, EVENT_DAILY_FROM, EVENT_ORDER, EVENT_PAYOUT_FROM, EVENT_RETUNE_FROM, EVENT_TIERS, EVENTS, LEGACY_EVENT_TIERS, WEEKLY_EVENT_GOALS, eventDailyEpoch, eventFor, eventReward, eventTiersFor, periodIndex, periodStart, playerEventCap, TRADE_COUNT_CAP, weekIndex, weekStart } from '../shared/coop3';
+import { DAILY_EVENT_GOALS, DAILY_EVENT_GOALS_RETUNE, DAILY_EVENT_GOALS_X3, DAILY_EVENT_TIERS, DAILY_EVENT_TIERS_RETUNE, DAILY_EVENTS, DAILY_EVENTS_RETUNE, DAILY_EVENTS_X3, EVENT_CLAIM_MS, EVENT_DAILY_FROM, EVENT_GOAL3X_FROM, EVENT_ORDER, EVENT_PAYOUT_FROM, EVENT_RETUNE_FROM, EVENT_TIERS, EVENTS, LEGACY_EVENT_TIERS, WEEKLY_EVENT_GOALS, eventDailyEpoch, eventFor, eventReward, eventTier, eventTiersFor, periodIndex, periodStart, playerEventCap, TRADE_COUNT_CAP, weekIndex, weekStart } from '../shared/coop3';
 import { expectChangelogEntry, expectChangelogOrder } from './helpers/changelog';
 
 const W = weekIndex(Date.parse('2026-11-04T18:00:00Z')); // a mining-or-whatever week; tests pick weeks by kind
@@ -164,6 +164,34 @@ describe('weekly server events', () => {
     expect(eventReward(e, cap, 0.5, 1, EVENT_RETUNE_FROM)).toBe(37_500);
     // period 46 starts at the next Regina midnight after this ship (2026-11-11 00:00)
     expect(new Date(periodStart(EVENT_RETUNE_FROM)).toISOString()).toBe('2026-11-11T06:00:00.000Z');
+  });
+
+  it('3× server goals from EVENT_GOAL3X_FROM; payouts, medals and player caps stay at the retune values', () => {
+    expect(EVENT_GOAL3X_FROM).toBe(47);
+    expect(DAILY_EVENT_GOALS_X3).toEqual({ mining: 9_000, harvest: 12_750, fishing: 675, trade: 2_250, hockey: 45 });
+    expect(DAILY_EVENT_TIERS_RETUNE.map((x) => x.chips)).toEqual([10_000, 30_000, 75_000]);
+    expect(DAILY_EVENT_TIERS_RETUNE.map((x) => x.at)).toEqual([0.05, 0.25, 0.6]);
+    // In-progress day (period 46) keeps the 5× retune goals, caps and payouts.
+    expect(eventFor(EVENT_GOAL3X_FROM - 1).goal).toBe(DAILY_EVENTS_RETUNE[eventFor(EVENT_GOAL3X_FROM - 1).id].goal);
+    expect(eventTiersFor(EVENT_GOAL3X_FROM - 1)).toBe(DAILY_EVENT_TIERS_RETUNE);
+    expect(playerEventCap(eventFor(EVENT_GOAL3X_FROM - 1))).toBe(playerEventCap(DAILY_EVENTS_RETUNE[eventFor(EVENT_GOAL3X_FROM - 1).id]));
+    // New day: 3× goals, same personal caps, same medal cutoffs, same payouts.
+    expect(eventFor(EVENT_GOAL3X_FROM).goal).toBe(DAILY_EVENTS_X3[eventFor(EVENT_GOAL3X_FROM).id].goal);
+    expect(eventTiersFor(EVENT_GOAL3X_FROM)).toBe(DAILY_EVENT_TIERS_RETUNE);
+    for (const kind of EVENT_ORDER) {
+      const prev = DAILY_EVENTS_RETUNE[kind];
+      const next = DAILY_EVENTS_X3[kind];
+      expect(next.goal).toBe(prev.goal * 3);
+      expect(playerEventCap(next)).toBe(playerEventCap(prev));
+      for (const frac of [0.05, 0.25, 0.6] as const) {
+        const need = Math.ceil(frac * playerEventCap(prev));
+        expect(eventTier(next, need, EVENT_GOAL3X_FROM)?.at).toBe(frac);
+        expect(eventTier(prev, need, EVENT_RETUNE_FROM)?.at).toBe(frac);
+      }
+      expect(eventReward(next, playerEventCap(next), 1, 1, EVENT_GOAL3X_FROM)).toBe(75_000);
+      expect(eventReward(next, playerEventCap(next), 0.5, 1, EVENT_GOAL3X_FROM)).toBe(37_500);
+    }
+    expect(new Date(periodStart(EVENT_GOAL3X_FROM)).toISOString()).toBe('2026-11-12T06:00:00.000Z');
   });
 
 

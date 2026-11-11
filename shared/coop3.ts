@@ -117,6 +117,15 @@ export const DAILY_EVENT_TIERS_RETUNE = [
 export const DAILY_EVENTS_RETUNE = Object.fromEntries(Object.entries(EVENTS).map(([kind, e]) => [kind, {
   ...e, goal: DAILY_EVENT_GOALS_RETUNE[kind as EventKind],
 }])) as Record<EventKind, EventDef>;
+/** 3× daily server goals starting at EVENT_GOAL3X_FROM. Player caps, medal thresholds and
+ *  payouts stay at the EVENT_RETUNE_FROM values, so one player still needs the same
+ *  contribution for Bronze / Silver / Gold. The in-progress day keeps prior goals. */
+export const EVENT_GOAL3X_FROM = 47; // 2026-11-12 00:00 America/Regina
+export const EVENT_GOAL3X_PLAYER_SHARE = 1 / 6; // keeps playerEventCap identical to the retune table
+export const DAILY_EVENT_GOALS_X3: Record<EventKind, number> = { mining: 9_000, harvest: 12_750, fishing: 675, trade: 2_250, hockey: 45 };
+export const DAILY_EVENTS_X3 = Object.fromEntries(Object.entries(EVENTS).map(([kind, e]) => [kind, {
+  ...e, goal: DAILY_EVENT_GOALS_X3[kind as EventKind], playerShare: EVENT_GOAL3X_PLAYER_SHARE,
+}])) as Record<EventKind, EventDef>;
 export const EVENT_ORDER: EventKind[] = ['mining', 'harvest', 'fishing', 'trade', 'hockey'];
 export const WEEK_MS = 7 * DAY;
 /** Monday 2026-01-05 00:00 MST (07:00 UTC). Weeks start every Monday 00:00 MST. */
@@ -144,6 +153,7 @@ export const eventKindAt = (w: number): EventKind => EVENT_ORDER[((w % EVENT_ORD
 export const eventFor = (w: number): EventDef => {
   const kind = eventKindAt(w);
   if (w < EVENT_REBALANCE_FROM) return LEGACY_EVENTS[kind]!;
+  if (w >= EVENT_GOAL3X_FROM) return DAILY_EVENTS_X3[kind]!;
   if (w >= EVENT_RETUNE_FROM) return DAILY_EVENTS_RETUNE[kind]!;
   if (w >= EVENT_DAILY_FROM) return DAILY_EVENTS[kind]!;
   return EVENTS[kind]!;

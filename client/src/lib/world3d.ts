@@ -937,7 +937,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     if (id.startsWith('barn:')) { h.onHover(null, 0, 0); h.onBarn?.(id); return; }
     if (id.startsWith('trailer:')) { h.onHover(id, e.clientX, e.clientY); if (h.onTrailer?.(id.slice(8))) return; window.dispatchEvent(new CustomEvent('open-player', { detail: id.slice(8) })); return; } // trailers: your own opens your home (kitchen), others the owner's profile
     if (id.startsWith('lm:') || id.startsWith('b:') || id.startsWith('p:') || id.startsWith('f:') || id.startsWith('cf:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel
-    if (id === BILLIONAIRE_SIGN) { setHover(id); return; } // teaser only — no date, no feature list
+    if (id === BILLIONAIRE_SIGN) { setHover(id); h.onHover(null, 0, 0); h.onPick(id); return; } // opens the Future Features popup; no date
     flyTo(id);
   };
   /** Glide the camera to a world point (player-profile "show on map" for land and farms). */
