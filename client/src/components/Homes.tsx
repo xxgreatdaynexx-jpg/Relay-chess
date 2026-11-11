@@ -14,9 +14,12 @@ import { buildMiner, animateMiner, type MinerRig } from '@/lib/minerAvatar';
 import { drawLabel, labelMaterial } from '@/lib/labelSprite';
 import { propertyById } from '../../../shared/realEstate';
 import {
-  ACCESS_LABEL, FLOOR_BY_ID, FLOOR_STYLES, FURN_BY_ID, FURN_CATS, GRID_D, GRID_W, WALL_BY_ID, WALL_STYLES, fits, footprint, styleKey,
+  ACCESS_LABEL, FLOOR_BY_ID, FLOOR_STYLES, FURN_BY_ID, FURN_CATS, WALL_BY_ID, WALL_STYLES, fits, footprint, styleKey,
   type Furniture, type HomeAccess, type HomeLayout, type Placed, type FurnCat,
 } from '../../../shared/homes';
+import { clampInPlan, homePlan, itemRoom } from '../../../shared/homePlan';
+import { buildHomeShell, homeCamera } from '@/lib/homeInterior';
+import { detectWorldTier, TIER_PIXEL_RATIO } from '@/lib/worldTier';
 
 export const OPEN_FURNITURE = 'open-furniture-store';
 export const FURNITURE_CHANGED = 'furniture-inventory-changed';
@@ -99,13 +102,17 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 
 function nameTag(name: string, color = '#e8c26a') { const t = drawLabel(name, { bg: 'rgba(10,8,22,0.82)', border: color, text: '#dcd8e6' }); const s = new THREE.Sprite(labelMaterial(t)); s.scale.set(1.6, 0.4, 1); s.position.y = 2.2; return s; }
 
-/** The interior: a GRID_W × GRID_D room, avatars, chat, and (owner) build mode. */
+/** The interior: a type-scaled floor plan, avatars, chat, and (owner) build mode. */
 export function HomeInterior({ me, enter, onClose }: { me: string; enter: { home: HomeView; owner: boolean; peers: Peer[]; me: string; locker?: Locker }; onClose: (why?: string) => void }) {
   const cv = useRef<HTMLCanvasElement>(null);
   const [home, setHome] = useState(enter.home); const [peers, setPeers] = useState<Peer[]>(enter.peers); const [chat, setChat] = useState<ChatLine[]>([]); const [say, setSay] = useState('');
   const [build, setBuild] = useState(false); const [locker, setLocker] = useState<Locker | undefined>(enter.locker); const [hold, setHold] = useState<Placed | null>(null); const [pick, setPick] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null); const [showAccess, setShowAccess] = useState(false); const [inv, setInv] = useState(enter.home.invites.join(', '));
   const label = propertyById(home.id)?.label ?? home.id; const owner = enter.owner;
+  const plan = useMemo(() => homePlan(propertyById(home.id)?.type), [home.id]);
+  const fitOf = (items: Placed[], p: Placed, skip?: string) => fits(items, p, skip, { w: plan.w, d: plan.d, inRoom: (q) => !!itemRoom(plan, q) });
+  const planRef = useRef(plan); planRef.current = plan;
+
   const st = useRef({ me: enter.me, layout: home.layout, peers: new Map<string, Peer>(enter.peers.map((p) => [p.sid, p])), hold: null as Placed | null, pick: null as string | null, build: false, ghostOk: true, target: null as THREE.Vector3 | null, dirty: 0 });
   st.current.layout = home.layout; st.current.hold = hold; st.current.pick = pick; st.current.build = build;
   const free = useMemo(() => { const m = new Map<string, number>(); for (const it of locker?.items ?? []) if (FURN_BY_ID.has(it.item)) m.set(it.item, it.qty - it.placed); for (const p of home.layout.items) m.set(p.f, (m.get(p.f) ?? 0)); return m; }, [locker, home.layout]);
@@ -146,21 +153,22 @@ export function HomeInterior({ me, enter, onClose }: { me: string; enter: { home
   const sceneApi = useRef<{ setLayout: (l: HomeLayout) => void } | null>(null);
   useEffect(() => {
     const c = cv.current; if (!c) return; let r: THREE.WebGLRenderer; try { r = new THREE.WebGLRenderer({ canvas: c, antialias: true }); } catch { return; }
-    r.setPixelRatio(Math.min(2, devicePixelRatio)); r.shadowMap.enabled = true;
+    const plan = planRef.current; const low = detectWorldTier() === 'low';
+    r.setPixelRatio(Math.min(TIER_PIXEL_RATIO[detectWorldTier()], devicePixelRatio)); r.shadowMap.enabled = !low;
+    r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.08; r.outputColorSpace = THREE.SRGBColorSpace;
     const sc = new THREE.Scene(); sc.background = new THREE.Color(0x14121c);
-    sc.add(new THREE.HemisphereLight(0xfff4e0, 0x404050, 1.3)); const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(4, 12, 9); sun.castShadow = true; sun.shadow.camera.left = -10; sun.shadow.camera.right = 10; sun.shadow.camera.top = 10; sun.shadow.camera.bottom = -10; sun.target.position.set(GRID_W / 2, 0, GRID_D / 2); sc.add(sun, sun.target);
-    const cam = new THREE.PerspectiveCamera(45, 1, 0.1, 200); cam.position.set(GRID_W / 2, 12, GRID_D + 8); cam.lookAt(GRID_W / 2, 0, GRID_D / 2 - 0.5);
-    const floorMat = new THREE.MeshStandardMaterial({ color: 0xb08a5a, roughness: 0.8 }); const wallMat = new THREE.MeshStandardMaterial({ color: 0xe8e2d6, roughness: 0.9, side: THREE.DoubleSide });
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(GRID_W, GRID_D), floorMat); floor.rotation.x = -Math.PI / 2; floor.position.set(GRID_W / 2, 0, GRID_D / 2); floor.receiveShadow = true; sc.add(floor);
-    const grid = new THREE.GridHelper(Math.max(GRID_W, GRID_D), Math.max(GRID_W, GRID_D), 0xffffff, 0xffffff); (grid.material as THREE.Material).transparent = true; (grid.material as THREE.Material).opacity = 0.18; grid.position.set(Math.max(GRID_W, GRID_D) / 2, 0.01, Math.max(GRID_W, GRID_D) / 2); grid.visible = false; sc.add(grid);
-    const wb = new THREE.Mesh(new THREE.PlaneGeometry(GRID_W, 3.2), wallMat); wb.position.set(GRID_W / 2, 1.6, 0); sc.add(wb);
-    const wl = new THREE.Mesh(new THREE.PlaneGeometry(GRID_D, 3.2), wallMat); wl.rotation.y = Math.PI / 2; wl.position.set(0, 1.6, GRID_D / 2); sc.add(wl);
-    const wr = new THREE.Mesh(new THREE.PlaneGeometry(GRID_D, 3.2), wallMat); wr.rotation.y = -Math.PI / 2; wr.position.set(GRID_W, 1.6, GRID_D / 2); sc.add(wr);
-    const win = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.2), new THREE.MeshStandardMaterial({ color: 0x9fd4ff, emissive: 0x4a7aa0, emissiveIntensity: 0.6 })); win.position.set(GRID_W / 2, 1.8, 0.02); sc.add(win);
+    const view = homeCamera(plan);
+    const cam = new THREE.PerspectiveCamera(45, 1, 0.1, 400); cam.position.set(view.x, view.y, view.z); cam.lookAt(view.lx, view.ly, view.lz);
+    const wall0 = WALL_BY_ID.get(st.current.layout.wall); const floor0 = FLOOR_BY_ID.get(st.current.layout.floor);
+    const shell = buildHomeShell(plan, { wall: wall0?.color ?? 0xe8e2d6, wallAccent: wall0?.accent ?? 0xcfc8b8, floor: floor0?.color ?? 0xb08a5a, floorAccent: floor0?.accent ?? 0x9a7a50, low });
+    sc.add(shell.group);
+    const gridN = Math.max(plan.w, plan.d);
+    const grid = new THREE.GridHelper(gridN, gridN, 0xffffff, 0xffffff); (grid.material as THREE.Material).transparent = true; (grid.material as THREE.Material).opacity = 0.14; grid.position.set(gridN / 2, 0.02, gridN / 2); grid.visible = false; sc.add(grid);
     const furn = new THREE.Group(); sc.add(furn); const items = new Map<string, THREE.Group>();
     const place = (g: THREE.Object3D, p: Placed) => { const f = FURN_BY_ID.get(p.f)!; const { w, d } = footprint(f, p.r); g.position.set(p.x + w / 2, 0, p.z + d / 2); g.rotation.y = -p.r * Math.PI / 2; };
     const setLayout = (l: HomeLayout) => {
-      floorMat.color.setHex(FLOOR_BY_ID.get(l.floor)?.color ?? 0xb08a5a); wallMat.color.setHex(WALL_BY_ID.get(l.wall)?.color ?? 0xe8e2d6);
+      const w = WALL_BY_ID.get(l.wall); const f = FLOOR_BY_ID.get(l.floor);
+      shell.setColors(w?.color ?? 0xe8e2d6, w?.accent ?? 0xcfc8b8, f?.color ?? 0xb08a5a, f?.accent ?? 0x9a7a50);
       for (const [k, g] of items) if (!l.items.some((p) => p.uid === k)) { furn.remove(g); items.delete(k); }
       for (const p of l.items) { let g = items.get(p.uid); if (!g || g.userData.f !== p.f) { if (g) furn.remove(g); g = buildFurniture(FURN_BY_ID.get(p.f)!); g.userData.f = p.f; g.traverse((o) => { o.userData.uid = p.uid; }); items.set(p.uid, g); furn.add(g); } place(g, p); }
     };
@@ -192,7 +200,7 @@ export function HomeInterior({ me, enter, onClose }: { me: string; enter: { home
       // my movement: WASD/arrows or click-to-walk
       let vx = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0), vz = (keys.has('s') || keys.has('arrowdown') ? 1 : 0) - (keys.has('w') || keys.has('arrowup') ? 1 : 0);
       if (vx || vz) st.current.target = null; else if (st.current.target) { const dx = st.current.target.x - myPos.x, dz = st.current.target.z - myPos.z; const dd = Math.hypot(dx, dz); if (dd < 0.1) st.current.target = null; else { vx = dx / dd; vz = dz / dd; } }
-      if (vx || vz) { const n = Math.hypot(vx, vz); myPos.x = Math.min(GRID_W - 0.3, Math.max(0.3, myPos.x + (vx / n) * 3 * dt)); myPos.z = Math.min(GRID_D - 0.3, Math.max(0.3, myPos.z + (vz / n) * 3 * dt)); myPos.ry = Math.atan2(vx, vz); if (now - sent > 150) { sent = now; socket.emit('home_pos', myPos); } }
+      if (vx || vz) { const n = Math.hypot(vx, vz); const nx = myPos.x + (vx / n) * 3 * dt, nz = myPos.z + (vz / n) * 3 * dt; const c = clampInPlan(planRef.current, nx, nz); myPos.x = c.x; myPos.z = c.z; myPos.ry = Math.atan2(vx, vz); if (now - sent > 150) { sent = now; socket.emit('home_pos', myPos); } }
       const me2 = st.current.peers.get(st.current.me); if (me2) Object.assign(me2, myPos);
       for (const p of st.current.peers.values()) {
         let a = rigs.get(p.sid); if (!a) { const rig = buildMiner(null); rig.pick.visible = false; rig.root.scale.setScalar(0.55); const tag = nameTag(p.name, p.sid === st.current.me ? '#5affc8' : '#e8c26a'); tag.scale.set(1.6 / 0.55, 0.4 / 0.55, 1); tag.position.y = 2.2 / 0.55 * 0.75; rig.root.add(tag); sc.add(rig.root); rig.root.position.set(p.x, 0, p.z); a = { rig, tag }; rigs.set(p.sid, a); }
@@ -203,25 +211,25 @@ export function HomeInterior({ me, enter, onClose }: { me: string; enter: { home
       // placement ghost
       const h = st.current.build ? st.current.hold : null;
       if (h && hover) { const f = FURN_BY_ID.get(h.f)!; const k = h.f; if (ghostKey !== k) { if (ghost) sc.remove(ghost); ghost = buildFurniture(f); ghost.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).material = ghostMat; }); sc.add(ghost); ghostKey = k; }
-        const { w, d } = footprint(f, h.r); const p = { ...h, x: Math.floor(hover.x - (w - 1) / 2), z: Math.floor(hover.z - (d - 1) / 2) }; place(ghost!, p); ghost!.visible = true; ghostMat.color.setHex(fits(st.current.layout.items, p, h.uid) ? 0x5aff8a : 0xff5a5a); }
+        const { w, d } = footprint(f, h.r); const p = { ...h, x: Math.floor(hover.x - (w - 1) / 2), z: Math.floor(hover.z - (d - 1) / 2) }; place(ghost!, p); ghost!.visible = true; ghostMat.color.setHex(fitOf(st.current.layout.items, p, h.uid) ? 0x5aff8a : 0xff5a5a); }
       else if (ghost) ghost.visible = false;
       if (selBox) { sc.remove(selBox); selBox = null; } const sel = st.current.pick && items.get(st.current.pick); if (sel && st.current.build) { selBox = new THREE.BoxHelper(sel, 0x5affc8); sc.add(selBox); }
       for (const [k, g] of items) g.visible = !(h && h.uid === k);
       r.render(sc, cam);
     };
     loop();
-    return () => { cancelAnimationFrame(raf); window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku); c.removeEventListener('pointermove', pm); c.removeEventListener('pointerdown', pd); r.dispose(); sceneApi.current = null; };
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku); c.removeEventListener('pointermove', pm); c.removeEventListener('pointerdown', pd); shell.dispose(); r.dispose(); sceneApi.current = null; };
   }, [enter.me, enter.peers]);
   useEffect(() => { sceneApi.current?.setLayout(home.layout); }, [home.layout]);
 
   // build-mode actions (events from the canvas + buttons)
   useEffect(() => {
     const drop = (e: Event) => { if (!owner || !st.current.build || saving.current) return; const h = st.current.hold; if (!h) return; const { x, z } = (e as CustomEvent<{ x: number; z: number }>).detail; const p = { ...h, x, z };
-      if (!fits(st.current.layout.items, p, h.uid)) { setMsg("That doesn't fit there."); return; }
+      if (!fitOf(st.current.layout.items, p, h.uid)) { setMsg("That doesn't fit there."); return; }
       const items = [...st.current.layout.items.filter((i) => i.uid !== h.uid), p]; setHold(null); setPick(p.uid); void saveRef.current({ ...st.current.layout, items }); };
     const pk = (e: Event) => setPick((e as CustomEvent<string | null>).detail);
     const rot = () => { if (!owner || !st.current.build || saving.current) return; const h = st.current.hold; if (h) { setHold({ ...h, r: (h.r + 1) % 4 }); return; } const id = st.current.pick; const p = st.current.layout.items.find((i) => i.uid === id); if (!p) return; const q = { ...p, r: (p.r + 1) % 4 };
-      if (!fits(st.current.layout.items, q, p.uid)) { setMsg('No room to rotate it here.'); return; } void saveRef.current({ ...st.current.layout, items: st.current.layout.items.map((i) => (i.uid === p.uid ? q : i)) }); };
+      if (!fitOf(st.current.layout.items, q, p.uid)) { setMsg('No room to rotate it here.'); return; } void saveRef.current({ ...st.current.layout, items: st.current.layout.items.map((i) => (i.uid === p.uid ? q : i)) }); };
     const del = () => { if (!owner || saving.current) return; const id = st.current.pick; if (!id || !st.current.build) return; setPick(null); void saveRef.current({ ...st.current.layout, items: st.current.layout.items.filter((i) => i.uid !== id) }); };
     window.addEventListener('home-drop', drop); window.addEventListener('home-pick', pk); window.addEventListener('home-rotate', rot); window.addEventListener('home-delete', del);
     return () => { window.removeEventListener('home-drop', drop); window.removeEventListener('home-pick', pk); window.removeEventListener('home-rotate', rot); window.removeEventListener('home-delete', del); };

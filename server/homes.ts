@@ -24,11 +24,16 @@ import { getRealEstate } from './realEstate.js';
 import { propertyById } from '../shared/realEstate.js';
 import {
   CHAT_MAX, EMPTY_LAYOUT, FLOOR_STYLES, FURNITURE, FURN_BY_ID, FURN_CATS, MAX_BUY_QTY, MAX_INVITES, MAX_VISITORS, WALL_STYLES,
-  canVisit, clampPos, isHomeProperty, shopItem, validateLayout, type HomeAccess, type HomeLayout,
+  canVisit, clampPos, isHomeProperty, shopItem, validateLayout, type HomeAccess, type HomeLayout, type Placed,
 } from '../shared/homes.js';
+import { clampInPlan, homePlan, itemRoom, migrateItems, spawnPos } from '../shared/homePlan.js';
 
 export class HomeError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
+
+const planOf = (id: string) => homePlan(propertyById(id)?.type);
+const fitSize = (id: string) => { const plan = planOf(id); return { w: plan.w, d: plan.d, inRoom: (p: Placed) => !!itemRoom(plan, p) }; };
+const itemsMoved = (a: Placed[], b: Placed[]) => a.length !== b.length || a.some((it, i) => it.x !== b[i]?.x || it.z !== b[i]?.z || it.r !== b[i]?.r || it.uid !== b[i]?.uid);
 
 export const HOMES_MIGRATION = `
 CREATE TABLE IF NOT EXISTS home_inventory (player_key TEXT NOT NULL, item TEXT NOT NULL, qty INT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, item));
@@ -125,7 +130,13 @@ export class Homes {
     if (!this.pool) row = this.memLayout.get(id);
     else { const r = (await this.pool.query('SELECT * FROM home_layout WHERE property_id = $1', [id])).rows[0]; if (r) row = { owner_key: String(r.owner_key), layout: { wall: String(r.wall), floor: String(r.floor), items: j(r.items, []) }, access: (ACCESS.has(r.access as HomeAccess) ? r.access : 'invite') as HomeAccess, invites: j(r.invites, []) }; }
     if (!row || row.owner_key !== keyOf(owner)) return { id, owner, layout: { ...EMPTY_LAYOUT, items: [] }, access: 'invite', invites: [] };
-    return { id, owner, ...row };
+    const items = migrateItems(p!.type, row.layout.items);
+    const layout = { ...row.layout, items };
+    if (itemsMoved(row.layout.items, items)) {
+      row = { ...row, layout };
+      try { await this.put(id, owner, { layout, access: row.access, invites: row.invites }); } catch (e) { console.error('[homes] migrate persist failed:', (e as Error).message); }
+    }
+    return { id, owner, ...row, layout };
   }
   private async put(id: string, owner: string, s: Omit<HomeState, 'id' | 'owner'>) {
     if (!this.pool) { this.memLayout.set(id, { owner_key: keyOf(owner), ...s }); return; }
@@ -139,7 +150,16 @@ export class Homes {
   }
   async save(name: string, id: unknown, layout: unknown) {
     const st = await this.requireOwner(name, id); const inv = await this.inventory(name);
-    const v = validateLayout(layout, await this.available(name, st.id), (key) => (inv.get(key) ?? 0) > 0); if (!v.ok) throw new HomeError(v.error);
+    const owns = (key: string) => (inv.get(key) ?? 0) > 0;
+    const avail = await this.available(name, st.id);
+    const size = fitSize(st.id);
+    let v = validateLayout(layout, avail, owns, size);
+    if (!v.ok && layout && typeof layout === 'object' && Array.isArray((layout as { items?: unknown }).items)) {
+      const migrated = { ...(layout as object), items: migrateItems(propertyById(st.id)?.type, (layout as { items: Placed[] }).items) };
+      v = validateLayout(migrated, avail, owns, size);
+      if (!v.ok) v = validateLayout(migrated, avail, owns, { ...size, loose: true });
+    }
+    if (!v.ok) throw new HomeError(v.error);
     await this.put(st.id, name, { layout: v.layout, access: st.access, invites: st.invites });
     return { ...st, layout: v.layout };
   }
@@ -202,7 +222,9 @@ export function registerHomes(io: Server, socket: Socket): void {
     if (!canVisit(st.access, st.invites, st.owner, n)) throw new HomeError(st.access === 'locked' ? `${st.owner}'s home is locked.` : `${st.owner}'s home is invite only.`);
     const m = inside.get(st.id) ?? new Map<string, Visitor>();
     if (keyOf(st.owner) !== keyOf(n) && m.size >= MAX_VISITORS) throw new HomeError('That home is full right now.');
-    leave(); at = st.id; inside.set(st.id, m); m.set(socket.id, { sid: socket.id, name: n, x: 1.5 + m.size * 0.8, z: 8.5, ry: Math.PI });
+    leave(); at = st.id; inside.set(st.id, m); const spawn = spawnPos(planOf(st.id));
+    const sx = spawn.x + (m.size % 5) * 0.55, sz = spawn.z; const c0 = clampInPlan(planOf(st.id), sx, sz);
+    m.set(socket.id, { sid: socket.id, name: n, x: c0.x, z: c0.z, ry: Math.PI });
     void socket.join(roomOf(st.id)); io.to(roomOf(st.id)).emit('home_peers', { id: st.id, peers: peers(st.id) });
     const mine = keyOf(st.owner) === keyOf(n);
     return { home: { ...st, invites: mine ? st.invites : [] }, owner: mine, peers: peers(st.id), me: socket.id, ...(mine ? { locker: await h.locker(n) } : {}) };
@@ -222,7 +244,7 @@ export function registerHomes(io: Server, socket: Socket): void {
   });
   socket.on('home_pos', (p: unknown) => {
     if (!at) return; const now = Date.now(); if (now - lastPos < 120) return; lastPos = now;
-    const o = (p ?? {}) as Record<string, unknown>; const c = clampPos(o.x, o.z); const v = inside.get(at)?.get(socket.id); if (!c || !v) return;
+    const o = (p ?? {}) as Record<string, unknown>; const c0 = clampPos(o.x, o.z, planOf(at)); if (!c0) return; const c = clampInPlan(planOf(at), c0.x, c0.z); const v = inside.get(at)?.get(socket.id); if (!v) return;
     v.x = c.x; v.z = c.z; v.ry = Number.isFinite(Number(o.ry)) ? Number(o.ry) : v.ry;
     socket.to(roomOf(at)).emit('home_pos', { sid: socket.id, x: v.x, z: v.z, ry: v.ry });
   });

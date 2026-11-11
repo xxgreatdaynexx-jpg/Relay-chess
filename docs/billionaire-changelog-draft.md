@@ -208,3 +208,12 @@ Title: A continuous snowy 2x map, with trees and a full beach
 - Trees, bushes, rocks, lamps, hedges, fences and a few ponds fill the empty ground, kept off roads, lots, farms, runways and buildings.
 - The sand beach now runs the full southern shoreline of the expanded map, and the water edge stays continuous.
 - Goldwood driveways stop in front of the mansions, the mid street no longer cuts the north vineyard, and the East Estates vineyard sits off the x=400 spine.
+
+## House interiors
+
+Title: Homes with real rooms, sized to the house
+
+- Every enterable home now has a floor plan that scales with the property type. Starter houses, rowhouses, apartments and beach houses keep the original 12×10 footprint and gain a living room, kitchen, hall, bedroom and bath. Condos, villas and towers are 16×12 with a foyer and dining room. Hotels, penthouses and island estates are 18×14 with an office and two bedrooms. Mansions and high-rises are 22×16 with a library, lounge and three bedrooms.
+- Interiors have real walls, doorways, baseboard and crown trim, per-room floors and windows. Lighting is warmer, with a soft window sun and a lamp in each room (fewer lights and no shadows on low graphics).
+- Existing furniture is remapped into a valid room when a wall would cut through it, and is never deleted.
+

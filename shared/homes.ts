@@ -1,6 +1,7 @@
 /**
  * Enterable, customizable homes (Millionaire Update, pt1459u).
- * Every residential property you own has an interior: a GRID_W × GRID_D tile room. Furniture is bought at the Furniture
+ * Every residential property you own has an interior. Floor plans scale with the house type (starter homes stay the
+ * original GRID_W × GRID_D footprint; mansions and penthouses are larger and have more rooms). Furniture is bought at the Furniture
  * Store (a city landmark) into your furniture inventory, then placed / moved / rotated / removed on the grid in build mode.
  * Placed furniture stays yours: it only "uses" a copy from your inventory while it sits in a home you currently own.
  * Wall and floor styles are bought once and then usable in every home.
@@ -181,9 +182,14 @@ export const cells = (p: Placed): string[] => {
 const isFlat = (f: Furniture) => f.h < 0.1;
 
 /** Can `p` go here, ignoring `skipUid` (the item being moved)? */
-export function fits(items: Placed[], p: Placed, skipUid?: string): boolean {
+export type FitSize = { w?: number; d?: number; inRoom?: (p: Placed) => boolean; loose?: boolean };
+/** Can `p` go here, ignoring `skipUid` (the item being moved)? Optional `size` is the house floor plan. */
+export function fits(items: Placed[], p: Placed, skipUid?: string, size?: FitSize): boolean {
   const f = FURN_BY_ID.get(p.f); if (!f) return false; const { w, d } = footprint(f, p.r);
-  if (p.x < 0 || p.z < 0 || p.x + w > GRID_W || p.z + d > GRID_D) return false;
+  const W = size?.w ?? GRID_W, D = size?.d ?? GRID_D;
+  if (p.x < 0 || p.z < 0 || p.x + w > W || p.z + d > D) return false;
+  if (size?.inRoom && !size.inRoom(p)) return false;
+  if (size?.loose) return true;
   const mine = new Set(cells(p)); const flat = isFlat(f);
   for (const o of items) {
     if (o.uid === skipUid) continue; const of = FURN_BY_ID.get(o.f); if (!of || isFlat(of) !== flat) continue;
@@ -193,7 +199,7 @@ export function fits(items: Placed[], p: Placed, skipUid?: string): boolean {
 }
 
 /** Validate a layout a client sent: shape, bounds, overlaps, styles owned, furniture counts ≤ what the owner can place. */
-export function validateLayout(raw: unknown, available: Map<string, number>, ownsStyle: (key: string) => boolean): { ok: true; layout: HomeLayout } | { ok: false; error: string } {
+export function validateLayout(raw: unknown, available: Map<string, number>, ownsStyle: (key: string) => boolean, size?: FitSize): { ok: true; layout: HomeLayout } | { ok: false; error: string } {
   if (!raw || typeof raw !== 'object') return { ok: false, error: 'Bad layout.' };
   const r = raw as Record<string, unknown>;
   const wall = typeof r.wall === 'string' && WALL_BY_ID.has(r.wall) ? r.wall : null; const floor = typeof r.floor === 'string' && FLOOR_BY_ID.has(r.floor) ? r.floor : null;
@@ -206,7 +212,7 @@ export function validateLayout(raw: unknown, available: Map<string, number>, own
     const o = (it ?? {}) as Record<string, unknown>;
     const p: Placed = { uid: String(o.uid ?? '').slice(0, 40), f: String(o.f ?? ''), x: Number(o.x), z: Number(o.z), r: Number(o.r) };
     if (!p.uid || uids.has(p.uid) || !FURN_BY_ID.has(p.f) || ![p.x, p.z, p.r].every(Number.isInteger) || p.r < 0 || p.r > 3) return { ok: false, error: 'Bad furniture entry.' };
-    if (!fits(items, p)) return { ok: false, error: `${FURN_BY_ID.get(p.f)!.name} doesn't fit there.` };
+    if (!fits(items, p, undefined, size)) return { ok: false, error: `${FURN_BY_ID.get(p.f)!.name} doesn't fit there.` };
     used.set(p.f, (used.get(p.f) ?? 0) + 1);
     if (used.get(p.f)! > (available.get(p.f) ?? 0)) return { ok: false, error: `You don't have another ${FURN_BY_ID.get(p.f)!.name}. Buy one at the Furniture Store.` };
     uids.add(p.uid); items.push(p);
@@ -215,9 +221,10 @@ export function validateLayout(raw: unknown, available: Map<string, number>, own
 }
 
 /** Clamp an avatar position to the room (tile units, floats). */
-export const clampPos = (x: unknown, z: unknown): { x: number; z: number } | null => {
+export const clampPos = (x: unknown, z: unknown, size?: { w?: number; d?: number }): { x: number; z: number } | null => {
   const a = Number(x), b = Number(z); if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-  return { x: Math.min(GRID_W - 0.3, Math.max(0.3, a)), z: Math.min(GRID_D - 0.3, Math.max(0.3, b)) };
+  const W = size?.w ?? GRID_W, D = size?.d ?? GRID_D;
+  return { x: Math.min(W - 0.3, Math.max(0.3, a)), z: Math.min(D - 0.3, Math.max(0.3, b)) };
 };
 export const canVisit = (access: HomeAccess, invites: string[], owner: string, visitor: string) => {
   const v = visitor.trim().toLowerCase(); if (v === owner.trim().toLowerCase()) return true;

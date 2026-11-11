@@ -77,9 +77,9 @@ describe('placement persistence', () => {
     await getBank().transferConfirmed('Ann', 20_000, { key: 'fund:persist', game: 'admin' });
     await h1.buy('Ann', 'sofa', 1); await h1.buy('Ann', 'lamp', 2);
     await h1.save('Ann', H1, { wall: 'plaster', floor: 'laminate', items: [{ uid: 's', f: 'sofa', x: 0, z: 0, r: 0 }, { uid: 'l', f: 'lamp', x: 5, z: 5, r: 0 }, { uid: 'm', f: 'lamp', x: 6, z: 6, r: 0 }] });
-    await h1.save('Ann', H1, { wall: 'plaster', floor: 'laminate', items: [{ uid: 's', f: 'sofa', x: 3, z: 4, r: 1 }, { uid: 'l', f: 'lamp', x: 5, z: 5, r: 0 }] });
+    await h1.save('Ann', H1, { wall: 'plaster', floor: 'laminate', items: [{ uid: 's', f: 'sofa', x: 3, z: 2, r: 1 }, { uid: 'l', f: 'lamp', x: 5, z: 5, r: 0 }] });
     const h2 = new Homes(pool as never, own); await h2.init();
-    expect((await h2.state(H1)).layout.items).toEqual([{ uid: 's', f: 'sofa', x: 3, z: 4, r: 1 }, { uid: 'l', f: 'lamp', x: 5, z: 5, r: 0 }]);
+    expect((await h2.state(H1)).layout.items).toEqual([{ uid: 's', f: 'sofa', x: 3, z: 2, r: 1 }, { uid: 'l', f: 'lamp', x: 5, z: 5, r: 0 }]);
     expect((await h2.locker('Ann')).items).toEqual(expect.arrayContaining([{ item: 'lamp', qty: 2, placed: 1 }, { item: 'sofa', qty: 1, placed: 1 }]));
   });
 });
