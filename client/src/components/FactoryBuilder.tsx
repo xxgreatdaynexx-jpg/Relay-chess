@@ -12,7 +12,7 @@ import { GOODS, type Stack } from '../../../shared/mines';
 import { madeBy, tierOf, usedIn, CHEST_ITEMS, DX, DY, FLOOR_LEVELS, FRECIPES, KINDS, KIND_ORDER, TICK_MS, colorOfKey, floorSize, frecipe, gridOf, cellId, nameOfKey, priceOfKey, recipeTicks, recipesFor, step, canPlace, splitWeights, splitLabel, MAX_SPLIT_W, type Dir, type Ent, type FState, type Grid, type Kind, undergroundPairs } from '../../../shared/factory';
 import { clipKitMissing, clipToPlaceItems, entsToClip, type FactoryClip } from '../../../shared/factoryClipboard';
 
-export type FAck = { ok: boolean; error?: string; state?: FState | null; level?: number; storage?: Stack[]; guest?: boolean; now?: number; result?: unknown };
+export type FAck = { ok: boolean; error?: string; state?: FState | null; level?: number; storage?: Stack[]; guest?: boolean; now?: number; result?: unknown; carbonTax?: { rate: number; unpaid: number } };
 type Tool = 'select' | 'remove' | Kind;
 const ICON: Record<Kind, string> = { belt: '➡', underground: '⤵', splitter: '⑂', inserter: '🦾', chest_in: '📥', chest_out: '📤', chest_sell: '💰', smelter: '🔥', press: '🔨', roller: '⚙', drawer: '🧵', assembler: '🏗', jeweler: '💎', fabricator: '🏭', mill: '🌾', cannery: '🥫' };
 const hash = (x: number, y: number) => { let h = Math.imul(x * 374761393 + y * 668265263, 1274126177) >>> 0; h ^= h >>> 13; return (h % 1000) / 1000; };
@@ -25,6 +25,7 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
   const pidx = usePriceIndex();
   const [level, setLevel] = useState(0);
   const [fs, setFs] = useState<FState | null>(null);
+  const [carbonTax, setCarbonTax] = useState<{ rate: number; unpaid: number }>({ rate: 1, unpaid: 0 });
   const [tool, setTool] = useState<Tool>('select');
   const [dir, setDir] = useState<Dir>(0);
   const [sel, setSel] = useState<number | null>(null);
@@ -43,6 +44,7 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
     if (!r) return;
     if (r.storage) { onStorage(r.storage); sim.current.store = new Map(r.storage.map((x) => [`${x.type}:${x.id}`, x.qty])); }
     if (r.level !== undefined) setLevel(r.level);
+    if (r.carbonTax) setCarbonTax(r.carbonTax);
     if (r.state !== undefined) {
       const c = sim.current; const s = r.state ? (JSON.parse(JSON.stringify(r.state)) as FState) : null;
       if (s) { const size = floorSize(s.floor); if (size !== c.shown) { c.shownFrom = c.shown || size; c.shown = size; c.shownAt = performance.now(); } }
@@ -255,7 +257,7 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
   if (!fs) return (
     <div className="fac-empty" data-testid="fac-empty">
       <h3>🏭 Your factory building</h3>
-      <p className="mines-note">Lay belts, place smelters, presses and rollers, and chain ore into ingots, plates, rods, wire, gears, circuits, jewelry and engines. It keeps running while you're offline (up to 8 hours), feeding from your banked storage.</p>
+      <p className="mines-note">Lay belts, place smelters, presses and rollers, and chain ore into ingots, plates, rods, wire, gears, circuits, jewelry and engines. It keeps running while you're offline (up to 8 hours), feeding from your banked storage. Smelters pay a city carbon tax on each coal they burn as fuel (the mayor sets the rate).</p>
       {level === 0 && <button type="button" className="mines-sell" onClick={() => call('fac_expand', {}, () => flash('Factory built! You got a starter kit.'))} data-testid="fac-build">Buy the building (12×12) · 🪙 {ix(FLOOR_LEVELS[0].cost, pidx)}</button>}
       {level > 0 && <p className="mines-note">Loading…</p>}
     </div>
@@ -266,6 +268,7 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
     <div className="fac" data-testid="fac">
       <div className="fac-top">
         <span className="fac-chip">🏭 {floorSize(fs.floor)}×{floorSize(fs.floor)}</span>
+        <span className="fac-chip" data-testid="fac-carbon-tax" title={carbonTax.unpaid ? `Unpaid carbon tax is collected when you next have chips. Production keeps running.` : undefined}>Carbon tax 🪙 {carbonTax.rate}/coal{carbonTax.unpaid ? ` · unpaid 🪙 ${carbonTax.unpaid.toLocaleString()}` : ''}</span>
         {next && <button type="button" className="fac-btn" onClick={() => call('fac_expand', {}, () => flash(`Walls pushed out to ${next.size}×${next.size}!`))} data-testid="fac-expand">Expand to {next.size}×{next.size} · 🪙 {ix(next.cost, pidx).toLocaleString()}</button>}
         <span className="fac-tools">
           <button type="button" className={tool === 'select' ? 'on' : ''} onClick={() => { setTool('select'); setMoving(null); setMovingGroup(false); }} title="Select / drag area (Esc)">👆</button>

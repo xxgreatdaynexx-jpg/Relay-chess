@@ -14,6 +14,7 @@ import { playerKey } from './skins.js';
 import { MAX_BANKED_STACK, stackKey, isFood, recipeById, type Stack, type ItemType } from '../shared/mines.js';
 import { MAX_CATCHUP_MS, TICK_MS, advance, canPlace, cells, contents, FLOOR_LEVELS, frecipe, gridOf, machineBusy, machineSalePrice, isItemKey, isKind, isSplitWeights, MAX_SPLIT_W, KINDS, MAX_ENTS, newState, stacksInChest, takePayableHouseSale, sellableKey, type Dir, type Ent, type FState, type Kind, type Storage } from '../shared/factory.js';
 import { awakeDeadline } from '../shared/hubSleep.js';
+import { collectCarbonTax, carbonUnpaid, carbonRate, resetCarbonTax } from './carbon-tax.js';
 
 const SAVE_MS = 4000;
 const upsert = (k: string, name: string, s: FState) => ({ sql: `INSERT INTO factory_v2 (player_key, owner_name, data, updated_at) VALUES ($1,$2,$3,now()) ON CONFLICT (player_key) DO UPDATE SET owner_name = EXCLUDED.owner_name, data = EXCLUDED.data, updated_at = now()`, args: [k, name, JSON.stringify(s)] });
@@ -66,11 +67,12 @@ export class FactoryWorld {
     const before = s.at;
     if (until > s.at) {
       // Engineering XP: 2 per bar/good the factory adds to storage while catching up (capped per hour/day in skills.ts)
-      const st = this.storage(account); let made = 0, food = 0;
-      advance(s, { get: st.get, add: (key, d) => { if (d > 0 && !key.startsWith('ore:')) { if (isFoodKey(key)) food += d; else made += d; } st.add(key, d); } }, until, Math.max(MAX_CATCHUP_MS, capEnd - seen));
+      const st = this.storage(account); let made = 0, food = 0, coal = 0;
+      advance(s, { get: st.get, add: (key, d) => { if (d > 0 && !key.startsWith('ore:')) { if (isFoodKey(key)) food += d; else made += d; } st.add(key, d); } }, until, Math.max(MAX_CATCHUP_MS, capEnd - seen), (n) => { coal += n; });
       if (made > 0) awardXp(account, 'engineering', made * 2);
       if (food > 0) awardXp(account, 'cooking', food * 2);
-    }
+      if (coal > 0 || carbonUnpaid(account) > 0) collectCarbonTax(account, coal);
+    } else if (carbonUnpaid(account) > 0) collectCarbonTax(account, 0);
     if (now - s.at >= TICK_MS) s.at = now - ((now - s.at) % TICK_MS); // idle past the 8h window: skip, no production
     if (owner) s.seen = now;
     if (s.at !== before || owner) this.mark(account);
@@ -434,7 +436,7 @@ let world = new FactoryWorld();
 export const getFactory = () => world;
 let busy = false;
 const hook = (a: string) => { if (busy) return; busy = true; try { world.get(a, Date.now()); } finally { busy = false; } };
-export function resetFactory() { world.stopSweep(); world = new FactoryWorld(); getMines().beforeStorage = hook; return world; }
+export function resetFactory() { world.stopSweep(); resetCarbonTax(); world = new FactoryWorld(); getMines().beforeStorage = hook; return world; }
 export function initFactory(sweep = true) { getMines().beforeStorage = hook; if (sweep) world.startSweep(); }
 
 type Ack = (r: Record<string, unknown>) => void;
@@ -445,7 +447,7 @@ export function registerFactory(_io: Server, socket: Socket): void {
   const view0 = () => {
     const a = account(); const now = Date.now(); const s = world.get(a, now);
     const storage: Stack[] = a ? getMines().storage(a) : [];
-    return { state: s, level: a ? getMines().factories.get(playerKey(a))?.level ?? 0 : 0, storage, guest: !a, now };
+    return { state: s, level: a ? getMines().factories.get(playerKey(a))?.level ?? 0 : 0, storage, guest: !a, now, carbonTax: { rate: carbonRate(), unpaid: a ? carbonUnpaid(a) : 0 } };
   };
   const op = (fn: (b: Record<string, unknown>) => unknown) => (p: unknown, ack?: Ack) => {
     try { if (getMines().offline) throw new MineError(MINES_OFFLINE_MSG); const r = fn(body(p)); ack?.({ ok: true, result: r, ...view() }); }

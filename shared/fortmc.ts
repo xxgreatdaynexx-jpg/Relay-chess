@@ -293,3 +293,87 @@ export const FORT_SPOTS: FortSpot[] = [
   { id: 'f-shaft', label: 'Fort McChud Mine (walk-in)', icon: '🪨', blurb: 'Walk in and dig: 40 floors of Oil Sand, Gas Shale, Tar Rock and Condensate. Unload your haul here to feed the plant.', x: -70, z: 26, w: 24, d: 18, h: 16 },
   { id: 'f-mine', label: 'Deep Ore Mine', icon: '⛏️', blurb: 'A very expensive open-pit + shaft mine: 400 ore/hour at level 1, power-hungry.', x: 105, z: 20, w: 34, d: 34, h: 20 },
 ];
+
+// ---- public site snapshot (every player's visible structures + official leases)
+export interface FortSiteLease { key: string; name: string; mine: boolean }
+export interface FortSiteWell { ownerKey: string; ownerName: string; jack: boolean; cond: number }
+export interface FortSitePipe { ownerKey: string; ownerName: string; pipe: number }
+export interface FortSiteTractView { n: number; lease: FortSiteLease | null; wells: FortSiteWell[]; pipes: FortSitePipe[] }
+export interface FortSitePlayer {
+  key: string; name: string;
+  units: Array<{ k: UnitKind; cond: number; on: boolean }>;
+  mine: { level: number; on: boolean } | null;
+}
+export interface FortSite {
+  now: number;
+  leases: Record<string, FortSiteLease>;
+  tracts: FortSiteTractView[];
+  players: FortSitePlayer[];
+}
+
+/** Stable owner colour (HSL) so every client paints the same player the same way. */
+export function ownerColor(key: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619);
+  const hue = Math.abs(h) % 360;
+  return `hsl(${hue} 70% 48%)`;
+}
+
+/** World offset for one operator's plant units so copies do not sit on top of each other. Index 0 keeps the original slots. */
+export function plantOwnerOffset(index: number): { x: number; z: number } {
+  if (index <= 0) return { x: 0, z: 0 };
+  const i = index - 1;
+  return { x: -100 + (i % 2) * 26, z: 6 + Math.floor(i / 2) * 20 };
+}
+
+export interface FortOverlapReport { tracts: number; wells: number; pipes: number; details: Array<{ tract: number; official: string; foreignWells: number; foreignPipes: number }> }
+/** Count foreign (non-official-lessor) wells and pipes left on official leases. Does not delete anything. */
+export function auditFortOverlaps(
+  forts: Array<{ key: string; name: string; state: FortState }>,
+  official: Record<string, { key: string; name: string }>,
+): FortOverlapReport {
+  const details: FortOverlapReport['details'] = [];
+  let wells = 0, pipes = 0;
+  for (let n = 1; n <= TRACTS; n++) {
+    const hold = official[String(n)]; if (!hold) continue;
+    let fw = 0, fp = 0;
+    for (const p of forts) {
+      if (p.key === hold.key) continue;
+      const t = p.state.tracts[String(n)]; if (!t) continue;
+      fw += t.wells.length;
+      if (t.pipe > 0) fp++;
+    }
+    if (fw || fp) { details.push({ tract: n, official: hold.name, foreignWells: fw, foreignPipes: fp }); wells += fw; pipes += fp; }
+  }
+  return { tracts: details.length, wells, pipes, details };
+}
+
+export function buildFortSite(
+  now: number,
+  meKey: string | null,
+  official: Record<string, { key: string; name: string }>,
+  forts: Array<{ key: string; name: string; state: FortState }>,
+): FortSite {
+  const players = [...forts].sort((a, b) => a.key.localeCompare(b.key)).map((p) => ({
+    key: p.key, name: p.name,
+    units: p.state.units.map((u) => ({ k: u.k, cond: u.cond, on: u.on })),
+    mine: p.state.mine ? { level: p.state.mine.level, on: p.state.mine.on } : null,
+  }));
+  const tracts: FortSiteTractView[] = [];
+  const leases: Record<string, FortSiteLease> = {};
+  for (let n = 1; n <= TRACTS; n++) {
+    const hold = official[String(n)];
+    const lease = hold ? { key: hold.key, name: hold.name, mine: !!meKey && hold.key === meKey } : null;
+    if (lease) leases[String(n)] = lease;
+    const wells: FortSiteWell[] = [];
+    const pipes: FortSitePipe[] = [];
+    for (const p of players) {
+      const src = forts.find((f) => f.key === p.key)!.state.tracts[String(n)];
+      if (!src) continue;
+      for (const w of src.wells) wells.push({ ownerKey: p.key, ownerName: p.name, jack: w.jack, cond: w.cond });
+      if (src.pipe > 0) pipes.push({ ownerKey: p.key, ownerName: p.name, pipe: src.pipe });
+    }
+    tracts.push({ n, lease, wells, pipes });
+  }
+  return { now, leases, tracts, players };
+}
