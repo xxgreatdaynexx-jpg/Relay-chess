@@ -6,25 +6,26 @@
  */
 import type { FarmPlot } from './farm.js';
 import { TILE } from './farm.js';
+import { expRoadSegments, frontage } from './expansionRoads.js';
 
 export const ORCHARD_N0 = 1;
 export interface OrchardPlot extends FarmPlot { label: string; price: number }
 
 /** Plot list: keep these off existing East Estates lots, farms, wineries and roads. */
 export const orchardPlots = (): OrchardPlot[] => {
-  const specs: Array<[number, number, number, number, string]> = [
-    // cols, rows, x, z, label
-    [8, 6, 600, -360, 'Orchard Ridge 1'],
-    [8, 6, 650, -360, 'Orchard Ridge 2'],
-    [8, 6, 700, -360, 'Orchard Ridge 3'],
-    [10, 8, 600, -405, 'Orchard Ridge North'],
-    [10, 8, 660, -405, 'Orchard Ridge East'],
-    [8, 6, 710, -405, 'Orchard Ridge Gate'],
-    [8, 6, 600, -320, 'Orchard Ridge South'],
-    [10, 8, 700, -320, 'Orchard Ridge Bend'],
+  const specs: Array<[number, number, number, 1 | -1, string]> = [
+    // cols, rows, arc s along Orchard Loop, side (+1 inside the loop), label
+    [8, 6, 30, -1, 'Orchard Ridge 1'],
+    [8, 6, 75, -1, 'Orchard Ridge 2'],
+    [8, 6, 125, -1, 'Orchard Ridge 3'],
+    [10, 8, 172, -1, 'Orchard Ridge North'],
+    [10, 8, 60, 1, 'Orchard Ridge East'],
+    [8, 6, 125, 1, 'Orchard Ridge Gate'],
+    [8, 6, 185, 1, 'Orchard Ridge South'],
+    [10, 8, 240, 1, 'Orchard Ridge Bend'],
   ];
-  return specs.map(([cols, rows, x, z, label], i) => {
-    const w = cols * TILE + 8, d = rows * TILE + 6;
+  return specs.map(([cols, rows, at, side, label], i) => {
+    const w = cols * TILE + 8, d = rows * TILE + 6; const { x, z } = frontage('or-loop', at, side, w, d, 3, false);
     return { n: ORCHARD_N0 + i, cols, rows, x, z, w, d, rot: 0, label, price: orchardPrice({ cols, rows }) };
   });
 };
@@ -35,9 +36,5 @@ export const orchardPrice = (p: Pick<OrchardPlot, 'cols' | 'rows'>) =>
 export const orchardId = (n: number) => `orchard:${n}`;
 export const orchardOf = (id: unknown) => (typeof id === 'string' && id.startsWith('orchard:') ? orchardPlots().find((p) => p.n === Number(id.slice(8))) : undefined);
 
-/** Extra roads into the orchard block from the East Estates spine at x = 550. */
-export const ORCHARD_ROADS: Array<[[number, number], [number, number]]> = [
-  // Sit in the gaps between the three plot rows, off the x=550 spine.
-  [[550, -340], [720, -340]],
-  [[550, -383], [720, -383]],
-];
+/** Orchard Loop (shared/expansionRoads.ts) as straight pieces, for callers that want simple segments. */
+export const ORCHARD_ROADS: Array<[[number, number], [number, number]]> = expRoadSegments().filter((g) => g.id === 'or-loop').map((g) => [g.a, g.b]);

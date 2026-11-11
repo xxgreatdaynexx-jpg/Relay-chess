@@ -131,9 +131,9 @@ export function properties(): Property[] {
   for (const u of skyProperties()) out.push(u);
   for (const u of islandProperties()) out.push(u);
   // Billionaire Update: open construction lots, Goldwood mansions, wineries (existing ids unchanged).
-  for (const l of estateLots()) out.push({ x: l.x, z: l.z, w: l.w, d: l.d, rot: 0, h: l.h, id: estateLotId(l.n), kind: 'patch', type: l.kind === 'turnkey_plant' ? 'power_plant' : 'estate_lot', label: l.label, price: l.price });
-  for (const h of goldwoodHomes()) out.push({ x: h.x, z: h.z, w: h.w, d: h.d, rot: 0, h: h.h, id: goldwoodId(h.n), kind: 'building', type: 'mansion', label: h.label, price: h.price, housingEmployees: 4 });
-  for (const w of wineryPlots()) out.push({ x: w.x, z: w.z, w: w.w, d: w.d, rot: 0, id: wineryId(w.n), kind: 'farm', type: 'winery', label: `${w.label} (${w.cols}×${w.rows})`, price: w.price, tiles: w.cols * w.rows });
+  for (const l of estateLots()) out.push({ x: l.x, z: l.z, w: l.w, d: l.d, rot: l.rot, h: l.h, id: estateLotId(l.n), kind: 'patch', type: l.kind === 'turnkey_plant' ? 'power_plant' : 'estate_lot', label: l.label, price: l.price });
+  for (const h of goldwoodHomes()) out.push({ x: h.x, z: h.z, w: h.w, d: h.d, rot: h.rot, h: h.h, id: goldwoodId(h.n), kind: 'building', type: 'mansion', label: h.label, price: h.price, housingEmployees: 4 });
+  for (const w of wineryPlots()) out.push({ x: w.x, z: w.z, w: w.w, d: w.d, rot: w.rot, id: wineryId(w.n), kind: 'farm', type: 'winery', label: `${w.label} (${w.cols}×${w.rows})`, price: w.price, tiles: w.cols * w.rows });
   for (const o of orchardPlots()) out.push({ x: o.x, z: o.z, w: o.w, d: o.d, rot: 0, id: orchardId(o.n), kind: 'farm', type: 'orchard', label: `${o.label} (${o.cols}×${o.rows})`, price: o.price, tiles: o.cols * o.rows });
 
   // Reprice only housing. Capture the actual old employment bonus BEFORE lowering its base price: otherwise

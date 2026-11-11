@@ -22,7 +22,7 @@ export interface Junction { x: number; z: number; r: number }
 export const ROAD_WIDTH: Record<RoadKind, number> = { ring: 5, boulevard: 5.5, avenue: 4.5, street: 3.8, lane: 3.6 };
 
 /** Centripetal-ish Catmull-Rom through control points, resampled at ~`step` spacing. */
-function spline(ctrl: [number, number][], closed: boolean, step = 1): [number, number][] {
+export function spline(ctrl: [number, number][], closed: boolean, step = 1): [number, number][] {
   const n = ctrl.length; const raw: [number, number][] = [];
   const P = (i: number) => closed ? ctrl[((i % n) + n) % n] : ctrl[Math.max(0, Math.min(n - 1, i))];
   const segs = closed ? n : n - 1;
@@ -35,7 +35,7 @@ function spline(ctrl: [number, number][], closed: boolean, step = 1): [number, n
   if (!closed) raw.push(ctrl[n - 1]);
   return resample(raw, step, closed);
 }
-function resample(pts: [number, number][], step: number, closed: boolean): [number, number][] {
+export function resample(pts: [number, number][], step: number, closed: boolean): [number, number][] {
   const out: [number, number][] = [pts[0]]; let carry = 0;
   const all = closed ? [...pts, pts[0]] : pts;
   for (let i = 1; i < all.length; i++) {

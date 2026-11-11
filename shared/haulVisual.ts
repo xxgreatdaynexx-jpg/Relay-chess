@@ -3,6 +3,7 @@
  * travel time, caps. No inventory or economy. Worker hauls start at the job site (mine / quarry / dock),
  * not the Employment Office. Pantry harvests land in the Chud City Warehouse pool (not the factory).
  */
+import { EXP_PAVED, EXP_ROADS } from './expansionRoads.js';
 import { ROADS, LANDMARK_SLOTS, MINE_SITES, SPOT_POS, PLATE } from './worldLayout.js';
 import { farmPlots, plotId } from './farm.js';
 import { fieldPlotOf } from './fieldFarms.js';
@@ -166,6 +167,8 @@ function buildHaulRoadGraph(): HaulGraph {
     addPoly([[s.x, s.z], ...track]);
   }
   addPoly(DOCK.path as HaulPt[]);
+  // the 2x expansion network (curved, river crossings are bridges) — ends meet the Big Farms / rural roads at tie-ins
+  for (const r of EXP_ROADS) if (EXP_PAVED[r.kind] || r.kind === 'farm') addPoly((r.closed ? [...r.pts, r.pts[0]!] : r.pts) as HaulPt[]);
 
   // Junction welds: nearby nodes (different polylines) within SNAP get an edge.
   const CELL = 8; const buckets = new Map<string, number[]>();

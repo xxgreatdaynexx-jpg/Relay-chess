@@ -5,15 +5,17 @@
  * are no sky gaps. Scenery is instanced later; this file only decides where it goes
  * (never on roads, lots, farms, runways or buildings).
  */
-import { AIRPORT, RACETRACK, RUNWAY, RUNWAY2 } from './venues.js';
+import { AIRPORT, AIRPORT_ROADS, RACETRACK, RACETRACK_ROADS, RUNWAY, RUNWAY2 } from './venues.js';
 import { BIG_GROUND_X0, BIG_GROUND_X1, BIG_GROUND_Z0, BIG_ROADS, BIG_ROAD_W } from './bigFarms.js';
 import { MAP_VIEW } from './farm.js';
 import {
-  EAST_X1, EXPANSION_ROAD_W, EXPANSION_ROADS, GOLDWOOD, PLASTICS_PLANT, RIG_DOCK,
-  estateLots, expansionFarms, goldwoodHomes, wineryPlots,
+  EAST_X1, GOLDWOOD, PLASTICS_PLANT, RIG_DOCK,
+  estateLots, expansionFarms, goldwoodHomes, goldwoodLot, wineryPlots, wineryVisual,
 } from './mapExpansion.js';
+import { EXP_BRIDGES, EXP_ROADS, GOLDWOOD_C, expRoadClearance, expRoadSegments } from './expansionRoads.js';
+import { RIVER_PTS, riverClearance, riverDecor } from './expansionRiver.js';
 import { OCEAN } from './ocean.js';
-import { orchardPlots, ORCHARD_ROADS } from './orchard.js';
+import { orchardPlots } from './orchard.js';
 import { RURAL_ROAD_W, RURAL_ROADS } from './outskirts.js';
 import { MINE_APRON, MINE_SITES, OUTSKIRTS, PLATE, type OBB, obbHit, obbOverlap } from './worldLayout.js';
 import { BILLIONAIRE_SIGN_POS, BILLIONAIRE_SIGN_RADIUS } from './billionaireUpdate.js';
@@ -83,11 +85,9 @@ export const roadObb = (a: [number, number], b: [number, number], width: number)
   return { x: (a[0] + b[0]) / 2, z: (a[1] + b[1]) / 2, w: L, d: width, rot: -Math.atan2(dz, dx) };
 };
 
+/** The curved expansion network (shared/expansionRoads.ts) as short OBB pieces. */
 export function expansionRoadFootprints(): Array<OBB & { id: string }> {
-  return [
-    ...EXPANSION_ROADS.map((r, i) => ({ id: `exp-road-${i}`, ...roadObb(r[0], r[1], EXPANSION_ROAD_W) })),
-    ...ORCHARD_ROADS.map((r, i) => ({ id: `orch-road-${i}`, ...roadObb(r[0], r[1], EXPANSION_ROAD_W) })),
-  ];
+  return expRoadSegments().map((g, i) => ({ id: `${g.id}#${i}`, ...roadObb(g.a, g.b, g.w) }));
 }
 
 export function allExpansionKeepRoads(): Array<OBB & { id: string }> {
@@ -95,16 +95,26 @@ export function allExpansionKeepRoads(): Array<OBB & { id: string }> {
     ...expansionRoadFootprints(),
     ...RURAL_ROADS.map((r, i) => ({ id: `rural-${i}`, ...roadObb(r[0], r[1], RURAL_ROAD_W) })),
     ...BIG_ROADS.map((r, i) => ({ id: `big-${i}`, ...roadObb(r[0], r[1], BIG_ROAD_W) })),
+    ...[...AIRPORT_ROADS, ...RACETRACK_ROADS].map(([a, b, w], i) => ({ id: `venue-${i}`, ...roadObb(a, b, w) })),
   ];
 }
 
-/** Buyable / built footprints that scenery and new roads must stay off. */
+/** Goldwood's central green (inside Goldwood Circle) and its pond. */
+export const GOLDWOOD_GREEN = { x: GOLDWOOD_C.x, z: GOLDWOOD_C.z, rx: GOLDWOOD_C.rx - 8, rz: GOLDWOOD_C.rz - 8 };
+export const GOLDWOOD_POND = { x: GOLDWOOD_C.x + 14, z: GOLDWOOD_C.z + 4, rx: 22, rz: 10 };
+/** Gatehouses where Goldwood Drive and the Airport Expressway leave the community. */
+export const GOLDWOOD_GATES: Array<{ x: number; z: number; ang: number; road: string; label: string }> = (() => {
+  const at = (id: string, s: number) => { const r = EXP_ROADS.find((o) => o.id === id)!; let acc = 0; for (let i = 1; i < r.pts.length; i++) { const L = Math.hypot(r.pts[i][0] - r.pts[i - 1][0], r.pts[i][1] - r.pts[i - 1][1]); if (acc + L >= s) return { x: r.pts[i][0], z: r.pts[i][1], ang: Math.atan2(r.pts[i][1] - r.pts[i - 1][1], r.pts[i][0] - r.pts[i - 1][0]) }; acc += L; } return { x: r.pts[0][0], z: r.pts[0][1], ang: 0 }; };
+  return [{ ...at('gw-drive', 24), road: 'gw-drive', label: 'GOLDWOOD' }, { ...at('gw-west', 26), road: 'gw-west', label: 'GOLDWOOD' }];
+})();
+
+/** Buyable / built footprints that scenery and new roads must stay off. Mansions and wineries use their landscaped grounds. */
 export function expansionPlotFootprints(): Array<OBB & { id: string }> {
   const plots: Array<OBB & { id: string }> = [
     ...estateLots().map((l) => ({ ...l, id: `lot:estate:${l.n}` })),
     ...expansionFarms().map((f) => ({ ...f, id: `cf:${f.n}` })),
-    ...goldwoodHomes().map((h) => ({ ...h, id: `b:mansion:${h.n}` })),
-    ...wineryPlots().map((v) => ({ ...v, id: `winery:${v.n}` })),
+    ...goldwoodHomes().map((h) => ({ ...goldwoodLot(h), id: `b:mansion:${h.n}` })),
+    ...wineryPlots().map((v) => ({ ...wineryVisual(v), id: `winery:${v.n}` })),
     ...orchardPlots().map((o) => ({ ...o, id: `orchard:${o.n}` })),
     { ...PLASTICS_PLANT, id: 'plastics' },
     { ...RIG_DOCK, id: 'rigdock' },
@@ -120,7 +130,7 @@ export function expansionPlotFootprints(): Array<OBB & { id: string }> {
   return plots;
 }
 
-export type SceneryKind = 'pine' | 'deciduous' | 'bush' | 'rock' | 'lamp' | 'pond' | 'hedge' | 'fence';
+export type SceneryKind = 'pine' | 'deciduous' | 'bush' | 'rock' | 'lamp' | 'pond' | 'hedge' | 'fence' | 'reed';
 export interface ScenerySpot { kind: SceneryKind; x: number; z: number; s: number; rot: number }
 
 const mulberry = (seed: number) => {
@@ -133,160 +143,146 @@ const mulberry = (seed: number) => {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 };
+/** Smooth value noise in 0..1 (deterministic), for forest stands and clearings. */
+const hash2 = (i: number, j: number) => { let h = Math.imul(i, 374761393) + Math.imul(j, 668265263); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+const vnoise = (x: number, z: number) => { const i = Math.floor(x), j = Math.floor(z), fx = x - i, fz = z - j; const u = fx * fx * (3 - 2 * fx), v = fz * fz * (3 - 2 * fz);
+  const a = hash2(i, j), b = hash2(i + 1, j), c = hash2(i, j + 1), d = hash2(i + 1, j + 1); return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v; };
+export const forestNoise = (x: number, z: number) => 0.6 * vnoise(x / 62 + 11.3, z / 62 - 4.1) + 0.3 * vnoise(x / 23 - 2.7, z / 23 + 8.9) + 0.1 * vnoise(x / 9, z / 9);
 
-const blocked = (x: number, z: number, rad: number, roads: OBB[], plots: OBB[], ponds: Array<{ x: number; z: number; r: number }>) => {
-  if (z > OCEAN.beachZ - 6 || z < LAND_FILL.z0 + 2 || x < LAND_FILL.x0 + 2 || x > LAND_FILL.x1 - 2) return true;
-  if (Math.hypot(x - RIG_DOCK.x, z - RIG_DOCK.z) < Math.max(RIG_DOCK.w, RIG_DOCK.d) / 2 + 8) return true;
-  if (Math.abs(x - 40) < 50 && z > OCEAN.beachZ - 8) return true; // harbour
-  for (const r of roads) if (obbHit(r, x, z, rad + r.d / 2 * 0 + 1.2)) return true;
-  for (const p of plots) if (obbHit(p, x, z, rad + 1.4)) return true;
-  for (const q of ponds) if (Math.hypot(x - q.x, z - q.z) < q.r + rad + 1.5) return true;
-  return false;
-};
+/** Plot-ish keep-outs used by the scenery generator (grounds of plots, the Goldwood green and pond, gates, the harbour). */
+const keepBoxes = (): Array<OBB & { id: string; pad: number }> => [
+  ...expansionPlotFootprints().map((p) => ({ ...p, pad: 1.4 })),
+  ...GOLDWOOD_GATES.map((g, i) => ({ x: g.x, z: g.z, w: 22, d: 16, rot: -g.ang, id: `gw-gate-${i}`, pad: 0.5 })),
+];
+const inEllipse = (e: { x: number; z: number; rx: number; rz: number }, x: number, z: number, m = 0) => ((x - e.x) / (e.rx + m)) ** 2 + ((z - e.z) / (e.rz + m)) ** 2 < 1;
+/** Clearance from every road the scenery must respect (expansion network + rural/Big Farms/venue roads). */
+const otherRoads = () => [
+  ...RURAL_ROADS.map(([a, b]) => ({ a, b, w: RURAL_ROAD_W })), ...BIG_ROADS.map(([a, b]) => ({ a, b, w: BIG_ROAD_W })),
+  ...[...AIRPORT_ROADS, ...RACETRACK_ROADS].map(([a, b, w]) => ({ a, b, w })),
+];
+const segDist = (x: number, z: number, a: [number, number], b: [number, number]) => { const dx = b[0] - a[0], dz = b[1] - a[1]; const L = dx * dx + dz * dz; const t = L ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / L)) : 0; return Math.hypot(x - a[0] - t * dx, z - a[1] - t * dz); };
+export function anyRoadClearance(x: number, z: number): number {
+  let d = expRoadClearance(x, z, 14);
+  for (const r of otherRoads()) { const v = segDist(x, z, r.a, r.b) - r.w / 2; if (v < d) d = v; }
+  return d;
+}
 
 const onNewLand = (x: number, z: number, boxes: Aabb[]) => boxes.some((b) => inAabb(b, x, z, -0.8));
 
 /**
- * Deterministic scenery for the new land only (gaps + East Estates + Goldwood + Orchard Ridge).
- * Lamps sit beside expansion roads; hedges ring Goldwood mansions just outside the footprint.
+ * Deterministic scenery for the new land: dense natural forest stands with clearings (value noise, like the outskirts'
+ * clustered woods but continuous), riverbank trees, reeds and rocks, street trees and lamps along the new roads,
+ * hedges around each Goldwood mansion's grounds, the Goldwood perimeter fence and a few woodland ponds.
+ * Nothing lands on a road, a plot's grounds, the river, a bridge approach, the Goldwood green or the beach.
  */
+let sceneryCache: ScenerySpot[] | null = null;
 export function expansionScenery(seed = 1): ScenerySpot[] {
+  if (seed === 1 && sceneryCache) return sceneryCache;
   const boxes = expansionLandBoxes();
-  const roads = allExpansionKeepRoads();
-  const plots = expansionPlotFootprints();
+  const keeps = keepBoxes();
   const rnd = mulberry(0x9e3779b9 ^ (seed * 0x85ebca6b));
   const spots: ScenerySpot[] = [];
   const ponds: Array<{ x: number; z: number; r: number }> = [];
+  const clearOf = (x: number, z: number, rad: number, roadGap = 1.6) => {
+    if (z > OCEAN.beachZ - 7 || z < LAND_FILL.z0 + 2 || x < LAND_FILL.x0 + 2 || x > LAND_FILL.x1 - 2) return false;
+    if (anyRoadClearance(x, z) < rad + roadGap) return false;
+    if (riverClearance(x, z) < rad + 1.4) return false;
+    for (const b of EXP_BRIDGES) if (Math.hypot(x - b.x, z - b.z) < b.len / 2 + 4) return false;
+    for (const p of keeps) if (obbHit(p, x, z, rad + p.pad)) return false;
+    if (inEllipse(GOLDWOOD_GREEN, x, z, 2)) return false;
+    for (const q of ponds) if (Math.hypot(x - q.x, z - q.z) < q.r + rad + 1.6) return false;
+    return true;
+  };
 
-  const pondTries: Array<[number, number, number]> = [
-    [100, -250, 8], [280, -380, 7], [300, -200, 9], [800 - 80, 20, 7],
-    [500, 130, 6.5], [-80, -280, 7.5], [240, -80, 6], [700, -240, 7],
-  ];
-  for (const [x, z, r] of pondTries) {
-    if (!onNewLand(x, z, boxes)) continue;
-    if (blocked(x, z, r + 2, roads, plots, [])) continue;
-    ponds.push({ x, z, r });
-    spots.push({ kind: 'pond', x, z, s: r, rot: 0 });
+  // woodland ponds (in clearings)
+  for (const [x, z, r] of [[300, -200, 8], [250, -430, 6.5], [-150, -420, 8], [-20, -250, 7], [690, -200, 8], [470, 100, 6], [600, -440, 6], [-250, -300, 7]] as Array<[number, number, number]>) {
+    if (!onNewLand(x, z, boxes) || !clearOf(x, z, r + 3, 2)) continue;
+    ponds.push({ x, z, r }); spots.push({ kind: 'pond', x, z, s: r, rot: 0 });
   }
 
+  // forest: jittered grid, kept where the stand noise is high; pines and broadleaf in separate stands
+  const STEP = 4.1;
   for (const b of boxes) {
-    const spanX = b.x1 - b.x0, spanZ = b.z1 - b.z0;
-    if (spanX < 8 || spanZ < 8) continue;
-    const step = 16;
-    for (let x = b.x0 + 6; x < b.x1 - 6; x += step) {
-      for (let z = b.z0 + 6; z < b.z1 - 6; z += step) {
-        const jx = x + (rnd() - 0.5) * 10, jz = z + (rnd() - 0.5) * 10;
-        if (!onNewLand(jx, jz, boxes)) continue;
-        const scale = 0.75 + rnd() * 0.55;
-        if (blocked(jx, jz, 1.6 * scale, roads, plots, ponds)) continue;
-        const kind: SceneryKind = rnd() < 0.62 ? 'pine' : 'deciduous';
-        spots.push({ kind, x: jx, z: jz, s: scale, rot: rnd() * Math.PI * 2 });
-        // a bush near some trees
-        if (rnd() < 0.45) {
-          const bx = jx + (rnd() - 0.5) * 5, bz = jz + (rnd() - 0.5) * 5;
-          if (onNewLand(bx, bz, boxes) && !blocked(bx, bz, 0.8, roads, plots, ponds)) {
-            spots.push({ kind: 'bush', x: bx, z: bz, s: 0.55 + rnd() * 0.4, rot: rnd() * Math.PI });
-          }
-        }
-        if (rnd() < 0.18) {
-          const rx = jx + (rnd() - 0.5) * 6, rz = jz + (rnd() - 0.5) * 6;
-          if (onNewLand(rx, rz, boxes) && !blocked(rx, rz, 0.7, roads, plots, ponds)) {
-            spots.push({ kind: 'rock', x: rx, z: rz, s: 0.4 + rnd() * 0.5, rot: rnd() * Math.PI });
-          }
-        }
-      }
+    for (let gx = Math.ceil(b.x0 / STEP) * STEP; gx < b.x1; gx += STEP) for (let gz = Math.ceil(b.z0 / STEP) * STEP; gz < b.z1; gz += STEP) {
+      const x = gx + (hash2(Math.round(gx * 7), Math.round(gz * 3)) - 0.5) * STEP * 0.9, z = gz + (hash2(Math.round(gz * 5), Math.round(gx * 11)) - 0.5) * STEP * 0.9;
+      if (!inAabb(b, x, z, -0.8)) continue;
+      const n = forestNoise(x, z);
+      // denser deep in the woods, thinning into meadows; a soft fringe of scattered trees around each stand
+      const edge = n - 0.41; if (edge < -0.06) continue; if (edge < 0.02 && hash2(Math.round(x * 13), Math.round(z * 17)) > 0.3) continue;
+      const scale = 0.85 + hash2(Math.round(x * 3), Math.round(z * 29)) * 0.65 + Math.max(0, edge) * 0.6;
+      if (!clearOf(x, z, 1.3 * scale)) continue;
+      const conifer = vnoise(x / 48 - 30, z / 48 + 17) > 0.52;
+      spots.push({ kind: conifer ? 'pine' : 'deciduous', x, z, s: scale, rot: hash2(Math.round(x * 31), Math.round(z * 7)) * Math.PI * 2 });
+      if (hash2(Math.round(x * 41), Math.round(z * 43)) < 0.12) { const bx = x + 2.2, bz = z - 1.4; if (clearOf(bx, bz, 0.7)) spots.push({ kind: 'bush', x: bx, z: bz, s: 0.6 + rnd() * 0.4, rot: rnd() * Math.PI }); }
+      if (hash2(Math.round(x * 53), Math.round(z * 59)) < 0.035) { const rx = x - 1.8, rz = z + 1.6; if (clearOf(rx, rz, 0.6) && riverClearance(rx, rz) > 1) spots.push({ kind: 'rock', x: rx, z: rz, s: 0.5 + rnd() * 0.6, rot: rnd() * Math.PI }); }
+    }
+  }
+  // meadow scatter: lone trees and bushes in the clearings so open land is never bare
+  for (const b of boxes) for (let x = b.x0 + 5; x < b.x1 - 5; x += 19) for (let z = b.z0 + 5; z < b.z1 - 5; z += 19) {
+    const jx = x + (rnd() - 0.5) * 14, jz = z + (rnd() - 0.5) * 14; if (forestNoise(jx, jz) > 0.44) continue;
+    const k = rnd(); const kind: SceneryKind = k < 0.35 ? 'deciduous' : k < 0.5 ? 'pine' : k < 0.85 ? 'bush' : 'rock';
+    const sc = kind === 'bush' ? 0.6 + rnd() * 0.5 : kind === 'rock' ? 0.5 + rnd() * 0.6 : 0.8 + rnd() * 0.5;
+    if (onNewLand(jx, jz, boxes) && clearOf(jx, jz, kind === 'deciduous' || kind === 'pine' ? 1.3 * sc : 0.7)) spots.push({ kind, x: jx, z: jz, s: sc, rot: rnd() * Math.PI * 2 });
+  }
+
+  // the river: bank trees, reeds in the shallows, rocks on the bends
+  const R = riverDecor();
+  for (const [x, z, sc] of R.trees) if (clearOf(x, z, 1.3 * sc)) spots.push({ kind: hash2(Math.round(x), Math.round(z)) < 0.35 ? 'pine' : 'deciduous', x, z, s: sc, rot: hash2(Math.round(z), Math.round(x)) * 6.28 });
+  for (const [x, z, sc] of R.reeds) { let ok = anyRoadClearance(x, z) > 1.5; for (const b of EXP_BRIDGES) if (Math.hypot(x - b.x, z - b.z) < b.len / 2 + 2) ok = false; if (ok && z < OCEAN.beachZ - 2) spots.push({ kind: 'reed', x, z, s: sc, rot: 0 }); }
+  for (const [x, z, sc] of R.rocks) { let ok = anyRoadClearance(x, z) > 1.2 && riverClearance(x, z) > 0.6 && keeps.every((p) => !obbHit(p, x, z, sc + 0.5)); for (const b of EXP_BRIDGES) if (Math.hypot(x - b.x, z - b.z) < b.len / 2 + 2) ok = false; if (ok && z < OCEAN.beachZ - 3) spots.push({ kind: 'rock', x, z, s: sc, rot: x }); }
+
+  // street lamps (the city's streetlight) and street trees along the new roads
+  for (const r of EXP_ROADS) {
+    if (r.kind === 'farm' || r.kind === 'path' || r.kind === 'drive') continue;
+    const gw = r.id.startsWith('gw-') && r.id !== 'gw-west';
+    const lampEvery = r.kind === 'highway' ? 26 : gw ? 16 : 22, treeEvery = gw ? 9 : r.kind === 'parkway' ? 13 : 0;
+    const q = r.closed ? [...r.pts, r.pts[0]] : r.pts; let acc = 0, nextLamp = 6, nextTree = 4, li = 0;
+    for (let i = 1; i < q.length; i++) {
+      const a = q[i - 1], b = q[i]; const L = Math.hypot(b[0] - a[0], b[1] - a[1]); const ux = (b[0] - a[0]) / (L || 1), uz = (b[1] - a[1]) / (L || 1);
+      acc += L;
+      if (acc >= nextLamp) { nextLamp += lampEvery; const sides = gw ? [1, -1] : [(li++ % 2) ? 1 : -1];
+        for (const sd of sides) { const o = r.width / 2 + 1.0; const x = b[0] - uz * o * sd, z = b[1] + ux * o * sd;
+          if (anyRoadClearance(x, z) > 0.5 && riverClearance(x, z) > 1 && keeps.every((p) => !obbHit(p, x, z, 0.6)) && z < OCEAN.beachZ - 4) spots.push({ kind: 'lamp', x, z, s: 1, rot: Math.atan2(ux, uz) }); } }
+      if (treeEvery && acc >= nextTree) { nextTree += treeEvery;
+        for (const sd of [1, -1]) { const o = r.width / 2 + 3.2; const x = b[0] - uz * o * sd, z = b[1] + ux * o * sd;
+          if (anyRoadClearance(x, z) > 1.8 && riverClearance(x, z) > 2.5 && keeps.every((p) => !obbHit(p, x, z, 1.7)) && !spots.some((t) => t.kind === 'lamp' && Math.hypot(t.x - x, t.z - z) < 2.5)) spots.push({ kind: 'deciduous', x, z, s: 0.95 + rnd() * 0.25, rot: rnd() * 6.28 }); } }
     }
   }
 
-  // Extra bushes in leftover pockets (tighter grid, skip if blocked).
-  for (const b of boxes) {
-    for (let x = b.x0 + 4; x < b.x1 - 4; x += 22) {
-      for (let z = b.z0 + 4; z < b.z1 - 4; z += 22) {
-        const jx = x + (rnd() - 0.5) * 8, jz = z + (rnd() - 0.5) * 8;
-        if (!onNewLand(jx, jz, boxes) || blocked(jx, jz, 0.7, roads, plots, ponds)) continue;
-        if (rnd() > 0.35) continue;
-        spots.push({ kind: 'bush', x: jx, z: jz, s: 0.5 + rnd() * 0.35, rot: rnd() * Math.PI });
-      }
-    }
-  }
-
-  // Lamps along expansion / orchard roads, offset to the shoulder.
-  const expRoads = [...EXPANSION_ROADS, ...ORCHARD_ROADS];
-  let li = 0;
-  for (const [a, b] of expRoads) {
-    const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz) || 1;
-    const ux = dx / L, uz = dz / L, nx = -uz, nz = ux;
-    for (let t = 8; t < L - 6; t += 22) {
-      const side = (li++ % 2) ? 1 : -1;
-      const x = a[0] + ux * t + nx * side * (EXPANSION_ROAD_W / 2 + 2.4);
-      const z = a[1] + uz * t + nz * side * (EXPANSION_ROAD_W / 2 + 2.4);
-      if (z > OCEAN.beachZ - 4) continue;
-      if (plots.some((p) => obbHit(p, x, z, 1.2))) continue;
-      if (roads.some((r) => obbHit(r, x, z, 0.9))) continue;
-      spots.push({ kind: 'lamp', x, z, s: 1, rot: Math.atan2(ux, uz) });
-    }
-  }
-
-  // Hedges just outside each Goldwood mansion (skip the south face of the north row, where the driveway meets the curb).
+  // Goldwood: clipped hedges around each mansion's grounds (open at the front, where the drive meets the street)
   for (const h of goldwoodHomes()) {
-    const gap = 1.3, step = 1.6;
-    const sides: Array<[number, number, number, number]> = [
-      [h.x - h.w / 2 - gap, h.z - h.d / 2, 0, h.d], // west
-      [h.x + h.w / 2 + gap, h.z - h.d / 2, 0, h.d], // east
-      [h.x - h.w / 2, h.z + h.d / 2 + gap, h.w, 0], // south (toward mid street)
-      [h.x - h.w / 2, h.z - h.d / 2 - gap, h.w, 0], // north
-    ];
-    sides.forEach(([sx, sz, alongX, alongZ], side) => {
-      const len = Math.max(alongX, alongZ) || 0.1;
-      // Leave a doorway gap on the south face of the north row (driveway approach).
-      const skipSouth = h.z <= -400 && side === 2;
-      for (let t = 0.4; t <= len - 0.4; t += step) {
-        if (skipSouth && Math.abs(t - len / 2) < 2.2) continue;
-        const x = sx + (alongX ? t : 0);
-        const z = sz + (alongZ ? t : 0);
-        if (roads.some((r) => obbHit(r, x, z, 0.8))) continue;
-        spots.push({ kind: 'hedge', x, z, s: 1, rot: alongX ? 0 : Math.PI / 2 });
-      }
-    });
+    const lot = goldwoodLot(h); const c = Math.cos(lot.rot), sn = Math.sin(lot.rot);
+    const toW = (lx: number, lz: number): [number, number] => [lot.x + lx * c + lz * sn, lot.z - lx * sn + lz * c];
+    const hw = lot.w / 2 + 0.9, hd = lot.d / 2 + 0.9, step = 1.5;
+    const runs: Array<[number, number, number, number]> = [[-hw, -hd, hw, -hd], [-hw, -hd, -hw, hd - 6], [hw, -hd, hw, hd - 6]];
+    for (const [ax, az, bx, bz] of runs) { const L = Math.hypot(bx - ax, bz - az); for (let t = 0.4; t <= L; t += step) { const lx = ax + (bx - ax) * t / L, lz = az + (bz - az) * t / L; const [x, z] = toW(lx, lz);
+      if (anyRoadClearance(x, z) > 0.9 && riverClearance(x, z) > 1) spots.push({ kind: 'hedge', x, z, s: 1, rot: lot.rot + (Math.abs(bz - az) > Math.abs(bx - ax) ? Math.PI / 2 : 0) }); } }
   }
+  // Goldwood perimeter: a timber estate fence on an outer ellipse, with gaps for the two gates
+  { const E = { x: GOLDWOOD_C.x, z: GOLDWOOD_C.z, rx: GOLDWOOD_C.rx + 50, rz: GOLDWOOD_C.rz + 47 }; const N = 260;
+    for (let i = 0; i < N; i++) { const t = (i / N) * Math.PI * 2; const x = E.x + Math.cos(t) * E.rx, z = Math.max(LAND_FILL.z0 + 3, E.z + Math.sin(t) * E.rz);
+      const t2 = ((i + 1) / N) * Math.PI * 2; const ang = Math.atan2(Math.sin(t2) * E.rz - Math.sin(t) * E.rz, Math.cos(t2) * E.rx - Math.cos(t) * E.rx);
+      if (anyRoadClearance(x, z) < 2.5 || keeps.some((p) => obbHit(p, x, z, 1))) continue;
+      spots.push({ kind: 'fence', x, z, s: 1, rot: Math.PI / 2 - ang }); } }
+  // East Estates: split-rail fence along the far east edge
+  for (let z = -440; z < 150; z += 2.2) { const x = EAST_X1 - 3; if (anyRoadClearance(x, z) > 1.5 && keeps.every((p) => !obbHit(p, x, z, 1))) spots.push({ kind: 'fence', x, z, s: 1, rot: 0 }); }
 
-  // Short fence runs along the outer Goldwood and East Estates edges, off the roads.
-  const fenceRuns: Array<[number, number, number, number]> = [
-    [GOLDWOOD.x0 + 4, GOLDWOOD.z0 + 4, GOLDWOOD.x1 - 4, GOLDWOOD.z0 + 4],
-    [GOLDWOOD.x0 + 4, GOLDWOOD.z0 + 4, GOLDWOOD.x0 + 4, GOLDWOOD.z1 - 8],
-    [EAST_X1 - 6, -400, EAST_X1 - 6, 140],
-  ];
-  for (const [ax, az, bx, bz] of fenceRuns) {
-    const dx = bx - ax, dz = bz - az, L = Math.hypot(dx, dz) || 1;
-    const ux = dx / L, uz = dz / L;
-    for (let t = 0; t <= L; t += 2.2) {
-      const x = ax + ux * t, z = az + uz * t;
-      if (blocked(x, z, 0.6, roads, plots, ponds)) continue;
-      spots.push({ kind: 'fence', x, z, s: 1, rot: Math.atan2(ux, uz) });
-    }
-  }
-
+  if (seed === 1) sceneryCache = spots;
   return spots;
 }
 
+/** Overlap check: every scenery item against roads (all networks), plot grounds, the river and bridges. */
 export function sceneryOverlaps(spots: ScenerySpot[] = expansionScenery()): Array<{ kind: SceneryKind; x: number; z: number; hit: string }> {
-  const roads = allExpansionKeepRoads();
   const plots = expansionPlotFootprints();
   const hits: Array<{ kind: SceneryKind; x: number; z: number; hit: string }> = [];
-  const rad: Record<SceneryKind, number> = { pine: 1.3, deciduous: 1.3, bush: 0.6, rock: 0.55, lamp: 0.4, pond: 0, hedge: 0.45, fence: 0.3 };
+  const rad: Record<SceneryKind, number> = { pine: 1.0, deciduous: 1.0, bush: 0.5, rock: 0.45, lamp: 0.3, pond: 0, hedge: 0.4, fence: 0.2, reed: 0 };
   for (const s of spots) {
-    if (s.kind === 'pond' || s.kind === 'hedge') {
-      // ponds were placed off plots/roads; hedges sit just outside mansion boxes on purpose (still off roads)
-      const r = s.kind === 'pond' ? s.s : 0.45;
-      for (const rd of roads) if (obbHit(rd, s.x, s.z, r + 0.6)) hits.push({ kind: s.kind, x: s.x, z: s.z, hit: (rd as OBB & { id?: string }).id ?? 'road' });
-      if (s.kind === 'pond') {
-        for (const p of plots) if (obbHit(p, s.x, s.z, r + 0.8)) hits.push({ kind: s.kind, x: s.x, z: s.z, hit: (p as OBB & { id: string }).id });
-      }
-      continue;
-    }
-    const r = (rad[s.kind] ?? 0.6) * (s.kind === 'pine' || s.kind === 'deciduous' ? s.s : 1);
-    for (const rd of roads) if (obbHit(rd, s.x, s.z, r + 0.7)) hits.push({ kind: s.kind, x: s.x, z: s.z, hit: (rd as OBB & { id?: string }).id ?? 'road' });
-    for (const p of plots) if (obbHit(p, s.x, s.z, r + 1.0)) hits.push({ kind: s.kind, x: s.x, z: s.z, hit: (p as OBB & { id: string }).id });
+    const r = s.kind === 'pond' ? s.s : (rad[s.kind] ?? 0.5) * (s.kind === 'pine' || s.kind === 'deciduous' ? s.s : 1);
+    if (anyRoadClearance(s.x, s.z) < r + 0.3) hits.push({ kind: s.kind, x: s.x, z: s.z, hit: 'road' });
+    if (s.kind !== 'reed' && riverClearance(s.x, s.z) < r) hits.push({ kind: s.kind, x: s.x, z: s.z, hit: 'river' });
+    if (s.kind === 'reed' && riverClearance(s.x, s.z) > 0.5) hits.push({ kind: s.kind, x: s.x, z: s.z, hit: 'reed-on-land' });
+    if (s.kind === 'hedge') continue; // hedges ring the mansion grounds just outside them
+    for (const p of plots) if (obbHit(p, s.x, s.z, r + 0.3)) hits.push({ kind: s.kind, x: s.x, z: s.z, hit: p.id });
   }
   return hits;
 }
@@ -299,5 +295,16 @@ export function expansionRoadPlotOverlaps(margin = 0.25): Array<{ road: string; 
   return out;
 }
 
+/** Plots (and their grounds) that dip into the river, with their clearance from the water's edge. */
+export function riverPlotOverlaps(minGap = 3): Array<{ plot: string; gap: number }> {
+  const out: Array<{ plot: string; gap: number }> = [];
+  for (const p of expansionPlotFootprints()) {
+    const c = Math.cos(p.rot), s = Math.sin(p.rot); let g = Infinity;
+    for (let i = -1; i <= 1; i += 0.25) for (let j = -1; j <= 1; j += 0.25) { const lx = (i * p.w) / 2, lz = (j * p.d) / 2; g = Math.min(g, riverClearance(p.x + lx * c + lz * s, p.z - lx * s + lz * c)); }
+    if (g < minGap) out.push({ plot: p.id, gap: g });
+  }
+  return out;
+}
+
 // silence unused in some builds
-void overlapsAabb;
+void overlapsAabb; void RIVER_PTS;

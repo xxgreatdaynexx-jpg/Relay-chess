@@ -13,7 +13,8 @@ export function addExpansionScenery(scene: THREE.Scene, mat: MatFn, geo: GeoFn, 
   const XM = xmasOn();
   const all = expansionScenery();
   // Phones / low-tier: keep trees, lamps, hedges and ponds; thin bushes, rocks and fence posts.
-  const spots = low ? all.filter((s, i) => s.kind !== 'rock' && s.kind !== 'fence' && (s.kind !== 'bush' || i % 2 === 0)) : all;
+  // Phones / low-tier: thin the deep forest by a third (street and river trees are kept), drop rocks/fence posts/reeds.
+  const spots = low ? all.filter((s, i) => s.kind !== 'rock' && s.kind !== 'fence' && s.kind !== 'reed' && (s.kind !== 'bush' || i % 2 === 0) && ((s.kind !== 'pine' && s.kind !== 'deciduous') || i % 3 !== 0 || s.s > 1.15)) : all;
   const of = (k: ScenerySpot['kind']) => spots.filter((s) => s.kind === k);
   const d = new THREE.Object3D();
   const inst = (g: THREE.BufferGeometry, m: THREE.Material, list: ScenerySpot[], place: (s: ScenerySpot, o: THREE.Object3D) => void) => {
@@ -28,10 +29,10 @@ export function addExpansionScenery(scene: THREE.Scene, mat: MatFn, geo: GeoFn, 
   inst(geo(new THREE.CylinderGeometry(0.12, 0.2, 1, 5)), mat({ color: 0x4a321c, roughness: 1 }), pine, (s, o) => {
     o.position.set(s.x, 0.7 * s.s, s.z); o.scale.set(s.s, 1.4 * s.s, s.s);
   });
-  inst(geo(new THREE.ConeGeometry(0.85, 1.8, 7)), mat({ color: 0x1f5a32, flatShading: true, roughness: 0.95, emissive: 0x0a2412, emissiveIntensity: 0.35 }), pine, (s, o) => {
+  inst(geo(new THREE.ConeGeometry(0.85, 1.8, 7)), mat({ color: 0x23683a, flatShading: true, roughness: 0.95, emissive: 0x0a2a10, emissiveIntensity: 0.4 }), pine, (s, o) => {
     o.position.set(s.x, 1.85 * s.s, s.z); o.scale.set(s.s, s.s, s.s); o.rotation.y = s.rot;
   });
-  inst(geo(new THREE.ConeGeometry(0.6, 1.3, 7)), mat({ color: 0x2a6e3c, flatShading: true, roughness: 0.95, emissive: 0x0a2412, emissiveIntensity: 0.3 }), pine, (s, o) => {
+  inst(geo(new THREE.ConeGeometry(0.6, 1.3, 7)), mat({ color: 0x2f7e42, flatShading: true, roughness: 0.95, emissive: 0x0a2a10, emissiveIntensity: 0.4 }), pine, (s, o) => {
     o.position.set(s.x, 2.55 * s.s, s.z); o.scale.set(s.s, s.s, s.s); o.rotation.y = s.rot + 0.4;
   });
   if (XM) inst(geo(new THREE.ConeGeometry(0.42, 0.45, 7)), mat({ color: 0xf4f8ff, roughness: 0.9, flatShading: true, emissive: 0x1a2238, emissiveIntensity: 0.45 }), pine, (s, o) => {
@@ -43,8 +44,8 @@ export function addExpansionScenery(scene: THREE.Scene, mat: MatFn, geo: GeoFn, 
     o.position.set(s.x, 0.7 * s.s, s.z); o.scale.set(s.s, 1.4 * s.s, s.s);
   });
   inst(geo(new THREE.IcosahedronGeometry(1, 0)), mat({
-    color: XM ? 0x8a9a88 : 0x2f8a3a, flatShading: true, roughness: 0.95,
-    emissive: XM ? 0x1a2218 : 0x0a2a10, emissiveIntensity: 0.35,
+    color: 0x2f8a3a, flatShading: true, roughness: 0.95,
+    emissive: 0x0a2a10, emissiveIntensity: 0.4,
   }), dec, (s, o) => {
     o.position.set(s.x, 2.05 * s.s, s.z); o.scale.set(s.s * 1.15, s.s * 1.2, s.s * 1.15); o.rotation.y = s.rot;
   });
@@ -53,7 +54,7 @@ export function addExpansionScenery(scene: THREE.Scene, mat: MatFn, geo: GeoFn, 
   });
 
   const bushes = of('bush');
-  inst(geo(new THREE.SphereGeometry(0.55, 6, 5)), mat({ color: XM ? 0x6a7a62 : 0x3a8a3a, roughness: 1, flatShading: true }), bushes, (s, o) => {
+  inst(geo(new THREE.SphereGeometry(0.55, 6, 5)), mat({ color: 0x3a8a3a, roughness: 1, flatShading: true }), bushes, (s, o) => {
     o.position.set(s.x, 0.4 * s.s, s.z); o.scale.set(s.s, s.s * 0.8, s.s); o.rotation.y = s.rot;
   });
   if (XM) inst(geo(new THREE.SphereGeometry(0.35, 5, 4)), mat({ color: 0xf4f8ff, roughness: 0.95 }), bushes, (s, o) => {
@@ -77,7 +78,7 @@ export function addExpansionScenery(scene: THREE.Scene, mat: MatFn, geo: GeoFn, 
   });
 
   const hedges = of('hedge');
-  inst(geo(new THREE.BoxGeometry(1.5, 1.1, 0.45)), mat({ color: XM ? 0x5c6e52 : 0x2f6b32, roughness: 1 }), hedges, (s, o) => {
+  inst(geo(new THREE.BoxGeometry(1.5, 1.1, 0.45)), mat({ color: 0x2f6b32, roughness: 1 }), hedges, (s, o) => {
     o.position.set(s.x, 0.55, s.z); o.rotation.y = s.rot;
   });
   if (XM) inst(geo(new THREE.BoxGeometry(1.5, 0.18, 0.48)), mat({ color: 0xf4f8ff, roughness: 0.95 }), hedges, (s, o) => {
@@ -91,6 +92,13 @@ export function addExpansionScenery(scene: THREE.Scene, mat: MatFn, geo: GeoFn, 
   inst(geo(new THREE.BoxGeometry(2.1, 0.1, 0.08)), mat({ color: 0x7a6a48, roughness: 0.9 }), fence, (s, o) => {
     o.position.set(s.x, 0.7, s.z); o.rotation.y = s.rot;
   });
+
+  // river reeds: three stalks and a cattail head per clump (the big lake's reeds)
+  const reeds = of('reed');
+  inst(geo(new THREE.CylinderGeometry(0.05, 0.07, 1, 4)), mat({ color: 0x6f8f3a, roughness: 1 }), reeds.flatMap((r) => [r, { ...r, x: r.x + 0.2, z: r.z + 0.1, s: r.s * 0.85 }, { ...r, x: r.x - 0.15, z: r.z - 0.18, s: r.s * 1.1 }]), (s, o) => {
+    const h = s.s * 1.1; o.position.set(s.x, h / 2, s.z); o.scale.set(1, h, 1); o.rotation.set((s.x * 7) % 0.2 - 0.1, 0, (s.z * 5) % 0.2 - 0.1);
+  });
+  inst(geo(new THREE.CylinderGeometry(0.1, 0.1, 0.45, 6)), mat({ color: 0x5a3a20, roughness: 1 }), reeds, (s, o) => { o.position.set(s.x, s.s * 1.1 + 0.1, s.z); });
 
   const pondMat = mat({ color: 0x2a6a78, roughness: 0.15, metalness: 0.2, emissive: 0x0a2030, emissiveIntensity: 0.35 });
   const bankMat = mat({ color: XM ? 0xe8eef6 : 0xc9b48a, roughness: 1 });

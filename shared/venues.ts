@@ -4,7 +4,9 @@
  * Pure geometry + race rules (no three.js) so the server can time laps from the same shapes the client draws.
  */
 import { PLATE, shoreZ, type OBB } from './worldLayout.js';
-import { EXPANSION_ROADS, EXPANSION_ROAD_W, inExpansion } from './mapExpansion.js';
+import { inExpansion } from './mapExpansion.js';
+import { onExpansionRoad } from './expansionRoads.js';
+import { inRiver } from './expansionRiver.js';
 
 export interface Rect { x0: number; x1: number; z0: number; z1: number }
 export const inRect = (r: Rect, x: number, z: number, m = 0) => x > r.x0 + m && x < r.x1 - m && z > r.z0 + m && z < r.z1 - m;
@@ -73,8 +75,9 @@ export function onVenueRoad(x: number, z: number): boolean {
 /** Can a car be here at all (city plate on land, or inside a venue's grounds)? m = margin. */
 export function drivable(x: number, z: number, m = 0): boolean {
   if (Math.abs(x) <= PLATE - m && Math.abs(z) <= PLATE - m && z < shoreZ(x) - m) return true;
-  if (inExpansion(x, z) && m <= 0) return true;
-  if (EXPANSION_ROADS.some(([a, b]) => onSeg(x, z, a, b, EXPANSION_ROAD_W / 2 + Math.max(0, -m)))) return true;
+  // the 2x land: open ground anywhere except the river; across the river only on a road (bridge)
+  if (onExpansionRoad(x, z, Math.max(0, -m))) return true;
+  if (inExpansion(x, z) && m <= 0 && !inRiver(x, z, 0.5)) return true;
   return inRect(AIRPORT, x, z, m) || inRect(RACETRACK, x, z, m) || onVenueRoad(x, z);
 }
 /** Map extents the venues add (for the camera pan clamp and the server's drive bounds). */

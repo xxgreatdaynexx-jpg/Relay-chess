@@ -25,8 +25,9 @@ import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W,
 import { buildVenues } from './worldVenues';
 import { addExpansionScenery } from './worldExpansionDecor';
 import { BEACH_X0, BEACH_X1, expansionLandBoxes } from '../../../shared/expansionScenery';
-import { EXPANSION_ROAD_W, EXPANSION_ROADS, RIG_DOCK } from '../../../shared/mapExpansion';
-import { ORCHARD_ROADS } from '../../../shared/orchard';
+import { RIG_DOCK } from '../../../shared/mapExpansion';
+import { addExpansionLand } from './worldExpansionLand';
+import { expRoadClearance } from '../../../shared/expansionRoads';
 import { buildAirportLandmark } from './estateModels';
 import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN, MINE_SITES, MINE_APRON, OUTSKIRTS } from './worldLayout';
 import { riverOutline, islandOutline, riverDecor, edgeDist, ISLAND } from '../../../shared/riverLake';
@@ -181,11 +182,11 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   // Animated water: scrolling ripples + moonlight glints, fogged like the rest of the scene. Each lake gets its own copy
   // with a distance-to-shore texture so shallows are lighter, the middle darker, and a thin foam/ripple line rings the shore.
   const waterMats: THREE.ShaderMaterial[] = [];
-  const makeWater = (outline: Array<[number, number]>, holes: Array<Array<[number, number]>> = []) => {
+  const makeWater = (outline: Array<[number, number]>, holes: Array<Array<[number, number]>> = [], distFn?: (x: number, z: number) => number) => {
     let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity; for (const [x, z] of outline) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
     x0 -= 2; z0 -= 2; x1 += 2; z1 += 2; const W = Math.min(256, Math.ceil(x1 - x0)), H = Math.min(128, Math.ceil(z1 - z0)); const data = new Uint8Array(W * H * 4);
     const rings = [outline, ...holes];
-    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) { const x = x0 + ((i + 0.5) / W) * (x1 - x0), z = z0 + ((j + 0.5) / H) * (z1 - z0); let d = Infinity; for (const r of rings) d = Math.min(d, edgeDist(x, z, r)); const v = Math.round(Math.min(1, d / 14) * 255); const o = (j * W + i) * 4; data[o] = data[o + 1] = data[o + 2] = v; data[o + 3] = 255; }
+    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) { const x = x0 + ((i + 0.5) / W) * (x1 - x0), z = z0 + ((j + 0.5) / H) * (z1 - z0); let d = Infinity; if (distFn) d = distFn(x, z); else for (const r of rings) d = Math.min(d, edgeDist(x, z, r)); const v = Math.round(Math.min(1, d / 14) * 255); const o = (j * W + i) * 4; data[o] = data[o + 1] = data[o + 2] = v; data[o + 3] = 255; }
     const tex = new THREE.DataTexture(data, W, H); tex.magFilter = tex.minFilter = THREE.LinearFilter; tex.needsUpdate = true; disposables.push(tex);
     const m = new THREE.ShaderMaterial({
       fog: true,
@@ -761,6 +762,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       const im = new THREE.InstancedMesh(g, m, n); for (let i = 0; i < n; i++) { d.position.set(0, 0, 0); d.rotation.set(0, 0, 0); d.scale.set(1, 1, 1); f(i); d.updateMatrix(); im.setMatrixAt(i, d.matrix); if (colors) im.setColorAt(i, c.setHex(colors(i))); }
       scene.add(im); return im; };
     const { x0, x1, z0, z1 } = OUTSKIRTS; const P = PLATE;
+    const clearNew = (x: number, z: number, m: number) => expRoadClearance(x, z, m + 1) > m; // outskirts decor stays off the new expansion roads
     // ground: same grass as the plate, a hair under it and under the farm/mine aprons (strips around the plate: no overlap).
     // Big Farms sit east of the outskirts and, for the northern plots, north of OUTSKIRTS.z0 — extend those strips (and a
     // fringe under the east-ring connector) so the lots, barns and new north road sit on the same ground, not in the void.
@@ -772,7 +774,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     // rural roads: city asphalt at the city road height, centre dashes
     // Rural + venue access roads: one asphalt (city roadMat, top flush with city roads), square-cut ends that extend
     // half a width so corners/T's close; an end on the speedway's edge is not extended (no road over the track).
-    const allRoads: Array<[[number, number], [number, number], number]> = [...RURAL_ROADS.map(([a, b]) => [a, b, RURAL_ROAD_W] as [[number, number], [number, number], number]), ...BIG_ROADS.map(([a, b]) => [a, b, BIG_ROAD_W] as [[number, number], [number, number], number]), ...AIRPORT_ROADS, ...RACETRACK_ROADS, ...EXPANSION_ROADS.map(([a, b]) => [a, b, EXPANSION_ROAD_W] as [[number, number], [number, number], number]), ...ORCHARD_ROADS.map(([a, b]) => [a, b, EXPANSION_ROAD_W] as [[number, number], [number, number], number])];
+    const allRoads: Array<[[number, number], [number, number], number]> = [...RURAL_ROADS.map(([a, b]) => [a, b, RURAL_ROAD_W] as [[number, number], [number, number], number]), ...BIG_ROADS.map(([a, b]) => [a, b, BIG_ROAD_W] as [[number, number], [number, number], number]), ...AIRPORT_ROADS, ...RACETRACK_ROADS]; // the 2x expansion network is curved ribbons (worldExpansionLand)
     const onTrackEdge = (p: [number, number]) => Math.abs(Math.hypot(Math.max(0, Math.abs(p[0] - TRACK.cx) - TRACK.L), p[1] - TRACK.cz) - TRACK.R) < TRACK.W / 2 + 0.5;
     inst(unitBox, roadMat, allRoads.length, (i) => { const [a, b, w] = allRoads[i]; const L = Math.hypot(b[0] - a[0], b[1] - a[1]); const ea = onTrackEdge(a) ? 0 : w / 2, eb = onTrackEdge(b) ? 0 : w / 2;
       const ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L; d.position.set((a[0] + b[0]) / 2 + (ux * (eb - ea)) / 2, ROAD_Y - 0.01, (a[1] + b[1]) / 2 + (uz * (eb - ea)) / 2); d.rotation.y = Math.atan2(b[0] - a[0], b[1] - a[1]); d.scale.set(w, 0.02, L + ea + eb); })!.renderOrder = 1;
@@ -833,18 +835,20 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
       inst(geo(new THREE.DodecahedronGeometry(1, 0)), mat({ color: 0x7a7670, roughness: 1, flatShading: true }), R.rocks.length, (i) => { const [x, z, s] = R.rocks[i]; d.position.set(x, s * 0.2, z); d.scale.set(s, s * 0.55, s * 0.8); d.rotation.set(0, i * 2.3, 0); });
       inst(trunk.geometry, trunk.material, R.trees.length, (i) => { const [x, z, s] = R.trees[i]; d.position.set(x, 0.7 * s, z); d.rotation.set(0, 0, 0); d.scale.set(s, 1.4 * s, s); });
       inst(crown.geometry, crown.material, R.trees.length, (i) => { const [x, z, s] = R.trees[i]; d.position.set(x, 2.1 * s, z); d.scale.set(s * 1.1, s * 1.3, s * 1.1); d.rotation.y = i; }); }
-    const oRocks = O.rocks.filter(([x, z]) => !inStadiumSite(x, z)); // co-op Stadium site stays clear (no keepOut: the seeded fill must not move)
+    const oRocks = O.rocks.filter(([x, z]) => !inStadiumSite(x, z) && clearNew(x, z, 1)); // co-op Stadium site stays clear (no keepOut: the seeded fill must not move)
     // low rolling hills in the grass colour, rocks near the mines
-    inst(geo(new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2)), (XM ? mat({ color: 0xeef3ff, roughness: 0.95, flatShading: true, emissive: 0x1a2238, emissiveIntensity: 0.6 }) : mat({ color: 0x3f9a45, roughness: 1, flatShading: true, emissive: 0x0f3a14, emissiveIntensity: 0.6 })), O.hills.length, (i) => { const [x, z, r, h] = O.hills[i]; d.position.set(x, -0.05, z); d.scale.set(r, h * 0.6, r * 0.8); d.rotation.y = i; });
+    const hills = O.hills.filter(([x, z, r]) => clearNew(x, z, r + 0.5));
+    inst(geo(new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2)), (XM ? mat({ color: 0xeef3ff, roughness: 0.95, flatShading: true, emissive: 0x1a2238, emissiveIntensity: 0.6 }) : mat({ color: 0x3f9a45, roughness: 1, flatShading: true, emissive: 0x0f3a14, emissiveIntensity: 0.6 })), hills.length, (i) => { const [x, z, r, h] = hills[i]; d.position.set(x, -0.05, z); d.scale.set(r, h * 0.6, r * 0.8); d.rotation.y = i; });
     inst(geo(new THREE.DodecahedronGeometry(1, 0)), mat({ color: 0x6a6670, roughness: 1, flatShading: true }), oRocks.length, (i) => { const [x, z, s] = oRocks[i]; d.position.set(x, s * 0.3, z); d.scale.set(s, s * 0.6, s); d.rotation.set(0, i * 2, 0); });
     // forest: the city's tree (trunk + low-poly crown, same materials)
-    const T = O.trees.filter(([x, z]) => !inStadiumSite(x, z));
+    const T = O.trees.filter(([x, z]) => !inStadiumSite(x, z) && clearNew(x, z, 1.3));
     inst(trunk.geometry, trunk.material, T.length, (i) => { const [x, z, s] = T[i]; d.position.set(x, 0.7 * s, z); d.scale.set(s, 1.4 * s, s); });
     inst(crown.geometry, crown.material, T.length, (i) => { const [x, z, s] = T[i]; d.position.set(x, 2.1 * s, z); d.scale.set(s * 1.1, s * 1.3, s * 1.1); d.rotation.y = i; });
     // road lamps: the city's streetlight pole + glow
     inst(pole.geometry, pole.material, O.lamps.length, (i) => d.position.set(O.lamps[i][0], 1.2, O.lamps[i][1]));
     inst(geo(new THREE.SphereGeometry(0.22, 8, 6)), mat({ color: 0xfff0c0, emissive: 0xffd080, emissiveIntensity: 1 }), O.lamps.length, (i) => d.position.set(O.lamps[i][0], 2.45, O.lamps[i][1]));
     addExpansionScenery(scene, mat, geo, tier === 'low');
+    addExpansionLand({ scene, mat, geo, low: tier === 'low', xm: XM, roadY: ROAD_Y, roadMat, dashMat: dash.material as THREE.Material, makeWater, addSlush: (g) => xmas?.addRoads(g) });
   }
   // Farm district (shared/farm.ts): a grass apron east of the plate, dirt lanes, fenced fields (farmland properties),
   // barns and silos. Crops on owned plots come from /api/farm (setFarm). Toned-down night palette, a little warm glow.
