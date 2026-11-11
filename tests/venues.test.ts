@@ -43,7 +43,7 @@ describe('venue layout', () => {
     for (const [a, b] of [...AIRPORT_ROADS, ...RACETRACK_ROADS]) for (let k = 0; k <= 20; k++) { const x = a[0] + (b[0] - a[0]) * k / 20, z = a[1] + (b[1] - a[1]) * k / 20; expect(drivable(x, z, 1)).toBe(true); expect(onVenueRoad(x, z)).toBe(true); }
     for (let u = 0; u < 1; u += 0.01) { const [x, z] = trackPoint(u); expect(onVenueRoad(x, z)).toBe(true); expect(validDrive({ x, z, a: 0, v: 0 }, null, 0, 100)).toBe(true); }
     expect(drivable(-150, -30, 1)).toBe(false); expect(drivable(40, -150, 1)).toBe(false); // The Mine / Frostbite Caverns aprons
-    expect(validDrive({ x: -250, z: 0, a: 0, v: 0 }, null, 0, 100)).toBe(false);
+    expect(validDrive({ x: -310, z: 0, a: 0, v: 0 }, null, 0, 100)).toBe(false);
   });
   it('sells both as landmark deeds', () => {
     expect(propertyById('lm:airport')!.price).toBeGreaterThan(propertyById('lm:dealer')!.price);

@@ -5,6 +5,7 @@ import { newDb } from 'pg-mem';
 import { CasinoBank, PgCasinoStore } from '../server/casino-store';
 import { RealEstate } from '../server/realEstate';
 import { px, setPriceIndexForTest } from '../server/price-index';
+import { estateLots, goldwoodHomes } from '../shared/mapExpansion';
 import { properties, propertyById, buildingId, patchId, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, landPrice, landMultiplierNote, landSurchargePct } from '../shared/realEstate';
 import { cityFill, LANDMARK_IDS, PARK_AREA, obbOverlap } from '../shared/worldLayout';
 import { WORLD_SPOTS } from '../client/src/lib/worldSpots';
@@ -30,9 +31,11 @@ describe('real estate catalog', () => {
   it('every building, lot, park, plaza and landmark has a unique id and a price; the Trailer Park is not for sale', () => {
     const ps = properties(); expect(new Set(ps.map((p) => p.id)).size).toBe(ps.length);
     const { houses, patches } = cityFill(7);
-    expect(ps.filter((p) => p.kind === 'building' && !p.map && !p.id.startsWith('sky:'))).toHaveLength(houses.length + countryHomes().length + countryBusinesses().length + farmBarns().length);
-    expect(ps.filter((p) => p.kind === 'patch')).toHaveLength(patches.length);
-    expect(ps.filter((p) => p.kind === 'landmark').map((p) => p.type).sort()).toEqual([...LANDMARK_IDS, 'jail', 'harbour'].filter((id) => id !== 'cityhall' && id !== 'club' && id !== 'skytower' && id !== 'mine-quarry').sort()); // civic venues and the Stone Quarry are not buyable deeds
+    expect(ps.filter((p) => p.kind === 'building' && !p.map && !p.id.startsWith('sky:') && !p.id.startsWith('b:mansion:'))).toHaveLength(houses.length + countryHomes().length + countryBusinesses().length + farmBarns().length);
+    expect(ps.filter((p) => p.id.startsWith('b:mansion:'))).toHaveLength(goldwoodHomes().length);
+    expect(ps.filter((p) => p.kind === 'patch' && !p.id.startsWith('lot:estate:'))).toHaveLength(patches.length);
+    expect(ps.filter((p) => p.id.startsWith('lot:estate:'))).toHaveLength(estateLots().length);
+    expect(ps.filter((p) => p.kind === 'landmark').map((p) => p.type).sort()).toEqual([...LANDMARK_IDS, 'jail', 'harbour'].filter((id) => id !== 'cityhall' && id !== 'club' && id !== 'skytower' && id !== 'mine-quarry' && id !== 'plastics' && id !== 'rigdock').sort()); // civic venues, the Stone Quarry and public works are not buyable deeds
     for (const p of ps) { expect(p.price).toBeGreaterThan(0); if (p.kind !== 'landmark') expect(obbOverlap(PARK_AREA, p)).toBe(false); }
     expect(ps.some((p) => /trailer/i.test(p.id))).toBe(false);
     expect(ps.some((p) => p.type === 'cityhall' || p.type === 'club' || p.type === 'skytower')).toBe(false); // civic venues are never for sale
@@ -159,7 +162,8 @@ describe('countryside crop fields are buyable farms (pt1250u)', () => {
   it('every outskirts field is a cf: farm property, priced by tiles like farmland, overlapping no other property', async () => {
     const { outskirts } = await import('../shared/outskirts'); const { farmPrice } = await import('../shared/farm');
     const isBig = (id: string) => /^cf:1\d{3}$/.test(id); // Big Farms (shared/bigFarms.ts) have their own premium price
-    const cf = properties().filter((p) => p.id.startsWith('cf:') && !isBig(p.id)); const big = properties().filter((p) => isBig(p.id));
+    const isExp = (id: string) => /^cf:2\d{3}$/.test(id); // East Estates expansion farms
+    const cf = properties().filter((p) => p.id.startsWith('cf:') && !isBig(p.id) && !isExp(p.id)); const big = properties().filter((p) => isBig(p.id));
     expect(cf).toHaveLength(outskirts().fields.length); expect(big).toHaveLength(12);
     for (const b of big) { for (const o of properties().filter((p) => p !== b && p.map !== 'resort' && p.map !== 'island')) expect(obbOverlap(b, o), `${b.id} vs ${o.id}`).toBe(false); } expect(cf.length).toBeGreaterThan(20);
     const others = properties().filter((p) => !p.id.startsWith('cf:') && p.map !== 'resort' && p.map !== 'island');

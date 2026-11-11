@@ -121,3 +121,71 @@ Title: Opt-in ship combat at sea
 
 - Captains who have arrived on a voyage can opt in to ship combat and challenge another opted-in captain. Fights are turn-based shots at the hull. A stake is optional and held in escrow; the winner takes the pot minus a 5% rake (a chip sink). The loser may owe a hull repair bill (also a sink). Combat is never forced, and the wallet is never pushed negative.
 
+
+## Private construction sites
+
+Title: Buy land and raise your own works
+
+- Vacant lots in the East Estates can be bought and used as private construction sites. The owner chooses a data center, bitcoin farm, personal monument, mansion, highrise or power plant. Each project has four material-and-chip stages, and the building on the lot changes as each stage is finished, the same way the co-op hockey stadium does.
+- You can also demolish a house, farm or other non-monument structure you own and start one of these projects on the lot. Landmarks, civic buildings, the harbour, jail, Sky Tower penthouses and island estates cannot be demolished. There is no chip refund for the old structure — sell it back first if you want the 70% sell-back. Furniture returns to your locker; growing crops return as seeds and ripe crops go to your warehouse. Demolish asks for a clear confirmation and shows these rules first.
+- Two turnkey power plants are also for sale, already built, if you would rather buy pre-existing stock than construct your own.
+
+## Data centers and bitcoin farms
+
+Title: Racks, GPUs and a power bill
+
+- A finished data center takes up to 8 server racks (120,000 chips and 3 MW each, about 400 chips an hour). A finished bitcoin farm takes up to 16 GPU rigs (45,000 chips and 1.5 MW each, about 200 chips an hour). Both draw power from a utility contract or from a plant you own. Combined digital income is capped (200,000 chips a day, then indexed). Surplus plant power can be sold back to the grid at 45% of the utility rate.
+
+## Power plants
+
+Title: Build or buy your own plant
+
+- A four-stage power plant delivers 40 MW when fueled (8,000 chips a day, or coal). You can also buy a utility contract for grid power at 1,200 chips per MW per day, or purchase a turnkey plant already standing in the East Estates.
+
+## Map expansion and Goldwood
+
+Title: New land east of the city, and a rich community to the north
+
+- The map grows east of the Big Farms and north of the city. Ten new farms and sixteen vacant lots sit in the East Estates. Goldwood, a small community of eight mansions, stands north of town, with its own road in. Existing city blocks, farms and deeds are not moved.
+
+## Wineries
+
+Title: Vineyards with an on-site press
+
+- Five wineries are for sale in Goldwood and the East Estates. Grapes there grow in a little over half the usual time and yield more, and the on-site press makes one wine from one grape (the city cannery still needs two).
+
+## International airport
+
+Title: A larger international airport
+
+- The airport is now an international terminal with a larger hall and a second runway west of the original one. The original runway, hangars and jets stay where they were.
+
+## More furniture
+
+Title: A larger furniture catalogue
+
+- The furniture store's catalogue is more than twice as large, with new pieces for mansions and highrises as well as ordinary homes.
+
+## Hyper farms
+
+Title: Convert a farm into a Dutch glasshouse
+
+- Owners can convert a farm they own into a hyper farm, a four-stage Dutch-style greenhouse. Ordinary crops still grow while you build. When it is finished, flowers and other difficult crops (tulips, roses, orchids, saffron, wasabi, vanilla) can be planted there, and everything in the glasshouse grows faster.
+
+## Offshore rigs
+
+Title: Build a rig on the shore and launch it
+
+- A shoreline construction dock east of the harbour lets you assemble an offshore rig in four stages, then launch it for a fee. Launched rigs pump crude to your Fort McChud tanks (about 90 units an hour, up to three rigs per player).
+
+## Plastics plant
+
+Title: A plastics plant in Chud City
+
+- A plastics plant on the east edge of Chud City imports naphtha, ethylene or plastics from Fort McChud and can make resin, computers, graphics cards and equipment cases, which feed private works and furniture.
+
+## Future Features sign
+
+Title: The coming-soon sign opens a Future Features look
+
+- The gold Coming Soon sign still shows no date. Clicking it opens a Future Features popup with a short, date-free teaser and a few screenshots from the work in progress.

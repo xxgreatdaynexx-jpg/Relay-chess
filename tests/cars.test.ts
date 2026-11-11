@@ -29,7 +29,7 @@ describe('validDrive', () => {
   it('rejects garbage, out of bounds, absurd speed and teleports', () => {
     expect(validDrive({ x: 0, z: 0, a: 0, v: 5 }, null, 0, top)).toBe(true);
     expect(validDrive({ x: NaN, z: 0, a: 0, v: 0 }, null, 0, top)).toBe(false);
-    expect(validDrive({ x: 500, z: 0, a: 0, v: 0 }, null, 0, top)).toBe(false);
+    expect(validDrive({ x: 2000, z: 0, a: 0, v: 0 }, null, 0, top)).toBe(false);
     expect(validDrive({ x: 0, z: 0, a: 0, v: 999 }, null, 0, top)).toBe(false);
     const prev = { x: 0, z: 0, a: 0, v: 5, t: 0 };
     expect(validDrive({ x: 2, z: 0, a: 0, v: 5 }, prev, 125, top)).toBe(true);

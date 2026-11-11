@@ -30,7 +30,8 @@ describe('Billionaire Club, sky penthouses and the private island', () => {
 
   it('appends six sky penthouses and four island estates with stable ids and interiors', () => {
     const ids = properties().map((p) => p.id);
-    expect(ids.slice(-10)).toEqual([...SKY_PENTHOUSES.map((u) => u.id), ...ISLAND_LOTS.map((l) => l.id)]);
+    expect(SKY_PENTHOUSES.every((u) => ids.includes(u.id))).toBe(true);
+    expect(ISLAND_LOTS.every((l) => ids.includes(l.id))).toBe(true);
     for (const u of SKY_PENTHOUSES) {
       const p = propertyById(u.id)!; expect(p.type).toBe('penthouse'); expect(p.map).toBeUndefined();
       expect(isHomeProperty(p)).toBe(true); expect(zoneOf(p)).toBe('residential'); expect(p.price).toBe(u.price);

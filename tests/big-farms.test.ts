@@ -63,7 +63,7 @@ describe('Big Farms map expansion', () => {
     const O = outskirts(); const A = BIG_FARM_AREA;
     for (const o of [...O.fields, ...O.buildings]) for (const p of bigFarms()) expect(overlap(o, p)).toBe(false);
     expect(O.fields.every((f) => f.n < BIG_FARM_N0)).toBe(true);
-    expect(allFieldPlots().filter((p) => p.n >= BIG_FARM_N0)).toHaveLength(12);
+    expect(allFieldPlots().filter((p) => p.n >= BIG_FARM_N0 && p.n < 2000)).toHaveLength(12);
     for (const [a, b] of RURAL_ROADS) expect(Math.max(a[0], b[0])).toBeLessThan(A.x0);
   });
   it('pricing: expensive and scaling faster than size; listed as buyable farmland cf:<n>', () => {
@@ -73,7 +73,7 @@ describe('Big Farms map expansion', () => {
       const pr = propertyById(`cf:${p.n}`)!; expect(pr.kind).toBe('farm'); expect(pr.price).toBe(bigFarmPrice(p.cols * p.rows));
       expect(pr.label).toMatch(/^Big Farm #\d+ \(\d+×\d+\)$/); expect(fieldPlotOf(`cf:${p.n}`)!.cols).toBe(p.cols);
     }
-    const smallMax = Math.max(...properties().filter((p) => p.kind === 'farm' && !/^cf:1\d{3}$/.test(p.id) && p.map !== 'resort').map((p) => p.price));
+    const smallMax = Math.max(...properties().filter((p) => p.kind === 'farm' && !/^cf:[12]\d{3}$/.test(p.id) && !p.id.startsWith('winery:') && p.map !== 'resort').map((p) => p.price));
     expect(bigFarmPrice(400)).toBeGreaterThan(smallMax);
     expect(farmPlots().length).toBeGreaterThan(0);
   });

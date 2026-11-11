@@ -20,7 +20,7 @@ describe('all physical barns have separate paid deeds; no farm-derived ownership
   it('34 stable barn ids cover 2 district, 20 country and all 12 Big Farm barns', () => {
     const bs=farmBarns(); expect(bs).toHaveLength(34); expect(new Set(bs.map(b=>b.id)).size).toBe(34);
     expect(bs.filter(b=>b.family==='district')).toHaveLength(2);expect(bs.filter(b=>b.family==='country')).toHaveLength(20);expect(bs.filter(b=>b.family==='big')).toHaveLength(12);
-    expect(bs.every(b=>b.id.startsWith('barn:'))).toBe(true); expect(properties().filter(p=>!/^(sky|isl):/.test(p.id))).toHaveLength(557); expect(properties().filter(p=>/^(sky|isl):/.test(p.id))).toHaveLength(10);
+    expect(bs.every(b=>b.id.startsWith('barn:'))).toBe(true); expect(properties().filter(p=>!/^(sky|isl|lot:estate:|winery:|b:mansion:)/.test(p.id) && !/^cf:2\d{3}$/.test(p.id))).toHaveLength(557); expect(properties().filter(p=>/^(sky|isl):/.test(p.id))).toHaveLength(10);
     for(const b of bs) { const p=propertyById(b.id)!;expect(p).toMatchObject({kind:'building',type:'barn',x:b.x,z:b.z,w:b.w,d:b.d,price:barnPrice(b)}); expect(isHomeProperty(p)).toBe(false);expect(workerBonusOf(b.id)).toBe(0); }
   });
   it('farm 10/20 and every Big Farm owner gets no barn ownership or unlock', () => {

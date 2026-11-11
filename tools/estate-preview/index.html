@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8" />
+<title>Billionaire expansion preview</title>
+<style>
+  body { margin: 0; font-family: Georgia, serif; background: #1a1812; color: #f3e6c4; }
+  header { padding: 20px 24px 8px; }
+  #status { color: #e8c26a; }
+  #gallery { display: flex; flex-wrap: wrap; gap: 16px; padding: 16px 24px 40px; }
+  .shot { margin: 0; background: #0e0d0a; border: 1px solid #5a4a28; border-radius: 10px; overflow: hidden; width: 640px; }
+  .shot canvas { display: block; width: 640px; height: 400px; }
+  .shot figcaption { padding: 8px 12px 10px; font-size: 14px; }
+  .ui { max-width: 920px; margin: 20px auto; padding: 0 16px 40px; }
+  .ff-card, .estate-mock { background: linear-gradient(180deg, #2a2418, #16140f); border: 1px solid #c9a24a; border-radius: 16px; padding: 24px; margin: 16px 0; }
+  .ff-shots { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .ff-shots figure { margin: 0; background: #0e0d0a; border: 1px solid #5a4a28; border-radius: 10px; overflow: hidden; }
+  .ff-shots img, .ff-shots canvas { width: 100%; height: 140px; object-fit: cover; display: block; }
+  .list li { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid #3a3020; padding: 8px 0; }
+  button { background: #3a2a14; color: #e8c26a; border: 1px solid #c9a24a; border-radius: 8px; padding: 6px 10px; }
+</style>
+<body>
+  <header>
+    <p id="status">loading</p>
+    <h1>Billionaire Update — construction models</h1>
+    <p>Local preview only. Not a live build.</p>
+  </header>
+  <div id="gallery"></div>
+  <section class="ui" id="ui-mocks">
+    <div class="ff-card" id="future-features-mock">
+      <p style="letter-spacing:.18em;text-transform:uppercase;color:#e8c26a;font-size:11px">Coming soon</p>
+      <h2>Future Features</h2>
+      <p>More of the city is taking shape: new land, private works, and a few industries that are still being finished. There is no date on the door yet.</p>
+      <div class="ff-shots" id="ff-shots"></div>
+    </div>
+    <div class="estate-mock" id="estate-menu-mock">
+      <h2>🏗️ Private works</h2>
+      <p>Choose what to build. Each project has four stages, with a model at every step.</p>
+      <ul class="list">
+        <li><div><b>🖥️ Data Center</b><small>Racks, power, compute contracts</small></div><button>Build</button></li>
+        <li><div><b>🎮 Bitcoin farm</b><small>GPU rigs and a power bill</small></div><button>Build</button></li>
+        <li><div><b>🗽 Personal Chud Monument</b><small>A statue of you on a plaza</small></div><button>Build</button></li>
+        <li><div><b>🏡 Personal Mansion</b><small>A private house with gardens</small></div><button>Build</button></li>
+        <li><div><b>🏙️ Highrise</b><small>A tall private tower</small></div><button>Build</button></li>
+        <li><div><b>⚡ Power plant</b><small>40 MW when fueled</small></div><button>Build</button></li>
+      </ul>
+    </div>
+    <div class="estate-mock" id="demolish-mock">
+      <h2>Demolish</h2>
+      <p>There is no chip refund for the old structure. Sell it back first if you want the 70% sell-back. Furniture returns to your locker. Growing crops return as seeds; ripe crops go to your warehouse. Landmarks and civic buildings cannot be demolished.</p>
+      <button>Demolish…</button>
+    </div>
+    <div class="estate-mock" id="power-mock">
+      <h2>⚡ Power</h2>
+      <p>Utility contract 20 MW at 🪙 1,200/MW/day. Plant 40 MW. Demand 24 MW. Throttle 100%.</p>
+      <p>Digital income today 🪙 0 / 200,000 cap.</p>
+      <button>Buy +10 MW utility</button>
+    </div>
+  </section>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

@@ -12,7 +12,7 @@ describe('countryside field farms render like the Farm district (snow map stripe
     const decl = src.match(/export const allFarmPlots = \(\) => (.*);/)![1];
     expect(decl).toContain('allFieldPlots()'); // outskirts fields + Big Farms expect(decl).toContain('fieldPlotId');
     expect(fieldPlots().length).toBeGreaterThan(0);
-    const ids = [...farmPlots().map((p) => plotId(p.n)), ...allFieldPlots().map((p) => fieldPlotId(p.n))]; expect(allFieldPlots().length).toBe(fieldPlots().length + 12);
+    const ids = [...farmPlots().map((p) => plotId(p.n)), ...allFieldPlots().map((p) => fieldPlotId(p.n))]; expect(allFieldPlots().length).toBe(fieldPlots().length + 12 + 10);
     expect(new Set(ids).size).toBe(ids.length);
   });
   it('the old flat green crop-row slabs for O.fields are gone', () => {
