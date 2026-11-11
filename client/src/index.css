@@ -2397,6 +2397,12 @@ body.he-full-open .he-table.he-full { visibility: visible; }
   .world-corner button { white-space: nowrap; flex: none; }
   .world-clock { top: 84px; left: 10px; }
   .top-tabs { padding-right: 24px; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent); }
+  /* The fade mask is sized to the 40px bar and would hide the ☰ Menu dropdown hanging below it. */
+  .top-tabs.menu-open { overflow: visible; -webkit-mask-image: none; mask-image: none; }
+}
+@media (max-width: 520px) {
+  .top-tabs { overflow: visible; }
+  .top-tabs.menu-open { -webkit-mask-image: none; mask-image: none; }
 }
 /* Millionaire Update: building inventories + auto-sell */
 .bldg-inv { margin: 8px 0; padding: 8px; border: 1px solid rgba(255,255,255,.15); border-radius: 8px; background: rgba(0,0,0,.18); font-size: 13px; }

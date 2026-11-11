@@ -46,3 +46,13 @@ describe('top tab bar overflow (priority+ "More" menu)', () => {
     expect(fitTabs(many, 50, 6, 84)).toBe(0);
   });
 });
+
+import { readFileSync } from 'node:fs';
+
+describe('top bar mobile menu is not clipped', () => {
+  it('clears the narrow-screen fade mask while the ☰ Menu is open', () => {
+    const css = readFileSync(new URL('../client/src/index.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/\.top-tabs\.menu-open\s*\{[^}]*mask-image:\s*none/);
+    expect(css).toMatch(/\.top-tabs\.menu-open\s*\{[^}]*overflow:\s*visible/);
+  });
+});
