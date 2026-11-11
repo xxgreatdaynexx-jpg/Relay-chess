@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ItemIcon } from './ItemIcon';
 import { TopTab } from '@/components/TopTabs';
 import { useWalletChips } from '@/lib/wallet';
-import { useWindowDrag } from '@/lib/windowDrag';
+import { useBuildingWindow } from '@/lib/useBuildingWindow';
 import { socket } from '@/lib/net';
 import { FactoryBuilder } from '@/components/FactoryBuilder';
 import { openFactoryView } from '@/components/FactoryViewer';
@@ -36,9 +36,9 @@ export function FactoryPanel() {
 }
 
 function FactoryWindow({ onClose }: { onClose: () => void }) {
-  useDoing('factory');
   const wrapRef = useRef<HTMLDivElement>(null);
-  const win = useWindowDrag('factory', wrapRef);
+  const win = useBuildingWindow('factory', wrapRef, onClose);
+  useDoing('factory', null, win.isFront);
   const wallet = useWalletChips();
   const [st, setSt] = useState<{ storage: Stack[]; quote: Quote; inMine: boolean; guest: boolean }>({ storage: [], quote: null, inMine: false, guest: true });
   const [toast, setToast] = useState('');

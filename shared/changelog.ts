@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T22:12:00-06:00", "title": "You can now keep several building menus open at once", "bullets": [
+    "Kitchen, Grocery Store, Factory, Warehouse, Market, Employment Office, City Hall, and the Furniture Store can stay open together as windows. Drag them around, click one to bring it to the front, and close each with its own ✕. Opening a menu that is already open just brings it forward. Escape closes only the front window.",
+    "On a phone or a narrow screen, open menus share a tab strip at the bottom so you can switch between them. Walking into a building still opens the same menus as before. Your chips and items are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T21:18:00-06:00", "title": "Tobacco crop and a cigarette factory line (requested by carter2)", "bullets": [
     "Tobacco is a new plantable city crop: seeds cost 30 chips and take about 63 minutes to grow (the same 30% faster growth as every other crop). A harvested plant is worth 40.5 chips (seed plus 35%). The usual 50% planting house-cap bonus applies, just like other crops.",
     "A new mill recipe turns 1 tobacco into 1 Cigarette. That factory step adds 8% over the tobacco value, so a cigarette's house price is now 43.74 chips (it was 40, which did not fit the +8% rule). Cigarettes still drop rarely from fishing and still give the same casino buff; the extra from smoking is still capped at 25,000 chips per day, so factory-made cigarettes cannot print money through the casino. Existing inventory is unchanged; the new house price applies going forward.",

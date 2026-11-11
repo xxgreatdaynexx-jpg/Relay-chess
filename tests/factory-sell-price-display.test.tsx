@@ -17,6 +17,7 @@ vi.mock('@/lib/net', () => ({
 vi.mock('@/lib/doing', () => ({ useDoing: () => {} }));
 vi.mock('@/lib/wallet', () => ({ useWalletChips: () => null }));
 vi.mock('@/lib/windowDrag', () => ({ useWindowDrag: () => ({ className: '', style: {}, grips: null, bar: {}, front: () => {}, onPanelMove: () => {}, moved: false, reset: () => {} }) }));
+vi.mock('@/lib/useBuildingWindow', () => ({ useBuildingWindow: () => ({ className: '', style: {}, grips: null, bar: {}, front: () => {}, onPanelMove: () => {}, moved: false, reset: () => {}, isFront: true }) }));
 vi.mock('@/components/TopTabs', () => ({ TopTab: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock('@/components/FactoryBuilder', () => ({ FactoryBuilder: () => null }));
 vi.mock('@/components/FactoryViewer', () => ({ openFactoryView: () => {} }));

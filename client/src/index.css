@@ -2745,3 +2745,44 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 }
 .cig-smoke-btn { background: rgba(232, 194, 106, .18); border: 1px solid rgba(232, 194, 106, .45); color: #fff6d8; border-radius: 6px; padding: 4px 10px; font-weight: 700; font-size: 12px; }
 .cig-smoke-btn:disabled { opacity: .4; }
+
+/* Multi-open building menus (kitchen, grocery, factory, warehouse, market, …) */
+.hub-win.sol-panel {
+  background: rgba(14, 15, 26, 0.985);
+  background-image: none;
+  color: #f4efe4;
+  border: 1px solid rgba(201, 162, 74, 0.55);
+  width: min(460px, calc(100vw - 24px));
+  height: min(640px, calc(100dvh - 60px));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.hub-win-grocery { left: min(490px, calc(100vw - 480px)); }
+.hub-win-employ { left: 36px; top: 72px; }
+.hub-win-cityhall { left: 72px; top: 64px; width: min(520px, calc(100vw - 24px)); }
+.hub-win-warehouse, .hub-win-market {
+  width: min(1100px, 96vw);
+  height: min(720px, calc(100dvh - 60px));
+  left: 40px;
+}
+.hub-win-furniture { width: min(860px, 96vw); height: min(680px, calc(100dvh - 60px)); left: 56px; }
+.hub-win-bar { flex: 0 0 auto; background: rgba(0, 0, 0, 0.35); color: #e2c47c; }
+.hub-win-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.hub-win-body .grocery-front, .hub-win-body .cityhall-front, .hub-win-body .employ-front { margin-top: 0; }
+.hub-win .mkt-win-body, .hub-win .res-win-body { padding: 0; background: transparent; width: auto; height: auto; max-height: none; border: 0; box-shadow: none; }
+.hub-win-dock {
+  position: fixed; left: 50%; bottom: 8px; transform: translateX(-50%);
+  z-index: 80; display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;
+  max-width: calc(100vw - 16px); padding: 4px 6px; border-radius: 999px;
+  background: rgba(10, 10, 18, 0.88); border: 1px solid rgba(201, 162, 74, 0.4);
+  box-shadow: 0 8px 24px #0008;
+}
+.hub-win-dock button {
+  padding: 5px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.08);
+  color: #f4efe4; font-weight: 700; font-size: 12px; white-space: nowrap;
+}
+.hub-win-dock button.on { background: #e8c26a; color: #1b1d2e; }
+@media (max-width: 900px) {
+  .hub-win-dock { bottom: 10px; }
+}

@@ -1,12 +1,11 @@
-import { MapSheet } from './MapSheet';
-import { useDoing } from '@/lib/doing';
+import { HubWindow } from './HubWindow';
+import { focusBuildingWindow } from '@/lib/buildingWindows';
 import { useCallback, useEffect, useState } from 'react';
 import { ItemIcon } from './ItemIcon';
 import { request } from '@/lib/net';
 import { boxCount, JOBS, jobById, dayValue, expectedDayHaul, formatExpectedDay, type EmployLogItem, type EmployView } from '../../../shared/employment';
 import { ORES, type OreId } from '../../../shared/mines';
 import { fishById } from '../../../shared/fishing';
-import { usePanelDrag } from '@/lib/panelDrag';
 
 const chips = (n: number) => Math.round(n).toLocaleString('en-US');
 export const OPEN_EMPLOY = 'open-employment';
@@ -36,8 +35,6 @@ function HaulLog({ log }: { log: EmployLogItem[] }) {
 
 /** Employment Office (city): hire AI miners and fishers (pt1274u). Prices come from the server at today's index. */
 export function EmploymentPanel({ onClose }: { onClose: () => void }) {
-  useDoing('jobs');
-  const dragEmploy = usePanelDrag('employ');
   const [v, setV] = useState<EmployView | null>(null); const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null); const [msg, setMsg] = useState<string | null>(null);
   const take = (r: { ok: boolean; error?: string; view?: unknown }) => { if (r.view) setV(r.view as EmployView); if (!r.ok) setMsg(r.error ?? 'Something went wrong.'); };
@@ -50,8 +47,7 @@ export function EmploymentPanel({ onClose }: { onClose: () => void }) {
   };
   const jobs = v?.jobs ?? [];
   return (
-    <MapSheet className="world-deed world-venue employ-panel" data-testid="venue-employ" data-drag-panel="employ" onPointerDown={dragEmploy.onPointerDown} style={dragEmploy.style()} ref={dragEmploy.ref}>{dragEmploy.handle}
-      <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
+    <HubWindow id="employ" testId="venue-employ" onClose={onClose} doing="jobs" className="employ-panel">
       <div className="employ-front"><span>🧑‍🏭 EMPLOYMENT OFFICE</span><small data-testid="employ-cap">Hire AI workers · Worker cap: {v?.max ?? 3} (base {v?.base ?? 3} + {v?.bonus ?? 0} from property)</small></div>
       <p className="employ-rules">A worker costs about half of what they bring in. Their haul is deposited automatically as they work (ores to your mine/factory storage, fish to your cooler) and sells under the usual daily limits. If storage is full they hold the rest until there's room. They keep working around the clock — including overnight when the hub is closed — as long as their wage is paid. Wages are charged once a day; if you can't pay, they stop (no debt). Firing is free but refunds nothing. Workers don't give you skill XP.</p>
       {err && !v && <small className="text-amber-300">{err}</small>}
@@ -124,13 +120,13 @@ export function EmploymentPanel({ onClose }: { onClose: () => void }) {
         </>
       )}
       {msg && <small role="status" data-testid="employ-msg">{msg}</small>}
-    </MapSheet>
+    </HubWindow>
   );
 }
 
 /** Mounted once in the city: opens the office on OPEN_EMPLOY. */
 export function EmploymentHost() {
   const [open, setOpen] = useState(false);
-  useEffect(() => { const h = () => setOpen(true); window.addEventListener(OPEN_EMPLOY, h); return () => window.removeEventListener(OPEN_EMPLOY, h); }, []);
+  useEffect(() => { const h = () => { setOpen(true); queueMicrotask(() => focusBuildingWindow('employ')); }; window.addEventListener(OPEN_EMPLOY, h); return () => window.removeEventListener(OPEN_EMPLOY, h); }, []);
   return open ? <EmploymentPanel onClose={() => setOpen(false)} /> : null;
 }

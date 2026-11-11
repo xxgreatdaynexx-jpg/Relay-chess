@@ -62,7 +62,7 @@ describe('all mobile map menus', () => {
     document.body.innerHTML = '';
   });
   it('real deed family roots include property, home, farm, fishing, cooking, employment, city hall and Fort menus', () => {
-    for (const f of ['FarmGame.tsx','FishingPanel.tsx','CookingPanels.tsx','EmploymentPanel.tsx','CityHallPanel.tsx','FortMcMap.tsx','ResortMap.tsx','WorldMap.tsx']) expect(src(f)).toContain('world-deed');
+    for (const f of ['FarmGame.tsx','FishingPanel.tsx','FortMcMap.tsx','ResortMap.tsx','WorldMap.tsx']) expect(src(f)).toContain('world-deed');
     for (const cls of ['world-deed', 'world-deed world-farm', 'world-deed world-venue fish-panel', 'world-casino', 'furn-store', 'home-int']) {
       document.body.innerHTML = `<div class="world fortmc"><div class="world-corner"></div><div class="${cls}"></div></div>`;
       expect(document.querySelector(hostedHud)).not.toBeNull();

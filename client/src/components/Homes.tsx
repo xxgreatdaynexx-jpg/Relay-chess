@@ -1,4 +1,5 @@
-import { MapSheet } from './MapSheet';
+import { HubWindow } from './HubWindow';
+import { focusBuildingWindow } from '@/lib/buildingWindows';
 /**
  * Homes (Millionaire Update, pt1459u): the Furniture Store, the enterable home interior with Sims-style build mode, live
  * visitors (avatars + chat over the existing socket), owner access controls, and the profile "Visit home" button.
@@ -71,9 +72,8 @@ export function FurnitureStore({ onClose }: { onClose: () => void }) {
   const buy = async (item: string, n: number) => { setBusy(true); setMsg(null); const a = await request('furn_buy', { item, qty: n }); setBusy(false); setMsg(a.ok ? `🛋️ Bought for 🪙 ${chips(Number((a as unknown as { price: number }).price))}. It's in your furniture inventory: enter a home and press Build to place it.` : a.error ?? 'Could not buy that.'); if (a.ok) window.dispatchEvent(new Event(FURNITURE_CHANGED)); load(); };
   const styles = cat === 'walls' ? cg?.walls ?? [] : cat === 'floors' ? cg?.floors ?? [] : [];
   return (
-    <div className="furn-store" data-testid="furniture-store" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <MapSheet className="furn-box">
-        <header><h3>🛋️ Chud Home Furnishings</h3>{lk?.chips != null && <span className="dealer-chips">🪙 {chips(lk.chips)}</span>}<button type="button" onClick={onClose} aria-label="Close" data-testid="furn-close">✕</button></header>
+    <HubWindow id="furniture" title="🛋️ Furniture Store" testId="furniture-store" onClose={onClose} className="furn-box">
+        <header><h3>🛋️ Chud Home Furnishings</h3>{lk?.chips != null && <span className="dealer-chips">🪙 {chips(lk.chips)}</span>}</header>
         <nav className="furn-cats">{FURN_CATS.map((c) => <button key={c.id} type="button" className={cat === c.id ? 'on' : ''} onClick={() => { setCat(c.id); const first = cg?.furniture.find((x) => x.cat === c.id); if (first) setSel(first.id); }} data-testid={`furn-cat-${c.id}`}>{c.icon} {c.label}</button>)}
           <button type="button" className={cat === 'walls' ? 'on' : ''} onClick={() => setCat('walls')} data-testid="furn-cat-walls">🧱 Walls</button><button type="button" className={cat === 'floors' ? 'on' : ''} onClick={() => setCat('floors')} data-testid="furn-cat-floors">🟫 Floors</button></nav>
         {cat === 'walls' || cat === 'floors' ? <div className="furn-styles">{styles.map((s) => { const k = styleKey(cat === 'walls' ? 'wall' : 'floor', s.id); const own = s.price === 0 || !!have(k); return (
@@ -87,8 +87,7 @@ export function FurnitureStore({ onClose }: { onClose: () => void }) {
           </div>}
         {msg && <small role="status" className="furn-msg" data-testid="furn-msg">{msg}</small>}
         <small className="opacity-60">Furniture is final sale (no buy-back). Selling a house returns its furniture to your inventory.</small>
-      </MapSheet>
-    </div>
+    </HubWindow>
   );
 }
 
@@ -277,7 +276,7 @@ export function VisitHomeButtons({ player, close }: { player: string; close: () 
 export function HomesHost() {
   const me = useAccount(); const [store, setStore] = useState(false); const [inside, setInside] = useState<null | Parameters<typeof HomeInterior>[0]['enter']>(null); const [note, setNote] = useState<string | null>(null);
   useEffect(() => {
-    const s = () => setStore(true);
+    const s = () => { setStore(true); queueMicrotask(() => focusBuildingWindow('furniture')); };
     const e = (ev: Event) => { const id = (ev as CustomEvent<string>).detail; void request('home_enter', { id }).then((a) => { if (a.ok) { setNote(null); setInside(a as never); } else setNote(a.error ?? 'Could not enter.'); }); };
     window.addEventListener(OPEN_FURNITURE, s); window.addEventListener(ENTER_HOME, e); return () => { window.removeEventListener(OPEN_FURNITURE, s); window.removeEventListener(ENTER_HOME, e); };
   }, []);

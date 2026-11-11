@@ -22,6 +22,7 @@ import { ArenaPanel } from '@/components/ArenaPanel';
 import { HockeyPanel } from '@/components/HockeyPanel';
 import { MinesPanel } from '@/components/MinesPanel';
 import { FactoryPanel } from '@/components/FactoryPanel';
+import { BuildingWindowDock } from '@/components/BuildingWindowDock';
 import { MarketPage } from '@/components/MarketPage';
 import { StocksPage } from '@/components/StocksPage';
 import { HubSleepOverlay } from '@/components/HubSleepOverlay';
@@ -237,6 +238,7 @@ export function App() {
         <ResourceInventory />
         <ConquestPanel />
       </div>
+      <BuildingWindowDock />
       <ErrorBoundary where="account-panel" kind="panel"><AccountPanel /></ErrorBoundary>
       <ChatDrawer />
       <ErrorBoundary where="player-profile" kind="panel"><PlayerProfile /></ErrorBoundary>
