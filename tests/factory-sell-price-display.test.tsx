@@ -12,6 +12,7 @@ vi.mock('@/lib/net', () => ({
       quote: { gross: 175.5, paid: 196, already: 0, effAlready: 0, index: 1.12, capBase: 100000, capIndex: 1 },
     }) }),
   },
+  request: async () => ({ ok: true, items: [] }),
 }));
 vi.mock('@/lib/doing', () => ({ useDoing: () => {} }));
 vi.mock('@/lib/wallet', () => ({ useWalletChips: () => null }));

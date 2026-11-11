@@ -9,6 +9,7 @@ import { RARITY_COLOR, RARITY_NAME, SKIN_BY_ID, WEAPON_NAME, isKnife, wearOf, ty
 import { Swatch, label, rarityOf } from './SkinsPanel';
 import { lockLeft } from '../../../shared/tradeLock';
 import { StorageSellPanel } from './ResourceSell';
+import { BuyRequestsBoard } from './MarketRequests';
 
 type Ack = { ok: boolean; error?: string; [k: string]: unknown };
 interface ListingView { id: string; price: number; seller: string; at: number; item: SkinItem }
@@ -154,6 +155,7 @@ export function MaterialsView({ initialSell }: { initialSell?: string | null } =
       <TradeLockNote />
       {msg && <p className="mkt-ok">{msg}</p>}{err && <p className="inv-err">{err}</p>}
       {account && <StorageSellPanel pack={pack} rows={rows} cat={cat} sell={sell} setSell={setSell} act={act} reload={load} />}
+      <BuyRequestsBoard pack={pack} cat={cat} onChanged={load} />
       <Controls q={q} setQ={setQ} sort={sort} setSort={setSort} listed={listed} setListed={setListed}>
         <select value={type} onChange={(e) => setType(e.target.value)} data-testid="mkt-type"><option value="all">All resources</option><option value="ore">Ore</option><option value="bar">Bars</option><option value="good">Goods</option><option value="food">Groceries & crops</option></select>
       </Controls>

@@ -12,6 +12,7 @@ import { openFactoryView } from '@/components/FactoryViewer';
 type Ack = { ok: boolean; error?: string; storage?: Stack[]; quote?: unknown; inMine?: boolean; guest?: boolean };
 import { openMarket } from '@/components/MarketPage';
 import { SellQtyPicker } from './SellQtyPicker';
+import { FillRequestCard, useMatchingRequests } from './MarketRequests';
 import { SellAllConfirm } from './SellAllConfirm';
 import { sellAllSummary, sellAllText } from '../../../shared/sellConfirm';
 import { usePriceIndex } from '@/lib/priceIndex';
@@ -48,6 +49,8 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
   useEffect(() => { refresh(); const t = window.setInterval(refresh, 4000); socket.on('connect', refresh); return () => { window.clearInterval(t); socket.off('connect', refresh); }; }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [pick, setPick] = useState<string | null>(null);
   const [confirmAll, setConfirmAll] = useState(false);
+  const [reqPick, setReqPick] = useState<string | null>(null);
+  const { items: reqMatches, reload: reloadReqs } = useMatchingRequests(!st.guest);
   const [sort, setSort] = useState<StorageSort>(() => { try { const v = localStorage.getItem(STORAGE_SORT_KEY); return isStorageSort(v) ? v : 'name'; } catch { return 'name'; } });
   const [filter, setFilter] = useState<StorageFilter>(() => { try { const v = localStorage.getItem(STORAGE_FILTER_KEY); return isStorageFilter(v) ? v : 'all'; } catch { return 'all'; } });
   useEffect(() => { try { localStorage.setItem(STORAGE_SORT_KEY, sort); } catch { /* ignore */ } }, [sort]);
@@ -101,7 +104,9 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
             {shown.map((s) => (
               <li key={stackKey(s)}><ItemIcon type={s.type} id={s.id} />{nameOf(s)}<b>×{s.qty}</b><small data-testid="sell-unit">🪙{+(houseSellPrice(s) * sellIdx).toFixed(2)}</small>
                 {canSell && sellable(s) && <button type="button" aria-expanded={pick === stackKey(s)} onClick={() => setPick((c) => (c === stackKey(s) ? null : stackKey(s)))} data-testid="factory-sell-pick">Sell…</button>}{!sellable(s) && (s.type === 'food' ? <small title="Pantry food: never sold to the house. Cook it, sell it on the Market, or feed it to a factory Input Chest (crops)">pantry</small> : <small title="Imported input: craft it in the factory to sell">craft</small>)}
-                {canSell && sellable(s) && pick === stackKey(s) && <SellQtyPicker owned={s.qty} unit={nameOf(s)} testid="factory-qty" preview={(n) => Math.floor(payoutFor(n * houseSellPrice(s), q?.effAlready ?? q?.already ?? 0, capBase) * sellIdx)} onSell={(n) => sell(stackKey(s), n)} />}</li>
+                {canSell && reqMatches.some((x) => x.type === s.type && x.id === s.id) && <button type="button" className="factory-req-sell" aria-expanded={reqPick === stackKey(s)} onClick={() => setReqPick((c) => (c === stackKey(s) ? null : stackKey(s)))} data-testid="factory-req-sell">Sell to market request</button>}
+                {canSell && sellable(s) && pick === stackKey(s) && <SellQtyPicker owned={s.qty} unit={nameOf(s)} testid="factory-qty" preview={(n) => Math.floor(payoutFor(n * houseSellPrice(s), q?.effAlready ?? q?.already ?? 0, capBase) * sellIdx)} onSell={(n) => sell(stackKey(s), n)} />}
+                {canSell && reqPick === stackKey(s) && reqMatches.some((x) => x.type === s.type && x.id === s.id) && <FillRequestCard item={{ ...reqMatches.find((x) => x.type === s.type && x.id === s.id)!, qty: s.qty, name: nameOf(s) }} testid="factory-req" onReload={() => { reloadReqs(); refresh(); }} onSold={(m) => flash(m)} />}</li>
             ))}
             {!st.storage.length && <li className="opacity-60">Empty. Mine ore and walk out through the EXIT lift to bank it here.</li>}
             {!!st.storage.length && !shown.length && <li className="opacity-60">Nothing in this filter.</li>}

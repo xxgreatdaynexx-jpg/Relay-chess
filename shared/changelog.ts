@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T18:50:00-06:00", "title": "Market buy requests", "bullets": [
+    "On the Market Resources tab you can post a buy request for ore, bars, goods, or food: pick the item, how many you want, and the price per unit. The full amount is held from your chips up front. Cancel a request any time to get the leftover chips back.",
+    "Other players can fill a request in whole or in part at the posted price. In the Factory and the Warehouse, a Sell to market request button appears only when you have stock that matches an open request. Sellers pay the usual 5% Market fee; the house-sell cap does not apply. Your existing chips, items, and listings are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T16:55:00-06:00", "title": "More house plants, pink furniture, and mid-century pieces (requested by Amber)", "bullets": [
     "The Furniture Store has a new batch of house plants (monstera, fiddle leaf fig, snake plant, hanging pothos, cactus trio, and a potted parlor palm), pink pieces (sofa, armchair, bed, rug, lamp, and dresser), and mid-century modern furniture (Eames-style lounge, teak sideboard, tulip table, walnut credenza, sunburst wall clock, arc floor lamp, and a low-profile sofa).",
     "They use the same shop, placement, rotation, and save rules as the existing catalog. Prices follow the daily price index. Furniture you already own is unchanged.",

@@ -13,6 +13,7 @@ import { HouseSell } from './HouseSell';
 import { usePriceIndex } from '@/lib/priceIndex';
 import { priceOf, type ItemType } from '../../../shared/mines';
 import { listFee, pctQty, receiveFor, suggestUnit } from '../../../shared/marketSell';
+import { FillRequestCard, useMatchingRequests } from './MarketRequests';
 
 export interface PackItem { type: string; id: string; qty: number; name: string }
 export interface MyStackRow { id: string; type: string; itemId: string; name: string; qty: number; total: number; unit: number; mine: boolean }
@@ -106,7 +107,8 @@ export function ResourceInventory() {
 function ResWindow({ onClose }: { onClose: () => void }) {
   const account = useAccount();
   const drag = usePanelDrag('resource-inventory');
-  const [pack, setPack] = useState<PackItem[] | null>(null); const [f, setF] = useState('all'); const [q, setQ] = useState(''); const [house, setHouse] = useState('');
+  const [pack, setPack] = useState<PackItem[] | null>(null); const [f, setF] = useState('all'); const [q, setQ] = useState(''); const [house, setHouse] = useState(''); const [reqPick, setReqPick] = useState('');
+  const { items: reqMatches, reload: reloadReqs } = useMatchingRequests(!!account);
   const load = useCallback(() => void request('mkt_my_stacks', {}).then((r) => { const a = r as Ack; setPack(a.ok ? (a.stacks as PackItem[]) : []); }), []);
   useEffect(() => { load(); }, [load, account]);
   const types = useMemo(() => [...new Set((pack ?? []).map((p) => p.type))], [pack]);
@@ -127,7 +129,9 @@ function ResWindow({ onClose }: { onClose: () => void }) {
             <div key={`${p.type}:${p.id}`} className="res-tile" data-testid="res-tile"><ItemIcon type={p.type} id={p.id} size={34} /><b>×{p.qty.toLocaleString()}</b><span>{p.name}</span>
               <button type="button" className="res-house" onClick={() => setHouse(house === `${p.type}:${p.id}` ? '' : `${p.type}:${p.id}`)} aria-expanded={house === `${p.type}:${p.id}`} data-testid="res-house">🏦 Sell to house</button>
               <button type="button" onClick={() => { onClose(); openMarket({ from: 'resources', tab: 'resources', stack: `${p.type}:${p.id}` }); }} data-testid="res-sell">Sell on Market</button>
-              {house === `${p.type}:${p.id}` && <div className="res-house-wrap"><HouseSell type={p.type} id={p.id} qty={p.qty} name={p.name} testid="res-house" onSold={() => load()} /></div>}</div>
+              {reqMatches.some((x) => x.type === p.type && x.id === p.id) && <button type="button" className="res-req" onClick={() => setReqPick(reqPick === `${p.type}:${p.id}` ? '' : `${p.type}:${p.id}`)} aria-expanded={reqPick === `${p.type}:${p.id}`} data-testid="res-req-sell">Sell to market request</button>}
+              {house === `${p.type}:${p.id}` && <div className="res-house-wrap"><HouseSell type={p.type} id={p.id} qty={p.qty} name={p.name} testid="res-house" onSold={() => load()} /></div>}
+              {reqPick === `${p.type}:${p.id}` && reqMatches.some((x) => x.type === p.type && x.id === p.id) && <FillRequestCard item={{ ...reqMatches.find((x) => x.type === p.type && x.id === p.id)!, qty: p.qty, name: p.name }} testid="res-req" onReload={() => { reloadReqs(); load(); }} />}</div>
           ))}
           {account && pack && !shown.length && <p className="inv-note">Nothing here yet. Mine, farm, fish or cook, then bank it.</p>}
         </div>

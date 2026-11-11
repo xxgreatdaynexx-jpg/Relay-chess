@@ -2162,6 +2162,15 @@ html.xmas .top-menu-btn::before { content: '🎄 '; }
 .msell-cmp .up { color: #8f8; } .msell-cmp .down { color: #f99; }
 .msell-list { display: block; width: 100%; margin-top: 10px; padding: 10px; font-size: 15px; font-weight: 700; border-radius: 8px; background: linear-gradient(#4f8f3a, #366a26); color: #fff; }
 .msell-list:disabled { opacity: .5; }
+
+.mreq { margin: 14px 0 18px; padding: 10px 12px; border-radius: 10px; background: rgba(0,0,0,.22); border: 1px solid rgba(124,204,255,.28); }
+.mreq-post { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; margin: 8px 0; }
+.mreq-post label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; opacity: .9; }
+.mreq-post input, .mreq-post select { min-width: 88px; }
+.mreq-fill { margin: 8px 0; padding: 8px 10px; border-radius: 8px; background: rgba(0,0,0,.28); border: 1px solid rgba(124,204,255,.3); max-width: 420px; }
+.mreq-fill-h { font-weight: 700; margin: 0 0 6px; }
+.mreq-fill select { display: block; width: 100%; margin: 4px 0 8px; }
+button.factory-req-sell, button.res-req { margin-left: 6px; }
 .msell-mine { display: flex; flex-direction: column; gap: 4px; }
 .msell-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 4px 6px; border-radius: 6px; background: rgba(255,255,255,.04); font-size: 13px; }
 .msell-row button { margin-left: auto; }

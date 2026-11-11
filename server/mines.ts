@@ -798,6 +798,17 @@ export class MinesWorld {
   /** Every stack in a player's banked storage (logistics shipping picker). */
   stacks(account: string): Array<{ type: ItemType; id: string; qty: number }> { this.beforeStorage?.(account); return [...this.pack(playerKey(account)).values()].map((s) => ({ type: s.type, id: s.id, qty: s.qty })); }
   stackQty(account: string, type: ItemType, id: string): number { this.beforeStorage?.(account); return this.pack(playerKey(account)).get(stackKey({ type, id }))?.qty ?? 0; }
+  /** Apply a banked-stack credit already written in a caller's transaction. Memory only; does not persist. */
+  creditBanked(name: string, type: ItemType, id: string, qty: number): void {
+    if (!Number.isInteger(qty) || qty === 0) return;
+    this.beforeStorage?.(name);
+    const k = playerKey(name);
+    const p = this.pack(k);
+    const key = stackKey({ type, id });
+    const n = (p.get(key)?.qty ?? 0) + qty;
+    if (n <= 0) p.delete(key); else p.set(key, { type, id, qty: n });
+    this.names.set(k, name.trim());
+  }
   /** Move qty into (+) or out of (-) an account's pack and persist the pack plus `extra` rows in ONE transaction (queued in order with every other pack save).
    * Returns false (no change) if a withdrawal would go negative. Without a store, `fallback` gets the rows instead. */
   /** Weight of an account's stored pack (same units as BACKPACK_CAP). */
