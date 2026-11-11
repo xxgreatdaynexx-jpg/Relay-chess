@@ -35,7 +35,7 @@ describe('QA r11: More menu outside click is swallowed', () => {
   });
   it('TopTabs wires it while More is open', () => {
     const s = readFileSync(new URL('../client/src/components/TopTabs.tsx', import.meta.url), 'utf8');
-    expect(s).toMatch(/if \(!moreOpen\) return;\s*return swallowOutside\(document/);
+    expect(s).toMatch(/if \(!openMenu\) return;\s*[\s\S]*?return swallowOutside\(document/);
   });
 });
 

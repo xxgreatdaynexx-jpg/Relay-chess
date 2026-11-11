@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T22:35:00-06:00", "title": "Top bar redesigned with grouped menus", "bullets": [
+    "The many game and tool buttons in the top bar are now grouped into a few menus: Casino (Blackjack, Roulette, Poker, Slots, Solitaire, Loot Match, and Mines), Play (Arena and Hockey), Work (Factory, Market, and Skills), and Money (Stocks).",
+    "Your chips, net worth, chat, inventories, and account stay visible in the bar. On a phone, a Menu button opens the same groups. Every previous shortcut is still there. Your chips and items are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T22:18:00-06:00", "title": "You can now raise the price on your market buy requests", "bullets": [
     "On an open buy request you posted, Raise price lets you enter a new unit price that is higher than the current one. The extra chips — the difference times the quantity still wanted — are held from your balance right away, the same way posting a request holds the full amount.",
     "Sellers who fill after the raise are paid the new price minus the usual 5% Market fee, including the Sell to market request buttons in the Factory and the Warehouse. You still cannot lower the price here; cancel and post a new request if you need to bid less, and cancel still returns any leftover escrow. Existing requests, chips, and stock are otherwise unchanged.",
