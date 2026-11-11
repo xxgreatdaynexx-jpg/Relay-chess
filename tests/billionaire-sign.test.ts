@@ -1,6 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { BILLIONAIRE_SIGN, BILLIONAIRE_SIGN_POS, BILLIONAIRE_SIGN_RADIUS } from '../shared/billionaireUpdate';
+import { FUTURE_FEATURES_BODY, FUTURE_FEATURES_SHOTS, FUTURE_FEATURES_TITLE } from '../shared/futureFeatures';
 import { outskirts, inLake, mapRoadSegments } from '../shared/outskirts';
 import { farmPlots } from '../shared/farm';
 import { bigFarms } from '../shared/bigFarms';
@@ -59,5 +60,25 @@ describe('Billionaire Update coming-soon sign', () => {
     expect(distAABB(cx, cz, RUNWAY.x - RUNWAY.w / 2, RUNWAY.x + RUNWAY.w / 2, RUNWAY.z0, RUNWAY.z1)).toBeGreaterThanOrEqual(rad);
     const apron = distAABB(cx, cz, AIRPORT_SLOT[0] - 6 - 17, AIRPORT_SLOT[0] - 6 + 17, AIRPORT_SLOT[1] - 15, AIRPORT_SLOT[1] + 15);
     expect(apron).toBeGreaterThanOrEqual(rad);
+  });
+});
+
+describe('Future Features popup', () => {
+  it('opens from the coming-soon sign with no launch date and no launch-popup hook', () => {
+    const map = src('client/src/components/WorldMap.tsx');
+    const world = src('client/src/lib/world3d.ts');
+    expect(map).toMatch(/FutureFeaturesPopup/);
+    expect(map).toMatch(/billionaire-sign/);
+    expect(world).toMatch(/id === BILLIONAIRE_SIGN[\s\S]*h\.onPick\(id\)/);
+    expect(world).not.toMatch(/open-launch-popup/);
+    expect(world).toMatch(/C O M I N G {3}S O O N/);
+    const blob = [FUTURE_FEATURES_TITLE, ...FUTURE_FEATURES_BODY, ...FUTURE_FEATURES_SHOTS.map((s) => s.caption + ' ' + s.title)].join(' ');
+    expect(blob).not.toMatch(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\b/);
+    expect(blob).not.toMatch(/\b20\d{2}\b/);
+    expect(FUTURE_FEATURES_SHOTS.map((s) => s.id)).toEqual(['map', 'lots', 'airport', 'industry']);
+    for (const shot of FUTURE_FEATURES_SHOTS) {
+      expect(existsSync(new URL(`../client/public/future-features/${shot.id}.png`, import.meta.url))).toBe(true);
+    }
+    expect(CHANGELOG.some((e) => /future features/i.test(e.title + e.bullets.join(' ')))).toBe(false);
   });
 });

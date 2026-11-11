@@ -17,6 +17,7 @@ import { lazyWithReload } from '@/lib/lazyWithReload';
 import { importWithReload } from '@/lib/chunkReload';
 import { WORLD_SPOTS } from '@/lib/worldSpots';
 import { BILLIONAIRE_SIGN } from '../../../shared/billionaireUpdate';
+import { FutureFeaturesPopup } from '@/components/FutureFeaturesPopup';
 import { useWalletChips } from '@/lib/wallet';
 import { CLOSE_WORLD_PANELS, WALLET_CLOSE, NONE, closePanel, panelId, togglePanel, type WorldPanel } from '@/lib/worldPanels';
 import { focusBuildingWindow } from '@/lib/buildingWindows';
@@ -298,6 +299,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       case 'employ': window.dispatchEvent(new Event(OPEN_EMPLOY)); return;
       case 'cityhall': window.dispatchEvent(new Event(OPEN_CITYHALL)); return;
       case 'airport': case 'racetrack': setVenue(id); return;
+      case 'billionaire-sign': setPanel({ k: 'future' }); return;
     }
     // Every other building opens as a panel on top of the city; closing it reveals the city again.
   };
@@ -415,6 +417,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       {toast && <div className="world-toast" role="status" data-testid="world-toast">{toast}</div>}
       {farm && <FarmGame onAllFarms={hasBarn ? openAllFarms : undefined} id={farm} label={propertyById(farm)?.label ?? 'Farm'} onClose={() => setFarm(null)} />}
       {deeds && <DeedList owned={owned} me={me} onOpen={(id) => setDeed(id)} onClose={() => setDeeds(false)} />}
+      {panel.k === 'future' && <FutureFeaturesPopup onClose={() => setPanel(NONE)} />}
       {driving && <>
         <div className="world-speedo" data-testid="world-speedo">{kmh} <small>km/h</small><em>WASD / arrows · E enter · Esc park · Space handbrake{nitro ? ' · Shift/N nitro' : ''}</em>{drift && <b className="world-drift" data-testid="world-drift">DRIFT</b>}{nitro && <span className={`world-nitro${nitro.on ? ' on' : ''}`} data-testid="world-nitro"><i style={{ width: `${Math.round((nitro.have / nitro.full) * 100)}%` }} /></span>}</div>
         {(lap.t0 != null || lap.text) && <div className="world-lap" data-testid="world-lap">{lap.t0 != null && <b>⏱ {fmtLap(Date.now() - lap.t0)} <small>gate {lap.gate}/3</small></b>}{lap.text && <span>{lap.text}</span>}</div>}
