@@ -11,7 +11,7 @@ import type { Property } from './realEstate.js';
 export type Zone = 'residential' | 'commercial' | 'farmland' | 'exempt';
 export const ZONE_DEED_CAP = 5;
 export const FARMLAND_TILE_CAP = 1500;
-const RESIDENTIAL = new Set(['house', 'rowhouse', 'apartment', 'tower']);
+const RESIDENTIAL = new Set(['house', 'rowhouse', 'apartment', 'tower', 'penthouse']);
 const COMMERCIAL = new Set(['gas', 'depot', 'barn']);
 export const ZONE_LABEL: Record<Zone, string> = { residential: 'Residential', commercial: 'Commercial', farmland: 'Farmland', exempt: 'Exempt' };
 
@@ -19,7 +19,7 @@ export function zoneOf(p: Pick<Property, 'kind' | 'type' | 'map'>): Zone {
   if (p.kind === 'farm') return 'farmland';                 // farm plots, fields, Big Farms, plantations (resort map too)
   if (p.kind === 'patch') return 'exempt';
   if (p.kind === 'landmark') return 'commercial';
-  if (p.map === 'resort') return 'exempt';                  // resort lots
+  if (p.map === 'resort' || p.map === 'island') return 'exempt'; // resort lots and private-island estates
   if (RESIDENTIAL.has(p.type)) return 'residential';
   if (COMMERCIAL.has(p.type)) return 'commercial';
   return 'commercial';                                      // fail closed: an unclassified future building is capped, never free

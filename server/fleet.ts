@@ -13,7 +13,7 @@ import { getBank } from './casino-store.js';
 import { px } from './price-index.js';
 import { requireResort } from './travel.js';
 import { setFishBoatHook } from './fishing.js';
-import { setTravelJetHook } from './travel.js';
+import { setTravelJetHook, setTravelMegaHook } from './travel.js';
 import { GRACE_DAYS } from '../shared/realEstate.js';
 import { sendPopup } from './popups.js';
 import { BOATS, JETS, MAX_JETS, MAX_BOATS, bestBoat, fleetModel, fleetResale, type FleetKind } from '../shared/fleet.js';
@@ -198,6 +198,7 @@ let fleet: Fleet | null = null;
 export const getFleet = () => fleet;
 setFishBoatHook(async (n) => (fleet ? fleet.boatOf(n) : bestBoat([])));
 setTravelJetHook(async (n) => (fleet ? fleet.jetOf(n) : null));
+setTravelMegaHook(async (n) => fleet ? (await fleet.owned(n, 'boat')).some((c) => c.model === 'megayacht') : false);
 export function setFleet(f: Fleet | null) { fleet = f; }
 export async function initFleet(): Promise<void> {
   const url = databaseUrl();

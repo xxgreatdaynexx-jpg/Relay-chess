@@ -393,6 +393,18 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
         g.add(box(1.4, 2.2, 0.15, mat({ color: 0x4a3524 }), 0, 0.8, 1.15));
         for (const x of [-4.4, 4.4]) g.add(cyl(0.07, 0.07, 2.6, dark, x, 0, 3.2, 6), box(0.35, 0.35, 0.35, gold, x, 2.6, 3.2));
         height = 11; break; }
+      case 'club': {
+        const stone = mat({ color: 0xf4efe4, roughness: 0.6 }), gold = mat({ color: 0xd4af37, metalness: 0.7, roughness: 0.3, emissive: 0xd4af37, emissiveIntensity: 0.2 * NEON }), glass = mat({ color: 0x9fd4ff, transparent: true, opacity: 0.45, roughness: 0.1, metalness: 0.3 });
+        g.add(box(11, 0.4, 9, stone, 0, 0, 0), box(9.5, 5.2, 7, stone, 0, 0.4, -0.4), box(8, 3.4, 0.2, glass, 0, 1, 3.15));
+        g.add(box(10, 0.4, 7.6, gold, 0, 5.6, -0.4), box(6, 0.8, 0.3, gold, 0, 6.2, 3.2));
+        for (let i = 0; i < 4; i++) g.add(cyl(0.22, 0.26, 4.6, stone, -3.3 + i * 2.2, 0.4, 3.2, 10));
+        // patron plaques along the forecourt
+        for (let i = 0; i < 4; i++) { const x = -3.6 + i * 2.4; g.add(box(1.2, 0.15, 0.8, stone, x, 0.4, 4.6), box(1.0, 1.1, 0.12, gold, x, 0.55, 4.9)); }
+        height = 8; break; }
+      case 'skytower': {
+        const glass = mat({ color: 0xa8d4f0, transparent: true, opacity: 0.55, roughness: 0.15, metalness: 0.4, emissive: 0x9fd4ff, emissiveIntensity: 0.15 * NEON }), core = mat({ color: 0xe8eef2, roughness: 0.4, metalness: 0.2 });
+        g.add(box(8, 28, 8, glass, 0, 0, 0), box(3, 30, 3, core, 0, 0, 0), box(9, 0.6, 9, core, 0, 28, 0));
+        height = 30; break; }
       case 'dealer': {
         // Car Dealership: glass showroom, forecourt with three display cars, pylon sign.
         g.add(box(9, 0.3, 6, mat({ color: 0x2b2f3a }), 0, 0, -2.4), box(9, 4.2, 0.3, mat({ color: 0x9fd4ff, transparent: true, opacity: 0.35, roughness: 0.1, metalness: 0.4 }), 0, 0.3, 0.6));

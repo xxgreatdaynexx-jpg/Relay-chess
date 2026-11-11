@@ -22,7 +22,7 @@ import { getRoyalties } from './royalty.js';
 import { sendPopup } from './popups.js';
 import { BUYOUT_MUL, BUYOUT_PROTECT_MS, buyoutPrice } from '../shared/royalty.js';
 import { px, priceIndex } from './price-index.js';
-import { requireResort } from './travel.js';
+import { requireResort, requireIsland } from './travel.js';
 import { taxBasisOf, propertyValue, GRACE_DAYS, propertyById as baseProperty, sellBackOf, taxOf, landMultiplier, type OwnedProperty } from '../shared/realEstate.js';
 import { skillLevelAsync } from './skills.js';
 import { propertyWorth, propertyPaid, propertyPaidPlusUpgrades, upgradeSpendFromLevels } from '../shared/netWorth.js';
@@ -393,7 +393,7 @@ export function registerRealEstate(io: Server, socket: Socket): void {
   });
   const need = () => { const n = nameOf(); if (!n) throw new PropertyError('Sign in to buy property.'); return n; };
   on('re_mine', async (_b, e) => ({ properties: await e.mine(need()) }));
-  on('re_buy', async (b, e) => { const n = need(); if (typeof b.id === 'string' && /^(r|rf):/.test(b.id)) await requireResort(n, PropertyError); return e.buy(n, b.id, b.max); });
+  on('re_buy', async (b, e) => { const n = need(); if (typeof b.id === 'string' && /^(r|rf):/.test(b.id)) await requireResort(n, PropertyError); if (typeof b.id === 'string' && /^isl:/.test(b.id)) await requireIsland(n, PropertyError); return e.buy(n, b.id, b.max); });
   on('re_quote', async (b, e) => e.quote(need(), b.id));
   on('re_backtax', async (_b, e) => ({ backTax: await e.backTax(need()) }));
   on('re_backtax_pay', async (_b, e) => e.payBackTax(need()));

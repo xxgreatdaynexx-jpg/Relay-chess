@@ -246,10 +246,12 @@ export const LANDMARK_SLOTS: Record<string, [number, number]> = {
   employ: [-13, -39], // Employment Office (pt1274u): block north of the plaza; cleared like the grocery (no owned lots under it)
   cityhall: [13, 13], // City Hall (pt1312u): downtown block east of the plaza; cleared like the grocery (no owned lots under it)
   furniture: [-65, 42], // Furniture Store (Millionaire Update, pt1459u): west waterfront block; cleared like the grocery. Clears only b:house:-741:446 and p:park:-643:378 (both unowned on Nov 3)
+  club: [-80, 200], // Billionaire's Club on the ocean beach, west of Chud Hub Harbour (off the city plate; no fill cleared)
+  skytower: [-56, 200], // Sky Tower civic pad east of the Club, same beach
   racetrack: [-103, -169], // outskirts, north-west, in RESERVED_VENUES.racetrack: infield of the oval
 };
 /** Outskirts landmarks sit square to the map, not to a street. */
-const SQUARE_LM = new Set(['airport', 'racetrack', 'dock']);
+const SQUARE_LM = new Set(['airport', 'racetrack', 'dock', 'club', 'skytower']);
 export const SPARE_SLOTS: [number, number][] = [[13, 42], [-13, -39], [-39, -13], [13, -65]];
 
 /**
@@ -293,7 +295,7 @@ function placeLandmarks(ids: string[]): Record<string, OBB> {
   }
   return out;
 }
-export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'mine-frost', 'mine-magma', 'mine-quarry', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer', 'airport', 'racetrack', 'dock', 'grocery', 'mechanic', 'employ', 'cityhall', 'furniture'];
+export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'mine-frost', 'mine-magma', 'mine-quarry', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer', 'airport', 'racetrack', 'dock', 'grocery', 'mechanic', 'employ', 'cityhall', 'furniture', 'club', 'skytower'];
 /** Landmarks added after launch: they clear the fill under them instead of reshuffling it. */
 const LATE_LM = new Set(['grocery', 'mechanic', 'employ', 'cityhall', 'furniture']);
 let lmCache: { key: string; v: Record<string, OBB> } | null = null;

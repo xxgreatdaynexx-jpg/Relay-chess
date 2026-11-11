@@ -23,7 +23,7 @@ import { px } from './price-index.js';
 import { getRealEstate } from './realEstate.js';
 import { propertyById } from '../shared/realEstate.js';
 import {
-  CHAT_MAX, EMPTY_LAYOUT, FLOOR_STYLES, FURNITURE, FURN_CATS, MAX_BUY_QTY, MAX_INVITES, MAX_VISITORS, WALL_STYLES,
+  CHAT_MAX, EMPTY_LAYOUT, FLOOR_STYLES, FURNITURE, FURN_BY_ID, FURN_CATS, MAX_BUY_QTY, MAX_INVITES, MAX_VISITORS, WALL_STYLES,
   canVisit, clampPos, isHomeProperty, shopItem, validateLayout, type HomeAccess, type HomeLayout,
 } from '../shared/homes.js';
 
@@ -53,7 +53,7 @@ export class Homes {
   async init() { if (this.pool) await this.pool.query(HOMES_MIGRATION); }
 
   catalog() {
-    return { cats: FURN_CATS, furniture: FURNITURE.map((f) => ({ ...f, base: f.price, price: px(f.price) })), walls: WALL_STYLES.map((s) => ({ ...s, price: px(s.price) })), floors: FLOOR_STYLES.map((s) => ({ ...s, price: px(s.price) })) };
+    return { cats: FURN_CATS, furniture: FURNITURE.filter((f) => !f.auction).map((f) => ({ ...f, base: f.price, price: px(f.price) })), walls: WALL_STYLES.map((s) => ({ ...s, price: px(s.price) })), floors: FLOOR_STYLES.map((s) => ({ ...s, price: px(s.price) })) };
   }
 
   async inventory(name: string): Promise<Map<string, number>> {
@@ -105,6 +105,16 @@ export class Homes {
     const p = run(); w.bind(p);
     try { await p; } catch (e) { w.revert(); console.error('[homes] buy failed:', (e as Error).message); throw new HomeError(/chips|balance|null value/i.test((e as Error).message) ? 'Not enough chips.' : 'Purchase failed. Nothing was charged.'); }
     return { item: it.key, qty: n, price, chips: bank.account(name).chips };
+  }
+
+  /** Grant a furniture item (art auction winner, etc.) with no charge. The piece must exist in the catalog. */
+  async grant(name: string, item: string, qty = 1) {
+    const it = FURN_BY_ID.get(item); if (!it) throw new HomeError('That item is not in the catalog.');
+    const n = Math.floor(qty); if (!Number.isInteger(n) || n < 1) throw new HomeError('Grant at least one.');
+    const k = keyOf(name);
+    if (!this.pool) { const m = this.memInv.get(k) ?? new Map(); m.set(it.id, (m.get(it.id) ?? 0) + n); this.memInv.set(k, m); return { item: it.id, qty: n }; }
+    await this.pool.query('INSERT INTO home_inventory (player_key, item, qty) VALUES ($1,$2,$3) ON CONFLICT (player_key, item) DO UPDATE SET qty = home_inventory.qty + EXCLUDED.qty', [k, it.id, n]);
+    return { item: it.id, qty: n };
   }
 
   /** Current state of a home (an empty default room when the owner hasn't decorated, or the row belongs to a past owner). */

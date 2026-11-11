@@ -6,7 +6,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { request } from '@/lib/net';
 import { usePanelDrag } from '@/lib/panelDrag';
 import { CityCivic } from './CityCivic';
-import { OPEN_PRESTIGE } from './PrestigeDesk';
 import { MayorBillReviewHost, OPEN_BILL_REVIEW } from './MayorBillReview';
 import type { CityView } from '../../../shared/city';
 import { pct, rateLabel, AB_OFFSET_MS, type CityHallView } from '../../../shared/mayor';
@@ -98,7 +97,6 @@ export function CityHallPanel({ onClose, initial, initialCity }: { onClose: () =
           <div className="prestige-entry">
             <h4>Prestige desk</h4>
             <small>Titles, fireworks, liveries, shout-outs, and city patronage naming rights.</small>
-            <button type="button" data-testid="open-prestige-desk" onClick={() => window.dispatchEvent(new CustomEvent(OPEN_PRESTIGE, { detail: 'vanity' }))}>✨ Open the Prestige Desk</button>
           </div>
           <CityCivic initial={initialCity} />
           <p className="cityhall-rules">Besides these rates the mayor can only use the city levers, policies and buildings above. Casino odds and payouts, chip balances, sell limits and everything else stay out of reach. Mayors get no salary, and the treasury can never pay out to anyone.</p>

@@ -13,7 +13,7 @@ export const SEAT_REQUEST_TTL_MS = 60_000;
 export const BOARDING_TTL_MS = 10 * 60_000;
 export type SeatStatus = 'pending' | 'seated';
 export interface BoardingView {
-  id: string; owner: string; jet: string; model: string; from: 'city' | 'resort' | 'fortmc'; to: 'city' | 'resort' | 'fortmc';
+  id: string; owner: string; jet: string; model: string; from: 'city' | 'resort' | 'fortmc' | 'island'; to: 'city' | 'resort' | 'fortmc' | 'island';
   seats: number; price: number; openedAt: number; expiresAt: number;
   seated: string[]; pending: Array<{ name: string; at: number; expiresAt: number }>;
 }

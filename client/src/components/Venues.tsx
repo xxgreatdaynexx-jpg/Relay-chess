@@ -47,6 +47,7 @@ export function Venues({ kind, me, driving, onClose, onFly, onDriveFrom }: {
         {me ? <button type="button" className="venue-resort" disabled={busy} onClick={() => void resort()} data-testid="fly-resort">{trip.jet ? <>🛩 Fly your {trip.jet} to Chud Resort · no ticket</> : <>🏝 Fly to Chud Resort · ticket 🪙 {chips(trip.ticket)}</>}</button> : <small>Sign in to buy a ticket.</small>}
         <small>Fort McChud: an oil-sands boomtown. Lease land, drill wells, run pipelines, a refinery, gas plant and cracker, and build the Deep Ore Mine. The flight home is free.</small>
         {me && <button type="button" className="venue-resort venue-fortmc" disabled={busy} onClick={() => void fortmc()} data-testid="fly-fortmc">{trip.jet ? <>🛩 Fly my jet ({trip.jet}) to Fort McChud · no ticket</> : <>🛢 Fly to Fort McChud · ticket 🪙 {chips(trip.tickets.fortmc)}</>}</button>}
+        {me && trip.jet && <button type="button" className="venue-resort" disabled={busy} onClick={() => void flyTo('island').then((r) => { if (r.ok) onClose(); else setMsg(r.error ?? 'Could not fly.'); })} data-testid="fly-island">🛩 Fly your {trip.jet} to the Private Island · no ticket</button>}
         <h4>🛩 Private Jet Hangar</h4>
         <small>Own a jet and never buy a ticket again: fly it to Chud Resort or Fort McChud. Jets have a high daily upkeep (crew, fuel, hangar). Unpaid days pile up as arrears, and too many in a row gets the jet repossessed.</small>
         <button type="button" disabled={busy} onClick={() => setHangar(true)} data-testid="open-hangar">🛩 Browse private jets</button>

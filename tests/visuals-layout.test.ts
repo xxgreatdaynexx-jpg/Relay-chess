@@ -9,7 +9,10 @@ import { outskirts } from '../shared/outskirts';
 describe('mu-visuals ocean: existing seeded placement is untouched', () => {
   it('every lot / field / house / landmark id and position matches the d65b2b6 snapshot', () => {
     const base = JSON.parse(fs.readFileSync(new URL('./fixtures/layout-d65b2b6.json', import.meta.url), 'utf8'));
-    expect(JSON.parse(JSON.stringify(layoutSnapshot()))).toEqual(base);
+    const snap = JSON.parse(JSON.stringify(layoutSnapshot()));
+    const next = new Set(['club', 'skytower']);
+    expect({ ...snap, landmarks: snap.landmarks.filter((row: [string]) => !next.has(row[0])) }).toEqual(base);
+    expect(snap.landmarks.filter((row: [string]) => next.has(row[0]))).toEqual([['club', -80, 200, 0], ['skytower', -56, 200, 0]]);
   });
   it('the ocean sits wholly outside the old map bounds and every old building', () => {
     expect(OCEAN.shoreZ).toBeGreaterThan(MAP_BOUNDS.z1);

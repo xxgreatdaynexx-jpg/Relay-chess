@@ -12,7 +12,7 @@ const fund = (n: string, amt = 50_000) => getBank().transferConfirmed(n, amt, { 
 const [H1, H2] = properties().filter(isHomeProperty).map((p) => p.id);
 
 describe('homes rules', () => {
-  it('catalog is sane', () => { expect(FURNITURE.length).toBeGreaterThanOrEqual(25); expect(new Set(FURNITURE.map((f) => f.id)).size).toBe(FURNITURE.length); for (const f of FURNITURE) expect(f.price).toBeGreaterThan(0); });
+  it('catalog is sane', () => { expect(FURNITURE.length).toBeGreaterThanOrEqual(25); expect(new Set(FURNITURE.map((f) => f.id)).size).toBe(FURNITURE.length); for (const f of FURNITURE) if (!f.auction) expect(f.price).toBeGreaterThan(0); else expect(f.price).toBe(0); });
   it('fits checks bounds and overlap; rugs only clash with rugs', () => {
     const a = { uid: 'a', f: 'sofa', x: 0, z: 0, r: 0 };
     expect(fits([], a)).toBe(true); expect(fits([], { ...a, x: GRID_W - 2 })).toBe(false);

@@ -22,6 +22,8 @@ export const WORLD_SPOTS: WorldSpot[] = [
   { id: 'employ', label: 'Employment Office', icon: '🧑‍🏭', color: 0xe0a23a, blurb: 'Hire AI miners & fishers to work for you' },
   { id: 'furniture', label: 'Furniture Store', icon: '🛋️', color: 0xc77dff, blurb: 'Furniture, wall & floor styles for your homes' },
   { id: 'cityhall', label: 'City Hall', icon: '🏛️', color: 0xd9c27a, blurb: 'Weekly mayor election & city tax rates' },
+  { id: 'club', label: "Billionaire's Club", icon: '💎', color: 0xd4af37, blurb: 'Prestige Desk, city patronage plaques and the art auction' },
+  { id: 'skytower', label: 'Sky Tower', icon: '🏙️', color: 0xdfe9f0, blurb: 'Buy a sky penthouse above the beach' },
   { id: 'leaderboard', label: 'Leaderboard', icon: '🏆', color: 0xe8c26a, blurb: 'Who’s on top' },
   { id: 'chat', label: 'Plaza Chat', icon: '💬', color: 0x66b3ff, blurb: 'Chat & who’s online' },
 ];

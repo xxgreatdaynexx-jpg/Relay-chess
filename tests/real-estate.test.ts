@@ -30,12 +30,12 @@ describe('real estate catalog', () => {
   it('every building, lot, park, plaza and landmark has a unique id and a price; the Trailer Park is not for sale', () => {
     const ps = properties(); expect(new Set(ps.map((p) => p.id)).size).toBe(ps.length);
     const { houses, patches } = cityFill(7);
-    expect(ps.filter((p) => p.kind === 'building' && p.map !== 'resort')).toHaveLength(houses.length + countryHomes().length + countryBusinesses().length + farmBarns().length);
+    expect(ps.filter((p) => p.kind === 'building' && !p.map && !p.id.startsWith('sky:'))).toHaveLength(houses.length + countryHomes().length + countryBusinesses().length + farmBarns().length);
     expect(ps.filter((p) => p.kind === 'patch')).toHaveLength(patches.length);
-    expect(ps.filter((p) => p.kind === 'landmark').map((p) => p.type).sort()).toEqual([...LANDMARK_IDS, 'jail', 'harbour'].filter((id) => id !== 'cityhall' && id !== 'mine-quarry').sort()); // Stone Quarry is public/manual, not a buyable deed
+    expect(ps.filter((p) => p.kind === 'landmark').map((p) => p.type).sort()).toEqual([...LANDMARK_IDS, 'jail', 'harbour'].filter((id) => id !== 'cityhall' && id !== 'club' && id !== 'skytower' && id !== 'mine-quarry').sort()); // civic venues and the Stone Quarry are not buyable deeds
     for (const p of ps) { expect(p.price).toBeGreaterThan(0); if (p.kind !== 'landmark') expect(obbOverlap(PARK_AREA, p)).toBe(false); }
     expect(ps.some((p) => /trailer/i.test(p.id))).toBe(false);
-    expect(ps.some((p) => p.type === 'cityhall')).toBe(false); // City Hall is civic, never for sale
+    expect(ps.some((p) => p.type === 'cityhall' || p.type === 'club' || p.type === 'skytower')).toBe(false); // civic venues are never for sale
   });
   it('the map (client landmark set) yields the same ids the server sells', () => {
     const lmIds = [...LANDMARK_IDS, ...WORLD_SPOTS.map((s) => s.id).filter((id) => !LANDMARK_IDS.includes(id))];
@@ -161,8 +161,8 @@ describe('countryside crop fields are buyable farms (pt1250u)', () => {
     const isBig = (id: string) => /^cf:1\d{3}$/.test(id); // Big Farms (shared/bigFarms.ts) have their own premium price
     const cf = properties().filter((p) => p.id.startsWith('cf:') && !isBig(p.id)); const big = properties().filter((p) => isBig(p.id));
     expect(cf).toHaveLength(outskirts().fields.length); expect(big).toHaveLength(12);
-    for (const b of big) { for (const o of properties().filter((p) => p !== b && p.map !== 'resort')) expect(obbOverlap(b, o), `${b.id} vs ${o.id}`).toBe(false); } expect(cf.length).toBeGreaterThan(20);
-    const others = properties().filter((p) => !p.id.startsWith('cf:') && p.map !== 'resort');
+    for (const b of big) { for (const o of properties().filter((p) => p !== b && p.map !== 'resort' && p.map !== 'island')) expect(obbOverlap(b, o), `${b.id} vs ${o.id}`).toBe(false); } expect(cf.length).toBeGreaterThan(20);
+    const others = properties().filter((p) => !p.id.startsWith('cf:') && p.map !== 'resort' && p.map !== 'island');
     for (const p of cf) { expect(p.kind).toBe('farm'); expect(p.price).toBe(farmPrice(Math.floor(p.w / 2) * Math.floor(p.d / 2)));
       for (const o of others) expect(obbOverlap(p, o), `${p.id} vs ${o.id}`).toBe(false);
       for (const q of cf) if (q !== p) expect(obbOverlap(p, q)).toBe(false); }

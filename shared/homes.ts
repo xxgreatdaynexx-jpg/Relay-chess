@@ -5,6 +5,7 @@
  * Placed furniture stays yours: it only "uses" a copy from your inventory while it sits in a home you currently own.
  * Wall and floor styles are bought once and then usable in every home.
  */
+import { ART_PIECES } from './artAuction.js';
 export const GRID_W = 12;
 export const GRID_D = 10;
 export const MAX_ITEMS = 80;
@@ -14,7 +15,7 @@ export const MAX_INVITES = 30;
 export const MAX_BUY_QTY = 20;
 
 /** Property types that are homes (have an interior). Commercial lots, farms and landmarks don't. */
-export const HOME_TYPES = new Set(['house', 'rowhouse', 'apartment', 'tower', 'beachhouse', 'condo', 'villa', 'hotel']);
+export const HOME_TYPES = new Set(['house', 'rowhouse', 'apartment', 'tower', 'beachhouse', 'condo', 'villa', 'hotel', 'penthouse', 'isleestate']);
 export const isHomeProperty = (p: { kind: string; type: string } | undefined | null) => !!p && p.kind === 'building' && HOME_TYPES.has(p.type);
 
 export type FurnCat = 'seating' | 'tables' | 'beds' | 'storage' | 'lighting' | 'decor' | 'plants' | 'electronics' | 'kitchen' | 'luxury';
@@ -26,7 +27,7 @@ export const FURN_CATS: { id: FurnCat; label: string; icon: string }[] = [
 ];
 
 /** shape drives the 3D model (client/src/lib/homeModels.ts); w × d is the footprint in tiles at rotation 0; h is height in tiles. */
-export interface Furniture { id: string; name: string; cat: FurnCat; price: number; w: number; d: number; h: number; color: number; accent: number; shape: string; icon: string }
+export interface Furniture { id: string; name: string; cat: FurnCat; price: number; w: number; d: number; h: number; color: number; accent: number; shape: string; icon: string; auction?: true }
 const F = (id: string, name: string, cat: FurnCat, price: number, w: number, d: number, h: number, color: number, accent: number, shape: string, icon: string): Furniture => ({ id, name, cat, price, w, d, h, color, accent, shape, icon });
 /** Base prices (scaled by the daily price index like every other store). */
 export const FURNITURE: Furniture[] = [
@@ -78,6 +79,8 @@ export const FURNITURE: Furniture[] = [
   F('aquarium', 'Aquarium', 'luxury', 9_000, 2, 1, 1.4, 0x222222, 0x4fc3d9, 'aquarium', '🐠'),
   F('goldvault', 'Chip vault', 'luxury', 50_000, 1, 1, 2, 0x555a66, 0xd4af37, 'vault', '🏦'),
 ];
+for (const a of ART_PIECES) FURNITURE.push({ id: a.id, name: a.name, cat: 'decor', price: 0, w: 1, d: 1, h: a.shape === 'statue' ? 1.8 : 1.6, color: a.color, accent: a.accent, shape: a.shape, icon: a.icon, auction: true });
+
 export const FURN_BY_ID = new Map(FURNITURE.map((f) => [f.id, f]));
 
 export interface Style { id: string; name: string; price: number; color: number; accent: number }
@@ -103,7 +106,7 @@ export const FLOOR_BY_ID = new Map(FLOOR_STYLES.map((s) => [s.id, s]));
 /** Inventory keys: furniture id, or 'wall:<id>' / 'floor:<id>' for a style (owned once). */
 export const styleKey = (kind: 'wall' | 'floor', id: string) => `${kind}:${id}`;
 export function shopItem(key: string): { key: string; name: string; price: number; once: boolean } | null {
-  const f = FURN_BY_ID.get(key); if (f) return { key, name: f.name, price: f.price, once: false };
+  const f = FURN_BY_ID.get(key); if (f) return f.auction ? null : { key, name: f.name, price: f.price, once: false };
   const [k, id] = key.split(':'); const s = k === 'wall' ? WALL_BY_ID.get(id ?? '') : k === 'floor' ? FLOOR_BY_ID.get(id ?? '') : undefined;
   return s ? { key, name: `${s.name} (${k})`, price: s.price, once: true } : null;
 }

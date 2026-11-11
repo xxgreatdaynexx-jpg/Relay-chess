@@ -49,7 +49,9 @@ export class Travel {
     // #11: private-jet owners fly their own jet, no ticket, to every destination (Chud Resort and, per Dayne, Fort McChud).
     // The jet's normal daily upkeep (server/fleet.ts runUpkeep) still applies; flying it costs nothing extra.
     const jet = await jetHook(name).catch(() => null);
-    const waivedBy = waiver(name, dest); const waived = waivedBy || jet;
+    const mega = dest === 'island' ? await megaHook(name).catch(() => false) : false;
+    if (dest === 'island' && !jet && !mega) throw new TravelError('The private island is reached by Sovereign Megayacht, or by your own jet.');
+    const waivedBy = dest === 'island' ? (jet ? 'Private jet' : 'Megayacht') : waiver(name, dest); const waived = dest === 'island' ? true : (waivedBy || jet);
     const fee = waived ? 0 : cityTicketPrice(ticketPrice(dest)); const bank = getBank();
     if (fee > 0 && !bank.canAfford(name, fee)) throw new TravelError(`Not enough chips: a ticket costs ${fee.toLocaleString('en-US')}.`);
     const now = this.clock(); this.tickets++;
@@ -87,6 +89,10 @@ export class Travel {
 /** #11: name of the player's private jet (server/fleet.ts sets this), or null. */
 let jetHook: (name: string) => Promise<string | null> = async () => null;
 export const setTravelJetHook = (f: typeof jetHook) => { jetHook = f; };
+/** True when the player owns a megayacht (server/fleet.ts). */
+let megaHook: (name: string) => Promise<boolean> = async () => false;
+export const setTravelMegaHook = (f: typeof megaHook) => { megaHook = f; };
+export const canReachIsland = async (name: string) => !!(await jetHook(name).catch(() => null)) || !!(await megaHook(name).catch(() => false));
 let travel: Travel = new Travel(null);
 export const getTravel = () => travel;
 export function setTravel(t: Travel) { travel = t; }
@@ -94,8 +100,13 @@ export const isAtResort = (name: string | null | undefined) => travel.where(name
 /** Millionaire Update warehouse-only rule: Chud City's markets (fishmonger, diner, ore buyer) only buy from players who are in
  * Chud City. Away at Chud Resort or Fort McChud, goods reach the market by Ship & sell to the Chud City Warehouse. */
 export const MARKET_AWAY_MSG = 'You are away from Chud City. Its markets only buy from you in person: travel back, or use Ship & sell from your building to send goods to the Chud City Warehouse.';
-export function awayFromMarket(name: string | null | undefined, E: new (m: string) => Error): void { if (isAtResort(name) || isAtFortMc(name)) throw new E(MARKET_AWAY_MSG); }
+export function awayFromMarket(name: string | null | undefined, E: new (m: string) => Error): void { if (isAtResort(name) || isAtFortMc(name) || isAtIsland(name)) throw new E(MARKET_AWAY_MSG); }
 export const isAtFortMc = (name: string | null | undefined) => travel.where(name) === 'fortmc';
+export const isAtIsland = (name: string | null | undefined) => travel.where(name) === 'island';
+/** Throws `Err` unless `name` is at the Private Island. */
+export async function requireIsland(name: string | null | undefined, Err: new (m: string) => Error = TravelError) {
+  if (!isAtIsland(name)) throw new Err('You need to be at the Private Island for that. Sail there on a Sovereign Megayacht, or fly your own jet.');
+}
 /** Throws `Err` unless `name` is at Fort McChud. */
 export async function requireFortMc(name: string | null | undefined, Err: new (m: string) => Error = TravelError) {
   if (!isAtFortMc(name)) throw new Err('You need to be at Fort McChud for that. Fly there from Chud Hub International.');

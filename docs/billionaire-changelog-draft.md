@@ -58,3 +58,28 @@ Title: The Sovereign Megayacht
 
 - The Marina now sells the Sovereign Megayacht (8,000,000, 40,000 a day upkeep, 120,000 cargo units). Daily luxury upkeep replaces any cargo use fee. It reaches every deep-sea zone, takes 10 crew, and is the boat that sails to the private island.
 
+
+## Billionaire's Club
+
+Title: The Billionaire's Club opens on the beach
+
+- A civic Billionaire's Club now stands on the ocean beach west of the Harbour. The Prestige Desk has moved here from City Hall. Current city patrons are listed on plaques in the Club, and you can still sponsor a plaque from the desk.
+
+## Private Island
+
+Title: A private island for megayachts and jets
+
+- Own a Sovereign Megayacht or any private jet and you can sail or fly to a Private Island off the coast. Four estates (2.5–6 million) are for sale there. The return trip is free. The island is not a freight hub and cannot be reached with an ordinary plane ticket.
+
+## Sky penthouses
+
+Title: Sky Tower penthouses
+
+- Six sky penthouses (2–4.5 million) sit around a civic tower next to the Club. They use the normal home interiors, furniture, tax and 70% sell-back rules.
+
+## Art auction
+
+Title: An art auction at the Club
+
+- The Club runs a house art auction. Bids are held in escrow and a higher bid refunds the previous bidder. The winner's payment is a chip sink, and the piece can be placed in a home but cannot be resold. A bid in the last 30 seconds extends the clock.
+

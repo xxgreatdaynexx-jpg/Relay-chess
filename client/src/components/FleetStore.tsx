@@ -11,6 +11,7 @@ import { buildCraft, disposeTree } from '@/lib/fleetModels';
 import { BOATS, DEEP_ZONES, JETS, paintFleetModel, type FleetKind, type FleetModel } from '../../../shared/fleet';
 import { usePanelDrag } from '@/lib/panelDrag';
 import { GRACE_DAYS } from '../../../shared/realEstate';
+import { flyTo } from '@/lib/travel';
 
 type Owned = { id: string; kind: FleetKind; model: string; paid: number; boughtAt: number; arrears: number; upkeepPaid: number; value: number; upkeep?: number; liveryColor?: number; upkeepInfo?: { perDay: number; nextChargeAt: number; arrears: number; arrearsChips: number; paidTotal: number; graceDays: number } };
 type View = { signedIn: boolean; owned: Owned[]; chips: number | null; catalog: Array<FleetModel & { basePrice: number }>; deep?: { zone: number; name: string | null } };
@@ -73,6 +74,7 @@ export function FleetStore({ kind, onClose, onDeepSea }: { kind: FleetKind; onCl
             </ul>
             {boat && v?.deep && <small data-testid="fleet-deep">{v.deep.zone ? `Your best boat (${v.deep.name}) reaches ${DEEP_ZONES[v.deep.zone - 1]!.name}.` : 'Buy any boat to unlock deep-sea fishing from the Marina.'}</small>}
             {boat && !!v?.deep?.zone && onDeepSea && <button type="button" className="fleet-buy fleet-sea" onClick={onDeepSea} data-testid="fleet-deepsea">🌊 Go deep-sea fishing</button>}
+            {boat && mine.some((o) => o.model === 'megayacht') && <button type="button" className="fleet-buy fleet-sea" disabled={busy} onClick={() => void flyTo('island').then((r) => { if (!r.ok) setMsg(r.error ?? 'Could not sail.'); else onClose(); })} data-testid="marina-sail-island">🏝️ Sail to the Private Island</button>}
             <button type="button" className="fleet-buy" disabled={busy || !v?.signedIn} onClick={() => void act(boat ? 'marina_buy' : 'hangar_buy', { model: m.id }, (a) => `Bought the ${m.name} for ${fmt(Number(a.price))} chips.`)} data-testid="fleet-buy">{v?.signedIn ? `Buy for ${fmt(m.price)}` : 'Sign in to buy'}</button>
             {msg && <small className="fleet-msg" data-testid="fleet-msg">{msg}</small>}
           </section>

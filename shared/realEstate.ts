@@ -25,6 +25,8 @@ import { farmPlots, farmPrice, plotId } from './farm.js';
 import { propertyPaid } from './netWorth.js';
 import { allFieldPlots, fieldPlotId, fieldPlotPrice, fieldPlotLabel } from './fieldFarms.js';
 import { RESORT_TYPES, resortLots, resortPlots, resortPlotId, resortPlotPrice } from './resort.js';
+import { islandProperties } from './island.js';
+import { skyProperties } from './skyPenthouses.js';
 import { countryHomes, countryBusinesses, businessType, COMMERCIAL_PRICE, COMMERCIAL_LABEL } from './outskirts.js';
 
 export const TAX_RATE = 0.005;
@@ -38,7 +40,7 @@ export const LANDMARK_PRICE: Record<string, number> = {
 };
 export const LANDMARK_LABEL: Record<string, string> = {
   casino: 'Casino', bank: 'Bank', stocks: 'Stock Exchange', arena: 'Arena', chess: 'Chess Club', market: 'Market',
-  factory: 'Factory', mine: 'Mine', 'mine-frost': 'Frostbite Caverns', 'mine-magma': 'Magma Depths', warehouse: 'Warehouse', leaderboard: 'Leaderboard', chat: 'Chat Hall', dealer: 'Car Dealership', mechanic: 'Mechanic Shop', airport: 'Chud Hub International Airport', racetrack: 'Chud Hub Speedway', dock: 'Fishing Dock', employ: 'Employment Office', furniture: 'Furniture Store',
+  factory: 'Factory', mine: 'Mine', 'mine-frost': 'Frostbite Caverns', 'mine-magma': 'Magma Depths', warehouse: 'Warehouse', leaderboard: 'Leaderboard', chat: 'Chat Hall', dealer: 'Car Dealership', mechanic: 'Mechanic Shop', airport: 'Chud Hub International Airport', racetrack: 'Chud Hub Speedway', dock: 'Fishing Dock', employ: 'Employment Office', furniture: 'Furniture Store', club: "Billionaire's Club", skytower: 'Sky Tower',
 };
 /** Chosen design prices: jail matches Factory/Mine; harbour matches Speedway (below Airport). Public services stay public. */
 export const PUBLIC_SERVICE_DEEDS: Property[] = [
@@ -49,7 +51,7 @@ const PATCH_LABEL: Record<string, string> = { lot: 'Empty lot', park: 'Park', pl
 const PATCH_REF: Record<string, number> = { lot: 13 * 13 * 0.95, park: 13 * 13 * 0.95, plaza: 81 * 0.95 };
 
 export type PropertyKind = 'building' | 'patch' | 'landmark' | 'farm';
-export interface Property extends OBB { id: string; kind: PropertyKind; type: string; label: string; price: number; /** farmland: full plot cols × rows (zoning) */ tiles?: number; h?: number; map?: 'resort'; /** under a civic plot: never for sale again, drawn only while someone still owns it */ retired?: boolean; /** Housing capacity captured from its original canonical price band, never from its new price. */ housingEmployees?: number }
+export interface Property extends OBB { id: string; kind: PropertyKind; type: string; label: string; price: number; /** farmland: full plot cols × rows (zoning) */ tiles?: number; h?: number; map?: 'resort' | 'island'; /** under a civic plot: never for sale again, drawn only while someone still owns it */ retired?: boolean; /** Housing capacity captured from its original canonical price band, never from its new price. */ housingEmployees?: number }
 
 const clamp = (x: number) => Math.min(1.25, Math.max(0.8, x));
 const round500 = (n: number) => Math.max(500, Math.round(n / 500) * 500);
@@ -90,14 +92,14 @@ const pctText = (ownedValue: number, per1k?: number) => `+${+landSurchargePct(ow
 export const landMultiplierNote = (ownedValue: number, per1k?: number) => ownedValue > 0 ? `${pctText(ownedValue, per1k)} surcharge: you own ${Math.round(ownedValue).toLocaleString('en-US')} in property` : '';
 
 /** Civic buildings are not for sale (City Hall belongs to the city). */
-export const CIVIC_IDS = new Set(['cityhall']);
+export const CIVIC_IDS = new Set(['cityhall', 'club', 'skytower']);
 /** City lot under a civic building plot (shared/city.ts CIVIC_PLOTS). Retired, not deleted: it keeps its id and catalog
  *  entry so an owner (even one who bought it during a rollout) keeps it, its value, tax and sell-back; it just can't be bought. */
 export const civicRetired = (b: OBB) => BUILDING_IDS.some((id) => obbOverlap(civicPad(id), b, 1.5));
 /** Original Employment Office price bands; non-housing property bonuses keep this exact rule. */
 const employeesForPrice = (price: number) => price < 25_000 ? 1 : price < 75_000 ? 2 : price < 250_000 ? 3 : 4;
 export const HOUSING_BASE_PER_EMPLOYEE = 10_000;
-const housingTypes = new Set([...HOUSING_TYPES.map((t) => t.id), ...Object.keys(RESORT_TYPES)]);
+const housingTypes = new Set([...HOUSING_TYPES.map((t) => t.id), ...Object.keys(RESORT_TYPES), 'penthouse', 'isleestate']);
 export const isEmployeeHousing = (p: Pick<Property, 'kind' | 'type'>) => p.kind === 'building' && housingTypes.has(p.type);
 let cache: Property[] | null = null; let byId: Map<string, Property> | null = null;
 /** Every property on the map (deterministic: same layout -> same ids and prices). */
@@ -124,6 +126,8 @@ export function properties(): Property[] {
   // Chud Resort (shared/resort.ts): its own map, only buyable while you are there (server-enforced).
   for (const l of resortLots()) out.push({ x: l.x, z: l.z, w: l.w, d: l.d, rot: l.rot, h: l.h, id: l.id, kind: 'building', type: l.type, label: l.label, price: l.price, map: 'resort' });
   for (const f of resortPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: resortPlotId(f.n), kind: 'farm', type: 'plantation', label: `${f.estate ? 'Estate plantation' : 'Plantation plot'} #${f.n} (${f.cols}×${f.rows})`, price: resortPlotPrice(f), map: 'resort', tiles: f.cols * f.rows });
+  for (const u of skyProperties()) out.push(u);
+  for (const u of islandProperties()) out.push(u);
   // Reprice only housing. Capture the actual old employment bonus BEFORE lowering its base price: otherwise
   // a two-slot home priced at 20k would silently lose a slot, and a three-slot home at 30k would become two-slot.
   // No owned rows, paid prices, IDs, geometry or equipment are changed. Slots outside 1–3 keep their old price.

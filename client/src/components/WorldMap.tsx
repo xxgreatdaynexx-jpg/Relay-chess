@@ -12,6 +12,7 @@ import { isHomeProperty } from '../../../shared/homes';
 import { myHomeRows } from '../lib/myHome';
 import { EmploymentHost, OPEN_EMPLOY } from './EmploymentPanel';
 import { CityHallHost, OPEN_CITYHALL } from './CityHallPanel';
+import { BillionaireClubHost, OPEN_CLUB } from './BillionaireClub';
 import { FireworksHost, PrestigeDeskHost } from './PrestigeDesk';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { lazyWithReload } from '@/lib/lazyWithReload';
@@ -148,7 +149,7 @@ function DeedList({ owned, me, onOpen, onClose }: { owned: Map<string, OwnedProp
       <h4>🏡 Barns (sold separately from farms)</h4>
       {properties().filter((p) => p.type === 'barn').map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
       <h4>🌾 Farmland (east of the city)</h4>
-      {properties().filter((p) => p.kind === 'farm' && p.map !== 'resort').map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
+      {properties().filter((p) => p.kind === 'farm' && p.map !== 'resort' && p.map !== 'island').map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
       <h4>Landmarks (trophy deeds)</h4>
       {lms.map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
     </MapSheet>
@@ -167,6 +168,7 @@ const CoopPanel = lazyWithReload(() => import('./CoopPanel').then((m) => ({ defa
 const FreightYard = lazyWithReload(() => import('./FreightYard').then((m) => ({ default: m.FreightYard })));
 const ResortMap = lazyWithReload(() => import('./ResortMap').then((m) => ({ default: m.ResortMap })));
 const FortMcMap = lazyWithReload(() => import('./FortMcMap').then((m) => ({ default: m.FortMcMap })));
+const IslandMap = lazyWithReload(() => import('./IslandMap').then((m) => ({ default: m.IslandMap })));
 
 const CASINO_GAMES = [
   { tab: 'blackjack-tab', label: '🂡 Blackjack' }, { tab: 'roulette-tab', label: '🎡 Roulette' }, { tab: 'poker-tab', label: '🃏 Poker' },
@@ -295,6 +297,8 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       case 'furniture': openFurnitureStore(); return;
       case 'employ': window.dispatchEvent(new Event(OPEN_EMPLOY)); return;
       case 'cityhall': window.dispatchEvent(new Event(OPEN_CITYHALL)); return;
+      case 'club': window.dispatchEvent(new Event(OPEN_CLUB)); return;
+      case 'skytower': window.dispatchEvent(new Event(OPEN_CLUB)); return;
       case 'airport': case 'racetrack': setVenue(id); return;
     }
     // Every other building opens as a panel on top of the city; closing it reveals the city again.
@@ -411,6 +415,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       <EmploymentHost />
       <CityHallHost />
       <PrestigeDeskHost />
+      <BillionaireClubHost onDeed={(id) => setDeed(id)} />
       <FireworksHost />
       {toast && <div className="world-toast" role="status" data-testid="world-toast">{toast}</div>}
       {farm && <FarmGame onAllFarms={hasBarn ? openAllFarms : undefined} id={farm} label={propertyById(farm)?.label ?? 'Farm'} onClose={() => setFarm(null)} />}
@@ -447,7 +452,8 @@ export function WorldMap(props: { onClose: () => void; onLeaderboard: () => void
   return <>
     {loc === 'resort' ? <Suspense fallback={<div className="world"><div className="world-loading">Landing at Chud Resort…</div></div>}><ResortMap /></Suspense>
       : loc === 'fortmc' ? <Suspense fallback={<div className="world"><div className="world-loading">Landing at Fort McChud…</div></div>}><FortMcMap /></Suspense>
+      : loc === 'island' ? <Suspense fallback={<div className="world"><div className="world-loading">Landing on the Private Island…</div></div>}><IslandMap /></Suspense>
       : <CityMap {...props} />}
-    {flying && <div className="resort-flight" data-testid="resort-flight"><div><span>✈️</span><br />{loc === 'resort' ? 'Flying to Chud Resort…' : loc === 'fortmc' ? 'Flying to Fort McChud…' : 'Flying home to Chud Hub…'}</div></div>}
+    {flying && <div className="resort-flight" data-testid="resort-flight"><div><span>✈️</span><br />{loc === 'resort' ? 'Flying to Chud Resort…' : loc === 'fortmc' ? 'Flying to Fort McChud…' : loc === 'island' ? 'Heading to the Private Island…' : 'Flying home to Chud Hub…'}</div></div>}
   </>;
 }

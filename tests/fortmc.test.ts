@@ -25,7 +25,7 @@ describe('travel to Fort McChud', () => {
   beforeEach(() => { resetBank(); setPriceIndexForTest(1); setTravel(new Travel(null)); setTicketWaiver(null); });
   it('ticket px(1500), ledger game fortmc_ticket (a sink), free return, resort still works', async () => {
     const t = new Travel(null); setTravel(t); seed('QA-Fort', 5000);
-    expect(t.status('QA-Fort').tickets).toEqual({ resort: 500, fortmc: 1500 });
+    expect(t.status('QA-Fort').tickets).toEqual({ resort: 500, fortmc: 1500, island: 0 });
     const r = await t.fly('QA-Fort', 'fortmc'); expect(r.fee).toBe(1500); expect(getBank().account('QA-Fort').chips).toBe(3500);
     expect(isAtFortMc('QA-Fort')).toBe(true); expect(isAtResort('QA-Fort')).toBe(false);
     expect((await getBank().recent('QA-Fort', 5)).some((x: { game: string }) => x.game === 'fortmc_ticket')).toBe(true);

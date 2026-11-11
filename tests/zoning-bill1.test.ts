@@ -23,10 +23,10 @@ describe('classification (every catalog deed)', () => {
   it('matches the bill: residential / commercial / farmland / exempt; tiles = full cols × rows', () => {
     const z = (p: Property) => zoneOf(p);
     for (const p of all) {
-      if (['house', 'rowhouse', 'apartment', 'tower'].includes(p.type) && !p.map) expect(z(p)).toBe('residential');
+      if (['house', 'rowhouse', 'apartment', 'tower', 'penthouse'].includes(p.type) && !p.map) expect(z(p)).toBe('residential');
       else if (p.kind === 'landmark' || ['gas', 'depot', 'barn'].includes(p.type)) expect(z(p)).toBe('commercial');
       else if (p.kind === 'farm') { expect(z(p)).toBe('farmland'); const m = /\((\d+)×(\d+)\)/.exec(p.label)!; expect(tilesOf(p)).toBe(Number(m[1]) * Number(m[2])); }
-      else { expect(z(p)).toBe('exempt'); expect(p.kind === 'patch' || p.map === 'resort').toBe(true); }
+      else { expect(z(p)).toBe('exempt'); expect(p.kind === 'patch' || p.map === 'resort' || p.map === 'island').toBe(true); }
     }
     expect(z(byId('lm:jail'))).toBe('commercial'); expect(z(byId('lm:harbour'))).toBe('commercial');
     expect(zoneOf({ kind: 'farm', type: 'plantation', map: 'resort' })).toBe('farmland'); expect(zoneOf({ kind: 'building', type: 'mystery' })).toBe('commercial'); // fail closed

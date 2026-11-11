@@ -6,7 +6,7 @@ import type { Destination, Location } from '../../../shared/resort';
 
 /** `arrivedBy`: the jet name when the last flight out was the player's own jet (the destination map plays its landing once). */
 type State = { loc: Location; ticket: number; tickets: Record<Destination, number>; jet: string | null; arrivedBy: string | null };
-let state: State = { loc: 'city', ticket: 500, tickets: { resort: 500, fortmc: 1500 }, jet: null, arrivedBy: null };
+let state: State = { loc: 'city', ticket: 500, tickets: { resort: 500, fortmc: 1500, island: 0 }, jet: null, arrivedBy: null };
 const subs = new Set<(s: State) => void>();
 const set = (s: State) => { state = s; document.documentElement.dataset.venue = s.loc; subs.forEach((f) => f(s)); };
 

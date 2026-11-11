@@ -7,8 +7,8 @@ import { BOATS, bestBoat, fleetModel } from '../shared/fleet';
 
 const fund = (n: string, amt: number) => getBank().transferConfirmed(n, amt, { key: `test_fund:${n}:${Math.random()}`, game: 'admin' });
 describe('Marina catalog', () => {
-  it('four boats, rising price and range; best boat wins', () => {
-    expect(BOATS.map((b) => b.id)).toEqual(['skiff', 'sportfisher', 'yacht', 'superyacht']);
+  it('five boats, rising price and range; best boat wins', () => {
+    expect(BOATS.map((b) => b.id)).toEqual(['skiff', 'sportfisher', 'yacht', 'superyacht', 'megayacht']);
     for (let i = 1; i < BOATS.length; i++) { expect(BOATS[i]!.price).toBeGreaterThan(BOATS[i - 1]!.price); expect(BOATS[i]!.zone!).toBeGreaterThanOrEqual(BOATS[i - 1]!.zone!); }
     expect(bestBoat([])).toEqual({ zone: 0, biteMul: 1, name: null });
     expect(bestBoat(['skiff', 'superyacht', 'yacht']).name).toBe('Chud Royale Superyacht');

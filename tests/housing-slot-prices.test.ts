@@ -19,7 +19,8 @@ afterEach(()=>setPriceIndexForTest(1));
 
 describe('housing price per actual employee capacity',()=>{
  it('all city/countryside/resort homes retain exact pre-change slots; 1/2/3 slots cost10k/20k/30k; 4 slots untouched',()=>{
-  const hs=properties().filter(isEmployeeHousing);expect(hs).toHaveLength(401);
+  const luxury=(p:{id:string})=>/^(sky|isl):/.test(p.id);
+  const hs=properties().filter(p=>isEmployeeHousing(p)&&!luxury(p));expect(hs).toHaveLength(401);
   for(const old of baseline.housing){const p=propertyById(old.id)!;expect(workerBonusOf(p.id),p.id).toBe(old.slots);expect(p.price,p.id).toBe(old.slots<=3?old.slots*10000:old.price);
 
   }
@@ -34,8 +35,10 @@ describe('housing price per actual employee capacity',()=>{
  });
  it('nonhousing catalog is byte-for-byte unchanged; same complete housing identity set',()=>{
   const added=new Set(['cf:1008','cf:1009','cf:1010','cf:1011','barn:big:1008','barn:big:1009','barn:big:1010','barn:big:1011']);
+  const luxury=new Set(['sky:1','sky:2','sky:3','sky:4','sky:5','sky:6','isl:1','isl:2','isl:3','isl:4']);
   expect(hash(properties().filter(p=>!isEmployeeHousing(p)&&!added.has(p.id)).map(({tiles:_tiles,...p})=>p))).toBe(baseline.nonHousingHash); // Bill Chud 1 adds only derived plot tile counts (cols×rows); new northern Big Farms and their barns are additive
-  expect(properties().filter(isEmployeeHousing).map(p=>p.id)).toEqual(baseline.housing.map(p=>p.id));
+  expect(properties().filter(p=>isEmployeeHousing(p)&&!luxury.has(p.id)).map(p=>p.id)).toEqual(baseline.housing.map(p=>p.id));
+  expect([...luxury].every(id=>isEmployeeHousing(propertyById(id)!))).toBe(true);
   for(const p of properties().filter(p=>!isEmployeeHousing(p))){const expected=p.type==='barn'||!['building','landmark'].includes(p.kind)?0:p.price<25000?1:p.price<75000?2:p.price<250000?3:4;expect(workerBonusOf(p.id)).toBe(expected);}
   expect(workerBonusTotal(baseline.housing.slice(0,20).map(p=>p.id))).toBe(22); // uncapped sum of first 20 housing slots
  });
