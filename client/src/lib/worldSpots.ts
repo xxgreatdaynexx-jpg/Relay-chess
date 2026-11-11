@@ -15,7 +15,7 @@ export const WORLD_SPOTS: WorldSpot[] = [
   { id: 'stocks', label: 'Stock Exchange', icon: '📈', color: 0x34d399, blurb: '100 companies, live prices & news' },
   { id: 'dealer', label: 'Car Dealership', icon: '🚗', color: 0xff7a1a, blurb: 'Cars and hypercars to buy, then drive the town' },
   { id: 'mechanic', label: 'Mechanic Shop', icon: '🔧', color: 0xffa62b, blurb: 'Upgrade & customise your cars' },
-  { id: 'airport', label: 'Airport', icon: '✈️', color: 0x7ab8ff, blurb: 'Fly between the airport, downtown & the Speedway' },
+  { id: 'airport', label: 'Airport', icon: '✈️', color: 0x7ab8ff, blurb: 'International terminal, two runways, fly between the airport, downtown & the Speedway' },
   { id: 'dock', label: 'Fishing Dock', icon: '🎣', color: 0x4fc3d9, blurb: 'Cast, reel & sell your catch at the lake' },
   { id: 'racetrack', label: 'Speedway', icon: '🏁', color: 0xff4d6d, blurb: 'Time-trial your cars, Daily Cup prizes' },
   { id: 'grocery', label: 'Grocery Store', icon: '🛒', color: 0x6ad66a, blurb: 'Cooking ingredients: staples, produce, meat & spices' },
@@ -24,6 +24,8 @@ export const WORLD_SPOTS: WorldSpot[] = [
   { id: 'cityhall', label: 'City Hall', icon: '🏛️', color: 0xd9c27a, blurb: 'Weekly mayor election & city tax rates' },
   { id: 'club', label: "Billionaire's Club", icon: '💎', color: 0xd4af37, blurb: 'Prestige Desk, city patronage plaques and the art auction' },
   { id: 'skytower', label: 'Sky Tower', icon: '🏙️', color: 0xdfe9f0, blurb: 'Buy a sky penthouse above the beach' },
+  { id: 'plastics', label: 'Plastics Plant', icon: '🧴', color: 0x8ad0e0, blurb: 'Turn oil products into resin, computers and graphics cards' },
+  { id: 'rigdock', label: 'Shore Construction Dock', icon: '🛢️', color: 0xd0a060, blurb: 'Build an offshore rig, then launch it to feed your refinery' },
   { id: 'leaderboard', label: 'Leaderboard', icon: '🏆', color: 0xe8c26a, blurb: 'Who’s on top' },
   { id: 'chat', label: 'Plaza Chat', icon: '💬', color: 0x66b3ff, blurb: 'Chat & who’s online' },
 ];

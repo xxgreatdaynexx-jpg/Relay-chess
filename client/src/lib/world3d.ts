@@ -425,11 +425,15 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
         const nc = buildCar(CAR_BY_ID.get('chudmobile')!, 0xff3b6b, 'far', { paint: null, rims: 'neon', kit: 'lip', glow: 'pink' }); nc.position.set(3, 0.15, 3.6); nc.rotation.y = 0.4; nc.scale.setScalar(0.8); g.add(nc);
         height = 7; break; }
       case 'airport': {
-        // Terminal: long glass hall, control tower with a lit cab and rotating beacon, jet bridge onto the apron.
-        g.add(box(11, 3.6, 6, win(71), 0, 0, 1.5), box(11.6, 0.4, 6.6, dark, 0, 3.6, 1.5), box(11.4, 0.25, 6.4, neon, 0, 4, 1.5));
-        g.add(cyl(1, 1.3, 13, dark, -3.5, 0, -3.5, 10), cyl(2.2, 1.6, 2.2, mat({ color: 0x9fd4ff, emissive: 0x4aa0ff, emissiveIntensity: 0.7 * NEON, transparent: true, opacity: 0.8 }), -3.5, 13, -3.5, 10), cyl(2.4, 2.4, 0.3, neon, -3.5, 15.2, -3.5, 10));
-        g.add(box(5, 1.6, 1.4, mat({ color: 0xb8bcc4 }), -7.5, 1.4, -2.5));
-        height = 17; break; }
+        // International terminal: a long glass concourse with two wings, a control tower and jet bridges. The slot and first runway stay put.
+        const glass = win(71), roof = dark, band = neon, steel = mat({ color: 0xb8bcc4 });
+        g.add(box(22, 5.2, 8, glass, 0, 0, 1.2), box(22.8, 0.45, 8.6, roof, 0, 5.2, 1.2), box(22.4, 0.28, 8.4, band, 0, 5.65, 1.2));
+        g.add(box(10, 4.2, 6, glass, -12, 0, 5.5), box(10, 4.2, 6, glass, 12, 0, 5.5));
+        g.add(box(10.4, 0.35, 6.4, roof, -12, 4.2, 5.5), box(10.4, 0.35, 6.4, roof, 12, 4.2, 5.5));
+        g.add(cyl(1.15, 1.45, 16, dark, -6.5, 0, -3.8, 10), cyl(2.4, 1.8, 2.4, mat({ color: 0x9fd4ff, emissive: 0x4aa0ff, emissiveIntensity: 0.7 * NEON, transparent: true, opacity: 0.8 }), -6.5, 16, -3.8, 10), cyl(2.6, 2.6, 0.3, band, -6.5, 18.4, -3.8, 10));
+        g.add(box(6.2, 1.6, 1.5, steel, -11, 1.6, -2.6), box(6.2, 1.6, 1.5, steel, 8, 1.6, -2.6));
+        g.add(box(8, 2.4, 3.2, mat({ color: 0xd8dde8 }), 0, 0, 6.8)); // departures canopy
+        height = 20; break; }
       case 'dock': {
         // Fishing Dock: a timber boathouse with a bait-shop sign, and a plank pier out over the lake (world -z).
         const wood = mat({ color: 0x8a6440, roughness: 0.9 }), plank = mat({ color: 0xa47a4c, roughness: 0.95 }), post = mat({ color: 0x5a4028, roughness: 1 });
@@ -1061,6 +1065,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   };
   return {
     flyTo, focusXZ, setOwned, setOwnerLabels, setFarm,
+    addPickables(objs: THREE.Object3D[]) { pickables.push(...objs); },
     // Driving (worldDrive.ts) hooks: the tick runs every frame; returning true means it owns the camera.
     scene, camera, controls, solids, lmBoxes, setTick(f: ((dt: number) => boolean) | null) { tick = f; },
     reset() { fly = null; controls.enabled = true; camera.position.copy(home); controls.target.set(0, 0, 0); setHover(null); },

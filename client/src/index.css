@@ -2817,3 +2817,26 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 @media (max-width: 900px) {
   .hub-win-dock { bottom: 10px; }
 }
+
+/* Billionaire Update — private works, Future Features popup, expansion UI (branch-only). */
+.ff-overlay { position: fixed; inset: 0; z-index: 80; background: rgba(6, 8, 14, 0.72); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.ff-card { position: relative; width: min(920px, 96vw); max-height: min(88dvh, 880px); overflow: auto; background: linear-gradient(180deg, #2a2418, #16140f); color: #f3e6c4; border: 1px solid #c9a24a; border-radius: 16px; padding: 28px 28px 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+.ff-x { position: absolute; top: 10px; right: 12px; background: transparent; border: 0; color: #e8c26a; font-size: 20px; cursor: pointer; }
+.ff-kicker { letter-spacing: 0.18em; text-transform: uppercase; color: #e8c26a; font-size: 11px; margin: 0 0 6px; }
+.ff-card h2 { font-family: Georgia, serif; margin: 0 0 12px; font-size: 28px; }
+.ff-card p { margin: 0 0 10px; color: #d8cba8; line-height: 1.45; }
+.ff-shots { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+.ff-shots figure { margin: 0; background: #0e0d0a; border: 1px solid #5a4a28; border-radius: 10px; overflow: hidden; }
+.ff-shots img { display: block; width: 100%; height: 140px; object-fit: cover; background: #1a1812; }
+.ff-shots figcaption { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 2px; }
+.ff-shots b { color: #f3e6c4; font-size: 13px; }
+.ff-shots span { color: #b8a57a; font-size: 12px; }
+.estate-panel { width: min(560px, 96vw); height: min(640px, calc(100dvh - 48px)); left: 56px; z-index: 40; }
+.estate-msg { color: #f5c16c; }
+.estate-power, .estate-demolish { margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(232,194,106,0.25); }
+.estate-hyper-open { position: absolute; right: 16px; bottom: 18px; z-index: 35; background: #1d3a22; color: #c6f0c8; border: 1px solid #6adf7a; border-radius: 999px; padding: 8px 14px; cursor: pointer; }
+@media (max-width: 700px) {
+  .ff-shots { grid-template-columns: 1fr; }
+  .ff-card { padding: 20px 16px 16px; }
+  .estate-panel { left: 8px; width: calc(100vw - 16px); }
+}

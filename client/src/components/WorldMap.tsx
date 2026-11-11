@@ -19,6 +19,10 @@ import { lazyWithReload } from '@/lib/lazyWithReload';
 import { importWithReload } from '@/lib/chunkReload';
 import { WORLD_SPOTS } from '@/lib/worldSpots';
 import { BILLIONAIRE_SIGN } from '../../../shared/billionaireUpdate';
+import { canDemolish } from '../../../shared/estateProjects';
+import { FutureFeaturesPopup } from '@/components/FutureFeaturesPopup';
+import { EstatePanel } from '@/components/EstatePanel';
+
 import { useWalletChips } from '@/lib/wallet';
 import { CLOSE_WORLD_PANELS, WALLET_CLOSE, NONE, closePanel, panelId, togglePanel, type WorldPanel } from '@/lib/worldPanels';
 import { focusBuildingWindow } from '@/lib/buildingWindows';
@@ -60,7 +64,7 @@ function OwnedHomes2D({ owned, onPick }: { owned: Map<string, OwnedProperty>; on
       {cap < homes.length && <button type="button" className="owner-tag more" onClick={() => setAll(true)}>+{homes.length - cap} more</button>}</div></section>;
 }
 
-export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, onAllFarms }: { id: string; owned: Map<string, OwnedProperty>; me: string | null; onClose: () => void; onFarm?: () => void; onAllFarms?: () => void; onKitchen?: () => void; onDone?: (ev: 're_buy' | 're_sell' | 're_buyout', text: string, paid?: number) => void }) {
+export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, onAllFarms, onWorks, onHyper }: { id: string; owned: Map<string, OwnedProperty>; me: string | null; onClose: () => void; onFarm?: () => void; onAllFarms?: () => void; onKitchen?: () => void; onDone?: (ev: 're_buy' | 're_sell' | 're_buyout', text: string, paid?: number) => void; onWorks?: () => void; onHyper?: () => void }) {
   useDoing('realestate', propertyById(id)?.label);
   const dragDeed = usePanelDrag('deed');
   const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState<null | 're_buy' | 're_sell' | 're_buyout'>(null); const [msg, setMsg] = useState<string | null>(null); const wallet = useWalletChips(); useEffect(() => setMsg(null), [id]); // Tess QA #5: switching deeds clears the last deed's status
@@ -125,6 +129,8 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
       {p.kind === 'farm' && o && onFarm && <button type="button" onClick={onFarm} data-testid="deed-farm">{mine ? '🌾 Open farm' : '👀 Visit farm'}</button>}
       {isBarnProperty(id) && <small>This barn is sold separately from every farm. Owning this barn unlocks All my farms; it does not buy or transfer nearby farmland.</small>}
       {mine && isBarnProperty(id) && onAllFarms && <button type="button" onClick={onAllFarms} data-testid="deed-barn">🏡 Barn · All my farms</button>}
+      {mine && onWorks && canDemolish(p).ok && <button type="button" onClick={onWorks} data-testid="deed-works">🏗️ Demolish & start a private project…</button>}
+      {mine && onHyper && p.kind === 'farm' && <button type="button" onClick={onHyper} data-testid="deed-hyper">🌿 Convert to a Dutch glasshouse…</button>}
       {p.kind === 'farm' && !o && <small>Farmland: buy it to plant crops (FarmVille-style, real-time).</small>}
       {!o && me && short > 0 && !msg && <small id="deed-short" className="text-amber-300" data-testid="deed-short">You need 🪙 {chips(short)} more chips to buy this.</small>}
       {msg && <small role="status" data-testid="deed-msg">{msg}</small>}
@@ -243,6 +249,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   const [nitro, setNitro] = useState<{ have: number; full: number; on: boolean } | null>(null);
   const dock = panel.k === 'dock'; const setDock = (v: boolean) => setPanel((c) => (v ? { k: 'dock' } : closePanel(c, 'dock')));
   const driveRef = useRef<Drive | null>(null); const freightRef = useRef<{ dispose: () => void; setRunning: (v: boolean) => void } | null>(null); const haulRef = useRef<{ dispose: () => void; setRunning: (v: boolean) => void } | null>(null); const stadiumRef = useRef<{ dispose: () => void; refresh: () => void } | null>(null);
+  const estateRef = useRef<{ dispose: () => void; refresh?: () => void } | null>(null);
   const pendingDrive = useRef<{ carId: string; color: number; from?: string } | null>(null); const startDriveRef = useRef<(carId: string, color: number, from?: string) => void>(() => {});
   const [driving, setDriving] = useState(false); const [haulOff, setHaulOff] = useState(() => { try { return localStorage.getItem('chud-haul-trucks-off') === '1'; } catch { return false; } }); const [near, setNear] = useState<string | null>(null); const [drift, setDrift] = useState(false);
   const [kmh, setKmh] = useState(0);
@@ -303,6 +310,9 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       case 'club': window.dispatchEvent(new Event(OPEN_CLUB)); return;
       case 'skytower': window.dispatchEvent(new Event(OPEN_CLUB)); return;
       case 'airport': case 'racetrack': setVenue(id); return;
+      case 'plastics': setPanel({ k: 'estate', kind: 'plastics' }); return;
+      case 'rigdock': setPanel({ k: 'estate', kind: 'rigdock' }); return;
+      case 'billionaire-sign': setPanel({ k: 'future' }); return;
     }
     // Every other building opens as a panel on top of the city; closing it reveals the city again.
   };
@@ -322,20 +332,22 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
           onPick: (id) => { if (id) goRef.current(id); }, // '' = a profile "Show on map" glide, not a building
           onBarn: (id) => { const o = ownedRef.current.get(id); const m = meRef.current; if (o && m && o.owner.toLowerCase() === m.toLowerCase()) setPanel({ k: 'farms' }); else setDeed(id); },
           onProperty: (id) => { const o = ownedRef.current.get(id); const m = meRef.current;
-            if ((id.startsWith('f:') || id.startsWith('cf:')) && o && m && o.owner.toLowerCase() === m.toLowerCase()) setFarm(id); else setDeed(id); },
+            if (id.startsWith('lot:estate:') || id.startsWith('b:mansion:')) { setPanel({ k: 'estate', id, kind: 'estate' }); return; }
+            if ((id.startsWith('f:') || id.startsWith('cf:') || id.startsWith('winery:')) && o && m && o.owner.toLowerCase() === m.toLowerCase()) setFarm(id); else setDeed(id); },
           onTrailer: (n) => { const m = meRef.current; if (m && n.toLowerCase() === m.toLowerCase()) { setPanel({ k: 'home' }); return true; } return false; },
         });
         const w = worldRef.current;
         void importWithReload(() => import('@/lib/worldFreight')).then(({ createFreight }) => { if (dead || worldRef.current !== w) return; freightRef.current = createFreight(w); });
         void importWithReload(() => import('@/lib/worldHaul')).then(({ createHaul }) => { if (dead || worldRef.current !== w) return; haulRef.current = createHaul(w); });
         void importWithReload(() => import('@/lib/worldStadium')).then(({ createStadium }) => { if (dead || worldRef.current !== w) return; stadiumRef.current = createStadium(w); });
+        void importWithReload(() => import('@/lib/worldEstate')).then(({ createEstate }) => { if (dead || worldRef.current !== w) return; estateRef.current = createEstate(w); });
         void importWithReload(() => import('@/lib/worldDrive')).then(({ createDrive }) => { if (dead || worldRef.current !== w) return;
           driveRef.current = createDrive(w, { me: () => meRef.current ?? null, onNear: setNear, onSpeed: setKmh, onRace, onNitro: setNitro, onDrift: setDrift });
           const pd = pendingDrive.current; pendingDrive.current = null; if (pd) startDriveRef.current(pd.carId, pd.color, pd.from); });
       } catch { setMode('2d'); }
       setLoading(false);
     }).catch(() => setMode('2d'));
-    return () => { dead = true; stadiumRef.current?.dispose(); stadiumRef.current = null; haulRef.current?.dispose(); haulRef.current = null; freightRef.current?.dispose(); freightRef.current = null; driveRef.current?.dispose(); driveRef.current = null; setDriving(false); worldRef.current?.dispose(); worldRef.current = null; };
+    return () => { dead = true; stadiumRef.current?.dispose(); stadiumRef.current = null; estateRef.current?.dispose(); estateRef.current = null; haulRef.current?.dispose(); haulRef.current = null; freightRef.current?.dispose(); freightRef.current = null; driveRef.current?.dispose(); driveRef.current = null; setDriving(false); worldRef.current?.dispose(); worldRef.current = null; };
   }, [mode]);
   // Pause the city while a building's panel is open over it (saves GPU for Arena/Mines).
   useEffect(() => {
@@ -410,7 +422,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
         </>; })()}
       </MapSheet>}
       {panel.k === 'farms' && <FarmOverview me={me} owned={owned} map="city" onOpenFarm={setFarm} onClose={() => setPanel((c) => closePanel(c, 'farms'))} />}
-      {deed && <DeedPanel onAllFarms={hasBarn ? openAllFarms : undefined} id={deed} owned={owned} me={me} onKitchen={() => { openKitchen(propertyById(deed)?.label ?? deed, deed); setDeed(null); }} onClose={() => setDeed(null)} onFarm={() => setFarm(deed)} onDone={(ev, text, paid) => {
+      {deed && <DeedPanel onAllFarms={hasBarn ? openAllFarms : undefined} id={deed} owned={owned} me={me} onKitchen={() => { openKitchen(propertyById(deed)?.label ?? deed, deed); setDeed(null); }} onClose={() => setDeed(null)} onFarm={() => setFarm(deed)} onWorks={() => setPanel({ k: 'estate', id: deed, kind: 'estate' })} onHyper={() => setPanel({ k: 'estate', id: deed, kind: 'hyper' })} onDone={(ev, text, paid) => {
         setToast(text); window.clearTimeout(toastT.current); toastT.current = window.setTimeout(() => setToast(null), 4000);
         setOwned((m) => { const n = new Map(m); if ((ev === 're_buy' || ev === 're_buyout') && me) n.set(deed, optimisticOwn(m.get(deed), ev, deed, me, paid ?? propertyById(deed)?.price ?? 0, Date.now())); else n.delete(deed); return n; });
       }} />}
@@ -422,7 +434,11 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       <FireworksHost />
       {toast && <div className="world-toast" role="status" data-testid="world-toast">{toast}</div>}
       {farm && <FarmGame onAllFarms={hasBarn ? openAllFarms : undefined} id={farm} label={propertyById(farm)?.label ?? 'Farm'} onClose={() => setFarm(null)} />}
+      {farm && me && owned.get(farm)?.owner.toLowerCase() === me.toLowerCase() && <button type="button" className="estate-hyper-open" data-testid="farm-hyper" onClick={() => setPanel({ k: 'estate', id: farm, kind: 'hyper' })}>🌿 Convert to a Dutch glasshouse…</button>}
+      {farm?.startsWith('winery:') && me && owned.get(farm)?.owner.toLowerCase() === me.toLowerCase() && <button type="button" className="estate-hyper-open" data-testid="farm-wine-press" onClick={() => setPanel({ k: 'estate', id: farm, kind: 'estate' })}>🍷 Open the press…</button>}
       {deeds && <DeedList owned={owned} me={me} onOpen={(id) => setDeed(id)} onClose={() => setDeeds(false)} />}
+      {panel.k === 'future' && <FutureFeaturesPopup onClose={() => setPanel(NONE)} />}
+      {panel.k === 'estate' && <EstatePanel lotId={panel.id} kind={panel.kind} me={me} onClose={() => setPanel(NONE)} />}
       {driving && <>
         <div className="world-speedo" data-testid="world-speedo">{kmh} <small>km/h</small><em>WASD / arrows · E enter · Esc park · Space handbrake{nitro ? ' · Shift/N nitro' : ''}</em>{drift && <b className="world-drift" data-testid="world-drift">DRIFT</b>}{nitro && <span className={`world-nitro${nitro.on ? ' on' : ''}`} data-testid="world-nitro"><i style={{ width: `${Math.round((nitro.have / nitro.full) * 100)}%` }} /></span>}</div>
         {(lap.t0 != null || lap.text) && <div className="world-lap" data-testid="world-lap">{lap.t0 != null && <b>⏱ {fmtLap(Date.now() - lap.t0)} <small>gate {lap.gate}/3</small></b>}{lap.text && <span>{lap.text}</span>}</div>}

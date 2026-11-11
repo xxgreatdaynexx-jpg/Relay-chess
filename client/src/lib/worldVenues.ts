@@ -8,7 +8,7 @@ import { xmasGround } from './worldXmas';
 import * as THREE from 'three';
 import { addFuselage, addTail } from './planeNose';
 import { trackOffset, wallOpen, WALL_OUT, WALL_IN } from '../../../shared/racePhysics';
-import { AIRPORT, AIRPORT_SLOT, RUNWAY, AIRPORT_ROADS, RACETRACK, RACETRACK_ROADS, TRACK, trackPoint, GATES, type Rect } from '../../../shared/venues';
+import { AIRPORT, AIRPORT_SLOT, RUNWAY, RUNWAY2, AIRPORT_ROADS, RACETRACK, RACETRACK_ROADS, TRACK, trackPoint, GATES, type Rect } from '../../../shared/venues';
 const NEON = 0.65; // matches world3d's toned-down neon
 
 type Mk = { mat: (o: THREE.MeshStandardMaterialParameters) => THREE.MeshStandardMaterial; geo: <T extends THREE.BufferGeometry>(g: T) => T };
@@ -55,6 +55,15 @@ export function buildVenues(scene: THREE.Scene, { mat, geo }: Mk): { step: (dt: 
   flat(4.5, tz1 - tz0 + 4.5, asphalt, TX, (tz0 + tz1) / 2, 0.08); flat(0.25, tz1 - tz0, yellow, TX, (tz0 + tz1) / 2, 0.1);
   for (const z of [tz0, tz1]) { flat(TX - RUNWAY.x, 4.5, asphalt, (TX + RUNWAY.x) / 2, z, 0.08); flat(TX - RUNWAY.x - RUNWAY.w / 2, 0.25, yellow, (TX + RUNWAY.x + RUNWAY.w / 2) / 2, z, 0.1); }
   const lightPos: number[] = []; for (let z = RUNWAY.z0; z <= RUNWAY.z1; z += 6) lightPos.push(RUNWAY.x - RUNWAY.w / 2 - 0.4, z, RUNWAY.x + RUNWAY.w / 2 + 0.4, z);
+  // Second parallel runway (international airport). Existing RUNWAY geometry is not moved.
+  const r2l = RUNWAY2.z1 - RUNWAY2.z0, r2z = (RUNWAY2.z0 + RUNWAY2.z1) / 2;
+  flat(RUNWAY2.w + 2, r2l + 4, shoulder, RUNWAY2.x, r2z, 0.07); flat(RUNWAY2.w, r2l, asphalt, RUNWAY2.x, r2z, 0.085);
+  for (let z = RUNWAY2.z0 + 12; z < RUNWAY2.z1 - 12; z += 7) flat(0.4, 3.5, paint, RUNWAY2.x, z, 0.1);
+  for (const sx of [-1, 1]) flat(0.3, r2l - 2, paint, RUNWAY2.x + sx * (RUNWAY2.w / 2 - 0.4), r2z, 0.1);
+  for (const z of [RUNWAY2.z0 + 3, RUNWAY2.z1 - 3]) for (let k = -3; k <= 3; k++) if (k) flat(0.7, 4, paint, RUNWAY2.x + k * 1.2, z, 0.1);
+  for (const z of [RUNWAY2.z0 + 24, RUNWAY2.z1 - 24]) for (const sx of [-1, 1]) flat(1.4, 6, paint, RUNWAY2.x + sx * 2.2, z, 0.1);
+  for (let z = RUNWAY2.z0; z <= RUNWAY2.z1; z += 6) lightPos.push(RUNWAY2.x - RUNWAY2.w / 2 - 0.4, z, RUNWAY2.x + RUNWAY2.w / 2 + 0.4, z);
+
   const lm = new THREE.InstancedMesh(geo(new THREE.SphereGeometry(0.22, 6, 4)), new THREE.MeshBasicMaterial({ color: 0x9fd0ff }), lightPos.length / 2);
   { const d = new THREE.Object3D(); for (let i = 0; i < lightPos.length / 2; i++) { d.position.set(lightPos[i * 2], 0.3, lightPos[i * 2 + 1]); d.updateMatrix(); lm.setMatrixAt(i, d.matrix); } } scene.add(lm);
   flat(0.4, AIRPORT_SLOT[0] - 8 - RUNWAY.x - RUNWAY.w / 2, yellow, (AIRPORT_SLOT[0] - 8 + RUNWAY.x + RUNWAY.w / 2) / 2, AIRPORT_SLOT[1], 0.1, Math.PI / 2); // taxiway centreline

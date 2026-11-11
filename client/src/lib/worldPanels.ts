@@ -4,7 +4,7 @@
  */
 export type WorldPanel =
   | { k: 'none' } | { k: 'farms' } | { k: 'deeds' } | { k: 'deed'; id: string } | { k: 'farm'; id: string }
-  | { k: 'venue'; id: 'airport' | 'racetrack' } | { k: 'dealer' } | { k: 'freight' } | { k: 'coop'; tab?: 'project' | 'contracts' | 'supply' | 'fleet' | 'event' } | { k: 'mechanic' } | { k: 'dock' } | { k: 'casino' } | { k: 'home' } | { k: 'kitchen'; id: string };
+  | { k: 'venue'; id: 'airport' | 'racetrack' } | { k: 'dealer' } | { k: 'freight' } | { k: 'coop'; tab?: 'project' | 'contracts' | 'supply' | 'fleet' | 'event' } | { k: 'mechanic' } | { k: 'dock' } | { k: 'casino' } | { k: 'home' } | { k: 'kitchen'; id: string } | { k: 'future' } | { k: 'estate'; id?: string; kind?: 'estate' | 'plastics' | 'rigdock' | 'hyper' };
 export const NONE: WorldPanel = { k: 'none' };
 export const openPanel = (_cur: WorldPanel, next: WorldPanel): WorldPanel => next;
 /** Close `k` only if it is the one showing (stale async callbacks can't close a newer panel). */
