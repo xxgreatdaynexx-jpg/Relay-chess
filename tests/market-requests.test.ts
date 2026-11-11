@@ -84,4 +84,72 @@ describe('market buy requests', () => {
     for (let i = 0; i < MAX_REQUESTS; i++) m.postRequest('QA-Buyer', 'bar', 'iron_bar', 1, 1);
     expect(() => m.postRequest('QA-Buyer', 'bar', 'iron_bar', 1, 1)).toThrow(/at most/);
   });
+
+  it('raises the unit price, escrows the difference on remaining qty, and rejects a lower or equal bid', () => {
+    const m = resetMarket();
+    const r = m.postRequest('QA-Buyer', 'bar', 'iron_bar', 8, 30);
+    const b0 = chips('QA-Buyer');
+    const up = m.raiseRequest('QA-Buyer', r.id, 40);
+    expect(up).toMatchObject({ qty: 8, total: 8, unit: 40, escrow: 320, filled: 0, status: 'active' });
+    expect(chips('QA-Buyer')).toBe(b0 - 80);
+    expect(m.browseRequests()[0]).toMatchObject({ id: r.id, unit: 40, qty: 8, escrow: 320 });
+    expect(() => m.raiseRequest('QA-Buyer', r.id, 40)).toThrow(/higher/);
+    expect(() => m.raiseRequest('QA-Buyer', r.id, 39)).toThrow(/higher/);
+    expect(() => m.raiseRequest('QA-Buyer', r.id, 40.5)).toThrow(/whole number/);
+    expect(() => m.raiseRequest('QA-Miner', r.id, 50)).toThrow(/not active/);
+    expect(m.requests.get(r.id)).toMatchObject({ unit: 40, escrow: 320 });
+    expect(chips('QA-Buyer')).toBe(b0 - 80);
+  });
+
+  it('fails cleanly when the buyer cannot afford the raise, leaving the request and chips unchanged', () => {
+    const m = resetMarket();
+    const r = m.postRequest('QA-Buyer', 'bar', 'iron_bar', 2, 10);
+    const b0 = chips('QA-Buyer');
+    expect(() => m.raiseRequest('QA-Buyer', r.id, 1_000_000)).toThrow(/Not enough chips/);
+    expect(m.requests.get(r.id)).toMatchObject({ unit: 10, qty: 2, escrow: 20, status: 'active' });
+    expect(chips('QA-Buyer')).toBe(b0);
+  });
+
+  it('after a partial fill, a raise escrows only the remaining quantity and later fills pay the new price', () => {
+    const m = resetMarket();
+    getMines().adjustStack('QA-Miner', 'bar', 'iron_bar', 10);
+    const r = m.postRequest('QA-Buyer', 'bar', 'iron_bar', 8, 30);
+    m.fillRequest('QA-Miner', r.id, 3);
+    const b0 = chips('QA-Buyer'); const s0 = chips('QA-Miner');
+    expect(m.requests.get(r.id)).toMatchObject({ qty: 5, total: 8, unit: 30, escrow: 150, filled: 1, status: 'active' });
+    m.raiseRequest('QA-Buyer', r.id, 50);
+    expect(m.requests.get(r.id)).toMatchObject({ qty: 5, total: 8, unit: 50, escrow: 250, filled: 1, status: 'active' });
+    expect(chips('QA-Buyer')).toBe(b0 - 100); // (50-30)×5
+    const out = m.fillRequest('QA-Miner', r.id, 2);
+    expect(out).toMatchObject({ qty: 2, price: 100, fee: feeOf(100) });
+    expect(chips('QA-Buyer')).toBe(b0 - 100);
+    expect(chips('QA-Miner')).toBe(s0 + 100 - feeOf(100));
+    expect(m.requests.get(r.id)).toMatchObject({ qty: 3, total: 8, unit: 50, escrow: 150, filled: 2, status: 'active' });
+    const mid = chips('QA-Buyer');
+    m.cancelRequest('QA-Buyer', r.id);
+    expect(chips('QA-Buyer')).toBe(mid + 150);
+    expect(m.requests.has(r.id)).toBe(false);
+  });
+
+  it('matching and browse lists show the raised price immediately, with higher bids first', () => {
+    const m = resetMarket();
+    getMines().adjustStack('QA-Miner', 'bar', 'iron_bar', 2);
+    const low = m.postRequest('QA-A', 'bar', 'iron_bar', 1, 10);
+    m.postRequest('QA-B', 'bar', 'iron_bar', 1, 25);
+    m.raiseRequest('QA-A', low.id, 40);
+    const { items } = m.matchingRequests('QA-Miner');
+    expect(items[0]!.requests.map((x) => x.unit)).toEqual([40, 25]);
+    expect(m.browseRequests().map((x) => x.unit)).toEqual([40, 25]);
+  });
+
+  it('cannot raise a cancelled or fully filled request', () => {
+    const m = resetMarket();
+    getMines().adjustStack('QA-Miner', 'good', 'gear', 5);
+    const r = m.postRequest('QA-Buyer', 'good', 'gear', 2, 40);
+    m.cancelRequest('QA-Buyer', r.id);
+    expect(() => m.raiseRequest('QA-Buyer', r.id, 50)).toThrow(/not active/);
+    const r2 = m.postRequest('QA-Buyer', 'good', 'gear', 1, 40);
+    m.fillRequest('QA-Miner', r2.id, 1);
+    expect(() => m.raiseRequest('QA-Buyer', r2.id, 50)).toThrow(/not active|gone/);
+  });
 });

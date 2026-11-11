@@ -84,7 +84,7 @@ const stackStmt = (l: StackListing): Stmt => ({
 const requestStmt = (r: MarketRequest): Stmt => ({
   sql: `INSERT INTO market_requests (id, buyer_key, buyer_name, item_type, item_id, qty_left, qty_total, unit_price, escrow, filled, status, created_at, closed_at)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-        ON CONFLICT (id) DO UPDATE SET qty_left = EXCLUDED.qty_left, escrow = EXCLUDED.escrow, filled = EXCLUDED.filled, status = EXCLUDED.status, closed_at = EXCLUDED.closed_at`,
+        ON CONFLICT (id) DO UPDATE SET qty_left = EXCLUDED.qty_left, unit_price = EXCLUDED.unit_price, escrow = EXCLUDED.escrow, filled = EXCLUDED.filled, status = EXCLUDED.status, closed_at = EXCLUDED.closed_at`,
   args: [r.id, r.buyer, r.buyerName, r.type, r.itemId, r.qty, r.total, r.unit, r.escrow, r.filled, r.status, r.at, r.closedAt ?? null],
 });
 /** Incremental credit already sitting in the same transaction as a seller withdrawal (city pack / mine_items). */
@@ -122,6 +122,7 @@ export class Market {
   onTrade?: (keys: string[]) => void;
   onStacksReverted?: () => void;
   onRequestsReverted?: () => void;
+  onRequestsChanged?: () => void;
   /** True until the persisted listings/trades are loaded (boot retry): every market action refuses meanwhile. */
   offline = false;
   constructor(readonly vault: ItemVault = getVault()) {}
@@ -356,6 +357,7 @@ export class Market {
       if (this.requests.get(r.id) === r) { this.requests.delete(r.id); this.onRequestsReverted?.(); }
     };
     this.persistRequest([requestStmt(r)], chips, onFail, `mkt:req:${r.id}`);
+    this.onRequestsChanged?.();
     return r;
   }
 
@@ -368,6 +370,7 @@ export class Market {
       const ls = getLocStore();
       const got = ls.adjust('__market__', [], [requestStmt(r)], { marker: { sql: "SELECT 1 FROM market_requests WHERE id = $1 AND status = 'cancelled'", args: [r.id] } });
       if (got && typeof got.then === 'function') got.catch((e) => { if (!isOutcomeUnknown(e)) { r.status = 'active'; delete r.closedAt; r.escrow = refund; this.requests.set(r.id, r); this.onRequestsReverted?.(); } });
+      this.onRequestsChanged?.();
       return;
     }
     let chips;
@@ -382,6 +385,40 @@ export class Market {
       r.status = 'active'; delete r.closedAt; r.escrow = refund; this.requests.set(r.id, r); this.onRequestsReverted?.();
     };
     this.persistRequest([requestStmt(r)], chips, onFail, `mkt:reqcancel:${r.id}`);
+    this.onRequestsChanged?.();
+  }
+
+  /** Raise the unit price on your own open request. Extra chips = (new − old) × remaining qty, escrowed atomically. */
+  raiseRequest(name: string, id: unknown, unit: unknown): MarketRequest {
+    const r = typeof id === 'string' ? this.requests.get(id) : undefined;
+    if (!r || r.status !== 'active' || r.buyer !== playerKey(name)) throw new RuleError('That request is not active.');
+    if (r.qty < 1) throw new RuleError('That request is gone (filled or cancelled).');
+    const u = intIn(unit, MIN_PRICE, MAX_PRICE, 'Unit price');
+    if (u <= r.unit) throw new RuleError('The new price must be higher than the current price.');
+    if (r.qty * u > MAX_PRICE * 100) throw new RuleError('That request is too large.');
+    const extra = (u - r.unit) * r.qty;
+    const bank = this.bank();
+    if (!bank.canAfford(name, extra)) throw new RuleError('Not enough chips.');
+    const what = stackName({ type: r.type, id: r.itemId });
+    const oldUnit = r.unit;
+    const oldEscrow = r.escrow;
+    const key = `mkt:reqraise:${r.id}:${oldUnit}:${u}`;
+    let chips;
+    try {
+      chips = bank.transferAtomic([{ name, amount: -extra, key, game: 'market', memo: `Raised market request: ${what} to ${u} each` }]);
+    } catch (e) { throw new RuleError((e as Error).message); }
+    r.unit = u;
+    r.escrow = oldEscrow + extra;
+    const onFail = () => {
+      chips.revert();
+      r.unit = oldUnit;
+      r.escrow = oldEscrow;
+      this.requests.set(r.id, r);
+      this.onRequestsReverted?.();
+    };
+    this.persistRequest([requestStmt(r)], chips, onFail, key);
+    this.onRequestsChanged?.();
+    return r;
   }
 
   /** Fill `qty` units of an open request from the seller's city stock (Factory / Warehouse pack). Partial fills OK. */
@@ -436,6 +473,7 @@ export class Market {
     royaltyEarn('market', name, price - fee);
     eventTrade(name, r.buyerName, price, sale.id);
     try { emitHaul({ name, from: 'warehouse', to: 'market', kind: 'market' }); emitHaul({ name: r.buyerName, from: 'market', to: 'warehouse', kind: 'market' }); } catch { /* visual */ }
+    this.onRequestsChanged?.();
     return { type: r.type, id: r.itemId, qty: n, price, fee };
   }
 
@@ -659,7 +697,14 @@ export async function initMarketStorage() {
 type Ack = (r: { ok: boolean; error?: string; [k: string]: unknown }) => void;
 let wired: Server | null = null;
 export function registerMarket(io: Server, socket: Socket): void {
-  if (wired !== io) { wired = io; market.onTrade = (keys) => { for (const k of keys) io.to(`inv:${k}`).emit('trade_changed'); }; }
+  if (wired !== io) {
+    wired = io;
+    market.onTrade = (keys) => { for (const k of keys) io.to(`inv:${k}`).emit('trade_changed'); };
+    const requestsChanged = () => io.emit('mkt_requests_changed');
+    market.onRequestsChanged = requestsChanged;
+    const prevRevert = market.onRequestsReverted;
+    market.onRequestsReverted = () => { prevRevert?.(); requestsChanged(); };
+  }
   const nameOf = () => (socket.data as { account?: { name: string } }).account?.name ?? null;
   const need = () => { const n = nameOf(); if (!n) throw new RuleError('Sign in to buy, sell or trade. Guests can browse.'); return n; };
   const on = (ev: string, fn: (b: Record<string, unknown>) => Record<string, unknown> | void | Promise<Record<string, unknown> | void>) => socket.on(ev, async (payload: unknown, ack?: Ack) => {
@@ -698,6 +743,7 @@ export function registerMarket(io: Server, socket: Socket): void {
   });
   on('mkt_request', async (b) => { const me = need(); await gate(me); return { request: market.postRequest(me, b.type, b.id, b.qty, b.unit) }; });
   on('mkt_cancel_request', (b) => { market.cancelRequest(need(), b.id); });
+  on('mkt_raise_request', async (b) => { const me = need(); await gate(me); return { request: market.raiseRequest(me, b.id, b.unit) }; });
   on('mkt_fill_request', async (b) => { const me = need(); await gate(me, market.requests.get(str(b.id))?.buyerName); return market.fillRequest(me, b.id, b.qty); });
   on('mkt_matching_requests', () => (nameOf() ? market.matchingRequests(nameOf()!) : { items: [] }));
   on('trade_list', () => (nameOf() ? market.tradesFor(nameOf()!) : { incoming: [], outgoing: [] }));

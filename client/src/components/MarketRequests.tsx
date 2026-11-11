@@ -1,7 +1,7 @@
 /** Market buy requests: post in Market → Resources; fill from Factory / Warehouse only when a matching open request exists. */
 import { useCallback, useEffect, useState } from 'react';
 import { ItemIcon } from './ItemIcon';
-import { request } from '@/lib/net';
+import { request, socket } from '@/lib/net';
 import { useAccount } from '@/lib/auth';
 import { matchesItemSearch, type CatEntry } from '@/lib/marketCatalog';
 import { listFee, receiveFor } from '../../../shared/marketSell';
@@ -20,7 +20,13 @@ export function useMatchingRequests(enabled = true) {
     if (!enabled) { setItems([]); return; }
     void request('mkt_matching_requests', {}).then((r) => { const a = r as Ack; if (a.ok) setItems((a.items as MatchItem[]) ?? []); });
   }, [enabled]);
-  useEffect(() => { load(); if (!enabled) return; const t = window.setInterval(load, 4000); return () => window.clearInterval(t); }, [load, enabled]);
+  useEffect(() => {
+    load(); if (!enabled) return;
+    const on = () => load();
+    socket.on('mkt_requests_changed', on);
+    const t = window.setInterval(load, 4000);
+    return () => { socket.off('mkt_requests_changed', on); window.clearInterval(t); };
+  }, [load, enabled]);
   return { items, reload: load };
 }
 
@@ -84,15 +90,22 @@ export function BuyRequestsBoard({ pack, cat, onChanged }: { pack: PackItem[]; c
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [raiseId, setRaiseId] = useState<string | null>(null);
+  const [raiseUnit, setRaiseUnit] = useState(1);
   const load = useCallback(() => {
     void request('mkt_requests', {}).then((r) => { const a = r as Ack; if (a.ok) setRows((a.requests as RequestRow[]) ?? []); });
   }, []);
   useEffect(() => { load(); }, [load, account]);
+  useEffect(() => {
+    const on = () => load();
+    socket.on('mkt_requests_changed', on);
+    return () => { socket.off('mkt_requests_changed', on); };
+  }, [load]);
   const act = async (ev: string, body: object, ok: string) => {
     setErr(''); setMsg(''); setBusy(true);
     const r = (await request(ev, body)) as Ack; setBusy(false);
     if (!r.ok) { setErr(r.error ?? 'Failed'); return; }
-    setMsg(ok); load(); onChanged?.();
+    setMsg(ok); setRaiseId(null); load(); onChanged?.();
   };
   const options = cat.map((e) => { const parts = e.what.startsWith('stack:') ? e.what.slice(6).split(':') : []; return { key: e.what, type: parts[0] ?? e.type, id: parts[1] ?? e.what, name: e.name, house: e.house ?? 0 }; }).filter((o) => o.type && o.id && matchesItemSearch(o.name, q));
   const sel = options.find((o) => o.key === item) ?? options[0];
@@ -127,7 +140,25 @@ export function BuyRequestsBoard({ pack, cat, onChanged }: { pack: PackItem[]; c
                 <td>{r.qty.toLocaleString()}{r.total !== r.qty ? ` / ${r.total.toLocaleString()}` : ''}</td>
                 <td>{r.buyer}{r.mine ? ' (you)' : ''}</td>
                 <td>
-                  {r.mine ? <button type="button" onClick={() => void act('mkt_cancel_request', { id: r.id }, 'Request cancelled; leftover chips returned.')} data-testid="mkt-request-cancel">Cancel</button>
+                  {r.mine ? (
+                    <div className="mreq-actions">
+                      <button type="button" disabled={busy} onClick={() => void act('mkt_cancel_request', { id: r.id }, 'Request cancelled; leftover chips returned.')} data-testid="mkt-request-cancel">Cancel</button>
+                      {raiseId === r.id ? (
+                        <>
+                          <label className="mreq-raise">Raise to
+                            <input type="number" min={r.unit + 1} value={raiseUnit} onChange={(e) => setRaiseUnit(Number(e.target.value))} data-testid="mkt-request-raise-unit" />
+                          </label>
+                          <button type="button" disabled={busy || Math.floor(raiseUnit) <= r.unit} onClick={() => {
+                            const u = Math.floor(raiseUnit);
+                            const extra = (u - r.unit) * r.qty;
+                            void act('mkt_raise_request', { id: r.id, unit: u }, `Raised the price to ${u.toLocaleString()} each. ${extra.toLocaleString()} more chips held.`);
+                          }} data-testid="mkt-request-raise">Raise price{Math.floor(raiseUnit) > r.unit ? ` · hold ${fmt((Math.floor(raiseUnit) - r.unit) * r.qty)}` : ''}</button>
+                        </>
+                      ) : (
+                        <button type="button" disabled={busy} onClick={() => { setRaiseId(r.id); setRaiseUnit(r.unit + 1); setErr(''); setMsg(''); }} data-testid="mkt-request-raise-open">Raise price</button>
+                      )}
+                    </div>
+                  )
                     : own > 0 ? <button type="button" disabled={!account || busy} onClick={() => void act('mkt_fill_request', { id: r.id, qty: k }, `Sold ${k} ${r.name} to the request.`)} data-testid="mkt-request-fill">Sell {k.toLocaleString()}</button>
                     : <span className="inv-note"> </span>}
                 </td>
@@ -138,7 +169,7 @@ export function BuyRequestsBoard({ pack, cat, onChanged }: { pack: PackItem[]; c
         </tbody>
       </table>
       {msg && <p className="mkt-ok">{msg}</p>}{err && <p className="inv-err">{err}</p>}
-      <p className="inv-note">The buyer pays the posted unit price up front. Sellers keep the price minus the usual 5% Market fee. Cancel returns any leftover escrow. The house-sell cap does not apply.</p>
+      <p className="inv-note">The buyer pays the posted unit price up front. You can raise the price on your own open request; the extra chips for the remaining quantity are held immediately. Sellers keep the price minus the usual 5% Market fee. Cancel returns any leftover escrow. The house-sell cap does not apply.</p>
     </div>
   );
 }

@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T22:18:00-06:00", "title": "You can now raise the price on your market buy requests", "bullets": [
+    "On an open buy request you posted, Raise price lets you enter a new unit price that is higher than the current one. The extra chips — the difference times the quantity still wanted — are held from your balance right away, the same way posting a request holds the full amount.",
+    "Sellers who fill after the raise are paid the new price minus the usual 5% Market fee, including the Sell to market request buttons in the Factory and the Warehouse. You still cannot lower the price here; cancel and post a new request if you need to bid less, and cancel still returns any leftover escrow. Existing requests, chips, and stock are otherwise unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T22:12:00-06:00", "title": "You can now keep several building menus open at once", "bullets": [
     "Kitchen, Grocery Store, Factory, Warehouse, Market, Employment Office, City Hall, and the Furniture Store can stay open together as windows. Drag them around, click one to bring it to the front, and close each with its own ✕. Opening a menu that is already open just brings it forward. Escape closes only the front window.",
     "On a phone or a narrow screen, open menus share a tab strip at the bottom so you can switch between them. Walking into a building still opens the same menus as before. Your chips and items are unchanged.",

@@ -49,7 +49,7 @@ describe('chip DB boot retry', () => {
     expect(await bank.refresh('QA-A')).toBe(1005);
   });
   it('lists the chip-moving socket events', () => {
-    for (const e of ['bj_bet', 'roulette_bet', 'vslots_spin', 'vp_deal', 'he_sit', 'mines_sell', 'fac_buy', 'sit', 'pay_bailout', 'wallet_sub', 'wallet_history', 'mkt_request', 'mkt_cancel_request', 'mkt_fill_request']) expect(isChipEvent(e)).toBe(true);
+    for (const e of ['bj_bet', 'roulette_bet', 'vslots_spin', 'vp_deal', 'he_sit', 'mines_sell', 'fac_buy', 'sit', 'pay_bailout', 'wallet_sub', 'wallet_history', 'mkt_request', 'mkt_cancel_request', 'mkt_raise_request', 'mkt_fill_request']) expect(isChipEvent(e)).toBe(true);
     for (const e of ['move', 'chat_send', 'auth_login', 'fps_move', 'roulette_watch']) expect(isChipEvent(e)).toBe(false);
   });
 });

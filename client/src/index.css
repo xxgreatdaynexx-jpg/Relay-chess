@@ -2171,6 +2171,10 @@ html.xmas .top-menu-btn::before { content: '🎄 '; }
 .mreq-fill { margin: 8px 0; padding: 8px 10px; border-radius: 8px; background: rgba(0,0,0,.28); border: 1px solid rgba(124,204,255,.3); max-width: 420px; }
 .mreq-fill-h { font-weight: 700; margin: 0 0 6px; }
 .mreq-fill select { display: block; width: 100%; margin: 4px 0 8px; }
+
+.mreq-actions { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; justify-content: flex-end; }
+.mreq-raise { display: flex; gap: 4px; align-items: center; font-size: 11px; opacity: .9; }
+.mreq-raise input { width: 88px; padding: 3px 6px; }
 button.factory-req-sell, button.res-req { margin-left: 6px; }
 .msell-mine { display: flex; flex-direction: column; gap: 4px; }
 .msell-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 4px 6px; border-radius: 6px; background: rgba(255,255,255,.04); font-size: 13px; }
