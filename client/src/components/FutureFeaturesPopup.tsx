@@ -1,24 +1,34 @@
-import { usePanelDrag } from '@/lib/panelDrag';
-import { FUTURE_FEATURES_BODY, FUTURE_FEATURES_KICKER, FUTURE_FEATURES_SHOTS, FUTURE_FEATURES_TITLE } from '../../../shared/futureFeatures';
+import { createPortal } from 'react-dom';
+import {
+  FUTURE_FEATURES_BURST, FUTURE_FEATURES_OK, FUTURE_FEATURES_SHOTS,
+  FUTURE_FEATURES_SUBTITLE, FUTURE_FEATURES_TITLE,
+} from '../../../shared/futureFeatures';
 
+/** Same look and feel as the Millionaire Update launch popup, but no date and no countdown. */
 export function FutureFeaturesPopup({ onClose }: { onClose: () => void }) {
-  const drag = usePanelDrag('future');
-  return (
-    <div className="ff-overlay" data-testid="future-features">
-      <div className="ff-card" role="dialog" aria-labelledby="ff-title" data-drag-panel="future" ref={drag.ref} style={drag.style()} onPointerDown={drag.onPointerDown}>
-        <button type="button" className="ff-x" onClick={onClose} aria-label="Close">✕</button>
-        <p className="ff-kicker">{FUTURE_FEATURES_KICKER}</p>
-        <h2 id="ff-title">{FUTURE_FEATURES_TITLE}</h2>
-        {FUTURE_FEATURES_BODY.map((p) => <p key={p}>{p}</p>)}
-        <div className="ff-shots">
+  return createPortal(
+    <div className="launch-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="ff-title" data-testid="future-features">
+      <div className="launch-card ff-card">
+        <div className="launch-burst">{FUTURE_FEATURES_BURST}</div>
+        <h2 id="ff-title" className="launch-title">{FUTURE_FEATURES_TITLE}</h2>
+        <p className="launch-sub">{FUTURE_FEATURES_SUBTITLE}</p>
+        <ul className="launch-list ff-shots">
           {FUTURE_FEATURES_SHOTS.map((s) => (
-            <figure key={s.id} data-testid={`ff-shot-${s.id}`}>
+            <li key={s.id} data-testid={`ff-shot-${s.id}`}>
               <img src={`/future-features/${s.id}.png`} alt={s.title} />
-              <figcaption><b>{s.title}</b><span>{s.caption}</span></figcaption>
-            </figure>
+              <div className="ff-shot-copy">
+                <span className="launch-ico">{s.icon}</span>
+                <div><b>{s.title}</b><span>{s.caption}</span></div>
+              </div>
+            </li>
           ))}
+        </ul>
+        <div className="launch-nav">
+          <span />
+          <button type="button" autoFocus className="launch-ok" onClick={onClose} data-testid="ff-ok">{FUTURE_FEATURES_OK}</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
