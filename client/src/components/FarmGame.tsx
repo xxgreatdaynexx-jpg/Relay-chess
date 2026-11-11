@@ -5,7 +5,7 @@ import { socket } from '@/lib/net';
 import { indexed } from '../../../shared/priceIndex';
 import { TROPICAL_CROPS } from '../../../shared/resort';
 import { FARM_UPGRADES, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradePrice } from '../../../shared/farmUpgrades';
-import { CROPS as CITY_CROPS, cropById, cropSellValue, growProgressPct, type FarmView } from '../../../shared/farm';
+import { CROPS as CITY_CROPS, ORCHARD_TREES, cropById, cropSellValue, growProgressPct, orchardTree, type FarmView } from '../../../shared/farm';
 import { boxOrigin, boxTiles, FARM_TEMPLATE_NAME_MAX, packSelection, stampLayout, tileAtPoint, type FarmTemplate } from '../../../shared/farmTemplates';
 import { usePanelDrag } from '@/lib/panelDrag';
 
@@ -22,7 +22,8 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
   const [view, setView] = useState<FarmView | null>(null);
   const [skew, setSkew] = useState(0); // server now - client now
   const [now, setNow] = useState(Date.now());
-  const CROPS = id.startsWith('rf:') ? TROPICAL_CROPS : CITY_CROPS; // resort plantation plots grow tropical crops only
+  const orchardPlot = id.startsWith('orchard:');
+  const CROPS = id.startsWith('rf:') ? TROPICAL_CROPS : orchardPlot ? ORCHARD_TREES : CITY_CROPS;
   const resortPlot = id.startsWith('rf:');
   const pantryWhere = resortPlot ? 'resort pantry (Resort Warehouse)' : 'kitchen pantry';
   const [seed, setSeed] = useState(CROPS[0]!.id);
@@ -174,7 +175,7 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
       <h3>🌾 {label}</h3>
       {onAllFarms && <button type="button" onClick={onAllFarms} data-testid="farm-all-farms">🏡 Barn · All my farms</button>}
       {!view ? <small>{msg ?? 'Loading the farm…'}</small> : <>
-        <small>{view.mine ? 'Your farm. Pick a seed, then click empty tiles or drag a box to select a region (Shift-drag adds to the selection), and plant them. Save a crop layout as a named template and apply it later to plant the same pattern on empty tiles. Ripe crops wait at least 12 hours before they wither.' : `${view.owner ?? 'Nobody'}'s farm (visiting, read-only).`}</small>
+        <small>{view.mine ? (orchardPlot ? 'Your orchard. Plant a sapling once — trees take several days to mature, then fruit again and again with no replanting. Harvest sends fruit to the market or your pantry; auto-harvest will pick them when they are ready.' : 'Your farm. Pick a seed, then click empty tiles or drag a box to select a region (Shift-drag adds to the selection), and plant them. Save a crop layout as a named template and apply it later to plant the same pattern on empty tiles. Ripe crops wait at least 12 hours before they wither.') : `${view.owner ?? 'Nobody'}'s farm (visiting, read-only).`}</small>
         <div
           className="farm-grid"
           style={{ gridTemplateColumns: `repeat(${view.cols}, 1fr)` }}
@@ -196,10 +197,10 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
             </button>; })}
         </div>
         {view.mine && <>
-          <h4>Seed shop</h4>
+          <h4>{orchardPlot ? 'Saplings' : 'Seed shop'}</h4>
           <div className="farm-seeds" data-testid="farm-seeds">
             {CROPS.map((c) => <button key={c.id} type="button" className={seed === c.id ? 'on' : ''} onClick={() => { setSeed(c.id); if (view.auto?.plant) act('farm_auto', { harvest: view.auto?.harvest ?? false, pantry: view.auto?.pantry ?? false, plant: true, crop: c.id }, () => `Auto-plant seed set to ${c.label}.`); }} data-testid={`farm-seed-${c.id}`}>
-              <b>{c.emoji} {c.label}</b><span>🪙{chips(indexed(c.seed, idx))} → {chips(indexed(cropSellValue(c), idx))} · {dur(c.grow)}</span></button>)}
+              <b>{c.emoji} {c.label}</b><span>🪙{chips(indexed(c.seed, idx))} → {chips(indexed(cropSellValue(c), idx))} · {dur(c.grow)}{orchardTree(c.id) ? ` first, then every ${dur(orchardTree(c.id)!.cycle)}` : ''}</span></button>)}
           </div>
           <button type="button" disabled={busy || !sel.size} onClick={() => plant([...sel])} data-testid="farm-plant-sel">Plant {sel.size || ''} selected<span>🪙 {chips(indexed(crop.seed, idx) * sel.size)}</span></button>
           <button type="button" disabled={busy || !empties.length} onClick={() => plant(empties)} data-testid="farm-plant-all">Plant all {empties.length} empty<span>🪙 {chips(indexed(crop.seed, idx) * empties.length)}</span></button>

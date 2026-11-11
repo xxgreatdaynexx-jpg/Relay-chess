@@ -73,7 +73,7 @@ describe('Big Farms map expansion', () => {
       const pr = propertyById(`cf:${p.n}`)!; expect(pr.kind).toBe('farm'); expect(pr.price).toBe(bigFarmPrice(p.cols * p.rows));
       expect(pr.label).toMatch(/^Big Farm #\d+ \(\d+×\d+\)$/); expect(fieldPlotOf(`cf:${p.n}`)!.cols).toBe(p.cols);
     }
-    const smallMax = Math.max(...properties().filter((p) => p.kind === 'farm' && !/^cf:[12]\d{3}$/.test(p.id) && !p.id.startsWith('winery:') && p.map !== 'resort').map((p) => p.price));
+    const smallMax = Math.max(...properties().filter((p) => p.kind === 'farm' && !/^cf:[12]\d{3}$/.test(p.id) && !p.id.startsWith('winery:') && !p.id.startsWith('orchard:') && p.map !== 'resort').map((p) => p.price));
     expect(bigFarmPrice(400)).toBeGreaterThan(smallMax);
     expect(farmPlots().length).toBeGreaterThan(0);
   });

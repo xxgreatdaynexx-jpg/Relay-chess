@@ -28,6 +28,7 @@ import { RESORT_TYPES, resortLots, resortPlots, resortPlotId, resortPlotPrice } 
 import { islandProperties } from './island.js';
 import { skyProperties } from './skyPenthouses.js';
 import { estateLotId, estateLots, goldwoodHomes, goldwoodId, wineryId, wineryPlots } from './mapExpansion.js';
+import { orchardId, orchardPlots } from './orchard.js';
 import { countryHomes, countryBusinesses, businessType, COMMERCIAL_PRICE, COMMERCIAL_LABEL } from './outskirts.js';
 
 export const TAX_RATE = 0.005;
@@ -133,6 +134,7 @@ export function properties(): Property[] {
   for (const l of estateLots()) out.push({ x: l.x, z: l.z, w: l.w, d: l.d, rot: 0, h: l.h, id: estateLotId(l.n), kind: 'patch', type: l.kind === 'turnkey_plant' ? 'power_plant' : 'estate_lot', label: l.label, price: l.price });
   for (const h of goldwoodHomes()) out.push({ x: h.x, z: h.z, w: h.w, d: h.d, rot: 0, h: h.h, id: goldwoodId(h.n), kind: 'building', type: 'mansion', label: h.label, price: h.price, housingEmployees: 4 });
   for (const w of wineryPlots()) out.push({ x: w.x, z: w.z, w: w.w, d: w.d, rot: 0, id: wineryId(w.n), kind: 'farm', type: 'winery', label: `${w.label} (${w.cols}×${w.rows})`, price: w.price, tiles: w.cols * w.rows });
+  for (const o of orchardPlots()) out.push({ x: o.x, z: o.z, w: o.w, d: o.d, rot: 0, id: orchardId(o.n), kind: 'farm', type: 'orchard', label: `${o.label} (${o.cols}×${o.rows})`, price: o.price, tiles: o.cols * o.rows });
 
   // Reprice only housing. Capture the actual old employment bonus BEFORE lowering its base price: otherwise
   // a two-slot home priced at 20k would silently lose a slot, and a three-slot home at 30k would become two-slot.

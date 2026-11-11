@@ -3,7 +3,7 @@
  * Items are stack keys `type:id` (same as mine_items / stackKey), so input/output chests read and write banked storage directly.
  */
 import { GOODS, ORES, MAX_BANKED_STACK, isOre, priceOf, nameOf, sellable, type ItemType, type Stack } from './mines.js';
-import { CROPS, CROP_SEED_MUL } from './farm.js';
+import { CROPS, CROP_SEED_MUL, ORCHARD_TREES, cropUnitSeed } from './farm.js';
 import { TROPICAL_CROPS } from './resort.js';
 
 export const TICK_MS = 500;
@@ -119,6 +119,10 @@ export const FRECIPES: FRecipe[] = [
   R('k_canned', 'cannery', [['good:fish_fillet', 6], ['good:iron_sheet', 1]], ['good:canned_fish', 2], 6),
   R('k_fish_oil', 'cannery', [['good:fish_fillet', 8]], ['good:fish_oil', 1], 6),
   R('k_pie', 'cannery', [['good:crop_pumpkin', 1], ['good:flour', 1], ['good:sugar', 1]], ['good:pumpkin_pie', 1], 8),
+  R('k_apple_pie', 'cannery', [['good:crop_apple', 1], ['good:flour', 1], ['good:sugar', 1]], ['good:apple_pie', 1], 8),
+  R('k_cherry_pie', 'cannery', [['good:crop_cherry', 1], ['good:flour', 1], ['good:sugar', 1]], ['good:cherry_pie', 1], 8),
+  R('k_peach_jam', 'cannery', [['good:crop_peach', 2], ['good:sugar', 1]], ['good:peach_jam', 1], 6),
+  R('k_cider', 'cannery', [['good:apple_juice', 2]], ['good:cider', 1], 10),
   R('k_salsa', 'cannery', [['good:crop_tomato', 2], ['bar:glass', 1]], ['good:salsa', 1], 5),
   R('k_soup', 'cannery', [['good:crop_carrot', 1], ['good:crop_potato', 1], ['good:crop_tomato', 1], ['good:iron_sheet', 1]], ['good:veggie_soup', 2], 8),
   R('k_banquet', 'cannery', [['good:fish_portion', 6], ['good:bread', 1], ['good:wine', 1]], ['good:banquet', 1], 15),
@@ -171,6 +175,8 @@ export const FRECIPES: FRecipe[] = [
   R('m_carrot_juice', 'mill', [['good:crop_carrot', 3]], ['good:carrot_juice', 1], 4),
   R('m_mango_puree', 'mill', [['good:crop_mango', 1]], ['good:mango_puree', 1], 4),
   R('m_grape_juice', 'mill', [['good:crop_grapes', 1]], ['good:grape_juice', 1], 5),
+  R('m_apple_juice', 'mill', [['good:crop_apple', 1]], ['good:apple_juice', 1], 5),
+  R('m_orange_juice', 'mill', [['good:crop_orange', 1]], ['good:orange_juice', 1], 5),
   R('m_pumpkin_seeds', 'mill', [['good:crop_pumpkin', 1]], ['good:pumpkin_seeds', 1], 4),
   R('m_tomato_paste', 'mill', [['good:crop_tomato', 2]], ['good:tomato_paste', 1], 4),
   R('k_pasta', 'cannery', [['good:flour', 2], ['good:tomato_paste', 1]], ['good:pasta_dinner', 1], 8),
@@ -534,9 +540,9 @@ export function applyFarmFishFoodPrices(markup = FOOD_STEP_MARKUP): string[] {
 /** Keep raw crop GOODS prices in lockstep with CROP_SEED_MUL (seed x margin). */
 export function applyRawCropPrices(mul = CROP_SEED_MUL): string[] {
   const touched: string[] = [];
-  for (const c of [...CROPS, ...TROPICAL_CROPS]) {
+  for (const c of [...CROPS, ...TROPICAL_CROPS, ...ORCHARD_TREES]) {
     const id = `crop_${c.id}`; const g = GOODS[id]; if (!g) throw new Error(`GOODS missing for ${id}`);
-    g.price = mul * c.seed; touched.push(id);
+    g.price = mul * cropUnitSeed(c); touched.push(id);
   }
   return touched;
 }

@@ -41,7 +41,7 @@ describe('ownership and stable ids', () => {
   const ps = properties();
   it('catalog ids, geometry and prices are byte-identical to the base; countryside unchanged', () => {
     const added = ['cf:1008', 'cf:1009', 'cf:1010', 'cf:1011', 'barn:big:1008', 'barn:big:1009', 'barn:big:1010', 'barn:big:1011', 'sky:1', 'sky:2', 'sky:3', 'sky:4', 'sky:5', 'sky:6', 'isl:1', 'isl:2', 'isl:3', 'isl:4'];
-    const isExp = (id: string) => /^(lot:estate:|winery:|b:mansion:)/.test(id) || /^cf:2\d{3}$/.test(id);
+    const isExp = (id: string) => /^(lot:estate:|winery:|b:mansion:|orchard:)/.test(id) || /^cf:2\d{3}$/.test(id);
     const prior = ps.filter((p) => !added.includes(p.id) && !isExp(p.id));
     expect(ps.filter((p) => added.includes(p.id)).map((p) => p.id).sort()).toEqual([...added].sort());
     expect(prior.length).toBe(BASE.n); expect(ps.filter((p) => /^rf:(1[3-9]|20)$/.test(p.id)).map((p) => p.id).sort()).toEqual(['rf:13','rf:14','rf:15','rf:16','rf:17','rf:18','rf:19','rf:20']);

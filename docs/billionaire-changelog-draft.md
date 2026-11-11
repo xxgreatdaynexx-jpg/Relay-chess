@@ -189,3 +189,7 @@ Title: A plastics plant in Chud City
 Title: The coming-soon sign opens a Future Features look
 
 - The gold Coming Soon sign still shows no date. Clicking it opens a Future Features popup with a short, date-free teaser and a few screenshots from the work in progress.
+
+## Orchard Ridge
+
+A buyable orchard district on the expanded east map. Plant fruit trees once (apples, cherries, peaches, oranges, pears, plums). Trees take several real days to mature, then fruit on a repeating cycle with no replanting. Fruit sells at the same +35% raw margin as other crops (the sapling is a one-time cost and counts toward the house-cap planting bonus). Juice, cider, pies and jam craft at the usual +8% food-step markup. Auto-harvest and pantry rules match ordinary farms.

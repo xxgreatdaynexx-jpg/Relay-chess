@@ -60,11 +60,42 @@ export const HYPER_CROPS: Crop[] = [
   { id: 'vanilla', label: 'Vanilla', emoji: '🌾', seed: 900, grow: growMs(32 * H), sell: cropListSell(900), color: 0xf0e0c0 },
 ];
 export const isHyperCrop = (id: unknown) => HYPER_CROPS.some((c) => c.id === id);
-export const cropById = (id: unknown) => CROPS.find((c) => c.id === id) ?? TROPICAL_CROPS.find((c) => c.id === id) ?? HYPER_CROPS.find((c) => c.id === id);
+/**
+ * Fruit trees for Orchard Ridge. `seed` is the one-time sapling cost (house-cap planting bonus applies).
+ * `grow` is sapling → first fruit (several real days after GROW_SCALE). `cycle` is the repeating
+ * fruiting interval once the tree is mature — harvest does not remove the tree and no replant is needed.
+ * `sell` is priced off a fruit basis (not the sapling), at the same +35% raw margin as other crops.
+ */
+export interface OrchardTree extends Crop { cycle: number }
+export const ORCHARD_TREES: OrchardTree[] = [
+  { id: 'apple',  label: 'Apples',   emoji: '🍎', seed: 520, grow: growMs(7 * 24 * H),  cycle: growMs(24 * H), sell: cropListSell(200), color: 0xc83030 },
+  { id: 'cherry', label: 'Cherries', emoji: '🍒', seed: 480, grow: growMs(5 * 24 * H),  cycle: growMs(18 * H), sell: cropListSell(160), color: 0xc01830 },
+  { id: 'peach',  label: 'Peaches',  emoji: '🍑', seed: 640, grow: growMs(8 * 24 * H),  cycle: growMs(24 * H), sell: cropListSell(220), color: 0xf07850 },
+  { id: 'orange', label: 'Oranges',  emoji: '🍊', seed: 780, grow: growMs(10 * 24 * H), cycle: growMs(30 * H), sell: cropListSell(260), color: 0xf0a020 },
+  { id: 'pear',   label: 'Pears',    emoji: '🍐', seed: 560, grow: growMs(7 * 24 * H),  cycle: growMs(24 * H), sell: cropListSell(190), color: 0x8aaa3a },
+  { id: 'plum',   label: 'Plums',    emoji: '🫐', seed: 500, grow: growMs(6 * 24 * H),  cycle: growMs(20 * H), sell: cropListSell(170), color: 0x6a3a8a },
+];
+export const isOrchardCrop = (id: unknown) => ORCHARD_TREES.some((c) => c.id === id);
+export const orchardTree = (id: unknown) => ORCHARD_TREES.find((c) => c.id === id);
+/** Factory raw-crop unit used for GOODS pricing: fruit basis for trees, sapling/seed for everything else. */
+export const cropUnitSeed = (c: Crop) => {
+  if (!isOrchardCrop(c.id)) return c.seed;
+  return Math.round(cropSellValue(c) / CROP_SEED_MUL);
+};
+export const cropById = (id: unknown) => CROPS.find((c) => c.id === id) ?? TROPICAL_CROPS.find((c) => c.id === id) ?? HYPER_CROPS.find((c) => c.id === id) ?? orchardTree(id);
 for (const c of TROPICAL_CROPS) c.sell = cropListSell(c.seed);
 export type Stage = 'growing' | 'ready' | 'withered';
-export const stageOf = (c: Crop, plantedAt: number, now: number): Stage => {
-  const ready = plantedAt + c.grow; return now < ready ? 'growing' : now < ready + ripeWindow(c.grow) ? 'ready' : 'withered';
+/** Grow time for a tile: sapling `grow` until the tree has matured, then the repeating `cycle`. */
+export const cropGrowMs = (c: Crop, matured = false) => {
+  const tree = orchardTree(c.id);
+  return tree && matured ? tree.cycle : c.grow;
+};
+export const stageOf = (c: Crop, plantedAt: number, now: number, matured = false): Stage => {
+  const grow = cropGrowMs(c, matured);
+  const ready = plantedAt + grow;
+  if (now < ready) return 'growing';
+  if (isOrchardCrop(c.id)) return 'ready'; // fruit stays on the tree until picked; the tree never dies
+  return now < ready + ripeWindow(grow) ? 'ready' : 'withered';
 };
 /** 0–99 while still growing so a nearly-ripe bar never looks finished; 100 only once `now` reaches readyAt. */
 export const growProgressPct = (plantedAt: number, readyAt: number, now: number): number => {
@@ -121,7 +152,7 @@ export const plotId = (n: number) => `f:${n}`;
 export const tileXZ = (p: FarmPlot, i: number): [number, number] => [p.x - (p.cols * TILE) / 2 + TILE * ((i % p.cols) + 0.5), p.z - (p.rows * TILE) / 2 + TILE * (Math.floor(i / p.cols) + 0.5)];
 
 /** What the client gets for one plot. `now` is the server clock (clients never send timestamps). */
-export interface FarmTile { tile: number; crop: string; plantedAt: number; stage: Stage; readyAt: number; witherAt: number; fert?: string }
+export interface FarmTile { tile: number; crop: string; plantedAt: number; stage: Stage; readyAt: number; witherAt: number; fert?: string; matured?: boolean }
 export interface FarmAuto { harvest: boolean; /** When harvest is on: send ripe crops to the kitchen pantry instead of selling. */ pantry: boolean; plant: boolean; crop: string }
 export interface FarmView { id: string; owner: string | null; mine: boolean; cols: number; rows: number; tiles: FarmTile[]; now: number; today: { gross: number; paid: number }; index: number; upgrades?: import('./farmUpgrades.js').FarmUpgradeLevels; farmingLevel?: number; growMul?: number; profitMul?: number; yieldBonus?: number; plowed?: number[]; machines?: import('./farmWork.js').MachineSet; auto?: FarmAuto }
 /** #33: what one tile of `c` really takes and earns after Farming XP + upgrades (base chips; seed comes back on harvest). */

@@ -232,7 +232,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   const ownedRef = useRef(owned); ownedRef.current = owned;
   useEffect(() => {
     let dead = false;
-    const load = () => { void fetch('/api/farm').then((r) => r.json()).then((d: { tiles?: Array<[string, number, string, string]> }) => { if (!dead && Array.isArray(d?.tiles)) worldRef.current?.setFarm(d.tiles); }).catch(() => {}); };
+    const load = () => { void fetch('/api/farm').then((r) => r.json()).then((d: { tiles?: Array<[string, number, string, string, number?, number?]> }) => { if (!dead && Array.isArray(d?.tiles)) worldRef.current?.setFarm(d.tiles); }).catch(() => {}); };
     if (!loading) load(); socket.on('farm_changed', load); const t = window.setInterval(load, 15_000); // QA r8: crops on the map grow live (was 60 s)
     return () => { dead = true; socket.off('farm_changed', load); window.clearInterval(t); };
   }, [loading]);
@@ -333,7 +333,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
           onBarn: (id) => { const o = ownedRef.current.get(id); const m = meRef.current; if (o && m && o.owner.toLowerCase() === m.toLowerCase()) setPanel({ k: 'farms' }); else setDeed(id); },
           onProperty: (id) => { const o = ownedRef.current.get(id); const m = meRef.current;
             if (id.startsWith('lot:estate:') || id.startsWith('b:mansion:')) { setPanel({ k: 'estate', id, kind: 'estate' }); return; }
-            if ((id.startsWith('f:') || id.startsWith('cf:') || id.startsWith('winery:')) && o && m && o.owner.toLowerCase() === m.toLowerCase()) setFarm(id); else setDeed(id); },
+            if ((id.startsWith('f:') || id.startsWith('cf:') || id.startsWith('winery:') || id.startsWith('orchard:')) && o && m && o.owner.toLowerCase() === m.toLowerCase()) setFarm(id); else setDeed(id); },
           onTrailer: (n) => { const m = meRef.current; if (m && n.toLowerCase() === m.toLowerCase()) { setPanel({ k: 'home' }); return true; } return false; },
         });
         const w = worldRef.current;

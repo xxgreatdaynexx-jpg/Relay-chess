@@ -19,7 +19,7 @@ describe('automatic business income and public service deeds',()=>{
  });
  it('rejects invalid rate data instead of inventing purchase costs',()=>{expect(()=>incomeEntitlement(0,0,1)).toThrow();expect(()=>incomeEntitlement(1.2,0,1)).toThrow();});
  it('adds only two stable public deeds, retains all 555 other entries and thirty-four independent barns',()=>{
-  expect(properties().filter(p=>!/^(sky|isl|lot:estate:|winery:|b:mansion:)/.test(p.id)&&!/^cf:2\d{3}$/.test(p.id))).toHaveLength(557);expect(new Set(properties().map(p=>p.id)).size).toBe(properties().length);expect(properties().filter(p=>p.type==='barn')).toHaveLength(34);expect(properties().filter(p=>/^(sky|isl):/.test(p.id))).toHaveLength(10);
+  expect(properties().filter(p=>!/^(sky|isl|lot:estate:|winery:|b:mansion:|orchard:)/.test(p.id)&&!/^cf:2\d{3}$/.test(p.id))).toHaveLength(557);expect(new Set(properties().map(p=>p.id)).size).toBe(properties().length);expect(properties().filter(p=>p.type==='barn')).toHaveLength(34);expect(properties().filter(p=>/^(sky|isl):/.test(p.id))).toHaveLength(10);
   expect(PUBLIC_SERVICE_DEEDS.map(p=>[p.id,p.price])).toEqual([['lm:jail',750000],['lm:harbour',1500000]]);
   for(const p of PUBLIC_SERVICE_DEEDS){expect(taxOf(p.price)).toBe(p.price*.005);expect(sellBackOf(p.price)).toBe(p.price*.7);expect(p.retired).toBeUndefined();}
  });

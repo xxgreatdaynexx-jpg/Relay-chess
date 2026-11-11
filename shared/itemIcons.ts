@@ -81,6 +81,7 @@ const corn = () => Pa('M12 2Q17 6 16 14Q15 19 12 21Q9 19 8 14Q7 6 12 2Z', '#f2d3
 const tomato = () => C(12, 13.5, 8, '#e0402e') + Pa('M8 7.5L10.5 7.5L12 5L13.5 7.5L16 7.5L13.5 9L12 11L10.5 9Z', '#3fa03a', 0.7) + Ln('M7 11Q8 8.6 10 8.4', '#fff', 1) + Ln('M12 5L12 3', '#3a7a2a', 1.3);
 const potato = () => Pa('M4 13Q4 7 11 6.5Q20 6 20.5 12Q21 18 13 18.5Q4 19 4 13Z', '#c8995a') + [[8, 11], [14, 9.5], [16, 14], [10, 15]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r=".8" fill="#8a6430"/>`).join('') + Ln('M6.5 10Q8 8 11 7.8', '#ecc88a', 1);
 const pumpkin = () => E(12, 14, 9.5, 7, '#ee8a22') + E(12, 14, 5, 7, '#f59a32', 0.8) + E(12, 14, 1.8, 7, '#e07a18', 0.7) + Pa('M11 7.5L11.5 3L14 3.6L13 7.5Z', '#5a7a2a', 0.8) + Ln('M5 11Q6 9 8 8.5', '#ffd08a', 0.9);
+const fruit = (c: string) => C(12, 13, 7.2, c, 0.9) + C(9.2, 10.2, 2.2, '#fff', 0.25) + Ln('M12 6.2L12 3.2', '#6a4a20', 1.3) + Pa('M12 4.2Q16 2.4 18 5.2Q14.5 6.4 12 4.2Z', '#4aa03a', 0.75);
 const grapes = () => [[9, 9], [13, 9], [17, 9], [11, 12.5], [15, 12.5], [9, 12.6], [13, 16], [11, 19], [15, 16]].map(([x, y]) => C(x, y, 2.4, '#7a3aa8', 0.8) + `<circle cx="${x - 0.8}" cy="${y - 0.8}" r=".6" fill="#d8b0f0"/>`).join('') + Ln('M13 6.5L14 2.5', '#6a4a20', 1.3) + Pa('M14 4Q19 2 21 5Q17 7 14 4Z', '#4aa03a', 0.7);
 const sunflower = () => Ln('M12 14L12 23', '#3a8a2a', 1.6) + Array.from({ length: 12 }, (_, i) => `<ellipse cx="12" cy="4.2" rx="1.9" ry="3.6" fill="#f6c91c" stroke="${OL}" stroke-width=".6" transform="rotate(${i * 30} 12 11)"/>`).join('') + C(12, 11, 4, '#6a3a1a', 0.8) + Ln('M10.5 10L11.5 11M12.5 10L13.5 11M11 12L12 13M13 12.5L13.5 13', '#3a1e0a', 0.7);
 const pineapple = () => Pa('M12 8L9 2L11.5 4.5L12 1L12.5 4.5L15 2Z', '#3aa040', 0.7) + Pa('M8 8L10 5L12 7.5L14 5L16 8Z', '#2f8a34', 0.7) + E(12, 15, 6, 7.5, '#e8b030') + Ln('M7.4 11L14 21M9 8.5L17.5 18.6M6.5 15L11 21.8M16.6 11L10 21M15 8.5L6.5 18.6M17.5 15L13 21.8', '#9a6a18', 0.6) + Ln('M8 12Q8.5 9.4 10 8.8', '#fff', 0.8);
@@ -209,6 +210,8 @@ const GOOD_ICONS: Record<string, () => string> = {
   bearing: () => bearing('#b8c0c8'), motor: () => motor('#3f7fc0'), generator: () => generator('#d06a2a'), robot: () => robot('#9aa8b8'),
   crop_strawberry: strawberry, crop_wheat: wheat, crop_carrot: carrot, crop_corn: corn, crop_tomato: tomato, crop_potato: potato, crop_pumpkin: pumpkin,
   crop_grapes: grapes, crop_sunflower: sunflower, crop_tobacco: tobacco, crop_pineapple: pineapple, crop_banana: banana, crop_mango: mango, crop_coconut: coconut, crop_cacao: cacao,
+  crop_apple: () => fruit('#c83030'), crop_cherry: () => fruit('#c01830'), crop_peach: () => fruit('#f07850'), crop_orange: () => fruit('#f0a020'), crop_pear: () => fruit('#8aaa3a'), crop_plum: () => fruit('#6a3a8a'),
+  apple_juice: () => bottle('#e8c050', '#f8e8c0', '#3a7a3a'), cider: () => bottle('#d89030', '#f8e0c0', '#6a3a1a'), apple_pie: () => pie('#d87830'), cherry_pie: () => pie('#c03040'), peach_jam: () => jar('#f07850'), orange_juice: () => bottle('#f0a020', '#f8e0c0', '#3a7a3a'),
   fish_fillet: () => fillet('#f29a7a'), fish_portion: () => portion('#d8904a'),
   flour: () => sack('#f6f2e8', '#d8b860'), cornmeal: () => sack('#f0d050', '#e0a020'), sugar: () => sack('#ffffff', '#6aa0e0'), cocoa: () => sack('#6a3a20', '#a05a30'),
   berry_juice: () => bottle('#c8304a', '#e8c0d0', '#e04a5a'), tropical_juice: () => bottle('#f6a830', '#fae8c0', '#3faa3a'), sunflower_oil: () => bottle('#f2d040', '#f8f0c0', '#e0b020'),
@@ -293,7 +296,7 @@ const FISH_ICONS: Record<string, () => string> = {
 export const ICON_FISH_IDS = Object.keys(FISH_ICONS);
 
 const svg = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">${body}</svg>`;
-const ALIAS: Record<string, string> = { crystal: 'gem', strawberry: 'crop_strawberry', wheat: 'crop_wheat', carrot: 'crop_carrot', corn: 'crop_corn', tomato: 'crop_tomato', potato: 'crop_potato', pumpkin: 'crop_pumpkin', grapes: 'crop_grapes', sunflower: 'crop_sunflower', tobacco: 'crop_tobacco', pineapple: 'crop_pineapple', banana: 'crop_banana', mango: 'crop_mango', coconut: 'crop_coconut', cacao: 'crop_cacao', tulips: 'crop_tulips', roses: 'crop_roses', orchids: 'crop_orchids', saffron: 'crop_saffron', wasabi: 'crop_wasabi', vanilla: 'crop_vanilla' };
+const ALIAS: Record<string, string> = { crystal: 'gem', strawberry: 'crop_strawberry', wheat: 'crop_wheat', carrot: 'crop_carrot', corn: 'crop_corn', tomato: 'crop_tomato', potato: 'crop_potato', pumpkin: 'crop_pumpkin', grapes: 'crop_grapes', sunflower: 'crop_sunflower', tobacco: 'crop_tobacco', pineapple: 'crop_pineapple', banana: 'crop_banana', mango: 'crop_mango', coconut: 'crop_coconut', cacao: 'crop_cacao', apple: 'crop_apple', cherry: 'crop_cherry', peach: 'crop_peach', orange: 'crop_orange', pear: 'crop_pear', plum: 'crop_plum', tulips: 'crop_tulips', roses: 'crop_roses', orchids: 'crop_orchids', saffron: 'crop_saffron', wasabi: 'crop_wasabi', vanilla: 'crop_vanilla' };
 const cache = new Map<string, string>();
 
 /** True when the item has a crafted icon (not the fallback crate). */

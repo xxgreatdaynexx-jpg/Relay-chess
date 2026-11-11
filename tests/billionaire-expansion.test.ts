@@ -18,6 +18,7 @@ import { cropById } from '../shared/farm';
 import { GOODS } from '../shared/mines';
 import { hasItemIcon, itemIconSvg } from '../shared/itemIcons';
 import { allFieldPlots } from '../shared/fieldFarms';
+import { orchardId, orchardPlots } from '../shared/orchard';
 import { bigFarms } from '../shared/bigFarms';
 import { MINE_SITES } from '../shared/worldLayout';
 
@@ -75,11 +76,12 @@ describe('map expansion and Goldwood', () => {
     expect(goldwoodHomes()).toHaveLength(8);
     expect(wineryPlots()).toHaveLength(5);
     expect(expansionFarms()).toHaveLength(10);
+    expect(orchardPlots()).toHaveLength(8);
     expect(expansionFarms().every((f) => f.n >= 2000)).toBe(true);
     expect(EAST_X0).toBeGreaterThan(356);
     expect(MINE_SITES['mine-quarry'].x).toBe(328);
     expect(MINE_SITES['mine-quarry'].z).toBe(-158);
-    for (const p of [...estateLots(), ...goldwoodHomes(), ...wineryPlots(), ...expansionFarms()]) {
+    for (const p of [...estateLots(), ...goldwoodHomes(), ...wineryPlots(), ...expansionFarms(), ...orchardPlots()]) {
       expect(p.x).toBeGreaterThanOrEqual(EXPANSION_BOUNDS.x0 - 1);
       expect(p.x).toBeLessThanOrEqual(EXPANSION_BOUNDS.x1 + 1);
     }
@@ -90,6 +92,7 @@ describe('map expansion and Goldwood', () => {
       ...estateLots().map((l) => `lot:estate:${l.n}`),
       ...goldwoodHomes().map((h) => `b:mansion:${h.n}`),
       ...wineryPlots().map((w) => `winery:${w.n}`),
+      ...orchardPlots().map((o) => orchardId(o.n)),
       ...expansionFarms().map((f) => `cf:${f.n}`),
     ]);
     const added = properties().filter((p) => fresh.has(p.id));
@@ -105,7 +108,7 @@ describe('map expansion and Goldwood', () => {
   });
 
   it('keeps the original 557 non-sky/island properties plus the new prefixes only', () => {
-    const isNew = (id: string) => /^(lot:estate:|winery:|b:mansion:)/.test(id) || /^cf:2\d{3}$/.test(id);
+    const isNew = (id: string) => /^(lot:estate:|winery:|b:mansion:|orchard:)/.test(id) || /^cf:2\d{3}$/.test(id);
     expect(properties().filter((p) => !/^(sky|isl):/.test(p.id) && !isNew(p.id))).toHaveLength(557);
     expect(allFieldPlots().filter((p) => p.n >= 2000)).toHaveLength(10);
   });
