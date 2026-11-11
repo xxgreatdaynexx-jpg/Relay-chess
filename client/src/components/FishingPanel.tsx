@@ -67,10 +67,10 @@ export function FishingPanel({ me, onClose, spot = 'lake' }: { me: string | null
     if (phase.k === 'bite') { const t = window.setTimeout(() => { void request('fish_reel_in'); setMsg('Too slow — it stole your bait.'); setPhase({ k: 'idle' }); }, Math.max(0, phase.until - Date.now())); return () => window.clearTimeout(t); }
   }, [phase]);
   const finish = async (inputs: string, won: boolean) => {
-    setPhase({ k: 'busy' }); const r = await request('fish_land', { inputs }) as { ok: boolean; error?: string; caught?: boolean; fish?: FishCatch; xp?: number };
+    setPhase({ k: 'busy' }); const r = await request('fish_land', { inputs }) as { ok: boolean; error?: string; caught?: boolean; fish?: FishCatch; xp?: number; cigarette?: boolean };
     setReelUi(null); reelRef.current = null; holdRef.current = false;
     if (!r.ok) setMsg(r.error ?? 'The line snapped.');
-    else if (r.caught && r.fish) { const f = fishById(r.fish.fish)!; setMsg(`${f.emoji} Caught a ${f.label}! ${fmtKg(r.fish.grams)} · worth ~🪙 ${chips(Math.floor(fishSellValue(r.fish.value) * (view?.index ?? 1)))} · +${boostXp(r.xp ?? 0)} Fishing XP`); }
+    else if (r.caught && r.fish) { const f = fishById(r.fish.fish)!; setMsg(`${f.emoji} Caught a ${f.label}! ${fmtKg(r.fish.grams)} · worth ~🪙 ${chips(Math.floor(fishSellValue(r.fish.value) * (view?.index ?? 1)))} · +${boostXp(r.xp ?? 0)} Fishing XP${r.cigarette ? ' · you also found a Cigarette!' : ''}`); }
     else setMsg(won ? 'The line snapped.' : 'It got away… cast again!');
     setPhase({ k: 'idle' }); load();
   };

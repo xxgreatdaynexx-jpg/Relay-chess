@@ -11,6 +11,7 @@ import { HoldemRoom, type HoldemTable } from './holdem.js';
 import { heStakes, HE_SPECTATE_DELAY_MS, type HEAction } from '../shared/holdem.js';
 import { HoldemSpectators, type Viewer } from './holdem-spectate.js';
 import { isMillionairePrelaunch } from '../shared/millionairePrelaunch.js';
+import { getCigarettes } from './cigarettes.js';
 
 const envDelay = Number(process.env.HOLDEM_SPECTATOR_DELAY_MS);
 let spectators = new HoldemSpectators(Number.isFinite(envDelay) && envDelay >= 0 ? envDelay : HE_SPECTATE_DELAY_MS);
@@ -312,6 +313,26 @@ export function registerCasino(io: Server, socket: Socket): void {
   socket.on('roulette_bet', (p: unknown, ack?: Ack) => rouletteAct((n) => wheel!.placeBet(n, (p as Record<string, unknown>)?.bet))(p, ack));
   socket.on('roulette_clear', rouletteAct((n) => wheel!.clear(n)));
   socket.on('roulette_rebet', rouletteAct((n) => wheel!.rebet(n)));
+
+  const cigAck = (fn: (name: string) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void) => async (payload: unknown, ack?: Ack) => {
+    try {
+      const name = nameOf(socket);
+      if (!name) throw new Error('Sign in first.');
+      const body = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
+      const rid = typeof body.rid === 'string' && body.rid.length <= 40 ? `${name}|${body.rid}` : null;
+      const seen = rid ? recentAcks.get(rid) : undefined;
+      if (seen) return void ack?.(seen);
+      const out = { ok: true, ...((await fn(name)) ?? {}) };
+      if (rid) rememberAck(rid, out);
+      ack?.(out);
+    } catch (err) { ack?.({ ok: false, error: (err as Error).message }); }
+  };
+  socket.on('cig_state', cigAck((name) => ({ state: getCigarettes().view(name) })));
+  socket.on('cig_smoke', cigAck(async (name) => {
+    const state = await getCigarettes().smoke(name);
+    for (const s of io.sockets.sockets.values()) if (nameOf(s) === name) s.emit('cig_state', state);
+    return { state };
+  }));
 
   socket.on('disconnect', () => {
     sockets.delete(socket.id);

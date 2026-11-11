@@ -1,3 +1,4 @@
+import { payCigaretteBonus } from './cigarettes.js';
 /** Server-authoritative multiplayer blackjack (play money). 6-deck shoe, dealer stands on soft 17, blackjack pays 3:2. */
 import { handValue, isBlackjack, type BJHandView, type BJOutcome, type BJTableView, type CasinoCard, type Suit } from '../shared/casino.js';
 import type { CasinoBank } from './casino-store.js';
@@ -302,6 +303,7 @@ export class BlackjackTable {
         h.outcome = settleHand(h, this.dealer);
         h.net = netFor(h.outcome, h.bet);
         this.bank.settle(s.name, h.bet + h.net, h.net, 'hand', 'blackjack');
+        if (h.net > 0) payCigaretteBonus(s.name, h.net, 'blackjack', `blackjack:${this.id}:${now}:${s.name}:${s.hands.indexOf(h)}`, this.bank);
       }
     }
     this.phase = 'settled';

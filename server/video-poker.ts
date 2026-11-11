@@ -1,3 +1,4 @@
+import { payCigaretteBonus } from './cigarettes.js';
 /** Jacks or Better video poker against the house, one hand per player at a time. */
 import { randomInt } from 'node:crypto';
 import { evaluatePoker, POKER_LABELS, POKER_MAX_BET, POKER_MIN_BET, POKER_PAYS, type PokerView } from '../shared/casino-games.js';
@@ -36,6 +37,7 @@ export class VideoPoker {
     const returned = h.bet * POKER_PAYS[hand];
     const net = returned - h.bet;
     this.bank.settle(name, returned, net, 'hand', 'video-poker');
+    if (net > 0) payCigaretteBonus(name, net, 'video-poker', `video-poker:${name}:${h.bet}:${hand}:${returned}`, this.bank);
     this.hands.delete(this.key(name));
     this.last.set(this.key(name), { hand, label: POKER_LABELS[hand], returned, net, cards: h.cards, bet: h.bet });
     return this.view(name);

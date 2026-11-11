@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T20:19:00-06:00", "title": "Cigarettes at the casino (requested by Amber)", "bullets": [
+    "Cigarettes are a rare fishing drop: about 1.5% of landed catches, rolled on the server. They stack in your warehouse inventory like other goods, can be sold to the house or traded on the Market, and each is worth 40 chips before the daily price index.",
+    "At roulette, blackjack, poker (Hold'em and Jacks or Better), and slots you can Smoke a cigarette if you have one. Each one lasts 3 minutes, and smoking another while it is active adds 3 minutes, up to 15 minutes. While it is running, a win pays an extra 10% of your net winnings from the house (losses are unchanged). On Hold'em the bonus is paid by the house on your net pot win, never taken from the other players. The extra is capped at 25,000 chips per day (resets at 00:00 UTC / 6 PM). Existing chips and items are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T20:05:00-06:00", "title": "Farm crop margins lowered to +35%, food production steps +8%", "bullets": [
     "Raw farm crops are now worth seed cost plus 35% (was plus 50%). Each factory food production step adds 8% over its input value (was 10%), still derived up the chain. Ore and metal chains are unchanged. Resort harvest yield (2×) and fertilizer yield are unchanged, and the house-sell planting bonus is still 50% of the seed chips you actually pay.",
     "Each newly planted tile has a 1% chance to fail, decided when you plant it and stored so a refresh cannot reroll it. A failed tile looks withered; harvesting it yields no crop and no seed refund, and the harvest result notes the count (for example, “2 tiles failed”). That applies to manual harvest, auto-harvest, pantry, and resort plots. Crops already in the ground are not rolled. Prices and the fail chance apply going forward; existing inventory is unchanged.",

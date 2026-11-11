@@ -1,3 +1,4 @@
+import { payCigaretteBonus } from './cigarettes.js';
 /** Shared multiplayer European roulette wheel (play money). One wheel for everyone, spinning on a fixed cycle. */
 import { betKey, betReturn, validateRouletteBet, type RouletteBet, type RouletteView } from '../shared/casino.js';
 import type { CasinoBank } from './casino-store.js';
@@ -100,6 +101,7 @@ export class RouletteWheel {
       const back = p.bets.reduce((s, b) => s + betReturn(b, n), 0);
       p.net = back - stake;
       this.bank.settle(p.name, back, p.net, 'spin', 'roulette');
+      if (p.net > 0) payCigaretteBonus(p.name, p.net, 'roulette', `roulette:${n}:${p.name}:${this.deadline}`, this.bank);
     }
   }
 

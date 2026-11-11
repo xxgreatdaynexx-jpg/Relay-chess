@@ -1,4 +1,5 @@
 import { refillCooler } from './coolerRefill.js';
+import { grantFishingCigarette } from './cigarettes.js';
 import { emitHaul } from './haulVisual.js';
 /**
  * Fishing at the lake dock (rules in shared/fishing.ts). The server rolls every catch when you cast (crypto RNG),
@@ -76,6 +77,8 @@ export interface FishRng { int(lo: number, hi: number): number; unit(): number }
 const cryptoRng: FishRng = { int: (lo, hi) => randomInt(lo, hi), unit: () => randomInt(0, 2 ** 32) / 2 ** 32 };
 
 export class Fishing {
+  /** Independent of the catch RNG so a drop roll never shifts the fish stream. Overridable in tests. */
+  cigRoll = () => randomInt(0, 1_000_000) / 1_000_000;
   private casts = new Map<string, Cast>();
   private lastCast = new Map<string, number>();
   private locks = new Map<string, Promise<unknown>>();
@@ -140,7 +143,7 @@ export class Fishing {
     c.hookedAt = now; return { seed: c.seed, diff: Math.min(1, fishDiff(fishById(c.fish)!, c.grams) + c.diffAdd) };
   }
   /** Land (or lose) the fish: the server replays the reel timeline. */
-  async land(name: string, inputs: unknown): Promise<{ caught: boolean; fish?: FishCatch; xp?: number; coopXp?: number }> {
+  async land(name: string, inputs: unknown): Promise<{ caught: boolean; fish?: FishCatch; xp?: number; coopXp?: number; cigarette?: boolean }> {
     const key = keyOf(name); const c = this.casts.get(key); const now = this.clock();
     if (!c || c.hookedAt === null) throw new FishError('Nothing on the line.');
     this.casts.delete(key);
@@ -161,7 +164,8 @@ export class Fishing {
       eventCredit('fishing', name, 1, fish.id);
       if (c.crew) { try { fleetNote({ trip: c.crew.trip, name, kind: 'catch', fish: f.id, grams: fish.grams }); } catch { /* log only */ } }
       emitActivity({ name, skill: 'fishing', xp: xp + coopXp, action: 'catch', detail: { fish: f.id, rarity: f.rarity, grams: fish.grams, value: fish.value, ...(coopXp ? { coopXp } : {}) }, at: now });
-      return { caught: true, fish, xp: xp + coopXp, ...(coopXp ? { coopXp } : {}) };
+      const cigarette = await grantFishingCigarette(name, c.spot ?? 'lake', () => this.cigRoll());
+      return { caught: true, fish, xp: xp + coopXp, ...(coopXp ? { coopXp } : {}), ...(cigarette ? { cigarette: true } : {}) };
     });
   }
   /** Give up on the current cast (no penalty). */

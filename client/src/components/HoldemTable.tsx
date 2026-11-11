@@ -1,3 +1,4 @@
+import { CigaretteBar } from '@/components/CigaretteBar';
 import { Fragment, useEffect, useState } from 'react';
 import { TurnTimerBar } from './TurnTimerBar';
 import { at, Chips, dealStyle, FeltTable } from '@/components/FeltTable';
@@ -143,6 +144,7 @@ export function HoldemTableView({ name }: { name: string }) {
           ))}
         </div>
       )}
+      <CigaretteBar open />
       {err && <div className="account-error">{err}</div>}
     </div>
   );

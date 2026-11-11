@@ -11,7 +11,7 @@ import { boostXp } from '../../../shared/skills'; // recheck #8: show the +20% X
 
 const chips = (n: number) => n.toLocaleString('en-US');
 type Phase = 'idle' | 'charge' | 'flying' | 'wait' | 'bite' | 'hooking' | 'reel' | 'landing' | 'show';
-type Card = { fish: string; grams: number; value: number; xp: number; coopXp?: number } | null;
+type Card = { fish: string; grams: number; value: number; xp: number; coopXp?: number; cigarette?: boolean } | null;
 
 /** Real 3D fishing at the dock (pt1220u). Same server flow as the panel: fish_cast → (bite) → fish_hook → reel sim → fish_land
  *  with the input timeline, which the server replays. Cast power/aim only place the bobber (cosmetic, no effect on the roll). */
@@ -82,11 +82,11 @@ export function Fishing3DGame({ me, onClose, onChange, spot = 'lake' }: { me: st
   };
   const finish = async (inputs: string) => {
     if (ph.current !== 'reel') return; setPhase('landing'); hold.current = false;
-    const r = await request('fish_land', { inputs }) as { ok: boolean; error?: string; caught?: boolean; fish?: FishCatch; xp?: number; coopXp?: number };
+    const r = await request('fish_land', { inputs }) as { ok: boolean; error?: string; caught?: boolean; fish?: FishCatch; xp?: number; coopXp?: number; cigarette?: boolean };
     g.current.reel = null; setReelUi(null);
     if (r.ok && r.caught && r.fish) {
       three.current?.showCatch(r.fish.fish, r.fish.grams); sfx.current?.win();
-      setCard({ fish: r.fish.fish, grams: r.fish.grams, value: Math.floor(fishSellValue(r.fish.value) * (view?.index ?? 1)), xp: r.xp ?? 0, ...(r.coopXp ? { coopXp: r.coopXp } : {}) }); setMsg(null); setPhase('show');
+      setCard({ fish: r.fish.fish, grams: r.fish.grams, value: Math.floor(fishSellValue(r.fish.value) * (view?.index ?? 1)), xp: r.xp ?? 0, ...(r.coopXp ? { coopXp: r.coopXp } : {}), ...(r.cigarette ? { cigarette: true } : {}) }); setMsg(null); setPhase('show');
     } else { setMsg(r.ok ? 'It got away… cast again!' : r.error ?? 'The line snapped.'); reset(); }
     load(); onChange?.();
   };
@@ -140,6 +140,7 @@ export function Fishing3DGame({ me, onClose, onChange, spot = 'lake' }: { me: st
         <div className="fish3d-rar" style={{ color: RARITY_COLOR[f.rarity] }}>{f.rarity.toUpperCase()}</div>
         <h3><FishGlyph id={card.fish} size={26} /> {f.label}</h3><div>{fmtKg(card.grams)} · worth ~🪙 {chips(card.value)} · +{boostXp(card.xp)} Fishing XP{card.coopXp ? ` (includes +${boostXp(card.coopXp)} co-op bonus)` : ''}</div>
         {card.coopXp ? <div data-testid="fish3d-coop">🤝 Co-op bonus — sale price is the normal value for this fish.</div> : null}
+        {card.cigarette ? <div data-testid="fish3d-cigarette">🚬 You also found a Cigarette!</div> : null}
         <small>Kept in your cooler. Click or press Space to cast again.</small>
       </div>}
     </div>

@@ -401,6 +401,7 @@ export const GOODS: Record<string, ItemDef> = {
   cut_opal:        { type: 'good', id: 'cut_opal',        name: 'Cut Fire Opal',    price: 70,   color: '#ff7a4a' },
   pearl_necklace:  { type: 'good', id: 'pearl_necklace',  name: 'Pearl Necklace',   price: 370,  color: '#eef2ff' },
   tidecrown:       { type: 'good', id: 'tidecrown',       name: 'Tidecrown',        price: 1600, color: '#7ff0ff' },
+  cigarette:      { type: 'good', id: 'cigarette',      name: 'Cigarette',       price: 40,   color: '#d8c8b0' },
 };
 const o = (id: OreId, qty: number) => ({ type: 'ore' as const, id, qty });
 const b = (id: string, qty: number) => ({ type: 'bar' as const, id, qty });

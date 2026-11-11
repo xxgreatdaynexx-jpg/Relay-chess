@@ -4,6 +4,7 @@ import { TurnTimerBar } from './TurnTimerBar';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NamePrompt, OutOfChips } from '@/components/CasinoCommon';
+import { CigaretteBar } from '@/components/CigaretteBar';
 import { betKey, CHIP_VALUES, payoutOdds, RED, WHEEL, type RouletteBet, type RouletteKind, type RouletteView } from '../../../shared/casino';
 import { useWalletChips } from '@/lib/wallet';
 import { isDoubleBet } from '../lib/doubleClick';
@@ -262,7 +263,8 @@ export function RoulettePanel() {
                         <div className="flex gap-1">
                           <button type="button" disabled={!betting || !mine} onClick={() => void cmd('roulette_clear')}>Clear</button>
                           <button type="button" disabled={!betting} onClick={() => void cmd('roulette_rebet')}>Rebet</button>
-                        </div>
+                          <CigaretteBar open={open} />
+                  </div>
                       </>
                     )}
                   </div>
