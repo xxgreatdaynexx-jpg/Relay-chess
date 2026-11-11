@@ -1,4 +1,5 @@
 import { refillCooler } from './coolerRefill.js';
+import { grantFishingCigarette } from './cigarettes.js';
 import { emitHaul } from './haulVisual.js';
 /**
  * Fishing at the lake dock (rules in shared/fishing.ts). The server rolls every catch when you cast (crypto RNG),
@@ -17,6 +18,7 @@ import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank, PgCasinoStore, type CasinoBank } from './casino-store.js';
 import { px, priceIndex } from './price-index.js';
+import { houseCapIndexOrFloor } from './house-cap-index.js';
 import { emitActivity } from './activity.js';
 import { awardXp, skillLevelAsync } from './skills.js';
 import { isQaName } from '../shared/qa.js';
@@ -76,6 +78,8 @@ export interface FishRng { int(lo: number, hi: number): number; unit(): number }
 const cryptoRng: FishRng = { int: (lo, hi) => randomInt(lo, hi), unit: () => randomInt(0, 2 ** 32) / 2 ** 32 };
 
 export class Fishing {
+  /** Independent of the catch RNG so a drop roll never shifts the fish stream. Overridable in tests. */
+  cigRoll = () => randomInt(0, 1_000_000) / 1_000_000;
   private casts = new Map<string, Cast>();
   private lastCast = new Map<string, number>();
   private locks = new Map<string, Promise<unknown>>();
@@ -107,7 +111,7 @@ export class Fishing {
     const key = keyOf(name);
     const best = (await this.pool.query("SELECT species, weight_g FROM fish_catches WHERE player_key = $1 AND COALESCE(hired, FALSE) = FALSE ORDER BY weight_g DESC, caught_at ASC, id ASC LIMIT 1", [key])).rows[0];
     const n = (await this.pool.query('SELECT count(*) AS n FROM fish_catches WHERE player_key = $1', [key])).rows[0];
-    return { cooler: await this.cooler(key), today: await this.today(key), todayBySpot: { lake: await this.today(key, 'lake'), reef: await this.today(key, 'reef'), deep: await this.today(key, 'deep') }, index: priceIndex(), best: best ? { fish: String(best.species), grams: Number(best.weight_g) } : null, totals: { caught: Number(n?.n ?? 0) } };
+    return { cooler: await this.cooler(key), today: await this.today(key), todayBySpot: { lake: await this.today(key, 'lake'), reef: await this.today(key, 'reef'), deep: await this.today(key, 'deep') }, index: priceIndex(), capIndex: houseCapIndexOrFloor(), best: best ? { fish: String(best.species), grams: Number(best.weight_g) } : null, totals: { caught: Number(n?.n ?? 0) } };
   }
 
   /** Throw a line. The fish (and when it bites) is decided now and stays server-side. */
@@ -140,7 +144,7 @@ export class Fishing {
     c.hookedAt = now; return { seed: c.seed, diff: Math.min(1, fishDiff(fishById(c.fish)!, c.grams) + c.diffAdd) };
   }
   /** Land (or lose) the fish: the server replays the reel timeline. */
-  async land(name: string, inputs: unknown): Promise<{ caught: boolean; fish?: FishCatch; xp?: number; coopXp?: number }> {
+  async land(name: string, inputs: unknown): Promise<{ caught: boolean; fish?: FishCatch; xp?: number; coopXp?: number; cigarette?: boolean }> {
     const key = keyOf(name); const c = this.casts.get(key); const now = this.clock();
     if (!c || c.hookedAt === null) throw new FishError('Nothing on the line.');
     this.casts.delete(key);
@@ -161,7 +165,8 @@ export class Fishing {
       eventCredit('fishing', name, 1, fish.id);
       if (c.crew) { try { fleetNote({ trip: c.crew.trip, name, kind: 'catch', fish: f.id, grams: fish.grams }); } catch { /* log only */ } }
       emitActivity({ name, skill: 'fishing', xp: xp + coopXp, action: 'catch', detail: { fish: f.id, rarity: f.rarity, grams: fish.grams, value: fish.value, ...(coopXp ? { coopXp } : {}) }, at: now });
-      return { caught: true, fish, xp: xp + coopXp, ...(coopXp ? { coopXp } : {}) };
+      const cigarette = await grantFishingCigarette(name, c.spot ?? 'lake', () => this.cigRoll());
+      return { caught: true, fish, xp: xp + coopXp, ...(coopXp ? { coopXp } : {}), ...(cigarette ? { cigarette: true } : {}) };
     });
   }
   /** Give up on the current cast (no penalty). */
@@ -189,7 +194,7 @@ export class Fishing {
       const bySpot: Array<{ spot: FishSpot; gross: number; t: { gross: number; paid: number }; paid: number }> = [];
       for (const sp of ['lake', 'reef', 'deep'] as FishSpot[]) {
         const g = Math.floor(fishSellValue(rawRows.filter((r) => spotOfRow(r) === sp).reduce((a, r) => a + r.value, 0))); if (!g) continue; // +15% fishing buff
-        const t = await this.today(key, sp); bySpot.push({ spot: sp, gross: g, t, paid: Math.floor(fishPayout(g, t.gross, sp) * priceIndex()) });
+        const t = await this.today(key, sp); bySpot.push({ spot: sp, gross: g, t, paid: Math.floor(fishPayout(g, t.gross, sp, houseCapIndexOrFloor()) * priceIndex()) });
       }
       // Fish from a spot whose cap is used up stay in the cooler instead of selling for 0.
       const live = bySpot.filter((b) => b.paid > 0); const liveSpots = new Set(live.map((b) => b.spot));

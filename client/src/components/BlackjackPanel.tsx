@@ -5,7 +5,8 @@ import { useWindowDrag } from '@/lib/windowDrag';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { CardFace } from '@/components/SolitairePanel';
 import { NamePrompt, OutOfChips } from '@/components/CasinoCommon';
-import { handValue, type BJSeatView, type BJTableView } from '../../../shared/casino';
+import { CigaretteBar } from '@/components/CigaretteBar';
+import { BLACKJACK_BETS, handValue, type BJSeatView, type BJTableView } from '../../../shared/casino';
 import { BJ_STAKES, bjStakes, type BjStakesId } from '../../../shared/highStakes';
 import { useWalletChips } from '@/lib/wallet';
 import { emitCasino, useCountdown, useSavedName } from '@/lib/casino';
@@ -197,6 +198,7 @@ export function BlackjackPanel() {
                 ) : (
                   <span className="bj-label">{me?.bet && t?.phase === 'betting' ? `Bet ${me.bet} in · waiting for others` : 'Watching'}</span>
                 )}
+                <CigaretteBar open={open} />
               </div>
             </>
           )}

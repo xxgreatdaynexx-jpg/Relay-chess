@@ -71,7 +71,7 @@ describe('real shared mobile header has no scroll/fixed-position dependency', ()
     await act(async () => root.unmount());
   });
   it('all actual legacy sheet families use this shared component; existing shop headers remain outside body', () => {
-    for (const f of ['WorldMap','ResortMap','FortMcMap','FarmGame','FishingPanel','CookingPanels','EmploymentPanel','CityHallPanel','Venues','Homes']) {
+    for (const f of ['WorldMap','ResortMap','FortMcMap','FarmGame','FishingPanel','Venues']) {
       const s = read(`client/src/components/${f}.tsx`);
       expect(s).toContain("import { MapSheet }");
       expect(s).not.toMatch(/<div className=["{`]+world-deed/);

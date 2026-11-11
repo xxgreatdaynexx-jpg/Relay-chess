@@ -3,6 +3,8 @@
  * Items are stack keys `type:id` (same as mine_items / stackKey), so input/output chests read and write banked storage directly.
  */
 import { GOODS, ORES, MAX_BANKED_STACK, isOre, priceOf, nameOf, sellable, type ItemType, type Stack } from './mines.js';
+import { CROPS, CROP_SEED_MUL } from './farm.js';
+import { TROPICAL_CROPS } from './resort.js';
 
 export const TICK_MS = 500;
 export const MAX_CATCHUP_MS = 8 * 3600_000;
@@ -108,6 +110,7 @@ export const FRECIPES: FRecipe[] = [
   R('m_juice', 'mill', [['good:crop_strawberry', 3]], ['good:berry_juice', 1], 3),
   R('m_tropical', 'mill', [['good:crop_pineapple', 1], ['good:crop_banana', 1], ['good:crop_mango', 1]], ['good:tropical_juice', 1], 5),
   R('m_oil', 'mill', [['good:crop_sunflower', 1]], ['good:sunflower_oil', 1], 6),
+  R('m_cigarette', 'mill', [['good:crop_tobacco', 1]], ['good:cigarette', 1], 6),
   R('m_cocoa', 'mill', [['good:crop_cacao', 1]], ['good:cocoa', 1], 6),
   R('m_coconut', 'mill', [['good:crop_coconut', 1]], ['good:coconut_milk', 1], 5),
   R('k_wine', 'cannery', [['good:crop_grapes', 2]], ['good:wine', 1], 12),
@@ -494,8 +497,8 @@ export function tierOf(key: string, seen = new Set<string>()): number {
 export const recipeIn = (r: FRecipe) => r.in.reduce((t, [k, q]) => t + q * priceOfKey(k), 0);
 export const recipeOut = (r: FRecipe) => r.out[1] * priceOfKey(r.out[0]);
 
-/** Dayne 2026-11-09: each farm/fish factory craft step pays 10% over the sum of its input bases (per output unit). */
-export const FOOD_STEP_MARKUP = 1.10;
+/** Each farm/fish factory craft step pays 8% over the sum of its input bases (per output unit). */
+export const FOOD_STEP_MARKUP = 1.08;
 const isFarmOrFishKey = (k: string, seen = new Set<string>()): boolean => {
   if (seen.has(k)) return false; seen.add(k);
   const id = k.split(':')[1] ?? '';
@@ -528,6 +531,16 @@ export function applyFarmFishFoodPrices(markup = FOOD_STEP_MARKUP): string[] {
   }
   return touched;
 }
+/** Keep raw crop GOODS prices in lockstep with CROP_SEED_MUL (seed x margin). */
+export function applyRawCropPrices(mul = CROP_SEED_MUL): string[] {
+  const touched: string[] = [];
+  for (const c of [...CROPS, ...TROPICAL_CROPS]) {
+    const id = `crop_${c.id}`; const g = GOODS[id]; if (!g) throw new Error(`GOODS missing for ${id}`);
+    g.price = mul * c.seed; touched.push(id);
+  }
+  return touched;
+}
+applyRawCropPrices();
 applyFarmFishFoodPrices();
 
 /**

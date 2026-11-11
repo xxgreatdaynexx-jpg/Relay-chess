@@ -1,8 +1,7 @@
 import { useDoing } from '@/lib/doing';
-import { backdropDismiss } from '@/lib/backdrop';
 /** Market: its own top-nav tab (/market, #market). Sub-tabs: Skins (listings, sell, trades) and Resources (ore, bars, goods from banked storage).
  *  Other panels open it with openMarket({...}); the 3D hub's Market building routes to /market. */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { TopTab } from '@/components/TopTabs';
 import { request, socket } from '@/lib/net';
 import { useAccount } from '@/lib/auth';
@@ -10,7 +9,8 @@ import { MarketView, MaterialsView, SellForm, TradesView } from './MarketPanel';
 import { Swatch, label } from './SkinsPanel';
 import { MyHistoryView } from './MarketCharts';
 import type { SkinItem } from '../../../shared/skins';
-import { usePanelDrag } from '@/lib/panelDrag';
+import { useBuildingWindow } from '@/lib/useBuildingWindow';
+import { focusBuildingWindow } from '@/lib/buildingWindows';
 
 export type MarketTab = 'skins' | 'resources';
 export type SkinsSub = 'listings' | 'sell' | 'trades';
@@ -21,26 +21,24 @@ export function openMarket(o: OpenMarket = {}) { window.dispatchEvent(new Custom
 const atMarket = () => window.location.pathname === '/market' || window.location.hash === '#market';
 
 export function MarketPage() {
-  const dragMarket = usePanelDrag('market');
+  const marketRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(atMarket);
-  useDoing('market', null, open);
   const [hist, setHist] = useState(false);
   const [tab, setTab] = useState<MarketTab>(() => (window.location.hash === '#market-resources' ? 'resources' : 'skins'));
   const [sub, setSub] = useState<SkinsSub>('listings'); const [item, setItem] = useState<string | null>(null); const [stack, setStack] = useState<string | null>(null); const [from, setFrom] = useState<'skins' | 'resources' | null>(null);
   useEffect(() => {
-    const on = (e: Event) => { const d = (e as CustomEvent<OpenMarket>).detail ?? {}; setOpen(true); setHist(false); if (d.tab) setTab(d.tab); if (d.sub) setSub(d.sub); setItem(d.item ?? null); setStack(d.stack ?? null); setFrom(d.from ?? null); };
+    const on = (e: Event) => { const d = (e as CustomEvent<OpenMarket>).detail ?? {}; setOpen(true); setHist(false); if (d.tab) setTab(d.tab); if (d.sub) setSub(d.sub); setItem(d.item ?? null); setStack(d.stack ?? null); setFrom(d.from ?? null); queueMicrotask(() => focusBuildingWindow('market')); };
     const pop = () => { if (atMarket()) setOpen(true); };
     window.addEventListener(EV, on); window.addEventListener('popstate', pop); window.addEventListener('hashchange', pop);
     return () => { window.removeEventListener(EV, on); window.removeEventListener('popstate', pop); window.removeEventListener('hashchange', pop); };
   }, []);
   const close = () => { setOpen(false); if (window.location.pathname === '/market' || window.location.hash.startsWith('#market')) history.replaceState(history.state, '', '/'); };
-  const back = () => { const f = from; close(); setFrom(null); if (f === 'skins') window.dispatchEvent(new CustomEvent('open-inventory', { detail: { tab: 'inv' } })); else if (f === 'resources') window.dispatchEvent(new Event('open-resource-inventory')); };
+  const back = () => { const f = from; setFrom(null); if (f === 'skins') window.dispatchEvent(new CustomEvent('open-inventory', { detail: { tab: 'inv' } })); else if (f === 'resources') window.dispatchEvent(new Event('open-resource-inventory')); else close(); };
   return (
     <div data-testid="market-page">
       <TopTab id="market"><button type="button" className="sol-tab" aria-expanded={open} id="market-tab" onClick={() => (open ? close() : setOpen(true))} data-testid="market-tab">{open ? '▴ Market' : '🏪 Market'}</button></TopTab>
       {open && (
-        <div className="inv-backdrop" {...backdropDismiss(() => close())}>
-          <div className="inv-win mkt-win" role="dialog" aria-label="Market" data-drag-panel="market" onPointerDown={dragMarket.onPointerDown} style={dragMarket.style()} ref={dragMarket.ref}>{dragMarket.handle}
+        <MarketWindow onClose={close} marketRef={marketRef}>
             <header className="inv-head">
               <button type="button" className="mkt-back" onClick={back} aria-label={from === 'skins' ? 'Back to Skin Inventory' : from === 'resources' ? 'Back to Resource Inventory' : 'Back to the city'} data-testid="mkt-back">← Back<span className="mkt-back-to">{from === 'skins' ? ' to Skin Inventory' : from === 'resources' ? ' to Resource Inventory' : ' to city'}</span></button>
               <h2>🏪 Market</h2>
@@ -56,9 +54,21 @@ export function MarketPage() {
             {!hist && tab === 'skins' && sub === 'trades' && <TradesView seed={item} />}
             {!hist && tab === 'resources' && <MaterialsView initialSell={stack} />}
             {hist && <MyHistoryView />}
-          </div>
-        </div>
+        </MarketWindow>
       )}
+    </div>
+  );
+}
+
+
+function MarketWindow({ onClose, marketRef, children }: { onClose: () => void; marketRef: RefObject<HTMLDivElement | null>; children: ReactNode }) {
+  const win = useBuildingWindow('market', marketRef, onClose);
+  useDoing('market', null, win.isFront);
+  return (
+    <div ref={marketRef} className={`sol-panel hub-win hub-win-market mkt-win${win.className}`} style={win.style} onPointerDownCapture={win.front} onPointerMove={win.onPanelMove} role="dialog" aria-label="Market" data-drag-panel="market">
+      {win.grips}
+      <div {...win.bar} className="sol-bar hub-win-bar"><span className="font-semibold">🏪 Market</span>{win.moved && <button type="button" className="win-reset" aria-label="Reset window position" onClick={win.reset}>⟲</button>}<button type="button" className="ml-auto" aria-label="Close market" onClick={onClose}>✕</button></div>
+      <div className="hub-win-body mkt-win-body">{children}</div>
     </div>
   );
 }

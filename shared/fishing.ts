@@ -107,14 +107,20 @@ export const FISH_SELL_MUL = 1.15;
 export const fishSellValue = (value: number) => (value * 115) / 100; // = value x FISH_SELL_MUL, exact for integers
 export const FISH_TIERS: Array<{ upTo: number; rate: number }> = [{ upTo: 115_000, rate: 1 }, { upTo: Infinity, rate: 0 }];
 export const FISH_DAILY_MAX = FISH_TIERS.reduce((a, t, i) => a + (Number.isFinite(t.upTo) ? (t.upTo - (i ? FISH_TIERS[i - 1]!.upTo : 0)) * t.rate : 0), 0);
-/** Separate per-spot daily caps (mu-fishing): each spot is tracked on its own (fish_daily row per spot). */
+/** Floor per-spot daily caps (base chips, before the house-sell cap index). Each spot is tracked on its own (fish_daily row per spot). */
 export const FISH_SPOT_CAP: Record<FishSpot, number> = { lake: 115_000, reef: 230_000, deep: 575_000 };
-export const fishTiers = (spot: FishSpot = 'lake'): Array<{ upTo: number; rate: number }> => [{ upTo: FISH_SPOT_CAP[spot], rate: 1 }, { upTo: Infinity, rate: 0 }];
+/** Daily cap for a spot: the floor, or the floor times the house-sell cap index, whichever is higher. */
+export function fishSpotCap(spot: FishSpot = 'lake', capIndex = 1): number {
+  const base = FISH_SPOT_CAP[spot];
+  const idx = Number.isFinite(capIndex) && capIndex > 0 ? capIndex : 1;
+  return Math.max(base, Math.round(base * idx));
+}
+export const fishTiers = (spot: FishSpot = 'lake', capIndex = 1): Array<{ upTo: number; rate: number }> => [{ upTo: fishSpotCap(spot, capIndex), rate: 1 }, { upTo: Infinity, rate: 0 }];
 /** fish_daily.player_key for a spot: the plain player key for the lake (back-compatible), `key#reef` / `key#deep` otherwise. */
 export const fishDailyKey = (key: string, spot: FishSpot = 'lake') => (spot === 'lake' ? key : `${key}#${spot}`);
-export function fishPayout(gross: number, already: number, spot: FishSpot = 'lake'): number {
+export function fishPayout(gross: number, already: number, spot: FishSpot = 'lake', capIndex = 1): number {
   let left = gross, at = already, pay = 0, lo = 0;
-  for (const t of fishTiers(spot)) { if (left <= 0) break; const take = Math.min(left, Math.max(0, t.upTo - Math.max(at, lo))); pay += take * t.rate; left -= take; at += take; lo = t.upTo; }
+  for (const t of fishTiers(spot, capIndex)) { if (left <= 0) break; const take = Math.min(left, Math.max(0, t.upTo - Math.max(at, lo))); pay += take * t.rate; left -= take; at += take; lo = t.upTo; }
   return Math.floor(pay + 1e-9);
 }
 
@@ -159,7 +165,7 @@ export function replayReel(seed: number, diff: number, inputs: string): 'caught'
 }
 
 export interface FishCatch { id: string; fish: string; grams: number; value: number; at: number; /** truck logistics: where this fish is (fishing:<spot>, factory, warehouse, kitchen:<home>, transit:<id>) */ loc?: string | null }
-export interface FishView { cooler: FishCatch[]; today: { gross: number; paid: number }; /** per-spot sold today (base gross) */ todayBySpot?: Record<FishSpot, { gross: number; paid: number }>; index: number; best: { fish: string; grams: number } | null; totals: { caught: number } }
+export interface FishView { cooler: FishCatch[]; today: { gross: number; paid: number }; /** per-spot sold today (base gross) */ todayBySpot?: Record<FishSpot, { gross: number; paid: number }>; index: number; /** House-sell cap index used to scale per-spot daily caps (floor stays FISH_SPOT_CAP). */ capIndex?: number; best: { fish: string; grams: number } | null; totals: { caught: number } }
 
 /** What other players see of an angler at the dock (pt242u). Derived on the server from fish_* actions only:
  *  'cast' = line out (bobber floats; the bite time stays secret), 'reel' = fighting a fish, 'catch' = just landed one. */

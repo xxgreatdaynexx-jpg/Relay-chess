@@ -9,6 +9,7 @@ import { RARITY_COLOR, RARITY_NAME, SKIN_BY_ID, WEAPON_NAME, isKnife, wearOf, ty
 import { Swatch, label, rarityOf } from './SkinsPanel';
 import { lockLeft } from '../../../shared/tradeLock';
 import { StorageSellPanel } from './ResourceSell';
+import { BuyRequestsBoard } from './MarketRequests';
 
 type Ack = { ok: boolean; error?: string; [k: string]: unknown };
 interface ListingView { id: string; price: number; seller: string; at: number; item: SkinItem }
@@ -16,6 +17,7 @@ interface History { what: string; sales: Array<{ price: number; at: number }>; c
 interface TradeView { id: string; fromName: string; toName: string; giveChips: number; wantChips: number; giveItems: SkinItem[]; wantItems: SkinItem[]; at: number; counterOf?: string }
 const whatOf = (i: SkinItem) => (i.kind === 'skin' ? i.skin : i.kind);
 const chipsFmt = (n: number) => `${n.toLocaleString()} 🪙`;
+const houseFmt = (n: number | undefined) => (n != null && n > 0 ? `${(+n.toFixed(2)).toLocaleString()} 🪙` : '—');
 
 /** First-24h trade lock banner: asks the server how long is left and counts down each minute. */
 export function TradeLockNote() {
@@ -154,16 +156,18 @@ export function MaterialsView({ initialSell }: { initialSell?: string | null } =
       <TradeLockNote />
       {msg && <p className="mkt-ok">{msg}</p>}{err && <p className="inv-err">{err}</p>}
       {account && <StorageSellPanel pack={pack} rows={rows} cat={cat} sell={sell} setSell={setSell} act={act} reload={load} />}
+      <BuyRequestsBoard pack={pack} cat={cat} onChanged={load} />
       <Controls q={q} setQ={setQ} sort={sort} setSort={setSort} listed={listed} setListed={setListed}>
         <select value={type} onChange={(e) => setType(e.target.value)} data-testid="mkt-type"><option value="all">All resources</option><option value="ore">Ore</option><option value="bar">Bars</option><option value="good">Goods</option><option value="food">Groceries & crops</option></select>
       </Controls>
-      <table className="mkt-table" data-testid="mkt-res-catalog"><thead><tr><th>Item</th><th>Lowest</th><th>Listings</th><th>Last sale</th></tr></thead><tbody>
-        {shown.map((e) => <tr key={e.what} className={cur?.what === e.what ? 'sel' : ''} onClick={() => setPick(e.what)} style={{ cursor: 'pointer' }}><td><Chip r={e} /> {e.name}</td><td>{e.lowest != null ? chipsFmt(e.lowest) : <span className="mkt-none">No listings</span>}</td><td>{e.listings}</td><td>{e.last != null ? chipsFmt(e.last) : '—'}</td></tr>)}
-        {!shown.length && <tr><td colSpan={4} className="inv-note">Nothing matches.</td></tr>}
+      <table className="mkt-table" data-testid="mkt-res-catalog"><thead><tr><th>Item</th><th>House</th><th>Lowest</th><th>Listings</th><th>Last sale</th></tr></thead><tbody>
+        {shown.map((e) => <tr key={e.what} className={cur?.what === e.what ? 'sel' : ''} onClick={() => setPick(e.what)} style={{ cursor: 'pointer' }}><td><Chip r={e} /> {e.name}</td><td data-testid="mkt-res-house">{houseFmt(e.house)}</td><td>{e.lowest != null ? chipsFmt(e.lowest) : <span className="mkt-none">No listings</span>}</td><td>{e.listings}</td><td>{e.last != null ? chipsFmt(e.last) : '—'}</td></tr>)}
+        {!shown.length && <tr><td colSpan={5} className="inv-note">Nothing matches.</td></tr>}
       </tbody></table>
       <Pager page={page} pages={pages} set={setPage} />
       {cur && <div className="mkt-mat-detail" data-testid="mkt-mat-detail">
         <h3><Chip r={cur} /> {cur.name}</h3>
+        {cur.house != null && cur.house > 0 && <p className="mkt-stats" data-testid="mkt-mat-house">House pays {houseFmt(cur.house)} each.</p>}
         <table className="mkt-table"><thead><tr><th>Unit</th><th>Left</th><th>Seller</th><th /></tr></thead><tbody>
           {here.map((r) => { const k = Math.max(1, Math.min(r.qty, Math.floor(Number(qty[r.id] ?? 1)) || 1)); return (
             <tr key={r.id}><td>{chipsFmt(r.unit)}</td><td>{r.qty}/{r.total}</td><td>{r.seller}</td><td>

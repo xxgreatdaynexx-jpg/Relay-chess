@@ -1,5 +1,6 @@
 /** Multiplayer No-Limit Texas Hold'em tables (5/10 blinds). Chips come from the casino bank at buy-in and go back on leaving. */
 import { payNightlyBonus } from './nightly-event.js';
+import { payCigaretteBonus } from './cigarettes.js';
 import type { CasinoCard } from '../shared/casino.js';
 import {
   bestHand, heStakes, HE_NEXT_HAND_MS, HE_SEATS, HE_TURN_MS, type HEStakes, type HEStakesId,
@@ -298,6 +299,7 @@ export class HoldemTable {
       const net = s.stack - s.startStack;
       this.bank.settle(s.name, 0, net, 'hand', 'holdem');
       if (net > 0) payNightlyBonus(s.name, 'poker', net, `holdem:${this.id}:${this.handNo}`, this.bank); // nightly 10x (#35)
+      if (net > 0) payCigaretteBonus(s.name, net, 'holdem', `holdem:${this.id}:${this.handNo}`, this.bank);
       s.inHand = s.leaving ? false : s.inHand;
       if (s.leaving || s.stack === 0) this.cashOut(i);
     }

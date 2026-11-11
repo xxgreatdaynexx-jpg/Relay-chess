@@ -21,6 +21,7 @@ import { WORLD_SPOTS } from '@/lib/worldSpots';
 import { BILLIONAIRE_SIGN } from '../../../shared/billionaireUpdate';
 import { useWalletChips } from '@/lib/wallet';
 import { CLOSE_WORLD_PANELS, WALLET_CLOSE, NONE, closePanel, panelId, togglePanel, type WorldPanel } from '@/lib/worldPanels';
+import { focusBuildingWindow } from '@/lib/buildingWindows';
 import { MINE_CAVE_EVENT } from '../../../shared/mines';
 import { MINE_SITES } from '@/lib/worldLayout';
 import type { World } from '@/lib/world3d';
@@ -177,10 +178,12 @@ const CASINO_GAMES = [
 const MODE_KEY = 'chud-world-mode';
 
 /** Press a top-bar tab (opens its panel) unless it's already open. */
-function openTab(testId: string) {
+function openTab(testId: string, focusId?: 'factory' | 'market') {
   const el = document.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
-  if (el && el.getAttribute('aria-expanded') !== 'true') el.click();
-  return !!el;
+  if (!el) return false;
+  if (el.getAttribute('aria-expanded') !== 'true') el.click();
+  else if (focusId) focusBuildingWindow(focusId);
+  return true;
 }
 
 function weakDevice() {
@@ -283,9 +286,9 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       case 'chess': onClose(); return;
       case 'mine': case 'mine-frost': case 'mine-magma': case 'mine-quarry': window.dispatchEvent(new CustomEvent(MINE_CAVE_EVENT, { detail: MINE_SITES[id].cave })); break;
       case 'arena': openTab('arena-tab'); break;
-      case 'factory': openTab('factory-tab') || openTab('mines-tab'); break;
+      case 'factory': openTab('factory-tab', 'factory') || openTab('mines-tab'); break;
       case 'warehouse': window.dispatchEvent(new Event('open-resource-inventory')); break; // Chud City Warehouse: stored goods, Sell to house / Sell on Market (skins: 🎒 button there)
-      case 'market': if (openTab('market-tab')) break; window.dispatchEvent(new CustomEvent('open-inventory', { detail: { tab: 'market' } })); break;
+      case 'market': if (openTab('market-tab', 'market')) break; window.dispatchEvent(new CustomEvent('open-inventory', { detail: { tab: 'market' } })); break;
       case 'bank': openTab('wallet-button'); break;
       case 'stocks': openTab('stocks-tab'); break;
       case 'chat': openTab('chat-tab'); break;

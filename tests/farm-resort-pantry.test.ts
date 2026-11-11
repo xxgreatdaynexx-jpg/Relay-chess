@@ -28,7 +28,7 @@ async function setup() {
   return { pool, bank, re, farm, fund, ls, setNow: (t: number) => { now = t; }, id: 'rf:1' as const };
 }
 
-beforeEach(() => resetFarmGuardForTest());
+beforeEach(() => { resetFarmGuardForTest(); });
 afterEach(() => { setLocStore(new LocStore(null)); });
 
 describe('resort plantation pantry (pt2094u)', () => {

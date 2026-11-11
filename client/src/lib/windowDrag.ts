@@ -12,7 +12,7 @@ type Dir = (typeof DIRS)[number];
 /** Window stacking: the last-focused window is on top. Kept below the top bar (z 48) is not needed since windows never go under it. */
 const Z_BASE = 46;
 const stack: HTMLElement[] = [];
-function bringToFront(el: HTMLElement) {
+export function bringToFront(el: HTMLElement) {
   const i = stack.indexOf(el);
   if (i >= 0) stack.splice(i, 1);
   for (let j = stack.length - 1; j >= 0; j--) if (!stack[j].isConnected) stack.splice(j, 1);
@@ -31,7 +31,7 @@ export function isFrontWindow(el: HTMLElement | null): boolean {
   return true;
 }
 
-function dropFromStack(el: HTMLElement) {
+export function dropFromStack(el: HTMLElement) {
   const i = stack.indexOf(el);
   if (i >= 0) stack.splice(i, 1);
   const top = stack[stack.length - 1];
@@ -85,6 +85,7 @@ export function useWindowDrag(id: string, ref: RefObject<HTMLElement | null>) {
     const el = ref.current;
     if (!el || phone() || inFs(el)) return o;
     const r = el.getBoundingClientRect();
+    if (!r.width && !r.height) return o; // not laid out (jsdom / hidden)
     const cur = offRef.current;
     return clampOffset(o, { left: r.left - cur.dx, top: r.top - cur.dy, width: r.width, height: r.height }, window.innerWidth, window.innerHeight, M, TOP_BAR);
   }, [ref]);

@@ -16,9 +16,9 @@ const PANEL_ROOT = /<div[^>]*(className="[^"]*\b(world-deed|inv-win|dealer-box|a
 
 describe('every floating panel uses the shared drag behaviour', () => {
   const expected: Record<string, string[]> = {
-    'CookingPanels.tsx': ['grocery', 'kitchen'], 'EmploymentPanel.tsx': ['employ'], 'MechanicShop.tsx': ['mechanic'], 'DailyReport.tsx': ['daily'],
+    'MechanicShop.tsx': ['mechanic'], 'DailyReport.tsx': ['daily'],
     'Venues.tsx': ['venue'], 'FarmGame.tsx': ['farm'], 'ResortMap.tsx': ['resortDeeds', 'resortAir'], 'WorldMap.tsx': ['deed', 'deeds', 'home'],
-    'Dealership.tsx': ['dealer'], 'MarketPage.tsx': ['market'], 'StocksPage.tsx': ['stocks'], 'Skills.tsx': ['skills'], 'SkinsPanel.tsx': ['inventory'],
+    'Dealership.tsx': ['dealer'], 'StocksPage.tsx': ['stocks'], 'Skills.tsx': ['skills'], 'SkinsPanel.tsx': ['inventory'],
     'PlayerProfile.tsx': ['profile'], 'AccountPanel.tsx': ['account'], 'WalletButton.tsx': ['wallet'], 'ConquestPanel.tsx': ['cqRules'],
     'AdminPopup.tsx': ['admin'], 'FishingPanel.tsx': ['fishing'], 'RoomScreen.tsx': ['bailout'],
   };
@@ -36,7 +36,7 @@ describe('every floating panel uses the shared drag behaviour', () => {
         const tag = s.slice(m.index!, s.indexOf('>', m.index! + m[0].length - 1) + 400);
         const open = tag.slice(0, 600);
         if (/cq-overlay/.test(open) || /alertdialog/.test(open)) continue;
-        if (/data-drag-panel=|win\.(style|className)|winRef|wrapRef|useWindowDrag/.test(open) || (/sol-panel/.test(open) && s.includes('useWindowDrag'))) continue;
+        if (/data-drag-panel=|win\.(style|className)|winRef|wrapRef|useWindowDrag|useBuildingWindow/.test(open) || (/sol-panel/.test(open) && (s.includes('useWindowDrag') || s.includes('useBuildingWindow') || s.includes('HubWindow')))) continue;
         missing.push(`${f}: ${open.slice(0, 90)}`);
       }
     }

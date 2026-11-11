@@ -24,7 +24,7 @@ async function setup() {
   return { db, bank, re, farm, fund, chips, ledger, id, small, setNow: (t: number) => { now = t; } };
 }
 
-beforeEach(() => resetFarmGuardForTest());
+beforeEach(() => { resetFarmGuardForTest(); });
 
 describe('farm district', () => {
   it('plots are farmland properties east of the plate, never overlapping each other or the Trailer Park; a small plot is a few days of login bonuses', () => {
@@ -64,8 +64,9 @@ describe('farm district', () => {
     s.setNow(T0 + 10 * M);
     const [a, b] = await Promise.allSettled([s.farm.harvest('Gus', s.id), s.farm.harvest('Gus', s.id)]);
     expect([a, b].filter((r) => r.status === 'fulfilled')).toHaveLength(1);
-    expect(s.chips('gus')).toBe(960 + 60); expect(s.ledger('gus', 'farm_harvest')).toEqual([{ amount: 60 }]); // 4 wheat: 40 seeds back + 4 × (15 − 10) = 20 profit (crop margins: 50% of seed)
-    const v = await s.farm.view(s.id, 'Gus'); expect(v.tiles).toHaveLength(0); expect(v.today.gross).toBe(20); expect(v.mine).toBe(true);
+    const wheat = CROPS.find((c) => c.id === 'wheat')!; const profit = Math.floor(4 * cropProfit(wheat)); const paid = 40 + profit;
+    expect(s.chips('gus')).toBe(960 + paid); expect(s.ledger('gus', 'farm_harvest')).toEqual([{ amount: paid }]); // 4 wheat: seed back + 35% margin (list price is 2-decimal rounded)
+    const v = await s.farm.view(s.id, 'Gus'); expect(v.tiles).toHaveLength(0); expect(v.today.gross).toBe(profit); expect(v.mine).toBe(true);
     expect((await s.farm.view(s.id, 'Hal')).mine).toBe(false); // neighbours can look, not touch
   });
   it('withered crops pay nothing and can be cleared; harvest payouts follow the price index; a wallet never goes negative', async () => {

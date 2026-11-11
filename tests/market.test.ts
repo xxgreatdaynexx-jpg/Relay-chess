@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
 import { getVault, ItemVault, PgItemStore, resetVault, type StoredItem } from '../server/skins';
 import { feeOf, Market, MAX_BANKED_STACK, resetMarket } from '../server/market';
+import { setPriceIndexForTest } from '../server/price-index';
+import { houseSellPrice } from '../shared/sellBuff';
 import { getBank, PgCasinoStore, resetBank } from '../server/casino-store';
 
 let v: ItemVault; let m: Market;
@@ -236,6 +238,29 @@ describe('market catalog', () => {
     m.sales.push({ id: 'z1', listingId: 'z1', itemId: 'qty:2', what: 'stack:ore:iron', price: 7, fee: 1, seller: 'carol', buyer: 'dave', at: Date.now() });
     m.sales.push({ id: 'z2', listingId: 'z2', itemId: 'qty:2', what: 'stack:ore:iron', price: 99, fee: 1, seller: 'qa-x', buyer: 'dave', at: Date.now() + 1 });
     expect(m.catalog('resources').items.find((e) => e.what === 'stack:ore:iron')).toMatchObject({ listings: 0, lowest: null, last: 7 });
+  });
+
+  it('attaches the live indexed house-desk unit price to every resource', () => {
+    setPriceIndexForTest(1.3439);
+    const cat = m.catalog('resources') as { items: Array<{ what: string; type?: string; house: number }>; housePrices: Record<string, number> };
+    const coal = cat.items.find((e) => e.what === 'stack:ore:coal');
+    expect(coal).toMatchObject({ house: 1 * 1.3439 });
+    expect(cat.housePrices['ore:coal']).toBe(1.3439);
+    const bar = cat.items.find((e) => e.what === 'stack:bar:iron_bar')!;
+    expect(bar.house).toBeCloseTo(houseSellPrice({ type: 'bar', id: 'iron_bar' }) * 1.3439);
+    const food = cat.items.find((e) => e.type === 'food');
+    if (food) expect(food.house).toBe(0);
+    setPriceIndexForTest(1);
+  });
+
+  it('filters buy-request search by item name, case-insensitive and live (empty query matches all)', async () => {
+    const { matchesItemSearch } = await import('../client/src/lib/marketCatalog');
+    expect(matchesItemSearch('Coal', '')).toBe(true);
+    expect(matchesItemSearch('Coal', '  ')).toBe(true);
+    expect(matchesItemSearch('Iron Bar', 'iron')).toBe(true);
+    expect(matchesItemSearch('Iron Bar', 'BAR')).toBe(true);
+    expect(matchesItemSearch('Iron Bar', 'coal')).toBe(false);
+    expect(matchesItemSearch('Copper Ore', ' copper ')).toBe(true);
   });
   it('sorts and filters the catalog client-side', async () => {
     const { sortCatalog } = await import('../client/src/lib/marketCatalog');

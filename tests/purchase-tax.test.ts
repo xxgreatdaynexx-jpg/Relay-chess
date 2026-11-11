@@ -135,7 +135,8 @@ describe('purchase wealth tax: threshold = price paid + upgrades held (no plante
     const { propertyPaidPlusUpgrades, propertyWorth } = await import('../shared/netWorth');
     expect(propertyPaidPlusUpgrades({ paid: 99_000, list: 5, upgrades: 2_000 })).toBe(101_000);
     expect(propertyWorth({ paid: 99_000, list: 5, upgrades: 2_000, crops: 40 })).toBe(101_040);
-    const s = await setup(['Ann', 'Bob']); const farm = new Farm(s.pool as never, () => s.bank); await farm.init();
+    const s = await setup(['Ann', 'Bob']);
+    const farm = new Farm(s.pool as never, () => s.bank); await farm.init();
     const plot = farmPlots().find((p) => p.cols * p.rows === 16)!; const id = `f:${plot.n}`;
     await (s.pool as any).query('INSERT INTO properties (id, owner_key, owner_name, price, bought_at) VALUES ($1,$2,$3,$4,0)', [id, 'rich', 'Rich', PURCHASE_TAX_THRESHOLD]);
     await s.fund('Rich', 1_000_000);

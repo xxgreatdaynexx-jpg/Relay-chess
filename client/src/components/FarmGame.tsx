@@ -63,15 +63,20 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
   }, [view, skew, load]);
   const t = now + skew; const idx = view?.index ?? 1;
   const byTile = new Map((view?.tiles ?? []).map((x) => [x.tile, x]));
-  const stage = (tile: number) => { const x = byTile.get(tile); if (!x) return 'empty'; return t >= x.witherAt ? 'withered' : t >= x.readyAt ? 'ready' : 'growing'; };
+  const stage = (tile: number) => {
+    const x = byTile.get(tile); if (!x) return 'empty';
+    if (t >= x.witherAt) return 'withered';
+    return t >= x.readyAt ? 'ready' : 'growing';
+  };
   const stageLive = (v: FarmView, tile: number) => {
     const x = v.tiles.find((row) => row.tile === tile); if (!x) return 'empty';
     const at = nowRef.current + skewRef.current;
-    return at >= x.witherAt ? 'withered' : at >= x.readyAt ? 'ready' : 'growing';
+    if (at >= x.witherAt) return 'withered';
+    return at >= x.readyAt ? 'ready' : 'growing';
   };
   const n = view ? view.cols * view.rows : 0;
   const empties = Array.from({ length: n }, (_, i) => i).filter((i) => stage(i) === 'empty');
-  const ready = Array.from({ length: n }, (_, i) => i).filter((i) => stage(i) === 'ready');
+  const ready = Array.from({ length: n }, (_, i) => i).filter((i) => { const x = byTile.get(i); return !!x && t >= x.readyAt && t < x.witherAt; });
   const withered = Array.from({ length: n }, (_, i) => i).filter((i) => stage(i) === 'withered');
   const nextReadyIn = view ? Math.min(...view.tiles.map((x) => x.readyAt).filter((at) => at > t), Infinity) : Infinity;
   const boxed = view && box ? new Set(boxTiles(view.cols, view.rows, box[0], box[1])) : null;
@@ -95,7 +100,7 @@ export function FarmGame({ id, label, onClose, onAllFarms }: { id: string; label
   const click = (i: number) => {
     if (skipClick.current) { skipClick.current = false; return; }
     if (!view?.mine || busy) return; const s = stage(i);
-    if (s === 'ready') act('farm_harvest', { tiles: [i] }, (r) => `Harvested for 🪙 ${chips(Number(r.paid))}.`);
+    if (ready.includes(i)) act('farm_harvest', { tiles: [i] }, (r) => `Harvested for 🪙 ${chips(Number(r.paid))}.`);
     else if (s === 'empty') setSel((p) => { const q = new Set(p); if (q.has(i)) q.delete(i); else q.add(i); return q; });
   };
   const tileFromPtr = (e: { clientX: number; clientY: number }) => {

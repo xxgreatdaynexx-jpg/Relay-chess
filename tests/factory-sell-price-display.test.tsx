@@ -12,10 +12,12 @@ vi.mock('@/lib/net', () => ({
       quote: { gross: 175.5, paid: 196, already: 0, effAlready: 0, index: 1.12, capBase: 100000, capIndex: 1 },
     }) }),
   },
+  request: async () => ({ ok: true, items: [] }),
 }));
 vi.mock('@/lib/doing', () => ({ useDoing: () => {} }));
 vi.mock('@/lib/wallet', () => ({ useWalletChips: () => null }));
 vi.mock('@/lib/windowDrag', () => ({ useWindowDrag: () => ({ className: '', style: {}, grips: null, bar: {}, front: () => {}, onPanelMove: () => {}, moved: false, reset: () => {} }) }));
+vi.mock('@/lib/useBuildingWindow', () => ({ useBuildingWindow: () => ({ className: '', style: {}, grips: null, bar: {}, front: () => {}, onPanelMove: () => {}, moved: false, reset: () => {}, isFront: true }) }));
 vi.mock('@/components/TopTabs', () => ({ TopTab: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock('@/components/FactoryBuilder', () => ({ FactoryBuilder: () => null }));
 vi.mock('@/components/FactoryViewer', () => ({ openFactoryView: () => {} }));

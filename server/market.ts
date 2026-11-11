@@ -8,7 +8,7 @@ import { treasuryShareOf } from '../shared/city.js';
 import { royaltyEarn } from './royalty.js';
 import { randomUUID } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
-import { getBank } from './casino-store.js';
+import { getBank, type CasinoBank } from './casino-store.js';
 import { getAccounts } from './accounts.js';
 import { otherLockMsg, selfLockMsg } from '../shared/tradeLock.js';
 import { getVault, playerKey, RuleError, type ItemVault, type Stmt, type StoredItem } from './skins.js';
@@ -19,12 +19,14 @@ import { databaseUrl } from './leaderboard-store.js';
 import { isFood, STAPLES } from '../shared/cooking.js';
 import { CROPS } from '../shared/farm.js';
 import { TROPICAL_CROPS } from '../shared/resort.js';
-import { GOODS, MAX_BANKED_STACK, ORES, ORE_ORDER, isOre, nameOf as stackName, type ItemType } from '../shared/mines.js';
+import { GOODS, MAX_BANKED_STACK, ORES, ORE_ORDER, isOre, nameOf as stackName, sellable, type ItemType } from '../shared/mines.js';
 import { CASE_NAME, KEY_NAME, SKINS, SKIN_BY_ID, type SkinItem } from '../shared/skins.js';
 import { skillLevel } from './skills.js';
 import { tradingFeeMul } from '../shared/skillPerks.js';
 import { cityFeeMul } from './mayor.js';
 import { eventCredit, eventTrade } from './weeklyEvent.js';
+import { houseSellPrice } from '../shared/sellBuff.js';
+import { priceIndex } from './price-index.js';
 
 export const MARKET_FEE = 0.05;
 export const MIN_PRICE = 1;
@@ -44,9 +46,22 @@ export interface Trade { id: string; from: string; fromName: string; to: string;
 
 export { MAX_BANKED_STACK } from '../shared/mines.js';
 export const MAX_STACK_QTY = 100_000;
+/** Open buy requests a player may have at once (same cap as sell listings). */
+export const MAX_REQUESTS = 50;
+/** Indexed unit price the house desk pays (same figure Factory / Warehouse show per unit). 0 if the house does not buy it. */
+export const houseDeskUnit = (type: ItemType, id: string): number => {
+  const s = { type, id };
+  return sellable(s) ? houseSellPrice(s) * priceIndex() : 0;
+};
 /** Stackable listing (Mines ore / bars / goods from mine_items): unit price, partial buys. Escrowed qty leaves the seller's pack. */
 export interface StackListing { id: string; seller: string; sellerName: string; type: ItemType; itemId: string; qty: number; total: number; unit: number; status: 'active' | 'sold' | 'cancelled'; at: number; closedAt?: number; sold: number; /** truck logistics: 'warehouse' = escrowed from Warehouse stock; null = a legacy listing escrowed from banked (= factory) storage */ origin?: string | null }
 export const stackWhat = (type: string, id: string) => `stack:${type}:${id}`;
+/** Player buy request: chips are escrowed up front; sellers fill at the posted unit price (partial OK). */
+export interface MarketRequest {
+  id: string; buyer: string; buyerName: string; type: ItemType; itemId: string;
+  qty: number; total: number; unit: number; escrow: number; filled: number;
+  status: 'active' | 'filled' | 'cancelled'; at: number; closedAt?: number;
+}
 export const isStackable = (type: unknown, id: unknown): type is ItemType => typeof id === 'string' && ((type === 'food' && isFood(id)) || (type === 'ore' && isOre(id)) || ((type === 'bar' || type === 'good') && GOODS[id]?.type === type));
 export const MARKET_MIGRATION = [
   `CREATE TABLE IF NOT EXISTS market_listings (id TEXT PRIMARY KEY, seller_key TEXT NOT NULL, seller_name TEXT NOT NULL, item_id TEXT NOT NULL, price INTEGER NOT NULL, status TEXT NOT NULL, buyer_key TEXT, created_at BIGINT NOT NULL, closed_at BIGINT)`,
@@ -54,6 +69,10 @@ export const MARKET_MIGRATION = [
   `CREATE TABLE IF NOT EXISTS trade_offers (id TEXT PRIMARY KEY, from_key TEXT NOT NULL, from_name TEXT NOT NULL, to_key TEXT NOT NULL, to_name TEXT NOT NULL, give_items TEXT NOT NULL, want_items TEXT NOT NULL, give_chips INTEGER NOT NULL, want_chips INTEGER NOT NULL, status TEXT NOT NULL, created_at BIGINT NOT NULL, closed_at BIGINT)`,
   `CREATE TABLE IF NOT EXISTS market_stack_listings (id TEXT PRIMARY KEY, seller_key TEXT NOT NULL, seller_name TEXT NOT NULL, item_type TEXT NOT NULL, item_id TEXT NOT NULL, qty_left INTEGER NOT NULL, qty_total INTEGER NOT NULL, unit_price INTEGER NOT NULL, sold INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, created_at BIGINT NOT NULL, closed_at BIGINT)`,
   `ALTER TABLE market_stack_listings ADD COLUMN IF NOT EXISTS origin TEXT`,
+  `CREATE TABLE IF NOT EXISTS market_requests (
+    id TEXT PRIMARY KEY, buyer_key TEXT NOT NULL, buyer_name TEXT NOT NULL, item_type TEXT NOT NULL, item_id TEXT NOT NULL,
+    qty_left INTEGER NOT NULL, qty_total INTEGER NOT NULL, unit_price INTEGER NOT NULL, escrow INTEGER NOT NULL,
+    filled INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, created_at BIGINT NOT NULL, closed_at BIGINT)`,
 ];
 const stackStmt = (l: StackListing): Stmt => ({
   sql: `INSERT INTO market_stack_listings (id, seller_key, seller_name, item_type, item_id, qty_left, qty_total, unit_price, sold, status, created_at, closed_at, origin) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
@@ -62,6 +81,19 @@ const stackStmt = (l: StackListing): Stmt => ({
 });
 
 /** What a listing/sale is, for price history: skin id, or 'case' / 'key'. */
+const requestStmt = (r: MarketRequest): Stmt => ({
+  sql: `INSERT INTO market_requests (id, buyer_key, buyer_name, item_type, item_id, qty_left, qty_total, unit_price, escrow, filled, status, created_at, closed_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        ON CONFLICT (id) DO UPDATE SET qty_left = EXCLUDED.qty_left, unit_price = EXCLUDED.unit_price, escrow = EXCLUDED.escrow, filled = EXCLUDED.filled, status = EXCLUDED.status, closed_at = EXCLUDED.closed_at`,
+  args: [r.id, r.buyer, r.buyerName, r.type, r.itemId, r.qty, r.total, r.unit, r.escrow, r.filled, r.status, r.at, r.closedAt ?? null],
+});
+/** Incremental credit already sitting in the same transaction as a seller withdrawal (city pack / mine_items). */
+const mineCreditStmt = (key: string, name: string, type: string, id: string, qty: number): Stmt => ({
+  sql: `INSERT INTO mine_items (player_key, owner_name, item_type, item_id, qty) VALUES ($1,$2,$3,$4,$5)
+        ON CONFLICT (player_key, item_type, item_id) DO UPDATE SET qty = mine_items.qty + EXCLUDED.qty, owner_name = EXCLUDED.owner_name, updated_at = now()`,
+  args: [key, name, type, id, qty],
+});
+
 export const whatOf = (i: Pick<SkinItem, 'kind' | 'skin'>) => (i.kind === 'skin' ? i.skin : i.kind);
 const intIn = (v: unknown, lo: number, hi: number, what: string) => {
   const n = Number(v);
@@ -86,8 +118,11 @@ export class Market {
   sales: Sale[] = [];
   trades = new Map<string, Trade>();
   stacks = new Map<string, StackListing>();
+  requests = new Map<string, MarketRequest>();
   onTrade?: (keys: string[]) => void;
   onStacksReverted?: () => void;
+  onRequestsReverted?: () => void;
+  onRequestsChanged?: () => void;
   /** True until the persisted listings/trades are loaded (boot retry): every market action refuses meanwhile. */
   offline = false;
   constructor(readonly vault: ItemVault = getVault()) {}
@@ -101,12 +136,15 @@ export class Market {
     // Truck logistics: listings made before the cutover escrowed banked storage (= the owner's factory); record that origin
     // explicitly so a cancel always returns them there (idempotent; new listings carry 'warehouse').
     await st.query("UPDATE market_stack_listings SET origin = 'factory' WHERE origin IS NULL");
-    this.listings.clear(); this.stacks.clear(); this.trades.clear(); this.sales.length = 0;
+    this.listings.clear(); this.stacks.clear(); this.requests.clear(); this.trades.clear(); this.sales.length = 0;
     for (const r of (await st.query("SELECT * FROM market_listings WHERE status = 'active'")).rows) {
       this.listings.set(String(r.id), { id: String(r.id), seller: String(r.seller_key), sellerName: String(r.seller_name), itemId: String(r.item_id), price: Number(r.price), status: 'active', at: Number(r.created_at) });
     }
     for (const r of (await st.query("SELECT * FROM market_stack_listings WHERE status = 'active'")).rows) {
       this.stacks.set(String(r.id), { id: String(r.id), seller: String(r.seller_key), sellerName: String(r.seller_name), type: r.item_type as ItemType, itemId: String(r.item_id), qty: Number(r.qty_left), total: Number(r.qty_total), unit: Number(r.unit_price), sold: Number(r.sold), status: 'active', at: Number(r.created_at), origin: r.origin == null ? null : String(r.origin) });
+    }
+    for (const r of (await st.query("SELECT * FROM market_requests WHERE status = 'active'")).rows) {
+      this.requests.set(String(r.id), { id: String(r.id), buyer: String(r.buyer_key), buyerName: String(r.buyer_name), type: r.item_type as ItemType, itemId: String(r.item_id), qty: Number(r.qty_left), total: Number(r.qty_total), unit: Number(r.unit_price), escrow: Number(r.escrow), filled: Number(r.filled), status: 'active', at: Number(r.created_at) });
     }
     for (const r of (await st.query('SELECT * FROM market_sales ORDER BY at DESC LIMIT 5000')).rows) {
       this.sales.push({ id: String(r.id), listingId: String(r.listing_id), itemId: String(r.item_id), what: String(r.what), price: Number(r.price), fee: Number(r.fee), seller: String(r.seller_key), buyer: String(r.buyer_key), at: Number(r.at) });
@@ -284,6 +322,191 @@ export class Market {
       .sort((a, b) => a.unit - b.unit || a.at - b.at);
   }
 
+  // ---------- buy requests (escrowed chips; sellers fill from factory / warehouse stock) ----------
+  private persistRequest(rows: Stmt[], chips: ReturnType<CasinoBank['transferAtomic']>, onFail: () => void, markerKey: string): void {
+    const ls = getLocStore();
+    const got = ls.adjust('__market__', [], [...chips.stmts, ...rows], {
+      after: chips.after,
+      marker: { sql: 'SELECT 1 FROM wallet_transactions WHERE tx_key = $1', args: [markerKey] },
+      onLate: (ok) => { if (ok) chips.confirm(); else onFail(); },
+    });
+    if (got === false) { onFail(); throw new RuleError('Something went wrong. Nothing was charged.'); }
+    chips.bind(got); got.catch((e) => { if (isOutcomeUnknown(e)) return; console.error('[market] request write failed:', (e as Error).message); onFail(); });
+  }
+
+  postRequest(name: string, type: unknown, itemId: unknown, qty: unknown, unit: unknown): MarketRequest {
+    if (!isStackable(type, itemId)) throw new RuleError('That item cannot be requested.');
+    const sid = itemId as string;
+    const n = intIn(qty, 1, MAX_STACK_QTY, 'Quantity');
+    const u = intIn(unit, MIN_PRICE, MAX_PRICE, 'Unit price');
+    if (n * u > MAX_PRICE * 100) throw new RuleError('That request is too large.');
+    const k = playerKey(name);
+    if ([...this.requests.values()].filter((r) => r.buyer === k).length >= MAX_REQUESTS) throw new RuleError(`You can have at most ${MAX_REQUESTS} open requests.`);
+    const escrow = n * u;
+    const bank = this.bank();
+    if (!bank.canAfford(name, escrow)) throw new RuleError('Not enough chips.');
+    const what = stackName({ type, id: sid });
+    const r: MarketRequest = { id: randomUUID(), buyer: k, buyerName: name.trim(), type, itemId: sid, qty: n, total: n, unit: u, escrow, filled: 0, status: 'active', at: Date.now() };
+    let chips;
+    try {
+      chips = bank.transferAtomic([{ name, amount: -escrow, key: `mkt:req:${r.id}`, game: 'market', memo: `Market request: ${n} ${what} at ${u} each` }]);
+    } catch (e) { throw new RuleError((e as Error).message); }
+    this.requests.set(r.id, r);
+    const onFail = () => {
+      chips.revert();
+      if (this.requests.get(r.id) === r) { this.requests.delete(r.id); this.onRequestsReverted?.(); }
+    };
+    this.persistRequest([requestStmt(r)], chips, onFail, `mkt:req:${r.id}`);
+    this.onRequestsChanged?.();
+    return r;
+  }
+
+  cancelRequest(name: string, id: unknown): void {
+    const r = typeof id === 'string' ? this.requests.get(id) : undefined;
+    if (!r || r.status !== 'active' || r.buyer !== playerKey(name)) throw new RuleError('That request is not active.');
+    const refund = r.escrow;
+    r.status = 'cancelled'; r.closedAt = Date.now(); r.escrow = 0; this.requests.delete(r.id);
+    if (refund <= 0) {
+      const ls = getLocStore();
+      const got = ls.adjust('__market__', [], [requestStmt(r)], { marker: { sql: "SELECT 1 FROM market_requests WHERE id = $1 AND status = 'cancelled'", args: [r.id] } });
+      if (got && typeof got.then === 'function') got.catch((e) => { if (!isOutcomeUnknown(e)) { r.status = 'active'; delete r.closedAt; r.escrow = refund; this.requests.set(r.id, r); this.onRequestsReverted?.(); } });
+      this.onRequestsChanged?.();
+      return;
+    }
+    let chips;
+    try {
+      chips = this.bank().transferAtomic([{ name: r.buyerName, amount: refund, key: `mkt:reqcancel:${r.id}`, game: 'market', memo: `Cancelled market request: refund` }]);
+    } catch (e) {
+      r.status = 'active'; delete r.closedAt; r.escrow = refund; this.requests.set(r.id, r);
+      throw new RuleError((e as Error).message);
+    }
+    const onFail = () => {
+      chips.revert();
+      r.status = 'active'; delete r.closedAt; r.escrow = refund; this.requests.set(r.id, r); this.onRequestsReverted?.();
+    };
+    this.persistRequest([requestStmt(r)], chips, onFail, `mkt:reqcancel:${r.id}`);
+    this.onRequestsChanged?.();
+  }
+
+  /** Raise the unit price on your own open request. Extra chips = (new − old) × remaining qty, escrowed atomically. */
+  raiseRequest(name: string, id: unknown, unit: unknown): MarketRequest {
+    const r = typeof id === 'string' ? this.requests.get(id) : undefined;
+    if (!r || r.status !== 'active' || r.buyer !== playerKey(name)) throw new RuleError('That request is not active.');
+    if (r.qty < 1) throw new RuleError('That request is gone (filled or cancelled).');
+    const u = intIn(unit, MIN_PRICE, MAX_PRICE, 'Unit price');
+    if (u <= r.unit) throw new RuleError('The new price must be higher than the current price.');
+    if (r.qty * u > MAX_PRICE * 100) throw new RuleError('That request is too large.');
+    const extra = (u - r.unit) * r.qty;
+    const bank = this.bank();
+    if (!bank.canAfford(name, extra)) throw new RuleError('Not enough chips.');
+    const what = stackName({ type: r.type, id: r.itemId });
+    const oldUnit = r.unit;
+    const oldEscrow = r.escrow;
+    const key = `mkt:reqraise:${r.id}:${oldUnit}:${u}`;
+    let chips;
+    try {
+      chips = bank.transferAtomic([{ name, amount: -extra, key, game: 'market', memo: `Raised market request: ${what} to ${u} each` }]);
+    } catch (e) { throw new RuleError((e as Error).message); }
+    r.unit = u;
+    r.escrow = oldEscrow + extra;
+    const onFail = () => {
+      chips.revert();
+      r.unit = oldUnit;
+      r.escrow = oldEscrow;
+      this.requests.set(r.id, r);
+      this.onRequestsReverted?.();
+    };
+    this.persistRequest([requestStmt(r)], chips, onFail, key);
+    this.onRequestsChanged?.();
+    return r;
+  }
+
+  /** Fill `qty` units of an open request from the seller's city stock (Factory / Warehouse pack). Partial fills OK. */
+  fillRequest(name: string, id: unknown, qty: unknown): { type: ItemType; id: string; qty: number; price: number; fee: number } {
+    const r = typeof id === 'string' ? this.requests.get(id) : undefined;
+    if (!r || r.status !== 'active' || r.qty < 1) throw new RuleError('That request is gone (filled or cancelled).');
+    const k = playerKey(name);
+    if (r.buyer === k) throw new RuleError("You can't fill your own request. Cancel it instead.");
+    const n = intIn(qty, 1, r.qty, 'Quantity');
+    const price = n * r.unit;
+    if (r.escrow < price) throw new RuleError('That request does not have enough escrow left.');
+    const fee = sellerFee(price, name);
+    const item = `${r.type}:${r.itemId}`;
+    const ls = getLocStore();
+    const have = ls.qty(name, WAREHOUSE, item);
+    if (have < n) throw new RuleError(`You only have ${have} ${stackName({ type: r.type, id: r.itemId })} in stock.`);
+    const room = MAX_BANKED_STACK - ls.qty(r.buyerName, WAREHOUSE, item);
+    if (n > room) throw new RuleError(room > 0 ? `The buyer can only store ${room} more of that.` : "The buyer's storage can't hold any more of that.");
+    const seq = r.filled + 1; const what = stackName({ type: r.type, id: r.itemId });
+    const bank = this.bank();
+    let chips;
+    try {
+      chips = bank.transferAtomic([
+        { name, amount: price - fee, key: `mkt:reqsell:${r.id}:${seq}`, game: 'market', memo: `Filled market request: ${n} ${what} (${fee} fee)` },
+      ]);
+    } catch (e) { throw new RuleError((e as Error).message); }
+    const now = Date.now();
+    r.qty -= n; r.filled = seq; r.escrow -= price;
+    if (r.qty === 0) { r.status = 'filled'; r.closedAt = now; r.escrow = 0; this.requests.delete(r.id); }
+    const sale: Sale = { id: randomUUID(), listingId: `req:${r.id}#${seq}`, itemId: `qty:${n}`, what: stackWhat(r.type, r.itemId), price: r.unit, fee, seller: k, buyer: r.buyer, at: now };
+    this.sales.push(sale); if (this.sales.length > 5000) this.sales.shift();
+    const onFail = () => {
+      chips.revert();
+      const i = this.sales.indexOf(sale); if (i >= 0) this.sales.splice(i, 1);
+      r.qty += n; r.filled = seq - 1; r.escrow += price;
+      if (r.status === 'filled') { r.status = 'active'; delete r.closedAt; }
+      this.requests.set(r.id, r);
+      getMines().creditBanked(r.buyerName, r.type, r.itemId, -n);
+      this.onRequestsReverted?.();
+    };
+    const got = ls.adjust(name, [{ loc: WAREHOUSE, item, delta: -n }], [
+      ...chips.stmts, mineCreditStmt(r.buyer, r.buyerName, r.type, r.itemId, n), requestStmt(r), saleStmt(sale),
+      ...treasuryStmtsFor(name, 'market_fee', treasuryShareOf(fee), '25% of a Market fee'),
+    ], {
+      after: chips.after,
+      marker: { sql: 'SELECT 1 FROM wallet_transactions WHERE tx_key = $1', args: [`mkt:reqsell:${r.id}:${seq}`] },
+      onLate: (ok) => { if (ok) chips.confirm(); else onFail(); },
+    });
+    if (got === false) { chips.revert(); const i = this.sales.indexOf(sale); if (i >= 0) this.sales.splice(i, 1); r.qty += n; r.filled = seq - 1; r.escrow += price; if (r.status === 'filled') { r.status = 'active'; delete r.closedAt; } this.requests.set(r.id, r); throw new RuleError('Not enough items.'); }
+    getMines().creditBanked(r.buyerName, r.type, r.itemId, n);
+    chips.bind(got); got.catch((e) => { if (isOutcomeUnknown(e)) return; console.error('[market] request fill failed:', (e as Error).message); onFail(); });
+    royaltyEarn('market', name, price - fee);
+    eventTrade(name, r.buyerName, price, sale.id);
+    try { emitHaul({ name, from: 'warehouse', to: 'market', kind: 'market' }); emitHaul({ name: r.buyerName, from: 'market', to: 'warehouse', kind: 'market' }); } catch { /* visual */ }
+    this.onRequestsChanged?.();
+    return { type: r.type, id: r.itemId, qty: n, price, fee };
+  }
+
+  browseRequests(f: { type?: unknown; q?: unknown } = {}) {
+    const q = typeof f.q === 'string' ? f.q.trim().toLowerCase() : '';
+    return [...this.requests.values()]
+      .filter((r) => (!f.type || f.type === 'all' || r.type === f.type) && (!q || stackName({ type: r.type, id: r.itemId }).toLowerCase().includes(q) || r.buyerName.toLowerCase().includes(q)))
+      .map((r) => ({ id: r.id, type: r.type, itemId: r.itemId, name: stackName({ type: r.type, id: r.itemId }), qty: r.qty, total: r.total, unit: r.unit, escrow: r.escrow, buyer: r.buyerName, at: r.at, mine: false }))
+      .sort((a, b) => b.unit - a.unit || a.at - b.at);
+  }
+  myRequests(name: string) {
+    const k = playerKey(name);
+    return this.browseRequests().filter((r) => this.requests.get(r.id)?.buyer === k).map((r) => ({ ...r, mine: true }));
+  }
+  /** Open requests that match stackable items the player currently has in city (Factory / Warehouse) stock. */
+  matchingRequests(name: string) {
+    const ls = getLocStore();
+    const have: Array<{ type: ItemType; id: string; qty: number; name: string }> = [];
+    const seen = new Set<string>();
+    for (const r of this.requests.values()) {
+      const key = `${r.type}:${r.itemId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const qty = ls.qty(name, WAREHOUSE, key);
+      if (qty > 0) have.push({ type: r.type, id: r.itemId, qty, name: stackName({ type: r.type, id: r.itemId }) });
+    }
+    const items = have.map((h) => {
+      const reqs = this.browseRequests().filter((r) => r.type === h.type && r.itemId === h.id);
+      return { ...h, requests: reqs };
+    }).filter((x) => x.requests.length > 0);
+    return { items };
+  }
+
   label(i: Pick<SkinItem, 'kind' | 'skin'>) { return i.kind === 'case' ? CASE_NAME : i.kind === 'key' ? KEY_NAME : SKIN_BY_ID.get(i.skin)?.name ?? i.skin; }
 
   /** Active listings, cheapest first. */
@@ -312,7 +535,9 @@ export class Market {
       for (const l of this.stacks.values()) { const a = get(stackWhat(l.type, l.itemId)); a.listings++; if (a.lowest == null || l.unit < a.lowest) a.lowest = l.unit; }
       const defs = [...ORE_ORDER.map((id) => ({ type: 'ore' as ItemType, id, color: ORES[id].color })), ...Object.values(GOODS).map((g) => ({ type: g.type, id: g.id, color: g.color })),
         ...[...STAPLES.map((s) => s.id), ...CROPS.map((c) => c.id), ...TROPICAL_CROPS.map((c) => c.id)].filter((id) => isFood(id)).map((id) => ({ type: 'food' as ItemType, id, color: '#6ad66a' }))];
-      return { items: defs.map((d) => ({ what: stackWhat(d.type, d.id), type: d.type, id: d.id, name: stackName(d), color: d.color, ...get(stackWhat(d.type, d.id)) })) };
+      const items = defs.map((d) => ({ what: stackWhat(d.type, d.id), type: d.type, id: d.id, name: stackName(d), color: d.color, house: houseDeskUnit(d.type, d.id), ...get(stackWhat(d.type, d.id)) }));
+      const housePrices = Object.fromEntries(items.map((e) => [`${e.type}:${e.id}`, e.house]));
+      return { items, housePrices };
     }
     for (const l of this.listings.values()) { const i = this.vault.items.get(l.itemId); if (!i) continue; const a = get(i.kind === 'skin' ? i.skin : i.kind); a.listings++; if (a.lowest == null || l.price < a.lowest) a.lowest = l.price; }
     return { items: [
@@ -472,7 +697,14 @@ export async function initMarketStorage() {
 type Ack = (r: { ok: boolean; error?: string; [k: string]: unknown }) => void;
 let wired: Server | null = null;
 export function registerMarket(io: Server, socket: Socket): void {
-  if (wired !== io) { wired = io; market.onTrade = (keys) => { for (const k of keys) io.to(`inv:${k}`).emit('trade_changed'); }; }
+  if (wired !== io) {
+    wired = io;
+    market.onTrade = (keys) => { for (const k of keys) io.to(`inv:${k}`).emit('trade_changed'); };
+    const requestsChanged = () => io.emit('mkt_requests_changed');
+    market.onRequestsChanged = requestsChanged;
+    const prevRevert = market.onRequestsReverted;
+    market.onRequestsReverted = () => { prevRevert?.(); requestsChanged(); };
+  }
   const nameOf = () => (socket.data as { account?: { name: string } }).account?.name ?? null;
   const need = () => { const n = nameOf(); if (!n) throw new RuleError('Sign in to buy, sell or trade. Guests can browse.'); return n; };
   const on = (ev: string, fn: (b: Record<string, unknown>) => Record<string, unknown> | void | Promise<Record<string, unknown> | void>) => socket.on(ev, async (payload: unknown, ack?: Ack) => {
@@ -504,6 +736,16 @@ export function registerMarket(io: Server, socket: Socket): void {
   on('mkt_list_stack', async (b) => { const me = need(); await gate(me); return { listing: market.listStack(me, b.type, b.id, b.qty, b.unit) }; });
   on('mkt_cancel_stack', (b) => { market.cancelStack(need(), b.id); });
   on('mkt_buy_stack', async (b) => { const me = need(); await gate(me, market.stacks.get(str(b.id))?.sellerName); return market.buyStack(me, b.id, b.qty); });
+  on('mkt_requests', (b) => {
+    const me = nameOf(); const mk = me ? playerKey(me) : null;
+    const cat = market.catalog('resources') as { items: Array<{ type: ItemType; id: string; house: number }>; housePrices: Record<string, number> };
+    return { requests: market.browseRequests(b).map((r) => ({ ...r, mine: !!mk && market.requests.get(r.id)?.buyer === mk, house: cat.housePrices[`${r.type}:${r.itemId}`] ?? 0 })), mine: me ? market.myRequests(me) : [], fee: MARKET_FEE, min: MIN_PRICE, max: MAX_PRICE, housePrices: cat.housePrices };
+  });
+  on('mkt_request', async (b) => { const me = need(); await gate(me); return { request: market.postRequest(me, b.type, b.id, b.qty, b.unit) }; });
+  on('mkt_cancel_request', (b) => { market.cancelRequest(need(), b.id); });
+  on('mkt_raise_request', async (b) => { const me = need(); await gate(me); return { request: market.raiseRequest(me, b.id, b.unit) }; });
+  on('mkt_fill_request', async (b) => { const me = need(); await gate(me, market.requests.get(str(b.id))?.buyerName); return market.fillRequest(me, b.id, b.qty); });
+  on('mkt_matching_requests', () => (nameOf() ? market.matchingRequests(nameOf()!) : { items: [] }));
   on('trade_list', () => (nameOf() ? market.tradesFor(nameOf()!) : { incoming: [], outgoing: [] }));
   on('trade_offer', async (b) => {
     const me = need();

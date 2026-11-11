@@ -1,10 +1,9 @@
-import { MapSheet } from './MapSheet';
+import { HubWindow } from './HubWindow';
+import { focusBuildingWindow } from '@/lib/buildingWindows';
 import { abDate } from '../../../shared/mayor';
 import { MayorLaws } from './MayorLaws';
-import { useDoing } from '@/lib/doing';
 import { useCallback, useEffect, useState } from 'react';
 import { request } from '@/lib/net';
-import { usePanelDrag } from '@/lib/panelDrag';
 import { CityCivic } from './CityCivic';
 import { MayorBillReviewHost, OPEN_BILL_REVIEW } from './MayorBillReview';
 import type { CityView } from '../../../shared/city';
@@ -19,8 +18,6 @@ const PHASE: Record<string, string> = { filing: 'Candidates filing (Mon–Thu)',
 
 /** City Hall (pt1312u): run for mayor, vote, and — if you're mayor — nudge property tax and trading fees within ±25%. */
 export function CityHallPanel({ onClose, initial, initialCity }: { onClose: () => void; initial?: CityHallView; initialCity?: CityView }) {
-  useDoing('cityhall');
-  const drag = usePanelDrag('cityhall');
   const [v, setV] = useState<CityHallView | null>(initial ?? null); const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
   const [slogan, setSlogan] = useState(''); const [prop, setProp] = useState(1); const [fee, setFee] = useState(1);
@@ -40,8 +37,7 @@ export function CityHallPanel({ onClose, initial, initialCity }: { onClose: () =
     </label>
   );
   return (
-    <MapSheet className="world-deed world-venue cityhall-panel" data-testid="venue-cityhall" data-drag-panel="cityhall" onPointerDown={drag.onPointerDown} style={drag.style()} ref={drag.ref}>{drag.handle}
-      <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
+    <HubWindow id="cityhall" testId="venue-cityhall" onClose={onClose} doing="cityhall" className="cityhall-panel">
       <div className="cityhall-front"><span>🏛️ CITY HALL</span><small>Weekly mayor election · Alberta time</small></div>
       {err && !v && <small className="text-amber-300">{err}</small>}
       {v && s && L && (
@@ -103,14 +99,14 @@ export function CityHallPanel({ onClose, initial, initialCity }: { onClose: () =
         </>
       )}
       {msg && <small role="status" data-testid="cityhall-msg">{msg}</small>}
-    </MapSheet>
+    </HubWindow>
   );
 }
 
 /** Mounted once in the city: opens City Hall on OPEN_CITYHALL and shows a one-day banner after an election. */
 export function CityHallHost() {
   const [open, setOpen] = useState(false); const [banner, setBanner] = useState<string | null>(null); const [notice, setNotice] = useState<{ id: string; text: string } | null>(null);
-  useEffect(() => { const h = () => setOpen(true); window.addEventListener(OPEN_CITYHALL, h); return () => window.removeEventListener(OPEN_CITYHALL, h); }, []);
+  useEffect(() => { const h = () => { setOpen(true); queueMicrotask(() => focusBuildingWindow('cityhall')); }; window.addEventListener(OPEN_CITYHALL, h); return () => window.removeEventListener(OPEN_CITYHALL, h); }, []);
   useEffect(() => {
     void fetch('/api/city-hall').then((r) => r.json()).then((j: { view?: CityHallView }) => {
       const v = j.view; if (!v) return; const now = v.now;

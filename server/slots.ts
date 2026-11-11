@@ -1,3 +1,4 @@
+import { payCigaretteBonus } from './cigarettes.js';
 // Modern 5x3 video slots (Dragon Queen / Warzone / Gold Rush) on casino chips. Server decides; client only animates.
 import type { CasinoBank } from './casino-store.js';
 import { secureRand } from './video-poker.js';
@@ -22,6 +23,7 @@ export function spinVideoSlot(bank: CasinoBank, name: string, machine: unknown, 
   const returned = round.totalWin;
   const net = returned - bet;
   bank.settle(name, returned, net, 'spin', 'slots');
+  if (net > 0) payCigaretteBonus(name, net, 'slots', `slots:${name}:${machine}:${bet}:${round.totalWin}`, bank);
   return { round, returned, net, chips: bank.account(name).chips, cost: bet };
 }
 
@@ -38,5 +40,6 @@ export function buyVideoBonus(bank: CasinoBank, name: string, machine: unknown, 
   const returned = round.totalWin;
   const net = returned - cost;
   bank.settle(name, returned, net, 'spin', 'slots');
+  if (net > 0) payCigaretteBonus(name, net, 'slots', `slots-buy:${name}:${machine}:${cost}:${round.totalWin}`, bank);
   return { round, returned, net, chips: bank.account(name).chips, cost };
 }

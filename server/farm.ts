@@ -42,6 +42,7 @@ import { healStalePropertyDerived } from './propertyDerived.js';
 
 export const FARM_MIGRATION = `
 CREATE TABLE IF NOT EXISTS farm_tiles (plot_id TEXT NOT NULL, tile INTEGER NOT NULL, owner_key TEXT NOT NULL, crop TEXT NOT NULL, planted_at BIGINT NOT NULL, nonce TEXT NOT NULL, PRIMARY KEY (plot_id, tile));
+ALTER TABLE farm_tiles ADD COLUMN IF NOT EXISTS failed BOOLEAN;
 CREATE TABLE IF NOT EXISTS farm_upgrades (plot_id TEXT NOT NULL, kind TEXT NOT NULL, owner_key TEXT NOT NULL, level INTEGER NOT NULL, PRIMARY KEY (plot_id, kind));
 CREATE TABLE IF NOT EXISTS farm_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
 -- Millionaire Update records kept (not used by the restored farm, never dropped):
@@ -76,7 +77,7 @@ const plotOf = (id: unknown): { pid: string; cols: number; rows: number; resort:
   const c = fieldPlotOf(id); if (c) return { pid: id as string, cols: c.cols, rows: c.rows, resort: false };
   const r = resortPlotOf(id); return r && { pid: id, cols: r.cols, rows: r.rows, resort: true };
 };
-interface TileRow { plot_id: string; tile: number; owner_key: string; crop: string; planted_at: string | number; nonce: string }
+interface TileRow { plot_id: string; tile: number; owner_key: string; crop: string; planted_at: string | number; nonce: string; failed?: boolean | null }
 
 export class Farm {
   onChange?: (plotId: string) => void;
@@ -108,7 +109,13 @@ export class Farm {
   private toTile(r: TileRow, now: number, wither = WITHER_FACTOR): FarmTile | null {
     const c = cropById(r.crop); if (!c) return null; const at = Number(r.planted_at);
     const readyAt = at + c.grow, witherAt = readyAt + ripeWindow(c.grow, wither);
-    return { tile: Number(r.tile), crop: c.id, plantedAt: at, stage: wither === WITHER_FACTOR ? stageOf(c, at, now) : now < readyAt ? 'growing' : now < witherAt ? 'ready' : 'withered', readyAt, witherAt };
+    const stage = wither === WITHER_FACTOR ? stageOf(c, at, now) : now < readyAt ? 'growing' : now < witherAt ? 'ready' : 'withered';
+    return { tile: Number(r.tile), crop: c.id, plantedAt: at, stage, readyAt, witherAt };
+  }
+  /** Ready-window tiles. The farm_tiles.failed column is ignored: previously failed plantings harvest normally. */
+  private harvestable(r: TileRow, now: number, wither: number): boolean {
+    const t = this.toTile(r, now, wither); if (!t) return false;
+    return now >= t.readyAt && now < t.witherAt;
   }
   /** Upgrade levels bought by the CURRENT owner (a previous owner's upgrades do not carry over). */
   async upgrades(q: { query: pg.Pool['query'] } | pg.PoolClient, pid: string, ownerKey: string): Promise<FarmUpgradeLevels> {
@@ -403,7 +410,7 @@ export class Farm {
     return this.lock(`h:${keyOf(name)}`, () => this.lock(pid, async () => {
       const now = this.clock(); const key = keyOf(name);
       const up = await this.upgrades(this.pool, pid, key);
-      const ready = (await this.tiles(pid, key)).filter((r) => (!only || only.has(Number(r.tile))) && this.toTile(r, now, this.withers(up))?.stage === 'ready');
+      const ready = (await this.tiles(pid, key)).filter((r) => (!only || only.has(Number(r.tile))) && this.harvestable(r, now, this.withers(up)));
       if (!ready.length) throw new FarmError('Nothing is ready to harvest.');
       // Map pools: factory is city-only — resort crops must ship. Pantry stays on-map (city → warehouse, resort → Resort Warehouse).
       if (sink && p.resort) throw new FarmError('Resort crops sell here at the plantation. To use them in the city, ship them by boat or plane.');
@@ -443,7 +450,7 @@ export class Farm {
       let seedIndexed = 0;
       for (const r of ready) seedIndexed += px(cropById(r.crop)!.seed);
       const paid = farmHarvestChips(seeds, farmPayout(profit * cityPolicyMul('farming'), t.gross), priceIndex(), seedIndexed); // Farming subsidy policy (City Hall, kept)
-      const memo = `Farm ${pid}: harvested ${[...counts].map(([l, n]) => `${n} ${l}`).join(', ')}`.slice(0, 200);
+      const memo = `Farm ${pid}: harvested ${[...counts].map(([l, n]) => `${n} ${l}`).join(', ') || 'nothing'}`.slice(0, 200);
       await this.atomic(name, paid, 'farm_harvest', memo, async (cl) => {
         await this.mustOwn(cl, pid, name);
         let gone = 0;
@@ -642,7 +649,7 @@ export class Farm {
   async clear(name: string, id: unknown) {
     const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const pid = p.pid; const key = keyOf(name);
     return this.lock(pid, async () => {
-      const now = this.clock(); const up = await this.upgrades(this.pool, pid, key); const dead = (await this.tiles(pid, key)).filter((r) => this.toTile(r, now, this.withers(up))?.stage === 'withered');
+      const now = this.clock(); const up = await this.upgrades(this.pool, pid, key); const dead = (await this.tiles(pid, key)).filter((r) => { const t = this.toTile(r, now, this.withers(up)); return !!t && now >= t.witherAt; });
       if (!dead.length) throw new FarmError('Nothing has withered.');
       for (const r of dead) await this.pool.query('DELETE FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3', [pid, r.tile, r.nonce]);
       this.onChange?.(pid); return { cleared: dead.length };

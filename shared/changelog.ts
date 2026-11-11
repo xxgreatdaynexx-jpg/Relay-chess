@@ -6,6 +6,51 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T22:35:00-06:00", "title": "Top bar redesigned with grouped menus", "bullets": [
+    "The many game and tool buttons in the top bar are now grouped into a few menus: Casino (Blackjack, Roulette, Poker, Slots, Solitaire, Loot Match, and Mines), Play (Arena and Hockey), Work (Factory, Market, and Skills), and Money (Stocks).",
+    "Your chips, net worth, chat, inventories, and account stay visible in the bar. On a phone, a Menu button opens the same groups. Every previous shortcut is still there. Your chips and items are unchanged.",
+  ]},
+  {"commit": "", "at": "2026-11-10T22:18:00-06:00", "title": "You can now raise the price on your market buy requests", "bullets": [
+    "On an open buy request you posted, Raise price lets you enter a new unit price that is higher than the current one. The extra chips — the difference times the quantity still wanted — are held from your balance right away, the same way posting a request holds the full amount.",
+    "Sellers who fill after the raise are paid the new price minus the usual 5% Market fee, including the Sell to market request buttons in the Factory and the Warehouse. You still cannot lower the price here; cancel and post a new request if you need to bid less, and cancel still returns any leftover escrow. Existing requests, chips, and stock are otherwise unchanged.",
+  ]},
+  {"commit": "", "at": "2026-11-10T22:12:00-06:00", "title": "You can now keep several building menus open at once", "bullets": [
+    "Kitchen, Grocery Store, Factory, Warehouse, Market, Employment Office, City Hall, and the Furniture Store can stay open together as windows. Drag them around, click one to bring it to the front, and close each with its own ✕. Opening a menu that is already open just brings it forward. Escape closes only the front window.",
+    "On a phone or a narrow screen, open menus share a tab strip at the bottom so you can switch between them. Walking into a building still opens the same menus as before. Your chips and items are unchanged.",
+  ]},
+  {"commit": "", "at": "2026-11-10T22:09:00-06:00", "title": "Employment Office keeps your workers visible", "bullets": [
+    "On a shorter desktop window, the Hire list could take the whole Employment Office and hide the workers you already have. Your workers now stay on screen in a scrollable list, and the hire options scroll on their own if they do not fit. Nothing about hiring, wages, or existing workers has changed.",
+  ]},
+  {"commit": "", "at": "2026-11-10T21:18:00-06:00", "title": "Tobacco crop and a cigarette factory line (requested by carter2)", "bullets": [
+    "Tobacco is a new plantable city crop: seeds cost 30 chips and take about 63 minutes to grow (the same 30% faster growth as every other crop). A harvested plant is worth 40.5 chips (seed plus 35%). The usual 50% planting house-cap bonus applies, just like other crops.",
+    "A new mill recipe turns 1 tobacco into 1 Cigarette. That factory step adds 8% over the tobacco value, so a cigarette's house price is now 43.74 chips (it was 40, which did not fit the +8% rule). Cigarettes still drop rarely from fishing and still give the same casino buff; the extra from smoking is still capped at 25,000 chips per day, so factory-made cigarettes cannot print money through the casino. Existing inventory is unchanged; the new house price applies going forward.",
+  ]},
+  {"commit": "", "at": "2026-11-10T21:18:00-06:00", "title": "Fishing daily caps now scale with the house-sell cap index (requested by chessguy2)", "bullets": [
+    "Each fishing spot's daily sell cap (the amount you can sell at full price that day) now follows the same house-sell cap index as factory house sales. Today's floors stay as a minimum: lake 115,000, reef 230,000, and deep sea 575,000. With the current index the caps are higher. The cap still applies to base (pre-index) sale value, and payouts are still multiplied by the daily price index after that. Existing catches and sold totals are unchanged.",
+  ]},
+  {"commit": "", "at": "2026-11-10T20:19:00-06:00", "title": "Cigarettes at the casino (requested by Amber)", "bullets": [
+    "Cigarettes are a rare fishing drop: about 1.5% of landed catches, rolled on the server. They stack in your warehouse inventory like other goods, can be sold to the house or traded on the Market, and each is worth 40 chips before the daily price index.",
+    "At roulette, blackjack, poker (Hold'em and Jacks or Better), and slots you can Smoke a cigarette if you have one. Each one lasts 3 minutes, and smoking another while it is active adds 3 minutes, up to 15 minutes. While it is running, a win pays an extra 10% of your net winnings from the house (losses are unchanged). On Hold'em the bonus is paid by the house on your net pot win, never taken from the other players. The extra is capped at 25,000 chips per day (resets at 00:00 UTC / 6 PM). Existing chips and items are unchanged.",
+  ]},
+  {"commit": "", "at": "2026-11-10T20:05:00-06:00", "title": "Farm crop margins lowered to +35%, food production steps +8%", "bullets": [
+    "Raw farm crops are now worth seed cost plus 35% (was plus 50%). Each factory food production step adds 8% over its input value (was 10%), still derived up the chain. Ore and metal chains are unchanged. Resort harvest yield (2×) and fertilizer yield are unchanged, and the house-sell planting bonus is still 50% of the seed chips you actually pay.",
+  ]},
+  {"commit": "", "at": "2026-11-10T20:05:00-06:00", "title": "House sell cap now follows 35% of total-asset growth (was 25%)", "bullets": [
+    "Each day at the reset (6 PM), the daily house-sell cap now changes by 35% of the percent that total player assets changed over the previous day (it was 25%). If total wealth doubles, the cap goes up 35%; if it drops 20%, the cap drops 7%.",
+    "Today's cap is unchanged. The new rate starts at the next reset. The 50% planting bonus is unchanged.",
+  ]},
+  {"commit": "", "at": "2026-11-10T19:16:00-06:00", "title": "Sell to market request shows the price", "bullets": [
+    "In the Factory and the Warehouse, Sell to market request now shows what you would actually receive after the 5% Market fee, using the best open request for that item: for example, Sell to market request · 🪙95 each. If you can fill more than one unit, the total for that amount is shown too.",
+    "The button still appears only when you have stock that matches an open request. Your chips, items, and existing requests are unchanged.",
+  ]},
+  {"commit": "", "at": "2026-11-10T19:00:00-06:00", "title": "House prices and request search on the Market", "bullets": [
+    "The Market Resources list now shows the current house price next to every item — the same indexed per-unit figure the house desk pays today.",
+    "When you post a buy request, that house price is shown beside the item so you can see what to offer. A search box filters open requests and the item picker by name as you type (case-insensitive). Food the house does not buy is left blank. Your chips, stock, and existing listings are unchanged.",
+  ]},
+  {"commit": "", "at": "2026-11-10T18:50:00-06:00", "title": "Market buy requests", "bullets": [
+    "On the Market Resources tab you can post a buy request for ore, bars, goods, or food: pick the item, how many you want, and the price per unit. The full amount is held from your chips up front. Cancel a request any time to get the leftover chips back.",
+    "Other players can fill a request in whole or in part at the posted price. In the Factory and the Warehouse, a Sell to market request button appears only when you have stock that matches an open request. Sellers pay the usual 5% Market fee; the house-sell cap does not apply. Your existing chips, items, and listings are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T16:55:00-06:00", "title": "More house plants, pink furniture, and mid-century pieces (requested by Amber)", "bullets": [
     "The Furniture Store has a new batch of house plants (monstera, fiddle leaf fig, snake plant, hanging pothos, cactus trio, and a potted parlor palm), pink pieces (sofa, armchair, bed, rug, lamp, and dresser), and mid-century modern furniture (Eames-style lounge, teak sideboard, tulip table, walnut credenza, sunburst wall clock, arc floor lamp, and a low-profile sofa).",
     "They use the same shop, placement, rotation, and save rules as the existing catalog. Prices follow the daily price index. Furniture you already own is unchanged.",

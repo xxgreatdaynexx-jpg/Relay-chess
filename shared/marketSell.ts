@@ -11,3 +11,20 @@ export function suggestUnit(lowest: number | null | undefined, last: number | nu
 }
 /** Quantity for a quick button: 25% / 50% / Max of what you own, at least 1. */
 export const pctQty = (owned: number, pct: number) => Math.max(1, Math.min(owned, Math.floor(owned * pct)));
+
+/** Best open buy-request for the seller: highest unit price, and what they actually receive after the 5% Market fee. */
+export function bestRequestTake(requests: Array<{ unit: number; qty: number }>, have: number) {
+  const open = requests.filter((r) => r.unit > 0 && r.qty > 0);
+  if (!open.length || have < 1) return null;
+  const best = open.reduce((a, b) => (b.unit > a.unit ? b : a));
+  const fill = Math.min(have, best.qty);
+  return { unit: best.unit, each: receiveFor(1, best.unit), fill, total: receiveFor(fill, best.unit) };
+}
+/** Factory / Warehouse button: "Sell to market request · 🪙95 each", plus a total when more than one unit can be filled. */
+export function requestSellLabel(requests: Array<{ unit: number; qty: number }>, have: number): string | null {
+  const t = bestRequestTake(requests, have);
+  if (!t) return null;
+  let s = `Sell to market request · 🪙${t.each.toLocaleString()} each`;
+  if (t.fill > 1) s += ` · 🪙${t.total.toLocaleString()} for ${t.fill.toLocaleString()}`;
+  return s;
+}

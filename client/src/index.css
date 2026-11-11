@@ -671,8 +671,11 @@ input {
 
 /* ---- Single top tab bar: every game tab lives here; panels open below it. */
 body { padding-top: 44px; }
-.top-tabs { position: fixed; left: 0; right: 0; top: 0; height: 40px; z-index: 48; display: flex; align-items: center; gap: 6px; padding: 0 10px; background: rgba(12,14,24,.82); backdrop-filter: blur(8px); box-shadow: 0 2px 10px rgba(0,0,0,.35); }
-.top-tabs-slots { display: flex; gap: 6px; align-items: center; }
+.top-tabs { position: fixed; left: 0; right: 0; top: 0; height: 40px; z-index: 80; display: flex; align-items: center; gap: 6px; padding: 0 10px; background: rgba(12,14,24,.82); backdrop-filter: blur(8px); box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+.top-tabs-portals { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); pointer-events: none; }
+.top-tab-groups { display: flex; gap: 6px; align-items: center; flex: none; }
+.top-group { position: relative; flex: none; }
+.top-tabs .top-group-btn.on, .top-tabs .top-group-btn[aria-expanded="true"] { background: #e8c26a; color: #1b1d2e; }
 .top-tab-slot:empty { display: none; }
 .top-tab-inventory { margin-left: 6px; flex-shrink: 0; }
 @media (max-width: 480px) { .top-tabs .inv-tab .inv-tab-label { display: none; } }
@@ -686,14 +689,15 @@ body { padding-top: 44px; }
 .app-panels .rl-panel, .app-panels .cx-panel { left: 24px; }
 @media (max-width: 520px) {
   .top-menu-btn { display: block; }
-  .top-tabs-slots { display: none; position: absolute; left: 6px; top: 42px; flex-direction: column; align-items: stretch; padding: 6px; border-radius: 12px; background: rgba(12,14,24,.95); box-shadow: 0 10px 30px rgba(0,0,0,.5); }
-  .top-tabs.menu-open .top-tabs-slots { display: flex; }
-  .top-tabs-slots .sol-tab { width: 100%; text-align: left; }
+  .top-tab-groups { display: none; position: absolute; left: 6px; top: 42px; flex-direction: column; align-items: stretch; padding: 6px; border-radius: 12px; background: rgba(12,14,24,.95); box-shadow: 0 10px 30px rgba(0,0,0,.5); z-index: 90; max-height: calc(100dvh - 56px); overflow-y: auto; min-width: 200px; }
+  .top-tabs.menu-open .top-tab-groups { display: flex; }
+  .top-tab-groups .sol-tab, .top-tab-groups .top-group { width: 100%; text-align: left; }
+  .top-tabs.menu-open .top-group-menu { position: static; margin-top: 4px; box-shadow: none; max-height: none; }
   .app-panels .sol-panel, .app-panels .fps-panel { left: 4px; right: 4px; width: auto; top: 46px; max-height: calc(100dvh - 56px); }
 }
-/* Hotfix: the bar never clips its first tabs; it scrolls sideways when tabs don't fit. */
+/* Hotfix: the bar never clips its first menus; leftover groups move under More. */
 .top-tabs { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; justify-content: flex-start; }
-.top-tabs-slots, .top-tab-slot, .top-menu-btn { flex: none; }
+.top-tab-groups, .top-group, .top-tab-slot, .top-menu-btn { flex: none; }
 .top-tab-account { flex: none; }
 @media (max-width: 520px) { .top-tabs { overflow: visible; } }
 .lb-sort { font-weight: 700; color: inherit; opacity: .8; white-space: nowrap; }
@@ -1035,8 +1039,7 @@ html[data-theme="contrast"] .top-tabs .sol-tab[aria-expanded="true"] { backgroun
 /* (a) Top bar: tabs scroll inside their own strip; the account pill shrinks and ellipsizes instead of running off the edge. */
 @media (min-width: 521px) {
   .top-tabs { overflow: hidden; }
-  .top-tabs-slots { flex: 0 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
-  .top-tabs-slots::-webkit-scrollbar { display: none; }
+  .top-tab-groups { flex: none; }
   .top-tab-account { flex: 0 1 auto; min-width: 34px; margin-left: auto; display: flex; justify-content: flex-end; }
   .top-tabs .acct-btn { min-width: 0; max-width: min(170px, 100%); flex: 0 1 auto; }
   .top-tabs .acct-btn-name { min-width: 0; }
@@ -1321,11 +1324,11 @@ html, body { overflow-x: clip; }
   .sto-foot { justify-content: flex-end; }
 }
 
-/* ---- Top nav (priority+): tabs that don't fit are hidden from the bar and listed under "More ▾"; phones use the ☰ menu. ---- */
+/* ---- Top nav: category menus; leftover groups are listed under "More ▾"; phones use the ☰ Menu. ---- */
 @media (min-width: 521px) {
   .top-tabs { overflow: visible; }
-  .top-tabs-slots { overflow: visible; flex: none; }
-  .top-tabs-slots > .top-tab-slot[data-overflow] { display: none; }
+  .top-tab-groups { overflow: visible; flex: none; }
+  .top-tab-groups > .top-group[data-overflow] { display: none; }
 }
 .top-more { position: relative; flex: none; }
 .top-more[hidden] { display: none; }
@@ -1334,7 +1337,7 @@ html, body { overflow-x: clip; }
 .top-more-item { text-align: left; white-space: nowrap; color: #fff6d8; font-weight: 600; font-size: 13px; padding: 6px 12px; border-radius: 9999px; background: rgba(255,255,255,.08); }
 .top-more-item:hover, .top-more-item:focus-visible { background: rgba(255,255,255,.18); }
 .top-more-item.on { background: #e8c26a; color: #1b1d2e; }
-@media (max-width: 520px) { .top-more { display: none !important; } .top-tabs-slots { z-index: 49; max-height: calc(100dvh - 56px); overflow-y: auto; } }
+@media (max-width: 520px) { .top-more { display: none !important; } }
 /* r5: windows stacked behind the front one on narrow screens are fully hidden. */
 @media (max-width: 900px) { .sol-panel[data-behind] { visibility: hidden; pointer-events: none; } }
 /* r5: keep docked windows clear of the fixed 🔊 volume widget (bottom-left) on narrow screens. */
@@ -2014,13 +2017,13 @@ html, body { overflow-x: clip; }
 .mech-cars { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
 .mech-cars button { padding: 5px 9px; border-radius: 8px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); color: inherit; cursor: pointer; }
 .mech-cars button.on { border-color: #ffa62b; }
-.employ-panel { width: min(560px, calc(100% - 16px)); height: 90dvh; max-height: calc(100% - 16px); overflow: hidden; display: flex; flex-direction: column; gap: 8px; }
+.world-deed.employ-panel { width: min(560px, calc(100% - 16px)); height: min(90dvh, calc(100% - 16px)); max-height: min(90dvh, calc(100% - 16px)); overflow: hidden; display: flex; flex-direction: column; gap: 8px; }
 .employ-front { flex: 0 0 auto; border-radius: 12px; padding: 10px 12px; background: linear-gradient(135deg, #2c4a7a, #e0a23a); color: #fff; display: flex; flex-direction: column; }
 .employ-front span { font-weight: 900; letter-spacing: .1em; font-size: 17px; } .employ-front small { opacity: .85; }
 .employ-rules { flex: 0 0 auto; font-size: 11px; opacity: .8; margin: 0; }
 .employ-panel h4 { font-size: 13px; font-weight: 800; margin: 4px 0 0; }
-.employ-roster { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 6px; }
-.employ-hire { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; }
+.employ-roster { flex: 1 1 auto; min-height: min(40vh, 240px); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 6px; }
+.employ-hire { flex: 0 1 auto; min-height: 0; max-height: 45%; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 6px; }
 .employ-list { display: flex; flex-direction: column; gap: 6px; }
 .employ-list li { display: flex; flex-direction: column; gap: 3px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 7px 9px; }
 .employ-list li small { font-size: 11px; opacity: .8; }
@@ -2028,8 +2031,9 @@ html, body { overflow-x: clip; }
 .employ-list li button:disabled { opacity: .5; }
 /* Mobile MapSheet already scrolls the body — avoid a second tiny nested scroller. */
 @media (max-width: 640px), (max-height: 500px) {
-  .employ-panel { width: 100%; height: auto; max-height: none; overflow: visible; }
+  .world-deed.employ-panel, .employ-panel { width: 100%; height: auto; max-height: none; overflow: visible; }
   .employ-roster { flex: none; overflow: visible; min-height: 0; }
+  .employ-hire { flex: none; max-height: none; overflow: visible; }
 }
 .employ-btns { display: flex; gap: 6px; } .employ-list li .employ-fire { background: rgba(255,80,80,.12); border-color: rgba(255,80,80,.4); }
 .employ-expected { display: block; font-size: 11px; opacity: .85; line-height: 1.35; }
@@ -2162,6 +2166,19 @@ html.xmas .top-menu-btn::before { content: '🎄 '; }
 .msell-cmp .up { color: #8f8; } .msell-cmp .down { color: #f99; }
 .msell-list { display: block; width: 100%; margin-top: 10px; padding: 10px; font-size: 15px; font-weight: 700; border-radius: 8px; background: linear-gradient(#4f8f3a, #366a26); color: #fff; }
 .msell-list:disabled { opacity: .5; }
+
+.mreq { margin: 14px 0 18px; padding: 10px 12px; border-radius: 10px; background: rgba(0,0,0,.22); border: 1px solid rgba(124,204,255,.28); }
+.mreq-post { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; margin: 8px 0; }
+.mreq-post label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; opacity: .9; }
+.mreq-post input, .mreq-post select { min-width: 88px; }
+.mreq-fill { margin: 8px 0; padding: 8px 10px; border-radius: 8px; background: rgba(0,0,0,.28); border: 1px solid rgba(124,204,255,.3); max-width: 420px; }
+.mreq-fill-h { font-weight: 700; margin: 0 0 6px; }
+.mreq-fill select { display: block; width: 100%; margin: 4px 0 8px; }
+
+.mreq-actions { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; justify-content: flex-end; }
+.mreq-raise { display: flex; gap: 4px; align-items: center; font-size: 11px; opacity: .9; }
+.mreq-raise input { width: 88px; padding: 3px 6px; }
+button.factory-req-sell, button.res-req { margin-left: 6px; }
 .msell-mine { display: flex; flex-direction: column; gap: 4px; }
 .msell-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 4px 6px; border-radius: 6px; background: rgba(255,255,255,.04); font-size: 13px; }
 .msell-row button { margin-left: auto; }
@@ -2380,6 +2397,12 @@ body.he-full-open .he-table.he-full { visibility: visible; }
   .world-corner button { white-space: nowrap; flex: none; }
   .world-clock { top: 84px; left: 10px; }
   .top-tabs { padding-right: 24px; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent); }
+  /* The fade mask is sized to the 40px bar and would hide the ☰ Menu dropdown hanging below it. */
+  .top-tabs.menu-open { overflow: visible; -webkit-mask-image: none; mask-image: none; }
+}
+@media (max-width: 520px) {
+  .top-tabs { overflow: visible; }
+  .top-tabs.menu-open { -webkit-mask-image: none; mask-image: none; }
 }
 /* Millionaire Update: building inventories + auto-sell */
 .bldg-inv { margin: 8px 0; padding: 8px; border: 1px solid rgba(255,255,255,.15); border-radius: 8px; background: rgba(0,0,0,.18); font-size: 13px; }
@@ -2738,3 +2761,59 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .prestige-fireworks { position: fixed; top: 18%; left: 50%; transform: translateX(-50%); z-index: 70; padding: 10px 16px; border-radius: 999px; background: #1b1d2ecc; color: #ffe9a8; font-weight: 800; pointer-events: none; box-shadow: 0 0 30px #ffd36a66; }
 .chat-title { color: #e8c26a; font-weight: 800; }
 .chat-shout { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; background: #b8975a; color: #1b1d2e; border-radius: 4px; padding: 0 5px; margin-left: 4px; }
+
+/* Cigarette casino buff (rare fishing drop) */
+.cig-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 2px 0; }
+.cig-timer { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; border-radius: 999px; background: rgba(40, 28, 22, .85); color: #f3e2c8; font-weight: 700; font-size: 12px; letter-spacing: .02em; box-shadow: inset 0 0 0 1px rgba(232, 194, 106, .35); }
+.cig-wisps { position: relative; width: 14px; height: 16px; display: inline-block; }
+.cig-wisps i { position: absolute; left: 4px; bottom: 0; width: 4px; height: 8px; border-radius: 50%; background: rgba(220, 220, 220, .0); box-shadow: 0 0 4px 2px rgba(210, 210, 210, .35); animation: cig-wisp 1.6s ease-in-out infinite; }
+.cig-wisps i:nth-child(2) { left: 1px; animation-delay: .4s; }
+.cig-wisps i:nth-child(3) { left: 7px; animation-delay: .8s; }
+@keyframes cig-wisp {
+  0% { transform: translateY(4px) scale(.4); opacity: 0; }
+  30% { opacity: .7; }
+  100% { transform: translateY(-12px) scale(1.2); opacity: 0; }
+}
+.cig-smoke-btn { background: rgba(232, 194, 106, .18); border: 1px solid rgba(232, 194, 106, .45); color: #fff6d8; border-radius: 6px; padding: 4px 10px; font-weight: 700; font-size: 12px; }
+.cig-smoke-btn:disabled { opacity: .4; }
+
+/* Multi-open building menus (kitchen, grocery, factory, warehouse, market, …) */
+.hub-win.sol-panel {
+  background: rgba(14, 15, 26, 0.985);
+  background-image: none;
+  color: #f4efe4;
+  border: 1px solid rgba(201, 162, 74, 0.55);
+  width: min(460px, calc(100vw - 24px));
+  height: min(640px, calc(100dvh - 60px));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.hub-win-grocery { left: min(490px, calc(100vw - 480px)); }
+.hub-win-employ { left: 36px; top: 72px; }
+.hub-win-cityhall { left: 72px; top: 64px; width: min(520px, calc(100vw - 24px)); }
+.hub-win-warehouse, .hub-win-market {
+  width: min(1100px, 96vw);
+  height: min(720px, calc(100dvh - 60px));
+  left: 40px;
+}
+.hub-win-furniture { width: min(860px, 96vw); height: min(680px, calc(100dvh - 60px)); left: 56px; }
+.hub-win-bar { flex: 0 0 auto; background: rgba(0, 0, 0, 0.35); color: #e2c47c; }
+.hub-win-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.hub-win-body .grocery-front, .hub-win-body .cityhall-front, .hub-win-body .employ-front { margin-top: 0; }
+.hub-win .mkt-win-body, .hub-win .res-win-body { padding: 0; background: transparent; width: auto; height: auto; max-height: none; border: 0; box-shadow: none; }
+.hub-win-dock {
+  position: fixed; left: 50%; bottom: 8px; transform: translateX(-50%);
+  z-index: 80; display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;
+  max-width: calc(100vw - 16px); padding: 4px 6px; border-radius: 999px;
+  background: rgba(10, 10, 18, 0.88); border: 1px solid rgba(201, 162, 74, 0.4);
+  box-shadow: 0 8px 24px #0008;
+}
+.hub-win-dock button {
+  padding: 5px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.08);
+  color: #f4efe4; font-weight: 700; font-size: 12px; white-space: nowrap;
+}
+.hub-win-dock button.on { background: #e8c26a; color: #1b1d2e; }
+@media (max-width: 900px) {
+  .hub-win-dock { bottom: 10px; }
+}

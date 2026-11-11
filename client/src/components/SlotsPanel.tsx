@@ -3,6 +3,7 @@ import { useTrip } from '@/lib/travel';
 import { TopTab } from '@/components/TopTabs';
 import { useEffect, useRef, useState } from 'react';
 import { NamePrompt, OutOfChips } from '@/components/CasinoCommon';
+import { CigaretteBar } from '@/components/CigaretteBar';
 import { CoinArt, SlotSymbol } from '@/components/SlotArt';
 import { useWalletChips } from '@/lib/wallet';
 import { emitCasino, useSavedName } from '@/lib/casino';
@@ -286,6 +287,7 @@ export function SlotsPanel() {
                 );
               })}
               <div className="bj-label">Chips: {chips?.toLocaleString() ?? '…'}</div>
+              <CigaretteBar open={open} />
             </div>
           ) : (
             <div className={`vs-machine vs-theme-${machine} ${big ? 'vs-shake-' + big.tier : ''}`} data-testid={`vs-machine-${machine}`}>
@@ -363,6 +365,7 @@ export function SlotsPanel() {
                 )}
               </div>
               <div className="bj-label">Chips: {chips?.toLocaleString() ?? '…'} {err && <span className="account-error">· {err}</span>}</div>
+              <CigaretteBar open={open} />
               {chips !== null && chips < VS_BETS[0] && !busy && <OutOfChips />}
               <details className="vs-pays">
                 <summary>Paytable (× line bet = bet ÷ 20)</summary>

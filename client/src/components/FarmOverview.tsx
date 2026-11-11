@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { FarmStatusSummary, useBarnFarmStatus } from './BarnFarmStatus';
 import { barnFarms } from '../../../shared/barnFarms';
-import { emptyTiles, tilesAt } from '../../../shared/barnFarmStatus';
+import { emptyTiles, harvestableTiles, tilesAt } from '../../../shared/barnFarmStatus';
 import type { OwnedProperty } from '../../../shared/realEstate';
 import { CROPS as CITY_CROPS, cropById } from '../../../shared/farm';
 import { TROPICAL_CROPS } from '../../../shared/resort';
@@ -30,16 +30,16 @@ export function FarmOverview({ me, owned, map, onOpenFarm, onClose }: Ownership 
   const index = status.index && status.index > 0 ? status.index : 1;
   const local = groups.find((g) => g.map === map)?.farms.flatMap((p) => p ? [p] : []) ?? [];
   const localPlots = local.map((p) => ({ p, plot: status.plots.get(p.id), now: status.now }));
-  const readyIds = localPlots.filter((x) => x.plot && tilesAt(x.plot, x.now, 'ready').length).map((x) => x.p.id);
+  const readyIds = localPlots.filter((x) => x.plot && harvestableTiles(x.plot, x.now).length).map((x) => x.p.id);
   const emptyIds = localPlots.filter((x) => x.plot && emptyTiles(x.plot, x.now).length).map((x) => x.p.id);
   const witherIds = localPlots.filter((x) => x.plot && tilesAt(x.plot, x.now, 'withered').length).map((x) => x.p.id);
-  const readyN = localPlots.reduce((n, x) => n + (x.plot ? tilesAt(x.plot, x.now, 'ready').length : 0), 0);
+  const readyN = localPlots.reduce((n, x) => n + (x.plot ? harvestableTiles(x.plot, x.now).length : 0), 0);
   const emptyN = localPlots.reduce((n, x) => n + (x.plot ? emptyTiles(x.plot, x.now).length : 0), 0);
   const witherN = localPlots.reduce((n, x) => n + (x.plot ? tilesAt(x.plot, x.now, 'withered').length : 0), 0);
   const seedCost = (n: number) => indexed(crop.seed, index) * n;
   const plantAfterHarvestN = localPlots.reduce((n, x) => {
     if (!x.plot) return n;
-    return n + emptyTiles(x.plot, x.now).length + tilesAt(x.plot, x.now, 'ready').length;
+    return n + emptyTiles(x.plot, x.now).length + harvestableTiles(x.plot, x.now).length;
   }, 0);
 
   const act = (action: string, ids: string[], ok: (r: Ack) => string, extra: Record<string, unknown> = {}) => {
@@ -84,7 +84,7 @@ export function FarmOverview({ me, owned, map, onOpenFarm, onClose }: Ownership 
           {status.plots.get(p.id) ? <FarmStatusSummary plot={status.plots.get(p.id)!} now={status.now} /> : <small className="barn-farm-status">{status.error ? 'Status unavailable' : 'Loading status…'}</small>}</p>
           {g.map === map && status.plots.get(p.id) && (() => {
             const plot = status.plots.get(p.id)!;
-            const ready = tilesAt(plot, status.now, 'ready').length;
+            const ready = harvestableTiles(plot, status.now).length;
             const empty = emptyTiles(plot, status.now).length;
             const withered = tilesAt(plot, status.now, 'withered').length;
             return <div className="farm-dash-actions">

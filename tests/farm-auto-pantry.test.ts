@@ -22,7 +22,7 @@ async function setup() {
   return { pool, bank, re, farm, fund, id, setNow: (t: number) => { now = t; }, db };
 }
 
-beforeEach(() => resetFarmGuardForTest());
+beforeEach(() => { resetFarmGuardForTest(); });
 
 describe('farm auto-harvest to pantry', () => {
   it('persists pantry destination; sell-harvest and pantry are mutually exclusive', async () => {

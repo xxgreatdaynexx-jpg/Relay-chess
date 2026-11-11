@@ -27,7 +27,7 @@ async function setup() {
   return { db, bank, re, farm, fund, chips, id1, id2, barn, setNow: (t: number) => { now = t; } };
 }
 
-beforeEach(() => resetFarmGuardForTest());
+beforeEach(() => { resetFarmGuardForTest(); });
 
 describe('farm dashboard batch actions', () => {
   it('requires a separately purchased barn and ownership of every named plot', async () => {

@@ -2,6 +2,7 @@ import { useDoing } from '@/lib/doing';
 import { TopTab } from '@/components/TopTabs';
 import { useEffect, useRef, useState } from 'react';
 import { NamePrompt, OutOfChips } from '@/components/CasinoCommon';
+import { CigaretteBar } from '@/components/CigaretteBar';
 import { CardFace } from '@/components/SolitairePanel';
 import { useWalletChips } from '@/lib/wallet';
 import { emitCasino, useSavedName } from '@/lib/casino';
@@ -92,6 +93,7 @@ export function PokerPanel() {
                   : <button type="button" className="bj-deal" disabled={busy} onClick={() => void act('vp_deal', { bet, stakes: vpPick })} data-testid="vp-deal">Deal {bet}</button>}
               </div>
               <div className="bj-label">Chips: {(wallet ?? v?.chips)?.toLocaleString() ?? '…'} {err && <span className="account-error">· {err}</span>}</div>
+              <CigaretteBar open={open && tab === 'play'} />
               {v && v.chips < 5 && !dealt && <OutOfChips />}
               <table className="vp-pays">
                 <tbody>{PAY_ROWS.map((h) => <tr key={h} className={v?.result?.hand === h ? 'on' : ''}><td>{POKER_LABELS[h]}</td><td>{POKER_PAYS[h]}×</td></tr>)}</tbody>

@@ -4,7 +4,7 @@ import { frecipe, FOOD_STEP_MARKUP } from '../shared/factory';
 import { CROPS, FARM_SELL_MUL, CROP_SEED_MUL } from '../shared/farm';
 
 describe('Sunflower Oil rebalance', () => {
-  it('is 1 sunflower per oil at crop x 1.10', () => {
+  it('is 1 sunflower per oil at crop x FOOD_STEP_MARKUP', () => {
     expect(GOODS.sunflower_oil.price).toBeCloseTo(GOODS.crop_sunflower.price * FOOD_STEP_MARKUP, 6);
     expect(frecipe('m_oil')!.in).toEqual([['good:crop_sunflower', 1]]);
   });

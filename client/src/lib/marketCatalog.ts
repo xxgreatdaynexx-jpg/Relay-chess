@@ -1,5 +1,5 @@
 /** Market catalog filtering/sorting (pure; shared by the Skins and Resources sub-tabs). */
-export interface CatEntry { what: string; name: string; kind?: string; weapon?: string; rarity?: 'common' | 'rare' | 'ultra'; type?: string; id?: string; color?: string; listings: number; lowest: number | null; last: number | null; lastAt: number | null }
+export interface CatEntry { what: string; name: string; kind?: string; weapon?: string; rarity?: 'common' | 'rare' | 'ultra'; type?: string; id?: string; color?: string; listings: number; lowest: number | null; last: number | null; lastAt: number | null; /** Indexed unit the house desk pays; 0 if the house does not buy it. */ house?: number }
 export type SortKey = 'low' | 'high' | 'name' | 'rarity' | 'most' | 'recent';
 const RANK = { common: 0, rare: 1, ultra: 2 } as const;
 export const PAGE = 60;
@@ -14,3 +14,9 @@ export function sortCatalog(rows: CatEntry[], o: { q?: string; listedOnly?: bool
   };
   return out.sort((a, b) => cmp[o.sort](a, b) || a.name.localeCompare(b.name));
 }
+
+/** Case-insensitive item-name match for Market buy-request search. An empty query matches everything. */
+export const matchesItemSearch = (name: string, q: string) => {
+  const needle = q.trim().toLowerCase();
+  return !needle || name.toLowerCase().includes(needle);
+};

@@ -1,6 +1,6 @@
 /**
  * House-sell cap index (pt1442u): the daily house-sell cap follows TOTAL player assets (daily_economy.total, the same
- * cash + assets net worth the Bank panel shows). Each UTC day: cap(d) = cap(d-1) x (1 + 0.25 x (total[close d-1] / total[close d-2] - 1)).
+ * cash + assets net worth the Bank panel shows). Each UTC day: cap(d) = cap(d-1) x (1 + 0.35 x (total[close d-1] / total[close d-2] - 1)).
  * Missing/zero snapshot -> unchanged. Falls with assets too, but never below the 100K base (index floor 1).
  * Separate from the price index, which still scales payouts and prices. Never moves chips.
  */
@@ -10,8 +10,8 @@ import { priceIndex } from './price-index.js';
 export const HOUSE_CAP_MIGRATION = `CREATE TABLE IF NOT EXISTS house_cap_index (
   day TEXT PRIMARY KEY, idx DOUBLE PRECISION NOT NULL, ratio DOUBLE PRECISION, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
 export const HOUSE_CAP_FLOOR = 1;
-/** Dayne: a quarter of total-asset inflation moves the cap (+100% wealth -> +25% cap, -20% -> -5%). */
-export const HOUSE_CAP_PASS_THROUGH = 0.25;
+/** A share of total-asset inflation moves the cap (+100% wealth -> +35% cap, -20% -> -7%). */
+export const HOUSE_CAP_PASS_THROUGH = 0.35;
 
 const DAY = 86_400_000;
 const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
@@ -23,6 +23,8 @@ let timer: NodeJS.Timeout | null = null;
 
 /** Current cap multiplier (cap = 100K x this). Falls back to the price index until the table is read. */
 export const houseCapIndex = () => (cur.index > 0 ? cur.index : priceIndex());
+/** Loaded house-cap index, or the floor (1) if the table has not been read. Never uses the price-index fallback. */
+export const houseCapIndexOrFloor = () => (cur.index > 0 ? cur.index : HOUSE_CAP_FLOOR);
 export const houseCapView = () => ({ index: houseCapIndex(), day: cur.day, ratio: cur.ratio });
 export const setHouseCapIndexForTest = (index: number) => { cur = { index, day: null, ratio: null }; };
 

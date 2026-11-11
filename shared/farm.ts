@@ -25,19 +25,21 @@ const M = 60_000, H = 60 * M;
 /** Dayne 2026-11-05: crops grow 30% faster (duration ×0.7). Applied at definition so client display + server readyAt stay in sync. */
 const GROW_SCALE = 0.7;
 const growMs = (ms: number) => Math.round(ms * GROW_SCALE);
-/** Raw farm output over seed (Dayne 2026-11-09): harvest pays ~seed x CROP_SEED_MUL after FARM_SELL_MUL. */
-export const CROP_SEED_MUL = 1.5;
+/** Raw farm output over seed: harvest pays ~seed x CROP_SEED_MUL after FARM_SELL_MUL. */
+export const CROP_SEED_MUL = 1.35;
 /** Farming profit -5% (Dayne, 2026-11-04): a harvest sells each crop at 95% of its listed value. Seed costs are unchanged. */
 export const FARM_SELL_MUL = 0.95;
 /** Listed sell so cropSellValue (= sell x FARM_SELL_MUL) ≈ seed x CROP_SEED_MUL. */
 export const cropListSell = (seed: number) => Math.round((seed * CROP_SEED_MUL) / FARM_SELL_MUL * 100) / 100;
-/** Crop margins: raw harvest profits 50% of seed (after FARM_SELL_MUL). Factory food steps add +10% on inputs separately. */
+
+/** Crop margins: raw harvest profits 35% of seed (after FARM_SELL_MUL). Factory food steps add +8% on inputs separately. */
 /** Base chips. Fast crops pay little per hour unless you keep coming back; slow ones are the big money per click. */
 export const CROPS: Crop[] = [
   { id: 'strawberry', label: 'Strawberries', emoji: '🍓', seed: 5, grow: growMs(4 * M), sell: cropListSell(5), color: 0xd84a5a },
   { id: 'wheat', label: 'Wheat', emoji: '🌾', seed: 10, grow: growMs(10 * M), sell: cropListSell(10), color: 0xd8b860 },
   { id: 'carrot', label: 'Carrots', emoji: '🥕', seed: 15, grow: growMs(30 * M), sell: cropListSell(15), color: 0xe08a3a },
   { id: 'corn', label: 'Corn', emoji: '🌽', seed: 25, grow: growMs(60 * M), sell: cropListSell(25), color: 0xe8d050 },
+  { id: 'tobacco', label: 'Tobacco', emoji: '🌿', seed: 30, grow: growMs(90 * M), sell: cropListSell(30), color: 0x8a6a3a },
   { id: 'tomato', label: 'Tomatoes', emoji: '🍅', seed: 40, grow: growMs(2 * H), sell: cropListSell(40), color: 0xd8443a },
   { id: 'potato', label: 'Potatoes', emoji: '🥔', seed: 60, grow: growMs(4 * H), sell: cropListSell(60), color: 0xb08a5a },
   { id: 'pumpkin', label: 'Pumpkins', emoji: '🎃', seed: 90, grow: growMs(8 * H), sell: cropListSell(90), color: 0xe0782a },
@@ -48,6 +50,7 @@ export const cropSellValue = (c: Pick<Crop, 'sell'>) => c.sell * FARM_SELL_MUL;
 /** Base profit for one harvested crop (sale value minus seed), never negative. */
 export const cropProfit = (c: Pick<Crop, 'sell' | 'seed'>) => Math.max(0, cropSellValue(c) - c.seed);
 export const cropById = (id: unknown) => CROPS.find((c) => c.id === id) ?? TROPICAL_CROPS.find((c) => c.id === id);
+for (const c of TROPICAL_CROPS) c.sell = cropListSell(c.seed);
 export type Stage = 'growing' | 'ready' | 'withered';
 export const stageOf = (c: Crop, plantedAt: number, now: number): Stage => {
   const ready = plantedAt + c.grow; return now < ready ? 'growing' : now < ready + ripeWindow(c.grow) ? 'ready' : 'withered';
