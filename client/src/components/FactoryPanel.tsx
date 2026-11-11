@@ -15,6 +15,7 @@ import { SellQtyPicker } from './SellQtyPicker';
 import { FillRequestCard, useMatchingRequests } from './MarketRequests';
 import { SellAllConfirm } from './SellAllConfirm';
 import { sellAllSummary, sellAllText } from '../../../shared/sellConfirm';
+import { requestSellLabel } from '../../../shared/marketSell';
 import { usePriceIndex } from '@/lib/priceIndex';
 import { ORES, SELL_TIERS, houseCapChips, HOUSE_DAILY_BASE, payoutFor, isOre, nameOf, priceOf, sellable, stackKey, type Stack } from '../../../shared/mines';
 import { STORAGE_FILTER_KEY, STORAGE_FILTERS, STORAGE_SORT_KEY, STORAGE_SORTS, arrangeStorageStacks, isStorageFilter, isStorageSort, type StorageFilter, type StorageSort } from '../../../shared/storageList';
@@ -104,7 +105,7 @@ function FactoryWindow({ onClose }: { onClose: () => void }) {
             {shown.map((s) => (
               <li key={stackKey(s)}><ItemIcon type={s.type} id={s.id} />{nameOf(s)}<b>×{s.qty}</b><small data-testid="sell-unit">🪙{+(houseSellPrice(s) * sellIdx).toFixed(2)}</small>
                 {canSell && sellable(s) && <button type="button" aria-expanded={pick === stackKey(s)} onClick={() => setPick((c) => (c === stackKey(s) ? null : stackKey(s)))} data-testid="factory-sell-pick">Sell…</button>}{!sellable(s) && (s.type === 'food' ? <small title="Pantry food: never sold to the house. Cook it, sell it on the Market, or feed it to a factory Input Chest (crops)">pantry</small> : <small title="Imported input: craft it in the factory to sell">craft</small>)}
-                {canSell && reqMatches.some((x) => x.type === s.type && x.id === s.id) && <button type="button" className="factory-req-sell" aria-expanded={reqPick === stackKey(s)} onClick={() => setReqPick((c) => (c === stackKey(s) ? null : stackKey(s)))} data-testid="factory-req-sell">Sell to market request</button>}
+                {canSell && requestSellLabel(reqMatches.find((x) => x.type === s.type && x.id === s.id)?.requests ?? [], s.qty) && <button type="button" className="factory-req-sell" aria-expanded={reqPick === stackKey(s)} onClick={() => setReqPick((c) => (c === stackKey(s) ? null : stackKey(s)))} data-testid="factory-req-sell">{requestSellLabel(reqMatches.find((x) => x.type === s.type && x.id === s.id)?.requests ?? [], s.qty)}</button>}
                 {canSell && sellable(s) && pick === stackKey(s) && <SellQtyPicker owned={s.qty} unit={nameOf(s)} testid="factory-qty" preview={(n) => Math.floor(payoutFor(n * houseSellPrice(s), q?.effAlready ?? q?.already ?? 0, capBase) * sellIdx)} onSell={(n) => sell(stackKey(s), n)} />}
                 {canSell && reqPick === stackKey(s) && reqMatches.some((x) => x.type === s.type && x.id === s.id) && <FillRequestCard item={{ ...reqMatches.find((x) => x.type === s.type && x.id === s.id)!, qty: s.qty, name: nameOf(s) }} testid="factory-req" onReload={() => { reloadReqs(); refresh(); }} onSold={(m) => flash(m)} />}</li>
             ))}

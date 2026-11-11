@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T19:16:00-06:00", "title": "Sell to market request shows the price", "bullets": [
+    "In the Factory and the Warehouse, Sell to market request now shows what you would actually receive after the 5% Market fee, using the best open request for that item: for example, Sell to market request · 🪙95 each. If you can fill more than one unit, the total for that amount is shown too.",
+    "The button still appears only when you have stock that matches an open request. Your chips, items, and existing requests are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T19:00:00-06:00", "title": "House prices and request search on the Market", "bullets": [
     "The Market Resources list now shows the current house price next to every item — the same indexed per-unit figure the house desk pays today.",
     "When you post a buy request, that house price is shown beside the item so you can see what to offer. A search box filters open requests and the item picker by name as you type (case-insensitive). Food the house does not buy is left blank. Your chips, stock, and existing listings are unchanged.",
