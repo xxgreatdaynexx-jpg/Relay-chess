@@ -18,10 +18,12 @@ import { fieldPlotId, allFieldPlots } from '../../../shared/fieldFarms';
 import { bigFarms, BIG_ROADS, BIG_ROAD_W, BIG_FARM_AREA, BIG_GROUND_X0, BIG_GROUND_X1, BIG_GROUND_Z0 } from '../../../shared/bigFarms';
 
 /** Every farm plot drawn by the farm renderer: Farm-district plots (f:<n>) and the countryside field farms (cf:<n>). */
-export const allFarmPlots = () => [...farmPlots().map((p) => ({ ...p, id: plotId(p.n) })), ...allFieldPlots().map((p) => ({ ...p, id: fieldPlotId(p.n) }))];
+import { orchardId, orchardPlots } from '../../../shared/orchard';
+export const allFarmPlots = () => [...farmPlots().map((p) => ({ ...p, id: plotId(p.n) })), ...allFieldPlots().map((p) => ({ ...p, id: fieldPlotId(p.n) })), ...orchardPlots().map((p) => ({ ...p, id: orchardId(p.n) }))];
 import { FARM_MACHINES, buildMachine } from './farmMachines';
-import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, TILE, clampMapTarget, panInset } from '../../../shared/farm';
+import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, isOrchardCrop, TILE, clampMapTarget, panInset } from '../../../shared/farm';
 import { buildVenues } from './worldVenues';
+import { buildAirportLandmark } from './estateModels';
 import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN, MINE_SITES, MINE_APRON, OUTSKIRTS } from './worldLayout';
 import { riverOutline, islandOutline, riverDecor, edgeDist, ISLAND } from '../../../shared/riverLake';
 import { outskirts, countryHomes, countryBusinesses, businessType, lakeShape, RURAL_ROADS, RURAL_ROAD_W, LAKE, DOCK } from '../../../shared/outskirts';
@@ -425,15 +427,9 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
         const nc = buildCar(CAR_BY_ID.get('chudmobile')!, 0xff3b6b, 'far', { paint: null, rims: 'neon', kit: 'lip', glow: 'pink' }); nc.position.set(3, 0.15, 3.6); nc.rotation.y = 0.4; nc.scale.setScalar(0.8); g.add(nc);
         height = 7; break; }
       case 'airport': {
-        // International terminal: a long glass concourse with two wings, a control tower and jet bridges. The slot and first runway stay put.
-        const glass = win(71), roof = dark, band = neon, steel = mat({ color: 0xb8bcc4 });
-        g.add(box(22, 5.2, 8, glass, 0, 0, 1.2), box(22.8, 0.45, 8.6, roof, 0, 5.2, 1.2), box(22.4, 0.28, 8.4, band, 0, 5.65, 1.2));
-        g.add(box(10, 4.2, 6, glass, -12, 0, 5.5), box(10, 4.2, 6, glass, 12, 0, 5.5));
-        g.add(box(10.4, 0.35, 6.4, roof, -12, 4.2, 5.5), box(10.4, 0.35, 6.4, roof, 12, 4.2, 5.5));
-        g.add(cyl(1.15, 1.45, 16, dark, -6.5, 0, -3.8, 10), cyl(2.4, 1.8, 2.4, mat({ color: 0x9fd4ff, emissive: 0x4aa0ff, emissiveIntensity: 0.7 * NEON, transparent: true, opacity: 0.8 }), -6.5, 16, -3.8, 10), cyl(2.6, 2.6, 0.3, band, -6.5, 18.4, -3.8, 10));
-        g.add(box(6.2, 1.6, 1.5, steel, -11, 1.6, -2.6), box(6.2, 1.6, 1.5, steel, 8, 1.6, -2.6));
-        g.add(box(8, 2.4, 3.2, mat({ color: 0xd8dde8 }), 0, 0, 6.8)); // departures canopy
-        height = 20; break; }
+        // International terminal (curved hall, piers with jet bridges, control tower). Slot and first runway stay put.
+        g.add(buildAirportLandmark());
+        height = 22; break; }
       case 'dock': {
         // Fishing Dock: a timber boathouse with a bait-shop sign, and a plank pier out over the lake (world -z).
         const wood = mat({ color: 0x8a6440, roughness: 0.9 }), plank = mat({ color: 0xa47a4c, roughness: 0.95 }), post = mat({ color: 0x5a4028, roughness: 1 });
@@ -902,15 +898,55 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     cm.count = 0; cm.frustumCulled = false; scene.add(cm); return cm;
   })();
   // Tiles indexed past their field (e.g. after a layout change) are skipped so crops never draw outside a field.
-  const setFarm = (tiles: Array<[string, number, string, string]>) => {
+  const orchardMesh = (() => {
+    const N = Math.max(1, allFarmPlots().filter((p) => String(p.id).startsWith('orchard:')).reduce((n, p) => n + p.cols * p.rows, 0));
+    const trunks = new THREE.InstancedMesh(geo(new THREE.CylinderGeometry(0.14, 0.18, 1, 8)), mat({ color: 0x6b4526, roughness: 0.9 }), N);
+    const crowns = new THREE.InstancedMesh(geo(new THREE.SphereGeometry(1, 10, 8)), mat({ color: 0x2e8b45, roughness: 0.75 }), N);
+    const fruit = new THREE.InstancedMesh(geo(new THREE.SphereGeometry(0.12, 6, 5)), mat({ color: 0xffffff, roughness: 0.5 }), N * 5);
+    for (const m of [trunks, crowns, fruit]) { m.count = 0; m.frustumCulled = false; m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m.count * 3), 3); scene.add(m); }
+    // instanceColor is rebuilt when we first paint; give them color buffers now
+    trunks.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(N * 3), 3);
+    crowns.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(N * 3), 3);
+    fruit.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(N * 5 * 3), 3);
+    return { trunks, crowns, fruit, N };
+  })();
+  const setFarm = (tiles: Array<[string, number, string, string] | [string, number, string, string, number?, number?]>) => {
     const d = new THREE.Object3D(); const c = new THREE.Color(); let n = 0; const plots = new Map(allFarmPlots().map((p) => [p.id, p]));
-    for (const [pid, t, crop, stage] of tiles) {
-      const p = plots.get(pid); const cr = cropById(crop); if (!p || !cr || n >= crops.instanceMatrix.count || !Number.isInteger(t) || t < 0 || t >= p.cols * p.rows) continue; const [x, z] = tileXZ(p, t);
+    let tn = 0, fn = 0;
+    for (const row of tiles) {
+      const [pid, t, crop, stage, progress, matured] = row;
+      const p = plots.get(pid); const cr = cropById(crop); if (!p || !cr || !Number.isInteger(t) || t < 0 || t >= p.cols * p.rows) continue; const [x, z] = tileXZ(p, t);
+      if (isOrchardCrop(crop)) {
+        if (tn >= orchardMesh.N) continue;
+        const pct = typeof progress === 'number' ? progress / 100 : (stage === 'ready' ? 1 : 0.45);
+        const grown = matured === 1 || stage === 'ready';
+        const h = (grown ? 2.4 : 0.9) + pct * 1.2;
+        const r = (grown ? 0.75 : 0.3) + pct * 0.5;
+        d.position.set(x, h * 0.35, z); d.scale.set(grown ? 1 : 0.55, h * 0.7, grown ? 1 : 0.55); d.rotation.set(0, 0, 0); d.updateMatrix();
+        orchardMesh.trunks.setMatrixAt(tn, d.matrix); orchardMesh.trunks.setColorAt(tn, c.setHex(0x6b4526));
+        d.position.set(x, h * 0.7, z); d.scale.set(r, r, r); d.updateMatrix();
+        orchardMesh.crowns.setMatrixAt(tn, d.matrix); orchardMesh.crowns.setColorAt(tn, c.setHex(stage === 'ready' ? cr.color : 0x2e8b45));
+        if (stage === 'ready') {
+          for (const [dx, dy, dz] of [[0.4, 0.15, 0.2], [-0.35, 0.2, 0.25], [0.15, -0.1, -0.35], [-0.2, 0.1, -0.2], [0.3, 0.25, -0.15]] as const) {
+            if (fn >= orchardMesh.N * 5) break;
+            d.position.set(x + dx, h * 0.7 + dy, z + dz); d.scale.set(1, 1, 1); d.updateMatrix();
+            orchardMesh.fruit.setMatrixAt(fn, d.matrix); orchardMesh.fruit.setColorAt(fn, c.setHex(cr.color)); fn++;
+          }
+        }
+        tn++;
+        continue;
+      }
+      if (n >= crops.instanceMatrix.count) continue;
       const hgt = stage === 'ready' ? 1.3 : stage === 'withered' ? 0.45 : 0.7;
       d.position.set(x, 0.14 + hgt / 2, z); d.scale.set(stage === 'ready' ? 1 : 0.7, hgt, stage === 'ready' ? 1 : 0.7); d.rotation.set(0, 0, 0); d.updateMatrix();
       crops.setMatrixAt(n, d.matrix); crops.setColorAt(n, c.setHex(stage === 'ready' ? cr.color : stage === 'withered' ? 0x5a4a30 : 0x3f8a3a)); n++;
     }
     crops.count = n; crops.instanceMatrix.needsUpdate = true; if (crops.instanceColor) crops.instanceColor.needsUpdate = true;
+    orchardMesh.trunks.count = tn; orchardMesh.crowns.count = tn; orchardMesh.fruit.count = fn;
+    orchardMesh.trunks.instanceMatrix.needsUpdate = true; orchardMesh.crowns.instanceMatrix.needsUpdate = true; orchardMesh.fruit.instanceMatrix.needsUpdate = true;
+    if (orchardMesh.trunks.instanceColor) orchardMesh.trunks.instanceColor.needsUpdate = true;
+    if (orchardMesh.crowns.instanceColor) orchardMesh.crowns.instanceColor.needsUpdate = true;
+    if (orchardMesh.fruit.instanceColor) orchardMesh.fruit.instanceColor.needsUpdate = true;
   };
   // Stars
   const stG = new THREE.BufferGeometry(); const sp: number[] = []; for (let i = 0; i < 400; i++) { const a = r() * Math.PI * 2, e = 0.15 + r() * 1.2, R = 420; sp.push(Math.cos(a) * Math.cos(e) * R, Math.sin(e) * R, Math.sin(a) * Math.cos(e) * R); }
@@ -936,7 +972,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const id = pick(e.clientX, e.clientY); if (!id) { setHover(null); h.onHover(null, 0, 0); return; }
     if (id.startsWith('barn:')) { h.onHover(null, 0, 0); h.onBarn?.(id); return; }
     if (id.startsWith('trailer:')) { h.onHover(id, e.clientX, e.clientY); if (h.onTrailer?.(id.slice(8))) return; window.dispatchEvent(new CustomEvent('open-player', { detail: id.slice(8) })); return; } // trailers: your own opens your home (kitchen), others the owner's profile
-    if (id.startsWith('lm:') || id.startsWith('b:') || id.startsWith('p:') || id.startsWith('f:') || id.startsWith('cf:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel
+    if (id.startsWith('lm:') || id.startsWith('b:') || id.startsWith('p:') || id.startsWith('f:') || id.startsWith('cf:') || id.startsWith('winery:') || id.startsWith('lot:') || id.startsWith('orchard:')) { h.onHover(null, 0, 0); h.onProperty?.(id); return; } // real estate: deed panel
     if (id === BILLIONAIRE_SIGN) { setHover(id); h.onHover(null, 0, 0); h.onPick(id); return; } // opens the Future Features popup; no date
     flyTo(id);
   };

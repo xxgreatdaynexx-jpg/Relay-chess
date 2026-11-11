@@ -8,7 +8,8 @@ import {
   EAST_X0, EAST_X1, EAST_Z0, EAST_Z1, EXPANSION_ROADS, EXPANSION_ROAD_W, GOLDWOOD, PLASTICS_PLANT, RIG_DOCK,
   estateLots, expansionFarms, goldwoodHomes, wineryPlots,
 } from '../../../shared/mapExpansion';
-import { buildEstateModel, buildGoldwoodMansion, buildHyperFarm, buildPlasticsPlant, buildRig, buildRigDock, buildWinery } from './estateModels';
+import { orchardId, orchardPlots, ORCHARD_ROADS } from '../../../shared/orchard';
+import { buildEstateModel, buildGoldwoodMansion, buildHyperFarm, buildOrchardSite, buildPlasticsPlant, buildRig, buildRigDock, buildWinery } from './estateModels';
 import type { EstateBuildId } from '../../../shared/estateProjects';
 
 type Summary = {
@@ -27,7 +28,7 @@ export function createEstate(w: World) {
   };
   addBox(grass, EAST_X1 - EAST_X0, EAST_Z1 - EAST_Z0, (EAST_X0 + EAST_X1) / 2, (EAST_Z0 + EAST_Z1) / 2);
   addBox(goldG, GOLDWOOD.x1 - GOLDWOOD.x0, GOLDWOOD.z1 - GOLDWOOD.z0, (GOLDWOOD.x0 + GOLDWOOD.x1) / 2, (GOLDWOOD.z0 + GOLDWOOD.z1) / 2);
-  for (const [a, b] of EXPANSION_ROADS) {
+  for (const [a, b] of [...EXPANSION_ROADS, ...ORCHARD_ROADS]) {
     const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz);
     const m = new THREE.Mesh(new THREE.BoxGeometry(L, 0.12, EXPANSION_ROAD_W), roadM);
     m.position.set((a[0] + b[0]) / 2, 0.06, (a[1] + b[1]) / 2);
@@ -41,7 +42,7 @@ export function createEstate(w: World) {
   const plastics = buildPlasticsPlant(); plastics.position.set(PLASTICS_PLANT.x, 0, PLASTICS_PLANT.z); root.add(plastics); mark(plastics, 'plastics');
   const dock = buildRigDock(); dock.position.set(RIG_DOCK.x, 0, RIG_DOCK.z); root.add(dock); mark(dock, 'rigdock');
   for (const h of goldwoodHomes()) {
-    const g = buildGoldwoodMansion(h.floors); g.position.set(h.x, 0, h.z); root.add(g); mark(g, `b:mansion:${h.n}`);
+    const g = buildGoldwoodMansion(h.floors, h.n); g.position.set(h.x, 0, h.z); root.add(g); mark(g, `b:mansion:${h.n}`);
   }
   for (const v of wineryPlots()) {
     const g = buildWinery(); g.position.set(v.x, 0, v.z); root.add(g); mark(g, `winery:${v.n}`);
@@ -54,6 +55,9 @@ export function createEstate(w: World) {
   for (const f of expansionFarms()) {
     const pad = new THREE.Mesh(new THREE.BoxGeometry(f.w, 0.1, f.d), new THREE.MeshStandardMaterial({ color: 0x3a7a3a }));
     pad.position.set(f.x, 0.05, f.z); pad.userData.spot = `cf:${f.n}`; root.add(pad); pick.push(pad);
+  }
+  for (const o of orchardPlots()) {
+    const g = buildOrchardSite(o.w, o.d); g.position.set(o.x, 0, o.z); root.add(g); mark(g, orchardId(o.n));
   }
 
   const dynamic = new THREE.Group(); root.add(dynamic);

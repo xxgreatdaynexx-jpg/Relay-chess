@@ -63,6 +63,15 @@ export function buildVenues(scene: THREE.Scene, { mat, geo }: Mk): { step: (dt: 
   for (const z of [RUNWAY2.z0 + 3, RUNWAY2.z1 - 3]) for (let k = -3; k <= 3; k++) if (k) flat(0.7, 4, paint, RUNWAY2.x + k * 1.2, z, 0.1);
   for (const z of [RUNWAY2.z0 + 24, RUNWAY2.z1 - 24]) for (const sx of [-1, 1]) flat(1.4, 6, paint, RUNWAY2.x + sx * 2.2, z, 0.1);
   for (let z = RUNWAY2.z0; z <= RUNWAY2.z1; z += 6) lightPos.push(RUNWAY2.x - RUNWAY2.w / 2 - 0.4, z, RUNWAY2.x + RUNWAY2.w / 2 + 0.4, z);
+  // Taxiway links between the two parallel runways (threshold, mid, far end) plus a parallel strip east of RUNWAY2.
+  const midX = (RUNWAY.x + RUNWAY2.x) / 2;
+  const linkW = Math.abs(RUNWAY.x - RUNWAY2.x) - (RUNWAY.w + RUNWAY2.w) / 2 + 2;
+  for (const z of [RUNWAY.z0 + 8, (RUNWAY.z0 + RUNWAY.z1) / 2, RUNWAY.z1 - 8]) {
+    flat(linkW, 4.5, asphalt, midX, z, 0.08); flat(linkW - 2, 0.25, yellow, midX, z, 0.1);
+  }
+  const TX2 = RUNWAY2.x + RUNWAY2.w / 2 + 9;
+  flat(4.5, tz1 - tz0 + 4.5, asphalt, TX2, (tz0 + tz1) / 2, 0.08); flat(0.25, tz1 - tz0, yellow, TX2, (tz0 + tz1) / 2, 0.1);
+
 
   const lm = new THREE.InstancedMesh(geo(new THREE.SphereGeometry(0.22, 6, 4)), new THREE.MeshBasicMaterial({ color: 0x9fd0ff }), lightPos.length / 2);
   { const d = new THREE.Object3D(); for (let i = 0; i < lightPos.length / 2; i++) { d.position.set(lightPos[i * 2], 0.3, lightPos[i * 2 + 1]); d.updateMatrix(); lm.setMatrixAt(i, d.matrix); } } scene.add(lm);
