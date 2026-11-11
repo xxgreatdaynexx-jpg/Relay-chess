@@ -249,9 +249,11 @@ export const LANDMARK_SLOTS: Record<string, [number, number]> = {
   club: [-80, 200], // Billionaire's Club on the ocean beach, west of Chud Hub Harbour (off the city plate; no fill cleared)
   skytower: [-56, 200], // Sky Tower civic pad east of the Club, same beach
   racetrack: [-103, -169], // outskirts, north-west, in RESERVED_VENUES.racetrack: infield of the oval
+  plastics: [186, 88], // Chud City Plastics Plant, east industrial fringe (off the fill)
+  rigdock: [130, 210], // shoreline construction dock, east of the Harbour
 };
 /** Outskirts landmarks sit square to the map, not to a street. */
-const SQUARE_LM = new Set(['airport', 'racetrack', 'dock', 'club', 'skytower']);
+const SQUARE_LM = new Set(['airport', 'racetrack', 'dock', 'club', 'skytower', 'plastics', 'rigdock']);
 export const SPARE_SLOTS: [number, number][] = [[13, 42], [-13, -39], [-39, -13], [13, -65]];
 
 /**
@@ -273,7 +275,7 @@ export const MINE_SITES: Record<string, MineSite> = {
 export const OUTSKIRTS = { x0: -222, x1: 208, z0: -218, z1: 192 };
 /** Kept empty for the Airport (long N-S runway, west) and the Speedway oval (north-west); decor never goes here. */
 export const RESERVED_VENUES: Record<'airport' | 'racetrack', { x0: number; x1: number; z0: number; z1: number }> = {
-  airport: { x0: -218, x1: -126, z0: -4, z1: 146 },
+  airport: { x0: -280, x1: -126, z0: -4, z1: 146 },
   racetrack: { x0: -178, x1: -28, z0: -214, z1: -124 },
 };
 export const MINE_APRON = 34; // rocky ground square around each outskirts mine
@@ -285,7 +287,8 @@ function placeLandmarks(ids: string[]): Record<string, OBB> {
   for (const id of ids) {
     if (MINE_SITES[id]) continue;
     const want = LANDMARK_SLOTS[id] ?? spare.shift(); if (!want) continue;
-    let placed: OBB | null = SQUARE_LM.has(id) ? { x: want[0], z: want[1], w: PAD, d: PAD, rot: 0 } : null; // outskirts venues: fixed spot off the plate
+    const [pw, pd] = (id === 'plastics' ? [22, 16] : id === 'rigdock' ? [28, 18] : [PAD, PAD]);
+    let placed: OBB | null = SQUARE_LM.has(id) ? { x: want[0], z: want[1], w: pw, d: pd, rot: 0 } : null; // outskirts venues: fixed spot off the plate
     for (let rad = 0; rad <= 36 && !placed; rad += 2) for (let k = 0; k < Math.max(1, rad * 3) && !placed; k++) {
       const a = (k / Math.max(1, rad * 3)) * Math.PI * 2; const x = want[0] + Math.cos(a) * rad, z = want[1] + Math.sin(a) * rad;
       const b: OBB = { x, z, w: PAD, d: PAD, rot: SQUARE_LM.has(id) ? 0 : -nearestTangent(x, z) };
@@ -295,9 +298,9 @@ function placeLandmarks(ids: string[]): Record<string, OBB> {
   }
   return out;
 }
-export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'mine-frost', 'mine-magma', 'mine-quarry', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer', 'airport', 'racetrack', 'dock', 'grocery', 'mechanic', 'employ', 'cityhall', 'furniture', 'club', 'skytower'];
+export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'mine-frost', 'mine-magma', 'mine-quarry', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer', 'airport', 'racetrack', 'dock', 'grocery', 'mechanic', 'employ', 'cityhall', 'furniture', 'club', 'skytower', 'plastics', 'rigdock'];
 /** Landmarks added after launch: they clear the fill under them instead of reshuffling it. */
-const LATE_LM = new Set(['grocery', 'mechanic', 'employ', 'cityhall', 'furniture']);
+const LATE_LM = new Set(['grocery', 'mechanic', 'employ', 'cityhall', 'furniture', 'plastics', 'rigdock']);
 let lmCache: { key: string; v: Record<string, OBB> } | null = null;
 /** Landmark footprints for the given spot ids (defaults to every known slot). */
 export function landmarks(ids: string[] = LANDMARK_IDS): Record<string, OBB> {

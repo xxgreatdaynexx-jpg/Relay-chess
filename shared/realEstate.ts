@@ -27,6 +27,7 @@ import { allFieldPlots, fieldPlotId, fieldPlotPrice, fieldPlotLabel } from './fi
 import { RESORT_TYPES, resortLots, resortPlots, resortPlotId, resortPlotPrice } from './resort.js';
 import { islandProperties } from './island.js';
 import { skyProperties } from './skyPenthouses.js';
+import { estateLotId, estateLots, goldwoodHomes, goldwoodId, wineryId, wineryPlots } from './mapExpansion.js';
 import { countryHomes, countryBusinesses, businessType, COMMERCIAL_PRICE, COMMERCIAL_LABEL } from './outskirts.js';
 
 export const TAX_RATE = 0.005;
@@ -40,15 +41,15 @@ export const LANDMARK_PRICE: Record<string, number> = {
 };
 export const LANDMARK_LABEL: Record<string, string> = {
   casino: 'Casino', bank: 'Bank', stocks: 'Stock Exchange', arena: 'Arena', chess: 'Chess Club', market: 'Market',
-  factory: 'Factory', mine: 'Mine', 'mine-frost': 'Frostbite Caverns', 'mine-magma': 'Magma Depths', warehouse: 'Warehouse', leaderboard: 'Leaderboard', chat: 'Chat Hall', dealer: 'Car Dealership', mechanic: 'Mechanic Shop', airport: 'Chud Hub International Airport', racetrack: 'Chud Hub Speedway', dock: 'Fishing Dock', employ: 'Employment Office', furniture: 'Furniture Store', club: "Billionaire's Club", skytower: 'Sky Tower',
+  factory: 'Factory', mine: 'Mine', 'mine-frost': 'Frostbite Caverns', 'mine-magma': 'Magma Depths', warehouse: 'Warehouse', leaderboard: 'Leaderboard', chat: 'Chat Hall', dealer: 'Car Dealership', mechanic: 'Mechanic Shop', airport: 'Chud Hub International Airport', racetrack: 'Chud Hub Speedway', dock: 'Fishing Dock', employ: 'Employment Office', furniture: 'Furniture Store', club: "Billionaire's Club", skytower: 'Sky Tower', plastics: 'Chud City Plastics Plant', rigdock: 'Shore Construction Dock',
 };
 /** Chosen design prices: jail matches Factory/Mine; harbour matches Speedway (below Airport). Public services stay public. */
 export const PUBLIC_SERVICE_DEEDS: Property[] = [
   { ...JAIL_SITE, w: JAIL_HALF.x * 2, d: JAIL_HALF.z * 2, id: 'lm:jail', kind: 'landmark', type: 'jail', label: 'City Jail', price: 750_000 },
   { x: HUB_MAPS.city.port.pier[0]![0] - 7, z: HUB_MAPS.city.port.pier[0]![1] - 7, w: 76, d: 16, rot: 0, id: 'lm:harbour', kind: 'landmark', type: 'harbour', label: 'Chud Hub Harbour', price: 1_500_000 },
 ];
-const PATCH_LABEL: Record<string, string> = { lot: 'Empty lot', park: 'Park', plaza: 'Plaza' };
-const PATCH_REF: Record<string, number> = { lot: 13 * 13 * 0.95, park: 13 * 13 * 0.95, plaza: 81 * 0.95 };
+const PATCH_LABEL: Record<string, string> = { lot: 'Empty lot', park: 'Park', plaza: 'Plaza', estate_lot: 'Construction lot', power_plant: 'Turnkey power plant' };
+const PATCH_REF: Record<string, number> = { lot: 13 * 13 * 0.95, park: 13 * 13 * 0.95, plaza: 81 * 0.95, estate_lot: 32 * 26, power_plant: 40 * 32 };
 
 export type PropertyKind = 'building' | 'patch' | 'landmark' | 'farm';
 export interface Property extends OBB { id: string; kind: PropertyKind; type: string; label: string; price: number; /** farmland: full plot cols × rows (zoning) */ tiles?: number; h?: number; map?: 'resort' | 'island'; /** under a civic plot: never for sale again, drawn only while someone still owns it */ retired?: boolean; /** Housing capacity captured from its original canonical price band, never from its new price. */ housingEmployees?: number }
@@ -106,7 +107,7 @@ let cache: Property[] | null = null; let byId: Map<string, Property> | null = nu
 export function properties(): Property[] {
   if (cache) return cache;
   const { houses, patches } = cityFill(7); const out: Property[] = PUBLIC_SERVICE_DEEDS.map((p) => ({ ...p }));
-  const NON_DEED_LANDMARKS = new Set(['mine-quarry']); // Stone Quarry: public manual mine only (chessguy2)
+  const NON_DEED_LANDMARKS = new Set(['mine-quarry', 'plastics', 'rigdock']); // public works, not for sale
   for (const [id, b] of Object.entries(landmarks())) if (LANDMARK_IDS.includes(id) && !CIVIC_IDS.has(id) && !NON_DEED_LANDMARKS.has(id)) out.push({ ...b, id: `lm:${id}`, kind: 'landmark', type: id, label: LANDMARK_LABEL[id] ?? id, price: LANDMARK_PRICE[id] ?? 500_000 });
   for (const h of [...houses, ...countryHomes()]) {
     const t = HOUSING_TYPES.find((x) => x.id === h.type); if (!t) continue;
@@ -128,6 +129,11 @@ export function properties(): Property[] {
   for (const f of resortPlots()) out.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: resortPlotId(f.n), kind: 'farm', type: 'plantation', label: `${f.estate ? 'Estate plantation' : 'Plantation plot'} #${f.n} (${f.cols}×${f.rows})`, price: resortPlotPrice(f), map: 'resort', tiles: f.cols * f.rows });
   for (const u of skyProperties()) out.push(u);
   for (const u of islandProperties()) out.push(u);
+  // Billionaire Update: open construction lots, Goldwood mansions, wineries (existing ids unchanged).
+  for (const l of estateLots()) out.push({ x: l.x, z: l.z, w: l.w, d: l.d, rot: 0, h: l.h, id: estateLotId(l.n), kind: 'patch', type: l.kind === 'turnkey_plant' ? 'power_plant' : 'estate_lot', label: l.label, price: l.price });
+  for (const h of goldwoodHomes()) out.push({ x: h.x, z: h.z, w: h.w, d: h.d, rot: 0, h: h.h, id: goldwoodId(h.n), kind: 'building', type: 'mansion', label: h.label, price: h.price, housingEmployees: 4 });
+  for (const w of wineryPlots()) out.push({ x: w.x, z: w.z, w: w.w, d: w.d, rot: 0, id: wineryId(w.n), kind: 'farm', type: 'winery', label: `${w.label} (${w.cols}×${w.rows})`, price: w.price, tiles: w.cols * w.rows });
+
   // Reprice only housing. Capture the actual old employment bonus BEFORE lowering its base price: otherwise
   // a two-slot home priced at 20k would silently lose a slot, and a three-slot home at 30k would become two-slot.
   // No owned rows, paid prices, IDs, geometry or equipment are changed. Slots outside 1–3 keep their old price.

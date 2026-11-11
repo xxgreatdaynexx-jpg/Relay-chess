@@ -266,6 +266,23 @@ export class FortMc {
       return null;
     });
   }
+
+  /** Credit crude (or another product) into the player's tanks, up to remaining capacity. Used by launched offshore rigs. */
+  async creditStock(name: string, product: Product, qty: number): Promise<number> {
+    if (!isProduct(product) || !Number.isFinite(qty) || qty < 1) return 0;
+    return this.lock(name, async () => {
+      const s = clone(await this.load(name));
+      const used = (Object.values(s.stock) as number[]).reduce((a, n) => a + (n ?? 0), 0);
+      const room = Math.max(0, tankCap(s) - used);
+      const n = Math.min(Math.floor(qty), room);
+      if (n < 1) return 0;
+      s.stock[product] = (s.stock[product] ?? 0) + n;
+      s.made[product] = (s.made[product] ?? 0) + n;
+      await this.commit(name, s, 0, 'estate-rig', `Offshore rig delivered ${n} ${product}`);
+      return n;
+    });
+  }
+
 }
 
 let fort: FortMc = new FortMc(null);
@@ -279,6 +296,7 @@ export async function initFortMc(): Promise<void> {
 }
 
 type Ack = (r: { ok: boolean; error?: string; [k: string]: unknown }) => void;
+
 export function registerFortMc(_io: Server, socket: Socket): void {
   const nameOf = () => (socket.data as { account?: { name: string } }).account?.name ?? null;
   const known = (e: unknown) => e instanceof FortError || e instanceof TravelError || /^(Not enough chips\.|Wallet temporarily unavailable\.|Your mine storage is full.*|The mines are .*)$/.test((e as Error).message);

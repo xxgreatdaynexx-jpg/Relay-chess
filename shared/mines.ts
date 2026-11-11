@@ -413,7 +413,20 @@ export const GOODS: Record<string, ItemDef> = {
   vault_door:      { type: 'good', id: 'vault_door',      name: 'Vault Door',            price: 5055, color: '#4a4a52' },
   sovereign_laurel:{ type: 'good', id: 'sovereign_laurel',name: 'Sovereign Laurel',      price: 716,  color: '#d4af37' },
   cigarette:      { type: 'good', id: 'cigarette',      name: 'Cigarette',       price: 43.74, color: '#d8c8b0' },
+  // Billionaire Update: plastics plant + greenhouse crops
+  plastic_resin:  { type: 'good', id: 'plastic_resin',  name: 'Plastic resin',   price: 55,    color: '#e8eef2' },
+  naphtha_drum:   { type: 'good', id: 'naphtha_drum',   name: 'Naphtha drum',    price: 15,    color: '#e8d27a' },
+  ethylene_tank:  { type: 'good', id: 'ethylene_tank',  name: 'Ethylene tank',   price: 28,    color: '#8ae0d0' },
+  gpu:            { type: 'good', id: 'gpu',            name: 'Graphics card',   price: 420,   color: '#3aaa6a' },
+  equip_case:     { type: 'good', id: 'equip_case',     name: 'Equipment case',  price: 90,    color: '#4a5560' },
+  crop_tulips:    { type: 'good', id: 'crop_tulips',    name: 'Tulips',          price: 596.84, color: '#e04080', raw: true },
+  crop_roses:     { type: 'good', id: 'crop_roses',     name: 'Roses',           price: 738.95, color: '#c01830', raw: true },
+  crop_orchids:   { type: 'good', id: 'crop_orchids',   name: 'Orchids',         price: 1108.42, color: '#d890d0', raw: true },
+  crop_saffron:   { type: 'good', id: 'crop_saffron',   name: 'Saffron',         price: 1705.26, color: '#e8b020', raw: true },
+  crop_wasabi:    { type: 'good', id: 'crop_wasabi',    name: 'Wasabi',          price: 909.47, color: '#3aaa4a', raw: true },
+  crop_vanilla:   { type: 'good', id: 'crop_vanilla',   name: 'Vanilla',         price: 1278.95, color: '#f0e0c0', raw: true },
 };
+
 
 const o = (id: OreId, qty: number) => ({ type: 'ore' as const, id, qty });
 const b = (id: string, qty: number) => ({ type: 'bar' as const, id, qty });

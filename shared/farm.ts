@@ -10,6 +10,7 @@
  */
 import { VIEW_Z1 } from './ocean.js';
 import { BIG_FARM_AREA } from './bigFarms.js';
+import { EXPANSION_BOUNDS, RIG_BERTHS, RIG_DOCK } from './mapExpansion.js';
 import { PLATE, PARK_AREA, MINE_SITES, MINE_APRON, OUTSKIRTS, type OBB } from './worldLayout.js';
 import { VENUE_BOUNDS } from './venues.js';
 import { TROPICAL_CROPS } from './resort.js';
@@ -24,7 +25,7 @@ export interface Crop { id: string; label: string; emoji: string; seed: number; 
 const M = 60_000, H = 60 * M;
 /** Dayne 2026-11-05: crops grow 30% faster (duration ×0.7). Applied at definition so client display + server readyAt stay in sync. */
 const GROW_SCALE = 0.7;
-const growMs = (ms: number) => Math.round(ms * GROW_SCALE);
+export const growMs = (ms: number) => Math.round(ms * GROW_SCALE);
 /** Raw farm output over seed: harvest pays ~seed x CROP_SEED_MUL after FARM_SELL_MUL. */
 export const CROP_SEED_MUL = 1.35;
 /** Farming profit -5% (Dayne, 2026-11-04): a harvest sells each crop at 95% of its listed value. Seed costs are unchanged. */
@@ -49,7 +50,17 @@ export const CROPS: Crop[] = [
 export const cropSellValue = (c: Pick<Crop, 'sell'>) => c.sell * FARM_SELL_MUL;
 /** Base profit for one harvested crop (sale value minus seed), never negative. */
 export const cropProfit = (c: Pick<Crop, 'sell' | 'seed'>) => Math.max(0, cropSellValue(c) - c.seed);
-export const cropById = (id: unknown) => CROPS.find((c) => c.id === id) ?? TROPICAL_CROPS.find((c) => c.id === id);
+/** Flowers and other difficult crops. Only plantable on a finished hyper farm. */
+export const HYPER_CROPS: Crop[] = [
+  { id: 'tulips', label: 'Tulips', emoji: '🌷', seed: 420, grow: growMs(20 * H), sell: cropListSell(420), color: 0xe04080 },
+  { id: 'roses', label: 'Roses', emoji: '🌹', seed: 520, grow: growMs(22 * H), sell: cropListSell(520), color: 0xc01830 },
+  { id: 'orchids', label: 'Orchids', emoji: '🌸', seed: 780, grow: growMs(28 * H), sell: cropListSell(780), color: 0xd890d0 },
+  { id: 'saffron', label: 'Saffron', emoji: '🌼', seed: 1_200, grow: growMs(36 * H), sell: cropListSell(1_200), color: 0xe8b020 },
+  { id: 'wasabi', label: 'Wasabi', emoji: '🌱', seed: 640, grow: growMs(24 * H), sell: cropListSell(640), color: 0x3aaa4a },
+  { id: 'vanilla', label: 'Vanilla', emoji: '🌾', seed: 900, grow: growMs(32 * H), sell: cropListSell(900), color: 0xf0e0c0 },
+];
+export const isHyperCrop = (id: unknown) => HYPER_CROPS.some((c) => c.id === id);
+export const cropById = (id: unknown) => CROPS.find((c) => c.id === id) ?? TROPICAL_CROPS.find((c) => c.id === id) ?? HYPER_CROPS.find((c) => c.id === id);
 for (const c of TROPICAL_CROPS) c.sell = cropListSell(c.seed);
 export type Stage = 'growing' | 'ready' | 'withered';
 export const stageOf = (c: Crop, plantedAt: number, now: number): Stage => {
@@ -120,11 +131,16 @@ export const cropOutlook = (c: Crop, growMul = 1, profitMul = 1, yieldBonus = 0)
 /** Where the camera may look: the whole plate (incl. the Trailer Park), the farm district on the east edge, the outskirts mines and the Airport / Speedway (shared/venues.ts). */
 const SITES = Object.values(MINE_SITES); const HALF = MINE_APRON / 2;
 export const MAP_BOUNDS = {
-  x0: Math.min(-PLATE, OUTSKIRTS.x0 + 10, VENUE_BOUNDS.x0, PARK_AREA.x - PARK_AREA.w / 2, ...SITES.map((s) => s.x - HALF)) - 6, x1: Math.max(FARM_X1, OUTSKIRTS.x1 - 10, BIG_FARM_AREA.x1, VENUE_BOUNDS.x1, ...SITES.map((s) => s.x + HALF)) + 4,
-  z0: Math.min(-PLATE, FARM_Z0, OUTSKIRTS.z0 + 10, BIG_FARM_AREA.z0, VENUE_BOUNDS.z0, PARK_AREA.z - PARK_AREA.d / 2, ...SITES.map((s) => s.z - HALF)) - 6, z1: Math.max(PLATE, FARM_Z1, OUTSKIRTS.z1 - 10, BIG_FARM_AREA.z1, VENUE_BOUNDS.z1, PARK_AREA.z + PARK_AREA.d / 2, ...SITES.map((s) => s.z + HALF)) + 6,
+  x0: Math.min(-PLATE, OUTSKIRTS.x0 + 10, VENUE_BOUNDS.x0, PARK_AREA.x - PARK_AREA.w / 2, EXPANSION_BOUNDS.x0, ...SITES.map((s) => s.x - HALF)) - 6, x1: Math.max(FARM_X1, OUTSKIRTS.x1 - 10, BIG_FARM_AREA.x1, VENUE_BOUNDS.x1, EXPANSION_BOUNDS.x1, ...SITES.map((s) => s.x + HALF)) + 4,
+  z0: Math.min(-PLATE, FARM_Z0, OUTSKIRTS.z0 + 10, BIG_FARM_AREA.z0, VENUE_BOUNDS.z0, PARK_AREA.z - PARK_AREA.d / 2, EXPANSION_BOUNDS.z0, ...SITES.map((s) => s.z - HALF)) - 6, z1: Math.max(PLATE, FARM_Z1, OUTSKIRTS.z1 - 10, BIG_FARM_AREA.z1, VENUE_BOUNDS.z1, PARK_AREA.z + PARK_AREA.d / 2, EXPANSION_BOUNDS.z1, ...SITES.map((s) => s.z + HALF)) + 6,
 };
-/** Camera bounds = MAP_BOUNDS plus the ocean coast + harbour to the south (mu-visuals). MAP_BOUNDS stays as it was. */
-export const MAP_VIEW = { ...MAP_BOUNDS, z1: Math.max(MAP_BOUNDS.z1, VIEW_Z1) };
+/** Camera bounds = MAP_BOUNDS plus the ocean coast, harbour, and launched-rig berths. MAP_BOUNDS stays land-side of the shore. */
+export const MAP_VIEW = {
+  x0: Math.min(MAP_BOUNDS.x0, RIG_DOCK.x - 40),
+  x1: Math.max(MAP_BOUNDS.x1, RIG_DOCK.x + 40),
+  z0: MAP_BOUNDS.z0,
+  z1: Math.max(MAP_BOUNDS.z1, VIEW_Z1, RIG_DOCK.z + 20, ...RIG_BERTHS.map(([, z]) => z + 20)),
+};
 /** Zoom-aware pan inset: the further out the camera is, the more of the view already shows the edges, so the target must stay nearer the middle
  *  (QA r7: at full zoom-out you could drag the city almost off screen). 0 when close in, ~half the half-extent at max distance. */
 export const panInset = (dist: number, minD = 30, maxD = 360) => {

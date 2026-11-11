@@ -4,13 +4,16 @@
  * Pure geometry + race rules (no three.js) so the server can time laps from the same shapes the client draws.
  */
 import { PLATE, shoreZ, type OBB } from './worldLayout.js';
+import { EXPANSION_ROADS, EXPANSION_ROAD_W, inExpansion } from './mapExpansion.js';
 
 export interface Rect { x0: number; x1: number; z0: number; z1: number }
 export const inRect = (r: Rect, x: number, z: number, m = 0) => x > r.x0 + m && x < r.x1 - m && z > r.z0 + m && z < r.z1 - m;
 
 // ---- Airport (west) ----
-export const AIRPORT: Rect = { x0: -218, x1: -126, z0: -4, z1: 146 }; // = RESERVED_VENUES.airport (worldLayout)
+export const AIRPORT: Rect = { x0: -280, x1: -126, z0: -4, z1: 146 }; // = RESERVED_VENUES.airport (worldLayout)
 export const RUNWAY = { x: -200, z0: 6, z1: 136, w: 10 };
+/** Second parallel runway (international expansion). The original runway is unchanged. */
+export const RUNWAY2 = { x: -252, z0: 6, z1: 136, w: 10 };
 /** Terminal landmark pad centre (the 'airport' world spot). */
 export const AIRPORT_SLOT: [number, number] = [-142, 66];
 /** Paved roads: [from, to, width]. The access road continues the west shore road (shore-w) off the plate; the last is the taxiway. */
@@ -63,12 +66,15 @@ const onSeg = (x: number, z: number, a: [number, number], b: [number, number], h
 /** Paved venue surface (runway, apron roads, the track): full speed there. */
 export function onVenueRoad(x: number, z: number): boolean {
   if (Math.abs(x - RUNWAY.x) <= RUNWAY.w / 2 && z >= RUNWAY.z0 && z <= RUNWAY.z1) return true;
+  if (Math.abs(x - RUNWAY2.x) <= RUNWAY2.w / 2 && z >= RUNWAY2.z0 && z <= RUNWAY2.z1) return true;
   if (trackDist(x, z) <= TRACK.W / 2) return true;
   return [...AIRPORT_ROADS, ...RACETRACK_ROADS].some(([a, b, w]) => onSeg(x, z, a, b, w / 2));
 }
 /** Can a car be here at all (city plate on land, or inside a venue's grounds)? m = margin. */
 export function drivable(x: number, z: number, m = 0): boolean {
   if (Math.abs(x) <= PLATE - m && Math.abs(z) <= PLATE - m && z < shoreZ(x) - m) return true;
+  if (inExpansion(x, z) && m <= 0) return true;
+  if (EXPANSION_ROADS.some(([a, b]) => onSeg(x, z, a, b, EXPANSION_ROAD_W / 2 + Math.max(0, -m)))) return true;
   return inRect(AIRPORT, x, z, m) || inRect(RACETRACK, x, z, m) || onVenueRoad(x, z);
 }
 /** Map extents the venues add (for the camera pan clamp and the server's drive bounds). */

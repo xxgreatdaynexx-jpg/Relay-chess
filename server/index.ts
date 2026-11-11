@@ -28,10 +28,11 @@ import { properties } from '../shared/realEstate.js';
 import { initHomes } from './homes.js';
 import { initRace } from './race.js';
 import { initTravel } from './travel.js';
-import { initFortMc } from './fortmc.js';
+import { getFortMc, initFortMc } from './fortmc.js';
 import { initFleet } from './fleet.js';
 import { initVanity } from './vanity.js';
 import { initPatronage } from './patronage.js';
+import { getEstate, initEstate } from './estateProjects.js';
 import { initAuction } from './artAuction.js';
 import { initFarm } from './farm.js';
 import { initWarehouse } from './warehouse.js';
@@ -80,6 +81,12 @@ await initPlayTimeStorage();
 await initEconomy();
 await initJail();
 setInterval(() => getJail().sweep(), 30_000).unref();
+setInterval(() => {
+  const e = getEstate(); const f = getFortMc(); if (!e) return;
+  for (const name of e.knownPlayers()) {
+    void e.tick(name, f ? (owner, qty) => f.creditStock(owner, 'crude', qty) : undefined).catch((err) => console.error('[estate] tick', (err as Error).message));
+  }
+}, 60_000).unref();
 await initStocks();
 await initRealEstate();
 initRoyalties();
@@ -93,6 +100,7 @@ await initFortMc();
 await initFleet();
 await initVanity();
 await initPatronage();
+await initEstate();
 await initAuction();
 await initFarm();
 await initWarehouse();

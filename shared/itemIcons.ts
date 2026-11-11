@@ -220,7 +220,19 @@ const GOOD_ICONS: Record<string, () => string> = {
   // Billionaire Update prestige line
   gold_cufflinks: () => cufflinks('#e8c860'), signet_ring: () => signet('#c9a227', '#8a5a2a'), imperial_diadem: () => diadem('#f0e0a0', DIA), chandelier: () => chandelierIcon('#efe8ff'), limousine: () => limousine('#1a1a1a'), city_seal: () => citySeal('#d4af37'), grand_clock: () => grandClock('#8a5a2a'), vault_door: () => vaultDoor('#4a4a52'), sovereign_laurel: () => laurel('#d4af37'),
   cigarette: () => Pa('M3.2 16.8L14.6 6.2L16.2 7.9L4.8 18.5Z', '#f3eee4') + Pa('M14.6 6.2L17.4 3.6L19 5.3L16.2 7.9Z', '#d87830') + Pa('M17.4 3.6L18.2 2.9L19.8 4.6L19 5.3Z', '#3a322c') + Ln('M18.6 2.6Q19.8 1.1 18.8 0.2', '#c8c4be', 0.9) + Ln('M19.6 2.8Q21 1.4 20.4 0.4', '#d0ccc6', 0.8),
+  plastic_resin: () => Pa('M6 5H18L20 20H4Z', '#e8eef2') + Pa('M8 8H16L17 17H7Z', '#c5d0d8'),
+  naphtha_drum: () => Pa('M7 5H17V20H7Z', '#e8d27a') + Pa('M7 9H17V11H7Z', '#c8a84a') + C(12, 5, 2, '#d8c060'),
+  ethylene_tank: () => Pa('M8 4H16V20H8Z', '#8ae0d0') + C(12, 4, 4, '#6ac8b8') + C(12, 20, 4, '#6ac8b8'),
+  gpu: () => Pa('M4 8H20V16H4Z', '#3aaa6a') + Pa('M6 10H10V14H6Z', '#1a3a28') + Pa('M12 10H18V12H12Z', '#c8f0d0') + Pa('M12 13H16V15H12Z', '#c8f0d0'),
+  equip_case: () => Pa('M5 7H19V19H5Z', '#4a5560') + Pa('M8 4H16V7H8Z', '#2a3038') + Pa('M10 11H14V13H10Z', '#c9a24a'),
+  crop_tulips: () => C(12, 18, 2, '#3aaa4a') + Pa('M12 16L8 8L12 10L16 8Z', '#e04080') + Pa('M10 9L12 4L14 9Z', '#f06098'),
+  crop_roses: () => C(12, 12, 4, '#c01830') + C(12, 12, 2, '#f04860') + Pa('M12 16L11 21L13 21Z', '#3aaa4a'),
+  crop_orchids: () => C(12, 10, 3, '#d890d0') + Pa('M12 10L6 8L8 14Z', '#f0c0e8') + Pa('M12 10L18 8L16 14Z', '#f0c0e8') + Pa('M12 14L12 21', '#3aaa4a'),
+  crop_saffron: () => C(12, 11, 5, '#e8b020') + C(12, 11, 2, '#a07010') + Pa('M12 16L12 21', '#3a7a3a'),
+  crop_wasabi: () => Pa('M8 18H16L14 8L12 4L10 8Z', '#3aaa4a') + Pa('M9 12H15', '#2a8a3a'),
+  crop_vanilla: () => Pa('M10 4H14L16 20H8Z', '#f0e0c0') + Pa('M10 8H14', '#c8b090') + Pa('M9 14H15', '#c8b090'),
 };
+
 
 // Explicit width/height so the svg has an intrinsic size (a viewBox alone falls back to 300x150).
 
@@ -281,7 +293,7 @@ const FISH_ICONS: Record<string, () => string> = {
 export const ICON_FISH_IDS = Object.keys(FISH_ICONS);
 
 const svg = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">${body}</svg>`;
-const ALIAS: Record<string, string> = { crystal: 'gem', strawberry: 'crop_strawberry', wheat: 'crop_wheat', carrot: 'crop_carrot', corn: 'crop_corn', tomato: 'crop_tomato', potato: 'crop_potato', pumpkin: 'crop_pumpkin', grapes: 'crop_grapes', sunflower: 'crop_sunflower', tobacco: 'crop_tobacco', pineapple: 'crop_pineapple', banana: 'crop_banana', mango: 'crop_mango', coconut: 'crop_coconut', cacao: 'crop_cacao' };
+const ALIAS: Record<string, string> = { crystal: 'gem', strawberry: 'crop_strawberry', wheat: 'crop_wheat', carrot: 'crop_carrot', corn: 'crop_corn', tomato: 'crop_tomato', potato: 'crop_potato', pumpkin: 'crop_pumpkin', grapes: 'crop_grapes', sunflower: 'crop_sunflower', tobacco: 'crop_tobacco', pineapple: 'crop_pineapple', banana: 'crop_banana', mango: 'crop_mango', coconut: 'crop_coconut', cacao: 'crop_cacao', tulips: 'crop_tulips', roses: 'crop_roses', orchids: 'crop_orchids', saffron: 'crop_saffron', wasabi: 'crop_wasabi', vanilla: 'crop_vanilla' };
 const cache = new Map<string, string>();
 
 /** True when the item has a crafted icon (not the fallback crate). */

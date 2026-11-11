@@ -19,12 +19,16 @@ import { px, priceIndex } from './price-index.js';
 import { resortPlotOf, isTropical, TROPICAL_CROPS, RESORT_HARVEST_MUL } from '../shared/resort.js';
 import { requireResort } from './travel.js';
 import { fieldPlotOf } from '../shared/fieldFarms.js';
+import { wineryOf, WINERY_GROW_MUL, WINERY_YIELD_BONUS } from '../shared/mapExpansion.js';
+import { HYPER_GROW_MUL } from '../shared/hyperFarm.js';
 import { outcome, ledgerMarker, isOutcomeUnknown, getLocStore } from './locstock.js';
 import { farmLoc } from '../shared/inventoryLocations.js';
 import { emitHaul } from './haulVisual.js';
 import { farmHaulSite } from '../shared/haulVisual.js';
 import { PANTRY_MAX } from '../shared/cooking.js';
 import { awardXp } from './skills.js';
+import { getEstate } from './estateProjects.js';
+import { isHyperCrop } from '../shared/farm.js';
 import { CROPS, cropById, cropSellValue, farmHarvestChips, farmPayout, farmPlots, ripeWindow, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
 import { skillLevelAsync } from './skills.js';
 import { farmingGrowMul } from '../shared/skillPerks.js';
@@ -75,6 +79,7 @@ const plotOf = (id: unknown): { pid: string; cols: number; rows: number; resort:
   if (typeof id !== 'string') return undefined;
   if (/^f:\d+$/.test(id)) { const p = farmPlots().find((q) => `f:${q.n}` === id); return p && { pid: id, cols: p.cols, rows: p.rows, resort: false }; }
   const c = fieldPlotOf(id); if (c) return { pid: id as string, cols: c.cols, rows: c.rows, resort: false };
+  const w = wineryOf(id); if (w) return { pid: id as string, cols: w.cols, rows: w.rows, resort: false };
   const r = resortPlotOf(id); return r && { pid: id, cols: r.cols, rows: r.rows, resort: true };
 };
 interface TileRow { plot_id: string; tile: number; owner_key: string; crop: string; planted_at: string | number; nonce: string; failed?: boolean | null }
@@ -124,6 +129,12 @@ export class Farm {
       if (upgradeDef(row.kind)) out[row.kind as keyof FarmUpgradeLevels] = Math.max(0, Math.min(MAX_UPGRADE_LEVEL, Number(row.level)));
     }
     return out;
+  }
+
+  private harvestQty(pid: string, crop: string, fertB: number, seed: string, resortMul: number) {
+    let q = yieldQty(fertB, seed) * resortMul;
+    if (wineryOf(pid) && crop === 'grapes') q *= (1 + WINERY_YIELD_BONUS);
+    return q;
   }
   private withers = (u: FarmUpgradeLevels) => greenhouseWither(WITHER_FACTOR, u.greenhouse);
 
@@ -282,6 +293,7 @@ export class Farm {
   /** Plant `crop` on the given empty tiles; seeds are paid now (px-indexed). */
   async plant(name: string, id: unknown, cropId: unknown, tiles: unknown, opts?: { auto?: boolean; skipGuard?: boolean }) {
     const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const c = cropById(cropId); if (!c) throw new FarmError('Unknown seed.');
+    if (isHyperCrop(c.id) && !getEstate()?.hyperComplete(name, p.pid)) throw new FarmError('Flowers and other difficult crops need a finished hyper farm glasshouse.');
     if (isTropical(c.id) !== p.resort) throw new FarmError(p.resort ? 'Only tropical crops grow at the resort plantation.' : 'Tropical crops only grow at Chud Resort.');
     const list = this.tileList(p, tiles); const pid = p.pid;
     if (!opts?.skipGuard) { const blocked = checkFarmAction('plant', keyOf(name), this.clock(), opts?.auto ? { auto: true } : undefined); if (blocked) throw new FarmError(blocked); }
@@ -292,7 +304,10 @@ export class Farm {
       // Farming perk: crops grow up to 25% faster (planted_at is back-dated by the saved share of the grow time).
       // Sprinklers (farm upgrade) stack multiplicatively with it, floored at half the grow time.
       const up = await this.upgrades(this.pool, pid, keyOf(name));
-      const plantedAt = now - Math.round(c.grow * (1 - combinedGrowMul(farmingGrowMul(await skillLevelAsync(name, 'farming')), up.sprinkler)));
+      let gmul = combinedGrowMul(farmingGrowMul(await skillLevelAsync(name, 'farming')), up.sprinkler);
+      if (wineryOf(pid) && c.id === 'grapes') gmul *= WINERY_GROW_MUL;
+      if (getEstate()?.hyperComplete(name, pid)) gmul *= HYPER_GROW_MUL;
+      const plantedAt = now - Math.round(c.grow * (1 - Math.min(1, gmul)));
       const seedKey = `farm_seed:${keyOf(name)}:${now}:${nonce}`;
       await this.atomic(name, -cost, 'farm_seed', `Farm ${pid}: planted ${list.length} ${c.label}`, async (cl) => {
         const o = await this.mustOwn(cl, pid, name);
@@ -420,7 +435,7 @@ export class Farm {
       let seeds = 0, profit = 0, cropUnits = 0; const counts = new Map<string, number>();
       for (const r of ready) {
         const c = cropById(r.crop)!;
-        const qty = yieldQty(fertB, `${r.nonce}:${r.tile}:${r.crop}`) * (p.resort ? RESORT_HARVEST_MUL : 1);
+        const qty = this.harvestQty(pid, r.crop, fertB, `${r.nonce}:${r.tile}:${r.crop}`, p.resort ? RESORT_HARVEST_MUL : 1);
         seeds += c.seed; profit += qty * cropSellValue(c) - c.seed; cropUnits += qty;
         counts.set(c.label, (counts.get(c.label) ?? 0) + qty);
       }
@@ -429,7 +444,7 @@ export class Farm {
         const items: Array<[string, number]> = [];
         for (const r of ready) {
           const c = cropById(r.crop)!;
-          const qty = yieldQty(fertB, `${r.nonce}:${r.tile}:${r.crop}`) * (p.resort ? RESORT_HARVEST_MUL : 1);
+          const qty = this.harvestQty(pid, r.crop, fertB, `${r.nonce}:${r.tile}:${r.crop}`, p.resort ? RESORT_HARVEST_MUL : 1);
           const id = `crop_${c.id}`; const at = items.find((x) => x[0] === id); if (at) at[1] += qty; else items.push([id, qty]);
         }
         const impKey = `import:${randomUUID()}`;
@@ -513,7 +528,7 @@ export class Farm {
     const counts = new Map<string, number>(); let value = 0; let cropUnits = 0;
     for (const r of ready) {
       const c = cropById(r.crop)!;
-      const qty = yieldQty(fertB, `${r.nonce}:${r.tile}:${r.crop}`) * (pid.startsWith('rf:') ? RESORT_HARVEST_MUL : 1);
+      const qty = this.harvestQty(pid, r.crop, fertB, `${r.nonce}:${r.tile}:${r.crop}`, pid.startsWith('rf:') ? RESORT_HARVEST_MUL : 1);
       counts.set(c.id, (counts.get(c.id) ?? 0) + qty); value += c.sell * qty; cropUnits += qty;
     }
     const ls = getLocStore(); if (!ls.loaded) throw new FarmError('Storage is reconnecting. Nothing was harvested; try again in a minute.');

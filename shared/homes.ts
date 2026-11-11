@@ -15,7 +15,7 @@ export const MAX_INVITES = 30;
 export const MAX_BUY_QTY = 20;
 
 /** Property types that are homes (have an interior). Commercial lots, farms and landmarks don't. */
-export const HOME_TYPES = new Set(['house', 'rowhouse', 'apartment', 'tower', 'beachhouse', 'condo', 'villa', 'hotel', 'penthouse', 'isleestate']);
+export const HOME_TYPES = new Set(['house', 'rowhouse', 'apartment', 'tower', 'beachhouse', 'condo', 'villa', 'hotel', 'penthouse', 'isleestate', 'mansion', 'highrise']);
 export const isHomeProperty = (p: { kind: string; type: string } | undefined | null) => !!p && p.kind === 'building' && HOME_TYPES.has(p.type);
 
 export type FurnCat = 'seating' | 'tables' | 'beds' | 'storage' | 'lighting' | 'decor' | 'plants' | 'electronics' | 'kitchen' | 'luxury';
@@ -77,8 +77,61 @@ export const FURNITURE: Furniture[] = [
   F('piano', 'Grand piano', 'luxury', 25_000, 2, 2, 1, 0x111111, 0xf4efe4, 'piano', '🎹'),
   F('hottub', 'Hot tub', 'luxury', 18_000, 2, 2, 0.8, 0x7a5232, 0x4fc3d9, 'hottub', '♨️'),
   F('aquarium', 'Aquarium', 'luxury', 9_000, 2, 1, 1.4, 0x222222, 0x4fc3d9, 'aquarium', '🐠'),
+
   F('goldvault', 'Chip vault', 'luxury', 50_000, 1, 1, 2, 0x555a66, 0xd4af37, 'vault', '🏦'),
+  // Billionaire Update: doubled furniture catalogue
+  F('chaise', 'Chaise lounge', 'seating', 2_800, 2, 1, 0.8, 0xe8d8c8, 0x6b4526, 'sofa', '🛋️'),
+  F('barrelchair', 'Barrel chair', 'seating', 1_100, 1, 1, 0.95, 0x6b3a2a, 0x2b2b2b, 'chair', '💺'),
+  F('banquetbench', 'Banquet bench', 'seating', 1_800, 3, 1, 0.7, 0x8a5a36, 0xc9a24a, 'lowsofa', '🪑'),
+  F('resinchair', 'Resin side chair', 'seating', 640, 1, 1, 0.9, 0xc8d4dc, 0x4a5560, 'chair', '🪑'),
+  F('wingback', 'Wingback chair', 'seating', 1_500, 1, 1, 1.1, 0x4a2a3a, 0xc9a24a, 'chair', '💺'),
+  F('ottoman', 'Ottoman', 'seating', 480, 1, 1, 0.4, 0x8a6a4a, 0xd8c080, 'stool', '🪑'),
+  F('console', 'Console table', 'tables', 1_050, 3, 1, 0.75, 0x5c3a22, 0xd4af37, 'sideboard', '🪵'),
+  F('bartable', 'Bar table', 'tables', 700, 1, 1, 1.0, 0x2b2b2b, 0xc9a24a, 'tulip', '🍸'),
+  F('nightstand', 'Nightstand', 'tables', 420, 1, 1, 0.6, 0x7a5232, 0xc9a24a, 'cabinet', '🛏️'),
+  F('glassdining', 'Glass dining table', 'tables', 2_600, 3, 2, 0.7, 0xdfe9f0, 0x8899aa, 'tulip', '🍽️'),
+  F('gardentable', 'Garden table', 'tables', 900, 2, 2, 0.7, 0xe8e2d0, 0x3fae55, 'table', '🌿'),
+  F('canopybed', 'Canopy bed', 'beds', 6_400, 2, 2, 2.2, 0xf4efe4, 0xd4af37, 'bed', '🛏️'),
+  F('daybed', 'Daybed', 'beds', 2_100, 2, 1, 0.7, 0xd8c8b0, 0x5a7bd6, 'bed', '🛋️'),
+  F('bunk', 'Bunk bed', 'beds', 1_400, 1, 2, 1.8, 0x6b4526, 0xe8e2d0, 'bed', '🛏️'),
+  F('wardrobe', 'Wardrobe', 'storage', 2_400, 2, 1, 2.1, 0x5c3a22, 0xd4af37, 'cabinet', '👗'),
+  F('winerack', 'Wine rack', 'storage', 1_600, 2, 1, 1.6, 0x4a2a18, 0x7a1a3a, 'shelf', '🍷'),
+  F('displaycab', 'Display cabinet', 'storage', 2_200, 2, 1, 2, 0xeeeae2, 0xd4af37, 'shelf', '🪞'),
+  F('trunk', 'Travel trunk', 'storage', 800, 2, 1, 0.7, 0x6b4526, 0xc9a24a, 'cabinet', '🧳'),
+  F('pendant', 'Pendant lamp', 'lighting', 520, 1, 1, 1.4, 0xf2e6c0, 0xffe6a0, 'chandelier', '💡'),
+  F('sconce', 'Wall sconce', 'lighting', 280, 1, 1, 0.6, 0xd4af37, 0xffe6a0, 'lamp', '🕯️'),
+  F('torchiere', 'Torchiere lamp', 'lighting', 740, 1, 1, 1.9, 0x2b2b2b, 0xffe6a0, 'lamp', '💡'),
+  F('lavalamp', 'Lava lamp', 'lighting', 360, 1, 1, 1.2, 0xff3cac, 0x7cf0ff, 'lamp', 'lamp'),
+  F('tapestry', 'Tapestry', 'decor', 1_200, 2, 1, 1.8, 0x7a2a4a, 0xd4af37, 'painting', '🧵'),
+  F('bust', 'Marble bust', 'decor', 3_400, 1, 1, 1.4, 0xeeeae2, 0xc9c2b4, 'statue', '🗿'),
+  F('globe', 'Standing globe', 'decor', 1_100, 1, 1, 1.3, 0x2c3e66, 0xd4af37, 'statue', '🌍'),
+  F('wallmirror', 'Gilded mirror', 'decor', 1_800, 1, 1, 1.7, 0xd4af37, 0xdfe9f0, 'painting', '🪞'),
+  F('houseflag', 'House flag', 'decor', 600, 1, 1, 1.8, 0xc8102e, 0xd4af37, 'painting', '🏳️'),
+  F('orchidpot', 'Orchid in bloom', 'plants', 640, 1, 1, 1.2, 0xd890d0, 0x8a5a36, 'monstera', '🌸'),
+  F('topiary', 'Topiary ball', 'plants', 720, 1, 1, 1.5, 0x2e8b45, 0x8a5a36, 'plant', '🌳'),
+  F('flowerbox', 'Flower box', 'plants', 380, 2, 1, 0.6, 0xe04080, 0x8a5a36, 'cacti', '🌷'),
+  F('bonsai', 'Bonsai', 'plants', 900, 1, 1, 0.9, 0x2a7a32, 0x6b4526, 'fiddlefig', '🪴'),
+  F('succulents', 'Succulent bowl', 'plants', 260, 1, 1, 0.5, 0x4a9a4a, 0xc4a06a, 'cacti', '🌵'),
+  F('recordplayer', 'Record player', 'electronics', 1_400, 1, 1, 0.6, 0x1a1a1a, 0xc9a24a, 'pc', '🎵'),
+  F('projector', 'Cinema projector', 'electronics', 2_200, 1, 1, 0.8, 0x222222, 0xffe6a0, 'tv', '📽️'),
+  F('servercab', 'Home server cabinet', 'electronics', 3_800, 1, 1, 1.8, 0x2a3a5a, 0x3aaa6a, 'cabinet', '🖥️'),
+  F('radio', 'Console radio', 'electronics', 860, 1, 1, 0.8, 0x6b4526, 0xc9a24a, 'pc', '📻'),
+  F('winefridge', 'Wine fridge', 'kitchen', 2_400, 1, 1, 1.6, 0x1a1a24, 0x7a1a3a, 'fridge', '🍷'),
+  F('espresso', 'Espresso machine', 'kitchen', 1_200, 1, 1, 0.7, 0xd8dde4, 0x111111, 'stove', '☕'),
+  F('islecounter', 'Kitchen island', 'kitchen', 2_800, 2, 2, 0.9, 0xe8e2d0, 0x6b4526, 'counter', '🧂'),
+  F('barcart', 'Bar cart', 'kitchen', 980, 1, 2, 1.0, 0xc8c4bc, 0xd4af37, 'sideboard', '🍸'),
+  F('billiards', 'Billiard table', 'luxury', 18_000, 3, 2, 0.8, 0x1a5a2f, 0x6b4526, 'table', '🎱'),
+  F('fountain', 'Indoor fountain', 'luxury', 12_000, 2, 2, 1.6, 0x4fc3d9, 0xc9c2b4, 'hottub', '⛲'),
+  F('throne', 'Gilded throne', 'luxury', 40_000, 1, 1, 1.4, 0xd4af37, 0x7a2a4a, 'chair', '👑'),
+  F('sauna', 'Home sauna', 'luxury', 22_000, 2, 2, 2.0, 0x9a6b3e, 0x6b4526, 'cabinet', '🧖'),
+  F('scopestand', 'Observatory scope', 'luxury', 9_500, 1, 1, 1.8, 0x4a5aa0, 0xc0c8e0, 'arclamp', '🔭'),
+  F('goldlion', 'Gold lion', 'luxury', 28_000, 1, 1, 1.2, 0xd4af37, 0x8a6a1a, 'statue', '🦁'),
+  F('grandhearth', 'Grand fireplace', 'luxury', 16_000, 2, 1, 1.8, 0x9a5a3c, 0xff7a1a, 'cabinet', '🔥'),
+  F('infinitytub', 'Infinity tub', 'luxury', 24_000, 2, 2, 0.7, 0xdfe9f0, 0x4fc3d9, 'hottub', '🛁'),
+  F('humidor', 'Cigar humidor', 'luxury', 7_500, 1, 1, 0.9, 0x5c3a22, 0xd4af37, 'cabinet', '🚬'),
+  F('trophycase', 'Trophy case', 'luxury', 11_000, 2, 1, 2, 0xeeeae2, 0xd4af37, 'shelf', '🏆'),
 ];
+
 for (const a of ART_PIECES) FURNITURE.push({ id: a.id, name: a.name, cat: 'decor', price: 0, w: 1, d: 1, h: a.shape === 'statue' ? 1.8 : 1.6, color: a.color, accent: a.accent, shape: a.shape, icon: a.icon, auction: true });
 
 export const FURN_BY_ID = new Map(FURNITURE.map((f) => [f.id, f]));

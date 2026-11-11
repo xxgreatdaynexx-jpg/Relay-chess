@@ -1,7 +1,7 @@
 /**
  * Property zoning caps (Bill Chud 1, enacted Nov 8 2026). Caps apply to ADDITIONAL acquisitions only: deeds already
  * owned are kept in full, even above a cap (no forced sale, no confiscation). Zones never borrow capacity from each other.
- *  - Residential: houses, row houses, apartments, towers (incl. the housing that carries employee capacity) — max 5 deeds.
+ *  - Residential: houses, row houses, apartments, towers, mansions and highrises (incl. the housing that carries employee capacity) — max 5 deeds.
  *  - Commercial: gas stations, industrial warehouses (depots), barns, and every public landmark (incl. Jail, Harbour) — max 5 deeds.
  *  - Farmland: farm plots, countryside fields / Big Farms and plantations — max 1,500 owned tiles (full plot cols × rows).
  *  - Exempt: Chud Resort lots and land patches (parks, empty lots).
@@ -11,7 +11,7 @@ import type { Property } from './realEstate.js';
 export type Zone = 'residential' | 'commercial' | 'farmland' | 'exempt';
 export const ZONE_DEED_CAP = 5;
 export const FARMLAND_TILE_CAP = 1500;
-const RESIDENTIAL = new Set(['house', 'rowhouse', 'apartment', 'tower', 'penthouse']);
+const RESIDENTIAL = new Set(['house', 'rowhouse', 'apartment', 'tower', 'penthouse', 'mansion', 'highrise']);
 const COMMERCIAL = new Set(['gas', 'depot', 'barn']);
 export const ZONE_LABEL: Record<Zone, string> = { residential: 'Residential', commercial: 'Commercial', farmland: 'Farmland', exempt: 'Exempt' };
 

@@ -28,6 +28,7 @@ import { registerFortMc } from './fortmc.js';
 import { registerFleet } from './fleet.js';
 import { registerVanity } from './vanity.js';
 import { registerPatronage } from './patronage.js';
+import { registerEstate } from './estateProjects.js';
 import { registerAuction } from './artAuction.js';
 import { registerJetSeats } from './jetSeats.js';
 import { registerOcean } from './oceanPlay.js';
@@ -332,6 +333,7 @@ export function registerSockets(io: Server): void {
     registerFleet(io, socket);
     registerVanity(io, socket);
     registerPatronage(io, socket);
+    registerEstate(io, socket);
     registerAuction(io, socket);
     registerJetSeats(io, socket);
     registerOcean(io, socket);
