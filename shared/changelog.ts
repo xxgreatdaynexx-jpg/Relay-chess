@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-11T10:06:00-06:00", "title": "Daily co-op event goals are three times higher; payouts and medals stay the same", "bullets": [
+    "Starting at midnight tonight (November 12, 12:00 AM CST), daily co-op event goals are three times higher: Mining Rush 9,000 ore, Harvest Festival 12,750 crops, Fishing Derby 675 fish, Trade Week 2,250 chips traded, and Hockey Cup 45 paid wins.",
+    "Claim payouts stay Gold 75,000, Silver 30,000, and Bronze 10,000 when the server goal is finished. The amount you need for each medal and your personal contribution cap are unchanged. Today's in-progress event keeps its current goal. Contributions already earned and rewards already claimed (or still waiting to be claimed from an earlier period) are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T22:35:00-06:00", "title": "Top bar redesigned with grouped menus", "bullets": [
     "The many game and tool buttons in the top bar are now grouped into a few menus: Casino (Blackjack, Roulette, Poker, Slots, Solitaire, Loot Match, and Mines), Play (Arena and Hockey), Work (Factory, Market, and Skills), and Money (Stocks).",
     "Your chips, net worth, chat, inventories, and account stay visible in the bar. On a phone, a Menu button opens the same groups. Every previous shortcut is still there. Your chips and items are unchanged.",
