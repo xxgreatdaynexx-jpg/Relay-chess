@@ -58,6 +58,7 @@ export const CROPS: Crop[] = [
   { id: 'wheat', label: 'Wheat', emoji: '🌾', seed: 10, grow: growMs(10 * M), sell: cropListSell(10), color: 0xd8b860 },
   { id: 'carrot', label: 'Carrots', emoji: '🥕', seed: 15, grow: growMs(30 * M), sell: cropListSell(15), color: 0xe08a3a },
   { id: 'corn', label: 'Corn', emoji: '🌽', seed: 25, grow: growMs(60 * M), sell: cropListSell(25), color: 0xe8d050 },
+  { id: 'tobacco', label: 'Tobacco', emoji: '🌿', seed: 30, grow: growMs(90 * M), sell: cropListSell(30), color: 0x8a6a3a },
   { id: 'tomato', label: 'Tomatoes', emoji: '🍅', seed: 40, grow: growMs(2 * H), sell: cropListSell(40), color: 0xd8443a },
   { id: 'potato', label: 'Potatoes', emoji: '🥔', seed: 60, grow: growMs(4 * H), sell: cropListSell(60), color: 0xb08a5a },
   { id: 'pumpkin', label: 'Pumpkins', emoji: '🎃', seed: 90, grow: growMs(8 * H), sell: cropListSell(90), color: 0xe0782a },

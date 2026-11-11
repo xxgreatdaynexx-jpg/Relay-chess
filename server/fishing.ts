@@ -18,6 +18,7 @@ import type { Server, Socket } from 'socket.io';
 import { databaseUrl } from './leaderboard-store.js';
 import { getBank, PgCasinoStore, type CasinoBank } from './casino-store.js';
 import { px, priceIndex } from './price-index.js';
+import { houseCapIndexOrFloor } from './house-cap-index.js';
 import { emitActivity } from './activity.js';
 import { awardXp, skillLevelAsync } from './skills.js';
 import { isQaName } from '../shared/qa.js';
@@ -110,7 +111,7 @@ export class Fishing {
     const key = keyOf(name);
     const best = (await this.pool.query("SELECT species, weight_g FROM fish_catches WHERE player_key = $1 AND COALESCE(hired, FALSE) = FALSE ORDER BY weight_g DESC, caught_at ASC, id ASC LIMIT 1", [key])).rows[0];
     const n = (await this.pool.query('SELECT count(*) AS n FROM fish_catches WHERE player_key = $1', [key])).rows[0];
-    return { cooler: await this.cooler(key), today: await this.today(key), todayBySpot: { lake: await this.today(key, 'lake'), reef: await this.today(key, 'reef'), deep: await this.today(key, 'deep') }, index: priceIndex(), best: best ? { fish: String(best.species), grams: Number(best.weight_g) } : null, totals: { caught: Number(n?.n ?? 0) } };
+    return { cooler: await this.cooler(key), today: await this.today(key), todayBySpot: { lake: await this.today(key, 'lake'), reef: await this.today(key, 'reef'), deep: await this.today(key, 'deep') }, index: priceIndex(), capIndex: houseCapIndexOrFloor(), best: best ? { fish: String(best.species), grams: Number(best.weight_g) } : null, totals: { caught: Number(n?.n ?? 0) } };
   }
 
   /** Throw a line. The fish (and when it bites) is decided now and stays server-side. */
@@ -193,7 +194,7 @@ export class Fishing {
       const bySpot: Array<{ spot: FishSpot; gross: number; t: { gross: number; paid: number }; paid: number }> = [];
       for (const sp of ['lake', 'reef', 'deep'] as FishSpot[]) {
         const g = Math.floor(fishSellValue(rawRows.filter((r) => spotOfRow(r) === sp).reduce((a, r) => a + r.value, 0))); if (!g) continue; // +15% fishing buff
-        const t = await this.today(key, sp); bySpot.push({ spot: sp, gross: g, t, paid: Math.floor(fishPayout(g, t.gross, sp) * priceIndex()) });
+        const t = await this.today(key, sp); bySpot.push({ spot: sp, gross: g, t, paid: Math.floor(fishPayout(g, t.gross, sp, houseCapIndexOrFloor()) * priceIndex()) });
       }
       // Fish from a spot whose cap is used up stay in the cooler instead of selling for 0.
       const live = bySpot.filter((b) => b.paid > 0); const liveSpots = new Set(live.map((b) => b.spot));

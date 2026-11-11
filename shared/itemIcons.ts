@@ -88,6 +88,7 @@ const banana = () => Pa('M4 7Q4 18 15 19Q19 19 21 17Q14 17 10.5 13.5Q7 10 6 5Z',
 const mango = () => Pa('M6 18Q2 12 6 7Q11 2 17 6Q22 10 18 16Q14 21 6 18Z', '#f5a028') + Pa('M17 6Q22 10 18 16Q14 21 6 18Q14 17 17 6Z', '#e05a2a', 0) + Pa('M13 4Q15 0 20 1Q18 4.6 14.5 4.8Z', '#3fa03a', 0.7) + Ln('M7 9Q9 6 12 5.6', '#fff', 1);
 const coconut = () => C(12, 13, 8.5, '#6a4022') + Ln('M6 9L9 12M9 7L11 10M14 16L17 18M5 14L7 16', '#4a2a12', 0.8) + Pa('M10 21A8.5 8.5 0 0 1 3.5 13Q8 18 15 15Q12 20 10 21Z', '#53311a', 0) + [[10, 9], [14, 9], [12, 12]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1" fill="#2a160a"/>`).join('') + Ln('M6.5 8Q8 5.6 10.5 5', '#a87a50', 0.9);
 const cacao = () => Pa('M4 16Q3 10 9 6Q15 3 19 6Q22 10 18 16Q13 21 8 20Q5 19 4 16Z', '#b8642a') + Ln('M6 15Q8 9 15 5.5M8.5 18.5Q12 12 18.5 8M5 12Q9 8 13 5', '#7a3a14', 0.8) + Ln('M7 9Q9 6.4 12 5.4', '#e8a060', 0.9) + Pa('M19 6L21.5 3.5', 'none', 1.2);
+const tobacco = () => Ln('M12 22L12 7', '#3a7a2a', 1.6) + Pa('M12 9Q5 5 3.5 10Q6 14 12 11.5Z', '#8a6a3a') + Pa('M12 11Q19 6 20.5 11Q18 16 12 13Z', '#6b4f2a') + Pa('M12 14Q7 12 5.5 16.5Q8.5 19 12 16Z', '#7a5530') + Ln('M7 8Q8.2 9.2 9.5 9.6', '#c8a878', 0.7);
 const crate = (c: string) => R(4, 6, 16, 14, c, 1) + Ln('M4 10.5L20 10.5M4 15.5L20 15.5', D(c), 0.9) + Ln('M5 7L19 19', shade(c, -0.25), 1.2) + `<text x="12" y="16" text-anchor="middle" font-family="Arial,sans-serif" font-weight="900" font-size="9" fill="#fff" stroke="${OL}" stroke-width=".8" paint-order="stroke">?</text>`;
 
 // ---------------------------------------------------------------- registry
@@ -192,7 +193,7 @@ const GOOD_ICONS: Record<string, () => string> = {
   engine: () => engine('#c0563a'), computer: () => computer('#3a6fc0'), drill: () => drill('#e0a030'),
   bearing: () => bearing('#b8c0c8'), motor: () => motor('#3f7fc0'), generator: () => generator('#d06a2a'), robot: () => robot('#9aa8b8'),
   crop_strawberry: strawberry, crop_wheat: wheat, crop_carrot: carrot, crop_corn: corn, crop_tomato: tomato, crop_potato: potato, crop_pumpkin: pumpkin,
-  crop_grapes: grapes, crop_sunflower: sunflower, crop_pineapple: pineapple, crop_banana: banana, crop_mango: mango, crop_coconut: coconut, crop_cacao: cacao,
+  crop_grapes: grapes, crop_sunflower: sunflower, crop_tobacco: tobacco, crop_pineapple: pineapple, crop_banana: banana, crop_mango: mango, crop_coconut: coconut, crop_cacao: cacao,
   fish_fillet: () => fillet('#f29a7a'), fish_portion: () => portion('#d8904a'),
   flour: () => sack('#f6f2e8', '#d8b860'), cornmeal: () => sack('#f0d050', '#e0a020'), sugar: () => sack('#ffffff', '#6aa0e0'), cocoa: () => sack('#6a3a20', '#a05a30'),
   berry_juice: () => bottle('#c8304a', '#e8c0d0', '#e04a5a'), tropical_juice: () => bottle('#f6a830', '#fae8c0', '#3faa3a'), sunflower_oil: () => bottle('#f2d040', '#f8f0c0', '#e0b020'),
@@ -263,7 +264,7 @@ const FISH_ICONS: Record<string, () => string> = {
 export const ICON_FISH_IDS = Object.keys(FISH_ICONS);
 
 const svg = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">${body}</svg>`;
-const ALIAS: Record<string, string> = { crystal: 'gem', strawberry: 'crop_strawberry', wheat: 'crop_wheat', carrot: 'crop_carrot', corn: 'crop_corn', tomato: 'crop_tomato', potato: 'crop_potato', pumpkin: 'crop_pumpkin', grapes: 'crop_grapes', sunflower: 'crop_sunflower', pineapple: 'crop_pineapple', banana: 'crop_banana', mango: 'crop_mango', coconut: 'crop_coconut', cacao: 'crop_cacao' };
+const ALIAS: Record<string, string> = { crystal: 'gem', strawberry: 'crop_strawberry', wheat: 'crop_wheat', carrot: 'crop_carrot', corn: 'crop_corn', tomato: 'crop_tomato', potato: 'crop_potato', pumpkin: 'crop_pumpkin', grapes: 'crop_grapes', sunflower: 'crop_sunflower', tobacco: 'crop_tobacco', pineapple: 'crop_pineapple', banana: 'crop_banana', mango: 'crop_mango', coconut: 'crop_coconut', cacao: 'crop_cacao' };
 const cache = new Map<string, string>();
 
 /** True when the item has a crafted icon (not the fallback crate). */

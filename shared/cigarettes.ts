@@ -2,7 +2,8 @@
 export const CIGARETTE_ID = 'cigarette';
 export const CIGARETTE_ITEM = 'good:cigarette';
 export const CIGARETTE_NAME = 'Cigarette';
-export const CIGARETTE_PRICE = 40;
+/** House list price: tobacco seed 30 × 1.35 raw crop × 1.08 one mill step. */
+export const CIGARETTE_PRICE = 43.74;
 export const CIGARETTE_COLOR = '#d8c8b0';
 /** Chance a landed catch also grants one cigarette (rolled on the server, independent of the fish). */
 export const CIGARETTE_DROP_RATE = 0.015;

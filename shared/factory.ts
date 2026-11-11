@@ -110,6 +110,7 @@ export const FRECIPES: FRecipe[] = [
   R('m_juice', 'mill', [['good:crop_strawberry', 3]], ['good:berry_juice', 1], 3),
   R('m_tropical', 'mill', [['good:crop_pineapple', 1], ['good:crop_banana', 1], ['good:crop_mango', 1]], ['good:tropical_juice', 1], 5),
   R('m_oil', 'mill', [['good:crop_sunflower', 1]], ['good:sunflower_oil', 1], 6),
+  R('m_cigarette', 'mill', [['good:crop_tobacco', 1]], ['good:cigarette', 1], 6),
   R('m_cocoa', 'mill', [['good:crop_cacao', 1]], ['good:cocoa', 1], 6),
   R('m_coconut', 'mill', [['good:crop_coconut', 1]], ['good:coconut_milk', 1], 5),
   R('k_wine', 'cannery', [['good:crop_grapes', 2]], ['good:wine', 1], 12),

@@ -165,8 +165,9 @@ export function buildWiki(): WikiSection[] {
       bullets: [
         `Rarity odds: ${Object.entries(RARITY_ODDS).map(([k, v]) => `${k} ${v}`).join(', ')}.`,
         'Hired fishers use the lake table (no junk) and deposit to your cooler.',
+        'Each spot\'s daily sell cap starts at the floor in the table and scales with the same house-sell cap index as factory house sales, never below that floor. The cap is on base (pre-index) sale value; payouts are then multiplied by the daily price index.',
       ],
-      headers: ['Spot', 'Daily cap', '# species'],
+      headers: ['Spot', 'Daily cap (floor)', '# species'],
       rows: fishRows,
     }),
     section({

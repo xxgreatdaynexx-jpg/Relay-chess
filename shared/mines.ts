@@ -304,6 +304,7 @@ export const GOODS: Record<string, ItemDef> = {
   crop_wheat:      { type: 'good', id: 'crop_wheat',      name: 'Wheat',        price: 13.5,   color: '#d8b860', raw: true },
   crop_carrot:     { type: 'good', id: 'crop_carrot',     name: 'Carrots',      price: 20.25, color: '#e08a3a', raw: true },
   crop_corn:       { type: 'good', id: 'crop_corn',       name: 'Corn',         price: 33.75, color: '#e8d050', raw: true },
+  crop_tobacco:    { type: 'good', id: 'crop_tobacco',    name: 'Tobacco',      price: 40.5,  color: '#8a6a3a', raw: true },
   crop_tomato:     { type: 'good', id: 'crop_tomato',     name: 'Tomatoes',     price: 54,   color: '#d8443a', raw: true },
   crop_potato:     { type: 'good', id: 'crop_potato',     name: 'Potatoes',     price: 81,   color: '#b08a5a', raw: true },
   crop_pumpkin:    { type: 'good', id: 'crop_pumpkin',    name: 'Pumpkins',     price: 121.5,  color: '#e0782a', raw: true },
@@ -401,7 +402,7 @@ export const GOODS: Record<string, ItemDef> = {
   cut_opal:        { type: 'good', id: 'cut_opal',        name: 'Cut Fire Opal',    price: 70,   color: '#ff7a4a' },
   pearl_necklace:  { type: 'good', id: 'pearl_necklace',  name: 'Pearl Necklace',   price: 370,  color: '#eef2ff' },
   tidecrown:       { type: 'good', id: 'tidecrown',       name: 'Tidecrown',        price: 1600, color: '#7ff0ff' },
-  cigarette:      { type: 'good', id: 'cigarette',      name: 'Cigarette',       price: 40,   color: '#d8c8b0' },
+  cigarette:      { type: 'good', id: 'cigarette',      name: 'Cigarette',       price: 43.74, color: '#d8c8b0' },
 };
 const o = (id: OreId, qty: number) => ({ type: 'ore' as const, id, qty });
 const b = (id: string, qty: number) => ({ type: 'bar' as const, id, qty });

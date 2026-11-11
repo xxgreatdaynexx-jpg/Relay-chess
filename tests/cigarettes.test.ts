@@ -47,8 +47,9 @@ async function wired() {
 describe('cigarette item', () => {
   it('is a stackable, house-sellable, market-tradeable good with an icon', () => {
     expect(GOODS[CIGARETTE_ID]?.name).toBe('Cigarette');
-    expect(GOODS[CIGARETTE_ID]?.price).toBe(CIGARETTE_PRICE);
-    expect(priceOf({ type: 'good', id: CIGARETTE_ID })).toBe(40);
+    expect(GOODS[CIGARETTE_ID]?.price).toBeCloseTo(CIGARETTE_PRICE, 8);
+    expect(priceOf({ type: 'good', id: CIGARETTE_ID })).toBeCloseTo(CIGARETTE_PRICE, 8);
+    expect(CIGARETTE_PRICE).toBeCloseTo(43.74, 8);
     expect(sellable({ type: 'good', id: CIGARETTE_ID })).toBe(true);
     expect(GOODS[CIGARETTE_ID]?.type).toBe('good');
     expect(hasItemIcon('good', CIGARETTE_ID)).toBe(true);
@@ -183,8 +184,7 @@ describe('smoking and house-paid casino bonus', () => {
 
 describe('cigarette changelog', () => {
   it('credits Amber and describes the drop, buff, and cap', () => {
-    const { entry, index } = changelogEntry(/Cigarettes at the casino \(requested by Amber\)/);
-    expect(index).toBe(0);
+    const { entry } = changelogEntry(/Cigarettes at the casino \(requested by Amber\)/);
     expect(entry.bullets.join(' ')).toMatch(/1\.5%/);
     expect(entry.bullets.join(' ')).toMatch(/3 minutes/);
     expect(entry.bullets.join(' ')).toMatch(/10%/);

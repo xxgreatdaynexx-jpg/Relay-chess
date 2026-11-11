@@ -6,6 +6,13 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T21:18:00-06:00", "title": "Tobacco crop and a cigarette factory line (requested by carter2)", "bullets": [
+    "Tobacco is a new plantable city crop: seeds cost 30 chips and take about 63 minutes to grow (the same 30% faster growth as every other crop). A harvested plant is worth 40.5 chips (seed plus 35%). The usual 1% tile-fail chance and 50% planting house-cap bonus apply, just like other crops.",
+    "A new mill recipe turns 1 tobacco into 1 Cigarette. That factory step adds 8% over the tobacco value, so a cigarette's house price is now 43.74 chips (it was 40, which did not fit the +8% rule). Cigarettes still drop rarely from fishing and still give the same casino buff; the extra from smoking is still capped at 25,000 chips per day, so factory-made cigarettes cannot print money through the casino. Existing inventory is unchanged; the new house price applies going forward.",
+  ]},
+  {"commit": "", "at": "2026-11-10T21:18:00-06:00", "title": "Fishing daily caps now scale with the house-sell cap index (requested by chessguy2)", "bullets": [
+    "Each fishing spot's daily sell cap (the amount you can sell at full price that day) now follows the same house-sell cap index as factory house sales. Today's floors stay as a minimum: lake 115,000, reef 230,000, and deep sea 575,000. With the current index the caps are higher. The cap still applies to base (pre-index) sale value, and payouts are still multiplied by the daily price index after that. Existing catches and sold totals are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T20:19:00-06:00", "title": "Cigarettes at the casino (requested by Amber)", "bullets": [
     "Cigarettes are a rare fishing drop: about 1.5% of landed catches, rolled on the server. They stack in your warehouse inventory like other goods, can be sold to the house or traded on the Market, and each is worth 40 chips before the daily price index.",
     "At roulette, blackjack, poker (Hold'em and Jacks or Better), and slots you can Smoke a cigarette if you have one. Each one lasts 3 minutes, and smoking another while it is active adds 3 minutes, up to 15 minutes. While it is running, a win pays an extra 10% of your net winnings from the house (losses are unchanged). On Hold'em the bonus is paid by the house on your net pot win, never taken from the other players. The extra is capped at 25,000 chips per day (resets at 00:00 UTC / 6 PM). Existing chips and items are unchanged.",

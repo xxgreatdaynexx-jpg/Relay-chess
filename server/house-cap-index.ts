@@ -23,6 +23,8 @@ let timer: NodeJS.Timeout | null = null;
 
 /** Current cap multiplier (cap = 100K x this). Falls back to the price index until the table is read. */
 export const houseCapIndex = () => (cur.index > 0 ? cur.index : priceIndex());
+/** Loaded house-cap index, or the floor (1) if the table has not been read. Never uses the price-index fallback. */
+export const houseCapIndexOrFloor = () => (cur.index > 0 ? cur.index : HOUSE_CAP_FLOOR);
 export const houseCapView = () => ({ index: houseCapIndex(), day: cur.day, ratio: cur.ratio });
 export const setHouseCapIndexForTest = (index: number) => { cur = { index, day: null, ratio: null }; };
 
