@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-11T15:40:00-06:00", "title": "Factory house-sell line shows sold today in chips", "bullets": [
+    "In the Factory's Sell to the house panel, Sold today was shown in base units (before today's price index), so it could look well under the daily cap while you were actually at it. It now shows chips, the same units as the cap, plus how much still counts after refunded room and how much full-price room is left. How much the house pays and your daily cap are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-11T13:20:00-06:00", "title": "Fort McChud shows every player's wells and pipelines, and a lease is exclusive", "bullets": [
     "On the Fort McChud map you can now see other players' pumpjacks, pipelines and plant units, each marked with the owner's name and colour. Tract borders show who holds the official lease. The view updates as people build, and also when the map refreshes.",
     "Whoever holds the lease owns that tract: only they can drill new wells, add pumpjacks or lay new pipe there. Other players can still survey for themselves. Existing wells and pipes already on a tract someone else later leased are left in place and keep producing for their owner.",
