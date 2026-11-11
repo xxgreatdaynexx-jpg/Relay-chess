@@ -193,3 +193,9 @@ Title: The coming-soon sign opens a Future Features look
 ## Orchard Ridge
 
 A buyable orchard district on the expanded east map. Plant fruit trees once (apples, cherries, peaches, oranges, pears, plums). Trees take several real days to mature, then fruit on a repeating cycle with no replanting. Fruit sells at the same +35% raw margin as other crops (the sapling is a one-time cost and counts toward the house-cap planting bonus). Juice, cider, pies and jam craft at the usual +8% food-step markup. Auto-harvest and pantry rules match ordinary farms.
+
+## Camera zoom on the expanded map
+
+Title: Zoom out far enough to see the whole 2x map
+
+- The city camera's max zoom, far plane and fog were still sized for the original plate, so a fully zoomed-out view could not show East Estates, Goldwood and the shoreline together. Zoom, fog and the far plane now scale with the expanded map, and you can tilt a little more overhead for an overview.

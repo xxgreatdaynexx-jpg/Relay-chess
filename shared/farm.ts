@@ -172,9 +172,14 @@ export const MAP_VIEW = {
   z0: MAP_BOUNDS.z0,
   z1: Math.max(MAP_BOUNDS.z1, VIEW_Z1, RIG_DOCK.z + 20, ...RIG_BERTHS.map(([, z]) => z + 20)),
 };
+/** Closest and furthest the city camera may sit from its pan target. Max is large enough that a 38° vertical FOV can frame the whole expanded map (city plate + East Estates + Goldwood + ocean berths) with a little margin for the minimum tilt. */
+export const MAP_CAM_MIN = 30;
+export const MAP_CAM_MAX = Math.max(360, Math.ceil((Math.max(MAP_VIEW.x1 - MAP_VIEW.x0, MAP_VIEW.z1 - MAP_VIEW.z0) / 2) / Math.tan((38 * Math.PI) / 180 / 2) * 1.2));
+/** Perspective far plane: past max zoom, plus room for fog and the map corners. */
+export const MAP_CAM_FAR = Math.max(900, Math.ceil(MAP_CAM_MAX * 2.5));
 /** Zoom-aware pan inset: the further out the camera is, the more of the view already shows the edges, so the target must stay nearer the middle
  *  (QA r7: at full zoom-out you could drag the city almost off screen). 0 when close in, ~half the half-extent at max distance. */
-export const panInset = (dist: number, minD = 30, maxD = 360) => {
+export const panInset = (dist: number, minD = MAP_CAM_MIN, maxD = MAP_CAM_MAX) => {
   const k = Math.min(1, Math.max(0, (dist - minD) / (maxD - minD)));
   return k * 0.55 * Math.min(MAP_BOUNDS.x1 - MAP_BOUNDS.x0, MAP_BOUNDS.z1 - MAP_BOUNDS.z0) / 2;
 };

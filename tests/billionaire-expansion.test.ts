@@ -14,7 +14,7 @@ import { obbOverlap } from '../shared/worldLayout';
 import { FURNITURE } from '../shared/homes';
 import { AIRPORT, AIRPORT_SLOT, RUNWAY, RUNWAY2 } from '../shared/venues';
 import { BILLIONAIRE_SIGN, BILLIONAIRE_SIGN_POS, BILLIONAIRE_SIGN_RADIUS } from '../shared/billionaireUpdate';
-import { cropById } from '../shared/farm';
+import { cropById, MAP_CAM_FAR, MAP_CAM_MAX, MAP_CAM_MIN, MAP_VIEW } from '../shared/farm';
 import { GOODS } from '../shared/mines';
 import { hasItemIcon, itemIconSvg } from '../shared/itemIcons';
 import { allFieldPlots } from '../shared/fieldFarms';
@@ -196,5 +196,21 @@ describe('Future Features popup', () => {
     expect(blob).not.toMatch(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\b/);
     expect(blob).not.toMatch(/\b20\d{2}\b/);
     expect(FUTURE_FEATURES_SHOTS.length).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('expanded map camera', () => {
+  it('lets the 3D city camera zoom out far enough to frame the whole 2x map', () => {
+    const spanX = MAP_VIEW.x1 - MAP_VIEW.x0;
+    const spanZ = MAP_VIEW.z1 - MAP_VIEW.z0;
+    const visH = 2 * MAP_CAM_MAX * Math.tan((38 * Math.PI) / 180 / 2);
+    expect(MAP_CAM_MIN).toBe(30);
+    expect(MAP_CAM_MAX).toBeGreaterThan(360);
+    expect(visH).toBeGreaterThanOrEqual(Math.max(spanX, spanZ));
+    expect(MAP_CAM_FAR).toBeGreaterThan(MAP_CAM_MAX);
+    const world = src('client/src/lib/world3d.ts');
+    expect(world).toMatch(/controls\.maxDistance = MAP_CAM_MAX/);
+    expect(world).toMatch(/PerspectiveCamera\(38, 1, 0\.5, MAP_CAM_FAR\)/);
+    expect(world).not.toMatch(/controls\.maxDistance = 360/);
   });
 });

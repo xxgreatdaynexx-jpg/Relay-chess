@@ -21,7 +21,7 @@ import { bigFarms, BIG_ROADS, BIG_ROAD_W, BIG_FARM_AREA, BIG_GROUND_X0, BIG_GROU
 import { orchardId, orchardPlots } from '../../../shared/orchard';
 export const allFarmPlots = () => [...farmPlots().map((p) => ({ ...p, id: plotId(p.n) })), ...allFieldPlots().map((p) => ({ ...p, id: fieldPlotId(p.n) })), ...orchardPlots().map((p) => ({ ...p, id: orchardId(p.n) }))];
 import { FARM_MACHINES, buildMachine } from './farmMachines';
-import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, isOrchardCrop, TILE, clampMapTarget, panInset } from '../../../shared/farm';
+import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, isOrchardCrop, TILE, clampMapTarget, panInset, MAP_CAM_MIN, MAP_CAM_MAX, MAP_CAM_FAR } from '../../../shared/farm';
 import { buildVenues } from './worldVenues';
 import { buildAirportLandmark } from './estateModels';
 import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN, MINE_SITES, MINE_APRON, OUTSKIRTS } from './worldLayout';
@@ -94,11 +94,11 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x070a1c); scene.fog = new THREE.Fog(0x070a1c, 260, 640);
-  const camera = new THREE.PerspectiveCamera(38, 1, 0.5, 900);
+  const camera = new THREE.PerspectiveCamera(38, 1, 0.5, MAP_CAM_FAR);
   const home = new THREE.Vector3(132, 132, 156).multiplyScalar(PLATE / 96); camera.position.copy(home); // framing scales with the plate
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(0, 0, 0); controls.enableDamping = true; controls.dampingFactor = 0.08;
-  controls.minDistance = 30; controls.maxDistance = 360; controls.maxPolarAngle = 1.2; controls.minPolarAngle = 0.35;
+  controls.minDistance = MAP_CAM_MIN; controls.maxDistance = MAP_CAM_MAX; controls.maxPolarAngle = 1.2; controls.minPolarAngle = 0.2;
   // Panning (pt1200u): left-drag / one-finger drag pans across the ground, right-drag / two fingers orbit + zoom, wheel zooms.
   controls.enablePan = true; controls.screenSpacePanning = false; controls.panSpeed = 1.1; controls.autoRotate = true; controls.autoRotateSpeed = 0.25;
   controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
@@ -1017,9 +1017,21 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   disposables.push(sunDisc.material, moonDisc.material); scene.add(sunDisc, moonDisc);
   const todOverride = parseTod(new URLSearchParams(location.search).get('tod'));
   const bg = scene.background as THREE.Color; const fogC = (scene.fog as THREE.Fog).color; const dirV = new THREE.Vector3();
+  // Fog and the far plane used to be sized for the original city plate (~360 max zoom). At that cap the 2x expanded map
+  // is only partly visible, and the edges fall into fog. Scale both with zoom so a full-map overview stays readable,
+  // while close-in views keep the original 260/640 (day 0) and 400/900 (noon) distances.
+  let skyDay = 1;
+  const applyFog = () => {
+    const fog = scene.fog as THREE.Fog;
+    const zoomK = Math.max(1, camera.position.distanceTo(controls.target) / 360);
+    fog.near = (260 + 140 * skyDay) * zoomK;
+    fog.far = (640 + 260 * skyDay) * zoomK;
+    const needFar = Math.max(MAP_CAM_FAR, fog.far + 400);
+    if (Math.abs(camera.far - needFar) > 1) { camera.far = needFar; camera.updateProjectionMatrix(); }
+  };
   const applySky = () => {
     const k = skyNow(new Date(), todOverride);
-    bg.setHex(k.sky); fogC.setHex(k.fog); (scene.fog as THREE.Fog).near = 260 + 140 * k.day; (scene.fog as THREE.Fog).far = 640 + 260 * k.day;
+    bg.setHex(k.sky); fogC.setHex(k.fog); skyDay = k.day; applyFog();
     hemi.color.setHex(k.hemiSky); hemi.groundColor.setHex(k.hemiGround); hemi.intensity = k.hemiI;
     renderer.toneMappingExposure = k.exposure;
     // sun direction from elevation/azimuth (world: -z = north, +x = east)
@@ -1047,6 +1059,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     if (fly) { fly.t = Math.min(1, fly.t + dt / 0.75); const e = 1 - Math.pow(1 - fly.t, 3); camera.position.lerpVectors(fly.from, fly.to, e); controls.target.lerpVectors(fly.tf, fly.tt, e); camera.lookAt(controls.target);
       if (fly.t >= 1) { const id = fly.id; fly = null; controls.enabled = true; h.onPick(id); } } // the city stays mounted now (0dc4f99): hand zoom/orbit back
     else if (!tick?.(dt)) { panStep(dt); controls.update(); clampPan(); }
+    applyFog();
     skyT += dt; if (skyT > 1) { skyT = 0; applySky(); }
     stepTags?.(dt);
     xmas?.step(dt, camera.position, controls.target);
