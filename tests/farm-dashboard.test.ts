@@ -1,3 +1,4 @@
+import { setCropFailChanceForTest } from '../shared/farm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { resetFarmGuardForTest } from '../server/farmGuard';
 import { newDb } from 'pg-mem';
@@ -27,7 +28,7 @@ async function setup() {
   return { db, bank, re, farm, fund, chips, id1, id2, barn, setNow: (t: number) => { now = t; } };
 }
 
-beforeEach(() => resetFarmGuardForTest());
+beforeEach(() => { setCropFailChanceForTest(0); resetFarmGuardForTest(); });
 
 describe('farm dashboard batch actions', () => {
   it('requires a separately purchased barn and ownership of every named plot', async () => {

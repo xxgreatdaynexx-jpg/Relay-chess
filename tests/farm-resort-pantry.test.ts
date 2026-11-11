@@ -8,6 +8,7 @@ import { Farm } from '../server/farm';
 import { LocStore, setLocStore, getLocStore } from '../server/locstock';
 import { propertyById } from '../shared/realEstate';
 import { cropById } from '../shared/farm';
+import { setCropFailChanceForTest } from '../shared/farm';
 import { PANTRY_MAX } from '../shared/cooking';
 import { RESORT_WAREHOUSE } from '../shared/inventoryLocations';
 import { fertilizerYieldBonus, yieldQty } from '../shared/farmUpgrades';
@@ -28,7 +29,7 @@ async function setup() {
   return { pool, bank, re, farm, fund, ls, setNow: (t: number) => { now = t; }, id: 'rf:1' as const };
 }
 
-beforeEach(() => resetFarmGuardForTest());
+beforeEach(() => { setCropFailChanceForTest(0); resetFarmGuardForTest(); });
 afterEach(() => { setLocStore(new LocStore(null)); });
 
 describe('resort plantation pantry (pt2094u)', () => {

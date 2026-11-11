@@ -299,8 +299,8 @@ export function createResort(canvas: HTMLCanvasElement, h: Handlers) {
   const cropMesh = new THREE.InstancedMesh(geo(new THREE.ConeGeometry(0.6, 1, 6)), mat({ roughness: 0.7 }), 400); cropMesh.count = 0; scene.add(cropMesh);
   const setFarm = (tiles: Array<[string, number, string, string]>) => {
     const plots = new Map(resortPlots().map((p) => [resortPlotId(p.n), p])); let n = 0; const c = new THREE.Color();
-    for (const [pid, t, crop, stage] of tiles) { const p = plots.get(pid); const cr = cropById(crop); if (!p || !cr || n >= 400) continue; const [x, z] = rfTileXZ(p, t); const hh = stage === 'ready' ? 1.6 : stage === 'withered' ? 0.5 : 0.9;
-      d.position.set(x, 0.3 + hh / 2, z); d.rotation.set(0, 0, 0); d.scale.set(RF_TILE * 0.4, hh, RF_TILE * 0.4); d.updateMatrix(); cropMesh.setMatrixAt(n, d.matrix); cropMesh.setColorAt(n, c.setHex(stage === 'ready' ? cr.color : stage === 'withered' ? 0x5a4a30 : 0x3f9a4a)); n++; }
+    for (const [pid, t, crop, stage] of tiles) { const p = plots.get(pid); const cr = cropById(crop); if (!p || !cr || n >= 400) continue; const [x, z] = rfTileXZ(p, t); const hh = stage === 'ready' ? 1.6 : (stage === 'withered' || stage === 'failed') ? 0.5 : 0.9;
+      d.position.set(x, 0.3 + hh / 2, z); d.rotation.set(0, 0, 0); d.scale.set(RF_TILE * 0.4, hh, RF_TILE * 0.4); d.updateMatrix(); cropMesh.setMatrixAt(n, d.matrix); cropMesh.setColorAt(n, c.setHex(stage === 'ready' ? cr.color : (stage === 'withered' || stage === 'failed') ? 0x5a4a30 : 0x3f9a4a)); n++; }
     cropMesh.count = n; cropMesh.instanceMatrix.needsUpdate = true; if (cropMesh.instanceColor) cropMesh.instanceColor.needsUpdate = true;
   };
   const marks = new THREE.InstancedMesh(geo(new THREE.OctahedronGeometry(0.6, 0)), mat({ color: 0xd8b25a, metalness: 0.6, roughness: 0.3 }), 64); marks.count = 0; scene.add(marks);

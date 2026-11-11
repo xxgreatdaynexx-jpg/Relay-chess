@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { FarmStatusSummary, useBarnFarmStatus } from './BarnFarmStatus';
 import { barnFarms } from '../../../shared/barnFarms';
-import { emptyTiles, tilesAt } from '../../../shared/barnFarmStatus';
+import { emptyTiles, harvestableTiles, tilesAt } from '../../../shared/barnFarmStatus';
 import type { OwnedProperty } from '../../../shared/realEstate';
-import { CROPS as CITY_CROPS, cropById } from '../../../shared/farm';
+import { CROPS as CITY_CROPS, cropById, harvestFailedNote } from '../../../shared/farm';
 import { TROPICAL_CROPS } from '../../../shared/resort';
 import { indexed } from '../../../shared/priceIndex';
 import { socket } from '@/lib/net';
@@ -11,7 +11,7 @@ import { MapSheet } from './MapSheet';
 
 type Ownership = { me: string | null; owned: Map<string, OwnedProperty> };
 const chips = (n: number) => n.toLocaleString('en-US');
-type Ack = { ok: boolean; error?: string; harvested?: number; paid?: number; planted?: number; cost?: number; cleared?: number; errors?: Array<{ id: string; error: string }> };
+type Ack = { ok: boolean; error?: string; harvested?: number; paid?: number; failed?: number; planted?: number; cost?: number; cleared?: number; errors?: Array<{ id: string; error: string }> };
 
 export function FarmOverviewButton({ me, owned, onOpen }: Ownership & { onOpen: () => void }) {
   return barnFarms(me, owned.values()).unlocked ? <button type="button" onClick={onOpen} data-testid="all-farms-open">🏡 Barn · All my farms</button> : null;
@@ -30,16 +30,16 @@ export function FarmOverview({ me, owned, map, onOpenFarm, onClose }: Ownership 
   const index = status.index && status.index > 0 ? status.index : 1;
   const local = groups.find((g) => g.map === map)?.farms.flatMap((p) => p ? [p] : []) ?? [];
   const localPlots = local.map((p) => ({ p, plot: status.plots.get(p.id), now: status.now }));
-  const readyIds = localPlots.filter((x) => x.plot && tilesAt(x.plot, x.now, 'ready').length).map((x) => x.p.id);
+  const readyIds = localPlots.filter((x) => x.plot && harvestableTiles(x.plot, x.now).length).map((x) => x.p.id);
   const emptyIds = localPlots.filter((x) => x.plot && emptyTiles(x.plot, x.now).length).map((x) => x.p.id);
   const witherIds = localPlots.filter((x) => x.plot && tilesAt(x.plot, x.now, 'withered').length).map((x) => x.p.id);
-  const readyN = localPlots.reduce((n, x) => n + (x.plot ? tilesAt(x.plot, x.now, 'ready').length : 0), 0);
+  const readyN = localPlots.reduce((n, x) => n + (x.plot ? harvestableTiles(x.plot, x.now).length : 0), 0);
   const emptyN = localPlots.reduce((n, x) => n + (x.plot ? emptyTiles(x.plot, x.now).length : 0), 0);
   const witherN = localPlots.reduce((n, x) => n + (x.plot ? tilesAt(x.plot, x.now, 'withered').length : 0), 0);
   const seedCost = (n: number) => indexed(crop.seed, index) * n;
   const plantAfterHarvestN = localPlots.reduce((n, x) => {
     if (!x.plot) return n;
-    return n + emptyTiles(x.plot, x.now).length + tilesAt(x.plot, x.now, 'ready').length;
+    return n + emptyTiles(x.plot, x.now).length + harvestableTiles(x.plot, x.now).length;
   }, 0);
 
   const act = (action: string, ids: string[], ok: (r: Ack) => string, extra: Record<string, unknown> = {}) => {
@@ -68,11 +68,11 @@ export function FarmOverview({ me, owned, map, onOpenFarm, onClose }: Ownership 
           </button>)}
         </div>
         <div className="farm-dash-actions">
-          <button type="button" disabled={busy || !readyN} onClick={() => act('harvest', readyIds, (r) => `Harvested ${r.harvested} for 🪙 ${chips(Number(r.paid))}.`)} data-testid="all-farms-harvest-map">Harvest all {readyN || ''} ready</button>
-          <button type="button" disabled={busy || !readyN} onClick={() => act('pantry', readyIds, (r) => `🧺 ${r.harvested} crop${r.harvested === 1 ? '' : 's'} into the pantry.`)} data-testid="all-farms-pantry-map">All ready to pantry</button>
+          <button type="button" disabled={busy || !readyN} onClick={() => act('harvest', readyIds, (r) => `Harvested ${r.harvested} for 🪙 ${chips(Number(r.paid))}.${harvestFailedNote(Number(r.failed) || 0)}`)} data-testid="all-farms-harvest-map">Harvest all {readyN || ''} ready</button>
+          <button type="button" disabled={busy || !readyN} onClick={() => act('pantry', readyIds, (r) => `🧺 ${r.harvested} crop${r.harvested === 1 ? '' : 's'} into the pantry.${harvestFailedNote(Number(r.failed) || 0)}`)} data-testid="all-farms-pantry-map">All ready to pantry</button>
           <button type="button" disabled={busy || !witherN} onClick={() => act('clear', witherIds, (r) => `Cleared ${r.cleared} withered.`)} data-testid="all-farms-clear-map">Clear {witherN || ''} withered</button>
           <button type="button" disabled={busy || !emptyN} onClick={() => act('plant', emptyIds, (r) => `Planted ${r.planted} × ${crop.label} for 🪙 ${chips(Number(r.cost))}.`)} data-testid="all-farms-plant-map">Replant all {emptyN || ''} empty<span>🪙 {chips(seedCost(emptyN))}</span></button>
-          <button type="button" disabled={busy || !plantAfterHarvestN} onClick={() => act('harvest_replant', local.map((p) => p.id).filter((id) => readyIds.includes(id) || emptyIds.includes(id)), (r) => `Harvested ${r.harvested ?? 0} (🪙 ${chips(Number(r.paid ?? 0))}) and planted ${r.planted ?? 0} × ${crop.label} for 🪙 ${chips(Number(r.cost ?? 0))}.`)} data-testid="all-farms-harvest-replant-map">Harvest ready &amp; replant<span>🪙 {chips(seedCost(plantAfterHarvestN))}</span></button>
+          <button type="button" disabled={busy || !plantAfterHarvestN} onClick={() => act('harvest_replant', local.map((p) => p.id).filter((id) => readyIds.includes(id) || emptyIds.includes(id)), (r) => `Harvested ${r.harvested ?? 0} (🪙 ${chips(Number(r.paid ?? 0))})${harvestFailedNote(Number(r.failed) || 0)} and planted ${r.planted ?? 0} × ${crop.label} for 🪙 ${chips(Number(r.cost ?? 0))}.`)} data-testid="all-farms-harvest-replant-map">Harvest ready &amp; replant<span>🪙 {chips(seedCost(plantAfterHarvestN))}</span></button>
         </div>
       </div>}
       {groups.map((g) => <section key={g.map} data-testid={`all-farms-${g.map}`}><h4>{g.label}</h4>
@@ -84,12 +84,12 @@ export function FarmOverview({ me, owned, map, onOpenFarm, onClose }: Ownership 
           {status.plots.get(p.id) ? <FarmStatusSummary plot={status.plots.get(p.id)!} now={status.now} /> : <small className="barn-farm-status">{status.error ? 'Status unavailable' : 'Loading status…'}</small>}</p>
           {g.map === map && status.plots.get(p.id) && (() => {
             const plot = status.plots.get(p.id)!;
-            const ready = tilesAt(plot, status.now, 'ready').length;
+            const ready = harvestableTiles(plot, status.now).length;
             const empty = emptyTiles(plot, status.now).length;
             const withered = tilesAt(plot, status.now, 'withered').length;
             return <div className="farm-dash-actions">
-              <button type="button" disabled={busy || !ready} onClick={() => act('harvest', [p.id], (r) => `Harvested ${r.harvested} for 🪙 ${chips(Number(r.paid))}.`)} data-testid={`all-farms-harvest-${p.id}`}>Harvest {ready || ''} ready</button>
-              <button type="button" disabled={busy || !ready} onClick={() => act('pantry', [p.id], (r) => `🧺 ${r.harvested} into the pantry.`)} data-testid={`all-farms-pantry-${p.id}`}>To pantry</button>
+              <button type="button" disabled={busy || !ready} onClick={() => act('harvest', [p.id], (r) => `Harvested ${r.harvested} for 🪙 ${chips(Number(r.paid))}.${harvestFailedNote(Number(r.failed) || 0)}`)} data-testid={`all-farms-harvest-${p.id}`}>Harvest {ready || ''} ready</button>
+              <button type="button" disabled={busy || !ready} onClick={() => act('pantry', [p.id], (r) => `🧺 ${r.harvested} into the pantry.${harvestFailedNote(Number(r.failed) || 0)}`)} data-testid={`all-farms-pantry-${p.id}`}>To pantry</button>
               <button type="button" disabled={busy || !withered} onClick={() => act('clear', [p.id], (r) => `Cleared ${r.cleared} withered.`)} data-testid={`all-farms-clear-${p.id}`}>Clear {withered || ''} withered</button>
               <button type="button" disabled={busy || !empty} onClick={() => act('plant', [p.id], (r) => `Planted ${r.planted} × ${crop.label} for 🪙 ${chips(Number(r.cost))}.`)} data-testid={`all-farms-plant-${p.id}`}>Replant {empty || ''} empty<span>🪙 {chips(seedCost(empty))}</span></button>
             </div>;

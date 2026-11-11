@@ -1,3 +1,4 @@
+import { setCropFailChanceForTest } from '../shared/farm';
 import { describe, expect, it } from 'vitest';
 import { newDb } from 'pg-mem';
 import { registerPgAdvisoryFunctions } from './pg-advisory';
@@ -24,6 +25,7 @@ describe('net worth: property at total spent (shared propertyWorth)', () => {
     const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
     const clock = () => Date.parse('2026-11-01T12:00:00Z');
     const re = new RealEstate(pool, () => bank, clock); await re.init();
+    setCropFailChanceForTest(0);
     const farm = new Farm(pool, () => bank, clock); await farm.init();
     const small = farmPlots().find((p) => p.cols * p.rows === 16)!; const id = `f:${small.n}`; const plot = propertyById(id)!;
     bank.transfer('Gus', plot.price * 3 + 50_000, { game: 'admin' }); await bank.flush();

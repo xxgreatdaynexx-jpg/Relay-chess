@@ -1,6 +1,6 @@
 /**
  * House-sell cap index (pt1442u): the daily house-sell cap follows TOTAL player assets (daily_economy.total, the same
- * cash + assets net worth the Bank panel shows). Each UTC day: cap(d) = cap(d-1) x (1 + 0.25 x (total[close d-1] / total[close d-2] - 1)).
+ * cash + assets net worth the Bank panel shows). Each UTC day: cap(d) = cap(d-1) x (1 + 0.35 x (total[close d-1] / total[close d-2] - 1)).
  * Missing/zero snapshot -> unchanged. Falls with assets too, but never below the 100K base (index floor 1).
  * Separate from the price index, which still scales payouts and prices. Never moves chips.
  */
@@ -10,8 +10,8 @@ import { priceIndex } from './price-index.js';
 export const HOUSE_CAP_MIGRATION = `CREATE TABLE IF NOT EXISTS house_cap_index (
   day TEXT PRIMARY KEY, idx DOUBLE PRECISION NOT NULL, ratio DOUBLE PRECISION, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
 export const HOUSE_CAP_FLOOR = 1;
-/** Dayne: a quarter of total-asset inflation moves the cap (+100% wealth -> +25% cap, -20% -> -5%). */
-export const HOUSE_CAP_PASS_THROUGH = 0.25;
+/** A share of total-asset inflation moves the cap (+100% wealth -> +35% cap, -20% -> -7%). */
+export const HOUSE_CAP_PASS_THROUGH = 0.35;
 
 const DAY = 86_400_000;
 const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);

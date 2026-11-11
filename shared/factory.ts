@@ -3,6 +3,8 @@
  * Items are stack keys `type:id` (same as mine_items / stackKey), so input/output chests read and write banked storage directly.
  */
 import { GOODS, ORES, MAX_BANKED_STACK, isOre, priceOf, nameOf, sellable, type ItemType, type Stack } from './mines.js';
+import { CROPS, CROP_SEED_MUL } from './farm.js';
+import { TROPICAL_CROPS } from './resort.js';
 
 export const TICK_MS = 500;
 export const MAX_CATCHUP_MS = 8 * 3600_000;
@@ -481,8 +483,8 @@ export function tierOf(key: string, seen = new Set<string>()): number {
 export const recipeIn = (r: FRecipe) => r.in.reduce((t, [k, q]) => t + q * priceOfKey(k), 0);
 export const recipeOut = (r: FRecipe) => r.out[1] * priceOfKey(r.out[0]);
 
-/** Dayne 2026-11-09: each farm/fish factory craft step pays 10% over the sum of its input bases (per output unit). */
-export const FOOD_STEP_MARKUP = 1.10;
+/** Each farm/fish factory craft step pays 8% over the sum of its input bases (per output unit). */
+export const FOOD_STEP_MARKUP = 1.08;
 const isFarmOrFishKey = (k: string, seen = new Set<string>()): boolean => {
   if (seen.has(k)) return false; seen.add(k);
   const id = k.split(':')[1] ?? '';
@@ -515,6 +517,16 @@ export function applyFarmFishFoodPrices(markup = FOOD_STEP_MARKUP): string[] {
   }
   return touched;
 }
+/** Keep raw crop GOODS prices in lockstep with CROP_SEED_MUL (seed x margin). */
+export function applyRawCropPrices(mul = CROP_SEED_MUL): string[] {
+  const touched: string[] = [];
+  for (const c of [...CROPS, ...TROPICAL_CROPS]) {
+    const id = `crop_${c.id}`; const g = GOODS[id]; if (!g) throw new Error(`GOODS missing for ${id}`);
+    g.price = mul * c.seed; touched.push(id);
+  }
+  return touched;
+}
+applyRawCropPrices();
 applyFarmFishFoodPrices();
 
 /**

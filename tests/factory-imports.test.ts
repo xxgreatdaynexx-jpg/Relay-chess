@@ -6,7 +6,7 @@ import { RealEstate } from '../server/realEstate';
 import { Farm, type ImportSink } from '../server/farm';
 import { Fishing, fishImportQty } from '../server/fishing';
 import { writeImport } from '../server/factory';
-import { CROPS, farmPlots } from '../shared/farm';
+import { CROPS, CROP_SEED_MUL, farmPlots , setCropFailChanceForTest} from '../shared/farm';
 import { TROPICAL_CROPS } from '../shared/resort';
 import { GOODS, ORES, sellable, isFood } from '../shared/mines';
 import { FRECIPES, KINDS, advance, madeBy, newState, recipeIn, recipeOut, tierOf, usedIn, type Storage } from '../shared/factory';
@@ -21,7 +21,7 @@ describe('factory: more recipes + game resources in (pt1252u)', () => {
     for (const id of NEW) {
       const r = FRECIPES.find((x) => x.id === id)!; expect(r, id).toBeTruthy();
       if (id === 'k_wine') continue; // Wine is fixed at 700 (crop margins 2026-11-04 exception)
-      if (r.in.some(([k]) => !keyIsRaw(k))) { const q = recipeOut(r) / recipeIn(r); expect(q, id).toBeGreaterThanOrEqual(0.99); expect(q, id).toBeLessThan(1.4); continue; } // crop margins: higher-tier crop goods = their crop chain (+10%/step); intermediates already carry it
+      if (r.in.some(([k]) => !keyIsRaw(k))) { const q = recipeOut(r) / recipeIn(r); expect(q, id).toBeGreaterThanOrEqual(0.99); expect(q, id).toBeLessThan(1.4); continue; } // crop margins: higher-tier crop goods = their crop chain (+8%/step); intermediates already carry it
       const ratio = recipeOut(r) / recipeIn(r);
       expect(ratio, id).toBeGreaterThan(1.05); expect(ratio, id).toBeLessThan(1.4);
       expect(KINDS[r.machine].machine).toBe(true);
@@ -29,7 +29,7 @@ describe('factory: more recipes + game resources in (pt1252u)', () => {
   });
   it('every input is either raw (ore / imported crop or fish) or made by another recipe; chains go several tiers deep', () => {
     for (const r of FRECIPES) for (const [k] of r.in) expect(keyIsRaw(k) || !!madeBy(k), `${r.id} needs ${k}`).toBe(true);
-    for (const c of [...CROPS, ...TROPICAL_CROPS]) { const g = GOODS[`crop_${c.id}`]; expect(g?.raw, c.id).toBe(true); expect(g!.price).toBeCloseTo(c.seed * 1.5, 2); } // crop margins: reference = seed x 1.5 (raw harvest value)
+    for (const c of [...CROPS, ...TROPICAL_CROPS]) { const g = GOODS[`crop_${c.id}`]; expect(g?.raw, c.id).toBe(true); expect(g!.price).toBeCloseTo(c.seed * CROP_SEED_MUL, 2); } // crop margins: reference = seed x CROP_SEED_MUL (raw harvest value)
     for (const c of [...CROPS, ...TROPICAL_CROPS]) expect(usedIn(`good:crop_${c.id}`).length, `${c.id} has a use`).toBeGreaterThan(0);
     expect(usedIn('good:fish_fillet').length).toBeGreaterThan(0); expect(usedIn('good:fish_portion').length).toBeGreaterThan(0);
     expect(tierOf('good:robot')).toBeGreaterThanOrEqual(4); expect(tierOf('good:chocolate')).toBe(2); expect(tierOf('good:banquet')).toBe(3);
@@ -67,6 +67,7 @@ describe('imports are atomic and server-side', () => {
   it('farm: ready crops move to factory storage with no chips paid; exactly once', async () => {
     const { pool, bank, sink, qty, after } = await db(); let now = T0;
     const re = new RealEstate(pool, () => bank, () => now); await re.init();
+    setCropFailChanceForTest(0);
     const farm = new Farm(pool, () => bank, () => now); await farm.init();
     bank.transfer('Gus', 100_000, { game: 'admin' }); await bank.flush();
     const p = farmPlots().find((x) => x.cols * x.rows === 16)!; const id = `f:${p.n}`;

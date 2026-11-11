@@ -890,9 +890,9 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const d = new THREE.Object3D(); const c = new THREE.Color(); let n = 0; const plots = new Map(allFarmPlots().map((p) => [p.id, p]));
     for (const [pid, t, crop, stage] of tiles) {
       const p = plots.get(pid); const cr = cropById(crop); if (!p || !cr || n >= crops.instanceMatrix.count || !Number.isInteger(t) || t < 0 || t >= p.cols * p.rows) continue; const [x, z] = tileXZ(p, t);
-      const hgt = stage === 'ready' ? 1.3 : stage === 'withered' ? 0.45 : 0.7;
+      const hgt = stage === 'ready' ? 1.3 : (stage === 'withered' || stage === 'failed') ? 0.45 : 0.7;
       d.position.set(x, 0.14 + hgt / 2, z); d.scale.set(stage === 'ready' ? 1 : 0.7, hgt, stage === 'ready' ? 1 : 0.7); d.rotation.set(0, 0, 0); d.updateMatrix();
-      crops.setMatrixAt(n, d.matrix); crops.setColorAt(n, c.setHex(stage === 'ready' ? cr.color : stage === 'withered' ? 0x5a4a30 : 0x3f8a3a)); n++;
+      crops.setMatrixAt(n, d.matrix); crops.setColorAt(n, c.setHex(stage === 'ready' ? cr.color : (stage === 'withered' || stage === 'failed') ? 0x5a4a30 : 0x3f8a3a)); n++;
     }
     crops.count = n; crops.instanceMatrix.needsUpdate = true; if (crops.instanceColor) crops.instanceColor.needsUpdate = true;
   };

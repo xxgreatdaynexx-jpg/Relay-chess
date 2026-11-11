@@ -1,3 +1,4 @@
+import { setCropFailChanceForTest } from '../shared/farm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { plantCapBonusFromPaid, plantCapToBase } from '../shared/plantCap';
 import { plantCapBonus, plantCapPaid, recordPlantSeed, resetPlantCapForTest } from '../server/plant-cap';
@@ -15,7 +16,7 @@ import { HOUSE_DAILY_BASE } from '../shared/mines';
 
 const T0 = Date.parse('2026-11-10T00:26:50Z'); // 6:26:50 PM CST Nov 9 — after that cap-day reset
 
-beforeEach(() => { resetBank(); resetPlantCapForTest(); resetFarmGuardForTest(); });
+beforeEach(() => { resetBank(); resetPlantCapForTest(); resetFarmGuardForTest(); setCropFailChanceForTest(0); });
 
 describe('planting house-cap bonus', () => {
   it('gives back half of chips actually paid, floored, and matches the sunflower example', () => {

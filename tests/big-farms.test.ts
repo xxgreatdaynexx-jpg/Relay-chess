@@ -9,7 +9,7 @@ import { cropById } from './farm-helpers';
 import { bigFarms, bigFarmPrice, BIG_ROADS, BIG_FARM_AREA, BIG_TILE, BIG_LANE_X, BIG_ROAD_W, BIG_FARM_N0, BIG_NORTH_ROAD_Z, BIG_EAST_X, BIG_GROUND_X0, BIG_GROUND_X1, BIG_GROUND_Z0 } from '../shared/bigFarms';
 import { allFieldPlots, fieldPlotOf } from '../shared/fieldFarms';
 import { outskirts, RURAL_ROADS, RURAL_ROAD_W, inLake } from '../shared/outskirts';
-import { TILE, MAP_BOUNDS, MAP_VIEW, clampMapTarget, farmPlots } from '../shared/farm';
+import { TILE, MAP_BOUNDS, MAP_VIEW, clampMapTarget, farmPlots , setCropFailChanceForTest} from '../shared/farm';
 import { propertyById, properties } from '../shared/realEstate';
 import { LAUNCH as LAUNCH_POPUP } from '../shared/launchPopup';
 import { MINE_SITES, MINE_APRON, OUTSKIRTS, PLATE } from '../shared/worldLayout';
@@ -91,6 +91,7 @@ describe('Big Farms map expansion', () => {
     const bank = new CasinoBank(); bank.retryMs = []; await bank.attach(new PgCasinoStore(pool));
     const clock = () => Date.parse('2026-11-04T12:00:00Z');
     const re = new RealEstate(pool, () => bank, clock); await re.init();
+    setCropFailChanceForTest(0);
     const farm = new Farm(pool, () => bank, clock); await farm.init();
     const p = bigFarms().find((f) => f.size === 20)!; const id = `cf:${p.n}`;
     bank.transfer('Gus', 1_000_000, { game: 'admin' }); await bank.flush();

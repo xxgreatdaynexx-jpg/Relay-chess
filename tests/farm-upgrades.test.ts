@@ -1,3 +1,4 @@
+import { setCropFailChanceForTest } from '../shared/farm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { resetFarmGuardForTest } from '../server/farmGuard';
 import { newDb } from 'pg-mem';
@@ -24,7 +25,7 @@ async function setup() {
   return { db, bank, re, farm, fund, chips, ledger, id, setNow: (t: number) => { now = t; } };
 }
 
-beforeEach(() => resetFarmGuardForTest());
+beforeEach(() => { resetFarmGuardForTest(); setCropFailChanceForTest(0); });
 
 describe('farm upgrades (request #6)', () => {
   it('prices scale with plot size, rise per level, min 500, null at max', () => {

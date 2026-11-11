@@ -4,7 +4,7 @@ import { barnFarmStatus, barnTimeLeft, type BarnFarmOverview, type BarnFarmPlot 
 export function FarmStatusSummary({ plot, now }: { plot: BarnFarmPlot; now: number }) {
   const s = barnFarmStatus(plot, now); const c = s.count;
   return <small className="barn-farm-status" data-testid={`farm-status-${plot.id}`}>
-    <span>{c.empty} empty · {c.growing} growing · {c.ready} ready · {c.withered} withered</span>
+    <span>{c.empty} empty · {c.growing} growing · {c.ready} ready · {c.failed ? `${c.failed} failed · ` : ''}{c.withered} withered</span>
     {s.crops && <span>{s.crops}</span>}
     {s.nextReady !== null && <span>Next ready in {barnTimeLeft(s.nextReady - now)}{s.lastReady !== s.nextReady && <> · Last growing crop in {barnTimeLeft(s.lastReady! - now)}</>}</span>}
     {s.nextWither !== null && <span>Next ripe crop withers in {barnTimeLeft(s.nextWither - now)}</span>}

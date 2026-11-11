@@ -25,7 +25,7 @@ import { emitHaul } from './haulVisual.js';
 import { farmHaulSite } from '../shared/haulVisual.js';
 import { PANTRY_MAX } from '../shared/cooking.js';
 import { awardXp } from './skills.js';
-import { CROPS, cropById, cropSellValue, farmHarvestChips, farmPayout, farmPlots, ripeWindow, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
+import { CROPS, cropById, cropFailSalt, cropSellValue, cropTileFailed, farmHarvestChips, farmPayout, farmPlots, harvestFailedNote, ripeWindow, stageOf, WITHER_FACTOR, type FarmTile, type FarmView } from '../shared/farm.js';
 import { skillLevelAsync } from './skills.js';
 import { farmingGrowMul } from '../shared/skillPerks.js';
 import { combinedGrowMul, fertilizerYieldBonus, greenhouseWither, MAX_UPGRADE_LEVEL, NO_UPGRADES, upgradeDef, upgradePrice, yieldQty, type FarmUpgradeLevels } from '../shared/farmUpgrades.js';
@@ -42,6 +42,7 @@ import { healStalePropertyDerived } from './propertyDerived.js';
 
 export const FARM_MIGRATION = `
 CREATE TABLE IF NOT EXISTS farm_tiles (plot_id TEXT NOT NULL, tile INTEGER NOT NULL, owner_key TEXT NOT NULL, crop TEXT NOT NULL, planted_at BIGINT NOT NULL, nonce TEXT NOT NULL, PRIMARY KEY (plot_id, tile));
+ALTER TABLE farm_tiles ADD COLUMN IF NOT EXISTS failed BOOLEAN;
 CREATE TABLE IF NOT EXISTS farm_upgrades (plot_id TEXT NOT NULL, kind TEXT NOT NULL, owner_key TEXT NOT NULL, level INTEGER NOT NULL, PRIMARY KEY (plot_id, kind));
 CREATE TABLE IF NOT EXISTS farm_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
 -- Millionaire Update records kept (not used by the restored farm, never dropped):
@@ -76,7 +77,7 @@ const plotOf = (id: unknown): { pid: string; cols: number; rows: number; resort:
   const c = fieldPlotOf(id); if (c) return { pid: id as string, cols: c.cols, rows: c.rows, resort: false };
   const r = resortPlotOf(id); return r && { pid: id, cols: r.cols, rows: r.rows, resort: true };
 };
-interface TileRow { plot_id: string; tile: number; owner_key: string; crop: string; planted_at: string | number; nonce: string }
+interface TileRow { plot_id: string; tile: number; owner_key: string; crop: string; planted_at: string | number; nonce: string; failed?: boolean | null }
 
 export class Farm {
   onChange?: (plotId: string) => void;
@@ -108,7 +109,14 @@ export class Farm {
   private toTile(r: TileRow, now: number, wither = WITHER_FACTOR): FarmTile | null {
     const c = cropById(r.crop); if (!c) return null; const at = Number(r.planted_at);
     const readyAt = at + c.grow, witherAt = readyAt + ripeWindow(c.grow, wither);
-    return { tile: Number(r.tile), crop: c.id, plantedAt: at, stage: wither === WITHER_FACTOR ? stageOf(c, at, now) : now < readyAt ? 'growing' : now < witherAt ? 'ready' : 'withered', readyAt, witherAt };
+    const failed = r.failed === true;
+    const stage = failed ? 'failed' as const : (wither === WITHER_FACTOR ? stageOf(c, at, now) : now < readyAt ? 'growing' : now < witherAt ? 'ready' : 'withered');
+    return { tile: Number(r.tile), crop: c.id, plantedAt: at, stage, readyAt, witherAt, failed };
+  }
+  /** Ready-window tiles, including failed crops (they are cleared on harvest for no crop / no seed refund). */
+  private harvestable(r: TileRow, now: number, wither: number): boolean {
+    const t = this.toTile(r, now, wither); if (!t) return false;
+    return now >= t.readyAt && now < t.witherAt && (t.stage === 'ready' || t.stage === 'failed');
   }
   /** Upgrade levels bought by the CURRENT owner (a previous owner's upgrades do not carry over). */
   async upgrades(q: { query: pg.Pool['query'] } | pg.PoolClient, pid: string, ownerKey: string): Promise<FarmUpgradeLevels> {
@@ -292,7 +300,7 @@ export class Farm {
         await cl.query('DELETE FROM farm_tiles WHERE plot_id = $1 AND owner_key <> $2', [pid, o.key]); // a previous owner's crops
         const busy = (await cl.query('SELECT tile FROM farm_tiles WHERE plot_id = $1', [pid])).rows.map((r) => Number(r.tile));
         if (list.some((t) => busy.includes(t))) throw new FarmError(list.length === 1 ? 'That tile is already planted.' : 'Some of those tiles are already planted.');
-        for (const t of list) await cl.query('INSERT INTO farm_tiles (plot_id, tile, owner_key, crop, planted_at, nonce) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (plot_id, tile) DO NOTHING', [pid, t, o.key, c.id, plantedAt, nonce]);
+        for (const t of list) await cl.query('INSERT INTO farm_tiles (plot_id, tile, owner_key, crop, planted_at, nonce, failed) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (plot_id, tile) DO NOTHING', [pid, t, o.key, c.id, plantedAt, nonce, cropTileFailed(cropFailSalt(nonce, t, c.id))]);
         const r = await cl.query('SELECT tile FROM farm_tiles WHERE plot_id = $1 AND nonce = $2', [pid, nonce]);
         if (r.rows.length !== list.length) throw new FarmError(list.length === 1 ? 'That tile is already planted.' : 'Some of those tiles are already planted.');
       }, seedKey);
@@ -374,7 +382,7 @@ export class Farm {
         if (!planted.length) throw new FarmError('Every tile in that template is already planted.');
         let inner = 0; for (const c of planted) inner += px(cropById(c.crop)!.seed);
         if (inner !== cost) throw new FarmError('The field changed while that layout was being planted. Try again.');
-        for (const c of planted) await cl.query('INSERT INTO farm_tiles (plot_id, tile, owner_key, crop, planted_at, nonce) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (plot_id, tile) DO NOTHING', [pid, c.tile, o.key, c.crop, plantedAtOf(c.crop), nonce]);
+        for (const c of planted) await cl.query('INSERT INTO farm_tiles (plot_id, tile, owner_key, crop, planted_at, nonce, failed) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (plot_id, tile) DO NOTHING', [pid, c.tile, o.key, c.crop, plantedAtOf(c.crop), nonce, cropTileFailed(cropFailSalt(nonce, c.tile, c.crop))]);
         const r = await cl.query('SELECT tile FROM farm_tiles WHERE plot_id = $1 AND nonce = $2', [pid, nonce]);
         if (r.rows.length !== planted.length) throw new FarmError('Some of those tiles are already planted.');
       }, seedKey);
@@ -403,15 +411,16 @@ export class Farm {
     return this.lock(`h:${keyOf(name)}`, () => this.lock(pid, async () => {
       const now = this.clock(); const key = keyOf(name);
       const up = await this.upgrades(this.pool, pid, key);
-      const ready = (await this.tiles(pid, key)).filter((r) => (!only || only.has(Number(r.tile))) && this.toTile(r, now, this.withers(up))?.stage === 'ready');
+      const ready = (await this.tiles(pid, key)).filter((r) => (!only || only.has(Number(r.tile))) && this.harvestable(r, now, this.withers(up)));
       if (!ready.length) throw new FarmError('Nothing is ready to harvest.');
       // Map pools: factory is city-only — resort crops must ship. Pantry stays on-map (city → warehouse, resort → Resort Warehouse).
       if (sink && p.resort) throw new FarmError('Resort crops sell here at the plantation. To use them in the city, ship them by boat or plane.');
       const fertB = fertilizerYieldBonus(up.fertilizer);
       if (pantry) return this.harvestToPantry(name, pid, key, ready, now, fertB, !!opts?.auto);
       // pt2093u: Fertilizer boosts crop COUNT (yield), not sell-price/profit. Same % as the old profit buff.
-      let seeds = 0, profit = 0, cropUnits = 0; const counts = new Map<string, number>();
+      let seeds = 0, profit = 0, cropUnits = 0, failed = 0; const counts = new Map<string, number>();
       for (const r of ready) {
+        if (r.failed === true) { failed++; continue; }
         const c = cropById(r.crop)!;
         const qty = yieldQty(fertB, `${r.nonce}:${r.tile}:${r.crop}`) * (p.resort ? RESORT_HARVEST_MUL : 1);
         seeds += c.seed; profit += qty * cropSellValue(c) - c.seed; cropUnits += qty;
@@ -421,6 +430,7 @@ export class Farm {
       if (sink) { // pt1252u: send the crops to your Factory storage instead of selling them (no chips, no farm tier)
         const items: Array<[string, number]> = [];
         for (const r of ready) {
+          if (r.failed === true) continue;
           const c = cropById(r.crop)!;
           const qty = yieldQty(fertB, `${r.nonce}:${r.tile}:${r.crop}`) * (p.resort ? RESORT_HARVEST_MUL : 1);
           const id = `crop_${c.id}`; const at = items.find((x) => x[0] === id); if (at) at[1] += qty; else items.push([id, qty]);
@@ -437,13 +447,13 @@ export class Farm {
           late: () => { sink.after(items); this.onChange?.(pid); } });
         sink.after(items); this.onChange?.(pid);
         try { emitHaul({ name, from: farmHaulSite(pid), to: 'factory', kind: 'farm-factory', background: !!opts?.auto }); } catch { /* visual only */ }
-        return { harvested: cropUnits, paid: 0, toFactory: items, chips: this.bank().account(name).chips };
+        return { harvested: cropUnits, paid: 0, failed, toFactory: items, chips: this.bank().account(name).chips };
       }
       const day = utcDay(now); const t = await this.today(key);
       let seedIndexed = 0;
-      for (const r of ready) seedIndexed += px(cropById(r.crop)!.seed);
+      for (const r of ready) if (r.failed !== true) seedIndexed += px(cropById(r.crop)!.seed);
       const paid = farmHarvestChips(seeds, farmPayout(profit * cityPolicyMul('farming'), t.gross), priceIndex(), seedIndexed); // Farming subsidy policy (City Hall, kept)
-      const memo = `Farm ${pid}: harvested ${[...counts].map(([l, n]) => `${n} ${l}`).join(', ')}`.slice(0, 200);
+      const memo = `Farm ${pid}: harvested ${[...counts].map(([l, n]) => `${n} ${l}`).join(', ') || 'nothing'}${failed ? `; ${failed} tile${failed === 1 ? '' : 's'} failed` : ''}`.slice(0, 200);
       await this.atomic(name, paid, 'farm_harvest', memo, async (cl) => {
         await this.mustOwn(cl, pid, name);
         let gone = 0;
@@ -456,7 +466,7 @@ export class Farm {
       this.onChange?.(pid);
       eventCredit('harvest', name, cropUnits); // weekly server event (kept); count bonus yield crops
       try { emitHaul({ name, from: farmHaulSite(pid), to: sink ? 'factory' : (p.resort ? 'resort' : 'market'), kind: sink ? 'farm-factory' : 'farm-sell', background: !!opts?.auto }); } catch { /* visual only */ }
-      return { harvested: cropUnits, paid, chips: this.bank().account(name).chips };
+      return { harvested: cropUnits, paid, failed, chips: this.bank().account(name).chips };
     }));
   }
 
@@ -503,8 +513,9 @@ export class Farm {
    *  Map pools: city plots → warehouse food stacks; resort plantation → Resort Warehouse food (same pool resort kitchens use).
    *  Tile deletes and the stock commit in the SAME transaction: exactly once (a missing tile aborts it all). */
   private async harvestToPantry(name: string, pid: string, key: string, ready: TileRow[], now: number, fertB = 0, background = false) {
-    const counts = new Map<string, number>(); let value = 0; let cropUnits = 0;
+    const counts = new Map<string, number>(); let value = 0; let cropUnits = 0; let failed = 0;
     for (const r of ready) {
+      if (r.failed === true) { failed++; continue; }
       const c = cropById(r.crop)!;
       const qty = yieldQty(fertB, `${r.nonce}:${r.tile}:${r.crop}`) * (pid.startsWith('rf:') ? RESORT_HARVEST_MUL : 1);
       counts.set(c.id, (counts.get(c.id) ?? 0) + qty); value += c.sell * qty; cropUnits += qty;
@@ -530,7 +541,7 @@ export class Farm {
     awardXp(name, 'farming', Math.min(400, 10 + Math.round(value / 5)));
     this.onChange?.(pid);
     try { emitHaul({ name, from: farmHaulSite(pid), to: farmLoc(pid), kind: 'farm-pantry', background }); } catch { /* visual only */ }
-    return { harvested: cropUnits, paid: 0, pantry: Object.fromEntries(counts), toFactory: undefined as Array<[string, number]> | undefined, chips: this.bank().account(name).chips };
+    return { harvested: cropUnits, paid: 0, failed, pantry: Object.fromEntries(counts), toFactory: undefined as Array<[string, number]> | undefined, chips: this.bank().account(name).chips };
   }
 
   /**
@@ -642,7 +653,7 @@ export class Farm {
   async clear(name: string, id: unknown) {
     const p = plotOf(id); if (!p) throw new FarmError('Unknown farm plot.'); const pid = p.pid; const key = keyOf(name);
     return this.lock(pid, async () => {
-      const now = this.clock(); const up = await this.upgrades(this.pool, pid, key); const dead = (await this.tiles(pid, key)).filter((r) => this.toTile(r, now, this.withers(up))?.stage === 'withered');
+      const now = this.clock(); const up = await this.upgrades(this.pool, pid, key); const dead = (await this.tiles(pid, key)).filter((r) => { const t = this.toTile(r, now, this.withers(up)); return !!t && now >= t.witherAt && (t.stage === 'withered' || t.stage === 'failed'); });
       if (!dead.length) throw new FarmError('Nothing has withered.');
       for (const r of dead) await this.pool.query('DELETE FROM farm_tiles WHERE plot_id = $1 AND tile = $2 AND nonce = $3', [pid, r.tile, r.nonce]);
       this.onChange?.(pid); return { cleared: dead.length };

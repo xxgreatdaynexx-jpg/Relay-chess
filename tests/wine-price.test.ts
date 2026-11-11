@@ -4,7 +4,7 @@ import { CROPS, CROP_SEED_MUL } from '../shared/farm';
 import { FOOD_STEP_MARKUP } from '../shared/factory';
 import { houseSellPrice } from '../shared/sellBuff';
 describe('wine price', () => {
-  it('wine is 2 grapes at seed x 1.5 x 1.10 (no special case)', () => {
+  it('wine is 2 grapes at seed x CROP_SEED_MUL x FOOD_STEP_MARKUP (no special case)', () => {
     const seed = CROPS.find((c) => c.id === 'grapes')!.seed;
     const expectP = 2 * seed * CROP_SEED_MUL * FOOD_STEP_MARKUP;
     expect(ITEMS.wine.price).toBeCloseTo(expectP, 6);

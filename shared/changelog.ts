@@ -6,6 +6,14 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-10T20:05:00-06:00", "title": "Farm crop margins lowered to +35%, food production steps +8%", "bullets": [
+    "Raw farm crops are now worth seed cost plus 35% (was plus 50%). Each factory food production step adds 8% over its input value (was 10%), still derived up the chain. Ore and metal chains are unchanged. Resort harvest yield (2×) and fertilizer yield are unchanged, and the house-sell planting bonus is still 50% of the seed chips you actually pay.",
+    "Each newly planted tile has a 1% chance to fail, decided when you plant it and stored so a refresh cannot reroll it. A failed tile looks withered; harvesting it yields no crop and no seed refund, and the harvest result notes the count (for example, “2 tiles failed”). That applies to manual harvest, auto-harvest, pantry, and resort plots. Crops already in the ground are not rolled. Prices and the fail chance apply going forward; existing inventory is unchanged.",
+  ]},
+  {"commit": "", "at": "2026-11-10T20:05:00-06:00", "title": "House sell cap now follows 35% of total-asset growth (was 25%)", "bullets": [
+    "Each day at the reset (6 PM), the daily house-sell cap now changes by 35% of the percent that total player assets changed over the previous day (it was 25%). If total wealth doubles, the cap goes up 35%; if it drops 20%, the cap drops 7%.",
+    "Today's cap is unchanged. The new rate starts at the next reset. The 50% planting bonus is unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-10T19:16:00-06:00", "title": "Sell to market request shows the price", "bullets": [
     "In the Factory and the Warehouse, Sell to market request now shows what you would actually receive after the 5% Market fee, using the best open request for that item: for example, Sell to market request · 🪙95 each. If you can fill more than one unit, the total for that amount is shown too.",
     "The button still appears only when you have stock that matches an open request. Your chips, items, and existing requests are unchanged.",
