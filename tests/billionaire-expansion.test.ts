@@ -27,7 +27,7 @@ const src = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), 'ut
 describe('private construction sites', () => {
   it('each build has four stages, a model hook, and the listed totals', () => {
     const totals: Record<string, number> = {
-      data_center: 2_400_000, bitcoin_farm: 2_100_000, monument: 1_200_000,
+      data_center: 1_607_560, bitcoin_farm: 1_317_280, monument: 1_200_000,
       mansion: 3_200_000, highrise: 4_800_000, power_plant: 3_600_000,
     };
     expect(ESTATE_BUILD_ORDER).toEqual(['data_center', 'bitcoin_farm', 'monument', 'mansion', 'highrise', 'power_plant']);
@@ -37,6 +37,7 @@ describe('private construction sites', () => {
       expect(estateStages(p)).toHaveLength(4);
       expect(p.total).toBe(totals[id]);
       expect(estateProjectValue(p)).toBeGreaterThan(0);
+      if (id === 'data_center' || id === 'bitcoin_farm') expect(estateProjectValue(p)).toBe(p.total);
     }
   });
 
@@ -54,18 +55,41 @@ describe('private construction sites', () => {
 
 describe('data centers, bitcoin farms and power', () => {
   it('hardware, demand and the digital cap match the published numbers', () => {
-    expect(SERVER_RACK).toMatchObject({ price: 120_000, mw: 3, chipsPerHour: 400, max: 8 });
-    expect(GPU_RIG).toMatchObject({ price: 45_000, mw: 1.5, chipsPerHour: 200, max: 16 });
+    expect(SERVER_RACK).toMatchObject({ price: 120_000, mw: 3, chipsPerHour: 1_105, max: 8 });
+    expect(GPU_RIG).toMatchObject({ price: 45_000, mw: 1.5, chipsPerHour: 454, max: 16 });
     expect(PLANT_MW).toBe(40);
     expect(PLANT_FUEL_DAY).toBe(8_000);
     expect(GRID_POWER_DAY).toBe(1_200);
     expect(GRID_SELL_FRACTION).toBe(0.45);
-    expect(DIGITAL_DAILY_BASE).toBe(200_000);
+    expect(DIGITAL_DAILY_BASE).toBe(400_000);
     expect(throttle(0, 10)).toBe(0);
     expect(throttle(10, 10)).toBe(1);
     expect(throttle(5, 10)).toBe(0.5);
     expect(digitalPayout(50_000, 180_000, 200_000)).toBe(20_000);
     expect(digitalPayout(50_000, 200_000, 200_000)).toBe(0);
+  });
+
+  it('a full farm and a full data center each pay back in about 14 days, and share a cap that fits both', () => {
+    const day = 24;
+    const btcCost = estateProjectValue(ESTATE_BUILDS.bitcoin_farm) + GPU_RIG.price * GPU_RIG.max;
+    const dcCost = estateProjectValue(ESTATE_BUILDS.data_center) + SERVER_RACK.price * SERVER_RACK.max;
+    const btcGross = GPU_RIG.chipsPerHour * GPU_RIG.max * day;
+    const dcGross = SERVER_RACK.chipsPerHour * SERVER_RACK.max * day;
+    const btcGrid = GRID_POWER_DAY * GPU_RIG.mw * GPU_RIG.max;
+    const dcGrid = GRID_POWER_DAY * SERVER_RACK.mw * SERVER_RACK.max;
+    const btcNet = btcGross - btcGrid;
+    const dcNet = dcGross - dcGrid;
+    expect(btcGross).toBe(174_336);
+    expect(dcGross).toBe(212_160);
+    expect(btcGrid).toBe(28_800);
+    expect(dcGrid).toBe(28_800);
+    expect(btcNet).toBe(145_536);
+    expect(dcNet).toBe(183_360);
+    expect(btcCost).toBe(2_037_280);
+    expect(dcCost).toBe(2_567_560);
+    expect(btcCost / btcNet).toBeCloseTo(14, 1);
+    expect(dcCost / dcNet).toBeCloseTo(14, 1);
+    expect(btcGross + dcGross).toBeLessThanOrEqual(DIGITAL_DAILY_BASE);
   });
 });
 

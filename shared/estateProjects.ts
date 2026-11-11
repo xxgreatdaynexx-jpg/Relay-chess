@@ -37,7 +37,7 @@ export const ESTATE_BUILDS: Record<EstateBuildId, EstateBuildPlan> = {
   data_center: {
     id: 'data_center', name: 'Data Center', icon: '🖥️',
     blurb: 'A cooled hall of server racks. Buy computers after the build; it draws power and earns from compute contracts.',
-    total: 2_400_000, w: 28, d: 22, h: 14,
+    total: 1_607_560, w: 28, d: 22, h: 14,
     stages: [
       { id: 'pad', name: 'Site & slab', chips: 280_000, goods: [g('concrete', 2_400), g('brick', 1_200)] },
       { id: 'shell', name: 'Halls & risers', chips: 320_000, goods: [g('steel_beam', 900), g('steel_plate', 700)] },
@@ -48,7 +48,7 @@ export const ESTATE_BUILDS: Record<EstateBuildId, EstateBuildPlan> = {
   bitcoin_farm: {
     id: 'bitcoin_farm', name: 'Bitcoin Farm', icon: '₿',
     blurb: 'A loud hall of graphics cards. Buy GPUs after the build; hashrate needs steady power.',
-    total: 2_100_000, w: 24, d: 20, h: 10,
+    total: 1_317_280, w: 24, d: 20, h: 10,
     stages: [
       { id: 'pad', name: 'Site & slab', chips: 240_000, goods: [g('concrete', 2_000), g('brick', 900)] },
       { id: 'shell', name: 'Shed & busways', chips: 280_000, goods: [g('steel_beam', 700), g('steel_cable', 500)] },
@@ -162,11 +162,11 @@ export interface GearDef {
 }
 
 export const SERVER_RACK: GearDef = {
-  id: 'server_rack_unit', name: 'Server rack', icon: '🖥️', price: 120_000, mw: 3, chipsPerHour: 400, max: 8,
+  id: 'server_rack_unit', name: 'Server rack', icon: '🖥️', price: 120_000, mw: 3, chipsPerHour: 1_105, max: 8,
   install: [['server_rack', 1], ['plastic_resin', 4]],
 };
 export const GPU_RIG: GearDef = {
-  id: 'gpu_rig', name: 'GPU rig', icon: '🎮', price: 45_000, mw: 1.5, chipsPerHour: 200, max: 16,
+  id: 'gpu_rig', name: 'GPU rig', icon: '🎮', price: 45_000, mw: 1.5, chipsPerHour: 454, max: 16,
   install: [['gpu', 1], ['plastic_resin', 2]],
 };
 
@@ -182,8 +182,9 @@ export const PLANT_FUEL_DAY = 8_000;
 export const PLANT_COAL_PER_HOUR = 80;
 /** Chips per MW per day for a utility ("pre-existing stock") power contract. */
 export const GRID_POWER_DAY = 1_200;
-/** Combined daily cap (base chips, then indexed) on data-center + bitcoin income. */
-export const DIGITAL_DAILY_BASE = 200_000;
+/** Combined daily cap (base chips, then indexed) on data-center + bitcoin income.
+ *  400,000 covers one full bitcoin farm + one full data center (174,336 + 212,160 = 386,496) without clipping. */
+export const DIGITAL_DAILY_BASE = 400_000;
 /** Power plants can sell unused MW back to the grid at this fraction of the utility rate. */
 export const GRID_SELL_FRACTION = 0.45;
 

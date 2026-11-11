@@ -134,7 +134,7 @@ Title: Buy land and raise your own works
 
 Title: Racks, GPUs and a power bill
 
-- A finished data center takes up to 8 server racks (120,000 chips and 3 MW each, about 400 chips an hour). A finished bitcoin farm takes up to 16 GPU rigs (45,000 chips and 1.5 MW each, about 200 chips an hour). Both draw power from a utility contract or from a plant you own. Combined digital income is capped (200,000 chips a day, then indexed). Surplus plant power can be sold back to the grid at 45% of the utility rate.
+- A finished data center takes up to 8 server racks (120,000 chips and 3 MW each, 1,105 chips an hour). A finished bitcoin farm takes up to 16 GPU rigs (45,000 chips and 1.5 MW each, 454 chips an hour). Both draw power from a utility contract or from a plant you own. Combined digital income is capped (400,000 chips a day, then indexed) so one full farm and one full data center are not clipped. Surplus plant power can be sold back to the grid at 45% of the utility rate.
 
 ## Power plants
 
