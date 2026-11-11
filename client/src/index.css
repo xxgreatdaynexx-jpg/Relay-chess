@@ -2014,13 +2014,13 @@ html, body { overflow-x: clip; }
 .mech-cars { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
 .mech-cars button { padding: 5px 9px; border-radius: 8px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); color: inherit; cursor: pointer; }
 .mech-cars button.on { border-color: #ffa62b; }
-.employ-panel { width: min(560px, calc(100% - 16px)); height: 90dvh; max-height: calc(100% - 16px); overflow: hidden; display: flex; flex-direction: column; gap: 8px; }
+.world-deed.employ-panel { width: min(560px, calc(100% - 16px)); height: min(90dvh, calc(100% - 16px)); max-height: min(90dvh, calc(100% - 16px)); overflow: hidden; display: flex; flex-direction: column; gap: 8px; }
 .employ-front { flex: 0 0 auto; border-radius: 12px; padding: 10px 12px; background: linear-gradient(135deg, #2c4a7a, #e0a23a); color: #fff; display: flex; flex-direction: column; }
 .employ-front span { font-weight: 900; letter-spacing: .1em; font-size: 17px; } .employ-front small { opacity: .85; }
 .employ-rules { flex: 0 0 auto; font-size: 11px; opacity: .8; margin: 0; }
 .employ-panel h4 { font-size: 13px; font-weight: 800; margin: 4px 0 0; }
-.employ-roster { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 6px; }
-.employ-hire { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; }
+.employ-roster { flex: 1 1 auto; min-height: min(40vh, 240px); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 6px; }
+.employ-hire { flex: 0 1 auto; min-height: 0; max-height: 45%; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 6px; }
 .employ-list { display: flex; flex-direction: column; gap: 6px; }
 .employ-list li { display: flex; flex-direction: column; gap: 3px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 7px 9px; }
 .employ-list li small { font-size: 11px; opacity: .8; }
@@ -2028,8 +2028,9 @@ html, body { overflow-x: clip; }
 .employ-list li button:disabled { opacity: .5; }
 /* Mobile MapSheet already scrolls the body — avoid a second tiny nested scroller. */
 @media (max-width: 640px), (max-height: 500px) {
-  .employ-panel { width: 100%; height: auto; max-height: none; overflow: visible; }
+  .world-deed.employ-panel, .employ-panel { width: 100%; height: auto; max-height: none; overflow: visible; }
   .employ-roster { flex: none; overflow: visible; min-height: 0; }
+  .employ-hire { flex: none; max-height: none; overflow: visible; }
 }
 .employ-btns { display: flex; gap: 6px; } .employ-list li .employ-fire { background: rgba(255,80,80,.12); border-color: rgba(255,80,80,.4); }
 .employ-expected { display: block; font-size: 11px; opacity: .85; line-height: 1.35; }
