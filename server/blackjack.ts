@@ -1,5 +1,6 @@
 /** Server-authoritative multiplayer blackjack (play money). 6-deck shoe, dealer stands on soft 17, blackjack pays 3:2. */
 import { handValue, isBlackjack, type BJHandView, type BJOutcome, type BJTableView, type CasinoCard, type Suit } from '../shared/casino.js';
+import { bjStakes, type BjStakes, type BjStakesId } from '../shared/highStakes.js';
 import type { CasinoBank } from './casino-store.js';
 
 export const MAX_SEATS = 5;
@@ -74,9 +75,14 @@ export class BlackjackTable {
   turn: number | null = null;
   private shoe: CasinoCard[];
 
-  constructor(readonly id: string, private readonly bank: CasinoBank, private readonly rand: () => number = Math.random) {
+  readonly tier: BjStakes;
+  constructor(readonly id: string, private readonly bank: CasinoBank, private readonly rand: () => number = Math.random, stakes: BjStakesId = 'classic') {
     this.shoe = makeShoe(rand);
+    this.tier = bjStakes(stakes);
   }
+  get stakes(): BjStakesId { return this.tier.id; }
+  get minBet(): number { return this.tier.min; }
+  get maxBet(): number { return this.tier.max; }
 
   seatOf(name: string): number | null {
     const k = name.trim().toLowerCase();
@@ -127,7 +133,7 @@ export class BlackjackTable {
     const i = this.seatOf(name);
     if (i === null) throw new Error('Take a seat first.');
     const s = this.seats[i]!;
-    if (!Number.isInteger(amount) || amount < MIN_BET || amount > MAX_BET) throw new Error(`Bets are ${MIN_BET}–${MAX_BET}.`);
+    if (!Number.isInteger(amount) || amount < this.tier.min || amount > this.tier.max) throw new Error(`Bets are ${this.tier.min.toLocaleString()}–${this.tier.max.toLocaleString()}.`);
     // Changing the bet: refund old, take new.
     if (s.bet > 0) this.bank.refund(s.name, s.bet, 'blackjack');
     s.bet = 0;
@@ -227,6 +233,7 @@ export class BlackjackTable {
       turn: this.turn,
       you: you ? this.seatOf(you) : null,
       maxSeats: MAX_SEATS,
+      stakes: this.tier.id, minBet: this.tier.min, maxBet: this.tier.max, bets: [...this.tier.bets],
     };
   }
 
@@ -330,15 +337,16 @@ export class BlackjackCasino {
     return this.tables.find((t) => t.seatOf(name) !== null) ?? null;
   }
 
-  join(name: string, now: number): BlackjackTable {
+  join(name: string, now: number, stakes: BjStakesId = 'classic'): BlackjackTable {
     const at = this.tableOf(name);
     if (at) {
       at.sit(name, now);
       return at;
     }
-    let t = this.tables.find((x) => x.seats.some((s) => !s));
+    const tier = bjStakes(stakes).id;
+    let t = this.tables.find((x) => x.stakes === tier && x.seats.some((s) => !s));
     if (!t) {
-      t = new BlackjackTable(`T${++this.seq}`, this.bank, this.rand);
+      t = new BlackjackTable(`T${++this.seq}`, this.bank, this.rand, tier);
       this.tables.push(t);
     }
     t.sit(name, now);

@@ -1,5 +1,6 @@
 /** Shared multiplayer European roulette wheel (play money). One wheel for everyone, spinning on a fixed cycle. */
 import { betKey, betReturn, validateRouletteBet, type RouletteBet, type RouletteView } from '../shared/casino.js';
+import { rlStakes, type RlStakes, type RlStakesId } from '../shared/highStakes.js';
 import type { CasinoBank } from './casino-store.js';
 
 export const ROULETTE_BET_MS = 25_000;
@@ -19,13 +20,16 @@ export class RouletteWheel {
   spinId = 1;
   result: number | null = null;
   history: number[] = [];
+  readonly tier: RlStakes;
   private players = new Map<string, Player>();
   /** Last spin's bets per player, for Rebet. */
   private last = new Map<string, RouletteBet[]>();
 
-  constructor(private readonly bank: CasinoBank, now: number, private readonly rand: () => number = Math.random) {
+  constructor(private readonly bank: CasinoBank, now: number, private readonly rand: () => number = Math.random, stakes: RlStakesId = 'classic') {
     this.deadline = now + ROULETTE_BET_MS;
+    this.tier = rlStakes(stakes);
   }
+  get stakes(): RlStakesId { return this.tier.id; }
 
   private player(name: string): Player {
     const k = name.trim().toLowerCase();
@@ -40,11 +44,11 @@ export class RouletteWheel {
   /** Adds chips to a spot (merging with an existing bet on the same spot). */
   placeBet(name: string, raw: unknown): RouletteBet[] {
     if (this.phase !== 'betting') throw new Error('No more bets.');
-    const bet = validateRouletteBet(raw);
+    const bet = validateRouletteBet(raw, this.tier.maxChip);
     if (!bet) throw new Error('Invalid bet.');
     const p = this.player(name);
     const total = p.bets.reduce((n, b) => n + b.amount, 0);
-    if (total + bet.amount > MAX_TOTAL_STAKE) throw new Error(`Max ${MAX_TOTAL_STAKE} per spin.`);
+    if (total + bet.amount > this.tier.maxSpin) throw new Error(`Max ${this.tier.maxSpin.toLocaleString()} per spin.`);
     this.bank.debit(name, bet.amount, 'roulette');
     const same = p.bets.find((b) => betKey(b) === betKey(bet));
     if (same) same.amount += bet.amount;
@@ -115,6 +119,7 @@ export class RouletteWheel {
         .filter((p) => p.bets.length)
         .map((p) => ({ name: p.name, bets: p.bets, total: p.bets.reduce((s, b) => s + b.amount, 0), net: this.phase === 'result' ? p.net : null })),
       yourChips: you ? this.bank.account(you).chips : null,
+      stakes: this.tier.id, maxChip: this.tier.maxChip, maxSpin: this.tier.maxSpin, chips: [...this.tier.chips],
     };
   }
 }

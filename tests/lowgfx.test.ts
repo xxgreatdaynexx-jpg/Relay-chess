@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { gfxOverride } from '../client/src/lib/worldTier';
 import { LAUNCH } from '../shared/launchPopup';
-import { FRECIPES } from '../shared/factory';
 const mem = () => { const m = new Map<string, string>(); return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) }; };
 describe('?lowgfx override', () => {
   it('forces low, remembers it, and clears with auto', () => {
@@ -13,4 +12,4 @@ describe('?lowgfx override', () => {
     expect(gfxOverride('?gfx=ultra', null)).toBeNull();
   });
 });
-describe('launch popup recipe count', () => it('matches FRECIPES', () => expect(JSON.stringify(LAUNCH)).toContain(`has ${FRECIPES.length} recipes`)));
+describe('launch popup recipe count', () => it('keeps the Millionaire launch count (114); later recipes stay off that popup', () => expect(JSON.stringify(LAUNCH)).toContain('has 114 recipes')));

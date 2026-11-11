@@ -83,3 +83,16 @@ Title: An art auction at the Club
 
 - The Club runs a house art auction. Bids are held in escrow and a higher bid refunds the previous bidder. The winner's payment is a chip sink, and the piece can be placed in a home but cannot be resold. A bid in the last 30 seconds extends the clock.
 
+
+## High-stakes tables
+
+Title: High-stakes tables at the Club
+
+- The Billionaire's Club opens high-limit rooms of the games you already know. Blackjack adds High Stakes (1,000–100,000) and Whale (10,000–1,000,000) tables. Roulette adds a High Limit wheel (up to 1,000,000 a spin). Hold'em adds Billionaire 500K and 1M buy-ins. Jacks or Better can be played at 100–50,000. House rules are unchanged; only the stakes go up.
+
+## Prestige factory line
+
+Title: A prestige line at the factory
+
+- The Jeweler's Bench and Fabricator can now make prestige pieces (cufflinks, a signet ring, an imperial diadem, a sovereign laurel, a crystal chandelier, a coachbuilt limousine, a city seal, a grand clock, and a vault door). They take longer and sell for about 25% more than their inputs, and they never out-earn the older recipes per second.
+

@@ -1,6 +1,7 @@
 /** Jacks or Better video poker against the house, one hand per player at a time. */
 import { randomInt } from 'node:crypto';
 import { evaluatePoker, POKER_LABELS, POKER_MAX_BET, POKER_MIN_BET, POKER_PAYS, type PokerView } from '../shared/casino-games.js';
+import { vpStakes, type VpStakesId } from '../shared/highStakes.js';
 import type { CasinoCard } from '../shared/casino.js';
 import { makeShoe } from './blackjack.js';
 import type { CasinoBank } from './casino-store.js';
@@ -16,9 +17,10 @@ export class VideoPoker {
 
   private key = (name: string) => name.toLowerCase();
 
-  deal(name: string, bet: number, deck?: CasinoCard[]): PokerView {
+  deal(name: string, bet: number, deck?: CasinoCard[], stakes: VpStakesId = 'classic'): PokerView {
     if (this.hands.has(this.key(name))) throw new Error('Finish this hand first: pick cards to hold, then Draw.');
-    if (!Number.isInteger(bet) || bet < POKER_MIN_BET || bet > POKER_MAX_BET) throw new Error(`Bet ${POKER_MIN_BET}–${POKER_MAX_BET} chips.`);
+    const tier = vpStakes(stakes);
+    if (!Number.isInteger(bet) || bet < tier.min || bet > tier.max) throw new Error(`Bet ${tier.min.toLocaleString()}–${tier.max.toLocaleString()} chips.`);
     this.bank.debit(name, bet, 'video-poker');
     const d = deck ?? makeShoe(this.rand, 1);
     const cards = d.splice(0, 5);

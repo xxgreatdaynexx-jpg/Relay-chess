@@ -158,11 +158,11 @@ describe('hold\'em table', () => {
 });
 
 describe('hold\'em stakes tiers', () => {
-  it('defines 5K/10K/25K/100K tiers with blinds at the classic ratio', async () => {
+  it('defines 5K/10K/25K/100K/500K/1M tiers with blinds at the classic ratio', async () => {
     const { HE_STAKES, HE_SMALL, HE_BIG, HE_MAX_BUYIN } = await import('../shared/holdem.js');
     expect(HE_STAKES.map((t) => [t.id, t.small, t.big, t.minBuyIn, t.maxBuyIn])).toEqual([
       ['classic', HE_SMALL, HE_BIG, 100, HE_MAX_BUYIN],
-      ['5k', 25, 50, 5000, 5000], ['10k', 50, 100, 10000, 10000], ['25k', 125, 250, 25000, 25000], ['100k', 500, 1000, 100000, 100000],
+      ['5k', 25, 50, 5000, 5000], ['10k', 50, 100, 10000, 10000], ['25k', 125, 250, 25000, 25000], ['100k', 500, 1000, 100000, 100000], ['500k', 2500, 5000, 500000, 500000], ['1m', 5000, 10000, 1000000, 1000000],
     ]);
     for (const t of HE_STAKES) { expect(t.maxBuyIn / t.big).toBe(HE_MAX_BUYIN / HE_BIG); expect(t.big).toBe(t.small * 2); }
   });

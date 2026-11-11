@@ -40,6 +40,11 @@ export interface BJTableView {
   turn: number | null;
   you: number | null;
   maxSeats: number;
+  /** Table tier (min/max bet). */
+  stakes?: import('./highStakes.js').BjStakesId;
+  minBet?: number;
+  maxBet?: number;
+  bets?: number[];
 }
 
 export interface CasinoStanding {
@@ -114,12 +119,12 @@ const row = (n: number) => Math.ceil(n / 3); // 1..12
 const col = (n: number) => ((n - 1) % 3) + 1; // 1..3
 
 /** Normalizes and validates a bet's geometry. Returns sorted numbers or null when invalid. */
-export function validateRouletteBet(bet: unknown): RouletteBet | null {
+export function validateRouletteBet(bet: unknown, maxChip = MAX_ROULETTE_STAKE): RouletteBet | null {
   if (!bet || typeof bet !== 'object') return null;
   const b = bet as Record<string, unknown>;
   const kind = b.kind as RouletteKind;
   const amount = b.amount;
-  if (typeof amount !== 'number' || !Number.isInteger(amount) || amount <= 0 || amount > MAX_ROULETTE_STAKE) return null;
+  if (typeof amount !== 'number' || !Number.isInteger(amount) || amount <= 0 || amount > maxChip) return null;
   if (!Array.isArray(b.numbers) || b.numbers.some((n) => typeof n !== 'number' || !Number.isInteger(n))) return null;
   const nums = [...new Set(b.numbers as number[])].sort((x, y) => x - y);
   const size = INSIDE_SIZE[kind];
@@ -199,4 +204,8 @@ export interface RouletteView {
   history: number[];
   players: { name: string; bets: RouletteBet[]; total: number; net: number | null }[];
   yourChips: number | null;
+  stakes?: import('./highStakes.js').RlStakesId;
+  maxChip?: number;
+  maxSpin?: number;
+  chips?: number[];
 }

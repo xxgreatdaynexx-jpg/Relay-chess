@@ -24,8 +24,8 @@ export const KINDS: Record<Kind, KindDef> = {
   roller:     { id: 'roller',     name: 'Roller',        size: 2, cost: 400,  minFloor: 1, color: '#6a5a80', desc: 'Ingots -> rods, sheet, gold leaf.', machine: true },
   drawer:     { id: 'drawer',     name: 'Wire Drawer',   size: 2, cost: 350,  minFloor: 1, color: '#806a40', desc: 'Ingots -> wire.', machine: true },
   assembler:  { id: 'assembler',  name: 'Assembler',     size: 2, cost: 800,  minFloor: 2, color: '#40708a', desc: 'Parts -> gears, screws, pipes, frames, circuits, tools.', machine: true },
-  jeweler:    { id: 'jeweler',    name: "Jeweler's Bench", size: 2, cost: 1200, minFloor: 2, color: '#8a4090', desc: 'Gems + precious metal -> rings, chains, crowns.', machine: true },
-  fabricator: { id: 'fabricator', name: 'Fabricator',    size: 2, cost: 4000, minFloor: 3, color: '#9a3a3a', desc: 'High tier: engines, computers, drills, generators, robots.', machine: true },
+  jeweler:    { id: 'jeweler',    name: "Jeweler's Bench", size: 2, cost: 1200, minFloor: 2, color: '#8a4090', desc: 'Gems + precious metal -> rings, chains, crowns, and the prestige line.', machine: true },
+  fabricator: { id: 'fabricator', name: 'Fabricator',    size: 2, cost: 4000, minFloor: 3, color: '#9a3a3a', desc: 'High tier: engines, computers, drills, generators, robots, and prestige pieces.', machine: true },
   mill:       { id: 'mill',       name: 'Mill & Press',  size: 2, cost: 350,  minFloor: 1, color: '#9a7a3a', desc: 'Crops -> flour, sugar, juice, oil, cocoa, coconut milk.', machine: true },
   cannery:    { id: 'cannery',    name: 'Food Line',     size: 2, cost: 900,  minFloor: 2, color: '#a04a5a', desc: 'Flour, fish and produce -> bread, chocolate, canned fish, pies, banquets.', machine: true },
 };
@@ -176,7 +176,20 @@ export const FRECIPES: FRecipe[] = [
   R('k_cornbread', 'cannery', [['good:cornmeal', 2], ['good:sugar', 1]], ['good:cornbread', 1], 6),
   R('k_smoothie', 'cannery', [['good:mango_puree', 1], ['good:crop_banana', 1], ['good:berry_juice', 1]], ['good:smoothie', 1], 6),
   R('k_fish_pie', 'cannery', [['good:fish_fillet', 6], ['good:flour', 1], ['good:crop_potato', 1]], ['good:fish_pie', 1], 8),
+  // Prestige line: long crafts, 25% markup, never faster than the best pre-Millionaire recipe.
+  R('j_cufflinks', 'jeweler', [['good:gold_wire', 2], ['good:cut_crystal', 1]], ['good:gold_cufflinks', 1], 12),
+  R('j_signet', 'jeweler', [['good:electrum_ring', 1], ['good:cut_diamond', 1]], ['good:signet_ring', 1], 20),
+  R('j_diadem', 'jeweler', [['good:tiara', 1], ['good:cut_diamond', 1], ['bar:gold_bar', 1]], ['good:imperial_diadem', 1], 24),
+  R('j_laurel', 'jeweler', [['good:diamond_necklace', 1], ['good:gold_chain', 1], ['good:gold_leaf', 2]], ['good:sovereign_laurel', 1], 20),
+  R('f_chandelier', 'fabricator', [['good:lantern', 1], ['good:fiber_optic', 2], ['good:gold_wire', 2], ['good:cut_crystal', 2]], ['good:chandelier', 1], 30),
+  R('f_limousine', 'fabricator', [['good:engine', 1], ['good:frame', 2], ['good:gold_leaf', 4], ['good:battery', 2]], ['good:limousine', 1], 40),
+  R('f_city_seal', 'fabricator', [['good:scepter', 1], ['good:trophy', 1], ['bar:gold_bar', 2]], ['good:city_seal', 1], 45),
+  R('f_grand_clock', 'fabricator', [['good:pocket_watch', 1], ['good:gold_leaf', 2], ['good:gear', 2], ['good:lens', 2]], ['good:grand_clock', 1], 30),
+  R('f_vault_door', 'fabricator', [['good:server_rack', 1], ['good:pump', 1], ['good:girder', 1]], ['good:vault_door', 1], 60),
 ];
+
+export const PRESTIGE_RECIPE_IDS = new Set(['j_cufflinks', 'j_signet', 'j_diadem', 'j_laurel', 'f_chandelier', 'f_limousine', 'f_city_seal', 'f_grand_clock', 'f_vault_door']);
+export const isPrestigeRecipe = (id: string) => PRESTIGE_RECIPE_IDS.has(id);
 export const frecipe = (id: unknown) => FRECIPES.find((r) => r.id === id);
 export const recipesFor = (k: Kind) => FRECIPES.filter((r) => r.machine === k);
 /** Ticks per craft; `mul` (0.75..1) is the owner's Engineering perk (shared/skillPerks.ts). */

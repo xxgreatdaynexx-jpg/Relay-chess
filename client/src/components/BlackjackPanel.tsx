@@ -5,7 +5,8 @@ import { useWindowDrag } from '@/lib/windowDrag';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { CardFace } from '@/components/SolitairePanel';
 import { NamePrompt, OutOfChips } from '@/components/CasinoCommon';
-import { BLACKJACK_BETS, handValue, type BJSeatView, type BJTableView } from '../../../shared/casino';
+import { handValue, type BJSeatView, type BJTableView } from '../../../shared/casino';
+import { BJ_STAKES, bjStakes, type BjStakesId } from '../../../shared/highStakes';
 import { useWalletChips } from '@/lib/wallet';
 import { emitCasino, useCountdown, useSavedName } from '@/lib/casino';
 import { socket } from '@/lib/net';
@@ -14,7 +15,6 @@ import { bjSeatPositions, towardCentre } from '@/lib/tableLayout';
 import { playCardFlick, playSolitaireWin, playYourTurn } from '@/lib/sounds';
 
 const OPEN_KEY = 'relay-blackjack-open';
-const BETS = BLACKJACK_BETS;
 const SHOE = { x: 86, y: 9 };
 const DEALER = { x: 50, y: 13 };
 const LABEL: Record<string, string> = {
@@ -34,19 +34,26 @@ export function BlackjackPanel() {
   useDoing('casino', 'Blackjack', open);
   const [tab, setTab] = useState<'table'>('table');
   const [name] = useSavedName();
+  const [pick, setPick] = useState<BjStakesId>(() => bjStakes(localStorage.getItem('relay-bj-stakes')).id);
   const [t, setT] = useState<BJTableView | null>(null);
-  const [bet, setBet] = useState(25);
+  const [bet, setBet] = useState(() => bjStakes(localStorage.getItem('relay-bj-stakes')).bets[0]!);
   const [err, setErr] = useState('');
   const cardCount = useRef(0);
   const lastTurn = useRef<string>('');
   const wonAt = useRef<number | null>(null);
   useEffect(() => { localStorage.setItem(OPEN_KEY, open ? '1' : '0'); }, [open]);
+  useEffect(() => { localStorage.setItem('relay-bj-stakes', pick); }, [pick]);
+  useEffect(() => {
+    const on = (e: Event) => { const id = bjStakes((e as CustomEvent).detail).id; setPick(id); setBet(bjStakes(id).bets[0]!); setOpen(true); };
+    window.addEventListener('open-high-stakes-blackjack', on);
+    return () => window.removeEventListener('open-high-stakes-blackjack', on);
+  }, []);
 
   useEffect(() => {
     if (!open || !name) return;
     const on = (v: BJTableView) => setT(v);
     socket.on('bj_state', on);
-    const join = () => void emitCasino<{ table: BJTableView }>('bj_join', { name }).then((r) => {
+    const join = () => void emitCasino<{ table: BJTableView }>('bj_join', { name, stakes: pick }).then((r) => {
       if (r.ok && r.table) setT(r.table);
       else setErr(r.error ?? '');
     });
@@ -58,7 +65,7 @@ export function BlackjackPanel() {
       void emitCasino('bj_leave');
       setT(null);
     };
-  }, [open, name]);
+  }, [open, name, pick]);
 
   // Sounds: card flick on new cards, chime on your turn, arpeggio on a win.
   useEffect(() => {
@@ -109,6 +116,7 @@ export function BlackjackPanel() {
           {win.grips}
           <div {...win.bar}>
             <button type="button" className={`casino-tabbtn ${tab === 'table' ? 'on' : ''}`} onClick={() => setTab('table')}>Table{t ? ` ${t.id}` : ''}</button>
+            <label className="bj-stakes">Stakes <select data-testid="bj-stakes" value={t?.stakes ?? pick} onChange={(e) => { const id = bjStakes(e.target.value).id; setPick(id); setBet(bjStakes(id).bets[0]!); }}>{BJ_STAKES.map((s) => <option key={s.id} value={s.id}>{s.label} ({s.min.toLocaleString()}–{s.max.toLocaleString()})</option>)}</select></label>
             {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" title="Reset position" onClick={win.reset}>⟲</button>}
             <button type="button" className="ml-auto" aria-label="Close blackjack" onClick={() => setOpen(false)}>✕</button>
           </div>
@@ -176,12 +184,12 @@ export function BlackjackPanel() {
                     <button type="button" disabled={hand.cards.length !== 2 || Math.min(hand.cards[0]!.rank, 10) !== Math.min(hand.cards[1]!.rank, 10) || chips < hand.bet || (me?.hands.length ?? 0) >= 4} onClick={() => void send('bj_action', { action: 'split' })}>Split</button>
                   </>
                 ) : t?.phase === 'betting' && me && !me.bet ? (
-                  chips < BETS[0]! ? (
+                  chips < (t?.minBet ?? bjStakes(pick).min) ? (
                     <OutOfChips />
                   ) : (
                     <>
                       <div className="flex flex-wrap gap-1">
-                        {BETS.map((b) => <button type="button" key={b} className={bet === b ? 'bj-chip-on' : ''} disabled={b > chips} onClick={() => setBet(b)}>{b}</button>)}
+                        {(t?.bets ?? bjStakes(pick).bets).map((b) => <button type="button" key={b} className={bet === b ? 'bj-chip-on' : ''} disabled={b > chips} onClick={() => setBet(b)}>{b}</button>)}
                       </div>
                       <button type="button" className="bj-deal" onClick={() => void send('bj_bet', { amount: Math.min(bet, chips) })} data-testid="bj-bet">Bet {Math.min(bet, chips)}</button>
                     </>

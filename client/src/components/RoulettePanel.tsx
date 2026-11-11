@@ -4,7 +4,8 @@ import { TurnTimerBar } from './TurnTimerBar';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NamePrompt, OutOfChips } from '@/components/CasinoCommon';
-import { betKey, CHIP_VALUES, payoutOdds, RED, WHEEL, type RouletteBet, type RouletteKind, type RouletteView } from '../../../shared/casino';
+import { betKey, payoutOdds, RED, WHEEL, type RouletteBet, type RouletteKind, type RouletteView } from '../../../shared/casino';
+import { RL_STAKES, rlStakes, type RlStakesId } from '../../../shared/highStakes';
 import { useWalletChips } from '@/lib/wallet';
 import { isDoubleBet } from '../lib/doubleClick';
 import { emitCasino, useCountdown, useSavedName } from '@/lib/casino';
@@ -98,17 +99,24 @@ export function RoulettePanel() {
   useDoing('casino', 'Roulette', open);
   const [tab, setTab] = useState<'wheel'>('wheel');
   const [name] = useSavedName();
+  const [pick, setPick] = useState<RlStakesId>(() => rlStakes(localStorage.getItem('relay-rl-stakes')).id);
   const [v, setV] = useState<RouletteView | null>(null);
-  const [chip, setChip] = useState(25);
+  const [chip, setChip] = useState(() => rlStakes(localStorage.getItem('relay-rl-stakes')).chips[0]!);
   const [err, setErr] = useState('');
   const phaseRef = useRef<string>('');
   useEffect(() => { localStorage.setItem(OPEN_KEY, open ? '1' : '0'); }, [open]);
+  useEffect(() => { localStorage.setItem('relay-rl-stakes', pick); }, [pick]);
+  useEffect(() => {
+    const on = (e: Event) => { const id = rlStakes((e as CustomEvent).detail).id; setPick(id); setChip(rlStakes(id).chips[0]!); setOpen(true); };
+    window.addEventListener('open-high-stakes-roulette', on);
+    return () => window.removeEventListener('open-high-stakes-roulette', on);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
     const on = (x: RouletteView) => setV(x);
     socket.on('roulette_state', on);
-    const watch = () => void emitCasino<{ state: RouletteView }>('roulette_watch', { name: name || undefined }).then((r) => r.ok && r.state && setV(r.state));
+    const watch = () => void emitCasino<{ state: RouletteView }>('roulette_watch', { name: name || undefined, stakes: pick }).then((r) => r.ok && r.state && setV(r.state));
     watch();
     socket.on('connect', watch);
     return () => {
@@ -116,7 +124,7 @@ export function RoulettePanel() {
       socket.off('connect', watch);
       void emitCasino('roulette_unwatch');
     };
-  }, [open, name]);
+  }, [open, name, pick]);
 
   const mine = useMemo(() => v?.players.find((p) => p.name.toLowerCase() === name.toLowerCase()) ?? null, [v, name]);
 
@@ -161,13 +169,13 @@ export function RoulettePanel() {
     if (isDoubleBet(L, k, Date.now())) return;
     lastBet.current = { k, at: Date.now(), busy: true };
     setErr('');
-    const r = await emitCasino('roulette_bet', { name, bet: { ...spot, amount: chip } }).finally(() => { lastBet.current.busy = false; });
+    const r = await emitCasino('roulette_bet', { name, stakes: pick, bet: { ...spot, amount: chip } }).finally(() => { lastBet.current.busy = false; });
     if (!r.ok) setErr(r.error ?? 'Failed');
     else playCardFlick();
   }
   async function cmd(event: string) {
     setErr('');
-    const r = await emitCasino(event, { name });
+    const r = await emitCasino(event, { name, stakes: pick });
     if (!r.ok) setErr(r.error ?? 'Failed');
   }
 
@@ -257,7 +265,7 @@ export function RoulettePanel() {
                     ) : (
                       <>
                         <div className="flex flex-wrap gap-1">
-                          {CHIP_VALUES.map((c) => <button type="button" key={c} className={chip === c ? 'bj-chip-on' : ''} onClick={() => setChip(c)}>{c}</button>)}
+                          {(v?.chips ?? rlStakes(pick).chips).map((c) => <button type="button" key={c} className={chip === c ? 'bj-chip-on' : ''} onClick={() => setChip(c)}>{c}</button>)}
                         </div>
                         <div className="flex gap-1">
                           <button type="button" disabled={!betting || !mine} onClick={() => void cmd('roulette_clear')}>Clear</button>

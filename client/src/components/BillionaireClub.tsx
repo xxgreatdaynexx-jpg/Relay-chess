@@ -13,7 +13,7 @@ export const OPEN_CLUB = 'open-billionaire-club';
 const fmt = (n: number) => n.toLocaleString('en-US');
 const when = (t: number) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
-type Tab = 'desk' | 'auction' | 'tower';
+type Tab = 'desk' | 'auction' | 'tower' | 'tables';
 type PatronView = { id: string; name: string; icon: string; patron: { name: string; endsAt: number } | null };
 type LotView = { id: string; item: (typeof ART_PIECES)[number]; estimate: number; floor: number; endsAt: number; high: { name: string; amount: number; mine: boolean } | null };
 
@@ -100,7 +100,21 @@ export function BillionaireClub({ onClose, onDeed }: { onClose: () => void; onDe
           </ul>
         </div>
       )}
+      {tab === 'tables' && (
+        <div data-testid="club-tables">
+          <p>The Club keeps high-limit rooms of the same games you already know. House rules are unchanged; only the min and max bets go up. Open a table from here, or pick the same stakes from the usual casino tabs.</p>
+          <ul>
+            <li><button type="button" data-testid="club-open-bj-high" onClick={() => window.dispatchEvent(new CustomEvent('open-high-stakes-blackjack', { detail: 'high' }))}>🂡 High Stakes Blackjack (1,000–100,000)</button></li>
+            <li><button type="button" data-testid="club-open-bj-whale" onClick={() => window.dispatchEvent(new CustomEvent('open-high-stakes-blackjack', { detail: 'whale' }))}>🂡 Whale Blackjack (10,000–1,000,000)</button></li>
+            <li><button type="button" data-testid="club-open-rl-high" onClick={() => window.dispatchEvent(new CustomEvent('open-high-stakes-roulette', { detail: 'high' }))}>🎡 High Limit Roulette (up to 1,000,000 / spin)</button></li>
+            <li><button type="button" data-testid="club-open-he-500k" onClick={() => window.dispatchEvent(new CustomEvent('open-high-stakes-holdem', { detail: '500k' }))}>♠ Billionaire Hold&apos;em 500K</button></li>
+            <li><button type="button" data-testid="club-open-he-1m" onClick={() => window.dispatchEvent(new CustomEvent('open-high-stakes-holdem', { detail: '1m' }))}>♠ Billionaire Hold&apos;em 1M</button></li>
+            <li><button type="button" data-testid="club-open-vp-high" onClick={() => window.dispatchEvent(new CustomEvent('open-high-stakes-poker', { detail: 'high' }))}>🃏 High Stakes Jacks or Better (100–50,000)</button></li>
+          </ul>
+        </div>
+      )}
       {msg && <small role="status" data-testid="club-msg">{msg}</small>}
+
     </MapSheet>
   );
 }

@@ -9,7 +9,7 @@ import { ix, usePriceIndex } from '../lib/priceIndex';
 import { socket } from '@/lib/net';
 import { LOW, bolt, dropShadow, floorTiles, glow, hazard, lighting, metal, rrect, shade, sparks, steam, steel, vent } from '@/lib/factoryLook';
 import { GOODS, type Stack } from '../../../shared/mines';
-import { madeBy, tierOf, usedIn, CHEST_ITEMS, DX, DY, FLOOR_LEVELS, FRECIPES, KINDS, KIND_ORDER, TICK_MS, colorOfKey, floorSize, frecipe, gridOf, cellId, nameOfKey, priceOfKey, recipeTicks, recipesFor, step, canPlace, splitWeights, splitLabel, MAX_SPLIT_W, type Dir, type Ent, type FState, type Grid, type Kind, undergroundPairs } from '../../../shared/factory';
+import { madeBy, tierOf, usedIn, CHEST_ITEMS, DX, DY, FLOOR_LEVELS, FRECIPES, KINDS, KIND_ORDER, TICK_MS, colorOfKey, floorSize, frecipe, gridOf, cellId, nameOfKey, priceOfKey, recipeTicks, recipesFor, step, canPlace, splitWeights, splitLabel, MAX_SPLIT_W, isPrestigeRecipe, type Dir, type Ent, type FState, type Grid, type Kind, undergroundPairs } from '../../../shared/factory';
 import { clipKitMissing, clipToPlaceItems, entsToClip, type FactoryClip } from '../../../shared/factoryClipboard';
 
 export type FAck = { ok: boolean; error?: string; state?: FState | null; level?: number; storage?: Stack[]; guest?: boolean; now?: number; result?: unknown };
@@ -318,6 +318,10 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
             <div className="fac-chainpick"><FactorySearchSelect label="Show chain for" value={chain} testid="fac-chain-pick" placeholder={{ value: '', label: '— pick a product —' }} onPick={setChain}
               opts={FRECIPES.map((r) => r.out[0]).filter((k, i, a) => a.indexOf(k) === i).sort((a, b) => tierOf(a) - tierOf(b) || nameOfKey(a).localeCompare(nameOfKey(b))).map((k) => ({ value: k, label: `T${tierOf(k)} · ${nameOfKey(k)}`, search: madeBy(k)?.in.map(([ik]) => nameOfKey(ik)).join(' ') }))} /></div>
             {chain && <Chain k={chain} pick={setChain} />}
+            <div data-testid="fac-prestige"><h4>✨ Prestige line</h4>
+              <p className="mines-note">Long, expensive crafts on the Jeweler&apos;s Bench and Fabricator. They add about 25% value and never out-earn the older recipes per second.</p>
+              {FRECIPES.filter((r) => isPrestigeRecipe(r.id)).map((r) => <div key={r.id} className="fac-rec" title={recTip(r.out[0])} onClick={() => setChain(r.out[0])} data-testid={`fac-prestige-${r.id}`}><span>{r.in.map(([key, q]) => <i key={key}><Dot k={key} />{q} {nameOfKey(key)}</i>)}</span><span>→ <Dot k={r.out[0]} />{r.out[1]} {nameOfKey(r.out[0])} <small>T{tierOf(r.out[0])} · {r.secs}s · 🪙{ix(priceOfKey(r.out[0]), pidx)}</small></span></div>)}
+            </div>
             {KIND_ORDER.filter((k) => KINDS[k].machine).map((k) => (
               <div key={k}><h4>{ICON[k]} {KINDS[k].name}{KINDS[k].minFloor > 1 ? <small> · level {KINDS[k].minFloor}+</small> : null}</h4>
                 {recipesFor(k).map((r) => <div key={r.id} className="fac-rec" title={recTip(r.out[0])} onClick={() => setChain(r.out[0])}><span>{r.in.map(([key, q]) => <i key={key}><Dot k={key} />{q} {nameOfKey(key)}</i>)}</span><span>→ <Dot k={r.out[0]} />{r.out[1]} {nameOfKey(r.out[0])} <small>T{tierOf(r.out[0])} · {r.secs}s · 🪙{ix(priceOfKey(r.out[0]), pidx)}</small></span></div>)}

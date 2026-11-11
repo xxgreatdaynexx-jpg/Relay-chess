@@ -22,6 +22,11 @@ export function HoldemTableView({ name }: { name: string }) {
   const [buyIn, setBuyIn] = useState(500);
   const [pick, setPick] = useState<HEStakesId>(() => heStakes(localStorage.getItem('relay-he-stakes')).id);
   useEffect(() => { localStorage.setItem('relay-he-stakes', pick); }, [pick]);
+  useEffect(() => {
+    const on = (e: Event) => setPick(heStakes((e as CustomEvent).detail).id);
+    window.addEventListener('open-high-stakes-holdem', on);
+    return () => window.removeEventListener('open-high-stakes-holdem', on);
+  }, []);
   const [raise, setRaise] = useState(0);
   const [err, setErr] = useState('');
   const [spec, setSpec] = useState<{ table: string; delayMs: number; view: HESpectateView | null } | null>(null);

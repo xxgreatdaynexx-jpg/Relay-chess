@@ -9,6 +9,8 @@ import { VideoPoker } from './video-poker.js';
 import { buyVideoBonus, spinVideoSlot } from './slots.js';
 import { HoldemRoom, type HoldemTable } from './holdem.js';
 import { heStakes, HE_SPECTATE_DELAY_MS, type HEAction } from '../shared/holdem.js';
+import { rlStakes, type RlStakesId } from '../shared/highStakes.js';
+import { bjStakes } from '../shared/highStakes.js';
 import { HoldemSpectators, type Viewer } from './holdem-spectate.js';
 import { isMillionairePrelaunch } from '../shared/millionairePrelaunch.js';
 
@@ -62,10 +64,15 @@ const resortGate = (name: string, machine: unknown) => { if (isResortMachine(mac
 type Ack = (res: { ok: boolean; error?: string; [k: string]: unknown }) => void;
 
 let casino: BlackjackCasino | null = null;
-let wheel: RouletteWheel | null = null;
+let wheels: { classic: RouletteWheel; high: RouletteWheel } | null = null;
+const wheelOf = (id?: unknown) => {
+  if (!wheels) throw new Error('Casino is opening.');
+  return wheels[rlStakes(id).id];
+};
 let timer: ReturnType<typeof setInterval> | null = null;
 const bjWatchers = new Set<Socket>();
 const rouletteWatchers = new Set<Socket>();
+const roulettePick = new Map<string, RlStakesId>();
 
 function standings(viewerIsQa = false): CasinoStanding[] {
   return boardFor(getBank().standings(1e6), viewerIsQa, 25).map(({ name, chips, netWon, hands, spins, biggestWin }) => ({ name, chips, netWon, hands, spins, biggestWin, ...(isQaName(name) ? { qa: true } : {}) }));
@@ -90,7 +97,11 @@ function pushTable(t: BlackjackTable, now = Date.now()): void {
 }
 
 function pushWheel(now = Date.now()): void {
-  for (const s of rouletteWatchers) s.emit('roulette_state', wheel!.view(nameOf(s), now));
+  if (!wheels) return;
+  for (const s of rouletteWatchers) {
+    const id = roulettePick.get(s.id) ?? 'classic';
+    s.emit('roulette_state', wheels[id].view(nameOf(s), now));
+  }
 }
 
 function pushBoard(io: Server): void {
@@ -107,7 +118,7 @@ export function startCasino(io: Server): void {
   holdem = new HoldemRoom(getBank());
   spectators = new HoldemSpectators(spectators.delayMs);
   casino = new BlackjackCasino(getBank());
-  wheel = new RouletteWheel(getBank(), now);
+  wheels = { classic: new RouletteWheel(getBank(), now, Math.random, 'classic'), high: new RouletteWheel(getBank(), now, Math.random, 'high') };
   let casinoPauseAt: number | null = null;
   timer = setInterval(() => {
     const t = Date.now();
@@ -120,8 +131,9 @@ export function startCasino(io: Server): void {
           const d = (table as { deadline?: number | null }).deadline;
           if (typeof d === 'number') (table as { deadline: number }).deadline = d + dt;
         }
-        const w = wheel as { deadline?: number } | null;
-        if (w && typeof w.deadline === 'number') w.deadline += dt;
+        for (const w of Object.values(wheels ?? {})) {
+          if (typeof w.deadline === 'number') w.deadline += dt;
+        }
         for (const tb of holdem?.tables ?? []) {
           const d = (tb as { deadline?: number | null }).deadline;
           if (typeof d === 'number') (tb as { deadline: number }).deadline = d + dt;
@@ -135,11 +147,15 @@ export function startCasino(io: Server): void {
     const changed = casino!.tick(t);
     for (const table of changed) pushTable(table, t);
     const settledBJ = changed.some((x) => x.phase === 'settled');
-    const before = wheel!.phase;
-    if (wheel!.tick(t)) {
-      pushWheel(t);
-      if (before === 'spinning') pushBoard(io);
+    let settledRl = false;
+    for (const w of Object.values(wheels ?? {})) {
+      const before = w.phase;
+      if (w.tick(t)) {
+        pushWheel(t);
+        if (before === 'spinning') settledRl = true;
+      }
     }
+    if (settledRl) pushBoard(io);
     if (settledBJ) pushBoard(io);
     const heChanged = holdem!.tick(t);
     for (const tb of heChanged) pushHoldem(tb, t);
@@ -180,7 +196,7 @@ export function registerCasino(io: Server, socket: Socket): void {
 
   socket.on('vp_state', wrap(() => ({ state: poker().view(signedIn(socket)) })));
   socket.on('vp_deal', wrap((body) => {
-    const state = poker().deal(signedIn(socket), Number(body.bet));
+    const state = poker().deal(signedIn(socket), Number(body.bet), undefined, body.stakes as 'classic' | 'high' | undefined);
     return { state };
   }));
   socket.on('vp_draw', wrap((body) => {
@@ -259,7 +275,7 @@ export function registerCasino(io: Server, socket: Socket): void {
   socket.on('bj_join', wrap((body, now) => {
     const name = setName(body);
     bjWatchers.add(socket);
-    const t = casino!.join(name, now);
+    const t = casino!.join(name, now, bjStakes((body as { stakes?: unknown }).stakes).id);
     pushTable(t, now);
     return { table: t.view(name, now) };
   }));
@@ -294,29 +310,35 @@ export function registerCasino(io: Server, socket: Socket): void {
 
   socket.on('roulette_watch', wrap((body, now) => {
     if (socket.data.account) setName(body);
+    const id = rlStakes((body as { stakes?: unknown }).stakes).id;
+    roulettePick.set(socket.id, id);
     rouletteWatchers.add(socket);
-    return { state: wheel!.view(nameOf(socket), now) };
+    return { state: wheelOf(id).view(nameOf(socket), now) };
   }));
 
   socket.on('roulette_unwatch', wrap(() => {
     rouletteWatchers.delete(socket);
+    roulettePick.delete(socket.id);
   }));
 
-  const rouletteAct = (fn: (name: string) => void) => wrap((body, now) => {
+  const rouletteAct = (fn: (name: string, stakes?: unknown) => void) => wrap((body, now) => {
     const name = setName(body);
     if (!name) throw new Error('Save a name first.');
-    fn(name);
+    const id = rlStakes((body as { stakes?: unknown }).stakes).id;
+    roulettePick.set(socket.id, id);
+    fn(name, id);
     rouletteWatchers.add(socket);
     pushWheel(now);
   });
-  socket.on('roulette_bet', (p: unknown, ack?: Ack) => rouletteAct((n) => wheel!.placeBet(n, (p as Record<string, unknown>)?.bet))(p, ack));
-  socket.on('roulette_clear', rouletteAct((n) => wheel!.clear(n)));
-  socket.on('roulette_rebet', rouletteAct((n) => wheel!.rebet(n)));
+  socket.on('roulette_bet', (p: unknown, ack?: Ack) => rouletteAct((n, stakes) => wheelOf(stakes).placeBet(n, (p as Record<string, unknown>)?.bet))(p, ack));
+  socket.on('roulette_clear', rouletteAct((n, stakes) => wheelOf(stakes).clear(n)));
+  socket.on('roulette_rebet', rouletteAct((n, stakes) => wheelOf(stakes).rebet(n)));
 
   socket.on('disconnect', () => {
     sockets.delete(socket.id);
     spectators.unwatch(socket.id);
     rouletteWatchers.delete(socket);
+    roulettePick.delete(socket.id);
     if (heWatchers.delete(socket)) {
       const n = nameOf(socket);
       if (n && ![...heWatchers].some((x) => nameOf(x) === n) && room().tableOf(n)) {

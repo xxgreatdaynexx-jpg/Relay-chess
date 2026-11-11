@@ -9,9 +9,9 @@ import { HoldemTableView } from '@/components/HoldemTable';
 import { useWindowDrag } from '@/lib/windowDrag';
 import { playCardFlick, playSolitaireWin } from '@/lib/sounds';
 import { POKER_LABELS, POKER_PAYS, type PokerHand, type PokerView } from '../../../shared/casino-games';
+import { VP_STAKES, vpStakes, type VpStakesId } from '../../../shared/highStakes';
 
 const OPEN_KEY = 'relay-poker-open';
-const BETS = [5, 10, 25, 50, 100];
 const PAY_ROWS = (Object.keys(POKER_PAYS) as PokerHand[]).filter((h) => h !== 'nothing');
 
 /** Jacks or Better video poker vs. the house, using casino chips. Docked on the right edge. */
@@ -25,11 +25,20 @@ export function PokerPanel() {
   const [v, setV] = useState<PokerView | null>(null);
   const wallet = useWalletChips();
   const [hold, setHold] = useState<boolean[]>([false, false, false, false, false]);
-  const [bet, setBet] = useState(10);
+  const [vpPick, setVpPick] = useState<VpStakesId>(() => vpStakes(localStorage.getItem('relay-vp-stakes')).id);
+  const [bet, setBet] = useState(() => vpStakes(localStorage.getItem('relay-vp-stakes')).bets[0]!);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => { localStorage.setItem('relay-poker-mode', tab); }, [tab]);
   useEffect(() => { localStorage.setItem(OPEN_KEY, open ? '1' : '0'); }, [open]);
+  useEffect(() => { localStorage.setItem('relay-vp-stakes', vpPick); }, [vpPick]);
+  useEffect(() => {
+    const on = (e: Event) => { const id = vpStakes((e as CustomEvent).detail).id; setVpPick(id); setBet(vpStakes(id).bets[0]!); setTab('play'); setOpen(true); };
+    window.addEventListener('open-high-stakes-poker', on);
+    const onHe = () => { setTab('holdem'); setOpen(true); };
+    window.addEventListener('open-high-stakes-holdem', onHe);
+    return () => { window.removeEventListener('open-high-stakes-poker', on); window.removeEventListener('open-high-stakes-holdem', onHe); };
+  }, []);
 
   useEffect(() => {
     if (!open || !name || tab !== 'play') return;
@@ -58,6 +67,7 @@ export function PokerPanel() {
           <div {...win.bar}>
             <button type="button" className={`casino-tabbtn ${tab === 'holdem' ? 'on' : ''}`} onClick={() => setTab('holdem')} data-testid="poker-mode-holdem">Hold'em</button>
             <button type="button" className={`casino-tabbtn ${tab === 'play' ? 'on' : ''}`} onClick={() => setTab('play')}>Jacks or Better</button>
+            {tab === 'play' && <label className="bj-stakes">Stakes <select data-testid="vp-stakes" value={vpPick} onChange={(e) => { const id = vpStakes(e.target.value).id; setVpPick(id); setBet(vpStakes(id).bets[0]!); }}>{VP_STAKES.map((s) => <option key={s.id} value={s.id}>{s.label} ({s.min.toLocaleString()}–{s.max.toLocaleString()})</option>)}</select></label>}
             {win.moved && <button type="button" className="win-reset" aria-label="Reset window position" onClick={win.reset}>⟲</button>}
             <button type="button" className="ml-auto" aria-label="Close poker" onClick={() => setOpen(false)}>✕</button>
           </div>
@@ -76,10 +86,10 @@ export function PokerPanel() {
                 {!v?.cards.length && <div className="bj-label">Five cards, one draw. Pair of jacks or better wins.</div>}
               </div>
               <div className="bj-controls">
-                {!dealt && BETS.map((b) => <button type="button" key={b} className={bet === b ? 'bj-chip-on' : ''} onClick={() => setBet(b)}>{b}</button>)}
+                {!dealt && vpStakes(vpPick).bets.map((b) => <button type="button" key={b} className={bet === b ? 'bj-chip-on' : ''} onClick={() => setBet(b)}>{b}</button>)}
                 {dealt
                   ? <button type="button" className="bj-deal" disabled={busy} onClick={() => void act('vp_draw', { hold })} data-testid="vp-draw">Draw</button>
-                  : <button type="button" className="bj-deal" disabled={busy} onClick={() => void act('vp_deal', { bet })} data-testid="vp-deal">Deal {bet}</button>}
+                  : <button type="button" className="bj-deal" disabled={busy} onClick={() => void act('vp_deal', { bet, stakes: vpPick })} data-testid="vp-deal">Deal {bet}</button>}
               </div>
               <div className="bj-label">Chips: {(wallet ?? v?.chips)?.toLocaleString() ?? '…'} {err && <span className="account-error">· {err}</span>}</div>
               {v && v.chips < 5 && !dealt && <OutOfChips />}

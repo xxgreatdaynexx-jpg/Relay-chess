@@ -401,7 +401,18 @@ export const GOODS: Record<string, ItemDef> = {
   cut_opal:        { type: 'good', id: 'cut_opal',        name: 'Cut Fire Opal',    price: 70,   color: '#ff7a4a' },
   pearl_necklace:  { type: 'good', id: 'pearl_necklace',  name: 'Pearl Necklace',   price: 370,  color: '#eef2ff' },
   tidecrown:       { type: 'good', id: 'tidecrown',       name: 'Tidecrown',        price: 1600, color: '#7ff0ff' },
+  // Prestige factory line (Billionaire Update)
+  gold_cufflinks:  { type: 'good', id: 'gold_cufflinks',  name: 'Gold Cufflinks',        price: 211,  color: '#e8c860' },
+  signet_ring:     { type: 'good', id: 'signet_ring',     name: 'Signet Ring',           price: 440,  color: '#c9a227' },
+  imperial_diadem: { type: 'good', id: 'imperial_diadem', name: 'Imperial Diadem',       price: 773,  color: '#f0e0a0' },
+  chandelier:      { type: 'good', id: 'chandelier',      name: 'Crystal Chandelier',    price: 558,  color: '#efe8ff' },
+  limousine:       { type: 'good', id: 'limousine',       name: 'Coachbuilt Limousine',  price: 2080, color: '#1a1a1a' },
+  city_seal:       { type: 'good', id: 'city_seal',       name: 'City Seal',             price: 1049, color: '#d4af37' },
+  grand_clock:     { type: 'good', id: 'grand_clock',     name: 'Grand Clock',           price: 534,  color: '#8a5a2a' },
+  vault_door:      { type: 'good', id: 'vault_door',      name: 'Vault Door',            price: 5055, color: '#4a4a52' },
+  sovereign_laurel:{ type: 'good', id: 'sovereign_laurel',name: 'Sovereign Laurel',      price: 716,  color: '#d4af37' },
 };
+
 const o = (id: OreId, qty: number) => ({ type: 'ore' as const, id, qty });
 const b = (id: string, qty: number) => ({ type: 'bar' as const, id, qty });
 const g = (id: string, qty: number) => ({ type: 'good' as const, id, qty });
