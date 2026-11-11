@@ -19,11 +19,11 @@
 import type { OBB } from './worldLayout.js';
 import type { Crop } from './farm.js';
 
-export type Location = 'city' | 'resort' | 'fortmc' | 'island';
+export type Location = 'city' | 'resort' | 'fortmc' | 'island' | 'voyage';
 /** Places you fly to from Chud Hub International (everything except the city). */
-export type Destination = Exclude<Location, 'city'>;
+export type Destination = 'resort' | 'fortmc' | 'island';
 export const RESORT_TICKET_BASE = 500;
-export const isLocation = (v: unknown): v is Location => v === 'city' || v === 'resort' || v === 'fortmc' || v === 'island';
+export const isLocation = (v: unknown): v is Location => v === 'city' || v === 'resort' || v === 'fortmc' || v === 'island' || v === 'voyage';
 export const isDestination = (v: unknown): v is Destination => v === 'resort' || v === 'fortmc' || v === 'island';
 /** Ticket price (base chips, x price index), ledger game and display name for every destination. */
 export const DESTINATIONS: Record<Destination, { name: string; ticket: number; game: string; ticketed?: boolean }> = {

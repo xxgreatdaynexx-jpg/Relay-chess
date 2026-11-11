@@ -96,3 +96,28 @@ Title: A prestige line at the factory
 
 - The Jeweler's Bench and Fabricator can now make prestige pieces (cufflinks, a signet ring, an imperial diadem, a sovereign laurel, a crystal chandelier, a coachbuilt limousine, a city seal, a grand clock, and a vault door). They take longer and sell for about 25% more than their inputs, and they never out-earn the older recipes per second.
 
+
+## Yacht models
+
+Title: Distinct yacht and megayacht models
+
+- The Azure 60 Yacht, Chud Royale Superyacht and Sovereign Megayacht now each have their own 3D model at the Marina. The megayacht is a longer, four-deck hull with a helipad, not just a scaled superyacht.
+
+## Yacht boarding
+
+Title: Board a friend's yacht
+
+- Yacht, superyacht and megayacht owners can open boarding for a voyage or (megayacht) the Private Island, the same way jet owners open boarding. Friends request a seat; the captain accepts. Seats can be free or a capped fare paid to the captain.
+
+## Voyages
+
+Title: Ocean voyages from the Marina
+
+- From the Marina you can sail timed voyages to destinations like Coral Atoll, the Outer Banks, Blue Water Crossing, the Southern Isles, Abyss Watch and Midnight Reef. A boat can only sail a voyage in its deep-sea range. Boarded crew travel with the captain and return together. Voyages are not plane tickets.
+
+## Ship combat
+
+Title: Opt-in ship combat at sea
+
+- Captains who have arrived on a voyage can opt in to ship combat and challenge another opted-in captain. Fights are turn-based shots at the hull. A stake is optional and held in escrow; the winner takes the pot minus a 5% rake (a chip sink). The loser may owe a hull repair bill (also a sink). Combat is never forced, and the wallet is never pushed negative.
+

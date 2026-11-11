@@ -36,6 +36,7 @@ import { WalletButton } from '@/components/WalletButton';
 import { AdminPopup, PlayTimeBeat } from '@/components/AdminPopup';
 import { LaunchPopup } from '@/components/LaunchPopup';
 import { JetSeatsDock } from '@/components/JetSeatsDock';
+import { OceanDock } from '@/components/OceanDock';
 import { SkillsPanel } from '@/components/Skills';
 import { TournamentScreen } from '@/components/TournamentScreen';
 import { NightlyEventBanner } from '@/components/NightlyEventBanner';
@@ -338,6 +339,7 @@ export function App() {
       <AdminPopup />
       <LaunchPopup />
       <JetSeatsDock />
+      <OceanDock />
       <HomesHost />
       <PlayTimeBeat />
     </>

@@ -27,7 +27,8 @@ if (process.env.NODE_ENV !== 'production' && process.env.JET_SEATS_ALLOW_QA === 
 
 interface Req { name: string; at: number; seq: number }
 interface Seat { name: string; paid: number; key: string }
-interface Boarding { id: string; owner: string; model: string; jet: string; from: Location; to: Location; seats: number; price: number; openedAt: number; reqs: Map<string, Req>; seated: Map<string, Seat>; holding: Set<string> }
+type JetLoc = Exclude<Location, 'voyage'>;
+interface Boarding { id: string; owner: string; model: string; jet: string; from: JetLoc; to: JetLoc; seats: number; price: number; openedAt: number; reqs: Map<string, Req>; seated: Map<string, Seat>; holding: Set<string> }
 
 export class JetSeats {
   onChange?: (b: BoardingView | null, event: string, who?: string[]) => void;
@@ -59,7 +60,7 @@ export class JetSeats {
     this.sweep();
     if (excluded(owner)) throw new SeatError('Seat sharing is not available on this account.');
     if (isJailed(owner)) throw new SeatError('You are in jail.');
-    const from = getTravel().where(owner); const to: Location = dest === 'city' ? 'city' : isDestination(dest) ? dest : (() => { throw new SeatError('Unknown destination.'); })();
+    const from0 = getTravel().where(owner); if (from0 === 'voyage') throw new SeatError('You cannot open jet boarding at sea.'); const from: JetLoc = from0; const to: JetLoc = dest === 'city' ? 'city' : isDestination(dest) ? dest : (() => { throw new SeatError('Unknown destination.'); })();
     if (from === to) throw new SeatError('You are already there.');
     if (from !== 'city' && to !== 'city') throw new SeatError('Fly home to Chud City first.');
     if (this.ofOwner(owner)) throw new SeatError('You already have boarding open.');

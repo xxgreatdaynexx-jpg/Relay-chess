@@ -30,6 +30,7 @@ import { registerVanity } from './vanity.js';
 import { registerPatronage } from './patronage.js';
 import { registerAuction } from './artAuction.js';
 import { registerJetSeats } from './jetSeats.js';
+import { registerOcean } from './oceanPlay.js';
 import { registerFarm } from './farm.js';
 import { registerWarehouse } from './warehouse.js';
 import { registerLocMoves } from './locmoves.js';
@@ -333,6 +334,7 @@ export function registerSockets(io: Server): void {
     registerPatronage(io, socket);
     registerAuction(io, socket);
     registerJetSeats(io, socket);
+    registerOcean(io, socket);
     registerFarm(io, socket);
     registerWarehouse(io, socket);
     registerLocMoves(io, socket);

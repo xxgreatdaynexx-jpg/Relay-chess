@@ -100,9 +100,10 @@ export const isAtResort = (name: string | null | undefined) => travel.where(name
 /** Millionaire Update warehouse-only rule: Chud City's markets (fishmonger, diner, ore buyer) only buy from players who are in
  * Chud City. Away at Chud Resort or Fort McChud, goods reach the market by Ship & sell to the Chud City Warehouse. */
 export const MARKET_AWAY_MSG = 'You are away from Chud City. Its markets only buy from you in person: travel back, or use Ship & sell from your building to send goods to the Chud City Warehouse.';
-export function awayFromMarket(name: string | null | undefined, E: new (m: string) => Error): void { if (isAtResort(name) || isAtFortMc(name) || isAtIsland(name)) throw new E(MARKET_AWAY_MSG); }
+export function awayFromMarket(name: string | null | undefined, E: new (m: string) => Error): void { if (isAtResort(name) || isAtFortMc(name) || isAtIsland(name) || isAtVoyageLoc(name)) throw new E(MARKET_AWAY_MSG); }
 export const isAtFortMc = (name: string | null | undefined) => travel.where(name) === 'fortmc';
 export const isAtIsland = (name: string | null | undefined) => travel.where(name) === 'island';
+export const isAtVoyageLoc = (name: string | null | undefined) => travel.where(name) === 'voyage';
 /** Throws `Err` unless `name` is at the Private Island. */
 export async function requireIsland(name: string | null | undefined, Err: new (m: string) => Error = TravelError) {
   if (!isAtIsland(name)) throw new Err('You need to be at the Private Island for that. Sail there on a Sovereign Megayacht, or fly your own jet.');

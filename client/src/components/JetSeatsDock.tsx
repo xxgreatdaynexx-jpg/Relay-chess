@@ -7,7 +7,7 @@ import type { BoardingView } from '../../../shared/jetSeats';
 import { DESTINATIONS, type Location } from '../../../shared/resort';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
-const placeName = (l: Location) => (l === 'city' ? 'Chud City' : DESTINATIONS[l].name);
+const placeName = (l: Location) => (l === 'city' ? 'Chud City' : l === 'voyage' ? 'at sea' : DESTINATIONS[l].name);
 const lc = (s: string | null | undefined) => (s ?? '').trim().toLowerCase();
 
 export function JetSeatsDock() {
