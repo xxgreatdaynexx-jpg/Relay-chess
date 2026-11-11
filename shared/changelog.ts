@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-11T12:19:00-06:00", "title": "Factory monument royalty reduced from 5% to 4.9%", "bullets": [
+    "The Factory monument now earns 4.9% of what other players get when they sell factory goods to the house (was 5%). The owner is still paid on top, so the seller keeps 100%. Royalties already paid are unchanged.",
+    "Royalties on the mines, Fishing Dock, Speedway, market, and casino stay at 1%. Other property income is unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-11T10:06:00-06:00", "title": "Daily co-op event goals are three times higher; payouts and medals stay the same", "bullets": [
     "Starting at midnight tonight (November 12, 12:00 AM CST), daily co-op event goals are three times higher: Mining Rush 9,000 ore, Harvest Festival 12,750 crops, Fishing Derby 675 fish, Trade Week 2,250 chips traded, and Hockey Cup 45 paid wins.",
     "Claim payouts stay Gold 75,000, Silver 30,000, and Bronze 10,000 when the server goal is finished. The amount you need for each medal and your personal contribution cap are unchanged. Today's in-progress event keeps its current goal. Contributions already earned and rewards already claimed (or still waiting to be claimed from an earlier period) are unchanged.",
