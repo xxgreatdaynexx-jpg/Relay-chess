@@ -2,9 +2,10 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   BEACH_X0, BEACH_X1, EXISTING_GROUND, LAND_FILL, expansionLandBoxes, expansionRoadPlotOverlaps,
-  expansionScenery, landCoveredAt, riverPlotOverlaps, sceneryOverlaps, subtractRects,
+  anyRoadClearance, expansionScenery, landCoveredAt, riverPlotOverlaps, sceneryOverlaps, subtractRects,
 } from '../shared/expansionScenery';
 import { EAST_X1, GOLDWOOD, GOLDWOOD_SETBACK, goldwoodHomes, inExpansion } from '../shared/mapExpansion';
+import { BIG_FARM_AREA } from '../shared/bigFarms';
 import { EXP_BRIDGES, EXP_CUL_ENDS, EXP_JUNCTIONS, EXP_ROADS, expRoadClearance } from '../shared/expansionRoads';
 import { RIVER_PTS, riverClearance, riverCrossings } from '../shared/expansionRiver';
 import { haulNoRoadRoutes, haulSiteXZ, roadPath } from '../shared/haulVisual';
@@ -131,5 +132,43 @@ describe('expansion scenery', () => {
     expect(world).toMatch(/expansionLandBoxes/);
     expect(world).toMatch(/xmasGround/);
     expect(typeof xmasOn()).toBe('boolean');
+  });
+});
+
+describe('Big Farms fill and empty lots', () => {
+  it('fills the Big Farms district with trees, hedges and fences, kept off plots, roads, the river and haul tracks', () => {
+    const A = BIG_FARM_AREA;
+    const spots = expansionScenery().filter((s) => s.x >= A.x0 - 18 && s.x <= A.x1 + 28 && s.z >= A.z0 - 8 && s.z <= A.z1 + 8);
+    const trees = spots.filter((s) => s.kind === 'pine' || s.kind === 'deciduous');
+    expect(trees.length).toBeGreaterThan(400);
+    expect(spots.some((s) => s.kind === 'hedge')).toBe(true);
+    expect(sceneryOverlaps(spots)).toEqual([]);
+    for (const t of trees) {
+      expect(riverClearance(t.x, t.z), `tree in river ${t.x},${t.z}`).toBeGreaterThan(0.8);
+      expect(anyRoadClearance(t.x, t.z), `tree on road ${t.x},${t.z}`).toBeGreaterThan(0.8);
+    }
+  });
+  it('does not paint empty East Estates lots as a solid green square', () => {
+    const est = src('client/src/lib/worldEstate.ts');
+    expect(est).not.toMatch(/0x4a8f45/);
+    expect(est).not.toMatch(/0x3a7a3a/);
+    expect(est).toMatch(/FOR SALE/);
+    expect(est).toMatch(/colorWrite:\s*false/);
+  });
+});
+
+describe('Stone Quarry looks like an open pit', () => {
+  it('draws a dedicated quarry (not the cone-hill mine) at the same site, with benches, a ramp, a crusher and machines', () => {
+    const q = src('client/src/lib/worldQuarry.ts');
+    expect(q).toMatch(/buildStoneQuarry/);
+    expect(q).toMatch(/haul ramp/i);
+    expect(q).toMatch(/crusher/i);
+    expect(q).toMatch(/excavator/i);
+    const world = src('client/src/lib/world3d.ts');
+    expect(world).toMatch(/buildStoneQuarry/);
+    expect(world).toMatch(/case 'mine-quarry'/);
+    // still the same world position and interaction id
+    expect(src('shared/worldLayout.ts')).toMatch(/'mine-quarry':\s*\{[^}]*x:\s*328[^}]*z:\s*-158/s);
+    expect(src('client/src/lib/worldSpots.ts')).toMatch(/id: 'mine-quarry'/);
   });
 });

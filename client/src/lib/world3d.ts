@@ -27,6 +27,7 @@ import { addExpansionScenery } from './worldExpansionDecor';
 import { BEACH_X0, BEACH_X1, expansionLandBoxes } from '../../../shared/expansionScenery';
 import { RIG_DOCK } from '../../../shared/mapExpansion';
 import { addExpansionLand } from './worldExpansionLand';
+import { buildStoneQuarry } from './worldQuarry';
 import { expRoadClearance } from '../../../shared/expansionRoads';
 import { buildAirportLandmark } from './estateModels';
 import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN, MINE_SITES, MINE_APRON, OUTSKIRTS } from './worldLayout';
@@ -283,7 +284,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const ems: THREE.MeshStandardMaterial[] = [neon];
     const win = (seed: number) => { const t = windowsTexture(seed, '#ffd27a', '#9fe8ff'); disposables.push(t); const m = mat({ color: 0x9aa3c0, map: t, emissiveMap: t, emissive: 0xffffff, emissiveIntensity: 0.9 * NEON, roughness: 0.6 }); ems.push(m); return m; };
     const dark = mat({ color: 0x4a5070, roughness: 0.7 });
-    const pad = box(12, 0.15, 12, mat({ color: 0x55596a })); g.add(pad);
+    const pad = box(12, 0.15, 12, mat({ color: 0x55596a })); if (spot.id !== 'mine-quarry') g.add(pad);
     let height = 8;
     switch (spot.id) {
       case 'casino': {
@@ -299,8 +300,14 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
         for (let i = 0; i < 4; i++) { const t = cyl(0.9, 1.1, 8, dark, i % 2 ? 4 : -4, 0, i < 2 ? 4 : -4, 8); g.add(t); g.add(cyl(1.3, 0.2, 1.4, neon, t.position.x, 8, t.position.z, 8)); }
         const ivory = mat({ color: 0xf1ead6, emissive: 0xf1ead6, emissiveIntensity: 0.25 * NEON }); ems.push(ivory);
         g.add(cyl(2.4, 2.8, 0.8, ivory, 0, 5, 0, 16), cyl(1.2, 2, 4.2, ivory, 0, 5.8, 0, 16), cyl(1.7, 1.2, 0.7, ivory, 0, 10, 0, 16), box(0.6, 2.4, 0.6, neon, 0, 10.7, 0), box(1.8, 0.6, 0.6, neon, 0, 11.6, 0)); height = 14; break; }
-      case 'mine': case 'mine-frost': case 'mine-magma': case 'mine-quarry': {
-        const hillC = spot.id === 'mine-frost' ? 0xd8ecf8 : spot.id === 'mine-magma' ? 0x3a2622 : spot.id === 'mine-quarry' ? 0x9a948c : 0x6b5a48;
+      case 'mine-quarry': {
+        // Open-pit stone quarry: terraced benches down into a grey pit, a haul ramp spiralling in, a crusher and
+        // conveyor, stockpiles, a dump truck and an excavator on a gravel pad. The clickable entrance (office +
+        // portal) stays on the south rim at local +z — same interaction point and world position as before.
+        g.add(buildStoneQuarry(mat, geo, neon, dark, NEON, XM));
+        height = 11; break; }
+      case 'mine': case 'mine-frost': case 'mine-magma': {
+        const hillC = spot.id === 'mine-frost' ? 0xd8ecf8 : spot.id === 'mine-magma' ? 0x3a2622 : 0x6b5a48;
         const hill = new THREE.Mesh(geo(new THREE.ConeGeometry(6.5, 7, 7)), mat({ color: hillC, flatShading: true, ...(spot.id === 'mine-magma' ? { emissive: 0xff4a00, emissiveIntensity: 0.12 } : {}) }));
         if (spot.id === 'mine-magma') { const lava = cyl(1.2, 0.6, 0.6, mat({ color: 0xff6a20, emissive: 0xff4a00, emissiveIntensity: 1.4 * NEON }), 0, 6.6, 0, 8); g.add(lava); }
         if (spot.id === 'mine-frost') for (let i = 0; i < 5; i++) { const a = i * 1.3; const ic = new THREE.Mesh(geo(new THREE.ConeGeometry(0.5, 2.6, 5)), mat({ color: 0xbfe8ff, emissive: 0x5ab8ff, emissiveIntensity: 0.6 * NEON })); ic.position.set(Math.cos(a) * 4.2, 1.3, Math.sin(a) * 4.2 - 1); g.add(ic); } hill.position.y = 3.5; g.add(hill);
@@ -743,13 +750,18 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   loadCivic(); const civicPoll = window.setInterval(loadCivic, 30_000); window.addEventListener('city-changed', loadCivic);
   // Outskirts mines (MINE_SITES): a rocky apron under each one and a dirt haul track back to the city's road end.
   for (const site of Object.values(MINE_SITES)) {
-    const top = site.cave === 'frost' ? 0xdfeef7 : site.cave === 'magma' ? 0x3a2a24 : 0x5e5040;
+    const top = site.cave === 'frost' ? 0xdfeef7 : site.cave === 'magma' ? 0x3a2a24 : site.cave === 'quarry' ? 0x9a9488 : 0x5e5040;
     const side = mat({ color: 0x2a2018 });
-    const apron = new THREE.Mesh(geo(new THREE.BoxGeometry(MINE_APRON, 3, MINE_APRON)), [side, side, mat({ color: top, roughness: 1, flatShading: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, emissive: site.cave === 'magma' ? 0x5a1a08 : site.cave === 'frost' ? 0x2a3a4a : 0x3a2c1c, emissiveIntensity: 0.7 }), side, side, side]);
-    { const fl = new THREE.PointLight(site.cave === 'frost' ? 0xbfe4ff : site.cave === 'magma' ? 0xff8a40 : 0xffc880, 60, 46, 1.2); fl.position.set(site.x, 14, site.z); scene.add(fl); }
-    apron.position.set(site.x, -1.5, site.z); scene.add(apron); // top flush at y=0 (grass strips -0.03, haul dirt 0.03, roads 0.08)
+    // the Stone Quarry is an open pit (worldQuarry) — no solid apron filling the hole; a dusty ring sits around the rim
+    if (site.cave !== 'quarry') {
+      const apron = new THREE.Mesh(geo(new THREE.BoxGeometry(MINE_APRON, 3, MINE_APRON)), [side, side, mat({ color: top, roughness: 1, flatShading: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, emissive: site.cave === 'magma' ? 0x5a1a08 : site.cave === 'frost' ? 0x2a3a4a : 0x3a2c1c, emissiveIntensity: 0.7 }), side, side, side]);
+      apron.position.set(site.x, -1.5, site.z); scene.add(apron); // top flush at y=0 (grass strips -0.03, haul dirt 0.03, roads 0.08)
+    }
+    { const fl = new THREE.PointLight(site.cave === 'frost' ? 0xbfe4ff : site.cave === 'magma' ? 0xff8a40 : site.cave === 'quarry' ? 0xd8d0c0 : 0xffc880, 60, 46, 1.2); fl.position.set(site.x, 14, site.z); scene.add(fl); }
     const dirt = mat({ color: site.cave === 'frost' ? 0x9aa8b4 : 0x6a5038, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
-    const pts = [...site.track, [site.x, site.z] as [number, number]];
+    // the quarry is an open pit: stop the dirt haul at the south rim, not in the middle of the hole
+    const end: [number, number] = site.cave === 'quarry' ? [site.x, site.z + 12] : [site.x, site.z];
+    const pts = [...site.track, end];
     for (let i = 1; i < pts.length; i++) { const [ax, az] = pts[i - 1], [bx, bz] = pts[i]; const L = Math.hypot(bx - ax, bz - az);
       const seg = new THREE.Mesh(geo(new THREE.BoxGeometry(3.6, 0.06, L + 3.6)), dirt); seg.position.set((ax + bx) / 2, 0, (az + bz) / 2); seg.rotation.y = Math.atan2(bx - ax, bz - az); scene.add(seg); }
   }
@@ -769,8 +781,20 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const gz0 = Math.min(z0, BIG_GROUND_Z0);
     const strips: Array<[number, number, number, number]> = [[x0, x1, z0, -P], [x0, x1, P, z1], [x0, -P, -P, P], [P, x1, -P, P], [x1, BIG_GROUND_X1, gz0, z1], [BIG_GROUND_X0, x1, gz0, z0],
       ...expansionLandBoxes().map((b) => [b.x0, b.x1, b.z0, b.z1] as [number, number, number, number])];
+    // punch a hole through the ground slabs at the Stone Quarry so the open pit is visible (the quarry mesh fills it)
+    const qSite = MINE_SITES['mine-quarry']; const QHOLE = 11.8;
+    const punched: Array<[number, number, number, number]> = [];
+    for (const [a0, b0, e, f] of strips) {
+      const qx0 = qSite.x - QHOLE, qx1 = qSite.x + QHOLE, qz0 = qSite.z - QHOLE, qz1 = qSite.z + QHOLE;
+      const ix0 = Math.max(a0, qx0), ix1 = Math.min(b0, qx1), iz0 = Math.max(e, qz0), iz1 = Math.min(f, qz1);
+      if (ix0 >= ix1 - 0.05 || iz0 >= iz1 - 0.05) { punched.push([a0, b0, e, f]); continue; }
+      if (a0 < ix0 - 0.05) punched.push([a0, ix0, e, f]);
+      if (ix1 < b0 - 0.05) punched.push([ix1, b0, e, f]);
+      if (e < iz0 - 0.05) punched.push([ix0, ix1, e, iz0]);
+      if (iz1 < f - 0.05) punched.push([ix0, ix1, iz1, f]);
+    }
     const grass = mat({ color: 0x3f9a45, roughness: 1, emissive: 0x0f3a14, emissiveIntensity: 0.6 }); const dirtSide = mat({ color: 0x4a3322 });
-    for (const [a0, b0, e, f] of strips) { const m = new THREE.Mesh(geo(new THREE.BoxGeometry(b0 - a0, 3, f - e)), [dirtSide, dirtSide, XM ? keep(xmasGround(b0 - a0, f - e, tier === 'low', a0, f)) : grass, dirtSide, dirtSide, dirtSide]); m.position.set((a0 + b0) / 2, -1.53, (e + f) / 2); scene.add(m); }
+    for (const [a0, b0, e, f] of punched) { const m = new THREE.Mesh(geo(new THREE.BoxGeometry(b0 - a0, 3, f - e)), [dirtSide, dirtSide, XM ? keep(xmasGround(b0 - a0, f - e, tier === 'low', a0, f)) : grass, dirtSide, dirtSide, dirtSide]); m.position.set((a0 + b0) / 2, -1.53, (e + f) / 2); scene.add(m); }
     // rural roads: city asphalt at the city road height, centre dashes
     // Rural + venue access roads: one asphalt (city roadMat, top flush with city roads), square-cut ends that extend
     // half a width so corners/T's close; an end on the speedway's edge is not extended (no road over the track).

@@ -32,29 +32,59 @@ export function createEstate(w: World) {
   for (const v of wineryPlots()) {
     const g = buildWinery(); g.position.set(v.x, 0, v.z); g.rotation.y = v.rot; root.add(g); mark(g, `winery:${v.n}`);
   }
-  // empty estate lots: a graded lawn with a gravel building pad, corner survey stakes and an estate board facing the
-  // street (rotated with the lot); construction models swap in from the API
-  const lawnM = new THREE.MeshStandardMaterial({ color: 0x4a8f45, roughness: 1 }), gravelM = new THREE.MeshStandardMaterial({ color: 0x9a8e7a, roughness: 1 });
-  const stakeM = new THREE.MeshStandardMaterial({ color: 0xf0e6d0 }), flagM = new THREE.MeshStandardMaterial({ color: 0xff5a36, emissive: 0x802010, emissiveIntensity: 0.4 });
-  const postM = new THREE.MeshStandardMaterial({ color: 0x6a4a2a, roughness: 0.9 });
-  const saleTex = (() => { if (typeof document === 'undefined') return null; const cv = document.createElement('canvas'); cv.width = 256; cv.height = 128; const k = cv.getContext('2d'); if (!k) return null;
-    k.fillStyle = '#f7f3ea'; k.fillRect(0, 0, 256, 128); k.fillStyle = '#1f3a2a'; k.fillRect(0, 0, 256, 40); k.fillStyle = '#e8c860'; k.font = 'bold 28px Georgia, serif'; k.textAlign = 'center'; k.fillText('EAST ESTATES', 128, 30);
-    k.fillStyle = '#1f2a22'; k.font = 'bold 26px Georgia, serif'; k.fillText('BUILDING LOT', 128, 82); k.font = '18px sans-serif'; k.fillText('Private estate parcel', 128, 112); const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t; })();
-  const saleM = new THREE.MeshStandardMaterial({ map: saleTex ?? undefined, color: saleTex ? 0xffffff : 0xf7f3ea, emissive: 0xffffff, emissiveMap: saleTex ?? undefined, emissiveIntensity: 0.25 });
+  // empty lots: no painted green square — the snowy ground already is the lot. A nearly invisible pick volume,
+  // low timber corner posts with a short rail, a couple of existing trees, and a small for-sale board facing the street.
+  // Built models (from /api/estate) still sit on top and keep their look.
+  const postM = new THREE.MeshStandardMaterial({ color: 0x6a5a3a, roughness: 0.9 });
+  const railM = new THREE.MeshStandardMaterial({ color: 0x7a6a48, roughness: 0.9 });
+  const hedgeM = new THREE.MeshStandardMaterial({ color: 0x2f6b32, roughness: 1 });
+  const trunkM = new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 1 });
+  const crownM = new THREE.MeshStandardMaterial({ color: 0x2f8a3a, flatShading: true, roughness: 0.95, emissive: 0x0a2a10, emissiveIntensity: 0.4 });
+  const snowCapM = new THREE.MeshStandardMaterial({ color: 0xf3f7ff, roughness: 0.95, emissive: 0x1a2238, emissiveIntensity: 0.35 });
+  const saleTex = (() => { if (typeof document === 'undefined') return null; const cv = document.createElement('canvas'); cv.width = 256; cv.height = 160; const k = cv.getContext('2d'); if (!k) return null;
+    k.fillStyle = '#f4efe4'; k.fillRect(0, 0, 256, 160); k.strokeStyle = '#1f3a2a'; k.lineWidth = 10; k.strokeRect(5, 5, 246, 150);
+    k.fillStyle = '#1f3a2a'; k.fillRect(12, 12, 232, 48); k.fillStyle = '#e8c860'; k.font = 'bold 28px Georgia, serif'; k.textAlign = 'center'; k.fillText('FOR SALE', 128, 46);
+    k.fillStyle = '#1f2a22'; k.font = 'bold 22px Georgia, serif'; k.fillText('East Estates', 128, 94); k.font = '16px sans-serif'; k.fillText('Building lot', 128, 122); k.fillText('Private parcel', 128, 142);
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+  const saleM = new THREE.MeshStandardMaterial({ map: saleTex ?? undefined, color: saleTex ? 0xffffff : 0xf4efe4, emissive: 0xffffff, emissiveMap: saleTex ?? undefined, emissiveIntensity: 0.2 });
+  const pickMat = new THREE.MeshStandardMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false });
+  const lotTree = (g: THREE.Group, x: number, z: number, s: number) => {
+    const tr = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, 1, 5), trunkM); tr.position.set(x, 0.7 * s, z); tr.scale.set(s, 1.4 * s, s); g.add(tr);
+    const cr = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), crownM); cr.position.set(x, 2.05 * s, z); cr.scale.set(s * 1.15, s * 1.2, s * 1.15); cr.rotation.y = x + z; g.add(cr);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.45, 6, 4), snowCapM); cap.position.set(x, 2.7 * s, z); cap.scale.set(s, s * 0.5, s); g.add(cap);
+  };
   for (const l of estateLots()) {
-    const g = new THREE.Group(); g.position.set(l.x, 0, l.z); g.rotation.y = l.rot;
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(l.w, 0.12, l.d), lawnM); pad.position.y = 0.06; pad.userData.spot = `lot:estate:${l.n}`; g.add(pad); pick.push(pad);
-    const grav = new THREE.Mesh(new THREE.BoxGeometry(l.w * 0.5, 0.06, l.d * 0.45), gravelM); grav.position.set(0, 0.15, -l.d * 0.08); g.add(grav);
-    for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { const st = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.9, 0.12), stakeM); st.position.set(sx * (l.w / 2 - 0.4), 0.45, sz * (l.d / 2 - 0.4)); g.add(st);
-      const fl = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.16, 0.02), flagM); fl.position.set(sx * (l.w / 2 - 0.4) + 0.16, 0.82, sz * (l.d / 2 - 0.4)); g.add(fl); }
-    const sx0 = l.w / 2 - 4, sz0 = l.d / 2 - 1.6;
-    for (const o of [-0.9, 0.9]) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2, 0.12), postM); p.position.set(sx0 + o, 1, sz0); g.add(p); }
-    const board = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.1, 0.06), [postM, postM, postM, postM, saleM, saleM]); board.position.set(sx0, 1.55, sz0); board.userData.spot = `lot:estate:${l.n}`; g.add(board); pick.push(board);
+    const g = new THREE.Group(); g.name = `lot-empty:${l.n}`; g.position.set(l.x, 0, l.z); g.rotation.y = l.rot;
+    const vol = new THREE.Mesh(new THREE.BoxGeometry(l.w, 0.2, l.d), pickMat); vol.position.y = 0.1; vol.userData.spot = `lot:estate:${l.n}`; g.add(vol); pick.push(vol);
+    // corner posts + a short rail on two sides, leaving the street front open
+    for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]] as const) {
+      const px = sx * (l.w / 2 - 0.35), pz = sz * (l.d / 2 - 0.35);
+      const st = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.05, 0.16), postM); st.position.set(px, 0.52, pz); g.add(st);
+    }
+    for (const [x, z, w, d, ry] of [
+      [0, l.d / 2 - 0.35, l.w - 0.9, 0.08, 0],
+      [0, -(l.d / 2 - 0.35), l.w - 0.9, 0.08, 0],
+      [-(l.w / 2 - 0.35), 0, 0.08, l.d - 0.9, 0],
+    ] as const) { const r = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), railM); r.position.set(x, 0.72, z); g.add(r);
+      const r2 = r.clone(); r2.position.y = 0.42; g.add(r2); }
+    // a short clipped hedge at the two back corners (not a solid green pad)
+    for (const sx of [-1, 1] as const) { const h = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.7, 0.45), hedgeM); h.position.set(sx * (l.w / 2 - 1.6), 0.35, -(l.d / 2 - 1.1)); g.add(h); }
+    // two or three existing trees, offset so they will sit beside a future building rather than under it
+    lotTree(g, -l.w * 0.28, -l.d * 0.22, 0.85);
+    lotTree(g, l.w * 0.32, -l.d * 0.18, 0.7);
+    if (l.w > 28) lotTree(g, l.w * 0.08, -l.d * 0.32, 0.95);
+    // small for-sale board at the street front (local +z)
+    const sx0 = l.w * 0.18, sz0 = l.d / 2 - 1.2;
+    const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.7, 0.1), postM); p1.position.set(sx0 - 0.7, 0.85, sz0); g.add(p1);
+    const p2 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.7, 0.1), postM); p2.position.set(sx0 + 0.7, 0.85, sz0); g.add(p2);
+    const board = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.05, 0.06), [postM, postM, postM, postM, saleM, saleM]); board.position.set(sx0, 1.55, sz0); board.userData.spot = `lot:estate:${l.n}`; g.add(board); pick.push(board);
     root.add(g);
   }
+  // empty expansion farm plots: no green square; a faint soil edge is drawn by the shared farm renderer (furrows + fence).
+  // A transparent pick volume only, so clicks still work if the farm soil mesh is not yet in.
   for (const f of expansionFarms()) {
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(f.w, 0.1, f.d), new THREE.MeshStandardMaterial({ color: 0x3a7a3a }));
-    pad.position.set(f.x, 0.05, f.z); pad.userData.spot = `cf:${f.n}`; root.add(pad); pick.push(pad);
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(f.w, 0.08, f.d), pickMat);
+    pad.position.set(f.x, 0.04, f.z); pad.userData.spot = `cf:${f.n}`; root.add(pad); pick.push(pad);
   }
   for (const o of orchardPlots()) {
     const g = buildOrchardSite(o.w, o.d); g.position.set(o.x, 0, o.z); root.add(g); mark(g, orchardId(o.n));
@@ -63,6 +93,8 @@ export function createEstate(w: World) {
   const dynamic = new THREE.Group(); root.add(dynamic);
   const apply = (sum: Summary) => {
     dynamic.clear();
+    const built = new Set((sum.sites ?? []).filter((s) => s.build).map((s) => s.lotId));
+    root.traverse((o) => { if (o.name.startsWith('lot-empty:')) o.visible = !built.has(`lot:estate:${o.name.slice(10)}`); });
     for (const s of sum.sites ?? []) {
       if (!s.build) continue;
       const loc = estateLots().find((l) => `lot:estate:${l.n}` === s.lotId) ?? goldwoodHomes().find((h) => `b:mansion:${h.n}` === s.lotId);

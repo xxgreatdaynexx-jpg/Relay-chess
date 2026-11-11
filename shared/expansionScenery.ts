@@ -6,7 +6,7 @@
  * (never on roads, lots, farms, runways or buildings).
  */
 import { AIRPORT, AIRPORT_ROADS, RACETRACK, RACETRACK_ROADS, RUNWAY, RUNWAY2 } from './venues.js';
-import { BIG_GROUND_X0, BIG_GROUND_X1, BIG_GROUND_Z0, BIG_ROADS, BIG_ROAD_W } from './bigFarms.js';
+import { BIG_FARM_AREA, BIG_GROUND_X0, BIG_GROUND_X1, BIG_GROUND_Z0, BIG_ROADS, BIG_ROAD_W, bigFarms } from './bigFarms.js';
 import { MAP_VIEW } from './farm.js';
 import {
   EAST_X1, GOLDWOOD, PLASTICS_PLANT, RIG_DOCK,
@@ -126,6 +126,17 @@ export function expansionPlotFootprints(): Array<OBB & { id: string }> {
   ];
   for (const [id, s] of Object.entries(MINE_SITES)) {
     plots.push({ x: s.x, z: s.z, w: MINE_APRON, d: MINE_APRON, rot: 0, id: `mine:${id}` });
+    // haul tracks: a narrow keep-out along each mine's dirt road so trucks are never blocked
+    const pts: Array<[number, number]> = [[s.x, s.z], ...s.track];
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i]; const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+      plots.push({ x: (a[0] + b[0]) / 2, z: (a[1] + b[1]) / 2, w: L + 4, d: 8, rot: -Math.atan2(b[1] - a[1], b[0] - a[0]), id: `haul:${id}#${i}` });
+    }
+  }
+  for (const f of bigFarms()) {
+    // the planted field and the whole lot (yard with barn, house, silo, pad and driveway)
+    plots.push({ x: f.x, z: f.z, w: f.w, d: f.d, rot: 0, id: `cf:${f.n}` });
+    const lot = f.lot; plots.push({ x: (lot.x0 + lot.x1) / 2, z: (lot.z0 + lot.z1) / 2, w: lot.x1 - lot.x0, d: lot.z1 - lot.z0, rot: 0, id: `cf:${f.n}:lot` });
   }
   return plots;
 }
@@ -258,7 +269,65 @@ export function expansionScenery(seed = 1): ScenerySpot[] {
     for (const [ax, az, bx, bz] of runs) { const L = Math.hypot(bx - ax, bz - az); for (let t = 0.4; t <= L; t += step) { const lx = ax + (bx - ax) * t / L, lz = az + (bz - az) * t / L; const [x, z] = toW(lx, lz);
       if (anyRoadClearance(x, z) > 0.9 && riverClearance(x, z) > 1) spots.push({ kind: 'hedge', x, z, s: 1, rot: lot.rot + (Math.abs(bz - az) > Math.abs(bx - ax) ? Math.PI / 2 : 0) }); } }
   }
-  // Goldwood perimeter: a timber estate fence on an outer ellipse, with gaps for the two gates
+  // Big Farms fill: the district between the city and the river used to be bare snow. Windbreaks along each
+  // field edge, hedgerows and fence runs, roadside trees, and a belt of woods toward the river and around the quarry
+  // (barns, houses and silos already sit in each yard). Nothing lands on a plot, a road, the river or a haul track.
+  {
+    const A = BIG_FARM_AREA;
+    const inBig = (x: number, z: number) => x >= A.x0 - 18 && x <= A.x1 + 28 && z >= A.z0 - 8 && z <= A.z1 + 8;
+    const edgeTree = (x: number, z: number, sc = 0.95) => { if (!clearOf(x, z, 1.05 * sc, 1.25) || !inBig(x, z)) return; const conifer = vnoise(x / 40, z / 40) > 0.55; spots.push({ kind: conifer ? 'pine' : 'deciduous', x, z, s: sc, rot: hash2(Math.round(x * 11), Math.round(z * 19)) * 6.28 }); };
+    const hedgeAt = (x: number, z: number, rot: number) => { if (clearOf(x, z, 0.55, 1.2) && inBig(x, z)) spots.push({ kind: 'hedge', x, z, s: 1, rot }); };
+    const fenceAt = (x: number, z: number, rot: number) => { if (clearOf(x, z, 0.35, 1.1) && inBig(x, z)) spots.push({ kind: 'fence', x, z, s: 1, rot }); };
+    // windbreaks: a row of trees + a hedge just outside each field's long edges (2–3 units off the soil)
+    for (const f of bigFarms()) {
+      const hw = f.w / 2 + 3.2, hd = f.d / 2 + 3.2;
+      for (const [ax, az, bx, bz, rot] of [
+        [f.x - hw, f.z - hd, f.x + hw, f.z - hd, 0],
+        [f.x - hw, f.z + hd, f.x + hw, f.z + hd, 0],
+        [f.x - hw, f.z - hd, f.x - hw, f.z + hd, Math.PI / 2],
+        [f.x + hw, f.z - hd, f.x + hw, f.z + hd, Math.PI / 2],
+      ] as Array<[number, number, number, number, number]>) {
+        const L = Math.hypot(bx - ax, bz - az) || 1, ux = (bx - ax) / L, uz = (bz - az) / L;
+        for (let t = 1.6; t < L - 1.4; t += 3.1) { const x = ax + ux * t, z = az + uz * t; hedgeAt(x, z, rot); }
+        for (let t = 2.4; t < L - 2; t += 7.2) { const j = (hash2(Math.round((ax + ux * t) * 3), Math.round((az + uz * t) * 5)) - 0.5) * 1.4; edgeTree(ax + ux * t + uz * j * 0.4, az + uz * t - ux * j * 0.4, 0.85 + hash2(Math.round(t), f.n) * 0.4); }
+      }
+      // a short fence run along the yard side of the lot (not across the driveway)
+      const lot = f.lot; const midX = (lot.x0 + lot.x1) / 2;
+      for (let x = lot.x0 + 1.2; x < lot.x1 - 1.2; x += 2.2) {
+        if (Math.abs(x - midX) < 5) continue; // driveway gap
+        fenceAt(x, lot.z0 + 0.8, 0); fenceAt(x, lot.z1 - 0.8, 0);
+      }
+    }
+    // roadside trees along Big Farm roads (both sides, every ~11 units, skipping junctions)
+    for (const [a, b] of BIG_ROADS) {
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L, nx = -uz, nz = ux;
+      for (let t = 6; t < L - 6; t += 11) {
+        if (hash2(Math.round(a[0] + t), Math.round(a[1] + t)) < 0.22) continue;
+        for (const s of [1, -1] as const) {
+          const x = a[0] + ux * t + nx * s * (BIG_ROAD_W / 2 + 3.2), z = a[1] + uz * t + nz * s * (BIG_ROAD_W / 2 + 3.2);
+          edgeTree(x, z, 0.9 + hash2(Math.round(x), Math.round(z)) * 0.35);
+          if (hash2(Math.round(z * 3), Math.round(x * 7)) < 0.35) hedgeAt(x + nx * s * 1.6, z + nz * s * 1.6, Math.atan2(uz, ux));
+        }
+      }
+    }
+    // woodland belt: denser toward the river (east of BIG_EAST-ish) and around the quarry, plus meadow scatter in the gaps
+    for (let gx = A.x0 - 14; gx < A.x1 + 26; gx += 4.4) for (let gz = A.z0 - 4; gz < A.z1 + 6; gz += 4.4) {
+      const x = gx + (hash2(Math.round(gx * 9), Math.round(gz * 4)) - 0.5) * 3.6, z = gz + (hash2(Math.round(gz * 6), Math.round(gx * 13)) - 0.5) * 3.6;
+      if (!inBig(x, z)) continue;
+      const towardRiver = x > 330 ? 0.22 : 0;
+      const n = forestNoise(x + 80, z - 40) + towardRiver;
+      const nearQ = Math.hypot(x - 328, z + 158);
+      // a ring of trees around the quarry pad (outside the apron), and a modest stand in leftover yards
+      const want = (n > 0.52 && x > 300) || (nearQ > 22 && nearQ < 52 && n > 0.35) || (n > 0.62);
+      // leftover corridors between lots: a generous scatter so the snow is never a bare sheet
+      if (!want && hash2(Math.round(x * 17), Math.round(z * 23)) > 0.22) continue;
+      const sc = 0.8 + hash2(Math.round(x * 5), Math.round(z * 11)) * 0.55;
+      if (clearOf(x, z, 1.25 * sc, 2.0)) { const conifer = vnoise(x / 36 + 4, z / 36) > 0.5; spots.push({ kind: conifer ? 'pine' : 'deciduous', x, z, s: sc, rot: hash2(Math.round(z), Math.round(x)) * 6.28 });
+        if (hash2(Math.round(x * 29), Math.round(z * 31)) < 0.18) { const bx = x + 1.8, bz = z - 1.2; if (clearOf(bx, bz, 0.6, 1.6)) spots.push({ kind: 'bush', x: bx, z: bz, s: 0.55 + rnd() * 0.4, rot: rnd() * 6 }); } }
+    }
+  }
+
+    // Goldwood perimeter: a timber estate fence on an outer ellipse, with gaps for the two gates
   { const E = { x: GOLDWOOD_C.x, z: GOLDWOOD_C.z, rx: GOLDWOOD_C.rx + 50, rz: GOLDWOOD_C.rz + 47 }; const N = 260;
     for (let i = 0; i < N; i++) { const t = (i / N) * Math.PI * 2; const x = E.x + Math.cos(t) * E.rx, z = Math.max(LAND_FILL.z0 + 3, E.z + Math.sin(t) * E.rz);
       const t2 = ((i + 1) / N) * Math.PI * 2; const ang = Math.atan2(Math.sin(t2) * E.rz - Math.sin(t) * E.rz, Math.cos(t2) * E.rx - Math.cos(t) * E.rx);
