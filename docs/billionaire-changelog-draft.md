@@ -199,3 +199,12 @@ A buyable orchard district on the expanded east map. Plant fruit trees once (app
 Title: Zoom out far enough to see the whole 2x map
 
 - The city camera's max zoom, far plane and fog were still sized for the original plate, so a fully zoomed-out view could not show East Estates, Goldwood and the shoreline together. Zoom, fog and the far plane now scale with the expanded map, and you can tilt a little more overhead for an overview.
+
+## Expanded map fill, snow, scenery and beach
+
+Title: A continuous snowy 2x map, with trees and a full beach
+
+- The new land is one continuous ground plane with the same seasonal snow the city uses, so there are no sky gaps between the city, Goldwood, East Estates, Orchard Ridge, the farms or the airport.
+- Trees, bushes, rocks, lamps, hedges, fences and a few ponds fill the empty ground, kept off roads, lots, farms, runways and buildings.
+- The sand beach now runs the full southern shoreline of the expanded map, and the water edge stays continuous.
+- Goldwood driveways stop in front of the mansions, the mid street no longer cuts the north vineyard, and the East Estates vineyard sits off the x=400 spine.

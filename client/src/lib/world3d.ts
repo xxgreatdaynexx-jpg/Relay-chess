@@ -15,7 +15,7 @@ import { asLabel, cityLabel, dimColor, drawLabel, fitLabel, LABEL_LAYER, LABEL_T
 import { detectWorldTier, labelScale, TIER_PIXEL_RATIO } from './worldTier';
 import { skyNow, parseTod, mix as mixHex } from '../../../shared/daynight';
 import { fieldPlotId, allFieldPlots } from '../../../shared/fieldFarms';
-import { bigFarms, BIG_ROADS, BIG_ROAD_W, BIG_FARM_AREA, BIG_GROUND_X0, BIG_GROUND_X1, BIG_GROUND_Z0 } from '../../../shared/bigFarms';
+import { bigFarms, BIG_ROADS, BIG_ROAD_W, BIG_GROUND_X0, BIG_GROUND_X1, BIG_GROUND_Z0 } from '../../../shared/bigFarms';
 
 /** Every farm plot drawn by the farm renderer: Farm-district plots (f:<n>) and the countryside field farms (cf:<n>). */
 import { orchardId, orchardPlots } from '../../../shared/orchard';
@@ -23,6 +23,10 @@ export const allFarmPlots = () => [...farmPlots().map((p) => ({ ...p, id: plotId
 import { FARM_MACHINES, buildMachine } from './farmMachines';
 import { farmPlots, FARM_X0, FARM_X1, FARM_Z0, FARM_Z1, FARM_LANES, FARM_LANE_W, BARNS, SILOS, plotId, tileXZ, cropById, isOrchardCrop, TILE, clampMapTarget, panInset, MAP_CAM_MIN, MAP_CAM_MAX, MAP_CAM_FAR } from '../../../shared/farm';
 import { buildVenues } from './worldVenues';
+import { addExpansionScenery } from './worldExpansionDecor';
+import { BEACH_X0, BEACH_X1, expansionLandBoxes } from '../../../shared/expansionScenery';
+import { EXPANSION_ROAD_W, EXPANSION_ROADS, RIG_DOCK } from '../../../shared/mapExpansion';
+import { ORCHARD_ROADS } from '../../../shared/orchard';
 import { buildAirportLandmark } from './estateModels';
 import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN, MINE_SITES, MINE_APRON, OUTSKIRTS } from './worldLayout';
 import { riverOutline, islandOutline, riverDecor, edgeDist, ISLAND } from '../../../shared/riverLake';
@@ -222,13 +226,14 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const oceanMats: THREE.ShaderMaterial[] = [];
   { const lowT = tier === 'low'; const oc = buildOcean({ x0: OCEAN.x0, x1: OCEAN.x1, z0: OCEAN.shoreZ - 6, z1: OCEAN.z1, coast: coastZ, segX: lowT ? 90 : 160, segZ: lowT ? 36 : 64 }, [COAST_WAVE[0], COAST_WAVE[1], COAST_WAVE[2], COAST_WAVE[3], OCEAN.shoreZ]);
     oc.mesh.position.y = -0.35; scene.add(oc.mesh); disposables.push(oc.geo, oc.mat); oceanMats.push(oc.mat);
-    const beach = buildBeach(OUTSKIRTS.x0 - 40, Math.max(OUTSKIRTS.x1, BIG_FARM_AREA.x1) + 40, OCEAN.beachZ, coastZ); beach.userData.noShadow = true; disposables.push(beach.geometry, beach.material as THREE.Material); scene.add(beach);
+    const beach = buildBeach(BEACH_X0, BEACH_X1, OCEAN.beachZ, coastZ, 280); beach.userData.noShadow = true; disposables.push(beach.geometry, beach.material as THREE.Material); scene.add(beach);
     scene.add(buildBreakwater(BREAKWATER));
     // dune grass tufts + a few palms/umbrellas along the dry sand (instanced)
-    const n = lowT ? 50 : 120; const tuft = new THREE.InstancedMesh(geo(new THREE.ConeGeometry(0.5, 1.2, 5)), mat({ color: 0x6b8f3a, roughness: 1 }), n); const m4 = new THREE.Matrix4();
-    for (let i = 0; i < n; i++) { const x = OUTSKIRTS.x0 - 30 + ((i * 97.3) % (OUTSKIRTS.x1 - OUTSKIRTS.x0 + 60)); if (Math.abs(x - 33) < 42) { m4.makeScale(0, 0, 0); tuft.setMatrixAt(i, m4); continue; } m4.makeScale(1, 0.6 + ((i * 7) % 5) * 0.15, 1); m4.setPosition(x, 0.5, OCEAN.beachZ + 1.5 + ((i * 13) % 4)); tuft.setMatrixAt(i, m4); }
+    const n = lowT ? 90 : 220; const tuft = new THREE.InstancedMesh(geo(new THREE.ConeGeometry(0.5, 1.2, 5)), mat({ color: XM ? 0xc8d0c0 : 0x6b8f3a, roughness: 1 }), n); const m4 = new THREE.Matrix4();
+    const span = BEACH_X1 - BEACH_X0 - 20;
+    for (let i = 0; i < n; i++) { const x = BEACH_X0 + 10 + ((i * 97.3) % span); if (Math.abs(x - 33) < 42 || Math.abs(x - RIG_DOCK.x) < 26) { m4.makeScale(0, 0, 0); tuft.setMatrixAt(i, m4); continue; } m4.makeScale(1, 0.6 + ((i * 7) % 5) * 0.15, 1); m4.setPosition(x, 0.5, OCEAN.beachZ + 1.5 + ((i * 13) % 4)); tuft.setMatrixAt(i, m4); }
     scene.add(tuft);
-    const umb = [[-120, 0xef4444], [-96, 0x3b82f6], [-60, 0xf59e0b], [110, 0x22c55e], [140, 0xec4899], [170, 0x3b82f6]] as const;
+    const umb = [[-120, 0xef4444], [-96, 0x3b82f6], [-60, 0xf59e0b], [110, 0x22c55e], [140, 0xec4899], [170, 0x3b82f6], [420, 0xef4444], [540, 0x3b82f6], [660, 0xf59e0b]] as const;
     for (const [x, c] of umb) { const z = (OCEAN.beachZ + coastZ(x)) / 2 + 1; const pole = new THREE.Mesh(geo(new THREE.CylinderGeometry(0.06, 0.06, 2.6, 5)), mat({ color: 0xe5e7eb })); pole.position.set(x, 1.3, z); const top = new THREE.Mesh(geo(new THREE.ConeGeometry(1.6, 0.6, 8)), mat({ color: c, roughness: 0.8 })); top.position.set(x, 2.6, z); const towel = new THREE.Mesh(geo(new THREE.BoxGeometry(1, 0.03, 1.8)), mat({ color: c ^ 0x333333 })); towel.position.set(x + 1.4, 0.07, z); scene.add(pole, top, towel); }
   }
   // The big lake: the city's waterfront (worldLayout.shoreZ) is its north shore; the south shore, the rounded ends and
@@ -760,13 +765,14 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     // Big Farms sit east of the outskirts and, for the northern plots, north of OUTSKIRTS.z0 — extend those strips (and a
     // fringe under the east-ring connector) so the lots, barns and new north road sit on the same ground, not in the void.
     const gz0 = Math.min(z0, BIG_GROUND_Z0);
-    const strips: Array<[number, number, number, number]> = [[x0, x1, z0, -P], [x0, x1, P, z1], [x0, -P, -P, P], [P, x1, -P, P], [x1, BIG_GROUND_X1, gz0, z1], [BIG_GROUND_X0, x1, gz0, z0]];
+    const strips: Array<[number, number, number, number]> = [[x0, x1, z0, -P], [x0, x1, P, z1], [x0, -P, -P, P], [P, x1, -P, P], [x1, BIG_GROUND_X1, gz0, z1], [BIG_GROUND_X0, x1, gz0, z0],
+      ...expansionLandBoxes().map((b) => [b.x0, b.x1, b.z0, b.z1] as [number, number, number, number])];
     const grass = mat({ color: 0x3f9a45, roughness: 1, emissive: 0x0f3a14, emissiveIntensity: 0.6 }); const dirtSide = mat({ color: 0x4a3322 });
     for (const [a0, b0, e, f] of strips) { const m = new THREE.Mesh(geo(new THREE.BoxGeometry(b0 - a0, 3, f - e)), [dirtSide, dirtSide, XM ? keep(xmasGround(b0 - a0, f - e, tier === 'low', a0, f)) : grass, dirtSide, dirtSide, dirtSide]); m.position.set((a0 + b0) / 2, -1.53, (e + f) / 2); scene.add(m); }
     // rural roads: city asphalt at the city road height, centre dashes
     // Rural + venue access roads: one asphalt (city roadMat, top flush with city roads), square-cut ends that extend
     // half a width so corners/T's close; an end on the speedway's edge is not extended (no road over the track).
-    const allRoads: Array<[[number, number], [number, number], number]> = [...RURAL_ROADS.map(([a, b]) => [a, b, RURAL_ROAD_W] as [[number, number], [number, number], number]), ...BIG_ROADS.map(([a, b]) => [a, b, BIG_ROAD_W] as [[number, number], [number, number], number]), ...AIRPORT_ROADS, ...RACETRACK_ROADS];
+    const allRoads: Array<[[number, number], [number, number], number]> = [...RURAL_ROADS.map(([a, b]) => [a, b, RURAL_ROAD_W] as [[number, number], [number, number], number]), ...BIG_ROADS.map(([a, b]) => [a, b, BIG_ROAD_W] as [[number, number], [number, number], number]), ...AIRPORT_ROADS, ...RACETRACK_ROADS, ...EXPANSION_ROADS.map(([a, b]) => [a, b, EXPANSION_ROAD_W] as [[number, number], [number, number], number]), ...ORCHARD_ROADS.map(([a, b]) => [a, b, EXPANSION_ROAD_W] as [[number, number], [number, number], number])];
     const onTrackEdge = (p: [number, number]) => Math.abs(Math.hypot(Math.max(0, Math.abs(p[0] - TRACK.cx) - TRACK.L), p[1] - TRACK.cz) - TRACK.R) < TRACK.W / 2 + 0.5;
     inst(unitBox, roadMat, allRoads.length, (i) => { const [a, b, w] = allRoads[i]; const L = Math.hypot(b[0] - a[0], b[1] - a[1]); const ea = onTrackEdge(a) ? 0 : w / 2, eb = onTrackEdge(b) ? 0 : w / 2;
       const ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L; d.position.set((a[0] + b[0]) / 2 + (ux * (eb - ea)) / 2, ROAD_Y - 0.01, (a[1] + b[1]) / 2 + (uz * (eb - ea)) / 2); d.rotation.y = Math.atan2(b[0] - a[0], b[1] - a[1]); d.scale.set(w, 0.02, L + ea + eb); })!.renderOrder = 1;
@@ -838,6 +844,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     // road lamps: the city's streetlight pole + glow
     inst(pole.geometry, pole.material, O.lamps.length, (i) => d.position.set(O.lamps[i][0], 1.2, O.lamps[i][1]));
     inst(geo(new THREE.SphereGeometry(0.22, 8, 6)), mat({ color: 0xfff0c0, emissive: 0xffd080, emissiveIntensity: 1 }), O.lamps.length, (i) => d.position.set(O.lamps[i][0], 2.45, O.lamps[i][1]));
+    addExpansionScenery(scene, mat, geo, tier === 'low');
   }
   // Farm district (shared/farm.ts): a grass apron east of the plate, dirt lanes, fenced fields (farmland properties),
   // barns and silos. Crops on owned plots come from /api/farm (setFarm). Toned-down night palette, a little warm glow.

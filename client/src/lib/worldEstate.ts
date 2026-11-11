@@ -1,14 +1,12 @@
 /**
- * Places Billionaire Update construction on the city map: expansion ground, Goldwood, wineries,
+ * Places Billionaire Update construction on the city map: Goldwood, wineries, orchards,
  * plastics plant, the shoreline dock, private sites, hyper farms and launched rigs.
+ * Expansion ground, snow, beach and roads live in world3d so they match the city season.
  */
 import * as THREE from 'three';
 import type { World } from './world3d';
-import {
-  EAST_X0, EAST_X1, EAST_Z0, EAST_Z1, EXPANSION_ROADS, EXPANSION_ROAD_W, GOLDWOOD, PLASTICS_PLANT, RIG_DOCK,
-  estateLots, expansionFarms, goldwoodHomes, wineryPlots,
-} from '../../../shared/mapExpansion';
-import { orchardId, orchardPlots, ORCHARD_ROADS } from '../../../shared/orchard';
+import { PLASTICS_PLANT, RIG_DOCK, estateLots, expansionFarms, goldwoodHomes, wineryPlots } from '../../../shared/mapExpansion';
+import { orchardId, orchardPlots } from '../../../shared/orchard';
 import { buildEstateModel, buildGoldwoodMansion, buildHyperFarm, buildOrchardSite, buildPlasticsPlant, buildRig, buildRigDock, buildWinery } from './estateModels';
 import type { EstateBuildId } from '../../../shared/estateProjects';
 
@@ -20,21 +18,8 @@ type Summary = {
 
 export function createEstate(w: World) {
   const root = new THREE.Group(); root.name = 'estate-layer'; w.scene.add(root);
-  const grass = new THREE.MeshStandardMaterial({ color: 0x3f8a4a, roughness: 1 });
-  const goldG = new THREE.MeshStandardMaterial({ color: 0x4a8a4a, roughness: 1 });
-  const roadM = new THREE.MeshStandardMaterial({ color: 0x3a3d47, roughness: 0.95 });
-  const addBox = (mat: THREE.Material, w0: number, d: number, x: number, z: number, y = -0.02) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w0, 0.2, d), mat); m.position.set(x, y, z); root.add(m);
-  };
-  addBox(grass, EAST_X1 - EAST_X0, EAST_Z1 - EAST_Z0, (EAST_X0 + EAST_X1) / 2, (EAST_Z0 + EAST_Z1) / 2);
-  addBox(goldG, GOLDWOOD.x1 - GOLDWOOD.x0, GOLDWOOD.z1 - GOLDWOOD.z0, (GOLDWOOD.x0 + GOLDWOOD.x1) / 2, (GOLDWOOD.z0 + GOLDWOOD.z1) / 2);
-  for (const [a, b] of [...EXPANSION_ROADS, ...ORCHARD_ROADS]) {
-    const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz);
-    const m = new THREE.Mesh(new THREE.BoxGeometry(L, 0.12, EXPANSION_ROAD_W), roadM);
-    m.position.set((a[0] + b[0]) / 2, 0.06, (a[1] + b[1]) / 2);
-    m.rotation.y = -Math.atan2(dz, dx);
-    root.add(m);
-  }
+  // Ground, snow, beach and expansion/orchard roads are drawn with the city countryside in world3d
+  // (same seasonal texture, no sky gaps, no second unsnowed road mesh).
   const pick: THREE.Object3D[] = [];
   const mark = (o: THREE.Object3D, spot: string) => {
     o.traverse((c) => { if ((c as THREE.Mesh).isMesh) { c.userData.spot = spot; pick.push(c); } });

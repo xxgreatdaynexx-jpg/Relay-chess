@@ -19,7 +19,10 @@ export const EXPANSION_BOUNDS = {
 
 export const EXPANSION_ROAD_W = 5;
 type P = [number, number];
-/** Spine roads that connect the new land to the Big Farms north/east roads. */
+/** Mid east-west street through Goldwood, and the curb in front of the north-row mansions (houses sit at z = -410). */
+export const GOLDWOOD_MID_Z = (GOLDWOOD.z0 + GOLDWOOD.z1) / 2;
+export const GOLDWOOD_NORTH_CURB_Z = -400;
+/** Spine roads that connect the new land to the Big Farms north/east roads. Driveways stop at the mansion curb, and the mid street ends short of the Goldwood vineyards. */
 export const EXPANSION_ROADS: Array<[P, P]> = [
   // east connector from the Big Farms east road (~346) onto the new spine
   [[346, -40], [EAST_X0, -40]],
@@ -32,11 +35,12 @@ export const EXPANSION_ROADS: Array<[P, P]> = [
   [[400, -40], [400, -300]],
   // north to Goldwood from the Big Farms north road (z = -304)
   [[80, -304], [80, GOLDWOOD.z1]],
-  [[80, GOLDWOOD.z1], [80, (GOLDWOOD.z0 + GOLDWOOD.z1) / 2]],
-  [[GOLDWOOD.x0 + 10, (GOLDWOOD.z0 + GOLDWOOD.z1) / 2], [GOLDWOOD.x1 - 10, (GOLDWOOD.z0 + GOLDWOOD.z1) / 2]],
-  [[80, (GOLDWOOD.z0 + GOLDWOOD.z1) / 2], [80, GOLDWOOD.z0 + 16]],
-  [[-20, (GOLDWOOD.z0 + GOLDWOOD.z1) / 2], [-20, GOLDWOOD.z0 + 16]],
-  [[140, (GOLDWOOD.z0 + GOLDWOOD.z1) / 2], [140, GOLDWOOD.z0 + 16]],
+  [[80, GOLDWOOD.z1], [80, GOLDWOOD_MID_Z]],
+  // stop short of Goldwood Vineyard North (x = 200) so the street does not cut the vines
+  [[GOLDWOOD.x0 + 10, GOLDWOOD_MID_Z], [GOLDWOOD.x1 - 28, GOLDWOOD_MID_Z]],
+  [[80, GOLDWOOD_MID_Z], [80, GOLDWOOD_NORTH_CURB_Z]],
+  [[-20, GOLDWOOD_MID_Z], [-20, GOLDWOOD_NORTH_CURB_Z]],
+  [[140, GOLDWOOD_MID_Z], [140, GOLDWOOD_NORTH_CURB_Z]],
 ];
 
 export interface EstateLot extends OBB {
@@ -141,7 +145,7 @@ export const wineryPlots = (): WineryPlot[] => {
     [10, 8, 200, -400, 'Goldwood Vineyard North', 280_000],
     [10, 8, 250, -400, 'Goldwood Vineyard East', 280_000],
     [12, 10, 200, -360, 'Goldwood Estate Winery', 420_000],
-    [8, 8, 400, 80, 'East Estates Vineyard', 220_000],
+    [8, 8, 350, 80, 'East Estates Vineyard', 220_000],
     [10, 8, 700, -50, 'East Estates Press', 260_000],
   ];
   return specs.map(([cols, rows, x, z, label, price], i) => ({
