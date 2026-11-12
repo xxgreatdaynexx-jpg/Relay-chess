@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { Estate, EstateError } from '../server/estateProjects.ts';
-import { setRealEstateForTest, type RealEstate } from '../server/realEstate.ts';
-import { DIGITAL_DAILY_BASE, GPU_RIG, SERVER_RACK, digitalPayout, throttle } from '../shared/estateProjects.ts';
+import { Estate, EstateError } from '../server/estateProjects';
+import { setRealEstateForTest, type RealEstate } from '../server/realEstate';
+import { DIGITAL_DAILY_BASE, GPU_RIG, SERVER_RACK, digitalPayout, throttle } from '../shared/estateProjects';
 
 function fakeRE(map: Record<string, string>): RealEstate {
   return {

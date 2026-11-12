@@ -14,7 +14,7 @@ import { propertyById } from '../shared/realEstate.js';
 import { getRealEstate } from './realEstate.js';
 import {
   ESTATE_BUILDS, ESTATE_BUILD_ORDER, GEAR_FOR, GRID_POWER_DAY, GRID_SELL_FRACTION, PLANT_FUEL_DAY, PLANT_MW,
-  SERVER_RACK, GPU_RIG, DIGITAL_DAILY_BASE, buildStageIndex, canDemolish, digitalPayout, emptySiteDone,
+  PLANT_COAL_PER_HOUR, SERVER_RACK, GPU_RIG, DIGITAL_DAILY_BASE, buildStageIndex, canDemolish, digitalPayout, emptySiteDone,
   estateProjectValue, estateStages, partKey, stageFull, stagePct, stageValue, throttle, DEMOLISH_RULES,
   type EstateBuildId, type EstateSiteKind, type EstateSiteState,
 } from '../shared/estateProjects.js';
@@ -22,7 +22,8 @@ import { estateLotOf, RIG_BERTHS, wineryOf } from '../shared/mapExpansion.js';
 import { HYPER_STAGES, HYPER_FARM_TOTAL } from '../shared/hyperFarm.js';
 import { RIG_STAGES, RIG_LAUNCH_FEE, RIG_CRUDE_PER_HOUR, RIG_MAX_PER_PLAYER, RIG_HOLD_CAP, rigLabel, type RigState } from '../shared/offshoreRig.js';
 import { FORT_IMPORT, PLASTICS_RECIPES, plantRecipe, type FortFeed } from '../shared/plasticsPlant.js';
-import { GOODS } from '../shared/mines.js';
+import { GOODS, type ItemType } from '../shared/mines.js';
+import { getMines } from './mines.js';
 import { isHyperCrop } from '../shared/farm.js';
 
 export class EstateError extends Error {}
@@ -46,10 +47,14 @@ type PlayerEco = {
   digitalDay: string;
   digitalPaid: number;
   plantFuelUntil: number;
+  /** True when the last tick could not collect the utility bill: grid power is off until paid. */
+  gridOff: boolean;
+  /** Last unpaid utility bill (chips), 0 when the grid is live. */
+  gridBill: number;
   hyper: Record<string, { stage: number; done: Array<Record<string, number>> }>;
 };
 
-const emptyEco = (): PlayerEco => ({ gridMw: 0, digitalDay: '', digitalPaid: 0, plantFuelUntil: 0, hyper: {} });
+const emptyEco = (): PlayerEco => ({ gridMw: 0, digitalDay: '', digitalPaid: 0, plantFuelUntil: 0, gridOff: false, gridBill: 0, hyper: {} });
 const dayKey = (ms: number) => new Date(ms).toISOString().slice(0, 10); // UTC day, same as other sinks
 
 const isBuildId = (v: unknown): v is EstateBuildId => typeof v === 'string' && v in ESTATE_BUILDS;
@@ -127,6 +132,29 @@ export class Estate {
     catch (e) { if (!/Already/.test((e as Error).message)) throw e; }
   }
 
+  /** City warehouse (Mines pack): take goods if the player has them. All-or-nothing, no change on failure. */
+  private takeStacks(name: string, items: Array<{ type: ItemType; id: string; qty: number }>): boolean {
+    if (items.length === 0 || items.some((it) => !Number.isInteger(it.qty) || it.qty < 1)) return false;
+    const mines = getMines();
+    if (!mines) return false;
+    try {
+      for (const it of items) {
+        if (mines.stackQty(name, it.type, it.id) < it.qty) return false;
+      }
+      return mines.adjustStacks(name, items.map((it) => ({ type: it.type, id: it.id, delta: -it.qty })));
+    } catch { return false; }
+  }
+  private giveStacks(name: string, items: Array<{ type: ItemType; id: string; qty: number }>): boolean {
+    if (items.length === 0 || items.some((it) => !Number.isInteger(it.qty) || it.qty < 1)) return false;
+    const mines = getMines();
+    if (!mines) return false;
+    try { return mines.adjustStacks(name, items.map((it) => ({ type: it.type, id: it.id, delta: it.qty }))); }
+    catch { return false; }
+  }
+  private warehouseQty(name: string, type: ItemType, id: string): number {
+    try { return getMines()?.stackQty(name, type, id) ?? 0; } catch { return 0; }
+  }
+
   /** Require a real-estate deed when the property service is up. Skipped only if it is not mounted (unit tests). */
   private async assertOwns(name: string, lotId: string) {
     const re = getRealEstate();
@@ -196,10 +224,13 @@ export class Estate {
     if (left <= 0) throw new EstateError('That part of this stage is already full.');
     const qty = Math.min(q, left);
     if (g) {
-      // Goods are a v1 chip-equivalent buy at the site (house price, indexed) so a missing warehouse hook cannot soft-lock the build.
-      // If the player has the goods, a later hook can waive this; the listed materials still define the stage.
-      const price = px(g.price * qty);
-      this.charge(name, price, `estate_mat:${site.id}:${i}:${partS}:${row[partS] ?? 0}:${qty}`, `${plan.icon} ${plan.name}: ${qty} ${g.name}`);
+      // Prefer warehouse goods. The chip fallback is the design shown on the panel ("Add 10,000 chips") so a missing
+      // stock of materials cannot soft-lock the build.
+      const took = this.takeStacks(name, [{ type: g.type, id: g.id, qty }]);
+      if (!took) {
+        const price = px(g.price * qty);
+        this.charge(name, price, `estate_mat:${site.id}:${i}:${partS}:${row[partS] ?? 0}:${qty}`, `${plan.icon} ${plan.name}: ${qty} ${g.name}`);
+      }
       row[partS] = (row[partS] ?? 0) + qty;
     } else {
       const price = px(qty);
@@ -220,6 +251,15 @@ export class Estate {
     const q = Number(qtyRaw);
     if (!Number.isInteger(q) || q < 1) throw new EstateError('Pick how many to install.');
     if (site.gear + q > def.max) throw new EstateError(`You can install at most ${def.max}.`);
+    const need = (def.install ?? []).map(([id, n]) => {
+      const item = GOODS[id];
+      if (!item) throw new EstateError(`Unknown install good ${id}.`);
+      return { type: item.type, id, qty: n * q, name: item.name };
+    });
+    if (need.length && !this.takeStacks(name, need)) {
+      const list = need.map((it) => `${it.qty} ${it.name}`).join(' and ');
+      throw new EstateError(`You need ${list} in your warehouse to install that.`);
+    }
     const price = px(def.price * q);
     this.charge(name, price, `estate_gear:${site.id}:${site.gear}:${q}`, `Installed ${q} × ${def.name}`);
     site.gear += q;
@@ -274,8 +314,12 @@ export class Estate {
       const left = need - (row[`good:${id}`] ?? 0);
       if (left <= 0) throw new EstateError('That part is already full.');
       const qty = Math.min(q, left);
-      const price = px((GOODS[id]?.price ?? 0) * qty);
-      this.charge(name, price, `hyper_mat:${plotId}:${h.stage}:${id}:${row[`good:${id}`] ?? 0}:${qty}`, `Hyper farm: ${qty} ${GOODS[id]?.name ?? id}`);
+      const item = GOODS[id];
+      const took = item ? this.takeStacks(name, [{ type: item.type, id, qty }]) : false;
+      if (!took) {
+        const price = px((item?.price ?? 0) * qty);
+        this.charge(name, price, `hyper_mat:${plotId}:${h.stage}:${id}:${row[`good:${id}`] ?? 0}:${qty}`, `Hyper farm: ${qty} ${item?.name ?? id}`);
+      }
       row[`good:${id}`] = (row[`good:${id}`] ?? 0) + qty;
       if (st.goods.every(([gid, n]) => (row[`good:${gid}`] ?? 0) >= n) && (row.chips ?? 0) >= st.chips) h.stage += 1;
     } else if (partS === 'chips') {
@@ -312,7 +356,11 @@ export class Estate {
       const left = need - (row[`good:${gid}`] ?? 0);
       if (left <= 0) throw new EstateError('That part is already full.');
       const qty = Math.min(q, left);
-      this.charge(name, px((GOODS[gid]?.price ?? 0) * qty), `rig_mat:${r.id}:${r.stage}:${gid}:${row[`good:${gid}`] ?? 0}:${qty}`, `Rig: ${qty} ${GOODS[gid]?.name ?? gid}`);
+      const item = GOODS[gid];
+      const took = item ? this.takeStacks(name, [{ type: item.type, id: gid, qty }]) : false;
+      if (!took) {
+        this.charge(name, px((item?.price ?? 0) * qty), `rig_mat:${r.id}:${r.stage}:${gid}:${row[`good:${gid}`] ?? 0}:${qty}`, `Rig: ${qty} ${item?.name ?? gid}`);
+      }
       row[`good:${gid}`] = (row[`good:${gid}`] ?? 0) + qty;
     } else if (partS === 'chips') {
       const left = st.chips - (row.chips ?? 0);
@@ -357,18 +405,41 @@ export class Estate {
       }
       s.settledAt = now;
     }
-    const fuelOn = e.plantFuelUntil > now || plantMw === 0;
-    const plantLive = plantMw > 0 && (e.plantFuelUntil > now);
-    // If a plant exists and fuel has lapsed, bill a day of fuel when the owner can pay.
+    const hours = running[0]?.hours ?? Math.max(0, Math.min(24, 1 / 60));
+    // If a plant exists and fuel has lapsed, burn a day's coal from the warehouse, else bill the chip fuel contract.
     if (plantMw > 0 && e.plantFuelUntil <= now) {
-      const fuel = px(PLANT_FUEL_DAY);
-      const bank = getBank();
-      if (bank.canAfford(name, fuel)) {
-        this.charge(name, fuel, `estate_fuel:${e.digitalDay}:${playerKey(name)}`, 'Power plant daily fuel contract');
+      const coalNeed = PLANT_COAL_PER_HOUR * 24;
+      if (this.takeStacks(name, [{ type: 'ore', id: 'coal', qty: coalNeed }])) {
         e.plantFuelUntil = now + 86_400_000;
+      } else {
+        const fuel = px(PLANT_FUEL_DAY);
+        const bank = getBank();
+        if (bank.canAfford(name, fuel)) {
+          this.charge(name, fuel, `estate_fuel:${e.digitalDay}:${playerKey(name)}`, 'Power plant daily fuel contract');
+          e.plantFuelUntil = now + 86_400_000;
+        }
       }
     }
-    const supply = e.gridMw + (e.plantFuelUntil > now ? plantMw : 0);
+    const plantLiveMw = e.plantFuelUntil > now ? plantMw : 0;
+    const fuelOn = e.plantFuelUntil > now || plantMw === 0;
+    const plantLive = plantLiveMw > 0;
+    // Utility bill for providing grid service this period. If the owner cannot pay (even after this period's
+    // digital income), the grid shuts off: no service, no charge, no arrears. The plant, if fueled, still runs.
+    const usedGridIfOn = e.gridMw > 0 ? Math.max(0, Math.min(e.gridMw, Math.max(0, demand - plantLiveMw))) : 0;
+    const bill = px(GRID_POWER_DAY * usedGridIfOn * (hours / 24));
+    const bank = getBank();
+    const supplyOn = (e.gridMw > 0 ? e.gridMw : 0) + plantLiveMw;
+    const thOn = throttle(supplyOn, demand);
+    let grossOn = 0;
+    for (const r of running) grossOn += r.def.chipsPerHour * r.site.gear * r.hours * thOn;
+    const paidOn = digitalPayout(px(grossOn), e.digitalPaid, px(DIGITAL_DAILY_BASE));
+    // An outstanding shutoff bill must be settled to restore service, even on a zero-hour tick.
+    const due = (e.gridOff && e.gridBill > 0) ? Math.max(e.gridBill, bill) : bill;
+    const canPayGrid = due <= 0 || bank.canAfford(name, Math.max(0, due - paidOn));
+    const gridOn = e.gridMw > 0 && canPayGrid;
+    if (e.gridMw > 0 && due > 0 && !canPayGrid) { e.gridOff = true; e.gridBill = due; }
+    else { e.gridOff = false; e.gridBill = 0; }
+    const supply = (gridOn ? e.gridMw : 0) + plantLiveMw;
     const th = throttle(supply, demand);
     let gross = 0;
     for (const r of running) gross += r.def.chipsPerHour * r.site.gear * r.hours * th;
@@ -378,15 +449,11 @@ export class Estate {
       this.pay(name, paid, `estate_digital:${e.digitalDay}:${e.digitalPaid}:${paid}`, 'Data center / bitcoin farm income');
       e.digitalPaid += paid;
     }
-    // Grid contract bill, prorated, minus sold surplus.
-    const hours = running[0]?.hours ?? Math.max(0, Math.min(24, 1 / 60));
-    const usedGrid = Math.max(0, demand * th - (e.plantFuelUntil > now ? plantMw : 0));
-    const bill = px(GRID_POWER_DAY * (e.gridMw > 0 ? Math.min(e.gridMw, usedGrid) : 0) * (hours / 24));
-    if (bill > 0) {
-      const bank = getBank();
-      if (bank.canAfford(name, bill)) this.charge(name, bill, `estate_grid:${e.digitalDay}:${Math.floor(now / 60_000)}`, 'Utility power contract');
-    } else {
-      const surplus = Math.max(0, (e.plantFuelUntil > now ? plantMw : 0) - demand);
+    if (gridOn && due > 0) {
+      if (bank.canAfford(name, due)) this.charge(name, due, `estate_grid:${e.digitalDay}:${Math.floor(now / 60_000)}`, 'Utility power contract');
+      else { e.gridOff = true; e.gridBill = due; }
+    } else if (bill <= 0 && plantLiveMw > 0) {
+      const surplus = Math.max(0, plantLiveMw - demand);
       const credit = px(GRID_POWER_DAY * GRID_SELL_FRACTION * surplus * (hours / 24));
       if (credit > 0) this.pay(name, credit, `estate_gridsell:${e.digitalDay}:${Math.floor(now / 60_000)}`, 'Sold surplus power to the grid');
     }
@@ -407,7 +474,7 @@ export class Estate {
       await this.saveRig(r);
     }
     await this.saveEco(name);
-    return { paid, throttle: th, supply, demand, crude, plantLive: e.plantFuelUntil > now, fuelOn };
+    return { paid, throttle: th, supply, demand, crude, plantLive: e.plantFuelUntil > now, fuelOn, gridOff: !!e.gridOff, gridBill: e.gridBill ?? 0 };
   }
 
   siteView(s: EstateSiteState) {
@@ -418,7 +485,7 @@ export class Estate {
     return {
       id: s.id, lotId: s.lotId, kind: s.kind, build: s.build, stage: s.stage, complete, gear: s.gear, was: s.was, launched: s.launched,
       plan: plan && { id: plan.id, name: plan.name, icon: plan.icon, blurb: plan.blurb, total: estateProjectValue(plan), w: plan.w, d: plan.d, h: plan.h },
-      stages, gearDef: gear && { ...gear, price: px(gear.price) },
+      stages, gearDef: gear && { ...gear, price: px(gear.price), install: (gear.install ?? []).map(([id, qty]) => ({ id, qty, name: GOODS[id]?.name ?? id })) },
     };
   }
   hyperView(name: string, plotId: string) {
@@ -438,8 +505,16 @@ export class Estate {
         const def = GEAR_FOR[s.build]; demand += def.mw * s.gear;
       }
     }
-    const supply = e.gridMw + (e.plantFuelUntil > this.clock() ? plantMw : 0);
-    return { gridMw: e.gridMw, gridPrice: px(GRID_POWER_DAY), plantMw, demand, supply, throttle: throttle(supply, demand), fuelUntil: e.plantFuelUntil, fuelDay: px(PLANT_FUEL_DAY), cap: px(DIGITAL_DAILY_BASE), paidToday: e.digitalPaid };
+    const plantLiveMw = e.plantFuelUntil > this.clock() ? plantMw : 0;
+    const gridOn = e.gridMw > 0 && !e.gridOff;
+    const supply = (gridOn ? e.gridMw : 0) + plantLiveMw;
+    const dailyBill = px(GRID_POWER_DAY * (e.gridMw > 0 ? Math.max(0, Math.min(e.gridMw, Math.max(0, demand - plantLiveMw))) : 0));
+    return {
+      gridMw: e.gridMw, gridPrice: px(GRID_POWER_DAY), plantMw, demand, supply,
+      throttle: throttle(supply, demand), fuelUntil: e.plantFuelUntil, fuelDay: px(PLANT_FUEL_DAY),
+      cap: px(DIGITAL_DAILY_BASE), paidToday: e.digitalPaid,
+      gridOff: !!e.gridOff, gridBill: e.gridBill || dailyBill, coalPerDay: PLANT_COAL_PER_HOUR * 24,
+    };
   }
   knownPlayers(): string[] { return [...new Set([...this.sites.values()].map((s) => s.owner).concat([...this.rigs.values()].map((r) => r.owner), ...this.eco.keys()))]; }
   async view(name: string | null) {
@@ -456,17 +531,32 @@ export class Estate {
     };
   }
 
+  async restoreGrid(name: string) {
+    const r = await this.tick(name);
+    if (this.ecoOf(name).gridOff) throw new EstateError('Not enough chips to restore utility power. Pay the bill shown on the Power panel.');
+    return { ...this.powerView(name), ...r };
+  }
+
   async craftPlastic(name: string, recipeId: unknown, qtyRaw: unknown) {
     const rec = plantRecipe(recipeId); if (!rec) throw new EstateError('Unknown recipe.');
     const q = Number(qtyRaw); if (!Number.isInteger(q) || q < 1 || q > 100) throw new EstateError('Pick an amount between 1 and 100.');
-    let cost = 0;
+    const inputs: Array<{ type: ItemType; id: string; qty: number; name: string }> = [];
     for (const [id, n] of rec.in) {
       const g = GOODS[id]; if (!g) throw new EstateError('That recipe is missing an input.');
-      cost += g.price * n * q;
+      inputs.push({ type: g.type, id, qty: n * q, name: g.name });
     }
-    this.charge(name, px(cost), `plastics:${rec.id}:${this.clock()}:${q}`, `Plastics plant: ${q} × ${rec.name}`);
-    // Outputs are credited as a chip-sink craft in v1 when warehouse hookup is offline; the recipe is recorded for the client.
-    return { recipe: rec.id, qty: q, paid: px(cost), out: rec.out, outQty: rec.out[1] * q };
+    const outG = GOODS[rec.out[0]];
+    if (!outG) throw new EstateError('That recipe is missing an output.');
+    const outputs = [{ type: outG.type, id: rec.out[0], qty: rec.out[1] * q }];
+    if (!this.takeStacks(name, inputs)) {
+      const list = inputs.map((it) => `${it.qty} ${it.name}`).join(', ');
+      throw new EstateError(`You need ${list} in your warehouse.`);
+    }
+    if (!this.giveStacks(name, outputs)) {
+      this.giveStacks(name, inputs);
+      throw new EstateError('Could not store the finished goods. Free up warehouse space.');
+    }
+    return { recipe: rec.id, qty: q, paid: 0, out: rec.out, outQty: rec.out[1] * q };
   }
   async importFort(name: string, feed: unknown, qtyRaw: unknown, take?: (owner: string, product: string, qty: number) => Promise<number>) {
     if (!(feed === 'naphtha' || feed === 'ethylene' || feed === 'plastic')) throw new EstateError('Pick naphtha, ethylene or plastics.');
@@ -474,16 +564,29 @@ export class Estate {
     const got = take ? await take(name, feed, q) : 0;
     if (got < 1) throw new EstateError('No Fort McChud stock to import. Ship it from your tanks first.');
     const conv = FORT_IMPORT[feed as FortFeed];
+    const item = GOODS[conv.good];
+    if (item) {
+      if (!this.giveStacks(name, [{ type: item.type, id: conv.good, qty: got * conv.qty }])) {
+        throw new EstateError('Could not store the imported goods. Free up warehouse space.');
+      }
+    }
     return { feed, took: got, good: conv.good, qty: got * conv.qty };
   }
-
 
   async pressWine(name: string, qtyRaw: unknown) {
     const mine = (await getRealEstate()?.owned() ?? []).filter((o) => playerKey(o.owner) === playerKey(name) && o.id.startsWith('winery:'));
     if (!mine.length) throw new EstateError('You need to own a winery to use the press.');
     const q = Number(qtyRaw);
     if (!Number.isInteger(q) || q < 1 || q > 500) throw new EstateError('Pick an amount between 1 and 500.');
-    // v1: the press is 1 grape → 1 wine (cannery is 2:1). Inventory hookup is done when warehouse take/give is passed in.
+    const grapes = GOODS.crop_grapes;
+    const wine = GOODS.wine;
+    if (!grapes || !wine) throw new EstateError('Grape and wine goods are not set up.');
+    if (this.warehouseQty(name, grapes.type, grapes.id) < q) throw new EstateError('You need grapes in your warehouse to use the press.');
+    if (!this.takeStacks(name, [{ type: grapes.type, id: grapes.id, qty: q }])) throw new EstateError('You need grapes in your warehouse to use the press.');
+    if (!this.giveStacks(name, [{ type: wine.type, id: wine.id, qty: q }])) {
+      this.giveStacks(name, [{ type: grapes.type, id: grapes.id, qty: q }]);
+      throw new EstateError('Could not store the wine. Free up warehouse space.');
+    }
     return { grapes: q, wine: q, rate: 1, at: mine[0]!.id };
   }
 
@@ -541,6 +644,7 @@ export function registerEstate(_io: Server, socket: Socket): void {
   on('estate_contribute', async (b, e) => e.contribute(need(), String(b.lotId ?? ''), b.part, b.qty));
   on('estate_gear', async (b, e) => e.buyGear(need(), String(b.lotId ?? ''), b.qty));
   on('estate_grid', async (b, e) => e.setGrid(need(), b.mw));
+  on('estate_grid_restore', async (_b, e) => e.restoreGrid(need()));
   on('estate_demolish', async (b, e) => e.demolish(need(), String(b.id ?? ''), b.confirm));
   on('estate_hyper_start', async (b, e) => e.startHyper(need(), String(b.plotId ?? '')));
   on('estate_hyper_contribute', async (b, e) => e.contributeHyper(need(), String(b.plotId ?? ''), b.part, b.qty));

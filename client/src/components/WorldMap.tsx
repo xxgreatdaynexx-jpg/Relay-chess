@@ -39,7 +39,7 @@ import { indexed } from '../../../shared/priceIndex';
 import { skyNow, parseTod, fmtClock, hex } from '../../../shared/daynight';
 import { fmtLap } from '../../../shared/venues';
 import { zoneOf } from '../../../shared/zoning';
-import { optimisticOwn, taxBasisOf, propertyValue, propertyById as baseProperty, properties as baseProperties, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, workerBonusOf, type OwnedProperty } from '../../../shared/realEstate';
+import { optimisticOwn, assessedTaxBasis, taxBasisOf, propertyValue, propertyById as baseProperty, properties as baseProperties, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, workerBonusOf, type OwnedProperty } from '../../../shared/realEstate';
 
 /** Today's price index from /api/real-estate; list prices and tax scale with it. */
 let IDX = 1;
@@ -117,7 +117,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
         {p.kind === 'landmark' && ROYALTY_VENUE[p.type] && <><dt>Royalty</dt><dd data-testid="deed-royalty">{royaltyPct(p.type)} of {ROYALTY_VENUE[p.type]}, minted to the owner on top (the player keeps 100%). Not paid on the owner's own earnings.{o && <small className="block text-amber-300" data-testid="deed-royalty-income">Royalty income{mine ? '' : ` (${o.owner})`}: 🪙 {chips(ROY[p.id] ?? 0)} since bought</small>}</dd></>}
         <PropertyIncomeDetails id={p.id} cost={cost} cityBasis={o?.basis} />
         {(p.type === 'jail' || p.type === 'harbour') && <><dt>Public service</dt><dd data-testid="deed-public-service">Ownership never restricts jail/law enforcement, harbour travel, shipping or public access. No owner-controlled fees and no passive income.</dd></>}
-        <dt>Property tax</dt><dd data-testid="deed-tax">🪙 {chips(taxOf(taxBasisOf(cost, p.price)))}/day ({(TAX_RATE * 100).toFixed(1)}%)</dd>
+        <dt>Property tax</dt><dd data-testid="deed-tax">🪙 {chips(taxOf(assessedTaxBasis(cost, p.price, p)))}/day ({(TAX_RATE * 100).toFixed(1)}%)</dd>
         {o && o.arrears > 0 && <><dt>Arrears</dt><dd className="text-rose-300">{o.arrears} unpaid day{o.arrears > 1 ? 's' : ''} (repossessed at {GRACE_DAYS})</dd></>}
       </dl>
       {!o && p.retired && <small data-testid="deed-retired">Not for sale: a civic building stands here.</small>}
@@ -151,7 +151,7 @@ function DeedList({ owned, me, onOpen, onClose }: { owned: Map<string, OwnedProp
       <button type="button" className="world-deed-x" onClick={onClose} aria-label="Close">✕</button>
       <h3>🏛 Real estate</h3>
       <small>Click any building, lot, park or plaza on the map to see its deed. The Trailer Park stays free.</small>
-      <h4>My properties{mine.length ? ` · 🪙 ${chips(value)} · tax 🪙 ${chips(mine.reduce((a, o) => a + taxOf(taxBasisOf(o.price, propertyById(o.id)?.price ?? 0)), 0))}/day` : ''}</h4>
+      <h4>My properties{mine.length ? ` · 🪙 ${chips(value)} · tax 🪙 ${chips(mine.reduce((a, o) => a + taxOf(assessedTaxBasis(o.price, propertyById(o.id)?.price ?? 0, propertyById(o.id))), 0))}/day` : ''}</h4>
       {mine.length ? mine.map((o) => <button type="button" key={o.id} onClick={() => onOpen(o.id)}>{propertyById(o.id)?.label ?? o.id}<span title="What you paid (property tax is on this)" data-testid={`myprop-paid-${o.id}`}>🪙 {chips(o.price || (propertyById(o.id)?.price ?? 0))}</span></button>) : <small>{me ? 'None yet.' : 'Sign in to buy property.'}</small>}
       <h4>🏡 Barns (sold separately from farms)</h4>
       {properties().filter((p) => p.type === 'barn').map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
@@ -332,7 +332,11 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
           onPick: (id) => { if (id) goRef.current(id); }, // '' = a profile "Show on map" glide, not a building
           onBarn: (id) => { const o = ownedRef.current.get(id); const m = meRef.current; if (o && m && o.owner.toLowerCase() === m.toLowerCase()) setPanel({ k: 'farms' }); else setDeed(id); },
           onProperty: (id) => { const o = ownedRef.current.get(id); const m = meRef.current;
-            if (id.startsWith('lot:estate:') || id.startsWith('b:mansion:')) { setPanel({ k: 'estate', id, kind: 'estate' }); return; }
+            if (id.startsWith('lot:estate:') || id.startsWith('b:mansion:')) {
+              if (o && m && o.owner.toLowerCase() === m.toLowerCase()) setPanel({ k: 'estate', id, kind: 'estate' });
+              else setDeed(id);
+              return;
+            }
             if ((id.startsWith('f:') || id.startsWith('cf:') || id.startsWith('winery:') || id.startsWith('orchard:')) && o && m && o.owner.toLowerCase() === m.toLowerCase()) setFarm(id); else setDeed(id); },
           onTrailer: (n) => { const m = meRef.current; if (m && n.toLowerCase() === m.toLowerCase()) { setPanel({ k: 'home' }); return true; } return false; },
         });
@@ -438,7 +442,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       {farm?.startsWith('winery:') && me && owned.get(farm)?.owner.toLowerCase() === me.toLowerCase() && <button type="button" className="estate-hyper-open" data-testid="farm-wine-press" onClick={() => setPanel({ k: 'estate', id: farm, kind: 'estate' })}>🍷 Open the press…</button>}
       {deeds && <DeedList owned={owned} me={me} onOpen={(id) => setDeed(id)} onClose={() => setDeeds(false)} />}
       {panel.k === 'future' && <FutureFeaturesPopup onClose={() => setPanel(NONE)} />}
-      {panel.k === 'estate' && <EstatePanel lotId={panel.id} kind={panel.kind} me={me} onClose={() => setPanel(NONE)} />}
+      {panel.k === 'estate' && <EstatePanel lotId={panel.id} kind={panel.kind} me={me} mine={!!(me && panel.id && owned.get(panel.id)?.owner.toLowerCase() === me.toLowerCase())} onClose={() => setPanel(NONE)} />}
       {driving && <>
         <div className="world-speedo" data-testid="world-speedo">{kmh} <small>km/h</small><em>WASD / arrows · E enter · Esc park · Space handbrake{nitro ? ' · Shift/N nitro' : ''}</em>{drift && <b className="world-drift" data-testid="world-drift">DRIFT</b>}{nitro && <span className={`world-nitro${nitro.on ? ' on' : ''}`} data-testid="world-nitro"><i style={{ width: `${Math.round((nitro.have / nitro.full) * 100)}%` }} /></span>}</div>
         {(lap.t0 != null || lap.text) && <div className="world-lap" data-testid="world-lap">{lap.t0 != null && <b>⏱ {fmtLap(Date.now() - lap.t0)} <small>gate {lap.gate}/3</small></b>}{lap.text && <span>{lap.text}</span>}</div>}

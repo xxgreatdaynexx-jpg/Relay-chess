@@ -27,8 +27,8 @@ const src = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), 'ut
 describe('private construction sites', () => {
   it('each build has four stages, a model hook, and the listed totals', () => {
     const totals: Record<string, number> = {
-      data_center: 1_607_560, bitcoin_farm: 1_317_280, monument: 1_200_000,
-      mansion: 3_200_000, highrise: 4_800_000, power_plant: 3_600_000,
+      data_center: 1_607_560, bitcoin_farm: 1_317_280, monument: 729_640,
+      mansion: 1_919_240, highrise: 3_258_340, power_plant: 2_462_496,
     };
     expect(ESTATE_BUILD_ORDER).toEqual(['data_center', 'bitcoin_farm', 'monument', 'mansion', 'highrise', 'power_plant']);
     for (const id of ESTATE_BUILD_ORDER) {

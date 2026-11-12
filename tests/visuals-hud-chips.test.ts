@@ -1,12 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 const css = readFileSync(new URL('../client/src/index.css', import.meta.url), 'utf8');
-describe('HUD chip truncation (mobile)', () => {
-  const block = css.slice(css.indexOf('visuals HUD audit'));
-  it('world corner chips stay one line and scroll', () => {
-    expect(block).toMatch(/\.world-corner button \{[^}]*white-space: nowrap/);
-    expect(block).toMatch(/\.world-corner \{[^}]*overflow-x: auto/);
+describe('HUD chips (mobile)', () => {
+  it('world corner chips wrap so Co-op and the 2D map stay on screen', () => {
+    expect(css).toMatch(/\.world-corner \{[^}]*flex-wrap: wrap/);
+    expect(css).toMatch(/\.world-corner button \{[^}]*white-space: nowrap/);
   });
-  it('clock sits below the chip row', () => { expect(block).toMatch(/\.world-clock \{ top: 84px/); });
-  it('top bar fades at the edge', () => { expect(block).toMatch(/\.top-tabs \{[^}]*mask-image/); });
+  it('clock sits below two wrapped chip rows', () => {
+    expect(css).toMatch(/\.world-clock \{ top: 148px/);
+  });
+  it('top bar still fades at the edge', () => {
+    expect(css).toMatch(/\.top-tabs \{[^}]*mask-image/);
+  });
 });

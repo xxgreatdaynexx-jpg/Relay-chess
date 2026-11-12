@@ -25,10 +25,10 @@ const VIEWS: Array<[string, number, number]> = [['360 portrait', 360, 740], ['39
 describe('phone HUD: nav row, clock and weekly bar never overlap', () => {
   for (const [name, w, h] of VIEWS) it(name, () => {
     const nav = eff('.world-corner', w, h), btn = eff('.world-corner button', w, h), clock = eff('.world-clock', w, h), wev = eff('.wev-mapbar', w, h);
-    expect(px(nav.top)).toBe(46); expect(nav['overflow-x']).toBe('auto'); // one scrollable row, not clipped
+    expect(px(nav.top)).toBe(46); expect(nav['flex-wrap']).toBe('wrap'); expect(nav['mask-image']).toBe('none'); // wrap, no fade that hides Co-op / 2D
     expect(px(btn['min-height'])).toBeGreaterThanOrEqual(44); // recommended touch target
-    const navBottom = px(nav.top) + px(btn['min-height']);
-    expect(px(clock.top)).toBeGreaterThanOrEqual(navBottom + 4); // clock below the nav row
+    const navBottom = px(nav.top) + 2 * px(btn['min-height']);
+    expect(px(clock.top)).toBeGreaterThanOrEqual(navBottom + 4); // clock below two wrapped nav rows
     expect(px(wev.top)).toBeGreaterThanOrEqual(px(clock.top) + 28); // weekly bar below the clock (~26px tall)
     expect(wev.transform).toBe('none'); expect(wev['max-width']).toBe('calc(100% - 20px)'); // fits the width
     expect(clock['white-space']).toBe('nowrap'); expect(wev['white-space']).toBe('nowrap'); // single-line bands (the height assumptions below)
@@ -36,7 +36,7 @@ describe('phone HUD: nav row, clock and weekly bar never overlap', () => {
     expect(Number(wev['z-index'])).toBeLessThan(Number(eff('.world-corner', w, h)['z-index'] ?? 5)); // nav stays tappable
   });
   it('desktop keeps its original layout', () => {
-    const wev = eff('.wev-mapbar', 1440, 900); expect(wev.top).toBe('56px'); expect(wev.transform).toBe('translateX(-50%)');
+    const wev = eff('.wev-mapbar', 1440, 900); expect(wev.top).toBe('96px'); expect(wev.transform).toBe('none'); expect(wev.left).toBe('18px');
     expect(eff('.world-corner', 1440, 900).top).toBe('12px'); expect(eff('.world-grid', 1440, 900)['padding-top']).toBeUndefined();
   });
   it('backpack inventory fits the visible viewport and its close button stays reachable on phones', () => {

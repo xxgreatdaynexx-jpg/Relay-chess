@@ -23,7 +23,7 @@ import { sendPopup } from './popups.js';
 import { BUYOUT_MUL, BUYOUT_PROTECT_MS, buyoutPrice } from '../shared/royalty.js';
 import { px, priceIndex } from './price-index.js';
 import { requireResort, requireIsland } from './travel.js';
-import { taxBasisOf, propertyValue, GRACE_DAYS, propertyById as baseProperty, sellBackOf, taxOf, landMultiplier, type OwnedProperty } from '../shared/realEstate.js';
+import { assessedTaxBasis, taxBasisOf, propertyValue, GRACE_DAYS, propertyById as baseProperty, sellBackOf, taxOf, landMultiplier, type OwnedProperty } from '../shared/realEstate.js';
 import { skillLevelAsync } from './skills.js';
 import { propertyWorth, propertyPaid, propertyPaidPlusUpgrades, upgradeSpendFromLevels } from '../shared/netWorth.js';
 import { cropById, farmPlots } from '../shared/farm.js';
@@ -96,7 +96,7 @@ export class RealEstate {
   async mine(name: string) {
     const rows = ((await this.pool.query('SELECT * FROM properties WHERE owner_key = $1 ORDER BY price DESC', [keyOf(name)])).rows as Row[]);
     const sp = await this.spend(keyOf(name));
-    return rows.map((r) => { const p = propertyById(r.id); return { ...toOwned(r), label: p?.label ?? r.id, type: p?.type ?? '', value: propertyWorth({ paid: Number(r.price), list: p?.price ?? 0, ...(sp.get(r.id) ?? {}) }), list: p?.price ?? Number(r.price), paid: propertyPaid(Number(r.price), p?.price ?? 0), upgradeSpend: sp.get(r.id)?.upgrades ?? 0, cropValue: sp.get(r.id)?.crops ?? 0, tax: taxOf(taxBasisOf(Number(r.price), p?.price ?? 0)), taxPaid: Number(r.tax_paid) }; });
+    return rows.map((r) => { const p = propertyById(r.id); return { ...toOwned(r), label: p?.label ?? r.id, type: p?.type ?? '', value: propertyWorth({ paid: Number(r.price), list: p?.price ?? 0, ...(sp.get(r.id) ?? {}) }), list: p?.price ?? Number(r.price), paid: propertyPaid(Number(r.price), p?.price ?? 0), upgradeSpend: sp.get(r.id)?.upgrades ?? 0, cropValue: sp.get(r.id)?.crops ?? 0, tax: taxOf(assessedTaxBasis(Number(r.price), p?.price ?? 0, p)), taxPaid: Number(r.tax_paid) }; });
   }
 
   /** Atomic: the ledger rows and the ownership change commit together, or neither does. */
@@ -308,7 +308,7 @@ export class RealEstate {
     const due = ((await this.pool.query('SELECT * FROM properties WHERE bought_at < $1 ORDER BY owner_key, price', [start])).rows as Row[]).filter((r) => !done.has(r.id) && ((incomeReady && !incomeDeferred.has(r.id)) || !incomeEligible(r.id)));
     const out = { charged: 0, paid: 0, unpaid: 0, repossessed: 0 }; const bank = this.bank();
     for (const r of due) {
-      const amount = Math.max(1, Math.round(taxOf(taxBasisOf(Number(r.price), propertyById(r.id)?.price ?? 0)) * propertyTaxMul(await skillLevelAsync(r.owner_name, 'property')) * cityPropertyTaxMul(now) * (1 - cityPerk('property_upkeep')))); // Property perk + mayor's tax rate + Police Station perk
+      const amount = Math.max(1, Math.round(taxOf(assessedTaxBasis(Number(r.price), propertyById(r.id)?.price ?? 0, propertyById(r.id))) * propertyTaxMul(await skillLevelAsync(r.owner_name, 'property')) * cityPropertyTaxMul(now) * (1 - cityPerk('property_upkeep')))); // Property perk + mayor's tax rate + Police Station perk
       try { await bank.refresh(r.owner_name); } catch { continue; }
       const can = bank.account(r.owner_name).chips >= amount;
       const claim = async (cl: pg.PoolClient, paid: boolean, repo: boolean) => {

@@ -417,8 +417,12 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
         for (let i = 0; i < 4; i++) { const x = -3.6 + i * 2.4; g.add(box(1.2, 0.15, 0.8, stone, x, 0.4, 4.6), box(1.0, 1.1, 0.12, gold, x, 0.55, 4.9)); }
         height = 8; break; }
       case 'skytower': {
-        const glass = mat({ color: 0xa8d4f0, transparent: true, opacity: 0.55, roughness: 0.15, metalness: 0.4, emissive: 0x9fd4ff, emissiveIntensity: 0.15 * NEON }), core = mat({ color: 0xe8eef2, roughness: 0.4, metalness: 0.2 });
-        g.add(box(8, 28, 8, glass, 0, 0, 0), box(3, 30, 3, core, 0, 0, 0), box(9, 0.6, 9, core, 0, 28, 0));
+        // Solid cladding (the old all-glass shell was transparent at 0.55 and looked ghostly).
+        const clad = mat({ color: 0xc5d0d8, roughness: 0.42, metalness: 0.38 });
+        const band = mat({ color: 0x1b3a52, roughness: 0.32, metalness: 0.28, emissive: 0x0c2438, emissiveIntensity: 0.25 * NEON });
+        const crown = mat({ color: 0xe8eef2, roughness: 0.35, metalness: 0.3 });
+        g.add(box(8, 28, 8, clad, 0, 0, 0), box(3.4, 2.2, 3.4, crown, 0, 28, 0), box(9, 0.7, 9, crown, 0, 28, 0));
+        for (let y = 2.4; y < 27; y += 3.1) g.add(box(8.18, 1.2, 8.18, band, 0, y, 0));
         height = 30; break; }
       case 'dealer': {
         // Car Dealership: glass showroom, forecourt with three display cars, pylon sign.
@@ -555,8 +559,14 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const corner = (id: string, lx: number, lz: number, scale = 0.8) => { const b = lmBoxes[id]; if (!b) return; const c = Math.cos(b.rot), sn = Math.sin(b.rot); decor.push({ x: b.x + lx * c + lz * sn, z: b.z - lx * sn + lz * c, scale }); };
     { const b = lmBoxes.chat; if (b) decor.push({ x: b.x, z: b.z, scale: 1.9, big: true }); } // the big plaza tree
     corner('casino', 5.2, 5.2); corner('casino', -5.2, 5.2); corner('arena', 5.4, 5.4); corner('arena', -5.4, 5.4); corner('cityhall', 5, 5, 0.6);
-    for (const site of Object.values(MINE_SITES)) decor.push({ x: site.x + 9, z: site.z + 9, scale: 0.9 });
-    xmas = addXmas(scene, { tier, half: PLATE + 50, roofs: xmasRoofs, decor, roads: xmasRoads, ground: { x0: OUTSKIRTS.x0, x1: OUTSKIRTS.x1, z0: OUTSKIRTS.z0, z1: OUTSKIRTS.z1 }, frost: false, footprints: Object.entries(lmBoxes).filter(([id]) => !id.startsWith('mine')).map(([, b]) => ({ x: b.x, z: b.z, w: b.w, d: b.d, rot: b.rot, top: 0 })) });
+    for (const [id, site] of Object.entries(MINE_SITES)) {
+      if (id === 'mine-quarry') continue; // keep the open pit clear of Christmas trees
+      decor.push({ x: site.x + 9, z: site.z + 9, scale: 0.9 });
+    }
+    const qSite = MINE_SITES['mine-quarry'];
+    const footprints = Object.entries(lmBoxes).filter(([id]) => !id.startsWith('mine') || id === 'mine-quarry').map(([, b]) => ({ x: b.x, z: b.z, w: b.w, d: b.d, rot: b.rot, top: 0 }));
+    if (qSite) footprints.push({ x: qSite.x, z: qSite.z, w: 28, d: 28, rot: 0, top: 0 });
+    xmas = addXmas(scene, { tier, half: PLATE + 50, roofs: xmasRoofs, decor, roads: xmasRoads, ground: { x0: OUTSKIRTS.x0, x1: OUTSKIRTS.x1, z0: OUTSKIRTS.z0, z1: OUTSKIRTS.z1 }, frost: false, footprints });
   }
   // Open-space patches: parks (grass), plazas (paving + fountain glow), lots (dirt) — one instanced slab, tinted, rotated.
   if (patches.length) {

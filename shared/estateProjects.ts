@@ -59,7 +59,7 @@ export const ESTATE_BUILDS: Record<EstateBuildId, EstateBuildPlan> = {
   monument: {
     id: 'monument', name: 'Personal Chud Monument', icon: '🗽',
     blurb: 'A giant statue of you on a tiled plaza, lit at night. Pure prestige — no income.',
-    total: 1_200_000, w: 18, d: 18, h: 28,
+    total: 729_640, w: 18, d: 18, h: 28,
     stages: [
       { id: 'pad', name: 'Plaza', chips: 160_000, goods: [g('concrete', 1_200), g('brick', 800)] },
       { id: 'plinth', name: 'Plinth', chips: 180_000, goods: [g('floor_tile', 800), g('concrete', 600)] },
@@ -70,7 +70,7 @@ export const ESTATE_BUILDS: Record<EstateBuildId, EstateBuildPlan> = {
   mansion: {
     id: 'mansion', name: 'Personal Mansion', icon: '🏡',
     blurb: 'A private mansion with a long drive and gardens. Enterable like other homes.',
-    total: 3_200_000, w: 32, d: 24, h: 16,
+    total: 1_919_240, w: 32, d: 24, h: 16,
     stages: [
       { id: 'pad', name: 'Foundations', chips: 400_000, goods: [g('concrete', 2_800), g('brick', 1_600)] },
       { id: 'shell', name: 'Walls & floors', chips: 480_000, goods: [g('steel_beam', 600), g('floor_tile', 1_200)] },
@@ -81,7 +81,7 @@ export const ESTATE_BUILDS: Record<EstateBuildId, EstateBuildPlan> = {
   highrise: {
     id: 'highrise', name: 'Personal Highrise', icon: '🏙️',
     blurb: 'A slim private tower with a lit crown. Enterable, and it adds housing for employees.',
-    total: 4_800_000, w: 22, d: 22, h: 48,
+    total: 3_258_340, w: 22, d: 22, h: 48,
     stages: [
       { id: 'pad', name: 'Foundations', chips: 600_000, goods: [g('concrete', 4_000), g('steel_beam', 800)] },
       { id: 'core', name: 'Core & floors', chips: 720_000, goods: [g('steel_beam', 1_400), g('steel_plate', 1_000)] },
@@ -92,7 +92,7 @@ export const ESTATE_BUILDS: Record<EstateBuildId, EstateBuildPlan> = {
   power_plant: {
     id: 'power_plant', name: 'Power Plant', icon: '⚡',
     blurb: 'A privately owned plant. It supplies your data centers and bitcoin farms, or you can sell surplus to the grid.',
-    total: 3_600_000, w: 36, d: 26, h: 22,
+    total: 2_462_496, w: 36, d: 26, h: 22,
     stages: [
       { id: 'pad', name: 'Site & halls', chips: 480_000, goods: [g('concrete', 3_200), g('brick', 1_000)] },
       { id: 'boiler', name: 'Boiler island', chips: 560_000, goods: [g('steel_plate', 900), g('valve', 200), g('pump', 80)] },

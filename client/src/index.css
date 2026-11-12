@@ -2390,12 +2390,12 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .home-msg, .home-note { position: absolute; left: 50%; transform: translateX(-50%); top: 64px; background: rgba(40,20,20,.92); padding: 6px 12px; border-radius: 8px; font-size: 13px; } .home-note { position: fixed; z-index: 70; top: 20px; }
 .home-help { position: absolute; left: 10px; bottom: 10px; opacity: .6; font-size: 12px; }
 @media (max-width: 640px) { .home-build { width: 160px; bottom: 170px; } .home-chat ul { max-height: 70px; } .home-help { display: none; } }
-/* visuals HUD audit: on phones the world corner chips wrapped to two lines and overlapped the title; keep them one line, scrollable, below the title. The top bar fades at its right edge to show it scrolls. */
+/* On phones, wrap the world-corner chips onto two rows so Co-op / 2D map stay visible instead of fading off the right edge. Clock sits below the rows. */
 @media (max-width: 640px) {
-  .world-corner { left: 10px; right: 0; top: 46px; overflow-x: auto; scrollbar-width: none; padding-right: 24px; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+  .world-corner { left: 10px; right: 10px; top: 46px; display: flex; flex-wrap: wrap; justify-content: flex-start; overflow: visible; padding-right: 0; -webkit-mask-image: none; mask-image: none; }
   .world-corner::-webkit-scrollbar { display: none; }
   .world-corner button { white-space: nowrap; flex: none; }
-  .world-clock { top: 84px; left: 10px; }
+  .world-clock { top: 148px; left: 10px; }
   .top-tabs { padding-right: 24px; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 22px), transparent); }
   /* The fade mask is sized to the 40px bar and would hide the ☰ Menu dropdown hanging below it. */
   .top-tabs.menu-open { overflow: visible; -webkit-mask-image: none; mask-image: none; }
@@ -2510,7 +2510,7 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .coop-claim { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
 
 /* co-op3: weekly event map bar + panels */
-.wev-mapbar { position: absolute; top: 56px; left: 50%; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 10px; font-size: 13px; color: #f8fafc; background: rgba(15, 23, 42, .78); border: 1px solid rgba(148, 163, 184, .35); cursor: pointer; }
+.wev-mapbar { position: absolute; top: 96px; left: 18px; transform: none; z-index: 6; display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 10px; font-size: 13px; color: #f8fafc; background: rgba(15, 23, 42, .78); border: 1px solid rgba(148, 163, 184, .35); cursor: pointer; }
 .wev-mapbar .wev-track { width: 160px; height: 8px; border-radius: 4px; background: rgba(148, 163, 184, .25); overflow: hidden; display: inline-block; }
 .wev-mapbar .wev-track > span { display: block; height: 100%; }
 .wev-mapbar .wev-num { opacity: .85; font-variant-numeric: tabular-nums; }
@@ -2528,16 +2528,16 @@ body.he-full-open .he-table.he-full { visibility: visible; }
    row (top 46px, z-index 5: Real estate / My home / My farm / Drive ...) and the clock. Move it below the clock, fit it
    to the screen, and keep the nav above it; nav chips get finger-sized targets. */
 @media (max-width: 640px), (max-height: 500px) {
-  .world-corner { left: 10px; right: 0; top: 46px; overflow-x: auto; scrollbar-width: none; padding-right: 24px; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+  .world-corner { left: 10px; right: 10px; top: 46px; display: flex; flex-wrap: wrap; justify-content: flex-start; overflow: visible; padding-right: 0; -webkit-mask-image: none; mask-image: none; }
   .world-corner::-webkit-scrollbar { display: none; }
   .world-corner button { white-space: nowrap; flex: none; min-height: 44px; padding: 6px 12px; }
-  .world-clock { top: 96px; left: 10px; white-space: nowrap; }
+  .world-clock { top: 148px; left: 10px; white-space: nowrap; }
   .world-title { font-size: 24px; }
-  .wev-mapbar { top: 130px; left: 10px; right: auto; transform: none; z-index: 4; max-width: calc(100% - 20px); gap: 6px; padding: 4px 8px; font-size: 11px; white-space: nowrap; }
+  .wev-mapbar { top: 184px; left: 10px; right: auto; transform: none; z-index: 4; max-width: calc(100% - 20px); gap: 6px; padding: 4px 8px; font-size: 11px; white-space: nowrap; }
   .wev-mapbar .wev-name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .wev-mapbar .wev-track { width: 56px; flex: none; }
   .wev-mapbar .wev-num { flex: none; }
-  .world-grid { padding-top: 164px; } /* 2D tiles start below the HUD stack instead of under it */
+  .world-grid { padding-top: 230px; } /* 2D tiles start below the wrapped HUD stack instead of under it */
 }
 /* Backpack (Skin Inventory) window on phones: fit the VISIBLE viewport (Android Chrome's URL bar makes 92vh taller than
    the screen, pushing the header and its ✕ off-screen) and let the header wrap so ✕ is always reachable. */
@@ -2827,7 +2827,13 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .ff-shot-copy .launch-ico { flex: none; }
 .ff-shot-copy b { display: block; color: #ffe3a0; font-size: 14px; }
 .ff-shot-copy span { font-size: 13px; opacity: .85; }
-.estate-panel { width: min(560px, 96vw); height: min(640px, calc(100dvh - 48px)); left: 56px; z-index: 40; }
+.estate-panel { width: min(560px, 96vw); height: min(640px, calc(100dvh - 48px)); left: 56px; z-index: 40; display: flex; flex-direction: column; overflow: hidden; }
+.estate-sticky { flex: 0 0 auto; position: sticky; top: 0; z-index: 2; padding: 8px 14px 10px; background: rgba(14, 15, 26, 0.98); border-bottom: 1px solid rgba(232, 194, 106, 0.3); color: #f4efe4; }
+.estate-sticky-line { margin: 0; font-weight: 700; color: #e2c47c; }
+.estate-panel .hub-win-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.estate-grid-off { margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; background: #4a1520; color: #ffd0d4; border: 1px solid #f07178; }
+.estate-grid-off p { margin: 0 0 8px; }
+.estate-grid-off button { padding: 6px 12px; border-radius: 8px; background: #e8c26a; color: #1b1d2e; font-weight: 800; }
 .estate-msg { color: #f5c16c; }
 .estate-power, .estate-demolish { margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(232,194,106,0.25); }
 .estate-hyper-open { position: absolute; right: 16px; bottom: 18px; z-index: 35; background: #1d3a22; color: #c6f0c8; border: 1px solid #6adf7a; border-radius: 999px; padding: 8px 14px; cursor: pointer; }

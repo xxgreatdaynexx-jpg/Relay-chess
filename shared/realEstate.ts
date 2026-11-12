@@ -68,6 +68,26 @@ export const taxOf = (price: number) => Math.ceil(price * TAX_RATE);
 /** Tess QA #8: property tax is on the price actually paid (buyouts can't dodge it; a surcharged buy pays on what it cost). */
 export const taxBasisOf = (paid: number | null | undefined, list: number) => propertyValue(paid, list);
 /**
+ * Ordinary city empty lots sell for about 6.5–9.5k (tax 33–48/day), which is roughly 50 chips per area unit.
+ * East Estates lots keep their multimillion purchase prices, but daily property tax is assessed on that same
+ * ordinary land value so a deed does not wipe out operating profit. Lot 7 (34×28) assesses at 47,500 and
+ * taxes at 238/day (was 57,125/day on the 11,425,000 list). Existing owners get the same relief because
+ * assessment is by type and area, not by what they paid. Purchase, sell-back and wealth-tax bases are unchanged.
+ */
+export const ORDINARY_LAND_PER_AREA = 50;
+export function assessedTaxBasis(
+  paid: number | null | undefined,
+  list: number,
+  p?: { type?: string; w?: number; d?: number } | null,
+): number {
+  const areaW = p?.w ?? 0, areaD = p?.d ?? 0;
+  if (p?.type === 'estate_lot' && areaW > 0 && areaD > 0) {
+    const raw = areaW * areaD * ORDINARY_LAND_PER_AREA;
+    return Math.max(500, Math.round(raw / 500) * 500);
+  }
+  return taxBasisOf(paid, list);
+}
+/**
  * Tess QA #7: the client's optimistic ownership after a buy/buyout. A buyout keeps the city's sell-back basis (what the
  * city was originally paid), so the deed's Sell-back matches what the server will refund (was: basis dropped -> 70% of the
  * buyout price shown, e.g. 840k instead of 420k on the Factory).
