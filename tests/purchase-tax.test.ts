@@ -34,7 +34,7 @@ async function setup(others: string[]) {
   const ledger = async (game: string) => (await db.query<{ player_key: string; amount: string; tx_key: string; memo: string }>('SELECT player_key, amount, tx_key, memo FROM wallet_transactions WHERE game = $1 ORDER BY player_key', [game])).rows;
   return { db, pool, bank, re, fund, hold, chips, ledger };
 }
-const home = () => [...properties()].filter((p) => p.kind === 'building' && p.price >= 10_000).sort((a, b) => a.price - b.price)[0]!;
+const home = () => [...properties()].filter((p) => p.kind === 'building' && !p.retired && p.price >= 10_000).sort((a, b) => a.price - b.price)[0]!;
 
 describe('purchase wealth tax: pure rule', () => {
   it('threshold is strictly above 100K; under-1,000 items are exempt; 5% rounded up', () => {

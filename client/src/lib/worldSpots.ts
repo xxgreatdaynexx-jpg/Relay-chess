@@ -23,7 +23,7 @@ export const WORLD_SPOTS: WorldSpot[] = [
   { id: 'furniture', label: 'Furniture Store', icon: '🛋️', color: 0xc77dff, blurb: 'Furniture, wall & floor styles for your homes' },
   { id: 'cityhall', label: 'City Hall', icon: '🏛️', color: 0xd9c27a, blurb: 'Weekly mayor election & city tax rates' },
   { id: 'club', label: "Billionaire's Club", icon: '💎', color: 0xd4af37, blurb: 'Prestige Desk, city patronage plaques and the art auction' },
-  { id: 'skytower', label: 'Sky Tower', icon: '🏙️', color: 0xdfe9f0, blurb: 'Buy a sky penthouse above the beach' },
+  { id: 'skytower', label: 'Sky Tower', icon: '🏙️', color: 0xdfe9f0, blurb: 'Buy a sky penthouse in the civic tower' },
   { id: 'plastics', label: 'Plastics Plant', icon: '🧴', color: 0x8ad0e0, blurb: 'Turn oil products into resin, computers and graphics cards' },
   { id: 'rigdock', label: 'Shore Construction Dock', icon: '🛢️', color: 0xd0a060, blurb: 'Build an offshore rig, then launch it to feed your refinery' },
   { id: 'leaderboard', label: 'Leaderboard', icon: '🏆', color: 0xe8c26a, blurb: 'Who’s on top' },

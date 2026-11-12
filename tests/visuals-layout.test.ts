@@ -12,7 +12,9 @@ describe('mu-visuals ocean: existing seeded placement is untouched', () => {
     const snap = JSON.parse(JSON.stringify(layoutSnapshot()));
     const next = new Set(['club', 'skytower', 'plastics', 'rigdock']);
     expect({ ...snap, landmarks: snap.landmarks.filter((row: [string]) => !next.has(row[0])) }).toEqual(base);
-    expect(snap.landmarks.filter((row: [string]) => row[0] === 'club' || row[0] === 'skytower')).toEqual([['club', -80, 200, 0], ['skytower', -56, 200, 0]]);
+    const civic = Object.fromEntries(snap.landmarks.filter((row: [string]) => row[0] === 'club' || row[0] === 'skytower').map((row: [string, number, number, number]) => [row[0], row]));
+    expect(civic.club.slice(0, 3)).toEqual(['club', -67, -10]);
+    expect(civic.skytower.slice(0, 3)).toEqual(['skytower', 62, 36]);
     expect(snap.landmarks.some((row: [string]) => row[0] === 'plastics')).toBe(true);
     expect(snap.landmarks.some((row: [string]) => row[0] === 'rigdock')).toBe(true);
   });

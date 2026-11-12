@@ -246,14 +246,14 @@ export const LANDMARK_SLOTS: Record<string, [number, number]> = {
   employ: [-13, -39], // Employment Office (pt1274u): block north of the plaza; cleared like the grocery (no owned lots under it)
   cityhall: [13, 13], // City Hall (pt1312u): downtown block east of the plaza; cleared like the grocery (no owned lots under it)
   furniture: [-65, 42], // Furniture Store (Millionaire Update, pt1459u): west waterfront block; cleared like the grocery. Clears only b:house:-741:446 and p:park:-643:378 (both unowned on Nov 3)
-  club: [-80, 200], // Billionaire's Club on the ocean beach, west of Chud Hub Harbour (off the city plate; no fill cleared)
-  skytower: [-56, 200], // Sky Tower civic pad east of the Club, same beach
+  club: [-67, -10], // Billionaire's Club in the west midtown park (late landmark: lots under the pad stay in the catalog, retired)
+  skytower: [62, 36], // Sky Tower in east midtown, just south of the Arena (late landmark: lots under the pad stay in the catalog, retired)
   racetrack: [-103, -169], // outskirts, north-west, in RESERVED_VENUES.racetrack: infield of the oval
   plastics: [220, 176], // Chud City Plastics Plant, open land east of the City Jail (off the fill)
   rigdock: [130, 210], // shoreline construction dock, east of the Harbour
 };
 /** Outskirts landmarks sit square to the map, not to a street. */
-const SQUARE_LM = new Set(['airport', 'racetrack', 'dock', 'club', 'skytower', 'plastics', 'rigdock']);
+const SQUARE_LM = new Set(['airport', 'racetrack', 'dock', 'plastics', 'rigdock']);
 export const SPARE_SLOTS: [number, number][] = [[13, 42], [-13, -39], [-39, -13], [13, -65]];
 
 /**
@@ -300,7 +300,7 @@ function placeLandmarks(ids: string[]): Record<string, OBB> {
 }
 export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'mine-frost', 'mine-magma', 'mine-quarry', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer', 'airport', 'racetrack', 'dock', 'grocery', 'mechanic', 'employ', 'cityhall', 'furniture', 'club', 'skytower', 'plastics', 'rigdock'];
 /** Landmarks added after launch: they clear the fill under them instead of reshuffling it. */
-const LATE_LM = new Set(['grocery', 'mechanic', 'employ', 'cityhall', 'furniture', 'plastics', 'rigdock']);
+const LATE_LM = new Set(['grocery', 'mechanic', 'employ', 'cityhall', 'furniture', 'plastics', 'rigdock', 'club', 'skytower']);
 let lmCache: { key: string; v: Record<string, OBB> } | null = null;
 /** Landmark footprints for the given spot ids (defaults to every known slot). */
 export function landmarks(ids: string[] = LANDMARK_IDS): Record<string, OBB> {
@@ -358,7 +358,9 @@ export function cityFill(seed = 7, ids?: string[]): { houses: House[]; patches: 
     const hh: House = { ...hb, h: floors * t.floorH, type: t.id, color: t.colors[Math.floor(rand() * t.colors.length)] };
     houses.push(hh); taken.push(hh);
   }
-  const late = Object.entries(all).filter(([id]) => LATE_LM.has(id)).map(([, b]) => b);
+  // Club and Sky Tower are late (they must not reshuffle the fill) but lots under them stay in the catalog as retired deeds.
+  const LATE_CLEAR = new Set([...LATE_LM].filter((id) => id !== 'club' && id !== 'skytower'));
+  const late = Object.entries(all).filter(([id]) => LATE_CLEAR.has(id)).map(([, b]) => b);
   const clear = (b: OBB) => !late.some((l) => obbOverlap(l, b, 1.5));
   return { houses: houses.filter(clear), patches: patches.filter(clear) };
 }

@@ -89,7 +89,7 @@ describe('pt2020u: property surcharge + daily wealth tax city levers', () => {
     CREATE TABLE farm_fert (plot_id TEXT NOT NULL, tile INTEGER NOT NULL, nonce TEXT NOT NULL, kind TEXT NOT NULL, PRIMARY KEY (plot_id, tile, nonce));`);
     await pool.query(CITY_MIGRATION); // the fake City Hall is live, so the 25% treasury share (pt2032u) needs its tables
     bank.transfer('Ivy', 500_000, { game: 'admin' }); await bank.flush();
-    const [a, b] = [...properties()].filter((p) => p.kind !== 'landmark' && p.price < 20_000).sort((x, y) => x.price - y.price);
+    const [a, b] = [...properties()].filter((p) => p.kind !== 'landmark' && !p.retired && p.price < 20_000).sort((x, y) => x.price - y.price);
     try {
       setCityRates(fake({}));
       const first = await re.buy('Ivy', a!.id); const owned = first.price;

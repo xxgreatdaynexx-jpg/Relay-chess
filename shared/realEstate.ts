@@ -116,9 +116,14 @@ export const landMultiplierNote = (ownedValue: number, per1k?: number) => ownedV
 
 /** Civic buildings are not for sale (City Hall belongs to the city). */
 export const CIVIC_IDS = new Set(['cityhall', 'club', 'skytower']);
-/** City lot under a civic building plot (shared/city.ts CIVIC_PLOTS). Retired, not deleted: it keeps its id and catalog
- *  entry so an owner (even one who bought it during a rollout) keeps it, its value, tax and sell-back; it just can't be bought. */
-export const civicRetired = (b: OBB) => BUILDING_IDS.some((id) => obbOverlap(civicPad(id), b, 1.5));
+/** City lot under a civic building plot (shared/city.ts CIVIC_PLOTS) or under the midtown Club / Sky Tower pads.
+ *  Retired, not deleted: it keeps its id and catalog entry so an owner (even one who bought it during a rollout) keeps it,
+ *  its value, tax and sell-back; it just can't be bought. */
+export const civicRetired = (b: OBB) => {
+  if (BUILDING_IDS.some((id) => obbOverlap(civicPad(id), b, 1.5))) return true;
+  const lm = landmarks();
+  return (!!lm.club && obbOverlap(lm.club, b, 1.5)) || (!!lm.skytower && obbOverlap(lm.skytower, b, 1.5));
+};
 /** Original Employment Office price bands; non-housing property bonuses keep this exact rule. */
 const employeesForPrice = (price: number) => price < 25_000 ? 1 : price < 75_000 ? 2 : price < 250_000 ? 3 : 4;
 export const HOUSING_BASE_PER_EMPLOYEE = 10_000;

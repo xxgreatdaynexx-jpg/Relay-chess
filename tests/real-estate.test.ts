@@ -25,7 +25,7 @@ async function setup() {
   const ledger = (key: string, game: string) => db.public.many(`SELECT amount, balance FROM wallet_transactions WHERE player_key = '${key}' AND game = '${game}' ORDER BY id`) as Array<{ amount: number; balance: number }>;
   return { db, pool, bank, re, fund, chips, ledger, setNow: (t: number) => { now = t; }, clock };
 }
-const cheapest = () => [...properties()].filter((p) => p.kind !== 'landmark').sort((a, b) => a.price - b.price)[0]!;
+const cheapest = () => [...properties()].filter((p) => p.kind !== 'landmark' && !p.retired).sort((a, b) => a.price - b.price)[0]!;
 
 describe('real estate catalog', () => {
   it('every building, lot, park, plaza and landmark has a unique id and a price; the Trailer Park is not for sale', () => {
@@ -128,7 +128,7 @@ describe('real estate: buy / sell / tax', () => {
 });
 
 describe('real estate: land gets pricier the more you own', () => {
-  const cheap = (k: number) => [...properties()].filter((p) => p.kind !== 'landmark').sort((a, b) => a.price - b.price).slice(0, k);
+  const cheap = (k: number) => [...properties()].filter((p) => p.kind !== 'landmark' && !p.retired).sort((a, b) => a.price - b.price).slice(0, k);
   it('Bill Chud 1: price = list (surcharge abolished); sell-back is 70% of what was paid; tax is on the price paid (Tess QA #8)', async () => {
     const s = await setup(); const ps = cheap(4); const list = ps.map((p) => px(p.price));
     const before: number[] = []; for (let i = 0; i < list.length; i++) before.push(list.slice(0, i).reduce((a, b) => a + b, 0));

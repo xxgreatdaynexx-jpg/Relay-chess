@@ -541,7 +541,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const blocked = (x: number, z: number, m: number) => obbHit(PARK_AREA, x, z, m) || solids.some((o) => Math.abs(o.x - x) < 12 && Math.abs(o.z - z) < 12 && obbHit(o, x, z, m));
   // Trees + palms (instanced).
   const treeSpots: [number, number, number][] = [];
-  for (const b of patches) if (b.kind === 'park') { const c = Math.cos(b.rot), sn = Math.sin(b.rot); for (let i = 0; i < 9; i++) { const u = (r() - 0.5) * (b.w - 2), v = (r() - 0.5) * (b.d - 2); treeSpots.push([b.x + u * c + v * sn, b.z - u * sn + v * c, 0.8 + r() * 0.7]); } }
+  for (const b of patches) if (b.kind === 'park' && !civicRetired(b)) { const c = Math.cos(b.rot), sn = Math.sin(b.rot); for (let i = 0; i < 9; i++) { const u = (r() - 0.5) * (b.w - 2), v = (r() - 0.5) * (b.d - 2); treeSpots.push([b.x + u * c + v * sn, b.z - u * sn + v * c, 0.8 + r() * 0.7]); } }
   for (let i = 0; i < 700; i++) { const x = (r() - 0.5) * S * 2 * 0.96, z = (r() - 0.5) * S * 2 * 0.96; if (z > shoreZ(x) - 2) continue; if (roadClearance(x, z) < 1.4) continue; if (blocked(x, z, 1)) continue; treeSpots.push([x, z, 0.7 + r() * 0.6]); }
   // palms along the curving waterfront
   for (let x = -S + 3; x < S - 2; x += 4.4) { const z = shoreZ(x) - 1.4; if (roadClearance(x, z) > 1.4 && !blocked(x, z, 0.8)) treeSpots.push([x, z, -1]); }

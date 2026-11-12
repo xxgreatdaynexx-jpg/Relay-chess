@@ -36,7 +36,7 @@ async function setup() {
   const chips = async (k: string) => Number((await db.query<{ chips: string }>('SELECT chips FROM casino_players WHERE player_key = $1', [k])).rows[0]?.chips ?? 0);
   return { db, pool, bank, re, fund, hold, pastBuy, chips };
 }
-const cheap = (k: number) => [...properties()].filter((p) => p.kind !== 'landmark' && p.kind !== 'farm').sort((a, b) => a.price - b.price).slice(0, k);
+const cheap = (k: number) => [...properties()].filter((p) => p.kind !== 'landmark' && p.kind !== 'farm' && !p.retired).sort((a, b) => a.price - b.price).slice(0, k);
 const farm = () => [...properties()].find((p) => p.kind === 'farm')!;
 
 describe('surcharge base = price paid + upgrades', () => {

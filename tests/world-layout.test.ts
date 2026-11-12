@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { CAR_ROUTES, CAR_COUNT, LANE, routePoint, landmarks, landmarkBoxes, cityFill, ROADS, CUL_R, PLATE, LANDMARK_IDS, roadClearance, obbHit, obbOverlap, shoreZ, district } from '../client/src/lib/worldLayout';
 import { WORLD_SPOTS } from '../client/src/lib/worldSpots';
+import { civicRetired } from '../shared/realEstate';
 
 const CAR_R = 0.9; // half car length — conservative radius
 
@@ -27,7 +28,10 @@ describe('world layout (organic city)', () => {
     expect(new Set(patches.map((p) => p.kind)).has('park')).toBe(true);
     const avg = (d: string) => { const l = houses.filter((h) => district(h.x, h.z) === d); return l.reduce((s, h) => s + h.h, 0) / l.length; };
     expect(avg('downtown')).toBeGreaterThan(avg('suburb'));
-    for (let i = 0; i < solids.length; i++) for (let j = i + 1; j < solids.length; j++) expect(obbOverlap(solids[i], solids[j]), `overlap ${i}/${j}`).toBe(false);
+    for (let i = 0; i < solids.length; i++) for (let j = i + 1; j < solids.length; j++) {
+      if (civicRetired(solids[i]) || civicRetired(solids[j])) continue; // lots under civic / Club / Sky Tower pads stay in the catalog but are hidden
+      expect(obbOverlap(solids[i], solids[j]), `overlap ${i}/${j}`).toBe(false);
+    }
   });
   it('buildings never sit on roads or in the water, and face a street', () => {
     for (const r of ROADS) {

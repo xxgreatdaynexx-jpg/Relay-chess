@@ -59,7 +59,7 @@ async function setup(cityOpen: boolean, bank = new CasinoBank()) {
   const sum = async (game: string, pos: boolean) => Number((await pool.query(`SELECT COALESCE(SUM(amount),0) s FROM wallet_transactions WHERE game=$1 AND amount ${pos ? '>' : '<'} 0`, [game])).rows[0].s);
   return { pool, bank, re, fund, bal, sum };
 }
-const home = () => [...properties()].filter((p) => p.kind === 'building' && p.price >= 10_000).sort((a, b) => a.price - b.price)[0]!;
+const home = () => [...properties()].filter((p) => p.kind === 'building' && !p.retired && p.price >= 10_000).sort((a, b) => a.price - b.price)[0]!;
 
 describe.skipIf(!url)('real PostgreSQL', () => {
   beforeEach(() => resetPurchaseTaxCache());

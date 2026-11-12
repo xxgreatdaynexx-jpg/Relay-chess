@@ -9,7 +9,7 @@ import { SINK_DEBIT_GAMES } from '../shared/sinkRoom';
 import { landmarks } from '../shared/worldLayout';
 
 const fund = (n: string, amt = 50_000) => getBank().transferConfirmed(n, amt, { key: `test_fund:${n}:${Math.random()}`, game: 'admin' });
-const [H1, H2] = properties().filter(isHomeProperty).map((p) => p.id);
+const [H1, H2] = properties().filter((p) => isHomeProperty(p) && !p.retired).map((p) => p.id);
 
 describe('homes rules', () => {
   it('catalog is sane', () => { expect(FURNITURE.length).toBeGreaterThanOrEqual(25); expect(new Set(FURNITURE.map((f) => f.id)).size).toBe(FURNITURE.length); for (const f of FURNITURE) if (!f.auction) expect(f.price).toBeGreaterThan(0); else expect(f.price).toBe(0); });

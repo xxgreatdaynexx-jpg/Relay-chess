@@ -17,6 +17,12 @@ function shim(db:PGlite){
 }
 afterEach(()=>setPriceIndexForTest(1));
 
+const CLUB_TOWER_RETIRED = new Set(['b:house:-691:-188','b:rowhouse:-590:-182','p:park:-667:-111','b:rowhouse:710:331','b:house:659:386','b:house:646:434','b:house:660:334','p:lot:592:349']);
+const withoutNewRetired = (p: {id: string; retired?: boolean; tiles?: number}) => {
+  const { tiles: _tiles, ...rest } = p as {id: string; retired?: boolean; tiles?: number} & Record<string, unknown>;
+  if (CLUB_TOWER_RETIRED.has(p.id)) { const { retired: _r, ...q } = rest; return q; }
+  return rest;
+};
 describe('housing price per actual employee capacity',()=>{
  it('all city/countryside/resort homes retain exact pre-change slots; 1/2/3 slots cost10k/20k/30k; 4 slots untouched',()=>{
   const luxury=(p:{id:string})=>/^(sky|isl):/.test(p.id);
@@ -24,7 +30,7 @@ describe('housing price per actual employee capacity',()=>{
   for(const old of baseline.housing){const p=propertyById(old.id)!;expect(workerBonusOf(p.id),p.id).toBe(old.slots);expect(p.price,p.id).toBe(old.slots<=3?old.slots*10000:old.price);
 
   }
-  expect(hash(hs.map(({price:_price,housingEmployees:_employees,...geometry})=>geometry))).toBe(baseline.housingGeometryHash);
+  expect(hash(hs.map((p)=>{const {price:_price,housingEmployees:_employees,...geometry}=p;return withoutNewRetired(geometry as {id:string;retired?:boolean;tiles?:number});}))).toBe(baseline.housingGeometryHash);
   expect(hs.filter(p=>workerBonusOf(p.id)>3)).toHaveLength(14);
   expect(hs.filter(p=>workerBonusOf(p.id)===1)).toHaveLength(286);
   expect(hs.filter(p=>workerBonusOf(p.id)===2)).toHaveLength(80);
@@ -38,7 +44,7 @@ describe('housing price per actual employee capacity',()=>{
   const luxury=new Set(['sky:1','sky:2','sky:3','sky:4','sky:5','sky:6','isl:1','isl:2','isl:3','isl:4']);
   const isExp=(id:string)=>/^(lot:estate:|winery:|b:mansion:|orchard:)/.test(id)||/^cf:2\d{3}$/.test(id);
   expect(properties().some(p=>p.id==='lm:factory')).toBe(false); // Bill Chud 3: Factory monument deed retired (building stays)
-  expect(hash(properties().filter(p=>!isEmployeeHousing(p)&&!added.has(p.id)&&!isExp(p.id)).map(({tiles:_tiles,...p})=>p))).toBe('b26e48988bca759586cebdd6587bdaef770f34d3f18cdae5ed02adc025f0c3f0'); // prior nonHousingHash minus lm:factory; plants additive, Bill Chud 1 tile counts only
+  expect(hash(properties().filter(p=>!isEmployeeHousing(p)&&!added.has(p.id)&&!isExp(p.id)).map((p)=>withoutNewRetired(p)))).toBe('b26e48988bca759586cebdd6587bdaef770f34d3f18cdae5ed02adc025f0c3f0'); // prior nonHousingHash minus lm:factory; plants additive, Bill Chud 1 tile counts only. Club/Sky Tower lots stay in the catalog as retired
   expect(properties().filter(p=>isEmployeeHousing(p)&&!luxury.has(p.id)&&!isExp(p.id)).map(p=>p.id)).toEqual(baseline.housing.map(p=>p.id));
   expect([...luxury].every(id=>isEmployeeHousing(propertyById(id)!))).toBe(true);
   for(const p of properties().filter(p=>!isEmployeeHousing(p))){const expected=p.type==='barn'||p.type==='factory_plant'||!['building','landmark'].includes(p.kind)?0:p.price<25000?1:p.price<75000?2:p.price<250000?3:4;expect(workerBonusOf(p.id)).toBe(expected);}

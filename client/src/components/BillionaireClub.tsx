@@ -92,7 +92,7 @@ export function BillionaireClub({ onClose, onDeed }: { onClose: () => void; onDe
       )}
       {tab === 'tower' && (
         <div data-testid="club-tower">
-          <p>Six sky penthouses in the civic tower next door, on the same beach. Ordinary home tax and interiors apply.</p>
+          <p>Six sky penthouses in the civic Sky Tower in midtown Chud City. Ordinary home tax and interiors apply.</p>
           <ul>
             {SKY_PENTHOUSES.map((u) => (
               <li key={u.id}><button type="button" data-testid={`sky-unit-${u.id}`} onClick={() => onDeed?.(u.id)}>{u.label} · 🪙 {fmt(u.price)}</button></li>

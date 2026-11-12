@@ -57,14 +57,14 @@ describe('QA live safety: per-owner Postgres lock', () => {
     const a = new RealEstate(pool, () => bank); const b = new RealEstate(pool, () => bank); await a.init();
     await db.exec('CREATE TABLE farm_tiles (plot_id TEXT, tile INT, owner_key TEXT, crop TEXT, planted_at BIGINT, nonce TEXT); CREATE TABLE farm_upgrades (plot_id TEXT, kind TEXT, owner_key TEXT, level INT); CREATE TABLE farm_fert (plot_id TEXT, tile INT, nonce TEXT, kind TEXT);');
     bank.transfer('Dayne', 10_000_000 - bank.account('Dayne').chips, { game: 'admin' }); await bank.flush();
-    const ps = [...properties()].filter((p) => p.kind !== 'landmark' && p.kind !== 'farm').sort((x, y) => x.price - y.price).slice(0, 2);
+    const ps = [...properties()].filter((p) => p.kind !== 'landmark' && p.kind !== 'farm' && !p.retired).sort((x, y) => x.price - y.price).slice(0, 2);
     const [q1, q2] = await Promise.all([a.quote('Dayne', ps[0]!.id), b.quote('Dayne', ps[1]!.id)]);
     const r = await Promise.allSettled([a.buy('Dayne', ps[0]!.id, q1.price), b.buy('Dayne', ps[1]!.id, q2.price)]);
     expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(2); // no surcharge: the second buy no longer reprices
     const bought = (await db.query<{ id: string; price: string }>('SELECT id, price FROM properties')).rows;
     expect(bought).toHaveLength(2); for (const x of bought) expect(Number(x.price)).toBe(ps.find((p) => p.id === x.id)!.price);
     expect(bank.account('Dayne').chips).toBe(10_000_000 - ps[0]!.price - ps[1]!.price - (r as PromiseFulfilledResult<{ wealthTax: number }>[]).reduce((s, x) => s + x.value.wealthTax, 0));
-    const p3 = [...properties()].filter((p) => p.kind !== 'landmark' && p.kind !== 'farm' && !ps.includes(p)).sort((x, y) => x.price - y.price)[0]!;
+    const p3 = [...properties()].filter((p) => p.kind !== 'landmark' && p.kind !== 'farm' && !p.retired && !ps.includes(p)).sort((x, y) => x.price - y.price)[0]!;
     await expect(b.buy('Dayne', p3.id, p3.price - 1)).rejects.toThrow(/price changed/); // stale max guard kept
     await b.buy('Dayne', p3.id, p3.price); // also proves the earlier buys released the advisory lock
   });

@@ -36,7 +36,7 @@ describe.skipIf(!url)('taxed property buy with the production pool size (max 2)'
     // Production economy.playerAssets reads RealEstate.mine (same 2-connection pool) for every active player.
     setEconomyForTest({ playerAssets: async (n: string) => { await re.mine(n); return { total: 0 }; } } as never);
     resetPurchaseTaxCache();
-    const [a, b] = [...properties()].filter((p) => p.kind !== 'landmark' && p.price >= 5_000 && p.price < 20_000).sort((x, y) => x.price - y.price);
+    const [a, b] = [...properties()].filter((p) => p.kind !== 'landmark' && !p.retired && p.price >= 5_000 && p.price < 20_000).sort((x, y) => x.price - y.price);
     const t0 = Date.now();
     const res = await Promise.allSettled([re.buy('Rich', a!.id), re.buy('Rose', b!.id)]);
     const ms = Date.now() - t0;
@@ -62,7 +62,7 @@ describe.skipIf(!url)('taxed property buy with the production pool size (max 2)'
     const n = async (sql: string) => Number((await setupPool.query(sql)).rows[0].n);
     return { pool, setupPool, bank, re, checkedOut, n };
   }
-  const farm = () => [...properties()].filter((p) => p.kind !== 'landmark' && p.price >= 5_000 && p.price < 20_000).sort((x, y) => x.price - y.price)[0]!;
+  const farm = () => [...properties()].filter((p) => p.kind !== 'landmark' && !p.retired && p.price >= 5_000 && p.price < 20_000).sort((x, y) => x.price - y.price)[0]!;
 
   it('cache expiring between preparation and the locked buy: no asset/property reads while the buy holds a connection', async () => {
     const t0 = Date.now(); let pinned: () => number = () => 0;

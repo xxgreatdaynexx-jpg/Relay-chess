@@ -10,7 +10,7 @@ import { setPriceIndexForTest } from '../server/price-index';
 import { properties } from '../shared/realEstate';
 import { isHomeProperty } from '../shared/homes';
 
-const [H1] = properties().filter(isHomeProperty).map((p) => p.id);
+const [H1] = properties().filter((p) => isHomeProperty(p) && !p.retired).map((p) => p.id);
 type A = { ok: boolean; error?: string; [k: string]: unknown };
 let io: Server; let port = 0; const opened: Socket[] = [];
 const owners = new Map<string, string>();

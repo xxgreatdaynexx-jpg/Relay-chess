@@ -11,9 +11,9 @@ import { RealEstate, PropertyError } from '../server/realEstate';
 const h = (o: unknown) => createHash('sha256').update(JSON.stringify(o)).digest('hex').slice(0, 16);
 // Catalog after rf:13–20 (e74f9fa) plus in-place resort road clearance (owned ids unchanged). Countryside buildings/fields unchanged since 6c9544d.
 const BASE = { n: 548, ids: '42cdd98832525a76', geo: 'ada4b546f818f37a', buildings: '3ddcb810ef6cda9a', fields: 'd7ab945b01921d8a' }; // n/ids/geo: Bill Chud 3 retired the Factory monument deed (building stays); countryside hashes unchanged
-const RETIRED = ['b:apartment:-90:-585', 'b:apartment:131:-380', 'b:house:-1042:-487', 'b:house:-106:-644', 'b:house:-165:-629', 'b:house:-570:-747', 'b:house:-639:-701', 'b:house:-982:-483',
-  'b:house:1010:-460', 'b:house:1065:-459', 'b:house:947:-486', 'b:rowhouse:-174:-579', 'b:rowhouse:-628:-789', 'b:rowhouse:186:-350', 'b:rowhouse:68:-360', 'b:tower:110:-315',
-  'p:lot:-948:-583', 'p:park:388:145', 'p:park:666:-134'];
+const RETIRED = ['b:apartment:-90:-585', 'b:apartment:131:-380', 'b:house:-1042:-487', 'b:house:-106:-644', 'b:house:-165:-629', 'b:house:-570:-747', 'b:house:-639:-701', 'b:house:-691:-188', 'b:house:-982:-483',
+  'b:house:1010:-460', 'b:house:1065:-459', 'b:house:646:434', 'b:house:659:386', 'b:house:660:334', 'b:house:947:-486', 'b:rowhouse:-174:-579', 'b:rowhouse:-590:-182', 'b:rowhouse:-628:-789', 'b:rowhouse:186:-350', 'b:rowhouse:68:-360', 'b:rowhouse:710:331', 'b:tower:110:-315',
+  'p:lot:-948:-583', 'p:lot:592:349', 'p:park:-667:-111', 'p:park:388:145', 'p:park:666:-134'];
 // Read-only ownership snapshot (properties table, 2026-11-07 ~13:40 UTC-6): the city lots that were owned.
 const OWNED_CITY = ['b:house:-899:665', 'b:house:-952:686', 'b:house:1053:-523', 'b:house:1127:-940'];
 
@@ -49,7 +49,7 @@ describe('ownership and stable ids', () => {
     expect(h(prior.map((p) => [p.id, p.x, p.z, p.w, p.d, p.rot, p.price]))).toBe(BASE.geo);
     expect(h(outskirts().buildings)).toBe(BASE.buildings); expect(h(outskirts().fields)).toBe(BASE.fields);
   });
-  it('exactly the 19 lots under plots are retired (still resolvable), and none of the owned city lots', () => {
+  it('exactly the civic and midtown-pad lots are retired (still resolvable), and none of the owned city lots', () => {
     expect(ps.filter((p) => p.retired).map((p) => p.id).sort()).toEqual(RETIRED);
     for (const id of RETIRED) expect(propertyById(id)?.retired).toBe(true);
     for (const id of OWNED_CITY) { expect(propertyById(id)).toBeTruthy(); expect(propertyById(id)!.retired).toBeUndefined(); }

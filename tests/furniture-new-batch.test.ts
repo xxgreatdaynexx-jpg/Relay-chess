@@ -37,7 +37,7 @@ const EXPECTED: Record<(typeof NEW_IDS)[number], { cat: string; price: number; w
 };
 
 const fund = (n: string, amt = 80_000) => getBank().transferConfirmed(n, amt, { key: `test_fund:${n}:${Math.random()}`, game: 'admin' });
-const [H1] = properties().filter(isHomeProperty).map((p) => p.id);
+const [H1] = properties().filter((p) => isHomeProperty(p) && !p.retired).map((p) => p.id);
 
 describe('new furniture batch', () => {
   it('adds the requested plants, pink pieces, and mid-century items with unique ids and index-ready prices', () => {

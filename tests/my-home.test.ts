@@ -5,7 +5,7 @@ import { isHomeProperty } from '../shared/homes';
 
 describe('My home panel rows (Tess QA #2)', () => {
   const farm = properties().find((p) => p.kind === 'farm')!, factory = properties().find((p) => p.kind === 'landmark' && p.type === 'casino')!;
-  const furn = properties().find((p) => p.kind === 'landmark' && p.type === 'furniture'), house = properties().find((p) => isHomeProperty(p))!;
+  const furn = properties().find((p) => p.kind === 'landmark' && p.type === 'furniture'), house = properties().find((p) => isHomeProperty(p) && !p.retired)!;
   it('farm listed once, owned Casino listed, unowned Furniture Store not listed as owned, house enterable', () => {
     const owned = [farm, factory, house].map((p) => ({ id: p.id, owner: 'QA-Tess' })).concat([{ id: 'x', owner: 'Someone' }]);
     const r = myHomeRows(owned, 'qa-tess', propertyById);
