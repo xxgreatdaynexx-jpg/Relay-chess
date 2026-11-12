@@ -1,4 +1,4 @@
-import { backdropDismiss } from '@/lib/backdrop';
+import { backdropDismiss, closeButton } from '@/lib/backdrop';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { request, socket } from '@/lib/net';
@@ -160,11 +160,14 @@ export function WalletButton() {
       {open && createPortal(<div className="wallet-backdrop" data-testid="wallet-backdrop" {...backdropDismiss(() => setOpen(false))} />, document.body)}
       {open && createPortal(
         <div ref={(el) => { panelRef.current = el; dragWallet.ref.current = el; }} className={`wallet-panel${expanded ? ' wallet-panel--expanded' : ''}`} role="dialog" aria-label="Wallet" data-testid="wallet-panel" data-expanded={expanded ? 'true' : 'false'} data-drag-panel="wallet" onPointerDown={dragWallet.onPointerDown} style={dragWallet.style()}>{dragWallet.handle}
-          <div className="mb-2 flex gap-1" role="tablist">
+          <div className="wallet-panel-head modal-shell-head" style={{ padding: '0 0 8px', borderBottom: '0', minHeight: 36 }}>
+          <div className="mb-0 flex flex-1 gap-1" role="tablist">
             {([['me', '🪙 My wallet'], ['econ', '🌍 Economy']] as const).map(([k, l]) => (
               <button key={k} type="button" role="tab" aria-selected={view === k} data-testid={`wallet-tab-${k}`} onClick={() => setView(k)}
                 className={`rounded-full px-3 py-1 text-xs font-semibold ${view === k ? 'bg-[#e8c26a] text-[#1b1d2e]' : 'bg-white/10'}`}>{l}</button>
             ))}
+          </div>
+          <button type="button" className="modal-shell-x" aria-label="Close" data-testid="wallet-close" {...closeButton(() => setOpen(false))}>✕</button>
           </div>
           {view === 'econ' ? <EconomyView /> : unavailable && account ? (
             <p className="text-sm" role="alert" data-testid="wallet-unavailable">{unavailable} Chip actions are paused until it reconnects.</p>

@@ -1,9 +1,10 @@
 import { MapSheet } from './MapSheet';
+import { TimedSuspense } from './ModalShell';
 import { useDoing } from '@/lib/doing';
 import { SellQtyPicker } from './SellQtyPicker';
 import { pickForQty } from '../../../shared/sellQty';
 import { lazyWithReload } from '@/lib/lazyWithReload';
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { request } from '@/lib/net';
 import { fishSellValue, FISH_SPOT_CAP, fishSpotCap, fishById, fishPayout, spotOf, fmtKg, RARITY_COLOR, Reel, REEL_DT, type FishCatch, type FishSpot, type FishView } from '../../../shared/fishing';
@@ -116,7 +117,7 @@ export function FishingPanel({ me, onClose, spot = 'lake' }: { me: string | null
       {reef && !deep && <small data-testid="reef-blurb">Sunset over the reef: clownfish and tang in the shallows, mahi-mahi and tuna off the drop-off, and the odd Blue Marlin or Sunset Manta.</small>}
       {!me ? <small>Sign in to fish.</small> : <>
         <button type="button" className="fish-play3d" data-testid="fish-3d" disabled={phase.k !== 'idle'} onClick={() => setPlay3d(true)}>🎮 Play 3D fishing</button>
-        {play3d && createPortal(<Suspense fallback={<div className="fish3d"><div className="fish3d-msg">{deep ? 'Heading out to sea…' : reef ? 'Loading the reef…' : 'Loading the lake…'}</div></div>}><Fishing3DGame me={me} spot={spot} onClose={() => { setPlay3d(false); load(); }} onChange={load} /></Suspense>, document.body)}
+        {play3d && createPortal(<TimedSuspense label={deep ? 'Heading out to sea…' : reef ? 'Loading the reef…' : 'Loading the lake…'} onClose={() => { setPlay3d(false); load(); }}><Fishing3DGame me={me} spot={spot} onClose={() => { setPlay3d(false); load(); }} onChange={load} /></TimedSuspense>, document.body)}
         <small>Quick cast (2D): cast, wait for the bite, strike, then <b>hold</b> (Space or mouse) to reel — keep the hook inside the fish’s green zone until the catch bar fills. Rarer and bigger fish fight harder.</small>
         <div className="fish-water" data-testid="fish-stage" onPointerDown={(e) => { e.preventDefault(); const k = phaseRef.current.k; if (k === 'reel') holdRef.current = true; else if (k === 'wait' || k === 'bite') void hook(); }}>
           {phase.k === 'reel' && reelUi ? <div className="fish-reel" data-testid="fish-reel">

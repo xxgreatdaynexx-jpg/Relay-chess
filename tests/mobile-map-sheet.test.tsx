@@ -53,11 +53,23 @@ describe('real shared mobile header has no scroll/fixed-position dependency', ()
     // Structural invariant after scroll: the header and original close are NOT descendants of the scroller.
     expect(x.closest('.map-sheet-body')).toBeNull();
   });
-  it('desktop renders the original div/children without header/body wrappers', () => {
-    media(false);
-    const children = [close(), el('h3', {}, 'Real estate'), el('p', {}, 'body')];
-    expect(renderToStaticMarkup(el(MapSheet, { className: 'world-deed' }, ...children)))
-      .toBe(renderToStaticMarkup(el('div', { className: 'world-deed' }, ...children)));
+  it('desktop also keeps the close button in a non-scrolling header', () => {
+    media(false); styles();
+    document.body.innerHTML = renderToStaticMarkup(el(MapSheet, { className: 'world-deed' }, close(), el('h3', {}, 'Real estate'), ...long()));
+    const root = document.body.firstElementChild!;
+    const header = root.querySelector(':scope > .map-sheet-header')!;
+    const body = root.querySelector(':scope > .map-sheet-body')!;
+    const x = header.querySelector('button[aria-label="Close"]')!;
+    expect(root.className).toContain('map-sheet');
+    expect(header.nextElementSibling).toBe(body);
+    expect(header.contains(x)).toBe(true);
+    expect(body.contains(x)).toBe(false);
+    expect(getComputedStyle(root).overflow).toBe('hidden');
+    expect(getComputedStyle(body).overflowY).toBe('auto');
+    expect(getComputedStyle(header).flexShrink).toBe('0');
+    expect(getComputedStyle(x).position).toBe('static');
+    (body as HTMLElement).scrollTop = 3000;
+    expect(x.closest('.map-sheet-body')).toBeNull();
   });
   it('original close callback actually fires after content scroll; drag handler is not called', async () => {
     media(true); vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);

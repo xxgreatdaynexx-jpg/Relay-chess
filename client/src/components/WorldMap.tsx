@@ -1,6 +1,7 @@
 import { PropertyIncomeDetails } from './PropertyIncomeDetails';
 import { incomeEligible } from '../../../shared/propertyIncome';
 import { MapSheet } from './MapSheet';
+import { TimedSuspense } from './ModalShell';
 import { STADIUM_SITE } from '../../../shared/coop';
 import { useDoing } from '@/lib/doing';
 import { fullScreenGameOpen } from '@/lib/pauseWorld';
@@ -472,13 +473,13 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
         {nearSpot && <button type="button" className="world-enter" onClick={() => go(nearSpot.id)} data-testid="world-enter">{nearSpot.id === 'airport' ? <>🛫 Fly from the Airport</> : <>{nearSpot.icon} Enter {nearSpot.label}</>} <kbd>E</kbd></button>}
         <div className="world-pad" data-testid="world-pad"><div>{pad('left', '◀')}{pad('right', '▶')}</div><div>{pad('down', '▼')}{pad('handbrake', 'HB')}{nitro && pad('boost', '🔥')}{pad('up', '▲')}</div></div>
       </>}
-      {venue && <Suspense fallback={<div className="world-loading">Opening…</div>}><Venues kind={venue} me={me} driving={driving} onClose={() => setVenue(null)} onFly={async (to) => driveRef.current ? driveRef.current.fly(to) : { ok: false, error: 'Switch to the 3D city to fly.' }} onDriveFrom={driveFrom} /></Suspense>}
-      {dock && <Suspense fallback={<div className="world-loading">Opening the dock…</div>}><FishingPanel me={me} onClose={() => setDock(false)} /></Suspense>}
-      {mechanic && <Suspense fallback={<div className="world-loading">Opening the garage…</div>}><MechanicShop onClose={() => setMechanic(false)} onDrive={(carId, color) => { setMechanic(false); startDrive(carId, color, 'mechanic'); }} /></Suspense>}
+      {venue && <TimedSuspense label="Opening…" onClose={() => setVenue(null)}><Venues kind={venue} me={me} driving={driving} onClose={() => setVenue(null)} onFly={async (to) => driveRef.current ? driveRef.current.fly(to) : { ok: false, error: 'Switch to the 3D city to fly.' }} onDriveFrom={driveFrom} /></TimedSuspense>}
+      {dock && <TimedSuspense label="Opening the dock…" onClose={() => setDock(false)}><FishingPanel me={me} onClose={() => setDock(false)} /></TimedSuspense>}
+      {mechanic && <TimedSuspense label="Opening the garage…" onClose={() => setMechanic(false)}><MechanicShop onClose={() => setMechanic(false)} onDrive={(carId, color) => { setMechanic(false); startDrive(carId, color, 'mechanic'); }} /></TimedSuspense>}
       {panel.k !== 'coop' && <WeeklyEventBar onOpen={() => setPanel((c) => togglePanel(c, { k: 'coop', tab: 'event' }))} />}
-      {panel.k === 'coop' && <Suspense fallback={<div className="world-loading">Opening the co-op board…</div>}><CoopPanel me={me} tab0={panel.tab} onClose={() => setPanel((c) => closePanel(c, 'coop'))} onChanged={() => stadiumRef.current?.refresh()} onViewSite={() => { setPanel((c) => closePanel(c, 'coop')); worldRef.current?.focusXZ(STADIUM_SITE.x, STADIUM_SITE.z, 46, 38); }} /></Suspense>}
-      {freight && <Suspense fallback={<div className="world-loading">Opening the freight yard…</div>}><FreightYard me={me} onClose={() => setFreight(false)} /></Suspense>}
-      {dealer && <Suspense fallback={<div className="world-loading">Opening the dealership…</div>}><Dealership onClose={() => setDealer(false)} onDrive={startDrive} /></Suspense>}
+      {panel.k === 'coop' && <TimedSuspense label="Opening the co-op board…" onClose={() => setPanel((c) => closePanel(c, 'coop'))}><CoopPanel me={me} tab0={panel.tab} onClose={() => setPanel((c) => closePanel(c, 'coop'))} onChanged={() => stadiumRef.current?.refresh()} onViewSite={() => { setPanel((c) => closePanel(c, 'coop')); worldRef.current?.focusXZ(STADIUM_SITE.x, STADIUM_SITE.z, 46, 38); }} /></TimedSuspense>}
+      {freight && <TimedSuspense label="Opening the freight yard…" onClose={() => setFreight(false)}><FreightYard me={me} onClose={() => setFreight(false)} /></TimedSuspense>}
+      {dealer && <TimedSuspense label="Opening the dealership…" onClose={() => setDealer(false)}><Dealership onClose={() => setDealer(false)} onDrive={startDrive} /></TimedSuspense>}
       {casino && (
         <div className="world-casino" {...backdropDismiss(() => setCasino(false))} data-testid="world-casino">
           <MapSheet><h3>🎰 Chud Casino</h3>

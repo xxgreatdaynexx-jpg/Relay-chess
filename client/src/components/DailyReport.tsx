@@ -1,4 +1,4 @@
-import { backdropDismiss } from '@/lib/backdrop';
+import { backdropDismiss, closeButton } from '@/lib/backdrop';
 import { createPortal } from 'react-dom';
 import { INFLATION_LABELS as L, type InflationView } from '../../../shared/inflation';
 import { usePanelDrag } from '@/lib/panelDrag';
@@ -29,11 +29,12 @@ export function DailyReport({ report, onClose }: { report: DailyReportData; onCl
   const e = report.economy, me = report.me;
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" {...backdropDismiss(onClose)} data-testid="daily-report">
-      <div role="dialog" aria-label="Daily report" className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/15 bg-[#1b1d2e] p-5 text-cream shadow-2xl"  data-drag-panel="daily" onPointerDown={dragDaily.onPointerDown} style={dragDaily.style()} ref={dragDaily.ref}>{dragDaily.handle}
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold">📊 Daily Report <span className="text-xs font-normal opacity-60">{report.day}</span></h2>
-          <button type="button" aria-label="Close" className="rounded-full px-2 text-lg opacity-70 hover:opacity-100" onClick={onClose} data-testid="daily-report-close">×</button>
+      <div role="dialog" aria-label="Daily report" className="daily-shell w-full max-w-md rounded-2xl border border-white/15 bg-[#1b1d2e] text-cream shadow-2xl" data-drag-panel="daily" onPointerDown={dragDaily.onPointerDown} style={dragDaily.style()} ref={dragDaily.ref}>{dragDaily.handle}
+        <div className="modal-shell-head">
+          <h2 className="modal-shell-title">📊 Daily Report <span className="text-xs font-normal opacity-60">{report.day}</span></h2>
+          <button type="button" aria-label="Close" className="modal-shell-x" data-testid="daily-report-close" {...closeButton(onClose)}>✕</button>
         </div>
+        <div className="modal-shell-body">
         {report.bonus ? <div className="mt-3 rounded-xl bg-[#e8c26a]/15 px-3 py-2 text-center font-bold text-[#e8c26a]" data-testid="daily-report-bonus">🎁 +{n(report.bonus)} daily bonus received</div> : null}
         <h3 className="mt-4 text-xs uppercase tracking-wide opacity-70">Your assets</h3>
         <Row label="Wallet chips" value={`🪙 ${n(me.cash)}`} />
@@ -79,6 +80,7 @@ export function DailyReport({ report, onClose }: { report: DailyReportData; onCl
           </div>
         </>}
         <button type="button" className="mt-5 w-full rounded-full bg-[#e8c26a] py-2 text-sm font-bold text-[#1b1d2e]" onClick={onClose}>Got it</button>
+        </div>
       </div>
     </div>, document.body);
 }

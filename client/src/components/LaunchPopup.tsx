@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { backdropDismiss, closeButton } from '@/lib/backdrop';
 import { request, socket } from '@/lib/net';
 import { useAccount } from '@/lib/auth';
 import { LAUNCH, launchPages, type LaunchPopup as Launch } from '../../../shared/launchPopup';
@@ -23,13 +24,20 @@ export function LaunchPopup() {
   }, [account]);
   useEffect(() => { const open = () => { setPg(0); setL(LAUNCH); }; window.addEventListener('open-launch-popup', open); return () => window.removeEventListener('open-launch-popup', open); }, []);
   useEffect(() => { document.querySelector('.launch-tabs .on')?.scrollIntoView?.({ block: 'nearest', inline: 'center' }); }, [pg, l]);
+  const done = () => { if (l) { const id = l.id; setL(null); void request('launch_ack', { id }); } };
+  useEffect(() => {
+    if (!l) return;
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); done(); } };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [l]);
   if (!l) return null;
-  const done = () => { setL(null); void request('launch_ack', { id: l.id }); };
   const pages = launchPages(l); const p = Math.min(pg, pages.length - 1); const last = p === pages.length - 1; const page = pages[p]!;
   const go = (i: number) => { setPg(Math.max(0, Math.min(pages.length - 1, i))); document.querySelector('.launch-list')?.scrollTo?.({ top: 0 }); };
   return createPortal(
-    <div className="launch-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="launch-title" data-testid="launch-popup">
+    <div className="launch-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="launch-title" data-testid="launch-popup" {...backdropDismiss(done)}>
       <div className="launch-card">
+        <button type="button" className="launch-x" aria-label="Close" data-testid="launch-close" {...closeButton(done)}>✕</button>
         <div className="launch-burst">💸</div>
         <h2 id="launch-title" className="launch-title">{l.title}</h2>
         <LaunchHeader />

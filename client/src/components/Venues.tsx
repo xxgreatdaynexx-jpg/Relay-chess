@@ -1,6 +1,7 @@
 import { MapSheet } from './MapSheet';
+import { TimedSuspense } from './ModalShell';
 import { useDoing } from '@/lib/doing';
-import { Suspense, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { request } from '@/lib/net';
 import { lazyWithReload } from '@/lib/lazyWithReload';
 import { flyTo, flyToResort, refreshTrip, useTrip } from '@/lib/travel';
@@ -51,7 +52,7 @@ export function Venues({ kind, me, driving, onClose, onFly, onDriveFrom }: {
         <h4>🛩 Private Jet Hangar</h4>
         <small>Own a jet and never buy a ticket again: fly it to Chud Resort or Fort McChud. Jets have a high daily upkeep (crew, fuel, hangar). Unpaid days pile up as arrears, and too many in a row gets the jet repossessed.</small>
         <button type="button" disabled={busy} onClick={() => setHangar(true)} data-testid="open-hangar">🛩 Browse private jets</button>
-        {hangar && <Suspense fallback={null}><FleetStore kind="jet" onClose={() => { setHangar(false); void refreshTrip(); }} /></Suspense>}
+        {hangar && <TimedSuspense label="Opening the hangar…" onClose={() => setHangar(false)}><FleetStore kind="jet" onClose={() => { setHangar(false); void refreshTrip(); }} /></TimedSuspense>}
       </> : <>
         <h3>🏁 Chud Hub Speedway</h3>
         <small>Time-trial laps in your own car. Laps are timed by the server through 4 gates. Leaving the asphalt voids the lap.</small>

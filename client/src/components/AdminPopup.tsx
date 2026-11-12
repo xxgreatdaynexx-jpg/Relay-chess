@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { request, socket } from '@/lib/net';
 import { useAccount } from '@/lib/auth';
 import { usePanelDrag } from '@/lib/panelDrag';
+import { closeButton } from '@/lib/backdrop';
 import { PLAY_BEAT_MS, PLAY_IDLE_MS } from '../../../shared/playtime';
 
 /** Total-play-time heartbeat: active = tab visible and input within PLAY_IDLE_MS. */
@@ -74,15 +75,18 @@ export function PopupCard({ msg: cur, onOk: ok, drag: dragAdmin }: { msg: PopupM
   return createPortal(
     <div className="admin-popup-backdrop" role="dialog" aria-modal="true" aria-labelledby="admin-popup-from"
       style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={dragAdmin.style({ background: '#16181d', color: '#f2f2f2', border: '1px solid #3a3f4b', borderRadius: 12, maxWidth: 480, width: '100%', padding: '20px 22px', boxShadow: '0 12px 40px rgba(0,0,0,0.5)' })} data-drag-panel="admin" onPointerDown={dragAdmin.onPointerDown} ref={dragAdmin.ref}>{dragAdmin.handle}
+      <div className="admin-popup-card" style={dragAdmin.style({ background: '#16181d', color: '#f2f2f2', border: '1px solid #3a3f4b', borderRadius: 12, maxWidth: 480, width: '100%', padding: '20px 22px', boxShadow: '0 12px 40px rgba(0,0,0,0.5)' })} data-drag-panel="admin" onPointerDown={dragAdmin.onPointerDown} ref={dragAdmin.ref}>{dragAdmin.handle}
+        <div className="admin-popup-head">
         {cur.title
-          ? <div id="admin-popup-from" style={{ fontSize: 17, fontWeight: 700, marginBottom: 10 }}>{cur.title}</div>
-          : <div id="admin-popup-from" style={{ fontSize: 13, opacity: 0.75, marginBottom: 8 }}>Message from <b>{cur.from}</b></div>}
+          ? <div id="admin-popup-from" style={{ fontSize: 17, fontWeight: 700, marginBottom: 0, flex: 1 }}>{cur.title}</div>
+          : <div id="admin-popup-from" style={{ fontSize: 13, opacity: 0.75, marginBottom: 0, flex: 1 }}>Message from <b>{cur.from}</b></div>}
+        <button type="button" className="modal-shell-x" aria-label="Close" data-testid="admin-popup-close" disabled={busy} {...(busy ? {} : closeButton(close))}>✕</button>
+        </div>
         {cur.audio && <div style={{ marginBottom: 12 }}>
           <audio ref={audioRef} src={cur.audio} preload="auto" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} />
           <button type="button" onClick={toggle} style={{ padding: '8px 16px', borderRadius: 8, border: 0, background: '#e0473c', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>{playing ? '⏸ Pause' : '▶ Play voice message'}</button>
         </div>}
-        <div style={{ fontSize: cur.audio ? 14 : 15, lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: needConfirm ? '42vh' : '50vh', overflowY: 'auto' }}>{cur.text}</div>
+        <div className="admin-popup-text" style={{ fontSize: cur.audio ? 14 : 15, lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: needConfirm ? '42vh' : '50vh', overflowY: 'auto' }}>{cur.text}</div>
         {needConfirm && (
           <div style={{ marginTop: 14 }}>
             <label style={{ display: 'block', fontSize: 12, opacity: 0.8, marginBottom: 6 }}>Type the apology exactly to dismiss</label>

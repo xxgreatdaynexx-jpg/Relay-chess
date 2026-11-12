@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { backdropDismiss, closeButton } from '@/lib/backdrop';
 import {
   FUTURE_FEATURES_BURST, FUTURE_FEATURES_OK, FUTURE_FEATURES_SHOTS,
   FUTURE_FEATURES_SUBTITLE, FUTURE_FEATURES_TITLE,
@@ -6,9 +8,15 @@ import {
 
 /** Same look and feel as the Millionaire Update launch popup, but no date and no countdown. */
 export function FutureFeaturesPopup({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); onClose(); } };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [onClose]);
   return createPortal(
-    <div className="launch-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="ff-title" data-testid="future-features">
+    <div className="launch-backdrop" role="alertdialog" aria-modal="true" aria-labelledby="ff-title" data-testid="future-features" {...backdropDismiss(onClose)}>
       <div className="launch-card ff-card">
+        <button type="button" className="launch-x" aria-label="Close" data-testid="ff-close" {...closeButton(onClose)}>✕</button>
         <div className="launch-burst">{FUTURE_FEATURES_BURST}</div>
         <h2 id="ff-title" className="launch-title">{FUTURE_FEATURES_TITLE}</h2>
         <p className="launch-sub">{FUTURE_FEATURES_SUBTITLE}</p>

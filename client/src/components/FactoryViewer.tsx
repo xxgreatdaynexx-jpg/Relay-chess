@@ -25,12 +25,12 @@ export function FactoryViewer() {
   }, []);
   useEffect(() => {
     if (!name) return; let dead = false;
-    const load = () => fetch(`/api/factory/view/${encodeURIComponent(name)}`).then(async (r) => {
+    const load = () => fetch(`/api/factory/view/${encodeURIComponent(name)}`, { signal: AbortSignal.timeout(12_000) }).then(async (r) => {
       const j = await r.json().catch(() => ({ ok: false, error: 'Could not load that factory.' })) as View; if (dead) return;
       if (r.status === 429) return;
       setV(j);
       if (j.ok && j.state) { const c = sim.current; const size = floorSize(j.state.floor); c.s = j.state; c.g = gridOf(j.state); c.shown = size; c.shownFrom = size; c.shownAt = 0; if (j.now) c.skew = j.now - Date.now(); }
-    }).catch(() => { if (!dead) setV((c) => c ?? { ok: false, error: 'Network error — try again.' }); });
+    }).catch((e: unknown) => { if (!dead) setV((c) => c ?? { ok: false, error: e instanceof DOMException && e.name === 'AbortError' ? 'This is taking too long. Try again.' : 'Network error — try again.' }); });
     load(); const t = window.setInterval(load, 4000);
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setName(null); } };
     window.addEventListener('keydown', key, true);
@@ -60,12 +60,12 @@ export function FactoryViewer() {
   const made = s ? Object.entries(s.made).filter(([, q]) => q > 0).sort((a, b) => b[1] - a[1]).slice(0, 8) : [];
   return createPortal(
     <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/70 p-3" onPointerDown={(e) => { if (e.target === e.currentTarget) close(); }} data-testid="factory-viewer">
-      <div role="dialog" aria-label={`${name}'s factory (view only)`} className="flex h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#1b1d2e] text-cream shadow-2xl" data-drag-panel="factory-view" onPointerDown={dragView.onPointerDown} style={dragView.style()} ref={dragView.ref}>{dragView.handle}
+      <div role="dialog" aria-label={`${name}'s factory (view only)`} className="factory-viewer-shell flex h-[85vh] h-[85dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#1b1d2e] text-cream shadow-2xl" data-drag-panel="factory-view" onPointerDown={dragView.onPointerDown} style={dragView.style()} ref={dragView.ref}>{dragView.handle}
         <div className="flex items-center gap-2 border-b border-white/10 px-4 py-2">
           <h2 className="font-bold">🏭 {v?.name ?? name}'s factory</h2>
           <span className="rounded bg-white/10 px-2 py-0.5 text-[11px] uppercase tracking-wide opacity-80" data-testid="factory-viewer-readonly">View only</span>
           {s && <span className="text-xs opacity-70">Level {v?.level ?? 0} · Floor {FLOOR_LEVELS[s.floor]?.level ?? s.floor + 1} ({floorSize(s.floor)}×{floorSize(s.floor)}) · {v?.machines ?? machines.length} machines</span>}
-          <button type="button" aria-label="Close" className="ml-auto px-2 text-lg opacity-70 hover:opacity-100" onClick={close} data-testid="factory-viewer-close">×</button>
+          <button type="button" aria-label="Close" className="modal-shell-x ml-auto" onClick={close} data-testid="factory-viewer-close">✕</button>
         </div>
         {!v ? <p className="p-4 text-sm opacity-70">Loading {name}'s factory…</p> : !v.ok || !s ? <p className="p-4 text-sm opacity-80" data-testid="factory-viewer-error">{v.error ?? 'No factory.'}</p> : (
           <div className="flex min-h-0 flex-1 flex-col md:flex-row">

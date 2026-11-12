@@ -40,6 +40,7 @@ export function ChatDrawer() {
   const [error, setError] = useState('');
   const [picked, setPicked] = useState<OnlineUser | { name: string } | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [profileErr, setProfileErr] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const openRef = useRef(open);
   openRef.current = open;
@@ -111,15 +112,20 @@ export function ChatDrawer() {
   async function pick(u: OnlineUser | { name: string }) {
     setPicked(u);
     setProfile(null);
+    setProfileErr(null);
     const headers: Record<string, string> = {};
     const tok = loadAuth()?.token;
     if (tok) headers['X-Relay-Session'] = tok;
-    const get = async (url: string) => { try { return ((await (await fetch(url, { headers })).json()) as { rows: Array<Record<string, unknown> & { name: string }> }).rows; } catch { return []; } };
-    const [chess, arena, skills] = await Promise.all([get('/api/leaderboard'), get('/api/arena-leaderboard'), request('skills_get', { name: u.name }).then((r) => (r.ok ? (r as unknown as SkillProfile) : null)).catch(() => null)]);
-    const same = (r: { name: string }) => r.name.toLowerCase() === u.name.toLowerCase();
-    const c = chess.find(same) as Profile['chess'] | undefined;
-    const a = arena.find(same) as Profile['arena'] | undefined;
-    setProfile({ chess: c, arena: a, skills });
+    const get = async (url: string) => { try { return ((await (await fetch(url, { headers, signal: AbortSignal.timeout(10_000) })).json()) as { rows: Array<Record<string, unknown> & { name: string }> }).rows; } catch { return []; } };
+    try {
+      const [chess, arena, skills] = await Promise.all([get('/api/leaderboard'), get('/api/arena-leaderboard'), request('skills_get', { name: u.name }).then((r) => (r.ok ? (r as unknown as SkillProfile) : null)).catch(() => null)]);
+      const same = (r: { name: string }) => r.name.toLowerCase() === u.name.toLowerCase();
+      const c = chess.find(same) as Profile['chess'] | undefined;
+      const a = arena.find(same) as Profile['arena'] | undefined;
+      setProfile({ chess: c, arena: a, skills });
+    } catch {
+      setProfileErr('Could not load stats.');
+    }
   }
 
   function send(e: React.FormEvent) {
@@ -182,7 +188,7 @@ export function ChatDrawer() {
             <div className="chat-profile" data-testid="chat-profile">
               <div className="chat-head"><b>{picked.name}{profile?.skills ? <span className="chat-qa" data-testid="profile-level-tag" title={`Total level ${profile.skills.total}`}>Lv {profile.skills.total}</span> : null}</b><button type="button" className="acct-close" aria-label="Close profile" onClick={() => setPicked(null)}>✕</button></div>
               <div className="chat-dim">{pickedUser ? statusOf(pickedUser) : 'Offline'}</div>
-              {!profile ? <div className="chat-dim">Loading stats…</div> : (
+              {profileErr ? <div className="chat-dim" role="alert">{profileErr} <button type="button" className="modal-shell-retry" style={{ minHeight: 32, marginTop: 6 }} onClick={() => pick(picked)}>Retry</button></div> : !profile ? <div className="chat-dim">Loading stats…</div> : (
                 <div className="chat-stats">
                   <span>Chess: {profile.chess ? `${profile.chess.wins}W ${profile.chess.losses}L ${profile.chess.draws}D` : 'no rated games'}</span>
                   <span>Arena: {profile.arena ? `${profile.arena.kills} kills · K/D ${profile.arena.kd}` : 'no matches'}</span>

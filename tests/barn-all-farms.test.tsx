@@ -56,8 +56,7 @@ describe('barn-owned unified farm navigation (no stock or gameplay operations)',
     vi.stubGlobal('matchMedia', () => ({ matches: mobile, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
     const close = vi.fn(); const { container } = render(<FarmOverview me="Dayne" owned={owned()} map="city" onOpenFarm={() => {}} onClose={close} />);
     const x = screen.getByRole('button', { name: 'Close' }); fireEvent.click(x); expect(close).toHaveBeenCalledOnce();
-    if (mobile) { expect(x.closest('.map-sheet-header')).toBeTruthy(); expect(x.closest('.map-sheet-body')).toBeNull(); expect(container.querySelector('.map-sheet-body section')).toBeTruthy(); }
-    else expect(container.querySelector('.map-sheet-header')).toBeNull();
+    expect(x.closest('.map-sheet-header')).toBeTruthy(); expect(x.closest('.map-sheet-body')).toBeNull(); expect(container.querySelector('.map-sheet-body section')).toBeTruthy();
   });
   it('ownership removal while open hides the list, and does not alter normal individual farm access', () => {
     const ui = render(<FarmOverview me="Dayne" owned={owned()} map="city" onOpenFarm={() => {}} onClose={() => {}} />);

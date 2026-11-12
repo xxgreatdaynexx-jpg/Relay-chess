@@ -4,7 +4,7 @@ import { LANDMARK_LABEL } from '../../../shared/realEstate';
 import { useEffect, useState } from 'react';
 import { VisitHomeButtons } from './Homes';
 import { createPortal } from 'react-dom';
-import { backdropDismiss } from '@/lib/backdrop';
+import { backdropDismiss, closeButton } from '@/lib/backdrop';
 import { SkillGrid, type SkillProfile } from './Skills';
 import { usePanelDrag } from '@/lib/panelDrag';
 import { NetWorthChart, type NetWorthHistory } from './NetWorthChart';
@@ -87,7 +87,6 @@ export function PlayerProfileView({ p, close }: { p: PublicProfile; close: () =>
         <button type="button" className="mt-1 rounded bg-white/10 px-2 py-0.5 text-xs hover:bg-white/20" onClick={() => openFactoryView(p.name)} data-testid="profile-view-factory">🏭 View factory</button>
         <VisitHomeButtons player={p.name} close={close} />
       </div>
-      <button type="button" aria-label="Close" className="rounded-full px-2 text-lg opacity-70 hover:opacity-100" onClick={close} data-testid="player-profile-close">×</button>
     </div>
     <div className="mt-3 grid grid-cols-3 gap-2 text-center">
       <div className="rounded-xl bg-white/5 p-2"><div className="text-[10px] uppercase opacity-60">Chips</div><div className="font-bold tabular-nums" data-testid="player-profile-chips">🪙 {p.chips == null ? '—' : n(p.chips)}</div></div>
@@ -135,6 +134,7 @@ export default function PlayerProfile() {
   const [name, setName] = useState<string | null>(null);
   const [p, setP] = useState<PublicProfile | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
     const on = (e: Event) => { const d = (e as CustomEvent<string>).detail; if (typeof d === 'string' && d.trim()) setName(d.trim()); };
     const click = (e: MouseEvent) => { const el = (e.target as HTMLElement | null)?.closest?.('[data-player]') as HTMLElement | null; const v = el?.dataset.player; if (v) { e.preventDefault(); e.stopPropagation(); setName(v); } };
@@ -145,20 +145,29 @@ export default function PlayerProfile() {
     if (!name) return;
     let dead = false; setP(null); setErr(null);
     let session: string | undefined; try { session = (JSON.parse(localStorage.getItem('relay-auth-v1') ?? 'null') as { token?: string } | null)?.token; } catch { /* none */ }
-    fetch(`/api/player/${encodeURIComponent(name)}`, { headers: session ? { 'x-relay-session': session } : {} })
+    const ac = new AbortController();
+    const hang = window.setTimeout(() => ac.abort(), 12_000);
+    fetch(`/api/player/${encodeURIComponent(name)}`, { headers: session ? { 'x-relay-session': session } : {}, signal: ac.signal })
       .then(async (r) => { const j = await r.json().catch(() => ({})) as { profile?: unknown; error?: unknown }; if (dead) return; const prof = r.ok ? normalizeProfile(j.profile, name) : null; if (prof) setP(prof); else setErr(typeof j.error === 'string' ? j.error : `Couldn't load ${name}.`); })
-      .catch(() => { if (!dead) setErr('Network error — try again.'); });
+      .catch((e: unknown) => { if (!dead) setErr(e instanceof DOMException && e.name === 'AbortError' ? 'This is taking too long. Try again.' : 'Network error — try again.'); });
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setName(null); } };
     window.addEventListener('keydown', key, true);
-    return () => { dead = true; window.removeEventListener('keydown', key, true); };
-  }, [name]);
+    return () => { dead = true; window.clearTimeout(hang); ac.abort(); window.removeEventListener('keydown', key, true); };
+  }, [name, tick]);
   if (!name) return null;
   const close = () => setName(null);
   return createPortal(
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4" {...backdropDismiss(close)} data-testid="player-profile">
-      <div role="dialog" aria-label={`${name}'s profile`} className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/15 bg-[#1b1d2e] p-5 text-cream shadow-2xl" data-drag-panel="profile" onPointerDown={dragProfile.onPointerDown} style={dragProfile.style()} ref={dragProfile.ref}>{dragProfile.handle}
-        {p ? <PlayerProfileView p={p} close={close} />
-          : <div className="flex items-center justify-between"><span className="text-sm opacity-70">{err ?? `Loading ${name}…`}</span><button type="button" aria-label="Close" className="px-2 text-lg opacity-70" onClick={close}>×</button></div>}
+      <div role="dialog" aria-label={`${name}'s profile`} className="profile-shell w-full max-w-md rounded-2xl border border-white/15 bg-[#1b1d2e] text-cream shadow-2xl" data-drag-panel="profile" onPointerDown={dragProfile.onPointerDown} style={dragProfile.style()} ref={dragProfile.ref}>{dragProfile.handle}
+        <div className="modal-shell-head">
+          <h2 className="modal-shell-title">{p?.name ?? name}</h2>
+          <button type="button" aria-label="Close" className="modal-shell-x" data-testid="player-profile-close" {...closeButton(close)}>✕</button>
+        </div>
+        <div className="modal-shell-body">
+          {p ? <PlayerProfileView p={p} close={close} />
+            : err ? <div className="modal-shell-status" role="alert"><p>{err}</p><button type="button" className="modal-shell-retry" onClick={() => { setErr(null); setP(null); setTick((n) => n + 1); }} data-testid="player-profile-retry">Retry</button></div>
+            : <p className="text-sm opacity-70">Loading {name}…</p>}
+        </div>
       </div>
     </div>, document.body);
 }

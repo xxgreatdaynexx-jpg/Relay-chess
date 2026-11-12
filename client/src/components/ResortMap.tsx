@@ -1,8 +1,9 @@
 import { MapSheet } from './MapSheet';
+import { TimedSuspense } from './ModalShell';
 import { useDoing } from '@/lib/doing';
 import { fullScreenGameOpen } from '@/lib/pauseWorld';
 import { backdropDismiss } from '@/lib/backdrop';
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RESORT_SPOTS } from '../../../shared/resort';
 import { MINE_CAVE_EVENT } from '../../../shared/mines';
 import { propertyById as baseProperty, type OwnedProperty } from '../../../shared/realEstate';
@@ -132,10 +133,10 @@ export function ResortMap() {
           </div>)}
         </MapSheet>
       )}
-      {marina && <Suspense fallback={null}><FleetStore kind="boat" onClose={() => setMarina(false)} onDeepSea={() => { setMarina(false); setDeepSea(true); }} /></Suspense>}
-      {hangar && <Suspense fallback={null}><FleetStore kind="jet" onClose={() => setHangar(false)} /></Suspense>}
-      {deepSea && <Suspense fallback={null}><FishingPanel me={me} spot="deep" onClose={() => setDeepSea(false)} /></Suspense>}
-      {pier && <Suspense fallback={null}><FishingPanel me={me} spot="reef" onClose={() => setPier(false)} /></Suspense>}
+      {marina && <TimedSuspense label="Opening the marina…" onClose={() => setMarina(false)}><FleetStore kind="boat" onClose={() => setMarina(false)} onDeepSea={() => { setMarina(false); setDeepSea(true); }} /></TimedSuspense>}
+      {hangar && <TimedSuspense label="Opening the hangar…" onClose={() => setHangar(false)}><FleetStore kind="jet" onClose={() => setHangar(false)} /></TimedSuspense>}
+      {deepSea && <TimedSuspense label="Heading out to sea…" onClose={() => setDeepSea(false)}><FishingPanel me={me} spot="deep" onClose={() => setDeepSea(false)} /></TimedSuspense>}
+      {pier && <TimedSuspense label="Loading the reef…" onClose={() => setPier(false)}><FishingPanel me={me} spot="reef" onClose={() => setPier(false)} /></TimedSuspense>}
       {air && (
         <MapSheet className="world-deed world-venue" data-testid="venue-resort-airfield" data-drag-panel="resortAir" onPointerDown={dragResortAir.onPointerDown} style={dragResortAir.style()} ref={dragResortAir.ref}>{dragResortAir.handle}
           <button type="button" className="world-deed-x" onClick={() => setAir(false)} aria-label="Close">✕</button>

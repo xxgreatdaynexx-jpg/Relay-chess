@@ -27,9 +27,15 @@ export class ErrorBoundary extends Component<{ where: ClientErrorWhere; kind: 'a
     if (!this.state.err) return this.props.children;
     if (this.props.kind === 'panel') {
       return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4" data-testid={`crash-${this.props.where}`}>
-        <div role="alertdialog" aria-label="Something went wrong" className="w-full max-w-sm rounded-2xl border border-white/15 bg-[#1b1d2e] p-5 text-cream">
-          <p className="text-sm">This window hit an error and was closed. Close this message and open it again to retry.</p>
-          <button type="button" className="mt-3 min-h-[44px] rounded-lg bg-white/10 px-4" onClick={() => this.setState({ err: null })} data-testid="crash-close">Close</button>
+        <div role="alertdialog" aria-label="Something went wrong" className="modal-shell w-full max-w-sm">
+          <div className="modal-shell-head">
+            <h2 className="modal-shell-title">Something went wrong</h2>
+            <button type="button" className="modal-shell-x" aria-label="Close" onClick={() => this.setState({ err: null })} data-testid="crash-close">✕</button>
+          </div>
+          <div className="modal-shell-body">
+            <p className="text-sm">This window hit an error and was closed. Close this message and open it again to retry.</p>
+            <button type="button" className="mt-3 min-h-[44px] rounded-lg bg-white/10 px-4" onClick={() => this.setState({ err: null })}>Close</button>
+          </div>
         </div>
       </div>;
     }
