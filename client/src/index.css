@@ -1364,6 +1364,9 @@ html, body { overflow-x: clip; }
 .wallet-panel { position: fixed; top: 48px; right: 12px; z-index: 60; width: min(360px, calc(100vw - 24px)); max-height: calc(100vh - 64px); max-height: calc(100dvh - 64px); overflow: hidden; display: flex; flex-direction: column; border-radius: 14px; background: #1b1d2e; color: #fff6d8; border: 1px solid rgba(255,255,255,.12); box-shadow: 0 12px 40px rgba(0,0,0,.5); padding: 14px; }
 .wallet-panel--expanded { top: 12px; right: 12px; width: min(480px, calc(100vw - 24px)); height: calc(100dvh - 24px); max-height: calc(100dvh - 24px); }
 .wallet-panel-body { display: flex; flex-direction: column; min-height: 0; flex: 1; overflow: hidden; }
+/* Economy tab: the panel is overflow:hidden so the tabs + ✕ stay put. EconomyView
+   must live in this flex child or the Global/Server Economy report is clipped and cannot scroll. */
+.wallet-econ-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .wallet-history-scroll { overflow-y: auto; max-height: 220px; margin-top: 4px; overscroll-behavior: contain; }
 .wallet-panel--expanded .wallet-history-scroll { flex: 1 1 auto; max-height: none; }
 .wallet-panel li { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.06); font-size: 13px; }
@@ -3014,7 +3017,7 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 .admin-popup-card .admin-popup-text { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
 /* Shared touch-scroll + vh fallback for other existing panels. */
-.chat-clog-list, .wallet-history-scroll, .inv-win .overflow-auto, .dealer-body, .chat-drawer .chat-list {
+.chat-clog-list, .wallet-history-scroll, .wallet-econ-scroll, .inv-win .overflow-auto, .dealer-body, .chat-drawer .chat-list {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }

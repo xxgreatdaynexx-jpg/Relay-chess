@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { panelDragAllowed, usePanelDrag } from '../client/src/lib/panelDrag';
+import { panelDragAllowed, sheetPinned, usePanelDrag } from '../client/src/lib/panelDrag';
 
 const dir = join(process.cwd(), 'client/src/components');
 const files = readdirSync(dir).filter((f) => f.endsWith('.tsx'));
@@ -80,5 +80,21 @@ describe('usePanelDrag', () => {
     expect(panelDragAllowed(screen.getByTestId('b'), 100, 105)).toBe(false);
     expect(panelDragAllowed(screen.getByText('Title'), 100, 110)).toBe(true);
     expect(panelDragAllowed(screen.getByText('Title'), 100, 400)).toBe(false);
+  });
+  it('does not loop when a phone sheet pins transform and is shorter than innerHeight', () => {
+    Object.assign(window, { innerWidth: 390, innerHeight: 844 });
+    const origStyle = window.getComputedStyle.bind(window);
+    const styleSpy = vi.spyOn(window, 'getComputedStyle').mockImplementation((el, pseudo) => {
+      const s = origStyle(el, pseudo);
+      return new Proxy(s, { get: (tgt, prop) => (prop === 'transform' ? 'none' : Reflect.get(tgt, prop)) });
+    });
+    const rect = { left: 0, top: 0, width: 390, height: 700, right: 390, bottom: 700, x: 0, y: 0, toJSON() {} } as DOMRect;
+    const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(rect);
+    expect(() => { render(createElement(Panel)); }).not.toThrow();
+    const p = screen.getByTestId('p');
+    expect(p.style.transform).toBe('');
+    expect(sheetPinned(p)).toBe(true);
+    styleSpy.mockRestore();
+    rectSpy.mockRestore();
   });
 });

@@ -169,7 +169,11 @@ export function WalletButton() {
           </div>
           <button type="button" className="modal-shell-x" aria-label="Close" data-testid="wallet-close" {...closeButton(() => setOpen(false))}>✕</button>
           </div>
-          {view === 'econ' ? <EconomyView /> : unavailable && account ? (
+          {view === 'econ' ? (
+            <div className="wallet-econ-scroll" data-testid="wallet-econ-scroll">
+              <EconomyView />
+            </div>
+          ) : unavailable && account ? (
             <p className="text-sm" role="alert" data-testid="wallet-unavailable">{unavailable} Chip actions are paused until it reconnects.</p>
           ) : !signedIn ? (
             <div>

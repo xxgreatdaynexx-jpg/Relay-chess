@@ -34,4 +34,16 @@ describe('wallet history pagination', () => {
     expect(sock).toMatch(/socket\.on\('wallet_history'/);
     expect(sock).toMatch(/nextCursor/);
   });
+
+  it('the Global/Server Economy tab has its own scrolling body inside the overflow-hidden panel', () => {
+    const src = readFileSync('client/src/components/WalletButton.tsx', 'utf8');
+    expect(src).toMatch(/wallet-tab-\$\{k\}/);
+    expect(src).toContain("'econ', '🌍 Economy'");
+    expect(src).toMatch(/data-testid="wallet-econ-scroll"/);
+    expect(src).toMatch(/wallet-econ-scroll[\s\S]*<EconomyView/);
+    const css = readFileSync('client/src/index.css', 'utf8');
+    expect(css).toMatch(/\.wallet-econ-scroll[^}]*overflow-y:\s*auto/);
+    expect(css).toMatch(/\.wallet-econ-scroll[^}]*min-height:\s*0/);
+    expect(css).toMatch(/\.wallet-panel[^}]*overflow:\s*hidden/);
+  });
 });

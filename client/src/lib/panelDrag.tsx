@@ -22,6 +22,17 @@ export function panelDragAllowed(t: Element | null, panelTop: number, y: number)
  * useWindowDrag). Pointer events (mouse, pen, touch), clamped on screen, offset kept per panel in localStorage.
  * Usage: const d = usePanelDrag('grocery'); <div ref={d.ref} style={d.style()} onPointerDown={d.onPointerDown} data-drag-panel="grocery">{d.handle}...
  */
+
+/** True when CSS pins a full-bleed sheet so a JS translate cannot move it (phone menus). */
+export function sheetPinned(el: HTMLElement): boolean {
+  if (typeof window === 'undefined') return false;
+  const s = getComputedStyle(el);
+  // `none` or the two-value form some engines report. A real translate is a matrix().
+  if (s.transform !== 'none' && s.transform !== 'none none') return false;
+  const r = el.getBoundingClientRect();
+  return r.width >= window.innerWidth - 2 && r.left <= 2 && r.top <= 2;
+}
+
 export function usePanelDrag<T extends HTMLElement = HTMLDivElement>(id: string) {
   const key = `panel-${id}`;
   const ref = useRef<T | null>(null);
@@ -35,14 +46,24 @@ export function usePanelDrag<T extends HTMLElement = HTMLDivElement>(id: string)
     const r = el.getBoundingClientRect();
     const cur = offRef.current;
     if (!r.width && !r.height) return o; // not laid out (jsdom / hidden)
-    if (r.width >= window.innerWidth && r.height >= window.innerHeight) return { dx: 0, dy: 0 }; // full-screen sheet (phone farm): nothing to drag/clamp
+    // Mobile viewport sheets set `transform: none !important` and pin to the screen. If we
+    // still clamp, getBoundingClientRect never moves (CSS ignores our translate) and the
+    // offset grows every layout — React "Maximum update depth exceeded", which is the
+    // panel crash on phones. 100dvh is also often a few px shorter than innerHeight
+    // (mobile Chrome URL bar), so the old "fills the viewport" short-circuit missed them.
+    if (sheetPinned(el) || (r.width >= window.innerWidth && r.height >= window.innerHeight)) return { dx: 0, dy: 0 };
     return clampOffset(o, { left: r.left - cur.dx, top: r.top - cur.dy, width: r.width, height: r.height }, window.innerWidth, window.innerHeight, M, M);
   }, []);
 
-  // Keep a restored/old offset on screen (window resized since, panel grew).
+  // Keep a restored/old offset on screen (window resized since, panel grew). At most two
+  // automatic corrections per settle so a pinned/oscillating clamp cannot loop.
+  const clampPasses = useRef(0);
   useLayoutEffect(() => {
     const c = clamp(offRef.current);
-    if (c.dx !== offRef.current.dx || c.dy !== offRef.current.dy) setOff(c);
+    if (c.dx === offRef.current.dx && c.dy === offRef.current.dy) { clampPasses.current = 0; return; }
+    if (clampPasses.current >= 2) return;
+    clampPasses.current += 1;
+    setOff(c);
   });
 
   const onPointerDown = (e: RPointerEvent<HTMLElement>) => {
@@ -58,6 +79,7 @@ export function usePanelDrag<T extends HTMLElement = HTMLDivElement>(id: string)
       if (!s.live) {
         if (Math.hypot(ev.clientX - s.x, ev.clientY - s.y) < PANEL_DRAG_SLOP) return;
         s.live = true;
+        clampPasses.current = 0;
       }
       ev.preventDefault();
       const n = clamp({ dx: s.start.dx + ev.clientX - s.x, dy: s.start.dy + ev.clientY - s.y });
