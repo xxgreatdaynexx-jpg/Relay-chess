@@ -18,6 +18,7 @@ import { FireworksHost, PrestigeDeskHost } from './PrestigeDesk';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { lazyWithReload } from '@/lib/lazyWithReload';
 import { importWithReload } from '@/lib/chunkReload';
+import { applyWorldOwned } from '@/lib/worldOwned';
 import { WORLD_SPOTS } from '@/lib/worldSpots';
 import { canDemolish } from '../../../shared/estateProjects';
 import { EstatePanel } from '@/components/EstatePanel';
@@ -269,7 +270,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
     load(); socket.on('re_changed', load);
     return () => { dead = true; socket.off('re_changed', load); };
   }, []);
-  useEffect(() => { worldRef.current?.setOwned([...owned.keys()]); worldRef.current?.setOwnerLabels([...owned.values()].filter((o) => isHomeProperty(propertyById(o.id))).map((o) => ({ id: o.id, owner: o.owner }))); }, [owned, loading]);
+  useEffect(() => { applyWorldOwned(worldRef.current, owned); }, [owned, loading]);
   const freight = panel.k === 'freight'; const setFreight = (v: boolean) => setPanel((c) => (v ? { k: 'freight' } : closePanel(c, 'freight')));
   const dealer = panel.k === 'dealer'; const setDealer = (v: boolean) => setPanel((c) => (v ? { k: 'dealer' } : closePanel(c, 'dealer')));
   const mechanic = panel.k === 'mechanic'; const setMechanic = (v: boolean) => setPanel((c) => (v ? { k: 'mechanic' } : closePanel(c, 'mechanic')));
@@ -349,6 +350,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
 
   useEffect(() => {
     if (mode !== '3d') return;
+    setLoading(true);
     let dead = false;
     void importWithReload(() => import('@/lib/world3d')).then(({ createWorld }) => {
       if (dead || !canvasRef.current) return;
@@ -367,6 +369,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
           onTrailer: (n) => { const m = meRef.current; if (m && n.toLowerCase() === m.toLowerCase()) { setPanel({ k: 'home' }); return true; } return false; },
         });
         const w = worldRef.current;
+        applyWorldOwned(w, ownedRef.current);
         void importWithReload(() => import('@/lib/worldFreight')).then(({ createFreight }) => { if (dead || worldRef.current !== w) return; freightRef.current = createFreight(w); });
         void importWithReload(() => import('@/lib/worldHaul')).then(({ createHaul }) => { if (dead || worldRef.current !== w) return; haulRef.current = createHaul(w); });
         void importWithReload(() => import('@/lib/worldStadium')).then(({ createStadium }) => { if (dead || worldRef.current !== w) return; stadiumRef.current = createStadium(w); });
