@@ -24,7 +24,7 @@ describe('classification (every catalog deed)', () => {
     const z = (p: Property) => zoneOf(p);
     for (const p of all) {
       if (['house', 'rowhouse', 'apartment', 'tower'].includes(p.type) && !p.map) expect(z(p)).toBe('residential');
-      else if (p.kind === 'landmark' || ['gas', 'depot', 'barn'].includes(p.type)) expect(z(p)).toBe('commercial');
+      else if (p.kind === 'landmark' || ['gas', 'depot', 'barn', 'factory_plant'].includes(p.type)) expect(z(p)).toBe('commercial');
       else if (p.kind === 'farm') { expect(z(p)).toBe('farmland'); const m = /\((\d+)×(\d+)\)/.exec(p.label)!; expect(tilesOf(p)).toBe(Number(m[1]) * Number(m[2])); }
       else { expect(z(p)).toBe('exempt'); expect(p.kind === 'patch' || p.map === 'resort').toBe(true); }
     }

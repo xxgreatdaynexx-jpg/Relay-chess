@@ -30,9 +30,9 @@ describe('real estate catalog', () => {
   it('every building, lot, park, plaza and landmark has a unique id and a price; the Trailer Park is not for sale', () => {
     const ps = properties(); expect(new Set(ps.map((p) => p.id)).size).toBe(ps.length);
     const { houses, patches } = cityFill(7);
-    expect(ps.filter((p) => p.kind === 'building' && p.map !== 'resort')).toHaveLength(houses.length + countryHomes().length + countryBusinesses().length + farmBarns().length);
+    expect(ps.filter((p) => p.kind === 'building' && p.map !== 'resort' && p.type !== 'factory_plant')).toHaveLength(houses.length + countryHomes().length + countryBusinesses().length + farmBarns().length);
     expect(ps.filter((p) => p.kind === 'patch')).toHaveLength(patches.length);
-    expect(ps.filter((p) => p.kind === 'landmark').map((p) => p.type).sort()).toEqual([...LANDMARK_IDS, 'jail', 'harbour'].filter((id) => id !== 'cityhall' && id !== 'mine-quarry').sort()); // Stone Quarry is public/manual, not a buyable deed
+    expect(ps.filter((p) => p.kind === 'landmark').map((p) => p.type).sort()).toEqual([...LANDMARK_IDS, 'jail', 'harbour'].filter((id) => id !== 'cityhall' && id !== 'mine-quarry' && id !== 'factory').sort()); // Stone Quarry is public; Factory monument retired (Bill Chud 3)
     for (const p of ps) { expect(p.price).toBeGreaterThan(0); if (p.kind !== 'landmark') expect(obbOverlap(PARK_AREA, p)).toBe(false); }
     expect(ps.some((p) => /trailer/i.test(p.id))).toBe(false);
     expect(ps.some((p) => p.type === 'cityhall')).toBe(false); // City Hall is civic, never for sale

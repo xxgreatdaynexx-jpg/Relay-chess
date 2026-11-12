@@ -11,6 +11,8 @@ import { LOW, bolt, dropShadow, floorTiles, glow, hazard, lighting, metal, rrect
 import { GOODS, type Stack } from '../../../shared/mines';
 import { madeBy, tierOf, usedIn, CHEST_ITEMS, DX, DY, FLOOR_LEVELS, FRECIPES, KINDS, KIND_ORDER, TICK_MS, colorOfKey, floorSize, frecipe, gridOf, cellId, nameOfKey, priceOfKey, recipeTicks, recipesFor, step, canPlace, splitWeights, splitLabel, MAX_SPLIT_W, type Dir, type Ent, type FState, type Grid, type Kind, undergroundPairs } from '../../../shared/factory';
 import { clipKitMissing, clipToPlaceItems, entsToClip, type FactoryClip } from '../../../shared/factoryClipboard';
+import { factoryPlants, factoryPlantLabel, factoryPlantN, isFactoryPlantId, FACTORY_PLANT_PRICE } from '../../../shared/bill3';
+import { loadAuth } from '../lib/auth';
 
 export type FAck = { ok: boolean; error?: string; state?: FState | null; level?: number; storage?: Stack[]; guest?: boolean; now?: number; result?: unknown; carbonTax?: { rate: number; unpaid: number } };
 type Tool = 'select' | 'remove' | Kind;
@@ -36,6 +38,18 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
   const [side, setSide] = useState<'build' | 'shop' | 'recipes' | 'import'>('build');
   const [chain, setChain] = useState<string>('');
   const [buyN, setBuyN] = useState(1);
+  const [plant, setPlant] = useState<string | null>(null);
+  const plantRef = useRef<string | null>(null); plantRef.current = plant;
+  const [myPlants, setMyPlants] = useState<string[]>([]);
+  const me = loadAuth()?.name ?? null;
+  useEffect(() => {
+    let n = true;
+    void fetch('/api/real-estate').then((r) => r.json()).then((j: { owned?: Array<{ id: string; owner: string }> }) => {
+      if (!n || !me) return;
+      setMyPlants((j.owned ?? []).filter((o) => isFactoryPlantId(o.id) && o.owner.toLowerCase() === me.toLowerCase()).map((o) => o.id).sort());
+    }).catch(() => {});
+    return () => { n = false; };
+  }, [me, fs]);
   const ui = useRef({ tool, dir, sel, moving, sels: [] as number[], hover: null as null | [number, number], drag: [] as Array<{ x: number; y: number; d: Dir }>, dragging: false, removing: new Set<number>(), marquee: null as null | { x0: number; y0: number; x1: number; y1: number }, z: 1, px: 0, py: 0, pan: null as null | { x: number; y: number; px: number; py: number; moved: boolean; btn: number }, pts: new Map<number, { x: number; y: number }>(), pinch: null as null | { d: number; z: number; cx: number; cy: number; px: number; py: number }, space: false, mini: null as null | { x: number; y: number; w: number; s: number } });
   const [zoomed, setZoomed] = useState(false);
   ui.current.tool = tool; ui.current.dir = dir; ui.current.sel = sel; ui.current.moving = moving; ui.current.sels = sels;
@@ -51,12 +65,12 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
       c.s = s; c.g = s ? gridOf(s) : new Map(); if (r.now) c.skew = r.now - Date.now(); setFs(s);
     }
   };
-  const call = (ev: string, body: object, ok?: (r: FAck) => void) => socket.timeout(6000).emit(ev, body, (err: Error | null, r?: FAck) => {
+  const call = (ev: string, body: object, ok?: (r: FAck) => void) => socket.timeout(6000).emit(ev, { ...body, ...(plantRef.current ? { plant: plantRef.current } : {}) }, (err: Error | null, r?: FAck) => {
     if (err || !r) return flash('Factory busy, try again.');
     apply(r); if (!r.ok) return flash(r.error ?? 'Failed.'); ok?.(r);
   });
-  const ask: SellAsk = (ev, body) => new Promise((res) => socket.timeout(15000).emit(ev, body, (err: Error | null, r?: FAck) => { if (err || !r) return res({ ok: false, error: 'Factory busy, try again.' }); apply(r); res(r); }));
-  useEffect(() => { if (guest) return; call('fac_state', {}); const t = window.setInterval(() => call('fac_state', {}), 3000); return () => window.clearInterval(t); }, [guest]); // eslint-disable-line react-hooks/exhaustive-deps
+  const ask: SellAsk = (ev, body) => new Promise((res) => socket.timeout(15000).emit(ev, { ...body, ...(plantRef.current ? { plant: plantRef.current } : {}) }, (err: Error | null, r?: FAck) => { if (err || !r) return res({ ok: false, error: 'Factory busy, try again.' }); apply(r); res(r); }));
+  useEffect(() => { if (guest) return; call('fac_state', {}); const t = window.setInterval(() => call('fac_state', {}), 3000); return () => window.clearInterval(t); }, [guest, plant]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- render loop
   useEffect(() => {
@@ -259,6 +273,13 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
       <h3>🏭 Your factory building</h3>
       <p className="mines-note">Lay belts, place smelters, presses and rollers, and chain ore into ingots, plates, rods, wire, gears, circuits, jewelry and engines. It keeps running while you're offline (up to 8 hours), feeding from your banked storage. Smelters pay a city carbon tax on each coal they burn as fuel (the mayor sets the rate).</p>
       {level === 0 && <button type="button" className="mines-sell" onClick={() => call('fac_expand', {}, () => flash('Factory built! You got a starter kit.'))} data-testid="fac-build">Buy the building (12×12) · 🪙 {ix(FLOOR_LEVELS[0].cost, pidx)}</button>}
+              {me && <div className="fac-plants-shop" data-testid="fac-plants-shop">
+          <small>Additional factories are commercial deeds (Bill Chud 3), like farms: 🪙 {FACTORY_PLANT_PRICE.toLocaleString()} list, plus wealth tax, within the 5-commercial cap. Your first factory stays free and grandfathered.</small>
+          {factoryPlants().filter((p) => !myPlants.includes(p.id)).slice(0, 4).map((p) => (
+            <button type="button" key={p.id} className="fac-btn" data-testid={`fac-buy-plant-${p.id}`} onClick={() => socket.timeout(15_000).emit('re_buy', { id: p.id, max: p.price * 3 }, (err: Error | null, r?: { ok?: boolean; error?: string }) => { if (!err && r?.ok) { flash(`${p.label} is yours!`); setMyPlants((x) => [...x, p.id].sort()); } else flash(r?.error ?? 'Could not buy that factory.'); })}>Buy {p.label}</button>
+          ))}
+        </div>}
+
       {level > 0 && <p className="mines-note">Loading…</p>}
     </div>
   );
@@ -267,6 +288,10 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
   return (
     <div className="fac" data-testid="fac">
       <div className="fac-top">
+        <label className="fac-chip" data-testid="fac-plant">🏭 <select value={plant ?? ''} onChange={(e) => { setPlant(e.target.value || null); setFs(null); }} aria-label="Factory plant">
+          <option value="">Your starter factory (grandfathered)</option>
+          {myPlants.map((id) => <option key={id} value={id}>{factoryPlantLabel(factoryPlantN(id))}</option>)}
+        </select></label>
         <span className="fac-chip">🏭 {floorSize(fs.floor)}×{floorSize(fs.floor)}</span>
         <span className="fac-chip" data-testid="fac-carbon-tax" title={carbonTax.unpaid ? `Unpaid carbon tax is collected when you next have chips. Production keeps running.` : undefined}>Carbon tax 🪙 {carbonTax.rate}/coal{carbonTax.unpaid ? ` · unpaid 🪙 ${carbonTax.unpaid.toLocaleString()}` : ''}</span>
         {next && <button type="button" className="fac-btn" onClick={() => call('fac_expand', {}, () => flash(`Walls pushed out to ${next.size}×${next.size}!`))} data-testid="fac-expand">Expand to {next.size}×{next.size} · 🪙 {ix(next.cost, pidx).toLocaleString()}</button>}

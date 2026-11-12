@@ -62,7 +62,14 @@ function OwnedHomes2D({ owned, onPick }: { owned: Map<string, OwnedProperty>; on
 export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, onAllFarms }: { id: string; owned: Map<string, OwnedProperty>; me: string | null; onClose: () => void; onFarm?: () => void; onAllFarms?: () => void; onKitchen?: () => void; onDone?: (ev: 're_buy' | 're_sell' | 're_buyout', text: string, paid?: number) => void }) {
   useDoing('realestate', propertyById(id)?.label);
   const dragDeed = usePanelDrag('deed');
-  const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState<null | 're_buy' | 're_sell' | 're_buyout'>(null); const [msg, setMsg] = useState<string | null>(null); const wallet = useWalletChips(); useEffect(() => setMsg(null), [id]); // Tess QA #5: switching deeds clears the last deed's status
+  const p = propertyById(id); const o = owned.get(id); const [busy, setBusy] = useState<null | 're_buy' | 're_sell' | 're_buyout' | 're_trade'>(null); const [msg, setMsg] = useState<string | null>(null);
+  const [tradeTo, setTradeTo] = useState(''); const [tradeChips, setTradeChips] = useState(''); const [trades, setTrades] = useState<{ incoming: Array<{ id: string; fromName: string; giveIds: string[]; wantChips: number; giveChips: number }>; outgoing: Array<{ id: string; toName: string; giveIds: string[]; wantChips: number; giveChips: number }> } | null>(null); const wallet = useWalletChips(); useEffect(() => setMsg(null), [id]); // Tess QA #5: switching deeds clears the last deed's status
+  useEffect(() => {
+    if (!me) return;
+    socket.timeout(10_000).emit('re_trade_list', {}, (_e: Error | null, r?: { ok?: boolean; incoming?: NonNullable<typeof trades>['incoming']; outgoing?: NonNullable<typeof trades>['outgoing'] }) => {
+      if (r && r.ok) setTrades({ incoming: r.incoming ?? [], outgoing: r.outgoing ?? [] });
+    });
+  }, [id, me, busy]);
   // Purchase wealth tax: server quote, refreshed per deed. Historical back-tax is canceled.
   const [wtax, setWtax] = useState<{ tax: number; recipients: number; line: string } | null>(null);
   const [zone, setZone] = useState<{ line: string; refusal: string | null } | null>(null);
@@ -118,6 +125,26 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
       {!o && p.retired && <small data-testid="deed-retired">Not for sale: a civic building stands here.</small>}
       {!o && !p.retired && (me ? <button type="button" disabled={!!busy} aria-busy={busy === 're_buy'} onClick={() => (zone?.refusal ? setMsg(zone.refusal) : short ? setMsg(`Not enough chips: ${p.label} costs 🪙 ${chips(total)}; you have 🪙 ${chips(wallet ?? 0)} (need 🪙 ${chips(short)} more).`) : act('re_buy'))} aria-describedby={short ? 'deed-short' : undefined} data-testid="deed-buy">{busy === 're_buy' ? <><span className="world-spin" aria-hidden /> Buying…</> : <>Buy for 🪙 {chips(total)}{me && tax ? ' (incl. wealth tax)' : ''}</>}</button> : <small>Sign in to buy.</small>)}
       {mine && <button type="button" disabled={!!busy} aria-busy={busy === 're_sell'} onClick={() => act('re_sell')} data-testid="deed-sell">{busy === 're_sell' ? <><span className="world-spin" aria-hidden /> Selling…</> : <>Sell to the city for 🪙 {chips(sellBackOf(Math.min(cost, o?.basis ?? cost)))} (70%)</>}</button>}
+
+      {mine && <form className="deed-trade" data-testid="deed-trade" onSubmit={(e) => { e.preventDefault(); const chipsN = Number(tradeChips); if (!tradeTo.trim()) { setMsg('Name the player to trade with.'); return; } setBusy('re_trade'); setMsg(null); socket.timeout(15_000).emit('re_trade_offer', { to: tradeTo.trim(), giveIds: [id], wantIds: [], giveChips: 0, wantChips: Number.isInteger(chipsN) && chipsN >= 0 ? chipsN : 0 }, (err: Error | null, r?: Ack) => { setBusy(null); if (!err && r?.ok) { setMsg(`Trade offer sent to ${tradeTo.trim()}.`); setTradeTo(''); setTradeChips(''); } else setMsg(err ? 'No answer from the server. Try again.' : r?.error ?? 'Could not send the offer.'); }); }}>
+        <small>Trade this deed with a player at an agreed price (no 30% city haircut). They must have zoning room.</small>
+        <input value={tradeTo} onChange={(e) => setTradeTo(e.target.value)} placeholder="Player name" aria-label="Trade with player" data-testid="deed-trade-to" />
+        <input value={tradeChips} onChange={(e) => setTradeChips(e.target.value)} placeholder="Their chips" inputMode="numeric" aria-label="Chips they pay you" data-testid="deed-trade-chips" />
+        <button type="submit" disabled={!!busy} data-testid="deed-trade-send">{busy === 're_trade' ? 'Sending…' : 'Offer trade'}</button>
+      </form>}
+      {me && trades?.incoming.filter((x) => x.giveIds.includes(id) || true).map((x) => (
+        <div key={x.id} className="deed-trade-in" data-testid="deed-trade-in">
+          <small>{x.fromName} offers {x.giveIds.length} deed{x.giveIds.length === 1 ? '' : 's'}{x.wantChips ? ` for 🪙 ${chips(x.wantChips)}` : ''}{x.giveChips ? ` and pays 🪙 ${chips(x.giveChips)}` : ''}.</small>
+          <button type="button" onClick={() => socket.timeout(15_000).emit('re_trade_accept', { id: x.id }, (err: Error | null, r?: Ack) => setMsg(!err && r?.ok ? 'Trade accepted.' : (r?.error ?? 'Could not accept.')))} data-testid="deed-trade-accept">Accept</button>
+          <button type="button" onClick={() => socket.timeout(15_000).emit('re_trade_decline', { id: x.id }, (err: Error | null, r?: Ack) => setMsg(!err && r?.ok ? 'Trade declined.' : (r?.error ?? 'Could not decline.')))} data-testid="deed-trade-decline">Decline</button>
+        </div>
+      ))}
+      {mine && trades?.outgoing.filter((x) => x.giveIds.includes(id)).map((x) => (
+        <div key={x.id} className="deed-trade-out" data-testid="deed-trade-out">
+          <small>Offer to {x.toName}{x.wantChips ? ` for 🪙 ${chips(x.wantChips)}` : ''} is waiting.</small>
+          <button type="button" onClick={() => socket.timeout(15_000).emit('re_trade_cancel', { id: x.id }, (err: Error | null, r?: Ack) => setMsg(!err && r?.ok ? 'Offer cancelled.' : (r?.error ?? 'Could not cancel.')))} data-testid="deed-trade-cancel">Cancel</button>
+        </div>
+      ))}
       {bo > 0 && me && <button type="button" disabled={!!busy || protLeft > 0} aria-busy={busy === 're_buyout'} onClick={buyout} data-testid="deed-buyout" title={protLeft > 0 ? 'Protected after a purchase' : `Pays ${o?.owner} 2x what they paid`}>{busy === 're_buyout' ? <><span className="world-spin" aria-hidden /> Buying out…</> : protLeft > 0 ? <>🛡 Hostile buyout: 🪙 {chips(bo)} (protected {Math.ceil(protLeft / 3_600_000)}h)</> : <>⚔️ Hostile buyout: 🪙 {chips(bo)}</>}</button>}
       {mine && onKitchen && p.kind !== 'landmark' && p.type !== 'barn' && <button type="button" onClick={onKitchen} data-testid="deed-kitchen">🍳 Kitchen</button>}
       {o && isHomeProperty(p) && <button type="button" onClick={() => { enterHome(p.id); onClose(); }} data-testid="deed-enter">{mine ? '🛋️ Enter & decorate' : `🚪 Visit ${o.owner}'s home`}</button>}
@@ -127,7 +154,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
       {p.kind === 'farm' && !o && <small>Farmland: buy it to plant crops (FarmVille-style, real-time).</small>}
       {!o && me && short > 0 && !msg && <small id="deed-short" className="text-amber-300" data-testid="deed-short">You need 🪙 {chips(short)} more chips to buy this.</small>}
       {msg && <small role="status" data-testid="deed-msg">{msg}</small>}
-      <small className="opacity-60">You can sell any property back to the city at any time for 70% of what you paid. No purchase surcharge. Zoning caps on new purchases: 5 residential, 5 commercial (incl. barns and monuments), 1,500 farmland tiles; resort lots and parks/empty lots are exempt. Zoning caps do not force sales or confiscate existing property. Tax is on the list price, charged once per UTC day and burned. {GRACE_DAYS} unpaid days in a row and the city takes it back (no refund).</small>
+      <small className="opacity-60">You can sell any property back to the city at any time for 70% of what you paid, or trade it with another player at an agreed price (no 30% haircut, within their zoning caps). No purchase surcharge. Zoning caps on new purchases: 5 residential, 5 commercial (incl. barns, factory plants and monuments), 1,500 farmland tiles; resort lots and parks/empty lots are exempt. Zoning caps do not force sales or confiscate existing property. Tax is on the list price, charged once per UTC day and burned. {GRACE_DAYS} unpaid days in a row and the city takes it back (no refund).</small>
     </MapSheet>
   );
 }
@@ -148,6 +175,7 @@ function DeedList({ owned, me, onOpen, onClose }: { owned: Map<string, OwnedProp
       {mine.length ? mine.map((o) => <button type="button" key={o.id} onClick={() => onOpen(o.id)}>{propertyById(o.id)?.label ?? o.id}<span title="What you paid (property tax is on this)" data-testid={`myprop-paid-${o.id}`}>🪙 {chips(o.price || (propertyById(o.id)?.price ?? 0))}</span></button>) : <small>{me ? 'None yet.' : 'Sign in to buy property.'}</small>}
       <h4>🏡 Barns (sold separately from farms)</h4>
       {properties().filter((p) => p.type === 'barn').map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
+      {properties().filter((p) => p.type === 'factory_plant').map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
       <h4>🌾 Farmland (east of the city)</h4>
       {properties().filter((p) => p.kind === 'farm' && p.map !== 'resort').map((p) => <button type="button" key={p.id} onClick={() => onOpen(p.id)} data-testid={`deed-${p.id}`}>{p.label}<span>{owned.get(p.id) ? owned.get(p.id)!.owner : `🪙 ${chips(p.price)}`}</span></button>)}
       <h4>Landmarks (trophy deeds)</h4>

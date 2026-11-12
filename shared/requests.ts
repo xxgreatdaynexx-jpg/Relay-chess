@@ -10,9 +10,15 @@ export const NEXT_STATUS: Record<RequestStatus, RequestStatus[]> = {
 };
 export const TITLE_MAX = 80, DETAILS_MAX = 500, PER_DAY = 20;
 
+export type CivicRole = 'mayor' | 'vice';
+export interface RequestEndorsement { role: CivicRole; name: string; at: number; week: string }
+
+
 export interface PublicRequest {
   id: number; title: string; details: string; category: RequestCategory; author: string; status: RequestStatus;
   votes: number; voted?: boolean; createdAt: number; updatedAt: number; note?: string; changelog?: string; qa?: boolean; scheduledFor?: string;
+  /** Sitting-officer endorsements for the current term (Bill Chud 3). */
+  endorsements?: RequestEndorsement[];
 }
 
 /** Swearing is allowed. This only blocks slurs and hate speech. */

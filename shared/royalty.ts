@@ -5,14 +5,13 @@
  */
 export const ROYALTY_DEFAULT = 0.01;
 /** Per-landmark overrides (fraction, e.g. 0.02 = 2%). Unlisted landmarks use ROYALTY_DEFAULT. */
-export const ROYALTY_RATE: Record<string, number> = { factory: 0.049 };
+export const ROYALTY_RATE: Record<string, number> = {};
 export const royaltyRate = (lm: string) => ROYALTY_RATE[lm] ?? ROYALTY_DEFAULT;
 /** Landmark id -> what the royalty is a cut of (shown on the deed). */
 export const ROYALTY_VENUE: Record<string, string> = {
   mine: 'ore sold after hauling it out of the Mine',
   'mine-frost': 'ore sold after hauling it out of Frostbite Caverns',
   'mine-magma': 'ore sold after hauling it out of Magma Depths',
-  factory: 'factory goods (bars, goods, food) sold to the house',
   dock: 'fish and dishes sold at the Fishing Dock',
   racetrack: 'Speedway Daily Cup prizes',
   market: 'market sales (what sellers receive)',

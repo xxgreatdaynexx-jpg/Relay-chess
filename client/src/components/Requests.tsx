@@ -27,6 +27,12 @@ function RequestsPanel({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState(false);
   const [title, setTitle] = useState(''); const [details, setDetails] = useState(''); const [category, setCategory] = useState<string>('');
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+  const [office, setOffice] = useState<'mayor' | 'vice' | null>(null);
+  useEffect(() => { void fetch('/api/city-hall').then((r) => r.json()).then((j: { view?: { me?: { isMayor?: boolean; isVice?: boolean }; mayor?: { name: string }; vice?: { name: string } } }) => {
+    const v = j.view; if (!v || !me) return;
+    if (v.me?.isMayor || (v.mayor?.name && v.mayor.name.toLowerCase() === me.toLowerCase())) setOffice('mayor');
+    else if (v.me?.isVice || (v.vice?.name && v.vice.name.toLowerCase() === me.toLowerCase())) setOffice('vice');
+  }).catch(() => {}); }, [me]);
 
   const load = useCallback(async () => {
     try {
@@ -94,6 +100,13 @@ function RequestsPanel({ onClose }: { onClose: () => void }) {
               {r.details && <p>{r.details}</p>}
               {r.note && <p className="req-note">Dev note: {r.note}</p>}
               {r.changelog && <p className="req-note">Shipped in 📜 {r.changelog}</p>}
+              {r.endorsements && r.endorsements.length > 0 && <p className="req-note" data-testid="requests-endorsements">Endorsed by {r.endorsements.map((e) => `${e.role === 'mayor' ? 'mayor' : 'vice mayor'} ${e.name}`).join(' and ')}{r.endorsements.length === 2 ? ' — civic agreement' : ''}.</p>}
+              {office && (r.status === 'open' || r.status === 'scheduled') && (
+                <button type="button" className="req-new" data-testid="requests-endorse" onClick={() => {
+                  const has = r.endorsements?.some((e) => e.role === office);
+                  void fetch(`/api/requests/${r.id}/endorse${has ? '?withdraw=1' : ''}`, { method: 'POST', headers: authHeaders() }).then((x) => x.json()).then((j: { ok?: boolean; request?: PublicRequest; error?: string }) => { if (j.ok && j.request) setList((l) => l?.map((x) => (x.id === r.id ? { ...x, ...j.request } : x)) ?? l); });
+                }}>{r.endorsements?.some((e) => e.role === office) ? 'Withdraw endorsement' : office === 'mayor' ? 'Endorse as mayor' : 'Endorse as vice mayor'}</button>
+              )}
             </div>
           </li>
         ))}

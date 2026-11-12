@@ -4,20 +4,30 @@ import pg from 'pg';
 import { bootAttach, reconnectMsg, setBootState } from './boot-retry.js';
 export const REQUESTS_OFFLINE_MSG = reconnectMsg('Requests');
 import { getAccounts, isGuestName, nameKey } from './accounts.js';
+import { getMayor } from './mayor.js';
 import { adminAuthorized } from './admin.js';
 import { databaseUrl, type Queryable } from './leaderboard-store.js';
 import { isQaName } from '../shared/qa.js';
 import { CHANGELOG } from '../shared/changelog.js';
-import { NEXT_STATUS, PER_DAY, parseScheduledFor, REQUEST_STATUSES, validateRequest, type PublicRequest, type RequestCategory, type RequestStatus } from '../shared/requests.js';
+import { NEXT_STATUS, PER_DAY, parseScheduledFor, REQUEST_STATUSES, validateRequest, type PublicRequest, type RequestCategory, type RequestStatus, type RequestEndorsement, type CivicRole } from '../shared/requests.js';
 
 export const REQUESTS_MIGRATION = `CREATE TABLE IF NOT EXISTS change_requests (
   id INTEGER PRIMARY KEY, title TEXT NOT NULL, details TEXT NOT NULL, category TEXT NOT NULL, author TEXT NOT NULL,
   author_key TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open', note TEXT, changelog TEXT,
   created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL);
 CREATE TABLE IF NOT EXISTS change_request_votes (request_id INTEGER NOT NULL, voter_key TEXT NOT NULL, PRIMARY KEY (request_id, voter_key));
-ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS scheduled_for TEXT`;
+ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS scheduled_for TEXT;
+CREATE TABLE IF NOT EXISTS change_request_endorsements (
+  request_id INTEGER NOT NULL,
+  role TEXT NOT NULL,
+  player_key TEXT NOT NULL,
+  name TEXT NOT NULL,
+  term_week TEXT NOT NULL,
+  at BIGINT NOT NULL,
+  PRIMARY KEY (request_id, role, term_week)
+);`;
 
-interface Row { id: number; title: string; details: string; category: RequestCategory; author: string; authorKey: string; status: RequestStatus; note?: string; changelog?: string; scheduledFor?: string; createdAt: number; updatedAt: number; voters: Set<string> }
+interface Row { id: number; title: string; details: string; category: RequestCategory; author: string; authorKey: string; status: RequestStatus; note?: string; changelog?: string; scheduledFor?: string; createdAt: number; updatedAt: number; voters: Set<string>; endorsements: RequestEndorsement[] }
 export type Sort = 'top' | 'new' | 'old' | 'status';
 const DAY = 86_400_000;
 
@@ -26,16 +36,20 @@ export class RequestBoard {
   private nextId = 1;
   /** True while booting/reconnecting: the board is not loaded, so it is neither shown nor written. */
   offline = false;
-  constructor(private db: Queryable | null = null) {}
+  constructor(private db: Queryable | null = null, private officersOf: () => Promise<{ mayor: { key: string; name: string; week: string } | null; vice: { key: string; name: string; week: string } | null }> = sittingOfficers) {}
 
   async load(): Promise<void> {
     if (!this.db) return;
     for (const stmt of REQUESTS_MIGRATION.split(';')) await this.db.query(stmt);
     const { rows } = await this.db.query('SELECT * FROM change_requests');
     this.rows.clear();
-    for (const r of rows) this.rows.set(r.id, { id: r.id, title: r.title, details: r.details, category: r.category, author: r.author, authorKey: r.author_key, status: r.status, note: r.note ?? undefined, changelog: r.changelog ?? undefined, scheduledFor: r.scheduled_for ?? undefined, createdAt: +new Date(r.created_at), updatedAt: +new Date(r.updated_at), voters: new Set() });
+    for (const r of rows) this.rows.set(r.id, { id: r.id, title: r.title, details: r.details, category: r.category, author: r.author, authorKey: r.author_key, status: r.status, note: r.note ?? undefined, changelog: r.changelog ?? undefined, scheduledFor: r.scheduled_for ?? undefined, createdAt: +new Date(r.created_at), updatedAt: +new Date(r.updated_at), voters: new Set(), endorsements: [] });
     const v = await this.db.query('SELECT request_id, voter_key FROM change_request_votes');
     for (const x of v.rows) this.rows.get(x.request_id)?.voters.add(x.voter_key);
+    try {
+      const e = await this.db.query('SELECT * FROM change_request_endorsements');
+      for (const x of e.rows) this.rows.get(x.request_id)?.endorsements.push({ role: x.role, name: x.name, at: Number(x.at), week: String(x.term_week) });
+    } catch { /* table added by migration */ }
     this.nextId = Math.max(0, ...this.rows.keys()) + 1;
     this.offline = false;
   }
@@ -53,7 +67,7 @@ export class RequestBoard {
     const recent = [...this.rows.values()].filter((r) => r.authorKey === key && now - r.createdAt < DAY).length;
     if (recent >= PER_DAY) return { ok: false, error: `You can post ${PER_DAY} requests a day. Try again tomorrow.` };
     if ([...this.rows.values()].some((r) => r.title.toLowerCase() === v.title.toLowerCase() && r.status !== 'declined')) return { ok: false, error: 'That request already exists — upvote it instead.' };
-    const r: Row = { id: this.nextId++, title: v.title, details: v.details, category: v.category, author, authorKey: key, status: 'open', createdAt: now, updatedAt: now, voters: new Set([key]) };
+    const r: Row = { id: this.nextId++, title: v.title, details: v.details, category: v.category, author, authorKey: key, status: 'open', createdAt: now, updatedAt: now, voters: new Set([key]), endorsements: [] };
     this.rows.set(r.id, r); this.save(r);
     void this.db?.query('INSERT INTO change_request_votes (request_id, voter_key) VALUES ($1,$2) ON CONFLICT DO NOTHING', [r.id, key]).catch(() => {});
     return { ok: true, request: this.view(r, key) };
@@ -92,6 +106,52 @@ export class RequestBoard {
     return { ok: true, request: this.view(r) };
   }
 
+
+  async endorse(name: string, id: number, now = Date.now()): Promise<{ ok: true; request: PublicRequest } | { ok: false; error: string; code: number }> {
+    if (this.offline) return { ok: false, error: REQUESTS_OFFLINE_MSG, code: 503 };
+    const r = this.rows.get(id); if (!r) return { ok: false, error: 'No such request.', code: 404 };
+    if (r.status !== 'open' && r.status !== 'scheduled') return { ok: false, error: 'Only open (or scheduled) requests can be endorsed.', code: 409 };
+    const officers = await this.officersOf();
+    const key = nameKey(name);
+    let role: CivicRole | null = null; let week = '';
+    if (officers.mayor && officers.mayor.key === key) { role = 'mayor'; week = officers.mayor.week; }
+    else if (officers.vice && officers.vice.key === key) { role = 'vice'; week = officers.vice.week; }
+    if (!role) return { ok: false, error: 'Only the sitting mayor and sitting vice mayor can endorse a request.', code: 403 };
+    if (r.endorsements.some((e) => e.role === role && e.week === week)) {
+      return { ok: true, request: this.view(r) }; // idempotent
+    }
+    // Replace a prior-term endorsement for this role.
+    r.endorsements = r.endorsements.filter((e) => !(e.role === role && e.week !== week));
+    r.endorsements.push({ role, name: name.trim(), at: now, week });
+    void this.db?.query(
+      `INSERT INTO change_request_endorsements (request_id, role, player_key, name, term_week, at) VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (request_id, role, term_week) DO NOTHING`,
+      [r.id, role, key, name.trim(), week, now],
+    ).catch((e) => console.error('[requests] endorse save failed:', (e as Error).message));
+    const cur = r.endorsements.filter((e) => e.week === week);
+    if (officers.mayor && officers.vice && cur.some((e) => e.role === 'mayor') && cur.some((e) => e.role === 'vice') && r.status === 'open') {
+      r.status = 'approved'; r.updatedAt = now; this.save(r);
+    }
+    return { ok: true, request: this.view(r) };
+  }
+  async withdrawEndorsement(name: string, id: number): Promise<{ ok: true; request: PublicRequest } | { ok: false; error: string; code: number }> {
+    if (this.offline) return { ok: false, error: REQUESTS_OFFLINE_MSG, code: 503 };
+    const r = this.rows.get(id); if (!r) return { ok: false, error: 'No such request.', code: 404 };
+    if (r.status !== 'open' && r.status !== 'scheduled') return { ok: false, error: 'Endorsements can only be withdrawn while the request is still open or scheduled.', code: 409 };
+    const officers = await this.officersOf();
+    const key = nameKey(name);
+    let role: CivicRole | null = null; let week = '';
+    if (officers.mayor && officers.mayor.key === key) { role = 'mayor'; week = officers.mayor.week; }
+    else if (officers.vice && officers.vice.key === key) { role = 'vice'; week = officers.vice.week; }
+    if (!role) return { ok: false, error: 'Only the sitting mayor and sitting vice mayor can withdraw an endorsement.', code: 403 };
+    const before = r.endorsements.length;
+    r.endorsements = r.endorsements.filter((e) => !(e.role === role && e.week === week));
+    if (r.endorsements.length === before) return { ok: true, request: this.view(r) };
+    void this.db?.query('DELETE FROM change_request_endorsements WHERE request_id = $1 AND role = $2 AND term_week = $3', [r.id, role, week])
+      .catch((e) => console.error('[requests] withdraw save failed:', (e as Error).message));
+    return { ok: true, request: this.view(r) };
+  }
+
   list(opts: { sort?: unknown; status?: unknown; viewer?: string | null; includeQa?: boolean }): PublicRequest[] {
     const vk = opts.viewer ? nameKey(opts.viewer) : null;
     const st = REQUEST_STATUSES.find((x) => x === opts.status);
@@ -104,8 +164,19 @@ export class RequestBoard {
       .map((r) => this.view(r, vk));
   }
   private view(r: Row, vk?: string | null): PublicRequest {
-    return { id: r.id, title: r.title, details: r.details, category: r.category, author: r.author, status: r.status, votes: r.voters.size, ...(vk ? { voted: r.voters.has(vk) } : {}), createdAt: r.createdAt, updatedAt: r.updatedAt, ...(r.note ? { note: r.note } : {}), ...(r.changelog ? { changelog: r.changelog } : {}), ...(r.scheduledFor ? { scheduledFor: r.scheduledFor } : {}), ...(isQaName(r.author) ? { qa: true } : {}) };
+    return { id: r.id, title: r.title, details: r.details, category: r.category, author: r.author, status: r.status, votes: r.voters.size, ...(vk ? { voted: r.voters.has(vk) } : {}), createdAt: r.createdAt, updatedAt: r.updatedAt, ...(r.note ? { note: r.note } : {}), ...(r.changelog ? { changelog: r.changelog } : {}), ...(r.scheduledFor ? { scheduledFor: r.scheduledFor } : {}), ...(isQaName(r.author) ? { qa: true } : {}), ...(r.endorsements?.length ? { endorsements: r.endorsements } : {}) };
   }
+}
+
+export async function sittingOfficers(): Promise<{ mayor: { key: string; name: string; week: string } | null; vice: { key: string; name: string; week: string } | null }> {
+  const inst = getMayor();
+  if (!inst) return { mayor: null, vice: null };
+  const [mayor, vice] = await Promise.all([inst.mayor(), inst.vice()]);
+  const week = mayor?.week ?? '';
+  return {
+    mayor: mayor ? { key: mayor.key, name: mayor.name, week } : null,
+    vice: vice ? { key: vice.key, name: vice.name, week } : null,
+  };
 }
 
 let board = new RequestBoard();
@@ -138,6 +209,14 @@ export function requestsRouter(): express.Router {
     const me = await signedIn(req); if (!me) return res.status(401).json({ ok: false, error: 'Sign in to post a request.' });
     const out = getRequests().submit(me, req.body);
     res.status(out.ok ? 200 : getRequests().offline ? 503 : 400).json(out);
+  });
+
+  r.post('/api/requests/:id/endorse', async (req, res) => {
+    const me = await signedIn(req); if (!me) return res.status(401).json({ ok: false, error: 'Sign in to endorse a request.' });
+    const withdraw = req.query.withdraw === '1' || req.query.withdraw === 'true';
+    const out = withdraw ? await getRequests().withdrawEndorsement(me, Number(req.params.id)) : await getRequests().endorse(me, Number(req.params.id));
+    if (!out.ok) return res.status(out.code).json({ ok: false, error: out.error });
+    res.json(out);
   });
   r.post('/api/requests/:id/vote', async (req, res) => {
     const me = await signedIn(req); if (!me) return res.status(401).json({ ok: false, error: 'Sign in to vote.' });
