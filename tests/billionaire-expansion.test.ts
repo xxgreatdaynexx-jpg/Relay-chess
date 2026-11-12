@@ -10,7 +10,12 @@ import { HYPER_CROPS, HYPER_FARM_TOTAL, HYPER_GROW_MUL, HYPER_STAGES, isHyperCro
 import { RIG_CRUDE_PER_HOUR, RIG_LAUNCH_FEE, RIG_MAX_PER_PLAYER, RIG_STAGES } from '../shared/offshoreRig';
 import { PLASTICS_RECIPES } from '../shared/plasticsPlant';
 import { properties } from '../shared/realEstate';
-import { obbOverlap } from '../shared/worldLayout';
+import { landmarks, obbOverlap } from '../shared/worldLayout';
+import { inLake, mapRoadSegments } from '../shared/outskirts';
+import { expRoadSegments } from '../shared/expansionRoads';
+import { expansionScenery } from '../shared/expansionScenery';
+import { inRiver } from '../shared/expansionRiver';
+import { inRiverLake } from '../shared/riverLake';
 import { FURNITURE } from '../shared/homes';
 import { AIRPORT, AIRPORT_SLOT, RUNWAY, RUNWAY2 } from '../shared/venues';
 import { cropById, MAP_CAM_FAR, MAP_CAM_MAX, MAP_CAM_MIN, MAP_VIEW } from '../shared/farm';
@@ -166,8 +171,62 @@ describe('wineries, hyper farms, rigs and plastics', () => {
 
   it('the city plastics plant has recipes and a Chud City site', () => {
     expect(PLASTICS_RECIPES.length).toBeGreaterThanOrEqual(3);
-    expect(PLASTICS_PLANT.x).toBe(186);
-    expect(PLASTICS_PLANT.z).toBe(88);
+    expect(PLASTICS_PLANT.x).toBe(220);
+    expect(PLASTICS_PLANT.z).toBe(176);
+    expect(PLASTICS_PLANT.w).toBe(40);
+    expect(PLASTICS_PLANT.d).toBe(30);
+    const lm = landmarks().plastics;
+    expect(lm.x).toBe(PLASTICS_PLANT.x);
+    expect(lm.z).toBe(PLASTICS_PLANT.z);
+    expect(lm.w).toBe(PLASTICS_PLANT.w);
+    expect(lm.d).toBe(PLASTICS_PLANT.d);
+  });
+
+  it('does not overlap any road segment, the river, or other plots, and keeps trees out of its yard', () => {
+    const box = { x: PLASTICS_PLANT.x, z: PLASTICS_PLANT.z, w: PLASTICS_PLANT.w, d: PLASTICS_PLANT.d, rot: PLASTICS_PLANT.rot };
+    const x0 = box.x - box.w / 2, x1 = box.x + box.w / 2, z0 = box.z - box.d / 2, z1 = box.z + box.d / 2;
+    const segD = (x: number, z: number, a: [number, number], b: [number, number]) => {
+      const dx = b[0] - a[0], dz = b[1] - a[1], L = dx * dx + dz * dz || 1;
+      const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / L));
+      return Math.hypot(x - (a[0] + t * dx), z - (a[1] + t * dz));
+    };
+    const roadClearance = (a: [number, number], b: [number, number], rw: number) => {
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const n = Math.max(4, Math.ceil(len / 2));
+      let best = Infinity;
+      for (let i = 0; i <= n; i++) {
+        const t = i / n, sx = a[0] + (b[0] - a[0]) * t, sz = a[1] + (b[1] - a[1]) * t;
+        const cx = Math.max(x0, Math.min(sx, x1)), cz = Math.max(z0, Math.min(sz, z1));
+        best = Math.min(best, Math.hypot(sx - cx, sz - cz) - rw / 2);
+      }
+      return best;
+    };
+    const roads: Array<[[number, number], [number, number], number]> = [
+      ...mapRoadSegments(),
+      ...expRoadSegments().map((g) => [g.a, g.b, g.w] as [[number, number], [number, number], number]),
+    ];
+    for (const [a, b, w] of roads) {
+      expect(roadClearance(a, b, w), `road ${a}–${b}`).toBeGreaterThanOrEqual(2);
+    }
+    const corners: [number, number][] = [[x0, z0], [x1, z0], [x0, z1], [x1, z1], [box.x, box.z]];
+    for (const [x, z] of corners) {
+      expect(inRiver(x, z, 2) || inRiverLake(x, z) || inLake(x, z, 2), `water at ${x},${z}`).toBe(false);
+    }
+    for (const [id, b] of Object.entries(landmarks())) {
+      if (id === 'plastics') continue;
+      expect(obbOverlap(box, b, 2), `landmark ${id}`).toBe(false);
+    }
+    for (const p of properties()) {
+      if (p.type === 'plastics' || p.id === 'lm:plastics') continue;
+      expect(obbOverlap(box, p, 2), `property ${p.id}`).toBe(false);
+    }
+    const yard = (x: number, z: number, r = 2) => x >= x0 - r && x <= x1 + r && z >= z0 - r && z <= z1 + r;
+    const trees = expansionScenery().filter((s) => (s.kind === 'deciduous' || s.kind === 'pine' || s.kind === 'bush') && yard(s.x, s.z, 2));
+    expect(trees, trees.map((s) => `${s.kind}@${s.x.toFixed(1)},${s.z.toFixed(1)}`).join(', ')).toHaveLength(0);
+    const world = src('client/src/lib/worldEstate.ts');
+    expect(world).toMatch(/plastics\.position\.set\(PLASTICS_PLANT\.x, 0, PLASTICS_PLANT\.z\)/);
+    const models = src('client/src/lib/estateModels.ts');
+    expect(models).toMatch(/siteFence\(a, 40, 30\)/);
   });
 });
 

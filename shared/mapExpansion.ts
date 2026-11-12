@@ -166,8 +166,8 @@ export const WINERY_YIELD_BONUS = 0.25;
 /** Grapes pressed at a winery: 1 grape → 1 wine (the city cannery needs 2). */
 export const WINERY_GRAPES_PER_WINE = 1;
 
-/** Chud City Plastics Plant — industrial annex just east of the plate, south of the farm lanes. */
-export const PLASTICS_PLANT = { x: 186, z: 88, w: 22, d: 16, h: 14, rot: 0 } as const;
+/** Chud City Plastics Plant — open land east of the City Jail, south of the east farm road. Size matches the 40×30 yard. */
+export const PLASTICS_PLANT = { x: 220, z: 176, w: 40, d: 30, h: 14, rot: 0 } as const;
 /** Shoreline construction dock, east of Chud Hub Harbour on the ocean beach. */
 export const RIG_DOCK = { x: 130, z: 210, w: 28, d: 18, h: 12, rot: 0 } as const;
 /** World positions of launched rigs (further south, out at sea). */

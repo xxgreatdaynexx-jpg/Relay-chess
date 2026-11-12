@@ -249,7 +249,7 @@ export const LANDMARK_SLOTS: Record<string, [number, number]> = {
   club: [-80, 200], // Billionaire's Club on the ocean beach, west of Chud Hub Harbour (off the city plate; no fill cleared)
   skytower: [-56, 200], // Sky Tower civic pad east of the Club, same beach
   racetrack: [-103, -169], // outskirts, north-west, in RESERVED_VENUES.racetrack: infield of the oval
-  plastics: [186, 88], // Chud City Plastics Plant, east industrial fringe (off the fill)
+  plastics: [220, 176], // Chud City Plastics Plant, open land east of the City Jail (off the fill)
   rigdock: [130, 210], // shoreline construction dock, east of the Harbour
 };
 /** Outskirts landmarks sit square to the map, not to a street. */
@@ -287,7 +287,7 @@ function placeLandmarks(ids: string[]): Record<string, OBB> {
   for (const id of ids) {
     if (MINE_SITES[id]) continue;
     const want = LANDMARK_SLOTS[id] ?? spare.shift(); if (!want) continue;
-    const [pw, pd] = (id === 'plastics' ? [22, 16] : id === 'rigdock' ? [28, 18] : [PAD, PAD]);
+    const [pw, pd] = (id === 'plastics' ? [40, 30] : id === 'rigdock' ? [28, 18] : [PAD, PAD]);
     let placed: OBB | null = SQUARE_LM.has(id) ? { x: want[0], z: want[1], w: pw, d: pd, rot: 0 } : null; // outskirts venues: fixed spot off the plate
     for (let rad = 0; rad <= 36 && !placed; rad += 2) for (let k = 0; k < Math.max(1, rad * 3) && !placed; k++) {
       const a = (k / Math.max(1, rad * 3)) * Math.PI * 2; const x = want[0] + Math.cos(a) * rad, z = want[1] + Math.sin(a) * rad;
