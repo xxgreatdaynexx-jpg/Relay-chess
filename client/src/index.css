@@ -2818,7 +2818,7 @@ body.he-full-open .he-table.he-full { visibility: visible; }
   .hub-win-dock { bottom: 10px; }
 }
 
-/* Billionaire Update — private works, Future Features popup (Millionaire launch look), expansion UI (branch-only). */
+/* Billionaire Update — private works and expansion UI. */
 .launch-card.ff-card { max-width: 720px; text-align: center; }
 .ff-shots { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 4px 0 0; padding: 0; flex: 1 1 auto; overflow-y: auto; }
 .ff-shots li { flex-direction: column; gap: 0; padding: 0; overflow: hidden; }
@@ -2842,3 +2842,7 @@ body.he-full-open .he-table.he-full { visibility: visible; }
   .ff-shots img { height: 140px; }
   .estate-panel { left: 8px; width: calc(100vw - 16px); }
 }
+
+/* Fort McChud: official lease colours on the 2D map. */
+.fort-flat-tract[data-lessor] { box-shadow: 0 0 0 2px var(--lessor, #c8a060) inset; }
+.fort-flat-tract .fort-flat-lessor { display: block; font-size: 10px; color: var(--lessor, #c8a060); }

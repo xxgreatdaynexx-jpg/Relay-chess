@@ -67,6 +67,17 @@ export async function releasePropertyDerived(cl: Q, id: string, ownerKey: string
   if (t.has('home_layout')) await exec(cl, "UPDATE home_layout SET items = '[]' WHERE property_id = $1 AND owner_key = $2", [id, ownerKey]);
 }
 
+
+/** Move derived farm/home rows with a P2P deed trade. Does not delete plantings, upgrades or furniture. */
+export async function transferPropertyDerived(cl: Q, id: string, fromKey: string, toKey: string): Promise<void> {
+  if (fromKey === toKey) return;
+  const t = await have(cl);
+  for (const name of ['farm_tiles', 'farm_upgrades', 'farm_soil', 'farm_auto'] as const) {
+    if (t.has(name)) await exec(cl, `UPDATE ${name} SET owner_key = $3 WHERE plot_id = $1 AND owner_key = $2`, [id, fromKey, toKey]);
+  }
+  if (t.has('home_layout')) await exec(cl, 'UPDATE home_layout SET owner_key = $3 WHERE property_id = $1 AND owner_key = $2', [id, fromKey, toKey]);
+}
+
 export interface HealCounts { tiles: number; upgrades: number; soil: number; auto: number; fert: number; homes: number }
 
 /** Delete or reset derived rows whose owner_key no longer matches the properties deed. Idempotent; no wallet writes. */

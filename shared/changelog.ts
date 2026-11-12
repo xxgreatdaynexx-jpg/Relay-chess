@@ -116,6 +116,21 @@ export const CHANGELOG: ChangelogEntry[] = [
     "If a bill cannot be paid, the wallet is left as-is (it is never pushed negative) and you get a private warning. After 3 unpaid days in a row the boat is repossessed with no refund. The Marina and your Daily Report show the next charge and any arrears.",
     "Upkeep is a chip sink. For yachts and superyachts this daily bill replaces the old per-day-used cargo freight fee (no double charge). Skiffs and sportfishers still pay that freight fee on the first trip of a day.",
   ]},
+  {"commit": "", "at": "2026-11-11T17:41:00-06:00", "title": "Buy a bigger mining pack (requested by Jay)", "bullets": [
+    "Requested by Jay: in the Mines, next to your carried ore and the Tool Shop, you can buy permanent pack upgrades that raise how much you can carry above the starting 120. The tiers are 160 for 5,000 chips, 200 for 15,000, 250 for 45,000, and 300 for 110,000 (base prices; they follow the same daily price index as the Tool Shop).",
+    "You buy them in order, once each, and they stay on your account. Guests keep the 120 starter pack. What you are already carrying is unchanged. Mining, tools, and weapons work the same as before.",
+  ]},
+  {"commit": "", "at": "2026-11-11T15:40:00-06:00", "title": "Factory house-sell line shows sold today in chips", "bullets": [
+    "In the Factory's Sell to the house panel, Sold today was shown in base units (before today's price index), so it could look well under the daily cap while you were actually at it. It now shows chips, the same units as the cap, plus how much still counts after refunded room and how much full-price room is left. How much the house pays and your daily cap are unchanged.",
+  ]},
+  {"commit": "", "at": "2026-11-11T13:20:00-06:00", "title": "Fort McChud shows every player's wells and pipelines, and a lease is exclusive", "bullets": [
+    "On the Fort McChud map you can now see other players' pumpjacks, pipelines and plant units, each marked with the owner's name and colour. Tract borders show who holds the official lease. The view updates as people build, and also when the map refreshes.",
+    "Whoever holds the lease owns that tract: only they can drill new wells, add pumpjacks or lay new pipe there. Other players can still survey for themselves. Existing wells and pipes already on a tract someone else later leased are left in place and keep producing for their owner.",
+  ]},
+  {"commit": "", "at": "2026-11-11T13:20:00-06:00", "title": "Carbon tax on coal burned in factory smelters", "bullets": [
+    "The city now charges a carbon tax when a factory smelter burns coal as fuel. The default is 1 chip per coal, paid by the factory owner and credited to the city treasury. The mayor can set the rate from 0 to 10 chips per coal (same cooldown and permission rules as the other City Hall levers).",
+    "The tax is charged when the coal is consumed, including while your factory runs offline. If you cannot pay, production keeps running and the unpaid amount is collected the next time you have chips. The current rate and any unpaid tax show in the factory. Fort McChud turbines burn natural gas, not coal, so they are not taxed here.",
+  ]},
   {"commit": "", "at": "2026-11-11T12:19:00-06:00", "title": "Factory monument royalty reduced from 5% to 4.9%", "bullets": [
     "The Factory monument now earns 4.9% of what other players get when they sell factory goods to the house (was 5%). The owner is still paid on top, so the seller keeps 100%. Royalties already paid are unchanged.",
     "Royalties on the mines, Fishing Dock, Speedway, market, and casino stay at 1%. Other property income is unchanged.",

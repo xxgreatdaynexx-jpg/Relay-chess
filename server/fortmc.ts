@@ -22,14 +22,15 @@ import { ORES, isOre, type OreId } from '../shared/mines.js';
 import {
   FORTMC_TICKET_BASE, MINE_LEVELS, PIPES, PRODUCTS, PUMPJACK_COST, SURVEY_COST, UNITS, WELLS_PER_TRACT, WELL_COST,
   isProduct, isTract, isUnitKind, newFort, repairCost, sellPayout, settle, tractInfo, unitCount, whole, powerDemand, tankCap, fortBuildValue, fortWorth,
-  type FortState, type Product,
-  unloadHaul,
+  type FortState, type Product, type FortSite,
+  unloadHaul, buildFortSite, auditFortOverlaps, TRACTS as TRACT_COUNT,
 } from '../shared/fortmc.js';
 
 export class FortError extends Error {}
 export const FORTMC_MIGRATION = `
 CREATE TABLE IF NOT EXISTS fortmc_state (player_key TEXT PRIMARY KEY, name TEXT NOT NULL, state TEXT NOT NULL, updated_at BIGINT NOT NULL);
-CREATE TABLE IF NOT EXISTS fortmc_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));`;
+CREATE TABLE IF NOT EXISTS fortmc_daily (player_key TEXT NOT NULL, day TEXT NOT NULL, gross BIGINT NOT NULL DEFAULT 0, paid BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (player_key, day));
+CREATE TABLE IF NOT EXISTS fortmc_leases (tract SMALLINT PRIMARY KEY CHECK (tract >= 1 AND tract <= 10), player_key TEXT NOT NULL, name TEXT NOT NULL, leased_at BIGINT NOT NULL);`;
 type Q = { query: (sql: string, args?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }> };
 type PoolLike = Q & { connect: () => Promise<Q & { release: () => void }> };
 const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
@@ -38,13 +39,26 @@ const fmt = (n: number) => n.toLocaleString('en-US');
 
 export class FortMc {
   private forts = new Map<string, FortState>();
+  private names = new Map<string, string>();
+  private leases = new Map<number, { key: string; name: string }>();
   private daily = new Map<string, { day: string; gross: number; paid: number }>();
   private locks = new Map<string, Promise<unknown>>();
   private seq = 0;
+  private io: Server | null = null;
+  private siteLoaded = false;
+  private siteDirty = true;
+  private siteCache: FortSite | null = null;
+  private lastOverlaps: ReturnType<typeof auditFortOverlaps> | null = null;
   constructor(private readonly pool: PoolLike | null, private readonly clock = () => Date.now(),
     private readonly oreSink: (account: string) => OreSink = mineOreSink,
     private readonly gate: (name: string) => Promise<void> = (n) => requireFortMc(n, FortError)) {}
-  async init() { if (this.pool) await this.pool.query(FORTMC_MIGRATION); }
+  attachIo(io: Server) { this.io = io; }
+  overlaps() { return this.lastOverlaps; }
+  async init() {
+    if (this.pool) await this.pool.query(FORTMC_MIGRATION);
+    await this.ensureLoaded();
+    await this.backfillLeases();
+  }
 
   private lock<T>(id: string, fn: () => Promise<T>): Promise<T> {
     const prev = this.locks.get(id) ?? Promise.resolve(); const p = prev.then(fn, fn); const tail = p.catch(() => {});
@@ -56,8 +70,81 @@ export class FortMc {
       const r = this.pool ? (await this.pool.query('SELECT state FROM fortmc_state WHERE player_key = $1', [k])).rows[0] : undefined;
       s = r ? (JSON.parse(String(r.state)) as FortState) : newFort(this.clock()); this.forts.set(k, s);
     }
+    this.names.set(k, name.trim());
     settle(s, this.clock()); return s;
   }
+
+  private officialMap(): Record<string, { key: string; name: string }> {
+    return Object.fromEntries([...this.leases].map(([n, v]) => [String(n), v]));
+  }
+  private players(): Array<{ key: string; name: string; state: FortState }> {
+    return [...this.forts].map(([key, state]) => ({ key, name: this.names.get(key) ?? key, state }));
+  }
+  private async ensureLoaded() {
+    if (this.siteLoaded || !this.pool) { this.siteLoaded = true; return; }
+    const rows = (await this.pool.query('SELECT player_key, name, state FROM fortmc_state')).rows;
+    for (const r of rows) {
+      const k = String(r.player_key);
+      if (!this.forts.has(k)) this.forts.set(k, JSON.parse(String(r.state)) as FortState);
+      this.names.set(k, String(r.name));
+    }
+    const leases = (await this.pool.query('SELECT tract, player_key, name FROM fortmc_leases')).rows;
+    for (const r of leases) this.leases.set(Number(r.tract), { key: String(r.player_key), name: String(r.name) });
+    this.siteLoaded = true;
+  }
+  private async backfillLeases() {
+    const now = this.clock();
+    if (this.pool) {
+      const rows = (await this.pool.query('SELECT player_key, name, state, updated_at FROM fortmc_state ORDER BY updated_at ASC')).rows;
+      for (const r of rows) {
+        let s: FortState; try { s = JSON.parse(String(r.state)) as FortState; } catch { continue; }
+        for (let n = 1; n <= TRACT_COUNT; n++) {
+          if (!s.tracts[String(n)]?.leased) continue;
+          await this.pool.query('INSERT INTO fortmc_leases (tract, player_key, name, leased_at) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING', [n, String(r.player_key), String(r.name), Number(r.updated_at) || now]);
+        }
+      }
+      this.leases.clear();
+      for (const r of (await this.pool.query('SELECT tract, player_key, name FROM fortmc_leases')).rows) this.leases.set(Number(r.tract), { key: String(r.player_key), name: String(r.name) });
+    } else {
+      const ordered = this.players(); // first already-loaded wins when two personal leases collide
+      for (const p of ordered) for (let n = 1; n <= TRACT_COUNT; n++) {
+        if (p.state.tracts[String(n)]?.leased && !this.leases.has(n)) this.leases.set(n, { key: p.key, name: p.name });
+      }
+    }
+    this.lastOverlaps = auditFortOverlaps(this.players(), this.officialMap());
+    const o = this.lastOverlaps;
+    if (o.tracts) console.log(`[fortmc] lease overlaps: ${o.tracts} tracts with foreign structures (${o.wells} wells, ${o.pipes} pipes, grandfathered). Official leases: ${this.leases.size}.`);
+    else console.log(`[fortmc] official leases: ${this.leases.size}. No foreign structures on leased tracts.`);
+    this.siteDirty = true;
+  }
+  async snapshot(me: string | null = null): Promise<FortSite> {
+    await this.ensureLoaded();
+    const now = this.clock();
+    const meKey = me ? playerKey(me) : null;
+    if (!this.siteCache || this.siteDirty) {
+      for (const s of this.forts.values()) settle(s, now);
+      this.siteCache = buildFortSite(now, null, this.officialMap(), this.players());
+      this.siteDirty = false;
+    }
+    const site = this.siteCache;
+    const stamp = (L: { key: string; name: string; mine: boolean } | null) => L ? { ...L, mine: !!meKey && L.key === meKey } : null;
+    return { ...site, now, leases: Object.fromEntries(Object.entries(site.leases).map(([n, L]) => [n, stamp(L)!])), tracts: site.tracts.map((tr) => ({ ...tr, lease: stamp(tr.lease) })) };
+  }
+  private emitSite() {
+    this.siteDirty = true;
+    if (!this.io) return;
+    void this.snapshot(null).then((site) => this.io?.emit('fort_site', site)).catch((e) => console.error('[fortmc] site emit failed:', (e as Error).message));
+  }
+  private assertLand(name: string, n: number, op: 'lease' | 'build') {
+    const k = playerKey(name); const hold = this.leases.get(n);
+    if (op === 'lease') {
+      if (hold) throw new FortError(hold.key === k ? 'You already hold that lease.' : `${hold.name} already holds the lease on this tract.`);
+      return;
+    }
+    if (!hold) throw new FortError('Lease that tract first.');
+    if (hold.key !== k) throw new FortError(`Only ${hold.name} can build on this tract.`);
+  }
+
   private async today(name: string) {
     const k = playerKey(name); const day = utcDay(this.clock()); const c = this.daily.get(k);
     if (c?.day === day) return c;
@@ -90,7 +177,8 @@ export class FortMc {
   haul: { read: (name: string) => Promise<Map<string, number>>; take: (name: string, items: Array<[string, number]>) => Array<{ sql: string; args: unknown[] }> } | null = null;
   async view(name: string | null) {
     const s = name ? await this.load(name) : newFort(this.clock()); const t = name ? await this.today(name) : { gross: 0, paid: 0 };
-    return { fort: s, now: this.clock(), index: priceIndex(), today: { gross: t.gross, paid: t.paid }, ticket: cityTicketPrice(px(FORTMC_TICKET_BASE)), cap: tankCap(s), demand: powerDemand(s), value: px(fortWorth(s)), haul: name && this.haul ? Object.fromEntries(await this.haul.read(name).catch(() => new Map<string, number>())) : {} };
+    const site = await this.snapshot(name);
+    return { fort: s, now: this.clock(), index: priceIndex(), today: { gross: t.gross, paid: t.paid }, ticket: cityTicketPrice(px(FORTMC_TICKET_BASE)), cap: tankCap(s), demand: powerDemand(s), value: px(fortWorth(s)), haul: name && this.haul ? Object.fromEntries(await this.haul.read(name).catch(() => new Map<string, number>())) : {}, site, meKey: name ? playerKey(name) : null };
   }
 
   /** Every paid / state-changing action. */
@@ -224,14 +312,29 @@ export class FortMc {
 
   async act(name: string, b: Record<string, unknown>) {
     await this.gate(name);
-    return this.lock(playerKey(name), async () => {
+    const op0 = String((b && typeof b === 'object' ? b : {}).op ?? '');
+    const land = op0 === 'lease' || op0 === 'drill' || op0 === 'pumpjack' || op0 === 'pipe';
+    const run = () => this.lock(playerKey(name), async () => {
       const cur = await this.load(name); const s = clone(cur); const op = String(b.op ?? '');
       const tr = () => { const n = Number(b.tract); if (!isTract(n)) throw new FortError('Pick a tract.'); return n; };
-      const tractOf = (n: number) => { const t = s.tracts[String(n)]; if (!t?.leased) throw new FortError('Lease that tract first.'); return t; };
+      const tractOf = (n: number) => { this.assertLand(name, n, 'build'); const t = s.tracts[String(n)] ?? (s.tracts[String(n)] = { leased: true, pipe: 0, wells: [] }); return t; };
       const unitOf = () => { const u = s.units.find((x) => x.id === Number(b.id)); if (!u) throw new FortError('No such unit.'); return u; };
+      const visible = new Set(['lease', 'drill', 'pumpjack', 'pipe', 'build', 'mine', 'toggle', 'repair', 'mine_toggle']);
       switch (op) {
         case 'survey': { const n = tr(); if (s.surveyed.includes(n)) throw new FortError('Already surveyed.'); s.surveyed.push(n); await this.commit(name, s, -px(SURVEY_COST), 'fortmc', `Seismic survey: ${tractInfo(n).name}`); break; }
-        case 'lease': { const n = tr(); if (!s.surveyed.includes(n)) throw new FortError('Survey it first.'); if (s.tracts[String(n)]?.leased) throw new FortError('You already hold that lease.'); s.tracts[String(n)] = { leased: true, pipe: 0, wells: [] }; await this.commit(name, s, -px(tractInfo(n).lease), 'fortmc', `Mineral lease: ${tractInfo(n).name}`); break; }
+        case 'lease': {
+          const n = tr(); if (!s.surveyed.includes(n)) throw new FortError('Survey it first.');
+          this.assertLand(name, n, 'lease');
+          if (s.tracts[String(n)]?.leased) throw new FortError('You already hold that lease.');
+          s.tracts[String(n)] = { leased: true, pipe: 0, wells: [] };
+          const k = playerKey(name); const now = this.clock();
+          await this.commit(name, s, -px(tractInfo(n).lease), 'fortmc', `Mineral lease: ${tractInfo(n).name}`, async (cl) => {
+            try { await cl.query('INSERT INTO fortmc_leases (tract, player_key, name, leased_at) VALUES ($1,$2,$3,$4)', [n, k, name.trim(), now]); }
+            catch (e) { const msg = (e as Error).message ?? ''; if (/unique|duplicate|conflict/i.test(msg)) throw new FortError('Someone already holds the lease on this tract.'); throw e; }
+          });
+          this.leases.set(n, { key: k, name: name.trim() });
+          break;
+        }
         case 'drill': { const n = tr(); const t = tractOf(n); if (t.wells.length >= WELLS_PER_TRACT) throw new FortError(`Max ${WELLS_PER_TRACT} wells per tract.`); t.wells.push({ jack: false, cond: 100 }); await this.commit(name, s, -px(WELL_COST), 'fortmc', `Drilled well #${t.wells.length}: ${tractInfo(n).name}`); break; }
         case 'pumpjack': { const n = tr(); const t = tractOf(n); const w = t.wells.find((x) => !x.jack); if (!w) throw new FortError('Every well here already has a pumpjack.'); w.jack = true; await this.commit(name, s, -px(PUMPJACK_COST), 'fortmc', `Pumpjack: ${tractInfo(n).name}`); break; }
         case 'pipe': { const n = tr(); const t = tractOf(n); if (t.pipe >= PIPES.length - 1) throw new FortError('Pipeline is already at max capacity.'); t.pipe++; await this.commit(name, s, -px(PIPES[t.pipe]!.cost), 'fortmc', `Pipeline tier ${t.pipe}: ${tractInfo(n).name}`); break; }
@@ -263,8 +366,10 @@ export class FortMc {
         case 'ship': return this.shipFactoryIn(name, s, b);
         default: throw new FortError('Unknown action.');
       }
+      if (visible.has(op)) this.emitSite();
       return null;
     });
+    return land ? this.lock('__site__', run) : run();
   }
 
   /** Credit crude (or another product) into the player's tanks, up to remaining capacity. Used by launched offshore rigs. */
@@ -296,8 +401,8 @@ export async function initFortMc(): Promise<void> {
 }
 
 type Ack = (r: { ok: boolean; error?: string; [k: string]: unknown }) => void;
-
-export function registerFortMc(_io: Server, socket: Socket): void {
+export function registerFortMc(io: Server, socket: Socket): void {
+  fort.attachIo(io);
   const nameOf = () => (socket.data as { account?: { name: string } }).account?.name ?? null;
   const known = (e: unknown) => e instanceof FortError || e instanceof TravelError || /^(Not enough chips\.|Wallet temporarily unavailable\.|Your mine storage is full.*|The mines are .*)$/.test((e as Error).message);
   socket.on('fort_state', async (_b: unknown, ack?: Ack) => {

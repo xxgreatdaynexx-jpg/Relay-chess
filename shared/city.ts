@@ -2,7 +2,7 @@
  * Mayor 2.0 (Dayne, Nov 4 2026): city treasury, economy levers, 24 h economic policies, civic construction, approval
  * and recall. Pure rules shared by server, client and tests (server/city.ts is the Postgres side).
  *  - Levers: every value is clamped + snapped to hard bounds, with a cooldown between changes of the same lever.
- *  - Treasury: funded ONLY by sales tax, 25% of property tax + trading fees, the freight modifier's surplus and recall
+ *  - Treasury: funded ONLY by sales tax, the carbon tax on factory coal, 25% of property tax + trading fees, the freight modifier's surplus and recall
  *    fees. It pays ONLY for policies and civic building stages (both pure sinks). Nothing ever pays a wallet from it.
  *  - Casino odds / payouts are not a lever, a policy sector or a perk, by construction (see SECTORS / PERKS).
  *  - Tax funding (pt2099u): levers vs each default set a continuous City funding score (−1…+1). Below default
@@ -12,8 +12,8 @@
 export const H_MS = 3_600_000;
 export const DAY_MS = 86_400_000;
 
-export type LeverId = 'sales_tax' | 'wealth_tax' | 'freight' | 'property_surcharge' | 'daily_wealth_tax';
-export interface LeverSpec { id: LeverId; label: string; min: number; max: number; step: number; base: number; cooldownMs: number; unit: 'pct' | 'mul'; blurb: string; /** abolished by law: hidden, refused, and has no effect (history rows kept) */ abolished?: true }
+export type LeverId = 'sales_tax' | 'wealth_tax' | 'freight' | 'property_surcharge' | 'daily_wealth_tax' | 'carbon_tax';
+export interface LeverSpec { id: LeverId; label: string; min: number; max: number; step: number; base: number; cooldownMs: number; unit: 'pct' | 'mul' | 'chips'; blurb: string; /** abolished by law: hidden, refused, and has no effect (history rows kept) */ abolished?: true }
 export const LEVERS: Record<LeverId, LeverSpec> = {
   sales_tax: { id: 'sales_tax', label: 'Sales tax', min: 0, max: 0.05, step: 0.005, base: 0, cooldownMs: 48 * H_MS, unit: 'pct', blurb: 'On top of purchases at the game\'s own shops (cars, trucks, boats, jets, furniture). Never on trades between players. Goes to the treasury.' },
   wealth_tax: { id: 'wealth_tax', label: 'Purchase wealth tax', min: 0.03, max: 0.07, step: 0.01, base: 0.05, cooldownMs: 72 * H_MS, unit: 'pct', blurb: 'Rate paid by buyers holding 100K+ in property. 25% of what is collected goes to the city treasury; the other 75% is shared with players. The daily net-worth wealth tax is its own lever below.' },
@@ -22,6 +22,7 @@ export const LEVERS: Record<LeverId, LeverSpec> = {
   // Bill Chud 1 (Nov 8 2026): the purchase surcharge is abolished. Kept only so stored history parses; never shown, settable or applied.
   property_surcharge: { id: 'property_surcharge', label: 'Property surcharge (per 1,000 owned)', min: 0.005, max: 0.02, step: 0.0025, base: 0.01, cooldownMs: 72 * H_MS, unit: 'pct', blurb: 'Abolished by law: no surcharge on new property purchases. Stored lever history remains intact; the mayor cannot re-enable it.', abolished: true },
   daily_wealth_tax: { id: 'daily_wealth_tax', label: 'Daily wealth tax', min: 0.005, max: 0.015, step: 0.0025, base: 0.01, cooldownMs: 72 * H_MS, unit: 'pct', blurb: 'Charged once per UTC day on net worth above 2× the median of active players (10K+), from chips only, and 25% of what is collected goes to the city treasury and 75% is shared with active players below the line.' },
+  carbon_tax: { id: 'carbon_tax', label: 'Carbon tax', min: 0, max: 10, step: 1, base: 1, cooldownMs: 48 * H_MS, unit: 'chips', blurb: 'Chips paid by a factory owner for each coal their smelters burn as fuel. Goes to the city treasury. Production keeps running if they cannot pay; unpaid tax is collected when they next have chips.' },
 };
 export const LEVER_IDS = (Object.keys(LEVERS) as LeverId[]).filter((id) => !LEVERS[id].abolished);
 const snap = (n: number, step: number) => Math.round(Math.round(n / step) * step * 10_000) / 10_000;
@@ -217,4 +218,9 @@ export interface CityView {
   /** pt2099u: live tax-funding tradeoff from current levers (display + applied to new costs/times and live project boosts). */
   funding?: FundingView;
 }
-export const leverText = (id: LeverId, v: number) => LEVERS[id].unit === 'pct' ? `${+(v * 100).toFixed(2)}%` : `${v >= 1 ? '+' : ''}${Math.round((v - 1) * 100)}%`;
+export const leverText = (id: LeverId, v: number) => {
+  const u = LEVERS[id].unit;
+  if (u === 'pct') return `${+(v * 100).toFixed(2)}%`;
+  if (u === 'chips') return `${v} chip${v === 1 ? '' : 's'} / coal`;
+  return `${v >= 1 ? '+' : ''}${Math.round((v - 1) * 100)}%`;
+};

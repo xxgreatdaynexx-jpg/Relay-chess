@@ -2,7 +2,7 @@ import { FortFlatMap } from './FortFlatMap';
 import { MapSheet } from './MapSheet';
 import { useDoing } from '@/lib/doing';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { turbineStatus, FORT_FEED, FORT_SPOTS, MINE_LEVELS, PIPES, PRODUCTS, PRODUCT_ORDER, PUMPJACK_COST, SELL_TIERS, SURVEY_COST, TRACTS, UNITS, UNIT_ORDER, WELLS_PER_TRACT, WELL_COST, ORE_VALUE_PER_UNIT, tractInfo, whole, type FortState, type Product } from '../../../shared/fortmc';
+import { turbineStatus, FORT_FEED, FORT_SPOTS, MINE_LEVELS, PIPES, PRODUCTS, PRODUCT_ORDER, PUMPJACK_COST, SELL_TIERS, SURVEY_COST, TRACTS, UNITS, UNIT_ORDER, WELLS_PER_TRACT, WELL_COST, ORE_VALUE_PER_UNIT, tractInfo, whole, ownerColor, type FortSite, type FortState, type Product } from '../../../shared/fortmc';
 import { ORES, MINE_CAVE_EVENT, type OreId } from '../../../shared/mines';
 import { indexed } from '../../../shared/priceIndex';
 import type { FortWorld } from '@/lib/fortmc3d';
@@ -17,7 +17,11 @@ import { BuildingInventory } from './BuildingInventory';
 import { MODES, MODE_IDS, truckAllowed, type Mode } from '../../../shared/logistics';
 
 const chips = (n: number) => Math.floor(n).toLocaleString('en-US');
-type View = { fort: FortState; index: number; today: { gross: number; paid: number }; cap: number; demand: number; value: number; haul?: Record<string, number> };
+type View = { fort: FortState; index: number; today: { gross: number; paid: number }; cap: number; demand: number; value: number; haul?: Record<string, number>; site?: FortSite; meKey?: string | null };
+const stampSite = (site: FortSite, meKey?: string | null): FortSite => {
+  const mine = (key: string) => !!meKey && key === meKey;
+  return { ...site, leases: Object.fromEntries(Object.entries(site.leases).map(([n, L]) => [n, { ...L, mine: mine(L.key) }])), tracts: site.tracts.map((tr) => ({ ...tr, lease: tr.lease ? { ...tr.lease, mine: mine(tr.lease.key) } : null })) };
+};
 type Panel = 'tracts' | 'plant' | 'exchange' | 'mine' | 'shaft' | 'airport' | null;
 const pct = (n: number) => `${Math.round(n)}%`;
 const condCls = (c: number) => (c < 15 ? 'bad' : c < 60 ? 'warn' : 'ok');
@@ -45,7 +49,16 @@ export function FortMcMap() {
 
   const latestView=useRef<View|null>(null);
   const pickSite=useCallback((id:string)=>{if(id.startsWith('t:')){setTract(Number(id.slice(2)));setPanel('tracts');return;}setPanel(({'f-plant':'plant','f-exchange':'exchange','f-mine':'mine','f-shaft':'shaft','f-airport':'airport'} as Record<string,Panel>)[id]??null);},[]);
-  const apply = useCallback((r: { ok: boolean } & Partial<View>) => { if (r.fort) { latestView.current=r as View; setView(r as View); worldRef.current?.setFort(r.fort); } }, []);
+  const apply = useCallback((r: { ok: boolean } & Partial<View>) => {
+    if (r.fort || r.site) {
+      const next = { ...(latestView.current ?? {}), ...r } as View;
+      if (next.site) next.site = stampSite(next.site, next.meKey);
+      latestView.current = next;
+      setView(next);
+      if (r.fort) worldRef.current?.setFort(r.fort);
+      if (next.site) worldRef.current?.setSite?.(next.site);
+    }
+  }, []);
   const load = useCallback(() => { void request('fort_state').then((r) => apply(r as { ok: boolean } & Partial<View>)); }, [apply]);
   const [fMode, setFMode] = useState<Mode>('ship'); // trucks can't leave Fort McChud's map
   const act = async (body: Record<string, unknown>, ok?: string) => {
@@ -67,13 +80,18 @@ export function FortMcMap() {
     void importWithReload(()=>import('@/lib/fortmc3d')).then(({createFortMc})=>{
       if(dead||!canvas)return;
       const w=createFortMc(canvas,{onHover:(id,x,y)=>setTip(id?{id,x,y}:null),onPick:pickSite});worldRef.current=w;
-      if(latestView.current)w.setFort(latestView.current.fort);
+      if(latestView.current){w.setFort(latestView.current.fort);if(latestView.current.site)w.setSite?.(latestView.current.site);}
       void importWithReload(()=>import('@/lib/worldFreight')).then(({createFreight})=>{if(!dead&&worldRef.current===w){freight=createFreight(w,'fortmc');freightRef.current=freight;}}).catch(()=>{});
       setLoading(false);setReady(true);
     }).catch(fallback);
     return ()=>{dead=true;canvas?.removeEventListener('webglcontextlost',lost);freight?.dispose();freightRef.current=null;worldRef.current?.dispose();worldRef.current=null;};
   },[mode,pickSite]);
   useEffect(() => { load(); const t = window.setInterval(load, 30_000); socket.on('connect', load); return () => { window.clearInterval(t); socket.off('connect', load); }; }, [load]);
+  useEffect(() => {
+    const onSite = (site: FortSite) => apply({ ok: true, site });
+    socket.on('fort_site', onSite);
+    return () => { socket.off('fort_site', onSite); };
+  }, [apply]);
   useEffect(() => {
     let last: boolean | null = null;
     const tick = () => {
@@ -99,12 +117,12 @@ export function FortMcMap() {
 
   return (
     <div className="world fortmc" data-testid="fortmc-map">
-      {mode==='3d'?<canvas ref={canvasRef} className="world-canvas" data-testid="fortmc-canvas" />:<FortFlatMap fort={view?.fort??null} onPick={pickSite}/>}
+      {mode==='3d'?<canvas ref={canvasRef} className="world-canvas" data-testid="fortmc-canvas" />:<FortFlatMap fort={view?.fort??null} site={view?.site??null} onPick={pickSite}/>}
       <div className="world-title"><span>FORT</span> McCHUD<small>oil sands · tap a site</small></div>
       {mode==='2d'&&<div className="fort-map-notice" role="status">{mapError?'3D graphics unavailable. Showing the 2D map.':'2D map'} · Swipe to explore.</div>}
       {loading && <div className="world-loading">Landing at Fort McChud…</div>}
       {spot && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#f2b630' }} data-testid="world-tip"><b>{spot.icon} {spot.label}</b><span>{spot.blurb}</span><em>Click to open</em></div>}
-      {tipTract && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: '#c8a060' }} data-testid="world-tip"><b>🛢 {tipTract.name}</b><span>{s?.tracts[String(tipTract.n)]?.leased ? `Your lease · ${s.tracts[String(tipTract.n)]!.wells.length} wells` : s?.surveyed.includes(tipTract.n) ? `Lease 🪙 ${chips(px(tipTract.lease))}` : 'Unsurveyed'}</span><em>Click for the tract</em></div>}
+      {tipTract && tip && <div className="world-tip" style={{ left: tip.x + 14, top: tip.y + 14, ['--c' as string]: view?.site?.leases[String(tipTract.n)] ? ownerColor(view.site.leases[String(tipTract.n)]!.key) : '#c8a060' }} data-testid="world-tip"><b>🛢 {tipTract.name}</b><span>{(() => { const L = view?.site?.leases[String(tipTract.n)]; if (L?.mine) return `Your lease · ${s?.tracts[String(tipTract.n)]?.wells.length ?? 0} wells`; if (L) return `Leased by ${L.name}`; return s?.surveyed.includes(tipTract.n) ? `Lease 🪙 ${chips(px(tipTract.lease))}` : 'Unsurveyed'; })()}</span><em>Click for the tract</em></div>}
       {s && <div className="fort-hud" data-testid="fort-hud">
         <span className={supply + 1e-9 < demand ? 'bad' : ''}>⚡ {demand.toFixed(1)}/{supply.toFixed(1)} MW</span>{s && turbineStatus(s).idle && <span className="bad" title="Your gas turbines are switched on but there is no natural gas in the tank, so only the 4 MW grid tie is supplying power." data-testid="fort-turbine-idle">⚡ turbine idle · no gas</span>}
         <span>🛢 {chips(whole(s.stock.crude))} crude</span><span>⛽ {chips(whole(s.stock.diesel) + whole(s.stock.gasoline))} fuel</span>
@@ -123,16 +141,17 @@ export function FortMcMap() {
           <button type="button" className="world-deed-x" onClick={() => setPanel(null)} aria-label="Close">✕</button>
           {panel === 'tracts' && <>
             <h3>🛢 Lease tracts</h3>
-            <div className="fort-tabs">{[...Array(TRACTS).keys()].map((i) => <button key={i} type="button" className={tract === i + 1 ? 'on' : ''} onClick={() => setTract(i + 1)} data-testid={`fort-tract-${i + 1}`}>{i + 1}{s.tracts[String(i + 1)]?.leased ? '★' : ''}</button>)}</div>
+            <div className="fort-tabs">{[...Array(TRACTS).keys()].map((i) => <button key={i} type="button" className={tract === i + 1 ? 'on' : ''} onClick={() => setTract(i + 1)} data-testid={`fort-tract-${i + 1}`}>{i + 1}{view?.site?.leases[String(i + 1)]?.mine ? '★' : view?.site?.leases[String(i + 1)] ? '·' : ''}</button>)}</div>
             <h4>{ti.name}</h4>
             {surveyed ? <small>Richness ×{ti.richness.toFixed(2)} · gas {pct(ti.gas * 100)} · sour {pct(ti.sour * 100)} (sulfur)</small> : <small>Unsurveyed. A seismic survey reveals richness, gas ratio and sourness.</small>}
             {!surveyed && <button type="button" disabled={busy} onClick={() => void act({ op: 'survey', tract })} data-testid="fort-survey">📡 Seismic survey · 🪙 {chips(px(SURVEY_COST))}</button>}
-            {surveyed && !ts?.leased && <button type="button" disabled={busy} onClick={() => void act({ op: 'lease', tract }, 'Lease signed.')} data-testid="fort-lease">📝 Buy mineral lease · 🪙 {chips(px(ti.lease))}</button>}
-            {ts?.leased && <>
-              <small>Wells: {ts.wells.map((w, i) => <b key={i} className={condCls(w.cond)}> #{i + 1}{w.jack ? '⚙' : ''} {pct(w.cond)}</b>)}{!ts.wells.length && ' none'} · Pipeline: {ts.pipe ? `tier ${ts.pipe} (${PIPES[ts.pipe]!.cap}/h)` : 'none — nothing flows to the plant!'}</small>
-              {ts.wells.length < WELLS_PER_TRACT && <button type="button" disabled={busy} onClick={() => void act({ op: 'drill', tract })} data-testid="fort-drill">⛏ Drill a well · 🪙 {chips(px(WELL_COST))}</button>}
-              {ts.wells.some((w) => !w.jack) && <button type="button" disabled={busy} onClick={() => void act({ op: 'pumpjack', tract })} data-testid="fort-pumpjack">⚙ Pumpjack (×1.8 flow) · 🪙 {chips(px(PUMPJACK_COST))}</button>}
-              {ts.pipe < PIPES.length - 1 && <button type="button" disabled={busy} onClick={() => void act({ op: 'pipe', tract })} data-testid="fort-pipe">🔧 Pipeline tier {ts.pipe + 1} ({PIPES[ts.pipe + 1]!.cap}/h) · 🪙 {chips(px(PIPES[ts.pipe + 1]!.cost))}</button>}
+            {surveyed && !view?.site?.leases[String(tract)] && <button type="button" disabled={busy} onClick={() => void act({ op: 'lease', tract }, 'Lease signed.')} data-testid="fort-lease">📝 Buy mineral lease · 🪙 {chips(px(ti.lease))}</button>}
+            {view?.site?.leases[String(tract)] && !view.site.leases[String(tract)]!.mine && <small data-testid="fort-lease-held">Official lease held by {view.site.leases[String(tract)]!.name}. Only they can drill, add pumpjacks or lay new pipe here.{ts?.wells.length ? ' Your existing wells here are still running.' : ''}</small>}
+            {view?.site?.leases[String(tract)]?.mine && <>
+              <small>Wells: {ts?.wells.map((w, i) => <b key={i} className={condCls(w.cond)}> #{i + 1}{w.jack ? '⚙' : ''} {pct(w.cond)}</b>) ?? ' none'}{!ts?.wells.length && ' none'} · Pipeline: {ts?.pipe ? `tier ${ts.pipe} (${PIPES[ts.pipe]!.cap}/h)` : 'none — nothing flows to the plant!'}</small>
+              {(ts?.wells.length ?? 0) < WELLS_PER_TRACT && <button type="button" disabled={busy} onClick={() => void act({ op: 'drill', tract })} data-testid="fort-drill">⛏ Drill a well · 🪙 {chips(px(WELL_COST))}</button>}
+              {!!ts?.wells.some((w) => !w.jack) && <button type="button" disabled={busy} onClick={() => void act({ op: 'pumpjack', tract })} data-testid="fort-pumpjack">⚙ Pumpjack (×1.8 flow) · 🪙 {chips(px(PUMPJACK_COST))}</button>}
+              {(ts?.pipe ?? 0) < PIPES.length - 1 && <button type="button" disabled={busy} onClick={() => void act({ op: 'pipe', tract })} data-testid="fort-pipe">🔧 Pipeline tier {(ts?.pipe ?? 0) + 1} ({PIPES[(ts?.pipe ?? 0) + 1]!.cap}/h) · 🪙 {chips(px(PIPES[(ts?.pipe ?? 0) + 1]!.cost))}</button>}
             </>}
             <small>Wells → pipeline → separator → crude + raw gas. Power and maintenance matter: worn wells slow down below 60% and stop below 15%.</small>
           </>}

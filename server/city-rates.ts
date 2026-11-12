@@ -36,6 +36,8 @@ export const cityWealthTaxRate = () => cityInst?.lever('wealth_tax') ?? LEVERS.w
 export const citySurchargePctPer1k = () => 0; // Bill Chud 1: purchase surcharge abolished (the old lever value is ignored)
 /** Daily net-worth wealth tax rate (fraction). Offline -> the built-in 1%. */
 export const cityDailyWealthTaxRate = () => cityInst?.lever('daily_wealth_tax') ?? LEVERS.daily_wealth_tax.base;
+/** Chips per coal burned as factory smelter fuel. Offline City Hall still uses the default (1). */
+export const cityCarbonTaxRate = () => cityInst?.lever('carbon_tax') ?? LEVERS.carbon_tax.base;
 export const cityFreightMul = () => Math.max(1, cityInst?.lever('freight') ?? 1) * /* t2043: lever never discounts; Street Lights perk below is separate */ (1 - (cityInst?.perk('freight_fee') ?? 0));
 export const cityPolicyMul = (s: Sector) => cityInst?.policyMul(s) ?? 1;
 export const cityPerk = (p: PerkId) => cityInst?.perk(p) ?? 0;

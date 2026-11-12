@@ -34,13 +34,14 @@ describe('housing price per actual employee capacity',()=>{
   expect(hs.some(p=>p.type==='apartment'&&workerBonusOf(p.id)===3&&p.price===30000)).toBe(true);
  });
  it('nonhousing catalog is byte-for-byte unchanged; same complete housing identity set',()=>{
-  const added=new Set(['cf:1008','cf:1009','cf:1010','cf:1011','barn:big:1008','barn:big:1009','barn:big:1010','barn:big:1011']);
+  const added=new Set(['cf:1008','cf:1009','cf:1010','cf:1011','barn:big:1008','barn:big:1009','barn:big:1010','barn:big:1011','fac:2','fac:3','fac:4','fac:5','fac:6','fac:7','fac:8','fac:9','fac:10','fac:11','fac:12','fac:13']);
   const luxury=new Set(['sky:1','sky:2','sky:3','sky:4','sky:5','sky:6','isl:1','isl:2','isl:3','isl:4']);
   const isExp=(id:string)=>/^(lot:estate:|winery:|b:mansion:|orchard:)/.test(id)||/^cf:2\d{3}$/.test(id);
-  expect(hash(properties().filter(p=>!isEmployeeHousing(p)&&!added.has(p.id)&&!isExp(p.id)).map(({tiles:_tiles,...p})=>p))).toBe(baseline.nonHousingHash); // Bill Chud 1 adds only derived plot tile counts (cols×rows); new northern Big Farms and their barns are additive
+  expect(properties().some(p=>p.id==='lm:factory')).toBe(false); // Bill Chud 3: Factory monument deed retired (building stays)
+  expect(hash(properties().filter(p=>!isEmployeeHousing(p)&&!added.has(p.id)&&!isExp(p.id)).map(({tiles:_tiles,...p})=>p))).toBe('b26e48988bca759586cebdd6587bdaef770f34d3f18cdae5ed02adc025f0c3f0'); // prior nonHousingHash minus lm:factory; plants additive, Bill Chud 1 tile counts only
   expect(properties().filter(p=>isEmployeeHousing(p)&&!luxury.has(p.id)&&!isExp(p.id)).map(p=>p.id)).toEqual(baseline.housing.map(p=>p.id));
   expect([...luxury].every(id=>isEmployeeHousing(propertyById(id)!))).toBe(true);
-  for(const p of properties().filter(p=>!isEmployeeHousing(p))){const expected=p.type==='barn'||!['building','landmark'].includes(p.kind)?0:p.price<25000?1:p.price<75000?2:p.price<250000?3:4;expect(workerBonusOf(p.id)).toBe(expected);}
+  for(const p of properties().filter(p=>!isEmployeeHousing(p))){const expected=p.type==='barn'||p.type==='factory_plant'||!['building','landmark'].includes(p.kind)?0:p.price<25000?1:p.price<75000?2:p.price<250000?3:4;expect(workerBonusOf(p.id)).toBe(expected);}
   expect(workerBonusTotal(baseline.housing.slice(0,20).map(p=>p.id))).toBe(22); // uncapped sum of first 20 housing slots
  });
  it('quote and new purchase apply unchanged price index and no surcharge (Bill Chud 1) to each slot-priced base (isolated Postgres)',async()=>{

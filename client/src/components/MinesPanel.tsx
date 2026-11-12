@@ -32,6 +32,8 @@ import { levelOf, hasFloors, inLadder, MAX_FLOOR } from '../../../shared/mineFlo
 import { MOBS, mobSkin, WEAPONS, ARMORS, weaponDef, canBuyGear, type GearView } from '../../../shared/mineCombat';
 import { MINE_CAVE_EVENT, CAVES, CAVE_DEFS, CAVE_MAIN_ORES, isCave, type CaveId, type MineNode, BACKPACK_CAP, NODE_R, ORES, ORE_ORDER, REACH, SWING_MS, isOre, inExit, priceOf, UNSTICK_AUTO_MS, type Stack } from '../../../shared/mines';
 import { MINE_TOOLS, canBuyTool, combinedSwingMul, type MineToolId, type MineToolsView } from '../../../shared/mineTools';
+import { type MineBackpackView } from '../../../shared/mineBackpack';
+import { MinePackShop } from './MinePackShop';
 import { canStand, clampPitch, eyeHeightOf, moveHorizontal, speedOf, stepVertical, tryJump, depenetrate, applyKnockback, type Body } from '../../../shared/fps';
 
 const OPEN_KEY = 'relay-mines-open';
@@ -151,6 +153,20 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
   });
   const buyTool = (id: MineToolId) => toolEmit('mine_tools_buy', { tool: id }, `Bought the ${MINE_TOOLS.find((t) => t.id === id)?.name}. Equipped.`);
   const equipTool = (id: MineToolId) => toolEmit('mine_tools_equip', { tool: id });
+  const [backpack, setBackpack] = useState<MineBackpackView | null>(null);
+  const [packMsg, setPackMsg] = useState('');
+  const packEmit = (ev: string, body: object, done?: string) => socket.timeout(8000).emit(ev, body, (err: Error | null, r?: { ok: boolean; error?: string; backpack?: MineBackpackView; cap?: number }) => {
+    if (err) { setPackMsg('Pack upgrades did not answer. Try again.'); return; }
+    if (!r) return;
+    if (!r.ok) { setPackMsg(r.error ?? 'Pack upgrade error.'); return; }
+    if (r.backpack) {
+      setBackpack(r.backpack);
+      setPack((p) => ({ ...p, cap: r.backpack!.cap }));
+    } else if (typeof r.cap === 'number') setPack((p) => ({ ...p, cap: r.cap! }));
+    if (ev === 'mine_backpack_buy' && r.backpack) setPackMsg(`Bought a bigger pack. You can now carry ${r.backpack.cap}.`);
+    else if (done) setPackMsg(done);
+  });
+  const buyPack = (id: string) => packEmit('mine_backpack_buy', { upgrade: id });
   const [aim, setAim] = useState(-1);
   const [toast, setToast] = useState('');
   const [focused, setFocused] = useState(false);
@@ -286,6 +302,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
         t.resize(glRef.current.clientWidth, glRef.current.clientHeight); t.setNodes(hp.current); t.setMobs(mobs.current); t.setWeapon(gearRef.current?.weapon); t.hand = handRef.current;
         socket.timeout(3000).emit('inv_loadout', {}, (err: Error | null, r?: { ok: boolean; loadout?: Record<string, string | null> }) => { if (!err && r?.ok) three.current?.setPickSkin(r.loadout?.pickaxe ?? null); });
         toolEmit('mine_tools_view', {});
+        packEmit('mine_backpack_view', {});
       } catch (e) { setGlError('3D is unavailable here: ' + (e as Error).message); }
     }).catch((e) => { if (!reloadOnceForChunkError(e)) setGlError('Could not load the 3D engine. Refresh to try again.'); });
     return () => { dead = true; const t = three.current; three.current = null; if (t) { t.renderer.forceContextLoss?.(); t.dispose(); } };
@@ -445,6 +462,7 @@ function MinesGame({ cave, onCave, onClose }: { cave: CaveId; onCave: (c: CaveId
           <button type="button" className="mines-sell" disabled title="Leave the mine to sell" data-testid="mines-sell">Leave the mine to sell</button>
           <p className="mines-note">Walk back to the glowing <b>EXIT</b> lift at the entrance to bank your haul. If you drop out without it, your haul is saved and waits in your backpack for next time.{guest ? ' Guests can mine but not sell.' : ' Sell and smelt banked ore in the 🏭 Factory tab.'}</p>
           {!guest && <MineRaidBox />}
+          <MinePackShop view={backpack} cap={pack.cap} guest={guest} wallet={wallet} msg={packMsg} onBuy={buyPack} />
           {floors && <details className="mines-prices mines-tools" open data-testid="mines-weapon-store"><summary>⚔️ Weapon Store</summary>
             <div className="mines-tools-now">HP <b>{php.max}</b> · {wNow.name} <b>{wNow.dmg}</b> dmg</div>
             {WEAPONS.map((w) => { const owned = w.tier === 0 || !!gear?.owned.includes(w.id), on = (gear?.weapon ?? 'rusty_sword') === w.id, price = gear?.prices[w.id] ?? w.price, can = !!gear && !guest && canBuyGear('weapon', w.id, gear.owned);

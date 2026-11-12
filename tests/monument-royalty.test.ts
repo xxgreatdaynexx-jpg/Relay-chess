@@ -13,10 +13,11 @@ const mk = (owners: Record<string, string>) => {
 };
 
 describe('monument royalties', () => {
-  it('default 1%, every royalty venue is a buyable landmark', () => {
+  it('default 1%, every royalty venue is a buyable landmark; Factory is no longer a venue', () => {
     expect(royaltyRate('mine')).toBe(0.01);
-    expect(royaltyRate('factory')).toBe(0.049);
+    expect(royaltyRate('factory')).toBe(0.01); // unlisted: default, but factory is not a venue
     expect(royaltyRate('dock')).toBe(0.01);
+    expect(ROYALTY_VENUE.factory).toBeUndefined();
     for (const lm of Object.keys(ROYALTY_VENUE)) expect(LANDMARK_PRICE[lm]).toBeGreaterThan(0);
     expect(Object.values(CAVE_LANDMARK)).toEqual(['mine', 'mine-frost', 'mine-magma']);
     expect(HOUSE_GAMES.has('holdem')).toBe(false);
@@ -27,11 +28,10 @@ describe('monument royalties', () => {
     expect(txs).toHaveLength(1); expect(txs[0]).toMatchObject({ name: 'Owner', amount: 1, opts: { game: 'monument_royalty' } });
     expect(txs[0].opts.key).toMatch(/^royalty:mine:/);
   });
-  it('factory goods sold to the house pay the owner 4.9% (other monuments stay at 1%)', async () => {
+  it('factory goods sold to the house pay no monument royalty (Bill Chud 3)', async () => {
     const { r, txs } = mk({ 'lm:factory': 'Owner' });
-    expect(await r.earn('factory', 'Maker', 1000)).toBe(49);
-    expect(txs[0]).toMatchObject({ name: 'Owner', amount: 49, opts: { game: 'monument_royalty' } });
-    expect(txs[0].opts.key).toMatch(/^royalty:factory:/);
+    expect(await r.earn('factory', 'Maker', 1000)).toBe(0);
+    expect(txs).toHaveLength(0);
   });
   it('fractions carry over; no owner or own earnings pay nothing', async () => {
     const { r, txs } = mk({ 'lm:dock': 'Owner' });
@@ -54,8 +54,9 @@ describe('monument royalties', () => {
   it('popup lists it', () => {
     const item = LAUNCH.items.find((i) => /royalt/i.test(i.title));
     expect(item).toBeTruthy();
-    expect(item!.text).toMatch(/4\.9% of factory goods/);
-    expect(item!.text).not.toMatch(/10% of factory/);
-    expect(item!.text).toMatch(/1% of ore/);
+    expect(item!.text).toMatch(/1% cut/);
+    expect(item!.text).not.toMatch(/4\.9% of factory/);
+    expect(item!.text).toMatch(/no longer a royalty monument/);
+    expect(item!.text).toMatch(/1% of ore|ore from the mines/);
   });
 });

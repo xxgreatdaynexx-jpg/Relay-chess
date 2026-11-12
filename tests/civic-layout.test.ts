@@ -10,7 +10,7 @@ import { clearOfRoads, landmarks, nearestTangent, obbOverlap, PARK_AREA, PLATE, 
 import { RealEstate, PropertyError } from '../server/realEstate';
 const h = (o: unknown) => createHash('sha256').update(JSON.stringify(o)).digest('hex').slice(0, 16);
 // Catalog after rf:13–20 (e74f9fa) plus in-place resort road clearance (owned ids unchanged). Countryside buildings/fields unchanged since 6c9544d.
-const BASE = { n: 549, ids: '13f008cdee337fa0', geo: '8f76dea92770cd85', buildings: '3ddcb810ef6cda9a', fields: 'd7ab945b01921d8a' };
+const BASE = { n: 548, ids: '42cdd98832525a76', geo: 'ada4b546f818f37a', buildings: '3ddcb810ef6cda9a', fields: 'd7ab945b01921d8a' }; // n/ids/geo: Bill Chud 3 retired the Factory monument deed (building stays); countryside hashes unchanged
 const RETIRED = ['b:apartment:-90:-585', 'b:apartment:131:-380', 'b:house:-1042:-487', 'b:house:-106:-644', 'b:house:-165:-629', 'b:house:-570:-747', 'b:house:-639:-701', 'b:house:-982:-483',
   'b:house:1010:-460', 'b:house:1065:-459', 'b:house:947:-486', 'b:rowhouse:-174:-579', 'b:rowhouse:-628:-789', 'b:rowhouse:186:-350', 'b:rowhouse:68:-360', 'b:tower:110:-315',
   'p:lot:-948:-583', 'p:park:388:145', 'p:park:666:-134'];
@@ -40,7 +40,7 @@ describe('civic plots', () => {
 describe('ownership and stable ids', () => {
   const ps = properties();
   it('catalog ids, geometry and prices are byte-identical to the base; countryside unchanged', () => {
-    const added = ['cf:1008', 'cf:1009', 'cf:1010', 'cf:1011', 'barn:big:1008', 'barn:big:1009', 'barn:big:1010', 'barn:big:1011', 'sky:1', 'sky:2', 'sky:3', 'sky:4', 'sky:5', 'sky:6', 'isl:1', 'isl:2', 'isl:3', 'isl:4'];
+    const added = ['cf:1008', 'cf:1009', 'cf:1010', 'cf:1011', 'barn:big:1008', 'barn:big:1009', 'barn:big:1010', 'barn:big:1011', 'sky:1', 'sky:2', 'sky:3', 'sky:4', 'sky:5', 'sky:6', 'isl:1', 'isl:2', 'isl:3', 'isl:4', 'fac:2', 'fac:3', 'fac:4', 'fac:5', 'fac:6', 'fac:7', 'fac:8', 'fac:9', 'fac:10', 'fac:11', 'fac:12', 'fac:13'];
     const isExp = (id: string) => /^(lot:estate:|winery:|b:mansion:|orchard:)/.test(id) || /^cf:2\d{3}$/.test(id);
     const prior = ps.filter((p) => !added.includes(p.id) && !isExp(p.id));
     expect(ps.filter((p) => added.includes(p.id)).map((p) => p.id).sort()).toEqual([...added].sort());

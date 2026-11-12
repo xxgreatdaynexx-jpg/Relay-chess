@@ -40,6 +40,7 @@ import { registerRaids } from './mineRaids.js';
 import { registerSupply } from './supplyContracts.js';
 import { registerFishFleet } from './fishFleet.js';
 import { registerMineTools } from './mineTools.js';
+import { registerMineBackpack } from './mineBackpack.js';
 import { registerMineGear } from './mineGear.js';
 import { registerFishGear } from './fishGear.js';
 import { registerEmployment } from './employment.js';
@@ -345,6 +346,7 @@ export function registerSockets(io: Server): void {
     registerSupply(io, socket);
     registerFishFleet(io, socket);
     registerMineTools(io, socket);
+    registerMineBackpack(io, socket);
     registerMineGear(io, socket);
     registerFishGear(io, socket);
     registerEmployment(io, socket);

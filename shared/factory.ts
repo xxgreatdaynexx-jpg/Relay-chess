@@ -367,7 +367,7 @@ function give(s: FState, st: Storage, e: Ent, key: string) {
 }
 
 /** Advance one tick. Returns true if anything changed (false = quiescent: every later tick is identical too). */
-export function step(s: FState, g: Grid, st: Storage): boolean {
+export function step(s: FState, g: Grid, st: Storage, onCoal?: (n: number) => void): boolean {
   let ch = false;
   const at = (x: number, y: number) => g.get(cellId(x, y));
   for (const e of s.ents) if (e.m) { e.m = 0; ch = true; }
@@ -377,7 +377,7 @@ export function step(s: FState, g: Grid, st: Storage): boolean {
     const r = frecipe(e.r); if (!r) continue;
     if (!e.p) {
       if (!backedUp(e) && r.in.every(([k, q]) => (e.ib?.[k] ?? 0) >= q)) {
-        for (const [k, q] of r.in) { e.ib![k] -= q; if (!e.ib![k]) delete e.ib![k]; }
+        for (const [k, q] of r.in) { e.ib![k] -= q; if (!e.ib![k]) delete e.ib![k]; if (k === 'ore:coal' && q > 0) onCoal?.(q); }
         e.p = 1; ch = true;
       }
     } else if (++e.p >= recipeTicks(r, s.spd)) { e.p = 0; e.ob = (e.ob ?? 0) + r.out[1]; s.made[r.out[0]] = (s.made[r.out[0]] ?? 0) + r.out[1]; ch = true; }
@@ -469,14 +469,14 @@ export function undergroundPairs(s: FState, g: Grid): Map<number, Ent> {
 }
 
 /** Catch the sim up to `now` (capped). Stops early when quiescent. Returns ticks actually simulated. */
-export function advance(s: FState, st: Storage, now: number, cap = MAX_CATCHUP_MS): number {
+export function advance(s: FState, st: Storage, now: number, cap = MAX_CATCHUP_MS, onCoal?: (n: number) => void): number {
   if (now < s.at) return 0;
   let n = Math.floor((now - s.at) / TICK_MS);
   if (n <= 0) return 0;
   const capT = Math.floor(cap / TICK_MS);
   const skipped = n > capT ? n - capT : 0; n -= skipped;
   const g = gridOf(s); let ran = 0;
-  for (; ran < n; ran++) if (!step(s, g, st)) { ran++; s.tick += n - ran; break; }
+  for (; ran < n; ran++) if (!step(s, g, st, onCoal)) { ran++; s.tick += n - ran; break; }
   s.at += (n + skipped) * TICK_MS;
   return ran;
 }
@@ -492,6 +492,8 @@ export function contents(e: Ent): Array<[string, number]> {
 
 /** Value multiplier check used by tests/balance: each recipe's output is worth more than its inputs. */
 /** Recipes that consume this item (for the recipe browser's chain view). */
+/** Coal units a recipe burns as fuel (ore:coal inputs). 0 for recipes that do not burn coal. */
+export const recipeCoal = (r: { in: Array<[string, number]> }) => r.in.reduce((n, [k, q]) => n + (k === 'ore:coal' ? q : 0), 0);
 export const usedIn = (key: string) => FRECIPES.filter((r) => r.in.some(([k]) => k === key));
 /** Recipe that makes this item, if any. */
 export const madeBy = (key: string) => FRECIPES.find((r) => r.out[0] === key);

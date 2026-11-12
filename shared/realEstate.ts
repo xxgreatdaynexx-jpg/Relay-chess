@@ -19,6 +19,7 @@ import { farmBarns, barnPrice } from './farmBarns.js';
  * Farmland (Farm district, shared/farm.ts): 180 per tile + 500, rounded to 500 (4x4 = 3,500 ... 12x10 = 22,000).
  */
 import { cityFill, landmarks, LANDMARK_IDS, obbOverlap, type OBB } from './worldLayout.js';
+import { factoryPlants } from './bill3.js';
 import { BUILDING_IDS, civicPad } from './city.js';
 import { HOUSING_TYPES } from './housing.js';
 import { farmPlots, farmPrice, plotId } from './farm.js';
@@ -53,7 +54,7 @@ const PATCH_LABEL: Record<string, string> = { lot: 'Empty lot', park: 'Park', pl
 const PATCH_REF: Record<string, number> = { lot: 13 * 13 * 0.95, park: 13 * 13 * 0.95, plaza: 81 * 0.95, estate_lot: 32 * 26, power_plant: 40 * 32 };
 
 export type PropertyKind = 'building' | 'patch' | 'landmark' | 'farm';
-export interface Property extends OBB { id: string; kind: PropertyKind; type: string; label: string; price: number; /** farmland: full plot cols × rows (zoning) */ tiles?: number; h?: number; map?: 'resort' | 'island'; /** under a civic plot: never for sale again, drawn only while someone still owns it */ retired?: boolean; /** Housing capacity captured from its original canonical price band, never from its new price. */ housingEmployees?: number }
+export interface Property extends OBB { id: string; kind: PropertyKind; type: string; label: string; price: number; /** farmland: full plot cols × rows (zoning) */ tiles?: number; h?: number; map?: 'resort' | 'island'; /** under a civic plot: never for sale again, drawn only while someone still owns it */ retired?: boolean; /** Off-map catalog (additional factory plants): buyable and tradable, not drawn as a lot. */ hidden?: boolean; /** Housing capacity captured from its original canonical price band, never from its new price. */ housingEmployees?: number }
 
 const clamp = (x: number) => Math.min(1.25, Math.max(0.8, x));
 const round500 = (n: number) => Math.max(500, Math.round(n / 500) * 500);
@@ -128,7 +129,7 @@ let cache: Property[] | null = null; let byId: Map<string, Property> | null = nu
 export function properties(): Property[] {
   if (cache) return cache;
   const { houses, patches } = cityFill(7); const out: Property[] = PUBLIC_SERVICE_DEEDS.map((p) => ({ ...p }));
-  const NON_DEED_LANDMARKS = new Set(['mine-quarry', 'plastics', 'rigdock']); // public works, not for sale
+  const NON_DEED_LANDMARKS = new Set(['mine-quarry', 'plastics', 'rigdock', 'factory']); // public works, not for sale; Factory monument retired (Bill Chud 3)
   for (const [id, b] of Object.entries(landmarks())) if (LANDMARK_IDS.includes(id) && !CIVIC_IDS.has(id) && !NON_DEED_LANDMARKS.has(id)) out.push({ ...b, id: `lm:${id}`, kind: 'landmark', type: id, label: LANDMARK_LABEL[id] ?? id, price: LANDMARK_PRICE[id] ?? 500_000 });
   for (const h of [...houses, ...countryHomes()]) {
     const t = HOUSING_TYPES.find((x) => x.id === h.type); if (!t) continue;
@@ -155,7 +156,8 @@ export function properties(): Property[] {
   for (const h of goldwoodHomes()) out.push({ x: h.x, z: h.z, w: h.w, d: h.d, rot: h.rot, h: h.h, id: goldwoodId(h.n), kind: 'building', type: 'mansion', label: h.label, price: h.price, housingEmployees: 4 });
   for (const w of wineryPlots()) out.push({ x: w.x, z: w.z, w: w.w, d: w.d, rot: w.rot, id: wineryId(w.n), kind: 'farm', type: 'winery', label: `${w.label} (${w.cols}×${w.rows})`, price: w.price, tiles: w.cols * w.rows });
   for (const o of orchardPlots()) out.push({ x: o.x, z: o.z, w: o.w, d: o.d, rot: 0, id: orchardId(o.n), kind: 'farm', type: 'orchard', label: `${o.label} (${o.cols}×${o.rows})`, price: o.price, tiles: o.cols * o.rows });
-
+  // Additional factory plants (Bill Chud 3): commercial, off-map, scarce like farm plots.
+  for (const f of factoryPlants()) out.push({ ...f });
   // Reprice only housing. Capture the actual old employment bonus BEFORE lowering its base price: otherwise
   // a two-slot home priced at 20k would silently lose a slot, and a three-slot home at 30k would become two-slot.
   // No owned rows, paid prices, IDs, geometry or equipment are changed. Slots outside 1–3 keep their old price.
@@ -180,7 +182,7 @@ export interface OwnedProperty { id: string; owner: string; price: number; arrea
  *   250,000+ (hotel, landmarks)                        +4
  * Bonuses from all owned properties add up with no hard max (office cap = MAX_WORKERS + sum). */
 export const workerBonusOf = (id: unknown): number => {
-  const p = propertyById(id); if (!p || p.type === 'barn' || (p.kind !== 'building' && p.kind !== 'landmark')) return 0;
+  const p = propertyById(id); if (!p || p.type === 'barn' || p.type === 'factory_plant' || (p.kind !== 'building' && p.kind !== 'landmark')) return 0;
   return p.housingEmployees ?? employeesForPrice(p.price);
 };
 export const workerBonusTotal = (ids: Iterable<unknown>): number => { let n = 0; for (const id of ids) n += workerBonusOf(id); return n; };

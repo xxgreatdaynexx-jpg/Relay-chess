@@ -113,6 +113,9 @@ export class MineError extends Error {}
 /** Equipped mining tool per account (server/mineTools.ts installs the real lookup once Postgres is attached). */
 let toolHook: (account: string | null) => MineToolId = () => DEFAULT_TOOL;
 export const setMineToolHook = (f: (account: string | null) => MineToolId) => { toolHook = f; };
+/** Carry cap per account (server/mineBackpack.ts installs the Postgres-backed lookup). Guests stay at BACKPACK_CAP. */
+let capHook: (account: string | null) => number = () => BACKPACK_CAP;
+export const setMineBackpackHook = (f: (account: string | null) => number) => { capHook = f; };
 /** Equipped weapon + armor and deepest floor reached (server/mineGear.ts installs the Postgres-backed versions). */
 let gearHook: (account: string | null) => { weapon: WeaponId; armor: ArmorId } = () => ({ weapon: 'rusty_sword', armor: 'none' });
 let depthHook: { get: (account: string, cave?: CaveId) => number; record: (account: string, floor: number, cave?: CaveId) => void } = { get: () => 1, record: () => {} };
@@ -161,6 +164,9 @@ export class MinesWorld {
   bonusRng: () => number = () => Math.random();
   /** Equipped mining tool (request #16). Tests can override. */
   toolOf: (account: string | null) => MineToolId = (a) => toolHook(a);
+  /** Carry cap (requested by Jay). Tests can override. Guests and unknown accounts use the 120 starter pack. */
+  capOf: (account: string | null) => number = (a) => capHook(a);
+  capFor(id: string) { return this.capOf(this.miners.get(id)?.account ?? null); }
   /** Tool × Mining-perk swing multiplier, floored at MIN_SWING_MUL (25% of the base time). */
   swingMulFor(account: string | null) { return combinedSwingMul(miningSwingMul(this.miningLevel(account)), this.toolOf(account)); }
   swingMsFor(account: string | null) { return Math.round(SWING_MS * this.swingMulFor(account)); }
@@ -298,7 +304,7 @@ export class MinesWorld {
     const loot: Stack[] = [];
     for (let i = 0; i < n; i++) {
       const ore = pick();
-      if (this.load(m.id) + ORES[ore].weight > BACKPACK_CAP) break;
+      if (this.load(m.id) + ORES[ore].weight > this.capOf(m.account)) break;
       const key = `ore:${ore}`; const cur = m.carried.get(key); if (cur) cur.qty += 1; else m.carried.set(key, { type: 'ore', id: ore, qty: 1 });
       const l = loot.find((s) => s.id === ore); if (l) l.qty++; else loot.push({ type: 'ore', id: ore, qty: 1 });
     }
@@ -622,14 +628,14 @@ export class MinesWorld {
     const face = { x: c.x + ((eye.x - c.x) / toward) * NODE_R * 0.9, y: c.y + ((eye.y - c.y) / toward) * NODE_R * 0.9, z: c.z };
     if (!lineOfSight(eye, face, this.mapOf(m))) throw new MineError('Something is in the way.');
     const ore = ORES[c.ore];
-    if (this.load(id) + ore.weight > BACKPACK_CAP) return { node: c.id, hp: n.hp, broke: false, full: true };
+    if (this.load(id) + ore.weight > this.capFor(id)) return { node: c.id, hp: n.hp, broke: false, full: true };
     m.lastHit = now; m.hits.push(now);
     n.hp -= 1;
     if (n.hp > 0) return { node: c.id, hp: n.hp, broke: false };
     n.downUntil = now + ore.respawnMs; n.hp = 0;
     // Mining perk + tool: expected extra ore (only what fits), capped at MAX_TOTAL_BONUS. Never rolls an extra key/chest drop.
     const want = extraOreRoll(combinedBonus(miningBonusChance(lvl), tool), this.bonusRng());
-    const bonus = Math.max(0, Math.min(want, Math.floor((BACKPACK_CAP - this.load(id)) / ore.weight) - 1));
+    const bonus = Math.max(0, Math.min(want, Math.floor((this.capFor(id) - this.load(id)) / ore.weight) - 1));
     { const key = `ore:${c.ore}`; const cur = m.carried.get(key); if (cur) cur.qty += 1 + bonus; else m.carried.set(key, { type: 'ore', id: c.ore, qty: 1 + bonus }); }
     if (m.account) this.markCarried(playerKey(m.account));
     return { node: c.id, hp: 0, broke: true, ore: c.ore, ...(bonus ? { bonus } : {}) };
@@ -927,7 +933,7 @@ export function syncRaids(io: Server, drop: string[] = []): void {
     const s = io.sockets.sockets.get(m.id); const after = roomOfM(m);
     if (s) { void s.leave(before); void s.join(after); }
     io.to(before).emit('mines_left', { id: m.id });
-    io.to(m.id).emit('mines_raid_moved', { ...floorMsg(m), pack: world.carried(m.id), load: world.load(m.id), cap: BACKPACK_CAP });
+    io.to(m.id).emit('mines_raid_moved', { ...floorMsg(m), pack: world.carried(m.id), load: world.load(m.id), cap: world.capFor(m.id) });
   }
   for (const i of drop) if (![...world.miners.values()].some((m) => m.inst === i)) world.dropInstance(i);
 }
@@ -942,7 +948,7 @@ function ensureTicker(io: Server) {
       for (const s of io.sockets.sockets.get(d.id)?.rooms ?? []) if (s.startsWith('mines:')) void io.sockets.sockets.get(d.id)?.leave(s);
       void io.sockets.sockets.get(d.id)?.join(d.room);
       const m = world.miners.get(d.id);
-      if (m) io.to(d.id).emit('mines_died', { ...floorMsg(m), lost: d.lost, pack: world.carried(d.id), load: world.load(d.id), cap: BACKPACK_CAP });
+      if (m) io.to(d.id).emit('mines_died', { ...floorMsg(m), lost: d.lost, pack: world.carried(d.id), load: world.load(d.id), cap: world.capFor(d.id) });
     }
     const live = new Map<string, { cave: CaveId; floor: number; inst?: string; ms: Miner[] }>();
     for (const m of world.miners.values()) { const r = roomOfM(m); const l = live.get(r) ?? { cave: m.cave, floor: m.floor, inst: m.inst, ms: [] }; l.ms.push(m); live.set(r, l); }
@@ -958,7 +964,7 @@ function ensureTicker(io: Server) {
 export function registerMines(io: Server, socket: Socket): void {
   const account = () => (socket.data.account as { name?: string } | undefined)?.name ?? null;
   const me = () => world.miners.get(socket.id);
-  const packMsg = () => ({ pack: world.carried(socket.id), load: world.load(socket.id), cap: BACKPACK_CAP });
+  const packMsg = () => ({ pack: world.carried(socket.id), load: world.load(socket.id), cap: world.capFor(socket.id) });
   const storeMsg = () => { const a = account(); if (a) world.beforeStorage?.(a); const q = a ? world.quoteItems(a, Date.now(), getLocStore().at(a, WAREHOUSE).flatMap((x) => { const i = x.item.indexOf(':'); const t = x.item.slice(0, i) as ItemType; const st = { type: t, id: x.item.slice(i + 1), qty: x.qty }; return (t === 'ore' || t === 'bar' || t === 'good' || t === 'food') && sellable(st) ? [st] : []; })) : null; const wh = a ? getLocStore().at(a, WAREHOUSE).flatMap((x) => { const i = x.item.indexOf(':'); const t = x.item.slice(0, i); return t === 'ore' || t === 'bar' || t === 'good' || t === 'food' ? [{ type: t as ItemType, id: x.item.slice(i + 1), qty: x.qty }] : []; }) : [];
     return { storage: a ? world.storage(a) : [], warehouse: wh, quote: q ? { gross: q.gross, paid: q.paid, already: q.already, lost: q.lost, effAlready: q.effAlready, index: priceIndex(), capBase: q.capBase, capIndex: q.capIndex, sellBonus: sellCapMul(a) - 1, plantBonus: q.plantBonus } : null, inMine: a ? world.inMine(a) : false, guest: !a }; };
   socket.on('mines_join', async (p: unknown, ack?: Ack) => {
@@ -1033,7 +1039,7 @@ export function registerMines(io: Server, socket: Socket): void {
       if (r.killed) { const m = me(); const f = m?.floor ?? 1; const lst = world.floorMobs.get(instKey(floorKey(m?.cave ?? 'mine', f), m?.inst))?.[r.mob]; awardXp(account(), 'mining', lst ? MOBS[lst.kind].xp : 5); }
       socket.to(roomOfM(me()!)).emit('mines_mobfx', { mob: r.mob, hp: r.hp, killed: r.killed, by: socket.id });
       if (r.raid) {
-        for (const sh of r.raid.shared) { const o = world.miners.get(sh.id); if (o && r.killed) awardXp(o.account, 'mining', Math.round((lst0(r.mob) ?? 5) / 2)); io.to(sh.id).emit('mines_raid_loot', { mob: r.mob, loot: sh.loot, pack: world.carried(sh.id), load: world.load(sh.id), cap: BACKPACK_CAP }); }
+        for (const sh of r.raid.shared) { const o = world.miners.get(sh.id); if (o && r.killed) awardXp(o.account, 'mining', Math.round((lst0(r.mob) ?? 5) / 2)); io.to(sh.id).emit('mines_raid_loot', { mob: r.mob, loot: sh.loot, pack: world.carried(sh.id), load: world.load(sh.id), cap: world.capFor(sh.id) }); }
         if (r.raid.roll) { const { id: _rid, ...roll } = r.raid.roll; void _rid; io.to(roomOfM(me()!)).emit('mines_raid_roll', roll); }
       }
       const { raid: _raid, ...out } = r; void _raid;

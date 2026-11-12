@@ -15,7 +15,7 @@ import { sg, BOX, SPH, buildOcean, buildBeach } from './ocean3d';
 import { buildJet, disposeTree } from './fleetModels';
 import { createJetController } from './fortJet';
 import type { FleetModel } from '../../../shared/fleet';
-import { FORT_SPOTS, FORT_X0, FORT_X1, FORT_Z0, FORT_Z1, TRACTS, tractInfo, type FortState, type UnitKind } from '../../../shared/fortmc';
+import { FORT_SPOTS, FORT_X0, FORT_X1, FORT_Z0, FORT_Z1, TRACTS, tractInfo, ownerColor, plantOwnerOffset, type FortSite, type FortState, type UnitKind } from '../../../shared/fortmc';
 
 type Handlers = { onHover: (id: string | null, x: number, y: number) => void; onPick: (id: string) => void };
 function rng(seed: number) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
@@ -199,7 +199,7 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
     }
   }
 
-  // Lease tracts: pads with a sign; wells/pumpjacks/pipelines drawn from the player's state.
+  // Lease tracts: pads with a sign; wells/pumpjacks/pipelines drawn from the public site (or the viewer's state).
   const padM = mat({ color: 0x7a6e5a, roughness: 1 }); const padOwnM = mat({ color: 0x9a8a62, roughness: 1, emissive: 0x2a1e00, emissiveIntensity: 0.4 });
   const pads = new Map<number, THREE.Mesh>(); const tractGroups = new Map<number, THREE.Group>();
   for (let n = 1; n <= TRACTS; n++) {
@@ -225,40 +225,79 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
   const horseG = sg('fort-horsehead', () => { const sh = new THREE.Shape(); sh.moveTo(0, 0.3); sh.absarc(0, -0.9, 1.2, Math.PI / 2, -Math.PI / 2 + 0.3, true); sh.lineTo(-0.4, -1.4); sh.lineTo(-0.4, 0.3); const e = new THREE.ExtrudeGeometry(sh, { depth: 0.7, bevelEnabled: false, curveSegments: 8 }); e.translate(0, 0, -0.35); return e; });
   const tPkg = mat({ color: 0xc9cdd1, roughness: 0.6, metalness: 0.1 }), tIntake = mat({ color: 0xd8ccb0, roughness: 0.7 }), tTrim = mat({ color: 0x6b7178, roughness: 0.6 });
   const pipesG = new THREE.Group(); scene.add(pipesG);
-  const setFort = (s: FortState | null) => {
-    jacks.length = 0; while (pipesG.children.length) pipesG.remove(pipesG.children[0]!);
-    for (const [n, g] of tractGroups) {
-      while (g.children.length) g.remove(g.children[0]!);
-      const t = s?.tracts[String(n)]; pads.get(n)!.material = t?.leased ? padOwnM : padM;
-      if (!t?.leased) { if (s?.surveyed.includes(n)) box(1.4, 1, 1.4, yellow, 0, 0.8, 0, g); continue; }
-      t.wells.forEach((w, i) => pumpjack(g, -6.5 + (i % 2) * 14.6, -5 + Math.floor(i / 2) * 9, w.jack, w.cond < 15));
-      if (t.pipe > 0) { // mu-visuals: orthogonal flow line on H-frame sleepers (shared/fortmcPipes.ts), elbows at each 90° corner
-        const rr = t.pipe > 1 ? FLOW_R[1] : FLOW_R[0], pm = t.pipe > 1 ? yellow : steel, R = pipeRoute(n), H = 1.2;
-        for (let i = 1; i < R.length; i++) { const [ax, az] = R[i - 1]!, [bx, bz] = R[i]!, L = Math.hypot(bx - ax, bz - az); if (L < 0.01) continue; const alongX = Math.abs(bx - ax) > Math.abs(bz - az);
-          const c = cyl(rr, L, pm, (ax + bx) / 2, H, (az + bz) / 2, pipesG); if (alongX) c.rotation.z = Math.PI / 2; else c.rotation.x = Math.PI / 2;
-          for (let d = 4; d < L - 2; d += 8) { const sx = ax + ((bx - ax) * d) / L, sz = az + ((bz - az) * d) / L; const sp = box(alongX ? 0.25 : 1.8, 0.2, alongX ? 1.8 : 0.25, dark, sx, 0.75, sz, pipesG); sp.castShadow = false;
-            for (const o of [-0.8, 0.8]) box(0.18, 0.8, 0.18, dark, sx + (alongX ? 0 : o), 0.4, sz + (alongX ? o : 0), pipesG).castShadow = false; } }
-        for (let i = 1; i < R.length - 1; i++) { const [x, z] = R[i]!; const e = new THREE.Mesh(SPH(), pm); e.scale.setScalar(rr * 2.7); e.position.set(x, H, z); pipesG.add(e);
-          for (const [px, pz] of [R[i - 1]!, R[i + 1]!]) { const ux = Math.sign(px - x), uz = Math.sign(pz - z); const f = cyl(rr * 1.3, 0.2, dark, x + ux * rr * 1.6, H, z + uz * rr * 1.6, pipesG); if (ux) f.rotation.z = Math.PI / 2; else f.rotation.x = Math.PI / 2; } }
-        const [lx, lz] = R[0]!; cyl(rr * 1.8, 2.4, pm, lx - tractInfo(n).x - 1.5, 1.3, lz - tractInfo(n).z, g).rotation.z = Math.PI / 2; box(0.8, 1.4, 0.8, red, lx - tractInfo(n).x - 3.2, 0.7, lz - tractInfo(n).z, g); }
-    }
-    // tank farm and extra units around the plant
-    while (unitsG.children.length) unitsG.remove(unitsG.children[0]!);
-    const count = (k: UnitKind) => s?.units.filter((u) => u.k === k).length ?? 0;
-    for (let i = 0; i < count('tank'); i++) { const x = -45 + (i % 5) * 7.5, z = 22 + Math.floor(i / 5) * 7.5; cyl(3, 4.2, white, x, 2.1, z, unitsG); cyl(3.05, 0.25, red, x, 3.2, z, unitsG); cyl(0.15, 0.9, white, x, 4.65, z, unitsG, 3); box(0.4, 4.4, 0.6, dark, x + 3.1, 2.2, z, unitsG); }
-    { const nt = count('tank'); if (nt) { const cols = Math.min(5, nt), rows = Math.ceil(nt / 5); bund(unitsG, -48.7, -45 + (cols - 1) * 7.5 + 3.7, 22 - 3.7, 22 + (rows - 1) * 7.5 + 3.7); } }
+  const padBy = new Map<string, THREE.MeshStandardMaterial>();
+  const pipeBy = new Map<string, THREE.MeshStandardMaterial>();
+  const cssMat = (css: string, own: boolean) => {
+    const k = css + (own ? ':own' : ''); let m = padBy.get(k); if (m) return m;
+    const c = new THREE.Color(); try { c.setStyle(css); } catch { c.setHex(0x9a8a62); }
+    m = mat({ color: c, roughness: 1, emissive: own ? c : 0x000000, emissiveIntensity: own ? 0.35 : 0 }); padBy.set(k, m); return m;
+  };
+  const pipeMat = (css: string | null, thick: boolean) => {
+    if (!css) return thick ? yellow : steel;
+    const k = css + (thick ? ':t' : ':n'); let m = pipeBy.get(k); if (m) return m;
+    const c = new THREE.Color(); try { c.setStyle(css); } catch { c.setHex(thick ? 0xf2b630 : 0x9aa2aa); }
+    m = mat({ color: c, metalness: 0.6, roughness: 0.4 }); pipeBy.set(k, m); return m;
+  };
+  const tags: THREE.Sprite[] = [];
+  const clearTags = () => { for (const s of tags) { scene.remove(s); const i = signs.indexOf(s); if (i >= 0) signs.splice(i, 1); } tags.length = 0; };
+  const drawPipe = (n: number, pipe: number, H: number, pm: THREE.Material, g: THREE.Group) => {
+    const rr = pipe > 1 ? FLOW_R[1] : FLOW_R[0], R = pipeRoute(n);
+    for (let i = 1; i < R.length; i++) { const [ax, az] = R[i - 1]!, [bx, bz] = R[i]!, L = Math.hypot(bx - ax, bz - az); if (L < 0.01) continue; const alongX = Math.abs(bx - ax) > Math.abs(bz - az);
+      const c = cyl(rr, L, pm, (ax + bx) / 2, H, (az + bz) / 2, pipesG); if (alongX) c.rotation.z = Math.PI / 2; else c.rotation.x = Math.PI / 2;
+      for (let d = 4; d < L - 2; d += 8) { const sx = ax + ((bx - ax) * d) / L, sz = az + ((bz - az) * d) / L; const sp = box(alongX ? 0.25 : 1.8, 0.2, alongX ? 1.8 : 0.25, dark, sx, H - 0.45, sz, pipesG); sp.castShadow = false;
+        for (const o of [-0.8, 0.8]) box(0.18, 0.8, 0.18, dark, sx + (alongX ? 0 : o), H - 0.8, sz + (alongX ? o : 0), pipesG).castShadow = false; } }
+    for (let i = 1; i < R.length - 1; i++) { const [x, z] = R[i]!; const e = new THREE.Mesh(SPH(), pm); e.scale.setScalar(rr * 2.7); e.position.set(x, H, z); pipesG.add(e);
+      for (const [px, pz] of [R[i - 1]!, R[i + 1]!]) { const ux = Math.sign(px - x), uz = Math.sign(pz - z); const f = cyl(rr * 1.3, 0.2, dark, x + ux * rr * 1.6, H, z + uz * rr * 1.6, pipesG); if (ux) f.rotation.z = Math.PI / 2; else f.rotation.x = Math.PI / 2; } }
+    const [lx, lz] = R[0]!; cyl(rr * 1.8, 2.4, pm, lx - tractInfo(n).x - 1.5, 1.3, lz - tractInfo(n).z, g).rotation.z = Math.PI / 2; box(0.8, 1.4, 0.8, red, lx - tractInfo(n).x - 3.2, 0.7, lz - tractInfo(n).z, g);
+  };
+  const drawPlant = (units: Array<{ k: UnitKind }>, ox: number, oz: number, owner?: string, ownerKey?: string) => {
+    const yard = new THREE.Group(); yard.position.set(ox, 0, oz); unitsG.add(yard);
+    const count = (k: UnitKind) => units.filter((u) => u.k === k).length;
+    for (let i = 0; i < count('tank'); i++) { const x = -45 + (i % 5) * 7.5, z = 22 + Math.floor(i / 5) * 7.5; cyl(3, 4.2, white, x, 2.1, z, yard); cyl(3.05, 0.25, red, x, 3.2, z, yard); cyl(0.15, 0.9, white, x, 4.65, z, yard, 3); box(0.4, 4.4, 0.6, dark, x + 3.1, 2.2, z, yard); }
+    { const nt = count('tank'); if (nt) { const cols = Math.min(5, nt), rows = Math.ceil(nt / 5); bund(yard, -48.7, -45 + (cols - 1) * 7.5 + 3.7, 22 - 3.7, 22 + (rows - 1) * 7.5 + 3.7); } }
     // QA#7: aeroderivative gas-turbine packages (LM6000-style): light-grey enclosure, beige air-intake filter house with louvres,
     // tall exhaust stack with a lit warning lamp, access doors. Matte (non-metal) paints so they read at night.
-    for (let i = 0; i < count('turbine'); i++) { const x = 45 + (i % 4) * 5, z = 22 + Math.floor(i / 4) * 9; const pk = box(4, 3.4, 7, tPkg, x, 1.7, z, unitsG); pk.userData.part = 'turbinePkg'; box(4.2, 0.3, 7.2, tTrim, x, 3.5, z, unitsG);
-      box(3.4, 2.6, 2.6, tIntake, x, 4.95, z - 2.0, unitsG); for (let k = 0; k < 4; k++) box(3.45, 0.12, 2.65, tTrim, x, 4.0 + k * 0.6, z - 2.0, unitsG);
-      for (const dz of [-1.2, 1.4]) box(0.06, 2.2, 1.1, tTrim, x + 2.02, 1.4, z + dz, unitsG);
-      const st = cyl(0.75, 9, tPkg, x, 7.4, z + 2.4, unitsG); st.userData.part = 'turbineStack'; cyl(0.82, 0.35, tTrim, x, 11.7, z + 2.4, unitsG); box(0.35, 0.35, 0.35, navRed, x + 0.8, 11.4, z + 2.4, unitsG); }
-    for (let i = 0; i < count('separator'); i++) { const o = cyl(1.4, 6, steel, -32 + i * 3.6, 2.1, 42, unitsG); o.rotation.x = Math.PI / 2; for (const dz of [-2, 2]) box(1.6, 1.4, 0.5, dark, -32 + i * 3.6, 0.7, 42 + dz, unitsG); cyl(0.25, 1.6, yellow, -32 + i * 3.6, 3.6, 42 - 1, unitsG); }
-    // Process units on the row north of the ponds: a slot per kind, up to four copies in a 2x2 grid (mu-visuals).
+    for (let i = 0; i < count('turbine'); i++) { const x = 45 + (i % 4) * 5, z = 22 + Math.floor(i / 4) * 9; const pk = box(4, 3.4, 7, tPkg, x, 1.7, z, yard); pk.userData.part = 'turbinePkg'; box(4.2, 0.3, 7.2, tTrim, x, 3.5, z, yard);
+      box(3.4, 2.6, 2.6, tIntake, x, 4.95, z - 2.0, yard); for (let k = 0; k < 4; k++) box(3.45, 0.12, 2.65, tTrim, x, 4.0 + k * 0.6, z - 2.0, yard);
+      for (const dz of [-1.2, 1.4]) box(0.06, 2.2, 1.1, tTrim, x + 2.02, 1.4, z + dz, yard);
+      const st = cyl(0.75, 9, tPkg, x, 7.4, z + 2.4, yard); st.userData.part = 'turbineStack'; cyl(0.82, 0.35, tTrim, x, 11.7, z + 2.4, yard); box(0.35, 0.35, 0.35, navRed, x + 0.8, 11.4, z + 2.4, yard); }
+    for (let i = 0; i < count('separator'); i++) { const o = cyl(1.4, 6, steel, -32 + i * 3.6, 2.1, 42, yard); o.rotation.x = Math.PI / 2; for (const dz of [-2, 2]) box(1.6, 1.4, 0.5, dark, -32 + i * 3.6, 0.7, 42 + dz, yard); cyl(0.25, 1.6, yellow, -32 + i * 3.6, 3.6, 42 - 1, yard); }
     const PROC: UnitKind[] = ['gas_plant', 'refinery', 'reformer', 'coker', 'cracker', 'polymer'];
-    PROC.forEach((k, si) => { const n = Math.min(4, count(k)); for (let i = 0; i < n; i++) { const g = new THREE.Group(); g.position.set(-70 + si * 20 + (i % 2) * 9 - 4.5, 0, 70 + Math.floor(i / 2) * 8.5 - 4.25); unitsG.add(g); procUnit(k, g); } });
-    mineRig.visible = !!s?.mine; mineDig = !!s?.mine?.on;
+    PROC.forEach((k, si) => { const n = Math.min(4, count(k)); for (let i = 0; i < n; i++) { const g = new THREE.Group(); g.position.set(-70 + si * 20 + (i % 2) * 9 - 4.5, 0, 70 + Math.floor(i / 2) * 8.5 - 4.25); yard.add(g); procUnit(k, g); } });
+    if (owner && (ox || oz)) tags.push(label(owner, 'Plant', ownerColor(ownerKey ?? owner), ox, 10, oz + 22, 0.7));
   };
+  let lastFort: FortState | null = null; let lastSite: FortSite | null = null;
+  const redraw = () => {
+    const s = lastFort; const site = lastSite;
+    jacks.length = 0; while (pipesG.children.length) pipesG.remove(pipesG.children[0]!); clearTags();
+    for (const [n, g] of tractGroups) {
+      while (g.children.length) g.remove(g.children[0]!);
+      const tv = site?.tracts.find((x) => x.n === n);
+      const mine = s?.tracts[String(n)];
+      const hold = tv?.lease ?? (mine?.leased ? { key: '', name: 'You', mine: true } : null);
+      pads.get(n)!.material = hold ? (hold.key ? cssMat(ownerColor(hold.key), !!hold.mine) : padOwnM) : padM;
+      if (hold && hold.name) tags.push(label(hold.mine ? `Your lease` : hold.name, tractInfo(n).name, hold.key ? ownerColor(hold.key) : '#c8a060', tractInfo(n).x, 10, tractInfo(n).z, 0.65));
+      if (tv) {
+        tv.wells.forEach((w, i) => pumpjack(g, -6.5 + (i % 2) * 14.6, -5 + Math.floor(i / 2) * 9, w.jack, w.cond < 15));
+        tv.pipes.forEach((p, i) => drawPipe(n, p.pipe, 1.2 + i * 0.45, pipeMat(ownerColor(p.ownerKey), p.pipe > 1), g));
+        if (!tv.wells.length && !tv.pipes.length && !hold && s?.surveyed.includes(n)) box(1.4, 1, 1.4, yellow, 0, 0.8, 0, g);
+        continue;
+      }
+      if (!mine?.leased) { if (s?.surveyed.includes(n)) box(1.4, 1, 1.4, yellow, 0, 0.8, 0, g); continue; }
+      mine.wells.forEach((w, i) => pumpjack(g, -6.5 + (i % 2) * 14.6, -5 + Math.floor(i / 2) * 9, w.jack, w.cond < 15));
+      if (mine.pipe > 0) drawPipe(n, mine.pipe, 1.2, mine.pipe > 1 ? yellow : steel, g);
+    }
+    while (unitsG.children.length) unitsG.remove(unitsG.children[0]!);
+    if (site && site.players.length) {
+      site.players.forEach((p, i) => { const o = plantOwnerOffset(i); drawPlant(p.units, o.x, o.z, p.name, p.key); });
+      mineRig.visible = site.players.some((p) => p.mine); mineDig = site.players.some((p) => p.mine?.on);
+    } else {
+      drawPlant(s?.units ?? [], 0, 0);
+      mineRig.visible = !!s?.mine; mineDig = !!s?.mine?.on;
+    }
+  };
+  const setFort = (s: FortState | null) => { lastFort = s; redraw(); };
+  const setSite = (site: FortSite | null) => { lastSite = site; redraw(); };
   const unitsG = new THREE.Group(); scene.add(unitsG);
   function procUnit(k: UnitKind, g: THREE.Group) {
     box(8, 0.3, 7.5, conc, 0, 0.15, 0, g);
@@ -340,7 +379,7 @@ export function createFortMc(canvas: HTMLCanvasElement, h: Handlers) {
   const vis = () => { running = !document.hidden; clock.getDelta(); }; document.addEventListener('visibilitychange', vis); frame();
   return {
     scene, camera, controls,
-    setFort, ...jetApi,
+    setFort, setSite, ...jetApi,
     setRunning(v: boolean) { running = v; clock.getDelta(); },
     reset() { camera.position.copy(home); controls.target.copy(homeT); },
     dispose() { cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); jetCtl.hide(); controls.dispose(); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },

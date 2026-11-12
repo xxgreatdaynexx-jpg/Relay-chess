@@ -18,8 +18,8 @@ describe('automatic business income and public service deeds',()=>{
   expect(incomeEntitlement(1,0,PROPERTY_PAYBACK_MS-1)).toBe(0n);expect(incomeEntitlement(1,0,PROPERTY_PAYBACK_MS)).toBe(1n);expect(incomeEntitlement(60000,100,99)).toBe(0n);
  });
  it('rejects invalid rate data instead of inventing purchase costs',()=>{expect(()=>incomeEntitlement(0,0,1)).toThrow();expect(()=>incomeEntitlement(1.2,0,1)).toThrow();});
- it('adds only two stable public deeds, retains all 555 other entries and thirty-four independent barns',()=>{
-  expect(properties().filter(p=>!/^(sky|isl|lot:estate:|winery:|b:mansion:|orchard:)/.test(p.id)&&!/^cf:2\d{3}$/.test(p.id))).toHaveLength(557);expect(new Set(properties().map(p=>p.id)).size).toBe(properties().length);expect(properties().filter(p=>p.type==='barn')).toHaveLength(34);expect(properties().filter(p=>/^(sky|isl):/.test(p.id))).toHaveLength(10);
+ it('adds only two stable public deeds, retains the rest of the catalog (Factory monument deed retired; 12 factory plants added) and thirty-four independent barns',()=>{
+  expect(properties().filter(p=>!/^(sky|isl|lot:estate:|winery:|b:mansion:|orchard:)/.test(p.id)&&!/^cf:2\d{3}$/.test(p.id))).toHaveLength(568);expect(new Set(properties().map(p=>p.id)).size).toBe(properties().length);expect(properties().filter(p=>p.type==='barn')).toHaveLength(34);expect(properties().filter(p=>/^(sky|isl):/.test(p.id))).toHaveLength(10);expect(properties().some(p=>p.id==='lm:factory')).toBe(false);expect(properties().filter(p=>p.type==='factory_plant')).toHaveLength(12);
   expect(PUBLIC_SERVICE_DEEDS.map(p=>[p.id,p.price])).toEqual([['lm:jail',750000],['lm:harbour',1500000]]);
   for(const p of PUBLIC_SERVICE_DEEDS){expect(taxOf(p.price)).toBe(p.price*.005);expect(sellBackOf(p.price)).toBe(p.price*.7);expect(p.retired).toBeUndefined();}
  });

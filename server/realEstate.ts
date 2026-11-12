@@ -37,6 +37,9 @@ import { cityPropertyTaxMul } from './mayor.js';
 import { preparePurchaseTax, purchaseTaxMoves, quotePurchaseTax, PurchaseTaxUnprepared, type PurchaseTaxPrep } from './purchase-tax.js';
 import { backTaxOf, backTaxMoves, backTaxBlockMsg } from './backTax.js';
 import { releasePropertyDerived, healStalePropertyDerived } from './propertyDerived.js';
+import { PropertyTrades, PropertyTradeError } from './propertyTrade.js';
+import { FACTORY_MONUMENT_ID, FACTORY_MONUMENT_REFUND_KEY, FACTORY_MONUMENT_REFUND_GAME, isFactoryPlantId } from '../shared/bill3.js';
+
 
 export class PropertyError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
@@ -71,9 +74,14 @@ export class RealEstate {
     const prev = this.locks.get(id) ?? Promise.resolve(); const p = prev.then(fn, fn); const tail = p.catch(() => {});
     this.locks.set(id, tail); void tail.then(() => { if (this.locks.get(id) === tail) this.locks.delete(id); }); return p;
   }
-  constructor(private readonly pool: Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now()) { this.income = new PropertyIncome(pool, clock); }
+  constructor(private readonly pool: Pool, private readonly bank: () => CasinoBank = getBank, private readonly clock = () => Date.now()) { this.income = new PropertyIncome(pool, clock); this.trades = new PropertyTrades(pool, bank, clock, (name, cl) => this.ownedBrief(name, cl)); }
   private readonly income: PropertyIncome;
-  async init() { await this.pool.query(PROPERTY_MIGRATION); await this.income.init(); await healStalePropertyDerived(this.pool); }
+  readonly trades: PropertyTrades;
+  private async ownedBrief(name: string, cl: { query: pg.Pool['query'] } = this.pool) {
+    const rows = (await cl.query('SELECT id, owner_name, price, arrears FROM properties WHERE owner_key = $1', [keyOf(name)])).rows as Array<{ id: string; owner_name: string; price: string | number; arrears: number }>;
+    return rows.map((r) => ({ id: r.id, owner: r.owner_name, price: Number(r.price), arrears: Number(r.arrears) }));
+  }
+  async init() { await this.pool.query(PROPERTY_MIGRATION); await this.income.init(); await this.trades.init(); await healStalePropertyDerived(this.pool); await this.enactFactoryMonumentRetirement().catch((e) => console.error('[realestate] factory monument retirement:', (e as Error).message)); }
   /** Automatic/offline catch-up; no client claim or per-owner activity required. */
   runIncome(now = this.clock()) { return this.income.run(now, (name) => this.bank().notifyDurableBalance(name)); }
 
@@ -170,6 +178,8 @@ export class RealEstate {
   /** max: the price the player saw; a higher price now (they bought something else meanwhile) refuses instead of surprising them. */
   async buy(name: string, id: unknown, max?: unknown) {
     const p = propertyById(id); if (!p || p.retired) throw new PropertyError('That property is not for sale.');
+    // Fast zoning refusal before the purchase-tax roster (re-checked under the owner lock in buyLocked).
+    { const z = zoneRefusal(await this.zoneUse(name), p); if (z) throw new PropertyError(z); }
     // Price the tax roster before taking the in-process owner/plot locks or pinning a pool client.
     // A slow roster used to hold those locks so a later click sat on Buying… and a failed attempt never released promptly.
     let prep: PurchaseTaxPrep;
@@ -290,6 +300,7 @@ export class RealEstate {
       const r = await cl.query('DELETE FROM properties WHERE id = $1 AND owner_key = $2 AND price = $3 RETURNING id', [p.id, keyOf(name), paid]);
       if (!r.rowCount) throw new PropertyError('You do not own this property.');
       await releasePropertyDerived(cl, p.id, keyOf(name));
+      if (isFactoryPlantId(p.id)) await cl.query('DELETE FROM factory_v2 WHERE player_key = $1', [p.id]).catch(() => {});
     });
     this.onChange?.();
     return { id: p.id, chips: back, paid, balance: bank.account(name).chips };
@@ -358,7 +369,60 @@ export class RealEstate {
    *  and currently-planted tiles at their seed cost. Read errors propagate: zero would understate net worth. */
   spend(ownerKey: string | null) { return propertySpend(this.pool, ownerKey); }
 
-  start() { const run = () => { void this.runTax().catch((e) => console.error('[realestate] tax run failed:', (e as Error).message)); }; this.timer = setInterval(run, PROPERTY_INCOME_EVERY_MS); this.timer.unref?.(); setTimeout(run, 30_000).unref?.(); }
+  /**
+   * Bill Chud 3: retire the Factory monument. Refund the recorded owner the purchase price on the deed (idempotent
+   * ledger key). Royalties already paid are not touched. The deed is removed and cannot be bought again.
+   */
+  async enactFactoryMonumentRetirement(): Promise<{ refunded: boolean; already?: boolean; owner?: string; amount?: number }> {
+    return this.lock(FACTORY_MONUMENT_ID, () => this.enactFactoryMonumentRetirementNow());
+  }
+  private async enactFactoryMonumentRetirementNow(): Promise<{ refunded: boolean; already?: boolean; owner?: string; amount?: number }> {
+    const row = (await this.pool.query('SELECT * FROM properties WHERE id = $1', [FACTORY_MONUMENT_ID])).rows[0] as Row | undefined;
+    if (!row) return { refunded: false };
+    const owner = String(row.owner_name);
+    const amount = Number(row.price);
+    const bank = this.bank();
+    if (bank.hasKey(FACTORY_MONUMENT_REFUND_KEY)) {
+      await this.pool.query('DELETE FROM properties WHERE id = $1', [FACTORY_MONUMENT_ID]);
+      await releasePropertyDerived(this.pool, FACTORY_MONUMENT_ID, String(row.owner_key));
+      this.onChange?.();
+      return { refunded: false, already: true, owner, amount };
+    }
+    const memo = `Factory monument retired: refund of the ${amount.toLocaleString('en-US')} chip purchase price`;
+    const cl = await this.pool.connect();
+    try {
+      await cl.query('BEGIN');
+      const w = bank.transferAtomic([{ name: owner, amount, key: FACTORY_MONUMENT_REFUND_KEY, game: FACTORY_MONUMENT_REFUND_GAME, memo }]);
+      try {
+        await w.after;
+        for (const s of w.stmts) await cl.query(s.sql, s.args);
+        const del = await cl.query('DELETE FROM properties WHERE id = $1 AND owner_key = $2 RETURNING id', [FACTORY_MONUMENT_ID, String(row.owner_key)]);
+        if (!del.rowCount) throw new PropertyError('Factory monument deed moved during retirement.');
+        await releasePropertyDerived(cl, FACTORY_MONUMENT_ID, String(row.owner_key));
+        await cl.query('COMMIT');
+        w.bind(Promise.resolve());
+      } catch (e) {
+        w.revert();
+        await cl.query('ROLLBACK').catch(() => {});
+        throw e;
+      }
+    } catch (e) {
+      await cl.query('ROLLBACK').catch(() => {});
+      if (/already applied|duplicate|unique/i.test((e as Error).message ?? '')) {
+        await this.pool.query('DELETE FROM properties WHERE id = $1', [FACTORY_MONUMENT_ID]);
+        await releasePropertyDerived(this.pool, FACTORY_MONUMENT_ID, String(row.owner_key));
+        this.onChange?.();
+        return { refunded: false, already: true, owner, amount };
+      }
+      throw e;
+    } finally { cl.release(); }
+    this.onChange?.();
+    void sendPopup(owner, 'City Hall', `The Factory monument has been retired. You were refunded ${amount.toLocaleString('en-US')} chips, the purchase price on the deed. Royalties you already earned are yours to keep. The Factory stays open as a public workplace.`).catch(() => {});
+    console.log(`[bill3] Factory monument retired; refunded ${owner} ${amount} chips`);
+    return { refunded: true, owner, amount };
+  }
+
+    start() { const run = () => { void this.runTax().catch((e) => console.error('[realestate] tax run failed:', (e as Error).message)); }; this.timer = setInterval(run, PROPERTY_INCOME_EVERY_MS); this.timer.unref?.(); setTimeout(run, 30_000).unref?.(); }
   stop() { if (this.timer) clearInterval(this.timer); }
 }
 
@@ -389,7 +453,7 @@ export function registerRealEstate(io: Server, socket: Socket): void {
   const nameOf = () => (socket.data as { account?: { name: string } }).account?.name ?? null;
   const on = (ev: string, fn: (b: Record<string, unknown>, e: RealEstate) => unknown) => socket.on(ev, async (payload: unknown, ack?: Ack) => {
     try { if (!re) throw new PropertyError('Real estate is offline right now.'); const b = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}; ack?.({ ok: true, ...((await fn(b, re)) as object ?? {}) }); }
-    catch (e) { ack?.({ ok: false, error: e instanceof PropertyError || /^(Not enough chips\.|Wallet temporarily unavailable\.)$/.test((e as Error).message) ? (e as Error).message : 'Something went wrong.' }); }
+    catch (e) { ack?.({ ok: false, error: e instanceof PropertyError || e instanceof PropertyTradeError || /^(Not enough chips\.|Wallet temporarily unavailable\.)$/.test((e as Error).message) ? (e as Error).message : 'Something went wrong.' }); }
   });
   const need = () => { const n = nameOf(); if (!n) throw new PropertyError('Sign in to buy property.'); return n; };
   on('re_mine', async (_b, e) => ({ properties: await e.mine(need()) }));
@@ -399,7 +463,13 @@ export function registerRealEstate(io: Server, socket: Socket): void {
   on('re_backtax_pay', async (_b, e) => e.payBackTax(need()));
   on('re_sell', (b, e) => e.sell(need(), b.id));
   on('re_buyout', (b, e) => e.buyout(need(), b.id, b.max));
+  on('re_trade_list', async (_b, e) => e.trades.list(need()));
+  on('re_trade_offer', (b, e) => e.trades.offer(need(), b));
+  on('re_trade_cancel', (b, e) => e.trades.cancel(need(), b.id));
+  on('re_trade_decline', (b, e) => e.trades.decline(need(), b.id));
+  on('re_trade_accept', (b, e) => e.trades.accept(need(), b.id));
 }
+
 export async function propertySpend(pool: { query: (sql: string, args?: unknown[]) => Promise<{ rows: any[] }> }, ownerKey: string | null): Promise<Map<string, { upgrades: number; crops: number }>> {
   const out = new Map<string, { upgrades: number; crops: number }>();
   const get = (id: string) => { let v = out.get(id); if (!v) out.set(id, (v = { upgrades: 0, crops: 0 })); return v; };

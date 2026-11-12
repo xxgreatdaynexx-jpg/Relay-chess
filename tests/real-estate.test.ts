@@ -31,11 +31,11 @@ describe('real estate catalog', () => {
   it('every building, lot, park, plaza and landmark has a unique id and a price; the Trailer Park is not for sale', () => {
     const ps = properties(); expect(new Set(ps.map((p) => p.id)).size).toBe(ps.length);
     const { houses, patches } = cityFill(7);
-    expect(ps.filter((p) => p.kind === 'building' && !p.map && !p.id.startsWith('sky:') && !p.id.startsWith('b:mansion:'))).toHaveLength(houses.length + countryHomes().length + countryBusinesses().length + farmBarns().length);
+    expect(ps.filter((p) => p.kind === 'building' && !p.map && !p.id.startsWith('sky:') && !p.id.startsWith('b:mansion:') && p.type !== 'factory_plant')).toHaveLength(houses.length + countryHomes().length + countryBusinesses().length + farmBarns().length);
     expect(ps.filter((p) => p.id.startsWith('b:mansion:'))).toHaveLength(goldwoodHomes().length);
     expect(ps.filter((p) => p.kind === 'patch' && !p.id.startsWith('lot:estate:'))).toHaveLength(patches.length);
     expect(ps.filter((p) => p.id.startsWith('lot:estate:'))).toHaveLength(estateLots().length);
-    expect(ps.filter((p) => p.kind === 'landmark').map((p) => p.type).sort()).toEqual([...LANDMARK_IDS, 'jail', 'harbour'].filter((id) => id !== 'cityhall' && id !== 'club' && id !== 'skytower' && id !== 'mine-quarry' && id !== 'plastics' && id !== 'rigdock').sort()); // civic venues, the Stone Quarry and public works are not buyable deeds
+    expect(ps.filter((p) => p.kind === 'landmark').map((p) => p.type).sort()).toEqual([...LANDMARK_IDS, 'jail', 'harbour'].filter((id) => id !== 'cityhall' && id !== 'club' && id !== 'skytower' && id !== 'mine-quarry' && id !== 'plastics' && id !== 'rigdock' && id !== 'factory').sort()); // civic venues, public works, and the retired Factory monument are not buyable deeds
     for (const p of ps) { expect(p.price).toBeGreaterThan(0); if (p.kind !== 'landmark') expect(obbOverlap(PARK_AREA, p)).toBe(false); }
     expect(ps.some((p) => /trailer/i.test(p.id))).toBe(false);
     expect(ps.some((p) => p.type === 'cityhall' || p.type === 'club' || p.type === 'skytower')).toBe(false); // civic venues are never for sale

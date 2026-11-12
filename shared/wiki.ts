@@ -7,6 +7,7 @@ import { CROPS, CROP_SEED_MUL, cropSellValue } from './farm.js';
 import { TROPICAL_CROPS } from './resort.js';
 import { fertilizerYieldBonus, MAX_UPGRADE_LEVEL } from './farmUpgrades.js';
 import { ORES, CAVES, RECIPES as MINE_RECIPES, type CaveId } from './mines.js';
+import { BACKPACK_BASE_CAP, BACKPACK_UPGRADES, MAX_BACKPACK_CAP } from './mineBackpack.js';
 import { FOOD_STEP_MARKUP } from './factory.js';
 import { RECIPES as KITCHEN_RECIPES } from './cooking.js';
 import { JOBS, OFFLINE_CAP_MS, MAX_WORKERS, baseWage, baseHire, dayValue, itemsPerDay, expectedDayHaul, formatExpectedDay, MINER_EVERY_MS, WORKER_EVERY_MS } from './employment.js';
@@ -136,6 +137,7 @@ export function buildWiki(): WikiSection[] {
       intro: 'Four player mines: The Mine, Frost Hollow, Magma Depths, and Stone Quarry (stone-only). Depth raises creature loot; quarry has no hostiles.',
       bullets: [
         'Hired miners can work mine / frost / magma / quarry with Mine priority. Manual mining uses cave nodes directly.',
+        `In the mine you can buy permanent pack upgrades that raise how much you carry above the starting ${BACKPACK_BASE_CAP}, up to ${MAX_BACKPACK_CAP}: ${BACKPACK_UPGRADES.map((u) => `${u.cap} for ${chips(u.price)}`).join(', ')} (base prices; they follow the daily price index, like the Tool Shop). Guests keep the starter pack.`,
       ],
       headers: ['Ore', 'Price', 'Hits', 'Min floor', 'Weight'],
       rows: oreRows,
