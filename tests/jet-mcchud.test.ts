@@ -44,7 +44,6 @@ describe('Fly my jet to Fort McChud (mu-jet-mcchud)', () => {
     setFleet(null);
   });
   it('the launch popup announces it', () => {
-    expect(LAUNCH.items.some((i) => /Fort McChud/.test(i.title) && /Fly my jet/.test(i.text) && /upkeep/.test(i.text))).toBe(true);
     expect(LAUNCH.items.some((i) => /Fort McChud still needs a ticket/.test(i.text))).toBe(false);
   });
 });

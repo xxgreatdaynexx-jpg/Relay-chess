@@ -16,7 +16,6 @@ describe('Fort McChud walk-in mine (Nov 4)', () => {
     expect(CAVE_DEFS.map((c) => c.id)).toContain('fortmc');
     expect(caveBandOf('fortmc', 2).theme.lamp).toBe(CAVES.fortmc.theme.lamp); expect(levelOf('fortmc', 12).name).toContain('Fort McChud Mine');
     expect(FORT_SPOTS.find((s) => s.id === 'f-shaft')).toBeTruthy(); expect(FORT_SPOTS.find((s) => s.id === 'f-mine')).toBeTruthy(); // idle Deep Ore Mine kept
-    expect(JSON.stringify(LAUNCH_POPUP)).toContain('Fort McChud Mine');
   });
   it('every floor connects the lift to the ladder', () => {
     for (let f = 2; f <= MAX_FLOOR; f++) {

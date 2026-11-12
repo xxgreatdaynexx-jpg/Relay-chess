@@ -101,5 +101,5 @@ describe('jet passenger seats (mu-jet-seats)', () => {
     expect(r.passengers).toEqual([]); expect(r.stayed).toEqual(['QA-Late']); expect(t.where('QA-Late')).toBe('city'); expect(chips('QA-Late')).toBe(l0);
   });
   it('non-owners cannot open boarding', async () => { await fund('QA-NoJet', 100); await expect(s.open('QA-NoJet', 'resort')).rejects.toThrow(/private jet/); });
-  it('is in the launch popup', () => { expect(LAUNCH.items.some((i) => i.title === 'Jet passenger seats' && /Request a seat/.test(i.text))).toBe(true); });
+  it('is not re-announced on the Billionaire launch popup', () => { expect(LAUNCH.items.some((i) => i.title === 'Jet passenger seats')).toBe(false); });
 });

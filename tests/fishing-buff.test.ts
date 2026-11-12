@@ -21,7 +21,6 @@ describe('fishing +15% buff', () => {
     expect(v).toBe(Math.max(1, Math.round(f.base * (0.6 + 1.2 * ((rollWeight(f, 0.5) / 1000 - f.min) / (f.max - f.min))))));
   });
   it('is in the popup and changelog', () => {
-    expect(LAUNCH.items.some((i) => /Fishing pays 15% more/.test(i.title))).toBe(true);
     expectChangelogEntry(/Fishing pays 15%/);
     expectChangelogOrder(/Cooking pays 50%/, /Fishing pays 15%/, /Factory goods sell/, /The Millionaire Update/);
   });

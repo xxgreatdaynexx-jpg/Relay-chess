@@ -48,8 +48,7 @@ describe('co-op sizing + rules', () => {
   it('stadium site keeps trees/rocks out', () => { expect(inStadiumSite(STADIUM_SITE.x, STADIUM_SITE.z)).toBe(true); expect(inStadiumSite(0, 0)).toBe(false);
     expect(inStadiumSite(STADIUM_SITE.x + STADIUM_SITE.w / 2 + 10, STADIUM_SITE.z + STADIUM_SITE.d / 2 + 10)).toBe(true); expect(inStadiumSite(STADIUM_SITE.x + STADIUM_SITE.w / 2 + 13, STADIUM_SITE.z)).toBe(false); });
   it('is in the launch popup', () => {
-    const co = LAUNCH.items.filter((i) => i.section === 'Co-op'); expect(co.length).toBeGreaterThanOrEqual(4);
-    expect(co.some((i) => /sell-cap/i.test(i.title))).toBe(true); expect(co.some((i) => /contract/i.test(i.title))).toBe(true);
+    expect(LAUNCH.items.filter((i) => i.section === 'Co-op')).toHaveLength(0);
   });
 });
 

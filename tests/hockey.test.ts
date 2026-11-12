@@ -286,7 +286,6 @@ describe('hockey: daily cap persists in the ledger', () => {
 
 describe('hockey: launch popup', () => {
   it('lists PvP Hockey on the Games & skills page', () => {
-    const it = LAUNCH.items.find((i) => i.title === 'PvP Hockey');
-    expect(it?.section).toBe('Games & skills');
+    expect(LAUNCH.items.find((i) => i.title === 'PvP Hockey')).toBeUndefined();
   });
 });

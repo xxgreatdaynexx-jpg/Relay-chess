@@ -84,7 +84,6 @@ describe('Big Farms map expansion', () => {
       expect(p.lot.z0).toBeGreaterThanOrEqual(MAP_BOUNDS.z0); expect(p.lot.z1).toBeLessThanOrEqual(MAP_BOUNDS.z1);
       const [x, z] = clampMapTarget(p.x, p.z); expect(x).toBe(p.x); expect(z).toBe(p.z);
     }
-    expect(JSON.stringify(LAUNCH_POPUP)).toContain('Big Farms east of town');
   });
   it('buy a big farm: debits its price, deed value = price paid (net worth / wealth tax basis), then farm it like any field', async () => {
     const db = newDb({ noAstCoverageCheck: true }); registerPgAdvisoryFunctions(db); const { Pool } = db.adapters.createPg(); const pool = new Pool();

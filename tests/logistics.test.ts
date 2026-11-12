@@ -32,7 +32,7 @@ describe('logistics rules', () => {
     expect(a.x).toBeCloseTo(b.x); expect(a.z).toBeCloseTo(b.z);
     const p = vehiclePose({ ...v, mode: 'plane', arriveAt: arrivalOf('plane', 1000) }, 1000 + MODES.plane.travelMs / 2); expect(p.y).toBeGreaterThan(10);
   });
-  it('is in the Millionaire launch popup', () => { expect(LAUNCH.items.some((i) => i.title === 'Logistics')).toBe(true); expect(LAUNCH.items.some((i) => /Truck store/.test(i.title))).toBe(true); });
+  it('shipped in the Millionaire Update, not the Billionaire launch popup', () => { expect(LAUNCH.title).toBe('The Billionaire Update'); expect(LAUNCH.items.some((i) => i.title === 'Logistics')).toBe(false); });
 });
 
 describe('Logistics', () => {

@@ -134,5 +134,5 @@ describe('supply contracts', () => {
     t = 31 * DAY; expect(r.linked('A', 'B')).toBe(false);
   });
 
-  it('launch popup lists supply contracts', () => { expect(LAUNCH.items.some((i) => /Supply contracts/i.test(i.title))).toBe(true); });
+  it('supply contracts shipped in the Millionaire Update, not the Billionaire launch popup', () => { expect(LAUNCH.items.some((i) => /Supply contracts/i.test(i.title))).toBe(false); });
 });

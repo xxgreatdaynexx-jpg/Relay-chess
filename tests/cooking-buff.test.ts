@@ -17,7 +17,6 @@ describe('cooking +50% buff', () => {
     expect(cookPayout(cookSellValue(1000), 0)).toBe(1500);
   });
   it('is in the popup and changelog', () => {
-    expect(LAUNCH.items.some((i) => /Cooking pays 50% more/.test(i.title))).toBe(true);
     expectChangelogEntry(/Cooking pays 50%/);
     expectChangelogOrder(/One Big Farm/, /Cooking pays 50%/, /Fishing pays 15%/);
   });

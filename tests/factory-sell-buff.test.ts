@@ -45,7 +45,6 @@ describe('factory sell buff', () => {
     for (const [k] of BUFF_DEPTH) expect(FRECIPES.some((r) => r.out[0] === k) || RECIPES.some((r) => `${r.out.type}:${r.out.id}` === k) || k.startsWith('fort:')).toBe(true);
   });
   it('is in the launch popup and changelog', () => {
-    expect(LAUNCH.items.some((i) => /Factory goods sell for more/.test(i.title))).toBe(true);
     expectChangelogEntry(/Factory goods/);
     expectChangelogOrder(/Fishing pays 15%/, /Factory goods/, /weekly server events/i);
   });

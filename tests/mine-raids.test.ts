@@ -108,8 +108,7 @@ describe('co-op mine raids: instances', () => {
     expect(w.setInst(a, undefined)).toBe(true); expect(w.setInst(b, undefined)).toBe(true); w.dropInstance('p:x');
     expect([...w.floorMobs.keys()].some((k) => String(k).startsWith('p:x'))).toBe(false); expect(w.raidDeepest(a)).toBe(w.deepestOf(a));
   });
-  it('launch popup and changelog announce raids', () => {
-    expect(LAUNCH.items.some((i) => i.section === 'Co-op' && /raid/i.test(i.title))).toBe(true);
+  it('changelog announces raids (shipped in the Millionaire Update)', () => {
     expectChangelogEntry(/Co-op mine raids/);
     expectChangelogOrder(/weekly server events/i, /Co-op mine raids/, /The Millionaire Update/);
   });

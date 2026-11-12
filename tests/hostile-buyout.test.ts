@@ -80,6 +80,6 @@ describe('hostile buyouts', () => {
     expect(s.chips).toBe(sellBackOf(paid)); expect(bank.account('Bob').chips).toBe(before + sellBackOf(paid));
   });
   it('launch popup announces it', () => {
-    expect(JSON.stringify(LAUNCH)).toMatch(/Hostile buyouts/);
+    expect(JSON.stringify(LAUNCH)).not.toMatch(/Hostile buyouts/);
   });
 });

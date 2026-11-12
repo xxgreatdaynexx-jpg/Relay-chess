@@ -46,7 +46,7 @@ describe('cargo capacity by tier (mu-cargo)', () => {
     expect(ownFeeBase('yacht', 1, true)).toBe(CARGO.yacht!.trip);
     expect(ownFeeBase('skiff', 1, true)).toBe(CARGO.skiff!.trip + CARGO.skiff!.useUpkeep);
   });
-  it('is in the launch popup', () => { expect(LAUNCH.items.some((i) => /Cargo capacity/.test(i.title) && /fewer trips/.test(i.text))).toBe(true); });
+  it('cargo capacity shipped in the Millionaire Update, not the Billionaire launch popup', () => { expect(LAUNCH.items.some((i) => /Cargo capacity/.test(i.title))).toBe(false); });
 });
 
 describe('Logistics with cargo capacity (mu-cargo)', () => {

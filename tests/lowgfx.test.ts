@@ -12,4 +12,4 @@ describe('?lowgfx override', () => {
     expect(gfxOverride('?gfx=ultra', null)).toBeNull();
   });
 });
-describe('launch popup recipe count', () => it('keeps the Millionaire launch count (115); later recipes stay off that popup', () => expect(JSON.stringify(LAUNCH)).toContain('has 115 recipes')));
+describe('launch popup recipe count', () => it('the Billionaire launch popup does not re-list the Millionaire factory-recipe count', () => expect(JSON.stringify(LAUNCH)).not.toContain('has 115 recipes')));
