@@ -12,7 +12,7 @@ function LaunchHeader() {
   return <div className="launch-when" data-testid="launch-when">{left ? <><span>Coming {LAUNCH_DATE_LABEL}</span><b data-testid="launch-countdown">⏳ {left}</b></> : <b>🟢 Live now</b>}</div>;
 }
 
-/** One-time "The Millionaire Update" popup: shown once per player (server stores the seen flag), contents from shared/launchPopup.ts. */
+/** One-time "The Billionaire Update" popup: shown once per player (server stores the seen flag), contents from shared/launchPopup.ts. */
 export function LaunchPopup() {
   const account = useAccount(); const [l, setL] = useState<Launch | null>(null); const [pg, setPg] = useState(0);
   useEffect(() => {

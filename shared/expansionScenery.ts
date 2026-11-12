@@ -18,7 +18,6 @@ import { OCEAN } from './ocean.js';
 import { orchardPlots } from './orchard.js';
 import { RURAL_ROAD_W, RURAL_ROADS } from './outskirts.js';
 import { MINE_APRON, MINE_SITES, OUTSKIRTS, PLATE, type OBB, obbHit, obbOverlap } from './worldLayout.js';
-import { BILLIONAIRE_SIGN_POS, BILLIONAIRE_SIGN_RADIUS } from './billionaireUpdate.js';
 
 export type Aabb = { x0: number; x1: number; z0: number; z1: number };
 
@@ -122,7 +121,6 @@ export function expansionPlotFootprints(): Array<OBB & { id: string }> {
     { x: RUNWAY.x, z: (RUNWAY.z0 + RUNWAY.z1) / 2, w: RUNWAY.w + 4, d: RUNWAY.z1 - RUNWAY.z0, rot: 0, id: 'runway' },
     { x: RUNWAY2.x, z: (RUNWAY2.z0 + RUNWAY2.z1) / 2, w: RUNWAY2.w + 4, d: RUNWAY2.z1 - RUNWAY2.z0, rot: 0, id: 'runway2' },
     { x: (RACETRACK.x0 + RACETRACK.x1) / 2, z: (RACETRACK.z0 + RACETRACK.z1) / 2, w: RACETRACK.x1 - RACETRACK.x0, d: RACETRACK.z1 - RACETRACK.z0, rot: 0, id: 'racetrack' },
-    { x: BILLIONAIRE_SIGN_POS[0], z: BILLIONAIRE_SIGN_POS[1], w: BILLIONAIRE_SIGN_RADIUS * 2, d: BILLIONAIRE_SIGN_RADIUS * 2, rot: 0, id: 'billionaire-sign' },
   ];
   for (const [id, s] of Object.entries(MINE_SITES)) {
     plots.push({ x: s.x, z: s.z, w: MINE_APRON, d: MINE_APRON, rot: 0, id: `mine:${id}` });
@@ -359,7 +357,7 @@ export function sceneryOverlaps(spots: ScenerySpot[] = expansionScenery()): Arra
 export function expansionRoadPlotOverlaps(margin = 0.25): Array<{ road: string; plot: string }> {
   const out: Array<{ road: string; plot: string }> = [];
   const roads = expansionRoadFootprints();
-  const plots = expansionPlotFootprints().filter((p) => !p.id.startsWith('airport') && !p.id.startsWith('runway') && p.id !== 'racetrack' && !p.id.startsWith('mine') && p.id !== 'billionaire-sign');
+  const plots = expansionPlotFootprints().filter((p) => !p.id.startsWith('airport') && !p.id.startsWith('runway') && p.id !== 'racetrack' && !p.id.startsWith('mine'));
   for (const rd of roads) for (const p of plots) if (obbOverlap(rd, p, margin)) out.push({ road: rd.id, plot: p.id });
   return out;
 }

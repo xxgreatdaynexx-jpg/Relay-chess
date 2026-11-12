@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { CHANGELOG } from '../shared/changelog';
 import {
   DIGITAL_DAILY_BASE, ESTATE_BUILD_ORDER, ESTATE_BUILDS, GPU_RIG, GRID_POWER_DAY, GRID_SELL_FRACTION,
   PLANT_FUEL_DAY, PLANT_MW, SERVER_RACK, canDemolish, estateProjectValue, estateStages, digitalPayout, throttle,
@@ -8,12 +9,10 @@ import { EAST_X0, EXPANSION_BOUNDS, PLASTICS_PLANT, RIG_DOCK, estateLots, expans
 import { HYPER_CROPS, HYPER_FARM_TOTAL, HYPER_GROW_MUL, HYPER_STAGES, isHyperCrop } from '../shared/hyperFarm';
 import { RIG_CRUDE_PER_HOUR, RIG_LAUNCH_FEE, RIG_MAX_PER_PLAYER, RIG_STAGES } from '../shared/offshoreRig';
 import { PLASTICS_RECIPES } from '../shared/plasticsPlant';
-import { FUTURE_FEATURES_BODY, FUTURE_FEATURES_SHOTS, FUTURE_FEATURES_TITLE } from '../shared/futureFeatures';
 import { properties } from '../shared/realEstate';
 import { obbOverlap } from '../shared/worldLayout';
 import { FURNITURE } from '../shared/homes';
 import { AIRPORT, AIRPORT_SLOT, RUNWAY, RUNWAY2 } from '../shared/venues';
-import { BILLIONAIRE_SIGN, BILLIONAIRE_SIGN_POS, BILLIONAIRE_SIGN_RADIUS } from '../shared/billionaireUpdate';
 import { cropById, MAP_CAM_FAR, MAP_CAM_MAX, MAP_CAM_MIN, MAP_VIEW } from '../shared/farm';
 import { GOODS } from '../shared/mines';
 import { hasItemIcon, itemIconSvg } from '../shared/itemIcons';
@@ -184,8 +183,6 @@ describe('international airport', () => {
     const venues = src('client/src/lib/worldVenues.ts');
     expect(venues).toMatch(/RUNWAY2/);
     expect(venues).toContain('RUNWAY.x');
-    const dist = Math.abs(BILLIONAIRE_SIGN_POS[0] - RUNWAY2.x) - RUNWAY2.w / 2;
-    expect(dist).toBeGreaterThanOrEqual(BILLIONAIRE_SIGN_RADIUS);
   });
 });
 
@@ -208,18 +205,15 @@ describe('new goods have unique icons', () => {
 });
 
 describe('Future Features popup', () => {
-  it('opens from the coming-soon sign with no launch date and no launch-popup hook', () => {
+  it('is retired: the coming-soon sign and Future Features hook are gone', () => {
     const map = src('client/src/components/WorldMap.tsx');
     const world = src('client/src/lib/world3d.ts');
-    expect(map).toMatch(/Coming soon/);
-    expect(map).toMatch(/billionaire-sign/);
-    expect(map).toMatch(/FutureFeaturesPopup/);
+    expect(map).not.toMatch(/Coming soon/);
+    expect(map).not.toMatch(/billionaire-sign/);
+    expect(map).not.toMatch(/FutureFeaturesPopup/);
     expect(world).not.toMatch(/open-launch-popup/);
-    expect(world).toMatch(/C O M I N G {3}S O O N/);
-    const blob = [FUTURE_FEATURES_TITLE, ...FUTURE_FEATURES_BODY, ...FUTURE_FEATURES_SHOTS.map((s) => s.caption)].join(' ');
-    expect(blob).not.toMatch(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\b/);
-    expect(blob).not.toMatch(/\b20\d{2}\b/);
-    expect(FUTURE_FEATURES_SHOTS.length).toBeGreaterThanOrEqual(4);
+    expect(world).not.toMatch(/C O M I N G {3}S O O N/);
+    expect(CHANGELOG.some((e) => /future features/i.test(e.title + e.bullets.join(' ')))).toBe(false);
   });
 });
 

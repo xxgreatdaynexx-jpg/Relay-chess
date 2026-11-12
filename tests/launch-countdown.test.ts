@@ -19,6 +19,6 @@ describe('Millionaire Update countdown', () => {
 describe('launch popup re-shows at launch', () => {
   it('uses a new seen id vs the pre-launch announcement', async () => {
     const { LAUNCH } = await import('../shared/launchPopup');
-    expect(LAUNCH.id).toBe('millionaire-update-launch');
+    expect(LAUNCH.id).toBe('billionaire-update-launch');
   });
 });
