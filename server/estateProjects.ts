@@ -127,8 +127,17 @@ export class Estate {
     catch (e) { if (!/Already/.test((e as Error).message)) throw e; }
   }
 
+  /** Require a real-estate deed when the property service is up. Skipped only if it is not mounted (unit tests). */
+  private async assertOwns(name: string, lotId: string) {
+    const re = getRealEstate();
+    if (!re) return;
+    const owner = await re.ownerOf(lotId);
+    if (!owner || playerKey(owner.name) !== playerKey(name)) throw new EstateError('You do not own that property.');
+  }
+
   /** Open a construction site on land the player already owns (vacant lot or demolished structure). */
   async openSite(name: string, lotId: string, kind: EstateSiteKind, was?: { type: string; label: string }) {
+    await this.assertOwns(name, lotId);
     const existing = this.siteByLot(lotId);
     if (existing) {
       if (playerKey(existing.owner) !== playerKey(name)) throw new EstateError('Someone else already has a site on that lot.');
@@ -242,12 +251,14 @@ export class Estate {
 
   async startHyper(name: string, plotId: string) {
     if (typeof plotId !== 'string' || !/^(f:|cf:|winery:)/.test(plotId)) throw new EstateError('Pick one of your farms.');
+    await this.assertOwns(name, plotId);
     const e = this.ecoOf(name);
     if (!e.hyper[plotId]) e.hyper[plotId] = { stage: 0, done: HYPER_STAGES.map(() => ({})) };
     await this.saveEco(name);
     return this.hyperView(name, plotId);
   }
   async contributeHyper(name: string, plotId: string, part: unknown, qtyRaw: unknown) {
+    await this.assertOwns(name, plotId);
     const e = this.ecoOf(name);
     const h = e.hyper[plotId];
     if (!h) throw new EstateError('Start the glasshouse conversion first.');
