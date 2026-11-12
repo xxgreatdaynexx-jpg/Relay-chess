@@ -12,8 +12,8 @@ const BILL1: Readonly<BillImplementation> = Object.freeze({ status: 'enacted', r
   text: "Future property purchases have no property purchase surcharge; the mayor cannot re-enable it. New acquisitions are limited separately to 5 residential deeds and 5 commercial deeds per citizen. Commercial includes barns and all shop, factory and other landmark deeds. Farmland, including farm plots, fields, Big Farms and plantations, is limited to 1,500 full-plot tiles per citizen. Existing holdings are grandfathered, including holdings above a cap; zoning caps do not force sales or confiscation, but block additional acquisitions in that category. Resort lots and land patches are exempt. No prior surcharge refunds are issued. Base prices, the price index, purchase and daily wealth-tax rules and rates, ordinary property-tax rules, historical paid/city basis and sell-back rules are unchanged."
 });
 
-/** Filled with the implementing commit SHA after it is recorded. */
-export const BILL3_RELEASE = 'release-queue';
+/** Implementing commit SHA (this metadata ships in the following commit). */
+export const BILL3_RELEASE = 'c669c10d50f95757820e6a925c70a756af801210';
 const BILL3: Readonly<BillImplementation> = Object.freeze({ status: 'enacted', revision: 1,
   implementedAt: 0, release: BILL3_RELEASE, text: BILL3_IMPLEMENTATION_TEXT
 });
