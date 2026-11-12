@@ -669,7 +669,7 @@ export class MinesWorld {
     // House ore/goods prices follow the price index (tiers stay in base units so the daily caps scale too).
     const capIndex = houseCapIndex(); const idx = priceIndex();
     const plantBonus = HOUSE_SELL_BLOCKED.has(k) ? 0 : plantCapBonus(account, now);
-    const capBase = HOUSE_SELL_BLOCKED.has(k) ? 0 : houseCapBase(capIndex, idx) * sellCapMul(account) + plantCapToBase(plantBonus, idx); // cap follows total assets (pt1442u); planting bonus is half of today's paid seeds
+    const capBase = HOUSE_SELL_BLOCKED.has(k) ? 0 : houseCapBase(capIndex, idx) * sellCapMul(account) + plantCapToBase(plantBonus, idx); // cap follows total assets (pt1442u); planting bonus is 100% of today's paid seeds
     return { gross, paid: Math.floor(payoutFor(gross, effAlready, capBase) * idx), already, lost, effAlready, capBase, capIndex, plantBonus, items };
   }
 

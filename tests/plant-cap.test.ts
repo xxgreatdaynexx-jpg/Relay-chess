@@ -18,24 +18,24 @@ const T0 = Date.parse('2026-11-10T00:26:50Z'); // 6:26:50 PM CST Nov 9 — after
 beforeEach(() => { resetBank(); resetPlantCapForTest(); resetFarmGuardForTest(); });
 
 describe('planting house-cap bonus', () => {
-  it('gives back half of chips actually paid, floored, and matches the sunflower example', () => {
-    expect(plantCapBonusFromPaid(293_400)).toBe(146_700); // 900 sunflowers at 326
-    expect(plantCapBonusFromPaid(11)).toBe(5);
+  it('gives back 100% of chips actually paid, floored, and matches the sunflower example', () => {
+    expect(plantCapBonusFromPaid(293_400)).toBe(293_400); // 900 sunflowers at 326
+    expect(plantCapBonusFromPaid(11)).toBe(11);
     expect(plantCapBonusFromPaid(0)).toBe(0);
     expect(plantCapBonusFromPaid(-10)).toBe(0);
-    expect(plantCapToBase(146_700, 1)).toBe(146_700);
-    expect(plantCapToBase(146_700, 2)).toBe(73_350);
+    expect(plantCapToBase(293_400, 1)).toBe(293_400);
+    expect(plantCapToBase(293_400, 2)).toBe(146_700);
   });
 
   it('is per player, uses the cap day, is idempotent on a ledger key, and nets out refunds', () => {
     recordPlantSeed('Conner', { game: 'farm_seed', amount: -293_400, key: 'farm_seed:conner:1' }, T0);
     expect(plantCapPaid('Conner', T0)).toBe(293_400);
-    expect(plantCapBonus('Conner', T0)).toBe(146_700);
+    expect(plantCapBonus('Conner', T0)).toBe(293_400);
     recordPlantSeed('Conner', { game: 'farm_seed', amount: -293_400, key: 'farm_seed:conner:1' }, T0); // same charge
-    expect(plantCapBonus('Conner', T0)).toBe(146_700);
+    expect(plantCapBonus('Conner', T0)).toBe(293_400);
     recordPlantSeed('Gus', { game: 'farm_seed', amount: -100, key: 'farm_seed:gus:1' }, T0);
-    expect(plantCapBonus('Gus', T0)).toBe(50);
-    expect(plantCapBonus('Conner', T0)).toBe(146_700);
+    expect(plantCapBonus('Gus', T0)).toBe(100);
+    expect(plantCapBonus('Conner', T0)).toBe(293_400);
     recordPlantSeed('Conner', { game: 'farm_seed', amount: 293_400, memo: 'reverted' }, T0);
     expect(plantCapBonus('Conner', T0)).toBe(0);
     expect(plantCapBonus('Conner', T0 + 86_400_000)).toBe(0); // next cap day
@@ -45,13 +45,13 @@ describe('planting house-cap bonus', () => {
     resetMines();
     recordPlantSeed('Conner', { game: 'farm_seed', amount: -293_400, key: 'farm_seed:conner:2' }, T0);
     const r = houseRoom('Conner', T0);
-    expect(r.plantBonus).toBe(146_700);
+    expect(r.plantBonus).toBe(293_400);
     expect(r.baseCap).toBe(Math.floor(HOUSE_DAILY_BASE * r.index));
-    expect(r.cap).toBe(r.baseCap + 146_700);
-    expect(r.left).toBe(r.baseCap + 146_700);
+    expect(r.cap).toBe(r.baseCap + 293_400);
+    expect(r.left).toBe(r.baseCap + 293_400);
     const q = getMines().quoteItems('Conner', T0, []);
-    expect(q.plantBonus).toBe(146_700);
-    expect(q.capBase).toBeCloseTo(r.baseCap / (r.index || 1) + 146_700 / (r.index || 1), 6);
+    expect(q.plantBonus).toBe(293_400);
+    expect(q.capBase).toBeCloseTo(r.baseCap / (r.index || 1) + 293_400 / (r.index || 1), 6);
   });
 
   it('credits only a successful plant, not a failed one, and uses the chips actually charged', async () => {
@@ -72,7 +72,7 @@ describe('planting house-cap bonus', () => {
     expect(r.cost).toBe(before - bank.account('Conner').chips);
     expect(r.cost).toBeGreaterThan(0);
     expect(plantCapPaid('Conner', T0)).toBe(r.cost);
-    expect(plantCapBonus('Conner', T0)).toBe(Math.floor(r.cost / 2));
+    expect(plantCapBonus('Conner', T0)).toBe(r.cost);
     await expect(farm.plant('Conner', id, 'wheat', [0])).rejects.toThrow(/already planted/);
     expect(plantCapPaid('Conner', T0)).toBe(r.cost); // failed plant did not add
   });
@@ -86,6 +86,8 @@ describe('house-cap UI copy', () => {
     expect(factory).toMatch(/Base cap/);
     expect(factory).toMatch(/planting bonus/);
     expect(factory).toMatch(/factory-plant-cap/);
+    expect(factory).toMatch(/100% of seed chips you pay today is added to this cap/);
+    expect(factory).not.toMatch(/50% of seed chips you pay today is added to this cap/);
     expect(profile).toMatch(/Base cap/);
     expect(profile).toMatch(/planting bonus/);
   });

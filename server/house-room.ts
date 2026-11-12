@@ -12,7 +12,7 @@ import { plantCapBonus } from './plant-cap.js';
 import { plantCapToBase } from '../shared/plantCap.js';
 import { effectiveAlready } from '../shared/sinkRoom.js';
 
-export type HouseRoom = { cap: number; /** Hockey Stadium donor sell-cap bonus (0..0.5) */ bonus: number; /** Extra cap chips from 50% of today's paid seed spend */ plantBonus: number; baseCap: number; soldToday: number; refunded: number; left: number; index: number; day: string };
+export type HouseRoom = { cap: number; /** Hockey Stadium donor sell-cap bonus (0..0.5) */ bonus: number; /** Extra cap chips from 100% of today's paid seed spend */ plantBonus: number; baseCap: number; soldToday: number; refunded: number; left: number; index: number; day: string };
 
 /** All figures in chips (today's price index). soldToday is the house gross sold today. */
 export function houseRoom(name: string, now = Date.now()): HouseRoom {

@@ -104,7 +104,7 @@ describe('farm template save / apply and mixed plantLayout', () => {
     const v = await s.farm.view(s.id, 'Gus');
     expect(v.tiles.map((t) => [t.tile, t.crop]).sort()).toEqual([[0, 'wheat'], [1, 'wheat'], [2, 'carrot']]);
     expect(plantCapPaid('Gus', T0)).toBe(wheat /* first plant of tile 0 */ + wheat + carrot);
-    expect(plantCapBonus('Gus', T0)).toBe(Math.floor(plantCapPaid('Gus', T0) * 0.5));
+    expect(plantCapBonus('Gus', T0)).toBe(plantCapPaid('Gus', T0));
   });
 
   it('applying a saved template stamps from the origin and refuses tropical crops in the city', async () => {

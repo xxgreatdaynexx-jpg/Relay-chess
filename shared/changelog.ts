@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-12T10:15:00-06:00", "title": "Planting now adds 100% of seed cost to your house-sell cap", "bullets": [
+    "Planting now adds 100% of seed cost to your house-sell cap.",
+  ]},
   {"commit": "", "at": "2026-11-11T18:56:00-06:00", "title": "The Billionaire Update is live", "bullets": [
     "The Billionaire Update is now live. The city map is twice as large, with East Estates lots and farms, Goldwood mansions, Orchard Ridge, a bigger international airport, and a continuous snowy landscape down to a full southern beach.",
     "You can buy land and raise private works — data centers, bitcoin farms, mansions, highrises, monuments and power plants — plus wineries, hyper farms, offshore rigs and a city plastics plant. The Billionaire's Club, sky penthouses, a Private Island, high-stakes tables and a Sovereign Megayacht are open.",
