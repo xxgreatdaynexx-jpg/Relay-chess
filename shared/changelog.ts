@@ -6,6 +6,10 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-11T17:41:00-06:00", "title": "Buy a bigger mining pack (requested by Jay)", "bullets": [
+    "Requested by Jay: in the Mines, next to your carried ore and the Tool Shop, you can buy permanent pack upgrades that raise how much you can carry above the starting 120. The tiers are 160 for 5,000 chips, 200 for 15,000, 250 for 45,000, and 300 for 110,000 (base prices; they follow the same daily price index as the Tool Shop).",
+    "You buy them in order, once each, and they stay on your account. Guests keep the 120 starter pack. What you are already carrying is unchanged. Mining, tools, and weapons work the same as before.",
+  ]},
   {"commit": "", "at": "2026-11-11T15:40:00-06:00", "title": "Factory house-sell line shows sold today in chips", "bullets": [
     "In the Factory's Sell to the house panel, Sold today was shown in base units (before today's price index), so it could look well under the daily cap while you were actually at it. It now shows chips, the same units as the cap, plus how much still counts after refunded room and how much full-price room is left. How much the house pays and your daily cap are unchanged.",
   ]},
