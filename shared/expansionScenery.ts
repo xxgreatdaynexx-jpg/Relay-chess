@@ -18,6 +18,7 @@ import { OCEAN } from './ocean.js';
 import { orchardPlots } from './orchard.js';
 import { RURAL_ROAD_W, RURAL_ROADS } from './outskirts.js';
 import { MINE_APRON, MINE_SITES, OUTSKIRTS, PLATE, type OBB, obbHit, obbOverlap } from './worldLayout.js';
+import { SPACE_CENTER, SPACE_CENTER_ID } from './spaceCenter.js';
 
 export type Aabb = { x0: number; x1: number; z0: number; z1: number };
 
@@ -117,6 +118,7 @@ export function expansionPlotFootprints(): Array<OBB & { id: string }> {
     ...orchardPlots().map((o) => ({ ...o, id: `orchard:${o.n}` })),
     { ...PLASTICS_PLANT, id: 'plastics' },
     { ...RIG_DOCK, id: 'rigdock' },
+    { ...SPACE_CENTER, id: SPACE_CENTER_ID },
     { x: (AIRPORT.x0 + AIRPORT.x1) / 2, z: (AIRPORT.z0 + AIRPORT.z1) / 2, w: AIRPORT.x1 - AIRPORT.x0, d: AIRPORT.z1 - AIRPORT.z0, rot: 0, id: 'airport' },
     { x: RUNWAY.x, z: (RUNWAY.z0 + RUNWAY.z1) / 2, w: RUNWAY.w + 4, d: RUNWAY.z1 - RUNWAY.z0, rot: 0, id: 'runway' },
     { x: RUNWAY2.x, z: (RUNWAY2.z0 + RUNWAY2.z1) / 2, w: RUNWAY2.w + 4, d: RUNWAY2.z1 - RUNWAY2.z0, rot: 0, id: 'runway2' },

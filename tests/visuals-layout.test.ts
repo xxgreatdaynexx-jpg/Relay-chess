@@ -10,7 +10,7 @@ describe('mu-visuals ocean: existing seeded placement is untouched', () => {
   it('every lot / field / house / landmark id and position matches the d65b2b6 snapshot', () => {
     const base = JSON.parse(fs.readFileSync(new URL('./fixtures/layout-d65b2b6.json', import.meta.url), 'utf8'));
     const snap = JSON.parse(JSON.stringify(layoutSnapshot()));
-    const next = new Set(['club', 'skytower', 'plastics', 'rigdock']);
+    const next = new Set(['club', 'skytower', 'plastics', 'rigdock', 'spacecenter']);
     expect({ ...snap, landmarks: snap.landmarks.filter((row: [string]) => !next.has(row[0])) }).toEqual(base);
     const civic = Object.fromEntries(snap.landmarks.filter((row: [string]) => row[0] === 'club' || row[0] === 'skytower').map((row: [string, number, number, number]) => [row[0], row]));
     expect(civic.club.slice(0, 3)).toEqual(['club', -67, -10]);

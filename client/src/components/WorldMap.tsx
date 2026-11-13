@@ -345,7 +345,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   };
   const goRef = useRef(go); goRef.current = go;
   // Player profile "Show on map": land/farm coordinates from /api/player.
-  useEffect(() => { const on = (e: Event) => { const d = (e as CustomEvent<{ x: number; z: number }>).detail; if (d && Number.isFinite(d.x) && Number.isFinite(d.z)) worldRef.current?.focusXZ(d.x, d.z); }; window.addEventListener('world-focus', on); return () => window.removeEventListener('world-focus', on); }, []);
+  useEffect(() => { const on = (e: Event) => { const d = (e as CustomEvent<{ x: number; z: number; dist?: number; hgt?: number }>).detail; if (d && Number.isFinite(d.x) && Number.isFinite(d.z)) worldRef.current?.focusXZ(d.x, d.z, d.dist, d.hgt); }; window.addEventListener('world-focus', on); return () => window.removeEventListener('world-focus', on); }, []);
   useEffect(() => { if (!dock || driving || loading) return; const t = setTimeout(() => worldRef.current?.flyTo('dock'), 600); return () => clearTimeout(t); }, [dock, loading, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

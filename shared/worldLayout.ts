@@ -4,6 +4,7 @@
  * winding suburb lanes and cul-de-sacs). Buildings are placed along street frontage, rotated to face their street.
  */
 import { HOUSING_TYPES, type District } from './housing.js';
+import { SPACE_CENTER, SPACE_CENTER_ID } from './spaceCenter.js';
 
 export const PLATE = 116; // plate spans -PLATE..PLATE on x and z
 export const PAD = 12; // landmark pad footprint (square, rotated to face its street)
@@ -251,9 +252,10 @@ export const LANDMARK_SLOTS: Record<string, [number, number]> = {
   racetrack: [-103, -169], // outskirts, north-west, in RESERVED_VENUES.racetrack: infield of the oval
   plastics: [220, 176], // Chud City Plastics Plant, open land east of the City Jail (off the fill)
   rigdock: [130, 210], // shoreline construction dock, east of the Harbour
+  spacecenter: [SPACE_CENTER.x, SPACE_CENTER.z], // decorative space center, NW corner (west of Goldwood)
 };
 /** Outskirts landmarks sit square to the map, not to a street. */
-const SQUARE_LM = new Set(['airport', 'racetrack', 'dock', 'plastics', 'rigdock']);
+const SQUARE_LM = new Set(['airport', 'racetrack', 'dock', 'plastics', 'rigdock', SPACE_CENTER_ID]);
 export const SPARE_SLOTS: [number, number][] = [[13, 42], [-13, -39], [-39, -13], [13, -65]];
 
 /**
@@ -287,7 +289,7 @@ function placeLandmarks(ids: string[]): Record<string, OBB> {
   for (const id of ids) {
     if (MINE_SITES[id]) continue;
     const want = LANDMARK_SLOTS[id] ?? spare.shift(); if (!want) continue;
-    const [pw, pd] = (id === 'plastics' ? [40, 30] : id === 'rigdock' ? [28, 18] : [PAD, PAD]);
+    const [pw, pd] = (id === 'plastics' ? [40, 30] : id === 'rigdock' ? [28, 18] : id === SPACE_CENTER_ID ? [SPACE_CENTER.w, SPACE_CENTER.d] : [PAD, PAD]);
     let placed: OBB | null = SQUARE_LM.has(id) ? { x: want[0], z: want[1], w: pw, d: pd, rot: 0 } : null; // outskirts venues: fixed spot off the plate
     for (let rad = 0; rad <= 36 && !placed; rad += 2) for (let k = 0; k < Math.max(1, rad * 3) && !placed; k++) {
       const a = (k / Math.max(1, rad * 3)) * Math.PI * 2; const x = want[0] + Math.cos(a) * rad, z = want[1] + Math.sin(a) * rad;
@@ -298,9 +300,9 @@ function placeLandmarks(ids: string[]): Record<string, OBB> {
   }
   return out;
 }
-export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'mine-frost', 'mine-magma', 'mine-quarry', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer', 'airport', 'racetrack', 'dock', 'grocery', 'mechanic', 'employ', 'cityhall', 'furniture', 'club', 'skytower', 'plastics', 'rigdock'];
+export const LANDMARK_IDS = ['casino', 'chess', 'mine', 'mine-frost', 'mine-magma', 'mine-quarry', 'arena', 'factory', 'warehouse', 'bank', 'market', 'leaderboard', 'chat', 'stocks', 'dealer', 'airport', 'racetrack', 'dock', 'grocery', 'mechanic', 'employ', 'cityhall', 'furniture', 'club', 'skytower', 'plastics', 'rigdock', SPACE_CENTER_ID];
 /** Landmarks added after launch: they clear the fill under them instead of reshuffling it. */
-const LATE_LM = new Set(['grocery', 'mechanic', 'employ', 'cityhall', 'furniture', 'plastics', 'rigdock', 'club', 'skytower']);
+const LATE_LM = new Set(['grocery', 'mechanic', 'employ', 'cityhall', 'furniture', 'plastics', 'rigdock', 'club', 'skytower', SPACE_CENTER_ID]);
 let lmCache: { key: string; v: Record<string, OBB> } | null = null;
 /** Landmark footprints for the given spot ids (defaults to every known slot). */
 export function landmarks(ids: string[] = LANDMARK_IDS): Record<string, OBB> {
