@@ -28,6 +28,8 @@ import { BEACH_X0, BEACH_X1, expansionLandBoxes } from '../../../shared/expansio
 import { RIG_DOCK } from '../../../shared/mapExpansion';
 import { addExpansionLand } from './worldExpansionLand';
 import { buildStoneQuarry } from './worldQuarry';
+import { buildSpaceCenter } from './spaceCenterModel';
+import { SPACE_CENTER_OX, SPACE_CENTER_OZ } from '../../../shared/spaceCenter';
 import { expRoadClearance } from '../../../shared/expansionRoads';
 import { buildAirportLandmark } from './estateModels';
 import { PLATE, shoreZ, ROADS, CUL_R, JUNCTIONS, CUL_ENDS, LANDMARK_IDS, landmarks, cityFill, roadClearance, obbHit, CAR_ROUTES, CAR_COUNT, LANE, routePoint, parkLayout, PARK_AREA, PARK_SIGN, MINE_SITES, MINE_APRON, OUTSKIRTS } from './worldLayout';
@@ -242,7 +244,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const ems: THREE.MeshStandardMaterial[] = [neon];
     const win = (seed: number) => { const t = windowsTexture(seed, '#ffd27a', '#9fe8ff'); disposables.push(t); const m = mat({ color: 0x9aa3c0, map: t, emissiveMap: t, emissive: 0xffffff, emissiveIntensity: 0.9 * NEON, roughness: 0.6 }); ems.push(m); return m; };
     const dark = mat({ color: 0x4a5070, roughness: 0.7 });
-    const pad = box(12, 0.15, 12, mat({ color: 0x55596a })); if (spot.id !== 'mine-quarry') g.add(pad);
+    const pad = box(12, 0.15, 12, mat({ color: 0x55596a })); if (spot.id !== 'mine-quarry' && spot.id !== 'spacecenter') g.add(pad);
     let height = 8;
     switch (spot.id) {
       case 'casino': {
@@ -443,6 +445,13 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
         const fw = cyl(1.4, 2, 1.2, mat({ color: 0x3fa0ff, emissive: 0x2070ff, emissiveIntensity: 1.2 * NEON }), 0, 0.4, 0, 14); g.add(fw, cyl(0.25, 0.25, 3, neon, 0, 1.6, 0, 8));
         for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; g.add(box(1.6, 0.4, 0.5, mat({ color: 0x8a5a2b }), Math.cos(a) * 5.4, 0.3, Math.sin(a) * 5.4)); }
         height = 7; break; }
+      case 'spacecenter': {
+        // Decorative landmark only — the campus is the model; no 12×12 stub pad, no gameplay hook.
+        const campus = buildSpaceCenter();
+        campus.position.set(-SPACE_CENTER_OX, 0, -SPACE_CENTER_OZ);
+        g.add(campus);
+        height = 33; // lightning masts are 31
+        break; }
     }
     g.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.userData.spot = spot.id; pickables.push(o); } });
     const st = cityLabel(`${spot.icon} ${spot.label}`, hex, undefined, labelRenderer); disposables.push(st);

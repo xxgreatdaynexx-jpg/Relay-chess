@@ -134,7 +134,7 @@ let cache: Property[] | null = null; let byId: Map<string, Property> | null = nu
 export function properties(): Property[] {
   if (cache) return cache;
   const { houses, patches } = cityFill(7); const out: Property[] = PUBLIC_SERVICE_DEEDS.map((p) => ({ ...p }));
-  const NON_DEED_LANDMARKS = new Set(['mine-quarry', 'plastics', 'rigdock', 'factory']); // public works, not for sale; Factory monument retired (Bill Chud 3)
+  const NON_DEED_LANDMARKS = new Set(['mine-quarry', 'plastics', 'rigdock', 'factory', 'spacecenter']); // public works, not for sale; Factory monument retired (Bill Chud 3)
   for (const [id, b] of Object.entries(landmarks())) if (LANDMARK_IDS.includes(id) && !CIVIC_IDS.has(id) && !NON_DEED_LANDMARKS.has(id)) out.push({ ...b, id: `lm:${id}`, kind: 'landmark', type: id, label: LANDMARK_LABEL[id] ?? id, price: LANDMARK_PRICE[id] ?? 500_000 });
   for (const h of [...houses, ...countryHomes()]) {
     const t = HOUSING_TYPES.find((x) => x.id === h.type); if (!t) continue;
