@@ -26,7 +26,7 @@ export const WORLD_SPOTS: WorldSpot[] = [
   { id: 'skytower', label: 'Sky Tower', icon: '🏙️', color: 0xdfe9f0, blurb: 'Buy a sky penthouse in the civic tower' },
   { id: 'plastics', label: 'Plastics Plant', icon: '🧴', color: 0x8ad0e0, blurb: 'Turn oil products into resin, computers and graphics cards' },
   { id: 'rigdock', label: 'Shore Construction Dock', icon: '🛢️', color: 0xd0a060, blurb: 'Build an offshore rig, then launch it to feed your refinery' },
-  { id: 'spacecenter', label: 'Space Center', icon: '🚀', color: 0x0b3d91, blurb: 'Kennedy-style launch campus: Vehicle Assembly Building, pad and mission control' },
+  { id: 'spacecenter', label: 'Space Center', icon: '🚀', color: 0x0b3d91, blurb: 'Vehicle Assembly Building, launch pad and Mission Control — design a rocket and put a satellite in orbit' },
   { id: 'leaderboard', label: 'Leaderboard', icon: '🏆', color: 0xe8c26a, blurb: 'Who’s on top' },
   { id: 'chat', label: 'Plaza Chat', icon: '💬', color: 0x66b3ff, blurb: 'Chat & who’s online' },
 ];

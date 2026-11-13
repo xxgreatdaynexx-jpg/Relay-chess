@@ -201,6 +201,7 @@ const MechanicShop = lazyWithReload(() => import('./MechanicShop').then((m) => (
 import { WeeklyEventBar } from './WeeklyEventBar';
 const CoopPanel = lazyWithReload(() => import('./CoopPanel').then((m) => ({ default: m.CoopPanel })));
 const FreightYard = lazyWithReload(() => import('./FreightYard').then((m) => ({ default: m.FreightYard })));
+const SpaceProgram = lazyWithReload(() => import('./SpaceProgram').then((m) => ({ default: m.SpaceProgram })));
 const ResortMap = lazyWithReload(() => import('./ResortMap').then((m) => ({ default: m.ResortMap })));
 const FortMcMap = lazyWithReload(() => import('./FortMcMap').then((m) => ({ default: m.FortMcMap })));
 const IslandMap = lazyWithReload(() => import('./IslandMap').then((m) => ({ default: m.IslandMap })));
@@ -338,6 +339,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       case 'club': window.dispatchEvent(new Event(OPEN_CLUB)); return;
       case 'skytower': window.dispatchEvent(new Event(OPEN_CLUB)); return;
       case 'airport': case 'racetrack': setVenue(id); return;
+      case 'spacecenter': setPanel({ k: 'spacesim' }); return;
       case 'plastics': setPanel({ k: 'estate', kind: 'plastics' }); return;
       case 'rigdock': setPanel({ k: 'estate', kind: 'rigdock' }); return;
     }
@@ -480,6 +482,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       {dock && <TimedSuspense label="Opening the dock…" onClose={() => setDock(false)}><FishingPanel me={me} onClose={() => setDock(false)} /></TimedSuspense>}
       {mechanic && <TimedSuspense label="Opening the garage…" onClose={() => setMechanic(false)}><MechanicShop onClose={() => setMechanic(false)} onDrive={(carId, color) => { setMechanic(false); startDrive(carId, color, 'mechanic'); }} /></TimedSuspense>}
       {panel.k !== 'coop' && <WeeklyEventBar onOpen={() => setPanel((c) => togglePanel(c, { k: 'coop', tab: 'event' }))} />}
+      {panel.k === 'spacesim' && <TimedSuspense label="Opening the Space Center…" onClose={() => setPanel((c) => closePanel(c, 'spacesim'))}><SpaceProgram me={me} onClose={() => setPanel((c) => closePanel(c, 'spacesim'))} /></TimedSuspense>}
       {panel.k === 'coop' && <TimedSuspense label="Opening the co-op board…" onClose={() => setPanel((c) => closePanel(c, 'coop'))}><CoopPanel me={me} tab0={panel.tab} onClose={() => setPanel((c) => closePanel(c, 'coop'))} onChanged={() => stadiumRef.current?.refresh()} onViewSite={() => { setPanel((c) => closePanel(c, 'coop')); worldRef.current?.focusXZ(STADIUM_SITE.x, STADIUM_SITE.z, 46, 38); }} /></TimedSuspense>}
       {freight && <TimedSuspense label="Opening the freight yard…" onClose={() => setFreight(false)}><FreightYard me={me} onClose={() => setFreight(false)} /></TimedSuspense>}
       {dealer && <TimedSuspense label="Opening the dealership…" onClose={() => setDealer(false)}><Dealership onClose={() => setDealer(false)} onDrive={startDrive} /></TimedSuspense>}

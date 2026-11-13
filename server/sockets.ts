@@ -44,6 +44,7 @@ import { registerMineBackpack } from './mineBackpack.js';
 import { registerMineGear } from './mineGear.js';
 import { registerFishGear } from './fishGear.js';
 import { registerEmployment } from './employment.js';
+import { registerSpaceProgram } from './spaceProgram.js';
 import { registerLootMatch } from './lootMatch.js';
 import { registerHaulVisual } from './haulVisual.js';
 import { registerMayor } from './mayor.js';
@@ -350,6 +351,7 @@ export function registerSockets(io: Server): void {
     registerMineGear(io, socket);
     registerFishGear(io, socket);
     registerEmployment(io, socket);
+    registerSpaceProgram(io, socket);
     registerLootMatch(io, socket);
     registerHaulVisual(io, socket);
     registerMayor(io, socket);

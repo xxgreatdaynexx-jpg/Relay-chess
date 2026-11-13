@@ -158,7 +158,7 @@ describe('space center placement', () => {
     expect(nearby.length).toBeGreaterThan(20);
   });
 
-  it('is wired as a late, square, non-deed landmark with a 2D map marker and no gameplay panel', () => {
+  it('is wired as a late, square, non-deed landmark with a 2D map marker and a space-program panel', () => {
     expect(LANDMARK_IDS).toContain(SPACE_CENTER_ID);
     expect(LANDMARK_SLOTS[SPACE_CENTER_ID]).toEqual([SPACE_CENTER.x, SPACE_CENTER.z]);
     const lm = landmarks()[SPACE_CENTER_ID];
@@ -170,7 +170,8 @@ describe('space center placement', () => {
     expect(world).toMatch(/buildSpaceCenter\(\)/);
     expect(world).toMatch(/campus\.position\.set\(-SPACE_CENTER_OX, 0, -SPACE_CENTER_OZ\)/);
     expect(world).not.toMatch(/case 'spacecenter':[\s\S]{0,400}setPanel/);
-    expect(src('client/src/components/WorldMap.tsx')).not.toMatch(/case 'spacecenter'/);
+    expect(src('client/src/components/WorldMap.tsx')).toMatch(/case 'spacecenter'/);
+    expect(src('client/src/components/WorldMap.tsx')).toMatch(/spacesim/);
     expect(src('shared/realEstate.ts')).toMatch(/'spacecenter'/);
     expect(SPACE_CENTER_OX).toBe(2);
     expect(SPACE_CENTER_OZ).toBe(1);

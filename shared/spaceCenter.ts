@@ -1,5 +1,5 @@
 /**
- * Decorative Kennedy-style space center on the live Chud City map (no gameplay).
+ * Kennedy-style space center on the live Chud City map. Entering it opens the space program (VAB, launch and Mission Control).
  *
  * Coordinates are the geometric center of the campus yard. The 3D model's local
  * origin is offset (VAB / pad layout is not centered on the fence), so parent the
