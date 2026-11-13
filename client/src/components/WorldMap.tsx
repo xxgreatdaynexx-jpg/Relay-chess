@@ -33,7 +33,7 @@ import { FarmGame } from './FarmGame';
 import { FarmOverview, FarmOverviewButton } from './FarmOverview';
 import { barnFarms, isBarnProperty } from '../../../shared/barnFarms';
 import { useAccount } from '@/lib/auth';
-import { useTrip } from '@/lib/travel';
+import { flyHome, refreshTrip, useTrip } from '@/lib/travel';
 import { socket } from '@/lib/net';
 import { indexed } from '../../../shared/priceIndex';
 import { skyNow, parseTod, fmtClock, hex } from '../../../shared/daynight';
@@ -495,6 +495,35 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   );
 }
 
+/** At-sea placeholder with a return that is always clickable (the Ocean dock can be collapsed or missed). */
+function VoyageSea() {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const goHome = async () => {
+    setBusy(true);
+    const r = await request('voyage_home') as { ok: boolean; error?: string; loc?: string };
+    if (r.ok) {
+      setMsg(r.loc === 'city' ? 'Back in the city.' : 'Setting course for home.');
+      await refreshTrip();
+      // If the in-memory trip was already gone, loc is city. If voyage_home only started the return, stay at sea.
+    } else {
+      const h = await flyHome();
+      if (h.ok) await refreshTrip();
+      else setMsg(r.error ?? h.error ?? 'Could not return.');
+    }
+    setBusy(false);
+  };
+  return (
+    <div className="world" data-testid="voyage-map">
+      <div className="voyage-sea">
+        <p>At sea. Use the Ocean dock to fish, fight (opt-in), or sail home.</p>
+        <button type="button" disabled={busy} data-testid="voyage-map-home" onClick={() => void goHome()}>Sail home</button>
+        {msg && <small>{msg}</small>}
+      </div>
+    </div>
+  );
+}
+
 /** The map the player is on: Chud Hub (city) or Chud Resort (only reachable by plane from the airport). */
 export function WorldMap(props: { onClose: () => void; onLeaderboard: () => void }) {
   const { loc } = useTrip(); const [flying, setFlying] = useState(false); const prev = useRef(loc);
@@ -503,7 +532,7 @@ export function WorldMap(props: { onClose: () => void; onLeaderboard: () => void
     {loc === 'resort' ? <Suspense fallback={<div className="world"><div className="world-loading">Landing at Chud Resort…</div></div>}><ResortMap /></Suspense>
       : loc === 'fortmc' ? <Suspense fallback={<div className="world"><div className="world-loading">Landing at Fort McChud…</div></div>}><FortMcMap /></Suspense>
       : loc === 'island' ? <Suspense fallback={<div className="world"><div className="world-loading">Landing on the Private Island…</div></div>}><IslandMap /></Suspense>
-      : loc === 'voyage' ? <div className="world" data-testid="voyage-map"><div className="world-loading">At sea. Use the Ocean dock to arrive, fight (opt-in), or sail home.</div></div>
+      : loc === 'voyage' ? <VoyageSea />
       : <CityMap {...props} />}
     {flying && <div className="resort-flight" data-testid="resort-flight"><div><span>✈️</span><br />{loc === 'resort' ? 'Flying to Chud Resort…' : loc === 'fortmc' ? 'Flying to Fort McChud…' : loc === 'island' ? 'Heading to the Private Island…' : loc === 'voyage' ? 'Putting out to sea…' : 'Flying home to Chud Hub…'}</div></div>}
   </>;

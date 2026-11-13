@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { request, socket } from '@/lib/net';
-import { flyHome, refreshTrip, useTrip } from '@/lib/travel';
+import { refreshTrip, tripNow, useTrip } from '@/lib/travel';
 import { VOYAGES, type VoyageId, type VoyageView, type YachtBoardingView, type FightView } from '../../../shared/voyages';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
@@ -16,16 +16,17 @@ type View = {
 };
 
 export function OceanDock() {
-  const [open, setOpen] = useState(false);
+  const trip = useTrip();
+  const atSea = trip.loc === 'voyage';
+  const [open, setOpen] = useState(atSea);
   const [v, setV] = useState<View | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dest, setDest] = useState<VoyageId | 'island'>('atoll');
   const [price, setPrice] = useState(0);
   const [stake, setStake] = useState(0);
-  const trip = useTrip();
 
-  const load = () => { void request('ocean_view').then((r) => { const a = r as unknown as { ok: boolean } & View; if (a.ok) setV(a); }); };
+  const load = () => { void request('ocean_view').then((r) => { const a = r as unknown as { ok: boolean } & View; if (a.ok) { setV(a); if (tripNow().loc === 'voyage' && !a.voyage) void refreshTrip(); } }); };
   useEffect(() => {
     load();
     const onOpen = () => setOpen(true);
@@ -35,6 +36,7 @@ export function OceanDock() {
     const t = window.setInterval(load, 8_000);
     return () => { window.removeEventListener(OPEN_OCEAN, onOpen); socket.off('ocean_ping', onPing); socket.off('ocean_event', onPing); window.clearInterval(t); };
   }, []);
+  useEffect(() => { if (atSea || v?.voyage) setOpen(true); }, [atSea, v?.voyage]);
 
   const act = async (ev: string, data?: object, ok?: (a: Record<string, unknown>) => string) => {
     setBusy(true); const r = await request(ev, data); setBusy(false);
@@ -44,18 +46,26 @@ export function OceanDock() {
     return a;
   };
 
-  if (!open && !v?.voyage && !v?.fight && !v?.challenge && !(v?.boardings.length) && trip.loc !== 'voyage') return null;
+  const canSailHome = !!(v?.voyage || atSea) && !v?.fight;
+  const sailHomeLabel = v?.voyage?.phase === 'returning' ? 'Returning…' : 'Sail home';
+  const sailHome = () => void act('voyage_home', {}, (a) => a.loc === 'city' ? 'Back in the city.' : 'Setting course for home.');
+
+  if (!open && !v?.voyage && !v?.fight && !v?.challenge && !(v?.boardings.length) && !atSea) return null;
 
   return (
     <div className="jet-seats-dock" data-testid="ocean-dock">
-      <header><b>⚓ Ocean</b><button type="button" onClick={() => setOpen((o) => !o)} aria-label={open ? 'Collapse' : 'Expand'}>{open ? '▾' : '▴'}</button></header>
+      <header>
+        <b>⚓ Ocean</b>
+        {canSailHome && <button type="button" disabled={busy || v?.voyage?.phase === 'returning'} data-testid="voyage-home" onClick={sailHome}>{sailHomeLabel}</button>}
+        <button type="button" onClick={() => setOpen((o) => !o)} aria-label={open ? 'Collapse' : 'Expand'}>{open ? '▾' : '▴'}</button>
+      </header>
       {open && (
         <div className="jet-seats-body">
           {v?.repairChips ? <p data-testid="hull-repair">Hull damage: 🪙 {fmt(v.repairChips)} to repair. <button type="button" disabled={busy} onClick={() => void act('hull_repair', {}, (a) => `Paid 🪙 ${fmt(Number(a.paid))} for repairs.`)}>Repair hull</button></p> : null}
           {v?.voyage && (
             <div data-testid="ocean-voyage">
               <p>{v.voyage.phase === 'underway' ? 'Underway to' : v.voyage.phase === 'returning' ? 'Returning from' : 'Arrived at'} <b>{v.voyage.destName}</b> aboard {v.voyage.boatName}. Crew: {v.voyage.crew.length ? v.voyage.crew.join(', ') : 'just you'}.</p>
-              {v.voyage.phase === 'arrived' && trip.loc === 'voyage' && <button type="button" disabled={busy} data-testid="voyage-home" onClick={() => void act('voyage_home', {}, () => 'Setting course for home.')}>Sail home</button>}
+              {canSailHome && v.voyage.phase !== 'returning' && <button type="button" disabled={busy} data-testid="voyage-home-body" onClick={sailHome}>Sail home</button>}
             </div>
           )}
           {v?.fight && (
@@ -106,7 +116,7 @@ export function OceanDock() {
               ))}
             </>
           )}
-          {trip.loc === 'voyage' && !v?.voyage && <button type="button" onClick={() => void flyHome()}>Return to the city</button>}
+          {atSea && !v?.voyage && <button type="button" disabled={busy} data-testid="voyage-home-stranded" onClick={sailHome}>Return to the city</button>}
           {msg && <small data-testid="ocean-msg">{msg}</small>}
         </div>
       )}

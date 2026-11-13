@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import { getBank } from './casino-store.js';
 import { getFleet } from './fleet.js';
-import { getTravel } from './travel.js';
+import { getTravel, setVoyageActive } from './travel.js';
 import { px } from './price-index.js';
 import { roomOf } from './wallet-sockets.js';
 import { playerKey } from './skins.js';
@@ -190,20 +190,40 @@ export class OceanPlay {
   }
   async headHome(name: string) {
     this.sweep();
-    const t = this.tripOf(name); if (!t) throw new OceanError('You are not on a voyage.');
-    if (keyOf(name) !== keyOf(t.captain)) throw new OceanError('Only the captain can set course for home.');
+    const travel = getTravel();
+    const t = this.tripOf(name);
+    if (!t) {
+      // Safe return when the in-memory trip is gone (typical after a deploy) but loc is still 'voyage'.
+      const r = await travel.recoverVoyage(name);
+      if (r.recovered) return { loc: 'city' as const, recovered: true };
+      throw new OceanError('You are not on a voyage.');
+    }
     if (this.fightOf(name)) throw new OceanError('Finish or flee the fight first.');
+    // Crew can always leave for the city; the captain's boat continues.
+    if (keyOf(name) !== keyOf(t.captain)) {
+      t.crew.delete(keyOf(name));
+      this.onTrip.delete(keyOf(name));
+      await travel.home(name);
+      this.emit('voyage', this.voyageView(t), [t.captain, ...t.crew.values(), name]);
+      return { loc: 'city' as const, left: true };
+    }
+    // Already heading home: do not reset the arrival time.
+    if (t.phase === 'returning') return { voyage: this.voyageView(t) };
     const v = voyageById(t.dest)!; const now = this.clock();
     t.phase = 'returning'; t.arrivesAt = now + v.travelMs;
     this.emit('voyage', this.voyageView(t), [t.captain, ...t.crew.values()]);
     return { voyage: this.voyageView(t) };
   }
+  /** Send a player home when their location is 'voyage' but no live trip exists. */
+  async healStranded(name: string) { return getTravel().recoverVoyage(name); }
   private finishReturn(t: Trip) {
     const travel = getTravel();
     const names = [t.captain, ...t.crew.values()];
-    for (const n of names) { void travel.home(n); this.onTrip.delete(keyOf(n)); }
     this.trips.delete(t.id);
+    for (const n of names) this.onTrip.delete(keyOf(n));
     this.emit('voyage', null, names);
+    // Home is async (DB). If it fails, loc may stay 'voyage' with no trip; recoverVoyage heals on the next load.
+    void Promise.all(names.map((n) => travel.home(n).catch((e) => { console.error('[ocean] return home failed:', (e as Error).message); })));
   }
   voyageOf(name: string): VoyageView | null { this.sweep(); const t = this.tripOf(name); return t ? this.voyageView(t) : null; }
   private voyageView(t: Trip): VoyageView {
@@ -340,6 +360,7 @@ export class OceanPlay {
 let ocean: OceanPlay = new OceanPlay();
 export const getOcean = () => ocean;
 export const setOcean = (o: OceanPlay) => { ocean = o; };
+setVoyageActive((name) => ocean.isAtSea(name));
 export const isAtVoyage = (name: string | null | undefined) => !!name && ocean.isAtSea(name);
 
 type Ack = (r: { ok: boolean; error?: string; [k: string]: unknown }) => void;
@@ -357,7 +378,7 @@ export function registerOcean(io: Server, socket: Socket): void {
     try { const b = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}; ack?.({ ok: true, ...((await fn(b)) as object ?? {}) }); }
     catch (e) { ack?.({ ok: false, error: e instanceof OceanError || /^(Not enough chips\.|Wallet temporarily unavailable\.)$/.test((e as Error).message) ? (e as Error).message : 'Something went wrong.' }); }
   });
-  on('ocean_view', () => ocean.view(nameOf()));
+  on('ocean_view', async () => { const n = nameOf(); if (n) await ocean.healStranded(n); return ocean.view(n); });
   on('yacht_board_open', (b) => ocean.openBoard(need(), b.dest, b.price));
   on('yacht_board_cancel', () => ocean.cancelBoard(need()));
   on('yacht_seat_request', (b) => ocean.requestSeat(need(), b.id));

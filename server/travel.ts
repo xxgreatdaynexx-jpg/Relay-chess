@@ -25,6 +25,10 @@ export type TicketWaiver = (name: string, dest: Destination) => string | null;
 let waiver: TicketWaiver = () => null;
 export function setTicketWaiver(fn: TicketWaiver | null) { waiver = fn ?? (() => null); }
 
+/** True when the player is on a live in-memory ocean voyage (set by server/oceanPlay.ts). */
+let voyageActive: (name: string) => boolean = () => false;
+export function setVoyageActive(fn: ((name: string) => boolean) | null) { voyageActive = fn ?? (() => false); }
+
 /** Co-op Fort McChud Bridge perk: half-price Fort McChud tickets for everyone. */
 export const ticketPrice = (d: Destination) => { const p = px(DESTINATIONS[d].ticket); return d === 'fortmc' && coopPerk('bridge') ? Math.ceil(p / 2) : p; };
 
@@ -34,7 +38,14 @@ export class Travel {
   constructor(private readonly pool: PoolLike | null, private readonly clock = () => Date.now()) {}
   async init() {
     if (!this.pool) return; await this.pool.query(TRAVEL_MIGRATION);
-    for (const r of (await this.pool.query("SELECT player_key, loc FROM player_location WHERE loc <> 'city'")).rows) if (isLocation(r.loc) && r.loc !== 'city') this.loc.set(String(r.player_key), r.loc);
+    const stranded: string[] = [];
+    for (const r of (await this.pool.query("SELECT player_key, name, loc FROM player_location WHERE loc <> 'city'")).rows) {
+      if (!isLocation(r.loc) || r.loc === 'city') continue;
+      this.loc.set(String(r.player_key), r.loc);
+      // Voyages live only in memory, so a restart leaves loc='voyage' with no trip. Send them home.
+      if (r.loc === 'voyage' && !voyageActive(String(r.name))) stranded.push(String(r.name));
+    }
+    for (const n of stranded) { try { await this.home(n); } catch (e) { console.error('[travel] voyage recover failed:', (e as Error).message); } }
   }
   where(name: string | null | undefined): Location { return name ? this.loc.get(keyOf(name)) ?? 'city' : 'city'; }
   status(name: string | null) {
@@ -83,6 +94,14 @@ export class Travel {
     const k = keyOf(name);
     if (this.pool) await this.pool.query("INSERT INTO player_location (player_key, name, loc, since) VALUES ($1,$2,'city',$3) ON CONFLICT (player_key) DO UPDATE SET loc = 'city', since = EXCLUDED.since", [k, name.trim(), this.clock()]);
     this.loc.delete(k); return { loc: 'city' as Location };
+  }
+
+  /** If the player is marked at sea but no live voyage exists (typical after a deploy), send them home. */
+  async recoverVoyage(name: string) {
+    if (this.where(name) !== 'voyage') return { loc: this.where(name), recovered: false };
+    if (voyageActive(name)) return { loc: 'voyage' as Location, recovered: false };
+    await this.home(name);
+    return { loc: 'city' as Location, recovered: true };
   }
 }
 
@@ -133,7 +152,7 @@ export function registerTravel(_io: Server, socket: Socket): void {
     catch (e) { ack?.({ ok: false, error: e instanceof TravelError || /^(Not enough chips\.|Wallet temporarily unavailable\.)$/.test((e as Error).message) ? (e as Error).message : 'Something went wrong.' }); }
   });
   const need = () => { const n = nameOf(); if (!n) throw new TravelError('Sign in to fly.'); return n; };
-  on('trip_status', async () => { const n = nameOf(); return { ...travel.status(n), jet: n ? await jetHook(n).catch(() => null) : null }; });
+  on('trip_status', async () => { const n = nameOf(); if (n) await travel.recoverVoyage(n); return { ...travel.status(n), jet: n ? await jetHook(n).catch(() => null) : null }; });
   on('trip_buy', (b) => { const d = (b as { dest?: unknown } | undefined)?.dest; return travel.fly(need(), d === undefined ? 'resort' : (d as Destination)); });
   on('trip_home', () => travel.home(need()));
 }

@@ -132,6 +132,57 @@ describe('ocean voyages, yacht boarding and opt-in ship combat', () => {
     expect(getBank().account(winner).chips).toBe((winner === 'Ava' ? a0 : b0) - 10_000 + 19_000);
     expect(ocean.view('Cy').opted).toBe(false);
   });
+
+  it('sends a stranded sailor home when the in-memory trip is gone (after a restart)', async () => {
+    await getTravel().carry('Ann', 'voyage');
+    expect(getTravel().where('Ann')).toBe('voyage');
+    expect(ocean.voyageOf('Ann')).toBeNull();
+    const r = await ocean.healStranded('Ann');
+    expect(r).toMatchObject({ loc: 'city', recovered: true });
+    expect(getTravel().where('Ann')).toBe('city');
+    // headHome is the same safe path the Sail home button uses
+    await getTravel().carry('Ben', 'voyage');
+    const h = await ocean.headHome('Ben');
+    expect(h).toMatchObject({ loc: 'city', recovered: true });
+    expect(getTravel().where('Ben')).toBe('city');
+  });
+
+  it('does not send a sailor home while a live voyage is underway', async () => {
+    await buyBoat('Ann', 'skiff');
+    await ocean.depart('Ann', 'atoll');
+    const r = await getTravel().recoverVoyage('Ann');
+    expect(r).toMatchObject({ loc: 'voyage', recovered: false });
+    expect(getTravel().where('Ann')).toBe('voyage');
+    expect(ocean.voyageOf('Ann')?.phase).toBe('underway');
+  });
+
+  it('lets the captain turn for home while still underway, and does not reset a return already in progress', async () => {
+    await buyBoat('Ann', 'skiff');
+    await ocean.depart('Ann', 'atoll');
+    const first = await ocean.headHome('Ann');
+    expect(first.voyage!.phase).toBe('returning');
+    const eta = first.voyage!.arrivesAt;
+    now += 30_000;
+    const second = await ocean.headHome('Ann');
+    expect(second.voyage!.phase).toBe('returning');
+    expect(second.voyage!.arrivesAt).toBe(eta);
+  });
+
+  it('lets crew leave for the city without stranding the captain', async () => {
+    await buyBoat('Cap', 'yacht');
+    await buyBoat('Pal', 'skiff');
+    await ocean.openBoard('Cap', 'atoll', 0);
+    const id = ocean.listBoards()[0]!.id;
+    await ocean.requestSeat('Pal', id);
+    await ocean.respondSeat('Cap', 'Pal', true);
+    await ocean.depart('Cap');
+    const left = await ocean.headHome('Pal');
+    expect(left).toMatchObject({ loc: 'city', left: true });
+    expect(getTravel().where('Pal')).toBe('city');
+    expect(getTravel().where('Cap')).toBe('voyage');
+    expect(ocean.voyageOf('Cap')?.crew).toEqual([]);
+    expect(ocean.voyageOf('Pal')).toBeNull();
+  });
 });
 
 describe('yacht 3D models', () => {

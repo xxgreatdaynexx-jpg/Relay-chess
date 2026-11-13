@@ -2488,11 +2488,17 @@ body.he-full-open .he-table.he-full { visibility: visible; }
 
 /* Jet passenger seats dock (JetSeatsDock.tsx) */
 .jet-seats-dock { position: fixed; right: 12px; bottom: 72px; z-index: 60; display: flex; flex-direction: column; gap: 6px; max-width: 320px; font-size: 13px; }
-.jet-seats-dock > div, .jet-seat-msg { background: rgba(16, 20, 30, 0.94); color: #f3ead2; border: 1px solid #c9a24a; border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
-.jet-seats-dock header { display: flex; justify-content: space-between; align-items: center; }
+.jet-seats-dock > div, .jet-seats-dock > header, .jet-seat-msg { background: rgba(16, 20, 30, 0.94); color: #f3ead2; border: 1px solid #c9a24a; border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+.jet-seats-dock header { display: flex; flex-direction: row; justify-content: space-between; align-items: center; gap: 8px; }
 .jet-seats-dock button { background: #c9a24a; color: #1a1406; border: 0; border-radius: 6px; padding: 4px 8px; font-weight: 600; cursor: pointer; }
 .jet-seats-dock button:disabled { opacity: .5; cursor: default; }
 .jet-seats-dock header button, .jet-seat-msg button { background: transparent; color: #f3ead2; padding: 0 4px; }
+.jet-seats-dock header [data-testid="voyage-home"] { background: #c9a24a; color: #1a1406; padding: 4px 8px; }
+.voyage-sea { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 14px; z-index: 5; pointer-events: auto; text-align: center; padding: 20px; }
+.voyage-sea p { margin: 0; font-size: 18px; color: #fff6d8aa; }
+.voyage-sea button { background: #c9a24a; color: #1a1406; border: 0; border-radius: 8px; padding: 12px 22px; font-weight: 700; font-size: 16px; cursor: pointer; pointer-events: auto; }
+.voyage-sea button:disabled { opacity: .5; cursor: default; }
+.voyage-sea small { color: #f3ead2; }
 .jet-seat-req { flex-direction: row !important; display: flex; align-items: center; gap: 6px; }
 .jet-seat-req span { flex: 1; }
 .jet-seat-actions { display: flex; gap: 6px; }

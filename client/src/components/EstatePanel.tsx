@@ -95,7 +95,7 @@ export function EstatePanel({ lotId, me, mine = false, kind, onClose }: { lotId?
         {lotId?.startsWith('winery:') && (
           <div className="estate-power" data-testid="estate-wine-press">
             <h3>🍷 Winery press</h3>
-            <p>Grapes from your warehouse press to wine 1:1. The city cannery still needs two grapes per bottle.</p>
+            <p>Grapes from your warehouse or pantry press to wine 1:1. The city cannery still needs two grapes per bottle.</p>
             <button type="button" disabled={!canBuild} onClick={() => void call('estate_wine_press', { qty: 1 })}>Press 1 grape</button>
           </div>
         )}

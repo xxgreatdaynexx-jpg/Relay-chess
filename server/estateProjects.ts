@@ -23,6 +23,7 @@ import { HYPER_STAGES, HYPER_FARM_TOTAL } from '../shared/hyperFarm.js';
 import { RIG_STAGES, RIG_LAUNCH_FEE, RIG_CRUDE_PER_HOUR, RIG_MAX_PER_PLAYER, RIG_HOLD_CAP, rigLabel, type RigState } from '../shared/offshoreRig.js';
 import { FORT_IMPORT, PLASTICS_RECIPES, plantRecipe, type FortFeed } from '../shared/plasticsPlant.js';
 import { GOODS, type ItemType } from '../shared/mines.js';
+import { pantryAlias } from '../shared/factory.js';
 import { getMines } from './mines.js';
 import { isHyperCrop } from '../shared/farm.js';
 
@@ -581,13 +582,22 @@ export class Estate {
     const grapes = GOODS.crop_grapes;
     const wine = GOODS.wine;
     if (!grapes || !wine) throw new EstateError('Grape and wine goods are not set up.');
-    if (this.warehouseQty(name, grapes.type, grapes.id) < q) throw new EstateError('You need grapes in your warehouse to use the press.');
-    if (!this.takeStacks(name, [{ type: grapes.type, id: grapes.id, qty: q }])) throw new EstateError('You need grapes in your warehouse to use the press.');
+    // Warehouse goods (good:crop_grapes) first, then pantry food:grapes — same alias the factory uses.
+    // One all-or-nothing take, no double counting, and a full restore if the wine cannot be stored.
+    const alt = pantryAlias(`${grapes.type}:${grapes.id}`);
+    const pantry = alt ? { type: alt.slice(0, alt.indexOf(':')) as ItemType, id: alt.slice(alt.indexOf(':') + 1) } : null;
+    const fromWarehouse = Math.min(q, this.warehouseQty(name, grapes.type, grapes.id));
+    const fromPantry = pantry ? Math.min(q - fromWarehouse, this.warehouseQty(name, pantry.type, pantry.id)) : 0;
+    if (fromWarehouse + fromPantry < q) throw new EstateError('You need grapes in your warehouse or pantry to use the press.');
+    const take: Array<{ type: ItemType; id: string; qty: number }> = [];
+    if (fromWarehouse) take.push({ type: grapes.type, id: grapes.id, qty: fromWarehouse });
+    if (fromPantry && pantry) take.push({ type: pantry.type, id: pantry.id, qty: fromPantry });
+    if (!this.takeStacks(name, take)) throw new EstateError('You need grapes in your warehouse or pantry to use the press.');
     if (!this.giveStacks(name, [{ type: wine.type, id: wine.id, qty: q }])) {
-      this.giveStacks(name, [{ type: grapes.type, id: grapes.id, qty: q }]);
+      this.giveStacks(name, take);
       throw new EstateError('Could not store the wine. Free up warehouse space.');
     }
-    return { grapes: q, wine: q, rate: 1, at: mine[0]!.id };
+    return { grapes: q, wine: q, rate: 1, at: mine[0]!.id, fromWarehouse, fromPantry };
   }
 
     /** Public map snapshot (construction models + launched rigs). */

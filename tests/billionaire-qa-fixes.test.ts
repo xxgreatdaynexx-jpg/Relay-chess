@@ -123,6 +123,33 @@ describe('warehouse goods, wine, plastics, coal, grid shutoff', () => {
     expect(r).toMatchObject({ grapes: 2, wine: 2, rate: 1 });
     expect(qty('Ann', 'good', 'crop_grapes')).toBe(3);
     expect(qty('Ann', 'good', 'wine')).toBe(2);
+    expect(r.fromWarehouse).toBe(2);
+    expect(r.fromPantry).toBe(0);
+  });
+
+  it('wine press pulls pantry grapes, then warehouse first when both exist, without double counting', async () => {
+    setRealEstateForTest(fakeRE({ 'winery:1': 'Ann' }));
+    const e = new Estate(null);
+    give('Ann', 'food', 'grapes', 4);
+    const pantryOnly = await e.pressWine('Ann', 3);
+    expect(pantryOnly).toMatchObject({ grapes: 3, wine: 3, rate: 1, fromWarehouse: 0, fromPantry: 3 });
+    expect(qty('Ann', 'food', 'grapes')).toBe(1);
+    expect(qty('Ann', 'good', 'wine')).toBe(3);
+
+    give('Ann', 'good', 'crop_grapes', 2);
+    // 2 warehouse + 1 pantry = 3. Warehouse is consumed first; leftover pantry stays 0 after pressing 3.
+    const both = await e.pressWine('Ann', 3);
+    expect(both).toMatchObject({ grapes: 3, wine: 3, fromWarehouse: 2, fromPantry: 1 });
+    expect(qty('Ann', 'good', 'crop_grapes')).toBe(0);
+    expect(qty('Ann', 'food', 'grapes')).toBe(0);
+    expect(qty('Ann', 'good', 'wine')).toBe(6);
+
+    give('Ann', 'food', 'grapes', 1);
+    give('Ann', 'good', 'crop_grapes', 1);
+    await expect(e.pressWine('Ann', 3)).rejects.toThrow(/warehouse or pantry/);
+    expect(qty('Ann', 'food', 'grapes')).toBe(1);
+    expect(qty('Ann', 'good', 'crop_grapes')).toBe(1);
+    expect(qty('Ann', 'good', 'wine')).toBe(6);
   });
 
   it('plastics plant consumes inputs and credits real output goods', async () => {
