@@ -56,8 +56,18 @@ describe('space program (memory)', () => {
       { part: 'spark', stage: 1 },
     ]);
     expect(analyzeDesign(weak).capable).toBe(false);
-    await expect(p.launch('Bob', weak)).rejects.toThrow(/Δv|dv|orbit/i);
-    expect(chips('Bob')).toBe(50_000);
+    // Suborbital vehicles may roll out (sounding contracts), but cannot deploy.
+    const weakStats = analyzeDesign(weak);
+    if (weakStats.liftoffTwr < 1.15) {
+      await expect(p.launch('Bob', weak)).rejects.toThrow(/TWR|thrust/i);
+      expect(chips('Bob')).toBe(50_000);
+    } else {
+      const Lw = await p.launch('Bob', weak);
+      expect(chips('Bob')).toBe(50_000 - designCost(weak));
+      await expect(p.deploy('Bob', { launchId: Lw.launchId, peM: 80_000, apM: 80_000 })).rejects.toThrow(/Δv|dv|orbit|satellite/i);
+      // Consume the cooldown so the rest of the test can launch Scout I.
+      now += SPACE_COOLDOWN_MS + 10;
+    }
 
     const L = await p.launch('Bob', scoutI());
     await expect(p.launch('Bob', scoutI())).rejects.toThrow(/cooling/);
@@ -115,6 +125,7 @@ describe('space program (memory)', () => {
     expect(chips('Eve')).toBe(10);
     expect(isChipEvent('space_launch')).toBe(true);
     expect(isChipEvent('space_deploy')).toBe(true);
+    expect(isChipEvent('space_mission')).toBe(true);
     expect(LEO_DV_BUDGET).toBe(3400);
   });
 });

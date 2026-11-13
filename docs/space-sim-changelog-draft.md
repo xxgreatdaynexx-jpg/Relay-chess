@@ -10,3 +10,9 @@ Do not copy this into `shared/changelog.ts` until this feature is shipped. The p
     "Parts are paid for when you roll out to the pad. A successful satellite deploy pays a small one-time bounty, capped at five paid flights per player; after that, satellites still count on the orbit leaderboard. Your chips, items and existing property are otherwise unchanged.",
   ]},
 ```
+
+  {"commit": "", "at": "2026-11-13T16:30:00-06:00", "title": "Space Center: a better planet, and contracts you can fly for a payout", "bullets": [
+    "Mission Control's home world is now a procedurally drawn planet: continents and biomes, drifting clouds, a day/night terminator with city lights, a 70 km atmospheric limb, ocean sun glint, a starfield, and a 6-hour-day rotation. The same surface texture is used on the equatorial ground-track map. During early ascent the view is a curved horizon with an atmosphere-gradient sky.",
+    "A Contracts tab in the Space Center offers a rotating daily mission board (UTC). Accept up to three contracts at a time, fly them on a paid launch, and claim a chip payout that scales with difficulty — sounding flights, orbit, circular and targeted deploy altitudes, twin-satellite launches, and a budget-orbit challenge. Payouts are sized to clear a typical launch cost with a conservative net of about 1,000–15,000 chips, with a 30,000 chip daily cap per player. The existing five-flight satellite bounty is unchanged and is paid separately; one flight can collect both.",
+    "Contract claims are checked on the server against the launch ticket filed for that mission: flight duration, vacuum Δv versus a vis-viva / Hohmann estimate, and reported orbit figures that a design could actually reach.",
+  ]},

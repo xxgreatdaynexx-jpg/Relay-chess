@@ -12,11 +12,17 @@ import {
   SPACE_PAYOUT, SPACE_MAX_PAID, TARGET_PE,
   type FlightState, type FlightLogEntry, type DesignStats,
 } from '../../../shared/spaceFlight';
-import { drawVab, hitVab, drawMission, drawOrbitMap, type PartBox } from '@/lib/spaceDraw';
+import { drawVab, hitVab, drawMission, drawOrbitMap, type PartBox, type McCamera } from '@/lib/spaceDraw';
+import {
+  dailyBoard, utcDay, criteriaOnly, designMeetsMission, MISSION_DAILY_CAP, MISSION_MAX_ACTIVE,
+  type MissionDef,
+} from '../../../shared/spaceMissions';
+import { SpaceContracts, type MissionViewData, type MissionCompleteNote } from './SpaceContracts';
 import '../spaceSim.css';
 
-export type SpaceView = 'hangar' | 'vab' | 'launch';
-export type SpacePreview = { view: SpaceView | 'ascent' | 'orbit'; freeze?: boolean };
+export type SpaceView = 'hangar' | 'vab' | 'launch' | 'contracts';
+export type SpacePreviewView = SpaceView | 'ascent' | 'orbit' | 'ascent-low' | 'ascent-high' | 'ground-track' | 'missions' | 'mission-complete';
+export type SpacePreview = { view: SpacePreviewView; freeze?: boolean };
 
 type ViewData = {
   signedIn: boolean; chips: number | null;
@@ -24,33 +30,81 @@ type ViewData = {
   sats: Array<{ id: string; satName: string; designName: string; peM: number; apM: number; payout: number; paid: boolean; deployedAt: number; ownerName?: string }>;
   board: Array<{ name: string; sats: number; lastAt: number }>;
   rules: { payout: number; maxPaid: number; paid: number; remainingPaid: number; cooldownLeft: number; leoDv: number; minTwr: number };
+  missions: MissionViewData;
 };
 
-const emptyView = (): ViewData => ({
-  signedIn: false, chips: null, designs: [], sats: [], board: [],
+const previewDay = '2026-11-13';
+function previewMissions(complete = false): MissionViewData {
+  const board = dailyBoard(previewDay);
+  const pick = board.find((m) => m.templateId === 'deploy-250') ?? board.find((m) => m.kind === 'deploy-orbit') ?? board[0]!;
+  const accepted = complete
+    ? [{ missionId: pick.id, acceptedAt: Date.parse(previewDay + 'T12:00:00Z'), completedAt: Date.parse(previewDay + 'T12:10:00Z'), payout: pick.payout }]
+    : [{ missionId: pick.id, acceptedAt: Date.parse(previewDay + 'T12:00:00Z'), completedAt: null, payout: 0 }];
+  return {
+    day: previewDay, board, accepted,
+    completedIds: complete ? [pick.id] : [],
+    paidToday: complete ? pick.payout : 0,
+    dailyCap: MISSION_DAILY_CAP,
+    remainingCap: complete ? MISSION_DAILY_CAP - pick.payout : MISSION_DAILY_CAP,
+    maxActive: MISSION_MAX_ACTIVE,
+  };
+}
+
+const emptyView = (preview?: SpacePreview): ViewData => ({
+  signedIn: !!preview, chips: preview ? 42_000 : null, designs: [], sats: [], board: [],
   rules: { payout: SPACE_PAYOUT, maxPaid: SPACE_MAX_PAID, paid: 0, remainingPaid: SPACE_MAX_PAID, cooldownLeft: 0, leoDv: LEO_DV_BUDGET, minTwr: MIN_LIFTOFF_TWR },
+  missions: preview?.view === 'mission-complete' ? previewMissions(true)
+    : preview?.view === 'missions' ? previewMissions(false)
+    : { day: utcDay(Date.now()), board: dailyBoard(utcDay(Date.now())), accepted: [], completedIds: [], paidToday: 0, dailyCap: MISSION_DAILY_CAP, remainingCap: MISSION_DAILY_CAP, maxActive: MISSION_MAX_ACTIVE },
 });
 
-function freezeAscent(kind: 'ascent' | 'orbit'): FlightState {
+function freezeAscent(kind: 'ascent' | 'orbit' | 'ascent-low' | 'ascent-high'): FlightState {
   if (kind === 'orbit') return scriptedAscent(courierI(), { dt: 0.05, maxTime: 900 }).state;
-  const r = scriptedAscent(courierI(), { dt: 0.05, maxTime: 90 });
-  // If the full script overshot 25 km (it will — 90 s is mid-ascent around there), just return that state.
-  return r.state;
+  if (kind === 'ascent-low') return scriptedAscent(courierI(), { dt: 0.05, maxTime: 200, stopAtAltitude: 18_000 }).state;
+  if (kind === 'ascent-high') return scriptedAscent(courierI(), { dt: 0.05, maxTime: 280, stopAtAltitude: 52_000 }).state;
+  return scriptedAscent(courierI(), { dt: 0.05, maxTime: 90 }).state;
+}
+
+function previewCamera(view?: SpacePreviewView): McCamera {
+  if (view === 'ascent-low' || view === 'ascent') return 'horizon';
+  if (view === 'ascent-high') return 'horizon';
+  if (view === 'ground-track') return 'track';
+  if (view === 'orbit') return 'globe';
+  return 'auto';
 }
 
 export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onClose: () => void; preview?: SpacePreview }) {
-  const initialView: SpaceView = preview?.view === 'ascent' || preview?.view === 'orbit' || preview?.view === 'launch' ? 'launch'
-    : preview?.view === 'vab' ? 'vab' : preview?.view === 'hangar' ? 'hangar' : 'hangar';
+  const launchViews = ['ascent', 'orbit', 'launch', 'ascent-low', 'ascent-high', 'ground-track'];
+  const initialView: SpaceView = preview?.view && launchViews.includes(preview.view) ? 'launch'
+    : preview?.view === 'vab' ? 'vab'
+    : preview?.view === 'missions' || preview?.view === 'mission-complete' || preview?.view === 'contracts' ? 'contracts'
+    : preview?.view === 'hangar' ? 'hangar' : 'hangar';
   const [view, setView] = useState<SpaceView>(initialView);
-  const [data, setData] = useState<ViewData>(emptyView);
+  const [data, setData] = useState<ViewData>(() => emptyView(preview));
   const [design, setDesign] = useState<VesselDesign>(() => cloneDesign(courierI()));
   const [selected, setSelected] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [missionId, setMissionId] = useState<string | null>(() => {
+    if (preview?.view === 'missions' || preview?.view === 'mission-complete') {
+      const m = emptyView(preview).missions;
+      return m.accepted[0]?.missionId ?? m.board[0]?.id ?? null;
+    }
+    return null;
+  });
+  const [completeNote, setCompleteNote] = useState<MissionCompleteNote | null>(() => {
+    if (preview?.view === 'mission-complete') {
+      const m = emptyView(preview).missions;
+      const def = m.board.find((x) => x.id === m.completedIds[0]) ?? m.board[0]!;
+      return { mission: def, payout: def.payout };
+    }
+    return null;
+  });
   const [flight, setFlight] = useState<FlightState | null>(() => {
-    if (preview?.view === 'ascent') return freezeAscent('ascent');
-    if (preview?.view === 'orbit' || (preview?.view === 'launch' && preview.freeze)) return freezeAscent('orbit');
+    if (preview?.view === 'ascent' || preview?.view === 'ascent-low') return freezeAscent(preview.view === 'ascent-low' ? 'ascent-low' : 'ascent');
+    if (preview?.view === 'ascent-high') return freezeAscent('ascent-high');
+    if (preview?.view === 'orbit' || preview?.view === 'ground-track' || (preview?.view === 'launch' && preview.freeze)) return freezeAscent('orbit');
     return null;
   });
   const [guidance, setGuidance] = useState(true);
@@ -67,6 +121,7 @@ export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onC
       signedIn: !!r.signedIn, chips: r.chips ?? null,
       designs: r.designs ?? [], sats: r.sats ?? [], board: r.board ?? [],
       rules: { ...emptyView().rules, ...(r.rules ?? {}) },
+      missions: { ...emptyView().missions, ...(r.missions ?? {}) },
     });
   }, [preview]);
   useEffect(() => { void load(); }, [load]);
@@ -89,6 +144,7 @@ export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onC
         <nav className="spc-tabs">
           <button type="button" className={view === 'hangar' ? 'on' : ''} onClick={() => setView('hangar')} data-testid="spc-hangar-tab">Hangar</button>
           <button type="button" className={view === 'vab' ? 'on' : ''} onClick={() => setView('vab')} data-testid="spc-vab-tab">VAB</button>
+          <button type="button" className={view === 'contracts' ? 'on' : ''} onClick={() => setView('contracts')} data-testid="spc-contracts-tab">Contracts</button>
           <button type="button" className={view === 'launch' ? 'on' : ''} onClick={() => setView('launch')} data-testid="spc-mc-tab">Mission Control</button>
         </nav>
         <button type="button" className="spc-x" onClick={onClose} aria-label="Close" data-testid="spc-close">✕</button>
@@ -124,9 +180,17 @@ export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onC
               setFlight(s); setLaunchId('preview'); setView('launch'); setCountdown(5); setPaidNote(null);
               return;
             }
-            if (hasErrors(stats.issues) || !stats.capable) { setMsg(stats.issues.find((i) => i.level === 'error')?.text ?? stats.warnings[0] ?? 'This design is not orbit-capable.'); return; }
+            if (hasErrors(stats.issues) || stats.liftoffTwr < MIN_LIFTOFF_TWR) {
+              setMsg(stats.issues.find((i) => i.level === 'error')?.text ?? `Liftoff TWR must be at least ${MIN_LIFTOFF_TWR}.`);
+              return;
+            }
+            const flying = missionId ? data.missions.board.find((m) => m.id === missionId) : null;
+            if (flying) {
+              const why = designMeetsMission(design, flying);
+              if (why) { setMsg(why); return; }
+            }
             setBusy(true); setMsg(null);
-            const r = await request('space_launch', { design }) as { ok: boolean; error?: string; launchId?: string; cost?: number; chips?: number };
+            const r = await request('space_launch', { design, missionId: flying?.id ?? null }) as { ok: boolean; error?: string; launchId?: string; cost?: number; chips?: number };
             setBusy(false);
             if (!r.ok) { setMsg(r.error ?? 'Could not roll out.'); return; }
             const s = launchState(design);
@@ -143,8 +207,10 @@ export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onC
           guidance={guidance} setGuidance={setGuidance}
           warp={warp} setWarp={setWarp}
           countdown={countdown} setCountdown={setCountdown}
-          launchId={launchId} preview={!!preview} freeze={!!preview?.freeze || preview?.view === 'ascent' || preview?.view === 'orbit'}
+          launchId={launchId} preview={!!preview} freeze={!!preview?.freeze || ['ascent','orbit','ascent-low','ascent-high','ground-track'].includes(preview?.view ?? '')}
           trail={trail}
+          camera={previewCamera(preview?.view)}
+          mission={missionId ? (data.missions.board.find((m) => m.id === missionId) ?? null) : null}
           onDeployed={async (s) => {
             if (preview || !launchId || launchId === 'preview') return;
             const el = orbitalElements(s.x, s.y, s.vx, s.vy);
@@ -154,7 +220,62 @@ export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onC
               void load();
             } else setMsg(r.error ?? 'Deploy was not recorded.');
           }}
+          onClaim={async (s) => {
+            if (preview || !launchId || launchId === 'preview' || !missionId) return;
+            const el = orbitalElements(s.x, s.y, s.vx, s.vy);
+            const mission = data.missions.board.find((m) => m.id === missionId);
+            const r = await request('space_mission_complete', {
+              launchId, missionId,
+              peM: el.peAltitude, apM: el.apAltitude, periodS: el.period,
+              altitudeM: altitudeOf(s), eccentricity: el.eccentricity,
+              deployed: s.deployed, deployedCount: s.deployedCount ?? (s.deployed ? 1 : 0),
+              flightTimeS: s.t - s.met0,
+            }) as { ok: boolean; error?: string; payout?: number; want?: number; capped?: boolean; prestigeOnly?: boolean };
+            if (!r.ok) { setMsg(r.error ?? 'The contract could not be settled.'); return; }
+            if (mission) setCompleteNote({ mission, payout: r.payout ?? 0, want: r.want, capped: r.capped });
+            setPaidNote(r.prestigeOnly || (r.payout ?? 0) === 0
+              ? (r.capped ? 'Contract fulfilled — daily payout cap reached.' : 'Contract fulfilled.')
+              : `Contract fulfilled. Payout 🪙 ${(r.payout ?? 0).toLocaleString('en-US')}.`);
+            void load();
+          }}
           onBack={() => { setView('vab'); }}
+        />
+      )}
+      {view === 'contracts' && (
+        <SpaceContracts
+          missions={data.missions}
+          signedIn={!!me || !!preview}
+          chips={data.chips}
+          busy={busy}
+          complete={completeNote}
+          onDismissComplete={() => setCompleteNote(null)}
+          previewSelect={missionId ?? undefined}
+          onAccept={async (id) => {
+            if (preview) {
+              setData((d) => ({
+                ...d,
+                missions: {
+                  ...d.missions,
+                  accepted: [...d.missions.accepted.filter((c) => c.missionId !== id), { missionId: id, acceptedAt: Date.now(), completedAt: null, payout: 0 }],
+                },
+              }));
+              setMissionId(id);
+              setMsg('Contract accepted (preview).');
+              return;
+            }
+            setBusy(true); setMsg(null);
+            const r = await request('space_mission_accept', { missionId: id }) as { ok: boolean; error?: string };
+            setBusy(false);
+            if (!r.ok) { setMsg(r.error ?? 'Could not accept.'); return; }
+            setMissionId(id);
+            setMsg('Contract accepted. Roll a vehicle out against it from the VAB.');
+            void load();
+          }}
+          onFly={(m) => {
+            setMissionId(m.id);
+            setView('vab');
+            setMsg(`Flying ${m.title}. Roll out when the vehicle is ready.`);
+          }}
         />
       )}
     </div>
@@ -174,7 +295,7 @@ function Hangar({ me, data, design, onNew, onLoad }: {
           <div className="spc-brief">
             <p>Design a rocket in the Vehicle Assembly Building, roll it out to the pad, and fly it into a stable orbit above the {PLANET.atmHeight / 1000} km atmosphere. Then deploy a satellite.</p>
             <p>The home world is a Kerbin-like body: radius {PLANET.radius / 1000} km, surface gravity {PLANET.g0} m/s², a 6-hour day. A circular 80 km orbit takes about 2,279 m/s of horizontal speed. Gravity and drag bring the practical budget to <b>{LEO_DV_BUDGET.toLocaleString('en-US')} m/s</b> of vacuum Δv, with a sea-level liftoff TWR of at least {MIN_LIFTOFF_TWR}.</p>
-            <p>Parts are paid for when you roll out — Courier I costs 🪙 {designCost(courierI()).toLocaleString('en-US')} at the base index. A successful deploy pays 🪙 {r.payout.toLocaleString('en-US')}, at most {r.maxPaid} times (you have {r.remainingPaid} paid flight{r.remainingPaid === 1 ? '' : 's'} left). After that, satellites still count on the board.</p>
+            <p>Parts are paid for when you roll out — Courier I costs 🪙 {designCost(courierI()).toLocaleString('en-US')} at the base index. A successful deploy pays 🪙 {r.payout.toLocaleString('en-US')}, at most {r.maxPaid} times (you have {r.remainingPaid} paid flight{r.remainingPaid === 1 ? '' : 's'} left). After that, satellites still count on the board. That bounty is independent of the <b>Contracts</b> tab: daily missions pay a separate purse (capped per UTC day) and a single flight can collect both.</p>
             <p>Guidance will fly Courier I for you. Or take the stick: <kbd>W</kbd>/<kbd>S</kbd> throttle, <kbd>A</kbd>/<kbd>D</kbd> pitch, <kbd>Space</kbd> to stage, <kbd>.</kbd> to warp.</p>
             {me ? <p>Signed in as <b>{me}</b>{data.chips != null ? ` · 🪙 ${data.chips.toLocaleString('en-US')}` : ''}.</p> : <p>Sign in to pay for a launch and record a satellite. You can still practise in the VAB.</p>}
           </div>
@@ -357,7 +478,7 @@ function Vab({ design, setDesign, selected, setSelected, stats, chips, busy, onS
   );
 }
 
-function MissionControl({ design, flight, setFlight, guidance, setGuidance, warp, setWarp, countdown, setCountdown, launchId, preview, freeze, trail, onDeployed, onBack }: {
+function MissionControl({ design, flight, setFlight, guidance, setGuidance, warp, setWarp, countdown, setCountdown, launchId, preview, freeze, trail, onDeployed, onBack, camera, mission, onClaim }: {
   design: VesselDesign;
   flight: FlightState | null;
   setFlight: (s: FlightState | null | ((p: FlightState | null) => FlightState | null)) => void;
@@ -368,6 +489,9 @@ function MissionControl({ design, flight, setFlight, guidance, setGuidance, warp
   trail: { current: Array<[number, number]> };
   onDeployed: (s: FlightState) => void;
   onBack: () => void;
+  camera?: McCamera;
+  mission?: MissionDef | null;
+  onClaim?: (s: FlightState) => void;
 }) {
   const visRef = useRef<HTMLCanvasElement>(null);
   const mapRef = useRef<HTMLCanvasElement>(null);
@@ -421,7 +545,7 @@ function MissionControl({ design, flight, setFlight, guidance, setGuidance, warp
           s.throttle = g.throttle;
           s.pitch = g.pitch;
           if (g.phase) s.phase = g.phase;
-          if (g.deploy && !s.deployed) tryDeploy(s);
+          if (g.deploy) tryDeploy(s);
         } else if (shouldAutoStage(s) && s.throttle > 0) {
           // don't auto-stage in manual except flameout cue — left to the player
         }
@@ -452,9 +576,10 @@ function MissionControl({ design, flight, setFlight, guidance, setGuidance, warp
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       fn(ctx, r.width, r.height);
     };
-    paintOne(vis, (ctx, w, h) => drawMission(ctx, s, { w, h, trail: trail.current, tFlame: flame.current }));
-    paintOne(map, (ctx, w, h) => drawOrbitMap(ctx, s, { w, h, trail: trail.current }));
-  }, [trail]);
+    const wallT = Date.now() / 1000;
+    paintOne(vis, (ctx, w, h) => drawMission(ctx, s, { w, h, trail: trail.current, tFlame: flame.current, camera, wallT }));
+    paintOne(map, (ctx, w, h) => drawOrbitMap(ctx, s, { w, h, trail: trail.current, wallT }));
+  }, [trail, camera]);
 
   useEffect(() => { paint(); }, [flight, paint]);
   useEffect(() => {
@@ -570,7 +695,10 @@ function MissionControl({ design, flight, setFlight, guidance, setGuidance, warp
               onChange={(e) => nudge((f) => { f.pitch = Number(e.target.value); })} />
           </label>
           <button type="button" className="spc-btn big primary" onClick={() => { activateStage(s); setFlight({ ...s, log: [...s.log] }); }} data-testid="spc-stage">Stage</button>
-          <button type="button" className="spc-btn big" onClick={() => { if (tryDeploy(s)) { setFlight({ ...s, log: [...s.log] }); if (!deployedOnce.current && s.deployed) { deployedOnce.current = true; onDeployed(s); } } }} disabled={!(el.bound && el.peAltitude > PLANET.atmHeight) || s.deployed} data-testid="spc-deploy">Deploy</button>
+          <button type="button" className="spc-btn big" onClick={() => { if (tryDeploy(s)) { setFlight({ ...s, log: [...s.log] }); if (!deployedOnce.current && s.deployed) { deployedOnce.current = true; onDeployed(s); } } }} disabled={!(el.bound && el.peAltitude > PLANET.atmHeight) || (s.deployedCount ?? (s.deployed ? 1 : 0)) >= s.parts.filter((p) => p.attached && p.def.category === 'payload').length} data-testid="spc-deploy">Deploy</button>
+          {mission && onClaim && criteriaOnly(mission, { peM: el.peAltitude, apM: el.apAltitude, altitudeM: altitudeOf(s), eccentricity: el.eccentricity, deployed: s.deployed, deployedCount: s.deployedCount ?? (s.deployed ? 1 : 0), flightTimeS: s.t - s.met0 }) && (
+            <button type="button" className="spc-btn big primary" onClick={() => onClaim(s)} data-testid="spc-claim">Claim 🪙 {mission.payout.toLocaleString('en-US')}</button>
+          )}
           <button type="button" className={'spc-btn' + (guidance ? ' primary' : '')} onClick={() => setGuidance(!guidance)} data-testid="spc-guidance">Guidance {guidance ? 'ON' : 'OFF'}</button>
           <label>Warp
             <select value={warp} onChange={(e) => setWarp(Number(e.target.value))} style={{ background: '#162028', color: '#cde', border: '1px solid #3a5060', padding: '4px 6px' }}>

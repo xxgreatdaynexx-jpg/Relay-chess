@@ -5,6 +5,7 @@ import { PART_BY_ID, stackOrder, radialsOn, type VesselDesign, type PlacedPart, 
 import {
   PLANET, orbitalElements, orbitPoints, altitudeOf, fmtAlt, type FlightState,
 } from '../../../shared/spaceFlight';
+import { drawSpaceGlobe, drawAscentHorizon, drawGroundTrack, ensurePlanetAssets } from './spacePlanet';
 
 export interface PartBox {
   uid: string;
@@ -217,257 +218,82 @@ export function hitVab(boxes: PartBox[], mx: number, my: number): PartBox | null
   return null;
 }
 
-function starfield(ctx: CanvasRenderingContext2D, w: number, h: number, seed = 1) {
-  let s = seed + 1;
-  const rnd = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
-  for (let i = 0; i < 180; i++) {
-    const x = rnd() * w, y = rnd() * h, a = 0.25 + rnd() * 0.75, r = rnd() * 1.3;
-    ctx.fillStyle = `rgba(230,240,255,${a})`;
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-  }
-}
+export type McCamera = 'auto' | 'horizon' | 'globe' | 'track';
 
-export interface McCamera { kind: 'pad' | 'ascent' | 'space' }
+function drawVehicleOnHorizon(
+  ctx: CanvasRenderingContext2D,
+  s: FlightState,
+  baseX: number,
+  baseY: number,
+  tFlame: number,
+) {
+  const { boxes, height: rh } = layoutRocket({
+    name: s.designName,
+    parts: s.parts.filter((p) => p.attached).map((p) => ({
+      uid: p.uid, partId: p.partId, stage: p.stage, radial: p.radial, angle: p.angle,
+    })),
+  });
+  const scale = Math.min(18, 90 / Math.max(rh, 4));
+  ctx.save();
+  ctx.translate(baseX, baseY);
+  ctx.rotate((s.pitch * Math.PI) / 180);
+  const flame = tFlame * s.throttle;
+  for (const b of boxes) {
+    const pw = b.w * scale, ph = b.h * scale;
+    const px = b.x * scale - pw / 2;
+    const py = -(b.y + b.h) * scale;
+    const live = s.parts.find((p) => p.uid === b.uid);
+    const fl = live && live.ignited && (b.def.category === 'engine' || b.def.category === 'srb') ? flame : 0;
+    paintPart(ctx, b.def, px, py, pw, ph, false, fl);
+  }
+  ctx.restore();
+}
 
 /** Draw the Mission Control centre visual. */
 export function drawMission(
   ctx: CanvasRenderingContext2D,
   s: FlightState,
-  opts: { w: number; h: number; trail?: Array<[number, number]>; tFlame?: number },
+  opts: { w: number; h: number; trail?: Array<[number, number]>; tFlame?: number; camera?: McCamera; wallT?: number },
 ) {
   const { w, h } = opts;
   ctx.clearRect(0, 0, w, h);
   const alt = altitudeOf(s);
-  const el = orbitalElements(s.x, s.y, s.vx, s.vy);
+  const camera = opts.camera ?? 'auto';
+  const highCoast = s.phase === 'coast' && alt > 60_000;
+  const spaceView = camera === 'globe' || (
+    camera !== 'horizon' && camera !== 'track' && (
+      alt > 65_000
+      || s.phase === 'orbit'
+      || s.phase === 'deployed'
+      || s.phase === 'circularize'
+      || highCoast
+    )
+  );
+  try { ensurePlanetAssets(); } catch { /* node / missing canvas */ }
 
-  // Space background
-  const bg = ctx.createLinearGradient(0, 0, 0, h);
-  if (alt < 20_000) {
-    const t = Math.max(0, Math.min(1, alt / 20_000));
-    bg.addColorStop(0, lerpC('#7ec0f0', '#050814', t));
-    bg.addColorStop(1, lerpC('#c8e4f8', '#0a1020', t));
+  if (camera === 'track') {
+    drawGroundTrack(ctx, s, { w, h, trail: opts.trail, wallT: opts.wallT });
+  } else if (spaceView) {
+    drawSpaceGlobe(ctx, s, { w, h, trail: opts.trail, wallT: opts.wallT });
   } else {
-    bg.addColorStop(0, '#050814');
-    bg.addColorStop(1, '#0a1020');
-  }
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, w, h);
-  if (alt > 8_000) {
-    ctx.save();
-    ctx.globalAlpha = Math.min(1, (alt - 8_000) / 25_000);
-    starfield(ctx, w, h, 7);
-    ctx.restore();
+    drawAscentHorizon(ctx, s, {
+      w, h, tFlame: opts.tFlame, wallT: opts.wallT,
+      drawRocket: (c, bx, by) => drawVehicleOnHorizon(c, s, bx, by, opts.tFlame ?? 1),
+    });
   }
 
-  const spaceView = alt > 45_000 || s.phase === 'orbit' || s.phase === 'deployed' || s.phase === 'coast' || s.phase === 'circularize';
-
-  if (spaceView) {
-    // Planet in the middle, orbit around it. Scale so 200 km alt fits.
-    const maxR = PLANET.radius + Math.max(200_000, el.apAltitude === Infinity ? 200_000 : Math.min(el.apAltitude + 40_000, 800_000));
-    const scale = Math.min(w, h) * 0.42 / maxR;
-    const cx = w * 0.5, cy = h * 0.52;
-    // Atmosphere glow
-    const ag = ctx.createRadialGradient(cx, cy, PLANET.radius * scale, cx, cy, (PLANET.radius + PLANET.atmHeight) * scale * 1.04);
-    ag.addColorStop(0, 'rgba(80,160,255,0)');
-    ag.addColorStop(0.7, 'rgba(70,150,255,0.28)');
-    ag.addColorStop(1, 'rgba(70,150,255,0)');
-    ctx.fillStyle = ag;
-    ctx.beginPath();
-    ctx.arc(cx, cy, (PLANET.radius + PLANET.atmHeight) * scale * 1.08, 0, Math.PI * 2);
-    ctx.fill();
-    // Planet body
-    const pg = ctx.createRadialGradient(cx - 20, cy - 20, 10, cx, cy, PLANET.radius * scale);
-    pg.addColorStop(0, '#3a8a5a');
-    pg.addColorStop(0.55, '#1e5a3a');
-    pg.addColorStop(1, '#0a2018');
-    ctx.fillStyle = pg;
-    ctx.beginPath();
-    ctx.arc(cx, cy, PLANET.radius * scale, 0, Math.PI * 2);
-    ctx.fill();
-    // Simple continents
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(Math.atan2(s.y, s.x) * 0.15);
-    ctx.fillStyle = 'rgba(40,90,50,0.7)';
-    continent(ctx, PLANET.radius * scale);
-    ctx.restore();
-    // Terminator shade
-    ctx.fillStyle = 'rgba(0,0,0,0.28)';
-    ctx.beginPath();
-    ctx.arc(cx + PLANET.radius * scale * 0.15, cy, PLANET.radius * scale, -Math.PI * 0.4, Math.PI * 0.6);
-    ctx.fill();
-
-    // Predicted orbit
-    if (el.bound && el.apAltitude > 0) {
-      const pts = orbitPoints(el, s.x, s.y, 128);
-      ctx.strokeStyle = 'rgba(80, 220, 160, 0.85)';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([5, 4]);
-      ctx.beginPath();
-      pts.forEach(([px, py], i) => {
-        const X = cx + px * scale, Y = cy - py * scale;
-        if (i === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
-      });
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-    // Trail
-    if (opts.trail && opts.trail.length > 1) {
-      ctx.strokeStyle = 'rgba(255, 200, 80, 0.7)';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      opts.trail.forEach(([px, py], i) => {
-        const X = cx + px * scale, Y = cy - py * scale;
-        if (i === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
-      });
-      ctx.stroke();
-    }
-    // Vehicle
-    const vx = cx + s.x * scale, vy = cy - s.y * scale;
-    ctx.fillStyle = s.deployed ? '#f0d060' : '#f4f6fa';
-    ctx.beginPath();
-    ctx.arc(vx, vy, s.deployed ? 5 : 4, 0, Math.PI * 2);
-    ctx.fill();
-    if (!s.deployed && s.throttle > 0.05) {
-      const r = Math.hypot(s.x, s.y) || 1;
-      const pr = s.pitch * Math.PI / 180;
-      const rx = s.x / r, ry = s.y / r, tx = -ry, ty = rx;
-      const tdx = Math.cos(pr) * rx + Math.sin(pr) * tx;
-      const tdy = Math.cos(pr) * ry + Math.sin(pr) * ty;
-      // Flame opposite thrust
-      ctx.strokeStyle = '#ff9020';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(vx, vy);
-      ctx.lineTo(vx - tdx * 12, vy + tdy * 12);
-      ctx.stroke();
-    }
-    // Atmo cutoff ring
-    ctx.strokeStyle = 'rgba(120,180,255,0.25)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([3, 5]);
-    ctx.beginPath();
-    ctx.arc(cx, cy, (PLANET.radius + PLANET.atmHeight) * scale, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    // Caption
-    ctx.fillStyle = '#9fd';
-    ctx.font = '11px ui-monospace, monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText(`ApA ${fmtAlt(el.apAltitude)}   PeA ${fmtAlt(el.peAltitude)}`, 10, h - 12);
-  } else {
-    // Pad / ascent view: horizon, rocket upright-ish in the middle.
-    const horizon = h * (0.72 + Math.min(0.2, alt / 80_000));
-    // Ground / curved earth
-    const ground = ctx.createLinearGradient(0, horizon, 0, h);
-    ground.addColorStop(0, alt < 3000 ? '#2d6a3a' : '#1a3a28');
-    ground.addColorStop(1, '#0c1c14');
-    ctx.fillStyle = ground;
-    ctx.beginPath();
-    ctx.moveTo(0, horizon);
-    ctx.quadraticCurveTo(w / 2, horizon - Math.min(80, alt / 400), w, horizon);
-    ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.fill();
-    if (alt < 800) {
-      // Pad
-      ctx.fillStyle = '#4a4e56';
-      ctx.fillRect(w / 2 - 50, horizon - 6, 100, 8);
-      ctx.fillStyle = '#888';
-      ctx.fillRect(w / 2 + 36, horizon - 90, 6, 90);
-    }
-    // Atmosphere haze
-    const haze = ctx.createLinearGradient(0, 0, 0, horizon);
-    haze.addColorStop(0, 'rgba(180,210,255,0)');
-    haze.addColorStop(1, `rgba(160,200,255,${Math.max(0, 0.25 - alt / 40_000)})`);
-    ctx.fillStyle = haze;
-    ctx.fillRect(0, 0, w, horizon);
-
-    // Rocket in the centre, tall, with flame. Pitch tilts it.
-    const { boxes, height: rh } = layoutRocket({ name: s.designName, parts: s.parts.filter((p) => p.attached).map((p) => ({ uid: p.uid, partId: p.partId, stage: p.stage, radial: p.radial, angle: p.angle })) });
-    const scale = Math.min(18, (h * 0.45) / Math.max(rh, 4));
-    const cx = w / 2;
-    const base = horizon - 8 - Math.min(alt / 80, 40);
-    ctx.save();
-    ctx.translate(cx, base);
-    ctx.rotate((s.pitch * Math.PI) / 180);
-    const flame = (opts.tFlame ?? 1) * s.throttle;
-    for (const b of boxes) {
-      const pw = b.w * scale, ph = b.h * scale;
-      const px = b.x * scale - pw / 2;
-      const py = -(b.y + b.h) * scale;
-      const live = s.parts.find((p) => p.uid === b.uid);
-      const fl = live && live.ignited && (b.def.category === 'engine' || b.def.category === 'srb') ? flame : 0;
-      paintPart(ctx, b.def, px, py, pw, ph, false, fl);
-    }
-    ctx.restore();
-    ctx.fillStyle = '#cde';
-    ctx.font = '11px ui-monospace, monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText(fmtAlt(alt), 10, 18);
-  }
-
-  // Bezel / scan vignette
   const vig = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.7);
   vig.addColorStop(0, 'rgba(0,0,0,0)');
-  vig.addColorStop(1, 'rgba(0,0,0,0.45)');
+  vig.addColorStop(1, 'rgba(0,0,0,0.38)');
   ctx.fillStyle = vig;
   ctx.fillRect(0, 0, w, h);
 }
 
-function continent(ctx: CanvasRenderingContext2D, R: number) {
-  ctx.beginPath();
-  ctx.ellipse(-R * 0.2, -R * 0.1, R * 0.45, R * 0.25, 0.3, 0, Math.PI * 2);
-  ctx.ellipse(R * 0.3, R * 0.2, R * 0.3, R * 0.18, -0.4, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function lerpC(a: string, b: string, t: number): string {
-  const P = (c: string) => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
-  const A = P(a), B = P(b);
-  const m = (i: number) => Math.round(A[i]! + (B[i]! - A[i]!) * t);
-  return `rgb(${m(0)},${m(1)},${m(2)})`;
-}
-
-/** Small top-down orbit map for the side console. */
+/** Side-console map: same surface texture, ground track on the equator. */
 export function drawOrbitMap(
   ctx: CanvasRenderingContext2D,
   s: FlightState,
-  opts: { w: number; h: number; trail?: Array<[number, number]> },
+  opts: { w: number; h: number; trail?: Array<[number, number]>; wallT?: number },
 ) {
-  const { w, h } = opts;
-  ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = '#071016';
-  ctx.fillRect(0, 0, w, h);
-  starfield(ctx, w, h, 3);
-  const el = orbitalElements(s.x, s.y, s.vx, s.vy);
-  const maxR = PLANET.radius + Math.max(150_000, el.bound ? Math.min(el.apAltitude + 30_000, 600_000) : 200_000);
-  const scale = Math.min(w, h) * 0.42 / maxR;
-  const cx = w / 2, cy = h / 2;
-  ctx.strokeStyle = 'rgba(80,160,255,0.3)';
-  ctx.beginPath(); ctx.arc(cx, cy, (PLANET.radius + PLANET.atmHeight) * scale, 0, Math.PI * 2); ctx.stroke();
-  const pg = ctx.createRadialGradient(cx - 6, cy - 6, 4, cx, cy, PLANET.radius * scale);
-  pg.addColorStop(0, '#3a8a5a');
-  pg.addColorStop(1, '#0c2014');
-  ctx.fillStyle = pg;
-  ctx.beginPath(); ctx.arc(cx, cy, PLANET.radius * scale, 0, Math.PI * 2); ctx.fill();
-  if (el.bound) {
-    const pts = orbitPoints(el, s.x, s.y, 96);
-    ctx.strokeStyle = '#4ed9a5';
-    ctx.lineWidth = 1.2;
-    ctx.setLineDash([4, 3]);
-    ctx.beginPath();
-    pts.forEach(([px, py], i) => { const X = cx + px * scale, Y = cy - py * scale; if (i === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y); });
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
-  if (opts.trail && opts.trail.length) {
-    ctx.strokeStyle = '#f0c050';
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    opts.trail.forEach(([px, py], i) => { const X = cx + px * scale, Y = cy - py * scale; if (i === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y); });
-    ctx.stroke();
-  }
-  ctx.fillStyle = s.deployed ? '#f0d060' : '#fff';
-  ctx.beginPath();
-  ctx.arc(cx + s.x * scale, cy - s.y * scale, 3.5, 0, Math.PI * 2);
-  ctx.fill();
+  drawGroundTrack(ctx, s, { w: opts.w, h: opts.h, trail: opts.trail, wallT: opts.wallT });
 }

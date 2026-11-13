@@ -9,7 +9,9 @@
  * Economy (conservative): launching costs the part list (price-indexed). A successful
  * deploy pays SPACE_PAYOUT chips, at most SPACE_MAX_PAID times per player (lifetime).
  * After the cap, satellites still count for prestige and the leaderboard, but pay nothing.
- * QA accounts can fly; they never receive the payout. Additive tables only.
+ * That bounty is independent of the daily contract board: mission payouts are a separate
+ * purse, capped per UTC day, and a flight may collect both when it qualifies.
+ * QA accounts can fly; they never receive either payout. Additive tables only.
  */
 import { randomUUID } from 'node:crypto';
 import express from 'express';
@@ -28,6 +30,11 @@ import {
   SPACE_PAYOUT, SPACE_MAX_PAID, SPACE_COOLDOWN_MS, SPACE_LAUNCH_TTL_MS,
   type DesignStats,
 } from '../shared/spaceFlight.js';
+import {
+  dailyBoard, missionById, utcDay, evaluateCompletion, payoutAfterCap, designMeetsMission,
+  MISSION_MAX_ACTIVE, MISSION_DAILY_CAP,
+  type MissionDef, type FlightReport,
+} from '../shared/spaceMissions.js';
 
 export class SpaceError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
@@ -70,6 +77,32 @@ CREATE INDEX IF NOT EXISTS space_satellites_owner ON space_satellites (owner_key
 CREATE INDEX IF NOT EXISTS space_satellites_board ON space_satellites (deployed_at);
 `;
 
+/** Additive: contract board, payout ledger, and a mission id on launch tickets. */
+export const SPACE_MISSION_MIGRATION = `
+ALTER TABLE space_launches ADD COLUMN IF NOT EXISTS mission_id TEXT;
+CREATE TABLE IF NOT EXISTS space_contracts (
+  id TEXT PRIMARY KEY,
+  owner_key TEXT NOT NULL,
+  mission_id TEXT NOT NULL,
+  day TEXT NOT NULL,
+  accepted_at BIGINT NOT NULL,
+  completed_at BIGINT,
+  payout BIGINT NOT NULL DEFAULT 0,
+  launch_id TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS space_contracts_owner_mission ON space_contracts (owner_key, mission_id);
+CREATE INDEX IF NOT EXISTS space_contracts_owner_day ON space_contracts (owner_key, day);
+CREATE TABLE IF NOT EXISTS space_contract_payouts (
+  id TEXT PRIMARY KEY,
+  owner_key TEXT NOT NULL,
+  day TEXT NOT NULL,
+  mission_id TEXT NOT NULL,
+  amount BIGINT NOT NULL,
+  at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS space_contract_payouts_owner_day ON space_contract_payouts (owner_key, day);
+`;
+
 type Q = { query: (sql: string, args?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }> };
 type PoolLike = Q & { connect: () => Promise<Q & { release: () => void }> };
 
@@ -79,8 +112,13 @@ export interface SatRow {
   designName: string; peM: number; apM: number; periodS: number | null;
   paid: boolean; payout: number; deployedAt: number;
 }
-export interface LaunchTicket { id: string; ownerKey: string; hash: string; design: VesselDesign; cost: number; at: number; deployed: boolean }
+export interface LaunchTicket { id: string; ownerKey: string; hash: string; design: VesselDesign; cost: number; at: number; deployed: boolean; missionId?: string | null }
 export interface BoardRow { name: string; sats: number; lastAt: number }
+export interface ContractRow {
+  id: string; ownerKey: string; missionId: string; day: string;
+  acceptedAt: number; completedAt: number | null; payout: number; launchId: string | null;
+}
+
 
 const asDesign = (r: Record<string, unknown>): SavedDesign | null => {
   const design = parseDesign(r.design);
@@ -100,6 +138,7 @@ const asLaunch = (r: Record<string, unknown>): LaunchTicket | null => {
     id: String(r.id), ownerKey: String(r.owner_key), hash: String(r.design_hash), design,
     cost: Number(r.cost), at: Number(r.at),
     deployed: r.deployed === true || r.deployed === 't' || r.deployed === 'true',
+    missionId: r.mission_id ? String(r.mission_id) : null,
   };
 };
 
@@ -117,12 +156,38 @@ export function requireCapable(design: VesselDesign): DesignStats {
   return stats;
 }
 
+/** Any vehicle that can leave the pad — used for sounding flights and free practice. */
+export function requireLaunchable(design: VesselDesign): DesignStats {
+  const issues = validateDesign(design);
+  if (hasErrors(issues)) throw new SpaceError(issues.find((i) => i.level === 'error')!.text);
+  const stats = analyzeDesign(design);
+  if (stats.liftoffTwr < MIN_LIFTOFF_TWR) {
+    throw new SpaceError(`Liftoff TWR is ${stats.liftoffTwr.toFixed(2)}. You need at least ${MIN_LIFTOFF_TWR} to climb out.`);
+  }
+  return stats;
+}
+
+const asContract = (r: Record<string, unknown>): ContractRow => ({
+  id: String(r.id), ownerKey: String(r.owner_key), missionId: String(r.mission_id),
+  day: String(r.day), acceptedAt: Number(r.accepted_at),
+  completedAt: r.completed_at == null ? null : Number(r.completed_at),
+  payout: Number(r.payout ?? 0),
+  launchId: r.launch_id == null ? null : String(r.launch_id),
+});
+
 export class SpaceProgram {
   private memDesigns = new Map<string, SavedDesign[]>(); // owner -> list
   private memLaunches = new Map<string, LaunchTicket>();
   private memSats: SatRow[] = [];
+  private memContracts: ContractRow[] = [];
+  private memMissionPayouts: Array<{ id: string; ownerKey: string; day: string; missionId: string; amount: number; at: number }> = [];
   constructor(private readonly pool: PoolLike | null, private readonly clock = () => Date.now()) {}
-  async init() { if (this.pool) await this.pool.query(SPACE_MIGRATION); }
+  async init() {
+    if (this.pool) {
+      await this.pool.query(SPACE_MIGRATION);
+      await this.pool.query(SPACE_MISSION_MIGRATION);
+    }
+  }
 
   async designsOf(name: string): Promise<SavedDesign[]> {
     const k = keyOf(name);
@@ -231,6 +296,8 @@ export class SpaceProgram {
     const now = this.clock();
     const cooldownLeft = k ? Math.max(0, SPACE_COOLDOWN_MS - (now - last)) : 0;
     const payout = px(SPACE_PAYOUT);
+    const day = utcDay(now);
+    const missions = await this.missionView(k, day, now);
     return {
       signedIn: !!name, chips,
       designs, sats, board: await this.board(),
@@ -244,16 +311,27 @@ export class SpaceProgram {
         payout, maxPaid: SPACE_MAX_PAID, paid, remainingPaid: Math.max(0, SPACE_MAX_PAID - paid),
         cooldownMs: SPACE_COOLDOWN_MS, cooldownLeft, launchTtlMs: SPACE_LAUNCH_TTL_MS,
       },
+      missions,
       now,
     };
   }
 
-  async launch(name: string, raw: unknown) {
+  async launch(name: string, raw: unknown, missionId?: unknown) {
     const design = parseDesign(raw);
     if (!design) throw new SpaceError('That design could not be read.');
-    requireCapable(design);
+    requireLaunchable(design);
     const k = keyOf(name);
     const now = this.clock();
+    const mid = typeof missionId === 'string' && missionId.trim() ? missionId.trim() : null;
+    if (mid) {
+      const m = missionById(mid);
+      if (!m || m.day !== utcDay(now)) throw new SpaceError('That contract is not on today\'s board.');
+      const accepted = (await this.contractsOf(k, m.day)).find((c) => c.missionId === mid);
+      if (!accepted) throw new SpaceError('Accept the contract before rolling out.');
+      if (accepted.completedAt) throw new SpaceError('You already completed that contract today.');
+      const why = designMeetsMission(design, m);
+      if (why) throw new SpaceError(why);
+    }
     const last = await this.lastLaunchAt(k);
     const wait = SPACE_COOLDOWN_MS - (now - last);
     if (last > 0 && wait > 0) {
@@ -266,7 +344,7 @@ export class SpaceProgram {
     if (!bank.canAfford(name, cost)) throw new SpaceError('Not enough chips.');
     const id = randomUUID();
     const hash = designHash(design);
-    const ticket: LaunchTicket = { id, ownerKey: k, hash, design: cloneDesign(design), cost, at: now, deployed: false };
+    const ticket: LaunchTicket = { id, ownerKey: k, hash, design: cloneDesign(design), cost, at: now, deployed: false, missionId: mid };
     const w = bank.transferAtomic([{ name, amount: -cost, key: `space_launch:${id}`, game: 'space_launch', memo: `Space Center launch: ${design.name}` }]);
     const run = async () => {
       if (!this.pool) { this.memLaunches.set(id, ticket); return; }
@@ -275,8 +353,8 @@ export class SpaceProgram {
       try {
         await cl.query('BEGIN');
         await cl.query(
-          'INSERT INTO space_launches (id, owner_key, design_hash, design, cost, at, deployed) VALUES ($1,$2,$3,$4,$5,$6,false)',
-          [id, k, hash, ticket.design, cost, now],
+          'INSERT INTO space_launches (id, owner_key, design_hash, design, cost, at, deployed, mission_id) VALUES ($1,$2,$3,$4,$5,$6,false,$7)',
+          [id, k, hash, ticket.design, cost, now, mid],
         );
         for (const s of w.stmts) await cl.query(s.sql, s.args);
         await cl.query('COMMIT');
@@ -370,6 +448,180 @@ export class SpaceProgram {
       prestigeOnly: payout === 0,
     };
   }
+
+  async contractsOf(k: string, day?: string): Promise<ContractRow[]> {
+    if (this.pool) {
+      const q = day
+        ? await this.pool.query('SELECT * FROM space_contracts WHERE owner_key = $1 AND day = $2 ORDER BY accepted_at', [k, day])
+        : await this.pool.query('SELECT * FROM space_contracts WHERE owner_key = $1 ORDER BY accepted_at', [k]);
+      return q.rows.map(asContract);
+    }
+    return this.memContracts.filter((c) => c.ownerKey === k && (!day || c.day === day)).sort((a, b) => a.acceptedAt - b.acceptedAt);
+  }
+
+  async missionPaidToday(k: string, day: string): Promise<number> {
+    if (this.pool) {
+      const r = (await this.pool.query(
+        'SELECT COALESCE(SUM(amount), 0)::bigint AS n FROM space_contract_payouts WHERE owner_key = $1 AND day = $2',
+        [k, day],
+      )).rows[0];
+      return Number(r?.n ?? 0);
+    }
+    return this.memMissionPayouts.filter((p) => p.ownerKey === k && p.day === day).reduce((s, p) => s + p.amount, 0);
+  }
+
+  async missionView(k: string | null, day: string, now: number) {
+    const board = dailyBoard(day).map((m) => ({ ...m, payout: px(m.payout) }));
+    const cap = px(MISSION_DAILY_CAP);
+    if (!k) {
+      return {
+        day, board, accepted: [] as ContractRow[], completedIds: [] as string[],
+        paidToday: 0, dailyCap: cap, remainingCap: cap, maxActive: MISSION_MAX_ACTIVE,
+      };
+    }
+    const mine = await this.contractsOf(k, day);
+    const paidToday = await this.missionPaidToday(k, day);
+    return {
+      day, board, accepted: mine,
+      completedIds: mine.filter((c) => c.completedAt).map((c) => c.missionId),
+      paidToday, dailyCap: cap, remainingCap: Math.max(0, cap - paidToday),
+      maxActive: MISSION_MAX_ACTIVE, now,
+    };
+  }
+
+  async acceptMission(name: string, missionId: unknown) {
+    const mid = typeof missionId === 'string' ? missionId.trim() : '';
+    const m = missionById(mid);
+    const now = this.clock();
+    const day = utcDay(now);
+    if (!m || m.day !== day) throw new SpaceError("That contract is not on today's board.");
+    if (!dailyBoard(day).some((x) => x.id === m.id)) throw new SpaceError("That contract is not on today's board.");
+    const k = keyOf(name);
+    const mine = await this.contractsOf(k, day);
+    const existing = mine.find((c) => c.missionId === m.id);
+    if (existing) {
+      if (existing.completedAt) throw new SpaceError('You already flew that contract today.');
+      throw new SpaceError('You already accepted that contract.');
+    }
+    const active = mine.filter((c) => !c.completedAt);
+    if (active.length >= MISSION_MAX_ACTIVE) {
+      throw new SpaceError(`You can have at most ${MISSION_MAX_ACTIVE} open contracts. Complete or wait for tomorrow's board.`);
+    }
+    const row: ContractRow = {
+      id: randomUUID(), ownerKey: k, missionId: m.id, day,
+      acceptedAt: now, completedAt: null, payout: 0, launchId: null,
+    };
+    if (this.pool) {
+      try {
+        await this.pool.query(
+          `INSERT INTO space_contracts (id, owner_key, mission_id, day, accepted_at, completed_at, payout, launch_id)
+           VALUES ($1,$2,$3,$4,$5,NULL,0,NULL)`,
+          [row.id, k, row.missionId, day, now],
+        );
+      } catch (e) {
+        if (/unique|duplicate/i.test((e as Error).message)) throw new SpaceError('You already accepted that contract.');
+        throw e;
+      }
+    } else {
+      this.memContracts.push(row);
+    }
+    return { contract: row, mission: { ...m, payout: px(m.payout) } };
+  }
+
+  async completeMission(name: string, body: {
+    launchId?: unknown; missionId?: unknown;
+    peM?: unknown; apM?: unknown; periodS?: unknown;
+    altitudeM?: unknown; eccentricity?: unknown;
+    deployed?: unknown; deployedCount?: unknown; flightTimeS?: unknown;
+  }) {
+    if (typeof body.launchId !== 'string' || !body.launchId) throw new SpaceError('Missing launch ticket.');
+    if (typeof body.missionId !== 'string' || !body.missionId) throw new SpaceError('Missing contract.');
+    const k = keyOf(name);
+    const now = this.clock();
+    const day = utcDay(now);
+    const m = missionById(body.missionId);
+    if (!m || m.day !== day) throw new SpaceError('That contract has expired.');
+    const accepted = (await this.contractsOf(k, day)).find((c) => c.missionId === m.id);
+    if (!accepted) throw new SpaceError('Accept the contract before claiming it.');
+    if (accepted.completedAt) throw new SpaceError('You already completed that contract today.');
+    const L = await this.launchOf(body.launchId, k);
+    const report: FlightReport = {
+      peM: Number(body.peM),
+      apM: Number(body.apM),
+      periodS: body.periodS == null ? undefined : Number(body.periodS),
+      altitudeM: body.altitudeM == null ? undefined : Number(body.altitudeM),
+      eccentricity: body.eccentricity == null ? undefined : Number(body.eccentricity),
+      deployed: body.deployed === true,
+      deployedCount: body.deployedCount == null ? undefined : Number(body.deployedCount),
+      flightTimeS: body.flightTimeS == null ? undefined : Number(body.flightTimeS),
+    };
+    const ev = evaluateCompletion({
+      mission: m,
+      acceptedAt: accepted.acceptedAt,
+      now,
+      ticket: { at: L.at, cost: L.cost, design: L.design, missionId: L.missionId ?? null, ttlMs: SPACE_LAUNCH_TTL_MS },
+      report,
+    });
+    if (!ev.ok) throw new SpaceError(ev.reason);
+    const want = px(ev.payout);
+    const paidToday = await this.missionPaidToday(k, day);
+    const cap = px(MISSION_DAILY_CAP);
+    let payout = payoutAfterCap(want, paidToday, cap);
+    if (isQa(k)) payout = 0;
+    const bank = getBank();
+    const pid = randomUUID();
+    const w = payout > 0
+      ? bank.transferAtomic([{ name, amount: payout, key: `space_mission:${pid}`, game: 'space_mission', memo: `Space contract: ${m.title}` }])
+      : null;
+    const run = async () => {
+      if (!this.pool) {
+        accepted.completedAt = now;
+        accepted.payout = payout;
+        accepted.launchId = L.id;
+        if (payout > 0) this.memMissionPayouts.push({ id: pid, ownerKey: k, day, missionId: m.id, amount: payout, at: now });
+        return;
+      }
+      if (w) await w.after;
+      const cl = await this.pool.connect();
+      try {
+        await cl.query('BEGIN');
+        const upd = await cl.query(
+          `UPDATE space_contracts SET completed_at = $1, payout = $2, launch_id = $3
+           WHERE id = $4 AND owner_key = $5 AND completed_at IS NULL`,
+          [now, payout, L.id, accepted.id, k],
+        );
+        if (!upd.rowCount) throw new SpaceError('You already completed that contract today.');
+        if (payout > 0) {
+          await cl.query(
+            `INSERT INTO space_contract_payouts (id, owner_key, day, mission_id, amount, at) VALUES ($1,$2,$3,$4,$5,$6)`,
+            [pid, k, day, m.id, payout, now],
+          );
+        }
+        if (w) for (const s of w.stmts) await cl.query(s.sql, s.args);
+        await cl.query('COMMIT');
+      } catch (e) { await cl.query('ROLLBACK').catch(() => {}); throw e; }
+      finally { cl.release(); }
+    };
+    const p = run(); w?.bind(p);
+    try { await p; } catch (e) {
+      w?.revert();
+      if (e instanceof SpaceError) throw e;
+      console.error('[space] mission payout failed:', (e as Error).message);
+      throw new SpaceError('The contract could not be settled. Try again.');
+    }
+    const capped = payout < want && !isQa(k);
+    return {
+      mission: { ...m, payout: want },
+      payout,
+      want,
+      capped,
+      prestigeOnly: payout === 0,
+      chips: bank.ready ? bank.account(name).chips : null,
+      paidToday: paidToday + payout,
+      remainingCap: Math.max(0, cap - paidToday - payout),
+      dailyCap: cap,
+    };
+  }
 }
 
 let program: SpaceProgram | null = null;
@@ -427,6 +679,8 @@ export function registerSpaceProgram(_io: Server, socket: Socket): void {
   on('space_view', async (_b, p) => p.view(nameOf()));
   on('space_save', async (b, p) => ({ design: await p.saveDesign(need(), b.design, b.id) }));
   on('space_delete', async (b, p) => { await p.deleteDesign(need(), b.id); return {}; });
-  on('space_launch', async (b, p) => p.launch(need(), b.design));
+  on('space_launch', async (b, p) => p.launch(need(), b.design, b.missionId));
   on('space_deploy', async (b, p) => p.deploy(need(), b));
+  on('space_mission_accept', async (b, p) => p.acceptMission(need(), b.missionId));
+  on('space_mission_complete', async (b, p) => p.completeMission(need(), b));
 }

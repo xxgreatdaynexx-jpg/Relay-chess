@@ -371,6 +371,8 @@ export interface FlightState {
   phase: FlightPhase;
   crashed: boolean;
   deployed: boolean;
+  /** How many payloads have been released this flight (multi-sat contracts). */
+  deployedCount: number;
   aborted: boolean;
   maxQ: number;
   maxQPassed: boolean;
@@ -539,7 +541,7 @@ export function launchState(design: VesselDesign, name = design.name): FlightSta
   const nextStage = stages.length ? Math.max(...stages) : 0;
   return {
     x: R, y: 0, vx: 0, vy: PLANET.omega * R, t: 0, throttle: 0, pitch: 0, parts, nextStage,
-    phase: 'pad', crashed: false, deployed: false, aborted: false, maxQ: 0, maxQPassed: false,
+    phase: 'pad', crashed: false, deployed: false, deployedCount: 0, aborted: false, maxQ: 0, maxQPassed: false,
     log: [], met0: 0, designName: name,
   };
 }
@@ -603,8 +605,9 @@ export function activateStage(s: FlightState): { fired: number; dropped: number;
       addLog(s, 'Fairing jettison.', true);
     } else if (p.def.category === 'payload') {
       const el = orbitalElements(s.x, s.y, s.vx, s.vy);
-      if (el.bound && el.peAltitude > PLANET.atmHeight && !s.deployed) {
+      if (el.bound && el.peAltitude > PLANET.atmHeight && (s.deployedCount ?? (s.deployed ? 1 : 0)) < s.parts.filter((q) => q.attached && q.def.category === 'payload').length) {
         s.deployed = true;
+        s.deployedCount = (s.deployedCount ?? 0) + 1;
         s.phase = 'deployed';
         deployed = true;
         addLog(s, `${p.def.name} deployed. Orbit confirmed.`, true);
@@ -621,12 +624,17 @@ export function activateStage(s: FlightState): { fired: number; dropped: number;
 
 export function tryDeploy(s: FlightState): boolean {
   const el = orbitalElements(s.x, s.y, s.vx, s.vy);
-  if (!el.bound || el.peAltitude <= PLANET.atmHeight || s.deployed || s.crashed) return false;
-  const sat = s.parts.find((p) => p.attached && p.def.category === 'payload');
-  if (!sat) return false;
+  if (!el.bound || el.peAltitude <= PLANET.atmHeight || s.crashed) return false;
+  const sats = s.parts.filter((p) => p.attached && p.def.category === 'payload');
+  const already = s.deployedCount ?? (s.deployed ? 1 : 0);
+  if (already >= sats.length) return false;
+  const sat = sats[already]!;
   s.deployed = true;
+  s.deployedCount = already + 1;
   s.phase = 'deployed';
-  addLog(s, `${sat.def.name} deployed. Welcome to orbit.`, true);
+  addLog(s, already === 0
+    ? `${sat.def.name} deployed. Welcome to orbit.`
+    : `${sat.def.name} deployed (${s.deployedCount} of ${sats.length}).`, true);
   return true;
 }
 
@@ -770,7 +778,7 @@ export function computeGuidance(s: FlightState): Guidance {
   return { throttle, pitch, stage, deploy, jettisonFairing, phase };
 }
 
-export function scriptedAscent(design: VesselDesign = courierI(), opts: { dt?: number; maxTime?: number; state?: FlightState } = {}): AscentResult {
+export function scriptedAscent(design: VesselDesign = courierI(), opts: { dt?: number; maxTime?: number; state?: FlightState; stopAtAltitude?: number } = {}): AscentResult {
   const dt = opts.dt ?? 0.05;
   const maxTime = opts.maxTime ?? 900;
   const s = opts.state ?? launchState(design);
@@ -856,6 +864,7 @@ export function scriptedAscent(design: VesselDesign = courierI(), opts: { dt?: n
     // Sub-step if we're near the ground and descending fast.
     stepFlight(s, dt);
     if (s.crashed) break;
+    if (opts.stopAtAltitude != null && altitudeOf(s) >= opts.stopAtAltitude) break;
   }
 
   const el = orbitalElements(s.x, s.y, s.vx, s.vy);
