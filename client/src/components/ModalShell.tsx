@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { backdropDismiss, closeButton } from '@/lib/backdrop';
 
@@ -153,7 +153,20 @@ export function PanelLoading({
   );
 }
 
-/** Suspense with a closeable fallback and a timeout that surfaces Retry instead of spinning forever. */
+/** Fires `onTimeout` only while mounted — used inside the Suspense fallback so a loaded menu is left alone. */
+function LoadTimeout({ ms, onTimeout }: { ms: number; onTimeout: () => void }) {
+  const fn = useRef(onTimeout);
+  fn.current = onTimeout;
+  useEffect(() => {
+    const t = window.setTimeout(() => fn.current(), ms);
+    return () => window.clearTimeout(t);
+  }, [ms]);
+  return null;
+}
+
+/** Suspense with a closeable fallback and a timeout that surfaces Retry instead of spinning forever.
+ *  The timer runs only while the fallback is showing (still loading). Once the menu has opened,
+ *  keeping it open past the timeout must not replace it with a "too long" error. */
 export function TimedSuspense({
   label, onClose, children, timeout = PANEL_LOAD_MS, testId,
 }: {
@@ -165,11 +178,6 @@ export function TimedSuspense({
 }) {
   const [gen, setGen] = useState(0);
   const [err, setErr] = useState<string | null>(null);
-  useEffect(() => {
-    setErr(null);
-    const t = window.setTimeout(() => setErr('This menu is taking too long to open.'), timeout);
-    return () => window.clearTimeout(t);
-  }, [gen, timeout]);
   if (err) {
     return (
       <PanelLoading
@@ -182,7 +190,15 @@ export function TimedSuspense({
     );
   }
   return (
-    <Suspense fallback={<PanelLoading label={label} onClose={onClose} testId={testId} />} key={gen}>
+    <Suspense
+      fallback={
+        <>
+          <LoadTimeout ms={timeout} onTimeout={() => setErr('This menu is taking too long to open.')} />
+          <PanelLoading label={label} onClose={onClose} testId={testId} />
+        </>
+      }
+      key={gen}
+    >
       {children}
     </Suspense>
   );

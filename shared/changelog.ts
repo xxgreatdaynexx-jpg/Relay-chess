@@ -6,6 +6,9 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-13T13:45:00-06:00", "title": "Fishing stays open after the menu has loaded", "bullets": [
+    "The fishing dock and 3D fishing no longer close after 12 seconds with a message that the page took too long to load. That timeout now only applies while a menu is still opening, so a session that has already loaded keeps running. Other menus that use the same loader are also fixed. Catch rules and prices are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-12T19:05:00-06:00", "title": "Sail home is always available on a voyage", "bullets": [
     "If you were stuck at sea — including after a restart, or if the Ocean dock was collapsed — Sail home is on the at-sea screen and in the Ocean dock. A reload also brings you back if the voyage itself was already gone. Crew can return without waiting on the captain. Prices and travel times are unchanged.",
   ]},

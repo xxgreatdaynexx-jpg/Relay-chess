@@ -95,6 +95,50 @@ describe('PanelLoading and TimedSuspense', () => {
     vi.unstubAllGlobals();
     expect(PANEL_LOAD_MS).toBeGreaterThanOrEqual(8_000);
   });
+
+  it('does not replace a menu that already opened once the timeout elapses', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const { host, unmount } = await mount(el(TimedSuspense, { label: 'Opening the dock…', onClose: () => {}, testId: 'dock-load', children: el('div', { 'data-testid': 'dock-ready' }, 'Fishing ready') }));
+    expect(host.querySelector('[data-testid="dock-ready"]')!.textContent).toBe('Fishing ready');
+    expect(host.querySelector('[data-testid="dock-load-error"]')).toBeNull();
+    await act(async () => { vi.advanceTimersByTime(PANEL_LOAD_MS + 2_000); });
+    expect(host.querySelector('[data-testid="dock-ready"]')!.textContent).toBe('Fishing ready');
+    expect(host.querySelector('[data-testid="dock-load-error"]')).toBeNull();
+    expect(host.textContent).not.toMatch(/too long/);
+    await unmount();
+    vi.unstubAllGlobals();
+  });
+
+  it('times out only while still loading, and Retry remounts the menu', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    // Gate on a flag, not a render count — React may invoke the child twice in development.
+    let allow = false;
+    function Dock() {
+      if (!allow) throw new Promise<void>(() => { /* stays pending so the fallback stays up */ });
+      return el('div', { 'data-testid': 'dock-ready' }, 'Fishing ready');
+    }
+    const onClose = vi.fn();
+    const { host, unmount } = await mount(el(TimedSuspense, { label: 'Opening the dock…', onClose, testId: 'dock-load', children: el(Dock) }));
+    expect(host.textContent).toContain('Opening the dock…');
+    expect(host.querySelector('[data-testid="dock-load-error"]')).toBeNull();
+    expect(host.querySelector('[data-testid="dock-ready"]')).toBeNull();
+    await act(async () => { vi.advanceTimersByTime(PANEL_LOAD_MS); });
+    expect(host.querySelector('[data-testid="dock-load-error"]')!.textContent).toMatch(/too long/);
+    const retry = host.querySelector('[data-testid="dock-load-retry"]') as HTMLButtonElement;
+    expect(retry).toBeTruthy();
+    expect(host.querySelector('[data-testid="dock-load-close"]')).toBeTruthy();
+    allow = true;
+    await act(async () => { retry.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    expect(host.querySelector('[data-testid="dock-ready"]')!.textContent).toBe('Fishing ready');
+    expect(host.querySelector('[data-testid="dock-load-error"]')).toBeNull();
+    await act(async () => { vi.advanceTimersByTime(PANEL_LOAD_MS + 2_000); });
+    expect(host.querySelector('[data-testid="dock-ready"]')!.textContent).toBe('Fishing ready');
+    expect(host.textContent).not.toMatch(/too long/);
+    await unmount();
+    vi.unstubAllGlobals();
+  });
 });
 
 describe('Launch and Future Features popups gained a close ✕', () => {
