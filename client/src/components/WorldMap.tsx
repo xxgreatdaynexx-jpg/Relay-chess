@@ -35,6 +35,7 @@ import { barnFarms, isBarnProperty } from '../../../shared/barnFarms';
 import { useAccount } from '@/lib/auth';
 import { flyHome, refreshTrip, useTrip } from '@/lib/travel';
 import { socket } from '@/lib/net';
+import { LaunchTile2D, LaunchToast, useWorldLaunchSync } from './LaunchShows';
 import { indexed } from '../../../shared/priceIndex';
 import { skyNow, parseTod, fmtClock, hex } from '../../../shared/daynight';
 import { fmtLap } from '../../../shared/venues';
@@ -250,6 +251,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
   useEffect(() => { const close = () => setPanel(NONE); window.addEventListener(CLOSE_WORLD_PANELS, close); return () => window.removeEventListener(CLOSE_WORLD_PANELS, close); }, []);
   const [owned, setOwned] = useState<Map<string, OwnedProperty>>(new Map());
   const [toast, setToast] = useState<string | null>(null); const toastT = useRef(0);
+  useWorldLaunchSync(worldRef, !loading);
   const deed = panelId(panel, 'deed'); const setDeed = (id: string | null) => setPanel((c) => (id ? { k: 'deed', id } : closePanel(c, 'deed')));
   const home = panel.k === 'home';
   const deeds = panel.k === 'deeds'; const setDeeds = (v: boolean) => setPanel((c) => (v ? { k: 'deeds' } : closePanel(c, 'deeds')));
@@ -414,6 +416,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
           {WORLD_SPOTS.map((s) => (
             <button key={s.id} type="button" className="world-tile" style={{ ['--c' as string]: '#' + s.color.toString(16).padStart(6, '0') }} onClick={() => go(s.id)} data-testid={`world-tile-${s.id}`}>
               <span className="world-tile-icon">{s.icon}</span><b>{s.label}</b><small>{s.blurb}</small>
+              {s.id === 'spacecenter' && <LaunchTile2D />}
             </button>
           ))}
           <button type="button" className="world-tile" style={{ ['--c' as string]: '#c9a24a' }} onClick={() => setDeeds(true)} data-testid="world-tile-bigfarms">
@@ -467,6 +470,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       <BillionaireClubHost onDeed={(id) => setDeed(id)} />
       <FireworksHost />
       {toast && <div className="world-toast" role="status" data-testid="world-toast">{toast}</div>}
+      {!driving && <LaunchToast me={me} onOpen={() => setPanel({ k: 'spacesim' })} onWatch={mode === '3d' ? () => worldRef.current?.watchLaunch() : undefined} />}
       {farm && <FarmGame onAllFarms={hasBarn ? openAllFarms : undefined} id={farm} label={propertyById(farm)?.label ?? 'Farm'} onClose={() => setFarm(null)} />}
       {farm && me && owned.get(farm)?.owner.toLowerCase() === me.toLowerCase() && <button type="button" className="estate-hyper-open" data-testid="farm-hyper" onClick={() => setPanel({ k: 'estate', id: farm, kind: 'hyper' })}>🌿 Convert to a Dutch glasshouse…</button>}
       {farm?.startsWith('winery:') && me && owned.get(farm)?.owner.toLowerCase() === me.toLowerCase() && <button type="button" className="estate-hyper-open" data-testid="farm-wine-press" onClick={() => setPanel({ k: 'estate', id: farm, kind: 'estate' })}>🍷 Open the press…</button>}

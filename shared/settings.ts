@@ -12,6 +12,8 @@ export interface Settings {
   reducedMotion: boolean;
   /** Ask before sending each chess move. */
   confirmMoves: boolean;
+  /** Show other players' rocket launches on the city map (3D/2D animation and a toast). */
+  launchFx: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -25,6 +27,7 @@ export const DEFAULT_SETTINGS: Settings = {
   coords: false,
   reducedMotion: false,
   confirmMoves: false,
+  launchFx: true,
 };
 
 export const BOARD_PRESETS: { id: string; label: string; light: string; dark: string }[] = [
@@ -58,6 +61,7 @@ export function cleanSettings(raw: unknown): Settings {
     coords: bool(r.coords, d.coords),
     reducedMotion: bool(r.reducedMotion, d.reducedMotion),
     confirmMoves: bool(r.confirmMoves, d.confirmMoves),
+    launchFx: bool(r.launchFx, d.launchFx),
   };
 }
 

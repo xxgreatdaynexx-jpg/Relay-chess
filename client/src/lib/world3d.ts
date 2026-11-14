@@ -29,6 +29,7 @@ import { RIG_DOCK } from '../../../shared/mapExpansion';
 import { addExpansionLand } from './worldExpansionLand';
 import { buildStoneQuarry } from './worldQuarry';
 import { buildSpaceCenter } from './spaceCenterModel';
+import { createLaunchFx } from './worldLaunch';
 import { SPACE_CENTER_OX, SPACE_CENTER_OZ } from '../../../shared/spaceCenter';
 import { expRoadClearance } from '../../../shared/expansionRoads';
 import { buildAirportLandmark } from './estateModels';
@@ -236,6 +237,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const box = (w: number, hgt: number, d: number, m: THREE.Material, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(geo(new THREE.BoxGeometry(w, hgt, d)), m); o.position.set(x, y + hgt / 2, z); return o; };
   const cyl = (rt: number, rb: number, hgt: number, m: THREE.Material, x = 0, y = 0, z = 0, seg = 10) => { const o = new THREE.Mesh(geo(new THREE.CylinderGeometry(rt, rb, hgt, seg)), m); o.position.set(x, y + hgt / 2, z); return o; };
 
+  let padRocket: THREE.Object3D | null = null;
   for (const spot of WORLD_SPOTS) {
     const lb = lmBoxes[spot.id]; if (!lb) continue;
     const g = new THREE.Group(); g.position.set(lb.x, 0, lb.z); g.rotation.y = lb.rot; // pad turned to face its street
@@ -450,6 +452,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
         const campus = buildSpaceCenter();
         campus.position.set(-SPACE_CENTER_OX, 0, -SPACE_CENTER_OZ);
         g.add(campus);
+        padRocket = campus.getObjectByName('rocket') ?? null;
         height = 33; // lightning masts are 31
         break; }
     }
@@ -992,6 +995,14 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     const dir = camera.position.clone().sub(controls.target).setY(0).normalize();
     fly = { from: camera.position.clone(), to: tgt.clone().add(dir.multiplyScalar(dist)).setY(hgt), tf: controls.target.clone(), tt: tgt, t: 0, id: '' }; controls.enabled = false;
   };
+  /** Glide to a vantage point south of the Space Center, aimed above the pad so a climbing rocket stays in frame. */
+  const watchLaunch = () => {
+    h.onHover(null, 0, 0);
+    const p = new THREE.Vector3(); if (padRocket) padRocket.getWorldPosition(p); else p.set(-186, 0, -410);
+    const tgt = new THREE.Vector3(p.x + 45, 55, p.z + 10);
+    const to = tgt.clone().add(new THREE.Vector3(0.28, 0, 1).normalize().multiplyScalar(250)).setY(150);
+    fly = { from: camera.position.clone(), to, tf: controls.target.clone(), tt: tgt, t: 0, id: '' }; controls.enabled = false;
+  };
   const flyTo = (id: string) => {
     const l = lms.find((x) => x.id === id); if (!l) return; setHover(id); h.onHover(null, 0, 0);
     const tgt = new THREE.Vector3(l.pos.x, Math.min(l.height * 0.5, 10), l.pos.z);
@@ -1055,6 +1066,14 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     for (const m of civicKit.glow) m.emissiveIntensity = (m.userData.ei as number) * glowK; for (const m of civicKit.halos) m.opacity = 0.9 * k.lights;
   };
   applySky(); let skyT = 0;
+  // Public rocket launches from the Space Center pad (cosmetic; driven by the server's launch broadcast).
+  const launchFx = (() => {
+    scene.updateMatrixWorld(true);
+    const p = new THREE.Vector3();
+    if (padRocket) padRocket.getWorldPosition(p); else p.set(-186, 0, -410);
+    p.y += 2.15; // mobile launcher deck
+    return createLaunchFx(scene, p, tier, padRocket);
+  })();
   const tmpV = new THREE.Vector3(); const clock = new THREE.Clock(); let raf = 0; let running = true; let time = 0;
   const d = new THREE.Object3D(); const hp = headG.attributes.position as THREE.BufferAttribute;
   const blink = (lms.find((l) => l.id === 'leaderboard')!.root.userData as { blink?: THREE.Object3D }).blink;
@@ -1076,6 +1095,7 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     townHallProtest?.step(dt, time, camera.position);
     farmProtest?.step(dt, time, camera.position);
     cityJoke.step(time);
+    launchFx.step(Date.now(), { day: skyDay, camera, viewH: renderer.domElement.height || 600 });
     for (const w of waterMats) w.uniforms.uTime.value = time; for (const w of oceanMats) w.uniforms.uTime.value = time; venues.step(dt, time, camera.position);
     const portrait = (canvas.clientWidth || 1) < (canvas.clientHeight || 1);
     for (const l of lms) { const k = labelScale(camera.position.distanceTo(l.sign.getWorldPosition(tmpV)), portrait) * (l.sign.userData.hover ? 1.2 : 1); fitLabel(l.sign, k); }
@@ -1131,7 +1151,8 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
     setRunning(v: boolean) { running = v && !document.hidden; clock.getDelta(); },
     project(id: string) { const l = lms.find((x) => x.id === id); if (!l) return null; const v = l.pos.clone().setY(l.height + 2.2).project(camera); const rc = canvas.getBoundingClientRect(); return { x: rc.left + (v.x + 1) / 2 * rc.width, y: rc.top + (1 - v.y) / 2 * rc.height }; },
     hover(id: string | null) { setHover(id); },
-    dispose() { cityJoke.dispose(); townHallProtest?.dispose(); townHallProtest = null; farmProtest?.dispose(); farmProtest = null; disposeSharedProtestSfx(); xmas?.dispose(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); parkDead = true; trailerMeshes = []; jailDead = true; civicDead = true; civicKit.dispose(); window.clearInterval(civicPoll); window.removeEventListener('city-changed', loadCivic); window.clearInterval(jailPoll); window.clearInterval(jailTick); for (const o of inmateObjs) o.tex.dispose(); cancelAnimationFrame(raf); venues.dispose(); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
+    setLaunchShows: launchFx.setShows, setLaunchFx: launchFx.setEnabled, watchLaunch,
+    dispose() { cityJoke.dispose(); launchFx.dispose(); townHallProtest?.dispose(); townHallProtest = null; farmProtest?.dispose(); farmProtest = null; disposeSharedProtestSfx(); xmas?.dispose(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKey); window.removeEventListener('blur', onBlur); parkDead = true; trailerMeshes = []; jailDead = true; civicDead = true; civicKit.dispose(); window.clearInterval(civicPoll); window.removeEventListener('city-changed', loadCivic); window.clearInterval(jailPoll); window.clearInterval(jailTick); for (const o of inmateObjs) o.tex.dispose(); cancelAnimationFrame(raf); venues.dispose(); ro.disconnect(); document.removeEventListener('visibilitychange', vis); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointerleave', onLeave); controls.dispose(); scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh || (o as THREE.Points).isPoints) { m.geometry?.dispose?.(); } }); disposables.forEach((x) => x.dispose()); composer?.dispose(); renderer.dispose(); },
   };
 }
 export type World = ReturnType<typeof createWorld>;

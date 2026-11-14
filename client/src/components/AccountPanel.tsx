@@ -175,6 +175,7 @@ function SettingsTab() {
         <Toggle label="Flash the screen on your turn" checked={s.turnFlash} onChange={(v) => updateSettings({ turnFlash: v })} id="set-flash" />
         <Toggle label="Confirm each chess move before sending" checked={s.confirmMoves} onChange={(v) => updateSettings({ confirmMoves: v })} id="set-confirm-moves" />
         <Toggle label="Reduce motion" checked={s.reducedMotion} onChange={(v) => updateSettings({ reducedMotion: v })} id="set-motion" />
+        <Toggle label="Show rocket launches on the city map" checked={s.launchFx} onChange={(v) => updateSettings({ launchFx: v })} id="set-launchfx" />
       </div>
       <div className="acct-section">
         <h3>Windows</h3>

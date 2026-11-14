@@ -35,12 +35,30 @@ import {
   MISSION_MAX_ACTIVE, MISSION_DAILY_CAP,
   type MissionDef, type FlightReport,
 } from '../shared/spaceMissions.js';
+import { makeLaunchShow, showActive, SHOW_MAX_ACTIVE, type LaunchShow } from '../shared/spaceLaunchShow.js';
 import { SpaceResearch, ResearchError, SPACE_RESEARCH_MIGRATION } from './spaceResearch.js';
 export { SPACE_RESEARCH_MIGRATION };
 
 export class SpaceError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
 const isQa = (k: string) => k.startsWith('qa-');
+
+/** Public launch shows in flight (cosmetic city broadcast); pruned on every read. */
+const shows: LaunchShow[] = [];
+export function activeShows(now = Date.now()): LaunchShow[] {
+  for (let i = shows.length - 1; i >= 0; i--) if (!showActive(shows[i]!, now) && now > shows[i]!.at) shows.splice(i, 1);
+  return shows.slice();
+}
+/** Record and return a show for a successful launch, or null when it should not be broadcast (QA account, sky full). */
+export function admitShow(launchId: string, name: string, design: VesselDesign, now = Date.now()): LaunchShow | null {
+  if (isQa(keyOf(name))) return null;
+  if (activeShows(now).length >= SHOW_MAX_ACTIVE) return null;
+  const show = makeLaunchShow(launchId, name, design, now);
+  shows.push(show);
+  return show;
+}
+/** Test hook. */
+export function _resetShows() { shows.length = 0; }
 
 export const SPACE_MIGRATION = `
 CREATE TABLE IF NOT EXISTS space_designs (
@@ -814,7 +832,7 @@ export function spaceRouter() {
 }
 
 type Ack = (r: { ok: boolean; error?: string; [k: string]: unknown }) => void;
-export function registerSpaceProgram(_io: Server, socket: Socket): void {
+export function registerSpaceProgram(io: Server, socket: Socket): void {
   const nameOf = () => (socket.data as { account?: { name: string } }).account?.name ?? null;
   const need = () => { const n = nameOf(); if (!n) throw new SpaceError('Sign in to use the Space Center.'); return n; };
   const on = (ev: string, fn: (b: Record<string, unknown>, p: SpaceProgram) => unknown) => socket.on(ev, async (payload: unknown, ack?: Ack) => {
@@ -829,7 +847,18 @@ export function registerSpaceProgram(_io: Server, socket: Socket): void {
   on('space_view', async (_b, p) => p.view(nameOf()));
   on('space_save', async (b, p) => ({ design: await p.saveDesign(need(), b.design, b.id) }));
   on('space_delete', async (b, p) => { await p.deleteDesign(need(), b.id); return {}; });
-  on('space_launch', async (b, p) => p.launch(need(), b.design, b.missionId));
+  on('space_launch', async (b, p) => {
+    const name = need();
+    const r = await p.launch(name, b.design, b.missionId);
+    // Cosmetic city broadcast: one small event per launch (the per-player pad cooldown already rate-limits it).
+    const show = admitShow(r.launchId, name, r.design);
+    if (show) io.emit('space_launch_show', { show, now: Date.now() });
+    return r;
+  });
+  // Late joiners (or a map that just mounted) ask for whatever is still in the sky.
+  socket.on('space_launch_shows', (_b: unknown, ack?: (r: { ok: boolean; shows: LaunchShow[]; now: number }) => void) => {
+    if (typeof ack === 'function') ack({ ok: true, shows: activeShows(), now: Date.now() });
+  });
   on('space_deploy', async (b, p) => p.deploy(need(), b));
   on('space_mission_accept', async (b, p) => p.acceptMission(need(), b.missionId));
   on('space_mission_complete', async (b, p) => p.completeMission(need(), b));
