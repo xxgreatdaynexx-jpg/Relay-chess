@@ -19,12 +19,12 @@ export const SURVEY_ADVANCE_CAP_S = 18 * 3600;
 export const SURVEY_MILESTONES = [25, 50, 75, 100] as const;
 /** Conservative milestone payouts (before px), claimed once per threshold per map. */
 export const SURVEY_MILESTONE_PAYOUT: Record<number, number> = {
-  25: 1_000,
-  50: 1_500,
-  75: 2_000,
-  100: 3_000,
+  25: 5000,
+  50: 7500,
+  75: 10_000,
+  100: 15_000,
 };
-/** 7,500 chips if every milestone on one map is collected. */
+/** 37,500 chips if every milestone on one map is collected. */
 
 export type MapType = 'altimetry' | 'biome' | 'resource' | 'visual' | 'weather';
 

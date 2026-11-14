@@ -110,7 +110,7 @@ describe('mapping coverage', () => {
     expect(dueMilestones(80, 25)).toEqual([50, 75]);
     expect(dueMilestones(100, 75)).toEqual([100]);
     expect(dueMilestones(100, 100)).toEqual([]);
-    expect(Object.values(SURVEY_MILESTONE_PAYOUT).reduce((a, b) => a + b, 0)).toBe(7_500);
+    expect(Object.values(SURVEY_MILESTONE_PAYOUT).reduce((a, b) => a + b, 0)).toBe(37_500);
     const g = previewGrid('visual', 40);
     expect(coveragePct(g)).toBeGreaterThanOrEqual(40);
     expect(filledCount(g)).toBeLessThanOrEqual(SURVEY_CELLS);
@@ -264,7 +264,7 @@ describe('research server (memory)', () => {
     expect(r.points).toBeGreaterThan(0);
     expect(r.grant).toBe(0);
     // Cap math: a grant can never push today's total over the cap.
-    expect(SCIENCE_GRANT_DAILY_CAP).toBe(2_000);
+    expect(SCIENCE_GRANT_DAILY_CAP).toBe(10_000);
   });
 
   it('gates researched parts at launch and unlocks them with science', async () => {

@@ -104,8 +104,8 @@ describe('Courier I design analysis', () => {
   it('has a command core, a satellite, and costs a modest number of chips', () => {
     const d = courierI();
     expect(hasErrors(validateDesign(d))).toBe(false);
-    expect(designCost(d)).toBe(1200 + 350 + 300 + 500 + 1100 + 200 + 900 + 900 + 1400);
-    expect(designCost(d)).toBe(6850);
+    expect(designCost(d)).toBe(5 * (1200 + 350 + 300 + 500 + 1100 + 200 + 900 + 900 + 1400));
+    expect(designCost(d)).toBe(34_250);
     expect(designHash(d)).toBe(designHash(courierI()));
     const st = analyzeDesign(d);
     expect(st.payloads).toContain('CommSat');

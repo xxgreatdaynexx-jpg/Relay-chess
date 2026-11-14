@@ -39,7 +39,7 @@ export const PLANET = {
 
 export const LEO_DV_BUDGET = 3400;
 /** One-time chip payout for a successful deploy, scaled by the price index. Capped per player. */
-export const SPACE_PAYOUT = 400;
+export const SPACE_PAYOUT = 2_000;
 export const SPACE_MAX_PAID = 5;
 export const SPACE_COOLDOWN_MS = 90_000;
 export const SPACE_LAUNCH_TTL_MS = 30 * 60_000;

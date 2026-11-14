@@ -175,7 +175,7 @@ for (const mode of ['memory', 'postgres'] as Mode[]) {
       const paid = r.ok.reduce((s, x) => s + x.paid, 0);
       expect(chips('Gus')).toBe(before + paid);
       const pct = (await p.view('Gus')).survey.maps.find((m) => m.mapType === 'visual')!;
-      const expected = [25, 50, 75, 100].filter((m) => m <= pct.milestone).reduce((s, m) => s + ({ 25: 1000, 50: 1500, 75: 2000, 100: 3000 } as Record<number, number>)[m]!, 0);
+      const expected = [25, 50, 75, 100].filter((m) => m <= pct.milestone).reduce((s, m) => s + ({ 25: 5000, 50: 7500, 75: 10_000, 100: 15_000 } as Record<number, number>)[m]!, 0);
       expect(paid).toBe(expected);
     });
 

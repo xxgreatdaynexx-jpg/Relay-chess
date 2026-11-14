@@ -66,9 +66,9 @@ export const EXPERIMENT_BY_PART = new Map(EXPERIMENTS.map((e) => [e.partId, e]))
 /** Fraction of the remaining subject value each repeat earns. */
 export const SCIENCE_REPEAT_FACTOR = 0.5;
 /** Chips per science point (research grant), before px. */
-export const SCIENCE_GRANT_PER_POINT = 20;
+export const SCIENCE_GRANT_PER_POINT = 100;
 /** Separate small cap on research grants per UTC day, before px. */
-export const SCIENCE_GRANT_DAILY_CAP = 2_000;
+export const SCIENCE_GRANT_DAILY_CAP = 10_000;
 
 export function situationOf(opts: { alt: number; el?: OrbitalElements; onPad?: boolean }): Situation {
   if (opts.onPad) return 'pad';

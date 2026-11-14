@@ -215,6 +215,8 @@ describe('economy guard', () => {
     expect(after.design).not.toBeNull();
     expect(analyzeDesign(after.design!).capable).toBe(true);
     expect(after.cost).toBeGreaterThanOrEqual(Math.floor(before.cost * 0.95));
+    // 5x economy: the floor scales with prices (3,490 before the rebalance).
+    expect(after.cost).toBe(17_450);
   }, 60_000);
 
   it('prices propellant and thrust no cheaper than the old catalog', () => {

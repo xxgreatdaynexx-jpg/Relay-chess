@@ -96,7 +96,7 @@ export function SpaceContracts({
             })}
           </div>
           <p className="spc-help-block">
-            The lifetime satellite bounty (🪙 {/* shown by hangar */}400, five times) is separate and still pays on a qualifying deploy. Contract payouts come from this daily purse and do not count against that cap.
+            The lifetime satellite bounty (🪙 {/* shown by hangar */}2,000, five times) is separate and still pays on a qualifying deploy. Contract payouts come from this daily purse and do not count against that cap.
           </p>
         </section>
       </aside>

@@ -40,10 +40,10 @@ export function cheapestOrbit(allowed?: Set<string>, maxTanks = 4): CheapestResu
   const cands: Array<{ cost: number; build: () => VesselDesign }> = [];
   let best = Infinity;
   const push = (cost: number, mk: () => VesselDesign) => {
-    if (cost > best + 2_000) return;
+    if (cost > best + 10_000) return;
     if (cost < best) best = cost;
     cands.push({ cost, build: mk });
-    if (cands.length > 20_000) { const keep = cands.filter((c) => c.cost <= best + 2_000); cands.length = 0; cands.push(...keep); }
+    if (cands.length > 20_000) { const keep = cands.filter((c) => c.cost <= best + 10_000); cands.length = 0; cands.push(...keep); }
   };
   for (const pr of probes) {
     const top = payload.dryMass + pr.dryMass, topCost = payload.cost + pr.cost;
@@ -65,7 +65,7 @@ export function cheapestOrbit(allowed?: Set<string>, maxTanks = 4): CheapestResu
       if (topCost + u.cost + dec.cost > best) continue;
       for (const s of stacks) for (const b of boosterOpts) {
         const cost = topCost + u.cost + dec.cost + s.cost + b.cost;
-        if (cost > best + 2_000) continue;
+        if (cost > best + 10_000) continue;
         const m0 = upWet + s.wet + b.wet;
         const twr = (thrustOf(s.eng!, PLANET.p0) + (b.srb ? thrustOf(b.srb, PLANET.p0) * b.k : 0)) / (m0 * G0);
         if (twr < MIN_LIFTOFF_TWR) continue;

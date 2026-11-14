@@ -66,28 +66,28 @@ describe('mission generation', () => {
     expect(hashDay(DAY_A)).not.toBe(hashDay('2026-11-14'));
   });
 
-  it('sizes payouts to clear a typical launch cost with a conservative net of about 1k–15k', () => {
+  it('sizes payouts to clear a typical launch cost with a conservative net of about 5k–75k (5x economy)', () => {
     const courier = designCost(courierI());
     const scout = designCost(scoutI());
-    expect(courier).toBe(6850);
+    expect(courier).toBe(34_250);
     expect(scout).toBeLessThan(courier);
     const byId = Object.fromEntries(MISSION_TEMPLATES.map((t) => [t.templateId, t]));
-    // Sounding: a cheap vehicle, not Courier. Payout clearly above a 2–3k sounding stack.
-    expect(byId.sounding!.payout).toBe(5_000);
-    expect(byId.sounding!.payout - 2_500).toBeGreaterThanOrEqual(1_000);
+    // Sounding: a cheap vehicle, not Courier. Payout clearly above a 10–15k sounding stack.
+    expect(byId.sounding!.payout).toBe(25_000);
+    expect(byId.sounding!.payout - 12_500).toBeGreaterThanOrEqual(5_000);
     // Orbit-class: Scout and Courier both turn a profit.
-    expect(byId['first-orbit']!.payout - scout).toBeGreaterThanOrEqual(1_000);
-    expect(byId['first-orbit']!.payout - courier).toBeGreaterThanOrEqual(1_000);
-    expect(byId['circular-leo']!.payout - courier).toBeGreaterThanOrEqual(3_000);
-    expect(byId['deploy-250']!.payout - courier).toBeGreaterThanOrEqual(7_000);
-    expect(byId['deploy-high']!.payout - courier).toBeGreaterThanOrEqual(10_000);
-    expect(byId['deploy-loft']!.payout - courier).toBeGreaterThanOrEqual(14_000);
-    expect(byId['deploy-loft']!.payout - courier).toBeLessThanOrEqual(16_000);
-    expect(byId['twin-sat']!.payout).toBe(18_000);
-    expect(byId['budget-scout']!.maxCost).toBe(5_500);
-    expect(scout).toBeLessThan(5_500);
-    expect(byId['budget-scout']!.payout - scout).toBeGreaterThanOrEqual(5_000);
-    expect(MISSION_DAILY_CAP).toBe(30_000);
+    expect(byId['first-orbit']!.payout - scout).toBeGreaterThanOrEqual(5_000);
+    expect(byId['first-orbit']!.payout - courier).toBeGreaterThanOrEqual(5_000);
+    expect(byId['circular-leo']!.payout - courier).toBeGreaterThanOrEqual(15_000);
+    expect(byId['deploy-250']!.payout - courier).toBeGreaterThanOrEqual(35_000);
+    expect(byId['deploy-high']!.payout - courier).toBeGreaterThanOrEqual(50_000);
+    expect(byId['deploy-loft']!.payout - courier).toBeGreaterThanOrEqual(70_000);
+    expect(byId['deploy-loft']!.payout - courier).toBeLessThanOrEqual(80_000);
+    expect(byId['twin-sat']!.payout).toBe(90_000);
+    expect(byId['budget-scout']!.maxCost).toBe(27_500);
+    expect(scout).toBeLessThan(27_500);
+    expect(byId['budget-scout']!.payout - scout).toBeGreaterThanOrEqual(25_000);
+    expect(MISSION_DAILY_CAP).toBe(150_000);
     expect(MISSION_MAX_ACTIVE).toBe(3);
     // Every advertised min Δv is at least the vis-viva / Hohmann estimate.
     // Science contracts carry no orbit target; their situations are checked by the science validator.

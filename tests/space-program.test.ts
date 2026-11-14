@@ -29,7 +29,7 @@ describe('space program (memory)', () => {
     const cost = designCost(courierI());
     const L = await p.launch('Ann', courierI());
     expect(L.cost).toBe(cost);
-    expect(L.cost).toBe(6850);
+    expect(L.cost).toBe(34_250);
     expect(chips('Ann')).toBe(before - cost);
     expect(L.stats.capable).toBe(true);
     const d = await p.deploy('Ann', { launchId: L.launchId, peM: 80_000, apM: 90_000, periodS: 1900 });
@@ -48,7 +48,7 @@ describe('space program (memory)', () => {
   it('rejects a weak rocket, a second launch inside the cooldown, and an expired ticket', async () => {
     let now = Date.parse('2026-11-13T12:00:00Z');
     const p = new SpaceProgram(null, () => now);
-    fund('Bob', 50_000);
+    fund('Bob', 250_000);
     const weak = makeDesign('Popgun', [
       { part: 'probe-okto', stage: 15 },
       { part: 'commsat', stage: 0 },
@@ -60,10 +60,10 @@ describe('space program (memory)', () => {
     const weakStats = analyzeDesign(weak);
     if (weakStats.liftoffTwr < 1.15) {
       await expect(p.launch('Bob', weak)).rejects.toThrow(/TWR|thrust/i);
-      expect(chips('Bob')).toBe(50_000);
+      expect(chips('Bob')).toBe(250_000);
     } else {
       const Lw = await p.launch('Bob', weak);
-      expect(chips('Bob')).toBe(50_000 - designCost(weak));
+      expect(chips('Bob')).toBe(250_000 - designCost(weak));
       await expect(p.deploy('Bob', { launchId: Lw.launchId, peM: 80_000, apM: 80_000 })).rejects.toThrow(/Δv|dv|orbit|satellite/i);
       // Consume the cooldown so the rest of the test can launch Scout I.
       now += SPACE_COOLDOWN_MS + 10;
