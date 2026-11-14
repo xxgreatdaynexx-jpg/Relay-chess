@@ -8,6 +8,7 @@
  * planet rotation: λ = atan2(y, x) − ω t.
  */
 import { PLANET, orbitalElements, orbitPoints, altitudeOf, fmtAlt, type FlightState } from '../../../shared/spaceFlight';
+import { clamp, lerp, smooth, perlin3, fbm, terrainAt, biomeFromTerrain, oreAt, type BiomeId } from '../../../shared/spaceTerrain';
 
 const TW = 1536;
 const TH = 768;
@@ -21,102 +22,6 @@ function norm(x: number, y: number, z: number): [number, number, number] {
   const l = Math.hypot(x, y, z) || 1;
   return [x / l, y / l, z / l];
 }
-const clamp = (v: number, a = 0, b = 1) => (v < a ? a : v > b ? b : v);
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const fade = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
-const smooth = (e0: number, e1: number, x: number) => {
-  const t = clamp((x - e0) / (e1 - e0));
-  return t * t * (3 - 2 * t);
-};
-
-/** Seeded permutation for Perlin-style 3D noise. */
-const PERM = new Uint8Array(512);
-(() => {
-  const p = new Uint8Array(256);
-  for (let i = 0; i < 256; i++) p[i] = i;
-  let s = 20261113;
-  const rnd = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
-  for (let i = 255; i > 0; i--) { const j = (rnd() * (i + 1)) | 0; const t = p[i]!; p[i] = p[j]!; p[j] = t; }
-  for (let i = 0; i < 512; i++) PERM[i] = p[i & 255]!;
-})();
-
-function grad(hash: number, x: number, y: number, z: number): number {
-  const h = hash & 15;
-  const u = h < 8 ? x : y;
-  const v = h < 4 ? y : h === 12 || h === 14 ? x : z;
-  return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
-}
-function perlin3(x: number, y: number, z: number): number {
-  const X = Math.floor(x) & 255, Y = Math.floor(y) & 255, Z = Math.floor(z) & 255;
-  const xf = x - Math.floor(x), yf = y - Math.floor(y), zf = z - Math.floor(z);
-  const u = fade(xf), v = fade(yf), w = fade(zf);
-  const A = PERM[X]! + Y, AA = PERM[A]! + Z, AB = PERM[A + 1]! + Z;
-  const B = PERM[X + 1]! + Y, BA = PERM[B]! + Z, BB = PERM[B + 1]! + Z;
-  const P = PERM;
-  return lerp(
-    lerp(
-      lerp(grad(P[AA]!, xf, yf, zf), grad(P[BA]!, xf - 1, yf, zf), u),
-      lerp(grad(P[AB]!, xf, yf - 1, zf), grad(P[BB]!, xf - 1, yf - 1, zf), u),
-      v,
-    ),
-    lerp(
-      lerp(grad(P[AA + 1]!, xf, yf, zf - 1), grad(P[BA + 1]!, xf - 1, yf, zf - 1), u),
-      lerp(grad(P[AB + 1]!, xf, yf - 1, zf - 1), grad(P[BB + 1]!, xf - 1, yf - 1, zf - 1), u),
-      v,
-    ),
-    w,
-  );
-}
-function fbm(x: number, y: number, z: number, oct = 5, lac = 2, gain = 0.5): number {
-  let a = 0, amp = 0.5, f = 1, n = 0;
-  for (let i = 0; i < oct; i++) { a += amp * perlin3(x * f, y * f, z * f); n += amp; amp *= gain; f *= lac; }
-  return a / (n || 1);
-}
-function ridged(x: number, y: number, z: number, oct = 4): number {
-  let a = 0, amp = 0.5, f = 1, n = 0;
-  for (let i = 0; i < oct; i++) {
-    const v = 1 - Math.abs(perlin3(x * f, y * f, z * f));
-    a += amp * v * v; n += amp; amp *= 0.5; f *= 2.05;
-  }
-  return a / (n || 1);
-}
-
-/** Hand-placed landmasses (lat, lon in degrees) so the world has a readable geography. */
-const LANDMASSES: Array<{ lat: number; lon: number; rx: number; ry: number; w: number; ang?: number }> = [
-  { lat: 22, lon: -18, rx: 0.95, ry: 0.52, w: 1.25, ang: 0.2 },
-  { lat: 48, lon: 28, rx: 0.55, ry: 0.38, w: 0.95, ang: -0.3 },
-  { lat: 8, lon: 72, rx: 0.7, ry: 0.48, w: 1.05, ang: 0.15 },
-  { lat: -12, lon: 28, rx: 0.5, ry: 0.72, w: 1.0, ang: 0.35 },
-  { lat: -28, lon: 132, rx: 0.85, ry: 0.42, w: 1.1, ang: -0.15 },
-  { lat: 14, lon: -92, rx: 0.38, ry: 0.55, w: 0.85, ang: 0.5 },
-  { lat: -38, lon: -64, rx: 0.52, ry: 0.4, w: 0.8, ang: 0.1 },
-  { lat: 62, lon: -40, rx: 0.45, ry: 0.3, w: 0.55 },
-  { lat: -16, lon: -150, rx: 0.28, ry: 0.22, w: 0.45 },
-  { lat: 2, lon: 115, rx: 0.32, ry: 0.22, w: 0.5, ang: 0.8 },
-  { lat: 35, lon: 138, rx: 0.22, ry: 0.28, w: 0.4 },
-  { lat: -46, lon: 168, rx: 0.22, ry: 0.18, w: 0.35 },
-];
-
-function landBias(lat: number, lon: number): number {
-  let b = -0.22;
-  const cl = Math.cos(lat);
-  for (const c of LANDMASSES) {
-    const cLat = c.lat * Math.PI / 180, cLon = c.lon * Math.PI / 180;
-    let dLon = lon - cLon;
-    while (dLon > Math.PI) dLon -= 2 * Math.PI;
-    while (dLon < -Math.PI) dLon += 2 * Math.PI;
-    const dLat = lat - cLat;
-    const ang = c.ang ?? 0;
-    const ca = Math.cos(ang), sa = Math.sin(ang);
-    const x = (dLon * cl * ca + dLat * sa) / c.rx;
-    const y = (-dLon * cl * sa + dLat * ca) / c.ry;
-    const d = x * x + y * y;
-    b += c.w * Math.exp(-d * 1.15);
-  }
-  // A little mid-ocean archipelago noise, stronger near equator.
-  return b;
-}
-
 export function planetLon(x: number, y: number, t: number): number {
   return Math.atan2(y, x) - PLANET.omega * t;
 }
@@ -127,6 +32,7 @@ interface PlanetAssets {
   lights: HTMLCanvasElement;
   ocean: Uint8Array; // 1 = ocean
   elev: Float32Array;
+  moist: Float32Array;
   stars: HTMLCanvasElement;
 }
 let assets: PlanetAssets | null = null;
@@ -228,15 +134,8 @@ function buildTextures(): PlanetAssets | null {
     for (let i = 0; i < TW; i++) {
       const lon = ((i + 0.5) / TW) * 2 * Math.PI - Math.PI;
       const x = cl * Math.cos(lon), y = cl * Math.sin(lon), z = sl;
-      // Domain-warped coastline.
-      const wx = fbm(x * 1.6 + 8, y * 1.6, z * 1.6, 4) * 0.28;
-      const wy = fbm(x * 1.6, y * 1.6 + 8, z * 1.6, 4) * 0.28;
-      const wz = fbm(x * 1.6, y * 1.6, z * 1.6 + 8, 4) * 0.28;
-      const n = fbm(x * 2.2 + wx, y * 2.2 + wy, z * 2.2 + wz, 6, 2.05, 0.5);
-      const ridge = ridged(x * 3.2, y * 3.2, z * 3.2, 5);
-      const bias = landBias(lat, lon);
-      const e = bias + n * 0.42 + ridge * 0.12 - 0.04;
-      const m = 0.5 + 0.5 * fbm(x * 2.4 + 20, y * 2.4, z * 2.4 + 4, 5);
+      void x; void y; void z;
+      const { elev: e, moist: m } = terrainAt(lat, lon);
       const idx = j * TW + i;
       elev[idx] = e;
       moistA[idx] = m;
@@ -330,7 +229,7 @@ function buildTextures(): PlanetAssets | null {
       st.beginPath(); st.arc(x, y, r, 0, Math.PI * 2); st.fill();
     }
   }
-  return { surface, clouds, lights, ocean, elev, stars };
+  return { surface, clouds, lights, ocean, elev, moist: moistA, stars };
 }
 
 export function ensurePlanetAssets(): PlanetAssets | null {
@@ -1040,3 +939,156 @@ function paintMapNight(ctx: CanvasRenderingContext2D, w: number, h: number, plan
 
 /** Force a fresh globe on the next frame (e.g. after a resize). */
 export function invalidatePlanetCache(): void { globeCache = null; }
+
+
+/* ── Survey layers (equirectangular, same terrain) ── */
+export type SurveyLayer = 'altimetry' | 'biome' | 'resource' | 'visual' | 'weather';
+const layerCache = new Map<string, HTMLCanvasElement>();
+
+function hexRgb(h: string): [number, number, number] {
+  return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+}
+
+const ELEV_RAMP: Array<[number, [number, number, number]]> = [
+  [-0.6, [8, 16, 64]], [-0.25, [20, 60, 150]], [0, [60, 150, 210]],
+  [0.02, [40, 140, 70]], [0.18, [150, 190, 70]], [0.35, [220, 190, 80]],
+  [0.5, [170, 110, 60]], [0.7, [235, 235, 240]],
+];
+function elevColor(e: number): [number, number, number] {
+  if (e <= ELEV_RAMP[0]![0]) return ELEV_RAMP[0]![1];
+  for (let i = 1; i < ELEV_RAMP.length; i++) {
+    const [a, ca] = ELEV_RAMP[i - 1]!, [b, cb] = ELEV_RAMP[i]!;
+    if (e <= b) {
+      const t = (e - a) / (b - a);
+      return [ca[0] + (cb[0] - ca[0]) * t, ca[1] + (cb[1] - ca[1]) * t, ca[2] + (cb[2] - ca[2]) * t];
+    }
+  }
+  return ELEV_RAMP[ELEV_RAMP.length - 1]![1];
+}
+function heat(v: number): [number, number, number] {
+  // black → purple → red → orange → yellow
+  const stops: Array<[number, [number, number, number]]> = [
+    [0, [10, 8, 20]], [0.35, [70, 20, 110]], [0.6, [200, 40, 50]], [0.8, [250, 150, 30]], [1, [255, 250, 160]],
+  ];
+  for (let i = 1; i < stops.length; i++) {
+    const [a, ca] = stops[i - 1]!, [b, cb] = stops[i]!;
+    if (v <= b) {
+      const t = (v - a) / (b - a);
+      return [ca[0] + (cb[0] - ca[0]) * t, ca[1] + (cb[1] - ca[1]) * t, ca[2] + (cb[2] - ca[2]) * t];
+    }
+  }
+  return stops[stops.length - 1]![1];
+}
+
+/** A full (unmasked) survey layer at w×h, cached. */
+export function surveyLayer(kind: SurveyLayer, w = 720, h = 360): HTMLCanvasElement | null {
+  const key = `${kind}|${w}x${h}`;
+  const hit = layerCache.get(key);
+  if (hit) return hit;
+  const a = ensurePlanetAssets();
+  if (!a) return null;
+  const c = makeCanvas(w, h);
+  const ctx = c.getContext('2d');
+  if (!ctx) return null;
+  if (kind === 'visual') {
+    ctx.drawImage(a.surface, 0, 0, TW, TH, 0, 0, w, h);
+  } else if (kind === 'weather') {
+    ctx.fillStyle = '#0d2238';
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalAlpha = 0.25;
+    ctx.drawImage(a.surface, 0, 0, TW, TH, 0, 0, w, h);
+    ctx.globalAlpha = 1;
+    ctx.drawImage(a.clouds, 0, 0, TW, TH, 0, 0, w, h);
+    ctx.drawImage(a.clouds, 0, 0, TW, TH, 0, 0, w, h);
+  } else {
+    const img = ctx.createImageData(w, h);
+    const d = img.data;
+    for (let j = 0; j < h; j++) {
+      const tj = Math.min(TH - 1, Math.floor((j + 0.5) / h * TH));
+      const lat = (0.5 - (j + 0.5) / h) * Math.PI;
+      for (let i = 0; i < w; i++) {
+        const ti = Math.min(TW - 1, Math.floor((i + 0.5) / w * TW));
+        const idx = tj * TW + ti;
+        const e = a.elev[idx]!;
+        let col: [number, number, number];
+        if (kind === 'altimetry') {
+          const eR = a.elev[tj * TW + ((ti + 2) % TW)]!;
+          const shade = clamp(1 + (e - eR) * 3.5, 0.7, 1.25);
+          const c0 = elevColor(e);
+          col = [c0[0] * shade, c0[1] * shade, c0[2] * shade];
+        } else if (kind === 'biome') {
+          const eR = a.elev[tj * TW + ((ti + 1) % TW)]!;
+          const eD = a.elev[Math.min(TH - 1, tj + 1) * TW + ti]!;
+          const slope = Math.hypot(eR - e, eD - e) * 9;
+          const b: BiomeId = biomeFromTerrain(e, lat, a.moist[idx]!, slope);
+          col = hexRgb(BIOME_COLORS[b]);
+        } else {
+          const lon = ((i + 0.5) / w) * 2 * Math.PI - Math.PI;
+          const ore = oreAt(lat, lon);
+          col = heat(e <= 0 ? ore * 0.55 : ore);
+        }
+        const o = (j * w + i) * 4;
+        d[o] = clamp(col[0], 0, 255) | 0;
+        d[o + 1] = clamp(col[1], 0, 255) | 0;
+        d[o + 2] = clamp(col[2], 0, 255) | 0;
+        d[o + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+  layerCache.set(key, c);
+  return c;
+}
+
+const BIOME_COLORS: Record<BiomeId, string> = {
+  'launch-site': '#d0d4dc', 'deep-ocean': '#0b2a5c', ocean: '#1d6a9a', shores: '#d8c890',
+  desert: '#d39a4a', mountains: '#7c746c', jungle: '#1f8a3a', forest: '#2d5e2a',
+  grassland: '#8cc05a', tundra: '#a8b4a0', 'ice-caps': '#eef4fa',
+};
+
+/**
+ * Draw a survey map: the layer where `isCovered(lon, lat)` is true, and a dark
+ * unscanned grid elsewhere. Cells are SURVEY_LON × SURVEY_LAT.
+ */
+export function drawSurveyMap(
+  ctx: CanvasRenderingContext2D,
+  kind: SurveyLayer,
+  opts: { w: number; h: number; lonCells: number; latCells: number; isCovered: (i: number, j: number) => boolean; track?: Array<[number, number]> },
+) {
+  const { w, h } = opts;
+  ctx.fillStyle = '#05090e';
+  ctx.fillRect(0, 0, w, h);
+  const layer = surveyLayer(kind);
+  const cw = w / opts.lonCells, ch = h / opts.latCells;
+  if (layer) {
+    ctx.save();
+    ctx.beginPath();
+    for (let j = 0; j < opts.latCells; j++) {
+      for (let i = 0; i < opts.lonCells; i++) {
+        // grid row 0 = south pole; canvas row 0 = north
+        if (opts.isCovered(i, j)) ctx.rect(i * cw - 0.5, (opts.latCells - 1 - j) * ch - 0.5, cw + 1, ch + 1);
+      }
+    }
+    ctx.clip();
+    ctx.drawImage(layer, 0, 0, layer.width, layer.height, 0, 0, w, h);
+    ctx.restore();
+  }
+  // Unscanned hatch
+  ctx.save();
+  ctx.strokeStyle = 'rgba(80,120,150,0.12)';
+  ctx.lineWidth = 1;
+  for (let j = 0; j < opts.latCells; j++) {
+    for (let i = 0; i < opts.lonCells; i++) {
+      if (opts.isCovered(i, j)) continue;
+      const x = i * cw, y = (opts.latCells - 1 - j) * ch;
+      ctx.beginPath(); ctx.moveTo(x, y + ch); ctx.lineTo(x + cw, y); ctx.stroke();
+    }
+  }
+  ctx.restore();
+  // Graticule
+  ctx.strokeStyle = 'rgba(200,230,255,0.14)';
+  for (let k = 1; k < 12; k++) { const x = (k / 12) * w; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+  for (let k = 1; k < 6; k++) { const y = (k / 6) * h; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+  ctx.strokeStyle = 'rgba(255,220,120,0.3)';
+  ctx.beginPath(); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke();
+}

@@ -12,12 +12,12 @@
  * launch cost (Scout I = 5,025, Courier I = 6,850) with a conservative net
  * profit of about 1,000–15,000 chips. A per-player daily cap limits farming.
  */
-import { analyzeDesign, circularVelocity, LEO_DV_BUDGET, PLANET, type DesignStats } from './spaceFlight.js';
+import { analyzeDesign, circularVelocity, LEO_DV_BUDGET, PLANET, SPACE_LAUNCH_TTL_MS, type DesignStats } from './spaceFlight.js';
 import { designCost, type VesselDesign } from './spaceParts.js';
 
 export const MISSION_MAX_ACTIVE = 3;
 export const MISSION_DAILY_CAP = 30_000;
-export const MISSION_BOARD_SIZE = 6;
+export const MISSION_BOARD_SIZE = 8;
 export const SPACE_KARMAN = PLANET.atmHeight; // 70 km — "reach space"
 
 export type MissionKind =
@@ -26,7 +26,9 @@ export type MissionKind =
   | 'circular'
   | 'deploy-orbit'
   | 'multi-sat'
-  | 'budget-orbit';
+  | 'budget-orbit'
+  | 'survey-orbit'
+  | 'science';
 
 export interface MissionDef {
   /** `${day}:${templateId}` — unique for the UTC day. */
@@ -53,6 +55,22 @@ export interface MissionDef {
   /** Catalog design cost must be < this (budget challenge). */
   maxCost?: number;
   requireDeploy?: boolean;
+  /** survey-orbit: scanner map type that must be deployed in the band. */
+  mapType?: string;
+  /** survey-orbit: scanner part id that must be on the design. */
+  scannerPart?: string;
+  /** science: experiment id (and part) that must report in `situation`. */
+  experimentId?: string;
+  experimentPart?: string;
+  situation?: string;
+  /** science: total science points returned by this one flight. */
+  minScience?: number;
+}
+
+/** Server-side facts about a launch (never taken from the client report). */
+export interface LaunchFacts {
+  scannersDeployed?: string[];
+  science?: Array<{ experimentId: string; situation: string; points: number }>;
 }
 
 export interface FlightReport {
@@ -306,6 +324,93 @@ const T: Template[] = [
   },
 ];
 
+T.push(
+  /* ── Mapping contracts (deploy a scanner in its optimal band) ── */
+  {
+    templateId: 'survey-visual', kind: 'survey-orbit', title: 'Orbital Imaging Pass', agency: 'Cartography Office',
+    briefing: 'Place a visual imaging camera in its 80–200 km band so it can start photographing the surface. Coverage then builds up on the Survey tab.',
+    success: ['Visual Imaging Camera on the vehicle', 'Periapsis and apoapsis 80–200 km', 'Scanner deployed'],
+    payout: 8_000, minDv: 3_500, minFlightSec: 200,
+    minPe: 80_000, maxPe: 200_000, minAp: 80_000, maxAp: 200_000,
+    requireDeploy: true, satCount: 1, mapType: 'visual', scannerPart: 'scan-camera',
+  },
+  {
+    templateId: 'survey-radar', kind: 'survey-orbit', title: 'Altimetry Survey Orbit', agency: 'Cartography Office',
+    briefing: 'Put a radar altimeter into the 80–250 km band to map the planet’s terrain. Requires Basic Science.',
+    success: ['RADAR Altimetry Sensor on the vehicle', 'Periapsis and apoapsis 80–250 km', 'Scanner deployed'],
+    payout: 9_000, minDv: 3_500, minFlightSec: 200,
+    minPe: 80_000, maxPe: 250_000, minAp: 80_000, maxAp: 250_000,
+    requireDeploy: true, satCount: 1, mapType: 'altimetry', scannerPart: 'scan-radar',
+  },
+  {
+    templateId: 'survey-biome', kind: 'survey-orbit', title: 'Land-Cover Survey', agency: 'Cartography Office',
+    briefing: 'Deploy a multispectral imager into 150–400 km to classify biomes. Requires Electrics.',
+    success: ['Multispectral Imager on the vehicle', 'Periapsis and apoapsis 150–400 km', 'Scanner deployed'],
+    payout: 12_000, minDv: 3_800, minFlightSec: 220,
+    minPe: 150_000, maxPe: 400_000, minAp: 150_000, maxAp: 400_000,
+    requireDeploy: true, satCount: 1, mapType: 'biome', scannerPart: 'scan-multispectral',
+  },
+  {
+    templateId: 'survey-ore', kind: 'survey-orbit', title: 'Prospecting Orbit', agency: 'Mining Consortium',
+    briefing: 'A resource scanner in a low 75–150 km orbit to find ore. Requires Science Tech.',
+    success: ['M700 Resource Scanner on the vehicle', 'Periapsis and apoapsis 75–150 km', 'Scanner deployed'],
+    payout: 12_000, minDv: 3_500, minFlightSec: 200,
+    minPe: 75_000, maxPe: 150_000, minAp: 75_000, maxAp: 150_000,
+    requireDeploy: true, satCount: 1, mapType: 'resource', scannerPart: 'scan-ore',
+  },
+  {
+    templateId: 'survey-weather', kind: 'survey-orbit', title: 'Weather Watch', agency: 'Weather Bureau',
+    briefing: 'A weather mapper high above the planet, 250–700 km. Requires Advanced Exploration.',
+    success: ['Weather Mapper on the vehicle', 'Periapsis and apoapsis 250–700 km', 'Scanner deployed'],
+    payout: 16_000, minDv: 4_200, minFlightSec: 250,
+    minPe: 250_000, maxPe: 700_000, minAp: 250_000, maxAp: 700_000,
+    requireDeploy: true, satCount: 1, mapType: 'weather', scannerPart: 'scan-weather',
+  },
+  /* ── Science contracts (run an experiment in a situation, server-recorded) ── */
+  {
+    templateId: 'sci-baro-low', kind: 'science', title: 'Pressure Profile', agency: 'University of Chud',
+    briefing: 'Fly a barometer through the lower atmosphere (below 18 km) and send back a reading. A small sounding rocket is plenty.',
+    success: ['PresMat Barometer on the vehicle', 'Run it flying low (< 18 km)'],
+    payout: 3_000, minDv: 0, minFlightSec: 10,
+    experimentId: 'baro', experimentPart: 'sci-baro', situation: 'lowAtmo',
+  },
+  {
+    templateId: 'sci-thermo-high', kind: 'science', title: 'Upper-Air Temperatures', agency: 'Weather Bureau',
+    briefing: 'Take the temperature of the high atmosphere, 18–70 km.',
+    success: ['2HOT Thermometer on the vehicle', 'Run it flying high (18–70 km)'],
+    payout: 4_000, minDv: 900, minFlightSec: 35,
+    experimentId: 'thermo', experimentPart: 'sci-thermo', situation: 'highAtmo',
+  },
+  {
+    templateId: 'sci-geiger-orbit', kind: 'science', title: 'Radiation Survey', agency: 'University of Chud',
+    briefing: 'Measure the radiation environment from low orbit. Requires Basic Science.',
+    success: ['Geiger Counter on the vehicle', 'Run it in low orbit'],
+    payout: 12_000, minDv: 3_400, minFlightSec: 200,
+    experimentId: 'geiger', experimentPart: 'sci-geiger', situation: 'lowOrbit',
+  },
+  {
+    templateId: 'sci-matbay-orbit', kind: 'science', title: 'Microgravity Materials', agency: 'Chud Space Agency',
+    briefing: 'Expose the materials bay to long-duration microgravity in low orbit. Requires Basic Science.',
+    success: ['SC-9001 Materials Bay on the vehicle', 'Run it in low orbit'],
+    payout: 13_000, minDv: 3_400, minFlightSec: 200,
+    experimentId: 'matbay', experimentPart: 'sci-matbay', situation: 'lowOrbit',
+  },
+  {
+    templateId: 'sci-grav-high', kind: 'science', title: 'Gravity Field Mapping', agency: 'Surveyor Corps',
+    briefing: 'Run a gravity scan from high orbit (250 km or more). Requires Science Tech.',
+    success: ['GRAVMAX Gravity Scanner on the vehicle', 'Run it in high orbit'],
+    payout: 18_000, minDv: 3_900, minFlightSec: 260,
+    experimentId: 'grav', experimentPart: 'sci-grav', situation: 'highOrbit',
+  },
+  {
+    templateId: 'sci-return', kind: 'science', title: 'Science Return', agency: 'Chud Space Agency',
+    briefing: 'Bring home at least 25 new science points from a single flight. Any mix of experiments counts; repeats are worth less.',
+    success: ['At least 25 science points recorded on one launch'],
+    payout: 9_000, minDv: 0, minFlightSec: 60,
+    minScience: 25,
+  },
+);
+
 export const MISSION_TEMPLATES: readonly Template[] = T;
 
 function hydrate(t: Template, day: string): MissionDef {
@@ -328,7 +433,9 @@ export function dailyBoard(day: string): MissionDef[] {
     const s = shuffle(rng, pool);
     return s.slice(0, Math.min(n, s.length));
   };
-  const chosen = [...pickN(easy, 2), ...pickN(medium, 3), ...pickN(hard, 1)];
+  const survey = T.filter((t) => t.kind === 'survey-orbit');
+  const science = T.filter((t) => t.kind === 'science');
+  const chosen = [...pickN(easy, 2), ...pickN(medium, 3), ...pickN(hard, 1), ...pickN(survey, 1), ...pickN(science, 1)];
   const ordered = shuffle(rng, chosen);
   // Guarantee uniqueness and exact board size.
   const seen = new Set<string>();
@@ -369,6 +476,15 @@ export function designMeetsMission(design: VesselDesign, mission: MissionDef): s
   if (mission.maxCost != null && designCost(design) >= mission.maxCost) {
     return `This design costs 🪙 ${designCost(design).toLocaleString('en-US')}; the budget cap is under 🪙 ${mission.maxCost.toLocaleString('en-US')}.`;
   }
+  if (mission.scannerPart && !design.parts.some((p) => p.partId === mission.scannerPart)) {
+    return 'This contract needs the matching scanner on the vehicle.';
+  }
+  if (mission.experimentPart && !design.parts.some((p) => p.partId === mission.experimentPart)) {
+    return 'This contract needs the matching experiment on the vehicle.';
+  }
+  if (mission.minScience && !design.parts.some((p) => p.partId.startsWith('sci-'))) {
+    return 'This contract needs at least one science experiment on the vehicle.';
+  }
   const need = mission.satCount ?? (mission.requireDeploy ? 1 : 0);
   if (need > 0 && stats.payloads.length < need) {
     return need === 1
@@ -400,8 +516,10 @@ export function evaluateCompletion(opts: {
   ticket: TicketFacts;
   report: FlightReport;
   designDv?: number;
+  facts?: LaunchFacts;
 }): CompletionFail {
   const { mission, acceptedAt, now, ticket, report } = opts;
+  const facts = opts.facts ?? {};
   if (ticket.missionId && ticket.missionId !== mission.id) {
     return { ok: false, reason: 'That launch was not filed against this contract.' };
   }
@@ -426,6 +544,19 @@ export function evaluateCompletion(opts: {
   }
   const paper = designMeetsMission(ticket.design, mission);
   if (paper) return { ok: false, reason: paper };
+
+  if (mission.kind === 'science') {
+    const recs = facts.science ?? [];
+    if (mission.minScience) {
+      const pts = recs.reduce((s, r) => s + (r.points || 0), 0);
+      if (pts + 1e-9 < mission.minScience) {
+        return { ok: false, reason: `This flight has returned ${Math.round(pts * 10) / 10} science; the contract needs ${mission.minScience}.` };
+      }
+    } else if (!recs.some((r) => r.experimentId === mission.experimentId && r.situation === mission.situation)) {
+      return { ok: false, reason: 'No matching experiment result was recorded on this launch.' };
+    }
+    return { ok: true, payout: mission.payout, capped: false, want: mission.payout };
+  }
 
   const ap = Number(report.apM);
   const pe = Number(report.peM);
@@ -477,6 +608,9 @@ export function evaluateCompletion(opts: {
   if (mission.requireDeploy && !report.deployed && (report.deployedCount ?? 0) < 1) {
     return { ok: false, reason: 'The payload was not deployed.' };
   }
+  if (mission.kind === 'survey-orbit' && !(facts.scannersDeployed ?? []).includes(mission.mapType ?? '')) {
+    return { ok: false, reason: 'The matching scanner was not deployed on this launch.' };
+  }
   const needSats = mission.satCount ?? 0;
   if (needSats > 1 && (report.deployedCount ?? (report.deployed ? 1 : 0)) < needSats) {
     return { ok: false, reason: `This contract needs ${needSats} payloads deployed on one launch.` };
@@ -501,7 +635,7 @@ export function reportMeetsMission(mission: MissionDef, report: FlightReport): b
       cost: 0,
       design: { name: 'probe', parts: [] },
       missionId: mission.id,
-      ttlMs: 15 * 60_000,
+      ttlMs: SPACE_LAUNCH_TTL_MS,
     },
     report,
     designDv: 8_000,
@@ -512,7 +646,12 @@ export function reportMeetsMission(mission: MissionDef, report: FlightReport): b
 }
 
 /** Client-side "can we claim?" — orbital criteria only, no ticket. */
-export function criteriaOnly(mission: MissionDef, report: FlightReport): boolean {
+export function criteriaOnly(mission: MissionDef, report: FlightReport & { science?: LaunchFacts['science'] }): boolean {
+  if (mission.kind === 'science') {
+    const recs = report.science ?? [];
+    if (mission.minScience) return recs.reduce((s, r) => s + r.points, 0) >= mission.minScience;
+    return recs.some((r) => r.experimentId === mission.experimentId && r.situation === mission.situation);
+  }
   const ap = report.apM, pe = report.peM;
   if (!Number.isFinite(ap) || !Number.isFinite(pe) || ap < pe - 1) return false;
   const alt = report.altitudeM ?? Math.max(ap, 0);

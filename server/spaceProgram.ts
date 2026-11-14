@@ -35,6 +35,8 @@ import {
   MISSION_MAX_ACTIVE, MISSION_DAILY_CAP,
   type MissionDef, type FlightReport,
 } from '../shared/spaceMissions.js';
+import { SpaceResearch, ResearchError, SPACE_RESEARCH_MIGRATION } from './spaceResearch.js';
+export { SPACE_RESEARCH_MIGRATION };
 
 export class SpaceError extends Error {}
 const keyOf = (n: string) => n.trim().toLowerCase();
@@ -181,12 +183,38 @@ export class SpaceProgram {
   private memSats: SatRow[] = [];
   private memContracts: ContractRow[] = [];
   private memMissionPayouts: Array<{ id: string; ownerKey: string; day: string; missionId: string; amount: number; at: number }> = [];
-  constructor(private readonly pool: PoolLike | null, private readonly clock = () => Date.now()) {}
+  readonly research: SpaceResearch;
+  constructor(private readonly pool: PoolLike | null, private readonly clock = () => Date.now()) {
+    this.research = new SpaceResearch(pool, clock);
+  }
   async init() {
     if (this.pool) {
       await this.pool.query(SPACE_MIGRATION);
       await this.pool.query(SPACE_MISSION_MIGRATION);
     }
+    await this.research.init();
+  }
+
+  private async wrapResearch<T>(fn: () => Promise<T>): Promise<T> {
+    try { return await fn(); } catch (e) {
+      if (e instanceof ResearchError) throw new SpaceError(e.message);
+      throw e;
+    }
+  }
+
+  async runScience(name: string, body: Record<string, unknown>) {
+    if (typeof body.launchId !== 'string' || !body.launchId) throw new SpaceError('Missing launch ticket.');
+    const k = keyOf(name);
+    const L = await this.launchOf(body.launchId, k);
+    return this.wrapResearch(() => this.research.runScience(name, k, L, body));
+  }
+
+  async unlockTech(name: string, nodeId: unknown) {
+    return this.wrapResearch(() => this.research.unlock(keyOf(name), nodeId));
+  }
+
+  async syncSurvey(name: string) {
+    return this.wrapResearch(() => this.research.syncSurvey(name, keyOf(name)));
   }
 
   async designsOf(name: string): Promise<SavedDesign[]> {
@@ -298,6 +326,8 @@ export class SpaceProgram {
     const payout = px(SPACE_PAYOUT);
     const day = utcDay(now);
     const missions = await this.missionView(k, day, now);
+    const science = await this.research.scienceView(k, now);
+    const survey = await this.research.surveyView(k);
     return {
       signedIn: !!name, chips,
       designs, sats, board: await this.board(),
@@ -312,6 +342,8 @@ export class SpaceProgram {
         cooldownMs: SPACE_COOLDOWN_MS, cooldownLeft, launchTtlMs: SPACE_LAUNCH_TTL_MS,
       },
       missions,
+      science,
+      survey,
       now,
     };
   }
@@ -321,6 +353,7 @@ export class SpaceProgram {
     if (!design) throw new SpaceError('That design could not be read.');
     requireLaunchable(design);
     const k = keyOf(name);
+    await this.wrapResearch(() => this.research.requireUnlocked(k, design));
     const now = this.clock();
     const mid = typeof missionId === 'string' && missionId.trim() ? missionId.trim() : null;
     if (mid) {
@@ -442,10 +475,12 @@ export class SpaceProgram {
       console.error('[space] deploy failed:', (e as Error).message);
       throw new SpaceError('Deploy could not be recorded. Try again.');
     }
+    const mappers = await this.research.registerMappers(k, L, peM, apM, periodS);
     return {
       satellite: row, payout, chips: bank.ready ? bank.account(name).chips : null,
       paidCount: paidSoFar + (payout > 0 ? 1 : 0),
       prestigeOnly: payout === 0,
+      mappers: mappers.map((m) => ({ id: m.id, mapType: m.mapType })),
     };
   }
 
@@ -561,6 +596,10 @@ export class SpaceProgram {
       now,
       ticket: { at: L.at, cost: L.cost, design: L.design, missionId: L.missionId ?? null, ttlMs: SPACE_LAUNCH_TTL_MS },
       report,
+      facts: {
+        scannersDeployed: await this.research.mapTypesOfLaunch(L.id),
+        science: (await this.research.scienceOfLaunch(L.id)).map((r) => ({ experimentId: r.experimentId, situation: r.situation, points: r.points })),
+      },
     });
     if (!ev.ok) throw new SpaceError(ev.reason);
     const want = px(ev.payout);
@@ -683,4 +722,7 @@ export function registerSpaceProgram(_io: Server, socket: Socket): void {
   on('space_deploy', async (b, p) => p.deploy(need(), b));
   on('space_mission_accept', async (b, p) => p.acceptMission(need(), b.missionId));
   on('space_mission_complete', async (b, p) => p.completeMission(need(), b));
+  on('space_science', async (b, p) => p.runScience(need(), b));
+  on('space_tech_unlock', async (b, p) => p.unlockTech(need(), b.nodeId));
+  on('space_survey_sync', async (_b, p) => p.syncSurvey(need()));
 }

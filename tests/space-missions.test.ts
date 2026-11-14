@@ -90,7 +90,8 @@ describe('mission generation', () => {
     expect(MISSION_DAILY_CAP).toBe(30_000);
     expect(MISSION_MAX_ACTIVE).toBe(3);
     // Every advertised min Δv is at least the vis-viva / Hohmann estimate.
-    for (const t of MISSION_TEMPLATES) {
+    // Science contracts carry no orbit target; their situations are checked by the science validator.
+    for (const t of MISSION_TEMPLATES.filter((x) => x.kind !== 'science')) {
       const ap = t.maxAp ?? t.minAp ?? 80_000;
       const pe = t.minPe ?? (t.kind === 'reach-space' ? -PLANET_SURFACE() : 75_000);
       const est = minDvForTarget({ peM: pe, apM: ap, suborbital: t.kind === 'reach-space' });
@@ -208,7 +209,7 @@ describe('acceptance limits and payouts (memory)', () => {
     const v = await p.view('Ann');
     expect(v.missions.accepted).toHaveLength(3);
     expect(v.missions.dailyCap).toBe(MISSION_DAILY_CAP);
-    expect(v.missions.board).toHaveLength(6);
+    expect(v.missions.board).toHaveLength(MISSION_BOARD_SIZE);
   });
 
   it('pays a completed contract against a valid ticket and rejects a bad claim', async () => {
@@ -307,9 +308,6 @@ describe('acceptance limits and payouts (memory)', () => {
     const p = new SpaceProgram(null, () => now);
     fund('QA-Pilot', 200_000);
     const board = dailyBoard(DAY_A);
-    const mission = board.find((m) => !designMeetsMission(courierI(), m)) 
-      ? board.find((m) => !designMeetsMission(courierI(), m) === false) 
-      : board[0]!;
     const m = board.find((x) => designMeetsMission(courierI(), x) === null)!;
     await p.acceptMission('QA-Pilot', m.id);
     const L = await p.launch('QA-Pilot', courierI(), m.id);

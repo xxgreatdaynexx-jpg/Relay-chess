@@ -140,6 +140,17 @@ function paintPart(ctx: CanvasRenderingContext2D, def: PartDef, x: number, y: nu
     ctx.beginPath();
     ctx.arc(x + w / 2, y + h / 2, Math.min(w, h) * 0.22, 0, Math.PI * 2);
     ctx.fill();
+  } else if (def.category === 'science') {
+    // Instrument canister with a status light and a small sensor stub.
+    ctx.fillStyle = '#2a3038';
+    ctx.fillRect(x, y + h * 0.15, w, h * 0.7);
+    ctx.fillStyle = def.color;
+    ctx.fillRect(x + w * 0.08, y + h * 0.22, w * 0.84, h * 0.56);
+    ctx.fillStyle = accent;
+    ctx.fillRect(x + w * 0.62, y + h * 0.32, w * 0.22, h * 0.36);
+    ctx.beginPath();
+    ctx.arc(x + w * 0.25, y + h * 0.5, Math.min(w, h) * 0.16, 0, Math.PI * 2);
+    ctx.fill();
   } else {
     ctx.fillStyle = def.color;
     ctx.fillRect(x, y, w, h);

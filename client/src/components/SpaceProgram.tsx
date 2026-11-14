@@ -18,10 +18,21 @@ import {
   type MissionDef,
 } from '../../../shared/spaceMissions';
 import { SpaceContracts, type MissionViewData, type MissionCompleteNote } from './SpaceContracts';
+import {
+  SurveyPanel, SciencePanel, ExperimentsPanel, ResultCard, techLabelFor, flightMetS,
+  emptySurvey, emptyScience, previewSurvey, previewScience,
+  type SurveyViewData, type ScienceViewData, type ScienceResult,
+} from './SpaceResearch';
+import {
+  isPartUnlocked, scienceValue, EXPERIMENT_BY_ID, subjectBiome, subjectKey, flavorText, situationFromState, biomeUnder,
+  type Situation, type ExperimentDef,
+} from '../../../shared/spaceScience';
+import type { MapType } from '../../../shared/spaceSurvey';
 import '../spaceSim.css';
 
-export type SpaceView = 'hangar' | 'vab' | 'launch' | 'contracts';
-export type SpacePreviewView = SpaceView | 'ascent' | 'orbit' | 'ascent-low' | 'ascent-high' | 'ground-track' | 'missions' | 'mission-complete';
+export type SpaceView = 'hangar' | 'vab' | 'launch' | 'contracts' | 'survey' | 'science';
+export type SpacePreviewView = SpaceView | 'ascent' | 'orbit' | 'ascent-low' | 'ascent-high' | 'ground-track' | 'missions' | 'mission-complete'
+  | 'survey-altimetry' | 'survey-biome' | 'survey-resource' | 'science-archive' | 'tech-tree' | 'science-flight' | 'science-orbit';
 export type SpacePreview = { view: SpacePreviewView; freeze?: boolean };
 
 type ViewData = {
@@ -31,6 +42,8 @@ type ViewData = {
   board: Array<{ name: string; sats: number; lastAt: number }>;
   rules: { payout: number; maxPaid: number; paid: number; remainingPaid: number; cooldownLeft: number; leoDv: number; minTwr: number };
   missions: MissionViewData;
+  science: ScienceViewData;
+  survey: SurveyViewData;
 };
 
 const previewDay = '2026-11-13';
@@ -56,9 +69,27 @@ const emptyView = (preview?: SpacePreview): ViewData => ({
   missions: preview?.view === 'mission-complete' ? previewMissions(true)
     : preview?.view === 'missions' ? previewMissions(false)
     : { day: utcDay(Date.now()), board: dailyBoard(utcDay(Date.now())), accepted: [], completedIds: [], paidToday: 0, dailyCap: MISSION_DAILY_CAP, remainingCap: MISSION_DAILY_CAP, maxActive: MISSION_MAX_ACTIVE },
+  science: preview ? previewScience() : emptyScience(),
+  survey: preview ? previewSurvey() : emptySurvey(),
 });
 
-function freezeAscent(kind: 'ascent' | 'orbit' | 'ascent-low' | 'ascent-high'): FlightState {
+/** Courier I with a science package bolted on (preview flights). */
+function sciCourier(): VesselDesign {
+  const base = courierI();
+  const pod = base.parts.find((p) => p.partId === 'probe-okto') ?? base.parts[0]!;
+  return {
+    ...base, name: 'Courier I Sci',
+    parts: [
+      ...base.parts,
+      ...['sci-thermo', 'sci-baro', 'sci-geiger', 'sci-mag', 'sci-matbay'].map((id, i) => ({ uid: `sci${i}`, partId: id, stage: 15, radial: true, angle: i * 72, attachTo: pod.uid })),
+    ],
+  };
+}
+const PREVIEW_SURVEY: Record<string, MapType> = { survey: 'visual', 'survey-altimetry': 'altimetry', 'survey-biome': 'biome', 'survey-resource': 'resource' };
+
+function freezeAscent(kind: 'ascent' | 'orbit' | 'ascent-low' | 'ascent-high' | 'science-flight' | 'science-orbit'): FlightState {
+  if (kind === 'science-flight') return scriptedAscent(sciCourier(), { dt: 0.05, maxTime: 280, stopAtAltitude: 46_000 }).state;
+  if (kind === 'science-orbit') return scriptedAscent(sciCourier(), { dt: 0.05, maxTime: 900 }).state;
   if (kind === 'orbit') return scriptedAscent(courierI(), { dt: 0.05, maxTime: 900 }).state;
   if (kind === 'ascent-low') return scriptedAscent(courierI(), { dt: 0.05, maxTime: 200, stopAtAltitude: 18_000 }).state;
   if (kind === 'ascent-high') return scriptedAscent(courierI(), { dt: 0.05, maxTime: 280, stopAtAltitude: 52_000 }).state;
@@ -70,18 +101,23 @@ function previewCamera(view?: SpacePreviewView): McCamera {
   if (view === 'ascent-high') return 'horizon';
   if (view === 'ground-track') return 'track';
   if (view === 'orbit') return 'globe';
+  if (view === 'science-flight') return 'horizon';
+  if (view === 'science-orbit') return 'globe';
   return 'auto';
 }
 
 export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onClose: () => void; preview?: SpacePreview }) {
-  const launchViews = ['ascent', 'orbit', 'launch', 'ascent-low', 'ascent-high', 'ground-track'];
+  const launchViews = ['ascent', 'orbit', 'launch', 'ascent-low', 'ascent-high', 'ground-track', 'science-flight', 'science-orbit'];
   const initialView: SpaceView = preview?.view && launchViews.includes(preview.view) ? 'launch'
     : preview?.view === 'vab' ? 'vab'
+    : preview?.view && preview.view in PREVIEW_SURVEY ? 'survey'
+    : preview?.view === 'science' || preview?.view === 'science-archive' || preview?.view === 'tech-tree' ? 'science'
     : preview?.view === 'missions' || preview?.view === 'mission-complete' || preview?.view === 'contracts' ? 'contracts'
     : preview?.view === 'hangar' ? 'hangar' : 'hangar';
   const [view, setView] = useState<SpaceView>(initialView);
   const [data, setData] = useState<ViewData>(() => emptyView(preview));
-  const [design, setDesign] = useState<VesselDesign>(() => cloneDesign(courierI()));
+  const sciPreview = preview?.view === 'science-flight' || preview?.view === 'science-orbit';
+  const [design, setDesign] = useState<VesselDesign>(() => cloneDesign(sciPreview ? sciCourier() : courierI()));
   const [selected, setSelected] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -104,6 +140,7 @@ export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onC
   const [flight, setFlight] = useState<FlightState | null>(() => {
     if (preview?.view === 'ascent' || preview?.view === 'ascent-low') return freezeAscent(preview.view === 'ascent-low' ? 'ascent-low' : 'ascent');
     if (preview?.view === 'ascent-high') return freezeAscent('ascent-high');
+    if (preview?.view === 'science-flight' || preview?.view === 'science-orbit') return freezeAscent(preview.view);
     if (preview?.view === 'orbit' || preview?.view === 'ground-track' || (preview?.view === 'launch' && preview.freeze)) return freezeAscent('orbit');
     return null;
   });
@@ -113,6 +150,19 @@ export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onC
   const [launchId, setLaunchId] = useState<string | null>(preview ? 'preview' : null);
   const [paidNote, setPaidNote] = useState<string | null>(null);
   const trail = useRef<Array<[number, number]>>([]);
+  const previewResult = useMemo<ScienceResult | null>(() => {
+    if (!sciPreview) return null;
+    const f = freezeAscent(preview!.view as 'science-flight' | 'science-orbit');
+    const sit = situationFromState(f);
+    const exp = EXPERIMENT_BY_ID.get(sit === 'highAtmo' ? 'geiger' : 'magneto')!;
+    const b = subjectBiome(exp, sit, biomeUnder(f));
+    const subject = subjectKey(exp.id, sit, b);
+    const runs = emptyView(preview).science.archive.find((a) => a.subject === subject)?.runs ?? 0;
+    const points = scienceValue(exp, sit, runs);
+    return { experimentId: exp.id, name: exp.name, situation: sit, biome: b, points, grant: Math.round(points * 20), flavor: flavorText(exp.id, sit, b), subject };
+  }, [sciPreview, preview]);
+  const [sciDone, setSciDone] = useState<Set<string>>(() => new Set(previewResult ? [previewResult.subject] : []));
+  const [sciResult, setSciResult] = useState<ScienceResult | null>(previewResult);
 
   const load = useCallback(async () => {
     if (preview) return;
@@ -122,11 +172,53 @@ export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onC
       designs: r.designs ?? [], sats: r.sats ?? [], board: r.board ?? [],
       rules: { ...emptyView().rules, ...(r.rules ?? {}) },
       missions: { ...emptyView().missions, ...(r.missions ?? {}) },
+      science: { ...emptyScience(), ...(r.science ?? {}) },
+      survey: { ...emptySurvey(), ...(r.survey ?? {}) },
     });
   }, [preview]);
   useEffect(() => { void load(); }, [load]);
 
   const stats = useMemo(() => analyzeDesign(design), [design]);
+  const nodes = data.science.nodes;
+
+  const syncSurvey = useCallback(async (quiet = false) => {
+    if (preview || !me) return;
+    setBusy(true);
+    const r = await request('space_survey_sync') as { ok: boolean; error?: string; paid?: number; survey?: SurveyViewData; payouts?: Array<{ mapType: MapType; at: number; payout: number }> };
+    setBusy(false);
+    if (!r.ok) { if (!quiet) setMsg(r.error ?? 'Survey download failed.'); return; }
+    if (r.survey) setData((d) => ({ ...d, survey: { ...emptySurvey(), ...r.survey } }));
+    if (r.paid && r.paid > 0) setPaidNote(`Survey milestones paid 🪙 ${r.paid.toLocaleString('en-US')}.`);
+    else if (!quiet) setMsg('Survey data downloaded.');
+    void load();
+  }, [preview, me, load]);
+  useEffect(() => { if (view === 'survey') void syncSurvey(true); }, [view, syncSurvey]);
+
+  const runScience = useCallback(async (s: FlightState, partUid: string, exp: ExperimentDef, situation: Situation, biome: string) => {
+    const b = subjectBiome(exp, situation, biome);
+    const subject = subjectKey(exp.id, situation, b);
+    if (preview || !launchId || launchId === 'preview') {
+      const runs = data.science.archive.find((a) => a.subject === subject)?.runs ?? 0;
+      const points = scienceValue(exp, situation, runs);
+      setSciDone((d) => new Set(d).add(subject));
+      setSciResult({ experimentId: exp.id, name: exp.name, situation, biome: b, points, grant: Math.round(points * 20), flavor: flavorText(exp.id, situation, b), subject });
+      return;
+    }
+    const el = orbitalElements(s.x, s.y, s.vx, s.vy);
+    setBusy(true);
+    const r = await request('space_science', {
+      launchId, experimentId: exp.id, partUid, situation, biome,
+      metS: flightMetS(s), alt: altitudeOf(s), peM: el.peAltitude, apM: el.apAltitude,
+    }) as { ok: boolean; error?: string; points?: number; grant?: number; result?: { flavor: string; name: string; biome: string; subject: string } };
+    setBusy(false);
+    if (!r.ok) { setMsg(r.error ?? 'The experiment result was not accepted.'); return; }
+    setSciDone((d) => new Set(d).add(subject));
+    setSciResult({
+      experimentId: exp.id, name: r.result?.name ?? exp.name, situation, biome: r.result?.biome ?? b,
+      points: r.points ?? 0, grant: r.grant ?? 0, flavor: r.result?.flavor ?? flavorText(exp.id, situation, b), subject,
+    });
+    void load();
+  }, [preview, launchId, data.science.archive, load]);
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
@@ -146,6 +238,8 @@ export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onC
           <button type="button" className={view === 'vab' ? 'on' : ''} onClick={() => setView('vab')} data-testid="spc-vab-tab">VAB</button>
           <button type="button" className={view === 'contracts' ? 'on' : ''} onClick={() => setView('contracts')} data-testid="spc-contracts-tab">Contracts</button>
           <button type="button" className={view === 'launch' ? 'on' : ''} onClick={() => setView('launch')} data-testid="spc-mc-tab">Mission Control</button>
+          <button type="button" className={view === 'survey' ? 'on' : ''} onClick={() => setView('survey')} data-testid="spc-survey-tab">Survey</button>
+          <button type="button" className={view === 'science' ? 'on' : ''} onClick={() => setView('science')} data-testid="spc-science-tab">Science</button>
         </nav>
         <button type="button" className="spc-x" onClick={onClose} aria-label="Close" data-testid="spc-close">✕</button>
       </header>
@@ -162,7 +256,7 @@ export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onC
       {view === 'vab' && (
         <Vab
           design={design} setDesign={setDesign} selected={selected} setSelected={setSelected}
-          stats={stats} chips={data.chips} busy={busy}
+          stats={stats} chips={data.chips} busy={busy} nodes={nodes}
           onSave={async () => {
             if (preview) { setMsg('Design saved (preview).'); return; }
             setBusy(true);
@@ -180,6 +274,8 @@ export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onC
               setFlight(s); setLaunchId('preview'); setView('launch'); setCountdown(5); setPaidNote(null);
               return;
             }
+            const locked = design.parts.find((pp) => !isPartUnlocked(pp.partId, nodes));
+            if (locked) { setMsg(`${PART_BY_ID.get(locked.partId)?.name ?? locked.partId} needs ${techLabelFor(locked.partId)} research first.`); return; }
             if (hasErrors(stats.issues) || stats.liftoffTwr < MIN_LIFTOFF_TWR) {
               setMsg(stats.issues.find((i) => i.level === 'error')?.text ?? `Liftoff TWR must be at least ${MIN_LIFTOFF_TWR}.`);
               return;
@@ -196,6 +292,7 @@ export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onC
             const s = launchState(design);
             trail.current = [];
             setFlight(s); setLaunchId(r.launchId ?? null); setView('launch'); setCountdown(5);
+            setSciDone(new Set()); setSciResult(null);
             setPaidNote(`Launch charged 🪙 ${r.cost?.toLocaleString('en-US')}.`);
             void load();
           }}
@@ -207,16 +304,20 @@ export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onC
           guidance={guidance} setGuidance={setGuidance}
           warp={warp} setWarp={setWarp}
           countdown={countdown} setCountdown={setCountdown}
-          launchId={launchId} preview={!!preview} freeze={!!preview?.freeze || ['ascent','orbit','ascent-low','ascent-high','ground-track'].includes(preview?.view ?? '')}
+          launchId={launchId} preview={!!preview} freeze={!!preview?.freeze || ['ascent','orbit','ascent-low','ascent-high','ground-track','science-flight','science-orbit'].includes(preview?.view ?? '')}
+          science={data.science} sciDone={sciDone} sciResult={sciResult} busy={busy}
+          onRunScience={(s, uid, exp, sit, biome) => void runScience(s, uid, exp, sit, biome)}
+          onDismissResult={() => setSciResult(null)}
           trail={trail}
           camera={previewCamera(preview?.view)}
           mission={missionId ? (data.missions.board.find((m) => m.id === missionId) ?? null) : null}
           onDeployed={async (s) => {
             if (preview || !launchId || launchId === 'preview') return;
             const el = orbitalElements(s.x, s.y, s.vx, s.vy);
-            const r = await request('space_deploy', { launchId, peM: el.peAltitude, apM: el.apAltitude, periodS: el.period }) as { ok: boolean; error?: string; payout?: number; prestigeOnly?: boolean };
+            const r = await request('space_deploy', { launchId, peM: el.peAltitude, apM: el.apAltitude, periodS: el.period }) as { ok: boolean; error?: string; payout?: number; prestigeOnly?: boolean; mappers?: Array<{ mapType: MapType }> };
             if (r.ok) {
-              setPaidNote(r.prestigeOnly ? 'Satellite on station. Prestige only — payout cap reached.' : `Satellite on station. Payout 🪙 ${r.payout?.toLocaleString('en-US')}.`);
+              const mapNote = r.mappers?.length ? ` Mapping started: ${r.mappers.map((m) => m.mapType).join(', ')}.` : '';
+              setPaidNote((r.prestigeOnly ? 'Satellite on station. Prestige only — payout cap reached.' : `Satellite on station. Payout 🪙 ${r.payout?.toLocaleString('en-US')}.`) + mapNote);
               void load();
             } else setMsg(r.error ?? 'Deploy was not recorded.');
           }}
@@ -239,6 +340,33 @@ export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onC
             void load();
           }}
           onBack={() => { setView('vab'); }}
+        />
+      )}
+      {view === 'survey' && (
+        <SurveyPanel
+          survey={data.survey} signedIn={!!me || !!preview} busy={busy}
+          initialType={preview ? PREVIEW_SURVEY[preview.view] : undefined}
+          now={preview ? Date.parse('2026-11-13T18:00:00Z') : Date.now()}
+          onSync={() => { if (preview) { setMsg('Survey data downloaded (preview).'); return; } void syncSurvey(false); }}
+        />
+      )}
+      {view === 'science' && (
+        <SciencePanel
+          science={data.science} signedIn={!!me || !!preview} busy={busy}
+          initial={preview?.view === 'tech-tree' ? 'tech' : 'archive'}
+          onUnlock={async (id) => {
+            if (preview) {
+              setData((d) => ({ ...d, science: { ...d.science, nodes: [...d.science.nodes, id] } }));
+              setMsg('Researched (preview).');
+              return;
+            }
+            setBusy(true);
+            const r = await request('space_tech_unlock', { nodeId: id }) as { ok: boolean; error?: string; node?: { name: string } };
+            setBusy(false);
+            if (!r.ok) { setMsg(r.error ?? 'Could not research that node.'); return; }
+            setMsg(`Researched ${r.node?.name ?? id}. New parts are in the VAB.`);
+            void load();
+          }}
         />
       )}
       {view === 'contracts' && (
@@ -345,10 +473,10 @@ function Hangar({ me, data, design, onNew, onLoad }: {
   );
 }
 
-function Vab({ design, setDesign, selected, setSelected, stats, chips, busy, onSave, onRoll }: {
+function Vab({ design, setDesign, selected, setSelected, stats, chips, busy, nodes, onSave, onRoll }: {
   design: VesselDesign; setDesign: (d: VesselDesign) => void;
   selected: string | null; setSelected: (id: string | null) => void;
-  stats: DesignStats; chips: number | null; busy: boolean;
+  stats: DesignStats; chips: number | null; busy: boolean; nodes: string[];
   onSave: () => void; onRoll: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -405,13 +533,16 @@ function Vab({ design, setDesign, selected, setSelected, stats, chips, busy, onS
           {PART_CATEGORIES.map((g) => (
             <div key={g.id} className="spc-cat-g">
               <h3>{g.label}</h3>
-              {SPACE_PARTS.filter((p) => p.category === g.id).map((p) => (
-                <button key={p.id} type="button" className="spc-part" onClick={() => add(p)} data-testid={`spc-part-${p.id}`} title={p.description}>
-                  <span className="spc-sw" style={{ background: p.accent ?? p.color }} />
-                  <span><b>{p.short}</b><small>{fmtMass(p.dryMass + p.fuelMass)}{p.thrustVac ? ` · ${(p.thrustVac / 1000).toFixed(0)} kN vac` : ''}{p.ispVac ? ` · ${p.ispVac} s` : ''}</small></span>
-                  <span className="c">🪙 {p.cost}</span>
-                </button>
-              ))}
+              {SPACE_PARTS.filter((p) => p.category === g.id).map((p) => {
+                const locked = !isPartUnlocked(p.id, nodes);
+                return (
+                  <button key={p.id} type="button" className={'spc-part' + (locked ? ' locked' : '')} onClick={() => { if (!locked) add(p); }} aria-disabled={locked} data-testid={`spc-part-${p.id}`} title={locked ? `Research ${techLabelFor(p.id)} to unlock. ${p.description}` : p.description}>
+                    <span className="spc-sw" style={{ background: p.accent ?? p.color }} />
+                    <span><b>{p.short}</b><small>{locked ? `🔒 ${techLabelFor(p.id)}` : <>{fmtMass(p.dryMass + p.fuelMass)}{p.thrustVac ? ` · ${(p.thrustVac / 1000).toFixed(0)} kN vac` : ''}{p.ispVac ? ` · ${p.ispVac} s` : ''}</>}</small></span>
+                    <span className="c">🪙 {p.cost}</span>
+                  </button>
+                );
+              })}
             </div>
           ))}
         </aside>
@@ -478,7 +609,10 @@ function Vab({ design, setDesign, selected, setSelected, stats, chips, busy, onS
   );
 }
 
-function MissionControl({ design, flight, setFlight, guidance, setGuidance, warp, setWarp, countdown, setCountdown, launchId, preview, freeze, trail, onDeployed, onBack, camera, mission, onClaim }: {
+function MissionControl({ design, flight, setFlight, guidance, setGuidance, warp, setWarp, countdown, setCountdown, launchId, preview, freeze, trail, onDeployed, onBack, camera, mission, onClaim, science, sciDone, sciResult, busy, onRunScience, onDismissResult }: {
+  science: ScienceViewData; sciDone: Set<string>; sciResult: ScienceResult | null; busy: boolean;
+  onRunScience: (s: FlightState, partUid: string, exp: ExperimentDef, situation: Situation, biome: string) => void;
+  onDismissResult: () => void;
   design: VesselDesign;
   flight: FlightState | null;
   setFlight: (s: FlightState | null | ((p: FlightState | null) => FlightState | null)) => void;
@@ -673,10 +807,15 @@ function MissionControl({ design, flight, setFlight, guidance, setGuidance, warp
             <div className="phase">{s.deployed ? 'SATELLITE DEPLOYED' : s.crashed ? 'LOST' : s.phase}</div>
           </div>
           {countdown != null && countdown > 0 && <div className="spc-count" data-testid="spc-countdown">{countdown}</div>}
+          {sciResult && <ResultCard r={sciResult} onClose={onDismissResult} />}
         </div>
         <aside className="spc-side">
           <h2>Orbit map</h2>
           <canvas ref={mapRef} data-testid="spc-map" style={{ width: '100%', height: 180, background: '#071016' }} />
+          {countdown == null && !s.crashed && (
+            <ExperimentsPanel flight={s} science={science} done={sciDone} busy={busy}
+              onRun={(uid, exp, sit, biome) => onRunScience(s, uid, exp, sit, biome)} />
+          )}
           <h2>Flight log · CAPCOM</h2>
           <div className="spc-log" ref={logRef} data-testid="spc-log">
             {s.log.map((e, i) => (

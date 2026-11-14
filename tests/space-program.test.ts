@@ -4,7 +4,7 @@ import { getBank, resetBank, isChipEvent } from '../server/casino-store';
 import { setPriceIndexForTest } from '../server/price-index';
 import { SpaceProgram, SpaceError, SPACE_MIGRATION, requireCapable } from '../server/spaceProgram';
 import { courierI, scoutI, makeDesign, designCost, parseDesign } from '../shared/spaceParts';
-import { SPACE_PAYOUT, SPACE_MAX_PAID, SPACE_COOLDOWN_MS, LEO_DV_BUDGET, analyzeDesign } from '../shared/spaceFlight';
+import { SPACE_PAYOUT, SPACE_MAX_PAID, SPACE_COOLDOWN_MS, SPACE_LAUNCH_TTL_MS, LEO_DV_BUDGET, analyzeDesign } from '../shared/spaceFlight';
 
 const fund = (name: string, n: number) => { const b = getBank(); b.transfer(name, n - b.account(name).chips, { game: 'admin' }); };
 const chips = (n: string) => getBank().account(n).chips;
@@ -73,7 +73,7 @@ describe('space program (memory)', () => {
     await expect(p.launch('Bob', scoutI())).rejects.toThrow(/cooling/);
     now += SPACE_COOLDOWN_MS + 10;
     // expire the first ticket, then a fresh launch
-    now += 15 * 60_000;
+    now += SPACE_LAUNCH_TTL_MS;
     await expect(p.deploy('Bob', { launchId: L.launchId, peM: 80_000, apM: 80_000 })).rejects.toThrow(/expired/);
     const L2 = await p.launch('Bob', scoutI());
     const d = await p.deploy('Bob', { launchId: L2.launchId, peM: 80_000, apM: 85_000 });

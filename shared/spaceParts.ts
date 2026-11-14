@@ -6,7 +6,7 @@
  */
 export const G0 = 9.81;
 
-export type PartCategory = 'pod' | 'probe' | 'tank' | 'engine' | 'srb' | 'decoupler' | 'fairing' | 'payload';
+export type PartCategory = 'pod' | 'probe' | 'tank' | 'engine' | 'srb' | 'decoupler' | 'fairing' | 'payload' | 'science';
 
 export interface PartDef {
   id: string;
@@ -110,6 +110,72 @@ export const SPACE_PARTS: PartDef[] = [
   { id: 'weathersat', name: 'WeatherSat', short: 'WxSat', category: 'payload',
     description: 'Weather satellite. Same deployment rules as the other payloads.',
     dryMass: 180, fuelMass: 0, width: 0.85, height: 0.75, cost: 1400, color: '#c9a84c', accent: '#80c0e0' },
+  /* ── Researched parts (unlocked in the tech tree) ── */
+  { id: 'x200-16', name: 'Rockomax X200-16 Fuel Tank', short: 'X200-16', category: 'tank',
+    description: '2.5 m tank. 1 t dry, 8 t of liquid fuel.',
+    dryMass: 1000, fuelMass: 8000, fuelKind: 'liquid', width: 2.5, height: 1.9, cost: 1500, color: '#e8e4d8', accent: '#c05018' },
+  { id: 'x200-32', name: 'Rockomax X200-32 Fuel Tank', short: 'X200-32', category: 'tank',
+    description: 'Tall 2.5 m tank. 2 t dry, 16 t of liquid fuel.',
+    dryMass: 2000, fuelMass: 16000, fuelKind: 'liquid', width: 2.5, height: 3.75, cost: 2800, color: '#e8e4d8', accent: '#c05018' },
+  { id: 'skipper', name: 'RE-I5 Skipper', short: 'Skipper', category: 'engine',
+    description: '2.5 m booster. 568 kN at sea level, 650 kN / 320 s in vacuum.',
+    dryMass: 3000, fuelMass: 0, fuelKind: 'liquid', thrustAsl: 568_000, thrustVac: 650_000, ispAsl: 280, ispVac: 320,
+    width: 2.5, height: 2.4, cost: 3600, gimbal: true, color: '#6a7078', accent: '#d0a020' },
+  { id: 'poodle', name: 'RE-L10 Poodle', short: 'Poodle', category: 'engine',
+    description: '2.5 m vacuum engine. Weak in air (64 kN / 90 s), 250 kN and 350 s in vacuum.',
+    dryMass: 1750, fuelMass: 0, fuelKind: 'liquid', thrustAsl: 64_000, thrustVac: 250_000, ispAsl: 90, ispVac: 350,
+    width: 2.5, height: 1.4, cost: 2400, gimbal: true, color: '#7a8088', accent: '#60b0e0' },
+  { id: 'nerv', name: 'LV-N Nerv', short: 'Nerv', category: 'engine',
+    description: 'Nuclear thermal engine. 800 s in vacuum but only 60 kN, and 185 s at sea level.',
+    dryMass: 3000, fuelMass: 0, fuelKind: 'liquid', thrustAsl: 13_900, thrustVac: 60_000, ispAsl: 185, ispVac: 800,
+    width: 1.25, height: 2.6, cost: 9000, gimbal: false, color: '#5a6068', accent: '#80ff80' },
+  { id: 'kickback', name: 'S1 SRB-KD25k Kickback', short: 'Kickback', category: 'srb',
+    description: 'Huge radial solid booster. 593 kN at sea level, 22.5 t of solid fuel, 220 s vacuum.',
+    dryMass: 4500, fuelMass: 22500, fuelKind: 'solid', thrustAsl: 593_000, thrustVac: 670_000, ispAsl: 195, ispVac: 220,
+    width: 1.25, height: 5.0, cost: 2700, radial: true, color: '#f2efe6', accent: '#2050c0' },
+
+  /* ── Science experiments (stay on the vehicle; run from Mission Control) ── */
+  { id: 'sci-thermo', name: '2HOT Thermometer', short: 'Thermo', category: 'science',
+    description: 'Measures temperature. Works on the pad, in the air, and in low space.',
+    dryMass: 5, fuelMass: 0, width: 0.5, height: 0.22, cost: 300, color: '#b8bcc4', accent: '#e05040' },
+  { id: 'sci-baro', name: 'PresMat Barometer', short: 'Baro', category: 'science',
+    description: 'Measures air pressure. Only useful inside the atmosphere.',
+    dryMass: 5, fuelMass: 0, width: 0.5, height: 0.22, cost: 400, color: '#b8bcc4', accent: '#40a0e0' },
+  { id: 'sci-geiger', name: 'Geiger Counter', short: 'Geiger', category: 'science',
+    description: 'Counts radiation. Best above the protective air.',
+    dryMass: 10, fuelMass: 0, width: 0.55, height: 0.26, cost: 600, color: '#b8bcc4', accent: '#e0d040' },
+  { id: 'sci-mag', name: 'Magnetometer Boom', short: 'Magneto', category: 'science',
+    description: 'Maps the magnetic field from space.',
+    dryMass: 50, fuelMass: 0, width: 0.65, height: 0.3, cost: 900, color: '#b8bcc4', accent: '#a060e0' },
+  { id: 'sci-atmo', name: 'Atmospheric Sampler', short: 'AtmoSamp', category: 'science',
+    description: 'Collects and analyses air in flight.',
+    dryMass: 40, fuelMass: 0, width: 0.8, height: 0.35, cost: 800, color: '#b8bcc4', accent: '#60d0c0' },
+  { id: 'sci-grav', name: 'GRAVMAX Gravity Scanner', short: 'Grav', category: 'science',
+    description: 'Measures the gravity field. Space only.',
+    dryMass: 100, fuelMass: 0, width: 0.7, height: 0.32, cost: 1500, color: '#b8bcc4', accent: '#f08030' },
+  { id: 'sci-matbay', name: 'SC-9001 Materials Bay', short: 'MatBay', category: 'science',
+    description: 'Exposes material samples to the environment. Works anywhere.',
+    dryMass: 200, fuelMass: 0, width: 1.25, height: 0.5, cost: 900, color: '#d8dce2', accent: '#50a050' },
+  { id: 'sci-seismic', name: 'Seismic Accelerometer', short: 'Seismic', category: 'science',
+    description: 'Feels the ground shake. Records on the pad and in the first low climb.',
+    dryMass: 5, fuelMass: 0, width: 0.5, height: 0.22, cost: 700, color: '#b8bcc4', accent: '#c08040' },
+
+  /* ── Mapping scanners (deployed like satellites) ── */
+  { id: 'scan-camera', name: 'Visual Imaging Camera', short: 'VisCam', category: 'payload',
+    description: 'High-resolution optical camera. Best 80–200 km; narrow 6° swath.',
+    dryMass: 120, fuelMass: 0, width: 0.8, height: 0.7, cost: 1500, color: '#c9a84c', accent: '#e0e0e0' },
+  { id: 'scan-radar', name: 'RADAR Altimetry Sensor', short: 'Radar', category: 'payload',
+    description: 'Radar altimeter for elevation maps. Best 80–250 km; 12° swath.',
+    dryMass: 150, fuelMass: 0, width: 0.85, height: 0.75, cost: 1800, color: '#c9a84c', accent: '#40c0f0' },
+  { id: 'scan-multispectral', name: 'Multispectral Imager', short: 'MultiSpec', category: 'payload',
+    description: 'Land-cover and biome mapping. Best 150–400 km; 16° swath.',
+    dryMass: 180, fuelMass: 0, width: 0.85, height: 0.8, cost: 2200, color: '#c9a84c', accent: '#60e080' },
+  { id: 'scan-ore', name: 'M700 Resource Scanner', short: 'OreScan', category: 'payload',
+    description: 'Ore and mineral survey. Best 70–150 km; narrow 5° beam.',
+    dryMass: 200, fuelMass: 0, width: 0.85, height: 0.8, cost: 2600, color: '#c9a84c', accent: '#f0a030' },
+  { id: 'scan-weather', name: 'Weather Mapper', short: 'WxMap', category: 'payload',
+    description: 'Global cloud mapping from high orbit. Best 250–700 km; 22° swath.',
+    dryMass: 250, fuelMass: 0, width: 0.9, height: 0.85, cost: 3000, color: '#c9a84c', accent: '#a0d0ff' },
 ];
 
 export const PART_BY_ID = new Map(SPACE_PARTS.map((p) => [p.id, p]));
@@ -122,7 +188,8 @@ export const PART_CATEGORIES: Array<{ id: PartCategory; label: string }> = [
   { id: 'srb', label: 'Solid boosters' },
   { id: 'decoupler', label: 'Decouplers' },
   { id: 'fairing', label: 'Fairings' },
-  { id: 'payload', label: 'Satellites' },
+  { id: 'payload', label: 'Satellites & scanners' },
+  { id: 'science', label: 'Science' },
 ];
 
 export interface PlacedPart {
@@ -276,7 +343,7 @@ export function defaultStageFor(category: PartCategory, current: VesselDesign): 
   const stages = current.parts.map((p) => p.stage);
   const max = stages.length ? Math.max(...stages.filter((s) => s < 15), 0) : 0;
   if (category === 'payload') return 0;
-  if (category === 'pod' || category === 'probe') return 15;
+  if (category === 'pod' || category === 'probe' || category === 'science') return 15;
   if (category === 'decoupler') return Math.max(1, max);
   if (category === 'engine' || category === 'srb') return Math.max(max, 1);
   if (category === 'fairing') return Math.max(1, max - 1);
