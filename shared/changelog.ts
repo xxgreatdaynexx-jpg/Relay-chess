@@ -6,6 +6,14 @@
 export interface ChangelogEntry { commit: string; at: string; title: string; bullets: string[] }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {"commit": "", "at": "2026-11-14T08:30:00-06:00", "title": "The Space Program is live", "bullets": [
+    "The Space Center in the northwest corner of the city is now a working space program. Walk in, or tap the 🚀 on the 2D map, to open the Hangar, the Vehicle Assembly Building and Mission Control.",
+    "In the VAB you stack command pods, probe cores, tanks, engines, boosters, decouplers, fairings and payloads, with a live readout of mass, cost, thrust-to-weight and delta-v for every stage. The catalog has nearly 100 parts in four sizes, with adapters, couplers for engine clusters, radial boosters with a thrust limiter, fins, nose cones, power, antennas and an ion drive, sorted by category with search.",
+    "Flights use real orbital physics on a Kerbin-sized world: a 600 km radius, a 70 km atmosphere and a 6-hour day. Reaching a stable low orbit takes about 3,400 m/s of delta-v. Mission Control shows altitude, speed, apoapsis, periapsis, an orbit map, a ground track and a flight log. You can let guidance fly a stock rocket or pitch, throttle and stage yourself.",
+    "Parts are paid for when you roll out to the pad. Your first five satellite deploys each pay a one-time bounty. A daily contract board offers missions from sounding flights to high relay orbits. You can accept up to three at a time, and contract payouts are capped at 30,000 chips a day per player.",
+    "Five survey scanners (visual, altimetry, biome, resource and weather) map the planet from orbit, even while you are away, and pay one-time bounties at 25, 50, 75 and 100% coverage. Eight science experiments earn science points on the pad, in the air and in orbit, which unlock a 23-node research tree. New results also pay a small research grant, capped daily.",
+    "Other players' satellites appear on the orbit map. Mission Control has a Recent launches feed, and the Hangar has leaderboards for satellites, science and map coverage. Launches and payouts are processed one at a time per player, so a second tab cannot claim twice. Your chips, items and existing property are unchanged.",
+  ]},
   {"commit": "", "at": "2026-11-13T13:45:00-06:00", "title": "Fishing stays open after the menu has loaded", "bullets": [
     "The fishing dock and 3D fishing no longer close after 12 seconds with a message that the page took too long to load. That timeout now only applies while a menu is still opening, so a session that has already loaded keeps running. Other menus that use the same loader are also fixed. Catch rules and prices are unchanged.",
   ]},
