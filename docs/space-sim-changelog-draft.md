@@ -24,3 +24,12 @@ Do not copy this into `shared/changelog.ts` until this feature is shipped. The p
     "Science points buy R&D nodes that unlock bigger tanks, new engines (Skipper, Poodle, Nerv), the Kickback booster, more experiments and the advanced scanners. Every part you already had stays unlocked. Results also pay a small research grant of 20 chips a point, capped at 2,000 chips a day.",
     "The daily contract board now always includes one survey and one science contract. Results are checked on the server against the launch ticket: the part must be on the launched design, and the situation must fit the flight time and the rocket's Δv. Launch tickets now stay valid for 30 minutes.",
   ]},
+
+  {"commit": "", "at": "2026-11-13T20:10:00-06:00", "title": "Space Center: a cleaner flight view, nicer rockets, and other players in orbit with you", "bullets": [
+    "The ascent view is now one continuous camera, from the pad complex to orbit. The ground has terrain detail, field patterns, coastlines and aerial haze. The horizon curves naturally through the 40–55 km band, and the view pulls back smoothly to the globe without a jump.",
+    "Rockets, satellites and plumes have new art. Parts are shaded and engines have proper bells. The payload fairing is a clamshell that splits in two on staging. Spent stages and boosters fall away, the exhaust plume widens as the air thins, and a small inset shows the satellite separating and unfolding its panels.",
+    "Survey maps blend smoothly between scan passes instead of showing blocky squares, and the starfield, globe halo and night-side city lights are sharper on high-resolution screens.",
+    "On phones, the VAB keeps the cost, Δv and Roll out button in a bar pinned to the bottom of the screen. The Hangar no longer cuts off its panels, and the flight controls fit short landscape screens.",
+    "Other players' satellites now show on the orbit map and the ground track. Mission Control has a Recent launches feed, and the Hangar has leaderboards for satellites, science and map coverage. Shared data refreshes every 90 seconds, only while the tab is open.",
+    "Launches, deploys, contract claims, science and survey payouts are processed one at a time per player. Two tabs on one account can no longer double-launch or double-claim.",
+  ]},
