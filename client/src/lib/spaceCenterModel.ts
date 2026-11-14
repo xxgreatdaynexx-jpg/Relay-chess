@@ -695,9 +695,9 @@ function buildTower(parent: THREE.Group, x: number, z: number, rocketX: number) 
   const cab = new THREE.Mesh(BOX, yellow);
   cab.scale.set(2.6, 1.1, 2.2); cab.position.set(0, H + 0.4, 0); cab.castShadow = true; g.add(cab);
   const jib = new THREE.Mesh(BOX, yellow);
-  jib.scale.set(9.5, 0.35, 0.55); jib.position.set(dir * 2.6, H + 1.15, 0); jib.castShadow = true; g.add(jib);
+  jib.scale.set(10.6, 0.35, 0.55); jib.position.set(dir * 2.05, H + 1.15, 0); jib.castShadow = true; g.add(jib); // aft end carries the counterweight
   const cwt = new THREE.Mesh(BOX, M(0x5a5e64, 0.6, 0.4));
-  cwt.scale.set(1.6, 0.9, 1.3); cwt.position.set(-dir * 3.4, H + 0.85, 0); g.add(cwt);
+  cwt.scale.set(1.3, 0.8, 1.1); cwt.position.set(-dir * 2.55, H + 0.58, 0); g.add(cwt); // hangs under the jib tail
   // red lightning rod / antenna above the crane
   const mast = new THREE.Mesh(CYL8, M(0xa02018, 0.45, 0.4));
   mast.scale.set(0.07, 3.6, 0.07); mast.position.set(0, H + 3.2, 0); g.add(mast);

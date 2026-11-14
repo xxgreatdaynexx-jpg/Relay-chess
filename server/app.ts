@@ -38,6 +38,7 @@ import { houseRoomRouter } from './house-room.js';
 import { farmRouter } from './farm.js';
 import { lootMatchRouter } from './lootMatch.js';
 import { employmentRouter } from './employment.js';
+import { spaceRouter } from './spaceProgram.js';
 import { getMinesBoard } from './mines-board.js';
 import { isMinePeriod } from '../shared/minesBoard.js';
 import { getWeekly } from './weeklyEvent.js';
@@ -95,6 +96,7 @@ export async function createApp(): Promise<AppContext> {
   app.use(realEstateRouter());
   app.use(farmRouter());
   app.use(employmentRouter());
+  app.use(spaceRouter());
   app.use(lootMatchRouter());
   app.use(requestsRouter());
   app.use(mayorRouter());
