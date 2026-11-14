@@ -19,8 +19,8 @@ const BILL3: Readonly<BillImplementation> = Object.freeze({ status: 'enacted', r
   implementedAt: 0, release: BILL3_RELEASE, text: BILL3_IMPLEMENTATION_TEXT
 });
 
-/** Filled with the implementing commit SHA after it is recorded. */
-export const BILL4_RELEASE = 'release-queue';
+/** Implementing commit SHA (this metadata ships in the following commit). */
+export const BILL4_RELEASE = '1c88c7ecae413ae372ebe99bfcb2771fccf9107b';
 const BILL4: Readonly<BillImplementation> = Object.freeze({ status: 'enacted', revision: 1,
   implementedAt: 1794663044789, release: BILL4_RELEASE, text: BILL4_IMPLEMENTATION_TEXT
 });
