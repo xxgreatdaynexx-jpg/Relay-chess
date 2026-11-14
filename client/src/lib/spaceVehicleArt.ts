@@ -81,13 +81,22 @@ function bell(ctx: CanvasRenderingContext2D, cx: number, top: number, bottom: nu
  * Paint one part in a canvas box (x, y = top-left). Fairings are drawn by
  * `paintFairingShell` instead.
  */
-export function paintPart(ctx: CanvasRenderingContext2D, def: PartDef, x: number, y: number, w: number, h: number, selected: boolean) {
+export function paintPart(ctx: CanvasRenderingContext2D, def: PartDef, x: number, y: number, w: number, h: number, selected: boolean, side = 0) {
   const accent = def.accent ?? '#888';
   const cx = x + w / 2;
   ctx.save();
   ctx.lineJoin = 'round';
   switch (def.category) {
     case 'engine': {
+      if (def.style === 'ion') { paintIon(ctx, def, x, y, w, h); break; }
+      if (def.style === 'aerospike') { paintAerospike(ctx, def, x, y, w, h); break; }
+      if ((def.nozzles ?? 1) > 1) { paintCluster(ctx, def, x, y, w, h); break; }
+      if (def.radial && side) {
+        // Strut back to the core.
+        ctx.fillStyle = cyl(ctx, x, w, '#5a6068');
+        const sx = side > 0 ? x - w * 0.25 : x + w;
+        ctx.fillRect(sx, y + h * 0.08, w * 0.25, h * 0.12);
+      }
       const vac = (def.ispVac ?? 0) >= 340;
       const mountH = h * 0.26;
       // Thrust plate / housing.
@@ -129,6 +138,7 @@ export function paintPart(ctx: CanvasRenderingContext2D, def: PartDef, x: number
       break;
     }
     case 'tank': {
+      if (def.fuelKind === 'xenon' || def.fuelKind === 'mono') { paintPressureTank(ctx, def, x, y, w, h); break; }
       const r = Math.min(w * 0.14, h * 0.18);
       rrect(ctx, x, y, w, h, r);
       ctx.fillStyle = cyl(ctx, x, w, def.color); ctx.fill();
@@ -213,6 +223,12 @@ export function paintPart(ctx: CanvasRenderingContext2D, def: PartDef, x: number
       ctx.beginPath(); ctx.arc(x + w * 0.24, y + h * 0.45, Math.min(w, h) * 0.05, 0, Math.PI * 2); ctx.fill();
       break;
     }
+    case 'structural':
+      paintStructural(ctx, def, x, y, w, h, side);
+      break;
+    case 'utility':
+      paintUtility(ctx, def, x, y, w, h, side);
+      break;
     case 'fairing':
       break;
     default:
@@ -234,6 +250,9 @@ export function paintPart(ctx: CanvasRenderingContext2D, def: PartDef, x: number
  * 1 = fully deployed wings.
  */
 export function paintSatellite(ctx: CanvasRenderingContext2D, def: PartDef, x: number, y: number, w: number, h: number, unfold: number) {
+  if (def.id === 'station-haven') return paintStation(ctx, def, x, y, w, h, unfold);
+  if (def.id === 'telescope-aurora') return paintTelescope(ctx, def, x, y, w, h, unfold);
+  if (def.id === 'cargo-cx25') return paintCargo(ctx, def, x, y, w, h, unfold);
   const accent = def.accent ?? '#4a80c0';
   const cx = x + w / 2;
   const bw = w * 0.62, bh = h * 0.62, by = y + h * 0.24;
@@ -343,9 +362,21 @@ export function paintFairingShell(ctx: CanvasRenderingContext2D, def: PartDef, x
  * (1 at sea level, 0 in vacuum): tight with shock diamonds low, a wide faint
  * bloom high.
  */
-export function drawPlume(ctx: CanvasRenderingContext2D, x: number, y: number, exitW: number, opts: { throttle: number; p: number; t: number; solid?: boolean; vab?: boolean }) {
+export function drawPlume(ctx: CanvasRenderingContext2D, x: number, y: number, exitW: number, opts: { throttle: number; p: number; t: number; solid?: boolean; vab?: boolean; ion?: boolean }) {
   const { throttle, p } = opts;
   if (throttle <= 0.01) return;
+  if (opts.ion) {
+    // Faint blue ion beam.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const len = exitW * 6;
+    const g = ctx.createLinearGradient(0, y, 0, y + len);
+    g.addColorStop(0, `rgba(150,190,255,${0.75 * throttle})`); g.addColorStop(1, 'rgba(80,120,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.moveTo(x - exitW * 0.45, y); ctx.lineTo(x - exitW * 0.7, y + len); ctx.lineTo(x + exitW * 0.7, y + len); ctx.lineTo(x + exitW * 0.45, y); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    return;
+  }
   const fl = 1 + 0.06 * Math.sin(opts.t * 41 + x) + 0.04 * Math.sin(opts.t * 23.7 + x * 0.3);
   const len = exitW * (opts.solid ? 5.2 : 4.2) * (0.55 + 0.45 * throttle) * (1 + (1 - p) * 0.9) * fl;
   const endW = exitW * (p * 0.75 + (1 - p) * 4.2);
@@ -453,4 +484,394 @@ export function drawPadBillow(ctx: CanvasRenderingContext2D, x: number, y: numbe
     ctx.fillRect(x + dx - r, y + dy - r, r * 2, r * 2);
   }
   ctx.restore();
+}
+
+/* ───────────── expanded catalog art ───────────── */
+
+function engineMount(ctx: CanvasRenderingContext2D, def: PartDef, x: number, y: number, w: number, mountH: number) {
+  rrect(ctx, x + w * 0.03, y, w * 0.94, mountH, Math.min(3, w * 0.05));
+  ctx.fillStyle = cyl(ctx, x, w, def.color); ctx.fill();
+  ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = shade(def.accent ?? '#888', 1);
+  ctx.fillRect(x + w * 0.03, y + mountH * 0.62, w * 0.94, Math.max(1.5, mountH * 0.16));
+}
+
+/** Multi-nozzle engine: a thrust structure with two or four bells (four shows a back pair). */
+function paintCluster(ctx: CanvasRenderingContext2D, def: PartDef, x: number, y: number, w: number, h: number) {
+  const n = def.nozzles ?? 2;
+  const mountH = h * 0.3;
+  engineMount(ctx, def, x, y, w, mountH);
+  // Plumbing skirt.
+  ctx.fillStyle = cyl(ctx, x + w * 0.12, w * 0.76, '#3e434a');
+  ctx.fillRect(x + w * 0.12, y + mountH, w * 0.76, h * 0.12);
+  const top = y + mountH + h * 0.1;
+  if (n >= 4) {
+    for (const f of [-0.17, 0.17]) {
+      ctx.save(); ctx.globalAlpha = 0.85;
+      bell(ctx, x + w * (0.5 + f), top - h * 0.04, y + h * 0.94, w * 0.1, w * 0.3, shade(def.color, 0.7));
+      ctx.restore();
+    }
+    for (const f of [-0.27, 0.27]) bell(ctx, x + w * (0.5 + f), top, y + h, w * 0.12, w * 0.38, def.color);
+  } else {
+    for (let k = 0; k < n; k++) {
+      const f = n === 1 ? 0 : -0.25 + (0.5 * k) / (n - 1);
+      bell(ctx, x + w * (0.5 + f), top, y + h, w * 0.14, w * 0.44, def.color);
+    }
+  }
+}
+
+/** Linear aerospike: a tapering ramp with combustion chambers along the top. */
+function paintAerospike(ctx: CanvasRenderingContext2D, def: PartDef, x: number, y: number, w: number, h: number) {
+  const mountH = h * 0.22;
+  engineMount(ctx, def, x, y, w, mountH);
+  const cx = x + w / 2, t = y + mountH, b = y + h;
+  ctx.beginPath();
+  ctx.moveTo(x + w * 0.06, t);
+  ctx.lineTo(x + w * 0.94, t);
+  ctx.quadraticCurveTo(x + w * 0.8, t + (b - t) * 0.55, cx + w * 0.16, b);
+  ctx.lineTo(cx - w * 0.16, b);
+  ctx.quadraticCurveTo(x + w * 0.2, t + (b - t) * 0.55, x + w * 0.06, t);
+  ctx.closePath();
+  ctx.fillStyle = cyl(ctx, x, w, '#8d939b'); ctx.fill();
+  ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
+  ctx.save(); ctx.clip();
+  ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+  for (let k = 1; k < 7; k++) { const yy = t + ((b - t) * k) / 7; ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(x + w, yy); ctx.stroke(); }
+  const heat = ctx.createLinearGradient(0, t, 0, b);
+  heat.addColorStop(0, 'rgba(120,60,30,0)'); heat.addColorStop(1, 'rgba(150,70,30,0.4)');
+  ctx.fillStyle = heat; ctx.fillRect(x, t, w, b - t);
+  ctx.restore();
+  // Chamber row along the top of the ramp.
+  ctx.fillStyle = '#2a2e34';
+  const n = 6;
+  for (let k = 0; k < n; k++) ctx.fillRect(x + w * (0.1 + (0.8 * k) / n), t - 1, w * 0.08, Math.max(2, h * 0.06));
+}
+
+/** Gridded ion engine: short housing and a wide glowing grid disc. */
+function paintIon(ctx: CanvasRenderingContext2D, def: PartDef, x: number, y: number, w: number, h: number) {
+  const cx = x + w / 2;
+  rrect(ctx, x + w * 0.18, y, w * 0.64, h * 0.45, 3);
+  ctx.fillStyle = cyl(ctx, x + w * 0.18, w * 0.64, def.color); ctx.fill();
+  ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = cyl(ctx, x, w, '#6a7078');
+  rrect(ctx, x, y + h * 0.45, w, h * 0.4, 3); ctx.fill(); ctx.stroke();
+  // Grid face, seen edge-on as a glowing band.
+  const gy = y + h * 0.85;
+  const glow = ctx.createLinearGradient(x, 0, x + w, 0);
+  glow.addColorStop(0, 'rgba(70,120,255,0.4)'); glow.addColorStop(0.5, 'rgba(150,200,255,0.95)'); glow.addColorStop(1, 'rgba(70,120,255,0.4)');
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.ellipse(cx, gy + h * 0.04, w * 0.46, h * 0.08, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(20,30,60,0.6)'; ctx.lineWidth = 0.6;
+  for (let k = 1; k < 8; k++) { const xx = x + (w * k) / 8; ctx.beginPath(); ctx.moveTo(xx, gy - h * 0.02); ctx.lineTo(xx, gy + h * 0.1); ctx.stroke(); }
+}
+
+/** Xenon capsule or monopropellant sphere: pressure vessels with domed ends. */
+function paintPressureTank(ctx: CanvasRenderingContext2D, def: PartDef, x: number, y: number, w: number, h: number) {
+  const accent = def.accent ?? '#6080ff';
+  const sphere = h <= w * 0.9;
+  if (sphere) {
+    ctx.beginPath(); ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+  } else {
+    rrect(ctx, x + w * 0.04, y, w * 0.92, h, w * 0.44);
+  }
+  const g = ctx.createRadialGradient(x + w * 0.35, y + h * 0.3, Math.min(w, h) * 0.05, x + w / 2, y + h / 2, Math.max(w, h) * 0.7);
+  g.addColorStop(0, shade(def.color, 1.25)); g.addColorStop(0.6, def.color); g.addColorStop(1, shade(def.color, 0.55));
+  ctx.fillStyle = g; ctx.fill();
+  ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
+  ctx.save(); ctx.clip();
+  ctx.fillStyle = cyl(ctx, x, w, accent);
+  ctx.fillRect(x, y + h * 0.46, w, Math.max(2, h * 0.08));
+  ctx.restore();
+  // Mounting ring.
+  ctx.fillStyle = cyl(ctx, x + w * 0.2, w * 0.6, '#6a7078');
+  ctx.fillRect(x + w * 0.2, y + h - Math.max(1.5, h * 0.05), w * 0.6, Math.max(1.5, h * 0.05));
+}
+
+function paintStructural(ctx: CanvasRenderingContext2D, def: PartDef, x: number, y: number, w: number, h: number, side: number) {
+  const cx = x + w / 2;
+  const accent = def.accent ?? '#888';
+  if (def.widthBottom != null) {
+    // Adapter or coupler: a conical frustum between two diameters.
+    const maxW = Math.max(def.width, def.widthBottom);
+    const tw = (w * def.width) / maxW, bw = (w * def.widthBottom) / maxW;
+    ctx.beginPath();
+    ctx.moveTo(cx - tw / 2, y); ctx.lineTo(cx + tw / 2, y);
+    ctx.lineTo(cx + bw / 2, y + h); ctx.lineTo(cx - bw / 2, y + h);
+    ctx.closePath();
+    ctx.fillStyle = cyl(ctx, cx - bw / 2, bw, def.color); ctx.fill();
+    ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
+    ctx.save(); ctx.clip();
+    ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+    for (let k = 1; k < 10; k++) { const f = k / 10; ctx.beginPath(); ctx.moveTo(cx + (f - 0.5) * tw, y); ctx.lineTo(cx + (f - 0.5) * bw, y + h); ctx.stroke(); }
+    ctx.fillStyle = cyl(ctx, x, w, accent);
+    ctx.fillRect(x, y + h - Math.max(2, h * 0.14), w, Math.max(2, h * 0.14));
+    ctx.restore();
+    if (def.mounts) {
+      // Engine mount sockets along the base.
+      const n = def.mounts >= 4 ? 3 : def.mounts;
+      for (let k = 0; k < n; k++) {
+        const f = n === 1 ? 0.5 : 0.18 + (0.64 * k) / (n - 1);
+        ctx.fillStyle = '#1b1e23';
+        ctx.beginPath(); ctx.ellipse(x + w * f, y + h - 1, w * (0.5 / (n + 0.6)), Math.max(1.2, h * 0.12), 0, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    return;
+  }
+  if (def.aero === 'nose') {
+    ctx.beginPath();
+    ctx.moveTo(x, y + h);
+    ctx.bezierCurveTo(x, y + h * 0.35, cx - w * 0.2, y + h * 0.02, cx, y);
+    ctx.bezierCurveTo(cx + w * 0.2, y + h * 0.02, x + w, y + h * 0.35, x + w, y + h);
+    ctx.closePath();
+    ctx.fillStyle = cyl(ctx, x, w, def.color); ctx.fill();
+    ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
+    ctx.save(); ctx.clip();
+    ctx.fillStyle = cyl(ctx, x, w, accent);
+    ctx.fillRect(x, y, w, h * 0.16);
+    ctx.fillRect(x, y + h * 0.86, w, h * 0.06);
+    ctx.restore();
+    return;
+  }
+  if (def.aero === 'fin') {
+    // Delta fin: root chord against the tank, swept leading edge outward.
+    const s = side || 1;
+    const ix = s > 0 ? x : x + w, ox = s > 0 ? x + w : x;
+    ctx.beginPath();
+    ctx.moveTo(ix, y); ctx.lineTo(ox, y + h * 0.7); ctx.lineTo(ox, y + h); ctx.lineTo(ix, y + h);
+    ctx.closePath();
+    const g = ctx.createLinearGradient(ix, y, ox, y + h);
+    g.addColorStop(0, shade(def.color, 1.05)); g.addColorStop(1, shade(def.color, 0.7));
+    ctx.fillStyle = g; ctx.fill();
+    ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
+    ctx.strokeStyle = accent; ctx.lineWidth = Math.max(1.5, w * 0.08);
+    ctx.beginPath(); ctx.moveTo(ix, y + 1); ctx.lineTo(ox, y + h * 0.7); ctx.stroke();
+    return;
+  }
+  if (def.id === 'hs-25') {
+    ctx.beginPath();
+    ctx.moveTo(x, y); ctx.lineTo(x + w, y);
+    ctx.quadraticCurveTo(x + w, y + h, cx, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y);
+    ctx.closePath();
+    ctx.fillStyle = cyl(ctx, x, w, def.color); ctx.fill();
+    ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    for (let k = 0; k < 14; k++) { const f = (k + 0.5) / 14; ctx.fillRect(x + w * f, y + h * 0.25, 1, h * 0.35); }
+    return;
+  }
+  // Truss segment: two rails and a zig-zag web.
+  const rail = Math.max(1.5, w * 0.08);
+  ctx.fillStyle = cyl(ctx, x, rail, def.color);
+  ctx.fillRect(x + w * 0.08, y, rail, h);
+  ctx.fillStyle = cyl(ctx, x + w * 0.92 - rail, rail, def.color);
+  ctx.fillRect(x + w * 0.92 - rail, y, rail, h);
+  ctx.strokeStyle = shade(def.color, 0.8); ctx.lineWidth = Math.max(1, w * 0.04);
+  const n = Math.max(3, Math.round(h / Math.max(4, w * 0.6)));
+  ctx.beginPath();
+  for (let k = 0; k <= n; k++) { const yy = y + (h * k) / n; const xx = k % 2 ? x + w * 0.88 : x + w * 0.12; if (k) ctx.lineTo(xx, yy); else ctx.moveTo(xx, yy); }
+  ctx.stroke();
+  ctx.fillStyle = cyl(ctx, x, w, accent);
+  ctx.fillRect(x, y, w, Math.max(2, h * 0.05)); ctx.fillRect(x, y + h - Math.max(2, h * 0.05), w, Math.max(2, h * 0.05));
+}
+
+function paintUtility(ctx: CanvasRenderingContext2D, def: PartDef, x: number, y: number, w: number, h: number, side: number) {
+  const cx = x + w / 2;
+  const accent = def.accent ?? '#888';
+  const s = side || 1;
+  const inner = s > 0 ? x : x + w, outer = s > 0 ? x + w : x;
+  switch (def.id) {
+    case 'battery-z': {
+      rrect(ctx, x, y, w, h, 2);
+      ctx.fillStyle = cyl(ctx, x, w, def.color); ctx.fill();
+      ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = accent;
+      for (const f of [0.22, 0.62]) ctx.fillRect(x + w * 0.12, y + h * f, w * 0.76, Math.max(1.2, h * 0.14));
+      return;
+    }
+    case 'solar-sp6': {
+      ctx.fillStyle = '#8a9098';
+      ctx.fillRect(Math.min(inner, inner + s * w * 0.18), y + h * 0.45, w * 0.18, h * 0.1);
+      const px = s > 0 ? x + w * 0.18 : x, pw = w * 0.82;
+      const g = ctx.createLinearGradient(px, y, px + pw, y + h);
+      g.addColorStop(0, '#24427e'); g.addColorStop(0.5, '#3563b5'); g.addColorStop(1, '#1a2f63');
+      ctx.fillStyle = g; ctx.fillRect(px, y, pw, h);
+      ctx.strokeStyle = 'rgba(200,215,240,0.45)'; ctx.lineWidth = 0.6;
+      for (let k = 1; k < 6; k++) { const yy = y + (h * k) / 6; ctx.beginPath(); ctx.moveTo(px, yy); ctx.lineTo(px + pw, yy); ctx.stroke(); }
+      ctx.beginPath(); ctx.moveTo(px + pw / 2, y); ctx.lineTo(px + pw / 2, y + h); ctx.stroke();
+      ctx.strokeStyle = accent; ctx.lineWidth = 1; ctx.strokeRect(px, y, pw, h);
+      return;
+    }
+    case 'rtg-pb': {
+      rrect(ctx, x + w * 0.2, y, w * 0.6, h, 3);
+      ctx.fillStyle = cyl(ctx, x + w * 0.2, w * 0.6, def.color); ctx.fill();
+      ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = cyl(ctx, x, w, shade(def.color, 0.8));
+      for (let k = 0; k < 5; k++) ctx.fillRect(x, y + h * (0.15 + k * 0.16), w, Math.max(1, h * 0.05));
+      ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(cx, y + h * 0.08, Math.max(1.2, w * 0.1), 0, Math.PI * 2); ctx.fill();
+      return;
+    }
+    case 'ant-whip': {
+      ctx.fillStyle = '#6a7078'; ctx.fillRect(Math.min(inner, outer), y + h * 0.82, w, h * 0.18);
+      ctx.strokeStyle = def.color; ctx.lineWidth = Math.max(1, w * 0.15);
+      ctx.beginPath(); ctx.moveTo(cx, y + h * 0.82); ctx.lineTo(cx, y); ctx.stroke();
+      ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(cx, y, Math.max(1, w * 0.2), 0, Math.PI * 2); ctx.fill();
+      return;
+    }
+    case 'dish-ra80': {
+      ctx.strokeStyle = '#8a9098'; ctx.lineWidth = Math.max(1, w * 0.05);
+      ctx.beginPath(); ctx.moveTo(inner, y + h * 0.8); ctx.lineTo(cx, y + h * 0.55); ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(cx + s * w * 0.05, y + h * 0.4, w * 0.48, h * 0.32, s * -0.5, 0, Math.PI * 2);
+      const g = ctx.createRadialGradient(cx, y + h * 0.35, 1, cx, y + h * 0.4, w * 0.5);
+      g.addColorStop(0, '#ffffff'); g.addColorStop(1, shade(def.color, 0.75));
+      ctx.fillStyle = g; ctx.fill();
+      ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
+      ctx.strokeStyle = accent; ctx.beginPath(); ctx.moveTo(cx + s * w * 0.05, y + h * 0.4); ctx.lineTo(cx + s * w * 0.35, y + h * 0.05); ctx.stroke();
+      return;
+    }
+    case 'rw-1': {
+      rrect(ctx, x, y, w, h, Math.min(3, h * 0.3));
+      ctx.fillStyle = cyl(ctx, x, w, def.color); ctx.fill();
+      ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = cyl(ctx, x, w, accent);
+      ctx.fillRect(x + w * 0.1, y + h * 0.35, w * 0.8, h * 0.3);
+      ctx.fillStyle = '#7ad0ff'; ctx.beginPath(); ctx.arc(x + w * 0.85, y + h * 0.5, Math.max(1, h * 0.12), 0, Math.PI * 2); ctx.fill();
+      return;
+    }
+    case 'rcs-4': {
+      rrect(ctx, x + w * 0.15, y + h * 0.15, w * 0.7, h * 0.7, 2);
+      ctx.fillStyle = cyl(ctx, x, w, def.color); ctx.fill();
+      ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = accent;
+      ctx.fillRect(cx - w * 0.08, y, w * 0.16, h * 0.18);
+      ctx.fillRect(cx - w * 0.08, y + h * 0.82, w * 0.16, h * 0.18);
+      ctx.fillRect(outer - (s > 0 ? w * 0.18 : 0), cy(y, h) - h * 0.08, w * 0.18, h * 0.16);
+      return;
+    }
+    case 'leg-lt3': {
+      ctx.strokeStyle = def.color; ctx.lineWidth = Math.max(1.5, w * 0.16);
+      ctx.beginPath(); ctx.moveTo(inner, y); ctx.lineTo(outer - s * w * 0.15, y + h * 0.92); ctx.stroke();
+      ctx.lineWidth = Math.max(1, w * 0.08);
+      ctx.beginPath(); ctx.moveTo(inner, y + h * 0.55); ctx.lineTo(outer - s * w * 0.2, y + h * 0.8); ctx.stroke();
+      ctx.fillStyle = accent;
+      ctx.fillRect(Math.min(outer, outer - s * w * 0.45), y + h * 0.92, w * 0.45, h * 0.08);
+      return;
+    }
+    case 'chute-mk16': {
+      ctx.beginPath();
+      ctx.moveTo(x, y + h); ctx.lineTo(x + w * 0.06, y + h * 0.4);
+      ctx.quadraticCurveTo(cx, y - h * 0.15, x + w * 0.94, y + h * 0.4);
+      ctx.lineTo(x + w, y + h); ctx.closePath();
+      ctx.fillStyle = cyl(ctx, x, w, def.color); ctx.fill();
+      ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
+      ctx.save(); ctx.clip();
+      ctx.fillStyle = cyl(ctx, x, w, accent);
+      for (let k = 0; k < 3; k++) ctx.fillRect(x + w * (0.12 + k * 0.3), y, w * 0.14, h);
+      ctx.restore();
+      return;
+    }
+    case 'lamp-1': {
+      rrect(ctx, x, y + h * 0.2, w, h * 0.6, 2);
+      ctx.fillStyle = cyl(ctx, x, w, def.color); ctx.fill();
+      ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(outer - s * w * 0.2, cy(y, h), Math.max(1.2, h * 0.22), 0, Math.PI * 2); ctx.fill();
+      return;
+    }
+    default:
+      rrect(ctx, x, y, w, h, 2);
+      ctx.fillStyle = cyl(ctx, x, w, def.color); ctx.fill();
+      ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
+  }
+}
+const cy = (y: number, h: number) => y + h / 2;
+
+function solarWing(ctx: CanvasRenderingContext2D, root: number, side: number, yy: number, span: number, hh: number) {
+  const left = side > 0 ? root : root - span;
+  const g = ctx.createLinearGradient(left, yy, left + span, yy + hh);
+  g.addColorStop(0, '#1d3f78'); g.addColorStop(0.5, '#2f5fae'); g.addColorStop(1, '#173064');
+  ctx.fillStyle = g; ctx.fillRect(left, yy, span, hh);
+  ctx.strokeStyle = 'rgba(190,210,240,0.4)'; ctx.lineWidth = 0.7;
+  const n = Math.max(2, Math.round(span / Math.max(4, hh)));
+  for (let k = 1; k < n; k++) { const xx = left + (span * k) / n; ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx, yy + hh); ctx.stroke(); }
+  ctx.strokeStyle = 'rgba(200,205,215,0.8)'; ctx.strokeRect(left, yy, span, hh);
+}
+
+/** Pressurised station module: ribbed hull, windows, docking ports, solar wings that unfold. */
+function paintStation(ctx: CanvasRenderingContext2D, def: PartDef, x: number, y: number, w: number, h: number, unfold: number) {
+  const cx = x + w / 2;
+  const hw = w * 0.84, hx = cx - hw / 2;
+  const port = Math.min(h * 0.08, w * 0.14);
+  ctx.fillStyle = cyl(ctx, cx - w * 0.22, w * 0.44, '#9aa0a8');
+  ctx.fillRect(cx - w * 0.22, y, w * 0.44, port);
+  ctx.fillRect(cx - w * 0.22, y + h - port, w * 0.44, port);
+  rrect(ctx, hx, y + port, hw, h - port * 2, Math.min(hw * 0.12, 6));
+  ctx.fillStyle = cyl(ctx, hx, hw, def.color); ctx.fill();
+  ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
+  ctx.save(); ctx.clip();
+  ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+  for (let k = 1; k < 10; k++) { const yy = y + port + ((h - port * 2) * k) / 10; ctx.beginPath(); ctx.moveTo(hx, yy); ctx.lineTo(hx + hw, yy); ctx.stroke(); }
+  ctx.fillStyle = cyl(ctx, hx, hw, def.accent ?? '#3a6ab0');
+  ctx.fillRect(hx, y + h * 0.3, hw, Math.max(2, h * 0.03));
+  ctx.fillRect(hx, y + h * 0.7, hw, Math.max(2, h * 0.03));
+  ctx.fillStyle = '#16202c';
+  for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.arc(cx - hw * 0.18 + k * hw * 0.18, y + h * 0.5, Math.max(1.2, hw * 0.045), 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+  // Solar wings: stowed against the hull, swinging out to full span.
+  const span = w * (0.12 + unfold * 1.6), hh = h * 0.2;
+  for (const s of [-1, 1]) {
+    const root = cx + s * hw / 2;
+    ctx.strokeStyle = '#9aa0a8'; ctx.lineWidth = Math.max(1, w * 0.02);
+    ctx.beginPath(); ctx.moveTo(root, y + h * 0.5); ctx.lineTo(root + s * w * 0.05, y + h * 0.5); ctx.stroke();
+    solarWing(ctx, root + s * w * 0.05, s, y + h * 0.5 - hh / 2, span, hh);
+  }
+}
+
+/** Space telescope: long baffle tube with an aperture door that swings open. */
+function paintTelescope(ctx: CanvasRenderingContext2D, def: PartDef, x: number, y: number, w: number, h: number, unfold: number) {
+  const cx = x + w / 2;
+  const tw = w * 0.78, tx = cx - tw / 2;
+  const doorH = h * 0.06;
+  rrect(ctx, tx, y + doorH, tw, h * 0.72, 3);
+  ctx.fillStyle = cyl(ctx, tx, tw, def.color); ctx.fill();
+  ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
+  ctx.save(); ctx.clip();
+  ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+  for (let k = 1; k < 8; k++) { const yy = y + doorH + (h * 0.72 * k) / 8; ctx.beginPath(); ctx.moveTo(tx, yy); ctx.lineTo(tx + tw, yy); ctx.stroke(); }
+  ctx.restore();
+  // Gold-foil instrument bus.
+  const foil = ctx.createLinearGradient(tx, 0, tx + tw, 0);
+  foil.addColorStop(0, '#8e6a1c'); foil.addColorStop(0.35, '#f2d27a'); foil.addColorStop(0.7, '#c9982e'); foil.addColorStop(1, '#6e520f');
+  ctx.fillStyle = foil;
+  rrect(ctx, x + w * 0.05, y + doorH + h * 0.72, w * 0.9, h * 0.22 - doorH * 0.2, 3); ctx.fill();
+  ctx.strokeStyle = OUTLINE; ctx.stroke();
+  // Aperture door hinged on one side.
+  ctx.save();
+  ctx.translate(tx + tw, y + doorH);
+  ctx.rotate(-unfold * 1.2);
+  ctx.fillStyle = cyl(ctx, -tw, tw, '#c8ccd2');
+  ctx.fillRect(-tw, -doorH, tw, doorH);
+  ctx.strokeStyle = OUTLINE; ctx.strokeRect(-tw, -doorH, tw, doorH);
+  ctx.restore();
+  // Small solar paddles at the bus.
+  const span = w * (0.1 + unfold * 0.9), hh = h * 0.12;
+  for (const s of [-1, 1]) solarWing(ctx, cx + s * w * 0.45, s, y + h * 0.78, span, hh);
+}
+
+/** Cargo carrier with bay doors (doors swing open on deploy). */
+function paintCargo(ctx: CanvasRenderingContext2D, def: PartDef, x: number, y: number, w: number, h: number, unfold: number) {
+  const cx = x + w / 2;
+  rrect(ctx, x + w * 0.04, y, w * 0.92, h, Math.min(6, w * 0.08));
+  ctx.fillStyle = cyl(ctx, x, w, def.color); ctx.fill();
+  ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = 'rgba(30,34,40,0.85)';
+  const open = unfold * w * 0.1;
+  ctx.fillRect(cx - open, y + h * 0.12, open * 2, h * 0.76);
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath(); ctx.moveTo(cx - open, y + h * 0.1); ctx.lineTo(cx - open, y + h * 0.9); ctx.moveTo(cx + open, y + h * 0.1); ctx.lineTo(cx + open, y + h * 0.9); ctx.stroke();
+  ctx.fillStyle = cyl(ctx, x, w, def.accent ?? '#d0a030');
+  for (const f of [0.06, 0.9]) ctx.fillRect(x + w * 0.04, y + h * f, w * 0.92, Math.max(2, h * 0.04));
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.font = `${Math.max(7, Math.round(w * 0.12))}px ui-sans-serif, system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  if (w > 40) ctx.fillText('CX-25', cx - w * 0.25, y + h * 0.5);
 }

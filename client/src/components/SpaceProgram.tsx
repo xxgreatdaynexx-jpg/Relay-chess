@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { request } from '@/lib/net';
 import {
-  SPACE_PARTS, PART_CATEGORIES, PART_BY_ID, courierI, scoutI, STOCK_DESIGNS, cloneDesign,
+  SPACE_PARTS, PART_CATEGORIES, PART_GROUPS, PART_SIZES, sizeClassesOf, clusterCounts, LIMIT_MIN, PART_BY_ID, courierI, scoutI, goliathHeavy, STOCK_DESIGNS, cloneDesign,
   makeDesign, newPartUid, defaultStageFor, designCost, validateDesign, hasErrors, parseDesign,
   type VesselDesign, type PlacedPart, type PartCategory, type PartDef,
 } from '../../../shared/spaceParts';
@@ -24,7 +24,7 @@ import {
   type SurveyViewData, type ScienceViewData, type ScienceResult,
 } from './SpaceResearch';
 import {
-  isPartUnlocked, scienceValue, EXPERIMENT_BY_ID, subjectBiome, subjectKey, flavorText, situationFromState, biomeUnder,
+  isPartUnlocked, TECH_NODES, scienceValue, EXPERIMENT_BY_ID, subjectBiome, subjectKey, flavorText, situationFromState, biomeUnder,
   type Situation, type ExperimentDef,
 } from '../../../shared/spaceScience';
 import type { MapType } from '../../../shared/spaceSurvey';
@@ -33,7 +33,8 @@ import '../spaceSim.css';
 export type SpaceView = 'hangar' | 'vab' | 'launch' | 'contracts' | 'survey' | 'science';
 export type SpacePreviewView = SpaceView | 'ascent' | 'orbit' | 'ascent-low' | 'ascent-high' | 'ground-track'
   | 'pad' | 'ascent-mid' | 'ascent-handoff' | 'staging' | 'deploy' | 'survey-weather' | 'missions' | 'mission-complete'
-  | 'survey-altimetry' | 'survey-biome' | 'survey-resource' | 'science-archive' | 'tech-tree' | 'science-flight' | 'science-orbit';
+  | 'survey-altimetry' | 'survey-biome' | 'survey-resource' | 'science-archive' | 'tech-tree' | 'science-flight' | 'science-orbit'
+  | 'vab-heavy' | 'heavy-ascent' | 'heavy-staging';
 export type SpacePreview = { view: SpacePreviewView; freeze?: boolean };
 
 type ViewData = {
@@ -149,10 +150,15 @@ function sciCourier(): VesselDesign {
 }
 const PREVIEW_SURVEY: Record<string, MapType> = { survey: 'visual', 'survey-altimetry': 'altimetry', 'survey-biome': 'biome', 'survey-resource': 'resource', 'survey-weather': 'weather' };
 
-type FrozenKind = 'ascent' | 'orbit' | 'ascent-low' | 'ascent-high' | 'science-flight' | 'science-orbit' | 'pad' | 'ascent-mid' | 'ascent-handoff' | 'staging' | 'deploy';
-const FROZEN_VIEWS: string[] = ['ascent', 'orbit', 'ascent-low', 'ascent-high', 'ground-track', 'science-flight', 'science-orbit', 'pad', 'ascent-mid', 'ascent-handoff', 'staging', 'deploy'];
+type FrozenKind = 'ascent' | 'orbit' | 'ascent-low' | 'ascent-high' | 'science-flight' | 'science-orbit' | 'pad' | 'ascent-mid' | 'ascent-handoff' | 'staging' | 'deploy' | 'heavy-ascent' | 'heavy-staging';
+const FROZEN_VIEWS: string[] = ['ascent', 'orbit', 'ascent-low', 'ascent-high', 'ground-track', 'science-flight', 'science-orbit', 'pad', 'ascent-mid', 'ascent-handoff', 'staging', 'deploy', 'heavy-ascent', 'heavy-staging'];
+const HEAVY_VIEWS: string[] = ['vab-heavy', 'heavy-ascent', 'heavy-staging'];
+const HEAVY_OPTS = { dt: 0.05, targetAp: 400_000, targetPe: 380_000 };
 
 function freezeAscent(kind: FrozenKind): FlightState {
+  // Heavy lifter: boosters and the quad cluster burning together, then just after the boosters separate.
+  if (kind === 'heavy-ascent') return scriptedAscent(goliathHeavy(), { ...HEAVY_OPTS, maxTime: 38 }).state;
+  if (kind === 'heavy-staging') return scriptedAscent(goliathHeavy(), { ...HEAVY_OPTS, maxTime: 62.6 }).state;
   if (kind === 'pad') return scriptedAscent(courierI(), { dt: 0.05, maxTime: 60, stopAtAltitude: 25 }).state;
   if (kind === 'ascent-mid') return scriptedAscent(courierI(), { dt: 0.05, maxTime: 200, stopAtAltitude: 24_000 }).state;
   if (kind === 'ascent-handoff') return scriptedAscent(courierI(), { dt: 0.05, maxTime: 280, stopAtAltitude: 64_000 }).state;
@@ -173,7 +179,7 @@ function freezeAscent(kind: FrozenKind): FlightState {
 
 function previewCamera(view?: SpacePreviewView): McCamera {
   if (view === 'ascent-low' || view === 'ascent') return 'horizon';
-  if (view === 'pad' || view === 'ascent-mid' || view === 'staging') return 'horizon';
+  if (view === 'pad' || view === 'ascent-mid' || view === 'staging' || view === 'heavy-ascent' || view === 'heavy-staging') return 'horizon';
   if (view === 'deploy') return 'globe';
   if (view === 'ground-track') return 'track';
   if (view === 'orbit') return 'globe';
@@ -185,15 +191,20 @@ function previewCamera(view?: SpacePreviewView): McCamera {
 export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onClose: () => void; preview?: SpacePreview }) {
   const launchViews = ['launch', ...FROZEN_VIEWS];
   const initialView: SpaceView = preview?.view && launchViews.includes(preview.view) ? 'launch'
-    : preview?.view === 'vab' ? 'vab'
+    : preview?.view === 'vab' || preview?.view === 'vab-heavy' ? 'vab'
     : preview?.view && preview.view in PREVIEW_SURVEY ? 'survey'
     : preview?.view === 'science' || preview?.view === 'science-archive' || preview?.view === 'tech-tree' ? 'science'
     : preview?.view === 'missions' || preview?.view === 'mission-complete' || preview?.view === 'contracts' ? 'contracts'
     : preview?.view === 'hangar' ? 'hangar' : 'hangar';
   const [view, setView] = useState<SpaceView>(initialView);
-  const [data, setData] = useState<ViewData>(() => emptyView(preview));
+  const [data, setData] = useState<ViewData>(() => {
+    const d = emptyView(preview);
+    // Heavy previews show a fully researched program so every part is available.
+    if (preview && HEAVY_VIEWS.includes(preview.view)) d.science = { ...d.science, nodes: TECH_NODES.map((n) => n.id) };
+    return d;
+  });
   const sciPreview = preview?.view === 'science-flight' || preview?.view === 'science-orbit';
-  const [design, setDesign] = useState<VesselDesign>(() => cloneDesign(sciPreview ? sciCourier() : courierI()));
+  const [design, setDesign] = useState<VesselDesign>(() => cloneDesign(preview && HEAVY_VIEWS.includes(preview.view) ? goliathHeavy() : sciPreview ? sciCourier() : courierI()));
   const [selected, setSelected] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -217,6 +228,7 @@ export function SpaceProgram({ me, onClose, preview }: { me?: string | null; onC
     if (preview?.view === 'ground-track' || (preview?.view === 'launch' && preview.freeze)) return freezeAscent('orbit');
     if (preview && FROZEN_VIEWS.includes(preview.view)) {
       if (preview.view === 'staging') primeDebris(scriptedAscent(courierI(), { dt: 0.05, maxTime: 220.85 }).state);
+      if (preview.view === 'heavy-staging') primeDebris(scriptedAscent(goliathHeavy(), { ...HEAVY_OPTS, maxTime: 61.2 }).state);
       return freezeAscent(preview.view as FrozenKind);
     }
     return null;
@@ -600,6 +612,91 @@ function Leaders({ data, me }: { data: ViewData; me: string | null }) {
   );
 }
 
+/** How many copies a radial part gets by default when added (symmetry). */
+function radialSymmetry(def: PartDef): number[] {
+  if (def.aero === 'fin' || def.id === 'leg-lt3') return [0, 90, 180, 270];
+  if (def.id === 'ant-whip' || def.id === 'dish-ra80' || def.id === 'lamp-1') return [0];
+  return [0, 180];
+}
+
+const fmtSize = (m: number) => (m === 0.625 ? '0.625 m' : `${m} m`);
+
+/** One-line stats for the catalog list. */
+function partBlurb(p: PartDef): string {
+  const bits: string[] = [];
+  if (p.category === 'engine' || p.category === 'srb') {
+    bits.push(p.thrustVac! >= 1e6 ? `${(p.thrustVac! / 1e6).toFixed(2)} MN` : `${(p.thrustVac! / 1000).toFixed(p.thrustVac! < 10_000 ? 1 : 0)} kN`);
+    bits.push(`${p.ispAsl}/${p.ispVac} s`);
+    if (p.category === 'srb') bits.push(`${fmtMass(p.fuelMass)} solid`);
+  } else if (p.fuelMass > 0) {
+    bits.push(`${fmtMass(p.fuelMass)} ${p.fuelKind === 'liquid' ? 'fuel' : p.fuelKind}`);
+    bits.push(`${fmtMass(p.dryMass)} dry`);
+  } else {
+    bits.push(fmtMass(p.dryMass));
+    if (p.mounts) bits.push(`${p.mounts}× cluster`);
+    if (p.commRangeKm) bits.push(`${p.commRangeKm.toLocaleString('en-US')} km`);
+    if (p.power) bits.push('power');
+  }
+  return bits.join(' · ');
+}
+
+function PartCatalog({ nodes, onAdd }: { nodes: string[]; onAdd: (p: PartDef) => void }) {
+  const [group, setGroup] = useState(PART_GROUPS[0]!.id);
+  const [query, setQuery] = useState('');
+  const [size, setSize] = useState<number | null>(null);
+  const q = query.trim().toLowerCase();
+  const g = PART_GROUPS.find((x) => x.id === group) ?? PART_GROUPS[0]!;
+  const list = SPACE_PARTS.filter((p) => {
+    if (q) {
+      const hay = `${p.name} ${p.short} ${p.description} ${p.id}`.toLowerCase();
+      if (!q.split(/\s+/).every((w) => hay.includes(w))) return false;
+    } else if (!g.categories.includes(p.category)) return false;
+    if (size != null && !sizeClassesOf(p).includes(size)) return false;
+    return true;
+  });
+  const cats = PART_CATEGORIES.filter((c) => list.some((p) => p.category === c.id));
+  return (
+    <aside className="spc-col spc-cat" data-testid="spc-catalog">
+      <div className="spc-cat-head">
+        <div className="spc-cat-tabs" role="tablist" aria-label="Part categories">
+          {PART_GROUPS.map((x) => (
+            <button key={x.id} type="button" role="tab" aria-selected={!q && x.id === group} className={!q && x.id === group ? 'on' : ''}
+              onClick={() => { setGroup(x.id); setQuery(''); }} data-testid={`spc-cat-tab-${x.id}`}>
+              {x.label}<small>{SPACE_PARTS.filter((p) => x.categories.includes(p.category)).length}</small>
+            </button>
+          ))}
+        </div>
+        <div className="spc-cat-tools">
+          <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search parts…" aria-label="Search parts" data-testid="spc-cat-search" />
+          <div className="spc-sizes" role="group" aria-label="Diameter">
+            <button type="button" className={size == null ? 'on' : ''} onClick={() => setSize(null)}>All</button>
+            {PART_SIZES.map((m) => <button key={m} type="button" className={size === m ? 'on' : ''} onClick={() => setSize(size === m ? null : m)} data-testid={`spc-size-${m}`}>{m}</button>)}
+          </div>
+        </div>
+      </div>
+      <div className="spc-cat-list">
+        {cats.map((c) => (
+          <div key={c.id} className="spc-cat-g">
+            <h3>{c.label}</h3>
+            {list.filter((p) => p.category === c.id).map((p) => {
+              const locked = !isPartUnlocked(p.id, nodes);
+              const sizes = sizeClassesOf(p);
+              return (
+                <button key={p.id} type="button" className={'spc-part' + (locked ? ' locked' : '')} onClick={() => { if (!locked) onAdd(p); }} aria-disabled={locked} data-testid={`spc-part-${p.id}`} title={locked ? `Research ${techLabelFor(p.id)} to unlock. ${p.description}` : p.description}>
+                  <span className="spc-sw" style={{ background: p.accent ?? p.color }} />
+                  <span className="txt"><b>{p.short}{sizes.length ? <i className="sz">{sizes.map(fmtSize).join('→')}</i> : p.radial ? <i className="sz">radial</i> : null}</b><small>{locked ? `🔒 ${techLabelFor(p.id)}` : partBlurb(p)}</small></span>
+                  <span className="c">🪙 {p.cost.toLocaleString('en-US')}</span>
+                </button>
+              );
+            })}
+          </div>
+        ))}
+        {!list.length && <p className="spc-fine" style={{ padding: 10 }}>No parts match.</p>}
+      </div>
+    </aside>
+  );
+}
+
 function Vab({ design, setDesign, selected, setSelected, stats, chips, busy, nodes, onSave, onRoll }: {
   design: VesselDesign; setDesign: (d: VesselDesign) => void;
   selected: string | null; setSelected: (id: string | null) => void;
@@ -628,9 +725,9 @@ function Vab({ design, setDesign, selected, setSelected, stats, chips, busy, nod
     const stage = defaultStageFor(def.category, design);
     const parent = (selected && design.parts.find((p) => p.uid === selected && !p.radial)?.uid)
       ?? [...design.parts].reverse().find((p) => !p.radial)?.uid;
-    if (radial && def.radial && (def.category === 'srb' || def.category === 'decoupler')) {
-      // Two-way symmetry by default for boosters.
-      const extras: PlacedPart[] = [0, 180].map((angle, i) => ({
+    if (radial && def.radial) {
+      // Symmetry by default: boosters and arrays in pairs, fins and legs in fours.
+      const extras: PlacedPart[] = radialSymmetry(def).map((angle, i) => ({
         uid: i === 0 ? uid : newPartUid(), partId: def.id, stage, radial: true, angle, attachTo: parent,
       }));
       setDesign({ ...design, parts: [...design.parts, ...extras] });
@@ -656,23 +753,7 @@ function Vab({ design, setDesign, selected, setSelected, stats, chips, busy, nod
   return (
     <div className="spc-body">
       <div className="spc-vab" data-testid="spc-vab">
-        <aside className="spc-col spc-cat">
-          {PART_CATEGORIES.map((g) => (
-            <div key={g.id} className="spc-cat-g">
-              <h3>{g.label}</h3>
-              {SPACE_PARTS.filter((p) => p.category === g.id).map((p) => {
-                const locked = !isPartUnlocked(p.id, nodes);
-                return (
-                  <button key={p.id} type="button" className={'spc-part' + (locked ? ' locked' : '')} onClick={() => { if (!locked) add(p); }} aria-disabled={locked} data-testid={`spc-part-${p.id}`} title={locked ? `Research ${techLabelFor(p.id)} to unlock. ${p.description}` : p.description}>
-                    <span className="spc-sw" style={{ background: p.accent ?? p.color }} />
-                    <span><b>{p.short}</b><small>{locked ? `🔒 ${techLabelFor(p.id)}` : <>{fmtMass(p.dryMass + p.fuelMass)}{p.thrustVac ? ` · ${(p.thrustVac / 1000).toFixed(0)} kN vac` : ''}{p.ispVac ? ` · ${p.ispVac} s` : ''}</>}</small></span>
-                    <span className="c">🪙 {p.cost}</span>
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </aside>
+        <PartCatalog nodes={nodes} onAdd={(p) => add(p)} />
         <div className="spc-bay">
           <canvas
             ref={canvasRef}
@@ -716,7 +797,18 @@ function Vab({ design, setDesign, selected, setSelected, stats, chips, busy, nod
           {sel && selDef && (
             <div className="spc-sel">
               <b>{selDef.name}</b>
-              <div>Stage {sel.stage}{sel.radial ? ' · radial' : ''}</div>
+              <div>Stage {sel.stage}{sel.radial ? ' · radial' : ''}{(clusterCounts(design).get(sel.uid) ?? 1) > 1 ? ` · cluster ×${clusterCounts(design).get(sel.uid)}` : ''}</div>
+              {selDef.category === 'srb' && (
+                <label className="spc-limit">
+                  Thrust limiter <b>{Math.round((sel.limit ?? 1) * 100)}%</b>
+                  <input type="range" min={LIMIT_MIN * 100} max={100} step={5} value={Math.round((sel.limit ?? 1) * 100)} data-testid="spc-limit"
+                    onChange={(e) => {
+                      const v = Number(e.target.value) / 100;
+                      // Apply to the whole symmetry group (same part, stage and parent).
+                      setDesign({ ...design, parts: design.parts.map((p) => (p.partId === sel.partId && p.stage === sel.stage && p.attachTo === sel.attachTo ? { ...p, limit: v >= 1 ? undefined : v } : p)) });
+                    }} />
+                </label>
+              )}
               <div className="ops">
                 <button type="button" className="spc-btn" onClick={() => update((p) => ({ ...p, stage: Math.min(15, p.stage + 1) }))}>Stage +</button>
                 <button type="button" className="spc-btn" onClick={() => update((p) => ({ ...p, stage: Math.max(0, p.stage - 1) }))}>Stage −</button>

@@ -10,12 +10,14 @@ const known: SpacePreviewView[] = [
   'survey', 'survey-altimetry', 'survey-biome', 'survey-resource', 'science', 'science-archive', 'tech-tree',
   'science-flight', 'science-orbit',
   'pad', 'ascent-mid', 'ascent-handoff', 'staging', 'deploy', 'survey-weather',
+  'vab-heavy', 'heavy-ascent', 'heavy-staging',
 ];
 const view: SpacePreviewView = known.includes(shot) ? shot : 'vab';
 const frozen = view === 'ascent' || view === 'orbit' || view === 'vab' || view === 'hangar'
   || view === 'ascent-low' || view === 'ascent-high' || view === 'ground-track'
   || view === 'missions' || view === 'mission-complete' || view === 'science-flight' || view === 'science-orbit'
-  || view === 'pad' || view === 'ascent-mid' || view === 'ascent-handoff' || view === 'staging' || view === 'deploy';
+  || view === 'pad' || view === 'ascent-mid' || view === 'ascent-handoff' || view === 'staging' || view === 'deploy'
+  || view === 'vab-heavy' || view === 'heavy-ascent' || view === 'heavy-staging';
 const preview: SpacePreview = { view, freeze: frozen };
 
 createRoot(document.getElementById('root')!).render(

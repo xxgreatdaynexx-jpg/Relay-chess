@@ -1,7 +1,7 @@
 /**
  * Canvas drawing for the Vehicle Assembly Building (side view) and Mission Control.
  */
-import { PART_BY_ID, stackOrder, radialsOn, type VesselDesign, type PlacedPart, type PartDef } from '../../../shared/spaceParts';
+import { PART_BY_ID, stackOrder, radialsOn, clusterCounts, type VesselDesign, type PlacedPart, type PartDef } from '../../../shared/spaceParts';
 import {
   PLANET, orbitalElements, orbitPoints, altitudeOf, fmtAlt, type FlightState,
 } from '../../../shared/spaceFlight';
@@ -19,6 +19,10 @@ export interface PartBox {
   y: number;
   w: number;
   h: number;
+  /** Radials: which side of the stack (-1 left, 1 right). */
+  side?: number;
+  /** Behind the stack in the side view (drawn first, dimmed). */
+  back?: boolean;
 }
 
 /** Height a fairing adds to the stack itself (its base ring); the shell wraps the parts above. */
@@ -27,6 +31,7 @@ const FAIRING_BASE = 0.22;
 /** Lay out a design in metres, origin at the tail (engine bells), y up. */
 export function layoutRocket(design: VesselDesign): { boxes: PartBox[]; height: number; width: number } {
   const stack = stackOrder(design);
+  const clusters = clusterCounts(design);
   const boxes: PartBox[] = [];
   let y = 0;
   let fairing: PartBox | null = null;
@@ -37,16 +42,39 @@ export function layoutRocket(design: VesselDesign): { boxes: PartBox[]; height: 
     const def = PART_BY_ID.get(p.partId);
     if (!def) continue;
     const ph = def.category === 'fairing' ? FAIRING_BASE : def.height;
-    const box: PartBox = { uid: p.uid, part: p, def, x: 0, y, w: def.width, h: ph };
-    boxes.push(box);
-    if (def.category === 'fairing' && !fairing) { fairing = box; fairingTop = y + ph; }
+    const fullW = Math.max(def.width, def.widthBottom ?? 0);
+    const n = clusters.get(p.uid) ?? 1;
+    if (n > 1) {
+      // Engines under a coupler: spread across its base; with four, two sit behind.
+      const above = PART_BY_ID.get(stack[i - 1]?.partId ?? '');
+      const W = Math.max(above?.widthBottom ?? above?.width ?? fullW, fullW);
+      const front = n >= 4 ? 2 : n;
+      const spread = (k: number, cnt: number, inset: number) => (cnt === 1 ? 0 : (-(W - fullW) / 2 + ((W - fullW) * k) / (cnt - 1)) * inset);
+      if (n >= 4) for (let k = 0; k < n - front; k++) boxes.push({ uid: p.uid, part: p, def, x: spread(k, n - front, 0.45), y: y + 0.05, w: fullW, h: ph, back: true });
+      for (let k = 0; k < front; k++) boxes.push({ uid: p.uid, part: p, def, x: spread(k, front, 1), y, w: fullW, h: ph });
+    } else {
+      const box: PartBox = { uid: p.uid, part: p, def, x: 0, y, w: fullW, h: ph };
+      boxes.push(box);
+      if (def.category === 'fairing' && !fairing) { fairing = box; fairingTop = y + ph; }
+    }
+    const parentW = fullW;
     for (const r of radialsOn(design, p.uid)) {
       const rd = PART_BY_ID.get(r.partId);
       if (!rd) continue;
-      const side = (r.angle ?? 0) % 360;
-      const sign = side >= 90 && side < 270 ? -1 : 1;
-      const sx = sign * (def.width / 2 + rd.width / 2 + 0.12);
-      boxes.push({ uid: r.uid, part: r, def: rd, x: sx, y: y + Math.max(0, (ph - rd.height) / 2), w: rd.width, h: rd.height });
+      const a = (((r.angle ?? 0) % 360) + 360) % 360;
+      const c = Math.cos((a * Math.PI) / 180);
+      // Side view: 0° right, 180° left; 90° faces the camera, 270° hides behind the stack.
+      const facing = Math.abs(c) < 0.35;
+      if (facing && a > 180) continue;
+      const sign = facing ? 1 : Math.sign(c);
+      const off = parentW / 2 + rd.width / 2 + (rd.category === 'srb' || rd.category === 'engine' ? 0.12 : 0.02);
+      const sx = facing ? 0 : sign * off;
+      // Vertical placement: fins and legs at the tail, antennas and lights high, the rest centred.
+      const low = rd.aero === 'fin' || rd.id === 'leg-lt3';
+      const high = rd.id === 'ant-whip' || rd.id === 'dish-ra80' || rd.id === 'lamp-1' || rd.id === 'rcs-4';
+      const ry = low ? y : high ? y + Math.max(0, ph - rd.height) : y + Math.max(0, (ph - rd.height) / 2);
+      const rw = facing ? rd.width * (rd.aero === 'fin' ? 0.25 : 0.8) : rd.width;
+      boxes.push({ uid: r.uid, part: r, def: rd, x: sx, y: ry, w: rw, h: rd.height, side: facing ? 0 : sign });
     }
     y += ph;
   }
@@ -73,10 +101,18 @@ function paintStack(
   toCanvas: (b: PartBox) => { px: number; py: number; pw: number; ph: number },
   opts: { selected?: string | null; shellAlpha: number },
 ) {
+  // Back-row cluster engines first (dimmed), then the visible stack.
   for (const b of boxes) {
-    if (b.def.category === 'fairing') continue;
+    if (!b.back) continue;
     const { px, py, pw, ph } = toCanvas(b);
-    paintPart(ctx, b.def, px, py, pw, ph, b.uid === opts.selected);
+    ctx.save(); ctx.globalAlpha = 0.8; ctx.filter = 'brightness(0.7)';
+    paintPart(ctx, b.def, px, py, pw, ph, false);
+    ctx.restore();
+  }
+  for (const b of boxes) {
+    if (b.def.category === 'fairing' || b.back) continue;
+    const { px, py, pw, ph } = toCanvas(b);
+    paintPart(ctx, b.def, px, py, pw, ph, b.uid === opts.selected, b.side ?? 0);
   }
   for (const b of boxes) {
     if (b.def.category !== 'fairing') continue;
@@ -281,13 +317,18 @@ function drawVehicleOnHorizon(
     const pw = b.w * scale;
     const exitX = b.x * scale, exitY = -b.y * scale;
     const solid = b.def.category === 'srb';
+    if (b.def.style === 'ion') continue;
     drawSmokeTrail(ctx, exitX, exitY, pw * (solid ? 0.72 : 0.88), opts.h * 1.3, smoke * (solid ? 1 : 0.55), opts.now, solid);
   }
   drawDebris(ctx, scale, opts.now);
   for (const b of burning) {
     const pw = b.w * scale;
     const solid = b.def.category === 'srb';
-    drawPlume(ctx, b.x * scale, -b.y * scale, pw * (solid ? 0.72 : (b.def.ispVac ?? 0) >= 340 ? 1 : 0.88), { throttle: flame, p: pAmb, t: opts.now, solid });
+    // Multi-nozzle engines get one plume per visible bell.
+    const nz = b.def.nozzles ?? 1;
+    const xs = nz >= 4 ? [-0.27, 0.27] : nz > 1 ? Array.from({ length: nz }, (_, k) => -0.25 + (0.5 * k) / (nz - 1)) : [0];
+    const ew = pw * (solid ? 0.72 : nz > 1 ? (nz >= 4 ? 0.38 : 0.44) : (b.def.ispVac ?? 0) >= 340 ? 1 : 0.88);
+    for (const f of xs) drawPlume(ctx, b.x * scale + f * pw, -b.y * scale, ew, { throttle: flame, p: pAmb, t: opts.now, solid, ion: b.def.style === 'ion' });
   }
   paintStack(ctx, boxes, (b) => {
     const pw = b.w * scale, ph = b.h * scale;

@@ -33,3 +33,10 @@ Do not copy this into `shared/changelog.ts` until this feature is shipped. The p
     "Other players' satellites now show on the orbit map and the ground track. Mission Control has a Recent launches feed, and the Hangar has leaderboards for satellites, science and map coverage. Shared data refreshes every 90 seconds, only while the tab is open.",
     "Launches, deploys, contract claims, science and survey payouts are processed one at a time per player. Two tabs on one account can no longer double-launch or double-claim.",
   ]},
+
+  {"commit": "", "at": "2026-11-13T18:00:00-06:00", "title": "Space Center: 49 new rocket parts, from tiny probes to 3.75 m heavy lifters", "bullets": [
+    "The VAB catalog grows from about 30 to 80 parts across four diameters (0.625, 1.25, 2.5 and 3.75 m), with adapters to step between them. Highlights: the Gnat micro engine, the Wren vacuum engine, the Wedge aerospike, the Twinfang and Behemoth multi-nozzle engines, the Rhinox heavy lifter, and the Halo xenon ion drive, which needs a battery, solar panel or RTG to run.",
+    "Solid boosters now come in three new sizes and have a thrust limiter (30–100%). Radial decouplers drop the spent boosters while the core keeps burning. Bi-, tri- and quad-couplers turn one engine into a cluster, and nose cones and fins cut drag.",
+    "New utility parts: batteries, solar panels, an RTG, a whip antenna, a relay dish, reaction wheels, RCS, landing legs, parachutes and lights. New payloads: the Meridian relay satellite, the Aurora telescope, the Haven station module and a cargo pod. New command parts: three probe cores and the three-seat Trident capsule. A new Relay Uplink contract asks for a relay dish or satellite in a 400 km orbit.",
+    "The research tree grows from 10 to 23 nodes. The catalog has category tabs, search and a diameter filter, and works on phones. A stock Goliath Heavy design shows a full heavy-lift stack that can carry a station module to a 400 km orbit.",
+  ]},
