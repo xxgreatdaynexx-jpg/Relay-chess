@@ -11,7 +11,7 @@ import {
 } from '../../../shared/spaceLaunchShow';
 
 type Tier = 'low' | 'mid' | 'high';
-const PARTICLES: Record<Tier, number> = { low: 90, mid: 180, high: 260 };
+const PARTICLES: Record<Tier, number> = { low: 100, mid: 220, high: 340 };
 /** Downrange heading: east-southeast, out over the city. */
 const HEADING = new THREE.Vector3(1, 0, 0.35).normalize();
 const WIND = new THREE.Vector3(0.75, 0.12, 0.45);
@@ -314,7 +314,9 @@ export function createLaunchFx(scene: THREE.Scene, pad: THREE.Vector3, tier: Tie
         x -= ed.x * back; y -= ed.y * back; z -= ed.z * back;
         x += (h1 - 0.5) * 1.5; z += (h2 - 0.5) * 1.5;
       }
-      x += WIND.x * age; y += WIND.y * age; z += WIND.z * age;
+      // Wind shear: higher smoke drifts faster, bending the column over the city.
+      const shear = 1 + Math.max(0, y - pad.y) / 160;
+      x += WIND.x * age * shear; y += WIND.y * age; z += WIND.z * age * shear;
       r.pos[o] = x; r.pos[o + 1] = Math.max(pad.y + 0.5, y); r.pos[o + 2] = z;
       const hiK = r.kind[i] === 1 ? 1.25 : 1 - 0.35 * Math.min(1, r.te[i]! / 40);
       r.size[i] = (d.smoke * hiK * (0.8 + h3 * 0.5) + age * (r.kind[i] === 1 ? 0.55 : 0.32)) * 2;

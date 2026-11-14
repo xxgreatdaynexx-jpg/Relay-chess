@@ -66,3 +66,6 @@ export function _demoShow(s: Partial<LaunchShow> & { offsetS?: number }) {
   const now = Date.now();
   ingestShows([{ id: `demo-${now}-${Math.random()}`, player: 'Vega', design: 'Goliath Heavy', size: 'heavy', boosters: true, ...s, at: now - (s.offsetS ?? -5) * 1000 }], now, true, now);
 }
+
+// Local dev server only (stripped from production builds): lets the screenshot harness play a heavy launch.
+if (import.meta.env.DEV) (window as unknown as { __launchDemo?: typeof _demoShow }).__launchDemo = _demoShow;

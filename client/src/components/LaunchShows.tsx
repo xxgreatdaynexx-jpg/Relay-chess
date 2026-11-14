@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { subscribeShows, useLaunchShows, type LocalShow } from '@/lib/spaceLaunchFeed';
 import { useSettings } from '@/lib/settings';
-import { SHOW_FLIGHT_S, SHOW_END_MS, SHOW_TOAST_FRESH_MS } from '../../../shared/spaceLaunchShow';
+import { SHOW_FLIGHT_S, SHOW_END_MS, SHOW_TOAST_FRESH_MS, SHOW_SEP_S, showPose } from '../../../shared/spaceLaunchShow';
 import type { World } from '@/lib/world3d';
 
 /** Feed the 3D city: shows list plus the settings switch (off, or reduce motion, hides the 3D animation). */
@@ -19,21 +19,43 @@ function useNow(active: boolean, ms = 250) {
   return now;
 }
 
+/** Screen mapping for the tile: square-root compression so the whole climb fits a few hundred pixels. */
+const map2d = (down: number, up: number) => ({ x: 7 * Math.sqrt(Math.max(0, down)), y: -9 * Math.sqrt(Math.max(0, up)) });
+
 function Show2D({ show }: { show: LocalShow }) {
-  // Negative delay = seconds already flown, captured once so a re-render never restarts the animation.
-  const [delay] = useState(() => (Date.now() - show.at) / 1000);
   const now = useNow(true);
   const ts = (now - show.at) / 1000;
-  const style = { animationDelay: `${delay}s` } as const;
+  const base = show.size === 'heavy' ? 7 : show.size === 'medium' ? 5.5 : 4;
+  // Puffs laid down every 1.2 s of flight; they grow, drift right on the wind and fade.
+  const puffs: Array<{ x: number; y: number; r: number; o: number }> = [];
+  if (ts > 0) {
+    for (let te = 0; te < Math.min(ts, SHOW_FLIGHT_S); te += 1.2) {
+      const age = ts - te;
+      const p = showPose(show.size, te);
+      const m = map2d(p.down, p.up);
+      const o = 0.6 * Math.max(0, 1 - age / 45);
+      if (o <= 0.01) continue;
+      puffs.push({ x: m.x + age * 0.5 * (1 + -m.y / 200), y: m.y - age * 0.15, r: base * (te < 5 ? 1.6 : 1) + age * 0.32, o });
+    }
+    // Pad cloud.
+    const ca = Math.max(0, 1 - ts / 50);
+    if (ca > 0) for (const k of [-1, 0, 1]) puffs.push({ x: k * (10 + Math.min(ts, 8) * 2.2) + ts * 0.4, y: 2, r: base * 1.8 + Math.min(ts, 10) * 0.9, o: 0.55 * ca });
+  }
+  const p = showPose(show.size, Math.max(0, ts));
+  const m = map2d(p.down, p.up);
+  const flying = ts >= 0 && ts < SHOW_FLIGHT_S;
+  const fade = ts > SHOW_FLIGHT_S - 10 ? Math.max(0, (SHOW_FLIGHT_S - ts) / 10) : 1;
+  const deg = -45 + (p.pitch * 180) / Math.PI; // the emoji points up-right at rest
+  const sep = show.boosters && ts >= SHOW_SEP_S && ts < SHOW_SEP_S + 1.5 ? map2d(showPose(show.size, SHOW_SEP_S).down, showPose(show.size, SHOW_SEP_S).up) : null;
   return (
     <span className={`wl2d wl2d-${show.size}`} aria-hidden="true" data-testid="launch-2d">
-      {ts < 0 ? <span className="wl2d-count">T-{Math.ceil(-ts)}</span> : (
-        <>
-          <span className="wl2d-cloud" style={style} />
-          <span className="wl2d-trail" style={style} />
-          <span className="wl2d-rocket" style={style}>🚀</span>
-          {show.boosters && <span className="wl2d-sep" style={{ animationDelay: `${delay - 26}s` }} />}
-        </>
+      <svg style={{ left: '50%', top: '66%', width: 1, height: 1 }}>
+        {puffs.map((q, i) => <circle key={i} className="wl2d-puff" cx={q.x} cy={q.y} r={q.r} opacity={q.o} />)}
+        {sep && <circle cx={sep.x} cy={sep.y} r={10 + (ts - SHOW_SEP_S) * 18} fill="#fff2c0" opacity={1 - (ts - SHOW_SEP_S) / 1.5} />}
+      </svg>
+      {ts < 0 && <span className="wl2d-count">T-{Math.ceil(-ts)}</span>}
+      {flying && (
+        <span className="wl2d-rocket" style={{ left: '50%', top: '66%', opacity: fade, transform: `translate(${m.x - 13}px, ${m.y - 26}px) rotate(${deg}deg)` }}>🚀</span>
       )}
       {ts < SHOW_FLIGHT_S && <span className="wl2d-tag">🚀 {show.player} · {show.design}</span>}
     </span>

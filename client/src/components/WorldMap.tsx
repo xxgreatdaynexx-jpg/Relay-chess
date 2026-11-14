@@ -470,7 +470,7 @@ function CityMap({ onClose, onLeaderboard }: { onClose: () => void; onLeaderboar
       <BillionaireClubHost onDeed={(id) => setDeed(id)} />
       <FireworksHost />
       {toast && <div className="world-toast" role="status" data-testid="world-toast">{toast}</div>}
-      {!driving && <LaunchToast me={me} onOpen={() => setPanel({ k: 'spacesim' })} onWatch={mode === '3d' ? () => worldRef.current?.watchLaunch() : undefined} />}
+      {!driving && <LaunchToast me={me} onOpen={() => setPanel({ k: 'spacesim' })} onWatch={mode === '3d' ? () => worldRef.current?.watchLaunch() : () => document.querySelector('[data-testid="world-tile-spacecenter"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' })} />}
       {farm && <FarmGame onAllFarms={hasBarn ? openAllFarms : undefined} id={farm} label={propertyById(farm)?.label ?? 'Farm'} onClose={() => setFarm(null)} />}
       {farm && me && owned.get(farm)?.owner.toLowerCase() === me.toLowerCase() && <button type="button" className="estate-hyper-open" data-testid="farm-hyper" onClick={() => setPanel({ k: 'estate', id: farm, kind: 'hyper' })}>🌿 Convert to a Dutch glasshouse…</button>}
       {farm?.startsWith('winery:') && me && owned.get(farm)?.owner.toLowerCase() === me.toLowerCase() && <button type="button" className="estate-hyper-open" data-testid="farm-wine-press" onClick={() => setPanel({ k: 'estate', id: farm, kind: 'estate' })}>🍷 Open the press…</button>}

@@ -999,8 +999,9 @@ export function createWorld(canvas: HTMLCanvasElement, h: Handlers) {
   const watchLaunch = () => {
     h.onHover(null, 0, 0);
     const p = new THREE.Vector3(); if (padRocket) padRocket.getWorldPosition(p); else p.set(-186, 0, -410);
-    const tgt = new THREE.Vector3(p.x + 45, 55, p.z + 10);
-    const to = tgt.clone().add(new THREE.Vector3(0.28, 0, 1).normalize().multiplyScalar(250)).setY(150);
+    // Aim well above the pad from far back: the orbit camera always looks down, so height and distance keep the climb in frame.
+    const tgt = new THREE.Vector3(p.x + 60, 150, p.z + 15);
+    const to = tgt.clone().add(new THREE.Vector3(0.28, 0, 1).normalize().multiplyScalar(500)).setY(150 + 225);
     fly = { from: camera.position.clone(), to, tf: controls.target.clone(), tt: tgt, t: 0, id: '' }; controls.enabled = false;
   };
   const flyTo = (id: string) => {

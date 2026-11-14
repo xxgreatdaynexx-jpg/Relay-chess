@@ -30,7 +30,7 @@ export const SHOW_LINGER_S = 40;
 /** Whole show window from liftoff (ms). */
 export const SHOW_END_MS = (SHOW_FLIGHT_S + SHOW_LINGER_S) * 1000;
 /** Booster separation time (s after liftoff) for designs with boosters. */
-export const SHOW_SEP_S = 26;
+export const SHOW_SEP_S = 20;
 /** At most this many shows play at once; extra launches still fly, they just skip the city broadcast. */
 export const SHOW_MAX_ACTIVE = 4;
 /** Late joiners get a toast only if they arrive within this long of liftoff. */
@@ -76,7 +76,7 @@ export interface ShowPose {
   burning: boolean;
 }
 
-const ACCEL: Record<LaunchSize, number> = { small: 2.4, medium: 1.7, heavy: 1.35 };
+const ACCEL: Record<LaunchSize, number> = { small: 1.8, medium: 1.3, heavy: 1.05 };
 const DT = 0.1;
 const tables = new Map<LaunchSize, Float32Array>();
 
