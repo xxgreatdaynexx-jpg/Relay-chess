@@ -6,7 +6,10 @@
  */
 export const G0 = 9.81;
 
-export type PartCategory = 'pod' | 'probe' | 'tank' | 'engine' | 'srb' | 'decoupler' | 'fairing' | 'payload' | 'science';
+export type PartCategory = 'pod' | 'probe' | 'tank' | 'engine' | 'srb' | 'decoupler' | 'fairing' | 'payload' | 'science' | 'structural' | 'utility';
+
+/** Propellant a tank holds or an engine burns. Solids burn their own grain; the rest feed from tanks in the same segment. */
+export type FuelKind = 'liquid' | 'solid' | 'xenon' | 'mono';
 
 export interface PartDef {
   id: string;
@@ -16,7 +19,7 @@ export interface PartDef {
   description: string;
   dryMass: number;
   fuelMass: number;
-  fuelKind?: 'liquid' | 'solid';
+  fuelKind?: FuelKind;
   thrustAsl?: number;
   thrustVac?: number;
   ispAsl?: number;
@@ -28,6 +31,22 @@ export interface PartDef {
   gimbal?: boolean;
   color: string;
   accent?: string;
+  /** Adapters and couplers: diameter of the aft end (width is the forward end). */
+  widthBottom?: number;
+  /** Couplers: engines mounted directly below fire as a cluster of this many. */
+  mounts?: number;
+  /** Art: bells drawn on a multi-nozzle engine. */
+  nozzles?: number;
+  /** Aerodynamics: a nose cone on the front trims drag; fins add a little. */
+  aero?: 'nose' | 'fin';
+  /** Generates or stores electric charge (batteries, solar, RTG). */
+  power?: boolean;
+  /** Needs a power part somewhere on the vessel (ion drive). */
+  needsPower?: boolean;
+  /** Antennas: comm range in km (relay dishes reach far beyond low orbit). */
+  commRangeKm?: number;
+  /** Engine art variant. */
+  style?: 'aerospike' | 'ion';
 }
 
 export const SPACE_PARTS: PartDef[] = [
@@ -134,6 +153,200 @@ export const SPACE_PARTS: PartDef[] = [
     dryMass: 4500, fuelMass: 22500, fuelKind: 'solid', thrustAsl: 593_000, thrustVac: 670_000, ispAsl: 195, ispVac: 220,
     width: 1.25, height: 5.0, cost: 2700, radial: true, color: '#f2efe6', accent: '#2050c0' },
 
+  /* ── Expanded catalog: command ── */
+  { id: 'probe-pip', name: 'Pip Micro Probe Core', short: 'Pip', category: 'probe',
+    description: '0.625 m probe core for tiny upper stages. 30 kg, basic SAS.',
+    dryMass: 30, fuelMass: 0, width: 0.625, height: 0.22, cost: 800, color: '#30363f', accent: '#ffb347' },
+  { id: 'probe-hexa', name: 'HEXA-2 Guidance Core', short: 'HEXA-2', category: 'probe',
+    description: '1.25 m hexagonal probe core with a built-in reaction wheel and better SAS.',
+    dryMass: 160, fuelMass: 0, width: 1.25, height: 0.4, cost: 600, color: '#2a3038', accent: '#7af0c0' },
+  { id: 'probe-ring', name: 'RINGCORE-25 Avionics Ring', short: 'Ringcore', category: 'probe',
+    description: '2.5 m flight computer ring. Steers big stacks without a pod.',
+    dryMass: 400, fuelMass: 0, width: 2.5, height: 0.45, cost: 1100, color: '#3a4048', accent: '#7ad0ff' },
+  { id: 'pod-trident', name: 'Trident Three-Seat Module', short: 'Trident', category: 'pod',
+    description: '2.5 m three-seat command module with docking port and heat shield.',
+    dryMass: 2720, fuelMass: 0, width: 2.5, height: 2.2, cost: 4200, color: '#c8ccd2', accent: '#5a6676' },
+
+  /* ── Expanded catalog: fuel tanks ── */
+  { id: 'oscar-25', name: 'Oscar-25 Mini Tank', short: 'Oscar-25', category: 'tank',
+    description: 'Tiny 0.625 m tank. 25 kg dry, 100 kg of liquid fuel.',
+    dryMass: 25, fuelMass: 100, fuelKind: 'liquid', width: 0.625, height: 0.32, cost: 170, color: '#e8e4d8', accent: '#d08a20' },
+  { id: 'oscar-60', name: 'Oscar-60 Mini Tank', short: 'Oscar-60', category: 'tank',
+    description: '0.625 m tank. 50 kg dry, 250 kg of liquid fuel.',
+    dryMass: 50, fuelMass: 250, fuelKind: 'liquid', width: 0.625, height: 0.62, cost: 360, color: '#e8e4d8', accent: '#d08a20' },
+  { id: 'oscar-120', name: 'Oscar-120 Mini Tank', short: 'Oscar-120', category: 'tank',
+    description: 'Long 0.625 m tank. 100 kg dry, 500 kg of liquid fuel.',
+    dryMass: 100, fuelMass: 500, fuelKind: 'liquid', width: 0.625, height: 1.2, cost: 650, color: '#e8e4d8', accent: '#d08a20' },
+  { id: 'fl-t1600', name: 'FL-T1600 Long Tank', short: 'T1600', category: 'tank',
+    description: 'Extra-long 1.25 m tank. 1 t dry, 8 t of liquid fuel.',
+    dryMass: 1000, fuelMass: 8000, fuelKind: 'liquid', width: 1.25, height: 7.4, cost: 1750, color: '#e8e4d8', accent: '#d06020' },
+  { id: 'x200-8', name: 'Rockomax X200-8 Fuel Tank', short: 'X200-8', category: 'tank',
+    description: 'Short 2.5 m tank. 500 kg dry, 4 t of liquid fuel.',
+    dryMass: 500, fuelMass: 4000, fuelKind: 'liquid', width: 2.5, height: 1.0, cost: 820, color: '#e8e4d8', accent: '#c05018' },
+  { id: 'kodiak-18', name: 'Kodiak S3-18 Tank', short: 'Kodiak-18', category: 'tank',
+    description: 'Squat 3.75 m tank. 2.25 t dry, 18 t of liquid fuel.',
+    dryMass: 2250, fuelMass: 18000, fuelKind: 'liquid', width: 3.75, height: 1.9, cost: 3100, color: '#ece8dc', accent: '#3a5a8a' },
+  { id: 'kodiak-36', name: 'Kodiak S3-36 Tank', short: 'Kodiak-36', category: 'tank',
+    description: '3.75 m tank. 4.5 t dry, 36 t of liquid fuel.',
+    dryMass: 4500, fuelMass: 36000, fuelKind: 'liquid', width: 3.75, height: 3.75, cost: 5600, color: '#ece8dc', accent: '#3a5a8a' },
+  { id: 'kodiak-72', name: 'Kodiak S3-72 Tank', short: 'Kodiak-72', category: 'tank',
+    description: 'Tall 3.75 m tank. 9 t dry, 72 t of liquid fuel. The core of a super-heavy lifter.',
+    dryMass: 9000, fuelMass: 72000, fuelKind: 'liquid', width: 3.75, height: 7.5, cost: 10400, color: '#ece8dc', accent: '#3a5a8a' },
+  { id: 'xenon-60', name: 'PB-X60 Xenon Canister', short: 'Xenon-60', category: 'tank',
+    description: '0.625 m pressurised xenon canister for ion drives. 60 kg dry, 70 kg of xenon.',
+    dryMass: 60, fuelMass: 70, fuelKind: 'xenon', width: 0.625, height: 0.45, cost: 1400, color: '#d8dde4', accent: '#6080ff' },
+  { id: 'xenon-300', name: 'PB-X300 Xenon Tank', short: 'Xenon-300', category: 'tank',
+    description: '1.25 m xenon tank. 240 kg dry, 300 kg of xenon.',
+    dryMass: 240, fuelMass: 300, fuelKind: 'xenon', width: 1.25, height: 0.75, cost: 4400, color: '#d8dde4', accent: '#6080ff' },
+  { id: 'mono-150', name: 'Rondo Monoprop Sphere', short: 'Mono-150', category: 'tank',
+    description: '0.625 m monopropellant sphere for RCS attitude jets. 40 kg dry, 150 kg of monoprop.',
+    dryMass: 40, fuelMass: 150, fuelKind: 'mono', width: 0.625, height: 0.5, cost: 320, color: '#f2f2ee', accent: '#e0a020' },
+  { id: 'mono-600', name: 'FL-R600 Monoprop Tank', short: 'Mono-600', category: 'tank',
+    description: '1.25 m monopropellant tank. 150 kg dry, 600 kg of monoprop.',
+    dryMass: 150, fuelMass: 600, fuelKind: 'mono', width: 1.25, height: 0.7, cost: 640, color: '#f2f2ee', accent: '#e0a020' },
+
+  /* ── Expanded catalog: liquid engines ── */
+  { id: 'gnat', name: 'Gnat-2 Microthruster', short: 'Gnat', category: 'engine',
+    description: 'Tiny 0.625 m upper-stage engine. 2 kN / 315 s in vacuum; useless in thick air.',
+    dryMass: 20, fuelMass: 0, fuelKind: 'liquid', thrustAsl: 510, thrustVac: 2_000, ispAsl: 80, ispVac: 315,
+    width: 0.5, height: 0.35, cost: 520, gimbal: false, color: '#7a8088', accent: '#f0c040' },
+  { id: 'wren', name: 'LV-W4 Wren Vacuum Engine', short: 'Wren', category: 'engine',
+    description: 'Efficient 1.25 m vacuum engine with a long extension. 125 kN / 355 s in vacuum, 150 s at sea level.',
+    dryMass: 650, fuelMass: 0, fuelKind: 'liquid', thrustAsl: 53_000, thrustVac: 125_000, ispAsl: 150, ispVac: 355,
+    width: 1.25, height: 1.5, cost: 1900, gimbal: true, color: '#7a8088', accent: '#9ad0ff' },
+  { id: 'bruiser', name: 'KR-1 Bruiser Lifter', short: 'Bruiser', category: 'engine',
+    description: 'Very high-thrust 1.25 m lifter. 800 kN at sea level, 900 kN / 310 s in vacuum. Thirsty.',
+    dryMass: 3600, fuelMass: 0, fuelKind: 'liquid', thrustAsl: 800_000, thrustVac: 900_000, ispAsl: 268, ispVac: 310,
+    width: 1.25, height: 1.6, cost: 5600, gimbal: true, color: '#62686f', accent: '#e05030' },
+  { id: 'spur', name: 'RS-2 Spur Radial Engine', short: 'Spur', category: 'engine',
+    description: 'Radially mounted liquid engine that feeds from the core tanks. 108 kN at sea level, 120 kN / 305 s.',
+    dryMass: 900, fuelMass: 0, fuelKind: 'liquid', thrustAsl: 108_000, thrustVac: 120_000, ispAsl: 275, ispVac: 305,
+    width: 0.6, height: 1.3, cost: 1300, radial: true, gimbal: true, color: '#7a8088', accent: '#e07020' },
+  { id: 'wedge', name: 'WX-1 Wedge Linear Aerospike', short: 'Wedge', category: 'engine',
+    description: 'Altitude-compensating aerospike: 290 s at sea level and 340 s in vacuum, 180 kN throughout.',
+    dryMass: 1000, fuelMass: 0, fuelKind: 'liquid', thrustAsl: 175_000, thrustVac: 180_000, ispAsl: 290, ispVac: 340,
+    width: 1.25, height: 1.1, cost: 4200, gimbal: false, style: 'aerospike', color: '#8a9098', accent: '#d0d8e0' },
+  { id: 'twinfang', name: 'RE-T2 Twinfang', short: 'Twinfang', category: 'engine',
+    description: 'Two-nozzle 2.5 m booster. 1.87 MN at sea level, 2.0 MN / 300 s in vacuum.',
+    dryMass: 6500, fuelMass: 0, fuelKind: 'liquid', thrustAsl: 1_870_000, thrustVac: 2_000_000, ispAsl: 280, ispVac: 300,
+    width: 2.5, height: 2.6, cost: 9600, gimbal: true, nozzles: 2, color: '#5e646c', accent: '#e0a020' },
+  { id: 'behemoth', name: 'KR-4 Behemoth Cluster', short: 'Behemoth', category: 'engine',
+    description: 'Four-nozzle 3.75 m first-stage cluster. 3.75 MN at sea level, 4.0 MN / 315 s in vacuum.',
+    dryMass: 15000, fuelMass: 0, fuelKind: 'liquid', thrustAsl: 3_750_000, thrustVac: 4_000_000, ispAsl: 295, ispVac: 315,
+    width: 3.75, height: 3.6, cost: 18500, gimbal: true, nozzles: 4, color: '#585e66', accent: '#d04020' },
+  { id: 'rhinox', name: 'RV-3 Rhinox Vacuum Main', short: 'Rhinox', category: 'engine',
+    description: '3.75 m heavy upper-stage engine. 2.0 MN / 340 s in vacuum, only 205 s at sea level.',
+    dryMass: 9000, fuelMass: 0, fuelKind: 'liquid', thrustAsl: 1_200_000, thrustVac: 2_000_000, ispAsl: 205, ispVac: 340,
+    width: 3.75, height: 3.2, cost: 12500, gimbal: true, color: '#6a7078', accent: '#60b0e0' },
+  { id: 'halo-ion', name: 'Halo-1 Ion Drive', short: 'Halo ion', category: 'engine',
+    description: 'Gridded xenon ion drive: 4,200 s in vacuum but only 2 kN. Burns xenon and needs a battery, solar array or RTG on board.',
+    dryMass: 250, fuelMass: 0, fuelKind: 'xenon', thrustAsl: 50, thrustVac: 2_000, ispAsl: 100, ispVac: 4_200,
+    width: 0.625, height: 0.4, cost: 8000, gimbal: false, needsPower: true, style: 'ion', color: '#4a5058', accent: '#60a0ff' },
+
+  /* ── Expanded catalog: solid boosters ── */
+  { id: 'sparrow', name: 'RT-2 Sparrow', short: 'Sparrow', category: 'srb',
+    description: 'Tiny 0.625 m radial solid motor. 55 kN at sea level, 0.4 t of solid fuel.',
+    dryMass: 120, fuelMass: 400, fuelKind: 'solid', thrustAsl: 55_000, thrustVac: 64_000, ispAsl: 160, ispVac: 182,
+    width: 0.625, height: 1.4, cost: 260, radial: true, color: '#f2efe6', accent: '#e07020' },
+  { id: 'pounder', name: 'BX-125 Pounder', short: 'Pounder', category: 'srb',
+    description: '1.25 m radial solid booster. 400 kN at sea level, 10 t of solid fuel, 215 s vacuum.',
+    dryMass: 2000, fuelMass: 10000, fuelKind: 'solid', thrustAsl: 400_000, thrustVac: 460_000, ispAsl: 185, ispVac: 215,
+    width: 1.25, height: 4.6, cost: 1450, radial: true, color: '#f2efe6', accent: '#30a050' },
+  { id: 'colossus', name: 'S2 Colossus', short: 'Colossus', category: 'srb',
+    description: '2.5 m radial solid booster for super-heavy lifters. 1.3 MN at sea level, 40 t of solid fuel.',
+    dryMass: 7000, fuelMass: 40000, fuelKind: 'solid', thrustAsl: 1_300_000, thrustVac: 1_450_000, ispAsl: 200, ispVac: 225,
+    width: 2.5, height: 8.4, cost: 5300, radial: true, color: '#f2efe6', accent: '#202830' },
+
+  /* ── Expanded catalog: decouplers and structure ── */
+  { id: 'tr-2v', name: 'TR-2V Micro Decoupler', short: '0.625 dec.', category: 'decoupler',
+    description: '0.625 m stacked separator for tiny upper stages.',
+    dryMass: 10, fuelMass: 0, width: 0.625, height: 0.12, cost: 200, color: '#d4c44a', accent: '#886010' },
+  { id: 'tr-50', name: 'TR-50 Heavy Decoupler', short: '3.75 m dec.', category: 'decoupler',
+    description: '3.75 m stacked separator for Kodiak stacks.',
+    dryMass: 250, fuelMass: 0, width: 3.75, height: 0.32, cost: 750, color: '#d4c44a', accent: '#886010' },
+  { id: 'hdm-2', name: 'HDM-2 Heavy Radial Decoupler', short: 'Heavy radial', category: 'decoupler',
+    description: 'Stronger radial separator for big boosters like the Pounder and Colossus.',
+    dryMass: 60, fuelMass: 0, width: 0.45, height: 0.55, cost: 420, radial: true, color: '#d4c44a', accent: '#605010' },
+  { id: 'ad-1', name: 'AD-1 Micro Adapter', short: '0.625→1.25', category: 'structural',
+    description: 'Adapts a 0.625 m stack (top) to 1.25 m (bottom).',
+    dryMass: 40, fuelMass: 0, width: 0.625, widthBottom: 1.25, height: 0.4, cost: 110, color: '#d6d8dc', accent: '#808890' },
+  { id: 'ad-2', name: 'AD-2 Rockomax Adapter', short: '1.25→2.5', category: 'structural',
+    description: 'Adapts a 1.25 m stack (top) to 2.5 m (bottom).',
+    dryMass: 120, fuelMass: 0, width: 1.25, widthBottom: 2.5, height: 0.9, cost: 300, color: '#d6d8dc', accent: '#808890' },
+  { id: 'ad-3', name: 'AD-3 Kodiak Adapter', short: '2.5→3.75', category: 'structural',
+    description: 'Adapts a 2.5 m stack (top) to 3.75 m (bottom).',
+    dryMass: 450, fuelMass: 0, width: 2.5, widthBottom: 3.75, height: 1.3, cost: 700, color: '#d6d8dc', accent: '#808890' },
+  { id: 'coupler-2', name: 'BC-2 Bi-Coupler', short: 'Bi-coupler', category: 'structural',
+    description: 'Splits a 2.5 m stack into two mounts: the engine placed directly below fires as a pair (mass, thrust and cost ×2).',
+    dryMass: 100, fuelMass: 0, width: 2.5, widthBottom: 2.5, height: 0.5, cost: 400, mounts: 2, color: '#cfd2d6', accent: '#5a6270' },
+  { id: 'coupler-3', name: 'TC-3 Tri-Coupler', short: 'Tri-coupler', category: 'structural',
+    description: 'Three-way engine mount for 2.5 m stacks: the engine directly below fires as a cluster of three.',
+    dryMass: 150, fuelMass: 0, width: 2.5, widthBottom: 2.5, height: 0.55, cost: 600, mounts: 3, color: '#cfd2d6', accent: '#5a6270' },
+  { id: 'coupler-4', name: 'QC-4 Quad-Coupler', short: 'Quad-coupler', category: 'structural',
+    description: 'Four-way engine mount for 3.75 m stacks: the engine directly below fires as a cluster of four.',
+    dryMass: 300, fuelMass: 0, width: 3.75, widthBottom: 3.75, height: 0.6, cost: 900, mounts: 4, color: '#cfd2d6', accent: '#5a6270' },
+  { id: 'nose-125', name: 'NC-1 Aero Nose Cone', short: 'Nose 1.25', category: 'structural',
+    description: '1.25 m nose cone. On the front of the stack it trims drag (Cd 0.35 → 0.27).',
+    dryMass: 30, fuelMass: 0, width: 1.25, height: 0.9, cost: 120, aero: 'nose', color: '#eceae4', accent: '#c03020' },
+  { id: 'nose-25', name: 'NC-2 Ogive Nose Cone', short: 'Nose 2.5', category: 'structural',
+    description: '2.5 m ogive nose cone. On the front of the stack it trims drag (Cd 0.35 → 0.27).',
+    dryMass: 120, fuelMass: 0, width: 2.5, height: 1.7, cost: 280, aero: 'nose', color: '#eceae4', accent: '#c03020' },
+  { id: 'fin-delta', name: 'AV-R4 Delta Fin', short: 'Fin', category: 'structural',
+    description: 'Tail fin for stability. Each fin adds a little drag.',
+    dryMass: 25, fuelMass: 0, width: 0.5, height: 0.9, cost: 160, radial: true, aero: 'fin', color: '#eceae4', accent: '#c03020' },
+  { id: 'truss-1', name: 'GS-1 Truss Segment', short: 'Truss', category: 'structural',
+    description: 'Open lattice spacer. Light and long, for separating stages or payloads.',
+    dryMass: 80, fuelMass: 0, width: 1.0, height: 1.5, cost: 140, color: '#a8adb4', accent: '#606870' },
+  { id: 'hs-25', name: 'HS-2 Ablative Heat Shield', short: 'Heat shield', category: 'structural',
+    description: '2.5 m ablative heat shield for capsule re-entry. Heavy but reassuring.',
+    dryMass: 600, fuelMass: 0, width: 2.5, height: 0.28, cost: 900, color: '#5a4030', accent: '#2a2018' },
+
+  /* ── Expanded catalog: utility ── */
+  { id: 'battery-z', name: 'Z-400 Battery Bank', short: 'Battery', category: 'utility',
+    description: 'Radial battery pack (400 charge). Powers an ion drive for a short burn.',
+    dryMass: 20, fuelMass: 0, width: 0.4, height: 0.3, cost: 450, radial: true, power: true, color: '#3a3f46', accent: '#f0d040' },
+  { id: 'solar-sp6', name: 'SP-6 Fold-Out Solar Array', short: 'Solar', category: 'utility',
+    description: 'Radial fold-out solar array. Steady power in sunlight.',
+    dryMass: 25, fuelMass: 0, width: 0.35, height: 1.0, cost: 650, radial: true, power: true, color: '#1d2c55', accent: '#c9a84c' },
+  { id: 'rtg-pb', name: 'PB-R1 Radioisotope Generator', short: 'RTG', category: 'utility',
+    description: 'Radial radioisotope generator. Power day and night, for a price.',
+    dryMass: 80, fuelMass: 0, width: 0.45, height: 0.7, cost: 4500, radial: true, power: true, color: '#4a4f57', accent: '#a0ff70' },
+  { id: 'ant-whip', name: 'Comm-12 Whip Antenna', short: 'Whip ant.', category: 'utility',
+    description: 'Short-range whip antenna. About 500 km of comm range.',
+    dryMass: 5, fuelMass: 0, width: 0.2, height: 0.9, cost: 250, radial: true, commRangeKm: 500, color: '#b8bcc4', accent: '#e0e0e0' },
+  { id: 'dish-ra80', name: 'RA-80 Relay Dish', short: 'Relay dish', category: 'utility',
+    description: 'Deep-space relay dish (about 50,000 km). Needed for relay-network contracts.',
+    dryMass: 150, fuelMass: 0, width: 0.8, height: 0.6, cost: 2400, radial: true, commRangeKm: 50_000, color: '#dfe2e6', accent: '#8a9098' },
+  { id: 'rw-1', name: 'RW-1 Reaction Wheel', short: 'Reaction wheel', category: 'utility',
+    description: '1.25 m inline reaction wheel for extra attitude authority.',
+    dryMass: 100, fuelMass: 0, width: 1.25, height: 0.3, cost: 600, color: '#3a4048', accent: '#c0c8d0' },
+  { id: 'rcs-4', name: 'RV-4 RCS Thruster Block', short: 'RCS', category: 'utility',
+    description: 'Four-way monopropellant attitude jets (attitude only in this simulator).',
+    dryMass: 20, fuelMass: 0, width: 0.3, height: 0.3, cost: 300, radial: true, color: '#d8dce2', accent: '#404850' },
+  { id: 'leg-lt3', name: 'LT-3 Landing Leg', short: 'Leg', category: 'utility',
+    description: 'Folding landing leg. For show on the way up; useful one day.',
+    dryMass: 50, fuelMass: 0, width: 0.35, height: 1.2, cost: 440, radial: true, color: '#9aa0a8', accent: '#e0b030' },
+  { id: 'chute-mk16', name: 'Mk16 Parachute', short: 'Parachute', category: 'utility',
+    description: 'Nose parachute pack for recovering a capsule.',
+    dryMass: 100, fuelMass: 0, width: 0.65, height: 0.32, cost: 420, color: '#e8e2d2', accent: '#e06020' },
+  { id: 'lamp-1', name: 'Illuminator Floodlight', short: 'Floodlight', category: 'utility',
+    description: 'Radial floodlight. Purely for looks.',
+    dryMass: 15, fuelMass: 0, width: 0.25, height: 0.25, cost: 100, radial: true, color: '#3a3f46', accent: '#fff1b0' },
+
+  /* ── Expanded catalog: payloads ── */
+  { id: 'sat-meridian', name: 'Meridian Heavy CommSat', short: 'Meridian', category: 'payload',
+    description: 'Large geostationary-class communications satellite with twin wings and a relay dish.',
+    dryMass: 900, fuelMass: 0, width: 1.6, height: 1.4, cost: 4200, commRangeKm: 50_000, color: '#c9a84c', accent: '#4a80c0' },
+  { id: 'telescope-aurora', name: 'Aurora Space Telescope', short: 'Telescope', category: 'payload',
+    description: 'Orbital telescope with a 1 m mirror and a sun shade door.',
+    dryMass: 1200, fuelMass: 0, width: 1.25, height: 3.0, cost: 6500, color: '#d8dce2', accent: '#c9a84c' },
+  { id: 'station-haven', name: 'Haven Station Module', short: 'Station', category: 'payload',
+    description: '2.5 m pressurised space-station module with ports and solar wings.',
+    dryMass: 6000, fuelMass: 0, width: 2.5, height: 4.0, cost: 9500, color: '#e4e6ea', accent: '#3a6ab0' },
+  { id: 'cargo-cx25', name: 'CX-25 Cargo Module', short: 'Cargo', category: 'payload',
+    description: '2.5 m cargo carrier with bay doors. Deploys like a satellite.',
+    dryMass: 2500, fuelMass: 0, width: 2.5, height: 2.2, cost: 3600, color: '#cfd3d8', accent: '#d0a030' },
+
   /* ── Science experiments (stay on the vehicle; run from Mission Control) ── */
   { id: 'sci-thermo', name: '2HOT Thermometer', short: 'Thermo', category: 'science',
     description: 'Measures temperature. Works on the pad, in the air, and in low space.',
@@ -187,10 +400,43 @@ export const PART_CATEGORIES: Array<{ id: PartCategory; label: string }> = [
   { id: 'engine', label: 'Liquid engines' },
   { id: 'srb', label: 'Solid boosters' },
   { id: 'decoupler', label: 'Decouplers' },
+  { id: 'structural', label: 'Structure & aero' },
   { id: 'fairing', label: 'Fairings' },
-  { id: 'payload', label: 'Satellites & scanners' },
+  { id: 'utility', label: 'Utility' },
+  { id: 'payload', label: 'Satellites & payloads' },
   { id: 'science', label: 'Science' },
 ];
+
+/** VAB catalog tabs: each groups one or more categories. */
+export const PART_GROUPS: Array<{ id: string; label: string; categories: PartCategory[] }> = [
+  { id: 'command', label: 'Command', categories: ['pod', 'probe'] },
+  { id: 'tanks', label: 'Tanks', categories: ['tank'] },
+  { id: 'engines', label: 'Engines', categories: ['engine', 'srb'] },
+  { id: 'structure', label: 'Structure', categories: ['decoupler', 'structural', 'fairing'] },
+  { id: 'utility', label: 'Utility', categories: ['utility'] },
+  { id: 'payload', label: 'Payload', categories: ['payload'] },
+  { id: 'science', label: 'Science', categories: ['science'] },
+];
+
+/** Diameter class used by the catalog size filter. */
+export const PART_SIZES = [0.625, 1.25, 2.5, 3.75] as const;
+export function sizeClassOf(def: PartDef): number | null {
+  if (def.radial || def.category === 'payload' || def.category === 'science') return null;
+  const w = Math.max(def.width, def.widthBottom ?? 0);
+  let best: number | null = null, d = Infinity;
+  for (const s of PART_SIZES) { const e = Math.abs(s - w); if (e < d) { d = e; best = s; } }
+  return d <= 0.3 ? best : null;
+}
+/** Every diameter class a part fits (adapters match both ends). */
+export function sizeClassesOf(def: PartDef): number[] {
+  const one = sizeClassOf(def);
+  if (one == null) return [];
+  const out = new Set<number>([one]);
+  if (def.widthBottom != null) for (const w of [def.width, def.widthBottom]) {
+    for (const s of PART_SIZES) if (Math.abs(s - w) <= 0.3) out.add(s);
+  }
+  return [...out].sort((a, b) => a - b);
+}
 
 export interface PlacedPart {
   uid: string;
@@ -203,6 +449,30 @@ export interface PlacedPart {
   angle?: number;
   /** Parent stack uid for radials; omitted radials attach to the nearest lower stack part. */
   attachTo?: string;
+  /** Solid boosters: thrust limiter 0.3–1 (burns longer at lower thrust). */
+  limit?: number;
+}
+
+export const LIMIT_MIN = 0.3;
+export function clampLimit(v: unknown): number | undefined {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return undefined;
+  const r = Math.round(Math.min(1, Math.max(LIMIT_MIN, v)) * 20) / 20;
+  return r >= 1 ? undefined : r;
+}
+
+/**
+ * Engines mounted directly below a coupler fire as a cluster. Returns uid → copies
+ * (only entries > 1). Pure function of stack order, shared by cost, analysis, flight and art.
+ */
+export function clusterCounts(d: VesselDesign): Map<string, number> {
+  const out = new Map<string, number>();
+  const stack = d.parts.filter((p) => !p.radial);
+  for (let i = 0; i + 1 < stack.length; i++) {
+    const c = PART_BY_ID.get(stack[i]!.partId);
+    const e = PART_BY_ID.get(stack[i + 1]!.partId);
+    if (c?.mounts && c.mounts > 1 && e?.category === 'engine') out.set(stack[i + 1]!.uid, c.mounts);
+  }
+  return out;
 }
 
 export interface VesselDesign {
@@ -210,7 +480,7 @@ export interface VesselDesign {
   parts: PlacedPart[];
 }
 
-export const MAX_DESIGN_PARTS = 48;
+export const MAX_DESIGN_PARTS = 64;
 export const MAX_STAGE = 16;
 
 export function newPartUid(): string {
@@ -223,15 +493,16 @@ export function partOf(id: string): PartDef | undefined {
 
 export function designCost(d: VesselDesign): number {
   let n = 0;
+  const cl = clusterCounts(d);
   for (const p of d.parts) {
     const def = PART_BY_ID.get(p.partId);
-    if (def) n += def.cost;
+    if (def) n += def.cost * (cl.get(p.uid) ?? 1);
   }
   return n;
 }
 
 export function designHash(d: VesselDesign): string {
-  return d.parts.map((p) => `${p.partId}:${p.stage}:${p.radial ? 1 : 0}:${Math.round(p.angle ?? 0)}`).join('|');
+  return d.parts.map((p) => `${p.partId}:${p.stage}:${p.radial ? 1 : 0}:${Math.round(p.angle ?? 0)}${p.limit != null ? `:L${p.limit}` : ''}`).join('|');
 }
 
 export interface DesignIssue { level: 'error' | 'warn'; text: string }
@@ -244,7 +515,8 @@ export function validateDesign(d: VesselDesign): DesignIssue[] {
   if (d.parts.length === 0) out.push({ level: 'error', text: 'Add some parts in the Vehicle Assembly Building.' });
   if (d.parts.length > MAX_DESIGN_PARTS) out.push({ level: 'error', text: `A vessel can have at most ${MAX_DESIGN_PARTS} parts.` });
   const uids = new Set<string>();
-  let pods = 0, engines = 0, payloads = 0;
+  let pods = 0, engines = 0, payloads = 0, power = 0;
+  const needPower: string[] = [];
   for (const p of d.parts) {
     if (!p || typeof p.uid !== 'string' || !p.uid || uids.has(p.uid)) out.push({ level: 'error', text: 'A part is missing a unique id.' });
     else uids.add(p.uid);
@@ -254,6 +526,19 @@ export function validateDesign(d: VesselDesign): DesignIssue[] {
     if (def.category === 'pod' || def.category === 'probe') pods += 1;
     if (def.category === 'engine' || def.category === 'srb') engines += 1;
     if (def.category === 'payload') payloads += 1;
+    if (def.power) power += 1;
+    if (def.needsPower) needPower.push(def.short);
+    if (def.radial && !p.radial && (def.category === 'srb' || def.category === 'utility' || def.aero === 'fin' || def.category === 'decoupler' || def.id === 'spur')) {
+      out.push({ level: 'warn', text: `${def.short} is meant to mount radially, on the side of a stack part.` });
+    }
+  }
+  if (needPower.length && !power) out.push({ level: 'error', text: `${needPower[0]} needs a battery, solar array or RTG on board.` });
+  const stack = d.parts.filter((p) => !p.radial);
+  const last = stack.at(-1) && PART_BY_ID.get(stack.at(-1)!.partId);
+  if (last?.mounts) out.push({ level: 'warn', text: `${last.short} has nothing mounted below it.` });
+  for (let i = 0; i + 1 < stack.length; i++) {
+    const c = PART_BY_ID.get(stack[i]!.partId), e = PART_BY_ID.get(stack[i + 1]!.partId);
+    if (c?.mounts && e && e.category !== 'engine') out.push({ level: 'warn', text: `${c.short}: only an engine directly below it is clustered.` });
   }
   if (pods === 0) out.push({ level: 'error', text: 'You need a command pod or a probe core.' });
   if (engines === 0) out.push({ level: 'error', text: 'You need at least one engine or booster.' });
@@ -322,8 +607,31 @@ export function scoutI(): VesselDesign {
   ]);
 }
 
+/**
+ * Goliath Heavy — the heavy-lift reference (needs Heavy Rocketry research).
+ * Haven station module on a Poodle upper stage, a Kodiak-72 core with four
+ * clustered Skippers on a quad-coupler, and two Colossus boosters.
+ */
+export function goliathHeavy(): VesselDesign {
+  return makeDesign('Goliath Heavy', [
+    { part: 'station-haven', stage: 0 },
+    { part: 'probe-ring', stage: 15 },
+    { part: 'fairing-25', stage: 1 },
+    { part: 'x200-32', stage: 2 },
+    { part: 'poodle', stage: 2 },
+    { part: 'tr-25', stage: 2 },
+    { part: 'ad-3', stage: 15 },
+    { part: 'kodiak-72', stage: 4 },
+    { part: 'hdm-2', stage: 3, radial: true, count: 2 },
+    { part: 'colossus', stage: 4, radial: true, count: 2 },
+    { part: 'fin-delta', stage: 15, radial: true, count: 4 },
+    { part: 'coupler-4', stage: 15 },
+    { part: 'skipper', stage: 4 },
+  ]);
+}
+
 /** Stock designs offered in the VAB (free to load; launching still costs the parts). */
-export const STOCK_DESIGNS: VesselDesign[] = [courierI(), scoutI()];
+export const STOCK_DESIGNS: VesselDesign[] = [courierI(), scoutI(), goliathHeavy()];
 
 export function cloneDesign(d: VesselDesign): VesselDesign {
   return { name: d.name, parts: d.parts.map((p) => ({ ...p })) };
@@ -343,7 +651,7 @@ export function defaultStageFor(category: PartCategory, current: VesselDesign): 
   const stages = current.parts.map((p) => p.stage);
   const max = stages.length ? Math.max(...stages.filter((s) => s < 15), 0) : 0;
   if (category === 'payload') return 0;
-  if (category === 'pod' || category === 'probe' || category === 'science') return 15;
+  if (category === 'pod' || category === 'probe' || category === 'science' || category === 'structural' || category === 'utility') return 15;
   if (category === 'decoupler') return Math.max(1, max);
   if (category === 'engine' || category === 'srb') return Math.max(max, 1);
   if (category === 'fairing') return Math.max(1, max - 1);
@@ -375,6 +683,8 @@ export function parseDesign(raw: unknown): VesselDesign | null {
     if (x.radial === true) placed.radial = true;
     if (typeof x.angle === 'number' && Number.isFinite(x.angle)) placed.angle = x.angle;
     if (typeof x.attachTo === 'string' && x.attachTo) placed.attachTo = x.attachTo.slice(0, 32);
+    const lim = clampLimit(x.limit);
+    if (lim != null && PART_BY_ID.get(x.partId)?.category === 'srb') placed.limit = lim;
     parts.push(placed);
   }
   return { name, parts };

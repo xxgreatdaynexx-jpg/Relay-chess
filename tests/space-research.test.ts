@@ -174,7 +174,7 @@ describe('science rules', () => {
     for (const n of TECH_NODES) for (const p of n.unlocks) expect(PART_BY_ID.has(p)).toBe(true);
     // Every new part is gated by exactly one node.
     expect(PART_TECH.get('nerv')).toBe('nuclear-propulsion');
-    expect(TECH_NODES.length).toBe(10);
+    expect(TECH_NODES.length).toBe(23);
   });
 });
 

@@ -17,7 +17,7 @@
  */
 import {
   G0, PART_BY_ID, courierI, type PlacedPart, type VesselDesign, type PartDef,
-  validateDesign, hasErrors, designCost,
+  validateDesign, hasErrors, designCost, clusterCounts, type FuelKind,
 } from './spaceParts.js';
 
 export { G0 };
@@ -221,10 +221,10 @@ export function segmentsOf(design: VesselDesign): PlacedPart[][] {
   return segs;
 }
 
-function thrustWeightedIsp(engines: PartDef[], pressure: number): number {
+function thrustWeightedIsp(engines: Array<{ def: PartDef; placed: PlacedPart }>, pressure: number): number {
   let F = 0, mdot = 0;
-  for (const e of engines) {
-    const t = thrustOf(e, pressure, 1);
+  for (const { def: e, placed } of engines) {
+    const t = thrustOf(e, pressure, 1) * (e.fuelKind === 'solid' ? (placed.limit ?? 1) : 1);
     const i = ispOf(e, pressure);
     if (t <= 0 || i <= 0) continue;
     F += t;
@@ -243,11 +243,15 @@ export function analyzeDesign(design: VesselDesign): DesignStats {
   const warnings: string[] = [];
   const payloads: string[] = [];
   const lives: LivePart[] = [];
+  const cl = clusterCounts(design);
   for (const p of design.parts) {
     const def = PART_BY_ID.get(p.partId);
     if (!def) continue;
     if (def.category === 'payload') payloads.push(def.name);
-    lives.push({ placed: p, def, fuel: def.fuelMass, attached: true, ignited: false, jettisoned: false });
+    // Clustered engines count once per mount (same uid, so they stage and drop together).
+    for (let k = 0; k < (cl.get(p.uid) ?? 1); k++) {
+      lives.push({ placed: p, def, fuel: def.fuelMass, attached: true, ignited: false, jettisoned: false });
+    }
   }
   const segs = segmentsOf(design);
   // Burn order: highest engine stage first.
@@ -270,18 +274,19 @@ export function analyzeDesign(design: VesselDesign): DesignStats {
       } else {
         const seg = segs.find((sg) => sg.some((p) => p.uid === e.placed.uid));
         if (!seg) continue;
+        const kind = e.def.fuelKind ?? 'liquid';
         for (const p of seg) {
           const lp = lives.find((l) => l.placed.uid === p.uid);
-          if (!lp || lp.def.fuelKind !== 'liquid' || lp.fuel <= 0) continue;
+          if (!lp || lp.def.category === 'engine' || lp.def.category === 'srb' || lp.def.fuelKind !== kind || lp.fuel <= 0) continue;
           if (!fuelFrom.includes(lp)) { fuelFrom.push(lp); fuelMass += lp.fuel; }
         }
       }
     }
-    const defs = engs.map((e) => e.def);
-    const thrustAsl = defs.reduce((s, d) => s + thrustOf(d, PLANET.p0, 1), 0);
-    const thrustVac = defs.reduce((s, d) => s + thrustOf(d, 0, 1), 0);
-    const ispVac = thrustWeightedIsp(defs, 0);
-    const ispAsl = thrustWeightedIsp(defs, PLANET.p0);
+    const lim = (e: LivePart) => (e.def.fuelKind === 'solid' ? (e.placed.limit ?? 1) : 1);
+    const thrustAsl = engs.reduce((s, e) => s + thrustOf(e.def, PLANET.p0, 1) * lim(e), 0);
+    const thrustVac = engs.reduce((s, e) => s + thrustOf(e.def, 0, 1) * lim(e), 0);
+    const ispVac = thrustWeightedIsp(engs, 0);
+    const ispAsl = thrustWeightedIsp(engs, PLANET.p0);
     const m0 = massAbove;
     const mf = Math.max(1, m0 - fuelMass);
     const dvVac = tsiolkovsky(ispVac, m0, mf);
@@ -293,7 +298,7 @@ export function analyzeDesign(design: VesselDesign): DesignStats {
     stages.push({
       stage: st, dvVac, dvAsl, twrAsl, twrVac, wetMass: m0, dryMass: mf, fuelMass,
       thrustAsl, thrustVac, ispVac, ispAsl, burnTime,
-      engines: engs.map((e) => e.def.short),
+      engines: [...new Set(engs.map((e) => e.def.short))].map((n) => { const k = engs.filter((e) => e.def.short === n).length; return k > 1 ? `${k}× ${n}` : n; }),
     });
     // Drop this segment after the burn (everything in the same segment as these engines,
     // if a decoupler will drop them — i.e. they are not the uppermost remaining segment).
@@ -351,6 +356,18 @@ export interface FlightPart {
   fuel: number;
   attached: boolean;
   ignited: boolean;
+  /** Parent stack uid for radials. */
+  attachTo?: string;
+  /** Cluster copies (engine under a coupler); mass and thrust scale by this. */
+  mult?: number;
+  /** Solid booster thrust limiter (0.3–1). */
+  limit?: number;
+}
+
+/** Thrust of one live engine part, including cluster copies and the SRB limiter. */
+export function partThrust(part: Pick<FlightPart, 'def' | 'mult' | 'limit'>, p: number, throttle: number): number {
+  const solid = part.def.fuelKind === 'solid';
+  return thrustOf(part.def, p, solid ? 1 : throttle) * (part.mult ?? 1) * (solid ? (part.limit ?? 1) : 1);
 }
 
 export type FlightPhase = 'pad' | 'countdown' | 'ascent' | 'coast' | 'circularize' | 'orbit' | 'deployed' | 'crashed' | 'aborted';
@@ -383,7 +400,7 @@ export interface FlightState {
 
 export function vehicleMass(s: FlightState): number {
   let m = 0;
-  for (const p of s.parts) if (p.attached) m += p.def.dryMass + p.fuel;
+  for (const p of s.parts) if (p.attached) m += p.def.dryMass * (p.mult ?? 1) + p.fuel;
   return Math.max(m, 1);
 }
 
@@ -393,7 +410,8 @@ export function frontalArea(s: FlightState): number {
   for (const p of s.parts) {
     if (!p.attached) continue;
     if (p.def.category === 'fairing') fairing = true;
-    const ww = p.radial ? p.def.width * 0.5 : p.def.width;
+    const full = Math.max(p.def.width, p.def.widthBottom ?? 0);
+    const ww = p.radial ? full * 0.5 : full;
     if (ww > w) w = ww;
   }
   const a = Math.PI * (w / 2) * (w / 2);
@@ -402,10 +420,15 @@ export function frontalArea(s: FlightState): number {
 
 export function dragCd(s: FlightState): number {
   const fairing = s.parts.some((p) => p.attached && p.def.category === 'fairing');
-  return fairing ? 0.2 : 0.35;
+  // A nose cone at the very front of what is left of the stack trims form drag.
+  const front = s.parts.find((p) => p.attached && !p.radial);
+  const base = fairing ? 0.2 : front?.def.aero === 'nose' ? 0.27 : 0.35;
+  let fins = 0;
+  for (const p of s.parts) if (p.attached && p.def.aero === 'fin') fins += 1;
+  return base + Math.min(0.06, fins * 0.012);
 }
 
-export function attachedFuel(s: FlightState, kind: 'liquid' | 'solid' = 'liquid'): number {
+export function attachedFuel(s: FlightState, kind: FuelKind = 'liquid'): number {
   let f = 0;
   for (const p of s.parts) if (p.attached && p.def.fuelKind === kind) f += p.fuel;
   return f;
@@ -431,9 +454,10 @@ function parentUid(s: FlightState, p: FlightPart): string | undefined {
   return (p as FlightPart & { attachTo?: string }).attachTo;
 }
 
-function liquidTanksFor(s: FlightState, engine: FlightPart): FlightPart[] {
-  const seg = segmentOf(s, engine.uid).filter((p) => p.attached && p.def.fuelKind === 'liquid' && p.fuel > 0);
-  return seg;
+/** Tanks an engine can draw from: same propellant, same segment (between stack decouplers). */
+function tanksFor(s: FlightState, engine: FlightPart): FlightPart[] {
+  const kind = engine.def.fuelKind ?? 'liquid';
+  return segmentOf(s, engine.uid).filter((p) => p.attached && p.def.category !== 'engine' && p.def.category !== 'srb' && p.def.fuelKind === kind && p.fuel > 0);
 }
 
 export interface AccelSample {
@@ -474,10 +498,9 @@ export function sampleAccel(s: FlightState, x: number, y: number, vx: number, vy
       if (!part.attached || !part.ignited) continue;
       if (part.def.category !== 'engine' && part.def.category !== 'srb') continue;
       const isSolid = part.def.fuelKind === 'solid';
-      const fuel = isSolid ? part.fuel : liquidTanksFor(s, part).reduce((n, t) => n + t.fuel, 0);
+      const fuel = isSolid ? part.fuel : tanksFor(s, part).reduce((n, t) => n + t.fuel, 0);
       if (fuel <= 0) continue;
-      const th = isSolid ? 1 : throttle; // solids can't throttle
-      const T = thrustOf(part.def, p, th);
+      const T = partThrust(part, p, throttle); // solids ignore the throttle
       const isp = ispOf(part.def, p);
       if (T <= 0 || isp <= 0) continue;
       thrust += T;
@@ -495,47 +518,53 @@ export function sampleAccel(s: FlightState, x: number, y: number, vx: number, vy
   return { ax: gx + dax + tax, ay: gy + day + tay, thrust, drag, mdot, density: rho, pressure: p, q, mass, altitude: h, g };
 }
 
-function drainFuel(s: FlightState, mdot: number, dt: number): void {
+function drainFuel(s: FlightState, mdot: number, dt: number, throttle: number): void {
   if (mdot <= 0 || dt <= 0) return;
-  let need = mdot * dt;
-  // Solids first: each ignited SRB consumes its own share.
+  const pr = pressureAt(Math.hypot(s.x, s.y) - PLANET.radius);
+  // Each ignited solid burns its own grain; tank-fed engines pull their propellant
+  // proportionally from every reachable tank of that kind.
+  const need = new Map<FuelKind, { amount: number; tanks: Map<string, FlightPart> }>();
   for (const part of s.parts) {
-    if (!part.attached || !part.ignited || part.def.fuelKind !== 'solid') continue;
-    const isp = ispOf(part.def, pressureAt(Math.hypot(s.x, s.y) - PLANET.radius));
-    const T = thrustOf(part.def, pressureAt(Math.hypot(s.x, s.y) - PLANET.radius), 1);
-    const share = isp > 0 ? (T / (isp * G0)) * dt : 0;
-    const take = Math.min(part.fuel, share);
-    part.fuel -= take;
-    need -= take;
-  }
-  if (need <= 0) return;
-  // Liquid: proportional across reachable tanks of ignited liquid engines.
-  const tanks: FlightPart[] = [];
-  const seen = new Set<string>();
-  for (const e of s.parts) {
-    if (!e.attached || !e.ignited || e.def.category !== 'engine') continue;
-    for (const t of liquidTanksFor(s, e)) {
-      if (!seen.has(t.uid)) { seen.add(t.uid); tanks.push(t); }
+    if (!part.attached || !part.ignited) continue;
+    if (part.def.category !== 'engine' && part.def.category !== 'srb') continue;
+    const isp = ispOf(part.def, pr);
+    if (isp <= 0) continue;
+    if (part.def.fuelKind === 'solid') {
+      const share = (partThrust(part, pr, 1) / (isp * G0)) * dt;
+      part.fuel = Math.max(0, part.fuel - Math.min(part.fuel, share));
+      continue;
     }
+    const tanks = tanksFor(s, part);
+    if (!tanks.length) continue;
+    const kind = part.def.fuelKind ?? 'liquid';
+    const slot = need.get(kind) ?? { amount: 0, tanks: new Map() };
+    slot.amount += (partThrust(part, pr, throttle) / (isp * G0)) * dt;
+    for (const t of tanks) slot.tanks.set(t.uid, t);
+    need.set(kind, slot);
   }
-  const total = tanks.reduce((n, t) => n + t.fuel, 0);
-  if (total <= 0) return;
-  const take = Math.min(need, total);
-  for (const t of tanks) {
-    const share = (t.fuel / total) * take;
-    t.fuel = Math.max(0, t.fuel - share);
+  for (const { amount, tanks } of need.values()) {
+    const list = [...tanks.values()];
+    const total = list.reduce((n, t) => n + t.fuel, 0);
+    if (total <= 0) continue;
+    const take = Math.min(amount, total);
+    for (const t of list) t.fuel = Math.max(0, t.fuel - (t.fuel / total) * take);
   }
 }
 
 export function launchState(design: VesselDesign, name = design.name): FlightState {
   const R = PLANET.radius + 2;
+  const cl = clusterCounts(design);
   const parts: FlightPart[] = design.parts.map((p) => {
     const def = PART_BY_ID.get(p.partId)!;
-    return {
+    const fp: FlightPart = {
       uid: p.uid, partId: p.partId, stage: p.stage, radial: !!p.radial, angle: p.angle ?? 0,
       def, fuel: def.fuelMass, attached: true, ignited: false,
       attachTo: p.attachTo,
-    } as FlightPart;
+    };
+    const m = cl.get(p.uid);
+    if (m && m > 1) fp.mult = m;
+    if (p.limit != null && def.category === 'srb') fp.limit = p.limit;
+    return fp;
   });
   const stages = parts.filter((p) => p.stage < 15).map((p) => p.stage);
   const nextStage = stages.length ? Math.max(...stages) : 0;
@@ -574,9 +603,12 @@ export function activateStage(s: FlightState): { fired: number; dropped: number;
     if (p.radial) {
       // Drop other radials on the same parent? The radial decoupler itself is between core and booster.
       // Drop every radial (and the decoupler) that shares this stage — typical SRB sep.
+      // Also throw off boosters (and radial drop tanks) on the same parent that fired in an earlier stage.
       for (const q of s.parts) {
         if (!q.attached || !q.radial) continue;
-        if (q.stage === st || q.uid === p.uid) { q.attached = false; dropped += 1; }
+        const firedEarlier = q.attachTo != null && q.attachTo === p.attachTo && q.stage > st && q.stage < 15
+          && (q.def.category === 'srb' || q.def.category === 'tank');
+        if (q.stage === st || q.uid === p.uid || firedEarlier) { q.attached = false; dropped += 1; }
       }
       p.attached = false;
     } else {
@@ -599,7 +631,7 @@ export function activateStage(s: FlightState): { fired: number; dropped: number;
   for (const p of group) {
     if (!p.attached) continue;
     if (p.def.category === 'engine' || p.def.category === 'srb') {
-      p.ignited = true; fired += 1;
+      p.ignited = true; fired += p.mult ?? 1;
     } else if (p.def.category === 'fairing') {
       p.attached = false; dropped += 1;
       addLog(s, 'Fairing jettison.', true);
@@ -665,7 +697,7 @@ export function stepFlight(s: FlightState, dt: number): AccelSample {
   s.vy += ay * dt;
   s.x += s.vx * dt;
   s.y += s.vy * dt;
-  drainFuel(s, a1.mdot, dt);
+  drainFuel(s, a1.mdot, dt, th);
   s.t += dt;
   if (a1.q > s.maxQ) s.maxQ = a1.q;
   const h = Math.hypot(s.x, s.y) - PLANET.radius;
@@ -705,6 +737,12 @@ export function shouldAutoStage(s: FlightState): boolean {
   if (!ignited.length) {
     // On the pad, or between stages: if there is a lower engine stage, yes (liftoff / restart).
     return s.parts.some((p) => p.attached && !p.ignited && (p.def.category === 'engine' || p.def.category === 'srb') && p.stage < 15);
+  }
+  // Boosters burnt out while the core still burns: stage if a radial decoupler is next in line.
+  const spentBooster = ignited.some((p) => p.radial && p.def.fuelKind === 'solid' && p.fuel <= 0);
+  if (spentBooster && s.parts.some((p) => p.attached && p.radial && p.def.category === 'decoupler' && p.stage <= s.nextStage && p.stage < 15)) {
+    const next = Math.max(...s.parts.filter((p) => p.attached && p.stage <= s.nextStage && p.stage < 15 && (p.def.category === 'decoupler' || ((p.def.category === 'engine' || p.def.category === 'srb') && !p.ignited))).map((p) => p.stage));
+    if (s.parts.some((p) => p.attached && p.radial && p.def.category === 'decoupler' && p.stage === next)) return true;
   }
   const a = sampleAccel(s, s.x, s.y, s.vx, s.vy, 1);
   if (a.thrust > 50) return false;
@@ -778,7 +816,9 @@ export function computeGuidance(s: FlightState): Guidance {
   return { throttle, pitch, stage, deploy, jettisonFairing, phase };
 }
 
-export function scriptedAscent(design: VesselDesign = courierI(), opts: { dt?: number; maxTime?: number; state?: FlightState; stopAtAltitude?: number } = {}): AscentResult {
+export function scriptedAscent(design: VesselDesign = courierI(), opts: { dt?: number; maxTime?: number; state?: FlightState; stopAtAltitude?: number; targetAp?: number; targetPe?: number } = {}): AscentResult {
+  const wantAp = opts.targetAp ?? TARGET_AP;
+  const wantPe = opts.targetPe ?? TARGET_PE;
   const dt = opts.dt ?? 0.05;
   const maxTime = opts.maxTime ?? 900;
   const s = opts.state ?? launchState(design);
@@ -825,10 +865,9 @@ export function scriptedAscent(design: VesselDesign = courierI(), opts: { dt?: n
       if (r.fired || r.dropped) addLog(s, 'Staging.', true);
     }
 
-    const wantAp = TARGET_AP;
     const tta = timeToApoapsis(el, s.x, s.y, s.vx, s.vy);
 
-    if (el.bound && el.peAltitude >= TARGET_PE) {
+    if (el.bound && el.peAltitude >= wantPe) {
       s.throttle = 0;
       s.pitch = progradePitch(s);
       s.phase = 'orbit';
@@ -853,7 +892,7 @@ export function scriptedAscent(design: VesselDesign = courierI(), opts: { dt?: n
         s.pitch = progradePitch(s);
         if (!circNote) { addLog(s, 'Starting circularization burn.', true); circNote = true; }
         // Don't overshoot into a huge ellipse: if pe is climbing past target and ap is already high, cut a bit.
-        if (el.peAltitude > TARGET_PE + 15_000 && el.apAltitude > wantAp + 30_000) s.throttle = 0;
+        if (el.peAltitude > wantPe + 15_000 && el.apAltitude > wantAp + 30_000) s.throttle = 0;
       } else {
         s.phase = 'coast';
         s.throttle = 0;
@@ -953,7 +992,7 @@ export function liveDv(s: FlightState): { vac: number; asl: number; twr: number 
   // Use analyze on a patched design by cloning PART fuel? We compute from live parts.
   void mock;
   const attached = s.parts.filter((p) => p.attached);
-  const wet = attached.reduce((n, p) => n + p.def.dryMass + p.fuel, 0);
+  const wet = attached.reduce((n, p) => n + p.def.dryMass * (p.mult ?? 1) + p.fuel, 0);
   // Group remaining unignited-or-burning engine stages, high to low, with leftover fuel in their segments.
   const stages = [...new Set(attached.filter((p) => (p.def.category === 'engine' || p.def.category === 'srb') && p.stage < 15).map((p) => p.stage))].sort((a, b) => b - a);
   let mass = wet;
@@ -962,7 +1001,9 @@ export function liveDv(s: FlightState): { vac: number; asl: number; twr: number 
   const segs = segmentsOf(fakeDesign);
   for (const st of stages) {
     const engs = attached.filter((p) => p.stage === st && (p.def.category === 'engine' || p.def.category === 'srb'));
-    const defs = engs.map((e) => e.def);
+    const defs = engs.flatMap((e) => Array.from({ length: e.mult ?? 1 }, () => ({ def: e.def, placed: { uid: e.uid, partId: e.partId, stage: e.stage, limit: e.limit } as PlacedPart })));
+    const kinds = new Set(engs.filter((e) => e.def.fuelKind !== 'solid').map((e) => e.def.fuelKind ?? 'liquid'));
+    const isTank = (lp: FlightPart) => lp.def.category !== 'engine' && lp.def.category !== 'srb' && kinds.has(lp.def.fuelKind ?? 'liquid') && lp.def.fuelKind != null;
     let fuel = 0;
     for (const e of engs) {
       if (e.def.fuelKind === 'solid') fuel += e.fuel;
@@ -971,7 +1012,7 @@ export function liveDv(s: FlightState): { vac: number; asl: number; twr: number 
         if (!seg) continue;
         for (const sp of seg) {
           const lp = attached.find((a) => a.uid === sp.uid);
-          if (lp && lp.def.fuelKind === 'liquid') fuel += lp.fuel;
+          if (lp && isTank(lp)) fuel += lp.fuel;
         }
       }
     }
@@ -987,7 +1028,7 @@ export function liveDv(s: FlightState): { vac: number; asl: number; twr: number 
         if (seen.has(sp.uid)) continue;
         seen.add(sp.uid);
         const lp = attached.find((a) => a.uid === sp.uid);
-        if (lp && lp.def.fuelKind === 'liquid') fuel += lp.fuel;
+        if (lp && isTank(lp)) fuel += lp.fuel;
       }
     }
     const ispV = thrustWeightedIsp(defs, 0);

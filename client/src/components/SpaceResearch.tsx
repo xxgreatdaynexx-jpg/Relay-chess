@@ -329,17 +329,19 @@ function Archive({ science }: { science: ScienceViewData }) {
 }
 
 const TREE_POS: Record<string, [number, number]> = {
-  start: [0, 1.5],
-  'basic-science': [1, 0.5], 'general-rocketry': [1, 2.5],
-  electrics: [2, 0], 'advanced-rocketry': [2, 2], 'propulsion-systems': [2, 3.1],
-  'science-tech': [3, 0.5], 'heavier-rocketry': [3, 2],
-  'advanced-exploration': [4, 0.5], 'nuclear-propulsion': [4, 2.6],
+  start: [0, 3],
+  stability: [1, 0.6], 'basic-science': [1, 2.6], 'general-rocketry': [1, 4.8],
+  aerodynamics: [2, 0], 'flight-control': [2, 1], electrics: [2, 2.1], miniaturization: [2, 3.1], 'advanced-rocketry': [2, 4.3], 'propulsion-systems': [2, 5.4],
+  'command-modules': [3, 0.4], 'electric-power': [3, 1.5], 'science-tech': [3, 2.5], communications: [3, 3.5], 'heavier-rocketry': [3, 4.6],
+  'advanced-exploration': [4, 1.6], optics: [4, 2.8], 'heavy-rocketry': [4, 4.1], 'nuclear-propulsion': [4, 5.3],
+  'space-stations': [5, 0.6], 'nuclear-power': [5, 2.4], 'advanced-propulsion': [5, 4.6],
+  'ion-propulsion': [6, 3.4],
 };
 const COL_W = 214, ROW_H = 118, CARD_W = 186, CARD_H = 104;
 
 function TechTree({ science, signedIn, busy, onUnlock }: { science: ScienceViewData; signedIn: boolean; busy: boolean; onUnlock: (id: string) => void }) {
   const have = new Set(science.nodes);
-  const W = 5 * COL_W, H = Math.ceil(3.1 * ROW_H + CARD_H + 16);
+  const W = 7 * COL_W, H = Math.ceil(Math.max(...Object.values(TREE_POS).map(([, r]) => r)) * ROW_H + CARD_H + 16);
   const pos = (id: string) => { const [c, r] = TREE_POS[id] ?? [0, 0]; return { x: 8 + c * COL_W, y: 8 + r * ROW_H }; };
   return (
     <div className="spc-techwrap">

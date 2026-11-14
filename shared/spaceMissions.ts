@@ -65,6 +65,8 @@ export interface MissionDef {
   situation?: string;
   /** science: total science points returned by this one flight. */
   minScience?: number;
+  /** At least one of these part ids must be on the design (e.g. a relay dish). */
+  requireAnyPart?: string[];
 }
 
 /** Server-side facts about a launch (never taken from the client report). */
@@ -251,6 +253,22 @@ const T: Template[] = [
     satCount: 1,
   },
   {
+    templateId: 'relay-uplink',
+    kind: 'deploy-orbit',
+    title: 'Relay Uplink 400',
+    agency: 'CommNet',
+    briefing: 'Extend the relay network: deploy a satellite carrying a long-range relay dish (RA-80 Relay Dish, or a Meridian heavy commsat) with both apsides above 400 km.',
+    success: ['Relay dish or Meridian on the vehicle', 'Periapsis ≥ 400 km', 'Apoapsis ≥ 400 km', 'Satellite deployed'],
+    payout: 21_000,
+    minDv: 4_300,
+    minFlightSec: 280,
+    minPe: 400_000,
+    minAp: 400_000,
+    requireDeploy: true,
+    satCount: 1,
+    requireAnyPart: ['dish-ra80', 'sat-meridian'],
+  },
+  {
     templateId: 'deploy-250',
     kind: 'deploy-orbit',
     title: 'Weather Bird 250',
@@ -428,7 +446,7 @@ export function dailyBoard(day: string): MissionDef[] {
   const rng = missionRng(hashDay(day));
   const easy = T.filter((t) => t.templateId === 'sounding' || t.templateId === 'first-orbit' || t.templateId === 'budget-scout');
   const medium = T.filter((t) => ['circular-leo', 'circular-mid', 'deploy-150', 'deploy-250', 'twin-sat'].includes(t.templateId));
-  const hard = T.filter((t) => t.templateId === 'deploy-high' || t.templateId === 'deploy-loft');
+  const hard = T.filter((t) => t.templateId === 'deploy-high' || t.templateId === 'deploy-loft' || t.templateId === 'relay-uplink');
   const pickN = (pool: Template[], n: number) => {
     const s = shuffle(rng, pool);
     return s.slice(0, Math.min(n, s.length));
@@ -481,6 +499,9 @@ export function designMeetsMission(design: VesselDesign, mission: MissionDef): s
   }
   if (mission.experimentPart && !design.parts.some((p) => p.partId === mission.experimentPart)) {
     return 'This contract needs the matching experiment on the vehicle.';
+  }
+  if (mission.requireAnyPart?.length && !design.parts.some((p) => mission.requireAnyPart!.includes(p.partId))) {
+    return 'This contract needs a long-range relay dish (RA-80) or a Meridian commsat on the vehicle.';
   }
   if (mission.minScience && !design.parts.some((p) => p.partId.startsWith('sci-'))) {
     return 'This contract needs at least one science experiment on the vehicle.';
