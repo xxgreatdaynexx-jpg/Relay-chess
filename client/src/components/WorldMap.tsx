@@ -38,7 +38,7 @@ import { socket } from '@/lib/net';
 import { indexed } from '../../../shared/priceIndex';
 import { skyNow, parseTod, fmtClock, hex } from '../../../shared/daynight';
 import { fmtLap } from '../../../shared/venues';
-import { zoneOf } from '../../../shared/zoning';
+import { zoneOf, ZONE_DEED_CAP, FARMLAND_TILE_CAP } from '../../../shared/zoning';
 import { optimisticOwn, assessedTaxBasis, taxBasisOf, propertyValue, propertyById as baseProperty, properties as baseProperties, taxOf, sellBackOf, TAX_RATE, GRACE_DAYS, workerBonusOf, type OwnedProperty } from '../../../shared/realEstate';
 
 /** Today's price index from /api/real-estate; list prices and tax scale with it. */
@@ -161,7 +161,7 @@ export function DeedPanel({ id, owned, me, onClose, onFarm, onDone, onKitchen, o
       {p.kind === 'farm' && !o && <small>Farmland: buy it to plant crops (FarmVille-style, real-time).</small>}
       {!o && me && short > 0 && !msg && <small id="deed-short" className="text-amber-300" data-testid="deed-short">You need 🪙 {chips(short)} more chips to buy this.</small>}
       {msg && <small role="status" data-testid="deed-msg">{msg}</small>}
-      <small className="opacity-60">You can sell any property back to the city at any time for 70% of what you paid, or trade it with another player at an agreed price (no 30% haircut, within their zoning caps). No purchase surcharge. Zoning caps on new purchases: 5 residential, 5 commercial (incl. barns, factory plants and monuments), 1,500 farmland tiles; resort lots and parks/empty lots are exempt. Zoning caps do not force sales or confiscate existing property. Tax is on the list price, charged once per UTC day and burned. {GRACE_DAYS} unpaid days in a row and the city takes it back (no refund).</small>
+      <small className="opacity-60">You can sell any property back to the city at any time for 70% of what you paid, or trade it with another player at an agreed price (no 30% haircut, within their zoning caps). No purchase surcharge. Zoning caps on new purchases: {ZONE_DEED_CAP} residential, {ZONE_DEED_CAP} commercial (incl. barns, factory plants and monuments), {FARMLAND_TILE_CAP.toLocaleString('en-US')} farmland tiles; resort lots and parks/empty lots are exempt. Zoning caps do not force sales or confiscate existing property. Tax is on the list price, charged once per UTC day and burned. {GRACE_DAYS} unpaid days in a row and the city takes it back (no refund).</small>
     </MapSheet>
   );
 }

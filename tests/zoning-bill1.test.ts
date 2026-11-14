@@ -32,14 +32,14 @@ describe('classification (every catalog deed)', () => {
     expect(zoneOf({ kind: 'farm', type: 'plantation', map: 'resort' })).toBe('farmland'); expect(zoneOf({ kind: 'building', type: 'mystery' })).toBe('commercial'); // fail closed
     expect(Math.max(...all.filter((p) => p.kind === 'farm').map(tilesOf))).toBeLessThanOrEqual(FARMLAND_TILE_CAP); // every single plot is buyable alone
   });
-  it('boundaries: 5th deed ok, 6th refused; exactly 1,500 tiles ok, 1,501 refused; zones independent; exempt always ok', () => {
+  it('boundaries: 10th deed ok, 11th refused; exactly 2,000 tiles ok, 2,001 refused; zones independent; exempt always ok', () => {
     const f = (tiles: number) => ({ kind: 'farm' as const, type: 'farmland', tiles, label: 'plot' });
-    expect(zoneRefusal({ residential: 4, commercial: 5, farmlandTiles: 1500 }, houses[0]!)).toBeNull();
-    expect(zoneRefusal({ residential: 5, commercial: 0, farmlandTiles: 0 }, houses[0]!)).toMatch(/already own 5 residential/);
-    expect(zoneRefusal({ residential: 9, commercial: 0, farmlandTiles: 0 }, houses[0]!)).toMatch(/You keep what you own/); // grandfathered over cap
-    expect(zoneRefusal({ residential: 5, commercial: 4, farmlandTiles: 0 }, commercial[0]!)).toBeNull();
-    expect(zoneRefusal({ residential: 0, commercial: 0, farmlandTiles: 1400 }, f(100))).toBeNull();
-    expect(zoneRefusal({ residential: 0, commercial: 0, farmlandTiles: 1400 }, f(101))).toMatch(/1,500 tiles/);
+    expect(zoneRefusal({ residential: 9, commercial: 10, farmlandTiles: 2000 }, houses[0]!)).toBeNull();
+    expect(zoneRefusal({ residential: 10, commercial: 0, farmlandTiles: 0 }, houses[0]!)).toMatch(/already own 10 residential/);
+    expect(zoneRefusal({ residential: 14, commercial: 0, farmlandTiles: 0 }, houses[0]!)).toMatch(/You keep what you own/); // grandfathered over cap
+    expect(zoneRefusal({ residential: 10, commercial: 9, farmlandTiles: 0 }, commercial[0]!)).toBeNull();
+    expect(zoneRefusal({ residential: 0, commercial: 0, farmlandTiles: 1900 }, f(100))).toBeNull();
+    expect(zoneRefusal({ residential: 0, commercial: 0, farmlandTiles: 1900 }, f(101))).toMatch(/2,000 tiles/);
     expect(zoneRefusal({ residential: 99, commercial: 99, farmlandTiles: 9999 }, patch)).toBeNull(); expect(zoneRefusal({ residential: 99, commercial: 99, farmlandTiles: 9999 }, resort)).toBeNull();
     expect(zoneUse([houses[0]!, commercial[0]!, patch, resort, byId('cf:1000')])).toEqual({ residential: 1, commercial: 1, farmlandTiles: 900 });
     for (const tiles of [undefined,0,-1,NaN,Infinity,1.5]) {
@@ -48,7 +48,7 @@ describe('classification (every catalog deed)', () => {
       expect(zoneRefusal({residential:0,commercial:0,farmlandTiles:0},unknown)).toMatch(/verify farmland/);
       expect(zoneRefusal(zoneUse([unknown]),f(1))).toMatch(/verify farmland/);
     }
-    expect(ZONE_DEED_CAP).toBe(5);
+    expect(ZONE_DEED_CAP).toBe(10);
   });
   it('surcharge lever abolished: hidden, no effect (history rows still parse)', () => {
     expect(LEVER_IDS).not.toContain('property_surcharge'); expect(LEVERS.property_surcharge.abolished).toBe(true); expect(citySurchargePctPer1k()).toBe(0);
@@ -75,42 +75,42 @@ describe.skipIf(!url)('enforcement on real Postgres', () => {
     const ledger = async (who: string) => Number((await q("SELECT count(*) n FROM wallet_transactions WHERE player_key = $1 AND game <> 'admin'", [who.toLowerCase()]))[0].n);
     return { re: res[0]!, res, bank, fund, own, q, ledger };
   }
-  it('residential: 5th buy ok, 6th refused atomically (no charge, no deed, no ledger row); commercial independent', async () => {
-    const w = await world(); await w.fund('Ann', 5_000_000); await w.own('Ann', houses.slice(0, 4).map((p) => p.id));
-    const r5 = await w.re.buy('Ann', houses[4]!.id); expect(r5.price).toBe(houses[4]!.price); // list price: no surcharge
+  it('residential: 10th buy ok, 11th refused atomically (no charge, no deed, no ledger row); commercial independent', async () => {
+    const w = await world(); await w.fund('Ann', 5_000_000); await w.own('Ann', houses.slice(0, 9).map((p) => p.id));
+    const r10 = await w.re.buy('Ann', houses[9]!.id); expect(r10.price).toBe(houses[9]!.price); // list price: no surcharge
     const chips = w.bank.account('Ann').chips; const n = await w.ledger('Ann');
-    await expect(w.re.buy('Ann', houses[5]!.id)).rejects.toThrow(/already own 5 residential.*Nothing was charged/);
-    expect(w.bank.account('Ann').chips).toBe(chips); expect(await w.ledger('Ann')).toBe(n); expect(await w.q('SELECT 1 FROM properties WHERE id=$1', [houses[5]!.id])).toHaveLength(0);
+    await expect(w.re.buy('Ann', houses[10]!.id)).rejects.toThrow(/already own 10 residential.*Nothing was charged/);
+    expect(w.bank.account('Ann').chips).toBe(chips); expect(await w.ledger('Ann')).toBe(n); expect(await w.q('SELECT 1 FROM properties WHERE id=$1', [houses[10]!.id])).toHaveLength(0);
     await w.re.buy('Ann', commercial[0]!.id); // no borrowing across zones
-    const qq = await w.re.quote('Ann', houses[6]!.id); expect(qq.zoneRefusal).toMatch(/residential/); expect(qq.surchargePct).toBe(0); expect(qq.price).toBe(houses[6]!.price);
+    const qq = await w.re.quote('Ann', houses[11]!.id); expect(qq.zoneRefusal).toMatch(/residential/); expect(qq.surchargePct).toBe(0); expect(qq.price).toBe(houses[11]!.price);
   }, 30_000);
   it('grandfathered over-cap holdings are kept untouched and still block more in that zone only', async () => {
-    const w = await world(); await w.fund('Gus', 5_000_000); const ids = houses.slice(0, 8).map((p) => p.id); await w.own('Gus', ids, 12345);
-    await expect(w.re.buy('Gus', houses[9]!.id)).rejects.toThrow(/already own 8 residential/);
+    const w = await world(); await w.fund('Gus', 5_000_000); const ids = houses.slice(0, 12).map((p) => p.id); await w.own('Gus', ids, 12345);
+    await expect(w.re.buy('Gus', houses[12]!.id)).rejects.toThrow(/already own 12 residential/);
     expect((await w.q('SELECT id, price FROM properties WHERE owner_key=$1 ORDER BY id', ['gus'])).map((r) => [r.id, Number(r.price)])).toEqual(ids.sort().map((id) => [id, 12345])); // paid basis unchanged
     await w.re.buy('Gus', patch.id); await w.re.buy('Gus', resort.id); // exempt
   }, 30_000);
-  it('farmland counts full plot tiles: 1,476 owned + 16 ok, then over 1,500 refused', async () => {
-    const w = await world(); await w.fund('Fay', 50_000_000); await w.own('Fay', ['cf:1000', 'cf:1001']); // 900 + 576
+  it('farmland counts full plot tiles: 1,800 owned + 16 ok, then over 2,000 refused', async () => {
+    const w = await world(); await w.fund('Fay', 50_000_000); await w.own('Fay', ['cf:1000', 'cf:1005']); // 900 + 900
     const small = of((p) => p.kind === 'farm' && tilesOf(p) === 16 && p.id.startsWith('f:'))[0]!; await w.re.buy('Fay', small.id);
-    expect((await w.re.zoneUse('Fay')).farmlandTiles).toBe(1492);
-    const next = of((p) => p.kind === 'farm' && tilesOf(p) > 8 && tilesOf(p) < 100 && p.id !== small.id && !/^cf:10/.test(p.id))[0]!;
-    const chips = w.bank.account('Fay').chips; await expect(w.re.buy('Fay', next.id)).rejects.toThrow(/1,500 tiles.*Nothing was charged/); expect(w.bank.account('Fay').chips).toBe(chips);
+    expect((await w.re.zoneUse('Fay')).farmlandTiles).toBe(1816);
+    const next = of((p) => p.kind === 'farm' && tilesOf(p) > 184 && p.id !== small.id && p.id !== 'cf:1000' && p.id !== 'cf:1005')[0]!;
+    const chips = w.bank.account('Fay').chips; await expect(w.re.buy('Fay', next.id)).rejects.toThrow(/2,000 tiles.*Nothing was charged/); expect(w.bank.account('Fay').chips).toBe(chips);
   }, 30_000);
   it('concurrent buys at the cap (same instance and two instances): exactly one wins, the other is refused with no charge', async () => {
     for (const inst of [1, 2]) {
-      const w = await world(inst); await w.fund('Cy', 5_000_000); await w.own('Cy', houses.slice(0, 4).map((p) => p.id));
+      const w = await world(inst); await w.fund('Cy', 5_000_000); await w.own('Cy', houses.slice(0, 9).map((p) => p.id));
       const before = w.bank.account('Cy').chips; const [a, b] = [houses[10]!, houses[11]!];
       const r = await Promise.allSettled([w.res[0]!.buy('Cy', a.id), w.res[inst - 1]!.buy('Cy', b.id)]);
       expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
       expect(String((r.find((x) => x.status === 'rejected') as PromiseRejectedResult).reason?.message)).toMatch(/residential|another property/);
-      expect((await w.re.zoneUse('Cy')).residential).toBe(5);
+      expect((await w.re.zoneUse('Cy')).residential).toBe(10);
       const won = r[0]!.status === 'fulfilled' ? a : b; await w.bank.refresh('Cy'); expect(w.bank.account('Cy').chips).toBe(before - won.price);
     }
   }, 60_000);
   it('hostile buyout of a monument respects the commercial cap (refused, nothing charged, owner unchanged)', async () => {
-    const w = await world(); await w.fund('Bo', 50_000_000); await w.own('Bo', commercial.slice(0, 5).map((p) => p.id)); await w.own('Old', ['lm:casino'], 1000);
-    await expect(w.re.buyout('Bo', 'lm:casino')).rejects.toThrow(/already own 5 commercial/);
+    const w = await world(); await w.fund('Bo', 50_000_000); await w.own('Bo', commercial.slice(0, 10).map((p) => p.id)); await w.own('Old', ['lm:casino'], 1000);
+    await expect(w.re.buyout('Bo', 'lm:casino')).rejects.toThrow(/already own 10 commercial/);
     expect((await w.q("SELECT owner_key FROM properties WHERE id='lm:casino'"))[0].owner_key).toBe('old'); expect(await w.ledger('Bo')).toBe(0);
   }, 30_000);
   it('two-connection shared bank/property pool: concurrent buyouts and buy-vs-buyout complete without starvation; cross-instance caps hold', async () => {
@@ -119,11 +119,11 @@ describe.skipIf(!url)('enforcement on real Postgres', () => {
     await w.q('UPDATE properties SET bought_at=$1', [Date.now()-25*3600000]);
     const r = await Promise.allSettled([w.res[0]!.buyout('One','lm:casino'),w.res[1]!.buyout('Two','lm:bank')]);
     expect(r.map(x=>x.status)).toEqual(['fulfilled','fulfilled']);
-    await w.own('Mixed', commercial.slice(0,4).map(p=>p.id)); const before=w.bank.account('Mixed').chips;
-    const both=await Promise.allSettled([w.res[0]!.buyout('Mixed','lm:jail'),w.res[1]!.buy('Mixed',commercial[4]!.id)]);
+    await w.own('Mixed', commercial.slice(0,9).map(p=>p.id)); const before=w.bank.account('Mixed').chips;
+    const both=await Promise.allSettled([w.res[0]!.buyout('Mixed','lm:jail'),w.res[1]!.buy('Mixed',commercial[9]!.id)]);
     expect(both.filter(x=>x.status==='fulfilled')).toHaveLength(1);
     expect(String((both.find(x=>x.status==='rejected') as PromiseRejectedResult).reason.message)).toMatch(/commercial/);
-    expect((await w.re.zoneUse('Mixed')).commercial).toBe(5);
+    expect((await w.re.zoneUse('Mixed')).commercial).toBe(10);
     await w.bank.refresh('Mixed'); const won=(both.find(x=>x.status==='fulfilled') as PromiseFulfilledResult<{price:number;wealthTax?:number}>).value;
     expect(w.bank.account('Mixed').chips).toBe(before-won.price-(won.wealthTax??0));
     // Also exercise two different ordinary buyers with the same two-connection bank/property pool.

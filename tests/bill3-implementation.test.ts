@@ -134,15 +134,15 @@ describe('Additional factory plants (like farms)', () => {
     const p = propertyById(factoryPlantId(2))!;
     expect(zoneRefusal(use, p)).toBeNull();
   });
-  it('a bought plant counts toward the commercial cap; a 6th is refused', async () => {
+  it('a bought plant counts toward the commercial cap; an 11th is refused', async () => {
     const w = await world();
     const barns = properties().filter((p) => p.type === 'barn');
     const plants = factoryPlants();
     await w.fund('Ann', 50_000_000);
-    for (const b of barns.slice(0, 4)) await w.re.buy('Ann', b.id);
+    for (const b of barns.slice(0, 9)) await w.re.buy('Ann', b.id);
     await w.re.buy('Ann', plants[0]!.id);
-    expect((await w.re.zoneUse('Ann')).commercial).toBe(5);
-    await expect(w.re.buy('Ann', plants[1]!.id)).rejects.toThrow(/already own 5 commercial/);
+    expect((await w.re.zoneUse('Ann')).commercial).toBe(10);
+    await expect(w.re.buy('Ann', plants[1]!.id)).rejects.toThrow(/already own 10 commercial/);
   });
 });
 
@@ -177,9 +177,9 @@ describe('P2P property trades (no 30% haircut, within caps)', () => {
     const w = await world();
     const houses = properties().filter((p) => p.type === 'house' && !p.retired && !p.map);
     await w.fund('Cap', 50_000_000); await w.fund('Sam', 50_000_000);
-    for (const h of houses.slice(0, 5)) await w.re.buy('Cap', h.id);
-    await w.re.buy('Sam', houses[5]!.id);
-    await expect(w.re.trades.offer('Sam', { to: 'Cap', giveIds: [houses[5]!.id], wantIds: [], giveChips: 0, wantChips: 1 })).rejects.toThrow(/already own 5 residential|They couldn't receive/);
+    for (const h of houses.slice(0, 10)) await w.re.buy('Cap', h.id);
+    await w.re.buy('Sam', houses[10]!.id);
+    await expect(w.re.trades.offer('Sam', { to: 'Cap', giveIds: [houses[10]!.id], wantIds: [], giveChips: 0, wantChips: 1 })).rejects.toThrow(/already own 10 residential|They couldn't receive/);
   });
   it('the offerer can cancel and the escrow is returned', async () => {
     const w = await world();

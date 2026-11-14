@@ -5,6 +5,7 @@
 import { createHash } from 'node:crypto';
 import type { BillImplementation } from '../shared/mayorLaws.js';
 import { BILL3_IDENTITY_SHA256, BILL3_IMPLEMENTATION_TEXT } from '../shared/bill3.js';
+import { BILL4_IDENTITY_SHA256, BILL4_IMPLEMENTATION_TEXT } from '../shared/bill4.js';
 
 const BILL1_IDENTITY_SHA256 = 'a08f7b849a6f7399eb9d3523b7d08c1c77d16364c5ae31a503c87ba3f2b61d71';
 const BILL1: Readonly<BillImplementation> = Object.freeze({ status: 'enacted', revision: 1,
@@ -18,13 +19,21 @@ const BILL3: Readonly<BillImplementation> = Object.freeze({ status: 'enacted', r
   implementedAt: 0, release: BILL3_RELEASE, text: BILL3_IMPLEMENTATION_TEXT
 });
 
+/** Filled with the implementing commit SHA after it is recorded. */
+export const BILL4_RELEASE = 'release-queue';
+const BILL4: Readonly<BillImplementation> = Object.freeze({ status: 'enacted', revision: 1,
+  implementedAt: 1794663044789, release: BILL4_RELEASE, text: BILL4_IMPLEMENTATION_TEXT
+});
+
 function bill1Identity(r: Record<string, unknown>): string {
   return createHash('sha256').update(JSON.stringify([String(r.number), r.day, r.text, r.by_name, r.mayor_key, r.term_week, Number(r.at)])).digest('hex');
 }
-/** Official Bill 3: SHA-256 of JSON.stringify([number, day, text, by_name, at]). */
-export function bill3Identity(r: Record<string, unknown>): string {
+/** Official Bills 3 and 4: SHA-256 of JSON.stringify([number, day, text, by_name, at]). */
+export function officialBillIdentity(r: Record<string, unknown>): string {
   return createHash('sha256').update(JSON.stringify([String(r.number), r.day, r.text, r.by_name, Number(r.at)])).digest('hex');
 }
+export const bill3Identity = officialBillIdentity;
+export const bill4Identity = officialBillIdentity;
 
 function cleanPending(r: Record<string, unknown>): boolean {
   return r.status === 'pending' && r.vetoed_at == null && r.vetoed_by_key == null && r.vetoed_by_name == null && r.vetoed_role == null && r.vetoed_term_week == null;
@@ -34,5 +43,6 @@ export function implementationOf(r: Record<string, unknown>): BillImplementation
   if (!cleanPending(r)) return undefined;
   if (bill1Identity(r) === BILL1_IDENTITY_SHA256) return { ...BILL1 };
   if (bill3Identity(r) === BILL3_IDENTITY_SHA256) return { ...BILL3, implementedAt: BILL3.implementedAt || Number(r.at) };
+  if (bill4Identity(r) === BILL4_IDENTITY_SHA256) return { ...BILL4 };
   return undefined;
 }

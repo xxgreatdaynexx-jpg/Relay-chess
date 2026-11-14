@@ -20,9 +20,9 @@ const big = () => properties().filter((p) => /^cf:\d+$/.test(p.id) && isBigFarmN
 const smallFields = () => properties().filter((p) => /^cf:\d+$/.test(p.id) && !isBigFarmN(Number(p.id.slice(3))));
 const sized = (n: number) => big().filter((p) => p.tiles === n * n);
 
-describe('Big Farms: no per-account cap, 1,500-tile zoning still applies', () => {
+describe('Big Farms: no per-account cap, 2,000-tile zoning still applies', () => {
   it('lists all twelve Big Farms (20/24/30), including the four northern plots, and has no per-player cap export', () => {
-    expect(FARMLAND_TILE_CAP).toBe(1500);
+    expect(FARMLAND_TILE_CAP).toBe(2000);
     expect(big()).toHaveLength(12);
     expect(bigFarms()).toHaveLength(12);
     expect(new Set(bigFarms().map((f) => f.size))).toEqual(new Set([20, 24, 30]));
@@ -42,16 +42,15 @@ describe('Big Farms: no per-account cap, 1,500-tile zoning still applies', () =>
     await s.fund('Bob', 50_000_000); await s.re.buy('Bob', sized(20)[2]!.id);
     expect(await s.re.ownedBigFarms('Bob')).toEqual([sized(20)[2]!.id]);
   });
-  it('a further Big Farm is refused once the 1,500-tile farmland cap would be exceeded, and nothing is charged', async () => {
+  it('a further Big Farm is refused once the 2,000-tile farmland cap would be exceeded, and nothing is charged', async () => {
     const s = await setup(); await s.fund('Cat', 50_000_000);
-    const thirty = sized(30)[0]!;
-    const twentyFour = sized(24)[0]!;
-    const extra = sized(20).find((p) => p.id !== thirty.id && p.id !== twentyFour.id)!;
-    await s.re.buy('Cat', thirty.id);
-    await s.re.buy('Cat', twentyFour.id);
-    expect((await s.re.ownedBigFarms('Cat')).sort()).toEqual([thirty.id, twentyFour.id].sort());
+    const [a, b] = sized(30);
+    const extra = sized(24)[0]!;
+    await s.re.buy('Cat', a!.id);
+    await s.re.buy('Cat', b!.id);
+    expect((await s.re.ownedBigFarms('Cat')).sort()).toEqual([a!.id, b!.id].sort());
     const before = s.bank.account('Cat').chips;
-    await expect(s.re.buy('Cat', extra.id)).rejects.toThrow(/Zoning cap: farmland is limited to 1,500 tiles/);
+    await expect(s.re.buy('Cat', extra.id)).rejects.toThrow(/Zoning cap: farmland is limited to 2,000 tiles/);
     expect(s.bank.account('Cat').chips).toBe(before);
     expect(await s.re.ownedBigFarms('Cat')).toHaveLength(2);
   });

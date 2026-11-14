@@ -12,6 +12,7 @@ import { GOODS, type Stack } from '../../../shared/mines';
 import { madeBy, tierOf, usedIn, CHEST_ITEMS, DX, DY, FLOOR_LEVELS, FRECIPES, KINDS, KIND_ORDER, TICK_MS, colorOfKey, floorSize, frecipe, gridOf, cellId, nameOfKey, priceOfKey, recipeTicks, recipesFor, step, canPlace, splitWeights, splitLabel, MAX_SPLIT_W, isPrestigeRecipe, type Dir, type Ent, type FState, type Grid, type Kind, undergroundPairs } from '../../../shared/factory';
 import { clipKitMissing, clipToPlaceItems, entsToClip, type FactoryClip } from '../../../shared/factoryClipboard';
 import { factoryPlants, factoryPlantLabel, factoryPlantN, isFactoryPlantId, FACTORY_PLANT_PRICE } from '../../../shared/bill3';
+import { ZONE_DEED_CAP } from '../../../shared/zoning';
 import { loadAuth } from '../lib/auth';
 
 export type FAck = { ok: boolean; error?: string; state?: FState | null; level?: number; storage?: Stack[]; guest?: boolean; now?: number; result?: unknown; carbonTax?: { rate: number; unpaid: number } };
@@ -274,7 +275,7 @@ export function FactoryBuilder({ guest, flash, onStorage }: { guest: boolean; fl
       <p className="mines-note">Lay belts, place smelters, presses and rollers, and chain ore into ingots, plates, rods, wire, gears, circuits, jewelry and engines. It keeps running while you're offline (up to 8 hours), feeding from your banked storage. Smelters pay a city carbon tax on each coal they burn as fuel (the mayor sets the rate).</p>
       {level === 0 && <button type="button" className="mines-sell" onClick={() => call('fac_expand', {}, () => flash('Factory built! You got a starter kit.'))} data-testid="fac-build">Buy the building (12×12) · 🪙 {ix(FLOOR_LEVELS[0].cost, pidx)}</button>}
               {me && <div className="fac-plants-shop" data-testid="fac-plants-shop">
-          <small>Additional factories are commercial deeds (Bill Chud 3), like farms: 🪙 {FACTORY_PLANT_PRICE.toLocaleString()} list, plus wealth tax, within the 5-commercial cap. Your first factory stays free and grandfathered.</small>
+          <small>Additional factories are commercial deeds (Bill Chud 3), like farms: 🪙 {FACTORY_PLANT_PRICE.toLocaleString()} list, plus wealth tax, within the {ZONE_DEED_CAP}-commercial cap. Your first factory stays free and grandfathered.</small>
           {factoryPlants().filter((p) => !myPlants.includes(p.id)).slice(0, 4).map((p) => (
             <button type="button" key={p.id} className="fac-btn" data-testid={`fac-buy-plant-${p.id}`} onClick={() => socket.timeout(15_000).emit('re_buy', { id: p.id, max: p.price * 3 }, (err: Error | null, r?: { ok?: boolean; error?: string }) => { if (!err && r?.ok) { flash(`${p.label} is yours!`); setMyPlants((x) => [...x, p.id].sort()); } else flash(r?.error ?? 'Could not buy that factory.'); })}>Buy {p.label}</button>
           ))}
